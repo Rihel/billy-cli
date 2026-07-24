@@ -6,7 +6,7 @@ FROM node24-pnpm11:1.0 AS builder
 WORKDIR /app
 
 # 先只复制清单文件，充分利用 layer 缓存
-COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY package.json turbo.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY apps/server/package.json ./apps/server/
 COPY apps/web/package.json    ./apps/web/
 COPY packages/shared/package.json ./packages/shared/
@@ -14,13 +14,14 @@ COPY packages/db/package.json     ./packages/db/
 COPY packages/ui/package.json     ./packages/ui/
 
 # 安装全部依赖（含 devDependencies，build 需要）
+COPY scripts/ ./scripts/
 RUN pnpm install --frozen-lockfile
 
 # 复制源码
 COPY . .
 
 # 用 turbo 构建（自动处理依赖拓扑顺序）
-RUN pnpm turbo run build --filter @app/web... --no-daemon
+RUN pnpm turbo run build --filter @app/web... --filter !@app/server
 
 # ─────────────────────────────────────────────
 # Stage 2: production image (standalone)

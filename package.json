@@ -13,6 +13,7 @@
     "db:gen": "pnpm --filter db run db:generate",
     "db:migrate": "pnpm --filter db run db:migrate",
     "build": "turbo run build",
+    "docker:up": "pnpm gen:trpc && docker compose up -d --build",
     "start:web": "pnpm --filter web run start",
     "start:server": "pnpm --filter server run start",
     "clean": "rm -rf node_modules && rm -rf packages/*/node_modules && rm -rf apps/*/node_modules && rm -rf dist && rm -rf .turbo && rm -rf .next && rm -rf .cache"

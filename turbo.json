@@ -16,6 +16,15 @@
       "outputs": [
         "dist/**"
       ]
+    },
+    "build:docker": {
+      "cache": false,
+      "dependsOn": [
+        "^build"
+      ],
+      "outputs": [
+        "dist/**"
+      ]
     }
   }
 }
