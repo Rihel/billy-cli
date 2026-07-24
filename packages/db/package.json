@@ -12,7 +12,8 @@
   "scripts": {
     "dev": "tsdown --watch --config-loader unrun",
     "db:generate": "drizzle-kit generate",
-    "db:migrate": "drizzle-kit migrate"
+    "db:migrate": "drizzle-kit migrate",
+    "build": "tsdown --config-loader unrun"
   },
   "devDependencies": {
     "@types/lodash": "^4.17.24",

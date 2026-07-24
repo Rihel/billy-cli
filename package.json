@@ -4,6 +4,7 @@
   "description": "",
   "type": "module",
   "scripts": {
+    "postinstall": "sh scripts/postinstall.sh",
     "dev:pkgs": "turbo run dev --filter=./packages/*",
     "build:pkgs": "turbo run build --filter=./packages/*",
     "dev:web": "pnpm --filter web run dev",
@@ -13,7 +14,8 @@
     "db:migrate": "pnpm --filter db run db:migrate",
     "build": "turbo run build",
     "start:web": "pnpm --filter web run start",
-    "start:server": "pnpm --filter server run start"
+    "start:server": "pnpm --filter server run start",
+    "clean": "rm -rf node_modules && rm -rf packages/*/node_modules && rm -rf apps/*/node_modules && rm -rf dist && rm -rf .turbo && rm -rf .next && rm -rf .cache"
   },
   "keywords": [],
   "author": "",

@@ -10,7 +10,8 @@
     }
   },
   "scripts": {
-    "dev": "tsdown --watch --config-loader unrun"
+    "dev": "tsdown --watch --config-loader unrun",
+    "build": "tsdown --config-loader unrun"
   },
   "devDependencies": {
     "@types/lodash": "^4.17.24",

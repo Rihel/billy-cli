@@ -25,16 +25,17 @@ packages/
 | UI 组件 | Ant Design Pro 6 | ProTable / ModalForm 开箱即用 |
 | 状态管理 | Zustand + Immer | 轻量、不可变、无 boilerplate |
 | 样式 | Tailwind 4 | 原子化 CSS，零心智负担 |
-| 日志 | Pino | 结构化日志，全链路覆盖 |
-| 缓存 | Redis（ioredis） | Session / 限流 / 热数据 |
+| 日志 | Pino | 结构化日志，开发环境 pretty，生产环境 JSON |
+| 缓存 | Redis（ioredis） | 完整 Set / List / Hash / PubSub / 分布式锁 |
 | 构建工具 | tsdown | 比 tsc 快一个数量级的 bundler |
+| 容器化 | Docker multi-stage | server + web 独立部署，Next.js standalone |
 
 ## 快速开始
 
 ### 前置条件
 
 - Node.js >= 20
-- pnpm >= 11
+- pnpm >= 11（`corepack enable && corepack prepare pnpm@11.15.0 --activate`）
 - PostgreSQL
 - Redis（可选，默认连接 localhost:6379）
 
@@ -72,7 +73,7 @@ pnpm db:gen
 pnpm db:migrate
 ```
 
-### 启动
+### 启动（开发）
 
 ```bash
 # 终端 1：启动 packages（shared / db / ui）的 watch 构建
@@ -85,10 +86,18 @@ pnpm dev:server
 pnpm dev:web
 ```
 
-也可全量并行启动（不过日志会比较密集）：
+### 构建与启动（生产）
 
 ```bash
-pnpm dev:pkgs & pnpm dev:server & pnpm dev:web
+# 构建全部
+pnpm build
+
+# 分别启动
+pnpm start:server
+pnpm start:web
+
+# 或 Docker
+docker compose up
 ```
 
 ## 架构设计
@@ -102,7 +111,7 @@ pnpm dev:pkgs & pnpm dev:server & pnpm dev:web
                                │
                     ┌──────────┴──────────┐
                     │                     │
-             lib/server-trpc.ts    lib/trpc.ts
+             lib/server-trpc.ts    lib/client-trpc.ts
              （RSC / Server Actions）  （SPA 客户端）
 ```
 
@@ -111,7 +120,9 @@ pnpm dev:pkgs & pnpm dev:server & pnpm dev:web
 - JWT token，通过 `Authorization: Bearer` 或 `cookie` 传递
 - `TrpcAppContext` 在 tRPC context 层自动解析 token，注入 `userId`
 - `AuthMiddleware` 装饰器按路由粒度控制鉴权
-- SSR 侧通过 proxy middleware 做路由守卫
+- SSR 侧通过 try/catch + `redirect()` 做路由守卫
+- 客户端通过 `unauthorizedLink`（trpc-links.ts）自动跳转登录页
+- `main/layout.tsx` 标记 `dynamic = 'force-dynamic'` 确保每次请求都校验认证
 
 ### tRPC 路由
 
@@ -145,6 +156,21 @@ pnpm gen:trpc
   - Stage 2：用 ID 列表执行完整 JOIN 查询
   - 适用于多表 LEFT JOIN 的复杂查询，性能远优于传统 `LIMIT/OFFSET` + JOIN
 
+### 日志
+
+`@repo/shared` 提供 `createLogger(name, pretty?)`：
+
+- 开发环境传入 `pretty=true` → pino-pretty 彩色打印到控制台
+- 生产环境不传或传 `false` → 纯 JSON，由容器日志系统收集
+
+```typescript
+// apps/server/src/main.ts
+createLogger('bootstrap', appConfig.isDev)  // NODE_ENV 控制
+
+// production 输出示例
+{"level":30, "time":1690000000000, "name":"bootstrap", "msg":"服务已启动 http://localhost:9989"}
+```
+
 ## 项目结构
 
 ```
@@ -152,7 +178,10 @@ pnpm gen:trpc
 │   ├── server/
 │   │   └── src/
 │   │       ├── @generated/        # tRPC 类型定义（自动生成）
-│   │       ├── infra/             # 基础设施 DbService / RedisService
+│   │       ├── infra/
+│   │       │   ├── db.service.ts      # Drizzle CRUD + 分页
+│   │       │   ├── redis.service.ts   # Set/List/Hash/Lock/PubSub/JSON
+│   │       │   └── infra.module.ts    # Global Module
 │   │       ├── middlewares/       # 鉴权中间件
 │   │       ├── modules/
 │   │       │   ├── auth/          # 注册 / 登录 / 密码重置
@@ -165,15 +194,32 @@ pnpm gen:trpc
 │   │       ├── root.module.ts
 │   │       └── trpc.context.ts
 │   └── web/
+│       ├── scripts/
+│       │   └── start.sh           # standalone 启动脚本
 │       └── src/
 │           ├── actions/           # Server Actions
 │           ├── app/               # App Router 页面
 │           │   ├── auth/          # 登录 / 注册 / 重置密码
-│           │   └── main/          # 仪表盘 / Todo / 系统设置
-│           ├── lib/               # trpc 客户端 / 认证 / 常量
-│           ├── providers/         # React Context Providers
-│           ├── stores/            # Zustand stores
-│           └── proxy.ts           # SSR 路由守卫
+│           │   ├── main/
+│           │   │   ├── dashboard/     # 仪表盘
+│           │   │   ├── todo/          # Todo 管理
+│           │   │   ├── system/users/  # 用户管理（CRUD）
+│           │   │   ├── error.tsx      # 布局级错误边界
+│           │   │   └── layout.tsx     # SSR 预取 + 鉴权
+│           │   ├── error.tsx      # 全局错误边界
+│           │   └── layout.tsx     # 根 Layout
+│           ├── lib/
+│           │   ├── client-trpc.ts     # 客户端 tRPC
+│           │   ├── server-trpc.ts     # 服务端 tRPC（RSC / Server Actions）
+│           │   ├── trpc-links.ts      # 统一未授权处理
+│           │   ├── auth.ts            # 认证存储
+│           │   └── constants.ts       # 路由常量
+│           ├── providers/
+│           │   └── AppProviders.tsx    # Ant Design + tRPC + TanStack Query
+│           ├── stores/
+│           │   └── auth.store.tsx     # Zustand + Immer
+│           ├── proxy.ts           # SSR 路由守卫
+│           └── next.config.ts     # standalone output, react compiler
 ├── packages/
 │   ├── db/
 │   │   ├── src/entities.ts        # Drizzle schema
@@ -182,11 +228,16 @@ pnpm gen:trpc
 │   ├── shared/
 │   │   └── src/
 │   │       ├── schema/            # Zod 共享 schema
-│   │       ├── logger.ts          # Pino 日志
+│   │       ├── logger.ts          # Pino 日志（条件 pretty）
 │   │       └── dayjs.ts           # dayjs 配置
 │   └── ui/
 │       ├── src/components/        # 共享 React 组件
 │       └── src/lib/               # cn() 等工具
+├── docker/
+│   ├── Dockerfile.base        # 基础镜像（node 24 + pnpm 11 + 运维工具）
+│   ├── Dockerfile.server      # 服务端 multi-stage 构建
+│   ├── Dockerfile.web         # Web 端 standalone multi-stage 构建
+│   └── init-db.sql            # 数据库初始化 DDL
 ├── turbo.json
 ├── pnpm-workspace.yaml
 └── package.json
@@ -197,8 +248,33 @@ pnpm gen:trpc
 | 命令 | 说明 |
 |------|------|
 | `pnpm dev:pkgs` | 并行 watch packages 构建 |
+| `pnpm build:pkgs` | 构建 packages |
 | `pnpm dev:server` | 启动 NestJS 开发服务器 |
 | `pnpm dev:web` | 启动 Next.js 开发服务器 |
+| `pnpm build` | 全量构建（turbo） |
+| `pnpm start:server` | 启动生产 Server |
+| `pnpm start:web` | 启动生产 Web |
 | `pnpm gen:trpc` | 生成 tRPC 类型定义 |
 | `pnpm db:gen` | 生成 Drizzle 迁移文件 |
 | `pnpm db:migrate` | 执行数据库迁移 |
+
+## Docker
+
+### 构建
+
+```bash
+# 先构建基础镜像（含 node 24 + pnpm 11 + 运维工具）
+docker build -t node24-pnpm11:1.0 -f docker/Dockerfile.base .
+
+# 构建 web 镜像
+docker build -t billy-web:latest -f docker/Dockerfile.web .
+
+# 构建 server 镜像
+docker build -t billy-server:latest -f docker/Dockerfile.server .
+```
+
+### 特性
+
+- **web**：Next.js `output: 'standalone'` 模式，产物仅 50MB+，不携带源码和 devDependencies
+- **server**：pnpm deploy 提取运行时依赖，仅携带编译产物
+- **基础镜像**：内置 `bash / curl / wget / jq / tzdata（Asia/Shanghai）` 等运维工具
