@@ -2,8 +2,6 @@ import type { Metadata } from 'next'
 import { AntdRegistry } from '@ant-design/nextjs-registry'
 
 import './globals.css'
-// import 'antd/dist/antd.css'
-import '@/styles/antd.min.css'
 
 import { Providers } from '@/providers/AppProviders'
 import { AppName } from '@/lib/constants'

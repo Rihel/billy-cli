@@ -26,8 +26,8 @@ export const AppHeader = ({}: AppHeaderProps) => {
   }
 
   return (
-    <Header className="flex justify-between items-center">
-      <div className="text-2xl text-white">{AppName}</div>
+    <div className="flex justify-between items-center h-16  border-b  px-5">
+      <div className="text-2xl ">{AppName}</div>
 
       <Dropdown
         menu={{
@@ -35,11 +35,11 @@ export const AppHeader = ({}: AppHeaderProps) => {
           items: [{ type: 'divider' }, { key: 'exit', label: '退出' }],
         }}
       >
-        <div className="text-white cursor-pointer flex gap-2">
+        <div className=" cursor-pointer flex gap-2">
           <div>{userInfo?.realName || userInfo?.email}</div>
           <DownOutlined />
         </div>
       </Dropdown>
-    </Header>
+    </div>
   )
 }

@@ -2,16 +2,20 @@
 
 import { useTRPC, useTRPCClient } from '@/lib/client-trpc'
 import {
-  ActionType,
-  ModalForm,
-  ProColumns,
-  ProFormDependency,
-  ProFormText,
-  ProTable,
-} from '@ant-design/pro-components'
-import { App, Button, Popconfirm, Space, Tag } from 'antd'
-import { useMutation } from '@tanstack/react-query'
-import { useRef, useState } from 'react'
+  App,
+  Button,
+  Form,
+  Input,
+  Modal,
+  Popconfirm,
+  Space,
+  Table,
+  Tag,
+} from 'antd'
+import { useMutation, useQuery } from '@tanstack/react-query'
+import { useState } from 'react'
+import type { TableColumnsType } from 'antd'
+import dayjs from 'dayjs'
 
 type UserRow = {
   id: string
@@ -25,20 +29,36 @@ export default function UsersPage() {
   const { message } = App.useApp()
   const trpc = useTRPC()
   const trpcClient = useTRPCClient()
-  const actionRef = useRef<ActionType>(null)
+  const [page, setPage] = useState(1)
+  const [pageSize, setPageSize] = useState(10)
+  const [keyword, setKeyword] = useState<string | undefined>()
+  const [createOpen, setCreateOpen] = useState(false)
   const [editRecord, setEditRecord] = useState<UserRow | null>(null)
   const [resetPwdRecord, setResetPwdRecord] = useState<UserRow | null>(null)
+  const [createForm] = Form.useForm()
+  const [editForm] = Form.useForm()
+  const [resetPwdForm] = Form.useForm()
+
+  const { data, isFetching, refetch } = useQuery(
+    trpc.user.findMany.queryOptions({
+      page,
+      size: pageSize,
+      keyword,
+      orderBy: 'createdAt',
+      order: 'desc',
+    }),
+  )
 
   const removeMutation = useMutation(
     trpc.user.remove.mutationOptions({
       onSuccess() {
-        actionRef.current?.reload()
+        refetch()
         message.success('删除成功')
       },
     }),
   )
 
-  const columns: ProColumns<UserRow>[] = [
+  const columns: TableColumnsType<UserRow> = [
     {
       title: '邮箱',
       dataIndex: 'email',
@@ -46,175 +66,226 @@ export default function UsersPage() {
     {
       title: '姓名',
       dataIndex: 'realName',
-      search: false,
       render: (_, { realName }) =>
         realName ? realName : <Tag color="default">未设置</Tag>,
     },
     {
       title: '创建时间',
       dataIndex: 'createdAt',
-      search: false,
       width: 180,
-      valueType: 'dateTime',
+      render: (v) => dayjs(v).format('YYYY-MM-DD HH:mm:ss'),
     },
     {
       title: '操作',
-      valueType: 'option',
       width: 200,
-      render: (_, record) => [
-        <a key="edit" onClick={() => setEditRecord(record)}>
-          编辑
-        </a>,
-        <a key="resetPwd" onClick={() => setResetPwdRecord(record)}>
-          重置密码
-        </a>,
-        <Popconfirm
-          key="delete"
-          title="确认删除该用户？"
-          onConfirm={() => removeMutation.mutate({ id: record.id })}
-          okText="删除"
-          cancelText="取消"
-          okButtonProps={{ danger: true }}
-        >
-          <a className="text-red-500">删除</a>
-        </Popconfirm>,
-      ],
+      render: (_, record) => (
+        <Space>
+          <a
+            onClick={() => {
+              setEditRecord(record)
+              editForm.setFieldsValue(record)
+            }}
+          >
+            编辑
+          </a>
+          <a onClick={() => setResetPwdRecord(record)}>重置密码</a>
+          <Popconfirm
+            title="确认删除该用户？"
+            onConfirm={() => removeMutation.mutate({ id: record.id })}
+            okText="删除"
+            cancelText="取消"
+            okButtonProps={{ danger: true }}
+          >
+            <a className="text-red-500">删除</a>
+          </Popconfirm>
+        </Space>
+      ),
     },
   ]
 
   return (
     <>
-      <ProTable<UserRow>
-        actionRef={actionRef}
-        rowKey="id"
-        headerTitle="用户管理"
-        columns={columns}
-        request={async ({ pageSize = 10, current = 1, email }) => {
-          const res = await trpcClient.user.findMany.query({
-            page: current,
-            size: pageSize,
-            keyword: email || undefined,
-            orderBy: 'createdAt',
-            order: 'desc',
-          })
-          return { data: res.items, success: true, total: res.total }
-        }}
-        toolBarRender={() => [
-          <ModalForm
-            key="create"
-            title="新建用户"
-            trigger={<Button type="primary">新建用户</Button>}
-            modalProps={{ destroyOnHidden: true }}
-            onFinish={async (values) => {
-              try {
-                await trpcClient.user.create.mutate(
-                  values as {
-                    email: string
-                    password: string
-                    realName?: string
-                  },
-                )
-                message.success('创建成功')
-                actionRef.current?.reload()
-                return true
-              } catch (e: any) {
-                message.error(e?.message ?? '创建失败')
-                return false
-              }
+      <div className="flex justify-between items-center mb-4">
+        <span className="text-base font-medium">用户管理</span>
+        <Space>
+          <Input.Search
+            placeholder="搜索邮箱..."
+            allowClear
+            style={{ width: 200 }}
+            onSearch={(v) => {
+              setKeyword(v || undefined)
+              setPage(1)
             }}
-          >
-            <ProFormText
-              name="email"
-              label="邮箱"
-              rules={[{ required: true }, { type: 'email' }]}
-            />
-            <ProFormText name="realName" label="姓名" />
-            <ProFormText.Password
-              name="password"
-              label="初始密码"
-              rules={[{ required: true }, { min: 6, message: '至少 6 位' }]}
-            />
-          </ModalForm>,
-        ]}
+          />
+          <Button type="primary" onClick={() => setCreateOpen(true)}>
+            新建用户
+          </Button>
+        </Space>
+      </div>
+      <Table<UserRow>
+        rowKey="id"
+        loading={isFetching}
+        columns={columns}
+        dataSource={data?.items}
+        pagination={{
+          current: page,
+          pageSize,
+          total: data?.total,
+          onChange: (p, ps) => {
+            setPage(p)
+            setPageSize(ps)
+          },
+        }}
       />
 
+      {/* 新建用户 */}
+      <Modal
+        title="新建用户"
+        open={createOpen}
+        onCancel={() => {
+          setCreateOpen(false)
+          createForm.resetFields()
+        }}
+        onOk={() => createForm.submit()}
+        destroyOnHidden
+      >
+        <Form
+          form={createForm}
+          layout="vertical"
+          onFinish={async (values) => {
+            try {
+              await trpcClient.user.create.mutate(
+                values as {
+                  email: string
+                  password: string
+                  realName?: string
+                },
+              )
+              message.success('创建成功')
+              refetch()
+              setCreateOpen(false)
+              createForm.resetFields()
+            } catch (e: any) {
+              message.error(e?.message ?? '创建失败')
+            }
+          }}
+        >
+          <Form.Item
+            name="email"
+            label="邮箱"
+            rules={[{ required: true }, { type: 'email' }]}
+          >
+            <Input />
+          </Form.Item>
+          <Form.Item name="realName" label="姓名">
+            <Input />
+          </Form.Item>
+          <Form.Item
+            name="password"
+            label="初始密码"
+            rules={[{ required: true }, { min: 6, message: '至少 6 位' }]}
+          >
+            <Input.Password />
+          </Form.Item>
+        </Form>
+      </Modal>
+
       {/* 编辑用户 */}
-      <ModalForm
+      <Modal
         title="编辑用户"
         open={!!editRecord}
-        onOpenChange={(open) => !open && setEditRecord(null)}
-        initialValues={editRecord ?? undefined}
-        modalProps={{ destroyOnHidden: true }}
-        onFinish={async (values) => {
-          if (!editRecord) return false
-          try {
-            await trpcClient.user.update.mutate({
-              userId: editRecord.id,
-              realName: values.realName,
-            })
-            message.success('更新成功')
-            actionRef.current?.reload()
-            return true
-          } catch (e: any) {
-            message.error(e?.message ?? '更新失败')
-            return false
-          }
+        onCancel={() => {
+          setEditRecord(null)
+          editForm.resetFields()
         }}
+        onOk={() => editForm.submit()}
+        destroyOnHidden
       >
-        <ProFormText
-          name="email"
-          label="邮箱"
-          disabled
-          fieldProps={{ readOnly: true }}
-        />
-        <ProFormText name="realName" label="姓名" />
-      </ModalForm>
+        <Form
+          form={editForm}
+          layout="vertical"
+          onFinish={async (values) => {
+            if (!editRecord) return
+            try {
+              await trpcClient.user.update.mutate({
+                userId: editRecord.id,
+                realName: values.realName,
+              })
+              message.success('更新成功')
+              refetch()
+              setEditRecord(null)
+              editForm.resetFields()
+            } catch (e: any) {
+              message.error(e?.message ?? '更新失败')
+            }
+          }}
+        >
+          <Form.Item name="email" label="邮箱">
+            <Input disabled readOnly />
+          </Form.Item>
+          <Form.Item name="realName" label="姓名">
+            <Input />
+          </Form.Item>
+        </Form>
+      </Modal>
 
       {/* 重置密码 */}
-      <ModalForm
+      <Modal
         title={`重置密码 — ${resetPwdRecord?.email}`}
         open={!!resetPwdRecord}
-        onOpenChange={(open) => !open && setResetPwdRecord(null)}
-        modalProps={{ destroyOnHidden: true }}
-        submitter={{ submitButtonProps: { danger: true } }}
-        onFinish={async (values) => {
-          if (!resetPwdRecord) return false
-          try {
-            await trpcClient.user.resetPassword.mutate({
-              userId: resetPwdRecord.id,
-              password: values.password,
-            })
-            message.success('密码重置成功')
-            return true
-          } catch (e: any) {
-            message.error(e?.message ?? '重置失败')
-            return false
-          }
+        onCancel={() => {
+          setResetPwdRecord(null)
+          resetPwdForm.resetFields()
         }}
+        onOk={() => resetPwdForm.submit()}
+        okButtonProps={{ danger: true }}
+        destroyOnHidden
       >
-        <ProFormText.Password
-          name="password"
-          label="新密码"
-          rules={[{ required: true }, { min: 6, message: '至少 6 位' }]}
-        />
-        <ProFormDependency name={['password']}>
-          {({ password }) => (
-            <ProFormText.Password
-              name="confirmPassword"
-              label="确认密码"
-              rules={[
-                { required: true },
-                {
-                  validator: (_, value) =>
-                    !value || password === value
-                      ? Promise.resolve()
-                      : Promise.reject(new Error('两次密码不一致')),
+        <Form
+          form={resetPwdForm}
+          layout="vertical"
+          onFinish={async (values) => {
+            if (!resetPwdRecord) return
+            try {
+              await trpcClient.user.resetPassword.mutate({
+                userId: resetPwdRecord.id,
+                password: values.password,
+              })
+              message.success('密码重置成功')
+              setResetPwdRecord(null)
+              resetPwdForm.resetFields()
+            } catch (e: any) {
+              message.error(e?.message ?? '重置失败')
+            }
+          }}
+        >
+          <Form.Item
+            name="password"
+            label="新密码"
+            rules={[{ required: true }, { min: 6, message: '至少 6 位' }]}
+          >
+            <Input.Password />
+          </Form.Item>
+          <Form.Item
+            name="confirmPassword"
+            label="确认密码"
+            dependencies={['password']}
+            rules={[
+              { required: true },
+              ({ getFieldValue }) => ({
+                validator(_, value) {
+                  if (!value || getFieldValue('password') === value) {
+                    return Promise.resolve()
+                  }
+                  return Promise.reject(new Error('两次密码不一致'))
                 },
-              ]}
-            />
-          )}
-        </ProFormDependency>
-      </ModalForm>
+              }),
+            ]}
+          >
+            <Input.Password />
+          </Form.Item>
+        </Form>
+      </Modal>
     </>
   )
 }

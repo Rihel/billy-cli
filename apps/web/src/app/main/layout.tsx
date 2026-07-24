@@ -5,8 +5,8 @@ import { Content } from 'antd/es/layout/layout'
 import { redirect } from 'next/navigation'
 
 import { ReactNode, Suspense } from 'react'
-import { AppHeader } from './_components/AppHeader'
-import { AppSider } from './_components/AppSider'
+import { AppHeader } from '../../components/AppHeader'
+import { AppSider } from '../../components/AppSider'
 import { Pages } from '@/lib/constants'
 
 export const dynamic = 'force-dynamic'
@@ -29,17 +29,17 @@ const MainLayout = async ({ children }: MainLayoutProps) => {
         userInfo: res,
       }}
     >
-      <Layout className="w-screen h-screen">
+      <div className="w-screen h-screen flex flex-col">
         <AppHeader />
-        <Layout>
+        <div className="flex flex-1">
           <AppSider />
-          <Content>
+          <div className="bg-gray-50 flex-1">
             <div className="m-5 p-5 bg-white">
               <Suspense>{children}</Suspense>
             </div>
-          </Content>
-        </Layout>
-      </Layout>
+          </div>
+        </div>
+      </div>
     </AuthStoreProvider>
   )
 }

@@ -15,12 +15,22 @@ export const AppSider = ({}: AppSiderProps) => {
     }
   }
   return (
-    <Sider collapsible theme="light">
+    <Sider
+      collapsible
+      theme="light"
+      classNames={{
+        root: 'h-full',
+      }}
+      width={240}
+    >
       <Menu
         theme="light"
         mode="inline"
         onClick={handleMenuClick}
         selectedKeys={[pathname]}
+        classNames={{
+          root: '!border-none',
+        }}
         items={[
           {
             label: '控制台',
