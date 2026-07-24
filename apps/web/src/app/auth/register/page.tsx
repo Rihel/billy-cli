@@ -7,12 +7,13 @@ import {
   ProFormDependency,
   ProFormText,
 } from '@ant-design/pro-components'
-import { message } from 'antd'
+import { App } from 'antd'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { Pages } from '@/lib/constants'
 
 export default function RegisterPage() {
+  const { message } = App.useApp()
   const router = useRouter()
 
   return (

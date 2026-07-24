@@ -9,7 +9,7 @@ import {
   ProFormText,
   ProTable,
 } from '@ant-design/pro-components'
-import { Button, Popconfirm, Space, Tag, message } from 'antd'
+import { App, Button, Popconfirm, Space, Tag } from 'antd'
 import { useMutation } from '@tanstack/react-query'
 import { useRef, useState } from 'react'
 
@@ -22,6 +22,7 @@ type UserRow = {
 }
 
 export default function UsersPage() {
+  const { message } = App.useApp()
   const trpc = useTRPC()
   const trpcClient = useTRPCClient()
   const actionRef = useRef<ActionType>(null)

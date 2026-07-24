@@ -1,13 +1,14 @@
 'use client'
 
 import { forgotPasswordAction } from '@/actions/auth.actions'
-import { Button, Card, Form, Input, Typography, message, Alert } from 'antd'
+import { App, Button, Card, Form, Input, Typography, Alert } from 'antd'
 import { useState } from 'react'
 import Link from 'next/link'
 
 const { Title, Text } = Typography
 
 export default function ForgotPasswordPage() {
+  const { message } = App.useApp()
   const [submitted, setSubmitted] = useState(false)
   const [loading, setLoading] = useState(false)
 

@@ -57,6 +57,7 @@ export const Providers = ({ children }: ProvidersProps) => {
     <ConfigProvider
       locale={zhCN}
       variant="filled"
+      theme={{ cssVar: { key: 'app' }, hashed: false }}
       form={{
         validateMessages: {
           required: '${label}不能为空',

@@ -4,7 +4,7 @@ import { Layout } from 'antd'
 import { Content } from 'antd/es/layout/layout'
 import { redirect } from 'next/navigation'
 
-import { ReactNode } from 'react'
+import { ReactNode, Suspense } from 'react'
 import { AppHeader } from './_components/AppHeader'
 import { AppSider } from './_components/AppSider'
 import { Pages } from '@/lib/constants'
@@ -33,7 +33,11 @@ const MainLayout = async ({ children }: MainLayoutProps) => {
         <AppHeader />
         <Layout>
           <AppSider />
-          <Content>{children}</Content>
+          <Content>
+            <div className="m-5 p-5 bg-white">
+              <Suspense>{children}</Suspense>
+            </div>
+          </Content>
         </Layout>
       </Layout>
     </AuthStoreProvider>

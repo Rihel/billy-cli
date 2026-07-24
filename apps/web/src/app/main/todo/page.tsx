@@ -9,7 +9,7 @@ import {
   ProFormText,
   ProTable,
 } from '@ant-design/pro-components'
-import { Button, Checkbox, Input, Popconfirm, Space, Tag, message } from 'antd'
+import { App, Button, Checkbox, Input, Popconfirm, Space, Tag } from 'antd'
 import { useMutation } from '@tanstack/react-query'
 import { useRef, useState } from 'react'
 
@@ -23,6 +23,7 @@ type TodoRow = {
 }
 
 export default function TodoPage() {
+  const { message } = App.useApp()
   const trpc = useTRPC()
   const trpcClient = useTRPCClient()
   const actionRef = useRef<ActionType>(null)

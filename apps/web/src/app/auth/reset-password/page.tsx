@@ -1,13 +1,14 @@
 'use client'
 
 import { resetPasswordAction } from '@/actions/auth.actions'
-import { Button, Card, Form, Input, Typography, message } from 'antd'
+import { App, Button, Card, Form, Input, Typography } from 'antd'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { Suspense, useState } from 'react'
 
 const { Title } = Typography
 
 function ResetPasswordForm() {
+  const { message } = App.useApp()
   const router = useRouter()
   const searchParams = useSearchParams()
   const tokenFromUrl = searchParams.get('token') ?? ''

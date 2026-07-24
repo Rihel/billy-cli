@@ -3,18 +3,19 @@
 import { authStorage } from '@/lib/auth'
 import { loginAction } from '@/actions/auth.actions'
 import { LoginForm, ProFormText } from '@ant-design/pro-components'
-import { message } from 'antd'
+import { App } from 'antd'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { Pages } from '@/lib/constants'
+import { AppName, Pages } from '@/lib/constants'
 
 export default function LoginPage() {
+  const { message } = App.useApp()
   const router = useRouter()
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50">
       <LoginForm
-        title="Billy CLI"
+        title={AppName}
         subTitle="欢迎登录"
         onFinish={async (values: { email: string; password: string }) => {
           const result = await loginAction(values)
