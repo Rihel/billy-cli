@@ -1,0 +1,38 @@
+{
+  "name": "@repo/ui",
+  "type": "module",
+  "version": "1.0.0",
+  "exports": {
+    ".": {
+      "import": "./dist/index.mjs",
+      "types": "./src/index.ts",
+      "require": "./dist/index.cjs"
+    }
+  },
+  "scripts": {
+    "dev": "tsdown --watch --config-loader unrun"
+  },
+  "devDependencies": {
+    "@types/lodash": "^4.17.24",
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3",
+    "tsdown": "^0.22.9",
+    "typescript": "^7.0.2",
+    "unrun": "^0.3.1"
+  },
+  "dependencies": {
+    "@ant-design/icons": "^6.3.2",
+    "@repo/shared": "workspace:*",
+    "ahooks": "^3.9.7",
+    "antd": "^6.5.1",
+    "clsx": "^2.1.1",
+    "dayjs": "^1.11.21",
+    "immer": "^11.1.15",
+    "lodash": "^4.18.1",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7",
+    "tailwind-merge": "^3.6.0",
+    "use-immer": "^0.11.0",
+    "zod": "^4.4.3"
+  }
+}

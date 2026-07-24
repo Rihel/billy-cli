@@ -1,0 +1,82 @@
+services:
+  # ──────────────────────────────────────────
+  # PostgreSQL
+  # ──────────────────────────────────────────
+  postgres:
+    image: postgres:17-alpine
+    container_name: billy-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: root
+      POSTGRES_PASSWORD: pg1234
+      POSTGRES_DB: billy-cli
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./docker/init-db.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U root -d billy-cli"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # ──────────────────────────────────────────
+  # Redis
+  # ──────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: billy-redis
+    restart: unless-stopped
+    command: redis-server --save 60 1 --loglevel warning
+    volumes:
+      - redis-data:/data
+    ports:
+      - "6380:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # ──────────────────────────────────────────
+  # Server (NestJS)
+  # ──────────────────────────────────────────
+  server:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.server
+    container_name: billy-server
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      DB_URL: postgresql://root:pg1234@postgres:5432/billy-cli
+      REDIS_URL: redis://redis:6379/0
+      JWT_SECRET: ${JWT_SECRET:-change-me-in-production}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-7d}
+    ports:
+      - "9989:9989"
+
+  # ──────────────────────────────────────────
+  # Web (Next.js)
+  # ──────────────────────────────────────────
+  web:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.web
+    container_name: billy-web
+    restart: unless-stopped
+    depends_on:
+      - server
+    environment:
+      SERVER_URL: http://server:9989
+    ports:
+      - "3001:3001"
+
+volumes:
+  postgres-data:
+  redis-data:

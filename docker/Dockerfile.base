@@ -1,0 +1,17 @@
+FROM node:24.14.1-alpine 
+# 启用 corepack，固定 pnpm 版本
+RUN corepack enable && corepack prepare pnpm@11.15.0 --activate
+RUN npm config set registry https://registry.npmmirror.com
+# 安装常用运维工具
+RUN apk add --no-cache \
+  bash \
+  curl \
+  wget \
+  busybox-extras \
+  jq \
+  bind-tools \
+  tzdata
+
+# 设置时区
+ENV TZ=Asia/Shanghai
+ENV CI=true

@@ -1,0 +1,49 @@
+# ─────────────────────────────────────────────
+# Stage 1: install & build (full monorepo)
+# ─────────────────────────────────────────────
+FROM node24-pnpm11:1.0 AS builder
+
+WORKDIR /app
+
+
+# 先只复制清单文件，充分利用 layer 缓存
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY apps/server/package.json ./apps/server/
+COPY apps/web/package.json    ./apps/web/
+COPY packages/shared/package.json ./packages/shared/
+COPY packages/db/package.json     ./packages/db/
+COPY packages/ui/package.json     ./packages/ui/
+
+# 安装全部依赖（含 devDependencies，build 需要）
+# CI=true: 告知 pnpm 跳过无 TTY 时的交互确认
+RUN pnpm install --frozen-lockfile
+
+# 复制源码
+COPY . .
+
+# 用 turbo 构建（自动处理依赖拓扑顺序）
+RUN pnpm turbo run build --filter @app/server... --no-daemon
+
+# 用 pnpm deploy 提取 server 及其运行时依赖到独立目录
+RUN pnpm deploy --filter @app/server --prod --legacy /deploy/server
+
+# 把编译产物复制进 deploy 目录（deploy 只包含 node_modules，不含 dist）
+RUN cp -r apps/server/dist /deploy/server/dist
+
+# ─────────────────────────────────────────────
+# Stage 2: production image
+# ─────────────────────────────────────────────
+FROM node24-pnpm11:1.0 AS runner
+
+WORKDIR /app
+
+# 只拷贝 deploy 阶段的产物（不含 devDeps、源码）
+COPY --from=builder /deploy/server .
+
+# 非 root 用户运行
+RUN addgroup -S appgroup && adduser -S appuser -G appgroup
+USER appuser
+
+EXPOSE 3000
+
+CMD ["node", "dist/main.js"]

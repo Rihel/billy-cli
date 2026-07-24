@@ -1,0 +1,8 @@
+{
+  "chat.tools.terminal.autoApprove": {
+    "/^pnpm -C packages/shared run dev$/": {
+      "approve": true,
+      "matchCommandLine": true
+    }
+  }
+}
