@@ -17,15 +17,14 @@ export default function LoginPage() {
         title="Billy CLI"
         subTitle="欢迎登录"
         onFinish={async (values: { email: string; password: string }) => {
-          try {
-            const token = await loginAction(values)
-            authStorage.setToken(token)
-            message.success('登录成功')
-            router.replace(Pages.dashboard)
-          } catch (err: any) {
-            message.error(err?.message ?? '登录失败')
+          const result = await loginAction(values)
+          if (!result.ok) {
+            message.error(result.error)
             return false
           }
+          authStorage.setToken(result.data)
+          message.success('登录成功')
+          router.replace(Pages.dashboard)
         }}
         actions={
           <div className="flex justify-between w-full text-sm pt-2">

@@ -20,15 +20,14 @@ function ResetPasswordForm() {
     confirmPassword: string
   }) => {
     setLoading(true)
-    try {
-      const { confirmPassword: _, ...rest } = values
-      await resetPasswordAction(rest)
+    const { confirmPassword: _, ...rest } = values
+    const result = await resetPasswordAction(rest)
+    setLoading(false)
+    if (!result.ok) {
+      message.error(result.error)
+    } else {
       message.success('密码重置成功，请重新登录')
       router.replace('/auth/login')
-    } catch (err: any) {
-      message.error(err?.message ?? '重置失败')
-    } finally {
-      setLoading(false)
     }
   }
 

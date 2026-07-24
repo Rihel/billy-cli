@@ -26,15 +26,14 @@ export default function RegisterPage() {
           password: string
           realName?: string
         }) => {
-          try {
-            const token = await registerAction(values)
-            authStorage.setToken(token)
-            message.success('注册成功')
-            router.replace(Pages.dashboard)
-          } catch (err: any) {
-            message.error(err?.message ?? '注册失败')
+          const result = await registerAction(values)
+          if (!result.ok) {
+            message.error(result.error)
             return false
           }
+          authStorage.setToken(result.data)
+          message.success('注册成功')
+          router.replace(Pages.dashboard)
         }}
         actions={
           <div className="text-sm text-center pt-2">

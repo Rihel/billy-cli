@@ -13,13 +13,12 @@ export default function ForgotPasswordPage() {
 
   const handleSubmit = async (values: { email: string }) => {
     setLoading(true)
-    try {
-      await forgotPasswordAction(values)
+    const result = await forgotPasswordAction(values)
+    setLoading(false)
+    if (!result.ok) {
+      message.error(result.error)
+    } else {
       setSubmitted(true)
-    } catch (err: any) {
-      message.error(err?.message ?? '请求失败')
-    } finally {
-      setLoading(false)
     }
   }
 
