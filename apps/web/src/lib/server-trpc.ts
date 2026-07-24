@@ -1,7 +1,9 @@
 import type { AppRouter } from '@app/server/src/@generated/server'
 import { createTRPCClient, httpBatchLink } from '@trpc/client'
 import { cookies } from 'next/headers'
-import { TokenKey } from './constants'
+import { redirect } from 'next/navigation'
+import { TokenKey, Pages } from './constants'
+import { unauthorizedLink } from './trpc-links'
 
 /**
  * Server-side tRPC client for use in Server Actions / Route Handlers.
@@ -10,6 +12,7 @@ import { TokenKey } from './constants'
  */
 export const serverTRPC = createTRPCClient<AppRouter>({
   links: [
+    unauthorizedLink(() => redirect(Pages.login)),
     httpBatchLink({
       url: process.env.SERVER_URL + '/trpc',
       async headers() {

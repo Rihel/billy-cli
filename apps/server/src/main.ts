@@ -5,7 +5,7 @@ import { createLogger } from '@repo/shared';
 import { appConfig } from './config.js';
 
 async function bootstrap() {
-  const logger = createLogger('bootstrap');
+  const logger = createLogger('bootstrap', appConfig.isDev);
   const app = await NestFactory.create(RootModule, { bufferLogs: true });
   app.useLogger(logger);
   app.flushLogs();

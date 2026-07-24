@@ -9,7 +9,7 @@ import {
   QueryClient,
   QueryClientProvider,
 } from '@tanstack/react-query'
-import { createTRPCClient, TRPCProvider } from '@/lib/trpc'
+import { createTRPCClient, TRPCProvider } from '@/lib/client-trpc'
 
 function getErrorMessage(error: unknown): string {
   if (error instanceof Error) return error.message

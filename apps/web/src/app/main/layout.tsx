@@ -2,10 +2,12 @@ import { serverTRPC } from '@/lib/server-trpc'
 import { AuthStoreProvider } from '@/stores/auth.store'
 import { Layout } from 'antd'
 import { Content } from 'antd/es/layout/layout'
+import { redirect } from 'next/navigation'
 
 import { ReactNode } from 'react'
 import { AppHeader } from './_components/AppHeader'
 import { AppSider } from './_components/AppSider'
+import { Pages } from '@/lib/constants'
 
 export const dynamic = 'force-dynamic'
 
@@ -14,7 +16,12 @@ export type MainLayoutProps = Partial<{
 }>
 
 const MainLayout = async ({ children }: MainLayoutProps) => {
-  const res = await serverTRPC.auth.getMe.query()
+  let res: Awaited<ReturnType<typeof serverTRPC.auth.getMe.query>>
+  try {
+    res = await serverTRPC.auth.getMe.query()
+  } catch {
+    redirect(Pages.login)
+  }
 
   return (
     <AuthStoreProvider

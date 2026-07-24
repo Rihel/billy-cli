@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "next dev --port 9845",
     "build": "next build",
-    "start": "next start"
+    "start": "sh scripts/start.sh"
   },
   "dependencies": {
     "@ant-design/icons": "^6.3.2",

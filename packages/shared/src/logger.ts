@@ -11,17 +11,19 @@ export interface AppLogger {
   error: LogFunction
 }
 
-export function createLogger(name: string) {
+export function createLogger(name: string, pretty = false) {
   const logger = pino({
     name,
-    transport: {
-      target: 'pino-pretty',
-      options: {
-        colorize: true,
-        translateTime: 'SYS:yyyy-mm-dd HH:MM:ss.l',
-        ignore: 'pid,hostname',
+    ...(pretty && {
+      transport: {
+        target: 'pino-pretty',
+        options: {
+          colorize: true,
+          translateTime: 'SYS:yyyy-mm-dd HH:MM:ss.l',
+          ignore: 'pid,hostname',
+        },
       },
-    },
+    }),
   })
   return {
     setContext(context: string) {

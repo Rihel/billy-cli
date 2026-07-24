@@ -2,6 +2,8 @@ import type { AppRouter } from '@app/server/src/@generated/server'
 import { createTRPCContext } from '@trpc/tanstack-react-query'
 import { createTRPCClient as createClient, httpBatchLink } from '@trpc/client'
 import { authStorage } from './auth'
+import { Pages } from './constants'
+import { unauthorizedLink } from './trpc-links'
 
 export const { TRPCProvider, useTRPC, useTRPCClient } =
   createTRPCContext<AppRouter>()
@@ -9,6 +11,10 @@ export const { TRPCProvider, useTRPC, useTRPCClient } =
 export const createTRPCClient = () => {
   return createClient<AppRouter>({
     links: [
+      unauthorizedLink(() => {
+        authStorage.removeToken()
+        window.location.replace(Pages.login)
+      }),
       httpBatchLink({
         url: process.env.NEXT_PUBLIC_SERVER_URL + '/trpc',
         headers() {

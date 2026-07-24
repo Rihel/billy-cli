@@ -1,6 +1,6 @@
 'use client'
 
-import { useTRPC, useTRPCClient } from '@/lib/trpc'
+import { useTRPC, useTRPCClient } from '@/lib/client-trpc'
 import {
   ActionType,
   ModalForm,

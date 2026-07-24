@@ -1,4 +1,5 @@
 export const appConfig = {
+  isDev: process.env.NODE_ENV !== 'production',
   dbUrl: process.env.DB_URL!,
   redisUrl: process.env.REDIS_URL ?? 'redis://localhost:6379/0',
   port: 9989,

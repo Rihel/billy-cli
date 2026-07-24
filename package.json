@@ -10,7 +10,10 @@
     "dev:server": "pnpm --filter server run dev",
     "gen:trpc": "turbo run gen:trpc",
     "db:gen": "pnpm --filter db run db:generate",
-    "db:migrate": "pnpm --filter db run db:migrate"
+    "db:migrate": "pnpm --filter db run db:migrate",
+    "build": "turbo run build",
+    "start:web": "pnpm --filter web run start",
+    "start:server": "pnpm --filter server run start"
   },
   "keywords": [],
   "author": "",

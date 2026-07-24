@@ -1,6 +1,7 @@
 import { Inject, Injectable, Scope } from '@nestjs/common';
 import { INQUIRER } from '@nestjs/core';
 import { type AppLogger, createLogger } from '@repo/shared';
+import { appConfig } from '../config.js';
 
 @Injectable({ scope: Scope.TRANSIENT })
 export class AppLoggerService implements AppLogger {
@@ -8,7 +9,7 @@ export class AppLoggerService implements AppLogger {
 
   constructor(@Inject(INQUIRER) parentClass: object) {
     const name = parentClass?.constructor?.name ?? 'App';
-    this.logger = createLogger(name);
+    this.logger = createLogger(name, appConfig.isDev);
   }
 
   setContext(context: string) {
