@@ -68,8 +68,9 @@ Ant Design 和 ahooks 3.9.7。只有现有实现缺少领域语义或无法覆�
 | `DataTable`           | Ant Design Table、`@ant-design/pro-table`         | 已基于 `PaginationTable` 组合受控查询布局              |
 | `DataList`            | `react-virtuoso`、TanStack Query                  | 已改为虚拟列表，保留受控数据和组合插槽，不接管请求缓存 |
 | `FormRenderer`        | Ant Design Form、Formily、JSON Forms              | 已迁移基础 Schema 和显式自定义渲染，不设全局 registry  |
-| 拖拽排序              | `@dnd-kit/core` / `@dnd-kit/sortable`             | 不自研拖拽引擎                                         |
-| 文件拖拽上传          | Ant Design Upload/Dragger、Uppy                   | 简单场景用 Ant Design，复杂续传再评估 Uppy             |
+| 拖拽排序              | `@dnd-kit/core` / `@dnd-kit/sortable`             | 已用于 `SortableFileList`，支持鼠标、触摸和键盘排序    |
+| 文件拖拽上传          | Ant Design Upload/Dragger、Uppy                   | 已提供 `FileUpload`，复杂分片与断点续传再评估 Uppy     |
+| 文件在线预览          | Ant Design Image、浏览器原生媒体/PDF 能力         | 已提供 `FilePreview`，不支持的格式降级为打开或下载     |
 | 图片裁剪              | `react-easy-crop`、`antd-img-crop`                | 需要头像裁剪时引入，不自研裁剪算法                     |
 | 浮层定位              | Ant Design Popover/Dropdown、`@floating-ui/react` | 常规场景使用 Ant Design                                |
 | `FullscreenContent`   | ahooks `useFullscreen` + 原生布局                 | 仅保留轻量 UI 包装                                     |
@@ -84,6 +85,29 @@ Ant Design 和 ahooks 3.9.7。只有现有实现缺少领域语义或无法覆�
 
 引入新的运行时依赖前，需要记录选择理由、替代方案、包体积影响和维护状态；只为
 一个很薄的样式包装不新增依赖。
+
+## 文件上传
+
+`FileUpload` 使用受控的 `StorageFileValue[]`，保留对象 key、原始文件名、MIME 和
+文件大小，供预览与下载使用。它复用 `StorageProvider` 的预签名上传和 URL 解析，
+支持点击、拖入、粘贴、数量/类型/大小限制、在线预览与拖拽重排。
+
+```tsx
+const [files, setFiles] = useImmer<StorageFileValue[]>([])
+
+<FileUpload
+	value={files}
+	onChange={setFiles}
+	accept=".pdf,image/*"
+	maxCount={5}
+	sizeLimit={20}
+	paste
+	sortable
+/>
+```
+
+从列表移除文件只更新受控值，不直接删除对象存储中的文件。对象删除涉及引用检查、
+权限和回收策略，应由应用服务端显式处理。
 
 不要从本包重新导出 ahooks。调用方需要通用 Hook 时直接从 `ahooks` 导入，
 本包只导出具有额外 UI 或领域语义的封装。

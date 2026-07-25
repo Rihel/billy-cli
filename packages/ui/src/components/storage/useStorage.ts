@@ -25,6 +25,7 @@ export type UseStorageOptions = {
 
 export type UseStorageResult = {
   customRequest: NonNullable<UploadProps['customRequest']>
+  uploadFile: (file: File) => Promise<StorageFileItem>
   fileItems: StorageFileItem[]
   first: StorageFileItem | null | undefined
 }
@@ -37,60 +38,71 @@ export const useStorage = (
   const fileItemsRef = useRef<StorageFileItem[]>([])
   const { message } = App.useApp()
 
-  const customRequest: NonNullable<UploadProps['customRequest']> = async ({
-    file,
-    onError,
-    onProgress,
-    onSuccess,
-  }) => {
-    const uploadFile = file as File
-
+  const uploadFile = async (file: File): Promise<StorageFileItem> => {
     try {
       if (
         options.sizeLimit !== undefined &&
-        uploadFile.size > options.sizeLimit * 1024 * 1024
+        file.size > options.sizeLimit * 1024 * 1024
       ) {
         throw new Error(`文件大小不能超过 ${options.sizeLimit} MB`)
       }
 
-      const fileInfo = await getFileInfo(uploadFile)
+      const fileInfo = await getFileInfo(file)
       const key = `${fileInfo.md5}${fileInfo.ext ?? ''}`
       const presigned = await getPresignedUpload(key)
 
-      onProgress?.({ percent: 0 })
       const response = await fetch(presigned.url, {
         method: 'PUT',
-        body: uploadFile,
-        headers: uploadFile.type
-          ? { 'Content-Type': uploadFile.type }
-          : undefined,
+        body: file,
+        headers: file.type ? { 'Content-Type': file.type } : undefined,
       })
 
       if (!response.ok) {
         throw new Error(`文件上传失败（HTTP ${response.status}）`)
       }
 
+      const nextItem = { file, fileInfo, key: presigned.key }
       const newFileItems = produce(fileItemsRef.current, (draft) => {
-        const nextItem = { file: uploadFile, fileInfo, key }
         if (options.singleFile) draft.splice(0, draft.length, nextItem)
-        else draft.push(nextItem)
+        else if (!draft.some((item) => item.key === nextItem.key))
+          draft.push(nextItem)
       })
 
       fileItemsRef.current = newFileItems
       setFileItems(newFileItems)
       await maybePromise(options.onChange?.(newFileItems))
-      onProgress?.({ percent: 100 })
-      onSuccess?.({ key: presigned.key }, uploadFile)
+      return nextItem
     } catch (error) {
       const uploadError =
         error instanceof Error ? error : new Error('文件上传失败')
       message.error(uploadError.message)
+      throw uploadError
+    }
+  }
+
+  const customRequest: NonNullable<UploadProps['customRequest']> = async ({
+    file,
+    onError,
+    onProgress,
+    onSuccess,
+  }) => {
+    const uploadTarget = file as File
+
+    try {
+      onProgress?.({ percent: 0 })
+      const fileItem = await uploadFile(uploadTarget)
+      onProgress?.({ percent: 100 })
+      onSuccess?.({ key: fileItem.key }, uploadTarget)
+    } catch (error) {
+      const uploadError =
+        error instanceof Error ? error : new Error('文件上传失败')
       onError?.(uploadError)
     }
   }
 
   return {
     customRequest,
+    uploadFile,
     fileItems,
     first: options.singleFile ? fileItems.at(0) : null,
   }
