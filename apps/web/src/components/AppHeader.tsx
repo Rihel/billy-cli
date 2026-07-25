@@ -5,8 +5,8 @@ import { useAuthStore } from '@/stores/auth.store'
 import { logoutAction } from '@/actions/auth.actions'
 import { authStorage } from '@/lib/auth'
 import { DownOutlined } from '@ant-design/icons'
-import { Avatar, Dropdown, MenuProps } from 'antd'
-import { Header } from 'antd/es/layout/layout'
+import { Avatar, Dropdown } from 'antd'
+import type { MenuProps } from 'antd'
 import { useRouter } from 'next/navigation'
 
 export type AppHeaderProps = Partial<{}>

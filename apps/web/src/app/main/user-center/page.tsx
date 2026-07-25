@@ -3,15 +3,15 @@ import { logoutAction } from '@/actions/auth.actions'
 import { authStorage } from '@/lib/auth'
 import { useTRPC } from '@/lib/client-trpc'
 import { useAuthStore } from '@/stores/auth.store'
+import { LockOutlined } from '@ant-design/icons'
 import { useMutation } from '@tanstack/react-query'
-import { Button, Form, Input } from 'antd'
-import useApp from 'antd/es/app/useApp'
-import FormItem from 'antd/es/form/FormItem'
+import { App, Form } from 'antd'
 import { useRouter } from 'next/navigation'
 import {
   DisplayRender,
   EditableInput,
   Group,
+  IconText,
   ImageUpload,
   ModalForm,
   useDisclosure,
@@ -27,7 +27,7 @@ export default function UserCenter() {
   const { userInfo, setUserInfo, clear } = useAuthStore()
   const passwordDialog = useDisclosure()
   const [passwordForm] = Form.useForm<ChangePasswordForm>()
-  const { message } = useApp()
+  const { message } = App.useApp()
   const router = useRouter()
   const tpc = useTRPC()
 
@@ -89,9 +89,12 @@ export default function UserCenter() {
           {
             label: '密码',
             render: () => (
-              <Button type="link" onClick={() => passwordDialog.open()}>
+              <IconText
+                icon={LockOutlined}
+                onClick={() => passwordDialog.open()}
+              >
                 修改密码
-              </Button>
+              </IconText>
             ),
           },
         ]}
@@ -101,48 +104,54 @@ export default function UserCenter() {
         title="修改密码"
         open={passwordDialog.isOpen}
         form={passwordForm}
+        items={[
+          {
+            name: 'oldPassword',
+            label: '旧密码',
+            widget: 'password',
+            formItemProps: {
+              rules: [{ required: true, message: '请输入旧密码' }],
+            },
+            props: { autoComplete: 'current-password' },
+          },
+          {
+            name: 'newPassword',
+            label: '新密码',
+            widget: 'password',
+            formItemProps: {
+              rules: [
+                { required: true, message: '请输入新密码' },
+                { min: 6, message: '密码至少 6 位' },
+              ],
+            },
+            props: { autoComplete: 'new-password' },
+          },
+          {
+            name: 'confirmPassword',
+            label: '确认新密码',
+            widget: 'password',
+            formItemProps: {
+              dependencies: ['newPassword'],
+              rules: [
+                { required: true, message: '请再次输入新密码' },
+                ({ getFieldValue }) => ({
+                  validator(_, value) {
+                    if (!value || getFieldValue('newPassword') === value)
+                      return Promise.resolve()
+                    return Promise.reject(new Error('两次密码输入不一致'))
+                  },
+                }),
+              ],
+            },
+            props: { autoComplete: 'new-password' },
+          },
+        ]}
         loading={changePasswordMutation.isPending}
         onSubmit={changePassword}
         onCancel={passwordDialog.close}
         formProps={{ requiredMark: false }}
         modalProps={{ okText: '确认修改', cancelText: '取消' }}
-      >
-        <FormItem
-          name="oldPassword"
-          label="旧密码"
-          rules={[{ required: true, message: '请输入旧密码' }]}
-        >
-          <Input.Password autoComplete="current-password" />
-        </FormItem>
-        <FormItem
-          name="newPassword"
-          label="新密码"
-          rules={[
-            { required: true, message: '请输入新密码' },
-            { min: 6, message: '密码至少 6 位' },
-          ]}
-        >
-          <Input.Password autoComplete="new-password" />
-        </FormItem>
-        <FormItem
-          name="confirmPassword"
-          label="确认新密码"
-          dependencies={['newPassword']}
-          rules={[
-            { required: true, message: '请再次输入新密码' },
-            ({ getFieldValue }) => ({
-              validator(_, value) {
-                if (!value || getFieldValue('newPassword') === value) {
-                  return Promise.resolve()
-                }
-                return Promise.reject(new Error('两次密码输入不一致'))
-              },
-            }),
-          ]}
-        >
-          <Input.Password autoComplete="new-password" />
-        </FormItem>
-      </ModalForm>
+      />
     </Group>
   )
 }

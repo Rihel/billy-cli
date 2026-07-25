@@ -1,6 +1,8 @@
 'use client'
 
-import { Button, Result } from 'antd'
+import { ReloadOutlined } from '@ant-design/icons'
+import { IconText } from '@repo/ui'
+import { Result } from 'antd'
 
 export default function GlobalError({
   error,
@@ -16,9 +18,9 @@ export default function GlobalError({
         title="出错了"
         subTitle="服务器发生了一些问题，请稍后重试。"
         extra={
-          <Button type="primary" onClick={reset}>
+          <IconText icon={ReloadOutlined} type="primary" onClick={reset}>
             重试
-          </Button>
+          </IconText>
         }
       />
     </div>

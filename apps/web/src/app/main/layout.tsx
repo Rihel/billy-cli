@@ -1,7 +1,5 @@
 import { serverTRPC } from '@/lib/server-trpc'
 import { AuthStoreProvider } from '@/stores/auth.store'
-import { Layout } from 'antd'
-import { Content } from 'antd/es/layout/layout'
 import { redirect } from 'next/navigation'
 
 import { ReactNode, Suspense } from 'react'

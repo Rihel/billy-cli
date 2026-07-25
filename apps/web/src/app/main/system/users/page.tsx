@@ -2,7 +2,8 @@
 
 import { formatStorageUrl } from '@/lib/constants'
 import { useTRPC, useTRPCClient } from '@/lib/client-trpc'
-import { App, Avatar, Button, Form, Input, Tag } from 'antd'
+import { EditOutlined, LockOutlined, PlusOutlined } from '@ant-design/icons'
+import { App, Avatar, Form, Input, Tag } from 'antd'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
 import type { TableColumnsType } from 'antd'
@@ -11,6 +12,7 @@ import {
   DataTable,
   DisplayValue,
   EmptyValue,
+  IconText,
   ImageUpload,
   ModalForm,
   RefreshButton,
@@ -111,8 +113,8 @@ export default function UsersPage() {
       width: 200,
       render: (_, record) => (
         <TableActions>
-          <Button
-            type="link"
+          <IconText
+            icon={EditOutlined}
             size="small"
             onClick={() => {
               editForm.setFieldsValue(record)
@@ -120,14 +122,14 @@ export default function UsersPage() {
             }}
           >
             编辑
-          </Button>
-          <Button
-            type="link"
+          </IconText>
+          <IconText
+            icon={LockOutlined}
             size="small"
             onClick={() => resetPasswordDialog.open(record)}
           >
             重置密码
-          </Button>
+          </IconText>
           <ConfirmAction
             title="确认删除该用户？"
             onConfirm={() => removeMutation.mutate({ id: record.id })}
@@ -159,9 +161,13 @@ export default function UsersPage() {
                 setPage(1)
               }}
             />
-            <Button type="primary" onClick={() => createDialog.open()}>
+            <IconText
+              type="primary"
+              icon={PlusOutlined}
+              onClick={() => createDialog.open()}
+            >
               新建用户
-            </Button>
+            </IconText>
           </>
         }
         rowKey="id"
@@ -182,6 +188,29 @@ export default function UsersPage() {
         title="新建用户"
         open={createDialog.isOpen}
         form={createForm}
+        items={[
+          {
+            name: 'email',
+            label: '邮箱',
+            formItemProps: {
+              rules: [{ required: true }, { type: 'email' }],
+            },
+          },
+          { name: 'realName', label: '姓名' },
+          {
+            name: 'avatar',
+            label: '头像',
+            render: () => <ImageUpload sizeLimit={2} className="w-28 h-28" />,
+          },
+          {
+            name: 'password',
+            label: '初始密码',
+            widget: 'password',
+            formItemProps: {
+              rules: [{ required: true }, { min: 6, message: '至少 6 位' }],
+            },
+          },
+        ]}
         onCancel={createDialog.close}
         onError={(error) =>
           message.error(error instanceof Error ? error.message : '创建失败')
@@ -192,34 +221,27 @@ export default function UsersPage() {
           refetch()
           createDialog.close()
         }}
-      >
-        <Form.Item
-          name="email"
-          label="邮箱"
-          rules={[{ required: true }, { type: 'email' }]}
-        >
-          <Input />
-        </Form.Item>
-        <Form.Item name="realName" label="姓名">
-          <Input />
-        </Form.Item>
-        <Form.Item name="avatar" label="头像">
-          <ImageUpload sizeLimit={2} className="w-28 h-28" />
-        </Form.Item>
-        <Form.Item
-          name="password"
-          label="初始密码"
-          rules={[{ required: true }, { min: 6, message: '至少 6 位' }]}
-        >
-          <Input.Password />
-        </Form.Item>
-      </ModalForm>
+      />
 
       {/* 编辑用户 */}
       <ModalForm<EditUserForm>
         title="编辑用户"
         open={editDialog.isOpen}
         form={editForm}
+        items={[
+          {
+            name: 'email',
+            label: '邮箱',
+            disabled: true,
+            props: { readOnly: true },
+          },
+          { name: 'realName', label: '姓名' },
+          {
+            name: 'avatar',
+            label: '头像',
+            render: () => <ImageUpload sizeLimit={2} className="w-28 h-28" />,
+          },
+        ]}
         onCancel={editDialog.close}
         onError={(error) =>
           message.error(error instanceof Error ? error.message : '更新失败')
@@ -235,23 +257,41 @@ export default function UsersPage() {
           refetch()
           editDialog.close()
         }}
-      >
-        <Form.Item name="email" label="邮箱">
-          <Input disabled readOnly />
-        </Form.Item>
-        <Form.Item name="realName" label="姓名">
-          <Input />
-        </Form.Item>
-        <Form.Item name="avatar" label="头像">
-          <ImageUpload sizeLimit={2} className="w-28 h-28" />
-        </Form.Item>
-      </ModalForm>
+      />
 
       {/* 重置密码 */}
       <ModalForm<ResetPasswordForm>
         title={`重置密码 — ${resetPasswordDialog.data?.email ?? ''}`}
         open={resetPasswordDialog.isOpen}
         form={resetPwdForm}
+        items={[
+          {
+            name: 'password',
+            label: '新密码',
+            widget: 'password',
+            formItemProps: {
+              rules: [{ required: true }, { min: 6, message: '至少 6 位' }],
+            },
+          },
+          {
+            name: 'confirmPassword',
+            label: '确认密码',
+            widget: 'password',
+            formItemProps: {
+              dependencies: ['password'],
+              rules: [
+                { required: true },
+                ({ getFieldValue }) => ({
+                  validator(_, value) {
+                    if (!value || getFieldValue('password') === value)
+                      return Promise.resolve()
+                    return Promise.reject(new Error('两次密码不一致'))
+                  },
+                }),
+              ],
+            },
+          },
+        ]}
         onCancel={resetPasswordDialog.close}
         modalProps={{ okButtonProps: { danger: true } }}
         onError={(error) =>
@@ -266,33 +306,7 @@ export default function UsersPage() {
           message.success('密码重置成功')
           resetPasswordDialog.close()
         }}
-      >
-        <Form.Item
-          name="password"
-          label="新密码"
-          rules={[{ required: true }, { min: 6, message: '至少 6 位' }]}
-        >
-          <Input.Password />
-        </Form.Item>
-        <Form.Item
-          name="confirmPassword"
-          label="确认密码"
-          dependencies={['password']}
-          rules={[
-            { required: true },
-            ({ getFieldValue }) => ({
-              validator(_, value) {
-                if (!value || getFieldValue('password') === value) {
-                  return Promise.resolve()
-                }
-                return Promise.reject(new Error('两次密码不一致'))
-              },
-            }),
-          ]}
-        >
-          <Input.Password />
-        </Form.Item>
-      </ModalForm>
+      />
     </>
   )
 }

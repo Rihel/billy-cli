@@ -1,17 +1,8 @@
 'use client'
 
 import { useTRPC, useTRPCClient } from '@/lib/client-trpc'
-import { EditOutlined } from '@ant-design/icons'
-import {
-  App,
-  Button,
-  Checkbox,
-  Form,
-  Input,
-  Pagination,
-  Space,
-  Tag,
-} from 'antd'
+import { EditOutlined, PlusOutlined } from '@ant-design/icons'
+import { App, Checkbox, Form, Input, Pagination, Space, Tag } from 'antd'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
 import {
@@ -100,7 +91,8 @@ export default function TodoPage() {
                     createMutation.mutate({ title: newTitle.trim() })
                 }}
               />
-              <Button
+              <IconText
+                icon={PlusOutlined}
                 type="primary"
                 loading={createMutation.isPending}
                 onClick={() => {
@@ -109,7 +101,7 @@ export default function TodoPage() {
                 }}
               >
                 添加
-              </Button>
+              </IconText>
             </Space.Compact>
           </>
         }

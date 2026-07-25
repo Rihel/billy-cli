@@ -1,4 +1,8 @@
-import { Button, Result } from 'antd'
+'use client'
+
+import { HomeOutlined } from '@ant-design/icons'
+import { IconText } from '@repo/ui'
+import { Result } from 'antd'
 import Link from 'next/link'
 import { Pages } from '@/lib/constants'
 
@@ -11,7 +15,9 @@ export default function NotFound() {
         subTitle="抱歉，您访问的页面不存在。"
         extra={
           <Link href={Pages.dashboard}>
-            <Button type="primary">回到首页</Button>
+            <IconText icon={HomeOutlined} type="primary">
+              回到首页
+            </IconText>
           </Link>
         }
       />

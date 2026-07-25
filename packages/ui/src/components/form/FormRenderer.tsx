@@ -48,6 +48,7 @@ export type FormFieldSchema<Values extends object = Record<string, unknown>> = {
 export type FormRendererProps<Values extends object> = {
   form: FormInstance<Values>
   items: Array<FormFieldSchema<Values> | FormFieldSchema<Values>[]>
+  children?: ReactNode
   formProps?: Omit<FormProps<Values>, 'form' | 'children'>
   columnGap?: number
   className?: string
@@ -132,6 +133,7 @@ export const FormFields = <Values extends object>({
 export const FormRenderer = <Values extends object>({
   form,
   items,
+  children,
   formProps,
   columnGap,
   className,
@@ -145,5 +147,6 @@ export const FormRenderer = <Values extends object>({
     layout={formProps?.layout ?? 'vertical'}
   >
     <FormFields form={form} items={items} columnGap={columnGap} />
+    {children}
   </Form>
 )

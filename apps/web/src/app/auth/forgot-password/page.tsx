@@ -1,25 +1,29 @@
 'use client'
 
 import { forgotPasswordAction } from '@/actions/auth.actions'
-import { App, Button, Card, Form, Input, Typography, Alert } from 'antd'
-import { useState } from 'react'
+import { SendOutlined } from '@ant-design/icons'
+import { FormRenderer, IconText } from '@repo/ui'
+import { useBoolean } from 'ahooks'
+import { Alert, App, Form, Typography } from 'antd'
 import Link from 'next/link'
 
 const { Title, Text } = Typography
 
 export default function ForgotPasswordPage() {
   const { message } = App.useApp()
-  const [submitted, setSubmitted] = useState(false)
-  const [loading, setLoading] = useState(false)
+  const [form] = Form.useForm<{ email: string }>()
+  const [submitted, { setTrue: markSubmitted }] = useBoolean()
+  const [loading, { setTrue: startLoading, setFalse: stopLoading }] =
+    useBoolean()
 
   const handleSubmit = async (values: { email: string }) => {
-    setLoading(true)
+    startLoading()
     const result = await forgotPasswordAction(values)
-    setLoading(false)
+    stopLoading()
     if (!result.ok) {
       message.error(result.error)
     } else {
-      setSubmitted(true)
+      markSubmitted()
     }
   }
 
@@ -43,23 +47,33 @@ export default function ForgotPasswordPage() {
           <Text type="secondary" className="block mb-4">
             输入您的注册邮箱，我们将发送重置密码的令牌。
           </Text>
-          <Form layout="vertical" onFinish={handleSubmit}>
-            <Form.Item
-              name="email"
-              label="邮箱"
-              rules={[
-                { required: true },
-                { type: 'email', message: '请输入有效邮箱' },
-              ]}
+          <FormRenderer<{ email: string }>
+            form={form}
+            items={[
+              {
+                name: 'email',
+                label: '邮箱',
+                formItemProps: {
+                  rules: [
+                    { required: true },
+                    { type: 'email', message: '请输入有效邮箱' },
+                  ],
+                },
+                props: { placeholder: '请输入注册邮箱' },
+              },
+            ]}
+            formProps={{ onFinish: handleSubmit }}
+          >
+            <IconText
+              icon={SendOutlined}
+              type="primary"
+              htmlType="submit"
+              block
+              loading={loading}
             >
-              <Input placeholder="请输入注册邮箱" />
-            </Form.Item>
-            <Form.Item>
-              <Button type="primary" htmlType="submit" block loading={loading}>
-                发送重置令牌
-              </Button>
-            </Form.Item>
-          </Form>
+              发送重置令牌
+            </IconText>
+          </FormRenderer>
           <div className="text-sm text-center">
             <Link href="/auth/login">返回登录</Link>
           </div>

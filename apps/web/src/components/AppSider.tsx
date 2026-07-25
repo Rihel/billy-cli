@@ -1,8 +1,10 @@
 'use client'
 import { DashboardOutlined, UserOutlined } from '@ant-design/icons'
-import { Menu, MenuProps } from 'antd'
-import Sider from 'antd/es/layout/Sider'
+import { Layout, Menu } from 'antd'
+import type { MenuProps } from 'antd'
 import { usePathname, useRouter } from 'next/navigation'
+
+const { Sider } = Layout
 
 export type AppSiderProps = Partial<{}>
 
