@@ -1,8 +1,11 @@
 'use client'
 
+import { ImageUpload } from '@/components/ImageUpload'
+import { formatStorageUrl } from '@/lib/constants'
 import { useTRPC, useTRPCClient } from '@/lib/client-trpc'
 import {
   App,
+  Avatar,
   Button,
   Form,
   Input,
@@ -21,6 +24,7 @@ type UserRow = {
   id: string
   email: string
   realName: string | null
+  avatar: string | null
   createdAt: string
   updatedAt: string
 }
@@ -59,6 +63,14 @@ export default function UsersPage() {
   )
 
   const columns: TableColumnsType<UserRow> = [
+    {
+      title: '头像',
+      dataIndex: 'avatar',
+      width: 72,
+      render: (avatar: string | null) => (
+        <Avatar src={avatar ? formatStorageUrl(avatar) : undefined} />
+      ),
+    },
     {
       title: '邮箱',
       dataIndex: 'email',
@@ -159,6 +171,7 @@ export default function UsersPage() {
                   email: string
                   password: string
                   realName?: string
+                  avatar?: string
                 },
               )
               message.success('创建成功')
@@ -179,6 +192,9 @@ export default function UsersPage() {
           </Form.Item>
           <Form.Item name="realName" label="姓名">
             <Input />
+          </Form.Item>
+          <Form.Item name="avatar" label="头像">
+            <ImageUpload sizeLimit={2} className="w-28 h-28" />
           </Form.Item>
           <Form.Item
             name="password"
@@ -210,6 +226,7 @@ export default function UsersPage() {
               await trpcClient.user.update.mutate({
                 userId: editRecord.id,
                 realName: values.realName,
+                avatar: values.avatar,
               })
               message.success('更新成功')
               refetch()
@@ -225,6 +242,9 @@ export default function UsersPage() {
           </Form.Item>
           <Form.Item name="realName" label="姓名">
             <Input />
+          </Form.Item>
+          <Form.Item name="avatar" label="头像">
+            <ImageUpload sizeLimit={2} className="w-28 h-28" />
           </Form.Item>
         </Form>
       </Modal>

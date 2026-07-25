@@ -43,6 +43,18 @@ export const AppErrorCodes = createDict({
     http: 401,
     trpc: 'UNAUTHORIZED',
   },
+  InvalidOldPassword: {
+    label: '旧密码错误',
+    value: 1008,
+    http: 400,
+    trpc: 'BAD_REQUEST',
+  },
+  PasswordUnchanged: {
+    label: '新密码不能与旧密码相同',
+    value: 1009,
+    http: 400,
+    trpc: 'BAD_REQUEST',
+  },
   Forbidden: {
     label: '权限不足',
     value: 1007,
@@ -52,13 +64,13 @@ export const AppErrorCodes = createDict({
   UserNotFound: {
     label: '用户不存在',
     value: 2001,
-    http: 404,
+    http: 200,
     trpc: 'NOT_FOUND',
   },
   TodoNotFound: {
     label: 'Todo 不存在',
     value: 3001,
-    http: 404,
+    http: 200,
     trpc: 'NOT_FOUND',
   },
   Internal: {

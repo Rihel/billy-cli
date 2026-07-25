@@ -8,10 +8,12 @@ import {
   Ctx,
 } from 'nestjs-trpc';
 import {
+  ChangePasswordDto,
   ForgotPasswordDto,
   LoginDto,
   RegisterDto,
   ResetPasswordDto,
+  UpdateInfoDto,
 } from '@repo/shared';
 import { z } from 'zod';
 import { AuthService } from './auth.service.js';
@@ -46,5 +48,23 @@ export class AuthRouter {
   @UseMiddlewares(AuthMiddleware)
   getMe(@Ctx() ctx: z.infer<typeof ContextData>) {
     return this.authService.getMe(ctx.userId);
+  }
+
+  @Mutation({ input: UpdateInfoDto })
+  @UseMiddlewares(AuthMiddleware)
+  updateInfo(
+    @Ctx() ctx: z.infer<typeof ContextData>,
+    @Input() input: z.infer<typeof UpdateInfoDto>,
+  ) {
+    return this.authService.updateInfo(ctx.userId, input);
+  }
+
+  @Mutation({ input: ChangePasswordDto })
+  @UseMiddlewares(AuthMiddleware)
+  changePassword(
+    @Ctx() ctx: z.infer<typeof ContextData>,
+    @Input() input: z.infer<typeof ChangePasswordDto>,
+  ) {
+    return this.authService.changePassword(ctx.userId, input);
   }
 }

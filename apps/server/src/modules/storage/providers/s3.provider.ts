@@ -1,8 +1,11 @@
 import { AssumeRoleCommand, STSClient } from '@aws-sdk/client-sts';
 import { BadRequestException, Inject, Injectable } from '@nestjs/common';
 import {
+  CreateBucketCommand,
   DeleteObjectCommand,
   GetObjectCommand,
+  HeadBucketCommand,
+  PutBucketPolicyCommand,
   PutObjectCommand,
   S3Client,
 } from '@aws-sdk/client-s3';
@@ -54,7 +57,43 @@ export class S3Provider implements StorageProvider {
     this.stsClient = new STSClient({
       ...this.config.commonOptions,
     });
+    await this.ensurePublicReadBucket();
     this.logger.info('初始化存储服务');
+  }
+
+  private async ensurePublicReadBucket() {
+    try {
+      await this.storageClient.send(
+        new HeadBucketCommand({ Bucket: this.config.bucket }),
+      );
+    } catch (error) {
+      const statusCode = (error as { $metadata?: { httpStatusCode?: number } })
+        .$metadata?.httpStatusCode;
+      if (statusCode !== 404) {
+        throw error;
+      }
+      await this.storageClient.send(
+        new CreateBucketCommand({ Bucket: this.config.bucket }),
+      );
+    }
+
+    await this.storageClient.send(
+      new PutBucketPolicyCommand({
+        Bucket: this.config.bucket,
+        Policy: JSON.stringify({
+          Version: '2012-10-17',
+          Statement: [
+            {
+              Sid: 'PublicReadObjects',
+              Effect: 'Allow',
+              Principal: '*',
+              Action: ['s3:GetObject'],
+              Resource: [`arn:aws:s3:::${this.config.bucket}/*`],
+            },
+          ],
+        }),
+      }),
+    );
   }
 
   async getObject(key: string) {

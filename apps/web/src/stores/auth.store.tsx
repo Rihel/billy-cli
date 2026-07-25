@@ -12,6 +12,7 @@ export type AuthStoreState = {
 }
 
 export type AuthStoreActions = {
+  setUserInfo(data: Partial<z.infer<typeof UserModel>>): void
   clear(): void
 }
 
@@ -25,6 +26,14 @@ export const createAuthStore = (state: AuthStoreState) => {
         authStorage.removeToken()
         set((d) => {
           d.userInfo = null
+        })
+      },
+      setUserInfo(data) {
+        set((d) => {
+          d.userInfo = {
+            ...d.userInfo,
+            ...(data as z.infer<typeof UserModel>),
+          }
         })
       },
     })),

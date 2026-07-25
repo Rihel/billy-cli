@@ -3,10 +3,12 @@ import { JwtService } from '@nestjs/jwt';
 import { users } from '@repo/db';
 import {
   AppErrorCodes,
+  ChangePasswordDto,
   ForgotPasswordDto,
   LoginDto,
   RegisterDto,
   ResetPasswordDto,
+  UpdateInfoDto,
   dayjs,
 } from '@repo/shared';
 import { eq } from 'drizzle-orm';
@@ -148,6 +150,54 @@ export class AuthService {
       throw new AppError(AppErrorCodes.Unauthorized, '用户不存在');
     }
     return this.sanitizeUser(user);
+  }
+
+  async updateInfo(userId: string, input: z.infer<typeof UpdateInfoDto>) {
+    this.logger.log('updateInfo', { userId });
+    const [user] = await this.db
+      .select()
+      .from(users)
+      .where(eq(users.id, userId));
+    if (!user) {
+      throw new AppError(AppErrorCodes.UserNotFound, '用户不存在');
+    }
+    const updated = await this.db
+      .update(users)
+      .set({
+        realName: input.realName ?? user.realName,
+        avatar: input.avatar ?? user.avatar,
+      })
+      .where(eq(users.id, userId))
+      .returning();
+    return this.sanitizeUser(updated[0]);
+  }
+
+  async changePassword(
+    userId: string,
+    input: z.infer<typeof ChangePasswordDto>,
+  ) {
+    const [user] = await this.db
+      .select()
+      .from(users)
+      .where(eq(users.id, userId));
+    if (!user) {
+      throw new AppError(AppErrorCodes.UserNotFound, '用户不存在');
+    }
+    const valid = await bcrypt.compare(input.oldPassword, user.password);
+    if (!valid) {
+      throw new AppError(AppErrorCodes.InvalidOldPassword);
+    }
+    const samePassword = await bcrypt.compare(input.newPassword, user.password);
+    if (samePassword) {
+      throw new AppError(AppErrorCodes.PasswordUnchanged);
+    }
+    const hashedPassword = await bcrypt.hash(input.newPassword, 10);
+    await this.db
+      .update(users)
+      .set({ password: hashedPassword })
+      .where(eq(users.id, userId));
+    this.logger.log('changePassword success', { userId });
+    return { success: true };
   }
 
   verifyToken(token: string): string {

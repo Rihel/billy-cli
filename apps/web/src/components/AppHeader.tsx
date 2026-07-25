@@ -1,11 +1,11 @@
 'use client'
 
-import { AppName } from '@/lib/constants'
+import { AppName, formatStorageUrl } from '@/lib/constants'
 import { useAuthStore } from '@/stores/auth.store'
 import { logoutAction } from '@/actions/auth.actions'
 import { authStorage } from '@/lib/auth'
 import { DownOutlined } from '@ant-design/icons'
-import { Dropdown, MenuProps } from 'antd'
+import { Avatar, Dropdown, MenuProps } from 'antd'
 import { Header } from 'antd/es/layout/layout'
 import { useRouter } from 'next/navigation'
 
@@ -42,7 +42,10 @@ export const AppHeader = ({}: AppHeaderProps) => {
           ],
         }}
       >
-        <div className=" cursor-pointer flex gap-2">
+        <div className=" cursor-pointer flex gap-2 items-center">
+          {userInfo?.avatar ? (
+            <Avatar src={formatStorageUrl(userInfo.avatar)} size="large" />
+          ) : null}
           <div>{userInfo?.realName || userInfo?.email}</div>
           <DownOutlined />
         </div>
