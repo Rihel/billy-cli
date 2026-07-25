@@ -1,24 +1,20 @@
 'use client'
 
-import { useEffect, useState } from 'react'
-import { useEventListener } from './useEventListener'
+import { useEventListener } from 'ahooks'
 
 export const usePasteFiles = (
   onPaste: (files: File[], event: ClipboardEvent) => void | Promise<void>,
   enabled = true,
 ) => {
-  const [target, setTarget] = useState<Window | null>(null)
-
-  useEffect(() => setTarget(window), [])
-
-  useEventListener<ClipboardEvent>(
-    target,
+  useEventListener(
     'paste',
-    (event) => {
+    (event: ClipboardEvent) => {
       const files = Array.from(event.clipboardData?.files ?? [])
       if (files.length > 0) void onPaste(files, event)
     },
-    undefined,
-    enabled,
+    {
+      target: () => window,
+      enable: enabled,
+    },
   )
 }

@@ -64,13 +64,13 @@ export const AppErrorCodes = createDict({
   UserNotFound: {
     label: '用户不存在',
     value: 2001,
-    http: 200,
+    http: 404,
     trpc: 'NOT_FOUND',
   },
   TodoNotFound: {
     label: 'Todo 不存在',
     value: 3001,
-    http: 200,
+    http: 404,
     trpc: 'NOT_FOUND',
   },
   Internal: {

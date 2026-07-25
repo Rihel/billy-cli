@@ -5,7 +5,7 @@ import { cn } from '../../lib/css'
 import { useRect } from '../../hooks/useRect'
 
 export type PageToolbarProps = {
-  title: ReactNode
+  title?: ReactNode
   extra?: ReactNode
   children?: ReactNode
   className?: string
@@ -28,7 +28,7 @@ export const PageToolbar = ({
           compact ? 'flex-col items-stretch' : 'items-center justify-between',
         )}
       >
-        <div className="text-base font-medium">{title}</div>
+        {title ? <div className="text-base font-medium">{title}</div> : null}
         {extra ? (
           <div className="flex flex-wrap items-center gap-2">{extra}</div>
         ) : null}

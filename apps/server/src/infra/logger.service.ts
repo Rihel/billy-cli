@@ -1,6 +1,6 @@
 import { Inject, Injectable, Scope } from '@nestjs/common';
 import { INQUIRER } from '@nestjs/core';
-import { type AppLogger, createLogger } from '@repo/shared';
+import { type AppLogger, createLogger } from '@repo/shared/logger';
 import { appConfig } from '../config.js';
 
 @Injectable({ scope: Scope.TRANSIENT })

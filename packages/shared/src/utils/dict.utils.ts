@@ -36,10 +36,13 @@ export function createDict<
       filterFn: (option: Option, index: number) => boolean,
       language?: string,
     ): Option[]
-    getOption(value: Option['value']): Option
+    getOption(value: Option['value']): Option | undefined
     getOptions(language?: string): Option[]
-    getField(value: Option['value'], field: keyof Option): Option[keyof Option]
-    getLabel(value: Option['value'], language?: string): string
+    getField(
+      value: Option['value'],
+      field: keyof Option,
+    ): Option[keyof Option] | undefined
+    getLabel(value: Option['value'], language?: string): string | undefined
     pickOptions: (values: Option['value'][], language?: string) => Option[]
     omitOptions: (values: Option['value'][], language?: string) => Option[]
   } & {

@@ -3,8 +3,10 @@
 import { CheckOutlined, CopyOutlined } from '@ant-design/icons'
 import { formatTime } from '@repo/shared'
 import type { ConfigType } from '@repo/shared'
+import { copy } from '@repo/shared/browser'
+import { useBoolean } from 'ahooks'
 import { Button, Tag, Tooltip } from 'antd'
-import { useEffect, useState } from 'react'
+import { useEffect } from 'react'
 import type { CSSProperties, ReactNode } from 'react'
 import { cn } from '../../lib/css'
 
@@ -113,13 +115,13 @@ export const CopyableText = ({
   children,
   className,
 }: CopyableTextProps) => {
-  const [copied, setCopied] = useState(false)
+  const [copied, { setTrue: markCopied, setFalse: clearCopied }] = useBoolean()
 
   useEffect(() => {
     if (!copied) return
-    const timeout = window.setTimeout(() => setCopied(false), 1500)
+    const timeout = window.setTimeout(clearCopied, 1500)
     return () => window.clearTimeout(timeout)
-  }, [copied])
+  }, [clearCopied, copied])
 
   return (
     <span className={cn('inline-flex items-center gap-1', className)}>
@@ -131,8 +133,8 @@ export const CopyableText = ({
           type="text"
           icon={copied ? <CheckOutlined /> : <CopyOutlined />}
           onClick={async () => {
-            await navigator.clipboard.writeText(String(value))
-            setCopied(true)
+            await copy(String(value))
+            markCopied()
           }}
         />
       </Tooltip>

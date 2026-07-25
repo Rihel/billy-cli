@@ -2,14 +2,17 @@
 
 import { Form, Modal } from 'antd'
 import type { FormInstance, FormProps, ModalProps } from 'antd'
-import { useState } from 'react'
+import { useBoolean } from 'ahooks'
 import type { ReactNode } from 'react'
+import { FormFields } from './form/FormRenderer'
+import type { FormFieldSchema } from './form/FormRenderer'
 
 export type ModalFormProps<Values extends object> = {
   open: boolean
   title: ReactNode
   form: FormInstance<Values>
-  children: ReactNode
+  children?: ReactNode
+  items?: Array<FormFieldSchema<Values> | FormFieldSchema<Values>[]>
   loading?: boolean
   resetOnClose?: boolean
   formProps?: Omit<FormProps<Values>, 'form' | 'onFinish' | 'children'>
@@ -27,6 +30,7 @@ export const ModalForm = <Values extends object>({
   title,
   form,
   children,
+  items,
   loading,
   resetOnClose = true,
   formProps,
@@ -35,7 +39,8 @@ export const ModalForm = <Values extends object>({
   onCancel,
   onError,
 }: ModalFormProps<Values>) => {
-  const [submitting, setSubmitting] = useState(false)
+  const [submitting, { setTrue: startSubmitting, setFalse: stopSubmitting }] =
+    useBoolean()
 
   return (
     <Modal
@@ -56,17 +61,17 @@ export const ModalForm = <Values extends object>({
         form={form}
         layout={formProps?.layout ?? 'vertical'}
         onFinish={async (values) => {
-          setSubmitting(true)
+          startSubmitting()
           try {
             await onSubmit(values)
           } catch (error) {
             onError?.(error)
           } finally {
-            setSubmitting(false)
+            stopSubmitting()
           }
         }}
       >
-        {children}
+        {items ? <FormFields form={form} items={items} /> : children}
       </Form>
     </Modal>
   )

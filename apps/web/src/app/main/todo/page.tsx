@@ -7,10 +7,10 @@ import { useState } from 'react'
 import type { TableColumnsType } from 'antd'
 import {
   ConfirmAction,
+  DataTable,
   DateValue,
   ModalForm,
-  PageToolbar,
-  PaginationTable,
+  RefreshButton,
   TableActions,
   useDisclosure,
 } from '@repo/ui'
@@ -147,34 +147,38 @@ export default function TodoPage() {
 
   return (
     <>
-      <PageToolbar
+      <DataTable<TodoRow>
         title="任务管理"
-        extra={
-          <Space.Compact>
-            <Input
-              placeholder="快速添加任务..."
-              value={newTitle}
-              style={{ width: 240 }}
-              onChange={(e) => setNewTitle(e.target.value)}
-              onPressEnter={() => {
-                if (newTitle.trim())
-                  createMutation.mutate({ title: newTitle.trim() })
-              }}
+        toolbar={
+          <>
+            <RefreshButton
+              loading={isFetching}
+              onClick={() => void refetch()}
             />
-            <Button
-              type="primary"
-              loading={createMutation.isPending}
-              onClick={() => {
-                if (newTitle.trim())
-                  createMutation.mutate({ title: newTitle.trim() })
-              }}
-            >
-              添加
-            </Button>
-          </Space.Compact>
+            <Space.Compact>
+              <Input
+                placeholder="快速添加任务..."
+                value={newTitle}
+                style={{ width: 240 }}
+                onChange={(e) => setNewTitle(e.target.value)}
+                onPressEnter={() => {
+                  if (newTitle.trim())
+                    createMutation.mutate({ title: newTitle.trim() })
+                }}
+              />
+              <Button
+                type="primary"
+                loading={createMutation.isPending}
+                onClick={() => {
+                  if (newTitle.trim())
+                    createMutation.mutate({ title: newTitle.trim() })
+                }}
+              >
+                添加
+              </Button>
+            </Space.Compact>
+          </>
         }
-      />
-      <PaginationTable<TodoRow>
         rowKey="id"
         loading={isFetching}
         columns={columns}
@@ -192,6 +196,18 @@ export default function TodoPage() {
         title="编辑任务"
         open={editDialog.isOpen}
         form={editForm}
+        items={[
+          {
+            name: 'title',
+            label: '标题',
+            formItemProps: { rules: [{ required: true }] },
+          },
+          {
+            name: 'completed',
+            widget: 'checkbox',
+            props: { children: '已完成' },
+          },
+        ]}
         onCancel={editDialog.close}
         onError={(error) =>
           message.error(error instanceof Error ? error.message : '更新失败')
@@ -207,14 +223,7 @@ export default function TodoPage() {
           refetch()
           editDialog.close()
         }}
-      >
-        <Form.Item name="title" label="标题" rules={[{ required: true }]}>
-          <Input />
-        </Form.Item>
-        <Form.Item name="completed" valuePropName="checked">
-          <Checkbox>已完成</Checkbox>
-        </Form.Item>
-      </ModalForm>
+      />
     </>
   )
 }

@@ -1,9 +1,5 @@
-import { Spin } from 'antd'
+import { PageLoading } from '@repo/ui'
 
 export default function Loading() {
-  return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50">
-      <Spin size="large" />
-    </div>
-  )
+  return <PageLoading fullscreen className="bg-gray-50" />
 }

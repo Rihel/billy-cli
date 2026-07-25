@@ -1,17 +1,16 @@
 export async function copy(text: string) {
   if (!navigator.clipboard) {
     const textarea = document.createElement('textarea')
-    document.body.appendChild(textarea)
-    textarea.value = text
-    textarea.select()
-    document.execCommand('copy')
-    document.body.removeChild(textarea)
-  } else {
     try {
-      await window.navigator.clipboard.writeText(text)
-    } catch (error) {
-      console.error('Failed to copy text: ', error)
+      document.body.appendChild(textarea)
+      textarea.value = text
+      textarea.select()
+      if (!document.execCommand('copy')) throw new Error('复制失败')
+    } finally {
+      textarea.remove()
     }
+  } else {
+    await navigator.clipboard.writeText(text)
   }
 }
 
@@ -21,8 +20,9 @@ export function generateLetterAvatar(
   bgColor: string = '#1677ff',
 ) {
   const letter = name?.slice(0, 1)?.toLocaleUpperCase() || 'U'
-  if (cache.has(letter)) {
-    return cache.get(letter)
+  const cacheKey = `${name}\u0000${bgColor}`
+  if (cache.has(cacheKey)) {
+    return cache.get(cacheKey)
   }
 
   const canvas = document.createElement('canvas')
@@ -40,7 +40,7 @@ export function generateLetterAvatar(
   ctx.fillText(letter, 50, 50)
 
   const url = canvas.toDataURL('image/png')
-  cache.set(letter, url)
+  cache.set(cacheKey, url)
   return url
 }
 

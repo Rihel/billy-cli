@@ -104,11 +104,11 @@ export async function getFileBuffer(file: File | Blob) {
 // }
 
 export function getFileExtName(filename: string) {
-  const match = filename.match(/\.*(\..*)$/)
-  if (match) {
-    return match[1]
-  }
-  return null
+  const basename = filename.split(/[\\/]/).at(-1) ?? ''
+  const dotIndex = basename.lastIndexOf('.')
+  return dotIndex > 0 && dotIndex < basename.length - 1
+    ? basename.slice(dotIndex)
+    : null
 }
 
 export type FileInfo = {
@@ -122,8 +122,7 @@ export type FileInfo = {
   size: string
 }
 export async function getFileInfo(file: File): Promise<FileInfo> {
-  const fileMd5 = (await getFileMd5(file)) as string
-  console.log('fileMd5', fileMd5)
+  const fileMd5 = await getFileMd5(file)
   const ext = getFileExtName(file.name)
   return {
     fileSize: file.size,

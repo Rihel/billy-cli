@@ -3,8 +3,8 @@
 import { CloseOutlined, EditOutlined, SaveOutlined } from '@ant-design/icons'
 import { Button, Input } from 'antd'
 import type { InputProps } from 'antd'
-import { useState } from 'react'
 import type { ReactNode } from 'react'
+import { useImmer } from 'use-immer'
 import { cn } from '../lib/css'
 
 export type EditableInputProps = {
@@ -30,24 +30,33 @@ export const EditableInput = ({
   onChange,
   onError,
 }: EditableInputProps) => {
-  const [editing, setEditing] = useState(false)
-  const [draft, setDraft] = useState('')
-  const [saving, setSaving] = useState(false)
+  const [state, updateState] = useImmer({
+    editing: false,
+    draft: '',
+    saving: false,
+  })
+  const { editing, draft, saving } = state
 
   const cancel = () => {
-    setEditing(false)
-    setDraft('')
+    updateState((draftState) => {
+      draftState.editing = false
+      draftState.draft = ''
+    })
   }
 
   const save = async () => {
-    setSaving(true)
+    updateState((draftState) => {
+      draftState.saving = true
+    })
     try {
       await onChange?.(draft)
       cancel()
     } catch (error) {
       onError?.(error)
     } finally {
-      setSaving(false)
+      updateState((draftState) => {
+        draftState.saving = false
+      })
     }
   }
 
@@ -60,7 +69,11 @@ export const EditableInput = ({
           disabled={saving}
           placeholder={placeholder}
           value={draft}
-          onChange={(event) => setDraft(event.target.value)}
+          onChange={(event) =>
+            updateState((draftState) => {
+              draftState.draft = event.target.value
+            })
+          }
           onPressEnter={() => void save()}
           onKeyDown={(event) => {
             inputProps?.onKeyDown?.(event)
@@ -96,8 +109,10 @@ export const EditableInput = ({
             disabled={disabled}
             icon={<EditOutlined />}
             onClick={() => {
-              setDraft(value ?? '')
-              setEditing(true)
+              updateState((draftState) => {
+                draftState.draft = value ?? ''
+                draftState.editing = true
+              })
             }}
           />
         )}

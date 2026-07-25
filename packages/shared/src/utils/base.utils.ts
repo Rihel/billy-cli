@@ -138,10 +138,5 @@ export const normalizeArray = <T>(arr: T | T[]) => {
   return [arr] as T[]
 }
 
-export const maybePromise = async <T = any>(data: T | Promise<T>) => {
-  if (!data) return Promise.resolve()
-  if (data instanceof Promise) {
-    return await data
-  }
-  return Promise.resolve(data)
-}
+export const maybePromise = async <T>(data: T | PromiseLike<T>): Promise<T> =>
+  await data

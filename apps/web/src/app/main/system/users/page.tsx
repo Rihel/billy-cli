@@ -8,12 +8,12 @@ import { useState } from 'react'
 import type { TableColumnsType } from 'antd'
 import {
   ConfirmAction,
+  DataTable,
   DateValue,
   EmptyValue,
   ImageUpload,
   ModalForm,
-  PageToolbar,
-  PaginationTable,
+  RefreshButton,
   TableActions,
   useDisclosure,
 } from '@repo/ui'
@@ -142,10 +142,14 @@ export default function UsersPage() {
 
   return (
     <>
-      <PageToolbar
+      <DataTable<UserRow>
         title="用户管理"
-        extra={
+        toolbar={
           <>
+            <RefreshButton
+              loading={isFetching}
+              onClick={() => void refetch()}
+            />
             <Input.Search
               placeholder="搜索邮箱..."
               allowClear
@@ -160,8 +164,6 @@ export default function UsersPage() {
             </Button>
           </>
         }
-      />
-      <PaginationTable<UserRow>
         rowKey="id"
         loading={isFetching}
         columns={columns}

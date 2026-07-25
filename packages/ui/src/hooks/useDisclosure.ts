@@ -1,24 +1,23 @@
 'use client'
 
-import { useState } from 'react'
+import { useBoolean } from 'ahooks'
+import { useImmer } from 'use-immer'
 
 export const useDisclosure = <Data = void>(initialOpen = false) => {
-  const [isOpen, setIsOpen] = useState(initialOpen)
-  const [data, setData] = useState<Data>()
+  const [isOpen, { setTrue, setFalse, toggle }] = useBoolean(initialOpen)
+  const [data, setData] = useImmer<Data | undefined>(undefined)
 
   const open = (nextData?: Data) => {
     setData(nextData)
-    setIsOpen(true)
+    setTrue()
   }
 
-  const close = () => {
-    setIsOpen(false)
-  }
+  const close = setFalse
 
   const reset = () => {
-    setIsOpen(false)
+    setFalse()
     setData(undefined)
   }
 
-  return { isOpen, data, open, close, reset, setData }
+  return { isOpen, data, open, close, reset, toggle, setData }
 }

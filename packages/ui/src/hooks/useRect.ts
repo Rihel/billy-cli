@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { RefCallback } from 'react'
+import { useImmer } from 'use-immer'
 
 export type ElementRect = {
   width: number
@@ -119,7 +120,7 @@ export const useRect = <ElementType extends HTMLElement = HTMLDivElement>({
   onChange,
 }: UseRectOptions = {}) => {
   const [element, setElement] = useState<ElementType | null>(null)
-  const [rect, setRect] = useState<ElementRect>(emptyRect)
+  const [rect, setRect] = useImmer<ElementRect>(emptyRect)
   const rectRef = useRef(rect)
   const onChangeRef = useRef(onChange)
   const frameRef = useRef<number | null>(null)

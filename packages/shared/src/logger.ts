@@ -12,7 +12,7 @@ export interface AppLogger {
 }
 
 export function createLogger(name: string, pretty = false) {
-  const logger = pino({
+  let logger = pino({
     name,
     ...(pretty && {
       transport: {
@@ -27,7 +27,7 @@ export function createLogger(name: string, pretty = false) {
   })
   return {
     setContext(context: string) {
-      logger.child({ context })
+      logger = logger.child({ context })
     },
     log: (message?: string, data?: any) => {
       if (typeof data === 'string') {

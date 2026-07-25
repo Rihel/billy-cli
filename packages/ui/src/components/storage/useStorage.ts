@@ -1,9 +1,12 @@
 'use client'
 
-import { getFileInfo, maybePromise } from '@repo/shared'
-import type { FileInfo } from '@repo/shared'
+import { maybePromise } from '@repo/shared'
+import { getFileInfo } from '@repo/shared/browser'
+import type { FileInfo } from '@repo/shared/browser'
 import { App } from 'antd'
 import type { UploadProps } from 'antd'
+import { produce } from 'immer'
+import { useRef } from 'react'
 import { useImmer } from 'use-immer'
 import { useStorageAdapter } from './StorageProvider'
 
@@ -31,6 +34,7 @@ export const useStorage = (
 ): UseStorageResult => {
   const { getPresignedUpload } = useStorageAdapter()
   const [fileItems, setFileItems] = useImmer<StorageFileItem[]>([])
+  const fileItemsRef = useRef<StorageFileItem[]>([])
   const { message } = App.useApp()
 
   const customRequest: NonNullable<UploadProps['customRequest']> = async ({
@@ -66,10 +70,13 @@ export const useStorage = (
         throw new Error(`文件上传失败（HTTP ${response.status}）`)
       }
 
-      const newFileItems = options.singleFile
-        ? [{ file: uploadFile, fileInfo, key }]
-        : [...fileItems, { file: uploadFile, fileInfo, key }]
+      const newFileItems = produce(fileItemsRef.current, (draft) => {
+        const nextItem = { file: uploadFile, fileInfo, key }
+        if (options.singleFile) draft.splice(0, draft.length, nextItem)
+        else draft.push(nextItem)
+      })
 
+      fileItemsRef.current = newFileItems
       setFileItems(newFileItems)
       await maybePromise(options.onChange?.(newFileItems))
       onProgress?.({ percent: 100 })
