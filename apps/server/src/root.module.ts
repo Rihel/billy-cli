@@ -13,10 +13,20 @@ import { TrpcAppContext } from './trpc.context.js';
 import { AuthMiddleware } from './middlewares/auth.middleware.js';
 import { TrpcStatusMiddleware } from './middlewares/trpc-status.middleware.js';
 import { AppError } from './errors.js';
+import { StorageModule } from './modules/storage/index.js';
+import { appConfig } from './config.js';
 
 @Module({
   imports: [
     InfraModule,
+    StorageModule.forRoot({
+      provider: appConfig.storage.provider,
+      region: appConfig.storage.region,
+      bucket: appConfig.storage.bucket,
+      accessKeyId: appConfig.storage.accessKeyId,
+      secretAccessKey: appConfig.storage.secretAccessKey,
+      endpoint: appConfig.storage.endpoint,
+    }),
     TRPCModule.forRoot({
       basePath: '/trpc',
       context: TrpcAppContext,

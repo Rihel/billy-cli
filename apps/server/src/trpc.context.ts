@@ -3,6 +3,11 @@ import { JwtService } from '@nestjs/jwt';
 import type { TRPCContext } from 'nestjs-trpc';
 import { parseCookie } from 'cookie';
 import { CreateExpressContextOptions } from '@trpc/server/adapters/express';
+import { z } from 'zod';
+
+export const ContextData = z.object({
+  userId: z.string(),
+});
 
 @Injectable()
 export class TrpcAppContext implements TRPCContext {

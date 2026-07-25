@@ -9,8 +9,15 @@ import { CosProvider } from './providers/cos.provider.js';
 import { S3Provider } from './providers/s3.provider.js';
 import { StorageConfig } from './storage.config.js';
 import { StorageService } from './storage.service.js';
+import { StorageRouter } from './storage.router.js';
 
-const providers = [StorageConfig, S3Provider, StorageService, CosProvider];
+const providers = [
+  StorageConfig,
+  S3Provider,
+  StorageService,
+  CosProvider,
+  StorageRouter,
+];
 
 @Module({})
 export class StorageModule {

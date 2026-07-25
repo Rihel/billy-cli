@@ -16,6 +16,7 @@ import {
 import { z } from 'zod';
 import { AuthService } from './auth.service.js';
 import { AuthMiddleware } from '../../middlewares/auth.middleware.js';
+import { ContextData } from '../../trpc.context.js';
 
 @Router({ alias: 'auth' })
 export class AuthRouter {
@@ -43,7 +44,7 @@ export class AuthRouter {
 
   @Query()
   @UseMiddlewares(AuthMiddleware)
-  getMe(@Ctx() ctx: { userId: string }) {
+  getMe(@Ctx() ctx: z.infer<typeof ContextData>) {
     return this.authService.getMe(ctx.userId);
   }
 }
