@@ -5,11 +5,13 @@ export const CreateUserDto = z.object({
   email: z.string().email(),
   password: z.string().min(6),
   realName: z.string().optional(),
+  avatar: z.string().nullable().optional(),
 })
 
 export const UpdateUserDto = z.object({
   userId: z.string(),
   realName: z.string().nullable().optional(),
+  avatar: z.string().nullable().optional(),
 })
 
 export const ResetUserPasswordDto = z.object({

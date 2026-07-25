@@ -1,4 +1,11 @@
-import { Ctx, Input, Query, Router, UseMiddlewares } from 'nestjs-trpc';
+import {
+  Ctx,
+  Input,
+  Mutation,
+  Query,
+  Router,
+  UseMiddlewares,
+} from 'nestjs-trpc';
 import { StorageService } from './storage.service.js';
 import { AuthMiddleware } from '../../middlewares/auth.middleware.js';
 import {
@@ -14,7 +21,7 @@ import { ContextData } from '../../trpc.context.js';
 export class StorageRouter {
   constructor(private readonly storageService: StorageService) {}
 
-  @Query({ input: GetStorageUploadPresignedUrlDto })
+  @Mutation({ input: GetStorageUploadPresignedUrlDto })
   async getPresignedUrl(
     @Input() dto: z.infer<typeof GetStorageUploadPresignedUrlDto>,
   ) {
@@ -26,7 +33,7 @@ export class StorageRouter {
     return await this.storageService.getProvider().getDownloadUrl(dto.key);
   }
 
-  @Query({})
+  @Mutation()
   async getTemporaryCredentials(@Ctx() ctx: z.infer<typeof ContextData>) {
     return await this.storageService
       .getProvider()

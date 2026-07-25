@@ -6,6 +6,7 @@ export const UserModel = z.intersection(
   z.object({
     email: z.string().email(),
     realName: z.string().nullable().optional(),
+    avatar: z.string().nullable().optional(),
   }),
 )
 

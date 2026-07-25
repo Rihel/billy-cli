@@ -23,6 +23,9 @@ export const AppHeader = ({}: AppHeaderProps) => {
 
   const handleDropdownClick: MenuProps['onClick'] = ({ key }) => {
     if (key === 'exit') exit()
+    if (key === 'user-center') {
+      router.push('/main/user-center')
+    }
   }
 
   return (
@@ -32,7 +35,11 @@ export const AppHeader = ({}: AppHeaderProps) => {
       <Dropdown
         menu={{
           onClick: handleDropdownClick,
-          items: [{ type: 'divider' }, { key: 'exit', label: '退出' }],
+          items: [
+            { key: 'user-center', label: '个人中心' },
+            { type: 'divider' },
+            { key: 'exit', label: '退出' },
+          ],
         }}
       >
         <div className=" cursor-pointer flex gap-2">

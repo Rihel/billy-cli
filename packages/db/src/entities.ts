@@ -23,6 +23,7 @@ export const users = snakeCase.table('users', {
   email: text('email').notNull().unique(),
   password: text('password').notNull(),
   realName: text('real_name'),
+  avatar: text('avatar'),
   resetPasswordToken: text('reset_password_token'),
   resetPasswordTokenExpiry: timestamp('reset_password_token_expiry'),
 })
