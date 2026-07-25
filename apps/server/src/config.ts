@@ -6,4 +6,12 @@ export const appConfig = {
   jwtSecret: process.env.JWT_SECRET ?? 'default-secret-change-in-production',
   jwtExpiresIn: process.env.JWT_EXPIRES_IN ?? '7d',
   resetPasswordTokenTtlMinutes: 30,
+  storage: {
+    provider: 's3',
+    region: 'us-east-1',
+    bucket: 'billy-cli',
+    accessKeyId: 'minioadmin',
+    secretAccessKey: 'minioadmin',
+    endpoint: 'http://localhost:9000',
+  },
 };
