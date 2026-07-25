@@ -14,21 +14,21 @@ packages/
 ├── ui       — 共享 UI 组件（Ant Design + Tailwind）
 ```
 
-| 层 | 选型 | 理由 |
-|---|---|---|
-| 构建系统 | pnpm + Turbo | monorepo 依赖管理 + 增量缓存 |
-| 服务端框架 | NestJS 11 | 企业级 DI/AOP，nestjs-trpc 深度集成 |
-| API 层 | tRPC | 全链路类型推导，零契约文档 |
-| ORM | Drizzle ORM | 无 runtime、类型原生、SQL-like API |
-| 前端框架 | Next.js 16 App Router | RSC + SSR + Server Actions |
-| 前后端共享 | Zod | 同一 schema 定义类型 + 校验 |
-| UI 组件 | Ant Design Pro 6 | ProTable / ModalForm 开箱即用 |
-| 状态管理 | Zustand + Immer | 轻量、不可变、无 boilerplate |
-| 样式 | Tailwind 4 | 原子化 CSS，零心智负担 |
-| 日志 | Pino | 结构化日志，开发环境 pretty，生产环境 JSON |
-| 缓存 | Redis（ioredis） | 完整 Set / List / Hash / PubSub / 分布式锁 |
-| 构建工具 | tsdown | 比 tsc 快一个数量级的 bundler |
-| 容器化 | Docker multi-stage | server + web 独立部署，Next.js standalone |
+| 层         | 选型                  | 理由                                       |
+| ---------- | --------------------- | ------------------------------------------ |
+| 构建系统   | pnpm + Turbo          | monorepo 依赖管理 + 增量缓存               |
+| 服务端框架 | NestJS 11             | 企业级 DI/AOP，nestjs-trpc 深度集成        |
+| API 层     | tRPC                  | 全链路类型推导，零契约文档                 |
+| ORM        | Drizzle ORM           | 无 runtime、类型原生、SQL-like API         |
+| 前端框架   | Next.js 16 App Router | RSC + SSR + Server Actions                 |
+| 前后端共享 | Zod                   | 同一 schema 定义类型 + 校验                |
+| UI 组件    | Ant Design Pro 6      | ProTable / ModalForm 开箱即用              |
+| 状态管理   | Zustand + Immer       | 轻量、不可变、无 boilerplate               |
+| 样式       | Tailwind 4            | 原子化 CSS，零心智负担                     |
+| 日志       | Pino                  | 结构化日志，开发环境 pretty，生产环境 JSON |
+| 缓存       | Redis（ioredis）      | 完整 Set / List / Hash / PubSub / 分布式锁 |
+| 构建工具   | tsdown                | 比 tsc 快一个数量级的 bundler              |
+| 容器化     | Docker multi-stage    | server + web 独立部署，Next.js standalone  |
 
 ## 快速开始
 
@@ -148,13 +148,18 @@ pnpm gen:trpc
 
 ### 分页
 
-`DbService` 提供两种分页策略：
+完整原理、SQL、索引、联表策略和前端缓存说明参见
+[分页设计指南](docs/pagination.md)。
 
-- **`paginate`** — 单表简单分页，一个查询完成
-- **`paginateDeferred`** — 两阶段 Deferred Join 分页
-  - Stage 1：只在主表取 ID + COUNT（无 JOIN）
-  - Stage 2：用 ID 列表执行完整 JOIN 查询
-  - 适用于多表 LEFT JOIN 的复杂查询，性能远优于传统 `LIMIT/OFFSET` + JOIN
+`DbService` 提供四种分页策略：
+
+- **`paginate`** — 单表 `LIMIT/OFFSET` 页码分页，返回 `total/page/size`。
+- **`paginateDeferred`** — 两阶段 Offset 分页，适合需要总数和跳页的复杂联表表格。
+- **`paginateCursor`** — 单表 Seek/Cursor 分页，适合无限滚动和持续新增的数据流。
+- **`paginateCursorDeferred`** — 两阶段 Cursor 分页，先取主表 ID 与 cursor，再查询当页 JOIN 数据。
+
+项目约定：后台 `DataTable` 默认使用普通分页，滚动 `DataList` 默认使用 Cursor
+分页；一对多 JOIN 或重聚合查询优先使用对应的 Deferred 方法。
 
 ### 日志
 
@@ -245,18 +250,18 @@ createLogger('bootstrap', appConfig.isDev)  // NODE_ENV 控制
 
 ## 脚本
 
-| 命令 | 说明 |
-|------|------|
-| `pnpm dev:pkgs` | 并行 watch packages 构建 |
-| `pnpm build:pkgs` | 构建 packages |
-| `pnpm dev:server` | 启动 NestJS 开发服务器 |
-| `pnpm dev:web` | 启动 Next.js 开发服务器 |
-| `pnpm build` | 全量构建（turbo） |
-| `pnpm start:server` | 启动生产 Server |
-| `pnpm start:web` | 启动生产 Web |
-| `pnpm gen:trpc` | 生成 tRPC 类型定义 |
-| `pnpm db:gen` | 生成 Drizzle 迁移文件 |
-| `pnpm db:migrate` | 执行数据库迁移 |
+| 命令                | 说明                     |
+| ------------------- | ------------------------ |
+| `pnpm dev:pkgs`     | 并行 watch packages 构建 |
+| `pnpm build:pkgs`   | 构建 packages            |
+| `pnpm dev:server`   | 启动 NestJS 开发服务器   |
+| `pnpm dev:web`      | 启动 Next.js 开发服务器  |
+| `pnpm build`        | 全量构建（turbo）        |
+| `pnpm start:server` | 启动生产 Server          |
+| `pnpm start:web`    | 启动生产 Web             |
+| `pnpm gen:trpc`     | 生成 tRPC 类型定义       |
+| `pnpm db:gen`       | 生成 Drizzle 迁移文件    |
+| `pnpm db:migrate`   | 执行数据库迁移           |
 
 ## Docker
 

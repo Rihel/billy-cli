@@ -1,5 +1,9 @@
 import { z } from 'zod'
-import { BaseModel, BasePaginateDto } from './base.schema'
+import {
+  BaseCursorPaginateDto,
+  BaseModel,
+  BasePaginateDto,
+} from './base.schema'
 
 const TodoFields = z.object({
   title: z.string(),
@@ -19,4 +23,14 @@ export const PageQueryTodoDto = BasePaginateDto.extend({
   keyword: z.string().optional(),
   orderBy: z.enum(['updatedAt', 'createdAt']).optional().default('updatedAt'),
   order: z.enum(['asc', 'desc']).optional().default('desc'),
+})
+
+export const TodoCursorDto = z.object({
+  updatedAt: z.string().datetime(),
+  id: z.string(),
+})
+
+export const CursorQueryTodoDto = BaseCursorPaginateDto.extend({
+  cursor: TodoCursorDto.optional(),
+  keyword: z.string().optional(),
 })

@@ -1,0 +1,1 @@
+CREATE INDEX "todos_updated_at_id_idx" ON "todos" ("updated_at" DESC NULLS LAST,"id" DESC NULLS LAST);

@@ -1,6 +1,11 @@
 import { Inject } from '@nestjs/common';
 import { Router, Query, Mutation, Input, UseMiddlewares } from 'nestjs-trpc';
-import { CreateTodoDto, PageQueryTodoDto, UpdateTodoDto } from '@repo/shared';
+import {
+  CreateTodoDto,
+  CursorQueryTodoDto,
+  PageQueryTodoDto,
+  UpdateTodoDto,
+} from '@repo/shared';
 import { z } from 'zod';
 import { TodoService } from './todo.service.js';
 import { AuthMiddleware } from '../../middlewares/auth.middleware.js';
@@ -20,6 +25,11 @@ export class TodoRouter {
   @Query({ input: PageQueryTodoDto })
   findMany(@Input() input: z.infer<typeof PageQueryTodoDto>) {
     return this.todoService.findMany(input);
+  }
+
+  @Query({ input: CursorQueryTodoDto })
+  findManyCursor(@Input() input: z.infer<typeof CursorQueryTodoDto>) {
+    return this.todoService.findManyCursor(input);
   }
 
   @Query({ input: ByIdInput })

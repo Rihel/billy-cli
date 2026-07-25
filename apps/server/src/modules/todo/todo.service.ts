@@ -3,10 +3,11 @@ import { todos } from '@repo/db';
 import {
   AppErrorCodes,
   CreateTodoDto,
+  CursorQueryTodoDto,
   PageQueryTodoDto,
   UpdateTodoDto,
 } from '@repo/shared';
-import { ilike, eq } from 'drizzle-orm';
+import { eq, ilike } from 'drizzle-orm';
 import { PgColumn } from 'drizzle-orm/pg-core';
 import { z } from 'zod';
 import { DbService } from '../../infra/db.service.js';
@@ -41,6 +42,23 @@ export class TodoService {
     });
     this.logger.log('findMany result', { total: result.total, page, size });
     return result;
+  }
+
+  async findManyCursor(input: z.infer<typeof CursorQueryTodoDto>) {
+    const { cursor, keyword, size } = input;
+    return this.db.paginateCursor({
+      table: todos,
+      cursorColumns: [todos.updatedAt, todos.id],
+      cursorValues: cursor
+        ? [new Date(cursor.updatedAt), cursor.id]
+        : undefined,
+      getCursor: (item) => ({
+        updatedAt: item.updatedAt.toISOString(),
+        id: item.id,
+      }),
+      where: keyword ? ilike(todos.title, `%${keyword}%`) : undefined,
+      size,
+    });
   }
 
   async findById(id: string) {
