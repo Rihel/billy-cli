@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { createDb } from '@repo/db';
+import { batchExecute, type BatchExecuteOptions } from '@repo/shared';
 import {
   InferInsertModel,
   InferSelectModel,
@@ -30,12 +31,7 @@ export interface CursorPageResult<T, TCursor> {
   nextCursor: TCursor | null;
 }
 
-export interface BatchOptions {
-  /** 每条 SQL 处理的数据量，默认 100 */
-  chunkSize?: number;
-  /** 同时执行的 SQL 数量，默认 5 */
-  concurrency?: number;
-}
+export type BatchOptions = BatchExecuteOptions;
 
 type CursorColumns = readonly [PgColumn, ...PgColumn[]];
 
@@ -128,42 +124,7 @@ export class DbService {
     handler: (chunk: T[]) => Promise<unknown>,
     options: BatchOptions = {},
   ): Promise<void> {
-    const { chunkSize = 100, concurrency = 5 } = options;
-    if (!Number.isInteger(chunkSize) || chunkSize < 1) {
-      throw new RangeError('batch chunkSize 必须是大于 0 的整数');
-    }
-    if (!Number.isInteger(concurrency) || concurrency < 1) {
-      throw new RangeError('batch concurrency 必须是大于 0 的整数');
-    }
-    if (items.length === 0) return;
-
-    const chunks: T[][] = [];
-    for (let index = 0; index < items.length; index += chunkSize) {
-      chunks.push(items.slice(index, index + chunkSize));
-    }
-
-    let nextChunkIndex = 0;
-    const errors: unknown[] = [];
-    const worker = async () => {
-      while (nextChunkIndex < chunks.length) {
-        const chunk = chunks[nextChunkIndex++];
-        try {
-          await handler(chunk);
-        } catch (error) {
-          errors.push(error);
-        }
-      }
-    };
-
-    await Promise.all(
-      Array.from({ length: Math.min(concurrency, chunks.length) }, () =>
-        worker(),
-      ),
-    );
-
-    if (errors.length > 0) {
-      throw new AggregateError(errors, `batch 有 ${errors.length} 片执行失败`);
-    }
+    await batchExecute(items, handler, options);
   }
 
   /**

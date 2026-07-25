@@ -1,5 +1,65 @@
 import _ from 'lodash'
 
+export interface BatchExecuteOptions {
+  /** 每片处理的数据量，默认 100 */
+  chunkSize?: number
+  /** 同时执行的分片数量，默认 5 */
+  concurrency?: number
+}
+
+/**
+ * 将数据分片后限制并发执行，所有分片完成后统一抛出执行错误。
+ *
+ * @example
+ * ```ts
+ * await batchExecute(items, (chunk) => save(chunk), {
+ *   chunkSize: 100,
+ *   concurrency: 5,
+ * })
+ * ```
+ */
+export async function batchExecute<T>(
+  items: readonly T[],
+  handler: (chunk: T[]) => Promise<unknown>,
+  options: BatchExecuteOptions = {},
+): Promise<void> {
+  const { chunkSize = 100, concurrency = 5 } = options
+  if (!Number.isInteger(chunkSize) || chunkSize < 1) {
+    throw new RangeError('batchExecute chunkSize 必须是大于 0 的整数')
+  }
+  if (!Number.isInteger(concurrency) || concurrency < 1) {
+    throw new RangeError('batchExecute concurrency 必须是大于 0 的整数')
+  }
+  if (items.length === 0) return
+
+  const chunks = _.chunk(items, chunkSize)
+  let nextChunkIndex = 0
+  const errors: unknown[] = []
+  const worker = async () => {
+    while (nextChunkIndex < chunks.length) {
+      const chunk = chunks[nextChunkIndex++]
+      try {
+        await handler(chunk)
+      } catch (error) {
+        errors.push(error)
+      }
+    }
+  }
+
+  await Promise.all(
+    Array.from({ length: Math.min(concurrency, chunks.length) }, () =>
+      worker(),
+    ),
+  )
+
+  if (errors.length > 0) {
+    throw new AggregateError(
+      errors,
+      `batchExecute 有 ${errors.length} 片执行失败`,
+    )
+  }
+}
+
 export function sleep(time: number) {
   return new Promise<void>((resolve) => {
     setTimeout(() => {
