@@ -26,7 +26,7 @@ export class StorageRouter {
     return await this.storageService.getProvider().getDownloadUrl(dto.key);
   }
 
-  @Post('get-temporary-credentials')
+  @Query({})
   async getTemporaryCredentials(@Ctx() ctx: z.infer<typeof ContextData>) {
     return await this.storageService
       .getProvider()
