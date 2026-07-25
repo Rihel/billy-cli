@@ -1,22 +1,19 @@
 'use client'
 
 import { useTRPC, useTRPCClient } from '@/lib/client-trpc'
-import {
-  App,
-  Button,
-  Checkbox,
-  Form,
-  Input,
-  Modal,
-  Popconfirm,
-  Space,
-  Table,
-  Tag,
-} from 'antd'
+import { App, Button, Checkbox, Form, Input, Space, Tag } from 'antd'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
 import type { TableColumnsType } from 'antd'
-import dayjs from 'dayjs'
+import {
+  ConfirmAction,
+  DateValue,
+  ModalForm,
+  PageToolbar,
+  PaginationTable,
+  TableActions,
+  useDisclosure,
+} from '@repo/ui'
 
 type TodoRow = {
   id: string
@@ -27,15 +24,20 @@ type TodoRow = {
   updatedAt: string
 }
 
+type EditTodoForm = {
+  title: string
+  completed: boolean
+}
+
 export default function TodoPage() {
   const { message } = App.useApp()
   const trpc = useTRPC()
   const trpcClient = useTRPCClient()
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(10)
-  const [editRecord, setEditRecord] = useState<TodoRow | null>(null)
+  const editDialog = useDisclosure<TodoRow>()
   const [newTitle, setNewTitle] = useState('')
-  const [editForm] = Form.useForm()
+  const [editForm] = Form.useForm<EditTodoForm>()
 
   const { data, isFetching, refetch } = useQuery(
     trpc.todo.findMany.queryOptions({
@@ -114,116 +116,105 @@ export default function TodoPage() {
       title: '更新时间',
       dataIndex: 'updatedAt',
       width: 180,
-      render: (v) => dayjs(v).format('YYYY-MM-DD HH:mm:ss'),
+      render: (value) => <DateValue value={value} />,
     },
     {
       title: '操作',
       width: 100,
       render: (_, record) => (
-        <Space>
-          <a
+        <TableActions>
+          <Button
+            type="link"
+            size="small"
             onClick={() => {
-              setEditRecord(record)
               editForm.setFieldsValue(record)
+              editDialog.open(record)
             }}
           >
             编辑
-          </a>
-          <Popconfirm
+          </Button>
+          <ConfirmAction
             title="确认删除？"
             onConfirm={() => removeMutation.mutate({ id: record.id })}
-            okText="删除"
-            cancelText="取消"
-            okButtonProps={{ danger: true }}
+            danger
           >
-            <a className="text-red-500">删除</a>
-          </Popconfirm>
-        </Space>
+            删除
+          </ConfirmAction>
+        </TableActions>
       ),
     },
   ]
 
   return (
     <>
-      <div className="flex justify-between items-center mb-4">
-        <span className="text-base font-medium">任务管理</span>
-        <Space.Compact>
-          <Input
-            placeholder="快速添加任务..."
-            value={newTitle}
-            style={{ width: 240 }}
-            onChange={(e) => setNewTitle(e.target.value)}
-            onPressEnter={() => {
-              if (newTitle.trim())
-                createMutation.mutate({ title: newTitle.trim() })
-            }}
-          />
-          <Button
-            type="primary"
-            loading={createMutation.isPending}
-            onClick={() => {
-              if (newTitle.trim())
-                createMutation.mutate({ title: newTitle.trim() })
-            }}
-          >
-            添加
-          </Button>
-        </Space.Compact>
-      </div>
-      <Table<TodoRow>
+      <PageToolbar
+        title="任务管理"
+        extra={
+          <Space.Compact>
+            <Input
+              placeholder="快速添加任务..."
+              value={newTitle}
+              style={{ width: 240 }}
+              onChange={(e) => setNewTitle(e.target.value)}
+              onPressEnter={() => {
+                if (newTitle.trim())
+                  createMutation.mutate({ title: newTitle.trim() })
+              }}
+            />
+            <Button
+              type="primary"
+              loading={createMutation.isPending}
+              onClick={() => {
+                if (newTitle.trim())
+                  createMutation.mutate({ title: newTitle.trim() })
+              }}
+            >
+              添加
+            </Button>
+          </Space.Compact>
+        }
+      />
+      <PaginationTable<TodoRow>
         rowKey="id"
         loading={isFetching}
         columns={columns}
         dataSource={data?.items}
-        pagination={{
-          current: page,
-          pageSize,
-          total: data?.total,
-          onChange: (p, ps) => {
-            setPage(p)
-            setPageSize(ps)
-          },
+        page={page}
+        pageSize={pageSize}
+        total={data?.total}
+        onPageChange={(nextPage, nextPageSize) => {
+          setPage(nextPage)
+          setPageSize(nextPageSize)
         }}
       />
 
-      <Modal
+      <ModalForm<EditTodoForm>
         title="编辑任务"
-        open={!!editRecord}
-        onCancel={() => {
-          setEditRecord(null)
-          editForm.resetFields()
+        open={editDialog.isOpen}
+        form={editForm}
+        onCancel={editDialog.close}
+        onError={(error) =>
+          message.error(error instanceof Error ? error.message : '更新失败')
+        }
+        onSubmit={async (values) => {
+          if (!editDialog.data) return
+          await trpcClient.todo.update.mutate({
+            todoId: editDialog.data.id,
+            title: values.title,
+            completed: values.completed ?? false,
+          })
+          message.success('更新成功')
+          refetch()
+          editDialog.close()
         }}
-        onOk={() => editForm.submit()}
-        destroyOnHidden
       >
-        <Form
-          form={editForm}
-          layout="vertical"
-          onFinish={async (values) => {
-            if (!editRecord) return
-            try {
-              await trpcClient.todo.update.mutate({
-                todoId: editRecord.id,
-                title: values.title,
-                completed: values.completed ?? false,
-              })
-              message.success('更新成功')
-              refetch()
-              setEditRecord(null)
-              editForm.resetFields()
-            } catch (e: any) {
-              message.error(e?.message ?? '更新失败')
-            }
-          }}
-        >
-          <Form.Item name="title" label="标题" rules={[{ required: true }]}>
-            <Input />
-          </Form.Item>
-          <Form.Item name="completed" valuePropName="checked">
-            <Checkbox>已完成</Checkbox>
-          </Form.Item>
-        </Form>
-      </Modal>
+        <Form.Item name="title" label="标题" rules={[{ required: true }]}>
+          <Input />
+        </Form.Item>
+        <Form.Item name="completed" valuePropName="checked">
+          <Checkbox>已完成</Checkbox>
+        </Form.Item>
+      </ModalForm>
     </>
   )
 }

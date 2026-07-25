@@ -11,10 +11,28 @@ import {
   QueryClientProvider,
 } from '@tanstack/react-query'
 import { createTRPCClient, TRPCProvider } from '@/lib/client-trpc'
+import { useTRPCClient } from '@/lib/client-trpc'
+import { formatStorageUrl } from '@/lib/constants'
+import { StorageProvider } from '@repo/ui'
 
 function getErrorMessage(error: unknown): string {
   if (error instanceof Error) return error.message
   return '操作失败，请稍后重试'
+}
+
+function AppStorageProvider({ children }: { children: ReactNode }) {
+  const trpcClient = useTRPCClient()
+
+  return (
+    <StorageProvider
+      getPresignedUpload={(key) =>
+        trpcClient.storage.getPresignedUrl.mutate({ key })
+      }
+      resolveUrl={formatStorageUrl}
+    >
+      {children}
+    </StorageProvider>
+  )
 }
 
 /** 必须在 <App> 内部才能拿到主题感知的 message 实例 */
@@ -43,7 +61,7 @@ function QueryProviders({ children }: { children: ReactNode }) {
         trpcClient={trpcClient.current}
         queryClient={queryClient.current}
       >
-        {children}
+        <AppStorageProvider>{children}</AppStorageProvider>
       </TRPCProvider>
     </QueryClientProvider>
   )

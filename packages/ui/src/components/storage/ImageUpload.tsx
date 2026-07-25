@@ -1,18 +1,18 @@
 'use client'
 
-import { useStorage } from '@/hooks/use-storage'
-import type { FileItem } from '@/hooks/use-storage'
-import { formatStorageUrl } from '@/lib/constants'
 import { PlusOutlined } from '@ant-design/icons'
-import { cn } from '@repo/ui'
 import { Button, Image, Upload } from 'antd'
+import { cn } from '../../lib/css'
+import { useStorageAdapter } from './StorageProvider'
+import { useStorage } from './useStorage'
+import type { StorageFileItem } from './useStorage'
 
 export type ImageUploadProps = {
   value?: string | null
   sizeLimit?: number
   disabled?: boolean
   className?: string
-  onChange?: (key: string, fileItem: FileItem) => void | Promise<void>
+  onChange?: (key: string, fileItem: StorageFileItem) => void | Promise<void>
 }
 
 export const ImageUpload = ({
@@ -22,6 +22,7 @@ export const ImageUpload = ({
   className,
   onChange,
 }: ImageUploadProps) => {
+  const { resolveUrl } = useStorageAdapter()
   const { customRequest } = useStorage({
     singleFile: true,
     sizeLimit,
@@ -36,20 +37,21 @@ export const ImageUpload = ({
   const rootClassName = cn('w-40 h-40', className)
   const uploadProps = {
     accept: 'image/*',
-    customRequest: customRequest,
-    disabled: disabled,
+    customRequest,
+    disabled,
     maxCount: 1,
     showUploadList: false,
   }
+
   if (value) {
     return (
-      <div className="flex w-fit flex-col justify-center gap-2 items-center">
+      <div className="flex w-fit flex-col items-center justify-center gap-2">
         <Image
           classNames={{
             root: rootClassName,
             image: 'object-cover !w-full !h-full',
           }}
-          src={formatStorageUrl(value)}
+          src={resolveUrl(value)}
         />
         <Upload {...uploadProps}>
           <Button type="link">重新选择</Button>
@@ -57,6 +59,7 @@ export const ImageUpload = ({
       </div>
     )
   }
+
   return (
     <Upload {...uploadProps}>
       <div
