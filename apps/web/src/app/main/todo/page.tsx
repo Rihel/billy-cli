@@ -1,17 +1,27 @@
 'use client'
 
 import { useTRPC, useTRPCClient } from '@/lib/client-trpc'
-import { App, Button, Checkbox, Form, Input, Space, Tag } from 'antd'
+import { EditOutlined } from '@ant-design/icons'
+import {
+  App,
+  Button,
+  Checkbox,
+  Form,
+  Input,
+  Pagination,
+  Space,
+  Tag,
+} from 'antd'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
-import type { TableColumnsType } from 'antd'
 import {
   ConfirmAction,
-  DataTable,
-  DateValue,
+  DataList,
+  DisplayValue,
+  IconText,
   ModalForm,
+  PageToolbar,
   RefreshButton,
-  TableActions,
   useDisclosure,
 } from '@repo/ui'
 
@@ -69,87 +79,11 @@ export default function TodoPage() {
     }),
   )
 
-  const columns: TableColumnsType<TodoRow> = [
-    {
-      title: '',
-      dataIndex: 'completed',
-      width: 48,
-      render: (_, record) => (
-        <Checkbox
-          checked={record.completed}
-          onChange={() =>
-            toggleMutation.mutate({
-              todoId: record.id,
-              title: record.title,
-              completed: !record.completed,
-            })
-          }
-        />
-      ),
-    },
-    {
-      title: '标题',
-      dataIndex: 'title',
-      render: (_, { title, completed }) => (
-        <span
-          style={{
-            textDecoration: completed ? 'line-through' : 'none',
-            color: completed ? '#999' : undefined,
-          }}
-        >
-          {title}
-        </span>
-      ),
-    },
-    {
-      title: '状态',
-      dataIndex: 'completed',
-      width: 80,
-      render: (_, { completed }) =>
-        completed ? (
-          <Tag color="success">已完成</Tag>
-        ) : (
-          <Tag color="default">待完成</Tag>
-        ),
-    },
-    {
-      title: '更新时间',
-      dataIndex: 'updatedAt',
-      width: 180,
-      render: (value) => <DateValue value={value} />,
-    },
-    {
-      title: '操作',
-      width: 100,
-      render: (_, record) => (
-        <TableActions>
-          <Button
-            type="link"
-            size="small"
-            onClick={() => {
-              editForm.setFieldsValue(record)
-              editDialog.open(record)
-            }}
-          >
-            编辑
-          </Button>
-          <ConfirmAction
-            title="确认删除？"
-            onConfirm={() => removeMutation.mutate({ id: record.id })}
-            danger
-          >
-            删除
-          </ConfirmAction>
-        </TableActions>
-      ),
-    },
-  ]
-
   return (
     <>
-      <DataTable<TodoRow>
+      <PageToolbar
         title="任务管理"
-        toolbar={
+        extra={
           <>
             <RefreshButton
               loading={isFetching}
@@ -179,17 +113,87 @@ export default function TodoPage() {
             </Space.Compact>
           </>
         }
+      />
+
+      <DataList<TodoRow>
         rowKey="id"
         loading={isFetching}
-        columns={columns}
         dataSource={data?.items}
-        page={page}
-        pageSize={pageSize}
-        total={data?.total}
-        onPageChange={(nextPage, nextPageSize) => {
-          setPage(nextPage)
-          setPageSize(nextPageSize)
-        }}
+        height="calc(100vh - 270px)"
+        listClassName="border-y border-gray-200"
+        renderItem={(record) => (
+          <div className="flex min-h-20 items-center gap-3 border-b border-gray-100 px-3 py-3 last:border-b-0">
+            <Checkbox
+              checked={record.completed}
+              disabled={toggleMutation.isPending}
+              onChange={() =>
+                toggleMutation.mutate({
+                  todoId: record.id,
+                  title: record.title,
+                  completed: !record.completed,
+                })
+              }
+            />
+            <div className="min-w-0 flex-1">
+              <div className="flex flex-wrap items-center gap-2">
+                <span
+                  className={
+                    record.completed
+                      ? 'text-gray-400 line-through'
+                      : 'text-gray-900'
+                  }
+                >
+                  {record.title}
+                </span>
+                <Tag color={record.completed ? 'success' : 'default'}>
+                  {record.completed ? '已完成' : '待完成'}
+                </Tag>
+              </div>
+              <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-500">
+                {record.description ? (
+                  <span className="truncate">{record.description}</span>
+                ) : null}
+                <span>
+                  更新于 <DisplayValue type="date" value={record.updatedAt} />
+                </span>
+              </div>
+            </div>
+            <Space size={4} wrap>
+              <IconText
+                icon={EditOutlined}
+                size="small"
+                onClick={() => {
+                  editForm.setFieldsValue(record)
+                  editDialog.open(record)
+                }}
+              >
+                编辑
+              </IconText>
+              <ConfirmAction
+                title="确认删除？"
+                onConfirm={() => removeMutation.mutate({ id: record.id })}
+                danger
+              >
+                删除
+              </ConfirmAction>
+            </Space>
+          </div>
+        )}
+        footer={
+          <div className="flex justify-end">
+            <Pagination
+              current={page}
+              pageSize={pageSize}
+              total={data?.total}
+              showSizeChanger
+              showTotal={(total) => `共 ${total} 项`}
+              onChange={(nextPage, nextPageSize) => {
+                setPage(nextPageSize === pageSize ? nextPage : 1)
+                setPageSize(nextPageSize)
+              }}
+            />
+          </div>
+        }
       />
 
       <ModalForm<EditTodoForm>

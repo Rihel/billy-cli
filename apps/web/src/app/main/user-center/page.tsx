@@ -9,8 +9,9 @@ import useApp from 'antd/es/app/useApp'
 import FormItem from 'antd/es/form/FormItem'
 import { useRouter } from 'next/navigation'
 import {
-  DateValue,
+  DisplayRender,
   EditableInput,
+  Group,
   ImageUpload,
   ModalForm,
   useDisclosure,
@@ -48,12 +49,7 @@ export default function UserCenter() {
   }
 
   return (
-    <Form
-      colon={false}
-      labelCol={{ span: 4 }}
-      labelAlign="left"
-      component={false}
-    >
+    <Group title="个人资料" className="max-w-2xl">
       <ImageUpload
         value={userInfo?.avatar}
         sizeLimit={2}
@@ -64,26 +60,42 @@ export default function UserCenter() {
         }}
       />
 
-      <FormItem label="邮箱">{userInfo?.email}</FormItem>
-      <FormItem label="真实姓名">
-        <EditableInput
-          value={userInfo?.realName!}
-          onChange={async (realName) => {
-            await updateInfoMutation.mutateAsync({ realName })
-            setUserInfo({ ...userInfo!, realName })
-          }}
-        >
-          {userInfo?.realName}
-        </EditableInput>
-      </FormItem>
-      <FormItem label="注册时间">
-        <DateValue value={userInfo?.createdAt} />
-      </FormItem>
-      <FormItem label="密码">
-        <Button type="link" onClick={() => passwordDialog.open()}>
-          修改密码
-        </Button>
-      </FormItem>
+      <DisplayRender
+        data={userInfo}
+        layout="row"
+        className="mt-6"
+        items={[
+          { name: 'email', label: '邮箱' },
+          {
+            name: 'realName',
+            label: '真实姓名',
+            render: (realName) => (
+              <EditableInput
+                value={realName as string | null}
+                onChange={async (nextRealName) => {
+                  await updateInfoMutation.mutateAsync({
+                    realName: nextRealName,
+                  })
+                  setUserInfo({ ...userInfo!, realName: nextRealName })
+                }}
+              />
+            ),
+          },
+          {
+            name: 'createdAt',
+            label: '注册时间',
+            displayProps: { type: 'date' },
+          },
+          {
+            label: '密码',
+            render: () => (
+              <Button type="link" onClick={() => passwordDialog.open()}>
+                修改密码
+              </Button>
+            ),
+          },
+        ]}
+      />
 
       <ModalForm<ChangePasswordForm>
         title="修改密码"
@@ -131,6 +143,6 @@ export default function UserCenter() {
           <Input.Password autoComplete="new-password" />
         </FormItem>
       </ModalForm>
-    </Form>
+    </Group>
   )
 }

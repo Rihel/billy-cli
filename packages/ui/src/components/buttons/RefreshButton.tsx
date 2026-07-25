@@ -4,6 +4,7 @@ import { ReloadOutlined } from '@ant-design/icons'
 import { Button, Tooltip } from 'antd'
 import type { ButtonProps } from 'antd'
 import type { ReactNode } from 'react'
+import { Icon } from '../icon/Icon'
 
 export type RefreshButtonProps = Omit<ButtonProps, 'icon' | 'children'> & {
   label?: ReactNode
@@ -19,7 +20,7 @@ export const RefreshButton = ({
     <Button
       {...buttonProps}
       aria-label={buttonProps['aria-label'] ?? '刷新'}
-      icon={<ReloadOutlined />}
+      icon={<Icon icon={ReloadOutlined} />}
     >
       {label}
     </Button>

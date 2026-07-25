@@ -62,24 +62,25 @@ Ant Design 和 ahooks 3.9.7。只有现有实现缺少领域语义或无法覆�
 
 迁移下列能力前，先评估对应的成熟实现：
 
-| 旧能力                | 优先评估                                          | 当前决策                                              |
-| --------------------- | ------------------------------------------------- | ----------------------------------------------------- |
-| `ListWrap` / 虚拟网格 | `@tanstack/react-virtual`、`react-virtuoso`       | 不搬旧虚拟化内核                                      |
-| `DataTable`           | Ant Design Table、`@ant-design/pro-table`         | 已基于 `PaginationTable` 组合受控查询布局             |
-| `DataList`            | Ant Design List、TanStack Query                   | 已迁移受控展示和加载更多，不接管请求缓存              |
-| `FormRenderer`        | Ant Design Form、Formily、JSON Forms              | 已迁移基础 Schema 和显式自定义渲染，不设全局 registry |
-| 拖拽排序              | `@dnd-kit/core` / `@dnd-kit/sortable`             | 不自研拖拽引擎                                        |
-| 文件拖拽上传          | Ant Design Upload/Dragger、Uppy                   | 简单场景用 Ant Design，复杂续传再评估 Uppy            |
-| 图片裁剪              | `react-easy-crop`、`antd-img-crop`                | 需要头像裁剪时引入，不自研裁剪算法                    |
-| 浮层定位              | Ant Design Popover/Dropdown、`@floating-ui/react` | 常规场景使用 Ant Design                               |
-| `FullscreenContent`   | ahooks `useFullscreen` + 原生布局                 | 仅保留轻量 UI 包装                                    |
-| `IconPicker`          | 当前图标库公开元数据、Iconify 生态                | 确定图标源后实现选择 UI                               |
-| Excel 导入导出        | SheetJS、ExcelJS                                  | 放入独立能力包，不在 UI 包解析文件格式                |
-| 富文本编辑器          | Tiptap、Lexical                                   | 按业务需求选型，不自研编辑器内核                      |
-| 图表                  | Apache ECharts、Ant Design Charts                 | 通过 adapter 封装主题和空状态                         |
-| `ScrollShadow`        | CSS scroll-state（兼容时）或 `useRect`            | 当前浏览器兼容要求下使用 `useRect`                    |
-| `AsyncSelect`         | Ant Design Select + ahooks `useRequest`           | 只封装加载、刷新和新增选项语义                        |
-| `StateView`           | Ant Design Spin/Result/Empty                      | 做组合组件，不重写状态控件                            |
+| 旧能力                | 优先评估                                          | 当前决策                                               |
+| --------------------- | ------------------------------------------------- | ------------------------------------------------------ |
+| `ListWrap` / 虚拟网格 | `@tanstack/react-virtual`、`react-virtuoso`       | 使用 `react-virtuoso`，支持动态高度和触底加载          |
+| `DataTable`           | Ant Design Table、`@ant-design/pro-table`         | 已基于 `PaginationTable` 组合受控查询布局              |
+| `DataList`            | `react-virtuoso`、TanStack Query                  | 已改为虚拟列表，保留受控数据和组合插槽，不接管请求缓存 |
+| `FormRenderer`        | Ant Design Form、Formily、JSON Forms              | 已迁移基础 Schema 和显式自定义渲染，不设全局 registry  |
+| 拖拽排序              | `@dnd-kit/core` / `@dnd-kit/sortable`             | 不自研拖拽引擎                                         |
+| 文件拖拽上传          | Ant Design Upload/Dragger、Uppy                   | 简单场景用 Ant Design，复杂续传再评估 Uppy             |
+| 图片裁剪              | `react-easy-crop`、`antd-img-crop`                | 需要头像裁剪时引入，不自研裁剪算法                     |
+| 浮层定位              | Ant Design Popover/Dropdown、`@floating-ui/react` | 常规场景使用 Ant Design                                |
+| `FullscreenContent`   | ahooks `useFullscreen` + 原生布局                 | 仅保留轻量 UI 包装                                     |
+| `FFIcon` / `IconText` | `@ant-design/icons`、Ant Design Button            | 已迁移 `Icon` / `IconText`，动态名称通过显式 registry  |
+| `IconPicker`          | 当前图标库公开元数据、Iconify 生态                | 确定图标源后实现选择 UI                                |
+| Excel 导入导出        | SheetJS、ExcelJS                                  | 放入独立能力包，不在 UI 包解析文件格式                 |
+| 富文本编辑器          | Tiptap、Lexical                                   | 按业务需求选型，不自研编辑器内核                       |
+| 图表                  | Apache ECharts、Ant Design Charts                 | 通过 adapter 封装主题和空状态                          |
+| `ScrollShadow`        | CSS scroll-state（兼容时）或 `useRect`            | 当前浏览器兼容要求下使用 `useRect`                     |
+| `AsyncSelect`         | Ant Design Select + ahooks `useRequest`           | 只封装加载、刷新和新增选项语义                         |
+| `StateView`           | Ant Design Spin/Result/Empty                      | 做组合组件，不重写状态控件                             |
 
 引入新的运行时依赖前，需要记录选择理由、替代方案、包体积影响和维护状态；只为
 一个很薄的样式包装不新增依赖。

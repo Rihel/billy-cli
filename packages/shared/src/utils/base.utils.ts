@@ -25,18 +25,16 @@ export function funWrap(data: any) {
   return () => data
 }
 
-/**
- * 取值，如果是函数则会调用，如果不是则直接返回
- * @param {any|Function} data
- */
-export function maybeFun<T>(data: T): T
-export function maybeFun<T extends (...args: any) => any>(
-  data: any,
-  ...args: Parameters<T>
-): ReturnType<T>
-export function maybeFun(data: any, ...args: any) {
+export type MaybeFunction<Value, Args extends unknown[] = []> =
+  | Value
+  | ((...args: Args) => Value)
+
+export function maybeFun<Value, Args extends unknown[]>(
+  data: MaybeFunction<Value, Args>,
+  ...args: Args
+): Value {
   if (typeof data === 'function') {
-    return data(...args)
+    return (data as (...args: Args) => Value)(...args)
   }
   return data
 }

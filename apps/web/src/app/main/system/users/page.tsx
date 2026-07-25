@@ -9,7 +9,7 @@ import type { TableColumnsType } from 'antd'
 import {
   ConfirmAction,
   DataTable,
-  DateValue,
+  DisplayValue,
   EmptyValue,
   ImageUpload,
   ModalForm,
@@ -104,7 +104,7 @@ export default function UsersPage() {
       title: '创建时间',
       dataIndex: 'createdAt',
       width: 180,
-      render: (value) => <DateValue value={value} />,
+      render: (value) => <DisplayValue type="date" value={value} />,
     },
     {
       title: '操作',

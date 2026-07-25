@@ -43,6 +43,15 @@ export const formatTime = (v: ConfigType, format = 'YYYY-MM-DD HH:mm:ss') => {
   return dayjs(standardTime(v)).format(format)
 }
 
+export const formatTimeInTimezone = (
+  v: ConfigType,
+  timezoneName: string,
+  format = 'YYYY-MM-DD HH:mm:ss',
+) => {
+  if (_.isNil(v)) return v
+  return standardTime(v).tz(timezoneName).format(format)
+}
+
 export const fromNow = (time: ConfigType) => {
   return dayjs(time).fromNow()
 }

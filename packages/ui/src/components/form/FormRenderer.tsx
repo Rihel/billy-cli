@@ -1,5 +1,7 @@
 'use client'
 
+import { maybeFun } from '@repo/shared'
+import type { MaybeFunction } from '@repo/shared'
 import {
   Checkbox,
   DatePicker,
@@ -36,11 +38,9 @@ export type FormFieldSchema<Values extends object = Record<string, unknown>> = {
   name: FormItemProps<Values>['name']
   label?: ReactNode
   widget?: FormWidget
-  hidden?: boolean | ((values: Values) => boolean)
-  disabled?: boolean | ((values: Values) => boolean)
-  props?:
-    | Record<string, unknown>
-    | ((context: FormFieldContext<Values>) => Record<string, unknown>)
+  hidden?: MaybeFunction<boolean, [Values]>
+  disabled?: MaybeFunction<boolean, [Values]>
+  props?: MaybeFunction<Record<string, unknown>, [FormFieldContext<Values>]>
   formItemProps?: Omit<FormItemProps<Values>, 'name' | 'label' | 'children'>
   render?: (context: FormFieldContext<Values>) => ReactNode
 }
@@ -80,17 +80,12 @@ const FormField = <Values extends object>({
   form: FormInstance<Values>
 }) => {
   const values = (Form.useWatch([], form) ?? {}) as Values
-  const hidden =
-    typeof item.hidden === 'function' ? item.hidden(values) : item.hidden
+  const hidden = maybeFun(item.hidden, values)
   if (hidden) return null
 
-  const disabled =
-    typeof item.disabled === 'function'
-      ? item.disabled(values)
-      : (item.disabled ?? false)
+  const disabled = maybeFun(item.disabled, values) ?? false
   const context = { form, values, disabled }
-  const fieldProps =
-    typeof item.props === 'function' ? item.props(context) : item.props
+  const fieldProps = maybeFun(item.props, context)
   const widget = item.widget ?? 'input'
   const valuePropName =
     item.formItemProps?.valuePropName ??
