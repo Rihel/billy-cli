@@ -132,7 +132,7 @@ export default function UsersPage() {
           </IconText>
           <ConfirmAction
             title="确认删除该用户？"
-            onConfirm={() => removeMutation.mutate({ id: record.id })}
+            onConfirm={() => removeMutation.mutate({ userId: record.id })}
             danger
           >
             删除

@@ -10,9 +10,9 @@ import {
   ResetPasswordDto,
   UpdateInfoDto,
   dayjs,
+  nanoid,
 } from '@repo/shared';
 import { eq } from 'drizzle-orm';
-import { nanoid } from 'nanoid';
 import { z } from 'zod';
 import * as bcrypt from 'bcryptjs';
 import { DbService } from '../../infra/db.service.js';
@@ -159,7 +159,7 @@ export class AuthService {
       .from(users)
       .where(eq(users.id, userId));
     if (!user) {
-      throw new AppError(AppErrorCodes.UserNotFound, '用户不存在');
+      throw new AppError(AppErrorCodes.UserNotFound);
     }
     const updated = await this.db
       .update(users)
@@ -181,7 +181,7 @@ export class AuthService {
       .from(users)
       .where(eq(users.id, userId));
     if (!user) {
-      throw new AppError(AppErrorCodes.UserNotFound, '用户不存在');
+      throw new AppError(AppErrorCodes.UserNotFound);
     }
     const valid = await bcrypt.compare(input.oldPassword, user.password);
     if (!valid) {

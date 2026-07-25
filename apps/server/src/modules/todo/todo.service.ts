@@ -50,22 +50,25 @@ export class TodoService {
       table: todos,
       cursorColumns: [todos.updatedAt, todos.id],
       cursorValues: cursor
-        ? [new Date(cursor.updatedAt), cursor.id]
+        ? [new Date(cursor.updatedAt), cursor.todoId]
         : undefined,
       getCursor: (item) => ({
         updatedAt: item.updatedAt.toISOString(),
-        id: item.id,
+        todoId: item.id,
       }),
       where: keyword ? ilike(todos.title, `%${keyword}%`) : undefined,
       size,
     });
   }
 
-  async findById(id: string) {
-    this.logger.log('findById', { id });
-    const [todo] = await this.db.select().from(todos).where(eq(todos.id, id));
+  async findById(todoId: string) {
+    this.logger.log('findById', { todoId });
+    const [todo] = await this.db
+      .select()
+      .from(todos)
+      .where(eq(todos.id, todoId));
     if (!todo) {
-      this.logger.warn('findById not found', { id });
+      this.logger.warn('findById not found', { todoId });
       throw new AppError(AppErrorCodes.TodoNotFound);
     }
     return todo;
@@ -87,14 +90,14 @@ export class TodoService {
     return todo;
   }
 
-  async remove(id: string) {
-    this.logger.log('remove', { id });
+  async remove(todoId: string) {
+    this.logger.log('remove', { todoId });
     const [todo] = await this.db
       .delete(todos)
-      .where(eq(todos.id, id))
+      .where(eq(todos.id, todoId))
       .returning();
     if (!todo) {
-      this.logger.warn('remove not found', { id });
+      this.logger.warn('remove not found', { todoId });
       throw new AppError(AppErrorCodes.TodoNotFound);
     }
     this.logger.log('removed', { id: todo.id });

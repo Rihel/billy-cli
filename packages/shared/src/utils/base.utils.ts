@@ -116,10 +116,20 @@ export function mergeWith<
   )
 }
 
+export function parseJson<T>(
+  jsonString: string,
+  defaultValue: T,
+  onError?: (error: unknown) => void,
+): T
+export function parseJson<T = unknown>(
+  jsonString: string,
+  defaultValue?: undefined,
+  onError?: (error: unknown) => void,
+): T | undefined
 export function parseJson(
   jsonString: string,
   defaultValue?: any,
-  onError?: (e: any) => void,
+  onError?: (error: unknown) => void,
 ) {
   try {
     return JSON.parse(jsonString)

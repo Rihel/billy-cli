@@ -5,12 +5,11 @@ import {
   PageQueryUserDto,
   ResetUserPasswordDto,
   UpdateUserDto,
+  UserIdInputDto,
 } from '@repo/shared';
 import { z } from 'zod';
 import { UserService } from './user.service.js';
 import { AuthMiddleware } from '../../middlewares/auth.middleware.js';
-
-const ByIdInput = z.object({ id: z.string() });
 
 @Router({ alias: 'user' })
 @UseMiddlewares(AuthMiddleware)
@@ -27,9 +26,9 @@ export class UserRouter {
     return this.userService.findMany(input);
   }
 
-  @Query({ input: ByIdInput })
-  findById(@Input('id') id: string) {
-    return this.userService.findById(id);
+  @Query({ input: UserIdInputDto })
+  findById(@Input('userId') userId: string) {
+    return this.userService.findById(userId);
   }
 
   @Mutation({ input: UpdateUserDto })
@@ -37,9 +36,9 @@ export class UserRouter {
     return this.userService.update(input);
   }
 
-  @Mutation({ input: ByIdInput })
-  remove(@Input('id') id: string) {
-    return this.userService.remove(id);
+  @Mutation({ input: UserIdInputDto })
+  remove(@Input('userId') userId: string) {
+    return this.userService.remove(userId);
   }
 
   @Mutation({ input: ResetUserPasswordDto })

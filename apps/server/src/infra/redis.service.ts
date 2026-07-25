@@ -13,23 +13,9 @@ export class RedisService {
     return this.redis.get(key);
   }
 
-  async get2Json<T>(key: string): Promise<T | null> {
-    const str = await this.redis.get(key);
-    return parseJson(str || '', null);
-  }
-
   set(key: string, value: string, ttlSeconds?: number): Promise<'OK'> {
     if (ttlSeconds != null) return this.redis.set(key, value, 'EX', ttlSeconds);
     return this.redis.set(key, value);
-  }
-
-  async setByJsonAndExpire(
-    key: string,
-    data: Record<string, any>,
-    ttl: number,
-  ) {
-    const value = JSON.stringify(data);
-    await this.set(key, value, ttl);
   }
 
   del(...keys: string[]): Promise<number> {
@@ -184,7 +170,7 @@ export class RedisService {
   async getJson<T>(key: string): Promise<T | null> {
     const raw = await this.redis.get(key);
     if (raw == null) return null;
-    return JSON.parse(raw) as T;
+    return parseJson<T | null>(raw, null);
   }
 
   async setJson<T>(key: string, value: T, ttlSeconds?: number): Promise<void> {

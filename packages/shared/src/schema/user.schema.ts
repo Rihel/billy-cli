@@ -1,6 +1,10 @@
 import { z } from 'zod'
 import { BasePaginateDto } from './base.schema'
 
+export const UserIdInputDto = z.object({
+  userId: z.string(),
+})
+
 export const CreateUserDto = z.object({
   email: z.string().email(),
   password: z.string().min(6),
@@ -8,14 +12,12 @@ export const CreateUserDto = z.object({
   avatar: z.string().nullable().optional(),
 })
 
-export const UpdateUserDto = z.object({
-  userId: z.string(),
+export const UpdateUserDto = UserIdInputDto.extend({
   realName: z.string().nullable().optional(),
   avatar: z.string().nullable().optional(),
 })
 
-export const ResetUserPasswordDto = z.object({
-  userId: z.string(),
+export const ResetUserPasswordDto = UserIdInputDto.extend({
   password: z.string().min(6),
 })
 

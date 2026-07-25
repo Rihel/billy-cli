@@ -38,7 +38,7 @@ type EditTodoForm = {
 
 type TodoCursor = {
   updatedAt: string
-  id: string
+  todoId: string
 }
 
 type TodoCursorPage = {
@@ -250,7 +250,7 @@ export default function TodoPage() {
               </IconText>
               <ConfirmAction
                 title="确认删除？"
-                onConfirm={() => removeMutation.mutate({ id: record.id })}
+                onConfirm={() => removeMutation.mutate({ todoId: record.id })}
                 danger
               >
                 删除

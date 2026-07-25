@@ -117,7 +117,7 @@ export class S3Provider implements StorageProvider {
       const key = `temp-credential:${roleSessionName}`;
       this.logger.info('临时秘钥缓存key：' + key);
       try {
-        const value = (await this.redisService.get2Json(key)) as z.infer<
+        const value = (await this.redisService.getJson(key)) as z.infer<
           typeof StorageStsModel
         > | null;
         this.logger.info('临时秘钥缓存值');
@@ -163,7 +163,7 @@ export class S3Provider implements StorageProvider {
         ),
       } as z.infer<typeof StorageStsModel>;
 
-      await this.redisService.setByJsonAndExpire(key, res, 3600);
+      await this.redisService.setJson(key, res, 3600);
       return res;
     } catch (err) {
       console.log(err);

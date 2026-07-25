@@ -141,7 +141,7 @@ Cursor 分页不告诉数据库“跳过多少条”，而是告诉数据库“�
   size: 20,
   cursor: {
     updatedAt: '2026-07-26T10:00:00.000Z',
-    id: 'todo_123'
+    todoId: 'todo_123'
   }
 }
 ```
@@ -153,7 +153,7 @@ Cursor 分页不告诉数据库“跳过多少条”，而是告诉数据库“�
   items: [...],
   nextCursor: {
     updatedAt: '2026-07-26T09:48:00.000Z',
-    id: 'todo_087'
+    todoId: 'todo_087'
   }
 }
 ```
@@ -209,9 +209,12 @@ ORDER BY updated_at DESC, id DESC
 ```ts
 {
   updatedAt: string
-  id: string
+  todoId: string
 }
 ```
+
+数据库排序列仍为 `id`；按照项目 DTO 命名规范，传输字段使用实体语义明确的
+`todoId`。
 
 稳定排序必须满足：
 
@@ -347,10 +350,12 @@ interface PageResult<T> {
 const result = await db.paginateCursor({
   table: todos,
   cursorColumns: [todos.updatedAt, todos.id],
-  cursorValues: cursor ? [new Date(cursor.updatedAt), cursor.id] : undefined,
+  cursorValues: cursor
+    ? [new Date(cursor.updatedAt), cursor.todoId]
+    : undefined,
   getCursor: (item) => ({
     updatedAt: item.updatedAt.toISOString(),
-    id: item.id,
+    todoId: item.id,
   }),
   where: keyword ? ilike(todos.title, `%${keyword}%`) : undefined,
   order: 'desc',
@@ -448,10 +453,12 @@ await db.paginateCursorDeferred({
   table: posts,
   idCol: posts.id,
   cursorColumns: [posts.createdAt, posts.id],
-  cursorValues: cursor ? [new Date(cursor.createdAt), cursor.id] : undefined,
+  cursorValues: cursor
+    ? [new Date(cursor.createdAt), cursor.postId]
+    : undefined,
   getCursor: ([createdAt, id]) => ({
     createdAt: createdAt.toISOString(),
-    id,
+    postId: id,
   }),
   where,
   order: 'desc',
@@ -629,7 +636,7 @@ cursor 分页能稳定处理头部新增，但不意味着任意修改排序字�
 ```ts
 {
   updatedAt: string
-  id: string
+  todoId: string
 }
 ```
 

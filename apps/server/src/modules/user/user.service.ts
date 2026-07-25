@@ -77,8 +77,11 @@ export class UserService {
     });
   }
 
-  async findById(id: string) {
-    const [user] = await this.db.select().from(users).where(eq(users.id, id));
+  async findById(userId: string) {
+    const [user] = await this.db
+      .select()
+      .from(users)
+      .where(eq(users.id, userId));
     if (!user) throw new AppError(AppErrorCodes.UserNotFound);
     return this.sanitizeUser(user);
   }
@@ -96,13 +99,13 @@ export class UserService {
     return this.sanitizeUser(user);
   }
 
-  async remove(id: string) {
+  async remove(userId: string) {
     const [user] = await this.db
       .delete(users)
-      .where(eq(users.id, id))
+      .where(eq(users.id, userId))
       .returning();
     if (!user) throw new AppError(AppErrorCodes.UserNotFound);
-    this.logger.log('removed', { id });
+    this.logger.log('removed', { userId });
     return { success: true };
   }
 

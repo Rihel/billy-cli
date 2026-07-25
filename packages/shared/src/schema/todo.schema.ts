@@ -13,11 +13,13 @@ const TodoFields = z.object({
 
 export const TodoModel = z.intersection(BaseModel, TodoFields)
 
-export const CreateTodoDto = TodoFields.omit({ completed: true })
-
-export const UpdateTodoDto = TodoFields.extend({
+export const TodoIdInputDto = z.object({
   todoId: z.string(),
 })
+
+export const CreateTodoDto = TodoFields.omit({ completed: true })
+
+export const UpdateTodoDto = TodoFields.extend(TodoIdInputDto.shape)
 
 export const PageQueryTodoDto = BasePaginateDto.extend({
   keyword: z.string().optional(),
@@ -27,7 +29,7 @@ export const PageQueryTodoDto = BasePaginateDto.extend({
 
 export const TodoCursorDto = z.object({
   updatedAt: z.string().datetime(),
-  id: z.string(),
+  todoId: z.string(),
 })
 
 export const CursorQueryTodoDto = BaseCursorPaginateDto.extend({

@@ -4,13 +4,12 @@ import {
   CreateTodoDto,
   CursorQueryTodoDto,
   PageQueryTodoDto,
+  TodoIdInputDto,
   UpdateTodoDto,
 } from '@repo/shared';
 import { z } from 'zod';
 import { TodoService } from './todo.service.js';
 import { AuthMiddleware } from '../../middlewares/auth.middleware.js';
-
-const ByIdInput = z.object({ id: z.string() });
 
 @Router({ alias: 'todo' })
 @UseMiddlewares(AuthMiddleware)
@@ -32,9 +31,9 @@ export class TodoRouter {
     return this.todoService.findManyCursor(input);
   }
 
-  @Query({ input: ByIdInput })
-  findById(@Input('id') id: string) {
-    return this.todoService.findById(id);
+  @Query({ input: TodoIdInputDto })
+  findById(@Input('todoId') todoId: string) {
+    return this.todoService.findById(todoId);
   }
 
   @Mutation({ input: UpdateTodoDto })
@@ -42,8 +41,8 @@ export class TodoRouter {
     return this.todoService.update(input);
   }
 
-  @Mutation({ input: ByIdInput })
-  remove(@Input('id') id: string) {
-    return this.todoService.remove(id);
+  @Mutation({ input: TodoIdInputDto })
+  remove(@Input('todoId') todoId: string) {
+    return this.todoService.remove(todoId);
   }
 }

@@ -55,7 +55,7 @@ const createCursorFilter = <TColumns extends CursorColumns>(
 
   // 构造多列字典序比较。以 DESC 的 [updatedAt, id] 为例：
   // updatedAt < cursor.updatedAt
-  // OR (updatedAt = cursor.updatedAt AND id < cursor.id)
+  // OR (updatedAt = cursor.updatedAt AND id < cursor.todoId)
   // nanoid 虽然随机，但唯一且创建后不变，可以作为最后一个稳定 tie-breaker。
   return or(
     ...columns.map((column, index) =>
@@ -266,11 +266,11 @@ export class DbService {
    *   table: todos,
    *   cursorColumns: [todos.updatedAt, todos.id],
    *   cursorValues: cursor
-   *     ? [new Date(cursor.updatedAt), cursor.id]
+   *     ? [new Date(cursor.updatedAt), cursor.todoId]
    *     : undefined,
    *   getCursor: (row) => ({
    *     updatedAt: row.updatedAt.toISOString(),
-   *     id: row.id,
+   *     todoId: row.id,
    *   }),
    *   where: keyword ? ilike(todos.title, `%${keyword}%`) : undefined,
    *   order: 'desc',
@@ -339,11 +339,11 @@ export class DbService {
    *   idCol: posts.id,
    *   cursorColumns: [posts.createdAt, posts.id],
    *   cursorValues: cursor
-   *     ? [new Date(cursor.createdAt), cursor.id]
+   *     ? [new Date(cursor.createdAt), cursor.postId]
    *     : undefined,
    *   getCursor: ([createdAt, id]) => ({
    *     createdAt: createdAt.toISOString(),
-   *     id,
+   *     postId: id,
    *   }),
    *   size: 20,
    *   dataFn: (ids) => loadPostDetails(ids),
