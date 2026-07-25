@@ -1,4 +1,4 @@
-import { nanoid } from 'nanoid'
+import { nanoid } from '@repo/shared'
 import {
   boolean,
   pgTable,

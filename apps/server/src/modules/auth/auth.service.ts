@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { users } from '@repo/db';
 import {
+  AppErrorCodes,
   ForgotPasswordDto,
   LoginDto,
   RegisterDto,
@@ -11,11 +12,11 @@ import {
 import { eq } from 'drizzle-orm';
 import { nanoid } from 'nanoid';
 import { z } from 'zod';
-import * as bcrypt from 'bcrypt';
+import * as bcrypt from 'bcryptjs';
 import { DbService } from '../../infra/db.service.js';
 import { AppLoggerService } from '../../infra/logger.service.js';
 import { appConfig } from '../../config.js';
-import { AppErrors } from '../../errors.js';
+import { AppError } from '../../errors.js';
 
 type UserRow = typeof users.$inferSelect;
 type SafeUser = Omit<
@@ -49,7 +50,7 @@ export class AuthService {
         .select()
         .from(users)
         .where(eq(users.email, input.email));
-      if (existing) throw AppErrors.emailTaken();
+      if (existing) throw new AppError(AppErrorCodes.EmailTaken);
       const [newUser] = await tx
         .insert(users)
         .values({ ...input, password: hashedPassword })
@@ -67,9 +68,12 @@ export class AuthService {
       .select()
       .from(users)
       .where(eq(users.email, input.email));
-    if (!user) throw AppErrors.invalidCredentials();
+
+    if (!user) {
+      throw new AppError(AppErrorCodes.EmailNotFound);
+    }
     const valid = await bcrypt.compare(input.password, user.password);
-    if (!valid) throw AppErrors.invalidCredentials();
+    if (!valid) throw new AppError(AppErrorCodes.InvalidCredentials);
     const token = this.jwt.sign({ sub: user.id });
     this.logger.log('login success', { id: user.id });
     return { token, user: this.sanitizeUser(user) };
@@ -115,12 +119,12 @@ export class AuthService {
         .select()
         .from(users)
         .where(eq(users.resetPasswordToken, input.token));
-      if (!user) throw AppErrors.invalidResetToken();
+      if (!user) throw new AppError(AppErrorCodes.InvalidResetToken);
       if (
         !user.resetPasswordTokenExpiry ||
         dayjs().isAfter(user.resetPasswordTokenExpiry)
       ) {
-        throw AppErrors.expiredResetToken();
+        throw new AppError(AppErrorCodes.ExpiredResetToken);
       }
       await tx
         .update(users)
@@ -140,7 +144,9 @@ export class AuthService {
       .select()
       .from(users)
       .where(eq(users.id, userId));
-    if (!user) throw AppErrors.unauthorized('用户不存在');
+    if (!user) {
+      throw new AppError(AppErrorCodes.Unauthorized, '用户不存在');
+    }
     return this.sanitizeUser(user);
   }
 
@@ -149,7 +155,7 @@ export class AuthService {
       const payload = this.jwt.verify<{ sub: string }>(token);
       return payload.sub;
     } catch {
-      throw AppErrors.tokenInvalid();
+      throw new AppError(AppErrorCodes.TokenInvalid);
     }
   }
 }

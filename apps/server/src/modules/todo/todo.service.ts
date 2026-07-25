@@ -1,12 +1,17 @@
 import { Injectable } from '@nestjs/common';
 import { todos } from '@repo/db';
-import { CreateTodoDto, PageQueryTodoDto, UpdateTodoDto } from '@repo/shared';
+import {
+  AppErrorCodes,
+  CreateTodoDto,
+  PageQueryTodoDto,
+  UpdateTodoDto,
+} from '@repo/shared';
 import { ilike, eq } from 'drizzle-orm';
 import { PgColumn } from 'drizzle-orm/pg-core';
 import { z } from 'zod';
 import { DbService } from '../../infra/db.service.js';
 import { AppLoggerService } from '../../infra/logger.service.js';
-import { AppErrors } from '../../errors.js';
+import { AppError } from '../../errors.js';
 
 @Injectable()
 export class TodoService {
@@ -43,7 +48,7 @@ export class TodoService {
     const [todo] = await this.db.select().from(todos).where(eq(todos.id, id));
     if (!todo) {
       this.logger.warn('findById not found', { id });
-      throw AppErrors.todoNotFound();
+      throw new AppError(AppErrorCodes.TodoNotFound);
     }
     return todo;
   }
@@ -58,7 +63,7 @@ export class TodoService {
       .returning();
     if (!todo) {
       this.logger.warn('update not found', { todoId });
-      throw AppErrors.todoNotFound();
+      throw new AppError(AppErrorCodes.TodoNotFound);
     }
     this.logger.log('updated', { id: todo.id });
     return todo;
@@ -72,7 +77,7 @@ export class TodoService {
       .returning();
     if (!todo) {
       this.logger.warn('remove not found', { id });
-      throw AppErrors.todoNotFound();
+      throw new AppError(AppErrorCodes.TodoNotFound);
     }
     this.logger.log('removed', { id: todo.id });
     return todo;

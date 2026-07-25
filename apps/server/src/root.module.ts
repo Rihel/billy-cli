@@ -38,6 +38,6 @@ export class RootModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {
     consumer
       .apply(TrpcStatusMiddleware)
-      .forRoutes({ path: 'trpc/(.*)', method: RequestMethod.ALL });
+      .forRoutes({ path: 'trpc/*path', method: RequestMethod.ALL });
   }
 }

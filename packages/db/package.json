@@ -16,6 +16,7 @@
     "build": "tsdown --config-loader unrun"
   },
   "devDependencies": {
+    "@types/pg": "^8.20.0",
     "@types/lodash": "^4.17.24",
     "tsdown": "^0.22.9",
     "typescript": "^7.0.2",
@@ -23,7 +24,7 @@
     "drizzle-kit": "1.0.0-rc.3"
   },
   "dependencies": {
-    "@types/pg": "^8.20.0",
+    "@repo/shared": "workspace:*",
     "dayjs": "^1.11.21",
     "dotenv": "^17.4.2",
     "drizzle-orm": "1.0.0-rc.4",

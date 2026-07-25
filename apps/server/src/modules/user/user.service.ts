@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { users } from '@repo/db';
 import {
+  AppErrorCodes,
   CreateUserDto,
   PageQueryUserDto,
   ResetUserPasswordDto,
@@ -9,10 +10,10 @@ import {
 import { ilike, eq, or } from 'drizzle-orm';
 import { PgColumn } from 'drizzle-orm/pg-core';
 import { z } from 'zod';
-import * as bcrypt from 'bcrypt';
+import * as bcrypt from 'bcryptjs';
 import { DbService } from '../../infra/db.service.js';
 import { AppLoggerService } from '../../infra/logger.service.js';
-import { AppErrors } from '../../errors.js';
+import { AppError } from '../../errors.js';
 
 type UserRow = typeof users.$inferSelect;
 type SafeUser = Omit<
@@ -45,7 +46,7 @@ export class UserService {
         .select()
         .from(users)
         .where(eq(users.email, input.email));
-      if (existing) throw AppErrors.emailTaken();
+      if (existing) throw new AppError(AppErrorCodes.EmailTaken);
       const [newUser] = await tx
         .insert(users)
         .values({ ...input, password: hashedPassword })
@@ -78,7 +79,7 @@ export class UserService {
 
   async findById(id: string) {
     const [user] = await this.db.select().from(users).where(eq(users.id, id));
-    if (!user) throw AppErrors.userNotFound();
+    if (!user) throw new AppError(AppErrorCodes.UserNotFound);
     return this.sanitizeUser(user);
   }
 
@@ -90,7 +91,7 @@ export class UserService {
       .set(fields)
       .where(eq(users.id, userId))
       .returning();
-    if (!user) throw AppErrors.userNotFound();
+    if (!user) throw new AppError(AppErrorCodes.UserNotFound);
     this.logger.log('updated', { id: user.id });
     return this.sanitizeUser(user);
   }
@@ -100,7 +101,7 @@ export class UserService {
       .delete(users)
       .where(eq(users.id, id))
       .returning();
-    if (!user) throw AppErrors.userNotFound();
+    if (!user) throw new AppError(AppErrorCodes.UserNotFound);
     this.logger.log('removed', { id });
     return { success: true };
   }
@@ -113,7 +114,7 @@ export class UserService {
       .set({ password: hashedPassword })
       .where(eq(users.id, input.userId))
       .returning();
-    if (!user) throw AppErrors.userNotFound();
+    if (!user) throw new AppError(AppErrorCodes.UserNotFound);
     return { success: true };
   }
 }
