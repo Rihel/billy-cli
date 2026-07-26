@@ -4,6 +4,7 @@ import {
   NestModule,
   RequestMethod,
 } from '@nestjs/common';
+import { AppError } from '@repo/kits';
 import { TRPCModule } from 'nestjs-trpc';
 import { InfraModule } from './infra/infra.module.js';
 import { TodoModule } from './modules/todo/index.js';
@@ -12,7 +13,6 @@ import { UserModule } from './modules/user/index.js';
 import { TrpcAppContext } from './trpc.context.js';
 import { AuthMiddleware } from './middlewares/auth.middleware.js';
 import { TrpcStatusMiddleware } from './middlewares/trpc-status.middleware.js';
-import { AppError } from './errors.js';
 import { StorageModule } from './modules/storage/index.js';
 import { appConfig } from './config.js';
 

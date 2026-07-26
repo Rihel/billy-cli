@@ -6,7 +6,7 @@ import {
   Router,
   UseMiddlewares,
 } from 'nestjs-trpc';
-import { StorageService } from './storage.service.js';
+import { StorageService } from '@repo/kits';
 import { AuthMiddleware } from '../../middlewares/auth.middleware.js';
 import {
   GetStorageUploadPresignedUrlDto,

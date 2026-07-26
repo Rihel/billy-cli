@@ -15,10 +15,8 @@ import {
 import { eq } from 'drizzle-orm';
 import { z } from 'zod';
 import * as bcrypt from 'bcryptjs';
-import { DbService } from '../../infra/db.service.js';
-import { AppLoggerService } from '../../infra/logger.service.js';
+import { AppError, AppLoggerService, DbService } from '@repo/kits';
 import { appConfig } from '../../config.js';
-import { AppError } from '../../errors.js';
 
 type UserRow = typeof users.$inferSelect;
 type SafeUser = Omit<

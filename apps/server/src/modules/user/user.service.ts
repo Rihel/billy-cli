@@ -11,9 +11,7 @@ import { ilike, eq, or } from 'drizzle-orm';
 import { PgColumn } from 'drizzle-orm/pg-core';
 import { z } from 'zod';
 import * as bcrypt from 'bcryptjs';
-import { DbService } from '../../infra/db.service.js';
-import { AppLoggerService } from '../../infra/logger.service.js';
-import { AppError } from '../../errors.js';
+import { AppError, AppLoggerService, DbService } from '@repo/kits';
 
 type UserRow = typeof users.$inferSelect;
 type SafeUser = Omit<

@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
+import { AppError } from '@repo/kits';
 import { AppErrorCodes } from '@repo/shared';
 import type { TRPCMiddleware, MiddlewareOptions } from 'nestjs-trpc';
-import { AppError } from '../errors.js';
 
 @Injectable()
 export class AuthMiddleware implements TRPCMiddleware {

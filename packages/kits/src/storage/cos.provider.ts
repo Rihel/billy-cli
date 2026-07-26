@@ -1,37 +1,36 @@
-import Cos from 'cos-nodejs-sdk-v5';
-import { Injectable } from '@nestjs/common';
-import { StorageConfig } from '../storage.config.js';
-import type { StorageProvider } from '../interface.js';
-import { AppLoggerService } from '../../../infra/logger.service.js';
+import { Injectable } from '@nestjs/common'
 import {
   GetStorageUploadPresignedUrlDto,
   StoragePresignedUrlModel,
   StorageStsModel,
-} from '@repo/shared';
-import { z } from 'zod';
+} from '@repo/shared'
+import Cos from 'cos-nodejs-sdk-v5'
+import type { z } from 'zod'
+import { AppLoggerService } from '../logger.js'
+import { StorageConfig } from './storage.config.js'
+import type { StorageProvider } from './types.js'
 
 @Injectable()
 export class CosProvider implements StorageProvider {
-  providerName: string = 'cos';
-  private storageClient: Cos;
+  readonly providerName = 'cos'
+  private storageClient!: Cos
 
   constructor(
-    private config: StorageConfig,
-    private logger: AppLoggerService,
+    private readonly config: StorageConfig,
+    private readonly logger: AppLoggerService,
   ) {}
-  async getTemporaryCredentials(
-    userId: string,
-  ): Promise<z.infer<typeof StorageStsModel>> {
-    throw new Error('Method not implemented.');
+
+  getTemporaryCredentials(): Promise<z.infer<typeof StorageStsModel>> {
+    throw new Error('Method not implemented.')
   }
 
   async getObject(key: string) {
-    const res = await this.storageClient.getObject({
+    const response = await this.storageClient.getObject({
       Bucket: this.config.bucket,
       Region: this.config.region,
       Key: key,
-    });
-    return res.Body;
+    })
+    return response.Body
   }
 
   getPresignedUrl(
@@ -42,26 +41,26 @@ export class CosProvider implements StorageProvider {
       Region: this.config.region,
       Key: data.key,
       Method: 'PUT',
-    });
-    return Promise.resolve({
-      url,
-      key: data.key,
-    });
+    })
+    return Promise.resolve({ url, key: data.key })
   }
+
   async removeObject(key: string) {
     await this.storageClient.deleteObject({
       Bucket: this.config.bucket,
       Region: this.config.region,
       Key: key,
-    });
+    })
   }
-  initial(): Promise<void> | void {
+
+  initial() {
     this.storageClient = new Cos({
       SecretId: this.config.accessKeyId,
       SecretKey: this.config.secretAccessKey,
-    });
-    this.logger.info(`COS 存储服务初始化成功`);
+    })
+    this.logger.info('COS 存储服务初始化成功')
   }
+
   getDownloadUrl(
     key: string,
   ): Promise<z.infer<typeof StoragePresignedUrlModel>> {
@@ -70,10 +69,7 @@ export class CosProvider implements StorageProvider {
       Region: this.config.region,
       Key: key,
       Method: 'GET',
-    });
-    return Promise.resolve({
-      url,
-      key: key,
-    });
+    })
+    return Promise.resolve({ url, key })
   }
 }

@@ -1,24 +1,17 @@
-import { Global, Module } from '@nestjs/common';
-import { DbService } from './db.service.js';
-import { RedisModule } from '@nestjs-modules/ioredis';
+import { Module } from '@nestjs/common';
+import { KitsModule } from '@repo/kits';
 import { appConfig } from '../config.js';
-import { RedisService } from './redis.service.js';
-import { AppLoggerService } from './logger.service.js';
 
-const providers = [DbService, RedisService, AppLoggerService];
-
-@Global()
 @Module({
   imports: [
-    RedisModule.forRoot({
-      options: {
+    KitsModule.forRoot({
+      database: { url: appConfig.dbUrl },
+      redis: {
+        url: appConfig.redisUrl,
         keyPrefix: 'billy-cli:',
       },
-      type: 'single',
-      url: appConfig.redisUrl,
+      logger: { pretty: appConfig.isDev },
     }),
   ],
-  providers,
-  exports: providers,
 })
 export class InfraModule {}
