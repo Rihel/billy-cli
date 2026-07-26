@@ -4,6 +4,7 @@ import { cookies } from 'next/headers'
 import { serverTRPC } from '@/lib/server-trpc'
 import { TokenKey } from '@/lib/constants'
 import { logger } from '@/lib/logger'
+import { defineAction } from '@repo/ui/action'
 
 const COOKIE_MAX_AGE = 7 * 24 * 60 * 60 // 7 days
 
@@ -17,56 +18,48 @@ function cookieOptions(maxAge: number) {
   }
 }
 
-export async function loginAction(input: { email: string; password: string }) {
-  try {
+export const loginAction = defineAction(
+  async (input: { email: string; password: string }) => {
     const data = await serverTRPC.auth.login.mutate(input)
     const jar = await cookies()
     jar.set(TokenKey, data.token, cookieOptions(COOKIE_MAX_AGE))
-    return { ok: true as const, data: data.token }
-  } catch (error: any) {
-    logger.error('loginAction error', { error })
-    return { ok: false as const, error: error?.message ?? '登录失败' }
-  }
-}
+    return data.token
+  },
+  {
+    fallbackError: '登录失败',
+    onError: (error) => logger.error('loginAction error', { error }),
+  },
+)
 
-export async function registerAction(input: {
-  email: string
-  password: string
-  realName?: string
-}) {
-  try {
+export const registerAction = defineAction(
+  async (input: { email: string; password: string; realName?: string }) => {
     const data = await serverTRPC.auth.register.mutate(input)
     const jar = await cookies()
     jar.set(TokenKey, data.token, cookieOptions(COOKIE_MAX_AGE))
-    return { ok: true as const, data: data.token }
-  } catch (error: any) {
-    logger.error('registerAction error', { error })
-    return { ok: false as const, error: error?.message ?? '注册失败' }
-  }
-}
+    return data.token
+  },
+  {
+    fallbackError: '注册失败',
+    onError: (error) => logger.error('registerAction error', { error }),
+  },
+)
 
-export async function forgotPasswordAction(input: { email: string }) {
-  try {
-    const data = await serverTRPC.auth.forgotPassword.mutate(input)
-    return { ok: true as const, data }
-  } catch (error: any) {
-    logger.error('forgotPasswordAction error', { error })
-    return { ok: false as const, error: error?.message ?? '请求失败' }
-  }
-}
+export const forgotPasswordAction = defineAction(
+  (input: { email: string }) => serverTRPC.auth.forgotPassword.mutate(input),
+  {
+    fallbackError: '请求失败',
+    onError: (error) => logger.error('forgotPasswordAction error', { error }),
+  },
+)
 
-export async function resetPasswordAction(input: {
-  token: string
-  password: string
-}) {
-  try {
-    const data = await serverTRPC.auth.resetPassword.mutate(input)
-    return { ok: true as const, data }
-  } catch (error: any) {
-    logger.error('resetPasswordAction error', { error })
-    return { ok: false as const, error: error?.message ?? '重置失败' }
-  }
-}
+export const resetPasswordAction = defineAction(
+  (input: { token: string; password: string }) =>
+    serverTRPC.auth.resetPassword.mutate(input),
+  {
+    fallbackError: '重置失败',
+    onError: (error) => logger.error('resetPasswordAction error', { error }),
+  },
+)
 
 export async function logoutAction() {
   const jar = await cookies()

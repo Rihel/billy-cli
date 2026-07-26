@@ -3,6 +3,7 @@
 import { resetPasswordAction } from '@/actions/auth.actions'
 import { KeyOutlined } from '@ant-design/icons'
 import { FormRenderer, IconText } from '@repo/ui'
+import { callAction } from '@repo/ui/action'
 import { App, Form, Typography } from 'antd'
 import { useBoolean } from 'ahooks'
 import { useRouter, useSearchParams } from 'next/navigation'
@@ -27,14 +28,16 @@ export default function ResetPasswordPage() {
   const handleSubmit = async (values: ResetPasswordForm) => {
     startLoading()
     const { confirmPassword: _, ...rest } = values
-    const result = await resetPasswordAction(rest)
+    await callAction(resetPasswordAction, rest, {
+      onError: (error) => {
+        message.error(error)
+      },
+      onSuccess: () => {
+        message.success('密码重置成功，请重新登录')
+        router.replace('/auth/login')
+      },
+    })
     stopLoading()
-    if (!result.ok) {
-      message.error(result.error)
-    } else {
-      message.success('密码重置成功，请重新登录')
-      router.replace('/auth/login')
-    }
   }
 
   return (

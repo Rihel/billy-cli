@@ -4,6 +4,7 @@ import { authStorage } from '@/lib/auth'
 import { loginAction } from '@/actions/auth.actions'
 import { LoginOutlined } from '@ant-design/icons'
 import { FormRenderer, IconText } from '@repo/ui'
+import { callAction } from '@repo/ui/action'
 import { App, Form, Typography } from 'antd'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
@@ -57,14 +58,16 @@ export default function LoginPage() {
         ]}
         formProps={{
           onFinish: async (values) => {
-            const result = await loginAction(values)
-            if (!result.ok) {
-              message.error(result.error)
-              return
-            }
-            authStorage.setToken(result.data)
-            message.success('登录成功')
-            router.replace(Pages.dashboard)
+            await callAction(loginAction, values, {
+              onError: (error) => {
+                message.error(error)
+              },
+              onSuccess: (token) => {
+                authStorage.setToken(token)
+                message.success('登录成功')
+                router.replace(Pages.dashboard)
+              },
+            })
           },
         }}
       >

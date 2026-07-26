@@ -4,6 +4,7 @@ import { authStorage } from '@/lib/auth'
 import { registerAction } from '@/actions/auth.actions'
 import { UserAddOutlined } from '@ant-design/icons'
 import { FormRenderer, IconText } from '@repo/ui'
+import { callAction } from '@repo/ui/action'
 import { App, Form, Typography } from 'antd'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
@@ -83,14 +84,16 @@ export default function RegisterPage() {
         ]}
         formProps={{
           onFinish: async ({ confirmPassword: _, ...values }) => {
-            const result = await registerAction(values)
-            if (!result.ok) {
-              message.error(result.error)
-              return
-            }
-            authStorage.setToken(result.data)
-            message.success('注册成功')
-            router.replace(Pages.dashboard)
+            await callAction(registerAction, values, {
+              onError: (error) => {
+                message.error(error)
+              },
+              onSuccess: (token) => {
+                authStorage.setToken(token)
+                message.success('注册成功')
+                router.replace(Pages.dashboard)
+              },
+            })
           },
         }}
       >

@@ -3,6 +3,7 @@
 import { forgotPasswordAction } from '@/actions/auth.actions'
 import { SendOutlined } from '@ant-design/icons'
 import { FormRenderer, IconText } from '@repo/ui'
+import { callAction } from '@repo/ui/action'
 import { useBoolean } from 'ahooks'
 import { Alert, App, Form, Typography } from 'antd'
 import Link from 'next/link'
@@ -18,13 +19,13 @@ export default function ForgotPasswordPage() {
 
   const handleSubmit = async (values: { email: string }) => {
     startLoading()
-    const result = await forgotPasswordAction(values)
+    await callAction(forgotPasswordAction, values, {
+      onError: (error) => {
+        message.error(error)
+      },
+      onSuccess: markSubmitted,
+    })
     stopLoading()
-    if (!result.ok) {
-      message.error(result.error)
-    } else {
-      markSubmitted()
-    }
   }
 
   return (
