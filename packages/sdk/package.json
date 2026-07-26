@@ -1,0 +1,28 @@
+{
+  "name": "@repo/sdk",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "import": "./dist/index.mjs",
+      "types": "./src/index.ts",
+      "require": "./dist/index.cjs"
+    }
+  },
+  "scripts": {
+    "dev": "tsdown --watch --config-loader unrun",
+    "build": "tsdown --config-loader unrun"
+  },
+  "dependencies": {
+    "@repo/shared": "workspace:*",
+    "axios": "^1.18.1",
+    "lodash": "^4.18.1"
+  },
+  "devDependencies": {
+    "@types/lodash": "^4.17.24",
+    "tsdown": "^0.22.9",
+    "typescript": "^7.0.2",
+    "unrun": "^0.3.1"
+  }
+}
