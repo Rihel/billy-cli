@@ -27,9 +27,19 @@ export async function generate(
 
   const store = createMemFs<VinylMemFsEditorFile>()
   const editor = createMemFsEditor(store)
+
+  // 主模块文件
   for (const [relativePath, content] of Object.entries(template.files)) {
     editor.write(resolve(targetDirectory, relativePath), content)
   }
+
+  // 额外文件（workspace 相对路径）
+  if (template.extraFiles) {
+    for (const [filePath, content] of Object.entries(template.extraFiles)) {
+      editor.write(resolve(workspaceRoot, filePath), content)
+    }
+  }
+
   await editor.commit()
 
   return `${template.directory}/${name}`

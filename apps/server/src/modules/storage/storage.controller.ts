@@ -7,7 +7,7 @@ import {
 import type { z } from 'zod';
 import { ZBody } from 'nest-zod';
 import { AuthGuard } from '../../guards/auth.guard.js';
-import { UserId } from '../../decorators/user-id.decorator.js';
+import { RequestContext } from '@repo/kits';
 
 @Controller('storage')
 @UseGuards(AuthGuard)
@@ -27,7 +27,7 @@ export class StorageController {
   }
 
   @Post('get-temporary-credentials')
-  async getTemporaryCredentials(@UserId() userId: string) {
+  async getTemporaryCredentials(@RequestContext('userId') userId: string) {
     return await this.storageService
       .getProvider()
       .getTemporaryCredentials(userId);

@@ -13,7 +13,7 @@ import {
 import type { z } from 'zod';
 import { ZBody, ZSerialize } from 'nest-zod';
 import { AuthGuard } from '../../guards/auth.guard.js';
-import { UserId } from '../../decorators/user-id.decorator.js';
+import { RequestContext } from '@repo/kits';
 
 @Controller('auth')
 export class AuthController {
@@ -45,14 +45,14 @@ export class AuthController {
 
   @Post('get-me')
   @UseGuards(AuthGuard)
-  getMe(@UserId() userId: string) {
+  getMe(@RequestContext('userId') userId: string) {
     return this.authService.getMe(userId);
   }
 
   @Post('update-info')
   @UseGuards(AuthGuard)
   updateInfo(
-    @UserId() userId: string,
+    @RequestContext('userId') userId: string,
     @ZBody(UpdateInfoDto) input: z.infer<typeof UpdateInfoDto>,
   ) {
     return this.authService.updateInfo(userId, input);
@@ -62,7 +62,7 @@ export class AuthController {
   @UseGuards(AuthGuard)
   @ZSerialize(SuccessResultModel)
   changePassword(
-    @UserId() userId: string,
+    @RequestContext('userId') userId: string,
     @ZBody(ChangePasswordDto) input: z.infer<typeof ChangePasswordDto>,
   ) {
     return this.authService.changePassword(userId, input);

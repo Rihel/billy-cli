@@ -1,11 +1,9 @@
-import { AsyncLocalStorage } from 'async_hooks'
 import { Inject, Injectable } from '@nestjs/common'
 import { AppLoggerService } from '../logger/logger.service.js'
+import { als } from './request-context.store.js'
 
 @Injectable()
 export class RequestContextService<T extends Record<string, any> = Record<string, any>> {
-  private als = new AsyncLocalStorage<T>()
-
   constructor(
     @Inject(AppLoggerService) private readonly logger: AppLoggerService,
   ) {
@@ -13,11 +11,11 @@ export class RequestContextService<T extends Record<string, any> = Record<string
   }
 
   run(store: T, callback: () => void) {
-    this.als.run(store, callback)
+    als.run(store, callback)
   }
 
   getStore(): T | undefined {
-    return this.als.getStore()
+    return als.getStore() as T | undefined
   }
 
   get<K extends keyof T>(key: K): T[K] | undefined {

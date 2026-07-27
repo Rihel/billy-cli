@@ -43,5 +43,7 @@ export class RequestContextModule implements NestModule {
   }
 }
 
+export * from './request-context.decorator.js'
 export * from './request-context.service.js'
+export * from './request-context.store.js'
 export * from './request-context.types.js'

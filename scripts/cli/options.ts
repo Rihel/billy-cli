@@ -6,7 +6,7 @@ import type { CliOptions, TemplateType } from './types.js'
 
 function parseTemplateType(value: string): TemplateType {
   if (!templateTypes.includes(value as TemplateType)) {
-    throw new InvalidArgumentError('可选值为 package、client 或 service')
+    throw new InvalidArgumentError('可选值为 package、client、service 或 crud')
   }
   return value as TemplateType
 }

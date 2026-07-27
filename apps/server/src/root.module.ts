@@ -6,8 +6,7 @@ import { AuthModule } from './modules/auth/index.js';
 import { UserModule } from './modules/user/index.js';
 import { StorageModule } from './modules/storage/index.js';
 import { AuthGuard } from './guards/auth.guard.js';
-import { ResponseInterceptor } from './interceptors/response.interceptor.js';
-import { AppExceptionFilter } from './filters/app-exception.filter.js';
+import { ResponseInterceptor, AppExceptionFilter } from '@repo/kits';
 import { appConfig } from './config.js';
 
 @Module({

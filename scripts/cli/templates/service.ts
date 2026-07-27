@@ -107,12 +107,17 @@ export function createServiceTemplate(name: string): Template {
       'src/root.module.ts': render(
         source`
           import { Module } from '@nestjs/common'
-          import { LoggerModule } from '@repo/kits'
+          import { APP_FILTER, APP_INTERCEPTOR } from '@nestjs/core'
+          import { LoggerModule, ResponseInterceptor, AppExceptionFilter } from '@repo/kits'
           import { appConfig } from './config.js'
 
           @Module({
             imports: [
               LoggerModule.forRoot({ pretty: appConfig.isDev }),
+            ],
+            providers: [
+              { provide: APP_INTERCEPTOR, useClass: ResponseInterceptor },
+              { provide: APP_FILTER, useClass: AppExceptionFilter },
             ],
           })
           export class RootModule {}
