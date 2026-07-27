@@ -18,9 +18,7 @@ export class AppExceptionFilter implements ExceptionFilter {
   catch(exception: unknown, host: ArgumentsHost) {
     const ctx = host.switchToHttp()
     const response = ctx.getResponse<any>()
-    this.logger.error(`捕获异常：${exception}`, {
-      exception,
-    })
+
     // Zod 校验错误：提取中文提示，返回 HTTP 200
     if (
       exception instanceof BadRequestException &&
@@ -36,15 +34,13 @@ export class AppExceptionFilter implements ExceptionFilter {
         }>
       }
       const message = parseZodIssues(cause.issues as any)
-      this.logger.warn(`【参数校验异常】${message}`)
+      this.logger.warn('参数校验异常', { message, issues: cause.issues })
       response.status(200).json(ResponseUtils.error(400, message))
       return
     }
 
     if (exception instanceof AppError) {
-      this.logger.warn(
-        `【业务异常】code=${exception.errorCode} message=${exception.message}`,
-      )
+      this.logger.warn('业务异常', { code: exception.errorCode, message: exception.message })
       response
         .status(exception.httpStatus)
         .json(ResponseUtils.error(exception.errorCode, exception.message))
@@ -53,9 +49,7 @@ export class AppExceptionFilter implements ExceptionFilter {
 
     if (exception instanceof HttpException) {
       const status = exception.getStatus()
-      this.logger.warn(
-        `【HTTP 异常】status=${status} message=${exception.message}`,
-      )
+      this.logger.warn('HTTP 异常', { status, message: exception.message })
       response
         .status(status)
         .json(ResponseUtils.error(status, exception.message))
@@ -63,12 +57,12 @@ export class AppExceptionFilter implements ExceptionFilter {
     }
 
     if (exception instanceof Error) {
-      this.logger.error(`【系统异常】${exception.message}`)
+      this.logger.error('系统异常', { message: exception.message, stack: exception.stack })
       response.status(500).json(ResponseUtils.error(5001, '系统错误'))
       return
     }
 
-    this.logger.error('【未知异常】未捕获的异常类型')
+    this.logger.error('未知异常', { type: typeof exception })
     response.status(500).json(ResponseUtils.error(5001, '未知错误'))
   }
 }

@@ -25,7 +25,7 @@ export class ResponseInterceptor implements NestInterceptor {
         // NestJS POST 默认返回 201，改为 200
         response.status(200)
 
-        this.logger.log(`【响应成功】${controllerName}.${handlerName}`)
+        this.logger.info('响应成功', { controller: controllerName, handler: handlerName })
 
         // 如果返回值已经是 AppResponse 格式，直接返回
         if (data && typeof data === 'object' && 'code' in data) {

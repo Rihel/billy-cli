@@ -6,7 +6,7 @@ import {
   type CredentialsManager,
 } from '@repo/sdk'
 import { authStorage } from './auth'
-import { Pages } from './constants'
+import { Pages, ServerUrl } from './constants'
 
 /**
  * 客户端用的 CredentialsManager — 从 localStorage 读取/写入 token
@@ -33,7 +33,7 @@ let clientInstance: ServerClient<{ token: string }> | null = null
 export function getServerClient(): ServerClient<{ token: string }> {
   if (!clientInstance) {
     clientInstance = new ServerClient({
-      baseUrl: process.env.NEXT_PUBLIC_SERVER_URL || 'http://localhost:9989',
+      baseUrl: ServerUrl,
       credentialsManager: new WebCredentialsManager(),
       authStrategy: new BearerTokenStrategy(),
       callbacks: {

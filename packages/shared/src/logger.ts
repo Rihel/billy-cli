@@ -34,7 +34,6 @@ export function createLogger(name: string, pretty = false) {
         message = `${data} ${message}`
         data = {}
       }
-
       logger.info(data, message)
     },
     info: (message?: string, data?: any) => {
@@ -42,7 +41,6 @@ export function createLogger(name: string, pretty = false) {
         message = `${data} ${message}`
         data = {}
       }
-
       logger.info(data, message)
     },
     warn: (message?: string, data?: any) => {
@@ -50,7 +48,6 @@ export function createLogger(name: string, pretty = false) {
         message = `${data} ${message}`
         data = {}
       }
-
       logger.warn(data, message)
     },
     debug: (message?: string, data?: any) => {
@@ -58,7 +55,6 @@ export function createLogger(name: string, pretty = false) {
         message = `${data} ${message}`
         data = {}
       }
-
       logger.debug(data, message)
     },
     error: (message?: string, data?: any) => {
@@ -66,7 +62,6 @@ export function createLogger(name: string, pretty = false) {
         message = `${data} ${message}`
         data = {}
       }
-
       logger.error(data, message)
     },
   }

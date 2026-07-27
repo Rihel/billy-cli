@@ -14,6 +14,8 @@ export const PublicPaths = [
 
 export const TokenKey = 'access-token'
 export const AppName = 'Billy Cli'
+export const ServerUrl = process.env.SERVER_URL || 'http://localhost:9989'
+process.env.NEXT_PUBLIC_SERVER_URL || 'http://localhost:9989'
 
 export const StorageUrl =
   process.env.NEXT_PUBLIC_STORAGE_URL || 'http://localhost:9000/billy-cli'

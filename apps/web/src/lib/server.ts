@@ -3,7 +3,7 @@ import {
   BearerTokenStrategy,
   MemoryCredentialsManager,
 } from '@repo/sdk'
-import { TokenKey } from './constants'
+import { ServerUrl, TokenKey } from './constants'
 
 /**
  * 服务端用的 ServerClient — 用于 Server Actions 和 Server Components
@@ -25,7 +25,7 @@ export function createServerClient(token?: string) {
   }
 
   const client = new ServerClient({
-    baseUrl: process.env.SERVER_URL || 'http://localhost:9989',
+    baseUrl: ServerUrl,
     credentialsManager,
     authStrategy: new BearerTokenStrategy(),
     callbacks: {
