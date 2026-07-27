@@ -5,10 +5,14 @@ export type {
   AuthContext,
   CredentialsManager,
   AuthStrategy,
+  CredentialProvider,
 } from './core/interfaces.js'
 
+// 核心组件
 export { ApiClient } from './core/api.client.js'
-export type { ApiClientOptions } from './core/api.client.js'
+export type { ApiClientOptions, RequestOptions } from './core/api.client.js'
+export { CredentialResolver } from './core/credential-resolver.js'
+export { AuthInjector } from './core/auth-injector.js'
 
 export { ServerClient } from './server.client.js'
 export type {
@@ -17,13 +21,11 @@ export type {
   SuccessResult,
   TodoItem,
   TodoCursor,
-  TodoCursorPage,
-  PaginatedResult,
   StoragePresignedUrl,
   StorageCredentials,
-} from './server.types.js'
+} from './server.client.js'
 
-// Strategies
+// 认证策略
 export { BearerTokenStrategy } from './strategies/bearer-token.strategy.js'
 export type { BearerTokenCredentials } from './strategies/bearer-token.strategy.js'
 export { ApiKeyStrategy } from './strategies/api-key.strategy.js'
@@ -46,7 +48,11 @@ export type {
   HmacStrategyOptions,
 } from './strategies/hmac.strategy.js'
 
-// Credentials Managers
+// 凭证供应器
+export { EmptyCheckProvider } from './providers/empty-check.provider.js'
+export { ExpiresAtProvider } from './providers/expires-at.provider.js'
+
+// 凭证管理器
 export { LocalStorageCredentialsManager } from './managers/local-storage-credentials.manager.js'
 export type { StorageCredentialsManagerOptions } from './managers/local-storage-credentials.manager.js'
 export { MemoryCredentialsManager } from './managers/memory-credentials.manager.js'

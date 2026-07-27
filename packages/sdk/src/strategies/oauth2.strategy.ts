@@ -5,27 +5,34 @@ import type {
   CredentialsManager,
 } from '../core/interfaces.js'
 
+/** OAuth2 凭证类型 */
 export type OAuth2Credentials = {
+  /** 访问令牌 */
   accessToken: string
+  /** 刷新令牌（可选，用于自动续期） */
   refreshToken?: string
-  /** Token expiration timestamp (ms). Optional, enables auto-refresh. */
+  /** Token 过期时间戳（毫秒）。传入后启用自动过期检测。 */
   expiresAt?: number
 }
 
+/** OAuth2 策略配置选项 */
 export type OAuth2StrategyOptions = {
-  /** Called when access token needs refresh. Should return new credentials. */
+  /**
+   * 访问令牌过期时调用，应返回新的凭证。
+   * 不传则不支持自动刷新。
+   */
   onRefresh?: (
     credentials: OAuth2Credentials,
     manager: CredentialsManager<OAuth2Credentials>,
   ) => Promise<OAuth2Credentials>
-  /** Minimum time before expiration to trigger refresh (ms). Default: 60000 (1min) */
+  /** 过期前多久触发刷新（毫秒）。默认 60000（1 分钟） */
   refreshMarginMs?: number
 }
 
 /**
  * OAuth2 Bearer Token 认证策略。
  *
- * 支持自动刷新 token：检测到即将过期时触发 `onRefresh` 回调，
+ * 支持自动刷新令牌：检测到即将过期时触发 `onRefresh` 回调，
  * 刷新后自动回写 `CredentialsManager`。
  *
  * @example
@@ -56,7 +63,7 @@ export class OAuth2Strategy implements AuthStrategy<OAuth2Credentials> {
   }
 
   async getAuthContext(credentials: OAuth2Credentials): Promise<AuthContext> {
-    // 如果即将过期且有 refresh 能力，尝试自动刷新
+    // 如果即将过期且有 refresh 能力，抛错误通知上层刷新
     if (this.shouldRefresh(credentials)) {
       throw new OAuth2NeedsRefreshError(credentials)
     }
@@ -69,8 +76,9 @@ export class OAuth2Strategy implements AuthStrategy<OAuth2Credentials> {
   }
 
   /**
-   * Refresh the access token. Call this from your ApiClient's onUnauthorized
-   * or manually when catching OAuth2NeedsRefreshError.
+   * 刷新访问令牌。
+   * 在 ApiClient 的 onUnauthorized 回调中调用，
+   * 或捕获 OAuth2NeedsRefreshError 后手动调用。
    */
   async refresh(
     credentials: OAuth2Credentials,
@@ -78,13 +86,14 @@ export class OAuth2Strategy implements AuthStrategy<OAuth2Credentials> {
   ): Promise<OAuth2Credentials> {
     if (!this.options?.onRefresh) {
       throw new Error(
-        'OAuth2Strategy: onRefresh callback is required for token refresh.',
+        'OAuth2Strategy：需要配置 onRefresh 回调才能刷新令牌。',
       )
     }
     const next = await this.options.onRefresh(credentials, manager)
     return next
   }
 
+  /** 判断是否需要刷新 */
   private shouldRefresh(credentials: OAuth2Credentials): boolean {
     if (!credentials.expiresAt || !this.options?.onRefresh) return false
     const margin = this.options.refreshMarginMs ?? 60_000
@@ -93,15 +102,16 @@ export class OAuth2Strategy implements AuthStrategy<OAuth2Credentials> {
 }
 
 /**
- * Error thrown when token needs refresh. Catch it in your request pipeline
- * (e.g., axios interceptor or ApiClient callbacks), call `strategy.refresh()`,
- * then retry the original request.
+ * 令牌需要刷新时抛出的错误。
+ *
+ * 在请求管线中捕获此错误（如 axios 拦截器或 ApiClient 回调），
+ * 调用 `strategy.refresh()` 刷新后重试原请求。
  */
 export class OAuth2NeedsRefreshError extends Error {
   readonly credentials: OAuth2Credentials
 
   constructor(credentials: OAuth2Credentials) {
-    super('OAuth2 token needs refresh')
+    super('OAuth2 令牌需要刷新')
     this.name = 'OAuth2NeedsRefreshError'
     this.credentials = credentials
   }

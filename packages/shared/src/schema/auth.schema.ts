@@ -40,7 +40,14 @@ export const ChangePasswordDto = z.object({
   newPassword: z.string().min(6),
 })
 
-export const AuthResultDto = z.object({
+/** 登录/注册结果模型 */
+export const AuthResultModel = z.object({
   token: z.string(),
   user: UserModel,
+})
+
+/** 通用成功响应模型 */
+export const SuccessResultModel = z.object({
+  success: z.literal(true),
+  token: z.string().optional(),
 })

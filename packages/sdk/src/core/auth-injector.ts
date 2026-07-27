@@ -1,0 +1,43 @@
+import type { AuthStrategy } from './interfaces.js'
+import type { AxiosRequestConfig } from 'axios'
+
+/**
+ * 认证注入器 —— 负责将 credential 转换为请求认证信息。
+ *
+ * 职责：
+ *   - 调用 AuthStrategy 生成认证上下文
+ *   - 将认证信息（headers / query / body）注入请求配置
+ *
+ * 不负责：
+ *   - credential 生命周期管理
+ *   - HTTP 请求
+ */
+export class AuthInjector<Credentials = Record<string, any>> {
+  constructor(private readonly authStrategy: AuthStrategy<Credentials>) {}
+
+  /**
+   * 将凭证的认证信息注入到请求配置中。
+   * 返回新配置，不修改原对象。
+   */
+  async inject<Body = any>(
+    config: AxiosRequestConfig<Body>,
+    credentials: Credentials,
+  ): Promise<AxiosRequestConfig<Body>> {
+    const ctx = await this.authStrategy.getAuthContext(credentials)
+
+    return {
+      ...config,
+      headers: {
+        ...config.headers,
+        ...(ctx.headers || {}),
+      },
+      params: {
+        ...config.params,
+        ...(ctx.query || {}),
+      },
+      data: ctx.body
+        ? { ...config.data, ...ctx.body }
+        : config.data,
+    }
+  }
+}

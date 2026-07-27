@@ -5,26 +5,30 @@ import type {
 } from '../core/interfaces.js'
 import CryptoJs from 'crypto-js'
 
+/** HMAC 凭证类型 */
 export type HmacCredentials = {
   accessKey: string
   secretKey: string
 }
 
+/** 支持的 HMAC 哈希算法 */
 export type HmacAlgorithm = 'SHA-256' | 'SHA-384' | 'SHA-512'
 
+/** HMAC 策略配置选项 */
 export type HmacStrategyOptions = {
-  /** Hash algorithm. Default: 'SHA-256' */
+  /** 哈希算法。默认 'SHA-256' */
   algorithm?: HmacAlgorithm
-  /** Header prefix for signature headers. Default: 'X-Hmac' */
+  /** 签名请求头前缀。默认 'X-Hmac' */
   headerPrefix?: string
   /**
-   * When true (default), signs the canonical request using timestamp + nonce only.
-   * Set to false if you sign requests via an interceptor calling `strategy.sign()`.
+   * 是否自动对 timestamp + nonce 签名。
+   * 设为 false 时需要在 axios 拦截器中手动调用 `strategy.sign()`。
+   * 默认 true
    */
   autoSign?: boolean
   /**
-   * Custom canonical request string builder (only used when autoSign is true).
-   * Default: TIMESTAMP + '\n' + NONCE
+   * 自定义规范字符串构建函数（autoSign=true 时生效）。
+   * 默认：TIMESTAMP + '\n' + NONCE
    */
   buildCanonicalString?: (config: {
     timestamp: string
@@ -41,9 +45,9 @@ export type HmacStrategyOptions = {
  * 签名流程（autoSign=true，默认）：
  * 1. 生成 timestamp + nonce
  * 2. 用 secretKey 对规范字符串 HMAC 签名
- * 3. 在 header 注入 X-Hmac-AccessKey / X-Hmac-Signature / X-Hmac-Timestamp / X-Hmac-Nonce
+ * 3. 在请求头注入 X-Hmac-AccessKey / X-Hmac-Signature / X-Hmac-Timestamp / X-Hmac-Nonce
  *
- * 如需对 method + path + body 做全量签名（如阿里云、AWS 风格），
+ * 如需对 method + path + body 做全量签名（如阿里云签名风格），
  * 在 axios 拦截器中调用 `strategy.sign(secretKey, canonicalString)` 自行处理。
  *
  * @example
@@ -113,17 +117,19 @@ export class HmacStrategy implements AuthStrategy<HmacCredentials> {
 
   /**
    * 用 secretKey 对任意字符串计算 HMAC 签名。
-   * 可在 axios 拦截器中调用，实现 full-request signing。
+   * 可在 axios 拦截器中调用，实现全量请求签名。
    */
   sign(secretKey: string, data: string): string {
     const fn = this.hmacFn()
     return fn(data, secretKey).toString()
   }
 
+  /** 生成 16 字节随机数 */
   private generateNonce(): string {
     return CryptoJs.lib.WordArray.random(16).toString()
   }
 
+  /** 根据算法获取对应的 HMAC 函数 */
   private hmacFn(): (data: string, key: string) => CryptoJs.lib.WordArray {
     switch (this.options.algorithm) {
       case 'SHA-384':

@@ -1,21 +1,24 @@
 import type { CredentialsManager } from '../core/interfaces.js'
 
+/** 存储凭证管理器配置选项 */
 export type StorageCredentialsManagerOptions = {
-  /** Storage key prefix. Useful to avoid collisions between apps. */
+  /** 存储键名前缀。用于避免不同应用间的键名冲突。 */
   prefix?: string
-  /** Logger for debugging. */
+  /** 调试日志记录器。 */
   logger?: Pick<Console, 'warn' | 'error'>
 }
 
 /**
  * 基于 localStorage 的凭证管理器。
- * 凭证序列化为 JSON 存到 `localStorage`，仅浏览器环境可用。
+ *
+ * 凭证序列化为 JSON 存到浏览器 `localStorage`，仅浏览器环境可用。
  *
  * @example
  * ```ts
- * const manager = new LocalStorageCredentialsManager<BearerTokenCredentials>({
- *   prefix: 'myapp',
- * })
+ * const manager = new LocalStorageCredentialsManager<BearerTokenCredentials>(
+ *   'billy-token',
+ *   { prefix: 'myapp' },
+ * )
  *
  * // 登录后写入
  * await manager.setCredentials({ token: 'xxx' })
@@ -43,7 +46,7 @@ export class LocalStorageCredentialsManager<
   async getCredentials(): Promise<Credentials> {
     if (typeof localStorage === 'undefined') {
       this.logger?.warn(
-        `[LocalStorageCredentialsManager] localStorage not available, key="${this.storageKey}"`,
+        `[LocalStorageCredentialsManager] localStorage 不可用，键名="${this.storageKey}"`,
       )
       return {} as Credentials
     }
@@ -54,7 +57,7 @@ export class LocalStorageCredentialsManager<
       return JSON.parse(raw) as Credentials
     } catch (error) {
       this.logger?.error(
-        `[LocalStorageCredentialsManager] Failed to parse credentials, key="${this.storageKey}"`,
+        `[LocalStorageCredentialsManager] 解析凭证失败，键名="${this.storageKey}"`,
         error,
       )
       return {} as Credentials
@@ -64,7 +67,7 @@ export class LocalStorageCredentialsManager<
   async setCredentials(credentials: Credentials): Promise<void> {
     if (typeof localStorage === 'undefined') {
       this.logger?.warn(
-        `[LocalStorageCredentialsManager] localStorage not available, key="${this.storageKey}"`,
+        `[LocalStorageCredentialsManager] localStorage 不可用，键名="${this.storageKey}"`,
       )
       return
     }
@@ -73,7 +76,7 @@ export class LocalStorageCredentialsManager<
       localStorage.setItem(this.storageKey, JSON.stringify(credentials))
     } catch (error) {
       this.logger?.error(
-        `[LocalStorageCredentialsManager] Failed to write credentials, key="${this.storageKey}"`,
+        `[LocalStorageCredentialsManager] 写入凭证失败，键名="${this.storageKey}"`,
         error,
       )
       throw error
@@ -89,7 +92,7 @@ export class LocalStorageCredentialsManager<
       localStorage.removeItem(this.storageKey)
     } catch (error) {
       this.logger?.error(
-        `[LocalStorageCredentialsManager] Failed to clear credentials, key="${this.storageKey}"`,
+        `[LocalStorageCredentialsManager] 清除凭证失败，键名="${this.storageKey}"`,
         error,
       )
       throw error

@@ -2,12 +2,13 @@ import type { CredentialsManager } from '../core/interfaces.js'
 
 /**
  * 基于内存的凭证管理器。
- * 凭证保存在 JS 变量中，页面刷新/进程重启即丢失。
- * 适合测试环境、CLI 工具，或不需要持久化的场景。
+ *
+ * 凭证保存在 JS 变量中，页面刷新或进程重启即丢失。
+ * 适合测试环境、CLI 工具、或不需要持久化的场景。
  *
  * @example
  * ```ts
- * // 测试场景
+ * // 测试场景：初始注入假凭证
  * const manager = new MemoryCredentialsManager({ token: 'test-token' })
  *
  * // 运行时动态设置

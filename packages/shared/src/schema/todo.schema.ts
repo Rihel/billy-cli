@@ -32,6 +32,9 @@ export const TodoCursorDto = z.object({
   todoId: z.string(),
 })
 
+/** 游标模型（响应） */
+export const TodoCursorModel = TodoCursorDto
+
 export const CursorQueryTodoDto = BaseCursorPaginateDto.extend({
   cursor: TodoCursorDto.optional(),
   keyword: z.string().optional(),

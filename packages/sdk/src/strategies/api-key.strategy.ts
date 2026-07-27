@@ -1,12 +1,15 @@
 import type { AuthStrategy, AuthStrategyType, AuthContext } from '../core/interfaces.js'
 
+/** API Key 注入位置 */
 export type ApiKeyLocation = 'header' | 'query'
 
+/** API Key 凭证类型 */
 export type ApiKeyCredentials = {
+  /** API Key 值 */
   apiKey: string
-  /** Header name or query param name. Default: 'X-API-Key' */
+  /** 请求头名称或查询参数名。默认 'X-API-Key' */
   keyName?: string
-  /** Where to place the key. Default: 'header' */
+  /** 注入位置。默认 'header'（请求头） */
   location?: ApiKeyLocation
 }
 
