@@ -1,4 +1,9 @@
-import type { AuthStrategy, AuthStrategyType, AuthContext, CredentialsManager } from '../interfaces.js'
+import type {
+  AuthStrategy,
+  AuthStrategyType,
+  AuthContext,
+  CredentialsManager,
+} from '../core/interfaces.js'
 
 export type OAuth2Credentials = {
   accessToken: string
@@ -50,9 +55,7 @@ export class OAuth2Strategy implements AuthStrategy<OAuth2Credentials> {
     return !!credentials?.accessToken
   }
 
-  async getAuthContext(
-    credentials: OAuth2Credentials,
-  ): Promise<AuthContext> {
+  async getAuthContext(credentials: OAuth2Credentials): Promise<AuthContext> {
     // 如果即将过期且有 refresh 能力，尝试自动刷新
     if (this.shouldRefresh(credentials)) {
       throw new OAuth2NeedsRefreshError(credentials)

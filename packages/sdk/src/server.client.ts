@@ -1,4 +1,4 @@
-import { ApiClient } from './api.client.js'
+import { ApiClient } from './core/api.client.js'
 import { ResponseUtils } from '@repo/shared'
 import type {
   SafeUser,

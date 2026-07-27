@@ -1,7 +1,6 @@
 {
   "compilerOptions": {
     "outDir": "dist",
-    "rootDir": "src",
     "module": "esnext",
     "target": "esnext",
     "moduleResolution": "bundler",

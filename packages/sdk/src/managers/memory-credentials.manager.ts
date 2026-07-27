@@ -1,4 +1,4 @@
-import type { CredentialsManager } from '../interfaces.js'
+import type { CredentialsManager } from '../core/interfaces.js'
 
 /**
  * 基于内存的凭证管理器。
@@ -14,9 +14,9 @@ import type { CredentialsManager } from '../interfaces.js'
  * await manager.setCredentials({ token: 'xxx' })
  * ```
  */
-export class MemoryCredentialsManager<Credentials extends Record<string, any>>
-  implements CredentialsManager<Credentials>
-{
+export class MemoryCredentialsManager<
+  Credentials extends Record<string, any>,
+> implements CredentialsManager<Credentials> {
   private data: Credentials
 
   constructor(initial?: Credentials) {

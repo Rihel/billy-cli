@@ -1,6 +1,10 @@
-import type { CredentialsManager } from '../interfaces.js'
+import type { CredentialsManager } from '../core/interfaces.js'
 
-export type CookieGetter = () => string | undefined | null | Promise<string | undefined | null>
+export type CookieGetter = () =>
+  | string
+  | undefined
+  | null
+  | Promise<string | undefined | null>
 export type CookieSetter = (value: string) => void | Promise<void>
 export type CookieClearer = () => void | Promise<void>
 
@@ -49,7 +53,9 @@ export type CookieCredentialsManagerOptions = {
  * })
  * ```
  */
-export class CookieCredentialsManager implements CredentialsManager<{ token: string }> {
+export class CookieCredentialsManager implements CredentialsManager<{
+  token: string
+}> {
   private readonly cookieName: string
   private readonly cookieOptions: string
   private getter: CookieGetter
@@ -57,10 +63,7 @@ export class CookieCredentialsManager implements CredentialsManager<{ token: str
   private clearer: CookieClearer
   private logger?: Pick<Console, 'warn' | 'error'>
 
-  constructor(
-    cookieName: string,
-    options?: CookieCredentialsManagerOptions,
-  ) {
+  constructor(cookieName: string, options?: CookieCredentialsManagerOptions) {
     this.cookieName = cookieName
     this.logger = options?.logger
     this.getter = options?.getter ?? this.defaultGetter.bind(this)

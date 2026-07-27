@@ -1,4 +1,4 @@
-import type { CredentialsManager } from '../interfaces.js'
+import type { CredentialsManager } from '../core/interfaces.js'
 
 export type StorageCredentialsManagerOptions = {
   /** Storage key prefix. Useful to avoid collisions between apps. */
@@ -27,9 +27,9 @@ export type StorageCredentialsManagerOptions = {
  * await manager.clearCredentials()
  * ```
  */
-export class LocalStorageCredentialsManager<Credentials extends Record<string, any>>
-  implements CredentialsManager<Credentials>
-{
+export class LocalStorageCredentialsManager<
+  Credentials extends Record<string, any>,
+> implements CredentialsManager<Credentials> {
   private readonly storageKey: string
   private logger?: Pick<Console, 'warn' | 'error'>
 
