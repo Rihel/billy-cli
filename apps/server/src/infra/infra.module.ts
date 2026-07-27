@@ -1,5 +1,10 @@
 import { Module } from '@nestjs/common';
-import { KitsModule, RequestContextModule } from '@repo/kits';
+import {
+  LoggerModule,
+  DatabaseModule,
+  RedisModule,
+  RequestContextModule,
+} from '@repo/kits';
 import { appConfig } from '../config.js';
 
 export interface ContextData {
@@ -8,13 +13,11 @@ export interface ContextData {
 
 @Module({
   imports: [
-    KitsModule.forRoot({
-      database: { url: appConfig.dbUrl },
-      redis: {
-        url: appConfig.redisUrl,
-        keyPrefix: 'billy-cli:',
-      },
-      logger: { pretty: appConfig.isDev },
+    LoggerModule.forRoot({ pretty: appConfig.isDev }),
+    DatabaseModule.forRoot({ url: appConfig.dbUrl }),
+    RedisModule.forRoot({
+      url: appConfig.redisUrl,
+      keyPrefix: 'billy-cli:',
     }),
     RequestContextModule.forRoot<ContextData>({
       defaultStoreFactory: () => ({

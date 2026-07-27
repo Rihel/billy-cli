@@ -6,7 +6,7 @@ import {
 } from '@repo/shared'
 import Cos from 'cos-nodejs-sdk-v5'
 import type { z } from 'zod'
-import { AppLoggerService } from '../logger.js'
+import { AppLoggerService } from '../logger/logger.service.js'
 import { StorageConfig } from './storage.config.js'
 import type { StorageProvider } from './types.js'
 

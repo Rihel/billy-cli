@@ -20,7 +20,7 @@ import type { PgColumn, PgTable, PgUpdateSetSource } from 'drizzle-orm/pg-core'
 import {
   DATABASE_MODULE_OPTIONS,
   type DatabaseModuleOptions,
-} from './options.js'
+} from './database.options.js'
 
 export interface PageResult<T> {
   items: T[]

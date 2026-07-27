@@ -1,7 +1,7 @@
 import { Inject, Injectable, Scope } from '@nestjs/common'
 import { INQUIRER } from '@nestjs/core'
 import { createLogger, type AppLogger } from '@repo/shared/logger'
-import { LOGGER_MODULE_OPTIONS, type LoggerModuleOptions } from './options.js'
+import { LOGGER_MODULE_OPTIONS, type LoggerModuleOptions } from './logger.options.js'
 
 @Injectable({ scope: Scope.TRANSIENT })
 export class AppLoggerService implements AppLogger {

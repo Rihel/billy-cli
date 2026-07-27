@@ -1,6 +1,6 @@
 import { AsyncLocalStorage } from 'async_hooks'
 import { Inject, Injectable } from '@nestjs/common'
-import { AppLoggerService } from '../logger.js'
+import { AppLoggerService } from '../logger/logger.service.js'
 
 @Injectable()
 export class RequestContextService<T extends Record<string, any> = Record<string, any>> {
