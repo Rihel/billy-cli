@@ -1,7 +1,7 @@
 'use server'
 
 import { cookies } from 'next/headers'
-import { createServerClient } from '@/lib/server'
+import { createServerClient } from '@/lib/server-client'
 import { TokenKey } from '@/lib/constants'
 import { logger } from '@/lib/logger'
 import { defineAction } from '@repo/ui/action'

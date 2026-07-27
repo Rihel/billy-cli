@@ -1,7 +1,7 @@
 'use client'
 import { logoutAction } from '@/actions/auth.actions'
-import { authStorage } from '@/lib/auth'
-import { useServerClient } from '@/lib/client'
+import { removeToken } from '@/lib/server-client'
+import { useServerClient } from '@/lib/server-client'
 import { useAuthStore } from '@/stores/auth.store'
 import { LockOutlined } from '@ant-design/icons'
 import { useMutation } from '@tanstack/react-query'
@@ -45,7 +45,7 @@ export default function UserCenter() {
     await changePasswordMutation.mutateAsync(input)
     message.success('密码修改成功，请重新登录')
     clear()
-    authStorage.removeToken()
+    removeToken()
     await logoutAction()
     router.replace('/auth/login')
   }

@@ -1,6 +1,6 @@
 'use client'
 
-import { useServerClient } from '@/lib/client'
+import { useServerClient } from '@/lib/server-client'
 import { EditOutlined, PlusOutlined } from '@ant-design/icons'
 import { App, Checkbox, Form, Input, Space, Tag } from 'antd'
 import {

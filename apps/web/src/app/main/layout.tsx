@@ -1,4 +1,4 @@
-import { createServerClientFromCookies } from '@/lib/server'
+import { createServerClientFromCookies } from '@/lib/server-client'
 import { AuthStoreProvider } from '@/stores/auth.store'
 import { redirect } from 'next/navigation'
 

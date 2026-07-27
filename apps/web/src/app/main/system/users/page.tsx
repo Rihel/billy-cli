@@ -1,7 +1,7 @@
 'use client'
 
 import { formatStorageUrl } from '@/lib/constants'
-import { useServerClient } from '@/lib/client'
+import { useServerClient } from '@/lib/server-client'
 import { EditOutlined, LockOutlined, PlusOutlined } from '@ant-design/icons'
 import { App, Avatar, Form, Input, Tag } from 'antd'
 import { useMutation, useQuery } from '@tanstack/react-query'

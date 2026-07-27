@@ -11,7 +11,7 @@ import {
 } from '@tanstack/react-query'
 import { formatStorageUrl } from '@/lib/constants'
 import { StorageProvider } from '@repo/ui'
-import { useServerClient } from '@/lib/client'
+import { useServerClient } from '@/lib/server-client'
 
 function getErrorMessage(error: unknown): string {
   if (error instanceof Error) return error.message

@@ -1,6 +1,6 @@
 'use client'
 
-import { authStorage } from '@/lib/auth'
+import { saveToken } from '@/lib/server-client'
 import { loginAction } from '@/actions/auth.actions'
 import { LoginOutlined } from '@ant-design/icons'
 import { FormRenderer, IconText } from '@repo/ui'
@@ -63,7 +63,7 @@ export default function LoginPage() {
                 message.error(error)
               },
               onSuccess: (token) => {
-                authStorage.setToken(token)
+                saveToken(token)
                 message.success('登录成功')
                 router.replace(Pages.dashboard)
               },

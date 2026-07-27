@@ -1,6 +1,6 @@
 'use client'
 
-import { authStorage } from '@/lib/auth'
+import { saveToken } from '@/lib/server-client'
 import { registerAction } from '@/actions/auth.actions'
 import { UserAddOutlined } from '@ant-design/icons'
 import { FormRenderer, IconText } from '@repo/ui'
@@ -89,7 +89,7 @@ export default function RegisterPage() {
                 message.error(error)
               },
               onSuccess: (token) => {
-                authStorage.setToken(token)
+                saveToken(token)
                 message.success('注册成功')
                 router.replace(Pages.dashboard)
               },

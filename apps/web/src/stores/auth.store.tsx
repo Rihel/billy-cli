@@ -1,6 +1,6 @@
 'use client'
 
-import { authStorage } from '@/lib/auth'
+import { removeToken } from '@/lib/server-client'
 import { UserModel } from '@repo/shared'
 import { createContext, ReactNode, useContext, useState } from 'react'
 import { z } from 'zod'
@@ -23,7 +23,7 @@ export const createAuthStore = (state: AuthStoreState) => {
     immer((set) => ({
       ...state,
       clear() {
-        authStorage.removeToken()
+        removeToken()
         set((d) => {
           d.userInfo = null
         })

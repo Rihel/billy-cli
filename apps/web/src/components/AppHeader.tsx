@@ -3,7 +3,7 @@
 import { AppName, formatStorageUrl } from '@/lib/constants'
 import { useAuthStore } from '@/stores/auth.store'
 import { logoutAction } from '@/actions/auth.actions'
-import { authStorage } from '@/lib/auth'
+import { removeToken } from '@/lib/server-client'
 import { DownOutlined } from '@ant-design/icons'
 import { Avatar, Dropdown } from 'antd'
 import type { MenuProps } from 'antd'
@@ -16,7 +16,7 @@ export const AppHeader = ({}: AppHeaderProps) => {
   const router = useRouter()
   const exit = async () => {
     clear()
-    authStorage.removeToken()
+    removeToken()
     await logoutAction()
     router.replace('/auth/login')
   }
