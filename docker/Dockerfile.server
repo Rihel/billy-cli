@@ -13,16 +13,17 @@ COPY apps/web/package.json    ./apps/web/
 COPY packages/shared/package.json ./packages/shared/
 COPY packages/db/package.json     ./packages/db/
 COPY packages/ui/package.json     ./packages/ui/
+COPY packages/kits/package.json   ./packages/kits/
+COPY packages/sdk/package.json    ./packages/sdk/
 
 # 安装全部依赖（含 devDependencies，build 需要）
-# CI=true: 告知 pnpm 跳过无 TTY 时的交互确认
 COPY scripts/ ./scripts/
 RUN pnpm install --frozen-lockfile
 
-# 复制源码（含宿主机预生成的 src/@generated/server.ts）
+# 复制源码
 COPY . .
 
-# 用 turbo 构建（跳过 gen:trpc，直接 nest build）
+# 用 turbo 构建
 RUN pnpm turbo run build:docker --filter @app/server...
 
 # 用 pnpm deploy 提取 server 及其运行时依赖到独立目录

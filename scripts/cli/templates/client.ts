@@ -41,7 +41,6 @@ export function createClientTemplate(name: string): Template {
         },
         devDependencies: {
           '@ant-design/static-style-extract': '^2.1.0',
-          '@app/server': 'workspace:*',
           '@tailwindcss/postcss': '^4',
           '@types/lodash': '^4.17.24',
           '@types/node': '^26.1.1',
