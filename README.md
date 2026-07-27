@@ -6,29 +6,31 @@
 
 ```
 apps/
-├── server   — NestJS 11 + tRPC + Drizzle ORM + PostgreSQL + Redis
+├── server   — NestJS 11 + Drizzle ORM + PostgreSQL + Redis
 ├── web      — Next.js 16 App Router + Ant Design Pro 6 + Tailwind 4
 packages/
 ├── db       — Drizzle ORM schema + migration
+├── sdk      — ServerClient（全类型化业务 API 调用）
 ├── shared   — Zod schemas + 工具函数（前后端共享）
 ├── ui       — 共享 UI 组件（Ant Design + Tailwind）
+└── kits     — NestJS 工具包（DB / Redis / Storage / 日志 / 错误）
 ```
 
-| 层         | 选型                  | 理由                                       |
-| ---------- | --------------------- | ------------------------------------------ |
-| 构建系统   | pnpm + Turbo          | monorepo 依赖管理 + 增量缓存               |
-| 服务端框架 | NestJS 11             | 企业级 DI/AOP，nestjs-trpc 深度集成        |
-| API 层     | tRPC                  | 全链路类型推导，零契约文档                 |
-| ORM        | Drizzle ORM           | 无 runtime、类型原生、SQL-like API         |
-| 前端框架   | Next.js 16 App Router | RSC + SSR + Server Actions                 |
-| 前后端共享 | Zod                   | 同一 schema 定义类型 + 校验                |
-| UI 组件    | Ant Design Pro 6      | ProTable / ModalForm 开箱即用              |
-| 状态管理   | Zustand + Immer       | 轻量、不可变、无 boilerplate               |
-| 样式       | Tailwind 4            | 原子化 CSS，零心智负担                     |
-| 日志       | Pino                  | 结构化日志，开发环境 pretty，生产环境 JSON |
-| 缓存       | Redis（ioredis）      | 完整 Set / List / Hash / PubSub / 分布式锁 |
-| 构建工具   | tsdown                | 比 tsc 快一个数量级的 bundler              |
-| 容器化     | Docker multi-stage    | server + web 独立部署，Next.js standalone  |
+| 层         | 选型                          | 理由                                       |
+| ---------- | ----------------------------- | ------------------------------------------ |
+| 构建系统   | pnpm + Turbo                  | monorepo 依赖管理 + 增量缓存               |
+| 服务端框架 | NestJS 11                     | 企业级 DI/AOP，装饰器驱动                  |
+| API 层     | POST JSON（NestJS Controller）| 全类型化 SDK 封装，零额外运行时             |
+| ORM        | Drizzle ORM                   | 无 runtime、类型原生、SQL-like API         |
+| 前端框架   | Next.js 16 App Router         | RSC + SSR + Server Actions                 |
+| 前后端共享 | Zod                           | 同一 schema 定义类型 + 校验                |
+| UI 组件    | Ant Design Pro 6              | ProTable / ModalForm 开箱即用              |
+| 状态管理   | Zustand + Immer               | 轻量、不可变、无 boilerplate               |
+| 样式       | Tailwind 4                    | 原子化 CSS，零心智负担                     |
+| 日志       | Pino                          | 结构化日志，开发环境 pretty，生产环境 JSON |
+| 缓存       | Redis（ioredis）              | 完整 Set / List / Hash / PubSub / 分布式锁 |
+| 构建工具   | tsdown                        | 比 tsc 快一个数量级的 bundler              |
+| 容器化     | Docker multi-stage            | server + web 独立部署，Next.js standalone  |
 
 ## 快速开始
 
@@ -76,7 +78,7 @@ pnpm db:migrate
 ### 启动（开发）
 
 ```bash
-# 终端 1：启动 packages（shared / db / ui）的 watch 构建
+# 终端 1：启动 packages（shared / db / ui / kits / sdk）的 watch 构建
 pnpm dev:pkgs
 
 # 终端 2：启动 NestJS 服务（port 9989）
@@ -105,46 +107,91 @@ docker compose up
 ### 数据流
 
 ```
-浏览器 ── HTTP ──→ Next.js ── tRPC ──→ NestJS ── Drizzle ──→ PostgreSQL
-                    (SSR)      │                     │
-                               │                     └── Redis
-                               │
-                    ┌──────────┴──────────┐
-                    │                     │
-             lib/server-trpc.ts    lib/client-trpc.ts
-             （RSC / Server Actions）  （SPA 客户端）
+浏览器 ── POST JSON ──→ Next.js ── POST JSON ──→ NestJS ── Drizzle ──→ PostgreSQL
+                         (SSR)       │                      │
+                                      │                      └── Redis
+                                      │
+                           ┌──────────┴──────────┐
+                           │                     │
+                    lib/server.ts          lib/client.ts
+                    （ServerClient）       （ServerClient）
+                    RSC / Server Actions   浏览器端
 ```
 
 ### 认证
 
 - JWT token，通过 `Authorization: Bearer` 或 `cookie` 传递
-- `TrpcAppContext` 在 tRPC context 层自动解析 token，注入 `userId`
-- `AuthMiddleware` 装饰器按路由粒度控制鉴权
+- `AuthGuard` 在 NestJS 控制器层校验 JWT，注入 `userId`
+- 公开接口（登录 / 注册 / 忘记密码 / 重置密码）不用 Guard
 - SSR 侧通过 try/catch + `redirect()` 做路由守卫
-- 客户端通过 `unauthorizedLink`（trpc-links.ts）自动跳转登录页
+- 客户端通过 `onUnauthorized` 回调自动跳转登录页
 - `main/layout.tsx` 标记 `dynamic = 'force-dynamic'` 确保每次请求都校验认证
 
-### tRPC 路由
+### API 设计
 
-所有 API 通过 `nestjs-trpc` 以 decorator 方式声明：
+所有接口均为 `POST`，响应统一包装为 `AppResponse<T>` 格式：
 
-```typescript
-@Router({ alias: 'todo' })
-@UseMiddlewares(AuthMiddleware)
-export class TodoRouter {
-  @Mutation({ input: CreateTodoDto })
-  create(@Input() input: z.infer<typeof CreateTodoDto>) { ... }
-
-  @Query({ input: PageQueryTodoDto })
-  findMany(@Input() input: z.infer<typeof PageQueryTodoDto>) { ... }
+**成功响应**：
+```json
+{
+  "code": 0,
+  "data": { ... }
 }
 ```
 
-生成类型定义供客户端消费：
-
-```bash
-pnpm gen:trpc
+**业务异常响应**：
+```json
+{
+  "code": 1000,
+  "message": "邮箱不存在"
+}
 ```
+
+路由按模块划分：
+
+| 路由 | 说明 | 鉴权 |
+|------|------|------|
+| `POST /auth/register` | 注册 | 否 |
+| `POST /auth/login` | 登录 | 否 |
+| `POST /auth/forgot-password` | 忘记密码 | 否 |
+| `POST /auth/reset-password` | 重置密码 | 否 |
+| `POST /auth/get-me` | 获取当前用户 | 是 |
+| `POST /auth/update-info` | 更新个人信息 | 是 |
+| `POST /auth/change-password` | 修改密码 | 是 |
+| `POST /todo/*` | Todo CRUD | 是 |
+| `POST /user/*` | 用户管理 | 是 |
+| `POST /storage/*` | 存储服务 | 是 |
+
+### ServerClient SDK
+
+`@repo/sdk` 提供 `ServerClient` 封装，继承 `ApiClient`，自动处理鉴权和响应解包：
+
+```typescript
+import { ServerClient, BearerTokenStrategy, MemoryCredentialsManager } from '@repo/sdk'
+
+const client = new ServerClient({
+  baseUrl: 'http://localhost:9989',
+  credentialsManager: new MemoryCredentialsManager(),
+  authStrategy: new BearerTokenStrategy(),
+  callbacks: {
+    onUnauthorized: () => router.push('/auth/login'),
+  },
+})
+
+// 公开接口（无需 token）
+const { token, user } = await client.auth.login({ email, password })
+
+// 设置 token 后自动带上鉴权头
+await client.credentialsManager.setCredentials({ token })
+
+// 需鉴权的接口
+const me = await client.auth.getMe()
+const todos = await client.todo.findManyCursor({ size: 20 })
+```
+
+前端通过 `lib/client.ts` 获取单例，`useServerClient()` hook 在 React 组件中使用。
+
+服务端（Server Actions / RSC）通过 `lib/server.ts` 创建实例，从 httpOnly cookie 获取 token。
 
 ### 分页
 
@@ -170,7 +217,7 @@ pnpm gen:trpc
 
 ```typescript
 // apps/server/src/main.ts
-createLogger('bootstrap', appConfig.isDev)  // NODE_ENV 控制
+createLogger('bootstrap', appConfig.isDev)
 
 // production 输出示例
 {"level":30, "time":1690000000000, "name":"bootstrap", "msg":"服务已启动 http://localhost:9989"}
@@ -182,67 +229,72 @@ createLogger('bootstrap', appConfig.isDev)  // NODE_ENV 控制
 ├── apps/
 │   ├── server/
 │   │   └── src/
-│   │       ├── @generated/        # tRPC 类型定义（自动生成）
-│   │       ├── infra/
-│   │       │   ├── db.service.ts      # Drizzle CRUD + 分页
-│   │       │   ├── redis.service.ts   # Set/List/Hash/Lock/PubSub/JSON
-│   │       │   └── infra.module.ts    # Global Module
-│   │       ├── middlewares/       # 鉴权中间件
-│   │       ├── modules/
-│   │       │   ├── auth/          # 注册 / 登录 / 密码重置
-│   │       │   ├── todo/          # Todo CRUD
-│   │       │   └── user/          # 用户管理
 │   │       ├── config.ts
 │   │       ├── main.ts
-│   │       ├── logger.module.ts
-│   │       ├── logger.service.ts
 │   │       ├── root.module.ts
-│   │       └── trpc.context.ts
+│   │       ├── guards/          # AuthGuard（JWT 鉴权）
+│   │       ├── decorators/      # @UserId() 参数装饰器
+│   │       ├── filters/         # AppExceptionFilter（全局异常）
+│   │       ├── interceptors/    # ResponseInterceptor（统一包装 + 状态码）
+│   │       ├── infra/           # DbService, RedisService, InfraModule
+│   │       └── modules/
+│   │           ├── auth/        # 注册 / 登录 / 密码重置
+│   │           ├── todo/        # Todo CRUD
+│   │           ├── user/        # 用户管理
+│   │           └── storage/     # 文件存储（S3/COS）
 │   └── web/
 │       ├── scripts/
-│       │   └── start.sh           # standalone 启动脚本
+│       │   └── start.sh         # standalone 启动脚本
 │       └── src/
-│           ├── actions/           # Server Actions
-│           ├── app/               # App Router 页面
-│           │   ├── auth/          # 登录 / 注册 / 重置密码
-│           │   ├── main/
-│           │   │   ├── dashboard/     # 仪表盘
-│           │   │   ├── todo/          # Todo 管理
-│           │   │   ├── system/users/  # 用户管理（CRUD）
-│           │   │   ├── error.tsx      # 布局级错误边界
-│           │   │   └── layout.tsx     # SSR 预取 + 鉴权
-│           │   ├── error.tsx      # 全局错误边界
-│           │   └── layout.tsx     # 根 Layout
+│           ├── actions/         # Server Actions
+│           ├── app/             # App Router 页面
+│           │   ├── auth/        # 登录 / 注册 / 重置密码
+│           │   └── main/
+│           │       ├── dashboard/     # 仪表盘
+│           │       ├── todo/          # Todo 管理
+│           │       ├── system/users/  # 用户管理（CRUD）
+│           │       ├── error.tsx      # 布局级错误边界
+│           │       └── layout.tsx     # SSR 预取 + 鉴权
 │           ├── lib/
-│           │   ├── client-trpc.ts     # 客户端 tRPC
-│           │   ├── server-trpc.ts     # 服务端 tRPC（RSC / Server Actions）
-│           │   ├── trpc-links.ts      # 统一未授权处理
-│           │   ├── auth.ts            # 认证存储
-│           │   └── constants.ts       # 路由常量
+│           │   ├── client.ts     # 客户端 ServerClient 单例
+│           │   ├── server.ts     # 服务端 ServerClient（cookie）
+│           │   ├── auth.ts       # 认证存储
+│           │   └── constants.ts  # 路由常量
 │           ├── providers/
-│           │   └── AppProviders.tsx    # Ant Design + tRPC + TanStack Query
+│           │   └── AppProviders.tsx  # Ant Design + TanStack Query
 │           ├── stores/
-│           │   └── auth.store.tsx     # Zustand + Immer
-│           ├── proxy.ts           # SSR 路由守卫
-│           └── next.config.ts     # standalone output, react compiler
+│           │   └── auth.store.tsx    # Zustand + Immer
+│           └── proxy.ts          # SSR 路由守卫
 ├── packages/
 │   ├── db/
-│   │   ├── src/entities.ts        # Drizzle schema
-│   │   ├── src/db.ts              # 数据库连接
-│   │   └── drizzle/               # 迁移文件
+│   │   ├── src/entities.ts      # Drizzle schema
+│   │   ├── src/db.ts            # 数据库连接
+│   │   └── drizzle/             # 迁移文件
+│   ├── sdk/
+│   │   └── src/core/
+│   │       ├── api.client.ts      # 基础 HTTP 客户端（鉴权、自动重试）
+│   │       ├── server.client.ts   # 全类型化业务 API 调用
+│   │       ├── server.types.ts    # 业务响应类型
+│   │       ├── interfaces.ts      # 鉴权抽象
+│   │       ├── strategies/        # BearerToken / ApiKey / OAuth2 / HMAC
+│   │       └── managers/          # localStorage / memory / cookie / env
 │   ├── shared/
 │   │   └── src/
-│   │       ├── schema/            # Zod 共享 schema
-│   │       ├── logger.ts          # Pino 日志（条件 pretty）
-│   │       └── dayjs.ts           # dayjs 配置
+│   │       ├── schema/          # Zod 共享 schema
+│   │       ├── dicts/           # 错误码字典
+│   │       └── logger.ts        # Pino 日志
 │   └── ui/
-│       ├── src/components/        # 共享 React 组件
-│       └── src/lib/               # cn() 等工具
+│       ├── src/components/      # 共享 React 组件
+│       └── src/lib/             # cn() 等工具
 ├── docker/
-│   ├── Dockerfile.base        # 基础镜像（node 24 + pnpm 11 + 运维工具）
-│   ├── Dockerfile.server      # 服务端 multi-stage 构建
-│   ├── Dockerfile.web         # Web 端 standalone multi-stage 构建
-│   └── init-db.sql            # 数据库初始化 DDL
+│   ├── Dockerfile.base          # 基础镜像
+│   ├── Dockerfile.server        # 服务端 multi-stage
+│   ├── Dockerfile.web           # Web 端 standalone
+│   └── init-db.sql              # 数据库初始化 DDL
+├── docs/
+│   └── pagination.md            # 分页设计指南
+├── scripts/
+│   └── cli/                     # 模板生成 CLI
 ├── turbo.json
 ├── pnpm-workspace.yaml
 └── package.json
@@ -250,18 +302,17 @@ createLogger('bootstrap', appConfig.isDev)  // NODE_ENV 控制
 
 ## 脚本
 
-| 命令                | 说明                     |
-| ------------------- | ------------------------ |
-| `pnpm dev:pkgs`     | 并行 watch packages 构建 |
-| `pnpm build:pkgs`   | 构建 packages            |
-| `pnpm dev:server`   | 启动 NestJS 开发服务器   |
-| `pnpm dev:web`      | 启动 Next.js 开发服务器  |
-| `pnpm build`        | 全量构建（turbo）        |
-| `pnpm start:server` | 启动生产 Server          |
-| `pnpm start:web`    | 启动生产 Web             |
-| `pnpm gen:trpc`     | 生成 tRPC 类型定义       |
-| `pnpm db:gen`       | 生成 Drizzle 迁移文件    |
-| `pnpm db:migrate`   | 执行数据库迁移           |
+| 命令              | 说明                     |
+| ----------------- | ------------------------ |
+| `pnpm dev:pkgs`   | 并行 watch packages 构建 |
+| `pnpm build:pkgs` | 构建 packages            |
+| `pnpm dev:server` | 启动 NestJS 开发服务器   |
+| `pnpm dev:web`    | 启动 Next.js 开发服务器  |
+| `pnpm build`      | 全量构建（turbo）        |
+| `pnpm start:server` | 启动生产 Server        |
+| `pnpm start:web`  | 启动生产 Web             |
+| `pnpm db:gen`     | 生成 Drizzle 迁移文件    |
+| `pnpm db:migrate` | 执行数据库迁移           |
 
 ## Docker
 

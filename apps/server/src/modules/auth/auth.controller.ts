@@ -12,7 +12,7 @@ import { z } from 'zod';
 import { AuthGuard } from '../../guards/auth.guard.js';
 import { UserId } from '../../decorators/user-id.decorator.js';
 
-@Controller('api/auth')
+@Controller('auth')
 export class AuthController {
   constructor(@Inject(AuthService) private readonly authService: AuthService) {}
 

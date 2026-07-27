@@ -8,7 +8,7 @@ import { z } from 'zod';
 import { AuthGuard } from '../../guards/auth.guard.js';
 import { UserId } from '../../decorators/user-id.decorator.js';
 
-@Controller('api/storage')
+@Controller('storage')
 @UseGuards(AuthGuard)
 export class StorageController {
   constructor(private readonly storageService: StorageService) {}
@@ -21,9 +21,7 @@ export class StorageController {
   }
 
   @Post('get-download-url')
-  async getDownloadUrl(
-    @Body() dto: z.infer<typeof GetStorageDownloadUrlDto>,
-  ) {
+  async getDownloadUrl(@Body() dto: z.infer<typeof GetStorageDownloadUrlDto>) {
     return await this.storageService.getProvider().getDownloadUrl(dto.key);
   }
 

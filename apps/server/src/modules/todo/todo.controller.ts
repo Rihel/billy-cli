@@ -10,12 +10,10 @@ import {
 import { z } from 'zod';
 import { AuthGuard } from '../../guards/auth.guard.js';
 
-@Controller('api/todo')
+@Controller('todo')
 @UseGuards(AuthGuard)
 export class TodoController {
-  constructor(
-    @Inject(TodoService) private readonly todoService: TodoService,
-  ) {}
+  constructor(@Inject(TodoService) private readonly todoService: TodoService) {}
 
   @Post('create')
   create(@Body() input: z.infer<typeof CreateTodoDto>) {

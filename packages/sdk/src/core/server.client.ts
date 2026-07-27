@@ -24,9 +24,9 @@ import type {
  * const todos = await client.todo.findManyCursor({ size: 20 })
  * ```
  */
-export class ServerClient<Credentials = Record<string, any>>
-  extends ApiClient<Credentials>
-{
+export class ServerClient<
+  Credentials = Record<string, any>,
+> extends ApiClient<Credentials> {
   /**
    * 发送需要鉴权的 POST 请求。
    */
@@ -68,43 +68,38 @@ export class ServerClient<Credentials = Record<string, any>>
 
   auth = {
     /** 无需 token */
-    register: (input: {
-      email: string
-      password: string
-      realName?: string
-    }) => this.postPublic<AuthResult>('/api/auth/register', input),
+    register: (input: { email: string; password: string; realName?: string }) =>
+      this.postPublic<AuthResult>('/auth/register', input),
 
     /** 无需 token */
     login: (input: { email: string; password: string }) =>
-      this.postPublic<AuthResult>('/api/auth/login', input),
+      this.postPublic<AuthResult>('/auth/login', input),
 
     /** 无需 token */
     forgotPassword: (input: { email: string }) =>
-      this.postPublic<SuccessResult>('/api/auth/forgot-password', input),
+      this.postPublic<SuccessResult>('/auth/forgot-password', input),
 
     /** 无需 token */
     resetPassword: (input: { token: string; password: string }) =>
-      this.postPublic<SuccessResult>('/api/auth/reset-password', input),
+      this.postPublic<SuccessResult>('/auth/reset-password', input),
 
     /** 需要 token */
-    getMe: () => this.post<SafeUser>('/api/auth/get-me'),
+    getMe: () => this.post<SafeUser>('/auth/get-me'),
 
     /** 需要 token */
-    updateInfo: (input: {
-      realName?: string | null
-      avatar?: string | null
-    }) => this.post<SafeUser>('/api/auth/update-info', input),
+    updateInfo: (input: { realName?: string | null; avatar?: string | null }) =>
+      this.post<SafeUser>('/auth/update-info', input),
 
     /** 需要 token */
     changePassword: (input: { oldPassword: string; newPassword: string }) =>
-      this.post<SuccessResult>('/api/auth/change-password', input),
+      this.post<SuccessResult>('/auth/change-password', input),
   }
 
   /* ========== Todo ========== */
 
   todo = {
     create: (input: { title: string }) =>
-      this.post<TodoItem>('/api/todo/create', input),
+      this.post<TodoItem>('/todo/create', input),
 
     findMany: (input: {
       page?: number
@@ -112,26 +107,26 @@ export class ServerClient<Credentials = Record<string, any>>
       keyword?: string
       orderBy?: string
       order?: string
-    }) => this.post<PaginatedResult<TodoItem>>('/api/todo/find-many', input),
+    }) => this.post<PaginatedResult<TodoItem>>('/todo/find-many', input),
 
     findManyCursor: (input: {
       cursor?: TodoCursor
       keyword?: string
       size?: number
-    }) => this.post<TodoCursorPage>('/api/todo/find-many-cursor', input),
+    }) => this.post<TodoCursorPage>('/todo/find-many-cursor', input),
 
     findById: (input: { todoId: string }) =>
-      this.post<TodoItem>('/api/todo/find-by-id', input),
+      this.post<TodoItem>('/todo/find-by-id', input),
 
     update: (input: {
       todoId: string
       title: string
       description?: string
       completed?: boolean
-    }) => this.post<TodoItem>('/api/todo/update', input),
+    }) => this.post<TodoItem>('/todo/update', input),
 
     remove: (input: { todoId: string }) =>
-      this.post<TodoItem>('/api/todo/remove', input),
+      this.post<TodoItem>('/todo/remove', input),
   }
 
   /* ========== User ========== */
@@ -142,7 +137,7 @@ export class ServerClient<Credentials = Record<string, any>>
       password: string
       realName?: string
       avatar?: string | null
-    }) => this.post<SafeUser>('/api/user/create', input),
+    }) => this.post<SafeUser>('/user/create', input),
 
     findMany: (input: {
       page?: number
@@ -150,36 +145,34 @@ export class ServerClient<Credentials = Record<string, any>>
       keyword?: string
       orderBy?: string
       order?: string
-    }) => this.post<PaginatedResult<SafeUser>>('/api/user/find-many', input),
+    }) => this.post<PaginatedResult<SafeUser>>('/user/find-many', input),
 
     findById: (input: { userId: string }) =>
-      this.post<SafeUser>('/api/user/find-by-id', input),
+      this.post<SafeUser>('/user/find-by-id', input),
 
     update: (input: {
       userId: string
       realName?: string | null
       avatar?: string | null
-    }) => this.post<SafeUser>('/api/user/update', input),
+    }) => this.post<SafeUser>('/user/update', input),
 
     remove: (input: { userId: string }) =>
-      this.post<SuccessResult>('/api/user/remove', input),
+      this.post<SuccessResult>('/user/remove', input),
 
     resetPassword: (input: { userId: string; password: string }) =>
-      this.post<SuccessResult>('/api/user/reset-password', input),
+      this.post<SuccessResult>('/user/reset-password', input),
   }
 
   /* ========== Storage ========== */
 
   storage = {
     getPresignedUrl: (input: { key: string; access?: string }) =>
-      this.post<StoragePresignedUrl>('/api/storage/get-presigned-url', input),
+      this.post<StoragePresignedUrl>('/storage/get-presigned-url', input),
 
     getDownloadUrl: (input: { key: string }) =>
-      this.post<{ url: string }>('/api/storage/get-download-url', input),
+      this.post<{ url: string }>('/storage/get-download-url', input),
 
     getTemporaryCredentials: () =>
-      this.post<StorageCredentials>(
-        '/api/storage/get-temporary-credentials',
-      ),
+      this.post<StorageCredentials>('/storage/get-temporary-credentials'),
   }
 }

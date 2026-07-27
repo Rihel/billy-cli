@@ -10,12 +10,10 @@ import {
 import { z } from 'zod';
 import { AuthGuard } from '../../guards/auth.guard.js';
 
-@Controller('api/user')
+@Controller('user')
 @UseGuards(AuthGuard)
 export class UserController {
-  constructor(
-    @Inject(UserService) private readonly userService: UserService,
-  ) {}
+  constructor(@Inject(UserService) private readonly userService: UserService) {}
 
   @Post('create')
   create(@Body() input: z.infer<typeof CreateUserDto>) {
