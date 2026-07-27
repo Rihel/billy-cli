@@ -1,4 +1,4 @@
-import { Controller, Post, Body, UseGuards, Inject } from '@nestjs/common';
+import { Controller, Post, UseGuards, Inject } from '@nestjs/common';
 import { TodoService } from './todo.service.js';
 import {
   CreateTodoDto,
@@ -6,8 +6,10 @@ import {
   PageQueryTodoDto,
   TodoIdInputDto,
   UpdateTodoDto,
+  TodoModel,
 } from '@repo/shared';
-import { z } from 'zod';
+import type { z } from 'zod';
+import { ZBody, ZSerialize } from 'nest-zod';
 import { AuthGuard } from '../../guards/auth.guard.js';
 
 @Controller('todo')
@@ -16,32 +18,33 @@ export class TodoController {
   constructor(@Inject(TodoService) private readonly todoService: TodoService) {}
 
   @Post('create')
-  create(@Body() input: z.infer<typeof CreateTodoDto>) {
+  @ZSerialize(TodoModel)
+  create(@ZBody(CreateTodoDto) input: z.infer<typeof CreateTodoDto>) {
     return this.todoService.create(input);
   }
 
   @Post('find-many')
-  findMany(@Body() input: z.infer<typeof PageQueryTodoDto>) {
+  findMany(@ZBody(PageQueryTodoDto) input: z.infer<typeof PageQueryTodoDto>) {
     return this.todoService.findMany(input);
   }
 
   @Post('find-many-cursor')
-  findManyCursor(@Body() input: z.infer<typeof CursorQueryTodoDto>) {
+  findManyCursor(@ZBody(CursorQueryTodoDto) input: z.infer<typeof CursorQueryTodoDto>) {
     return this.todoService.findManyCursor(input);
   }
 
   @Post('find-by-id')
-  findById(@Body() input: z.infer<typeof TodoIdInputDto>) {
+  findById(@ZBody(TodoIdInputDto) input: z.infer<typeof TodoIdInputDto>) {
     return this.todoService.findById(input.todoId);
   }
 
   @Post('update')
-  update(@Body() input: z.infer<typeof UpdateTodoDto>) {
+  update(@ZBody(UpdateTodoDto) input: z.infer<typeof UpdateTodoDto>) {
     return this.todoService.update(input);
   }
 
   @Post('remove')
-  remove(@Body() input: z.infer<typeof TodoIdInputDto>) {
+  remove(@ZBody(TodoIdInputDto) input: z.infer<typeof TodoIdInputDto>) {
     return this.todoService.remove(input.todoId);
   }
 }

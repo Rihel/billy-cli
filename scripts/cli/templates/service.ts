@@ -50,6 +50,7 @@ export function createServiceTemplate(name: string): Template {
           redis: '^6.1.0',
           'reflect-metadata': '^0.2.2',
           rxjs: '^7.8.1',
+          'nest-zod': '^2.1.0',
           zod: '^4.4.3',
         },
         devDependencies: {

@@ -7,8 +7,11 @@ import {
   ResetPasswordDto,
   UpdateInfoDto,
   ChangePasswordDto,
+  AuthResultModel,
+  SuccessResultModel,
 } from '@repo/shared';
-import { z } from 'zod';
+import type { z } from 'zod';
+import { ZBody, ZSerialize } from 'nest-zod';
 import { AuthGuard } from '../../guards/auth.guard.js';
 import { UserId } from '../../decorators/user-id.decorator.js';
 
@@ -17,22 +20,26 @@ export class AuthController {
   constructor(@Inject(AuthService) private readonly authService: AuthService) {}
 
   @Post('register')
-  register(@Body() input: z.infer<typeof RegisterDto>) {
+  @ZSerialize(AuthResultModel)
+  register(@ZBody(RegisterDto) input: z.infer<typeof RegisterDto>) {
     return this.authService.register(input);
   }
 
   @Post('login')
-  login(@Body() input: z.infer<typeof LoginDto>) {
+  @ZSerialize(AuthResultModel)
+  login(@ZBody(LoginDto) input: z.infer<typeof LoginDto>) {
     return this.authService.login(input);
   }
 
   @Post('forgot-password')
-  forgotPassword(@Body() input: z.infer<typeof ForgotPasswordDto>) {
+  @ZSerialize(SuccessResultModel)
+  forgotPassword(@ZBody(ForgotPasswordDto) input: z.infer<typeof ForgotPasswordDto>) {
     return this.authService.forgotPassword(input);
   }
 
   @Post('reset-password')
-  resetPassword(@Body() input: z.infer<typeof ResetPasswordDto>) {
+  @ZSerialize(SuccessResultModel)
+  resetPassword(@ZBody(ResetPasswordDto) input: z.infer<typeof ResetPasswordDto>) {
     return this.authService.resetPassword(input);
   }
 
@@ -46,16 +53,17 @@ export class AuthController {
   @UseGuards(AuthGuard)
   updateInfo(
     @UserId() userId: string,
-    @Body() input: z.infer<typeof UpdateInfoDto>,
+    @ZBody(UpdateInfoDto) input: z.infer<typeof UpdateInfoDto>,
   ) {
     return this.authService.updateInfo(userId, input);
   }
 
   @Post('change-password')
   @UseGuards(AuthGuard)
+  @ZSerialize(SuccessResultModel)
   changePassword(
     @UserId() userId: string,
-    @Body() input: z.infer<typeof ChangePasswordDto>,
+    @ZBody(ChangePasswordDto) input: z.infer<typeof ChangePasswordDto>,
   ) {
     return this.authService.changePassword(userId, input);
   }

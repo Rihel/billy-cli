@@ -1,10 +1,11 @@
-import { Controller, Post, Body, UseGuards } from '@nestjs/common';
+import { Controller, Post, UseGuards } from '@nestjs/common';
 import { StorageService } from '@repo/kits';
 import {
   GetStorageUploadPresignedUrlDto,
   GetStorageDownloadUrlDto,
 } from '@repo/shared';
-import { z } from 'zod';
+import type { z } from 'zod';
+import { ZBody } from 'nest-zod';
 import { AuthGuard } from '../../guards/auth.guard.js';
 import { UserId } from '../../decorators/user-id.decorator.js';
 
@@ -15,13 +16,13 @@ export class StorageController {
 
   @Post('get-presigned-url')
   async getPresignedUrl(
-    @Body() dto: z.infer<typeof GetStorageUploadPresignedUrlDto>,
+    @ZBody(GetStorageUploadPresignedUrlDto) dto: z.infer<typeof GetStorageUploadPresignedUrlDto>,
   ) {
     return await this.storageService.getProvider().getPresignedUrl(dto);
   }
 
   @Post('get-download-url')
-  async getDownloadUrl(@Body() dto: z.infer<typeof GetStorageDownloadUrlDto>) {
+  async getDownloadUrl(@ZBody(GetStorageDownloadUrlDto) dto: z.infer<typeof GetStorageDownloadUrlDto>) {
     return await this.storageService.getProvider().getDownloadUrl(dto.key);
   }
 
