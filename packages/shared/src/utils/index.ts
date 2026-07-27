@@ -10,3 +10,4 @@ export * from './route.utils'
 
 export * from './md5.utils'
 export * from './dayjs.utils'
+export * from './zod.utils'

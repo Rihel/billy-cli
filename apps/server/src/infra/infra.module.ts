@@ -1,6 +1,10 @@
 import { Module } from '@nestjs/common';
-import { KitsModule } from '@repo/kits';
+import { KitsModule, RequestContextModule } from '@repo/kits';
 import { appConfig } from '../config.js';
+
+export interface ContextData {
+  userId: string | null
+}
 
 @Module({
   imports: [
@@ -11,6 +15,11 @@ import { appConfig } from '../config.js';
         keyPrefix: 'billy-cli:',
       },
       logger: { pretty: appConfig.isDev },
+    }),
+    RequestContextModule.forRoot<ContextData>({
+      defaultStoreFactory: () => ({
+        userId: null,
+      }),
     }),
   ],
 })

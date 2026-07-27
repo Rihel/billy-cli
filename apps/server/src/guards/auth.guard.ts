@@ -5,9 +5,10 @@ import {
   Inject,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
-import { AppError } from '@repo/kits';
+import { AppError, RequestContextService } from '@repo/kits';
 import { AppErrorCodes } from '@repo/shared';
 import type { Request } from 'express';
+import type { ContextData } from '../infra/infra.module.js';
 
 export interface AuthenticatedRequest extends Request {
   userId: string;
@@ -15,7 +16,11 @@ export interface AuthenticatedRequest extends Request {
 
 @Injectable()
 export class AuthGuard implements CanActivate {
-  constructor(@Inject(JwtService) private jwt: JwtService) {}
+  constructor(
+    @Inject(JwtService) private jwt: JwtService,
+    @Inject(RequestContextService)
+    private requestContext: RequestContextService<ContextData>,
+  ) {}
 
   canActivate(context: ExecutionContext): boolean {
     const req = context.switchToHttp().getRequest<Request>();
@@ -41,6 +46,7 @@ export class AuthGuard implements CanActivate {
     try {
       const payload = this.jwt.verify<{ sub: string }>(rawToken);
       (req as AuthenticatedRequest).userId = payload.sub;
+      this.requestContext.set('userId', payload.sub);
       return true;
     } catch {
       throw new AppError(AppErrorCodes.TokenInvalid);
