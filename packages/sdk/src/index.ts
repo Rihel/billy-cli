@@ -10,6 +10,19 @@ export type {
 export { ApiClient } from './core/api.client.js'
 export type { ApiClientOptions } from './core/api.client.js'
 
+export { ServerClient } from './core/server.client.js'
+export type {
+  SafeUser,
+  AuthResult,
+  SuccessResult,
+  TodoItem,
+  TodoCursor,
+  TodoCursorPage,
+  PaginatedResult,
+  StoragePresignedUrl,
+  StorageCredentials,
+} from './core/server.types.js'
+
 // Strategies
 export { BearerTokenStrategy } from './core/strategies/bearer-token.strategy.js'
 export type { BearerTokenCredentials } from './core/strategies/bearer-token.strategy.js'

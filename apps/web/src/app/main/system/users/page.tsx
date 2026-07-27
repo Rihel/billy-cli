@@ -1,7 +1,7 @@
 'use client'
 
 import { formatStorageUrl } from '@/lib/constants'
-import { useTRPC, useTRPCClient } from '@/lib/client-trpc'
+import { useServerClient } from '@/lib/client'
 import { EditOutlined, LockOutlined, PlusOutlined } from '@ant-design/icons'
 import { App, Avatar, Form, Input, Tag } from 'antd'
 import { useMutation, useQuery } from '@tanstack/react-query'
@@ -19,15 +19,7 @@ import {
   TableActions,
   useDisclosure,
 } from '@repo/ui'
-
-type UserRow = {
-  id: string
-  email: string
-  realName: string | null
-  avatar: string | null
-  createdAt: string
-  updatedAt: string
-}
+import type { SafeUser } from '@repo/sdk'
 
 type CreateUserForm = {
   email: string
@@ -49,38 +41,42 @@ type ResetPasswordForm = {
 
 export default function UsersPage() {
   const { message } = App.useApp()
-  const trpc = useTRPC()
-  const trpcClient = useTRPCClient()
+  const client = useServerClient()
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(10)
   const [keyword, setKeyword] = useState<string | undefined>()
   const createDialog = useDisclosure()
-  const editDialog = useDisclosure<UserRow>()
-  const resetPasswordDialog = useDisclosure<UserRow>()
+  const editDialog = useDisclosure<SafeUser>()
+  const resetPasswordDialog = useDisclosure<SafeUser>()
   const [createForm] = Form.useForm<CreateUserForm>()
   const [editForm] = Form.useForm<EditUserForm>()
   const [resetPwdForm] = Form.useForm<ResetPasswordForm>()
 
-  const { data, isFetching, refetch } = useQuery(
-    trpc.user.findMany.queryOptions({
-      page,
-      size: pageSize,
-      keyword,
-      orderBy: 'createdAt',
-      order: 'desc',
-    }),
-  )
+  const { data, isFetching, refetch } = useQuery({
+    queryKey: [
+      'user',
+      'findMany',
+      { page, pageSize, keyword, orderBy: 'createdAt', order: 'desc' },
+    ],
+    queryFn: () =>
+      client.user.findMany({
+        page,
+        size: pageSize,
+        keyword,
+        orderBy: 'createdAt',
+        order: 'desc',
+      }),
+  })
 
-  const removeMutation = useMutation(
-    trpc.user.remove.mutationOptions({
-      onSuccess() {
-        refetch()
-        message.success('删除成功')
-      },
-    }),
-  )
+  const removeMutation = useMutation({
+    mutationFn: (input: { userId: string }) => client.user.remove(input),
+    onSuccess() {
+      refetch()
+      message.success('删除成功')
+    },
+  })
 
-  const columns: TableColumnsType<UserRow> = [
+  const columns: TableColumnsType<SafeUser> = [
     {
       title: '头像',
       dataIndex: 'avatar',
@@ -144,7 +140,7 @@ export default function UsersPage() {
 
   return (
     <>
-      <DataTable<UserRow>
+      <DataTable<SafeUser>
         title="用户管理"
         toolbar={
           <>
@@ -216,7 +212,7 @@ export default function UsersPage() {
           message.error(error instanceof Error ? error.message : '创建失败')
         }
         onSubmit={async (values) => {
-          await trpcClient.user.create.mutate(values)
+          await client.user.create(values)
           message.success('创建成功')
           refetch()
           createDialog.close()
@@ -248,7 +244,7 @@ export default function UsersPage() {
         }
         onSubmit={async (values) => {
           if (!editDialog.data) return
-          await trpcClient.user.update.mutate({
+          await client.user.update({
             userId: editDialog.data.id,
             realName: values.realName,
             avatar: values.avatar,
@@ -299,7 +295,7 @@ export default function UsersPage() {
         }
         onSubmit={async (values) => {
           if (!resetPasswordDialog.data) return
-          await trpcClient.user.resetPassword.mutate({
+          await client.user.resetPassword({
             userId: resetPasswordDialog.data.id,
             password: values.password,
           })

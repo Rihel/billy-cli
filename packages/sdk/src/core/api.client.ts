@@ -35,35 +35,40 @@ export class ApiClient<Credentials = Record<string, any>> {
   }
 
   protected async request<Body extends Record<string, any>, Res>(
-    config: AxiosRequestConfig<Body>,
+    config: AxiosRequestConfig<Body> & { skipAuth?: boolean },
   ): Promise<AppResponse<Res>> {
-    // 1. 鉴权校验
-    const credentials = await this.credentialsManager.getCredentials()
-    const isAuthorized = await this.authStrategy.isAuthorization(credentials)
-    if (!isAuthorized) {
-      await this.options?.callbacks?.onUnauthorized?.()
-      throw new Error(
-        'Unauthorized: Invalid credentials or authorization failed.',
-      )
-    }
+    const skipAuth = config.skipAuth
+    delete (config as any).skipAuth
 
-    // 2. 注入鉴权上下文
-    const authContext = await this.authStrategy.getAuthContext(credentials)
+    if (!skipAuth) {
+      // 1. 鉴权校验
+      const credentials = await this.credentialsManager.getCredentials()
+      const isAuthorized = await this.authStrategy.isAuthorization(credentials)
+      if (!isAuthorized) {
+        await this.options?.callbacks?.onUnauthorized?.()
+        throw new Error(
+          'Unauthorized: Invalid credentials or authorization failed.',
+        )
+      }
+
+      // 2. 注入鉴权上下文
+      const authContext = await this.authStrategy.getAuthContext(credentials)
+
+      config.headers = {
+        ...config.headers,
+        ...(authContext.headers || {}),
+      }
+      config.params = {
+        ...config.params,
+        ...(authContext.query || {}),
+      }
+      config.data = authContext.body
+        ? { ...config.data, ...authContext.body }
+        : config.data
+    }
 
     const mergedConfig: AxiosRequestConfig<Body> = {
       ...config,
-      headers: {
-        ...config.headers,
-        ...(authContext.headers || {}),
-      },
-      params: {
-        ...config.params,
-        ...(authContext.query || {}),
-      },
-      // 仅当有 authContext.body 时才合并，避免破坏普通的 GET 请求或非对象 Body
-      data: authContext.body
-        ? { ...config.data, ...authContext.body }
-        : config.data,
     }
 
     // 3. 处理重复请求与取消逻辑 (AbortController)

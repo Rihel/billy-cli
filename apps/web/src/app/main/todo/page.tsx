@@ -1,6 +1,6 @@
 'use client'
 
-import { useTRPC, useTRPCClient } from '@/lib/client-trpc'
+import { useServerClient } from '@/lib/client'
 import { EditOutlined, PlusOutlined } from '@ant-design/icons'
 import { App, Checkbox, Form, Input, Space, Tag } from 'antd'
 import {
@@ -21,29 +21,11 @@ import {
   RefreshButton,
   useDisclosure,
 } from '@repo/ui'
-
-type TodoRow = {
-  id: string
-  title: string
-  description: string | null
-  completed: boolean
-  createdAt: string
-  updatedAt: string
-}
+import type { TodoItem, TodoCursor, TodoCursorPage } from '@repo/sdk'
 
 type EditTodoForm = {
   title: string
   completed: boolean
-}
-
-type TodoCursor = {
-  updatedAt: string
-  todoId: string
-}
-
-type TodoCursorPage = {
-  items: TodoRow[]
-  nextCursor: TodoCursor | null
 }
 
 type TodoListData = InfiniteData<TodoCursorPage, TodoCursor | undefined>
@@ -52,25 +34,19 @@ const PAGE_SIZE = 20
 
 export default function TodoPage() {
   const { message } = App.useApp()
-  const trpc = useTRPC()
-  const trpcClient = useTRPCClient()
+  const client = useServerClient()
   const queryClient = useQueryClient()
-  const editDialog = useDisclosure<TodoRow>()
+  const editDialog = useDisclosure<TodoItem>()
   const [newTitle, setNewTitle] = useState('')
   const [editForm] = Form.useForm<EditTodoForm>()
-  const listQueryKey = [
-    'todo',
-    'findManyCursor',
-    'infinite',
-    { size: PAGE_SIZE },
-  ] as const
+  const listQueryKey = ['todo', 'findManyCursor', { size: PAGE_SIZE }] as const
 
   const { data, fetchNextPage, hasNextPage, isFetching, isFetchingNextPage } =
     useInfiniteQuery({
       queryKey: listQueryKey,
       initialPageParam: undefined as TodoCursor | undefined,
       queryFn: ({ pageParam }) =>
-        trpcClient.todo.findManyCursor.query({
+        client.todo.findManyCursor({
           cursor: pageParam,
           size: PAGE_SIZE,
         }),
@@ -79,7 +55,7 @@ export default function TodoPage() {
   const items = data?.pages.flatMap((result) => result.items) ?? []
   const resetList = () =>
     queryClient.resetQueries({ queryKey: listQueryKey, exact: true })
-  const prependTodo = (todo: TodoRow) => {
+  const prependTodo = (todo: TodoItem) => {
     queryClient.setQueryData<TodoListData>(listQueryKey, (current) => {
       if (!current) {
         return {
@@ -103,7 +79,7 @@ export default function TodoPage() {
       })
     })
   }
-  const updateTodo = (todo: TodoRow) => {
+  const updateTodo = (todo: TodoItem) => {
     queryClient.setQueryData<TodoListData>(listQueryKey, (current) => {
       if (!current) return current
       return produce(current, (draft) => {
@@ -129,28 +105,29 @@ export default function TodoPage() {
     })
   }
 
-  const createMutation = useMutation(
-    trpc.todo.create.mutationOptions({
-      onSuccess(todo) {
-        prependTodo(todo)
-        setNewTitle('')
-      },
-    }),
-  )
+  const createMutation = useMutation({
+    mutationFn: (input: { title: string }) => client.todo.create(input),
+    onSuccess(todo) {
+      prependTodo(todo)
+      setNewTitle('')
+    },
+  })
 
-  const toggleMutation = useMutation(
-    trpc.todo.update.mutationOptions({
-      onSuccess: updateTodo,
-    }),
-  )
+  const toggleMutation = useMutation({
+    mutationFn: (input: {
+      todoId: string
+      title: string
+      completed: boolean
+    }) => client.todo.update(input),
+    onSuccess: updateTodo,
+  })
 
-  const removeMutation = useMutation(
-    trpc.todo.remove.mutationOptions({
-      onSuccess(todo) {
-        removeTodo(todo.id)
-      },
-    }),
-  )
+  const removeMutation = useMutation({
+    mutationFn: (input: { todoId: string }) => client.todo.remove(input),
+    onSuccess(todo) {
+      removeTodo(todo.id)
+    },
+  })
 
   return (
     <>
@@ -189,7 +166,7 @@ export default function TodoPage() {
         }
       />
 
-      <DataList<TodoRow>
+      <DataList<TodoItem>
         rowKey="id"
         loading={isFetching && !data}
         loadingMore={isFetchingNextPage}
@@ -233,7 +210,8 @@ export default function TodoPage() {
                   <span className="truncate">{record.description}</span>
                 ) : null}
                 <span>
-                  更新于 <DisplayValue type="date" value={record.updatedAt} />
+                  更新于{' '}
+                  <DisplayValue type="date" value={record.updatedAt} />
                 </span>
               </div>
             </div>
@@ -282,7 +260,7 @@ export default function TodoPage() {
         }
         onSubmit={async (values) => {
           if (!editDialog.data) return
-          const todo = await trpcClient.todo.update.mutate({
+          const todo = await client.todo.update({
             todoId: editDialog.data.id,
             title: values.title,
             completed: values.completed ?? false,

@@ -1,19 +1,13 @@
-import {
-  MiddlewareConsumer,
-  Module,
-  NestModule,
-  RequestMethod,
-} from '@nestjs/common';
-import { AppError } from '@repo/kits';
-import { TRPCModule } from 'nestjs-trpc';
+import { Module } from '@nestjs/common';
+import { APP_FILTER, APP_INTERCEPTOR } from '@nestjs/core';
 import { InfraModule } from './infra/infra.module.js';
 import { TodoModule } from './modules/todo/index.js';
 import { AuthModule } from './modules/auth/index.js';
 import { UserModule } from './modules/user/index.js';
-import { TrpcAppContext } from './trpc.context.js';
-import { AuthMiddleware } from './middlewares/auth.middleware.js';
-import { TrpcStatusMiddleware } from './middlewares/trpc-status.middleware.js';
 import { StorageModule } from './modules/storage/index.js';
+import { AuthGuard } from './guards/auth.guard.js';
+import { ResponseInterceptor } from './interceptors/response.interceptor.js';
+import { AppExceptionFilter } from './filters/app-exception.filter.js';
 import { appConfig } from './config.js';
 
 @Module({
@@ -27,27 +21,14 @@ import { appConfig } from './config.js';
       secretAccessKey: appConfig.storage.secretAccessKey,
       endpoint: appConfig.storage.endpoint,
     }),
-    TRPCModule.forRoot({
-      basePath: '/trpc',
-      context: TrpcAppContext,
-      errorFormatter: ({ error, shape }) => ({
-        ...shape,
-        data: {
-          ...shape.data,
-          errorCode: error instanceof AppError ? error.errorCode : null,
-        },
-      }),
-    }),
-    TodoModule,
     AuthModule,
+    TodoModule,
     UserModule,
   ],
-  providers: [TrpcAppContext, AuthMiddleware],
+  providers: [
+    AuthGuard,
+    { provide: APP_INTERCEPTOR, useClass: ResponseInterceptor },
+    { provide: APP_FILTER, useClass: AppExceptionFilter },
+  ],
 })
-export class RootModule implements NestModule {
-  configure(consumer: MiddlewareConsumer) {
-    consumer
-      .apply(TrpcStatusMiddleware)
-      .forRoutes({ path: 'trpc/*path', method: RequestMethod.ALL });
-  }
-}
+export class RootModule {}

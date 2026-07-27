@@ -1,11 +1,11 @@
-import { Module } from '@nestjs/common';
+import { Module, Global } from '@nestjs/common';
 import { JwtModule } from '@nestjs/jwt';
 import { AuthService } from './auth.service.js';
-import { AuthRouter } from './auth.router.js';
-import { AuthMiddleware } from '../../middlewares/auth.middleware.js';
+import { AuthController } from './auth.controller.js';
 import { appConfig } from '../../config.js';
 import type { StringValue } from 'ms';
 
+@Global()
 @Module({
   imports: [
     JwtModule.register({
@@ -13,7 +13,8 @@ import type { StringValue } from 'ms';
       signOptions: { expiresIn: appConfig.jwtExpiresIn as StringValue },
     }),
   ],
-  providers: [AuthService, AuthRouter, AuthMiddleware],
+  controllers: [AuthController],
+  providers: [AuthService],
   exports: [AuthService, JwtModule],
 })
 export class AuthModule {}

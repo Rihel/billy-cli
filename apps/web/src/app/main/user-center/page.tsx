@@ -1,7 +1,7 @@
 'use client'
 import { logoutAction } from '@/actions/auth.actions'
 import { authStorage } from '@/lib/auth'
-import { useTRPC } from '@/lib/client-trpc'
+import { useServerClient } from '@/lib/client'
 import { useAuthStore } from '@/stores/auth.store'
 import { LockOutlined } from '@ant-design/icons'
 import { useMutation } from '@tanstack/react-query'
@@ -29,14 +29,16 @@ export default function UserCenter() {
   const [passwordForm] = Form.useForm<ChangePasswordForm>()
   const { message } = App.useApp()
   const router = useRouter()
-  const tpc = useTRPC()
+  const client = useServerClient()
 
-  const updateInfoMutation = useMutation(
-    tpc.auth.updateInfo.mutationOptions({}),
-  )
-  const changePasswordMutation = useMutation(
-    tpc.auth.changePassword.mutationOptions({}),
-  )
+  const updateInfoMutation = useMutation({
+    mutationFn: (input: { realName?: string | null; avatar?: string | null }) =>
+      client.auth.updateInfo(input),
+  })
+  const changePasswordMutation = useMutation({
+    mutationFn: (input: { oldPassword: string; newPassword: string }) =>
+      client.auth.changePassword(input),
+  })
 
   const changePassword = async (values: ChangePasswordForm) => {
     const { confirmPassword: _, ...input } = values

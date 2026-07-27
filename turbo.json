@@ -5,9 +5,6 @@
       "cache": false,
       "persistent": true
     },
-    "gen:trpc": {
-      "cache": false
-    },
     "build": {
       "cache": false,
       "dependsOn": [

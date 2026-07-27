@@ -1,7 +1,7 @@
 'use server'
 
 import { cookies } from 'next/headers'
-import { serverTRPC } from '@/lib/server-trpc'
+import { createServerClient } from '@/lib/server'
 import { TokenKey } from '@/lib/constants'
 import { logger } from '@/lib/logger'
 import { defineAction } from '@repo/ui/action'
@@ -20,7 +20,8 @@ function cookieOptions(maxAge: number) {
 
 export const loginAction = defineAction(
   async (input: { email: string; password: string }) => {
-    const data = await serverTRPC.auth.login.mutate(input)
+    const client = createServerClient()
+    const data = await client.auth.login(input)
     const jar = await cookies()
     jar.set(TokenKey, data.token, cookieOptions(COOKIE_MAX_AGE))
     return data.token
@@ -33,7 +34,8 @@ export const loginAction = defineAction(
 
 export const registerAction = defineAction(
   async (input: { email: string; password: string; realName?: string }) => {
-    const data = await serverTRPC.auth.register.mutate(input)
+    const client = createServerClient()
+    const data = await client.auth.register(input)
     const jar = await cookies()
     jar.set(TokenKey, data.token, cookieOptions(COOKIE_MAX_AGE))
     return data.token
@@ -45,7 +47,10 @@ export const registerAction = defineAction(
 )
 
 export const forgotPasswordAction = defineAction(
-  (input: { email: string }) => serverTRPC.auth.forgotPassword.mutate(input),
+  async (input: { email: string }) => {
+    const client = createServerClient()
+    return client.auth.forgotPassword(input)
+  },
   {
     fallbackError: '请求失败',
     onError: (error) => logger.error('forgotPasswordAction error', { error }),
@@ -53,8 +58,10 @@ export const forgotPasswordAction = defineAction(
 )
 
 export const resetPasswordAction = defineAction(
-  (input: { token: string; password: string }) =>
-    serverTRPC.auth.resetPassword.mutate(input),
+  async (input: { token: string; password: string }) => {
+    const client = createServerClient()
+    return client.auth.resetPassword(input)
+  },
   {
     fallbackError: '重置失败',
     onError: (error) => logger.error('resetPasswordAction error', { error }),

@@ -1,7 +1,6 @@
 'use client'
 
 import { App, ConfigProvider } from 'antd'
-
 import { ReactNode, useRef } from 'react'
 import zhCN from 'antd/locale/zh_CN'
 import {
@@ -10,10 +9,9 @@ import {
   QueryClient,
   QueryClientProvider,
 } from '@tanstack/react-query'
-import { createTRPCClient, TRPCProvider } from '@/lib/client-trpc'
-import { useTRPCClient } from '@/lib/client-trpc'
 import { formatStorageUrl } from '@/lib/constants'
 import { StorageProvider } from '@repo/ui'
+import { useServerClient } from '@/lib/client'
 
 function getErrorMessage(error: unknown): string {
   if (error instanceof Error) return error.message
@@ -21,13 +19,11 @@ function getErrorMessage(error: unknown): string {
 }
 
 function AppStorageProvider({ children }: { children: ReactNode }) {
-  const trpcClient = useTRPCClient()
+  const client = useServerClient()
 
   return (
     <StorageProvider
-      getPresignedUpload={(key) =>
-        trpcClient.storage.getPresignedUrl.mutate({ key })
-      }
+      getPresignedUpload={(key) => client.storage.getPresignedUrl({ key })}
       resolveUrl={formatStorageUrl}
     >
       {children}
@@ -53,16 +49,9 @@ function QueryProviders({ children }: { children: ReactNode }) {
     }),
   )
 
-  const trpcClient = useRef(createTRPCClient())
-
   return (
     <QueryClientProvider client={queryClient.current}>
-      <TRPCProvider
-        trpcClient={trpcClient.current}
-        queryClient={queryClient.current}
-      >
-        <AppStorageProvider>{children}</AppStorageProvider>
-      </TRPCProvider>
+      {children}
     </QueryClientProvider>
   )
 }
@@ -84,7 +73,9 @@ export const Providers = ({ children }: ProvidersProps) => {
       }}
     >
       <App>
-        <QueryProviders>{children}</QueryProviders>
+        <QueryProviders>
+          <AppStorageProvider>{children}</AppStorageProvider>
+        </QueryProviders>
       </App>
     </ConfigProvider>
   )

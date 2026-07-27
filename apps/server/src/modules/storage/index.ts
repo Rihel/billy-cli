@@ -4,7 +4,7 @@ import type {
   StorageModuleOptions,
 } from '@repo/kits';
 import { StorageModule as KitsStorageModule } from '@repo/kits';
-import { StorageRouter } from './storage.router.js';
+import { StorageController } from './storage.controller.js';
 
 @Module({})
 export class StorageModule {
@@ -12,7 +12,7 @@ export class StorageModule {
     return {
       module: StorageModule,
       imports: [KitsStorageModule.forRoot(options)],
-      providers: [StorageRouter],
+      controllers: [StorageController],
     };
   }
 
@@ -20,7 +20,7 @@ export class StorageModule {
     return {
       module: StorageModule,
       imports: [KitsStorageModule.forRootAsync(options)],
-      providers: [StorageRouter],
+      controllers: [StorageController],
     };
   }
 }

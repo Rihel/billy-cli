@@ -20,7 +20,6 @@ export function createServiceTemplate(name: string): Template {
           dev: 'nest start --watch',
           'start:debug': 'nest start --debug --watch',
           'start:prod': 'node dist/main',
-          'gen:trpc': 'nestjs-trpc generate --entrypoint src/root.module.ts',
         },
         dependencies: {
           '@nestjs-modules/ioredis': '^2.2.1',
@@ -33,7 +32,6 @@ export function createServiceTemplate(name: string): Template {
           '@repo/db': 'workspace:*',
           '@repo/kits': 'workspace:*',
           '@repo/shared': 'workspace:*',
-          '@trpc/server': '^11.18.0',
           '@types/bcrypt': '^6.0.0',
           '@types/cookie': '^1.0.0',
           '@types/jsonwebtoken': '^9.0.10',
@@ -49,7 +47,6 @@ export function createServiceTemplate(name: string): Template {
           lodash: '^4.18.1',
           ms: '^2.1.3',
           nanoid: '^6.0.0',
-          'nestjs-trpc': '^2.12.0',
           pino: '^10.3.1',
           'pino-pretty': '^13.1.3',
           redis: '^6.1.0',

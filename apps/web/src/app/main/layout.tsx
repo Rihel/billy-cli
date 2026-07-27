@@ -1,4 +1,4 @@
-import { serverTRPC } from '@/lib/server-trpc'
+import { createServerClientFromCookies } from '@/lib/server'
 import { AuthStoreProvider } from '@/stores/auth.store'
 import { redirect } from 'next/navigation'
 
@@ -14,9 +14,10 @@ export type MainLayoutProps = Partial<{
 }>
 
 const MainLayout = async ({ children }: MainLayoutProps) => {
-  let res: Awaited<ReturnType<typeof serverTRPC.auth.getMe.query>>
+  let userInfo: Record<string, any>
   try {
-    res = await serverTRPC.auth.getMe.query()
+    const client = await createServerClientFromCookies()
+    userInfo = await client.auth.getMe()
   } catch {
     redirect(Pages.login)
   }
@@ -24,7 +25,7 @@ const MainLayout = async ({ children }: MainLayoutProps) => {
   return (
     <AuthStoreProvider
       initialState={{
-        userInfo: res,
+        userInfo: userInfo as any,
       }}
     >
       <div className="w-screen h-screen flex flex-col">
