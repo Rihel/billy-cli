@@ -13,6 +13,7 @@ export { ApiClient } from './core/api.client.js'
 export type { ApiClientOptions, RequestOptions } from './core/api.client.js'
 export { CredentialResolver } from './core/credential-resolver.js'
 export { AuthInjector } from './core/auth-injector.js'
+export { ApiError, ApiErrorCodes, mapAppErrorValue, mapHttpStatus } from './core/api-error.js'
 
 export { ServerClient } from './server.client.js'
 export type {

@@ -3,6 +3,8 @@ import {
   // 核心
   ApiClient,
   ApiClientOptions,
+  ApiError,
+  ApiErrorCodes,
   // 策略
   BearerTokenStrategy,
   ApiKeyStrategy,
@@ -253,11 +255,15 @@ describe('ApiClient 请求流程', () => {
     })
   }
 
-  it('无 provider 时凭证为空抛错', async () => {
+  it('无 provider 时凭证为空抛 ApiError', async () => {
     const client = createClient()
-    await expect(
-      (client as any).request({ method: 'POST', url: '/test' }),
-    ).rejects.toThrow('鉴权失败')
+    try {
+      await (client as any).request({ method: 'POST', url: '/test' })
+      expect.unreachable('应抛出异常')
+    } catch (e) {
+      expect(e).toBeInstanceOf(ApiError)
+      expect((e as ApiError).code).toBe(ApiErrorCodes.Unauthorized)
+    }
   })
 
   it('有 provider + 空凭证时自动 acquire', async () => {
@@ -305,9 +311,13 @@ describe('ApiClient 请求流程', () => {
         needsRefresh: () => false,
       },
     })
-    await expect(
-      (client as any).request({ method: 'POST', url: '/test' }),
-    ).rejects.toThrow('鉴权失败')
+    try {
+      await (client as any).request({ method: 'POST', url: '/test' })
+      expect.unreachable('应抛出异常')
+    } catch (e) {
+      expect(e).toBeInstanceOf(ApiError)
+      expect((e as ApiError).code).toBe(ApiErrorCodes.Unauthorized)
+    }
     expect(acquireCount).toBe(0)
   })
 

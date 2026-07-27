@@ -1,4 +1,4 @@
-import { AppResponse, createMd5 } from '@repo/shared'
+import { AppResponse, createMd5, ResponseUtils } from '@repo/shared'
 import axios, {
   AxiosInstance,
   AxiosRequestConfig,
@@ -6,6 +6,7 @@ import axios, {
   isAxiosError,
 } from 'axios'
 import type { AuthStrategy, CredentialProvider, CredentialsManager } from './interfaces.js'
+import { ApiError, ApiErrorCodes, mapHttpStatus, mapAppErrorValue } from './api-error.js'
 import { CredentialResolver } from './credential-resolver.js'
 import { AuthInjector } from './auth-injector.js'
 
@@ -48,7 +49,7 @@ export interface RequestOptions {
  *   1. 接收请求配置
  *   2. 编排认证流程（CredentialResolver → AuthInjector）
  *   3. 调用 axios 发起 HTTP 请求
- *   4. 处理错误（401 自动 refresh 重试）
+ *   4. 处理错误（401 自动 refresh 重试，统一以 ApiError 输出）
  *
  * 不传 CredentialProvider 时等同于现有 Web 端行为，完全向后兼容。
  */
@@ -90,6 +91,8 @@ export class ApiClient<Credentials = Record<string, any>> {
    *   3. cancelPrevious → 取消相同在途请求
    *   4. axios.request()
    *   5. 401 + 未重试过 + canRefresh → forceRefresh → 回到步骤 2 重试一次
+   *
+   * 所有错误统一以 ApiError 抛出，支持 JSON 序列化。
    */
   protected async request<Body extends Record<string, any>, Res>(
     config: AxiosRequestConfig<Body>,
@@ -98,7 +101,7 @@ export class ApiClient<Credentials = Record<string, any>> {
     const { skipAuth, cancelPrevious } = requestOptions ?? {}
 
     if (!skipAuth) {
-      // 步骤 1：获取有效凭证（内部含校验，失败抛错）
+      // 步骤 1：获取有效凭证（内部含校验，失败抛 ApiError）
       await this.resolver.resolve()
 
       // 步骤 2：注入认证上下文
@@ -144,15 +147,99 @@ export class ApiClient<Credentials = Record<string, any>> {
       }
 
       this.options?.callbacks?.onError?.(error)
-      throw error
+      throw this.normalizeError(error)
     } finally {
       if (cancelPrevious && config.signal) {
-        // 清理 cancelPreviousMap（通过 fingerprint 反向查找）
-        // 由于 config 可能已被 injector 替换，用原始配置的指纹清理
         const fp = this.createFingerprint(config)
         this.cancelPreviousMap.delete(fp)
       }
     }
+  }
+
+  /**
+   * 发送需要鉴权的 POST 请求。
+   * 自动解包 AppResponse，业务错误（code !== 0）时抛 ApiError。
+   */
+  protected async post<Res, Body extends Record<string, any> = Record<string, any>>(
+    endpoint: string,
+    body?: Body,
+  ): Promise<Res> {
+    const response = await this.request<Body, Res>({
+      method: 'POST',
+      url: endpoint,
+      data: body,
+    })
+    if (ResponseUtils.isError(response)) {
+      throw new ApiError(mapAppErrorValue(response.code), response.message || '请求失败', {
+        status: response.code,
+        details: { response },
+      })
+    }
+    return response.data as Res
+  }
+
+  /**
+   * 发送无需鉴权的 POST 请求（如 login, register）。
+   * 自动解包 AppResponse，业务错误（code !== 0）时抛 ApiError。
+   */
+  protected async postPublic<Res, Body extends Record<string, any> = Record<string, any>>(
+    endpoint: string,
+    body?: Body,
+  ): Promise<Res> {
+    const response = await this.request<Body, Res>(
+      { method: 'POST', url: endpoint, data: body },
+      { skipAuth: true },
+    )
+    if (ResponseUtils.isError(response)) {
+      throw new ApiError(mapAppErrorValue(response.code), response.message || '请求失败', {
+        status: response.code,
+        details: { response },
+      })
+    }
+    return response.data as Res
+  }
+
+  /** 将任意错误转为 ApiError，保证统一异常结构 */
+  private normalizeError(error: any): ApiError {
+    if (error instanceof ApiError) return error
+
+    if (isAxiosError(error)) {
+      // 无 response → 网络异常（断网、超时、DNS 失败等）
+      if (!error.response) {
+        return new ApiError(
+          ApiErrorCodes.NetworkError,
+          error.message || '网络异常，无法连接到服务器',
+          {
+            details: {
+              url: error.config?.url,
+              method: error.config?.method,
+              cause: error.code, // ECONNABORTED / ERR_NETWORK / ETIMEDOUT 等
+            },
+          },
+        )
+      }
+
+      // 有 response → 业务异常（4xx / 5xx）
+      const code = mapHttpStatus(error.response.status)
+      return new ApiError(
+        code,
+        error.response?.data?.message || error.message || '请求失败',
+        {
+          status: error.response?.status,
+          details: {
+            url: error.config?.url,
+            method: error.config?.method,
+            responseData: error.response?.data,
+          },
+        },
+      )
+    }
+
+    return new ApiError(
+      ApiErrorCodes.InternalError,
+      error?.message || '未知错误',
+      { details: error },
+    )
   }
 
   /** 基于 url + method + params + data 生成请求指纹 */

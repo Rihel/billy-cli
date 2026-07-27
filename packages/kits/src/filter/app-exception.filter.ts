@@ -18,7 +18,9 @@ export class AppExceptionFilter implements ExceptionFilter {
   catch(exception: unknown, host: ArgumentsHost) {
     const ctx = host.switchToHttp()
     const response = ctx.getResponse<any>()
-
+    this.logger.error(`捕获异常：${exception}`, {
+      exception,
+    })
     // Zod 校验错误：提取中文提示，返回 HTTP 200
     if (
       exception instanceof BadRequestException &&
@@ -27,7 +29,11 @@ export class AppExceptionFilter implements ExceptionFilter {
       'issues' in (exception.cause as any)
     ) {
       const cause = exception.cause as {
-        issues: Array<{ code: string; path: (string | number)[]; message: string }>
+        issues: Array<{
+          code: string
+          path: (string | number)[]
+          message: string
+        }>
       }
       const message = parseZodIssues(cause.issues as any)
       this.logger.warn(`【参数校验异常】${message}`)
@@ -47,7 +53,9 @@ export class AppExceptionFilter implements ExceptionFilter {
 
     if (exception instanceof HttpException) {
       const status = exception.getStatus()
-      this.logger.warn(`【HTTP 异常】status=${status} message=${exception.message}`)
+      this.logger.warn(
+        `【HTTP 异常】status=${status} message=${exception.message}`,
+      )
       response
         .status(status)
         .json(ResponseUtils.error(status, exception.message))

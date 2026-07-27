@@ -26,7 +26,6 @@ import {
   StorageStsModel,
   GetStorageUploadPresignedUrlDto,
   GetStorageDownloadUrlDto,
-  ResponseUtils,
   AppPaginateResponse,
   AppCursorPaginateResponse,
 } from '@repo/shared'
@@ -93,45 +92,6 @@ type GetDownloadUrlInput = z.infer<typeof GetStorageDownloadUrlDto>
 export class ServerClient<
   Credentials = Record<string, any>,
 > extends ApiClient<Credentials> {
-  /**
-   * 发送需要鉴权的 POST 请求。
-   */
-  protected async post<Res>(
-    endpoint: string,
-    body?: Record<string, any>,
-  ): Promise<Res> {
-    const response = await this.request<Record<string, any>, Res>({
-      method: 'POST',
-      url: endpoint,
-      data: body,
-    })
-    if (ResponseUtils.isError(response)) {
-      throw new Error(response.message || '请求失败')
-    }
-    return response.data as Res
-  }
-
-  /**
-   * 发送无需鉴权的 POST 请求（如 login, register）。
-   */
-  protected async postPublic<Res>(
-    endpoint: string,
-    body?: Record<string, any>,
-  ): Promise<Res> {
-    const response = await this.request<Record<string, any>, Res>(
-      {
-        method: 'POST',
-        url: endpoint,
-        data: body,
-      },
-      { skipAuth: true },
-    )
-    if (ResponseUtils.isError(response)) {
-      throw new Error(response.message || '请求失败')
-    }
-    return response.data as Res
-  }
-
   /* ========== 认证 ========== */
 
   auth = {

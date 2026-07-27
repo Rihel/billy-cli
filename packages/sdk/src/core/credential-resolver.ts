@@ -1,4 +1,5 @@
 import type { AuthStrategy, CredentialProvider, CredentialsManager } from './interfaces.js'
+import { ApiError, ApiErrorCodes } from './api-error.js'
 
 /**
  * 凭证解析器 —— 负责完整的 credential 生命周期。
@@ -51,7 +52,7 @@ export class CredentialResolver<Credentials = Record<string, any>> {
 
     const isValid = await this.authStrategy.isAuthorization(credentials)
     if (!isValid) {
-      throw new Error('鉴权失败：凭证无效或未提供凭证。')
+      throw new ApiError(ApiErrorCodes.Unauthorized, '鉴权失败：凭证无效或未提供凭证。')
     }
 
     return credentials
@@ -64,7 +65,10 @@ export class CredentialResolver<Credentials = Record<string, any>> {
    */
   async forceRefresh(): Promise<Credentials> {
     if (!this.provider?.refresh) {
-      throw new Error('CredentialResolver：未配置 refresh，无法强制刷新。')
+      throw new ApiError(
+        ApiErrorCodes.NoRefreshAvailable,
+        '未配置 refresh，无法强制刷新。',
+      )
     }
     const credentials = await this.manager.getCredentials()
     const fresh = await this.deduplicatedRefresh(credentials)
