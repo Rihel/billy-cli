@@ -1,4 +1,4 @@
-import type { AuthStrategy, AuthStrategyType, AuthContext } from '../interfaces.js'
+import type { AuthStrategy, AuthStrategyType, AuthContext } from '../core/interfaces.js'
 
 export type BearerTokenCredentials = {
   token: string

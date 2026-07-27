@@ -1,4 +1,9 @@
-import type { AuthStrategy, AuthStrategyType, AuthContext } from '../interfaces.js'
+import type {
+  AuthStrategy,
+  AuthStrategyType,
+  AuthContext,
+} from '../core/interfaces.js'
+import CryptoJs from 'crypto-js'
 
 export type HmacCredentials = {
   accessKey: string
@@ -55,9 +60,9 @@ export type HmacStrategyOptions = {
  *   const method = config.method?.toUpperCase() ?? 'GET'
  *   const path = config.url ?? '/'
  *   const body = config.data ? JSON.stringify(config.data) : ''
- *   const bodyHash = await sha256Hex(body)
+ *   const bodyHash = sha256Hex(body)
  *   const canonical = [method, path, bodyHash, Date.now()].join('\n')
- *   config.headers['X-Hmac-Signature'] = await strategy.sign(secretKey, canonical)
+ *   config.headers['X-Hmac-Signature'] = strategy.sign(secretKey, canonical)
  *   return config
  * })
  * ```
@@ -81,9 +86,7 @@ export class HmacStrategy implements AuthStrategy<HmacCredentials> {
     return !!(credentials?.accessKey && credentials?.secretKey)
   }
 
-  async getAuthContext(
-    credentials: HmacCredentials,
-  ): Promise<AuthContext> {
+  async getAuthContext(credentials: HmacCredentials): Promise<AuthContext> {
     const prefix = this.options.headerPrefix
     const timestamp = Date.now().toString()
     const nonce = this.generateNonce()
@@ -101,7 +104,7 @@ export class HmacStrategy implements AuthStrategy<HmacCredentials> {
         nonce,
         headers,
       })
-      const signature = await this.sign(credentials.secretKey, canonical)
+      const signature = this.sign(credentials.secretKey, canonical)
       headers[`${prefix}-Signature`] = signature
     }
 
@@ -112,28 +115,24 @@ export class HmacStrategy implements AuthStrategy<HmacCredentials> {
    * 用 secretKey 对任意字符串计算 HMAC 签名。
    * 可在 axios 拦截器中调用，实现 full-request signing。
    */
-  async sign(secretKey: string, data: string): Promise<string> {
-    const encoder = new TextEncoder()
-    const key = await crypto.subtle.importKey(
-      'raw',
-      encoder.encode(secretKey),
-      { name: 'HMAC', hash: { name: this.options.algorithm } },
-      false,
-      ['sign'],
-    )
-    const signature = await crypto.subtle.sign('HMAC', key, encoder.encode(data))
-    return this.arrayBufferToHex(signature)
+  sign(secretKey: string, data: string): string {
+    const fn = this.hmacFn()
+    return fn(data, secretKey).toString()
   }
 
   private generateNonce(): string {
-    const bytes = new Uint8Array(16)
-    crypto.getRandomValues(bytes)
-    return this.arrayBufferToHex(bytes.buffer)
+    return CryptoJs.lib.WordArray.random(16).toString()
   }
 
-  private arrayBufferToHex(buffer: ArrayBuffer): string {
-    return Array.from(new Uint8Array(buffer))
-      .map((b) => b.toString(16).padStart(2, '0'))
-      .join('')
+  private hmacFn(): (data: string, key: string) => CryptoJs.lib.WordArray {
+    switch (this.options.algorithm) {
+      case 'SHA-384':
+        return CryptoJs.HmacSHA384
+      case 'SHA-512':
+        return CryptoJs.HmacSHA512
+      case 'SHA-256':
+      default:
+        return CryptoJs.HmacSHA256
+    }
   }
 }
