@@ -1,6 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common'
 import { createDb } from '@repo/db'
-import { batchExecute, type BatchExecuteOptions } from '@repo/shared'
+import { batchExecute } from '@repo/shared'
 import {
   and,
   asc,
@@ -13,7 +13,6 @@ import {
   or,
   type InferInsertModel,
   type InferSelectModel,
-  type SQL,
 } from 'drizzle-orm'
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres'
 import type { PgColumn, PgTable, PgUpdateSetSource } from 'drizzle-orm/pg-core'
@@ -21,26 +20,17 @@ import {
   DATABASE_MODULE_OPTIONS,
   type DatabaseModuleOptions,
 } from './database.options.js'
-
-export interface PageResult<T> {
-  items: T[]
-  total: number
-  page: number
-  size: number
-}
-
-export interface CursorPageResult<T, TCursor> {
-  items: T[]
-  nextCursor: TCursor | null
-}
-
-export type BatchOptions = BatchExecuteOptions
-type CursorColumns = readonly [PgColumn, ...PgColumn[]]
-type CursorValues<TColumns extends CursorColumns> = {
-  [Index in keyof TColumns]: TColumns[Index] extends PgColumn
-    ? TColumns[Index]['_']['data']
-    : never
-}
+import type {
+  PageQueryOptions,
+  PageQueryResult,
+  CursorQueryOptions,
+  CursorQueryResult,
+  BatchOptions,
+  CursorColumns,
+  CursorValues,
+  CursorQueryDeferredOptions,
+  PageQueryDeferredOptions,
+} from './types.js'
 
 function createCursorFilter<TColumns extends CursorColumns>(
   columns: TColumns,
@@ -143,15 +133,9 @@ export class DbService {
     )
   }
 
-  async paginate<TTable extends PgTable, T = InferSelectModel<TTable>>(opts: {
-    table: TTable
-    where?: SQL
-    orderCol?: PgColumn
-    order?: 'asc' | 'desc'
-    page: number
-    size: number
-    map?: (row: InferSelectModel<TTable>) => T
-  }): Promise<PageResult<T>> {
+  async pageQuery<TTable extends PgTable, T = InferSelectModel<TTable>>(
+    opts: PageQueryOptions<TTable, T>,
+  ): Promise<PageQueryResult<T>> {
     const { table, where, orderCol, order = 'desc', page, size, map } = opts
     const offset = (page - 1) * size
     const orderExpr = orderCol
@@ -173,21 +157,14 @@ export class DbService {
     return { items, total: Number(total), page, size }
   }
 
-  async paginateCursor<
+  async cursorQuery<
     TTable extends PgTable,
     TColumns extends CursorColumns,
     TCursor,
     T = InferSelectModel<TTable>,
-  >(opts: {
-    table: TTable
-    cursorColumns: TColumns
-    cursorValues?: CursorValues<TColumns>
-    getCursor: (row: InferSelectModel<TTable>) => TCursor
-    where?: SQL
-    order?: 'asc' | 'desc'
-    size: number
-    map?: (row: InferSelectModel<TTable>) => T
-  }): Promise<CursorPageResult<T, TCursor>> {
+  >(
+    opts: CursorQueryOptions<TTable, TColumns, TCursor, T>,
+  ): Promise<CursorQueryResult<T, TCursor>> {
     const {
       table,
       cursorColumns,
@@ -213,24 +190,15 @@ export class DbService {
     }
   }
 
-  async paginateCursorDeferred<
+  async cursorQueryDeferred<
     TTable extends PgTable,
     TColumns extends CursorColumns,
     TCursor,
     TId,
     T,
-  >(opts: {
-    table: TTable
-    idCol: PgColumn
-    cursorColumns: TColumns
-    cursorValues?: CursorValues<TColumns>
-    getCursor: (values: CursorValues<TColumns>) => TCursor
-    where?: SQL
-    order?: 'asc' | 'desc'
-    size: number
-    dataFn: (ids: TId[]) => Promise<T[]>
-    getItemId: (item: T) => TId
-  }): Promise<CursorPageResult<T, TCursor>> {
+  >(
+    opts: CursorQueryDeferredOptions<TTable, TColumns, TCursor, TId, T>,
+  ): Promise<CursorQueryResult<T, TCursor>> {
     const {
       table,
       idCol,
@@ -277,16 +245,9 @@ export class DbService {
     }
   }
 
-  async paginateDeferred<TTable extends PgTable, TId, T>(opts: {
-    table: TTable
-    idCol: PgColumn
-    where?: SQL
-    orderCol?: PgColumn
-    order?: 'asc' | 'desc'
-    page: number
-    size: number
-    dataFn: (ids: TId[]) => Promise<T[]>
-  }): Promise<PageResult<T>> {
+  async pageQueryDeferred<TTable extends PgTable, TId, T>(
+    opts: PageQueryDeferredOptions<TTable, TId, T>,
+  ): Promise<PageQueryResult<T>> {
     const {
       table,
       idCol,

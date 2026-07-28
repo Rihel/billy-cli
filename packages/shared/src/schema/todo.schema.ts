@@ -17,6 +17,9 @@ export const TodoIdInputDto = z.object({
   todoId: z.string(),
 })
 
+export const GetDetailTodoDto = TodoIdInputDto.extend({})
+export const RemoveTodoDto = TodoIdInputDto.extend({})
+
 export const CreateTodoDto = TodoFields.omit({ completed: true })
 
 export const UpdateTodoDto = TodoFields.extend(TodoIdInputDto.shape)

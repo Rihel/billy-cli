@@ -59,7 +59,7 @@ export default function UsersPage() {
       { page, pageSize, keyword, orderBy: 'createdAt', order: 'desc' },
     ],
     queryFn: () =>
-      client.user.findMany({
+      client.user.pageQuery({
         page,
         size: pageSize,
         keyword,
@@ -112,6 +112,7 @@ export default function UsersPage() {
           <IconText
             icon={EditOutlined}
             size="small"
+            type="primary"
             onClick={() => {
               editForm.setFieldsValue(record)
               editDialog.open(record)
@@ -122,6 +123,7 @@ export default function UsersPage() {
           <IconText
             icon={LockOutlined}
             size="small"
+            type="primary"
             onClick={() => resetPasswordDialog.open(record)}
           >
             重置密码

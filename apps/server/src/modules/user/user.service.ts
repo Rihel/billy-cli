@@ -3,7 +3,9 @@ import { users } from '@repo/db';
 import {
   AppErrorCodes,
   CreateUserDto,
+  GetUserDetailDto,
   PageQueryUserDto,
+  RemoveUserDto,
   ResetUserPasswordDto,
   UpdateUserDto,
 } from '@repo/shared';
@@ -55,8 +57,8 @@ export class UserService {
     return this.sanitizeUser(user);
   }
 
-  async findMany(input: z.infer<typeof PageQueryUserDto>) {
-    this.logger.log('findMany', input);
+  async pageQuery(input: z.infer<typeof PageQueryUserDto>) {
+    this.logger.log('pageQuery', input);
     const { page, size, keyword, orderBy, order } = input;
     const where = keyword
       ? or(
@@ -64,7 +66,7 @@ export class UserService {
           ilike(users.realName, `%${keyword}%`),
         )
       : undefined;
-    return this.db.paginate({
+    return this.db.pageQuery({
       table: users,
       where,
       orderCol: users[orderBy as keyof typeof users] as PgColumn,
@@ -75,11 +77,11 @@ export class UserService {
     });
   }
 
-  async findById(userId: string) {
+  async detail(input: z.infer<typeof GetUserDetailDto>) {
     const [user] = await this.db
       .select()
       .from(users)
-      .where(eq(users.id, userId));
+      .where(eq(users.id, input.userId));
     if (!user) throw new AppError(AppErrorCodes.UserNotFound);
     return this.sanitizeUser(user);
   }
@@ -97,13 +99,13 @@ export class UserService {
     return this.sanitizeUser(user);
   }
 
-  async remove(userId: string) {
+  async remove(input: z.infer<typeof RemoveUserDto>) {
     const [user] = await this.db
       .delete(users)
-      .where(eq(users.id, userId))
+      .where(eq(users.id, input.userId))
       .returning();
     if (!user) throw new AppError(AppErrorCodes.UserNotFound);
-    this.logger.log('removed', { userId });
+    this.logger.log('removed', { userId: input.userId });
     return { success: true };
   }
 

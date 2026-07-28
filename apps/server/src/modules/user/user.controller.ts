@@ -2,7 +2,9 @@ import { Controller, Post, UseGuards, Inject } from '@nestjs/common';
 import { UserService } from './user.service.js';
 import {
   CreateUserDto,
+  GetUserDetailDto,
   PageQueryUserDto,
+  RemoveUserDto,
   ResetUserPasswordDto,
   UpdateUserDto,
   UserIdInputDto,
@@ -21,14 +23,14 @@ export class UserController {
     return this.userService.create(input);
   }
 
-  @Post('find-many')
+  @Post('page-query')
   findMany(@ZBody(PageQueryUserDto) input: z.infer<typeof PageQueryUserDto>) {
-    return this.userService.findMany(input);
+    return this.userService.pageQuery(input);
   }
 
-  @Post('find-by-id')
-  findById(@ZBody(UserIdInputDto) input: z.infer<typeof UserIdInputDto>) {
-    return this.userService.findById(input.userId);
+  @Post('detail')
+  findById(@ZBody(GetUserDetailDto) input: z.infer<typeof GetUserDetailDto>) {
+    return this.userService.detail(input);
   }
 
   @Post('update')
@@ -37,12 +39,14 @@ export class UserController {
   }
 
   @Post('remove')
-  remove(@ZBody(UserIdInputDto) input: z.infer<typeof UserIdInputDto>) {
-    return this.userService.remove(input.userId);
+  remove(@ZBody(RemoveUserDto) input: z.infer<typeof RemoveUserDto>) {
+    return this.userService.remove(input);
   }
 
   @Post('reset-password')
-  resetPassword(@ZBody(ResetUserPasswordDto) input: z.infer<typeof ResetUserPasswordDto>) {
+  resetPassword(
+    @ZBody(ResetUserPasswordDto) input: z.infer<typeof ResetUserPasswordDto>,
+  ) {
     return this.userService.resetPassword(input);
   }
 }

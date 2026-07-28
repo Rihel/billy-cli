@@ -4,9 +4,10 @@ import {
   CreateTodoDto,
   CursorQueryTodoDto,
   PageQueryTodoDto,
-  TodoIdInputDto,
   UpdateTodoDto,
   TodoModel,
+  GetDetailTodoDto,
+  RemoveTodoDto,
 } from '@repo/shared';
 import type { z } from 'zod';
 import { ZBody, ZSerialize } from 'nest-zod';
@@ -23,19 +24,21 @@ export class TodoController {
     return this.todoService.create(input);
   }
 
-  @Post('find-many')
-  findMany(@ZBody(PageQueryTodoDto) input: z.infer<typeof PageQueryTodoDto>) {
-    return this.todoService.findMany(input);
+  @Post('page-query')
+  pageQuery(@ZBody(PageQueryTodoDto) input: z.infer<typeof PageQueryTodoDto>) {
+    return this.todoService.pageQuery(input);
   }
 
-  @Post('find-many-cursor')
-  findManyCursor(@ZBody(CursorQueryTodoDto) input: z.infer<typeof CursorQueryTodoDto>) {
-    return this.todoService.findManyCursor(input);
+  @Post('cursor-query')
+  cursorQuery(
+    @ZBody(CursorQueryTodoDto) input: z.infer<typeof CursorQueryTodoDto>,
+  ) {
+    return this.todoService.cursorQuery(input);
   }
 
-  @Post('find-by-id')
-  findById(@ZBody(TodoIdInputDto) input: z.infer<typeof TodoIdInputDto>) {
-    return this.todoService.findById(input.todoId);
+  @Post('detail')
+  detail(@ZBody(GetDetailTodoDto) input: z.infer<typeof GetDetailTodoDto>) {
+    return this.todoService.detail(input);
   }
 
   @Post('update')
@@ -44,7 +47,7 @@ export class TodoController {
   }
 
   @Post('remove')
-  remove(@ZBody(TodoIdInputDto) input: z.infer<typeof TodoIdInputDto>) {
-    return this.todoService.remove(input.todoId);
+  remove(@ZBody(RemoveTodoDto) input: z.infer<typeof RemoveTodoDto>) {
+    return this.todoService.remove(input);
   }
 }

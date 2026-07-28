@@ -4,7 +4,9 @@ import {
   AppErrorCodes,
   CreateTodoDto,
   CursorQueryTodoDto,
+  GetDetailTodoDto,
   PageQueryTodoDto,
+  RemoveTodoDto,
   UpdateTodoDto,
 } from '@repo/shared';
 import { eq, ilike } from 'drizzle-orm';
@@ -26,11 +28,11 @@ export class TodoService {
     return todo;
   }
 
-  async findMany(input: z.infer<typeof PageQueryTodoDto>) {
-    this.logger.log('findMany', input);
+  async pageQuery(input: z.infer<typeof PageQueryTodoDto>) {
+    this.logger.log('pageQuery', input);
     const { page, size, keyword, orderBy, order } = input;
     const where = keyword ? ilike(todos.title, `%${keyword}%`) : undefined;
-    const result = await this.db.paginate({
+    const result = await this.db.pageQuery({
       table: todos,
       where,
       orderCol: todos[orderBy as keyof typeof todos] as PgColumn,
@@ -38,13 +40,13 @@ export class TodoService {
       page,
       size,
     });
-    this.logger.log('findMany result', { total: result.total, page, size });
+    this.logger.log('pageQuery result', { total: result.total, page, size });
     return result;
   }
 
-  async findManyCursor(input: z.infer<typeof CursorQueryTodoDto>) {
+  async cursorQuery(input: z.infer<typeof CursorQueryTodoDto>) {
     const { cursor, keyword, size } = input;
-    return this.db.paginateCursor({
+    return this.db.cursorQuery({
       table: todos,
       cursorColumns: [todos.updatedAt, todos.id],
       cursorValues: cursor
@@ -59,7 +61,8 @@ export class TodoService {
     });
   }
 
-  async findById(todoId: string) {
+  async detail(input: z.infer<typeof GetDetailTodoDto>) {
+    const { todoId } = input;
     this.logger.log('findById', { todoId });
     const [todo] = await this.db
       .select()
@@ -88,7 +91,8 @@ export class TodoService {
     return todo;
   }
 
-  async remove(todoId: string) {
+  async remove(input: z.infer<typeof RemoveTodoDto>) {
+    const { todoId } = input;
     this.logger.log('remove', { todoId });
     const [todo] = await this.db
       .delete(todos)

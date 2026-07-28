@@ -4,14 +4,14 @@ export interface AppResponse<T> {
   data?: T
 }
 
-export interface AppPaginateResponse<T> {
+export interface AppPageQueryResponse<T> {
   items: T[]
   total: number
   page: number
   size: number
 }
 
-export interface AppCursorPaginateResponse<T, TCursor> {
+export interface AppCursorQueryResponse<T, TCursor> {
   items: T[]
   nextCursor: TCursor | null
 }

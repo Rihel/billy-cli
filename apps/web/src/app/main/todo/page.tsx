@@ -24,7 +24,7 @@ import {
   useDisclosure,
 } from '@repo/ui'
 import type { TodoItem, TodoCursor } from '@repo/sdk'
-import type { AppCursorPaginateResponse } from '@repo/shared'
+import type { AppCursorQueryResponse } from '@repo/shared'
 
 type EditTodoForm = {
   title: string
@@ -32,7 +32,7 @@ type EditTodoForm = {
 }
 
 type TodoListData = InfiniteData<
-  AppCursorPaginateResponse<TodoItem, TodoCursor>,
+  AppCursorQueryResponse<TodoItem, TodoCursor>,
   TodoCursor | undefined
 >
 
@@ -46,14 +46,14 @@ export default function TodoPage() {
   const [newTitle, setNewTitle] = useState('')
   const [editForm] = Form.useForm<EditTodoForm>()
   const listRef = useRef<DataListApi>(null)
-  const listQueryKey = ['todo', 'findManyCursor', { size: PAGE_SIZE }] as const
+  const listQueryKey = ['todo', 'cursorQuery', { size: PAGE_SIZE }] as const
 
   const { data, fetchNextPage, hasNextPage, isFetching, isFetchingNextPage } =
     useInfiniteQuery({
       queryKey: listQueryKey,
       initialPageParam: undefined as TodoCursor | undefined,
       queryFn: ({ pageParam }) =>
-        client.todo.findManyCursor({
+        client.todo.cursorQuery({
           cursor: pageParam,
           size: PAGE_SIZE,
         }),

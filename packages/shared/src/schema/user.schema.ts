@@ -12,6 +12,10 @@ export const CreateUserDto = z.object({
   avatar: z.string().nullable().optional(),
 })
 
+export const GetUserDetailDto = UserIdInputDto.extend({})
+
+export const RemoveUserDto = UserIdInputDto.extend({})
+
 export const UpdateUserDto = UserIdInputDto.extend({
   realName: z.string().nullable().optional(),
   avatar: z.string().nullable().optional(),

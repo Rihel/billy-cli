@@ -26,8 +26,10 @@ import {
   StorageStsModel,
   GetStorageUploadPresignedUrlDto,
   GetStorageDownloadUrlDto,
-  AppPaginateResponse,
-  AppCursorPaginateResponse,
+  AppPageQueryResponse,
+  AppCursorQueryResponse,
+  GetDetailTodoDto,
+  RemoveTodoDto,
 } from '@repo/shared'
 
 // ── 类型定义 ──────────────────────────────────────
@@ -129,19 +131,22 @@ export class ServerClient<
     create: (input: CreateTodoInput) =>
       this.post<TodoItem>('/todo/create', input),
 
-    findMany: (input: PageQueryTodoInput) =>
-      this.post<AppPaginateResponse<TodoItem>>('/todo/find-many', input),
+    pageQuery: (input: PageQueryTodoInput) =>
+      this.post<AppPageQueryResponse<TodoItem>>('/todo/page-query', input),
 
-    findManyCursor: (input: CursorQueryTodoInput) =>
-      this.post<AppCursorPaginateResponse<TodoItem, TodoCursor>>('/todo/find-many-cursor', input),
+    cursorQuery: (input: CursorQueryTodoInput) =>
+      this.post<AppCursorQueryResponse<TodoItem, TodoCursor>>(
+        '/todo/cursor-query',
+        input,
+      ),
 
-    findById: (input: TodoIdInput) =>
-      this.post<TodoItem>('/todo/find-by-id', input),
+    detail: (input: z.infer<typeof GetDetailTodoDto>) =>
+      this.post<TodoItem>('/todo/detail', input),
 
     update: (input: UpdateTodoInput) =>
       this.post<TodoItem>('/todo/update', input),
 
-    remove: (input: TodoIdInput) =>
+    remove: (input: z.infer<typeof RemoveTodoDto>) =>
       this.post<TodoItem>('/todo/remove', input),
   }
 
@@ -151,11 +156,10 @@ export class ServerClient<
     create: (input: CreateUserInput) =>
       this.post<SafeUser>('/user/create', input),
 
-    findMany: (input: PageQueryUserInput) =>
-      this.post<AppPaginateResponse<SafeUser>>('/user/find-many', input),
+    pageQuery: (input: PageQueryUserInput) =>
+      this.post<AppPageQueryResponse<SafeUser>>('/user/page-query', input),
 
-    findById: (input: UserIdInput) =>
-      this.post<SafeUser>('/user/find-by-id', input),
+    detail: (input: UserIdInput) => this.post<SafeUser>('/user/detail', input),
 
     update: (input: UpdateUserInput) =>
       this.post<SafeUser>('/user/update', input),
