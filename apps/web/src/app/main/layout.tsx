@@ -33,7 +33,7 @@ const MainLayout = async ({ children }: MainLayoutProps) => {
         <div className="flex flex-1 overflow-hidden">
           <AppSider />
           <div className=" flex-1 h-full   flex items-stretch">
-            <div className="mr-4 mb-4    bg-white overflow-hidden  w-full shadow rounded-xl">
+            <div className="mr-4 mb-4 ml-2   bg-white overflow-hidden  w-full shadow rounded-xl">
               <Suspense>{children}</Suspense>
             </div>
           </div>

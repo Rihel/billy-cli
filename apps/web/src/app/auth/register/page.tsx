@@ -8,7 +8,7 @@ import { callAction } from '@repo/ui/action'
 import { App, Button, Form, Typography } from 'antd'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { Pages } from '@/lib/constants'
+import { AppName, Pages } from '@/lib/constants'
 
 type RegisterForm = {
   email: string
@@ -26,7 +26,7 @@ export default function RegisterPage() {
     <>
       <div className="text-center mb-6">
         <Typography.Title level={3} style={{ marginBottom: 4 }}>
-          Billy CLI
+          {AppName}
         </Typography.Title>
         <Typography.Text type="secondary">创建新账号</Typography.Text>
       </div>
