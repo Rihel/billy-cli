@@ -18,6 +18,7 @@ export class AppExceptionFilter implements ExceptionFilter {
   catch(exception: unknown, host: ArgumentsHost) {
     const ctx = host.switchToHttp()
     const response = ctx.getResponse<any>()
+    this.logger.error('捕获到异常', exception)
 
     // Zod 校验错误：提取中文提示，返回 HTTP 200
     if (
@@ -40,7 +41,10 @@ export class AppExceptionFilter implements ExceptionFilter {
     }
 
     if (exception instanceof AppError) {
-      this.logger.warn('业务异常', { code: exception.errorCode, message: exception.message })
+      this.logger.warn('业务异常', {
+        code: exception.errorCode,
+        message: exception.message,
+      })
       response
         .status(exception.httpStatus)
         .json(ResponseUtils.error(exception.errorCode, exception.message))
@@ -57,7 +61,10 @@ export class AppExceptionFilter implements ExceptionFilter {
     }
 
     if (exception instanceof Error) {
-      this.logger.error('系统异常', { message: exception.message, stack: exception.stack })
+      this.logger.error('系统异常', {
+        message: exception.message,
+        stack: exception.stack,
+      })
       response.status(500).json(ResponseUtils.error(5001, '系统错误'))
       return
     }

@@ -21,7 +21,7 @@ export const PageToolbar = ({
   const compact = rect.width > 0 && rect.width < 640
 
   return (
-    <div ref={ref} className={cn('mb-4', className)}>
+    <div ref={ref} className={cn(className)}>
       <div
         className={cn(
           'flex gap-4',

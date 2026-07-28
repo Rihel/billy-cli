@@ -93,7 +93,7 @@ const DataListInner = <Item,>(
           EmptyPlaceholder: () =>
             loading ? (
               <div className="flex h-full items-center justify-center">
-                <Spin tip={loadingText} />
+                <Spin description={loadingText} />
               </div>
             ) : (
               <div className="flex h-full items-center justify-center">
@@ -103,7 +103,7 @@ const DataListInner = <Item,>(
           Footer: () =>
             loadingMore ? (
               <div className="flex justify-center py-4">
-                <Spin size="small" tip={loadingText} />
+                <Spin size="small" description={loadingText} />
               </div>
             ) : null,
         }}

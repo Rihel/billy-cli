@@ -2,9 +2,9 @@
 
 import { resetPasswordAction } from '@/actions/auth.actions'
 import { KeyOutlined } from '@ant-design/icons'
-import { FormRenderer, IconText } from '@repo/ui'
+import { FormRenderer } from '@repo/ui'
 import { callAction } from '@repo/ui/action'
-import { App, Form, Typography } from 'antd'
+import { App, Button, Form, Typography } from 'antd'
 import { useBoolean } from 'ahooks'
 import { useRouter, useSearchParams } from 'next/navigation'
 
@@ -96,15 +96,15 @@ export default function ResetPasswordPage() {
           onFinish: handleSubmit,
         }}
       >
-        <IconText
-          icon={KeyOutlined}
+        <Button
+          icon={<KeyOutlined />}
           type="primary"
           htmlType="submit"
           block
           loading={loading}
         >
           重置密码
-        </IconText>
+        </Button>
       </FormRenderer>
     </>
   )

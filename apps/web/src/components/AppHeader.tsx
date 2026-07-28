@@ -8,11 +8,17 @@ import { DownOutlined } from '@ant-design/icons'
 import { Avatar, Dropdown } from 'antd'
 import type { MenuProps } from 'antd'
 import { useRouter } from 'next/navigation'
+import { AppMenu } from './AppMenu'
+import { ComponentProps, ComponentType } from 'react'
+import { cn } from '@repo/ui'
+import { useLayoutStore } from '@/stores/layout.store'
+import { MenuFoldOutlined, MenuUnfoldOutlined } from '@ant-design/icons'
 
-export type AppHeaderProps = Partial<{}>
+export type AppHeaderProps = Partial<{} & ComponentProps<'div'>>
 
-export const AppHeader = ({}: AppHeaderProps) => {
+export const AppHeader = ({ className, ...props }: AppHeaderProps) => {
   const { userInfo, clear } = useAuthStore()
+  const { toggleSiderCollapsed, isSiderCollapsed } = useLayoutStore()
   const router = useRouter()
   const exit = async () => {
     clear()
@@ -29,8 +35,22 @@ export const AppHeader = ({}: AppHeaderProps) => {
   }
 
   return (
-    <div className="flex justify-between items-center h-16  border-b  px-5">
-      <div className="text-2xl ">{AppName}</div>
+    <div
+      className={cn(
+        'flex justify-between items-center h-16    px-5 bg-transparent',
+        className,
+      )}
+      {...props}
+    >
+      <div className="flex gap-10 items-center">
+        <div className="text-2xl ">{AppName}</div>
+        <div
+          className="cursor-pointer text-2xl hover:text-blue-400"
+          onClick={toggleSiderCollapsed}
+        >
+          {isSiderCollapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
+        </div>
+      </div>
 
       <Dropdown
         menu={{

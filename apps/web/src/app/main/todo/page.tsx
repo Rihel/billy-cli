@@ -10,10 +10,12 @@ import {
 } from '@tanstack/react-query'
 import type { InfiniteData } from '@tanstack/react-query'
 import { produce } from 'immer'
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import {
+  AutoSize,
   ConfirmAction,
   DataList,
+  DataListApi,
   DisplayValue,
   IconText,
   ModalForm,
@@ -21,14 +23,18 @@ import {
   RefreshButton,
   useDisclosure,
 } from '@repo/ui'
-import type { TodoItem, TodoCursor, TodoCursorPage } from '@repo/sdk'
+import type { TodoItem, TodoCursor } from '@repo/sdk'
+import type { AppCursorPaginateResponse } from '@repo/shared'
 
 type EditTodoForm = {
   title: string
   completed: boolean
 }
 
-type TodoListData = InfiniteData<TodoCursorPage, TodoCursor | undefined>
+type TodoListData = InfiniteData<
+  AppCursorPaginateResponse<TodoItem, TodoCursor>,
+  TodoCursor | undefined
+>
 
 const PAGE_SIZE = 20
 
@@ -39,6 +45,7 @@ export default function TodoPage() {
   const editDialog = useDisclosure<TodoItem>()
   const [newTitle, setNewTitle] = useState('')
   const [editForm] = Form.useForm<EditTodoForm>()
+  const listRef = useRef<DataListApi>(null)
   const listQueryKey = ['todo', 'findManyCursor', { size: PAGE_SIZE }] as const
 
   const { data, fetchNextPage, hasNextPage, isFetching, isFetchingNextPage } =
@@ -110,6 +117,7 @@ export default function TodoPage() {
     onSuccess(todo) {
       prependTodo(todo)
       setNewTitle('')
+      listRef.current?.scrollToTop()
     },
   })
 
@@ -130,9 +138,10 @@ export default function TodoPage() {
   })
 
   return (
-    <>
+    <div className="bg-white h-full gap-4">
       <PageToolbar
         title="任务管理"
+        className="p-4"
         extra={
           <>
             <RefreshButton
@@ -166,77 +175,87 @@ export default function TodoPage() {
         }
       />
 
-      <DataList<TodoItem>
-        rowKey="id"
-        loading={isFetching && !data}
-        loadingMore={isFetchingNextPage}
-        hasMore={hasNextPage}
-        onLoadMore={async () => {
-          await fetchNextPage()
-        }}
-        dataSource={items}
-        height="calc(100vh - 270px)"
-        listClassName="border-y border-gray-200"
-        renderItem={(record) => (
-          <div className="flex min-h-20 items-center gap-3 border-b border-gray-100 px-3 py-3 last:border-b-0">
-            <Checkbox
-              checked={record.completed}
-              disabled={toggleMutation.isPending}
-              onChange={() =>
-                toggleMutation.mutate({
-                  todoId: record.id,
-                  title: record.title,
-                  completed: !record.completed,
-                })
-              }
+      <AutoSize>
+        {({ height }) => {
+          return (
+            <DataList<TodoItem>
+              ref={listRef}
+              rowKey="id"
+              loading={isFetching && !data}
+              loadingMore={isFetchingNextPage}
+              hasMore={hasNextPage}
+              onLoadMore={async () => {
+                await fetchNextPage()
+              }}
+              dataSource={items}
+              height={height}
+              listClassName="border-y border-gray-200"
+              renderItem={(record) => (
+                <div className="flex min-h-20 items-center gap-3 border-b border-gray-100 px-4 py-3 last:border-b-0">
+                  <Checkbox
+                    checked={record.completed}
+                    disabled={toggleMutation.isPending}
+                    onChange={() =>
+                      toggleMutation.mutate({
+                        todoId: record.id,
+                        title: record.title,
+                        completed: !record.completed,
+                      })
+                    }
+                  />
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span
+                        className={
+                          record.completed
+                            ? 'text-gray-400 line-through'
+                            : 'text-gray-900'
+                        }
+                      >
+                        {record.title}
+                      </span>
+                      <Tag color={record.completed ? 'success' : 'default'}>
+                        {record.completed ? '已完成' : '待完成'}
+                      </Tag>
+                    </div>
+                    <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-500">
+                      {record.description ? (
+                        <span className="truncate">{record.description}</span>
+                      ) : null}
+                      <span>
+                        更新于{' '}
+                        <DisplayValue type="date" value={record.updatedAt} />
+                      </span>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-4">
+                    <IconText
+                      icon={EditOutlined}
+                      size="small"
+                      type="primary"
+                      onClick={() => {
+                        editForm.setFieldsValue(record)
+                        editDialog.open(record)
+                      }}
+                    >
+                      编辑
+                    </IconText>
+                    <ConfirmAction
+                      title="确认删除？"
+                      onConfirm={() =>
+                        removeMutation.mutate({ todoId: record.id })
+                      }
+                      danger
+                    >
+                      删除
+                    </ConfirmAction>
+                  </div>
+                </div>
+              )}
             />
-            <div className="min-w-0 flex-1">
-              <div className="flex flex-wrap items-center gap-2">
-                <span
-                  className={
-                    record.completed
-                      ? 'text-gray-400 line-through'
-                      : 'text-gray-900'
-                  }
-                >
-                  {record.title}
-                </span>
-                <Tag color={record.completed ? 'success' : 'default'}>
-                  {record.completed ? '已完成' : '待完成'}
-                </Tag>
-              </div>
-              <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-500">
-                {record.description ? (
-                  <span className="truncate">{record.description}</span>
-                ) : null}
-                <span>
-                  更新于{' '}
-                  <DisplayValue type="date" value={record.updatedAt} />
-                </span>
-              </div>
-            </div>
-            <Space size={4} wrap>
-              <IconText
-                icon={EditOutlined}
-                size="small"
-                onClick={() => {
-                  editForm.setFieldsValue(record)
-                  editDialog.open(record)
-                }}
-              >
-                编辑
-              </IconText>
-              <ConfirmAction
-                title="确认删除？"
-                onConfirm={() => removeMutation.mutate({ todoId: record.id })}
-                danger
-              >
-                删除
-              </ConfirmAction>
-            </Space>
-          </div>
-        )}
-      />
+          )
+        }}
+      </AutoSize>
 
       <ModalForm<EditTodoForm>
         title="编辑任务"
@@ -270,6 +289,6 @@ export default function TodoPage() {
           editDialog.close()
         }}
       />
-    </>
+    </div>
   )
 }

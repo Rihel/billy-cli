@@ -66,6 +66,7 @@ export default function UserCenter() {
         data={userInfo}
         layout="row"
         className="mt-6"
+        labelClassName="w-40"
         items={[
           { name: 'email', label: '邮箱' },
           {
@@ -93,6 +94,7 @@ export default function UserCenter() {
             render: () => (
               <IconText
                 icon={LockOutlined}
+                type="primary"
                 onClick={() => passwordDialog.open()}
               >
                 修改密码

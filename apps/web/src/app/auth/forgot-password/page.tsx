@@ -2,10 +2,10 @@
 
 import { forgotPasswordAction } from '@/actions/auth.actions'
 import { SendOutlined } from '@ant-design/icons'
-import { FormRenderer, IconText } from '@repo/ui'
+import { FormRenderer } from '@repo/ui'
 import { callAction } from '@repo/ui/action'
 import { useBoolean } from 'ahooks'
-import { Alert, App, Form, Typography } from 'antd'
+import { Alert, App, Button, Form, Typography } from 'antd'
 import Link from 'next/link'
 
 const { Title, Text } = Typography
@@ -65,15 +65,15 @@ export default function ForgotPasswordPage() {
             ]}
             formProps={{ onFinish: handleSubmit }}
           >
-            <IconText
-              icon={SendOutlined}
+            <Button
+              icon={<SendOutlined />}
               type="primary"
               htmlType="submit"
               block
               loading={loading}
             >
               发送重置令牌
-            </IconText>
+            </Button>
           </FormRenderer>
           <div className="text-sm text-center">
             <Link href="/auth/login">返回登录</Link>

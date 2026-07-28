@@ -3,9 +3,9 @@
 import { saveToken } from '@/lib/server-client'
 import { loginAction } from '@/actions/auth.actions'
 import { LoginOutlined } from '@ant-design/icons'
-import { FormRenderer, IconText } from '@repo/ui'
+import { FormRenderer } from '@repo/ui'
 import { callAction } from '@repo/ui/action'
-import { App, Form, Typography } from 'antd'
+import { App, Button, Form, Typography } from 'antd'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { AppName, Pages } from '@/lib/constants'
@@ -71,16 +71,16 @@ export default function LoginPage() {
           },
         }}
       >
-        <IconText
+        <Button
           className="mb-2"
-          icon={LoginOutlined}
+          icon={<LoginOutlined />}
           type="primary"
           htmlType="submit"
           size="large"
           block
         >
           登录
-        </IconText>
+        </Button>
         <div className="flex justify-between text-sm">
           <Link href={Pages.register}>没有账号？去注册</Link>
           <Link href={Pages.forgotPassword}>忘记密码？</Link>

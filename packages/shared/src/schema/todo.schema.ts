@@ -7,7 +7,7 @@ import {
 
 const TodoFields = z.object({
   title: z.string(),
-  description: z.string().optional(),
+  description: z.string().nullable().optional(),
   completed: z.boolean().default(false),
 })
 
@@ -28,7 +28,7 @@ export const PageQueryTodoDto = BasePaginateDto.extend({
 })
 
 export const TodoCursorDto = z.object({
-  updatedAt: z.string().datetime(),
+  updatedAt: z.iso.datetime(),
   todoId: z.string(),
 })
 

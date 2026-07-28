@@ -3,9 +3,9 @@
 import { saveToken } from '@/lib/server-client'
 import { registerAction } from '@/actions/auth.actions'
 import { UserAddOutlined } from '@ant-design/icons'
-import { FormRenderer, IconText } from '@repo/ui'
+import { FormRenderer } from '@repo/ui'
 import { callAction } from '@repo/ui/action'
-import { App, Form, Typography } from 'antd'
+import { App, Button, Form, Typography } from 'antd'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { Pages } from '@/lib/constants'
@@ -97,16 +97,16 @@ export default function RegisterPage() {
           },
         }}
       >
-        <IconText
+        <Button
           className="mb-2"
-          icon={UserAddOutlined}
+          icon={<UserAddOutlined />}
           type="primary"
           htmlType="submit"
           size="large"
           block
         >
           注册
-        </IconText>
+        </Button>
         <div className="text-sm text-center">
           已有账号？<Link href={Pages.login}>去登录</Link>
         </div>

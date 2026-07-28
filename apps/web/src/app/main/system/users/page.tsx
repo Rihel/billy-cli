@@ -139,7 +139,7 @@ export default function UsersPage() {
   ]
 
   return (
-    <>
+    <div className="w-full h-full bg-white p-5">
       <DataTable<SafeUser>
         title="用户管理"
         toolbar={
@@ -303,6 +303,6 @@ export default function UsersPage() {
           resetPasswordDialog.close()
         }}
       />
-    </>
+    </div>
   )
 }

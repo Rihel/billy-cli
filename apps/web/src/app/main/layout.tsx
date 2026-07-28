@@ -28,12 +28,12 @@ const MainLayout = async ({ children }: MainLayoutProps) => {
         userInfo: userInfo as any,
       }}
     >
-      <div className="w-screen h-screen flex flex-col">
-        <AppHeader />
-        <div className="flex flex-1">
+      <div className="w-screen h-screen flex flex-col relative bg-gray-50">
+        <AppHeader className="shrink-0" />
+        <div className="flex flex-1 overflow-hidden">
           <AppSider />
-          <div className="bg-gray-50 flex-1">
-            <div className="m-5 p-5 bg-white">
+          <div className=" flex-1 h-full   flex items-stretch">
+            <div className="mr-4 mb-4    bg-white overflow-hidden  w-full shadow rounded-xl">
               <Suspense>{children}</Suspense>
             </div>
           </div>

@@ -9,6 +9,7 @@ import { Group } from '../layout/Group'
 import type { GroupProps } from '../layout/Group'
 import { DisplayValue } from './DisplayValue'
 import type { DisplayValueProps } from './DisplayValue'
+import { cn } from '../../lib/css'
 
 export type DisplayItem<Data extends Record<string, any>> = {
   name?: string
@@ -31,6 +32,9 @@ export type DisplayRenderProps<Data extends Record<string, any>> = {
   layout?: 'row' | 'column'
   emptyText?: ReactNode
   className?: string
+  itemClassName?: string
+  labelClassName?: string
+  contentClassName?: string
 }
 
 export const DisplayRender = <Data extends Record<string, any>>({
@@ -41,6 +45,9 @@ export const DisplayRender = <Data extends Record<string, any>>({
   layout = 'column',
   emptyText = '没有数据',
   className,
+  labelClassName,
+  itemClassName,
+  contentClassName,
 }: DisplayRenderProps<Data>) => {
   if (!data) return <Empty description={emptyText} />
 
@@ -72,21 +79,30 @@ export const DisplayRender = <Data extends Record<string, any>>({
     )
 
     return (
-      <div key={key} className="min-w-0 flex-1">
+      <div key={key} className={cn('min-w-0 flex-1')}>
         {item.useFieldItem === false ? (
           content
         ) : (
           <div
-            className={
+            className={cn(
               layout === 'row'
                 ? 'flex items-start gap-3'
-                : 'flex flex-col gap-1'
-            }
+                : 'flex flex-col gap-1',
+              itemClassName,
+            )}
           >
             {item.label ? (
-              <div className="shrink-0 text-sm text-gray-500">{item.label}</div>
+              <div
+                className={cn('shrink-0 text-sm text-gray-500', labelClassName)}
+              >
+                {item.label}
+              </div>
             ) : null}
-            <div className="min-w-0 text-sm text-gray-900">{content}</div>
+            <div
+              className={cn('min-w-0 text-sm text-gray-900', contentClassName)}
+            >
+              {content}
+            </div>
           </div>
         )}
       </div>

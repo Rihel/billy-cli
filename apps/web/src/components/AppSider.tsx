@@ -1,68 +1,27 @@
 'use client'
-import { DashboardOutlined, UserOutlined } from '@ant-design/icons'
-import { Layout, Menu } from 'antd'
-import type { MenuProps } from 'antd'
-import { usePathname, useRouter } from 'next/navigation'
+
+import { Layout } from 'antd'
+
+import { AppMenu } from './AppMenu'
+import { useLayoutStore } from '@/stores/layout.store'
 
 const { Sider } = Layout
 
 export type AppSiderProps = Partial<{}>
 
 export const AppSider = ({}: AppSiderProps) => {
-  const router = useRouter()
-  const pathname = usePathname()
-  const handleMenuClick: MenuProps['onClick'] = ({ key }) => {
-    if (key) {
-      router.push(key)
-    }
-  }
+  const { isSiderCollapsed } = useLayoutStore()
   return (
     <Sider
-      collapsible
+      collapsed={isSiderCollapsed}
       theme="light"
       classNames={{
-        root: 'h-full',
+        root: 'h-full !bg-transparent',
+        body: 'bg-transparent',
       }}
       width={240}
     >
-      <Menu
-        theme="light"
-        mode="inline"
-        onClick={handleMenuClick}
-        selectedKeys={[pathname]}
-        classNames={{
-          root: '!border-none',
-        }}
-        items={[
-          {
-            label: '控制台',
-            key: '/main/dashboard',
-            icon: <DashboardOutlined />,
-          },
-          {
-            label: '示例',
-            type: 'group',
-            children: [
-              {
-                label: '任务管理',
-                key: '/main/todo',
-              },
-            ],
-          },
-          {
-            label: '系统设置',
-            type: 'group',
-
-            children: [
-              {
-                label: '用户管理',
-                key: '/main/system/users',
-                icon: <UserOutlined />,
-              },
-            ],
-          },
-        ]}
-      />
+      <AppMenu />
     </Sider>
   )
 }

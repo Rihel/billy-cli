@@ -3,9 +3,10 @@
 import { Button, Popconfirm, Space } from 'antd'
 import type { PopconfirmProps } from 'antd'
 import type { ReactNode } from 'react'
+import { IconText } from '../icon/IconText'
 
 export const TableActions = ({ children }: { children: ReactNode }) => {
-  return <Space size={4}>{children}</Space>
+  return <div className="flex items-center gap-3">{children}</div>
 }
 
 export type ConfirmActionProps = {
@@ -32,9 +33,9 @@ export const ConfirmAction = ({
       okButtonProps={{ danger }}
       onConfirm={onConfirm}
     >
-      <Button type="link" size="small" danger={danger} disabled={disabled}>
+      <IconText type="danger" size="small" disabled={disabled}>
         {children}
-      </Button>
+      </IconText>
     </Popconfirm>
   )
 }

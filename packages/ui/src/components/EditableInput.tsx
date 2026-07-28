@@ -6,6 +6,7 @@ import type { InputProps } from 'antd'
 import type { ReactNode } from 'react'
 import { useImmer } from 'use-immer'
 import { cn } from '../lib/css'
+import { IconText } from './icon/IconText'
 
 export type EditableInputProps = {
   value?: string | null
@@ -83,19 +84,19 @@ export const EditableInput = ({
       ) : (
         <span>{children ?? value ?? emptyText}</span>
       )}
-      <div className="flex items-center gap-1">
+      <div className="flex items-center gap-3">
         {editing ? (
           <>
-            <Button
+            <IconText
               aria-label="保存"
-              type="text"
+              type="primary"
               icon={<SaveOutlined />}
               loading={saving}
               onClick={() => void save()}
             />
-            <Button
+            <IconText
               aria-label="取消"
-              type="text"
+              type="danger"
               danger
               disabled={saving}
               icon={<CloseOutlined />}
@@ -103,9 +104,9 @@ export const EditableInput = ({
             />
           </>
         ) : (
-          <Button
+          <IconText
             aria-label="编辑"
-            type="text"
+            type="primary"
             disabled={disabled}
             icon={<EditOutlined />}
             onClick={() => {
