@@ -14,6 +14,7 @@ import {
   IconText,
   ImageUpload,
   ModalForm,
+  PageToolbar,
   useDisclosure,
 } from '@repo/ui'
 
@@ -51,58 +52,61 @@ export default function UserCenter() {
   }
 
   return (
-    <Group title="个人资料" className="max-w-2xl">
-      <ImageUpload
-        value={userInfo?.avatar}
-        sizeLimit={2}
-        disabled={updateInfoMutation.isPending}
-        onChange={async (avatar) => {
-          await updateInfoMutation.mutateAsync({ avatar })
-          setUserInfo({ ...userInfo!, avatar })
-        }}
-      />
+    <div className="p-5 flex flex-col gap-5">
+      <PageToolbar title={<div className="text-2xl">个人中心</div>} />
+      <div className="flex gap-10">
+        <ImageUpload
+          value={userInfo?.avatar}
+          sizeLimit={2}
+          disabled={updateInfoMutation.isPending}
+          onChange={async (avatar) => {
+            await updateInfoMutation.mutateAsync({ avatar })
+            setUserInfo({ ...userInfo!, avatar })
+          }}
+        />
 
-      <DisplayRender
-        data={userInfo}
-        layout="row"
-        className="mt-6"
-        labelClassName="w-40"
-        items={[
-          { name: 'email', label: '邮箱' },
-          {
-            name: 'realName',
-            label: '真实姓名',
-            render: (realName) => (
-              <EditableInput
-                value={realName as string | null}
-                onChange={async (nextRealName) => {
-                  await updateInfoMutation.mutateAsync({
-                    realName: nextRealName,
-                  })
-                  setUserInfo({ ...userInfo!, realName: nextRealName })
-                }}
-              />
-            ),
-          },
-          {
-            name: 'createdAt',
-            label: '注册时间',
-            displayProps: { type: 'date' },
-          },
-          {
-            label: '密码',
-            render: () => (
-              <IconText
-                icon={LockOutlined}
-                type="primary"
-                onClick={() => passwordDialog.open()}
-              >
-                修改密码
-              </IconText>
-            ),
-          },
-        ]}
-      />
+        <DisplayRender
+          data={userInfo}
+          layout="row"
+          // className="mt-6"
+          labelClassName="w-20"
+          items={[
+            { name: 'email', label: '邮箱' },
+            {
+              name: 'realName',
+              label: '真实姓名',
+              render: (realName) => (
+                <EditableInput
+                  value={realName as string | null}
+                  onChange={async (nextRealName) => {
+                    await updateInfoMutation.mutateAsync({
+                      realName: nextRealName,
+                    })
+                    setUserInfo({ ...userInfo!, realName: nextRealName })
+                  }}
+                />
+              ),
+            },
+            {
+              name: 'createdAt',
+              label: '注册时间',
+              displayProps: { type: 'date' },
+            },
+            {
+              label: '密码',
+              render: () => (
+                <IconText
+                  icon={LockOutlined}
+                  type="primary"
+                  onClick={() => passwordDialog.open()}
+                >
+                  修改密码
+                </IconText>
+              ),
+            },
+          ]}
+        />
+      </div>
 
       <ModalForm<ChangePasswordForm>
         title="修改密码"
@@ -156,6 +160,6 @@ export default function UserCenter() {
         formProps={{ requiredMark: false }}
         modalProps={{ okText: '确认修改', cancelText: '取消' }}
       />
-    </Group>
+    </div>
   )
 }
