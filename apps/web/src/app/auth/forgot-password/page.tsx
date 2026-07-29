@@ -75,7 +75,7 @@ export default function ForgotPasswordPage() {
               发送重置令牌
             </Button>
           </FormRenderer>
-          <div className="text-sm text-center">
+          <div className="text-sm text-center mt-4">
             <Link href="/auth/login">返回登录</Link>
           </div>
         </>
