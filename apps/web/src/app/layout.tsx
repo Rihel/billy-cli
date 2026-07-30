@@ -1,30 +1,35 @@
-import type { Metadata } from 'next'
-import { AntdRegistry } from '@ant-design/nextjs-registry'
+import type { Metadata } from "next"
+import { Geist, Geist_Mono } from "next/font/google"
+import { TooltipProvider } from "@repo/ui"
+import { QueryProvider } from "@/providers/QueryProvider"
+import "./globals.css"
 
-import './globals.css'
+const geist = Geist({
+  subsets: ["latin"],
+  variable: "--font-geist",
+})
 
-import { Providers } from '@/providers/AppProviders'
-import { AppName } from '@/lib/constants'
-import { Suspense } from 'react'
+const geistMono = Geist_Mono({
+  subsets: ["latin"],
+  variable: "--font-geist-mono",
+})
 
 export const metadata: Metadata = {
-  title: AppName,
-  description: '超强脚手架',
+  title: "Billy CLI",
+  description: "Full-stack monorepo starter. NestJS backend, Next.js dual frontends, PostgreSQL + Redis.",
 }
 
 export default function RootLayout({
   children,
-}: Readonly<{
+}: {
   children: React.ReactNode
-}>) {
+}) {
   return (
-    <html lang="zh-CN">
-      <body>
-        <AntdRegistry>
-          <Providers>
-            <Suspense>{children}</Suspense>
-          </Providers>
-        </AntdRegistry>
+    <html lang="zh-CN" className={`${geist.variable} ${geistMono.variable}`}>
+      <body className="min-h-screen bg-background font-sans antialiased">
+        <QueryProvider>
+          <TooltipProvider>{children}</TooltipProvider>
+        </QueryProvider>
       </body>
     </html>
   )

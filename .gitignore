@@ -3,3 +3,5 @@ dist
 @generated
 .turbo
 .qoder
+.next
+.pnpm-store
