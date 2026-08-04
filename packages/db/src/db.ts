@@ -1,9 +1,16 @@
 import { drizzle, NodePgDatabase } from 'drizzle-orm/node-postgres'
+import { Pool } from 'pg'
 
-export const createDb = (url: string): NodePgDatabase => {
-  const client = drizzle({
-    connection: url,
-  })
+export interface DbInstance {
+  db: NodePgDatabase
+  close: () => Promise<void>
+}
 
-  return client
+export const createDb = (url: string): DbInstance => {
+  const pool = new Pool({ connectionString: url })
+  const db = drizzle({ client: pool })
+  return {
+    db,
+    close: () => pool.end(),
+  }
 }

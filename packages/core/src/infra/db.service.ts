@@ -222,13 +222,9 @@ export const DbServiceLive = Layer.scoped(
     const {
       db: { url },
     } = yield* ConfigService
-    const raw = createDb(url)
-    yield* Effect.addFinalizer(() =>
-      Effect.promise(
-        () =>
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          (raw as any).$client?.end?.().catch(() => {}) ?? Promise.resolve(),
-      ),
+    const { db: raw } = yield* Effect.acquireRelease(
+      Effect.sync(() => createDb(url)),
+      ({ close }) => Effect.promise(() => close().catch(() => {})),
     )
     return buildIDb(raw)
   }),
