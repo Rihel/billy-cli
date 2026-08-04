@@ -1,5 +1,4 @@
 export * from './errors.js'
-export * from './infra/effect.js'
 export * from './infra/config.service.js'
 export * from './infra/db.service.js'
 export * from './infra/logger.service.js'
