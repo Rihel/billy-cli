@@ -1,4 +1,4 @@
-import { Cause, Context, Effect, Exit, Layer } from 'effect'
+import { Cause, Context, Effect, Exit, Layer, Option } from 'effect'
 import {
   and,
   asc,
@@ -14,7 +14,8 @@ import {
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres'
 import type { PgColumn, PgTable } from 'drizzle-orm/pg-core'
 import { createDb } from '@repo/db'
-import type { AppError } from '../errors.js'
+import { makeError, type AppError } from '../errors.js'
+import { AppErrorCodes } from '@repo/shared'
 import { fromPromise } from '../effects/from-promise.js'
 import { ConfigService } from './config.service.js'
 
@@ -71,10 +72,12 @@ export interface IDb {
 
   /**
    * Run an Effect callback inside a DB transaction.
-   * Effect failure → rollback + re-raise error.
-   * DB error → die (defect).
+   * Effect failure → rollback + AppError.
+   * DB error → AppError.
    */
-  transaction<T, E>(fn: (tx: IDb) => Effect.Effect<T, E>): Effect.Effect<T, E>
+  transaction<T, E>(
+    fn: (tx: IDb) => Effect.Effect<T, E>,
+  ): Effect.Effect<T, AppError>
 
   /** Offset-based pagination (implementation from kits). */
   pageQuery<TTable extends PgTable, T>(
@@ -95,10 +98,6 @@ export interface IDb {
 export class DbService extends Context.Tag('DbService')<DbService, IDb>() {}
 
 // ── Internal helpers ──────────────────────────────────────────────────────────
-
-class RollbackSignal {
-  constructor(readonly cause: Cause.Cause<unknown>) {}
-}
 
 function createCursorFilter(
   columns: CursorColumns,
@@ -195,22 +194,26 @@ function buildIDb(raw: NodePgDatabase): IDb {
       fromPromise(() => fn(raw), 'query'),
 
     transaction: <T, E>(fn: (tx: IDb) => Effect.Effect<T, E>) =>
-      Effect.flatten(
-        Effect.promise(async (): Promise<Effect.Effect<T, E>> => {
-          try {
-            const value = await raw.transaction(async (rawTx) => {
-              const exit = await Effect.runPromiseExit(fn(buildIDb(rawTx)))
-              if (Exit.isFailure(exit)) throw new RollbackSignal(exit.cause)
-              return exit.value
-            })
-            return Effect.succeed(value as T)
-          } catch (err) {
-            if (err instanceof RollbackSignal)
-              return Effect.failCause(err.cause as never)
-            return Effect.die(err)
+      Effect.tryPromise<T, AppError>({
+        try: async () => {
+          const exit = await raw.transaction((rawTx) =>
+            Effect.runPromiseExit(fn(buildIDb(rawTx))),
+          )
+          if (Exit.isFailure(exit)) throw exit.cause
+          return exit.value
+        },
+        catch: (cause) => {
+          if (Cause.isCause(cause) && Cause.isFailure(cause)) {
+            return Cause.failureOption(cause as Cause.Cause<AppError>).pipe(
+              Option.getOrElse(() =>
+                makeError(AppErrorCodes.Internal, 'transaction failed'),
+              ),
+            )
           }
-        }),
-      ),
+          const detail = cause instanceof Error ? cause.message : String(cause)
+          return makeError(AppErrorCodes.Internal, `transaction: ${detail}`)
+        },
+      }),
 
     pageQuery: (opts) =>
       fromPromise(() => pageQueryImpl(raw, opts), 'pageQuery'),

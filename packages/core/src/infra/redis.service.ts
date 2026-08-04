@@ -184,15 +184,17 @@ export const RedisServiceLive = Layer.scoped(
     const { redis } = yield* ConfigService
     const subscribers = new Map<string, Redis>()
     return yield* Effect.acquireRelease(
-      Effect.sync(() =>
-        buildIRedis(
+      Effect.gen(function* () {
+        const iRedis = buildIRedis(
           new Redis(redis.url, {
             keyPrefix: redis.keyPrefix,
             lazyConnect: true,
           }),
           subscribers,
-        ),
-      ),
+        )
+        yield* Effect.promise(() => iRedis.raw.connect())
+        return iRedis
+      }),
       (iRedis) =>
         Effect.promise(async () => {
           await Promise.all(
