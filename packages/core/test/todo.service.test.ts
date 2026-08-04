@@ -33,6 +33,7 @@ describe('TodoService with real PostgreSQL', () => {
     expect(
       (await runTodo((todo) => todo.remove({ todoId: created.id }))).id,
     ).toBe(created.id)
+
     const missing = await runTodo((todo) =>
       todo.detail({ todoId: created.id }).pipe(Effect.either),
     )
@@ -84,8 +85,8 @@ describe('TodoService with real PostgreSQL', () => {
         order: 'desc',
       }),
     )
-    expect(page.items.map((item: { title: string }) => item.title)).toEqual([
-      'Visible task',
-    ])
+    expect(
+      page.items.map((item: { title: string }) => item.title),
+    ).toEqual(['Visible task'])
   })
 })

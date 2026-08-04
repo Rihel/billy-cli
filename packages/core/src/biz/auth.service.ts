@@ -19,7 +19,7 @@ import { DbService } from '../infra/db.service.js'
 import { LoggerService } from '../infra/logger.service.js'
 import { JwtService } from '../infra/jwt.service.js'
 import { PasswordService } from '../infra/password.service.js'
-
+import { parseInput } from '../effects/index.js'
 type UserRow = typeof users.$inferSelect
 type SafeUser = Omit<
   UserRow,
@@ -82,120 +82,157 @@ export const AuthServiceLive = Layer.effect(
 
     return {
       register: (input) =>
-        Effect.gen(function* () {
-          logger.log('register', { email: input.email })
-          const hashed = yield* passwordService.hash(input.password)
-          const user = yield* db.transaction((tx) =>
+        parseInput(RegisterDto, input).pipe(
+          Effect.flatMap((parsed) =>
             Effect.gen(function* () {
-              const [existing] = yield* tx.query((raw) =>
-                raw.select().from(users).where(eq(users.email, input.email)),
+              const hashed = yield* passwordService.hash(parsed.password)
+              const user = yield* db.transaction((tx) =>
+                Effect.gen(function* () {
+                  const [existing] = yield* tx.query((raw) =>
+                    raw
+                      .select()
+                      .from(users)
+                      .where(eq(users.email, parsed.email)),
+                  )
+                  if (existing)
+                    return yield* Effect.fail(
+                      makeError(AppErrorCodes.EmailTaken),
+                    )
+                  const [newUser] = yield* tx.query((raw) =>
+                    raw
+                      .insert(users)
+                      .values({ ...parsed, password: hashed })
+                      .returning(),
+                  )
+                  return newUser
+                }),
               )
-              if (existing)
-                return yield* Effect.fail(makeError(AppErrorCodes.EmailTaken))
-              const [newUser] = yield* tx.query((raw) =>
-                raw
-                  .insert(users)
-                  .values({ ...input, password: hashed })
-                  .returning(),
-              )
-              return newUser
+              return {
+                token: jwt.sign({ sub: user.id }),
+                user: sanitizeUser(user),
+              }
             }),
-          )
-          logger.log('registered', { id: user.id })
-          return { token: jwt.sign({ sub: user.id }), user: sanitizeUser(user) }
-        }),
+          ),
+          Effect.tap((result) =>
+            Effect.sync(() =>
+              logger.log('auth.registered', { id: result.user.id }),
+            ),
+          ),
+        ),
 
       login: (input) =>
-        Effect.gen(function* () {
-          logger.log('login', { email: input.email })
-          const [user] = yield* db.query((raw) =>
-            raw.select().from(users).where(eq(users.email, input.email)),
-          )
-          if (!user)
-            return yield* Effect.fail(makeError(AppErrorCodes.EmailNotFound))
-          const valid = yield* passwordService.verify(
-            input.password,
-            user.password,
-          )
-          if (!valid)
-            return yield* Effect.fail(
-              makeError(AppErrorCodes.InvalidCredentials),
-            )
-          logger.log('login success', { id: user.id })
-          return { token: jwt.sign({ sub: user.id }), user: sanitizeUser(user) }
-        }),
-
-      forgotPassword: (input) =>
-        Effect.gen(function* () {
-          logger.log('forgotPassword', { email: input.email })
-          const token = nanoid(32)
-          const expiry = dayjs().add(ttl, 'minute').toDate()
-          const updated = yield* db.transaction((tx) =>
+        parseInput(LoginDto, input).pipe(
+          Effect.flatMap((parsed) =>
             Effect.gen(function* () {
-              const [user] = yield* tx.query((raw) =>
-                raw.select().from(users).where(eq(users.email, input.email)),
-              )
-              if (!user) return null
-              yield* tx.query((raw) =>
-                raw
-                  .update(users)
-                  .set({
-                    resetPasswordToken: token,
-                    resetPasswordTokenExpiry: expiry,
-                  })
-                  .where(eq(users.id, user.id)),
-              )
-              return user
-            }),
-          )
-          if (!updated) {
-            logger.warn('forgotPassword: user not found', {
-              email: input.email,
-            })
-            return { success: true as const }
-          }
-          logger.log('forgotPassword token generated', { id: updated.id })
-          return { success: true as const, token }
-        }),
-
-      resetPassword: (input) =>
-        Effect.gen(function* () {
-          logger.log('resetPassword')
-          const hashed = yield* passwordService.hash(input.password)
-          yield* db.transaction((tx) =>
-            Effect.gen(function* () {
-              const [user] = yield* tx.query((raw) =>
-                raw
-                  .select()
-                  .from(users)
-                  .where(eq(users.resetPasswordToken, input.token)),
+              const [user] = yield* db.query((raw) =>
+                raw.select().from(users).where(eq(users.email, parsed.email)),
               )
               if (!user)
                 return yield* Effect.fail(
-                  makeError(AppErrorCodes.InvalidResetToken),
+                  makeError(AppErrorCodes.EmailNotFound),
                 )
-              if (
-                !user.resetPasswordTokenExpiry ||
-                dayjs().isAfter(user.resetPasswordTokenExpiry)
-              ) {
-                return yield* Effect.fail(
-                  makeError(AppErrorCodes.ExpiredResetToken),
-                )
-              }
-              yield* tx.query((raw) =>
-                raw
-                  .update(users)
-                  .set({
-                    password: hashed,
-                    resetPasswordToken: null,
-                    resetPasswordTokenExpiry: null,
-                  })
-                  .where(eq(users.id, user.id)),
+              const valid = yield* passwordService.verify(
+                parsed.password,
+                user.password,
               )
+              if (!valid)
+                return yield* Effect.fail(
+                  makeError(AppErrorCodes.InvalidCredentials),
+                )
+              return {
+                token: jwt.sign({ sub: user.id }),
+                user: sanitizeUser(user),
+              }
             }),
-          )
-          return { success: true as const }
-        }),
+          ),
+          Effect.tap((result) =>
+            Effect.sync(() => logger.log('auth.login', { id: result.user.id })),
+          ),
+        ),
+
+      forgotPassword: (input) =>
+        parseInput(ForgotPasswordDto, input).pipe(
+          Effect.flatMap((parsed) =>
+            Effect.gen(function* () {
+              const token = nanoid(32)
+              const expiry = dayjs().add(ttl, 'minute').toDate()
+              const updated = yield* db.transaction((tx) =>
+                Effect.gen(function* () {
+                  const [user] = yield* tx.query((raw) =>
+                    raw
+                      .select()
+                      .from(users)
+                      .where(eq(users.email, parsed.email)),
+                  )
+                  if (!user) return null
+                  yield* tx.query((raw) =>
+                    raw
+                      .update(users)
+                      .set({
+                        resetPasswordToken: token,
+                        resetPasswordTokenExpiry: expiry,
+                      })
+                      .where(eq(users.id, user.id)),
+                  )
+                  return user
+                }),
+              )
+              return {
+                success: true as const,
+                ...(updated ? { token } : {}),
+              }
+            }),
+          ),
+          Effect.tap((result) =>
+            Effect.sync(() =>
+              result.token
+                ? logger.log('auth.forgotPassword.tokenGenerated')
+                : logger.warn('auth.forgotPassword.userNotFound'),
+            ),
+          ),
+        ),
+
+      resetPassword: (input) =>
+        parseInput(ResetPasswordDto, input).pipe(
+          Effect.flatMap((parsed) =>
+            Effect.gen(function* () {
+              const hashed = yield* passwordService.hash(parsed.password)
+              yield* db.transaction((tx) =>
+                Effect.gen(function* () {
+                  const [user] = yield* tx.query((raw) =>
+                    raw
+                      .select()
+                      .from(users)
+                      .where(eq(users.resetPasswordToken, parsed.token)),
+                  )
+                  if (!user)
+                    return yield* Effect.fail(
+                      makeError(AppErrorCodes.InvalidResetToken),
+                    )
+                  if (
+                    !user.resetPasswordTokenExpiry ||
+                    dayjs().isAfter(user.resetPasswordTokenExpiry)
+                  ) {
+                    return yield* Effect.fail(
+                      makeError(AppErrorCodes.ExpiredResetToken),
+                    )
+                  }
+                  yield* tx.query((raw) =>
+                    raw
+                      .update(users)
+                      .set({
+                        password: hashed,
+                        resetPasswordToken: null,
+                        resetPasswordTokenExpiry: null,
+                      })
+                      .where(eq(users.id, user.id)),
+                  )
+                }),
+              )
+              return { success: true as const }
+            }),
+          ),
+        ),
 
       getMe: (userId) =>
         Effect.gen(function* () {
@@ -210,59 +247,71 @@ export const AuthServiceLive = Layer.effect(
         }),
 
       updateInfo: (userId, input) =>
-        Effect.gen(function* () {
-          logger.log('updateInfo', { userId })
-          const [user] = yield* db.query((raw) =>
-            raw.select().from(users).where(eq(users.id, userId)),
-          )
-          if (!user)
-            return yield* Effect.fail(makeError(AppErrorCodes.UserNotFound))
-          const [updated] = yield* db.query((raw) =>
-            raw
-              .update(users)
-              .set({
-                realName: input.realName ?? user.realName,
-                avatar: input.avatar ?? user.avatar,
-              })
-              .where(eq(users.id, userId))
-              .returning(),
-          )
-          return sanitizeUser(updated)
-        }),
+        parseInput(UpdateInfoDto, input).pipe(
+          Effect.flatMap((parsed) =>
+            Effect.gen(function* () {
+              const [user] = yield* db.query((raw) =>
+                raw.select().from(users).where(eq(users.id, userId)),
+              )
+              if (!user)
+                return yield* Effect.fail(makeError(AppErrorCodes.UserNotFound))
+              const [updated] = yield* db.query((raw) =>
+                raw
+                  .update(users)
+                  .set({
+                    realName: parsed.realName ?? user.realName,
+                    avatar: parsed.avatar ?? user.avatar,
+                  })
+                  .where(eq(users.id, userId))
+                  .returning(),
+              )
+              return sanitizeUser(updated)
+            }),
+          ),
+          Effect.tap((user) =>
+            Effect.sync(() => logger.log('auth.updateInfo', { id: user.id })),
+          ),
+        ),
 
       changePassword: (userId, input) =>
-        Effect.gen(function* () {
-          const [user] = yield* db.query((raw) =>
-            raw.select().from(users).where(eq(users.id, userId)),
-          )
-          if (!user)
-            return yield* Effect.fail(makeError(AppErrorCodes.UserNotFound))
-          const valid = yield* passwordService.verify(
-            input.oldPassword,
-            user.password,
-          )
-          if (!valid)
-            return yield* Effect.fail(
-              makeError(AppErrorCodes.InvalidOldPassword),
-            )
-          const same = yield* passwordService.verify(
-            input.newPassword,
-            user.password,
-          )
-          if (same)
-            return yield* Effect.fail(
-              makeError(AppErrorCodes.PasswordUnchanged),
-            )
-          const hashed = yield* passwordService.hash(input.newPassword)
-          yield* db.query((raw) =>
-            raw
-              .update(users)
-              .set({ password: hashed })
-              .where(eq(users.id, userId)),
-          )
-          logger.log('changePassword success', { userId })
-          return { success: true as const }
-        }),
+        parseInput(ChangePasswordDto, input).pipe(
+          Effect.flatMap((parsed) =>
+            Effect.gen(function* () {
+              const [user] = yield* db.query((raw) =>
+                raw.select().from(users).where(eq(users.id, userId)),
+              )
+              if (!user)
+                return yield* Effect.fail(makeError(AppErrorCodes.UserNotFound))
+              const valid = yield* passwordService.verify(
+                parsed.oldPassword,
+                user.password,
+              )
+              if (!valid)
+                return yield* Effect.fail(
+                  makeError(AppErrorCodes.InvalidOldPassword),
+                )
+              const same = yield* passwordService.verify(
+                parsed.newPassword,
+                user.password,
+              )
+              if (same)
+                return yield* Effect.fail(
+                  makeError(AppErrorCodes.PasswordUnchanged),
+                )
+              const hashed = yield* passwordService.hash(parsed.newPassword)
+              yield* db.query((raw) =>
+                raw
+                  .update(users)
+                  .set({ password: hashed })
+                  .where(eq(users.id, userId)),
+              )
+              return { success: true as const }
+            }),
+          ),
+          Effect.tap(() =>
+            Effect.sync(() => logger.log('auth.changePassword', { userId })),
+          ),
+        ),
 
       verifyToken: (token) =>
         Effect.try({

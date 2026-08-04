@@ -13,6 +13,7 @@ import { eq, ilike, or } from 'drizzle-orm'
 import type { PgColumn } from 'drizzle-orm/pg-core'
 import type { z } from 'zod'
 import { AppError, makeError } from '../errors.js'
+import { parseInput } from '../effects/index.js'
 import { DbService } from '../infra/db.service.js'
 import { LoggerService } from '../infra/logger.service.js'
 import { PasswordService } from '../infra/password.service.js'
@@ -68,100 +69,141 @@ export const UserServiceLive = Layer.effect(
 
     return {
       create: (input) =>
-        Effect.gen(function* () {
-          logger.log('create', { email: input.email })
-          const hashed = yield* passwordService.hash(input.password)
-          const user = yield* db.transaction((tx) =>
+        parseInput(CreateUserDto, input).pipe(
+          Effect.flatMap((parsed) =>
             Effect.gen(function* () {
-              const [existing] = yield* tx.query((raw) =>
-                raw.select().from(users).where(eq(users.email, input.email)),
+              const hashed = yield* passwordService.hash(parsed.password)
+              const user = yield* db.transaction((tx) =>
+                Effect.gen(function* () {
+                  const [existing] = yield* tx.query((raw) =>
+                    raw
+                      .select()
+                      .from(users)
+                      .where(eq(users.email, parsed.email)),
+                  )
+                  if (existing)
+                    return yield* Effect.fail(
+                      makeError(AppErrorCodes.EmailTaken),
+                    )
+                  const [newUser] = yield* tx.query((raw) =>
+                    raw
+                      .insert(users)
+                      .values({ ...parsed, password: hashed })
+                      .returning(),
+                  )
+                  return newUser
+                }),
               )
-              if (existing)
-                return yield* Effect.fail(makeError(AppErrorCodes.EmailTaken))
-              const [newUser] = yield* tx.query((raw) =>
-                raw
-                  .insert(users)
-                  .values({ ...input, password: hashed })
-                  .returning(),
-              )
-              return newUser
+              return sanitizeUser(user)
             }),
-          )
-          logger.log('created', { id: user.id })
-          return sanitizeUser(user)
-        }),
+          ),
+          Effect.tap((user) =>
+            Effect.sync(() => logger.log('user.created', { id: user.id })),
+          ),
+        ),
 
       pageQuery: (input) =>
-        Effect.gen(function* () {
-          const { page, size, keyword, orderBy, order } = input
-          return yield* db.pageQuery({
-            table: users,
-            where: keyword
-              ? or(
-                  ilike(users.email, `%${keyword}%`),
-                  ilike(users.realName, `%${keyword}%`),
-                )
-              : undefined,
-            orderCol: users[orderBy as keyof typeof users] as PgColumn,
-            order,
-            page,
-            size,
-            map: (u) => sanitizeUser(u as UserRow),
-          })
-        }),
+        parseInput(PageQueryUserDto, input).pipe(
+          Effect.flatMap((parsed) => {
+            const { page, size, keyword, orderBy, order } = parsed
+            return db.pageQuery({
+              table: users,
+              where: keyword
+                ? or(
+                    ilike(users.email, `%${keyword}%`),
+                    ilike(users.realName, `%${keyword}%`),
+                  )
+                : undefined,
+              orderCol: users[orderBy as keyof typeof users] as PgColumn,
+              order,
+              page,
+              size,
+              map: (u) => sanitizeUser(u as UserRow),
+            })
+          }),
+        ),
 
       detail: (input) =>
-        Effect.gen(function* () {
-          const [user] = yield* db.query((raw) =>
-            raw.select().from(users).where(eq(users.id, input.userId)),
-          )
-          if (!user)
-            return yield* Effect.fail(makeError(AppErrorCodes.UserNotFound))
-          return sanitizeUser(user)
-        }),
+        parseInput(GetUserDetailDto, input).pipe(
+          Effect.flatMap((parsed) =>
+            Effect.gen(function* () {
+              const [user] = yield* db.query((raw) =>
+                raw.select().from(users).where(eq(users.id, parsed.userId)),
+              )
+              if (!user)
+                return yield* Effect.fail(makeError(AppErrorCodes.UserNotFound))
+              return sanitizeUser(user)
+            }),
+          ),
+        ),
 
       update: (input) =>
-        Effect.gen(function* () {
-          logger.log('update', { userId: input.userId })
-          const { userId, ...fields } = input
-          const [user] = yield* db.query((raw) =>
-            raw
-              .update(users)
-              .set(fields)
-              .where(eq(users.id, userId))
-              .returning(),
-          )
-          if (!user)
-            return yield* Effect.fail(makeError(AppErrorCodes.UserNotFound))
-          return sanitizeUser(user)
-        }),
+        parseInput(UpdateUserDto, input).pipe(
+          Effect.flatMap((parsed) =>
+            Effect.gen(function* () {
+              const { userId, ...fields } = parsed
+              const [user] = yield* db.query((raw) =>
+                raw
+                  .update(users)
+                  .set(fields)
+                  .where(eq(users.id, userId))
+                  .returning(),
+              )
+              if (!user)
+                return yield* Effect.fail(makeError(AppErrorCodes.UserNotFound))
+              return sanitizeUser(user)
+            }),
+          ),
+          Effect.tap((user) =>
+            Effect.sync(() => logger.log('user.updated', { id: user.id })),
+          ),
+        ),
 
       remove: (input) =>
-        Effect.gen(function* () {
-          const [user] = yield* db.query((raw) =>
-            raw.delete(users).where(eq(users.id, input.userId)).returning(),
-          )
-          if (!user)
-            return yield* Effect.fail(makeError(AppErrorCodes.UserNotFound))
-          logger.log('removed', { userId: input.userId })
-          return { success: true as const }
-        }),
+        parseInput(RemoveUserDto, input).pipe(
+          Effect.flatMap((parsed) =>
+            Effect.gen(function* () {
+              const [user] = yield* db.query((raw) =>
+                raw
+                  .delete(users)
+                  .where(eq(users.id, parsed.userId))
+                  .returning(),
+              )
+              if (!user)
+                return yield* Effect.fail(makeError(AppErrorCodes.UserNotFound))
+              return { success: true as const }
+            }),
+          ),
+          Effect.tap(() =>
+            Effect.sync(() =>
+              logger.log('user.removed', { userId: input.userId }),
+            ),
+          ),
+        ),
 
       resetPassword: (input) =>
-        Effect.gen(function* () {
-          logger.log('resetPassword', { userId: input.userId })
-          const hashed = yield* passwordService.hash(input.password)
-          const [user] = yield* db.query((raw) =>
-            raw
-              .update(users)
-              .set({ password: hashed })
-              .where(eq(users.id, input.userId))
-              .returning(),
-          )
-          if (!user)
-            return yield* Effect.fail(makeError(AppErrorCodes.UserNotFound))
-          return { success: true as const }
-        }),
+        parseInput(ResetUserPasswordDto, input).pipe(
+          Effect.flatMap((parsed) =>
+            Effect.gen(function* () {
+              const hashed = yield* passwordService.hash(parsed.password)
+              const [user] = yield* db.query((raw) =>
+                raw
+                  .update(users)
+                  .set({ password: hashed })
+                  .where(eq(users.id, parsed.userId))
+                  .returning(),
+              )
+              if (!user)
+                return yield* Effect.fail(makeError(AppErrorCodes.UserNotFound))
+              return { success: true as const }
+            }),
+          ),
+          Effect.tap(() =>
+            Effect.sync(() =>
+              logger.log('user.resetPassword', { userId: input.userId }),
+            ),
+          ),
+        ),
     }
   }),
 )

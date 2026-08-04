@@ -15,11 +15,11 @@ import type { z } from 'zod'
 import { AppError, makeError } from '../errors.js'
 import { DbService } from '../infra/db.service.js'
 import { LoggerService } from '../infra/logger.service.js'
+import { parseInput } from '../effects/index.js'
+type TodoRow = typeof todos.$inferSelect
 
 export interface ITodoService {
-  create(
-    input: z.infer<typeof CreateTodoDto>,
-  ): Effect.Effect<typeof todos.$inferSelect, AppError>
+  create(input: z.infer<typeof CreateTodoDto>): Effect.Effect<TodoRow, AppError>
   pageQuery(
     input: z.infer<typeof PageQueryTodoDto>,
   ): Effect.Effect<any, AppError>
@@ -28,13 +28,9 @@ export interface ITodoService {
   ): Effect.Effect<any, AppError>
   detail(
     input: z.infer<typeof GetDetailTodoDto>,
-  ): Effect.Effect<typeof todos.$inferSelect, AppError>
-  update(
-    input: z.infer<typeof UpdateTodoDto>,
-  ): Effect.Effect<typeof todos.$inferSelect, AppError>
-  remove(
-    input: z.infer<typeof RemoveTodoDto>,
-  ): Effect.Effect<typeof todos.$inferSelect, AppError>
+  ): Effect.Effect<TodoRow, AppError>
+  update(input: z.infer<typeof UpdateTodoDto>): Effect.Effect<TodoRow, AppError>
+  remove(input: z.infer<typeof RemoveTodoDto>): Effect.Effect<TodoRow, AppError>
 }
 
 export class TodoService extends Context.Tag('TodoService')<
@@ -51,17 +47,21 @@ export const TodoServiceLive = Layer.effect(
     return {
       create: (input) =>
         Effect.gen(function* () {
-          logger.log('create', input)
+          const parsed = yield* parseInput(CreateTodoDto, input)
           const [todo] = yield* db.query((raw) =>
-            raw.insert(todos).values(input).returning(),
+            raw.insert(todos).values(parsed).returning(),
           )
-          logger.log('created', { id: todo.id })
           return todo
-        }),
+        }).pipe(
+          Effect.tap((todo) =>
+            Effect.sync(() => logger.log('todo.created', { id: todo.id })),
+          ),
+        ),
 
       pageQuery: (input) =>
         Effect.gen(function* () {
-          const { page, size, keyword, orderBy, order } = input
+          const parsed = yield* parseInput(PageQueryTodoDto, input)
+          const { page, size, keyword, orderBy, order } = parsed
           return yield* db.pageQuery({
             table: todos,
             where: keyword ? ilike(todos.title, `%${keyword}%`) : undefined,
@@ -74,7 +74,8 @@ export const TodoServiceLive = Layer.effect(
 
       cursorQuery: (input) =>
         Effect.gen(function* () {
-          const { cursor, keyword, size } = input
+          const parsed = yield* parseInput(CursorQueryTodoDto, input)
+          const { cursor, keyword, size } = parsed
           return yield* db.cursorQuery({
             table: todos,
             cursorColumns: [todos.updatedAt, todos.id],
@@ -92,8 +93,9 @@ export const TodoServiceLive = Layer.effect(
 
       detail: (input) =>
         Effect.gen(function* () {
+          const parsed = yield* parseInput(GetDetailTodoDto, input)
           const [todo] = yield* db.query((raw) =>
-            raw.select().from(todos).where(eq(todos.id, input.todoId)),
+            raw.select().from(todos).where(eq(todos.id, parsed.todoId)),
           )
           if (!todo)
             return yield* Effect.fail(makeError(AppErrorCodes.TodoNotFound))
@@ -102,7 +104,8 @@ export const TodoServiceLive = Layer.effect(
 
       update: (input) =>
         Effect.gen(function* () {
-          const { todoId, ...fields } = input
+          const parsed = yield* parseInput(UpdateTodoDto, input)
+          const { todoId, ...fields } = parsed
           const [todo] = yield* db.query((raw) =>
             raw
               .update(todos)
@@ -113,17 +116,26 @@ export const TodoServiceLive = Layer.effect(
           if (!todo)
             return yield* Effect.fail(makeError(AppErrorCodes.TodoNotFound))
           return todo
-        }),
+        }).pipe(
+          Effect.tap((todo) =>
+            Effect.sync(() => logger.log('todo.updated', { id: todo.id })),
+          ),
+        ),
 
       remove: (input) =>
         Effect.gen(function* () {
+          const parsed = yield* parseInput(RemoveTodoDto, input)
           const [todo] = yield* db.query((raw) =>
-            raw.delete(todos).where(eq(todos.id, input.todoId)).returning(),
+            raw.delete(todos).where(eq(todos.id, parsed.todoId)).returning(),
           )
           if (!todo)
             return yield* Effect.fail(makeError(AppErrorCodes.TodoNotFound))
           return todo
-        }),
+        }).pipe(
+          Effect.tap((todo) =>
+            Effect.sync(() => logger.log('todo.removed', { id: todo.id })),
+          ),
+        ),
     }
   }),
 )

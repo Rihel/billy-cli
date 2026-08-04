@@ -61,6 +61,11 @@ export const AppErrorCodes = createDict({
     value: 3001,
     http: 404,
   },
+  InvalidInput: {
+    label: '参数校验失败',
+    value: 4001,
+    http: 400,
+  },
   Internal: {
     label: '系统错误',
     value: 5001,

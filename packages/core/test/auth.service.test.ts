@@ -19,9 +19,10 @@ describe('AuthService with real PostgreSQL', () => {
     )
 
     expect(registered.user).not.toHaveProperty('password')
-    expect(await runAuth((auth) => auth.verifyToken(registered.token))).toBe(
-      registered.user.id,
+    const verified = await runAuth((auth) =>
+      auth.verifyToken(registered.token),
     )
+    expect(verified).toBe(registered.user.id)
 
     const loggedIn = await runAuth((auth) =>
       auth.login({ email: 'auth@example.com', password: 'secret12' }),
@@ -89,20 +90,18 @@ describe('AuthService with real PostgreSQL', () => {
       auth.register({ email: 'invalid@example.com', password: 'secret12' }),
     )
 
-    const login = await runAuth((auth) =>
-      auth
-        .login({ email: 'invalid@example.com', password: 'wrong' })
-        .pipe(Effect.either),
+    const loginResult = await runAuth((auth) =>
+      auth.login({ email: 'invalid@example.com', password: 'wrong' }).pipe(Effect.either),
     )
-    expect(login._tag).toBe('Left')
-    if (login._tag === 'Left')
-      expect(login.left.code).toBe(AppErrorCodes.InvalidCredentials)
+    expect(loginResult._tag).toBe('Left')
+    if (loginResult._tag === 'Left')
+      expect(loginResult.left.code).toBe(AppErrorCodes.InvalidCredentials)
 
-    const token = await runAuth((auth) =>
+    const tokenResult = await runAuth((auth) =>
       auth.verifyToken('invalid').pipe(Effect.either),
     )
-    expect(token._tag).toBe('Left')
-    if (token._tag === 'Left')
-      expect(token.left.code).toBe(AppErrorCodes.TokenInvalid)
+    expect(tokenResult._tag).toBe('Left')
+    if (tokenResult._tag === 'Left')
+      expect(tokenResult.left.code).toBe(AppErrorCodes.TokenInvalid)
   })
 })
