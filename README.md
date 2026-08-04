@@ -1,6 +1,6 @@
 # Billy
 
-> 一套现代化的全栈应用模板，开发体验拉满。
+> 一套现代化的全栈应用模板，开发体验拉满。后端逐步从 NestJS + kits 迁移到 Effect-TS + core。
 
 ## 技术栈
 
@@ -8,18 +8,21 @@
 apps/
 ├── server   — NestJS 11 + Drizzle ORM + PostgreSQL + Redis
 ├── web      — Next.js 16 App Router + Ant Design Pro 6 + Tailwind 4
+└── admin    — 管理后台
 packages/
-├── db       — Drizzle ORM schema + migration
+├── db       — Drizzle ORM schema + 数据库连接 + migration
+├── shared   — Zod schemas + 错误码字典 + 响应工具（前后端共享）
+├── core     — Effect-TS 业务层：Config / DB / Redis / JWT / Storage + Auth / User / Todo
 ├── sdk      — ServerClient（全类型化业务 API 调用）
-├── shared   — Zod schemas + 工具函数（前后端共享）
 ├── ui       — 共享 UI 组件（Ant Design + Tailwind）
-└── kits     — NestJS 工具包（DB / Redis / Storage / 日志 / 错误）
+├── kits     — NestJS 工具包（DB / Redis / Storage / 日志 / 错误）[旧]
+└── aui      — AI UI 组件库
 ```
 
 | 层         | 选型                          | 理由                                       |
 | ---------- | ----------------------------- | ------------------------------------------ |
 | 构建系统   | pnpm + Turbo                  | monorepo 依赖管理 + 增量缓存               |
-| 服务端框架 | NestJS 11                     | 企业级 DI/AOP，装饰器驱动                  |
+| 服务端框架 | NestJS 11 / Effect-TS         | NestJS（当前 server）+ Effect-TS（core 包） |
 | API 层     | POST JSON（NestJS Controller）| 全类型化 SDK 封装，零额外运行时             |
 | ORM        | Drizzle ORM                   | 无 runtime、类型原生、SQL-like API         |
 | 前端框架   | Next.js 16 App Router         | RSC + SSR + Server Actions                 |
@@ -30,7 +33,7 @@ packages/
 | 日志       | Pino                          | 结构化日志，开发环境 pretty，生产环境 JSON |
 | 缓存       | Redis（ioredis）              | 完整 Set / List / Hash / PubSub / 分布式锁 |
 | 构建工具   | tsdown                        | 比 tsc 快一个数量级的 bundler              |
-| 容器化     | Docker multi-stage            | server + web 独立部署，Next.js standalone  |
+| 容器化     | Docker multi-stage            | server + web + admin 独立部署              |
 
 ## 快速开始
 
@@ -101,6 +104,59 @@ pnpm start:web
 # 或 Docker
 docker compose up
 ```
+
+## Packages 详解
+
+### @repo/core — Effect-TS 业务核心
+
+基于 Effect-TS 的后端业务层，通过 Layer 做依赖注入和资源生命周期管理。
+
+**分层结构：**
+
+```
+effects/          # Effect 工具函数
+├── parse-input   # Zod 校验入参 → AppError
+├── to-response   # Effect<T, AppError> → AppResponse<T>
+└── from-promise  # Promise → Effect（typed error）
+infra/            # 基础设施层
+├── config        # Zod schema 驱动配置，支持 hardcode / env
+├── db            # Drizzle ORM 封装：query / transaction / pageQuery / cursorQuery
+├── redis         # ioredis 封装：String / Set / List / Hash / PubSub / 分布式锁 / JSON
+├── jwt           # JWT sign / verify
+├── password      # bcrypt hash / verify（typed error）
+├── logger        # Pino 日志
+└── storage/      # S3 / COS 对象存储（策略模式，STS 临时凭证支持）
+biz/              # 业务层
+├── auth          # 注册 / 登录 / 忘记密码 / 重置密码 / 改密 / Token 验证
+├── user          # 用户 CRUD + 分页
+└── todo          # Todo CRUD + 分页 + 游标查询
+errors.ts         # AppError (TaggedError) + makeError
+layers.ts         # makeAppLayer() 一站式组装
+```
+
+**使用方式：**
+
+```ts
+import { ManagedRuntime } from 'effect'
+import { makeAppLayer, AuthService, UserService } from '@repo/core'
+
+const runtime = ManagedRuntime.make(makeAppLayer())
+const program = Effect.gen(function* () {
+  const auth = yield* AuthService
+  const user = yield* UserService
+  // ...
+})
+
+await runtime.runPromise(program)
+```
+
+**设计原则：**
+- 所有返回值 `Effect<A, AppError>`，不做 `catchAll` 吞错误——错误转换由 HTTP 层负责
+- 每个 public 方法入口调用 `parseInput(schema, input)`，运行时 Zod 校验
+- 日志通过 `Effect.tap` 挂载，不侵入主逻辑
+- 不使用 NestJS 装饰器，纯 Effect-TS 函数式风格
+- `fromPromise()` 统一 Promise → Effect 边界，typed error 进错误通道
+
 
 ## 架构设计
 
@@ -274,8 +330,7 @@ createLogger('bootstrap', appConfig.isDev)
 │   │   └── src/core/
 │   │       ├── api.client.ts      # 基础 HTTP 客户端（鉴权、自动重试）
 │   │       ├── server.client.ts   # 全类型化业务 API 调用
-│   │       ├── server.types.ts    # 业务响应类型
-│   │       ├── interfaces.ts      # 鉴权抽象
+│   │   │       ├── interfaces.ts      # 鉴权抽象
 │   │       ├── strategies/        # BearerToken / ApiKey / OAuth2 / HMAC
 │   │       └── managers/          # localStorage / memory / cookie / env
 │   ├── shared/
