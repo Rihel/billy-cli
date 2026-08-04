@@ -6,13 +6,14 @@ import type {
 } from '@repo/shared'
 import type { z } from 'zod'
 import type { AppError } from '../../errors.js'
-import { tryInfra } from '../effect.js'
+
 import { ConfigService } from '../config.service.js'
 import { LoggerService } from '../logger.service.js'
 import { RedisService } from '../redis.service.js'
 import type { IStorageProvider } from './types.js'
 import { makeS3Provider } from './s3.js'
 import { makeCosProvider } from './cos.js'
+import { fromPromise } from '../../effects/index.js'
 
 export interface IStorageService {
   getPresignedUrl(
@@ -48,7 +49,7 @@ export const StorageServiceLive = Layer.scoped(
         : makeCosProvider(config, logger)
 
     const provider = yield* Effect.acquireRelease(
-      tryInfra(async () => {
+      fromPromise(async () => {
         await selectedProvider.initial()
         return selectedProvider
       }, `初始化 ${config.provider} 存储服务失败`),
@@ -58,7 +59,7 @@ export const StorageServiceLive = Layer.scoped(
     const callProvider = <A>(
       operation: (provider: IStorageProvider) => Promise<A>,
       message: string,
-    ) => tryInfra(() => operation(provider), message)
+    ) => fromPromise(() => operation(provider), message)
 
     return {
       getPresignedUrl: (data) =>

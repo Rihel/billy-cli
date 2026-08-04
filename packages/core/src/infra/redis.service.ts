@@ -85,8 +85,7 @@ export interface RedisConfig {
   keyPrefix?: string
 }
 
-function buildIRedis(redis: Redis): IRedis {
-  const subscribers = new Map<string, Redis>()
+function buildIRedis(redis: Redis, subscribers: Map<string, Redis>): IRedis {
   const p = <T>(fn: () => Promise<T>) => Effect.promise(fn)
 
   return {
@@ -183,6 +182,7 @@ export const RedisServiceLive = Layer.scoped(
   RedisService,
   Effect.gen(function* () {
     const { redis } = yield* ConfigService
+    const subscribers = new Map<string, Redis>()
     return yield* Effect.acquireRelease(
       Effect.sync(() =>
         buildIRedis(
@@ -190,9 +190,17 @@ export const RedisServiceLive = Layer.scoped(
             keyPrefix: redis.keyPrefix,
             lazyConnect: true,
           }),
+          subscribers,
         ),
       ),
-      (iRedis) => Effect.promise(() => iRedis.raw.quit().then(() => {})),
+      (iRedis) =>
+        Effect.promise(async () => {
+          await Promise.all(
+            [...subscribers.values()].map((sub) => sub.quit().catch(() => {})),
+          )
+          subscribers.clear()
+          await iRedis.raw.quit().catch(() => {})
+        }),
     )
   }),
 )

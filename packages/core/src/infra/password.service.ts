@@ -1,8 +1,8 @@
 import { Context, Effect, Layer } from 'effect'
+import { fromPromise } from '../effects/from-promise.js'
 import * as bcrypt from 'bcryptjs'
 import type { AppError } from '../errors.js'
 import { ConfigService } from './config.service.js'
-import { tryInfra } from './effect.js'
 
 export interface IPasswordService {
   hash(password: string): Effect.Effect<string, AppError>
@@ -21,12 +21,12 @@ export const PasswordServiceLive = Layer.effect(
 
     return {
       hash: (password) =>
-        tryInfra(
+        fromPromise(
           () => bcrypt.hash(password, passwordHashRounds),
           '密码哈希失败',
         ),
       verify: (password, hash) =>
-        tryInfra(() => bcrypt.compare(password, hash), '密码校验失败'),
+        fromPromise(() => bcrypt.compare(password, hash), '密码校验失败'),
     }
   }),
 )
