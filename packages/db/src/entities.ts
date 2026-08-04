@@ -15,8 +15,8 @@ const commonColumns = {
     .primaryKey()
     .notNull()
     .$defaultFn(() => nanoid()),
-  createdAt: timestamp('created_at').notNull().defaultNow(),
-  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+  createdAt: timestamp('created_at', { precision: 3 }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { precision: 3 }).notNull().defaultNow(),
 }
 
 export const users = snakeCase.table('users', {

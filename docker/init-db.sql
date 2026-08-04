@@ -20,6 +20,16 @@ CREATE TABLE IF NOT EXISTS "users" (
   "email"                       text      NOT NULL UNIQUE,
   "password"                    text      NOT NULL,
   "real_name"                   text,
+  "avatar"                      text,
   "reset_password_token"        text,
   "reset_password_token_expiry" timestamp
 );
+
+ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "avatar" text;
+
+ALTER TABLE "todos"
+  ALTER COLUMN "created_at" TYPE timestamp(3),
+  ALTER COLUMN "updated_at" TYPE timestamp(3);
+ALTER TABLE "users"
+  ALTER COLUMN "created_at" TYPE timestamp(3),
+  ALTER COLUMN "updated_at" TYPE timestamp(3);

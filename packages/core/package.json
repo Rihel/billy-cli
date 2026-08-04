@@ -1,0 +1,42 @@
+{
+  "name": "@repo/core",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "import": "./dist/index.mjs",
+      "types": "./src/index.ts"
+    }
+  },
+  "scripts": {
+    "dev": "tsdown --watch --config-loader unrun",
+    "build": "tsdown --config-loader unrun",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.1094.0",
+    "@aws-sdk/client-sts": "^3.1094.0",
+    "@aws-sdk/s3-request-presigner": "^3.1094.0",
+    "@repo/db": "workspace:*",
+    "@repo/shared": "workspace:*",
+    "bcryptjs": "^3.0.3",
+    "cos-nodejs-sdk-v5": "^3.0.0",
+    "dayjs": "^1.11.21",
+    "drizzle-orm": "1.0.0-rc.4",
+    "effect": "^3.16.0",
+    "ioredis": "^5.11.1",
+    "jsonwebtoken": "^9.0.3",
+    "nanoid": "^6.0.0",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/bcryptjs": "^3.0.0",
+    "@types/jsonwebtoken": "^9.0.10",
+    "@types/node": "^24.0.0",
+    "tsdown": "^0.22.9",
+    "typescript": "^6.0.0",
+    "vitest": "^4.1.10"
+  }
+}
