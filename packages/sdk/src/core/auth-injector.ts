@@ -1,4 +1,4 @@
-import type { AuthStrategy } from './interfaces.js'
+import type { AuthContext, AuthStrategy } from './interfaces.js'
 import type { AxiosRequestConfig } from 'axios'
 
 /**
@@ -23,7 +23,12 @@ export class AuthInjector<Credentials = Record<string, any>> {
     config: AxiosRequestConfig<Body>,
     credentials: Credentials,
   ): Promise<AxiosRequestConfig<Body>> {
-    const ctx = await this.authStrategy.getAuthContext(credentials)
+    const context: AuthContext = {
+      headers: config.headers as Record<string, string>,
+      query: config.params as Record<string, any>,
+      body: config.data as Record<string, any>,
+    }
+    const ctx = await this.authStrategy.getAuthContext(credentials, context)
 
     return {
       ...config,
@@ -35,9 +40,7 @@ export class AuthInjector<Credentials = Record<string, any>> {
         ...config.params,
         ...(ctx.query || {}),
       },
-      data: ctx.body
-        ? { ...config.data, ...ctx.body }
-        : config.data,
+      data: ctx.body ? { ...config.data, ...ctx.body } : config.data,
     }
   }
 }

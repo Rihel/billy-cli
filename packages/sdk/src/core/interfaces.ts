@@ -35,7 +35,10 @@ export interface AuthStrategy<Credentials = Record<string, any>> {
   /** 策略类型标识 */
   type: AuthStrategyType
   /** 将凭证转换为请求注入上下文 */
-  getAuthContext(credentials: Credentials): Promise<AuthContext>
+  getAuthContext(
+    credentials: Credentials,
+    context: AuthContext,
+  ): Promise<AuthContext>
   /** 判断凭证是否有效 */
   isAuthorization(credentials?: Credentials): Promise<boolean>
 }
