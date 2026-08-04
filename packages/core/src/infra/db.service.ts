@@ -1,4 +1,4 @@
-import { Context, Effect, Layer } from 'effect'
+import { Cause, Context, Effect, Exit, Layer } from 'effect'
 import {
   and,
   asc,
@@ -14,6 +14,8 @@ import {
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres'
 import type { PgColumn, PgTable } from 'drizzle-orm/pg-core'
 import { createDb } from '@repo/db'
+import type { AppError } from '../errors.js'
+import { fromPromise } from '../effects/from-promise.js'
 import { ConfigService } from './config.service.js'
 
 // ── Pagination types (moved from kits) ───────────────────────────────────────
@@ -64,8 +66,8 @@ export interface CursorQueryResult<T, TCursor> {
 // ── IDb: fully Effect-native interface ───────────────────────────────────────
 
 export interface IDb {
-  /** Execute any Drizzle query builder. DB errors surface as defects. */
-  query<T>(fn: (raw: NodePgDatabase) => Promise<T>): Effect.Effect<T>
+  /** Execute any Drizzle query builder. DB errors surface as AppError. */
+  query<T>(fn: (raw: NodePgDatabase) => Promise<T>): Effect.Effect<T, AppError>
 
   /**
    * Run an Effect callback inside a DB transaction.
@@ -77,7 +79,7 @@ export interface IDb {
   /** Offset-based pagination (implementation from kits). */
   pageQuery<TTable extends PgTable, T>(
     opts: PageQueryOptions<TTable, T>,
-  ): Effect.Effect<PageQueryResult<T>>
+  ): Effect.Effect<PageQueryResult<T>, AppError>
 
   /** Cursor-based pagination (implementation from kits). */
   cursorQuery<
@@ -87,7 +89,7 @@ export interface IDb {
     T,
   >(
     opts: CursorQueryOptions<TTable, TColumns, TCursor, T>,
-  ): Effect.Effect<CursorQueryResult<T, TCursor>>
+  ): Effect.Effect<CursorQueryResult<T, TCursor>, AppError>
 }
 
 export class DbService extends Context.Tag('DbService')<DbService, IDb>() {}
@@ -95,7 +97,7 @@ export class DbService extends Context.Tag('DbService')<DbService, IDb>() {}
 // ── Internal helpers ──────────────────────────────────────────────────────────
 
 class RollbackSignal {
-  constructor(readonly error: unknown) {}
+  constructor(readonly cause: Cause.Cause<unknown>) {}
 }
 
 function createCursorFilter(
@@ -190,29 +192,31 @@ async function cursorQueryImpl<
 function buildIDb(raw: NodePgDatabase): IDb {
   return {
     query: <T>(fn: (db: NodePgDatabase) => Promise<T>) =>
-      Effect.promise(() => fn(raw)),
+      fromPromise(() => fn(raw), 'query'),
 
     transaction: <T, E>(fn: (tx: IDb) => Effect.Effect<T, E>) =>
-      Effect.async<T, E>((resume) => {
-        raw
-          .transaction(async (rawTx) => {
-            const txDb = buildIDb(rawTx)
-            const either = await Effect.runPromise(Effect.either(fn(txDb)))
-            if (either._tag === 'Left') throw new RollbackSignal(either.left)
-            return either.right
-          })
-          .then(
-            (result) => resume(Effect.succeed(result)),
-            (err) =>
-              err instanceof RollbackSignal
-                ? resume(Effect.fail(err.error as E))
-                : resume(Effect.die(err)),
-          )
-      }),
+      Effect.flatten(
+        Effect.promise(async (): Promise<Effect.Effect<T, E>> => {
+          try {
+            const value = await raw.transaction(async (rawTx) => {
+              const exit = await Effect.runPromiseExit(fn(buildIDb(rawTx)))
+              if (Exit.isFailure(exit)) throw new RollbackSignal(exit.cause)
+              return exit.value
+            })
+            return Effect.succeed(value as T)
+          } catch (err) {
+            if (err instanceof RollbackSignal)
+              return Effect.failCause(err.cause as never)
+            return Effect.die(err)
+          }
+        }),
+      ),
 
-    pageQuery: (opts) => Effect.promise(() => pageQueryImpl(raw, opts)),
+    pageQuery: (opts) =>
+      fromPromise(() => pageQueryImpl(raw, opts), 'pageQuery'),
 
-    cursorQuery: (opts) => Effect.promise(() => cursorQueryImpl(raw, opts)),
+    cursorQuery: (opts) =>
+      fromPromise(() => cursorQueryImpl(raw, opts), 'cursorQuery'),
   }
 }
 
