@@ -25,13 +25,21 @@ export {
   UserRepositoryLive,
 }
 
-export const SharedLive = Layer.mergeAll(
+const IndependentSharedLive = Layer.mergeAll(
   DbLive,
   TokenSignerLive,
   ApplicationLoggerLive,
   PasswordHasherLive,
-  RedisStoreLive,
   IdGenerationLive,
+)
+
+const RedisStoreProvidedLive = RedisStoreLive.pipe(
+  Layer.provide(IdGenerationLive),
+)
+
+export const SharedLive = Layer.merge(
+  IndependentSharedLive,
+  RedisStoreProvidedLive,
 )
 
 export const RepositoriesLive = Layer.mergeAll(

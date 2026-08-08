@@ -11,34 +11,45 @@ const TodoFields = z.object({
   completed: z.boolean().default(false),
 })
 
-export const TodoModel = z.intersection(BaseModel, TodoFields)
+export const TodoSchema = z.intersection(BaseModel, TodoFields)
 
-export const TodoIdInputDto = z.object({
+export type TodoModel = z.infer<typeof TodoSchema>
+
+export const TodoIdInputSchema = z.object({
   todoId: z.string(),
 })
 
-export const GetDetailTodoDto = TodoIdInputDto.extend({})
-export const RemoveTodoDto = TodoIdInputDto.extend({})
+export const GetDetailTodoSchema = TodoIdInputSchema.extend({})
+export type GetDetailTodoDto = z.infer<typeof GetDetailTodoSchema>
 
-export const CreateTodoDto = TodoFields.omit({ completed: true })
+export const RemoveTodoSchema = TodoIdInputSchema.extend({})
+export type RemoveTodoDto = z.infer<typeof RemoveTodoSchema>
 
-export const UpdateTodoDto = TodoFields.extend(TodoIdInputDto.shape)
+export const CreateTodoSchema = TodoFields.omit({ completed: true })
+export type CreateTodoDto = z.infer<typeof CreateTodoSchema>
 
-export const PageQueryTodoDto = BasePaginateDto.extend({
+export const UpdateTodoSchema = TodoFields.extend(TodoIdInputSchema.shape)
+export type UpdateTodoDto = z.infer<typeof UpdateTodoSchema>
+
+export const PageQueryTodoSchema = BasePaginateDto.extend({
   keyword: z.string().optional(),
   orderBy: z.enum(['updatedAt', 'createdAt']).optional().default('updatedAt'),
   order: z.enum(['asc', 'desc']).optional().default('desc'),
 })
 
-export const TodoCursorDto = z.object({
+export type PageQueryTodoDto = z.infer<typeof PageQueryTodoSchema>
+
+export const TodoCursorSchema = z.object({
   updatedAt: z.iso.datetime(),
   todoId: z.string(),
 })
 
 /** 游标模型（响应） */
-export const TodoCursorModel = TodoCursorDto
+export type TodoCursorModel = z.infer<typeof TodoCursorSchema>
 
-export const CursorQueryTodoDto = BaseCursorPaginateDto.extend({
-  cursor: TodoCursorDto.optional(),
+export const CursorQueryTodoSchema = BaseCursorPaginateDto.extend({
+  cursor: TodoCursorSchema.optional(),
   keyword: z.string().optional(),
 })
+
+export type CursorQueryTodoDto = z.infer<typeof CursorQueryTodoSchema>

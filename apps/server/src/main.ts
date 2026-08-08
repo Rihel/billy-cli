@@ -1,17 +1,19 @@
 import 'dotenv/config';
-import { NestFactory } from '@nestjs/core';
-import { RootModule } from './root.module.js';
-import { createLogger } from '@repo/shared/logger';
-import { appConfig } from './config.js';
+import { serve } from '@hono/node-server';
+import { app, config, disposeApp } from './app.js';
 
-async function bootstrap() {
-  const logger = createLogger('bootstrap', appConfig.isDev);
-  const app = await NestFactory.create(RootModule, { bufferLogs: true });
-  app.useLogger(logger);
-  app.flushLogs();
-  app.enableCors();
-  await app.listen(appConfig.port, () => {
-    logger.info(`服务已启动 http://localhost:${appConfig.port}`, appConfig);
+const server = serve({
+  fetch: app.fetch,
+  port: config.port,
+});
+
+console.info(`server started at http://localhost:${config.port}`);
+
+const shutdown = () => {
+  server.close(() => {
+    void disposeApp().finally(() => process.exit(0));
   });
-}
-bootstrap();
+};
+
+process.once('SIGINT', shutdown);
+process.once('SIGTERM', shutdown);

@@ -62,7 +62,7 @@ services:
       retries: 10
 
   # ──────────────────────────────────────────
-  # Server (NestJS)
+  # Server (Hono + Effect)
   # ──────────────────────────────────────────
   server:
     build:
@@ -80,6 +80,12 @@ services:
       REDIS_URL: redis://redis:6379/0
       JWT_SECRET: ${JWT_SECRET:-change-me-in-production}
       JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-7d}
+      OBJECT_STORAGE_PROVIDER: s3
+      OBJECT_STORAGE_REGION: us-east-1
+      OBJECT_STORAGE_BUCKET: billy-cli
+      OBJECT_STORAGE_ACCESS_KEY_ID: minioadmin
+      OBJECT_STORAGE_SECRET_ACCESS_KEY: minioadmin
+      OBJECT_STORAGE_ENDPOINT: http://minio:9000
     ports:
       - "9989:9989"
 

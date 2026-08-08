@@ -2,7 +2,8 @@ import { Config, Context, Effect, Layer, Option } from 'effect'
 import { Redis as RedisClient } from 'ioredis'
 import { RedisStoreError } from './infrastructure-errors.js'
 import { makePromiseAdapter, tryPromise } from './effect-adapters.js'
-import { IdGeneration, IdGenerationApi } from './id-generation.capability.js'
+import { IdGeneration } from './id-generation.capability.js'
+import type { IdGenerationApi } from './id-generation.capability.js'
 
 const releaseLockScript = `
 if redis.call('get', KEYS[1]) == ARGV[1] then

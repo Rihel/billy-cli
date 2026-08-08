@@ -1,12 +1,12 @@
 # Billy
 
-> 一套现代化的全栈应用模板，开发体验拉满。后端逐步从 NestJS + kits 迁移到 Effect-TS + core。
+> 一套基于 Hono、Effect-TS 与 Next.js 的全栈应用模板。
 
 ## 技术栈
 
 ```
 apps/
-├── server   — NestJS 11 + Drizzle ORM + PostgreSQL + Redis
+├── server   — Hono HTTP 边界 + Effect ManagedRuntime
 ├── web      — Next.js 16 App Router + Ant Design Pro 6 + Tailwind 4
 └── admin    — 管理后台
 packages/
@@ -19,21 +19,21 @@ packages/
 └── aui      — AI UI 组件库
 ```
 
-| 层         | 选型                          | 理由                                       |
-| ---------- | ----------------------------- | ------------------------------------------ |
-| 构建系统   | pnpm + Turbo                  | monorepo 依赖管理 + 增量缓存               |
-| 服务端框架 | NestJS 11 / Effect-TS         | NestJS（当前 server）+ Effect-TS（core 包） |
-| API 层     | POST JSON（NestJS Controller）| 全类型化 SDK 封装，零额外运行时             |
-| ORM        | Drizzle ORM                   | 无 runtime、类型原生、SQL-like API         |
-| 前端框架   | Next.js 16 App Router         | RSC + SSR + Server Actions                 |
-| 前后端共享 | Zod                           | 同一 schema 定义类型 + 校验                |
-| UI 组件    | Ant Design Pro 6              | ProTable / ModalForm 开箱即用              |
-| 状态管理   | Zustand + Immer               | 轻量、不可变、无 boilerplate               |
-| 样式       | Tailwind 4                    | 原子化 CSS，零心智负担                     |
-| 日志       | Pino                          | 结构化日志，开发环境 pretty，生产环境 JSON |
-| 缓存       | Redis（ioredis）              | 完整 Set / List / Hash / PubSub / 分布式锁 |
-| 构建工具   | tsdown                        | 比 tsc 快一个数量级的 bundler              |
-| 容器化     | Docker multi-stage            | server + web + admin 独立部署              |
+| 层         | 选型                     | 理由                                       |
+| ---------- | ------------------------ | ------------------------------------------ |
+| 构建系统   | pnpm + Turbo             | monorepo 依赖管理 + 增量缓存               |
+| 服务端框架 | Hono + Effect-TS         | Hono 处理 HTTP，core 表达业务与能力        |
+| API 层     | POST JSON（Hono Routes） | Zod 边界校验 + 全类型化 SDK                |
+| ORM        | Drizzle ORM              | 无 runtime、类型原生、SQL-like API         |
+| 前端框架   | Next.js 16 App Router    | RSC + SSR + Server Actions                 |
+| 前后端共享 | Zod                      | 同一 schema 定义类型 + 校验                |
+| UI 组件    | Ant Design Pro 6         | ProTable / ModalForm 开箱即用              |
+| 状态管理   | Zustand + Immer          | 轻量、不可变、无 boilerplate               |
+| 样式       | Tailwind 4               | 原子化 CSS，零心智负担                     |
+| 日志       | Pino                     | 结构化日志，开发环境 pretty，生产环境 JSON |
+| 缓存       | Redis（ioredis）         | 完整 Set / List / Hash / PubSub / 分布式锁 |
+| 构建工具   | tsdown                   | 比 tsc 快一个数量级的 bundler              |
+| 容器化     | Docker multi-stage       | server + web + admin 独立部署              |
 
 ## 快速开始
 
@@ -84,7 +84,7 @@ pnpm db:migrate
 # 终端 1：启动 packages（shared / db / ui / kits / sdk）的 watch 构建
 pnpm dev:pkgs
 
-# 终端 2：启动 NestJS 服务（port 9989）
+# 终端 2：启动 Hono 服务（port 9989）
 pnpm dev:server
 
 # 终端 3：启动 Next.js 前端（port 9845）
@@ -111,59 +111,43 @@ docker compose up
 
 基于 Effect-TS 的后端业务层，通过 Layer 做依赖注入和资源生命周期管理。
 
-**分层结构：**
+**Feature-first 结构：**
 
 ```
-effects/          # Effect 工具函数
-├── parse-input   # Zod 校验入参 → AppError
-├── to-response   # Effect<T, AppError> → AppResponse<T>
-└── from-promise  # Promise → Effect（typed error）
-infra/            # 基础设施层
-├── config        # Zod schema 驱动配置，支持 hardcode / env
-├── db            # Drizzle ORM 封装：query / transaction / pageQuery / cursorQuery
-├── redis         # ioredis 封装：String / Set / List / Hash / PubSub / 分布式锁 / JSON
-├── jwt           # JWT sign / verify
-├── password      # bcrypt hash / verify（typed error）
-├── logger        # Pino 日志
-└── storage/      # S3 / COS 对象存储（策略模式，STS 临时凭证支持）
-biz/              # 业务层
-├── auth          # 注册 / 登录 / 忘记密码 / 重置密码 / 改密 / Token 验证
-├── user          # 用户 CRUD + 分页
-└── todo          # Todo CRUD + 分页 + 游标查询
-errors.ts         # AppError (TaggedError) + makeError
-layers.ts         # makeAppLayer() 一站式组装
+modules/
+├── auth/         # domain / errors / 独立 usecases
+├── user/         # domain / errors / repository capability / usecases
+└── todo/         # domain / errors / repository capability / usecases
+shared/
+├── *.capability  # DB / Redis / JWT / Password / Logger / ID 等能力
+├── object-storage/
+└── runtime-config.ts
+runtime.ts        # 单独 Layer、组合 Layer 与满载 RuntimeLive
 ```
 
 **使用方式：**
 
 ```ts
-import { ManagedRuntime } from 'effect'
-import { makeAppLayer, AuthService, UserService } from '@repo/core'
+import { RegisterCommand, register } from '@repo/core'
 
-const runtime = ManagedRuntime.make(makeAppLayer())
-const program = Effect.gen(function* () {
-  const auth = yield* AuthService
-  const user = yield* UserService
-  // ...
-})
-
+const program = register(new RegisterCommand(input))
 await runtime.runPromise(program)
 ```
 
 **设计原则：**
-- 所有返回值 `Effect<A, AppError>`，不做 `catchAll` 吞错误——错误转换由 HTTP 层负责
-- 每个 public 方法入口调用 `parseInput(schema, input)`，运行时 Zod 校验
-- 日志通过 `Effect.tap` 挂载，不侵入主逻辑
-- 不使用 NestJS 装饰器，纯 Effect-TS 函数式风格
-- `fromPromise()` 统一 Promise → Effect 边界，typed error 进错误通道
 
+- usecase 返回带精确业务错误与能力依赖的 `Effect<A, E, R>`
+- DTO/Zod 校验和 HTTP 错误转换只存在于 Hono 边界
+- 业务错误保持原义，不包装成统一 `AppError`
+- 不使用 NestJS 装饰器，纯 Effect-TS 函数式风格
+- capability 隔离数据库、Redis、JWT 和对象存储等技术细节
 
 ## 架构设计
 
 ### 数据流
 
 ```
-浏览器 ── POST JSON ──→ Next.js ── POST JSON ──→ NestJS ── Drizzle ──→ PostgreSQL
+浏览器 ── POST JSON ──→ Next.js ── POST JSON ──→ Hono ── core usecase ──→ PostgreSQL
                          (SSR)       │                      │
                                       │                      └── Redis
                                       │
@@ -177,7 +161,7 @@ await runtime.runPromise(program)
 ### 认证
 
 - JWT token，通过 `Authorization: Bearer` 或 `cookie` 传递
-- `AuthGuard` 在 NestJS 控制器层校验 JWT，注入 `userId`
+- Hono `requireAuth` middleware 调用 core `verifyToken`，注入 `userId`
 - 公开接口（登录 / 注册 / 忘记密码 / 重置密码）不用 Guard
 - SSR 侧通过 try/catch + `redirect()` 做路由守卫
 - 客户端通过 `onUnauthorized` 回调自动跳转登录页
@@ -188,6 +172,7 @@ await runtime.runPromise(program)
 所有接口均为 `POST`，响应统一包装为 `AppResponse<T>` 格式：
 
 **成功响应**：
+
 ```json
 {
   "code": 0,
@@ -196,6 +181,7 @@ await runtime.runPromise(program)
 ```
 
 **业务异常响应**：
+
 ```json
 {
   "code": 1000,
@@ -205,25 +191,29 @@ await runtime.runPromise(program)
 
 路由按模块划分：
 
-| 路由 | 说明 | 鉴权 |
-|------|------|------|
-| `POST /auth/register` | 注册 | 否 |
-| `POST /auth/login` | 登录 | 否 |
-| `POST /auth/forgot-password` | 忘记密码 | 否 |
-| `POST /auth/reset-password` | 重置密码 | 否 |
-| `POST /auth/get-me` | 获取当前用户 | 是 |
-| `POST /auth/update-info` | 更新个人信息 | 是 |
-| `POST /auth/change-password` | 修改密码 | 是 |
-| `POST /todo/*` | Todo CRUD | 是 |
-| `POST /user/*` | 用户管理 | 是 |
-| `POST /storage/*` | 存储服务 | 是 |
+| 路由                         | 说明         | 鉴权 |
+| ---------------------------- | ------------ | ---- |
+| `POST /auth/register`        | 注册         | 否   |
+| `POST /auth/login`           | 登录         | 否   |
+| `POST /auth/forgot-password` | 忘记密码     | 否   |
+| `POST /auth/reset-password`  | 重置密码     | 否   |
+| `POST /auth/get-me`          | 获取当前用户 | 是   |
+| `POST /auth/update-info`     | 更新个人信息 | 是   |
+| `POST /auth/change-password` | 修改密码     | 是   |
+| `POST /todo/*`               | Todo CRUD    | 是   |
+| `POST /user/*`               | 用户管理     | 是   |
+| `POST /storage/*`            | 存储服务     | 是   |
 
 ### ServerClient SDK
 
 `@repo/sdk` 提供 `ServerClient` 封装，继承 `ApiClient`，自动处理鉴权和响应解包：
 
 ```typescript
-import { ServerClient, BearerTokenStrategy, MemoryCredentialsManager } from '@repo/sdk'
+import {
+  ServerClient,
+  BearerTokenStrategy,
+  MemoryCredentialsManager,
+} from '@repo/sdk'
 
 const client = new ServerClient({
   baseUrl: 'http://localhost:9989',
@@ -367,17 +357,17 @@ createLogger('bootstrap', appConfig.isDev)
 
 ## 脚本
 
-| 命令              | 说明                     |
-| ----------------- | ------------------------ |
-| `pnpm dev:pkgs`   | 并行 watch packages 构建 |
-| `pnpm build:pkgs` | 构建 packages            |
-| `pnpm dev:server` | 启动 NestJS 开发服务器   |
-| `pnpm dev:web`    | 启动 Next.js 开发服务器  |
-| `pnpm build`      | 全量构建（turbo）        |
-| `pnpm start:server` | 启动生产 Server        |
-| `pnpm start:web`  | 启动生产 Web             |
-| `pnpm db:gen`     | 生成 Drizzle 迁移文件    |
-| `pnpm db:migrate` | 执行数据库迁移           |
+| 命令                | 说明                     |
+| ------------------- | ------------------------ |
+| `pnpm dev:pkgs`     | 并行 watch packages 构建 |
+| `pnpm build:pkgs`   | 构建 packages            |
+| `pnpm dev:server`   | 启动 NestJS 开发服务器   |
+| `pnpm dev:web`      | 启动 Next.js 开发服务器  |
+| `pnpm build`        | 全量构建（turbo）        |
+| `pnpm start:server` | 启动生产 Server          |
+| `pnpm start:web`    | 启动生产 Web             |
+| `pnpm db:gen`       | 生成 Drizzle 迁移文件    |
+| `pnpm db:migrate`   | 执行数据库迁移           |
 
 ## Docker
 

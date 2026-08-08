@@ -15,19 +15,19 @@ export const UpdateInfoSchema = z.object({
 export type UpdateInfoDto = z.infer<typeof UpdateInfoSchema>
 
 export const RegisterSchema = z.object({
-  email: z.string().email(),
+  email: z.email(),
   password: z.string().min(6),
   realName: z.string().optional(),
 })
 export type RegisterDto = z.infer<typeof RegisterSchema>
 export const LoginSchema = z.object({
-  email: z.string().email(),
+  email: z.email(),
   password: z.string(),
 })
 export type LoginDto = z.infer<typeof LoginSchema>
 
 export const ForgotPasswordSchema = z.object({
-  email: z.string().email(),
+  email: z.email(),
 })
 export type ForgotPasswordDto = z.infer<typeof ForgotPasswordSchema>
 
@@ -48,11 +48,11 @@ export const AuthResultSchema = z.object({
   token: z.string(),
   user: AuthUserSchema,
 })
-export type AuthResultDto = z.infer<typeof AuthResultSchema>
+export type AuthResultModel = z.infer<typeof AuthResultSchema>
 
 /** 通用成功响应模型 */
 export const SuccessResultSchema = z.object({
   success: z.literal(true),
   token: z.string().optional(),
 })
-export type SuccessResultDto = z.infer<typeof SuccessResultSchema>
+export type SuccessResultModel = z.infer<typeof SuccessResultSchema>

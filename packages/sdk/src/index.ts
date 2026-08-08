@@ -13,18 +13,14 @@ export { ApiClient } from './core/api.client.js'
 export type { ApiClientOptions, RequestOptions } from './core/api.client.js'
 export { CredentialResolver } from './core/credential-resolver.js'
 export { AuthInjector } from './core/auth-injector.js'
-export { ApiError, ApiErrorCodes, mapAppErrorValue, mapHttpStatus } from './core/api-error.js'
+export {
+  ApiError,
+  ApiErrorCodes,
+  mapAppErrorValue,
+  mapHttpStatus,
+} from './core/api-error.js'
 
 export { ServerClient } from './server.client.js'
-export type {
-  SafeUser,
-  AuthResult,
-  SuccessResult,
-  TodoItem,
-  TodoCursor,
-  StoragePresignedUrl,
-  StorageCredentials,
-} from './server.client.js'
 
 // 认证策略
 export { BearerTokenStrategy } from './strategies/bearer-token.strategy.js'

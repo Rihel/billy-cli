@@ -5,25 +5,18 @@
     "resolvePackageJsonExports": true,
     "esModuleInterop": true,
     "isolatedModules": true,
-    "declaration": true,
-    "removeComments": true,
-    "emitDecoratorMetadata": true,
+    "declaration": false,
     "types": [
       "node"
     ],
-    "verbatimModuleSyntax": false,
-    "experimentalDecorators": true,
-    "allowSyntheticDefaultImports": true,
-    "strictPropertyInitialization": false,
+    "verbatimModuleSyntax": true,
     "target": "ES2023",
     "sourceMap": true,
     "rootDir": "src",
     "outDir": "dist",
     "skipLibCheck": true,
-    "strictNullChecks": true,
+    "strict": true,
     "forceConsistentCasingInFileNames": true,
-    "noImplicitAny": true,
-    "strictBindCallApply": true,
     "noFallthroughCasesInSwitch": false
   }
 }

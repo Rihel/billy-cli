@@ -1,96 +1,36 @@
-import { ApiClient } from './core/api.client.js'
-import type { z } from 'zod'
 import {
-  UserModel,
+  AppCursorQueryResponse,
+  AppPageQueryResponse,
   AuthResultModel,
-  SuccessResultModel,
-  RegisterDto,
-  LoginDto,
-  ForgotPasswordDto,
-  ResetPasswordDto,
+  AuthUserModel,
   ChangePasswordDto,
-  UpdateInfoDto,
-  TodoModel,
-  TodoCursorModel,
   CreateTodoDto,
-  UpdateTodoDto,
-  TodoIdInputDto,
-  PageQueryTodoDto,
-  CursorQueryTodoDto,
   CreateUserDto,
-  UpdateUserDto,
+  CursorQueryTodoDto,
+  ForgotPasswordDto,
+  GetDetailTodoDto,
+  GetStorageDownloadUrlDto,
+  GetStorageUploadPresignedUrlDto,
+  GetUserDetailDto,
+  LoginDto,
+  PageQueryTodoDto,
   PageQueryUserDto,
-  UserIdInputDto,
+  RegisterDto,
+  RemoveTodoDto,
+  RemoveUserDto,
+  ResetPasswordDto,
   ResetUserPasswordDto,
   StoragePresignedUrlModel,
   StorageStsModel,
-  GetStorageUploadPresignedUrlDto,
-  GetStorageDownloadUrlDto,
-  AppPageQueryResponse,
-  AppCursorQueryResponse,
-  GetDetailTodoDto,
-  RemoveTodoDto,
+  SuccessResultModel,
+  TodoCursorModel,
+  TodoModel,
+  UpdateInfoDto,
+  UpdateUserDto,
+  UserModel,
 } from '@repo/shared'
+import { ApiClient } from './core/api.client.js'
 
-// ── 类型定义 ──────────────────────────────────────
-
-/** 安全用户 */
-export type SafeUser = z.infer<typeof UserModel>
-
-/** 登录/注册结果 */
-export type AuthResult = z.infer<typeof AuthResultModel>
-
-/** 通用成功响应 */
-export type SuccessResult = z.infer<typeof SuccessResultModel>
-
-/** Todo 条目 */
-export type TodoItem = z.infer<typeof TodoModel>
-
-/** 游标 */
-export type TodoCursor = z.infer<typeof TodoCursorModel>
-
-/** 预签名上传 URL */
-export type StoragePresignedUrl = z.infer<typeof StoragePresignedUrlModel>
-
-/** STS 临时凭证 */
-export type StorageCredentials = z.infer<typeof StorageStsModel>
-
-// ── 请求参数类型 ───────────────────────────────────
-
-type RegisterInput = z.infer<typeof RegisterDto>
-type LoginInput = z.infer<typeof LoginDto>
-type ForgotPasswordInput = z.infer<typeof ForgotPasswordDto>
-type ResetPasswordInput = z.infer<typeof ResetPasswordDto>
-type ChangePasswordInput = z.infer<typeof ChangePasswordDto>
-type UpdateInfoInput = z.infer<typeof UpdateInfoDto>
-
-type CreateTodoInput = z.infer<typeof CreateTodoDto>
-type UpdateTodoInput = z.infer<typeof UpdateTodoDto>
-type TodoIdInput = z.infer<typeof TodoIdInputDto>
-type PageQueryTodoInput = z.infer<typeof PageQueryTodoDto>
-type CursorQueryTodoInput = z.infer<typeof CursorQueryTodoDto>
-
-type CreateUserInput = z.infer<typeof CreateUserDto>
-type UpdateUserInput = z.infer<typeof UpdateUserDto>
-type PageQueryUserInput = z.infer<typeof PageQueryUserDto>
-type UserIdInput = z.infer<typeof UserIdInputDto>
-type ResetUserPasswordInput = z.infer<typeof ResetUserPasswordDto>
-
-type GetPresignedUrlInput = z.infer<typeof GetStorageUploadPresignedUrlDto>
-type GetDownloadUrlInput = z.infer<typeof GetStorageDownloadUrlDto>
-
-/**
- * ServerClient — 继承 ApiClient，提供全类型化的业务 API 调用。
- *
- * 所有方法均以 POST 方式请求后端，自动处理 AppResponse 包裹/解包和鉴权。
- *
- * 用法：
- * ```ts
- * const client = new ServerClient({ ... })
- * const { token, user } = await client.auth.login({ email, password })
- * const todos = await client.todo.findManyCursor({ size: 20 })
- * ```
- */
 export class ServerClient<
   Credentials = Record<string, any>,
 > extends ApiClient<Credentials> {
@@ -98,89 +38,85 @@ export class ServerClient<
 
   auth = {
     /** 无需 token */
-    register: (input: RegisterInput) =>
-      this.postPublic<AuthResult>('/auth/register', input),
+    register: (data: RegisterDto) =>
+      this.postPublic<AuthResultModel>('/auth/register', data),
 
     /** 无需 token */
-    login: (input: LoginInput) =>
-      this.postPublic<AuthResult>('/auth/login', input),
+    login: (data: LoginDto) =>
+      this.postPublic<AuthResultModel>('/auth/login', data),
 
     /** 无需 token */
-    forgotPassword: (input: ForgotPasswordInput) =>
-      this.postPublic<SuccessResult>('/auth/forgot-password', input),
+    forgotPassword: (data: ForgotPasswordDto) =>
+      this.postPublic<SuccessResultModel>('/auth/forgot-password', data),
 
     /** 无需 token */
-    resetPassword: (input: ResetPasswordInput) =>
-      this.postPublic<SuccessResult>('/auth/reset-password', input),
+    resetPassword: (data: ResetPasswordDto) =>
+      this.postPublic<SuccessResultModel>('/auth/reset-password', data),
 
     /** 需要 token */
-    getMe: () => this.post<SafeUser>('/auth/get-me'),
+    getMe: () => this.post<AuthUserModel>('/auth/get-me'),
 
     /** 需要 token */
-    updateInfo: (input: UpdateInfoInput) =>
-      this.post<SafeUser>('/auth/update-info', input),
+    updateInfo: (data: UpdateInfoDto) =>
+      this.post<AuthUserModel>('/auth/update-info', data),
 
     /** 需要 token */
-    changePassword: (input: ChangePasswordInput) =>
-      this.post<SuccessResult>('/auth/change-password', input),
+    changePassword: (data: ChangePasswordDto) =>
+      this.post<SuccessResultModel>('/auth/change-password', data),
   }
 
   /* ========== 待办事项 ========== */
 
   todo = {
-    create: (input: CreateTodoInput) =>
-      this.post<TodoItem>('/todo/create', input),
+    create: (data: CreateTodoDto) => this.post<TodoModel>('/todo/create', data),
 
-    pageQuery: (input: PageQueryTodoInput) =>
-      this.post<AppPageQueryResponse<TodoItem>>('/todo/page-query', input),
+    pageQuery: (data: PageQueryTodoDto) =>
+      this.post<AppPageQueryResponse<TodoModel>>('/todo/page-query', data),
 
-    cursorQuery: (input: CursorQueryTodoInput) =>
-      this.post<AppCursorQueryResponse<TodoItem, TodoCursor>>(
+    cursorQuery: (data: CursorQueryTodoDto) =>
+      this.post<AppCursorQueryResponse<TodoModel, TodoCursorModel>>(
         '/todo/cursor-query',
-        input,
+        data,
       ),
 
-    detail: (input: z.infer<typeof GetDetailTodoDto>) =>
-      this.post<TodoItem>('/todo/detail', input),
+    detail: (data: GetDetailTodoDto) =>
+      this.post<TodoModel>('/todo/detail', data),
 
-    update: (input: UpdateTodoInput) =>
-      this.post<TodoItem>('/todo/update', input),
+    update: (data: UpdateInfoDto) => this.post<TodoModel>('/todo/update', data),
 
-    remove: (input: z.infer<typeof RemoveTodoDto>) =>
-      this.post<TodoItem>('/todo/remove', input),
+    remove: (data: RemoveTodoDto) => this.post<TodoModel>('/todo/remove', data),
   }
 
   /* ========== 用户 ========== */
 
   user = {
-    create: (input: CreateUserInput) =>
-      this.post<SafeUser>('/user/create', input),
+    create: (data: CreateUserDto) => this.post<UserModel>('/user/create', data),
 
-    pageQuery: (input: PageQueryUserInput) =>
-      this.post<AppPageQueryResponse<SafeUser>>('/user/page-query', input),
+    pageQuery: (data: PageQueryUserDto) =>
+      this.post<AppPageQueryResponse<UserModel>>('/user/page-query', data),
 
-    detail: (input: UserIdInput) => this.post<SafeUser>('/user/detail', input),
+    detail: (data: GetUserDetailDto) =>
+      this.post<UserModel>('/user/detail', data),
 
-    update: (input: UpdateUserInput) =>
-      this.post<SafeUser>('/user/update', input),
+    update: (data: UpdateUserDto) => this.post<UserModel>('/user/update', data),
 
-    remove: (input: UserIdInput) =>
-      this.post<SuccessResult>('/user/remove', input),
+    remove: (data: RemoveUserDto) =>
+      this.post<SuccessResultModel>('/user/remove', data),
 
-    resetPassword: (input: ResetUserPasswordInput) =>
-      this.post<SuccessResult>('/user/reset-password', input),
+    resetPassword: (data: ResetUserPasswordDto) =>
+      this.post<SuccessResultModel>('/user/reset-password', data),
   }
 
   /* ========== 存储 ========== */
 
   storage = {
-    getPresignedUrl: (input: GetPresignedUrlInput) =>
-      this.post<StoragePresignedUrl>('/storage/get-presigned-url', input),
+    getPresignedUrl: (data: GetStorageUploadPresignedUrlDto) =>
+      this.post<StoragePresignedUrlModel>('/storage/get-presigned-url', data),
 
-    getDownloadUrl: (input: GetDownloadUrlInput) =>
-      this.post<{ url: string }>('/storage/get-download-url', input),
+    getDownloadUrl: (data: GetStorageDownloadUrlDto) =>
+      this.post<StoragePresignedUrlModel>('/storage/get-download-url', data),
 
     getTemporaryCredentials: () =>
-      this.post<StorageCredentials>('/storage/get-temporary-credentials'),
+      this.post<StorageStsModel>('/storage/get-temporary-credentials'),
   }
 }
