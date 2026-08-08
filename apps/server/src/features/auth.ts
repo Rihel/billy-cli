@@ -24,10 +24,10 @@ import {
 } from '@repo/shared';
 import { Effect } from 'effect';
 import { Hono } from 'hono';
-import { Authentication } from '../../capabilities/authentication.js';
-import { EffectExecutor } from '../../capabilities/effect-executor.js';
-import { Http, type AppEnv } from '../../capabilities/http.js';
-import { RequestContext } from '../../capabilities/request-context.js';
+import { Authentication } from '../capabilities/authentication.js';
+import { EffectExecutor } from '../capabilities/effect-executor.js';
+import { Http } from '../capabilities/http.js';
+import { RequestContext } from '../capabilities/request-context.js';
 
 const currentUserId = Effect.gen(function* () {
   const context = yield* RequestContext;
@@ -42,7 +42,7 @@ export const makeAuthRoutes = Effect.gen(function* () {
   const { jsonBody, success } = yield* Http;
   const { requireAuth } = yield* Authentication;
 
-  return new Hono<AppEnv>()
+  return new Hono()
     .post('/register', jsonBody(RegisterSchema), async (context) => {
       const input = context.req.valid('json');
       return success(
@@ -75,8 +75,7 @@ export const makeAuthRoutes = Effect.gen(function* () {
         await executor.run(resetPassword(new ResetPasswordCommand(input))),
       );
     })
-    .use('/get-me', requireAuth)
-    .post('/get-me', async (context) =>
+    .post('/get-me', requireAuth, async (context) =>
       success(
         context,
         await executor.run(
@@ -86,21 +85,25 @@ export const makeAuthRoutes = Effect.gen(function* () {
         ),
       ),
     )
-    .use('/update-info', requireAuth)
-    .post('/update-info', jsonBody(UpdateInfoSchema), async (context) => {
-      const input = context.req.valid('json');
-      return success(
-        context,
-        await executor.run(
-          Effect.flatMap(currentUserId, (userId) =>
-            updateInfo(new UpdateInfoCommand({ userId, ...input })),
+    .post(
+      '/update-info',
+      requireAuth,
+      jsonBody(UpdateInfoSchema),
+      async (context) => {
+        const input = context.req.valid('json');
+        return success(
+          context,
+          await executor.run(
+            Effect.flatMap(currentUserId, (userId) =>
+              updateInfo(new UpdateInfoCommand({ userId, ...input })),
+            ),
           ),
-        ),
-      );
-    })
-    .use('/change-password', requireAuth)
+        );
+      },
+    )
     .post(
       '/change-password',
+      requireAuth,
       jsonBody(ChangePasswordSchema),
       async (context) => {
         const input = context.req.valid('json');

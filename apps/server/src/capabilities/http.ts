@@ -12,8 +12,6 @@ export interface ErrorDescriptor {
   label: string;
 }
 
-export type AppEnv = { Variables: Record<string, never> };
-
 const toErrorHttpStatus = (status: unknown): ErrorHttpStatus => {
   switch (status) {
     case 400:
@@ -103,5 +101,5 @@ export const errorHandler = (error: Error, context: Context) => {
   );
 };
 
-export const notFound = (context: Context<AppEnv>) =>
+export const notFound = (context: Context) =>
   context.json(ResponseUtils.error(404, '接口不存在'), 404);

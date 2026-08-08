@@ -25,37 +25,22 @@ export {
   UserRepositoryLive,
 }
 
-const IndependentSharedLive = Layer.mergeAll(
+const RedisLive = RedisStoreLive.pipe(Layer.provide(IdGenerationLive))
+
+export const SharedLive = Layer.mergeAll(
   DbLive,
   TokenSignerLive,
   ApplicationLoggerLive,
   PasswordHasherLive,
   IdGenerationLive,
-)
-
-const RedisStoreProvidedLive = RedisStoreLive.pipe(
-  Layer.provide(IdGenerationLive),
-)
-
-export const SharedLive = Layer.merge(
-  IndependentSharedLive,
-  RedisStoreProvidedLive,
-)
-
-export const RepositoriesLive = Layer.mergeAll(
-  UserRepositoryLive,
-  TodoRepositoryLive,
-).pipe(Layer.provide(DbLive))
-
-export const CapabilitiesLive = Layer.merge(SharedLive, RepositoriesLive)
-
-export const ObjectStorageProvidedLive = ObjectStorageLive.pipe(
-  Layer.provide(SharedLive),
+  RedisLive,
 )
 
 export const RuntimeLive = Layer.mergeAll(
-  CapabilitiesLive,
-  ObjectStorageProvidedLive,
+  SharedLive,
+  UserRepositoryLive.pipe(Layer.provide(DbLive)),
+  TodoRepositoryLive.pipe(Layer.provide(DbLive)),
+  ObjectStorageLive.pipe(Layer.provide(SharedLive)),
 )
 
 export const makeRuntimeLayer = (config: RuntimeConfigInput) =>

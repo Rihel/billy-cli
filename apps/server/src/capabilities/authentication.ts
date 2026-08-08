@@ -4,11 +4,11 @@ import { Context, Effect, Layer } from 'effect';
 import { getCookie } from 'hono/cookie';
 import { createMiddleware } from 'hono/factory';
 import { EffectExecutor } from './effect-executor.js';
-import { describeErrorCode, type AppEnv } from './http.js';
+import { describeErrorCode } from './http.js';
 import { RequestContextStorage } from './request-context.js';
 
 export interface AuthenticationApi {
-  readonly requireAuth: ReturnType<typeof createMiddleware<AppEnv>>;
+  readonly requireAuth: ReturnType<typeof createMiddleware>;
 }
 
 export class Authentication extends Context.Tag('app/Authentication')<
@@ -21,7 +21,7 @@ export const AuthenticationLive = Layer.effect(
   Effect.gen(function* () {
     const executor = yield* EffectExecutor;
     const requestContext = yield* RequestContextStorage;
-    const requireAuth = createMiddleware<AppEnv>(async (context, next) => {
+    const requireAuth = createMiddleware(async (context, next) => {
       const authorization = context.req.header('Authorization');
       const token = authorization?.startsWith('Bearer ')
         ? authorization.slice(7)

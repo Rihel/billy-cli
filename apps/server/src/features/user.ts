@@ -22,15 +22,15 @@ import {
 } from '@repo/shared';
 import { Effect } from 'effect';
 import { Hono } from 'hono';
-import { Authentication } from '../../capabilities/authentication.js';
-import { EffectExecutor } from '../../capabilities/effect-executor.js';
-import { Http, type AppEnv } from '../../capabilities/http.js';
+import { Authentication } from '../capabilities/authentication.js';
+import { EffectExecutor } from '../capabilities/effect-executor.js';
+import { Http } from '../capabilities/http.js';
 
 export const makeUserRoutes = Effect.gen(function* () {
   const executor = yield* EffectExecutor;
   const { jsonBody, success } = yield* Http;
   const { requireAuth } = yield* Authentication;
-  const routes = new Hono<AppEnv>();
+  const routes = new Hono();
 
   routes.use('*', requireAuth);
   routes
