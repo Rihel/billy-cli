@@ -1,16 +1,14 @@
 import { Inject, Injectable } from '@nestjs/common'
-import { createDb } from '@repo/db'
+import {
+  createDb,
+  cursorQuery,
+  cursorQueryDeferred,
+  pageQuery,
+  pageQueryDeferred,
+} from '@repo/db'
 import { batchExecute } from '@repo/shared'
 import {
-  and,
-  asc,
-  count,
-  desc,
-  eq,
-  gt,
   inArray,
-  lt,
-  or,
   type InferInsertModel,
   type InferSelectModel,
 } from 'drizzle-orm'
@@ -32,37 +30,12 @@ import type {
   PageQueryDeferredOptions,
 } from './types.js'
 
-function createCursorFilter<TColumns extends CursorColumns>(
-  columns: TColumns,
-  values: CursorValues<TColumns> | undefined,
-  order: 'asc' | 'desc',
-) {
-  if (!values) return undefined
-  const compare = order === 'asc' ? gt : lt
-  return or(
-    ...columns.map((column, index) =>
-      and(
-        ...columns
-          .slice(0, index)
-          .map((previousColumn, previousIndex) =>
-            eq(previousColumn, values[previousIndex]),
-          ),
-        compare(column, values[index]),
-      ),
-    ),
-  )
-}
-
-function createCursorOrder(columns: CursorColumns, order: 'asc' | 'desc') {
-  return columns.map((column) => (order === 'asc' ? asc(column) : desc(column)))
-}
-
 @Injectable()
 export class DbService {
   private readonly db: NodePgDatabase
 
   constructor(@Inject(DATABASE_MODULE_OPTIONS) options: DatabaseModuleOptions) {
-    this.db = createDb(options.url)
+    this.db = createDb(options.url).db
   }
 
   get select() {
@@ -136,25 +109,7 @@ export class DbService {
   async pageQuery<TTable extends PgTable, T = InferSelectModel<TTable>>(
     opts: PageQueryOptions<TTable, T>,
   ): Promise<PageQueryResult<T>> {
-    const { table, where, orderCol, order = 'desc', page, size, map } = opts
-    const offset = (page - 1) * size
-    const orderExpr = orderCol
-      ? order === 'asc'
-        ? asc(orderCol)
-        : desc(orderCol)
-      : undefined
-    const dbTable = table as PgTable
-    const baseQuery = this.db.select().from(dbTable).where(where)
-    const [rows, [{ total }]] = await Promise.all([
-      (orderExpr ? baseQuery.orderBy(orderExpr) : baseQuery)
-        .limit(size)
-        .offset(offset),
-      this.db.select({ total: count() }).from(dbTable).where(where),
-    ])
-    const items = map
-      ? (rows as InferSelectModel<TTable>[]).map(map)
-      : (rows as T[])
-    return { items, total: Number(total), page, size }
+    return pageQuery(this.db, opts)
   }
 
   async cursorQuery<
@@ -165,29 +120,7 @@ export class DbService {
   >(
     opts: CursorQueryOptions<TTable, TColumns, TCursor, T>,
   ): Promise<CursorQueryResult<T, TCursor>> {
-    const {
-      table,
-      cursorColumns,
-      cursorValues,
-      getCursor,
-      where,
-      order = 'desc',
-      size,
-      map,
-    } = opts
-    const rows = (await this.db
-      .select()
-      .from(table as PgTable)
-      .where(and(where, createCursorFilter(cursorColumns, cursorValues, order)))
-      .orderBy(...createCursorOrder(cursorColumns, order))
-      .limit(size + 1)) as InferSelectModel<TTable>[]
-    const hasMore = rows.length > size
-    const pageRows = hasMore ? rows.slice(0, size) : rows
-    const lastRow = pageRows.at(-1)
-    return {
-      items: map ? pageRows.map(map) : (pageRows as T[]),
-      nextCursor: hasMore && lastRow ? getCursor(lastRow) : null,
-    }
+    return cursorQuery(this.db, opts)
   }
 
   async cursorQueryDeferred<
@@ -199,80 +132,12 @@ export class DbService {
   >(
     opts: CursorQueryDeferredOptions<TTable, TColumns, TCursor, TId, T>,
   ): Promise<CursorQueryResult<T, TCursor>> {
-    const {
-      table,
-      idCol,
-      cursorColumns,
-      cursorValues,
-      getCursor,
-      where,
-      order = 'desc',
-      size,
-      dataFn,
-      getItemId,
-    } = opts
-    const selection: Record<string, PgColumn> = { id: idCol }
-    cursorColumns.forEach((column, index) => {
-      selection[`cursor${index}`] = column
-    })
-    const rows = await this.db
-      .select(selection)
-      .from(table as PgTable)
-      .where(and(where, createCursorFilter(cursorColumns, cursorValues, order)))
-      .orderBy(...createCursorOrder(cursorColumns, order))
-      .limit(size + 1)
-    const hasMore = rows.length > size
-    const pageRows = hasMore ? rows.slice(0, size) : rows
-    const ids = pageRows.map((row) => row.id as TId)
-    const loadedItems = ids.length > 0 ? await dataFn(ids) : []
-    const itemsById = new Map<TId, T[]>()
-    loadedItems.forEach((item) => {
-      const id = getItemId(item)
-      const group = itemsById.get(id)
-      if (group) group.push(item)
-      else itemsById.set(id, [item])
-    })
-    const lastRow = pageRows.at(-1)
-    const lastCursorValues = lastRow
-      ? (cursorColumns.map(
-          (_, index) => lastRow[`cursor${index}`],
-        ) as CursorValues<TColumns>)
-      : undefined
-    return {
-      items: ids.flatMap((id) => itemsById.get(id) ?? []),
-      nextCursor:
-        hasMore && lastCursorValues ? getCursor(lastCursorValues) : null,
-    }
+    return cursorQueryDeferred(this.db, opts)
   }
 
   async pageQueryDeferred<TTable extends PgTable, TId, T>(
     opts: PageQueryDeferredOptions<TTable, TId, T>,
   ): Promise<PageQueryResult<T>> {
-    const {
-      table,
-      idCol,
-      where,
-      orderCol,
-      order = 'desc',
-      page,
-      size,
-      dataFn,
-    } = opts
-    const orderExpr = orderCol
-      ? order === 'asc'
-        ? asc(orderCol)
-        : desc(orderCol)
-      : undefined
-    const dbTable = table as PgTable
-    const idQuery = this.db.select({ id: idCol }).from(dbTable).where(where)
-    const [idRows, [{ total }]] = await Promise.all([
-      (orderExpr ? idQuery.orderBy(orderExpr) : idQuery)
-        .limit(size)
-        .offset((page - 1) * size),
-      this.db.select({ total: count() }).from(dbTable).where(where),
-    ])
-    const ids = idRows.map((row) => row.id as TId)
-    const items = ids.length > 0 ? await dataFn(ids) : []
-    return { items, total: Number(total), page, size }
+    return pageQueryDeferred(this.db, opts)
   }
 }

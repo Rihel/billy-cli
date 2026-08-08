@@ -1,29 +1,46 @@
 import { z } from 'zod'
-import { BasePaginateDto } from './base.schema'
+import { BaseModel, BasePaginateDto } from './base.schema'
 
-export const UserIdInputDto = z.object({
+export const UserSchema = BaseModel.extend({
+  email: z.email(),
+  realName: z.string().nullable(),
+  avatar: z.string().nullable(),
+})
+
+export type UserModel = z.infer<typeof UserSchema>
+
+export const UserIdSchema = z.object({
   userId: z.string(),
 })
 
-export const CreateUserDto = z.object({
-  email: z.string().email(),
+export const CreateUserSchema = z.object({
+  email: z.email(),
   password: z.string().min(6),
   realName: z.string().optional(),
   avatar: z.string().nullable().optional(),
 })
+export type CreateUserDto = z.infer<typeof CreateUserSchema>
 
-export const GetUserDetailDto = UserIdInputDto.extend({})
+export const GetUserDetailSchema = UserIdSchema.extend({})
+export type GetUserDetailDto = z.infer<typeof GetUserDetailSchema>
 
-export const RemoveUserDto = UserIdInputDto.extend({})
+export const RemoveUserSchema = UserIdSchema.extend({})
+export type RemoveUserDto = z.infer<typeof RemoveUserSchema>
 
-export const UpdateUserDto = UserIdInputDto.extend({
-  realName: z.string().nullable().optional(),
+export const RemoveUserResultSchema = z.object({
+  success: z.literal(true),
+})
+export type RemoveUserResultModel = z.infer<typeof RemoveUserResultSchema>
+
+export const UpdateUserSchema = UserIdSchema.extend({
   avatar: z.string().nullable().optional(),
 })
+export type UpdateUserDto = z.infer<typeof UpdateUserSchema>
 
-export const ResetUserPasswordDto = UserIdInputDto.extend({
+export const ResetUserPasswordSchema = UserIdSchema.extend({
   password: z.string().min(6),
 })
+export type ResetUserPasswordDto = z.infer<typeof ResetUserPasswordSchema>
 
 export const PageQueryUserDto = BasePaginateDto.extend({
   keyword: z.string().optional(),
@@ -33,3 +50,4 @@ export const PageQueryUserDto = BasePaginateDto.extend({
     .default('createdAt'),
   order: z.enum(['asc', 'desc']).optional().default('desc'),
 })
+export type PageQueryUserDto = z.infer<typeof PageQueryUserDto>

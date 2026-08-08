@@ -11,9 +11,7 @@
   },
   "scripts": {
     "dev": "tsdown --watch --config-loader unrun",
-    "build": "tsdown --config-loader unrun",
-    "test": "vitest run",
-    "test:watch": "vitest"
+    "build": "tsdown --config-loader unrun"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1094.0",
@@ -28,15 +26,13 @@
     "effect": "^3.16.0",
     "ioredis": "^5.11.1",
     "jsonwebtoken": "^9.0.3",
-    "nanoid": "^6.0.0",
-    "zod": "^4.4.3"
+    "nanoid": "^6.0.0"
   },
   "devDependencies": {
     "@types/bcryptjs": "^3.0.0",
     "@types/jsonwebtoken": "^9.0.10",
     "@types/node": "^24.0.0",
     "tsdown": "^0.22.9",
-    "typescript": "^6.0.0",
-    "vitest": "^4.1.10"
+    "typescript": "^6.0.0"
   }
 }

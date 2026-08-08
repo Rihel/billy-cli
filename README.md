@@ -326,21 +326,31 @@ createLogger('bootstrap', appConfig.isDev)
 │   │   ├── src/entities.ts      # Drizzle schema
 │   │   ├── src/db.ts            # 数据库连接
 │   │   └── drizzle/             # 迁移文件
+│   ├── shared/
+│   │   └── src/
+│   │       ├── schema/          # Zod 共享 schema
+│   │       ├── app-response.ts  # AppResponse 统一响应格式
+│   │       ├── dicts/           # 错误码字典
+│   │       └── logger.ts        # Pino 日志
+│   ├── core/                    # Effect-TS 业务核心（新架构）
+│   │   └── src/
+│   │       ├── effects/         # Effect 工具（parseInput / toResponse / fromPromise）
+│   │       ├── infra/           # 基础设施层（config / db / redis / jwt / password / logger / storage）
+│   │       ├── biz/             # 业务层（auth / user / todo）
+│   │       ├── errors.ts        # AppError + makeError
+│   │       └── layers.ts        # makeAppLayer 组装
 │   ├── sdk/
 │   │   └── src/core/
 │   │       ├── api.client.ts      # 基础 HTTP 客户端（鉴权、自动重试）
 │   │       ├── server.client.ts   # 全类型化业务 API 调用
-│   │   │       ├── interfaces.ts      # 鉴权抽象
+│   │       ├── interfaces.ts      # 鉴权抽象
 │   │       ├── strategies/        # BearerToken / ApiKey / OAuth2 / HMAC
 │   │       └── managers/          # localStorage / memory / cookie / env
-│   ├── shared/
-│   │   └── src/
-│   │       ├── schema/          # Zod 共享 schema
-│   │       ├── dicts/           # 错误码字典
-│   │       └── logger.ts        # Pino 日志
-│   └── ui/
-│       ├── src/components/      # 共享 React 组件
-│       └── src/lib/             # cn() 等工具
+│   ├── ui/
+│   │   ├── src/components/      # 共享 React 组件
+│   │   └── src/lib/             # cn() 等工具
+│   ├── kits/                    # NestJS 工具包 [旧]
+│   └── aui/                     # AI UI 组件库
 ├── docker/
 │   ├── Dockerfile.base          # 基础镜像
 │   ├── Dockerfile.server        # 服务端 multi-stage
