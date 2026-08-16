@@ -3,12 +3,12 @@ import { createLogger } from '@repo/shared/logger';
 import { serve } from '@hono/node-server';
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
-import { logger as honoLogger } from 'hono/logger';
 import { errorHandler, notFound } from './lib/http.js';
 import {
   makeRequestContextMiddleware,
   requestContext,
 } from './lib/request-context.js';
+import { requestLogger } from './lib/request-logger.js';
 import { makeAuthRoutes } from './features/auth.js';
 import { makeStorageRoutes } from './features/storage.js';
 import { makeTodoRoutes } from './features/todo.js';
@@ -22,8 +22,8 @@ export const makeApp = () => {
   app.use(
     '*',
     cors(),
-    honoLogger(),
     makeRequestContextMiddleware(requestContext),
+    requestLogger,
   );
   app.route('/auth', makeAuthRoutes());
   app.route('/user', makeUserRoutes());

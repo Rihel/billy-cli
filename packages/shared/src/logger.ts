@@ -11,9 +11,14 @@ export interface AppLogger {
   error: LogFunction
 }
 
-export function createLogger(name: string, pretty = false) {
+export function createLogger(
+  name: string,
+  pretty = false,
+  level: pino.LevelWithSilentOrString = 'info',
+) {
   let logger = pino({
     name,
+    level,
     ...(pretty && {
       transport: {
         target: 'pino-pretty',
