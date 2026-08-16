@@ -1,6 +1,0 @@
-export * from './cos.provider.js'
-export * from './s3.provider.js'
-export * from './storage.config.js'
-export * from './storage.module.js'
-export * from './storage.service.js'
-export * from './types.js'
