@@ -10,7 +10,7 @@ export class PasswordHasher {
 
   async hash(password: string): Promise<string> {
     try {
-      return await bcrypt.hash(password, this.config.passwordHashRounds)
+      return await bcrypt.hash(password, this.config.auth.passwordHashRounds)
     } catch (cause) {
       throw new PasswordHashingError(cause)
     }

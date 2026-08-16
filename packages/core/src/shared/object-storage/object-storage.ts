@@ -5,11 +5,12 @@ import type {
   StoragePresignedUrlModel,
   StorageStsModel,
 } from '@repo/shared'
+import type { AppLogger } from '@repo/shared/logger'
 import { inject, injectable } from 'inversify'
 import type { OnAppStart } from '../../life-cycle.js'
 import { AppConfig } from '../app-config.js'
 import { ObjectStorageError } from '../infrastructure-errors.js'
-import { Logger } from '../logger.js'
+import { Logger } from '../logger.decorator.js'
 import { RedisStore } from '../redis-store.js'
 import { makeCosProvider } from './cos.js'
 import { makeS3Provider } from './s3.js'
@@ -20,16 +21,18 @@ export class ObjectStorage implements OnAppStart {
   private readonly provider: ObjectStorageProvider
   private initPromise: Promise<void> | null = null
 
+  @Logger()
+  private readonly logger!: AppLogger
+
   constructor(
     @inject(AppConfig) config: AppConfig,
-    @inject(Logger) logger: Logger,
     @inject(RedisStore) redis: RedisStore,
   ) {
-    const storageConfig = config.objectStorageConfig
+    const storageConfig = config.objectStorage
     this.provider =
       storageConfig.provider === 'cos'
-        ? makeCosProvider(storageConfig, logger)
-        : makeS3Provider(storageConfig, logger, redis)
+        ? makeCosProvider(storageConfig, this.logger)
+        : makeS3Provider(storageConfig, this.logger, redis)
   }
 
   /** 应用启动：初始化 provider（S3 建桶/策略、COS 客户端创建）。 */

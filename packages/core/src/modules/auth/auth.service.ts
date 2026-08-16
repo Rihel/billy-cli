@@ -12,7 +12,8 @@ import type {
 } from '@repo/shared'
 import { inject, injectable } from 'inversify'
 import { AppConfig } from '../../shared/app-config.js'
-import { Logger } from '../../shared/logger.js'
+import type { AppLogger } from '@repo/shared/logger'
+import { Logger } from '../../shared/logger.decorator.js'
 import { PasswordHasher } from '../../shared/password-hasher.js'
 import { TokenSigner } from '../../shared/token-signer.js'
 import { toUser, UserRepository } from '../user/user.repository.js'
@@ -29,11 +30,13 @@ import {
 
 @injectable()
 export class AuthService {
+  @Logger()
+  private readonly logger!: AppLogger
+
   constructor(
     @inject(UserRepository) private readonly userRepository: UserRepository,
     @inject(PasswordHasher) private readonly passwordHasher: PasswordHasher,
     @inject(TokenSigner) private readonly tokenSigner: TokenSigner,
-    @inject(Logger) private readonly logger: Logger,
     @inject(AppConfig) private readonly config: AppConfig,
   ) {}
 
@@ -71,7 +74,7 @@ export class AuthService {
     await this.userRepository.update(user.id, {
       resetPasswordToken: token,
       resetPasswordTokenExpiry: dayjs()
-        .add(this.config.resetPasswordTokenTtlMinutes, 'minute')
+        .add(this.config.auth.resetPasswordTokenTtlMinutes, 'minute')
         .toDate(),
     })
     return { success: true, token }

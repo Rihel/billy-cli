@@ -10,15 +10,18 @@ import type {
   UpdateTodoDto,
 } from '@repo/shared'
 import { inject, injectable } from 'inversify'
-import { Logger } from '../../shared/logger.js'
+import type { AppLogger } from '@repo/shared/logger'
+import { Logger } from '../../shared/logger.decorator.js'
 import { TodoRepository } from './todo.repository.js'
 import { TodoNotFoundError } from './errors.js'
 
 @injectable()
 export class TodoService {
+  @Logger()
+  private readonly logger!: AppLogger
+
   constructor(
     @inject(TodoRepository) private readonly todoRepository: TodoRepository,
-    @inject(Logger) private readonly logger: Logger,
   ) {}
 
   async create(input: CreateTodoDto): Promise<TodoModel> {

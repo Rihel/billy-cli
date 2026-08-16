@@ -13,7 +13,8 @@
     "strictPropertyInitialization": false,
     "verbatimModuleSyntax": false,
     "emitDecoratorMetadata": true,
-    "experimentalDecorators": true
+    "experimentalDecorators": true,
+    "useDefineForClassFields": false
   },
   "include": [
     "src",

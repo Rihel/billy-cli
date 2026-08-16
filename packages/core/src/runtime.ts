@@ -5,14 +5,13 @@ import { TodoRepository } from './modules/todo/todo.repository.js'
 import { TodoService } from './modules/todo/todo.service.js'
 import { UserRepository } from './modules/user/user.repository.js'
 import { UserService } from './modules/user/user.service.js'
-import { AppConfig } from './shared/app-config.js'
 import { Db } from './shared/database.js'
 import { IdGeneration } from './shared/id-generation.js'
-import { Logger } from './shared/logger.js'
+import { configureLogger } from './shared/logger.decorator.js'
 import { ObjectStorage } from './shared/object-storage/object-storage.js'
 import { PasswordHasher } from './shared/password-hasher.js'
 import { RedisStore } from './shared/redis-store.js'
-import type { RuntimeConfigInput } from './shared/runtime-config.js'
+import { AppConfig, createAppConfig, type AppConfigInput } from './shared/app-config.js'
 import { TokenSigner } from './shared/token-signer.js'
 
 /**
@@ -51,14 +50,15 @@ export const stopCore = async (): Promise<void> => {
 let initialized = false
 
 /** 注入配置并注册全部服务。幂等：重复调用不会重复注册。 */
-export const initCore = (config: RuntimeConfigInput): Container => {
+export const initCore = (overrides: AppConfigInput = {}): Container => {
   if (initialized) return appCore
   initialized = true
 
-  appCore.bind(AppConfig).toConstantValue(new AppConfig(config))
+  const config = createAppConfig(process.env, overrides)
+  appCore.bind(AppConfig).toConstantValue(config)
+  configureLogger(config.logger.pretty)
 
   // 基础设施
-  appCore.bind(Logger).toSelf().inSingletonScope()
   appCore.bind(Db).toSelf().inSingletonScope()
   appCore.bind(RedisStore).toSelf().inSingletonScope()
   appCore.bind(IdGeneration).toSelf().inSingletonScope()

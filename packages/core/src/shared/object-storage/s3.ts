@@ -16,7 +16,7 @@ import type {
   StoragePresignedUrlModel,
   StorageStsModel,
 } from '@repo/shared'
-import type { Logger } from '../logger.js'
+import type { AppLogger } from '@repo/shared/logger'
 import type { RedisStore } from '../redis-store.js'
 import type {
   ObjectContent,
@@ -27,7 +27,7 @@ import type {
 
 export const makeS3Provider = (
   config: ObjectStorageConfig,
-  logger: Logger,
+  logger: AppLogger,
   redis: RedisStore,
 ): ObjectStorageProvider => {
   let s3: S3Client

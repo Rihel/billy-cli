@@ -1,6 +1,6 @@
 import Cos from 'cos-nodejs-sdk-v5'
 import type { StoragePresignedUrlModel } from '@repo/shared'
-import type { Logger } from '../logger.js'
+import type { AppLogger } from '@repo/shared/logger'
 import type {
   ObjectContent,
   ObjectRemoved,
@@ -10,7 +10,7 @@ import type {
 
 export const makeCosProvider = (
   config: ObjectStorageConfig,
-  logger: Logger,
+  logger: AppLogger,
 ): ObjectStorageProvider => {
   let client: Cos
   return {

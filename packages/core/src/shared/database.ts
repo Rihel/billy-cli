@@ -6,10 +6,11 @@ import type {
   Repository,
 } from 'typeorm'
 import type { DataSource } from 'typeorm'
+import type { AppLogger } from '@repo/shared/logger'
 import { inject, injectable } from 'inversify'
 import type { OnAppStart, OnAppStop } from '../life-cycle.js'
 import { AppConfig } from './app-config.js'
-import { Logger } from './logger.js'
+import { Logger } from './logger.decorator.js'
 
 export type { DataSource } from 'typeorm'
 
@@ -23,17 +24,16 @@ export type { DataSource } from 'typeorm'
 @injectable()
 export class Db implements OnAppStart, OnAppStop {
   readonly dataSource: DataSource
-  private readonly logger: Logger
+
+  @Logger()
+  private readonly logger!: AppLogger
+
   private initPromise: Promise<void> | null = null
 
-  constructor(
-    @inject(AppConfig) config: AppConfig,
-    @inject(Logger) logger: Logger,
-  ) {
-    this.logger = logger
-    logger.info('正在链接到数据库...', { url: config.dbUrl })
+  constructor(@inject(AppConfig) config: AppConfig) {
+    this.logger.info('正在链接到数据库...', { url: config.db.url })
     this.dataSource = createDb({
-      url: config.dbUrl,
+      url: config.db.url,
       type: 'postgres',
     })
   }

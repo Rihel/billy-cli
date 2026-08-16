@@ -1,4 +1,5 @@
-import { Logger, appCore, initCore, startCore, stopCore } from '@repo/core';
+import { AppConfig, appCore, initCore, startCore, stopCore } from '@repo/core';
+import { createLogger } from '@repo/shared/logger';
 import { serve } from '@hono/node-server';
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
@@ -8,14 +9,13 @@ import {
   makeRequestContextMiddleware,
   requestContext,
 } from './lib/request-context.js';
-import { runtimeConfig } from './config.js';
 import { makeAuthRoutes } from './features/auth.js';
 import { makeStorageRoutes } from './features/storage.js';
 import { makeTodoRoutes } from './features/todo.js';
 import { makeUserRoutes } from './features/user.js';
 
 export const makeApp = () => {
-  initCore(runtimeConfig);
+  initCore();
 
   const app = new Hono();
 
@@ -38,12 +38,13 @@ export const makeApp = () => {
 const app = makeApp();
 
 export const program = async () => {
-  const logger = appCore.get(Logger);
+  const config = appCore.get<AppConfig>(AppConfig);
+  const logger = createLogger('server', true);
   await startCore();
   const server = serve(
     {
       fetch: app.fetch,
-      port: runtimeConfig.port,
+      port: config.port,
     },
     (info) => logger.info('服务已启动', info),
   );

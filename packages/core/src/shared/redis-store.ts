@@ -1,10 +1,11 @@
+import type { AppLogger } from '@repo/shared/logger'
 import { inject, injectable } from 'inversify'
 import type { OnAppStart, OnAppStop } from '../life-cycle.js'
 import { Redis as RedisClient } from 'ioredis'
 import { AppConfig } from './app-config.js'
 import { IdGeneration } from './id-generation.js'
 import { RedisStoreError } from './infrastructure-errors.js'
-import { Logger } from './logger.js'
+import { Logger } from './logger.decorator.js'
 
 const releaseLockScript = `
 if redis.call('get', KEYS[1]) == ARGV[1] then
@@ -17,22 +18,23 @@ return 0
 @injectable()
 export class RedisStore implements OnAppStart, OnAppStop {
   readonly raw: RedisClient
-  private readonly logger: Logger
+
+  @Logger()
+  private readonly logger!: AppLogger
+
   private readonly idGeneration: IdGeneration
 
   constructor(
     @inject(AppConfig) config: AppConfig,
-    @inject(Logger) logger: Logger,
     @inject(IdGeneration) idGeneration: IdGeneration,
   ) {
-    this.logger = logger
     this.idGeneration = idGeneration
-    const url = config.redisUrl
-    const keyPrefix = config.redisKeyPrefix
-    logger.info('正在链接Redis', { url, keyPrefix })
+    const url = config.redis.url
+    const keyPrefix = config.redis.keyPrefix
+    this.logger.info('正在链接Redis', { url, keyPrefix })
     this.raw = new RedisClient(url, { keyPrefix, lazyConnect: true })
     this.raw.on('error', (error) => {
-      logger.error('Redis 连接错误', { error })
+      this.logger.error('Redis 连接错误', { error })
     })
   }
 

@@ -10,17 +10,20 @@ import type {
   UserModel,
 } from '@repo/shared'
 import { inject, injectable } from 'inversify'
-import { Logger } from '../../shared/logger.js'
+import type { AppLogger } from '@repo/shared/logger'
+import { Logger } from '../../shared/logger.decorator.js'
 import { PasswordHasher } from '../../shared/password-hasher.js'
 import { toUser, UserRepository } from './user.repository.js'
 import { EmailTakenError, UserNotFoundError } from './errors.js'
 
 @injectable()
 export class UserService {
+  @Logger()
+  private readonly logger!: AppLogger
+
   constructor(
     @inject(UserRepository) private readonly userRepository: UserRepository,
     @inject(PasswordHasher) private readonly passwordHasher: PasswordHasher,
-    @inject(Logger) private readonly logger: Logger,
   ) {}
 
   async create(input: CreateUserDto): Promise<UserModel> {
