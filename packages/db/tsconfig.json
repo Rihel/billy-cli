@@ -12,12 +12,20 @@
     "strictNullChecks": false,
     "strictPropertyInitialization": false,
     "verbatimModuleSyntax": false,
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": true,
+    "types": [
+      "reflect-metadata",
+      "node"
+    ]
   },
   "include": [
     "src",
-    "tsdown.config.ts"
+    "tsdown.config.ts",
+    "data-source.ts"
   ],
   "exclude": [
-    "node_modules"
+    "node_modules",
+    "dist"
   ]
 }

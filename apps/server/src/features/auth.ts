@@ -1,19 +1,4 @@
-import {
-  AuthUserId,
-  ChangePasswordCommand,
-  ForgotPasswordCommand,
-  LoginCommand,
-  RegisterCommand,
-  ResetPasswordCommand,
-  UpdateInfoCommand,
-  changePassword,
-  forgotPassword,
-  getMe,
-  login,
-  register,
-  resetPassword,
-  updateInfo,
-} from '@repo/core';
+import { AuthService, appCore } from '@repo/core';
 import {
   ChangePasswordSchema,
   ForgotPasswordSchema,
@@ -22,85 +7,50 @@ import {
   ResetPasswordSchema,
   UpdateInfoSchema,
 } from '@repo/shared';
-import { Effect } from 'effect';
 import { Hono } from 'hono';
-import { Authentication } from '../capabilities/authentication.js';
-import { EffectExecutor } from '../capabilities/effect-executor.js';
-import { Http } from '../capabilities/http.js';
-import { RequestContext } from '../capabilities/request-context.js';
+import { requireAuth } from '../lib/authentication.js';
+import { jsonBody, success } from '../lib/http.js';
+import { requestContext } from '../lib/request-context.js';
 
-const currentUserId = Effect.gen(function* () {
-  const context = yield* RequestContext;
-  if (!context.userId) {
+const currentUserId = (): string => {
+  const userId = requestContext.get('userId');
+  if (!userId) {
     throw new Error('Authenticated request context is unavailable');
   }
-  return context.userId;
-});
+  return userId;
+};
 
-export const makeAuthRoutes = Effect.gen(function* () {
-  const executor = yield* EffectExecutor;
-  const { jsonBody, success } = yield* Http;
-  const { requireAuth } = yield* Authentication;
+export const makeAuthRoutes = () => {
+  const authService = appCore.get(AuthService);
+  const routes = new Hono();
 
-  return new Hono()
+  routes
     .post('/register', jsonBody(RegisterSchema), async (context) => {
       const input = context.req.valid('json');
-      return success(
-        context,
-        await executor.run(register(new RegisterCommand(input))),
-      );
+      return success(context, await authService.register(input));
     })
     .post('/login', jsonBody(LoginSchema), async (context) => {
       const input = context.req.valid('json');
-      return success(
-        context,
-        await executor.run(login(new LoginCommand(input))),
-      );
+      return success(context, await authService.login(input));
     })
-    .post(
-      '/forgot-password',
-      jsonBody(ForgotPasswordSchema),
-      async (context) => {
-        const input = context.req.valid('json');
-        return success(
-          context,
-          await executor.run(forgotPassword(new ForgotPasswordCommand(input))),
-        );
-      },
-    )
+    .post('/forgot-password', jsonBody(ForgotPasswordSchema), async (context) => {
+      const input = context.req.valid('json');
+      return success(context, await authService.forgotPassword(input));
+    })
     .post('/reset-password', jsonBody(ResetPasswordSchema), async (context) => {
+      const input = context.req.valid('json');
+      return success(context, await authService.resetPassword(input));
+    })
+    .post('/get-me', requireAuth, async (context) =>
+      success(context, await authService.getMe({ userId: currentUserId() })),
+    )
+    .post('/update-info', requireAuth, jsonBody(UpdateInfoSchema), async (context) => {
       const input = context.req.valid('json');
       return success(
         context,
-        await executor.run(resetPassword(new ResetPasswordCommand(input))),
+        await authService.updateInfo({ userId: currentUserId(), ...input }),
       );
     })
-    .post('/get-me', requireAuth, async (context) =>
-      success(
-        context,
-        await executor.run(
-          Effect.flatMap(currentUserId, (userId) =>
-            getMe(new AuthUserId({ userId })),
-          ),
-        ),
-      ),
-    )
-    .post(
-      '/update-info',
-      requireAuth,
-      jsonBody(UpdateInfoSchema),
-      async (context) => {
-        const input = context.req.valid('json');
-        return success(
-          context,
-          await executor.run(
-            Effect.flatMap(currentUserId, (userId) =>
-              updateInfo(new UpdateInfoCommand({ userId, ...input })),
-            ),
-          ),
-        );
-      },
-    )
     .post(
       '/change-password',
       requireAuth,
@@ -109,12 +59,13 @@ export const makeAuthRoutes = Effect.gen(function* () {
         const input = context.req.valid('json');
         return success(
           context,
-          await executor.run(
-            Effect.flatMap(currentUserId, (userId) =>
-              changePassword(new ChangePasswordCommand({ userId, ...input })),
-            ),
-          ),
+          await authService.changePassword({
+            userId: currentUserId(),
+            ...input,
+          }),
         );
       },
     );
-});
+
+  return routes;
+};

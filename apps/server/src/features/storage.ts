@@ -1,25 +1,15 @@
-import {
-  ObjectKey,
-  ObjectStorage,
-  TemporaryCredentialsRequest,
-  UploadObject,
-} from '@repo/core';
+import { ObjectStorage, appCore } from '@repo/core';
 import {
   GetStorageDownloadUrlSchema,
   GetStorageUploadPresignedUrlSchema,
 } from '@repo/shared';
-import { Effect } from 'effect';
 import { Hono } from 'hono';
-import { Authentication } from '../capabilities/authentication.js';
-import { EffectExecutor } from '../capabilities/effect-executor.js';
-import { Http } from '../capabilities/http.js';
-import { RequestContext } from '../capabilities/request-context.js';
+import { requireAuth } from '../lib/authentication.js';
+import { jsonBody, success } from '../lib/http.js';
+import { requestContext } from '../lib/request-context.js';
 
-export const makeStorageRoutes = Effect.gen(function* () {
-  const executor = yield* EffectExecutor;
-  const { jsonBody, success } = yield* Http;
-  const { requireAuth } = yield* Authentication;
-  const storage = yield* ObjectStorage;
+export const makeStorageRoutes = () => {
+  const storage = appCore.get(ObjectStorage);
   const routes = new Hono();
 
   routes.use('*', requireAuth);
@@ -29,10 +19,10 @@ export const makeStorageRoutes = Effect.gen(function* () {
       jsonBody(GetStorageUploadPresignedUrlSchema),
       async (context) => {
         const input = context.req.valid('json');
-        const result = await executor.run(
-          storage.getPresignedUrl(new UploadObject(input)),
+        return success(
+          context,
+          await storage.getPresignedUrl(input),
         );
-        return success(context, result);
       },
     )
     .post(
@@ -40,26 +30,22 @@ export const makeStorageRoutes = Effect.gen(function* () {
       jsonBody(GetStorageDownloadUrlSchema),
       async (context) => {
         const input = context.req.valid('json');
-        const result = await executor.run(
-          storage.getDownloadUrl(new ObjectKey(input)),
+        return success(
+          context,
+          await storage.getDownloadUrl(input),
         );
-        return success(context, result);
       },
     )
     .post('/get-temporary-credentials', async (context) => {
-      const result = await executor.run(
-        Effect.gen(function* () {
-          const request = yield* RequestContext;
-          if (!request.userId) {
-            throw new Error('Authenticated request context is unavailable');
-          }
-          return yield* storage.getTemporaryCredentials(
-            new TemporaryCredentialsRequest({ userId: request.userId }),
-          );
-        }),
+      const userId = requestContext.get('userId');
+      if (!userId) {
+        throw new Error('Authenticated request context is unavailable');
+      }
+      return success(
+        context,
+        await storage.getTemporaryCredentials({ userId }),
       );
-      return success(context, result);
     });
 
   return routes;
-});
+};

@@ -1,3 +1,5 @@
+import 'reflect-metadata'
+
 export * from './modules/auth/index.js'
 export * from './modules/todo/index.js'
 export * from './modules/user/index.js'

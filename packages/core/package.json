@@ -22,11 +22,12 @@
     "bcryptjs": "^3.0.3",
     "cos-nodejs-sdk-v5": "^3.0.0",
     "dayjs": "^1.11.21",
-    "drizzle-orm": "1.0.0-rc.4",
-    "effect": "^3.16.0",
+    "inversify": "^8.2.3",
     "ioredis": "^5.11.1",
     "jsonwebtoken": "^9.0.3",
-    "nanoid": "^6.0.0"
+    "nanoid": "^6.0.0",
+    "reflect-metadata": "^0.2.2",
+    "typeorm": "^1.1.0"
   },
   "devDependencies": {
     "@types/bcryptjs": "^3.0.0",

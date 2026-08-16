@@ -4,11 +4,11 @@
   "description": "",
   "type": "module",
   "scripts": {
-    "postinstall": "sh scripts/postinstall.sh",
     "cli": "tsx scripts/cli.ts",
     "dev:pkgs": "turbo run dev --filter=./packages/*",
     "build:pkgs": "turbo run build --filter=./packages/*",
     "dev:web": "pnpm --filter web run dev",
+    "dev:admin": "pnpm --filter admin run dev",
     "dev:server": "pnpm --filter @app/server run dev",
     "db:gen": "pnpm --filter db run db:generate",
     "db:migrate": "pnpm --filter db run db:migrate",

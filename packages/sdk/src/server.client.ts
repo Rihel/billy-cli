@@ -29,29 +29,43 @@ import {
   UpdateUserDto,
   UserModel,
 } from '@repo/shared'
-import { ApiClient } from './core/api.client.js'
+import { ApiClient, ApiClientOptions } from './core/api.client.js'
+import {
+  BearerTokenCredentials,
+  BearerTokenStrategy,
+} from './strategies/bearer-token.strategy.js'
 
-export class ServerClient<
-  Credentials = Record<string, any>,
-> extends ApiClient<Credentials> {
+export class ServerClient extends ApiClient<BearerTokenCredentials> {
+  constructor(
+    options: Omit<ApiClientOptions<BearerTokenCredentials>, 'authStrategy'>,
+  ) {
+    super({
+      ...options,
+      authStrategy: new BearerTokenStrategy(),
+    })
+  }
   /* ========== 认证 ========== */
 
   auth = {
     /** 无需 token */
     register: (data: RegisterDto) =>
-      this.postPublic<AuthResultModel>('/auth/register', data),
+      this.post<AuthResultModel>('/auth/register', data, { skipAuth: true }),
 
     /** 无需 token */
     login: (data: LoginDto) =>
-      this.postPublic<AuthResultModel>('/auth/login', data),
+      this.post<AuthResultModel>('/auth/login', data, { skipAuth: true }),
 
     /** 无需 token */
     forgotPassword: (data: ForgotPasswordDto) =>
-      this.postPublic<SuccessResultModel>('/auth/forgot-password', data),
+      this.post<SuccessResultModel>('/auth/forgot-password', data, {
+        skipAuth: true,
+      }),
 
     /** 无需 token */
     resetPassword: (data: ResetPasswordDto) =>
-      this.postPublic<SuccessResultModel>('/auth/reset-password', data),
+      this.post<SuccessResultModel>('/auth/reset-password', data, {
+        skipAuth: true,
+      }),
 
     /** 需要 token */
     getMe: () => this.post<AuthUserModel>('/auth/get-me'),

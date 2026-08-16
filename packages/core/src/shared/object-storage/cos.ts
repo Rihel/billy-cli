@@ -1,11 +1,16 @@
 import Cos from 'cos-nodejs-sdk-v5'
-import type { ApplicationLoggerApi } from '../application-logger.capability.js'
-import type { ObjectStorageConfig, ObjectStorageProvider } from './types.js'
-import { ObjectContent, ObjectRemoved, PresignedObjectUrl } from './domain.js'
+import type { StoragePresignedUrlModel } from '@repo/shared'
+import type { Logger } from '../logger.js'
+import type {
+  ObjectContent,
+  ObjectRemoved,
+  ObjectStorageConfig,
+  ObjectStorageProvider,
+} from './types.js'
 
 export const makeCosProvider = (
   config: ObjectStorageConfig,
-  logger: ApplicationLoggerApi,
+  logger: Logger,
 ): ObjectStorageProvider => {
   let client: Cos
   return {
@@ -22,10 +27,10 @@ export const makeCosProvider = (
         Region: config.region,
         Key: key,
       })
-      return new ObjectContent({ key, body: response.Body as Buffer })
+      return { key, body: response.Body as Buffer } satisfies ObjectContent
     },
     async getPresignedUrl(data) {
-      return new PresignedObjectUrl({
+      return {
         key: data.key,
         url: client.getObjectUrl({
           Bucket: config.bucket,
@@ -33,10 +38,10 @@ export const makeCosProvider = (
           Key: data.key,
           Method: 'PUT',
         }),
-      })
+      } satisfies StoragePresignedUrlModel
     },
     async getDownloadUrl({ key }) {
-      return new PresignedObjectUrl({
+      return {
         key,
         url: client.getObjectUrl({
           Bucket: config.bucket,
@@ -44,7 +49,7 @@ export const makeCosProvider = (
           Key: key,
           Method: 'GET',
         }),
-      })
+      } satisfies StoragePresignedUrlModel
     },
     async getTemporaryCredentials() {
       throw new Error('COS temporary credentials are not implemented')
@@ -55,7 +60,7 @@ export const makeCosProvider = (
         Region: config.region,
         Key: key,
       })
-      return new ObjectRemoved({ key })
+      return { key } satisfies ObjectRemoved
     },
   }
 }

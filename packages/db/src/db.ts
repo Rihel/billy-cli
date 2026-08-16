@@ -1,16 +1,10 @@
-import { drizzle, NodePgDatabase } from 'drizzle-orm/node-postgres'
-import { Pool } from 'pg'
+import { DataSource, DataSourceOptions } from 'typeorm'
+import { UserEntity } from './entities/user-entity'
+import { TodoEntity } from './entities/todo-entity'
 
-export interface DbInstance {
-  db: NodePgDatabase
-  close: () => Promise<void>
-}
-
-export const createDb = (url: string): DbInstance => {
-  const pool = new Pool({ connectionString: url })
-  const db = drizzle({ client: pool })
-  return {
-    db,
-    close: () => pool.end(),
-  }
-}
+export const createDb = (options: DataSourceOptions): DataSource =>
+  new DataSource({
+    type: 'postgres',
+    entities: [UserEntity, TodoEntity],
+    ...options,
+  })

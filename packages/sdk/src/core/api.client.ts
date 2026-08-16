@@ -1,12 +1,22 @@
 import { AppResponse, createMd5, ResponseUtils } from '@repo/shared'
+import _ from 'lodash'
 import axios, {
   AxiosInstance,
   AxiosRequestConfig,
   CreateAxiosDefaults,
   isAxiosError,
 } from 'axios'
-import type { AuthStrategy, CredentialProvider, CredentialsManager } from './interfaces.js'
-import { ApiError, ApiErrorCodes, mapHttpStatus, mapAppErrorValue } from './api-error.js'
+import type {
+  AuthStrategy,
+  CredentialProvider,
+  CredentialsManager,
+} from './interfaces.js'
+import {
+  ApiError,
+  ApiErrorCodes,
+  mapHttpStatus,
+  mapAppErrorValue,
+} from './api-error.js'
 import { CredentialResolver } from './credential-resolver.js'
 import { AuthInjector } from './auth-injector.js'
 
@@ -94,7 +104,7 @@ export class ApiClient<Credentials = Record<string, any>> {
    *
    * 所有错误统一以 ApiError 抛出，支持 JSON 序列化。
    */
-  protected async request<Body extends Record<string, any>, Res>(
+  async request<Body extends Record<string, any>, Res>(
     config: AxiosRequestConfig<Body>,
     requestOptions?: RequestOptions,
   ): Promise<AppResponse<Res>> {
@@ -160,41 +170,28 @@ export class ApiClient<Credentials = Record<string, any>> {
    * 发送需要鉴权的 POST 请求。
    * 自动解包 AppResponse，业务错误（code !== 0）时抛 ApiError。
    */
-  protected async post<Res, Body extends Record<string, any> = Record<string, any>>(
+  async post<Res, Body extends Record<string, any> = Record<string, any>>(
     endpoint: string,
     body?: Body,
-  ): Promise<Res> {
-    const response = await this.request<Body, Res>({
-      method: 'POST',
-      url: endpoint,
-      data: body,
-    })
-    if (ResponseUtils.isError(response)) {
-      throw new ApiError(mapAppErrorValue(response.code), response.message || '请求失败', {
-        status: response.code,
-        details: { response },
-      })
-    }
-    return response.data as Res
-  }
-
-  /**
-   * 发送无需鉴权的 POST 请求（如 login, register）。
-   * 自动解包 AppResponse，业务错误（code !== 0）时抛 ApiError。
-   */
-  protected async postPublic<Res, Body extends Record<string, any> = Record<string, any>>(
-    endpoint: string,
-    body?: Body,
+    requestOptions?: RequestOptions,
   ): Promise<Res> {
     const response = await this.request<Body, Res>(
-      { method: 'POST', url: endpoint, data: body },
-      { skipAuth: true },
+      {
+        method: 'POST',
+        url: endpoint,
+        data: body,
+      },
+      requestOptions,
     )
     if (ResponseUtils.isError(response)) {
-      throw new ApiError(mapAppErrorValue(response.code), response.message || '请求失败', {
-        status: response.code,
-        details: { response },
-      })
+      throw new ApiError(
+        mapAppErrorValue(response.code),
+        response.message || '请求失败',
+        {
+          status: response.code,
+          details: { response },
+        },
+      )
     }
     return response.data as Res
   }

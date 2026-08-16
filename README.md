@@ -1,30 +1,30 @@
 # Billy
 
-> 一套基于 Hono、Effect-TS 与 Next.js 的全栈应用模板。
+> 一套基于 Hono、InversifyJS 与 Next.js 的全栈应用模板。
 
 ## 技术栈
 
 ```
 apps/
-├── server   — Hono HTTP 边界 + Effect ManagedRuntime
+├── server   — Hono HTTP 边界 + core Container 组合根
 ├── web      — Next.js 16 App Router + Ant Design Pro 6 + Tailwind 4
 └── admin    — 管理后台
 packages/
-├── db       — Drizzle ORM schema + 数据库连接 + migration
+├── db       — TypeORM 实体 + DataSource 连接 + 分页策略
 ├── shared   — Zod schemas + 错误码字典 + 响应工具（前后端共享）
-├── core     — Effect-TS 业务层：Config / DB / Redis / JWT / Storage + Auth / User / Todo
+├── core     — InversifyJS 业务层：Config / DB / Redis / JWT / Storage + Auth / User / Todo
 ├── sdk      — ServerClient（全类型化业务 API 调用）
 ├── ui       — 共享 UI 组件（Ant Design + Tailwind）
-├── kits     — NestJS 工具包（DB / Redis / Storage / 日志 / 错误）[旧]
 └── aui      — AI UI 组件库
 ```
 
 | 层         | 选型                     | 理由                                       |
 | ---------- | ------------------------ | ------------------------------------------ |
 | 构建系统   | pnpm + Turbo             | monorepo 依赖管理 + 增量缓存               |
-| 服务端框架 | Hono + Effect-TS         | Hono 处理 HTTP，core 表达业务与能力        |
+| 服务端框架 | Hono                     | Hono 处理 HTTP，core 表达业务与能力        |
+| 依赖注入   | InversifyJS 8            | `@injectable` class + `Container` 组合根  |
 | API 层     | POST JSON（Hono Routes） | Zod 边界校验 + 全类型化 SDK                |
-| ORM        | Drizzle ORM              | 无 runtime、类型原生、SQL-like API         |
+| ORM        | TypeORM                  | 装饰器实体 + Repository + QueryBuilder    |
 | 前端框架   | Next.js 16 App Router    | RSC + SSR + Server Actions                 |
 | 前后端共享 | Zod                      | 同一 schema 定义类型 + 校验                |
 | UI 组件    | Ant Design Pro 6         | ProTable / ModalForm 开箱即用              |
@@ -72,7 +72,7 @@ SERVER_URL=http://localhost:9989
 
 ```bash
 # 生成迁移文件
-pnpm db:gen
+pnpm db:gen initial
 
 # 执行迁移
 pnpm db:migrate
@@ -81,7 +81,7 @@ pnpm db:migrate
 ### 启动（开发）
 
 ```bash
-# 终端 1：启动 packages（shared / db / ui / kits / sdk）的 watch 构建
+# 终端 1：启动 packages（shared / db / ui / sdk）的 watch 构建
 pnpm dev:pkgs
 
 # 终端 2：启动 Hono 服务（port 9989）
@@ -107,40 +107,45 @@ docker compose up
 
 ## Packages 详解
 
-### @repo/core — Effect-TS 业务核心
+### @repo/core — inversify 业务核心
 
-基于 Effect-TS 的后端业务层，通过 Layer 做依赖注入和资源生命周期管理。
+基于 InversifyJS 的 class 化业务层，通过 `Container` 做依赖注入与资源生命周期管理。
 
 **Feature-first 结构：**
 
 ```
 modules/
-├── auth/         # domain / errors / 独立 usecases
-├── user/         # domain / errors / repository capability / usecases
-└── todo/         # domain / errors / repository capability / usecases
+├── auth/         # domain / errors / auth.service.ts（聚合 usecases）
+├── user/         # domain / errors / repository / user.service.ts
+└── todo/         # domain / errors / repository / todo.service.ts
 shared/
-├── *.capability  # DB / Redis / JWT / Password / Logger / ID 等能力
+├── *.ts          # DB / Redis / JWT / Password / Logger / ID 等基础设施服务（class）
 ├── object-storage/
+├── app-config.ts # 配置访问器（从 RuntimeConfigInput 派生）
 └── runtime-config.ts
-runtime.ts        # 单独 Layer、组合 Layer 与满载 RuntimeLive
+runtime.ts        # appCore = new Container() 组合根，唯一装配点
 ```
 
 **使用方式：**
 
 ```ts
-import { RegisterCommand, register } from '@repo/core'
+import { appCore, initCore, AuthService, RegisterCommand } from '@repo/core'
 
-const program = register(new RegisterCommand(input))
-await runtime.runPromise(program)
+initCore(runtimeConfig)
+
+const authService = appCore.get(AuthService)
+const result = await authService.register(new RegisterCommand(input))
 ```
 
 **设计原则：**
 
-- usecase 返回带精确业务错误与能力依赖的 `Effect<A, E, R>`
+- 所有能力与业务服务都是 `@injectable()` class，构造器注入依赖
+- 错误以 `Error` 子类抛出并保留 `_tag`，Hono 边界按 `_tag` 映射 HTTP 错误码
 - DTO/Zod 校验和 HTTP 错误转换只存在于 Hono 边界
 - 业务错误保持原义，不包装成统一 `AppError`
-- 不使用 NestJS 装饰器，纯 Effect-TS 函数式风格
-- capability 隔离数据库、Redis、JWT 和对象存储等技术细节
+- 无装饰器反射依赖之外的工具链魔法，兼容 Node type-stripping / esbuild / tsdown
+- 基础设施服务隔离数据库、Redis、JWT 和对象存储等技术细节
+- 应用层（apps/server）只通过 `appCore` 取服务，不感知内部依赖图
 
 ## 架构设计
 
@@ -313,22 +318,22 @@ createLogger('bootstrap', appConfig.isDev)
 │           └── proxy.ts          # SSR 路由守卫
 ├── packages/
 │   ├── db/
-│   │   ├── src/entities.ts      # Drizzle schema
-│   │   ├── src/db.ts            # 数据库连接
-│   │   └── drizzle/             # 迁移文件
+│   │   ├── src/entities.ts      # TypeORM 实体（users / todos）
+│   │   ├── src/db.ts            # DataSource 连接
+│   │   ├── src/pagination.ts    # 分页策略（page / deferred / cursor）
+│   │   └── src/data-source.ts   # TypeORM CLI 迁移配置
 │   ├── shared/
 │   │   └── src/
 │   │       ├── schema/          # Zod 共享 schema
 │   │       ├── app-response.ts  # AppResponse 统一响应格式
 │   │       ├── dicts/           # 错误码字典
 │   │       └── logger.ts        # Pino 日志
-│   ├── core/                    # Effect-TS 业务核心（新架构）
+│   ├── core/                    # InversifyJS 业务核心
 │   │   └── src/
-│   │       ├── effects/         # Effect 工具（parseInput / toResponse / fromPromise）
-│   │       ├── infra/           # 基础设施层（config / db / redis / jwt / password / logger / storage）
-│   │       ├── biz/             # 业务层（auth / user / todo）
-│   │       ├── errors.ts        # AppError + makeError
-│   │       └── layers.ts        # makeAppLayer 组装
+│   │       ├── modules/         # 业务层（auth / user / todo：domain + errors + service + repository）
+│   │       ├── shared/          # 能力层（config / db / redis / jwt / password / logger / storage）
+│   │       ├── runtime.ts       # appCore Container 组合根（initCore / disposeCore）
+│   │       └── index.ts         # 入口（reflect-metadata + 全量导出）
 │   ├── sdk/
 │   │   └── src/core/
 │   │       ├── api.client.ts      # 基础 HTTP 客户端（鉴权、自动重试）
@@ -339,7 +344,6 @@ createLogger('bootstrap', appConfig.isDev)
 │   ├── ui/
 │   │   ├── src/components/      # 共享 React 组件
 │   │   └── src/lib/             # cn() 等工具
-│   ├── kits/                    # NestJS 工具包 [旧]
 │   └── aui/                     # AI UI 组件库
 ├── docker/
 │   ├── Dockerfile.base          # 基础镜像
@@ -366,8 +370,8 @@ createLogger('bootstrap', appConfig.isDev)
 | `pnpm build`        | 全量构建（turbo）        |
 | `pnpm start:server` | 启动生产 Server          |
 | `pnpm start:web`    | 启动生产 Web             |
-| `pnpm db:gen`       | 生成 Drizzle 迁移文件    |
-| `pnpm db:migrate`   | 执行数据库迁移           |
+| `pnpm db:gen <name>` | 生成 TypeORM 迁移（自动写入 `migrations/` 目录） |
+| `pnpm db:migrate`   | 执行 TypeORM 迁移        |
 
 ## Docker
 

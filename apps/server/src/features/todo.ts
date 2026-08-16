@@ -1,17 +1,4 @@
-import {
-  CreateTodo,
-  TodoCursor,
-  TodoCursorQuery,
-  TodoId,
-  TodoPageQuery,
-  UpdateTodo,
-  createTodo,
-  cursorTodos,
-  getTodo,
-  pageTodos,
-  removeTodo,
-  updateTodo,
-} from '@repo/core';
+import { TodoService, appCore } from '@repo/core';
 import {
   CreateTodoSchema,
   CursorQueryTodoSchema,
@@ -20,66 +7,40 @@ import {
   RemoveTodoSchema,
   UpdateTodoSchema,
 } from '@repo/shared';
-import { Effect } from 'effect';
 import { Hono } from 'hono';
-import { Authentication } from '../capabilities/authentication.js';
-import { EffectExecutor } from '../capabilities/effect-executor.js';
-import { Http } from '../capabilities/http.js';
+import { requireAuth } from '../lib/authentication.js';
+import { jsonBody, success } from '../lib/http.js';
 
-export const makeTodoRoutes = Effect.gen(function* () {
-  const executor = yield* EffectExecutor;
-  const { jsonBody, success } = yield* Http;
-  const { requireAuth } = yield* Authentication;
+export const makeTodoRoutes = () => {
+  const todoService = appCore.get(TodoService);
   const routes = new Hono();
 
   routes.use('*', requireAuth);
   routes
     .post('/create', jsonBody(CreateTodoSchema), async (context) => {
       const input = context.req.valid('json');
-      return success(
-        context,
-        await executor.run(createTodo(new CreateTodo(input))),
-      );
+      return success(context, await todoService.create(input));
     })
     .post('/page-query', jsonBody(PageQueryTodoSchema), async (context) => {
       const input = context.req.valid('json');
-      return success(
-        context,
-        await executor.run(pageTodos(new TodoPageQuery(input))),
-      );
+      return success(context, await todoService.page(input));
     })
     .post('/cursor-query', jsonBody(CursorQueryTodoSchema), async (context) => {
       const input = context.req.valid('json');
-      return success(
-        context,
-        await executor.run(
-          cursorTodos(
-            new TodoCursorQuery({
-              ...input,
-              cursor: input.cursor ? new TodoCursor(input.cursor) : undefined,
-            }),
-          ),
-        ),
-      );
+      return success(context, await todoService.cursor(input));
     })
     .post('/detail', jsonBody(GetDetailTodoSchema), async (context) => {
       const input = context.req.valid('json');
-      return success(context, await executor.run(getTodo(new TodoId(input))));
+      return success(context, await todoService.get(input));
     })
     .post('/update', jsonBody(UpdateTodoSchema), async (context) => {
       const input = context.req.valid('json');
-      return success(
-        context,
-        await executor.run(updateTodo(new UpdateTodo(input))),
-      );
+      return success(context, await todoService.update(input));
     })
     .post('/remove', jsonBody(RemoveTodoSchema), async (context) => {
       const input = context.req.valid('json');
-      return success(
-        context,
-        await executor.run(removeTodo(new TodoId(input))),
-      );
+      return success(context, await todoService.remove(input));
     });
 
   return routes;
-});
+};

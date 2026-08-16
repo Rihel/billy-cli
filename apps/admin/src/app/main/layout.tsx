@@ -1,11 +1,12 @@
-import { createServerClientFromCookies } from '@/lib/server-client'
+import { createServerClient } from '@/lib/server-client'
 import { AuthStoreProvider } from '@/stores/auth.store'
 import { redirect } from 'next/navigation'
 
 import { ReactNode, Suspense } from 'react'
 import { AppHeader } from '../../components/AppHeader'
 import { AppSider } from '../../components/AppSider'
-import { Pages } from '@/lib/constants'
+import { Pages, TokenKey } from '@/lib/constants'
+import { cookies } from 'next/headers'
 
 export const dynamic = 'force-dynamic'
 
@@ -15,8 +16,9 @@ export type MainLayoutProps = Partial<{
 
 const MainLayout = async ({ children }: MainLayoutProps) => {
   let userInfo: Record<string, any>
+  const jar = await cookies()
   try {
-    const client = await createServerClientFromCookies()
+    const client = createServerClient(jar.get(TokenKey)?.value)
     userInfo = await client.auth.getMe()
   } catch {
     redirect(Pages.login)

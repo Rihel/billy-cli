@@ -7,7 +7,8 @@
     "isolatedModules": true,
     "declaration": false,
     "types": [
-      "node"
+      "node",
+      "reflect-metadata"
     ],
     "verbatimModuleSyntax": true,
     "target": "ES2023",
@@ -17,6 +18,8 @@
     "skipLibCheck": true,
     "strict": true,
     "forceConsistentCasingInFileNames": true,
-    "noFallthroughCasesInSwitch": false
+    "noFallthroughCasesInSwitch": false,
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": true
   }
 }

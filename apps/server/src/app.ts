@@ -1,105 +1,71 @@
-import { ApplicationLogger, makeRuntimeLayer } from '@repo/core';
+import { Logger, appCore, initCore, startCore, stopCore } from '@repo/core';
 import { serve } from '@hono/node-server';
-import { Effect, Layer, ManagedRuntime } from 'effect';
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { logger as honoLogger } from 'hono/logger';
-import { AuthenticationLive } from './capabilities/authentication.js';
+import { errorHandler, notFound } from './lib/http.js';
 import {
-  EffectExecutor,
-  EffectExecutorLive,
-} from './capabilities/effect-executor.js';
-import { HttpLive, errorHandler, notFound } from './capabilities/http.js';
-import {
-  RequestContextStorage,
-  RequestContextStorageLive,
   makeRequestContextMiddleware,
-} from './capabilities/request-context.js';
+  requestContext,
+} from './lib/request-context.js';
+import { runtimeConfig } from './config.js';
 import { makeAuthRoutes } from './features/auth.js';
 import { makeStorageRoutes } from './features/storage.js';
 import { makeTodoRoutes } from './features/todo.js';
 import { makeUserRoutes } from './features/user.js';
-import { runtimeConfig } from './config.js';
 
-const CoreLive = makeRuntimeLayer(runtimeConfig);
+export const makeApp = () => {
+  initCore(runtimeConfig);
 
-const ExecutorProvidedLive = EffectExecutorLive.pipe(
-  Layer.provide(Layer.merge(CoreLive, RequestContextStorageLive)),
-);
-
-const AuthenticationProvidedLive = AuthenticationLive.pipe(
-  Layer.provide(Layer.merge(ExecutorProvidedLive, RequestContextStorageLive)),
-);
-
-const AppLive = Layer.mergeAll(
-  RequestContextStorageLive,
-  CoreLive,
-  ExecutorProvidedLive,
-  HttpLive,
-  AuthenticationProvidedLive,
-);
-
-const appRuntime = ManagedRuntime.make(AppLive);
-
-export const makeApp = Effect.gen(function* () {
-  const authRoutes = yield* makeAuthRoutes;
-  const userRoutes = yield* makeUserRoutes;
-  const todoRoutes = yield* makeTodoRoutes;
-  const storageRoutes = yield* makeStorageRoutes;
-  const requestStorage = yield* RequestContextStorage;
   const app = new Hono();
 
   app.use(
     '*',
     cors(),
     honoLogger(),
-    makeRequestContextMiddleware(requestStorage),
+    makeRequestContextMiddleware(requestContext),
   );
-  app.route('/auth', authRoutes);
-  app.route('/user', userRoutes);
-  app.route('/todo', todoRoutes);
-  app.route('/storage', storageRoutes);
+  app.route('/auth', makeAuthRoutes());
+  app.route('/user', makeUserRoutes());
+  app.route('/todo', makeTodoRoutes());
+  app.route('/storage', makeStorageRoutes());
   app.notFound(notFound);
   app.onError(errorHandler);
 
   return app;
-});
+};
 
-const app = await appRuntime.runPromise(makeApp);
-const disposeApp = () => appRuntime.dispose();
+const app = makeApp();
 
-export const program = Effect.gen(function* () {
-  const applicationLogger = yield* Effect.promise(() =>
-    appRuntime.runPromise(ApplicationLogger),
-  );
+export const program = async () => {
+  const logger = appCore.get(Logger);
+  await startCore();
   const server = serve(
     {
       fetch: app.fetch,
       port: runtimeConfig.port,
     },
-    (info) => applicationLogger.info('服务已启动', info),
+    (info) => logger.info('服务已启动', info),
   );
 
-  yield* Effect.async<void, unknown>((resume) => {
+  await new Promise<void>((resolve) => {
     let closing = false;
     const shutdown = () => {
       if (closing) return;
       closing = true;
-      applicationLogger.info('正在关闭服务...');
+      logger.info('正在关闭服务...');
       server.close(() => {
-        void disposeApp().then(
-          () => resume(Effect.void),
-          (error) => resume(Effect.fail(error)),
+        void stopCore().then(
+          () => resolve(),
+          (error) => {
+            logger.error('关闭资源失败', { error });
+            resolve();
+          },
         );
       });
     };
 
     process.once('SIGINT', shutdown);
     process.once('SIGTERM', shutdown);
-
-    return Effect.sync(() => {
-      process.off('SIGINT', shutdown);
-      process.off('SIGTERM', shutdown);
-    });
   });
-});
+};

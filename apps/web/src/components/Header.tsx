@@ -34,7 +34,6 @@ export function Header() {
               key={link.href}
               variant={pathname === link.href ? 'secondary' : 'ghost'}
               size="sm"
-              asChild
             >
               <Link href={link.href}>{link.label}</Link>
             </Button>

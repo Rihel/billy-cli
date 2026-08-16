@@ -20,10 +20,9 @@
     "antd": "^6.5.1",
     "clsx": "^2.1.1",
     "dayjs": "^1.11.21",
-    "drizzle-orm": "1.0.0-rc.4",
     "immer": "^11.1.15",
     "lodash": "^4.18.1",
-    "next": "16.2.10",
+    "next": "16.3.0",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
     "tailwind-merge": "^3.6.0",
@@ -41,6 +40,6 @@
     "babel-plugin-react-compiler": "1.0.0",
     "tailwindcss": "^4",
     "tsx": "^4.23.1",
-    "typescript": "^6.0.0"
+    "typescript": "^7.0.2"
   }
 }

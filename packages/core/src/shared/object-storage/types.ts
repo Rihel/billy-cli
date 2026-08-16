@@ -1,12 +1,21 @@
 import type {
-  ObjectContent,
-  ObjectKey,
-  ObjectRemoved,
-  PresignedObjectUrl,
-  TemporaryCredentials,
-  TemporaryCredentialsRequest,
-  UploadObject,
-} from './domain.js'
+  GetStorageDownloadUrlDto,
+  GetTemporaryCredentialsDto,
+  GetStorageUploadPresignedUrlDto,
+  StoragePresignedUrlModel,
+  StorageStsModel,
+} from '@repo/shared'
+
+/** 读取对象内容（内部使用，不暴露到 API 层） */
+export interface ObjectContent {
+  key: string
+  body: Buffer
+}
+
+/** 删除对象结果（内部使用） */
+export interface ObjectRemoved {
+  key: string
+}
 
 export interface ObjectStorageConfig {
   provider: 's3' | 'cos'
@@ -19,11 +28,13 @@ export interface ObjectStorageConfig {
 
 export interface ObjectStorageProvider {
   initial(): Promise<void>
-  getObject(key: ObjectKey): Promise<ObjectContent>
-  getPresignedUrl(data: UploadObject): Promise<PresignedObjectUrl>
-  getDownloadUrl(key: ObjectKey): Promise<PresignedObjectUrl>
+  getObject(key: GetStorageDownloadUrlDto): Promise<ObjectContent>
+  getPresignedUrl(
+    data: GetStorageUploadPresignedUrlDto,
+  ): Promise<StoragePresignedUrlModel>
+  getDownloadUrl(key: GetStorageDownloadUrlDto): Promise<StoragePresignedUrlModel>
   getTemporaryCredentials(
-    request: TemporaryCredentialsRequest,
-  ): Promise<TemporaryCredentials>
-  removeObject(key: ObjectKey): Promise<ObjectRemoved>
+    request: GetTemporaryCredentialsDto,
+  ): Promise<StorageStsModel>
+  removeObject(key: GetStorageDownloadUrlDto): Promise<ObjectRemoved>
 }

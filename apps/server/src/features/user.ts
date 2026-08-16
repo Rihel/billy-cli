@@ -1,17 +1,4 @@
-import {
-  CreateUser,
-  RemoveUser,
-  ResetUserPassword,
-  UpdateUser,
-  UserId,
-  UserPageQuery,
-  createUser,
-  getUser,
-  pageUsers,
-  removeUser,
-  resetUserPassword,
-  updateUser,
-} from '@repo/core';
+import { UserService, appCore } from '@repo/core';
 import {
   CreateUserSchema,
   GetUserDetailSchema,
@@ -20,50 +7,43 @@ import {
   ResetUserPasswordSchema,
   UpdateUserSchema,
 } from '@repo/shared';
-import { Effect } from 'effect';
 import { Hono } from 'hono';
-import { Authentication } from '../capabilities/authentication.js';
-import { EffectExecutor } from '../capabilities/effect-executor.js';
-import { Http } from '../capabilities/http.js';
+import { requireAuth } from '../lib/authentication.js';
+import { jsonBody, success } from '../lib/http.js';
 
-export const makeUserRoutes = Effect.gen(function* () {
-  const executor = yield* EffectExecutor;
-  const { jsonBody, success } = yield* Http;
-  const { requireAuth } = yield* Authentication;
+export const makeUserRoutes = () => {
+  const userService = appCore.get(UserService);
   const routes = new Hono();
 
   routes.use('*', requireAuth);
   routes
     .post('/create', jsonBody(CreateUserSchema), async (context) => {
       const input = context.req.valid('json');
-      return success(
-        context,
-        await executor.run(createUser(new CreateUser(input))),
-      );
+      return success(context, await userService.create(input));
     })
     .post('/page-query', jsonBody(PageQueryUserDto), async (context) => {
       const input = context.req.valid('json');
       return success(
         context,
-        await executor.run(pageUsers(new UserPageQuery(input))),
+        await userService.page(input),
       );
     })
     .post('/detail', jsonBody(GetUserDetailSchema), async (context) => {
       const input = context.req.valid('json');
-      return success(context, await executor.run(getUser(new UserId(input))));
+      return success(context, await userService.get(input));
     })
     .post('/update', jsonBody(UpdateUserSchema), async (context) => {
       const input = context.req.valid('json');
       return success(
         context,
-        await executor.run(updateUser(new UpdateUser(input))),
+        await userService.update(input),
       );
     })
     .post('/remove', jsonBody(RemoveUserSchema), async (context) => {
       const input = context.req.valid('json');
       return success(
         context,
-        await executor.run(removeUser(new RemoveUser(input))),
+        await userService.remove(input),
       );
     })
     .post(
@@ -73,10 +53,10 @@ export const makeUserRoutes = Effect.gen(function* () {
         const input = context.req.valid('json');
         return success(
           context,
-          await executor.run(resetUserPassword(new ResetUserPassword(input))),
+          await userService.resetPassword(input),
         );
       },
     );
 
   return routes;
-});
+};

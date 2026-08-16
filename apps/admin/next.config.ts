@@ -26,9 +26,8 @@ const nextConfig: NextConfig = {
     '@repo/db',
     'pino',
     'pino-pretty',
-    'drizzle-orm',
-    'drizzle-orm/node-postgres',
     'pg',
+    'typeorm',
   ],
 }
 

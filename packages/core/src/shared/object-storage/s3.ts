@@ -9,20 +9,26 @@ import {
 } from '@aws-sdk/client-s3'
 import { AssumeRoleCommand, STSClient } from '@aws-sdk/client-sts'
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
-import type { ApplicationLoggerApi } from '../application-logger.capability.js'
-import type { RedisStoreApi } from '../redis-store.capability.js'
-import type { ObjectStorageConfig, ObjectStorageProvider } from './types.js'
-import {
+import type {
+  GetStorageDownloadUrlDto,
+  GetStorageUploadPresignedUrlDto,
+  GetTemporaryCredentialsDto,
+  StoragePresignedUrlModel,
+  StorageStsModel,
+} from '@repo/shared'
+import type { Logger } from '../logger.js'
+import type { RedisStore } from '../redis-store.js'
+import type {
   ObjectContent,
   ObjectRemoved,
-  PresignedObjectUrl,
-  TemporaryCredentials,
-} from './domain.js'
+  ObjectStorageConfig,
+  ObjectStorageProvider,
+} from './types.js'
 
 export const makeS3Provider = (
   config: ObjectStorageConfig,
-  logger: ApplicationLoggerApi,
-  redis: RedisStoreApi,
+  logger: Logger,
+  redis: RedisStore,
 ): ObjectStorageProvider => {
   let s3: S3Client
   let sts: STSClient
@@ -47,45 +53,45 @@ export const makeS3Provider = (
       const response = await s3.send(
         new GetObjectCommand({ Bucket: config.bucket, Key: key }),
       )
-      return new ObjectContent({
+      return {
         key,
         body: Buffer.from((await response.Body?.transformToByteArray()) ?? []),
-      })
+      } satisfies ObjectContent
     },
     async getPresignedUrl(data) {
-      return new PresignedObjectUrl({
+      return {
         key: data.key,
         url: await getSignedUrl(
           s3,
           new PutObjectCommand({ Bucket: config.bucket, Key: data.key }),
           { expiresIn: 3600 },
         ),
-      })
+      } satisfies StoragePresignedUrlModel
     },
     async getDownloadUrl({ key }) {
-      return new PresignedObjectUrl({
+      return {
         key,
         url: await getSignedUrl(
           s3,
           new GetObjectCommand({ Bucket: config.bucket, Key: key }),
           { expiresIn: 3600 },
         ),
-      })
+      } satisfies StoragePresignedUrlModel
     },
-    async getTemporaryCredentials({ userId }) {
-      const cacheKey = `temp-credential:${userId}`
+    async getTemporaryCredentials(request: GetTemporaryCredentialsDto) {
+      const cacheKey = `temp-credential:${request.userId}`
       const cached = await redis.raw.get(cacheKey)
-      if (cached) return new TemporaryCredentials(JSON.parse(cached))
+      if (cached) return JSON.parse(cached) as StorageStsModel
       const response = await sts.send(
         new AssumeRoleCommand({
           RoleArn: `arn:aws:iam::${config.accessKeyId}:role/role-name`,
-          RoleSessionName: userId,
+          RoleSessionName: request.userId,
           DurationSeconds: 3600,
         }),
       )
       const credentials = response.Credentials
       if (!credentials) throw new Error('STS did not return credentials')
-      const result = new TemporaryCredentials({
+      const result: StorageStsModel = {
         endpoint: config.endpoint ?? '',
         bucket: config.bucket,
         region: config.region,
@@ -93,7 +99,7 @@ export const makeS3Provider = (
         secretAccessKey: credentials.SecretAccessKey!,
         sessionToken: credentials.SessionToken!,
         expiration: Math.floor(credentials.Expiration!.getTime() / 1000),
-      })
+      }
       await redis.raw.set(cacheKey, JSON.stringify(result), 'EX', 3600)
       return result
     },
@@ -101,7 +107,7 @@ export const makeS3Provider = (
       await s3.send(
         new DeleteObjectCommand({ Bucket: config.bucket, Key: key }),
       )
-      return new ObjectRemoved({ key })
+      return { key } satisfies ObjectRemoved
     },
   }
 }
