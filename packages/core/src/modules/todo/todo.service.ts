@@ -1,4 +1,8 @@
-import type { CursorQueryResult, PageQueryResult } from '@repo/db'
+import {
+  Transactional,
+  type CursorQueryResult,
+  type PageQueryResult,
+} from '@repo/db'
 import type {
   CreateTodoDto,
   CursorQueryTodoDto,
@@ -24,6 +28,7 @@ export class TodoService {
     @inject(TodoRepository) private readonly todoRepository: TodoRepository,
   ) {}
 
+  @Transactional()
   async create(input: CreateTodoDto): Promise<TodoModel> {
     const todo = await this.todoRepository.create(input)
     this.logger.log('todo.created', { id: todo.id })
@@ -46,6 +51,7 @@ export class TodoService {
     return this.todoRepository.cursor(query)
   }
 
+  @Transactional()
   async update(input: UpdateTodoDto): Promise<TodoModel> {
     const { todoId, ...changes } = input
     const todo = await this.todoRepository.update(todoId, changes)
@@ -54,6 +60,7 @@ export class TodoService {
     return todo
   }
 
+  @Transactional()
   async remove(input: RemoveTodoDto): Promise<TodoModel> {
     const todo = await this.todoRepository.remove(input.todoId)
     if (!todo) throw new TodoNotFoundError(input.todoId)

@@ -17,13 +17,11 @@ export const toUser = (record: UserEntity): UserModel => {
   return user
 }
 
-
 @injectable()
 export class UserRepository {
   constructor(@inject(Db) private readonly db: Db) {}
 
   private async repo() {
-    await this.db.ready
     return this.db.getRepository(UserEntity)
   }
 
@@ -66,17 +64,16 @@ export class UserRepository {
     return existing
   }
 
-  async page(
-    query: PageQueryUserDto,
-  ): Promise<PageQueryResult<UserModel>> {
+  async page(query: PageQueryUserDto): Promise<PageQueryResult<UserModel>> {
     const { page, size, keyword, orderBy = 'createdAt', order = 'desc' } = query
     const repo = await this.repo()
     const builder = repo.createQueryBuilder('u')
     if (keyword) {
       builder.andWhere(
         new Brackets((qb) => {
-          qb.where('u.email ILIKE :keyword', { keyword: `%${keyword}%` })
-            .orWhere('u.realName ILIKE :keyword', { keyword: `%${keyword}%` })
+          qb.where('u.email ILIKE :keyword', {
+            keyword: `%${keyword}%`,
+          }).orWhere('u.realName ILIKE :keyword', { keyword: `%${keyword}%` })
         }),
       )
     }

@@ -1,3 +1,4 @@
+import { Transactional } from '@repo/db'
 import { dayjs, nanoid } from '@repo/shared'
 import type {
   AuthResultModel,
@@ -40,6 +41,7 @@ export class AuthService {
     @inject(AppConfig) private readonly config: AppConfig,
   ) {}
 
+  @Transactional()
   async register(input: RegisterDto): Promise<AuthResultModel> {
     const existing = await this.userRepository.findByEmail(input.email)
     if (existing) throw new EmailTakenError(input.email)
@@ -64,6 +66,7 @@ export class AuthService {
     return { token, user }
   }
 
+  @Transactional()
   async forgotPassword(input: ForgotPasswordDto): Promise<SuccessResultModel> {
     const user = await this.userRepository.findByEmail(input.email)
     if (!user) {
@@ -80,6 +83,7 @@ export class AuthService {
     return { success: true, token }
   }
 
+  @Transactional()
   async resetPassword(input: ResetPasswordDto): Promise<SuccessResultModel> {
     const user = await this.userRepository.findByResetToken(input.token)
     if (!user) throw new InvalidResetTokenError()
@@ -104,6 +108,7 @@ export class AuthService {
     return toUser(user)
   }
 
+  @Transactional()
   async updateInfo(
     input: UpdateInfoDto & { userId: string },
   ): Promise<AuthUserModel> {
@@ -114,6 +119,7 @@ export class AuthService {
     return toUser(user)
   }
 
+  @Transactional()
   async changePassword(
     input: ChangePasswordDto & { userId: string },
   ): Promise<SuccessResultModel> {

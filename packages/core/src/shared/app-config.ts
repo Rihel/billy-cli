@@ -1,3 +1,4 @@
+import _ from 'lodash'
 import { z } from 'zod'
 
 /**
@@ -11,6 +12,7 @@ export const AppConfigSchema = z.object({
     url: z
       .string()
       .default('postgres://postgres:postgres@localhost:5432/postgres'),
+    sync: z.boolean().default(false),
   }),
   redis: z.object({
     url: z.string().default('redis://localhost:6379/0'),
@@ -50,7 +52,9 @@ export const AppConfig = Symbol.for('AppConfig')
 const fromEnv = (env: Record<string, string | undefined>) => ({
   env: env.NODE_ENV === 'production' ? 'production' : 'development',
   port: env.PORT,
-  db: { url: env.DB_URL },
+  db: {
+    url: env.DB_URL,
+  },
   redis: { url: env.REDIS_URL, keyPrefix: env.REDIS_KEY_PREFIX },
   jwt: { secret: env.JWT_SECRET, expiresIn: env.JWT_EXPIRES_IN },
   auth: {
@@ -81,4 +85,4 @@ const fromEnv = (env: Record<string, string | undefined>) => ({
 export const createAppConfig = (
   env: Record<string, string | undefined> = process.env,
   overrides: AppConfigInput = {},
-): AppConfig => AppConfigSchema.parse({ ...fromEnv(env), ...overrides })
+): AppConfig => AppConfigSchema.parse(_.merge(fromEnv(env), overrides))

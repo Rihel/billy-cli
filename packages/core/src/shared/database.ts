@@ -11,16 +11,9 @@ import { inject, injectable } from 'inversify'
 import type { OnAppStart, OnAppStop } from '../life-cycle.js'
 import { AppConfig } from './app-config.js'
 import { Logger } from './logger.decorator.js'
-
+import { coalesceAsync } from 'promise-coalesce'
 export type { DataSource } from 'typeorm'
 
-/**
- * TypeORM 数据库门面。
- *
- * - `ready`：幂等初始化 DataSource（首次访问时建立连接）
- * - `getRepository` / `transaction`：仓储与事务入口
- * - `close`：释放连接池
- */
 @injectable()
 export class Db implements OnAppStart, OnAppStop {
   readonly dataSource: DataSource
@@ -28,28 +21,26 @@ export class Db implements OnAppStart, OnAppStop {
   @Logger()
   private readonly logger!: AppLogger
 
-  private initPromise: Promise<void> | null = null
-
-  constructor(@inject(AppConfig) config: AppConfig) {
-    this.logger.info('正在链接到数据库...', { url: config.db.url })
+  constructor(@inject(AppConfig) private config: AppConfig) {
     this.dataSource = createDb({
       url: config.db.url,
       type: 'postgres',
+      synchronize: config.db.sync,
+      logging: false,
+      poolSize: 10,
     })
   }
 
-  /** 确保 DataSource 已初始化（幂等），连接失败时抛出。 */
-  get ready(): Promise<void> {
-    if (!this.initPromise) {
-      this.initPromise = this.dataSource
-        .initialize()
-        .then(() => this.logger.info('数据库连接已就绪'))
-        .catch((cause: unknown) => {
-          this.logger.error('数据库连接失败', { cause })
-          throw cause
-        })
-    }
-    return this.initPromise
+  private async connect() {
+    await coalesceAsync('connect-db', async () => {
+      try {
+        this.logger.info('正在链接到数据库...', this.config.db)
+        await this.dataSource.initialize()
+        this.logger.info('数据库连接已就绪')
+      } catch (error) {
+        this.logger.error('数据库连接失败', { error })
+      }
+    })
   }
 
   getRepository<T extends ObjectLiteral>(
@@ -58,15 +49,9 @@ export class Db implements OnAppStart, OnAppStop {
     return this.dataSource.getRepository(target)
   }
 
-  /** 在数据库事务中运行回调；回调抛出的错误触发回滚并原样传播。 */
-  async transaction<T>(fn: (manager: EntityManager) => Promise<T>): Promise<T> {
-    await this.ready
-    return this.dataSource.transaction(fn)
-  }
-
   /** 应用启动：初始化 DataSource 连接。 */
   async onAppStart(): Promise<void> {
-    await this.ready
+    await this.connect()
   }
 
   /** 应用停止：释放连接池。 */
@@ -75,10 +60,12 @@ export class Db implements OnAppStart, OnAppStop {
   }
 
   async close(): Promise<void> {
-    if (this.dataSource.isInitialized) {
-      this.logger.info('正在关闭数据库连接')
-      await this.dataSource.destroy()
-      this.logger.info('数据库连接已关闭')
-    }
+    await coalesceAsync('disconnected-db', async () => {
+      if (this.dataSource.isInitialized) {
+        this.logger.info('正在关闭数据库连接')
+        await this.dataSource.destroy()
+        this.logger.info('数据库连接已关闭')
+      }
+    })
   }
 }

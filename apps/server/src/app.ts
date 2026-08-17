@@ -15,7 +15,11 @@ import { makeTodoRoutes } from './features/todo.js';
 import { makeUserRoutes } from './features/user.js';
 
 export const makeApp = () => {
-  initCore();
+  initCore({
+    db: {
+      sync: true,
+    },
+  });
 
   const app = new Hono();
 

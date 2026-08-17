@@ -11,7 +11,11 @@ import { configureLogger } from './shared/logger.decorator.js'
 import { ObjectStorage } from './shared/object-storage/object-storage.js'
 import { PasswordHasher } from './shared/password-hasher.js'
 import { RedisStore } from './shared/redis-store.js'
-import { AppConfig, createAppConfig, type AppConfigInput } from './shared/app-config.js'
+import {
+  AppConfig,
+  createAppConfig,
+  type AppConfigInput,
+} from './shared/app-config.js'
 import { TokenSigner } from './shared/token-signer.js'
 
 /**

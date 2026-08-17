@@ -1,4 +1,4 @@
-import type { PageQueryResult } from '@repo/db'
+import { Transactional, type PageQueryResult } from '@repo/db'
 import type {
   CreateUserDto,
   GetUserDetailDto,
@@ -26,6 +26,7 @@ export class UserService {
     @inject(PasswordHasher) private readonly passwordHasher: PasswordHasher,
   ) {}
 
+  @Transactional()
   async create(input: CreateUserDto): Promise<UserModel> {
     const existing = await this.userRepository.findByEmail(input.email)
     if (existing) throw new EmailTakenError(input.email)
@@ -47,6 +48,7 @@ export class UserService {
     return this.userRepository.page(query)
   }
 
+  @Transactional()
   async update(input: UpdateUserDto): Promise<UserModel> {
     const { userId, ...changes } = input
     const user = await this.userRepository.update(userId, changes)
@@ -55,6 +57,7 @@ export class UserService {
     return toUser(user)
   }
 
+  @Transactional()
   async remove(input: RemoveUserDto): Promise<RemoveUserResultModel> {
     const user = await this.userRepository.remove(input.userId)
     if (!user) throw new UserNotFoundError(input.userId)
@@ -62,6 +65,7 @@ export class UserService {
     return { success: true }
   }
 
+  @Transactional()
   async resetPassword(
     input: ResetUserPasswordDto,
   ): Promise<RemoveUserResultModel> {

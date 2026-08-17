@@ -1,9 +1,11 @@
-import { Column, Entity, PrimaryColumn } from 'typeorm'
+import { Column, Entity, PrimaryColumn, Unique } from 'typeorm'
 import { BaseEntity } from './base-entity'
+import { UserStatus } from '@repo/shared'
 
 @Entity('users')
+@Unique('uk_user_email', ['email', 'deletedAt'])
 export class UserEntity extends BaseEntity {
-  @Column({ name: 'email', type: 'text', unique: true })
+  @Column({ name: 'email', type: 'text' })
   email!: string
 
   @Column({ name: 'password', type: 'text' })
@@ -25,4 +27,12 @@ export class UserEntity extends BaseEntity {
     nullable: true,
   })
   resetPasswordTokenExpiry: Date | null = null
+
+  @Column({
+    name: 'status',
+    default: UserStatus.Enabled,
+    length: 20,
+    comment: '用户状态',
+  })
+  status: string
 }
