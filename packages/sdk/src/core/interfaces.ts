@@ -6,6 +6,8 @@ export type AuthStrategyType = 'apiKey' | 'oauth2' | 'bearerToken' | 'hmac'
  * 由 AuthStrategy 生成，注入到请求的不同位置。
  */
 export type AuthContext = {
+  baseURL?: string
+  url?: string
   /** 注入到请求头 */
   headers?: Record<string, string>
   /** 注入到请求体 */

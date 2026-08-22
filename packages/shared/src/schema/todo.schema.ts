@@ -28,7 +28,7 @@ export type RemoveTodoDto = z.infer<typeof RemoveTodoSchema>
 export const CreateTodoSchema = TodoFields.omit({ completed: true })
 export type CreateTodoDto = z.infer<typeof CreateTodoSchema>
 
-export const UpdateTodoSchema = TodoFields.extend(TodoIdInputSchema.shape)
+export const UpdateTodoSchema = z.intersection(TodoIdInputSchema, TodoFields)
 export type UpdateTodoDto = z.infer<typeof UpdateTodoSchema>
 
 export const PageQueryTodoSchema = BasePaginateDto.extend({

@@ -115,6 +115,7 @@ export class ApiClient<Credentials = Record<string, any>> {
       await this.resolver.resolve()
 
       // 步骤 2：注入认证上下文
+      config.baseURL = this.options.baseUrl
       const credentials = await this.options.credentialsManager.getCredentials()
       config = await this.injector.inject(config, credentials)
     }

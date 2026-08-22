@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "gen:antd-css": "tsx scripts/genAntdCss.tsx",
-    "dev": "next dev --port 9845",
+    "dev": "next dev --port 9845 --experimental-https --experimental-https-key ./localhost.key --experimental-https-cert ./localhost.crt",
     "build": "next build",
     "start": "sh scripts/start.sh"
   },

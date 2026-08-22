@@ -23,8 +23,12 @@ import {
   RefreshButton,
   useDisclosure,
 } from '@repo/aui'
-import type { TodoItem, TodoCursor } from '@repo/sdk'
-import type { AppCursorQueryResponse } from '@repo/shared'
+
+import type {
+  AppCursorQueryResponse,
+  TodoCursorModel,
+  TodoModel,
+} from '@repo/shared'
 
 type EditTodoForm = {
   title: string
@@ -32,8 +36,8 @@ type EditTodoForm = {
 }
 
 type TodoListData = InfiniteData<
-  AppCursorQueryResponse<TodoItem, TodoCursor>,
-  TodoCursor | undefined
+  AppCursorQueryResponse<TodoModel, TodoCursorModel>,
+  TodoCursorModel | undefined
 >
 
 const PAGE_SIZE = 20
@@ -42,7 +46,7 @@ export default function TodoPage() {
   const { message } = App.useApp()
   const client = useServerClient()
   const queryClient = useQueryClient()
-  const editDialog = useDisclosure<TodoItem>()
+  const editDialog = useDisclosure<TodoModel>()
   const [newTitle, setNewTitle] = useState('')
   const [editForm] = Form.useForm<EditTodoForm>()
   const listRef = useRef<DataListApi>(null)
@@ -51,7 +55,7 @@ export default function TodoPage() {
   const { data, fetchNextPage, hasNextPage, isFetching, isFetchingNextPage } =
     useInfiniteQuery({
       queryKey: listQueryKey,
-      initialPageParam: undefined as TodoCursor | undefined,
+      initialPageParam: undefined as TodoCursorModel | undefined,
       queryFn: ({ pageParam }) =>
         client.todo.cursorQuery({
           cursor: pageParam,
@@ -62,7 +66,7 @@ export default function TodoPage() {
   const items = data?.pages.flatMap((result) => result.items) ?? []
   const resetList = () =>
     queryClient.resetQueries({ queryKey: listQueryKey, exact: true })
-  const prependTodo = (todo: TodoItem) => {
+  const prependTodo = (todo: TodoModel) => {
     queryClient.setQueryData<TodoListData>(listQueryKey, (current) => {
       if (!current) {
         return {
@@ -86,7 +90,7 @@ export default function TodoPage() {
       })
     })
   }
-  const updateTodo = (todo: TodoItem) => {
+  const updateTodo = (todo: TodoModel) => {
     queryClient.setQueryData<TodoListData>(listQueryKey, (current) => {
       if (!current) return current
       return produce(current, (draft) => {
@@ -178,7 +182,7 @@ export default function TodoPage() {
       <AutoSize>
         {({ height }) => {
           return (
-            <DataList<TodoItem>
+            <DataList<TodoModel>
               ref={listRef}
               rowKey="id"
               loading={isFetching && !data}

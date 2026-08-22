@@ -13,6 +13,7 @@ const nextConfig: NextConfig = {
       },
     ],
   },
+
   /* config options here */
   output: !isDev ? 'standalone' : undefined,
   outputFileTracingRoot: !isDev ? path.join(__dirname, '../../') : undefined,
@@ -20,6 +21,7 @@ const nextConfig: NextConfig = {
   experimental: {
     authInterrupts: true,
   },
+
   transpilePackages: ['@repo/aui'],
   serverExternalPackages: [
     '@repo/shared',

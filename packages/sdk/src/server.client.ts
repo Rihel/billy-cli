@@ -26,6 +26,7 @@ import {
   TodoCursorModel,
   TodoModel,
   UpdateInfoDto,
+  UpdateTodoDto,
   UpdateUserDto,
   UserModel,
 } from '@repo/shared'
@@ -96,7 +97,7 @@ export class ServerClient extends ApiClient<BearerTokenCredentials> {
     detail: (data: GetDetailTodoDto) =>
       this.post<TodoModel>('/todo/detail', data),
 
-    update: (data: UpdateInfoDto) => this.post<TodoModel>('/todo/update', data),
+    update: (data: UpdateTodoDto) => this.post<TodoModel>('/todo/update', data),
 
     remove: (data: RemoveTodoDto) => this.post<TodoModel>('/todo/remove', data),
   }
