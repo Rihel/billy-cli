@@ -1,18 +1,19 @@
 # 认证与权限详解（implement-auth 引用文件）
 
 > 本文件是 `implement-auth` skill 的组成部分，由主 SKILL.md 引用。
-> 实现 / 修改认证与权限时必读。
+> 实现 / 修改认证与权限时必读。设计决策与演进方向见
+> `docs/design/auth-session.md`（服务端会话方案）。
 
 ## 1. 双体系心智模型（必须分清）
 
 | | 前台用户 | 后台管理员 |
 | --- | --- | --- |
 | 实体 | `UserEntity`（`users` 表） | `AdminEntity`（`admins` 表） |
-| 业务服务 | `AuthService` / `UserService` | `AdminService` |
-| 接口前缀 | `/auth/*`、`/user/*` | `/admin/*` |
+| 业务服务 | `AuthService` | `AdminService` / `UserService` |
+| 接口前缀 | `/auth/*` | `/admin/*`、`/user/*` |
 | 服务端中间件 | `makeRequireAuth`（注入 `userId`） | `makeRequireAdminAuth`（注入 `adminId`） |
-| SDK 段 | `client.auth.*` / `client.user.*` | `client.admin.*` |
-| 前端 | `apps/web`（login / register） | `apps/admin`（login，独立体系） |
+| SDK 段 | `client.auth.*` | `client.admin.*` / `client.user.*` |
+| 前端 | `apps/web`（login / register / forgot-password / reset-password） | `apps/admin`（login，独立体系） |
 | 错误码段 | `1xxx` 认证（1000-1009） | `2xxx` 用户 + 管理员（2001-2006） |
 
 **两者完全隔离**：管理员登录走 `client.admin.login`，用户登录走 `client.auth.login`，
@@ -26,6 +27,14 @@ token 里带类型标识，`verifyToken` 分别校验，混用必然失败。
   `packages/core/src/infrastructure/token-signer.ts`）。响应模型**按体系区分**：
   用户登录 `AuthResultModel`（`auth.schema.ts`），管理员登录 `AdminAuthResultModel`
   （`admin.schema.ts`，`{ token, admin }`）。
+- **服务端会话（Redis）**：签发 JWT 的同时由 `SessionStore`
+  （`packages/core/src/infrastructure/session-store.ts`）把会话写入 Redis——
+  key `auth:session:{sha256(token)}`（TTL 与 JWT 有效期一致）+ 索引
+  `auth:index:{type}:{sub}`（Set，供批量踢人）。**每次请求校验 JWT 后必须查 Redis
+  会话存在**，登出 / 禁用 / 删除会撤销会话，使已签发 token 立即失效
+  （见 `AuthService.verifyToken` / `AdminService.verifyToken`）。
+- **登出**：`/auth/logout`、`/admin/logout` **幂等**（不挂鉴权中间件，token 有效则
+  撤销会话、无效也返回成功）——前端 `onUnauthorized` 调用不会形成 401 循环。
 - **校验**：`apps/server/src/lib/authentication.ts` 的 `extractToken` 支持两种携带方式：
   `Authorization: Bearer <token>` 或 `access-token` cookie。中间件校验失败时返回
   `AppErrorCodes.Unauthorized`（无 token）或 `TokenInvalid`（校验失败），不抛异常进 errorHandler。
@@ -46,6 +55,16 @@ routes.use('*', requireAuth)   // 整个路由组需要登录
 - 混合（部分公开）：不加全局中间件，公开 handler 直接放行，受保护 handler 内单独挂中间件
   （`routes.post('/x', requireAuth, jsonBody(Schema), handler)`）。
 - **新增接口必须明确鉴权策略**，禁止默认裸奔（公开接口要在代码注释里说明原因）。
+
+**当前路由鉴权一览**（新模块/改路由前先对照，别挂错体系）：
+
+| 路由 | 鉴权 | 说明 |
+| --- | --- | --- |
+| `/auth/*` | register / login / forgot-password / reset-password 公开；get-me / update-info / change-password 用 `makeRequireAuth` | 前台用户自助 |
+| `/admin/*` | login 公开；其余 `makeRequireAdminAuth` | 后台管理员 |
+| `/user/*` | `makeRequireAdminAuth` | 管理员管理用户 |
+| `/todo/*` | `makeRequireAdminAuth` | 后台功能（admin 页） |
+| `/storage/*` | `makeRequireAdminAuth` | 上传/下载/STS（admin 页 ImageUpload） |
 
 ## 4. 前端：Server Actions + 双存储模型
 
@@ -85,8 +104,13 @@ token 采用**双存储**，各有分工：
 
 - **忘记密码**：`ForgotPasswordDto` → 生成 `resetPasswordToken` + 过期时间（存实体
   `reset_password_token` / `reset_password_token_expiry`）→ 发送重置链接。
+  web 前台页面：`apps/web/src/app/auth/forgot-password`（成功自动跳到
+  `/auth/reset-password?token=xxx`）、`apps/web/src/app/auth/reset-password`。
 - **重置密码**：`ResetPasswordDto`（token + 新密码）→ 校验令牌 → 改密码。
 - **修改密码**：`ChangePasswordDto`（旧密码 + 新密码）→ 校验旧密码 → 改密码。
+- **登录禁用校验**：用户/管理员登录时校验 `status`，禁用（`disabled`）账号登录被拒：
+  用户抛 `UserDisabledError`（2007），管理员抛 `AdminDisabledError`（2004）。
+- **错误码**：`1xxx` 认证、`2xxx` 用户 + 管理员（`UserDisabled` 2007 / `AdminDisabled` 2004）。
 - 相关错误码：`InvalidResetToken`(1003) / `ExpiredResetToken`(1004) /
   `InvalidOldPassword`(1008) / `PasswordUnchanged`(1009)。
 - 相关 schema：`packages/shared/src/schema/auth.schema.ts`（ForgotPassword / ResetPassword /
