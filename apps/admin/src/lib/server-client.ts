@@ -4,6 +4,7 @@ import {
   MemoryCredentialsManager,
   BearerTokenCredentials,
 } from '@repo/sdk'
+import { logoutAction } from '@/actions/auth.actions'
 import { Pages, ServerUrl, TokenKey } from './constants'
 
 const tokenManager = new LocalStorageCredentialsManager<BearerTokenCredentials>(
@@ -29,6 +30,8 @@ export function getServerClient(): ServerClient {
         onUnauthorized: async () => {
           if (typeof window === 'undefined') return
           tokenManager.clearCredentials()
+          // 同时清掉 httpOnly cookie，避免与登录页会话探测互相弹回形成死循环
+          await logoutAction()
           window.location.replace(Pages.login)
         },
       },

@@ -1,6 +1,10 @@
 'use client'
 
-import { DashboardOutlined, UserOutlined } from '@ant-design/icons'
+import {
+  DashboardOutlined,
+  SafetyOutlined,
+  UserOutlined,
+} from '@ant-design/icons'
 import { Menu, MenuProps } from 'antd'
 import { usePathname, useRouter } from 'next/navigation'
 
@@ -54,6 +58,11 @@ export const AppMenu = ({ mode = 'inline', ...props }: AppMenuProps) => {
               label: '用户管理',
               key: '/main/system/users',
               icon: <UserOutlined />,
+            },
+            {
+              label: '管理员管理',
+              key: '/main/system/admins',
+              icon: <SafetyOutlined />,
             },
           ],
         },

@@ -25,7 +25,7 @@ type ChangePasswordForm = {
 }
 
 export default function UserCenter() {
-  const { userInfo, setUserInfo, clear } = useAuthStore()
+  const { adminInfo, setAdminInfo, clear } = useAuthStore()
   const passwordDialog = useDisclosure()
   const [passwordForm] = Form.useForm<ChangePasswordForm>()
   const { message } = App.useApp()
@@ -34,11 +34,11 @@ export default function UserCenter() {
 
   const updateInfoMutation = useMutation({
     mutationFn: (input: { realName?: string | null; avatar?: string | null }) =>
-      client.auth.updateInfo(input),
+      client.admin.updateInfo(input),
   })
   const changePasswordMutation = useMutation({
     mutationFn: (input: { oldPassword: string; newPassword: string }) =>
-      client.auth.changePassword(input),
+      client.admin.changePassword(input),
   })
 
   const changePassword = async (values: ChangePasswordForm) => {
@@ -56,17 +56,17 @@ export default function UserCenter() {
       <PageToolbar title={<div className="text-2xl">个人中心</div>} />
       <div className="flex gap-10">
         <ImageUpload
-          value={userInfo?.avatar}
+          value={adminInfo?.avatar}
           sizeLimit={2}
           disabled={updateInfoMutation.isPending}
           onChange={async (avatar) => {
             await updateInfoMutation.mutateAsync({ avatar })
-            setUserInfo({ ...userInfo!, avatar })
+            setAdminInfo({ ...adminInfo!, avatar })
           }}
         />
 
         <DisplayRender
-          data={userInfo}
+          data={adminInfo}
           layout="row"
           // className="mt-6"
           labelClassName="w-20"
@@ -82,7 +82,7 @@ export default function UserCenter() {
                     await updateInfoMutation.mutateAsync({
                       realName: nextRealName,
                     })
-                    setUserInfo({ ...userInfo!, realName: nextRealName })
+                    setAdminInfo({ ...adminInfo!, realName: nextRealName })
                   }}
                 />
               ),

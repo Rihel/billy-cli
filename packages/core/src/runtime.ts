@@ -1,5 +1,7 @@
 import { Container } from 'inversify'
 import type { OnAppStart, OnAppStop } from './life-cycle.js'
+import { AdminRepository } from './modules/admin/admin.repository.js'
+import { AdminService } from './modules/admin/admin.service.js'
 import { AuthService } from './modules/auth/auth.service.js'
 import { TodoRepository } from './modules/todo/todo.repository.js'
 import { TodoService } from './modules/todo/todo.service.js'
@@ -73,11 +75,13 @@ export const initCore = (overrides: AppConfigInput = {}): Container => {
   // 仓储
   appCore.bind(UserRepository).toSelf().inSingletonScope()
   appCore.bind(TodoRepository).toSelf().inSingletonScope()
+  appCore.bind(AdminRepository).toSelf().inSingletonScope()
 
   // 业务服务
   appCore.bind(AuthService).toSelf().inSingletonScope()
   appCore.bind(UserService).toSelf().inSingletonScope()
   appCore.bind(TodoService).toSelf().inSingletonScope()
+  appCore.bind(AdminService).toSelf().inSingletonScope()
 
   // 注册生命周期组件（解析实例并登记 onAppStart / onAppStop）
   registerLifecycle(appCore.get(Db))

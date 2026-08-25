@@ -15,11 +15,11 @@ export type MainLayoutProps = Partial<{
 }>
 
 const MainLayout = async ({ children }: MainLayoutProps) => {
-  let userInfo: Record<string, any>
+  let adminInfo: Record<string, any>
   const jar = await cookies()
   try {
     const client = createServerClient(jar.get(TokenKey)?.value)
-    userInfo = await client.auth.getMe()
+    adminInfo = await client.admin.getMe()
   } catch {
     redirect(Pages.login)
   }
@@ -27,7 +27,7 @@ const MainLayout = async ({ children }: MainLayoutProps) => {
   return (
     <AuthStoreProvider
       initialState={{
-        userInfo: userInfo as any,
+        adminInfo: adminInfo as any,
       }}
     >
       <div className="w-screen h-screen flex flex-col relative bg-gray-50">

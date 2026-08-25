@@ -21,7 +21,7 @@ function cookieOptions(maxAge: number) {
 export const loginAction = defineAction(
   async (input: { email: string; password: string }) => {
     const client = createServerClient()
-    const data = await client.auth.login(input)
+    const data = await client.admin.login(input)
     const jar = await cookies()
     jar.set(TokenKey, data.token, cookieOptions(COOKIE_MAX_AGE))
     return data.token
@@ -32,39 +32,22 @@ export const loginAction = defineAction(
   },
 )
 
-export const registerAction = defineAction(
-  async (input: { email: string; password: string; realName?: string }) => {
-    const client = createServerClient()
-    const data = await client.auth.register(input)
+/**
+ * 会话探测：用 cookie 里的 token 调 admin.getMe()。
+ * 登录页挂载时调用 —— 有效则进入主界面，失效则清理 cookie，避免与 SSR 守卫互相弹回形成死循环。
+ */
+export const checkSessionAction = defineAction<undefined, boolean>(
+  async () => {
     const jar = await cookies()
-    jar.set(TokenKey, data.token, cookieOptions(COOKIE_MAX_AGE))
-    return data.token
+    const token = jar.get(TokenKey)?.value
+    if (!token) return false
+    const client = createServerClient(token)
+    await client.admin.getMe()
+    return true
   },
   {
-    fallbackError: '注册失败',
-    onError: (error) => logger.error('registerAction error', { error }),
-  },
-)
-
-export const forgotPasswordAction = defineAction(
-  async (input: { email: string }) => {
-    const client = createServerClient()
-    return client.auth.forgotPassword(input)
-  },
-  {
-    fallbackError: '请求失败',
-    onError: (error) => logger.error('forgotPasswordAction error', { error }),
-  },
-)
-
-export const resetPasswordAction = defineAction(
-  async (input: { token: string; password: string }) => {
-    const client = createServerClient()
-    return client.auth.resetPassword(input)
-  },
-  {
-    fallbackError: '重置失败',
-    onError: (error) => logger.error('resetPasswordAction error', { error }),
+    fallbackError: '会话检测失败',
+    onError: (error) => logger.warn('checkSessionAction error', { error }),
   },
 )
 

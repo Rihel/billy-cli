@@ -6,21 +6,13 @@ export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl
   const isPublic = PublicPaths.some((p) => pathname.startsWith(p))
 
-  // token 只能在客户端 localStorage 读取，这里用 cookie 做 SSR 守卫
-  // 如果没有 cookie，重定向到登录页（客户端会在 Providers 里处理实际情况）
+  // token 只能在客户端 localStorage 读取，这里用 cookie 做 SSR 守卫：
+  // 无 cookie 访问非公开页 → 登录页（登录页挂载时会探测会话有效性并清理失效 cookie）
   const token = request.cookies.get(TokenKey)?.value
 
   if (!isPublic && !token) {
     const loginUrl = new URL(Pages.login, request.url)
     return NextResponse.redirect(loginUrl)
-  }
-
-  if (
-    isPublic &&
-    token &&
-    ![Pages.forgotPassword, Pages.resetPassword].includes(pathname)
-  ) {
-    return NextResponse.redirect(new URL(Pages.dashboard, request.url))
   }
 
   return NextResponse.next()

@@ -17,7 +17,7 @@ import { MenuFoldOutlined, MenuUnfoldOutlined } from '@ant-design/icons'
 export type AppHeaderProps = Partial<{} & ComponentProps<'div'>>
 
 export const AppHeader = ({ className, ...props }: AppHeaderProps) => {
-  const { userInfo, clear } = useAuthStore()
+  const { adminInfo, clear } = useAuthStore()
   const { toggleSiderCollapsed, isSiderCollapsed } = useLayoutStore()
   const router = useRouter()
   const exit = async () => {
@@ -63,10 +63,10 @@ export const AppHeader = ({ className, ...props }: AppHeaderProps) => {
         }}
       >
         <div className=" cursor-pointer flex gap-2 items-center">
-          {userInfo?.avatar ? (
-            <Avatar src={formatStorageUrl(userInfo.avatar)} size="large" />
+          {adminInfo?.avatar ? (
+            <Avatar src={formatStorageUrl(adminInfo.avatar)} size="large" />
           ) : null}
-          <div>{userInfo?.realName || userInfo?.email}</div>
+          <div>{adminInfo?.realName || adminInfo?.email}</div>
           <DownOutlined />
         </div>
       </Dropdown>

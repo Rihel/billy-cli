@@ -140,7 +140,12 @@ export class AuthService {
 
   async verifyToken(input: { token: string }): Promise<string> {
     try {
-      const payload = await this.tokenSigner.verify<{ sub: string }>(input.token)
+      const payload = await this.tokenSigner.verify<{
+        sub: string
+        type?: string
+      }>(input.token)
+      // 后台管理员 token（type='admin'）不允许用于前台用户接口
+      if (payload.type === 'admin') throw new InvalidTokenError()
       return payload.sub
     } catch {
       throw new InvalidTokenError()

@@ -3,6 +3,7 @@ import { createMiddleware } from 'hono/factory';
 
 export interface RequestContextData {
   userId: string | null;
+  adminId: string | null;
 }
 
 
@@ -33,5 +34,5 @@ export const makeRequestContextMiddleware = (
   requestStorage: typeof requestContext,
 ) =>
   createMiddleware(async (_context, next) =>
-    requestStorage.run({ userId: null }, next),
+    requestStorage.run({ userId: null, adminId: null }, next),
   );

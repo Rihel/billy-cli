@@ -1,18 +1,17 @@
 'use client'
 
 import { removeToken } from '@/lib/server-client'
-import { UserModel } from '@repo/shared'
+import type { AdminModel } from '@repo/shared'
 import { createContext, ReactNode, useContext, useState } from 'react'
-import { z } from 'zod'
 import { createStore, StoreApi, useStore } from 'zustand'
 import { immer } from 'zustand/middleware/immer'
 
 export type AuthStoreState = {
-  userInfo: z.infer<typeof UserModel> | null
+  adminInfo: AdminModel | null
 }
 
 export type AuthStoreActions = {
-  setUserInfo(data: Partial<z.infer<typeof UserModel>>): void
+  setAdminInfo(data: Partial<AdminModel>): void
   clear(): void
 }
 
@@ -25,14 +24,14 @@ export const createAuthStore = (state: AuthStoreState) => {
       clear() {
         removeToken()
         set((d) => {
-          d.userInfo = null
+          d.adminInfo = null
         })
       },
-      setUserInfo(data) {
+      setAdminInfo(data) {
         set((d) => {
-          d.userInfo = {
-            ...d.userInfo,
-            ...(data as z.infer<typeof UserModel>),
+          d.adminInfo = {
+            ...d.adminInfo,
+            ...(data as AdminModel),
           }
         })
       },

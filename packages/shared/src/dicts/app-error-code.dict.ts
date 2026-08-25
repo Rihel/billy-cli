@@ -56,6 +56,31 @@ export const AppErrorCodes = createDict({
     value: 2001,
     http: 404,
   },
+  AdminNotFound: {
+    label: '管理员不存在',
+    value: 2002,
+    http: 404,
+  },
+  AdminEmailTaken: {
+    label: '管理员邮箱已被使用',
+    value: 2003,
+    http: 409,
+  },
+  AdminDisabled: {
+    label: '管理员已被禁用',
+    value: 2004,
+    http: 403,
+  },
+  InvalidAdminCredentials: {
+    label: '邮箱或密码错误',
+    value: 2005,
+    http: 401,
+  },
+  CannotRemoveSelf: {
+    label: '不能删除当前登录账号',
+    value: 2006,
+    http: 400,
+  },
   TodoNotFound: {
     label: 'Todo 不存在',
     value: 3001,

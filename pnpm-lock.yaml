@@ -8,6 +8,9 @@ importers:
 
   .:
     dependencies:
+      '@repo/core':
+        specifier: workspace:*
+        version: link:packages/core
       dayjs:
         specifier: ^1.11.21
         version: 1.11.21

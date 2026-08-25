@@ -14,7 +14,7 @@ apps/
 packages/
 ├── shared   — Zod schemas + 错误码字典 + 响应工具 + Pino 日志 + 通用工具（前后端共享）
 ├── db       — TypeORM 实体 + DataSource 连接 + 四种分页策略 + 迁移
-├── core     — InversifyJS 业务层：Config / Db / Redis / JWT / ObjectStorage + Auth / User / Todo
+├── core     — InversifyJS 业务层：Config / Db / Redis / JWT / ObjectStorage + Auth / Admin / User / Todo
 ├── sdk      — ApiClient + ServerClient（全类型化业务 API 调用）
 ├── ui       — Base UI + shadcn 风格共享组件库（Tailwind 4）
 └── aui      — Ant Design 管理端组件库（表格 / 表单 / 存储 / Server Action 工具）
@@ -171,7 +171,7 @@ pnpm docker:up
 ├── packages/
 │   ├── shared/                          # @repo/shared
 │   │   └── src/
-│   │       ├── schema/                  # Zod 共享 schema（auth / user / todo / object-storage）
+│   │       ├── schema/                  # Zod 共享 schema（auth / admin / user / todo / object-storage）
 │   │       ├── dicts/                   # app-error-code / user-type 错误码与字典
 │   │       ├── app-response.ts          # AppResponse 统一响应格式 + ResponseUtils
 │   │       ├── logger.ts                # Pino 日志（createLogger）
@@ -188,7 +188,7 @@ pnpm docker:up
 │   │   └── src/
 │   │       ├── runtime.ts               # appCore Container 组合根（initCore / startCore / stopCore）
 │   │       ├── life-cycle.ts            # OnAppStart / OnAppStop 生命周期接口
-│   │       ├── modules/                 # auth / user / todo（service + repository + errors）
+│   │       ├── modules/                 # auth / admin / user / todo（service + repository + errors）
 │   │       └── shared/                  # app-config / database / redis-store / object-storage /
 │   │                                    # token-signer / password-hasher / id-generation / logger
 │   ├── sdk/                             # @repo/sdk
@@ -214,8 +214,8 @@ pnpm docker:up
 
 `apps/server` 只做四件事：接收请求、Zod 校验、调用 core、映射错误。业务逻辑全部位于 `@repo/core`。
 
-- **组合根**：`app.ts` 创建 `Hono` 实例，挂载全局中间件（CORS、请求上下文、请求日志）与四组路由
-  （`/auth`、`/user`、`/todo`、`/storage`），统一 `notFound` 与 `onError`。
+- **组合根**：`app.ts` 创建 `Hono` 实例，挂载全局中间件（CORS、请求上下文、请求日志）与五组路由
+  （`/auth`、`/admin`、`/user`、`/todo`、`/storage`），统一 `notFound` 与 `onError`。
 - **错误映射**：`lib/http.ts` 将 core 抛出的错误（自带 `code` 数字）通过 `AppErrorCodes` 字典
   映射为 HTTP 状态码与中文文案，未知错误统一按系统错误（5001 / 500）处理。
 - **鉴权中间件**：`lib/authentication.ts` 的 `requireAuth` 从 `Authorization: Bearer` 或
@@ -240,15 +240,19 @@ pnpm docker:up
 ### apps/admin — Next.js 16 管理后台
 
 面向后台的管理应用，使用 **Ant Design 6 + @repo/aui**，适合表格 / 表单 / 权限类页面。
+登录使用**后台管理员**账号（`AdminEntity`，`/admin/*` 接口），与前台用户体系隔离。
 
-- 页面：`/auth/*`（登录 / 注册 / 忘记密码 / 重置密码）、`/main/dashboard`、`/main/todo`、
-  `/main/system/users`、`/main/user-center`
+- 页面：`/auth/login`（管理员登录）、`/main/dashboard`、`/main/todo`、
+  `/main/system/users`、`/main/system/admins`（管理员管理）、`/main/user-center`
 - 布局：`AppHeader` + `AppSider` + `AppMenu`，`main/layout.tsx` 标记 `force-dynamic`，
-  SSR 侧通过 cookie 调用 `getMe()` 做鉴权，失败 `redirect()` 到登录页
+  SSR 侧通过 cookie 调用 `admin.getMe()` 做鉴权，失败 `redirect()` 到登录页
 - 路由守卫：`proxy.ts` 中间件按 `PublicPaths` + cookie 重定向未登录 / 已登录用户
 - Server Actions：`@repo/aui/action` 的 `defineAction` / `callAction` 统一返回
   `{ ok, data } | { ok: false, error }` 结构，简化错误处理
-- 状态管理：Zustand + Immer（`auth.store` / `layout.store`），`main/layout.tsx` SSR 预取用户信息
+- 状态管理：Zustand + Immer（`auth.store` 保存 `adminInfo` / `layout.store`），
+  `main/layout.tsx` SSR 预取管理员信息
+- 首个管理员：`pnpm seed:admin`（默认 `admin@billy.local / admin123`，可用
+  `ADMIN_EMAIL` / `ADMIN_PASSWORD` 覆盖），随后可在「系统设置 → 管理员管理」中维护
 - 静态样式提取：`pnpm --filter @app/admin gen:antd-css` 生成 antd 静态 CSS
 
 ## Packages 详解
@@ -257,7 +261,7 @@ pnpm docker:up
 
 Zod schema 单一事实源，同时派生 TypeScript 类型（`*.schema.ts` 导出 `XxxModel` / `XxxDto`）：
 
-- `schema/`：auth / user / todo / object-storage / base（分页、游标基类）
+- `schema/`：auth / admin / user / todo / object-storage / base（分页、游标基类）
 - `dicts/app-error-code.dict.ts`：错误码字典（`value` + `http` + `label`），core 抛错、server 映射、
   前端文案共用同一份定义
 - `app-response.ts`：`AppResponse<T>` / `AppPageQueryResponse<T>` / `AppCursorQueryResponse<T>` 与
@@ -281,6 +285,8 @@ Feature-first 结构，所有能力与业务服务均为 `@injectable()` class�
 ```
 modules/
 ├── auth/         # auth.service.ts（register/login/forgot/reset/change-password/getMe/verifyToken）+ errors
+├── admin/        # admin.service.ts（后台管理员 login/getMe/CRUD/resetPassword/changePassword/verifyToken）
+│                 #   + admin.repository.ts + errors；token 带 type='admin'，与前台用户隔离
 ├── user/         # user.service.ts + user.repository.ts + errors
 └── todo/         # todo.service.ts + todo.repository.ts + errors
 shared/
@@ -405,8 +411,10 @@ sidebar / toast / chart 等），Tailwind 4 主题变量由 `globals.css` 提供
 ### 认证
 
 - JWT token，通过 `Authorization: Bearer` 或 `access-token` cookie 传递
-- Hono `requireAuth` 中间件调用 core `verifyToken`，把 `userId` 注入请求上下文
-- 公开接口（注册 / 登录 / 忘记密码 / 重置密码）不加 Guard
+- Hono `requireAuth` 中间件调用 core `verifyToken`，把 `userId` 注入请求上下文；
+  `requireAdminAuth` 校验管理员 token（payload 带 `type: 'admin'`），把 `adminId` 注入请求上下文
+- 两类 token 严格隔离：用户 token 只能访问用户接口，管理员 token 只能访问 `/admin/*` 接口
+- 公开接口（注册 / 登录 / 管理员登录 / 忘记密码 / 重置密码）不加 Guard
 - Admin SSR 侧：`main/layout.tsx` 用 cookie 调 `getMe()`，失败 `redirect()`；`proxy.ts`
   中间件做首屏路由守卫
 - Web 侧：`onUnauthorized` 回调 + Server Actions 返回 `ActionResult` 结构
@@ -437,6 +445,16 @@ sidebar / toast / chart 等），Tailwind 4 主题变量由 `globals.css` 提供
 | `POST /auth/get-me`                  | 获取当前用户     | 是   |
 | `POST /auth/update-info`             | 更新个人信息     | 是   |
 | `POST /auth/change-password`         | 修改密码         | 是   |
+| `POST /admin/login`                  | 管理员登录       | 否   |
+| `POST /admin/get-me`                 | 获取当前管理员   | 是*  |
+| `POST /admin/update-info`            | 更新个人信息     | 是*  |
+| `POST /admin/change-password`        | 修改密码         | 是*  |
+| `POST /admin/create`                 | 创建管理员       | 是*  |
+| `POST /admin/page-query`             | 管理员分页查询   | 是*  |
+| `POST /admin/detail`                 | 管理员详情       | 是*  |
+| `POST /admin/update`                 | 更新管理员       | 是*  |
+| `POST /admin/remove`                 | 删除管理员       | 是*  |
+| `POST /admin/reset-password`         | 重置管理员密码   | 是*  |
 | `POST /user/create`                  | 创建用户         | 是   |
 | `POST /user/page-query`              | 用户分页查询     | 是   |
 | `POST /user/detail`                  | 用户详情         | 是   |
@@ -509,6 +527,7 @@ pnpm cli --help     # 查看参数
 | `pnpm start:web`    | 启动生产 Web                            |
 | `pnpm db:gen <name>`| 生成 TypeORM 迁移（写入 `migrations/`） |
 | `pnpm db:migrate`   | 执行 TypeORM 迁移                       |
+| `pnpm seed:admin`   | 初始化第一个后台管理员（`admin@billy.local / admin123`，可用环境变量覆盖） |
 | `pnpm docker:up`    | `docker compose up -d --build`          |
 | `pnpm clean`        | 清理 node_modules / dist / 缓存         |
 

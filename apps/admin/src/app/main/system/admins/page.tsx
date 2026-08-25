@@ -1,0 +1,369 @@
+'use client'
+
+import { formatStorageUrl } from '@/lib/constants'
+import { useServerClient } from '@/lib/server-client'
+import { EditOutlined, LockOutlined, PlusOutlined } from '@ant-design/icons'
+import { App, Avatar, Form, Input, Select, Switch, Tag } from 'antd'
+import { useMutation, useQuery } from '@tanstack/react-query'
+import { useState } from 'react'
+import type { TableColumnsType } from 'antd'
+import {
+  ConfirmAction,
+  DataTable,
+  DisplayValue,
+  EmptyValue,
+  IconText,
+  ImageUpload,
+  ModalForm,
+  RefreshButton,
+  TableActions,
+  useDisclosure,
+} from '@repo/aui'
+import type { AdminModel } from '@repo/shared'
+
+type CreateAdminForm = {
+  email: string
+  password: string
+  realName?: string
+  avatar?: string
+}
+
+type EditAdminForm = {
+  email: string
+  realName?: string | null
+  avatar?: string | null
+  status: 'enabled' | 'disabled'
+}
+
+type ResetPasswordForm = {
+  password: string
+  confirmPassword: string
+}
+
+export default function AdminsPage() {
+  const { message } = App.useApp()
+  const client = useServerClient()
+  const [page, setPage] = useState(1)
+  const [pageSize, setPageSize] = useState(10)
+  const [keyword, setKeyword] = useState<string | undefined>()
+  const [status, setStatus] = useState<'enabled' | 'disabled' | undefined>()
+  const createDialog = useDisclosure()
+  const editDialog = useDisclosure<AdminModel>()
+  const resetPasswordDialog = useDisclosure<AdminModel>()
+  const [createForm] = Form.useForm<CreateAdminForm>()
+  const [editForm] = Form.useForm<EditAdminForm>()
+  const [resetPwdForm] = Form.useForm<ResetPasswordForm>()
+
+  const { data, isFetching, refetch } = useQuery({
+    queryKey: [
+      'admin',
+      'findMany',
+      { page, pageSize, keyword, status, orderBy: 'createdAt', order: 'desc' },
+    ],
+    queryFn: () =>
+      client.admin.pageQuery({
+        page,
+        size: pageSize,
+        keyword,
+        status,
+        orderBy: 'createdAt',
+        order: 'desc',
+      }),
+  })
+
+  const removeMutation = useMutation({
+    mutationFn: (input: { adminId: string }) => client.admin.remove(input),
+    onSuccess() {
+      refetch()
+      message.success('删除成功')
+    },
+  })
+
+  const statusMutation = useMutation({
+    mutationFn: (input: { adminId: string; status: 'enabled' | 'disabled' }) =>
+      client.admin.update(input),
+    onSuccess() {
+      refetch()
+    },
+  })
+
+  const columns: TableColumnsType<AdminModel> = [
+    {
+      title: '头像',
+      dataIndex: 'avatar',
+      width: 72,
+      render: (avatar: string | null) => (
+        <Avatar src={avatar ? formatStorageUrl(avatar) : undefined} />
+      ),
+    },
+    {
+      title: '邮箱',
+      dataIndex: 'email',
+    },
+    {
+      title: '姓名',
+      dataIndex: 'realName',
+      render: (_, { realName }) => (
+        <EmptyValue value={realName} emptyText={<Tag>未设置</Tag>}>
+          {realName}
+        </EmptyValue>
+      ),
+    },
+    {
+      title: '状态',
+      dataIndex: 'status',
+      width: 120,
+      render: (value: AdminModel['status'], record) => (
+        <Switch
+          checked={value === 'enabled'}
+          checkedChildren="启用"
+          unCheckedChildren="禁用"
+          loading={statusMutation.isPending}
+          onChange={(checked) => {
+            statusMutation.mutate(
+              { adminId: record.id, status: checked ? 'enabled' : 'disabled' },
+              {
+                onSuccess: () => message.success(checked ? '已启用' : '已禁用'),
+                onError: () => message.error('操作失败'),
+              },
+            )
+          }}
+        />
+      ),
+    },
+    {
+      title: '创建时间',
+      dataIndex: 'createdAt',
+      width: 180,
+      render: (value) => <DisplayValue type="date" value={value} />,
+    },
+    {
+      title: '操作',
+      width: 200,
+      render: (_, record) => (
+        <TableActions>
+          <IconText
+            icon={EditOutlined}
+            size="small"
+            type="primary"
+            onClick={() => {
+              editForm.setFieldsValue(record)
+              editDialog.open(record)
+            }}
+          >
+            编辑
+          </IconText>
+          <IconText
+            icon={LockOutlined}
+            size="small"
+            type="primary"
+            onClick={() => resetPasswordDialog.open(record)}
+          >
+            重置密码
+          </IconText>
+          <ConfirmAction
+            title="确认删除该管理员？"
+            onConfirm={() => removeMutation.mutate({ adminId: record.id })}
+            danger
+          >
+            删除
+          </ConfirmAction>
+        </TableActions>
+      ),
+    },
+  ]
+
+  return (
+    <div className="w-full h-full bg-white p-5">
+      <DataTable<AdminModel>
+        title="管理员管理"
+        toolbar={
+          <>
+            <RefreshButton
+              loading={isFetching}
+              onClick={() => void refetch()}
+            />
+            <Input.Search
+              placeholder="搜索邮箱..."
+              allowClear
+              style={{ width: 200 }}
+              onSearch={(v) => {
+                setKeyword(v || undefined)
+                setPage(1)
+              }}
+            />
+            <Select
+              allowClear
+              placeholder="状态"
+              style={{ width: 120 }}
+              value={status}
+              options={[
+                { label: '启用', value: 'enabled' },
+                { label: '禁用', value: 'disabled' },
+              ]}
+              onChange={(v) => {
+                setStatus(v)
+                setPage(1)
+              }}
+            />
+            <IconText
+              type="primary"
+              icon={PlusOutlined}
+              onClick={() => createDialog.open()}
+            >
+              新建管理员
+            </IconText>
+          </>
+        }
+        rowKey="id"
+        loading={isFetching}
+        columns={columns}
+        dataSource={data?.items}
+        page={page}
+        pageSize={pageSize}
+        total={data?.total}
+        onPageChange={(nextPage, nextPageSize) => {
+          setPage(nextPage)
+          setPageSize(nextPageSize)
+        }}
+      />
+
+      {/* 新建管理员 */}
+      <ModalForm<CreateAdminForm>
+        title="新建管理员"
+        open={createDialog.isOpen}
+        form={createForm}
+        items={[
+          {
+            name: 'email',
+            label: '邮箱',
+            formItemProps: {
+              rules: [{ required: true }, { type: 'email' }],
+            },
+          },
+          { name: 'realName', label: '姓名' },
+          {
+            name: 'avatar',
+            label: '头像',
+            render: () => <ImageUpload sizeLimit={2} className="w-28 h-28" />,
+          },
+          {
+            name: 'password',
+            label: '初始密码',
+            widget: 'password',
+            formItemProps: {
+              rules: [{ required: true }, { min: 6, message: '至少 6 位' }],
+            },
+          },
+        ]}
+        onCancel={createDialog.close}
+        onError={(error) =>
+          message.error(error instanceof Error ? error.message : '创建失败')
+        }
+        onSubmit={async (values) => {
+          await client.admin.create(values)
+          message.success('创建成功')
+          refetch()
+          createDialog.close()
+        }}
+      />
+
+      {/* 编辑管理员 */}
+      <ModalForm<EditAdminForm>
+        title="编辑管理员"
+        open={editDialog.isOpen}
+        form={editForm}
+        items={[
+          {
+            name: 'email',
+            label: '邮箱',
+            disabled: true,
+            props: { readOnly: true },
+          },
+          { name: 'realName', label: '姓名' },
+          {
+            name: 'avatar',
+            label: '头像',
+            render: () => <ImageUpload sizeLimit={2} className="w-28 h-28" />,
+          },
+          {
+            name: 'status',
+            label: '状态',
+            widget: 'select',
+            props: {
+              options: [
+                { label: '启用', value: 'enabled' },
+                { label: '禁用', value: 'disabled' },
+              ],
+            },
+          },
+        ]}
+        onCancel={editDialog.close}
+        onError={(error) =>
+          message.error(error instanceof Error ? error.message : '更新失败')
+        }
+        onSubmit={async (values) => {
+          if (!editDialog.data) return
+          await client.admin.update({
+            adminId: editDialog.data.id,
+            realName: values.realName,
+            avatar: values.avatar,
+            status: values.status,
+          })
+          message.success('更新成功')
+          refetch()
+          editDialog.close()
+        }}
+      />
+
+      {/* 重置密码 */}
+      <ModalForm<ResetPasswordForm>
+        title={`重置密码 — ${resetPasswordDialog.data?.email ?? ''}`}
+        open={resetPasswordDialog.isOpen}
+        form={resetPwdForm}
+        items={[
+          {
+            name: 'password',
+            label: '新密码',
+            widget: 'password',
+            formItemProps: {
+              rules: [{ required: true }, { min: 6, message: '至少 6 位' }],
+            },
+          },
+          {
+            name: 'confirmPassword',
+            label: '确认密码',
+            widget: 'password',
+            formItemProps: {
+              dependencies: ['password'],
+              rules: [
+                { required: true },
+                ({ getFieldValue }) => ({
+                  validator(_, value) {
+                    if (!value || getFieldValue('password') === value)
+                      return Promise.resolve()
+                    return Promise.reject(new Error('两次密码不一致'))
+                  },
+                }),
+              ],
+            },
+          },
+        ]}
+        onCancel={resetPasswordDialog.close}
+        modalProps={{ okButtonProps: { danger: true } }}
+        onError={(error) =>
+          message.error(error instanceof Error ? error.message : '重置失败')
+        }
+        onSubmit={async (values) => {
+          if (!resetPasswordDialog.data) return
+          await client.admin.resetPassword({
+            adminId: resetPasswordDialog.data.id,
+            password: values.password,
+          })
+          message.success('密码重置成功')
+          resetPasswordDialog.close()
+        }}
+      />
+    </div>
+  )
+}

@@ -1,13 +1,17 @@
 'use client'
 
-import { saveToken } from '@/lib/server-client'
-import { loginAction } from '@/actions/auth.actions'
+import { removeToken, saveToken } from '@/lib/server-client'
+import {
+  checkSessionAction,
+  loginAction,
+  logoutAction,
+} from '@/actions/auth.actions'
 import { LoginOutlined } from '@ant-design/icons'
 import { FormRenderer } from '@repo/aui'
 import { callAction } from '@repo/aui/action'
-import { App, Button, Form, Typography } from 'antd'
+import { App, Button, Form, Spin, Typography } from 'antd'
 import { useRouter } from 'next/navigation'
-import Link from 'next/link'
+import { useEffect, useState } from 'react'
 import { AppName, Pages } from '@/lib/constants'
 
 type LoginForm = {
@@ -19,6 +23,39 @@ export default function LoginPage() {
   const { message } = App.useApp()
   const router = useRouter()
   const [form] = Form.useForm<LoginForm>()
+  const [checking, setChecking] = useState(true)
+
+  // 挂载时探测会话：有效 token → 直接进入主界面；失效 token → 清理 cookie，避免循环跳转
+  useEffect(() => {
+    let cancelled = false
+    void callAction(checkSessionAction, undefined, {
+      onSuccess: (ok) => {
+        if (cancelled) return
+        if (ok) {
+          router.replace(Pages.dashboard)
+          return
+        }
+        setChecking(false)
+      },
+      onError: async () => {
+        if (cancelled) return
+        await logoutAction()
+        await removeToken()
+        setChecking(false)
+      },
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [router])
+
+  if (checking) {
+    return (
+      <div className="flex items-center justify-center py-24">
+        <Spin size="large" />
+      </div>
+    )
+  }
 
   return (
     <>
@@ -81,10 +118,6 @@ export default function LoginPage() {
         >
           登录
         </Button>
-        <div className="flex justify-between text-sm">
-          <Link href={Pages.register}>没有账号？去注册</Link>
-          <Link href={Pages.forgotPassword}>忘记密码？</Link>
-        </div>
       </FormRenderer>
     </>
   )

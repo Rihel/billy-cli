@@ -9,6 +9,7 @@ import {
   requestContext,
 } from './lib/request-context.js';
 import { requestLogger } from './lib/request-logger.js';
+import { makeAdminRoutes } from './features/admin.js';
 import { makeAuthRoutes } from './features/auth.js';
 import { makeStorageRoutes } from './features/storage.js';
 import { makeTodoRoutes } from './features/todo.js';
@@ -30,6 +31,7 @@ export const makeApp = () => {
     requestLogger,
   );
   app.route('/auth', makeAuthRoutes());
+  app.route('/admin', makeAdminRoutes());
   app.route('/user', makeUserRoutes());
   app.route('/todo', makeTodoRoutes());
   app.route('/storage', makeStorageRoutes());

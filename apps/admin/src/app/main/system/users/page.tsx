@@ -19,7 +19,7 @@ import {
   TableActions,
   useDisclosure,
 } from '@repo/aui'
-import type { SafeUser } from '@repo/sdk'
+import type { UserModel } from '@repo/shared'
 
 type CreateUserForm = {
   email: string
@@ -46,8 +46,8 @@ export default function UsersPage() {
   const [pageSize, setPageSize] = useState(10)
   const [keyword, setKeyword] = useState<string | undefined>()
   const createDialog = useDisclosure()
-  const editDialog = useDisclosure<SafeUser>()
-  const resetPasswordDialog = useDisclosure<SafeUser>()
+  const editDialog = useDisclosure<UserModel>()
+  const resetPasswordDialog = useDisclosure<UserModel>()
   const [createForm] = Form.useForm<CreateUserForm>()
   const [editForm] = Form.useForm<EditUserForm>()
   const [resetPwdForm] = Form.useForm<ResetPasswordForm>()
@@ -76,7 +76,7 @@ export default function UsersPage() {
     },
   })
 
-  const columns: TableColumnsType<SafeUser> = [
+  const columns: TableColumnsType<UserModel> = [
     {
       title: '头像',
       dataIndex: 'avatar',
@@ -142,7 +142,7 @@ export default function UsersPage() {
 
   return (
     <div className="w-full h-full bg-white p-5">
-      <DataTable<SafeUser>
+      <DataTable<UserModel>
         title="用户管理"
         toolbar={
           <>

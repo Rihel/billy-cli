@@ -33,3 +33,17 @@ ALTER TABLE "todos"
 ALTER TABLE "users"
   ALTER COLUMN "created_at" TYPE timestamp(3),
   ALTER COLUMN "updated_at" TYPE timestamp(3);
+
+CREATE TABLE IF NOT EXISTS "admins" (
+  "id"         varchar      PRIMARY KEY,
+  "created_at" timestamp(3) DEFAULT now() NOT NULL,
+  "updated_at" timestamp(3) DEFAULT now() NOT NULL,
+  "deleted_at" timestamp(3),
+  "email"      text         NOT NULL,
+  "password"   text         NOT NULL,
+  "real_name"  text,
+  "avatar"     text,
+  "status"     varchar(20)  DEFAULT 'enabled' NOT NULL
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS "uk_admin_email" ON "admins" ("email", "deleted_at");

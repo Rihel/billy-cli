@@ -33,6 +33,7 @@ export const RemoveUserResultSchema = z.object({
 export type RemoveUserResultModel = z.infer<typeof RemoveUserResultSchema>
 
 export const UpdateUserSchema = UserIdSchema.extend({
+  realName: z.string().nullable().optional(),
   avatar: z.string().nullable().optional(),
 })
 export type UpdateUserDto = z.infer<typeof UpdateUserSchema>

@@ -5,7 +5,7 @@ import { UserStatus } from '@repo/shared'
 @Entity('admins')
 @Unique('uk_admin_email', ['email', 'deletedAt'])
 export class AdminEntity extends BaseEntity {
-  @Column({ name: 'email', type: 'text', unique: true })
+  @Column({ name: 'email', type: 'text' })
   email!: string
 
   @Column({ name: 'password', type: 'text' })

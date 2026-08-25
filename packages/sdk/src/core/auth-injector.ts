@@ -43,7 +43,9 @@ export class AuthInjector<Credentials = Record<string, any>> {
         ...config.params,
         ...(ctx.query || {}),
       },
-      data: ctx.body ? { ...config.data, ...ctx.body } : config.data,
+      data: ctx.body
+        ? ({ ...config.data, ...ctx.body } as Body)
+        : config.data,
     }
   }
 }

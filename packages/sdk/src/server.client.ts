@@ -1,23 +1,32 @@
 import {
+  AdminAuthResultModel,
+  AdminLoginDto,
+  AdminModel,
+  AdminUpdateInfoDto,
   AppCursorQueryResponse,
   AppPageQueryResponse,
   AuthResultModel,
   AuthUserModel,
   ChangePasswordDto,
+  CreateAdminDto,
   CreateTodoDto,
   CreateUserDto,
   CursorQueryTodoDto,
   ForgotPasswordDto,
+  GetAdminDetailDto,
   GetDetailTodoDto,
   GetStorageDownloadUrlDto,
   GetStorageUploadPresignedUrlDto,
   GetUserDetailDto,
   LoginDto,
+  PageQueryAdminDto,
   PageQueryTodoDto,
   PageQueryUserDto,
   RegisterDto,
+  RemoveAdminDto,
   RemoveTodoDto,
   RemoveUserDto,
+  ResetAdminPasswordDto,
   ResetPasswordDto,
   ResetUserPasswordDto,
   StoragePresignedUrlModel,
@@ -25,6 +34,7 @@ import {
   SuccessResultModel,
   TodoCursorModel,
   TodoModel,
+  UpdateAdminDto,
   UpdateInfoDto,
   UpdateTodoDto,
   UpdateUserDto,
@@ -78,6 +88,51 @@ export class ServerClient extends ApiClient<BearerTokenCredentials> {
     /** 需要 token */
     changePassword: (data: ChangePasswordDto) =>
       this.post<SuccessResultModel>('/auth/change-password', data),
+  }
+
+  /* ========== 后台管理员 ========== */
+
+  admin = {
+    /** 无需 token */
+    login: (data: AdminLoginDto) =>
+      this.post<AdminAuthResultModel>('/admin/login', data, {
+        skipAuth: true,
+      }),
+
+    /** 需要管理员 token */
+    getMe: () => this.post<AdminModel>('/admin/get-me'),
+
+    /** 需要管理员 token：更新个人信息 */
+    updateInfo: (data: AdminUpdateInfoDto) =>
+      this.post<AdminModel>('/admin/update-info', data),
+
+    /** 需要管理员 token：修改自己的密码 */
+    changePassword: (data: ChangePasswordDto) =>
+      this.post<SuccessResultModel>('/admin/change-password', data),
+
+    /** 需要管理员 token：创建管理员 */
+    create: (data: CreateAdminDto) =>
+      this.post<AdminModel>('/admin/create', data),
+
+    /** 需要管理员 token：管理员分页查询 */
+    pageQuery: (data: PageQueryAdminDto) =>
+      this.post<AppPageQueryResponse<AdminModel>>('/admin/page-query', data),
+
+    /** 需要管理员 token：管理员详情 */
+    detail: (data: GetAdminDetailDto) =>
+      this.post<AdminModel>('/admin/detail', data),
+
+    /** 需要管理员 token：更新管理员 */
+    update: (data: UpdateAdminDto) =>
+      this.post<AdminModel>('/admin/update', data),
+
+    /** 需要管理员 token：删除管理员（不能删除自己） */
+    remove: (data: RemoveAdminDto) =>
+      this.post<SuccessResultModel>('/admin/remove', data),
+
+    /** 需要管理员 token：重置管理员密码 */
+    resetPassword: (data: ResetAdminPasswordDto) =>
+      this.post<SuccessResultModel>('/admin/reset-password', data),
   }
 
   /* ========== 待办事项 ========== */
