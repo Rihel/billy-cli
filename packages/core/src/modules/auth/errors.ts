@@ -43,6 +43,13 @@ export class PasswordUnchangedError extends AppError {
   }
 }
 
+export class UserDisabledError extends AppError {
+  readonly code = AppErrorCodes.UserDisabled
+  constructor(readonly email?: string) {
+    super(`User disabled${email ? `: ${email}` : ''}`)
+  }
+}
+
 export class InvalidTokenError extends AppError {
   readonly code = AppErrorCodes.TokenInvalid
   constructor() {

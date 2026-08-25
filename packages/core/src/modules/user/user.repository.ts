@@ -12,9 +12,13 @@ export const toUser = (record: UserEntity): UserModel => {
     resetPasswordToken: _resetPasswordToken,
     resetPasswordTokenExpiry: _resetPasswordTokenExpiry,
     deletedAt: _deletedAt,
+    status,
     ...user
   } = record
-  return user
+  return {
+    ...user,
+    status: status as UserModel['status'],
+  }
 }
 
 @Injectable()
@@ -65,7 +69,7 @@ export class UserRepository {
   }
 
   async page(query: PageQueryUserDto): Promise<PageQueryResult<UserModel>> {
-    const { page, size, keyword, orderBy = 'createdAt', order = 'desc' } = query
+    const { page, size, keyword, status, orderBy = 'createdAt', order = 'desc' } = query
     const repo = await this.repo()
     const builder = repo.createQueryBuilder('u')
     if (keyword) {
@@ -76,6 +80,9 @@ export class UserRepository {
           }).orWhere('u.realName ILIKE :keyword', { keyword: `%${keyword}%` })
         }),
       )
+    }
+    if (status) {
+      builder.andWhere('u.status = :status', { status })
     }
     builder.orderBy(`u.${orderBy}`, order === 'asc' ? 'ASC' : 'DESC')
     const { data, total } = await pageWith(builder, page, size)

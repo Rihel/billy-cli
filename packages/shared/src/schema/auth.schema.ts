@@ -1,10 +1,12 @@
 import { z } from 'zod'
 import { BaseModel } from './base.schema'
+import { UserStatusSchema } from './user.schema'
 
 export const AuthUserSchema = BaseModel.extend({
   email: z.email(),
   realName: z.string().nullable().optional(),
   avatar: z.string().nullable().optional(),
+  status: UserStatusSchema,
 })
 export type AuthUserModel = z.infer<typeof AuthUserSchema>
 

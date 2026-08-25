@@ -84,7 +84,7 @@ export default function LoginPage() {
             <div className="flex items-center justify-between">
               <FieldLabel htmlFor="password">密码</FieldLabel>
               <Link
-                href="#"
+                href={Pages.forgotPassword}
                 className="text-xs text-muted-foreground underline underline-offset-4 hover:text-foreground transition-colors"
                 tabIndex={-1}
               >

@@ -64,3 +64,26 @@ export const registerAction = wrapAction(
     return data
   },
 )
+
+export const forgotPasswordAction = wrapAction(async (input: { email: string }) => {
+  const client = createServerClient()
+  return client.auth.forgotPassword(input)
+})
+
+export const resetPasswordAction = wrapAction(
+  async (input: { token: string; password: string }) => {
+    const client = createServerClient()
+    return client.auth.resetPassword(input)
+  },
+)
+
+/** 登出：撤销服务端会话（幂等）+ 清理 httpOnly cookie */
+export const logoutAction = wrapAction(async () => {
+  const jar = await cookies()
+  const token = jar.get(TokenKey)?.value
+  if (token) {
+    const client = createServerClient(token)
+    await client.auth.logout()
+  }
+  jar.delete(TokenKey)
+})

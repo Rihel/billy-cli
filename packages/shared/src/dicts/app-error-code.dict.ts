@@ -81,6 +81,11 @@ export const AppErrorCodes = createDict({
     value: 2006,
     http: 400,
   },
+  UserDisabled: {
+    label: '用户已被禁用',
+    value: 2007,
+    http: 403,
+  },
   TodoNotFound: {
     label: 'Todo 不存在',
     value: 3001,

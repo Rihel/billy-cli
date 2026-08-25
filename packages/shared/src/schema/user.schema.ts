@@ -1,12 +1,15 @@
 import { z } from 'zod'
 import { BaseModel, BasePaginateDto } from './base.schema'
 
+/** 用户状态：与 UserStatus 字典保持一致 */
+export const UserStatusSchema = z.enum(['enabled', 'disabled'])
+
 export const UserSchema = BaseModel.extend({
   email: z.email(),
   realName: z.string().nullable(),
   avatar: z.string().nullable(),
+  status: UserStatusSchema,
 })
-
 export type UserModel = z.infer<typeof UserSchema>
 
 export const UserIdSchema = z.object({
@@ -18,6 +21,7 @@ export const CreateUserSchema = z.object({
   password: z.string().min(6),
   realName: z.string().optional(),
   avatar: z.string().nullable().optional(),
+  status: UserStatusSchema.optional(),
 })
 export type CreateUserDto = z.infer<typeof CreateUserSchema>
 
@@ -35,6 +39,7 @@ export type RemoveUserResultModel = z.infer<typeof RemoveUserResultSchema>
 export const UpdateUserSchema = UserIdSchema.extend({
   realName: z.string().nullable().optional(),
   avatar: z.string().nullable().optional(),
+  status: UserStatusSchema.optional(),
 })
 export type UpdateUserDto = z.infer<typeof UpdateUserSchema>
 
@@ -45,6 +50,7 @@ export type ResetUserPasswordDto = z.infer<typeof ResetUserPasswordSchema>
 
 export const PageQueryUserDto = BasePaginateDto.extend({
   keyword: z.string().optional(),
+  status: UserStatusSchema.optional(),
   orderBy: z
     .enum(['createdAt', 'updatedAt', 'email'])
     .optional()

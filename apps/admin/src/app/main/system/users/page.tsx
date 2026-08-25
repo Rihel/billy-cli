@@ -3,7 +3,7 @@
 import { formatStorageUrl } from '@/lib/constants'
 import { useServerClient } from '@/lib/server-client'
 import { EditOutlined, LockOutlined, PlusOutlined } from '@ant-design/icons'
-import { App, Avatar, Form, Input, Tag } from 'antd'
+import { App, Avatar, Form, Input, Select, Switch, Tag } from 'antd'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
 import type { TableColumnsType } from 'antd'
@@ -32,6 +32,7 @@ type EditUserForm = {
   email: string
   realName?: string | null
   avatar?: string | null
+  status: 'enabled' | 'disabled'
 }
 
 type ResetPasswordForm = {
@@ -45,6 +46,7 @@ export default function UsersPage() {
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(10)
   const [keyword, setKeyword] = useState<string | undefined>()
+  const [status, setStatus] = useState<'enabled' | 'disabled' | undefined>()
   const createDialog = useDisclosure()
   const editDialog = useDisclosure<UserModel>()
   const resetPasswordDialog = useDisclosure<UserModel>()
@@ -56,13 +58,14 @@ export default function UsersPage() {
     queryKey: [
       'user',
       'findMany',
-      { page, pageSize, keyword, orderBy: 'createdAt', order: 'desc' },
+      { page, pageSize, keyword, status, orderBy: 'createdAt', order: 'desc' },
     ],
     queryFn: () =>
       client.user.pageQuery({
         page,
         size: pageSize,
         keyword,
+        status,
         orderBy: 'createdAt',
         order: 'desc',
       }),
@@ -73,6 +76,14 @@ export default function UsersPage() {
     onSuccess() {
       refetch()
       message.success('删除成功')
+    },
+  })
+
+  const statusMutation = useMutation({
+    mutationFn: (input: { userId: string; status: 'enabled' | 'disabled' }) =>
+      client.user.update(input),
+    onSuccess() {
+      refetch()
     },
   })
 
@@ -96,6 +107,28 @@ export default function UsersPage() {
         <EmptyValue value={realName} emptyText={<Tag>未设置</Tag>}>
           {realName}
         </EmptyValue>
+      ),
+    },
+    {
+      title: '状态',
+      dataIndex: 'status',
+      width: 120,
+      render: (value: UserModel['status'], record) => (
+        <Switch
+          checked={value === 'enabled'}
+          checkedChildren="启用"
+          unCheckedChildren="禁用"
+          loading={statusMutation.isPending}
+          onChange={(checked) => {
+            statusMutation.mutate(
+              { userId: record.id, status: checked ? 'enabled' : 'disabled' },
+              {
+                onSuccess: () => message.success(checked ? '已启用' : '已禁用'),
+                onError: () => message.error('操作失败'),
+              },
+            )
+          }}
+        />
       ),
     },
     {
@@ -156,6 +189,20 @@ export default function UsersPage() {
               style={{ width: 200 }}
               onSearch={(v) => {
                 setKeyword(v || undefined)
+                setPage(1)
+              }}
+            />
+            <Select
+              allowClear
+              placeholder="状态"
+              style={{ width: 120 }}
+              value={status}
+              options={[
+                { label: '启用', value: 'enabled' },
+                { label: '禁用', value: 'disabled' },
+              ]}
+              onChange={(v) => {
+                setStatus(v)
                 setPage(1)
               }}
             />
@@ -239,6 +286,17 @@ export default function UsersPage() {
             label: '头像',
             render: () => <ImageUpload sizeLimit={2} className="w-28 h-28" />,
           },
+          {
+            name: 'status',
+            label: '状态',
+            widget: 'select',
+            props: {
+              options: [
+                { label: '启用', value: 'enabled' },
+                { label: '禁用', value: 'disabled' },
+              ],
+            },
+          },
         ]}
         onCancel={editDialog.close}
         onError={(error) =>
@@ -250,6 +308,7 @@ export default function UsersPage() {
             userId: editDialog.data.id,
             realName: values.realName,
             avatar: values.avatar,
+            status: values.status,
           })
           message.success('更新成功')
           refetch()
