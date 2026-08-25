@@ -29,10 +29,9 @@ description: Billy 工程（billy-cli monorepo）开发必读 skill。任何在�
 
 ## 分层铁律
 
-依赖方向不可逆：`shared` 不依赖业务包；`core` 不 import `apps/*`；
-`apps/server` 不写业务逻辑。新增功能按依赖方向自底向上落代码。
-分层架构图、技术栈、一次请求数据流见
-[references/architecture.md](./references/architecture.md)。
+依赖方向不可逆：`shared` 不依赖业务包；`core` 不 import `apps/*`；`apps/server`
+不写业务逻辑。新增功能按依赖方向自底向上落代码（架构图 / 技术栈 / 数据流见
+[references/architecture.md](./references/architecture.md)）。
 
 ## 参考文件（本 skill 的组成部分）
 
@@ -56,4 +55,6 @@ description: Billy 工程（billy-cli monorepo）开发必读 skill。任何在�
 - [ ] 相对导入后缀与所在包既有风格一致；纯类型用 `import type`
 - [ ] 改动触及 skill 提到的包 / 组件 / 命令时，已按 `manage-skills` 的「代码变更后的 skill 同步」更新相关 skill
 - [ ] 未重复造轮子：已按「实现查找顺序」确认无现成实现
+- [ ] 已把本次开发记录追加到 `docs/dev-logs/yyyy-MM-dd.md`（单次 ≤500 字符）
+- [ ] 输出文案 / 程序日志 / 注释 / 文档均为简体中文
 - [ ] `pnpm dev:pkgs` 与目标 app 类型检查通过
