@@ -3,7 +3,7 @@
 import { cookies } from 'next/headers'
 import { createServerClient } from '@/lib/server-client'
 import { TokenKey } from '@/lib/constants'
-import { ApiError } from '@repo/sdk'
+import { ApiError } from '@repo/api-client'
 
 const COOKIE_MAX_AGE = 7 * 24 * 60 * 60
 

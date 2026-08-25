@@ -9,9 +9,9 @@ import {
 import { LoginOutlined } from '@ant-design/icons'
 import { FormRenderer } from '@repo/aui'
 import { callAction } from '@repo/aui/action'
-import { App, Button, Form, Spin, Typography } from 'antd'
-import { useRouter } from 'next/navigation'
-import { useEffect, useState } from 'react'
+import { Alert, App, Button, Form, Spin, Typography } from 'antd'
+import { useRouter, useSearchParams } from 'next/navigation'
+import { Suspense, useEffect, useState } from 'react'
 import { AppName, Pages } from '@/lib/constants'
 
 type LoginForm = {
@@ -19,11 +19,15 @@ type LoginForm = {
   password: string
 }
 
-export default function LoginPage() {
+function LoginForm() {
   const { message } = App.useApp()
   const router = useRouter()
+  const searchParams = useSearchParams()
   const [form] = Form.useForm<LoginForm>()
   const [checking, setChecking] = useState(true)
+
+  // 从 ?reason=expired 判断是否为会话过期后跳回
+  const expired = searchParams.get('reason') === 'expired'
 
   // 挂载时探测会话：有效 token → 直接进入主界面；失效 token → 清理 cookie，避免循环跳转
   useEffect(() => {
@@ -65,6 +69,14 @@ export default function LoginPage() {
         </Typography.Title>
         <Typography.Text type="secondary">欢迎登录</Typography.Text>
       </div>
+      {expired ? (
+        <Alert
+          type="warning"
+          showIcon
+          message="登录已过期，请重新登录"
+          className="mb-4"
+        />
+      ) : null}
       <FormRenderer<LoginForm>
         form={form}
         items={[
@@ -120,5 +132,19 @@ export default function LoginPage() {
         </Button>
       </FormRenderer>
     </>
+  )
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex items-center justify-center py-24">
+          <Spin size="large" />
+        </div>
+      }
+    >
+      <LoginForm />
+    </Suspense>
   )
 }

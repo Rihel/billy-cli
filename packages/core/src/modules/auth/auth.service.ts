@@ -11,12 +11,12 @@ import type {
   SuccessResultModel,
   UpdateInfoDto,
 } from '@repo/shared'
-import { inject, injectable } from 'inversify'
-import { AppConfig } from '../../shared/app-config.js'
+import { Inject, Injectable } from '../../composition/di.js'
+import { AppConfig } from '../../foundation/app-config.js'
 import type { AppLogger } from '@repo/shared/logger'
-import { Logger } from '../../shared/logger.decorator.js'
-import { PasswordHasher } from '../../shared/password-hasher.js'
-import { TokenSigner } from '../../shared/token-signer.js'
+import { Logger } from '../../foundation/logger.js'
+import { PasswordHasher } from '../../infrastructure/password-hasher.js'
+import { TokenSigner } from '../../infrastructure/token-signer.js'
 import { toUser, UserRepository } from '../user/user.repository.js'
 import { EmailTakenError, UserNotFoundError } from '../user/errors.js'
 import {
@@ -29,16 +29,16 @@ import {
   PasswordUnchangedError,
 } from './errors.js'
 
-@injectable()
+@Injectable()
 export class AuthService {
   @Logger()
   private readonly logger!: AppLogger
 
   constructor(
-    @inject(UserRepository) private readonly userRepository: UserRepository,
-    @inject(PasswordHasher) private readonly passwordHasher: PasswordHasher,
-    @inject(TokenSigner) private readonly tokenSigner: TokenSigner,
-    @inject(AppConfig) private readonly config: AppConfig,
+    @Inject(UserRepository) private readonly userRepository: UserRepository,
+    @Inject(PasswordHasher) private readonly passwordHasher: PasswordHasher,
+    @Inject(TokenSigner) private readonly tokenSigner: TokenSigner,
+    @Inject(AppConfig) private readonly config: AppConfig,
   ) {}
 
   @Transactional()

@@ -1,0 +1,30 @@
+{
+  "name": "@repo/api-client",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.cjs"
+    }
+  },
+  "scripts": {
+    "dev": "tsdown --watch --config-loader unrun",
+    "build": "tsdown --config-loader unrun",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@repo/shared": "workspace:*",
+    "crypto-js": "^4.2.0"
+  },
+  "devDependencies": {
+    "@types/crypto-js": "^4.2.2",
+    "tsdown": "^0.22.9",
+    "typescript": "^7.0.2",
+    "unrun": "^0.3.1",
+    "vitest": "^4.1.10"
+  }
+}

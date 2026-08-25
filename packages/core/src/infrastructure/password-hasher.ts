@@ -1,7 +1,7 @@
 import bcrypt from 'bcryptjs'
 import { inject, injectable } from 'inversify'
-import { AppConfig } from './app-config.js'
-import { PasswordHashingError } from './infrastructure-errors.js'
+import { AppConfig } from '../foundation/app-config.js'
+import { PasswordHashingError } from '../foundation/errors/infrastructure-errors.js'
 
 
 @injectable()

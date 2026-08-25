@@ -1,4 +1,4 @@
-import { AdminService, appCore } from '@repo/core';
+import { AdminService, type AppContext } from '@repo/core';
 import {
   AdminLoginSchema,
   ChangePasswordSchema,
@@ -11,7 +11,7 @@ import {
   UpdateInfoSchema,
 } from '@repo/shared';
 import { Hono } from 'hono';
-import { requireAdminAuth } from '../lib/authentication.js';
+import { makeRequireAdminAuth } from '../lib/authentication.js';
 import { jsonBody, success } from '../lib/http.js';
 import { requestContext } from '../lib/request-context.js';
 
@@ -23,8 +23,9 @@ const currentAdminId = (): string => {
   return adminId;
 };
 
-export const makeAdminRoutes = () => {
-  const adminService = appCore.get(AdminService);
+export const makeAdminRoutes = (runtime: AppContext) => {
+  const adminService = runtime.get(AdminService);
+  const requireAdminAuth = makeRequireAdminAuth(runtime);
   const routes = new Hono();
 
   routes.post('/login', jsonBody(AdminLoginSchema), async (context) => {

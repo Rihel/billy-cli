@@ -12,8 +12,8 @@ import type {
   TodoModel,
 } from '@repo/shared'
 import { type DeepPartial } from 'typeorm'
-import { inject, injectable } from 'inversify'
-import { Db } from '../../shared/database.js'
+import { Inject, Injectable } from '../../composition/di.js'
+import { Db } from '../../infrastructure/database.js'
 
 const toTodo = (record: TodoEntity): TodoModel => {
   const { deletedAt: _deletedAt, ...todo } = record
@@ -21,12 +21,11 @@ const toTodo = (record: TodoEntity): TodoModel => {
 }
 
 
-@injectable()
+@Injectable()
 export class TodoRepository {
-  constructor(@inject(Db) private readonly db: Db) {}
+  constructor(@Inject(Db) private readonly db: Db) {}
 
   private async repo() {
-    await this.db.ready
     return this.db.getRepository(TodoEntity)
   }
 

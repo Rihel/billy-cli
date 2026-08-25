@@ -1,4 +1,4 @@
-import { AdminService, AuthService, appCore } from '@repo/core';
+import { AdminService, AuthService, type AppContext } from '@repo/core';
 import { AppErrorCodes, ResponseUtils } from '@repo/shared';
 import { getCookie } from 'hono/cookie';
 import { createMiddleware } from 'hono/factory';
@@ -31,37 +31,39 @@ const tokenInvalid = (context: Context) => {
 };
 
 /** 前台用户鉴权：校验用户 token，把 userId 注入请求上下文 */
-export const requireAuth = createMiddleware(async (context, next) => {
-  const token = extractToken(context);
+export const makeRequireAuth = (runtime: AppContext) =>
+  createMiddleware(async (context, next) => {
+    const token = extractToken(context);
 
-  if (!token) {
-    return unauthorized(context);
-  }
+    if (!token) {
+      return unauthorized(context);
+    }
 
-  try {
-    const authService = appCore.get(AuthService);
-    const userId = await authService.verifyToken({ token });
-    requestContext.set('userId', userId);
-    await next();
-  } catch {
-    return tokenInvalid(context);
-  }
-});
+    try {
+      const authService = runtime.get(AuthService);
+      const userId = await authService.verifyToken({ token });
+      requestContext.set('userId', userId);
+      await next();
+    } catch {
+      return tokenInvalid(context);
+    }
+  });
 
 /** 后台管理员鉴权：校验管理员 token（type='admin'），把 adminId 注入请求上下文 */
-export const requireAdminAuth = createMiddleware(async (context, next) => {
-  const token = extractToken(context);
+export const makeRequireAdminAuth = (runtime: AppContext) =>
+  createMiddleware(async (context, next) => {
+    const token = extractToken(context);
 
-  if (!token) {
-    return unauthorized(context);
-  }
+    if (!token) {
+      return unauthorized(context);
+    }
 
-  try {
-    const adminService = appCore.get(AdminService);
-    const adminId = await adminService.verifyToken({ token });
-    requestContext.set('adminId', adminId);
-    await next();
-  } catch {
-    return tokenInvalid(context);
-  }
-});
+    try {
+      const adminService = runtime.get(AdminService);
+      const adminId = await adminService.verifyToken({ token });
+      requestContext.set('adminId', adminId);
+      await next();
+    } catch {
+      return tokenInvalid(context);
+    }
+  });

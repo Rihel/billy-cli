@@ -1,9 +1,9 @@
+import { ServerClient } from '@repo/sdk'
 import {
-  ServerClient,
   LocalStorageCredentialsManager,
   MemoryCredentialsManager,
   BearerTokenCredentials,
-} from '@repo/sdk'
+} from '@repo/api-client'
 import { Pages, ServerUrl, TokenKey } from './constants'
 
 const tokenManager = new LocalStorageCredentialsManager<BearerTokenCredentials>(

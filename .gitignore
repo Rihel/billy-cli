@@ -5,3 +5,4 @@ dist
 .qoder
 .next
 .pnpm-store
+*.tsbuildinfo

@@ -1,4 +1,4 @@
-import { UserService, appCore } from '@repo/core';
+import { UserService, type AppContext } from '@repo/core';
 import {
   CreateUserSchema,
   GetUserDetailSchema,
@@ -8,11 +8,12 @@ import {
   UpdateUserSchema,
 } from '@repo/shared';
 import { Hono } from 'hono';
-import { requireAuth } from '../lib/authentication.js';
+import { makeRequireAuth } from '../lib/authentication.js';
 import { jsonBody, success } from '../lib/http.js';
 
-export const makeUserRoutes = () => {
-  const userService = appCore.get(UserService);
+export const makeUserRoutes = (runtime: AppContext) => {
+  const userService = runtime.get(UserService);
+  const requireAuth = makeRequireAuth(runtime);
   const routes = new Hono();
 
   routes.use('*', requireAuth);

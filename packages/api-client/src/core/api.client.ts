@@ -266,23 +266,18 @@ export class ApiClient<Credentials = Record<string, any>> {
     }
   }
 
+  private normalizePath(path: string) {
+    return path.startsWith('/') ? path : `/${path}`
+  }
   /** 拼接 baseUrl + path + 查询参数 */
   private buildUrl(path: string, params?: Record<string, any>): string {
-    const url = new URL(path, this.options.baseUrl)
+    let url = `${this.options.baseUrl}${this.normalizePath(path)}`
     if (params) {
-      for (const [key, value] of Object.entries(params)) {
-        if (value === undefined || value === null) continue
-        if (Array.isArray(value)) {
-          for (const item of value) {
-            if (item === undefined || item === null) continue
-            url.searchParams.append(key, String(item))
-          }
-        } else {
-          url.searchParams.append(key, String(value))
-        }
-      }
+      const searchParams = new URLSearchParams(params)
+      const searchString = searchParams.toString()
+      url = `${url}?${searchString}`
     }
-    return url.toString()
+    return url
   }
 
   /** 序列化请求体；普通对象自动 JSON 序列化并补 Content-Type */

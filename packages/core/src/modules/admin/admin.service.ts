@@ -14,11 +14,11 @@ import type {
   SuccessResultModel,
   UpdateAdminDto,
 } from '@repo/shared'
-import { inject, injectable } from 'inversify'
+import { Inject, Injectable } from '../../composition/di.js'
 import type { AppLogger } from '@repo/shared/logger'
-import { Logger } from '../../shared/logger.decorator.js'
-import { PasswordHasher } from '../../shared/password-hasher.js'
-import { TokenSigner } from '../../shared/token-signer.js'
+import { Logger } from '../../foundation/logger.js'
+import { PasswordHasher } from '../../infrastructure/password-hasher.js'
+import { TokenSigner } from '../../infrastructure/token-signer.js'
 import { InvalidOldPasswordError, InvalidTokenError } from '../auth/errors.js'
 import { toAdmin, AdminRepository } from './admin.repository.js'
 import {
@@ -32,15 +32,15 @@ import {
 /** 管理员 token 携带 type='admin'，与前台用户 token（无 type 或 type='user'）区分 */
 export const ADMIN_TOKEN_TYPE = 'admin' as const
 
-@injectable()
+@Injectable()
 export class AdminService {
   @Logger()
   private readonly logger!: AppLogger
 
   constructor(
-    @inject(AdminRepository) private readonly adminRepository: AdminRepository,
-    @inject(PasswordHasher) private readonly passwordHasher: PasswordHasher,
-    @inject(TokenSigner) private readonly tokenSigner: TokenSigner,
+    @Inject(AdminRepository) private readonly adminRepository: AdminRepository,
+    @Inject(PasswordHasher) private readonly passwordHasher: PasswordHasher,
+    @Inject(TokenSigner) private readonly tokenSigner: TokenSigner,
   ) {}
 
   async login(input: AdminLoginDto): Promise<AdminAuthResultModel> {
@@ -142,7 +142,9 @@ export class AdminService {
   }
 
   @Transactional()
-  async remove(input: RemoveAdminDto & { operatorId: string }): Promise<SuccessResultModel> {
+  async remove(
+    input: RemoveAdminDto & { operatorId: string },
+  ): Promise<SuccessResultModel> {
     const { adminId, operatorId } = input
     if (adminId === operatorId) throw new CannotRemoveSelfError()
     const admin = await this.adminRepository.remove(adminId)

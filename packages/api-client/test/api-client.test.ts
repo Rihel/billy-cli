@@ -17,7 +17,7 @@ import {
   // 供应器
   EmptyCheckProvider,
   ExpiresAtProvider,
-} from '../src/index.ts'
+} from '../src/index.js'
 
 // ── 认证策略 ────────────────────────────────────────
 
@@ -30,7 +30,7 @@ describe('BearerTokenStrategy', () => {
 
   it('识别空凭证', async () => {
     expect(await s.isAuthorization({ token: '' })).toBe(false)
-    expect(await s.isAuthorization({})).toBe(false)
+    expect(await s.isAuthorization({} as any)).toBe(false)
   })
 
   it('注入 Bearer header', async () => {
@@ -187,7 +187,7 @@ describe('EmptyCheckProvider', () => {
       called = true
       return { token: 'new' }
     })
-    expect(p.needsRefresh({})).toBe(true)
+    expect(p.needsRefresh({} as any)).toBe(true)
     expect(p.needsRefresh({ token: '' })).toBe(true)
     expect(p.needsRefresh({ token: 'abc' })).toBe(false)
     const creds = await p.acquire()
@@ -198,25 +198,25 @@ describe('EmptyCheckProvider', () => {
 
 describe('ExpiresAtProvider', () => {
   it('无 expiresAt 时需刷新', () => {
-    const p = new ExpiresAtProvider({ acquire: async () => ({ accessToken: '' }) })
+    const p = new ExpiresAtProvider<{ accessToken: string; expiresAt?: number }>({ acquire: async () => ({ accessToken: '' }) })
     expect(p.needsRefresh({ accessToken: 't' })).toBe(true)
   })
 
   it('未过期的不用刷新', () => {
-    const p = new ExpiresAtProvider({ acquire: async () => ({ accessToken: '' }) })
+    const p = new ExpiresAtProvider<{ accessToken: string; expiresAt?: number }>({ acquire: async () => ({ accessToken: '' }) })
     const far = { accessToken: 't', expiresAt: Date.now() + 3600_000 }
     expect(p.needsRefresh(far)).toBe(false)
   })
 
   it('即将过期时需要刷新', () => {
-    const p = new ExpiresAtProvider({ acquire: async () => ({ accessToken: '' }) })
+    const p = new ExpiresAtProvider<{ accessToken: string; expiresAt?: number }>({ acquire: async () => ({ accessToken: '' }) })
     const soon = { accessToken: 't', expiresAt: Date.now() + 30_000 }
     expect(p.needsRefresh(soon)).toBe(true)
   })
 
   it('acquire 调用传入函数', async () => {
     let called = false
-    const p = new ExpiresAtProvider({
+    const p = new ExpiresAtProvider<{ accessToken: string; expiresAt?: number }>({
       acquire: async () => {
         called = true
         return { accessToken: 'new' }
@@ -228,7 +228,7 @@ describe('ExpiresAtProvider', () => {
   })
 
   it('有 refresh 时走 refresh', async () => {
-    const p = new ExpiresAtProvider({
+    const p = new ExpiresAtProvider<{ accessToken: string; expiresAt?: number }>({
       acquire: async () => ({ accessToken: 'acquired' }),
       refresh: async (c) => ({ ...c, accessToken: 'refreshed' }),
     })
@@ -265,7 +265,7 @@ describe('ApiClient 请求流程', () => {
   }
 
   function createClient(
-    options: Partial<ApiClientOptions> = {},
+    options: Partial<ApiClientOptions<any>> = {},
     fetchHandler?: (
       input: RequestInfo | URL,
       init?: RequestInit,

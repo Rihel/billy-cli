@@ -1,4 +1,4 @@
-import { AuthService, appCore } from '@repo/core';
+import { AuthService, type AppContext } from '@repo/core';
 import {
   ChangePasswordSchema,
   ForgotPasswordSchema,
@@ -8,7 +8,7 @@ import {
   UpdateInfoSchema,
 } from '@repo/shared';
 import { Hono } from 'hono';
-import { requireAuth } from '../lib/authentication.js';
+import { makeRequireAuth } from '../lib/authentication.js';
 import { jsonBody, success } from '../lib/http.js';
 import { requestContext } from '../lib/request-context.js';
 
@@ -20,8 +20,9 @@ const currentUserId = (): string => {
   return userId;
 };
 
-export const makeAuthRoutes = () => {
-  const authService = appCore.get(AuthService);
+export const makeAuthRoutes = (runtime: AppContext) => {
+  const authService = runtime.get(AuthService);
+  const requireAuth = makeRequireAuth(runtime);
   const routes = new Hono();
 
   routes

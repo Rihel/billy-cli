@@ -1,15 +1,16 @@
-import { ObjectStorage, appCore } from '@repo/core';
+import { ObjectStorage, type AppContext } from '@repo/core';
 import {
   GetStorageDownloadUrlSchema,
   GetStorageUploadPresignedUrlSchema,
 } from '@repo/shared';
 import { Hono } from 'hono';
-import { requireAuth } from '../lib/authentication.js';
+import { makeRequireAuth } from '../lib/authentication.js';
 import { jsonBody, success } from '../lib/http.js';
 import { requestContext } from '../lib/request-context.js';
 
-export const makeStorageRoutes = () => {
-  const storage = appCore.get(ObjectStorage);
+export const makeStorageRoutes = (runtime: AppContext) => {
+  const storage = runtime.get(ObjectStorage);
+  const requireAuth = makeRequireAuth(runtime);
   const routes = new Hono();
 
   routes.use('*', requireAuth);

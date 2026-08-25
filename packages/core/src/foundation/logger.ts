@@ -2,7 +2,7 @@ import { createLogger, type AppLogger } from '@repo/shared/logger'
 
 let loggerPretty = false
 
-/** 由 runtime.initCore 设置（config.logger.pretty）。 */
+/** 由 createAppContext 设置（config.logger.pretty）。 */
 export const configureLogger = (pretty: boolean): void => {
   loggerPretty = pretty
 }

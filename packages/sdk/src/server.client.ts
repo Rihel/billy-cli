@@ -40,11 +40,11 @@ import {
   UpdateUserDto,
   UserModel,
 } from '@repo/shared'
-import { ApiClient, ApiClientOptions } from './core/api.client.js'
-import {
+import { ApiClient, type ApiClientOptions } from '@repo/api-client'
+import type {
   BearerTokenCredentials,
-  BearerTokenStrategy,
-} from './strategies/bearer-token.strategy.js'
+} from '@repo/api-client'
+import { BearerTokenStrategy } from '@repo/api-client'
 
 export class ServerClient extends ApiClient<BearerTokenCredentials> {
   constructor(

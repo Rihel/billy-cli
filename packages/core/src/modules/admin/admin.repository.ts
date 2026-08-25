@@ -1,8 +1,8 @@
 import { AdminEntity, pageWith, type PageQueryResult } from '@repo/db'
 import type { AdminModel, PageQueryAdminDto } from '@repo/shared'
 import { Brackets, type DeepPartial } from 'typeorm'
-import { inject, injectable } from 'inversify'
-import { Db } from '../../shared/database.js'
+import { Inject, Injectable } from '../../composition/di.js'
+import { Db } from '../../infrastructure/database.js'
 
 export type AdminRecord = AdminEntity
 
@@ -20,9 +20,9 @@ export const toAdmin = (record: AdminEntity): AdminModel => {
   }
 }
 
-@injectable()
+@Injectable()
 export class AdminRepository {
-  constructor(@inject(Db) private readonly db: Db) {}
+  constructor(@Inject(Db) private readonly db: Db) {}
 
   private async repo() {
     return this.db.getRepository(AdminEntity)

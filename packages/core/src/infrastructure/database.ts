@@ -8,9 +8,9 @@ import type {
 import type { DataSource } from 'typeorm'
 import type { AppLogger } from '@repo/shared/logger'
 import { inject, injectable } from 'inversify'
-import type { OnAppStart, OnAppStop } from '../life-cycle.js'
-import { AppConfig } from './app-config.js'
-import { Logger } from './logger.decorator.js'
+import type { OnAppStart, OnAppStop } from '../composition/life-cycle.js'
+import { AppConfig } from '../foundation/app-config.js'
+import { Logger } from '../foundation/logger.js'
 import { coalesceAsync } from 'promise-coalesce'
 export type { DataSource } from 'typeorm'
 

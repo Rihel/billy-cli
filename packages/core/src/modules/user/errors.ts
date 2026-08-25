@@ -1,5 +1,5 @@
 import { AppErrorCodes } from '@repo/shared'
-import { AppError } from '../../shared/app-error.js'
+import { AppError } from '../../foundation/errors/app-error.js'
 
 export class UserNotFoundError extends AppError {
   readonly code = AppErrorCodes.UserNotFound

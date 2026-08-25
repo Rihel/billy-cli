@@ -66,6 +66,9 @@ importers:
       '@ant-design/nextjs-registry':
         specifier: ^1.3.0
         version: 1.3.0(@ant-design/cssinjs@2.1.2(react-dom@19.2.7(react@19.2.7))(react@19.2.7))(antd@6.5.1(date-fns@4.4.0)(luxon@3.7.2)(react-dom@19.2.7(react@19.2.7))(react@19.2.7))(next@16.3.0(@babel/core@7.29.7(supports-color@8.1.1))(@types/node@26.1.1)(babel-plugin-react-compiler@1.0.0)(react-dom@19.2.7(react@19.2.7))(react@19.2.7))(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
+      '@repo/api-client':
+        specifier: workspace:*
+        version: link:../../packages/api-client
       '@repo/aui':
         specifier: workspace:*
         version: link:../../packages/aui
@@ -194,6 +197,9 @@ importers:
       '@base-ui/react':
         specifier: ^1.7.0
         version: 1.7.0(@date-fns/tz@1.5.0)(@types/react@19.2.18)(date-fns@4.4.0)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+      '@repo/api-client':
+        specifier: workspace:*
+        version: link:../../packages/api-client
       '@repo/sdk':
         specifier: workspace:*
         version: link:../../packages/sdk
@@ -276,6 +282,31 @@ importers:
       typescript:
         specifier: ^7.0.2
         version: 7.0.2
+
+  packages/api-client:
+    dependencies:
+      '@repo/shared':
+        specifier: workspace:*
+        version: link:../shared
+      crypto-js:
+        specifier: ^4.2.0
+        version: 4.2.0
+    devDependencies:
+      '@types/crypto-js':
+        specifier: ^4.2.2
+        version: 4.2.2
+      tsdown:
+        specifier: ^0.22.9
+        version: 0.22.9(tsx@4.23.1)(typescript@7.0.2)(unrun@0.3.1(synckit@0.11.13))
+      typescript:
+        specifier: ^7.0.2
+        version: 7.0.2
+      unrun:
+        specifier: ^0.3.1
+        version: 0.3.1(synckit@0.11.13)
+      vitest:
+        specifier: ^4.1.10
+        version: 4.1.10(@types/node@26.2.0)(vite@8.1.5(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.0)(tsx@4.23.1)(yaml@2.9.0))
 
   packages/aui:
     dependencies:
@@ -471,25 +502,13 @@ importers:
 
   packages/sdk:
     dependencies:
+      '@repo/api-client':
+        specifier: workspace:*
+        version: link:../api-client
       '@repo/shared':
         specifier: workspace:*
         version: link:../shared
-      crypto-js:
-        specifier: ^4.2.0
-        version: 4.2.0
-      lodash:
-        specifier: ^4.18.1
-        version: 4.18.1
-      zod:
-        specifier: ^4.4.3
-        version: 4.4.3
     devDependencies:
-      '@types/crypto-js':
-        specifier: ^4.2.2
-        version: 4.2.2
-      '@types/lodash':
-        specifier: ^4.17.24
-        version: 4.17.24
       tsdown:
         specifier: ^0.22.9
         version: 0.22.9(tsx@4.23.1)(typescript@7.0.2)(unrun@0.3.1(synckit@0.11.13))
@@ -499,9 +518,6 @@ importers:
       unrun:
         specifier: ^0.3.1
         version: 0.3.1(synckit@0.11.13)
-      vitest:
-        specifier: ^4.1.10
-        version: 4.1.10(@types/node@26.1.1)(vite@8.1.5(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.0)(tsx@4.23.1)(yaml@2.9.0))
 
   packages/shared:
     dependencies:
@@ -11524,7 +11540,7 @@ snapshots:
     transitivePeerDependencies:
       - msw
 
-  vitest@4.1.10(@types/node@26.1.1)(vite@8.1.5(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.0)(tsx@4.23.1)(yaml@2.9.0)):
+  vitest@4.1.10(@types/node@26.2.0)(vite@8.1.5(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.0)(tsx@4.23.1)(yaml@2.9.0)):
     dependencies:
       '@vitest/expect': 4.1.10
       '@vitest/mocker': 4.1.10(vite@8.1.5(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.0)(tsx@4.23.1)(yaml@2.9.0))
@@ -11547,7 +11563,7 @@ snapshots:
       vite: 8.1.5(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.0)(tsx@4.23.1)(yaml@2.9.0)
       why-is-node-running: 2.3.0
     optionalDependencies:
-      '@types/node': 26.1.1
+      '@types/node': 26.2.0
     transitivePeerDependencies:
       - msw
 

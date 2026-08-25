@@ -21,7 +21,8 @@ const MainLayout = async ({ children }: MainLayoutProps) => {
     const client = createServerClient(jar.get(TokenKey)?.value)
     adminInfo = await client.admin.getMe()
   } catch {
-    redirect(Pages.login)
+    // 会话失效（过期 / 无效）时带 reason 跳转登录页，登录页据此提示重新登录
+    redirect(`${Pages.login}?reason=expired`)
   }
 
   return (

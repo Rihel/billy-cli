@@ -1,7 +1,7 @@
 import jsonwebtoken from 'jsonwebtoken'
 import { inject, injectable } from 'inversify'
-import { AppConfig } from './app-config.js'
-import { TokenSigningError } from './infrastructure-errors.js'
+import { AppConfig } from '../foundation/app-config.js'
+import { TokenSigningError } from '../foundation/errors/infrastructure-errors.js'
 
 
 @injectable()

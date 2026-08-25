@@ -15,7 +15,8 @@ packages/
 ├── shared   — Zod schemas + 错误码字典 + 响应工具 + Pino 日志 + 通用工具（前后端共享）
 ├── db       — TypeORM 实体 + DataSource 连接 + 四种分页策略 + 迁移
 ├── core     — InversifyJS 业务层：Config / Db / Redis / JWT / ObjectStorage + Auth / Admin / User / Todo
-├── sdk      — ApiClient + ServerClient（全类型化业务 API 调用）
+├── api-client — 通用 HTTP + 鉴权管线客户端（ApiClient / 策略 / 凭证管理器，业务无关）
+├── sdk      — ServerClient（全类型化业务 API 调用，构建在 @repo/api-client 之上）
 ├── ui       — Base UI + shadcn 风格共享组件库（Tailwind 4）
 └── aui      — Ant Design 管理端组件库（表格 / 表单 / 存储 / Server Action 工具）
 ```
@@ -186,18 +187,21 @@ pnpm docker:up
 │   │   └── data-source.ts               # TypeORM CLI 迁移配置
 │   ├── core/                            # @repo/core — InversifyJS 业务核心
 │   │   └── src/
-│   │       ├── runtime.ts               # appCore Container 组合根（initCore / startCore / stopCore）
-│   │       ├── life-cycle.ts            # OnAppStart / OnAppStop 生命周期接口
-│   │       ├── modules/                 # auth / admin / user / todo（service + repository + errors）
-│   │       └── shared/                  # app-config / database / redis-store / object-storage /
-│   │                                    # token-signer / password-hasher / id-generation / logger
-│   ├── sdk/                             # @repo/sdk
+│   │       ├── runtime.ts               # createAppContext() 组合根工厂（唯一装配点）
+│   │       ├── composition/             # AppContext / LifeCycleHost / 生命周期接口 / 自定义 DI 装饰器
+│   │       ├── foundation/              # 横切基础：app-config / errors / logger / id-generation
+│   │       ├── infrastructure/          # 外部资源门面：database / redis-store / object-storage /
+│   │       │                            # token-signer / password-hasher
+│   │       └── modules/                 # auth / admin / user / todo（service + repository + errors）
+│   ├── api-client/                      # @repo/api-client — 通用 HTTP + 鉴权管线（业务无关）
 │   │   └── src/
 │   │       ├── core/                    # api.client / credential-resolver / auth-injector / api-error
-│   │       ├── server.client.ts         # ServerClient（全类型化业务 API）
 │   │       ├── strategies/              # BearerToken / ApiKey / OAuth2 / HMAC
 │   │       ├── managers/                # localStorage / memory / cookie / env
 │   │       └── providers/               # empty-check / expires-at
+│   ├── sdk/                             # @repo/sdk
+│   │   └── src/
+│   │       └── server.client.ts         # ServerClient（全类型化业务 API，继承 api-client 的 ApiClient）
 │   ├── ui/                              # @repo/ui — Base UI + shadcn 组件（src/components/ui/*）
 │   └── aui/                             # @repo/aui — Ant Design 管理端组件库 + action 工具
 ├── docker/                              # Dockerfile.base / .server / .web + init-db.sql
@@ -283,49 +287,63 @@ Zod schema 单一事实源，同时派生 TypeScript 类型（`*.schema.ts` 导�
 Feature-first 结构，所有能力与业务服务均为 `@injectable()` class，构造器注入依赖：
 
 ```
-modules/
+modules/                     # 业务领域（service + repository + errors）
 ├── auth/         # auth.service.ts（register/login/forgot/reset/change-password/getMe/verifyToken）+ errors
 ├── admin/        # admin.service.ts（后台管理员 login/getMe/CRUD/resetPassword/changePassword/verifyToken）
 │                 #   + admin.repository.ts + errors；token 带 type='admin'，与前台用户隔离
 ├── user/         # user.service.ts + user.repository.ts + errors
 └── todo/         # todo.service.ts + todo.repository.ts + errors
-shared/
-├── app-config.ts # Zod schema 定义配置，createAppConfig 从环境变量解析（含默认值）
+infrastructure/              # 外部世界门面
 ├── database.ts   # Db 门面：DataSource + getRepository + transaction + 生命周期
 ├── redis-store.ts# Redis 门面：缓存 / 锁（Lua 脚本）/ 生命周期
 ├── object-storage/# ObjectStorage：S3 / COS 双实现，预签名 URL + STS 临时凭证
-├── token-signer.ts / password-hasher.ts / id-generation.ts
-├── logger.decorator.ts  # @Logger() 成员变量装饰器
-└── infrastructure-errors.ts / app-error.ts
-runtime.ts        # appCore = new Container() 组合根，唯一装配点
-life-cycle.ts     # OnAppStart / OnAppStop 接口
+├── password-hasher.ts / token-signer.ts
+foundation/                   # 横切基础能力
+├── app-config.ts # Zod schema 定义配置，createAppConfig 从环境变量解析（含默认值）
+├── id-generation.ts
+├── logger.ts     # @Logger() 装饰器 + configureLogger
+└── errors/       # app-error.ts（AppError 基类）/ infrastructure-errors.ts
+composition/                  # 组合与生命周期
+├── app-context.ts    # AppContext：Container + LifeCycleHost 组合根对象
+├── life-cycle-host.ts# LifeCycleHost：生命周期调度（依赖拓扑排序 / 回滚 / 幂等）
+├── life-cycle.ts     # LifeCycle / OnAppStart / OnAppStop 接口
+└── di.ts             # 自定义 @Injectable() / @Inject()（写入自有 DiParamTypesKey 元数据）
+runtime.ts        # createAppContext() 组合根工厂，唯一装配点
 ```
 
 **使用方式：**
 
 ```ts
-import { appCore, initCore, startCore, stopCore, AuthService } from '@repo/core'
+import { createAppContext, AuthService } from '@repo/core'
 
-initCore() // 注入 process.env 配置，注册全部服务（幂等）
-await startCore() // 依次执行各组件的 onAppStart（Db / Redis / ObjectStorage 建连）
+const ctx = createAppContext() // 装配全部 bean
+await ctx.start() // 生命周期启动：Db / Redis / ObjectStorage 按 @Inject 依赖序建连
 
-const authService = appCore.get(AuthService)
+const authService = ctx.get(AuthService)
 const result = await authService.login({ email, password })
 
-await stopCore() // 逆序释放资源
+await ctx.stop() // 逆序释放资源（幂等，可重复调用）
 ```
+
+**生命周期设计：**
+
+- `@Injectable()` / `@Inject()` 是 `inversify` 原装饰器的包装：透传原逻辑（容器照常解析），同时把注入 token 写入**我们自己的元数据 key**（`DiParamTypesKey`），不依赖 inversify 内部键
+- `LifeCycleHost` 依据 `DiParamTypesKey` 构建依赖图做 Kahn 拓扑排序——**调用方以任意顺序注册生命周期组件，宿主都保证「依赖先启动」**；检测到环直接报错
+- `start()` 失败自动逆序回滚已启动组件；`stop()` 幂等、单组件失败收集日志不中断
 
 **设计原则：**
 
-- 所有能力与业务服务都是 `@injectable()` class，构造器注入依赖
+- 所有能力与业务服务都是 `@Injectable()` class，构造器注入依赖（统一使用项目自定义装饰器）
 - 错误以 `Error` 子类抛出并携带 `code`，Hono 边界按 `code` 映射 HTTP 错误码与文案
 - DTO / Zod 校验与 HTTP 错误转换只存在于 Hono 边界（`apps/server`）
 - 业务错误保持原义，不包装成统一 `AppError`
 - 基础设施服务隔离数据库、Redis、JWT 与对象存储等技术细节，业务层不感知具体实现
-- 应用层只通过 `appCore` 取服务，不感知内部依赖图
+- 应用层只通过 `AppContext.get()` 取服务，不感知内部依赖图
 - 无装饰器反射之外的魔法，兼容 Node type-stripping / esbuild / tsdown
 
-### @repo/sdk — 类型化 API 客户端
+### @repo/api-client — 通用 HTTP + 鉴权管线
+
+业务无关的客户端基础设施，被 `@repo/sdk` 的 `ServerClient` 继承使用（依赖方向：`sdk → api-client → shared`）。
 
 `ApiClient`（基于原生 fetch）的请求管线：
 
@@ -338,16 +356,17 @@ skipAuth 检查
   → 错误处理：401 + 可刷新 → forceRefresh 重试一次；其余统一抛 ApiError
 ```
 
-- `ServerClient extends ApiClient`：按业务分组的全类型化方法（`auth` / `todo` / `user` / `storage`），
-  请求 / 响应类型全部来自 `@repo/shared`
+- `ServerClient extends ApiClient`（`@repo/sdk`）：按业务分组的全类型化方法
+  （`auth` / `admin` / `user` / `todo` / `storage`），请求 / 响应类型全部来自 `@repo/shared`
 - 认证策略：`BearerToken` / `ApiKey` / `OAuth2` / `HMAC`
 - 凭证管理器：`localStorage` / `memory` / `cookie` / `env`
 - 凭证供应器：`empty-check` / `expires-at`（配合 OAuth2 自动续期）
 - 错误：统一 `ApiError`（可 JSON 序列化），区分网络异常与业务异常
 
 ```typescript
-import { ServerClient, LocalStorageCredentialsManager } from '@repo/sdk'
-import type { BearerTokenCredentials } from '@repo/sdk'
+import { ServerClient } from '@repo/sdk'
+import { LocalStorageCredentialsManager } from '@repo/api-client'
+import type { BearerTokenCredentials } from '@repo/api-client'
 
 const client = new ServerClient({
   baseUrl: 'http://localhost:9989',
@@ -404,9 +423,12 @@ sidebar / toast / chart 等），Tailwind 4 主题变量由 `globals.css` 提供
 
 `packages/core/src/runtime.ts` 是唯一装配点：
 
-- `initCore(overrides?)`：解析配置、绑定基础设施 → 仓储 → 业务服务，注册生命周期组件（幂等）
-- `startCore()`：按注册顺序执行 `onAppStart`（Db 初始化、Redis 连接、ObjectStorage 建桶/客户端）
-- `stopCore()`：逆序执行 `onAppStop` 释放资源，单个失败不阻断其余
+- `createAppContext(overrides?)`：解析配置，创建 `AppContext`（Container + LifeCycleHost）并装配
+  基础设施 → 仓储 → 业务服务
+- `ctx.start()`：生命周期组件按 `@Inject` 依赖拓扑序执行 `onAppStart`
+  （Db 初始化、Redis 连接、ObjectStorage 建桶/客户端）；任一失败逆序回滚已启动组件并抛错
+- `ctx.stop()`：按拓扑逆序执行 `onAppStop` 释放资源，幂等，单个失败不阻断其余
+- 生命周期组件通过 `ctx.addLifeCycleService(...)` 注册；启动顺序由 `@Inject` 声明自动推导，与注册顺序无关
 
 ### 认证
 

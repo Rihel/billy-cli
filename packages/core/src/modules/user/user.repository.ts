@@ -1,8 +1,8 @@
 import { pageWith, type PageQueryResult, UserEntity } from '@repo/db'
 import type { PageQueryUserDto, UserModel } from '@repo/shared'
 import { Brackets, type DeepPartial } from 'typeorm'
-import { inject, injectable } from 'inversify'
-import { Db } from '../../shared/database.js'
+import { Inject, Injectable } from '../../composition/di.js'
+import { Db } from '../../infrastructure/database.js'
 
 export type UserRecord = UserEntity
 
@@ -17,9 +17,9 @@ export const toUser = (record: UserEntity): UserModel => {
   return user
 }
 
-@injectable()
+@Injectable()
 export class UserRepository {
-  constructor(@inject(Db) private readonly db: Db) {}
+  constructor(@Inject(Db) private readonly db: Db) {}
 
   private async repo() {
     return this.db.getRepository(UserEntity)

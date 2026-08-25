@@ -1,9 +1,9 @@
+import { ServerClient } from '@repo/sdk'
 import {
-  ServerClient,
   LocalStorageCredentialsManager,
   MemoryCredentialsManager,
   BearerTokenCredentials,
-} from '@repo/sdk'
+} from '@repo/api-client'
 import { logoutAction } from '@/actions/auth.actions'
 import { Pages, ServerUrl, TokenKey } from './constants'
 
@@ -32,7 +32,7 @@ export function getServerClient(): ServerClient {
           tokenManager.clearCredentials()
           // 同时清掉 httpOnly cookie，避免与登录页会话探测互相弹回形成死循环
           await logoutAction()
-          window.location.replace(Pages.login)
+          window.location.replace(`${Pages.login}?reason=expired`)
         },
       },
     })

@@ -1,11 +1,11 @@
 import type { AppLogger } from '@repo/shared/logger'
 import { inject, injectable } from 'inversify'
-import type { OnAppStart, OnAppStop } from '../life-cycle.js'
+import type { OnAppStart, OnAppStop } from '../composition/life-cycle.js'
 import { Redis as RedisClient } from 'ioredis'
-import { AppConfig } from './app-config.js'
-import { IdGeneration } from './id-generation.js'
-import { RedisStoreError } from './infrastructure-errors.js'
-import { Logger } from './logger.decorator.js'
+import { AppConfig } from '../foundation/app-config.js'
+import { IdGeneration } from '../foundation/id-generation.js'
+import { RedisStoreError } from '../foundation/errors/infrastructure-errors.js'
+import { Logger } from '../foundation/logger.js'
 
 const releaseLockScript = `
 if redis.call('get', KEYS[1]) == ARGV[1] then

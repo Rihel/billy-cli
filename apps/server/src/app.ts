@@ -1,4 +1,4 @@
-import { AppConfig, appCore, initCore, startCore, stopCore } from '@repo/core';
+import { AppConfig, createAppContext, type AppContext } from '@repo/core';
 import { createLogger } from '@repo/shared/logger';
 import { serve } from '@hono/node-server';
 import { Hono } from 'hono';
@@ -15,13 +15,10 @@ import { makeStorageRoutes } from './features/storage.js';
 import { makeTodoRoutes } from './features/todo.js';
 import { makeUserRoutes } from './features/user.js';
 
-export const makeApp = () => {
-  initCore({
-    db: {
-      sync: true,
-    },
-  });
+/** 应用组合根：唯一装配点（创建一次，供路由与启停共用） */
+export const runtime: AppContext = createAppContext({ db: { sync: true } });
 
+export const makeApp = () => {
   const app = new Hono();
 
   app.use(
@@ -30,11 +27,11 @@ export const makeApp = () => {
     makeRequestContextMiddleware(requestContext),
     requestLogger,
   );
-  app.route('/auth', makeAuthRoutes());
-  app.route('/admin', makeAdminRoutes());
-  app.route('/user', makeUserRoutes());
-  app.route('/todo', makeTodoRoutes());
-  app.route('/storage', makeStorageRoutes());
+  app.route('/auth', makeAuthRoutes(runtime));
+  app.route('/admin', makeAdminRoutes(runtime));
+  app.route('/user', makeUserRoutes(runtime));
+  app.route('/todo', makeTodoRoutes(runtime));
+  app.route('/storage', makeStorageRoutes(runtime));
   app.notFound(notFound);
   app.onError(errorHandler);
 
@@ -44,9 +41,9 @@ export const makeApp = () => {
 const app = makeApp();
 
 export const program = async () => {
-  const config = appCore.get<AppConfig>(AppConfig);
   const logger = createLogger('server', true);
-  await startCore();
+  await runtime.start();
+  const config = runtime.get<AppConfig>(AppConfig);
   const server = serve(
     {
       fetch: app.fetch,
@@ -62,7 +59,7 @@ export const program = async () => {
       closing = true;
       logger.info('正在关闭服务...');
       server.close(() => {
-        void stopCore().then(
+        void runtime.stop().then(
           () => resolve(),
           (error) => {
             logger.error('关闭资源失败', { error });
