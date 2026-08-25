@@ -112,9 +112,9 @@ export const FileUpload = ({
       pendingCountRef.current += 1
       return true
     },
-    async customRequest(options) {
+    async customRequest(options, info) {
       try {
-        await storageRequest(options)
+        await storageRequest(options, info)
       } finally {
         pendingCountRef.current = Math.max(0, pendingCountRef.current - 1)
       }
