@@ -143,8 +143,7 @@ pnpm docker:up
 ├── apps/
 │   ├── server/                          # Hono HTTP 边界（@app/server）
 │   │   └── src/
-│   │       ├── main.ts                  # 入口：dotenv + configureLogger + program()
-│   │       ├── app.ts                   # Hono 组合根 + 优雅关闭（SIGINT/SIGTERM）
+│   │       ├── main.ts                  # 入口 + Hono 组合根 + 优雅关闭（SIGINT/SIGTERM）
 │   │       ├── lib/
 │   │       │   ├── http.ts              # jsonBody / success / errorHandler / 错误码→HTTP 映射
 │   │       │   ├── authentication.ts    # requireAuth 中间件（Bearer / cookie）
@@ -218,7 +217,7 @@ pnpm docker:up
 
 `apps/server` 只做四件事：接收请求、Zod 校验、调用 core、映射错误。业务逻辑全部位于 `@repo/core`。
 
-- **组合根**：`app.ts` 创建 `Hono` 实例，挂载全局中间件（CORS、请求上下文、请求日志）与五组路由
+- **组合根**：`main.ts` 创建 `Hono` 实例，挂载全局中间件（CORS、请求上下文、请求日志）与五组路由
   （`/auth`、`/admin`、`/user`、`/todo`、`/storage`），统一 `notFound` 与 `onError`。
 - **错误映射**：`lib/http.ts` 将 core 抛出的错误（自带 `code` 数字）通过 `AppErrorCodes` 字典
   映射为 HTTP 状态码与中文文案，未知错误统一按系统错误（5001 / 500）处理。
