@@ -4,16 +4,16 @@ import {
   GetStorageUploadPresignedUrlSchema,
 } from '@repo/shared';
 import { Hono } from 'hono';
-import { makeRequireAuth } from '../lib/authentication.js';
+import { makeRequireAdminAuth } from '../lib/authentication.js';
 import { jsonBody, success } from '../lib/http.js';
 import { requestContext } from '../lib/request-context.js';
 
 export const makeStorageRoutes = (runtime: AppContext) => {
   const storage = runtime.get(ObjectStorage);
-  const requireAuth = makeRequireAuth(runtime);
+  const requireAdminAuth = makeRequireAdminAuth(runtime);
   const routes = new Hono();
 
-  routes.use('*', requireAuth);
+  routes.use('*', requireAdminAuth);
   routes
     .post(
       '/get-presigned-url',
@@ -38,13 +38,13 @@ export const makeStorageRoutes = (runtime: AppContext) => {
       },
     )
     .post('/get-temporary-credentials', async (context) => {
-      const userId = requestContext.get('userId');
-      if (!userId) {
-        throw new Error('Authenticated request context is unavailable');
+      const adminId = requestContext.get('adminId');
+      if (!adminId) {
+        throw new Error('Authenticated admin request context is unavailable');
       }
       return success(
         context,
-        await storage.getTemporaryCredentials({ userId }),
+        await storage.getTemporaryCredentials({ userId: adminId }),
       );
     });
 

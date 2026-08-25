@@ -51,7 +51,21 @@ export const checkSessionAction = defineAction<undefined, boolean>(
   },
 )
 
+/**
+ * 登出：撤销服务端会话（幂等，会话已失效时也安全）+ 清理 httpOnly cookie。
+ * 供登出入口与 onUnauthorized 共用 —— 不会因 401 循环。
+ */
 export async function logoutAction() {
   const jar = await cookies()
-  jar.delete(TokenKey)
+  const token = jar.get(TokenKey)?.value
+  try {
+    if (token) {
+      const client = createServerClient(token)
+      await client.admin.logout()
+    }
+  } catch (error) {
+    logger.warn('logoutAction: 服务端会话撤销失败', { error })
+  } finally {
+    jar.delete(TokenKey)
+  }
 }

@@ -7,7 +7,7 @@ import { describeErrorCode } from './http.js';
 import { requestContext } from './request-context.js';
 
 /** 从 Authorization: Bearer 或 access-token cookie 提取 token */
-const extractToken = (context: Context): string | undefined => {
+export const extractToken = (context: Context): string | undefined => {
   const authorization = context.req.header('Authorization');
   return authorization?.startsWith('Bearer ')
     ? authorization.slice(7)

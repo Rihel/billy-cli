@@ -18,6 +18,7 @@ import { Inject, Injectable } from '../../composition/di.js'
 import type { AppLogger } from '@repo/shared/logger'
 import { Logger } from '../../foundation/logger.js'
 import { PasswordHasher } from '../../infrastructure/password-hasher.js'
+import { SessionStore } from '../../infrastructure/session-store.js'
 import { TokenSigner } from '../../infrastructure/token-signer.js'
 import { InvalidOldPasswordError, InvalidTokenError } from '../auth/errors.js'
 import { toAdmin, AdminRepository } from './admin.repository.js'
@@ -41,6 +42,7 @@ export class AdminService {
     @Inject(AdminRepository) private readonly adminRepository: AdminRepository,
     @Inject(PasswordHasher) private readonly passwordHasher: PasswordHasher,
     @Inject(TokenSigner) private readonly tokenSigner: TokenSigner,
+    @Inject(SessionStore) private readonly sessionStore: SessionStore,
   ) {}
 
   async login(input: AdminLoginDto): Promise<AdminAuthResultModel> {
@@ -59,6 +61,7 @@ export class AdminService {
       sub: admin.id,
       type: ADMIN_TOKEN_TYPE,
     })
+    await this.sessionStore.create(token, { sub: admin.id, type: 'admin' })
     this.logger.log('admin.login', { id: admin.id })
     return { token, admin }
   }
@@ -71,10 +74,22 @@ export class AdminService {
         type?: string
       }>(input.token)
       if (payload.type !== ADMIN_TOKEN_TYPE) throw new InvalidTokenError()
+      // 服务端会话校验：登出 / 禁用 / 删除后会话已撤销，token 立即失效
+      const session = await this.sessionStore.verify(input.token)
+      if (!session || session.type !== 'admin' || session.sub !== payload.sub) {
+        throw new InvalidTokenError()
+      }
       return payload.sub
     } catch {
       throw new InvalidTokenError()
     }
+  }
+
+  /** 登出：撤销服务端会话（幂等） */
+  async logout(input: { token: string }): Promise<SuccessResultModel> {
+    await this.sessionStore.revoke(input.token)
+    this.logger.log('admin.logout')
+    return { success: true }
   }
 
   async getMe(input: { adminId: string }): Promise<AdminModel> {
@@ -110,6 +125,10 @@ export class AdminService {
     const { adminId, ...changes } = input
     const admin = await this.adminRepository.update(adminId, changes)
     if (!admin) throw new AdminNotFoundError(adminId)
+    // 禁用管理员：立即撤销其全部会话，踢下线
+    if (changes.status === 'disabled') {
+      await this.sessionStore.revokeAll('admin', adminId)
+    }
     this.logger.log('admin.updated', { id: adminId })
     return toAdmin(admin)
   }
@@ -149,6 +168,8 @@ export class AdminService {
     if (adminId === operatorId) throw new CannotRemoveSelfError()
     const admin = await this.adminRepository.remove(adminId)
     if (!admin) throw new AdminNotFoundError(adminId)
+    // 删除管理员：撤销其全部会话
+    await this.sessionStore.revokeAll('admin', adminId)
     this.logger.log('admin.removed', { id: adminId })
     return { success: true }
   }

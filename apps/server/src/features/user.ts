@@ -8,15 +8,15 @@ import {
   UpdateUserSchema,
 } from '@repo/shared';
 import { Hono } from 'hono';
-import { makeRequireAuth } from '../lib/authentication.js';
+import { makeRequireAdminAuth } from '../lib/authentication.js';
 import { jsonBody, success } from '../lib/http.js';
 
 export const makeUserRoutes = (runtime: AppContext) => {
   const userService = runtime.get(UserService);
-  const requireAuth = makeRequireAuth(runtime);
+  const requireAdminAuth = makeRequireAdminAuth(runtime);
   const routes = new Hono();
 
-  routes.use('*', requireAuth);
+  routes.use('*', requireAdminAuth);
   routes
     .post('/create', jsonBody(CreateUserSchema), async (context) => {
       const input = context.req.valid('json');

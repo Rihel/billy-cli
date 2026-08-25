@@ -1,5 +1,5 @@
 import { Transactional } from '@repo/db'
-import { dayjs, nanoid } from '@repo/shared'
+import { dayjs, nanoid, UserStatus } from '@repo/shared'
 import type {
   AuthResultModel,
   AuthUserModel,
@@ -16,6 +16,7 @@ import { AppConfig } from '../../foundation/app-config.js'
 import type { AppLogger } from '@repo/shared/logger'
 import { Logger } from '../../foundation/logger.js'
 import { PasswordHasher } from '../../infrastructure/password-hasher.js'
+import { SessionStore } from '../../infrastructure/session-store.js'
 import { TokenSigner } from '../../infrastructure/token-signer.js'
 import { toUser, UserRepository } from '../user/user.repository.js'
 import { EmailTakenError, UserNotFoundError } from '../user/errors.js'
@@ -27,6 +28,7 @@ import {
   InvalidResetTokenError,
   InvalidTokenError,
   PasswordUnchangedError,
+  UserDisabledError,
 } from './errors.js'
 
 @Injectable()
@@ -38,6 +40,7 @@ export class AuthService {
     @Inject(UserRepository) private readonly userRepository: UserRepository,
     @Inject(PasswordHasher) private readonly passwordHasher: PasswordHasher,
     @Inject(TokenSigner) private readonly tokenSigner: TokenSigner,
+    @Inject(SessionStore) private readonly sessionStore: SessionStore,
     @Inject(AppConfig) private readonly config: AppConfig,
   ) {}
 
@@ -50,6 +53,7 @@ export class AuthService {
       await this.userRepository.create({ ...input, password: hashed }),
     )
     const token = await this.tokenSigner.sign({ sub: user.id })
+    await this.sessionStore.create(token, { sub: user.id, type: 'user' })
     this.logger.log('auth.registered', { id: user.id })
     return { token, user }
   }
@@ -60,8 +64,12 @@ export class AuthService {
     if (!(await this.passwordHasher.verify(input.password, record.password))) {
       throw new InvalidCredentialsError()
     }
+    if (record.status !== UserStatus.Enabled) {
+      throw new UserDisabledError(record.email)
+    }
     const user = toUser(record)
     const token = await this.tokenSigner.sign({ sub: user.id })
+    await this.sessionStore.create(token, { sub: user.id, type: 'user' })
     this.logger.log('auth.login', { id: user.id })
     return { token, user }
   }
@@ -146,9 +154,21 @@ export class AuthService {
       }>(input.token)
       // 后台管理员 token（type='admin'）不允许用于前台用户接口
       if (payload.type === 'admin') throw new InvalidTokenError()
+      // 服务端会话校验：登出 / 禁用 / 删除后会话已撤销，token 立即失效
+      const session = await this.sessionStore.verify(input.token)
+      if (!session || session.type !== 'user' || session.sub !== payload.sub) {
+        throw new InvalidTokenError()
+      }
       return payload.sub
     } catch {
       throw new InvalidTokenError()
     }
+  }
+
+  /** 登出：撤销服务端会话（幂等） */
+  async logout(input: { token: string }): Promise<SuccessResultModel> {
+    await this.sessionStore.revoke(input.token)
+    this.logger.log('auth.logout')
+    return { success: true }
   }
 }

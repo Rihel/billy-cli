@@ -19,6 +19,7 @@ import { PasswordHasher } from './infrastructure/password-hasher.js'
 import { QueueManager } from './infrastructure/queue.js'
 import { RedisStore } from './infrastructure/redis-store.js'
 import { Scheduler } from './foundation/scheduler.js'
+import { SessionStore } from './infrastructure/session-store.js'
 import { TokenSigner } from './infrastructure/token-signer.js'
 
 /**
@@ -48,6 +49,7 @@ export const createAppContext = (overrides: AppConfigInput = {}): AppContext => 
     .addService(IdGeneration)
     .addService(PasswordHasher)
     .addService(TokenSigner)
+    .addService(SessionStore)
     .addLifeCycleService(Scheduler)
     // 仓储
     .addService(UserRepository)

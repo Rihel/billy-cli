@@ -11,7 +11,10 @@ import {
   UpdateInfoSchema,
 } from '@repo/shared';
 import { Hono } from 'hono';
-import { makeRequireAdminAuth } from '../lib/authentication.js';
+import {
+  extractToken,
+  makeRequireAdminAuth,
+} from '../lib/authentication.js';
 import { jsonBody, success } from '../lib/http.js';
 import { requestContext } from '../lib/request-context.js';
 
@@ -31,6 +34,15 @@ export const makeAdminRoutes = (runtime: AppContext) => {
   routes.post('/login', jsonBody(AdminLoginSchema), async (context) => {
     const input = context.req.valid('json');
     return success(context, await adminService.login(input));
+  });
+
+  // 登出幂等：token 有效则撤销会话，无效也返回成功（不要求登录态）
+  routes.post('/logout', async (context) => {
+    const token = extractToken(context);
+    if (token) {
+      return success(context, await adminService.logout({ token }));
+    }
+    return success(context, { success: true });
   });
 
   routes.use('*', requireAdminAuth);

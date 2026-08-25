@@ -66,6 +66,12 @@ export class ServerClient extends ApiClient<BearerTokenCredentials> {
     login: (data: LoginDto) =>
       this.post<AuthResultModel>('/auth/login', data, { skipAuth: true }),
 
+    /** 登出（幂等：撤销服务端会话，不要求登录态） */
+    logout: () =>
+      this.post<SuccessResultModel>('/auth/logout', undefined, {
+        skipAuth: true,
+      }),
+
     /** 无需 token */
     forgotPassword: (data: ForgotPasswordDto) =>
       this.post<SuccessResultModel>('/auth/forgot-password', data, {
@@ -96,6 +102,12 @@ export class ServerClient extends ApiClient<BearerTokenCredentials> {
     /** 无需 token */
     login: (data: AdminLoginDto) =>
       this.post<AdminAuthResultModel>('/admin/login', data, {
+        skipAuth: true,
+      }),
+
+    /** 登出（幂等：撤销服务端会话，不要求登录态） */
+    logout: () =>
+      this.post<SuccessResultModel>('/admin/logout', undefined, {
         skipAuth: true,
       }),
 

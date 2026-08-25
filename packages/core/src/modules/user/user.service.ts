@@ -13,6 +13,7 @@ import { Inject, Injectable } from '../../composition/di.js'
 import type { AppLogger } from '@repo/shared/logger'
 import { Logger } from '../../foundation/logger.js'
 import { PasswordHasher } from '../../infrastructure/password-hasher.js'
+import { SessionStore } from '../../infrastructure/session-store.js'
 import { toUser, UserRepository } from './user.repository.js'
 import { EmailTakenError, UserNotFoundError } from './errors.js'
 
@@ -24,6 +25,7 @@ export class UserService {
   constructor(
     @Inject(UserRepository) private readonly userRepository: UserRepository,
     @Inject(PasswordHasher) private readonly passwordHasher: PasswordHasher,
+    @Inject(SessionStore) private readonly sessionStore: SessionStore,
   ) {}
 
   @Transactional()
@@ -53,6 +55,10 @@ export class UserService {
     const { userId, ...changes } = input
     const user = await this.userRepository.update(userId, changes)
     if (!user) throw new UserNotFoundError(userId)
+    // 禁用用户：立即撤销其全部会话，踢下线
+    if (changes.status === 'disabled') {
+      await this.sessionStore.revokeAll('user', userId)
+    }
     this.logger.log('user.updated', { id: userId })
     return toUser(user)
   }
@@ -61,6 +67,8 @@ export class UserService {
   async remove(input: RemoveUserDto): Promise<RemoveUserResultModel> {
     const user = await this.userRepository.remove(input.userId)
     if (!user) throw new UserNotFoundError(input.userId)
+    // 删除用户：撤销其全部会话
+    await this.sessionStore.revokeAll('user', input.userId)
     this.logger.log('user.removed', { id: input.userId })
     return { success: true }
   }

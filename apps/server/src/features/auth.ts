@@ -8,7 +8,10 @@ import {
   UpdateInfoSchema,
 } from '@repo/shared';
 import { Hono } from 'hono';
-import { makeRequireAuth } from '../lib/authentication.js';
+import {
+  extractToken,
+  makeRequireAuth,
+} from '../lib/authentication.js';
 import { jsonBody, success } from '../lib/http.js';
 import { requestContext } from '../lib/request-context.js';
 
@@ -33,6 +36,14 @@ export const makeAuthRoutes = (runtime: AppContext) => {
     .post('/login', jsonBody(LoginSchema), async (context) => {
       const input = context.req.valid('json');
       return success(context, await authService.login(input));
+    })
+    // 登出幂等：token 有效则撤销会话，无效也返回成功（不要求登录态）
+    .post('/logout', async (context) => {
+      const token = extractToken(context);
+      if (token) {
+        return success(context, await authService.logout({ token }));
+      }
+      return success(context, { success: true });
     })
     .post('/forgot-password', jsonBody(ForgotPasswordSchema), async (context) => {
       const input = context.req.valid('json');

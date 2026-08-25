@@ -1,5 +1,6 @@
 export * from './database.js'
 export * from './redis-store.js'
+export * from './session-store.js'
 export * from './queue.js'
 export * from './password-hasher.js'
 export * from './token-signer.js'
