@@ -23,6 +23,20 @@ export class RedisStoreError extends AppError {
   }
 }
 
+export class QueueError extends AppError {
+  readonly code = AppErrorCodes.Internal
+  constructor(readonly cause: unknown) {
+    super('Queue operation failed')
+  }
+}
+
+export class SchedulerError extends AppError {
+  readonly code = AppErrorCodes.Internal
+  constructor(readonly cause: unknown) {
+    super('Scheduler operation failed')
+  }
+}
+
 export class ObjectStorageError extends AppError {
   readonly code = AppErrorCodes.Internal
   constructor(

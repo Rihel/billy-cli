@@ -49,7 +49,7 @@
 ### core/foundation —— 横切基础能力
 
 - 无外部资源生命周期，`@Injectable()` + `runtime.ts` `addService` 注册。
-- 参考：`app-config.ts`、`logger.ts`、`id-generation.ts`、`errors/`。
+- 参考：`app-config.ts`、`logger.ts`、`id-generation.ts`、`scheduler.ts`（定时器/Cron 调度器）、`errors/`。
 
 ### core/modules —— 业务逻辑
 

@@ -16,7 +16,9 @@ import { Db } from './infrastructure/database.js'
 import { IdGeneration } from './foundation/id-generation.js'
 import { ObjectStorage } from './infrastructure/object-storage/object-storage.js'
 import { PasswordHasher } from './infrastructure/password-hasher.js'
+import { QueueManager } from './infrastructure/queue.js'
 import { RedisStore } from './infrastructure/redis-store.js'
+import { Scheduler } from './foundation/scheduler.js'
 import { TokenSigner } from './infrastructure/token-signer.js'
 
 /**
@@ -41,10 +43,12 @@ export const createAppContext = (overrides: AppConfigInput = {}): AppContext => 
     .addLifeCycleService(Db)
     .addLifeCycleService(RedisStore)
     .addLifeCycleService(ObjectStorage)
+    .addLifeCycleService(QueueManager)
     // 基础能力
     .addService(IdGeneration)
     .addService(PasswordHasher)
     .addService(TokenSigner)
+    .addLifeCycleService(Scheduler)
     // 仓储
     .addService(UserRepository)
     .addService(TodoRepository)
