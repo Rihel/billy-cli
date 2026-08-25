@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest'
+import { afterEach, describe, it, expect, vi } from 'vitest'
 import {
   // 核心
   ApiClient,
@@ -240,17 +240,43 @@ describe('ExpiresAtProvider', () => {
 // ── ApiClient request 流程 ─────────────────────────
 
 describe('ApiClient 请求流程', () => {
-  function createClient(options: Partial<ApiClientOptions> = {}) {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  /** 构造一个 JSON Response */
+  function jsonResponse(body: any, status = 200) {
+    return new Response(JSON.stringify(body), {
+      status,
+      headers: { 'Content-Type': 'application/json' },
+    })
+  }
+
+  /** stub 全局 fetch，默认返回 { code: 0, data: { ok: true } } */
+  function mockFetch(
+    handler?: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>,
+  ) {
+    const fn = vi.fn(
+      handler ??
+        (async () => jsonResponse({ code: 0, data: { ok: true } })),
+    )
+    vi.stubGlobal('fetch', fn)
+    return fn
+  }
+
+  function createClient(
+    options: Partial<ApiClientOptions> = {},
+    fetchHandler?: (
+      input: RequestInfo | URL,
+      init?: RequestInit,
+    ) => Promise<Response>,
+  ) {
+    // 默认不真的发请求；可传入自定义 handler
+    mockFetch(fetchHandler)
     return new ApiClient({
       baseUrl: 'https://api.test',
       credentialsManager: new MemoryCredentialsManager(),
       authStrategy: new BearerTokenStrategy(),
-      axiosOptions: {
-        // 不真的发请求
-        adapter: async (config: any) => {
-          return { data: { code: 0, data: { ok: true } }, status: 200 }
-        },
-      } as any,
       ...options,
     })
   }
@@ -356,5 +382,80 @@ describe('ApiClient 请求流程', () => {
       { skipAuth: true },
     )
     expect(acquireCalled).toBe(false)
+  })
+
+  it('HTTP 401 且可刷新时刷新凭证并重试一次', async () => {
+    let calls = 0
+    const client = createClient(
+      {
+        credentialsManager: new MemoryCredentialsManager({ token: 'valid' }),
+        credentialProvider: {
+          acquire: async () => ({ token: 'valid' }),
+          refresh: async () => ({ token: 'refreshed' }),
+          needsRefresh: () => false,
+        },
+      },
+      async () => {
+        calls++
+        if (calls === 1) return jsonResponse({ message: '未授权' }, 401)
+        return jsonResponse({ code: 0, data: { ok: true } })
+      },
+    )
+    const res = await (client as any).request({ method: 'POST', url: '/test' })
+    expect(calls).toBe(2)
+    expect(res.data.ok).toBe(true)
+    expect(await client.credentialsManager.getCredentials()).toEqual({
+      token: 'refreshed',
+    })
+  })
+
+  it('HTTP 401 且不可刷新时抛 Unauthorized，不重试', async () => {
+    const client = createClient(
+      {
+        credentialsManager: new MemoryCredentialsManager({ token: 'valid' }),
+        credentialProvider: {
+          acquire: async () => ({ token: 'valid' }),
+          needsRefresh: () => false,
+        },
+      },
+      async () => jsonResponse({ message: '未授权' }, 401),
+    )
+    await expect(
+      (client as any).request({ method: 'POST', url: '/test' }),
+    ).rejects.toMatchObject({
+      code: ApiErrorCodes.Unauthorized,
+      status: 401,
+    })
+  })
+
+  it('网络异常映射为 NetworkError', async () => {
+    const client = createClient(
+      {
+        credentialsManager: new MemoryCredentialsManager({ token: 'valid' }),
+      },
+      async () => {
+        throw new TypeError('fetch failed')
+      },
+    )
+    await expect(
+      (client as any).request({ method: 'POST', url: '/test' }),
+    ).rejects.toMatchObject({
+      code: ApiErrorCodes.NetworkError,
+    })
+  })
+
+  it('HTTP 非 2xx 映射为对应 ApiError', async () => {
+    const client = createClient(
+      {
+        credentialsManager: new MemoryCredentialsManager({ token: 'valid' }),
+      },
+      async () => jsonResponse({ message: '服务器开小差了' }, 500),
+    )
+    await expect(
+      (client as any).request({ method: 'POST', url: '/test' }),
+    ).rejects.toMatchObject({
+      code: ApiErrorCodes.InternalError,
+      status: 500,
+    })
   })
 })

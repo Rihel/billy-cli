@@ -3,6 +3,7 @@ export const packageName = '@repo/sdk'
 export type {
   AuthStrategyType,
   AuthContext,
+  HttpRequestConfig,
   CredentialsManager,
   AuthStrategy,
   CredentialProvider,

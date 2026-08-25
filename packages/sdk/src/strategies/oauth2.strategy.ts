@@ -104,7 +104,7 @@ export class OAuth2Strategy implements AuthStrategy<OAuth2Credentials> {
 /**
  * 令牌需要刷新时抛出的错误。
  *
- * 在请求管线中捕获此错误（如 axios 拦截器或 ApiClient 回调），
+ * 在请求管线中捕获此错误（如 fetch 封装或 ApiClient 回调），
  * 调用 `strategy.refresh()` 刷新后重试原请求。
  */
 export class OAuth2NeedsRefreshError extends Error {

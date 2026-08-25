@@ -22,7 +22,7 @@ export type HmacStrategyOptions = {
   headerPrefix?: string
   /**
    * 是否自动对 timestamp + nonce 签名。
-   * 设为 false 时需要在 axios 拦截器中手动调用 `strategy.sign()`。
+   * 设为 false 时需要在请求管线中手动调用 `strategy.sign()`。
    * 默认 true
    */
   autoSign?: boolean
@@ -48,7 +48,7 @@ export type HmacStrategyOptions = {
  * 3. 在请求头注入 X-Hmac-AccessKey / X-Hmac-Signature / X-Hmac-Timestamp / X-Hmac-Nonce
  *
  * 如需对 method + path + body 做全量签名（如阿里云签名风格），
- * 在 axios 拦截器中调用 `strategy.sign(secretKey, canonicalString)` 自行处理。
+ * 在自定义请求管线（如 fetch 封装）中调用 `strategy.sign(secretKey, canonicalString)` 自行处理。
  *
  * @example
  * ```ts
@@ -58,17 +58,20 @@ export type HmacStrategyOptions = {
  *   credentialsManager: myManager,
  * })
  *
- * // 完整请求签名 — 通过 axios 拦截器
+ * // 完整请求签名 — 通过自定义 fetch 封装
  * const strategy = new HmacStrategy({ autoSign: false })
- * axiosInstance.interceptors.request.use(async (config) => {
- *   const method = config.method?.toUpperCase() ?? 'GET'
- *   const path = config.url ?? '/'
- *   const body = config.data ? JSON.stringify(config.data) : ''
+ * async function signedFetch(input: string, init: RequestInit = {}) {
+ *   const method = (init.method ?? 'GET').toUpperCase()
+ *   const body =
+ *     typeof init.body === 'string'
+ *       ? init.body
+ *       : JSON.stringify(init.body ?? '')
  *   const bodyHash = sha256Hex(body)
- *   const canonical = [method, path, bodyHash, Date.now()].join('\n')
- *   config.headers['X-Hmac-Signature'] = strategy.sign(secretKey, canonical)
- *   return config
- * })
+ *   const canonical = [method, input, bodyHash, Date.now()].join('\n')
+ *   const headers = new Headers(init.headers)
+ *   headers.set('X-Hmac-Signature', strategy.sign(secretKey, canonical))
+ *   return fetch(input, { ...init, headers })
+ * }
  * ```
  */
 export class HmacStrategy implements AuthStrategy<HmacCredentials> {
@@ -117,7 +120,7 @@ export class HmacStrategy implements AuthStrategy<HmacCredentials> {
 
   /**
    * 用 secretKey 对任意字符串计算 HMAC 签名。
-   * 可在 axios 拦截器中调用，实现全量请求签名。
+   * 可在自定义请求管线中调用，实现全量请求签名。
    */
   sign(secretKey: string, data: string): string {
     const fn = this.hmacFn()

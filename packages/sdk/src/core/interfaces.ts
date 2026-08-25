@@ -2,6 +2,28 @@
 export type AuthStrategyType = 'apiKey' | 'oauth2' | 'bearerToken' | 'hmac'
 
 /**
+ * HTTP 请求配置。
+ * 与具体传输实现解耦：内部通过 fetch 执行。
+ * 字段命名沿用 axios 习惯（params / data），便于迁移。
+ */
+export interface HttpRequestConfig<Body = any> {
+  /** 请求路径（相对 baseUrl）或完整 URL */
+  url: string
+  /** HTTP 方法，默认 GET */
+  method?: string
+  /** 请求头 */
+  headers?: Record<string, string | undefined>
+  /** 查询参数（拼接到 url 上） */
+  params?: Record<string, any>
+  /** 请求体 */
+  data?: Body
+  /** 取消信号（如 cancelPrevious 生成的 AbortSignal） */
+  signal?: AbortSignal
+  /** 超时毫秒数，<= 0 表示不超时 */
+  timeout?: number
+}
+
+/**
  * 认证上下文。
  * 由 AuthStrategy 生成，注入到请求的不同位置。
  */

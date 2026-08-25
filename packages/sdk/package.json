@@ -18,7 +18,6 @@
   },
   "dependencies": {
     "@repo/shared": "workspace:*",
-    "axios": "^1.18.1",
     "crypto-js": "^4.2.0",
     "lodash": "^4.18.1",
     "zod": "^4.4.3"

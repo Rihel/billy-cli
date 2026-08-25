@@ -321,14 +321,14 @@ await stopCore() // 逆序释放资源
 
 ### @repo/sdk — 类型化 API 客户端
 
-`ApiClient`（axios 之上）的请求管线：
+`ApiClient`（基于原生 fetch）的请求管线：
 
 ```
 skipAuth 检查
   → CredentialResolver.resolve()（凭证校验 / acquire / refresh，并发去重）
   → AuthInjector.inject()（按 AuthStrategy 注入 headers / query / body）
   → cancelPrevious（相同在途请求去重，latest wins）
-  → axios.request()
+  → fetch() 发送请求
   → 错误处理：401 + 可刷新 → forceRefresh 重试一次；其余统一抛 ApiError
 ```
 

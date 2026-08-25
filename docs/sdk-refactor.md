@@ -52,18 +52,19 @@ CredentialResolver 不负责：
 
 第四步：请求去重（cancel previous, latest wins）
 
-第五步：axios.request()
+第五步：fetch() 发送请求
 
 第六步：错误处理
   401 + 有 refresh → refresh 一次 → 回到第三步
   其他错误 → 抛错
 ```
 
-## 5. 保留 axios，不抽 Transport
+## 5. 使用 fetch 作为唯一传输层
 
-当前阶段不要引入 Transport abstraction。原因：
+SDK 内部直接使用原生 fetch 发送请求，不引入 axios，也不抽 Transport abstraction。原因：
 - SDK 当前主要复杂度在认证生命周期，而不是 HTTP 实现
-- axios 已满足当前浏览器/Node 使用场景
+- 原生 fetch 已满足当前浏览器/Node 使用场景（Node 18+ 全局可用）
+- 减少一个运行时依赖，包体更小
 - 抽 transport 会增加维护成本
 
 未来如果出现多个 HTTP 实现需求，再考虑抽象。

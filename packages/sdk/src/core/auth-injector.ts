@@ -1,5 +1,8 @@
-import type { AuthContext, AuthStrategy } from './interfaces.js'
-import type { AxiosRequestConfig } from 'axios'
+import type {
+  AuthContext,
+  AuthStrategy,
+  HttpRequestConfig,
+} from './interfaces.js'
 
 /**
  * 认证注入器 —— 负责将 credential 转换为请求认证信息。
@@ -20,9 +23,9 @@ export class AuthInjector<Credentials = Record<string, any>> {
    * 返回新配置，不修改原对象。
    */
   async inject<Body = any>(
-    config: AxiosRequestConfig<Body>,
+    config: HttpRequestConfig<Body>,
     credentials: Credentials,
-  ): Promise<AxiosRequestConfig<Body>> {
+  ): Promise<HttpRequestConfig<Body>> {
     const context: AuthContext = {
       headers: config.headers as Record<string, string>,
       query: config.params as Record<string, any>,

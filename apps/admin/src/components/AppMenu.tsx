@@ -39,6 +39,10 @@ export const AppMenu = ({ mode = 'inline', ...props }: AppMenuProps) => {
               label: '任务管理',
               key: '/main/todo',
             },
+            {
+              label: '自动化',
+              key: '/main/automation',
+            },
           ],
         },
         {
