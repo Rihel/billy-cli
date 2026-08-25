@@ -6,3 +6,4 @@ dist
 .next
 .pnpm-store
 *.tsbuildinfo
+.agent-teams
