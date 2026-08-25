@@ -62,3 +62,32 @@ develop-business-module 的 8 落点、define-data-structure 的注册点都要�
 - references 文件开头用 blockquote 注明归属，例如：
   `> 本文件是 <skill-name> skill 的组成部分，由主 SKILL.md 引用。`
 - 拆分后同步更新主文件的「参考文件」清单与所有指向旧章节的外部引用。
+
+## 5. skill 退役 / 删除（生命周期终点）
+
+skill 也有生命周期终点——不再需要时按本流程回收，避免体系里堆积过时 / 冗余的 skill。
+
+### 何时回收
+
+- **被合并 / 取代**：能力并入其他 skill（如两个 skill 覆盖同一主题）。
+- **需求移除**：该能力已从工程移除，skill 失去依托。
+- **冗余**：与其他 skill 重复覆盖同一主题。
+- **内容过时且无法同步**：架构变更后原边界 / 约定彻底失效，更新成本高于重写。
+
+> 先区分「回收」与「需更新」：能用第 2 / 3 节同步解决的，先更新；确已无用才回收。
+
+### 回收流程
+
+1. **确认无引用**：`grep -rn "<skill-name>" .agents/skills`，找出并更新所有指向它的引用
+   （其他 skill 正文、design / placement 里的举例等）。
+2. **移除登记**：从 `billy-dev-foundation/references/catalog.md` 与 `.agents/skills/README.md`
+   删除对应行。
+3. **删除目录**：移除 `.agents/skills/<skill-name>/`。
+4. **全局校验**：重新 grep 确认无残留引用；frontmatter / 目录行数与 catalog 一致。
+
+### 注意
+
+- **删除前确认**：git 历史可恢复，但删除动作本身不可逆，先与相关 skill 的引用方核对。
+- **归档而非删除**：若只是暂不用但可能复用（如业务还没到那一步），可整体移到
+  `.agents/skills/_archive/<skill-name>/` 并在 catalog 标注「已归档」，而非硬删。
+- 回收后若工程又需要该能力，按 create-guide 重建即可（可先看归档）。

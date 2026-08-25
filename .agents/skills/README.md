@@ -17,6 +17,11 @@
 | 功能 | [`develop-business-module`](./develop-business-module/SKILL.md) | 开发完整业务模块（契约 → 数据 → 业务 → 接口 → SDK → 页面） |
 | 功能 | [`develop-frontend-page`](./develop-frontend-page/SKILL.md) | 开发前端页面（Admin 后台 aui / Web 前台 shadcn + Server Actions） |
 | 功能 | [`implement-auth`](./implement-auth/SKILL.md) | 认证与权限（登录注册、token/cookie、路由守卫、双体系） |
+| 功能 | [`object-storage`](./object-storage/SKILL.md) | 对象存储与文件上传下载（S3/COS、预签名、STS） |
+| 功能 | [`concurrency`](./concurrency/SKILL.md) | 高并发与一致性（缓存、限流、幂等、分布式锁） |
+| 功能 | [`queue`](./queue/SKILL.md) | 异步队列与延迟任务（BullMQ QueueManager） |
+| 功能 | [`scheduler`](./scheduler/SKILL.md) | 定时调度（croner Scheduler） |
+| 功能 | [`state-machine`](./state-machine/SKILL.md) | 业务状态机（字典+转移表 / xstate、并发安全） |
 | 功能 | [`write-tests`](./write-tests/SKILL.md) | 单元测试（vitest 结构与 mock 模式） |
 | 功能 | [`git-workflow`](./git-workflow/SKILL.md) | Git 提交与工作流（中文 commit 规范、辅助提交） |
 | 元 | [`manage-skills`](./manage-skills/SKILL.md) | 新增 / 维护工程 Skill（目录规范、frontmatter、references 拆分、索引注册） |

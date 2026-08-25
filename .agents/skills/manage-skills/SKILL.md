@@ -1,6 +1,6 @@
 ---
 name: manage-skills
-description: 在 Billy 工程中新增或维护 Agent Skills：判断是否需要新 skill、创建 skill 目录与 SKILL.md、编写 frontmatter（name / description / 触发词）、大文件拆分到 references/、并在 billy-dev-foundation 的「Skill 目录」与 README 中注册；**代码变更（packages / 组件库 / 架构 / 命令）后同步更新受影响的 skill**。触发词：添加 skill、新建 skill、管理 skill、维护 skill、skill 规范、写 skill、拆分 skill、注册 skill、同步 skill、更新 skill、代码变更。
+description: 在 Billy 工程中新增或维护 Agent Skills：判断是否需要新 skill、创建 skill 目录与 SKILL.md、编写 frontmatter（name / description / 触发词）、大文件拆分到 references/、并在 billy-dev-foundation 的「Skill 目录」与 README 中注册；**代码变更（packages / 组件库 / 架构 / 命令）后同步更新受影响的 skill，并把开发中解决的经验回收沉淀成 skill、退役过时 / 冗余 / 被合并的 skill**。触发词：添加 skill、新建 skill、管理 skill、维护 skill、skill 规范、写 skill、拆分 skill、注册 skill、同步 skill、更新 skill、代码变更、回收沉淀、沉淀 skill、经验抽象、删除 skill、退役 skill。
 ---
 
 # 新增 / 维护 Skill
@@ -16,13 +16,19 @@ description: 在 Billy 工程中新增或维护 Agent Skills：判断是否需�
 - **注册**：新 skill 登记到 `billy-dev-foundation` 的「Skill 目录」+ `README.md` 速览表。
 - **同步**：局部变更（新增导出 / 组件 / 命令）按 maintain-guide 第 2 节 grep 更新；
   **架构变更**（分层 / 依赖方向 / 入口重构）按 maintain-guide 第 3 节专项处理。
+- **获取外部 skill**：联网找现成 skill（评估 → 适配 → 登记）见
+  [references/find-external-skill.md](./references/find-external-skill.md)。
+- **回收沉淀**：开发中解决的经验 → 抽象精简成可复用 skill（见 harvest-guide）。
+- **退役删除**：过时 / 冗余 / 被合并的 skill 按 maintain-guide 第 5 节移除 / 归档。
 
 ## 参考文件（本 skill 的组成部分）
 
 | 文件 | 内容 | 何时读 |
 | --- | --- | --- |
 | [references/create-guide.md](./references/create-guide.md) | 新建判断、目录结构、SKILL.md 格式、内容约定 | 新建 skill 时（必读） |
-| [references/maintain-guide.md](./references/maintain-guide.md) | 索引注册、代码变更后同步、大文件拆分规则 | 维护 / 同步 / 拆分 skill 时（必读） |
+| [references/maintain-guide.md](./references/maintain-guide.md) | 索引注册、代码变更后同步、架构变更专项、拆分、skill 退役删除 | 维护 / 同步 / 拆分 / 退役 skill 时（必读） |
+| [references/find-external-skill.md](./references/find-external-skill.md) | 联网找现成 skill：去哪找 / 怎么搜 / 怎么评估 / 怎么接入 | 需要现成 skill 借鉴时（必读） |
+| [references/harvest-guide.md](./references/harvest-guide.md) | 从开发经验回收沉淀 skill：触发时机、提炼流程、去特化原则 | 开发中解决了可复用问题时（必读） |
 
 ## 完成检查清单
 
