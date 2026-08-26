@@ -6,8 +6,7 @@ import type {
   StorageStsModel,
 } from '@repo/shared'
 import type { AppLogger } from '@repo/shared/logger'
-import { inject, injectable } from 'inversify'
-import type { OnAppStart } from '../../composition/life-cycle.js'
+import { Inject, Injectable, type OnAppStart } from '@repo/di'
 import { AppConfig } from '../../foundation/app-config.js'
 import { ObjectStorageError } from '../../foundation/errors/infrastructure-errors.js'
 import { Logger } from '../../foundation/logger.js'
@@ -16,7 +15,7 @@ import { makeCosProvider } from './cos.js'
 import { makeS3Provider } from './s3.js'
 import type { ObjectContent, ObjectRemoved, ObjectStorageProvider } from './types.js'
 
-@injectable()
+@Injectable()
 export class ObjectStorage implements OnAppStart {
   private readonly provider: ObjectStorageProvider
   private initPromise: Promise<void> | null = null
@@ -25,8 +24,8 @@ export class ObjectStorage implements OnAppStart {
   private readonly logger!: AppLogger
 
   constructor(
-    @inject(AppConfig) config: AppConfig,
-    @inject(RedisStore) redis: RedisStore,
+    @Inject(AppConfig) config: AppConfig,
+    @Inject(RedisStore) redis: RedisStore,
   ) {
     const storageConfig = config.objectStorage
     this.provider =

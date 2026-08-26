@@ -1,7 +1,6 @@
 import { Cron, type CronOptions } from 'croner'
-import { injectable } from 'inversify'
+import { Injectable, type OnAppStop } from '@repo/di'
 import type { AppLogger } from '@repo/shared/logger'
-import type { OnAppStop } from '../composition/life-cycle.js'
 import { SchedulerError } from './errors/infrastructure-errors.js'
 import { Logger } from './logger.js'
 
@@ -43,7 +42,7 @@ type TimerHandle = ReturnType<typeof setTimeout>
  *
  * 归位：横切基础能力 → `core/foundation`（`placement.md` §7 将「调度器」归为横切能力）。
  */
-@injectable()
+@Injectable()
 export class Scheduler implements OnAppStop {
   @Logger()
   private readonly logger!: AppLogger

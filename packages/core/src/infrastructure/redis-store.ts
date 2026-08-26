@@ -1,6 +1,5 @@
 import type { AppLogger } from '@repo/shared/logger'
-import { inject, injectable } from 'inversify'
-import type { OnAppStart, OnAppStop } from '../composition/life-cycle.js'
+import { Inject, Injectable, type OnAppStart, type OnAppStop } from '@repo/di'
 import { Redis as RedisClient } from 'ioredis'
 import { AppConfig } from '../foundation/app-config.js'
 import { IdGeneration } from '../foundation/id-generation.js'
@@ -15,7 +14,7 @@ return 0
 `
 
 
-@injectable()
+@Injectable()
 export class RedisStore implements OnAppStart, OnAppStop {
   readonly raw: RedisClient
 
@@ -25,8 +24,8 @@ export class RedisStore implements OnAppStart, OnAppStop {
   private readonly idGeneration: IdGeneration
 
   constructor(
-    @inject(AppConfig) config: AppConfig,
-    @inject(IdGeneration) idGeneration: IdGeneration,
+    @Inject(AppConfig) config: AppConfig,
+    @Inject(IdGeneration) idGeneration: IdGeneration,
   ) {
     this.idGeneration = idGeneration
     const url = config.redis.url

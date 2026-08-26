@@ -1,4 +1,5 @@
-import { TodoService, type AppContext } from '@repo/core';
+import { TodoService } from '@repo/core';
+import type { AppContext } from '@repo/di';
 import {
   CreateTodoSchema,
   CursorQueryTodoSchema,

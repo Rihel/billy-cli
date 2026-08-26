@@ -6,8 +6,7 @@ import {
   type JobsOptions,
   type WorkerOptions,
 } from 'bullmq'
-import { inject, injectable } from 'inversify'
-import type { OnAppStart, OnAppStop } from '../composition/life-cycle.js'
+import { Inject, Injectable, type OnAppStart, type OnAppStop } from '@repo/di'
 import { AppConfig } from '../foundation/app-config.js'
 import { QueueError } from '../foundation/errors/infrastructure-errors.js'
 import { Logger } from '../foundation/logger.js'
@@ -28,7 +27,7 @@ interface WorkerRegistration {
  * - 每个 Queue / Worker 独占一条 ioredis 连接，从 `config.redis.url` 构造；
  *   连接由 BullMQ 管理，`onAppStop` 时统一关闭。
  */
-@injectable()
+@Injectable()
 export class QueueManager implements OnAppStart, OnAppStop {
   @Logger()
   private readonly logger!: AppLogger
@@ -40,7 +39,7 @@ export class QueueManager implements OnAppStart, OnAppStop {
   private readonly connectionUrl: string
   private readonly prefix: string
 
-  constructor(@inject(AppConfig) config: AppConfig) {
+  constructor(@Inject(AppConfig) config: AppConfig) {
     this.connectionUrl = config.redis.url
     this.prefix = config.redis.keyPrefix ?? 'bull'
   }

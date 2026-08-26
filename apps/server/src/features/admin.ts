@@ -1,4 +1,5 @@
-import { AdminService, type AppContext } from '@repo/core';
+import { AdminService } from '@repo/core';
+import type { AppContext } from '@repo/di';
 import {
   AdminLoginSchema,
   ChangePasswordSchema,

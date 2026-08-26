@@ -18,7 +18,7 @@ const steps = [
     icon: Workflow,
     tag: '@repo/core',
     title: '业务核心',
-    desc: 'InversifyJS Service + Repository',
+    desc: 'Service + Repository（@repo/di 注入）',
   },
   {
     icon: DatabaseZap,

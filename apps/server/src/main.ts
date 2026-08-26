@@ -1,5 +1,6 @@
 import 'dotenv/config';
-import { AppConfig, createAppContext, type AppContext } from '@repo/core';
+import { AppConfig, createAppContext } from '@repo/core';
+import type { AppContext } from '@repo/di';
 import { createLogger } from '@repo/shared/logger';
 import { serve } from '@hono/node-server';
 import { Hono } from 'hono';

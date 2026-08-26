@@ -11,7 +11,7 @@ import type {
   SuccessResultModel,
   UpdateInfoDto,
 } from '@repo/shared'
-import { Inject, Injectable } from '../../composition/di.js'
+import { Inject, Injectable } from '@repo/di'
 import { AppConfig } from '../../foundation/app-config.js'
 import type { AppLogger } from '@repo/shared/logger'
 import { Logger } from '../../foundation/logger.js'

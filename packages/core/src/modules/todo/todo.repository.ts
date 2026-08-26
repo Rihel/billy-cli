@@ -12,7 +12,7 @@ import type {
   TodoModel,
 } from '@repo/shared'
 import { type DeepPartial } from 'typeorm'
-import { Inject, Injectable } from '../../composition/di.js'
+import { Inject, Injectable } from '@repo/di'
 import { Db } from '../../infrastructure/database.js'
 
 const toTodo = (record: TodoEntity): TodoModel => {

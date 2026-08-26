@@ -1,7 +1,7 @@
 import { AdminEntity, pageWith, type PageQueryResult } from '@repo/db'
 import type { AdminModel, PageQueryAdminDto } from '@repo/shared'
 import { Brackets, type DeepPartial } from 'typeorm'
-import { Inject, Injectable } from '../../composition/di.js'
+import { Inject, Injectable } from '@repo/di'
 import { Db } from '../../infrastructure/database.js'
 
 export type AdminRecord = AdminEntity

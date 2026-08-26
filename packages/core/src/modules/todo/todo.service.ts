@@ -13,7 +13,7 @@ import type {
   TodoModel,
   UpdateTodoDto,
 } from '@repo/shared'
-import { Inject, Injectable } from '../../composition/di.js'
+import { Inject, Injectable } from '@repo/di'
 import type { AppLogger } from '@repo/shared/logger'
 import { Logger } from '../../foundation/logger.js'
 import { TodoRepository } from './todo.repository.js'

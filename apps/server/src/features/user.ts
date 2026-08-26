@@ -1,4 +1,5 @@
-import { UserService, type AppContext } from '@repo/core';
+import { UserService } from '@repo/core';
+import type { AppContext } from '@repo/di';
 import {
   CreateUserSchema,
   GetUserDetailSchema,

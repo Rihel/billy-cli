@@ -17,7 +17,7 @@
    游标 `{ items, nextCursor }`（见 `@repo/shared` 的 `AppResponse` / `AppPageQueryResponse` /
    `AppCursorQueryResponse`）。所有业务接口统一 `POST + JSON body`，不用 REST 动词。
 5. **DI**：业务类用 `@Injectable()`，构造器参数用 `@Inject(Token)`
-   （`packages/core/src/composition/di.ts`）；日志用 `@Logger()` 注入 `AppLogger`；
+   （均来自独立包 `@repo/di`）；日志用 `@Logger()` 注入 `AppLogger`；
    写操作加 `@Transactional()`；**新增的 service / repository 必须注册到
    `packages/core/src/runtime.ts`**（唯一装配点，`addService` 即可；生命周期组件用
    `addLifeCycleService`）。
@@ -40,8 +40,9 @@
        `shared/src/utils/`（nanoid / dayjs / md5 / tree / dict / zod 等工具）、
        `core/src/foundation/`、`aui/src/components/`。先在包内找，别另起炉灶。
     3. **当前依赖的 npm 包有无实现**：查 `package.json` 已声明的依赖是否直接提供该
-       能力——lodash、dayjs、zod、typeorm、hono、inversify、@tanstack/react-query、
-       antd 等都能覆盖大量通用需求，优先用依赖自身能力（如分页 `pageWith` /
+       能力——lodash、dayjs、zod、typeorm、hono、@repo/di（InversifyJS 门面）、
+       @tanstack/react-query、antd 等都能覆盖大量通用需求，优先用依赖自身能力
+       （如分页 `pageWith` /
        `cursorPageWith` 已由 `@repo/db` 提供，勿在模块内重写）。
     4. **现成 npm 包**（联网搜索）：以上都没有，才搜索是否有成熟 npm 包可用，
        优先选择维护活跃、类型完善、体积合理的包（如 id 用 `nanoid`、Redis 用

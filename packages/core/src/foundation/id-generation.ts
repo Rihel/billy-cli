@@ -1,8 +1,8 @@
 import { nanoid } from '@repo/shared'
-import { injectable } from 'inversify'
+import { Injectable } from '@repo/di'
 
 
-@injectable()
+@Injectable()
 export class IdGeneration {
   next(length = 20): string {
     return nanoid(length)

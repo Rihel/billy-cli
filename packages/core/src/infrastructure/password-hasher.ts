@@ -1,12 +1,12 @@
 import bcrypt from 'bcryptjs'
-import { inject, injectable } from 'inversify'
+import { Inject, Injectable } from '@repo/di'
 import { AppConfig } from '../foundation/app-config.js'
 import { PasswordHashingError } from '../foundation/errors/infrastructure-errors.js'
 
 
-@injectable()
+@Injectable()
 export class PasswordHasher {
-  constructor(@inject(AppConfig) private readonly config: AppConfig) {}
+  constructor(@Inject(AppConfig) private readonly config: AppConfig) {}
 
   async hash(password: string): Promise<string> {
     try {

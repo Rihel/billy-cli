@@ -7,21 +7,20 @@ import type {
 } from 'typeorm'
 import type { DataSource } from 'typeorm'
 import type { AppLogger } from '@repo/shared/logger'
-import { inject, injectable } from 'inversify'
-import type { OnAppStart, OnAppStop } from '../composition/life-cycle.js'
+import { Inject, Injectable, type OnAppStart, type OnAppStop } from '@repo/di'
 import { AppConfig } from '../foundation/app-config.js'
 import { Logger } from '../foundation/logger.js'
 import { coalesceAsync } from 'promise-coalesce'
 export type { DataSource } from 'typeorm'
 
-@injectable()
+@Injectable()
 export class Db implements OnAppStart, OnAppStop {
   readonly dataSource: DataSource
 
   @Logger()
   private readonly logger!: AppLogger
 
-  constructor(@inject(AppConfig) private config: AppConfig) {
+  constructor(@Inject(AppConfig) private config: AppConfig) {
     this.dataSource = createDb({
       url: config.db.url,
       type: 'postgres',

@@ -1,12 +1,12 @@
 import jsonwebtoken from 'jsonwebtoken'
-import { inject, injectable } from 'inversify'
+import { Inject, Injectable } from '@repo/di'
 import { AppConfig } from '../foundation/app-config.js'
 import { TokenSigningError } from '../foundation/errors/infrastructure-errors.js'
 
 
-@injectable()
+@Injectable()
 export class TokenSigner {
-  constructor(@inject(AppConfig) private readonly config: AppConfig) {}
+  constructor(@Inject(AppConfig) private readonly config: AppConfig) {}
 
   async sign(payload: object): Promise<string> {
     try {

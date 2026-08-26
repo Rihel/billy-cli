@@ -7,8 +7,7 @@
     "isolatedModules": true,
     "declaration": false,
     "types": [
-      "node",
-      "reflect-metadata"
+      "node"
     ],
     "verbatimModuleSyntax": true,
     "target": "ES2023",

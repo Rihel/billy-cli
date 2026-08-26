@@ -46,7 +46,7 @@ export type AppConfig = z.infer<typeof AppConfigSchema>
 /** 可传入的覆盖输入（允许部分字段，未传的用默认值） */
 export type AppConfigInput = Partial<z.input<typeof AppConfigSchema>>
 
-/** inversify 注入 token（AppConfig 是纯类型，用 Symbol 作运行时标识） */
+/** DI 注入 token（AppConfig 是纯类型，用 Symbol 作运行时标识） */
 export const AppConfig = Symbol.for('AppConfig')
 
 const fromEnv = (env: Record<string, string | undefined>) => ({

@@ -1,7 +1,7 @@
 # Billy
 
 > 一套基于 Hono、InversifyJS 与 Next.js 16 的全栈应用 Monorepo 模板。
-> 后端采用「Hono 薄边界 + InversifyJS 业务核心」，前端提供两套独立入口：
+> 后端采用「Hono 薄边界 + InversifyJS 业务核心（DI 封装于 @repo/di）」，前端提供两套独立入口：
 > Web（Base UI + shadcn/ui）与 Admin（Ant Design 6）。
 
 ## 技术栈
@@ -14,7 +14,8 @@ apps/
 packages/
 ├── shared   — Zod schemas + 错误码字典 + 响应工具 + Pino 日志 + 通用工具（前后端共享）
 ├── db       — TypeORM 实体 + DataSource 连接 + 四种分页策略 + 迁移
-├── core     — InversifyJS 业务层：Config / Db / Redis / JWT / ObjectStorage + Auth / Admin / User / Todo
+├── core     — 业务层：Config / Db / Redis / JWT / ObjectStorage + Auth / Admin / User / Todo（@repo/di 装配）
+├── di       — DI 门面：@Injectable/@Inject + AppContext 组合根 + 生命周期调度（InversifyJS 8 封装）
 ├── api-client — 通用 HTTP + 鉴权管线客户端（ApiClient / 策略 / 凭证管理器，业务无关）
 ├── sdk      — ServerClient（全类型化业务 API 调用，构建在 @repo/api-client 之上）
 ├── ui       — Base UI + shadcn 风格共享组件库（Tailwind 4）
@@ -25,7 +26,7 @@ packages/
 | ---------- | -------------------------- | ------------------------------------------- |
 | 构建系统   | pnpm + Turbo               | monorepo 依赖管理 + 按拓扑任务编排 |
 | 服务端框架 | Hono 4                     | 轻量 HTTP 边界，业务全部下沉到 core         |
-| 依赖注入   | InversifyJS 8              | `@injectable` class + `Container` 组合根    |
+| 依赖注入   | @repo/di（InversifyJS 8）   | `@Injectable` class + `AppContext` 组合根    |
 | API 层     | POST JSON（Hono Routes）   | Zod 边界校验 + 全类型化 SDK                 |
 | ORM        | TypeORM                    | 装饰器实体 + Repository + QueryBuilder      |
 | 前端框架   | Next.js 16 App Router      | RSC + SSR + Server Actions                  |
@@ -184,14 +185,19 @@ pnpm docker:up
 │   │   │   └── entities/                # BaseEntity / UserEntity / TodoEntity
 │   │   ├── migrations/                  # TypeORM 迁移产物
 │   │   └── data-source.ts               # TypeORM CLI 迁移配置
-│   ├── core/                            # @repo/core — InversifyJS 业务核心
+│   ├── core/                            # @repo/core — 业务核心（由 @repo/di 装配）
 │   │   └── src/
 │   │       ├── runtime.ts               # createAppContext() 组合根工厂（唯一装配点）
-│   │       ├── composition/             # AppContext / LifeCycleHost / 生命周期接口 / 自定义 DI 装饰器
 │   │       ├── foundation/              # 横切基础：app-config / errors / logger / id-generation
 │   │       ├── infrastructure/          # 外部资源门面：database / redis-store / object-storage /
 │   │       │                            # token-signer / password-hasher
 │   │       └── modules/                 # auth / admin / user / todo（service + repository + errors）
+│   ├── di/                              # @repo/di — DI 门面：InversifyJS 8 封装
+│   │   └── src/
+│   │       ├── di.ts                    # @Injectable() / @Inject()（写入自有 DiParamTypesKey 元数据）
+│   │       ├── app-context.ts           # AppContext：Container + LifeCycleHost 组合根
+│   │       ├── life-cycle-host.ts       # 生命周期调度（依赖拓扑排序 / 回滚 / 幂等）
+│   │       └── life-cycle.ts            # LifeCycle / OnAppStart / OnAppStop 接口
 │   ├── api-client/                      # @repo/api-client — 通用 HTTP + 鉴权管线（业务无关）
 │   │   └── src/
 │   │       ├── core/                    # api.client / credential-resolver / auth-injector / api-error
@@ -281,9 +287,9 @@ Zod schema 单一事实源，同时派生 TypeScript 类型（`*.schema.ts` 导�
 - `data-source.ts`：TypeORM CLI 专用 DataSource（`db:generate` / `db:migrate`），迁移产物在
   `migrations/`
 
-### @repo/core — InversifyJS 业务核心
+### @repo/core — 业务核心（DI 门面见 @repo/di）
 
-Feature-first 结构，所有能力与业务服务均为 `@injectable()` class，构造器注入依赖：
+Feature-first 结构，所有能力与业务服务均为 `@Injectable()` class，构造器注入依赖：
 
 ```
 modules/                     # 业务领域（service + repository + errors）
@@ -302,12 +308,7 @@ foundation/                   # 横切基础能力
 ├── id-generation.ts
 ├── logger.ts     # @Logger() 装饰器 + configureLogger
 └── errors/       # app-error.ts（AppError 基类）/ infrastructure-errors.ts
-composition/                  # 组合与生命周期
-├── app-context.ts    # AppContext：Container + LifeCycleHost 组合根对象
-├── life-cycle-host.ts# LifeCycleHost：生命周期调度（依赖拓扑排序 / 回滚 / 幂等）
-├── life-cycle.ts     # LifeCycle / OnAppStart / OnAppStop 接口
-└── di.ts             # 自定义 @Injectable() / @Inject()（写入自有 DiParamTypesKey 元数据）
-runtime.ts        # createAppContext() 组合根工厂，唯一装配点
+runtime.ts        # createAppContext() 组合根工厂，唯一装配点（bean 由 @repo/di 的 AppContext 装配）
 ```
 
 **使用方式：**
@@ -326,7 +327,7 @@ await ctx.stop() // 逆序释放资源（幂等，可重复调用）
 
 **生命周期设计：**
 
-- `@Injectable()` / `@Inject()` 是 `inversify` 原装饰器的包装：透传原逻辑（容器照常解析），同时把注入 token 写入**我们自己的元数据 key**（`DiParamTypesKey`），不依赖 inversify 内部键
+- `@Injectable()` / `@Inject()`（`@repo/di`）是 `inversify` 原装饰器的包装：透传原逻辑（容器照常解析），同时把注入 token 写入**我们自己的元数据 key**（`DiParamTypesKey`），不依赖 inversify 内部键
 - `LifeCycleHost` 依据 `DiParamTypesKey` 构建依赖图做 Kahn 拓扑排序——**调用方以任意顺序注册生命周期组件，宿主都保证「依赖先启动」**；检测到环直接报错
 - `start()` 失败自动逆序回滚已启动组件；`stop()` 幂等、单组件失败收集日志不中断
 

@@ -1,5 +1,5 @@
 import { Container, type ServiceIdentifier } from 'inversify'
-import { LifeCycleHost, type LifeCycleState } from './life-cycle-host'
+import { LifeCycleHost, type LifeCycleState } from './life-cycle-host.js'
 
 /**
  * 应用组合根：Container（依赖解析）+ LifeCycleHost（生命周期调度）。

@@ -14,7 +14,8 @@ billy-cli 是一套**全栈应用 Monorepo 模板**：pnpm + Turbo 构建，Type
 | --- | --- |
 | 构建 | pnpm + Turbo（`turbo.json` 按依赖拓扑编排） |
 | 服务端 HTTP | Hono 4（`apps/server`，端口 9989） |
-| 业务核心 | InversifyJS 8 DI（`@repo/core`） |
+| 业务核心 | `@repo/core`（modules/<业务>/{service, repository, errors}） |
+| 依赖注入 | InversifyJS 8 门面（`@repo/di`：`@Injectable`/`@Inject` + AppContext 组合根 + 生命周期） |
 | ORM | TypeORM（`@repo/db`，PostgreSQL） |
 | 契约 / 共享 | Zod + 字典 + 响应工具（`@repo/shared`） |
 | 前台 | Next.js 16 App Router + Base UI + shadcn/ui + Tailwind 4（`apps/web`，9840） |
@@ -26,8 +27,9 @@ billy-cli 是一套**全栈应用 Monorepo 模板**：pnpm + Turbo 构建，Type
 ```
 apps/server   Hono 路由工厂（薄边界：Zod 校验 + 调 core + 错误映射）
    ↓ 只依赖
-@repo/core    InversifyJS 业务核心：modules/<业务>/{service, repository, errors}
+@repo/core    业务核心：modules/<业务>/{service, repository, errors}（由 @repo/di 装配）
    ↓
+@repo/di      DI 门面：@Injectable/@Inject + AppContext 组合根 + 生命周期调度（InversifyJS 8 封装）
 @repo/db      TypeORM 实体 + DataSource + 分页（pageWith / cursorPageWith）+ 迁移
 @repo/shared  Zod schema（契约）+ dicts（错误码 / 字典）+ AppResponse（响应格式）
    ↑ 被 core / db / server / sdk / 前端共同依赖 —— 契约先行
@@ -36,8 +38,9 @@ apps/web      前台（Base UI + shadcn）
 apps/admin    后台（Ant Design + @repo/aui）
 ```
 
-**依赖方向不可逆**：`shared` 不依赖任何业务包；`core` 不 import `apps/*`；
-`apps/server` 不写业务逻辑。新增功能时按依赖方向自底向上落代码。
+**依赖方向不可逆**：`shared` 不依赖任何业务包；`di` 不依赖任何业务包；
+`core` 不 import `apps/*`；`apps/server` 不写业务逻辑。
+新增功能时按依赖方向自底向上落代码。
 
 ## 4. 一次请求的数据流
 

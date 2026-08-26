@@ -1,4 +1,4 @@
-import { AppContext } from './composition/app-context.js'
+import { AppContext } from '@repo/di'
 import { configureLogger } from './foundation/logger.js'
 import { AdminRepository } from './modules/admin/admin.repository.js'
 import { AdminService } from './modules/admin/admin.service.js'
@@ -61,9 +61,4 @@ export const createAppContext = (overrides: AppConfigInput = {}): AppContext => 
     .addService(TodoService)
     .addService(AdminService)
 }
-
-export { AppContext } from './composition/app-context.js'
-export { LifeCycleHost } from './composition/life-cycle-host.js'
-export type { LifeCycleState } from './composition/life-cycle-host.js'
-export { DiParamTypesKey, Injectable, Inject } from './composition/di.js'
-export type { LifeCycle, OnAppStart, OnAppStop } from './composition/life-cycle.js'
+// DI 能力（AppContext / @Injectable / @Inject / 生命周期）统一来自独立包 @repo/di，core 不再对外导出

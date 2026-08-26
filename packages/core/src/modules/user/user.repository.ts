@@ -1,7 +1,7 @@
 import { pageWith, type PageQueryResult, UserEntity } from '@repo/db'
 import type { PageQueryUserDto, UserModel } from '@repo/shared'
 import { Brackets, type DeepPartial } from 'typeorm'
-import { Inject, Injectable } from '../../composition/di.js'
+import { Inject, Injectable } from '@repo/di'
 import { Db } from '../../infrastructure/database.js'
 
 export type UserRecord = UserEntity

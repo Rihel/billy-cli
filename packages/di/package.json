@@ -1,0 +1,29 @@
+{
+  "name": "@repo/di",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "import": "./dist/index.mjs",
+      "types": "./src/index.ts"
+    }
+  },
+  "scripts": {
+    "dev": "tsdown --watch --config-loader unrun",
+    "build": "tsdown --config-loader unrun",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "inversify": "^8.2.3",
+    "reflect-metadata": "^0.2.2"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "tsdown": "^0.22.9",
+    "typescript": "^6.0.0",
+    "unrun": "^0.3.1",
+    "vitest": "^4.1.10"
+  }
+}

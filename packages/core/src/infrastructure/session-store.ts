@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto'
-import { inject, injectable } from 'inversify'
+import { Inject, Injectable } from '@repo/di'
 import { AppConfig } from '../foundation/app-config.js'
 import { RedisStoreError } from '../foundation/errors/infrastructure-errors.js'
 import { RedisStore } from './redis-store.js'
@@ -24,11 +24,11 @@ const indexKey = (type: SessionType, sub: string) => `auth:index:${type}:${sub}`
  * - `auth:session:{sha256(token)}` → JSON { sub, type }，TTL 与 JWT 有效期一致
  * - `auth:index:{type}:{sub}` → Set 存该主体的全部会话 sha，供批量踢人
  */
-@injectable()
+@Injectable()
 export class SessionStore {
   constructor(
-    @inject(AppConfig) private readonly config: AppConfig,
-    @inject(RedisStore) private readonly redis: RedisStore,
+    @Inject(AppConfig) private readonly config: AppConfig,
+    @Inject(RedisStore) private readonly redis: RedisStore,
   ) {}
 
   /** 会话 TTL 与 JWT 有效期一致（支持 300 / 7d / 30m 等格式，兜底 7 天） */

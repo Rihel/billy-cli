@@ -1,4 +1,5 @@
-import { AdminService, AuthService, type AppContext } from '@repo/core';
+import { AdminService, AuthService } from '@repo/core';
+import type { AppContext } from '@repo/di';
 import { AppErrorCodes, ResponseUtils } from '@repo/shared';
 import { getCookie } from 'hono/cookie';
 import { createMiddleware } from 'hono/factory';

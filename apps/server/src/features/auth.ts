@@ -1,4 +1,5 @@
-import { AuthService, type AppContext } from '@repo/core';
+import { AuthService } from '@repo/core';
+import type { AppContext } from '@repo/di';
 import {
   ChangePasswordSchema,
   ForgotPasswordSchema,

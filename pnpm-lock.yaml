@@ -11,6 +11,9 @@ importers:
       '@repo/core':
         specifier: workspace:*
         version: link:packages/core
+      '@repo/di':
+        specifier: workspace:*
+        version: link:packages/di
       dayjs:
         specifier: ^1.11.21
         version: 1.11.21
@@ -163,6 +166,9 @@ importers:
       '@repo/core':
         specifier: workspace:*
         version: link:../../packages/core
+      '@repo/di':
+        specifier: workspace:*
+        version: link:../../packages/di
       '@repo/shared':
         specifier: workspace:*
         version: link:../../packages/shared
@@ -172,9 +178,6 @@ importers:
       hono:
         specifier: ^4.9.0
         version: 4.12.32
-      reflect-metadata:
-        specifier: ^0.2.2
-        version: 0.2.2
       zod:
         specifier: ^4.4.3
         version: 4.4.3
@@ -398,6 +401,9 @@ importers:
       '@repo/db':
         specifier: workspace:*
         version: link:../db
+      '@repo/di':
+        specifier: workspace:*
+        version: link:../di
       '@repo/shared':
         specifier: workspace:*
         version: link:../shared
@@ -416,9 +422,6 @@ importers:
       dayjs:
         specifier: ^1.11.21
         version: 1.11.21
-      inversify:
-        specifier: ^8.2.3
-        version: 8.2.3(reflect-metadata@0.2.2)
       ioredis:
         specifier: ^5.11.1
         version: 5.11.1(supports-color@8.1.1)
@@ -511,6 +514,31 @@ importers:
       unrun:
         specifier: ^0.3.1
         version: 0.3.1(synckit@0.11.13)
+
+  packages/di:
+    dependencies:
+      inversify:
+        specifier: ^8.2.3
+        version: 8.2.3(reflect-metadata@0.2.2)
+      reflect-metadata:
+        specifier: ^0.2.2
+        version: 0.2.2
+    devDependencies:
+      '@types/node':
+        specifier: ^24.0.0
+        version: 24.13.3
+      tsdown:
+        specifier: ^0.22.9
+        version: 0.22.9(tsx@4.23.1)(typescript@6.0.3)(unrun@0.3.1(synckit@0.11.13))
+      typescript:
+        specifier: ^6.0.0
+        version: 6.0.3
+      unrun:
+        specifier: ^0.3.1
+        version: 0.3.1(synckit@0.11.13)
+      vitest:
+        specifier: ^4.1.10
+        version: 4.1.10(@types/node@24.13.3)(vite@8.1.5(@types/node@24.13.3)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.0)(tsx@4.23.1)(yaml@2.9.0))
 
   packages/sdk:
     dependencies:
