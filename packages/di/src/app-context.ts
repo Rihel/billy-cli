@@ -6,7 +6,7 @@ import { LifeCycleHost, type LifeCycleState } from './life-cycle-host.js'
  *
  * 用法：
  *   const ctx = new AppContext()
- *     .addConstant(AppConfig, config)
+ *     .addConstant(MyConfigToken, config)
  *     .addLifeCycleService(Db)
  *     .addService(AuthService)
  *   await ctx.start()

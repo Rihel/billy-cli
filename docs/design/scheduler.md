@@ -18,9 +18,9 @@
 | 项 | 决定 |
 | --- | --- |
 | 能力性质 | 横切基础能力（进程内调度器） |
-| 落点 | `packages/core/src/foundation/scheduler.ts`（`Scheduler`） |
-| 注册 | `runtime.ts` 用 `addLifeCycleService(Scheduler)`；`foundation/index.ts` 导出 |
-| 依赖 | `croner@^10.0.1`（core），`vitest` 仅 devDependency |
+| 落点 | `packages/kits/src/foundation/scheduler.ts`（`Scheduler`） |
+| 注册 | `createServiceContext` 用 `addLifeCycleService(Scheduler)`；`foundation/index.ts` 导出 |
+| 依赖 | `croner@^10.0.1`（kits），`vitest` 仅 devDependency |
 | 错误 | `SchedulerError`（`AppErrorCodes.Internal`），加入 `infrastructure-errors.ts` |
 
 归位依据：`placement.md` §7「横切基础能力 → core/foundation」、§5「定时任务/调度」。
@@ -58,7 +58,7 @@ scheduler.scheduleInterval('heartbeat', 5 * 60_000, async () => {
 
 ## 5. 测试
 
-- 新增 `packages/core/test/scheduler.test.ts`（vitest，`pnpm --filter @repo/core test`）：
+- 新增 `packages/kits/test/scheduler.test.ts`（vitest，`pnpm --filter @repo/kits test`）：
   覆盖 cron 周期触发、interval 周期、timeout 单次自动清理、重复注册抛错、
   handler 异常不中断循环、`stopAll` 后不再触发、非法时长抛错。
 

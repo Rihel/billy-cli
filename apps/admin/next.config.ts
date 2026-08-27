@@ -25,7 +25,6 @@ const nextConfig: NextConfig = {
   transpilePackages: ['@repo/aui'],
   serverExternalPackages: [
     '@repo/shared',
-    '@repo/db',
     'pino',
     'pino-pretty',
     'pg',

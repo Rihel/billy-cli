@@ -10,7 +10,7 @@ description: 在 Billy 工程中处理高并发与一致性：缓存、限流、
 
 ## 核心要点
 
-- 基础设施 `RedisStore`（`core/infrastructure/redis-store.ts`）提供：`setJson` / `getJson`
+- 基础设施 `RedisStore`（`kits/infrastructure/redis-store.ts`）提供：`setJson` / `getJson`
   （缓存）、`incr`（限流计数）、`acquireLock` / `releaseLock`（分布式锁）。
 - **缓存**：`setJson(key, val, ttl)` + `getJson`，写后失效 / 删除。
 - **限流**：`incr` + `expire` 固定窗口；精确用 `raw` 的 ZSet 滑窗。

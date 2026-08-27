@@ -78,7 +78,7 @@ async updateStatus(input: { orderId: string; event: string }): Promise<OrderMode
 
 仅当需要**守卫（guard）、副作用（action）、上下文（context）、嵌套状态图**等重特性时，
 才引入（先按「实现查找顺序」确认无更轻方案）：
-- 门面放 `core/foundation`（横切基础能力）或独立模块，业务模块只依赖门面，不散落 import 库。
+- 门面放 `kits/foundation`（横切基础能力）或 `server/modules` 独立模块，业务模块只依赖门面，不散落 import 库。
 
 ## 7. 归位汇总
 
@@ -86,7 +86,7 @@ async updateStatus(input: { orderId: string; event: string }): Promise<OrderMode
 | --- | --- |
 | 状态字典 | `shared/dicts/<domain>-status.dict.ts` |
 | 转移表 + 转移函数（纯） | `shared/utils/<domain>-state.utils.ts` |
-| 状态字段 | 实体 string 列（`db/entities`） |
+| 状态字段 | 实体 string 列（`apps/server/src/database/entities`） |
 | 状态校验 | schema `z.enum` |
-| 状态机库门面（如引 xstate） | `core/foundation` |
-| 业务编排 / 持久化 | `core/modules/<domain>/*.service.ts` |
+| 状态机库门面（如引 xstate） | `kits/foundation` |
+| 业务编排 / 持久化 | `apps/server/src/modules/<domain>/*.service.ts` |

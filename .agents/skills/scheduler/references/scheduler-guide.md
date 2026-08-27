@@ -3,10 +3,10 @@
 > 本文件是 `scheduler` skill 的组成部分，由主 SKILL.md 引用。
 > 使用定时任务 / 调度时必读。
 
-## 1. 基础设施：Scheduler（core/foundation/scheduler.ts）
+## 1. 基础设施：Scheduler（kits/foundation/scheduler.ts）
 
 基于 **croner** 的调度门面，注入 `@Inject(Scheduler)`（`addService` 注册）。归位：
-横切基础能力 → `core/foundation`。
+横切基础能力 → `kits/foundation`。
 
 | 方法 | 用途 |
 | --- | --- |
@@ -49,7 +49,7 @@ export class OrderService {
 
 ## 4. 归位与注意
 
-- 调度器在 `core/foundation`（横切基础能力）；业务模块注入 `Scheduler` 用，不散落 `croner`。
+- 调度器在 `kits/foundation`（横切基础能力）；业务模块注入 `Scheduler` 用，不散落 `croner`。
 - 定时任务**跨实例会重复执行**：多实例部署时如需互斥，配合 `concurrency` skill 的
   `RedisStore.acquireLock` 加分布式锁（谁抢到谁执行）。
 - 长任务建议配合 `queue` skill 拆异步，避免阻塞调度线程。

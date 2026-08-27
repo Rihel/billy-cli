@@ -12,16 +12,21 @@
     "start": "node dist/main.js",
     "dev": "tsx watch src/main.ts",
     "start:debug": "tsx --inspect watch src/main.ts",
-    "start:prod": "node dist/main.js"
+    "start:prod": "node dist/main.js",
+    "db:generate": "bash -c 'node --import tsx node_modules/typeorm/cli.js migration:generate \"src/database/migrations/$0\" -d ./data-source.ts'",
+    "db:migrate": "node --import tsx node_modules/typeorm/cli.js migration:run -d ./data-source.ts",
+    "seed:admin": "tsx scripts/seed-admin.ts"
   },
   "dependencies": {
     "@hono/node-server": "^1.19.0",
     "@hono/zod-validator": "^0.7.0",
-    "@repo/core": "workspace:*",
     "@repo/di": "workspace:*",
+    "@repo/kits": "workspace:*",
     "@repo/shared": "workspace:*",
     "dotenv": "^17.4.2",
     "hono": "^4.9.0",
+    "pg": "^8.22.0",
+    "typeorm": "^1.1.0",
     "zod": "^4.4.3"
   },
   "devDependencies": {

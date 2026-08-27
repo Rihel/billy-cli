@@ -3,7 +3,7 @@
 > 本文件是 `concurrency` skill 的组成部分，由主 SKILL.md 引用。
 > 实现缓存 / 限流 / 幂等 / 分布式锁时必读。
 
-## 1. 基础设施：RedisStore（core/infrastructure/redis-store.ts）
+## 1. 基础设施：RedisStore（kits/infrastructure/redis-store.ts）
 
 所有能力基于 `RedisStore` 门面（`@Inject(RedisStore)`，生命周期组件）：
 
@@ -29,7 +29,7 @@ if (data === null) {
 
 - **写后失效 / 双写**：更新数据时 `del` 或重新 `setJson` 缓存，避免脏读。
 - **防击穿 / 雪崩**：缓存带 TTL；热点 key 的过期时间加随机抖动；单飞用分布式锁兜底。
-- 归位：通用缓存封装可放 `core/foundation`，业务内直接注入 `RedisStore` 用即可。
+- 归位：通用缓存封装可放 `kits/foundation`，业务内直接注入 `RedisStore` 用即可。
 
 ## 3. 限流模式
 
@@ -73,7 +73,7 @@ try {
 
 ## 6. 归位与注意
 
-- 封装：通用并发工具（限流器、幂等表）放 `core/foundation`；业务内直接注入 `RedisStore` 用。
+- 封装：通用并发工具（限流器、幂等表）放 `kits/foundation`；业务内直接注入 `RedisStore` 用。
 - 引用 `RedisStore` 经 DI（`@Inject(RedisStore)`），不要 `new` 连接。
 - 先按「实现查找顺序」确认：能用 `RedisStore` 原生方法（锁 / incr / TTL）就不引新库 / 不自己实现。
 - 涉及分布式一致性时，先看 `design.md` 评估复杂度，别一上来就上分布式锁。

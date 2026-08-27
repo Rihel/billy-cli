@@ -35,8 +35,8 @@ Redis 会话支持**主动失效**（登出 / 禁用 / 删除即踢下线），�
 | 项 | 决定 |
 | --- | --- |
 | 能力性质 | 横切基础设施（认证会话门面） |
-| 落点 | `packages/core/src/infrastructure/session-store.ts`（`SessionStore`） |
-| 注册 | `runtime.ts` `addService(SessionStore)`；`infrastructure/index.ts` 导出 |
+| 落点 | `packages/kits/src/infrastructure/session-store.ts`（`SessionStore`） |
+| 注册 | `createServiceContext` `addService(SessionStore)`；`infrastructure/index.ts` 导出 |
 | 依赖 | 复用 `RedisStore`（ioredis）+ `AppConfig`（`jwt.expiresIn` 解析 TTL），无新增依赖 |
 | 错误 | `RedisStoreError`（`AppErrorCodes.Internal`） |
 

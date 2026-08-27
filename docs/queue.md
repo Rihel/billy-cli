@@ -8,12 +8,12 @@
 | 项 | 决定 |
 | --- | --- |
 | 能力性质 | 外部资源门面（MQ / 任务队列） |
-| 落点 | `packages/core/src/infrastructure/queue.ts`（`QueueManager` 门面） |
-| 注册 | `runtime.ts` 用 `addLifeCycleService(QueueManager)`，`infrastructure/index.ts` 导出 |
-| 依赖 | `bullmq` 加入 `packages/core/package.json`（ioredis 已在依赖中，满足 BullMQ 的 peer） |
+| 落点 | `packages/kits/src/infrastructure/queue.ts`（`QueueManager` 门面） |
+| 注册 | `createServiceContext` 用 `addLifeCycleService(QueueManager)`，`infrastructure/index.ts` 导出 |
+| 依赖 | `bullmq` 加入 `packages/kits/package.json`（ioredis 已在依赖中，满足 BullMQ 的 peer） |
 
-归位依据：`billy-dev-foundation/references/placement.md` §2「外部资源门面 → core/infrastructure」、
-§5「消息队列/延迟任务 → 门面 core/infrastructure/queue.ts」。
+归位依据：`billy-dev-foundation/references/placement.md` §2「外部资源门面 → kits/infrastructure」、
+§5「消息队列/延迟任务 → 门面 kits/infrastructure/queue.ts」。
 
 ## 2. 关键设计
 

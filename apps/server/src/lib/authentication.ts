@@ -1,4 +1,5 @@
-import { AdminService, AuthService } from '@repo/core';
+import { AdminService } from '../modules/admin/index.js';
+import { AuthService } from '../modules/auth/index.js';
 import type { AppContext } from '@repo/di';
 import { AppErrorCodes, ResponseUtils } from '@repo/shared';
 import { getCookie } from 'hono/cookie';

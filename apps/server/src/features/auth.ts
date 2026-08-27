@@ -1,4 +1,4 @@
-import { AuthService } from '@repo/core';
+import { AuthService } from '../modules/auth/index.js';
 import type { AppContext } from '@repo/di';
 import {
   ChangePasswordSchema,

@@ -1,4 +1,4 @@
-import { TodoService } from '@repo/core';
+import { TodoService } from '../modules/todo/index.js';
 import type { AppContext } from '@repo/di';
 import {
   CreateTodoSchema,

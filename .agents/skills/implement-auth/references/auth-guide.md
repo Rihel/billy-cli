@@ -22,13 +22,13 @@ token 里带类型标识，`verifyToken` 分别校验，混用必然失败。
 
 ## 2. 后端：签发与校验
 
-- **签发**：登录成功后由 core 的 `AuthService` / `AdminService` 签发 token
+- **签发**：登录成功后由 `AuthService` / `AdminService` 签发 token
   （`TokenSigner`，JWT，`JWT_SECRET` / `JWT_EXPIRES_IN` 配置，见
-  `packages/core/src/infrastructure/token-signer.ts`）。响应模型**按体系区分**：
+  `packages/kits/src/infrastructure/token-signer.ts`）。响应模型**按体系区分**：
   用户登录 `AuthResultModel`（`auth.schema.ts`），管理员登录 `AdminAuthResultModel`
   （`admin.schema.ts`，`{ token, admin }`）。
 - **服务端会话（Redis）**：签发 JWT 的同时由 `SessionStore`
-  （`packages/core/src/infrastructure/session-store.ts`）把会话写入 Redis——
+  （`packages/kits/src/infrastructure/session-store.ts`）把会话写入 Redis——
   key `auth:session:{sha256(token)}`（TTL 与 JWT 有效期一致）+ 索引
   `auth:index:{type}:{sub}`（Set，供批量踢人）。**每次请求校验 JWT 后必须查 Redis
   会话存在**，登出 / 禁用 / 删除会撤销会话，使已签发 token 立即失效
@@ -120,6 +120,6 @@ token 采用**双存储**，各有分工：
 ## 7. 常见改造点（改前先按「实现查找顺序」确认）
 
 - 新增登录方式（验证码 / 第三方）：先看 `@repo/api-client` 的策略（OAuth2Strategy 等）与
-  `core` 基础设施是否覆盖，再决定自研。
+  `kits` 基础设施是否覆盖，再决定自研。
 - 令牌过期 / 刷新：当前体系为单 token + `JWT_EXPIRES_IN`（默认 7d），无 refresh token；
   需要时按 `docs/sdk-refactor.md` 的教训评估，避免过度设计。

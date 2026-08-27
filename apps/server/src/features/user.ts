@@ -1,4 +1,4 @@
-import { UserService } from '@repo/core';
+import { UserService } from '../modules/user/index.js';
 import type { AppContext } from '@repo/di';
 import {
   CreateUserSchema,

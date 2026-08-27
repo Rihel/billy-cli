@@ -3,9 +3,9 @@
 > 本文件是 `object-storage` skill 的组成部分，由主 SKILL.md 引用。
 > 使用对象存储 / 实现文件上传下载时必读。
 
-## 1. 后端门面（core/infrastructure/object-storage）
+## 1. 后端门面（kits/infrastructure/object-storage）
 
-`ObjectStorage` 门面（`packages/core/src/infrastructure/object-storage/object-storage.ts`），
+`ObjectStorage` 门面（`packages/kits/src/infrastructure/object-storage/object-storage.ts`），
 支持 **S3 / COS** 双 provider，公共方法：
 
 - `getPresignedUrl(dto)` → 上传预签名 URL（`StoragePresignedUrlModel`）

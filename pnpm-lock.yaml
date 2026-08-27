@@ -12,12 +12,6 @@ importers:
 
   .:
     dependencies:
-      '@repo/core':
-        specifier: workspace:*
-        version: link:packages/core
-      '@repo/di':
-        specifier: workspace:*
-        version: link:packages/di
       dayjs:
         specifier: ^1.11.21
         version: 1.11.21
@@ -167,12 +161,12 @@ importers:
       '@hono/zod-validator':
         specifier: ^0.7.0
         version: 0.7.6(hono@4.12.32)(zod@4.4.3)
-      '@repo/core':
-        specifier: workspace:*
-        version: link:../../packages/core
       '@repo/di':
         specifier: workspace:*
         version: link:../../packages/di
+      '@repo/kits':
+        specifier: workspace:*
+        version: link:../../packages/kits
       '@repo/shared':
         specifier: workspace:*
         version: link:../../packages/shared
@@ -182,6 +176,12 @@ importers:
       hono:
         specifier: ^4.9.0
         version: 4.12.32
+      pg:
+        specifier: ^8.22.0
+        version: 8.22.0
+      typeorm:
+        specifier: ^1.1.0
+        version: 1.1.0(ioredis@5.11.1(supports-color@8.1.1))(pg@8.22.0)(supports-color@8.1.1)(ts-node@10.9.2(@types/node@24.13.3)(typescript@7.0.2))
       zod:
         specifier: ^4.4.3
         version: 4.4.3
@@ -391,7 +391,32 @@ importers:
         specifier: ^0.3.1
         version: 0.3.1(synckit@0.11.13)
 
-  packages/core:
+  packages/di:
+    dependencies:
+      inversify:
+        specifier: ^8.2.3
+        version: 8.2.3(reflect-metadata@0.2.2)
+      reflect-metadata:
+        specifier: ^0.2.2
+        version: 0.2.2
+    devDependencies:
+      '@types/node':
+        specifier: ^24.0.0
+        version: 24.13.3
+      tsdown:
+        specifier: ^0.22.14
+        version: 0.22.14(tsx@4.23.1)(typescript@7.0.2)(unrun@0.3.1(synckit@0.11.13))
+      typescript:
+        specifier: ^7.0.2
+        version: 7.0.2
+      unrun:
+        specifier: ^0.3.1
+        version: 0.3.1(synckit@0.11.13)
+      vitest:
+        specifier: ^4.1.10
+        version: 4.1.10(@types/node@24.13.3)(vite@8.1.5(@types/node@24.13.3)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.0)(tsx@4.23.1)(yaml@2.9.0))
+
+  packages/kits:
     dependencies:
       '@aws-sdk/client-s3':
         specifier: ^3.1094.0
@@ -402,9 +427,6 @@ importers:
       '@aws-sdk/s3-request-presigner':
         specifier: ^3.1094.0
         version: 3.1094.0
-      '@repo/db':
-        specifier: workspace:*
-        version: link:../db
       '@repo/di':
         specifier: workspace:*
         version: link:../di
@@ -447,6 +469,9 @@ importers:
       p-queue:
         specifier: ^9.3.3
         version: 9.3.3
+      pg:
+        specifier: ^8.22.0
+        version: 8.22.0
       promise-coalesce:
         specifier: ^1.5.0
         version: 1.5.0
@@ -456,6 +481,9 @@ importers:
       typeorm:
         specifier: ^1.1.0
         version: 1.1.0(ioredis@5.11.1(supports-color@8.1.1))(pg@8.22.0)(supports-color@8.1.1)(ts-node@10.9.2(@types/node@24.13.3)(typescript@7.0.2))
+      typeorm-transactional:
+        specifier: ^0.5.0
+        version: 0.5.0(reflect-metadata@0.2.2)(typeorm@1.1.0(ioredis@5.11.1(supports-color@8.1.1))(pg@8.22.0)(supports-color@8.1.1)(ts-node@10.9.2(@types/node@24.13.3)(typescript@7.0.2)))
       zod:
         specifier: ^4.4.3
         version: 4.4.3
@@ -478,74 +506,6 @@ importers:
       typescript:
         specifier: ^7.0.2
         version: 7.0.2
-      vitest:
-        specifier: ^4.1.10
-        version: 4.1.10(@types/node@24.13.3)(vite@8.1.5(@types/node@24.13.3)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.0)(tsx@4.23.1)(yaml@2.9.0))
-
-  packages/db:
-    dependencies:
-      '@repo/shared':
-        specifier: workspace:*
-        version: link:../shared
-      nanoid:
-        specifier: ^6.0.0
-        version: 6.0.0
-      pg:
-        specifier: ^8.22.0
-        version: 8.22.0
-      reflect-metadata:
-        specifier: ^0.2.2
-        version: 0.2.2
-      typeorm:
-        specifier: ^1.1.0
-        version: 1.1.0(ioredis@5.11.1(supports-color@8.1.1))(pg@8.22.0)(supports-color@8.1.1)(ts-node@10.9.2(@types/node@26.2.0)(typescript@7.0.2))
-      typeorm-transactional:
-        specifier: ^0.5.0
-        version: 0.5.0(reflect-metadata@0.2.2)(typeorm@1.1.0(ioredis@5.11.1(supports-color@8.1.1))(pg@8.22.0)(supports-color@8.1.1)(ts-node@10.9.2(@types/node@26.2.0)(typescript@7.0.2)))
-    devDependencies:
-      '@types/node':
-        specifier: ^26.2.0
-        version: 26.2.0
-      dotenv:
-        specifier: ^17.4.2
-        version: 17.4.2
-      ts-node:
-        specifier: ^10.9.2
-        version: 10.9.2(@types/node@26.2.0)(typescript@7.0.2)
-      tsdown:
-        specifier: ^0.22.14
-        version: 0.22.14(tsx@4.23.1)(typescript@7.0.2)(unrun@0.3.1(synckit@0.11.13))
-      tsx:
-        specifier: ^4.23.1
-        version: 4.23.1
-      typescript:
-        specifier: ^7.0.2
-        version: 7.0.2
-      unrun:
-        specifier: ^0.3.1
-        version: 0.3.1(synckit@0.11.13)
-
-  packages/di:
-    dependencies:
-      inversify:
-        specifier: ^8.2.3
-        version: 8.2.3(reflect-metadata@0.2.2)
-      reflect-metadata:
-        specifier: ^0.2.2
-        version: 0.2.2
-    devDependencies:
-      '@types/node':
-        specifier: ^24.0.0
-        version: 24.13.3
-      tsdown:
-        specifier: ^0.22.14
-        version: 0.22.14(tsx@4.23.1)(typescript@7.0.2)(unrun@0.3.1(synckit@0.11.13))
-      typescript:
-        specifier: ^7.0.2
-        version: 7.0.2
-      unrun:
-        specifier: ^0.3.1
-        version: 0.3.1(synckit@0.11.13)
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(@types/node@24.13.3)(vite@8.1.5(@types/node@24.13.3)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.0)(tsx@4.23.1)(yaml@2.9.0))
@@ -6618,6 +6578,7 @@ snapshots:
   '@cspotcode/source-map-support@0.8.1':
     dependencies:
       '@jridgewell/trace-mapping': 0.3.9
+    optional: true
 
   '@date-fns/tz@1.5.0': {}
 
@@ -7168,6 +7129,7 @@ snapshots:
     dependencies:
       '@jridgewell/resolve-uri': 3.1.2
       '@jridgewell/sourcemap-codec': 1.4.10
+    optional: true
 
   '@modelcontextprotocol/sdk@1.30.0(supports-color@8.1.1)(zod@3.24.1)':
     dependencies:
@@ -8172,13 +8134,17 @@ snapshots:
       minimatch: 10.2.6
       path-browserify: 1.0.1
 
-  '@tsconfig/node10@1.0.13': {}
+  '@tsconfig/node10@1.0.13':
+    optional: true
 
-  '@tsconfig/node12@1.0.7': {}
+  '@tsconfig/node12@1.0.7':
+    optional: true
 
-  '@tsconfig/node14@1.0.0': {}
+  '@tsconfig/node14@1.0.0':
+    optional: true
 
-  '@tsconfig/node16@1.0.2': {}
+  '@tsconfig/node16@1.0.2':
+    optional: true
 
   '@turbo/darwin-64@2.10.5':
     optional: true
@@ -8602,6 +8568,7 @@ snapshots:
   acorn-walk@8.3.5:
     dependencies:
       acorn: 8.17.0
+    optional: true
 
   acorn@8.17.0: {}
 
@@ -8714,7 +8681,8 @@ snapshots:
       - luxon
       - moment
 
-  arg@4.1.3: {}
+  arg@4.1.3:
+    optional: true
 
   argparse@2.0.1: {}
 
@@ -9029,7 +8997,8 @@ snapshots:
     optionalDependencies:
       typescript: 7.0.2
 
-  create-require@1.1.1: {}
+  create-require@1.1.1:
+    optional: true
 
   cron-parser@5.10.0:
     dependencies:
@@ -9140,7 +9109,8 @@ snapshots:
 
   detect-node-es@1.1.0: {}
 
-  diff@4.0.4: {}
+  diff@4.0.4:
+    optional: true
 
   diff@8.0.4: {}
 
@@ -10016,7 +9986,8 @@ snapshots:
     dependencies:
       '@jridgewell/sourcemap-codec': 1.5.5
 
-  make-error@1.3.6: {}
+  make-error@1.3.6:
+    optional: true
 
   math-intrinsics@1.1.0: {}
 
@@ -11267,24 +11238,6 @@ snapshots:
       yn: 3.1.1
     optional: true
 
-  ts-node@10.9.2(@types/node@26.2.0)(typescript@7.0.2):
-    dependencies:
-      '@cspotcode/source-map-support': 0.8.1
-      '@tsconfig/node10': 1.0.13
-      '@tsconfig/node12': 1.0.7
-      '@tsconfig/node14': 1.0.0
-      '@tsconfig/node16': 1.0.2
-      '@types/node': 26.2.0
-      acorn: 8.17.0
-      acorn-walk: 8.3.5
-      arg: 4.1.3
-      create-require: 1.1.1
-      diff: 4.0.4
-      make-error: 1.3.6
-      typescript: 7.0.2
-      v8-compile-cache-lib: 3.0.1
-      yn: 3.1.1
-
   tsconfig-paths@4.2.0:
     dependencies:
       json5: 2.2.3
@@ -11353,13 +11306,13 @@ snapshots:
       media-typer: 1.1.1
       mime-types: 3.0.2
 
-  typeorm-transactional@0.5.0(reflect-metadata@0.2.2)(typeorm@1.1.0(ioredis@5.11.1(supports-color@8.1.1))(pg@8.22.0)(supports-color@8.1.1)(ts-node@10.9.2(@types/node@26.2.0)(typescript@7.0.2))):
+  typeorm-transactional@0.5.0(reflect-metadata@0.2.2)(typeorm@1.1.0(ioredis@5.11.1(supports-color@8.1.1))(pg@8.22.0)(supports-color@8.1.1)(ts-node@10.9.2(@types/node@24.13.3)(typescript@7.0.2))):
     dependencies:
       '@types/cls-hooked': 4.3.9
       cls-hooked: 4.2.2
       reflect-metadata: 0.2.2
       semver: 7.8.5
-      typeorm: 1.1.0(ioredis@5.11.1(supports-color@8.1.1))(pg@8.22.0)(supports-color@8.1.1)(ts-node@10.9.2(@types/node@26.2.0)(typescript@7.0.2))
+      typeorm: 1.1.0(ioredis@5.11.1(supports-color@8.1.1))(pg@8.22.0)(supports-color@8.1.1)(ts-node@10.9.2(@types/node@24.13.3)(typescript@7.0.2))
 
   typeorm@1.1.0(ioredis@5.11.1(supports-color@8.1.1))(pg@8.22.0)(supports-color@8.1.1)(ts-node@10.9.2(@types/node@24.13.3)(typescript@7.0.2)):
     dependencies:
@@ -11377,26 +11330,6 @@ snapshots:
       ioredis: 5.11.1(supports-color@8.1.1)
       pg: 8.22.0
       ts-node: 10.9.2(@types/node@24.13.3)(typescript@7.0.2)
-    transitivePeerDependencies:
-      - babel-plugin-macros
-      - supports-color
-
-  typeorm@1.1.0(ioredis@5.11.1(supports-color@8.1.1))(pg@8.22.0)(supports-color@8.1.1)(ts-node@10.9.2(@types/node@26.2.0)(typescript@7.0.2)):
-    dependencies:
-      '@sqltools/formatter': 1.2.5
-      ansis: 4.3.1
-      dayjs: 1.11.21
-      debug: 4.4.3(supports-color@8.1.1)
-      dedent: 1.7.2
-      reflect-metadata: 0.2.2
-      sql-highlight: 6.1.0
-      tinyglobby: 0.2.17
-      tslib: 2.8.1
-      yargs: 18.1.0
-    optionalDependencies:
-      ioredis: 5.11.1(supports-color@8.1.1)
-      pg: 8.22.0
-      ts-node: 10.9.2(@types/node@26.2.0)(typescript@7.0.2)
     transitivePeerDependencies:
       - babel-plugin-macros
       - supports-color
@@ -11529,7 +11462,8 @@ snapshots:
 
   util-deprecate@1.0.2: {}
 
-  v8-compile-cache-lib@3.0.1: {}
+  v8-compile-cache-lib@3.0.1:
+    optional: true
 
   validate-npm-package-name@7.0.2: {}
 
@@ -11771,7 +11705,8 @@ snapshots:
       y18n: 5.0.8
       yargs-parser: 22.0.0
 
-  yn@3.1.1: {}
+  yn@3.1.1:
+    optional: true
 
   yocto-queue@1.2.2: {}
 

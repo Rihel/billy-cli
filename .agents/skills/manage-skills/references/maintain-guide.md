@@ -52,8 +52,9 @@ skill**，否则 agent 会按过时规范写代码。触发场景：
 5. **复审**：架构变更影响面大，更新后建议重新跑一轮 skill 审查（如多 reviewer 分头
    核对每个 skill 与真实代码一致），而非只靠 grep。
 
-实例：若分层从 `server → core → db/shared` 改为新结构，foundation 分层图、
-develop-business-module 的 8 落点、define-data-structure 的注册点都要动，而非只改路径。
+实例：本次 kits 化改造把分层从 `server → core → db/shared` 改为
+`server → kits → di/shared` 时，foundation 分层图、develop-business-module 的落点、
+define-data-structure 的注册点都要动，而非只改路径。
 
 ## 4. 大文件拆分规则
 

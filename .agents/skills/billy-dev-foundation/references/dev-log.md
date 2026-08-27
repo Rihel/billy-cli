@@ -34,7 +34,7 @@
 
 - 做了：加了商品 CRUD 的 page-query 接口和 SDK 方法，顺带实体 + 迁移。
 - 坑点：卧槽，游标分页在 PG 下 updatedAt 一样直接重复数据，我 tm 调了半天才搞明白。
-- 解决：淦，加个 (updatedAt, id) 复合索引 + id 兜底排序就完事了，复用 @repo/db 的 cursorPageWith。
+- 解决：淦，加个 (updatedAt, id) 复合索引 + id 兜底排序就完事了，复用 @repo/kits 的 cursorPageWith。
 
 ---
 

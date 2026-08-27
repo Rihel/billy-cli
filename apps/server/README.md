@@ -1,6 +1,6 @@
 # @app/server
 
-Hono HTTP adapter for `@repo/core`.
+Hono HTTP 边界 + 业务模块 + 实体/迁移（能力复用 `@repo/kits`）。
 
 ## Development
 

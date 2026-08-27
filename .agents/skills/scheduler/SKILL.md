@@ -11,7 +11,7 @@ description: 在 Billy 工程中使用定时调度：基于 croner 的 Scheduler
 
 ## 核心要点
 
-- 基础设施 `Scheduler`（`core/foundation/scheduler.ts`，**croner**）：`scheduleCron` /
+- 基础设施 `Scheduler`（`kits/foundation/scheduler.ts`，**croner**）：`scheduleCron` /
   `scheduleInterval` / `scheduleTimeout`，均要求任务名唯一（重复抛 `SchedulerError`）。
 - **异常吞掉保循环**：handler 抛错由调度器记日志并吞掉，不中断调度；需重试/告警的任务
   在 handler 内自行处理。

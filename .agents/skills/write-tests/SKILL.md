@@ -1,6 +1,6 @@
 ---
 name: write-tests
-description: 在 Billy 工程中编写单元测试（vitest）：测试文件位置与命名、describe/it/expect/vi 结构、依赖与 fetch mock 模式、错误断言（ApiError 有 status / AppError 只有 code）、core service / repository 测试套路、测试脚本接入。触发词：写测试、单元测试、单测、测试用例、vitest、mock。
+description: 在 Billy 工程中编写单元测试（vitest）：测试文件位置与命名、describe/it/expect/vi 结构、依赖与 fetch mock 模式、错误断言（ApiError 有 status / AppError 只有 code）、业务 service / repository 测试套路、测试脚本接入。触发词：写测试、单元测试、单测、测试用例、vitest、mock。
 ---
 
 # 编写单元测试

@@ -51,8 +51,8 @@ export const AppErrorCodes = createDict({
 - 必须带 `http` 字段（仅 400 / 401 / 403 / 404 / 409 / 500），
   `apps/server/src/lib/http.ts` 的 `describeErrorCode` 会自动映射为 HTTP 状态码与
   中文文案，**无需任何额外代码**。
-- core 层错误类引用它：`readonly code = AppErrorCodes.TodoNotFound`
-  （见 `packages/core/src/modules/todo/errors.ts`）。
+- 业务层错误类引用它：`readonly code = AppErrorCodes.TodoNotFound`
+  （见 `apps/server/src/modules/todo/errors.ts`）。
 
 ## 3. createDict 产物 API（前后端通用）
 
@@ -89,7 +89,7 @@ export const AppErrorCodes = createDict({
 ## 5. 实体与 schema 中如何使用字典值
 
 ```ts
-// 实体（packages/db/src/entities/user-entity.ts 参考）
+// 实体（apps/server/src/database/entities/user-entity.ts 参考）
 import { UserStatus } from '@repo/shared'
 
 @Column({ name: 'status', default: UserStatus.Enabled, length: 20, comment: '用户状态' })

@@ -18,8 +18,8 @@ const chatMessages = [
 
 const checks = [
   'ProductSchema 已定义（@repo/shared）',
-  'ProductEntity + 迁移已生成（@repo/db）',
-  'ProductService 已注册（runtime.ts）',
+  'ProductEntity + 迁移已生成（apps/server/database）',
+  'ProductService 已注册（main.ts 组合根）',
   '路由已挂载 + SDK 已补全类型化方法',
   '后台商品页已登记菜单',
 ]

@@ -15,15 +15,15 @@
 - `xxx-entity.ts` 继承 `BaseEntity`；游标排序配 `(updatedAt, id)` 索引。
 - 实体 / schema 双轨、注册、迁移的完整规范见 `define-data-structure` skill。
 
-## 3. ③ core 业务（核心工作量）
+## 3. ③ 业务（server/modules，核心工作量）
 
-目录 `packages/core/src/modules/xxx/`（**包内相对导入带 `.js` 后缀**）。
+目录 `apps/server/src/modules/xxx/`（**包内相对导入带 `.js` 后缀**）。
 
 ### errors.ts
 
 ```ts
 import { AppErrorCodes } from '@repo/shared'
-import { AppError } from '../../foundation/errors/app-error.js'
+import { AppError } from '@repo/kits'
 
 export class XxxNotFoundError extends AppError {
   readonly code = AppErrorCodes.XxxNotFound
@@ -52,7 +52,7 @@ export class XxxRepository {
 }
 ```
 
-要点：`pageWith` / `cursorPageWith` 来自 `@repo/db`（`packages/db/src/pagination.ts`）；
+要点：`pageWith` / `cursorPageWith` 来自 `@repo/kits`（`packages/kits/src/db/pagination.ts`）；
 返回值统一经 `toXxx()` 映射为模型（剥离 `deletedAt` 等内部字段）；查询参数来自 DTO，
 不要直接信任前端字符串拼接。
 
@@ -83,13 +83,13 @@ export class XxxService {
 }
 ```
 
-### index.ts + DI 注册（三处，缺一不可）
+### index.ts + DI 注册（两处，缺一不可）
 
 1. 模块 `index.ts`：`export * from './errors.js'`、`./xxx.repository.js`、`./xxx.service.js`。
-2. `packages/core/src/index.ts`：追加 `export * from './modules/xxx/index.js'`——
-   **漏了这步，`apps/server` 无法 `import { XxxService } from '@repo/core'`**。
-3. `packages/core/src/runtime.ts`：`addService(XxxRepository)`、`addService(XxxService)`
-   （与既有仓储 / 服务并列，见 `TodoRepository` / `TodoService` 的注册位置）。
+2. `apps/server/src/main.ts`：`addService(XxxRepository)`、`addService(XxxService)`
+   （与既有仓储 / 服务并列，见 `TodoRepository` / `TodoService` 的注册位置）——
+   **漏了这步，`features/xxx.ts` 无法 `runtime.get(XxxService)`**。
+   （实体另在 `createServiceContext({ db: { entities: [...] } })` 注入，见 `define-data-structure`。）
 
 ## 4. ④ Hono 路由（薄边界）
 

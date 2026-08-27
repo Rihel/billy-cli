@@ -1,4 +1,4 @@
-import { AdminService } from '@repo/core';
+import { AdminService } from '../modules/admin/index.js';
 import type { AppContext } from '@repo/di';
 import {
   AdminLoginSchema,

@@ -1,4 +1,4 @@
-import { ObjectStorage } from '@repo/core';
+import { ObjectStorage } from '@repo/kits';
 import type { AppContext } from '@repo/di';
 import {
   GetStorageDownloadUrlSchema,

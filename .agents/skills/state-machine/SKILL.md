@@ -16,7 +16,7 @@ description: 在 Billy 工程中实现业务状态机：状态字典 + 转移表
   纯函数可单测；非法转移抛错由 service 捕获。
 - **数据**：状态存实体 string 列（字典 value），schema 用 `z.enum` 校验。
 - **并发安全**：状态变更不可裸奔「读-改-写」，用乐观锁（version 列）或分布式锁。
-- **复杂方案**：仅当需要守卫 / 副作用 / 上下文时才引 xstate，门面放 `core/foundation`。
+- **复杂方案**：仅当需要守卫 / 副作用 / 上下文时才引 xstate，门面放 `kits/foundation`。
 
 ## 参考文件（本 skill 的组成部分）
 

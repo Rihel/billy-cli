@@ -18,8 +18,9 @@ description: Billy 工程（billy-cli monorepo）开发必读 skill。任何在�
 
 ## 分层铁律
 
-依赖方向不可逆：`shared` 不依赖业务包；`core` 不 import `apps/*`；`apps/server` 不写
-业务逻辑，按依赖方向自底向上落代码（架构见 [references/architecture.md](./references/architecture.md)）。
+依赖方向不可逆：`shared` 不依赖业务包；`kits` 不 import `apps/*`；`apps/server` 是业务
+与组合根的归属（`modules/` 不 import Hono，与 `features/` 物理分层），按依赖方向自底向上
+落代码（架构见 [references/architecture.md](./references/architecture.md)）。
 
 ## 参考文件（本 skill 的组成部分）
 
@@ -35,8 +36,10 @@ description: Billy 工程（billy-cli monorepo）开发必读 skill。任何在�
 ## 完成检查清单
 
 - [ ] schema / dict / entity 三者字段一致，且都已在对应 `index.ts` 导出
-- [ ] 新实体已加入 `packages/db/src/db.ts` 的 `entities` 数组，并已生成 + 执行迁移
-- [ ] 新 service / repository 已在 `runtime.ts` 注册，且新模块已在 `packages/core/src/index.ts` 导出
+- [ ] 新实体已放入 `apps/server/src/database/entities/`，并在 `apps/server/src/main.ts` 的
+  `createServiceContext({ db: { entities } })` 注入，且已生成 + 执行迁移
+- [ ] 新 service / repository 已在 `apps/server/src/main.ts` 用 `addService` 注册，且新模块已在
+  `apps/server/src/modules/<业务>/index.ts` 导出
 - [ ] 错误全部继承 `AppError` 且 code 已在 `AppErrorCodes` 中定义（3xxx 段）
 - [ ] 路由已在 `apps/server/src/main.ts` 挂载，SDK 已补全类型化方法
 - [ ] admin 页面已加入 `apps/admin/src/components/AppMenu.tsx` 菜单

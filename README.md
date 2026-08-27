@@ -1,20 +1,19 @@
 # Billy
 
 > 一套基于 Hono、InversifyJS 与 Next.js 16 的全栈应用 Monorepo 模板。
-> 后端采用「Hono 薄边界 + InversifyJS 业务核心（DI 封装于 @repo/di）」，前端提供两套独立入口：
-> Web（Base UI + shadcn/ui）与 Admin（Ant Design 6）。
+> 后端采用「Hono 薄边界 + 业务模块（apps/server）+ 通用能力封装 @repo/kits（DI 封装于 @repo/di）」，
+> 前端提供两套独立入口：Web（Base UI + shadcn/ui）与 Admin（Ant Design 6）。
 
 ## 技术栈
 
 ```
 apps/
-├── server   — Hono 4 HTTP 边界 + core Container 组合根（端口 9989）
+├── server   — Hono 4 HTTP 边界 + 业务模块 + 组合根（端口 9989）
 ├── web      — Next.js 16 App Router + Base UI + shadcn/ui + Tailwind 4（端口 9840）
 └── admin    — Next.js 16 App Router + Ant Design 6 + @repo/aui + Zustand（端口 9845）
 packages/
 ├── shared   — Zod schemas + 错误码字典 + 响应工具 + Pino 日志 + 通用工具（前后端共享）
-├── db       — TypeORM 实体 + DataSource 连接 + 四种分页策略 + 迁移
-├── core     — 业务层：Config / Db / Redis / JWT / ObjectStorage + Auth / Admin / User / Todo（@repo/di 装配）
+├── kits     — 后端通用能力封装：Db / Redis / JWT / ObjectStorage / 队列 / 调度 / 分页 + createServiceContext（无业务实体）
 ├── di       — DI 门面：@Injectable/@Inject + AppContext 组合根 + 生命周期调度（InversifyJS 8 封装）
 ├── api-client — 通用 HTTP + 鉴权管线客户端（ApiClient / 策略 / 凭证管理器，业务无关）
 ├── sdk      — ServerClient（全类型化业务 API 调用，构建在 @repo/api-client 之上）
@@ -25,7 +24,7 @@ packages/
 | 层         | 选型                       | 理由                                        |
 | ---------- | -------------------------- | ------------------------------------------- |
 | 构建系统   | pnpm + Turbo               | monorepo 依赖管理 + 按拓扑任务编排 |
-| 服务端框架 | Hono 4                     | 轻量 HTTP 边界，业务全部下沉到 core         |
+| 服务端框架 | Hono 4                     | 轻量 HTTP 边界，业务模块归 apps/server，通用能力归 @repo/kits |
 | 依赖注入   | @repo/di（InversifyJS 8）   | `@Injectable` class + `AppContext` 组合根    |
 | API 层     | POST JSON（Hono Routes）   | Zod 边界校验 + 全类型化 SDK                 |
 | ORM        | TypeORM                    | 装饰器实体 + Repository + QueryBuilder      |
@@ -48,7 +47,7 @@ packages/
 - Node.js >= 20（推荐 24，Docker 基础镜像使用 24.14.1）
 - pnpm >= 11（`corepack enable && corepack prepare pnpm@11.15.0 --activate`）
 - PostgreSQL（可用 `docker compose up postgres` 一键启动）
-- Redis（默认连接 `localhost:6379`，`startCore` 时会建立连接，未启动会导致服务启动失败）
+- Redis（默认连接 `localhost:6379`，服务启动（`runtime.start()`）时会建立连接，未启动会导致服务启动失败）
 - MinIO / S3 / COS（可选，仅存储模块需要；未配置对象存储相关环境变量时使用默认值）
 
 ### 安装
@@ -101,7 +100,7 @@ NEXT_PUBLIC_STORAGE_URL=http://localhost:9000/billy-cli
 ### 数据库
 
 ```bash
-# 生成迁移文件（写入 packages/db/migrations/）
+# 生成迁移文件（写入 apps/server/src/database/migrations/）
 pnpm db:gen Initial
 
 # 执行迁移
@@ -111,7 +110,7 @@ pnpm db:migrate
 ### 启动（开发）
 
 ```bash
-# 终端 1：并行 watch 构建 packages（shared / db / ui / sdk / core / aui）
+# 终端 1：并行 watch 构建 packages（shared / kits / di / ui / sdk / aui）
 pnpm dev:pkgs
 
 # 终端 2：启动 Hono 服务（http://localhost:9989）
@@ -143,14 +142,20 @@ pnpm docker:up
 ```
 ├── apps/
 │   ├── server/                          # Hono HTTP 边界（@app/server）
+│   │   ├── data-source.ts               # TypeORM CLI 迁移配置（db:generate / db:migrate）
+│   │   ├── scripts/seed-admin.ts        # 首个管理员种子脚本
 │   │   └── src/
-│   │       ├── main.ts                  # 入口 + Hono 组合根 + 优雅关闭（SIGINT/SIGTERM）
+│   │       ├── main.ts                  # 入口 + 应用组合根（createServiceContext + addService）+ 优雅关闭
+│   │       ├── database/
+│   │       │   ├── entities/            # 业务实体：UserEntity / TodoEntity / AdminEntity
+│   │       │   └── migrations/          # TypeORM 迁移产物
+│   │       ├── modules/                 # 业务模块：auth / admin / user / todo（service + repository + errors）
 │   │       ├── lib/
 │   │       │   ├── http.ts              # jsonBody / success / errorHandler / 错误码→HTTP 映射
 │   │       │   ├── authentication.ts    # requireAuth 中间件（Bearer / cookie）
 │   │       │   ├── request-context.ts   # AsyncLocalStorage 请求上下文
 │   │       │   └── request-logger.ts    # 请求日志 + X-Request-Id
-│   │       └── features/                # 路由工厂：auth / user / todo / storage
+│   │       └── features/                # 路由工厂：auth / admin / user / todo / storage
 │   ├── web/                             # Next.js 16 前台（@app/web，端口 9840）
 │   │   └── src/
 │   │       ├── actions/auth.actions.ts  # Server Actions（登录 / 注册）
@@ -178,20 +183,13 @@ pnpm docker:up
 │   │       ├── logger.ts                # Pino 日志（createLogger）
 │   │       ├── browser.ts               # 浏览器端子入口
 │   │       └── utils/                   # nanoid / dayjs / md5 / tree / dict 等工具
-│   ├── db/                              # @repo/db
-│   │   ├── src/
-│   │   │   ├── db.ts                    # createDb（TypeORM DataSource）
-│   │   │   ├── pagination.ts            # 四种分页策略
-│   │   │   └── entities/                # BaseEntity / UserEntity / TodoEntity
-│   │   ├── migrations/                  # TypeORM 迁移产物
-│   │   └── data-source.ts               # TypeORM CLI 迁移配置
-│   ├── core/                            # @repo/core — 业务核心（由 @repo/di 装配）
+│   ├── kits/                            # @repo/kits — 后端通用能力封装（无业务实体）
 │   │   └── src/
-│   │       ├── runtime.ts               # createAppContext() 组合根工厂（唯一装配点）
-│   │       ├── foundation/              # 横切基础：app-config / errors / logger / id-generation
+│   │       ├── service-context.ts       # createServiceContext() 基建组合根工厂
+│   │       ├── foundation/              # 横切基础：app-config / errors / logger / id-generation / scheduler
 │   │       ├── infrastructure/          # 外部资源门面：database / redis-store / object-storage /
-│   │       │                            # token-signer / password-hasher
-│   │       └── modules/                 # auth / admin / user / todo（service + repository + errors）
+│   │       │                            # queue / token-signer / password-hasher / session-store
+│   │       └── db/                      # createDb / pagination（四种分页）/ BaseEntity
 │   ├── di/                              # @repo/di — DI 门面：InversifyJS 8 封装
 │   │   └── src/
 │   │       ├── di.ts                    # @Injectable() / @Inject()（写入自有 DiParamTypesKey 元数据）
@@ -221,11 +219,13 @@ pnpm docker:up
 
 ### apps/server — Hono HTTP 边界
 
-`apps/server` 只做四件事：接收请求、Zod 校验、调用 core、映射错误。业务逻辑全部位于 `@repo/core`。
+`apps/server` 只做四件事：接收请求、Zod 校验、调用业务 service、映射错误。业务逻辑位于
+`apps/server/src/modules/`（实体与迁移在 `src/database/`），通用能力位于 `@repo/kits`。
 
-- **组合根**：`main.ts` 创建 `Hono` 实例，挂载全局中间件（CORS、请求上下文、请求日志）与五组路由
+- **组合根**：`main.ts` 用 `createServiceContext({ db: { entities } })` 装配基建，再 `addService`
+  注册业务仓储 / 服务，创建 `Hono` 实例，挂载全局中间件（CORS、请求上下文、请求日志）与五组路由
   （`/auth`、`/admin`、`/user`、`/todo`、`/storage`），统一 `notFound` 与 `onError`。
-- **错误映射**：`lib/http.ts` 将 core 抛出的错误（自带 `code` 数字）通过 `AppErrorCodes` 字典
+- **错误映射**：`lib/http.ts` 将业务抛出的错误（自带 `code` 数字）通过 `AppErrorCodes` 字典
   映射为 HTTP 状态码与中文文案，未知错误统一按系统错误（5001 / 500）处理。
 - **鉴权中间件**：`lib/authentication.ts` 的 `requireAuth` 从 `Authorization: Bearer` 或
   `access-token` cookie 取 token，调用 `authService.verifyToken` 后把 `userId` 写入请求上下文。
@@ -233,8 +233,8 @@ pnpm docker:up
   `userId`，避免参数透传。
 - **请求日志**：`lib/request-logger.ts` 为每个请求生成 `requestId` 并写入 `X-Request-Id` 响应头，
   按状态码分级记录耗时、userId、IP 等上下文。
-- **优雅关闭**：`program()` 监听 SIGINT / SIGTERM，先关 HTTP server，再逆序执行
-  `stopCore()`（释放 Db / Redis / ObjectStorage 连接）。
+- **优雅关闭**：`program()` 监听 SIGINT / SIGTERM，先关 HTTP server，再 `runtime.stop()`
+  （逆序释放 Db / Redis / ObjectStorage 连接）。
 
 ### apps/web — Next.js 16 前台
 
@@ -271,7 +271,7 @@ pnpm docker:up
 Zod schema 单一事实源，同时派生 TypeScript 类型（`*.schema.ts` 导出 `XxxModel` / `XxxDto`）：
 
 - `schema/`：auth / admin / user / todo / object-storage / base（分页、游标基类）
-- `dicts/app-error-code.dict.ts`：错误码字典（`value` + `http` + `label`），core 抛错、server 映射、
+- `dicts/app-error-code.dict.ts`：错误码字典（`value` + `http` + `label`），业务抛错、server 映射、
   前端文案共用同一份定义
 - `app-response.ts`：`AppResponse<T>` / `AppPageQueryResponse<T>` / `AppCursorQueryResponse<T>` 与
   `ResponseUtils`（`success` / `error` / `isSuccess`）
@@ -279,17 +279,27 @@ Zod schema 单一事实源，同时派生 TypeScript 类型（`*.schema.ts` 导�
 - 子入口：`@repo/shared/browser`（浏览器端安全导出）、`@repo/shared/logger`
 - `utils/`：nanoid / dayjs / md5 / tree / dict / file / zod 等通用工具
 
-### @repo/db — 数据访问层
+### @repo/kits — 后端通用能力封装
 
-- `createDb()`：PostgreSQL DataSource 工厂，实体注册 `UserEntity` / `TodoEntity`
-- `BaseEntity`：`id`（nanoid 主键，`@BeforeInsert` 生成）、`createdAt` / `updatedAt`、软删除 `deletedAt`
-- `pagination.ts`：四种分页策略（见下文「分页」）
-- `data-source.ts`：TypeORM CLI 专用 DataSource（`db:generate` / `db:migrate`），迁移产物在
-  `migrations/`
+纯能力集（**不持有任何业务实体**），由 `createServiceContext` 装配基建与基础能力：
 
-### @repo/core — 业务核心（DI 门面见 @repo/di）
+- `db/`：`createDb(options)`（PostgreSQL DataSource 工厂，实体由应用注入）、
+  `pagination.ts`（四种分页策略，见下文「分页」）、`base-entity.ts`（`BaseEntity`：
+  `id` nanoid 主键 + `createdAt` / `updatedAt` / 软删除 `deletedAt`）
+- `infrastructure/`：`Db` / `RedisStore` / `QueueManager` / `ObjectStorage` /
+  `TokenSigner` / `SessionStore` / `PasswordHasher`（外部资源门面 + 生命周期）
+- `foundation/`：`config/`（分片配置 bean：`DbConfig` / `RedisConfig` / `JwtConfig` /
+  `StorageConfig` / `AuthConfig` / `LoggerConfig`，schema 校验 + 通用默认值，按需注入门面）+
+  `Logger` / `IdGeneration` / `Scheduler` / `errors`（AppError / InfrastructureError）
+- `service-context.ts`：`createServiceContext({ db?, redis?, jwt?, storage?, auth?, logger? })`
+  基建组合根工厂：按传入分片装配对应组件（缺失分片不注册，用了即 DI 报错）；
+  业务仓储 / 服务由应用层 `addService` 注册
+- 继续 re-export `typeorm-transactional`（业务模块 `@Transactional()` 直接来自 `@repo/kits`）
 
-Feature-first 结构，所有能力与业务服务均为 `@Injectable()` class，构造器注入依赖：
+### apps/server 业务模块
+
+业务三层（service + repository + errors）位于 `apps/server/src/modules/{auth,admin,user,todo}`，
+实体 / 迁移位于 `apps/server/src/database/`（`data-source.ts` 供 `db:generate` / `db:migrate`）：
 
 ```
 modules/                     # 业务领域（service + repository + errors）
@@ -298,30 +308,27 @@ modules/                     # 业务领域（service + repository + errors）
 │                 #   + admin.repository.ts + errors；token 带 type='admin'，与前台用户隔离
 ├── user/         # user.service.ts + user.repository.ts + errors
 └── todo/         # todo.service.ts + todo.repository.ts + errors
-infrastructure/              # 外部世界门面
-├── database.ts   # Db 门面：DataSource + getRepository + transaction + 生命周期
-├── redis-store.ts# Redis 门面：缓存 / 锁（Lua 脚本）/ 生命周期
-├── object-storage/# ObjectStorage：S3 / COS 双实现，预签名 URL + STS 临时凭证
-├── password-hasher.ts / token-signer.ts
-foundation/                   # 横切基础能力
-├── app-config.ts # Zod schema 定义配置，createAppConfig 从环境变量解析（含默认值）
-├── id-generation.ts
-├── logger.ts     # @Logger() 装饰器 + configureLogger
-└── errors/       # app-error.ts（AppError 基类）/ infrastructure-errors.ts
-runtime.ts        # createAppContext() 组合根工厂，唯一装配点（bean 由 @repo/di 的 AppContext 装配）
+database/
+├── entities/     # UserEntity / TodoEntity / AdminEntity（继承 @repo/kits 的 BaseEntity）
+└── migrations/   # TypeORM 迁移产物
 ```
 
-**使用方式：**
+**使用方式（应用组合根 `apps/server/src/main.ts`）：**
 
 ```ts
-import { createAppContext, AuthService } from '@repo/core'
+import { createServiceContext } from '@repo/kits'
+import { TodoEntity } from './database/entities/todo-entity.js'
+import { TodoRepository } from './modules/todo/todo.repository.js'
+import { TodoService } from './modules/todo/todo.service.js'
 
-const ctx = createAppContext() // 装配全部 bean
+const ctx = createServiceContext({
+  db: { entities: [TodoEntity], sync: true },   // 实体由应用注入，kits 不持有实体
+})
+  .addService(TodoRepository)                   // 业务仓储 / 服务在应用层注册
+  .addService(TodoService)
+
 await ctx.start() // 生命周期启动：Db / Redis / ObjectStorage 按 @Inject 依赖序建连
-
-const authService = ctx.get(AuthService)
-const result = await authService.login({ email, password })
-
+const todoService = ctx.get(TodoService)
 await ctx.stop() // 逆序释放资源（幂等，可重复调用）
 ```
 
@@ -333,6 +340,7 @@ await ctx.stop() // 逆序释放资源（幂等，可重复调用）
 
 **设计原则：**
 
+- 通用能力（基础设施 / 横切基础 / 数据访问）归 `@repo/kits`，业务模块与实体 / 迁移归 `apps/server`
 - 所有能力与业务服务都是 `@Injectable()` class，构造器注入依赖（统一使用项目自定义装饰器）
 - 错误以 `Error` 子类抛出并携带 `code`，Hono 边界按 `code` 映射 HTTP 错误码与文案
 - DTO / Zod 校验与 HTTP 错误转换只存在于 Hono 边界（`apps/server`）
@@ -411,20 +419,27 @@ sidebar / toast / chart 等），Tailwind 4 主题变量由 `globals.css` 提供
 ```
 浏览器 ── POST JSON ──→ Next.js（Server Actions / 客户端 SDK）── POST JSON ──→ Hono
                        （SSR）                                        │
-                                                                      ├─ core usecase ──→ PostgreSQL
+                                                                      ├─ 业务 service ──→ PostgreSQL
                                                                       │                    (TypeORM)
-                                                                      └─ core service ──→ Redis / S3 / COS
+                                                                      └─ 业务 service ──→ Redis / S3 / COS
 ```
 
-分层规则：`apps/server`（HTTP 适配）→ `@repo/core`（业务 + 基础设施能力）→ `@repo/db` / 外部资源。
-前端通过 `@repo/sdk` 调用，请求 / 响应类型与后端共享 `@repo/shared` 的 Zod schema。
+分层规则：`apps/server`（HTTP 适配 + 业务模块 + 实体/迁移）→ `@repo/kits`（通用能力）→ 外部资源
+（DB / Redis / S3 / COS）。前端通过 `@repo/sdk` 调用，请求 / 响应类型与后端共享 `@repo/shared`
+的 Zod schema。
 
 ### 组合根与生命周期
 
-`packages/core/src/runtime.ts` 是唯一装配点：
+组合根分两段：`@repo/kits` 的 `createServiceContext` 装配基建，`apps/server/src/main.ts` 在其上
+注册业务：
 
-- `createAppContext(overrides?)`：解析配置，创建 `AppContext`（Container + LifeCycleHost）并装配
-  基础设施 → 仓储 → 业务服务
+- `createServiceContext({ db?, redis?, jwt?, storage?, auth?, logger? })`
+  （`packages/kits/src/service-context.ts`）：按传入分片创建 `AppContext`
+  （Container + LifeCycleHost）并装配对应基建 + 基础能力（无业务）；每个分片 zod 校验，
+  缺失分片不注册 → 用了对应组件则 DI 报错
+- `apps/server/src/main.ts`：`createServiceContext({ db: { entities, sync: true }, redis: {...}, jwt: {...} })`
+  注入各能力分片配置，再 `.addConstant(ServerConfig, ...)` 注入应用业务配置（端口/认证策略），
+  最后 `.addService(XxxRepository)` / `.addService(XxxService)` 注册业务仓储与服务
 - `ctx.start()`：生命周期组件按 `@Inject` 依赖拓扑序执行 `onAppStart`
   （Db 初始化、Redis 连接、ObjectStorage 建桶/客户端）；任一失败逆序回滚已启动组件并抛错
 - `ctx.stop()`：按拓扑逆序执行 `onAppStop` 释放资源，幂等，单个失败不阻断其余
@@ -433,7 +448,7 @@ sidebar / toast / chart 等），Tailwind 4 主题变量由 `globals.css` 提供
 ### 认证
 
 - JWT token，通过 `Authorization: Bearer` 或 `access-token` cookie 传递
-- Hono `requireAuth` 中间件调用 core `verifyToken`，把 `userId` 注入请求上下文；
+- Hono `requireAuth` 中间件调用业务 `verifyToken`，把 `userId` 注入请求上下文；
   `requireAdminAuth` 校验管理员 token（payload 带 `type: 'admin'`），把 `adminId` 注入请求上下文
 - 两类 token 严格隔离：用户 token 只能访问用户接口，管理员 token 只能访问 `/admin/*` 接口
 - 公开接口（注册 / 登录 / 管理员登录 / 忘记密码 / 重置密码）不加 Guard
@@ -495,7 +510,7 @@ sidebar / toast / chart 等），Tailwind 4 主题变量由 `globals.css` 提供
 
 ### 分页
 
-`packages/db/src/pagination.ts` 提供四种分页策略（构建在 TypeORM QueryBuilder 之上）：
+`packages/kits/src/db/pagination.ts` 提供四种分页策略（构建在 TypeORM QueryBuilder 之上）：
 
 - **`pageWith`** — 单表 `LIMIT/OFFSET` 页码分页，返回 `total/page/size`
 - **`pageWithDeferred`** — 两阶段 Offset 分页：先主键分页，再按主键加载详情，适合复杂联表表格
@@ -508,8 +523,8 @@ sidebar / toast / chart 等），Tailwind 4 主题变量由 `globals.css` 提供
 
 ### 日志
 
-`@repo/shared` 提供 `createLogger(name, pretty?)`；core 内通过 `@Logger()` 装饰器自动以宿主类名
-创建 logger：
+`@repo/shared` 提供 `createLogger(name, pretty?)`；kits / 业务内通过 `@Logger()` 装饰器自动以
+宿主类名创建 logger：
 
 - 开发环境 `pretty=true` → pino-pretty 彩色输出
 - 生产环境默认 JSON，由容器日志系统收集
@@ -522,7 +537,7 @@ sidebar / toast / chart 等），Tailwind 4 主题变量由 `globals.css` 提供
 `mem-fs-editor` 模板引擎，可生成：
 
 - `client` — SDK 客户端片段
-- `service` — core 业务服务
+- `service` — 业务服务
 - `crud` — 完整 CRUD 模块（service + repository + errors + schema + 路由提示）
 - `package` — 新 workspace 包
 - `utils` — 共享工具函数
@@ -547,7 +562,7 @@ pnpm cli --help     # 查看参数
 | `pnpm build`        | 全量构建（turbo）                       |
 | `pnpm start:server` | 启动生产 Server                         |
 | `pnpm start:web`    | 启动生产 Web                            |
-| `pnpm db:gen <name>`| 生成 TypeORM 迁移（写入 `migrations/`） |
+| `pnpm db:gen <name>`| 生成 TypeORM 迁移（写入 `apps/server/src/database/migrations/`） |
 | `pnpm db:migrate`   | 执行 TypeORM 迁移                       |
 | `pnpm seed:admin`   | 初始化第一个后台管理员（`admin@billy.local / admin123`，可用环境变量覆盖） |
 | `pnpm docker:up`    | `docker compose up -d --build`          |

@@ -16,22 +16,22 @@ const steps = [
   },
   {
     icon: Workflow,
-    tag: '@repo/core',
+    tag: 'apps/server/src/modules',
     title: '业务核心',
     desc: 'Service + Repository（@repo/di 注入）',
   },
   {
     icon: DatabaseZap,
-    tag: '@repo/db',
-    title: '数据落地',
-    desc: 'TypeORM 实体 + PostgreSQL',
+    tag: '@repo/kits',
+    title: '能力底座',
+    desc: 'TypeORM 门面 + 分页 + 事务 + 存储',
   },
 ]
 
 const rules = [
   'shared 不依赖任何业务包',
-  'core 不引用 apps/*',
-  'apps/server 不写业务逻辑',
+  'kits 不引用 apps/*',
+  'modules 不 import Hono',
 ]
 
 /** 架构说明：一次请求的数据流 */

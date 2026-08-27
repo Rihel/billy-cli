@@ -10,7 +10,7 @@ description: 在 Billy 工程中使用异步队列与延迟任务：基于 BullM
 
 ## 核心要点
 
-- 基础设施 `QueueManager`（`core/infrastructure/queue.ts`，**BullMQ**）：生产者
+- 基础设施 `QueueManager`（`kits/infrastructure/queue.ts`，**BullMQ**）：生产者
   `addJob(queueName, name, data, options?)`，消费者 `registerWorker(queueName, handler, options?)`。
 - **生产者**：投递任务，延迟用 `JobsOptions.delay`。
 - **消费者**：业务模块构造期 `registerWorker`，Worker 在应用启动统一拉起；处理器抛错

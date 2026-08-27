@@ -3,7 +3,7 @@
 > 本文件是 `queue` skill 的组成部分，由主 SKILL.md 引用。
 > 使用队列 / 异步任务 / 延迟任务时必读。
 
-## 1. 基础设施：QueueManager（core/infrastructure/queue.ts）
+## 1. 基础设施：QueueManager（kits/infrastructure/queue.ts）
 
 基于 **BullMQ** 的队列门面，注入 `@Inject(QueueManager)`（生命周期组件，`addLifeCycleService` 注册）。
 
@@ -57,7 +57,7 @@ export class OrderService implements OnAppStart {
 
 ## 5. 归位与注意
 
-- 队列门面在 `core/infrastructure`（外部资源门面）；业务模块只依赖 `QueueManager`，
+- 队列门面在 `kits/infrastructure`（外部资源门面）；业务模块只依赖 `QueueManager`，
   **不散落 import bullmq**。
 - 任务处理器必须是幂等的（可能重试 / 重复消费）：用业务唯一键或 `concurrency` 控制。
 - 长任务拆小、失败可重试；不可重试的任务在 handler 内 try/catch 决定吞掉或抛错。

@@ -11,9 +11,9 @@ import { Reveal } from './reveal'
 /** 分层架构 mini 示意图（浅色行卡） */
 function ArchitectureDiagram() {
   const rows = [
-    { label: 'apps/server', sub: 'Hono 薄边界 · Zod 校验', level: '顶层' },
-    { label: '@repo/core', sub: 'InversifyJS 业务核心', level: '中层' },
-    { label: '@repo/db · shared · sdk', sub: '数据 / 契约 / 客户端', level: '底层' },
+    { label: 'apps/server', sub: 'Hono 边界 + 业务模块 + 实体迁移', level: '顶层' },
+    { label: '@repo/kits', sub: '后端通用能力（数据库/缓存/队列/存储）', level: '中层' },
+    { label: '@repo/shared · sdk', sub: '契约 / 客户端', level: '底层' },
   ]
   return (
     <div className="mt-6 space-y-2">
@@ -112,7 +112,7 @@ export function Features() {
                 <h3 className="text-lg font-semibold text-zinc-950">分层架构，依赖方向不可逆</h3>
               </div>
               <p className="mt-3 text-sm leading-relaxed text-zinc-600">
-                薄边界 + 业务核心：Hono 只做校验与转发，业务全部下沉 InversifyJS 核心层，单向依赖、职责清晰、可测试。
+                薄边界 + 业务核心：Hono 只做校验与转发，业务下沉 apps/server 模块层，能力复用 @repo/kits，单向依赖、职责清晰、可测试。
               </p>
               <ArchitectureDiagram />
             </div>

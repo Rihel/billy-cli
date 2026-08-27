@@ -33,7 +33,7 @@ describe('XxxService', () => {
 - **错误断言分两类，勿混淆**：
   - HTTP 层 `ApiError`（`@repo/api-client`）：有 `code` + `status` →
     `await expect(p).rejects.toMatchObject({ code, status })`
-  - 业务层 `AppError`（`@repo/core`，AppErrorCodes 数字码）：只有 `code` →
+  - 业务层 `AppError`（`@repo/kits`，AppErrorCodes 数字码）：只有 `code` →
     `await expect(p).rejects.toMatchObject({ code: 3001 })`
 - 异步用例必须 `await`，不要裸 `.catch` 吞错。
 
