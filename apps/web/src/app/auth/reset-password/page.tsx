@@ -1,6 +1,7 @@
 'use client'
 
 import { resetPasswordAction } from '@/actions/auth.actions'
+import { useServerClient } from '@/lib/server-client'
 import { Pages, AppName } from '@/lib/constants'
 import {
   Button,
@@ -23,11 +24,32 @@ type ResetPasswordState = {
 
 function ResetPasswordInner() {
   const router = useRouter()
+  const client = useServerClient()
   const searchParams = useSearchParams()
   const tokenFromUrl = searchParams.get('token') ?? ''
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
   const mismatch = password && confirmPassword && password !== confirmPassword
+
+  // 用户体系开关关闭：重置密码页无意义，直接回首页
+  useEffect(() => {
+    let cancelled = false
+    client.config
+      .get()
+      .then((config) => {
+        if (cancelled) return
+        client.setAuthEnabled(config.authEnabled)
+        if (!config.authEnabled) {
+          router.replace(Pages.home)
+        }
+      })
+      .catch(() => {
+        // 获取失败保持现状（显示重置密码页）
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [client, router])
 
   const [state, formAction, isPending] = useActionState(
     async (_prev: ResetPasswordState, formData: FormData) => {

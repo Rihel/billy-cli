@@ -17,7 +17,7 @@ import { MenuFoldOutlined, MenuUnfoldOutlined } from '@ant-design/icons'
 export type AppHeaderProps = Partial<{} & ComponentProps<'div'>>
 
 export const AppHeader = ({ className, ...props }: AppHeaderProps) => {
-  const { adminInfo, clear } = useAuthStore()
+  const { adminInfo, authEnabled, clear } = useAuthStore()
   const { toggleSiderCollapsed, isSiderCollapsed } = useLayoutStore()
   const router = useRouter()
   const exit = async () => {
@@ -52,24 +52,27 @@ export const AppHeader = ({ className, ...props }: AppHeaderProps) => {
         </div>
       </div>
 
-      <Dropdown
-        menu={{
-          onClick: handleDropdownClick,
-          items: [
-            { key: 'user-center', label: '个人中心' },
-            { type: 'divider' },
-            { key: 'exit', label: '退出' },
-          ],
-        }}
-      >
-        <div className=" cursor-pointer flex gap-2 items-center">
-          {adminInfo?.avatar ? (
-            <Avatar src={formatStorageUrl(adminInfo.avatar)} size="large" />
-          ) : null}
-          <div>{adminInfo?.realName || adminInfo?.email}</div>
-          <DownOutlined />
-        </div>
-      </Dropdown>
+      {/* 用户体系开关关闭时隐藏用户下拉（无登录态） */}
+      {authEnabled ? (
+        <Dropdown
+          menu={{
+            onClick: handleDropdownClick,
+            items: [
+              { key: 'user-center', label: '个人中心' },
+              { type: 'divider' },
+              { key: 'exit', label: '退出' },
+            ],
+          }}
+        >
+          <div className=" cursor-pointer flex gap-2 items-center">
+            {adminInfo?.avatar ? (
+              <Avatar src={formatStorageUrl(adminInfo.avatar)} size="large" />
+            ) : null}
+            <div>{adminInfo?.realName || adminInfo?.email}</div>
+            <DownOutlined />
+          </div>
+        </Dropdown>
+      ) : null}
     </div>
   )
 }

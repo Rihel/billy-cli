@@ -11,10 +11,23 @@ const tokenManager = new LocalStorageCredentialsManager<BearerTokenCredentials>(
   TokenKey,
 )
 
+/** 创建无状态的 ServerClient（可选注入 token）。 */
+export function createServerClient(token?: string) {
+  const mgr = new MemoryCredentialsManager<BearerTokenCredentials>()
+  if (token) mgr.setCredentials({ token })
+
+  return new ServerClient({
+    baseUrl: ServerUrl,
+    credentialsManager: mgr,
+    callbacks: {
+      onUnauthorized: async () => {},
+    },
+  })
+}
+
 export async function saveToken(token: string): Promise<void> {
   await tokenManager.setCredentials({ token })
 }
-
 export async function removeToken(): Promise<void> {
   await tokenManager.clearCredentials()
 }
@@ -42,17 +55,4 @@ export function getServerClient(): ServerClient {
 
 export function useServerClient(): ServerClient {
   return getServerClient()
-}
-
-export function createServerClient(token?: string) {
-  const mgr = new MemoryCredentialsManager<BearerTokenCredentials>()
-  if (token) mgr.setCredentials({ token })
-
-  return new ServerClient({
-    baseUrl: ServerUrl,
-    credentialsManager: mgr,
-    callbacks: {
-      onUnauthorized: async () => {},
-    },
-  })
 }

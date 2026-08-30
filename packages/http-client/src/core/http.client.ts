@@ -24,6 +24,13 @@ export interface HttpClientOptions<Credentials = Record<string, any>> {
   authStrategy: AuthStrategy<Credentials>
   /** 凭证供应器：凭证从哪来、怎么续期（可选。不传则不自动获取/刷新） */
   credentialProvider?: CredentialProvider<Credentials>
+  /**
+   * 用户体系开关（默认 true，向后兼容）。
+   * false 时所有请求跳过凭证解析与注入（等价于 skipAuth），
+   * 鉴权与否完全交由后端守卫判断 —— 用于用户体系由外部服务提供、
+   * 或自用工具不需要用户体系的场景。
+   */
+  authEnabled?: boolean
   /** fetch 默认选项（如 credentials: 'include'），合并到每次请求 */
   fetchOptions?: RequestInit
   /** 回调钩子 */
@@ -47,22 +54,6 @@ export interface RequestOptions {
 }
 
 /**
- * 全局用户体系开关（默认开启，向后兼容）。
- * 关闭时所有请求跳过凭证解析与注入（等价于 skipAuth），
- * 鉴权与否完全交由后端守卫判断 —— 用于用户体系由外部服务提供、
- * 或自用工具不需要用户体系的场景。前端调 /config/get 拿到开关后设置。
- */
-let globalAuthEnabled = true
-
-/** 设置全局用户体系开关。 */
-export const setGlobalAuthEnabled = (enabled: boolean): void => {
-  globalAuthEnabled = enabled
-}
-
-/** 读取全局用户体系开关。 */
-export const isGlobalAuthEnabled = (): boolean => globalAuthEnabled
-
-/**
  * 带认证的 HTTP 客户端。
  *
  * 职责：
@@ -77,8 +68,11 @@ export class HttpClient<Credentials = Record<string, any>> {
   private readonly resolver: CredentialResolver<Credentials>
   private readonly injector: AuthInjector<Credentials>
   private readonly cancelPreviousMap: Map<string, AbortController> = new Map()
+  /** 用户体系开关（默认 true）；false 时所有请求等价 skipAuth */
+  private authEnabled: boolean
 
   constructor(private options: HttpClientOptions<Credentials>) {
+    this.authEnabled = options.authEnabled ?? true
     this.resolver = new CredentialResolver(
       options.credentialsManager,
       options.authStrategy,
@@ -97,11 +91,16 @@ export class HttpClient<Credentials = Record<string, any>> {
     return this.options.authStrategy
   }
 
+  /** 设置用户体系开关（运行时切换：关闭后所有请求跳过认证，交由后端守卫判断）。 */
+  setAuthEnabled(enabled: boolean): void {
+    this.authEnabled = enabled
+  }
+
   /**
    * 发送请求。
    *
    * 请求流程：
-   *   1. 非 skipAuth → CredentialResolver.resolve() 获取有效凭证
+   *   1. 非 skipAuth 且用户体系开启 → CredentialResolver.resolve() 获取有效凭证
    *   2. AuthInjector.inject() 注入认证上下文
    *   3. cancelPrevious → 取消相同在途请求
    *   4. fetch() 发送请求
@@ -117,8 +116,9 @@ export class HttpClient<Credentials = Record<string, any>> {
 
     let finalConfig: HttpRequestConfig<Body> = config
 
-    // 全局用户体系开关关闭时：跳过凭证解析与注入（等价于 skipAuth），交由后端守卫判断
-    if (!skipAuth && isGlobalAuthEnabled()) {
+    // 用户体系开关关闭时跳过凭证解析与注入（等价于 skipAuth），交由后端守卫判断
+    const effectiveSkipAuth = skipAuth || !this.authEnabled
+    if (!effectiveSkipAuth) {
       // 步骤 1：获取有效凭证（内部含校验，失败抛 ApiError）
       await this.resolver.resolve()
 

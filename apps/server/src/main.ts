@@ -14,6 +14,7 @@ import {
 import { requestLogger } from './lib/request-logger.js';
 import { makeAdminRoutes } from './features/admin.js';
 import { makeAuthRoutes } from './features/auth.js';
+import { makeConfigRoutes } from './features/config.js';
 import { makeStorageRoutes } from './features/storage.js';
 import { makeTodoRoutes } from './features/todo.js';
 import { makeUserRoutes } from './features/user.js';
@@ -74,6 +75,7 @@ export const makeApp = () => {
   app.route('/user', makeUserRoutes(runtime));
   app.route('/todo', makeTodoRoutes(runtime));
   app.route('/storage', makeStorageRoutes(runtime));
+  app.route('/config', makeConfigRoutes(runtime));
   app.notFound(notFound);
   app.onError(errorHandler);
 

@@ -1,7 +1,7 @@
 'use client'
 
 import { registerAction } from '@/actions/auth.actions'
-import { saveToken } from '@/lib/server-client'
+import { saveToken, useServerClient } from '@/lib/server-client'
 import { Pages, AppName } from '@/lib/constants'
 import {
   Button,
@@ -24,9 +24,30 @@ type RegisterState = {
 
 export default function RegisterPage() {
   const router = useRouter()
+  const client = useServerClient()
   const [confirmPassword, setConfirmPassword] = useState('')
   const [password, setPassword] = useState('')
   const mismatch = password && confirmPassword && password !== confirmPassword
+
+  // 用户体系开关关闭：注册页无意义，直接回首页
+  useEffect(() => {
+    let cancelled = false
+    client.config
+      .get()
+      .then((config) => {
+        if (cancelled) return
+        client.setAuthEnabled(config.authEnabled)
+        if (!config.authEnabled) {
+          router.replace(Pages.home)
+        }
+      })
+      .catch(() => {
+        // 获取失败保持现状（显示注册页）
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [client, router])
 
   const [state, formAction, isPending] = useActionState(
     async (_prev: RegisterState, formData: FormData) => {

@@ -15,20 +15,33 @@ export type MainLayoutProps = Partial<{
 }>
 
 const MainLayout = async ({ children }: MainLayoutProps) => {
-  let adminInfo: Record<string, any>
-  const jar = await cookies()
+  // 用户体系开关：调后端 /config/get 获取（关闭时跳过 getMe，自用 / 外部认证场景）
+  // 获取失败时保守按「开启」处理（保持现有守卫行为）
+  let authEnabled = true
   try {
-    const client = createServerClient(jar.get(TokenKey)?.value)
-    adminInfo = await client.admin.getMe()
+    const config = await createServerClient().config.get()
+    authEnabled = config.authEnabled
   } catch {
-    // 会话失效（过期 / 无效）时带 reason 跳转登录页，登录页据此提示重新登录
-    redirect(`${Pages.login}?reason=expired`)
+    // 保持默认开启
+  }
+
+  let adminInfo: Record<string, any> | null = null
+  if (authEnabled) {
+    const jar = await cookies()
+    try {
+      const client = createServerClient(jar.get(TokenKey)?.value)
+      adminInfo = await client.admin.getMe()
+    } catch {
+      // 会话失效（过期 / 无效）时带 reason 跳转登录页，登录页据此提示重新登录
+      redirect(`${Pages.login}?reason=expired`)
+    }
   }
 
   return (
     <AuthStoreProvider
       initialState={{
         adminInfo: adminInfo as any,
+        authEnabled,
       }}
     >
       <div className="w-screen h-screen flex flex-col relative bg-gray-50">

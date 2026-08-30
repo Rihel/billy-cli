@@ -12,10 +12,6 @@ export type {
 // 核心组件
 export { HttpClient } from './core/http.client.js'
 export type { HttpClientOptions, RequestOptions } from './core/http.client.js'
-export {
-  setGlobalAuthEnabled,
-  isGlobalAuthEnabled,
-} from './core/http.client.js'
 export { CredentialResolver } from './core/credential-resolver.js'
 export { AuthInjector } from './core/auth-injector.js'
 export {

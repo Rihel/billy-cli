@@ -1,7 +1,7 @@
 'use client'
 
 import { loginAction } from '@/actions/auth.actions'
-import { saveToken } from '@/lib/server-client'
+import { saveToken, useServerClient } from '@/lib/server-client'
 import { Pages, AppName } from '@/lib/constants'
 import {
   Button,
@@ -24,6 +24,27 @@ type LoginState = {
 
 export default function LoginPage() {
   const router = useRouter()
+  const client = useServerClient()
+
+  // 用户体系开关关闭：登录页无意义，直接回首页
+  useEffect(() => {
+    let cancelled = false
+    client.config
+      .get()
+      .then((config) => {
+        if (cancelled) return
+        client.setAuthEnabled(config.authEnabled)
+        if (!config.authEnabled) {
+          router.replace(Pages.home)
+        }
+      })
+      .catch(() => {
+        // 获取失败保持现状（显示登录页）
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [client, router])
 
   const [state, formAction, isPending] = useActionState(
     async (_prev: LoginState, formData: FormData) => {

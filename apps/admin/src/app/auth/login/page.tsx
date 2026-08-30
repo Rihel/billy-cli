@@ -1,6 +1,6 @@
 'use client'
 
-import { removeToken, saveToken } from '@/lib/server-client'
+import { getServerClient, removeToken, saveToken } from '@/lib/server-client'
 import {
   checkSessionAction,
   loginAction,
@@ -28,6 +28,28 @@ function LoginForm() {
 
   // 从 ?reason=expired 判断是否为会话过期后跳回
   const expired = searchParams.get('reason') === 'expired'
+
+  // 用户体系开关关闭：无需登录，直接进入主界面
+  useEffect(() => {
+    let cancelled = false
+    const client = getServerClient()
+    client.config
+      .get()
+      .then((config) => {
+        if (cancelled) return
+        // 同步到业务请求所用 client 实例：关闭时跳过前端凭证校验，交由后端守卫判断
+        client.setAuthEnabled(config.authEnabled)
+        if (!config.authEnabled) {
+          router.replace(Pages.dashboard)
+        }
+      })
+      .catch(() => {
+        // 获取失败保持默认（显示登录页）
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [router])
 
   // 挂载时探测会话：有效 token → 直接进入主界面；失效 token → 清理 cookie，避免循环跳转
   useEffect(() => {

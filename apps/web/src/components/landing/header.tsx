@@ -1,10 +1,11 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { Menu, X, ArrowRight, TerminalSquare } from 'lucide-react'
 import { Button } from '@repo/ui'
 import { AppName, Pages, LandingAnchors, AdminUrl } from '@/lib/constants'
+import { useServerClient } from '@/lib/server-client'
 import { cn } from '@repo/ui'
 
 const anchorLinks = [
@@ -17,6 +18,27 @@ const anchorLinks = [
 /** 首页顶部导航：单行锚点 + 登录/注册，移动端折叠为抽屉菜单 */
 export function Header() {
   const [open, setOpen] = useState(false)
+  const client = useServerClient()
+  // 用户体系开关：调 /config/get 获取，默认开启（获取失败保持现状，不阻塞页面）
+  const [authEnabled, setAuthEnabled] = useState(true)
+
+  useEffect(() => {
+    let cancelled = false
+    client.config
+      .get()
+      .then((config) => {
+        if (cancelled) return
+        // 同步到业务请求所用 client 实例：关闭时跳过前端凭证校验，交由后端守卫判断
+        client.setAuthEnabled(config.authEnabled)
+        setAuthEnabled(config.authEnabled)
+      })
+      .catch(() => {
+        // 获取失败保持默认（开启）
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [client])
 
   return (
     <header className="sticky top-0 z-50 border-b border-zinc-200/80 bg-white/80 backdrop-blur-xl">
@@ -48,24 +70,28 @@ export function Header() {
           ))}
         </nav>
 
-        {/* 桌面操作 */}
+        {/* 桌面操作：用户体系开关关闭时隐藏登录/注册入口 */}
         <div className="hidden items-center gap-2 md:flex">
-          <Button
-            render={<Link href={Pages.login} />}
-            variant="ghost"
-            size="sm"
-            className="text-zinc-600 hover:text-zinc-900"
-          >
-            登录
-          </Button>
-          <Button
-            render={<Link href={Pages.register} />}
-            size="sm"
-            className="bg-orange-500 text-white shadow-md shadow-orange-500/20 hover:bg-orange-600"
-          >
-            注册
-            <ArrowRight data-icon="inline-end" />
-          </Button>
+          {authEnabled ? (
+            <>
+              <Button
+                render={<Link href={Pages.login} />}
+                variant="ghost"
+                size="sm"
+                className="text-zinc-600 hover:text-zinc-900"
+              >
+                登录
+              </Button>
+              <Button
+                render={<Link href={Pages.register} />}
+                size="sm"
+                className="bg-orange-500 text-white shadow-md shadow-orange-500/20 hover:bg-orange-600"
+              >
+                注册
+                <ArrowRight data-icon="inline-end" />
+              </Button>
+            </>
+          ) : null}
         </div>
 
         {/* 移动端菜单按钮 */}
@@ -98,23 +124,25 @@ export function Header() {
               {link.label}
             </Link>
           ))}
-          <div className="mt-3 flex items-center gap-2 border-t border-zinc-200/80 pt-3">
-            <Button
-              render={<Link href={Pages.login} onClick={() => setOpen(false)} />}
-              variant="ghost"
-              size="sm"
-              className="flex-1 text-zinc-600"
-            >
-              登录
-            </Button>
-            <Button
-              render={<Link href={Pages.register} onClick={() => setOpen(false)} />}
-              size="sm"
-              className="flex-1 bg-orange-500 text-white hover:bg-orange-600"
-            >
-              注册
-            </Button>
-          </div>
+          {authEnabled ? (
+            <div className="mt-3 flex items-center gap-2 border-t border-zinc-200/80 pt-3">
+              <Button
+                render={<Link href={Pages.login} onClick={() => setOpen(false)} />}
+                variant="ghost"
+                size="sm"
+                className="flex-1 text-zinc-600"
+              >
+                登录
+              </Button>
+              <Button
+                render={<Link href={Pages.register} onClick={() => setOpen(false)} />}
+                size="sm"
+                className="flex-1 bg-orange-500 text-white hover:bg-orange-600"
+              >
+                注册
+              </Button>
+            </div>
+          ) : null}
           <a
             href={AdminUrl}
             target="_blank"
