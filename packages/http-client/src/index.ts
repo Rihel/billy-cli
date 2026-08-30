@@ -64,9 +64,9 @@ export { EnvCredentialsManager } from './managers/env-credentials.manager.js'
 // ========== SSE 客户端（请求 + 流式推送） ==========
 export { HttpStreamClient } from './stream/stream-client.js'
 export type { StreamClientOptions } from './stream/types.js'
+export { StreamClientState } from './stream/types.js'
 export type {
   StreamMessage,
-  StreamClientState,
   StreamEventHandler,
 } from './stream/types.js'
 export { StreamClientError, StreamTransportError } from './stream/errors.js'

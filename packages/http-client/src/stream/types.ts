@@ -16,13 +16,17 @@ export interface StreamMessage {
   retry?: number
 }
 
-/** 客户端连接状态机状态。 */
-export type StreamClientState =
-  | 'idle'
-  | 'connecting'
-  | 'open'
-  | 'reconnecting'
-  | 'closed'
+/**
+ * 客户端连接状态机状态（TS 字符串枚举：集中管理状态名，值即字符串字面量）。
+ * 状态值必须经 StreamClientState 引用，类型强约束、杜绝魔法字符串。
+ */
+export enum StreamClientState {
+  Idle = 'idle',
+  Connecting = 'connecting',
+  Open = 'open',
+  Reconnecting = 'reconnecting',
+  Closed = 'closed',
+}
 
 /**
  * 事件处理器。

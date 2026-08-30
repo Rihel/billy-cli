@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import {
   HttpStreamClient,
+  StreamClientState,
   BearerTokenStrategy,
   MemoryCredentialsManager,
 } from '../src/index.js'
@@ -54,10 +55,10 @@ describe('HttpStreamClient 连接状态机', () => {
     const fetchMock = vi.fn(async () => streamOpenResponse())
     const sse = makeClient({ fetch: fetchMock as unknown as typeof fetch })
 
-    expect(sse.currentState).toBe('idle')
+    expect(sse.currentState).toBe(StreamClientState.Idle)
     sse.connect()
-    expect(sse.currentState).toBe('connecting')
-    await vi.waitFor(() => expect(sse.currentState).toBe('open'))
+    expect(sse.currentState).toBe(StreamClientState.Connecting)
+    await vi.waitFor(() => expect(sse.currentState).toBe(StreamClientState.Open))
     expect(fetchMock).toHaveBeenCalledTimes(1)
   })
 
@@ -65,9 +66,9 @@ describe('HttpStreamClient 连接状态机', () => {
     const fetchMock = vi.fn(async () => streamOpenResponse())
     const sse = makeClient({ fetch: fetchMock as unknown as typeof fetch })
     sse.connect()
-    await vi.waitFor(() => expect(sse.currentState).toBe('open'))
+    await vi.waitFor(() => expect(sse.currentState).toBe(StreamClientState.Open))
     sse.close()
-    expect(sse.currentState).toBe('closed')
+    expect(sse.currentState).toBe(StreamClientState.Closed)
     // 中断后不再重连
     await new Promise((r) => setTimeout(r, 30))
     expect(fetchMock).toHaveBeenCalledTimes(1)
@@ -77,7 +78,7 @@ describe('HttpStreamClient 连接状态机', () => {
     const fetchMock = vi.fn(async () => streamOpenResponse())
     const sse = makeClient({ fetch: fetchMock as unknown as typeof fetch })
     sse.connect()
-    await vi.waitFor(() => expect(sse.currentState).toBe('open'))
+    await vi.waitFor(() => expect(sse.currentState).toBe(StreamClientState.Open))
     expect(() => sse.connect()).toThrow()
   })
 
@@ -85,7 +86,7 @@ describe('HttpStreamClient 连接状态机', () => {
     const fetchMock = vi.fn(async () => streamResponse(['event: a\ndata: 1\n\n']))
     const sse = makeClient({ fetch: fetchMock as unknown as typeof fetch })
     sse.connect()
-    await vi.waitFor(() => expect(sse.currentState).toBe('closed'))
+    await vi.waitFor(() => expect(sse.currentState).toBe(StreamClientState.Closed))
     expect(fetchMock).toHaveBeenCalledTimes(1)
   })
 
@@ -100,8 +101,8 @@ describe('HttpStreamClient 连接状态机', () => {
 
     sse.connect()
     await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2))
-    await vi.waitFor(() => expect(sse.currentState).toBe('open'))
-    expect(states).toContain('reconnecting')
+    await vi.waitFor(() => expect(sse.currentState).toBe(StreamClientState.Open))
+    expect(states).toContain(StreamClientState.Reconnecting)
   })
 })
 
@@ -119,7 +120,7 @@ describe('HttpStreamClient 事件分发', () => {
     sse.on('progress', (data) => progress.push(data))
     sse.on('done', (data) => done.push(data))
     sse.connect()
-    await vi.waitFor(() => expect(sse.currentState).toBe('closed'))
+    await vi.waitFor(() => expect(sse.currentState).toBe(StreamClientState.Closed))
     expect(progress).toEqual([{ percent: 50 }])
     expect(done).toEqual([{ ok: true }])
   })
@@ -145,7 +146,7 @@ describe('HttpStreamClient 事件分发', () => {
     const off = sse.on('e', (data) => received.push(data))
     off()
     sse.connect()
-    await vi.waitFor(() => expect(sse.currentState).toBe('closed'))
+    await vi.waitFor(() => expect(sse.currentState).toBe(StreamClientState.Closed))
     expect(received).toHaveLength(0)
   })
 
@@ -170,7 +171,7 @@ describe('HttpStreamClient 请求配置', () => {
       fetch: fetchMock as unknown as typeof fetch,
     })
     sse.connect()
-    await vi.waitFor(() => expect(sse.currentState).toBe('open'))
+    await vi.waitFor(() => expect(sse.currentState).toBe(StreamClientState.Open))
     const [, init] = fetchMock.mock.calls[0] as [string, RequestInit]
     expect(init.method).toBe('POST')
     expect(init.body).toBe(JSON.stringify({ channels: ['task:42', 'user:1'] }))
@@ -184,7 +185,7 @@ describe('HttpStreamClient 请求配置', () => {
       fetch: fetchMock as unknown as typeof fetch,
     })
     sse.connect()
-    await vi.waitFor(() => expect(sse.currentState).toBe('open'))
+    await vi.waitFor(() => expect(sse.currentState).toBe(StreamClientState.Open))
     const [, init] = fetchMock.mock.calls[0] as [string, RequestInit]
     expect(init.method).toBe('GET')
     expect(init.body).toBeUndefined()
@@ -197,7 +198,7 @@ describe('HttpStreamClient 请求配置', () => {
       fetch: fetchMock as unknown as typeof fetch,
     })
     sse.connect()
-    await vi.waitFor(() => expect(sse.currentState).toBe('open'))
+    await vi.waitFor(() => expect(sse.currentState).toBe(StreamClientState.Open))
     const [, init] = fetchMock.mock.calls[0] as [string, RequestInit]
     expect(init.body).toBe(JSON.stringify({ topic: 'custom' }))
   })
@@ -208,7 +209,7 @@ describe('HttpStreamClient 认证', () => {
     const fetchMock = vi.fn(async () => streamOpenResponse())
     const sse = makeClient({ fetch: fetchMock as unknown as typeof fetch })
     sse.connect()
-    await vi.waitFor(() => expect(sse.currentState).toBe('open'))
+    await vi.waitFor(() => expect(sse.currentState).toBe(StreamClientState.Open))
     const [, init] = fetchMock.mock.calls[0] as [string, RequestInit]
     expect(init.headers).toMatchObject({ Authorization: 'Bearer test-token' })
   })
@@ -231,7 +232,7 @@ describe('HttpStreamClient 认证', () => {
     // 第一次失败后、重连前更新凭证
     await manager.setCredentials({ token: 'v2' })
     await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2))
-    await vi.waitFor(() => expect(sse.currentState).toBe('open'))
+    await vi.waitFor(() => expect(sse.currentState).toBe(StreamClientState.Open))
     const first = fetchMock.mock.calls[0] as [string, RequestInit]
     const second = fetchMock.mock.calls[1] as [string, RequestInit]
     expect(first[1].headers).toMatchObject({ Authorization: 'Bearer v1' })
@@ -254,7 +255,7 @@ describe('HttpStreamClient 认证', () => {
       fetch: fetchMock as unknown as typeof fetch,
     })
     sse.connect()
-    await vi.waitFor(() => expect(sse.currentState).toBe('open'))
+    await vi.waitFor(() => expect(sse.currentState).toBe(StreamClientState.Open))
     const [, init] = fetchMock.mock.calls[0] as [string, RequestInit]
     expect(init.headers).toMatchObject({ Authorization: 'Bearer acquired-token' })
   })
@@ -289,7 +290,7 @@ describe('HttpStreamClient Last-Event-ID 续传', () => {
     pushMessage!(new TextEncoder().encode('id: 5\nevent: a\ndata: 1\n\n'))
     setTimeout(() => errorStream!(new Error('stream interrupted')), 20)
     await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2))
-    await vi.waitFor(() => expect(sse.currentState).toBe('open'))
+    await vi.waitFor(() => expect(sse.currentState).toBe(StreamClientState.Open))
     const second = fetchMock.mock.calls[1] as [string, RequestInit]
     expect(second[1].headers).toMatchObject({ 'Last-Event-ID': '5' })
   })

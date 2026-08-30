@@ -1,16 +1,20 @@
 import { CredentialResolver } from '../core/credential-resolver.js'
 import { streamConnectOnce } from './stream-transport.js'
 import type { StreamConnection } from './stream-transport.js'
+import { StreamClientState } from './types.js'
 import type {
   StreamClientOptions,
-  StreamClientState,
   StreamEventHandler,
   StreamMessage,
 } from './types.js'
 import { StreamClientError } from './errors.js'
 
 /** 状态事件（通过 on() 分发，与业务事件共用同一管道）。 */
-const STATE_EVENTS = ['open', 'reconnecting', 'closed'] as const
+const STATE_EVENTS = [
+  StreamClientState.Open,
+  StreamClientState.Reconnecting,
+  StreamClientState.Closed,
+] as const
 
 /**
  * SSE 客户端（浏览器 / Node.js 双环境）。
@@ -25,7 +29,7 @@ const STATE_EVENTS = ['open', 'reconnecting', 'closed'] as const
  * 零第三方依赖：传输层基于原生 fetch + ReadableStream。
  */
 export class HttpStreamClient {
-  private state: StreamClientState = 'idle'
+  private state: StreamClientState = StreamClientState.Idle
   private listeners = new Map<string, Set<StreamEventHandler>>()
   private controller: AbortController | null = null
   private conn: StreamConnection | null = null
@@ -68,26 +72,34 @@ export class HttpStreamClient {
 
   /** 发起连接。仅 idle / closed 状态可调用。 */
   connect(): void {
-    if (this.state !== 'idle' && this.state !== 'closed') {
+    if (
+      this.state !== StreamClientState.Idle &&
+      this.state !== StreamClientState.Closed
+    ) {
       throw new StreamClientError(`当前状态 ${this.state} 不能发起连接`)
     }
     this.stopped = false
     this.hiddenPaused = false
     this.retryCount = 0
     this.controller = new AbortController()
-    this.setState('connecting')
+    this.setState(StreamClientState.Connecting)
     this.bindVisibility()
     void this.run()
   }
 
   /** 关闭连接（幂等）：中断传输、进入终态、清理订阅。 */
   close(): void {
-    if (this.state === 'idle' || this.state === 'closed') return
+    if (
+      this.state === StreamClientState.Idle ||
+      this.state === StreamClientState.Closed
+    ) {
+      return
+    }
     this.stopped = true
     this.unbindVisibility()
     this.controller?.abort()
     this.conn = null
-    this.setState('closed')
+    this.setState(StreamClientState.Closed)
     this.listeners.clear()
   }
 
@@ -100,7 +112,7 @@ export class HttpStreamClient {
         continue
       }
       try {
-        this.setState('connecting')
+        this.setState(StreamClientState.Connecting)
 
         // 认证编排：解析有效凭证 → 生成认证 headers（复用本包凭证体系）
         const credentials = await this.resolver.resolve()
@@ -121,7 +133,7 @@ export class HttpStreamClient {
             fetchImpl: this.options.fetch,
           },
           {
-            onOpen: () => this.setState('open'),
+            onOpen: () => this.setState(StreamClientState.Open),
             onMessage: (msg) => this.handleMessage(msg),
             onRetry: (retry) => {
               this.serverRetry = retry
@@ -135,12 +147,12 @@ export class HttpStreamClient {
         // abort 因页面隐藏：回到循环顶部等待可见
         if (this.hiddenPaused) continue
         // 服务端正常关闭流 → 进入终态（不自动重连）
-        this.setState('closed')
+        this.setState(StreamClientState.Closed)
         break
       } catch (err) {
         if (this.stopped) break
         this.retryCount += 1
-        this.setState('reconnecting')
+        this.setState(StreamClientState.Reconnecting)
         const ms = this.nextRetryMs()
         await delay(ms, this.controller?.signal)
       }
