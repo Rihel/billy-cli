@@ -3,6 +3,18 @@
 > 本文件是 `develop-business-module` skill 的组成部分，由主 SKILL.md 引用。
 > 实现模块时按各节落地，最后按主 SKILL.md 的检查清单自查。
 
+## 0. 骨架生成（可选，推荐）
+
+新模块骨架可用代码生成器一键生成（对齐 todo 范例的 entity / repository /
+service / errors / features 路由 / schema 七个文件）：
+
+```bash
+pnpm cli -t crud -n <name>
+```
+
+生成后仍需按下列各节逐层落地：错误码与 schema 导出、main.ts 注册（addService +
+db.entities + app.route）、迁移、SDK、admin 页面。
+
 ## 1. ① 契约：错误码 + schema
 
 - `AppErrorCodes` 增加 `XxxNotFound: { label: 'Xxx 不存在', value: 3xxx, http: 404 }`

@@ -137,6 +137,35 @@ pnpm start:web
 pnpm docker:up
 ```
 
+## 代码生成器（pnpm cli）
+
+仓库内嵌脚手架生成器（`scripts/cli/`），交互式生成 workspace 模板，模板文件为
+`.eta`（eta 模板引擎，见 `scripts/cli/templates/files/`）：
+
+```bash
+pnpm cli                     # 交互式选择模板类型
+pnpm cli -t crud -n product  # 非交互生成 CRUD 业务模块（无 TTY 时字段自动用默认值）
+```
+
+四种模板类型：
+
+| 类型 | 说明 | 生成位置 |
+| --- | --- | --- |
+| `package` | 通用 TypeScript 包（tsdown 构建） | `packages/<name>/` |
+| `client` | Next.js 前端应用（antd 技术栈） | `apps/<name>/` |
+| `service` | Hono 服务端应用骨架（createServiceContext + TypeORM） | `apps/<name>/` |
+| `crud` | Hono + TypeORM 业务模块（实体 / repository / service / errors / features 路由 / schema） | `apps/server/src/modules/<name>/` 等 |
+
+**crud 生成后的手动步骤**（生成器会打印完整清单）：
+
+1. `apps/server/src/main.ts`：`createServiceContext(...)` 链式 `.addService(XxxRepository).addService(XxxService)` 注册；
+2. 同文件：实体加入 `db.entities`，并用 `app.route('/<name>', makeXxxRoutes(runtime))` 挂载路由；
+3. `packages/shared/src/dicts/app-error-code.dict.ts` 3xxx 段加 `XxxNotFound` 错误码；
+4. `packages/shared/src/schema/index.ts` 导出新 schema；
+5. `pnpm db:gen Xxx` 生成迁移 + `pnpm db:migrate` 执行；
+6. `packages/sdk/src/server.client.ts` 补 `xxx` 段类型化 SDK 方法；
+7. 按 `develop-frontend-page` 规范开发 admin 页面并加入 `apps/admin/src/components/AppMenu.tsx` 菜单。
+
 ## 项目结构
 
 ```
@@ -209,7 +238,7 @@ pnpm docker:up
 │   └── aui/                             # @repo/aui — Ant Design 管理端组件库 + action 工具
 ├── docker/                              # Dockerfile.base / .server / .web + init-db.sql
 ├── docs/                                # pagination.md（分页指南）/ sdk-refactor.md
-├── scripts/                             # cli.ts 脚手架生成器
+├── scripts/                             # cli 代码生成器（pnpm cli）：cli.ts 入口 + cli/（生成逻辑 + .eta 模板文件）
 ├── turbo.json
 ├── pnpm-workspace.yaml
 └── package.json
