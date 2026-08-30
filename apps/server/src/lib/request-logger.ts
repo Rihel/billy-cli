@@ -5,11 +5,7 @@ import { createMiddleware } from 'hono/factory';
 import { mapError } from './http.js';
 import { requestContext } from './request-context.js';
 
-const logger = createLogger(
-  'request',
-  true,
-  process.env.LOG_LEVEL ?? 'info',
-);
+const logger = createLogger('request', true, process.env.LOG_LEVEL ?? 'info');
 
 const getClientIp = (context: Context) =>
   context.req.header('x-forwarded-for')?.split(',')[0]?.trim() || '-';
@@ -40,7 +36,7 @@ export const requestLogger = createMiddleware(async (context, next) => {
     path,
     ...(hasQuery ? { query } : {}),
     ip,
-    userAgent,
+    // userAgent,
   });
 
   try {
@@ -48,16 +44,13 @@ export const requestLogger = createMiddleware(async (context, next) => {
   } catch (error) {
     const status = mapError(error).http;
     const durationMs = Math.round(performance.now() - startedAt);
-    logger.error(
-      `${method} ${path} -> ${status} ${durationMs}ms`,
-      {
-        requestId,
-        userId: requestContext.get('userId') ?? null,
-        ip,
-        userAgent,
-        error: error instanceof Error ? error.message : String(error),
-      },
-    );
+    logger.error(`${method} ${path} -> ${status} ${durationMs}ms`, {
+      requestId,
+      userId: requestContext.get('userId') ?? null,
+      ip,
+      userAgent,
+      error: error instanceof Error ? error.message : String(error),
+    });
     throw error;
   }
 
