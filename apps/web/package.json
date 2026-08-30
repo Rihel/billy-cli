@@ -10,7 +10,7 @@
   },
   "dependencies": {
     "@base-ui/react": "^1.7.0",
-    "@repo/api-client": "workspace:*",
+    "@repo/http-client": "workspace:*",
     "@repo/sdk": "workspace:*",
     "@repo/shared": "workspace:*",
     "@repo/ui": "workspace:*",

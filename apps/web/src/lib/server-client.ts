@@ -3,7 +3,7 @@ import {
   LocalStorageCredentialsManager,
   MemoryCredentialsManager,
   BearerTokenCredentials,
-} from '@repo/api-client'
+} from '@repo/http-client'
 import { Pages, ServerUrl, TokenKey } from './constants'
 
 const tokenManager = new LocalStorageCredentialsManager<BearerTokenCredentials>(

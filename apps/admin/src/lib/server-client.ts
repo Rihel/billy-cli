@@ -3,7 +3,7 @@ import {
   LocalStorageCredentialsManager,
   MemoryCredentialsManager,
   BearerTokenCredentials,
-} from '@repo/api-client'
+} from '@repo/http-client'
 import { logoutAction } from '@/actions/auth.actions'
 import { Pages, ServerUrl, TokenKey } from './constants'
 

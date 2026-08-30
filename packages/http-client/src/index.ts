@@ -1,4 +1,4 @@
-export const packageName = '@repo/api-client'
+export const packageName = '@repo/http-client'
 
 export type {
   AuthStrategyType,
@@ -60,3 +60,21 @@ export type {
   CookieClearer,
 } from './managers/cookie-credentials.manager.js'
 export { EnvCredentialsManager } from './managers/env-credentials.manager.js'
+
+// ========== SSE 客户端（请求 + 流式推送） ==========
+export { HttpStreamClient } from './stream/stream-client.js'
+export type { StreamClientOptions } from './stream/types.js'
+export type {
+  StreamMessage,
+  StreamClientState,
+  StreamEventHandler,
+} from './stream/types.js'
+export { StreamClientError, StreamTransportError } from './stream/errors.js'
+export { StreamParser } from './stream/stream-parser.js'
+export type { StreamParseCallbacks } from './stream/stream-parser.js'
+export { streamConnectOnce } from './stream/stream-transport.js'
+export type {
+  StreamConnection,
+  StreamConnectRequest,
+  StreamConnectionCallbacks,
+} from './stream/stream-transport.js'

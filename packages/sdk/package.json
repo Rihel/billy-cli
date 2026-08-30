@@ -15,7 +15,7 @@
     "build": "tsdown --config-loader unrun"
   },
   "dependencies": {
-    "@repo/api-client": "workspace:*",
+    "@repo/http-client": "workspace:*",
     "@repo/shared": "workspace:*"
   },
   "devDependencies": {

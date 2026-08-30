@@ -1,5 +1,5 @@
 {
-  "name": "@repo/api-client",
+  "name": "@repo/http-client",
   "version": "0.1.0",
   "private": true,
   "type": "module",
