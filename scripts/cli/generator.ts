@@ -1,9 +1,6 @@
 import { spawn } from 'node:child_process'
-import { access } from 'node:fs/promises'
-import { resolve } from 'node:path'
-import { create as createMemFs } from 'mem-fs'
-import { create as createMemFsEditor } from 'mem-fs-editor'
-import type { VinylMemFsEditorFile } from 'mem-fs-editor'
+import { access, mkdir, writeFile } from 'node:fs/promises'
+import { dirname, resolve } from 'node:path'
 import type { Template } from './types.js'
 
 async function pathExists(path: string): Promise<boolean> {
@@ -13,6 +10,12 @@ async function pathExists(path: string): Promise<boolean> {
   } catch {
     return false
   }
+}
+
+/** 写入文件（自动创建父目录）。场景是全新目录写新文件，无需内存暂存 / 冲突检测。 */
+async function writeFileRecursive(filePath: string, content: string) {
+  await mkdir(dirname(filePath), { recursive: true })
+  await writeFile(filePath, content, 'utf8')
 }
 
 export async function generate(
@@ -25,22 +28,17 @@ export async function generate(
     throw new Error(`目标目录已存在：${template.directory}/${name}`)
   }
 
-  const store = createMemFs<VinylMemFsEditorFile>()
-  const editor = createMemFsEditor(store)
-
   // 主模块文件
   for (const [relativePath, content] of Object.entries(template.files)) {
-    editor.write(resolve(targetDirectory, relativePath), content)
+    await writeFileRecursive(resolve(targetDirectory, relativePath), content)
   }
 
   // 额外文件（workspace 相对路径）
   if (template.extraFiles) {
     for (const [filePath, content] of Object.entries(template.extraFiles)) {
-      editor.write(resolve(workspaceRoot, filePath), content)
+      await writeFileRecursive(resolve(workspaceRoot, filePath), content)
     }
   }
-
-  await editor.commit()
 
   return `${template.directory}/${name}`
 }
