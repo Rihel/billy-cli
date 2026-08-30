@@ -458,4 +458,115 @@ describe('ApiClient 请求流程', () => {
       status: 500,
     })
   })
+
+  // ── buildUrl URL 拼接 ────────────────────────────────
+
+  function createClientWithFetch(
+    baseUrl: string,
+    fetchHandler: (input: RequestInfo | URL) => Promise<Response>,
+  ) {
+    const fetchFn = vi.fn(fetchHandler)
+    vi.stubGlobal('fetch', fetchFn)
+    return {
+      client: new ApiClient({
+        baseUrl,
+        credentialsManager: new MemoryCredentialsManager({ token: 'valid' }),
+        authStrategy: new BearerTokenStrategy(),
+      }),
+      fetchFn,
+    }
+  }
+
+  async function getUrl(
+    baseUrl: string,
+    config: { url: string; params?: Record<string, any> },
+  ): Promise<string> {
+    const { client, fetchFn } = createClientWithFetch(
+      baseUrl,
+      async () => jsonResponse({ code: 0, data: { ok: true } }),
+    )
+    await (client as any).request({ method: 'GET', ...config })
+    return String(fetchFn.mock.calls[0][0])
+  }
+
+  it('baseUrl 尾斜杠不会产生双斜杠', async () => {
+    expect(await getUrl('https://api.test/', { url: '/test' })).toBe(
+      'https://api.test/test',
+    )
+  })
+
+  it('baseUrl 带 path 时请求路径拼接在其后', async () => {
+    expect(
+      await getUrl('https://api.test/api/v1', { url: '/users' }),
+    ).toBe('https://api.test/api/v1/users')
+  })
+
+  it('baseUrl 带 path 且尾斜杠时不产生双斜杠', async () => {
+    expect(
+      await getUrl('https://api.test/api/v1/', { url: '/users' }),
+    ).toBe('https://api.test/api/v1/users')
+  })
+
+  it('baseUrl 带 path 时 path 无前导斜杠同样拼接', async () => {
+    expect(
+      await getUrl('https://api.test/api/v1', { url: 'users' }),
+    ).toBe('https://api.test/api/v1/users')
+  })
+
+  it('path 无前导斜杠时按根路径解析', async () => {
+    expect(await getUrl('https://api.test', { url: 'test' })).toBe(
+      'https://api.test/test',
+    )
+  })
+
+  it('path 自带查询串时与 params 以 & 合并', async () => {
+    expect(
+      await getUrl('https://api.test', {
+        url: '/users?id=1',
+        params: { page: 2 },
+      }),
+    ).toBe('https://api.test/users?id=1&page=2')
+  })
+
+  it('params 过滤 undefined 与 null', async () => {
+    expect(
+      await getUrl('https://api.test', {
+        url: '/list',
+        params: { a: undefined, b: null, c: 1 },
+      }),
+    ).toBe('https://api.test/list?c=1')
+  })
+
+  it('params 数组展开为重复键', async () => {
+    expect(
+      await getUrl('https://api.test', {
+        url: '/list',
+        params: { ids: [1, 2] },
+      }),
+    ).toBe('https://api.test/list?ids=1&ids=2')
+  })
+
+  it('params 嵌套对象 JSON 序列化', async () => {
+    expect(
+      await getUrl('https://api.test', {
+        url: '/list',
+        params: { filter: { status: 'on' } },
+      }),
+    ).toBe('https://api.test/list?filter=%7B%22status%22%3A%22on%22%7D')
+  })
+
+  it('url 为完整 URL 时直接使用，不拼接 baseUrl', async () => {
+    expect(
+      await getUrl('https://api.test', {
+        url: 'https://other.test/x',
+        params: { page: 1 },
+      }),
+    ).toBe('https://other.test/x?page=1')
+  })
+
+  it('无 params 时不带查询串', async () => {
+    expect(await getUrl('https://api.test', { url: '/test' })).toBe(
+      'https://api.test/test',
+    )
+  })
 })
