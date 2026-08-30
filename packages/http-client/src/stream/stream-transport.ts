@@ -46,8 +46,9 @@ export function streamConnectOnce(
   const { url, method = 'POST', headers, body, signal } = request
   const fetchImpl = request.fetchImpl ?? globalThis.fetch
 
-  let resolveClosed: () => void
-  let rejectClosed: (err: unknown) => void
+  // Promise executor 同步执行，闭包运行前必被赋值
+  let resolveClosed!: () => void
+  let rejectClosed!: (err: unknown) => void
   const closed = new Promise<void>((resolve, reject) => {
     resolveClosed = resolve
     rejectClosed = reject
