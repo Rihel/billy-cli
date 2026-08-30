@@ -1,0 +1,23 @@
+import type { Metadata } from 'next'
+import { AntdRegistry } from '@ant-design/nextjs-registry'
+import type { ReactNode } from 'react'
+import './globals.css'
+import { AppName } from '@/lib/constants'
+import { Providers } from '@/providers/AppProviders'
+
+export const metadata: Metadata = {
+  title: AppName,
+  description: '<%= it.name %> application',
+}
+
+export default function RootLayout({ children }: Readonly<{ children: ReactNode }>) {
+  return (
+    <html lang="zh-CN">
+      <body>
+        <AntdRegistry>
+          <Providers>{children}</Providers>
+        </AntdRegistry>
+      </body>
+    </html>
+  )
+}

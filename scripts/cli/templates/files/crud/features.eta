@@ -1,0 +1,48 @@
+import { <%= it.modulePascal %>Service } from '../modules/<%= it.name %>/index.js'
+import type { AppContext } from '@repo/di'
+import {
+  Create<%= it.modulePascal %>Schema,
+  CursorQuery<%= it.modulePascal %>Schema,
+  GetDetail<%= it.modulePascal %>Schema,
+  PageQuery<%= it.modulePascal %>Schema,
+  Remove<%= it.modulePascal %>Schema,
+  Update<%= it.modulePascal %>Schema,
+} from '@repo/shared'
+import { Hono } from 'hono'
+import { makeRequireAdminAuth } from '../lib/authentication.js'
+import { jsonBody, success } from '../lib/http.js'
+
+export const make<%= it.modulePascal %>Routes = (runtime: AppContext) => {
+  const <%= it.name %>Service = runtime.get(<%= it.modulePascal %>Service)
+  const requireAdminAuth = makeRequireAdminAuth(runtime)
+  const routes = new Hono()
+
+  routes.use('*', requireAdminAuth)
+  routes
+    .post('/create', jsonBody(Create<%= it.modulePascal %>Schema), async (context) => {
+      const input = context.req.valid('json')
+      return success(context, await <%= it.name %>Service.create(input))
+    })
+    .post('/page-query', jsonBody(PageQuery<%= it.modulePascal %>Schema), async (context) => {
+      const input = context.req.valid('json')
+      return success(context, await <%= it.name %>Service.page(input))
+    })
+    .post('/cursor-query', jsonBody(CursorQuery<%= it.modulePascal %>Schema), async (context) => {
+      const input = context.req.valid('json')
+      return success(context, await <%= it.name %>Service.cursor(input))
+    })
+    .post('/detail', jsonBody(GetDetail<%= it.modulePascal %>Schema), async (context) => {
+      const input = context.req.valid('json')
+      return success(context, await <%= it.name %>Service.get(input))
+    })
+    .post('/update', jsonBody(Update<%= it.modulePascal %>Schema), async (context) => {
+      const input = context.req.valid('json')
+      return success(context, await <%= it.name %>Service.update(input))
+    })
+    .post('/remove', jsonBody(Remove<%= it.modulePascal %>Schema), async (context) => {
+      const input = context.req.valid('json')
+      return success(context, await <%= it.name %>Service.remove(input))
+    })
+
+  return routes
+}

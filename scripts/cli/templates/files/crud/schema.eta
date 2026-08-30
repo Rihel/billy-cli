@@ -1,0 +1,58 @@
+import { z } from 'zod'
+import {
+  BaseCursorPaginateDto,
+  BaseModel,
+  BasePaginateDto,
+} from './base.schema'
+
+const <%= it.modulePascal %>Fields = z.object({
+<%= it.fieldShapeLines %>
+})
+
+export const <%= it.modulePascal %>Schema = z.intersection(BaseModel, <%= it.modulePascal %>Fields)
+
+export type <%= it.modulePascal %>Model = z.infer<typeof <%= it.modulePascal %>Schema>
+
+export const <%= it.modulePascal %>IdInputSchema = z.object({
+  <%= it.name %>Id: z.string(),
+})
+
+export type <%= it.modulePascal %>IdInputDto = z.infer<typeof <%= it.modulePascal %>IdInputSchema>
+
+export const GetDetail<%= it.modulePascal %>Schema = <%= it.modulePascal %>IdInputSchema.extend({})
+export type GetDetail<%= it.modulePascal %>Dto = z.infer<typeof GetDetail<%= it.modulePascal %>Schema>
+
+export const Remove<%= it.modulePascal %>Schema = <%= it.modulePascal %>IdInputSchema.extend({})
+export type Remove<%= it.modulePascal %>Dto = z.infer<typeof Remove<%= it.modulePascal %>Schema>
+
+export const Create<%= it.modulePascal %>Schema = <%= it.modulePascal %>Fields<%= it.omitClause %>
+export type Create<%= it.modulePascal %>Dto = z.infer<typeof Create<%= it.modulePascal %>Schema>
+
+export const Update<%= it.modulePascal %>Schema = z.intersection(<%= it.modulePascal %>IdInputSchema, <%= it.modulePascal %>Fields)
+export type Update<%= it.modulePascal %>Dto = z.infer<typeof Update<%= it.modulePascal %>Schema>
+
+export const PageQuery<%= it.modulePascal %>Schema = BasePaginateDto.extend({
+  keyword: z.string().optional(),
+  orderBy: z
+    .enum(['<%= it.orderableFields %>'])
+    .optional()
+    .default('updatedAt'),
+  order: z.enum(['asc', 'desc']).optional().default('desc'),
+})
+
+export type PageQuery<%= it.modulePascal %>Dto = z.infer<typeof PageQuery<%= it.modulePascal %>Schema>
+
+export const <%= it.modulePascal %>CursorSchema = z.object({
+  updatedAt: z.iso.datetime(),
+  <%= it.name %>Id: z.string(),
+})
+
+/** 游标模型（响应） */
+export type <%= it.modulePascal %>CursorModel = z.infer<typeof <%= it.modulePascal %>CursorSchema>
+
+export const CursorQuery<%= it.modulePascal %>Schema = BaseCursorPaginateDto.extend({
+  cursor: <%= it.modulePascal %>CursorSchema.optional(),
+  keyword: z.string().optional(),
+})
+
+export type CursorQuery<%= it.modulePascal %>Dto = z.infer<typeof CursorQuery<%= it.modulePascal %>Schema>

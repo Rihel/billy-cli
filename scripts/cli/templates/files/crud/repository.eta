@@ -1,0 +1,97 @@
+import {
+  cursorPageWith,
+  pageWith,
+  type CursorQueryResult,
+  type PageQueryResult,
+} from '@repo/kits'
+import { <%= it.entityPascal %> } from '../../database/entities/<%= it.name %>-entity.js'
+import type {
+  CursorQuery<%= it.modulePascal %>Dto,
+  PageQuery<%= it.modulePascal %>Dto,
+  <%= it.modulePascal %>CursorModel,
+  <%= it.modulePascal %>Model,
+} from '@repo/shared'
+import { type DeepPartial } from 'typeorm'
+import { Inject, Injectable } from '@repo/di'
+import { Db } from '@repo/kits'
+
+const to<%= it.modulePascal %> = (record: <%= it.entityPascal %>): <%= it.modulePascal %>Model => {
+  const { deletedAt: _deletedAt, ...<%= it.name %> } = record
+  return <%= it.name %>
+}
+
+@Injectable()
+export class <%= it.modulePascal %>Repository {
+  constructor(@Inject(Db) private readonly db: Db) {}
+
+  private async repo() {
+    return this.db.getRepository(<%= it.entityPascal %>)
+  }
+
+  async create(data: DeepPartial<<%= it.entityPascal %>>): Promise<<%= it.modulePascal %>Model> {
+    const repo = await this.repo()
+    return to<%= it.modulePascal %>(await repo.save(repo.create(data)))
+  }
+
+  async findById(id: string): Promise<<%= it.modulePascal %>Model | null> {
+    const repo = await this.repo()
+    const <%= it.name %> = await repo.findOneBy({ id })
+    return <%= it.name %> ? to<%= it.modulePascal %>(<%= it.name %>) : null
+  }
+
+  async update(
+    id: string,
+    data: DeepPartial<<%= it.entityPascal %>>,
+  ): Promise<<%= it.modulePascal %>Model | null> {
+    const repo = await this.repo()
+    const existing = await repo.findOneBy({ id })
+    if (!existing) return null
+    Object.assign(existing, data)
+    return to<%= it.modulePascal %>(await repo.save(existing))
+  }
+
+  async remove(id: string): Promise<<%= it.modulePascal %>Model | null> {
+    const repo = await this.repo()
+    const existing = await repo.findOneBy({ id })
+    if (!existing) return null
+    await repo.remove(existing)
+    return to<%= it.modulePascal %>(existing)
+  }
+
+  async page(
+    query: PageQuery<%= it.modulePascal %>Dto,
+  ): Promise<PageQueryResult<<%= it.modulePascal %>Model>> {
+    const { page, size, keyword, orderBy = 'updatedAt', order = 'desc' } = query
+    const repo = await this.repo()
+    const builder = repo.createQueryBuilder('<%= it.alias %>')
+<%= it.searchCondition %>
+    builder.orderBy(`<%= it.alias %>.${orderBy}`, order === 'asc' ? 'ASC' : 'DESC')
+    const { data, total } = await pageWith(builder, page, size)
+    return { items: data.map(to<%= it.modulePascal %>), total, page, size }
+  }
+
+  async cursor(
+    query: CursorQuery<%= it.modulePascal %>Dto,
+  ): Promise<CursorQueryResult<<%= it.modulePascal %>Model, <%= it.modulePascal %>CursorModel>> {
+    const { cursor, keyword, size } = query
+    const repo = await this.repo()
+    const builder = repo.createQueryBuilder('<%= it.alias %>')
+<%= it.searchCondition %>
+    builder.orderBy('<%= it.alias %>.updatedAt', 'DESC').addOrderBy('<%= it.alias %>.id', 'DESC')
+    const result = await cursorPageWith<<%= it.entityPascal %>>(builder, {
+      cursorColumns: ['updatedAt', 'id'],
+      cursorValues: cursor ? [new Date(cursor.updatedAt), cursor.<%= it.name %>Id] : undefined,
+      getCursor: (row) =>
+        ({
+          updatedAt: row.updatedAt.toISOString(),
+          <%= it.name %>Id: row.id,
+        }) satisfies <%= it.modulePascal %>CursorModel,
+      order: 'desc',
+      size,
+    })
+    return {
+      items: result.data.map(to<%= it.modulePascal %>),
+      nextCursor: result.nextCursor as <%= it.modulePascal %>CursorModel | null,
+    }
+  }
+}

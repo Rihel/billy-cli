@@ -1,14 +1,12 @@
 import type { Template } from '../types.js'
-import { json, render, source } from './utils.js'
+import { json, renderFile } from './utils.js'
 
 export function createPackageTemplate(name: string): Template {
-  const data = { name }
-
   return {
     directory: 'packages',
     files: {
       'package.json': json({
-        name: render('@repo/<%= it.name %>', data),
+        name: `@repo/${name}`,
         version: '0.1.0',
         private: true,
         type: 'module',
@@ -48,20 +46,8 @@ export function createPackageTemplate(name: string): Template {
         include: ['src', 'tsdown.config.ts'],
         exclude: ['node_modules', 'dist'],
       }),
-      'tsdown.config.ts': source`
-        import { defineConfig } from 'tsdown'
-
-        export default defineConfig({
-          entry: ['./src/index.ts'],
-          dts: true,
-        })
-      `,
-      'src/index.ts': render(
-        source`
-          export const packageName = '@repo/<%= it.name %>'
-        `,
-        data,
-      ),
+      'tsdown.config.ts': renderFile('package/tsdown-config', {}),
+      'src/index.ts': renderFile('package/src-index', { name }),
     },
   }
 }

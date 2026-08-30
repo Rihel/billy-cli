@@ -1,0 +1,17 @@
+'use client'
+
+import { App, ConfigProvider } from 'antd'
+import zhCN from 'antd/locale/zh_CN'
+import type { ReactNode } from 'react'
+
+export function Providers({ children }: { children: ReactNode }) {
+  return (
+    <ConfigProvider
+      locale={zhCN}
+      variant="filled"
+      theme={{ cssVar: { key: 'app' }, hashed: false }}
+    >
+      <App>{children}</App>
+    </ConfigProvider>
+  )
+}

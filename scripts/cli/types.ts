@@ -18,7 +18,8 @@ export interface CrudField {
 }
 
 export interface Template {
-  directory: 'apps' | 'packages'
+  /** 模块主目录（相对 workspaceRoot），生成物放在 directory/name 下 */
+  directory: 'apps' | 'apps/server/src/modules' | 'packages'
   files: Record<string, string>
   /** 相对于 workspaceRoot 的额外文件（路径以 / 开头表示 workspace 根相对） */
   extraFiles?: Record<string, string>

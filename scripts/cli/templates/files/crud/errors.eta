@@ -1,0 +1,9 @@
+import { AppErrorCodes } from '@repo/shared'
+import { AppError } from '@repo/kits'
+
+export class <%= it.modulePascal %>NotFoundError extends AppError {
+  readonly code = AppErrorCodes.<%= it.modulePascal %>NotFound
+  constructor(readonly <%= it.name %>Id: string) {
+    super(`<%= it.modulePascal %> not found: ${<%= it.name %>Id}`)
+  }
+}

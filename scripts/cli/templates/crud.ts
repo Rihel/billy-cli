@@ -1,11 +1,20 @@
 import { select, input, confirm } from '@inquirer/prompts'
 import type { CrudField, Template } from '../types.js'
-import { source } from './utils.js'
+import { renderFile } from './utils.js'
 
 /** 交互式收集 CRUD 字段定义 */
 async function collectCrudFields(
   moduleName: string,
 ): Promise<CrudField[]> {
+  // 非 TTY（自动化 / CI）场景：直接使用默认字段，避免交互挂起
+  if (!process.stdin.isTTY) {
+    return [
+      { name: 'name', type: 'string', required: true, searchable: true },
+      { name: 'description', type: 'text', required: false, searchable: true },
+      { name: 'sort', type: 'number', required: false, searchable: false },
+    ]
+  }
+
   const useJson = await confirm({
     message: `是否以 JSON 数组方式定义字段？（否则逐步定义）`,
     default: true,
@@ -84,360 +93,144 @@ async function collectCrudFields(
   return fields
 }
 
-/** 根据字段列表生成 drizzle-orm entity 代码片段 */
-function renderEntity(name: string, fields: CrudField[]): string {
-  const moduleName = name
-  const tableName = snakeCase(moduleName)
-
-  const columnLines = fields.map((f) => {
-    const colName = snakeCase(f.name)
-    switch (f.type) {
-      case 'string':
-        return `  ${f.name}: text('${colName}')${f.required ? '.notNull()' : ''}${f.unique ? '.unique()' : ''},`
-      case 'text':
-        return `  ${f.name}: text('${colName}'),`
-      case 'number':
-        return `  ${f.name}: numeric('${colName}')${f.required ? '.notNull()' : ''},`
-      case 'boolean':
-        return `  ${f.name}: boolean('${colName}')${f.required ? '.notNull()' : ''}.default(false),`
-      default:
-        return `  ${f.name}: text('${colName}'),`
-    }
-  })
-
-  return source`
-export const ${moduleName} = snakeCase.table(
-  '${tableName}',
-  {
-    ...commonColumns,
-${columnLines.join('\n')}
-  },
-  (table: any) => [
-    index('${tableName}_updated_at_id_idx').on(table.updatedAt.desc(), table.id.desc()),
-  ],
-)
-`
+/** 简单复数化表名（todos / products / categories / boxes） */
+function pluralize(word: string): string {
+  if (/(s|x|z|ch|sh)$/.test(word)) return `${word}es`
+  if (/[^aeiou]y$/.test(word)) return `${word.slice(0, -1)}ies`
+  return `${word}s`
 }
 
 function snakeCase(str: string): string {
   return str.replace(/[A-Z]/g, (m) => `_${m.toLowerCase()}`)
 }
 
-/** 根据字段列表生成 Zod schema 代码 */
+/** 单个字段的 TypeORM 列定义（2 空格缩进 + 换行，参考 todo-entity.ts） */
+function renderColumn(f: CrudField): string {
+  const colName = snakeCase(f.name)
+  const unique = f.unique ? ', unique: true' : ''
+  switch (f.type) {
+    case 'boolean':
+      return `  @Column({ name: '${colName}', type: 'boolean', default: false })\n  ${f.name} = false\n`
+    case 'number':
+      return f.required
+        ? `  @Column({ name: '${colName}', type: 'int'${unique} })\n  ${f.name}!: number\n`
+        : `  @Column({ name: '${colName}', type: 'int', nullable: true${unique} })\n  ${f.name}: number | null = null\n`
+    default:
+      return f.required
+        ? `  @Column({ name: '${colName}', type: 'text'${unique} })\n  ${f.name}!: string\n`
+        : `  @Column({ name: '${colName}', type: 'text', nullable: true${unique} })\n  ${f.name}: string | null = null\n`
+  }
+}
+
+/** 单个字段的 Zod 类型表达式 */
+function renderFieldType(f: CrudField): string {
+  switch (f.type) {
+    case 'string':
+      // 非必填 string 在实体中是 `string | null`，schema 需含 nullable
+      return f.required ? 'z.string()' : 'z.string().nullable().optional()'
+    case 'text':
+      return f.required ? 'z.string()' : 'z.string().nullable().optional()'
+    case 'number':
+      // 非必填 number 在实体中是 `number | null`，schema 需含 nullable
+      return f.required ? 'z.number()' : 'z.number().nullable().optional()'
+    case 'boolean':
+      return 'z.boolean().default(false)'
+    default:
+      return 'z.string()'
+  }
+}
+
+/** 搜索条件片段（repository 的 page / cursor 共用；4 空格缩进） */
+function renderSearchCondition(name: string, fields: CrudField[]): string {
+  const searchable = fields.filter((f) => f.searchable)
+  if (searchable.length === 0) return ''
+  const alias = name.charAt(0)
+  const conditions = searchable
+    .map((f) => `${alias}.${f.name} ILIKE :keyword`)
+    .join(' OR ')
+  const where = searchable.length > 1 ? `(${conditions})` : conditions
+  return `    if (keyword) {
+      builder.andWhere('${where}', { keyword: '%' + keyword + '%' })
+    }`
+}
+
+/** 生成 TypeORM 实体（files/crud/entity.eta） */
+function renderEntity(name: string, fields: CrudField[]): string {
+  return renderFile('crud/entity', {
+    name,
+    modulePascal: name.charAt(0).toUpperCase() + name.slice(1),
+    tableName: pluralize(snakeCase(name)),
+    columns: fields.map(renderColumn).join(''),
+  })
+}
+
+/** 生成 Zod schema（files/crud/schema.eta） */
 function renderSchema(name: string, fields: CrudField[]): string {
   const modulePascal = name.charAt(0).toUpperCase() + name.slice(1)
-  const fieldShapeLines = fields.map((f) => {
-    let zodType: string
-    switch (f.type) {
-      case 'string':
-        zodType = 'z.string()'
-        break
-      case 'text':
-        zodType = 'z.string()'
-        break
-      case 'number':
-        zodType = 'z.number()'
-        break
-      case 'boolean':
-        zodType = 'z.boolean()'
-        break
-      default:
-        zodType = 'z.string()'
-    }
-    if (f.required) {
-      return `  ${f.name}: ${zodType},`
-    }
-    return `  ${f.name}: ${zodType}.optional(),`
-  })
 
-  const searchableFields = fields
-    .filter((f) => f.searchable)
-    .map((f) => {
-      switch (f.type) {
-        case 'number':
-          return `ilike(${name}.${f.name}, \`%\${input.keyword}%\`)`
-        default:
-          return `ilike(${name}.${f.name}, \`%\${input.keyword}%\`)`
-      }
-    })
+  // 带默认值的字段（boolean）在 create 时省略
+  const defaultedFields = fields.filter((f) => f.type === 'boolean')
+  const omitClause =
+    defaultedFields.length > 0
+      ? `.omit({ ${defaultedFields.map((f) => `${f.name}: true`).join(', ')} })`
+      : ''
 
-  const searchCondition = searchableFields.length > 0
-    ? `      where: keyword\n        ? or(\n${searchableFields.map((sf) => `            ${sf},\n`).join('')}        )\n        : undefined,`
-    : '      where: keyword ? ilike(todos.title, `%${keyword}%`) : undefined,'
-
-  // 对于 controller，选择 orderBy 字段
+  // 可排序字段：时间字段在前，业务字段在后
   const orderableFields = fields
     .filter((f) => f.type === 'string' || f.type === 'number')
     .map((f) => f.name)
-  orderableFields.unshift('createdAt', 'updatedAt')
+  orderableFields.unshift('updatedAt', 'createdAt')
 
-  return source`
-import { z } from 'zod'
-import {
-  BaseCursorPaginateDto,
-  BaseModel,
-  BasePaginateDto,
-} from './base.schema'
-
-const ${modulePascal}Fields = z.object({
-${fieldShapeLines.join('\n')}
-})
-
-export const ${modulePascal}Model = z.intersection(BaseModel, ${modulePascal}Fields)
-
-export const ${modulePascal}IdInputDto = z.object({
-  ${name}Id: z.string(),
-})
-
-export const Create${modulePascal}Dto = ${modulePascal}Fields
-
-export const Update${modulePascal}Dto = ${modulePascal}Fields.extend(${modulePascal}IdInputDto.shape)
-
-export const PageQuery${modulePascal}Dto = BasePaginateDto.extend({
-  keyword: z.string().optional(),
-  orderBy: z
-    .enum(['${orderableFields.join("', '")}'])
-    .optional()
-    .default('createdAt'),
-  order: z.enum(['asc', 'desc']).optional().default('desc'),
-})
-
-export const ${modulePascal}CursorDto = z.object({
-  updatedAt: z.string().datetime(),
-  ${name}Id: z.string(),
-})
-
-export const ${modulePascal}CursorModel = ${modulePascal}CursorDto
-
-export const CursorQuery${modulePascal}Dto = BaseCursorPaginateDto.extend({
-  cursor: ${modulePascal}CursorDto.optional(),
-  keyword: z.string().optional(),
-})
-`
+  return renderFile('crud/schema', {
+    name,
+    modulePascal,
+    fieldShapeLines: fields
+      .map((f) => `  ${f.name}: ${renderFieldType(f)},`)
+      .join('\n'),
+    omitClause,
+    orderableFields: orderableFields.join("', '"),
+  })
 }
 
-/** 根据字段列表生成 controller */
-function renderController(name: string, fields: CrudField[]): string {
+/** 生成 repository（files/crud/repository.eta） */
+function renderRepository(name: string, fields: CrudField[]): string {
   const modulePascal = name.charAt(0).toUpperCase() + name.slice(1)
-
-  return source`
-import { Controller, Post, UseGuards, Inject } from '@nestjs/common';
-import { ${modulePascal}Service } from './${name}.service.js';
-import {
-  Create${modulePascal}Dto,
-  CursorQuery${modulePascal}Dto,
-  PageQuery${modulePascal}Dto,
-  ${modulePascal}IdInputDto,
-  Update${modulePascal}Dto,
-  ${modulePascal}Model,
-} from '@repo/shared';
-import type { z } from 'zod';
-import { ZBody, ZSerialize } from 'nest-zod';
-import { AuthGuard } from '../../guards/auth.guard.js';
-
-@Controller('${name}')
-@UseGuards(AuthGuard)
-export class ${modulePascal}Controller {
-  constructor(
-    @Inject(${modulePascal}Service)
-    private readonly ${name}Service: ${modulePascal}Service,
-  ) {}
-
-  @Post('create')
-  @ZSerialize(${modulePascal}Model)
-  create(@ZBody(Create${modulePascal}Dto) input: z.infer<typeof Create${modulePascal}Dto>) {
-    return this.${name}Service.create(input);
-  }
-
-  @Post('find-many')
-  findMany(
-    @ZBody(PageQuery${modulePascal}Dto) input: z.infer<typeof PageQuery${modulePascal}Dto>,
-  ) {
-    return this.${name}Service.findMany(input);
-  }
-
-  @Post('find-many-cursor')
-  findManyCursor(
-    @ZBody(CursorQuery${modulePascal}Dto) input: z.infer<typeof CursorQuery${modulePascal}Dto>,
-  ) {
-    return this.${name}Service.findManyCursor(input);
-  }
-
-  @Post('find-by-id')
-  findById(@ZBody(${modulePascal}IdInputDto) input: z.infer<typeof ${modulePascal}IdInputDto>) {
-    return this.${name}Service.findById(input.${name}Id);
-  }
-
-  @Post('update')
-  update(@ZBody(Update${modulePascal}Dto) input: z.infer<typeof Update${modulePascal}Dto>) {
-    return this.${name}Service.update(input);
-  }
-
-  @Post('remove')
-  remove(@ZBody(${modulePascal}IdInputDto) input: z.infer<typeof ${modulePascal}IdInputDto>) {
-    return this.${name}Service.remove(input.${name}Id);
-  }
-}
-`
+  return renderFile('crud/repository', {
+    name,
+    modulePascal,
+    entityPascal: modulePascal + 'Entity',
+    alias: name.charAt(0),
+    searchCondition: renderSearchCondition(name, fields),
+  })
 }
 
-/** 根据字段列表生成 service */
-function renderService(name: string, fields: CrudField[]): string {
-  const modulePascal = name.charAt(0).toUpperCase() + name.slice(1)
-  const entityName = name
-
-  const searchableFields = fields.filter((f) => f.searchable)
-
-  let searchImport: string
-  let findManyWhere: string
-  let findManyCursorWhere: string
-
-  if (searchableFields.length === 0) {
-    searchImport = ''
-    findManyWhere = 'const where = undefined;'
-    findManyCursorWhere = 'undefined'
-  } else if (searchableFields.length === 1) {
-    const f = searchableFields[0]!
-    searchImport = 'import { eq, ilike } from \'drizzle-orm\';'
-    findManyWhere = `    const where = keyword ? ilike(${entityName}.${f.name}, \`%\${keyword}%\`) : undefined;`
-    findManyCursorWhere = `keyword ? ilike(${entityName}.${f.name}, \`%\${keyword}%\`) : undefined`
-  } else {
-    searchImport = 'import { eq, ilike, or } from \'drizzle-orm\';'
-    const conditions = searchableFields
-      .map((f) => `ilike(${entityName}.${f.name}, \`%\${keyword}%\`)`)
-      .join(',\n          ')
-    findManyWhere = `    const where = keyword\n      ? or(\n          ${conditions},\n        )\n      : undefined;`
-    findManyCursorWhere = `keyword\n        ? or(\n          ${conditions},\n        )\n        : undefined`
-  }
-
-  const orderableFields = fields
-    .filter((f) => f.type === 'string' || f.type === 'number' || f.name === 'sort')
-    .map((f) => `'${f.name}'`)
-  orderableFields.unshift("'updatedAt'", "'createdAt'")
-
-  return source`
-import { Injectable } from '@nestjs/common';
-import { ${entityName} } from '@repo/db';
-import {
-  AppErrorCodes,
-  Create${modulePascal}Dto,
-  CursorQuery${modulePascal}Dto,
-  PageQuery${modulePascal}Dto,
-  Update${modulePascal}Dto,
-} from '@repo/shared';
-${searchImport ? '\n' + searchImport : ''}
-import { PgColumn } from 'drizzle-orm/pg-core';
-import { z } from 'zod';
-import { AppError, AppLoggerService, DbService } from '@repo/kits';
-
-@Injectable()
-export class ${modulePascal}Service {
-  constructor(
-    private db: DbService,
-    private logger: AppLoggerService,
-  ) {}
-
-  async create(input: z.infer<typeof Create${modulePascal}Dto>) {
-    this.logger.log('create', input);
-    const [record] = await this.db.insert(${entityName}).values(input).returning();
-    this.logger.log('created', { id: record.id });
-    return record;
-  }
-
-  async findMany(input: z.infer<typeof PageQuery${modulePascal}Dto>) {
-    this.logger.log('findMany', input);
-    const { page, size, keyword, orderBy, order } = input;
-${findManyWhere}
-    const result = await this.db.paginate({
-      table: ${entityName},
-      where,
-      orderCol: ${entityName}[orderBy as keyof typeof ${entityName}] as PgColumn,
-      order,
-      page,
-      size,
-    });
-    this.logger.log('findMany result', { total: result.total, page, size });
-    return result;
-  }
-
-  async findManyCursor(input: z.infer<typeof CursorQuery${modulePascal}Dto>) {
-    const { cursor, keyword, size } = input;
-    return this.db.paginateCursor({
-      table: ${entityName},
-      cursorColumns: [${entityName}.updatedAt, ${entityName}.id],
-      cursorValues: cursor
-        ? [new Date(cursor.updatedAt), cursor.${name}Id]
-        : undefined,
-      getCursor: (item: any) => ({
-        updatedAt: item.updatedAt.toISOString(),
-        ${name}Id: item.id,
-      }),
-      where: ${findManyCursorWhere},
-      size,
-    });
-  }
-
-  async findById(${name}Id: string) {
-    this.logger.log('findById', { ${name}Id });
-    const [record] = await this.db
-      .select()
-      .from(${entityName})
-      .where(eq(${entityName}.id, ${name}Id));
-    if (!record) {
-      this.logger.warn('findById not found', { ${name}Id });
-      throw new AppError(AppErrorCodes.${modulePascal}NotFound);
-    }
-    return record;
-  }
-
-  async update(input: z.infer<typeof Update${modulePascal}Dto>) {
-    this.logger.log('update', input);
-    const { ${name}Id, ...fields } = input;
-    const [record] = await this.db
-      .update(${entityName})
-      .set(fields)
-      .where(eq(${entityName}.id, ${name}Id))
-      .returning();
-    if (!record) {
-      this.logger.warn('update not found', { ${name}Id });
-      throw new AppError(AppErrorCodes.${modulePascal}NotFound);
-    }
-    this.logger.log('updated', { id: record.id });
-    return record;
-  }
-
-  async remove(${name}Id: string) {
-    this.logger.log('remove', { ${name}Id });
-    const [record] = await this.db
-      .delete(${entityName})
-      .where(eq(${entityName}.id, ${name}Id))
-      .returning();
-    if (!record) {
-      this.logger.warn('remove not found', { ${name}Id });
-      throw new AppError(AppErrorCodes.${modulePascal}NotFound);
-    }
-    this.logger.log('removed', { id: record.id });
-    return record;
-  }
-}
-`
+/** 生成 service（files/crud/service.eta） */
+function renderService(name: string): string {
+  return renderFile('crud/service', {
+    name,
+    modulePascal: name.charAt(0).toUpperCase() + name.slice(1),
+  })
 }
 
-/** 生成模块 index.ts */
+/** 生成模块错误（files/crud/errors.eta） */
+function renderErrors(name: string): string {
+  return renderFile('crud/errors', {
+    name,
+    modulePascal: name.charAt(0).toUpperCase() + name.slice(1),
+  })
+}
+
+/** 生成模块 index.ts 聚合导出（files/crud/index.eta） */
 function renderModule(name: string): string {
-  const modulePascal = name.charAt(0).toUpperCase() + name.slice(1)
-  return source`
-import { Module } from '@nestjs/common';
-import { ${modulePascal}Service } from './${name}.service.js';
-import { ${modulePascal}Controller } from './${name}.controller.js';
+  return renderFile('crud/index', { name })
+}
 
-@Module({
-  controllers: [${modulePascal}Controller],
-  providers: [${modulePascal}Service],
-  exports: [${modulePascal}Service],
-})
-export class ${modulePascal}Module {}
-`
+/** 生成 Hono 路由（files/crud/features.eta） */
+function renderRoutes(name: string): string {
+  return renderFile('crud/features', {
+    name,
+    modulePascal: name.charAt(0).toUpperCase() + name.slice(1),
+  })
 }
 
 /** 交互式收集字段并生成 CRUD 模板 */
@@ -448,16 +241,17 @@ export async function createCrudTemplate(name: string): Promise<Template> {
   const fields = await collectCrudFields(name)
 
   return {
-    directory: 'apps',
+    directory: 'apps/server/src/modules',
     files: {
-      [`src/modules/${name}/index.ts`]: renderModule(name),
-      [`src/modules/${name}/${name}.controller.ts`]: renderController(name, fields),
-      [`src/modules/${name}/${name}.service.ts`]: renderService(name, fields),
+      'errors.ts': renderErrors(name),
+      [`${name}.repository.ts`]: renderRepository(name, fields),
+      [`${name}.service.ts`]: renderService(name),
+      'index.ts': renderModule(name),
     },
     extraFiles: {
+      [`apps/server/src/database/entities/${name}-entity.ts`]: renderEntity(name, fields),
+      [`apps/server/src/features/${name}.ts`]: renderRoutes(name),
       [`packages/shared/src/schema/${name}.schema.ts`]: renderSchema(name, fields),
     },
   }
 }
-
-export const entitySnippet = renderEntity
