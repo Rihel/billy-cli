@@ -35,7 +35,7 @@
    混用导入会报错；其余 packages 虽未开启，仍统一用 `import type` 区分纯类型，保持风格一致。
 10. **不要重复造轮子（实现查找顺序，最高优先）**：任何功能实现之前，先按以下顺序
     查找现成实现，**全部都没有才允许自己写**：
-    1. **各个包有无实现**：`packages/*`（shared / kits / di / sdk / api-client / ui /
+    1. **各个包有无实现**：`packages/*`（shared / kits / di / sdk / http-client / ui /
        aui）里是否已有类似能力（工具函数、schema、字典、服务、组件）。
     2. **所属包内部有无实现**：当前所在包的同级目录是否已有可复用实现，例如
        `shared/src/utils/`（nanoid / dayjs / md5 / tree / dict / zod 等工具）、

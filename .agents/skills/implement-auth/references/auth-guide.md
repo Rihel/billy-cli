@@ -119,7 +119,7 @@ token 采用**双存储**，各有分工：
 
 ## 7. 常见改造点（改前先按「实现查找顺序」确认）
 
-- 新增登录方式（验证码 / 第三方）：先看 `@repo/api-client` 的策略（OAuth2Strategy 等）与
+- 新增登录方式（验证码 / 第三方）：先看 `@repo/http-client` 的策略（OAuth2Strategy 等）与
   `kits` 基础设施是否覆盖，再决定自研。
 - 令牌过期 / 刷新：当前体系为单 token + `JWT_EXPIRES_IN`（默认 7d），无 refresh token；
   需要时按 `docs/sdk-refactor.md` 的教训评估，避免过度设计。

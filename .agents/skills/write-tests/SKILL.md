@@ -10,7 +10,8 @@ description: 在 Billy 工程中编写单元测试（vitest）：测试文件位
 
 ## 核心要点
 
-- 框架 **vitest**；唯一现有示例 `packages/api-client/test/api-client.test.ts`（权威参考）。
+- 框架 **vitest**；权威参考 `packages/http-client/test/api-client.test.ts` 与
+  `packages/http-client/test/stream-client.test.ts`（覆盖策略 / 管理器 / SSE 状态机）。
 - 错误断言分两类：HTTP 层 `ApiError` 用 `{ code, status }`；业务层 `AppError` 只用 `{ code }`。
 - mock 用 vitest 原生（`vi.fn` / `vi.stubGlobal`），`afterEach` 里 `vi.unstubAllGlobals()` 清理。
 - 新增测试的包要自加 `"test": "vitest run"` 脚本；跑单包 `pnpm --filter <包> test`。

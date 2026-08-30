@@ -1,18 +1,19 @@
 # 单元测试详解（write-tests 引用文件）
 
 > 本文件是 `write-tests` skill 的组成部分，由主 SKILL.md 引用。
-> 写测试时必读。权威参考：`packages/api-client/test/api-client.test.ts`（461 行）。
+> 写测试时必读。权威参考：`packages/http-client/test/api-client.test.ts`（461 行）与
+> `packages/http-client/test/stream-client.test.ts`（SSE 状态机）。
 
 ## 1. 工程测试现状与接入
 
-- 框架：**vitest**（根与 `@repo/api-client` 已声明依赖）。
-- 现有示例：`packages/api-client/test/api-client.test.ts`（唯一测试文件，覆盖策略 /
-  管理器 / provider / 请求流程）。
-- 测试命令：`packages/api-client/package.json` 已有 `"test": "vitest run"`；
+- 框架：**vitest**（根与 `@repo/http-client` 已声明依赖）。
+- 现有示例：`packages/http-client/test/`（api-client.test.ts 覆盖策略 / 管理器 / provider /
+  请求流程；stream-parser / stream-transport / stream-client 覆盖 SSE 解析与状态机）。
+- 测试命令：`packages/http-client/package.json` 已有 `"test": "vitest run"`；
   **新增测试的包需自行在 package.json 加同款 `test` 脚本**。跑单个包：
   `pnpm --filter <包名> test`；全量跑用 `pnpm -r --if-present test`
   （加 `--if-present` 跳过无 test 脚本的包，否则会报错）。
-- 文件位置约定：包内 `test/*.test.ts`（沿用 api-client 的做法），或与源码同目录的
+- 文件位置约定：包内 `test/*.test.ts`（沿用 http-client 的做法），或与源码同目录的
   `*.test.ts`；**不要**把测试放进 `dist` / `src/index.ts` 导出链。
 
 ## 2. 结构与命名
@@ -31,7 +32,7 @@ describe('XxxService', () => {
 - `describe` 按被测单元分组（类 / 模块）；`it` 描述**行为**而非实现细节。
 - 断言优先 `expect(x).toBe / toEqual / toMatchObject`。
 - **错误断言分两类，勿混淆**：
-  - HTTP 层 `ApiError`（`@repo/api-client`）：有 `code` + `status` →
+  - HTTP 层 `ApiError`（`@repo/http-client`）：有 `code` + `status` →
     `await expect(p).rejects.toMatchObject({ code, status })`
   - 业务层 `AppError`（`@repo/kits`，AppErrorCodes 数字码）：只有 `code` →
     `await expect(p).rejects.toMatchObject({ code: 3001 })`
