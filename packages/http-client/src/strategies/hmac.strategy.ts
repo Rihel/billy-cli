@@ -53,7 +53,7 @@ export type HmacStrategyOptions = {
  * @example
  * ```ts
  * // 基本用法 — 自动签名 timestamp + nonce
- * const client = new ApiClient({
+ * const client = new HttpClient({
  *   authStrategy: new HmacStrategy(),
  *   credentialsManager: myManager,
  * })

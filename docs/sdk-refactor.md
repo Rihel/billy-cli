@@ -1,18 +1,18 @@
 # SDK 架构改造指令
 
-请不要将 ApiClient 改造成 middleware pipeline 架构。目前 SDK 规模和复杂度不需要引入完整 middleware 抽象，避免过度设计。
+请不要将 HttpClient 改造成 middleware pipeline 架构。目前 SDK 规模和复杂度不需要引入完整 middleware 抽象，避免过度设计。
 
-目标是对现有 ApiClient 做职责拆分，而不是重构成 AWS SDK 风格。
+目标是对现有 HttpClient 做职责拆分，而不是重构成 AWS SDK 风格。
 
-## 1. 保留 ApiClient 作为请求编排入口
+## 1. 保留 HttpClient 作为请求编排入口
 
-ApiClient 的职责：
+HttpClient 的职责：
 - 接收请求配置
 - 编排认证流程
 - 调用 HTTP 请求
 - 处理最终请求结果
 
-不要让 ApiClient 内部继续堆积所有细节逻辑。
+不要让 HttpClient 内部继续堆积所有细节逻辑。
 
 ## 2. 抽离 CredentialResolver（凭证生命周期管理）
 
@@ -40,7 +40,7 @@ CredentialResolver 不负责：
 
 不要让 AuthStrategy 直接修改业务请求数据。避免认证逻辑污染 API payload。
 
-## 4. ApiClient 的 request 流程
+## 4. HttpClient 的 request 流程
 
 ```
 第一步：skipAuth 检查
@@ -111,7 +111,7 @@ CredentialProvider / CredentialResolver 负责：
 ## 最终组件关系
 
 ```
-ApiClient：请求编排入口
+HttpClient：请求编排入口
 
 CredentialResolver：credential 生命周期
   ├─ 依赖 CredentialsManager（存储）

@@ -75,7 +75,7 @@ const smallCells = [
   {
     icon: Binary,
     title: '全类型 SDK',
-    desc: '基于 ApiClient 生成全类型化 ServerClient，前端调用接口全程类型提示，杜绝魔法字符串。',
+    desc: '基于 HttpClient 生成全类型化 ServerClient，前端调用接口全程类型提示，杜绝魔法字符串。',
   },
   {
     icon: Container,

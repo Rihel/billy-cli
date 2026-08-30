@@ -22,7 +22,7 @@ export type ApiKeyCredentials = {
  *
  * @example
  * ```ts
- * const client = new ApiClient({
+ * const client = new HttpClient({
  *   authStrategy: new ApiKeyStrategy(),
  *   credentialsManager: myManager,
  * })

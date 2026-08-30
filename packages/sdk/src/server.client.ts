@@ -3,6 +3,7 @@ import {
   AdminLoginDto,
   AdminModel,
   AdminUpdateInfoDto,
+  AppConfigModel,
   AppCursorQueryResponse,
   AppPageQueryResponse,
   AuthResultModel,
@@ -40,21 +41,29 @@ import {
   UpdateUserDto,
   UserModel,
 } from '@repo/shared'
-import { ApiClient, type ApiClientOptions } from '@repo/http-client'
+import { HttpClient, type HttpClientOptions } from '@repo/http-client'
 import type {
   BearerTokenCredentials,
 } from '@repo/http-client'
 import { BearerTokenStrategy } from '@repo/http-client'
 
-export class ServerClient extends ApiClient<BearerTokenCredentials> {
+export class ServerClient extends HttpClient<BearerTokenCredentials> {
   constructor(
-    options: Omit<ApiClientOptions<BearerTokenCredentials>, 'authStrategy'>,
+    options: Omit<HttpClientOptions<BearerTokenCredentials>, 'authStrategy'>,
   ) {
     super({
       ...options,
       authStrategy: new BearerTokenStrategy(),
     })
   }
+
+  /* ========== 应用配置 ========== */
+
+  config = {
+    /** 无需 token：获取运行配置（如用户体系开关），据此控制前端 UI */
+    get: () => this.post<AppConfigModel>('/config/get', undefined, { skipAuth: true }),
+  }
+
   /* ========== 认证 ========== */
 
   auth = {

@@ -14,8 +14,8 @@ import {
 import { CredentialResolver } from './credential-resolver.js'
 import { AuthInjector } from './auth-injector.js'
 
-/** ApiClient 构造参数 */
-export interface ApiClientOptions<Credentials = Record<string, any>> {
+/** HttpClient 构造参数 */
+export interface HttpClientOptions<Credentials = Record<string, any>> {
   /** 后端 API 基础地址 */
   baseUrl: string
   /** 凭证管理器：凭证存哪里 */
@@ -47,6 +47,22 @@ export interface RequestOptions {
 }
 
 /**
+ * 全局用户体系开关（默认开启，向后兼容）。
+ * 关闭时所有请求跳过凭证解析与注入（等价于 skipAuth），
+ * 鉴权与否完全交由后端守卫判断 —— 用于用户体系由外部服务提供、
+ * 或自用工具不需要用户体系的场景。前端调 /config/get 拿到开关后设置。
+ */
+let globalAuthEnabled = true
+
+/** 设置全局用户体系开关。 */
+export const setGlobalAuthEnabled = (enabled: boolean): void => {
+  globalAuthEnabled = enabled
+}
+
+/** 读取全局用户体系开关。 */
+export const isGlobalAuthEnabled = (): boolean => globalAuthEnabled
+
+/**
  * 带认证的 HTTP 客户端。
  *
  * 职责：
@@ -57,12 +73,12 @@ export interface RequestOptions {
  *
  * 不传 CredentialProvider 时等同于现有 Web 端行为，完全向后兼容。
  */
-export class ApiClient<Credentials = Record<string, any>> {
+export class HttpClient<Credentials = Record<string, any>> {
   private readonly resolver: CredentialResolver<Credentials>
   private readonly injector: AuthInjector<Credentials>
   private readonly cancelPreviousMap: Map<string, AbortController> = new Map()
 
-  constructor(private options: ApiClientOptions<Credentials>) {
+  constructor(private options: HttpClientOptions<Credentials>) {
     this.resolver = new CredentialResolver(
       options.credentialsManager,
       options.authStrategy,
@@ -101,7 +117,8 @@ export class ApiClient<Credentials = Record<string, any>> {
 
     let finalConfig: HttpRequestConfig<Body> = config
 
-    if (!skipAuth) {
+    // 全局用户体系开关关闭时：跳过凭证解析与注入（等价于 skipAuth），交由后端守卫判断
+    if (!skipAuth && isGlobalAuthEnabled()) {
       // 步骤 1：获取有效凭证（内部含校验，失败抛 ApiError）
       await this.resolver.resolve()
 

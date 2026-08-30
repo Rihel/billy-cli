@@ -10,8 +10,12 @@ export type {
 } from './core/interfaces.js'
 
 // 核心组件
-export { ApiClient } from './core/api.client.js'
-export type { ApiClientOptions, RequestOptions } from './core/api.client.js'
+export { HttpClient } from './core/http.client.js'
+export type { HttpClientOptions, RequestOptions } from './core/http.client.js'
+export {
+  setGlobalAuthEnabled,
+  isGlobalAuthEnabled,
+} from './core/http.client.js'
 export { CredentialResolver } from './core/credential-resolver.js'
 export { AuthInjector } from './core/auth-injector.js'
 export {

@@ -37,7 +37,7 @@ export type OAuth2StrategyOptions = {
  *
  * @example
  * ```ts
- * const client = new ApiClient({
+ * const client = new HttpClient({
  *   authStrategy: new OAuth2Strategy({
  *     onRefresh: async (creds, manager) => {
  *       const res = await fetch('/auth/refresh', {
@@ -77,7 +77,7 @@ export class OAuth2Strategy implements AuthStrategy<OAuth2Credentials> {
 
   /**
    * 刷新访问令牌。
-   * 在 ApiClient 的 onUnauthorized 回调中调用，
+   * 在 HttpClient 的 onUnauthorized 回调中调用，
    * 或捕获 OAuth2NeedsRefreshError 后手动调用。
    */
   async refresh(
@@ -104,7 +104,7 @@ export class OAuth2Strategy implements AuthStrategy<OAuth2Credentials> {
 /**
  * 令牌需要刷新时抛出的错误。
  *
- * 在请求管线中捕获此错误（如 fetch 封装或 ApiClient 回调），
+ * 在请求管线中捕获此错误（如 fetch 封装或 HttpClient 回调），
  * 调用 `strategy.refresh()` 刷新后重试原请求。
  */
 export class OAuth2NeedsRefreshError extends Error {

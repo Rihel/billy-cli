@@ -15,8 +15,8 @@ packages/
 ├── shared   — Zod schemas + 错误码字典 + 响应工具 + Pino 日志 + 通用工具（前后端共享）
 ├── kits     — 后端通用能力封装：Db / Redis / JWT / ObjectStorage / 队列 / 调度 / 分页 + createServiceContext（无业务实体）
 ├── di       — DI 门面：@Injectable/@Inject + AppContext 组合根 + 生命周期调度（InversifyJS 8 封装）
-├── api-client — 通用 HTTP + 鉴权管线客户端（ApiClient / 策略 / 凭证管理器，业务无关）
-├── sdk      — ServerClient（全类型化业务 API 调用，构建在 @repo/api-client 之上）
+├── http-client — 通用 HTTP + 鉴权管线客户端（HttpClient / 策略 / 凭证管理器，业务无关）
+├── sdk      — ServerClient（全类型化业务 API 调用，构建在 @repo/http-client 之上）
 ├── ui       — Base UI + shadcn 风格共享组件库（Tailwind 4）
 └── aui      — Ant Design 管理端组件库（表格 / 表单 / 存储 / Server Action 工具）
 ```
@@ -196,15 +196,15 @@ pnpm docker:up
 │   │       ├── app-context.ts           # AppContext：Container + LifeCycleHost 组合根
 │   │       ├── life-cycle-host.ts       # 生命周期调度（依赖拓扑排序 / 回滚 / 幂等）
 │   │       └── life-cycle.ts            # LifeCycle / OnAppStart / OnAppStop 接口
-│   ├── api-client/                      # @repo/api-client — 通用 HTTP + 鉴权管线（业务无关）
+│   ├── http-client/                      # @repo/http-client — 通用 HTTP + 鉴权管线（业务无关）
 │   │   └── src/
-│   │       ├── core/                    # api.client / credential-resolver / auth-injector / api-error
+│   │       ├── core/                    # http.client / credential-resolver / auth-injector / api-error
 │   │       ├── strategies/              # BearerToken / ApiKey / OAuth2 / HMAC
 │   │       ├── managers/                # localStorage / memory / cookie / env
 │   │       └── providers/               # empty-check / expires-at
 │   ├── sdk/                             # @repo/sdk
 │   │   └── src/
-│   │       └── server.client.ts         # ServerClient（全类型化业务 API，继承 api-client 的 ApiClient）
+│   │       └── server.client.ts         # ServerClient（全类型化业务 API，继承 http-client 的 HttpClient）
 │   ├── ui/                              # @repo/ui — Base UI + shadcn 组件（src/components/ui/*）
 │   └── aui/                             # @repo/aui — Ant Design 管理端组件库 + action 工具
 ├── docker/                              # Dockerfile.base / .server / .web + init-db.sql
@@ -349,11 +349,11 @@ await ctx.stop() // 逆序释放资源（幂等，可重复调用）
 - 应用层只通过 `AppContext.get()` 取服务，不感知内部依赖图
 - 无装饰器反射之外的魔法，兼容 Node type-stripping / esbuild / tsdown
 
-### @repo/api-client — 通用 HTTP + 鉴权管线
+### @repo/http-client — 通用 HTTP + 鉴权管线
 
-业务无关的客户端基础设施，被 `@repo/sdk` 的 `ServerClient` 继承使用（依赖方向：`sdk → api-client → shared`）。
+业务无关的客户端基础设施，被 `@repo/sdk` 的 `ServerClient` 继承使用（依赖方向：`sdk → http-client → shared`）。
 
-`ApiClient`（基于原生 fetch）的请求管线：
+`HttpClient`（基于原生 fetch）的请求管线：
 
 ```
 skipAuth 检查
@@ -364,7 +364,7 @@ skipAuth 检查
   → 错误处理：401 + 可刷新 → forceRefresh 重试一次；其余统一抛 ApiError
 ```
 
-- `ServerClient extends ApiClient`（`@repo/sdk`）：按业务分组的全类型化方法
+- `ServerClient extends HttpClient`（`@repo/sdk`）：按业务分组的全类型化方法
   （`auth` / `admin` / `user` / `todo` / `storage`），请求 / 响应类型全部来自 `@repo/shared`
 - 认证策略：`BearerToken` / `ApiKey` / `OAuth2` / `HMAC`
 - 凭证管理器：`localStorage` / `memory` / `cookie` / `env`
@@ -373,8 +373,8 @@ skipAuth 检查
 
 ```typescript
 import { ServerClient } from '@repo/sdk'
-import { LocalStorageCredentialsManager } from '@repo/api-client'
-import type { BearerTokenCredentials } from '@repo/api-client'
+import { LocalStorageCredentialsManager } from '@repo/http-client'
+import type { BearerTokenCredentials } from '@repo/http-client'
 
 const client = new ServerClient({
   baseUrl: 'http://localhost:9989',
@@ -609,4 +609,4 @@ docker build -t billy-web:latest -f docker/Dockerfile.web .
 ## 文档
 
 - [docs/pagination.md](docs/pagination.md) — 分页设计指南（Offset / Cursor / Deferred 选型与实现）
-- [docs/sdk-refactor.md](docs/sdk-refactor.md) — SDK 职责拆分说明（ApiClient / CredentialResolver / AuthInjector）
+- [docs/sdk-refactor.md](docs/sdk-refactor.md) — SDK 职责拆分说明（HttpClient / CredentialResolver / AuthInjector）

@@ -1,13 +1,13 @@
 # 单元测试详解（write-tests 引用文件）
 
 > 本文件是 `write-tests` skill 的组成部分，由主 SKILL.md 引用。
-> 写测试时必读。权威参考：`packages/http-client/test/api-client.test.ts`（461 行）与
+> 写测试时必读。权威参考：`packages/http-client/test/http-client.test.ts`（461 行）与
 > `packages/http-client/test/stream-client.test.ts`（SSE 状态机）。
 
 ## 1. 工程测试现状与接入
 
 - 框架：**vitest**（根与 `@repo/http-client` 已声明依赖）。
-- 现有示例：`packages/http-client/test/`（api-client.test.ts 覆盖策略 / 管理器 / provider /
+- 现有示例：`packages/http-client/test/`（http-client.test.ts 覆盖策略 / 管理器 / provider /
   请求流程；stream-parser / stream-transport / stream-client 覆盖 SSE 解析与状态机）。
 - 测试命令：`packages/http-client/package.json` 已有 `"test": "vitest run"`；
   **新增测试的包需自行在 package.json 加同款 `test` 脚本**。跑单个包：

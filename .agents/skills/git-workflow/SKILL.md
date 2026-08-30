@@ -19,7 +19,7 @@ description: Billy 工程的 Git 提交与工作流规范：中文 commit messag
 | 修复 | bug 修复 | `修复：重置密码 token 过期未校验` |
 | 变更 | 行为/接口变更（非新增非修复） | `变更：列表接口排序默认值改为 updatedAt` |
 | 文档 | README / docs / skill 等 | `文档：补充前端页面开发规范` |
-| 测试 | 测试新增或修改 | `测试：补充 ApiClient 刷新重试用例` |
+| 测试 | 测试新增或修改 | `测试：补充 HttpClient 刷新重试用例` |
 | 配置 | 依赖、构建、环境配置 | `配置：vitest 接入 http-client 包` |
 | 样式 | 纯样式 / UI 微调 | `样式：登录页移动端品牌区布局` |
 | 杂项 | 其他（格式、小修） | `杂项：清理无用 import` |

@@ -1,8 +1,8 @@
 import { afterEach, describe, it, expect, vi } from 'vitest'
 import {
   // 核心
-  ApiClient,
-  ApiClientOptions,
+  HttpClient,
+  HttpClientOptions,
   ApiError,
   ApiErrorCodes,
   // 策略
@@ -237,9 +237,9 @@ describe('ExpiresAtProvider', () => {
   })
 })
 
-// ── ApiClient request 流程 ─────────────────────────
+// ── HttpClient request 流程 ─────────────────────────
 
-describe('ApiClient 请求流程', () => {
+describe('HttpClient 请求流程', () => {
   afterEach(() => {
     vi.unstubAllGlobals()
   })
@@ -265,7 +265,7 @@ describe('ApiClient 请求流程', () => {
   }
 
   function createClient(
-    options: Partial<ApiClientOptions<any>> = {},
+    options: Partial<HttpClientOptions<any>> = {},
     fetchHandler?: (
       input: RequestInfo | URL,
       init?: RequestInit,
@@ -273,7 +273,7 @@ describe('ApiClient 请求流程', () => {
   ) {
     // 默认不真的发请求；可传入自定义 handler
     mockFetch(fetchHandler)
-    return new ApiClient({
+    return new HttpClient({
       baseUrl: 'https://api.test',
       credentialsManager: new MemoryCredentialsManager(),
       authStrategy: new BearerTokenStrategy(),
@@ -468,7 +468,7 @@ describe('ApiClient 请求流程', () => {
     const fetchFn = vi.fn(fetchHandler)
     vi.stubGlobal('fetch', fetchFn)
     return {
-      client: new ApiClient({
+      client: new HttpClient({
         baseUrl,
         credentialsManager: new MemoryCredentialsManager({ token: 'valid' }),
         authStrategy: new BearerTokenStrategy(),

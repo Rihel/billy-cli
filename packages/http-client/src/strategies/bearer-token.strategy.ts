@@ -13,7 +13,7 @@ export type BearerTokenCredentials = {
  *
  * @example
  * ```ts
- * const client = new ApiClient({
+ * const client = new HttpClient({
  *   authStrategy: new BearerTokenStrategy(),
  *   credentialsManager: myManager,
  * })
