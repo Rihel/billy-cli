@@ -34,8 +34,8 @@ export const isIpWhitelisted = (ip: string, whitelist: string[]): boolean => {
   try {
     addr = ipaddr.parse(ip)
     // IPv6-mapped IPv4（如 ::ffff:1.2.3.4）按 IPv4 参与匹配
-    if (addr.kind() === 'ipv6' && addr.isIPv4MappedAddress()) {
-      addr = addr.toIPv4Address()
+    if (addr.kind() === 'ipv6' && (addr as ipaddr.IPv6).isIPv4MappedAddress()) {
+      addr = (addr as ipaddr.IPv6).toIPv4Address()
     }
   } catch {
     return false
