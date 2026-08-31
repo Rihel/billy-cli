@@ -1,4 +1,8 @@
-import { inject as originInject, injectable as originInjectable } from 'inversify'
+import {
+  inject as originInject,
+  injectable as originInjectable,
+  optional as originOptional,
+} from 'inversify'
 
 /**
  * 我们自己的依赖元数据 key：记录每个类构造器参数位置的注入 token。
@@ -26,4 +30,20 @@ export function Inject(serviceIdentifier: any): ParameterDecorator {
 /** 包装 inversify 的 @injectable：透传原装饰器（原地写元数据，类不变） */
 export function Injectable(): ClassDecorator {
   return (target) => originInjectable()(target)
+}
+
+/**
+ * 可选注入：配合 @Inject 使用（同一参数位），依赖未绑定（条件装配的组件缺失）时注入 undefined。
+ *
+ * @example
+ * constructor(
+ *   @Inject(LarkNotifyClient) @Optional() private readonly larkNotify?: LarkNotifyClient,
+ * ) {}
+ *
+ * 用于「按配置存在装配」的组件（如通知客户端）：缺配置时不注册，可选注入方不受影响。
+ */
+export function Optional(): ParameterDecorator {
+  return (target, propertyKey, parameterIndex) => {
+    originOptional()(target, propertyKey, parameterIndex)
+  }
 }

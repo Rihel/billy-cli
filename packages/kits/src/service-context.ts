@@ -77,8 +77,20 @@ export const createServiceContext = (config: ServiceContextConfig = {}): AppCont
   if (config.storage !== undefined) ctx.addConstant(StorageConfig, StorageConfigSchema.parse(config.storage))
   if (config.auth !== undefined) ctx.addConstant(AuthConfig, AuthConfigSchema.parse(config.auth))
   if (config.logger !== undefined) ctx.addConstant(LoggerConfig, loggerConfig)
-  if (config.notify !== undefined) ctx.addConstant(NotifyConfig, NotifyConfigSchema.parse(config.notify))
-  if (config.lark !== undefined) ctx.addConstant(LarkConfig, LarkConfigSchema.parse(config.lark))
+  // 飞书（Lark）：lark 分片存在 → 官方 SDK 封装客户端 + 通知客户端
+  if (config.lark !== undefined) {
+    ctx.addConstant(LarkConfig, LarkConfigSchema.parse(config.lark))
+    ctx.addService(LarkClient)
+  }
+  // 通知模块：notify 分片存在时装配 Notifier 编排门面 + EmailClient（LarkNotifyClient 需 lark 分片）
+  if (config.notify !== undefined) {
+    ctx.addConstant(NotifyConfig, NotifyConfigSchema.parse(config.notify))
+    ctx.addService(Notifier)
+    ctx.addService(EmailClient)
+    if (config.lark !== undefined) {
+      ctx.addService(LarkNotifyClient)
+    }
+  }
 
   // 基础设施（按所需配置存在注册；缺失分片 → 组件不装配，用了即 DI 报错）
   if (config.db !== undefined) ctx.addLifeCycleService(Db)
@@ -92,17 +104,6 @@ export const createServiceContext = (config: ServiceContextConfig = {}): AppCont
   if (config.redis !== undefined && config.storage !== undefined) ctx.addLifeCycleService(ObjectStorage)
   if (config.jwt !== undefined) ctx.addService(TokenSigner)
   if (config.auth !== undefined) ctx.addService(PasswordHasher)
-  // 飞书（Lark）：lark 分片存在 → 官方 SDK 封装客户端
-  if (config.lark !== undefined) ctx.addService(LarkClient)
-  // 通知模块：notify 分片存在时装配 Notifier 编排门面；各通道客户端按「所需配置存在」注册
-  if (config.notify !== undefined) {
-    ctx.addService(Notifier)
-    ctx.addService(EmailClient)
-  }
-  if (config.notify !== undefined && config.lark !== undefined) {
-    // LarkNotifyClient 依赖 LarkClient（官方 SDK）+ NotifyConfig.lark（通知目标）
-    ctx.addService(LarkNotifyClient)
-  }
   // 基础能力（无配置依赖）
   ctx.addService(IdGeneration)
   ctx.addLifeCycleService(Scheduler)
