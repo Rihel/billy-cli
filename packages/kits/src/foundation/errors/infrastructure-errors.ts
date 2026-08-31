@@ -46,3 +46,10 @@ export class ObjectStorageError extends AppError {
     super(`Object storage operation failed: ${operation}`)
   }
 }
+
+export class StreamHubError extends AppError {
+  readonly code = AppErrorCodes.Internal
+  constructor(readonly cause: unknown) {
+    super('SSE hub operation failed')
+  }
+}
