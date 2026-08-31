@@ -33,7 +33,26 @@ if (data === null) {
 
 ## 3. 限流模式
 
-**固定窗口**（RedisStore 原生即可）：
+**HTTP 接口限流**（首选：`RateLimiter` 门面 + `makeRateLimit` 中间件）：
+
+```ts
+// apps/server/src/lib/rate-limit.ts 提供中间件工厂
+routes.post('/login',
+  makeRateLimit(runtime, { scope: 'login', limit: 20, windowSeconds: 60 }),
+  jsonBody(LoginSchema), async (context) => ...)
+```
+
+- `RateLimiter`（`kits/infrastructure/rate-limit/`）基于 **rate-limiter-flexible** 的
+  `RateLimiterRedis`（Redis 存储，底层 Lua 原子计数）；`check(key, limit, windowSeconds)`
+  返回 `{ allowed, remaining, retryAfterSeconds }`；底层实例按 `(limit, window)` 组合缓存复用。
+- 中间件按 **IP** 计数（key `ratelimit:{scope}:{ip}`），超限返回 429 + `Retry-After`；
+  白名单豁免（**ipaddr.js** 匹配：精确 IP / IPv4·IPv6 CIDR，env `RATE_LIMIT_WHITELIST`，命中跳过计数）。
+- **IP 来源**：默认直连 socket 地址（`@hono/node-server` 的 `getConnInfo`），防伪造 XFF 绕过；
+  部署在可信反代后置 `RATE_LIMIT_TRUST_PROXY=true` 才取 `x-forwarded-for` 首值。
+- IPv6 双栈下 socket 地址为 `::ffff:<v4>`，已统一规范化（`normalizeIp`）。
+- 需更精确算法（滑动窗口 / 令牌桶）时用 `RateLimiterSlidingWindow` / `RateLimiterTokenBucket`。
+
+**业务侧计数**（非 HTTP 场景，RedisStore 原生）：
 
 ```ts
 const count = await redis.incr(`rate:${userId}:${windowKey}`)

@@ -33,7 +33,7 @@ apps/server   Hono 路由工厂（features/，薄边界：Zod 校验 + 调 servi
               + 组合根（main.ts：createServiceContext + addService 注册业务）
    ↓ 只依赖
 @repo/kits    后端通用能力封装：infrastructure（Db / RedisStore / QueueManager / ObjectStorage /
-              StreamHub / TokenSigner / SessionStore / PasswordHasher）+ foundation（config/ 分片配置 bean
+              StreamHub / RateLimiter / TokenSigner / SessionStore / PasswordHasher）+ foundation（config/ 分片配置 bean
               —— DbConfig / RedisConfig / JwtConfig / StorageConfig / AuthConfig，schema 校验 +
               Logger / IdGeneration / Scheduler / errors）+ db（createDb / pagination / BaseEntity）
               + createServiceContext（基建组合根工厂：按配置分片存在装配组件，

@@ -13,7 +13,7 @@ apps/
 └── admin    — Next.js 16 App Router + Ant Design 6 + @repo/aui + Zustand（端口 9845）
 packages/
 ├── shared   — Zod schemas + 错误码字典 + 响应工具 + Pino 日志 + 通用工具（前后端共享）
-├── kits     — 后端通用能力封装：Db / Redis / JWT / ObjectStorage / 队列 / 调度 / 推送 / 分页 + createServiceContext（无业务实体）
+├── kits     — 后端通用能力封装：Db / Redis / JWT / ObjectStorage / 队列 / 调度 / 推送 / 限流 / 分页 + createServiceContext（无业务实体）
 ├── di       — DI 门面：@Injectable/@Inject + AppContext 组合根 + 生命周期调度（InversifyJS 8 封装）
 ├── http-client — 通用 HTTP + 鉴权管线客户端（HttpClient / HttpStreamClient / 策略 / 凭证管理器，业务无关）
 ├── sdk      — ServerClient（全类型化业务 API 调用，构建在 @repo/http-client 之上）
@@ -71,6 +71,12 @@ JWT_EXPIRES_IN=7d
 # 可选：认证行为
 RESET_PASSWORD_TOKEN_TTL_MINUTES=30
 PASSWORD_HASH_ROUNDS=10
+
+# 可选：接口限流（登录 / 注册 / 找回密码等敏感接口按 IP 固定窗口限流）
+# 白名单 IP 豁免限流（精确 IPv4 / IPv6 或 IPv4 CIDR，逗号分隔，如内网 / 运维）
+RATE_LIMIT_WHITELIST=127.0.0.1,10.0.0.0/8
+# 部署在可信反代 / LB 之后置 true，限流按 x-forwarded-for 取真实客户端 IP（默认 false 防伪造）
+RATE_LIMIT_TRUST_PROXY=false
 
 # 可选：对象存储（s3 / cos）
 OBJECT_STORAGE_PROVIDER=s3
@@ -320,7 +326,8 @@ Zod schema 单一事实源，同时派生 TypeScript 类型（`*.schema.ts` 导�
   `pagination.ts`（四种分页策略，见下文「分页」）、`base-entity.ts`（`BaseEntity`：
   `id` nanoid 主键 + `createdAt` / `updatedAt` / 软删除 `deletedAt`）
 - `infrastructure/`：`Db` / `RedisStore` / `QueueManager` / `ObjectStorage` /
-  `StreamHub` / `TokenSigner` / `SessionStore` / `PasswordHasher`（外部资源门面 + 生命周期）
+  `StreamHub` / `RateLimiter`（基于 rate-limiter-flexible，IP 白名单用 ipaddr.js）/
+  `TokenSigner` / `SessionStore` / `PasswordHasher`（外部资源门面 + 生命周期）
 - `foundation/`：`config/`（分片配置 bean：`DbConfig` / `RedisConfig` / `JwtConfig` /
   `StorageConfig` / `AuthConfig` / `LoggerConfig`，schema 校验 + 通用默认值，按需注入门面）+
   `Logger` / `IdGeneration` / `Scheduler` / `errors`（AppError / InfrastructureError）
@@ -545,6 +552,11 @@ sidebar / toast / chart 等），Tailwind 4 主题变量由 `globals.css` 提供
 > SSE 事件通过 `StreamHub.publish(channel, event)` 推送：业务模块 `runtime.get(StreamHub)` 后
 > `publish('task:42', { event: 'progress', data: {...} })`；身份频道 `user:{userId}` 自动强制订阅，
 > 业务频道需在 `makeStreamRoutes(runtime, { allowChannel })` 注入白名单校验。
+
+**接口限流**：`/auth/login`、`/auth/register`、`/auth/forgot-password`、`/auth/reset-password`、
+`/admin/login` 按 IP 固定窗口限流（默认 20 次 / 60s，超限 429 + `Retry-After`）；白名单
+（env `RATE_LIMIT_WHITELIST`）豁免，`RATE_LIMIT_TRUST_PROXY=true` 时信任 `x-forwarded-for`。
+其他接口按需用 `makeRateLimit(runtime, { scope, limit, windowSeconds })` 挂中间件。
 
 ### 分页
 
