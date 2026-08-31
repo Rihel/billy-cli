@@ -12,7 +12,7 @@ import { Reveal } from './reveal'
 function ArchitectureDiagram() {
   const rows = [
     { label: 'apps/server', sub: 'Hono 边界 + 业务模块 + 实体迁移', level: '顶层' },
-    { label: '@repo/kits', sub: '后端通用能力（数据库/缓存/队列/存储）', level: '中层' },
+    { label: '@repo/kits', sub: '后端通用能力（数据库/缓存/队列/存储/推送）', level: '中层' },
     { label: '@repo/shared · sdk', sub: '契约 / 客户端', level: '底层' },
   ]
   return (
@@ -156,7 +156,7 @@ export function Features() {
                 认证、用户、待办等完整模块示例，覆盖契约、实体、服务、路由、页面全链路，照着抄就能扩展新业务。
               </p>
               <div className="mt-6 flex flex-wrap gap-2">
-                {['认证鉴权', '用户体系', '待办事项', '字典枚举', '对象存储', '消息队列'].map((m) => (
+                {['认证鉴权', '用户体系', '待办事项', '字典枚举', '对象存储', '消息队列', '实时推送'].map((m) => (
                   <span
                     key={m}
                     className="rounded-full border border-zinc-200 bg-zinc-50 px-3 py-1 text-xs text-zinc-600"

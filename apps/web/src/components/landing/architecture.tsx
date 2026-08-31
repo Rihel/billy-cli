@@ -24,7 +24,7 @@ const steps = [
     icon: DatabaseZap,
     tag: '@repo/kits',
     title: '能力底座',
-    desc: 'TypeORM 门面 + 分页 + 事务 + 存储',
+    desc: 'TypeORM 门面 + 分页 + 事务 + 存储 + SSE 推送',
   },
 ]
 

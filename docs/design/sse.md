@@ -12,7 +12,7 @@
 - 诉求（已确认）：
   1. SSE 客户端能力并入 **`@repo/http-client`**（原 `@repo/api-client` 改名，包定位扩展为
      通用 HTTP 客户端：请求 + SSE 流式推送）；
-  2. 后端能力放**基础设施**（`kits/infrastructure/sse/`）；
+  2. 后端能力放**基础设施**（`kits/infrastructure/stream/`）；
   3. 多实例部署，事件需跨实例广播；
   4. SSE 客户端（http-stream-client 定位） **浏览器与 Node.js 双环境可用**；
   5. 认证复用 http-client 的 **CredentialsManager / AuthStrategy / CredentialProvider** 体系；
@@ -39,13 +39,13 @@
 
 | 项 | 决定 |
 | --- | --- |
-| 协议层（事件契约 / 频道约定） | `packages/shared/src/schema/sse.schema.ts`（zod），`schema/index.ts` 导出 |
-| 服务端推流门面 | `packages/kits/src/infrastructure/sse/sse-hub.ts`（`SseHub`）+ `sse-connection.ts` + `index.ts`，`infrastructure/index.ts` 导出 |
-| 服务端 SSE 路由 | `apps/server/src/features/sse.ts`（`makeSseRoutes`），`main.ts` 挂载 `/sse` |
+| 协议层（事件契约 / 频道约定） | `packages/shared/src/schema/stream.schema.ts`（zod），`schema/index.ts` 导出 |
+| 服务端推流门面 | `packages/kits/src/infrastructure/stream/stream-hub.ts`（`StreamHub`）+ `stream-connection.ts` + `index.ts`，`infrastructure/index.ts` 导出 |
+| 服务端 SSE 路由 | `apps/server/src/features/stream.ts`（`makeStreamRoutes`），`main.ts` 挂载 `/sse` |
 | SSE 客户端能力 | `packages/http-client/src/stream/`（`HttpStreamClient` + `stream-transport` + `stream-parser` + `types` + `errors`），随 `@repo/http-client` 导出（**http-stream-client 定位**：流式客户端是 http-client 的能力子模块，不拆独立包） |
 | 依赖 | `@repo/http-client`：**零第三方依赖**（认证用本包凭证体系）；广播用 kits 既有 `RedisStore.raw`，零新增 |
-| 注册 | `SseHub` 用 `addLifeCycleService`（OnAppStart 建 pub/sub，OnAppStop 清理） |
-| 错误 | `SseHubError` 加入 `infrastructure-errors.ts`（`AppErrorCodes.Internal`） |
+| 注册 | `StreamHub` 用 `addLifeCycleService`（OnAppStart 建 pub/sub，OnAppStop 清理） |
+| 错误 | `StreamHubError` 加入 `infrastructure-errors.ts`（`AppErrorCodes.Internal`） |
 
 归位依据：`placement.md` §6「外部资源门面 → kits/infrastructure」；HTTP 边界 → features。
 
@@ -56,34 +56,34 @@
 SSE 帧标准：`id` / `event` / `data` / `retry`。
 
 ```ts
-// shared/src/schema/sse.schema.ts
-const SseEventSchema = z.object({
+// shared/src/schema/stream.schema.ts
+const StreamEventSchema = z.object({
   event: z.string(),          // 事件名，如 'task.progress'
   data: z.unknown(),          // 任意 JSON 负载（传输层给 string，客户端反序列化）
   id: z.string().optional(),  // 服务端生成的事件 id（续传用，第一版仅透传）
 })
-type SseEvent = z.infer<typeof SseEventSchema>
+type StreamEvent = z.infer<typeof StreamEventSchema>
 ```
 
 **频道命名规范**：`<域>:<id>`，如 `user:42` / `admin:all` / `task:42`。
 订阅方式：**POST `/sse/subscribe`**，body `{ channels: ['user:42', 'task:42'] }`
 （method 可配置，默认 POST，贴合工程「统一 POST + JSON body」约定）。
 
-### 3.2 服务端（kits/infrastructure/sse/）
+### 3.2 服务端（kits/infrastructure/stream/）
 
 ```ts
-class SseHub {                       // @Injectable，生命周期 OnAppStart/OnAppStop
-  connections: Map<ConnectionId, SseConnection>   // 连接注册表
-  channels:    Map<Channel, Set<SseConnection>>   // 频道索引
-  publish(channel: Channel, event: SseEvent): void
+class StreamHub {                       // @Injectable，生命周期 OnAppStart/OnAppStop
+  connections: Map<ConnectionId, StreamConnection>   // 连接注册表
+  channels:    Map<Channel, Set<StreamConnection>>   // 频道索引
+  publish(channel: Channel, event: StreamEvent): void
     // 本地直推 + Redis PubSub 广播（见 §5.3）
-  createConnection(ctx): SseConnection             // SSE 路由调用
+  createConnection(ctx): StreamConnection             // SSE 路由调用
 }
 
-class SseConnection {
+class StreamConnection {
   id: ConnectionId            // nanoid，可作事件 id 前缀
   channels: Set<Channel>
-  write(event: SseEvent): void  // 封装 streamSSE 写入（帧编码）
+  write(event: StreamEvent): void  // 封装 streamSSE 写入（帧编码）
   closed: Promise<void>         // request aborted → 触发注销
   close(): void                 // 服务端主动关流
 }
@@ -177,16 +177,16 @@ HTTP 生命周期驱动，无复杂流转；`request aborted` 监听统一走注
   `EnvCredentialsManager`（跨环境）/ `LocalStorageCredentialsManager` /
   `CookieCredentialsManager`（仅浏览器）。
 - **服务端路由**：复用 `extractToken`（`Authorization: Bearer` 或 `access-token` cookie）。
-  `makeSseRoutes(runtime, { auth: 'user' | 'admin' })` 挂 `makeRequireAuth` /
+  `makeStreamRoutes(runtime, { auth: 'user' | 'admin' })` 挂 `makeRequireAuth` /
   `makeRequireAdminAuth` 中间件。选 fetch 流而非原生 EventSource 正是因为
   EventSource 无法自定义 header。
 
 ### 5.3 跨实例广播（Redis PubSub）
 
-- `SseHub` 持有 **pub / sub 两个独立 ioredis 连接**（ioredis 进入订阅模式后不可
+- `StreamHub` 持有 **pub / sub 两个独立 ioredis 连接**（ioredis 进入订阅模式后不可
   publish，必须分连接），经 `RedisStore.raw` 的兄弟连接创建，随生命周期启停。
 - **广播路径：本地直推 + Redis 广播**（推荐）：
-  `publish(channel, event)` → ① 直推本实例本地连接；② `redis.publish('sse:{channel}', JSON)`。
+  `publish(channel, event)` → ① 直推本实例本地连接；② `redis.publish('stream:{channel}', JSON)`。
   其他实例收到消息后推各自的本地连接。
 - **自回环过滤**：广播消息携带发布实例 `instanceId`（启动时生成），收到 `instanceId
   === self` 的消息直接丢弃（本实例已直推，避免双推）。
@@ -211,10 +211,10 @@ fetch 读流抛错自然进入 reconnecting），客户端状态机据此重连�
 
 ```ts
 // ===== 服务端：业务模块发事件（任意实例） =====
-const sseHub = runtime.get(SseHub)
-sseHub.publish('task:42', { event: 'progress', data: { percent: 50 } })
+const streamHub = runtime.get(StreamHub)
+streamHub.publish('task:42', { event: 'progress', data: { percent: 50 } })
 
-// ===== 服务端：SSE 路由（features/sse.ts） =====
+// ===== 服务端：SSE 路由（features/stream.ts） =====
 // POST /sse/subscribe  body: { channels: ['user:42', 'task:42'] }（Bearer 认证）
 // 内部：hub.createConnection(ctx) → streamSSE 长连接 → 按 channels 注册 → 推流
 
@@ -242,9 +242,9 @@ sse.close()
   POST 与 body 序列化、认证注入（manager/strategy 生成 header）、重连前重新取凭证、
   data 非 JSON 时原样分发原始字符串（不崩溃）、abort 停止重连。
   用注入 `fetch`（Node 原生）模拟流式响应。
-- **SseHub**（vitest，mock Redis pub/sub）：publish 本地直推、广播消息路由到
+- **StreamHub**（vitest，mock Redis pub/sub）：publish 本地直推、广播消息路由到
   本地连接、自回环 instanceId 过滤、连接注册/注销幂等、频道权限替换。
-- 错误继承 `SseHubError`（`AppErrorCodes.Internal`）。
+- 错误继承 `StreamHubError`（`AppErrorCodes.Internal`）。
 
 ## 8. 边界 / 注意事项
 

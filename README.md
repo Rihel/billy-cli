@@ -13,9 +13,9 @@ apps/
 └── admin    — Next.js 16 App Router + Ant Design 6 + @repo/aui + Zustand（端口 9845）
 packages/
 ├── shared   — Zod schemas + 错误码字典 + 响应工具 + Pino 日志 + 通用工具（前后端共享）
-├── kits     — 后端通用能力封装：Db / Redis / JWT / ObjectStorage / 队列 / 调度 / 分页 + createServiceContext（无业务实体）
+├── kits     — 后端通用能力封装：Db / Redis / JWT / ObjectStorage / 队列 / 调度 / 推送 / 分页 + createServiceContext（无业务实体）
 ├── di       — DI 门面：@Injectable/@Inject + AppContext 组合根 + 生命周期调度（InversifyJS 8 封装）
-├── http-client — 通用 HTTP + 鉴权管线客户端（HttpClient / 策略 / 凭证管理器，业务无关）
+├── http-client — 通用 HTTP + 鉴权管线客户端（HttpClient / HttpStreamClient / 策略 / 凭证管理器，业务无关）
 ├── sdk      — ServerClient（全类型化业务 API 调用，构建在 @repo/http-client 之上）
 ├── ui       — Base UI + shadcn 风格共享组件库（Tailwind 4）
 └── aui      — Ant Design 管理端组件库（表格 / 表单 / 存储 / Server Action 工具）
@@ -36,6 +36,7 @@ packages/
 | 样式       | Tailwind 4                 | 原子化 CSS，零心智负担                      |
 | 日志       | Pino                       | 结构化日志，开发 pretty / 生产 JSON         |
 | 缓存       | Redis（ioredis）           | Set / List / Hash / PubSub / 分布式锁       |
+| 服务端推送 | SSE（StreamHub + HttpStreamClient） | 实时推送：AI 流式 / 任务进度 / 通知，Redis pub/sub 跨实例广播 |
 | 对象存储   | S3 / COS                   | 预签名 URL + 临时凭证（STS）                |
 | 构建工具   | tsdown                     | 快速 bundler，packages 全部 dts 构建        |
 | 容器化     | Docker multi-stage         | server + web 独立部署，compose 一键起依赖   |
@@ -184,7 +185,7 @@ pnpm cli -t crud -n product  # 非交互生成 CRUD 业务模块（无 TTY 时�
 │   │       │   ├── authentication.ts    # requireAuth 中间件（Bearer / cookie）
 │   │       │   ├── request-context.ts   # AsyncLocalStorage 请求上下文
 │   │       │   └── request-logger.ts    # 请求日志 + X-Request-Id
-│   │       └── features/                # 路由工厂：auth / admin / user / todo / storage
+│   │       └── features/                # 路由工厂：auth / admin / user / todo / storage / stream
 │   ├── web/                             # Next.js 16 前台（@app/web，端口 9840）
 │   │   └── src/
 │   │       ├── actions/auth.actions.ts  # Server Actions（登录 / 注册）
@@ -217,7 +218,7 @@ pnpm cli -t crud -n product  # 非交互生成 CRUD 业务模块（无 TTY 时�
 │   │       ├── service-context.ts       # createServiceContext() 基建组合根工厂
 │   │       ├── foundation/              # 横切基础：app-config / errors / logger / id-generation / scheduler
 │   │       ├── infrastructure/          # 外部资源门面：database / redis-store / object-storage /
-│   │       │                            # queue / token-signer / password-hasher / session-store
+│   │       │                            # queue / stream / token-signer / password-hasher / session-store
 │   │       └── db/                      # createDb / pagination（四种分页）/ BaseEntity
 │   ├── di/                              # @repo/di — DI 门面：InversifyJS 8 封装
 │   │   └── src/
@@ -252,8 +253,11 @@ pnpm cli -t crud -n product  # 非交互生成 CRUD 业务模块（无 TTY 时�
 `apps/server/src/modules/`（实体与迁移在 `src/database/`），通用能力位于 `@repo/kits`。
 
 - **组合根**：`main.ts` 用 `createServiceContext({ db: { entities } })` 装配基建，再 `addService`
-  注册业务仓储 / 服务，创建 `Hono` 实例，挂载全局中间件（CORS、请求上下文、请求日志）与五组路由
-  （`/auth`、`/admin`、`/user`、`/todo`、`/storage`），统一 `notFound` 与 `onError`。
+  注册业务仓储 / 服务，创建 `Hono` 实例，挂载全局中间件（CORS、请求上下文、请求日志）与六组路由
+  （`/auth`、`/admin`、`/user`、`/todo`、`/storage`、`/sse`），统一 `notFound` 与 `onError`。
+- **SSE 推流**：`features/stream.ts` 的 `makeStreamRoutes` 暴露 `POST /sse/subscribe` 长连接
+  （Bearer / cookie 认证，强制注册 `user:{userId}` 身份频道），业务模块经 `StreamHub.publish(channel, event)`
+  推流，多实例经 Redis pub/sub 跨实例广播（`sse.md` 设计文档，客户端为 `@repo/http-client` 的 `HttpStreamClient`）。
 - **错误映射**：`lib/http.ts` 将业务抛出的错误（自带 `code` 数字）通过 `AppErrorCodes` 字典
   映射为 HTTP 状态码与中文文案，未知错误统一按系统错误（5001 / 500）处理。
 - **鉴权中间件**：`lib/authentication.ts` 的 `requireAuth` 从 `Authorization: Bearer` 或
@@ -316,7 +320,7 @@ Zod schema 单一事实源，同时派生 TypeScript 类型（`*.schema.ts` 导�
   `pagination.ts`（四种分页策略，见下文「分页」）、`base-entity.ts`（`BaseEntity`：
   `id` nanoid 主键 + `createdAt` / `updatedAt` / 软删除 `deletedAt`）
 - `infrastructure/`：`Db` / `RedisStore` / `QueueManager` / `ObjectStorage` /
-  `TokenSigner` / `SessionStore` / `PasswordHasher`（外部资源门面 + 生命周期）
+  `StreamHub` / `TokenSigner` / `SessionStore` / `PasswordHasher`（外部资源门面 + 生命周期）
 - `foundation/`：`config/`（分片配置 bean：`DbConfig` / `RedisConfig` / `JwtConfig` /
   `StorageConfig` / `AuthConfig` / `LoggerConfig`，schema 校验 + 通用默认值，按需注入门面）+
   `Logger` / `IdGeneration` / `Scheduler` / `errors`（AppError / InfrastructureError）
@@ -536,6 +540,11 @@ sidebar / toast / chart 等），Tailwind 4 主题变量由 `globals.css` 提供
 | `POST /storage/get-presigned-url`    | 获取上传预签名 URL | 是 |
 | `POST /storage/get-download-url`     | 获取下载预签名 URL | 是 |
 | `POST /storage/get-temporary-credentials` | 获取 STS 临时凭证 | 是 |
+| `POST /sse/subscribe`              | SSE 订阅（长连接推流，body `{ channels: [...] }`） | 是 |
+
+> SSE 事件通过 `StreamHub.publish(channel, event)` 推送：业务模块 `runtime.get(StreamHub)` 后
+> `publish('task:42', { event: 'progress', data: {...} })`；身份频道 `user:{userId}` 自动强制订阅，
+> 业务频道需在 `makeStreamRoutes(runtime, { allowChannel })` 注入白名单校验。
 
 ### 分页
 
