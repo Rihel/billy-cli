@@ -8,7 +8,9 @@
 
 - 框架：**vitest**（根与 `@repo/http-client` 已声明依赖）。
 - 现有示例：`packages/http-client/test/`（http-client.test.ts 覆盖策略 / 管理器 / provider /
-  请求流程；stream-parser / stream-transport / stream-client 覆盖 SSE 解析与状态机）。
+  请求流程；stream-parser / stream-transport / stream-client 覆盖 SSE 解析与状态机）；
+  `packages/kits/test/stream-hub.test.ts`（mock ioredis 的 pub/sub，覆盖本地直推、跨实例广播、
+  自回环过滤、连接注销幂等、心跳与断线自关）。
 - 测试命令：`packages/http-client/package.json` 已有 `"test": "vitest run"`；
   **新增测试的包需自行在 package.json 加同款 `test` 脚本**。跑单个包：
   `pnpm --filter <包名> test`；全量跑用 `pnpm -r --if-present test`

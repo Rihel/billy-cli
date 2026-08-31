@@ -44,7 +44,9 @@
        能力——lodash、dayjs、zod、typeorm、hono、@repo/di（InversifyJS 门面）、
        @tanstack/react-query、antd 等都能覆盖大量通用需求，优先用依赖自身能力
        （如分页 `pageWith` /
-       `cursorPageWith` 已由 `@repo/kits` 提供，勿在模块内重写）。
+        `cursorPageWith` 已由 `@repo/kits` 提供，勿在模块内重写；服务端推送 / SSE 用
+        `@repo/kits` 的 `StreamHub` + `@repo/http-client` 的 `HttpStreamClient`，勿自写
+        EventSource / 引第三方 SSE 库）。
     4. **现成 npm 包**（联网搜索）：以上都没有，才搜索是否有成熟 npm 包可用，
        优先选择维护活跃、类型完善、体积合理的包（如 id 用 `nanoid`、Redis 用
        `ioredis` 这类既有选型）。

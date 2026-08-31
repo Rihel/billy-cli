@@ -15,6 +15,7 @@ billy-cli 是一套**全栈应用 Monorepo 模板**：pnpm + Turbo 构建，Type
 | --- | --- |
 | 构建 | pnpm + Turbo（`turbo.json` 按依赖拓扑编排） |
 | 服务端 HTTP | Hono 4（`apps/server`，端口 9989） |
+| 服务端推流 | `@repo/kits` 的 `StreamHub`（`POST /sse/subscribe` 长连接 + Redis pub/sub 跨实例广播）+ `@repo/http-client` 的 `HttpStreamClient`（浏览器 / Node 双环境，默认 POST + Bearer 认证） |
 | 业务落点 | `apps/server/src/modules/<业务>/{service, repository, errors}`（业务 + 实体 + 迁移归 server） |
 | 通用能力 | `@repo/kits`（infrastructure / foundation / db 通用能力 + `createServiceContext`，无业务实体） |
 | 依赖注入 | InversifyJS 8 门面（`@repo/di`：`@Injectable`/`@Inject` + AppContext 组合根 + 生命周期） |
@@ -32,7 +33,7 @@ apps/server   Hono 路由工厂（features/，薄边界：Zod 校验 + 调 servi
               + 组合根（main.ts：createServiceContext + addService 注册业务）
    ↓ 只依赖
 @repo/kits    后端通用能力封装：infrastructure（Db / RedisStore / QueueManager / ObjectStorage /
-              TokenSigner / SessionStore / PasswordHasher）+ foundation（config/ 分片配置 bean
+              StreamHub / TokenSigner / SessionStore / PasswordHasher）+ foundation（config/ 分片配置 bean
               —— DbConfig / RedisConfig / JwtConfig / StorageConfig / AuthConfig，schema 校验 +
               Logger / IdGeneration / Scheduler / errors）+ db（createDb / pagination / BaseEntity）
               + createServiceContext（基建组合根工厂：按配置分片存在装配组件，

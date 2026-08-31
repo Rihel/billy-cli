@@ -14,6 +14,7 @@
 | [`concurrency`](../../concurrency/SKILL.md) | 高并发与一致性：缓存 / 限流 / 幂等 / 分布式锁（RedisStore） | 高并发、缓存、限流、幂等、分布式锁时 |
 | [`queue`](../../queue/SKILL.md) | 异步队列与延迟任务：QueueManager（BullMQ）的生产者 / 消费者 | 异步任务、队列、延迟任务、消息时 |
 | [`scheduler`](../../scheduler/SKILL.md) | 定时调度：Scheduler（croner）的 cron / interval / timeout | 定时任务、调度、cron、周期任务时 |
+| [`stream`](../../stream/SKILL.md) | 服务端推送（SSE）：StreamHub 推流 + HttpStreamClient 客户端、频道与权限、跨实例广播 | SSE、实时推送、推流、任务进度、实时通知时 |
 | [`state-machine`](../../state-machine/SKILL.md) | 业务状态机：状态字典 + 转移表纯函数（或 xstate 门面）、并发安全 | 订单状态、审批流、状态流转时 |
 | [`write-tests`](../../write-tests/SKILL.md) | 编写单元测试：vitest 结构与 mock 模式、service / repository 测试套路 | 写测试、补单测、修测试时 |
 | [`git-workflow`](../../git-workflow/SKILL.md) | Git 提交与工作流：中文 commit 类型规范、提交粒度、辅助提交流程 | 提交、commit、辅助提交、提交信息时 |
