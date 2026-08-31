@@ -2,7 +2,7 @@
 
 import { useServerClient } from '@/lib/server-client'
 import { EditOutlined, PlusOutlined } from '@ant-design/icons'
-import { App, Form, Input, InputNumber, Select, Switch, Tag } from 'antd'
+import { App, Alert, Form, Input, InputNumber, Select, Switch, Tag } from 'antd'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
 import type { TableColumnsType } from 'antd'
@@ -10,19 +10,20 @@ import {
   ConfirmAction,
   DataTable,
   DisplayValue,
+  DrawerForm,
   IconText,
-  ModalForm,
   RefreshButton,
   TableActions,
   useDisclosure,
 } from '@repo/aui'
+import { AppErrorCodes } from '@repo/shared'
 import type { AlertRuleModel, UpdateAlertRuleDto } from '@repo/shared'
 
 type RuleForm = {
   name: string
   type: 'tech' | 'business'
-  matchCodesText?: string
-  keywordsText?: string
+  matchCodes: number[]
+  keywords: string[]
   level: 'warn' | 'error'
   channels: ('lark' | 'email')[]
   throttleSeconds: number
@@ -34,32 +35,21 @@ const CHANNEL_OPTIONS = [
   { label: '邮件', value: 'email' },
 ]
 
+/** 错误码选项：来自共享字典 AppErrorCodes（label 中文，value 数字码） */
+const ERROR_CODE_OPTIONS = AppErrorCodes.options.map((option) => ({
+  label: `${option.value} ${option.label}`,
+  value: option.value,
+}))
+
 const ruleToForm = (rule: AlertRuleModel): RuleForm => ({
   name: rule.name,
   type: rule.type,
-  matchCodesText: rule.matchCodes.join(','),
-  keywordsText: rule.keywords.join(','),
+  matchCodes: rule.matchCodes,
+  keywords: rule.keywords,
   level: rule.level,
   channels: rule.channels,
   throttleSeconds: rule.throttleSeconds,
   enabled: rule.enabled,
-})
-
-const formToRule = (form: RuleForm) => ({
-  name: form.name,
-  type: form.type,
-  matchCodes: (form.matchCodesText ?? '')
-    .split(',')
-    .map((item) => Number(item.trim()))
-    .filter((item) => Number.isInteger(item) && item > 0),
-  keywords: (form.keywordsText ?? '')
-    .split(',')
-    .map((item) => item.trim())
-    .filter(Boolean),
-  level: form.level,
-  channels: form.channels,
-  throttleSeconds: form.throttleSeconds,
-  enabled: form.enabled,
 })
 
 export default function AlertRulesPage() {
@@ -89,7 +79,7 @@ export default function AlertRulesPage() {
   })
 
   const createMutation = useMutation({
-    mutationFn: (input: ReturnType<typeof formToRule>) =>
+    mutationFn: (input: RuleForm) =>
       client.monitor.rule.create(input),
     onSuccess: () => {
       message.success('规则已创建')
@@ -133,12 +123,14 @@ export default function AlertRulesPage() {
     {
       title: '匹配错误码',
       dataIndex: 'matchCodes',
-      width: 180,
+      width: 200,
       render: (codes: number[]) =>
         codes.length === 0 ? (
           <Tag>全部</Tag>
         ) : (
-          codes.map((code) => <Tag key={code}>{code}</Tag>)
+          codes.map((code) => (
+            <Tag key={code}>{AppErrorCodes.getLabel(code) ?? code}</Tag>
+          ))
         ),
     },
     {
@@ -221,6 +213,32 @@ export default function AlertRulesPage() {
     },
   ]
 
+  /** 匹配规则说明（Drawer 顶部，指导配置） */
+  const matchRuleHint = (
+    <Alert
+      type="info"
+      showIcon
+      message="匹配规则说明"
+      description={
+        <ul className="mb-0 pl-4 list-disc text-xs leading-6">
+          <li>
+            <b>技术告警</b>：匹配所有未捕获异常 / 系统错误（通常不选错误码，即匹配全部）；
+            <b>业务告警</b>：匹配指定错误码的业务错误。
+          </li>
+          <li>
+            <b>错误码</b>：从下拉选择要告警的错误码（不选 = 匹配该类型全部错误）。
+          </li>
+          <li>
+            <b>关键字</b>：错误消息包含任一关键字即触发（不填 = 不限制）。
+          </li>
+          <li>
+            <b>限频</b>：同一规则 + 相同错误在窗口内只推送一次（防告警风暴）。
+          </li>
+        </ul>
+      }
+    />
+  )
+
   const ruleFormItems = [
     {
       name: 'name' as const,
@@ -236,23 +254,42 @@ export default function AlertRulesPage() {
       render: () => (
         <Select
           options={[
-            { label: '技术告警（错误 / 异常）', value: 'tech' },
+            { label: '技术告警（未捕获异常 / 系统错误）', value: 'tech' },
             { label: '业务告警（指定错误码 / 关键字）', value: 'business' },
           ]}
         />
       ),
     },
     {
-      name: 'matchCodesText' as const,
+      name: 'matchCodes' as const,
       label: '匹配错误码',
+      formItemProps: {
+        extra: '不选 = 匹配该类型全部错误',
+      },
       render: () => (
-        <Input placeholder="错误码，逗号分隔，如 1002,3101（留空匹配全部）" />
+        <Select
+          mode="multiple"
+          allowClear
+          placeholder="选择要告警的错误码（可多选）"
+          options={ERROR_CODE_OPTIONS}
+          optionFilterProp="label"
+          style={{ width: '100%' }}
+        />
       ),
     },
     {
-      name: 'keywordsText' as const,
+      name: 'keywords' as const,
       label: '消息关键字',
-      render: () => <Input placeholder="关键字，逗号分隔（留空不限制）" />,
+      formItemProps: {
+        extra: '错误消息包含任一关键字即触发；回车添加',
+      },
+      render: () => (
+        <Select
+          mode="tags"
+          placeholder="输入关键字后回车（如：数据库、超时）"
+          style={{ width: '100%' }}
+        />
+      ),
     },
     {
       name: 'level' as const,
@@ -352,28 +389,32 @@ export default function AlertRulesPage() {
         }}
       />
 
-      <ModalForm<RuleForm>
-        title="新建规则"
+      <DrawerForm<RuleForm>
+        title="新建告警规则"
         open={createDialog.isOpen}
         form={form}
+        width={520}
+        description={matchRuleHint}
         items={ruleFormItems}
         onCancel={createDialog.close}
         onSubmit={async (values) => {
-          await createMutation.mutateAsync(formToRule(values))
+          await createMutation.mutateAsync(values)
           createDialog.close()
         }}
       />
 
-      <ModalForm<RuleForm>
-        title="编辑规则"
+      <DrawerForm<RuleForm>
+        title="编辑告警规则"
         open={editDialog.isOpen}
         form={form}
+        width={520}
+        description={matchRuleHint}
         items={ruleFormItems}
         onCancel={editDialog.close}
         onSubmit={async (values) => {
           await updateMutation.mutateAsync({
             ruleId: editDialog.data!.id,
-            ...formToRule(values),
+            ...values,
           })
           editDialog.close()
         }}
