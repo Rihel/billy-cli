@@ -52,6 +52,24 @@ export const AppMenu = ({ mode = 'inline', ...props }: AppMenuProps) => {
             },
           ],
         },
+        // 运维监控：独立于用户体系开关（监控告警为运维能力，始终可见）
+        {
+          label: '运维监控',
+          type: type,
+          key: 'monitor',
+          children: [
+            {
+              label: '告警规则',
+              key: '/main/monitor/rules',
+              icon: <AlertOutlined />,
+            },
+            {
+              label: '告警记录',
+              key: '/main/monitor/logs',
+              icon: <AlertOutlined />,
+            },
+          ],
+        },
         // 用户体系开关关闭时隐藏「系统设置」（用户 / 管理员管理）
         ...(authEnabled
           ? [
@@ -69,21 +87,6 @@ export const AppMenu = ({ mode = 'inline', ...props }: AppMenuProps) => {
                     label: '管理员管理',
                     key: '/main/system/admins',
                     icon: <SafetyOutlined />,
-                  },
-                  {
-                    label: '监控告警',
-                    key: '/main/monitor',
-                    icon: <AlertOutlined />,
-                    children: [
-                      {
-                        label: '告警规则',
-                        key: '/main/monitor/rules',
-                      },
-                      {
-                        label: '告警记录',
-                        key: '/main/monitor/logs',
-                      },
-                    ],
                   },
                 ],
               },
