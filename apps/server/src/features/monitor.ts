@@ -8,8 +8,9 @@ import {
   TestAlertSchema,
   UpdateAlertRuleSchema,
 } from '@repo/shared';
-import { Db, RedisStore } from '@repo/kits';
+import { Db, RedisStore, Telemetry } from '@repo/kits';
 import { Hono } from 'hono';
+import { createMiddleware } from 'hono/factory';
 import { makeRequireAdminAuth } from '../lib/authentication.js';
 import { jsonBody, success } from '../lib/http.js';
 import { AlertRuleService } from '../modules/monitor/index.js';
@@ -17,8 +18,26 @@ import { AlertTrigger } from '../modules/monitor/index.js';
 import { AlertLogRepository } from '../modules/monitor/index.js';
 
 /**
+ * 全局请求埋点中间件（挂 main.ts）：
+ * 自动采集 request.count / request.error / request.duration（直方图 → P95/P99），
+ * 供指标告警规则（错误率 / 平均耗时 / QPS / 分位）评估。
+ */
+export const makeRequestMetrics = (runtime: AppContext) =>
+  createMiddleware(async (context, next) => {
+    const telemetry = runtime.get(Telemetry);
+    const startedAt = performance.now();
+    await next();
+    const durationMs = performance.now() - startedAt;
+    telemetry.incr('request.count');
+    telemetry.histogram('request.duration', durationMs);
+    if (context.res.status >= 500) {
+      telemetry.incr('request.error');
+    }
+  });
+
+/**
  * 监控告警路由（`/monitor/*`，除 /health 外全部 admin 鉴权）：
- * - GET  /monitor/health        健康检查（免鉴权，供 Docker / k8s / 云平台探针）
+ * - POST /monitor/health        健康检查（免鉴权，供 Docker / k8s / 云平台探针）
  * - POST /monitor/rule/*        告警规则 CRUD（admin 管理）
  * - POST /monitor/log/page-query 告警记录查询（审计）
  * - POST /monitor/test          测试通知（手动验证通道）

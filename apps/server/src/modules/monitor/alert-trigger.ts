@@ -3,10 +3,14 @@ import type { AppLogger } from '@repo/shared/logger'
 import { Logger } from '@repo/kits'
 import {
   EmailClient,
+  FileClient,
   LarkNotifyClient,
   Notifier,
+  Scheduler,
+  Telemetry,
   type NotifyChannel,
   type NotifyPayload,
+  type TelemetrySnapshot,
 } from '@repo/kits'
 import type { SuccessResultModel, TestAlertDto } from '@repo/shared'
 import { AlertLogRepository } from './alert-log.repository.js'
@@ -41,15 +45,22 @@ const simpleHash = (input: string): string => {
 }
 
 /**
- * 告警触发 bean（独立职责）：规则匹配 → 限频防风暴 → 经 Notifier 发送 → 落 AlertLog 审计。
+ * 告警触发 bean（独立职责）：
+ * - 事件规则（tech / business）：错误码 / 关键字匹配 + **次数阈值窗口**；
+ * - 指标规则（metric / surge）：**Scheduler 周期评估** Telemetry 埋点数据（阈值 / 环比基线）；
+ * - 超阈值 → 限频 → 经 Notifier 发送 → 落 AlertLog 审计。
  *
- * 规则管理在 `AlertRuleService`；发送能力归通知模块（LarkClient / LarkNotifyClient /
- * EmailClient / Notifier）。本 bean 只做「规则匹配 / 触发 / 记录」。
+ * 规则管理在 `AlertRuleService`；埋点在 `Telemetry`（框架自动埋 + 业务手动埋）；
+ * 发送能力归通知模块（FileClient / LarkNotifyClient / EmailClient / Notifier）。
  */
 @Injectable()
 export class AlertTrigger {
   /** 限频表：`${ruleId}:${channel}:${contentHash}` → 上次发送时间戳（进程内，单实例） */
   private readonly throttleMap = new Map<string, number>()
+  /** 事件规则计数窗口：`${ruleId}:${contentHash}` → { count, windowStart }（次数阈值） */
+  private readonly eventCounts = new Map<string, { count: number; windowStart: number }>()
+  /** metric / surge 规则上次评估时间（periodSeconds 节流） */
+  private readonly lastEvaluatedAt = new Map<string, number>()
 
   @Logger()
   private readonly logger!: AppLogger
@@ -61,19 +72,29 @@ export class AlertTrigger {
     @Inject(AlertLogRepository)
     private readonly logRepository: AlertLogRepository,
     @Inject(Notifier) private readonly notifier: Notifier,
+    @Inject(Telemetry) private readonly telemetry: Telemetry,
+    @Inject(Scheduler) private readonly scheduler: Scheduler,
     // 通知客户端按配置装配（未配置的通道不注册），用于默认技术规则的通道判定
+    @Inject(FileClient)
+    @Optional()
+    private readonly fileClient?: FileClient,
     @Inject(LarkNotifyClient)
     @Optional()
     private readonly larkNotify?: LarkNotifyClient,
     @Inject(EmailClient)
     @Optional()
     private readonly email?: EmailClient,
-  ) {}
+  ) {
+    // 周期评估 metric / surge 规则（构造期注册，Scheduler 启动后生效）
+    this.scheduler.scheduleInterval('monitor-metric-eval', 10_000, () => {
+      void this.evaluateMetricRules()
+    })
+  }
 
   /**
    * 告警入口（技术 / 业务错误统一调用，如 errorHandler 与进程级异常）：
-   * 规则表为空 → 默认技术规则兜底（配置启用的通道，开箱即用）；
-   * 规则表有规则 → 仅按规则匹配（错误码 / 关键字），不匹配不告警（避免默认规则重复兜底噪音）。
+   * 规则表为空 → 默认技术规则兜底（配置启用的通道 + 文件输出，开箱即用）；
+   * 规则表有规则 → 仅按事件规则匹配（错误码 / 关键字 + 次数阈值），不匹配不告警。
    */
   async notifyError(error: unknown, context?: NotifyContext): Promise<void> {
     if (!this.config.enabled) return
@@ -84,7 +105,7 @@ export class AlertTrigger {
     const rules = await this.ruleRepository.findAllEnabled()
 
     if (rules.length === 0) {
-      // 无任何启用规则：默认技术规则兜底（NotifyConfig / LarkConfig 已配置的通道）
+      // 无任何启用规则：默认技术规则兜底（配置通道 + 文件输出）
       const channels = this.defaultChannels()
       if (channels.length === 0) return
       await this.deliver(null, '默认技术告警', title, message, channels, context, 60)
@@ -93,15 +114,7 @@ export class AlertTrigger {
 
     const matched = rules.filter((rule) => this.matchRule(rule, code, message))
     for (const rule of matched) {
-      await this.deliver(
-        rule.id,
-        rule.name,
-        title,
-        message,
-        rule.channels as NotifyChannel[],
-        context,
-        rule.throttleSeconds,
-      )
+      await this.deliverEventRule(rule, title, message, context)
     }
   }
 
@@ -131,12 +144,149 @@ export class AlertTrigger {
     return true
   }
 
-  /** 默认技术规则通道：通知模块中已配置（configured）的客户端 */
+  /** 默认技术规则通道：文件输出始终可用 + 已配置（configured）的客户端 */
   private defaultChannels(): NotifyChannel[] {
     const channels: NotifyChannel[] = []
+    if (this.fileClient?.configured) channels.push('file')
     if (this.larkNotify?.configured) channels.push('lark')
     if (this.email?.configured) channels.push('email')
     return channels
+  }
+
+  /**
+   * 事件规则触发（含次数阈值）：窗口内同错误出现 ≥ threshold 才告警；
+   * 触发后重置窗口计数（避免窗口内每个请求重复触发，配合限频防风暴）。
+   */
+  private async deliverEventRule(
+    rule: AlertRuleEntity,
+    title: string,
+    message: string,
+    context: NotifyContext | undefined,
+  ): Promise<void> {
+    const countKey = `${rule.id}:${simpleHash(`${title}\n${message}`)}`
+    const now = Date.now()
+    const entry = this.eventCounts.get(countKey)
+    if (!entry || now - entry.windowStart >= rule.thresholdWindowSeconds * 1000) {
+      this.eventCounts.set(countKey, { count: 1, windowStart: now })
+    } else {
+      entry.count += 1
+    }
+    const current = this.eventCounts.get(countKey)!
+    if (current.count < rule.threshold) return
+    // 达到阈值：触发后清计数（窗口内只触发一次）
+    this.eventCounts.delete(countKey)
+    await this.deliver(
+      rule.id,
+      rule.name,
+      title,
+      message,
+      rule.channels as NotifyChannel[],
+      context,
+      rule.throttleSeconds,
+    )
+  }
+
+  /** 周期评估 metric / surge 规则（Scheduler 驱动，periodSeconds 节流） */
+  private async evaluateMetricRules(): Promise<void> {
+    if (!this.config.enabled) return
+    const rules = (await this.ruleRepository.findAllEnabled()).filter(
+      (rule) => rule.type === 'metric' || rule.type === 'surge',
+    )
+    if (rules.length === 0) return
+
+    const snapshot = this.telemetry.snapshot()
+    const values = this.buildMetricValues(snapshot)
+    const now = Date.now()
+
+    for (const rule of rules) {
+      const lastAt = this.lastEvaluatedAt.get(rule.id) ?? 0
+      if (now - lastAt < rule.periodSeconds * 1000) continue
+      this.lastEvaluatedAt.set(rule.id, now)
+
+      const value =
+        rule.type === 'surge'
+          ? this.surgeRatio(rule, values)
+          : (values.current[rule.metric ?? ''] ?? null)
+      if (value === null || value === undefined || !Number.isFinite(value)) continue
+
+      if (this.compare(value, rule.operator, rule.thresholdValue)) {
+        const detail = `${rule.metric} = ${value.toFixed(2)} ${rule.operator ?? ''} ${rule.thresholdValue ?? ''}`
+        await this.deliver(
+          rule.id,
+          rule.name,
+          `告警：${rule.name}`,
+          detail,
+          rule.channels as NotifyChannel[],
+          undefined,
+          rule.throttleSeconds,
+        )
+      }
+    }
+  }
+
+  /** 突变规则环比：当前窗口 / 前一窗口（rate 比值）；无基线或基线 ≤ 0 返回 null（跳过） */
+  private surgeRatio(
+    rule: AlertRuleEntity,
+    values: { current: Record<string, number>; previous: Record<string, number> },
+  ): number | null {
+    const metric = rule.metric ?? ''
+    const current = values.current[metric]
+    const previous = values.previous[metric]
+    if (current === undefined || previous === undefined || previous <= 0) return null
+    return current / previous
+  }
+
+  /** 构建指标值：内置语义指标（错误率 / QPS / 平均耗时 / P95 / P99 / 内存）+ 原始 counter(rate) / gauge */
+  private buildMetricValues(
+    snapshot: TelemetrySnapshot,
+  ): { current: Record<string, number>; previous: Record<string, number> } {
+    const current: Record<string, number> = {}
+    const previous: Record<string, number> = {}
+
+    const total = snapshot.counters['request.count'] ?? 0
+    const errors = snapshot.counters['request.error'] ?? 0
+    current['request.errorRate'] = total > 0 ? errors / total : 0
+    current['request.qps'] = total / snapshot.windowSeconds
+    const histogram = snapshot.histograms['request.duration']
+    if (histogram) {
+      current['request.avgDuration'] = histogram.count > 0 ? histogram.sum / histogram.count : 0
+      current['request.p95'] = histogram.quantile(0.95)
+      current['request.p99'] = histogram.quantile(0.99)
+    }
+    const memory = process.memoryUsage()
+    current['process.memory'] = memory.heapTotal > 0 ? memory.heapUsed / memory.heapTotal : 0
+
+    // 原始指标：counter → rate（每秒），gauge → 当前值
+    for (const [name, value] of Object.entries(snapshot.counters)) {
+      current[name] = value / snapshot.windowSeconds
+    }
+    for (const [name, value] of Object.entries(snapshot.gauges)) {
+      current[name] = value
+    }
+    // 前一窗口（surge 基线，rate）
+    const previousTotal = snapshot.previousCounters['request.count'] ?? 0
+    previous['request.qps'] = previousTotal / snapshot.windowSeconds
+    for (const [name, value] of Object.entries(snapshot.previousCounters)) {
+      previous[name] = value / snapshot.windowSeconds
+    }
+    return { current, previous }
+  }
+
+  /** 比较符判定 */
+  private compare(value: number, operator: string | null, threshold: number | null): boolean {
+    if (threshold === null || operator === null) return false
+    switch (operator) {
+      case 'gt':
+        return value > threshold
+      case 'gte':
+        return value >= threshold
+      case 'lt':
+        return value < threshold
+      case 'lte':
+        return value <= threshold
+      default:
+        return false
+    }
   }
 
   /** 限频判定：窗口内同内容不重复发；惰性清理过期条目 */
@@ -174,7 +324,7 @@ export class AlertTrigger {
         continue
       }
       const payload: NotifyPayload =
-        channel === 'lark'
+        channel === 'lark' || channel === 'file'
           ? { content }
           : { to: this.config.emailTo ?? '', subject: title, text: content }
 

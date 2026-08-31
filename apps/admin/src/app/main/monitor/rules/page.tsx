@@ -21,18 +21,35 @@ import type { AlertRuleModel, UpdateAlertRuleDto } from '@repo/shared'
 
 type RuleForm = {
   name: string
-  type: 'tech' | 'business'
+  type: 'tech' | 'business' | 'metric' | 'surge'
   matchCodes: number[]
   keywords: string[]
+  threshold: number
+  thresholdWindowSeconds: number
+  metric?: string
+  operator?: 'gt' | 'gte' | 'lt' | 'lte'
+  thresholdValue?: number
+  periodSeconds: number
   level: 'warn' | 'error'
-  channels: ('lark' | 'email')[]
+  channels: ('file' | 'lark' | 'email')[]
   throttleSeconds: number
   enabled: boolean
 }
 
 const CHANNEL_OPTIONS = [
+  { label: '文件', value: 'file' },
   { label: '飞书', value: 'lark' },
   { label: '邮件', value: 'email' },
+]
+
+/** 内置指标选项（metric / surge 规则；可自由输入自定义指标名） */
+const METRIC_OPTIONS = [
+  { label: '请求错误率（request.errorRate）', value: 'request.errorRate' },
+  { label: 'QPS（request.qps）', value: 'request.qps' },
+  { label: '平均耗时 ms（request.avgDuration）', value: 'request.avgDuration' },
+  { label: 'P95 耗时 ms（request.p95）', value: 'request.p95' },
+  { label: 'P99 耗时 ms（request.p99）', value: 'request.p99' },
+  { label: '进程内存使用率（process.memory）', value: 'process.memory' },
 ]
 
 /** 错误码选项：来自共享字典 AppErrorCodes（label 中文，value 数字码） */
@@ -41,11 +58,20 @@ const ERROR_CODE_OPTIONS = AppErrorCodes.options.map((option) => ({
   value: option.value,
 }))
 
+/** 比较符显示映射 */
+const operatorMap = { gt: '>', gte: '≥', lt: '<', lte: '≤' } as const
+
 const ruleToForm = (rule: AlertRuleModel): RuleForm => ({
   name: rule.name,
   type: rule.type,
   matchCodes: rule.matchCodes,
   keywords: rule.keywords,
+  threshold: rule.threshold,
+  thresholdWindowSeconds: rule.thresholdWindowSeconds,
+  metric: rule.metric ?? undefined,
+  operator: rule.operator ?? undefined,
+  thresholdValue: rule.thresholdValue ?? undefined,
+  periodSeconds: rule.periodSeconds,
   level: rule.level,
   channels: rule.channels,
   throttleSeconds: rule.throttleSeconds,
@@ -58,7 +84,7 @@ export default function AlertRulesPage() {
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(10)
   const [keyword, setKeyword] = useState<string | undefined>()
-  const [type, setType] = useState<'tech' | 'business' | undefined>()
+  const [type, setType] = useState<'tech' | 'business' | 'metric' | 'surge' | undefined>()
   const [enabled, setEnabled] = useState<boolean | undefined>()
   const createDialog = useDisclosure()
   const editDialog = useDisclosure<AlertRuleModel>()
@@ -114,24 +140,40 @@ export default function AlertRulesPage() {
       title: '类型',
       dataIndex: 'type',
       width: 100,
-      render: (value: AlertRuleModel['type']) => (
-        <Tag color={value === 'tech' ? 'blue' : 'orange'}>
-          {value === 'tech' ? '技术' : '业务'}
-        </Tag>
-      ),
+      render: (value: AlertRuleModel['type']) => {
+        const map = {
+          tech: { color: 'blue', label: '技术' },
+          business: { color: 'orange', label: '业务' },
+          metric: { color: 'green', label: '指标' },
+          surge: { color: 'purple', label: '突变' },
+        } as const
+        return <Tag color={map[value].color}>{map[value].label}</Tag>
+      },
     },
     {
-      title: '匹配错误码',
+      title: '匹配条件',
       dataIndex: 'matchCodes',
       width: 200,
-      render: (codes: number[]) =>
-        codes.length === 0 ? (
+      render: (codes: number[], record) => {
+        if (record.type === 'metric' || record.type === 'surge') {
+          const operator = { gt: '>', gte: '≥', lt: '<', lte: '≤' }[
+            record.operator as keyof typeof operatorMap
+          ]
+          return (
+            <span className="text-xs text-zinc-600">
+              {record.metric} {operator} {record.thresholdValue}
+              {record.type === 'surge' ? ' 倍' : ''}
+            </span>
+          )
+        }
+        return codes.length === 0 ? (
           <Tag>全部</Tag>
         ) : (
           codes.map((code) => (
             <Tag key={code}>{AppErrorCodes.getLabel(code) ?? code}</Tag>
           ))
-        ),
+        )
+      },
     },
     {
       title: '级别',
@@ -213,26 +255,52 @@ export default function AlertRulesPage() {
     },
   ]
 
-  /** 匹配规则说明（Drawer 顶部，指导配置） */
+  /** 当前规则类型（条件渲染表单字段） */
+  const ruleType = Form.useWatch('type', form) ?? 'tech'
+  const isEventRule = ruleType === 'tech' || ruleType === 'business'
+
+  /** 匹配规则说明（Drawer 顶部，按类型显示） */
   const matchRuleHint = (
     <Alert
       type="info"
       showIcon
-      message="匹配规则说明"
+      message={isEventRule ? '事件规则说明' : '指标 / 突变规则说明'}
       description={
         <ul className="mb-0 pl-4 list-disc text-xs leading-6">
+          {isEventRule ? (
+            <>
+              <li>
+                <b>技术告警</b>：匹配所有未捕获异常 / 系统错误（通常不选错误码，即匹配全部）；
+                <b>业务告警</b>：匹配指定错误码的业务错误。
+              </li>
+              <li>
+                <b>错误码</b>：选择要告警的错误码（不选 = 匹配全部）。
+              </li>
+              <li>
+                <b>次数阈值</b>：窗口内同错误出现 ≥ N 次才告警（防偶发误报，默认 1）。
+              </li>
+              <li>
+                <b>关键字</b>：错误消息包含任一关键字即触发（不填 = 不限制）。
+              </li>
+            </>
+          ) : (
+            <>
+              <li>
+                <b>指标规则</b>：周期采样指标值，超过阈值才告警（如错误率 {'>'} 5%、P99 {'>'} 500ms、
+                库存 &lt; 10）。
+              </li>
+              <li>
+                <b>突变规则</b>：当前窗口 / 前一窗口 的环比倍率，用于 QPS 飙升、请求洪峰、
+                订单飙升等场景。
+              </li>
+              <li>
+                <b>评估周期</b>：每 periodSeconds 评估一次；框架自动埋点提供
+                request.* / process.* 指标，业务指标需业务方埋点后引用指标名。
+              </li>
+            </>
+          )}
           <li>
-            <b>技术告警</b>：匹配所有未捕获异常 / 系统错误（通常不选错误码，即匹配全部）；
-            <b>业务告警</b>：匹配指定错误码的业务错误。
-          </li>
-          <li>
-            <b>错误码</b>：从下拉选择要告警的错误码（不选 = 匹配该类型全部错误）。
-          </li>
-          <li>
-            <b>关键字</b>：错误消息包含任一关键字即触发（不填 = 不限制）。
-          </li>
-          <li>
-            <b>限频</b>：同一规则 + 相同错误在窗口内只推送一次（防告警风暴）。
+            <b>限频</b>：同一规则 + 相同内容在窗口内只推送一次（防告警风暴）。
           </li>
         </ul>
       }
@@ -254,43 +322,120 @@ export default function AlertRulesPage() {
       render: () => (
         <Select
           options={[
-            { label: '技术告警（未捕获异常 / 系统错误）', value: 'tech' },
-            { label: '业务告警（指定错误码 / 关键字）', value: 'business' },
+            { label: '技术告警（事件：未捕获异常 / 系统错误）', value: 'tech' },
+            { label: '业务告警（事件：指定错误码 / 关键字）', value: 'business' },
+            { label: '指标告警（阈值：错误率 / P95 / 库存等）', value: 'metric' },
+            { label: '突变告警（环比：QPS 飙升 / 洪峰 / 订单飙升）', value: 'surge' },
           ]}
         />
       ),
     },
-    {
-      name: 'matchCodes' as const,
-      label: '匹配错误码',
-      formItemProps: {
-        extra: '不选 = 匹配该类型全部错误',
-      },
-      render: () => (
-        <Select
-          mode="multiple"
-          allowClear
-          placeholder="选择要告警的错误码（可多选）"
-          options={ERROR_CODE_OPTIONS}
-          optionFilterProp="label"
-          style={{ width: '100%' }}
-        />
-      ),
-    },
-    {
-      name: 'keywords' as const,
-      label: '消息关键字',
-      formItemProps: {
-        extra: '错误消息包含任一关键字即触发；回车添加',
-      },
-      render: () => (
-        <Select
-          mode="tags"
-          placeholder="输入关键字后回车（如：数据库、超时）"
-          style={{ width: '100%' }}
-        />
-      ),
-    },
+    // ===== 事件规则字段 =====
+    ...(isEventRule
+      ? [
+          {
+            name: 'matchCodes' as const,
+            label: '匹配错误码',
+            formItemProps: {
+              extra: '不选 = 匹配该类型全部错误',
+            },
+            render: () => (
+              <Select
+                mode="multiple"
+                allowClear
+                placeholder="选择要告警的错误码（可多选）"
+                options={ERROR_CODE_OPTIONS}
+                optionFilterProp="label"
+                style={{ width: '100%' }}
+              />
+            ),
+          },
+          {
+            name: 'keywords' as const,
+            label: '消息关键字',
+            formItemProps: {
+              extra: '错误消息包含任一关键字即触发；回车添加',
+            },
+            render: () => (
+              <Select
+                mode="tags"
+                placeholder="输入关键字后回车（如：数据库、超时）"
+                style={{ width: '100%' }}
+              />
+            ),
+          },
+          {
+            name: 'threshold' as const,
+            label: '触发阈值（次数）',
+            initialValue: 1,
+            formItemProps: {
+              extra: '窗口内同错误出现 ≥ N 次才告警',
+            },
+            render: () => <InputNumber min={1} style={{ width: '100%' }} />,
+          },
+          {
+            name: 'thresholdWindowSeconds' as const,
+            label: '统计窗口（秒）',
+            initialValue: 60,
+            render: () => <InputNumber min={1} style={{ width: '100%' }} />,
+          },
+        ]
+      : [
+          // ===== 指标 / 突变规则字段 =====
+          {
+            name: 'metric' as const,
+            label: ruleType === 'surge' ? '监控指标（环比）' : '监控指标',
+            formItemProps: {
+              rules: [{ required: true, message: '请选择或输入指标名' }],
+              extra:
+                ruleType === 'surge'
+                  ? '当前窗口 / 前一窗口 的环比倍率'
+                  : '周期采样该指标值 vs 阈值',
+            },
+            render: () => (
+              <Select
+                mode="tags"
+                maxCount={1}
+                placeholder="选择内置指标或输入自定义指标名"
+                options={METRIC_OPTIONS}
+                style={{ width: '100%' }}
+              />
+            ),
+          },
+          {
+            name: 'operator' as const,
+            label: '比较符',
+            formItemProps: { rules: [{ required: true }] },
+            render: () => (
+              <Select
+                options={[
+                  { label: '>（大于）', value: 'gt' },
+                  { label: '≥（大于等于）', value: 'gte' },
+                  { label: '<（小于）', value: 'lt' },
+                  { label: '≤（小于等于）', value: 'lte' },
+                ]}
+              />
+            ),
+          },
+          {
+            name: 'thresholdValue' as const,
+            label: ruleType === 'surge' ? '环比倍率' : '阈值',
+            formItemProps: {
+              rules: [{ required: true, message: '请输入阈值' }],
+              extra:
+                ruleType === 'surge'
+                  ? '如 3 = 当前窗口是前一窗口 3 倍时告警'
+                  : '如错误率 0.05、P99 500、库存 10',
+            },
+            render: () => <InputNumber style={{ width: '100%' }} />,
+          },
+          {
+            name: 'periodSeconds' as const,
+            label: '评估周期（秒）',
+            initialValue: 60,
+            render: () => <InputNumber min={1} style={{ width: '100%' }} />,
+          },
+        ]),
     {
       name: 'level' as const,
       label: '级别',
@@ -351,6 +496,8 @@ export default function AlertRulesPage() {
               options={[
                 { label: '技术', value: 'tech' },
                 { label: '业务', value: 'business' },
+                { label: '指标', value: 'metric' },
+                { label: '突变', value: 'surge' },
               ]}
               onChange={(value) => {
                 setType(value)

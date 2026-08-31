@@ -15,7 +15,7 @@ import { requestLogger } from './lib/request-logger.js';
 import { makeAdminRoutes } from './features/admin.js';
 import { makeAuthRoutes } from './features/auth.js';
 import { makeConfigRoutes } from './features/config.js';
-import { makeMonitorRoutes } from './features/monitor.js';
+import { makeMonitorRoutes, makeRequestMetrics } from './features/monitor.js';
 import { makeStorageRoutes } from './features/storage.js';
 import { makeStreamRoutes } from './features/stream.js';
 import { makeTodoRoutes } from './features/todo.js';
@@ -105,6 +105,7 @@ export const makeApp = () => {
     cors(),
     makeRequestContextMiddleware(requestContext),
     requestLogger,
+    makeRequestMetrics(runtime),
   );
   app.route('/auth', makeAuthRoutes(runtime));
   app.route('/admin', makeAdminRoutes(runtime));

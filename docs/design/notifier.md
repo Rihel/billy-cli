@@ -11,7 +11,9 @@
 > - **`LarkNotifyClient`**（`infrastructure/lark-notify/`）：**另一个独立 bean**，注入
 >   `LarkClient` 实现「通知」语义（发文本消息到配置的接收人 / 群）。
 >
-> **第一版范围**：`LarkClient` + `LarkNotifyClient` + `EmailClient` + `Notifier`。
+> **第一版范围**：`LarkClient` + `LarkNotifyClient` + `EmailClient` + `FileClient` + `Notifier`。
+> **FileClient（默认文件输出）**：零配置、始终可用（写 `logs/alerts.log`），未配置 lark / email
+> 时作为兜底通道（开发 / 演示开箱即用）。
 > 钉钉 / 企业微信为**预留模块**（`infrastructure/dingtalk/`、`infrastructure/wecom/`）：
 > 后续按同模式新增目录模块 + Notifier 构造器注入一行即可。
 
@@ -169,7 +171,7 @@ await lark.raw.im.message.create({ ... })
 
 ## 8. 评审确认点
 
-1. **第一版范围**：LarkClient + LarkNotifyClient + EmailClient + Notifier（钉钉 / 企微预留）——确认？
+1. **第一版范围**：LarkClient + LarkNotifyClient + EmailClient + FileClient（默认文件输出）+ Notifier——确认？
 2. **LarkClient**（官方 SDK 封装 bean，暴露 raw 完整能力）与 **LarkNotifyClient**（通知 bean，
    注入 LarkClient）两层分离——确认？
 3. 每第三方服务一个**独立客户端模块**（与基础设施平级、独立可用）——确认？

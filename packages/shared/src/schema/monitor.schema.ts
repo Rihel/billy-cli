@@ -1,13 +1,22 @@
 import { z } from 'zod'
 import { BaseModel, BasePaginateDto } from './base.schema'
 
-/** 告警通道（对应通知模块 NotifyChannel：lark / email） */
-export const AlertChannel = z.enum(['lark', 'email'])
+/** 告警通道（对应通知模块 NotifyChannel：file / lark / email） */
+export const AlertChannel = z.enum(['file', 'lark', 'email'])
 export type AlertChannelType = z.infer<typeof AlertChannel>
 
-/** 规则类型：tech 技术告警（ERROR 级错误 / 未捕获异常）；business 业务告警（错误码 / 关键字匹配） */
-export const AlertRuleType = z.enum(['tech', 'business'])
+/**
+ * 规则类型：
+ * - tech / business：事件规则（错误码 / 关键字匹配 + 次数阈值）；
+ * - metric：指标规则（错误率 / P95 / 库存等，周期采样 vs 阈值）；
+ * - surge：突变规则（QPS 飙升 / 洪峰 / 订单飙升，环比基线）。
+ */
+export const AlertRuleType = z.enum(['tech', 'business', 'metric', 'surge'])
 export type AlertRuleTypeValue = z.infer<typeof AlertRuleType>
+
+/** 指标比较符 */
+export const AlertOperator = z.enum(['gt', 'gte', 'lt', 'lte'])
+export type AlertOperatorValue = z.infer<typeof AlertOperator>
 
 /** 告警级别：error 优先（warn 也匹配 error 规则） */
 export const AlertLevel = z.enum(['warn', 'error'])
@@ -18,10 +27,22 @@ const AlertRuleFields = z.object({
   name: z.string().min(1).max(50),
   /** 规则类型 */
   type: AlertRuleType.default('tech'),
-  /** 匹配错误码（AppErrorCodes 数字码）；空数组 = 匹配该类型全部错误 */
+  /** 匹配错误码（AppErrorCodes 数字码）；空数组 = 匹配该类型全部错误（仅事件规则） */
   matchCodes: z.array(z.number().int()).default([]),
-  /** 匹配消息关键字（任一命中即匹配）；空数组 = 不限制 */
+  /** 匹配消息关键字（任一命中即匹配）；空数组 = 不限制（仅事件规则） */
   keywords: z.array(z.string().min(1)).default([]),
+  /** 事件规则触发阈值：窗口内出现次数 ≥ threshold 才告警（默认 1 = 出现即告警） */
+  threshold: z.number().int().min(1).default(1),
+  /** 事件规则统计窗口（秒） */
+  thresholdWindowSeconds: z.number().int().min(1).default(60),
+  /** 指标名（metric / surge 规则），如 request.errorRate / request.p99 / inventory.available */
+  metric: z.string().optional(),
+  /** 比较符（metric / surge 规则）：gt / gte / lt / lte */
+  operator: AlertOperator.optional(),
+  /** 阈值（metric 规则：指标值；surge 规则：环比倍率） */
+  thresholdValue: z.number().optional(),
+  /** 评估周期（秒，metric / surge 规则） */
+  periodSeconds: z.number().int().min(1).default(60),
   /** 告警级别（error 级规则同时捕获 warn 错误） */
   level: AlertLevel.default('error'),
   /** 发送通道（至少一个） */

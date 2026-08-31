@@ -25,6 +25,30 @@ export class AlertRuleEntity extends BaseEntity {
   @Column({ name: 'keywords', type: 'simple-array' })
   keywords: string[] = []
 
+  /** 事件规则触发阈值：窗口内出现次数 ≥ threshold 才告警（默认 1 = 出现即告警） */
+  @Column({ name: 'threshold', type: 'int', default: 1 })
+  threshold = 1
+
+  /** 事件规则统计窗口（秒） */
+  @Column({ name: 'threshold_window_seconds', type: 'int', default: 60 })
+  thresholdWindowSeconds = 60
+
+  /** 指标名（metric / surge 规则），如 request.errorRate / request.p99 / inventory.available */
+  @Column({ name: 'metric', type: 'varchar', length: 100, nullable: true })
+  metric: string | null = null
+
+  /** 比较符（metric / surge 规则）：gt / gte / lt / lte */
+  @Column({ name: 'operator', type: 'varchar', length: 10, nullable: true })
+  operator: string | null = null
+
+  /** 阈值（metric 规则：指标值；surge 规则：环比倍率） */
+  @Column({ name: 'threshold_value', type: 'float8', nullable: true })
+  thresholdValue: number | null = null
+
+  /** 评估周期（秒，metric / surge 规则） */
+  @Column({ name: 'period_seconds', type: 'int', default: 60 })
+  periodSeconds = 60
+
   /** 告警级别：warn / error（error 级规则同时捕获 warn 错误） */
   @Column({ name: 'level', type: 'varchar', length: 10, default: 'error' })
   level = 'error'

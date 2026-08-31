@@ -562,13 +562,23 @@ sidebar / toast / chart 等），Tailwind 4 主题变量由 `globals.css` 提供
 > `publish('task:42', { event: 'progress', data: {...} })`；身份频道 `user:{userId}` 自动强制订阅，
 > 业务频道需在 `makeStreamRoutes(runtime, { allowChannel })` 注入白名单校验。
 
-**监控告警**：`monitor` 业务模块（admin「系统设置 → 监控告警」管理）——规则存 `alert_rules`
-表（类型 tech/business、错误码 / 关键字匹配、通道 lark/email、限频窗口、启用开关），
-技术错误（`errorHandler` + `uncaughtException`/`unhandledRejection`）与业务错误码自动匹配
-规则 → 经通知模块（`Notifier` → `LarkNotifyClient` / `EmailClient`）发送 → 每次发送落
-`alert_logs` 审计表（admin 可查）。规则表为空时技术告警走配置通道兜底（开箱即用）。
-告警配置 env：`ALERT_ENABLED`（总开关，默认 true）/ `ALERT_EMAIL_TO`（默认邮件接收人）/
-`ALERT_SMTP_*` / `LARK_APP_ID` + `LARK_APP_SECRET` + `LARK_NOTIFY_RECEIVE_ID`（飞书通知目标）。
+**监控告警**：`monitor` 业务模块（admin「运维监控 → 告警规则 / 告警记录」管理）——
+**架构：埋点 → 聚合 → 规则评估 → 通知**。
+- **埋点**（`@repo/kits` 的 `Telemetry`，任何业务一行埋点）：Counter / Gauge / 直方图
+  （近似 P50/P95/P99）；框架自动埋（全局请求中间件：`request.count` / `request.duration` /
+  5xx → 错误率 / QPS / P95 / P99 / 进程内存），业务自定义指标（如 `inventory.available`、
+  `order.count`）业务方自行埋点。
+- **规则三类**（`alert_rules` 表，admin 配置）：事件规则（错误码 / 关键字 + **次数阈值**）、
+  指标规则（metric + 比较符 + 阈值，周期评估）、突变规则（环比基线，QPS 飙升 / 洪峰）。
+- **触发**：技术错误（`errorHandler` + `uncaughtException`/`unhandledRejection`）匹配事件规则；
+  `Scheduler` 周期评估 metric / surge 规则 → 经通知模块发送 → 每次落 `alert_logs` 审计。
+- **通知通道**：`file`（默认文件输出 `logs/alerts.log`，零配置开箱即用）+ `lark`（飞书）+
+  `email`（SMTP），规则可选通道。
+- 规则表为空时技术告警走默认兜底（文件 + 配置通道）。
+- 告警配置 env：`ALERT_ENABLED`（总开关）/ `ALERT_EMAIL_TO` / `ALERT_SMTP_*` /
+  `LARK_APP_ID` + `LARK_APP_SECRET` + `LARK_NOTIFY_RECEIVE_ID`（飞书）/ `NOTIFY_FILE_PATH`
+  （文件输出路径，默认 `logs/alerts.log`）。设计文档：[monitor-alert.md](docs/design/monitor-alert.md)、
+  [notifier.md](docs/design/notifier.md)。
 
 **接口限流**：`/auth/login`、`/auth/register`、`/auth/forgot-password`、`/auth/reset-password`、
 `/admin/login` 按 IP 固定窗口限流（默认 20 次 / 60s，超限 429 + `Retry-After`）；白名单
