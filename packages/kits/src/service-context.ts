@@ -23,6 +23,7 @@ import { configureLogger } from './foundation/logger.js'
 import { Scheduler } from './foundation/scheduler.js'
 import { Db } from './infrastructure/database.js'
 import { EmailClient } from './infrastructure/email/email.client.js'
+import { FileClient } from './infrastructure/file/file.client.js'
 import { LarkClient } from './infrastructure/lark/lark.client.js'
 import { LarkNotifyClient } from './infrastructure/lark-notify/lark-notify.client.js'
 import { Notifier } from './infrastructure/notifier.js'
@@ -32,6 +33,7 @@ import { QueueManager } from './infrastructure/queue.js'
 import { RateLimiter } from './infrastructure/rate-limit/rate-limiter.js'
 import { RedisStore } from './infrastructure/redis-store.js'
 import { StreamHub } from './infrastructure/stream/stream-hub.js'
+import { Telemetry } from './infrastructure/telemetry/telemetry.js'
 import { SessionStore } from './infrastructure/session-store.js'
 import { TokenSigner } from './infrastructure/token-signer.js'
 
@@ -82,10 +84,11 @@ export const createServiceContext = (config: ServiceContextConfig = {}): AppCont
     ctx.addConstant(LarkConfig, LarkConfigSchema.parse(config.lark))
     ctx.addService(LarkClient)
   }
-  // 通知模块：notify 分片存在时装配 Notifier 编排门面 + EmailClient（LarkNotifyClient 需 lark 分片）
+  // 通知模块：notify 分片存在时装配 Notifier 编排门面 + 文件输出（默认）+ EmailClient（LarkNotifyClient 需 lark 分片）
   if (config.notify !== undefined) {
     ctx.addConstant(NotifyConfig, NotifyConfigSchema.parse(config.notify))
     ctx.addService(Notifier)
+    ctx.addService(FileClient)
     ctx.addService(EmailClient)
     if (config.lark !== undefined) {
       ctx.addService(LarkNotifyClient)
@@ -106,6 +109,7 @@ export const createServiceContext = (config: ServiceContextConfig = {}): AppCont
   if (config.auth !== undefined) ctx.addService(PasswordHasher)
   // 基础能力（无配置依赖）
   ctx.addService(IdGeneration)
+  ctx.addService(Telemetry)
   ctx.addLifeCycleService(Scheduler)
 
   return ctx

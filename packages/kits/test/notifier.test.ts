@@ -12,7 +12,7 @@ describe('Notifier（注入客户端编排路由）', () => {
   it('send 按 channel 路由到对应客户端', async () => {
     const lark = mockClient('lark')
     const email = mockClient('email')
-    const notifier = new Notifier(lark as never, email as never)
+    const notifier = new Notifier(undefined, lark as never, email as never)
 
     await notifier.send('lark', { content: '飞书消息' })
     await notifier.send('email', { to: 'a@b.com', subject: 's', text: 't' })
@@ -29,7 +29,7 @@ describe('Notifier（注入客户端编排路由）', () => {
       configured: true,
       send: vi.fn(async () => ({ ok: false, error: '通道未配置：lark' })),
     }
-    const notifier = new Notifier(lark, mockClient('email') as never)
+    const notifier = new Notifier(undefined, lark, mockClient('email') as never)
 
     const result = await notifier.send('lark', { content: 'x' })
     expect(result).toEqual({ ok: false, error: '通道未配置：lark' })

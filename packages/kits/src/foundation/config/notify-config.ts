@@ -8,6 +8,12 @@ import { z } from 'zod'
  * 第一版实现 lark（飞书，基于 LarkClient）与 email；钉钉 / 企业微信段预留。
  */
 export const NotifyConfigSchema = z.object({
+  /** 文件输出通道（默认兜底）：通知内容追加写入文件；path 缺省 logs/alerts.log */
+  file: z
+    .object({
+      path: z.string().default('logs/alerts.log'),
+    })
+    .optional(),
   /** 飞书通知目标：基于 LarkClient（官方 SDK）发文本消息到该接收人（open_id / chat_id 等） */
   lark: z
     .object({

@@ -1,9 +1,10 @@
 import { Inject, Injectable, Optional } from '@repo/di'
 import { EmailClient } from './email/email.client.js'
+import { FileClient } from './file/file.client.js'
 import { LarkNotifyClient } from './lark-notify/lark-notify.client.js'
 
 /** 可用通知通道（第一版；钉钉 / 企业微信预留） */
-export type NotifyChannel = 'lark' | 'email'
+export type NotifyChannel = 'file' | 'lark' | 'email'
 
 /** 各通道入参（调用方按通道组装） */
 export type NotifyPayload =
@@ -37,6 +38,9 @@ export interface NotifyClient {
 @Injectable()
 export class Notifier {
   constructor(
+    @Inject(FileClient)
+    @Optional()
+    private readonly file?: FileClient,
     @Inject(LarkNotifyClient)
     @Optional()
     private readonly lark?: LarkNotifyClient,
@@ -48,6 +52,10 @@ export class Notifier {
 
   async send(channel: NotifyChannel, payload: NotifyPayload): Promise<SendResult> {
     switch (channel) {
+      case 'file':
+        return this.file
+          ? this.file.send(payload)
+          : { ok: false, error: '通道未配置：file' }
       case 'lark':
         return this.lark
           ? this.lark.send(payload)
