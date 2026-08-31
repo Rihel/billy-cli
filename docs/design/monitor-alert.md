@@ -31,10 +31,10 @@
 | 通知能力（通用） | `packages/kits/src/infrastructure/`（**独立文档** [notifier.md](./notifier.md)：`notifier.ts` 门面（DI 注入通知客户端）+ `lark/`（LarkClient 官方 SDK 封装）+ `lark-notify/`（LarkNotifyClient）+ `email/`（EmailClient）**各为平级模块** + LarkConfig / NotifyConfig 分片） |
 | 契约（schema） | `packages/shared/src/schema/monitor.schema.ts`（AlertRule / AlertLog / 请求 DTO），`schema/index.ts` 导出 |
 | 实体 | `apps/server/src/database/entities/{alert-rule,alert-log}-entity.ts`，`main.ts` 注入 `entities` + `db:gen` 生成迁移 |
-| 业务 | `apps/server/src/modules/monitor/{errors,repository,service,config,index}.ts`（`AlertRuleService` 规则 CRUD + `MonitorService` 告警核心：匹配 / 限频 / 调 `Notifier` 发送 / 落日志） |
+| 业务 | `apps/server/src/modules/monitor/{errors,repository,service,config,index}.ts`（`AlertRuleService` 规则 CRUD + `AlertTrigger` 告警触发：匹配 / 限频 / 调 `Notifier` 发送 / 落日志） |
 | 告警配置 | `modules/monitor/config.ts` 的 `MonitorConfig`（env：`ALERT_ENABLED` / `ALERT_EMAIL_TO` 告警默认接收人；通道接入点本身在 `NotifyConfig`） |
 | Hono 路由 | `apps/server/src/features/monitor.ts`：`/monitor/rule/*`、`/monitor/log/*`、`/monitor/test`、`/monitor/health`（admin 鉴权） |
-| 告警接入 | `main.ts` 的 `app.onError` 闭包（技术错误 → `MonitorService.notifyError`，异步 fire-and-forget）+ `process` 的 `uncaughtException` / `unhandledRejection` |
+| 告警接入 | `main.ts` 的 `app.onError` 闭包（技术错误 → `AlertTrigger.notifyError`，异步 fire-and-forget）+ `process` 的 `uncaughtException` / `unhandledRejection` |
 | SDK | `packages/sdk/src/server.client.ts` 的 `monitor` 段 |
 | admin 页面 | `apps/admin/src/app/main/monitor/{rules,logs}/page.tsx` + `AppMenu.tsx` 菜单（系统设置组下） |
 | 依赖 | monitor 模块**零新增依赖**（发送由 kits Notifier 承担，其依赖 nodemailer 归 kits） |
@@ -79,7 +79,7 @@
 
 ## 4. 关键设计
 
-### 4.1 规则匹配（MonitorService）
+### 4.1 规则匹配（AlertTrigger）
 
 `notifyError(error, context?)`：
 
@@ -111,7 +111,7 @@ monitor **不实现发送**：规则 channels 中的 `lark` 对应通知模块�
 
 ### 4.5 告警接入（不改变既有错误映射）
 
-- `app.onError`：在既有 `errorHandler` 同时调用 `MonitorService.notifyError(error, { path, requestId })`
+- `app.onError`：在既有 `errorHandler` 同时调用 `AlertTrigger.notifyError(error, { path, requestId })`
   （异步 fire-and-forget，不阻塞响应、失败不影响返回）；
 - `process.on('uncaughtException' | 'unhandledRejection')`：notifyError + 记日志
   （uncaughtException 记录后按 Node 默认行为退出，避免进程悬挂）。
@@ -120,7 +120,7 @@ monitor **不实现发送**：规则 channels 中的 `lark` 对应通知模块�
 
 ```ts
 // admin 后台建规则：type=business、matchCodes=[3101]、channels=[lark,email]
-// 业务方抛 AlertRuleNotFoundError → MonitorService 匹配 → 调 Notifier 推送 + 落 AlertLog
+// 业务方抛 AlertRuleNotFoundError → AlertTrigger 匹配 → 调 Notifier 推送 + 落 AlertLog
 // curl -H 'Authorization: Bearer <admin-token>' /monitor/health
 ```
 
@@ -128,7 +128,7 @@ monitor **不实现发送**：规则 channels 中的 `lark` 对应通知模块�
 
 - **apps/server 引入 vitest**（devDep + `test` script，补 server 测试基建）：
   - `AlertRuleService`：CRUD、name 唯一冲突（3102）、查无（3101）；
-  - `MonitorService`：规则匹配（codes / keywords / level）、默认规则兜底、限频去重、
+  - `AlertTrigger`：规则匹配（codes / keywords / level）、默认规则兜底、限频去重、
     调 Notifier 与 AlertLog 落库（mock Notifier / repository）。
 - **kits**：通知模块测试见 [notifier.md](./notifier.md)（各适配器独立测）。
 - 端到端：`/monitor/health`、规则 CRUD + 测试告警触发。

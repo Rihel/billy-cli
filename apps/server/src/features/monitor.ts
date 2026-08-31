@@ -13,7 +13,7 @@ import { Hono } from 'hono';
 import { makeRequireAdminAuth } from '../lib/authentication.js';
 import { jsonBody, success } from '../lib/http.js';
 import { AlertRuleService } from '../modules/monitor/index.js';
-import { MonitorService } from '../modules/monitor/index.js';
+import { AlertTrigger } from '../modules/monitor/index.js';
 import { AlertLogRepository } from '../modules/monitor/index.js';
 
 /**
@@ -25,7 +25,7 @@ import { AlertLogRepository } from '../modules/monitor/index.js';
  */
 export const makeMonitorRoutes = (runtime: AppContext) => {
   const alertRuleService = runtime.get(AlertRuleService);
-  const monitorService = runtime.get(MonitorService);
+  const alertTrigger = runtime.get(AlertTrigger);
   const alertLogRepository = runtime.get(AlertLogRepository);
   const requireAdminAuth = makeRequireAdminAuth(runtime);
   const routes = new Hono();
@@ -86,7 +86,7 @@ export const makeMonitorRoutes = (runtime: AppContext) => {
     })
     .post('/test', jsonBody(TestAlertSchema), async (context) => {
       const input = context.req.valid('json');
-      return success(context, await monitorService.testNotify(input));
+      return success(context, await alertTrigger.testNotify(input));
     });
 
   return routes;

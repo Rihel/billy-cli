@@ -6,7 +6,7 @@ vi.mock('@repo/kits', async (importOriginal) => {
   return { ...actual, Transactional: () => () => () => {} }
 })
 
-import { MonitorService } from '../src/modules/monitor/monitor.service.js'
+import { AlertTrigger } from '../src/modules/monitor/alert-trigger.js'
 import type { AlertRuleRepository } from '../src/modules/monitor/alert-rule.repository.js'
 import type { AlertLogRepository } from '../src/modules/monitor/alert-log.repository.js'
 import type { Notifier } from '@repo/kits'
@@ -47,7 +47,7 @@ const createService = (overrides: {
   } as unknown as Notifier
   const larkNotify = { configured: true, send: vi.fn() } as unknown as LarkNotifyClient
   const email = { configured: true, send: vi.fn() } as unknown as EmailClient
-  const service = new MonitorService(
+  const service = new AlertTrigger(
     { enabled, emailTo: 'ops@corp.com' },
     ruleRepository,
     logRepository,
@@ -58,7 +58,7 @@ const createService = (overrides: {
   return { service, ruleRepository, logRepository, notifier, larkNotify, email }
 }
 
-describe('MonitorService（规则匹配 → 限频 → 通知 → 落审计）', () => {
+describe('AlertTrigger（规则匹配 → 限频 → 通知 → 落审计）', () => {
   beforeEach(() => {
     vi.clearAllMocks()
   })

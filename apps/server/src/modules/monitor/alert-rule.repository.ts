@@ -35,7 +35,7 @@ export class AlertRuleRepository {
     return repo.findOneBy({ name })
   }
 
-  /** 全部启用规则（MonitorService 告警匹配用，规则表数据量小，全量内存匹配） */
+  /** 全部启用规则（AlertTrigger 告警匹配用，规则表数据量小，全量内存匹配） */
   async findAllEnabled(): Promise<AlertRuleEntity[]> {
     const repo = await this.repo()
     return repo.findBy({ enabled: true })

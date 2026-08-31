@@ -41,13 +41,13 @@ const simpleHash = (input: string): string => {
 }
 
 /**
- * 告警核心服务：规则匹配 → 限频防风暴 → 经 Notifier 发送 → 落 AlertLog 审计。
+ * 告警触发 bean（独立职责）：规则匹配 → 限频防风暴 → 经 Notifier 发送 → 落 AlertLog 审计。
  *
- * 发送能力归通知模块（LarkClient / LarkNotifyClient / EmailClient / Notifier），
- * 本服务只做「规则 / 匹配 / 触发 / 记录」。
+ * 规则管理在 `AlertRuleService`；发送能力归通知模块（LarkClient / LarkNotifyClient /
+ * EmailClient / Notifier）。本 bean 只做「规则匹配 / 触发 / 记录」。
  */
 @Injectable()
-export class MonitorService {
+export class AlertTrigger {
   /** 限频表：`${ruleId}:${channel}:${contentHash}` → 上次发送时间戳（进程内，单实例） */
   private readonly throttleMap = new Map<string, number>()
 

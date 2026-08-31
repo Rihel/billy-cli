@@ -32,7 +32,7 @@ import {
   AlertLogRepository,
   AlertRuleRepository,
   AlertRuleService,
-  MonitorService,
+  AlertTrigger,
   monitorConfig,
   MonitorConfig,
 } from './modules/monitor/index.js';
@@ -95,7 +95,7 @@ export const runtime: AppContext = createServiceContext({
   .addService(TodoService)
   .addService(AdminService)
   .addService(AlertRuleService)
-  .addService(MonitorService);
+  .addService(AlertTrigger);
 
 export const makeApp = () => {
   const app = new Hono();
@@ -118,7 +118,7 @@ export const makeApp = () => {
   app.onError((error, context) => {
     // 告警接入：技术错误异步通知（fire-and-forget，失败不影响错误响应）
     try {
-      void runtime.get(MonitorService).notifyError(error, {
+      void runtime.get(AlertTrigger).notifyError(error, {
         path: context.req.path,
         requestId: context.res.headers.get('X-Request-Id') ?? undefined,
       });
@@ -149,7 +149,7 @@ export const program = async () => {
   process.on('uncaughtException', (error) => {
     logger.error('未捕获异常', { error });
     try {
-      void runtime.get(MonitorService).notifyError(error);
+      void runtime.get(AlertTrigger).notifyError(error);
     } catch {
       // 告警链路异常不影响退出
     }
@@ -158,7 +158,7 @@ export const program = async () => {
   process.on('unhandledRejection', (reason) => {
     logger.error('未处理的 Promise 拒绝', { error: reason });
     try {
-      void runtime.get(MonitorService).notifyError(reason);
+      void runtime.get(AlertTrigger).notifyError(reason);
     } catch {
       // 忽略
     }
