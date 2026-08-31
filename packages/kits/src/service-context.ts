@@ -7,8 +7,12 @@ import {
   DbConfigSchema,
   JwtConfig,
   JwtConfigSchema,
+  LarkConfig,
+  LarkConfigSchema,
   LoggerConfig,
   LoggerConfigSchema,
+  NotifyConfig,
+  NotifyConfigSchema,
   RedisConfig,
   RedisConfigSchema,
   StorageConfig,
@@ -18,6 +22,10 @@ import { IdGeneration } from './foundation/id-generation.js'
 import { configureLogger } from './foundation/logger.js'
 import { Scheduler } from './foundation/scheduler.js'
 import { Db } from './infrastructure/database.js'
+import { EmailClient } from './infrastructure/email/email.client.js'
+import { LarkClient } from './infrastructure/lark/lark.client.js'
+import { LarkNotifyClient } from './infrastructure/lark-notify/lark-notify.client.js'
+import { Notifier } from './infrastructure/notifier.js'
 import { ObjectStorage } from './infrastructure/object-storage/object-storage.js'
 import { PasswordHasher } from './infrastructure/password-hasher.js'
 import { QueueManager } from './infrastructure/queue.js'
@@ -35,6 +43,8 @@ export interface ServiceContextConfig {
   storage?: z.input<typeof StorageConfigSchema>
   auth?: z.input<typeof AuthConfigSchema>
   logger?: z.input<typeof LoggerConfigSchema>
+  notify?: z.input<typeof NotifyConfigSchema>
+  lark?: z.input<typeof LarkConfigSchema>
 }
 
 /**
@@ -67,6 +77,8 @@ export const createServiceContext = (config: ServiceContextConfig = {}): AppCont
   if (config.storage !== undefined) ctx.addConstant(StorageConfig, StorageConfigSchema.parse(config.storage))
   if (config.auth !== undefined) ctx.addConstant(AuthConfig, AuthConfigSchema.parse(config.auth))
   if (config.logger !== undefined) ctx.addConstant(LoggerConfig, loggerConfig)
+  if (config.notify !== undefined) ctx.addConstant(NotifyConfig, NotifyConfigSchema.parse(config.notify))
+  if (config.lark !== undefined) ctx.addConstant(LarkConfig, LarkConfigSchema.parse(config.lark))
 
   // 基础设施（按所需配置存在注册；缺失分片 → 组件不装配，用了即 DI 报错）
   if (config.db !== undefined) ctx.addLifeCycleService(Db)
@@ -80,6 +92,17 @@ export const createServiceContext = (config: ServiceContextConfig = {}): AppCont
   if (config.redis !== undefined && config.storage !== undefined) ctx.addLifeCycleService(ObjectStorage)
   if (config.jwt !== undefined) ctx.addService(TokenSigner)
   if (config.auth !== undefined) ctx.addService(PasswordHasher)
+  // 飞书（Lark）：lark 分片存在 → 官方 SDK 封装客户端
+  if (config.lark !== undefined) ctx.addService(LarkClient)
+  // 通知模块：notify 分片存在时装配 Notifier 编排门面；各通道客户端按「所需配置存在」注册
+  if (config.notify !== undefined) {
+    ctx.addService(Notifier)
+    ctx.addService(EmailClient)
+  }
+  if (config.notify !== undefined && config.lark !== undefined) {
+    // LarkNotifyClient 依赖 LarkClient（官方 SDK）+ NotifyConfig.lark（通知目标）
+    ctx.addService(LarkNotifyClient)
+  }
   // 基础能力（无配置依赖）
   ctx.addService(IdGeneration)
   ctx.addLifeCycleService(Scheduler)
