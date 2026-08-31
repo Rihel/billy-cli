@@ -21,6 +21,7 @@ import { Db } from './infrastructure/database.js'
 import { ObjectStorage } from './infrastructure/object-storage/object-storage.js'
 import { PasswordHasher } from './infrastructure/password-hasher.js'
 import { QueueManager } from './infrastructure/queue.js'
+import { RateLimiter } from './infrastructure/rate-limit/rate-limiter.js'
 import { RedisStore } from './infrastructure/redis-store.js'
 import { StreamHub } from './infrastructure/stream/stream-hub.js'
 import { SessionStore } from './infrastructure/session-store.js'
@@ -73,6 +74,7 @@ export const createServiceContext = (config: ServiceContextConfig = {}): AppCont
     ctx.addLifeCycleService(RedisStore)
     ctx.addLifeCycleService(QueueManager)
     ctx.addLifeCycleService(StreamHub)
+    ctx.addService(RateLimiter)
   }
   if (config.redis !== undefined && config.jwt !== undefined) ctx.addLifeCycleService(SessionStore)
   if (config.redis !== undefined && config.storage !== undefined) ctx.addLifeCycleService(ObjectStorage)

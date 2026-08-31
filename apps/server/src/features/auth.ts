@@ -14,6 +14,7 @@ import {
   makeRequireAuth,
 } from '../lib/authentication.js';
 import { jsonBody, success } from '../lib/http.js';
+import { makeRateLimit } from '../lib/rate-limit.js';
 import { requestContext } from '../lib/request-context.js';
 
 const currentUserId = (): string => {
@@ -27,14 +28,28 @@ const currentUserId = (): string => {
 export const makeAuthRoutes = (runtime: AppContext) => {
   const authService = runtime.get(AuthService);
   const requireAuth = makeRequireAuth(runtime);
+  // 敏感接口限流（按 IP 固定窗口，白名单豁免；防暴力破解 / 撞库）
+  const loginRateLimit = makeRateLimit(runtime, { scope: 'login' });
+  const registerRateLimit = makeRateLimit(runtime, { scope: 'register' });
+  const forgotPasswordRateLimit = makeRateLimit(runtime, {
+    scope: 'forgot-password',
+  });
+  const resetPasswordRateLimit = makeRateLimit(runtime, {
+    scope: 'reset-password',
+  });
   const routes = new Hono();
 
   routes
-    .post('/register', jsonBody(RegisterSchema), async (context) => {
-      const input = context.req.valid('json');
-      return success(context, await authService.register(input));
-    })
-    .post('/login', jsonBody(LoginSchema), async (context) => {
+    .post(
+      '/register',
+      registerRateLimit,
+      jsonBody(RegisterSchema),
+      async (context) => {
+        const input = context.req.valid('json');
+        return success(context, await authService.register(input));
+      },
+    )
+    .post('/login', loginRateLimit, jsonBody(LoginSchema), async (context) => {
       const input = context.req.valid('json');
       return success(context, await authService.login(input));
     })
@@ -46,14 +61,24 @@ export const makeAuthRoutes = (runtime: AppContext) => {
       }
       return success(context, { success: true });
     })
-    .post('/forgot-password', jsonBody(ForgotPasswordSchema), async (context) => {
-      const input = context.req.valid('json');
-      return success(context, await authService.forgotPassword(input));
-    })
-    .post('/reset-password', jsonBody(ResetPasswordSchema), async (context) => {
-      const input = context.req.valid('json');
-      return success(context, await authService.resetPassword(input));
-    })
+    .post(
+      '/forgot-password',
+      forgotPasswordRateLimit,
+      jsonBody(ForgotPasswordSchema),
+      async (context) => {
+        const input = context.req.valid('json');
+        return success(context, await authService.forgotPassword(input));
+      },
+    )
+    .post(
+      '/reset-password',
+      resetPasswordRateLimit,
+      jsonBody(ResetPasswordSchema),
+      async (context) => {
+        const input = context.req.valid('json');
+        return success(context, await authService.resetPassword(input));
+      },
+    )
     .post('/get-me', requireAuth, async (context) =>
       success(context, await authService.getMe({ userId: currentUserId() })),
     )

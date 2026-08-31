@@ -3,7 +3,7 @@ import { AppErrorCodes, ResponseUtils, parseZodIssues } from '@repo/shared';
 import type { Context, Env } from 'hono';
 import type { ZodType } from 'zod';
 
-type ErrorHttpStatus = 400 | 401 | 403 | 404 | 409 | 500;
+type ErrorHttpStatus = 400 | 401 | 403 | 404 | 409 | 429 | 500;
 
 export interface ErrorDescriptor {
   value: number;
@@ -18,6 +18,7 @@ const toErrorHttpStatus = (status: unknown): ErrorHttpStatus => {
     case 403:
     case 404:
     case 409:
+    case 429:
     case 500:
       return status;
     default:

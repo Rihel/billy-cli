@@ -17,6 +17,7 @@ import {
   makeRequireAdminAuth,
 } from '../lib/authentication.js';
 import { jsonBody, success } from '../lib/http.js';
+import { makeRateLimit } from '../lib/rate-limit.js';
 import { requestContext } from '../lib/request-context.js';
 
 const currentAdminId = (): string => {
@@ -30,9 +31,17 @@ const currentAdminId = (): string => {
 export const makeAdminRoutes = (runtime: AppContext) => {
   const adminService = runtime.get(AdminService);
   const requireAdminAuth = makeRequireAdminAuth(runtime);
+  // 管理员登录限流（独立 scope，防后台爆破）
+  const adminLoginRateLimit = makeRateLimit(runtime, {
+    scope: 'admin-login',
+  });
   const routes = new Hono();
 
-  routes.post('/login', jsonBody(AdminLoginSchema), async (context) => {
+  routes.post(
+    '/login',
+    adminLoginRateLimit,
+    jsonBody(AdminLoginSchema),
+    async (context) => {
     const input = context.req.valid('json');
     return success(context, await adminService.login(input));
   });
