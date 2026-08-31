@@ -1,6 +1,7 @@
 'use client'
 
 import {
+  AlertOutlined,
   DashboardOutlined,
   SafetyOutlined,
   UserOutlined,
@@ -68,6 +69,21 @@ export const AppMenu = ({ mode = 'inline', ...props }: AppMenuProps) => {
                     label: '管理员管理',
                     key: '/main/system/admins',
                     icon: <SafetyOutlined />,
+                  },
+                  {
+                    label: '监控告警',
+                    key: '/main/monitor',
+                    icon: <AlertOutlined />,
+                    children: [
+                      {
+                        label: '告警规则',
+                        key: '/main/monitor/rules',
+                      },
+                      {
+                        label: '告警记录',
+                        key: '/main/monitor/logs',
+                      },
+                    ],
                   },
                 ],
               },

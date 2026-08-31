@@ -91,6 +91,16 @@ export const AppErrorCodes = createDict({
     value: 3001,
     http: 404,
   },
+  AlertRuleNotFound: {
+    label: '告警规则不存在',
+    value: 3101,
+    http: 404,
+  },
+  AlertRuleNameTaken: {
+    label: '告警规则名称已存在',
+    value: 3102,
+    http: 409,
+  },
   InvalidInput: {
     label: '参数校验失败',
     value: 4001,

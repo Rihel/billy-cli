@@ -37,6 +37,16 @@ import {
   TodoModel,
   UpdateAdminDto,
   UpdateInfoDto,
+  CreateAlertRuleDto,
+  UpdateAlertRuleDto,
+  GetAlertRuleDetailDto,
+  RemoveAlertRuleDto,
+  PageQueryAlertRuleDto,
+  PageQueryAlertLogDto,
+  TestAlertDto,
+  AlertRuleModel,
+  AlertLogModel,
+  MonitorHealthModel,
   UpdateTodoDto,
   UpdateUserDto,
   UserModel,
@@ -209,5 +219,43 @@ export class ServerClient extends HttpClient<BearerTokenCredentials> {
 
     getTemporaryCredentials: () =>
       this.post<StorageStsModel>('/storage/get-temporary-credentials'),
+  }
+
+  /* ========== 监控告警 ========== */
+
+  monitor = {
+    rule: {
+      create: (data: CreateAlertRuleDto) =>
+        this.post<AlertRuleModel>('/monitor/rule/create', data),
+
+      pageQuery: (data: PageQueryAlertRuleDto) =>
+        this.post<AppPageQueryResponse<AlertRuleModel>>(
+          '/monitor/rule/page-query',
+          data,
+        ),
+
+      detail: (data: GetAlertRuleDetailDto) =>
+        this.post<AlertRuleModel>('/monitor/rule/detail', data),
+
+      update: (data: UpdateAlertRuleDto) =>
+        this.post<AlertRuleModel>('/monitor/rule/update', data),
+
+      remove: (data: RemoveAlertRuleDto) =>
+        this.post<AlertRuleModel>('/monitor/rule/remove', data),
+    },
+
+    log: {
+      pageQuery: (data: PageQueryAlertLogDto) =>
+        this.post<AppPageQueryResponse<AlertLogModel>>(
+          '/monitor/log/page-query',
+          data,
+        ),
+    },
+
+    test: (data: TestAlertDto) =>
+      this.post<SuccessResultModel>('/monitor/test', data),
+
+    health: () =>
+      this.post<MonitorHealthModel>('/monitor/health', undefined, { skipAuth: true }),
   }
 }

@@ -327,6 +327,7 @@ Zod schema 单一事实源，同时派生 TypeScript 类型（`*.schema.ts` 导�
   `id` nanoid 主键 + `createdAt` / `updatedAt` / 软删除 `deletedAt`）
 - `infrastructure/`：`Db` / `RedisStore` / `QueueManager` / `ObjectStorage` /
   `StreamHub` / `RateLimiter`（基于 rate-limiter-flexible，IP 白名单用 ipaddr.js）/
+  `LarkClient`（飞书官方 SDK 封装）/ `LarkNotifyClient` / `EmailClient` / `Notifier`（通知编排）/
   `TokenSigner` / `SessionStore` / `PasswordHasher`（外部资源门面 + 生命周期）
 - `foundation/`：`config/`（分片配置 bean：`DbConfig` / `RedisConfig` / `JwtConfig` /
   `StorageConfig` / `AuthConfig` / `LoggerConfig`，schema 校验 + 通用默认值，按需注入门面）+
@@ -548,10 +549,26 @@ sidebar / toast / chart 等），Tailwind 4 主题变量由 `globals.css` 提供
 | `POST /storage/get-download-url`     | 获取下载预签名 URL | 是 |
 | `POST /storage/get-temporary-credentials` | 获取 STS 临时凭证 | 是 |
 | `POST /sse/subscribe`              | SSE 订阅（长连接推流，body `{ channels: [...] }`） | 是 |
+| `POST /monitor/health`             | 健康检查（DB / Redis 探活，容器 / 云平台探针） | 否 |
+| `POST /monitor/rule/create`        | 创建告警规则 | 是* |
+| `POST /monitor/rule/page-query`    | 告警规则分页查询 | 是* |
+| `POST /monitor/rule/detail`        | 告警规则详情 | 是* |
+| `POST /monitor/rule/update`        | 更新告警规则 | 是* |
+| `POST /monitor/rule/remove`        | 删除告警规则 | 是* |
+| `POST /monitor/log/page-query`     | 告警发送记录分页 | 是* |
+| `POST /monitor/test`               | 测试通知（手动验证通道） | 是* |
 
 > SSE 事件通过 `StreamHub.publish(channel, event)` 推送：业务模块 `runtime.get(StreamHub)` 后
 > `publish('task:42', { event: 'progress', data: {...} })`；身份频道 `user:{userId}` 自动强制订阅，
 > 业务频道需在 `makeStreamRoutes(runtime, { allowChannel })` 注入白名单校验。
+
+**监控告警**：`monitor` 业务模块（admin「系统设置 → 监控告警」管理）——规则存 `alert_rules`
+表（类型 tech/business、错误码 / 关键字匹配、通道 lark/email、限频窗口、启用开关），
+技术错误（`errorHandler` + `uncaughtException`/`unhandledRejection`）与业务错误码自动匹配
+规则 → 经通知模块（`Notifier` → `LarkNotifyClient` / `EmailClient`）发送 → 每次发送落
+`alert_logs` 审计表（admin 可查）。规则表为空时技术告警走配置通道兜底（开箱即用）。
+告警配置 env：`ALERT_ENABLED`（总开关，默认 true）/ `ALERT_EMAIL_TO`（默认邮件接收人）/
+`ALERT_SMTP_*` / `LARK_APP_ID` + `LARK_APP_SECRET` + `LARK_NOTIFY_RECEIVE_ID`（飞书通知目标）。
 
 **接口限流**：`/auth/login`、`/auth/register`、`/auth/forgot-password`、`/auth/reset-password`、
 `/admin/login` 按 IP 固定窗口限流（默认 20 次 / 60s，超限 429 + `Retry-After`）；白名单
