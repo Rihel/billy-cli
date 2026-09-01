@@ -112,6 +112,6 @@ export const AdminStatusSchema = z.enum(['enabled', 'disabled'])
 ## 6. 前端展示
 
 - admin 端标签：`<DictTag dict={UserStatus} value={record.status} />`
-  （`@repo/aui` 的 `components/display/DictTag.tsx`）；普通文本取 label 用
+  （`@repo/ui` 的 `components/display.tsx` 内 `DictTag`）；普通文本取 label 用
   `UserStatus.getLabel(value)`。
 - 下拉选项直接用 `UserStatus.options`，需要「全部」时用 `withAllOption(UserStatus)`。

@@ -15,11 +15,11 @@
 skill 描述的是仓库现状：**当 packages / 前端发生变化时，必须同步更新受影响的
 skill**，否则 agent 会按过时规范写代码。触发场景：
 
-- `packages/*` 新增或修改导出：新工具函数、新 schema 基类、新分页策略、新 aui/ui 组件
-- 组件库变化：组件新增 / 改名 / props 变更（`@repo/aui`、`@repo/ui`）
+- `packages/*` 新增或修改导出：新工具函数、新 schema 基类、新分页策略、新 ui 组件
+- 组件库变化：组件新增 / 改名 / props 变更（`@repo/ui`）
 - 文件移动 / 入口改名（**结构性架构变更走第 3 节**）
 - 命令变化：新增 / 修改 package.json scripts（dev / db:gen / test 等）
-- 依赖升级：重要依赖用法变化（zod / typeorm / antd 等）
+- 依赖升级：重要依赖用法变化（zod / typeorm / @tanstack 系等）
 
 更新流程：
 

@@ -83,7 +83,7 @@ token 采用**双存储**，各有分工：
 - 登录 action：调 SDK 登录 → `jar.set(TokenKey, data.token, cookieOptions(7d))` 写 cookie；
   客户端登录页成功后 `saveToken(token)` 写 localStorage（web login 页即是此流程）。
 - 登出：`jar.delete(TokenKey)` + 客户端 `tokenManager.clearCredentials()`。
-- 错误封装：admin 用 `defineAction`（`@repo/aui/action`，返回 `{ ok, data } | { ok: false, error }`）；
+- 错误封装：admin 用 `defineAction`（`@repo/ui/action`，返回 `{ ok, data } | { ok: false, error }`）；
   web 用本地 `wrapAction`（返回 `{ success, data | error }`）。
 - 会话探测：登录页挂载时调 `checkSessionAction`（admin 已有），用 cookie token 调
   `getMe()` 验证有效性，失效则清 cookie——避免与 SSR 守卫互相弹回死循环。

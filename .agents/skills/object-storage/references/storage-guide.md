@@ -45,7 +45,7 @@ OBJECT_STORAGE_ENDPOINT=http://localhost:9000   # MinIO 本地
 
 ### 上传（走预签名直传，不经服务端中转）
 
-核心 hook `useStorage`（`packages/aui/src/components/storage/useStorage.ts`）：
+核心 hook `useStorage`（`packages/ui/src/components/use-storage.ts`）：
 
 ```ts
 const { getPresignedUpload } = useStorageAdapter()
@@ -62,10 +62,10 @@ await fetch(presigned.url, { method: 'PUT', body: file, ... })  // 直传
 - 展示：`formatStorageUrl(key)`（`@/lib/constants`，拼 `NEXT_PUBLIC_STORAGE_URL`）。
 - 下载：`client.storage.getDownloadUrl({ key })` 拿预签名 URL。
 
-## 6. 前端组件（@repo/aui，storage 目录）
+## 6. 前端组件（@repo/ui）
 
 - `StorageProvider`：全局提供 `useStorageAdapter()`（读 SDK 的 storage 段）。
-- `useStorage`：上传核心 hook（customRequest / uploadFile / fileItems）。
+- `useStorage`：上传核心 hook（`uploadFile` / `fileItems`，md5 去重 key + 预签名直传）。
 - `ImageUpload` / `FileUpload` / `FilePreview` / `SortableFileList`：图片 / 文件选择、预览、排序列表。
 - `formatStorageUrl`：key → 可访问 URL。
 

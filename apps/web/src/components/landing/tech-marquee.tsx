@@ -13,7 +13,8 @@ const techStack = [
   'Zod',
   'Tailwind 4',
   'Base UI',
-  'Ant Design 6',
+  'shadcn/ui',
+  'TanStack',
   'Docker',
 ]
 

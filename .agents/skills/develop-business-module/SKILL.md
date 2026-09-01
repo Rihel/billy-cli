@@ -29,7 +29,7 @@ description: 在 Billy 工程中开发完整业务模块（如商品、订单、
 **参考实现**：todo 模块（schema / entity / 业务 `apps/server/src/modules/todo/*` /
 `features/todo.ts` / SDK `todo` 段 / `main/todo/page.tsx`），拿不准直接照抄。
 **每一层实现前先按「实现查找顺序」确认现成能力**：分页 `pageWith` / `cursorPageWith`、
-aui 组件、schema 基类、SDK 既有方法——全部没有才自己写。
+@repo/ui 组件、schema 基类、SDK 既有方法——全部没有才自己写。
 
 ## 参考文件（本 skill 的组成部分）
 

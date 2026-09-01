@@ -22,7 +22,7 @@ billy-cli 是一套**全栈应用 Monorepo 模板**：pnpm + Turbo 构建，Type
 | ORM | TypeORM（`@repo/kits` 的 `createDb` + `apps/server` 的实体 / 迁移，PostgreSQL） |
 | 契约 / 共享 | Zod + 字典 + 响应工具（`@repo/shared`） |
 | 前台 | Next.js 16 App Router + Base UI + shadcn/ui + Tailwind 4（`apps/web`，9840） |
-| 后台 | Next.js 16 + Ant Design 6 + `@repo/aui` + Zustand/Immer + TanStack Query（`apps/admin`，9845） |
+| 后台 | Next.js 16 + `@repo/ui`（shadcn/ui）+ TanStack Query / Table / Form（`apps/admin`，9845） |
 | API 客户端 | `@repo/http-client`（通用 HTTP 客户端：请求 + SSE 流式推送——SSE 部分即 http-stream-client 定位，浏览器 / Node 双环境）+ `@repo/sdk`（业务全类型化 ServerClient） |
 
 ## 3. 分层架构与依赖方向（最重要的心智模型）
@@ -46,8 +46,8 @@ apps/server   Hono 路由工厂（features/，薄边界：Zod 校验 + 调 servi
 @repo/http-client  通用 HTTP 客户端：请求管线 + SSE 客户端（fetch 流 + 状态机，认证凭证体系
                    CredentialsManager / AuthStrategy / CredentialProvider / CredentialResolver，
                    浏览器 / Node 双环境，零第三方依赖）
-apps/web      前台（Base UI + shadcn）
-apps/admin    后台（Ant Design + @repo/aui）
+apps/web      前台（Base UI + shadcn，`@repo/ui`）
+apps/admin    后台（`@repo/ui` + @tanstack/react-table + @tanstack/react-form）
 ```
 
 **依赖方向不可逆**：`shared` 不依赖任何业务包；`di` 不依赖任何业务包；

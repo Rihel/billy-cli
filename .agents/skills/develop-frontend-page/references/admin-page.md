@@ -10,16 +10,15 @@
 'use client'
 
 import { useServerClient } from '@/lib/server-client'
+import { useForm } from '@tanstack/react-form'
 import { useMutation, useQuery } from '@tanstack/react-query'
-import { App, Form, Input } from 'antd'
-import { DataTable, ModalForm, useDisclosure, ... } from '@repo/aui'
+import { DataTable, ModalForm, useDisclosure, ... } from '@repo/ui'
 
 export default function XxxPage() {
-  const { message } = App.useApp()
   const client = useServerClient()
   // 分页状态：page / pageSize / keyword（useState）
   // 弹窗：const dialog = useDisclosure<XxxModel>()
-  // 表单：const [form] = Form.useForm<T>()
+  // 表单：const form = useForm({ defaultValues: {...}, onSubmit: async ({ value }) => {...} })
 
   const { data, isFetching, refetch } = useQuery({
     queryKey: ['xxx', 'pageQuery', { page, pageSize, keyword }],
@@ -29,72 +28,93 @@ export default function XxxPage() {
 }
 ```
 
-## 2. 列表选型
+## 2. 列表选型（@tanstack/react-table）
 
-- **页码分页**（管理页默认）：`DataTable<T>`，传 `columns` / `dataSource` / `page` /
+- **页码分页**（管理页默认）：`DataTable<T>`，传 `columns` / `data` / `page` /
   `pageSize` / `total` / `onPageChange`（参考 system/users 页）。
+  列定义用 `DataTableColumnDef<T>`：`header` + `accessorKey` + `cell: ({ row, getValue })`，
+  列宽用 `meta: { width }`。
 - **游标 / 无限滚动**：`DataList<T>` + `useInfiniteQuery`，`getNextPageParam`
   取 `nextCursor`，数据 `pages.flatMap((r) => r.items)`（参考 todo 页）。
 - 操作列：`TableActions` 包裹 `IconText`（编辑）、`ConfirmAction`（删除确认，`danger`）。
 
-## 3. 表单：ModalForm（声明式）
+## 3. 表单：@tanstack/react-form（声明式）
+
+表单实例在页面用 `useForm` 创建，**onSubmit 写在 useForm 里**（提交成功后自己
+`toastSuccess` + 关闭弹窗 + `refetch`）；`ModalForm` / `DrawerForm` / `FormRenderer`
+只负责渲染与提交触发。不要给 `useForm` 写显式泛型（本版本需 12 个类型参数），
+用 `defaultValues` 推断；类型不一致时给 `defaultValues` 加 `as XxxForm` 断言。
 
 ```tsx
-<ModalForm<T>
+const dialog = useDisclosure()
+const form = useForm({
+  defaultValues: { email: '', password: '' } as CreateXxxForm,
+  onSubmit: async ({ value }) => {
+    await client.xxx.create(value)
+    toastSuccess('创建成功')
+    refetch()
+    dialog.close()
+  },
+})
+
+<ModalForm<CreateXxxForm>
   title="新建 Xxx"
   open={dialog.isOpen}
   form={form}
   items={[
-    { name: 'email', label: '邮箱', formItemProps: { rules: [{ required: true }, { type: 'email' }] } },
-    { name: 'password', label: '初始密码', widget: 'password', formItemProps: { rules: [{ required: true }, { min: 6 }] } },
-    { name: 'status', label: '状态', widget: 'select', props: { options: XxxStatus.options } },
+    { name: 'email', label: '邮箱', required: true, validate: (v) => (v && !EMAIL_PATTERN.test(String(v))) ? '请输入有效邮箱' : undefined },
+    { name: 'password', label: '初始密码', widget: 'password', required: true, validate: (v) => (typeof v === 'string' && v.length > 0 && v.length < 6) ? '至少 6 位' : undefined },
+    { name: 'status', label: '状态', widget: 'select', props: { options: [{ label: '启用', value: 'enabled' }, { label: '禁用', value: 'disabled' }] } },
     {
       name: 'avatar', label: '头像',
-      // ImageUpload 是受控组件（value/onChange），必须显式接 Form 字段值，否则字段拿不到值
-      render: ({ form }) => (
+      // 受控组件（ImageUpload 等）必须在 render 里手动接 value / onChange
+      render: ({ values, field }) => (
         <ImageUpload
           sizeLimit={2}
-          className="w-28 h-28"
-          value={form.getFieldValue('avatar')}
-          onChange={(key) => form.setFieldValue('avatar', key)}
+          className="size-28"
+          value={(values.avatar as string | null | undefined) ?? undefined}
+          onChange={(key) => field.handleChange(key)}
         />
       ),
     },
   ]}
   onCancel={dialog.close}
-  onError={(error) => message.error(error instanceof Error ? error.message : '操作失败')}
-  onSubmit={async (values) => { await client.xxx.create(values); message.success('创建成功'); refetch(); dialog.close() }}
 />
 ```
 
-- `items` 声明式：`name` + `label` + `widget`（`'password'` / `'checkbox'` / `'select'` 等）+
-  `props`；复杂表单项用 `render: ({ form, values, disabled }) => <自定义 />`。
-  `render` 上下文含 `form` / `values` / `disabled`（见 `packages/aui/src/components/form/FormRenderer.tsx`）。
-- **受控组件（如 ImageUpload）必须在 render 里接 `value`/`onChange` 手动同步 Form 字段**。
+- `items` 声明式：`name` + `label` + `widget`（`'input'` / `'password'` / `'textarea'` /
+  `'number'` / `'select'` / `'radio'` / `'checkbox'` / `'switch'` / `'date'`）+ `props`
+  （`select` 用 `options` + `multiple`）；复杂表单项用 `render: ({ form, field, values, disabled })`。
+- 校验：`required: true | '错误文案'`（必填）+ `validate: (value, values) => string | undefined`
+  （自定义校验，可用 `values` 做跨字段判断，如两次密码一致）。
 - 弹窗状态统一 `useDisclosure<T>()`（`open` / `close` / `data`）。
-- 编辑场景：`form.setFieldsValue(record)` 预填（users 页的编辑弹窗模式）。
+- 编辑场景：`form.reset(record)` 预填（users 页的编辑弹窗模式）；
+  关闭时 `ModalForm` 自动 `form.reset()` 回到默认值。
+- 字段多 / 需说明文案用 `DrawerForm`（`description` prop 放说明区，参考 monitor/rules 页）。
 
 ## 4. 数据变更与缓存（增删改后必须同步 UI）
 
-- 简单场景：`useMutation` 成功后 `message.success(...)` + `refetch()`。
+- 简单场景：`useMutation` 成功后 `toastSuccess(...)` + `refetch()`。
 - 就地更新（游标列表）：`queryClient.setQueryData(queryKey, (cur) => produce(cur, ...))`，
   用 immer 在 `draft.pages` 上 unshift / splice / Object.assign（todo 页的 prepend/update/remove 模式）。
 - 删除确认：`ConfirmAction`；危险操作用 `danger`。
 
-## 5. 展示辅助（@repo/aui）
+## 5. 展示辅助（@repo/ui）
 
 - `DisplayValue type="date"`（时间格式化）、`DictTag dict={XxxStatus} value={v}`（字典标签）、
-  `EmptyValue`（空值占位）、`IconText`（带图标文字按钮）、`RefreshButton`（刷新）、
-  `PageToolbar`（页头）、`AutoSize`（自适应高度容器）。
+  `EmptyValue`（空值占位）、`Tag color="blue|green|red|..."`（常见预设色名）、`IconText`
+  （带图标文字按钮）、`RefreshButton`（刷新）、`PageToolbar`（页头）、`AutoSize`（自适应高度容器）。
 - 存储类：`ImageUpload` / `FileUpload` / `FilePreview` / `StorageProvider`（参考
-  `packages/aui/src/components/storage/*`）；文件 key 展示前用 `formatStorageUrl`（`@/lib/constants`）。
+  `packages/ui/src/components/*`）；文件 key 展示前用 `formatStorageUrl`（`@/lib/constants`）。
+- 反馈：`toastSuccess` / `toastError` / `toastWarning`（`@repo/ui`，Toaster 已在根布局挂载）；
+  全局 QueryClient 的错误已自动 toast，无需逐处 `message.error`。
 
 ## 6. Admin Server Actions（表单提交走 action 时）
 
 ```ts
 'use server'
-// @repo/aui/action 的 defineAction 统一返回 { ok, data } | { ok: false, error }
-import { defineAction } from '@repo/aui/action'
+// @repo/ui/action 的 defineAction 统一返回 { ok, data } | { ok: false, error }
+import { defineAction } from '@repo/ui/action'
 
 export const saveXxxAction = defineAction(async (input: SaveXxxDto) => {
   const client = createServerClient()
@@ -102,5 +122,5 @@ export const saveXxxAction = defineAction(async (input: SaveXxxDto) => {
 }, { fallbackError: '保存失败' })
 ```
 
-- `defineAction` / `callAction` 用法见 `packages/aui/src/action.ts`；
+- `defineAction` / `callAction` 用法见 `packages/ui/src/action.ts`；
   `callAction(action, input, { onSuccess, onError })` 处理结果。

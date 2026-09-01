@@ -28,21 +28,23 @@
    必须把 `deletedAt` 纳入唯一键（如 `@Unique('uk_user_email', ['email', 'deletedAt'])`）。
 7. **命名**：文件 `kebab-case`；DTO 类型统一 `XxxDto`（`z.infer` 结果）；模型 `XxxModel`；
    实体 `XxxEntity`；类名 PascalCase。
-8. **前端**：admin 页面一律 `'use client'` + `@repo/aui`（DataTable / DataList /
-   ModalForm / ConfirmAction / PageToolbar 等）+ TanStack Query（useQuery / useMutation）+
-   `useServerClient()`；web 用 Base UI + shadcn + Tailwind 4，不引 Ant Design。
+8. **前端**：admin 页面一律 `'use client'` + `@repo/ui`（DataTable / DataList /
+   ModalForm / DrawerForm / ConfirmAction / PageToolbar / 存储组件等）+ TanStack
+   Query（useQuery / useMutation）+ `@tanstack/react-table`（DataTable 列定义）+
+   `@tanstack/react-form`（`useForm` 创建表单实例，ModalForm / DrawerForm 声明式 items）+
+   `useServerClient()`；web 同用 `@repo/ui`（Base UI + shadcn + Tailwind 4）。
+   前端组件统一来自 `@repo/ui`（shadcn/ui 风格）。
 9. **纯类型导入用 `import type`**：`apps/server` 开启 `verbatimModuleSyntax`，值 / 类型
    混用导入会报错；其余 packages 虽未开启，仍统一用 `import type` 区分纯类型，保持风格一致。
 10. **不要重复造轮子（实现查找顺序，最高优先）**：任何功能实现之前，先按以下顺序
     查找现成实现，**全部都没有才允许自己写**：
-    1. **各个包有无实现**：`packages/*`（shared / kits / di / sdk / http-client / ui /
-       aui）里是否已有类似能力（工具函数、schema、字典、服务、组件）。
+    1. **各个包有无实现**：`packages/*`（shared / kits / di / sdk / http-client / ui）里是否已有类似能力（工具函数、schema、字典、服务、组件）。
     2. **所属包内部有无实现**：当前所在包的同级目录是否已有可复用实现，例如
        `shared/src/utils/`（nanoid / dayjs / md5 / tree / dict / zod 等工具）、
-       `kits/src/foundation/`、`aui/src/components/`。先在包内找，别另起炉灶。
+       `kits/src/foundation/`、`ui/src/components/`。先在包内找，别另起炉灶。
     3. **当前依赖的 npm 包有无实现**：查 `package.json` 已声明的依赖是否直接提供该
        能力——lodash、dayjs、zod、typeorm、hono、@repo/di（InversifyJS 门面）、
-       @tanstack/react-query、antd 等都能覆盖大量通用需求，优先用依赖自身能力
+       @tanstack/react-query、zod、typeorm、hono 等都能覆盖大量通用需求，优先用依赖自身能力
        （如分页 `pageWith` /
         `cursorPageWith` 已由 `@repo/kits` 提供，勿在模块内重写；服务端推送 / SSE 用
         `@repo/kits` 的 `StreamHub` + `@repo/http-client` 的 `HttpStreamClient`，勿自写

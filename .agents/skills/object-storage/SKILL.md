@@ -7,7 +7,7 @@ description: 在 Billy 工程中使用对象存储与文件上传下载：S3/COS
 
 前置：先加载必读 skill `billy-dev-foundation`（「不重复造轮子」实现查找顺序见其
 `references/code-conventions.md` 第 10 条——文件读写**先复用 `ObjectStorage` 门面 /
-`@repo/aui` 组件 / `client.storage` SDK**，不自己调 S3 SDK）。
+`@repo/ui` 组件 / `client.storage` SDK**，不自己调 S3 SDK）。
 
 ## 核心要点
 
@@ -18,7 +18,7 @@ description: 在 Billy 工程中使用对象存储与文件上传下载：S3/COS
 - **上传走预签名直传**：前端 `useStorage` 用 `key = md5+ext` 拿预签名 URL → `PUT` 直传，
   业务只存 `key`，不存完整 URL。
 - 展示 / 下载：`formatStorageUrl(key)`（web/admin 的 `@/lib/constants`）。
-- 组件：`FileUpload` / `ImageUpload` / `FilePreview` / `SortableFileList`（`@repo/aui`）。
+- 组件：`FileUpload` / `ImageUpload` / `FilePreview` / `SortableFileList`（`@repo/ui`）。
 
 ## 参考文件（本 skill 的组成部分）
 

@@ -2,7 +2,7 @@
 
 > 一套基于 Hono、InversifyJS 与 Next.js 16 的全栈应用 Monorepo 模板。
 > 后端采用「Hono 薄边界 + 业务模块（apps/server）+ 通用能力封装 @repo/kits（DI 封装于 @repo/di）」，
-> 前端提供两套独立入口：Web（Base UI + shadcn/ui）与 Admin（Ant Design 6）。
+> 前端提供两套独立入口：Web 与 Admin，统一使用 `@repo/ui`（Base UI + shadcn/ui）与 Tailwind 4。
 
 ## 技术栈
 
@@ -10,15 +10,14 @@
 apps/
 ├── server   — Hono 4 HTTP 边界 + 业务模块 + 组合根（端口 9989）
 ├── web      — Next.js 16 App Router + Base UI + shadcn/ui + Tailwind 4（端口 9840）
-└── admin    — Next.js 16 App Router + Ant Design 6 + @repo/aui + Zustand（端口 9845）
+└── admin    — Next.js 16 App Router + @repo/ui + TanStack Query/Table/Form + Zustand（端口 9845）
 packages/
 ├── shared   — Zod schemas + 错误码字典 + 响应工具 + Pino 日志 + 通用工具（前后端共享）
 ├── kits     — 后端通用能力封装：Db / Redis / JWT / ObjectStorage / 队列 / 调度 / 推送 / 限流 / 分页 + createServiceContext（无业务实体）
 ├── di       — DI 门面：@Injectable/@Inject + AppContext 组合根 + 生命周期调度（InversifyJS 8 封装）
 ├── http-client — 通用 HTTP + 鉴权管线客户端（HttpClient / HttpStreamClient / 策略 / 凭证管理器，业务无关）
 ├── sdk      — ServerClient（全类型化业务 API 调用，构建在 @repo/http-client 之上）
-├── ui       — Base UI + shadcn 风格共享组件库（Tailwind 4）
-└── aui      — Ant Design 管理端组件库（表格 / 表单 / 存储 / Server Action 工具）
+└── ui       — Base UI + shadcn 风格共享组件库（Tailwind 4），含 DataTable / ModalForm / 存储组件等管理端组件
 ```
 
 | 层         | 选型                       | 理由                                        |
@@ -29,7 +28,7 @@ packages/
 | API 层     | POST JSON（Hono Routes）   | Zod 边界校验 + 全类型化 SDK                 |
 | ORM        | TypeORM                    | 装饰器实体 + Repository + QueryBuilder      |
 | 前端框架   | Next.js 16 App Router      | RSC + SSR + Server Actions                  |
-| 后台 UI    | Ant Design 6 + @repo/aui   | ProTable 风格表格 / ModalForm 开箱即用      |
+| 后台 UI    | @repo/ui + @tanstack/react-table / react-form | DataTable（tanstack 表格）/ ModalForm 声明式表单开箱即用 |
 | 前台 UI    | Base UI + shadcn/ui        | 无样式原语 + 可定制组件，Tailwind 4 驱动    |
 | 状态管理   | Zustand + Immer（admin）   | 轻量、不可变、无 boilerplate                |
 | 服务端状态 | TanStack Query             | 查询缓存 / 失效 / 重试                      |
@@ -117,7 +116,7 @@ pnpm db:migrate
 ### 启动（开发）
 
 ```bash
-# 终端 1：并行 watch 构建 packages（shared / kits / di / ui / sdk / aui）
+# 终端 1：并行 watch 构建 packages（shared / kits / di / http-client / sdk / ui）
 pnpm dev:pkgs
 
 # 终端 2：启动 Hono 服务（http://localhost:9989）
@@ -159,7 +158,7 @@ pnpm cli -t crud -n product  # 非交互生成 CRUD 业务模块（无 TTY 时�
 | 类型 | 说明 | 生成位置 |
 | --- | --- | --- |
 | `package` | 通用 TypeScript 包（tsdown 构建） | `packages/<name>/` |
-| `client` | Next.js 前端应用（antd 技术栈） | `apps/<name>/` |
+| `client` | Next.js 前端应用（@repo/ui 技术栈） | `apps/<name>/` |
 | `service` | Hono 服务端应用骨架（createServiceContext + TypeORM） | `apps/<name>/` |
 | `crud` | Hono + TypeORM 业务模块（实体 / repository / service / errors / features 路由 / schema） | `apps/server/src/modules/<name>/` 等 |
 
@@ -201,7 +200,7 @@ pnpm cli -t crud -n product  # 非交互生成 CRUD 业务模块（无 TTY 时�
 │   │       └── providers/QueryProvider.tsx  # TanStack Query
 │   └── admin/                           # Next.js 16 管理后台（@app/admin，端口 9845）
 │       └── src/
-│           ├── actions/auth.actions.ts  # Server Actions（@repo/aui defineAction）
+│           ├── actions/auth.actions.ts  # Server Actions（@repo/ui defineAction）
 │           ├── app/
 │           │   ├── auth/                # login / register / forgot-password / reset-password
 │           │   └── main/                # dashboard / todo / system/users / user-center
@@ -241,8 +240,7 @@ pnpm cli -t crud -n product  # 非交互生成 CRUD 业务模块（无 TTY 时�
 │   ├── sdk/                             # @repo/sdk
 │   │   └── src/
 │   │       └── server.client.ts         # ServerClient（全类型化业务 API，继承 http-client 的 HttpClient）
-│   ├── ui/                              # @repo/ui — Base UI + shadcn 组件（src/components/ui/*）
-│   └── aui/                             # @repo/aui — Ant Design 管理端组件库 + action 工具
+│   └── ui/                              # @repo/ui — shadcn 组件（src/components/ui/*）+ 自有组件（src/components/* 平铺）
 ├── docker/                              # Dockerfile.base / .server / .web + init-db.sql
 ├── docs/                                # pagination.md（分页指南）/ sdk-refactor.md
 ├── scripts/                             # cli 代码生成器（pnpm cli）：cli.ts 入口 + cli/（生成逻辑 + .eta 模板文件）
@@ -277,7 +275,7 @@ pnpm cli -t crud -n product  # 非交互生成 CRUD 业务模块（无 TTY 时�
 
 ### apps/web — Next.js 16 前台
 
-面向 C 端的前台应用，使用 **Base UI + shadcn/ui**（来自 `@repo/ui`）与 Tailwind 4，不依赖 Ant Design。
+面向 C 端的前台应用，使用 **Base UI + shadcn/ui**（来自 `@repo/ui`）与 Tailwind 4。
 
 - 页面：`/`（首页）、`/auth/login`、`/auth/register`
 - Server Actions（`actions/auth.actions.ts`）封装登录 / 注册，token 写入 httpOnly cookie
@@ -287,7 +285,9 @@ pnpm cli -t crud -n product  # 非交互生成 CRUD 业务模块（无 TTY 时�
 
 ### apps/admin — Next.js 16 管理后台
 
-面向后台的管理应用，使用 **Ant Design 6 + @repo/aui**，适合表格 / 表单 / 权限类页面。
+面向后台的管理应用，与前台同源使用 **@repo/ui**（shadcn/ui 风格），表格用
+**@tanstack/react-table**（`DataTable`）、表单用 **@tanstack/react-form**
+（`ModalForm` / `DrawerForm` / `FormRenderer` 声明式 items），适合表格 / 表单 / 权限类页面。
 登录使用**后台管理员**账号（`AdminEntity`，`/admin/*` 接口），与前台用户体系隔离。
 
 - 页面：`/auth/login`（管理员登录）、`/main/dashboard`、`/main/todo`、
@@ -295,13 +295,12 @@ pnpm cli -t crud -n product  # 非交互生成 CRUD 业务模块（无 TTY 时�
 - 布局：`AppHeader` + `AppSider` + `AppMenu`，`main/layout.tsx` 标记 `force-dynamic`，
   SSR 侧通过 cookie 调用 `admin.getMe()` 做鉴权，失败 `redirect()` 到登录页
 - 路由守卫：`proxy.ts` 中间件按 `PublicPaths` + cookie 重定向未登录 / 已登录用户
-- Server Actions：`@repo/aui/action` 的 `defineAction` / `callAction` 统一返回
+- Server Actions：`@repo/ui/action` 的 `defineAction` / `callAction` 统一返回
   `{ ok, data } | { ok: false, error }` 结构，简化错误处理
 - 状态管理：Zustand + Immer（`auth.store` 保存 `adminInfo` / `layout.store`），
   `main/layout.tsx` SSR 预取管理员信息
 - 首个管理员：`pnpm seed:admin`（默认 `admin@billy.local / admin123`，可用
   `ADMIN_EMAIL` / `ADMIN_PASSWORD` 覆盖），随后可在「系统设置 → 管理员管理」中维护
-- 静态样式提取：`pnpm --filter @app/admin gen:antd-css` 生成 antd 静态 CSS
 
 ## Packages 详解
 
@@ -436,20 +435,26 @@ const todos = await client.todo.cursorQuery({ size: 20 })
 
 ### @repo/ui — 共享组件库
 
-Base UI + shadcn 风格的无样式组件（`src/components/ui/*`，约 60 个：button / dialog / table /
+shadcn 风格的组件实现统一在 `src/components/ui/*`（约 60 个：button / dialog / table /
 sidebar / toast / chart 等），Tailwind 4 主题变量由 `globals.css` 提供。重型组件按需从子路径引入
 （`@repo/ui/components/ui/command` 等）。
 
-### @repo/aui — Ant Design 管理端组件库
+### @repo/ui 的管理端组件
 
-基于 Ant Design 6 的 admin 专用组件：
+我们自己的组件与 shadcn 分开存放：shadcn 组件在 `src/components/ui/*`，
+自有组件直接平铺在 `src/components/*`（与 ui/ 平级，不混入 shadcn 目录，避免被
+`shadcn add` / registry 覆盖）。在 shadcn 基础组件之上提供管理端通用组件
+（全部基于 **@tanstack/react-table** 与 **@tanstack/react-form**）：
 
-- 表格：`DataTable` / `PaginationTable` / `TableActions` / `PageToolbar`
-- 列表：`DataList`（游标滚动加载）
-- 表单：`ModalForm` / `FormRenderer` / `EditableInput`
+- 表格：`DataTable`（@tanstack/react-table 列定义 + 服务端分页）/ `TableActions` /
+  `ConfirmAction`（AlertDialog 确认）/ `PageToolbar`
+- 列表：`DataList`（react-virtuoso 游标滚动加载）
+- 表单：`ModalForm` / `DrawerForm` / `FormRenderer`（@tanstack/react-form 声明式
+  items：widget + required/validate 校验）/ `EditableInput`
 - 存储：`StorageProvider` / `useStorage` / `ImageUpload` / `FileUpload` / `FilePreview` /
   `SortableFileList`（配合 `/storage/*` 接口）
-- 其他：`DictTag` / `DisplayValue` / `Icon` / `PageLoading` / `Group` 等
+- 展示：`DictTag` / `DisplayValue` / `DisplayRender` / `Tag` / `Icon` / `IconText` /
+  `PageLoading` / `Group` / `AutoSize` 等
 - `action.ts`：`defineAction` / `callAction` —— Server Action 的 `{ ok, data } | { ok: false, error }`
   包装器，与 `useDisclosure` / `usePasteFiles` / `useRect` 等 hooks
 

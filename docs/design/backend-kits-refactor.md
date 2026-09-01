@@ -78,7 +78,7 @@ scripts/cli          不动（脚手架生成器，已确认不依赖 core/db）
 2. **组合根归属**：基建装配（createServiceContext）在 kits；业务注册在 server main。scripts/worker/cron 用 createServiceContext，不依赖 server；
 3. **BaseEntity 归 kits**：通用审计字段（id=nanoid(20) / createdAt / updatedAt / deletedAt）是能力，业务实体继承之；
 4. **迁移自管**：迁移工具链（data-source + migrations + CLI 脚本）整体下沉 app 层，每 app 用自己的实体列表生成/执行迁移；
-5. **命名**：`@repo/kits`（用户定名，语义=后端通用能力工具集）；与 rihel-base 前端 `client-kits` 无命名冲突（billy 前端包为 aui/ui/api-client）；
+5. **命名**：`@repo/kits`（用户定名，语义=后端通用能力工具集）；与 rihel-base 前端 `client-kits` 无命名冲突（billy 前端包为 ui/http-client/api-client）；
 6. **发布**：第一版 `private: true` 不发布；若未来跨项目复用，再开 `publishConfig` 并验证 tsdown 构建产物（与 rihel-base tsup 不同，需单独验证）；
 7. **共享实体演进路径（微服务共享库场景）**：kits 定位为纯能力封装（数据库 / 缓存 / JWT / hash / 队列 / 广播等），**永不持有实体**。若出现「多个 app 共享同一数据库 schema」的需求，由上层**自行沉淀独立共享包**（如 `@repo/entities`：TypeORM 实体 + 迁移，单一来源 + 单一迁移所有者）供各 app 复用；kits 的 `createDb({ entities })` 注入接口天然兼容（app 可传共享包实体）。**本次改造不建该包**，触发条件：出现第二个共享同一库的服务。
 

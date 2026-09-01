@@ -70,7 +70,7 @@ const smallCells = [
   {
     icon: MonitorSmartphone,
     title: '双前端开箱',
-    desc: 'Web 前台（Base UI + shadcn）与 Admin 后台（Ant Design 6）两套入口独立构建，互不串用。',
+    desc: 'Web 前台与 Admin 后台统一使用 shadcn/ui（@repo/ui），表格 / 表单基于 TanStack 技术栈。',
   },
   {
     icon: Binary,
