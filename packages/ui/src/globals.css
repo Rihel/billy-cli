@@ -74,6 +74,18 @@
     --sidebar-accent-foreground: oklch(0.205 0 0);
     --sidebar-border: oklch(0.922 0 0);
     --sidebar-ring: oklch(0.708 0 0);
+    /* markdown 代码高亮 token 色（浅色） */
+    --md-hl-comment: #6e7781;
+    --md-hl-keyword: #cf222e;
+    --md-hl-number: #0550ae;
+    --md-hl-string: #0a3069;
+    --md-hl-title: #8250df;
+    --md-hl-type: #953800;
+    --md-hl-attr: #0550ae;
+    --md-hl-builtin: #953800;
+    --md-hl-meta: #82071e;
+    --md-hl-addition: #1a7f37;
+    --md-hl-deletion: #cf222e;
 }
 
 .dark {
@@ -108,6 +120,18 @@
     --sidebar-accent-foreground: oklch(0.985 0 0);
     --sidebar-border: oklch(1 0 0 / 10%);
     --sidebar-ring: oklch(0.556 0 0);
+    /* markdown 代码高亮 token 色（深色） */
+    --md-hl-comment: #8b949e;
+    --md-hl-keyword: #ff7b72;
+    --md-hl-number: #79c0ff;
+    --md-hl-string: #a5d6ff;
+    --md-hl-title: #d2a8ff;
+    --md-hl-type: #ffa657;
+    --md-hl-attr: #79c0ff;
+    --md-hl-builtin: #ffa657;
+    --md-hl-meta: #ff7b72;
+    --md-hl-addition: #7ee787;
+    --md-hl-deletion: #ff7b72;
 }
 
 @layer base {
@@ -120,4 +144,87 @@
   html {
     @apply font-sans;
     }
+}
+
+
+/* ===== Markdown 文档渲染（组件：packages/ui/src/components/markdown.tsx） =====
+   各元素的布局样式在组件内用 Tailwind 实现；这里只保留：
+   1. 容器首尾元素 margin 归零；
+   2. 无语言标注的代码块兜底重置（行内代码样式不会误伤 pre 内代码）；
+   3. hljs 代码高亮 token 色（--md-hl-* 变量，明暗模式各一套）。 */
+.markdown > :first-child {
+  margin-top: 0;
+}
+.markdown > :last-child {
+  margin-bottom: 0;
+}
+.markdown pre code {
+  display: block;
+  background: transparent;
+  border: 0;
+  padding: 0;
+  font-size: inherit;
+}
+
+/* 代码高亮 token 色（hljs，来自 rehype-highlight） */
+.markdown .hljs-comment,
+.markdown .hljs-quote {
+  color: var(--md-hl-comment);
+  font-style: italic;
+}
+.markdown .hljs-keyword,
+.markdown .hljs-selector-tag,
+.markdown .hljs-subst {
+  color: var(--md-hl-keyword);
+}
+.markdown .hljs-literal,
+.markdown .hljs-number,
+.markdown .hljs-symbol {
+  color: var(--md-hl-number);
+}
+.markdown .hljs-string,
+.markdown .hljs-doctag,
+.markdown .hljs-regexp {
+  color: var(--md-hl-string);
+}
+.markdown .hljs-title,
+.markdown .hljs-section,
+.markdown .hljs-selector-id {
+  color: var(--md-hl-title);
+}
+.markdown .hljs-type,
+.markdown .hljs-template-tag,
+.markdown .hljs-selector-class {
+  color: var(--md-hl-type);
+}
+.markdown .hljs-attr,
+.markdown .hljs-attribute,
+.markdown .hljs-variable,
+.markdown .hljs-template-variable {
+  color: var(--md-hl-attr);
+}
+.markdown .hljs-built_in,
+.markdown .hljs-name,
+.markdown .hljs-bullet {
+  color: var(--md-hl-builtin);
+}
+.markdown .hljs-meta,
+.markdown .hljs-meta .hljs-keyword,
+.markdown .hljs-meta .hljs-string {
+  color: var(--md-hl-meta);
+}
+.markdown .hljs-addition {
+  color: var(--md-hl-addition);
+}
+.markdown .hljs-deletion {
+  color: var(--md-hl-deletion);
+}
+.markdown .hljs-emphasis {
+  font-style: italic;
+}
+.markdown .hljs-strong {
+  font-weight: 600;
+}
+.markdown .hljs-link {
+  text-decoration: underline;
 }

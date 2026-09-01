@@ -51,7 +51,7 @@ export * from "#components/ui/drawer.tsx"
 export * from "#components/toast.ts"
 export * from "#components/ui/alert-dialog.tsx"
 
-// 管理端组件（@tanstack 技术栈；位于 components/*，与 shadcn 的 ui/* 分开存放）
+// 自有组件（位于 components/*；components/ui/* 由 shadcn 维护，勿在 ui/* 放自有封装）
 export * from "#components/icon.tsx"
 export * from "#components/tag.tsx"
 export * from "#components/page-toolbar.tsx"
@@ -69,6 +69,7 @@ export * from "#components/editable-input.tsx"
 export * from "#components/display.tsx"
 export * from "#components/display-render.tsx"
 export * from "#components/data-list.tsx"
+export * from "#components/markdown.tsx"
 export * from "#components/storage-provider.tsx"
 export * from "#components/use-storage.ts"
 export * from "#components/image-upload.tsx"
