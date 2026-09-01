@@ -16,26 +16,21 @@ export default async function AutomationPage() {
         </p>
       </div>
 
-      {/* 深色终端块：与前台代码块语言一致（mono + zinc-950 底 + 语法高亮） */}
-      <div className="min-h-0 flex-1 overflow-hidden rounded-xl border border-zinc-800 bg-zinc-950 shadow-lg shadow-zinc-900/20">
-        <div className="flex items-center gap-1.5 border-b border-white/10 px-3 py-2.5 font-mono text-xs">
-          <span className="size-2.5 rounded-full bg-red-400/80" />
-          <span className="size-2.5 rounded-full bg-amber-400/80" />
-          <span className="size-2.5 rounded-full bg-emerald-400/80" />
-          <span className="ml-2 text-zinc-500">billy-cli · env</span>
+      {/* 环境变量：白卡 + mono 键值（克制的信息化展示） */}
+      <div className="min-h-0 flex-1 overflow-hidden rounded-xl border border-border bg-card shadow-xs">
+        <div className="flex items-center justify-between border-b border-border px-3 py-2 font-mono text-xs">
+          <span className="text-muted-foreground">billy-cli env</span>
+          <span className="text-muted-foreground">{envEntries.length} 项</span>
         </div>
-        <pre className="h-full overflow-auto p-4 font-mono text-xs leading-5">
-          {envEntries.map(([key, value], index) => (
+        <div className="h-full overflow-auto p-4 font-mono text-xs leading-5">
+          {envEntries.map(([key, value]) => (
             <div key={key} className="whitespace-pre">
-              <span className="select-none text-zinc-700">
-                {String(index + 1).padStart(2, '0')}{' '}
-              </span>
-              <span className="text-zinc-300">{key}</span>
-              <span className="text-zinc-500"> = </span>
-              <span className="text-zinc-400">{value}</span>
+              <span className="text-foreground">{key}</span>
+              <span className="text-muted-foreground"> = </span>
+              <span className="text-muted-foreground">{value}</span>
             </div>
           ))}
-        </pre>
+        </div>
       </div>
     </div>
   )

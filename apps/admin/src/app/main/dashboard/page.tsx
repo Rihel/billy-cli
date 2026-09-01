@@ -2,7 +2,6 @@
 
 import { useServerClient } from '@/lib/server-client'
 import { useQuery } from '@tanstack/react-query'
-import { ServerUrl, StorageUrl } from '@/lib/constants'
 import {
   ActivityIcon,
   ArrowUpRightIcon,
@@ -75,11 +74,6 @@ export default function DashboardPage() {
   const client = useServerClient()
 
   // 全部静默失败（retry 0）：任一模块不可用时统计卡显示 -，不影响整体
-  const config = useQuery({
-    queryKey: ['dashboard', 'config'],
-    queryFn: () => client.config.get(),
-    retry: 0,
-  })
   const health = useQuery({
     queryKey: ['dashboard', 'health'],
     queryFn: () => client.monitor.health(),
@@ -177,74 +171,32 @@ export default function DashboardPage() {
         />
       </div>
 
-      {/* 快速入口 + 系统信息 */}
-      <div className="grid flex-1 grid-cols-1 gap-4 lg:grid-cols-3">
-        <div className="grid content-start gap-4 sm:grid-cols-2 lg:col-span-2">
-          <QuickLink
-            title="任务管理"
-            description="示例模块：游标分页列表"
-            icon={<ListTodoIcon />}
-            href="/main/todo"
-          />
-          <QuickLink
-            title="自动化"
-            description="服务端环境与配置预览"
-            icon={<TerminalIcon />}
-            href="/main/automation"
-          />
-          <QuickLink
-            title="告警规则"
-            description="监控告警规则配置"
-            icon={<BellRingIcon />}
-            href="/main/monitor/rules"
-          />
-          <QuickLink
-            title="用户管理"
-            description="前台用户体系管理"
-            icon={<UsersIcon />}
-            href="/main/system/users"
-          />
-        </div>
-
-        {/* 系统信息：深色终端风格面板（照抄前台代码块语言，全部真实运行配置） */}
-        <div className="overflow-hidden rounded-xl border border-zinc-800 bg-zinc-950 font-mono text-xs shadow-lg shadow-zinc-900/20">
-          {/* 窗口标题栏：红黄绿状态点 + mono 标题（与前台终端卡一致） */}
-          <div className="flex items-center gap-1.5 border-b border-white/10 px-3 py-2.5">
-            <span className="size-2.5 rounded-full bg-red-400/80" />
-            <span className="size-2.5 rounded-full bg-amber-400/80" />
-            <span className="size-2.5 rounded-full bg-emerald-400/80" />
-            <span className="ml-2 text-zinc-500">billy-cli · config</span>
-          </div>
-          <div className="space-y-1.5 p-3 leading-5">
-            <div className="whitespace-pre">
-              <span className="select-none text-zinc-700">01 </span>
-              <span className="text-emerald-400">$</span>{' '}
-              <span className="text-zinc-300">auth</span>{' '}
-              <span className="text-zinc-500">=</span>{' '}
-              <span className="text-orange-400">
-                {config.data
-                  ? config.data.authEnabled
-                    ? 'enabled'
-                    : 'disabled'
-                  : '-'}
-              </span>
-            </div>
-            <div className="whitespace-pre">
-              <span className="select-none text-zinc-700">02 </span>
-              <span className="text-emerald-400">$</span>{' '}
-              <span className="text-zinc-300">server</span>{' '}
-              <span className="text-zinc-500">=</span>{' '}
-              <span className="text-zinc-200">{ServerUrl}</span>
-            </div>
-            <div className="whitespace-pre">
-              <span className="select-none text-zinc-700">03 </span>
-              <span className="text-emerald-400">$</span>{' '}
-              <span className="text-zinc-300">storage</span>{' '}
-              <span className="text-zinc-500">=</span>{' '}
-              <span className="text-zinc-200">{StorageUrl}</span>
-            </div>
-          </div>
-        </div>
+      {/* 快速入口：跳转各模块 */}
+      <div className="grid content-start gap-4 sm:grid-cols-2">
+        <QuickLink
+          title="任务管理"
+          description="示例模块：游标分页列表"
+          icon={<ListTodoIcon />}
+          href="/main/todo"
+        />
+        <QuickLink
+          title="自动化"
+          description="服务端环境与配置预览"
+          icon={<TerminalIcon />}
+          href="/main/automation"
+        />
+        <QuickLink
+          title="告警规则"
+          description="监控告警规则配置"
+          icon={<BellRingIcon />}
+          href="/main/monitor/rules"
+        />
+        <QuickLink
+          title="用户管理"
+          description="前台用户体系管理"
+          icon={<UsersIcon />}
+          href="/main/system/users"
+        />
       </div>
     </div>
   )

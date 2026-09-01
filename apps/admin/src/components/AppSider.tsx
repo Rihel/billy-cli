@@ -21,7 +21,6 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
-  SidebarRail,
 } from '@repo/ui'
 import { LogOutIcon, TerminalSquareIcon, UserRoundIcon } from 'lucide-react'
 import { AppMenu } from './AppMenu'
@@ -118,8 +117,6 @@ export const AppSider = ({}: AppSiderProps) => {
           </SidebarMenu>
         </SidebarFooter>
       ) : null}
-
-      <SidebarRail />
     </Sidebar>
   )
 }
