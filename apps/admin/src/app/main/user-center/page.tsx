@@ -54,59 +54,61 @@ export default function UserCenter() {
   })
 
   return (
-    <div className="flex flex-col gap-6 p-4 sm:p-6">
-      <PageToolbar title={<div className="text-2xl">个人中心</div>} />
-      <div className="flex gap-10">
-        <ImageUpload
-          value={adminInfo?.avatar}
-          sizeLimit={2}
-          disabled={updateInfoMutation.isPending}
-          onChange={async (avatar) => {
-            await updateInfoMutation.mutateAsync({ avatar })
-            setAdminInfo({ ...adminInfo!, avatar })
-          }}
-        />
+    <div className="flex flex-col gap-4 p-4 sm:p-6">
+      <PageToolbar title="个人中心" description="管理员个人资料与账号安全" />
+      <div className="rounded-xl border border-border bg-card p-6 shadow-xs">
+        <div className="flex flex-col gap-8 sm:flex-row sm:gap-10">
+          <ImageUpload
+            value={adminInfo?.avatar}
+            sizeLimit={5}
+            disabled={updateInfoMutation.isPending}
+            onChange={async (avatar) => {
+              await updateInfoMutation.mutateAsync({ avatar })
+              setAdminInfo({ ...adminInfo!, avatar })
+            }}
+          />
 
-        <DisplayRender
-          data={adminInfo}
-          layout="row"
-          labelClassName="w-20"
-          items={[
-            { name: 'email', label: '邮箱' },
-            {
-              name: 'realName',
-              label: '真实姓名',
-              render: (realName) => (
-                <EditableInput
-                  value={realName as string | null}
-                  onChange={async (nextRealName) => {
-                    await updateInfoMutation.mutateAsync({
-                      realName: nextRealName,
-                    })
-                    setAdminInfo({ ...adminInfo!, realName: nextRealName })
-                  }}
-                />
-              ),
-            },
-            {
-              name: 'createdAt',
-              label: '注册时间',
-              displayProps: { type: 'date' },
-            },
-            {
-              label: '密码',
-              render: () => (
-                <IconText
-                  icon={<KeyRoundIcon />}
-                  type="primary"
-                  onClick={() => passwordDialog.open()}
-                >
-                  修改密码
-                </IconText>
-              ),
-            },
-          ]}
-        />
+          <DisplayRender
+            data={adminInfo}
+            layout="row"
+            labelClassName="w-20"
+            items={[
+              { name: 'email', label: '邮箱' },
+              {
+                name: 'realName',
+                label: '真实姓名',
+                render: (realName) => (
+                  <EditableInput
+                    value={realName as string | null}
+                    onChange={async (nextRealName) => {
+                      await updateInfoMutation.mutateAsync({
+                        realName: nextRealName,
+                      })
+                      setAdminInfo({ ...adminInfo!, realName: nextRealName })
+                    }}
+                  />
+                ),
+              },
+              {
+                name: 'createdAt',
+                label: '注册时间',
+                displayProps: { type: 'date' },
+              },
+              {
+                label: '密码',
+                render: () => (
+                  <IconText
+                    icon={<KeyRoundIcon />}
+                    type="primary"
+                    onClick={() => passwordDialog.open()}
+                  >
+                    修改密码
+                  </IconText>
+                ),
+              },
+            ]}
+          />
+        </div>
       </div>
 
       <ModalForm<ChangePasswordForm>

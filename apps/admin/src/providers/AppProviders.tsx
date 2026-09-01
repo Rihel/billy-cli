@@ -1,6 +1,6 @@
 'use client'
 
-import { ReactNode, useRef } from 'react'
+import { ReactNode, useEffect, useRef } from 'react'
 import {
   MutationCache,
   QueryCache,
@@ -10,6 +10,7 @@ import {
 import { StorageProvider, toastError, Toaster, TooltipProvider } from '@repo/ui'
 import { formatStorageUrl } from '@/lib/constants'
 import { useServerClient } from '@/lib/server-client'
+import { initTheme } from '@/stores/theme.store'
 
 function getErrorMessage(error: unknown): string {
   if (error instanceof Error) return error.message
@@ -56,6 +57,11 @@ export type ProvidersProps = Partial<{
 }>
 
 export const Providers = ({ children }: ProvidersProps) => {
+  // 应用存储的 / 系统主题（浅色 / 深色 / 跟随系统），并监听系统偏好变化
+  useEffect(() => {
+    initTheme()
+  }, [])
+
   return (
     <TooltipProvider>
       <QueryProviders>

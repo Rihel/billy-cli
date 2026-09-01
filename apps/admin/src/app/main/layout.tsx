@@ -45,7 +45,7 @@ const MainLayout = async ({ children }: MainLayoutProps) => {
         authEnabled,
       }}
     >
-      <div className="relative flex h-screen w-screen overflow-hidden bg-muted/40">
+      <div className="relative flex h-screen w-screen overflow-hidden bg-background">
         <SidebarProvider>
           <AppSider />
           <SidebarInset className="overflow-hidden bg-transparent">

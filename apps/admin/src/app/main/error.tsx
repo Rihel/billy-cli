@@ -15,7 +15,7 @@ export default function MainError({
   const router = useRouter()
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-muted/40">
+    <div className="flex min-h-screen items-center justify-center bg-background">
       <div className="flex flex-col items-center gap-4 text-center">
         <div className="text-5xl font-semibold">页面加载失败</div>
         <p className="text-sm text-muted-foreground">

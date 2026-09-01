@@ -175,17 +175,26 @@ export default function TodoPage() {
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">任务管理</h1>
-          {items.length > 0 ? (
-            <p className="mt-1 text-sm text-muted-foreground">
-              {pendingCount} 项待办 · {completedCount} 项已完成
-            </p>
-          ) : (
-            <p className="mt-1 text-sm text-muted-foreground">
-              在上方输入内容，回车即可添加任务
-            </p>
-          )}
+          <p className="mt-1 text-sm text-muted-foreground">
+            示例模块，演示游标分页与列表交互
+          </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          {/* 统计卡：mono 数字 + 语义状态点（真实计数） */}
+          <div className="flex items-center gap-2 rounded-xl border border-border bg-card px-3 py-2 shadow-xs">
+            <span className="size-2 rounded-full bg-muted-foreground/60" />
+            <span className="text-xs text-muted-foreground">待办</span>
+            <span className="font-mono text-sm font-semibold tabular-nums">
+              {pendingCount}
+            </span>
+          </div>
+          <div className="flex items-center gap-2 rounded-xl border border-border bg-card px-3 py-2 shadow-xs">
+            <span className="size-2 rounded-full bg-emerald-500" />
+            <span className="text-xs text-muted-foreground">已完成</span>
+            <span className="font-mono text-sm font-semibold tabular-nums">
+              {completedCount}
+            </span>
+          </div>
           <RefreshButton
             loading={isFetching && !isFetchingNextPage}
             onClick={() => void resetList()}

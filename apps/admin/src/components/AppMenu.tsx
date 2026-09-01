@@ -97,9 +97,13 @@ export const AppMenu = ({}: AppMenuProps) => {
     <>
       {items.map((item) =>
         item.children ? (
-          <SidebarGroup key={item.key}>
-            <SidebarGroupLabel>{item.label}</SidebarGroupLabel>
-            <SidebarMenu>
+          <SidebarGroup key={item.key} className="py-1.5">
+            {/* 组标题：小号弱化标签（字距区分层级），降低高度让组更紧凑 */}
+            <SidebarGroupLabel className="h-7 text-[11px] tracking-[0.08em] opacity-45">
+              {item.label}
+            </SidebarGroupLabel>
+            {/* 项间距 8px，明显可辨 */}
+            <SidebarMenu className="gap-2">
               {item.children.map((child) => {
                 const Icon = child.icon
                 return (
@@ -107,6 +111,7 @@ export const AppMenu = ({}: AppMenuProps) => {
                     <SidebarMenuButton
                       isActive={pathname === child.key}
                       tooltip={child.label}
+                      className="py-2"
                       onClick={() => go(child.key)}
                     >
                       {Icon ? <Icon /> : null}
@@ -118,12 +123,13 @@ export const AppMenu = ({}: AppMenuProps) => {
             </SidebarMenu>
           </SidebarGroup>
         ) : (
-          <SidebarGroup key={item.key}>
-            <SidebarMenu>
+          <SidebarGroup key={item.key} className="py-1.5">
+            <SidebarMenu className="gap-2">
               <SidebarMenuItem>
                 <SidebarMenuButton
                   isActive={pathname === item.key}
                   tooltip={item.label}
+                  className="py-2"
                   onClick={() => go(item.key)}
                 >
                   {item.icon ? <item.icon /> : null}

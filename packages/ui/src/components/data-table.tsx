@@ -14,6 +14,8 @@ import { Button } from "#components/ui/button"
 import {
   Empty,
   EmptyDescription,
+  EmptyMedia,
+  EmptyTitle,
 } from "#components/ui/empty"
 import { PageToolbar } from "#components/page-toolbar"
 import {
@@ -32,7 +34,7 @@ import {
   TableHeader,
   TableRow,
 } from "#components/ui/table"
-import { ChevronLeftIcon, ChevronRightIcon } from "lucide-react"
+import { ChevronLeftIcon, ChevronRightIcon, InboxIcon } from "lucide-react"
 
 /** tanstack 列定义：meta.width 用于控制列宽 */
 export type DataTableColumnDef<T extends object> = ColumnDef<T, any> & {
@@ -57,6 +59,8 @@ export type DataTableProps<T extends object> = {
   /** 每页条数选项（默认 [10, 20, 50]） */
   pageSizeOptions?: number[]
   title?: ReactNode
+  /** 标题下方的说明文案（透传 PageToolbar） */
+  description?: ReactNode
   toolbar?: ReactNode
   search?: ReactNode
   emptyText?: ReactNode
@@ -81,6 +85,7 @@ export function DataTable<T extends object>({
   onPageChange,
   pageSizeOptions = DEFAULT_PAGE_SIZE_OPTIONS,
   title,
+  description,
   toolbar,
   search,
   emptyText = "暂无数据",
@@ -111,20 +116,20 @@ export function DataTable<T extends object>({
 
   return (
     <section className={cn("flex flex-col gap-4", className)}>
-      {title || toolbar || search ? (
-        <PageToolbar title={title} extra={toolbar}>
+      {title || description || toolbar || search ? (
+        <PageToolbar title={title} description={description} extra={toolbar}>
           {search}
         </PageToolbar>
       ) : null}
 
       <div
         className={cn(
-          "flex flex-col overflow-hidden rounded-lg border border-border bg-background",
+          "flex flex-col overflow-hidden rounded-xl border border-border bg-card shadow-xs",
           tableClassName,
         )}
       >
         <Table>
-          <TableHeader>
+          <TableHeader className="bg-muted/40">
             {headerGroups.map((headerGroup) => (
               <TableRow key={headerGroup.id}>
                 {headerGroup.headers.map((header) => {
@@ -132,6 +137,7 @@ export function DataTable<T extends object>({
                   return (
                     <TableHead
                       key={header.id}
+                      className="h-9 px-3 text-xs font-medium text-muted-foreground"
                       style={width ? { width } : undefined}
                     >
                       {header.isPlaceholder
@@ -151,7 +157,7 @@ export function DataTable<T extends object>({
               Array.from({ length: 5 }).map((_, rowIndex) => (
                 <TableRow key={rowIndex}>
                   {headerGroups[0]?.headers.map((header) => (
-                    <TableCell key={header.id}>
+                    <TableCell key={header.id} className="p-3">
                       <Skeleton className="h-4 w-full" />
                     </TableCell>
                   ))}
@@ -161,7 +167,7 @@ export function DataTable<T extends object>({
               rows.map((row) => (
                 <TableRow key={row.id}>
                   {row.getVisibleCells().map((cell) => (
-                    <TableCell key={cell.id}>
+                    <TableCell key={cell.id} className="p-3">
                       {flexRender(cell.column.columnDef.cell, cell.getContext())}
                     </TableCell>
                   ))}
@@ -171,9 +177,13 @@ export function DataTable<T extends object>({
               <TableRow>
                 <TableCell
                   colSpan={columns.length}
-                  className="h-32 text-center"
+                  className="h-40 p-3 text-center"
                 >
                   <Empty className="border-0">
+                    <EmptyMedia variant="icon">
+                      <InboxIcon />
+                    </EmptyMedia>
+                    <EmptyTitle>暂无数据</EmptyTitle>
                     <EmptyDescription className="text-sm text-muted-foreground">
                       {emptyText}
                     </EmptyDescription>
@@ -185,8 +195,8 @@ export function DataTable<T extends object>({
         </Table>
 
         {renderPagination ? (
-          <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border px-3 py-2.5 text-xs text-muted-foreground">
-            <div>共 {totalCount} 条</div>
+          <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border bg-muted/20 px-3 py-2.5 text-xs text-muted-foreground">
+            <div className="font-mono tabular-nums">共 {totalCount} 条</div>
             <div className="flex items-center gap-2">
               <Select
                 value={String(currentPageSize)}
@@ -216,7 +226,9 @@ export function DataTable<T extends object>({
               >
                 <ChevronLeftIcon />
               </Button>
-              <span>{currentPage} / {totalPages}</span>
+              <span className="font-mono tabular-nums">
+                {currentPage} / {totalPages}
+              </span>
               <Button
                 variant="outline"
                 size="icon-sm"
