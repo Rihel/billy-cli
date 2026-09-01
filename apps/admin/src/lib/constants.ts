@@ -4,7 +4,9 @@ export const Pages = {
 }
 export const PublicPaths = [Pages.login]
 
-export const TokenKey = 'access-token'
+// 管理员体系凭证 key：与前台（apps/web 的 access-token）分离，
+// 避免同域（cookie 按域名共享 / 生产同域 localStorage 共享）下互相覆盖登录态
+export const TokenKey = 'admin-access-token'
 export const AppName = 'Billy Cli'
 export const ServerUrl = process.env.SERVER_URL || 'http://localhost:9989'
 process.env.NEXT_PUBLIC_SERVER_URL || 'http://localhost:9989'
