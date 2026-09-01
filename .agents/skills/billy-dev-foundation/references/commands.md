@@ -14,6 +14,8 @@ pnpm db:gen <Name> # 依据实体与数据库的差异生成迁移（写入 apps
 pnpm db:migrate    # 执行迁移（经 @app/server）
 pnpm seed:admin    # 创建首个管理员（admin@billy.local / admin123）
 pnpm docker:up     # Docker Compose 一键起依赖（postgres + redis + minio + server + web）
+pnpm bootstrap     # 一键初始化引导：环境检查 → 依赖服务 → 生成 .env → install → 迁移 → 种子 → 冒烟
+pnpm bootstrap -y  # 全默认非交互（--skip-docker / --skip-install / --skip-migrate / --skip-seed / --skip-smoke 可跳过指定步骤）
 pnpm cli           # 代码生成器（交互式）：package / client / service / crud 四类模板
 pnpm cli -t crud -n <name>  # 非交互生成 CRUD 业务模块（实体 / repository / service / errors / features / schema）
 ```

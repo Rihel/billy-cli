@@ -47,7 +47,7 @@ packages/
 - Node.js >= 20（推荐 24，Docker 基础镜像使用 24.14.1）
 - pnpm >= 11（`corepack enable && corepack prepare pnpm@11.15.0 --activate`）
 - PostgreSQL（可用 `docker compose up postgres` 一键启动）
-- Redis（默认连接 `localhost:6379`，服务启动（`runtime.start()`）时会建立连接，未启动会导致服务启动失败）
+- Redis（compose 一键起在宿主 `6380`；`.env` 未配置时默认连接 `localhost:6379`。服务启动（`runtime.start()`）时会建立连接，未启动会导致服务启动失败）
 - MinIO / S3 / COS（可选，仅存储模块需要；未配置对象存储相关环境变量时使用默认值）
 
 ### 安装
@@ -56,52 +56,48 @@ packages/
 pnpm install
 ```
 
-### 环境变量
+### 一键初始化（推荐）
 
-创建 `apps/server/.env`：
+```bash
+pnpm bootstrap
+```
+
+自动完成：环境检查 → Docker 依赖服务（postgres / redis / minio）→ 生成三份 `.env`
+（`apps/server/.env` / `apps/admin/.env` / `apps/web/.env.local`）→ 安装依赖 → 执行迁移
+→ 创建管理员种子 → 冒烟验证 API。交互式逐步确认，也支持非交互：
+
+```bash
+pnpm bootstrap -y             # 全默认（非交互，适合 CI / 脚本）
+pnpm bootstrap --skip-docker  # 跳过 Docker 依赖启动（自行保证 pg / redis 可用）
+pnpm bootstrap --skip-migrate # 跳过迁移与种子
+pnpm bootstrap --skip-smoke   # 跳过冒烟验证
+```
+
+> 端口约定与 `docker-compose.yaml` 宿主端口一致：**PostgreSQL 15432 / Redis 6380 / MinIO 19000**
+> （容器内仍为 5432 / 6379 / 9000）。若本机已有 5432 / 6379 服务，改 `.env` 回默认端口即可。
+
+### 环境变量（手动）
+
+`pnpm bootstrap` 会自动从模板生成，也可手动复制：
+
+```bash
+cp apps/server/.env.example apps/server/.env
+cp apps/admin/.env.example apps/admin/.env
+cp apps/web/.env.local.example apps/web/.env.local
+```
+
+`apps/server/.env` 关键项（完整模板见 `apps/server/.env.example`）：
 
 ```env
 PORT=9989
-DB_URL=postgresql://user:password@localhost:5432/billy-cli
-REDIS_URL=redis://localhost:6379/0
+DB_URL=postgresql://root:pg1234@localhost:15432/billy-cli  # compose 宿主端口 15432；本机 pg 为 5432
+REDIS_URL=redis://localhost:6380/0                         # compose 宿主端口 6380；本机 redis 为 6379
 JWT_SECRET=your-secret-key
-JWT_EXPIRES_IN=7d
-
-# 可选：认证行为
-RESET_PASSWORD_TOKEN_TTL_MINUTES=30
-PASSWORD_HASH_ROUNDS=10
-
-# 可选：接口限流（登录 / 注册 / 找回密码等敏感接口按 IP 固定窗口限流）
-# 白名单 IP 豁免限流（精确 IPv4 / IPv6 或 IPv4 CIDR，逗号分隔，如内网 / 运维）
-RATE_LIMIT_WHITELIST=127.0.0.1,10.0.0.0/8
-# 部署在可信反代 / LB 之后置 true，限流按 x-forwarded-for 取真实客户端 IP（默认 false 防伪造）
-RATE_LIMIT_TRUST_PROXY=false
-
-# 可选：对象存储（s3 / cos）
-OBJECT_STORAGE_PROVIDER=s3
-OBJECT_STORAGE_REGION=us-east-1
-OBJECT_STORAGE_BUCKET=billy-cli
-OBJECT_STORAGE_ACCESS_KEY_ID=minioadmin
-OBJECT_STORAGE_SECRET_ACCESS_KEY=minioadmin
-OBJECT_STORAGE_ENDPOINT=http://localhost:9000
-
-# 可选：日志
-LOGGER_NAME=app
-LOGGER_PRETTY=true
+AUTH_ENABLED=true                                          # false 关闭鉴权（clone 自用）
+OBJECT_STORAGE_ENDPOINT=http://localhost:19000             # compose MinIO 宿主端口 19000
 ```
 
-创建 `apps/web/.env.local`：
-
-```env
-NEXT_PUBLIC_SERVER_URL=http://localhost:9989
-```
-
-创建 `apps/admin/.env.local`：
-
-```env
-SERVER_URL=http://localhost:9989
-NEXT_PUBLIC_STORAGE_URL=http://localhost:9000/billy-cli
-```
+`apps/web/.env.local` 与 `apps/admin/.env` 使用默认值即可（不配置时代码有默认值兜底）。
 
 ### 数据库
 
