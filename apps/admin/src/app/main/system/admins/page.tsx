@@ -12,6 +12,7 @@ import {
   Button,
   ConfirmAction,
   DataTable,
+  DictSelect,
   DisplayValue,
   EmptyValue,
   IconText,
@@ -19,11 +20,6 @@ import {
   Input,
   ModalForm,
   RefreshButton,
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
   Switch,
   TableActions,
   Tag,
@@ -32,6 +28,7 @@ import {
   useDisclosure,
 } from '@repo/ui'
 import type { DataTableColumnDef } from '@repo/ui'
+import { UserStatus } from '@repo/shared'
 import type { AdminModel } from '@repo/shared'
 import { LockIcon, PencilIcon, PlusIcon, SearchIcon } from 'lucide-react'
 
@@ -55,11 +52,6 @@ type ResetPasswordForm = {
 }
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-
-const STATUS_OPTIONS = [
-  { label: '启用', value: 'enabled' },
-  { label: '禁用', value: 'disabled' },
-]
 
 export default function AdminsPage() {
   const client = useServerClient()
@@ -107,11 +99,11 @@ export default function AdminsPage() {
 
   const createForm = useForm({
     defaultValues: {
-        email: '',
-        password: '',
-        realName: '',
-        avatar: '',
-      } as CreateAdminForm,
+      email: '',
+      password: '',
+      realName: '',
+      avatar: '',
+    } as CreateAdminForm,
     onSubmit: async ({ value }) => {
       await client.admin.create(value)
       toastSuccess('创建成功')
@@ -236,7 +228,9 @@ export default function AdminsPage() {
           </IconText>
           <ConfirmAction
             title="确认删除该管理员？"
-            onConfirm={() => removeMutation.mutate({ adminId: row.original.id })}
+            onConfirm={() =>
+              removeMutation.mutate({ adminId: row.original.id })
+            }
             danger
           >
             删除
@@ -250,6 +244,7 @@ export default function AdminsPage() {
     <div className="h-full w-full overflow-auto p-4 sm:p-6">
       <DataTable<AdminModel>
         title="管理员管理"
+        description="后台管理员账号管理，可重置密码与启停账号"
         toolbar={
           <>
             <RefreshButton
@@ -287,27 +282,21 @@ export default function AdminsPage() {
                 <SearchIcon />
               </Button>
             </div>
-            <Select
-              value={status ?? '__all'}
+            <DictSelect
+              dict={UserStatus}
+              value={status ?? null}
+              allowClear
+              placeholder="全部"
+              triggerClassName="w-24"
               onValueChange={(value) => {
                 setStatus(
-                  value === '__all' ? undefined : (value as 'enabled' | 'disabled'),
+                  value === 'enabled' || value === 'disabled'
+                    ? value
+                    : undefined,
                 )
                 setPage(1)
               }}
-            >
-              <SelectTrigger size="sm" className="w-24">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="__all">全部</SelectItem>
-                {STATUS_OPTIONS.map((option) => (
-                  <SelectItem key={option.value} value={option.value}>
-                    {option.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            />
             <Button onClick={() => createDialog.open()}>
               <PlusIcon />
               新建管理员
@@ -354,8 +343,10 @@ export default function AdminsPage() {
             label: '头像',
             render: ({ values, field }) => (
               <ImageUpload
-                value={(values.avatar as string | null | undefined) ?? undefined}
-                sizeLimit={2}
+                value={
+                  (values.avatar as string | null | undefined) ?? undefined
+                }
+                sizeLimit={5}
                 className="size-28"
                 onChange={(key) => field.handleChange(key)}
               />
@@ -393,8 +384,10 @@ export default function AdminsPage() {
             label: '头像',
             render: ({ values, field }) => (
               <ImageUpload
-                value={(values.avatar as string | null | undefined) ?? undefined}
-                sizeLimit={2}
+                value={
+                  (values.avatar as string | null | undefined) ?? undefined
+                }
+                sizeLimit={5}
                 className="size-28"
                 onChange={(key) => field.handleChange(key)}
               />
@@ -404,7 +397,7 @@ export default function AdminsPage() {
             name: 'status',
             label: '状态',
             widget: 'select',
-            props: { options: STATUS_OPTIONS },
+            props: { options: UserStatus.options },
           },
         ]}
         onCancel={editDialog.close}

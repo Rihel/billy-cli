@@ -12,6 +12,7 @@ import {
   Button,
   ConfirmAction,
   DataTable,
+  DictSelect,
   DisplayValue,
   EmptyValue,
   IconText,
@@ -19,11 +20,6 @@ import {
   Input,
   ModalForm,
   RefreshButton,
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
   Switch,
   TableActions,
   Tag,
@@ -32,6 +28,7 @@ import {
   useDisclosure,
 } from '@repo/ui'
 import type { DataTableColumnDef } from '@repo/ui'
+import { UserStatus } from '@repo/shared'
 import type { UserModel } from '@repo/shared'
 import { LockIcon, PencilIcon, PlusIcon, SearchIcon } from 'lucide-react'
 
@@ -55,11 +52,6 @@ type ResetPasswordForm = {
 }
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-
-const STATUS_OPTIONS = [
-  { label: '启用', value: 'enabled' },
-  { label: '禁用', value: 'disabled' },
-]
 
 export default function UsersPage() {
   const client = useServerClient()
@@ -107,11 +99,11 @@ export default function UsersPage() {
 
   const createForm = useForm({
     defaultValues: {
-        email: '',
-        password: '',
-        realName: '',
-        avatar: '',
-      } as CreateUserForm,
+      email: '',
+      password: '',
+      realName: '',
+      avatar: '',
+    } as CreateUserForm,
     onSubmit: async ({ value }) => {
       await client.user.create(value)
       toastSuccess('创建成功')
@@ -250,6 +242,7 @@ export default function UsersPage() {
     <div className="h-full w-full overflow-auto p-4 sm:p-6">
       <DataTable<UserModel>
         title="用户管理"
+        description="前台用户体系管理，支持关键词搜索与状态筛选"
         toolbar={
           <>
             <RefreshButton
@@ -287,27 +280,21 @@ export default function UsersPage() {
                 <SearchIcon />
               </Button>
             </div>
-            <Select
-              value={status ?? '__all'}
+            <DictSelect
+              dict={UserStatus}
+              value={status ?? null}
+              allowClear
+              placeholder="全部"
+              triggerClassName="w-24"
               onValueChange={(value) => {
                 setStatus(
-                  value === '__all' ? undefined : (value as 'enabled' | 'disabled'),
+                  value === 'enabled' || value === 'disabled'
+                    ? value
+                    : undefined,
                 )
                 setPage(1)
               }}
-            >
-              <SelectTrigger size="sm" className="w-24">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="__all">全部</SelectItem>
-                {STATUS_OPTIONS.map((option) => (
-                  <SelectItem key={option.value} value={option.value}>
-                    {option.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            />
             <Button onClick={() => createDialog.open()}>
               <PlusIcon />
               新建用户
@@ -354,8 +341,10 @@ export default function UsersPage() {
             label: '头像',
             render: ({ values, field }) => (
               <ImageUpload
-                value={(values.avatar as string | null | undefined) ?? undefined}
-                sizeLimit={2}
+                value={
+                  (values.avatar as string | null | undefined) ?? undefined
+                }
+                sizeLimit={5}
                 className="size-28"
                 onChange={(key) => field.handleChange(key)}
               />
@@ -393,8 +382,10 @@ export default function UsersPage() {
             label: '头像',
             render: ({ values, field }) => (
               <ImageUpload
-                value={(values.avatar as string | null | undefined) ?? undefined}
-                sizeLimit={2}
+                value={
+                  (values.avatar as string | null | undefined) ?? undefined
+                }
+                sizeLimit={5}
                 className="size-28"
                 onChange={(key) => field.handleChange(key)}
               />
@@ -404,7 +395,7 @@ export default function UsersPage() {
             name: 'status',
             label: '状态',
             widget: 'select',
-            props: { options: STATUS_OPTIONS },
+            props: { options: UserStatus.options },
           },
         ]}
         onCancel={editDialog.close}

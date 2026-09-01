@@ -12,16 +12,12 @@ import {
   Button,
   ConfirmAction,
   DataTable,
+  DictSelect,
   DisplayValue,
   DrawerForm,
   IconText,
   Input,
   RefreshButton,
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
   Switch,
   TableActions,
   Tag,
@@ -502,6 +498,7 @@ export default function AlertRulesPage() {
     <div className="h-full w-full overflow-auto p-4 sm:p-6">
       <DataTable<AlertRuleModel>
         title="告警规则"
+        description="按错误码 / 关键词 / 指标阈值匹配异常，多通道通知"
         toolbar={
           <>
             <RefreshButton loading={isFetching} onClick={() => void refetch()} />
@@ -536,50 +533,49 @@ export default function AlertRulesPage() {
                 <SearchIcon />
               </Button>
             </div>
-            <Select
-              value={type ?? '__all'}
+            <DictSelect
+              options={[
+                { label: '技术', value: 'tech' },
+                { label: '业务', value: 'business' },
+                { label: '指标', value: 'metric' },
+                { label: '突变', value: 'surge' },
+              ]}
+              value={type ?? null}
+              allowClear
+              placeholder="全部"
+              triggerClassName="w-24"
               onValueChange={(value) => {
                 setType(
-                  value === '__all'
-                    ? undefined
-                    : (value as 'tech' | 'business' | 'metric' | 'surge'),
+                  value === 'tech' ||
+                    value === 'business' ||
+                    value === 'metric' ||
+                    value === 'surge'
+                    ? value
+                    : undefined,
                 )
                 setPage(1)
               }}
-            >
-              <SelectTrigger size="sm" className="w-24">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="__all">全部</SelectItem>
-                <SelectItem value="tech">技术</SelectItem>
-                <SelectItem value="business">业务</SelectItem>
-                <SelectItem value="metric">指标</SelectItem>
-                <SelectItem value="surge">突变</SelectItem>
-              </SelectContent>
-            </Select>
-            <Select
-              value={
-                enabled === undefined ? '__all' : enabled ? 'enabled' : 'disabled'
-              }
+            />
+            <DictSelect
+              options={[
+                { label: '启用', value: 'enabled' },
+                { label: '禁用', value: 'disabled' },
+              ]}
+              value={enabled === undefined ? null : enabled ? 'enabled' : 'disabled'}
+              allowClear
+              placeholder="全部"
+              triggerClassName="w-28"
               onValueChange={(value) => {
                 setEnabled(
-                  value === '__all'
-                    ? undefined
-                    : value === 'enabled',
+                  value === 'enabled'
+                    ? true
+                    : value === 'disabled'
+                      ? false
+                      : undefined,
                 )
                 setPage(1)
               }}
-            >
-              <SelectTrigger size="sm" className="w-28">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="__all">全部</SelectItem>
-                <SelectItem value="enabled">启用</SelectItem>
-                <SelectItem value="disabled">禁用</SelectItem>
-              </SelectContent>
-            </Select>
+            />
             <Button onClick={() => createDialog.open()}>
               <PlusIcon />
               新建规则

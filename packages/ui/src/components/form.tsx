@@ -176,6 +176,12 @@ const renderWidget = (
       const options = (props.options as SelectOption[] | undefined) ?? []
       const multiple =
         props.multiple === true || (props.mode as string) === "multiple"
+      const resolveLabel = (item: unknown): ReactNode => {
+        const match = options.find(
+          (option) => String(option.value) === String(item),
+        )
+        return match ? match.label : String(item)
+      }
       return (
         <Select
           multiple={multiple}
@@ -188,7 +194,22 @@ const renderWidget = (
           disabled={disabled}
         >
           <SelectTrigger className="w-full">
-            <SelectValue placeholder={(props.placeholder as string) ?? "请选择"} />
+            {/* 自定义 children 渲染 label：不依赖 base-ui items 注册（Popup 关闭时解析不到） */}
+            <SelectValue
+              placeholder={(props.placeholder as string) ?? "请选择"}
+            >
+              {(selected) => {
+                if (
+                  selected == null ||
+                  selected === "" ||
+                  (Array.isArray(selected) && selected.length === 0)
+                ) {
+                  return (props.placeholder as string) ?? "请选择"
+                }
+                const list = Array.isArray(selected) ? selected : [selected]
+                return list.map(resolveLabel).join("、")
+              }}
+            </SelectValue>
           </SelectTrigger>
           <SelectContent>
             {options.map((option) => (

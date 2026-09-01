@@ -5,14 +5,10 @@ import { useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
 import {
   DataTable,
+  DictSelect,
   DisplayValue,
   EmptyValue,
   RefreshButton,
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
   Tag,
 } from '@repo/ui'
 import type { DataTableColumnDef } from '@repo/ui'
@@ -81,45 +77,42 @@ export default function AlertLogsPage() {
     <div className="h-full w-full overflow-auto p-4 sm:p-6">
       <DataTable<AlertLogModel>
         title="告警记录"
+        description="告警发送记录，可按通道与状态回溯"
         toolbar={
           <>
             <RefreshButton loading={isFetching} onClick={() => void refetch()} />
-            <Select
-              value={channel ?? '__all'}
+            <DictSelect
+              options={[
+                { label: '飞书', value: 'lark' },
+                { label: '邮件', value: 'email' },
+              ]}
+              value={channel ?? null}
+              allowClear
+              placeholder="全部"
+              triggerClassName="w-24"
               onValueChange={(value) => {
                 setChannel(
-                  value === '__all' ? undefined : (value as 'lark' | 'email'),
+                  value === 'lark' || value === 'email' ? value : undefined,
                 )
                 setPage(1)
               }}
-            >
-              <SelectTrigger size="sm" className="w-24">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="__all">全部</SelectItem>
-                <SelectItem value="lark">飞书</SelectItem>
-                <SelectItem value="email">邮件</SelectItem>
-              </SelectContent>
-            </Select>
-            <Select
-              value={status ?? '__all'}
+            />
+            <DictSelect
+              options={[
+                { label: '成功', value: 'success' },
+                { label: '失败', value: 'failed' },
+              ]}
+              value={status ?? null}
+              allowClear
+              placeholder="全部"
+              triggerClassName="w-24"
               onValueChange={(value) => {
                 setStatus(
-                  value === '__all' ? undefined : (value as 'success' | 'failed'),
+                  value === 'success' || value === 'failed' ? value : undefined,
                 )
                 setPage(1)
               }}
-            >
-              <SelectTrigger size="sm" className="w-24">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="__all">全部</SelectItem>
-                <SelectItem value="success">成功</SelectItem>
-                <SelectItem value="failed">失败</SelectItem>
-              </SelectContent>
-            </Select>
+            />
           </>
         }
         rowKey="id"
