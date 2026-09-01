@@ -4,22 +4,22 @@ import { Reveal } from './reveal'
 /** 竞品对比：只列真正对标的「全栈模板」，免费与收费各一行，数据以 GitHub 为准 */
 const rivals = [
   {
-    rival: '免费全栈脚手架',
-    examples: 'create-t3-app（约 2.9 万 star）· Wasp（约 1.9 万 star）',
-    their: 'create-t3-app 是单体 Next.js、无 AI 能力；Wasp 是声明式全栈框架，AI 靠外挂的 agent 插件。',
-    ours: '标准 TypeScript monorepo（shared / kits / di / server），15 个 skill 与分层架构耦合，加载即知落点。',
+    rival: '免费全栈模板',
+    examples: 'Open SaaS（约 1.6 万 star）· Ixartz SaaS-Boilerplate（约 7400 star）',
+    their: 'Open SaaS 同样 AI-ready（AGENTS.md + skills），但绑定 Wasp 声明式 DSL、单体 SaaS 形态；Ixartz 无 AI。',
+    ours: '标准 TypeScript monorepo，通用工程基座：任意业务、双前端、用户 / 管理员双体系，而非单一 SaaS 产品。',
   },
   {
     rival: '收费 SaaS 模板',
-    examples: 'Makerkit（$349）· Gravity（$199 起）· ShipFast（$199 起）',
+    examples: 'Makerkit（$349）· Gravity（$199 起）· ShipFast（$199 起）· Supastarter（$299 起）',
     their: '全栈且带 agent 规则，但绑定 B2B 多租户 SaaS 场景，闭源付费。',
     ours: '免费开源、不绑定 SaaS 场景，另带监控告警、SSE、队列、对象存储等基建能力。',
   },
   {
-    rival: '纯 agent 工作流',
-    examples: 'gstack（约 13 万 star）',
-    their: '把 agent 角色工作流做到极致，但它是工作流层，不产出工程骨架，需叠加在已有应用上。',
-    ours: '工程骨架与 skill 一体，AI 直接在真实代码上扩业务，而不是先摸清架构再动手。',
+    rival: '国内脚手架',
+    examples: 'RuoYi（约 8500 star）· yudao-cloud（约 1.9 万 star）',
+    their: 'Java + Vue 为主，功能全但无 AI 原生开发（AI 是产品功能或缺失）。',
+    ours: 'TypeScript 全栈 + 15 个 skill 驱动，AI 按你的规范全链路交付。',
   },
 ]
 
@@ -69,9 +69,9 @@ export function Choice() {
             凭什么选 Billy
           </h2>
           <p className="mt-4 max-w-xl text-base leading-relaxed text-zinc-600">
-            全栈模板很多，免费的有 create-t3-app、Wasp，收费的有 Makerkit、Gravity。
-            Billy 的差别不在「有没有 skill」，而在三件事：通用 monorepo 而非单体、
-            AI 能力与架构耦合而非外挂、免费开源而非付费垂直。
+            免费的有 Open SaaS、Ixartz，收费的有 Makerkit、Gravity、Supastarter。
+            Open SaaS 同样 AI-ready，Billy 的差别在：通用 TS monorepo 而非 Wasp DSL 单体、
+            任意业务而非单一 SaaS、免费开源而非付费垂直。
           </p>
           <Link
             href="/comparison"

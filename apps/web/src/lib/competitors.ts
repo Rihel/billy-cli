@@ -28,6 +28,37 @@ export type Competitor = {
 }
 
 export const competitors: Competitor[] = [
+  // ============ 海外 · 免费开源 ============
+  {
+    name: 'Open SaaS',
+    url: 'https://github.com/wasp-lang/open-saas',
+    region: '海外',
+    paid: false,
+    isFullstack: true,
+    form: 'Wasp 框架（React + Node + Prisma）',
+    ai: true,
+    aiNote: 'AI-ready：AGENTS.md + skills + Claude Code plugin',
+    metric: '约 1.6 万 star',
+    maintenance: '活跃',
+    issues: 'open 103',
+    cases: 'Wasp 官方 SaaS starter',
+    summary: 'Wasp 官方免费 SaaS 起步套件，AI-ready 且功能全，但绑定 Wasp 声明式 DSL、单体 SaaS 形态。',
+  },
+  {
+    name: 'Ixartz SaaS-Boilerplate',
+    url: 'https://github.com/ixartz/SaaS-Boilerplate',
+    region: '海外',
+    paid: false,
+    isFullstack: true,
+    form: 'Next.js 全栈',
+    ai: false,
+    aiNote: '无',
+    metric: '约 7400 star',
+    maintenance: '活跃',
+    issues: 'open 5',
+    cases: '未具名',
+    summary: '免费 Next.js 全栈 SaaS 模板，多租户 / 权限 / i18n 齐全，但无 AI 能力。',
+  },
   // ============ 海外 · 收费商业 ============
   {
     name: 'Makerkit',
@@ -73,6 +104,21 @@ export const competitors: Competitor[] = [
     issues: '仓库已私有化',
     cases: '283 个 Stripe 验证项目',
     summary: '单人 SaaS MVP 样板，案例最多，但 AI 非原生、更新趋缓。',
+  },
+  {
+    name: 'Supastarter',
+    url: 'https://supastarter.dev',
+    region: '海外',
+    paid: true,
+    isFullstack: true,
+    form: 'Next.js / Nuxt / SvelteKit',
+    ai: false,
+    aiNote: '未查到（官方未宣传 AI 能力）',
+    metric: '$299 起',
+    maintenance: '商业维护',
+    issues: '闭源',
+    cases: '未具名',
+    summary: '多框架 B2B SaaS 模板，多租户 / i18n / RBAC 见长，付费闭源。',
   },
   // ============ 国内 · 全栈脚手架 ============
   {

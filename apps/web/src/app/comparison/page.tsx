@@ -92,7 +92,8 @@ function CardGrid({ items }: { items: Competitor[] }) {
 }
 
 export default function ComparisonPage() {
-  const overseas = competitors.filter((c) => c.region === '海外')
+  const overseasFree = competitors.filter((c) => c.region === '海外' && !c.paid)
+  const overseasPaid = competitors.filter((c) => c.region === '海外' && c.paid)
   const domesticFullstack = competitors.filter((c) => c.region === '国内' && c.isFullstack)
   const domesticFrontend = competitors.filter((c) => c.region === '国内' && !c.isFullstack)
 
@@ -134,13 +135,23 @@ export default function ComparisonPage() {
         <div className="mt-12">
           <Tabs defaultValue="overseas">
             <TabsList>
-              <TabsTrigger value="overseas">海外（{overseas.length}）</TabsTrigger>
+              <TabsTrigger value="overseas">海外（{overseasFree.length + overseasPaid.length}）</TabsTrigger>
               <TabsTrigger value="domestic">国内（{domesticFullstack.length + domesticFrontend.length}）</TabsTrigger>
             </TabsList>
 
             <TabsContent value="overseas" className="mt-6">
-              <p className="text-sm font-medium text-zinc-500">海外 · 收费商业（{overseas.length}）</p>
-              <CardGrid items={overseas} />
+              <Tabs defaultValue="free">
+                <TabsList>
+                  <TabsTrigger value="free">免费开源（{overseasFree.length}）</TabsTrigger>
+                  <TabsTrigger value="paid">收费商业（{overseasPaid.length}）</TabsTrigger>
+                </TabsList>
+                <TabsContent value="free" className="mt-4">
+                  <CardGrid items={overseasFree} />
+                </TabsContent>
+                <TabsContent value="paid" className="mt-4">
+                  <CardGrid items={overseasPaid} />
+                </TabsContent>
+              </Tabs>
             </TabsContent>
 
             <TabsContent value="domestic" className="mt-6">

@@ -43,13 +43,13 @@
 
 ## 4. 凭什么选 Billy
 
-全栈模板很多，免费的有 create-t3-app、Wasp，收费的有 Makerkit、Gravity。Billy 的差别不在「有没有 skill」，而在三件事：通用 monorepo 而非单体、AI 能力与架构耦合而非外挂、免费开源而非付费垂直。
+免费的有 Open SaaS、Ixartz，收费的有 Makerkit、Gravity、Supastarter。Open SaaS 同样 AI-ready，Billy 的差别在：通用 TS monorepo 而非 Wasp DSL 单体、任意业务而非单一 SaaS、免费开源而非付费垂直。
 
 | 竞品 | 他们的做法 | Billy 的不同 |
 | --- | --- | --- |
-| 免费全栈脚手架（create-t3-app / Wasp） | create-t3-app 是单体 Next.js、无 AI 能力；Wasp 是声明式全栈框架，AI 靠外挂的 agent 插件 | 标准 TypeScript monorepo，15 个 skill 与分层架构耦合，加载即知落点 |
-| 收费 SaaS 模板（Makerkit / Gravity / ShipFast） | 全栈且带 agent 规则，但绑定 B2B 多租户 SaaS 场景，闭源付费 | 免费开源、不绑定 SaaS 场景，另带监控告警、SSE、队列、对象存储等基建能力 |
-| 纯 agent 工作流（gstack） | 角色工作流做到极致，但它是工作流层，需叠加在已有应用上 | 工程骨架与 skill 一体，AI 直接在真实代码上扩业务 |
+| 免费全栈模板（Open SaaS / Ixartz） | Open SaaS 同样 AI-ready（AGENTS.md + skills），但绑定 Wasp 声明式 DSL、单体 SaaS 形态；Ixartz 无 AI | 标准 TypeScript monorepo，通用工程基座：任意业务、双前端、用户 / 管理员双体系，而非单一 SaaS 产品 |
+| 收费 SaaS 模板（Makerkit / Gravity / ShipFast / Supastarter） | 全栈且带 agent 规则，但绑定 B2B 多租户 SaaS 场景，闭源付费 | 免费开源、不绑定 SaaS 场景，另带监控告警、SSE、队列、对象存储等基建能力 |
+| 国内脚手架（RuoYi / yudao-cloud） | Java + Vue 为主，功能全但无 AI 原生开发（AI 是产品功能或缺失） | TypeScript 全栈 + 15 个 skill 驱动，AI 按你的规范全链路交付 |
 
 ## 5. 技术栈为什么这么选
 
@@ -111,30 +111,39 @@ Billy 的定位是 **TypeScript 全栈 monorepo + AI 原生工程模板**（15 �
 
 ## 3. 核心结论
 
-- **海外免费侧**：没有「clone 即用」的全栈模板。有星的都是框架（Wasp、RedwoodJS）或创建器（create-t3-app）；有 AI 能力的高星项目（gstack 13 万 star）是 agent 工作流，不是工程骨架。
-- **海外收费侧**：Makerkit / Gravity / ShipFast 是垂直 SaaS 模板，$199–$349 闭源买断，绑定 B2B 多租户 SaaS 场景。
+- **海外免费侧**：有 Open SaaS（约 1.6 万 star，**AI-ready：AGENTS.md + skills + Claude Code plugin**，但绑定 Wasp 声明式 DSL、单体 SaaS 形态）和 Ixartz SaaS-Boilerplate（约 7400 star，无 AI 能力）。
+- **海外收费侧**：Makerkit / Gravity / ShipFast / Supastarter 是垂直 SaaS 模板，$199–$349 闭源买断，绑定 B2B 多租户 SaaS 场景。
 - **国内侧**：主流是 **Vue + Java**（RuoYi、yudao-cloud），前端模板（ant-design-pro、vue-vben-admin、vue-element-admin）为纯前端；有 AI 能力的，AI 要么是产品内 AIGC 功能、要么是纯前端 / 纯后端的局部 skills。
-- **空白**：**「TypeScript 全栈 monorepo + AGENTS.md/skills 驱动的 AI 原生工程模板」这一形态，国内外均无直接对标。**
-- **Billy 的差异化四点**：通用 TS monorepo（非单体、非声明式框架）；免费开源（非 $199+ 闭源）；skill 与分层架构耦合（非外挂、非产品内功能）；带监控告警 / SSE / 队列 / 对象存储等真实基建。
+- **「有 skill」不是壁垒**：Open SaaS（免费）、Makerkit / Gravity（收费）、gstack（工作流）都已内置 AGENTS.md / skills / agent。Billy 的差异不在「有没有 skill」，而在 skill 与**通用 TS monorepo 分层架构**的耦合，以及**通用工程基座**的形态。
+- **空白**：**「通用 TypeScript 全栈 monorepo + AGENTS.md/skills 驱动 + 任意业务（非单一 SaaS）」这一组合，国内外无直接对标**——Open SaaS 最接近（免费 + 全栈 + AI-ready），但绑定 Wasp DSL、单体 SaaS 形态。
+- **Billy 的差异化四点**：通用 TS monorepo（非单体、非 Wasp DSL）；通用工程基座（任意业务 + 双前端 + 用户/管理员双体系，非单一 SaaS）；免费开源（非 $199+ 闭源）；基建更全（监控告警 / SSE / 队列 / 对象存储 / 限流 / 四种分页）。
 
 ## 4. 竞品清单（模板 / 脚手架类，保留）
 
-### 4.1 海外 · 收费商业
+### 4.1 海外 · 免费开源
+
+| 竞品 | 形态 | AI 能力 | star | 维护 | 真实案例 |
+| --- | --- | --- | --- | --- | --- |
+| [Open SaaS](https://github.com/wasp-lang/open-saas) | Wasp 框架（React + Node + Prisma） | AI-ready：AGENTS.md + skills + Claude Code plugin | 约 1.6 万 | 活跃 | Wasp 官方 starter |
+| [Ixartz SaaS-Boilerplate](https://github.com/ixartz/SaaS-Boilerplate) | Next.js 全栈 | 无 | 约 7400 | 活跃 | 未具名 |
+
+### 4.2 海外 · 收费商业
 
 | 竞品 | 形态 | AI 能力 | 价格 | 维护 | 真实案例 |
 | --- | --- | --- | --- | --- | --- |
 | [Makerkit](https://makerkit.dev) | Turborepo monorepo SaaS | AGENTS.md + 自研 MCP Server（56+ 工具） | $349 买断 | 非常活跃 | Caretrics、watchthis.page |
 | [Gravity](https://usegravity.app) | 全栈 SaaS（Node+React+RN） | CLAUDE.md / AGENTS.md / IDE rules | $199 起 · 续费 $195/年 | 活跃 | 有证言（CodeTutor 等） |
 | [ShipFast](https://shipfa.st) | 单体 Next.js SaaS | 仅 GPT 提示词 + OpenAI 集成（弱） | $199 起 | 更新趋缓 | 283 个 Stripe 验证项目 |
+| [Supastarter](https://supastarter.dev) | Next.js / Nuxt / SvelteKit | 未查到 | $299 起 | 商业维护 | 未具名 |
 
-### 4.2 国内 · 全栈脚手架
+### 4.3 国内 · 全栈脚手架
 
 | 竞品 | 形态 | AI 能力 | star | 维护 | 真实案例 |
 | --- | --- | --- | --- | --- | --- |
 | [yudao-cloud](https://github.com/YunaiV/yudao-cloud) | Java Spring Cloud 微服务 + Vue3 | 内置 AI 大模型业务模块（LLM 对话/生图），非 agent 工作流 | 约 1.9 万 | 活跃 | 未具名 |
 | [RuoYi](https://github.com/yangzongzhuan/RuoYi) | Java Spring Boot + Thymeleaf/jQuery | 无（仅有 DB 表生成 CRUD 的模板生成器） | 约 8500 | 活跃 | 大量二次开发 |
 
-### 4.3 国内 · 前端模板
+### 4.4 国内 · 前端模板
 
 | 竞品 | 形态 | AI 能力 | star | 维护 | 真实案例 |
 | --- | --- | --- | --- | --- | --- |
