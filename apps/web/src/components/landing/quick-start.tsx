@@ -17,8 +17,8 @@ const prerequisites = [
 /** 快速开始：命令清单 + 终端窗口（深色对比块） */
 export function QuickStart() {
   return (
-    <section id="quickstart" className="scroll-mt-20 border-t border-zinc-200/70 bg-zinc-50">
-      <div className="mx-auto grid max-w-7xl items-center gap-12 px-4 py-20 sm:px-6 lg:grid-cols-2 lg:px-8 lg:py-28">
+    <section id="quickstart" className="scroll-mt-20 overflow-hidden border-t border-zinc-200/70 bg-zinc-50">
+      <div className="mx-auto grid max-w-7xl grid-cols-1 items-center gap-12 px-4 py-20 sm:px-6 lg:grid-cols-2 lg:px-8 lg:py-28">
         <Reveal>
           <h2 className="max-w-md text-3xl font-semibold tracking-tight text-zinc-950 sm:text-4xl">
             五分钟，跑起来

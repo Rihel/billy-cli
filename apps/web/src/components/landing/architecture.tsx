@@ -50,7 +50,7 @@ export function Architecture() {
         </Reveal>
 
         <Reveal delay={80}>
-          <div className="mt-12 grid gap-3 lg:grid-cols-[1fr_auto_1fr_auto_1fr_auto_1fr] lg:items-stretch">
+          <div className="mt-12 grid grid-cols-1 gap-3 lg:grid-cols-[1fr_auto_1fr_auto_1fr_auto_1fr] lg:items-stretch">
             {steps.map((step, i) => (
               <div key={step.title} className="contents">
                 <div className="group relative overflow-hidden rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm shadow-zinc-200/50 transition-colors hover:border-orange-500/40">

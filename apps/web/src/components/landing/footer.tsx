@@ -39,7 +39,7 @@ export function Footer() {
   return (
     <footer className="border-t border-zinc-200/70 bg-zinc-50">
       <div className="mx-auto max-w-7xl px-4 py-14 sm:px-6 lg:px-8">
-        <div className="grid gap-10 md:grid-cols-[1.4fr_repeat(3,1fr)]">
+        <div className="grid grid-cols-1 gap-10 md:grid-cols-[1.4fr_repeat(3,1fr)]">
           <div>
             <Link href={Pages.home} className="flex items-center gap-2.5">
               <span className="flex size-8 items-center justify-center rounded-lg bg-gradient-to-br from-orange-500 to-orange-600 text-white shadow-md shadow-orange-500/25">

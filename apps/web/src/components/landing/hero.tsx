@@ -36,7 +36,7 @@ export function Hero() {
         className="absolute top-40 -right-24 size-96 rounded-full bg-orange-500/10 blur-3xl motion-safe:animate-[glow_9s_ease-in-out_infinite]"
       />
 
-      <div className="relative mx-auto grid max-w-7xl items-center gap-14 px-4 pb-20 pt-16 sm:px-6 lg:grid-cols-[1.05fr_0.95fr] lg:px-8 lg:pb-28 lg:pt-24">
+      <div className="relative mx-auto grid max-w-7xl grid-cols-1 items-center gap-14 px-4 pb-20 pt-16 sm:px-6 lg:grid-cols-[1.05fr_0.95fr] lg:px-8 lg:pb-28 lg:pt-24">
         {/* 左侧文案 */}
         <div className="max-w-xl">
           <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-orange-500/25 bg-orange-500/10 px-3.5 py-1.5 text-xs font-medium text-orange-700">
@@ -44,7 +44,7 @@ export function Hero() {
             AI 原生全栈模板
           </div>
 
-          <h1 className="text-4xl font-semibold leading-[1.12] tracking-tight text-zinc-950 sm:text-5xl lg:text-6xl">
+          <h1 className="text-3xl font-semibold leading-[1.12] tracking-tight text-zinc-950 sm:text-4xl md:text-5xl lg:text-6xl">
             AI 原生工程，
             <br />
             一套模板<span className="text-orange-600">全栈直达</span>

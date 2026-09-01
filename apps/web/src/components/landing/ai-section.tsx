@@ -87,7 +87,7 @@ export function AiSection() {
           </p>
         </Reveal>
 
-        <div className="mt-12 grid gap-4 lg:grid-cols-5">
+        <div className="mt-12 grid grid-cols-1 gap-4 lg:grid-cols-5">
           {/* 左：AI 会话演示（浅色聊天气泡） */}
           <Reveal className="lg:col-span-3">
             <div className="flex h-full flex-col overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-xl shadow-zinc-200/60">
@@ -169,7 +169,7 @@ export function AiSection() {
             ))}
 
             <Reveal delay={180}>
-              <div className="grid gap-3">
+              <div className="grid grid-cols-1 gap-3">
                 {points.map((point) => (
                   <div
                     key={point.title}

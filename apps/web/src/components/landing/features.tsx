@@ -101,7 +101,7 @@ export function Features() {
           </p>
         </Reveal>
 
-        <div className="mt-12 grid gap-4 md:grid-cols-3">
+        <div className="mt-12 grid grid-cols-1 gap-4 md:grid-cols-3">
           {/* 大 cell：分层架构 */}
           <Reveal className="md:col-span-2" delay={60}>
             <div className="group relative h-full overflow-hidden rounded-2xl border border-zinc-200 bg-gradient-to-br from-white to-zinc-50 p-6 shadow-sm shadow-zinc-200/50 transition-colors hover:border-orange-500/40">
