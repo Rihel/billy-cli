@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "cli": "tsx scripts/cli.ts",
+    "bootstrap": "tsx scripts/setup.ts",
     "seed:admin": "pnpm --filter @app/server run seed:admin",
     "dev:pkgs": "turbo run dev --filter=./packages/*",
     "build:pkgs": "turbo run build --filter=./packages/*",
