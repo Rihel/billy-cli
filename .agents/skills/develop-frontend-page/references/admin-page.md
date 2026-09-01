@@ -104,6 +104,10 @@ const form = useForm({
 - `DisplayValue type="date"`（时间格式化）、`DictTag dict={XxxStatus} value={v}`（字典标签）、
   `EmptyValue`（空值占位）、`Tag color="blue|green|red|..."`（常见预设色名）、`IconText`
   （带图标文字按钮）、`RefreshButton`（刷新）、`PageToolbar`（页头）、`AutoSize`（自适应高度容器）。
+- 文档 / 富文本：`Markdown content={md}`（`@repo/ui` 自有组件，位于
+  `packages/ui/src/components/markdown.tsx`）：支持 GFM 表格 / 任务列表 / 删除线 / 自动链接、
+  代码块高亮；每个元素都有内置渲染样式，可按元素覆盖（`components` prop）；
+  默认不渲染原始 HTML。代码高亮 token 色在 `packages/ui/src/globals.css` 的 `--md-hl-*`。
 - 存储类：`ImageUpload` / `FileUpload` / `FilePreview` / `StorageProvider`（参考
   `packages/ui/src/components/*`）；文件 key 展示前用 `formatStorageUrl`（`@/lib/constants`）。
 - 反馈：`toastSuccess` / `toastError` / `toastWarning`（`@repo/ui`，Toaster 已在根布局挂载）；

@@ -33,7 +33,12 @@
    Query（useQuery / useMutation）+ `@tanstack/react-table`（DataTable 列定义）+
    `@tanstack/react-form`（`useForm` 创建表单实例，ModalForm / DrawerForm 声明式 items）+
    `useServerClient()`；web 同用 `@repo/ui`（Base UI + shadcn + Tailwind 4）。
-   前端组件统一来自 `@repo/ui`（shadcn/ui 风格）。
+   前端组件统一来自 `@repo/ui`（shadcn/ui 风格）。**组件目录约定**：`ui/src/components/ui/*`
+   由 shadcn 维护（用 shadcn CLI 更新，保留其文件，需要时可直接改其内容）；自有封装一律放
+   `ui/src/components/*`（如 data-table / modal-form / markdown），禁止放进 `components/ui/*`。
+   **样式约定**：改组件 / 页面视觉优先用组件 className（在业务组件或页面传入，如 AppMenu /
+   DataTable）；不要用 CSS 覆盖 shadcn 默认类（`@layer base` 内的覆盖会被 utilities 层压过），
+   必须写 CSS 时放在 `@layer` 之外（非 layer 优先于所有 layer）。
 9. **纯类型导入用 `import type`**：`apps/server` 开启 `verbatimModuleSyntax`，值 / 类型
    混用导入会报错；其余 packages 虽未开启，仍统一用 `import type` 区分纯类型，保持风格一致。
 10. **不要重复造轮子（实现查找顺序，最高优先）**：任何功能实现之前，先按以下顺序

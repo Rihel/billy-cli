@@ -1,6 +1,6 @@
 ---
 name: develop-frontend-page
-description: 在 Billy 工程中开发前端页面：Admin 后台页（@repo/ui 的 DataTable / DataList / ModalForm / 存储组件 + TanStack Query + TanStack Table/Form）与 Web 前台页（Base UI + shadcn + Tailwind 4 + Server Actions + useActionState）。触发词：前端页面、后台页面、列表页、表单页、写页面、组件、Server Action、ui、DataTable、ModalForm、shadcn、Tailwind、TanStack。
+description: 在 Billy 工程中开发前端页面：Admin 后台页（@repo/ui 的 DataTable / DataList / ModalForm / Markdown 文档渲染 / 存储组件 + TanStack Query + TanStack Table/Form）与 Web 前台页（Base UI + shadcn + Tailwind 4 + Server Actions + useActionState）。触发词：前端页面、后台页面、列表页、表单页、写页面、组件、markdown、文档渲染、Server Action、ui、DataTable、ModalForm、shadcn、Tailwind、TanStack。
 ---
 
 # 开发前端页面
@@ -20,6 +20,21 @@ description: 在 Billy 工程中开发前端页面：Admin 后台页（@repo/ui 
 | 典型页面 | `/`、`/auth/login`、`/auth/register` | `/main/*`（dashboard / todo / system/users 等） |
 
 **两套前端统一使用 `@repo/ui`（shadcn/ui 风格）**。
+
+**组件目录约定（硬性）**：`@repo/ui` 的 `components/ui/*` 是 shadcn 管理的目录
+（用 shadcn CLI 增删组件，保留其文件，需要时可直接更新其内容）；**自有封装一律放
+`components/*`**（如 data-table / modal-form / markdown / dict-select），严禁把自封装
+组件放进 `components/ui/*`。新增组件后在 `packages/ui/src/index.ts` 的「自有组件」区段导出。
+
+**样式约定（硬性）——优先使用 className**：调整组件 / 页面视觉时，能传 className 的
+一律传 className（shadcn 组件不可改时，在**业务组件或页面**里通过 `cn`/`tailwind-merge`
+传入覆盖，如 `AppMenu` 的菜单间距、`DataTable` 的表头样式）。**不要用 CSS 覆盖**
+shadcn 组件的默认类：Tailwind 的 utilities 层声明在 base 之后，写在 `@layer base` 内的
+覆盖会被 utilities 层压过而不生效（层顺序优先于选择器特异性）。只有无法用 className
+实现时才写 CSS（如 `::before` 伪元素、全局滚动条），且**必须写在 `@layer` 之外**
+（非 layer 规则优先于所有 layer，含 utilities）。参考实现：
+`apps/admin/src/app/globals.css`（仅保留激活指示条 / 主按钮 hover / 滚动条等必要规则）、
+`apps/admin/src/components/AppMenu.tsx`（间距全用 className）。
 
 ## 参考文件（本 skill 的组成部分）
 
@@ -47,3 +62,4 @@ description: 在 Billy 工程中开发前端页面：Admin 后台页（@repo/ui 
 - [ ] 字典列用 `DictTag` / `getLabel`；时间用 `DisplayValue`；文件用 `formatStorageUrl`
 - [ ] Server Actions 统一走 `defineAction`（admin）或 `wrapAction`（web）的错误处理封装
 - [ ] admin 新页面已登记 `AppMenu.tsx` 菜单
+- [ ] 样式调整优先用组件 className；必须写 CSS 覆盖时写在 `@layer` 之外（非 layer 优先）
