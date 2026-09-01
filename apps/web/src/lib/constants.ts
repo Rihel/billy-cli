@@ -9,7 +9,9 @@ export const Pages = {
 
 /** 首页锚点导航 */
 export const LandingAnchors = {
+  why: '#why',
   features: '#features',
+  choice: '#choice',
   ai: '#ai',
   architecture: '#architecture',
   quickstart: '#quickstart',

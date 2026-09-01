@@ -10,9 +10,9 @@ type TerminalLine =
   | { kind: 'ready'; text: string }
 
 const terminalLines: TerminalLine[] = [
-  { kind: 'prompt', text: 'billy --ai "新增一个商品模块"' },
-  { kind: 'ai', text: '加载 develop-business-module 技能' },
-  { kind: 'check', text: '契约 → 实体 → 服务 → 路由 → SDK' },
+  { kind: 'prompt', text: '新增一个「商品」业务模块' },
+  { kind: 'ai', text: '读取 AGENTS.md，加载 develop-business-module 技能' },
+  { kind: 'check', text: '数据结构 → 实体 → 服务 → 路由 → SDK' },
   { kind: 'check', text: '后台页面已登记菜单' },
   { kind: 'check', text: '交付检查清单全部通过' },
   { kind: 'ready', text: 'ready · http://localhost:9840' },
@@ -51,7 +51,8 @@ export function Hero() {
           </h1>
 
           <p className="mt-6 max-w-md text-base leading-relaxed text-zinc-600 sm:text-lg">
-            内置 14 个 Agent Skills，AI 按你的工程规范全链路交付；Hono + Next.js 16 双前端，一条命令跑起来。
+            工程规范写进 15 个 Agent Skills，AI 开工先读规范、按你的标准交付；
+            Hono + Next.js 16 双前端开箱即用，pnpm bootstrap 一键初始化。
           </p>
 
           <div className="mt-9 flex flex-wrap items-center gap-3">
@@ -104,7 +105,7 @@ export function Hero() {
                   </span>
                   {line.kind === 'prompt' && (
                     <>
-                      <span className="text-emerald-400">$</span>{' '}
+                      <span className="text-emerald-400">›</span>{' '}
                       <span className="text-zinc-100">{line.text}</span>
                     </>
                   )}

@@ -24,7 +24,7 @@ const steps = [
     icon: DatabaseZap,
     tag: '@repo/kits',
     title: '能力底座',
-    desc: 'TypeORM 门面 + 分页 + 事务 + 存储 + SSE 推送',
+    desc: 'TypeORM 底座 + 分页 + 事务 + 存储 + SSE 推送',
   },
 ]
 
@@ -74,7 +74,7 @@ export function Architecture() {
         <Reveal delay={140}>
           <div className="mt-8 flex flex-wrap items-center gap-3 rounded-2xl border border-orange-500/20 bg-orange-500/[0.06] px-5 py-4">
             <ShieldCheck className="size-5 shrink-0 text-orange-700" />
-            <p className="text-sm text-zinc-700">依赖方向铁律：</p>
+            <p className="text-sm text-zinc-700">依赖方向规范：</p>
             <div className="flex flex-wrap gap-2">
               {rules.map((rule) => (
                 <code

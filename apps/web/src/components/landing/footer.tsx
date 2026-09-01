@@ -9,7 +9,10 @@ const navGroups: { title: string; links: FooterLink[] }[] = [
     title: '产品',
     links: [
       { href: Pages.home, label: '首页' },
+      { href: LandingAnchors.why, label: '设计理念' },
       { href: LandingAnchors.features, label: '特性' },
+      { href: LandingAnchors.choice, label: '选型' },
+      { href: '/comparison', label: '竞品调研' },
       { href: LandingAnchors.ai, label: 'AI 能力' },
       { href: LandingAnchors.architecture, label: '架构' },
       { href: LandingAnchors.quickstart, label: '快速开始' },
@@ -50,7 +53,7 @@ export function Footer() {
               </span>
             </Link>
             <p className="mt-4 max-w-xs text-sm leading-relaxed text-zinc-500">
-              一套基于 Hono、InversifyJS 与 Next.js 16 的全栈应用 Monorepo 模板，契约先行、双前端开箱即用。
+              一套基于 Hono、InversifyJS 与 Next.js 16 的全栈应用 Monorepo 模板，数据结构先行、双前端开箱即用。
             </p>
           </div>
 

@@ -2,10 +2,8 @@ import { CheckCircle2, TerminalSquare } from 'lucide-react'
 import { Reveal } from './reveal'
 
 const steps = [
-  { cmd: 'pnpm install', note: '安装全部依赖' },
-  { cmd: 'docker compose up postgres redis', note: '拉起数据库与缓存' },
-  { cmd: 'pnpm db:migrate', note: '执行数据库迁移' },
-  { cmd: 'pnpm dev:web', note: '启动前台 · 9840' },
+  { cmd: 'pnpm bootstrap', note: '一键初始化：环境检查 → 依赖服务 → .env → 安装 → 迁移 → 冒烟' },
+  { cmd: 'pnpm dev:pkgs & pnpm dev:server & pnpm dev:web', note: '并行启动开发环境 · 前台 9840' },
 ]
 
 const prerequisites = [
@@ -14,7 +12,7 @@ const prerequisites = [
   'Docker（可选，仅本地依赖）',
 ]
 
-/** 快速开始：命令清单 + 终端窗口（深色对比块） */
+/** 快速开始：一条 bootstrap 完成初始化 + 并行启动（深色终端对比块） */
 export function QuickStart() {
   return (
     <section id="quickstart" className="scroll-mt-20 overflow-hidden border-t border-zinc-200/70 bg-zinc-50">
@@ -24,7 +22,8 @@ export function QuickStart() {
             五分钟，跑起来
           </h2>
           <p className="mt-4 max-w-md text-base leading-relaxed text-zinc-600">
-            环境就绪后四条命令即可启动全栈开发环境，前后端热更新并行开发。
+            一条 <code className="font-mono text-sm text-zinc-900">pnpm bootstrap</code>{' '}
+            完成全部初始化，再并行启动开发环境，前后端热更新同步开发。
           </p>
 
           <ul className="mt-8 space-y-4">
@@ -71,31 +70,39 @@ export function QuickStart() {
               <pre className="overflow-x-auto p-5 font-mono text-[13px] leading-7">
                 <div>
                   <span className="select-none text-zinc-700">$ </span>
-                  <span className="text-emerald-400"># ① 安装依赖</span>
+                  <span className="text-emerald-400"># ① 一键初始化（交互确认，-y 全默认）</span>
                 </div>
                 <div>
                   <span className="select-none text-zinc-700">$ </span>
-                  <span className="text-zinc-100">pnpm install</span>
+                  <span className="text-zinc-100">pnpm bootstrap</span>
                 </div>
                 <div>
-                  <span className="select-none text-zinc-700">$ </span>
-                  <span className="text-emerald-400"># ② 启动基础设施</span>
+                  <span className="select-none text-zinc-700">  </span>
+                  <span className="text-zinc-500">[1/6] 环境检查 ✓</span>
                 </div>
                 <div>
-                  <span className="select-none text-zinc-700">$ </span>
-                  <span className="text-zinc-100">docker compose up postgres redis</span>
+                  <span className="select-none text-zinc-700">  </span>
+                  <span className="text-zinc-500">[2/6] Docker 依赖服务 ✓</span>
                 </div>
                 <div>
-                  <span className="select-none text-zinc-700">$ </span>
-                  <span className="text-emerald-400"># ③ 执行迁移</span>
+                  <span className="select-none text-zinc-700">  </span>
+                  <span className="text-zinc-500">[3/6] 环境变量文件 ✓</span>
                 </div>
                 <div>
-                  <span className="select-none text-zinc-700">$ </span>
-                  <span className="text-zinc-100">pnpm db:migrate</span>
+                  <span className="select-none text-zinc-700">  </span>
+                  <span className="text-zinc-500">[4/6] 依赖安装 ✓</span>
                 </div>
                 <div>
+                  <span className="select-none text-zinc-700">  </span>
+                  <span className="text-zinc-500">[5/6] 数据库迁移与种子 ✓</span>
+                </div>
+                <div>
+                  <span className="select-none text-zinc-700">  </span>
+                  <span className="text-zinc-500">[6/6] 服务冒烟验证 ✓</span>
+                </div>
+                <div className="mt-1">
                   <span className="select-none text-zinc-700">$ </span>
-                  <span className="text-emerald-400"># ④ 并行启动开发环境</span>
+                  <span className="text-emerald-400"># ② 并行启动开发环境</span>
                 </div>
                 <div>
                   <span className="select-none text-zinc-700">$ </span>

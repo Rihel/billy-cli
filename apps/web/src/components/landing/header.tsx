@@ -22,7 +22,9 @@ import { cn } from '@repo/ui'
 import type { AuthUserModel } from '@repo/shared'
 
 const anchorLinks = [
+  { href: LandingAnchors.why, label: '设计理念' },
   { href: LandingAnchors.features, label: '特性' },
+  { href: LandingAnchors.choice, label: '选型' },
   { href: LandingAnchors.ai, label: 'AI 能力' },
   { href: LandingAnchors.architecture, label: '架构' },
   { href: LandingAnchors.quickstart, label: '快速开始' },

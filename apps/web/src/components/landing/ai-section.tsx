@@ -8,7 +8,7 @@ const chatMessages = [
   },
   {
     role: 'ai' as const,
-    text: '已加载 develop-business-module 技能，按「契约 → 数据 → 业务 → 接口 → SDK → 页面」全链路推进。',
+    text: '已加载 develop-business-module 技能，按「数据结构 → 建表 → 业务 → 接口 → SDK → 页面」全链路推进。',
   },
   {
     role: 'ai' as const,
@@ -43,7 +43,16 @@ const skillGroups = [
   },
   {
     label: '基础设施与质量',
-    items: ['queue', 'scheduler', 'state-machine', 'write-tests', 'git-workflow'],
+    items: [
+      'concurrency',
+      'queue',
+      'scheduler',
+      'stream',
+      'state-machine',
+      'write-tests',
+      'git-workflow',
+      'manage-skills',
+    ],
   },
 ]
 
@@ -51,17 +60,17 @@ const points = [
   {
     icon: Wand2,
     title: '规范即技能',
-    desc: '分层架构、命名、错误体系全部沉淀为 skill，AI 开工先加载必读规范。',
+    desc: '分层架构、命名、错误体系全部写进 skill，AI 开工先读必读规范。',
   },
   {
     icon: ShieldCheck,
     title: '全链路覆盖',
-    desc: '从建表、契约到接口、页面、测试、提交，每一步都有对应 skill 兜底。',
+    desc: '从数据结构、建表到接口、页面、测试、提交，每一步都有对应 skill 兜底。',
   },
   {
     icon: GitBranch,
-    title: '契约先行 + 全类型',
-    desc: 'Zod 契约与类型化 SDK 让 AI 生成的代码天然对齐工程标准。',
+    title: '数据结构先行 + 全类型',
+    desc: '数据结构与类型化 SDK 让 AI 生成的代码天然符合工程标准。',
   },
 ]
 
@@ -82,7 +91,7 @@ export function AiSection() {
             让 AI 按你的规范写代码
           </h2>
           <p className="mt-4 max-w-xl text-base leading-relaxed text-zinc-600">
-            工程内置 14 个 Agent Skills，把架构铁律、代码约定与全链路流程变成 AI
+            工程内置 15 个 Agent Skills，把架构规范与完整流程变成 AI
             可执行的规范，AI 写的代码也能符合你的工程标准。
           </p>
         </Reveal>

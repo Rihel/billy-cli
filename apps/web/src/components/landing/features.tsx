@@ -13,7 +13,7 @@ function ArchitectureDiagram() {
   const rows = [
     { label: 'apps/server', sub: 'Hono 边界 + 业务模块 + 实体迁移', level: '顶层' },
     { label: '@repo/kits', sub: '后端通用能力（数据库/缓存/队列/存储/推送）', level: '中层' },
-    { label: '@repo/shared · sdk', sub: '契约 / 客户端', level: '底层' },
+    { label: '@repo/shared · sdk', sub: '数据结构 / 客户端', level: '底层' },
   ]
   return (
     <div className="mt-6 space-y-2">
@@ -44,7 +44,7 @@ function ArchitectureDiagram() {
   )
 }
 
-/** Zod 契约 mini 片段（深色代码块对比） */
+/** Zod 数据结构 mini 片段（深色代码块对比） */
 function ZodSnippet() {
   return (
     <pre className="mt-6 overflow-x-auto rounded-xl border border-zinc-800 bg-zinc-950 p-4 font-mono text-xs leading-6">
@@ -64,23 +64,23 @@ function ZodSnippet() {
 const smallCells = [
   {
     icon: Braces,
-    title: '契约先行',
-    desc: 'Zod Schema 定义一切，后端校验、数据库、前端表单共用同一份契约，字段永不失同步。',
+    title: '数据结构先行',
+    desc: '数据结构只定义一份，后端校验、数据库、前端表单全部共用，字段永远对得上。',
   },
   {
     icon: MonitorSmartphone,
     title: '双前端开箱',
-    desc: 'Web 前台与 Admin 后台统一使用 shadcn/ui（@repo/ui），表格 / 表单基于 TanStack 技术栈。',
+    desc: 'Web 前台用 Base UI + shadcn，Admin 后台用 TanStack Table / Form，统一共享 @repo/ui 组件库。',
   },
   {
     icon: Binary,
     title: '全类型 SDK',
-    desc: '基于 HttpClient 生成全类型化 ServerClient，前端调用接口全程类型提示，杜绝魔法字符串。',
+    desc: '在 HttpClient 之上封装全类型化 ServerClient，前端调用接口全程类型提示，杜绝魔法字符串。',
   },
   {
     icon: Container,
     title: '容器化部署',
-    desc: 'Docker multi-stage 构建，server 与 web 独立镜像，compose 一键拉起 PostgreSQL 与 Redis。',
+    desc: 'Docker multi-stage 构建，server 与 web 独立镜像，compose 一键拉起 PostgreSQL、Redis 与 MinIO。',
   },
 ]
 
@@ -118,17 +118,17 @@ export function Features() {
             </div>
           </Reveal>
 
-          {/* 小 cell：契约先行 */}
+          {/* 小 cell：数据结构先行 */}
           <Reveal delay={120}>
             <div className="group relative h-full overflow-hidden rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm shadow-zinc-200/50 transition-colors hover:border-orange-500/40">
               <div className="flex items-center gap-3">
                 <span className="flex size-9 items-center justify-center rounded-xl bg-zinc-100 text-orange-700">
                   <Braces className="size-4.5" />
                 </span>
-                <h3 className="text-base font-semibold text-zinc-950">契约先行</h3>
+                <h3 className="text-base font-semibold text-zinc-950">数据结构先行</h3>
               </div>
               <p className="mt-3 text-sm leading-relaxed text-zinc-600">
-                Zod Schema 定义一切，后端校验、数据库、前端共用同一份契约，字段永不失同步。
+                数据结构只定义一份，后端校验、数据库、前端共用，字段永远对得上。
               </p>
               <ZodSnippet />
             </div>
@@ -153,10 +153,10 @@ export function Features() {
                 <h3 className="text-lg font-semibold text-zinc-950">开箱即用的业务模块</h3>
               </div>
               <p className="mt-3 text-sm leading-relaxed text-zinc-600">
-                认证、用户、待办等完整模块示例，覆盖契约、实体、服务、路由、页面全链路，照着抄就能扩展新业务。
+                认证、用户、待办等完整模块示例，覆盖数据结构、实体、服务、路由、页面全链路，照着抄就能扩展新业务。
               </p>
               <div className="mt-6 flex flex-wrap gap-2">
-                {['认证鉴权', '用户体系', '待办事项', '字典枚举', '对象存储', '消息队列', '实时推送'].map((m) => (
+                {['认证鉴权', '用户体系', '待办事项', '管理员', '字典枚举', '对象存储', '实时推送', '监控告警'].map((m) => (
                   <span
                     key={m}
                     className="rounded-full border border-zinc-200 bg-zinc-50 px-3 py-1 text-xs text-zinc-600"
