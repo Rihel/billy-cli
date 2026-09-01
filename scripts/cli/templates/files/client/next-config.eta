@@ -17,7 +17,7 @@ const nextConfig: NextConfig = {
   outputFileTracingRoot: !isDev ? path.join(__dirname, '../../') : undefined,
   reactCompiler: true,
   experimental: { authInterrupts: true },
-  transpilePackages: ['@repo/aui'],
+  transpilePackages: ['@repo/ui'],
   serverExternalPackages: ['@repo/shared', 'pino', 'pino-pretty', 'pg', 'typeorm'],
 }
 

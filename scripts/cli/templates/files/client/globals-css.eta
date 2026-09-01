@@ -1,13 +1,14 @@
-* {
-  box-sizing: border-box;
-}
+@import "tailwindcss";
+@import "@repo/ui/globals.css";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
 
-html,
-body {
-  margin: 0;
-  min-height: 100%;
-}
+@source "../../../../packages/ui/src/**/*.{ts,tsx}";
+
+@custom-variant dark (&:is(.dark *));
 
 body {
-  font-family: sans-serif;
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans), system-ui, -apple-system, sans-serif;
 }
