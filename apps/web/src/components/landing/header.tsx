@@ -2,11 +2,24 @@
 
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
-import { Menu, X, ArrowRight, TerminalSquare } from 'lucide-react'
+import { LogOutIcon, Menu, X, ArrowRight, TerminalSquare } from 'lucide-react'
 import { Button } from '@repo/ui'
-import { AppName, Pages, LandingAnchors, AdminUrl } from '@/lib/constants'
-import { useServerClient } from '@/lib/server-client'
+import {
+  AppName,
+  Pages,
+  LandingAnchors,
+  AdminUrl,
+  TokenKey,
+  formatStorageUrl,
+} from '@/lib/constants'
+import {
+  useServerClient,
+  createServerClient,
+  removeToken,
+} from '@/lib/server-client'
+import { logoutAction } from '@/actions/auth.actions'
 import { cn } from '@repo/ui'
+import type { AuthUserModel } from '@repo/shared'
 
 const anchorLinks = [
   { href: LandingAnchors.features, label: '特性' },
@@ -16,12 +29,14 @@ const anchorLinks = [
   { href: Pages.markdown, label: 'Markdown' },
 ]
 
-/** 首页顶部导航：单行锚点 + 登录/注册，移动端折叠为抽屉菜单 */
+/** 首页顶部导航：单行锚点 + 登录/注册（登录后显示用户信息），移动端折叠为抽屉菜单 */
 export function Header() {
   const [open, setOpen] = useState(false)
   const client = useServerClient()
   // 用户体系开关：调 /config/get 获取，默认开启（获取失败保持现状，不阻塞页面）
   const [authEnabled, setAuthEnabled] = useState(true)
+  // 当前登录用户（null = 未登录）
+  const [user, setUser] = useState<AuthUserModel | null>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -40,6 +55,44 @@ export function Header() {
       cancelled = true
     }
   }, [client])
+
+  // 登录态探测：读 localStorage 凭证 → getMe 拉取用户信息；token 失效则清理回未登录
+  useEffect(() => {
+    let cancelled = false
+    let token = ''
+    try {
+      const raw = localStorage.getItem(TokenKey)
+      token = raw ? (JSON.parse(raw)?.token ?? '') : ''
+    } catch {
+      token = ''
+    }
+    if (!token) {
+      setUser(null)
+      return
+    }
+    createServerClient(token)
+      .auth.getMe()
+      .then((me) => {
+        if (!cancelled) setUser(me)
+      })
+      .catch(() => {
+        // token 失效：清理本地凭证，回到未登录态（不跳转，避免干扰当前浏览）
+        localStorage.removeItem(TokenKey)
+        if (!cancelled) setUser(null)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  const displayName = user?.realName || user?.email || ''
+  const initial = displayName.charAt(0).toUpperCase() || 'U'
+
+  const logout = async () => {
+    await logoutAction()
+    await removeToken()
+    setUser(null)
+  }
 
   return (
     <header className="sticky top-0 z-50 border-b border-zinc-200/80 bg-white/80 backdrop-blur-xl">
@@ -71,9 +124,37 @@ export function Header() {
           ))}
         </nav>
 
-        {/* 桌面操作：用户体系开关关闭时隐藏登录/注册入口 */}
+        {/* 桌面操作：登录后显示用户信息；未登录且用户体系开启时显示登录/注册 */}
         <div className="hidden items-center gap-2 md:flex">
-          {authEnabled ? (
+          {user ? (
+            <>
+              <div className="flex items-center gap-2" title={displayName}>
+                {user.avatar ? (
+                  <img
+                    src={formatStorageUrl(user.avatar)}
+                    alt=""
+                    className="size-8 rounded-full object-cover"
+                  />
+                ) : (
+                  <span className="grid size-8 place-items-center rounded-full bg-orange-500/10 text-sm font-medium text-orange-700">
+                    {initial}
+                  </span>
+                )}
+                <span className="max-w-32 truncate text-sm text-zinc-600">
+                  {displayName}
+                </span>
+              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-zinc-500 hover:text-zinc-900"
+                onClick={() => void logout()}
+              >
+                <LogOutIcon />
+                退出
+              </Button>
+            </>
+          ) : authEnabled ? (
             <>
               <Button
                 render={<Link href={Pages.login} />}
@@ -125,7 +206,38 @@ export function Header() {
               {link.label}
             </Link>
           ))}
-          {authEnabled ? (
+          {user ? (
+            <div className="mt-3 flex items-center gap-2 border-t border-zinc-200/80 pt-3">
+              <div className="flex min-w-0 flex-1 items-center gap-2">
+                {user.avatar ? (
+                  <img
+                    src={formatStorageUrl(user.avatar)}
+                    alt=""
+                    className="size-8 shrink-0 rounded-full object-cover"
+                  />
+                ) : (
+                  <span className="grid size-8 shrink-0 place-items-center rounded-full bg-orange-500/10 text-sm font-medium text-orange-700">
+                    {initial}
+                  </span>
+                )}
+                <span className="truncate text-sm text-zinc-600">
+                  {displayName}
+                </span>
+              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="shrink-0 text-zinc-500"
+                onClick={() => {
+                  setOpen(false)
+                  void logout()
+                }}
+              >
+                <LogOutIcon />
+                退出
+              </Button>
+            </div>
+          ) : authEnabled ? (
             <div className="mt-3 flex items-center gap-2 border-t border-zinc-200/80 pt-3">
               <Button
                 render={<Link href={Pages.login} onClick={() => setOpen(false)} />}
