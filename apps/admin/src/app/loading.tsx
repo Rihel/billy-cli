@@ -1,5 +1,5 @@
-import { PageLoading } from '@repo/aui'
+import { PageLoading } from '@repo/ui'
 
 export default function Loading() {
-  return <PageLoading fullscreen className="bg-gray-50" />
+  return <PageLoading fullscreen className="bg-muted/40" />
 }

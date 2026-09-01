@@ -3,9 +3,8 @@ import { logoutAction } from '@/actions/auth.actions'
 import { removeToken } from '@/lib/server-client'
 import { useServerClient } from '@/lib/server-client'
 import { useAuthStore } from '@/stores/auth.store'
-import { LockOutlined } from '@ant-design/icons'
+import { useForm } from '@tanstack/react-form'
 import { useMutation } from '@tanstack/react-query'
-import { App, Form } from 'antd'
 import { useRouter } from 'next/navigation'
 import {
   DisplayRender,
@@ -15,8 +14,10 @@ import {
   ImageUpload,
   ModalForm,
   PageToolbar,
+  toastSuccess,
   useDisclosure,
-} from '@repo/aui'
+} from '@repo/ui'
+import { KeyRoundIcon } from 'lucide-react'
 
 type ChangePasswordForm = {
   oldPassword: string
@@ -27,8 +28,6 @@ type ChangePasswordForm = {
 export default function UserCenter() {
   const { adminInfo, setAdminInfo, clear } = useAuthStore()
   const passwordDialog = useDisclosure()
-  const [passwordForm] = Form.useForm<ChangePasswordForm>()
-  const { message } = App.useApp()
   const router = useRouter()
   const client = useServerClient()
 
@@ -41,18 +40,21 @@ export default function UserCenter() {
       client.admin.changePassword(input),
   })
 
-  const changePassword = async (values: ChangePasswordForm) => {
-    const { confirmPassword: _, ...input } = values
-    await changePasswordMutation.mutateAsync(input)
-    message.success('密码修改成功，请重新登录')
-    clear()
-    removeToken()
-    await logoutAction()
-    router.replace('/auth/login')
-  }
+  const passwordForm = useForm({
+    defaultValues: { oldPassword: '', newPassword: '', confirmPassword: '' },
+    onSubmit: async ({ value }) => {
+      const { confirmPassword: _, ...input } = value
+      await changePasswordMutation.mutateAsync(input)
+      toastSuccess('密码修改成功，请重新登录')
+      clear()
+      removeToken()
+      await logoutAction()
+      router.replace('/auth/login')
+    },
+  })
 
   return (
-    <div className="p-5 flex flex-col gap-5">
+    <div className="flex flex-col gap-6 p-4 sm:p-6">
       <PageToolbar title={<div className="text-2xl">个人中心</div>} />
       <div className="flex gap-10">
         <ImageUpload
@@ -68,7 +70,6 @@ export default function UserCenter() {
         <DisplayRender
           data={adminInfo}
           layout="row"
-          // className="mt-6"
           labelClassName="w-20"
           items={[
             { name: 'email', label: '邮箱' },
@@ -96,7 +97,7 @@ export default function UserCenter() {
               label: '密码',
               render: () => (
                 <IconText
-                  icon={LockOutlined}
+                  icon={<KeyRoundIcon />}
                   type="primary"
                   onClick={() => passwordDialog.open()}
                 >
@@ -112,53 +113,37 @@ export default function UserCenter() {
         title="修改密码"
         open={passwordDialog.isOpen}
         form={passwordForm}
+        submitText="确认修改"
         items={[
           {
             name: 'oldPassword',
             label: '旧密码',
             widget: 'password',
-            formItemProps: {
-              rules: [{ required: true, message: '请输入旧密码' }],
-            },
+            required: '请输入旧密码',
             props: { autoComplete: 'current-password' },
           },
           {
             name: 'newPassword',
             label: '新密码',
             widget: 'password',
-            formItemProps: {
-              rules: [
-                { required: true, message: '请输入新密码' },
-                { min: 6, message: '密码至少 6 位' },
-              ],
-            },
+            required: '请输入新密码',
+            validate: (value) =>
+              typeof value === 'string' && value.length > 0 && value.length < 6
+                ? '密码至少 6 位'
+                : undefined,
             props: { autoComplete: 'new-password' },
           },
           {
             name: 'confirmPassword',
             label: '确认新密码',
             widget: 'password',
-            formItemProps: {
-              dependencies: ['newPassword'],
-              rules: [
-                { required: true, message: '请再次输入新密码' },
-                ({ getFieldValue }) => ({
-                  validator(_, value) {
-                    if (!value || getFieldValue('newPassword') === value)
-                      return Promise.resolve()
-                    return Promise.reject(new Error('两次密码输入不一致'))
-                  },
-                }),
-              ],
-            },
+            required: '请再次输入新密码',
+            validate: (value, values) =>
+              value !== values.newPassword ? '两次密码输入不一致' : undefined,
             props: { autoComplete: 'new-password' },
           },
         ]}
-        loading={changePasswordMutation.isPending}
-        onSubmit={changePassword}
         onCancel={passwordDialog.close}
-        formProps={{ requiredMark: false }}
-        modalProps={{ okText: '确认修改', cancelText: '取消' }}
       />
     </div>
   )

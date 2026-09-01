@@ -1,7 +1,11 @@
 'use client'
 
-import { PageToolbar } from '@repo/aui'
+import { PageToolbar } from '@repo/ui'
 
 export default function DashboardPage() {
-  return <PageToolbar title="控制台" />
+  return (
+    <div className="p-4 sm:p-6">
+      <PageToolbar title="控制台" />
+    </div>
+  )
 }

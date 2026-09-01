@@ -2,24 +2,38 @@
 
 import { formatStorageUrl } from '@/lib/constants'
 import { useServerClient } from '@/lib/server-client'
-import { EditOutlined, LockOutlined, PlusOutlined } from '@ant-design/icons'
-import { App, Avatar, Form, Input, Select, Switch, Tag } from 'antd'
+import { useForm } from '@tanstack/react-form'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
-import type { TableColumnsType } from 'antd'
 import {
+  Avatar,
+  AvatarFallback,
+  AvatarImage,
+  Button,
   ConfirmAction,
   DataTable,
   DisplayValue,
   EmptyValue,
   IconText,
   ImageUpload,
+  Input,
   ModalForm,
   RefreshButton,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+  Switch,
   TableActions,
+  Tag,
+  toastError,
+  toastSuccess,
   useDisclosure,
-} from '@repo/aui'
+} from '@repo/ui'
+import type { DataTableColumnDef } from '@repo/ui'
 import type { UserModel } from '@repo/shared'
+import { LockIcon, PencilIcon, PlusIcon, SearchIcon } from 'lucide-react'
 
 type CreateUserForm = {
   email: string
@@ -40,19 +54,23 @@ type ResetPasswordForm = {
   confirmPassword: string
 }
 
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+
+const STATUS_OPTIONS = [
+  { label: '启用', value: 'enabled' },
+  { label: '禁用', value: 'disabled' },
+]
+
 export default function UsersPage() {
-  const { message } = App.useApp()
   const client = useServerClient()
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(10)
   const [keyword, setKeyword] = useState<string | undefined>()
+  const [searchText, setSearchText] = useState('')
   const [status, setStatus] = useState<'enabled' | 'disabled' | undefined>()
   const createDialog = useDisclosure()
   const editDialog = useDisclosure<UserModel>()
   const resetPasswordDialog = useDisclosure<UserModel>()
-  const [createForm] = Form.useForm<CreateUserForm>()
-  const [editForm] = Form.useForm<EditUserForm>()
-  const [resetPwdForm] = Form.useForm<ResetPasswordForm>()
 
   const { data, isFetching, refetch } = useQuery({
     queryKey: [
@@ -75,7 +93,7 @@ export default function UsersPage() {
     mutationFn: (input: { userId: string }) => client.user.remove(input),
     onSuccess() {
       refetch()
-      message.success('删除成功')
+      toastSuccess('删除成功')
     },
   })
 
@@ -87,44 +105,99 @@ export default function UsersPage() {
     },
   })
 
-  const columns: TableColumnsType<UserModel> = [
-    {
-      title: '头像',
-      dataIndex: 'avatar',
-      width: 72,
-      render: (avatar: string | null) => (
-        <Avatar src={avatar ? formatStorageUrl(avatar) : undefined} />
-      ),
+  const createForm = useForm({
+    defaultValues: {
+        email: '',
+        password: '',
+        realName: '',
+        avatar: '',
+      } as CreateUserForm,
+    onSubmit: async ({ value }) => {
+      await client.user.create(value)
+      toastSuccess('创建成功')
+      refetch()
+      createDialog.close()
     },
-    {
-      title: '邮箱',
-      dataIndex: 'email',
+  })
+
+  const editForm = useForm({
+    defaultValues: {
+      email: '',
+      realName: null,
+      avatar: null,
+      status: 'enabled',
+    } as EditUserForm,
+    onSubmit: async ({ value }) => {
+      if (!editDialog.data) return
+      await client.user.update({
+        userId: editDialog.data.id,
+        realName: value.realName,
+        avatar: value.avatar,
+        status: value.status,
+      })
+      toastSuccess('更新成功')
+      refetch()
+      editDialog.close()
     },
+  })
+
+  const resetPwdForm = useForm({
+    defaultValues: { password: '', confirmPassword: '' },
+    onSubmit: async ({ value }) => {
+      if (!resetPasswordDialog.data) return
+      await client.user.resetPassword({
+        userId: resetPasswordDialog.data.id,
+        password: value.password,
+      })
+      toastSuccess('密码重置成功')
+      resetPasswordDialog.close()
+    },
+  })
+
+  const columns: DataTableColumnDef<UserModel>[] = [
     {
-      title: '姓名',
-      dataIndex: 'realName',
-      render: (_, { realName }) => (
-        <EmptyValue value={realName} emptyText={<Tag>未设置</Tag>}>
-          {realName}
+      header: '头像',
+      accessorKey: 'avatar',
+      meta: { width: 72 },
+      cell: ({ row }) =>
+        row.original.avatar ? (
+          <Avatar className="size-8">
+            <AvatarImage src={formatStorageUrl(row.original.avatar)} />
+            <AvatarFallback>
+              {(row.original.realName || row.original.email || 'U').slice(0, 1)}
+            </AvatarFallback>
+          </Avatar>
+        ) : null,
+    },
+    { header: '邮箱', accessorKey: 'email' },
+    {
+      header: '姓名',
+      accessorKey: 'realName',
+      cell: ({ row }) => (
+        <EmptyValue value={row.original.realName} emptyText={<Tag>未设置</Tag>}>
+          {row.original.realName}
         </EmptyValue>
       ),
     },
     {
-      title: '状态',
-      dataIndex: 'status',
-      width: 120,
-      render: (value: UserModel['status'], record) => (
+      header: '状态',
+      accessorKey: 'status',
+      meta: { width: 120 },
+      cell: ({ row }) => (
         <Switch
-          checked={value === 'enabled'}
-          checkedChildren="启用"
-          unCheckedChildren="禁用"
-          loading={statusMutation.isPending}
-          onChange={(checked) => {
+          checked={row.original.status === 'enabled'}
+          disabled={statusMutation.isPending}
+          aria-label="启用状态"
+          title={row.original.status === 'enabled' ? '已启用' : '已禁用'}
+          onCheckedChange={(checked) => {
             statusMutation.mutate(
-              { userId: record.id, status: checked ? 'enabled' : 'disabled' },
               {
-                onSuccess: () => message.success(checked ? '已启用' : '已禁用'),
-                onError: () => message.error('操作失败'),
+                userId: row.original.id,
+                status: checked ? 'enabled' : 'disabled',
+              },
+              {
+                onSuccess: () => toastSuccess(checked ? '已启用' : '已禁用'),
+                onError: () => toastError('操作失败'),
               },
             )
           }}
@@ -132,38 +205,38 @@ export default function UsersPage() {
       ),
     },
     {
-      title: '创建时间',
-      dataIndex: 'createdAt',
-      width: 180,
-      render: (value) => <DisplayValue type="date" value={value} />,
+      header: '创建时间',
+      accessorKey: 'createdAt',
+      meta: { width: 180 },
+      cell: ({ getValue }) => <DisplayValue type="date" value={getValue()} />,
     },
     {
-      title: '操作',
-      width: 200,
-      render: (_, record) => (
+      header: '操作',
+      meta: { width: 220 },
+      cell: ({ row }) => (
         <TableActions>
           <IconText
-            icon={EditOutlined}
+            icon={<PencilIcon />}
             size="small"
             type="primary"
             onClick={() => {
-              editForm.setFieldsValue(record)
-              editDialog.open(record)
+              editForm.reset(row.original)
+              editDialog.open(row.original)
             }}
           >
             编辑
           </IconText>
           <IconText
-            icon={LockOutlined}
+            icon={<LockIcon />}
             size="small"
             type="primary"
-            onClick={() => resetPasswordDialog.open(record)}
+            onClick={() => resetPasswordDialog.open(row.original)}
           >
             重置密码
           </IconText>
           <ConfirmAction
             title="确认删除该用户？"
-            onConfirm={() => removeMutation.mutate({ userId: record.id })}
+            onConfirm={() => removeMutation.mutate({ userId: row.original.id })}
             danger
           >
             删除
@@ -174,7 +247,7 @@ export default function UsersPage() {
   ]
 
   return (
-    <div className="w-full h-full bg-white p-5">
+    <div className="h-full w-full overflow-auto p-4 sm:p-6">
       <DataTable<UserModel>
         title="用户管理"
         toolbar={
@@ -183,42 +256,68 @@ export default function UsersPage() {
               loading={isFetching}
               onClick={() => void refetch()}
             />
-            <Input.Search
-              placeholder="搜索邮箱..."
-              allowClear
-              style={{ width: 200 }}
-              onSearch={(v) => {
-                setKeyword(v || undefined)
-                setPage(1)
-              }}
-            />
+            <div className="flex items-center gap-1 rounded-lg border border-input bg-background pr-1">
+              <Input
+                placeholder="搜索邮箱..."
+                value={searchText}
+                onChange={(event) => {
+                  setSearchText(event.target.value)
+                  if (event.target.value === '') {
+                    setKeyword(undefined)
+                    setPage(1)
+                  }
+                }}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter') {
+                    setKeyword(searchText.trim() || undefined)
+                    setPage(1)
+                  }
+                }}
+                className="w-44 border-0 shadow-none focus-visible:ring-0"
+              />
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                aria-label="搜索"
+                onClick={() => {
+                  setKeyword(searchText.trim() || undefined)
+                  setPage(1)
+                }}
+              >
+                <SearchIcon />
+              </Button>
+            </div>
             <Select
-              allowClear
-              placeholder="状态"
-              style={{ width: 120 }}
-              value={status}
-              options={[
-                { label: '启用', value: 'enabled' },
-                { label: '禁用', value: 'disabled' },
-              ]}
-              onChange={(v) => {
-                setStatus(v)
+              value={status ?? '__all'}
+              onValueChange={(value) => {
+                setStatus(
+                  value === '__all' ? undefined : (value as 'enabled' | 'disabled'),
+                )
                 setPage(1)
               }}
-            />
-            <IconText
-              type="primary"
-              icon={PlusOutlined}
-              onClick={() => createDialog.open()}
             >
+              <SelectTrigger size="sm" className="w-24">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__all">全部</SelectItem>
+                {STATUS_OPTIONS.map((option) => (
+                  <SelectItem key={option.value} value={option.value}>
+                    {option.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Button onClick={() => createDialog.open()}>
+              <PlusIcon />
               新建用户
-            </IconText>
+            </Button>
           </>
         }
         rowKey="id"
         loading={isFetching}
         columns={columns}
-        dataSource={data?.items}
+        data={data?.items}
         page={page}
         pageSize={pageSize}
         total={data?.total}
@@ -237,35 +336,43 @@ export default function UsersPage() {
           {
             name: 'email',
             label: '邮箱',
-            formItemProps: {
-              rules: [{ required: true }, { type: 'email' }],
+            required: true,
+            validate: (value) => {
+              if (
+                typeof value === 'string' &&
+                value &&
+                !EMAIL_PATTERN.test(value)
+              ) {
+                return '请输入有效邮箱'
+              }
+              return undefined
             },
           },
           { name: 'realName', label: '姓名' },
           {
             name: 'avatar',
             label: '头像',
-            render: () => <ImageUpload sizeLimit={2} className="w-28 h-28" />,
+            render: ({ values, field }) => (
+              <ImageUpload
+                value={(values.avatar as string | null | undefined) ?? undefined}
+                sizeLimit={2}
+                className="size-28"
+                onChange={(key) => field.handleChange(key)}
+              />
+            ),
           },
           {
             name: 'password',
             label: '初始密码',
             widget: 'password',
-            formItemProps: {
-              rules: [{ required: true }, { min: 6, message: '至少 6 位' }],
-            },
+            required: true,
+            validate: (value) =>
+              typeof value === 'string' && value.length > 0 && value.length < 6
+                ? '至少 6 位'
+                : undefined,
           },
         ]}
         onCancel={createDialog.close}
-        onError={(error) =>
-          message.error(error instanceof Error ? error.message : '创建失败')
-        }
-        onSubmit={async (values) => {
-          await client.user.create(values)
-          message.success('创建成功')
-          refetch()
-          createDialog.close()
-        }}
       />
 
       {/* 编辑用户 */}
@@ -284,36 +391,23 @@ export default function UsersPage() {
           {
             name: 'avatar',
             label: '头像',
-            render: () => <ImageUpload sizeLimit={2} className="w-28 h-28" />,
+            render: ({ values, field }) => (
+              <ImageUpload
+                value={(values.avatar as string | null | undefined) ?? undefined}
+                sizeLimit={2}
+                className="size-28"
+                onChange={(key) => field.handleChange(key)}
+              />
+            ),
           },
           {
             name: 'status',
             label: '状态',
             widget: 'select',
-            props: {
-              options: [
-                { label: '启用', value: 'enabled' },
-                { label: '禁用', value: 'disabled' },
-              ],
-            },
+            props: { options: STATUS_OPTIONS },
           },
         ]}
         onCancel={editDialog.close}
-        onError={(error) =>
-          message.error(error instanceof Error ? error.message : '更新失败')
-        }
-        onSubmit={async (values) => {
-          if (!editDialog.data) return
-          await client.user.update({
-            userId: editDialog.data.id,
-            realName: values.realName,
-            avatar: values.avatar,
-            status: values.status,
-          })
-          message.success('更新成功')
-          refetch()
-          editDialog.close()
-        }}
       />
 
       {/* 重置密码 */}
@@ -321,48 +415,28 @@ export default function UsersPage() {
         title={`重置密码 — ${resetPasswordDialog.data?.email ?? ''}`}
         open={resetPasswordDialog.isOpen}
         form={resetPwdForm}
+        submitText="确认重置"
         items={[
           {
             name: 'password',
             label: '新密码',
             widget: 'password',
-            formItemProps: {
-              rules: [{ required: true }, { min: 6, message: '至少 6 位' }],
-            },
+            required: true,
+            validate: (value) =>
+              typeof value === 'string' && value.length > 0 && value.length < 6
+                ? '至少 6 位'
+                : undefined,
           },
           {
             name: 'confirmPassword',
             label: '确认密码',
             widget: 'password',
-            formItemProps: {
-              dependencies: ['password'],
-              rules: [
-                { required: true },
-                ({ getFieldValue }) => ({
-                  validator(_, value) {
-                    if (!value || getFieldValue('password') === value)
-                      return Promise.resolve()
-                    return Promise.reject(new Error('两次密码不一致'))
-                  },
-                }),
-              ],
-            },
+            required: true,
+            validate: (value, values) =>
+              value !== values.password ? '两次密码不一致' : undefined,
           },
         ]}
         onCancel={resetPasswordDialog.close}
-        modalProps={{ okButtonProps: { danger: true } }}
-        onError={(error) =>
-          message.error(error instanceof Error ? error.message : '重置失败')
-        }
-        onSubmit={async (values) => {
-          if (!resetPasswordDialog.data) return
-          await client.user.resetPassword({
-            userId: resetPasswordDialog.data.id,
-            password: values.password,
-          })
-          message.success('密码重置成功')
-          resetPasswordDialog.close()
-        }}
       />
     </div>
   )

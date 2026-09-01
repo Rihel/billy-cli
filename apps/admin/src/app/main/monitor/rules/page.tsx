@@ -1,23 +1,43 @@
 'use client'
 
 import { useServerClient } from '@/lib/server-client'
-import { EditOutlined, PlusOutlined } from '@ant-design/icons'
-import { App, Alert, Form, Input, InputNumber, Select, Switch, Tag } from 'antd'
+import { useForm } from '@tanstack/react-form'
 import { useMutation, useQuery } from '@tanstack/react-query'
+import { useStore } from '@tanstack/react-store'
 import { useState } from 'react'
-import type { TableColumnsType } from 'antd'
 import {
+  Alert,
+  AlertDescription,
+  AlertTitle,
+  Button,
   ConfirmAction,
   DataTable,
   DisplayValue,
   DrawerForm,
   IconText,
+  Input,
   RefreshButton,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+  Switch,
   TableActions,
+  Tag,
+  TagsInput,
+  toastError,
+  toastSuccess,
   useDisclosure,
-} from '@repo/aui'
+} from '@repo/ui'
+import type {
+  DataTableColumnDef,
+  FormFieldContext,
+  FormFieldSchema,
+} from '@repo/ui'
 import { AppErrorCodes } from '@repo/shared'
 import type { AlertRuleModel, UpdateAlertRuleDto } from '@repo/shared'
+import { InfoIcon, PencilIcon, PlusIcon, SearchIcon } from 'lucide-react'
 
 type RuleForm = {
   name: string
@@ -79,16 +99,17 @@ const ruleToForm = (rule: AlertRuleModel): RuleForm => ({
 })
 
 export default function AlertRulesPage() {
-  const { message } = App.useApp()
   const client = useServerClient()
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(10)
   const [keyword, setKeyword] = useState<string | undefined>()
-  const [type, setType] = useState<'tech' | 'business' | 'metric' | 'surge' | undefined>()
+  const [searchText, setSearchText] = useState('')
+  const [type, setType] = useState<
+    'tech' | 'business' | 'metric' | 'surge' | undefined
+  >()
   const [enabled, setEnabled] = useState<boolean | undefined>()
   const createDialog = useDisclosure()
   const editDialog = useDisclosure<AlertRuleModel>()
-  const [form] = Form.useForm<RuleForm>()
 
   const { data, isFetching, refetch } = useQuery({
     queryKey: ['monitor', 'rules', { page, pageSize, keyword, type, enabled }],
@@ -105,168 +126,62 @@ export default function AlertRulesPage() {
   })
 
   const createMutation = useMutation({
-    mutationFn: (input: RuleForm) =>
-      client.monitor.rule.create(input),
-    onSuccess: () => {
-      message.success('规则已创建')
-      createDialog.close()
-      refetch()
-    },
-    onError: () => message.error('创建失败'),
+    mutationFn: (input: RuleForm) => client.monitor.rule.create(input),
   })
 
   const updateMutation = useMutation({
-    mutationFn: (input: UpdateAlertRuleDto) =>
-      client.monitor.rule.update(input),
-    onSuccess: () => {
-      message.success('规则已更新')
-      editDialog.close()
-      refetch()
-    },
-    onError: () => message.error('更新失败'),
+    mutationFn: (input: UpdateAlertRuleDto) => client.monitor.rule.update(input),
   })
 
   const removeMutation = useMutation({
     mutationFn: (input: { ruleId: string }) => client.monitor.rule.remove(input),
-    onSuccess: () => {
-      message.success('删除成功')
+  })
+
+  const form = useForm({
+    defaultValues: {
+      name: '',
+      type: 'tech' as RuleForm['type'],
+      matchCodes: [] as number[],
+      keywords: [] as string[],
+      threshold: 1,
+      thresholdWindowSeconds: 60,
+      metric: undefined as string | undefined,
+      operator: undefined as RuleForm['operator'],
+      thresholdValue: undefined as number | undefined,
+      periodSeconds: 60,
+      level: 'warn' as RuleForm['level'],
+      channels: [] as RuleForm['channels'],
+      throttleSeconds: 60,
+      enabled: true,
+    } as RuleForm,
+    onSubmit: async ({ value }) => {
+      if (editDialog.isOpen && editDialog.data) {
+        await updateMutation.mutateAsync({
+          ruleId: editDialog.data.id,
+          ...value,
+        })
+        toastSuccess('规则已更新')
+        editDialog.close()
+      } else {
+        await createMutation.mutateAsync(value)
+        toastSuccess('规则已创建')
+        createDialog.close()
+      }
       refetch()
     },
   })
 
-  const columns: TableColumnsType<AlertRuleModel> = [
-    { title: '名称', dataIndex: 'name' },
-    {
-      title: '类型',
-      dataIndex: 'type',
-      width: 100,
-      render: (value: AlertRuleModel['type']) => {
-        const map = {
-          tech: { color: 'blue', label: '技术' },
-          business: { color: 'orange', label: '业务' },
-          metric: { color: 'green', label: '指标' },
-          surge: { color: 'purple', label: '突变' },
-        } as const
-        return <Tag color={map[value].color}>{map[value].label}</Tag>
-      },
-    },
-    {
-      title: '匹配条件',
-      dataIndex: 'matchCodes',
-      width: 200,
-      render: (codes: number[], record) => {
-        if (record.type === 'metric' || record.type === 'surge') {
-          const operator = { gt: '>', gte: '≥', lt: '<', lte: '≤' }[
-            record.operator as keyof typeof operatorMap
-          ]
-          return (
-            <span className="text-xs text-zinc-600">
-              {record.metric} {operator} {record.thresholdValue}
-              {record.type === 'surge' ? ' 倍' : ''}
-            </span>
-          )
-        }
-        return codes.length === 0 ? (
-          <Tag>全部</Tag>
-        ) : (
-          codes.map((code) => (
-            <Tag key={code}>{AppErrorCodes.getLabel(code) ?? code}</Tag>
-          ))
-        )
-      },
-    },
-    {
-      title: '级别',
-      dataIndex: 'level',
-      width: 80,
-      render: (value: AlertRuleModel['level']) =>
-        value === 'error' ? (
-          <Tag color="red">error</Tag>
-        ) : (
-          <Tag color="gold">warn</Tag>
-        ),
-    },
-    {
-      title: '通道',
-      dataIndex: 'channels',
-      width: 140,
-      render: (channels: AlertRuleModel['channels']) =>
-        channels.map((channel) => (
-          <Tag key={channel} color="cyan">
-            {channel === 'lark' ? '飞书' : '邮件'}
-          </Tag>
-        )),
-    },
-    {
-      title: '限频(s)',
-      dataIndex: 'throttleSeconds',
-      width: 90,
-    },
-    {
-      title: '启用',
-      dataIndex: 'enabled',
-      width: 90,
-      render: (value: boolean, record) => (
-        <Switch
-          checked={value}
-          checkedChildren="开"
-          unCheckedChildren="关"
-          loading={updateMutation.isPending}
-          onChange={(checked) => {
-            updateMutation.mutate(
-              { ruleId: record.id, enabled: checked },
-              { onError: () => message.error('操作失败') },
-            )
-          }}
-        />
-      ),
-    },
-    {
-      title: '创建时间',
-      dataIndex: 'createdAt',
-      width: 180,
-      render: (value) => <DisplayValue type="date" value={value} />,
-    },
-    {
-      title: '操作',
-      width: 140,
-      render: (_, record) => (
-        <TableActions>
-          <IconText
-            icon={EditOutlined}
-            size="small"
-            type="primary"
-            onClick={() => {
-              form.setFieldsValue(ruleToForm(record))
-              editDialog.open(record)
-            }}
-          >
-            编辑
-          </IconText>
-          <ConfirmAction
-            title={`确认删除规则「${record.name}」？`}
-            onConfirm={() => removeMutation.mutate({ ruleId: record.id })}
-            danger
-          >
-            删除
-          </ConfirmAction>
-        </TableActions>
-      ),
-    },
-  ]
-
   /** 当前规则类型（条件渲染表单字段） */
-  const ruleType = Form.useWatch('type', form) ?? 'tech'
+  const ruleType = useStore(form.store, (state) => state.values.type) ?? 'tech'
   const isEventRule = ruleType === 'tech' || ruleType === 'business'
 
   /** 匹配规则说明（Drawer 顶部，按类型显示） */
   const matchRuleHint = (
-    <Alert
-      type="info"
-      showIcon
-      message={isEventRule ? '事件规则说明' : '指标 / 突变规则说明'}
-      description={
-        <ul className="mb-0 pl-4 list-disc text-xs leading-6">
+    <Alert className="mb-1">
+      <InfoIcon />
+      <AlertTitle>{isEventRule ? '事件规则说明' : '指标 / 突变规则说明'}</AlertTitle>
+      <AlertDescription>
+        <ul className="mb-0 list-disc pl-4 text-xs leading-6">
           {isEventRule ? (
             <>
               <li>
@@ -303,230 +218,378 @@ export default function AlertRulesPage() {
             <b>限频</b>：同一规则 + 相同内容在窗口内只推送一次（防告警风暴）。
           </li>
         </ul>
-      }
-    />
+      </AlertDescription>
+    </Alert>
   )
 
-  const ruleFormItems = [
-    {
-      name: 'name' as const,
-      label: '规则名称',
-      formItemProps: {
-        rules: [{ required: true, message: '请输入规则名称' }],
+  const ruleFormItems: Array<
+    FormFieldSchema<RuleForm> | FormFieldSchema<RuleForm>[]
+  > = [
+      {
+        name: 'name',
+        label: '规则名称',
+        required: '请输入规则名称',
       },
-    },
-    {
-      name: 'type' as const,
-      label: '类型',
-      formItemProps: { rules: [{ required: true }] },
-      render: () => (
-        <Select
-          options={[
+      {
+        name: 'type',
+        label: '类型',
+        required: true,
+        widget: 'select',
+        props: {
+          options: [
             { label: '技术告警（事件：未捕获异常 / 系统错误）', value: 'tech' },
             { label: '业务告警（事件：指定错误码 / 关键字）', value: 'business' },
             { label: '指标告警（阈值：错误率 / P95 / 库存等）', value: 'metric' },
             { label: '突变告警（环比：QPS 飙升 / 洪峰 / 订单飙升）', value: 'surge' },
-          ]}
-        />
-      ),
-    },
-    // ===== 事件规则字段 =====
-    ...(isEventRule
-      ? [
-          {
-            name: 'matchCodes' as const,
-            label: '匹配错误码',
-            formItemProps: {
-              extra: '不选 = 匹配该类型全部错误',
+          ],
+        },
+      },
+      // ===== 事件规则字段 =====
+      ...(isEventRule
+        ? [
+            {
+              name: 'matchCodes',
+              label: '匹配错误码',
+              widget: 'select' as const,
+              hint: '不选 = 匹配该类型全部错误',
+              props: {
+                multiple: true,
+                placeholder: '选择要告警的错误码（可多选）',
+                options: ERROR_CODE_OPTIONS,
+              },
             },
-            render: () => (
-              <Select
-                mode="multiple"
-                allowClear
-                placeholder="选择要告警的错误码（可多选）"
-                options={ERROR_CODE_OPTIONS}
-                optionFilterProp="label"
-                style={{ width: '100%' }}
-              />
-            ),
-          },
-          {
-            name: 'keywords' as const,
-            label: '消息关键字',
-            formItemProps: {
-              extra: '错误消息包含任一关键字即触发；回车添加',
+            {
+              name: 'keywords',
+              label: '消息关键字',
+              hint: '错误消息包含任一关键字即触发；回车添加',
+              render: ({ values, field }: FormFieldContext<RuleForm>) => (
+                <TagsInput
+                  value={(values.keywords ?? []) as string[]}
+                  placeholder="输入关键字后回车（如：数据库、超时）"
+                  onChange={(next) => field.handleChange(next)}
+                />
+              ),
             },
-            render: () => (
-              <Select
-                mode="tags"
-                placeholder="输入关键字后回车（如：数据库、超时）"
-                style={{ width: '100%' }}
-              />
-            ),
-          },
-          {
-            name: 'threshold' as const,
-            label: '触发阈值（次数）',
-            initialValue: 1,
-            formItemProps: {
-              extra: '窗口内同错误出现 ≥ N 次才告警',
+            {
+              name: 'threshold',
+              label: '触发阈值（次数）',
+              widget: 'number' as const,
+              hint: '窗口内同错误出现 ≥ N 次才告警',
             },
-            render: () => <InputNumber min={1} style={{ width: '100%' }} />,
-          },
-          {
-            name: 'thresholdWindowSeconds' as const,
-            label: '统计窗口（秒）',
-            initialValue: 60,
-            render: () => <InputNumber min={1} style={{ width: '100%' }} />,
-          },
-        ]
-      : [
-          // ===== 指标 / 突变规则字段 =====
-          {
-            name: 'metric' as const,
-            label: ruleType === 'surge' ? '监控指标（环比）' : '监控指标',
-            formItemProps: {
-              rules: [{ required: true, message: '请选择或输入指标名' }],
-              extra:
+            {
+              name: 'thresholdWindowSeconds',
+              label: '统计窗口（秒）',
+              widget: 'number' as const,
+            },
+          ]
+        : [
+            // ===== 指标 / 突变规则字段 =====
+            {
+              name: 'metric',
+              label: ruleType === 'surge' ? '监控指标（环比）' : '监控指标',
+              required: '请选择或输入指标名',
+              hint:
                 ruleType === 'surge'
                   ? '当前窗口 / 前一窗口 的环比倍率'
                   : '周期采样该指标值 vs 阈值',
+              render: ({ values, field }: FormFieldContext<RuleForm>) => (
+                <TagsInput
+                  value={
+                    values.metric ? [values.metric as string] : []
+                  }
+                  maxCount={1}
+                  options={METRIC_OPTIONS}
+                  placeholder="选择内置指标或输入自定义指标名"
+                  onChange={(next) => field.handleChange(next[0])}
+                />
+              ),
             },
-            render: () => (
-              <Select
-                mode="tags"
-                maxCount={1}
-                placeholder="选择内置指标或输入自定义指标名"
-                options={METRIC_OPTIONS}
-                style={{ width: '100%' }}
-              />
-            ),
-          },
-          {
-            name: 'operator' as const,
-            label: '比较符',
-            formItemProps: { rules: [{ required: true }] },
-            render: () => (
-              <Select
-                options={[
+            {
+              name: 'operator',
+              label: '比较符',
+              required: true,
+              widget: 'select' as const,
+              props: {
+                options: [
                   { label: '>（大于）', value: 'gt' },
                   { label: '≥（大于等于）', value: 'gte' },
                   { label: '<（小于）', value: 'lt' },
                   { label: '≤（小于等于）', value: 'lte' },
-                ]}
-              />
-            ),
-          },
-          {
-            name: 'thresholdValue' as const,
-            label: ruleType === 'surge' ? '环比倍率' : '阈值',
-            formItemProps: {
-              rules: [{ required: true, message: '请输入阈值' }],
-              extra:
+                ],
+              },
+            },
+            {
+              name: 'thresholdValue',
+              label: ruleType === 'surge' ? '环比倍率' : '阈值',
+              required: '请输入阈值',
+              widget: 'number' as const,
+              hint:
                 ruleType === 'surge'
                   ? '如 3 = 当前窗口是前一窗口 3 倍时告警'
                   : '如错误率 0.05、P99 500、库存 10',
             },
-            render: () => <InputNumber style={{ width: '100%' }} />,
-          },
-          {
-            name: 'periodSeconds' as const,
-            label: '评估周期（秒）',
-            initialValue: 60,
-            render: () => <InputNumber min={1} style={{ width: '100%' }} />,
-          },
-        ]),
-    {
-      name: 'level' as const,
-      label: '级别',
-      formItemProps: { rules: [{ required: true }] },
-      render: () => (
-        <Select
-          options={[
+            {
+              name: 'periodSeconds',
+              label: '评估周期（秒）',
+              widget: 'number' as const,
+            },
+          ]),
+      {
+        name: 'level',
+        label: '级别',
+        required: true,
+        widget: 'select',
+        props: {
+          options: [
             { label: 'error（错误）', value: 'error' },
             { label: 'warn（警告）', value: 'warn' },
-          ]}
+          ],
+        },
+      },
+      {
+        name: 'channels',
+        label: '发送通道',
+        required: '至少选择一个通道',
+        widget: 'select',
+        props: {
+          multiple: true,
+          options: CHANNEL_OPTIONS,
+        },
+      },
+      {
+        name: 'throttleSeconds',
+        label: '限频窗口（秒）',
+        widget: 'number',
+      },
+      {
+        name: 'enabled',
+        label: '启用',
+        widget: 'switch',
+      },
+    ]
+
+  const columns: DataTableColumnDef<AlertRuleModel>[] = [
+    { header: '名称', accessorKey: 'name' },
+    {
+      header: '类型',
+      accessorKey: 'type',
+      meta: { width: 100 },
+      cell: ({ getValue }) => {
+        const map = {
+          tech: { color: 'blue', label: '技术' },
+          business: { color: 'orange', label: '业务' },
+          metric: { color: 'green', label: '指标' },
+          surge: { color: 'purple', label: '突变' },
+        } as const
+        const value = getValue() as keyof typeof map
+        return <Tag color={map[value].color}>{map[value].label}</Tag>
+      },
+    },
+    {
+      header: '匹配条件',
+      accessorKey: 'matchCodes',
+      meta: { width: 200 },
+      cell: ({ row }) => {
+        if (row.original.type === 'metric' || row.original.type === 'surge') {
+          const operator = operatorMap[
+            row.original.operator as keyof typeof operatorMap
+          ]
+          return (
+            <span className="text-xs text-muted-foreground">
+              {row.original.metric} {operator} {row.original.thresholdValue}
+              {row.original.type === 'surge' ? ' 倍' : ''}
+            </span>
+          )
+        }
+        return row.original.matchCodes.length === 0 ? (
+          <Tag>全部</Tag>
+        ) : (
+          row.original.matchCodes.map((code) => (
+            <Tag key={code}>{AppErrorCodes.getLabel(code) ?? code}</Tag>
+          ))
+        )
+      },
+    },
+    {
+      header: '级别',
+      accessorKey: 'level',
+      meta: { width: 80 },
+      cell: ({ getValue }) =>
+        getValue() === 'error' ? (
+          <Tag color="red">error</Tag>
+        ) : (
+          <Tag color="gold">warn</Tag>
+        ),
+    },
+    {
+      header: '通道',
+      accessorKey: 'channels',
+      meta: { width: 140 },
+      cell: ({ row }) =>
+        row.original.channels.map((channel) => (
+          <Tag key={channel} color="cyan">
+            {channel === 'lark' ? '飞书' : channel === 'email' ? '邮件' : '文件'}
+          </Tag>
+        )),
+    },
+    { header: '限频(s)', accessorKey: 'throttleSeconds', meta: { width: 90 } },
+    {
+      header: '启用',
+      accessorKey: 'enabled',
+      meta: { width: 90 },
+      cell: ({ row }) => (
+        <Switch
+          checked={row.original.enabled}
+          disabled={updateMutation.isPending}
+          aria-label="启用状态"
+          onCheckedChange={(checked) => {
+            updateMutation.mutate(
+              { ruleId: row.original.id, enabled: checked },
+              {
+                onSuccess: () => refetch(),
+                onError: () => toastError('操作失败'),
+              },
+            )
+          }}
         />
       ),
     },
     {
-      name: 'channels' as const,
-      label: '发送通道',
-      formItemProps: {
-        rules: [{ required: true, message: '至少选择一个通道' }],
-      },
-      render: () => <Select mode="multiple" options={CHANNEL_OPTIONS} />,
+      header: '创建时间',
+      accessorKey: 'createdAt',
+      meta: { width: 180 },
+      cell: ({ getValue }) => <DisplayValue type="date" value={getValue()} />,
     },
     {
-      name: 'throttleSeconds' as const,
-      label: '限频窗口（秒）',
-      initialValue: 60,
-      render: () => <InputNumber min={0} style={{ width: '100%' }} />,
-    },
-    {
-      name: 'enabled' as const,
-      label: '启用',
-      initialValue: true,
-      valuePropName: 'checked',
-      render: () => <Switch />,
+      header: '操作',
+      meta: { width: 160 },
+      cell: ({ row }) => (
+        <TableActions>
+          <IconText
+            icon={<PencilIcon />}
+            size="small"
+            type="primary"
+            onClick={() => {
+              form.reset(ruleToForm(row.original))
+              editDialog.open(row.original)
+            }}
+          >
+            编辑
+          </IconText>
+          <ConfirmAction
+            title={`确认删除规则「${row.original.name}」？`}
+            onConfirm={() =>
+              removeMutation.mutate(
+                { ruleId: row.original.id },
+                {
+                  onSuccess: () => {
+                    toastSuccess('删除成功')
+                    refetch()
+                  },
+                },
+              )
+            }
+            danger
+          >
+            删除
+          </ConfirmAction>
+        </TableActions>
+      ),
     },
   ]
 
   return (
-    <div className="w-full h-full bg-white p-5">
+    <div className="h-full w-full overflow-auto p-4 sm:p-6">
       <DataTable<AlertRuleModel>
         title="告警规则"
         toolbar={
           <>
             <RefreshButton loading={isFetching} onClick={() => void refetch()} />
-            <Input.Search
-              placeholder="搜索规则名..."
-              allowClear
-              style={{ width: 200 }}
-              onSearch={(value) => {
-                setKeyword(value || undefined)
-                setPage(1)
-              }}
-            />
+            <div className="flex items-center gap-1 rounded-lg border border-input bg-background pr-1">
+              <Input
+                placeholder="搜索规则名..."
+                value={searchText}
+                onChange={(event) => {
+                  setSearchText(event.target.value)
+                  if (event.target.value === '') {
+                    setKeyword(undefined)
+                    setPage(1)
+                  }
+                }}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter') {
+                    setKeyword(searchText.trim() || undefined)
+                    setPage(1)
+                  }
+                }}
+                className="w-40 border-0 shadow-none focus-visible:ring-0"
+              />
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                aria-label="搜索"
+                onClick={() => {
+                  setKeyword(searchText.trim() || undefined)
+                  setPage(1)
+                }}
+              >
+                <SearchIcon />
+              </Button>
+            </div>
             <Select
-              allowClear
-              placeholder="类型"
-              style={{ width: 110 }}
-              value={type}
-              options={[
-                { label: '技术', value: 'tech' },
-                { label: '业务', value: 'business' },
-                { label: '指标', value: 'metric' },
-                { label: '突变', value: 'surge' },
-              ]}
-              onChange={(value) => {
-                setType(value)
+              value={type ?? '__all'}
+              onValueChange={(value) => {
+                setType(
+                  value === '__all'
+                    ? undefined
+                    : (value as 'tech' | 'business' | 'metric' | 'surge'),
+                )
                 setPage(1)
               }}
-            />
+            >
+              <SelectTrigger size="sm" className="w-24">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__all">全部</SelectItem>
+                <SelectItem value="tech">技术</SelectItem>
+                <SelectItem value="business">业务</SelectItem>
+                <SelectItem value="metric">指标</SelectItem>
+                <SelectItem value="surge">突变</SelectItem>
+              </SelectContent>
+            </Select>
             <Select
-              allowClear
-              placeholder="启用状态"
-              style={{ width: 110 }}
-              value={enabled}
-              options={[
-                { label: '启用', value: true },
-                { label: '禁用', value: false },
-              ]}
-              onChange={(value) => {
-                setEnabled(value)
+              value={
+                enabled === undefined ? '__all' : enabled ? 'enabled' : 'disabled'
+              }
+              onValueChange={(value) => {
+                setEnabled(
+                  value === '__all'
+                    ? undefined
+                    : value === 'enabled',
+                )
                 setPage(1)
               }}
-            />
-            <IconText type="primary" icon={PlusOutlined} onClick={() => createDialog.open()}>
+            >
+              <SelectTrigger size="sm" className="w-28">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__all">全部</SelectItem>
+                <SelectItem value="enabled">启用</SelectItem>
+                <SelectItem value="disabled">禁用</SelectItem>
+              </SelectContent>
+            </Select>
+            <Button onClick={() => createDialog.open()}>
+              <PlusIcon />
               新建规则
-            </IconText>
+            </Button>
           </>
         }
         rowKey="id"
         loading={isFetching}
         columns={columns}
-        dataSource={data?.items}
+        data={data?.items}
         page={page}
         pageSize={pageSize}
         total={data?.total}
@@ -544,10 +607,6 @@ export default function AlertRulesPage() {
         description={matchRuleHint}
         items={ruleFormItems}
         onCancel={createDialog.close}
-        onSubmit={async (values) => {
-          await createMutation.mutateAsync(values)
-          createDialog.close()
-        }}
       />
 
       <DrawerForm<RuleForm>
@@ -558,13 +617,6 @@ export default function AlertRulesPage() {
         description={matchRuleHint}
         items={ruleFormItems}
         onCancel={editDialog.close}
-        onSubmit={async (values) => {
-          await updateMutation.mutateAsync({
-            ruleId: editDialog.data!.id,
-            ...values,
-          })
-          editDialog.close()
-        }}
       />
     </div>
   )

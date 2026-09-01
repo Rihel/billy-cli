@@ -1,26 +1,23 @@
 'use client'
 
-import { HomeOutlined } from '@ant-design/icons'
-import { IconText } from '@repo/aui'
-import { Result } from 'antd'
+import { Button } from '@repo/ui'
+import { HomeIcon } from 'lucide-react'
 import Link from 'next/link'
 import { Pages } from '@/lib/constants'
 
 export default function Forbidden() {
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50">
-      <Result
-        status="403"
-        title="403"
-        subTitle="抱歉，您没有权限访问该页面。"
-        extra={
-          <Link href={Pages.dashboard}>
-            <IconText icon={HomeOutlined} type="primary">
-              回到首页
-            </IconText>
-          </Link>
-        }
-      />
+    <div className="flex min-h-screen items-center justify-center bg-muted/40">
+      <div className="flex flex-col items-center gap-4 text-center">
+        <div className="text-6xl font-semibold">403</div>
+        <p className="text-sm text-muted-foreground">
+          抱歉，您没有权限访问该页面。
+        </p>
+        <Button render={<Link href={Pages.dashboard} />}>
+          <HomeIcon />
+          回到首页
+        </Button>
+      </div>
     </div>
   )
 }

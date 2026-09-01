@@ -1,16 +1,14 @@
 'use client'
 
-import { App, ConfigProvider } from 'antd'
 import { ReactNode, useRef } from 'react'
-import zhCN from 'antd/locale/zh_CN'
 import {
   MutationCache,
   QueryCache,
   QueryClient,
   QueryClientProvider,
 } from '@tanstack/react-query'
+import { StorageProvider, toastError, Toaster, TooltipProvider } from '@repo/ui'
 import { formatStorageUrl } from '@/lib/constants'
-import { StorageProvider } from '@repo/aui'
 import { useServerClient } from '@/lib/server-client'
 
 function getErrorMessage(error: unknown): string {
@@ -31,17 +29,14 @@ function AppStorageProvider({ children }: { children: ReactNode }) {
   )
 }
 
-/** 必须在 <App> 内部才能拿到主题感知的 message 实例 */
 function QueryProviders({ children }: { children: ReactNode }) {
-  const { message } = App.useApp()
-
   const queryClient = useRef(
     new QueryClient({
       queryCache: new QueryCache({
-        onError: (error) => void message.error(getErrorMessage(error)),
+        onError: (error) => void toastError(getErrorMessage(error)),
       }),
       mutationCache: new MutationCache({
-        onError: (error) => void message.error(getErrorMessage(error)),
+        onError: (error) => void toastError(getErrorMessage(error)),
       }),
       defaultOptions: {
         queries: { refetchOnWindowFocus: false },
@@ -62,21 +57,11 @@ export type ProvidersProps = Partial<{
 
 export const Providers = ({ children }: ProvidersProps) => {
   return (
-    <ConfigProvider
-      locale={zhCN}
-      variant="filled"
-      theme={{ cssVar: { key: 'app' }, hashed: false }}
-      form={{
-        validateMessages: {
-          required: '${label}不能为空',
-        },
-      }}
-    >
-      <App>
-        <QueryProviders>
-          <AppStorageProvider>{children}</AppStorageProvider>
-        </QueryProviders>
-      </App>
-    </ConfigProvider>
+    <TooltipProvider>
+      <QueryProviders>
+        <AppStorageProvider>{children}</AppStorageProvider>
+      </QueryProviders>
+      <Toaster />
+    </TooltipProvider>
   )
 }

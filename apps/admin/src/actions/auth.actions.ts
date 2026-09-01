@@ -4,7 +4,7 @@ import { cookies } from 'next/headers'
 import { createServerClient } from '@/lib/server-client'
 import { TokenKey } from '@/lib/constants'
 import { logger } from '@/lib/logger'
-import { defineAction } from '@repo/aui/action'
+import { defineAction } from '@repo/ui/action'
 
 const COOKIE_MAX_AGE = 7 * 24 * 60 * 60 // 7 days
 

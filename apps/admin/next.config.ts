@@ -22,7 +22,7 @@ const nextConfig: NextConfig = {
     authInterrupts: true,
   },
 
-  transpilePackages: ['@repo/aui'],
+  transpilePackages: ['@repo/ui'],
   serverExternalPackages: [
     '@repo/shared',
     'pino',

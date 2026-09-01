@@ -1,77 +1,40 @@
 'use client'
 
-import { AppName, formatStorageUrl } from '@/lib/constants'
-import { useAuthStore } from '@/stores/auth.store'
-import { logoutAction } from '@/actions/auth.actions'
-import { removeToken } from '@/lib/server-client'
-import { DownOutlined } from '@ant-design/icons'
-import { Avatar, Dropdown } from 'antd'
-import type { MenuProps } from 'antd'
-import { useRouter } from 'next/navigation'
-import { AppMenu } from './AppMenu'
-import { ComponentProps, ComponentType } from 'react'
-import { cn } from '@repo/aui'
-import { useLayoutStore } from '@/stores/layout.store'
-import { MenuFoldOutlined, MenuUnfoldOutlined } from '@ant-design/icons'
+import { usePathname } from 'next/navigation'
+import { cn, SidebarTrigger } from '@repo/ui'
+import { ComponentProps } from 'react'
+
+/** 路由 → 页面标题（与 AppMenu 菜单项一致） */
+const PAGE_TITLES: Record<string, string> = {
+  '/main/dashboard': '控制台',
+  '/main/todo': '任务管理',
+  '/main/automation': '自动化',
+  '/main/monitor/rules': '告警规则',
+  '/main/monitor/logs': '告警记录',
+  '/main/system/users': '用户管理',
+  '/main/system/admins': '管理员管理',
+  '/main/user-center': '个人中心',
+}
 
 export type AppHeaderProps = Partial<{} & ComponentProps<'div'>>
 
 export const AppHeader = ({ className, ...props }: AppHeaderProps) => {
-  const { adminInfo, authEnabled, clear } = useAuthStore()
-  const { toggleSiderCollapsed, isSiderCollapsed } = useLayoutStore()
-  const router = useRouter()
-  const exit = async () => {
-    clear()
-    removeToken()
-    await logoutAction()
-    router.replace('/auth/login')
-  }
-
-  const handleDropdownClick: MenuProps['onClick'] = ({ key }) => {
-    if (key === 'exit') exit()
-    if (key === 'user-center') {
-      router.push('/main/user-center')
-    }
-  }
+  const pathname = usePathname()
+  const title = PAGE_TITLES[pathname] ?? ''
 
   return (
     <div
       className={cn(
-        'flex justify-between items-center h-16    px-5 bg-transparent',
+        'flex h-14 shrink-0 items-center gap-2 border-b border-border bg-background/80 px-4 backdrop-blur-sm sm:px-6',
         className,
       )}
       {...props}
     >
-      <div className="flex gap-10 items-center">
-        <div className="text-2xl ">{AppName}</div>
-        <div
-          className="cursor-pointer text-2xl hover:text-blue-400"
-          onClick={toggleSiderCollapsed}
-        >
-          {isSiderCollapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
-        </div>
-      </div>
-
-      {/* 用户体系开关关闭时隐藏用户下拉（无登录态） */}
-      {authEnabled ? (
-        <Dropdown
-          menu={{
-            onClick: handleDropdownClick,
-            items: [
-              { key: 'user-center', label: '个人中心' },
-              { type: 'divider' },
-              { key: 'exit', label: '退出' },
-            ],
-          }}
-        >
-          <div className=" cursor-pointer flex gap-2 items-center">
-            {adminInfo?.avatar ? (
-              <Avatar src={formatStorageUrl(adminInfo.avatar)} size="large" />
-            ) : null}
-            <div>{adminInfo?.realName || adminInfo?.email}</div>
-            <DownOutlined />
-          </div>
-        </Dropdown>
+      <SidebarTrigger className="-ml-1" />
+      {title ? (
+        <span className="text-sm font-medium text-muted-foreground">
+          {title}
+        </span>
       ) : null}
     </div>
   )

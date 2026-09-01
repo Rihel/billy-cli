@@ -1,11 +1,21 @@
 'use client'
 
 import { useServerClient } from '@/lib/server-client'
-import { Select, Tag } from 'antd'
 import { useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
-import type { TableColumnsType } from 'antd'
-import { DataTable, DisplayValue, EmptyValue, RefreshButton } from '@repo/aui'
+import {
+  DataTable,
+  DisplayValue,
+  EmptyValue,
+  RefreshButton,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+  Tag,
+} from '@repo/ui'
+import type { DataTableColumnDef } from '@repo/ui'
 import type { AlertLogModel } from '@repo/shared'
 
 export default function AlertLogsPage() {
@@ -28,86 +38,94 @@ export default function AlertLogsPage() {
       }),
   })
 
-  const columns: TableColumnsType<AlertLogModel> = [
+  const columns: DataTableColumnDef<AlertLogModel>[] = [
     {
-      title: '发送时间',
-      dataIndex: 'sentAt',
-      width: 180,
-      render: (value) => <DisplayValue type="date" value={value} />,
+      header: '发送时间',
+      accessorKey: 'sentAt',
+      meta: { width: 180 },
+      cell: ({ getValue }) => <DisplayValue type="date" value={getValue()} />,
     },
-    { title: '规则', dataIndex: 'ruleName' },
-    { title: '标题', dataIndex: 'title' },
+    { header: '规则', accessorKey: 'ruleName' },
+    { header: '标题', accessorKey: 'title' },
     {
-      title: '通道',
-      dataIndex: 'channel',
-      width: 100,
-      render: (value: AlertLogModel['channel']) => (
-        <Tag color="cyan">{value === 'lark' ? '飞书' : '邮件'}</Tag>
+      header: '通道',
+      accessorKey: 'channel',
+      meta: { width: 100 },
+      cell: ({ getValue }) => (
+        <Tag color="cyan">{getValue() === 'lark' ? '飞书' : '邮件'}</Tag>
       ),
     },
     {
-      title: '状态',
-      dataIndex: 'status',
-      width: 100,
-      render: (value: AlertLogModel['status']) =>
-        value === 'success' ? (
+      header: '状态',
+      accessorKey: 'status',
+      meta: { width: 100 },
+      cell: ({ getValue }) =>
+        getValue() === 'success' ? (
           <Tag color="green">成功</Tag>
         ) : (
           <Tag color="red">失败</Tag>
         ),
     },
     {
-      title: '失败原因',
-      dataIndex: 'error',
-      render: (value: string | null) => (
-        <EmptyValue value={value} emptyText="-">
-          <span className="text-red-500">{value}</span>
+      header: '失败原因',
+      accessorKey: 'error',
+      cell: ({ getValue }) => (
+        <EmptyValue value={getValue()} emptyText="-">
+          <span className="text-destructive">{getValue()}</span>
         </EmptyValue>
       ),
     },
   ]
 
   return (
-    <div className="w-full h-full bg-white p-5">
+    <div className="h-full w-full overflow-auto p-4 sm:p-6">
       <DataTable<AlertLogModel>
         title="告警记录"
         toolbar={
           <>
             <RefreshButton loading={isFetching} onClick={() => void refetch()} />
             <Select
-              allowClear
-              placeholder="通道"
-              style={{ width: 110 }}
-              value={channel}
-              options={[
-                { label: '飞书', value: 'lark' },
-                { label: '邮件', value: 'email' },
-              ]}
-              onChange={(value) => {
-                setChannel(value)
+              value={channel ?? '__all'}
+              onValueChange={(value) => {
+                setChannel(
+                  value === '__all' ? undefined : (value as 'lark' | 'email'),
+                )
                 setPage(1)
               }}
-            />
+            >
+              <SelectTrigger size="sm" className="w-24">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__all">全部</SelectItem>
+                <SelectItem value="lark">飞书</SelectItem>
+                <SelectItem value="email">邮件</SelectItem>
+              </SelectContent>
+            </Select>
             <Select
-              allowClear
-              placeholder="状态"
-              style={{ width: 110 }}
-              value={status}
-              options={[
-                { label: '成功', value: 'success' },
-                { label: '失败', value: 'failed' },
-              ]}
-              onChange={(value) => {
-                setStatus(value)
+              value={status ?? '__all'}
+              onValueChange={(value) => {
+                setStatus(
+                  value === '__all' ? undefined : (value as 'success' | 'failed'),
+                )
                 setPage(1)
               }}
-            />
+            >
+              <SelectTrigger size="sm" className="w-24">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__all">全部</SelectItem>
+                <SelectItem value="success">成功</SelectItem>
+                <SelectItem value="failed">失败</SelectItem>
+              </SelectContent>
+            </Select>
           </>
         }
         rowKey="id"
         loading={isFetching}
         columns={columns}
-        dataSource={data?.items}
+        data={data?.items}
         page={page}
         pageSize={pageSize}
         total={data?.total}

@@ -1,99 +1,139 @@
 'use client'
 
-import {
-  AlertOutlined,
-  DashboardOutlined,
-  SafetyOutlined,
-  UserOutlined,
-} from '@ant-design/icons'
-import { Menu, MenuProps } from 'antd'
 import { usePathname, useRouter } from 'next/navigation'
+import type { ComponentType } from 'react'
+import {
+  ActivityIcon,
+  BellRingIcon,
+  LayoutDashboardIcon,
+  ListTodoIcon,
+  ShieldCheckIcon,
+  TerminalIcon,
+  UsersIcon,
+} from 'lucide-react'
+import {
+  SidebarGroup,
+  SidebarGroupLabel,
+  SidebarMenu,
+  SidebarMenuButton,
+  SidebarMenuItem,
+} from '@repo/ui'
 import { useAuthStore } from '@/stores/auth.store'
 
-export type AppMenuProps = Partial<{} & MenuProps>
+type MenuItem = {
+  label: string
+  key: string
+  icon?: ComponentType<{ className?: string }>
+  /** 用户体系开关关闭时隐藏（系统设置组） */
+  authRequired?: boolean
+  children?: MenuItem[]
+}
 
-export const AppMenu = ({ mode = 'inline', ...props }: AppMenuProps) => {
+const MENU_ITEMS: MenuItem[] = [
+  {
+    label: '控制台',
+    key: '/main/dashboard',
+    icon: LayoutDashboardIcon,
+  },
+  {
+    label: '示例',
+    key: 'demo',
+    children: [
+      { label: '任务管理', key: '/main/todo', icon: ListTodoIcon },
+      { label: '自动化', key: '/main/automation', icon: TerminalIcon },
+    ],
+  },
+  // 运维监控：独立于用户体系开关（监控告警为运维能力，始终可见）
+  {
+    label: '运维监控',
+    key: 'monitor',
+    children: [
+      {
+        label: '告警规则',
+        key: '/main/monitor/rules',
+        icon: BellRingIcon,
+      },
+      {
+        label: '告警记录',
+        key: '/main/monitor/logs',
+        icon: ActivityIcon,
+      },
+    ],
+  },
+  // 用户体系开关关闭时隐藏「系统设置」（用户 / 管理员管理）
+  {
+    label: '系统设置',
+    key: 'setting',
+    authRequired: true,
+    children: [
+      {
+        label: '用户管理',
+        key: '/main/system/users',
+        icon: UsersIcon,
+      },
+      {
+        label: '管理员管理',
+        key: '/main/system/admins',
+        icon: ShieldCheckIcon,
+      },
+    ],
+  },
+]
+
+export type AppMenuProps = Partial<{}>
+
+export const AppMenu = ({}: AppMenuProps) => {
   const router = useRouter()
   const pathname = usePathname()
   const authEnabled = useAuthStore((s) => s.authEnabled)
-  const handleMenuClick: MenuProps['onClick'] = ({ key }) => {
-    if (key) {
-      router.push(key)
-    }
+
+  const items = MENU_ITEMS.filter((item) => !item.authRequired || authEnabled)
+
+  const go = (key: string) => {
+    if (key.startsWith('/')) router.push(key)
   }
-  const type = mode === 'inline' ? ('group' as const) : ('submenu' as const)
+
   return (
-    <Menu
-      theme="light"
-      onClick={handleMenuClick}
-      selectedKeys={[pathname]}
-      classNames={{
-        root: '!border-none !bg-transparent',
-      }}
-      mode={mode}
-      items={[
-        {
-          label: '控制台',
-          key: '/main/dashboard',
-          icon: <DashboardOutlined />,
-        },
-        {
-          label: '示例',
-          type: type,
-          key: 'demo',
-          children: [
-            {
-              label: '任务管理',
-              key: '/main/todo',
-            },
-            {
-              label: '自动化',
-              key: '/main/automation',
-            },
-          ],
-        },
-        // 运维监控：独立于用户体系开关（监控告警为运维能力，始终可见）
-        {
-          label: '运维监控',
-          type: type,
-          key: 'monitor',
-          children: [
-            {
-              label: '告警规则',
-              key: '/main/monitor/rules',
-              icon: <AlertOutlined />,
-            },
-            {
-              label: '告警记录',
-              key: '/main/monitor/logs',
-              icon: <AlertOutlined />,
-            },
-          ],
-        },
-        // 用户体系开关关闭时隐藏「系统设置」（用户 / 管理员管理）
-        ...(authEnabled
-          ? [
-              {
-                label: '系统设置',
-                type: type,
-                key: 'setting',
-                children: [
-                  {
-                    label: '用户管理',
-                    key: '/main/system/users',
-                    icon: <UserOutlined />,
-                  },
-                  {
-                    label: '管理员管理',
-                    key: '/main/system/admins',
-                    icon: <SafetyOutlined />,
-                  },
-                ],
-              },
-            ]
-          : []),
-      ]}
-      {...props}
-    />
+    <>
+      {items.map((item) =>
+        item.children ? (
+          <SidebarGroup key={item.key}>
+            <SidebarGroupLabel>{item.label}</SidebarGroupLabel>
+            <SidebarMenu>
+              {item.children.map((child) => {
+                const Icon = child.icon
+                return (
+                  <SidebarMenuItem key={child.key}>
+                    <SidebarMenuButton
+                      isActive={pathname === child.key}
+                      tooltip={child.label}
+                      onClick={() => go(child.key)}
+                    >
+                      {Icon ? <Icon /> : null}
+                      <span>{child.label}</span>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                )
+              })}
+            </SidebarMenu>
+          </SidebarGroup>
+        ) : (
+          <SidebarGroup key={item.key}>
+            <SidebarMenu>
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  isActive={pathname === item.key}
+                  tooltip={item.label}
+                  onClick={() => go(item.key)}
+                >
+                  {item.icon ? <item.icon /> : null}
+                  <span>{item.label}</span>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            </SidebarMenu>
+          </SidebarGroup>
+        ),
+      )}
+    </>
   )
 }

@@ -1,9 +1,8 @@
 'use client'
 
-import { HomeOutlined, ReloadOutlined } from '@ant-design/icons'
-import { IconText } from '@repo/aui'
-import { Result } from 'antd'
+import { Button } from '@repo/ui'
 import { useRouter } from 'next/navigation'
+import { HomeIcon, RefreshCwIcon } from 'lucide-react'
 import { Pages } from '@/lib/constants'
 
 export default function MainError({
@@ -16,29 +15,23 @@ export default function MainError({
   const router = useRouter()
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50">
-      <Result
-        status="500"
-        title="页面加载失败"
-        subTitle="加载数据时遇到问题，请重试或返回首页。"
-        extra={[
-          <IconText
-            key="retry"
-            icon={ReloadOutlined}
-            type="primary"
-            onClick={reset}
-          >
+    <div className="flex min-h-screen items-center justify-center bg-muted/40">
+      <div className="flex flex-col items-center gap-4 text-center">
+        <div className="text-5xl font-semibold">页面加载失败</div>
+        <p className="text-sm text-muted-foreground">
+          加载数据时遇到问题，请重试或返回首页。
+        </p>
+        <div className="flex gap-2">
+          <Button onClick={reset}>
+            <RefreshCwIcon />
             重试
-          </IconText>,
-          <IconText
-            key="home"
-            icon={HomeOutlined}
-            onClick={() => router.replace(Pages.dashboard)}
-          >
+          </Button>
+          <Button variant="outline" onClick={() => router.replace(Pages.dashboard)}>
+            <HomeIcon />
             回到首页
-          </IconText>,
-        ]}
-      />
+          </Button>
+        </div>
+      </div>
     </div>
   )
 }

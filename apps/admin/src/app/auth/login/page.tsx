@@ -6,24 +6,32 @@ import {
   loginAction,
   logoutAction,
 } from '@/actions/auth.actions'
-import { LoginOutlined } from '@ant-design/icons'
-import { FormRenderer } from '@repo/aui'
-import { callAction } from '@repo/aui/action'
-import { Alert, App, Button, Form, Spin, Typography } from 'antd'
+import {
+  Alert,
+  AlertDescription,
+  Button,
+  FormRenderer,
+  Spinner,
+  toastError,
+  toastSuccess,
+} from '@repo/ui'
+import { callAction } from '@repo/ui/action'
+import { useForm } from '@tanstack/react-form'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { Suspense, useEffect, useState } from 'react'
 import { AppName, Pages } from '@/lib/constants'
+import { LogInIcon } from 'lucide-react'
 
 type LoginForm = {
   email: string
   password: string
 }
 
-function LoginForm() {
-  const { message } = App.useApp()
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+
+function LoginFormComponent() {
   const router = useRouter()
   const searchParams = useSearchParams()
-  const [form] = Form.useForm<LoginForm>()
   const [checking, setChecking] = useState(true)
 
   // 从 ?reason=expired 判断是否为会话过期后跳回
@@ -75,81 +83,76 @@ function LoginForm() {
     }
   }, [router])
 
+  const form = useForm({
+    defaultValues: { email: '', password: '' },
+    onSubmit: async ({ value }) => {
+      await callAction(loginAction, value, {
+        onError: (error) => {
+          toastError(error)
+        },
+        onSuccess: (token) => {
+          saveToken(token)
+          toastSuccess('登录成功')
+          router.replace(Pages.dashboard)
+        },
+      })
+    },
+  })
+
   if (checking) {
     return (
       <div className="flex items-center justify-center py-24">
-        <Spin size="large" />
+        <Spinner className="size-8" />
       </div>
     )
   }
 
   return (
     <>
-      <div className="text-center mb-6">
-        <Typography.Title level={3} style={{ marginBottom: 4 }}>
-          {AppName}
-        </Typography.Title>
-        <Typography.Text type="secondary">欢迎登录</Typography.Text>
+      <div className="mb-6 flex flex-col items-center gap-2 text-center">
+        <span className="grid size-10 place-items-center rounded-xl bg-primary text-xl font-semibold text-primary-foreground">
+          {AppName.charAt(0)}
+        </span>
+        <h1 className="text-xl font-semibold tracking-tight">{AppName}</h1>
+        <p className="text-sm text-muted-foreground">欢迎登录管理后台</p>
       </div>
       {expired ? (
-        <Alert
-          type="warning"
-          showIcon
-          message="登录已过期，请重新登录"
-          className="mb-4"
-        />
+        <Alert className="mb-4">
+          <AlertDescription>登录已过期，请重新登录</AlertDescription>
+        </Alert>
       ) : null}
       <FormRenderer<LoginForm>
         form={form}
         items={[
           {
             name: 'email',
-            formItemProps: {
-              rules: [
-                { required: true },
-                { type: 'email', message: '请输入有效邮箱' },
-              ],
+            label: '邮箱',
+            required: true,
+            validate: (value) => {
+              if (typeof value === 'string' && value && !EMAIL_PATTERN.test(value)) {
+                return '请输入有效邮箱'
+              }
+              return undefined
             },
             props: {
-              size: 'large',
               placeholder: '请输入邮箱',
               autoComplete: 'email',
             },
           },
           {
             name: 'password',
+            label: '密码',
             widget: 'password',
-            formItemProps: { rules: [{ required: true }] },
+            required: true,
             props: {
-              size: 'large',
               placeholder: '请输入密码',
               autoComplete: 'current-password',
             },
           },
         ]}
-        formProps={{
-          onFinish: async (values) => {
-            await callAction(loginAction, values, {
-              onError: (error) => {
-                message.error(error)
-              },
-              onSuccess: (token) => {
-                saveToken(token)
-                message.success('登录成功')
-                router.replace(Pages.dashboard)
-              },
-            })
-          },
-        }}
       >
-        <Button
-          className="mb-2"
-          icon={<LoginOutlined />}
-          type="primary"
-          htmlType="submit"
-          size="large"
-          block
-        >
+        <Button type="submit" size="lg" className="w-full">
+          <LogInIcon />
           登录
         </Button>
       </FormRenderer>
@@ -162,11 +165,11 @@ export default function LoginPage() {
     <Suspense
       fallback={
         <div className="flex items-center justify-center py-24">
-          <Spin size="large" />
+          <Spinner className="size-8" />
         </div>
       }
     >
-      <LoginForm />
+      <LoginFormComponent />
     </Suspense>
   )
 }

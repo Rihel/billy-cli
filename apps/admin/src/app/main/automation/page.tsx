@@ -6,7 +6,7 @@ export default async function AutomationPage() {
   }, '')
   return (
     <div className="w-full">
-      <pre className="text-xs bg-slate-100 p-4 leading-snug w-full">
+      <pre className="w-full rounded-lg border border-border bg-background p-4 text-xs leading-snug shadow-xs">
         {envString}
       </pre>
     </div>

@@ -1,8 +1,7 @@
 'use client'
 
 import { useServerClient } from '@/lib/server-client'
-import { EditOutlined, PlusOutlined } from '@ant-design/icons'
-import { App, Checkbox, Form, Input, Space, Tag } from 'antd'
+import { useForm } from '@tanstack/react-form'
 import {
   useInfiniteQuery,
   useMutation,
@@ -13,22 +12,30 @@ import { produce } from 'immer'
 import { useRef, useState } from 'react'
 import {
   AutoSize,
+  Checkbox,
   ConfirmAction,
+  cn,
   DataList,
-  DataListApi,
   DisplayValue,
   IconText,
+  InputGroup,
+  InputGroupAddon,
+  InputGroupButton,
+  InputGroupInput,
   ModalForm,
-  PageToolbar,
   RefreshButton,
+  Tag,
+  toastSuccess,
   useDisclosure,
-} from '@repo/aui'
+} from '@repo/ui'
+import type { DataListApi } from '@repo/ui'
 
 import type {
   AppCursorQueryResponse,
   TodoCursorModel,
   TodoModel,
 } from '@repo/shared'
+import { PencilIcon, PlusIcon } from 'lucide-react'
 
 type EditTodoForm = {
   title: string
@@ -43,12 +50,10 @@ type TodoListData = InfiniteData<
 const PAGE_SIZE = 20
 
 export default function TodoPage() {
-  const { message } = App.useApp()
   const client = useServerClient()
   const queryClient = useQueryClient()
   const editDialog = useDisclosure<TodoModel>()
   const [newTitle, setNewTitle] = useState('')
-  const [editForm] = Form.useForm<EditTodoForm>()
   const listRef = useRef<DataListApi>(null)
   const listQueryKey = ['todo', 'cursorQuery', { size: PAGE_SIZE }] as const
 
@@ -64,6 +69,8 @@ export default function TodoPage() {
       getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
     })
   const items = data?.pages.flatMap((result) => result.items) ?? []
+  const completedCount = items.filter((item) => item.completed).length
+  const pendingCount = items.length - completedCount
   const resetList = () =>
     queryClient.resetQueries({ queryKey: listQueryKey, exact: true })
   const prependTodo = (todo: TodoModel) => {
@@ -141,125 +148,170 @@ export default function TodoPage() {
     },
   })
 
-  return (
-    <div className="bg-white h-full gap-4">
-      <PageToolbar
-        title="任务管理"
-        className="p-4"
-        extra={
-          <>
-            <RefreshButton
-              loading={isFetching && !isFetchingNextPage}
-              onClick={() => void resetList()}
-            />
-            <Space.Compact>
-              <Input
-                placeholder="快速添加任务..."
-                value={newTitle}
-                style={{ width: 240 }}
-                onChange={(e) => setNewTitle(e.target.value)}
-                onPressEnter={() => {
-                  if (newTitle.trim())
-                    createMutation.mutate({ title: newTitle.trim() })
-                }}
-              />
-              <IconText
-                icon={PlusOutlined}
-                type="primary"
-                loading={createMutation.isPending}
-                onClick={() => {
-                  if (newTitle.trim())
-                    createMutation.mutate({ title: newTitle.trim() })
-                }}
-              >
-                添加
-              </IconText>
-            </Space.Compact>
-          </>
-        }
-      />
+  const editForm = useForm({
+    defaultValues: { title: '', completed: false },
+    onSubmit: async ({ value }) => {
+      if (!editDialog.data) return
+      const todo = await client.todo.update({
+        todoId: editDialog.data.id,
+        title: value.title,
+        completed: value.completed ?? false,
+      })
+      updateTodo(todo)
+      toastSuccess('更新成功')
+      editDialog.close()
+    },
+  })
 
-      <AutoSize>
-        {({ height }) => {
-          return (
-            <DataList<TodoModel>
-              ref={listRef}
-              rowKey="id"
-              loading={isFetching && !data}
-              loadingMore={isFetchingNextPage}
-              hasMore={hasNextPage}
-              onLoadMore={async () => {
-                await fetchNextPage()
+  const addTodo = () => {
+    const title = newTitle.trim()
+    if (!title || createMutation.isPending) return
+    createMutation.mutate({ title })
+  }
+
+  return (
+    <div className="flex h-full flex-col gap-4 p-4 sm:p-6">
+      {/* 页头：标题 + 统计 + 快捷添加 */}
+      <div className="flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight">任务管理</h1>
+          {items.length > 0 ? (
+            <p className="mt-1 text-sm text-muted-foreground">
+              {pendingCount} 项待办 · {completedCount} 项已完成
+            </p>
+          ) : (
+            <p className="mt-1 text-sm text-muted-foreground">
+              在上方输入内容，回车即可添加任务
+            </p>
+          )}
+        </div>
+        <div className="flex items-center gap-2">
+          <RefreshButton
+            loading={isFetching && !isFetchingNextPage}
+            onClick={() => void resetList()}
+          />
+          <InputGroup className="w-72">
+            <InputGroupInput
+              placeholder="添加新任务，回车确认"
+              value={newTitle}
+              onChange={(event) => setNewTitle(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') addTodo()
               }}
-              dataSource={items}
-              height={height}
-              listClassName="border-y border-gray-200"
-              renderItem={(record) => (
-                <div className="flex min-h-20 items-center gap-3 border-b border-gray-100 px-4 py-3 last:border-b-0">
-                  <Checkbox
-                    checked={record.completed}
-                    disabled={toggleMutation.isPending}
-                    onChange={() =>
-                      toggleMutation.mutate({
-                        todoId: record.id,
-                        title: record.title,
-                        completed: !record.completed,
-                      })
-                    }
-                  />
-                  <div className="min-w-0 flex-1">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span
-                        className={
-                          record.completed
-                            ? 'text-gray-400 line-through'
-                            : 'text-gray-900'
-                        }
-                      >
-                        {record.title}
-                      </span>
-                      <Tag color={record.completed ? 'success' : 'default'}>
-                        {record.completed ? '已完成' : '待完成'}
-                      </Tag>
-                    </div>
-                    <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-500">
-                      {record.description ? (
-                        <span className="truncate">{record.description}</span>
-                      ) : null}
-                      <span>
-                        更新于{' '}
-                        <DisplayValue type="date" value={record.updatedAt} />
-                      </span>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-4">
-                    <IconText
-                      icon={EditOutlined}
-                      size="small"
-                      type="primary"
-                      onClick={() => {
-                        editForm.setFieldsValue(record)
-                        editDialog.open(record)
-                      }}
-                    >
-                      编辑
-                    </IconText>
-                    <ConfirmAction
-                      title="确认删除？"
-                      onConfirm={() =>
-                        removeMutation.mutate({ todoId: record.id })
-                      }
-                      danger
-                    >
-                      删除
-                    </ConfirmAction>
-                  </div>
-                </div>
-              )}
             />
-          )
-        }}
-      </AutoSize>
+            <InputGroupAddon align="inline-end">
+              <InputGroupButton
+                size="icon-sm"
+                aria-label="添加任务"
+                disabled={!newTitle.trim() || createMutation.isPending}
+                onClick={addTodo}
+              >
+                <PlusIcon />
+              </InputGroupButton>
+            </InputGroupAddon>
+          </InputGroup>
+        </div>
+      </div>
+
+      {/* 任务列表卡片 */}
+      <div className="min-h-0 flex-1 overflow-hidden rounded-xl border border-border bg-card shadow-xs">
+        <AutoSize>
+          {({ height }) => {
+            return (
+              <DataList<TodoModel>
+                ref={listRef}
+                rowKey="id"
+                loading={isFetching && !data}
+                loadingMore={isFetchingNextPage}
+                hasMore={hasNextPage}
+                onLoadMore={async () => {
+                  await fetchNextPage()
+                }}
+                dataSource={items}
+                height={height}
+                emptyText="还没有任务，在上方输入创建第一条"
+                renderItem={(record) => (
+                  <div
+                    className={cn(
+                      'group flex items-center gap-3 px-4 py-3 transition-colors hover:bg-muted/50 sm:px-5',
+                    )}
+                  >
+                    <Checkbox
+                      checked={record.completed}
+                      disabled={toggleMutation.isPending}
+                      aria-label="完成状态"
+                      className="shrink-0"
+                      onCheckedChange={() =>
+                        toggleMutation.mutate({
+                          todoId: record.id,
+                          title: record.title,
+                          completed: !record.completed,
+                        })
+                      }
+                    />
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2">
+                        <span
+                          className={cn(
+                            'truncate text-sm',
+                            record.completed
+                              ? 'text-muted-foreground line-through'
+                              : 'font-medium text-foreground',
+                          )}
+                        >
+                          {record.title}
+                        </span>
+                        {record.completed ? (
+                          <Tag color="success">已完成</Tag>
+                        ) : (
+                          <Tag color="default">待完成</Tag>
+                        )}
+                      </div>
+                      <div className="mt-0.5 flex flex-wrap gap-x-4 gap-y-0.5 text-xs text-muted-foreground">
+                        {record.description ? (
+                          <span className="truncate">{record.description}</span>
+                        ) : null}
+                        <span>
+                          更新于{' '}
+                          <DisplayValue type="date" value={record.updatedAt} />
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* 操作：悬停显示，保持列表干净 */}
+                    <div className="flex shrink-0 items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
+                      <IconText
+                        icon={<PencilIcon />}
+                        size="small"
+                        type="primary"
+                        aria-label="编辑"
+                        onClick={() => {
+                          editForm.reset({
+                            title: record.title,
+                            completed: record.completed,
+                          })
+                          editDialog.open(record)
+                        }}
+                      >
+                        编辑
+                      </IconText>
+                      <ConfirmAction
+                        title="确认删除该任务？"
+                        onConfirm={() =>
+                          removeMutation.mutate({ todoId: record.id })
+                        }
+                        danger
+                      >
+                        删除
+                      </ConfirmAction>
+                    </div>
+                  </div>
+                )}
+              />
+            )
+          }}
+        </AutoSize>
+      </div>
 
       <ModalForm<EditTodoForm>
         title="编辑任务"
@@ -269,7 +321,7 @@ export default function TodoPage() {
           {
             name: 'title',
             label: '标题',
-            formItemProps: { rules: [{ required: true }] },
+            required: true,
           },
           {
             name: 'completed',
@@ -278,20 +330,6 @@ export default function TodoPage() {
           },
         ]}
         onCancel={editDialog.close}
-        onError={(error) =>
-          message.error(error instanceof Error ? error.message : '更新失败')
-        }
-        onSubmit={async (values) => {
-          if (!editDialog.data) return
-          const todo = await client.todo.update({
-            todoId: editDialog.data.id,
-            title: values.title,
-            completed: values.completed ?? false,
-          })
-          updateTodo(todo)
-          message.success('更新成功')
-          editDialog.close()
-        }}
       />
     </div>
   )

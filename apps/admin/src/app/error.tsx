@@ -1,8 +1,7 @@
 'use client'
 
-import { ReloadOutlined } from '@ant-design/icons'
-import { IconText } from '@repo/aui'
-import { Result } from 'antd'
+import { Button } from '@repo/ui'
+import { RefreshCwIcon } from 'lucide-react'
 
 export default function GlobalError({
   error,
@@ -12,17 +11,17 @@ export default function GlobalError({
   reset: () => void
 }) {
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50">
-      <Result
-        status="500"
-        title="出错了"
-        subTitle="服务器发生了一些问题，请稍后重试。"
-        extra={
-          <IconText icon={ReloadOutlined} type="primary" onClick={reset}>
-            重试
-          </IconText>
-        }
-      />
+    <div className="flex min-h-screen items-center justify-center bg-muted/40">
+      <div className="flex flex-col items-center gap-4 text-center">
+        <div className="text-5xl font-semibold">出错了</div>
+        <p className="text-sm text-muted-foreground">
+          服务器发生了一些问题，请稍后重试。
+        </p>
+        <Button onClick={reset}>
+          <RefreshCwIcon />
+          重试
+        </Button>
+      </div>
     </div>
   )
 }
