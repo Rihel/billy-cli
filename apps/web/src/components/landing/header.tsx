@@ -13,6 +13,7 @@ const anchorLinks = [
   { href: LandingAnchors.ai, label: 'AI 能力' },
   { href: LandingAnchors.architecture, label: '架构' },
   { href: LandingAnchors.quickstart, label: '快速开始' },
+  { href: Pages.markdown, label: 'Markdown' },
 ]
 
 /** 首页顶部导航：单行锚点 + 登录/注册，移动端折叠为抽屉菜单 */

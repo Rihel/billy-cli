@@ -4,6 +4,7 @@ export const Pages = {
   register: '/auth/register',
   forgotPassword: '/auth/forgot-password',
   resetPassword: '/auth/reset-password',
+  markdown: '/markdown',
 }
 
 /** 首页锚点导航 */
