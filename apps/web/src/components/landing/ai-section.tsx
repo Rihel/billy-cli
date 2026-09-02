@@ -1,4 +1,4 @@
-import { Bot, CheckCircle2, Wand2, ShieldCheck, GitBranch } from 'lucide-react'
+import { Bot, CheckCircle2, Wand2, ShieldCheck, GitBranch, Target } from 'lucide-react'
 import { Reveal } from './reveal'
 
 const chatMessages = [
@@ -71,6 +71,11 @@ const points = [
     icon: GitBranch,
     title: '数据结构先行 + 全类型',
     desc: '数据结构与类型化 SDK 让 AI 生成的代码天然符合工程标准。',
+  },
+  {
+    icon: Target,
+    title: '按需加载',
+    desc: '15 个 skill 不是一次性全读，AI 按任务只加载相关 skill，裁剪上下文、省 Token。',
   },
 ]
 
@@ -147,8 +152,18 @@ export function AiSection() {
             </div>
           </Reveal>
 
-          {/* 右：skill 墙 + 价值点 */}
+          {/* 右：skill 规则示例 + skill 墙 + 价值点 */}
           <div className="flex flex-col gap-4 lg:col-span-2">
+            <Reveal>
+              <div className="rounded-2xl border border-zinc-800 bg-zinc-950 p-5">
+                <p className="text-xs font-medium text-zinc-500">skill 里的硬性规则（示例）</p>
+                <ul className="mt-3 space-y-1.5 font-mono text-xs leading-relaxed text-zinc-300">
+                  <li>· 业务模块不 import Hono（modules 与 features 物理分层）</li>
+                  <li>· 错误继承 AppError，code 在 AppErrorCodes（3xxx 段）</li>
+                  <li>· schema / dict / entity 字段一致并注册 index.ts</li>
+                </ul>
+              </div>
+            </Reveal>
             {skillGroups.map((group, gi) => (
               <Reveal key={group.label} delay={gi * 60}>
                 <div className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm shadow-zinc-200/50">

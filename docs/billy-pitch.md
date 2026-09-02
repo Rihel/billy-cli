@@ -22,7 +22,7 @@
 1. **规范，写进技能** —— 工程的规范，怎么分层、怎么命名、怎么交付，都写进 Agent Skills。AI 动手前先读规范，交出来的代码自然合标准。
 2. **数据结构，只有一份** —— 前后端共用的数据结构只定义一份，校验、存储、表单全部共用。改一个字段，处处生效。
 3. **能力，随时可换** —— 数据库、缓存、队列、存储、推送，都封装成标准接口，业务只认接口不认实现。今天用这套，明天换那套，业务一行不改。
-4. **前端，拆成两套** —— 用户端重表达，管理端重效率，拆成两个应用各自用最顺手的工具；共用同一份数据结构，改一个字段两边同时生效。
+4. **前端，拆成两套** —— 用户端重表达，管理端重效率，拆成两个应用、隔离两套权限边界与依赖树，而非一个应用里用路由分组硬拼；共用同一份数据结构，改一个字段两边同时生效。
 
 价值落点：
 
@@ -48,8 +48,7 @@
 | 竞品 | 他们的做法 | Billy 的不同 |
 | --- | --- | --- |
 | 免费全栈模板（Open SaaS / Ixartz） | Open SaaS 同样 AI-ready（AGENTS.md + skills），但绑定 Wasp 声明式 DSL、单体 SaaS 形态；Ixartz 无 AI | 标准 TypeScript monorepo，通用工程基座：任意业务、双前端、用户 / 管理员双体系，而非单一 SaaS 产品 |
-| 收费 SaaS 模板（Makerkit / Gravity / ShipFast / Supastarter） | 全栈且带 agent 规则，但绑定 B2B 多租户 SaaS 场景，闭源付费 | 免费开源、不绑定 SaaS 场景，另带监控告警、SSE、队列、对象存储等基建能力 |
-| 国内脚手架（RuoYi / yudao-cloud） | Java + Vue 为主，功能全但无 AI 原生开发（AI 是产品功能或缺失） | TypeScript 全栈 + 15 个 skill 驱动，AI 按你的规范全链路交付 |
+| 收费 SaaS 模板（Makerkit / Gravity / ShipFast / Supastarter） | 全栈且带 agent 规则，但绑定 B2B 多租户 SaaS 场景，闭源付费 | 免费开源、不绑定多租户计费场景，另带监控告警、SSE、队列、对象存储等基建能力 |
 
 ## 5. 技术栈为什么这么选
 
@@ -57,7 +56,7 @@
 | --- | --- | --- |
 | Hono 4 | NestJS | HTTP 层只做校验与转发，业务模块不依赖框架，薄边界可替换、可测试 |
 | PostgreSQL | MySQL | 告警规则存 jsonb、时间用 timestamptz，半结构化数据更自然，TypeORM 对 PG 支持最成熟 |
-| TypeORM | Prisma | 装饰器实体加 Repository，可注入、可 mock、可测试，与依赖注入天然契合 |
+| TypeORM | Prisma | 业务经 Repository 防腐层访问数据，service 不直接依赖 ORM，可测试、可替换；装饰器实体与依赖注入契合 |
 | Next.js 16 | Vite SPA | RSC 加 SSR 加 Server Actions，前台后台同构，C 端页面可 SEO |
 | Base UI + shadcn | 纯 Radix | Base UI 由 Radix 团队打造，无样式原语配 Tailwind 4，shadcn 补齐可定制组件 |
 | Redis + BullMQ + croner | 各自为战 | 缓存、分布式锁、队列、定时任务、跨实例 SSE，一套 Redis 全部扛下 |
@@ -84,6 +83,11 @@
 - **必读基础**：billy-dev-foundation
 - **全链路开发**：define-data-structure、define-dict-enum、develop-business-module、develop-frontend-page、implement-auth、object-storage
 - **基础设施与质量**：concurrency、queue、scheduler、stream、state-machine、write-tests、git-workflow、manage-skills
+
+两条关键机制，回应「skill 是不是空话」：
+
+1. **skill 是硬约束，不是泛泛提示词**。例如 billy-dev-foundation 里写明：业务模块不 import Hono（modules 与 features 物理分层）、错误全部继承 AppError 且 code 在 AppErrorCodes 定义（3xxx 段）、schema / dict / entity 三者字段一致并注册 index.ts——具体到文件、具体到错误码段。
+2. **按需加载，裁剪上下文**。15 个 skill 不是一次性全读，AI 按任务只加载相关 skill（开发商品模块只加载 develop-business-module + define-data-structure），裁剪上下文、省 Token，弥补通用 TypeScript 上下文偏重的短板。
 
 ## 8. 快速开始
 

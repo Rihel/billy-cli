@@ -13,13 +13,7 @@ const rivals = [
     rival: '收费 SaaS 模板',
     examples: 'Makerkit（$349）· Gravity（$199 起）· ShipFast（$199 起）· Supastarter（$299 起）',
     their: '全栈且带 agent 规则，但绑定 B2B 多租户 SaaS 场景，闭源付费。',
-    ours: '免费开源、不绑定 SaaS 场景，另带监控告警、SSE、队列、对象存储等基建能力。',
-  },
-  {
-    rival: '国内脚手架',
-    examples: 'RuoYi（约 8500 star）· yudao-cloud（约 1.9 万 star）',
-    their: 'Java + Vue 为主，功能全但无 AI 原生开发（AI 是产品功能或缺失）。',
-    ours: 'TypeScript 全栈 + 15 个 skill 驱动，AI 按你的规范全链路交付。',
+    ours: '免费开源、不绑定多租户计费场景，另带监控告警、SSE、队列、对象存储等基建能力。',
   },
 ]
 
@@ -38,7 +32,7 @@ const stackChoices = [
   {
     picked: 'TypeORM',
     instead: '而不是 Prisma',
-    reason: '装饰器实体加 Repository，可注入、可 mock、可测试，与依赖注入天然契合。',
+    reason: '业务经 Repository 防腐层访问数据，service 不直接依赖 ORM，可测试、可替换；装饰器实体与依赖注入契合。',
   },
   {
     picked: 'Next.js 16',
@@ -71,7 +65,7 @@ export function Choice() {
           <p className="mt-4 max-w-xl text-base leading-relaxed text-zinc-600">
             免费的有 Open SaaS、Ixartz，收费的有 Makerkit、Gravity、Supastarter。
             Open SaaS 同样 AI-ready，Billy 的差别在：通用 TS monorepo 而非 Wasp DSL 单体、
-            任意业务而非单一 SaaS、免费开源而非付费垂直。
+            不锁定多租户计费场景、免费开源而非付费垂直。
           </p>
           <Link
             href="/comparison"
