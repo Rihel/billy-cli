@@ -38,8 +38,9 @@ description: Billy 工程（billy-cli monorepo）开发必读 skill。任何在�
 - [ ] schema / dict / entity 三者字段一致，且都已在对应 `index.ts` 导出
 - [ ] 新实体已放入 `apps/server/src/database/entities/`，并在 `apps/server/src/main.ts` 的
   `createServiceContext({ db: { entities } })` 注入，且已生成 + 执行迁移
-- [ ] 新 service / repository 已在 `apps/server/src/main.ts` 用 `addService` 注册，且新模块已在
-  `apps/server/src/modules/<业务>/index.ts` 导出
+- [ ] 新 service / repository 已在 `apps/server/src/modules/index.ts` 副作用导入（@Injectable
+  自动登记 + runtime.autoRegister() 自动装配；实现 OnAppStart/OnAppStop 钩子自动按生命周期
+  组件装配），且新模块已在 `apps/server/src/modules/<业务>/index.ts` 导出
 - [ ] 错误全部继承 `AppError` 且 code 已在 `AppErrorCodes` 中定义（3xxx 段）
 - [ ] 路由已在 `apps/server/src/main.ts` 挂载，SDK 已补全类型化方法
 - [ ] admin 页面已加入 `apps/admin/src/components/AppMenu.tsx` 菜单

@@ -18,9 +18,11 @@
    `AppCursorQueryResponse`）。所有业务接口统一 `POST + JSON body`，不用 REST 动词。
 5. **DI**：业务类用 `@Injectable()`，构造器参数用 `@Inject(Token)`
    （均来自独立包 `@repo/di`）；日志用 `@Logger()` 注入 `AppLogger`；
-   写操作加 `@Transactional()`（来自 `@repo/kits` 的 re-export）；**新增的 service / repository
-   必须注册到 `apps/server/src/main.ts`**（应用组合根，`addService` 即可；生命周期组件在
-   `createServiceContext` 内用 `addLifeCycleService`）。
+   写操作加 `@Transactional()`（来自 `@repo/kits` 的 re-export）；**新增业务 service /
+   repository 无需在 main.ts 手动注册**——在 `apps/server/src/modules/index.ts` 加一行副作用
+   导入即被 `runtime.autoRegister()` 自动装配（main.ts 只保留 `.autoRegister()`）；
+   实现 `OnAppStart/OnAppStop` 钩子的类自动按生命周期组件装配。kits 基建（条件装配）在
+   `createServiceContext` 内显式 `addService` / `addLifeCycleService` + `markManual`，业务层勿动。
 6. **实体**（`apps/server/src/database/entities/`）：继承 `BaseEntity`（来自 `@repo/kits`，
    自动 id = nanoid(20)、
    created_at / updated_at / deleted_at 均为 timestamp(3)）；表名复数；列名 snake_case、

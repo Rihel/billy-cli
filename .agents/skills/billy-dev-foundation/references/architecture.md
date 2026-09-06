@@ -30,7 +30,7 @@ billy-cli 是一套**全栈应用 Monorepo 模板**：pnpm + Turbo 构建，Type
 ```
 apps/server   Hono 路由工厂（features/，薄边界：Zod 校验 + 调 service + 错误映射）
               + 业务模块（modules/：service / repository / errors）+ 实体 / 迁移（database/）
-              + 组合根（main.ts：createServiceContext + addService 注册业务）
+              + 组合根（main.ts：createServiceContext + autoRegister 自动装配业务模块）
    ↓ 只依赖
 @repo/kits    后端通用能力封装：infrastructure（Db / RedisStore / QueueManager / ObjectStorage /
               StreamHub / RateLimiter / Telemetry / LarkClient / LarkNotifyClient / EmailClient / FileClient / Notifier /

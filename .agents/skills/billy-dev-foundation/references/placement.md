@@ -29,7 +29,7 @@
 | 通用数据访问 | `packages/kits/src/db/<name>.ts`（如 pagination.ts） | 与 `db/` 并列，`kits/index.ts` 导出 |
 | 外部资源门面 | `packages/kits/src/infrastructure/<name>.ts` | 见下方「基础设施门面」模式 |
 | 横切基础能力 | `packages/kits/src/foundation/<name>.ts` | `@Injectable` + `createServiceContext` 注册 |
-| 业务逻辑 | `apps/server/src/modules/<业务>/{errors, <业务>.repository, <业务>.service, index}.ts` | 三层 + 模块 `index.ts` + `main.ts` `addService` 注册 |
+| 业务逻辑 | `apps/server/src/modules/<业务>/{errors, <业务>.repository, <业务>.service, index}.ts` | 三层 + 模块 `index.ts` + `modules/index.ts` 副作用导入（`autoRegister` 自动装配，无 `addService`） |
 | HTTP 边界 | `apps/server/src/features/<业务>.ts` | 路由工厂，`main.ts` 挂载 |
 | 全类型客户端 | `packages/sdk/src/server.client.ts` 的一段 | 类型化 `this.post<Model>(...)` |
 
@@ -56,8 +56,10 @@
 
 - 固定三层：`errors.ts`（AppError 子类）+ `<业务>.repository.ts`（数据访问）+
   `<业务>.service.ts`（业务 + `@Transactional` 写操作 + `@Logger`）。
-- 两处注册：模块 `index.ts` + `apps/server/src/main.ts` 的 `addService`
-  （实体另在 `createServiceContext({ db: { entities } })` 注入）。
+- 注册：模块 `index.ts` 聚合导出 + `apps/server/src/modules/index.ts` 副作用导入
+  ——`@Injectable` 自动登记 + `runtime.autoRegister()` 自动装配，无需 `addService`；
+  实现 `OnAppStart/OnAppStop` 钩子的业务类自动按生命周期组件装配。
+  （实体另在 `createServiceContext({ db: { entities } })` 注入。）
 - 参考：`apps/server/src/modules/todo/`。
 
 ### shared/utils —— 纯工具

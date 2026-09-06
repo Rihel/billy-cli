@@ -95,13 +95,15 @@ export class XxxService {
 }
 ```
 
-### index.ts + DI 注册（两处，缺一不可）
+### index.ts + 模块注册（自动装配）
 
 1. 模块 `index.ts`：`export * from './errors.js'`、`./xxx.repository.js`、`./xxx.service.js`。
-2. `apps/server/src/main.ts`：`addService(XxxRepository)`、`addService(XxxService)`
-   （与既有仓储 / 服务并列，见 `TodoRepository` / `TodoService` 的注册位置）——
-   **漏了这步，`features/xxx.ts` 无法 `runtime.get(XxxService)`**。
-   （实体另在 `createServiceContext({ db: { entities: [...] } })` 注入，见 `define-data-structure`。）
+2. 在 `apps/server/src/modules/index.ts` 加一行副作用导入 `import './xxx/index.js'`
+   ——业务类 `@Injectable()` 装饰器执行时自动登记，组合根 `runtime.autoRegister()` 自动装配，
+   **无需 main.ts 逐个 addService**（main.ts 只保留 `.autoRegister()` 一句）。
+   **漏了副作用导入 = 类未加载 = 未登记**，`features/xxx.ts` 的 `runtime.get(XxxService)` 会失败。
+   （实体另在 `createServiceContext({ db: { entities: [...] } })` 注入，见 `define-data-structure`。
+   业务类若实现 `OnAppStart/OnAppStop` 钩子，autoRegister 自动按生命周期组件装配，同样无需手动注册。）
 
 ## 4. ④ Hono 路由（薄边界）
 
