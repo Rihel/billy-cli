@@ -5,7 +5,8 @@
 
 ## 1. 基础设施：Scheduler（kits/foundation/scheduler.ts）
 
-基于 **croner** 的调度门面，注入 `@Inject(Scheduler)`（`addService` 注册）。归位：
+基于 **croner** 的调度门面，由 kits 组合根 `createServiceContext` 按 config 条件统一
+注册（生命周期组件），业务侧仅 `@Inject(Scheduler)` 使用，无需自行注册。归位：
 横切基础能力 → `kits/foundation`。
 
 | 方法 | 用途 |

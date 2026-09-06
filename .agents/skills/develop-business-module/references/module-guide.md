@@ -12,8 +12,9 @@ service / errors / features 路由 / schema 七个文件）：
 pnpm cli -t crud -n <name>
 ```
 
-生成后仍需按下列各节逐层落地：错误码与 schema 导出、main.ts 注册（addService +
-db.entities + app.route）、迁移、SDK、admin 页面。
+生成后仍需按下列各节逐层落地：错误码与 schema 导出、`modules/index.ts` 副作用导入
+（业务类 `@Injectable` 自动装配，无需 main.ts 逐个 addService）+ 实体注入
+`db.entities` + `app.route` 挂载、迁移、SDK、admin 页面。
 
 ## 1. ① 契约：错误码 + schema
 

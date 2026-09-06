@@ -28,13 +28,13 @@ OBJECT_STORAGE_ENDPOINT=http://localhost:9000   # MinIO 本地
 
 未配置时用默认值；`docker compose up minio` 可起本地 MinIO 联调。
 
-## 3. 路由（apps/server/src/features/storage.ts，均已 requireAuth）
+## 3. 路由（apps/server/src/features/storage.ts，均 makeRequireAdminAuth）
 
 | 端点 | 入参 schema | 说明 |
 | --- | --- | --- |
 | `/storage/get-presigned-url` | `GetStorageUploadPresignedUrlSchema` | 上传预签名 |
 | `/storage/get-download-url` | `GetStorageDownloadUrlSchema` | 下载预签名 |
-| `/storage/get-temporary-credentials` | 无入参（取 `requestContext.userId`） | STS 临时凭证 |
+| `/storage/get-temporary-credentials` | 无入参（取 `requestContext.adminId`） | STS 临时凭证 |
 
 ## 4. SDK
 
