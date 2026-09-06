@@ -25,21 +25,9 @@ import { AlertLogEntity } from './database/entities/alert-log-entity.js';
 import { AlertRuleEntity } from './database/entities/alert-rule-entity.js';
 import { TodoEntity } from './database/entities/todo-entity.js';
 import { UserEntity } from './database/entities/user-entity.js';
-import { AdminRepository } from './modules/admin/admin.repository.js';
-import { AdminService } from './modules/admin/admin.service.js';
-import { AuthService } from './modules/auth/auth.service.js';
-import {
-  AlertLogRepository,
-  AlertRuleRepository,
-  AlertRuleService,
-  AlertTrigger,
-  monitorConfig,
-  MonitorConfig,
-} from './modules/monitor/index.js';
-import { TodoRepository } from './modules/todo/todo.repository.js';
-import { TodoService } from './modules/todo/todo.service.js';
-import { UserRepository } from './modules/user/user.repository.js';
-import { UserService } from './modules/user/user.service.js';
+// 业务模块副作用入口：import 触发 @Injectable 装饰器登记，供 runtime.autoRegister() 自动装配
+import './modules/index.js';
+import { AlertTrigger, monitorConfig, MonitorConfig } from './modules/monitor/index.js';
 
 /** 应用组合根：唯一装配点（创建一次，供路由与启停共用） */
 export const runtime: AppContext = createServiceContext({
@@ -83,19 +71,8 @@ export const runtime: AppContext = createServiceContext({
   // 应用层业务配置
   .addConstant(ServerConfig, serverConfig)
   .addConstant(MonitorConfig, monitorConfig)
-  // 仓储
-  .addService(UserRepository)
-  .addService(TodoRepository)
-  .addService(AdminRepository)
-  .addService(AlertRuleRepository)
-  .addService(AlertLogRepository)
-  // 业务服务
-  .addService(AuthService)
-  .addService(UserService)
-  .addService(TodoService)
-  .addService(AdminService)
-  .addService(AlertRuleService)
-  .addService(AlertTrigger);
+  // 业务 repository / service 自动装配（@Injectable 自登记 + 生命周期钩子自动识别）
+  .autoRegister();
 
 export const makeApp = () => {
   const app = new Hono();

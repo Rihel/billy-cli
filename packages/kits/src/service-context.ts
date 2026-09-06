@@ -112,5 +112,13 @@ export const createServiceContext = (config: ServiceContextConfig = {}): AppCont
   ctx.addService(Telemetry)
   ctx.addLifeCycleService(Scheduler)
 
+  // 基建全部为「按配置分片显式装配」（缺配置不注册 + @Optional 降级依赖此边界），
+  // 声明为手动管理：业务层 autoRegister() 自动跳过，不会破坏条件装配语义。
+  ctx.markManual(
+    Db, RedisStore, QueueManager, StreamHub, SessionStore, ObjectStorage,
+    TokenSigner, PasswordHasher, RateLimiter, Scheduler, IdGeneration, Telemetry,
+    LarkClient, LarkNotifyClient, Notifier, FileClient, EmailClient,
+  )
+
   return ctx
 }

@@ -26,7 +26,7 @@ async function main() {
     console.log(colors.cyan('\n📋 接下来请手动完成以下步骤：'))
 
     console.log(
-      `  ${colors.yellow('1.')} 在 ${colors.bold('apps/server/src/main.ts')} 中导入 ${colors.bold(modulePascal + 'Repository')} / ${colors.bold(modulePascal + 'Service')}，并加入 createServiceContext 链式 ${colors.bold('.addService(...)')}`,
+      `  ${colors.yellow('1.')} 在 ${colors.bold('apps/server/src/modules/index.ts')} 追加副作用导入 ${colors.bold("import './" + name + "/index.js'")}（@Injectable 自动登记，runtime.autoRegister() 自动装配，无需 addService）`,
     )
     console.log(
       `  ${colors.yellow('2.')} 在 ${colors.bold('apps/server/src/main.ts')} 的 ${colors.bold('createServiceContext({ db: { entities } })')} 中注册 ${colors.bold(name + '-entity')}，并用 ${colors.bold('app.route(\'/' + name + '\', make' + modulePascal + 'Routes(runtime))')} 挂载路由`,

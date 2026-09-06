@@ -21,3 +21,17 @@ export interface LifeCycle {
   onAppStart?(): Promise<void>
   onAppStop?(): Promise<void>
 }
+
+/**
+ * 判别类是否为生命周期组件：原型上声明了 onAppStart 或 onAppStop 方法。
+ * 供 AppContext.autoRegister() 识别——实现生命周期钩子的 @Injectable 类
+ * 自动以生命周期组件装配（等价 addLifeCycleService），无需手动登记。
+ */
+export const hasLifeCycleHooks = (target: any): boolean => {
+  const proto = target?.prototype
+  if (!proto) return false
+  return (
+    typeof proto.onAppStart === 'function' ||
+    typeof proto.onAppStop === 'function'
+  )
+}

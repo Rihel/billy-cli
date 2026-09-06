@@ -27,9 +27,31 @@ export function Inject(serviceIdentifier: any): ParameterDecorator {
   }
 }
 
-/** 包装 inversify 的 @injectable：透传原装饰器（原地写元数据，类不变） */
+type Ctor = new (...args: any[]) => any
+
+/**
+ * 全局注册表：记录所有被执行过 @Injectable() 的类（模块被 import 时装饰器执行登记）。
+ * AppContext.autoRegister() 依据它批量装配；业务类只需写 @Injectable() 即自动成为 bean。
+ * 注意：仅登记「类已加载」的事实，不持有实例、不影响 inversify 绑定行为。
+ */
+const injectableRegistry = new Set<Ctor>()
+
+/** 读取注册表快照（供 autoRegister 装配；不导出可变引用） */
+export const getInjectableRegistry = (): ReadonlySet<Ctor> => injectableRegistry
+
+/**
+ * 包装 inversify 的 @injectable：
+ * - 把类登记进全局注册表（autoRegister 的装配依据）
+ * - 透传原装饰器（原地写元数据，类不变）
+ *
+ * kits 基建等「按配置条件装配」的组件由组合根 markManual 声明为手动管理，
+ * autoRegister 会跳过，不破坏条件装配 / @Optional 语义。
+ */
 export function Injectable(): ClassDecorator {
-  return (target) => originInjectable()(target)
+  return (target) => {
+    injectableRegistry.add(target as unknown as Ctor)
+    originInjectable()(target)
+  }
 }
 
 /**
