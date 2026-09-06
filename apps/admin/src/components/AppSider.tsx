@@ -24,6 +24,7 @@ import {
 } from '@repo/ui'
 import { LogOutIcon, TerminalSquareIcon, UserRoundIcon } from 'lucide-react'
 import { AppMenu } from './AppMenu'
+import { CommandMenu } from './CommandMenu'
 
 export type AppSiderProps = Partial<{}>
 
@@ -44,23 +45,27 @@ export const AppSider = ({}: AppSiderProps) => {
   const initial = displayName.charAt(0).toUpperCase()
 
   return (
-    <Sidebar variant="floating" collapsible="icon">
+    <Sidebar collapsible="icon">
       <SidebarHeader>
-        {/* 品牌区：与前台一致的橙色渐变 TerminalSquare 方块 + 字标 + mono 副标 */}
+        {/* 品牌区：与前台一致的亮蓝渐变 TerminalSquare 方块 + 字标 + mono 副标 */}
         <div className="flex items-center gap-2.5 px-1 py-0.5">
-          <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-gradient-to-br from-orange-500 to-orange-600 text-white shadow-md shadow-orange-500/25">
+          <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-gradient-to-br from-indigo-500 to-violet-600 text-white shadow-md shadow-indigo-600/25">
             <TerminalSquareIcon className="size-4" strokeWidth={2.2} />
           </span>
           <div className="flex min-w-0 flex-col leading-tight">
-            <span className="truncate text-sm font-semibold tracking-tight">
+            <span className="font-heading truncate text-[15px] font-semibold tracking-tight">
               {AppName}
             </span>
-            <span className="truncate font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
+            <span className="truncate font-mono text-[10px] tracking-wider text-muted-foreground">
               admin console
             </span>
           </div>
         </div>
       </SidebarHeader>
+      {/* 搜索入口：logo 正下方 */}
+      <div className="mb-1 shrink-0">
+        <CommandMenu sidebar />
+      </div>
       <SidebarContent>
         <AppMenu />
       </SidebarContent>

@@ -74,7 +74,7 @@ export default function AlertLogsPage() {
   ]
 
   return (
-    <div className="h-full w-full overflow-auto p-4 sm:p-6">
+    <div className="h-full w-full overflow-auto p-4 sm:p-8">
       <DataTable<AlertLogModel>
         title="告警记录"
         description="告警发送记录，可按通道与状态回溯"

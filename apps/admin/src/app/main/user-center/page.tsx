@@ -54,9 +54,9 @@ export default function UserCenter() {
   })
 
   return (
-    <div className="flex flex-col gap-4 p-4 sm:p-6">
+    <div className="flex flex-col gap-4 p-4 sm:p-8">
       <PageToolbar title="个人中心" description="管理员个人资料与账号安全" />
-      <div className="rounded-xl border border-border bg-card p-6 shadow-xs">
+      <div className="border-t border-b border-border py-6">
         <div className="flex flex-col gap-8 sm:flex-row sm:gap-10">
           <ImageUpload
             value={adminInfo?.avatar}
@@ -121,6 +121,7 @@ export default function UserCenter() {
             name: 'oldPassword',
             label: '旧密码',
             widget: 'password',
+            hint: '输入当前使用的密码以验证身份',
             required: '请输入旧密码',
             props: { autoComplete: 'current-password' },
           },
@@ -128,6 +129,7 @@ export default function UserCenter() {
             name: 'newPassword',
             label: '新密码',
             widget: 'password',
+            hint: '至少 6 位；建议字母、数字与符号混合',
             required: '请输入新密码',
             validate: (value) =>
               typeof value === 'string' && value.length > 0 && value.length < 6
@@ -139,6 +141,7 @@ export default function UserCenter() {
             name: 'confirmPassword',
             label: '确认新密码',
             widget: 'password',
+            hint: '再次输入新密码，两次需一致',
             required: '请再次输入新密码',
             validate: (value, values) =>
               value !== values.newPassword ? '两次密码输入不一致' : undefined,

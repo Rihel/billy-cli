@@ -1,10 +1,11 @@
 'use client'
 
 import { useServerClient } from '@/lib/server-client'
+import { registerCommand } from '@/lib/commands'
 import { useForm } from '@tanstack/react-form'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { useStore } from '@tanstack/react-store'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import {
   Alert,
   AlertDescription,
@@ -14,9 +15,9 @@ import {
   DataTable,
   DictSelect,
   DisplayValue,
-  DrawerForm,
   IconText,
   Input,
+  ModalForm,
   RefreshButton,
   Switch,
   TableActions,
@@ -29,7 +30,7 @@ import {
 import type {
   DataTableColumnDef,
   FormFieldContext,
-  FormFieldSchema,
+  FormItem,
 } from '@repo/ui'
 import { AppErrorCodes } from '@repo/shared'
 import type { AlertRuleModel, UpdateAlertRuleDto } from '@repo/shared'
@@ -106,6 +107,16 @@ export default function AlertRulesPage() {
   const [enabled, setEnabled] = useState<boolean | undefined>()
   const createDialog = useDisclosure()
   const editDialog = useDisclosure<AlertRuleModel>()
+  useEffect(
+    () =>
+      registerCommand({
+        label: '新建告警规则',
+        group: '告警规则',
+        run: () => createDialog.open(),
+      }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [],
+  )
 
   const { data, isFetching, refetch } = useQuery({
     queryKey: ['monitor', 'rules', { page, pageSize, keyword, type, enabled }],
@@ -171,7 +182,7 @@ export default function AlertRulesPage() {
   const ruleType = useStore(form.store, (state) => state.values.type) ?? 'tech'
   const isEventRule = ruleType === 'tech' || ruleType === 'business'
 
-  /** 匹配规则说明（Drawer 顶部，按类型显示） */
+  /** 匹配规则说明（表单上方，按类型显示） */
   const matchRuleHint = (
     <Alert className="mb-1">
       <InfoIcon />
@@ -218,151 +229,176 @@ export default function AlertRulesPage() {
     </Alert>
   )
 
-  const ruleFormItems: Array<
-    FormFieldSchema<RuleForm> | FormFieldSchema<RuleForm>[]
-  > = [
-      {
-        name: 'name',
-        label: '规则名称',
-        required: '请输入规则名称',
-      },
-      {
-        name: 'type',
-        label: '类型',
-        required: true,
-        widget: 'select',
-        props: {
-          options: [
-            { label: '技术告警（事件：未捕获异常 / 系统错误）', value: 'tech' },
-            { label: '业务告警（事件：指定错误码 / 关键字）', value: 'business' },
-            { label: '指标告警（阈值：错误率 / P95 / 库存等）', value: 'metric' },
-            { label: '突变告警（环比：QPS 飙升 / 洪峰 / 订单飙升）', value: 'surge' },
-          ],
+  const ruleFormItems: FormItem<RuleForm>[] = [
+    {
+      title: '基本信息',
+      fields: [
+        { name: 'name', label: '规则名称', required: '请输入规则名称', span: 2, hint: '便于识别的规则名称，如「登录失败次数过多」' },
+        {
+          name: 'type',
+          label: '类型',
+          required: true,
+          widget: 'select',
+          span: 2,
+          hint: '选择告警的业务类型：事件（错误码/关键字）或指标（阈值/环比）',
+          props: {
+            options: [
+              { label: '技术告警（事件：未捕获异常 / 系统错误）', value: 'tech' },
+              { label: '业务告警（事件：指定错误码 / 关键字）', value: 'business' },
+              { label: '指标告警（阈值：错误率 / P95 / 库存等）', value: 'metric' },
+              { label: '突变告警（环比：QPS 飙升 / 洪峰 / 订单飙升）', value: 'surge' },
+            ],
+          },
         },
-      },
-      // ===== 事件规则字段 =====
-      ...(isEventRule
-        ? [
-            {
-              name: 'matchCodes',
-              label: '匹配错误码',
-              widget: 'select' as const,
-              hint: '不选 = 匹配该类型全部错误',
-              props: {
-                multiple: true,
-                placeholder: '选择要告警的错误码（可多选）',
-                options: ERROR_CODE_OPTIONS,
+      ],
+    },
+    // ===== 触发条件：按规则类型切换 =====
+    ...(isEventRule
+      ? [
+          {
+            title: '触发条件（事件）',
+            fields: [
+              {
+                name: 'matchCodes',
+                label: '匹配错误码',
+                widget: 'select' as const,
+                hint: '不选 = 匹配该类型全部错误',
+                span: 2 as const,
+                props: {
+                  multiple: true,
+                  placeholder: '选择要告警的错误码（可多选）',
+                  options: ERROR_CODE_OPTIONS,
+                },
               },
-            },
-            {
-              name: 'keywords',
-              label: '消息关键字',
-              hint: '错误消息包含任一关键字即触发；回车添加',
-              render: ({ values, field }: FormFieldContext<RuleForm>) => (
-                <TagsInput
-                  value={(values.keywords ?? []) as string[]}
-                  placeholder="输入关键字后回车（如：数据库、超时）"
-                  onChange={(next) => field.handleChange(next)}
-                />
-              ),
-            },
-            {
-              name: 'threshold',
-              label: '触发阈值（次数）',
-              widget: 'number' as const,
-              hint: '窗口内同错误出现 ≥ N 次才告警',
-            },
-            {
-              name: 'thresholdWindowSeconds',
-              label: '统计窗口（秒）',
-              widget: 'number' as const,
-            },
-          ]
-        : [
-            // ===== 指标 / 突变规则字段 =====
-            {
-              name: 'metric',
-              label: ruleType === 'surge' ? '监控指标（环比）' : '监控指标',
-              required: '请选择或输入指标名',
-              hint:
-                ruleType === 'surge'
-                  ? '当前窗口 / 前一窗口 的环比倍率'
-                  : '周期采样该指标值 vs 阈值',
-              render: ({ values, field }: FormFieldContext<RuleForm>) => (
-                <TagsInput
-                  value={
-                    values.metric ? [values.metric as string] : []
-                  }
-                  maxCount={1}
-                  options={METRIC_OPTIONS}
-                  placeholder="选择内置指标或输入自定义指标名"
-                  onChange={(next) => field.handleChange(next[0])}
-                />
-              ),
-            },
-            {
-              name: 'operator',
-              label: '比较符',
-              required: true,
-              widget: 'select' as const,
-              props: {
-                options: [
-                  { label: '>（大于）', value: 'gt' },
-                  { label: '≥（大于等于）', value: 'gte' },
-                  { label: '<（小于）', value: 'lt' },
-                  { label: '≤（小于等于）', value: 'lte' },
-                ],
+              {
+                name: 'keywords',
+                label: '消息关键字',
+                hint: '错误消息包含任一关键字即触发；回车添加',
+                span: 2 as const,
+                render: ({ values, field }: FormFieldContext<RuleForm>) => (
+                  <TagsInput
+                    value={(values.keywords ?? []) as string[]}
+                    placeholder="输入关键字后回车（如：数据库、超时）"
+                    onChange={(next) => field.handleChange(next)}
+                  />
+                ),
               },
-            },
-            {
-              name: 'thresholdValue',
-              label: ruleType === 'surge' ? '环比倍率' : '阈值',
-              required: '请输入阈值',
-              widget: 'number' as const,
-              hint:
-                ruleType === 'surge'
-                  ? '如 3 = 当前窗口是前一窗口 3 倍时告警'
-                  : '如错误率 0.05、P99 500、库存 10',
-            },
-            {
-              name: 'periodSeconds',
-              label: '评估周期（秒）',
-              widget: 'number' as const,
-            },
-          ]),
-      {
-        name: 'level',
-        label: '级别',
-        required: true,
-        widget: 'select',
-        props: {
-          options: [
-            { label: 'error（错误）', value: 'error' },
-            { label: 'warn（警告）', value: 'warn' },
-          ],
+              {
+                name: 'threshold',
+                label: '触发阈值（次数）',
+                widget: 'number' as const,
+                hint: '窗口内同错误出现 ≥ N 次才告警',
+              },
+              {
+                name: 'thresholdWindowSeconds',
+                label: '统计窗口（秒）',
+                widget: 'number' as const,
+                hint: '窗口时长：窗口内错误累计达到阈值才触发',
+              },
+            ],
+          },
+        ]
+      : [
+          {
+            title: '触发条件（指标 / 突变）',
+            fields: [
+              {
+                name: 'metric',
+                label: ruleType === 'surge' ? '监控指标（环比）' : '监控指标',
+                required: '请选择或输入指标名',
+                hint:
+                  ruleType === 'surge'
+                    ? '当前窗口 / 前一窗口 的环比倍率'
+                    : '周期采样该指标值 vs 阈值',
+                span: 2 as const,
+                render: ({ values, field }: FormFieldContext<RuleForm>) => (
+                  <TagsInput
+                    value={
+                      values.metric ? [values.metric as string] : []
+                    }
+                    maxCount={1}
+                    options={METRIC_OPTIONS}
+                    placeholder="选择内置指标或输入自定义指标名"
+                    onChange={(next) => field.handleChange(next[0])}
+                  />
+                ),
+              },
+              {
+                name: 'operator',
+                label: '比较符',
+                required: true,
+                widget: 'select' as const,
+                hint: '指标值与阈值的比较方式',
+                props: {
+                  options: [
+                    { label: '>（大于）', value: 'gt' },
+                    { label: '≥（大于等于）', value: 'gte' },
+                    { label: '<（小于）', value: 'lt' },
+                    { label: '≤（小于等于）', value: 'lte' },
+                  ],
+                },
+              },
+              {
+                name: 'thresholdValue',
+                label: ruleType === 'surge' ? '环比倍率' : '阈值',
+                required: '请输入阈值',
+                widget: 'number' as const,
+                hint:
+                  ruleType === 'surge'
+                    ? '如 3 = 当前窗口是前一窗口 3 倍时告警'
+                    : '如错误率 0.05、P99 500、库存 10',
+              },
+              {
+                name: 'periodSeconds',
+                label: '评估周期（秒）',
+                widget: 'number' as const,
+                hint: '每隔多少秒评估一次该指标',
+              },
+            ],
+          },
+        ]),
+    {
+      title: '通知与限频',
+      fields: [
+        {
+          name: 'level',
+          label: '级别',
+          required: true,
+          widget: 'select',
+          hint: 'error 用于紧急问题，warn 用于提示性告警',
+          props: {
+            options: [
+              { label: 'error（错误）', value: 'error' },
+              { label: 'warn（警告）', value: 'warn' },
+            ],
+          },
         },
-      },
-      {
-        name: 'channels',
-        label: '发送通道',
-        required: '至少选择一个通道',
-        widget: 'select',
-        props: {
-          multiple: true,
-          options: CHANNEL_OPTIONS,
+        {
+          name: 'channels',
+          label: '发送通道',
+          required: '至少选择一个通道',
+          widget: 'select',
+          hint: '告警推送到哪些渠道（可多选）',
+          props: {
+            multiple: true,
+            options: CHANNEL_OPTIONS,
+          },
         },
-      },
-      {
-        name: 'throttleSeconds',
-        label: '限频窗口（秒）',
-        widget: 'number',
-      },
-      {
-        name: 'enabled',
-        label: '启用',
-        widget: 'switch',
-      },
-    ]
+        {
+          name: 'throttleSeconds',
+          label: '限频窗口（秒）',
+          widget: 'number',
+          hint: '同一规则 + 相同内容在该窗口内只推送一次',
+        },
+        {
+          name: 'enabled',
+          label: '启用',
+          widget: 'switch',
+          hint: '关闭后规则暂停匹配，不会触发告警',
+        },
+      ],
+    },
+  ]
 
   const columns: DataTableColumnDef<AlertRuleModel>[] = [
     { header: '名称', accessorKey: 'name' },
@@ -373,7 +409,7 @@ export default function AlertRulesPage() {
       cell: ({ getValue }) => {
         const map = {
           tech: { color: 'blue', label: '技术' },
-          business: { color: 'orange', label: '业务' },
+          business: { color: 'cyan', label: '业务' },
           metric: { color: 'green', label: '指标' },
           surge: { color: 'purple', label: '突变' },
         } as const
@@ -495,14 +531,15 @@ export default function AlertRulesPage() {
   ]
 
   return (
-    <div className="h-full w-full overflow-auto p-4 sm:p-6">
+    <div className="h-full w-full overflow-auto p-4 sm:p-8">
       <DataTable<AlertRuleModel>
         title="告警规则"
         description="按错误码 / 关键词 / 指标阈值匹配异常，多通道通知"
         toolbar={
           <>
             <RefreshButton loading={isFetching} onClick={() => void refetch()} />
-            <div className="flex items-center gap-1 rounded-lg border border-input bg-background pr-1">
+            <div className="flex items-center gap-1 border-b border-transparent transition-colors focus-within:border-foreground/30">
+              <SearchIcon className="ml-0.5 size-3.5 text-muted-foreground" />
               <Input
                 placeholder="搜索规则名..."
                 value={searchText}
@@ -519,19 +556,8 @@ export default function AlertRulesPage() {
                     setPage(1)
                   }
                 }}
-                className="w-40 border-0 shadow-none focus-visible:ring-0"
+                className="h-7 w-40 border-0 bg-transparent px-1 shadow-none focus-visible:ring-0"
               />
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                aria-label="搜索"
-                onClick={() => {
-                  setKeyword(searchText.trim() || undefined)
-                  setPage(1)
-                }}
-              >
-                <SearchIcon />
-              </Button>
             </div>
             <DictSelect
               options={[
@@ -595,21 +621,22 @@ export default function AlertRulesPage() {
         }}
       />
 
-      <DrawerForm<RuleForm>
+      <ModalForm<RuleForm>
         title="新建告警规则"
         open={createDialog.isOpen}
         form={form}
-        width={520}
+        dialogClassName="sm:max-w-2xl"
         description={matchRuleHint}
         items={ruleFormItems}
         onCancel={createDialog.close}
       />
 
-      <DrawerForm<RuleForm>
+      <ModalForm<RuleForm>
         title="编辑告警规则"
         open={editDialog.isOpen}
         form={form}
-        width={520}
+        values={editDialog.data}
+        dialogClassName="sm:max-w-2xl"
         description={matchRuleHint}
         items={ruleFormItems}
         onCancel={editDialog.close}

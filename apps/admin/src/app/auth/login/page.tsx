@@ -19,8 +19,8 @@ import { callAction } from '@repo/ui/action'
 import { useForm } from '@tanstack/react-form'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { Suspense, useEffect, useState } from 'react'
-import { AppName, Pages } from '@/lib/constants'
-import { LogInIcon, TerminalSquareIcon } from 'lucide-react'
+import { Pages } from '@/lib/constants'
+import { LogInIcon } from 'lucide-react'
 
 type LoginForm = {
   email: string
@@ -109,14 +109,12 @@ function LoginFormComponent() {
 
   return (
     <>
-      <div className="mb-6 flex flex-col items-center gap-2.5 text-center">
-        {/* 品牌方块：与前台一致的橙色渐变 TerminalSquare */}
-        <span className="grid size-11 place-items-center rounded-xl bg-gradient-to-br from-orange-500 to-orange-600 text-white shadow-md shadow-orange-500/25">
-          <TerminalSquareIcon className="size-5" strokeWidth={2.2} />
-        </span>
-        <h1 className="text-xl font-semibold tracking-tight">{AppName}</h1>
-        <p className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
-          admin console
+      <div className="mb-8 flex flex-col gap-1.5">
+        <h1 className="font-heading text-2xl font-semibold tracking-tight">
+          登录控制台
+        </h1>
+        <p className="text-sm text-muted-foreground">
+          输入你的管理员凭据继续
         </p>
       </div>
       {expired ? (

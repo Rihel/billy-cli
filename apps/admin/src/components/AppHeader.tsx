@@ -26,26 +26,22 @@ export const AppHeader = ({ className, ...props }: AppHeaderProps) => {
   return (
     <div
       className={cn(
-        'flex h-14 shrink-0 items-center justify-between gap-2 border-b border-border bg-background/80 px-4 backdrop-blur-sm sm:px-6',
+        'flex h-12 shrink-0 items-center justify-between gap-3 border-b border-border/70 bg-background/95 px-4 backdrop-blur-sm sm:px-6',
         className,
       )}
       {...props}
     >
+      {/* 左：折叠 + 当前页标题 */}
       <div className="flex min-w-0 items-center gap-2.5">
         <SidebarTrigger className="-ml-1" />
         {title ? (
-          <div className="flex min-w-0 items-baseline gap-2">
-            <span className="truncate text-sm font-medium text-foreground">
-              {title}
-            </span>
-            {/* mono 路径：CLI 式定位，强化设计语言的「命令行精确感」 */}
-            <span className="hidden truncate font-mono text-[10px] uppercase tracking-wider text-muted-foreground md:inline">
-              {pathname}
-            </span>
-          </div>
+          <span className="font-heading truncate text-sm font-medium tracking-tight text-foreground">
+            {title}
+          </span>
         ) : null}
       </div>
 
+      {/* 右：主题 */}
       <div className="flex shrink-0 items-center gap-1.5">
         <ThemeToggle />
       </div>

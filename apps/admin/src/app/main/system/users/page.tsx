@@ -2,9 +2,10 @@
 
 import { formatStorageUrl } from '@/lib/constants'
 import { useServerClient } from '@/lib/server-client'
+import { registerCommand } from '@/lib/commands'
 import { useForm } from '@tanstack/react-form'
 import { useMutation, useQuery } from '@tanstack/react-query'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import {
   Avatar,
   AvatarFallback,
@@ -63,6 +64,18 @@ export default function UsersPage() {
   const createDialog = useDisclosure()
   const editDialog = useDisclosure<UserModel>()
   const resetPasswordDialog = useDisclosure<UserModel>()
+
+  // 注册到全局命令面板（⌘K 快捷操作）
+  useEffect(
+    () =>
+      registerCommand({
+        label: '新建用户',
+        group: '用户管理',
+        run: () => createDialog.open(),
+      }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [],
+  )
 
   const { data, isFetching, refetch } = useQuery({
     queryKey: [
@@ -239,7 +252,7 @@ export default function UsersPage() {
   ]
 
   return (
-    <div className="h-full w-full overflow-auto p-4 sm:p-6">
+    <div className="h-full w-full overflow-auto p-4 sm:p-8">
       <DataTable<UserModel>
         title="用户管理"
         description="前台用户体系管理，支持关键词搜索与状态筛选"
@@ -249,7 +262,8 @@ export default function UsersPage() {
               loading={isFetching}
               onClick={() => void refetch()}
             />
-            <div className="flex items-center gap-1 rounded-lg border border-input bg-background pr-1">
+            <div className="flex items-center gap-1 border-b border-transparent transition-colors focus-within:border-foreground/30">
+              <SearchIcon className="ml-0.5 size-3.5 text-muted-foreground" />
               <Input
                 placeholder="搜索邮箱..."
                 value={searchText}
@@ -266,19 +280,8 @@ export default function UsersPage() {
                     setPage(1)
                   }
                 }}
-                className="w-44 border-0 shadow-none focus-visible:ring-0"
+                className="h-7 w-44 border-0 bg-transparent px-1 shadow-none focus-visible:ring-0"
               />
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                aria-label="搜索"
-                onClick={() => {
-                  setKeyword(searchText.trim() || undefined)
-                  setPage(1)
-                }}
-              >
-                <SearchIcon />
-              </Button>
             </div>
             <DictSelect
               dict={UserStatus}
@@ -323,6 +326,7 @@ export default function UsersPage() {
           {
             name: 'email',
             label: '邮箱',
+            hint: '登录用的邮箱地址，创建后不可修改',
             required: true,
             validate: (value) => {
               if (
@@ -335,10 +339,15 @@ export default function UsersPage() {
               return undefined
             },
           },
-          { name: 'realName', label: '姓名' },
+          {
+            name: 'realName',
+            label: '姓名',
+            hint: '用户在前台展示的昵称，不填则显示邮箱前缀',
+          },
           {
             name: 'avatar',
             label: '头像',
+            hint: '支持常见图片格式，大小不超过 5MB',
             render: ({ values, field }) => (
               <ImageUpload
                 value={
@@ -354,6 +363,7 @@ export default function UsersPage() {
             name: 'password',
             label: '初始密码',
             widget: 'password',
+            hint: '至少 6 位；建议字母、数字与符号混合',
             required: true,
             validate: (value) =>
               typeof value === 'string' && value.length > 0 && value.length < 6
@@ -369,17 +379,24 @@ export default function UsersPage() {
         title="编辑用户"
         open={editDialog.isOpen}
         form={editForm}
+        values={editDialog.data}
         items={[
           {
             name: 'email',
             label: '邮箱',
+            hint: '登录用邮箱，不可修改',
             disabled: true,
             props: { readOnly: true },
           },
-          { name: 'realName', label: '姓名' },
+          {
+            name: 'realName',
+            label: '姓名',
+            hint: '展示名称，不填则显示邮箱前缀',
+          },
           {
             name: 'avatar',
             label: '头像',
+            hint: '支持常见图片格式，大小不超过 5MB',
             render: ({ values, field }) => (
               <ImageUpload
                 value={
@@ -395,6 +412,7 @@ export default function UsersPage() {
             name: 'status',
             label: '状态',
             widget: 'select',
+            hint: '禁用后该账号将无法登录',
             props: { options: UserStatus.options },
           },
         ]}
@@ -403,7 +421,7 @@ export default function UsersPage() {
 
       {/* 重置密码 */}
       <ModalForm<ResetPasswordForm>
-        title={`重置密码 — ${resetPasswordDialog.data?.email ?? ''}`}
+        title={`重置密码（${resetPasswordDialog.data?.email ?? ''}）`}
         open={resetPasswordDialog.isOpen}
         form={resetPwdForm}
         submitText="确认重置"
@@ -412,6 +430,7 @@ export default function UsersPage() {
             name: 'password',
             label: '新密码',
             widget: 'password',
+            hint: '至少 6 位；建议字母、数字与符号混合',
             required: true,
             validate: (value) =>
               typeof value === 'string' && value.length > 0 && value.length < 6
@@ -422,6 +441,7 @@ export default function UsersPage() {
             name: 'confirmPassword',
             label: '确认密码',
             widget: 'password',
+            hint: '再次输入新密码，两次需一致',
             required: true,
             validate: (value, values) =>
               value !== values.password ? '两次密码不一致' : undefined,

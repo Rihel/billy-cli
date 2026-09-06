@@ -170,28 +170,28 @@ export default function TodoPage() {
   }
 
   return (
-    <div className="flex h-full flex-col gap-4 p-4 sm:p-6">
+    <div className="flex h-full flex-col gap-4 p-4 sm:p-8">
       {/* 页头：标题 + 统计 + 快捷添加 */}
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">任务管理</h1>
+          <h1 className="font-heading text-2xl font-semibold tracking-tight">任务管理</h1>
           <p className="mt-1 text-sm text-muted-foreground">
             示例模块，演示游标分页与列表交互
           </p>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-          {/* 统计卡：mono 数字 + 语义状态点（真实计数） */}
-          <div className="flex items-center gap-2 rounded-xl border border-border bg-card px-3 py-2 shadow-xs">
+        <div className="flex flex-wrap items-center gap-4">
+          {/* 统计：文本徽标 + mono 数字（无卡、hairline 分隔） */}
+          <div className="flex items-center gap-2 border-r border-border pr-4">
             <span className="size-2 rounded-full bg-muted-foreground/60" />
             <span className="text-xs text-muted-foreground">待办</span>
-            <span className="font-mono text-sm font-semibold tabular-nums">
+            <span className="font-mono text-base font-semibold tabular-nums">
               {pendingCount}
             </span>
           </div>
-          <div className="flex items-center gap-2 rounded-xl border border-border bg-card px-3 py-2 shadow-xs">
+          <div className="flex items-center gap-2">
             <span className="size-2 rounded-full bg-emerald-500" />
             <span className="text-xs text-muted-foreground">已完成</span>
-            <span className="font-mono text-sm font-semibold tabular-nums">
+            <span className="font-mono text-base font-semibold tabular-nums">
               {completedCount}
             </span>
           </div>
@@ -222,8 +222,8 @@ export default function TodoPage() {
         </div>
       </div>
 
-      {/* 任务列表卡片 */}
-      <div className="min-h-0 flex-1 overflow-hidden rounded-xl border border-border bg-card shadow-xs">
+      {/* 任务列表（hairline 编辑式，无卡片） */}
+      <div className="min-h-0 flex-1 overflow-hidden border-t border-b border-border">
         <AutoSize>
           {({ height }) => {
             return (
@@ -326,15 +326,18 @@ export default function TodoPage() {
         title="编辑任务"
         open={editDialog.isOpen}
         form={editForm}
+        values={editDialog.data}
         items={[
           {
             name: 'title',
             label: '标题',
+            hint: '任务内容，保存后展示在列表中',
             required: true,
           },
           {
             name: 'completed',
             widget: 'checkbox',
+            hint: '勾选后任务标记为已完成',
             props: { children: '已完成' },
           },
         ]}

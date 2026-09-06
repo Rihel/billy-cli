@@ -48,7 +48,8 @@ const MainLayout = async ({ children }: MainLayoutProps) => {
       <div className="relative flex h-screen w-screen overflow-hidden bg-background">
         <SidebarProvider>
           <AppSider />
-          <SidebarInset className="overflow-hidden bg-transparent">
+          {/* 内容区：嵌入式（与侧栏同底连续，无漂浮面板；顶栏 hairline 分隔） */}
+          <SidebarInset className="overflow-hidden">
             <AppHeader className="shrink-0" />
             <main className="min-w-0 flex-1 overflow-hidden">
               <Suspense>{children}</Suspense>
