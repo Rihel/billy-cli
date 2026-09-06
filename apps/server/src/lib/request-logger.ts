@@ -60,7 +60,7 @@ export const requestLogger = createMiddleware(async (context, next) => {
     requestId,
     userId: requestContext.get('userId') ?? null,
     ip,
-    userAgent,
+    // userAgent,
   };
   const message = `${method} ${path} -> ${status} ${durationMs}ms`;
 
