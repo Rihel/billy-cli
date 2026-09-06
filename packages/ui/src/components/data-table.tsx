@@ -124,20 +124,20 @@ export function DataTable<T extends object>({
 
       <div
         className={cn(
-          "flex flex-col overflow-hidden rounded-xl border border-border bg-card shadow-xs",
+          "flex flex-col overflow-hidden",
           tableClassName,
         )}
       >
         <Table>
-          <TableHeader className="bg-muted/40">
+          <TableHeader className="bg-transparent">
             {headerGroups.map((headerGroup) => (
-              <TableRow key={headerGroup.id}>
+              <TableRow key={headerGroup.id} className="hover:bg-transparent">
                 {headerGroup.headers.map((header) => {
                   const width = (header.column.columnDef.meta as { width?: number } | undefined)?.width
                   return (
                     <TableHead
                       key={header.id}
-                      className="h-9 px-3 text-xs font-medium text-muted-foreground"
+                      className="h-10 px-3 text-xs font-medium tracking-wide text-muted-foreground"
                       style={width ? { width } : undefined}
                     >
                       {header.isPlaceholder
@@ -167,7 +167,7 @@ export function DataTable<T extends object>({
               rows.map((row) => (
                 <TableRow key={row.id}>
                   {row.getVisibleCells().map((cell) => (
-                    <TableCell key={cell.id} className="p-3">
+                    <TableCell key={cell.id} className="px-3 py-2.5 text-[13px]">
                       {flexRender(cell.column.columnDef.cell, cell.getContext())}
                     </TableCell>
                   ))}
@@ -195,9 +195,11 @@ export function DataTable<T extends object>({
         </Table>
 
         {renderPagination ? (
-          <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border bg-muted/20 px-3 py-2.5 text-xs text-muted-foreground">
-            <div className="font-mono tabular-nums">共 {totalCount} 条</div>
-            <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border px-1 py-2.5 text-xs text-muted-foreground">
+            <div className="flex items-center gap-3">
+              <span className="font-mono tabular-nums text-foreground/80">
+                共 {totalCount} 条
+              </span>
               <Select
                 value={String(currentPageSize)}
                 onValueChange={(value) => {
@@ -206,8 +208,9 @@ export function DataTable<T extends object>({
                   onPageChange?.(1, nextSize)
                 }}
               >
-                <SelectTrigger size="sm" className="w-24">
+                <SelectTrigger size="sm" className="h-7 w-auto gap-1 border-0 bg-transparent px-0 text-muted-foreground shadow-none hover:text-foreground">
                   <SelectValue />
+                  <span className="font-mono">/页</span>
                 </SelectTrigger>
                 <SelectContent>
                   {pageSizeOptions.map((size) => (
@@ -217,8 +220,10 @@ export function DataTable<T extends object>({
                   ))}
                 </SelectContent>
               </Select>
+            </div>
+            <div className="flex items-center gap-1.5">
               <Button
-                variant="outline"
+                variant="ghost"
                 size="icon-sm"
                 aria-label="上一页"
                 disabled={currentPage <= 1}
@@ -226,11 +231,13 @@ export function DataTable<T extends object>({
               >
                 <ChevronLeftIcon />
               </Button>
-              <span className="font-mono tabular-nums">
-                {currentPage} / {totalPages}
+              <span className="px-1 font-mono tabular-nums text-foreground/70">
+                {currentPage}
+                <span className="mx-1 text-muted-foreground/50">/</span>
+                {totalPages}
               </span>
               <Button
-                variant="outline"
+                variant="ghost"
                 size="icon-sm"
                 aria-label="下一页"
                 disabled={currentPage >= totalPages}

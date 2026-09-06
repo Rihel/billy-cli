@@ -35,10 +35,12 @@ export function PageToolbar({
       >
         <div className="min-w-0">
           {title ? (
-            <div className="text-2xl font-semibold tracking-tight">{title}</div>
+            <div className="font-heading text-lg font-medium tracking-tight">
+              {title}
+            </div>
           ) : null}
           {description ? (
-            <div className="mt-1 text-sm text-muted-foreground">
+            <div className="mt-0.5 text-[13px] text-muted-foreground">
               {description}
             </div>
           ) : null}

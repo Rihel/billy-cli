@@ -5,23 +5,30 @@ import type { CSSProperties, ReactNode } from "react"
 import { cn } from "#lib/utils"
 import { Badge } from "#components/ui/badge"
 
-/** 常见预设色名 → tailwind 语义类映射 */
+/**
+ * 常见预设色名 → tailwind 语义类映射。
+ * 现代克制风格：极淡底 + 细边框 + 深色文字（非 antd 的强彩 100 底块）。
+ */
 const PRESET_COLORS: Record<string, string> = {
-  default: "bg-muted text-muted-foreground",
-  success: "bg-emerald-100 text-emerald-700",
-  error: "bg-red-100 text-red-700",
-  warning: "bg-amber-100 text-amber-700",
-  processing: "bg-blue-100 text-blue-700",
-  blue: "bg-blue-100 text-blue-700",
-  cyan: "bg-cyan-100 text-cyan-700",
-  green: "bg-emerald-100 text-emerald-700",
-  red: "bg-red-100 text-red-700",
-  gold: "bg-amber-100 text-amber-700",
-  orange: "bg-orange-100 text-orange-700",
-  purple: "bg-purple-100 text-purple-700",
-  magenta: "bg-pink-100 text-pink-700",
-  geekblue: "bg-indigo-100 text-indigo-700",
-  volcano: "bg-orange-100 text-orange-700",
+  default:
+    "border border-border bg-muted/40 text-muted-foreground",
+  success:
+    "border border-emerald-200 bg-emerald-50 text-emerald-700",
+  error: "border border-red-200 bg-red-50 text-red-700",
+  warning: "border border-amber-200 bg-amber-50 text-amber-700",
+  processing:
+    "border border-indigo-200 bg-indigo-50 text-indigo-700",
+  blue: "border border-indigo-200 bg-indigo-50 text-indigo-700",
+  cyan: "border border-cyan-200 bg-cyan-50 text-cyan-700",
+  green: "border border-emerald-200 bg-emerald-50 text-emerald-700",
+  red: "border border-red-200 bg-red-50 text-red-700",
+  gold: "border border-amber-200 bg-amber-50 text-amber-700",
+  orange: "border border-orange-200 bg-orange-50 text-orange-700",
+  purple: "border border-purple-200 bg-purple-50 text-purple-700",
+  magenta: "border border-pink-200 bg-pink-50 text-pink-700",
+  geekblue:
+    "border border-indigo-200 bg-indigo-50 text-indigo-700",
+  volcano: "border border-orange-200 bg-orange-50 text-orange-700",
 }
 
 export type TagProps = {

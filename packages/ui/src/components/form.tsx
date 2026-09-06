@@ -76,6 +76,8 @@ export type FormFieldSchema<Values extends object = Record<string, unknown>> = {
   widget?: FormWidget
   /** 字段说明文案（渲染在控件下方） */
   hint?: ReactNode
+  /** 多列网格中该字段占几列（默认 1；宽控件如 textarea / 多选建议 2） */
+  span?: 1 | 2
   /** 根据当前表单值决定是否隐藏该字段 */
   hidden?: (values: Values) => boolean
   /** 静态禁用，或根据当前表单值动态禁用 */
@@ -95,9 +97,28 @@ export type FormFieldSchema<Values extends object = Record<string, unknown>> = {
   render?: (context: FormFieldContext<Values>) => ReactNode
 }
 
+/** 字段行：单字段或同排多字段（数组） */
+export type FormFieldRow<Values extends object> =
+  | FormFieldSchema<Values>
+  | FormFieldSchema<Values>[]
+
+/** 字段分组：标题 + 说明 + 组内字段（组内自动两列网格布局） */
+export type FormFieldGroup<Values extends object> = {
+  type?: "group"
+  /** 分组标题 */
+  title?: ReactNode
+  /** 分组说明（标题下方小字） */
+  description?: ReactNode
+  fields: Array<FormFieldRow<Values>>
+}
+
+export type FormItem<Values extends object> =
+  | FormFieldRow<Values>
+  | FormFieldGroup<Values>
+
 export type FormFieldsProps<Values extends object> = {
   form: AnyFormApi<Values>
-  items: Array<FormFieldSchema<Values> | FormFieldSchema<Values>[]>
+  items: Array<FormItem<Values>>
 }
 
 const isEmptyValue = (value: unknown): boolean => {
@@ -120,9 +141,12 @@ const renderWidget = (
   field: WidgetFieldApi,
   item: FormFieldSchema<any>,
   disabled: boolean,
+  valueFromStore: unknown,
 ): ReactNode => {
   const props = item.props ?? {}
-  const value = field.state.value
+  // 显示值以 form.store.values 为准（reset / 编辑回填后必然重渲染）；
+  // field.state.value 在弹窗场景可能滞后于 reset。
+  const value = valueFromStore === undefined ? field.state.value : valueFromStore
 
   switch (item.widget) {
     case "password":
@@ -315,7 +339,10 @@ const FormField = <Values extends object>({
         return (
           <Field
             data-invalid={errors.length > 0 || undefined}
-            className="min-w-0 flex-1"
+            className={cn(
+              "min-w-0 flex-1",
+              item.span === 2 && "sm:col-span-2",
+            )}
           >
             {item.label && item.widget !== "checkbox" ? (
               <FieldLabel>{item.label}</FieldLabel>
@@ -332,6 +359,7 @@ const FormField = <Values extends object>({
                     field as unknown as WidgetFieldApi,
                     item,
                     disabled ?? false,
+                    (values as Record<string, unknown>)[item.name],
                   )}
               {item.hint ? (
                 <FieldDescription>{item.hint}</FieldDescription>
@@ -345,7 +373,53 @@ const FormField = <Values extends object>({
   )
 }
 
-/** 声明式表单项渲染（@tanstack/react-form）：items 为字段行，数组内为同行多列 */
+const isGroup = <Values extends object>(
+  entry: FormItem<Values>,
+): entry is FormFieldGroup<Values> =>
+  typeof entry === "object" &&
+  entry !== null &&
+  "fields" in entry &&
+  Array.isArray((entry as FormFieldGroup<Values>).fields)
+
+/** 单字段（顶层未分组时的一行容器） */
+const FieldRowWrap = <Values extends object>({
+  row,
+  index,
+  form,
+}: {
+  row: FormFieldRow<Values>
+  index: number
+  form: AnyFormApi<Values>
+}) => {
+  if (Array.isArray(row)) {
+    // 同排多字段：flex 均分（原行为）
+    return (
+      <div key={index} className="flex flex-wrap gap-4">
+        {row.map((item, itemIndex) => (
+          <FormField
+            key={`${String(item.name)}-${itemIndex}`}
+            form={form}
+            item={item}
+          />
+        ))}
+      </div>
+    )
+  }
+  return (
+    <FormField
+      key={index}
+      form={form}
+      item={row as FormFieldSchema<Values>}
+    />
+  )
+}
+
+/**
+ * 声明式表单项渲染（@tanstack/react-form）。
+ * - 顶层元素：字段 / 字段数组（同排多列）/ 分组（FormFieldGroup）。
+ * - 分组内自动 `grid sm:grid-cols-2`：单字段占一列（span=2 占整行），
+ *   字段数组占整行做内部均分（保持「同排」语义）。
+ */
 export function FormFields<Values extends object>({
   form,
   items,
@@ -353,17 +427,54 @@ export function FormFields<Values extends object>({
   return (
     <>
       {items.map((entry, index) => {
-        const row = Array.isArray(entry) ? entry : [entry]
+        if (isGroup(entry)) {
+          const rows = entry.fields
+          return (
+            <div key={index} className="space-y-3">
+              {entry.title ? (
+                <div className="flex flex-col gap-0.5">
+                  <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                    {entry.title}
+                  </div>
+                  {entry.description ? (
+                    <div className="text-xs text-muted-foreground/80">
+                      {entry.description}
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
+              <div className="grid grid-cols-1 gap-x-5 gap-y-5 sm:grid-cols-2">
+                {rows.map((row, rowIndex) => {
+                  if (Array.isArray(row)) {
+                    return (
+                      <div
+                        key={rowIndex}
+                        className="flex flex-wrap gap-4 sm:col-span-2"
+                      >
+                        {row.map((item, itemIndex) => (
+                          <FormField
+                            key={`${String(item.name)}-${itemIndex}`}
+                            form={form}
+                            item={item}
+                          />
+                        ))}
+                      </div>
+                    )
+                  }
+                  return (
+                    <FormField
+                      key={rowIndex}
+                      form={form}
+                      item={row as FormFieldSchema<Values>}
+                    />
+                  )
+                })}
+              </div>
+            </div>
+          )
+        }
         return (
-          <div key={index} className="flex flex-wrap gap-4">
-            {row.map((item, itemIndex) => (
-              <FormField
-                key={`${String(item.name)}-${itemIndex}`}
-                form={form}
-                item={item}
-              />
-            ))}
-          </div>
+          <FieldRowWrap key={index} row={entry as FormFieldRow<Values>} index={index} form={form} />
         )
       })}
     </>
@@ -372,7 +483,7 @@ export function FormFields<Values extends object>({
 
 export type FormRendererProps<Values extends object> = {
   form: AnyFormApi<Values>
-  items: Array<FormFieldSchema<Values> | FormFieldSchema<Values>[]>
+  items: Array<FormItem<Values>>
   children?: ReactNode
   className?: string
 }
@@ -386,7 +497,7 @@ export function FormRenderer<Values extends object>({
 }: FormRendererProps<Values>) {
   return (
     <form
-      className={cn("flex flex-col gap-4", className)}
+      className={cn("flex flex-col gap-5", className)}
       onSubmit={(event) => {
         event.preventDefault()
         void form.handleSubmit()

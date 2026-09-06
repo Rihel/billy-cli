@@ -6,6 +6,7 @@
   "exports": {
     ".": "./src/index.ts",
     "./action": "./src/action.ts",
+    "./components/ui/command": "./src/components/ui/command.ts",
     "./globals.css": "./src/globals.css",
     "./*": "./src/*"
   },
@@ -17,7 +18,8 @@
   "devDependencies": {
     "@types/lodash": "^4.17.24",
     "@types/react": "^19.2.17",
-    "typescript": "^7.0.2"
+    "typescript": "^7.0.2",
+    "tailwindcss": "^4.3.3"
   },
   "peerDependencies": {
     "react": "^19.2.7",

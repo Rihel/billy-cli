@@ -1,0 +1,15 @@
+/*
+ * Tailwind CSS v4 IDE 识别入口（仅供 VSCode Tailwind IntelliSense 使用）。
+ *
+ * 本文件不被任何应用 import / 构建引用（无副作用）。
+ *
+ * 作用：@repo/ui 是独立 workspace 包，自身没有可被 IDE 识别的
+ * `@import "tailwindcss"` 入口；此文件放在 ui 包源码目录内，
+ * VSCode 插件编辑 packages/ui 下的 .tsx 时向上查找到它并启用
+ * 补全 / 悬停提示。@source 声明让插件把 ui 源码作为类来源扫描。
+ *
+ * 类名的实际编译扫描由各 app globals.css 的 @source 完成，与此文件无关。
+ */
+@import "tailwindcss";
+
+@source "./**/*.{ts,tsx}";
