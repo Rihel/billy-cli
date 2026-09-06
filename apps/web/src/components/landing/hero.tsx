@@ -47,7 +47,7 @@ export function Hero() {
           </h1>
 
           <p className="mt-8 max-w-2xl text-lg leading-relaxed text-zinc-600 sm:text-xl">
-            工程规范写进 15 个 Agent Skills，AI 开工先读规范、按你的标准交付；
+            工程规范写进 17 个 Agent Skills，AI 开工先读规范、按你的标准交付；
             Hono + Next.js 16 双前端开箱即用，pnpm bootstrap 一键初始化。
           </p>
 

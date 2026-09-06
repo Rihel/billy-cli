@@ -34,8 +34,10 @@ const skillGroups = [
     label: '全链路开发',
     items: [
       'define-data-structure',
+      'database',
       'define-dict-enum',
       'develop-business-module',
+      'develop-backend-api',
       'develop-frontend-page',
       'implement-auth',
       'object-storage',
@@ -75,7 +77,7 @@ const points = [
   {
     icon: Target,
     title: '按需加载',
-    desc: '15 个 skill 不是一次性全读，AI 按任务只加载相关 skill，裁剪上下文、省 Token。',
+    desc: '17 个 skill 不是一次性全读，AI 按任务只加载相关 skill，裁剪上下文、省 Token。',
   },
 ]
 
@@ -99,7 +101,7 @@ export function AiSection() {
             让 AI 按你的规范写代码
           </h2>
           <p className="mt-4 max-w-xl text-base leading-relaxed text-zinc-600">
-            工程内置 15 个 Agent Skills，把架构规范与完整流程变成 AI
+            工程内置 17 个 Agent Skills，把架构规范与完整流程变成 AI
             可执行的规范，AI 写的代码也能符合你的工程标准。
           </p>
         </Reveal>
