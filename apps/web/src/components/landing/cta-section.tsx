@@ -10,7 +10,7 @@ export function CtaSection() {
     <section className="relative overflow-hidden">
       <div
         aria-hidden
-        className="absolute inset-x-0 bottom-0 h-64 bg-[radial-gradient(ellipse_60%_100%_at_50%_100%,rgb(249_115_22/0.08),transparent)]"
+        className="absolute inset-x-0 bottom-0 h-64 bg-[radial-gradient(ellipse_60%_100%_at_50%_100%,rgb(59_130_246/0.1),transparent)]"
       />
       <div className="relative mx-auto max-w-7xl px-4 py-24 sm:px-6 lg:px-8">
         <Reveal className="mx-auto max-w-2xl text-center">
@@ -24,7 +24,7 @@ export function CtaSection() {
             <Button
               render={<Link href={Pages.register} />}
               size="lg"
-              className="bg-orange-500 px-6 text-white shadow-lg shadow-orange-500/25 hover:bg-orange-600"
+              className="bg-zinc-950 text-white shadow-lg shadow-zinc-950/20 hover:bg-zinc-800"
             >
               创建账号
               <ArrowRight data-icon="inline-end" />

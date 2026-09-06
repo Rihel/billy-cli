@@ -13,7 +13,7 @@ export default function MarkdownLayout({
   children: React.ReactNode
 }) {
   return (
-    <div className="min-h-screen bg-white text-zinc-900 selection:bg-orange-200">
+    <div className="min-h-screen bg-white text-zinc-900 selection:bg-indigo-200">
       <MarkdownNav />
       <main className="mx-auto max-w-3xl px-4 py-10 sm:px-6">{children}</main>
     </div>

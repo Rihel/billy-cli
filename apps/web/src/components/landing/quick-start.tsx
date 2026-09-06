@@ -18,7 +18,7 @@ export function QuickStart() {
     <section id="quickstart" className="scroll-mt-20 overflow-hidden border-t border-zinc-200/70 bg-zinc-50">
       <div className="mx-auto grid max-w-7xl grid-cols-1 items-center gap-12 px-4 py-20 sm:px-6 lg:grid-cols-2 lg:px-8 lg:py-28">
         <Reveal>
-          <h2 className="max-w-md text-3xl font-semibold tracking-tight text-zinc-950 sm:text-4xl">
+          <h2 className="font-heading max-w-md text-3xl font-semibold tracking-tight text-zinc-950 sm:text-4xl md:text-5xl">
             五分钟，跑起来
           </h2>
           <p className="mt-4 max-w-md text-base leading-relaxed text-zinc-600">
@@ -29,7 +29,7 @@ export function QuickStart() {
           <ul className="mt-8 space-y-4">
             {steps.map((step, i) => (
               <li key={step.cmd} className="flex items-start gap-3">
-                <span className="mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-full bg-orange-500/10 font-mono text-xs font-semibold text-orange-700">
+                <span className="mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-full bg-indigo-500/10 font-mono text-xs font-semibold text-indigo-700">
                   {i + 1}
                 </span>
                 <div>
@@ -43,7 +43,7 @@ export function QuickStart() {
           <div className="mt-8 space-y-2">
             {prerequisites.map((item) => (
               <p key={item} className="flex items-center gap-2 text-sm text-zinc-600">
-                <CheckCircle2 className="size-4 text-orange-600" />
+                <CheckCircle2 className="size-4 text-indigo-600" />
                 {item}
               </p>
             ))}
@@ -54,66 +54,66 @@ export function QuickStart() {
           <div className="relative">
             <div
               aria-hidden
-              className="absolute -inset-6 rounded-3xl bg-gradient-to-tl from-orange-500/10 via-transparent to-transparent blur-2xl"
+              className="absolute -inset-6 rounded-3xl bg-gradient-to-tl from-indigo-500/10 via-transparent to-transparent blur-2xl"
             />
-            <div className="relative overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-950 shadow-2xl shadow-zinc-900/25">
-              <div className="flex items-center gap-2 border-b border-white/10 px-4 py-3">
+            <div className="relative overflow-hidden rounded-2xl border border-indigo-100 bg-gradient-to-b from-white to-indigo-50/40 shadow-xl shadow-indigo-950/10 ring-1 ring-indigo-100/60">
+              <div className="flex items-center gap-2 border-b border-indigo-100/80 bg-indigo-50/60 px-4 py-3">
                 <span className="size-3 rounded-full bg-red-400/80" />
                 <span className="size-3 rounded-full bg-amber-400/80" />
                 <span className="size-3 rounded-full bg-emerald-400/80" />
                 <span className="ml-2 font-mono text-xs text-zinc-500">快速开始</span>
-                <span className="ml-auto inline-flex items-center gap-1.5 rounded-md border border-white/10 bg-white/5 px-2 py-0.5 font-mono text-[10px] text-zinc-500">
+                <span className="ml-auto inline-flex items-center gap-1.5 rounded-md border border-zinc-200 bg-zinc-50 px-2 py-0.5 font-mono text-[10px] text-zinc-500">
                   <TerminalSquare className="size-3" />
                   zsh
                 </span>
               </div>
               <pre className="overflow-x-auto p-5 font-mono text-[13px] leading-7">
                 <div>
-                  <span className="select-none text-zinc-700">$ </span>
-                  <span className="text-emerald-400"># ① 一键初始化（交互确认，-y 全默认）</span>
+                  <span className="select-none text-zinc-400">$ </span>
+                  <span className="text-emerald-600"># ① 一键初始化（交互确认，-y 全默认）</span>
                 </div>
                 <div>
-                  <span className="select-none text-zinc-700">$ </span>
-                  <span className="text-zinc-100">pnpm bootstrap</span>
+                  <span className="select-none text-zinc-400">$ </span>
+                  <span className="text-zinc-800">pnpm bootstrap</span>
                 </div>
                 <div>
-                  <span className="select-none text-zinc-700">  </span>
+                  <span className="select-none text-zinc-400">  </span>
                   <span className="text-zinc-500">[1/6] 环境检查 ✓</span>
                 </div>
                 <div>
-                  <span className="select-none text-zinc-700">  </span>
+                  <span className="select-none text-zinc-400">  </span>
                   <span className="text-zinc-500">[2/6] Docker 依赖服务 ✓</span>
                 </div>
                 <div>
-                  <span className="select-none text-zinc-700">  </span>
+                  <span className="select-none text-zinc-400">  </span>
                   <span className="text-zinc-500">[3/6] 环境变量文件 ✓</span>
                 </div>
                 <div>
-                  <span className="select-none text-zinc-700">  </span>
+                  <span className="select-none text-zinc-400">  </span>
                   <span className="text-zinc-500">[4/6] 依赖安装 ✓</span>
                 </div>
                 <div>
-                  <span className="select-none text-zinc-700">  </span>
+                  <span className="select-none text-zinc-400">  </span>
                   <span className="text-zinc-500">[5/6] 数据库迁移与种子 ✓</span>
                 </div>
                 <div>
-                  <span className="select-none text-zinc-700">  </span>
+                  <span className="select-none text-zinc-400">  </span>
                   <span className="text-zinc-500">[6/6] 服务冒烟验证 ✓</span>
                 </div>
                 <div className="mt-1">
-                  <span className="select-none text-zinc-700">$ </span>
-                  <span className="text-emerald-400"># ② 并行启动开发环境</span>
+                  <span className="select-none text-zinc-400">$ </span>
+                  <span className="text-emerald-600"># ② 并行启动开发环境</span>
                 </div>
                 <div>
-                  <span className="select-none text-zinc-700">$ </span>
-                  <span className="text-zinc-100">pnpm dev:pkgs &amp; pnpm dev:server &amp; pnpm dev:web</span>
+                  <span className="select-none text-zinc-400">$ </span>
+                  <span className="text-zinc-800">pnpm dev:pkgs &amp; pnpm dev:server &amp; pnpm dev:web</span>
                 </div>
-                <div className="mt-1 text-zinc-600">
-                  <span className="select-none text-zinc-700">$ </span>
-                  <span className="text-zinc-400">➜</span>{' '}
-                  <span className="text-zinc-200">ready</span>{' '}
+                <div className="mt-1">
+                  <span className="select-none text-zinc-400">$ </span>
+                  <span className="text-emerald-600">➜</span>{' '}
+                  <span className="text-zinc-800">ready</span>{' '}
                   <span className="text-zinc-500">· http://localhost:9840</span>
-                  <span className="ml-1 inline-block h-4 w-2 translate-y-0.5 animate-pulse bg-orange-400" />
+                  <span className="ml-1 inline-block h-4 w-2 translate-y-0.5 animate-pulse bg-indigo-500" />
                 </div>
               </pre>
             </div>

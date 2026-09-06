@@ -32,50 +32,70 @@ const values = [
 ]
 
 /**
- * 设计理念：一句宣言 + 四个设计决策 + 价值落点。
- * 用词平实（规范 / 数据结构 / 能力），不堆术语；立场克制，让读者自己得出结论。
+ * 设计理念：非对称双栏。
+ * 左栏：大留白中锚定「宣言竖排编号 01-04」与标题（sticky 于滚动区间）；
+ * 右栏：四条编辑式思想（hairline 分隔） + 价值三列。
  */
 export function Why() {
   return (
-    <section id="why" className="scroll-mt-20">
-      <div className="mx-auto max-w-7xl px-4 py-20 sm:px-6 lg:px-8 lg:py-28">
-        {/* 宣言头部：垂直堆叠 */}
-        <Reveal>
-          <h2 className="max-w-2xl text-3xl font-semibold tracking-tight text-zinc-950 sm:text-4xl">
-            把答案写进骨架
-          </h2>
-          <p className="mt-5 max-w-xl text-base leading-relaxed text-zinc-600">
-            模板的职责，是把反复出现的工程难题先想清楚：接口怎么定、能力怎么复用、边界怎么划。
-            想清楚的部分交给骨架，你只负责业务本身。
-          </p>
-        </Reveal>
-
-        {/* 四个设计决策：编辑化列表 */}
-        <div className="mt-16">
-          {principles.map((principle, i) => (
-            <Reveal key={principle.no} delay={i * 40}>
-              <div className="grid gap-3 border-t border-zinc-200 py-8 md:grid-cols-[5rem_1fr_1.4fr] md:items-baseline md:gap-8">
-                <span className="font-mono text-sm text-orange-600">{principle.no}</span>
-                <h3 className="text-lg font-semibold tracking-tight text-zinc-950 md:text-xl">
-                  {principle.title}
-                </h3>
-                <p className="text-sm leading-relaxed text-zinc-600">{principle.desc}</p>
-              </div>
-            </Reveal>
-          ))}
-          <div className="border-t border-zinc-200" aria-hidden />
+    <section id="why" className="scroll-mt-20 border-t border-zinc-200/70">
+      <div className="mx-auto max-w-7xl px-4 py-24 sm:px-6 lg:grid lg:grid-cols-[1fr_1.6fr] lg:gap-20 lg:px-8 lg:py-36">
+        {/* 左栏：sticky 宣言 */}
+        <div className="lg:sticky lg:top-24 lg:self-start">
+          <Reveal>
+            <p className="font-mono text-xs font-medium tracking-[0.18em] text-indigo-600 uppercase">
+              设计理念
+            </p>
+            <h2 className="font-heading mt-5 text-4xl leading-[1.05] font-semibold tracking-tight text-zinc-950 sm:text-5xl">
+              把答案
+              <br />
+              写进骨架
+            </h2>
+            <p className="mt-6 max-w-sm text-base leading-relaxed text-zinc-600">
+              模板的职责，是把反复出现的工程难题先想清楚：接口怎么定、能力怎么复用、边界怎么划。
+              想清楚的部分交给骨架，你只负责业务本身。
+            </p>
+          </Reveal>
         </div>
 
-        {/* 价值：三列极简 */}
-        <div className="mt-16 grid grid-cols-1 gap-10 md:grid-cols-3 md:gap-8">
-          {values.map((value, i) => (
-            <Reveal key={value.title} delay={i * 40}>
-              <div>
-                <h3 className="text-sm font-medium text-zinc-950">{value.title}</h3>
-                <p className="mt-2 text-sm leading-relaxed text-zinc-600">{value.desc}</p>
-              </div>
-            </Reveal>
-          ))}
+        {/* 右栏：编辑式条目 + 价值 */}
+        <div className="mt-16 lg:mt-0">
+          <div>
+            {principles.map((principle, i) => (
+              <Reveal key={principle.no} delay={i * 40}>
+                <div className="grid gap-4 border-t border-zinc-200 py-9 md:grid-cols-[4.5rem_1fr] md:gap-10">
+                  <span className="font-heading text-2xl font-semibold tracking-tight text-indigo-600/70">
+                    {principle.no}
+                  </span>
+                  <div>
+                    <h3 className="font-heading text-2xl font-semibold tracking-tight text-zinc-950">
+                      {principle.title}
+                    </h3>
+                    <p className="mt-3 max-w-xl text-base leading-relaxed text-zinc-600">
+                      {principle.desc}
+                    </p>
+                  </div>
+                </div>
+              </Reveal>
+            ))}
+            <div className="border-t border-zinc-200" aria-hidden />
+          </div>
+
+          {/* 价值三列 */}
+          <div className="mt-14 grid grid-cols-1 gap-8 sm:grid-cols-3">
+            {values.map((value, i) => (
+              <Reveal key={value.title} delay={i * 40}>
+                <div>
+                  <h3 className="text-sm font-semibold text-zinc-950">
+                    {value.title}
+                  </h3>
+                  <p className="mt-2 text-sm leading-relaxed text-zinc-600">
+                    {value.desc}
+                  </p>
+                </div>
+              </Reveal>
+            ))}
+          </div>
         </div>
       </div>
     </section>

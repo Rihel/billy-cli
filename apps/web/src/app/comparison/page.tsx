@@ -10,11 +10,11 @@ function Flag({ label, ok }: { label: string; ok: boolean }) {
     <span
       className={
         ok
-          ? 'inline-flex items-center gap-1.5 rounded-lg border border-orange-500/30 bg-orange-500/10 px-2.5 py-1 text-xs font-medium text-orange-700'
+          ? 'inline-flex items-center gap-1.5 rounded-lg border border-indigo-500/30 bg-indigo-500/10 px-2.5 py-1 text-xs font-medium text-indigo-700'
           : 'inline-flex items-center gap-1.5 rounded-lg border border-zinc-200 bg-zinc-50 px-2.5 py-1 text-xs text-zinc-500'
       }
     >
-      <span className={ok ? 'text-orange-600' : 'text-zinc-400'}>{ok ? '✓' : '✕'}</span>
+      <span className={ok ? 'text-indigo-600' : 'text-zinc-400'}>{ok ? '✓' : '✕'}</span>
       {label}
     </span>
   )
@@ -31,16 +31,16 @@ function Meta({ label, value }: { label: string; value: string }) {
 
 function CompetitorCard({ c }: { c: Competitor }) {
   return (
-    <div className="flex h-full flex-col rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm shadow-zinc-200/50">
+    <div className="flex h-full flex-col rounded-xl border border-zinc-200 bg-white p-6 transition-all hover:-translate-y-0.5 hover:border-indigo-400/60 hover:shadow-sm">
       <div className="flex items-center justify-between gap-3">
         <a
           href={c.url}
           target="_blank"
           rel="noreferrer"
-          className="group inline-flex items-center gap-1.5 text-base font-semibold text-zinc-950 hover:text-orange-600"
+          className="group inline-flex items-center gap-1.5 text-base font-semibold text-zinc-950 hover:text-indigo-600"
         >
           {c.name}
-          <ExternalLink className="size-3.5 text-zinc-400 transition-colors group-hover:text-orange-600" />
+          <ExternalLink className="size-3.5 text-zinc-400 transition-colors group-hover:text-indigo-600" />
         </a>
         <span
           className={
@@ -109,19 +109,22 @@ export default function ComparisonPage() {
       </header>
 
       <main className="mx-auto max-w-7xl px-4 py-14 sm:px-6 lg:px-8 lg:py-20">
-        <p className="text-xs font-medium uppercase tracking-widest text-orange-600">
-          竞品调研
-        </p>
-        <h1 className="mt-3 max-w-2xl text-3xl font-semibold tracking-tight text-zinc-950 sm:text-4xl">
+        <div className="flex items-center gap-3">
+          <span className="h-px w-8 bg-indigo-500" aria-hidden />
+          <p className="font-mono text-xs font-medium tracking-[0.18em] text-indigo-600 uppercase">
+            竞品调研
+          </p>
+        </div>
+        <h1 className="font-heading mt-4 max-w-2xl text-3xl font-semibold tracking-tight text-zinc-950 sm:text-4xl md:text-5xl">
           同类模板，逐一核实
         </h1>
-        <p className="mt-4 max-w-2xl text-base leading-relaxed text-zinc-600">
+        <p className="mt-5 max-w-2xl text-base leading-relaxed text-zinc-600">
           调研日期 2026-09-02，数据以 GitHub 为准；star 与价格会随时间变化。
           仅收录「模板 / 脚手架」类，纯技术框架（Wasp / RedwoodJS / Midway）、工具与工作流已剔除。
         </p>
 
         {/* 筛选标准 */}
-        <div className="mt-8 rounded-2xl border border-zinc-200 bg-white p-6">
+        <div className="mt-8 rounded-xl border border-zinc-200 bg-white p-6">
           <p className="text-sm font-medium text-zinc-950">为什么是这些竞品</p>
           <ul className="mt-3 grid gap-2 text-sm leading-relaxed text-zinc-600 md:grid-cols-2">
             <li>① 只收「模板 / 脚手架」：clone 即用的前后端骨架，剔除框架、创建器、工作流、技能包。</li>
@@ -134,14 +137,14 @@ export default function ComparisonPage() {
         {/* 多层级 Tab */}
         <div className="mt-12">
           <Tabs defaultValue="overseas">
-            <TabsList>
+            <TabsList variant="line">
               <TabsTrigger value="overseas">海外（{overseasFree.length + overseasPaid.length}）</TabsTrigger>
               <TabsTrigger value="domestic">国内（{domesticFullstack.length + domesticFrontend.length}）</TabsTrigger>
             </TabsList>
 
             <TabsContent value="overseas" className="mt-6">
               <Tabs defaultValue="free">
-                <TabsList>
+                <TabsList variant="line">
                   <TabsTrigger value="free">免费开源（{overseasFree.length}）</TabsTrigger>
                   <TabsTrigger value="paid">收费商业（{overseasPaid.length}）</TabsTrigger>
                 </TabsList>
@@ -156,7 +159,7 @@ export default function ComparisonPage() {
 
             <TabsContent value="domestic" className="mt-6">
               <Tabs defaultValue="fullstack">
-                <TabsList>
+                <TabsList variant="line">
                   <TabsTrigger value="fullstack">全栈脚手架（{domesticFullstack.length}）</TabsTrigger>
                   <TabsTrigger value="frontend">前端模板（{domesticFrontend.length}）</TabsTrigger>
                 </TabsList>

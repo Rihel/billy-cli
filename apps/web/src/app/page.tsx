@@ -12,7 +12,7 @@ import { Footer } from '@/components/landing/footer'
 
 export default function HomePage() {
   return (
-    <div className="min-h-screen bg-white text-zinc-900 selection:bg-orange-200">
+    <div className="min-h-screen bg-white text-zinc-900 selection:bg-indigo-200">
       <Header />
       <main>
         <Hero />

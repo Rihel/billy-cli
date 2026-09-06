@@ -12,6 +12,12 @@
   --font-mono: var(--font-geist-mono);
 }
 
+/* 展示字体（Space Grotesk，标题/数字层；中文回退系统无衬线） */
+:root {
+  --font-display: var(--font-space-grotesk), ui-sans-serif, system-ui,
+    -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+}
+
 /* 首页动效：光斑漂移与 marquee 滚动（均受 prefers-reduced-motion 约束） */
 @keyframes drift {
   0%,

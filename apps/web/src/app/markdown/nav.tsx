@@ -25,7 +25,7 @@ export function MarkdownNav() {
           <span aria-hidden="true">← </span>返回首页
         </Link>
         <nav
-          className="flex items-center gap-1 overflow-x-auto"
+          className="flex items-center overflow-x-auto"
           aria-label="Markdown 演示导航"
         >
           {items.map((item) => (
@@ -33,10 +33,10 @@ export function MarkdownNav() {
               key={item.href}
               href={item.href}
               className={cn(
-                'whitespace-nowrap rounded-lg px-3 py-1.5 text-sm transition-colors',
+                'relative whitespace-nowrap px-3 py-2 text-sm transition-colors',
                 pathname === item.href
-                  ? 'bg-zinc-900 font-medium text-white'
-                  : 'text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900',
+                  ? 'font-medium text-zinc-900 after:absolute after:inset-x-2 after:-bottom-px after:h-0.5 after:rounded-full after:bg-zinc-900'
+                  : 'text-zinc-500 hover:text-zinc-900',
               )}
             >
               {item.label}

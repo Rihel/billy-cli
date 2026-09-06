@@ -1,65 +1,61 @@
 import Link from 'next/link'
-import { ArrowRight, Sparkles, LogIn } from 'lucide-react'
+import { ArrowRight, LogIn } from 'lucide-react'
 import { Button } from '@repo/ui'
 import { Pages } from '@/lib/constants'
 
-type TerminalLine =
-  | { kind: 'prompt'; text: string }
-  | { kind: 'ai'; text: string }
-  | { kind: 'check'; text: string }
-  | { kind: 'ready'; text: string }
-
-const terminalLines: TerminalLine[] = [
-  { kind: 'prompt', text: '新增一个「商品」业务模块' },
-  { kind: 'ai', text: '读取 AGENTS.md，加载 develop-business-module 技能' },
-  { kind: 'check', text: '数据结构 → 实体 → 服务 → 路由 → SDK' },
-  { kind: 'check', text: '后台页面已登记菜单' },
-  { kind: 'check', text: '交付检查清单全部通过' },
-  { kind: 'ready', text: 'ready · http://localhost:9840' },
+const heroFacts = [
+  { k: '15', v: 'Agent Skills' },
+  { k: '2', v: '前端应用' },
+  { k: '1', v: '数据结构' },
 ]
 
-/** 首页主视觉：AI 原生价值主张 + 右侧 AI 编码会话终端卡（深色对比块） */
+/**
+ * 首页主视觉：全屏沉浸式编辑宣言。
+ * 无右侧终端卡；超大 display 标题 + 编排式事实行，靠浅色网格与蓝色氛围撑满首屏。
+ */
 export function Hero() {
   return (
-    <section className="relative overflow-hidden">
-      {/* 背景：浅色网格 + 橙色光斑 */}
+    <section className="relative flex min-h-[calc(100dvh-4rem)] flex-col overflow-hidden">
+      {/* 背景：细网格（顶部集中）+ 双光斑 */}
       <div
         aria-hidden
-        className="absolute inset-0 bg-[linear-gradient(to_right,rgb(9_9_11/0.045)_1px,transparent_1px),linear-gradient(to_bottom,rgb(9_9_11/0.045)_1px,transparent_1px)] bg-[size:52px_52px] [mask-image:radial-gradient(ellipse_70%_60%_at_50%_0%,black,transparent)]"
+        className="absolute inset-0 bg-[linear-gradient(to_right,rgb(9_9_11/0.04)_1px,transparent_1px),linear-gradient(to_bottom,rgb(9_9_11/0.04)_1px,transparent_1px)] bg-[size:56px_56px] [mask-image:radial-gradient(ellipse_75%_70%_at_50%_0%,black,transparent)]"
       />
       <div
         aria-hidden
-        className="absolute -top-32 left-1/2 h-105 w-150 -translate-x-1/2 rounded-full bg-orange-500/10 blur-3xl motion-safe:animate-[drift_16s_ease-in-out_infinite]"
+        className="absolute -top-40 left-1/2 h-[30rem] w-[52rem] max-w-none -translate-x-1/2 rounded-full bg-indigo-500/10 blur-3xl motion-safe:animate-[drift_18s_ease-in-out_infinite]"
       />
       <div
         aria-hidden
-        className="absolute top-40 -right-24 size-96 rounded-full bg-orange-500/10 blur-3xl motion-safe:animate-[glow_9s_ease-in-out_infinite]"
+        className="absolute top-1/3 -right-32 size-[28rem] rounded-full bg-indigo-400/10 blur-3xl motion-safe:animate-[glow_10s_ease-in-out_infinite]"
       />
 
-      <div className="relative mx-auto grid max-w-7xl grid-cols-1 items-center gap-14 px-4 pb-20 pt-16 sm:px-6 lg:grid-cols-[1.05fr_0.95fr] lg:px-8 lg:pb-28 lg:pt-24">
-        {/* 左侧文案 */}
-        <div className="max-w-xl">
-          <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-orange-500/25 bg-orange-500/10 px-3.5 py-1.5 text-xs font-medium text-orange-700">
-            <Sparkles className="size-3.5" />
-            AI 原生全栈模板
+      {/* 主内容：纵向堆叠，巨型标题居左 */}
+      <div className="relative mx-auto flex w-full max-w-7xl flex-1 flex-col justify-center px-4 py-20 sm:px-6 lg:px-8 lg:py-0">
+        <div className="max-w-5xl">
+          <div className="mb-8 flex items-center gap-3">
+            <span className="h-px w-10 bg-indigo-500" aria-hidden />
+            <span className="font-mono text-xs font-medium tracking-[0.2em] text-indigo-600 uppercase">
+              AI 原生全栈模板
+            </span>
           </div>
 
-          <h1 className="text-3xl font-semibold leading-[1.12] tracking-tight text-zinc-950 sm:text-4xl md:text-5xl lg:text-6xl">
+          <h1 className="font-heading text-5xl leading-[1.02] font-bold tracking-tighter text-zinc-950 sm:text-6xl md:text-7xl lg:text-8xl">
             AI 原生工程，
             <br />
-            一套模板<span className="text-orange-600">全栈直达</span>
+            一套模板<span className="text-indigo-600">全栈直达</span>
           </h1>
 
-          <p className="mt-6 max-w-md text-base leading-relaxed text-zinc-600 sm:text-lg">
+          <p className="mt-8 max-w-2xl text-lg leading-relaxed text-zinc-600 sm:text-xl">
             工程规范写进 15 个 Agent Skills，AI 开工先读规范、按你的标准交付；
             Hono + Next.js 16 双前端开箱即用，pnpm bootstrap 一键初始化。
           </p>
 
-          <div className="mt-9 flex flex-wrap items-center gap-3">
+          <div className="mt-10 flex flex-wrap items-center gap-3">
             <Button
               render={<Link href={Pages.register} />}
               size="lg"
-              className="bg-orange-500 px-5 text-white shadow-lg shadow-orange-500/25 hover:bg-orange-600"
+              className="bg-zinc-950 text-white shadow-lg shadow-zinc-950/20 hover:bg-zinc-800"
             >
               开始使用
               <ArrowRight data-icon="inline-end" />
@@ -68,7 +64,7 @@ export function Hero() {
               render={<Link href={Pages.login} />}
               size="lg"
               variant="outline"
-              className="border-zinc-300 bg-white text-zinc-700 hover:bg-zinc-50 hover:text-zinc-900"
+              className="border-zinc-300 bg-white px-5 text-zinc-700 hover:bg-zinc-50 hover:text-zinc-900"
             >
               <LogIn data-icon="inline-start" />
               登录
@@ -76,64 +72,27 @@ export function Hero() {
           </div>
         </div>
 
-        {/* 右侧：AI 编码会话终端卡（深色对比块） */}
-        <div className="relative">
-          <div
-            aria-hidden
-            className="absolute -inset-6 rounded-3xl bg-gradient-to-br from-orange-500/10 via-transparent to-transparent blur-2xl"
-          />
-          <div className="relative overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-950 shadow-2xl shadow-zinc-900/25">
-            {/* 窗口标题栏 */}
-            <div className="flex items-center gap-2 border-b border-white/10 px-4 py-3">
-              <span className="size-3 rounded-full bg-red-400/80" />
-              <span className="size-3 rounded-full bg-amber-400/80" />
-              <span className="size-3 rounded-full bg-emerald-400/80" />
-              <span className="ml-2 font-mono text-xs text-zinc-500">
-                billy-cli · AI 编码会话
-              </span>
-              <span className="ml-auto inline-flex items-center gap-1.5 rounded-md border border-emerald-400/20 bg-emerald-400/10 px-2 py-0.5 text-[10px] font-medium text-emerald-300">
-                <span className="size-1.5 rounded-full bg-emerald-400 motion-safe:animate-pulse" />
-                AI 在线
-              </span>
+        {/* 编排式事实行（hairline 分隔，替代终端卡的节奏） */}
+        <div className="mt-16 grid max-w-3xl grid-cols-3 gap-6 border-t border-zinc-200 pt-8 sm:gap-10">
+          {heroFacts.map((fact) => (
+            <div key={fact.v}>
+              <div className="font-heading text-3xl font-semibold tracking-tight text-zinc-950 sm:text-4xl">
+                {fact.k}
+              </div>
+              <div className="mt-1 text-xs text-zinc-500 uppercase tracking-wider">
+                {fact.v}
+              </div>
             </div>
-            {/* 会话输出 */}
-            <pre className="overflow-x-auto p-5 font-mono text-[13px] leading-7">
-              {terminalLines.map((line, i) => (
-                <div key={i} className="whitespace-pre">
-                  <span className="select-none text-zinc-700">
-                    {String(i + 1).padStart(2, '0')}{' '}
-                  </span>
-                  {line.kind === 'prompt' && (
-                    <>
-                      <span className="text-emerald-400">›</span>{' '}
-                      <span className="text-zinc-100">{line.text}</span>
-                    </>
-                  )}
-                  {line.kind === 'ai' && (
-                    <>
-                      <span className="text-orange-400">[ai]</span>{' '}
-                      <span className="text-zinc-300">{line.text}</span>{' '}
-                      <span className="text-emerald-400">✓</span>
-                    </>
-                  )}
-                  {line.kind === 'check' && (
-                    <>
-                      <span className="text-orange-400">[ai]</span>{' '}
-                      <span className="text-zinc-400">✓</span>{' '}
-                      <span className="text-zinc-500">{line.text}</span>
-                    </>
-                  )}
-                  {line.kind === 'ready' && (
-                    <>
-                      <span className="text-emerald-400">➜</span>{' '}
-                      <span className="text-zinc-200">{line.text}</span>
-                      <span className="ml-1 inline-block h-4 w-2 translate-y-0.5 animate-pulse bg-orange-400" />
-                    </>
-                  )}
-                </div>
-              ))}
-            </pre>
-          </div>
+          ))}
+        </div>
+      </div>
+
+      {/* 底部 hairline 信息带 */}
+      <div className="relative border-t border-zinc-200/80">
+        <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-3 font-mono text-[11px] tracking-wider text-zinc-400 uppercase sm:px-6 lg:px-8">
+          <span>TypeScript monorepo</span>
+          <span className="hidden sm:inline">Hono · Next.js 16 · PostgreSQL · Redis</span>
+          <span className="hidden text-emerald-600 sm:inline">● ready</span>
         </div>
       </div>
     </section>

@@ -58,8 +58,13 @@ export function Choice() {
       <div className="mx-auto max-w-7xl px-4 py-20 sm:px-6 lg:px-8 lg:py-28">
         {/* 头部 */}
         <Reveal>
-          <p className="text-xs font-medium uppercase tracking-widest text-orange-600">选型</p>
-          <h2 className="mt-3 max-w-2xl text-3xl font-semibold tracking-tight text-zinc-950 sm:text-4xl">
+          <div className="flex items-center gap-3">
+            <span className="h-px w-8 bg-indigo-500" aria-hidden />
+            <p className="font-mono text-xs font-medium tracking-[0.18em] text-indigo-600 uppercase">
+              选型
+            </p>
+          </div>
+          <h2 className="font-heading mt-4 max-w-2xl text-3xl font-semibold tracking-tight text-zinc-950 sm:text-4xl md:text-5xl">
             凭什么选 Billy
           </h2>
           <p className="mt-4 max-w-xl text-base leading-relaxed text-zinc-600">
@@ -69,7 +74,7 @@ export function Choice() {
           </p>
           <Link
             href="/comparison"
-            className="mt-5 inline-flex items-center gap-1.5 text-sm font-medium text-orange-700 hover:text-orange-600"
+            className="mt-5 inline-flex items-center gap-1.5 text-sm font-medium text-indigo-700 hover:text-indigo-600"
           >
             查看完整竞品调研 <span aria-hidden>→</span>
           </Link>
@@ -92,17 +97,29 @@ export function Choice() {
           <div className="border-t border-zinc-200" aria-hidden />
         </div>
 
-        {/* 02 · 技术栈选型 */}
+        {/* 技术栈选型 */}
         <Reveal delay={40}>
-          <p className="mt-14 text-sm font-medium text-zinc-500">技术栈为什么这么选</p>
+          <div className="mt-16 flex items-center gap-3">
+            <span className="h-px w-8 bg-indigo-500" aria-hidden />
+            <p className="font-mono text-xs font-medium tracking-[0.18em] text-indigo-600 uppercase">
+              技术栈选型
+            </p>
+          </div>
         </Reveal>
-        <div className="mt-5 grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+        <div className="mt-6 border-t border-zinc-200">
           {stackChoices.map((item, i) => (
             <Reveal key={item.picked} delay={i * 40}>
-              <div className="h-full rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm shadow-zinc-200/50 transition-colors hover:border-orange-500/40">
-                <h3 className="text-base font-semibold text-zinc-950">{item.picked}</h3>
-                <p className="mt-1 text-xs text-zinc-400">{item.instead}</p>
-                <p className="mt-3 text-sm leading-relaxed text-zinc-600">{item.reason}</p>
+              <div className="grid gap-3 border-b border-zinc-200 py-7 last:border-b-0 md:grid-cols-[4.5rem_1fr_1.2fr_1.6fr] md:items-baseline md:gap-8">
+                <span className="font-heading text-xl font-semibold tracking-tight text-indigo-600/60">
+                  {String(i + 1).padStart(2, '0')}
+                </span>
+                <h3 className="font-heading text-xl font-semibold tracking-tight text-zinc-950">
+                  {item.picked}
+                </h3>
+                <p className="text-xs text-zinc-400 md:pt-1">{item.instead}</p>
+                <p className="text-sm leading-relaxed text-zinc-600">
+                  {item.reason}
+                </p>
               </div>
             </Reveal>
           ))}

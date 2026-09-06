@@ -4,5 +4,17 @@
       "approve": true,
       "matchCommandLine": true
     }
-  }
+  },
+  "tailwindCSS.experimental.classRegex": [],
+  "tailwindCSS.include": [
+    "packages/ui/**/*.{ts,tsx,css}",
+    "apps/**/*.{ts,tsx,css}",
+    "packages/**/*.{ts,tsx,css}"
+  ],
+  "tailwindCSS.files.exclude": [
+    "**/.git/**",
+    "**/node_modules/**",
+    "**/.next/**",
+    "**/dist/**"
+  ]
 }

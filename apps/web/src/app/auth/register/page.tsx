@@ -81,15 +81,15 @@ export default function RegisterPage() {
       {/* Mobile-only branding */}
       <div className="space-y-1.5 lg:hidden">
         <div className="flex items-center gap-2.5">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-zinc-900 text-white font-bold text-xs ring-1 ring-zinc-200 dark:bg-white dark:text-zinc-900 dark:ring-zinc-700">
+          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-indigo-500 to-violet-600 text-white font-bold text-xs shadow-sm shadow-indigo-600/25 ring-1 ring-indigo-200/60">
             B
           </div>
-          <span className="text-lg font-semibold tracking-tight">{AppName}</span>
+          <span className="font-heading text-lg font-semibold tracking-tight">{AppName}</span>
         </div>
       </div>
 
       <div className="space-y-2">
-        <h1 className="text-2xl font-semibold tracking-tight">创建账号</h1>
+        <h1 className="font-heading text-2xl font-semibold tracking-tight">创建账号</h1>
         <p className="text-sm text-muted-foreground">
           填写以下信息注册新账号
         </p>

@@ -105,10 +105,10 @@ export function Header() {
           className="group flex items-center gap-2.5"
           aria-label={`${AppName} 首页`}
         >
-          <span className="flex size-8 items-center justify-center rounded-lg bg-gradient-to-br from-orange-500 to-orange-600 text-white shadow-md shadow-orange-500/25 transition-transform group-hover:scale-105">
+          <span className="flex size-8 items-center justify-center rounded-lg bg-gradient-to-br from-indigo-500 to-violet-600 text-white shadow-md shadow-indigo-600/25 transition-transform group-hover:scale-105">
             <TerminalSquare className="size-4.5" strokeWidth={2.2} />
           </span>
-          <span className="text-[15px] font-semibold tracking-tight text-zinc-900">
+          <span className="font-heading text-[15px] font-semibold tracking-tight text-zinc-900">
             {AppName}
           </span>
         </Link>
@@ -138,7 +138,7 @@ export function Header() {
                     className="size-8 rounded-full object-cover"
                   />
                 ) : (
-                  <span className="grid size-8 place-items-center rounded-full bg-orange-500/10 text-sm font-medium text-orange-700">
+                  <span className="grid size-8 place-items-center rounded-full bg-indigo-500/10 text-sm font-medium text-indigo-700">
                     {initial}
                   </span>
                 )}
@@ -158,18 +158,16 @@ export function Header() {
             </>
           ) : authEnabled ? (
             <>
-              <Button
-                render={<Link href={Pages.login} />}
-                variant="ghost"
-                size="sm"
-                className="text-zinc-600 hover:text-zinc-900"
+              <Link
+                href={Pages.login}
+                className="rounded-md px-3 py-2 text-sm text-zinc-600 transition-colors hover:bg-zinc-100 hover:text-zinc-900"
               >
                 登录
-              </Button>
+              </Link>
               <Button
                 render={<Link href={Pages.register} />}
                 size="sm"
-                className="bg-orange-500 text-white shadow-md shadow-orange-500/20 hover:bg-orange-600"
+                className="bg-zinc-950 px-3.5 text-white shadow-sm shadow-zinc-950/15 hover:bg-zinc-800"
               >
                 注册
                 <ArrowRight data-icon="inline-end" />
@@ -218,7 +216,7 @@ export function Header() {
                     className="size-8 shrink-0 rounded-full object-cover"
                   />
                 ) : (
-                  <span className="grid size-8 shrink-0 place-items-center rounded-full bg-orange-500/10 text-sm font-medium text-orange-700">
+                  <span className="grid size-8 shrink-0 place-items-center rounded-full bg-indigo-500/10 text-sm font-medium text-indigo-700">
                     {initial}
                   </span>
                 )}
@@ -241,18 +239,17 @@ export function Header() {
             </div>
           ) : authEnabled ? (
             <div className="mt-3 flex items-center gap-2 border-t border-zinc-200/80 pt-3">
-              <Button
-                render={<Link href={Pages.login} onClick={() => setOpen(false)} />}
-                variant="ghost"
-                size="sm"
-                className="flex-1 text-zinc-600"
+              <Link
+                href={Pages.login}
+                onClick={() => setOpen(false)}
+                className="flex-1 rounded-lg px-3 py-2 text-center text-sm text-zinc-600 transition-colors hover:bg-zinc-100 hover:text-zinc-900"
               >
                 登录
-              </Button>
+              </Link>
               <Button
                 render={<Link href={Pages.register} onClick={() => setOpen(false)} />}
                 size="sm"
-                className="flex-1 bg-orange-500 text-white hover:bg-orange-600"
+                className="flex-1 bg-zinc-950 text-white hover:bg-zinc-800"
               >
                 注册
               </Button>

@@ -20,13 +20,13 @@ function ArchitectureDiagram() {
       {rows.map((row, i) => (
         <div
           key={row.label}
-          className="flex items-center justify-between rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3 transition-colors hover:border-orange-500/40"
+          className="flex items-center justify-between rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3 transition-colors hover:border-indigo-500/40"
         >
           <div className="flex items-center gap-3">
             <span
               className={`flex size-7 items-center justify-center rounded-lg font-mono text-[11px] font-semibold ${
                 i === 0
-                  ? 'bg-orange-500/10 text-orange-700'
+                  ? 'bg-indigo-500/10 text-indigo-700'
                   : 'bg-zinc-100 text-zinc-500'
               }`}
             >
@@ -44,17 +44,17 @@ function ArchitectureDiagram() {
   )
 }
 
-/** Zod 数据结构 mini 片段（深色代码块对比） */
+/** Zod 数据结构 mini 片段（浅色代码块） */
 function ZodSnippet() {
   return (
-    <pre className="mt-6 overflow-x-auto rounded-xl border border-zinc-800 bg-zinc-950 p-4 font-mono text-xs leading-6">
-      <span className="text-zinc-500">const</span> <span className="text-zinc-200">TodoSchema</span>{' '}
-      <span className="text-zinc-500">=</span> z.<span className="text-orange-400">object</span>
+    <pre className="mt-6 overflow-x-auto rounded-xl border border-zinc-200 bg-zinc-50 p-4 font-mono text-xs leading-6">
+      <span className="text-zinc-500">const</span> <span className="text-zinc-800">TodoSchema</span>{' '}
+      <span className="text-zinc-500">=</span> z.<span className="text-indigo-600">object</span>
       {'({'}
       {'\n  '}
-      <span className="text-zinc-300">title</span>: z.<span className="text-orange-400">string</span>(),
+      <span className="text-zinc-700">title</span>: z.<span className="text-indigo-600">string</span>(),
       {'\n  '}
-      <span className="text-zinc-300">status</span>: <span className="text-zinc-200">TodoStatus</span>,
+      <span className="text-zinc-700">status</span>: <span className="text-zinc-800">TodoStatus</span>,
       {'\n'}
       {'})'}
     </pre>
@@ -87,26 +87,36 @@ const smallCells = [
 /** 特性 Bento 网格 */
 export function Features() {
   return (
-    <section id="features" className="scroll-mt-20">
-      <div className="mx-auto max-w-7xl px-4 py-20 sm:px-6 lg:px-8 lg:py-28">
+    <section id="features" className="scroll-mt-20 border-t border-zinc-200/70 bg-zinc-50/60">
+      <div className="mx-auto max-w-7xl px-4 py-24 sm:px-6 lg:px-8 lg:py-32">
+        {/* 头部：非对称（标题大 + 右列编号与说明） */}
         <Reveal>
-          <p className="text-xs font-medium uppercase tracking-widest text-orange-600">
-            特性
-          </p>
-          <h2 className="mt-3 max-w-2xl text-3xl font-semibold tracking-tight text-zinc-950 sm:text-4xl">
-            把架构决策做好，剩下的交给模板
-          </h2>
-          <p className="mt-4 max-w-xl text-base leading-relaxed text-zinc-600">
-            不是玩具脚手架，而是一套能直接承载真实业务的全栈工程基座。
-          </p>
+          <div className="lg:grid lg:grid-cols-[1.5fr_1fr] lg:items-end lg:gap-16">
+            <div>
+              <div className="flex items-center gap-3">
+                <span className="h-px w-8 bg-indigo-500" aria-hidden />
+                <p className="font-mono text-xs font-medium tracking-[0.18em] text-indigo-600 uppercase">
+                  特性
+                </p>
+              </div>
+              <h2 className="font-heading mt-4 max-w-xl text-3xl font-semibold tracking-tight text-zinc-950 sm:text-4xl md:text-5xl">
+                把架构决策做好，剩下的交给模板
+              </h2>
+            </div>
+            <div className="mt-5 max-w-sm border-l-2 border-zinc-200 pl-6 lg:mt-0 lg:border-l-0 lg:border-t lg:pt-6 lg:pl-0">
+              <p className="text-base leading-relaxed text-zinc-600">
+                不是玩具脚手架，而是一套能直接承载真实业务的全栈工程基座。
+              </p>
+            </div>
+          </div>
         </Reveal>
 
         <div className="mt-12 grid grid-cols-1 gap-4 md:grid-cols-3">
           {/* 大 cell：分层架构 */}
           <Reveal className="md:col-span-2" delay={60}>
-            <div className="group relative h-full overflow-hidden rounded-2xl border border-zinc-200 bg-gradient-to-br from-white to-zinc-50 p-6 shadow-sm shadow-zinc-200/50 transition-colors hover:border-orange-500/40">
+            <div className="group relative h-full overflow-hidden rounded-xl border border-zinc-200 bg-white p-6 transition-all hover:-translate-y-0.5 hover:border-indigo-400/60 hover:shadow-sm">
               <div className="flex items-center gap-3">
-                <span className="flex size-9 items-center justify-center rounded-xl bg-orange-500/10 text-orange-700">
+                <span className="flex size-9 items-center justify-center rounded-xl bg-indigo-500/10 text-indigo-700">
                   <Layers className="size-4.5" />
                 </span>
                 <h3 className="text-lg font-semibold text-zinc-950">分层架构，依赖方向不可逆</h3>
@@ -120,9 +130,9 @@ export function Features() {
 
           {/* 小 cell：数据结构先行 */}
           <Reveal delay={120}>
-            <div className="group relative h-full overflow-hidden rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm shadow-zinc-200/50 transition-colors hover:border-orange-500/40">
+            <div className="group relative h-full overflow-hidden rounded-xl border border-zinc-200 bg-white p-6 transition-all hover:-translate-y-0.5 hover:border-indigo-400/60 hover:shadow-sm">
               <div className="flex items-center gap-3">
-                <span className="flex size-9 items-center justify-center rounded-xl bg-zinc-100 text-orange-700">
+                <span className="flex size-9 items-center justify-center rounded-xl bg-zinc-100 text-indigo-700">
                   <Braces className="size-4.5" />
                 </span>
                 <h3 className="text-base font-semibold text-zinc-950">数据结构先行</h3>
@@ -145,9 +155,9 @@ export function Features() {
 
           {/* 大 cell：开箱即用模块 */}
           <Reveal className="md:col-span-2" delay={60}>
-            <div className="group relative h-full overflow-hidden rounded-2xl border border-zinc-200 bg-gradient-to-br from-orange-50 to-white p-6 shadow-sm shadow-zinc-200/50 transition-colors hover:border-orange-500/40">
+            <div className="group relative h-full overflow-hidden rounded-xl border border-indigo-200/70 bg-gradient-to-b from-indigo-50/60 to-white p-6 transition-all hover:-translate-y-0.5 hover:border-indigo-400/60 hover:shadow-sm">
               <div className="flex items-center gap-3">
-                <span className="flex size-9 items-center justify-center rounded-xl bg-orange-500/10 text-orange-700">
+                <span className="flex size-9 items-center justify-center rounded-xl bg-indigo-500/10 text-indigo-700">
                   <PackageOpen className="size-4.5" />
                 </span>
                 <h3 className="text-lg font-semibold text-zinc-950">开箱即用的业务模块</h3>
@@ -188,8 +198,8 @@ function FeatureCell({
   desc: string
 }) {
   return (
-    <div className="group relative h-full overflow-hidden rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm shadow-zinc-200/50 transition-colors hover:border-orange-500/40">
-      <span className="flex size-9 items-center justify-center rounded-xl bg-zinc-100 text-orange-700">
+    <div className="group relative h-full overflow-hidden rounded-xl border border-zinc-200 bg-white p-6 transition-all hover:-translate-y-0.5 hover:border-indigo-400/60 hover:shadow-sm">
+      <span className="flex size-9 items-center justify-center rounded-xl bg-zinc-100 text-indigo-700">
         <Icon className="size-4.5" />
       </span>
       <h3 className="mt-4 text-base font-semibold text-zinc-950">{title}</h3>

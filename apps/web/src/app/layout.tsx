@@ -1,5 +1,5 @@
 import type { Metadata } from "next"
-import { Geist, Geist_Mono } from "next/font/google"
+import { Geist, Geist_Mono, Space_Grotesk } from "next/font/google"
 import { TooltipProvider } from "@repo/ui"
 import { QueryProvider } from "@/providers/QueryProvider"
 import "./globals.css"
@@ -14,6 +14,11 @@ const geistMono = Geist_Mono({
   variable: "--font-geist-mono",
 })
 
+const spaceGrotesk = Space_Grotesk({
+  subsets: ["latin"],
+  variable: "--font-space-grotesk",
+})
+
 export const metadata: Metadata = {
   title: "Billy CLI - 全栈应用 Monorepo 模板",
   description:
@@ -26,7 +31,10 @@ export default function RootLayout({
   children: React.ReactNode
 }) {
   return (
-    <html lang="zh-CN" className={`${geist.variable} ${geistMono.variable}`}>
+    <html
+      lang="zh-CN"
+      className={`${geist.variable} ${geistMono.variable} ${spaceGrotesk.variable}`}
+    >
       <body className="min-h-screen bg-background font-sans antialiased">
         <QueryProvider>
           <TooltipProvider>{children}</TooltipProvider>

@@ -45,10 +45,10 @@ export function Footer() {
         <div className="grid grid-cols-1 gap-10 md:grid-cols-[1.4fr_repeat(3,1fr)]">
           <div>
             <Link href={Pages.home} className="flex items-center gap-2.5">
-              <span className="flex size-8 items-center justify-center rounded-lg bg-gradient-to-br from-orange-500 to-orange-600 text-white shadow-md shadow-orange-500/25">
+              <span className="flex size-8 items-center justify-center rounded-lg bg-gradient-to-br from-indigo-500 to-violet-600 text-white shadow-md shadow-indigo-600/25">
                 <TerminalSquare className="size-4.5" strokeWidth={2.2} />
               </span>
-              <span className="text-[15px] font-semibold tracking-tight text-zinc-900">
+              <span className="font-heading text-[15px] font-semibold tracking-tight text-zinc-900">
                 {AppName}
               </span>
             </Link>
@@ -59,7 +59,9 @@ export function Footer() {
 
           {navGroups.map((group) => (
             <nav key={group.title} aria-label={group.title}>
-              <h3 className="text-sm font-medium text-zinc-700">{group.title}</h3>
+              <h3 className="font-heading text-sm font-semibold text-zinc-700">
+                {group.title}
+              </h3>
               <ul className="mt-4 space-y-2.5">
                 {group.links.map((link) => (
                   <li key={link.label}>
@@ -68,7 +70,7 @@ export function Footer() {
                         href={link.href}
                         target="_blank"
                         rel="noreferrer"
-                        className="inline-flex items-center gap-1.5 text-sm text-zinc-500 transition-colors hover:text-orange-600"
+                        className="inline-flex items-center gap-1.5 text-sm text-zinc-500 transition-colors hover:text-indigo-600"
                       >
                         {link.label}
                         <ExternalLink className="size-3" />
@@ -76,7 +78,7 @@ export function Footer() {
                     ) : (
                       <Link
                         href={link.href}
-                        className="inline-flex text-sm text-zinc-500 transition-colors hover:text-orange-600"
+                        className="inline-flex text-sm text-zinc-500 transition-colors hover:text-indigo-600"
                       >
                         {link.label}
                       </Link>

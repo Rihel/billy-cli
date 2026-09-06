@@ -1,27 +1,23 @@
-import { ArrowRight, Server, Code2, DatabaseZap, Workflow, ShieldCheck } from 'lucide-react'
+import { ShieldCheck } from 'lucide-react'
 import { Reveal } from './reveal'
 
 const steps = [
   {
-    icon: Code2,
     tag: '@repo/sdk',
     title: '前端调用',
     desc: 'ServerClient 全类型化方法发起请求',
   },
   {
-    icon: Server,
     tag: 'apps/server',
     title: 'Hono 边界',
     desc: 'Zod 校验请求体，薄边界零业务',
   },
   {
-    icon: Workflow,
     tag: 'apps/server/src/modules',
     title: '业务核心',
     desc: 'Service + Repository（@repo/di 注入）',
   },
   {
-    icon: DatabaseZap,
     tag: '@repo/kits',
     title: '能力底座',
     desc: 'TypeORM 底座 + 分页 + 事务 + 存储 + SSE 推送',
@@ -40,8 +36,13 @@ export function Architecture() {
     <section id="architecture" className="scroll-mt-20">
       <div className="mx-auto max-w-7xl px-4 py-20 sm:px-6 lg:px-8 lg:py-28">
         <Reveal>
-          <p className="text-xs font-medium uppercase tracking-widest text-orange-600">架构</p>
-          <h2 className="mt-3 max-w-2xl text-3xl font-semibold tracking-tight text-zinc-950 sm:text-4xl">
+          <div className="flex items-center gap-3">
+            <span className="h-px w-8 bg-indigo-500" aria-hidden />
+            <p className="font-mono text-xs font-medium tracking-[0.18em] text-indigo-600 uppercase">
+              架构
+            </p>
+          </div>
+          <h2 className="font-heading mt-4 max-w-2xl text-3xl font-semibold tracking-tight text-zinc-950 sm:text-4xl md:text-5xl">
             一次请求，四层各司其职
           </h2>
           <p className="mt-4 max-w-xl text-base leading-relaxed text-zinc-600">
@@ -50,30 +51,31 @@ export function Architecture() {
         </Reveal>
 
         <Reveal delay={80}>
-          <div className="mt-12 grid grid-cols-1 gap-3 lg:grid-cols-[1fr_auto_1fr_auto_1fr_auto_1fr] lg:items-stretch">
+          <div className="mt-14 max-w-3xl">
             {steps.map((step, i) => (
-              <div key={step.title} className="contents">
-                <div className="group relative overflow-hidden rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm shadow-zinc-200/50 transition-colors hover:border-orange-500/40">
-                  <span className="flex size-9 items-center justify-center rounded-xl bg-zinc-100 text-orange-700">
-                    <step.icon className="size-4.5" />
-                  </span>
-                  <p className="mt-4 font-mono text-xs text-orange-700">{step.tag}</p>
-                  <h3 className="mt-1 text-base font-semibold text-zinc-950">{step.title}</h3>
-                  <p className="mt-1.5 text-sm leading-relaxed text-zinc-600">{step.desc}</p>
-                </div>
-                {i < steps.length - 1 && (
-                  <div className="flex items-center justify-center py-1 lg:py-0">
-                    <ArrowRight className="size-5 rotate-90 text-zinc-400 lg:rotate-0" />
+              <div key={step.title} className="flex gap-6 border-t border-zinc-200 py-7 first:border-t-0 md:gap-10">
+                <span className="font-heading w-10 shrink-0 text-2xl font-semibold tracking-tight text-indigo-600/60">
+                  {String(i + 1).padStart(2, '0')}
+                </span>
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+                    <h3 className="font-heading text-xl font-semibold tracking-tight text-zinc-950">
+                      {step.title}
+                    </h3>
+                    <span className="font-mono text-xs text-indigo-700">{step.tag}</span>
                   </div>
-                )}
+                  <p className="mt-2 max-w-xl text-base leading-relaxed text-zinc-600">
+                    {step.desc}
+                  </p>
+                </div>
               </div>
             ))}
           </div>
         </Reveal>
 
         <Reveal delay={140}>
-          <div className="mt-8 flex flex-wrap items-center gap-3 rounded-2xl border border-orange-500/20 bg-orange-500/[0.06] px-5 py-4">
-            <ShieldCheck className="size-5 shrink-0 text-orange-700" />
+          <div className="mt-10 flex flex-wrap items-center gap-3 rounded-xl border border-indigo-500/20 bg-indigo-500/[0.06] px-5 py-4">
+            <ShieldCheck className="size-5 shrink-0 text-indigo-700" />
             <p className="text-sm text-zinc-700">依赖方向规范：</p>
             <div className="flex flex-wrap gap-2">
               {rules.map((rule) => (
