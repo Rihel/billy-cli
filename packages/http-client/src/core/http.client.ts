@@ -176,6 +176,26 @@ export class HttpClient<Credentials = Record<string, any>> {
   }
 
   /**
+   * 发送需要鉴权的 GET 请求。
+   * 查询参数通过 params 拼接到 URL；自动解包 AppResponse，业务错误（code !== 0）时抛 ApiError。
+   */
+  async get<Res>(
+    endpoint: string,
+    params?: Record<string, any>,
+    requestOptions?: RequestOptions,
+  ): Promise<Res> {
+    const response = await this.request<Record<string, any>, Res>(
+      {
+        method: 'GET',
+        url: endpoint,
+        params,
+      },
+      requestOptions,
+    )
+    return this.unwrap(response)
+  }
+
+  /**
    * 发送需要鉴权的 POST 请求。
    * 自动解包 AppResponse，业务错误（code !== 0）时抛 ApiError。
    */
@@ -192,6 +212,54 @@ export class HttpClient<Credentials = Record<string, any>> {
       },
       requestOptions,
     )
+    return this.unwrap(response)
+  }
+
+  /**
+   * 发送需要鉴权的 PUT 请求。
+   * 自动解包 AppResponse，业务错误（code !== 0）时抛 ApiError。
+   */
+  async put<Res, Body extends Record<string, any> = Record<string, any>>(
+    endpoint: string,
+    body?: Body,
+    requestOptions?: RequestOptions,
+  ): Promise<Res> {
+    const response = await this.request<Body, Res>(
+      {
+        method: 'PUT',
+        url: endpoint,
+        data: body,
+      },
+      requestOptions,
+    )
+    return this.unwrap(response)
+  }
+
+  /**
+   * 发送需要鉴权的 DELETE 请求。
+   * 查询参数通过 params 拼接到 URL；自动解包 AppResponse，业务错误（code !== 0）时抛 ApiError。
+   */
+  async delete<Res>(
+    endpoint: string,
+    params?: Record<string, any>,
+    requestOptions?: RequestOptions,
+  ): Promise<Res> {
+    const response = await this.request<Record<string, any>, Res>(
+      {
+        method: 'DELETE',
+        url: endpoint,
+        params,
+      },
+      requestOptions,
+    )
+    return this.unwrap(response)
+  }
+
+  /**
+   * 解包 AppResponse：业务错误（code !== 0）抛 ApiError。
+   * get / post / put / delete 共用。
+   */
+  private unwrap<Res>(response: AppResponse<Res>): Res {
     if (ResponseUtils.isError(response)) {
       throw new ApiError(
         mapAppErrorValue(response.code),

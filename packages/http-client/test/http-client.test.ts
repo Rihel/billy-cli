@@ -569,4 +569,67 @@ describe('HttpClient 请求流程', () => {
       'https://api.test/test',
     )
   })
+
+  // ── 便捷方法 get / post / put / delete ─────────────────
+
+  /** 构造可捕获请求的客户端：返回 client 与被 stub 的 fetch mock */
+  function createCapturingClient(
+    handler?: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>,
+  ) {
+    const fetchFn = mockFetch(handler)
+    const client = new HttpClient({
+      baseUrl: 'https://api.test',
+      credentialsManager: new MemoryCredentialsManager({ token: 'valid' }),
+      authStrategy: new BearerTokenStrategy(),
+    })
+    return { client, fetchFn }
+  }
+
+  it('get 发送 GET 并拼接查询参数', async () => {
+    const { client, fetchFn } = createCapturingClient()
+    const res = await client.get<{ ok: boolean }>('/users', { page: 2 })
+    expect(res.ok).toBe(true)
+    const [url, init] = fetchFn.mock.calls[0]
+    expect(init?.method).toBe('GET')
+    expect(String(url)).toBe('https://api.test/users?page=2')
+    expect(init?.body).toBeUndefined()
+  })
+
+  it('post 发送 POST 并序列化 JSON body', async () => {
+    const { client, fetchFn } = createCapturingClient()
+    const res = await client.post<{ ok: boolean }>('/users', { name: '张三' })
+    expect(res.ok).toBe(true)
+    const [url, init] = fetchFn.mock.calls[0]
+    expect(init?.method).toBe('POST')
+    expect(String(url)).toBe('https://api.test/users')
+    expect(init?.body).toBe(JSON.stringify({ name: '张三' }))
+  })
+
+  it('put 发送 PUT 并携带 body', async () => {
+    const { client, fetchFn } = createCapturingClient()
+    const res = await client.put<{ ok: boolean }>('/users/1', { name: '李四' })
+    expect(res.ok).toBe(true)
+    const [url, init] = fetchFn.mock.calls[0]
+    expect(init?.method).toBe('PUT')
+    expect(String(url)).toBe('https://api.test/users/1')
+    expect(init?.body).toBe(JSON.stringify({ name: '李四' }))
+  })
+
+  it('delete 发送 DELETE 并拼接查询参数', async () => {
+    const { client, fetchFn } = createCapturingClient()
+    const res = await client.delete<{ ok: boolean }>('/users/1', { hard: true })
+    expect(res.ok).toBe(true)
+    const [url, init] = fetchFn.mock.calls[0]
+    expect(init?.method).toBe('DELETE')
+    expect(String(url)).toBe('https://api.test/users/1?hard=true')
+  })
+
+  it('业务错误 code !== 0 时解包抛 ApiError', async () => {
+    const { client } = createCapturingClient(async () =>
+      jsonResponse({ code: 2001, message: '用户不存在' }),
+    )
+    await expect(client.get('/users/1')).rejects.toMatchObject({
+      code: ApiErrorCodes.NotFound,
+    })
+  })
 })

@@ -1,5 +1,10 @@
 /** 支持的认证策略类型 */
-export type AuthStrategyType = 'apiKey' | 'oauth2' | 'bearerToken' | 'hmac'
+export type AuthStrategyType =
+  | 'apiKey'
+  | 'oauth2'
+  | 'bearerToken'
+  | 'hmac'
+  | string
 
 /**
  * HTTP 请求配置。
