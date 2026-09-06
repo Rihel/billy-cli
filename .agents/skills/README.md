@@ -14,7 +14,9 @@
 | **必读** | [`billy-dev-foundation`](./billy-dev-foundation/SKILL.md) | 开发基础规范与流程：分层架构、代码约定（含「不重复造轮子」实现查找顺序）、常用命令、标准流程；详情拆分在 `billy-dev-foundation/references/`（architecture / code-conventions / commands / workflow） |
 | 功能 | [`define-dict-enum`](./define-dict-enum/SKILL.md) | 定义字典、枚举（错误码 / 状态 / 类型 / 下拉选项） |
 | 功能 | [`define-data-structure`](./define-data-structure/SKILL.md) | 定义数据结构：数据库表（TypeORM 实体）、共享契约（Zod schema） |
+| 功能 | [`database`](./database/SKILL.md) | PostgreSQL / TypeORM 数据库开发（表建模、索引、查询、repository 层） |
 | 功能 | [`develop-business-module`](./develop-business-module/SKILL.md) | 开发完整业务模块（契约 → 数据 → 业务 → 接口 → SDK → 页面） |
+| 功能 | [`develop-backend-api`](./develop-backend-api/SKILL.md) | 后端接口开发的质量维度（幂等 / 鲁棒 / 安全 / 一致、同步异步选型、可观测、性能、契约演进、可测试性） |
 | 功能 | [`develop-frontend-page`](./develop-frontend-page/SKILL.md) | 开发前端页面（Admin 后台 @repo/ui + TanStack / Web 前台 shadcn + Server Actions） |
 | 功能 | [`implement-auth`](./implement-auth/SKILL.md) | 认证与权限（登录注册、token/cookie、路由守卫、双体系） |
 | 功能 | [`object-storage`](./object-storage/SKILL.md) | 对象存储与文件上传下载（S3/COS、预签名、STS） |

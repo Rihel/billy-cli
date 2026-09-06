@@ -7,7 +7,9 @@
 | --- | --- | --- |
 | [`define-dict-enum`](../../define-dict-enum/SKILL.md) | 定义字典、枚举：错误码 / 状态 / 类型 / 下拉选项，接入实体、schema 与前端展示 | 新增或修改字典、枚举、错误码时 |
 | [`define-data-structure`](../../define-data-structure/SKILL.md) | 定义数据结构：数据库表（TypeORM 实体）+ 共享契约（Zod schema），双轨同步与迁移 | 建表、加字段、新增 / 修改 schema / DTO / 模型、跑迁移时 |
+| [`database`](../../database/SKILL.md) | PostgreSQL / TypeORM 数据库开发手册：表建模、索引设计、查询写法、数据访问层（repository / 事务 / 软删），含常用操作命令 | 建表设计、索引、写查询 / repository、数据库操作时 |
 | [`develop-business-module`](../../develop-business-module/SKILL.md) | 开发完整业务模块：契约 → 数据 → 业务 → 接口 → SDK → 页面全链路 | 新增模块、新功能、CRUD、业务接口、列表 / 表单页时 |
+| [`develop-backend-api`](../../develop-backend-api/SKILL.md) | 后端接口开发的质量维度：幂等 / 鲁棒 / 安全 / 一致 + 执行策略（同步 / 异步）、可观测性、性能与契约演进、可测试性 | 开发 / 修改后端接口、接口质量自查时 |
 | [`develop-frontend-page`](../../develop-frontend-page/SKILL.md) | 开发前端页面：Admin 后台（@repo/ui 的 DataTable / ModalForm / 存储组件 + TanStack Table/Form）+ Web 前台（shadcn / Server Actions） | 写页面、列表 / 表单、组件、Server Action 时 |
 | [`implement-auth`](../../implement-auth/SKILL.md) | 认证与权限：登录 / 注册 / 找回密码、token 与 cookie、路由守卫、用户 / 管理员双体系 | 登录注册、鉴权、权限、守卫、token 相关任务时 |
 | [`object-storage`](../../object-storage/SKILL.md) | 对象存储与文件上传下载：S3/COS 门面、预签名 URL、STS、FileUpload / ImageUpload | 文件上传 / 下载 / 图片存储时 |
