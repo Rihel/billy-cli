@@ -1,18 +1,70 @@
-import { DataSource, DataSourceOptions } from 'typeorm'
-import {
-  addTransactionalDataSource,
-  initializeTransactionalContext,
-} from 'typeorm-transactional'
+import { createDb } from './create-db.js'
+import type {
+  EntityManager,
+  EntityTarget,
+  ObjectLiteral,
+  Repository,
+} from 'typeorm'
+import type { DataSource, DataSourceOptions } from 'typeorm'
+import { AppLogger } from '../foundation/logger/app-logger.js'
+import { Inject, Injectable, type OnApplicationBootstrap, type OnApplicationShutdown } from '@nestjs/common'
+import { DbConfig } from './db.config.js'
+import { coalesceAsync } from 'promise-coalesce'
+export type { DataSource } from 'typeorm'
 
-export const createDb = (options: DataSourceOptions): DataSource => {
-  // 库要求 initializeTransactionalContext 必须先于 addTransactionalDataSource 执行：
-  // 未初始化时访问 dataSource.manager / repo.manager 会抛
-  // "No storage driver defined ... please call initializeTransactionalContext()"。
-  // 幂等，重复调用安全。
-  initializeTransactionalContext()
-  const db = new DataSource({
-    type: 'postgres',
-    ...options,
-  })
-  return addTransactionalDataSource(db)
+@Injectable()
+export class Db implements OnApplicationBootstrap, OnApplicationShutdown {
+  readonly dataSource: DataSource
+
+
+  constructor(@Inject(DbConfig) private config: DbConfig,
+    @Inject(AppLogger) private readonly logger: AppLogger,
+  ) {
+    this.dataSource = createDb({
+      url: config.url,
+      synchronize: config.sync,
+      logging: false,
+      poolSize: 10,
+      entities: config.entities as DataSourceOptions['entities'],
+      subscribers: config.subscribers as DataSourceOptions['subscribers'],
+    })
+  }
+
+  private async connect() {
+    await coalesceAsync('connect-db', async () => {
+      try {
+        this.logger.info('正在链接到数据库...', this.config)
+        await this.dataSource.initialize()
+        this.logger.info('数据库连接已就绪')
+      } catch (error) {
+        this.logger.error('数据库连接失败', { error })
+      }
+    })
+  }
+
+  getRepository<T extends ObjectLiteral>(
+    target: EntityTarget<T>,
+  ): Repository<T> {
+    return this.dataSource.getRepository(target)
+  }
+
+  /** 应用启动：初始化 DataSource 连接。 */
+  async onApplicationBootstrap(): Promise<void> {
+    await this.connect()
+  }
+
+  /** 应用停止：释放连接池。 */
+  async onApplicationShutdown(): Promise<void> {
+    await this.close()
+  }
+
+  async close(): Promise<void> {
+    await coalesceAsync('disconnected-db', async () => {
+      if (this.dataSource.isInitialized) {
+        this.logger.info('正在关闭数据库连接')
+        await this.dataSource.destroy()
+        this.logger.info('数据库连接已关闭')
+      }
+    })
+  }
 }

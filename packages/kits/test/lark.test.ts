@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { LarkClient } from '../src/infrastructure/lark/lark.client.js'
-import type { LarkConfig } from '../src/foundation/config/lark-config.js'
+import { LarkClient } from '../src/lark/lark.client.js'
+import type { LarkConfig } from '../src/lark/lark.config.js'
 
 describe('LarkClient（飞书官方 SDK 封装 bean）', () => {
   it('按配置创建官方 Client（raw 暴露完整能力）', () => {

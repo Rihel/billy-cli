@@ -1,167 +1,85 @@
-import 'dotenv/config';
-import { createServiceContext } from '@repo/kits';
-import type { AppContext } from '@repo/di';
-import { ServerConfig, serverConfig } from './config.js';
-import { createLogger } from '@repo/shared/logger';
-import { serve } from '@hono/node-server';
-import { Hono } from 'hono';
-import { cors } from 'hono/cors';
-import { errorHandler, notFound } from './lib/http.js';
-import {
-  makeRequestContextMiddleware,
-  requestContext,
-} from './lib/request-context.js';
-import { requestLogger } from './lib/request-logger.js';
-import { makeAdminRoutes } from './features/admin.js';
-import { makeAuthRoutes } from './features/auth.js';
-import { makeConfigRoutes } from './features/config.js';
-import { makeMonitorRoutes, makeRequestMetrics } from './features/monitor.js';
-import { makeStorageRoutes } from './features/storage.js';
-import { makeStreamRoutes } from './features/stream.js';
-import { makeTodoRoutes } from './features/todo.js';
-import { makeUserRoutes } from './features/user.js';
-import { AdminEntity } from './database/entities/admin-entity.js';
-import { AlertLogEntity } from './database/entities/alert-log-entity.js';
-import { AlertRuleEntity } from './database/entities/alert-rule-entity.js';
-import { TodoEntity } from './database/entities/todo-entity.js';
-import { UserEntity } from './database/entities/user-entity.js';
-// 业务模块副作用入口：import 触发 @Injectable 装饰器登记，供 runtime.autoRegister() 自动装配
-import './modules/index.js';
-import { AlertTrigger, monitorConfig, MonitorConfig } from './modules/monitor/index.js';
+import 'reflect-metadata'
+import 'dotenv/config'
+import { ConfigService } from '@nestjs/config'
+import { NestFactory } from '@nestjs/core'
+import type { NestExpressApplication } from '@nestjs/platform-express'
+import { Logger } from '@repo/kits'
+import { RootModule } from './root.module.js'
+import { loadServerAppConfig } from './app-config.js'
+import { resolveServerConfig } from './config.js'
+import { AlertTrigger } from './modules/monitor/index.js'
 
-/** 应用组合根：唯一装配点（创建一次，供路由与启停共用） */
-export const runtime: AppContext = createServiceContext({
-  db: {
-    url: process.env.DB_URL,
-    entities: [UserEntity, TodoEntity, AdminEntity, AlertRuleEntity, AlertLogEntity],
-    sync: true,
-  },
-  redis: { url: process.env.REDIS_URL },
-  jwt: { secret: process.env.JWT_SECRET },
-  storage: {
-    provider: process.env.OBJECT_STORAGE_PROVIDER as 's3' | 'cos',
-    region: process.env.OBJECT_STORAGE_REGION,
-    bucket: process.env.OBJECT_STORAGE_BUCKET,
-    accessKeyId: process.env.OBJECT_STORAGE_ACCESS_KEY_ID,
-    secretAccessKey: process.env.OBJECT_STORAGE_SECRET_ACCESS_KEY,
-    endpoint: process.env.OBJECT_STORAGE_ENDPOINT,
-  },
-  auth: { passwordHashRounds: process.env.PASSWORD_HASH_ROUNDS },
-  logger: { name: 'server', pretty: process.env.NODE_ENV !== 'production' },
-  notify: {
-    lark: process.env.LARK_NOTIFY_RECEIVE_ID
-      ? { receiveId: process.env.LARK_NOTIFY_RECEIVE_ID }
-      : undefined,
-    email: process.env.ALERT_SMTP_HOST
-      ? {
-          host: process.env.ALERT_SMTP_HOST,
-          port: Number(process.env.ALERT_SMTP_PORT ?? 465),
-          secure: process.env.ALERT_SMTP_SECURE !== 'false',
-          user: process.env.ALERT_SMTP_USER || undefined,
-          pass: process.env.ALERT_SMTP_PASS || undefined,
-          from: process.env.ALERT_SMTP_FROM ?? '',
-        }
-      : undefined,
-  },
-  lark:
-    process.env.LARK_APP_ID && process.env.LARK_APP_SECRET
-      ? { appId: process.env.LARK_APP_ID, appSecret: process.env.LARK_APP_SECRET }
-      : undefined,
-})
-  // 应用层业务配置
-  .addConstant(ServerConfig, serverConfig)
-  .addConstant(MonitorConfig, monitorConfig)
-  // 业务 repository / service 自动装配（@Injectable 自登记 + 生命周期钩子自动识别）
-  .autoRegister();
+/**
+ * 应用入口（NestJS 12 + Express）。
+ *
+ * 配置链路：bootstrap 首行 `loadServerAppConfig()`（zod 校验 + 补默认值 + 缓存），
+ * 之后由 `AppConfigModule` 接进 Nest，各基础设施 `forRootAsync` 惰性取配置。
+ *
+ * 日志采用 nestjs-pino（对齐 rihel-base）：
+ * - `bufferLogs: true` 先把启动期日志缓冲，`app.useLogger(app.get(Logger))` 之后
+ *   Nest 自身的框架日志（InstanceLoader / RoutesResolver 等）与业务日志走同一条 pino 通道；
+ * - 请求日志由 pino-http 自动记录（含 req.id / 状态码 / 耗时，按状态码分级）。
+ *
+ * 请求级横切中间件（请求上下文 ALS / 请求指标）由 `common/` 的 `RequestContextModule` /
+ * `RequestMetricsModule` 自注册，本文件只负责引导与全局 Express 配置（CORS / body 上限）。
+ */
+export const program = async (): Promise<void> => {
+  // 先加载并校验应用配置（AppConfigFacade 缓存），再创建应用：
+  // 各模块的 forRootAsync 工厂与 ConfigModule 的 load 工厂都会读这份缓存
+  await loadServerAppConfig()
 
-export const makeApp = () => {
-  const app = new Hono();
+  const app = await NestFactory.create<NestExpressApplication>(RootModule, {
+    bodyParser: false,
+    bufferLogs: true,
+  })
+  app.useLogger(app.get(Logger))
+  const logger = app.get(Logger)
 
-  app.use(
-    '*',
-    cors(),
-    makeRequestContextMiddleware(requestContext),
-    requestLogger,
-    makeRequestMetrics(runtime),
-  );
-  app.route('/auth', makeAuthRoutes(runtime));
-  app.route('/admin', makeAdminRoutes(runtime));
-  app.route('/user', makeUserRoutes(runtime));
-  app.route('/todo', makeTodoRoutes(runtime));
-  app.route('/storage', makeStorageRoutes(runtime));
-  app.route('/sse', makeStreamRoutes(runtime));
-  app.route('/monitor', makeMonitorRoutes(runtime));
-  app.route('/config', makeConfigRoutes(runtime));
-  app.notFound(notFound);
-  app.onError((error, context) => {
-    // 告警接入：技术错误异步通知（fire-and-forget，失败不影响错误响应）
-    try {
-      void runtime.get(AlertTrigger).notifyError(error, {
-        path: context.req.path,
-        requestId: context.res.headers.get('X-Request-Id') ?? undefined,
-      });
-    } catch {
-      // 告警链路异常不影响返回
-    }
-    return errorHandler(error, context);
-  });
+  app.enableCors()
+  // 不暴露服务端指纹响应头
+  app.disable('x-powered-by')
+  // 请求体上限（Express 默认 100kb 偏小；模板统一 2mb，足够 Markdown / 批量 JSON）
+  app.useBodyParser('json', { limit: '2mb' })
+  app.useBodyParser('urlencoded', { limit: '2mb', extended: true })
 
-  return app;
-};
-
-const app = makeApp();
-
-export const program = async () => {
-  const logger = createLogger('server', true);
-  await runtime.start();
-  const config = runtime.get<typeof serverConfig>(ServerConfig);
-  const server = serve(
-    {
-      fetch: app.fetch,
-      port: config.port,
-    },
-    (info) => logger.info('服务已启动', info),
-  );
+  const config = resolveServerConfig(app.get(ConfigService))
+  await app.listen(config.port)
+  logger.log(`服务已启动: http://localhost:${config.port}`, 'bootstrap')
 
   // 进程级异常告警：未捕获异常记录后退出（避免进程悬挂）；未处理拒绝记录不退出
   process.on('uncaughtException', (error) => {
-    logger.error('未捕获异常', { error });
+    logger.error(error, '未捕获异常')
     try {
-      void runtime.get(AlertTrigger).notifyError(error);
+      void app.get(AlertTrigger).notifyError(error)
     } catch {
       // 告警链路异常不影响退出
     }
-    process.exit(1);
-  });
+    process.exit(1)
+  })
   process.on('unhandledRejection', (reason) => {
-    logger.error('未处理的 Promise 拒绝', { error: reason });
+    logger.error(reason as Error, '未处理的 Promise 拒绝')
     try {
-      void runtime.get(AlertTrigger).notifyError(reason);
+      void app.get(AlertTrigger).notifyError(reason)
     } catch {
       // 忽略
     }
-  });
+  })
 
-  await new Promise<void>((resolve) => {
-    let closing = false;
-    const shutdown = () => {
-      if (closing) return;
-      closing = true;
-      logger.info('正在关闭服务...');
-      server.close(() => {
-        void runtime.stop().then(
-          () => resolve(),
-          (error) => {
-            logger.error('关闭资源失败', { error });
-            resolve();
-          },
-        );
-      });
-    };
+  let closing = false
+  const shutdown = async (signal: string): Promise<void> => {
+    if (closing) return
+    closing = true
+    logger.log(`收到 ${signal}，正在关闭服务...`, 'bootstrap')
+    try {
+      await app.close()
+      logger.log('服务已关闭', 'bootstrap')
+    } catch (error) {
+      logger.error(error as Error, '关闭资源失败')
+    }
+    process.exit(0)
+  }
+  process.once('SIGINT', () => void shutdown('SIGINT'))
+  process.once('SIGTERM', () => void shutdown('SIGTERM'))
+}
 
-    process.once('SIGINT', shutdown);
-    process.once('SIGTERM', shutdown);
-  });
-};
-
-void program();
+void program()

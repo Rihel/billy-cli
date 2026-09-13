@@ -1,4 +1,4 @@
-import { Brackets, type SelectQueryBuilder } from 'typeorm'
+import { Brackets, type ObjectLiteral, type SelectQueryBuilder } from 'typeorm'
 
 // ── 结果类型 ──────────────────────────────────────────────────────────
 
@@ -36,7 +36,7 @@ export type CursorColumns<T> = readonly [keyof T, ...(keyof T)[]]
  * 对已构建好的 QueryBuilder 做页码分页。
  * 调用方负责 where / orderBy / join，本函数只做 skip / take + count。
  */
-export async function pageWith<T>(
+export async function pageWith<T extends ObjectLiteral>(
   builder: SelectQueryBuilder<T>,
   page: number,
   size: number,
@@ -50,7 +50,7 @@ export async function pageWith<T>(
 
 // ── 两阶段页码分页：先主键分页，再按主键加载详情 ──────────────────────
 
-export interface DeferredPageOptions<T> {
+export interface DeferredPageOptions<T extends ObjectLiteral> {
   /** 构建"只取主键"的分页查询（含 where / orderBy） */
   selectIds: () => SelectQueryBuilder<T>
   /** 按主键集合加载详情 */
@@ -60,7 +60,7 @@ export interface DeferredPageOptions<T> {
   size: number
 }
 
-export async function pageWithDeferred<T>(
+export async function pageWithDeferred<T extends ObjectLiteral>(
   options: DeferredPageOptions<T>,
 ): Promise<PageResult<T>> {
   const { selectIds, fetchIds, idCol, page, size } = options
@@ -90,7 +90,7 @@ export interface CursorPageOptions<T> {
  * 调用方负责 where / orderBy（必须与 cursorColumns + order 一致），
  * 本函数负责拼接复合键 seek 条件并多取一条判断是否有下一页。
  */
-export async function cursorPageWith<T>(
+export async function cursorPageWith<T extends ObjectLiteral>(
   builder: SelectQueryBuilder<T>,
   options: CursorPageOptions<T>,
 ): Promise<CursorResult<T>> {
@@ -113,7 +113,7 @@ export interface DeferredCursorOptions<T> extends CursorPageOptions<T> {
   idCol: keyof T
 }
 
-export async function cursorPageWithDeferred<T>(
+export async function cursorPageWithDeferred<T extends ObjectLiteral>(
   builder: SelectQueryBuilder<T>,
   options: DeferredCursorOptions<T>,
 ): Promise<CursorResult<T>> {
@@ -134,7 +134,7 @@ export async function cursorPageWithDeferred<T>(
 // ── 复合键 seek 条件 ──────────────────────────────────────────────────
 // (c0 > v0) OR (c0 = v0 AND c1 > v1) OR (c0 = v0 AND c1 = v1 AND c2 > v2) ...
 
-function applyCursorFilter<T>(
+function applyCursorFilter<T extends ObjectLiteral>(
   builder: SelectQueryBuilder<T>,
   columns: CursorColumns<T>,
   values: unknown[],

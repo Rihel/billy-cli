@@ -44,10 +44,15 @@ function translateOne(issue: any): string {
 
   switch (issue.code) {
     case 'invalid_type': {
-      if (issue.received == null) {
+      // Zod 4 起 `invalid_type` issue 不再提供 `received` 字段，实际类型只出现在 message 尾部
+      // （固定格式：`Invalid input: expected <type>, received <type|undefined>`）；
+      // 缺字段表现为 received undefined，据此区分「为空」与「类型不对」。
+      const fromMessage = /received\s+(\S+)\s*$/.exec(String(issue.message ?? ''))?.[1]
+      const received = issue.received ?? fromMessage
+      if (received == null || received === 'undefined') {
         return `${label}不能为空`
       }
-      return `${label}格式不正确（期望 ${issue.expected}，收到 ${issue.received}）`
+      return `${label}格式不正确（期望 ${issue.expected}，收到 ${received}）`
     }
 
     case 'invalid_format': {

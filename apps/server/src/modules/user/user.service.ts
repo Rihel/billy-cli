@@ -9,9 +9,8 @@ import type {
   UpdateUserDto,
   UserModel,
 } from '@repo/shared'
-import { Inject, Injectable } from '@repo/di'
-import type { AppLogger } from '@repo/shared/logger'
-import { Logger } from '@repo/kits'
+import { Inject, Injectable } from '@nestjs/common'
+import { AppLogger } from '@repo/kits'
 import { PasswordHasher } from '@repo/kits'
 import { SessionStore } from '@repo/kits'
 import { toUser, UserRepository } from './user.repository.js'
@@ -19,13 +18,12 @@ import { EmailTakenError, UserNotFoundError } from './errors.js'
 
 @Injectable()
 export class UserService {
-  @Logger()
-  private readonly logger!: AppLogger
 
   constructor(
     @Inject(UserRepository) private readonly userRepository: UserRepository,
     @Inject(PasswordHasher) private readonly passwordHasher: PasswordHasher,
     @Inject(SessionStore) private readonly sessionStore: SessionStore,
+    @Inject(AppLogger) private readonly logger: AppLogger,
   ) {}
 
   @Transactional()

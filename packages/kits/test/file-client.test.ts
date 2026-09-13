@@ -2,11 +2,12 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { mkdtemp, readFile, rm } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
-import { FileClient } from '../src/infrastructure/file/file.client.js'
-import type { NotifyConfig } from '../src/foundation/config/notify-config.js'
+import { FileClient } from '../src/notification/file/file.client.js'
+import type { NotifyConfig } from '../src/notification/notify.config.js'
+import { testLogger } from './helpers/logger.js'
 
 const createClient = (config: NotifyConfig): FileClient =>
-  new FileClient(config)
+  new FileClient(config, testLogger())
 
 describe('FileClient（文件输出，默认兜底通道）', () => {
   let tempDir: string

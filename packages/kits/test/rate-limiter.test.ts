@@ -1,10 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { RateLimiter } from '../src/infrastructure/rate-limit/rate-limiter.js'
+import { RateLimiter } from '../src/rate-limit/rate-limiter.js'
 import {
   isIpWhitelisted,
   normalizeIp,
-} from '../src/infrastructure/rate-limit/ip-utils.js'
-import type { RedisStore } from '../src/infrastructure/redis-store.js'
+} from '../src/rate-limit/ip-utils.js'
+import type { RedisStore } from '../src/redis/redis-store.js'
 
 /** mock rate-limiter-flexible：记录实例，consume 由用例控制。 */
 interface MockLimiter {

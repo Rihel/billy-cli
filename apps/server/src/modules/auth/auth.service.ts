@@ -11,13 +11,13 @@ import type {
   SuccessResultModel,
   UpdateInfoDto,
 } from '@repo/shared'
-import { Inject, Injectable } from '@repo/di'
-import type { AppLogger } from '@repo/shared/logger'
-import { Logger } from '@repo/kits'
+import { Inject, Injectable } from '@nestjs/common'
+import { AppLogger } from '@repo/kits'
 import { PasswordHasher } from '@repo/kits'
 import { SessionStore } from '@repo/kits'
 import { TokenSigner } from '@repo/kits'
-import { ServerConfig, type ServerConfig as ServerConfigType } from '../../config.js'
+import { ConfigService } from '@nestjs/config'
+import { resolveServerConfig, type ServerConfig } from '../../config.js'
 import { toUser, UserRepository } from '../user/user.repository.js'
 import { EmailTakenError, UserNotFoundError } from '../user/errors.js'
 import {
@@ -33,16 +33,19 @@ import {
 
 @Injectable()
 export class AuthService {
-  @Logger()
-  private readonly logger!: AppLogger
+  /** 应用级业务配置（bootstrap 前已加载校验，构造期解析一次即可） */
+  private readonly server: ServerConfig
 
   constructor(
     @Inject(UserRepository) private readonly userRepository: UserRepository,
     @Inject(PasswordHasher) private readonly passwordHasher: PasswordHasher,
     @Inject(TokenSigner) private readonly tokenSigner: TokenSigner,
     @Inject(SessionStore) private readonly sessionStore: SessionStore,
-    @Inject(ServerConfig) private readonly config: ServerConfigType,
-  ) {}
+    @Inject(ConfigService) config: ConfigService,
+    @Inject(AppLogger) private readonly logger: AppLogger,
+  ) {
+    this.server = resolveServerConfig(config)
+  }
 
   @Transactional()
   async register(input: RegisterDto): Promise<AuthResultModel> {
@@ -85,7 +88,7 @@ export class AuthService {
     await this.userRepository.update(user.id, {
       resetPasswordToken: token,
       resetPasswordTokenExpiry: dayjs()
-        .add(this.config.resetPasswordTokenTtlMinutes, 'minute')
+        .add(this.server.resetPasswordTokenTtlMinutes, 'minute')
         .toDate(),
     })
     return { success: true, token }

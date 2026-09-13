@@ -221,13 +221,21 @@ function renderErrors(name: string): string {
 }
 
 /** 生成模块 index.ts 聚合导出（files/crud/index.eta） */
-function renderModule(name: string): string {
+function renderIndex(name: string): string {
   return renderFile('crud/index', { name })
 }
 
-/** 生成 Hono 路由（files/crud/features.eta） */
-function renderRoutes(name: string): string {
-  return renderFile('crud/features', {
+/** 生成 NestJS 控制器（files/crud/controller.eta） */
+function renderController(name: string): string {
+  return renderFile('crud/controller', {
+    name,
+    modulePascal: name.charAt(0).toUpperCase() + name.slice(1),
+  })
+}
+
+/** 生成 NestJS 模块（files/crud/module.eta） */
+function renderNestModule(name: string): string {
+  return renderFile('crud/module', {
     name,
     modulePascal: name.charAt(0).toUpperCase() + name.slice(1),
   })
@@ -246,11 +254,12 @@ export async function createCrudTemplate(name: string): Promise<Template> {
       'errors.ts': renderErrors(name),
       [`${name}.repository.ts`]: renderRepository(name, fields),
       [`${name}.service.ts`]: renderService(name),
-      'index.ts': renderModule(name),
+      [`${name}.controller.ts`]: renderController(name),
+      [`${name}.module.ts`]: renderNestModule(name),
+      'index.ts': renderIndex(name),
     },
     extraFiles: {
       [`apps/server/src/database/entities/${name}-entity.ts`]: renderEntity(name, fields),
-      [`apps/server/src/features/${name}.ts`]: renderRoutes(name),
       [`packages/shared/src/schema/${name}.schema.ts`]: renderSchema(name, fields),
     },
   }

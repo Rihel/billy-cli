@@ -1,7 +1,7 @@
 import { pageWith, type PageQueryResult } from '@repo/kits'
 import { AlertLogEntity } from '../../database/entities/alert-log-entity.js'
 import type { PageQueryAlertLogDto } from '@repo/shared'
-import { Inject, Injectable } from '@repo/di'
+import { Inject, Injectable } from '@nestjs/common'
 import { Db } from '@repo/kits'
 
 const toLog = (record: AlertLogEntity): Omit<AlertLogEntity, 'deletedAt' | 'generateId'> => {

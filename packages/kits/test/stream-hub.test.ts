@@ -1,9 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { RedisConfig } from '../src/foundation/config/redis-config.js'
-import { IdGeneration } from '../src/foundation/id-generation.js'
-import { StreamHub } from '../src/infrastructure/stream/stream-hub.js'
-import type { StreamConnection } from '../src/infrastructure/stream/stream-connection.js'
-import type { StreamEvent } from '@repo/shared'
+import { RedisConfig } from '../src/redis/redis.config.js'
+import { IdGeneration } from '../src/foundation/id-generation/id-generation.js'
+import { StreamHub } from '../src/stream/stream-hub.js'
+import type { StreamConnection } from '../src/stream/stream-connection.js'
+import type { StreamEventModel } from '@repo/shared'
+import { testLogger } from './helpers/logger.js'
 
 /** mock Redis 实例（pub / sub 各一），测试通过 emit 模拟广播消息。 */
 interface MockRedisInstance {
@@ -43,6 +44,7 @@ const createHub = (): StreamHub =>
   new StreamHub(
     { url: 'redis://localhost:6379/0' } as RedisConfig,
     new IdGeneration(),
+    testLogger(),
   )
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
@@ -59,25 +61,25 @@ describe('StreamHub', () => {
     vi.restoreAllMocks()
   })
 
-  it('onAppStart 建立 pub/sub 两条独立连接并订阅广播模式', async () => {
+  it('onApplicationBootstrap 建立 pub/sub 两条独立连接并订阅广播模式', async () => {
     const hub = createHub()
-    await hub.onAppStart()
+    await hub.onApplicationBootstrap()
     expect(mockRedisInstances).toHaveLength(2)
     const [pub, sub] = mockRedisInstances
     expect(pub.connect).toHaveBeenCalled()
     expect(sub.connect).toHaveBeenCalled()
     expect(sub.psubscribe).toHaveBeenCalledWith('stream:*')
-    await hub.onAppStop()
+    await hub.onApplicationShutdown()
   })
 
   it('publish 本地直推 + Redis 广播（key 带 stream: 前缀，载荷含频道与事件）', async () => {
     const hub = createHub()
-    await hub.onAppStart()
+    await hub.onApplicationBootstrap()
     const writer = vi.fn(async () => {})
     const connection = hub.createConnection({ writer })
     hub.subscribe(connection, 'task:42')
 
-    const event: StreamEvent = { event: 'progress', data: { percent: 50 } }
+    const event: StreamEventModel = { event: 'progress', data: { percent: 50 } }
     hub.publish('task:42', event)
     await vi.waitFor(() => expect(writer).toHaveBeenCalledTimes(1))
     expect(writer).toHaveBeenCalledWith({
@@ -95,12 +97,12 @@ describe('StreamHub', () => {
       'stream:task:42',
       expect.stringContaining('"event":"progress"'),
     )
-    await hub.onAppStop()
+    await hub.onApplicationShutdown()
   })
 
   it('其他实例的广播消息路由到本地连接', async () => {
     const hub = createHub()
-    await hub.onAppStart()
+    await hub.onApplicationBootstrap()
     const writer = vi.fn(async () => {})
     const connection = hub.createConnection({ writer })
     hub.subscribe(connection, 'task:42')
@@ -122,12 +124,12 @@ describe('StreamHub', () => {
       event: 'done',
       data: '1',
     })
-    await hub.onAppStop()
+    await hub.onApplicationShutdown()
   })
 
   it('自回环广播被过滤（instanceId 与本实例相同不推送）', async () => {
     const hub = createHub()
-    await hub.onAppStart()
+    await hub.onApplicationBootstrap()
     const writer = vi.fn(async () => {})
     const connection = hub.createConnection({ writer })
     hub.subscribe(connection, 'task:42')
@@ -146,12 +148,12 @@ describe('StreamHub', () => {
     )
     await sleep(20)
     expect(writer).not.toHaveBeenCalled()
-    await hub.onAppStop()
+    await hub.onApplicationShutdown()
   })
 
   it('连接关闭后不再推送（注销幂等）', async () => {
     const hub = createHub()
-    await hub.onAppStart()
+    await hub.onApplicationBootstrap()
     const writer = vi.fn(async () => {})
     const connection = hub.createConnection({ writer })
     hub.subscribe(connection, 'task:42')
@@ -161,12 +163,12 @@ describe('StreamHub', () => {
     hub.publish('task:42', { event: 'late', data: null })
     await sleep(20)
     expect(writer).not.toHaveBeenCalled()
-    await hub.onAppStop()
+    await hub.onApplicationShutdown()
   })
 
   it('abort 信号触发连接自动关闭', async () => {
     const hub = createHub()
-    await hub.onAppStart()
+    await hub.onApplicationBootstrap()
     const controller = new AbortController()
     const writer = vi.fn(async () => {})
     const connection = hub.createConnection({
@@ -176,12 +178,12 @@ describe('StreamHub', () => {
     const closed = waitClosed(connection)
     controller.abort()
     await expect(closed).resolves.toBeUndefined()
-    await hub.onAppStop()
+    await hub.onApplicationShutdown()
   })
 
   it('心跳周期写注释行保活', async () => {
     const hub = createHub()
-    await hub.onAppStart()
+    await hub.onApplicationBootstrap()
     const writer = vi.fn(async () => {})
     const rawWriter = vi.fn(async () => {})
     const connection = hub.createConnection({
@@ -192,12 +194,12 @@ describe('StreamHub', () => {
     await vi.waitFor(() => expect(rawWriter).toHaveBeenCalled())
     expect(rawWriter).toHaveBeenCalledWith(': ping\n\n')
     connection.close()
-    await hub.onAppStop()
+    await hub.onApplicationShutdown()
   })
 
   it('写入失败（连接断开）自动关闭', async () => {
     const hub = createHub()
-    await hub.onAppStart()
+    await hub.onApplicationBootstrap()
     const writer = vi.fn(async () => {
       throw new Error('broken pipe')
     })
@@ -205,6 +207,6 @@ describe('StreamHub', () => {
     const closed = waitClosed(connection)
     await connection.write({ event: 'x', data: 1 })
     await expect(closed).resolves.toBeUndefined()
-    await hub.onAppStop()
+    await hub.onApplicationShutdown()
   })
 })

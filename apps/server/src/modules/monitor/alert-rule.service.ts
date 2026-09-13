@@ -6,9 +6,8 @@ import type {
   RemoveAlertRuleDto,
   UpdateAlertRuleDto,
 } from '@repo/shared'
-import { Inject, Injectable } from '@repo/di'
-import type { AppLogger } from '@repo/shared/logger'
-import { Logger } from '@repo/kits'
+import { Inject, Injectable } from '@nestjs/common'
+import { AppLogger } from '@repo/kits'
 import { AlertRuleRepository } from './alert-rule.repository.js'
 import { AlertRuleNameTakenError, AlertRuleNotFoundError } from './errors.js'
 import type { AlertRuleEntity } from '../../database/entities/alert-rule-entity.js'
@@ -17,12 +16,11 @@ type AlertRuleModel = Omit<AlertRuleEntity, 'deletedAt' | 'generateId'>
 
 @Injectable()
 export class AlertRuleService {
-  @Logger()
-  private readonly logger!: AppLogger
 
   constructor(
     @Inject(AlertRuleRepository)
     private readonly ruleRepository: AlertRuleRepository,
+    @Inject(AppLogger) private readonly logger: AppLogger,
   ) {}
 
   @Transactional()

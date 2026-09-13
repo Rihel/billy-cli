@@ -1,7 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import nodemailer from 'nodemailer'
-import { EmailClient } from '../src/infrastructure/email/email.client.js'
-import type { NotifyConfig } from '../src/foundation/config/notify-config.js'
+import { EmailClient } from '../src/notification/email/email.client.js'
+import type { NotifyConfig } from '../src/notification/notify.config.js'
+import { testLogger } from './helpers/logger.js'
 
 vi.mock('nodemailer', () => ({
   default: {
@@ -14,7 +15,7 @@ vi.mock('nodemailer', () => ({
 const createTransportMock = vi.mocked(nodemailer.createTransport)
 
 const createClient = (config: NotifyConfig): EmailClient =>
-  new EmailClient(config)
+  new EmailClient(config, testLogger())
 
 describe('EmailClient（nodemailer SMTP）', () => {
   afterEach(() => {

@@ -1,0 +1,86 @@
+import { Module } from '@nestjs/common'
+import { ConfigModule, ConfigService } from '@nestjs/config'
+import { APP_FILTER, APP_INTERCEPTOR, APP_PIPE } from '@nestjs/core'
+import {
+  AppConfigModule,
+  DbModule,
+  IdGenerationModule,
+  JwtModule,
+  LoggerModule,
+  PasswordModule,
+  QueueModule,
+  RedisModule,
+  SchedulerModule,
+  SessionModule,
+  StreamHubModule,
+  TelemetryModule,
+} from '@repo/kits'
+import {
+  AppExceptionFilter,
+  ResponseEnvelopeInterceptor,
+  createZodValidationPipe,
+} from './lib/http.js'
+
+/**
+ * 应用组合根（NestJS 唯一装配点，故文件 / 类名均以 root 命名）。
+ *
+ * 配置链路：bootstrap 先 `loadAppConfig()`（zod 校验 + 补默认值 + 缓存），
+ * `AppConfigModule.forRoot()` 接进 Nest，各基础设施用 `forRootAsync({ inject: [ConfigService] })`
+ * 惰性取自己的配置分片（惰性很关键：模块装饰器求值发生在配置加载之前）；应用级业务配置同理，
+ * 注入 `ConfigService` 后用 `src/config.ts` 的 `resolveServerConfig()` 取 `server` 分片。
+ * 需要对象存储 / 通知 / 飞书 / Kafka 时按同样方式追加：
+ *   ObjectStorageModule.forRoot({...}) / NotificationModule.forRoot({...}) / LarkModule.forRoot({...}) / KafkaModule.forRoot({...})
+ *
+ * - 业务模块：在 imports 中追加（如 `TodoModule`）；
+ * - 全局管道 / 过滤器 / 拦截器：Zod 校验 + 错误映射 + 响应信封。
+ */
+@Module({
+  imports: [
+    // ---- 应用配置（bootstrap 前已由 AppConfigFacade 加载；全局 ConfigService + AppConfig bean）----
+    AppConfigModule.forRoot(),
+    // ---- 基础能力（无配置）----
+    IdGenerationModule,
+    TelemetryModule,
+    SchedulerModule,
+    // ---- 基础设施：配置由 ConfigService 惰性解析 ----
+    LoggerModule.forRootAsync({
+      imports: [ConfigModule],
+      inject: [ConfigService],
+      useFactory: (config: ConfigService) => config.get('logger'),
+    }),
+    DbModule.forRootAsync({
+      imports: [ConfigModule],
+      inject: [ConfigService],
+      useFactory: (config: ConfigService) => ({
+        ...config.get('db'),
+        // 实体是类引用，无法来自环境变量，由组合根注入
+        entities: [],
+      }),
+    }),
+    RedisModule.forRootAsync({
+      imports: [ConfigModule],
+      inject: [ConfigService],
+      useFactory: (config: ConfigService) => config.get('redis'),
+    }),
+    QueueModule,
+    StreamHubModule,
+    JwtModule.forRootAsync({
+      imports: [ConfigModule],
+      inject: [ConfigService],
+      useFactory: (config: ConfigService) => config.get('jwt'),
+    }),
+    SessionModule,
+    PasswordModule.forRootAsync({
+      imports: [ConfigModule],
+      inject: [ConfigService],
+      useFactory: (config: ConfigService) => config.get('password'),
+    }),
+    // 在此挂载业务模块，如：TodoModule,
+  ],
+  providers: [
+    { provide: APP_PIPE, useFactory: createZodValidationPipe },
+    { provide: APP_FILTER, useClass: AppExceptionFilter },
+    { provide: APP_INTERCEPTOR, useClass: ResponseEnvelopeInterceptor },
+  ],
+})
+export class RootModule {}

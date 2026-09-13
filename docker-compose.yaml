@@ -62,7 +62,7 @@ services:
       retries: 10
 
   # ──────────────────────────────────────────
-  # Server (Hono + Effect)
+  # Server (NestJS 12 + Express)
   # ──────────────────────────────────────────
   server:
     build:

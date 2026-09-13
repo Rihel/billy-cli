@@ -22,7 +22,7 @@ export function createPackageTemplate(name: string): Template {
           build: 'tsdown --config-loader unrun',
         },
         devDependencies: {
-          tsdown: '^0.22.9',
+          tsdown: '^0.23.0',
           typescript: '^7.0.2',
           unrun: '^0.3.1',
         },

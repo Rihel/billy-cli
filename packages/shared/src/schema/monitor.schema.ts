@@ -1,9 +1,8 @@
 import { z } from 'zod'
-import { BaseModel, BasePaginateDto } from './base.schema'
+import { BaseModelSchema, BasePaginateSchema } from './base.schema'
 
 /** 告警通道（对应通知模块 NotifyChannel：file / lark / email） */
-export const AlertChannel = z.enum(['file', 'lark', 'email'])
-export type AlertChannelType = z.infer<typeof AlertChannel>
+export const AlertChannelSchema = z.enum(['file', 'lark', 'email'])
 
 /**
  * 规则类型：
@@ -11,22 +10,19 @@ export type AlertChannelType = z.infer<typeof AlertChannel>
  * - metric：指标规则（错误率 / P95 / 库存等，周期采样 vs 阈值）；
  * - surge：突变规则（QPS 飙升 / 洪峰 / 订单飙升，环比基线）。
  */
-export const AlertRuleType = z.enum(['tech', 'business', 'metric', 'surge'])
-export type AlertRuleTypeValue = z.infer<typeof AlertRuleType>
+export const AlertRuleTypeSchema = z.enum(['tech', 'business', 'metric', 'surge'])
 
 /** 指标比较符 */
-export const AlertOperator = z.enum(['gt', 'gte', 'lt', 'lte'])
-export type AlertOperatorValue = z.infer<typeof AlertOperator>
+export const AlertOperatorSchema = z.enum(['gt', 'gte', 'lt', 'lte'])
 
 /** 告警级别：error 优先（warn 也匹配 error 规则） */
-export const AlertLevel = z.enum(['warn', 'error'])
-export type AlertLevelValue = z.infer<typeof AlertLevel>
+export const AlertLevelSchema = z.enum(['warn', 'error'])
 
 const AlertRuleFields = z.object({
   /** 规则名称（唯一，语义化，如「登录失败告警」） */
   name: z.string().min(1).max(50),
   /** 规则类型 */
-  type: AlertRuleType.default('tech'),
+  type: AlertRuleTypeSchema.default('tech'),
   /** 匹配错误码（AppErrorCodes 数字码）；空数组 = 匹配该类型全部错误（仅事件规则） */
   matchCodes: z.array(z.number().int()).default([]),
   /** 匹配消息关键字（任一命中即匹配）；空数组 = 不限制（仅事件规则） */
@@ -38,22 +34,22 @@ const AlertRuleFields = z.object({
   /** 指标名（metric / surge 规则），如 request.errorRate / request.p99 / inventory.available */
   metric: z.string().optional(),
   /** 比较符（metric / surge 规则）：gt / gte / lt / lte */
-  operator: AlertOperator.optional(),
+  operator: AlertOperatorSchema.optional(),
   /** 阈值（metric 规则：指标值；surge 规则：环比倍率） */
   thresholdValue: z.number().optional(),
   /** 评估周期（秒，metric / surge 规则） */
   periodSeconds: z.number().int().min(1).default(60),
   /** 告警级别（error 级规则同时捕获 warn 错误） */
-  level: AlertLevel.default('error'),
+  level: AlertLevelSchema.default('error'),
   /** 发送通道（至少一个） */
-  channels: z.array(AlertChannel).min(1),
+  channels: z.array(AlertChannelSchema).min(1),
   /** 限频窗口秒：同一规则 + 相同内容在窗口内只发一次（防告警风暴） */
   throttleSeconds: z.number().int().min(0).default(60),
   /** 是否启用 */
   enabled: z.boolean().default(true),
 })
 
-export const AlertRuleSchema = z.intersection(BaseModel, AlertRuleFields)
+export const AlertRuleSchema = z.intersection(BaseModelSchema, AlertRuleFields)
 export type AlertRuleModel = z.infer<typeof AlertRuleSchema>
 
 export const CreateAlertRuleSchema = AlertRuleFields
@@ -71,9 +67,9 @@ export type GetAlertRuleDetailDto = z.infer<typeof GetAlertRuleDetailSchema>
 export const RemoveAlertRuleSchema = z.object({ ruleId: z.string() })
 export type RemoveAlertRuleDto = z.infer<typeof RemoveAlertRuleSchema>
 
-export const PageQueryAlertRuleSchema = BasePaginateDto.extend({
+export const PageQueryAlertRuleSchema = BasePaginateSchema.extend({
   keyword: z.string().optional(),
-  type: AlertRuleType.optional(),
+  type: AlertRuleTypeSchema.optional(),
   enabled: z.boolean().optional(),
   orderBy: z.enum(['updatedAt', 'createdAt']).optional().default('updatedAt'),
   order: z.enum(['asc', 'desc']).optional().default('desc'),
@@ -82,22 +78,22 @@ export type PageQueryAlertRuleDto = z.infer<typeof PageQueryAlertRuleSchema>
 
 /** 告警发送记录（日志） */
 export const AlertLogSchema = z.intersection(
-  BaseModel,
+  BaseModelSchema,
   z.object({
     ruleId: z.string().nullable(),
     ruleName: z.string(),
     title: z.string(),
     message: z.string(),
-    channel: AlertChannel,
+    channel: AlertChannelSchema,
     status: z.enum(['success', 'failed']),
     error: z.string().nullable().optional(),
   }),
 )
 export type AlertLogModel = z.infer<typeof AlertLogSchema>
 
-export const PageQueryAlertLogSchema = BasePaginateDto.extend({
+export const PageQueryAlertLogSchema = BasePaginateSchema.extend({
   ruleId: z.string().optional(),
-  channel: AlertChannel.optional(),
+  channel: AlertChannelSchema.optional(),
   status: z.enum(['success', 'failed']).optional(),
   orderBy: z.enum(['sentAt', 'createdAt']).optional().default('sentAt'),
   order: z.enum(['asc', 'desc']).optional().default('desc'),
@@ -108,7 +104,7 @@ export type PageQueryAlertLogDto = z.infer<typeof PageQueryAlertLogSchema>
 export const TestAlertSchema = z.object({
   title: z.string().min(1).max(100).default('测试告警'),
   message: z.string().min(1).max(500).default('这是一条来自监控模块的测试告警'),
-  channels: z.array(AlertChannel).min(1),
+  channels: z.array(AlertChannelSchema).min(1),
 })
 export type TestAlertDto = z.infer<typeof TestAlertSchema>
 
@@ -116,6 +112,7 @@ export type TestAlertDto = z.infer<typeof TestAlertSchema>
 export const MonitorHealthSchema = z.object({
   status: z.enum(['ok', 'degraded']),
   uptimeSeconds: z.number(),
-  checks: z.record(z.enum(['ok', 'failed'])),
+  // Zod 4 起 z.record 需要显式 key schema（Zod 3 的单参写法已不合法）
+  checks: z.record(z.string(), z.enum(['ok', 'failed'])),
 })
 export type MonitorHealthModel = z.infer<typeof MonitorHealthSchema>

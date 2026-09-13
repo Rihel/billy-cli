@@ -23,6 +23,17 @@ export class RedisStoreError extends AppError {
   }
 }
 
+/**
+ * 分布式锁获取失败（等待超时）。
+ * 语义是「资源被占用，稍后重试」，故映射到 RateLimited（4002 / HTTP 429）。
+ */
+export class RedisLockError extends AppError {
+  readonly code = AppErrorCodes.RateLimited
+  constructor(readonly key: string) {
+    super(`Redis lock acquire timeout: ${key}`)
+  }
+}
+
 export class QueueError extends AppError {
   readonly code = AppErrorCodes.Internal
   constructor(readonly cause: unknown) {

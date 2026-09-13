@@ -12,6 +12,7 @@ import type { AlertLogRepository } from '../src/modules/monitor/alert-log.reposi
 import type { Notifier } from '@repo/kits'
 import type { LarkNotifyClient, EmailClient } from '@repo/kits'
 import type { AlertRuleEntity } from '../src/database/entities/alert-rule-entity.js'
+import { testLogger } from './helpers/logger.js'
 
 const mockRule = (overrides: Partial<AlertRuleEntity> = {}): AlertRuleEntity =>
   ({
@@ -73,6 +74,7 @@ const createService = (overrides: {
     notifier,
     telemetry,
     scheduler,
+    testLogger(),
     fileClient,
     larkNotify,
     email,

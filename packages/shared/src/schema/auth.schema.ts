@@ -1,8 +1,8 @@
 import { z } from 'zod'
-import { BaseModel } from './base.schema'
+import { BaseModelSchema } from './base.schema'
 import { UserStatusSchema } from './user.schema'
 
-export const AuthUserSchema = BaseModel.extend({
+export const AuthUserSchema = BaseModelSchema.extend({
   email: z.email(),
   realName: z.string().nullable().optional(),
   avatar: z.string().nullable().optional(),

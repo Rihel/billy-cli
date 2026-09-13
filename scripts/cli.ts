@@ -26,25 +26,22 @@ async function main() {
     console.log(colors.cyan('\n📋 接下来请手动完成以下步骤：'))
 
     console.log(
-      `  ${colors.yellow('1.')} 在 ${colors.bold('apps/server/src/modules/index.ts')} 追加副作用导入 ${colors.bold("import './" + name + "/index.js'")}（@Injectable 自动登记，runtime.autoRegister() 自动装配，无需 addService）`,
+      `  ${colors.yellow('1.')} 在 ${colors.bold('apps/server/src/root.module.ts')} 中：把 ${colors.bold(name + '-entity')} 加入 ${colors.bold('DbModule.forRootAsync(...) 工厂里的 entities: [...]')}，并把 ${colors.bold(modulePascal + 'Module')} 加入 ${colors.bold('imports')}`,
     )
     console.log(
-      `  ${colors.yellow('2.')} 在 ${colors.bold('apps/server/src/main.ts')} 的 ${colors.bold('createServiceContext({ db: { entities } })')} 中注册 ${colors.bold(name + '-entity')}，并用 ${colors.bold('app.route(\'/' + name + '\', make' + modulePascal + 'Routes(runtime))')} 挂载路由`,
+      `  ${colors.yellow('2.')} 在 ${colors.bold('packages/shared/src/dicts/app-error-code.dict.ts')} 的 3xxx 段添加 ${colors.bold(modulePascal + 'NotFound')} 错误码`,
     )
     console.log(
-      `  ${colors.yellow('3.')} 在 ${colors.bold('packages/shared/src/dicts/app-error-code.dict.ts')} 的 3xxx 段添加 ${colors.bold(modulePascal + 'NotFound')} 错误码`,
+      `  ${colors.yellow('3.')} 在 ${colors.bold('packages/shared/src/schema/index.ts')} 中导出新 schema`,
     )
     console.log(
-      `  ${colors.yellow('4.')} 在 ${colors.bold('packages/shared/src/schema/index.ts')} 中导出新 schema`,
+      `  ${colors.yellow('4.')} 运行 ${colors.bold('pnpm db:gen')} 生成数据库迁移文件，再运行 ${colors.bold('pnpm db:migrate')} 执行迁移`,
     )
     console.log(
-      `  ${colors.yellow('5.')} 运行 ${colors.bold('pnpm db:gen')} 生成数据库迁移文件，再运行 ${colors.bold('pnpm db:migrate')} 执行迁移`,
+      `  ${colors.yellow('5.')} 在 ${colors.bold('packages/sdk/src/server.client.ts')} 中添加 ${colors.bold(name)} 段的类型化 SDK 方法`,
     )
     console.log(
-      `  ${colors.yellow('6.')} 在 ${colors.bold('packages/sdk/src/server.client.ts')} 中添加 ${colors.bold(name)} 段的类型化 SDK 方法`,
-    )
-    console.log(
-      `  ${colors.yellow('7.')} 按 develop-frontend-page 规范开发 admin 页面并加入 ${colors.bold('apps/admin/src/components/AppMenu.tsx')} 菜单`,
+      `  ${colors.yellow('6.')} 按 develop-frontend-page 规范开发 admin 页面并加入 ${colors.bold('apps/admin/src/components/AppMenu.tsx')} 菜单`,
     )
     console.log(
       colors.cyan('完成以上步骤后，运行 pnpm dev:server 即可使用新 CRUD 模块。\n'),

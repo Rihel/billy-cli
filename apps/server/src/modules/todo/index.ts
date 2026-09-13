@@ -1,3 +1,5 @@
 export * from './errors.js'
 export * from './todo.repository.js'
 export * from './todo.service.js'
+export * from './todo.controller.js'
+export * from './todo.module.js'

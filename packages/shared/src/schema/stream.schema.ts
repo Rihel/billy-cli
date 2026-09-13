@@ -14,7 +14,7 @@ export const StreamEventSchema = z.object({
   /** 服务端生成的事件 id（断线续传用；第一版仅透传） */
   id: z.string().optional(),
 })
-export type StreamEvent = z.infer<typeof StreamEventSchema>
+export type StreamEventModel = z.infer<typeof StreamEventSchema>
 
 /**
  * SSE 订阅请求体。
@@ -25,4 +25,4 @@ export type StreamEvent = z.infer<typeof StreamEventSchema>
 export const StreamSubscribeSchema = z.object({
   channels: z.array(z.string().min(1)).default([]),
 })
-export type StreamSubscribeInput = z.infer<typeof StreamSubscribeSchema>
+export type StreamSubscribeDto = z.infer<typeof StreamSubscribeSchema>

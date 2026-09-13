@@ -1,71 +1,56 @@
-import 'dotenv/config';
-import { createServiceContext } from '@repo/kits';
-import type { AppContext } from '@repo/di';
-import { ServerConfig, serverConfig } from './config.js';
-import { createLogger } from '@repo/shared/logger';
-import { serve } from '@hono/node-server';
-import { Hono } from 'hono';
-import { cors } from 'hono/cors';
-import { errorHandler, notFound } from './lib/http.js';
+import 'reflect-metadata'
+import 'dotenv/config'
+import { ConfigService } from '@nestjs/config'
+import { NestFactory } from '@nestjs/core'
+import type { NestExpressApplication } from '@nestjs/platform-express'
+import { Logger } from '@repo/kits'
+import { RootModule } from './root.module.js'
+import { loadAppConfig } from './app-config.js'
+import { resolveServerConfig } from './config.js'
 
-/** 应用组合根：唯一装配点（创建一次，供路由与启停共用） */
-export const runtime: AppContext = createServiceContext({
-  db: {
-    url: process.env.DB_URL,
-    entities: [],
-    sync: true,
-  },
-  logger: { name: '<%= it.name %>', pretty: process.env.NODE_ENV !== 'production' },
-})
-  // 应用层业务配置
-  .addConstant(ServerConfig, serverConfig);
+/**
+ * 应用入口（NestJS 12 + Express）：
+ * 1. 创建应用容器（RootModule 为唯一组合根）；
+ * 2. 注册横切中间件（如需请求上下文 / 日志，参照 apps/server/src/common/ 实现后在此 app.use）；
+ * 3. 监听端口；收到 SIGINT / SIGTERM 时优雅关闭。
+ *
+ * 注意：开发用 tsx（esbuild）不产出 design:paramtypes，所有构造器参数必须显式 @Inject(token)。
+ */
+export const program = async (): Promise<void> => {
+  // 先加载并校验应用配置，再创建应用（各模块 forRootAsync 工厂会读这份缓存）
+  await loadAppConfig()
 
-export const makeApp = () => {
-  const app = new Hono();
+  const app = await NestFactory.create<NestExpressApplication>(RootModule, {
+    bodyParser: false,
+    // 先缓冲启动期日志，useLogger 之后统一由 nestjs-pino 输出
+    bufferLogs: true,
+  })
+  app.useLogger(app.get(Logger))
+  const logger = app.get(Logger)
+  app.enableCors()
+  app.disable('x-powered-by')
+  app.useBodyParser('json', { limit: '2mb' })
+  app.useBodyParser('urlencoded', { limit: '2mb', extended: true })
 
-  app.use('*', cors());
-  // 在此挂载业务路由，如：
-  // app.route('/todo', makeTodoRoutes(runtime));
-  app.notFound(notFound);
-  app.onError(errorHandler);
+  const config = resolveServerConfig(app.get(ConfigService))
+  await app.listen(config.port)
+  logger.log(`服务已启动: http://localhost:${config.port}`, 'bootstrap')
 
-  return app;
-};
+  let closing = false
+  const shutdown = async (signal: string): Promise<void> => {
+    if (closing) return
+    closing = true
+    logger.log(`收到 ${signal}，正在关闭服务...`, 'bootstrap')
+    try {
+      await app.close()
+      logger.log('服务已关闭', 'bootstrap')
+    } catch (error) {
+      logger.error(error as Error, '关闭资源失败')
+    }
+    process.exit(0)
+  }
+  process.once('SIGINT', () => void shutdown('SIGINT'))
+  process.once('SIGTERM', () => void shutdown('SIGTERM'))
+}
 
-const app = makeApp();
-
-export const program = async () => {
-  const logger = createLogger('<%= it.name %>', true);
-  await runtime.start();
-  const config = runtime.get<typeof serverConfig>(ServerConfig);
-  const server = serve(
-    {
-      fetch: app.fetch,
-      port: config.port,
-    },
-    (info) => logger.info('服务已启动', info),
-  );
-
-  await new Promise<void>((resolve) => {
-    let closing = false;
-    const shutdown = () => {
-      if (closing) return;
-      closing = true;
-      logger.info('正在关闭服务...');
-      server.close(() => {
-        void runtime.stop().then(
-          () => resolve(),
-          (error) => {
-            logger.error('关闭资源失败', { error });
-            resolve(),
-          },
-        );
-      });
-    };
-
-    process.once('SIGINT', shutdown);
-    process.once('SIGTERM', shutdown);
-  });
-};
-
-void program();
+void program()

@@ -14,9 +14,8 @@ import type {
   SuccessResultModel,
   UpdateAdminDto,
 } from '@repo/shared'
-import { Inject, Injectable } from '@repo/di'
-import type { AppLogger } from '@repo/shared/logger'
-import { Logger } from '@repo/kits'
+import { Inject, Injectable } from '@nestjs/common'
+import { AppLogger } from '@repo/kits'
 import { PasswordHasher } from '@repo/kits'
 import { SessionStore } from '@repo/kits'
 import { TokenSigner } from '@repo/kits'
@@ -35,14 +34,13 @@ export const ADMIN_TOKEN_TYPE = 'admin' as const
 
 @Injectable()
 export class AdminService {
-  @Logger()
-  private readonly logger!: AppLogger
 
   constructor(
     @Inject(AdminRepository) private readonly adminRepository: AdminRepository,
     @Inject(PasswordHasher) private readonly passwordHasher: PasswordHasher,
     @Inject(TokenSigner) private readonly tokenSigner: TokenSigner,
     @Inject(SessionStore) private readonly sessionStore: SessionStore,
+    @Inject(AppLogger) private readonly logger: AppLogger,
   ) {}
 
   async login(input: AdminLoginDto): Promise<AdminAuthResultModel> {

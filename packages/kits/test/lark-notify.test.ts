@@ -1,7 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { LarkNotifyClient } from '../src/infrastructure/lark-notify/lark-notify.client.js'
-import { LarkClient } from '../src/infrastructure/lark/lark.client.js'
-import type { NotifyConfig } from '../src/foundation/config/notify-config.js'
+import { LarkNotifyClient } from '../src/notification/lark-notify/lark-notify.client.js'
+import { LarkClient } from '../src/lark/lark.client.js'
+import type { NotifyConfig } from '../src/notification/notify.config.js'
+import { testLogger } from './helpers/logger.js'
 
 const createClient = (config: NotifyConfig): LarkNotifyClient => {
   const mockLark = {
@@ -13,7 +14,8 @@ const createClient = (config: NotifyConfig): LarkNotifyClient => {
       },
     },
   } as unknown as LarkClient
-  return { client: new LarkNotifyClient(mockLark, config), mockCreate: mockLark.raw.im.message.create }
+  // 构造器顺序：配置在前、可选 LarkClient 在后（@Optional 注入语义）
+  return { client: new LarkNotifyClient(config, testLogger(), mockLark), mockCreate: mockLark.raw.im.message.create }
 }
 
 type Returned = ReturnType<typeof createClient>

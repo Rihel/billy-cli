@@ -8,7 +8,7 @@ import { defineConfig } from 'vitest/config'
 export default defineConfig({
   test: {
     deps: {
-      inline: ['@repo/kits', '@repo/shared', '@repo/di'],
+      inline: ['@repo/kits', '@repo/shared'],
     },
   },
 })

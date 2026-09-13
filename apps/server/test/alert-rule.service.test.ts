@@ -13,6 +13,7 @@ import {
 } from '../src/modules/monitor/errors.js'
 import type { AlertRuleRepository } from '../src/modules/monitor/alert-rule.repository.js'
 import type { AlertRuleEntity } from '../src/database/entities/alert-rule-entity.js'
+import { testLogger } from './helpers/logger.js'
 
 type RuleRecord = Omit<AlertRuleEntity, 'deletedAt' | 'generateId'>
 
@@ -32,7 +33,7 @@ const mockRule = (overrides: Partial<RuleRecord> = {}): RuleRecord => ({
 })
 
 const createService = (repo: Partial<AlertRuleRepository>) =>
-  new AlertRuleService(repo as AlertRuleRepository)
+  new AlertRuleService(repo as AlertRuleRepository, testLogger())
 
 describe('AlertRuleService（告警规则 CRUD）', () => {
   it('create：名称唯一通过时创建', async () => {

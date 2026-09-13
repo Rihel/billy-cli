@@ -13,19 +13,17 @@ import type {
   TodoModel,
   UpdateTodoDto,
 } from '@repo/shared'
-import { Inject, Injectable } from '@repo/di'
-import type { AppLogger } from '@repo/shared/logger'
-import { Logger } from '@repo/kits'
+import { Inject, Injectable } from '@nestjs/common'
+import { AppLogger } from '@repo/kits'
 import { TodoRepository } from './todo.repository.js'
 import { TodoNotFoundError } from './errors.js'
 
 @Injectable()
 export class TodoService {
-  @Logger()
-  private readonly logger!: AppLogger
 
   constructor(
     @Inject(TodoRepository) private readonly todoRepository: TodoRepository,
+    @Inject(AppLogger) private readonly logger: AppLogger,
   ) {}
 
   @Transactional()

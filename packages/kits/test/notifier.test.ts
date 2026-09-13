@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
-import { Notifier } from '../src/infrastructure/notifier.js'
-import type { NotifyClient, SendResult } from '../src/infrastructure/notifier.js'
+import { Notifier } from '../src/notification/notifier.js'
+import type { NotifyClient, SendResult } from '../src/notification/notifier.js'
 
 const mockClient = (channel: 'lark' | 'email'): NotifyClient => ({
   channel,

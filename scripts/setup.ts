@@ -355,7 +355,7 @@ const main = async (): Promise<void> => {
 
   console.log(colors.bold(colors.green('\n✅ 初始化完成，启动开发环境：')))
   console.log(`  ${colors.cyan('pnpm dev:pkgs')}    # 终端 1：watch 构建 packages`)
-  console.log(`  ${colors.cyan('pnpm dev:server')}   # 终端 2：Hono 服务（http://localhost:9989）`)
+  console.log(`  ${colors.cyan('pnpm dev:server')}   # 终端 2：NestJS 服务（http://localhost:9989）`)
   console.log(`  ${colors.cyan('pnpm dev:web')}      # 终端 3：Web 前台（http://localhost:9840）`)
   console.log(`  ${colors.cyan('pnpm dev:admin')}    # 终端 4（可选）：Admin 后台（http://localhost:9845）`)
   console.log(

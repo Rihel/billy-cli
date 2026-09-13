@@ -1,10 +1,10 @@
 import { z } from 'zod'
-import { BaseModel, BasePaginateDto } from './base.schema'
+import { BaseModelSchema, BasePaginateSchema } from './base.schema'
 
 /** 用户状态：与 UserStatus 字典保持一致 */
 export const UserStatusSchema = z.enum(['enabled', 'disabled'])
 
-export const UserSchema = BaseModel.extend({
+export const UserSchema = BaseModelSchema.extend({
   email: z.email(),
   realName: z.string().nullable(),
   avatar: z.string().nullable(),
@@ -12,9 +12,11 @@ export const UserSchema = BaseModel.extend({
 })
 export type UserModel = z.infer<typeof UserSchema>
 
-export const UserIdSchema = z.object({
+/** id 入参基类（单条记录定位，如 detail / remove / update / reset-password） */
+export const UserIdInputSchema = z.object({
   userId: z.string(),
 })
+export type UserIdInputDto = z.infer<typeof UserIdInputSchema>
 
 export const CreateUserSchema = z.object({
   email: z.email(),
@@ -25,10 +27,10 @@ export const CreateUserSchema = z.object({
 })
 export type CreateUserDto = z.infer<typeof CreateUserSchema>
 
-export const GetUserDetailSchema = UserIdSchema.extend({})
+export const GetUserDetailSchema = UserIdInputSchema.extend({})
 export type GetUserDetailDto = z.infer<typeof GetUserDetailSchema>
 
-export const RemoveUserSchema = UserIdSchema.extend({})
+export const RemoveUserSchema = UserIdInputSchema.extend({})
 export type RemoveUserDto = z.infer<typeof RemoveUserSchema>
 
 export const RemoveUserResultSchema = z.object({
@@ -36,19 +38,19 @@ export const RemoveUserResultSchema = z.object({
 })
 export type RemoveUserResultModel = z.infer<typeof RemoveUserResultSchema>
 
-export const UpdateUserSchema = UserIdSchema.extend({
+export const UpdateUserSchema = UserIdInputSchema.extend({
   realName: z.string().nullable().optional(),
   avatar: z.string().nullable().optional(),
   status: UserStatusSchema.optional(),
 })
 export type UpdateUserDto = z.infer<typeof UpdateUserSchema>
 
-export const ResetUserPasswordSchema = UserIdSchema.extend({
+export const ResetUserPasswordSchema = UserIdInputSchema.extend({
   password: z.string().min(6),
 })
 export type ResetUserPasswordDto = z.infer<typeof ResetUserPasswordSchema>
 
-export const PageQueryUserDto = BasePaginateDto.extend({
+export const PageQueryUserSchema = BasePaginateSchema.extend({
   keyword: z.string().optional(),
   status: UserStatusSchema.optional(),
   orderBy: z
@@ -57,4 +59,4 @@ export const PageQueryUserDto = BasePaginateDto.extend({
     .default('createdAt'),
   order: z.enum(['asc', 'desc']).optional().default('desc'),
 })
-export type PageQueryUserDto = z.infer<typeof PageQueryUserDto>
+export type PageQueryUserDto = z.infer<typeof PageQueryUserSchema>

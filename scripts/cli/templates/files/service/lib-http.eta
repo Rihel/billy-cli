@@ -1,14 +1,26 @@
-import { zValidator } from '@hono/zod-validator';
-import { AppErrorCodes, ResponseUtils, parseZodIssues } from '@repo/shared';
-import type { Context, Env } from 'hono';
-import type { ZodType } from 'zod';
+import {
+  Catch,
+  HttpException,
+  Injectable,
+  StandardSchemaValidationPipe,
+  type ArgumentsHost,
+  type CallHandler,
+  type ExceptionFilter,
+  type ExecutionContext,
+  type NestInterceptor,
+} from '@nestjs/common'
+import { AppErrorCodes, ResponseUtils, parseZodIssues } from '@repo/shared'
+import { map as mapObservable, type Observable } from 'rxjs'
+import type { Request, Response } from 'express'
+import type { ZodIssue } from 'zod'
 
-type ErrorHttpStatus = 400 | 401 | 403 | 404 | 409 | 500;
+/** 业务错误码字典映射出的 HTTP 状态（收敛到合法集合） */
+export type ErrorHttpStatus = 400 | 401 | 403 | 404 | 409 | 429 | 500
 
 export interface ErrorDescriptor {
-  value: number;
-  http: ErrorHttpStatus;
-  label: string;
+  value: number
+  http: ErrorHttpStatus
+  label: string
 }
 
 const toErrorHttpStatus = (status: unknown): ErrorHttpStatus => {
@@ -18,25 +30,26 @@ const toErrorHttpStatus = (status: unknown): ErrorHttpStatus => {
     case 403:
     case 404:
     case 409:
+    case 429:
     case 500:
-      return status;
+      return status
     default:
-      return 500;
+      return 500
   }
-};
+}
 
 export const describeErrorCode = (code: number): ErrorDescriptor => {
-  const descriptor = AppErrorCodes.getOption(code);
+  const descriptor = AppErrorCodes.getOption(code)
   return descriptor
     ? {
         value: Number(descriptor.value),
         http: toErrorHttpStatus(descriptor.http),
         label: String(descriptor.label),
       }
-    : { value: 5001, http: 500, label: '系统错误' };
-};
+    : { value: AppErrorCodes.Internal, http: 500, label: '系统错误' }
+}
 
-/** 将业务错误映射为 HTTP 响应描述 */
+/** 将边界抛出的错误映射为 AppResponse 响应描述 */
 export const mapError = (error: unknown): ErrorDescriptor => {
   if (
     error &&
@@ -44,31 +57,73 @@ export const mapError = (error: unknown): ErrorDescriptor => {
     'code' in error &&
     typeof (error as { code?: unknown }).code === 'number'
   ) {
-    return describeErrorCode((error as { code: number }).code);
+    return describeErrorCode((error as { code: number }).code)
   }
-  return describeErrorCode(AppErrorCodes.Internal);
-};
+  if (error instanceof HttpException) {
+    const status = error.getStatus()
+    if (status === 404) return { value: 404, http: 404, label: '接口不存在' }
+    return {
+      value: status,
+      http: toErrorHttpStatus(status),
+      label: status === 400 ? '请求体格式不正确' : '请求失败',
+    }
+  }
+  return describeErrorCode(AppErrorCodes.Internal)
+}
 
-export const jsonBody = <Schema extends ZodType>(schema: Schema) =>
-  zValidator('json', schema, (result, context) => {
-    if (result.success) return;
-    return context.json(
-      ResponseUtils.error(400, parseZodIssues(result.error.issues)),
-      200,
-    );
-  });
+/** Zod 校验失败：HTTP 200 + code 400 契约（前端 SDK 按 code 判错） */
+export class ZodValidationFailedError extends Error {
+  constructor(readonly detail: string) {
+    super(detail)
+    this.name = 'ZodValidationFailedError'
+  }
+}
 
-export const success = <E extends Env, T>(context: Context<E>, data: T) =>
-  context.json(ResponseUtils.success(data), 200);
+/**
+ * 全局 Zod 校验管道（NestJS 12 原生 Standard Schema 能力，注册为 APP_PIPE）。
+ *
+ * 路由用原生选项声明 schema：`create(@Body({ schema: CreateXxxSchema }) input: CreateXxxDto)`；
+ * 管道从参数元数据读取 schema，成功返回解析值（含默认值补全），失败抛 ZodValidationFailedError
+ * （由 AppExceptionFilter 渲染为 HTTP 200 + code 400 + 中文文案）。
+ */
+export const createZodValidationPipe = (): StandardSchemaValidationPipe =>
+  new StandardSchemaValidationPipe({
+    exceptionFactory: (issues) =>
+      new ZodValidationFailedError(
+        parseZodIssues(issues as unknown as ZodIssue[]),
+      ),
+  })
 
-export const errorHandler = (error: Error, context: Context) => {
-  const descriptor = mapError(error);
-  console.error('request failed', error);
-  return context.json(
-    ResponseUtils.error(descriptor.value, descriptor.label),
-    descriptor.http,
-  );
-};
+/** 统一响应信封拦截器：控制器返回业务数据 → `{ code: 0, data }` */
+@Injectable()
+export class ResponseEnvelopeInterceptor implements NestInterceptor {
+  intercept(_context: ExecutionContext, next: CallHandler): Observable<unknown> {
+    return next
+      .handle()
+      .pipe(
+        mapObservable((data) =>
+          data === undefined ? undefined : ResponseUtils.success(data),
+        ),
+      )
+  }
+}
 
-export const notFound = (context: Context) =>
-  context.json(ResponseUtils.error(404, '接口不存在'), 404);
+/** 全局异常过滤器：业务码映射 HTTP + 中文；校验失败走 200 + code 400 */
+@Catch()
+export class AppExceptionFilter implements ExceptionFilter {
+  catch(exception: unknown, host: ArgumentsHost): void {
+    const response = host.switchToHttp().getResponse<Response>()
+    const request = host.switchToHttp().getRequest<Request>()
+
+    if (exception instanceof ZodValidationFailedError) {
+      response.status(200).json(ResponseUtils.error(400, exception.detail))
+      return
+    }
+
+    const descriptor = mapError(exception)
+    console.error('request failed', exception)
+    response
+      .status(descriptor.http)
+      .json(ResponseUtils.error(descriptor.value, descriptor.label))
+  }
+}

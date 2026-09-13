@@ -1,6 +1,5 @@
-import { Inject, Injectable, Optional } from '@repo/di'
-import type { AppLogger } from '@repo/shared/logger'
-import { Logger } from '@repo/kits'
+import { Inject, Injectable, Optional } from '@nestjs/common'
+import { AppLogger } from '@repo/kits'
 import {
   EmailClient,
   FileClient,
@@ -62,8 +61,6 @@ export class AlertTrigger {
   /** metric / surge 规则上次评估时间（periodSeconds 节流） */
   private readonly lastEvaluatedAt = new Map<string, number>()
 
-  @Logger()
-  private readonly logger!: AppLogger
 
   constructor(
     @Inject(MonitorConfig) private readonly config: MonitorConfigType,
@@ -74,6 +71,7 @@ export class AlertTrigger {
     @Inject(Notifier) private readonly notifier: Notifier,
     @Inject(Telemetry) private readonly telemetry: Telemetry,
     @Inject(Scheduler) private readonly scheduler: Scheduler,
+    @Inject(AppLogger) private readonly logger: AppLogger,
     // 通知客户端按配置装配（未配置的通道不注册），用于默认技术规则的通道判定
     @Inject(FileClient)
     @Optional()

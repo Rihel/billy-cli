@@ -2,7 +2,7 @@ import { pageWith, type PageQueryResult } from '@repo/kits'
 import { AlertRuleEntity } from '../../database/entities/alert-rule-entity.js'
 import type { PageQueryAlertRuleDto } from '@repo/shared'
 import { type DeepPartial } from 'typeorm'
-import { Inject, Injectable } from '@repo/di'
+import { Inject, Injectable } from '@nestjs/common'
 import { Db } from '@repo/kits'
 
 const toRule = (record: AlertRuleEntity): Omit<AlertRuleEntity, 'deletedAt' | 'generateId'> => {

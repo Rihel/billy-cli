@@ -1,0 +1,54 @@
+import { z } from 'zod'
+import {
+  AppConfigFacade,
+  DbConfigSchema,
+  envConfigLoader,
+  JwtConfigSchema,
+  LoggerConfigSchema,
+  PasswordConfigSchema,
+  RedisConfigSchema,
+} from '@repo/kits'
+
+/**
+ * 应用配置 schema：**直接复用 kits 各模块的配置 schema** 组合成整份配置 ——
+ * 单一事实源，一处校验 + 补默认值；落到各模块时只需 `ConfigService.get('<namespace>')`。
+ * 不含 `db.entities`（类引用无法来自环境变量），由 root.module.ts 装配时补上。
+ */
+export const appConfigSchema = z.object({
+  server: z.object({
+    port: z.coerce.number().int().positive().default(9989),
+  }),
+  db: DbConfigSchema,
+  redis: RedisConfigSchema,
+  jwt: JwtConfigSchema,
+  password: PasswordConfigSchema,
+  logger: LoggerConfigSchema,
+})
+
+export type AppConfig = z.infer<typeof appConfigSchema>
+
+/** 空串视为未配置（env 常见写法 `KEY=`） */
+const optional = (value: string | undefined): string | undefined =>
+  value ? value : undefined
+
+/** 环境变量 → 嵌套配置（未设置的键留 undefined，由 schema 默认值兜底） */
+export const mapEnv = (env: NodeJS.ProcessEnv): Record<string, unknown> => ({
+  server: { port: optional(env.PORT) },
+  db: { url: optional(env.DB_URL), sync: env.DB_SYNC === 'true' },
+  redis: { url: optional(env.REDIS_URL), keyPrefix: optional(env.REDIS_KEY_PREFIX) },
+  jwt: { secret: optional(env.JWT_SECRET), expiresIn: optional(env.JWT_EXPIRES_IN) },
+  password: { passwordHashRounds: optional(env.PASSWORD_HASH_ROUNDS) },
+  logger: {
+    prefix: '<%= it.name %>',
+    level: optional(env.LOG_LEVEL),
+    pretty: env.NODE_ENV === undefined ? undefined : env.NODE_ENV !== 'production',
+  },
+})
+
+/** 加载并缓存应用配置：**必须在 NestFactory.create 之前调用** */
+export const loadAppConfig = (): Promise<AppConfig> =>
+  AppConfigFacade.initial({
+    schema: appConfigSchema,
+    // loader 可插拔：换来源只改这一行（如 loader: 'consul', loaderOptions: { baseURL, key }），shape 不变
+    loader: envConfigLoader({ envFileName: '.env', mapEnv }),
+  })

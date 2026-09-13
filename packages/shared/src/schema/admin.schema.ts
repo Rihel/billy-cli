@@ -1,10 +1,10 @@
 import { z } from 'zod'
-import { BaseModel, BasePaginateDto } from './base.schema'
+import { BaseModelSchema, BasePaginateSchema } from './base.schema'
 
 /** 后台用户（管理员）状态字典：与 UserStatus 保持一致 */
 export const AdminStatusSchema = z.enum(['enabled', 'disabled'])
 
-export const AdminSchema = BaseModel.extend({
+export const AdminSchema = BaseModelSchema.extend({
   email: z.email(),
   realName: z.string().nullable(),
   avatar: z.string().nullable(),
@@ -12,9 +12,11 @@ export const AdminSchema = BaseModel.extend({
 })
 export type AdminModel = z.infer<typeof AdminSchema>
 
-export const AdminIdSchema = z.object({
+/** id 入参基类（单条记录定位，如 detail / remove / update / reset-password） */
+export const AdminIdInputSchema = z.object({
   adminId: z.string(),
 })
+export type AdminIdInputDto = z.infer<typeof AdminIdInputSchema>
 
 export const AdminLoginSchema = z.object({
   email: z.email(),
@@ -37,20 +39,20 @@ export const CreateAdminSchema = z.object({
 })
 export type CreateAdminDto = z.infer<typeof CreateAdminSchema>
 
-export const GetAdminDetailSchema = AdminIdSchema.extend({})
+export const GetAdminDetailSchema = AdminIdInputSchema.extend({})
 export type GetAdminDetailDto = z.infer<typeof GetAdminDetailSchema>
 
-export const RemoveAdminSchema = AdminIdSchema.extend({})
+export const RemoveAdminSchema = AdminIdInputSchema.extend({})
 export type RemoveAdminDto = z.infer<typeof RemoveAdminSchema>
 
-export const UpdateAdminSchema = AdminIdSchema.extend({
+export const UpdateAdminSchema = AdminIdInputSchema.extend({
   realName: z.string().nullable().optional(),
   avatar: z.string().nullable().optional(),
   status: AdminStatusSchema.optional(),
 })
 export type UpdateAdminDto = z.infer<typeof UpdateAdminSchema>
 
-export const ResetAdminPasswordSchema = AdminIdSchema.extend({
+export const ResetAdminPasswordSchema = AdminIdInputSchema.extend({
   password: z.string().min(6),
 })
 export type ResetAdminPasswordDto = z.infer<typeof ResetAdminPasswordSchema>
@@ -62,7 +64,7 @@ export const AdminUpdateInfoSchema = z.object({
 })
 export type AdminUpdateInfoDto = z.infer<typeof AdminUpdateInfoSchema>
 
-export const PageQueryAdminDto = BasePaginateDto.extend({
+export const PageQueryAdminSchema = BasePaginateSchema.extend({
   keyword: z.string().optional(),
   status: AdminStatusSchema.optional(),
   orderBy: z
@@ -71,4 +73,4 @@ export const PageQueryAdminDto = BasePaginateDto.extend({
     .default('createdAt'),
   order: z.enum(['asc', 'desc']).optional().default('desc'),
 })
-export type PageQueryAdminDto = z.infer<typeof PageQueryAdminDto>
+export type PageQueryAdminDto = z.infer<typeof PageQueryAdminSchema>

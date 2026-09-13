@@ -1,8 +1,8 @@
 import { z } from 'zod'
 import {
-  BaseCursorPaginateDto,
-  BaseModel,
-  BasePaginateDto,
+  BaseCursorPaginateSchema,
+  BaseModelSchema,
+  BasePaginateSchema,
 } from './base.schema'
 
 const TodoFields = z.object({
@@ -11,13 +11,15 @@ const TodoFields = z.object({
   completed: z.boolean().default(false),
 })
 
-export const TodoSchema = z.intersection(BaseModel, TodoFields)
+export const TodoSchema = z.intersection(BaseModelSchema, TodoFields)
 
 export type TodoModel = z.infer<typeof TodoSchema>
 
+/** id 入参基类（单条记录定位，如 detail / remove / update） */
 export const TodoIdInputSchema = z.object({
   todoId: z.string(),
 })
+export type TodoIdInputDto = z.infer<typeof TodoIdInputSchema>
 
 export const GetDetailTodoSchema = TodoIdInputSchema.extend({})
 export type GetDetailTodoDto = z.infer<typeof GetDetailTodoSchema>
@@ -31,7 +33,7 @@ export type CreateTodoDto = z.infer<typeof CreateTodoSchema>
 export const UpdateTodoSchema = z.intersection(TodoIdInputSchema, TodoFields)
 export type UpdateTodoDto = z.infer<typeof UpdateTodoSchema>
 
-export const PageQueryTodoSchema = BasePaginateDto.extend({
+export const PageQueryTodoSchema = BasePaginateSchema.extend({
   keyword: z.string().optional(),
   orderBy: z.enum(['updatedAt', 'createdAt']).optional().default('updatedAt'),
   order: z.enum(['asc', 'desc']).optional().default('desc'),
@@ -47,7 +49,7 @@ export const TodoCursorSchema = z.object({
 /** 游标模型（响应） */
 export type TodoCursorModel = z.infer<typeof TodoCursorSchema>
 
-export const CursorQueryTodoSchema = BaseCursorPaginateDto.extend({
+export const CursorQueryTodoSchema = BaseCursorPaginateSchema.extend({
   cursor: TodoCursorSchema.optional(),
   keyword: z.string().optional(),
 })

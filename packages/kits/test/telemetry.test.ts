@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { Telemetry } from '../src/infrastructure/telemetry/telemetry.js'
+import { Telemetry } from '../src/telemetry/telemetry.js'
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 

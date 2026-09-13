@@ -1,15 +1,15 @@
 import { z } from 'zod'
 import {
-  BaseCursorPaginateDto,
-  BaseModel,
-  BasePaginateDto,
+  BaseCursorPaginateSchema,
+  BaseModelSchema,
+  BasePaginateSchema,
 } from './base.schema'
 
 const <%= it.modulePascal %>Fields = z.object({
 <%= it.fieldShapeLines %>
 })
 
-export const <%= it.modulePascal %>Schema = z.intersection(BaseModel, <%= it.modulePascal %>Fields)
+export const <%= it.modulePascal %>Schema = z.intersection(BaseModelSchema, <%= it.modulePascal %>Fields)
 
 export type <%= it.modulePascal %>Model = z.infer<typeof <%= it.modulePascal %>Schema>
 
@@ -31,7 +31,7 @@ export type Create<%= it.modulePascal %>Dto = z.infer<typeof Create<%= it.module
 export const Update<%= it.modulePascal %>Schema = z.intersection(<%= it.modulePascal %>IdInputSchema, <%= it.modulePascal %>Fields)
 export type Update<%= it.modulePascal %>Dto = z.infer<typeof Update<%= it.modulePascal %>Schema>
 
-export const PageQuery<%= it.modulePascal %>Schema = BasePaginateDto.extend({
+export const PageQuery<%= it.modulePascal %>Schema = BasePaginateSchema.extend({
   keyword: z.string().optional(),
   orderBy: z
     .enum(['<%= it.orderableFields %>'])
@@ -50,7 +50,7 @@ export const <%= it.modulePascal %>CursorSchema = z.object({
 /** 游标模型（响应） */
 export type <%= it.modulePascal %>CursorModel = z.infer<typeof <%= it.modulePascal %>CursorSchema>
 
-export const CursorQuery<%= it.modulePascal %>Schema = BaseCursorPaginateDto.extend({
+export const CursorQuery<%= it.modulePascal %>Schema = BaseCursorPaginateSchema.extend({
   cursor: <%= it.modulePascal %>CursorSchema.optional(),
   keyword: z.string().optional(),
 })

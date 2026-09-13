@@ -1,0 +1,69 @@
+import { Body, Controller, HttpCode, Inject, Post, UseGuards } from '@nestjs/common'
+import {
+  Create<%= it.modulePascal %>Schema,
+  CursorQuery<%= it.modulePascal %>Schema,
+  GetDetail<%= it.modulePascal %>Schema,
+  PageQuery<%= it.modulePascal %>Schema,
+  Remove<%= it.modulePascal %>Schema,
+  Update<%= it.modulePascal %>Schema,
+} from '@repo/shared'
+import type {
+  Create<%= it.modulePascal %>Dto,
+  CursorQuery<%= it.modulePascal %>Dto,
+  GetDetail<%= it.modulePascal %>Dto,
+  PageQuery<%= it.modulePascal %>Dto,
+  Remove<%= it.modulePascal %>Dto,
+  Update<%= it.modulePascal %>Dto,
+} from '@repo/shared'
+import { AdminAuthGuard } from '../admin/admin-auth.guard.js'
+import { <%= it.modulePascal %>Service } from './<%= it.name %>.service.js'
+
+/**
+ * <%= it.modulePascal %> 业务路由（/<%= it.name %>/*，全部后台管理员鉴权）。
+ * 统一 POST + HTTP 200：Nest 对 POST 默认 201，故每个方法显式 @HttpCode(200)。
+ * 不需要鉴权时去掉 @UseGuards（或换成 UserAuthGuard），公开接口置于类外单独控制器。
+ */
+@Controller('<%= it.name %>')
+@UseGuards(AdminAuthGuard)
+export class <%= it.modulePascal %>Controller {
+  constructor(
+    @Inject(<%= it.modulePascal %>Service)
+    private readonly <%= it.name %>Service: <%= it.modulePascal %>Service,
+  ) {}
+
+  @Post('create')
+  @HttpCode(200)
+  create(@Body({ schema: Create<%= it.modulePascal %>Schema }) input: Create<%= it.modulePascal %>Dto) {
+    return this.<%= it.name %>Service.create(input)
+  }
+
+  @Post('page-query')
+  @HttpCode(200)
+  pageQuery(@Body({ schema: PageQuery<%= it.modulePascal %>Schema }) input: PageQuery<%= it.modulePascal %>Dto) {
+    return this.<%= it.name %>Service.page(input)
+  }
+
+  @Post('cursor-query')
+  @HttpCode(200)
+  cursorQuery(@Body({ schema: CursorQuery<%= it.modulePascal %>Schema }) input: CursorQuery<%= it.modulePascal %>Dto) {
+    return this.<%= it.name %>Service.cursor(input)
+  }
+
+  @Post('detail')
+  @HttpCode(200)
+  detail(@Body({ schema: GetDetail<%= it.modulePascal %>Schema }) input: GetDetail<%= it.modulePascal %>Dto) {
+    return this.<%= it.name %>Service.get(input)
+  }
+
+  @Post('update')
+  @HttpCode(200)
+  update(@Body({ schema: Update<%= it.modulePascal %>Schema }) input: Update<%= it.modulePascal %>Dto) {
+    return this.<%= it.name %>Service.update(input)
+  }
+
+  @Post('remove')
+  @HttpCode(200)
+  remove(@Body({ schema: Remove<%= it.modulePascal %>Schema }) input: Remove<%= it.modulePascal %>Dto) {
+    return this.<%= it.name %>Service.remove(input)
+  }
+}
