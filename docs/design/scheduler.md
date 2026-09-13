@@ -18,8 +18,8 @@
 | 项 | 决定 |
 | --- | --- |
 | 能力性质 | 横切基础能力（进程内调度器） |
-| 落点 | `packages/kits/src/foundation/scheduler.ts`（`Scheduler`） |
-| 注册 | `createServiceContext` 用 `addLifeCycleService(Scheduler)`；`foundation/index.ts` 导出 |
+| 落点 | `packages/kits/src/foundation/scheduler/scheduler.ts`（`Scheduler`） |
+| 注册 | `SchedulerModule` 装配（`@Global()` 无配置纯模块，业务侧 `@Inject(Scheduler)`）；`foundation/index.ts` 导出 |
 | 依赖 | `croner@^10.0.1`（kits），`vitest` 仅 devDependency |
 | 错误 | `SchedulerError`（`AppErrorCodes.Internal`），加入 `infrastructure-errors.ts` |
 
@@ -35,7 +35,7 @@
 - 任务名全局唯一，重复注册抛 `SchedulerError`。
 - 处理器异常由调度器统一记日志并吞掉，单次失败不中断调度循环（cron 侧再叠加 croner
   的 `catch: true` 兜底）。
-- 生命周期：`onAppStop()` 统一 `stopAll()` 清理全部任务（幂等）。
+- 生命周期：`onApplicationShutdown()` 统一 `stopAll()` 清理全部任务（幂等）。
 
 ## 4. 使用示例
 

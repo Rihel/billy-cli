@@ -6,15 +6,15 @@
 ## 0. 骨架生成（可选，推荐）
 
 新模块骨架可用代码生成器一键生成（对齐 todo 范例的 entity / repository /
-service / errors / features 路由 / schema 七个文件）：
+service / errors / controller / module / schema）：
 
 ```bash
 pnpm cli -t crud -n <name>
 ```
 
-生成后仍需按下列各节逐层落地：错误码与 schema 导出、`modules/index.ts` 副作用导入
-（业务类 `@Injectable` 自动装配，无需 main.ts 逐个 addService）+ 实体注入
-`db.entities` + `app.route` 挂载、迁移、SDK、admin 页面。
+生成后仍需按下列各节逐层落地：错误码与 schema 导出、`XxxModule` 在
+`apps/server/src/root.module.ts` 的 `imports` 注册 + 实体注入
+`DbModule.forRootAsync` 工厂的 `entities`、迁移、SDK、admin 页面。
 
 ## 1. ① 契约：错误码 + schema
 
@@ -74,11 +74,10 @@ export class XxxRepository {
 ```ts
 @Injectable()
 export class XxxService {
-  @Logger()
-  private readonly logger!: AppLogger
-
   constructor(
     @Inject(XxxRepository) private readonly xxxRepository: XxxRepository,
+    // 日志固定构造器注入（AppLogger 来自 @repo/kits），不要用已删除的 @Logger() 装饰器
+    @Inject(AppLogger) private readonly logger: AppLogger,
   ) {}
 
   @Transactional()   // 写操作必须加事务
@@ -96,47 +95,62 @@ export class XxxService {
 }
 ```
 
-### index.ts + 模块注册（自动装配）
+### xxx.module.ts + index.ts（模块注册）
 
-1. 模块 `index.ts`：`export * from './errors.js'`、`./xxx.repository.js`、`./xxx.service.js`。
-2. 在 `apps/server/src/modules/index.ts` 加一行副作用导入 `import './xxx/index.js'`
-   ——业务类 `@Injectable()` 装饰器执行时自动登记，组合根 `runtime.autoRegister()` 自动装配，
-   **无需 main.ts 逐个 addService**（main.ts 只保留 `.autoRegister()` 一句）。
-   **漏了副作用导入 = 类未加载 = 未登记**，`features/xxx.ts` 的 `runtime.get(XxxService)` 会失败。
-   （实体另在 `createServiceContext({ db: { entities: [...] } })` 注入，见 `define-data-structure`。
-   业务类若实现 `OnAppStart/OnAppStop` 钩子，autoRegister 自动按生命周期组件装配，同样无需手动注册。）
+1. 模块 `index.ts`：`export * from './errors.js'`、`./xxx.repository.js`、`./xxx.service.js`、
+   `./xxx.controller.js`、`./xxx.module.js`（模块内部聚合导出，无自动注册语义）。
+2. 在 `apps/server/src/modules/xxx/xxx.module.ts` 声明 provider 与 controller：
 
-## 4. ④ Hono 路由（薄边界）
+   ```ts
+   @Module({
+     imports: [AdminModule],       // 复用 AdminAuthGuard 时按需导入
+     controllers: [XxxController],
+     providers: [XxxRepository, XxxService],
+   })
+   export class XxxModule {}
+   ```
+
+3. 在 `apps/server/src/root.module.ts` 的 `imports` 里加 `<Xxx>Module`：没有副作用入口，
+   也没有自动注册，**漏了这一步 Nest 不会加载该模块，路由直接 404**。
+   实体另在 `root.module.ts` 的 `DbModule.forRootAsync` 工厂里补进 `entities: [...]`
+   （其余 `db` 配置来自 `config.get('db')`），见 `define-data-structure`。
+
+## 4. ④ Controller（HTTP 边界）
 
 ```ts
-// apps/server/src/features/xxx.ts（参考 features/todo.ts）
-export const makeXxxRoutes = (runtime: AppContext) => {
-  const xxxService = runtime.get(XxxService)
-  const requireAuth = makeRequireAuth(runtime)
-  const routes = new Hono()
+// apps/server/src/modules/xxx/xxx.controller.ts（参考 modules/todo/todo.controller.ts）
+@Controller('xxx')
+@UseGuards(AdminAuthGuard)
+export class XxxController {
+  constructor(@Inject(XxxService) private readonly xxxService: XxxService) {}
 
-  routes.use('*', requireAuth)
-  routes
-    .post('/create', jsonBody(CreateXxxSchema), async (context) => {
-      const input = context.req.valid('json')
-      return success(context, await xxxService.create(input))
-    })
-    .post('/page-query', jsonBody(PageQueryXxxSchema), async (context) => {
-      const input = context.req.valid('json')
-      return success(context, await xxxService.page(input))
-    })
-    // ... detail / update / remove 同构
-  return routes
+  @Post('create')
+  @HttpCode(200)
+  create(@Body({ schema: CreateXxxSchema }) input: CreateXxxDto) {
+    return this.xxxService.create(input)
+  }
+
+  @Post('page-query')
+  @HttpCode(200)
+  pageQuery(@Body({ schema: PageQueryXxxSchema }) input: PageQueryXxxDto) {
+    return this.xxxService.page(input)
+  }
+
+  // ... detail / update / remove 同构
 }
 ```
 
-然后在 `apps/server/src/main.ts` 的 `makeApp()` 中挂载：
-`app.route('/xxx', makeXxxRoutes(runtime))`。
+要点：
+- Nest 对 POST 默认返回 201，必须显式 `@HttpCode(200)`；所有业务路由统一 POST。
+- 入参一律 `@Body({ schema: Schema })`；返回数据由全局 `ResponseEnvelopeInterceptor` 包
+  `{ code: 0, data }`，controller 不手写响应信封。
+- 构造器参数必须显式 `@Inject(token)`：项目用 tsx（esbuild）不产出 `design:paramtypes`，
+  漏写会静默注入 undefined（第 6 条铁律，见 `billy-dev-foundation`）。
 
 鉴权按需选择（细节见 `implement-auth` skill）：
-- 登录用户接口：`makeRequireAuth`（`features/todo.ts`）。
-- 管理员接口：`makeRequireAdminAuth`（`features/admin.ts`）。
-- 公开接口：不加全局中间件，handler 内按需处理。
+- 用户接口：`@UseGuards(UserAuthGuard)`（`modules/auth/user-auth.guard.ts`）。
+- 管理员接口：`@UseGuards(AdminAuthGuard)`（`modules/admin/admin-auth.guard.ts`）。
+- 公开接口：不加守卫，handler 内按需处理。
 
 ## 5. ⑤ SDK（全类型化客户端）
 

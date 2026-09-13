@@ -30,12 +30,12 @@
 
 | 项 | 决定 |
 | --- | --- |
-| 遥测层（通用埋点） | `packages/kits/src/infrastructure/telemetry/`：`Telemetry` 门面（Counter / Histogram / Gauge + 窗口聚合 + 分位计算 + 指标注册），随配置自动装配；**任何业务可埋点** |
-| 文件输出通道 | `packages/kits/src/infrastructure/file/`：`FileClient`（通知写文件，默认 `logs/alerts.log`，始终 configured） |
+| 遥测层（通用埋点） | `packages/kits/src/telemetry/`：`Telemetry` 门面（Counter / Histogram / Gauge + 窗口聚合 + 分位计算 + 指标注册），由 `TelemetryModule` 装配（`@Global()` 无配置纯模块）；**任何业务可埋点** |
+| 文件输出通道 | `packages/kits/src/notification/file/`：`FileClient`（通知写文件，默认 `logs/alerts.log`，始终 configured） |
 | 通知门面 | `notifier.ts` 增加 `file` 通道（默认：无真实通道配置时兜底文件输出） |
 | 规则实体 | `alert_rules` 扩展：`threshold` / `thresholdWindowSeconds`（event）+ `metric` / `operator` / `thresholdValue` / `periodSeconds`（metric / surge） |
 | 评估引擎 | `apps/server/src/modules/monitor/alert-trigger.ts`（`AlertTrigger`）：事件计数窗口 + `Scheduler` 周期评估 metric / surge |
-| 框架埋点 | `apps/server/src/features/monitor.ts` 或独立中间件：全局请求埋点（耗时直方图 / 请求数 / 5xx）+ 内存采样 |
+| 框架埋点 | `apps/server/src/common/request-metrics/request-metrics.middleware.ts`（`main.ts` 用 `app.use()` 注册）+ `modules/monitor/monitor.controller.ts`：全局请求埋点（耗时直方图 / 请求数 / 5xx）+ 内存采样 |
 | 路由 / SDK / admin | 同第一版（/monitor/* + monitor 段 SDK + 规则 Drawer 加阈值与指标配置） |
 | 依赖 | 零新增（文件输出用 node fs；分位 / 窗口自研） |
 
@@ -43,8 +43,7 @@
 
 ```ts
 // 指标名约定：<域>.<名称>，kebab 化，如 request.duration / order.count / inventory.available
-const telemetry = runtime.get(Telemetry)
-
+// telemetry 由构造器注入：@Inject(Telemetry) private readonly telemetry: Telemetry
 telemetry.incr('request.count')                  // 计数器 +1（可带 labels）
 telemetry.incrBy('request.error', 1)
 telemetry.histogram('request.duration', 320)     // 直方图：记录耗时（ms）

@@ -3,9 +3,9 @@
 > 本文件是 `object-storage` skill 的组成部分，由主 SKILL.md 引用。
 > 使用对象存储 / 实现文件上传下载时必读。
 
-## 1. 后端门面（kits/infrastructure/object-storage）
+## 1. 后端门面（kits/src/storage）
 
-`ObjectStorage` 门面（`packages/kits/src/infrastructure/object-storage/object-storage.ts`），
+`ObjectStorage` 门面（`packages/kits/src/storage/object-storage.ts`），
 支持 **S3 / COS** 双 provider，公共方法：
 
 - `getPresignedUrl(dto)` → 上传预签名 URL（`StoragePresignedUrlModel`）
@@ -13,7 +13,9 @@
 - `getTemporaryCredentials(dto)` → STS 临时凭证（客户端直传场景）
 - `getObject(key)` / `removeObject(key)` → 服务端读取 / 删除（内部用，不暴露 API）
 
-注入方式：`runtime.get(ObjectStorage)`（生命周期组件，`addLifeCycleService` 注册）。
+注入方式：构造器 `@Inject(ObjectStorage)`（由 `ObjectStorageModule.forRoot({ provider, region,
+bucket, accessKeyId, secretAccessKey, endpoint })` 装配；该模块依赖 `RedisModule` 提供的
+`RedisStore`，故 `root.module.ts` 的 `imports` 里 `RedisModule` 需排在它之前）。
 
 ## 2. 配置（apps/server/.env）
 
@@ -28,13 +30,14 @@ OBJECT_STORAGE_ENDPOINT=http://localhost:9000   # MinIO 本地
 
 未配置时用默认值；`docker compose up minio` 可起本地 MinIO 联调。
 
-## 3. 路由（apps/server/src/features/storage.ts，均 makeRequireAdminAuth）
+## 3. 路由（apps/server/src/modules/storage/storage.controller.ts：`@Controller('storage')` +
+`@UseGuards(AdminAuthGuard)`，均 `@HttpCode(200)`）
 
 | 端点 | 入参 schema | 说明 |
 | --- | --- | --- |
 | `/storage/get-presigned-url` | `GetStorageUploadPresignedUrlSchema` | 上传预签名 |
 | `/storage/get-download-url` | `GetStorageDownloadUrlSchema` | 下载预签名 |
-| `/storage/get-temporary-credentials` | 无入参（取 `requestContext.adminId`） | STS 临时凭证 |
+| `/storage/get-temporary-credentials` | 无入参（取 `currentAdminId()`） | STS 临时凭证 |
 
 ## 4. SDK
 

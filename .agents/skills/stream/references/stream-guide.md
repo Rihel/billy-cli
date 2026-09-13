@@ -8,17 +8,20 @@
 | 项 | 位置 |
 | --- | --- |
 | 协议契约（事件 / 订阅体） | `packages/shared/src/schema/stream.schema.ts`（`StreamEventSchema` / `StreamSubscribeSchema`） |
-| 服务端推流门面 | `packages/kits/src/infrastructure/stream/stream-hub.ts`（`StreamHub`）+ `stream-connection.ts`（`StreamConnection`） |
-| 订阅路由 | `apps/server/src/features/stream.ts`（`makeStreamRoutes`），`main.ts` 挂载 `/sse` |
+| 服务端推流门面 | `packages/kits/src/stream/stream-hub.ts`（`StreamHub`）+ `stream-connection.ts`（`StreamConnection`） |
+| 订阅路由 | `apps/server/src/modules/stream/stream.controller.ts`（`StreamController`，`POST /sse/subscribe`） |
 | 客户端 | `packages/http-client/src/stream/`（`HttpStreamClient`，浏览器 / Node 双环境） |
 
-`StreamHub` 是生命周期组件：`createServiceContext({ redis })` 传入 redis 即自动装配
-（`addLifeCycleService`），业务代码直接 `runtime.get(StreamHub)`，无需额外注册。
+`StreamHub` 由 `StreamHubModule` 装配（`@Global()`，复用 `RedisModule` 的 `RedisConfig` 与
+`IdGenerationModule` 的 `IdGeneration`），业务代码构造器 `@Inject(StreamHub)` 注入即可，
+无需额外注册；构造器必须显式 `@Inject`，tsx（esbuild）不产出 `design:paramtypes`。
 
 ## 2. 服务端：推流（业务模块任意位置）
 
 ```ts
-const streamHub = runtime.get(StreamHub)
+// 业务 service / controller 构造器注入
+constructor(@Inject(StreamHub) private readonly streamHub: StreamHub) {}
+
 streamHub.publish('task:42', { event: 'progress', data: { percent: 50 } })
 streamHub.publish('task:42', { event: 'done', data: { ok: true }, id: 'evt-001' })
 ```
@@ -30,23 +33,32 @@ streamHub.publish('task:42', { event: 'done', data: { ok: true }, id: 'evt-001' 
 
 ## 3. 服务端：订阅路由与频道权限（安全要点）
 
-`apps/server/src/features/stream.ts` 的 `makeStreamRoutes(runtime, options?)`：
+`apps/server/src/modules/stream/stream.controller.ts` 的 `StreamController`
+（业务频道白名单等选项在 `modules/stream/stream.module.ts` 以 `SSE_ROUTE_OPTIONS` 注入）：
 
 ```ts
+// apps/server/src/modules/stream/stream.module.ts
 // 默认：仅身份频道（推荐先这样，业务频道按需放开）
-app.route('/sse', makeStreamRoutes(runtime))
+{
+  provide: SSE_ROUTE_OPTIONS,
+  useValue: { auth: 'user', allowChannel: () => false },
+}
 
 // 需要业务频道：注入白名单校验（如 task:42 归属当前用户）
-app.route('/sse', makeStreamRoutes(runtime, {
-  auth: 'user',                                  // 'user'（默认）| 'admin'
-  allowChannel: (channel) => channel.startsWith('task:'),
-}))
+{
+  provide: SSE_ROUTE_OPTIONS,
+  useValue: {
+    auth: 'user',                                  // 'user'（默认）| 'admin'
+    allowChannel: (channel: string) => channel.startsWith('task:'),
+  },
+}
 ```
 
 - **身份频道强制注册**：`user:{userId}`（或 `admin:{adminId}`），与请求是否携带无关。
 - 客户端请求的 `user:*` / `admin:*` 前缀频道**一律忽略**（防窃听他人频道），统一替换为当前身份频道。
-- 业务频道（`task:*` 等）默认拒绝，必须经 `allowChannel` 白名单校验（第一版由业务方在路由层自行核对归属权）。
-- 认证复用 `makeRequireAuth` / `makeRequireAdminAuth`（`Authorization: Bearer` 或 `access-token` cookie），`AUTH_ENABLED=false` 时守卫放行。
+- 业务频道（`task:*` 等）默认拒绝，必须经 `allowChannel` 白名单校验（第一版由业务方在 module 配置里自行核对归属权）。
+- 认证由 `StreamAuthGuard` 按 `SSE_ROUTE_OPTIONS.auth` 委派给 `UserAuthGuard` / `AdminAuthGuard`
+  （`Authorization: Bearer` 或 `access-token` cookie），`AUTH_ENABLED=false` 时守卫放行。
 
 ## 4. 客户端：HttpStreamClient（@repo/http-client）
 
@@ -76,7 +88,9 @@ sse.close()
 - 典型场景：AI 流式输出（`event: 'token'` 逐段推）、任务进度（`event: 'progress'`）、实时通知（`event: 'notification'`）。
 - 连接注册表是**本实例内存态**：多实例部署时，广播只推给持有本地连接的实例。
 - 第一版边界：不做连接上限 / 频道限流；`Last-Event-ID` 只收不补（断线续传为后续版本）；多标签页各自建连、客户端不去重。
-- hono 入口：**`hono/streaming`**（4.12.x 的 exports；4.13+ 的 `hono/helper/streaming` 仅新版本才有，勿混用）。
+- SSE 用 `@Res()` 自行写原始响应（Nest 的 `@Sse()` 只支持 GET），帧格式
+  event → data → id（与 @repo/http-client 的 SSE 解析器约定一致）；该路由返回 undefined、
+  不经过响应信封拦截器。
 
 ## 6. 测试参考
 

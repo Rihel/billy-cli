@@ -49,8 +49,8 @@ export const AppErrorCodes = createDict({
 - value 为**数字分段**：`1xxx` 认证 / `2xxx` 用户、管理员 / `3xxx` 业务模块
   （每个新业务模块从这里起一段）/ `4xxx` 输入 / `5xxx` 系统。
 - 必须带 `http` 字段（仅 400 / 401 / 403 / 404 / 409 / 500），
-  `apps/server/src/lib/http.ts` 的 `describeErrorCode` 会自动映射为 HTTP 状态码与
-  中文文案，**无需任何额外代码**。
+  `apps/server/src/common/error/error-descriptor.ts` 的 `describeErrorCode`（边界经
+  `common/error/boundary-error.ts` 映射）会自动映射为 HTTP 状态码与中文文案，**无需任何额外代码**。
 - 业务层错误类引用它：`readonly code = AppErrorCodes.TodoNotFound`
   （见 `apps/server/src/modules/todo/errors.ts`）。
 
@@ -108,6 +108,9 @@ export const AdminStatusSchema = z.enum(['enabled', 'disabled'])
 - 若需从字典构造（可选替代）：`z.enum(UserStatus.values as [string, ...string[]])`；
   纯映射字段也可只做 `z.string()`，值域校验交给业务层。**新代码遵循现状（硬编码
   z.enum）或显式引用字典，二者择一并保持一致。**
+- 命名（与 `define-data-structure` 3.1 一致）：值域枚举 schema 一律 `XxxSchema` 结尾
+  （`AlertChannelSchema` / `AlertRuleTypeSchema` / `AlertOperatorSchema` / `AlertLevelSchema`），
+  **不导出 `XxxType` / `XxxValue` 之类类型别名**；需要该字面量类型时写 `z.infer<typeof XxxSchema>`。
 
 ## 6. 前端展示
 

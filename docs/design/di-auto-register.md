@@ -1,5 +1,7 @@
 # @repo/di 自动注册（autoRegister）落地方案
 
+> 已废弃（2026-09-12）：`@repo/di` 与 `autoRegister` 已随 NestJS 12 重构删除；现状见 `.agents/skills/billy-dev-foundation`。
+
 > 状态：待实现 · 日期：2026-09-06 · 影响包：`@repo/di`（核心）、`@repo/kits`（service-context）、`apps/server`（main.ts）
 
 ## 1. 目标与问题

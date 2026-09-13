@@ -11,7 +11,7 @@
   （`state-machine` skill 已要求「转移表为纯函数，可单测」）。
 - 错误走契约可断言：业务抛 `AppError` 断 `{ code }`；HTTP 层 `ApiError` 断 `{ code, status }`
   （测试套路见 `write-tests` skill，参考 `packages/http-client/test/` 现有测试）。
-- 副作用经门面：日志 `@Logger()`、队列、存储、通知都经注入门面，测试里替换为 stub，
+- 副作用经门面：日志 `AppLogger`、队列、存储、通知都经构造器注入的门面，测试里替换为 stub，
   不在 service 里散落裸的全局调用。
 
 检查项：service 核心分支（成功 / 查无 / 无权限 / 非法输入）在单测里跑过，不依赖真实外部服务。

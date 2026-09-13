@@ -1,5 +1,32 @@
 # 后端 kits 化改造设计方案（backend-kits-refactor）
 
+> 2026-09-12 更新：组合根已由 `createServiceContext` 改为 NestJS 动态模块 `KitsModule.forRoot`。
+>
+> 2026-09-12 二次更新：`KitsModule.forRoot` 聚合模块已拆除，改为一个基础设施一个 module、
+> 配置即模块自身 bean（`DbModule.forRoot` / `RedisModule.forRoot` / `JwtModule.forRoot` …）。
+> 本文正文是该方案的设计记录，保留原貌；**正文中出现的 `KitsModule.forRoot` 均为方案原文，
+> 不代表现状**，现状以 `billy-dev-foundation/references/architecture.md` 为准。
+>
+> 2026-09-12 三次更新：`packages/kits/src` 的目录布局也已调整 —— 原 `foundation/config/` 与
+> `infrastructure/` 两个目录拆除，改为「一个基础设施一个目录」（`src/db/`、`src/redis/`、
+> `src/rate-limit/`、`src/queue/`、`src/stream/`、`src/jwt/`、`src/session/`、`src/password/`、
+> `src/storage/`、`src/kafka/`、`src/lark/`、`src/notification/`、`src/telemetry/`、
+> `src/foundation/<能力>/`），配置 bean 并入各自目录（如 `src/redis/redis.config.ts`）。
+> **正文中的 `kits/src/infrastructure/...` 与 `foundation/config/...` 路径均为当时布局，不代表现状。**
+>
+> 2026-09-13 更新：`apps/server` 的组合根已由 `app.module.ts`/`AppModule` 更名为 `root.module.ts`/`RootModule`，
+> `CoreModule`（应用级配置 bean）已删除，改为各处经全局 `ConfigService` + `resolveServerConfig()` 取用。
+
+> 2026-09-12 四次更新：配置链路改为 `AppConfigFacade` + `@nestjs/config` + 各模块 `forRootAsync`
+> （kits 新增配置模块，应用侧 `apps/server/src/app-config.ts` 组合命名空间配置，
+> `main.ts` 先 `await loadServerAppConfig()`）。正文中「配置由 `forRoot(options)` 直接传入」的描述
+> 已不代表现状。
+>
+> 2026-09-12 五次更新：配置模块收拢为单一 `packages/kits/src/foundation/config/`，并把来源抽象为
+> **可插拔 `ConfigLoader`**（内置 env / memory / consul，应用可实现接口或用 `registerConfigLoader` 扩展）。
+> `AppConfigFacade.initial({ schema, loader })` 的 `schema` 是应用 shape、`loader` 决定来源；
+> 旧写法 `loadConfig({ schema, source })` 与 `ConfigSourceError` 已不存在。
+
 > 状态：待评审 · 难度：复杂（架构级改造）· 依据：`billy-dev-foundation/references/design.md`
 > 触发背景：第一版目标仿 rihel-base 包划分（基建独立成包、业务归应用层），
 > 修正 billy 演化路径中「基建被顺带抽入 core」的偏移，使能力归位。
@@ -23,18 +50,18 @@ packages/kits        后端通用能力封装（无任何业务实体，纯能�
   foundation/        AppConfig / Logger / IdGeneration / Scheduler / errors
   db/                createDb / pagination(pageWith/cursorPageWith) / BaseEntity /
                      typeorm-transactional re-export
-  入口               createServiceContext({ db: { entities, url, sync }, ... })
-packages/di          不动（InversifyJS 门面）
+  入口               KitsModule.forRoot({ db: { entities, url, sync }, ... })
+DI 容器            @nestjs/common 原生容器（原 @repo/di InversifyJS 门面已删除）
 packages/shared      不动（跨端契约 / DICT / 工具）
 packages/sdk         不动（前端全类型客户端）
 apps/server          database/(实体 + data-source + migrations)
-                     modules/(业务：auth/user/todo/admin 三层)
-                     features/(Hono 边界) + lib/ + main(组合根) + scripts/(seed-admin)
+                     modules/(业务：auth/user/todo/admin，module/controller/service/repository 同目录)
+                     common/(横切 HTTP 构件) + main(NestFactory 启动) + scripts/(seed-admin)
 scripts/cli          不动（脚手架生成器，已确认不依赖 core/db）
 ```
 
 - `packages/core`、`packages/db` 两个包**删除**；
-- 业务模块物理移入 `apps/server`，但**保持不 import Hono**（分层铁律不破：modules/ 与 features/ 物理分层）。
+- 业务模块物理移入 `apps/server`，但**业务逻辑与 HTTP 边界分离**（分层铁律不破：controller 只做校验与转发，业务逻辑在 service / repository）。
 
 ## 2. 落点映射（文件级）
 
@@ -42,14 +69,14 @@ scripts/cli          不动（脚手架生成器，已确认不依赖 core/db）
 
 | 来源 | 迁入 kits |
 | --- | --- |
-| `core/src/infrastructure/` 全部 | `kits/src/infrastructure/`（Db / RedisStore / QueueManager / ObjectStorage / TokenSigner / SessionStore / PasswordHasher） |
+| `core/src/infrastructure/` 全部 | `kits/src/infrastructure/`（Db / RedisStore / QueueManager / ObjectStorage / TokenSigner / SessionStore / PasswordHasher）——当时布局，现已按「一个基础设施一个目录」拆到 `kits/src/<name>/` |
 | `core/src/foundation/` 全部 | `kits/src/foundation/`（AppConfig / Logger / IdGeneration / Scheduler / errors） |
 | `db/src/db.ts` | `kits/src/db/db.ts` —— **改 API：`createDb({ entities, ...options })`，实体参数注入** |
 | `db/src/pagination.ts` | `kits/src/db/pagination.ts`（原样） |
 | `db/src/entities/base-entity.ts` | `kits/src/db/base-entity.ts`（通用审计字段基类，属能力） |
 | `db` 的 typeorm-transactional 导出 | kits `index.ts` 继续 re-export |
 
-依赖：`@repo/di`、`@repo/shared`、`typeorm`、`typeorm-transactional`、`pg`、`ioredis`、`bullmq`、`croner`、S3/COS SDK 等（即现 core + db 的依赖合集，去掉业务相关项）。
+依赖：`@nestjs/common`、`@repo/shared`、`typeorm`、`typeorm-transactional`、`pg`、`ioredis`、`bullmq`、`croner`、S3/COS SDK 等（即现 core + db 的依赖合集，去掉业务相关项）。
 
 ### 2.2 `apps/server` 新增（来源：core + db 的业务部分）
 
@@ -65,17 +92,17 @@ scripts/cli          不动（脚手架生成器，已确认不依赖 core/db）
 ### 2.3 就地修改
 
 - `core/src/runtime.ts` 拆分：
-  - `kits` 提供 `createServiceContext({ db: { entities, ... } })` —— 装配 AppConfig + 全部基建 + 基础能力；
-  - `server/src/main.ts` 在其上注册业务模块（repository/service），形成应用组合根；
-- `apps/server` features/lib：`from '@repo/core'` 改为内部相对路径或 `from '@repo/kits'`；
+  - `kits` 提供 `KitsModule.forRoot({ db: { entities, ... } })` —— 装配 AppConfig + 全部基建 + 基础能力；
+  - `server/src/main.ts` 在其上装配 `app.module.ts`（业务模块 + 全局过滤器 / 拦截器），形成应用组合根；
+- `apps/server` 原 features/lib：改为 `common/`（横切 HTTP 构件）与 `modules/<业务>/`（含 controller），import 改内部相对路径或 `from '@repo/kits'`；
 - 根 `package.json`：移除 `@repo/core`/`@repo/db` 依赖；`db:gen`/`db:migrate`/`seed:admin` 改指 server；
 - `apps/web` landing 文案（`features.tsx` / `architecture.tsx` 中 `@repo/core` 展示项）同步改；
 - `pnpm-workspace.yaml` / `turbo.json` 无需变（apps/* 与 packages/* 均在 workspace）。
 
 ## 3. 关键设计决策
 
-1. **实体注入**：`createDb({ entities, ... })`、`createServiceContext({ db: { entities, ... } })`——kits 不持有任何实体，app 注入自己的实体列表（kits 的唯一 API 形状变化点）；
-2. **组合根归属**：基建装配（createServiceContext）在 kits；业务注册在 server main。scripts/worker/cron 用 createServiceContext，不依赖 server；
+1. **实体注入**：`createDb({ entities, ... })`、`KitsModule.forRoot({ db: { entities, ... } })`——kits 不持有任何实体，app 注入自己的实体列表（kits 的唯一 API 形状变化点）；
+2. **组合根归属**：基建装配（`KitsModule.forRoot`）在 kits；业务模块注册在 server `app.module.ts` 的 imports。scripts/worker/cron 用 `KitsModule.forRoot`，不依赖 server；
 3. **BaseEntity 归 kits**：通用审计字段（id=nanoid(20) / createdAt / updatedAt / deletedAt）是能力，业务实体继承之；
 4. **迁移自管**：迁移工具链（data-source + migrations + CLI 脚本）整体下沉 app 层，每 app 用自己的实体列表生成/执行迁移；
 5. **命名**：`@repo/kits`（用户定名，语义=后端通用能力工具集）；与 rihel-base 前端 `client-kits` 无命名冲突（billy 前端包为 ui/http-client/api-client）；
@@ -90,7 +117,7 @@ scripts/cli          不动（脚手架生成器，已确认不依赖 core/db）
 | 1 | 新建 `packages/kits`：迁入 infrastructure + foundation + db 通用能力（createDb 改实体注入）；kits 自身测试跑通 | `pnpm --filter kits run test` |
 | 2 | `packages/core` 依赖 kits 并 re-export（**apps/server、scripts 零改动**） | `pnpm dev:pkgs`、server 启动回归 |
 | 3 | server 建 `database/`：实体 + data-source + migrations 迁入，挂迁移脚本 | `db:generate` 生成 + `db:migrate` 执行成功 |
-| 4 | 业务 modules 迁入 server；features/lib 改内部相对 import；main 改用 createServiceContext + 业务注册 | 全部接口回归（auth/todo/user/admin/storage） |
+| 4 | 业务 modules 迁入 server；原 features/lib 改 `common/` + `modules/`（含 controller）；main 改用 KitsModule.forRoot + 业务模块注册 | 全部接口回归（auth/todo/user/admin/storage） |
 | 5 | seed-admin 迁入 server；scripts/cli 确认无 core/db 依赖 | `seed:admin` 执行成功 |
 | 6 | 删除 `packages/core`、`packages/db`；改根 package.json 脚本与依赖；改 apps/web 文案 | `pnpm build` 全量通过 |
 | 7 | 同步文档与 skill（见 §5）；README 架构章节更新 | 文档检索无残留旧路径 |

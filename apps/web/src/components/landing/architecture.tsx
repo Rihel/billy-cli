@@ -9,13 +9,13 @@ const steps = [
   },
   {
     tag: 'apps/server',
-    title: 'Hono 边界',
-    desc: 'Zod 校验请求体，薄边界零业务',
+    title: 'NestJS 边界',
+    desc: 'Controller + 守卫 + Zod 校验，薄边界零业务',
   },
   {
     tag: 'apps/server/src/modules',
     title: '业务核心',
-    desc: 'Service + Repository（@repo/di 注入）',
+    desc: 'Service + Repository（NestJS 依赖注入）',
   },
   {
     tag: '@repo/kits',
@@ -27,7 +27,7 @@ const steps = [
 const rules = [
   'shared 不依赖任何业务包',
   'kits 不引用 apps/*',
-  'modules 不 import Hono',
+  'common 不依赖业务模块',
 ]
 
 /** 架构说明：一次请求的数据流 */

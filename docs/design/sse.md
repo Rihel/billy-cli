@@ -12,7 +12,7 @@
 - 诉求（已确认）：
   1. SSE 客户端能力并入 **`@repo/http-client`**（原 `@repo/api-client` 改名，包定位扩展为
      通用 HTTP 客户端：请求 + SSE 流式推送）；
-  2. 后端能力放**基础设施**（`kits/infrastructure/stream/`）；
+  2. 后端能力放**基础设施**（`kits/src/stream/`）；
   3. 多实例部署，事件需跨实例广播；
   4. SSE 客户端（http-stream-client 定位） **浏览器与 Node.js 双环境可用**；
   5. 认证复用 http-client 的 **CredentialsManager / AuthStrategy / CredentialProvider** 体系；
@@ -25,8 +25,8 @@
   - **传输层：自研**（`fetch` + `ReadableStream` + 流式 SSE 帧解析，约百行）。浏览器与
     Node 18+ 均原生提供 `fetch` / `ReadableStream` / `TextDecoder`，零第三方依赖；
     SSE 帧协议（`id/event/data/retry`）是 WHATWG 标准，解析与状态机完全自控。
-  - **服务端传输层**：Hono 自带 `hono/helper/streaming` 的 `streamSSE`（已随 hono 主包
-    存在，无需新依赖），帧编码不重复实现。
+  - **服务端传输层**：Nest 的 `@Sse()` 只支持 GET，故用 `@Res()` 自行写原始响应，
+    帧格式 `event → data → id` 保持重构前字节一致。
   - **跨实例广播**：复用 `RedisStore.raw`（ioredis）的 pub/sub，不引新依赖。
   - **认证**：复用 `@repo/http-client` 的 `CredentialsManager` / `AuthStrategy` /
     `CredentialProvider` / `CredentialResolver` 及现成 managers / strategies（SSE 与
@@ -40,14 +40,14 @@
 | 项 | 决定 |
 | --- | --- |
 | 协议层（事件契约 / 频道约定） | `packages/shared/src/schema/stream.schema.ts`（zod），`schema/index.ts` 导出 |
-| 服务端推流门面 | `packages/kits/src/infrastructure/stream/stream-hub.ts`（`StreamHub`）+ `stream-connection.ts` + `index.ts`，`infrastructure/index.ts` 导出 |
-| 服务端 SSE 路由 | `apps/server/src/features/stream.ts`（`makeStreamRoutes`），`main.ts` 挂载 `/sse` |
+| 服务端推流门面 | `packages/kits/src/stream/stream-hub.ts`（`StreamHub`）+ `stream-connection.ts` + `index.ts`，`stream/index.ts` 聚合后由 `packages/kits/src/index.ts` 导出 |
+| 服务端 SSE 路由 | `apps/server/src/modules/stream/stream.controller.ts`（`StreamController`，`@Controller('sse')` + `POST subscribe`），鉴权在 `stream-auth.guard.ts`（按 `SSE_ROUTE_OPTIONS.auth` 委派用户 / 管理员守卫） |
 | SSE 客户端能力 | `packages/http-client/src/stream/`（`HttpStreamClient` + `stream-transport` + `stream-parser` + `types` + `errors`），随 `@repo/http-client` 导出（**http-stream-client 定位**：流式客户端是 http-client 的能力子模块，不拆独立包） |
 | 依赖 | `@repo/http-client`：**零第三方依赖**（认证用本包凭证体系）；广播用 kits 既有 `RedisStore.raw`，零新增 |
-| 注册 | `StreamHub` 用 `addLifeCycleService`（OnAppStart 建 pub/sub，OnAppStop 清理） |
+| 注册 | `StreamHubModule` 装配（`@Global()`，复用 `RedisConfig` + `IdGeneration`）；生命周期 `OnApplicationBootstrap` 建 pub/sub，`OnApplicationShutdown` 清理 |
 | 错误 | `StreamHubError` 加入 `infrastructure-errors.ts`（`AppErrorCodes.Internal`） |
 
-归位依据：`placement.md` §6「外部资源门面 → kits/infrastructure」；HTTP 边界 → features。
+归位依据：`placement.md` §6「外部资源门面 → `kits/src/<基础设施>/`」；HTTP 边界 → controller。
 
 ## 3. 数据结构
 
@@ -62,20 +62,20 @@ const StreamEventSchema = z.object({
   data: z.unknown(),          // 任意 JSON 负载（传输层给 string，客户端反序列化）
   id: z.string().optional(),  // 服务端生成的事件 id（续传用，第一版仅透传）
 })
-type StreamEvent = z.infer<typeof StreamEventSchema>
+type StreamEventModel = z.infer<typeof StreamEventSchema>
 ```
 
 **频道命名规范**：`<域>:<id>`，如 `user:42` / `admin:all` / `task:42`。
 订阅方式：**POST `/sse/subscribe`**，body `{ channels: ['user:42', 'task:42'] }`
 （method 可配置，默认 POST，贴合工程「统一 POST + JSON body」约定）。
 
-### 3.2 服务端（kits/infrastructure/stream/）
+### 3.2 服务端（kits/src/stream/）
 
 ```ts
-class StreamHub {                       // @Injectable，生命周期 OnAppStart/OnAppStop
+class StreamHub {                       // @Injectable，生命周期 OnApplicationBootstrap/OnApplicationShutdown
   connections: Map<ConnectionId, StreamConnection>   // 连接注册表
   channels:    Map<Channel, Set<StreamConnection>>   // 频道索引
-  publish(channel: Channel, event: StreamEvent): void
+  publish(channel: Channel, event: StreamEventModel): void
     // 本地直推 + Redis PubSub 广播（见 §5.3）
   createConnection(ctx): StreamConnection             // SSE 路由调用
 }
@@ -83,7 +83,7 @@ class StreamHub {                       // @Injectable，生命周期 OnAppStart
 class StreamConnection {
   id: ConnectionId            // nanoid，可作事件 id 前缀
   channels: Set<Channel>
-  write(event: StreamEvent): void  // 封装 streamSSE 写入（帧编码）
+  write(event: StreamEventModel): void  // 写原始响应（帧编码 event → data → id）
   closed: Promise<void>         // request aborted → 触发注销
   close(): void                 // 服务端主动关流
 }
@@ -176,9 +176,10 @@ HTTP 生命周期驱动，无复杂流转；`request aborted` 监听统一走注
   现成实现直接用：`BearerTokenStrategy`、`MemoryCredentialsManager` /
   `EnvCredentialsManager`（跨环境）/ `LocalStorageCredentialsManager` /
   `CookieCredentialsManager`（仅浏览器）。
-- **服务端路由**：复用 `extractToken`（`Authorization: Bearer` 或 `access-token` cookie）。
-  `makeStreamRoutes(runtime, { auth: 'user' | 'admin' })` 挂 `makeRequireAuth` /
-  `makeRequireAdminAuth` 中间件。选 fetch 流而非原生 EventSource 正是因为
+- **服务端路由**：复用 `extractToken`（`Authorization: Bearer` 或 `access-token` cookie，
+  `common/authentication.ts`）。`StreamController` 由 `stream-auth.guard.ts` 的
+  `StreamAuthGuard` 保护，按 `SSE_ROUTE_OPTIONS.auth`（`'user' | 'admin'`）委派给
+  `UserAuthGuard` / `AdminAuthGuard`。选 fetch 流而非原生 EventSource 正是因为
   EventSource 无法自定义 header。
 
 ### 5.3 跨实例广播（Redis PubSub）
@@ -199,24 +200,24 @@ HTTP 生命周期驱动，无复杂流转；`request aborted` 监听统一走注
 - 服务端强制注册身份频道：`user` 鉴权 → `user:{userId}`；`admin` → `admin:{adminId}`。
 - 客户端请求的 channels 中 `user:*` / `admin:*` 前缀一律**忽略并替换为当前身份频道**，
   防窃听他人频道。
-- 业务频道（`task:*` 等）由业务方在路由层自行校验（第一版：feature 提供
-  `channels` 白名单/校验回调注入点，默认仅允许身份频道）。
+- 业务频道（`task:*` 等）由业务方在路由层自行校验（第一版：`modules/stream/stream.module.ts` 的
+  `SSE_ROUTE_OPTIONS` 提供 `allowChannel` 白名单 / 校验回调注入点，默认仅允许身份频道）。
 
 ### 5.5 心跳
 
-复用 `streamSSE` 自带 ping（周期写注释行，服务端保活）；传输层无心跳检测（网络断开由
+复用帧注释行 ping（周期写注释行，服务端保活）；传输层无心跳检测（网络断开由
 fetch 读流抛错自然进入 reconnecting），客户端状态机据此重连。
 
 ## 6. 使用示例
 
 ```ts
 // ===== 服务端：业务模块发事件（任意实例） =====
-const streamHub = runtime.get(StreamHub)
+// streamHub 由构造器注入：@Inject(StreamHub) private readonly streamHub: StreamHub
 streamHub.publish('task:42', { event: 'progress', data: { percent: 50 } })
 
-// ===== 服务端：SSE 路由（features/stream.ts） =====
+// ===== 服务端：SSE 路由（modules/stream/stream.controller.ts） =====
 // POST /sse/subscribe  body: { channels: ['user:42', 'task:42'] }（Bearer 认证）
-// 内部：hub.createConnection(ctx) → streamSSE 长连接 → 按 channels 注册 → 推流
+// 内部：hub.createConnection(ctx) → @Res() 写原始响应长连接 → 按 channels 注册 → 推流
 
 // ===== 客户端（前端 / Node 通用，来自 @repo/http-client） =====
 import { HttpStreamClient, BearerTokenStrategy, MemoryCredentialsManager } from '@repo/http-client'

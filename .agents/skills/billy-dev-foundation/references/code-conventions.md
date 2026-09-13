@@ -3,10 +3,10 @@
 > 本文件是 `billy-dev-foundation` skill 的组成部分，由主 SKILL.md 引用。
 > **写任何代码前先阅读并遵守以下约定。**
 
-1. **包内相对导入后缀**：`@repo/kits`、`@repo/di`、`apps/server` 内相对导入带 `.js` 后缀
-   （如 `'./errors.js'`、`'../lib/http.js'`）；`@repo/shared` 及前端 app 不带后缀。
+1. **包内相对导入后缀**：`@repo/kits`、`apps/server` 内相对导入带 `.js` 后缀
+   （如 `'./errors.js'`、`'../../common/http/zod-validation.js'`）；`@repo/shared` 及前端 app 不带后缀。
    **新代码跟随所在包的既有风格，不混用**。跨包一律 `@repo/*`（如 `@repo/kits`、
-   `@repo/shared`、`@repo/shared/logger` 子路径）。
+   `@repo/shared`、`@repo/shared/logger` 子路径，后者仅供前端使用）。
 2. **错误体系**：业务 / 基础设施错误必须继承 `AppError`
    （`packages/kits/src/foundation/errors/app-error.ts`），提供只读 `code`
    （来自 `AppErrorCodes`）。边界自动映射 HTTP + 中文，禁止在 server 层手写错误文案。
@@ -16,20 +16,40 @@
 4. **统一响应格式**：成功 `{ code: 0, data }`；分页 `{ items, total, page, size }`；
    游标 `{ items, nextCursor }`（见 `@repo/shared` 的 `AppResponse` / `AppPageQueryResponse` /
    `AppCursorQueryResponse`）。所有业务接口统一 `POST + JSON body`，不用 REST 动词。
-5. **DI**：业务类用 `@Injectable()`，构造器参数用 `@Inject(Token)`
-   （均来自独立包 `@repo/di`）；日志用 `@Logger()` 注入 `AppLogger`；
-   写操作加 `@Transactional()`（来自 `@repo/kits` 的 re-export）；**新增业务 service /
-   repository 无需在 main.ts 手动注册**——在 `apps/server/src/modules/index.ts` 加一行副作用
-   导入即被 `runtime.autoRegister()` 自动装配（main.ts 只保留 `.autoRegister()`）；
-   实现 `OnAppStart/OnAppStop` 钩子的类自动按生命周期组件装配。kits 基建（条件装配）在
-   `createServiceContext` 内显式 `addService` / `addLifeCycleService` + `markManual`，业务层勿动。
+5. **DI**：业务类用 `@Injectable()`，构造器参数用 `@Inject(Token)`，可选依赖用 `@Optional()`
+   （均来自 `@nestjs/common`）。**项目用 tsx（esbuild）不产出 `design:paramtypes`，每个构造器
+   参数都必须显式 `@Inject(token)`**，不能依赖 TypeScript 类型推断（漏写会静默注入 `undefined`，
+   不报错）；controller / service / repository / guard / filter 一律 `@Inject(Xxx)`。
+   **开发态加载器必须是 `node --import tsx/esm`（`pnpm dev:server` 已内置），不要用 `tsx` CLI**：
+   `tsx` CLI 同时挂 CJS 钩子，CJS 依赖（如 `nestjs-pino`）的 `require('@nestjs/core')` 与 ESM
+   `import` 会拿到两份模块实例，`ApplicationConfig` 这类跨包 class token 对不上 → 启动即
+   `Nest can't resolve dependencies of the LoggerModule (pino-params, ?)`；一次性脚本还要注意
+   `pino-pretty` 的 transport worker 不随 `app.close()` 结束（脚本末尾显式 `process.exit`）。
+   日志用**构造器注入** `@Inject(AppLogger)`（`AppLogger` 来自 `@repo/kits`，`Scope.TRANSIENT` +
+   `INQUIRER` 自动以宿主类名作 `context`；`@Logger()` 装饰器已删除，不要再写）；写操作加
+   `@Transactional()`（来自 `@repo/kits` 的 re-export）；
+   **新增业务 service / repository 无需在 `main.ts` 注册** —— 在 `<业务>.module.ts` 的 `providers`
+   声明，再把该模块加入 `apps/server/src/root.module.ts` 的 `imports`；实体在
+   `root.module.ts` 的 `DbModule.forRootAsync` 工厂里补 `entities`。kits 基建的装配在各基础设施模块
+   自己的 `forRoot` / `forRootAsync` 内完成（配置对象即该模块的注入 bean，业务层勿动）；
+   **配置一律惰性取**：`forRootAsync` + `ConfigService.get('<命名空间>')`，不在 `root.module.ts`
+   顶层直读配置值（ESM 装饰器求值早于 bootstrap 期的配置加载）。**应用级业务配置**（端口 / 鉴权开关 /
+   限流白名单等 `server` 分片）同理：注入全局 `ConfigService` 后调 `apps/server/src/config.ts` 的
+   `resolveServerConfig(config)`，**不要再为它加配置 bean / module**。应用配置 shape 定义在
+   `apps/server/src/app-config.ts`，来源由 `AppConfigFacade.initial({ schema, loader })` 的 `loader` 决定
+   （`kits/foundation/config/`：可插拔 `ConfigLoader` + 内置 env / memory / consul，自定义来源实现
+   `ConfigLoader` 或用 `registerConfigLoader` 注册成按名字引用）。
+   生命周期钩子用 NestJS 的 `OnApplicationBootstrap` / `OnApplicationShutdown`
+   （方法名 `onApplicationBootstrap` / `onApplicationShutdown`）。
 6. **实体**（`apps/server/src/database/entities/`）：继承 `BaseEntity`（来自 `@repo/kits`，
    自动 id = nanoid(20)、
    created_at / updated_at / deleted_at 均为 timestamp(3)）；表名复数；列名 snake_case、
    字段名 camelCase；索引 / 唯一约束显式命名（`idx_*` / `uk_*`）。软删除 + 唯一约束
    必须把 `deletedAt` 纳入唯一键（如 `@Unique('uk_user_email', ['email', 'deletedAt'])`）。
-7. **命名**：文件 `kebab-case`；DTO 类型统一 `XxxDto`（`z.infer` 结果）；模型 `XxxModel`；
-   实体 `XxxEntity`；类名 PascalCase。
+7. **命名**：文件 `kebab-case`；共享契约常量统一 `XxxSchema`（**值**后缀），入参类型 `XxxDto`、
+   响应类型 `XxxModel`（**类型**后缀，`z.infer` 结果），类型与 schema 导出在**同一文件**；
+   实体 `XxxEntity`；类名 PascalCase。禁止 schema 常量用 `Dto` / `Model` 后缀（同名值 + 类型会
+   发生声明合并）；细则见 `define-data-structure` 3.1。
 8. **前端**：admin 页面一律 `'use client'` + `@repo/ui`（DataTable / DataList /
    ModalForm / DrawerForm / ConfirmAction / PageToolbar / 存储组件等）+ TanStack
    Query（useQuery / useMutation）+ `@tanstack/react-table`（DataTable 列定义）+
@@ -45,13 +65,13 @@
    混用导入会报错；其余 packages 虽未开启，仍统一用 `import type` 区分纯类型，保持风格一致。
 10. **不要重复造轮子（实现查找顺序，最高优先）**：任何功能实现之前，先按以下顺序
     查找现成实现，**全部都没有才允许自己写**：
-    1. **各个包有无实现**：`packages/*`（shared / kits / di / sdk / http-client / ui）里是否已有类似能力（工具函数、schema、字典、服务、组件）。
+    1. **各个包有无实现**：`packages/*`（shared / kits / sdk / http-client / ui）里是否已有类似能力（工具函数、schema、字典、服务、组件）。
     2. **所属包内部有无实现**：当前所在包的同级目录是否已有可复用实现，例如
        `shared/src/utils/`（nanoid / dayjs / md5 / tree / dict / zod 等工具）、
-       `kits/src/foundation/`、`ui/src/components/`。先在包内找，别另起炉灶。
+       `kits/src/<基础设施>/`（如 `kits/src/redis/`、`kits/src/foundation/`）、`ui/src/components/`。先在包内找，别另起炉灶。
     3. **当前依赖的 npm 包有无实现**：查 `package.json` 已声明的依赖是否直接提供该
-       能力——lodash、dayjs、zod、typeorm、hono、@repo/di（InversifyJS 门面）、
-       @tanstack/react-query、zod、typeorm、hono 等都能覆盖大量通用需求，优先用依赖自身能力
+       能力——lodash、dayjs、zod、typeorm、@nestjs/*（NestJS DI / 守卫 / 拦截器 / 管道）、
+       @tanstack/react-query 等都能覆盖大量通用需求，优先用依赖自身能力
        （如分页 `pageWith` /
         `cursorPageWith` 已由 `@repo/kits` 提供，勿在模块内重写；服务端推送 / SSE 用
         `@repo/kits` 的 `StreamHub` + `@repo/http-client` 的 `HttpStreamClient`，勿自写

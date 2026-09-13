@@ -4,11 +4,11 @@
 > 需要执行命令时查阅。
 
 ```bash
-pnpm dev:pkgs      # watch 构建 packages（http-client / di / kits / sdk / shared；ui 无 dev 脚本）
-pnpm dev:server    # 启动 Hono 服务（9989）
+pnpm dev:pkgs      # watch 构建 packages（http-client / kits / sdk / shared；ui 无 dev 脚本）
+pnpm dev:server    # 启动 NestJS 服务（9989；node --watch --import tsx/esm src/main.ts）
 pnpm dev:web       # Web 前台（9840）
 pnpm dev:admin     # Admin 后台（9845）
-pnpm build:pkgs    # 仅构建 packages（http-client / di / kits / sdk / shared / ui）
+pnpm build:pkgs    # 仅构建 packages（http-client / kits / sdk / shared / ui）
 pnpm build         # 全量构建（turbo，按依赖拓扑）
 pnpm db:gen <Name> # 依据实体与数据库的差异生成迁移（写入 apps/server/src/database/migrations/，经 @app/server）
 pnpm db:migrate    # 执行迁移（经 @app/server）
@@ -17,5 +17,9 @@ pnpm docker:up     # Docker Compose 一键起依赖（postgres + redis + minio +
 pnpm bootstrap     # 一键初始化引导：环境检查 → 依赖服务 → 生成 .env → install → 迁移 → 种子 → 冒烟
 pnpm bootstrap -y  # 全默认非交互（--skip-docker / --skip-install / --skip-migrate / --skip-seed / --skip-smoke 可跳过指定步骤）
 pnpm cli           # 代码生成器（交互式）：package / client / service / crud 四类模板
-pnpm cli -t crud -n <name>  # 非交互生成 CRUD 业务模块（实体 / repository / service / errors / features / schema）
+pnpm cli -t crud -n <name>  # 非交互生成 CRUD 业务模块（实体 / repository / service / controller / module / schema）
 ```
+
+> **不要用 `tsx` CLI 跑 server**：它同时挂 CJS 钩子，会让 CJS 依赖（nestjs-pino）`require` 到的
+> `@nestjs/core` 与 ESM `import` 的是两份实例，启动报 `ApplicationConfig` 解析失败。
+> 开发态统一 `node --watch --import tsx/esm`（package.json 的 `dev` / `seed:admin` 已如此）。

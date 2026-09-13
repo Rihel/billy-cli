@@ -35,13 +35,17 @@ Redis 会话支持**主动失效**（登出 / 禁用 / 删除即踢下线），�
 | 项 | 决定 |
 | --- | --- |
 | 能力性质 | 横切基础设施（认证会话门面） |
-| 落点 | `packages/kits/src/infrastructure/session-store.ts`（`SessionStore`） |
-| 注册 | `createServiceContext` `addService(SessionStore)`；`infrastructure/index.ts` 导出 |
+| 落点 | `packages/kits/src/session/session-store.ts`（`SessionStore`） |
+| 注册 | `SessionModule` 装配（`@Global()`，复用 `JwtModule` 的 `JwtConfig` 与 `RedisModule` 的 `RedisStore`；业务模块直接 `@Inject(SessionStore)`）；`session/index.ts` 聚合后由 `packages/kits/src/index.ts` 导出 |
 | 依赖 | 复用 `RedisStore`（ioredis）+ `AppConfig`（`jwt.expiresIn` 解析 TTL），无新增依赖 |
 | 错误 | `RedisStoreError`（`AppErrorCodes.Internal`） |
 
 接入点：`AuthService` / `AdminService`（签发 + 校验 + 登出）、`UserService` / `AdminService`
-（禁用 / 删除时批量撤销）、`apps/server/src/features/{auth,admin}.ts`（logout 路由）。
+（禁用 / 删除时批量撤销）、`modules/auth/user-auth.guard.ts`（`UserAuthGuard`）与
+`modules/admin/admin-auth.guard.ts`（`AdminAuthGuard`）在请求进入时校验身份（身份写入
+`common/request-context.ts` 的 AsyncLocalStorage，token 提取在 `common/authentication.ts`），
+logout 路由在 `modules/auth/auth.controller.ts` 与 `modules/admin/admin.controller.ts`
+（`@Controller` + `@Post` + `@HttpCode(200)` + `@Body({ schema })`）。
 
 ## 4. 关键设计
 

@@ -22,7 +22,7 @@ const spaceGrotesk = Space_Grotesk({
 export const metadata: Metadata = {
   title: "Billy CLI - 全栈应用 Monorepo 模板",
   description:
-    "基于 Hono、InversifyJS 与 Next.js 16 的全栈应用模板：数据结构先行、双前端开箱即用，从脚手架到生产部署一步到位。",
+    "基于 NestJS 12 与 Next.js 16 的全栈应用模板：数据结构先行、双前端开箱即用，从脚手架到生产部署一步到位。",
 }
 
 export default function RootLayout({

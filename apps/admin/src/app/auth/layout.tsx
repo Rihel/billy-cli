@@ -29,7 +29,7 @@ export default function AuthLayout({
             全栈直达
           </p>
           <p className="mt-5 text-sm leading-relaxed text-muted-foreground">
-            Hono + Next.js 16 双前端，数据结构先行、AI 原生工程规范，从脚手架到生产一步到位。
+            NestJS 12 + Next.js 16 双前端，数据结构先行、AI 原生工程规范，从脚手架到生产一步到位。
           </p>
         </div>
         <div className="relative z-10 border-t border-border pt-5">

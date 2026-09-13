@@ -13,8 +13,8 @@ description: 在 Billy 工程中使用对象存储与文件上传下载：S3/COS
 
 - 后端门面 `ObjectStorage`（S3 / COS 双 provider）：`getPresignedUrl` / `getDownloadUrl` /
   `getTemporaryCredentials` / `getObject` / `removeObject`，位于
-  `kits/infrastructure/object-storage`。
-- 路由 `/storage/*`（三个端点，均 `makeRequireAdminAuth` 管理员鉴权），SDK `client.storage.*`。
+  `kits/src/storage/`（`ObjectStorageModule` 装配）。
+- 路由 `/storage/*`（`modules/storage/storage.controller.ts`，三个端点，均 `@UseGuards(AdminAuthGuard)` 管理员鉴权），SDK `client.storage.*`。
 - **上传走预签名直传**：前端 `useStorage` 用 `key = md5+ext` 拿预签名 URL → `PUT` 直传，
   业务只存 `key`，不存完整 URL。
 - 展示 / 下载：`formatStorageUrl(key)`（web/admin 的 `@/lib/constants`）。

@@ -53,7 +53,7 @@ export function Footer() {
               </span>
             </Link>
             <p className="mt-4 max-w-xs text-sm leading-relaxed text-zinc-500">
-              一套基于 Hono、InversifyJS 与 Next.js 16 的全栈应用 Monorepo 模板，数据结构先行、双前端开箱即用。
+              一套基于 NestJS 12 与 Next.js 16 的全栈应用 Monorepo 模板，数据结构先行、双前端开箱即用。
             </p>
           </div>
 
@@ -94,7 +94,7 @@ export function Footer() {
           <p className="text-xs text-zinc-500">
             © {new Date().getFullYear()} {AppName}。保留所有权利。
           </p>
-          <p className="font-mono text-xs text-zinc-500">Made with TypeScript · Hono · Next.js</p>
+          <p className="font-mono text-xs text-zinc-500">Made with TypeScript · NestJS · Next.js</p>
         </div>
       </div>
     </footer>

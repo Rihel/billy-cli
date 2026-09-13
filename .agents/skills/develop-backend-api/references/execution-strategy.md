@@ -9,8 +9,9 @@
 
 仓库真实决策参考：
 - 请求关键路径上的轻操作 → 同步（绝大多数 service 方法）。
-- 不影响响应、可失败可延后的旁路 → fire-and-forget 异步：如 `main.ts` 的 `app.onError`
-  里告警 `AlertTrigger.notifyError`（注释「告警链路异常不影响返回」），失败不拖累主响应。
+- 不影响响应、可失败可延后的旁路 → fire-and-forget 异步：如全局
+  `AppExceptionFilter` 里告警 `AlertTrigger.notifyError`（经 `ERROR_ALERT_HOOK` 注入，
+  注释「告警链路异常不影响返回」），失败不拖累主响应。
 - 长任务 / 慢操作 / 削峰 → 投 `QueueManager`（`addJob` 生产者 / `registerWorker` 消费者，
   失败自动重试，见 `queue` skill）；消费者必须幂等。
 - 进度反馈 → 配合 `stream` skill（SSE）按身份 / 业务频道推任务进度。

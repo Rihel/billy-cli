@@ -8,12 +8,12 @@
 | 项 | 决定 |
 | --- | --- |
 | 能力性质 | 外部资源门面（MQ / 任务队列） |
-| 落点 | `packages/kits/src/infrastructure/queue.ts`（`QueueManager` 门面） |
-| 注册 | `createServiceContext` 用 `addLifeCycleService(QueueManager)`，`infrastructure/index.ts` 导出 |
+| 落点 | `packages/kits/src/queue/queue.ts`（`QueueManager` 门面）+ `queue.module.ts` |
+| 注册 | `QueueModule` 装配（`@Global()`，复用 `RedisModule` 的 `RedisConfig`；业务侧 `@Inject(QueueManager)`），`queue/index.ts` 导出 |
 | 依赖 | `bullmq` 加入 `packages/kits/package.json`（ioredis 已在依赖中，满足 BullMQ 的 peer） |
 
-归位依据：`billy-dev-foundation/references/placement.md` §2「外部资源门面 → kits/infrastructure」、
-§5「消息队列/延迟任务 → 门面 kits/infrastructure/queue.ts」。
+归位依据：`billy-dev-foundation/references/placement.md` §2「外部资源门面 → `kits/src/<基础设施>/`」、
+§5「消息队列/延迟任务 → 门面 `kits/src/queue/queue.ts`」。
 
 ## 2. 关键设计
 
@@ -21,8 +21,8 @@
 - **连接**：每个 `Queue` / `Worker` 独立建一个 ioredis 连接，从 `config.redis.url` 构造，
   设 `maxRetriesPerRequest: null`（Worker 阻塞命令所需）；prefix 取 `config.redis.keyPrefix ?? 'bull'`。
   连接由 BullMQ 自身管理（传入实例即被 Queue/Worker 接管，close 时释放）。
-- **生命周期**：`onAppStart` 启动全部已注册 Worker；`onAppStop` 依次关闭 Worker 与 Queue。
-- **消费者注册**：业务模块在构造期调 `queueManager.registerWorker(name, handler)`，
+- **生命周期**：`onApplicationBootstrap` 启动全部已注册 Worker；`onApplicationShutdown` 依次关闭 Worker 与 Queue。
+- **消费者注册**：业务模块在构造器注入 `QueueManager` 后调 `queueManager.registerWorker(name, handler)`，
   实际 Worker 在应用启动时统一拉起，处理失败交由 BullMQ 按 attempts 重试并记日志。
 - **错误**：抛 `QueueError`（`AppErrorCodes.Internal`），不返回裸结果掩盖错误。
 

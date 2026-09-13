@@ -15,7 +15,10 @@
   （`define-dict-enum`）。
 - 防滥用约束别随手放宽：分页 `size` 契约已 `min(1).max(100)`（`base.schema.ts`），
   扩大上限要评估服务端压力与限流。
-- 复用契约基类：分页继承 `BasePaginateDto` / `BaseCursorPaginateDto`，不各自发明
+- 复用契约基类：分页继承 `BasePaginateSchema` / `BaseCursorPaginateSchema`，不各自发明
   （「不重复造轮子」实现查找顺序）。
+- 命名纪律：契约常量一律 `XxxSchema` 结尾，入参类型 `XxxDto`、响应类型 `XxxModel`，且类型
+  `z.infer` 导出在**同一文件**；改名是破坏性变更，须按上面「契约改 = 全链路改」同批同步
+  （`define-data-structure` 3.1）。
 
 检查项：一次契约改动里 schema / 实体 / service / SDK / 调用方全部同步；删改字段前已查引用。

@@ -11,7 +11,7 @@ import { Reveal } from './reveal'
 /** 分层架构 mini 示意图（浅色行卡） */
 function ArchitectureDiagram() {
   const rows = [
-    { label: 'apps/server', sub: 'Hono 边界 + 业务模块 + 实体迁移', level: '顶层' },
+    { label: 'apps/server', sub: 'NestJS 边界 + 业务模块 + 实体迁移', level: '顶层' },
     { label: '@repo/kits', sub: '后端通用能力（数据库/缓存/队列/存储/推送）', level: '中层' },
     { label: '@repo/shared · sdk', sub: '数据结构 / 客户端', level: '底层' },
   ]
@@ -54,7 +54,9 @@ function ZodSnippet() {
       {'\n  '}
       <span className="text-zinc-700">title</span>: z.<span className="text-indigo-600">string</span>(),
       {'\n  '}
-      <span className="text-zinc-700">status</span>: <span className="text-zinc-800">TodoStatus</span>,
+      <span className="text-zinc-700">completed</span>: z.
+      <span className="text-indigo-600">boolean</span>().<span className="text-indigo-600">default</span>
+      (<span className="text-zinc-800">false</span>),
       {'\n'}
       {'})'}
     </pre>
@@ -122,7 +124,7 @@ export function Features() {
                 <h3 className="text-lg font-semibold text-zinc-950">分层架构，依赖方向不可逆</h3>
               </div>
               <p className="mt-3 text-sm leading-relaxed text-zinc-600">
-                薄边界 + 业务核心：Hono 只做校验与转发，业务下沉 apps/server 模块层，能力复用 @repo/kits，单向依赖、职责清晰、可测试。
+                薄边界 + 业务核心：controller 只做校验与转发，业务下沉 apps/server 模块层，能力复用 @repo/kits，单向依赖、职责清晰、可测试。
               </p>
               <ArchitectureDiagram />
             </div>

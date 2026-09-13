@@ -16,18 +16,18 @@ description: 在 Billy 工程中开发完整业务模块（如商品、订单、
 ```
 ① dicts（错误码）   packages/shared/src/dicts/app-error-code.dict.ts（3xxx 段）
 ② schema（契约）    packages/shared/src/schema/xxx.schema.ts        → 见 define-data-structure
-③ entity（表）      apps/server/src/database/entities/xxx-entity.ts（main.ts 注入 entities）
+③ entity（表）      apps/server/src/database/entities/xxx-entity.ts（root.module.ts 的 DbModule.forRoot 注入 entities）
 ④ 迁移              pnpm db:gen Xxx / pnpm db:migrate
 ⑤ 业务              apps/server/src/modules/xxx/{errors,repository,service,index}.ts
-                    + modules/index.ts 副作用导入（@Injectable 自动装配，无需 main.ts addService）
-⑥ Hono 路由         apps/server/src/features/xxx.ts + main.ts 挂载   → 鉴权见 implement-auth
+                    + XxxModule 的 providers 在 xxx.module.ts 声明
+⑥ Controller        apps/server/src/modules/xxx/xxx.controller.ts + 模块在 root.module.ts imports 注册   → 鉴权见 implement-auth
 ⑦ SDK               packages/sdk/src/server.client.ts
 ⑧ admin 页面        apps/admin/src/app/main/xxx/page.tsx + AppMenu.tsx → 见 develop-frontend-page
 ```
 
 **推荐顺序**：先 ①② 定契约 → ③④ 落数据 → ⑤⑥⑦ 打通接口 → ⑧ 出页面。
 **参考实现**：todo 模块（schema / entity / 业务 `apps/server/src/modules/todo/*` /
-`features/todo.ts` / SDK `todo` 段 / `main/todo/page.tsx`），拿不准直接照抄。
+`modules/todo/todo.controller.ts` / SDK `todo` 段 / `main/todo/page.tsx`），拿不准直接照抄。
 **每一层实现前先按「实现查找顺序」确认现成能力**：分页 `pageWith` / `cursorPageWith`、
 @repo/ui 组件、schema 基类、SDK 既有方法——全部没有才自己写。
 
@@ -35,13 +35,13 @@ description: 在 Billy 工程中开发完整业务模块（如商品、订单、
 
 | 文件 | 内容 | 何时读 |
 | --- | --- | --- |
-| [references/module-guide.md](./references/module-guide.md) | 各层代码模板、模块注册与自动装配、路由 / SDK 写法、验证 | 实现模块时（必读） |
+| [references/module-guide.md](./references/module-guide.md) | 各层代码模板、模块注册、controller / SDK 写法、验证 | 实现模块时（必读） |
 
 ## 完成检查清单
 
 - [ ] 错误码已加入 `AppErrorCodes`（3xxx 段）；schema 已注册 `schema/index.ts`
-- [ ] 实体已在 `main.ts` 注入 `entities`；迁移已生成并执行
-- [ ] 业务模块已加进 `apps/server/src/modules/index.ts` 副作用导入（@Injectable 自动装配）
-- [ ] 路由已在 `main.ts` 挂载，鉴权策略明确；SDK 已补类型化方法
+- [ ] 实体已在 `root.module.ts` 的 `DbModule.forRootAsync` 工厂里注入（`entities: [...]`）；迁移已生成并执行
+- [ ] 业务模块的 `XxxModule` 已加进 `apps/server/src/root.module.ts` 的 `imports`
+- [ ] controller 已声明在 `xxx.module.ts` 的 `controllers`，鉴权策略明确；SDK 已补类型化方法
 - [ ] admin 页面已加进 `AppMenu.tsx`；增删改查 + 分页 + 错误路径自测通过
 - [ ] 对照 `billy-dev-foundation` 完成检查清单逐项自查

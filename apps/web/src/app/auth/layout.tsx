@@ -34,7 +34,7 @@ export default function AuthLayout({
             全栈开发<br />从这里开始
           </p>
           <p className="text-sm leading-relaxed text-zinc-500">
-            Hono 后端 · Next.js 前端 · PostgreSQL + Redis
+            NestJS 后端 · Next.js 前端 · PostgreSQL + Redis
           </p>
         </div>
         <div className="relative z-10">

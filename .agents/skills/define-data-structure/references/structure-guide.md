@@ -43,6 +43,10 @@ export class TodoEntity extends BaseEntity {            // 必须继承 BaseEnti
 1. **继承 `BaseEntity`**：自动获得 `id`（nanoid(20) 主键）、`createdAt`、`updatedAt`、
    `deletedAt`（软删除，均为 `timestamp(3)`），`@BeforeInsert` 自动生成 id。
    **不要重复声明这些字段**。
+   需要记录操作人时改继承 `AuditEntity`（等同 `BaseEntity` + `createdBy` / `updatedBy` /
+   `deletedBy` 三列，需生成迁移），并把 `AuditSubscriber` 加进
+   `DbModule.forRootAsync` 的工厂里 `entities` / `subscribers: [AuditSubscriber]`；操作人来源用
+   `setAuditUserProvider(() => requestContext.get('userId'))` 挂载（未挂载记 `system`）。
 2. **表名复数**：`users` / `todos` / `admins`。
 3. **列名 snake_case**（`name: 'real_name'`），字段名 camelCase（`realName`）。
 4. **列类型**：仓库现状主要用 `text`（email / password / title / description 等均如此），
@@ -61,11 +65,26 @@ export class TodoEntity extends BaseEntity {            // 必须继承 BaseEnti
 
 参考：`packages/shared/src/schema/{base,todo,user,admin}.schema.ts`。
 
-### 3.1 模型（响应 / 实体形状）
+### 3.1 命名规则（硬性）
+
+| 对象 | 规则 | 例 |
+| --- | --- | --- |
+| schema 常量（值） | 一律以 `Schema` 结尾 | `TodoSchema`、`PageQueryTodoSchema`、`AdminStatusSchema` |
+| 入参类型 | `z.infer` 出 `XxxDto`，导出在**同一文件**、紧贴其 schema | `export type CreateTodoDto = z.infer<typeof CreateTodoSchema>` |
+| 响应类型 | `z.infer` 出 `XxxModel`，同样同文件导出 | `export type TodoModel = z.infer<typeof TodoSchema>` |
+| 值域枚举 schema | `z.enum` 只导出 `XxxSchema`，**不导出类型别名** | `AdminStatusSchema`、`AlertLevelSchema`；需类型处写 `z.infer<typeof XxxSchema>` |
+| 契约基类（`base.schema.ts`） | 只作 `extend` / `intersection` 基石，**不导出类型** | `BaseModelSchema`、`BasePaginateSchema`、`BaseCursorPaginateSchema` |
+| id 入参基类 | `XxxIdInputSchema` + `XxxIdInputDto` | `TodoIdInputSchema`、`AdminIdInputSchema` |
+
+> **`Dto` / `Model` 是类型后缀，`Schema` 是值后缀**，二者不可混用：
+> `export const PageQueryAdminDto = ...` 这类「schema 常量用 Dto 结尾」的写法必须禁止——
+> 同名的值与类型会在同一作用域发生声明合并，`typeof XxxDto` 与类型 `XxxDto` 相互纠缠，极易误用。
+
+### 3.2 模型（响应 / 实体形状）
 
 ```ts
 import { z } from 'zod'
-import { BaseModel } from './base.schema'   // { id, createdAt, updatedAt }，日期可 string|Date
+import { BaseModelSchema } from './base.schema'   // { id, createdAt, updatedAt }，日期可 string|Date
 
 const TodoFields = z.object({
   title: z.string(),
@@ -73,11 +92,11 @@ const TodoFields = z.object({
   completed: z.boolean().default(false),
 })
 
-export const TodoSchema = z.intersection(BaseModel, TodoFields)
+export const TodoSchema = z.intersection(BaseModelSchema, TodoFields)
 export type TodoModel = z.infer<typeof TodoSchema>
 ```
 
-### 3.2 DTO（请求入参）命名约定
+### 3.3 DTO（请求入参）命名约定
 
 | 用途 | Schema | 类型 |
 | --- | --- | --- |
@@ -91,29 +110,31 @@ export type TodoModel = z.infer<typeof TodoSchema>
 > 详情 DTO 命名以 `GetDetailXxx` 为准（对应现有 `GetDetailTodoSchema` / `GetAdminDetailSchema`）。
 
 ```ts
-const XxxIdSchema = z.object({ xxxId: z.string() })
+export const XxxIdInputSchema = z.object({ xxxId: z.string() })
+export type XxxIdInputDto = z.infer<typeof XxxIdInputSchema>
 
 export const CreateXxxSchema = XxxFields.omit({ ... })
-export const UpdateXxxSchema = z.intersection(XxxIdSchema, XxxFields)   // 或 XxxIdSchema.extend(...)
-export const PageQueryXxxSchema = BasePaginateDto.extend({
+export const UpdateXxxSchema = z.intersection(XxxIdInputSchema, XxxFields)   // 或 XxxIdInputSchema.extend(...)
+export const PageQueryXxxSchema = BasePaginateSchema.extend({
   keyword: z.string().optional(),
   orderBy: z.enum(['updatedAt', 'createdAt']).optional().default('updatedAt'),
   order: z.enum(['asc', 'desc']).optional().default('desc'),
 })
 ```
 
-### 3.3 分页基类（`packages/shared/src/schema/base.schema.ts`）
+### 3.4 分页基类（`packages/shared/src/schema/base.schema.ts`）
 
-- `BasePaginateDto`：`{ page（默认 1）, size（默认 10，≤100） }` → 配合 `PageQueryResult`。
-- `BaseCursorPaginateDto`：`{ size（默认 20，≤100） }` + 自定义 cursor 模型，如
+- `BasePaginateSchema`：`{ page（默认 1）, size（默认 10，≤100） }` → 配合 `PageQueryResult`。
+- `BaseCursorPaginateSchema`：`{ size（默认 20，≤100） }` + 自定义 cursor 模型，如
   ```ts
   export const TodoCursorSchema = z.object({
     updatedAt: z.iso.datetime(),
     todoId: z.string(),
   })
+  export type TodoCursorModel = z.infer<typeof TodoCursorSchema>
   ```
 
-### 3.4 校验规则要点
+### 3.5 校验规则要点
 
 - 邮箱 `z.email()`；密码 `z.string().min(6)`；可空字段
   `z.string().nullable().optional()`；日期字段 `z.union([z.string(), z.date()])`。
@@ -123,8 +144,8 @@ export const PageQueryXxxSchema = BasePaginateDto.extend({
 ## 4. 注册与迁移
 
 1. **注入实体**：实体文件放入 `apps/server/src/database/entities/` 后，在
-   `apps/server/src/main.ts` 的 `createServiceContext({ db: { entities: [...] } })` 里把
-   实体类加入 `entities` 数组（kits 不持有实体，由应用注入）。
+   `apps/server/src/root.module.ts` 的 `DbModule.forRootAsync` 工厂（`{ ...config.get('db'), entities: [...] }`）
+   里把实体类加入 `entities` 数组（kits 不持有实体，由应用注入）。
 2. **注册 schema**：`packages/shared/src/schema/index.ts` 追加
    `export * from './<name>.schema'`。
 3. **生成迁移**（依据实体与数据库的差异自动生成，**不手写 SQL**）：

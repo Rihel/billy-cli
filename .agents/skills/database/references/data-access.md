@@ -8,13 +8,13 @@
 
 | 层 | 职责 | 不做什么 |
 | --- | --- | --- |
-| repository | 数据访问：怎么查、怎么写、返回实体 / 模型 | 不抛业务错误、不写业务规则、不 import Hono |
+| repository | 数据访问：怎么查、怎么写、返回实体 / 模型 | 不抛业务错误、不写业务规则、不 import HTTP 边界（NestJS controller / 守卫） |
 | service | 业务规则 + 事务边界（`@Transactional()`）+ 日志 | 不直接拼 SQL |
-| 路由 | 校验入参、转发 | 无业务逻辑 |
+| controller | 校验入参、转发 | 无业务逻辑 |
 
 - repository 返回 `null` 表示查无；service 判 null 抛 `AppError`（唯一抛错路径）。
-- repository 类 `@Injectable()`，注册走 `modules/index.ts` 副作用导入自动装配
-  （见 `develop-business-module`），无需手动 addService。
+- repository 类 `@Injectable()`，在 `<xxx>.module.ts` 的 `providers` 声明；构造器依赖必须显式
+  `@Inject`（tsx 不产出 `design:paramtypes`，见 `develop-business-module`），无需手动注册。
 
 ## 2. 写操作模式（先查后改）
 

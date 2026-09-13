@@ -14,7 +14,8 @@
    （坑点 / 解法）与 `docs/design/` 相关设计文档，站在前人经验上开工，不重复踩坑。
 2. **契约先行**：先定义 `@repo/shared` 的 schema 与 dict（含错误码），这是前后端共同的语言。
 3. **自底向上实现**：实体（server/database）→ 迁移 → repository / service / errors
-   （server/modules）→ DI 注册（main.ts）→ Hono 路由（server/features）→ SDK → 前端页面。
+   （server/modules）→ controller + module → 模块注册（`root.module.ts` 的 `imports`，
+   实体在 `DbModule.forRootAsync` 工厂里补 `entities`）→ SDK → 前端页面。
 4. **验证**：`pnpm dev:pkgs` 确保包构建通过 → `pnpm dev:server` 起服务 →
    `curl -X POST http://localhost:9989/...` 或前端页面自测 → 迁移正确执行。
    **遇到问题先翻日志**：`grep` `docs/dev-logs/` 找历史坑点与解法，复用而非重推。
@@ -29,7 +30,9 @@
 - **完整 CRUD 最小链路**：todo 模块——schema
   `packages/shared/src/schema/todo.schema.ts` → 实体
   `apps/server/src/database/entities/todo-entity.ts` → 业务
-  `apps/server/src/modules/todo/*` → 路由 `apps/server/src/features/todo.ts` → SDK
+  `apps/server/src/modules/todo/*`（repository / service / errors）→ HTTP 边界
+  `apps/server/src/modules/todo/todo.controller.ts` + 模块
+  `apps/server/src/modules/todo/todo.module.ts` → SDK
   `packages/sdk/src/server.client.ts` → admin 页
   `apps/admin/src/app/main/todo/page.tsx`。
 - **架构决策与历史**：`README.md`、`docs/sdk-refactor.md`（API 客户端职责划分）。

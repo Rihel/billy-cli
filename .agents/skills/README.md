@@ -9,6 +9,9 @@
 
 ## 加载顺序
 
+当前共 **17 个** skill（必读 1 + 功能 15 + 元 1）；数量与清单变更时同步
+`billy-dev-foundation/references/catalog.md` 与仓库根 `README.md` 的「Agent Skills」章节。
+
 | 顺序 | Skill | 用途 |
 | --- | --- | --- |
 | **必读** | [`billy-dev-foundation`](./billy-dev-foundation/SKILL.md) | 开发基础规范与流程：分层架构、代码约定（含「不重复造轮子」实现查找顺序）、常用命令、标准流程；详情拆分在 `billy-dev-foundation/references/`（architecture / code-conventions / commands / workflow） |

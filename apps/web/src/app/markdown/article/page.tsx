@@ -35,10 +35,10 @@ pnpm dev:server
 | 包 | 职责 | 依赖 |
 | --- | --- | --- |
 | \`@repo/shared\` | Zod 契约、字典、响应格式 | 无 |
-| \`@repo/kits\` | 后端通用能力封装 | shared / di |
+| \`@repo/kits\` | 后端通用能力封装 | shared |
 | \`@repo/ui\` | 前端组件库 | shared |
 | \`@repo/sdk\` | 全类型化 API 客户端 | http-client |
-| \`apps/server\` | Hono 路由与业务模块 | kits / di / shared |
+| \`apps/server\` | NestJS 控制器与业务模块 | kits / shared |
 
 ### 依赖方向
 

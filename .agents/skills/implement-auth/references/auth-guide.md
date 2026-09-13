@@ -11,7 +11,7 @@
 | 实体 | `UserEntity`（`users` 表） | `AdminEntity`（`admins` 表） |
 | 业务服务 | `AuthService` | `AdminService` / `UserService` |
 | 接口前缀 | `/auth/*` | `/admin/*`、`/user/*` |
-| 服务端中间件 | `makeRequireAuth`（注入 `userId`） | `makeRequireAdminAuth`（注入 `adminId`） |
+| 服务端守卫 | `UserAuthGuard`（写入 `userId`） | `AdminAuthGuard`（写入 `adminId`） |
 | SDK 段 | `client.auth.*` | `client.admin.*` / `client.user.*` |
 | 前端 | `apps/web`（login / register / forgot-password / reset-password） | `apps/admin`（login，独立体系） |
 | 错误码段 | `1xxx` 认证（1000-1009） | `2xxx` 用户 + 管理员（2001-2006） |
@@ -24,47 +24,49 @@ token 里带类型标识，`verifyToken` 分别校验，混用必然失败。
 
 - **签发**：登录成功后由 `AuthService` / `AdminService` 签发 token
   （`TokenSigner`，JWT，`JWT_SECRET` / `JWT_EXPIRES_IN` 配置，见
-  `packages/kits/src/infrastructure/token-signer.ts`）。响应模型**按体系区分**：
+  `packages/kits/src/jwt/token-signer.ts`）。响应模型**按体系区分**：
   用户登录 `AuthResultModel`（`auth.schema.ts`），管理员登录 `AdminAuthResultModel`
   （`admin.schema.ts`，`{ token, admin }`）。
 - **服务端会话（Redis）**：签发 JWT 的同时由 `SessionStore`
-  （`packages/kits/src/infrastructure/session-store.ts`）把会话写入 Redis——
+  （`packages/kits/src/session/session-store.ts`）把会话写入 Redis——
   key `auth:session:{sha256(token)}`（TTL 与 JWT 有效期一致）+ 索引
   `auth:index:{type}:{sub}`（Set，供批量踢人）。**每次请求校验 JWT 后必须查 Redis
   会话存在**，登出 / 禁用 / 删除会撤销会话，使已签发 token 立即失效
   （见 `AuthService.verifyToken` / `AdminService.verifyToken`）。
-- **登出**：`/auth/logout`、`/admin/logout` **幂等**（不挂鉴权中间件，token 有效则
+- **登出**：`/auth/logout`、`/admin/logout` **幂等**（不挂鉴权守卫，token 有效则
   撤销会话、无效也返回成功）——前端 `onUnauthorized` 调用不会形成 401 循环。
-- **校验**：`apps/server/src/lib/authentication.ts` 的 `extractToken` 支持两种携带方式：
-  `Authorization: Bearer <token>` 或 `access-token` cookie。中间件校验失败时返回
-  `AppErrorCodes.Unauthorized`（无 token）或 `TokenInvalid`（校验失败），不抛异常进 errorHandler。
-- **注入上下文**：校验通过后把身份写入请求上下文（`requestContext.set('userId' | 'adminId', id)`），
+- **校验**：`apps/server/src/common/security/authentication.ts` 的 `extractToken` 支持两种携带方式：
+  `Authorization: Bearer <token>` 或 `access-token` cookie。守卫校验失败时抛边界错误
+  `AppErrorCodes.Unauthorized`（无 token）或 `TokenInvalid`（校验失败），
+  由全局 `AppExceptionFilter` 统一映射。
+- **注入上下文**：校验通过后守卫把身份写入 `apps/server/src/common/request-context/request-context.ts` 的
+  AsyncLocalStorage（`requestContext.set('userId' | 'adminId', id)`），
   业务层从 `requestContext` 取当前身份，不做参数透传。
 
-## 3. 服务端中间件使用（新模块路由选型）
+## 3. 服务端守卫使用（新模块 controller 选型）
 
 ```ts
-// apps/server/src/features/xxx.ts
-const requireAuth = makeRequireAuth(runtime)           // 前台用户
-const requireAdminAuth = makeRequireAdminAuth(runtime) // 后台管理员（参考 features/admin.ts）
-
-routes.use('*', requireAuth)   // 整个路由组需要登录
+// apps/server/src/modules/xxx/xxx.controller.ts（参考 modules/todo/todo.controller.ts）
+@Controller('xxx')
+@UseGuards(UserAuthGuard)          // 前台用户
+// @UseGuards(AdminAuthGuard)      // 后台管理员（参考 modules/admin/admin.controller.ts）
+export class XxxController {}
 ```
 
-- 整组受保护：`routes.use('*', requireXxx)`。
-- 混合（部分公开）：不加全局中间件，公开 handler 直接放行，受保护 handler 内单独挂中间件
-  （`routes.post('/x', requireAuth, jsonBody(Schema), handler)`）。
+- 整个 controller 受保护：类上挂 `@UseGuards(UserAuthGuard)` / `@UseGuards(AdminAuthGuard)`。
+- 混合（部分公开）：类上不加守卫，公开 handler 直接放行，受保护 handler 上单独挂守卫
+  （`@Post('x') @UseGuards(UserAuthGuard)` + handler）。
 - **新增接口必须明确鉴权策略**，禁止默认裸奔（公开接口要在代码注释里说明原因）。
 
 **当前路由鉴权一览**（新模块/改路由前先对照，别挂错体系）：
 
 | 路由 | 鉴权 | 说明 |
 | --- | --- | --- |
-| `/auth/*` | register / login / forgot-password / reset-password 公开；get-me / update-info / change-password 用 `makeRequireAuth` | 前台用户自助 |
-| `/admin/*` | login 公开；其余 `makeRequireAdminAuth` | 后台管理员 |
-| `/user/*` | `makeRequireAdminAuth` | 管理员管理用户 |
-| `/todo/*` | `makeRequireAdminAuth` | 后台功能（admin 页） |
-| `/storage/*` | `makeRequireAdminAuth` | 上传/下载/STS（admin 页 ImageUpload） |
+| `/auth/*` | register / login / forgot-password / reset-password 公开；get-me / update-info / change-password 用 `@UseGuards(UserAuthGuard)` | 前台用户自助 |
+| `/admin/*` | login / logout 公开；其余 `@UseGuards(AdminAuthGuard)` | 后台管理员 |
+| `/user/*` | `@UseGuards(AdminAuthGuard)` | 管理员管理用户 |
+| `/todo/*` | `@UseGuards(AdminAuthGuard)` | 后台功能（admin 页） |
+| `/storage/*` | `@UseGuards(AdminAuthGuard)` | 上传/下载/STS（admin 页 ImageUpload） |
 
 ## 4. 前端：Server Actions + 双存储模型
 

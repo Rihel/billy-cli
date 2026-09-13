@@ -4,7 +4,7 @@ import { Button } from '@repo/ui'
 import { Pages } from '@/lib/constants'
 
 const heroFacts = [
-  { k: '15', v: 'Agent Skills' },
+  { k: '17', v: 'Agent Skills' },
   { k: '2', v: '前端应用' },
   { k: '1', v: '数据结构' },
 ]
@@ -48,7 +48,7 @@ export function Hero() {
 
           <p className="mt-8 max-w-2xl text-lg leading-relaxed text-zinc-600 sm:text-xl">
             工程规范写进 17 个 Agent Skills，AI 开工先读规范、按你的标准交付；
-            Hono + Next.js 16 双前端开箱即用，pnpm bootstrap 一键初始化。
+            NestJS 12 + Next.js 16 双前端开箱即用，pnpm bootstrap 一键初始化。
           </p>
 
           <div className="mt-10 flex flex-wrap items-center gap-3">
@@ -91,7 +91,7 @@ export function Hero() {
       <div className="relative border-t border-zinc-200/80">
         <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-3 font-mono text-[11px] tracking-wider text-zinc-400 uppercase sm:px-6 lg:px-8">
           <span>TypeScript monorepo</span>
-          <span className="hidden sm:inline">Hono · Next.js 16 · PostgreSQL · Redis</span>
+          <span className="hidden sm:inline">NestJS · Next.js 16 · PostgreSQL · Redis</span>
           <span className="hidden text-emerald-600 sm:inline">● ready</span>
         </div>
       </div>

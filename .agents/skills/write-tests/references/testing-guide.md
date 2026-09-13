@@ -108,4 +108,4 @@ await expect(service.get({ xxxId: 'nope' })).rejects.toMatchObject({ code: 3001 
 「查无 → 抛错」分支、repository 的查询构建（用 mock builder 断言 where/orderBy 调用）。
 
 **不测**（避免脆弱的实现耦合）：装饰器本身（`@Transactional` / `@Injectable`）、
-框架行为（zod 校验、hono 路由中间件）、数据库真实读写（用 mock repo，集成靠手测）。
+框架行为（zod 校验、NestJS 守卫 / 控制器）、数据库真实读写（用 mock repo，集成靠手测）。

@@ -20,9 +20,9 @@ const rivals = [
 /** 技术栈选型：选了谁、而不是谁、为什么 */
 const stackChoices = [
   {
-    picked: 'Hono 4',
-    instead: '而不是 NestJS',
-    reason: 'HTTP 层只做校验与转发，业务模块不依赖框架。薄边界可替换、可测试，框架不侵入业务。',
+    picked: 'NestJS 12',
+    instead: '而不是自研轻量框架',
+    reason: 'controller 只做校验与转发，业务下沉 service / repository。依赖注入、模块化、守卫、拦截器、异常过滤器由框架承担，业务可测试、可替换。',
   },
   {
     picked: 'PostgreSQL',

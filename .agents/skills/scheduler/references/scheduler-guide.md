@@ -3,11 +3,10 @@
 > 本文件是 `scheduler` skill 的组成部分，由主 SKILL.md 引用。
 > 使用定时任务 / 调度时必读。
 
-## 1. 基础设施：Scheduler（kits/foundation/scheduler.ts）
+## 1. 基础设施：Scheduler（kits/src/foundation/scheduler/scheduler.ts）
 
-基于 **croner** 的调度门面，由 kits 组合根 `createServiceContext` 按 config 条件统一
-注册（生命周期组件），业务侧仅 `@Inject(Scheduler)` 使用，无需自行注册。归位：
-横切基础能力 → `kits/foundation`。
+基于 **croner** 的调度门面，由 `SchedulerModule` 装配（`@Global()`，无配置依赖的纯模块），
+业务侧仅 `@Inject(Scheduler)` 使用，无需自行注册。归位：横切基础能力 → `kits/foundation`。
 
 | 方法 | 用途 |
 | --- | --- |
@@ -45,7 +44,7 @@ export class OrderService {
 - **名称唯一**：任务名在 `Scheduler` 内唯一，重复注册抛 `SchedulerError`。
 - **异常吞掉保循环**：handler 抛错由调度器统一记日志并吞掉，**不会中断整个调度循环**；
   需要重试 / 告警的任务在 handler 内自行 try/catch 处理。
-- **停止**：`stop(name)` 幂等；应用停止（`onAppStop`）统一 `stopAll()`。
+- **停止**：`stop(name)` 幂等；应用停止（`onApplicationShutdown`）统一 `stopAll()`。
 - **时间**：cron 用 `croner` 语法（含秒级）；interval / timeout 传毫秒。
 
 ## 4. 归位与注意

@@ -25,11 +25,11 @@ GitHub Flavored Markdown 由 \`remark-gfm\` 提供，本页验证表格、任务
 
 | 服务 | 框架 | 语言 | 端口 | 职责 | 依赖 | 备注 |
 | --- | --- | --- | --- | --- | --- | --- |
-| server | Hono 4 | TypeScript | 9989 | HTTP 接口与 SSE 推流 | PostgreSQL / Redis | 业务模块组合根 |
+| server | NestJS 12 | TypeScript | 9989 | HTTP 接口与 SSE 推流 | PostgreSQL / Redis | 业务模块组合根 |
 | web | Next.js 16 | TypeScript | 9840 | C 端前台页面 | @repo/ui / sdk | Base UI + shadcn |
 | admin | Next.js 16 | TypeScript | 9845 | 管理后台页面 | @repo/ui / sdk | TanStack 技术栈 |
 | sdk | - | TypeScript | - | 全类型化 API 客户端 | http-client | 前端与脚本共用 |
-| kits | - | TypeScript | - | 后端通用能力封装 | shared / di | 无业务实体 |
+| kits | - | TypeScript | - | 后端通用能力封装 | shared | 无业务实体 |
 
 ### 表格对齐
 

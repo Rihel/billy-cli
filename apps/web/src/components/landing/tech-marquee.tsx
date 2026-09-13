@@ -4,8 +4,8 @@ import Marquee from 'react-fast-marquee'
 
 const techStack = [
   'TypeScript',
-  'Hono',
-  'InversifyJS',
+  'NestJS',
+  'Express 5',
   'Next.js 16',
   'TypeORM',
   'PostgreSQL',

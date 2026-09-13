@@ -10,12 +10,12 @@ description: 在 Billy 工程中处理高并发与一致性：缓存、限流、
 
 ## 核心要点
 
-- 基础设施 `RedisStore`（`kits/infrastructure/redis-store.ts`）提供：`setJson` / `getJson`
+- 基础设施 `RedisStore`（`kits/src/redis/redis-store.ts`）提供：`setJson` / `getJson`
   （缓存）、`incr`（限流计数）、`acquireLock` / `releaseLock`（分布式锁）。
 - **缓存**：`setJson(key, val, ttl)` + `getJson`，写后失效 / 删除。
-- **限流**：HTTP 接口用 `RateLimiter` 门面（`kits/infrastructure/rate-limit/`，基于
+- **限流**：HTTP 接口用 `RateLimiter` 门面（`kits/src/rate-limit/`，由独立的 `RateLimitModule` 装配，基于
   **rate-limiter-flexible** 的 RateLimiterRedis，Redis 存储固定窗口）+ server 的
-  `makeRateLimit` 中间件（按 IP、白名单豁免，白名单匹配用 **ipaddr.js**）；
+  `RateLimitGuard` 守卫与 `@RateLimit({ scope })`（按 IP、白名单豁免，白名单匹配用 **ipaddr.js**）；
   纯业务侧计数用 `incr` + `expire`；精确限流用 `raw` 的 ZSet 滑窗。
 - **分布式锁**：`acquireLock(key, ttl)` → `token`，业务 `finally` 里 `releaseLock(key, token)`。
 - **幂等**：用锁或幂等键（`set NX` / `incr`）防重复处理。

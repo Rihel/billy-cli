@@ -18,8 +18,8 @@ const chatMessages = [
 
 const checks = [
   'ProductSchema 已定义（@repo/shared）',
-  'ProductEntity + 迁移已生成（apps/server/database）',
-  'ProductService 已注册（main.ts 组合根）',
+  'ProductEntity + 迁移已生成（apps/server/src/database）',
+  'ProductService 已注册（root.module.ts 组合根 + 业务模块 providers）',
   '路由已挂载 + SDK 已补全类型化方法',
   '后台商品页已登记菜单',
 ]
@@ -163,7 +163,7 @@ export function AiSection() {
               <div className="rounded-2xl border border-indigo-200 bg-indigo-500/[0.06] p-5">
                 <p className="text-xs font-medium text-indigo-700">skill 里的硬性规则（示例）</p>
                 <ul className="mt-3 space-y-1.5 font-mono text-xs leading-relaxed text-zinc-600">
-                  <li>· 业务模块不 import Hono（modules 与 features 物理分层）</li>
+                  <li>· controller 只做校验与转发，业务逻辑在 service</li>
                   <li>· 错误继承 AppError，code 在 AppErrorCodes（3xxx 段）</li>
                   <li>· schema / dict / entity 字段一致并注册 index.ts</li>
                 </ul>

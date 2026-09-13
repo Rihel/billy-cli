@@ -23,7 +23,7 @@
 | 标准 | 说明 |
 | --- | --- |
 | 命中 | `description` 覆盖你的任务与触发词 |
-| 适配 | 技术栈 / 模式与本工程兼容（Hono / InversifyJS / TypeORM / Next.js / @repo/ui）或可映射 |
+| 适配 | 技术栈 / 模式与本工程兼容（NestJS 12 / TypeORM / Next.js / @repo/ui）或可映射 |
 | 质量 | 维护活跃、`SKILL.md` 完整、有参考文件 / 示例 |
 | 规范 | 主文件 ≤60 行、references 分层（符合 manage-skills 规范） |
 | 克制 | 不过度设计，只需其适用部分 |

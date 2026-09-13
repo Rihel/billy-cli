@@ -3,7 +3,7 @@
 > 本文件是 `concurrency` skill 的组成部分，由主 SKILL.md 引用。
 > 实现缓存 / 限流 / 幂等 / 分布式锁时必读。
 
-## 1. 基础设施：RedisStore（kits/infrastructure/redis-store.ts）
+## 1. 基础设施：RedisStore（kits/src/redis/redis-store.ts）
 
 所有能力基于 `RedisStore` 门面（`@Inject(RedisStore)`，生命周期组件）：
 
@@ -33,21 +33,25 @@ if (data === null) {
 
 ## 3. 限流模式
 
-**HTTP 接口限流**（首选：`RateLimiter` 门面 + `makeRateLimit` 中间件）：
+**HTTP 接口限流**（首选：`RateLimitGuard` 守卫 + `@RateLimit({ scope })` 方法装饰器，
+实现在 `apps/server/src/common/security/rate-limit.guard.ts`）：
 
 ```ts
-// apps/server/src/lib/rate-limit.ts 提供中间件工厂
-routes.post('/login',
-  makeRateLimit(runtime, { scope: 'login', limit: 20, windowSeconds: 60 }),
-  jsonBody(LoginSchema), async (context) => ...)
+@Post('login')
+@HttpCode(200)
+@UseGuards(RateLimitGuard)
+@RateLimit({ scope: 'login', limit: 20, windowSeconds: 60 })
+login(@Body({ schema: LoginSchema }) input: LoginDto) { ... }
 ```
 
-- `RateLimiter`（`kits/infrastructure/rate-limit/`）基于 **rate-limiter-flexible** 的
+- `RateLimiter`（`kits/src/rate-limit/rate-limiter.ts`，由 `RateLimitModule` 装配）基于 **rate-limiter-flexible** 的
   `RateLimiterRedis`（Redis 存储，底层 Lua 原子计数）；`check(key, limit, windowSeconds)`
   返回 `{ allowed, remaining, retryAfterSeconds }`；底层实例按 `(limit, window)` 组合缓存复用。
-- 中间件按 **IP** 计数（key `ratelimit:{scope}:{ip}`），超限返回 429 + `Retry-After`；
+- 守卫按 **IP** 计数（门面 key `scope:ip`，底层由 `RateLimiter` 统一加 `ratelimit:` 前缀），
+  超限抛边界错误返回 429 + `Retry-After`；
   白名单豁免（**ipaddr.js** 匹配：精确 IP / IPv4·IPv6 CIDR，env `RATE_LIMIT_WHITELIST`，命中跳过计数）。
-- **IP 来源**：默认直连 socket 地址（`@hono/node-server` 的 `getConnInfo`），防伪造 XFF 绕过；
+- **IP 来源**：`apps/server/src/common/security/rate-limit.guard.ts` 的 `clientIp()` 统一提取，
+  默认直连 socket 地址，防伪造 XFF 绕过；
   部署在可信反代后置 `RATE_LIMIT_TRUST_PROXY=true` 才取 `x-forwarded-for` 首值。
 - IPv6 双栈下 socket 地址为 `::ffff:<v4>`，已统一规范化（`normalizeIp`）。
 - 需更精确算法（滑动窗口 / 令牌桶）时用 `RateLimiterSlidingWindow` / `RateLimiterTokenBucket`。
@@ -90,7 +94,52 @@ try {
 4. **获取不到锁要有明确的降级行为**（重试 / 失败 / 排队），不能静默继续。
 5. 同一把锁的 key 命名规范：`<域>:<业务id>`，如 `order:pay:123`。
 
-## 6. 归位与注意
+## 6. 分布式锁增强：RedisLockService（推荐）
+
+`RedisStore.acquireLock` 只解决「一次尝试」；临界区长于 TTL、或需要排队等待时，用
+`RedisLockService`（kits/src/redis/redis-lock.service.ts）：
+
+- **自旋等待**：`lock(key, ttlSeconds, timeoutSeconds)` 持续重试直到拿到锁或超时；
+- **看门狗续期**：持锁期间按 `TTL/3` 用 Lua 原子续期，避免长任务执行到一半锁过期；
+- **Lua 原子释放/续期**：读-判-写在一个脚本里，只释放/续期自己的锁；
+- **超时语义**：等待超时抛 `RedisLockError`（业务码 4002 / HTTP 429，语义=资源占用请重试）。
+
+```ts
+// 推荐入口：自动加解锁，业务抛错也会释放
+constructor(@Inject(RedisLockService) private readonly lock: RedisLockService) {}
+
+await this.lock.withLock(`order:${id}`, 30, 10, () => this.settle(id))
+```
+
+方法级装饰器（宿主类需把锁服务注入为 `redisLock` 属性）：
+
+```ts
+constructor(@Inject(RedisLockService) readonly redisLock: RedisLockService) {}
+
+@RedisLock('order', (id: string) => id, 30, 10)
+async settle(id: string) { ... }
+```
+
+**取舍**：看门狗只保证「持锁进程存活期间」续期；进程被杀仍靠 TTL 兜底。跨进程/长任务场景
+更稳妥的做法是「锁只保护状态跃迁，长耗时逻辑异步化到队列」。
+
+## 7. 列表缓存：RedisListCache
+
+把一个 `T[]` 整体放进一个 Redis Hash（field = 主键，value = 单条 JSON），支持按主键增量增删改：
+
+```ts
+const cache = new RedisListCache<UserModel, 'id'>('user:all', redisStore, 'id')
+await cache.set(users)                     // 全量覆盖（先清空）
+await cache.updateByPrimary(id, user)      // 单条 upsert
+await cache.removeByPrimary(id)
+const all = await cache.get()              // 无数据返回 []
+```
+
+适用「全量小、读多写少、按主键定位」的字典 / 配置 / 组织架构类数据；**不适合**大列表分页
+（该场景走 DB + 索引 + `pageWith`/`cursorPageWith`）。key 的前缀由 `RedisStore` 的
+`keyPrefix` 统一处理，这里传裸 key。
+
+## 8. 归位与注意
 
 - 封装：通用并发工具（限流器、幂等表）放 `kits/foundation`；业务内直接注入 `RedisStore` 用。
 - 引用 `RedisStore` 经 DI（`@Inject(RedisStore)`），不要 `new` 连接。

@@ -11,7 +11,7 @@
 
 **AI 原生工程，一套模板全栈直达。**
 
-工程规范写进 15 个 Agent Skills，AI 开工先读规范、按你的标准交付；Hono + Next.js 16 双前端开箱即用，`pnpm bootstrap` 一键初始化。
+工程规范写进 15 个 Agent Skills，AI 开工先读规范、按你的标准交付；NestJS 12 后端 + Next.js 16 双前端开箱即用，`pnpm bootstrap` 一键初始化。
 
 ## 2. 设计理念：把答案写进骨架
 
@@ -34,7 +34,7 @@
 
 不是玩具脚手架，而是一套能直接承载真实业务的全栈工程基座。
 
-- **分层架构，依赖方向不可逆**：Hono 只做校验与转发，业务下沉 apps/server 模块层，能力复用 @repo/kits，单向依赖、职责清晰、可测试。
+- **分层架构，依赖方向不可逆**：controller 只做校验与转发，业务逻辑与数据访问下沉 service / repository，能力复用 @repo/kits，单向依赖、职责清晰、可测试。
 - **数据结构先行**：数据结构只定义一份，后端校验、数据库、前端表单全部共用，字段永远对得上。
 - **双前端开箱**：Web 前台用 Base UI + shadcn，Admin 后台用 TanStack Table / Form，统一共享 @repo/ui 组件库。
 - **全类型 SDK**：在 HttpClient 之上封装全类型化 ServerClient，前端调用接口全程类型提示，杜绝魔法字符串。
@@ -54,7 +54,7 @@
 
 | 选了 | 而不是 | 理由 |
 | --- | --- | --- |
-| Hono 4 | NestJS | HTTP 层只做校验与转发，业务模块不依赖框架，薄边界可替换、可测试 |
+| NestJS 12 + Express 5 | 手写路由 / 轻量 HTTP 框架 | 模块化 + 装饰器 DI 原生，Express 5 生态成熟，与 TypeORM 装饰器实体一致；单一组合根逐个 import 基础设施模块（`XxxModule.forRoot` 自带配置 bean，未 import 即未装配） |
 | PostgreSQL | MySQL | 告警规则存 jsonb、时间用 timestamptz，半结构化数据更自然，TypeORM 对 PG 支持最成熟 |
 | TypeORM | Prisma | 业务经 Repository 防腐层访问数据，service 不直接依赖 ORM，可测试、可替换；装饰器实体与依赖注入契合 |
 | Next.js 16 | Vite SPA | RSC 加 SSR 加 Server Actions，前台后台同构，C 端页面可 SEO |
@@ -66,15 +66,15 @@
 数据流自底向上设计、自顶向下调用，每一层边界清晰。
 
 1. **@repo/sdk 前端调用**：ServerClient 全类型化方法发起请求
-2. **apps/server Hono 边界**：Zod 校验请求体，薄边界零业务
-3. **apps/server/src/modules 业务核心**：Service + Repository（@repo/di 注入）
+2. **apps/server controller 边界**：`@Controller` + `@Post` + `@HttpCode(200)`，`@Body({ schema })` 声明契约、全局 `StandardSchemaValidationPipe` 校验，薄边界零业务
+3. **apps/server/src/modules 业务核心**：Service + Repository（`@nestjs/common` 的 `@Injectable` / `@Inject` 注入）
 4. **@repo/kits 能力底座**：TypeORM 底座 + 分页 + 事务 + 存储 + SSE 推送
 
 依赖方向规范：
 
 - shared 不依赖任何业务包
 - kits 不引用 apps/*
-- modules 不 import Hono
+- 业务逻辑（service / repository）不依赖 HTTP 框架
 
 ## 7. AI 能力：15 个 Agent Skills
 
@@ -86,7 +86,7 @@
 
 两条关键机制，回应「skill 是不是空话」：
 
-1. **skill 是硬约束，不是泛泛提示词**。例如 billy-dev-foundation 里写明：业务模块不 import Hono（modules 与 features 物理分层）、错误全部继承 AppError 且 code 在 AppErrorCodes 定义（3xxx 段）、schema / dict / entity 三者字段一致并注册 index.ts——具体到文件、具体到错误码段。
+1. **skill 是硬约束，不是泛泛提示词**。例如 billy-dev-foundation 里写明：业务逻辑只在 service / repository，controller 只做 HTTP 边界、错误全部继承 AppError 且 code 在 AppErrorCodes 定义（3xxx 段）、schema / dict / entity 三者字段一致并注册 index.ts——具体到文件、具体到错误码段。
 2. **按需加载，裁剪上下文**。15 个 skill 不是一次性全读，AI 按任务只加载相关 skill（开发商品模块只加载 develop-business-module + define-data-structure），裁剪上下文、省 Token，弥补通用 TypeScript 上下文偏重的短板。
 
 ## 8. 快速开始
@@ -104,7 +104,7 @@ pnpm dev:pkgs & pnpm dev:server & pnpm dev:web    # 并行启动开发环境
 
 ## 1. 调研目标
 
-Billy 的定位是 **TypeScript 全栈 monorepo + AI 原生工程模板**（15 个 Agent Skills + Hono 后端 + Web/Admin 双前端）。本报告回答：市面同类「模板 / 脚手架」有哪些，Billy 凭什么差异化。
+Billy 的定位是 **TypeScript 全栈 monorepo + AI 原生工程模板**（15 个 Agent Skills + NestJS 12 后端 + Web/Admin 双前端）。本报告回答：市面同类「模板 / 脚手架」有哪些，Billy 凭什么差异化。
 
 ## 2. 筛选标准
 
