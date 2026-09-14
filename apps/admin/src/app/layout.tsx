@@ -28,6 +28,9 @@ export const metadata: Metadata = {
   description: '超强脚手架',
 }
 
+/** 前端根 layout 统一动态渲染（每次请求 SSR，不做整站静态预渲染）。 */
+export const dynamic = 'force-dynamic'
+
 /**
  * 主题引导脚本：在 React 水合前根据 localStorage / 系统偏好设置 .dark，
  * 避免深色模式刷新时白屏闪烁（FOUC）。

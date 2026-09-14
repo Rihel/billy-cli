@@ -25,6 +25,9 @@ export const metadata: Metadata = {
     "基于 NestJS 12 与 Next.js 16 的全栈应用模板：数据结构先行、双前端开箱即用，从脚手架到生产部署一步到位。",
 }
 
+/** 前端根 layout 统一动态渲染（每次请求 SSR，不做整站静态预渲染）。 */
+export const dynamic = "force-dynamic"
+
 export default function RootLayout({
   children,
 }: {

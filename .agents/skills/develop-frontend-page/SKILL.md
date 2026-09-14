@@ -47,6 +47,9 @@ shadcn 组件的默认类：Tailwind 的 utilities 层声明在 base 之后，�
 
 - admin：新页面放 `apps/admin/src/app/main/xxx/page.tsx`，并在 `AppMenu.tsx` 的 items 加菜单项
   （`key` 为路由路径，如 `/main/xxx`）。
+- **两个前端的根 layout 统一动态渲染**：`apps/web/src/app/layout.tsx` 与 `apps/admin/src/app/layout.tsx`
+  都标了 `export const dynamic = 'force-dynamic'`（每次请求 SSR，不做整站静态预渲染）——新页面不要依赖
+  构建期静态数据 / 预渲染缓存。
 - admin 守卫已由 `proxy.ts`（cookie 重定向）+ `main/layout.tsx`（SSR `getMe()` 鉴权）统一处理，
   新页面无需重复；`force-dynamic` 的 layout 下不要缓存用户态数据。
 - web：目前无 proxy 路由守卫（`apps/web/src/lib/constants.ts` 只定义 `Pages` / `TokenKey` 等常量）；
