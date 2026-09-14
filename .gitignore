@@ -14,3 +14,8 @@ logs/
 .env.*
 !.env.example
 !.env.*.example
+
+# 本地开发证书 / 私钥：一律不入库（曾是 admin `next dev --experimental-https` 的产物，已弃用）
+localhost.key
+localhost.crt
+*.pem

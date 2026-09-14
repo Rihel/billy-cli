@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "next dev --port 9845 --experimental-https --experimental-https-key ./localhost.key --experimental-https-cert ./localhost.crt",
+    "dev": "next dev --port 9845",
     "build": "next build",
     "start": "sh scripts/start.sh"
   },
