@@ -1,7 +1,6 @@
 import { hasContentArray, parseJson } from '@repo/shared'
-import { Inject, Injectable } from '@nestjs/common'
 import { RedisStoreError } from '../foundation/errors/infrastructure-errors.js'
-import { RedisStore } from './redis-store.js'
+import type { RedisStore } from './redis-store.js'
 
 /**
  * Redis Hash 列表缓存门面：把一个 `T[]` 整体缓存在一个 Hash 里
@@ -9,6 +8,10 @@ import { RedisStore } from './redis-store.js'
  *
  * 适用「全量小、读多写少、按主键定位」的字典 / 配置 / 组织架构类数据；
  * 不适合大列表分页（该场景用 DB + 索引）。
+ *
+ * **不是 DI provider**：每个缓存实例的 key / 主键都不同，天然多实例，
+ * 由使用方直接 `new`（与 `TimeWheel` 同类），故刻意不标 `@Injectable()`、
+ * 构造器也不写 `@Inject()`——DI 装饰器只属于由 Nest 容器装配的类。
  *
  * 用法（在业务模块中 new 出来，key 自行约定命名空间）：
  *
@@ -19,11 +22,10 @@ import { RedisStore } from './redis-store.js'
  *
  * 注意：key 的前缀由 RedisStore 的 ioredis keyPrefix 统一处理，这里传裸 key。
  */
-@Injectable()
 export class RedisListCache<T extends Record<string, unknown>, PK extends keyof T> {
   constructor(
     private readonly key: string,
-    @Inject(RedisStore) private readonly redis: RedisStore,
+    private readonly redis: RedisStore,
     private readonly primaryKey: PK,
   ) {}
 

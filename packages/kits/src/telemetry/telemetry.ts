@@ -1,5 +1,3 @@
-import { Injectable } from '@nestjs/common'
-
 /** 对数桶直方图的桶上边界（ms / 计数单位）：指数分布，覆盖告警场景量级 */
 const BUCKET_EDGES = [
   1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096, 8192, 16384, 32768,
@@ -47,7 +45,13 @@ interface MetricState {
  *
  * 指标名约定 `<域>.<名称>`（kebab），如 request.duration / order.count / inventory.available。
  */
-@Injectable()
+/**
+ * 遥测埋点（Counter / Gauge / Histogram 的窗口聚合）。
+ *
+ * **不是容器直接装配的 provider**：构造器的 `windowSeconds` 是数值参数（非注入 token），
+ * 由 `TelemetryModule` 用 `useFactory: () => new Telemetry()` 装配，故刻意不标
+ * `@Injectable()`——DI 装饰器只属于由 Nest 容器解析构造器参数的类。
+ */
 export class Telemetry {
   private readonly states = new Map<string, MetricState>()
   private windowStartAt = Date.now()
