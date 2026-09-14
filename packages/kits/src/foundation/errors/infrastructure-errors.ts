@@ -41,6 +41,27 @@ export class QueueError extends AppError {
   }
 }
 
+/**
+ * 批量操作部分失败（`db/batch.ts`）。
+ *
+ * 分片并发执行时可能只有部分分片失败，这里把失败项聚合抛出：
+ * 既保住「整体不静默成功」的语义，又让调用方能拿到每个分片的失败原因。
+ */
+export class BatchOperationError extends AppError {
+  readonly code = AppErrorCodes.Internal
+  constructor(
+    /** 失败分片数 */
+    readonly failedChunks: number,
+    /** 各失败分片的原始异常 */
+    readonly failures: unknown[],
+  ) {
+    const first = failures[0]
+    super(
+      `Batch operation failed: ${failedChunks} chunk(s) failed${first ? `, first: ${String(first)}` : ''}`,
+    )
+  }
+}
+
 export class SchedulerError extends AppError {
   readonly code = AppErrorCodes.Internal
   constructor(readonly cause: unknown) {
