@@ -86,6 +86,8 @@ services:
       OBJECT_STORAGE_ACCESS_KEY_ID: minioadmin
       OBJECT_STORAGE_SECRET_ACCESS_KEY: minioadmin
       OBJECT_STORAGE_ENDPOINT: http://minio:9000
+      # 可选：启用 kafka profile 时设为 kafka:9092（容器内 listener）
+      KAFKA_BROKERS: ${KAFKA_BROKERS:-}
     ports:
       - "9989:9989"
 
@@ -104,6 +106,54 @@ services:
       SERVER_URL: http://server:9989
     ports:
       - "3001:3001"
+
+  # ──────────────────────────────────────────
+  # Kafka + 控制台（可选，默认不启动）
+  #   docker compose --profile kafka up -d
+  # 启用后把 server 的 KAFKA_BROKERS 设为 kafka:9092，宿主机应用则用 127.0.0.1:29092。
+  # ──────────────────────────────────────────
+  kafka:
+    image: confluentinc/cp-kafka:7.4.8
+    container_name: billy-kafka
+    restart: unless-stopped
+    profiles: ["kafka"]
+    depends_on:
+      - zookeeper
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: 'zookeeper:2181'
+      # 双 listener：容器内 kafka:9092，宿主机 127.0.0.1:29092
+      KAFKA_ADVERTISED_LISTENERS: LISTENER_DOCKER_INTERNAL://kafka:9092,LISTENER_DOCKER_EXTERNAL://${DOCKER_HOST_IP:-127.0.0.1}:29092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: LISTENER_DOCKER_INTERNAL:PLAINTEXT,LISTENER_DOCKER_EXTERNAL:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: LISTENER_DOCKER_INTERNAL
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+    ports:
+      - "29092:29092"
+
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    container_name: billy-kafka-ui
+    restart: unless-stopped
+    profiles: ["kafka"]
+    depends_on:
+      - kafka
+    environment:
+      KAFKA_CLUSTERS_0_NAME: local
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:9092
+      DYNAMIC_CONFIG_ENABLED: 'true'
+    ports:
+      - "8085:8080"
+
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.4.8
+    container_name: billy-zookeeper
+    restart: unless-stopped
+    profiles: ["kafka"]
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    ports:
+      - "22181:2181"
 
 volumes:
   postgres-data:
