@@ -221,9 +221,10 @@ pnpm cli -t crud -n product  # 非交互生成 CRUD 业务模块（无 TTY 时�
 │   │       └── utils/                   # nanoid / dayjs / md5 / tree / dict 等工具
 │   ├── kits/                            # @repo/kits — 后端通用能力封装（无业务实体）
 │   │   └── src/
-│   │       ├── foundation/              # 横切基础：config / errors / id-generation / logger / scheduler
-│   │       ├── db/                      # Db 门面 + DbModule：create-db / db / db.config / base-entity /
-│   │       │                            #   audit-entity / audit-subscriber / pagination / database.module
+│   │       ├── foundation/              # 横切基础：config / errors / id-generation / logger / scheduler / time-wheel
+│   │       ├── db/                      # Db / DbService 门面 + DbModule：create-db / db / db.service /
+│   │       │                            #   db.config / base-entity / audit-entity / audit-subscriber /
+│   │       │                            #   pagination / batch / safe-delete / sql / database.module
 │   │       ├── redis/                   # RedisStore / RedisLockService / RedisListCache + RedisModule
 │   │       ├── rate-limit/              # RateLimiter + RateLimitModule（复用 RedisConfig）
 │   │       ├── queue/                   # QueueManager + QueueModule（BullMQ）
@@ -311,6 +312,7 @@ pnpm cli -t crud -n product  # 非交互生成 CRUD 业务模块（无 TTY 时�
 - Server Actions（`actions/auth.actions.ts`）封装登录 / 注册，token 写入 httpOnly cookie
 - `lib/server-client.ts` 提供 `ServerClient` 单例（localStorage 凭证管理）+ 服务端实例（cookie）
 - `providers/QueryProvider.tsx` 注入 TanStack Query
+- `app/layout.tsx` 标记 `force-dynamic`：前端根 layout 统一动态渲染（每次请求 SSR，不做静态预渲染）
 - `next.config.ts`：`output: 'standalone'`、React Compiler、transpile `@repo/ui`
 
 ### apps/admin — Next.js 16 管理后台
@@ -322,8 +324,9 @@ pnpm cli -t crud -n product  # 非交互生成 CRUD 业务模块（无 TTY 时�
 
 - 页面：`/auth/login`（管理员登录）、`/main/dashboard`、`/main/todo`、
   `/main/system/users`、`/main/system/admins`（管理员管理）、`/main/user-center`
-- 布局：`AppHeader` + `AppSider` + `AppMenu`，`main/layout.tsx` 标记 `force-dynamic`，
-  SSR 侧通过 cookie 调用 `admin.getMe()` 做鉴权，失败 `redirect()` 到登录页
+- 布局：`AppHeader` + `AppSider` + `AppMenu`；根 `app/layout.tsx` 与 `main/layout.tsx` 均标记
+  `force-dynamic`（前者让前端根 layout 统一动态渲染，后者在 SSR 侧通过 cookie 调用
+  `admin.getMe()` 做鉴权，失败 `redirect()` 到登录页）
 - 路由守卫：`proxy.ts` 中间件按 `PublicPaths` + cookie 重定向未登录 / 已登录用户
 - Server Actions：`@repo/ui/action` 的 `defineAction` / `callAction` 统一返回
   `{ ok, data } | { ok: false, error }` 结构，简化错误处理
@@ -362,12 +365,19 @@ Zod schema 单一事实源，同时派生 TypeScript 类型（`*.schema.ts` 导�
 `LarkConfig` / `KafkaConfig`），不再由应用聚合成一个中央 kits 模块。所有模块均 `@Global()`，
 装配进 `apps/server/src/root.module.ts` 的 `imports`：
 
-- `db/`：`create-db.ts`（PostgreSQL DataSource 工厂，实体由应用注入）、`db.ts`（`Db` 门面）、
-  `db.config.ts`（`DbConfig`）、`database.module.ts`（`DbModule`）、`pagination.ts`（四种分页策略，
-  见下文「分页」）、`base-entity.ts`（`BaseEntity`：`id` nanoid 主键 + `createdAt` / `updatedAt` /
+- `db/`：`create-db.ts`（PostgreSQL DataSource 工厂，实体由应用注入）、`db.ts`（`Db`：连接生命周期门面）、
+  `db.service.ts`（`DbService`：**注入式数据操作门面**——四种分页 / 批量写入与删除 / 软删 /
+  SQL 还原；只依赖 `Db`，不注入 logger，
+  自动带默认 manager 与当前操作人。纯函数是内核，本类只是把它接进容器，
+  见下文「批量写入」）、`db.config.ts`（`DbConfig`）、`database.module.ts`（`DbModule`）、
+  `pagination.ts`（四种分页策略，见下文「分页」）、
+  `batch.ts`（`batch` 分片 + 并发骨架 / `batchInsert` / `batchSave` / `batchUpsert`，
+  事务内自动串行）、`safe-delete.ts`（`safeDelete`：先写 `deletedBy` 再软删）、
+  `sql.ts`（`getFullSqlStatement`：占位符还原成完整 SQL，仅调试）、
+  `base-entity.ts`（`BaseEntity`：`id` nanoid 主键 + `createdAt` / `updatedAt` /
   软删除 `deletedAt`）、`audit-entity.ts` + `audit-subscriber.ts`（**可选审计**：继承 `AuditEntity`
   并把 `AuditSubscriber` 放进 `db.subscribers`，自动记录 `createdBy` / `updatedBy` / `deletedBy`；
-  操作人来源用 `setAuditUserProvider()` 挂载）
+  操作人来源用 `setAuditUserProvider()` 挂载，`DbService.operatorId` 读同一个钩子）
 - 各基础设施一个目录（每个目录都是 `provider + <name>.config.ts + <name>.module.ts + index.ts`）：
   - `redis/`：`redis-store.ts`（KV / TTL / JSON / 基础锁）、`redis-lock.service.ts`（自旋等待 +
     看门狗续期）、`redis-lock.decorator.ts`（`@RedisLock`）、`redis-list-cache.ts`（Hash 列表缓存）、
@@ -391,7 +401,10 @@ Zod schema 单一事实源，同时派生 TypeScript 类型（`*.schema.ts` 导�
 - `foundation/`：`config/`（**配置模块**：可插拔 `ConfigLoader` 抽象 + 内置 `envConfigLoader` /
   `memoryConfigLoader` / `consulConfigLoader` + `AppConfigFacade` + `AppConfigModule`；Zod 4 默认值物化 +
   带字段路径的校验错误）、`errors/`（AppError / InfrastructureError）、`id-generation/`（`IdGeneration` + `IdGenerationModule`）、
-  `logger/`（`app-logger.ts` + `logger.config.ts` + `logger.options.ts` + `LoggerModule`）、`scheduler/`（croner + `SchedulerModule`）
+  `logger/`（`app-logger.ts` + `logger.config.ts` + `logger.options.ts` + `LoggerModule`）、`scheduler/`（croner + `SchedulerModule`）、
+  `time-wheel/`（`TimeWheel` 进程内高频调度原语：秒级/毫秒级刻度 + 自适应补偿 + 落后任务防堆积。
+  **普通类非 DI 门面**——需构造参数且天然多实例，用 `new TimeWheel(tickDuration, wheelsCount)`
+  自行 `start()` / `stop()`，故无 module）
 - **模块清单**（均在 `packages/kits/src` 下，全部 `@Global()`）：
 
 | Module | forRoot 选项 | 提供的 bean |
@@ -399,7 +412,7 @@ Zod schema 单一事实源，同时派生 TypeScript 类型（`*.schema.ts` 导�
 | `AppConfigModule` | `forRoot()` 无选项（前置：bootstrap 先 `await AppConfigFacade.initial({ schema, loader })`） | AppConfig（整份已加载配置）+ 全局 `ConfigService` |
 | `IdGenerationModule` / `SchedulerModule` / `TelemetryModule` | 无 | IdGeneration / Scheduler / Telemetry |
 | `LoggerModule` | `{ prefix?, level?, pretty?, loki? }` + pino-http 定制点（`customProps` / `genReqId`） | LoggerConfig + AppLogger（并导出 nestjs-pino 的 Logger / PinoLogger） |
-| `DbModule` | `{ url?, sync?, entities?, subscribers? }` | DbConfig + Db |
+| `DbModule` | `{ url?, sync?, entities?, subscribers? }` | DbConfig + Db + DbService |
 | `RedisModule` | `{ url?, keyPrefix? }` | RedisConfig + RedisStore + RedisLockService |
 | `RateLimitModule` | 无（复用 RedisConfig） | RateLimiter |
 | `QueueModule` | 无（复用 RedisConfig） | QueueManager |
@@ -839,6 +852,53 @@ sidebar / toast / chart 等），Tailwind 4 主题变量由 `globals.css` 提供
 查询优先使用对应的 Deferred 方法。完整原理、SQL、索引与选型指南见
 [分页设计指南](docs/pagination.md)。
 
+### 数据操作门面（DbService）
+
+业务代码里**注入 `DbService`**（`packages/kits/src/db/db.service.ts`，由 `DbModule` 装配、`@Global`），
+它把 kits 的数据能力收成统一入口，方法面与 rihel-base 的 `DBService` 对齐且是其超集：
+
+```ts
+constructor(@Inject(DbService) private readonly dbService: DbService) {}
+
+// 分页
+await this.dbService.pageWith(builder, page, size)            // 页码分页
+await this.dbService.pageWithDeferred({ selectIds, fetchIds, idCol, page, size })
+await this.dbService.cursorPageWith(builder, { cursorColumns, getCursor, size })
+await this.dbService.cursorPageWithDeferred(builder, { ... })
+
+// 批量
+await this.dbService.batchInsert(TodoEntity, rows)            // 默认 manager
+await this.dbService.batchSave(rows)
+await this.dbService.batchUpsert(TodoEntity, rows, ['sku'])
+await this.dbService.batchDelete(TodoEntity, { selectIds })
+await this.dbService.safeDelete(TodoEntity, { id })           // 操作人默认取当前身份
+await this.dbService.getFullSqlStatement(builder)             // 返回完整 SQL，要打日志自己打
+```
+
+它比裸函数少传两个到处都有的参数——**默认 manager**（`Db.dataSource.manager`）与
+**默认操作人**（`getAuditUser()`，即 `setAuditUserProvider` 挂的钩子，与 `AuditSubscriber` 同源）。
+内核仍是可单测的纯函数（`db/pagination.ts` / `db/batch.ts` / `db/safe-delete.ts` / `db/sql.ts`），
+脱离 DI 时直接用：
+
+| 纯函数 | 说明 |
+| --- | --- |
+| `pageWith` / `pageWithDeferred` | 页码分页 / 两阶段页码分页（先主键后回表）；后者即 rihel 的 `multiplePageWith` |
+| `cursorPageWith` / `cursorPageWithDeferred` | 游标分页 / 两阶段游标分页（billy 多出的能力） |
+| `batchInsert` | 每片一条 `INSERT ... VALUES (...)`，不触发实体钩子、不级联，最快 |
+| `batchSave` | 走 `manager.save`，触发钩子与级联（每条一次 SELECT 判断增改，较慢） |
+| `batchUpsert` | `INSERT ... ON CONFLICT DO UPDATE`，需传 `conflictPaths` |
+| `batchDelete` | 先按 `selectIds` 取主键，再分片 `DELETE ... WHERE id IN (...)` |
+| `batch` | 底层骨架，自定义批量更新 / 复杂批量逻辑时直接复用 |
+| `safeDelete` | 先写 `deletedBy` 再软删（顺序颠倒会被软删的 UPDATE 覆盖） |
+| `getFullSqlStatement` | 把占位符还原成完整 SQL，仅用于调试输出 |
+
+两条硬约定：
+
+1. **事务内自动串行** —— `manager.queryRunner.isTransactionActive` 为真时并发度降为 1，
+   避免争用同一连接与事务快照。**事务方法内要显式传事务的 `manager`**，否则会落到根 manager 上脱离事务。
+2. **部分失败不静默** —— 任一分片失败不阻断其余分片，结束后聚合抛 `BatchOperationError`，
+   携带失败分片数与原始异常。
+
 ### 日志
 
 后端日志统一走 **nestjs-pino**（`LoggerModule`，对齐 rihel-base）：
@@ -888,6 +948,7 @@ SDK 方法、admin 页面，并运行 `pnpm db:gen` 生成迁移。
 | `pnpm dev:server`   | 启动 NestJS 开发服务器（9989，`node --watch --import tsx/esm`） |
 | `pnpm dev:web`      | 启动 Web 前台（9840）                   |
 | `pnpm dev:admin`    | 启动 Admin 后台（9845）                 |
+| `pnpm kill:dev`     | 一键停掉全部 dev 服务（Web / Admin / Server / packages watcher；`--dry-run` 仅预览） |
 | `pnpm build`        | 全量构建（turbo）                       |
 | `pnpm start:server` | 启动生产 Server                         |
 | `pnpm start:web`    | 启动生产 Web                            |
@@ -904,6 +965,7 @@ SDK 方法、admin 页面，并运行 `pnpm db:gen` 生成迁移。
 ```bash
 docker compose up -d postgres redis minio   # 仅基础设施
 pnpm docker:up                              # 全部（含 server + web）
+docker compose --profile kafka up -d        # 追加 Kafka + 控制台（可选，默认不启动）
 ```
 
 | 服务     | 镜像 / 构建             | 端口映射                    |
@@ -913,6 +975,13 @@ pnpm docker:up                              # 全部（含 server + web）
 | minio    | minio/minio             | `19000:9000` / `19001:9001` |
 | server   | docker/Dockerfile.server| `9989:9989`                 |
 | web      | docker/Dockerfile.web   | `3001:3001`                 |
+| kafka  ¹ | confluentinc/cp-kafka:7.4.8 | `29092:29092`            |
+| kafka-ui ¹ | provectuslabs/kafka-ui | `8085:8080`               |
+| zookeeper ¹ | confluentinc/cp-zookeeper:7.4.8 | `22181:2181`      |
+
+¹ 这三个服务带 `profiles: ["kafka"]`，**不指定 profile 不会启动**。启用后把服务端
+`KAFKA_BROKERS` 设为 `kafka:9092`（容器内）或 `127.0.0.1:29092`（宿主机直连）；
+不配置 `KAFKA_BROKERS` 时 `KafkaModule` 根本不装配，不影响其它功能。
 
 ### 镜像构建
 

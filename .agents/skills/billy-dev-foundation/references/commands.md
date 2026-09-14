@@ -8,6 +8,7 @@ pnpm dev:pkgs      # watch 构建 packages（http-client / kits / sdk / shared�
 pnpm dev:server    # 启动 NestJS 服务（9989；node --watch --import tsx/esm src/main.ts）
 pnpm dev:web       # Web 前台（9840）
 pnpm dev:admin     # Admin 后台（9845）
+pnpm kill:dev      # 一键停掉全部 dev 服务（Web / Admin / Server / packages watcher；--dry-run 仅预览）
 pnpm build:pkgs    # 仅构建 packages（http-client / kits / sdk / shared / ui）
 pnpm build         # 全量构建（turbo，按依赖拓扑）
 pnpm db:gen <Name> # 依据实体与数据库的差异生成迁移（写入 apps/server/src/database/migrations/，经 @app/server）
@@ -18,6 +19,7 @@ pnpm bootstrap     # 一键初始化引导：环境检查 → 依赖服务 → �
 pnpm bootstrap -y  # 全默认非交互（--skip-docker / --skip-install / --skip-migrate / --skip-seed / --skip-smoke 可跳过指定步骤）
 pnpm cli           # 代码生成器（交互式）：package / client / service / crud 四类模板
 pnpm cli -t crud -n <name>  # 非交互生成 CRUD 业务模块（实体 / repository / service / controller / module / schema）
+pnpm check:inject  # DI 装饰器一致性守卫（构造器 @Inject / providers @Injectable），违反返回非零退出码
 ```
 
 > **不要用 `tsx` CLI 跑 server**：它同时挂 CJS 钩子，会让 CJS 依赖（nestjs-pino）`require` 到的

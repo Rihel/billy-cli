@@ -41,6 +41,20 @@
    `ConfigLoader` 或用 `registerConfigLoader` 注册成按名字引用）。
    生命周期钩子用 NestJS 的 `OnApplicationBootstrap` / `OnApplicationShutdown`
    （方法名 `onApplicationBootstrap` / `onApplicationShutdown`）。
+   **DI 装饰器是二元的（务必统一）**：
+   - **由容器装配的类**（标 `@Injectable()` / `@Controller()` / `@Catch()`，或裸类名出现在
+     `providers:` 里）→ **每个构造器参数都必须 `@Inject(token)`**，`providers` 里的裸类名必须标
+     `@Injectable()`。原因：开发态用 tsx（esbuild）**不产出 `design:paramtypes`**，Nest 拿不到
+     参数类型，漏写会**静默注入 `undefined`**（不报错，运行时才炸）。
+   - **不经容器装配的类**（手工 `new`、`useFactory: () => new X()`、由第三方实例化如 TypeORM
+     subscriber）→ **刻意不写** `@Injectable()` / `@Inject()`：写了是死代码且误导。
+     实例：`RedisListCache`（多实例手工 new）、`Telemetry`（`useFactory` 装配，
+     构造参数是数值 `windowSeconds` 而非注入 token）、`TimeWheel`。
+   - **守卫**：`pnpm check:inject`（同时被 `apps/server/test/di-inject-convention.test.ts` 覆盖），
+     校验上述两条不变量，违反即红灯；**不要靠人眼保证**。
+   - 为什么不学 rihel-base 那样省掉 `@Inject`：rihel 用 `nest start` / `nest build`（底层 tsc），
+     会产出 `design:paramtypes`，所以它应用层 0 处 `@Inject`；billy 开发态走 esbuild，元数据缺席，
+     显式 token 是唯一来源（且让 dev / prod 走同一条注入路径）。这是加载器差异，不是风格差异。
 6. **实体**（`apps/server/src/database/entities/`）：继承 `BaseEntity`（来自 `@repo/kits`，
    自动 id = nanoid(20)、
    created_at / updated_at / deleted_at 均为 timestamp(3)）；表名复数；列名 snake_case、

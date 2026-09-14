@@ -27,12 +27,20 @@ description: Billy 工程（billy-cli monorepo）开发必读 skill。任何在�
 （`schema` 是应用自定义 shape，`loader` 决定来源：内置 env / memory / consul，或自定义 loader），经
 `AppConfigModule.forRoot()` 接进 Nest 的全局 `ConfigService`，各模块用 `forRootAsync` 惰性取分片。
 
-## 第 6 条铁律：构造器必须显式 `@Inject`
+## 第 6 条铁律：构造器必须显式 `@Inject`（且 DI 装饰器保持二元统一）
 
 项目开发用 `tsx`（esbuild），**不产出 `design:paramtypes`**。因此 NestJS 的**每一个构造器
 参数都必须显式写 `@Inject(token)`**，不能依赖 TypeScript 类型推断 —— 漏写会**静默注入
 `undefined`，不报错**。controller / service / repository / guard / filter 的构造器一律
-`@Inject(Xxx)`（kits 内部对带可选数值参数的构造器用 `useFactory` 显式装配）。
+`@Inject(Xxx)`。
+
+**反过来也统一**：不经容器装配的类（手工 `new`、`useFactory: () => new X()`、由第三方实例化）
+**刻意不写** `@Injectable()` / `@Inject()` —— 写了是死代码且误导（实例：`RedisListCache` /
+`Telemetry` / `TimeWheel`）；`providers:` 里的裸类名则必须标 `@Injectable()`。
+
+**用守卫保证，不靠人眼**：`pnpm check:inject`（同时被 `apps/server` 单测覆盖），违反返回非零
+退出码。判据、守卫实现与「为什么不像 rihel-base 那样省掉 `@Inject`」见
+[references/code-conventions.md](./references/code-conventions.md) 第 5 条。
 
 ## 第 7 条铁律：配置必须「惰性取」
 

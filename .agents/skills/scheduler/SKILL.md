@@ -1,6 +1,6 @@
 ---
 name: scheduler
-description: 在 Billy 工程中使用定时调度：基于 croner 的 Scheduler 门面（scheduleCron / scheduleInterval / scheduleTimeout）、任务名唯一、异常吞掉保循环、多实例互斥（配合分布式锁）。触发词：定时、调度、cron、定时任务、定时器、周期任务、scheduleCron、scheduleInterval、scheduleTimeout。
+description: 在 Billy 工程中使用定时调度：基于 croner 的 Scheduler 门面（scheduleCron / scheduleInterval / scheduleTimeout）、任务名唯一、异常吞掉保循环、多实例互斥（配合分布式锁）；高频毫秒级调度用 TimeWheel 时间轮。触发词：定时、调度、cron、定时任务、定时器、周期任务、时间轮、time-wheel、高频调度、scheduleCron、scheduleInterval、scheduleTimeout。
 ---
 
 # 定时调度
@@ -17,6 +17,11 @@ description: 在 Billy 工程中使用定时调度：基于 croner 的 Scheduler
   在 handler 内自行处理。
 - 应用停止统一清理；`stop(name)` 幂等。
 - **多实例重复执行**：跨实例需配合 `RedisStore.acquireLock` 互斥（谁抢到谁执行）。
+- **高频毫秒 / 秒级调度别用本门面，用 `TimeWheel`**（`kits/src/foundation/time-wheel/`）：
+  时间轮面向「大量任务 + 毫秒级精度」（限流窗口、批量节流、心跳轮），O(1) 槽位插入，
+  带自适应补偿与落后任务防堆积；是**普通类**不是 DI 门面，用
+  `new TimeWheel(tickDuration, wheelsCount)` 自行 `start()` / `stop()`。
+  本门面的 `scheduleInterval` 面向秒级以上的少量命名任务。
 
 ## 参考文件（本 skill 的组成部分）
 

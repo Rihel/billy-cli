@@ -1,6 +1,6 @@
 ---
 name: database
-description: 在 Billy 工程中使用 PostgreSQL / TypeORM 做数据库设计与开发：表建模（字段类型 / 约束 / 软删除 / 命名）、索引设计（何时建 / 组合与游标索引 / ILIKE 与索引失效 / EXPLAIN 验证）、查询写法（queryBuilder / 绑定参数 / 分页与游标 / 防 N+1）、数据访问层（repository / 事务 / 软删行为 / 并发安全），含日常操作命令速查。触发词：数据库、建表、表设计、字段类型、索引、唯一约束、软删除、查询、repository、TypeORM、queryBuilder、分页、游标、事务、迁移、psql、EXPLAIN、N+1、SQL、数据访问。
+description: 在 Billy 工程中使用 PostgreSQL / TypeORM 做数据库设计与开发：表建模（字段类型 / 约束 / 软删除 / 命名）、索引设计（何时建 / 组合与游标索引 / ILIKE 与索引失效 / EXPLAIN 验证）、查询写法（queryBuilder / 绑定参数 / 分页与游标 / 批量写入 / 防 N+1）、数据访问层（repository / 事务 / 软删行为 / 并发安全），含日常操作命令速查。触发词：数据库、建表、表设计、字段类型、索引、唯一约束、软删除、查询、repository、TypeORM、queryBuilder、分页、游标、批量、批量插入、批量更新、upsert、事务、迁移、psql、EXPLAIN、N+1、SQL、数据访问。
 ---
 
 # 数据库设计与开发（PostgreSQL / TypeORM）
@@ -16,7 +16,11 @@ description: 在 Billy 工程中使用 PostgreSQL / TypeORM 做数据库设计�
 | 数据库 | PostgreSQL 17：`docker compose up postgres`（宿主 15432，root/pg1234/billy-cli）；`pnpm bootstrap` 可一键起依赖 + 生成 .env + 迁移 |
 | ORM | TypeORM；CLI 迁移用 `apps/server/data-source.ts`（glob 实体与迁移，`synchronize: false`，迁移 SQL 需人工检查） |
 | 实体 | 继承 `@repo/kits` 的 `BaseEntity`（`packages/kits/src/db/base-entity.ts`）：`id` varchar(20)（nanoid，`@BeforeInsert` 生成）+ `createdAt` / `updatedAt` / `deletedAt`（timestamp(3)，软删） |
-| 分页 | `@repo/kits` `db/pagination.ts`：`pageWith`（offset 页）/ `cursorPageWith`（游标）+ deferred 深翻页变体 |
+| 数据入口 | 业务侧统一注入 **`DbService`**（`@repo/kits` `db/db.service.ts`，由 `DbModule` 装配且 `@Global`）：分页 / 批量 / 软删 / SQL 调试都从它走；纯函数内核（`pagination.ts` / `batch.ts` / `safe-delete.ts` / `sql.ts`）脱离 DI 时可直接用 |
+| 分页 | `DbService.pageWith` / `pageWithDeferred` / `cursorPageWith` / `cursorPageWithDeferred`（`db/pagination.ts`）：offset 页 / 两阶段 offset / 游标 / 两阶段游标 |
+| 批量写入 | `DbService.batchInsert` / `batchSave` / `batchUpsert` / `batchDelete` / `batch`：**事务内自动降为串行**，部分失败聚合抛 `BatchOperationError` |
+| 软删审计 | `DbService.safeDelete(entity, where)`：操作人默认取 `getAuditUser()`（`setAuditUserProvider` 挂的钩子），可显式覆盖；**先写 `deletedBy` 再软删** |
+| SQL 调试 | `DbService.getFullSqlStatement(builder)` 或同名纯函数：把占位符还原成可粘贴执行的完整 SQL；**要打日志由调用方用自己注入的 `AppLogger` 打**（`DbService` 不注入 logger） |
 | 事务 | `typeorm-transactional`：service 层写方法 `@Transactional()`（`import { Transactional } from '@repo/kits'`） |
 
 ## 常用命令（速查）

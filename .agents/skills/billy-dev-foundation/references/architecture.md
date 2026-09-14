@@ -44,8 +44,11 @@ apps/server   NestJS HTTP 边界 + 业务模块 + 实体 / 迁移 + 配置 + 唯
    ↓ 只依赖
 @repo/kits    后端通用能力封装：一个基础设施一个目录（provider + <name>.config.ts +
               <name>.module.ts + index.ts，均 @Global + XxxModule.forRoot(options)）
-              · db/           Db 门面 / DbConfig / DbModule / create-db / BaseEntity /
-                              AuditEntity + AuditSubscriber / pagination
+              · db/           Db 门面（连接生命周期）/ DbService（注入式数据操作门面：四种分页 +
+                              批量写入/删除 + safeDelete + getFullSqlStatement；只依赖 Db，不注入
+                              logger），自动带默认 manager 与操作人）/
+                              DbConfig / DbModule / create-db / BaseEntity / AuditEntity +
+                              AuditSubscriber / pagination / batch / safe-delete / sql
               · redis/        RedisStore / RedisLockService（自旋等待 + 看门狗续期 + @RedisLock）/
                               RedisListCache / RedisConfig / RedisModule
               · rate-limit/   RateLimiter / RateLimitModule（复用 RedisConfig）

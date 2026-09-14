@@ -65,7 +65,43 @@ if (keyword) {
   `deferredPageWith` / `deferredCursorPageWith`（先只取主键再回表，当前业务未用，
   极大表启用）。列表别默认给「跳页到第 N 万页」的能力。
 
-## 5. 防 N+1 与关联加载
+## 5. 批量写入（@repo/kits `DbService`）
+
+导入 / 同步 / 批处理别在循环里逐条写库。业务代码里**注入 `DbService`**（`DbModule` 已装配，
+`@Global`，直接 `@Inject(DbService)` 即可）：
+
+```ts
+constructor(@Inject(DbService) private readonly dbService: DbService) {}
+
+// 无关联的纯数据写入：一条 INSERT ... VALUES (...)，不触发实体钩子、不级联
+await this.dbService.batchInsert(TodoEntity, rows, { chunkSize: 100, concurrency: 5 })
+// 有关联关系、需要实体钩子：走 save（每条一次 SELECT 判断 INSERT/UPDATE，更慢）
+await this.dbService.batchSave(rows)
+// 导入 / 同步：INSERT ... ON CONFLICT DO UPDATE，无需预判存在
+await this.dbService.batchUpsert(TodoEntity, rows, ['sku'], { chunkSize: 100 })
+// 软删 + 记操作人（实体须继承 AuditEntity）
+await this.dbService.safeDelete(TodoEntity, { id })
+```
+
+比裸函数少传两个到处都有的参数：**默认 manager**（`Db.dataSource.manager`）与
+**默认操作人**（`getAuditUser()`，与 `AuditSubscriber` 同源，可用 `{ operatorId }` 覆盖）。
+内核是可单测纯函数（`db/batch.ts` / `db/safe-delete.ts` / `db/sql.ts`），脱离 DI 时直接调用
+（签名里显式吃 `manager`）。
+
+- **事务内必须显式传事务 manager**：`this.dbService.batchInsert(TodoEntity, rows, {}, manager)`。
+  不传会落到根 manager 上**脱离事务**。并发度经 `resolveBatchConcurrency` 解析，
+  `manager.queryRunner.isTransactionActive` 为真时强制降为 1——事务里开并发会争用同一连接与
+  事务快照，轻则排队重则死锁。
+- **部分失败不静默**：任一分片失败不阻断其余分片，全部结束后聚合抛 `BatchOperationError`
+  （携带 `failedChunks` 与各分片原始异常），调用方可据此重试或告警。
+- 自定义批量逻辑（批量删 / 批量更新）用底层 `batch(items, handler, options)` 骨架。
+- 排查复杂查询用 `this.dbService.getFullSqlStatement(builder)`（或同名纯函数）把占位符还原成
+  完整 SQL（仅调试，勿执行）；要打日志自己打：`this.logger.debug(this.dbService.getFullSqlStatement(builder))`
+  —— `DbService` 不注入 `AppLogger`（它不产生运维日志），而 repository / service 本就注入了。
+- **分页也走 `DbService`**：`pageWith` / `pageWithDeferred` / `cursorPageWith` /
+  `cursorPageWithDeferred` 四个方法与纯函数同名同参，业务侧统一从服务调（见上一节）。
+
+## 6. 防 N+1 与关联加载
 
 - 仓库现状是**单表查询**（无关联实体）；若引入关系，遵守：
   - 循环里逐条查库 → 改为收集 id 后一次 `WHERE ... IN (...)` / join 取齐再内存组装；
@@ -73,7 +109,7 @@ if (keyword) {
     （行数会翻倍，total 失真）——先分页主表再按 id 批量补关联。
 - 只查所需列：`select` 指定列 / 响应经 `toXxx()` 裁剪（同时是性能与安全）。
 
-## 6. 原生 SQL 的边界
+## 7. 原生 SQL 的边界
 
 - 常规 where / 排序 / 分页都用 queryBuilder，**不手写 SQL 字符串**。
 - 只有 queryBuilder 表达不动时才用原生（复杂聚合、窗口函数、递归 CTE）：
