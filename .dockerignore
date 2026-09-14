@@ -11,3 +11,12 @@ README.md
 .gitignore
 *.md
 docker-compose.yaml
+
+# 环境变量：真实密钥绝不进构建上下文 / 镜像（.gitignore 只管 git，管不到 docker build）
+**/.env
+**/.env.*
+
+# 私钥 / 证书：同理不入构建上下文
+**/*.key
+**/*.crt
+**/*.pem
