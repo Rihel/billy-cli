@@ -1,0 +1,2 @@
+# 占位文件：Next.js 的 public/ 目录需存在，Dockerfile.web 的
+# `COPY --from=builder /app/apps/web/public` 才有源可复制（静态资源放这里）。

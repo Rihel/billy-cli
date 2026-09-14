@@ -970,7 +970,7 @@ docker compose --profile kafka up -d        # 追加 Kafka + 控制台（可选�
 
 | 服务     | 镜像 / 构建             | 端口映射                    |
 | -------- | ----------------------- | --------------------------- |
-| postgres | postgres:17-alpine      | `15432:5432`（含 init-db.sql）|
+| postgres | postgres:17-alpine      | `15432:5432`（init-db.sql 只做库级设置，建表由迁移负责）|
 | redis    | redis:7-alpine          | `6380:6379`                 |
 | minio    | minio/minio             | `19000:9000` / `19001:9001` |
 | server   | docker/Dockerfile.server| `9989:9989`                 |

@@ -31,6 +31,10 @@ description: 在 Billy 工程中使用 PostgreSQL / TypeORM 做数据库设计�
 - 结构变更：`pnpm db:gen <Name>`（依实体与库差异生成迁移，**人工检查 SQL**）→ `pnpm db:migrate` 执行
 - 种子：`pnpm seed:admin`（首个管理员，幂等——靠邮箱唯一约束兜底）
 - 验证查询：psql 里 `EXPLAIN (ANALYZE, BUFFERS) <sql>`
+- **建表只走迁移**：`docker/init-db.sql` 只放库级设置（扩展等），**禁止往里加建表 DDL**。
+  历史教训：它曾照 drizzle 时代的迁移建过 `todos` / `users` / `admins`，而 TypeORM 的 initial
+  迁移是裸 `CREATE TABLE`（无 `IF NOT EXISTS`），于是**全新数据卷**上
+  `docker compose up postgres` → `pnpm db:migrate` 会报 `relation "todos" already exists`。
 
 ## 与既有 skill 的分工
 

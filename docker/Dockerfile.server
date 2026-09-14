@@ -6,14 +6,18 @@ FROM node24-pnpm11:1.0 AS builder
 WORKDIR /app
 
 
-# 先只复制清单文件，充分利用 layer 缓存
+# 先只复制清单文件，充分利用 layer 缓存。
 COPY package.json pnpm-lock.yaml turbo.json pnpm-workspace.yaml ./
-COPY apps/server/package.json ./apps/server/
-COPY apps/web/package.json    ./apps/web/
-COPY packages/shared/package.json ./packages/shared/
-COPY packages/kits/package.json   ./packages/kits/
-COPY packages/ui/package.json     ./packages/ui/
-COPY packages/sdk/package.json    ./packages/sdk/
+# 必须复制**全部** workspace 成员的清单：pnpm install --frozen-lockfile 需要完整的 workspace 图，
+# 少一个成员就会 ERR_PNPM_WORKSPACE_PKG_NOT_FOUND（apps/web 依赖 @repo/http-client）。
+COPY apps/admin/package.json           ./apps/admin/
+COPY apps/server/package.json          ./apps/server/
+COPY apps/web/package.json             ./apps/web/
+COPY packages/http-client/package.json ./packages/http-client/
+COPY packages/kits/package.json        ./packages/kits/
+COPY packages/sdk/package.json         ./packages/sdk/
+COPY packages/shared/package.json      ./packages/shared/
+COPY packages/ui/package.json          ./packages/ui/
 
 # 安装全部依赖（含 devDependencies，build 需要）
 COPY scripts/ ./scripts/
