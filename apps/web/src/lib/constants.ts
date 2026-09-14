@@ -19,8 +19,19 @@ export const LandingAnchors = {
 
 export const TokenKey = 'access-token'
 export const AppName = 'Billy CLI'
-export const ServerUrl =
+
+/** 浏览器端 API 地址（`NEXT_PUBLIC_*` 在构建期内联，只有浏览器读得到） */
+export const PublicServerUrl =
   process.env.NEXT_PUBLIC_SERVER_URL || 'http://localhost:9989'
+
+/**
+ * 服务端（SSR / Server Actions）API 地址。
+ *
+ * `SERVER_URL` 是**运行时**环境变量（非 NEXT_PUBLIC，不会内联），所以容器里可以指向内网地址
+ * （compose 的 `SERVER_URL=http://server:9989`）；未配置时回落浏览器地址，本地开发零配置。
+ * 与 admin（`apps/admin/src/lib/constants.ts`）同一套约定。
+ */
+export const ServerUrl = process.env.SERVER_URL || PublicServerUrl
 
 /** 对象存储（与 admin 同一套，用户头像等资源 key 拼接完整 URL） */
 export const StorageUrl =

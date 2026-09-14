@@ -5,13 +5,13 @@ import {
   BearerTokenCredentials,
 } from '@repo/http-client'
 import { logoutAction } from '@/actions/auth.actions'
-import { Pages, ServerUrl, TokenKey } from './constants'
+import { Pages, PublicServerUrl, ServerUrl, TokenKey } from './constants'
 
 const tokenManager = new LocalStorageCredentialsManager<BearerTokenCredentials>(
   TokenKey,
 )
 
-/** 创建无状态的 ServerClient（可选注入 token）。 */
+/** 服务端（SSR / Server Actions）无状态客户端；走运行时 SERVER_URL，容器内可指内网 */
 export function createServerClient(token?: string) {
   const mgr = new MemoryCredentialsManager<BearerTokenCredentials>()
   if (token) mgr.setCredentials({ token })
@@ -34,10 +34,11 @@ export async function removeToken(): Promise<void> {
 
 let clientInstance: ServerClient | null = null
 
+/** 浏览器端单例（localStorage 存 token）；走浏览器可达的公开地址 */
 export function getServerClient(): ServerClient {
   if (!clientInstance) {
     clientInstance = new ServerClient({
-      baseUrl: ServerUrl,
+      baseUrl: PublicServerUrl,
       credentialsManager: tokenManager,
       callbacks: {
         onUnauthorized: async () => {

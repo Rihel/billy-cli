@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import { TerminalSquare, ExternalLink } from 'lucide-react'
-import { AppName, Pages, LandingAnchors, AdminUrl, ServerUrl } from '@/lib/constants'
+import { AppName, Pages, LandingAnchors, AdminUrl, PublicServerUrl } from '@/lib/constants'
 
 type FooterLink = { href: string; label: string; external?: boolean }
 
@@ -31,7 +31,7 @@ const navGroups: { title: string; links: FooterLink[] }[] = [
     title: '服务',
     links: [
       { href: AdminUrl, label: '管理后台', external: true },
-      { href: ServerUrl, label: 'API 服务', external: true },
+      { href: PublicServerUrl, label: 'API 服务', external: true },
       { href: 'https://github.com', label: 'GitHub 仓库', external: true },
     ],
   },
