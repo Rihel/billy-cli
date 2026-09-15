@@ -938,8 +938,12 @@ SDK 方法、admin 页面，并运行 `pnpm db:gen` 生成迁移。
 
 `service` 骨架的生产级默认与 `apps/server` 对齐：请求上下文（`X-Request-Id`）/ 请求日志 /
 请求指标三件自注册中间件（组合根 `imports` 内的顺序有铁律，见生成物注释）、限流模块，
-以及 75s / 80s 的长连接超时默认值（前置网关场景，见「前置反向代理」一节）。模板与工作区包的
-一致性由 `pnpm check:scaffold` 保证。
+以及 75s / 80s 的长连接超时默认值（前置网关场景，见「前置反向代理」一节）。
+
+模板与工作区包的一致性由 `pnpm check:scaffold` 保证，它做三件事：汇总所有模板对
+`@repo/kits` / `@repo/shared` 的具名导入、把 `service` 模板整体渲染成一套骨架做类型检查、
+**真的调 CLI 生成一个 crud 模块**（并补上它提示的两个手动步骤）做类型检查。注意 tsc 读的是
+packages 的 `dist` 声明，所以刚改过 packages 源码要先 `pnpm build:pkgs`（脚本会告警）。
 
 ## 脚本
 
