@@ -177,7 +177,7 @@ describe('HttpStreamClient 请求配置', () => {
     expect(init.body).toBe(JSON.stringify({ channels: ['task:42', 'user:1'] }))
   })
 
-  it('可配置 GET 方法（不发送 body）', async () => {
+  it('可配置 GET 方法（不发送 body，也不带 Content-Type）', async () => {
     const fetchMock = vi.fn(async () => streamOpenResponse())
     const sse = makeClient({
       method: 'GET',
@@ -189,6 +189,8 @@ describe('HttpStreamClient 请求配置', () => {
     const [, init] = fetchMock.mock.calls[0] as [string, RequestInit]
     expect(init.method).toBe('GET')
     expect(init.body).toBeUndefined()
+    // 无 body 就不该带 Content-Type
+    expect(init.headers).not.toHaveProperty('Content-Type')
   })
 
   it('自定义 body 覆盖 channels 默认序列化', async () => {
@@ -201,6 +203,48 @@ describe('HttpStreamClient 请求配置', () => {
     await vi.waitFor(() => expect(sse.currentState).toBe(StreamClientState.Open))
     const [, init] = fetchMock.mock.calls[0] as [string, RequestInit]
     expect(init.body).toBe(JSON.stringify({ topic: 'custom' }))
+  })
+
+  it('有 body 时自动补 Content-Type: application/json（服务端 body parser 才解析）', async () => {
+    const fetchMock = vi.fn(async () => streamOpenResponse())
+    const sse = makeClient({
+      channels: ['task:42'],
+      fetch: fetchMock as unknown as typeof fetch,
+    })
+    sse.connect()
+    await vi.waitFor(() => expect(sse.currentState).toBe(StreamClientState.Open))
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit]
+    expect(init.headers).toMatchObject({ 'Content-Type': 'application/json' })
+  })
+
+  it('body 为 null 时视为显式无请求体：不发 body、不带 Content-Type', async () => {
+    const fetchMock = vi.fn(async () => streamOpenResponse())
+    const sse = makeClient({
+      body: null,
+      channels: ['task:42'],
+      fetch: fetchMock as unknown as typeof fetch,
+    })
+    sse.connect()
+    await vi.waitFor(() => expect(sse.currentState).toBe(StreamClientState.Open))
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit]
+    // 回归：旧实现会 JSON.stringify(null) 把字面量 "null" 当 body 发出去
+    expect(init.body).toBeUndefined()
+    expect(init.headers).not.toHaveProperty('Content-Type')
+  })
+
+  it('调用方显式设置的 Content-Type 不被覆盖（大小写不敏感）', async () => {
+    const fetchMock = vi.fn(async () => streamOpenResponse())
+    const sse = makeClient({
+      channels: ['task:42'],
+      headers: { 'content-type': 'application/json; charset=utf-8' },
+      fetch: fetchMock as unknown as typeof fetch,
+    })
+    sse.connect()
+    await vi.waitFor(() => expect(sse.currentState).toBe(StreamClientState.Open))
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit]
+    const headers = init.headers as Record<string, string>
+    expect(headers['content-type']).toBe('application/json; charset=utf-8')
+    expect(headers).not.toHaveProperty('Content-Type')
   })
 })
 
@@ -258,6 +302,120 @@ describe('HttpStreamClient 认证', () => {
     await vi.waitFor(() => expect(sse.currentState).toBe(StreamClientState.Open))
     const [, init] = fetchMock.mock.calls[0] as [string, RequestInit]
     expect(init.headers).toMatchObject({ Authorization: 'Bearer acquired-token' })
+  })
+})
+
+describe('HttpStreamClient 页面隐藏 / 恢复（openWhenHidden）', () => {
+  /** 最小 document 替身：node 环境没有 document，只为覆盖 visibilitychange 分支 */
+  const installDocumentStub = () => {
+    const listeners = new Set<() => void>()
+    const doc = {
+      hidden: false,
+      addEventListener: (_type: string, handler: () => void) => {
+        listeners.add(handler)
+      },
+      removeEventListener: (_type: string, handler: () => void) => {
+        listeners.delete(handler)
+      },
+    }
+    const host = globalThis as { document?: unknown }
+    host.document = doc
+    const emit = () => listeners.forEach((handler) => handler())
+    return {
+      hide: () => {
+        doc.hidden = true
+        emit()
+      },
+      show: () => {
+        doc.hidden = false
+        emit()
+      },
+      cleanup: () => {
+        delete host.document
+      },
+    }
+  }
+
+  /**
+   * 模拟真实 fetch 的 abort 语义：
+   * - signal 已 aborted → 立刻抛 AbortError
+   * - 连接中途 abort → 终止 body 流（真实 fetch 会 cancel body；不模拟的话
+   *   `reader.read()` 永远挂起，transport 的 closed 永不 settle，重连循环走不下去）
+   */
+  const signalAwareFetch = () =>
+    vi.fn(async (_url: string, init?: RequestInit) => {
+      const signal = init?.signal as AbortSignal | undefined
+      if (signal?.aborted) {
+        throw new DOMException('The operation was aborted.', 'AbortError')
+      }
+      const stream = new ReadableStream<Uint8Array>({
+        start(controller) {
+          signal?.addEventListener(
+            'abort',
+            () => {
+              try {
+                controller.error(
+                  new DOMException('The operation was aborted.', 'AbortError'),
+                )
+              } catch {
+                /* 已终止 */
+              }
+            },
+            { once: true },
+          )
+        },
+      })
+      return new Response(stream, {
+        status: 200,
+        headers: { 'content-type': 'text/event-stream' },
+      })
+    })
+
+  it('恢复可见后自动重连（回归：旧实现静默进入 closed 且永不重连）', async () => {
+    const doc = installDocumentStub()
+    const fetchMock = signalAwareFetch()
+    const sse = makeClient({ fetch: fetchMock as unknown as typeof fetch })
+
+    try {
+      sse.connect()
+      await vi.waitFor(() => expect(sse.currentState).toBe(StreamClientState.Open))
+      expect(fetchMock).toHaveBeenCalledTimes(1)
+
+      doc.hide()
+      doc.show()
+
+      // 关键：第二次连接必须真的建立（旧实现会带着已 abort 的 signal 重连，
+      // 被 transport 当成正常结束 → 直接 closed）
+      await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2))
+      await vi.waitFor(() => expect(sse.currentState).toBe(StreamClientState.Open))
+      expect(sse.currentState).not.toBe(StreamClientState.Closed)
+    } finally {
+      sse.close()
+      doc.cleanup()
+    }
+  })
+
+  it('openWhenHidden: true 时隐藏不断开、不重连', async () => {
+    const doc = installDocumentStub()
+    const fetchMock = signalAwareFetch()
+    const sse = makeClient({
+      openWhenHidden: true,
+      fetch: fetchMock as unknown as typeof fetch,
+    })
+
+    try {
+      sse.connect()
+      await vi.waitFor(() => expect(sse.currentState).toBe(StreamClientState.Open))
+
+      doc.hide()
+      await new Promise((resolve) => setTimeout(resolve, 20))
+
+      expect(fetchMock).toHaveBeenCalledTimes(1)
+      expect(sse.currentState).toBe(StreamClientState.Open)
+    } finally {
+      sse.close()
+      doc.cleanup()
+    }
   })
 })
 

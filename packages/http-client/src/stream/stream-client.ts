@@ -81,7 +81,9 @@ export class HttpStreamClient {
     this.stopped = false
     this.hiddenPaused = false
     this.retryCount = 0
-    this.controller = new AbortController()
+    // AbortController 由 run() 的每次连接尝试自己创建（见下方注释），
+    // 这里不预先建，避免「一次 abort 永久失效」。
+    this.controller = null
     this.setState(StreamClientState.Connecting)
     this.bindVisibility()
     void this.run()
@@ -111,15 +113,30 @@ export class HttpStreamClient {
         this.hiddenPaused = false
         continue
       }
+      // 每次尝试都用**全新**的 AbortController。
+      // AbortSignal 一旦 abort 就永久处于 aborted：若整轮重连复用同一个 controller，
+      // 页面隐藏触发的 abort 会让后续每次连接刚发起就被中断，而 transport 把 abort
+      // 视为「正常结束」，状态机于是直接进入 closed 且不再重连 —— 表现为切回标签页后
+      // 流静默失效。close() 依赖 this.controller 中断「当前」这次尝试，故这里覆盖引用。
+      this.controller = new AbortController()
+      const signal = this.controller.signal
+
       try {
         this.setState(StreamClientState.Connecting)
 
         // 认证编排：解析有效凭证 → 生成认证 headers（复用本包凭证体系）
         const credentials = await this.resolver.resolve()
         const ctx = await this.options.authStrategy.getAuthContext(credentials, {})
+        const body = this.buildBody()
         const headers: Record<string, string> = {
           ...this.options.headers,
           ...(ctx.headers || {}),
+        }
+        // 有 body 才补 Content-Type：服务端 body parser 只解析 application/json，
+        // 不补的话订阅 body 会被静默忽略（channels 落成默认 []）。body 为 null 时**不带**，
+        // 且调用方显式设置的值一律不覆盖。
+        if (body !== undefined && !hasHeader(headers, 'content-type')) {
+          headers['Content-Type'] = 'application/json'
         }
         if (this.lastEventId) headers['Last-Event-ID'] = this.lastEventId
 
@@ -128,12 +145,17 @@ export class HttpStreamClient {
             url: this.options.url,
             method: this.options.method ?? 'POST',
             headers,
-            body: this.buildBody(),
-            signal: this.controller!.signal,
+            body,
+            signal,
             fetchImpl: this.options.fetch,
           },
           {
-            onOpen: () => this.setState(StreamClientState.Open),
+            onOpen: () => {
+              // 连上就重置退避计数：否则 retryCount 只增不减，跨多次重连后即使只是偶发断线，
+              // 也要等最长的退避间隔（maxRetryInterval）才重连。
+              this.retryCount = 0
+              this.setState(StreamClientState.Open)
+            },
             onMessage: (msg) => this.handleMessage(msg),
             onRetry: (retry) => {
               this.serverRetry = retry
@@ -159,9 +181,18 @@ export class HttpStreamClient {
     }
   }
 
+  /**
+   * 构造请求体。
+   *
+   * `body === null` 视为「显式无请求体」（与 fetch 的 `body: null` 语义一致）：既不
+   * `JSON.stringify(null)` 发出字面量 `"null"`，也不回落成 `{ channels }`；
+   * 此时若不显式设置 Content-Type，请求就**不带** Content-Type。
+   */
   private buildBody(): string | undefined {
     const { body, channels, method } = this.options
-    if (body !== undefined) return JSON.stringify(body)
+    if (body !== undefined) {
+      return body === null ? undefined : JSON.stringify(body)
+    }
     if ((method ?? 'POST').toUpperCase() === 'POST') {
       return JSON.stringify({ channels: channels ?? [] })
     }
@@ -250,6 +281,12 @@ export class HttpStreamClient {
       check()
     })
   }
+}
+
+/** 大小写不敏感地判断请求头里是否已有某个头（headers 是普通对象，不是 Headers 实例）。 */
+function hasHeader(headers: Record<string, string>, name: string): boolean {
+  const target = name.toLowerCase()
+  return Object.keys(headers).some((key) => key.toLowerCase() === target)
 }
 
 /** 可中断延时（abort 时提前返回）。 */

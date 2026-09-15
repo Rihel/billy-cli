@@ -43,9 +43,15 @@ export interface StreamClientOptions {
   method?: string
   /** 订阅频道；POST 时序列化为 body { channels } */
   channels?: string[]
-  /** 自定义请求体（覆盖 channels 默认序列化） */
+  /**
+   * 自定义请求体（覆盖 channels 默认序列化）。
+   * 传 `null` 表示**显式无请求体**（此时不会回落成 `{ channels }`，也不补 Content-Type）。
+   */
   body?: unknown
-  /** 基础请求头（认证 header 由 authStrategy 注入，这里可放 Content-Type 等） */
+  /**
+   * 基础请求头（认证 header 由 authStrategy 注入）。
+   * 带请求体时客户端会自动补 `Content-Type: application/json`（已显式设置则不覆盖）。
+   */
   headers?: Record<string, string>
   /** 凭证管理器（CredentialsManager 实现，如 MemoryCredentialsManager / LocalStorageCredentialsManager） */
   credentialsManager: CredentialsManager
