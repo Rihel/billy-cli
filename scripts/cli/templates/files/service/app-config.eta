@@ -16,9 +16,39 @@ import {
  * 不含 `db.entities`（类引用无法来自环境变量），由 root.module.ts 装配时补上。
  */
 export const appConfigSchema = z.object({
-  server: z.object({
-    port: z.coerce.number().int().positive().default(9989),
-  }),
+  server: z
+    .object({
+      port: z.coerce.number().int().positive().default(9989),
+      /**
+       * 空闲长连接保持时长（ms），映射到 Node `server.keepAliveTimeout`。
+       *
+       * 默认 75s 的来由：前置网关（如 Kong）的上游连接池默认
+       * `upstream_keepalive_idle_timeout = 60s`，且**不认**后端响应头里的
+       * `Keep-Alive: timeout=N` 提示。若后端比网关先关空闲连接，网关就会在
+       * 「它以为还能复用」的窗口里往一个正在关闭的 socket 发请求 → 间歇性 502 /
+       * `upstream prematurely closed connection`（且后端日志无痕，因为请求没到应用）。
+       */
+      keepAliveTimeoutMs: z.coerce.number().int().positive().default(75_000),
+      /**
+       * 收完请求头的最长等待（ms），映射到 Node `server.headersTimeout`。
+       *
+       * **必须大于 `keepAliveTimeoutMs`**：Node 对反序**不报错、静默接受**，故用 superRefine
+       * 显式拦住，配错直接启动失败。
+       */
+      headersTimeoutMs: z.coerce.number().int().positive().default(80_000),
+    })
+    .superRefine((value, ctx) => {
+      if (value.headersTimeoutMs <= value.keepAliveTimeoutMs) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['headersTimeoutMs'],
+          message:
+            `headersTimeoutMs(${value.headersTimeoutMs}) 必须大于 ` +
+            `keepAliveTimeoutMs(${value.keepAliveTimeoutMs})，` +
+            '否则长连接被复用时可能因等待请求头超时被销毁',
+        })
+      }
+    }),
   db: DbConfigSchema,
   redis: RedisConfigSchema,
   jwt: JwtConfigSchema,
@@ -36,7 +66,11 @@ const optional = (value: string | undefined): string | undefined =>
 
 /** 环境变量 → 嵌套配置（未设置的键留 undefined，由 schema 默认值兜底） */
 export const mapEnv = (env: NodeJS.ProcessEnv): Record<string, unknown> => ({
-  server: { port: optional(env.PORT) },
+  server: {
+    port: optional(env.PORT),
+    keepAliveTimeoutMs: optional(env.KEEP_ALIVE_TIMEOUT_MS),
+    headersTimeoutMs: optional(env.HEADERS_TIMEOUT_MS),
+  },
   db: { url: optional(env.DB_URL), sync: env.DB_SYNC === 'true' },
   redis: { url: optional(env.REDIS_URL), keyPrefix: optional(env.REDIS_KEY_PREFIX) },
   jwt: { secret: optional(env.JWT_SECRET), expiresIn: optional(env.JWT_EXPIRES_IN) },

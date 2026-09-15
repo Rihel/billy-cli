@@ -1,0 +1,17 @@
+/**
+ * 横切 HTTP 构件（不依赖任何业务模块，业务模块可反向依赖）：
+ *
+ * - `request-context/`  请求上下文**模块**（AsyncLocalStorage + 自注册中间件：requestId / 身份）
+ * - `request-logger/`   请求日志**模块**（自注册中间件：method / url / status / 耗时 / 身份）
+ * - `request-metrics/`  请求指标**模块**（自注册埋点中间件：QPS / 耗时直方图）
+ *
+ * 组内文件用相对深层路径互相引用，外部一律从这里导入。
+ * 请求上下文模块的中间件必须最先执行 —— 组合根 `imports` 里的顺序见 `root.module.ts` 注释。
+ */
+export * from './request-context/request-context.js'
+export * from './request-context/request-context.middleware.js'
+export * from './request-context/request-context.module.js'
+export * from './request-logger/request-logger.middleware.js'
+export * from './request-logger/request-logger.module.js'
+export * from './request-metrics/request-metrics.middleware.js'
+export * from './request-metrics/request-metrics.module.js'

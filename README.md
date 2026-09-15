@@ -925,7 +925,7 @@ await this.dbService.getFullSqlStatement(builder)             // 返回完整 SQ
 
 - `package` — 新 workspace 包（tsdown 构建）
 - `client` — Next.js 前端应用（@repo/ui 技术栈）
-- `service` — NestJS 服务端应用骨架（`main.ts` + `root.module.ts` + `app-config.ts` + `lib/http.ts` + `config.ts` + `data-source.ts`）
+- `service` — NestJS 服务端应用骨架（`main.ts` + `root.module.ts` + `app-config.ts` + `config.ts` + `data-source.ts` + `lib/http.ts` + `common/` 的请求上下文 / 请求日志 / 请求指标自注册中间件）
 - `crud` — 完整 CRUD 业务模块（NestJS 实体 / repository / service / controller / module / errors / schema）
 
 ```bash
@@ -935,6 +935,11 @@ pnpm cli --help     # 查看参数
 
 生成 CRUD 后会提示手动补全：`root.module.ts` 注册模块与实体、schema 导出、错误码注册、
 SDK 方法、admin 页面，并运行 `pnpm db:gen` 生成迁移。
+
+`service` 骨架的生产级默认与 `apps/server` 对齐：请求上下文（`X-Request-Id`）/ 请求日志 /
+请求指标三件自注册中间件（组合根 `imports` 内的顺序有铁律，见生成物注释）、限流模块，
+以及 75s / 80s 的长连接超时默认值（前置网关场景，见「前置反向代理」一节）。模板与工作区包的
+一致性由 `pnpm check:scaffold` 保证。
 
 ## 脚本
 

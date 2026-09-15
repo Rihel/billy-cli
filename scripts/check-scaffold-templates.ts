@@ -2,7 +2,7 @@ import { spawnSync } from 'node:child_process'
 import { mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { renderFile } from './cli/templates/utils.js'
+import { createServiceTemplate } from './cli/templates/service.js'
 
 /**
  * 脚手架模板守卫（`pnpm check:scaffold`）。
@@ -13,8 +13,9 @@ import { renderFile } from './cli/templates/utils.js'
  *
  * 1. **名称检查**：抽取全部模板中来自 `@repo/kits` / `@repo/shared` 的具名导入，汇总成一个探针文件，
  *    缺任何一个导出都会被 tsc 报错（覆盖 crud / client 等无法整体渲染的模板）；
- * 2. **整体检查**：把 `service/` 下 6 个模板按 `templates/service.ts` 的映射渲染成一套完整应用源码，
- *    真实类型检查 —— 连配置形状（如 `forRootAsync` 工厂返回值不能是 `undefined`）一起验。
+ * 2. **整体检查**：按 `templates/service.ts` 的真实文件映射把 service 模板全部渲染成一套完整
+ *    应用源码，真实类型检查 —— 连配置形状（如 `forRootAsync` 工厂返回值不能是 `undefined`、
+ *    `superRefine` 校验）一起验；新增模板会自动纳入，不必改本脚本。
  *
  * 探针目录放在 `apps/server/` 下（不是 `src/`），这样 `@repo/kits` 按真实 node_modules 解析，
  * 又不会被 server 自身的 tsconfig 收进去；跑完即删。
@@ -93,21 +94,20 @@ function writeImportProbe(imports: Map<string, ImportedNames>): number {
   return total
 }
 
-/** 按 templates/service.ts 的映射渲染完整服务端骨架 */
+/** 按 templates/service.ts 的真实文件映射渲染完整服务端骨架（新增模板自动纳入检查） */
 function writeServiceScaffold(): number {
-  const data = { name: 'scaffold-check' }
-  const files: Record<string, string> = {
-    'data-source.ts': renderFile('service/data-source', data),
-    'src/app-config.ts': renderFile('service/app-config', data),
-    'src/config.ts': renderFile('service/config', data),
-    'src/lib/http.ts': renderFile('service/lib-http', data),
-    'src/root.module.ts': renderFile('service/root-module', data),
-    'src/main.ts': renderFile('service/main', data),
-  }
+  const { files } = createServiceTemplate('scaffold-check')
+  let written = 0
   for (const [relative, content] of Object.entries(files)) {
-    writeFileSync(join(checkDir, relative), content, 'utf8')
+    // 只落 .ts：package.json / tsconfig.json 由本脚本自己生成
+    // （探针 tsconfig 必须覆盖模板里的那份，否则 rootDir / include 指向错误）
+    if (!relative.endsWith('.ts')) continue
+    const target = join(checkDir, relative)
+    mkdirSync(dirname(target), { recursive: true })
+    writeFileSync(target, content, 'utf8')
+    written += 1
   }
-  return Object.keys(files).length
+  return written
 }
 
 function run(): void {

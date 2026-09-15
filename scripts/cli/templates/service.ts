@@ -77,6 +77,32 @@ export function createServiceTemplate(name: string): Template {
       'src/app-config.ts': renderFile('service/app-config', { name }),
       'src/config.ts': renderFile('service/config', {}),
       'src/lib/http.ts': renderFile('service/lib-http', {}),
+      'src/common/index.ts': renderFile('service/common-index', {}),
+      'src/common/request-context/request-context.ts': renderFile('service/request-context-store', {}),
+      'src/common/request-context/request-context.middleware.ts': renderFile(
+        'service/request-context-middleware',
+        {},
+      ),
+      'src/common/request-context/request-context.module.ts': renderFile(
+        'service/request-context-module',
+        {},
+      ),
+      'src/common/request-logger/request-logger.middleware.ts': renderFile(
+        'service/request-logger-middleware',
+        {},
+      ),
+      'src/common/request-logger/request-logger.module.ts': renderFile(
+        'service/request-logger-module',
+        {},
+      ),
+      'src/common/request-metrics/request-metrics.middleware.ts': renderFile(
+        'service/request-metrics-middleware',
+        {},
+      ),
+      'src/common/request-metrics/request-metrics.module.ts': renderFile(
+        'service/request-metrics-module',
+        {},
+      ),
       'src/root.module.ts': renderFile('service/root-module', { name }),
       'src/main.ts': renderFile('service/main', { name }),
     },
