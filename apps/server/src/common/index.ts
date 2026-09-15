@@ -4,6 +4,7 @@
  *
  * - `error/`            错误语义与全局异常处理（错误码映射 / 边界错误 / 异常过滤器 / 告警钩子）
  * - `request-context/`  请求上下文**模块**（ALS + 自注册中间件：requestId / 身份）
+ * - `request-logger/`   请求日志**模块**（自注册中间件：method / url / status / 耗时 / 身份）
  * - `request-metrics/`  请求指标**模块**（自注册埋点中间件：QPS / 耗时直方图）
  * - `security/`         访问控制横切（token 与身份读取 / 限流守卫）
  * - `http/`             Nest 全局 HTTP 构件（Zod 校验管道 / 响应信封拦截器）
@@ -12,6 +13,7 @@
  */
 export * from './error/index.js'
 export * from './request-context/index.js'
+export * from './request-logger/index.js'
 export * from './request-metrics/index.js'
 export * from './security/index.js'
 export * from './http/index.js'

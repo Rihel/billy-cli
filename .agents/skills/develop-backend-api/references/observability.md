@@ -8,9 +8,10 @@
 
 - 请求链路已全局处理，**不要自写请求日志**：`requestContextMiddleware`
   （`apps/server/src/common/request-context/request-context.middleware.ts`）生成 `requestId` 并写响应头
-  `X-Request-Id`，该值即 pino-http 的 `req.id`；**请求日志由 pino-http 自动记录**
-  （`request completed`，含 `statusCode` / `responseTime`，按状态分级 <400 info / 4xx warn /
-  5xx error，并带 `userId` / `adminId`）。排障时用 `X-Request-Id` 关联一次请求。
+  `X-Request-Id`；**请求日志由 `common/request-logger` 的 `RequestLoggerMiddleware` 记录**
+  （method / url / statusCode / durationMs / requestId / userId / adminId，按状态分级
+  <400 info / 4xx warn / 5xx error）。日志里的 `requestId` 与响应头 `X-Request-Id` 同值，
+  排障时用它关联一次请求。
 - 业务事件结构化日志：构造器注入 `@Inject(AppLogger)`（`AppLogger` 来自 `@repo/kits`，
   `context` 自动取宿主类名），关键写动作记 `logger.log('<域>.<动作>', { ... })`（参考 todo：
   `todo.created` / `todo.updated` / `todo.removed`）——事件名语义化、上下文放对象里便于检索。

@@ -15,7 +15,7 @@ apps/
 └── admin    — Next.js 16 App Router + @repo/ui + TanStack Query/Table/Form + Zustand（端口 9845）
 packages/
 ├── shared   — Zod schemas + 错误码字典 + 响应工具 + Pino 日志 + 通用工具（前后端共享）
-├── kits     — 后端通用能力封装：Db / Redis / JWT / ObjectStorage / 队列 / 调度 / 推送 / 限流 / 分页（一个基础设施一个 module，无业务实体）
+├── kits     — 后端通用能力封装：Db / Redis / JWT / ObjectStorage / 消息 / 调度 / 推送 / 限流 / 分页（一个基础设施一个 module，无业务实体）
 ├── http-client — 通用 HTTP + 鉴权管线客户端（HttpClient / HttpStreamClient / 策略 / 凭证管理器，业务无关）
 ├── sdk      — ServerClient（全类型化业务 API 调用，构建在 @repo/http-client 之上）
 └── ui       — Base UI + shadcn 风格共享组件库（Tailwind 4），含 DataTable / ModalForm / 存储组件等管理端组件
@@ -34,7 +34,7 @@ packages/
 | 状态管理   | Zustand + Immer（admin）   | 轻量、不可变、无 boilerplate                |
 | 服务端状态 | TanStack Query             | 查询缓存 / 失效 / 重试                      |
 | 样式       | Tailwind 4                 | 原子化 CSS，零心智负担                      |
-| 日志       | nestjs-pino（pino-http）   | Nest 框架日志与业务日志同通道；pino-http 自动记录请求/响应；开发 pino-pretty，生产 JSON 或推 Loki |
+| 日志       | 自建 logger（createLogger） | 不用 nestjs-pino：kits 建唯一 pino 实例；`AppLogger` 供业务注入、`NestLoggerAdapter` 接管框架日志；请求日志由 app 中间件记录；开发 pino-pretty，生产 JSON 或推 Loki |
 | 缓存       | Redis（ioredis）           | Set / List / Hash / PubSub / 分布式锁       |
 | 服务端推送 | SSE（StreamHub + HttpStreamClient） | 实时推送：AI 流式 / 任务进度 / 通知，Redis pub/sub 跨实例广播 |
 | 对象存储   | S3 / COS                   | 预签名 URL + 临时凭证（STS）                |
@@ -298,9 +298,9 @@ pnpm cli -t crud -n product  # 非交互生成 CRUD 业务模块（无 TTY 时�
   推流，多实例经 Redis pub/sub 跨实例广播（`sse.md` 设计文档，客户端为 `@repo/http-client` 的 `HttpStreamClient`）。
 - **请求上下文 / 请求日志**：`common/request-context/request-context.ts` 基于 `AsyncLocalStorage`，跨中间件与业务调用
   传递 `userId` / `adminId`，避免参数透传；`common/request-context/request-context.middleware.ts` 生成 `requestId`
-  并写入 `X-Request-Id` 响应头（该值同时作为 pino-http 的 `req.id`）。请求日志由 **pino-http 自动记录**
-  （`request completed`，含状态码、耗时、userId），按状态码分级（<400 info / 4xx warn / 5xx error），
-  不再需要自写请求日志中间件。
+  并写入 `X-Request-Id` 响应头。请求日志由 **`common/request-logger` 的 `RequestLoggerMiddleware` 记录**
+  （method / url / statusCode / durationMs / requestId / userId / adminId），按状态码分级
+  （<400 info / 4xx warn / 5xx error），日志 `requestId` 与响应头同值；业务侧不要自写请求日志。
 - **优雅关闭**：`program()` 监听 SIGINT / SIGTERM，`await app.close()`（Express 适配器先排空在途请求，
   再执行 `OnApplicationShutdown` 释放 DB / Redis / 队列等连接）。
 
@@ -352,8 +352,8 @@ Zod schema 单一事实源，同时派生 TypeScript 类型（`*.schema.ts` 导�
   前端文案共用同一份定义）、`user-status.dict.ts`
 - `app-response.ts`：`AppResponse<T>` / `AppPageQueryResponse<T>` / `AppCursorQueryResponse<T>` 与
   `ResponseUtils`（`success` / `error` / `isSuccess`）
-- `logger.ts`：前端日志封装 `createLogger(name, pretty)`，开发环境 pretty 彩色、生产 JSON
-  （**后端已改用 nestjs-pino，不再使用它**，见下文「日志」）
+- `logger.ts`：日志工厂 `createLogger(name, pretty, level, { redact, transport })`，
+  开发环境 pretty 彩色、生产 JSON（**前后端共用**：后端 kits `LoggerModule` 也用它，见下文「日志」）
 - 子入口：`@repo/shared/browser`（浏览器端安全导出）、`@repo/shared/logger`（前端日志）
 - `utils/`：nanoid / dayjs / md5 / tree / dict / file / zod 等通用工具
 
@@ -411,7 +411,7 @@ Zod schema 单一事实源，同时派生 TypeScript 类型（`*.schema.ts` 导�
 | --- | --- | --- |
 | `AppConfigModule` | `forRoot()` 无选项（前置：bootstrap 先 `await AppConfigFacade.initial({ schema, loader })`） | AppConfig（整份已加载配置）+ 全局 `ConfigService` |
 | `IdGenerationModule` / `SchedulerModule` / `TelemetryModule` | 无 | IdGeneration / Scheduler / Telemetry |
-| `LoggerModule` | `{ prefix?, level?, pretty?, loki? }` + pino-http 定制点（`customProps` / `genReqId`） | LoggerConfig + AppLogger（并导出 nestjs-pino 的 Logger / PinoLogger） |
+| `LoggerModule` | `{ prefix?, level?, pretty?, loki? }` | LoggerConfig + LOGGER_INSTANCE + AppLogger + NestLoggerAdapter |
 | `DbModule` | `{ url?, sync?, entities?, subscribers? }` | DbConfig + Db + DbService |
 | `RedisModule` | `{ url?, keyPrefix? }` | RedisConfig + RedisStore + RedisLockService |
 | `RateLimitModule` | 无（复用 RedisConfig） | RateLimiter |
@@ -591,7 +591,7 @@ export class TodoModule {}
 - 生命周期组件实现 `OnApplicationBootstrap` / `OnApplicationShutdown`（`@nestjs/common`），由 Nest 在装配完成后按 providers 声明顺序启动，`app.close()` 时逆序释放
 - 各组件持有独立连接、停止期互不依赖；单个组件释放失败由框架记录，不阻断其余
 - **第 6 条铁律**：项目用 `tsx`（esbuild）编译，**不产出 `design:paramtypes`**，因此**每个构造器参数必须显式写 `@Inject(token)`**，不能依赖 TypeScript 类型推断；漏写会静默注入 `undefined` 而不报错（controller / service / repository / guard / filter 一律如此）
-- **开发态必须用 `node --import tsx/esm`**（`pnpm dev:server` 已内置）：`tsx` CLI 会同时挂 CJS 钩子，导致 CJS 依赖（如 `nestjs-pino`）`require('@nestjs/core')` 与 ESM `import` 拿到**两份模块实例**，`ApplicationConfig` 这类跨包 class token 对不上而启动失败；只挂 ESM 加载器即与 `node dist/main.js` 行为一致
+- **开发态必须用 `node --import tsx/esm`**（`pnpm dev:server` 已内置）：`tsx` CLI 会同时挂 CJS 钩子，导致 CJS 依赖（如 `pino`、`pg`）`require('@nestjs/core')` 与 ESM `import` 拿到**两份模块实例**，`ApplicationConfig` 这类跨包 class token 对不上而启动失败；只挂 ESM 加载器即与 `node dist/main.js` 行为一致
 - 例外：kits 内部对带可选数值参数的构造器（如 `Telemetry`）用 `useFactory` 显式装配；`RateLimitGuard` 用 `Reflect.getMetadata` 直接读方法元数据而不注入 `Reflector`
 
 **设计原则：**
@@ -715,9 +715,9 @@ sidebar / toast / chart 等），Tailwind 4 主题变量由 `globals.css` 提供
   与 `resolveServerConfig(config)`；守卫 / service / 控制器注入全局 `ConfigService` 后调它取 `server` 分片
   （端口 / 鉴权开关 / 限流白名单等），**无需额外的配置 bean / 模块**
 - `apps/server/src/main.ts`：只用 `NestFactory.create(RootModule, { bodyParser: false })` 启动，
-  再 `app.enableCors()` / 设置请求体上限，不承担业务注册职责；请求上下文与请求指标中间件
-  由 `common/` 的 `RequestContextModule` / `RequestMetricsModule` **自注册**（`forRoutes('*')`，
-  标 `@Global()` 以保证排在 pino-http 之前）
+  再 `app.enableCors()` / 设置请求体上限，不承担业务注册职责；请求上下文 / 请求日志 / 请求指标
+  中间件由 `common/` 的 `RequestContextModule` / `RequestLoggerModule` / `RequestMetricsModule`
+  **自注册**（`forRoutes('*')`，均标 `@Global()`，且 `RequestContextModule` 必须排在最前）
 - 生命周期由 Nest 驱动：组件实现 `OnApplicationBootstrap` / `OnApplicationShutdown`，
   装配完成后按 providers 声明顺序启动（Db 初始化、Redis 连接、ObjectStorage 建桶 / 客户端），
   `app.close()` 时逆序释放资源
@@ -901,24 +901,26 @@ await this.dbService.getFullSqlStatement(builder)             // 返回完整 SQ
 
 ### 日志
 
-后端日志统一走 **nestjs-pino**（`LoggerModule`，对齐 rihel-base）：
+后端日志是**自建 logger**（`@repo/shared` 的 `createLogger`，**不再依赖 nestjs-pino**）：
 
+- **唯一 pino 实例**：`LoggerModule` 用 `createLogger(prefix, pretty, level, { redact, transport })`
+  建一个实例并以 `LOGGER_INSTANCE` 暴露。pino 的 `transport` 会为每个实例拉起 worker 线程，
+  所以**只能建一次**；需要带 context 的日志一律 `child(context)` 派生；
 - **框架日志与业务日志同通道**：`main.ts` 用 `NestFactory.create(RootModule, { bufferLogs: true })`
-  缓冲启动期日志，随后 `app.useLogger(app.get(Logger))` 接管，Nest 自身的 InstanceLoader /
-  RoutesResolver 等日志与业务日志走同一条 pino 通道与 transport；
-- **业务类构造器注入** `AppLogger`：
-  `constructor(@Inject(TodoRepository) private readonly todoRepository: TodoRepository, @Inject(AppLogger) private readonly logger: AppLogger) {}`；
-  `AppLogger` 是 `Scope.TRANSIENT` + `INQUIRER`，自动以宿主类名作为 `context`，调用形如
-  `logger.log('<域>.<动作>', { id })`。
-  不要再使用 `@Logger()` 装饰器（已删除）；
-- **请求日志由 pino-http 自动记录**（`request completed`），含 `req.id`（即响应头 `X-Request-Id`）、
-  `statusCode`、`responseTime`，按状态码分级（`<400` info、`4xx` warn、`5xx` error）；登录身份通过
-  `LoggerModule.forRoot({ customProps: () => ({ userId, adminId }) })` 附加，无需自写日志中间件；
+  缓冲启动期日志，随后 `app.useLogger(app.get(NestLoggerAdapter))` 接管，Nest 自身的 InstanceLoader /
+  RoutesResolver 等日志经适配器落到同一个 pino 实例；
+- **业务类构造器注入** `AppLogger`（`Scope.TRANSIENT` + `INQUIRER`，自动以宿主类名作 `context`）：
+  `logger.log('<域>.<动作>', { id })`。不要再使用 `@Logger()` 装饰器（已删除）；
+- **请求日志由 `common/request-logger` 的 `RequestLoggerMiddleware` 记录**：method / url / statusCode /
+  durationMs / requestId / userId / adminId，按状态码分级（`<400` info、`4xx` warn、`5xx` error）。
+  它直接从请求上下文 ALS 取身份；日志 `requestId` 即响应头 `X-Request-Id`；
 - **输出目标**：开发 `pino-pretty` 彩色；生产 JSON；生产且配置 `loki` 时多目标 transport
-  （`pino/file` 落盘 + `pino-loki` 推送，带 labels 与批量间隔）；
+  （`pino/file` 落盘 + `pino-loki` 推送，带 labels 与批量间隔）。注意 `pino-loki` 依赖必须声明在
+  `@repo/shared`（创建 pino 实例的包），挪到 kits 会报 `unable to determine transport target`；
 - **默认脱敏**：`req.headers.authorization` / `req.headers.cookie` / `res.headers["set-cookie"]`。
 
-> 前端（`apps/admin`）仍用 `@repo/shared/logger` 的 `createLogger`；后端已不再使用它。
+> `@repo/shared/logger` 现在是**前后端共用**的日志工厂：前端（`apps/admin`）直接用，
+> 后端由 kits `LoggerModule` 包装成可注入的 `AppLogger` 与 `NestLoggerAdapter`。
 
 ## CLI 脚手架
 

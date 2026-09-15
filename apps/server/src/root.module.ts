@@ -25,10 +25,10 @@ import {
   ERROR_ALERT_HOOK,
   type ErrorAlertHook,
   RequestContextModule,
+  RequestLoggerModule,
   RequestMetricsModule,
   ResponseEnvelopeInterceptor,
   createZodValidationPipe,
-  requestContext,
 } from './common/index.js'
 import { AdminEntity } from './database/entities/admin-entity.js'
 import { AlertLogEntity } from './database/entities/alert-log-entity.js'
@@ -62,9 +62,11 @@ import { UserModule } from './modules/user/index.js'
     // ---- 应用配置（全局 ConfigService + AppConfig bean）----
     AppConfigModule.forRoot(),
     // ---- 请求级横切中间件（自注册模块）----
-    // 顺序铁律：RequestContextModule 必须在 LoggerModule 之前（Nest 按模块注册顺序挂载中间件），
-    // 否则 pino-http 取不到 X-Request-Id / ALS 里的登录身份
+    // 顺序铁律：RequestContextModule（写 ALS）必须排在 RequestLoggerModule / RequestMetricsModule 之前
+    // —— 后两者要在请求结束时从 ALS 读 requestId / userId / adminId。三者均 @Global，
+    // Nest 12 让全局模块的中间件排在最前、全局模块之间按本 imports 顺序稳定装配。
     RequestContextModule,
+    RequestLoggerModule,
     RequestMetricsModule,
     // ---- 基础能力（无配置）----
     IdGenerationModule,
@@ -74,14 +76,7 @@ import { UserModule } from './modules/user/index.js'
     LoggerModule.forRootAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
-      useFactory: (config: ConfigService) => ({
-        ...config.get('logger'),
-        // pino-http 每条请求日志附加上下文：当前登录身份（来自请求上下文 ALS）
-        customProps: () => ({
-          userId: requestContext.get('userId') ?? null,
-          adminId: requestContext.get('adminId') ?? null,
-        }),
-      }),
+      useFactory: (config: ConfigService) => config.get('logger')!,
     }),
     DbModule.forRootAsync({
       imports: [ConfigModule],

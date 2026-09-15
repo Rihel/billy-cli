@@ -14,6 +14,12 @@
 > `JwtModule.forRoot` / `NotificationModule.forRoot` / `KafkaModule.forRoot` …，均 `@Global()`）。
 > 本文其余结论（删除 `@repo/di`、Hono → NestJS 12、显式 `@Inject` 约束、HTTP 契约保持不变）仍然成立。
 >
+> 2026-09-15 三次更新（**推翻本文的日志结论**）：本文正文写的「改用 nestjs-pino、请求日志由
+> pino-http 自动记录」**已作废**。现为自建 logger：kits `LoggerModule` 用
+> `@repo/shared/logger` 的 `createLogger` 建唯一 pino 实例，业务注入 `AppLogger`、
+> Nest 框架日志经 `NestLoggerAdapter`，请求日志由 `apps/server/src/common/request-logger/`
+> 的中间件记录。详见 [manual-logger.md](./manual-logger.md)。
+>
 > 2026-09-12 四次更新：配置链路改为 **AppConfigFacade + `@nestjs/config` + `forRootAsync`**（对齐
 > rihel-base）。kits 新增 `foundation/app-config/`（`AppConfigFacade` 在 bootstrap 前加载 + Zod 校验 + 缓存，
 > `AppConfigModule.forRoot()` 把它接进全局 `ConfigService`）；需要配置的基础设施模块都新增

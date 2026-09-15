@@ -16,7 +16,7 @@ billy-cli 是一套**全栈应用 Monorepo 模板**：pnpm + Turbo 构建，Type
 | 构建 | pnpm + Turbo（`turbo.json` 按依赖拓扑编排） |
 | 服务端 HTTP | NestJS 12（`@nestjs/core` + `@nestjs/common` + `@nestjs/platform-express`，底层 Express 5；`apps/server`，端口 9989） |
 | 服务端推流 | `@repo/kits` 的 `StreamHub`（`POST /sse/subscribe` 长连接 + Redis pub/sub 跨实例广播）+ `@repo/http-client` 的 `HttpStreamClient`（浏览器 / Node 双环境，默认 POST + Bearer 认证） |
-| 服务端日志 | nestjs-pino（pino-http 自动记录请求/响应 + pino-pretty 开发美化；生产可多目标 transport 推送 pino-loki；业务日志用可注入的 `AppLogger`） |
+| 服务端日志 | 自建 logger（`@repo/shared/logger` 的 `createLogger`，**不用 nestjs-pino**）：kits `LoggerModule` 建唯一 pino 实例（pino-pretty 开发美化；生产可多目标 transport 推送 pino-loki；redact 脱敏），`AppLogger` 供业务注入、`NestLoggerAdapter` 接管 Nest 框架日志；请求日志由 `common/request-logger` 的中间件自记录 |
 | 业务落点 | `apps/server/src/modules/<业务>/{module, controller, service, repository, errors, index}`（业务 + 实体 + 迁移归 server） |
 | 通用能力 | `@repo/kits`（一个基础设施一个目录 = `provider + <name>.config.ts + <name>.module.ts + index.ts`，均 `@Global()` + `XxxModule.forRoot(options)` / `forRootAsync(options)`，配置对象即模块自身 bean，无业务实体） |
 | 应用配置 | `AppConfigFacade`（bootstrap 前用 Zod 加载校验 + 缓存）+ `@nestjs/config` 的全局 `ConfigService`（各模块 `forRootAsync` 惰性取命名空间分片；应用级业务配置由业务层 `resolveServerConfig(config)` 取 `server` 分片，不单设配置 bean） |
@@ -86,9 +86,10 @@ controller 只做 HTTP 边界，业务逻辑在 service / repository。
 ## 4. 一次请求的数据流
 
 1. 前端调用 `ServerClient.xxx.create(payload)`（`@repo/sdk`）。
-2. 请求进入自注册的 Express 中间件（`common/request-context` 的 `RequestContextModule`）：请求上下文（AsyncLocalStorage，
-   生成 `requestId` 并写响应头 `X-Request-Id`，该值即 pino-http 的 `req.id`）→ 请求日志（由
-   pino-http 自动记录，含状态码 / 耗时 / 身份）→ 请求指标。
+2. 请求进入自注册的 Express 中间件（按 `imports` 顺序）：`common/request-context` 的
+   `RequestContextModule`（AsyncLocalStorage，生成 `requestId` 并写响应头 `X-Request-Id`）→
+   `common/request-logger` 的 `RequestLoggerMiddleware`（响应结束时记录 method / url / status /
+   耗时 / requestId / userId / adminId）→ `common/request-metrics` 的埋点中间件。
 3. 守卫（`UserAuthGuard` / `AdminAuthGuard` / `RateLimitGuard`）在进入控制器前校验身份与限流，
    把 `userId` / `adminId` 写入请求上下文。4. `apps/server/src/modules/<业务>/<业务>.controller.ts` 用 `@Body({ schema: Schema })` 做 **Zod 边界校验**，
    再调注入的 service。
@@ -101,6 +102,6 @@ controller 只做 HTTP 边界，业务逻辑在 service / repository。
 **中间件顺序铁律（Nest 12）**：模块中间件按模块 `distance` 排序装配，**`@Global()` 模块排在最前**
 （`middleware-module.js` 把 `distance === Number.MAX_VALUE` 视为全局、权重 -1），全局模块之间再按
 容器注册顺序（即组合根 `imports` 顺序）稳定排序。因此请求上下文模块必须：① 标 `@Global()`；
-② 在 `imports` 里写在 `LoggerModule` 之前。顺序错了的后果：`pino-http` 先执行 →
-`genReqId` 取不到响应头 `X-Request-Id`（日志 requestId 与排查用响应头对不上），
-`customProps` 读不到 ALS 里的登录身份（请求日志 `userId` / `adminId` 变 null）。
+② 在 `imports` 里写在 `RequestLoggerModule` / `RequestMetricsModule` 之前。顺序错了的后果：
+请求日志 / 指标中间件在响应结束时读不到 ALS 里的 `requestId` / `userId` / `adminId`
+（日志丢掉登录身份、requestId 与响应头对不上）。

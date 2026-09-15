@@ -1,80 +1,50 @@
-import type { Params } from 'nestjs-pino'
+import type { CreateLoggerOptions } from '@repo/shared/logger'
 import type { LoggerConfig } from './logger.config.js'
 import { resolvePretty } from './logger.config.js'
 
-/** pino-http 的请求/响应定制点（由应用层注入，kits 不感知具体请求上下文实现） */
-export interface LoggerHttpOptions {
-  /** 每条请求日志附加上下文（如从请求上下文取 userId） */
-  customProps?: (request: unknown, response: unknown) => Record<string, unknown>
-  /** 自定义请求 id 来源；缺省取响应头 `X-Request-Id`，取不到则用 crypto.randomUUID() */
-  genReqId?: (request: unknown, response: unknown) => string
-}
-
-/** 默认脱敏路径：避免把凭证写进日志（rihel-base 未做，这里补上） */
-const REDACT_PATHS = [
+/** 默认脱敏路径：避免把凭证写进日志 */
+export const REDACT_PATHS = [
   'req.headers.authorization',
   'req.headers.cookie',
   'res.headers["set-cookie"]',
 ]
 
 /**
- * 由 LoggerConfig 构造 nestjs-pino 的 `Params`（含 pino-http 配置）。
+ * 由 LoggerConfig 构造 `createLogger` 的 pino 透传项（redact / transport）。
  *
- * 与 rihel-base 的 `buildHttpOptions` 对齐：
- * - 生产 + 配了 loki：多目标 transport（pino/file 落盘 + pino-loki 推送，带 labels 与批量间隔）；
- * - 非生产：pino-pretty（彩色、时间格式、`[{context}] {msg}` 消息模板）；
- * - `renameContext: 'context'`，使 Nest 内部 Logger 的 context 字段统一为 `context`。
+ * - 生产 + 配了 loki：多目标 transport（`pino/file` 落盘 + `pino-loki` 推送，带 labels 与批量间隔）；
+ * - 非生产 / 未配 loki：不传 transport，交回 `createLogger` 的 pretty 分支处理。
+ *
+ * 注意：`redact` 与 `transport` 都只能在 pino 构造时指定，故必须由这里透传；
+ * kits 不再依赖 nestjs-pino / pino-http —— 那两者只负责 Nest 适配与请求日志，
+ * 现在分别由 `NestLoggerAdapter` 与 `apps/server` 的 `RequestLoggerMiddleware` 承担。
+ *
+ * ⚠️ `pino-loki` 依赖必须声明在 **`@repo/shared`**（创建 pino 实例的包），不能挪回 kits：
+ * pino 的 transport worker 按创建实例的包解析 target，声明错位置会直接
+ * `unable to determine transport target for "pino-loki"`（已实测踩过）。
  */
-export const buildLoggerParams = (
-  config: LoggerConfig,
-  http: LoggerHttpOptions = {},
-): Params => {
+export const buildPinoOptions = (config: LoggerConfig): CreateLoggerOptions => {
   const pretty = resolvePretty(config)
 
-  const pinoHttp: Record<string, unknown> = {
-    name: config.prefix,
-    level: config.level,
-    redact: { paths: REDACT_PATHS, censor: '[REDACTED]' },
-    genReqId:
-      http.genReqId ??
-      ((_request: unknown, response: unknown) => {
-        const header = (response as { getHeader?: (name: string) => unknown })
-          ?.getHeader?.('X-Request-Id')
-        return typeof header === 'string' && header ? header : crypto.randomUUID()
-      }),
-    customProps: http.customProps,
-  }
-
   if (!pretty && config.loki) {
-    pinoHttp.transport = {
-      targets: [
-        { target: 'pino/file', level: config.level },
-        {
-          target: 'pino-loki',
-          level: config.level,
-          options: {
-            host: config.loki.host,
-            labels: { app: config.prefix, ...config.loki.labels },
-            batchingInterval: config.loki.batchInterval,
+    return {
+      redact: REDACT_PATHS,
+      transport: {
+        targets: [
+          { target: 'pino/file', level: config.level },
+          {
+            target: 'pino-loki',
+            level: config.level,
+            options: {
+              host: config.loki.host,
+              labels: { app: config.prefix, ...config.loki.labels },
+              batchingInterval: config.loki.batchInterval,
+            },
           },
-        },
-      ],
-    }
-  } else if (pretty) {
-    pinoHttp.transport = {
-      target: 'pino-pretty',
-      options: {
-        colorize: true,
-        translateTime: 'SYS:yyyy-mm-dd HH:MM:ss.l',
-        ignore: 'pid,hostname',
-        // 条件前缀：有 context 才渲染，避免 pino-http 请求日志出现空的 "[]"
-        messageFormat: '{if context}[{context}] {end}{msg}',
+        ],
       },
     }
   }
 
-  return {
-    pinoHttp,
-    renameContext: 'context',
-  } as Params
+  return { redact: REDACT_PATHS }
 }

@@ -32,8 +32,9 @@ description: 在 Billy 工程中开发 / 修改后端接口（service / reposito
   别把慢操作硬塞同步，也别为轻操作引入异步复杂度。
 - **可测试性**：写接口时同步设计「怎么测」：controller 薄、业务在 service（构造器注入依赖可 mock）、
   规则抽纯函数；错误走 AppError code 契约可断言；测试套路见 `write-tests`。
-- **可观测性**：请求链路日志全局已处理（pino-http 自动记录请求/响应，`req.id` 即响应头
-  `X-Request-Id`，排障按它关联），不要自写请求日志；关键业务动作记结构化事件
+- **可观测性**：请求链路日志全局已处理（`common/request-logger` 的中间件记录 method / url /
+  status / 耗时 / requestId / userId / adminId，日志 `requestId` 即响应头 `X-Request-Id`，
+  排障按它关联），不要自写请求日志；关键业务动作记结构化事件
   （构造器注入 `AppLogger` + `logger.log('<域>.<动作>', {...})`，参考 todo）；错误由
   `AppExceptionFilter` 统一映射 + 告警，不自行吞掉。
 - **性能与查询效率**：列表先想查询计划——量小 `pageWith`，量大 / 深翻页 `cursorPageWith`

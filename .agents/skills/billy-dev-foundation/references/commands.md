@@ -22,6 +22,6 @@ pnpm cli -t crud -n <name>  # 非交互生成 CRUD 业务模块（实体 / repos
 pnpm check:inject  # DI 装饰器一致性守卫（构造器 @Inject / providers @Injectable），违反返回非零退出码
 ```
 
-> **不要用 `tsx` CLI 跑 server**：它同时挂 CJS 钩子，会让 CJS 依赖（nestjs-pino）`require` 到的
+> **不要用 `tsx` CLI 跑 server**：它同时挂 CJS 钩子，会让 CJS 依赖（pino / pg 等）`require` 到的
 > `@nestjs/core` 与 ESM `import` 的是两份实例，启动报 `ApplicationConfig` 解析失败。
 > 开发态统一 `node --watch --import tsx/esm`（package.json 的 `dev` / `seed:admin` 已如此）。

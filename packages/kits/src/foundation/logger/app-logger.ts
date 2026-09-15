@@ -1,13 +1,16 @@
 import { Inject, Injectable, Scope } from '@nestjs/common'
 import { INQUIRER } from '@nestjs/core'
-import { PinoLogger } from 'nestjs-pino'
+import type { CreateLoggerResult } from '@repo/shared/logger'
+import { LOGGER_INSTANCE } from './logger.providers.js'
 
 /**
- * 可注入的应用日志器（对齐 rihel-base 的 AppLogger）。
+ * 可注入的应用日志器。
  *
- * - 底层是 nestjs-pino 的 `PinoLogger`（与 pino-http 请求日志共用同一 pino 实例与 transport）；
+ * - 底层是 `@repo/shared/logger` 的 `createLogger`（与请求日志共用同一 pino 实例与 transport）；
  * - `Scope.TRANSIENT` + `@Inject(INQUIRER)`：每个宿主类拿到自己的实例，
  *   context 自动取宿主类名（无需手写 `setContext`）；
+ * - 每个实例通过 `base.child(context)` 派生——**不重复 `createLogger()`**，
+ *   否则每个宿主类都会拉起一个 pino transport worker；
  * - 调用签名沿用 billy-cli 既有习惯 `(message, data?)`：`data` 为普通对象时并入结构化字段，
  *   非对象则放在 `data` 字段下；这样既能写 `logger.info('msg', { id })` 也能写 `logger.info('msg')`。
  */
@@ -41,18 +44,21 @@ const RESERVED_KEYS = new Set([
 
 @Injectable({ scope: Scope.TRANSIENT })
 export class AppLogger implements IAppLogger {
+  private readonly logger: CreateLoggerResult
   private context: string
 
   constructor(
     // INQUIRER 由 Nest 注入「请求注入方」，即宿主类实例，用于取类名做 context
-    @Inject(INQUIRER) private readonly parentClass: object,
-    @Inject(PinoLogger) private readonly pinoLogger: PinoLogger,
+    @Inject(INQUIRER) parentClass: object,
+    @Inject(LOGGER_INSTANCE) base: CreateLoggerResult,
   ) {
-    this.context = this.parentClass?.constructor?.name || 'App'
+    this.context = parentClass?.constructor?.name || 'App'
+    this.logger = base.child(this.context)
   }
 
   setContext(context: string): void {
     this.context = context
+    this.logger.setContext(context)
   }
 
   debug(message?: string, data?: unknown): void {
@@ -93,6 +99,6 @@ export class AppLogger implements IAppLogger {
         meta.data = data
       }
     }
-    this.pinoLogger[level](meta, message)
+    this.logger[level](message, meta)
   }
 }

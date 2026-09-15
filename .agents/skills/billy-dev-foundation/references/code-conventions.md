@@ -6,7 +6,7 @@
 1. **包内相对导入后缀**：`@repo/kits`、`apps/server` 内相对导入带 `.js` 后缀
    （如 `'./errors.js'`、`'../../common/http/zod-validation.js'`）；`@repo/shared` 及前端 app 不带后缀。
    **新代码跟随所在包的既有风格，不混用**。跨包一律 `@repo/*`（如 `@repo/kits`、
-   `@repo/shared`、`@repo/shared/logger` 子路径，后者仅供前端使用）。
+   `@repo/shared`、`@repo/shared/logger` 子路径，后者是**前后端共用**的日志工厂）。
 2. **错误体系**：业务 / 基础设施错误必须继承 `AppError`
    （`packages/kits/src/foundation/errors/app-error.ts`），提供只读 `code`
    （来自 `AppErrorCodes`）。边界自动映射 HTTP + 中文，禁止在 server 层手写错误文案。
@@ -21,10 +21,11 @@
    参数都必须显式 `@Inject(token)`**，不能依赖 TypeScript 类型推断（漏写会静默注入 `undefined`，
    不报错）；controller / service / repository / guard / filter 一律 `@Inject(Xxx)`。
    **开发态加载器必须是 `node --import tsx/esm`（`pnpm dev:server` 已内置），不要用 `tsx` CLI**：
-   `tsx` CLI 同时挂 CJS 钩子，CJS 依赖（如 `nestjs-pino`）的 `require('@nestjs/core')` 与 ESM
-   `import` 会拿到两份模块实例，`ApplicationConfig` 这类跨包 class token 对不上 → 启动即
-   `Nest can't resolve dependencies of the LoggerModule (pino-params, ?)`；一次性脚本还要注意
-   `pino-pretty` 的 transport worker 不随 `app.close()` 结束（脚本末尾显式 `process.exit`）。
+   `tsx` CLI 同时挂 CJS 钩子，CJS 依赖（如 `pino`、`pg`、`@nestjs/platform-express`）的
+   `require('@nestjs/core')` 与 ESM `import` 会拿到两份模块实例，`ApplicationConfig` 这类跨包
+   class token 对不上 → 启动即 `Nest can't resolve dependencies of the XxxModule (?, ?)`；
+   一次性脚本还要注意 `pino-pretty` 的 transport worker 不随 `app.close()` 结束
+   （脚本末尾显式 `process.exit`）。
    日志用**构造器注入** `@Inject(AppLogger)`（`AppLogger` 来自 `@repo/kits`，`Scope.TRANSIENT` +
    `INQUIRER` 自动以宿主类名作 `context`；`@Logger()` 装饰器已删除，不要再写）；写操作加
    `@Transactional()`（来自 `@repo/kits` 的 re-export）；

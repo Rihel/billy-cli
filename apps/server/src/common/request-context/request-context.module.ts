@@ -8,12 +8,12 @@ import { requestContextMiddleware } from './request-context.middleware.js'
  * **顺序铁律（两条一起才成立）**：
  * 1. 必须标 `@Global()`：Nest 12 装配中间件时按模块 distance 排序，**全局模块的中间件排在最前**
  *    （`middleware-module.js`：`distance === Number.MAX_VALUE` 视为全局，排序权重 -1），
- *    不标则会被 kits 的全局 `LoggerModule`（内含 pino-http）压在后面；
+ *    不标则会被其它全局模块的中间件压在后面；
  * 2. 全局模块之间按容器注册顺序（即组合根 `imports` 顺序）稳定排序，因此本模块必须写在
- *    `LoggerModule` **之前**。
+ *    `RequestLoggerModule` / `RequestMetricsModule` **之前**。
  *
- * 顺序错了的后果：① pino 的 `genReqId` 取不到响应头 `X-Request-Id`（日志 requestId 与排查用响应头对不上）；
- * ② pino-http 的 `customProps` 读不到 ALS 里的 userId / adminId（请求日志丢掉登录身份）。
+ * 顺序错了的后果：请求日志 / 指标中间件在响应结束时读不到 ALS 里的 requestId / userId / adminId
+ * （日志丢掉登录身份、requestId 与响应头对不上）。
  */
 @Global()
 @Module({})
