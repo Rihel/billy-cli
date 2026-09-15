@@ -8,10 +8,12 @@ import type { AuthUserModel } from '@repo/shared'
 export type CtaSectionProps = {
   /** 服务端探测到的登录用户：已登录时隐藏「创建账号 / 登录」入口 */
   user: AuthUserModel | null
+  /** 用户体系开关：关闭时不渲染任何账号入口（与 Header 同一约定） */
+  authEnabled: boolean
 }
 
-/** 收尾 CTA：居中大标题 + 双按钮（已登录用户不再展示账号入口） */
-export function CtaSection({ user }: CtaSectionProps) {
+/** 收尾 CTA：居中大标题 + 双按钮（已登录或用户体系关闭时不再展示账号入口） */
+export function CtaSection({ user, authEnabled }: CtaSectionProps) {
   return (
     <section className="relative overflow-hidden">
       <div
@@ -26,7 +28,7 @@ export function CtaSection({ user }: CtaSectionProps) {
           <p className="mx-auto mt-5 max-w-md text-base leading-relaxed text-zinc-600">
             创建账号，体验完整的认证、用户与业务模块，或直接进入管理后台一览全貌。
           </p>
-          {user ? null : (
+          {user || !authEnabled ? null : (
             <div className="mt-9 flex flex-wrap items-center justify-center gap-3">
               <Button
                 render={<Link href={Pages.register} />}

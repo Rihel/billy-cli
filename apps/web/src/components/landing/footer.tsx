@@ -33,7 +33,7 @@ const navGroups: { title: string; links: FooterLink[] }[] = [
     links: [
       { href: AdminUrl, label: '管理后台', external: true },
       { href: PublicServerUrl, label: 'API 服务', external: true },
-      { href: 'https://github.com', label: 'GitHub 仓库', external: true },
+      { href: 'https://gitee.com/Rihel/billy-cli', label: '代码仓库（Gitee）', external: true },
     ],
   },
 ]
@@ -41,18 +41,21 @@ const navGroups: { title: string; links: FooterLink[] }[] = [
 export type FooterProps = {
   /** 服务端探测到的登录用户：已登录时整组隐藏「账号」入口 */
   user: AuthUserModel | null
+  /** 用户体系开关：关闭时同样整组隐藏「账号」入口 */
+  authEnabled: boolean
 }
 
-/** 页脚：品牌 + 全量导航链接（已登录用户不展示登录 / 注册等账号入口） */
-export function Footer({ user }: FooterProps) {
-  const groups = user ? navGroups.filter((group) => group.title !== '账号') : navGroups
+/** 页脚：品牌 + 全量导航链接（已登录或用户体系关闭时不展示登录 / 注册等账号入口） */
+export function Footer({ user, authEnabled }: FooterProps) {
+  const hideAccount = Boolean(user) || !authEnabled
+  const groups = hideAccount ? navGroups.filter((group) => group.title !== '账号') : navGroups
 
   return (
     <footer className="border-t border-zinc-200/70 bg-zinc-50">
       <div className="mx-auto max-w-7xl px-4 py-14 sm:px-6 lg:px-8">
         <div
           className={
-            user
+            hideAccount
               ? 'grid grid-cols-1 gap-10 md:grid-cols-[1.4fr_repeat(2,1fr)]'
               : 'grid grid-cols-1 gap-10 md:grid-cols-[1.4fr_repeat(3,1fr)]'
           }

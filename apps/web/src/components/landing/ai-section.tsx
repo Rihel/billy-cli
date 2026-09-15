@@ -47,7 +47,7 @@ const skillGroups = [
     label: '基础设施与质量',
     items: [
       'concurrency',
-      'queue',
+      'kafka',
       'scheduler',
       'stream',
       'state-machine',

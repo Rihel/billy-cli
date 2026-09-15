@@ -19,7 +19,7 @@ export default async function HomePage() {
     <div className="min-h-screen bg-white text-zinc-900 selection:bg-indigo-200">
       <Header user={user} authEnabled={authEnabled} />
       <main>
-        <Hero user={user} />
+        <Hero user={user} authEnabled={authEnabled} />
         <TechMarquee />
         <Why />
         <Features />
@@ -27,9 +27,9 @@ export default async function HomePage() {
         <AiSection />
         <Architecture />
         <QuickStart />
-        <CtaSection user={user} />
+        <CtaSection user={user} authEnabled={authEnabled} />
       </main>
-      <Footer user={user} />
+      <Footer user={user} authEnabled={authEnabled} />
     </div>
   )
 }

@@ -13,7 +13,7 @@ const rivals = [
     rival: '收费 SaaS 模板',
     examples: 'Makerkit（$349）· Gravity（$199 起）· ShipFast（$199 起）· Supastarter（$299 起）',
     their: '全栈且带 agent 规则，但绑定 B2B 多租户 SaaS 场景，闭源付费。',
-    ours: '免费开源、不绑定多租户计费场景，另带监控告警、SSE、队列、对象存储等基建能力。',
+    ours: '免费开源、不绑定多租户计费场景，另带监控告警、SSE、消息、对象存储等基建能力。',
   },
 ]
 

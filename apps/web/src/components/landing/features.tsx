@@ -12,7 +12,7 @@ import { Reveal } from './reveal'
 function ArchitectureDiagram() {
   const rows = [
     { label: 'apps/server', sub: 'NestJS 边界 + 业务模块 + 实体迁移', level: '顶层' },
-    { label: '@repo/kits', sub: '后端通用能力（数据库/缓存/队列/存储/推送）', level: '中层' },
+    { label: '@repo/kits', sub: '后端通用能力（数据库/缓存/消息/存储/推送）', level: '中层' },
     { label: '@repo/shared · sdk', sub: '数据结构 / 客户端', level: '底层' },
   ]
   return (

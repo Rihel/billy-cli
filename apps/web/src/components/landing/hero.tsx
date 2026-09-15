@@ -13,13 +13,15 @@ const heroFacts = [
 export type HeroProps = {
   /** 服务端探测到的登录用户：已登录时隐藏「开始使用 / 登录」账号入口 */
   user: AuthUserModel | null
+  /** 用户体系开关：关闭时不渲染任何账号入口（与 Header 同一约定） */
+  authEnabled: boolean
 }
 
 /**
  * 首页主视觉：全屏沉浸式编辑宣言。
  * 无右侧终端卡；超大 display 标题 + 编排式事实行，靠浅色网格与蓝色氛围撑满首屏。
  */
-export function Hero({ user }: HeroProps) {
+export function Hero({ user, authEnabled }: HeroProps) {
   return (
     <section className="relative flex min-h-[calc(100dvh-4rem)] flex-col overflow-hidden">
       {/* 背景：细网格（顶部集中）+ 双光斑 */}
@@ -57,8 +59,8 @@ export function Hero({ user }: HeroProps) {
             NestJS 12 + Next.js 16 双前端开箱即用，pnpm bootstrap 一键初始化。
           </p>
 
-          {/* 账号入口：仅未登录时渲染（已登录用户由顶部导航承担用户信息与退出） */}
-          {user ? null : (
+          {/* 账号入口：仅「未登录且用户体系开启」时渲染（已登录用户由顶部导航承担用户信息与退出） */}
+          {user || !authEnabled ? null : (
             <div className="mt-10 flex flex-wrap items-center gap-3">
               <Button
                 render={<Link href={Pages.register} />}
