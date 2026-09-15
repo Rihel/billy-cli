@@ -1,6 +1,6 @@
 import { z } from 'zod'
 
-/** Redis 组件配置（RedisStore / QueueManager 共用）：连接串 + key 前缀。 */
+/** Redis 组件配置（RedisStore / RedisLockService / RateLimiter 共用）：连接串 + key 前缀。 */
 export const RedisConfigSchema = z.object({
   url: z.string().default('redis://localhost:6379/0'),
   keyPrefix: z.string().optional(),

@@ -17,6 +17,10 @@
 > 2026-09-13 更新：`apps/server` 的组合根已由 `app.module.ts`/`AppModule` 更名为 `root.module.ts`/`RootModule`，
 > `CoreModule`（应用级配置 bean）已删除，改为各处经全局 `ConfigService` + `resolveServerConfig()` 取用。
 
+> 2026-09-15 更新：队列方案已整体移除 —— `kits/src/queue/`（BullMQ 的 `QueueManager`）删除，
+> 异步消息改用 `kits/src/kafka/`（`KafkaModule` / `KafkaService` / `@KafkaConsumer`）。
+> 正文中出现的 `src/queue/`、`QueueManager`、依赖里的 `bullmq` 均为方案原文，不代表现状。
+
 > 2026-09-12 四次更新：配置链路改为 `AppConfigFacade` + `@nestjs/config` + 各模块 `forRootAsync`
 > （kits 新增配置模块，应用侧 `apps/server/src/app-config.ts` 组合命名空间配置，
 > `main.ts` 先 `await loadServerAppConfig()`）。正文中「配置由 `forRoot(options)` 直接传入」的描述

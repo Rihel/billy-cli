@@ -12,7 +12,6 @@ import {
   NotificationModule,
   ObjectStorageModule,
   PasswordModule,
-  QueueModule,
   RateLimitModule,
   RedisModule,
   SchedulerModule,
@@ -99,7 +98,6 @@ import { UserModule } from './modules/user/index.js'
       useFactory: (config: ConfigService) => config.get('redis')!,
     }),
     RateLimitModule,
-    QueueModule,
     StreamHubModule,
     JwtModule.forRootAsync({
       imports: [ConfigModule],

@@ -45,9 +45,9 @@ const stackChoices = [
     reason: 'Base UI 由 Radix 团队打造，无样式原语配 Tailwind 4，shadcn 补齐可定制组件。',
   },
   {
-    picked: 'Redis + BullMQ + croner',
+    picked: 'Redis + Kafka + croner',
     instead: '而不是各自为战',
-    reason: '缓存、分布式锁、队列、定时任务、跨实例 SSE，一套 Redis 全部扛下。',
+    reason: '缓存、分布式锁、跨实例 SSE 交给 Redis，异步消息交给 Kafka，定时任务交给 croner，各司其职。',
   },
 ]
 

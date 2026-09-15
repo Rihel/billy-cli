@@ -4,12 +4,10 @@ packages:
 allowBuilds:
   bcrypt: true
   esbuild: true
-  msgpackr-extract: true
   protobufjs: true
   sharp: true
   unrs-resolver: true
 minimumReleaseAgeExclude:
-  - bullmq@6.2.1
   - '@rolldown/binding-android-arm-eabi@1.2.6'
   - '@rolldown/binding-android-arm64@1.2.6'
   - '@rolldown/binding-darwin-arm64@1.2.6'

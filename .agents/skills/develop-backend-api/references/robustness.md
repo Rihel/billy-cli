@@ -12,6 +12,6 @@
   避免盲改（参考 todo repository）。
 - 查询参数化：TypeORM `createQueryBuilder` 绑定参数 / 传 DTO，不拼 SQL；关键字用 `ILIKE`。
 - 游标分页表配 `(updatedAt, id)` 顺序索引，防深分页慢查询。
-- 超时 / 慢路径：读多写少的热点考虑缓存；重活考虑队列异步化（见 `concurrency` / `queue`）。
+- 超时 / 慢路径：读多写少的热点考虑缓存；重活考虑队列异步化（见 `concurrency` / `kafka`）。
 
 检查项：空参数 / 超长 / 不存在 id / 非法枚举 / size 超 100 / 并发请求各试一遍。

@@ -54,7 +54,7 @@ async update(id: string, data: DeepPartial<TodoEntity>): Promise<TodoModel | nul
 - `repo.remove(entity)` = 软删：把 `deleted_at` 置时间（UPDATE），行不物理消失。
 - `findOneBy` / `find` / queryBuilder **默认排除已软删行**；确需带软删行查用 `.withDeleted()`。
 - 软删 + 唯一约束的坑见 model-design.md §4（唯一键必须带 `deletedAt`）。
-- 物理删除只用于明确场景（日志清理等），配 `scheduler` / `queue` 定期执行。
+- 物理删除只用于明确场景（日志清理等），配 `scheduler` / `kafka` 定期执行。
 
 ## 5. 并发写入：防裸「读-改-写」
 
@@ -67,7 +67,7 @@ async update(id: string, data: DeepPartial<TodoEntity>): Promise<TodoModel | nul
 ## 6. 批量与大数据量
 
 - 小批量写：`repo.save([...])`（数组一次提交）；别在循环里逐条 `save`（每条一次往返）。
-- 大批量导入 / 清理：评估分批 + 队列 / 定时（`queue` / `scheduler` skill）异步执行，
+- 大批量导入 / 清理：评估分批 + 队列 / 定时（`kafka` / `scheduler` skill）异步执行，
   别在请求线程里一口气扛。
 - 极大表的列表用 deferred 分页变体（见 query.md §4）。
 

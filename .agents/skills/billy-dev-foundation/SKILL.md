@@ -70,7 +70,7 @@ description: Billy 工程（billy-cli monorepo）开发必读 skill。任何在�
 | 文件 | 内容 | 何时读 |
 | --- | --- | --- |
 | [references/architecture.md](./references/architecture.md) | 工程定位、技术栈、分层架构详解、数据流 | 每次任务开始（必读） |
-| [references/placement.md](./references/placement.md) | 能力归位决策：新能力该放哪个包 / 目录 / 文件，各落点的模式要求 | 遇到无基础能力的新需求（状态机 / 队列 / 心跳 / 限流等）时（必读） |
+| [references/placement.md](./references/placement.md) | 能力归位决策：新能力该放哪个包 / 目录 / 文件，各落点的模式要求 | 遇到无基础能力的新需求（状态机 / 异步消息 / 心跳 / 限流等）时（必读） |
 | [references/design.md](./references/design.md) | 设计决策：评估难度决定是否出方案、方案原则、借鉴成熟方案 | 中等 / 复杂需求动手前（必读） |
 | [references/code-conventions.md](./references/code-conventions.md) | 硬性代码约定 11 条，含「不重复造轮子」查找顺序 | 写任何代码前（必读） |
 | [references/commands.md](./references/commands.md) | 常用命令 | 需要执行命令时 |

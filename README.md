@@ -36,6 +36,7 @@ packages/
 | 样式       | Tailwind 4                 | 原子化 CSS，零心智负担                      |
 | 日志       | 自建 logger（createLogger） | 不用 nestjs-pino：kits 建唯一 pino 实例；`AppLogger` 供业务注入、`NestLoggerAdapter` 接管框架日志；请求日志由 app 中间件记录；开发 pino-pretty，生产 JSON 或推 Loki |
 | 缓存       | Redis（ioredis）           | Set / List / Hash / PubSub / 分布式锁       |
+| 异步消息   | Kafka（kafkajs）           | 生产者 `KafkaService.send` / 消费者 `@KafkaConsumer`；按 `KAFKA_BROKERS` 按需装配 |
 | 服务端推送 | SSE（StreamHub + HttpStreamClient） | 实时推送：AI 流式 / 任务进度 / 通知，Redis pub/sub 跨实例广播 |
 | 对象存储   | S3 / COS                   | 预签名 URL + 临时凭证（STS）                |
 | 构建工具   | tsdown                     | 快速 bundler，packages 全部 dts 构建        |
@@ -227,7 +228,6 @@ pnpm cli -t crud -n product  # 非交互生成 CRUD 业务模块（无 TTY 时�
 │   │       │                            #   pagination / batch / safe-delete / sql / database.module
 │   │       ├── redis/                   # RedisStore / RedisLockService / RedisListCache + RedisModule
 │   │       ├── rate-limit/              # RateLimiter + RateLimitModule（复用 RedisConfig）
-│   │       ├── queue/                   # QueueManager + QueueModule（BullMQ）
 │   │       ├── stream/                  # StreamHub / StreamConnection + StreamHubModule（SSE）
 │   │       ├── jwt/                     # TokenSigner + JwtModule（JwtConfig）
 │   │       ├── session/                 # SessionStore + SessionModule
@@ -276,7 +276,7 @@ pnpm cli -t crud -n product  # 非交互生成 CRUD 业务模块（无 TTY 时�
   （`IdGenerationModule` / `TelemetryModule` / `SchedulerModule`）与各基础设施模块 —— 需要配置的一律用
   `forRootAsync({ imports: [ConfigModule], inject: [ConfigService], useFactory: (config) => config.get('<命名空间>') })`
   **惰性**取自己的分片（`LoggerModule` / `DbModule` / `RedisModule` / `JwtModule` / `PasswordModule` /
-  `ObjectStorageModule` / `NotificationModule`），无自有配置的直接引模块（`RateLimitModule` / `QueueModule` /
+  `ObjectStorageModule` / `NotificationModule`），无自有配置的直接引模块（`RateLimitModule` /
   `StreamHubModule` / `SessionModule`）；可选模块 `LarkModule` / `KafkaModule` 用展开语法按 env 是否存在决定；
   再注册各业务模块（`AuthModule` / `AdminModule` / `UserModule` / `TodoModule` / `StorageModule` /
   `StreamModule` / `MonitorModule` / `RuntimeConfigModule`）；`providers` 里用 `APP_PIPE` / `APP_FILTER` /
@@ -302,7 +302,7 @@ pnpm cli -t crud -n product  # 非交互生成 CRUD 业务模块（无 TTY 时�
   （method / url / statusCode / durationMs / requestId / userId / adminId），按状态码分级
   （<400 info / 4xx warn / 5xx error），日志 `requestId` 与响应头同值；业务侧不要自写请求日志。
 - **优雅关闭**：`program()` 监听 SIGINT / SIGTERM，`await app.close()`（Express 适配器先排空在途请求，
-  再执行 `OnApplicationShutdown` 释放 DB / Redis / 队列等连接）。
+  再执行 `OnApplicationShutdown` 释放 DB / Redis / Kafka 等连接）。
 
 ### apps/web — Next.js 16 前台
 
@@ -384,7 +384,6 @@ Zod schema 单一事实源，同时派生 TypeScript 类型（`*.schema.ts` 导�
     `redis.config.ts`（`RedisConfig`）、`redis.module.ts`（`RedisModule`）
   - `rate-limit/`：`rate-limiter.ts`（基于 rate-limiter-flexible，IP 白名单用 `ip-utils.ts`）+
     `rate-limit.module.ts`（`RateLimitModule`，复用 `RedisConfig`）
-  - `queue/`：`queue.ts`（`QueueManager`，BullMQ）+ `queue.module.ts`
   - `stream/`：`stream-hub.ts` / `stream-connection.ts`（SSE 推流）+ `stream-hub.module.ts`
   - `jwt/`：`token-signer.ts` + `jwt.config.ts`（`JwtConfig`）+ `jwt.module.ts`
   - `session/`：`session-store.ts` + `session.module.ts`
@@ -415,7 +414,6 @@ Zod schema 单一事实源，同时派生 TypeScript 类型（`*.schema.ts` 导�
 | `DbModule` | `{ url?, sync?, entities?, subscribers? }` | DbConfig + Db + DbService |
 | `RedisModule` | `{ url?, keyPrefix? }` | RedisConfig + RedisStore + RedisLockService |
 | `RateLimitModule` | 无（复用 RedisConfig） | RateLimiter |
-| `QueueModule` | 无（复用 RedisConfig） | QueueManager |
 | `StreamHubModule` | 无（复用 RedisConfig + IdGeneration） | StreamHub |
 | `JwtModule` | `{ secret?, expiresIn? }` | JwtConfig + TokenSigner |
 | `SessionModule` | 无（复用 JwtConfig + RedisStore） | SessionStore |
@@ -485,7 +483,6 @@ import {
   NotificationModule,
   ObjectStorageModule,
   PasswordModule,
-  QueueModule,
   RateLimitModule,
   RedisModule,
   SchedulerModule,
@@ -530,7 +527,6 @@ import { TodoModule } from './modules/todo/index.js'
       useFactory: (config: ConfigService) => config.get('redis')!,
     }),
     RateLimitModule,
-    QueueModule,
     StreamHubModule,
     JwtModule.forRootAsync({
       imports: [ConfigModule],
@@ -697,7 +693,7 @@ sidebar / toast / chart 等），Tailwind 4 主题变量由 `globals.css` 提供
 - 每个基础设施一个 `@Global()` NestJS 模块，需要配置的都提供 `forRoot(options)` 与
   `forRootAsync(options)` 两种装配方式：`LoggerModule` / `DbModule` / `RedisModule` / `JwtModule` /
   `PasswordModule` / `ObjectStorageModule` / `NotificationModule` / `LarkModule` / `KafkaModule`；
-  `RateLimitModule` / `QueueModule` / `StreamHubModule` / `SessionModule` 复用上游模块的配置 bean
+  `RateLimitModule` / `StreamHubModule` / `SessionModule` 复用上游模块的配置 bean
   （RedisConfig / JwtConfig / IdGeneration），`IdGenerationModule` / `TelemetryModule` /
   `SchedulerModule` 无配置；模块内部 `Schema.parse(...)` 校验 + 补默认值，**配置对象本身就是该模块的
   注入 bean**（`DbConfig` / `RedisConfig` / `JwtConfig` / `PasswordConfig` / `StorageConfig` /
@@ -1017,7 +1013,7 @@ AI 编码 Agent 按任务**按需加载**，工具无关（Claude Code / Codex /
 - **必读入口**：`billy-dev-foundation`（分层架构、代码约定含「不重复造轮子」实现查找顺序、常用命令、标准流程）
 - **共 17 个 skill**：必读 1（`billy-dev-foundation`）+ 功能 15（`define-data-structure` / `define-dict-enum` /
   `database` / `develop-business-module` / `develop-backend-api` / `develop-frontend-page` / `implement-auth` /
-  `object-storage` / `concurrency` / `queue` / `scheduler` / `stream` / `state-machine` / `write-tests` /
+  `object-storage` / `concurrency` / `kafka` / `scheduler` / `stream` / `state-machine` / `write-tests` /
   `git-workflow`）+ 元 1（`manage-skills`）；完整索引见
   [`.agents/skills/README.md`](.agents/skills/README.md) 与
   [`billy-dev-foundation/references/catalog.md`](.agents/skills/billy-dev-foundation/references/catalog.md)
@@ -1035,6 +1031,6 @@ AI 编码 Agent 按任务**按需加载**，工具无关（Claude Code / Codex /
 - [docs/design/sse.md](docs/design/sse.md) — 服务端推送（SSE / StreamHub）设计
 - [docs/design/monitor-alert.md](docs/design/monitor-alert.md) — 监控告警设计（规则 / 触发 / 通道）
 - [docs/design/auth-session.md](docs/design/auth-session.md) — 认证与会话设计（JWT + Redis 会话）
-- [docs/queue.md](docs/queue.md) — 异步队列与延迟任务（BullMQ）
+- [docs/queue.md](docs/queue.md) — 已废弃（BullMQ 队列方案，已被 Kafka 取代，仅存档）
 - [docs/billy-pitch.md](docs/billy-pitch.md) — 项目定位与竞品调研
 - [docs/dev-logs/](docs/dev-logs/) — 开发日志（按日追加，记录每轮改动的背景 / 做了什么 / 验证）

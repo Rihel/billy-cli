@@ -52,5 +52,5 @@ export class OrderService {
 - 调度器在 `kits/foundation`（横切基础能力）；业务模块注入 `Scheduler` 用，不散落 `croner`。
 - 定时任务**跨实例会重复执行**：多实例部署时如需互斥，配合 `concurrency` skill 的
   `RedisStore.acquireLock` 加分布式锁（谁抢到谁执行）。
-- 长任务建议配合 `queue` skill 拆异步，避免阻塞调度线程。
+- 长任务建议配合 `kafka` skill 拆异步，避免阻塞调度线程。
 - 新调度需求先按「实现查找顺序」确认用 `Scheduler`，不引其它调度库。

@@ -10,8 +10,8 @@
   `releaseLock(key, token)`（锁带 token 防误删他人锁）；或 `set NX` 幂等键 + 已处理标记
   （原语见 `concurrency` skill）。
 - 纯计数 / 防重：`incr` + `expire`。
-- 队列场景：`QueueManager` 消费者失败自动重试 → 处理器必须幂等（先查后写、按业务键去重），
-  见 `queue` skill。
+- 异步消费场景：Kafka 是 at-least-once（重平衡会重复投递）→ 处理器必须幂等（先查后写、按业务键去重），
+  见 `kafka` skill。
 - DB 兜底：业务唯一键建 `uk_*` 唯一约束（软删表把 `deletedAt` 纳入唯一键），重复插入在 DB 层被拒。
 - 先查后改的 update / remove：重复调用第二次「查无」→ 抛 `XxxNotFoundError`。
   确认这是期望语义（幂等返回 / 报错二选一），别让调用方拿到不确定行为。

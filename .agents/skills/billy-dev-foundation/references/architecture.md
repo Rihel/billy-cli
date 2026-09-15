@@ -52,7 +52,6 @@ apps/server   NestJS HTTP 边界 + 业务模块 + 实体 / 迁移 + 配置 + 唯
               · redis/        RedisStore / RedisLockService（自旋等待 + 看门狗续期 + @RedisLock）/
                               RedisListCache / RedisConfig / RedisModule
               · rate-limit/   RateLimiter / RateLimitModule（复用 RedisConfig）
-              · queue/        QueueManager / QueueModule（BullMQ）
               · stream/       StreamHub / StreamConnection / StreamHubModule（SSE）
               · jwt/          TokenSigner / JwtConfig / JwtModule
               · session/      SessionStore / SessionModule

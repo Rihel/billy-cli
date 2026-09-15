@@ -15,7 +15,7 @@ description: 在 Billy 工程中开发 / 修改后端接口（service / reposito
 
 - **幂等性**：先明确接口的幂等语义（重复调用 = 忽略 / 报错 / 返回首次结果）；
   短临界防重靠 `RedisStore` 的锁与幂等键（`concurrency`）；队列消费者失败自动重试 →
-  处理器必须幂等（`queue`）；DB 唯一约束兜底（`uk_*` 含 `deletedAt`）。
+  处理器必须幂等（`kafka`）；DB 唯一约束兜底（`uk_*` 含 `deletedAt`）。
 - **鲁棒性**：入参一律走共享 Zod 契约（`@Body({ schema: Schema })` 校验失败 body `code: 400`）；
   查无 / 空值用「先查后改 + 抛已注册 `AppError`」唯一路径，不裸 return null；
   分页 `size` 契约已限 `max(100)`；未知错误由全局兜底为 `5001 系统错误`——别抛裸 Error。
@@ -27,7 +27,7 @@ description: 在 Billy 工程中开发 / 修改后端接口（service / reposito
   状态 / 计数类并发变更用乐观锁或分布式锁（`state-machine` / `concurrency`），杜绝裸「读-改-写」；
   缓存写后失效；异步化靠处理器幂等 + 重试收敛最终一致。
 - **执行策略（同步 or 异步）**：先回答「必须当场返回结果吗」——必须且轻 → 同步直出；
-  重 / 慢 / 可延后 / 需重试 / 需削峰 → 异步化（`queue` 投递 + 消费者幂等 + `stream` 推进度 +
+  重 / 慢 / 可延后 / 需重试 / 需削峰 → 异步化（`kafka` 投递 + 消费者幂等 + `stream` 推进度 +
   `scheduler` 兜底补偿）；旁路失败不影响响应可 fire-and-forget（参考 main.ts 告警）。
   别把慢操作硬塞同步，也别为轻操作引入异步复杂度。
 - **可测试性**：写接口时同步设计「怎么测」：controller 薄、业务在 service（构造器注入依赖可 mock）、
@@ -53,7 +53,7 @@ description: 在 Billy 工程中开发 / 修改后端接口（service / reposito
 | 错误码 / 字典 / 枚举 | `define-dict-enum` |
 | 鉴权守卫 / token / 双体系实现 | `implement-auth` |
 | 锁 / 限流 / 缓存 / 幂等原语 | `concurrency` |
-| 队列 / 定时 / SSE / 状态机 | `queue` / `scheduler` / `stream` / `state-machine` |
+| 队列 / 定时 / SSE / 状态机 | `kafka` / `scheduler` / `stream` / `state-machine` |
 | 接口单元测试 | `write-tests` |
 
 ## 参考文件（本 skill 的组成部分）
@@ -75,7 +75,7 @@ description: 在 Billy 工程中开发 / 修改后端接口（service / reposito
 ## 完成检查清单（接口交付前）
 
 - [ ] 已确定幂等语义；重复提交 / 重试 / 双击路径有明确行为（锁 / 幂等键 / 唯一约束兜底）
-- [ ] 已明确执行策略：同步直出 or 异步化（`queue` + 消费者幂等 + `stream` 进度 / `scheduler` 补偿），
+- [ ] 已明确执行策略：同步直出 or 异步化（`kafka` + 消费者幂等 + `stream` 进度 / `scheduler` 补偿），
   能答「为什么同步 / 为什么异步」；未把慢操作硬塞同步，也未为轻操作引入异步复杂度
 - [ ] 入参全走共享契约校验；查无 / 无权限 / 参数非法均抛带 code 的 `AppError`，无裸 Error / null 泄漏
 - [ ] 鉴权已显式选择；资源归属已校验（防越权）；敏感数据未进响应与日志

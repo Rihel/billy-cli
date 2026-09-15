@@ -1,5 +1,11 @@
 # 队列基础设施（BullMQ）落地方案
 
+> **已废弃（2026-09-15）：BullMQ 与 `QueueManager` / `QueueModule` 已从工程整体移除。**
+> 原因：`QueueManager` 在业务侧**零使用**；且「异步消息」已由 Kafka 承担
+> （`kits/src/kafka/` 的 `KafkaService` + `@KafkaConsumer`，见 `kafka` skill），
+> 延迟 / 周期任务由 `foundation/scheduler`（croner）与 `foundation/time-wheel` 承担，
+> 与 BullMQ 的定位重叠。本文仅作历史存档，**不要再按本文实现**。
+>
 > 目标：把 BullMQ 引入为工程**基础设施门面**（不是某个业务模块），
 > 让业务模块通过统一门面生产 / 消费任务，不散落 `import bullmq`。
 

@@ -12,8 +12,8 @@
 - 不影响响应、可失败可延后的旁路 → fire-and-forget 异步：如全局
   `AppExceptionFilter` 里告警 `AlertTrigger.notifyError`（经 `ERROR_ALERT_HOOK` 注入，
   注释「告警链路异常不影响返回」），失败不拖累主响应。
-- 长任务 / 慢操作 / 削峰 → 投 `QueueManager`（`addJob` 生产者 / `registerWorker` 消费者，
-  失败自动重试，见 `queue` skill）；消费者必须幂等。
+- 长任务 / 慢操作 / 削峰 → 投 Kafka topic（见 `kafka` skill）（`send` 生产者 / `` 消费者，
+  失败自动重试，见 `kafka` skill）；消费者必须幂等。
 - 进度反馈 → 配合 `stream` skill（SSE）按身份 / 业务频道推任务进度。
 - 定时补偿 / 兜底 → `Scheduler`（见 `scheduler` skill；多实例配分布式锁互斥，见 `concurrency`）。
 

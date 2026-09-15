@@ -24,7 +24,7 @@
 | 功能 | [`implement-auth`](./implement-auth/SKILL.md) | 认证与权限（登录注册、token/cookie、路由守卫、双体系） |
 | 功能 | [`object-storage`](./object-storage/SKILL.md) | 对象存储与文件上传下载（S3/COS、预签名、STS） |
 | 功能 | [`concurrency`](./concurrency/SKILL.md) | 高并发与一致性（缓存、限流、幂等、分布式锁） |
-| 功能 | [`queue`](./queue/SKILL.md) | 异步队列与延迟任务（BullMQ QueueManager） |
+| 功能 | [`kafka`](./kafka/SKILL.md) | 异步消息与事件（KafkaService 生产者 / @KafkaConsumer 消费者、幂等） |
 | 功能 | [`scheduler`](./scheduler/SKILL.md) | 定时调度（croner Scheduler） |
 | 功能 | [`stream`](./stream/SKILL.md) | 服务端推送 SSE（StreamHub 推流 + HttpStreamClient 客户端） |
 | 功能 | [`state-machine`](./state-machine/SKILL.md) | 业务状态机（字典+转移表 / xstate、并发安全） |

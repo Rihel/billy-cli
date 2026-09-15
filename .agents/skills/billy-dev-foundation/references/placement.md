@@ -14,7 +14,7 @@
 4. 是**数据库表结构**？ → `apps/server/src/database/entities/`
 5. 是**通用数据访问能力**（分页、批量、游标等，不绑定具体业务）？ → `packages/kits/src/db/`
 6. 是**外部资源门面**（DB / Redis / MQ / S3 / 消息推送…）？ → `packages/kits/src/<基础设施>/`
-   （如 `redis/` / `rate-limit/` / `queue/` / `stream/` / `storage/` / `kafka/` / `lark/` / `notification/`）
+   （如 `redis/` / `rate-limit/` / `stream/` / `storage/` / `kafka/` / `lark/` / `notification/`）
 7. 是**横切基础能力**（多源配置 / 日志 / ID 生成 / 错误 / 调度器…）？ → `packages/kits/src/foundation/<能力>/`
 8. 是**业务逻辑**（有状态、有 service + repository + errors 三层）？ → `apps/server/src/modules/<业务>/`
 9. 是 **HTTP 边界 / 全类型客户端 / 前端页面**？ → `apps/server/src/modules/<业务>/<业务>.controller.ts` + `packages/sdk/` + `apps/web|admin/`
@@ -54,7 +54,7 @@
 - 应用侧配置定义在 `apps/server/src/app-config.ts`：`serverAppConfigSchema` **复用 kits 各模块的
   `*.config.ts` schema** 组成命名空间，`mapServerEnv` 负责环境变量映射；新增需要配置的基础设施时，
   在这里加一个命名空间 + `ConfigService.get('<命名空间>')` 即可。
-- 无自有配置、复用上游配置 bean 的模块写成纯模块（如 `RateLimitModule` / `QueueModule` /
+- 无自有配置、复用上游配置 bean 的模块写成纯模块（如 `RateLimitModule` /
   `StreamHubModule` / `SessionModule`）。
 - 连接串 / 密钥从配置来，禁止硬编码；实现 `OnApplicationBootstrap` / `OnApplicationShutdown`
   管理连接建立 / 释放，生命周期由 Nest 在 `app.close()` 时逆序释放。
@@ -100,11 +100,11 @@
 1. 现有 `RedisStore` 能否实现？（锁 `acquireLock` / 计数 `incr` / TTL `set/expire` /
    列表 / PubSub 经 `raw` 直接调用）能 → **不引库**，封装进 `kits/src/<基础设施>/`。
 2. 依赖里已有？（ioredis 的 List / ZSet / PubSub / Stream 都可用）
-3. 都没有 → 联网找库（如 BullMQ 队列、xstate 状态机）。
+3. 都没有 → 联网找库（如 Kafka 客户端 `kafkajs`、xstate 状态机）。
 
 引入新依赖后的归位铁律：
 
-- **门面独立成 `kits/src/<基础设施>/` 目录**（如 BullMQ 的队列封装 → `kits/src/queue/`、
+- **门面独立成 `kits/src/<基础设施>/` 目录**（如 Kafka 的封装 → `kits/src/kafka/`、
   S3 的封装 → `kits/src/storage/`），业务模块只依赖门面，不散落 `import` 第三方库。
 - 纯函数型库（如 xstate 纯状态机）可放 `shared/utils` 或 `kits/src/foundation/<能力>/`，
   视是否依赖 DI / 配置而定。
@@ -115,7 +115,7 @@
 | 需求 | 归位 | 说明 |
 | --- | --- | --- |
 | 状态机（订单状态流转） | 轻量：`shared/utils` 字典 + 转移表纯函数；复杂：`kits/foundation` 或独立 `server/modules` | 状态字典放 `dicts/`；转移规则是纯逻辑 |
-| 消息队列 / 延迟任务 | 门面 `kits/src/queue/queue.ts`（BullMQ）+ `QueueModule` | 生产者 / 消费者都经门面；消费者随生命周期启停 |
+| 异步消息 / 事件驱动 | 门面 `kits/src/kafka/`（`KafkaService` 生产者 + `@KafkaConsumer` 注解消费者）+ `KafkaModule` | 生产者 / 消费者都经门面，不散落 `import kafkajs`；**延迟 / 周期任务交 `foundation/scheduler`**，别指望 MQ |
 | 心跳 / 任务 lease | `kits/src/redis/`（封装 set+ttl 续期 + 锁）或业务 service 内 | 复用 `RedisStore`，不引新库 |
 | 高并发：限流 / 幂等 / 缓存 | 限流用 `kits/src/rate-limit/`；幂等 / 缓存复用 `RedisStore` | 复用 `RedisStore` |
 | 定时任务 / 调度 | `kits/src/foundation/scheduler/`（Scheduler 门面，croner） | 由 `SchedulerModule` 装配（无配置依赖的纯模块） |

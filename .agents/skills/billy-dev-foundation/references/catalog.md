@@ -14,7 +14,7 @@
 | [`implement-auth`](../../implement-auth/SKILL.md) | 认证与权限：登录 / 注册 / 找回密码、token 与 cookie、路由守卫、用户 / 管理员双体系 | 登录注册、鉴权、权限、守卫、token 相关任务时 |
 | [`object-storage`](../../object-storage/SKILL.md) | 对象存储与文件上传下载：S3/COS 门面、预签名 URL、STS、FileUpload / ImageUpload | 文件上传 / 下载 / 图片存储时 |
 | [`concurrency`](../../concurrency/SKILL.md) | 高并发与一致性：缓存 / 限流 / 幂等 / 分布式锁（RedisStore） | 高并发、缓存、限流、幂等、分布式锁时 |
-| [`queue`](../../queue/SKILL.md) | 异步队列与延迟任务：QueueManager（BullMQ）的生产者 / 消费者 | 异步任务、队列、延迟任务、消息时 |
+| [`kafka`](../../kafka/SKILL.md) | 异步消息与事件：KafkaService 生产者 / @KafkaConsumer 消费者、topic 与消费组约定、at-least-once 幂等 | 异步、消息队列、事件驱动、削峰解耦、MQ、Kafka 时 |
 | [`scheduler`](../../scheduler/SKILL.md) | 定时调度：Scheduler（croner）的 cron / interval / timeout | 定时任务、调度、cron、周期任务时 |
 | [`stream`](../../stream/SKILL.md) | 服务端推送（SSE）：StreamHub 推流 + HttpStreamClient 客户端、频道与权限、跨实例广播 | SSE、实时推送、推流、任务进度、实时通知时 |
 | [`state-machine`](../../state-machine/SKILL.md) | 业务状态机：状态字典 + 转移表纯函数（或 xstate 门面）、并发安全 | 订单状态、审批流、状态流转时 |
