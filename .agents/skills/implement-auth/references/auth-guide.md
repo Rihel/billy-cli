@@ -14,7 +14,7 @@
 | 服务端守卫 | `UserAuthGuard`（写入 `userId`） | `AdminAuthGuard`（写入 `adminId`） |
 | SDK 段 | `client.auth.*` | `client.admin.*` / `client.user.*` |
 | 前端 | `apps/web`（login / register / forgot-password / reset-password） | `apps/admin`（login，独立体系） |
-| 错误码段 | `1xxx` 认证（1000-1009） | `2xxx` 用户 + 管理员（2001-2006） |
+| 错误码段 | `1xxx` 认证（1000-1009） | `2xxx` 用户 + 管理员（2001-2007） |
 
 **两者完全隔离**：管理员登录走 `client.admin.login`，用户登录走 `client.auth.login`，
 token 里带类型标识，`verifyToken` 分别校验，混用必然失败。

@@ -16,7 +16,7 @@ description: 在 Billy 工程中开发完整业务模块（如商品、订单、
 ```
 ① dicts（错误码）   packages/shared/src/dicts/app-error-code.dict.ts（3xxx 段）
 ② schema（契约）    packages/shared/src/schema/xxx.schema.ts        → 见 define-data-structure
-③ entity（表）      apps/server/src/database/entities/xxx-entity.ts（root.module.ts 的 DbModule.forRoot 注入 entities）
+③ entity（表）      apps/server/src/database/entities/xxx-entity.ts（root.module.ts 的 DbModule.forRootAsync 工厂里注入 entities）
 ④ 迁移              pnpm db:gen Xxx / pnpm db:migrate
 ⑤ 业务              apps/server/src/modules/xxx/{errors,repository,service,index}.ts
                     + XxxModule 的 providers 在 xxx.module.ts 声明

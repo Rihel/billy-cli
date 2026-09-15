@@ -14,8 +14,9 @@
 - `getObject(key)` / `removeObject(key)` → 服务端读取 / 删除（内部用，不暴露 API）
 
 注入方式：构造器 `@Inject(ObjectStorage)`（由 `ObjectStorageModule.forRoot({ provider, region,
-bucket, accessKeyId, secretAccessKey, endpoint })` 装配；该模块依赖 `RedisModule` 提供的
-`RedisStore`，故 `root.module.ts` 的 `imports` 里 `RedisModule` 需排在它之前）。
+bucket, accessKeyId, secretAccessKey, endpoint })` 装配；运行时另注入 `RedisModule` 提供的
+`RedisStore` 做预签名缓存——两者都是 `@Global()` 模块，一并 import 进 `root.module.ts` 即可，
+DI 解析不依赖 `imports` 的先后顺序）。
 
 ## 2. 配置（apps/server/.env）
 

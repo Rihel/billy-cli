@@ -54,7 +54,9 @@ login(@Body({ schema: LoginSchema }) input: LoginDto) { ... }
   默认直连 socket 地址，防伪造 XFF 绕过；
   部署在可信反代后置 `RATE_LIMIT_TRUST_PROXY=true` 才取 `x-forwarded-for` 首值。
 - IPv6 双栈下 socket 地址为 `::ffff:<v4>`，已统一规范化（`normalizeIp`）。
-- 需更精确算法（滑动窗口 / 令牌桶）时用 `RateLimiterSlidingWindow` / `RateLimiterTokenBucket`。
+- 需更精确算法（滑动窗口 / 令牌桶）时：**rate-limiter-flexible 不内置对应类**，
+  滑动窗口可按下一节的 `raw` ZSet 思路自实现（`ZREMRANGEBYSCORE` + `ZCARD` + `ZADD`），
+  令牌桶需自行实现或换库，别去 import 不存在的类。
 
 **业务侧计数**（非 HTTP 场景，RedisStore 原生）：
 

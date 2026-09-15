@@ -32,7 +32,7 @@
 | 横切基础能力 | `packages/kits/src/foundation/<name>/`（同上四件套） | `@Injectable()` + 放进对应 `<name>.module.ts` 的 `providers` / `exports` |
 | 业务逻辑 | `apps/server/src/modules/<业务>/{errors, <业务>.repository, <业务>.service, <业务>.module, index}.ts` | 三层 + module `providers` 声明，再把模块加入 `root.module.ts` 的 `imports`；实体在 `DbModule.forRootAsync` 工厂里注入 |
 | HTTP 边界 | `apps/server/src/modules/<业务>/<业务>.controller.ts` | `@Controller` + `@Post` + `@HttpCode(200)` + `@Body({ schema: Schema })`，加入本模块 `controllers` |
-| 横切 HTTP 构件 | `apps/server/src/common/{error,request,security,http}/<name>.ts`（外部从 `common/index.ts` 导入） | 不依赖具体业务模块（跨模块协作走 token 由 `root.module.ts` 注入） |
+| 横切 HTTP 构件 | `apps/server/src/common/{error,request-context,request-logger,request-metrics,security,http}/<name>.ts`（外部从 `common/index.ts` 导入） | 不依赖具体业务模块（跨模块协作走 token 由 `root.module.ts` 注入） |
 
 ## 3. 每个落点的模式要求（新增能力必守）
 
@@ -80,7 +80,7 @@
 ### server/modules —— 业务逻辑
 
 - 固定三层：`errors.ts`（AppError 子类）+ `<业务>.repository.ts`（数据访问）+
-  `<业务>.service.ts`（业务 + `@Transactional` 写操作 + `@Logger`）；同目录再放
+  `<业务>.service.ts`（业务 + `@Transactional` 写操作；日志用构造器注入 `AppLogger`）；同目录再放
   `<业务>.controller.ts`（HTTP 边界）与 `<业务>.module.ts`。
 - 注册：模块 `index.ts` 聚合导出 + `<业务>.module.ts` 的 `controllers` / `providers` 声明，
   再把该模块加入 `apps/server/src/root.module.ts` 的 `imports`（无副作用导入与自动注册）。

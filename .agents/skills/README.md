@@ -1,6 +1,6 @@
 # Billy Agent Skills
 
-> **工程首要准则**：见仓库根 [`AGENTS.md`](../AGENTS.md)（实事求是、抓主要矛盾等 8 条，
+> **工程首要准则**：见仓库根 [`AGENTS.md`](../../AGENTS.md)（实事求是、抓主要矛盾等 8 条，
 > 统摄一切开发活动）与 [`billy-dev-foundation/references/principles.md`](./billy-dev-foundation/references/principles.md)（落地展开）。
 
 本仓库为 AI 编码 Agent 提供的一套 skill 指令，规范在 Billy 全栈工程中的开发方式。

@@ -1,6 +1,6 @@
 ---
 name: manage-skills
-description: 在 Billy 工程中新增或维护 Agent Skills：判断是否需要新 skill、创建 skill 目录与 SKILL.md、编写 frontmatter（name / description / 触发词）、大文件拆分到 references/、并在 billy-dev-foundation 的「Skill 目录」与 README 中注册；**代码变更（packages / 组件库 / 架构 / 命令）后同步更新受影响的 skill，并把开发中解决的经验回收沉淀成 skill、退役过时 / 冗余 / 被合并的 skill**。触发词：添加 skill、新建 skill、管理 skill、维护 skill、skill 规范、写 skill、拆分 skill、注册 skill、同步 skill、更新 skill、代码变更、回收沉淀、沉淀 skill、经验抽象、删除 skill、退役 skill。
+description: 在 Billy 工程中新增或维护 Agent Skills：判断是否需要新 skill、创建 skill 目录与 SKILL.md、编写 frontmatter（name / description / 触发词）、大文件拆分到 references/、并在 `billy-dev-foundation/references/catalog.md` 的「Skill 目录」与 `.agents/skills/README.md` 速览表中注册；**代码变更（packages / 组件库 / 架构 / 命令）后同步更新受影响的 skill，并把开发中解决的经验回收沉淀成 skill、退役过时 / 冗余 / 被合并的 skill**。触发词：添加 skill、新建 skill、管理 skill、维护 skill、skill 规范、写 skill、拆分 skill、注册 skill、同步 skill、更新 skill、代码变更、回收沉淀、沉淀 skill、经验抽象、删除 skill、退役 skill。
 ---
 
 # 新增 / 维护 Skill
@@ -13,7 +13,7 @@ description: 在 Billy 工程中新增或维护 Agent Skills：判断是否需�
 - **格式**：`.agents/skills/<kebab-name>/SKILL.md`，frontmatter 含 name（唯一）+ description
   （对象 + 任务 + 触发词）。
 - **体积**：主文件 > 约 60 行拆 `references/`，引用文件头部注明归属。
-- **注册**：新 skill 登记到 `billy-dev-foundation` 的「Skill 目录」+ `README.md` 速览表。
+- **注册**：新 skill 登记到 `billy-dev-foundation/references/catalog.md` 的「Skill 目录」+ `.agents/skills/README.md` 速览表。
 - **同步**：局部变更（新增导出 / 组件 / 命令）按 maintain-guide 第 2 节 grep 更新；
   **架构变更**（分层 / 依赖方向 / 入口重构）按 maintain-guide 第 3 节专项处理。
 - **获取外部 skill**：联网找现成 skill（评估 → 适配 → 登记）见
@@ -36,5 +36,5 @@ description: 在 Billy 工程中新增或维护 Agent Skills：判断是否需�
 - [ ] 目录 `.agents/skills/<kebab-name>/SKILL.md` 已创建，frontmatter 含 name + description + 触发词
 - [ ] 内容基于仓库真实实现；涉及其他 skill 时引用其名称而非重复展开
 - [ ] 主文件 > 60 行时已拆分 `references/` 并更新引用
-- [ ] 已在 `billy-dev-foundation/SKILL.md` 的「Skill 目录」与 `README.md` 速览表注册
+- [ ] 已在 `billy-dev-foundation/references/catalog.md` 的「Skill 目录」与 `.agents/skills/README.md` 速览表注册
 - [ ] 本次代码变更已按 maintain-guide 的「代码变更后的 skill 同步」更新受影响 skill

@@ -9,7 +9,7 @@ pnpm dev:server    # 启动 NestJS 服务（9989；node --watch --import tsx/esm
 pnpm dev:web       # Web 前台（9840）
 pnpm dev:admin     # Admin 后台（9845）
 pnpm kill:dev      # 一键停掉全部 dev 服务（Web / Admin / Server / packages watcher；--dry-run 仅预览）
-pnpm build:pkgs    # 仅构建 packages（http-client / kits / sdk / shared / ui）
+pnpm build:pkgs    # 仅构建 packages（http-client / kits / sdk / shared；ui 源码直出，无 build 脚本）
 pnpm build         # 全量构建（turbo，按依赖拓扑）
 pnpm db:gen <Name> # 依据实体与数据库的差异生成迁移（写入 apps/server/src/database/migrations/，经 @app/server）
 pnpm db:migrate    # 执行迁移（经 @app/server）

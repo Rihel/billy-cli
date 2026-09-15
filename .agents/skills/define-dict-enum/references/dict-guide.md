@@ -23,13 +23,12 @@ import { createDict } from '../utils'
 
 export const UserStatus = createDict({
   Enabled: { label: '启用', value: 'enabled' },
-  disabled: { label: '禁用', value: 'disabled' },   // 历史遗留小写 key，新代码统一 PascalCase
+  Disabled: { label: '禁用', value: 'disabled' },
 })
 ```
 
 规则：
 - key 用 **PascalCase**（`Enabled`）；value 小写字符串（`'enabled'`）；label 中文展示文案。
-  （现有 `user-status.dict.ts` 里 `disabled` 是小写 key，属历史遗留，新字典统一 PascalCase，勿模仿。）
 - value 全局唯一；`{ label, value }` 是约定结构（`createDict` 默认
   `labelKey: 'label'`、`valueKey: 'value'`），可附带额外字段（如 `i18n`）。
 - 创建后在 `packages/shared/src/dicts/index.ts` 追加 `export * from './xxx.dict'`。
@@ -48,7 +47,7 @@ export const AppErrorCodes = createDict({
 规则：
 - value 为**数字分段**：`1xxx` 认证 / `2xxx` 用户、管理员 / `3xxx` 业务模块
   （每个新业务模块从这里起一段）/ `4xxx` 输入 / `5xxx` 系统。
-- 必须带 `http` 字段（仅 400 / 401 / 403 / 404 / 409 / 500），
+- 必须带 `http` 字段（仅 400 / 401 / 403 / 404 / 409 / 429 / 500），
   `apps/server/src/common/error/error-descriptor.ts` 的 `describeErrorCode`（边界经
   `common/error/boundary-error.ts` 映射）会自动映射为 HTTP 状态码与中文文案，**无需任何额外代码**。
 - 业务层错误类引用它：`readonly code = AppErrorCodes.TodoNotFound`

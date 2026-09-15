@@ -19,7 +19,7 @@
   （`apps/server/src/common/error/app-exception.filter.ts`，注册为 `APP_FILTER`；映射 code/http +
   异步告警 `AlertTrigger.notifyError`），
   业务侧**不要**自己 console.error 后吞掉；需要特殊告警 / 重试的失败在 handler 内按需处理。
-- 指标：`makeRequestMetricsMiddleware`（`apps/server/src/common/request-metrics/request-metrics.middleware.ts`）
+- 指标：`RequestMetricsMiddleware`（`apps/server/src/common/request-metrics/request-metrics.middleware.ts`）
   已全局埋点（`common/request-metrics` 的 `RequestMetricsModule` 自注册中间件），无需每个接口自建。
 
 检查项：关键动作有业务事件日志；异常能被日志 + 告警覆盖；日志无敏感信息（token / 密码 / 密钥）。

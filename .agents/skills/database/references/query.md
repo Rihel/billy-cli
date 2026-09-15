@@ -62,13 +62,15 @@ if (keyword) {
   })
   ```
 - **深翻页**：offset 翻页越翻越慢（skip 大）。`@repo/kits` 还提供
-  `deferredPageWith` / `deferredCursorPageWith`（先只取主键再回表，当前业务未用，
+  `pageWithDeferred` / `cursorPageWithDeferred`（先只取主键再回表，当前业务未用，
   极大表启用）。列表别默认给「跳页到第 N 万页」的能力。
 
-## 5. 批量写入（@repo/kits `DbService`）
+## 5. 批量写入（@repo/kits 纯函数 / `DbService` 门面）
 
-导入 / 同步 / 批处理别在循环里逐条写库。业务代码里**注入 `DbService`**（`DbModule` 已装配，
-`@Global`，直接 `@Inject(DbService)` 即可）：
+导入 / 同步 / 批处理别在循环里逐条写库。当前业务 repository 的写法是注入 `Db` + 调纯函数
+（`batchInsert` / `batchSave` / `batchUpsert` / `safeDelete` 等，见
+`apps/server/src/modules/todo/todo.repository.ts`）；kits 另提供 `DbService` 注入式门面
+（与纯函数同名同参，自动带默认 manager 与操作人），需要时 `@Inject(DbService)` 直接用：
 
 ```ts
 constructor(@Inject(DbService) private readonly dbService: DbService) {}
@@ -98,8 +100,9 @@ await this.dbService.safeDelete(TodoEntity, { id })
 - 排查复杂查询用 `this.dbService.getFullSqlStatement(builder)`（或同名纯函数）把占位符还原成
   完整 SQL（仅调试，勿执行）；要打日志自己打：`this.logger.debug(this.dbService.getFullSqlStatement(builder))`
   —— `DbService` 不注入 `AppLogger`（它不产生运维日志），而 repository / service 本就注入了。
-- **分页也走 `DbService`**：`pageWith` / `pageWithDeferred` / `cursorPageWith` /
-  `cursorPageWithDeferred` 四个方法与纯函数同名同参，业务侧统一从服务调（见上一节）。
+- **分页同理**：四个分页函数在业务侧由 `Db` + 纯函数调用（当前实现），`DbService` 上的
+  `pageWith` / `pageWithDeferred` / `cursorPageWith` / `cursorPageWithDeferred` 只是把同一批
+  纯函数接进容器，需要时再用。
 
 ## 6. 防 N+1 与关联加载
 

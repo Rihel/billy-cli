@@ -7,7 +7,7 @@
 
 新 skill 必须登记到两处索引，保持一致：
 
-1. `billy-dev-foundation/SKILL.md` 的 **「Skill 目录」** 表加一行（skill 链接 + 用途 + 何时加载）。
+1. `billy-dev-foundation/references/catalog.md` 的 **「Skill 目录」** 表加一行（skill 链接 + 用途 + 何时加载）。
 2. `.agents/skills/README.md` 的速览表加一行。
 
 ## 2. 代码变更后的 skill 同步（局部变更）
@@ -53,7 +53,7 @@ skill**，否则 agent 会按过时规范写代码。触发场景：
    核对每个 skill 与真实代码一致），而非只靠 grep。
 
 实例：本次 kits 化改造把分层从 `server → core → db/shared` 改为
-`server → kits → di/shared` 时，foundation 分层图、develop-business-module 的落点、
+`server → kits → shared` 时，foundation 分层图、develop-business-module 的落点、
 define-data-structure 的注册点都要动，而非只改路径。
 
 ## 4. 大文件拆分规则
