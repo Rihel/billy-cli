@@ -4,6 +4,7 @@ import {
   DbConfigSchema,
   envConfigLoader,
   JwtConfigSchema,
+  KafkaConfigSchema,
   LoggerConfigSchema,
   PasswordConfigSchema,
   RedisConfigSchema,
@@ -22,6 +23,8 @@ export const appConfigSchema = z.object({
   redis: RedisConfigSchema,
   jwt: JwtConfigSchema,
   password: PasswordConfigSchema,
+  /** Kafka：未配置 brokers 则不装配 KafkaModule */
+  kafka: KafkaConfigSchema.optional(),
   logger: LoggerConfigSchema,
 })
 
@@ -38,6 +41,14 @@ export const mapEnv = (env: NodeJS.ProcessEnv): Record<string, unknown> => ({
   redis: { url: optional(env.REDIS_URL), keyPrefix: optional(env.REDIS_KEY_PREFIX) },
   jwt: { secret: optional(env.JWT_SECRET), expiresIn: optional(env.JWT_EXPIRES_IN) },
   password: { passwordHashRounds: optional(env.PASSWORD_HASH_ROUNDS) },
+  kafka: env.KAFKA_BROKERS
+    ? {
+        brokers: env.KAFKA_BROKERS,
+        clientId: optional(env.KAFKA_CLIENT_ID),
+        topicPrefix: optional(env.KAFKA_TOPIC_PREFIX),
+        groupIdPrefix: optional(env.KAFKA_GROUP_ID_PREFIX),
+      }
+    : undefined,
   logger: {
     prefix: '<%= it.name %>',
     level: optional(env.LOG_LEVEL),

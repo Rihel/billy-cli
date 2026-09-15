@@ -6,9 +6,9 @@ import {
   DbModule,
   IdGenerationModule,
   JwtModule,
+  KafkaModule,
   LoggerModule,
   PasswordModule,
-  QueueModule,
   RedisModule,
   SchedulerModule,
   SessionModule,
@@ -28,8 +28,8 @@ import {
  * `AppConfigModule.forRoot()` 接进 Nest，各基础设施用 `forRootAsync({ inject: [ConfigService] })`
  * 惰性取自己的配置分片（惰性很关键：模块装饰器求值发生在配置加载之前）；应用级业务配置同理，
  * 注入 `ConfigService` 后用 `src/config.ts` 的 `resolveServerConfig()` 取 `server` 分片。
- * 需要对象存储 / 通知 / 飞书 / Kafka 时按同样方式追加：
- *   ObjectStorageModule.forRoot({...}) / NotificationModule.forRoot({...}) / LarkModule.forRoot({...}) / KafkaModule.forRoot({...})
+ * 需要对象存储 / 通知 / 飞书时按同样方式追加：
+ *   ObjectStorageModule.forRootAsync({...}) / NotificationModule.forRootAsync({...}) / LarkModule.forRootAsync({...})
  *
  * - 业务模块：在 imports 中追加（如 `TodoModule`）；
  * - 全局管道 / 过滤器 / 拦截器：Zod 校验 + 错误映射 + 响应信封。
@@ -46,7 +46,7 @@ import {
     LoggerModule.forRootAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
-      useFactory: (config: ConfigService) => config.get('logger'),
+      useFactory: (config: ConfigService) => config.get('logger')!,
     }),
     DbModule.forRootAsync({
       imports: [ConfigModule],
@@ -60,20 +60,29 @@ import {
     RedisModule.forRootAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
-      useFactory: (config: ConfigService) => config.get('redis'),
+      useFactory: (config: ConfigService) => config.get('redis')!,
     }),
-    QueueModule,
+    // ---- 可选模块：env 提供 KAFKA_BROKERS 才装配 ----
+    ...(process.env.KAFKA_BROKERS
+      ? [
+          KafkaModule.forRootAsync({
+            imports: [ConfigModule],
+            inject: [ConfigService],
+            useFactory: (config: ConfigService) => config.get('kafka')!,
+          }),
+        ]
+      : []),
     StreamHubModule,
     JwtModule.forRootAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
-      useFactory: (config: ConfigService) => config.get('jwt'),
+      useFactory: (config: ConfigService) => config.get('jwt')!,
     }),
     SessionModule,
     PasswordModule.forRootAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
-      useFactory: (config: ConfigService) => config.get('password'),
+      useFactory: (config: ConfigService) => config.get('password')!,
     }),
     // 在此挂载业务模块，如：TodoModule,
   ],

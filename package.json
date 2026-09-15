@@ -20,7 +20,8 @@
     "start:web": "pnpm --filter web run start",
     "start:server": "pnpm --filter @app/server run start",
     "clean": "rm -rf node_modules && rm -rf packages/*/node_modules && rm -rf apps/*/node_modules && rm -rf dist && rm -rf .turbo && rm -rf .next && rm -rf .cache",
-    "check:inject": "tsx scripts/check-inject-decorators.ts"
+    "check:inject": "tsx scripts/check-inject-decorators.ts",
+    "check:scaffold": "tsx scripts/check-scaffold-templates.ts"
   },
   "keywords": [],
   "author": "",

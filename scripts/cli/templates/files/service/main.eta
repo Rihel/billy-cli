@@ -3,7 +3,7 @@ import 'dotenv/config'
 import { ConfigService } from '@nestjs/config'
 import { NestFactory } from '@nestjs/core'
 import type { NestExpressApplication } from '@nestjs/platform-express'
-import { Logger } from '@repo/kits'
+import { NestLoggerAdapter } from '@repo/kits'
 import { RootModule } from './root.module.js'
 import { loadAppConfig } from './app-config.js'
 import { resolveServerConfig } from './config.js'
@@ -22,11 +22,11 @@ export const program = async (): Promise<void> => {
 
   const app = await NestFactory.create<NestExpressApplication>(RootModule, {
     bodyParser: false,
-    // 先缓冲启动期日志，useLogger 之后统一由 nestjs-pino 输出
+    // 先缓冲启动期日志，useLogger 之后统一由自建 pino logger（NestLoggerAdapter）输出
     bufferLogs: true,
   })
-  app.useLogger(app.get(Logger))
-  const logger = app.get(Logger)
+  app.useLogger(app.get(NestLoggerAdapter))
+  const logger = app.get(NestLoggerAdapter)
   app.enableCors()
   app.disable('x-powered-by')
   app.useBodyParser('json', { limit: '2mb' })
@@ -45,7 +45,7 @@ export const program = async (): Promise<void> => {
       await app.close()
       logger.log('服务已关闭', 'bootstrap')
     } catch (error) {
-      logger.error(error as Error, '关闭资源失败')
+      logger.error(error, '关闭资源失败', 'bootstrap')
     }
     process.exit(0)
   }

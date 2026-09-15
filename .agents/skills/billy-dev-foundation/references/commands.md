@@ -20,6 +20,7 @@ pnpm bootstrap -y  # 全默认非交互（--skip-docker / --skip-install / --ski
 pnpm cli           # 代码生成器（交互式）：package / client / service / crud 四类模板
 pnpm cli -t crud -n <name>  # 非交互生成 CRUD 业务模块（实体 / repository / service / controller / module / schema）
 pnpm check:inject  # DI 装饰器一致性守卫（构造器 @Inject / providers @Injectable），违反返回非零退出码
+pnpm check:scaffold # 脚手架模板守卫：渲染 service 模板 + 汇总 crud 模板导入做真实类型检查，防模板与工作区包漂移
 ```
 
 > **不要用 `tsx` CLI 跑 server**：它同时挂 CJS 钩子，会让 CJS 依赖（pino / pg 等）`require` 到的
