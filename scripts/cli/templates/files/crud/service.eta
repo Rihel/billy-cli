@@ -21,47 +21,47 @@ import { <%= it.modulePascal %>NotFoundError } from './errors.js'
 @Injectable()
 export class <%= it.modulePascal %>Service {
   constructor(
-    @Inject(<%= it.modulePascal %>Repository) private readonly <%= it.name %>Repository: <%= it.modulePascal %>Repository,
+    @Inject(<%= it.modulePascal %>Repository) private readonly <%= it.nameCamel %>Repository: <%= it.modulePascal %>Repository,
     @Inject(AppLogger) private readonly logger: AppLogger,
   ) {}
 
   @Transactional()
   async create(input: Create<%= it.modulePascal %>Dto): Promise<<%= it.modulePascal %>Model> {
-    const <%= it.name %> = await this.<%= it.name %>Repository.create(input)
-    this.logger.log('<%= it.name %>.created', { id: <%= it.name %>.id })
-    return <%= it.name %>
+    const <%= it.nameCamel %> = await this.<%= it.nameCamel %>Repository.create(input)
+    this.logger.log('<%= it.name %>.created', { id: <%= it.nameCamel %>.id })
+    return <%= it.nameCamel %>
   }
 
   async get(input: GetDetail<%= it.modulePascal %>Dto): Promise<<%= it.modulePascal %>Model> {
-    const <%= it.name %> = await this.<%= it.name %>Repository.findById(input.<%= it.name %>Id)
-    if (!<%= it.name %>) throw new <%= it.modulePascal %>NotFoundError(input.<%= it.name %>Id)
-    return <%= it.name %>
+    const <%= it.nameCamel %> = await this.<%= it.nameCamel %>Repository.findById(input.<%= it.nameCamel %>Id)
+    if (!<%= it.nameCamel %>) throw new <%= it.modulePascal %>NotFoundError(input.<%= it.nameCamel %>Id)
+    return <%= it.nameCamel %>
   }
 
   async page(query: PageQuery<%= it.modulePascal %>Dto): Promise<PageQueryResult<<%= it.modulePascal %>Model>> {
-    return this.<%= it.name %>Repository.page(query)
+    return this.<%= it.nameCamel %>Repository.page(query)
   }
 
   async cursor(
     query: CursorQuery<%= it.modulePascal %>Dto,
   ): Promise<CursorQueryResult<<%= it.modulePascal %>Model, <%= it.modulePascal %>CursorModel>> {
-    return this.<%= it.name %>Repository.cursor(query)
+    return this.<%= it.nameCamel %>Repository.cursor(query)
   }
 
   @Transactional()
   async update(input: Update<%= it.modulePascal %>Dto): Promise<<%= it.modulePascal %>Model> {
-    const { <%= it.name %>Id, ...changes } = input
-    const <%= it.name %> = await this.<%= it.name %>Repository.update(<%= it.name %>Id, changes)
-    if (!<%= it.name %>) throw new <%= it.modulePascal %>NotFoundError(<%= it.name %>Id)
-    this.logger.log('<%= it.name %>.updated', { id: <%= it.name %>Id })
-    return <%= it.name %>
+    const { <%= it.nameCamel %>Id, ...changes } = input
+    const <%= it.nameCamel %> = await this.<%= it.nameCamel %>Repository.update(<%= it.nameCamel %>Id, changes)
+    if (!<%= it.nameCamel %>) throw new <%= it.modulePascal %>NotFoundError(<%= it.nameCamel %>Id)
+    this.logger.log('<%= it.name %>.updated', { id: <%= it.nameCamel %>Id })
+    return <%= it.nameCamel %>
   }
 
   @Transactional()
   async remove(input: Remove<%= it.modulePascal %>Dto): Promise<<%= it.modulePascal %>Model> {
-    const <%= it.name %> = await this.<%= it.name %>Repository.remove(input.<%= it.name %>Id)
-    if (!<%= it.name %>) throw new <%= it.modulePascal %>NotFoundError(input.<%= it.name %>Id)
-    this.logger.log('<%= it.name %>.removed', { id: input.<%= it.name %>Id })
-    return <%= it.name %>
+    const <%= it.nameCamel %> = await this.<%= it.nameCamel %>Repository.remove(input.<%= it.nameCamel %>Id)
+    if (!<%= it.nameCamel %>) throw new <%= it.modulePascal %>NotFoundError(input.<%= it.nameCamel %>Id)
+    this.logger.log('<%= it.name %>.removed', { id: input.<%= it.nameCamel %>Id })
+    return <%= it.nameCamel %>
   }
 }

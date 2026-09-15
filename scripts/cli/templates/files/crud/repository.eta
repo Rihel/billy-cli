@@ -16,8 +16,8 @@ import { Inject, Injectable } from '@nestjs/common'
 import { Db } from '@repo/kits'
 
 const to<%= it.modulePascal %> = (record: <%= it.entityPascal %>): <%= it.modulePascal %>Model => {
-  const { deletedAt: _deletedAt, ...<%= it.name %> } = record
-  return <%= it.name %>
+  const { deletedAt: _deletedAt, ...<%= it.nameCamel %> } = record
+  return <%= it.nameCamel %>
 }
 
 @Injectable()
@@ -35,8 +35,8 @@ export class <%= it.modulePascal %>Repository {
 
   async findById(id: string): Promise<<%= it.modulePascal %>Model | null> {
     const repo = await this.repo()
-    const <%= it.name %> = await repo.findOneBy({ id })
-    return <%= it.name %> ? to<%= it.modulePascal %>(<%= it.name %>) : null
+    const <%= it.nameCamel %> = await repo.findOneBy({ id })
+    return <%= it.nameCamel %> ? to<%= it.modulePascal %>(<%= it.nameCamel %>) : null
   }
 
   async update(
@@ -80,11 +80,11 @@ export class <%= it.modulePascal %>Repository {
     builder.orderBy('<%= it.alias %>.updatedAt', 'DESC').addOrderBy('<%= it.alias %>.id', 'DESC')
     const result = await cursorPageWith<<%= it.entityPascal %>>(builder, {
       cursorColumns: ['updatedAt', 'id'],
-      cursorValues: cursor ? [new Date(cursor.updatedAt), cursor.<%= it.name %>Id] : undefined,
+      cursorValues: cursor ? [new Date(cursor.updatedAt), cursor.<%= it.nameCamel %>Id] : undefined,
       getCursor: (row) =>
         ({
           updatedAt: row.updatedAt.toISOString(),
-          <%= it.name %>Id: row.id,
+          <%= it.nameCamel %>Id: row.id,
         }) satisfies <%= it.modulePascal %>CursorModel,
       order: 'desc',
       size,

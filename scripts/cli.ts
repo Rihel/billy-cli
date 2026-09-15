@@ -4,6 +4,7 @@ import colors from 'picocolors'
 import { generate, installDependencies } from './cli/generator.js'
 import { collectOptions, parseOptions } from './cli/options.js'
 import { getTemplate, templateLabels } from './cli/templates/index.js'
+import { pascalize } from './cli/templates/crud.js'
 
 const workspaceRoot = fileURLToPath(new URL('..', import.meta.url))
 
@@ -22,7 +23,7 @@ async function main() {
   // CRUD 模块的后置提示
   if (options.type === 'crud') {
     const name = options.name
-    const modulePascal = name.charAt(0).toUpperCase() + name.slice(1)
+    const modulePascal = pascalize(name)
     console.log(colors.cyan('\n📋 接下来请手动完成以下步骤：'))
 
     console.log(

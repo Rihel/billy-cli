@@ -3,7 +3,7 @@ import { AppError } from '@repo/kits'
 
 export class <%= it.modulePascal %>NotFoundError extends AppError {
   readonly code = AppErrorCodes.<%= it.modulePascal %>NotFound
-  constructor(readonly <%= it.name %>Id: string) {
-    super(`<%= it.modulePascal %> not found: ${<%= it.name %>Id}`)
+  constructor(readonly <%= it.nameCamel %>Id: string) {
+    super(`<%= it.modulePascal %> not found: ${<%= it.nameCamel %>Id}`)
   }
 }

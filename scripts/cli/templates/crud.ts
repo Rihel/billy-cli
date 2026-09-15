@@ -101,7 +101,35 @@ function pluralize(word: string): string {
 }
 
 function snakeCase(str: string): string {
-  return str.replace(/[A-Z]/g, (m) => `_${m.toLowerCase()}`)
+  return str
+    .replace(/[A-Z]/g, (m) => `_${m.toLowerCase()}`)
+    .replace(/-/g, '_')
+}
+
+/**
+ * 模块名 → PascalCase 标识符前缀。
+ *
+ * CLI 允许连字符名（`^[a-z][a-z0-9-]*$`，如 `product-list`），若只把首字母大写会得到
+ * `Product-listService` 这类**非法标识符**；故按 `-` / `_` 分段逐段大写。
+ */
+export function pascalize(name: string): string {
+  return name
+    .split(/[-_]/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join('')
+}
+
+/**
+ * 模块名 → camelCase 标识符（`product-list` → `productList`）。
+ *
+ * 模板里必须区分两种用途：**路径 / URL / 文件名**用连字符原名（`it.name`，如
+ * `@Controller('product-list')`、`product-list.service.ts`），**TS 标识符**（变量、属性名、
+ * `xxxId` 这类键）必须用本值，否则会生成 `product-listId` 这种非法代码。
+ */
+export function camelize(name: string): string {
+  const pascal = pascalize(name)
+  return pascal.charAt(0).toLowerCase() + pascal.slice(1)
 }
 
 /** 单个字段的 TypeORM 列定义（2 空格缩进 + 换行，参考 todo-entity.ts） */
@@ -158,7 +186,8 @@ function renderSearchCondition(name: string, fields: CrudField[]): string {
 function renderEntity(name: string, fields: CrudField[]): string {
   return renderFile('crud/entity', {
     name,
-    modulePascal: name.charAt(0).toUpperCase() + name.slice(1),
+    nameCamel: camelize(name),
+    modulePascal: pascalize(name),
     tableName: pluralize(snakeCase(name)),
     columns: fields.map(renderColumn).join(''),
   })
@@ -166,7 +195,7 @@ function renderEntity(name: string, fields: CrudField[]): string {
 
 /** 生成 Zod schema（files/crud/schema.eta） */
 function renderSchema(name: string, fields: CrudField[]): string {
-  const modulePascal = name.charAt(0).toUpperCase() + name.slice(1)
+  const modulePascal = pascalize(name)
 
   // 带默认值的字段（boolean）在 create 时省略
   const defaultedFields = fields.filter((f) => f.type === 'boolean')
@@ -183,6 +212,7 @@ function renderSchema(name: string, fields: CrudField[]): string {
 
   return renderFile('crud/schema', {
     name,
+    nameCamel: camelize(name),
     modulePascal,
     fieldShapeLines: fields
       .map((f) => `  ${f.name}: ${renderFieldType(f)},`)
@@ -194,9 +224,10 @@ function renderSchema(name: string, fields: CrudField[]): string {
 
 /** 生成 repository（files/crud/repository.eta） */
 function renderRepository(name: string, fields: CrudField[]): string {
-  const modulePascal = name.charAt(0).toUpperCase() + name.slice(1)
+  const modulePascal = pascalize(name)
   return renderFile('crud/repository', {
     name,
+    nameCamel: camelize(name),
     modulePascal,
     entityPascal: modulePascal + 'Entity',
     alias: name.charAt(0),
@@ -208,7 +239,8 @@ function renderRepository(name: string, fields: CrudField[]): string {
 function renderService(name: string): string {
   return renderFile('crud/service', {
     name,
-    modulePascal: name.charAt(0).toUpperCase() + name.slice(1),
+    nameCamel: camelize(name),
+    modulePascal: pascalize(name),
   })
 }
 
@@ -216,7 +248,8 @@ function renderService(name: string): string {
 function renderErrors(name: string): string {
   return renderFile('crud/errors', {
     name,
-    modulePascal: name.charAt(0).toUpperCase() + name.slice(1),
+    nameCamel: camelize(name),
+    modulePascal: pascalize(name),
   })
 }
 
@@ -229,7 +262,8 @@ function renderIndex(name: string): string {
 function renderController(name: string): string {
   return renderFile('crud/controller', {
     name,
-    modulePascal: name.charAt(0).toUpperCase() + name.slice(1),
+    nameCamel: camelize(name),
+    modulePascal: pascalize(name),
   })
 }
 
@@ -237,13 +271,13 @@ function renderController(name: string): string {
 function renderNestModule(name: string): string {
   return renderFile('crud/module', {
     name,
-    modulePascal: name.charAt(0).toUpperCase() + name.slice(1),
+    modulePascal: pascalize(name),
   })
 }
 
 /** 交互式收集字段并生成 CRUD 模板 */
 export async function createCrudTemplate(name: string): Promise<Template> {
-  const modulePascal = name.charAt(0).toUpperCase() + name.slice(1)
+  const modulePascal = pascalize(name)
 
   console.log(`\n📝 现在定义 ${modulePascal} 的字段：`)
   const fields = await collectCrudFields(name)

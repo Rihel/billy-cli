@@ -28,42 +28,42 @@ import { <%= it.modulePascal %>Service } from './<%= it.name %>.service.js'
 export class <%= it.modulePascal %>Controller {
   constructor(
     @Inject(<%= it.modulePascal %>Service)
-    private readonly <%= it.name %>Service: <%= it.modulePascal %>Service,
+    private readonly <%= it.nameCamel %>Service: <%= it.modulePascal %>Service,
   ) {}
 
   @Post('create')
   @HttpCode(200)
   create(@Body({ schema: Create<%= it.modulePascal %>Schema }) input: Create<%= it.modulePascal %>Dto) {
-    return this.<%= it.name %>Service.create(input)
+    return this.<%= it.nameCamel %>Service.create(input)
   }
 
   @Post('page-query')
   @HttpCode(200)
   pageQuery(@Body({ schema: PageQuery<%= it.modulePascal %>Schema }) input: PageQuery<%= it.modulePascal %>Dto) {
-    return this.<%= it.name %>Service.page(input)
+    return this.<%= it.nameCamel %>Service.page(input)
   }
 
   @Post('cursor-query')
   @HttpCode(200)
   cursorQuery(@Body({ schema: CursorQuery<%= it.modulePascal %>Schema }) input: CursorQuery<%= it.modulePascal %>Dto) {
-    return this.<%= it.name %>Service.cursor(input)
+    return this.<%= it.nameCamel %>Service.cursor(input)
   }
 
   @Post('detail')
   @HttpCode(200)
   detail(@Body({ schema: GetDetail<%= it.modulePascal %>Schema }) input: GetDetail<%= it.modulePascal %>Dto) {
-    return this.<%= it.name %>Service.get(input)
+    return this.<%= it.nameCamel %>Service.get(input)
   }
 
   @Post('update')
   @HttpCode(200)
   update(@Body({ schema: Update<%= it.modulePascal %>Schema }) input: Update<%= it.modulePascal %>Dto) {
-    return this.<%= it.name %>Service.update(input)
+    return this.<%= it.nameCamel %>Service.update(input)
   }
 
   @Post('remove')
   @HttpCode(200)
   remove(@Body({ schema: Remove<%= it.modulePascal %>Schema }) input: Remove<%= it.modulePascal %>Dto) {
-    return this.<%= it.name %>Service.remove(input)
+    return this.<%= it.nameCamel %>Service.remove(input)
   }
 }

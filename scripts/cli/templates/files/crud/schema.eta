@@ -14,7 +14,7 @@ export const <%= it.modulePascal %>Schema = z.intersection(BaseModelSchema, <%= 
 export type <%= it.modulePascal %>Model = z.infer<typeof <%= it.modulePascal %>Schema>
 
 export const <%= it.modulePascal %>IdInputSchema = z.object({
-  <%= it.name %>Id: z.string(),
+  <%= it.nameCamel %>Id: z.string(),
 })
 
 export type <%= it.modulePascal %>IdInputDto = z.infer<typeof <%= it.modulePascal %>IdInputSchema>
@@ -44,7 +44,7 @@ export type PageQuery<%= it.modulePascal %>Dto = z.infer<typeof PageQuery<%= it.
 
 export const <%= it.modulePascal %>CursorSchema = z.object({
   updatedAt: z.iso.datetime(),
-  <%= it.name %>Id: z.string(),
+  <%= it.nameCamel %>Id: z.string(),
 })
 
 /** 游标模型（响应） */
