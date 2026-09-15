@@ -9,13 +9,17 @@ import { Architecture } from '@/components/landing/architecture'
 import { QuickStart } from '@/components/landing/quick-start'
 import { CtaSection } from '@/components/landing/cta-section'
 import { Footer } from '@/components/landing/footer'
+import { getWebAuthState } from '@/lib/auth-session'
 
-export default function HomePage() {
+export default async function HomePage() {
+  // 登录态在服务端（httpOnly cookie）判定：首屏就渲染正确的账号入口，避免闪一下「登录/注册」
+  const { authEnabled, user } = await getWebAuthState()
+
   return (
     <div className="min-h-screen bg-white text-zinc-900 selection:bg-indigo-200">
-      <Header />
+      <Header user={user} authEnabled={authEnabled} />
       <main>
-        <Hero />
+        <Hero user={user} />
         <TechMarquee />
         <Why />
         <Features />
@@ -23,9 +27,9 @@ export default function HomePage() {
         <AiSection />
         <Architecture />
         <QuickStart />
-        <CtaSection />
+        <CtaSection user={user} />
       </main>
-      <Footer />
+      <Footer user={user} />
     </div>
   )
 }

@@ -1,7 +1,8 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { LogOutIcon, Menu, X, ArrowRight, TerminalSquare } from 'lucide-react'
 import { Button } from '@repo/ui'
 import {
@@ -9,14 +10,9 @@ import {
   Pages,
   LandingAnchors,
   AdminUrl,
-  TokenKey,
   formatStorageUrl,
 } from '@/lib/constants'
-import {
-  useServerClient,
-  createServerClient,
-  removeToken,
-} from '@/lib/server-client'
+import { removeToken } from '@/lib/server-client'
 import { logoutAction } from '@/actions/auth.actions'
 import { cn } from '@repo/ui'
 import type { AuthUserModel } from '@repo/shared'
@@ -31,61 +27,17 @@ const anchorLinks = [
   { href: Pages.markdown, label: 'Markdown' },
 ]
 
+export type HeaderProps = {
+  /** 服务端探测到的登录用户（null = 未登录） */
+  user: AuthUserModel | null
+  /** 用户体系开关：关闭时不渲染登录 / 注册入口 */
+  authEnabled: boolean
+}
+
 /** 首页顶部导航：单行锚点 + 登录/注册（登录后显示用户信息），移动端折叠为抽屉菜单 */
-export function Header() {
+export function Header({ user, authEnabled }: HeaderProps) {
   const [open, setOpen] = useState(false)
-  const client = useServerClient()
-  // 用户体系开关：调 /config/get 获取，默认开启（获取失败保持现状，不阻塞页面）
-  const [authEnabled, setAuthEnabled] = useState(true)
-  // 当前登录用户（null = 未登录）
-  const [user, setUser] = useState<AuthUserModel | null>(null)
-
-  useEffect(() => {
-    let cancelled = false
-    client.config
-      .get()
-      .then((config) => {
-        if (cancelled) return
-        // 同步到业务请求所用 client 实例：关闭时跳过前端凭证校验，交由后端守卫判断
-        client.setAuthEnabled(config.authEnabled)
-        setAuthEnabled(config.authEnabled)
-      })
-      .catch(() => {
-        // 获取失败保持默认（开启）
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [client])
-
-  // 登录态探测：读 localStorage 凭证 → getMe 拉取用户信息；token 失效则清理回未登录
-  useEffect(() => {
-    let cancelled = false
-    let token = ''
-    try {
-      const raw = localStorage.getItem(TokenKey)
-      token = raw ? (JSON.parse(raw)?.token ?? '') : ''
-    } catch {
-      token = ''
-    }
-    if (!token) {
-      setUser(null)
-      return
-    }
-    createServerClient(token)
-      .auth.getMe()
-      .then((me) => {
-        if (!cancelled) setUser(me)
-      })
-      .catch(() => {
-        // token 失效：清理本地凭证，回到未登录态（不跳转，避免干扰当前浏览）
-        localStorage.removeItem(TokenKey)
-        if (!cancelled) setUser(null)
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [])
+  const router = useRouter()
 
   const displayName = user?.realName || user?.email || ''
   const initial = displayName.charAt(0).toUpperCase() || 'U'
@@ -93,7 +45,9 @@ export function Header() {
   const logout = async () => {
     await logoutAction()
     await removeToken()
-    setUser(null)
+    setOpen(false)
+    // 登录态来自服务端 cookie，刷新 RSC 后 Header 自然回到未登录态
+    router.refresh()
   }
 
   return (

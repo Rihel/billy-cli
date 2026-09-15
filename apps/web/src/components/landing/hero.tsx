@@ -2,6 +2,7 @@ import Link from 'next/link'
 import { ArrowRight, LogIn } from 'lucide-react'
 import { Button } from '@repo/ui'
 import { Pages } from '@/lib/constants'
+import type { AuthUserModel } from '@repo/shared'
 
 const heroFacts = [
   { k: '17', v: 'Agent Skills' },
@@ -9,11 +10,16 @@ const heroFacts = [
   { k: '1', v: '数据结构' },
 ]
 
+export type HeroProps = {
+  /** 服务端探测到的登录用户：已登录时隐藏「开始使用 / 登录」账号入口 */
+  user: AuthUserModel | null
+}
+
 /**
  * 首页主视觉：全屏沉浸式编辑宣言。
  * 无右侧终端卡；超大 display 标题 + 编排式事实行，靠浅色网格与蓝色氛围撑满首屏。
  */
-export function Hero() {
+export function Hero({ user }: HeroProps) {
   return (
     <section className="relative flex min-h-[calc(100dvh-4rem)] flex-col overflow-hidden">
       {/* 背景：细网格（顶部集中）+ 双光斑 */}
@@ -51,25 +57,28 @@ export function Hero() {
             NestJS 12 + Next.js 16 双前端开箱即用，pnpm bootstrap 一键初始化。
           </p>
 
-          <div className="mt-10 flex flex-wrap items-center gap-3">
-            <Button
-              render={<Link href={Pages.register} />}
-              size="lg"
-              className="bg-zinc-950 text-white shadow-lg shadow-zinc-950/20 hover:bg-zinc-800"
-            >
-              开始使用
-              <ArrowRight data-icon="inline-end" />
-            </Button>
-            <Button
-              render={<Link href={Pages.login} />}
-              size="lg"
-              variant="outline"
-              className="border-zinc-300 bg-white px-5 text-zinc-700 hover:bg-zinc-50 hover:text-zinc-900"
-            >
-              <LogIn data-icon="inline-start" />
-              登录
-            </Button>
-          </div>
+          {/* 账号入口：仅未登录时渲染（已登录用户由顶部导航承担用户信息与退出） */}
+          {user ? null : (
+            <div className="mt-10 flex flex-wrap items-center gap-3">
+              <Button
+                render={<Link href={Pages.register} />}
+                size="lg"
+                className="bg-zinc-950 text-white shadow-lg shadow-zinc-950/20 hover:bg-zinc-800"
+              >
+                开始使用
+                <ArrowRight data-icon="inline-end" />
+              </Button>
+              <Button
+                render={<Link href={Pages.login} />}
+                size="lg"
+                variant="outline"
+                className="border-zinc-300 bg-white px-5 text-zinc-700 hover:bg-zinc-50 hover:text-zinc-900"
+              >
+                <LogIn data-icon="inline-start" />
+                登录
+              </Button>
+            </div>
+          )}
         </div>
 
         {/* 编排式事实行（hairline 分隔，替代终端卡的节奏） */}

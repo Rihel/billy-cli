@@ -3,9 +3,15 @@ import { ArrowRight, LogIn } from 'lucide-react'
 import { Button } from '@repo/ui'
 import { Pages } from '@/lib/constants'
 import { Reveal } from './reveal'
+import type { AuthUserModel } from '@repo/shared'
 
-/** 收尾 CTA：居中大标题 + 双按钮 */
-export function CtaSection() {
+export type CtaSectionProps = {
+  /** 服务端探测到的登录用户：已登录时隐藏「创建账号 / 登录」入口 */
+  user: AuthUserModel | null
+}
+
+/** 收尾 CTA：居中大标题 + 双按钮（已登录用户不再展示账号入口） */
+export function CtaSection({ user }: CtaSectionProps) {
   return (
     <section className="relative overflow-hidden">
       <div
@@ -20,25 +26,27 @@ export function CtaSection() {
           <p className="mx-auto mt-5 max-w-md text-base leading-relaxed text-zinc-600">
             创建账号，体验完整的认证、用户与业务模块，或直接进入管理后台一览全貌。
           </p>
-          <div className="mt-9 flex flex-wrap items-center justify-center gap-3">
-            <Button
-              render={<Link href={Pages.register} />}
-              size="lg"
-              className="bg-zinc-950 text-white shadow-lg shadow-zinc-950/20 hover:bg-zinc-800"
-            >
-              创建账号
-              <ArrowRight data-icon="inline-end" />
-            </Button>
-            <Button
-              render={<Link href={Pages.login} />}
-              size="lg"
-              variant="outline"
-              className="border-zinc-300 bg-white text-zinc-700 hover:bg-zinc-50 hover:text-zinc-900"
-            >
-              <LogIn data-icon="inline-start" />
-              登录
-            </Button>
-          </div>
+          {user ? null : (
+            <div className="mt-9 flex flex-wrap items-center justify-center gap-3">
+              <Button
+                render={<Link href={Pages.register} />}
+                size="lg"
+                className="bg-zinc-950 text-white shadow-lg shadow-zinc-950/20 hover:bg-zinc-800"
+              >
+                创建账号
+                <ArrowRight data-icon="inline-end" />
+              </Button>
+              <Button
+                render={<Link href={Pages.login} />}
+                size="lg"
+                variant="outline"
+                className="border-zinc-300 bg-white text-zinc-700 hover:bg-zinc-50 hover:text-zinc-900"
+              >
+                <LogIn data-icon="inline-start" />
+                登录
+              </Button>
+            </div>
+          )}
         </Reveal>
       </div>
     </section>

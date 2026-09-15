@@ -97,6 +97,12 @@ token 采用**双存储**，各有分工：
 - **SSR 守卫**（`apps/admin/src/app/main/layout.tsx`）：`force-dynamic` + `cookies()` 取
   token → `createServerClient(token).admin.getMe()`，失败 `redirect(login?reason=expired)`；
   成功把管理员信息预取进 `AuthStoreProvider`（Zustand）。
+- **SSR 会话探测（web 前台页）**：`apps/web/src/lib/auth-session.ts` 的
+  `getWebAuthState()`（React `cache()` 包裹，同一请求只请求后端一次）读 cookie →
+  `auth.getMe()`，把 `authEnabled` / `user` 传给页面各区块（首页即 Header / Hero /
+  CtaSection / Footer）；**账号入口（登录 / 注册 / 忘记密码 / 重置密码）一律由它决定是否渲染**，
+  已登录时全部不渲染，避免出现「登录后首页还挂着登录按钮」。会话失效返回 `null`
+  （前台不强制登录，不跳转）。web 前台无 proxy，公开页不强制登录。
 - 修改 `PublicPaths` / `Pages` 在 `apps/*/src/lib/constants.ts`（admin 有 `PublicPaths`，web 无）。
 
 ## 6. 找回 / 重置 / 修改密码

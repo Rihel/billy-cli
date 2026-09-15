@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { TerminalSquare, ExternalLink } from 'lucide-react'
 import { AppName, Pages, LandingAnchors, AdminUrl, PublicServerUrl } from '@/lib/constants'
+import type { AuthUserModel } from '@repo/shared'
 
 type FooterLink = { href: string; label: string; external?: boolean }
 
@@ -37,12 +38,25 @@ const navGroups: { title: string; links: FooterLink[] }[] = [
   },
 ]
 
-/** 页脚：品牌 + 全量导航链接 */
-export function Footer() {
+export type FooterProps = {
+  /** 服务端探测到的登录用户：已登录时整组隐藏「账号」入口 */
+  user: AuthUserModel | null
+}
+
+/** 页脚：品牌 + 全量导航链接（已登录用户不展示登录 / 注册等账号入口） */
+export function Footer({ user }: FooterProps) {
+  const groups = user ? navGroups.filter((group) => group.title !== '账号') : navGroups
+
   return (
     <footer className="border-t border-zinc-200/70 bg-zinc-50">
       <div className="mx-auto max-w-7xl px-4 py-14 sm:px-6 lg:px-8">
-        <div className="grid grid-cols-1 gap-10 md:grid-cols-[1.4fr_repeat(3,1fr)]">
+        <div
+          className={
+            user
+              ? 'grid grid-cols-1 gap-10 md:grid-cols-[1.4fr_repeat(2,1fr)]'
+              : 'grid grid-cols-1 gap-10 md:grid-cols-[1.4fr_repeat(3,1fr)]'
+          }
+        >
           <div>
             <Link href={Pages.home} className="flex items-center gap-2.5">
               <span className="flex size-8 items-center justify-center rounded-lg bg-gradient-to-br from-indigo-500 to-violet-600 text-white shadow-md shadow-indigo-600/25">
@@ -57,7 +71,7 @@ export function Footer() {
             </p>
           </div>
 
-          {navGroups.map((group) => (
+          {groups.map((group) => (
             <nav key={group.title} aria-label={group.title}>
               <h3 className="font-heading text-sm font-semibold text-zinc-700">
                 {group.title}
