@@ -39,7 +39,7 @@ packages/
 | 异步消息   | Kafka（kafkajs）           | 生产者 `KafkaService.send` / 消费者 `@KafkaConsumer`；按 `KAFKA_BROKERS` 按需装配 |
 | 服务端推送 | SSE（StreamHub + HttpStreamClient） | 实时推送：AI 流式 / 任务进度 / 通知，Redis pub/sub 跨实例广播 |
 | 对象存储   | S3 / COS                   | 预签名 URL + 临时凭证（STS）                |
-| 构建工具   | tsdown                     | 快速 bundler，packages 全部 dts 构建        |
+| 构建工具   | tsdown（ui 除外）          | 快速 bundler；shared / kits / http-client / sdk 产出 dts，@repo/ui 源码直出（exports 指向 `./src/*`，不参与构建） |
 | 容器化     | Docker multi-stage         | server + web 独立部署，compose 一键起依赖   |
 
 ## 快速开始
@@ -71,7 +71,9 @@ pnpm bootstrap
 ```bash
 pnpm bootstrap -y             # 全默认（非交互，适合 CI / 脚本）
 pnpm bootstrap --skip-docker  # 跳过 Docker 依赖启动（自行保证 pg / redis 可用）
+pnpm bootstrap --skip-install # 跳过依赖安装
 pnpm bootstrap --skip-migrate # 跳过迁移与种子
+pnpm bootstrap --skip-seed    # 跳过管理员种子创建
 pnpm bootstrap --skip-smoke   # 跳过冒烟验证
 ```
 
@@ -94,7 +96,7 @@ cp apps/web/.env.local.example apps/web/.env.local
 PORT=9989
 DB_URL=postgresql://root:pg1234@localhost:15432/billy-cli  # compose 宿主端口 15432；本机 pg 为 5432
 REDIS_URL=redis://localhost:6380/0                         # compose 宿主端口 6380；本机 redis 为 6379
-JWT_SECRET=your-secret-key
+JWT_SECRET=dev-secret-change-in-production                 # 生产务必替换
 AUTH_ENABLED=true                                          # false 关闭鉴权（clone 自用）
 OBJECT_STORAGE_ENDPOINT=http://localhost:19000             # compose MinIO 宿主端口 19000
 ```
@@ -114,7 +116,7 @@ pnpm db:migrate
 ### 启动（开发）
 
 ```bash
-# 终端 1：并行 watch 构建 packages（shared / kits / http-client / sdk / ui）
+# 终端 1：并行 watch 构建 packages（shared / kits / http-client / sdk；@repo/ui 源码直出，无需构建）
 pnpm dev:pkgs
 
 # 终端 2：启动 NestJS 服务（http://localhost:9989）
@@ -148,7 +150,7 @@ pnpm docker:up
 
 ```bash
 pnpm cli                     # 交互式选择模板类型
-pnpm cli -t crud -n product  # 非交互生成 CRUD 业务模块（无 TTY 时字段自动用默认值）
+pnpm cli -t crud -n product --no-install  # 非交互生成 CRUD 业务模块（type / name / install 都给全才不追问）
 ```
 
 四种模板类型：
@@ -185,6 +187,7 @@ pnpm cli -t crud -n product  # 非交互生成 CRUD 业务模块（无 TTY 时�
 │   │       ├── common/                   # 横切 HTTP 构件（按关注点分包，各有 index.ts；外部统一从 common/index.ts 导入）
 │   │       │                            #   error/（错误码映射 · 边界错误 · 异常过滤器 · 告警钩子）
 │   │       │                            #   request-context/（模块：ALS 上下文 · requestId 中间件）
+│   │       │                            #   request-logger/（模块：请求日志中间件）
 │   │       │                            #   request-metrics/（模块：请求埋点中间件）
 │   │       │                            #   security/（token 与身份读取 · 限流守卫）
 │   │       │                            #   http/（Zod 校验管道 · 响应信封拦截器）
@@ -192,32 +195,32 @@ pnpm cli -t crud -n product  # 非交互生成 CRUD 业务模块（无 TTY 时�
 │   │       │   ├── entities/            # 业务实体：UserEntity / TodoEntity / AdminEntity / AlertRuleEntity / AlertLogEntity
 │   │       │   └── migrations/          # TypeORM 迁移产物
 │   │       └── modules/                 # 业务模块：auth / admin / user / todo / monitor / storage / stream / runtime-config
-│   │                                    #   每模块 module + controller + service + repository + errors + index
+│   │                                    #   每模块 module + controller + service + index（repository / errors 按需）
 │   ├── web/                             # Next.js 16 前台（@app/web，端口 9840）
 │   │   └── src/
 │   │       ├── actions/auth.actions.ts  # Server Actions（登录 / 注册）
-│   │       ├── app/                     # / 、/auth/login、/auth/register
-│   │       ├── components/Header.tsx
-│   │       ├── lib/                     # constants / server-client（SDK 单例）
+│   │       ├── app/                     # /、/auth/*（登录 / 注册 / 忘记密码 / 重置密码）、/comparison、/markdown/*
+│   │       ├── components/landing/       # 首页区块（header / hero / features / choice / architecture / ...）
+│   │       ├── lib/                     # constants / server-client（SDK 单例）/ auth-session（服务端会话探测）
 │   │       └── providers/QueryProvider.tsx  # TanStack Query
 │   └── admin/                           # Next.js 16 管理后台（@app/admin，端口 9845）
 │       └── src/
 │           ├── actions/auth.actions.ts  # Server Actions（@repo/ui defineAction）
 │           ├── app/
 │           │   ├── auth/                # login / register / forgot-password / reset-password
-│           │   └── main/                # dashboard / todo / system/users / user-center
+│           │   └── main/                # dashboard / todo / user-center / system/{users,admins} / monitor/{rules,logs} / automation
 │           ├── components/              # AppHeader / AppMenu / AppSider
 │           ├── lib/                     # constants / server-client / logger
 │           ├── providers/AppProviders.tsx
-│           ├── stores/                  # auth.store（Zustand + Immer）/ layout.store
+│           ├── stores/                  # auth.store.tsx（Zustand + Immer）/ theme.store.ts
 │           └── proxy.ts                 # 中间件路由守卫（cookie）
 ├── packages/
 │   ├── shared/                          # @repo/shared
 │   │   └── src/
 │   │       ├── schema/                  # Zod 共享 schema（auth / admin / user / todo / object-storage）
-│   │       ├── dicts/                   # app-error-code / user-type 错误码与字典
+│   │       ├── dicts/                   # app-error-code / user-status 错误码与字典
 │   │       ├── app-response.ts          # AppResponse 统一响应格式 + ResponseUtils
-│   │       ├── logger.ts                # 前端日志封装 createLogger（仅 apps/admin 使用）
+│   │       ├── logger.ts                # 日志工厂 createLogger（前后端共用；后端经 kits LoggerModule 包装成 AppLogger）
 │   │       ├── browser.ts               # 浏览器端子入口
 │   │       └── utils/                   # nanoid / dayjs / md5 / tree / dict 等工具
 │   ├── kits/                            # @repo/kits — 后端通用能力封装（无业务实体）
@@ -242,6 +245,7 @@ pnpm cli -t crud -n product  # 非交互生成 CRUD 业务模块（无 TTY 时�
 │   ├── http-client/                      # @repo/http-client — 通用 HTTP + 鉴权管线（业务无关）
 │   │   └── src/
 │   │       ├── core/                    # http.client / credential-resolver / auth-injector / api-error
+│   │       ├── stream/                  # HttpStreamClient + stream-parser / stream-transport（SSE 客户端）
 │   │       ├── strategies/              # BearerToken / ApiKey / OAuth2 / HMAC
 │   │       ├── managers/                # localStorage / memory / cookie / env
 │   │       └── providers/               # empty-check / expires-at
@@ -250,8 +254,8 @@ pnpm cli -t crud -n product  # 非交互生成 CRUD 业务模块（无 TTY 时�
 │   │       └── server.client.ts         # ServerClient（全类型化业务 API，继承 http-client 的 HttpClient）
 │   └── ui/                              # @repo/ui — shadcn 组件（src/components/ui/*）+ 自有组件（src/components/* 平铺）
 ├── docker/                              # Dockerfile.base / .server / .web + init-db.sql
-├── docs/                                # pagination.md（分页指南）/ sdk-refactor.md
-├── scripts/                             # cli 代码生成器（pnpm cli）：cli.ts 入口 + cli/（生成逻辑 + .eta 模板文件）
+├── docs/                                # pagination.md（分页指南）/ sdk-refactor.md / billy-pitch.md / queue.md（已废弃存档）/ design/ / dev-logs/
+├── scripts/                             # cli.ts / cli/（生成器 + .eta 模板）、setup.ts（bootstrap）、kill-dev.ts、check-inject-decorators.ts、check-scaffold-templates.ts
 ├── turbo.json
 ├── pnpm-workspace.yaml
 └── package.json
@@ -308,9 +312,9 @@ pnpm cli -t crud -n product  # 非交互生成 CRUD 业务模块（无 TTY 时�
 
 面向 C 端的前台应用，使用 **Base UI + shadcn/ui**（来自 `@repo/ui`）与 Tailwind 4。
 
-- 页面：`/`（首页）、`/auth/login`、`/auth/register`
-- Server Actions（`actions/auth.actions.ts`）封装登录 / 注册，token 写入 httpOnly cookie
-- `lib/server-client.ts` 提供 `ServerClient` 单例（localStorage 凭证管理）+ 服务端实例（cookie）
+- 页面：`/`（首页）、`/auth/*`（登录 / 注册 / 忘记密码 / 重置密码）、`/comparison`（竞品调研）、`/markdown/*`（Markdown 渲染示例）
+- Server Actions（`actions/auth.actions.ts`）封装登录 / 注册 / 忘记密码 / 重置密码 / 登出，token 写入 httpOnly cookie
+- `lib/server-client.ts`：浏览器端单例（`LocalStorageCredentialsManager` 管理 token，baseUrl 走 `NEXT_PUBLIC_SERVER_URL`）+ 服务端无状态客户端（`MemoryCredentialsManager` + 显式传入 token，baseUrl 走运行时 `SERVER_URL`）；httpOnly cookie 在 `lib/auth-session.ts` 读取
 - `providers/QueryProvider.tsx` 注入 TanStack Query
 - `app/layout.tsx` 标记 `force-dynamic`：前端根 layout 统一动态渲染（每次请求 SSR，不做静态预渲染）
 - `next.config.ts`：`output: 'standalone'`、React Compiler、transpile `@repo/ui`
@@ -322,15 +326,16 @@ pnpm cli -t crud -n product  # 非交互生成 CRUD 业务模块（无 TTY 时�
 （`ModalForm` / `DrawerForm` / `FormRenderer` 声明式 items），适合表格 / 表单 / 权限类页面。
 登录使用**后台管理员**账号（`AdminEntity`，`/admin/*` 接口），与前台用户体系隔离。
 
-- 页面：`/auth/login`（管理员登录）、`/main/dashboard`、`/main/todo`、
-  `/main/system/users`、`/main/system/admins`（管理员管理）、`/main/user-center`
+- 页面：`/auth/login`（管理员登录）、`/main/dashboard`、`/main/todo`、`/main/user-center`、
+  `/main/system/users`、`/main/system/admins`（管理员管理）、`/main/monitor/rules`（告警规则）、
+  `/main/monitor/logs`（告警记录）、`/main/automation`（自动化演示）
 - 布局：`AppHeader` + `AppSider` + `AppMenu`；根 `app/layout.tsx` 与 `main/layout.tsx` 均标记
   `force-dynamic`（前者让前端根 layout 统一动态渲染，后者在 SSR 侧通过 cookie 调用
   `admin.getMe()` 做鉴权，失败 `redirect()` 到登录页）
-- 路由守卫：`proxy.ts` 中间件按 `PublicPaths` + cookie 重定向未登录 / 已登录用户
+- 路由守卫：`proxy.ts` 中间件按 `PublicPaths` + cookie 判断，未登录访问非公开页时 `redirect()` 到登录页（不对已登录用户做反向重定向）
 - Server Actions：`@repo/ui/action` 的 `defineAction` / `callAction` 统一返回
   `{ ok, data } | { ok: false, error }` 结构，简化错误处理
-- 状态管理：Zustand + Immer（`auth.store` 保存 `adminInfo` / `layout.store`），
+- 状态管理：Zustand + Immer（`auth.store` 保存 `adminInfo` / `theme.store` 保存主题），
   `main/layout.tsx` SSR 预取管理员信息
 - 首个管理员：`pnpm seed:admin`（默认 `admin@billy.local / admin123`，可用
   `ADMIN_EMAIL` / `ADMIN_PASSWORD` 覆盖），随后可在「系统设置 → 管理员管理」中维护
@@ -469,6 +474,9 @@ database/
 ```
 
 **使用方式（应用组合根 `apps/server/src/root.module.ts`）：**
+
+> 下面只给骨架，省略了 `RequestContextModule` / `RequestLoggerModule` / `RequestMetricsModule`
+> （三者顺序有铁律，见上文）与完整实体列表；实际装配以 `apps/server/src/root.module.ts` 为准。
 
 ```ts
 import { Module } from '@nestjs/common'
@@ -617,7 +625,7 @@ skipAuth 检查
 ```
 
 - `ServerClient extends HttpClient`（`@repo/sdk`）：按业务分组的全类型化方法
-  （`auth` / `admin` / `user` / `todo` / `storage`），请求 / 响应类型全部来自 `@repo/shared`
+  （`config` / `auth` / `admin` / `user` / `todo` / `storage` / `monitor`），请求 / 响应类型全部来自 `@repo/shared`
 - 认证策略：`BearerToken` / `ApiKey` / `OAuth2` / `HMAC`
 - 凭证管理器：`localStorage` / `memory` / `cookie` / `env`
 - 凭证供应器：`empty-check` / `expires-at`（配合 OAuth2 自动续期）
@@ -770,40 +778,44 @@ sidebar / toast / chart 等），Tailwind 4 主题变量由 `globals.css` 提供
 | `POST /auth/change-password`         | 修改密码         | 是   |
 | `POST /admin/login`                  | 管理员登录       | 否   |
 | `POST /admin/logout`                 | 管理员登出       | 否   |
-| `POST /admin/get-me`                 | 获取当前管理员   | 是*  |
-| `POST /admin/update-info`            | 更新个人信息     | 是*  |
-| `POST /admin/change-password`        | 修改密码         | 是*  |
-| `POST /admin/create`                 | 创建管理员       | 是*  |
-| `POST /admin/page-query`             | 管理员分页查询   | 是*  |
-| `POST /admin/detail`                 | 管理员详情       | 是*  |
-| `POST /admin/update`                 | 更新管理员       | 是*  |
-| `POST /admin/remove`                 | 删除管理员       | 是*  |
-| `POST /admin/reset-password`         | 重置管理员密码   | 是*  |
-| `POST /user/create`                  | 创建用户         | 是   |
-| `POST /user/page-query`              | 用户分页查询     | 是   |
-| `POST /user/detail`                  | 用户详情         | 是   |
-| `POST /user/update`                  | 更新用户         | 是   |
-| `POST /user/remove`                  | 删除用户         | 是   |
-| `POST /user/reset-password`          | 重置用户密码     | 是   |
-| `POST /todo/create`                  | 创建 Todo        | 是   |
-| `POST /todo/page-query`              | Todo 页码分页    | 是   |
-| `POST /todo/cursor-query`            | Todo 游标分页    | 是   |
-| `POST /todo/detail`                  | Todo 详情        | 是   |
-| `POST /todo/update`                  | 更新 Todo        | 是   |
-| `POST /todo/remove`                  | 删除 Todo        | 是   |
-| `POST /storage/get-presigned-url`    | 获取上传预签名 URL | 是 |
-| `POST /storage/get-download-url`     | 获取下载预签名 URL | 是 |
-| `POST /storage/get-temporary-credentials` | 获取 STS 临时凭证 | 是 |
+| `POST /admin/get-me`                 | 获取当前管理员   | 管理员 |
+| `POST /admin/update-info`            | 更新个人信息     | 管理员 |
+| `POST /admin/change-password`        | 修改密码         | 管理员 |
+| `POST /admin/create`                 | 创建管理员       | 管理员 |
+| `POST /admin/page-query`             | 管理员分页查询   | 管理员 |
+| `POST /admin/detail`                 | 管理员详情       | 管理员 |
+| `POST /admin/update`                 | 更新管理员       | 管理员 |
+| `POST /admin/remove`                 | 删除管理员       | 管理员 |
+| `POST /admin/reset-password`         | 重置管理员密码   | 管理员 |
+| `POST /user/create`                  | 创建用户         | 管理员 |
+| `POST /user/page-query`              | 用户分页查询     | 管理员 |
+| `POST /user/detail`                  | 用户详情         | 管理员 |
+| `POST /user/update`                  | 更新用户         | 管理员 |
+| `POST /user/remove`                  | 删除用户         | 管理员 |
+| `POST /user/reset-password`          | 重置用户密码     | 管理员 |
+| `POST /todo/create`                  | 创建 Todo        | 管理员 |
+| `POST /todo/page-query`              | Todo 页码分页    | 管理员 |
+| `POST /todo/cursor-query`            | Todo 游标分页    | 管理员 |
+| `POST /todo/detail`                  | Todo 详情        | 管理员 |
+| `POST /todo/update`                  | 更新 Todo        | 管理员 |
+| `POST /todo/remove`                  | 删除 Todo        | 管理员 |
+| `POST /storage/get-presigned-url`    | 获取上传预签名 URL | 管理员 |
+| `POST /storage/get-download-url`     | 获取下载预签名 URL | 管理员 |
+| `POST /storage/get-temporary-credentials` | 获取 STS 临时凭证 | 管理员 |
 | `POST /sse/subscribe`              | SSE 订阅（长连接推流，body `{ channels: [...] }`） | 是 |
 | `POST /monitor/health`             | 健康检查（DB / Redis 探活，容器 / 云平台探针） | 否 |
-| `POST /monitor/rule/create`        | 创建告警规则 | 是* |
-| `POST /monitor/rule/page-query`    | 告警规则分页查询 | 是* |
-| `POST /monitor/rule/detail`        | 告警规则详情 | 是* |
-| `POST /monitor/rule/update`        | 更新告警规则 | 是* |
-| `POST /monitor/rule/remove`        | 删除告警规则 | 是* |
-| `POST /monitor/log/page-query`     | 告警发送记录分页 | 是* |
-| `POST /monitor/test`               | 测试通知（手动验证通道） | 是* |
+| `POST /monitor/rule/create`        | 创建告警规则 | 管理员 |
+| `POST /monitor/rule/page-query`    | 告警规则分页查询 | 管理员 |
+| `POST /monitor/rule/detail`        | 告警规则详情 | 管理员 |
+| `POST /monitor/rule/update`        | 更新告警规则 | 管理员 |
+| `POST /monitor/rule/remove`        | 删除告警规则 | 管理员 |
+| `POST /monitor/log/page-query`     | 告警发送记录分页 | 管理员 |
+| `POST /monitor/test`               | 测试通知（手动验证通道） | 管理员 |
 | `POST /config/get`                 | 公开运行配置（返回 `authEnabled`） | 否 |
+
+> 鉴权列：**管理员** = `AdminAuthGuard`（后台管理员令牌，`/admin/*`、`/user/*`、`/todo/*`、`/monitor/*`、`/storage/*` 都是它）；
+> `UserAuthGuard`（前台用户令牌）只用在 `/auth/get-me`、`/auth/update-info`、`/auth/change-password`；两者都从 Bearer / cookie 取令牌。
+> `/sse/subscribe` 标「是」指 SSE 专用的 `StreamAuthGuard`（Bearer / cookie，强制订阅身份频道）。
 
 > SSE 事件通过 `StreamHub.publish(channel, event)` 推送：业务模块 `@Inject(StreamHub)` 后
 > `publish('task:42', { event: 'progress', data: {...} })`；身份频道 `user:{userId}` 自动强制订阅，
@@ -816,8 +828,9 @@ sidebar / toast / chart 等），Tailwind 4 主题变量由 `globals.css` 提供
   （近似 P50/P95/P99）；框架自动埋（全局请求中间件：`request.count` / `request.duration` /
   5xx → 错误率 / QPS / P95 / P99 / 进程内存），业务自定义指标（如 `inventory.available`、
   `order.count`）业务方自行埋点。
-- **规则三类**（`alert_rules` 表，admin 配置）：事件规则（错误码 / 关键字 + **次数阈值**）、
-  指标规则（metric + 比较符 + 阈值，周期评估）、突变规则（环比基线，QPS 飙升 / 洪峰）。
+- **规则类型**（`alert_rules` 表 `type` 字段，`AlertRuleTypeSchema`：`tech` / `business` / `metric` / `surge`，admin 配置）：
+  技术事件规则（错误码 / 关键字 + **次数阈值**）、业务事件规则、指标规则（metric + 比较符 + 阈值，周期评估）、
+  突变规则（环比基线，QPS 飙升 / 洪峰）。
 - **触发**：技术错误（`AppExceptionFilter` + `uncaughtException`/`unhandledRejection`，后两者在
   `main.ts` 注册）匹配事件规则；`Scheduler` 周期评估 metric / surge 规则 → 经通知模块发送 →
   每次落 `alert_logs` 审计。
@@ -825,8 +838,8 @@ sidebar / toast / chart 等），Tailwind 4 主题变量由 `globals.css` 提供
   `email`（SMTP），规则可选通道。
 - 规则表为空时技术告警走默认兜底（文件 + 配置通道）。
 - 告警配置 env：`ALERT_ENABLED`（总开关）/ `ALERT_EMAIL_TO` / `ALERT_SMTP_*` /
-  `LARK_APP_ID` + `LARK_APP_SECRET` + `LARK_NOTIFY_RECEIVE_ID`（飞书）/ `NOTIFY_FILE_PATH`
-  （文件输出路径，默认 `logs/alerts.log`）。设计文档：[monitor-alert.md](docs/design/monitor-alert.md)、
+  `LARK_APP_ID` + `LARK_APP_SECRET` + `LARK_NOTIFY_RECEIVE_ID`（飞书）。文件通道路径取
+  `NotifyConfig.file.path`（默认 `logs/alerts.log`），当前未开放 env 覆盖。设计文档：[monitor-alert.md](docs/design/monitor-alert.md)、
   [notifier.md](docs/design/notifier.md)。
 
 **接口限流**：`/auth/login`、`/auth/register`、`/auth/forgot-password`、`/auth/reset-password`、
@@ -964,6 +977,8 @@ packages 的 `dist` 声明，所以刚改过 packages 源码要先 `pnpm build:p
 | `pnpm seed:admin`   | 初始化第一个后台管理员（`admin@billy.local / admin123`，可用环境变量覆盖） |
 | `pnpm docker:up`    | `docker compose up -d --build`          |
 | `pnpm clean`        | 清理 node_modules / dist / 缓存         |
+| `pnpm check:inject` | 守卫：构造器 `@Inject` / providers `@Injectable` 一致性检查 |
+| `pnpm check:scaffold` | 守卫：脚手架模板与工作区包一致性检查（导入名 + service/crud 渲染类型检查） |
 
 ## Docker
 
