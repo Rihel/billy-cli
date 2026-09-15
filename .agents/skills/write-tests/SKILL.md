@@ -14,6 +14,10 @@ description: 在 Billy 工程中编写单元测试（vitest）：测试文件位
   `packages/http-client/test/stream-client.test.ts`（覆盖策略 / 管理器 / SSE 状态机）。
 - 错误断言分两类：HTTP 层 `ApiError` 用 `{ code, status }`；业务层 `AppError` 只用 `{ code }`。
 - mock 用 vitest 原生（`vi.fn` / `vi.stubGlobal`），`afterEach` 里 `vi.unstubAllGlobals()` 清理。
+- **kits 的 vitest 环境解析不了装饰器**（报 `SyntaxError: Invalid or unexpected token`；实测
+  vitest 4 没取到 tsconfig 的 `experimentalDecorators`）。要测「装饰器写入的元数据」（如
+  `@KafkaConsumer`）时，直接用 `Reflect.defineMetadata(KEY, meta, Target.prototype.method)` 写，
+  与装饰器等价（装饰器本身就是 `SetMetadata`），别在测试里写 `@decorator()`。
 - 新增测试的包要自加 `"test": "vitest run"` 脚本；跑单包 `pnpm --filter <包> test`。
 
 ## 参考文件（本 skill 的组成部分）

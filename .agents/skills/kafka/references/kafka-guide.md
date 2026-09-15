@@ -22,6 +22,10 @@
 | `KAFKA_CLIENT_ID` | `app` | 客户端标识 |
 | `KAFKA_TOPIC_PREFIX` | `app` | 实际 topic = `<前缀>.<业务名>`；置空串表示不加前缀 |
 | `KAFKA_GROUP_ID_PREFIX` | `app` | 实际 groupId = `<前缀>-<topic>-<suffix\|default>` |
+| `KAFKA_CONNECTION_TIMEOUT_MS` | `3000` | 建连超时；kafkajs 默认 1s + 重试 5 次 ≈ 一次失败空转 10s |
+| `KAFKA_REQUEST_TIMEOUT_MS` | `15000` | 单次请求超时 |
+| `KAFKA_RETRY_COUNT` / `KAFKA_RETRY_INITIAL_DELAY_MS` | `2` / `300` | kafkajs 内部重试次数与初始间隔 |
+| `KAFKA_UNAVAILABLE_COOLDOWN_MS` | `5000` | 快失败冷却期；期间 `send` 立即抛错（置 0 关闭） |
 
 本地起 broker（compose 已带 profile，默认不启动）：
 
@@ -37,7 +41,7 @@ KAFKA_BROKERS=127.0.0.1:29092
 ## 2. 生产者
 
 ```ts
-import { KafkaService } from '@repo/kits'
+import { KafkaService, KafkaUnavailableError } from '@repo/kits'
 
 @Injectable()
 export class OrderService {
@@ -45,8 +49,17 @@ export class OrderService {
 
   async create(dto: OrderCreateDto) {
     const order = await this.repo.create(dto)
-    // 对象自动 JSON 序列化；失败 p-retry 重试 3 次（指数退避）
-    await this.kafka.send('order.created', { orderId: order.id, amount: order.amount })
+    // 对象自动 JSON 序列化；失败最多再试 1 次（有界），冷却期内快速失败
+    try {
+      await this.kafka.send('order.created', { orderId: order.id, amount: order.amount })
+    } catch (error) {
+      // Kafka 不可用不该让接口挂掉：降级为补偿（落表 / 重试 topic / scheduler 稍后补发）
+      if (error instanceof KafkaUnavailableError) {
+        await this.outbox.save({ topic: 'order.created', payload: { orderId: order.id } })
+      } else {
+        throw error
+      }
+    }
     return order
   }
 }
@@ -83,12 +96,20 @@ export class OrderEventsConsumer {
 - **同组多方法**：同一 topic 且同 `groupId` 的多个方法都会收到同一条消息（组内扇出）。
 - topic 名建议 `<域>.<事件>`（`order.created` / `user.registered`），前缀由配置统一加。
 
-## 4. 失败语义（务必知道）
+## 4. 失败语义与可用性（务必知道）
+
+**可用性优先**：连接是惰性的（DI 阶段不发网络请求），消费者建连走后台浮动 Promise，
+所以 **broker 挂掉不会推迟服务启动**（实测黑洞地址 725ms 可用 vs 不配 Kafka 682ms）。
+请求路径上的 `send` 则按快失败处理：
 
 | 阶段 | 行为 |
 | --- | --- |
-| 消费者**启动**失败 | `p-retry` 重试 5 次（指数退避），并发受 `consumerConcurrency`（默认 3）限制；全部失败只记 error 日志，不阻断应用启动 |
+| **broker 不可达时的 `send`** | 建连超时 + 有限重试（有界），随后进入冷却期；期间 `send` **立即**抛 `KafkaUnavailableError`（带 `retryAfterMs`）。实测：旧默认一次失败 37.2s → 新默认 1.02s，冷却期内 0ms |
+| 消费者**启动**失败 | `p-retry` 重试 5 次（后台，指数退避），并发受 `consumerConcurrency`（默认 3）限制；全部失败只记 error 日志并提示「恢复后需重启」，不阻断应用启动 |
 | **单条消息**处理异常 | 只记 `error` 日志，**不中断消费循环、不自动重投**（偏移照常推进） |
+
+> 提示：`KafkaService.getAvailability()` 返回 `{ available, retryAfterMs, lastError }`，
+> 可在健康检查/降级开关里用，但**不要**让 Kafka 状态决定服务是否可用。
 
 所以「重试」不能指望 Kafka 自动完成。可选做法：
 

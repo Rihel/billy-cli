@@ -17,7 +17,7 @@ description: 在 Billy 工程中使用 Kafka 做异步消息与事件驱动：ki
   未配置则全应用没有 Kafka provider（用到即解析报错）。本地起 broker：
   `docker compose --profile kafka up -d`，宿主机连 `127.0.0.1:29092`、容器内连 `kafka:9092`。
 - **生产者**：构造器 `@Inject(KafkaService)` → `send(topic, payload, key?)`。
-  非字符串负载自动 `JSON.stringify`；发送失败由 `p-retry` 重试 3 次（指数退避 + 告警日志）。
+  非字符串负载自动 `JSON.stringify`；失败最多再试 1 次（有界），随后进入快失败冷却期。
 - **消费者**：在任意 provider 的方法上标 `@KafkaConsumer('topic')`，方法签名
   `(payload, topic, partition) => void | Promise<void>`，`payload` 为消息体 JSON 解析结果
   （空消息为 `null`）。**启动时自动订阅，不需要在模块里注册**。
@@ -28,6 +28,28 @@ description: 在 Billy 工程中使用 Kafka 做异步消息与事件驱动：ki
 - **失败语义（必须知道）**：消费者**启动**失败重试 5 次、并发受 `consumerConcurrency` 限制
   （默认 3）；**单条消息处理异常只记日志，不中断消费循环、也不自动重投** → 处理器必须幂等，
   失败补偿自己安排（重试 topic / 落表 + `scheduler` 补偿）。
+  5 次重试仍失败则在**本进程内不再自动重试**，Kafka 恢复后需重启服务。
+
+## 可用性契约：Kafka 挂了不能拖住服务（改动这条要谨慎）
+
+1. **不阻塞启动**：连接是**惰性**的 —— DI / 构造只建 kafkajs 客户端对象、不发网络请求；
+   消费者扫描在 `onApplicationBootstrap` 里**同步返回**、建连走后台浮动 Promise
+   （`KafkaConsumerScanner` 因此**不能改成 async**）。实测 broker 黑洞时服务 725ms 可用，
+   不配 Kafka 是 682ms。
+2. **不拖住请求（快失败）**：建连超时 / kafkajs 重试次数都用本模块的快失败默认值，
+   一次失败后进入冷却期，期间 `send` **立即**抛 `KafkaUnavailableError`（带 `retryAfterMs`）。
+   调用方据此快速降级（落表 / 进重试 topic / 返回业务成功但记待补），**不要**把 Kafka 故障
+   传染成接口超时。
+
+| 配置（env） | 默认 | 作用 |
+| --- | --- | --- |
+| `KAFKA_CONNECTION_TIMEOUT_MS` | 3000 | 建连超时（kafkajs 默认 1s + 重试 5 次 ≈ 一次失败空转 10s） |
+| `KAFKA_REQUEST_TIMEOUT_MS` | 15000 | 单次请求超时 |
+| `KAFKA_RETRY_COUNT` / `KAFKA_RETRY_INITIAL_DELAY_MS` | 2 / 300 | kafkajs 内部重试次数与初始间隔 |
+| `KAFKA_UNAVAILABLE_COOLDOWN_MS` | 5000 | 快失败冷却期（置 0 关闭该行为） |
+
+实测对照（broker 指向 `127.0.0.1:1`）：旧默认一次 `send` 失败要 **37.2s**（单次 connect 就 9.99s），
+新默认 **1.02s**，冷却期内再次 `send` **0ms** 抛错。
 
 ## 与「延迟 / 周期 / 重试」的分工（别指望 MQ 兜底）
 
@@ -53,7 +75,9 @@ Kafka 是**分区日志 + 消费组**，没有 per-message 延迟投递、优先
 
 - [ ] 生产者 / 消费者都经 `KafkaService` 与 `@KafkaConsumer`，未散落 `import kafkajs`
 - [ ] `KAFKA_BROKERS` 已配置（否则 `KafkaModule` 根本不装配）
-- [ ] 消费者处理器**幂等**（at-least-once + 重平衡会重复投递）
+- [ ] 消费端**幂等**（at-least-once + 重平衡会重复投递）
+- [ ] **Kafka 故障不影响接口可用性**：`send` 的失败按快失败处理（捕获
+      `KafkaUnavailableError` → 降级 / 补偿），未让 broker 故障拖成请求超时
 - [ ] 延迟 / 周期任务用 `scheduler` 或 `time-wheel`，未指望 Kafka 提供延迟投递
 - [ ] topic 名语义化（建议 `<域>.<事件>`，如 `order.created`），需独立消费组时显式传 `groupId`
 - [ ] 消息负载用共享契约（`@repo/shared` 的 Zod schema），不随手传内部对象
