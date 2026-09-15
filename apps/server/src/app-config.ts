@@ -190,6 +190,12 @@ export const mapServerEnv = (
         clientId: optional(env.KAFKA_CLIENT_ID),
         topicPrefix: optional(env.KAFKA_TOPIC_PREFIX),
         groupIdPrefix: optional(env.KAFKA_GROUP_ID_PREFIX),
+        // 快失败相关（不填走 kits 默认：3s / 15s / 2 次 / 300ms / 5s 冷却）
+        connectionTimeoutMs: optional(env.KAFKA_CONNECTION_TIMEOUT_MS),
+        requestTimeoutMs: optional(env.KAFKA_REQUEST_TIMEOUT_MS),
+        retryCount: optional(env.KAFKA_RETRY_COUNT),
+        retryInitialDelayMs: optional(env.KAFKA_RETRY_INITIAL_DELAY_MS),
+        unavailableCooldownMs: optional(env.KAFKA_UNAVAILABLE_COOLDOWN_MS),
       }
     : undefined,
 })

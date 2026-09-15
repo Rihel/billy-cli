@@ -20,6 +20,28 @@ export const KafkaConfigSchema = z.object({
   groupIdPrefix: z.string().default('app'),
   /** 消费者并发启动上限，默认 3 */
   consumerConcurrency: z.number().int().positive().default(3),
+  /**
+   * 建连超时（ms），透传 kafkajs `connectionTimeout`。
+   *
+   * 默认 3s 是**有意的快失败**：kafkajs 默认 `connectionTimeout: 1000` 配 `retry.retries: 5`，
+   * broker 不可达时一次 `connect()` 要空转十几秒 —— 若发生在请求路径上（发布事件），
+   * 就会把 HTTP 请求一起拖住。
+   */
+  connectionTimeoutMs: z.coerce.number().int().positive().default(3_000),
+  /** 单次请求超时（ms），透传 kafkajs `requestTimeout`；默认 15s */
+  requestTimeoutMs: z.coerce.number().int().positive().default(15_000),
+  /** kafkajs 内部重试次数（连不上 broker 时）；默认 2（kafkajs 默认 5 偏慢） */
+  retryCount: z.coerce.number().int().nonnegative().default(2),
+  /** kafkajs 内部重试初始间隔（ms）；默认 300 */
+  retryInitialDelayMs: z.coerce.number().int().nonnegative().default(300),
+  /**
+   * 不可用冷却期（ms）：一次建连失败后，冷却期内所有 `send` / 建连**立即失败**，
+   * 不再逐个去等超时（默认 5s，置 0 关闭该行为）。
+   *
+   * 这是「Kafka 挂了也不能拖慢服务」的关键：调用方要么快速降级（落表 / 进重试 topic），
+   * 要么自己决定重试；而不是让请求线程和连接超时一起耗着。
+   */
+  unavailableCooldownMs: z.coerce.number().int().nonnegative().default(5_000),
 })
 
 export type KafkaConfig = z.infer<typeof KafkaConfigSchema>

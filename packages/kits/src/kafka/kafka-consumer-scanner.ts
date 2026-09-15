@@ -37,7 +37,15 @@ const EXCLUDED_METHODS = new Set([
  * Kafka 消费者扫描器：应用启动时扫描全部 provider 上被 `@KafkaConsumer(topic)` 标注的方法，
  * 按 topic（+ 可选 groupId 后缀）分组，为每组建立消费者并按消息分发（同一组内多方法都会收到）。
  *
- * 失败策略：消费者启动失败重试 5 次；单条消息处理异常只记录日志，不中断消费循环。
+ * **不阻塞启动（必须保持）**：`onApplicationBootstrap` 只做**同步的元数据扫描**，
+ * 真正的建连 / 订阅 (`startConsumers`) 是后台浮动 Promise，绝不 await ——
+ * 否则 broker 不可达时（kafkajs 建连 + 重试可耗十几秒）整个 HTTP 服务都会被拖住。
+ * 改动本类时不要把 `onApplicationBootstrap` 变成 `async`。
+ *
+ * 失败策略：消费者启动失败重试 5 次（后台进行）；单条消息处理异常只记录日志，不中断消费循环。
+ * 注意：若 5 次重试后仍失败，本进程内**不会**再自动重试 —— Kafka 恢复后需重启服务
+ * （或后续补一个后台重连循环）。
+ *
  * 依赖 DiscoveryModule（`KafkaModule.forRoot` 已 imports）。
  */
 @Injectable()
@@ -54,6 +62,7 @@ export class KafkaConsumerScanner implements OnApplicationBootstrap {
     @Inject(AppLogger) private readonly logger: AppLogger,
   ) {}
 
+  /** 同步返回：Nest 只 await 本方法的返回值，故这里**不能**变成 async（见类注释） */
   onApplicationBootstrap(): void {
     this.collectConsumers()
     void this.startConsumers()
@@ -149,7 +158,10 @@ export class KafkaConsumerScanner implements OnApplicationBootstrap {
     const results = await Promise.allSettled(tasks)
     const failed = results.filter((result) => result.status === 'rejected')
     if (failed.length > 0) {
-      this.logger.error('Kafka 消费者启动存在失败项', { failed: failed.length })
+      this.logger.error('Kafka 消费者启动存在失败项', {
+        failed: failed.length,
+        hint: 'Kafka 不可用；本进程不会再自动重试，恢复后需重启服务',
+      })
     }
   }
 }
