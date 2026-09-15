@@ -135,6 +135,9 @@ export class TimeWheel {
       if (!job) continue
       // 交给下一个事件循环执行，避免同步阻塞本格其余任务
       nextTick(() => {
+        // 派发到下一个事件循环期间可能已 stop()：此时必须放弃执行，
+        // 否则「停表后还会蹦出一次任务」，且让行为不可预期（单测因此偶发失败）。
+        if (!this.isRunning) return
         task.actualNextTime = nowTime()
         task.offset = task.actualNextTime - task.planNextTime
         // 必须同时兜住「同步抛错」与「异步 reject」：
