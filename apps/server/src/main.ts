@@ -45,6 +45,13 @@ export const program = async (): Promise<void> => {
 
   const config = resolveServerConfig(app.get(ConfigService))
 
+  // 空闲长连接 / 请求头超时：必须比前置网关（Kong 等）的**上游空闲超时**更长，
+  // 否则网关会在「它以为连接还能复用」的窗口里往已关闭的 socket 发请求 → 间歇 502
+  // （后端日志无痕，因为请求没到应用）。默认 75s / 80s，取值与理由见 app-config.ts。
+  const httpServer = app.getHttpServer()
+  httpServer.keepAliveTimeout = config.keepAliveTimeoutMs
+  httpServer.headersTimeout = config.headersTimeoutMs
+
   await app.listen(config.port)
   logger.log(`服务已启动: http://localhost:${config.port}`, 'bootstrap')
 

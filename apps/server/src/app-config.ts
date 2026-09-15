@@ -22,18 +22,50 @@ import {
  */
 export const serverAppConfigSchema = z.object({
   /** 应用级业务配置（ServerConfig 命名空间） */
-  server: z.object({
-    /** HTTP 服务端口 */
-    port: z.coerce.number().int().positive().default(9989),
-    /** 用户体系开关：false 时关闭前台 / 后台两套鉴权，守卫直接放行 */
-    authEnabled: z.boolean().default(true),
-    /** 找回密码 token 有效期（分钟） */
-    resetPasswordTokenTtlMinutes: z.coerce.number().int().positive().default(30),
-    /** 限流豁免白名单（精确 IP / IPv4 CIDR） */
-    rateLimitWhitelist: z.array(z.string()).default([]),
-    /** 是否信任代理转发头（x-forwarded-for） */
-    rateLimitTrustProxy: z.boolean().default(false),
-  }),
+  server: z
+    .object({
+      /** HTTP 服务端口 */
+      port: z.coerce.number().int().positive().default(9989),
+      /** 用户体系开关：false 时关闭前台 / 后台两套鉴权，守卫直接放行 */
+      authEnabled: z.boolean().default(true),
+      /** 找回密码 token 有效期（分钟） */
+      resetPasswordTokenTtlMinutes: z.coerce.number().int().positive().default(30),
+      /** 限流豁免白名单（精确 IP / IPv4 CIDR） */
+      rateLimitWhitelist: z.array(z.string()).default([]),
+      /** 是否信任代理转发头（x-forwarded-for） */
+      rateLimitTrustProxy: z.boolean().default(false),
+      /**
+       * 空闲长连接保持时长（ms），映射到 Node `server.keepAliveTimeout`。
+       *
+       * 默认 75s 的来由：前置网关（如 Kong）的上游连接池默认
+       * `upstream_keepalive_idle_timeout = 60s`，而它**不认**后端响应头里的
+       * `Keep-Alive: timeout=N` 提示。若后端比网关先关空闲连接，网关就会在
+       * 「它以为还能复用」的窗口里往一个正在关闭的 socket 发请求 →
+       * 间歇性 502 / `upstream prematurely closed connection`（且后端日志无痕，
+       * 因为请求根本没到应用）。故后端必须比网关的上游空闲超时**更长**。
+       */
+      keepAliveTimeoutMs: z.coerce.number().int().positive().default(75_000),
+      /**
+       * 收完请求头的最长等待（ms），映射到 Node `server.headersTimeout`。
+       *
+       * **必须大于 `keepAliveTimeoutMs`**：否则长连接在被复用的瞬间可能因等待
+       * 请求头超时而被销毁。注意 Node 对「headersTimeout ≤ keepAliveTimeout」
+       * **不报错、静默接受**（实测确认），所以这里用 superRefine 显式拦住。
+       */
+      headersTimeoutMs: z.coerce.number().int().positive().default(80_000),
+    })
+    .superRefine((value, ctx) => {
+      if (value.headersTimeoutMs <= value.keepAliveTimeoutMs) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['headersTimeoutMs'],
+          message:
+            `headersTimeoutMs(${value.headersTimeoutMs}) 必须大于 ` +
+            `keepAliveTimeoutMs(${value.keepAliveTimeoutMs})，` +
+            '否则长连接被复用时可能因等待请求头超时被销毁',
+        })
+      }
+    }),
   db: DbConfigSchema,
   redis: RedisConfigSchema,
   jwt: JwtConfigSchema,
@@ -84,6 +116,8 @@ export const mapServerEnv = (
     resetPasswordTokenTtlMinutes: optional(env.RESET_PASSWORD_TOKEN_TTL_MINUTES),
     rateLimitWhitelist: parseList(env.RATE_LIMIT_WHITELIST),
     rateLimitTrustProxy: parseBoolean(env.RATE_LIMIT_TRUST_PROXY),
+    keepAliveTimeoutMs: optional(env.KEEP_ALIVE_TIMEOUT_MS),
+    headersTimeoutMs: optional(env.HEADERS_TIMEOUT_MS),
   },
   db: {
     url: optional(env.DB_URL),

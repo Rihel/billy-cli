@@ -1002,6 +1002,36 @@ docker build -t billy-web:latest -f docker/Dockerfile.web .
 - **基础镜像**：内置 `bash / curl / wget / jq / bind-tools / tzdata（Asia/Shanghai）` 等运维工具，
   并切换 npmmirror 镜像源
 
+### 前置反向代理（Kong / Nginx / LB）
+
+前面挂了网关时，有三处必须核对，否则会出现「查不到原因」的间歇性故障：
+
+**1. keep-alive 复用竞态（间歇 502）**
+
+Node 的 `server.keepAliveTimeout` 默认 **5s**，而 Kong 上游连接池默认
+`upstream_keepalive_idle_timeout = 60s`，且它**不认**后端响应头里的 `Keep-Alive: timeout=N`
+提示 —— 后端 5s 就关、网关认为 60s 内还能复用，于是网关在 **[5s, 60s] 窗口**里挑中一条正在
+关闭的连接发请求 → 间歇性 `502 / upstream prematurely closed connection`。
+**后端日志里查不到**（请求没到应用），很难定位。
+
+本工程已默认 `keepAliveTimeout = 75s` / `headersTimeout = 80s`（>`KEEP_ALIVE_TIMEOUT_MS` 与
+`HEADERS_TIMEOUT_MS` 可覆盖，见 `.env.example`）。规则：**每一跳里「服务端」的空闲超时必须大于
+「客户端」的**，即从外到内递增，各留 5s 以上余量（LB 空闲 < Kong 客户端 keepalive；
+Kong 上游空闲 60s < 后端 75s）。注意 `headersTimeout` 必须大于 `keepAliveTimeout`——
+Node 对反序**不报错、静默接受**，故本项目在配置层用 `superRefine` 显式拦住（超了直接启动失败）。
+
+**2. SSE 会被网关缓冲**
+
+`POST /sse/subscribe` 是长连接流（默认 15s 心跳保活）。Kong 的 Route 属性
+`response_buffering` 默认 `true`，会把响应缓冲后统一下发 → 流式失效 / 断续。
+需在该路由（或 Service）上设 **`response_buffering = false`**；Service 的 `read_timeout`
+（默认 60s）必须大于 SSE 心跳间隔。
+
+**3. 限流与客户端 IP**
+
+走网关必须把 `RATE_LIMIT_TRUST_PROXY=true`，否则限流按网关的 IP 计数（所有客户端共用一个
+key、白名单失效）。
+
 ## Agent Skills（AI 原生开发）
 
 工程把「怎么做」写进 skill：`.agents/skills/` 下每个 skill 是一个独立目录（标准 Agent Skills 格式，

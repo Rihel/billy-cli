@@ -81,12 +81,24 @@ sse.close()
 - 状态机：idle → connecting → open ⇄ reconnecting → closed；指数退避重连
   （1s → 2s → 4s，上限 30s，服务端 `retry:` 帧可覆盖），重连前重新解析凭证。
 - 内置状态事件 `open` / `reconnecting` / `closed`；`on` 返回取消订阅函数。
-- 浏览器默认页面隐藏时断开（`openWhenHidden: true` 可保持）；服务端默认 15s 心跳注释行保活。
+- 浏览器默认页面隐藏时断开（`openWhenHidden: true` 可保持）；**恢复可见后必须自动重连**
+  （这是 `openWhenHidden` 的契约，`HttpStreamClient` 已用「每次连接尝试新建 AbortController」
+  保证——AbortSignal 一旦 abort 就永久 aborted，复用会让恢复后的重连立即被中断、被 transport
+  当成正常结束而直接进入 `closed`，表现为切回标签页后流静默失效；回归用例见
+  `packages/http-client/test/stream-client.test.ts` 的「恢复可见后自动重连」）。
+  服务端默认 15s 心跳注释行保活。
+- 退避计数在每次连接成功后重置，故一次长连接的偶发断线按初始间隔（1s）重连，不会直接吃满 30s。
 
 ## 5. 场景与注意
 
 - 典型场景：AI 流式输出（`event: 'token'` 逐段推）、任务进度（`event: 'progress'`）、实时通知（`event: 'notification'`）。
 - 连接注册表是**本实例内存态**：多实例部署时，广播只推给持有本地连接的实例。
+- **前置网关必须关缓冲**：Kong 的 Route 属性 `response_buffering` 默认 `true`，会把 SSE 响应
+  缓冲后统一下发 → 流式失效 / 断续。要在该路由（或 Service）上设 `response_buffering = false`；
+  同时确认 Service 的 `read_timeout`（Kong 默认 60s）大于心跳间隔（默认 15s）。
+  Nginx 同理需要 `proxy_buffering off`。
+- **关掉中间层的「响应压缩 / 超时」**：网关的 gzip（`text/event-stream` 一般不该压）与
+  LB 的空闲超时都可能在长连接上切流；后端长连接超时见 README「前置反向代理」一节。
 - 第一版边界：不做连接上限 / 频道限流；`Last-Event-ID` 只收不补（断线续传为后续版本）；多标签页各自建连、客户端不去重。
 - SSE 用 `@Res()` 自行写原始响应（Nest 的 `@Sse()` 只支持 GET），帧格式
   event → data → id（与 @repo/http-client 的 SSE 解析器约定一致）；该路由返回 undefined、
