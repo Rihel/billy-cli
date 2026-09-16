@@ -85,7 +85,8 @@ description: Billy 工程（billy-cli monorepo）开发必读 skill。任何在�
   `controllers` / `providers` 已声明，并在 `apps/server/src/modules/<业务>/index.ts` 导出
 - [ ] **每个构造器参数都显式写了 `@Inject(token)`**（tsx 不产出 `design:paramtypes`，漏写静默注入 undefined）
 - [ ] controller 只做 HTTP 边界（`@Body({ schema: Schema })` 校验 + 调 service + 返回数据），业务逻辑在 service / repository
-- [ ] 所有业务路由为 `POST` 且显式标注 `@HttpCode(200)`（Nest 对 POST 默认 201）
+- [ ] 所有业务路由为 `POST` 且显式标注 `@HttpCode(200)`（Nest 对 POST 默认 201）；唯一例外是
+  `modules/ops` 的 `GET /healthz` / `/readyz` / `/info` 运维探针（k8s `httpGet` 只会发 GET）
 - [ ] 错误全部继承 `AppError` 且 code 已在 `AppErrorCodes` 中定义（3xxx 段）
 - [ ] SDK 已补全类型化方法
 - [ ] admin 页面已加入 `apps/admin/src/components/AppMenu.tsx` 菜单

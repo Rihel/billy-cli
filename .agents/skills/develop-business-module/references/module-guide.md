@@ -141,7 +141,9 @@ export class XxxController {
 ```
 
 要点：
-- Nest 对 POST 默认返回 201，必须显式 `@HttpCode(200)`；所有业务路由统一 POST。
+- Nest 对 POST 默认返回 201，必须显式 `@HttpCode(200)`；所有业务路由统一 POST
+  （**唯一例外**是 `modules/ops` 的运维探针 `GET /healthz` / `/readyz` / `/info`——k8s 的 `httpGet`
+  探针只会发 GET，业务路由全 POST 会让探针 404、pod 永远不就绪）。
 - 入参一律 `@Body({ schema: Schema })`；返回数据由全局 `ResponseEnvelopeInterceptor` 包
   `{ code: 0, data }`，controller 不手写响应信封。
 - 构造器参数必须显式 `@Inject(token)`：项目用 tsx（esbuild）不产出 `design:paramtypes`，

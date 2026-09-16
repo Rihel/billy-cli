@@ -88,6 +88,11 @@ sse.close()
   `packages/http-client/test/stream-client.test.ts` 的「恢复可见后自动重连」）。
   服务端默认 15s 心跳注释行保活。
 - 退避计数在每次连接成功后重置，故一次长连接的偶发断线按初始间隔（1s）重连，不会直接吃满 30s。
+- **服务端排空（滚动更新 / 重启）**：`StreamHub.beforeApplicationShutdown()`（Nest 在
+  `httpServer.close()` **之前**调用）会给每条连接推最后一个事件 `stream.shutdown` 再关闭 ——
+  只要有一条 SSE 长连接存活，`server.close()` 回调就永不触发、`app.close()` 挂死，
+  在途请求会被 SIGKILL 一起带走。客户端收到 `stream.shutdown` 后**立即重连到其他实例**
+  （`serverShutdown` 分支，先于「正常结束 → closed 终态」判断），不依赖业务侧注册监听器。
 
 ## 5. 场景与注意
 
@@ -107,5 +112,6 @@ sse.close()
 ## 6. 测试参考
 
 `packages/kits/test/stream-hub.test.ts`（vitest，mock ioredis 的 pub/sub）：覆盖本地直推 +
-广播载荷、跨实例路由、自回环过滤、连接注销幂等、abort 自动关闭、心跳、写失败自关。
+广播载荷、跨实例路由、自回环过滤、连接注销幂等、abort 自动关闭、心跳、写失败自关，
+以及 `beforeApplicationShutdown` 排空（推 `stream.shutdown` + 关闭全部连接 + 排空中新连接立即关闭）。
 新增 stream 相关测试照此文件模式写。

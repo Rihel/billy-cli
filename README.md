@@ -254,6 +254,7 @@ pnpm cli -t crud -n product --no-install  # 非交互生成 CRUD 业务模块（
 │   │       └── server.client.ts         # ServerClient（全类型化业务 API，继承 http-client 的 HttpClient）
 │   └── ui/                              # @repo/ui — shadcn 组件（src/components/ui/*）+ 自有组件（src/components/* 平铺）
 ├── docker/                              # Dockerfile.base / .server / .web + init-db.sql
+├── k8s/                                 # server 的 Kubernetes 清单（Deployment / Service / PDB / Ingress + 部署说明）
 ├── docs/                                # pagination.md（分页指南）/ sdk-refactor.md / billy-pitch.md / queue.md（已废弃存档）/ design/ / dev-logs/
 ├── scripts/                             # cli.ts / cli/（生成器 + .eta 模板）、setup.ts（bootstrap）、kill-dev.ts、check-inject-decorators.ts、check-scaffold-templates.ts
 ├── turbo.json
@@ -290,11 +291,12 @@ pnpm cli -t crud -n product --no-install  # 非交互生成 CRUD 业务模块（
   （`RequestContextModule` 的请求上下文 ALS / `RequestMetricsModule` 的请求埋点）由模块自注册。
 - **业务模块目录**：`modules/<业务>/{module,controller,service,repository,errors,index}.ts`；
   controller 只做 HTTP 边界（Zod 校验 + 调 service + 返回数据），业务逻辑仍在 service / repository。
-  `monitor` 的 `MonitorHealthController` 提供免鉴权 `POST /monitor/health`；`admin` 的
-  `AdminAuthController` 提供免鉴权的 `login` / `logout`。
+  `monitor` 的 `MonitorHealthController` 提供免鉴权 `POST /monitor/health`；`ops` 的 `OpsController`
+  提供免鉴权根路径 `GET /healthz` / `GET /readyz` / `GET /info`（k8s 探针用，见「API 设计」的唯一 GET 例外）；
+  `admin` 的 `AdminAuthController` 提供免鉴权的 `login` / `logout`。
 - **校验与响应**：请求体用 `@Body({ schema: Schema })` 参数装饰器校验，控制器只返回业务数据，由
   `ResponseEnvelopeInterceptor` 统一包成 `{ code: 0, data }`，异常统一由 `AppExceptionFilter` 处理；
-  全部路由 POST 且显式标注 `@HttpCode(200)`（Nest 对 POST 默认 201）。
+  全部**业务**路由 POST 且显式标注 `@HttpCode(200)`（Nest 对 POST 默认 201），运维探针为唯一 GET 例外。
 - **守卫**：`UserAuthGuard` / `AdminAuthGuard` / `RateLimitGuard`（配合 `@RateLimit({ scope })`
   方法装饰器，超限抛 `BoundaryError` 并带 `Retry-After` 响应头）。
 - **SSE 推流**：`modules/stream/stream.controller.ts` 的 `StreamController` 暴露 `POST /sse/subscribe`
@@ -460,6 +462,7 @@ modules/                       # 业务领域（每个模块同目录：module +
 ├── monitor/        # MonitorHealthController（免鉴权 /monitor/health）+ MonitorController + 告警规则 / 记录
 ├── storage/        # storage.controller.ts（预签名 URL / STS 临时凭证）
 ├── stream/         # stream.controller.ts + stream-auth.guard.ts + stream.options.ts（SSE_ROUTE_OPTIONS）
+├── ops/            # OpsController（根路径 GET /healthz、/readyz、/info，全工程唯一 GET 例外）+ OpsModule
 └── runtime-config/ # RuntimeConfigController（公开 POST /config/get）+ RuntimeConfigModule
 │                   #   目录名与类名刻意区别于 kits 的 AppConfigModule
 common/                        # 横切 HTTP 构件（不依赖业务模块；外部统一从 common/index.ts 导入）
@@ -468,6 +471,7 @@ common/                        # 横切 HTTP 构件（不依赖业务模块；�
 ├── request-metrics/   # 模块：request-metrics.middleware.ts（注入 Telemetry，采 QPS/耗时）+ request-metrics.module.ts
 ├── security/    # authentication.ts（token 提取 / 当前身份）+ rate-limit.guard.ts（@RateLimit + RateLimitGuard）
 └── http/        # zod-validation.ts（`@Body({ schema })` 校验管道）+ response-envelope.interceptor.ts（响应信封）
+│                #   + ops-probe.ts（探针路径判定：请求日志 / 指标据此跳过探针）
 database/
 ├── entities/     # UserEntity / TodoEntity / AdminEntity / AlertRuleEntity / AlertLogEntity（继承 @repo/kits 的 BaseEntity）
 └── migrations/   # TypeORM 迁移产物
@@ -744,8 +748,14 @@ sidebar / toast / chart 等），Tailwind 4 主题变量由 `globals.css` 提供
 
 ### API 设计
 
-所有接口均为 `POST`（每条路由显式 `@HttpCode(200)` 固定，Nest 对 POST 默认 201，必须覆盖），
+所有**业务**接口均为 `POST`（每条路由显式 `@HttpCode(200)` 固定，Nest 对 POST 默认 201，必须覆盖），
 请求体由 Zod schema 校验，响应统一包装为 `AppResponse<T>`：
+
+> **唯一例外**：运维探针 `GET /healthz`、`GET /readyz`、`GET /info` —— k8s 的 `httpGet` 探针
+> **只会发 GET**，业务路由全 POST 会让探针 404、pod 永远不就绪，故为探针开放 GET。
+> 两个周期性探针路径（`/healthz`、`/readyz`）会被请求日志与请求指标跳过
+> （`common/http/ops-probe.ts`）：否则每 3s 一条日志刷屏，并把探针自身的 503 算进
+> `request.error`，污染错误率告警。
 
 **成功响应：**
 
@@ -803,6 +813,9 @@ sidebar / toast / chart 等），Tailwind 4 主题变量由 `globals.css` 提供
 | `POST /storage/get-download-url`     | 获取下载预签名 URL | 管理员 |
 | `POST /storage/get-temporary-credentials` | 获取 STS 临时凭证 | 管理员 |
 | `POST /sse/subscribe`              | SSE 订阅（长连接推流，body `{ channels: [...] }`） | 是 |
+| `GET /healthz`                     | 存活探针（livenessProbe，**不探外部依赖**，进程活着即 200） | 否 |
+| `GET /readyz`                      | 就绪探针（readinessProbe，探 DB / Redis，不可用返回 **503** + `code: 5002` 主动摘流） | 否 |
+| `GET /info`                        | 运行信息（版本 / 运行时 / 已生效的长连接超时） | 否 |
 | `POST /monitor/health`             | 健康检查（DB / Redis 探活，容器 / 云平台探针） | 否 |
 | `POST /monitor/rule/create`        | 创建告警规则 | 管理员 |
 | `POST /monitor/rule/page-query`    | 告警规则分页查询 | 管理员 |
@@ -1018,6 +1031,14 @@ docker build -t billy-server:latest -f docker/Dockerfile.server .
 docker build -t billy-web:latest -f docker/Dockerfile.web .
 ```
 
+### Kubernetes 部署
+
+`k8s/` 目录提供 **server** 的清单与部署说明（Deployment / Service / PDB / Ingress）：
+滚动策略 `maxUnavailable: 0` + preStop + 三类探针分工（`/healthz` 存活、`/readyz` 就绪）+
+`terminationGracePeriodSeconds` 覆盖优雅关闭期限，SSE 单独一份关缓冲的 Ingress。
+字段取值来由、跨文件不变量（grace vs `SHUTDOWN_TIMEOUT_MS`+preStop、后端 keep-alive vs 网关上游空闲）、
+上线验证步骤见 [k8s/README.md](k8s/README.md)。
+
 ### 特性
 
 - **server**：multi-stage + `pnpm deploy --prod` 提取运行时依赖，仅携带编译产物与生产依赖，
@@ -1055,6 +1076,22 @@ Node 对反序**不报错、静默接受**，故本项目在配置层用 `superR
 
 走网关必须把 `RATE_LIMIT_TRUST_PROXY=true`，否则限流按网关的 IP 计数（所有客户端共用一个
 key、白名单失效）。
+
+**4. 滚动更新时的优雅关闭（避免在途请求被切断）**
+
+`SIGTERM` 后的关闭顺序：`beforeApplicationShutdown`（`StreamHub` 给每条 SSE 连接推
+`stream.shutdown` 再关闭）→ `httpServer.close()`（停止接收新连接 + 等在途请求自然结束）→
+各资源 `onApplicationShutdown`。**SSE 长连接必须先排空**：只要有一条存活，`server.close()`
+的回调就永不触发、`app.close()` 挂死，只能等 `terminationGracePeriodSeconds` 到点被 SIGKILL，
+在途请求跟着一起死（表现为滚动更新 502）。客户端收到 `stream.shutdown` 会立即重连到其他实例，
+而不是把流的正常结束当成终态。
+
+总期限由 `SHUTDOWN_TIMEOUT_MS` 控制（默认 25s），超时**强制退出并记 error 日志**——
+与其卡死到被 SIGKILL（连原因都留不下），不如自己记录后退出。
+
+k8s 侧配套：`terminationGracePeriodSeconds` 要大于 `SHUTDOWN_TIMEOUT_MS` + preStop 耗时；
+preStop 先 `sleep` 数秒等 endpoint 摘除生效；探针指向 `GET /healthz`（liveness，不探依赖）与
+`GET /readyz`（readiness，依赖不可用返 503 主动摘流），滚动策略用 `maxUnavailable: 0`。
 
 ## Agent Skills（AI 原生开发）
 
