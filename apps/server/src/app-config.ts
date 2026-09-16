@@ -60,6 +60,16 @@ export const serverAppConfigSchema = z.object({
        * （否则「更新了却没生效」只能靠猜）。
        */
       appVersion: z.string().default('dev'),
+      /**
+       * 优雅关闭的总期限（ms）：`SIGTERM` 后最多等这么久排空在途请求，超时强制退出。
+       *
+       * 关闭顺序（Nest `app.close()`）：`beforeApplicationShutdown`（SSE Hub 排空长连接）→
+       * `httpServer.close()`（等在途请求自然结束）→ 各资源 `onApplicationShutdown`。
+       * 默认 25s：**必须小于 k8s 的 `terminationGracePeriodSeconds` 减去 preStop 耗时**
+       * （推荐 grace 60s + preStop 8s，25s 有充裕余量）。超时强制退出的意义是——
+       * 与其卡死到被 SIGKILL（连一行原因都留不下），不如自己记录并退出。
+       */
+      shutdownTimeoutMs: z.coerce.number().int().positive().default(25_000),
     })
     .superRefine((value, ctx) => {
       if (value.headersTimeoutMs <= value.keepAliveTimeoutMs) {
@@ -126,6 +136,7 @@ export const mapServerEnv = (
     keepAliveTimeoutMs: optional(env.KEEP_ALIVE_TIMEOUT_MS),
     headersTimeoutMs: optional(env.HEADERS_TIMEOUT_MS),
     appVersion: optional(env.APP_VERSION),
+    shutdownTimeoutMs: optional(env.SHUTDOWN_TIMEOUT_MS),
   },
   db: {
     url: optional(env.DB_URL),

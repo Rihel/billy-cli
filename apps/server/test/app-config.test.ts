@@ -42,3 +42,20 @@ describe('server 分片：HTTP 长连接超时', () => {
     expect(config.server.headersTimeoutMs).toBe(95_000)
   })
 })
+
+describe('server 分片：优雅关闭', () => {
+  it('默认 shutdownTimeoutMs=25s，且留有余量给 k8s 的 grace + preStop（60s + 8s）', () => {
+    const server = parseServer({})
+    expect(server.shutdownTimeoutMs).toBe(25_000)
+    // 不变量：排空期限必须明显小于 terminationGracePeriodSeconds - preStop，
+    // 否则要么排空没走完就被 SIGKILL，要么期限形同虚设
+    expect(server.shutdownTimeoutMs).toBeLessThan(60_000 - 8_000)
+  })
+
+  it('可由环境变量覆盖（SHUTDOWN_TIMEOUT_MS）', () => {
+    const mapped = mapServerEnv({
+      SHUTDOWN_TIMEOUT_MS: '40000',
+    } as NodeJS.ProcessEnv)
+    expect(serverAppConfigSchema.parse(mapped).server.shutdownTimeoutMs).toBe(40_000)
+  })
+})

@@ -1,6 +1,12 @@
-import { Inject, Injectable, type OnApplicationBootstrap, type OnApplicationShutdown } from '@nestjs/common'
+import {
+  Inject,
+  Injectable,
+  type BeforeApplicationShutdown,
+  type OnApplicationBootstrap,
+  type OnApplicationShutdown,
+} from '@nestjs/common'
 import { AppLogger } from '../foundation/logger/app-logger.js'
-import type { StreamEventModel } from '@repo/shared'
+import { STREAM_SHUTDOWN_EVENT, type StreamEventModel } from '@repo/shared'
 import { Redis } from 'ioredis'
 import { RedisConfig } from '../redis/redis.config.js'
 import { IdGeneration } from '../foundation/id-generation/id-generation.js'
@@ -34,7 +40,9 @@ const BROADCAST_PATTERN = 'stream:*'
  * 连接注册表是本实例内存态，广播只推持有本地连接的实例（设计文档 §5.3 / §8）。
  */
 @Injectable()
-export class StreamHub implements OnApplicationBootstrap, OnApplicationShutdown {
+export class StreamHub
+  implements OnApplicationBootstrap, BeforeApplicationShutdown, OnApplicationShutdown
+{
   private readonly connections = new Map<string, StreamConnection>()
   private readonly channels = new Map<string, Set<StreamConnection>>()
   /** 发布 / 订阅两条独立连接（lazyConnect，onApplicationBootstrap 显式连接） */
@@ -43,6 +51,8 @@ export class StreamHub implements OnApplicationBootstrap, OnApplicationShutdown 
   /** 本实例 id：广播自回环过滤 */
   private readonly instanceId: string
   private started = false
+  /** 是否正在排空（`beforeApplicationShutdown` 置位后不再接受新长连接） */
+  private draining = false
 
 
   constructor(
@@ -71,6 +81,34 @@ export class StreamHub implements OnApplicationBootstrap, OnApplicationShutdown 
     }
   }
 
+  /**
+   * 应用关闭**第一步**（Nest 在 `httpAdapter.close()` 之前调用）：排空全部 SSE 长连接。
+   *
+   * 为什么必须早于 `onApplicationShutdown`：SSE 路由 `await connection.closed` 挂起长连接，
+   * 只要还有一条存活，`server.close()` 的回调就永不触发 → `app.close()` 挂死 → 只能等
+   * `terminationGracePeriodSeconds` 到点被 SIGKILL，在途的普通请求跟着一起死（表现为滚动更新 502）。
+   *
+   * 关闭前先推一条 `stream.shutdown`：客户端据此**立即重连到其他实例**，
+   * 而不是把流的正常结束当成终态（那样滚动更新后长连接会静默失效）。
+   */
+  async beforeApplicationShutdown(): Promise<void> {
+    this.draining = true
+    const connections = [...this.connections.values()]
+    if (connections.length === 0) return
+
+    this.logger.info('正在排空 SSE 长连接', { count: connections.length })
+    await Promise.allSettled(
+      connections.map(async (connection) => {
+        // write 内部已吞掉写失败并自动 close（连接可能刚好断了）
+        await connection.write({
+          event: STREAM_SHUTDOWN_EVENT,
+          data: { reason: 'server-shutdown' },
+        })
+        connection.close()
+      }),
+    )
+  }
+
   /** 应用停止：断开 pub/sub 连接。 */
   async onApplicationShutdown(): Promise<void> {
     this.started = false
@@ -90,6 +128,9 @@ export class StreamHub implements OnApplicationBootstrap, OnApplicationShutdown 
       (closed) => this.removeConnection(closed),
     )
     this.connections.set(connection.id, connection)
+    // 排空中到达的新长连接立即关闭：否则它会重新挂住 httpServer.close()，让排空白做
+    // （k8s 此时已摘流，正常的滚动更新不该走到这里；非 k8s 的 LB 仍可能补发请求）
+    if (this.draining) connection.close()
     return connection
   }
 

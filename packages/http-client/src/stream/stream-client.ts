@@ -1,3 +1,4 @@
+import { STREAM_SHUTDOWN_EVENT } from '@repo/shared'
 import { CredentialResolver } from '../core/credential-resolver.js'
 import { streamConnectOnce } from './stream-transport.js'
 import type { StreamConnection } from './stream-transport.js'
@@ -39,6 +40,8 @@ export class HttpStreamClient {
   private lastEventId = ''
   private stopped = false
   private hiddenPaused = false
+  /** 服务端已宣告排空（收到 `stream.shutdown`）：流结束后要重连，而不是进入终态 */
+  private serverShutdown = false
   private visibilityHandler: (() => void) | null = null
 
   constructor(private readonly options: StreamClientOptions) {
@@ -81,6 +84,7 @@ export class HttpStreamClient {
     this.stopped = false
     this.hiddenPaused = false
     this.retryCount = 0
+    this.serverShutdown = false
     // AbortController 由 run() 的每次连接尝试自己创建（见下方注释），
     // 这里不预先建，避免「一次 abort 永久失效」。
     this.controller = null
@@ -168,6 +172,16 @@ export class HttpStreamClient {
         if (this.stopped) break
         // abort 因页面隐藏：回到循环顶部等待可见
         if (this.hiddenPaused) continue
+        // 服务端宣告排空（滚动更新 / 重启）：立即重连到其他实例。
+        // 必须先于下面的「正常结束」判断 —— 服务端主动 end() 是正常结束，
+        // 若按终态处理，每次滚动更新都会让长连接静默失效。
+        if (this.serverShutdown) {
+          this.serverShutdown = false
+          this.retryCount = 0
+          this.setState(StreamClientState.Reconnecting)
+          await delay(this.options.retryInterval ?? 1000, this.controller?.signal)
+          continue
+        }
         // 服务端正常关闭流 → 进入终态（不自动重连）
         this.setState(StreamClientState.Closed)
         break
@@ -201,6 +215,9 @@ export class HttpStreamClient {
 
   private handleMessage(msg: StreamMessage): void {
     if (msg.id) this.lastEventId = msg.id
+    // 排空宣告必须**独立于业务订阅者**记录：即使没人订阅这个事件名，
+    // 也要影响流结束后的走向（下面分发给业务订阅者只是附带效果）
+    if (msg.event === STREAM_SHUTDOWN_EVENT) this.serverShutdown = true
     const handlers = this.listeners.get(msg.event)
     if (!handlers || handlers.size === 0) return
 

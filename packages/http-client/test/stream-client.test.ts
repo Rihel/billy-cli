@@ -104,6 +104,24 @@ describe('HttpStreamClient 连接状态机', () => {
     await vi.waitFor(() => expect(sse.currentState).toBe(StreamClientState.Open))
     expect(states).toContain(StreamClientState.Reconnecting)
   })
+
+  it('服务端宣告排空（stream.shutdown）→ 重连而不是进入终态（滚动更新场景）', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockImplementationOnce(async () =>
+        streamResponse([
+          'event: stream.shutdown\ndata: {"reason":"server-shutdown"}\n\n',
+        ]),
+      )
+      .mockImplementation(async () => streamOpenResponse())
+    const sse = makeClient({ fetch: fetchMock as unknown as typeof fetch })
+
+    sse.connect()
+    // 未订阅 stream.shutdown 也要生效：重连语义不能依赖业务侧注册了监听器
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2))
+    await vi.waitFor(() => expect(sse.currentState).toBe(StreamClientState.Open))
+    sse.close()
+  })
 })
 
 describe('HttpStreamClient 事件分发', () => {

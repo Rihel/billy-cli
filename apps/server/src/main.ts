@@ -79,11 +79,34 @@ export const program = async (): Promise<void> => {
   const shutdown = async (signal: string): Promise<void> => {
     if (closing) return
     closing = true
-    logger.log(`收到 ${signal}，正在关闭服务...`, 'bootstrap')
+    const startedAtMs = Date.now()
+    const timeoutMs = config.shutdownTimeoutMs
+    logger.log(`收到 ${signal}，正在关闭服务（排空期限 ${timeoutMs}ms）...`, 'bootstrap')
+
+    // 排空超时兜底：app.close() 内部依次执行
+    // ① beforeApplicationShutdown —— StreamHub 推 stream.shutdown 并关闭全部 SSE 长连接
+    //    （不做这一步，SSE 长连接会让 httpServer.close() 永不返回）；
+    // ② httpServer.close() —— 停止接收新连接并等在途请求结束；
+    // ③ 各资源 onApplicationShutdown。
+    // 若在途请求迟迟不结束，这里强制退出：否则进程会卡到 terminationGracePeriodSeconds
+    // 被 SIGKILL——那样连「为什么没关掉」都留不下日志。
+    const forceExit = setTimeout(() => {
+      logger.error(
+        `关闭超时（${timeoutMs}ms），强制退出；未完成的在途请求会被中断`,
+        'bootstrap',
+      )
+      process.exit(1)
+    }, timeoutMs)
+
     try {
       await app.close()
-      logger.log('服务已关闭', 'bootstrap')
+      clearTimeout(forceExit)
+      logger.log(
+        `服务已关闭（耗时 ${Date.now() - startedAtMs}ms）`,
+        'bootstrap',
+      )
     } catch (error) {
+      clearTimeout(forceExit)
       logger.error(error, '关闭资源失败', 'bootstrap')
     }
     process.exit(0)

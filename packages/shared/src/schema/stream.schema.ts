@@ -17,6 +17,15 @@ export const StreamEventSchema = z.object({
 export type StreamEventModel = z.infer<typeof StreamEventSchema>
 
 /**
+ * 服务端排空事件名：滚动更新 / 重启时，服务端在关闭长连接前推送的**最后一个**事件。
+ *
+ * 客户端收到它必须「重连到其他实例」，而不能把流的正常结束当成终态 ——
+ * 否则每次滚动更新都会让长连接静默失效（服务端主动 `end()` 属正常结束，
+ * 单看协议无法与「不需要重连」区分开）。
+ */
+export const STREAM_SHUTDOWN_EVENT = 'stream.shutdown'
+
+/**
  * SSE 订阅请求体。
  *
  * 频道命名规范 `<域>:<id>`，如 `user:42` / `admin:all` / `task:42`。

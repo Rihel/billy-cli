@@ -209,4 +209,56 @@ describe('StreamHub', () => {
     await expect(closed).resolves.toBeUndefined()
     await hub.onApplicationShutdown()
   })
+
+  describe('beforeApplicationShutdown（关闭流程第一步：排空长连接）', () => {
+    it('推 stream.shutdown 并关闭全部连接（否则 httpServer.close() 永不返回）', async () => {
+      const hub = createHub()
+      await hub.onApplicationBootstrap()
+      const writers = [vi.fn(async () => {}), vi.fn(async () => {})]
+      const connections = writers.map((writer) =>
+        hub.createConnection({ writer }),
+      )
+      connections.forEach((connection, index) =>
+        hub.subscribe(connection, `task:${index}`),
+      )
+
+      await hub.beforeApplicationShutdown()
+
+      for (const [index, connection] of connections.entries()) {
+        await expect(waitClosed(connection)).resolves.toBeUndefined()
+        // 关闭前先宣告：客户端据此重连到其他实例，而不是把正常结束当终态
+        expect(writers[index]).toHaveBeenCalledWith({
+          id: undefined,
+          event: 'stream.shutdown',
+          data: '{"reason":"server-shutdown"}',
+        })
+      }
+      // 注册表已清空
+      const registry = (hub as unknown as { connections: Map<string, unknown> })
+        .connections
+      expect(registry.size).toBe(0)
+
+      await hub.onApplicationShutdown()
+    })
+
+    it('没有长连接时排空不报错（无 SSE 客户端也不影响关闭）', async () => {
+      const hub = createHub()
+      await hub.onApplicationBootstrap()
+      await expect(hub.beforeApplicationShutdown()).resolves.toBeUndefined()
+      await hub.onApplicationShutdown()
+    })
+
+    it('排空中到达的新长连接立即关闭（不会重新挂住关闭流程）', async () => {
+      const hub = createHub()
+      await hub.onApplicationBootstrap()
+      await hub.beforeApplicationShutdown()
+
+      const writer = vi.fn(async () => {})
+      const connection = hub.createConnection({ writer })
+
+      await expect(waitClosed(connection)).resolves.toBeUndefined()
+      expect(writer).not.toHaveBeenCalled()
+      await hub.onApplicationShutdown()
+    })
+  })
 })
