@@ -1,0 +1,39 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: billy-server
+  namespace: billy
+  labels:
+    app.kubernetes.io/name: billy-server
+data:
+  # 非敏感运行配置。敏感项（DB_URL / REDIS_URL / JWT_SECRET / 对象存储密钥）见 secret.example.yaml
+  NODE_ENV: production
+  PORT: "9989"
+  # 部署版本标识：**必须与 Deployment 的镜像 tag 同步**，`GET /info` 可核对线上实际构建
+  APP_VERSION: v0.0.0
+  AUTH_ENABLED: "true"
+  RESET_PASSWORD_TOKEN_TTL_MINUTES: "30"
+  PASSWORD_HASH_ROUNDS: "10"
+  # 部署在 Ingress 之后必须置 true：否则限流按网关 IP 计数（所有客户端共用一个 key、白名单失效）
+  RATE_LIMIT_TRUST_PROXY: "true"
+  # 长连接超时：必须**大于**网关的上游空闲超时，否则网关会往正在关闭的 socket 发请求 → 间歇 502
+  # ingress-nginx 的 upstream-keepalive-timeout 默认 60s，故这里 75s / 80s（后端比网关长）
+  KEEP_ALIVE_TIMEOUT_MS: "75000"
+  # 必须大于 KEEP_ALIVE_TIMEOUT_MS，否则 app 启动即失败（配置层 superRefine 显式拦截）
+  HEADERS_TIMEOUT_MS: "80000"
+  # 优雅关闭期限：必须小于 terminationGracePeriodSeconds - preStop（本目录取 60 - 8 = 52s）
+  SHUTDOWN_TIMEOUT_MS: "25000"
+  OBJECT_STORAGE_PROVIDER: s3
+  OBJECT_STORAGE_REGION: us-east-1
+  OBJECT_STORAGE_BUCKET: billy-cli
+  OBJECT_STORAGE_ENDPOINT: http://minio.billy.svc.cluster.local:9000
+  LOG_LEVEL: info
+  # ── 按需开启 ──
+  # ALERT_ENABLED: "true"
+  # ALERT_EMAIL_TO: ops@example.com
+  # LARK_NOTIFY_RECEIVE_ID: ""
+  # KAFKA_BROKERS: kafka.billy.svc.cluster.local:9092
+  # KAFKA_CLIENT_ID: app
+  # KAFKA_TOPIC_PREFIX: app
+  # KAFKA_GROUP_ID_PREFIX: app
+  # LOKI_HOST: http://loki.monitoring.svc.cluster.local:3100

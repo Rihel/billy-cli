@@ -1,0 +1,11 @@
+# Billy 服务端（NestJS）Kubernetes 部署清单
+#
+# 本目录只覆盖 **server**（apps/server）；web / admin 的部署另议。
+# 全部占位符需替换：镜像地址与 tag、域名 api.example.com、DB / Redis 地址与凭据。
+# 字段取值的来由（尤其「滚动更新为什么不 502」）见同目录 README.md。
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: billy
+  labels:
+    app.kubernetes.io/part-of: billy-cli

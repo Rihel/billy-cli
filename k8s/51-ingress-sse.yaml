@@ -1,0 +1,35 @@
+# SSE 专用入口：只为 /sse 覆盖流式所需注解（ingress-nginx 按最长路径优先合并，本份胜出）。
+#
+# 为什么必须单独一份：`proxy-buffering` 默认 on，网关会把响应缓冲后统一下发，
+# 流式输出变成「攒一批再吐」甚至断续；而关缓冲不该影响普通接口，故按路径拆开。
+# console 同目录 ingress.yaml 里的 proxy-body-size 等注解不会继承，需要的一并写上。
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: billy-server-sse
+  namespace: billy
+  labels:
+    app.kubernetes.io/name: billy-server
+  annotations:
+    # 流式响应必须关缓冲
+    nginx.ingress.kubernetes.io/proxy-buffering: "off"
+    # 长连接期间不能有读超时（默认 60s 会把空闲的 SSE 掐断）；
+    # 后端 15s 心跳保活，这里的值只需显著大于心跳间隔
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+    # SSE 走 HTTP/1.1 chunked（默认 1.1，显式写出避免被上游策略改成 HTTP/1.0）
+    nginx.ingress.kubernetes.io/proxy-http-version: "1.1"
+    nginx.ingress.kubernetes.io/proxy-body-size: "2m"
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: api.example.com # ← 与 ingress.yaml 保持一致
+      http:
+        paths:
+          - path: /sse
+            pathType: Prefix
+            backend:
+              service:
+                name: billy-server
+                port:
+                  name: http

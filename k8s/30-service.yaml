@@ -1,0 +1,20 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: billy-server
+  namespace: billy
+  labels:
+    app.kubernetes.io/name: billy-server
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: billy-server
+  ports:
+    - name: http
+      port: 80
+      targetPort: http # 对应容器端口名 http(9989)
+      protocol: TCP
+      appProtocol: http
+  # SSE 长连接**不需要**会话保持：事件经 Redis pub/sub 跨实例广播，
+  # 客户端重连落到哪个 Pod 都能收到（这也让滚动更新时客户端重连不挑实例）
+  sessionAffinity: None

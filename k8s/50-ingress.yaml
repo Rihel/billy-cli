@@ -1,0 +1,36 @@
+# 常规入口（除 SSE 外的所有接口）。
+# SSE 走同目录 ingress-sse.yaml：ingress-nginx 按「最长路径优先」合并，
+# 故 /sse 命中那份带 proxy-buffering=off 的 Ingress。
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: billy-server
+  namespace: billy
+  labels:
+    app.kubernetes.io/name: billy-server
+  annotations:
+    # 请求体上限与 app 侧一致（app.useBodyParser limit 2mb）
+    nginx.ingress.kubernetes.io/proxy-body-size: "2m"
+    # 读/写超时默认 60s，这里放大以容纳长连接与慢接口
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+    # 探测接口与业务同域，不必额外暴露；探针由 kubelet 直连 Pod，不经 Ingress
+    #
+    # ⚠️ 不要默认开启「重试非幂等请求」：本工程接口几乎全是 POST。
+    # nginx 默认对 POST 不重试（non_idempotent 未开），这是**安全的默认值**。
+    # 开启后，若请求已到达上游而响应丢失，nginx 会重放写请求（重复下单 / 重复创建）。
+    # 只有在接口自身幂等（幂等键 / 分布式锁）时才考虑：
+    # nginx.ingress.kubernetes.io/proxy-next-upstream: "error timeout non_idempotent"
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: api.example.com # ← 替换为你的域名
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: billy-server
+                port:
+                  name: http

@@ -1,0 +1,113 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: billy-server
+  namespace: billy
+  labels:
+    app.kubernetes.io/name: billy-server
+    app.kubernetes.io/component: server
+spec:
+  # 至少 2 副本才有滚动更新可言；3 副本时任何时刻都能容忍 1 个实例不可用
+  replicas: 3
+  # ── 滚动更新：这三项 + preStop 是「滚动更新不 502」的核心 ──
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      # 铁律：先起新 Pod 并等它就绪，再杀旧 Pod。绝不允许 maxUnavailable > 0 ——
+      # 那会让 k8s 在容量不足时一边杀旧一边等新，直接制造 502 窗口
+      maxUnavailable: 0
+      maxSurge: 1
+  # Ready 之后再观察 5s 才算可用：挡住「探针刚通过就失败」的抖动型新 Pod
+  minReadySeconds: 5
+  progressDeadlineSeconds: 600
+  revisionHistoryLimit: 5
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: billy-server
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: billy-server
+        app.kubernetes.io/component: server
+    spec:
+      # 必须 > SHUTDOWN_TIMEOUT_MS(25s) + preStop(8s) = 33s，否则排空没走完就被 SIGKILL，
+      # 在途请求照样被切断（只是从「立刻断」变成「33s 后断」）
+      terminationGracePeriodSeconds: 60
+      # 多副本尽量散到不同节点：单节点故障 / 驱逐不会一次带走全部实例
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                topologyKey: kubernetes.io/hostname
+                labelSelector:
+                  matchLabels:
+                    app.kubernetes.io/name: billy-server
+      containers:
+        - name: server
+          # ← 替换为你的镜像地址与 tag；tag 变了 ConfigMap 的 APP_VERSION 也要同步
+          image: registry.example.com/billy-cli/server:v0.0.0
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 9989
+              protocol: TCP
+          envFrom:
+            - configMapRef:
+                name: billy-server
+            - secretRef:
+                name: billy-server
+          env:
+            # 便于日志与排障关联到具体 Pod（GET /info 也会返回 hostname）
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+          # ── 关闭流程：先等摘流生效，再让进程收到 SIGTERM ──
+          lifecycle:
+            preStop:
+              exec:
+                # k8s 摘除 endpoint 与发送 SIGTERM 是**并发**的（kube-proxy / Ingress 更新规则有延迟）。
+                # SIGTERM 在 preStop 执行完之后才发，所以这里先 sleep 8s 覆盖摘流延迟；
+                # 不这么做的话，窗口内仍被转发的请求会打到正在关闭的进程 → connection refused → 502。
+                command: ["/bin/sh", "-c", "sleep 8"]
+          # ── 探针：存活与就绪语义必须分开（app 侧对应 GET /healthz 与 GET /readyz）──
+          startupProbe:
+            # 进程活着即可：**不探外部依赖**。用 /readyz 会让依赖故障时的 Pod 永远起不来
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 2
+            timeoutSeconds: 2
+            failureThreshold: 30 # 最长容忍 60s 启动（含 DB 连接建立）
+          readinessProbe:
+            # 探 DB / Redis：不可用返回 503 → 主动摘流，不让依赖未就绪的 Pod 接流量
+            httpGet:
+              path: /readyz
+              port: http
+            periodSeconds: 3
+            timeoutSeconds: 2 # 与 app 内 2s 探活超时对齐
+            failureThreshold: 2
+          livenessProbe:
+            # 只证明进程活着：**绝不探外部依赖** —— 探依赖会在抖动时让 k8s 重启所有 Pod（雪崩），
+            # 而重启既不能修好 DB，还会放大故障
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 2
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: "1"
+              memory: 512Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+      securityContext:
+        # Dockerfile 已 `USER appuser`（非 root），这里再做一次显式声明兜底
+        runAsNonRoot: true

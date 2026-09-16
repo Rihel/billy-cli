@@ -19,4 +19,7 @@ logs/
 # 本地开发证书 / 私钥：一律不入库（曾是 admin `next dev --experimental-https` 的产物，已弃用）
 localhost.key
 localhost.crt
+
+# k8s 真实 Secret（明文凭据不入库；k8s/README.md 里有创建命令，生产建议用 SealedSecret / SOPS）
+k8s/secret.yaml
 *.pem

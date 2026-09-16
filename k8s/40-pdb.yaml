@@ -1,0 +1,18 @@
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: billy-server
+  namespace: billy
+  labels:
+    app.kubernetes.io/name: billy-server
+spec:
+  # 节点排水 / 驱逐时最多同时干掉 1 个实例（replicas=3）。
+  # 注意：PDB **不约束滚动更新**（滚动更新不是驱逐，由 maxUnavailable 约束）——
+  # 它挡的是「运维批量驱逐 + 滚动更新叠加」把全部实例一起打死的情况。
+  minAvailable: 2
+  # 不健康的 Pod 不该阻塞节点驱逐（否则一个 CrashLoop 的 Pod 会卡住整个 drain）
+  # 该字段需 k8s ≥ 1.27（1.31 起 GA）；更老的集群删掉这一行即可
+  unhealthyPodEvictionPolicy: AlwaysAllow
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: billy-server
