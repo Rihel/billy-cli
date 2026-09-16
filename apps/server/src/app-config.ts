@@ -53,6 +53,13 @@ export const serverAppConfigSchema = z.object({
        * **不报错、静默接受**（实测确认），所以这里用 superRefine 显式拦住。
        */
       headersTimeoutMs: z.coerce.number().int().positive().default(80_000),
+      /**
+       * 部署版本标识（构建 / 发布时注入，如 git sha、镜像 tag），默认 `dev`。
+       *
+       * 只用于运维核对：`GET /info` 暴露它，滚动更新后确认线上实际跑的是哪个构建
+       * （否则「更新了却没生效」只能靠猜）。
+       */
+      appVersion: z.string().default('dev'),
     })
     .superRefine((value, ctx) => {
       if (value.headersTimeoutMs <= value.keepAliveTimeoutMs) {
@@ -118,6 +125,7 @@ export const mapServerEnv = (
     rateLimitTrustProxy: parseBoolean(env.RATE_LIMIT_TRUST_PROXY),
     keepAliveTimeoutMs: optional(env.KEEP_ALIVE_TIMEOUT_MS),
     headersTimeoutMs: optional(env.HEADERS_TIMEOUT_MS),
+    appVersion: optional(env.APP_VERSION),
   },
   db: {
     url: optional(env.DB_URL),

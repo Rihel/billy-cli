@@ -116,4 +116,9 @@ export const AppErrorCodes = createDict({
     value: 5001,
     http: 500,
   },
+  NotReady: {
+    label: '服务未就绪',
+    value: 5002,
+    http: 503,
+  },
 })

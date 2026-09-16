@@ -37,6 +37,7 @@ import { UserEntity } from './database/entities/user-entity.js'
 import { AdminModule } from './modules/admin/index.js'
 import { AuthModule } from './modules/auth/index.js'
 import { AlertTrigger, MonitorModule } from './modules/monitor/index.js'
+import { OpsModule } from './modules/ops/index.js'
 import { RuntimeConfigModule } from './modules/runtime-config/index.js'
 import { StorageModule } from './modules/storage/index.js'
 import { StreamModule } from './modules/stream/index.js'
@@ -139,6 +140,8 @@ import { UserModule } from './modules/user/index.js'
           }),
         ]
       : []),
+    // ---- 运维探针（根路径 GET，全工程唯一的 GET 例外：k8s 探针只会发 GET）----
+    OpsModule,
     // ---- 业务模块 ----
     AuthModule,
     AdminModule,

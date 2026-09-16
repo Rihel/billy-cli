@@ -2,6 +2,7 @@ import { Inject, Injectable, type NestMiddleware } from '@nestjs/common'
 import { AppLogger } from '@repo/kits'
 import type { NextFunction, Request, Response } from 'express'
 import { requestContext } from '../request-context/index.js'
+import { isOpsProbePath } from '../http/ops-probe.js'
 
 /**
  * 全局请求日志中间件（由 `RequestLoggerModule` 自注册）——替代原先 pino-http 的自动记录。
@@ -25,6 +26,13 @@ export class RequestLoggerMiddleware implements NestMiddleware {
   }
 
   use(request: Request, response: Response, next: NextFunction): void {
+    // 运维探针（/healthz、/readyz）不记日志：k8s 每 3s 一探、每个 pod 都打，
+    // 记下来只会刷屏；依赖故障的排查信息由 /readyz 的响应体与告警覆盖
+    if (isOpsProbePath(request.path)) {
+      next()
+      return
+    }
+
     const startedAt = performance.now()
     // finish 与 close 可能都触发（正常响应也会 close），只记一条
     let logged = false

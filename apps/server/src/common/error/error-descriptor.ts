@@ -1,8 +1,13 @@
 import { HttpException } from '@nestjs/common'
 import { AppErrorCodes } from '@repo/shared'
 
-/** 业务错误码字典映射出的 HTTP 状态（收敛到合法集合） */
-export type ErrorHttpStatus = 400 | 401 | 403 | 404 | 409 | 429 | 500
+/**
+ * 业务错误码字典映射出的 HTTP 状态（收敛到合法集合）。
+ *
+ * 含 `503`：就绪探针（readiness）要在依赖不可用时**主动摘流** —— 返回 500 会被
+ * 误读成「系统错误」，而 503 的语义正是「本实例暂时不接流量」（k8s 只把 2xx/3xx 当成就绪）。
+ */
+export type ErrorHttpStatus = 400 | 401 | 403 | 404 | 409 | 429 | 500 | 503
 
 export interface ErrorDescriptor {
   /** AppResponse.code（业务错误码） */
@@ -22,6 +27,7 @@ const toErrorHttpStatus = (status: unknown): ErrorHttpStatus => {
     case 409:
     case 429:
     case 500:
+    case 503:
       return status
     default:
       return 500
