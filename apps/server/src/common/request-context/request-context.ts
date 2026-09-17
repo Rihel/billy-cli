@@ -8,6 +8,13 @@ export interface RequestContextData {
   userId: string | null
   /** 当前登录管理员 id（后台管理体系；未登录为 null） */
   adminId: string | null
+  /**
+   * 客户端 IP（登录设备列表的会话元数据用；取不到为 null）。
+   * 可选：历史上构造过上下文的地方（如单测）不必补这两个字段。
+   */
+  ip?: string | null
+  /** User-Agent（同上，登录设备识别用） */
+  userAgent?: string | null
 }
 
 const storage = new AsyncLocalStorage<RequestContextData>()

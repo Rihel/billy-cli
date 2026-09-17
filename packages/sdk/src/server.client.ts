@@ -26,10 +26,12 @@ import {
   RegisterDto,
   RemoveAdminDto,
   RemoveTodoDto,
+  RemoveSessionDto,
   RemoveUserDto,
   ResetAdminPasswordDto,
   ResetPasswordDto,
   ResetUserPasswordDto,
+  SessionListModel,
   StoragePresignedUrlModel,
   StorageStsModel,
   SuccessResultModel,
@@ -299,5 +301,16 @@ export class ServerClient extends HttpClient<BearerTokenCredentials> {
 
     health: () =>
       this.post<MonitorHealthModel>('/monitor/health', undefined, { skipAuth: true }),
+  }
+
+  /* ========== 登录设备（会话） ========== */
+
+  session = {
+    /** 需要登录态（前台用户或管理员）：当前身份的全部登录设备（含 current 标记） */
+    list: () => this.post<SessionListModel>('/session/list'),
+
+    /** 需要登录态：按会话 id 下线某台设备（幂等：已失效也返回成功） */
+    remove: (data: RemoveSessionDto) =>
+      this.post<SuccessResultModel>('/session/remove', data),
   }
 }

@@ -15,7 +15,7 @@ import {
   RateLimitModule,
   RedisModule,
   SchedulerModule,
-  SessionModule,
+  SessionStoreModule,
   StreamHubModule,
   TelemetryModule,
 } from '@repo/kits'
@@ -38,6 +38,7 @@ import { AdminModule } from './modules/admin/index.js'
 import { AuthModule } from './modules/auth/index.js'
 import { AlertTrigger, MonitorModule } from './modules/monitor/index.js'
 import { OpsModule } from './modules/ops/index.js'
+import { SessionModule } from './modules/session/index.js'
 import { RuntimeConfigModule } from './modules/runtime-config/index.js'
 import { StorageModule } from './modules/storage/index.js'
 import { StreamModule } from './modules/stream/index.js'
@@ -105,7 +106,7 @@ import { UserModule } from './modules/user/index.js'
       inject: [ConfigService],
       useFactory: (config: ConfigService) => config.get('jwt')!,
     }),
-    SessionModule,
+    SessionStoreModule,
     PasswordModule.forRootAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
@@ -149,6 +150,7 @@ import { UserModule } from './modules/user/index.js'
     TodoModule,
     StorageModule,
     StreamModule,
+    SessionModule,
     MonitorModule,
     RuntimeConfigModule,
   ],

@@ -19,6 +19,7 @@ import { AppLogger } from '@repo/kits'
 import { PasswordHasher } from '@repo/kits'
 import { SessionStore } from '@repo/kits'
 import { TokenSigner } from '@repo/kits'
+import { currentSessionMeta } from '../../common/index.js'
 import { InvalidOldPasswordError, InvalidTokenError } from '../auth/errors.js'
 import { toAdmin, AdminRepository } from './admin.repository.js'
 import {
@@ -59,7 +60,7 @@ export class AdminService {
       sub: admin.id,
       type: ADMIN_TOKEN_TYPE,
     })
-    await this.sessionStore.create(token, { sub: admin.id, type: 'admin' })
+    await this.sessionStore.create(token, { sub: admin.id, type: 'admin' }, currentSessionMeta())
     this.logger.log('admin.login', { id: admin.id })
     return { token, admin }
   }

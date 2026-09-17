@@ -3,6 +3,7 @@ import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { ArrowLeftIcon } from 'lucide-react'
 import { getWebAuthState } from '@/lib/auth-session'
+import { AccountNav } from './nav'
 import { AppName, Pages } from '@/lib/constants'
 
 export const metadata: Metadata = {
@@ -45,6 +46,7 @@ export default async function AccountLayout({
           <span className="text-sm font-medium tracking-tight">个人中心</span>
         </div>
       </header>
+      <AccountNav />
       <main className="mx-auto max-w-3xl px-4 py-10 sm:px-6">{children}</main>
     </div>
   )

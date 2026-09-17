@@ -23,5 +23,11 @@ export const requestContextMiddleware = (
   const requestId = nanoid(16)
   response.setHeader('X-Request-Id', requestId)
   ;(request as Request & { id?: string }).id = requestId
-  requestContext.run({ requestId, userId: null, adminId: null }, () => next())
+
+  // 客户端 IP / UA：登录时写进会话元数据（登录设备列表展示用）。
+  // 取不到就存 null —— 设备列表要能显示「未知」，不能因为缺字段就报错。
+  const ip = request.ip ?? request.socket?.remoteAddress ?? null
+  const userAgent = request.headers['user-agent'] ?? null
+
+  requestContext.run({ requestId, userId: null, adminId: null, ip, userAgent }, () => next())
 }

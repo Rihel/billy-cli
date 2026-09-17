@@ -18,6 +18,7 @@ import {
   useDisclosure,
 } from '@repo/ui'
 import { KeyRoundIcon } from 'lucide-react'
+import { SessionsPanel } from './sessions-panel'
 
 type ChangePasswordForm = {
   oldPassword: string
@@ -110,6 +111,8 @@ export default function UserCenter() {
           />
         </div>
       </div>
+
+      <SessionsPanel />
 
       <ModalForm<ChangePasswordForm>
         title="修改密码"

@@ -17,6 +17,7 @@ import { PasswordHasher } from '@repo/kits'
 import { SessionStore } from '@repo/kits'
 import { TokenSigner } from '@repo/kits'
 import { ConfigService } from '@nestjs/config'
+import { currentSessionMeta } from '../../common/index.js'
 import { resolveServerConfig, type ServerConfig } from '../../config.js'
 import { toUser, UserRepository } from '../user/user.repository.js'
 import { EmailTakenError, UserNotFoundError } from '../user/errors.js'
@@ -56,7 +57,7 @@ export class AuthService {
       await this.userRepository.create({ ...input, password: hashed }),
     )
     const token = await this.tokenSigner.sign({ sub: user.id })
-    await this.sessionStore.create(token, { sub: user.id, type: 'user' })
+    await this.sessionStore.create(token, { sub: user.id, type: 'user' }, currentSessionMeta())
     this.logger.log('auth.registered', { id: user.id })
     return { token, user }
   }
@@ -72,7 +73,7 @@ export class AuthService {
     }
     const user = toUser(record)
     const token = await this.tokenSigner.sign({ sub: user.id })
-    await this.sessionStore.create(token, { sub: user.id, type: 'user' })
+    await this.sessionStore.create(token, { sub: user.id, type: 'user' }, currentSessionMeta())
     this.logger.log('auth.login', { id: user.id })
     return { token, user }
   }
