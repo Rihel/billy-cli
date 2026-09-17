@@ -14,7 +14,10 @@ description: 在 Billy 工程中使用对象存储与文件上传下载：S3/COS
 - 后端门面 `ObjectStorage`（S3 / COS 双 provider）：`getPresignedUrl` / `getDownloadUrl` /
   `getTemporaryCredentials` / `getObject` / `removeObject`，位于
   `kits/src/storage/`（`ObjectStorageModule` 装配）。
-- 路由 `/storage/*`（`modules/storage/storage.controller.ts`，三个端点，均 `@UseGuards(AdminAuthGuard)` 管理员鉴权），SDK `client.storage.*`。
+- 路由 `/storage/*`（`modules/storage/storage.controller.ts`，三个端点，`@UseGuards(AnyAuthGuard)` **前台用户或管理员**），SDK `client.storage.*`。
+- **key 命名空间（安全要点）**：前台用户的 key 由服务端**强制改写**进 `user/{userId}/`（上传）或**必须落在该前缀内**（下载，越界 403）；管理员与鉴权关闭时 key 原样。
+  **STS 临时凭证仍仅限管理员**（`AssumeRole` 给的是整桶权限，与前缀约束不是一回事）。详见
+  `docs/design/storage-access-policy.md` 与 `modules/storage/storage-key.ts`。
 - **上传走预签名直传**：前端 `useStorage` 用 `key = md5+ext` 拿预签名 URL → `PUT` 直传，
   业务只存 `key`，不存完整 URL。
 - 展示 / 下载：`formatStorageUrl(key)`（web/admin 的 `@/lib/constants`）。
@@ -33,3 +36,4 @@ description: 在 Billy 工程中使用对象存储与文件上传下载：S3/COS
 - [ ] 路由复用 `/storage/*` 与 `client.storage.*`，未重复造端点
 - [ ] 新文件字段（如 avatar / 附件）已在 schema / 实体 / 表单三处一致接入
 - [ ] 配置走 `OBJECT_STORAGE_*` 环境变量，未硬编码桶 / 密钥
+- [ ] 新增存储路由时：鉴权用 `AnyAuthGuard`，**前台侧 key 必须经 `storage-key.ts` 的 `resolveUploadKey` / `assertDownloadKey` 收敛**（别直接信任客户端传的 key）

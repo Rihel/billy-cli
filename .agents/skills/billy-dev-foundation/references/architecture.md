@@ -54,7 +54,7 @@ apps/server   NestJS HTTP 边界 + 业务模块 + 实体 / 迁移 + 配置 + 唯
               · rate-limit/   RateLimiter / RateLimitModule（复用 RedisConfig）
               · stream/       StreamHub / StreamConnection / StreamHubModule（SSE）
               · jwt/          TokenSigner / JwtConfig / JwtModule
-              · session/      SessionStore / SessionModule
+              · session/      SessionStore / SessionStoreModule
               · password/     PasswordHasher / PasswordConfig / PasswordModule
               · storage/      ObjectStorage / StorageConfig / ObjectStorageModule（providers/{s3,cos}）
               · kafka/        KafkaService / @KafkaConsumer / KafkaConfig / KafkaModule

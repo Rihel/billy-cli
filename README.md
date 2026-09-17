@@ -219,12 +219,12 @@ pnpm cli -t crud -n product --no-install  # 非交互生成 CRUD 业务模块（
 ├── packages/
 │   ├── shared/                          # @repo/shared
 │   │   └── src/
-│   │       ├── schema/                  # Zod 共享 schema（auth / admin / user / todo / object-storage）
+│   │       ├── schema/                  # Zod 共享 schema（auth / admin / user / todo / object-storage / session / stream / monitor）
 │   │       ├── dicts/                   # app-error-code / user-status 错误码与字典
 │   │       ├── app-response.ts          # AppResponse 统一响应格式 + ResponseUtils
 │   │       ├── logger.ts                # 日志工厂 createLogger（前后端共用；后端经 kits LoggerModule 包装成 AppLogger）
 │   │       ├── browser.ts               # 浏览器端子入口
-│   │       └── utils/                   # nanoid / dayjs / md5 / tree / dict 等工具
+│   │       └── utils/                   # nanoid / dayjs / md5 / tree / dict / user-agent（登录设备展示用）等工具
 │   ├── kits/                            # @repo/kits — 后端通用能力封装（无业务实体）
 │   │   └── src/
 │   │       ├── foundation/              # 横切基础：config / errors / id-generation / logger / scheduler / time-wheel
@@ -235,7 +235,7 @@ pnpm cli -t crud -n product --no-install  # 非交互生成 CRUD 业务模块（
 │   │       ├── rate-limit/              # RateLimiter + RateLimitModule（复用 RedisConfig）
 │   │       ├── stream/                  # StreamHub / StreamConnection + StreamHubModule（SSE）
 │   │       ├── jwt/                     # TokenSigner + JwtModule（JwtConfig）
-│   │       ├── session/                 # SessionStore + SessionModule
+│   │       ├── session/                 # SessionStore + SessionStoreModule
 │   │       ├── password/                # PasswordHasher + PasswordModule（PasswordConfig）
 │   │       ├── storage/                 # ObjectStorage + ObjectStorageModule + providers/{s3,cos}
 │   │       ├── kafka/                   # KafkaService / @KafkaConsumer + KafkaModule（KafkaConfig）
@@ -284,7 +284,7 @@ pnpm cli -t crud -n product --no-install  # 非交互生成 CRUD 业务模块（
   `forRootAsync({ imports: [ConfigModule], inject: [ConfigService], useFactory: (config) => config.get('<命名空间>') })`
   **惰性**取自己的分片（`LoggerModule` / `DbModule` / `RedisModule` / `JwtModule` / `PasswordModule` /
   `ObjectStorageModule` / `NotificationModule`），无自有配置的直接引模块（`RateLimitModule` /
-  `StreamHubModule` / `SessionModule`）；可选模块 `LarkModule` / `KafkaModule` 用展开语法按 env 是否存在决定；
+  `StreamHubModule` / `SessionStoreModule`）；可选模块 `LarkModule` / `KafkaModule` 用展开语法按 env 是否存在决定；
   再注册各业务模块（`AuthModule` / `AdminModule` / `UserModule` / `TodoModule` / `StorageModule` /
   `StreamModule` / `MonitorModule` / `RuntimeConfigModule`）；`providers` 里用 `APP_PIPE` / `APP_FILTER` /
   `APP_INTERCEPTOR` 注册全局管道、过滤器与拦截器。
@@ -316,7 +316,7 @@ pnpm cli -t crud -n product --no-install  # 非交互生成 CRUD 业务模块（
 
 面向 C 端的前台应用，使用 **Base UI + shadcn/ui**（来自 `@repo/ui`）与 Tailwind 4。
 
-- 页面：`/`（首页）、`/auth/*`（登录 / 注册 / 忘记密码 / 重置密码）、`/account`（**个人中心**，受保护用户区）、`/comparison`（竞品调研）、`/markdown/*`（Markdown 渲染示例）
+- 页面：`/`（首页）、`/auth/*`（登录 / 注册 / 忘记密码 / 重置密码）、`/account`（**个人中心**：账号资料）与 `/account/sessions`（**登录设备**：列表 + 单设备下线），受保护用户区、`/comparison`（竞品调研）、`/markdown/*`（Markdown 渲染示例）
 - Server Actions（`actions/auth.actions.ts`）封装登录 / 注册 / 忘记密码 / 重置密码 / 登出，token 写入 httpOnly cookie
 - `lib/server-client.ts`：浏览器端单例（`LocalStorageCredentialsManager` 管理 token，baseUrl 走 `NEXT_PUBLIC_SERVER_URL`）+ 服务端无状态客户端（`MemoryCredentialsManager` + 显式传入 token，baseUrl 走运行时 `SERVER_URL`）；httpOnly cookie 在 `lib/auth-session.ts` 读取
 - `providers/QueryProvider.tsx` 注入 TanStack Query（`QueryCache` / `MutationCache` 的 `onError` 统一 toast）；`providers/WebStorageProvider.tsx` 把 `@repo/ui` 的上传组件接到 `storage.getPresignedUrl`
@@ -332,7 +332,7 @@ pnpm cli -t crud -n product --no-install  # 非交互生成 CRUD 业务模块（
 （`ModalForm` / `DrawerForm` / `FormRenderer` 声明式 items），适合表格 / 表单 / 权限类页面。
 登录使用**后台管理员**账号（`AdminEntity`，`/admin/*` 接口），与前台用户体系隔离。
 
-- 页面：`/auth/login`（管理员登录）、`/main/dashboard`、`/main/todo`、`/main/user-center`、
+- 页面：`/auth/login`（管理员登录）、`/main/dashboard`、`/main/todo`、`/main/user-center`（含**登录设备**区块）、
   `/main/system/users`、`/main/system/admins`（管理员管理）、`/main/monitor/live`（**实时告警**，SSE）、
   `/main/monitor/rules`（告警规则）、`/main/monitor/logs`（告警记录）、`/main/automation`（自动化演示）
 - 实时告警页把 SSE 链路走通：`client.createStream()`（`@repo/sdk`）→ `useStream`（`@repo/ui`）
@@ -400,7 +400,7 @@ Zod schema 单一事实源，同时派生 TypeScript 类型（`*.schema.ts` 导�
     `rate-limit.module.ts`（`RateLimitModule`，复用 `RedisConfig`）
   - `stream/`：`stream-hub.ts` / `stream-connection.ts`（SSE 推流）+ `stream-hub.module.ts`
   - `jwt/`：`token-signer.ts` + `jwt.config.ts`（`JwtConfig`）+ `jwt.module.ts`
-  - `session/`：`session-store.ts` + `session.module.ts`
+  - `session/`：`session-store.ts`（会话存储：校验 / 撤销 / 登录设备列表 / 单设备下线）+ `session.module.ts`
   - `password/`：`password-hasher.ts` + `password.config.ts`（`PasswordConfig`）+ `password.module.ts`
   - `storage/`：`object-storage.ts` + `storage.config.ts`（`StorageConfig`）+
     `object-storage.module.ts` + `providers/{s3,cos}.ts`
@@ -430,7 +430,7 @@ Zod schema 单一事实源，同时派生 TypeScript 类型（`*.schema.ts` 导�
 | `RateLimitModule` | 无（复用 RedisConfig） | RateLimiter |
 | `StreamHubModule` | 无（复用 RedisConfig + IdGeneration） | StreamHub |
 | `JwtModule` | `{ secret?, expiresIn? }` | JwtConfig + TokenSigner |
-| `SessionModule` | 无（复用 JwtConfig + RedisStore） | SessionStore |
+| `SessionStoreModule` | 无（复用 JwtConfig + RedisStore） | SessionStore |
 | `PasswordModule` | `{ passwordHashRounds? }` | PasswordConfig + PasswordHasher |
 | `ObjectStorageModule` | StorageConfig 输入 | StorageConfig + ObjectStorage |
 | `LarkModule` | LarkConfig 输入 | LarkConfig + LarkClient |
@@ -453,7 +453,7 @@ Zod schema 单一事实源，同时派生 TypeScript 类型（`*.schema.ts` 导�
 ### apps/server 业务模块
 
 业务三层（module + controller + service + repository + errors）位于
-`apps/server/src/modules/{auth,admin,user,todo,monitor,storage,stream,runtime-config}`，
+`apps/server/src/modules/{auth,admin,user,todo,monitor,storage,stream,session,runtime-config}`，
 实体 / 迁移位于 `apps/server/src/database/`（`data-source.ts` 供 `db:generate` / `db:migrate`），
 横切 HTTP 构件位于 `apps/server/src/common/`：
 
@@ -505,7 +505,7 @@ import {
   RateLimitModule,
   RedisModule,
   SchedulerModule,
-  SessionModule,
+  SessionStoreModule,
   StreamHubModule,
   TelemetryModule,
 } from '@repo/kits'
@@ -552,7 +552,7 @@ import { TodoModule } from './modules/todo/index.js'
       inject: [ConfigService],
       useFactory: (config: ConfigService) => config.get('jwt')!,
     }),
-    SessionModule,
+    SessionStoreModule,
     PasswordModule.forRootAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
@@ -712,7 +712,7 @@ sidebar / toast / chart 等），Tailwind 4 主题变量由 `globals.css` 提供
 - 每个基础设施一个 `@Global()` NestJS 模块，需要配置的都提供 `forRoot(options)` 与
   `forRootAsync(options)` 两种装配方式：`LoggerModule` / `DbModule` / `RedisModule` / `JwtModule` /
   `PasswordModule` / `ObjectStorageModule` / `NotificationModule` / `LarkModule` / `KafkaModule`；
-  `RateLimitModule` / `StreamHubModule` / `SessionModule` 复用上游模块的配置 bean
+  `RateLimitModule` / `StreamHubModule` / `SessionStoreModule` 复用上游模块的配置 bean
   （RedisConfig / JwtConfig / IdGeneration），`IdGenerationModule` / `TelemetryModule` /
   `SchedulerModule` 无配置；模块内部 `Schema.parse(...)` 校验 + 补默认值，**配置对象本身就是该模块的
   注入 bean**（`DbConfig` / `RedisConfig` / `JwtConfig` / `PasswordConfig` / `StorageConfig` /
@@ -742,7 +742,9 @@ sidebar / toast / chart 等），Tailwind 4 主题变量由 `globals.css` 提供
 
 ### 认证
 
-- JWT token，通过 `Authorization: Bearer` 或 `access-token` cookie 传递
+- JWT token，通过 `Authorization: Bearer` 或 `access-token` cookie 传递；payload 带
+  `jti`（唯一 id，`TokenSigner.sign` 显式写入）—— 否则同一秒内重复登录会签出**逐字节相同**的
+  token，服务端会话按 `sha256(token)` 主键会把两台设备合并成一条
 - `UserAuthGuard`（`modules/auth/user-auth.guard.ts`）与 `AdminAuthGuard`
   （`modules/admin/admin-auth.guard.ts`）调用业务 `verifyToken`，校验通过后把 `userId` /
   `adminId` 写入 AsyncLocalStorage 请求上下文（管理员 token payload 带 `type: 'admin'`）
@@ -752,6 +754,10 @@ sidebar / toast / chart 等），Tailwind 4 主题变量由 `globals.css` 提供
   中间件做首屏路由守卫
 - Web 侧：`onUnauthorized` 回调 + Server Actions 返回 `ActionResult` 结构
 - Admin 客户端：token 存 localStorage，同时写 httpOnly cookie 供 SSR 守卫使用
+- **登录设备（会话管理）**：会话写入 Redis 时带 `sessionId` / `ip` / `userAgent` / 时间；
+  `POST /session/list`（标出 `current`）与 `POST /session/remove`（按 `sessionId` 幂等下线），
+  前台用户与管理员共用（`AnyAuthGuard`）。入口：web `/account/sessions`、admin 个人中心。
+  设计见 [docs/design/session-management.md](docs/design/session-management.md)
 
 ### API 设计
 
@@ -816,9 +822,11 @@ sidebar / toast / chart 等），Tailwind 4 主题变量由 `globals.css` 提供
 | `POST /todo/detail`                  | Todo 详情        | 管理员 |
 | `POST /todo/update`                  | 更新 Todo        | 管理员 |
 | `POST /todo/remove`                  | 删除 Todo        | 管理员 |
-| `POST /storage/get-presigned-url`    | 获取上传预签名 URL | 管理员 |
-| `POST /storage/get-download-url`     | 获取下载预签名 URL | 管理员 |
-| `POST /storage/get-temporary-credentials` | 获取 STS 临时凭证 | 管理员 |
+| `POST /storage/get-presigned-url`    | 获取上传预签名 URL（前台用户 key 被改写进 `user/{userId}/`） | 用户 / 管理员 |
+| `POST /storage/get-download-url`     | 获取下载预签名 URL（前台用户仅限自己前缀，越界 403） | 用户 / 管理员 |
+| `POST /storage/get-temporary-credentials` | 获取 STS 临时凭证（整桶权限，**仅管理员**） | 管理员 |
+| `POST /session/list`                 | 登录设备列表（含 `current` 标记） | 用户 / 管理员 |
+| `POST /session/remove`               | 下线指定设备（按 `sessionId`，幂等） | 用户 / 管理员 |
 | `POST /sse/subscribe`              | SSE 订阅（长连接推流，body `{ channels: [...] }`） | 是 |
 | `GET /healthz`                     | 存活探针（livenessProbe，**不探外部依赖**，进程活着即 200） | 否 |
 | `GET /readyz`                      | 就绪探针（readinessProbe，探 DB / Redis，不可用返回 **503** + `code: 5002` 主动摘流） | 否 |
@@ -1132,6 +1140,8 @@ AI 编码 Agent 按任务**按需加载**，工具无关（Claude Code / Codex /
 - [docs/design/nestjs-migration.md](docs/design/nestjs-migration.md) — 后端重构设计（删除 @repo/di、迁移 NestJS 12、kits 全面 Nest 化）
 - [docs/design/backend-kits-refactor.md](docs/design/backend-kits-refactor.md) — kits 通用能力封装设计（一个基础设施一个 module）
 - [docs/design/sse.md](docs/design/sse.md) — 服务端推送（SSE / StreamHub）设计
+- [docs/design/session-management.md](docs/design/session-management.md) — 会话管理（登录设备列表 + 单设备下线）
+- [docs/design/storage-access-policy.md](docs/design/storage-access-policy.md) — 对象存储访问策略（前台可上传 + key 命名空间约束）
 - [docs/design/frontend-foundation.md](docs/design/frontend-foundation.md) — 前端基础建设（质量门 + SSE 前端链路 + 前台业务闭环 + 实测记录）
 - [docs/design/monitor-alert.md](docs/design/monitor-alert.md) — 监控告警设计（规则 / 触发 / 通道）
 - [docs/design/auth-session.md](docs/design/auth-session.md) — 认证与会话设计（JWT + Redis 会话）

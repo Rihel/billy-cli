@@ -55,7 +55,7 @@
   `*.config.ts` schema** 组成命名空间，`mapServerEnv` 负责环境变量映射；新增需要配置的基础设施时，
   在这里加一个命名空间 + `ConfigService.get('<命名空间>')` 即可。
 - 无自有配置、复用上游配置 bean 的模块写成纯模块（如 `RateLimitModule` /
-  `StreamHubModule` / `SessionModule`）。
+  `StreamHubModule` / `SessionStoreModule`）。
 - 连接串 / 密钥从配置来，禁止硬编码；实现 `OnApplicationBootstrap` / `OnApplicationShutdown`
   管理连接建立 / 释放，生命周期由 Nest 在 `app.close()` 时逆序释放。
 - 失败抛 `InfrastructureError` 子类（`foundation/errors/infrastructure-errors.ts`），

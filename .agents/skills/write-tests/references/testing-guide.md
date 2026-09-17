@@ -6,8 +6,8 @@
 
 ## 1. 工程测试现状与接入
 
-- 框架：**vitest**（由各测试包自行声明：`@repo/http-client`、`@repo/kits`、`@app/server`、
-  `@repo/ui`、`@app/web`、`@app/admin`；根 `package.json` 不含 vitest）。
+- 框架：**vitest**（由各测试包自行声明：`@repo/http-client`、`@repo/kits`、`@repo/shared`、
+  `@app/server`、`@repo/ui`、`@app/web`、`@app/admin`；根 `package.json` 不含 vitest）。
 - 现有示例：`packages/http-client/test/`（http-client.test.ts 覆盖策略 / 管理器 / provider /
   请求流程；stream-parser / stream-transport / stream-client 覆盖 SSE 解析与状态机）；
   `packages/kits/test/stream-hub.test.ts`（mock ioredis 的 pub/sub，覆盖本地直推、跨实例广播、
@@ -17,6 +17,8 @@
     `packages/ui/vitest.config.ts`（`environment: 'jsdom'`，JSX 由 vitest 4 的 oxc 转换，
     不要再设 `esbuild.jsx` 否则被忽略并告警）；测试经 `test/` 目录，示例
     `test/tag.test.tsx`（组件 DOM 断言）、`test/use-stream.test.ts`（`renderHook` + 手写替身客户端）。
+  - `@repo/shared` 用默认 **node 环境**测纯函数 / 纯逻辑（如 `test/user-agent.test.ts` 的 UA 解析），
+    包内 tsconfig 的 `include` 含 `test`，测试同样受 `pnpm typecheck` 覆盖；
   - `@app/web` / `@app/admin` 用默认 **node 环境**测纯逻辑（`test/constants.test.ts` /
     `test/redirect.test.ts` / `test/theme.store.test.ts`），需要 DOM 时再改 jsdom。
   - 包内 `#components/*` / `#lib/*` 子路径导入由 vite 解析 package.json 的 `imports` 字段，

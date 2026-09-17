@@ -3,6 +3,12 @@
 > 目标：修复认证鉴权体系的两个系统性缺陷——①路由鉴权挂错体系（管理接口误用前台用户鉴权）；
 > ②JWT 纯无状态，禁用 / 删除 / 登出对已签发 token 不生效。
 > 方案：**服务端会话存 Redis，每次请求校验 JWT 后查会话**，登出 / 禁用 / 删除即时撤销。
+>
+> 2026-09-17 更新：会话负载扩展为「主体 + `sessionId` + 时间 + IP / UA」，并新增
+> **登录设备列表 + 单设备下线**（`modules/session`，用户与管理员共用）；同时给 JWT 补
+> **`jti`** —— 原先同一秒内重复登录会签出逐字节相同的 token，而会话以 `sha256(token)`
+> 为主键，会把两台设备合并成一条。详见 `docs/design/session-management.md`
+> （本文第 3 节的 key 设计以该文为准）。
 
 ## 1. 背景与问题（审计结论）
 
@@ -36,7 +42,7 @@ Redis 会话支持**主动失效**（登出 / 禁用 / 删除即踢下线），�
 | --- | --- |
 | 能力性质 | 横切基础设施（认证会话门面） |
 | 落点 | `packages/kits/src/session/session-store.ts`（`SessionStore`） |
-| 注册 | `SessionModule` 装配（`@Global()`，复用 `JwtModule` 的 `JwtConfig` 与 `RedisModule` 的 `RedisStore`；业务模块直接 `@Inject(SessionStore)`）；`session/index.ts` 聚合后由 `packages/kits/src/index.ts` 导出 |
+| 注册 | `SessionStoreModule` 装配（`@Global()`，复用 `JwtModule` 的 `JwtConfig` 与 `RedisModule` 的 `RedisStore`；业务模块直接 `@Inject(SessionStore)`）；`session/index.ts` 聚合后由 `packages/kits/src/index.ts` 导出 |
 | 依赖 | 复用 `RedisStore`（ioredis）+ `AppConfig`（`jwt.expiresIn` 解析 TTL），无新增依赖 |
 | 错误 | `RedisStoreError`（`AppErrorCodes.Internal`） |
 

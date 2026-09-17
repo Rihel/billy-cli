@@ -24,15 +24,25 @@ token 里带类型标识，`verifyToken` 分别校验，混用必然失败。
 
 - **签发**：登录成功后由 `AuthService` / `AdminService` 签发 token
   （`TokenSigner`，JWT，`JWT_SECRET` / `JWT_EXPIRES_IN` 配置，见
-  `packages/kits/src/jwt/token-signer.ts`）。响应模型**按体系区分**：
+  `packages/kits/src/jwt/token-signer.ts`）。**必须带 `jti`**：jsonwebtoken 只自动补秒级
+  `iat`/`exp`，同一 `sub` 在同一秒内登录两次会签出**逐字节相同**的 token，而会话以
+  `sha256(token)` 为主键 —— 会直接导致「两台设备合并成一条会话」（UA 互相覆盖、
+  下线一台等于下线两台），故 `sign()` 里显式 `jwtid`。响应模型**按体系区分**：
   用户登录 `AuthResultModel`（`auth.schema.ts`），管理员登录 `AdminAuthResultModel`
   （`admin.schema.ts`，`{ token, admin }`）。
 - **服务端会话（Redis）**：签发 JWT 的同时由 `SessionStore`
   （`packages/kits/src/session/session-store.ts`）把会话写入 Redis——
-  key `auth:session:{sha256(token)}`（TTL 与 JWT 有效期一致）+ 索引
-  `auth:index:{type}:{sub}`（Set，供批量踢人）。**每次请求校验 JWT 后必须查 Redis
-  会话存在**，登出 / 禁用 / 删除会撤销会话，使已签发 token 立即失效
-  （见 `AuthService.verifyToken` / `AdminService.verifyToken`）。
+  key `auth:session:{sha256(token)}`（TTL 与 JWT 有效期一致，负载含 `sessionId` /
+  `createdAt` / `lastSeenAt` / `ip` / `userAgent`）+ 索引 `auth:index:{type}:{sub}`
+  （Set，供批量踢人）+ 反查 `auth:sid:{type}:{sub}:{sessionId}`（单设备下线的 O(1) 定位）。
+  **每次请求校验 JWT 后必须查 Redis 会话存在**，登出 / 禁用 / 删除会撤销会话，
+  使已签发 token 立即失效（见 `AuthService.verifyToken` / `AdminService.verifyToken`）。
+  登录时通过 `currentSessionMeta()`（`common/request-context`）把 IP / UA 从 ALS 写进会话。
+- **登录设备（会话管理）**：`modules/session` 提供 `POST /session/list`（含 `current` 标记）与
+  `POST /session/remove`（按 `sessionId` 下线，**幂等**）；鉴权用 `AnyAuthGuard`（任一身份），
+  作用域锁定当前身份（`type` + `sub`），换别人的 `sessionId` 命中不了。
+  前端入口：web `/account/sessions`、admin 个人中心「登录设备」区块。
+  设计（key 设计、旧会话兼容、索引修剪）见 `docs/design/session-management.md`。
 - **登出**：`/auth/logout`、`/admin/logout` **幂等**（不挂鉴权守卫，token 有效则
   撤销会话、无效也返回成功）——前端 `onUnauthorized` 调用不会形成 401 循环。
 - **校验**：`apps/server/src/common/security/authentication.ts` 的 `extractToken` 支持两种携带方式：
@@ -50,6 +60,7 @@ token 里带类型标识，`verifyToken` 分别校验，混用必然失败。
 @Controller('xxx')
 @UseGuards(UserAuthGuard)          // 前台用户
 // @UseGuards(AdminAuthGuard)      // 后台管理员（参考 modules/admin/admin.controller.ts）
+// @UseGuards(AnyAuthGuard)        // 任一身份（前端用户或管理员）；见 modules/storage、modules/session
 export class XxxController {}
 ```
 

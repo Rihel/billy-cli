@@ -32,13 +32,18 @@ OBJECT_STORAGE_ENDPOINT=http://localhost:9000   # MinIO 本地
 未配置时用默认值；`docker compose up minio` 可起本地 MinIO 联调。
 
 ## 3. 路由（apps/server/src/modules/storage/storage.controller.ts：`@Controller('storage')` +
-`@UseGuards(AdminAuthGuard)`，均 `@HttpCode(200)`）
+`@UseGuards(AnyAuthGuard)`（前台用户或管理员），均 `@HttpCode(200)`）
 
-| 端点 | 入参 schema | 说明 |
-| --- | --- | --- |
-| `/storage/get-presigned-url` | `GetStorageUploadPresignedUrlSchema` | 上传预签名 |
-| `/storage/get-download-url` | `GetStorageDownloadUrlSchema` | 下载预签名 |
-| `/storage/get-temporary-credentials` | 无入参（取 `currentAdminId()`） | STS 临时凭证 |
+| 端点 | 入参 schema | 前台用户 | 管理员 |
+| --- | --- | --- | --- |
+| `/storage/get-presigned-url` | `GetStorageUploadPresignedUrlSchema` | key 被**改写**为 `user/{userId}/{basename}` | key 原样 |
+| `/storage/get-download-url` | `GetStorageDownloadUrlSchema` | 仅限 `user/{userId}/` 前缀，越界 **403** | key 原样 |
+| `/storage/get-temporary-credentials` | 无入参 | **拒绝（403）**，仅管理员 | `AssumeRole` 临时凭证 |
+
+key 收敛是纯函数（`modules/storage/storage-key.ts`，可单测）：只取最后一段 + 白名单字符，
+杜绝目录穿越与伪造他人前缀；身份从 `requestContext` 读（双身份下必有一个缺失，
+**不要**用会抛错的 `currentUserId()` / `currentAdminId()`）。设计说明见
+`docs/design/storage-access-policy.md`。
 
 ## 4. SDK
 
@@ -59,6 +64,8 @@ await fetch(presigned.url, { method: 'PUT', body: file, ... })  // 直传
 ```
 
 - `key` 由前端计算（`getFileInfo` 得 md5 + ext），**内容寻址**：同一文件上传不重复占空间。
+- **必须用响应里的 `presigned.key` 落库**（而不是本地算出的 key）：前台用户的 key 由服务端
+  加上 `user/{userId}/` 前缀后回传（`useStorage` 已如此实现），用本地 key 会指向不存在的对象。
 - 上传成功后把 `key` 存入业务字段（如 avatar），**不存完整 URL**。
 
 ### 展示 / 下载

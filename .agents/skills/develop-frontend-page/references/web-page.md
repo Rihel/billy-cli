@@ -61,3 +61,13 @@ export const xxxAction = wrapAction(async (input: I) => {
 | Toast 容器 | `apps/web/src/app/layout.tsx` 的 `<Toaster />` | 没有它 `toastSuccess` / Query 错误提示全都无声 |
 
 - 应用级兜底文件：`app/error.tsx`（客户端，`reset` 重试）、`app/not-found.tsx`、`app/loading.tsx`。
+
+## 5. 受保护区内的多页导航
+
+用户在受保护区里有多页时（例：`/account` 账号资料、`/account/sessions` 登录设备），
+放一个**客户端区段导航**（`apps/web/src/app/account/nav.tsx`：`usePathname()` 高亮当前页）
+在区 layout 的 header 之下；守卫仍由 `proxy.ts` 的 matcher 前缀 + 区 layout 统一负责，子页不重复判断。
+
+列表 + 行内操作（如「下线该设备」）的样板见 `apps/web/src/app/account/sessions/page.tsx`：
+`useQuery` 拉列表 → `ConfirmAction`（`@repo/ui`，危险操作二次确认）→ `useMutation` +
+`invalidateQueries` 刷新；本机条目不给危险按钮（要退出请用登出）。
