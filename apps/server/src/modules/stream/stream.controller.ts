@@ -12,7 +12,7 @@ import { StreamHub, type StreamFrame } from '@repo/kits'
 import { StreamSubscribeSchema } from '@repo/shared'
 import type { StreamSubscribeDto } from '@repo/shared'
 import type { Request, Response } from 'express'
-import { currentAdminId, currentUserId } from '../../common/index.js'
+import { requestContext } from '../../common/index.js'
 import { StreamAuthGuard } from './stream-auth.guard.js'
 import { SSE_ROUTE_OPTIONS, type SseRouteOptions } from './stream.options.js'
 
@@ -53,6 +53,48 @@ const resolveChannels = (
 }
 
 /**
+ * 解析本次连接实际订阅的频道（身份频道 / 广播频道 / 业务频道三类）：
+ *
+ * 1. **身份频道**（`user:{userId}` / `admin:{adminId}`）：由服务端按当前身份强制注册，客户端指定无效；
+ * 2. **广播频道**（`options.broadcastChannels`）：只放行与当前身份**同域**的项（管理员只拿
+ *    `admin:` 前缀、用户只拿 `user:` 前缀），跨域静默忽略 —— 否则前台用户就能收到管理员广播；
+ * 3. **业务频道**：走 `allowChannel` 白名单（默认全拒）。
+ *
+ * `auth: 'both'` 按实际通过的身份订阅；鉴权关闭（`AUTH_ENABLED=false`，无任何身份）时
+ * 仅订阅广播频道 —— 该模式下守卫本就全放行、应用完全开放，这里与整体姿态一致。
+ */
+const resolveSubscriptions = (
+  requested: string[],
+  options: Required<SseRouteOptions>,
+  identity: { userId?: string; adminId?: string },
+): string[] => {
+  const result = new Set<string>()
+
+  const subscribeDomain = (domain: 'user' | 'admin') => {
+    const id = domain === 'admin' ? identity.adminId : identity.userId
+    if (id) result.add(`${domain}:${id}`)
+    for (const channel of options.broadcastChannels) {
+      if (channel.startsWith(`${domain}:`)) result.add(channel)
+    }
+  }
+
+  if (options.auth === 'admin') subscribeDomain('admin')
+  else if (options.auth === 'user') subscribeDomain('user')
+  else {
+    if (identity.userId) subscribeDomain('user')
+    if (identity.adminId) subscribeDomain('admin')
+    if (!identity.userId && !identity.adminId) {
+      for (const channel of options.broadcastChannels) result.add(channel)
+    }
+  }
+
+  for (const channel of resolveChannels(requested, options.allowChannel)) {
+    result.add(channel)
+  }
+  return [...result]
+}
+
+/**
  * SSE 服务端推流路由：`POST /sse/subscribe`（Bearer / cookie 认证），
  * body `{ channels: ['task:42'] }` → 长连接推流（HTTP 长连接由 kits StreamHub 管理）。
  *
@@ -77,10 +119,12 @@ export class StreamController {
     @Res() response: Response,
     @Req() request: Request,
   ): Promise<void> {
-    const identityChannel =
-      this.options.auth === 'admin'
-        ? `admin:${currentAdminId()}`
-        : `user:${currentUserId()}`
+    // 身份直接读 ALS（**不要**用 currentUserId / currentAdminId：它们在身份缺失时抛错，
+    // 而 'both' 模式下必然有一个缺失 —— 管理员连接没有 userId、用户连接没有 adminId）
+    const channels = resolveSubscriptions(input.channels, this.options, {
+      userId: requestContext.get('userId') ?? undefined,
+      adminId: requestContext.get('adminId') ?? undefined,
+    })
 
     // SSE 响应头
     response.writeHead(200, {
@@ -89,6 +133,10 @@ export class StreamController {
       'Cache-Control': 'no-cache',
       Connection: 'keep-alive',
     })
+    // 立即把响应头发出去：否则 Node 会等第一次 write 才 flush，而长连接的下一次写可能是
+    // 15s 后的心跳 —— 客户端 fetch 迟迟不 resolve，连接状态一直停在 connecting（表现为
+    // 「已连上却显示连接中」，且前置网关的空闲超时可能先把它掐掉）。
+    response.flushHeaders()
 
     // 客户端断开（Express 'close'）→ abort → StreamConnection.close → closed resolve
     const abort = new AbortController()
@@ -102,9 +150,8 @@ export class StreamController {
       signal: abort.signal,
     })
 
-    // 强制注册身份频道 + 白名单业务频道
-    this.hub.subscribe(connection, identityChannel)
-    for (const channel of resolveChannels(input.channels, this.options.allowChannel)) {
+    // 身份频道（服务端强制）+ 同域广播频道 + 白名单业务频道
+    for (const channel of channels) {
       this.hub.subscribe(connection, channel)
     }
 

@@ -10,7 +10,12 @@ import { AlertTrigger } from '../src/modules/monitor/alert-trigger.js'
 import type { AlertRuleRepository } from '../src/modules/monitor/alert-rule.repository.js'
 import type { AlertLogRepository } from '../src/modules/monitor/alert-log.repository.js'
 import type { Notifier } from '@repo/kits'
-import type { LarkNotifyClient, EmailClient } from '@repo/kits'
+import type { LarkNotifyClient, EmailClient, StreamHub } from '@repo/kits'
+import {
+  AlertFiredEventSchema,
+  STREAM_ADMIN_BROADCAST_CHANNEL,
+  STREAM_ALERT_FIRED_EVENT,
+} from '@repo/shared'
 import type { AlertRuleEntity } from '../src/database/entities/alert-rule-entity.js'
 import { testLogger } from './helpers/logger.js'
 
@@ -67,6 +72,7 @@ const createService = (overrides: {
       evalHandlers.push(async () => handler())
     }),
   } as unknown as Scheduler
+  const streamHub = { publish: vi.fn() } as unknown as StreamHub
   const service = new AlertTrigger(
     { enabled, emailTo: 'ops@corp.com' },
     ruleRepository,
@@ -75,11 +81,23 @@ const createService = (overrides: {
     telemetry,
     scheduler,
     testLogger(),
+    streamHub,
     fileClient,
     larkNotify,
     email,
   )
-  return { service, ruleRepository, logRepository, notifier, fileClient, larkNotify, email, telemetry, evalHandlers }
+  return {
+    service,
+    ruleRepository,
+    logRepository,
+    notifier,
+    streamHub,
+    fileClient,
+    larkNotify,
+    email,
+    telemetry,
+    evalHandlers,
+  }
 }
 
 describe('AlertTrigger（规则匹配 → 限频 → 通知 → 落审计）', () => {
@@ -316,5 +334,44 @@ describe('AlertTrigger（规则匹配 → 限频 → 通知 → 落审计）', (
     // fileClient configured=true → 默认通道含 file
     await service.notifyError(new Error('未捕获异常'))
     expect(notifier.send).toHaveBeenCalledWith('file', expect.anything())
+  })
+
+  it('每次通道发送后推 SSE 告警事件到管理员广播频道（负载符合共享契约）', async () => {
+    const { service, streamHub } = createService({ rules: [mockRule()] })
+
+    await service.notifyError(Object.assign(new Error('邮箱或密码错误'), { code: 1002 }), {
+      path: '/auth/login',
+      requestId: 'req-1',
+    })
+
+    // 规则含 lark + email 两个通道 → 两条推送
+    expect(streamHub.publish).toHaveBeenCalledTimes(2)
+    const [channel, event] = (streamHub.publish as ReturnType<typeof vi.fn>).mock.calls[0] as [
+      string,
+      { event: string; data: unknown },
+    ]
+    expect(channel).toBe(STREAM_ADMIN_BROADCAST_CHANNEL)
+    expect(event.event).toBe(STREAM_ALERT_FIRED_EVENT)
+
+    // 推送负载必须能被**前后端共用的 schema** 解析（否则前端页面拿不到数据）
+    const parsed = AlertFiredEventSchema.safeParse(event.data)
+    expect(parsed.success).toBe(true)
+    expect(parsed.success && parsed.data).toMatchObject({
+      ruleId: 'rule-1',
+      ruleName: '业务错误告警',
+      channel: 'lark',
+      status: 'success',
+      error: null,
+    })
+  })
+
+  it('推送失败不影响告警主流程（已发送 + 已落库）', async () => {
+    const { service, streamHub, logRepository } = createService({ rules: [mockRule()] })
+    ;(streamHub.publish as ReturnType<typeof vi.fn>).mockImplementation(() => {
+      throw new Error('hub 未启动')
+    })
+
+    await expect(service.notifyError(Object.assign(new Error('x'), { code: 1002 }))).resolves.toBeUndefined()
+    expect(logRepository.save).toHaveBeenCalledTimes(2)
   })
 })

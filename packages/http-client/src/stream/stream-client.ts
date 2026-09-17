@@ -28,13 +28,17 @@ const STATE_EVENTS = [
  * - 认证编排（复用本包的 CredentialResolver / AuthStrategy / CredentialsManager）
  *
  * 零第三方依赖：传输层基于原生 fetch + ReadableStream。
+ *
+ * 凭证类型对构造参数泛型化（默认 `Record<string, any>`）：SSE 与普通请求共用同一份凭证，
+ * 调用方传 `LocalStorageCredentialsManager<BearerTokenCredentials>` 这类具体管理器时，
+ * 不再需要断言（`CredentialsManager` 的 `setCredentials` 入参使类型不变，无法靠协变兼容）。
  */
-export class HttpStreamClient {
+export class HttpStreamClient<Credentials = Record<string, any>> {
   private state: StreamClientState = StreamClientState.Idle
   private listeners = new Map<string, Set<StreamEventHandler>>()
   private controller: AbortController | null = null
   private conn: StreamConnection | null = null
-  private resolver: CredentialResolver
+  private resolver: CredentialResolver<Credentials>
   private retryCount = 0
   private serverRetry: number | undefined
   private lastEventId = ''
@@ -44,7 +48,7 @@ export class HttpStreamClient {
   private serverShutdown = false
   private visibilityHandler: (() => void) | null = null
 
-  constructor(private readonly options: StreamClientOptions) {
+  constructor(private readonly options: StreamClientOptions<Credentials>) {
     this.resolver = new CredentialResolver(
       options.credentialsManager,
       options.authStrategy,

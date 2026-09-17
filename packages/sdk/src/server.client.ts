@@ -51,19 +51,61 @@ import {
   UpdateUserDto,
   UserModel,
 } from '@repo/shared'
-import { HttpClient, type HttpClientOptions } from '@repo/http-client'
+import { HttpClient, HttpStreamClient, type HttpClientOptions } from '@repo/http-client'
 import type {
   BearerTokenCredentials,
+  CredentialsManager,
 } from '@repo/http-client'
 import { BearerTokenStrategy } from '@repo/http-client'
 
+/** SSE 长连接创建选项 */
+export interface CreateStreamOptions {
+  /**
+   * 业务频道（如 `task:42`）。
+   * 身份频道（`user:{id}` / `admin:{id}`）与广播频道由服务端按登录身份强制注入，
+   * 客户端无需（也不应）指定 —— 请求里的 `user:*` / `admin:*` 会被服务端忽略。
+   */
+  channels?: string[]
+  /** 浏览器：页面隐藏时是否保持连接，默认 false（隐藏断开、恢复后自动重连） */
+  openWhenHidden?: boolean
+}
+
+/** SSE 订阅路由（与 apps/server 的 StreamController 对应） */
+const STREAM_SUBSCRIBE_PATH = '/sse/subscribe'
+
 export class ServerClient extends HttpClient<BearerTokenCredentials> {
+  /** SSE 长连接复用的凭证（与普通请求同一份，避免「HTTP 认证了、推流没认证」） */
+  private readonly streamCredentials: CredentialsManager<BearerTokenCredentials>
+  /** SSE 订阅地址：完整 URL（客户端不做 baseUrl 拼接，故在构造期算好） */
+  private readonly streamUrl: string
+
   constructor(
     options: Omit<HttpClientOptions<BearerTokenCredentials>, 'authStrategy'>,
   ) {
     super({
       ...options,
       authStrategy: new BearerTokenStrategy(),
+    })
+    this.streamCredentials = options.credentialsManager
+    this.streamUrl = `${options.baseUrl.replace(/\/+$/, '')}${STREAM_SUBSCRIBE_PATH}`
+  }
+
+  /**
+   * 建立 SSE 长连接（服务端推送）。
+   *
+   * 复用本客户端同一份 `baseUrl` / 凭证 / Bearer 策略，调用方无需重复配置认证 —— 这正是
+   * 「SSE 归 sdk」的价值：登录态只有一处定义，HTTP 与推流不会各自漂移。
+   *
+   * 返回的客户端由调用方负责生命周期：React 页面请交给 `@repo/ui` 的 `useStream`，
+   * 手工使用务必在结束时 `close()`（否则长连接泄漏）。
+   */
+  createStream(options: CreateStreamOptions = {}): HttpStreamClient<BearerTokenCredentials> {
+    return new HttpStreamClient({
+      url: this.streamUrl,
+      channels: options.channels ?? [],
+      credentialsManager: this.streamCredentials,
+      authStrategy: new BearerTokenStrategy(),
+      openWhenHidden: options.openWhenHidden,
     })
   }
 

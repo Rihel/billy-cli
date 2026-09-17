@@ -7,6 +7,7 @@ import {
   BellRingIcon,
   LayoutDashboardIcon,
   ListTodoIcon,
+  RadioTowerIcon,
   ShieldCheckIcon,
   TerminalIcon,
   UsersIcon,
@@ -48,6 +49,11 @@ const MENU_ITEMS: MenuItem[] = [
     label: '运维监控',
     key: 'monitor',
     children: [
+      {
+        label: '实时告警',
+        key: '/main/monitor/live',
+        icon: RadioTowerIcon,
+      },
       {
         label: '告警规则',
         key: '/main/monitor/rules',

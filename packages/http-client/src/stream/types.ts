@@ -35,8 +35,13 @@ export enum StreamClientState {
  */
 export type StreamEventHandler = (data: unknown, message: StreamMessage) => void
 
-/** HttpStreamClient 构造选项。 */
-export interface StreamClientOptions {
+/**
+ * HttpStreamClient 构造选项。
+ *
+ * `Credentials` 与 `HttpClient` 一致地泛型化，使「SSE 复用普通请求的凭证管理器」无需断言；
+ * 不传类型参数时按 `Record<string, any>` 处理（与改造前行为一致）。
+ */
+export interface StreamClientOptions<Credentials = Record<string, any>> {
   /** 订阅地址，如 '/sse/subscribe' */
   url: string
   /** HTTP 方法，默认 'POST'（贴合工程「统一 POST」约定） */
@@ -54,11 +59,11 @@ export interface StreamClientOptions {
    */
   headers?: Record<string, string>
   /** 凭证管理器（CredentialsManager 实现，如 MemoryCredentialsManager / LocalStorageCredentialsManager） */
-  credentialsManager: CredentialsManager
+  credentialsManager: CredentialsManager<Credentials>
   /** 认证策略（AuthStrategy 实现，如 BearerTokenStrategy） */
-  authStrategy: AuthStrategy
+  authStrategy: AuthStrategy<Credentials>
   /** 凭证提供器（可选，凭证可刷新场景） */
-  credentialProvider?: CredentialProvider
+  credentialProvider?: CredentialProvider<Credentials>
   /** 自定义 fetch（测试注入 / 定制），默认全局 fetch（浏览器 / Node 18+ 原生） */
   fetch?: typeof fetch
   /** 浏览器：页面隐藏时是否继续连接，默认 false（隐藏时断开，恢复后自动重连） */

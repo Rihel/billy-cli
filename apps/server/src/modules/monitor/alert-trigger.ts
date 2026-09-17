@@ -6,12 +6,19 @@ import {
   LarkNotifyClient,
   Notifier,
   Scheduler,
+  StreamHub,
   Telemetry,
   type NotifyChannel,
   type NotifyPayload,
   type TelemetrySnapshot,
 } from '@repo/kits'
-import type { SuccessResultModel, TestAlertDto } from '@repo/shared'
+import {
+  STREAM_ADMIN_BROADCAST_CHANNEL,
+  STREAM_ALERT_FIRED_EVENT,
+  type AlertFiredEventModel,
+  type SuccessResultModel,
+  type TestAlertDto,
+} from '@repo/shared'
 import { AlertLogRepository } from './alert-log.repository.js'
 import { AlertRuleRepository } from './alert-rule.repository.js'
 import { MonitorConfig, type MonitorConfig as MonitorConfigType } from './config.js'
@@ -72,6 +79,8 @@ export class AlertTrigger {
     @Inject(Telemetry) private readonly telemetry: Telemetry,
     @Inject(Scheduler) private readonly scheduler: Scheduler,
     @Inject(AppLogger) private readonly logger: AppLogger,
+    // 告警实时推送：发送成功后向管理员广播频道推 `alert.fired`（实时告警页订阅）
+    @Inject(StreamHub) private readonly streamHub: StreamHub,
     // 通知客户端按配置装配（未配置的通道不注册），用于默认技术规则的通道判定
     @Inject(FileClient)
     @Optional()
@@ -327,6 +336,7 @@ export class AlertTrigger {
           : { to: this.config.emailTo ?? '', subject: title, text: content }
 
       const result = await this.notifier.send(channel, payload)
+      const sentAt = new Date()
       await this.logRepository
         .save({
           ruleId,
@@ -336,14 +346,43 @@ export class AlertTrigger {
           channel,
           status: result.ok ? 'success' : 'failed',
           error: result.error ?? null,
-          sentAt: new Date(),
+          sentAt,
         })
         .catch((cause) => this.logger.error('告警记录落库失败', { error: cause }))
+
+      // 实时推送（管理员端「实时告警」页）：与落库用同一个 sentAt，两边时间一致
+      this.publishAlertFired({
+        ruleId,
+        ruleName,
+        title,
+        message: content,
+        channel,
+        status: result.ok ? 'success' : 'failed',
+        error: result.error ?? null,
+        sentAt: sentAt.toISOString(),
+      })
 
       // 限频记录「尝试即记」：发送失败也记，避免失败通道重复告警风暴
       if (throttleSeconds > 0) {
         this.throttleMap.set(throttleKey, Date.now())
       }
+    }
+  }
+
+  /**
+   * 推送告警事件到管理员广播频道（SSE `alert.fired`）。
+   *
+   * 实时推送是**旁路**：只读展示用，不参与告警主流程，推失败也不影响「已发送 + 已落库」的事实，
+   * 故这里吞掉异常只记日志（与落库失败同一姿态）。
+   */
+  private publishAlertFired(payload: AlertFiredEventModel): void {
+    try {
+      this.streamHub.publish(STREAM_ADMIN_BROADCAST_CHANNEL, {
+        event: STREAM_ALERT_FIRED_EVENT,
+        data: payload,
+      })
+    } catch (error) {
+      this.logger.warn('告警实时推送失败', { error })
     }
   }
 }

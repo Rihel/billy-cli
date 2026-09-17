@@ -80,6 +80,7 @@ export * from "#components/sortable-file-list.tsx"
 export * from "#hooks/use-disclosure.ts"
 export * from "#hooks/use-rect.ts"
 export * from "#hooks/use-paste-files.ts"
+export * from "#hooks/use-stream.ts"
 
 // 重型组件（按需引入）
 // command, chart, carousel, input-otp, calendar, resizable, combobox, message-scroller, attachment
