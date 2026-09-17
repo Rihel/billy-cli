@@ -36,6 +36,13 @@ shadcn 组件的默认类：Tailwind 的 utilities 层声明在 base 之后，�
 `apps/admin/src/app/globals.css`（仅保留激活指示条 / 主按钮 hover / 滚动条等必要规则）、
 `apps/admin/src/components/AppMenu.tsx`（间距全用 className）。
 
+**视觉 / 设计质量（门面型页面可借全局设计 skill）**：Web 前台 / 落地页等「门面型」视觉任务，
+可**按需参考**全局设计 skill（`shadcn` / `design-taste-frontend` / `impeccable` /
+`redesign-existing-projects` 等）提升审美与布局——它们只作设计参考，**不纳入本工程规范 / 必读**
+（全局 skill 不受 git 管理、不可复现）。若某设计规范长期复用，按 `manage-skills` 的
+`find-external-skill.md`「评估 → 适配 → 登记」沉淀为项目内 skill；最终仍统一遵循
+`@repo/ui`（shadcn 风格）与本文的 className / @layer 样式约定。
+
 ## 参考文件（本 skill 的组成部分）
 
 | 文件 | 内容 | 何时读 |

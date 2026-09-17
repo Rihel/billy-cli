@@ -17,7 +17,7 @@
 ```
 .agents/skills/<skill-name>/          # skill-name 用 kebab-case，语义化，全局唯一
 ├── SKILL.md                          # 必须：frontmatter + 正文
-└── references/                       # 主文件超过约 60 行时拆分到这里
+└── references/                       # 主文件超过约 60 行时拆分到这里（硬上限 500 行，超出必须拆）
     ├── <topic>.md                    # 每个文件头部注明「本文件是 <skill-name> skill 的组成部分」
     └── ...
 ```
@@ -25,6 +25,8 @@
 - 辅助文件（模板、示例代码、脚本）可放在 skill 目录内，SKILL.md 用相对路径引用。
 - 主文件保持精简，只留：定位与触发说明、核心决策、参考文件清单（含"何时读"）、
   完成检查清单。
+- **行数硬上限**：`SKILL.md` 不得超过 500 行，超出部分一律拆到 `references/`；
+  推荐控制在约 60 行内（保持精简），500 行是红线。
 
 ## 3. SKILL.md 格式规范
 

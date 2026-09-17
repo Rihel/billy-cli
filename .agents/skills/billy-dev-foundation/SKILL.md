@@ -13,7 +13,7 @@ description: Billy 工程（billy-cli monorepo）开发必读 skill。任何在�
 
 ## Skill 目录（工程 skill 一览）
 
-完整目录（15 个功能 + 1 个元 skill，含用途与加载时机）见
+完整目录（19 个功能 + 1 个元 skill，含用途与加载时机）见
 [references/catalog.md](./references/catalog.md)；以 `.agents/skills/README.md` 为同步索引。
 
 ## 分层铁律

@@ -8,6 +8,7 @@ dist
 *.tsbuildinfo
 .agent-teams
 .scaffold-check
+.codegraph
 logs/
 
 # 环境变量（本地敏感配置不入库；仓库提供 .env.example / .env.local.example 模板）

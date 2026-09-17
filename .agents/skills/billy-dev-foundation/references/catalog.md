@@ -17,7 +17,11 @@
 | [`kafka`](../../kafka/SKILL.md) | 异步消息与事件：KafkaService 生产者 / @KafkaConsumer 消费者、topic 与消费组约定、at-least-once 幂等 | 异步、消息队列、事件驱动、削峰解耦、MQ、Kafka 时 |
 | [`scheduler`](../../scheduler/SKILL.md) | 定时调度：Scheduler（croner）的 cron / interval / timeout | 定时任务、调度、cron、周期任务时 |
 | [`stream`](../../stream/SKILL.md) | 服务端推送（SSE）：StreamHub 推流 + HttpStreamClient 客户端、频道与权限、跨实例广播 | SSE、实时推送、推流、任务进度、实时通知时 |
+| [`telemetry`](../../telemetry/SKILL.md) | 遥测埋点：Telemetry 门面（Counter / Gauge / Histogram 窗口聚合 + snapshot 环比）、指标命名、框架自动埋点与业务埋点、metric / surge 告警 | 埋点、指标、监控、metric、分位、指标告警、环比时 |
+| [`notification`](../../notification/SKILL.md) | 通知：Notifier 编排门面 + FileClient / LarkNotifyClient / EmailClient 三通道、配置与未配置降级、失败处理 | 发通知、邮件 / SMTP、飞书通知、告警通知时 |
+| [`lark`](../../lark/SKILL.md) | 飞书（Lark / Feishu）：LarkClient 门面（官方 SDK 封装）、应用配置、可选装配与优雅降级、调用完整 API | 飞书、Lark、飞书机器人、im.message、开放平台时 |
 | [`state-machine`](../../state-machine/SKILL.md) | 业务状态机：状态字典 + 转移表纯函数（或 xstate 门面）、并发安全 | 订单状态、审批流、状态流转时 |
 | [`write-tests`](../../write-tests/SKILL.md) | 编写单元测试：vitest 结构与 mock 模式、service / repository 测试套路 | 写测试、补单测、修测试时 |
 | [`git-workflow`](../../git-workflow/SKILL.md) | Git 提交与工作流：中文 commit 类型规范、提交粒度、辅助提交流程 | 提交、commit、辅助提交、提交信息时 |
+| [`codegraph`](../../codegraph/SKILL.md) | 代码图谱工具：MCP codegraph_explore + CLI（query / node / callers / callees / impact / affected）查符号、调用链、影响面，验证分层依赖方向 | 理解架构、调用关系、依赖方向、改动影响面、代码理解时 |
 | [`manage-skills`](../../manage-skills/SKILL.md) | 新增 / 维护工程 Skill：目录与 frontmatter 规范、references 拆分、索引注册 | 添加、新建、维护、拆分 skill 时 |

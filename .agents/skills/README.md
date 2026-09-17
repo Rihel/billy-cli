@@ -9,7 +9,7 @@
 
 ## 加载顺序
 
-当前共 **17 个** skill（必读 1 + 功能 15 + 元 1）；数量与清单变更时同步
+当前共 **21 个** skill（必读 1 + 功能 19 + 元 1）；数量与清单变更时同步
 `billy-dev-foundation/references/catalog.md` 与仓库根 `README.md` 的「Agent Skills」章节。
 
 | 顺序 | Skill | 用途 |
@@ -27,9 +27,13 @@
 | 功能 | [`kafka`](./kafka/SKILL.md) | 异步消息与事件（KafkaService 生产者 / @KafkaConsumer 消费者、幂等） |
 | 功能 | [`scheduler`](./scheduler/SKILL.md) | 定时调度（croner Scheduler） |
 | 功能 | [`stream`](./stream/SKILL.md) | 服务端推送 SSE（StreamHub 推流 + HttpStreamClient 客户端） |
+| 功能 | [`telemetry`](./telemetry/SKILL.md) | 遥测埋点（Telemetry 门面 Counter/Gauge/Histogram + snapshot 环比） |
+| 功能 | [`notification`](./notification/SKILL.md) | 通知（Notifier 编排 + file/lark/email 三通道） |
+| 功能 | [`lark`](./lark/SKILL.md) | 飞书接入（LarkClient 官方 SDK 封装 + 可选装配） |
 | 功能 | [`state-machine`](./state-machine/SKILL.md) | 业务状态机（字典+转移表 / xstate、并发安全） |
 | 功能 | [`write-tests`](./write-tests/SKILL.md) | 单元测试（vitest 结构与 mock 模式） |
 | 功能 | [`git-workflow`](./git-workflow/SKILL.md) | Git 提交与工作流（中文 commit 规范、辅助提交） |
+| 功能 | [`codegraph`](./codegraph/SKILL.md) | 代码图谱工具（codegraph_explore / CLI 查调用链、影响面、依赖方向） |
 | 元 | [`manage-skills`](./manage-skills/SKILL.md) | 新增 / 维护工程 Skill（目录规范、frontmatter、references 拆分、索引注册） |
 
 ## 使用规则
