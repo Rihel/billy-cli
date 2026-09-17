@@ -254,7 +254,8 @@ pnpm cli -t crud -n product --no-install  # 非交互生成 CRUD 业务模块（
 │   ├── sdk/                             # @repo/sdk
 │   │   └── src/
 │   │       └── server.client.ts         # ServerClient（全类型化业务 API，继承 http-client 的 HttpClient）
-│   └── ui/                              # @repo/ui — shadcn 组件（src/components/ui/*）+ 自有组件（src/components/* 平铺）
+│   └── ui/                               # @repo/ui — shadcn 组件（src/components/ui/*）+ 自有组件（src/components/* 平铺）
+│                                         #   + 设计系统：token / 主题 / 字体契约（src/globals.css，唯一定义处）
 ├── docker/                              # Dockerfile.base / .server / .web + init-db.sql
 ├── k8s/                                 # server 的 Kubernetes 清单（Deployment / Service / PDB / Ingress + 部署说明）
 ├── docs/                                # pagination.md（分页指南）/ sdk-refactor.md / billy-pitch.md / queue.md（已废弃存档）/ design/ / dev-logs/
@@ -314,7 +315,9 @@ pnpm cli -t crud -n product --no-install  # 非交互生成 CRUD 业务模块（
 
 ### apps/web — Next.js 16 前台
 
-面向 C 端的前台应用，使用 **Base UI + shadcn/ui**（来自 `@repo/ui`）与 Tailwind 4。
+面向 C 端的前台应用，使用 **Base UI + shadcn/ui**（来自 `@repo/ui`）与 Tailwind 4；
+视觉取值（配色 / 圆角 / 字体回退链 / 组件质感规则）统一来自设计系统包 **`@repo/ui`**，
+`src/app/globals.css` 只保留设计系统入口、`@source` 与前台专属的 `@keyframes`。
 
 - 页面：`/`（首页）、`/auth/*`（登录 / 注册 / 忘记密码 / 重置密码）、`/account`（**个人中心**：账号资料）与 `/account/sessions`（**登录设备**：列表 + 单设备下线），受保护用户区、`/comparison`（竞品调研）、`/markdown/*`（Markdown 渲染示例）
 - Server Actions（`actions/auth.actions.ts`）封装登录 / 注册 / 忘记密码 / 重置密码 / 登出，token 写入 httpOnly cookie
@@ -327,7 +330,8 @@ pnpm cli -t crud -n product --no-install  # 非交互生成 CRUD 业务模块（
 
 ### apps/admin — Next.js 16 管理后台
 
-面向后台的管理应用，与前台同源使用 **@repo/ui**（shadcn/ui 风格），表格用
+面向后台的管理应用，与前台同源使用 **@repo/ui**（shadcn/ui 风格）与 **`@repo/ui`**
+（设计系统，完整深色模式），表格用
 **@tanstack/react-table**（`DataTable`）、表单用 **@tanstack/react-form**
 （`ModalForm` / `DrawerForm` / `FormRenderer` 声明式 items），适合表格 / 表单 / 权限类页面。
 登录使用**后台管理员**账号（`AdminEntity`，`/admin/*` 接口），与前台用户体系隔离。
@@ -664,11 +668,27 @@ const me = await client.auth.getMe()
 const todos = await client.todo.cursorQuery({ size: 20 })
 ```
 
+### @repo/ui 的设计系统（token / 主题 / 字体契约）
+
+`packages/ui/src/globals.css` 是 web 与 admin 共用的**视觉契约唯一定义处**：语义 token
+（颜色 / 圆角，明暗各一套）、Tailwind 4 `@theme` 映射、字体族回退链、组件质感规则
+（等宽数字对齐 / 细滚动条）。**token 没有 JS 副本** —— 具体值就是这些 CSS 变量本身，
+页面里用 Tailwind 语义类消费；内联 style / SVG 场景直接写 `var(--primary)`
+（理由见 `docs/design/design-system.md` §4.2）。
+
+- 语义色：`primary` / `secondary` / `muted` / `accent` / `destructive` / `success` /
+  `warning` / `info` / `chart-1..5` / `sidebar-*`（共 37 个颜色 token，明暗对称）；
+- 守卫：`packages/ui/test/tokens.test.ts` 用**零手工清单**的纯 CSS 自洽断言守着
+  「明暗对称 + `@theme` 映射自洽 + 字体回退链」；`pnpm check:ui` 拦新增硬编码调色板、
+  校验样式入口可解析与字体契约一致；
+- 设计决策、取舍依据与已知缺口见 `docs/design/design-system.md`，
+  admin 应用层约定见 `docs/design/admin-design-language.md`。
+
 ### @repo/ui — 共享组件库
 
 shadcn 风格的组件实现统一在 `src/components/ui/*`（约 60 个：button / dialog / table /
-sidebar / toast / chart 等），Tailwind 4 主题变量由 `globals.css` 提供。重型组件按需从子路径引入
-（`@repo/ui/components/ui/command` 等）。
+sidebar / toast / chart 等），Tailwind 4 主题变量来自同包的 `globals.css`（设计系统）。
+重型组件按需从子路径引入（`@repo/ui/components/ui/command` 等）。
 
 ### @repo/ui 的管理端组件
 
@@ -1011,7 +1031,7 @@ packages 的 `dist` 声明，所以刚改过 packages 源码要先 `pnpm build:p
 | `pnpm clean`        | 清理 node_modules / dist / 缓存         |
 | `pnpm check:inject` | 守卫：构造器 `@Inject` / providers `@Injectable` 一致性检查 |
 | `pnpm check:scaffold` | 守卫：脚手架模板与工作区包一致性检查（导入名 + service/crud 渲染类型检查） |
-| `pnpm check:ui`     | 守卫：前端约定（自有组件必须从 `packages/ui/src/index.ts` 导出；前端包必须有 `typecheck` 脚本） |
+| `pnpm check:ui`     | 守卫：前端约定五条（组件导出 / 前端包 `typecheck` 脚本 / 禁止新增硬编码调色板 / 脚手架模板样式入口可解析 / `next/font` 变量名与设计系统契约一致） |
 
 ## Docker
 

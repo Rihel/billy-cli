@@ -8,8 +8,12 @@
  * VSCode 插件编辑 packages/ui 下的 .tsx 时向上查找到它并启用
  * 补全 / 悬停提示。@source 声明让插件把 ui 源码作为类来源扫描。
  *
+ * 这里一并 import 本包的 globals.css（设计系统入口），是为了让 IDE 也能识别语义 token
+ * （bg-primary / text-success / rounded-lg …）—— 否则组件里写 token 类名没有补全。
+ *
  * 类名的实际编译扫描由各 app globals.css 的 @source 完成，与此文件无关。
  */
 @import "tailwindcss";
+@import "./globals.css";
 
 @source "./**/*.{ts,tsx}";

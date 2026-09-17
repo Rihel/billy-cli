@@ -20,7 +20,7 @@
 | 功能 | [`database`](./database/SKILL.md) | PostgreSQL / TypeORM 数据库开发（表建模、索引、查询、repository 层） |
 | 功能 | [`develop-business-module`](./develop-business-module/SKILL.md) | 开发完整业务模块（契约 → 数据 → 业务 → 接口 → SDK → 页面） |
 | 功能 | [`develop-backend-api`](./develop-backend-api/SKILL.md) | 后端接口开发的质量维度（幂等 / 鲁棒 / 安全 / 一致、同步异步选型、可观测、性能、契约演进、可测试性） |
-| 功能 | [`develop-frontend-page`](./develop-frontend-page/SKILL.md) | 开发前端页面（Admin 后台 @repo/ui + TanStack / Web 前台 shadcn + Server Actions） |
+| 功能 | [`develop-frontend-page`](./develop-frontend-page/SKILL.md) | 开发前端页面（Admin 后台 @repo/ui + TanStack / Web 前台 shadcn + Server Actions；视觉取值走 @repo/ui 设计系统 token） |
 | 功能 | [`implement-auth`](./implement-auth/SKILL.md) | 认证与权限（登录注册、token/cookie、路由守卫、双体系） |
 | 功能 | [`object-storage`](./object-storage/SKILL.md) | 对象存储与文件上传下载（S3/COS、预签名、STS） |
 | 功能 | [`concurrency`](./concurrency/SKILL.md) | 高并发与一致性（缓存、限流、幂等、分布式锁） |

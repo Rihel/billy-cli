@@ -13,10 +13,13 @@ describe('Tag', () => {
     expect(screen.getByText('已完成')).toBeDefined()
   })
 
-  it('预设色名映射到语义类', () => {
+  it('语义预设色映射到设计系统 token，而非硬编码调色板', () => {
     render(<Tag color="success">成功</Tag>)
 
-    expect(screen.getByText('成功').className).toContain('text-emerald-700')
+    const className = screen.getByText('成功').className
+    expect(className).toContain('text-success')
+    // 反向防线：语义色不得回落成调色板硬编码（改动依据见 docs/design/design-system.md）
+    expect(className).not.toMatch(/(emerald|red|amber|indigo)-\d{2,3}/)
   })
 
   it('未知色名回落默认样式', () => {
@@ -42,7 +45,7 @@ describe('Tag', () => {
     )
 
     const className = screen.getByText('错误').className
-    expect(className).toContain('text-red-700')
+    expect(className).toContain('text-destructive')
     expect(className).toContain('tracking-wide')
   })
 })

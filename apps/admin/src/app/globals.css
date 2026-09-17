@@ -3,69 +3,9 @@
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 
+/* Tailwind 还需扫描组件库源码 —— 组件库不经 Tailwind 构建，类名都写在 @repo/ui 里 */
 @source "../../../../packages/ui/src/**/*.{ts,tsx}";
 
-@custom-variant dark (&:is(.dark *));
-
-/* ============================================================
- * Billy Admin 设计语言（覆盖层）
- *
- * 定位：开发者工具管理后台（亮色优先 devtool 风，Linear/Vercel 式克制精确）。
- * 品牌：Billy Cli（一套模板，全栈直达），冷调亮蓝 Azure 系与前台 landing 一致；
- *       全部语义 token（--primary / --ring / --chart-* / --sidebar-*）已上移为
- *       @repo/ui 默认主题（packages/ui/src/globals.css），此处不再重复定义，
- *       只保留 admin 专属的少量视觉规则。设计决策见
- *       docs/design/admin-design-language.md
- * 原则：单一强调色（Azure 蓝）、语义色独立（success/destructive/warning）、
- *       等宽字体点缀数据与代码感、完整深色模式（跟随系统，可手动切换）。
- * ============================================================ */
-
-@theme inline {
-  --font-sans: var(--font-geist), ui-sans-serif, system-ui, -apple-system,
-    "Segoe UI", sans-serif;
-  --font-mono: var(--font-geist-mono), ui-monospace, SFMono-Regular, Menlo,
-    Consolas, monospace;
-}
-
-/* 展示字体（Space Grotesk，标题/数字层；中文回退系统无衬线） */
-:root {
-  --font-display: var(--font-space-grotesk), ui-sans-serif, system-ui,
-    -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
-}
-
-/* 以下为对 shadcn 组件（components/ui/*，需保持可更新）的视觉覆盖。
- * 注意：必须写在 @layer 之外（非 layer 规则优先于所有 layer，含 Tailwind utilities），
- * 写在 @layer base 内会被 utilities 层压过而不生效。
- * 能用组件 className 控制的一律走 className（见 AppMenu / DataTable 业务组件）。 */
-
-/* 主按钮：近黑实心（去 antd 蓝），细投影；hover 提亮微光 */
-[data-slot="button"][data-variant="primary"]:not(:disabled) {
-  box-shadow: 0 1px 2px 0 color-mix(in oklch, var(--primary) 20%, transparent);
-}
-[data-slot="button"][data-variant="primary"]:not(:disabled):hover {
-  background-color: color-mix(in oklch, var(--primary), white 10%);
-}
-.dark [data-slot="button"][data-variant="primary"]:not(:disabled):hover {
-  background-color: color-mix(in oklch, var(--primary), black 10%);
-}
-
-/* 等宽数字：ID / 时间戳 / 统计数字统一用 tabular-nums 对齐 */
-.font-mono {
-  font-variant-numeric: tabular-nums;
-}
-
-/* 页面滚动条：细、与边框同色（避免默认粗滚动条破坏克制感） */
-::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
-}
-::-webkit-scrollbar-thumb {
-  border-radius: 999px;
-  background: color-mix(in oklch, var(--border), transparent 30%);
-}
-::-webkit-scrollbar-thumb:hover {
-  background: color-mix(in oklch, var(--border), transparent 0%);
-}
-::-webkit-scrollbar-track {
-  background: transparent;
-}
+/* admin 此前在这里维护的「本地覆盖层」（字体回退链 / 等宽数字对齐 / 滚动条）已上移到
+ * @repo/ui 的 globals.css —— 前台与后台共用同一套，避免两端手感分叉。
+ * 设计系统定义与取舍依据见 docs/design/design-system.md。 */

@@ -1,7 +1,44 @@
+/*
+ * Billy 设计系统 —— token / 主题 / 字体的**唯一定义处**。
+ *
+ * 归属：@repo/ui（apps/web 与 apps/admin 共用）。
+ * 组件库类名与两个 app 的页面都消费这里的语义 token；**改视觉先改这里**，
+ * 不要在 app 里另起一套（app 的 globals.css 只负责 import 与 app 专属规则）。
+ *
+ * token 分两层，**改上层会全局联动**（这是设计体系的核心价值）：
+ *   ① 原始层：真正独立的决策（面 / 前景 / 主色 / 品牌点缀 / 语义色 / 圆角）
+ *   ② 派生层：一律用 var() 引用上层，**不抄字面量** —— 例：--sidebar-primary: var(--primary)
+ * 于是「换品牌色」只需改 --ring（品牌点缀）与 --primary（主按钮），
+ * sidebar / chart / 强调面 / 侧栏前景会自动跟随。
+ * **新增 token 时先问「它是不是某个已有 token 的另一种说法」**，是就写 var() 引用
+ * （守卫 packages/ui/test/tokens.test.ts 会拦下只写浅色 / 漏映射 / 映射指向别处）。
+ *
+ * 应用接入（apps/<app>/src/app/globals.css）：
+ *     @import "tailwindcss";
+ *     @import "@repo/ui/globals.css";
+ *     @import "tw-animate-css";
+ *     @import "shadcn/tailwind.css";
+ *     @source "../../../../packages/ui/src/**";    // 让 Tailwind 扫描组件库源码的类名
+ *
+ * 字体：app 用 next/font 在根 html 上注入 --font-geist / --font-geist-mono /
+ * --font-space-grotesk（next/font 要求字面量，故 app 侧无法共享常量），本文件负责拼回退链，
+ * 两侧一致性由 `pnpm check:ui` 第 ⑤ 条从本文件推导并校验。
+ */
 
+/* 深色模式走 class 策略：app 负责在 <html> 上切换 .dark（admin 见 ThemeToggle + 水合前引导脚本） */
+@custom-variant dark (&:is(.dark *));
+
+/* ===== token → Tailwind 命名空间映射 =====
+ * @theme inline 把语义变量接进 Tailwind 的工具类体系：
+ *   --color-primary   → bg-primary / text-primary / border-primary
+ *   --radius-lg       → rounded-lg
+ *   --font-sans       → font-sans
+ * 用 `inline` 保留 var() 引用（而非把值内联进工具类），这样明暗切换只需换 :root / .dark，
+ * 不必为两种模式各生成一套工具类。
+ * **新增颜色 token 必须同时补这里的映射**（格式必须是 `--color-X: var(--X)`），
+ * 否则 token 有了、`bg-xxx` 类却不存在。 */
 @theme inline {
-    --font-heading: var(--font-display, var(--font-sans));
-    --font-sans: var(--font-sans);
+    /* ---- 颜色 ---- */
     --color-sidebar-ring: var(--sidebar-ring);
     --color-sidebar-border: var(--sidebar-border);
     --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -19,6 +56,12 @@
     --color-input: var(--input);
     --color-border: var(--border);
     --color-destructive: var(--destructive);
+    --color-info-foreground: var(--info-foreground);
+    --color-info: var(--info);
+    --color-warning-foreground: var(--warning-foreground);
+    --color-warning: var(--warning);
+    --color-success-foreground: var(--success-foreground);
+    --color-success: var(--success);
     --color-accent-foreground: var(--accent-foreground);
     --color-accent: var(--accent);
     --color-muted-foreground: var(--muted-foreground);
@@ -33,6 +76,8 @@
     --color-card: var(--card);
     --color-foreground: var(--foreground);
     --color-background: var(--background);
+
+    /* ---- 圆角（单一 --radius 派生整套尺度）---- */
     --radius-sm: calc(var(--radius) * 0.6);
     --radius-md: calc(var(--radius) * 0.8);
     --radius-lg: var(--radius);
@@ -40,45 +85,77 @@
     --radius-2xl: calc(var(--radius) * 1.8);
     --radius-3xl: calc(var(--radius) * 2.2);
     --radius-4xl: calc(var(--radius) * 2.6);
+
+    /* ---- 字体（app 提供的 next/font 变量 → 系统回退链）---- */
+    --font-sans: var(--font-geist), ui-sans-serif, system-ui, -apple-system,
+        "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    --font-mono: var(--font-geist-mono), ui-monospace, SFMono-Regular, Menlo,
+        Consolas, monospace;
+    --font-heading: var(--font-display, var(--font-sans));
 }
 
 :root {
+    /* ============ ① 原始层：真正独立的决策 ============ */
+    /* 面：内容区 / 卡片 */
     --background: oklch(0.985 0 0);
-    --foreground: oklch(0.145 0 0);
     --card: oklch(1 0 0);
-    --card-foreground: oklch(0.145 0 0);
-    --popover: oklch(1 0 0);
-    --popover-foreground: oklch(0.145 0 0);
-    /* 主按钮：近黑（antd 蓝实心按钮指纹去除） */
+    /* 前景主色（正文） */
+    --foreground: oklch(0.145 0 0);
+    /* 主色（主按钮）：近黑，刻意避开 antd 蓝实心按钮指纹 */
     --primary: oklch(0.205 0 0);
-    --primary-foreground: oklch(0.985 0 0);
+    /* 次级面 / 静默面 / hover 激活面 */
     --secondary: oklch(0.96 0 0);
-    --secondary-foreground: oklch(0.205 0 0);
-    --muted: oklch(0.96 0 0);
     --muted-foreground: oklch(0.556 0 0);
-    /* hover / 激活面：中性浅灰（非浅蓝底） */
     --accent: oklch(0.955 0 0);
-    --accent-foreground: oklch(0.205 0 0);
-    --destructive: oklch(0.577 0.245 27.325);
+    /* 描边 */
     --border: oklch(0.922 0 0);
-    --input: oklch(0.922 0 0);
-    /* 焦点环 / 点缀：靛紫（低密度，非 antd 蓝） */
+    /* 品牌点缀：焦点环 + 图表首色（低密度，靛紫，非 antd 蓝） */
     --ring: oklch(0.585 0.233 277.117);
-    --chart-1: oklch(0.585 0.233 277.117);
+    /* 语义色：浅色取调色板 700 档，保证作文字色时达 WCAG AA */
+    --destructive: oklch(0.577 0.245 27.325);
+    --success: oklch(0.508 0.118 165.612);
+    --warning: oklch(0.555 0.163 48.998);
+    --info: oklch(0.5 0.134 242.749);
+    /* 圆角基准（派生 rounded-sm…4xl） */
+    --radius: 0.625rem;
+
+    /* ============ ② 派生层：全部引用上层，改一处即联动 ============ */
+    /* 面与前景：由上面的原始层派生 */
+    --card-foreground: var(--foreground);
+    --popover: var(--card);
+    --popover-foreground: var(--foreground);
+    --primary-foreground: var(--background);
+    --secondary-foreground: var(--primary);
+    --muted: var(--secondary);
+    --accent-foreground: var(--primary);
+    --input: var(--border);
+    --success-foreground: var(--background);
+    --warning-foreground: var(--background);
+    --info-foreground: var(--background);
+
+    /* 图表：首色跟随品牌点缀，末色跟随正文（改 --ring 即换整条主色） */
+    --chart-1: var(--ring);
     --chart-2: oklch(0.707 0.165 254.624);
     --chart-3: oklch(0.623 0.214 259.815);
     --chart-4: oklch(0.511 0.262 276.966);
     --chart-5: oklch(0.156 0 0);
-    --radius: 0.625rem;
-    --sidebar: oklch(1 0 0);
-    --sidebar-foreground: oklch(0.145 0 0);
-    --sidebar-primary: oklch(0.205 0 0);
-    --sidebar-primary-foreground: oklch(0.985 0 0);
-    --sidebar-accent: oklch(0.955 0 0);
-    --sidebar-accent-foreground: oklch(0.205 0 0);
-    --sidebar-border: oklch(0.922 0 0);
-    --sidebar-ring: oklch(0.585 0.233 277.117);
-    /* markdown 代码高亮 token 色（浅色） */
+
+    /* 侧边栏：整套由主 token 派生，不再另抄一份 */
+    --sidebar: var(--card);
+    --sidebar-foreground: var(--foreground);
+    --sidebar-primary: var(--primary);
+    --sidebar-primary-foreground: var(--primary-foreground);
+    --sidebar-accent: var(--accent);
+    --sidebar-accent-foreground: var(--accent-foreground);
+    --sidebar-border: var(--border);
+    --sidebar-ring: var(--ring);
+
+    /* 标题展示层回退链（--font-heading 经 @theme 引用 --font-display） */
+    --font-display: var(--font-space-grotesk), ui-sans-serif, system-ui,
+        -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+
+    /* markdown 代码高亮：照搬既有语法主题的配色表，**刻意保持字面量**（不派生，
+       避免把「碰巧同色」固化成约定） */
     --md-hl-comment: #6e7781;
     --md-hl-keyword: #cf222e;
     --md-hl-number: #0550ae;
@@ -93,38 +170,52 @@
 }
 
 .dark {
+    /* ============ ① 原始层（深色取值）============ */
     --background: oklch(0.145 0 0);
-    --foreground: oklch(0.985 0 0);
     --card: oklch(0.205 0 0);
-    --card-foreground: oklch(0.985 0 0);
-    --popover: oklch(0.205 0 0);
-    --popover-foreground: oklch(0.985 0 0);
-    /* 主按钮：近白（深色模式反白按钮，Vercel 式） */
+    --foreground: oklch(0.985 0 0);
+    /* 主按钮：反白（Vercel 式） */
     --primary: oklch(0.922 0 0);
-    --primary-foreground: oklch(0.145 0 0);
     --secondary: oklch(0.269 0 0);
-    --secondary-foreground: oklch(0.985 0 0);
-    --muted: oklch(0.269 0 0);
     --muted-foreground: oklch(0.708 0 0);
-    --accent: oklch(0.269 0 0);
-    --accent-foreground: oklch(0.985 0 0);
-    --destructive: oklch(0.704 0.191 22.216);
+    --accent: var(--secondary);
     --border: oklch(1 0 0 / 10%);
-    --input: oklch(1 0 0 / 15%);
     --ring: oklch(0.673 0.182 276.935);
-    --chart-1: oklch(0.673 0.182 276.935);
+    /* 语义色：深色取调色板 400 档（亮色文字配深底） */
+    --destructive: oklch(0.704 0.191 22.216);
+    --success: oklch(0.765 0.177 163.223);
+    --warning: oklch(0.828 0.189 84.429);
+    --info: oklch(0.746 0.16 232.661);
+
+    /* ============ ② 派生层（与浅色同一套关系，显式写出便于阅读）============ */
+    --card-foreground: var(--foreground);
+    --popover: var(--card);
+    --popover-foreground: var(--foreground);
+    --primary-foreground: var(--background);
+    --secondary-foreground: var(--foreground);
+    --muted: var(--secondary);
+    --accent-foreground: var(--foreground);
+    /* 深色下输入框描边比普通描边略亮，故不沿用 --border */
+    --input: oklch(1 0 0 / 15%);
+    --success-foreground: var(--background);
+    --warning-foreground: var(--background);
+    --info-foreground: var(--background);
+
+    --chart-1: var(--ring);
     --chart-2: oklch(0.707 0.165 254.624);
     --chart-3: oklch(0.623 0.214 259.815);
-    --chart-4: oklch(0.746 0.16 232.661);
-    --chart-5: oklch(0.985 0 0);
-    --sidebar: oklch(0.205 0 0);
-    --sidebar-foreground: oklch(0.985 0 0);
-    --sidebar-primary: oklch(0.922 0 0);
-    --sidebar-primary-foreground: oklch(0.145 0 0);
-    --sidebar-accent: oklch(0.269 0 0);
-    --sidebar-accent-foreground: oklch(0.985 0 0);
-    --sidebar-border: oklch(1 0 0 / 10%);
-    --sidebar-ring: oklch(0.673 0.182 276.935);
+    --chart-4: var(--info);
+    --chart-5: var(--foreground);
+
+    --sidebar: var(--card);
+    --sidebar-foreground: var(--foreground);
+    --sidebar-primary: var(--primary);
+    --sidebar-primary-foreground: var(--primary-foreground);
+    --sidebar-accent: var(--accent);
+    --sidebar-accent-foreground: var(--accent-foreground);
+    --sidebar-border: var(--border);
+    --sidebar-ring: var(--ring);
+
     /* markdown 代码高亮 token 色（深色） */
     --md-hl-comment: #8b949e;
     --md-hl-keyword: #ff7b72;
@@ -152,19 +243,44 @@
     -webkit-font-smoothing: antialiased;
     text-rendering: optimizeLegibility;
     }
-  /* 标题类元素默认用 display 字体变量（应用层可注入 --font-display） */
+  /* 标题类元素默认用展示字体（app 可注入 --font-display 覆盖） */
   h1, h2, h3, h4 {
     @apply font-heading;
     letter-spacing: -0.02em;
     }
 }
 
+/* ===== 组件质感规范（跨端一致）=====
+ * 写在 @layer 之外是**刻意的**：非 layer 规则优先于所有 layer（含 Tailwind utilities），
+ * 写在 @layer base 内会被 utilities 层压过而不生效。
+ * 能用组件 className 表达的一律走 className，只有全局性规则（等宽数字对齐 / 滚动条）放这里。 */
 
-/* ===== Markdown 文档渲染（组件：packages/ui/src/components/markdown.tsx） =====
-   各元素的布局样式在组件内用 Tailwind 实现；这里只保留：
-   1. 容器首尾元素 margin 归零；
-   2. 无语言标注的代码块兜底重置（行内代码样式不会误伤 pre 内代码）；
-   3. hljs 代码高亮 token 色（--md-hl-* 变量，明暗模式各一套）。 */
+/* 等宽数字：ID / 时间戳 / 统计数字统一 tabular-nums 对齐，避免逐位跳动 */
+.font-mono {
+  font-variant-numeric: tabular-nums;
+}
+
+/* 页面滚动条：细、与边框同色（避免默认粗滚动条破坏克制感） */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: color-mix(in oklch, var(--border), transparent 30%);
+}
+::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in oklch, var(--border), transparent 0%);
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* ===== Markdown 文档渲染（组件：packages/ui/src/components/markdown.tsx）=====
+ * 各元素的布局样式在组件内用 Tailwind 实现；这里只保留：
+ * 1. 容器首尾元素 margin 归零；
+ * 2. 无语言标注的代码块兜底重置（行内代码样式不会误伤 pre 内代码）；
+ * 3. hljs 代码高亮 token 色（--md-hl-* 变量，明暗模式各一套）。 */
 .markdown > :first-child {
   margin-top: 0;
 }

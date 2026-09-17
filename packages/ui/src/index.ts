@@ -82,6 +82,9 @@ export * from "#hooks/use-rect.ts"
 export * from "#hooks/use-paste-files.ts"
 export * from "#hooks/use-stream.ts"
 
+// 设计系统（token / 主题 / 字体契约）就是 src/globals.css 里的 CSS 变量本身 —— 没有 JS 入口：
+// 视觉取值用 Tailwind 语义类（bg-primary / text-muted-foreground …），不在 JS 里再包一层。
+
 // 重型组件（按需引入）
 // command, chart, carousel, input-otp, calendar, resizable, combobox, message-scroller, attachment
 // import { X } from "@repo/ui/components/ui/command"
