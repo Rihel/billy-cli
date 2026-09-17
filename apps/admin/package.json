@@ -6,7 +6,10 @@
   "scripts": {
     "dev": "next dev --port 9845",
     "build": "next build",
-    "start": "sh scripts/start.sh"
+    "start": "sh scripts/start.sh",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "@repo/http-client": "workspace:*",
@@ -40,6 +43,7 @@
     "babel-plugin-react-compiler": "1.0.0",
     "tailwindcss": "^4",
     "tsx": "^4.23.13",
-    "typescript": "^7.0.2"
+    "typescript": "^7.0.2",
+    "vitest": "^4.1.10"
   }
 }
