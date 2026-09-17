@@ -7,10 +7,13 @@
 
 | 项 | 位置 |
 | --- | --- |
-| 协议契约（事件 / 订阅体） | `packages/shared/src/schema/stream.schema.ts`（`StreamEventSchema` / `StreamSubscribeSchema`） |
+| 协议契约（事件 / 订阅体 / 广播频道 / 专用事件） | `packages/shared/src/schema/stream.schema.ts`（`StreamEventSchema` / `StreamSubscribeSchema` / `STREAM_ADMIN_BROADCAST_CHANNEL` / `STREAM_ALERT_FIRED_EVENT` / `AlertFiredEventSchema`） |
 | 服务端推流门面 | `packages/kits/src/stream/stream-hub.ts`（`StreamHub`）+ `stream-connection.ts`（`StreamConnection`） |
-| 订阅路由 | `apps/server/src/modules/stream/stream.controller.ts`（`StreamController`，`POST /sse/subscribe`） |
-| 客户端 | `packages/http-client/src/stream/`（`HttpStreamClient`，浏览器 / Node 双环境） |
+| 订阅路由 | `apps/server/src/modules/stream/stream.controller.ts`（`StreamController`，`POST /sse/subscribe`）+ `stream-auth.guard.ts` / `stream.options.ts` |
+| 客户端（通用） | `packages/http-client/src/stream/`（`HttpStreamClient`，浏览器 / Node 双环境） |
+| 客户端（应用层入口） | `packages/sdk/src/server.client.ts` 的 `ServerClient.createStream()` —— 复用同一份 baseUrl / 凭证 / Bearer 策略 |
+| React 生命周期 | `packages/ui/src/hooks/use-stream.ts` 的 `useStream(client, handlers)` |
+| 现成业务用例 | `modules/monitor/alert-trigger.ts`（告警发送后 publish 到 `admin:all`）+ `apps/admin/src/app/main/monitor/live/page.tsx`（实时告警页） |
 
 `StreamHub` 由 `StreamHubModule` 装配（`@Global()`，复用 `RedisModule` 的 `RedisConfig` 与
 `IdGenerationModule` 的 `IdGeneration`），业务代码构造器 `@Inject(StreamHub)` 注入即可，
@@ -24,12 +27,20 @@ constructor(@Inject(StreamHub) private readonly streamHub: StreamHub) {}
 
 streamHub.publish('task:42', { event: 'progress', data: { percent: 50 } })
 streamHub.publish('task:42', { event: 'done', data: { ok: true }, id: 'evt-001' })
+// 全体管理员广播（现成用例：告警发送后）
+streamHub.publish(STREAM_ADMIN_BROADCAST_CHANNEL, {
+  event: STREAM_ALERT_FIRED_EVENT,
+  data: { ruleId, title, channel, status, sentAt } satisfies AlertFiredEventModel,
+})
 ```
 
 - `channel` 命名规范 `<域>:<id>`：`user:42` / `admin:all` / `task:42`。
 - 广播路径：**本实例直推 + Redis pub/sub 广播**（其他实例收到后推各自的本地连接）；
   广播消息携带发布实例 `instanceId`，自回环消息直接丢弃（避免双推）。
 - Redis 故障时本实例直推不受影响；广播 key 为 `stream:{channel}`（内部命名空间，勿手动改）。
+- **专有事件一律在 `@repo/shared` 定 schema**（如 `AlertFiredEventSchema`），前后端共用同一份解析；
+  不要把 ORM 实体直接塞进 `data`（实体字段与时间戳由 ORM 决定，契约会跟着漂）。
+- 推流是**旁路**：只读展示用，publish 失败不要影响主流程（现成用例用 try/catch + warn 日志）。
 
 ## 3. 服务端：订阅路由与频道权限（安全要点）
 
@@ -38,36 +49,78 @@ streamHub.publish('task:42', { event: 'done', data: { ok: true }, id: 'evt-001' 
 
 ```ts
 // apps/server/src/modules/stream/stream.module.ts
-// 默认：仅身份频道（推荐先这样，业务频道按需放开）
+// 仅身份频道（业务频道按需放开）
 {
   provide: SSE_ROUTE_OPTIONS,
   useValue: { auth: 'user', allowChannel: () => false },
+}
+
+// 本工程当前配置：双端（用户 + 管理员）+ 管理员广播频道
+{
+  provide: SSE_ROUTE_OPTIONS,
+  useValue: {
+    auth: 'both',                                       // 'user' | 'admin' | 'both'
+    broadcastChannels: [STREAM_ADMIN_BROADCAST_CHANNEL], // 管理员自动收 admin:all（服务端校验同域）
+    allowChannel: () => false,                          // 业务频道默认全拒
+  },
 }
 
 // 需要业务频道：注入白名单校验（如 task:42 归属当前用户）
 {
   provide: SSE_ROUTE_OPTIONS,
   useValue: {
-    auth: 'user',                                  // 'user'（默认）| 'admin'
+    auth: 'both',
+    broadcastChannels: [],
     allowChannel: (channel: string) => channel.startsWith('task:'),
   },
 }
 ```
 
-- **身份频道强制注册**：`user:{userId}`（或 `admin:{adminId}`），与请求是否携带无关。
+- **身份频道强制注册**：`user:{userId}` / `admin:{adminId}`，与请求是否携带无关。
 - 客户端请求的 `user:*` / `admin:*` 前缀频道**一律忽略**（防窃听他人频道），统一替换为当前身份频道。
+- **广播频道只能由服务端注入**（客户端无处可请求），且只放行与当前身份**同域**的项 ——
+  前台用户即使显式写 `channels: ['admin:all']` 也拿不到管理员广播。
+- **`auth: 'both'` 下不要用 `currentUserId()` / `currentAdminId()` 拼频道**：它们在身份缺失时抛错
+  （管理员连接没有 userId），而写响应头之后再抛错会引发 `ERR_HTTP_HEADERS_SENT` 级联、连接被硬断；
+  直接读 ALS：`requestContext.get('userId')` / `requestContext.get('adminId')`。
 - 业务频道（`task:*` 等）默认拒绝，必须经 `allowChannel` 白名单校验（第一版由业务方在 module 配置里自行核对归属权）。
+- 控制器在 `writeHead` 之后**必须 `flushHeaders()`**：Node 要等第一次 `write` 才 flush，而长连接下一次写
+  可能是 15s 后的心跳 —— 客户端 fetch 不 resolve、状态停在 connecting，前置网关也可能先掐断。
 - 认证由 `StreamAuthGuard` 按 `SSE_ROUTE_OPTIONS.auth` 委派给 `UserAuthGuard` / `AdminAuthGuard`
   （`Authorization: Bearer` 或 `access-token` cookie），`AUTH_ENABLED=false` 时守卫放行。
 
-## 4. 客户端：HttpStreamClient（@repo/http-client）
+## 4. 客户端：应用层三段式（推荐）
+
+```tsx
+// apps/admin/src/app/main/monitor/live/page.tsx（节选，完整实现见该文件）
+'use client'
+const sdk = useServerClient()
+// 1) 稳定引用：useStream 以 client 引用变化为「重连」依据，务必 useMemo
+const stream = useMemo(() => sdk.createStream(), [sdk])
+// 2) 事件名 → 处理函数；函数身份每次渲染变化不会触发重连（内部存 ref）
+const { state, connected } = useStream(stream, {
+  [STREAM_ALERT_FIRED_EVENT]: (raw) => {
+    const parsed = AlertFiredEventSchema.safeParse(raw) // 3) 共享契约解析，脏数据丢弃
+    if (parsed.success) append(parsed.data)
+  },
+})
+```
+
+- `ServerClient.createStream(options?)`：复用该客户端同一份 `baseUrl` / 凭证 / Bearer 策略，
+  URL 由 `baseUrl` + `/sse/subscribe` 自动拼出（**不要自己写相对路径**：传输层不拼 baseUrl）。
+  `channels` 只需填业务频道，身份频道与广播频道由服务端注入。
+- `useStream(client, handlers)` 负责 React 生命周期：挂载建连 / 卸载 `close()` / 订阅内置状态事件
+  同步 `state`；页面卸载后不再触发 handler；`client` 传 `null` 表示暂不建连（如未登录）。
+- 连接状态取值 `idle | connecting | open | reconnecting | closed`，`connected = state === 'open'`。
+
+## 4.1 底层：HttpStreamClient（@repo/http-client，非 React 场景 / 自定义封装）
 
 ```ts
 import { HttpStreamClient, BearerTokenStrategy, MemoryCredentialsManager } from '@repo/http-client'
 
 const sse = new HttpStreamClient({
-  url: '/sse/subscribe',          // 完整 URL（含 path）
-  channels: ['task:42'],          // 订阅频道；POST 时序列化为 body { channels }
+  url: 'http://localhost:9989/sse/subscribe', // 必须是完整 URL（传输层不做 baseUrl 拼接）
+  channels: ['task:42'],          // 业务频道；POST 时序列化为 body { channels }
   credentialsManager: new MemoryCredentialsManager({ token }), // 或 LocalStorage/Cookie/Env
   authStrategy: new BearerTokenStrategy(),
 })
@@ -108,10 +161,17 @@ sse.close()
 - SSE 用 `@Res()` 自行写原始响应（Nest 的 `@Sse()` 只支持 GET），帧格式
   event → data → id（与 @repo/http-client 的 SSE 解析器约定一致）；该路由返回 undefined、
   不经过响应信封拦截器。
+- 长连接的**请求日志**：`RequestLoggerMiddleware` 在注册时捕获 ALS store 引用，故
+  `[HTTP] POST /sse/subscribe` 的 `requestId` 与响应头 `X-Request-Id` 同值（store 若在
+  `finish` 时现取会拿不到——SSE 的响应结束来自 socket 异步上下文）。
 
 ## 6. 测试参考
 
-`packages/kits/test/stream-hub.test.ts`（vitest，mock ioredis 的 pub/sub）：覆盖本地直推 +
-广播载荷、跨实例路由、自回环过滤、连接注销幂等、abort 自动关闭、心跳、写失败自关，
-以及 `beforeApplicationShutdown` 排空（推 `stream.shutdown` + 关闭全部连接 + 排空中新连接立即关闭）。
-新增 stream 相关测试照此文件模式写。
+- `packages/kits/test/stream-hub.test.ts`（vitest，mock ioredis 的 pub/sub）：覆盖本地直推 +
+  广播载荷、跨实例路由、自回环过滤、连接注销幂等、abort 自动关闭、心跳、写失败自关，
+  以及 `beforeApplicationShutdown` 排空（推 `stream.shutdown` + 关闭全部连接 + 排空中新连接立即关闭）。
+- `packages/http-client/test/stream-client.test.ts`：客户端状态机、退避重连、页面隐藏恢复、排空重连。
+- `packages/ui/test/use-stream.test.ts`：hook 生命周期（建连 / 卸载 close / handler 身份变化不重连 /
+  事件名集合变化重连 / client 引用变化关旧连新），用手写替身客户端（正好证明 hook 不依赖传输包）。
+- `apps/server/test/alert-trigger.test.ts`：告警发送后 publish 到 `admin:all`，且负载通过
+  `AlertFiredEventSchema` 解析（契约一致性由测试锁住）。

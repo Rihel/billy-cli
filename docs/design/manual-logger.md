@@ -10,6 +10,12 @@
 >    运行时报 `unable to determine transport target for "pino-loki"`（探针实测），已挪到 shared；
 > ② `createLogger` 增加了 `child(context)`：pino 的 transport 每个实例起一个 worker，
 >    每个宿主类各调一次 `createLogger()` 会拉起几十个 worker，故必须复用同一实例派生 child。
+>
+> 2026-09-17 修订：`RequestLoggerMiddleware` 改为**注册时捕获 ALS store 引用**（原为 `finish` 时
+> `requestContext.get(...)`）。`requestContext.run(store, () => next())` 的作用域在 `next()` 返回时
+> 即退出，普通请求只因 `end()` 同步发生在处理链路内才读得到；SSE 长连接的响应结束来自 socket 的
+> 异步上下文，那时 store 已不在 —— 长连接日志的 requestId / userId / adminId 全为 null（响应头与
+> 日志对不上）。已补回归用例：`apps/server/test/request-logger.test.ts` 在作用域外触发 finish。
 
 ## 1. 关键认识（决定改造成本）
 

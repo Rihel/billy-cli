@@ -96,3 +96,5 @@ description: Billy 工程（billy-cli monorepo）开发必读 skill。任何在�
 - [ ] 已把本次开发记录追加到 `docs/dev-logs/yyyy-MM-dd.md`（单次 ≤500 字符）
 - [ ] 输出文案 / 程序日志 / 注释 / 文档均为简体中文
 - [ ] `pnpm dev:pkgs` 与目标 app 类型检查通过
+- [ ] 前端改动：已跑 `pnpm typecheck` / `pnpm test` / `pnpm check:ui`（新增前端包必须声明 `typecheck`
+  脚本、自有组件必须在 `packages/ui/src/index.ts` 导出，否则守卫拦下）

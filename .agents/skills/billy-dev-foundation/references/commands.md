@@ -11,6 +11,8 @@ pnpm dev:admin     # Admin 后台（9845）
 pnpm kill:dev      # 一键停掉全部 dev 服务（Web / Admin / Server / packages watcher；--dry-run 仅预览）
 pnpm build:pkgs    # 仅构建 packages（http-client / kits / sdk / shared；ui 源码直出，无 build 脚本）
 pnpm build         # 全量构建（turbo，按依赖拓扑）
+pnpm typecheck     # 全量类型检查（turbo typecheck；当前覆盖 apps/web、apps/admin、packages/ui 三包）
+pnpm test          # 全量单测（turbo test；http-client / kits / server / ui / web / admin 六包）
 pnpm db:gen <Name> # 依据实体与数据库的差异生成迁移（写入 apps/server/src/database/migrations/，经 @app/server）
 pnpm db:migrate    # 执行迁移（经 @app/server）
 pnpm seed:admin    # 创建首个管理员（admin@billy.local / admin123）
@@ -22,6 +24,8 @@ pnpm cli -t crud -n <name>  # 非交互生成 CRUD 业务模块（实体 / repos
 pnpm check:inject  # DI 装饰器一致性守卫（构造器 @Inject / providers @Injectable），违反返回非零退出码
 pnpm check:scaffold # 脚手架模板守卫：导入名 + service 骨架整体渲染 + crud 模块整体渲染（真实 CLI 生成后类型检查），防模板与工作区包漂移
                     #   前提：刚改过 packages 源码要先 pnpm build:pkgs（tsc 读的是 dist 声明），脚本会告警；crud 检查会临时改动 shared 的 schema/index 与错误码字典，跑完自动还原
+                    #   注意：它会临时改动 + 重建 shared，期间不要并行跑 next build / tsc（会误报 module-not-found）
+pnpm check:ui       # 前端约定守卫：① packages/ui/src/components/* 自有组件必须在 src/index.ts 导出；② 前端包（apps/* 里依赖 next 的 + @repo/ui）必须声明 typecheck 脚本
 ```
 
 > **不要用 `tsx` CLI 跑 server**：它同时挂 CJS 钩子，会让 CJS 依赖（pino / pg 等）`require` 到的

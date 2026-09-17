@@ -43,12 +43,28 @@ shadcn 组件的默认类：Tailwind 的 utilities 层声明在 base 之后，�
 `find-external-skill.md`「评估 → 适配 → 登记」沉淀为项目内 skill；最终仍统一遵循
 `@repo/ui`（shadcn 风格）与本文的 className / @layer 样式约定。
 
+## 前端质量门（写完页面必跑）
+
+与后端对等，前端也有可执行的门（2026-09-17 起，命令说明见
+`billy-dev-foundation/references/commands.md`）：
+
+```bash
+pnpm typecheck   # turbo：web / admin / ui 三包 tsc --noEmit
+pnpm test        # turbo：六包单测（ui 用 jsdom + testing-library，两个 app 用 node 环境）
+pnpm check:ui    # 守卫：自有组件必须从 packages/ui/src/index.ts 导出；前端包必须有 typecheck 脚本
+```
+
+- 新增前端包（含 `pnpm cli -t client` 生成的应用）**必须声明 `typecheck` 脚本**，否则守卫拦下。
+- 纯逻辑（常量 / 格式化 / 守卫判定）写 `test/*.test.ts` 用 node 环境；hook / 组件写 jsdom 用例，
+  样板见 `packages/ui/test/{tag.test.tsx,use-stream.test.ts}`。写法见 `write-tests` skill。
+- 改 `@repo/ui` 的自有组件目录时，别忘在 `packages/ui/src/index.ts` 补导出（守卫会拦）。
+
 ## 参考文件（本 skill 的组成部分）
 
 | 文件 | 内容 | 何时读 |
 | --- | --- | --- |
-| [references/admin-page.md](./references/admin-page.md) | Admin 页骨架、DataTable / DataList 选型、@tanstack/react-form 声明式表单、缓存同步、展示辅助、defineAction | 写 Admin 页面时（必读） |
-| [references/web-page.md](./references/web-page.md) | Web 页 wrapAction + useActionState + @repo/ui 组件 | 写 Web 前台页面时（必读） |
+| [references/admin-page.md](./references/admin-page.md) | Admin 页骨架、DataTable / DataList 选型、@tanstack/react-form 声明式表单、缓存同步、展示辅助、defineAction、实时页面（SSE） | 写 Admin 页面时（必读） |
+| [references/web-page.md](./references/web-page.md) | Web 页 wrapAction + useActionState + @repo/ui 组件、受保护页面两层守卫、前台全局装配 | 写 Web 前台页面时（必读） |
 
 ## 菜单与路由
 
@@ -59,8 +75,9 @@ shadcn 组件的默认类：Tailwind 的 utilities 层声明在 base 之后，�
   构建期静态数据 / 预渲染缓存。
 - admin 守卫已由 `proxy.ts`（cookie 重定向）+ `main/layout.tsx`（SSR `getMe()` 鉴权）统一处理，
   新页面无需重复；`force-dynamic` 的 layout 下不要缓存用户态数据。
-- web：目前无 proxy 路由守卫（`apps/web/src/lib/constants.ts` 只定义 `Pages` / `TokenKey` 等常量）；
-  auth 页公开，受保护逻辑按需在对应 layout / action 内做，勿臆造不存在的 `PublicPaths`。
+- web：受保护页在 `apps/web/src/proxy.ts` 的 `config.matcher` 里登记前缀（无 cookie → 真实 307 到
+  登录页并带 `?next=`），会话有效性由该区 `layout.tsx` 的 SSR 校验兜底；登录 / 注册页用
+  `resolveNextPath`（`apps/web/src/lib/redirect.ts`）过滤回跳地址。参考 `/account`。
 
 ## 完成检查清单
 
@@ -72,4 +89,8 @@ shadcn 组件的默认类：Tailwind 的 utilities 层声明在 base 之后，�
 - [ ] 字典列用 `DictTag` / `getLabel`；时间用 `DisplayValue`；文件用 `formatStorageUrl`
 - [ ] Server Actions 统一走 `defineAction`（admin）或 `wrapAction`（web）的错误处理封装
 - [ ] admin 新页面已登记 `AppMenu.tsx` 菜单
+- [ ] 需要登录态的前台页：已加进 `apps/web/src/proxy.ts` 的 `matcher`（真实 307）+ layout 做 SSR 会话校验 + `?next=` 经 `lib/redirect.ts` 过滤
+- [ ] 用到上传 / toast / Query：确认 `<Toaster />` 与存储 Provider（web `WebStorageProvider` / admin `AppProviders`）已装配
+- [ ] 实时页面用 `client.createStream()` + `useStream`（`useMemo` 稳定引用），事件负载用共享 schema 解析
+- [ ] 已跑 `pnpm typecheck` / `pnpm test` / `pnpm check:ui`（新增前端包确认已声明 `typecheck` 脚本）
 - [ ] 样式调整优先用组件 className；必须写 CSS 覆盖时写在 `@layer` 之外（非 layer 优先）

@@ -18,19 +18,24 @@ description: 在 Billy 工程中编写单元测试（vitest）：测试文件位
   vitest 4 没取到 tsconfig 的 `experimentalDecorators`）。要测「装饰器写入的元数据」（如
   `@KafkaConsumer`）时，直接用 `Reflect.defineMetadata(KEY, meta, Target.prototype.method)` 写，
   与装饰器等价（装饰器本身就是 `SetMetadata`），别在测试里写 `@decorator()`。
-- 新增测试的包要自加 `"test": "vitest run"` 脚本；跑单包 `pnpm --filter <包> test`。
+- 新增测试的包要自加 `"test": "vitest run"` 脚本；跑单包 `pnpm --filter <包> test`，
+  全量跑根 `pnpm test`（turbo）。
+- **前端测试**：`@repo/ui` 用 jsdom + `@testing-library/react`（hook / 组件级，配置见
+  `packages/ui/vitest.config.ts`），`apps/web` / `apps/admin` 默认 node 环境测纯逻辑；
+  样板 `packages/ui/test/tag.test.tsx`（组件）与 `test/use-stream.test.ts`（`renderHook` + 替身）。
 
 ## 参考文件（本 skill 的组成部分）
 
 | 文件 | 内容 | 何时读 |
 | --- | --- | --- |
-| [references/testing-guide.md](./references/testing-guide.md) | 结构与命名、fetch mock、repository / service 测试套路、测什么 / 不测什么 | 写 / 修测试时（必读） |
+| [references/testing-guide.md](./references/testing-guide.md) | 结构与命名、fetch mock、repository / service 测试套路、前端三包测试接入、测什么 / 不测什么 | 写 / 修测试时（必读） |
 
 ## 完成检查清单
 
 - [ ] 测试文件位于 `test/*.test.ts`（或源码旁 `*.test.ts`），未被 index 导出
-- [ ] 所属包 package.json 已有 `test: vitest run` 脚本（没有则补上）
+- [ ] 所属包 package.json 已有 `test: vitest run` 脚本（没有则补上）；前端包还要有 `typecheck`（`pnpm check:ui` 会查）
 - [ ] mock 用 vi（stubGlobal / fn），`afterEach` 清理全局 stub
 - [ ] 错误路径有断言：ApiError 用 `{ code, status }`、AppError 用 `{ code }`，覆盖「查无 / 无权限」等
 - [ ] 未重复造轮子：断言 / mock 均用 vitest 原生能力，未自写框架
-- [ ] `pnpm --filter <包> test` 通过
+- [ ] 前端 hook / 组件测试用 `@testing-library/react`（不要为测 hook 自造渲染器）
+- [ ] `pnpm --filter <包> test` 与 `pnpm typecheck` 通过

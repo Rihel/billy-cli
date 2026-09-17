@@ -199,16 +199,18 @@ pnpm cli -t crud -n product --no-install  # 非交互生成 CRUD 业务模块（
 │   ├── web/                             # Next.js 16 前台（@app/web，端口 9840）
 │   │   └── src/
 │   │       ├── actions/auth.actions.ts  # Server Actions（登录 / 注册）
-│   │       ├── app/                     # /、/auth/*（登录 / 注册 / 忘记密码 / 重置密码）、/comparison、/markdown/*
+│   │       ├── app/                     # /、/account（个人中心，受保护）、/auth/*、/comparison、/markdown/*
+│   │       │                            #   + error.tsx / not-found.tsx / loading.tsx 应用级兜底
 │   │       ├── components/landing/       # 首页区块（header / hero / features / choice / architecture / ...）
-│   │       ├── lib/                     # constants / server-client（SDK 单例）/ auth-session（服务端会话探测）
-│   │       └── providers/QueryProvider.tsx  # TanStack Query
+│   │       ├── lib/                     # constants / server-client（SDK 单例）/ auth-session（服务端会话探测）/ redirect（?next= 过滤）
+│   │       ├── proxy.ts                 # 受保护路由守卫（无 cookie → 307 到登录页，matcher 只挂 /account/*）
+│   │       └── providers/               # QueryProvider（TanStack Query + 统一错误 toast）/ WebStorageProvider（上传）
 │   └── admin/                           # Next.js 16 管理后台（@app/admin，端口 9845）
 │       └── src/
 │           ├── actions/auth.actions.ts  # Server Actions（@repo/ui defineAction）
 │           ├── app/
 │           │   ├── auth/                # login / register / forgot-password / reset-password
-│           │   └── main/                # dashboard / todo / user-center / system/{users,admins} / monitor/{rules,logs} / automation
+│           │   └── main/                # dashboard / todo / user-center / system/{users,admins} / monitor/{live,rules,logs} / automation
 │           ├── components/              # AppHeader / AppMenu / AppSider
 │           ├── lib/                     # constants / server-client / logger
 │           ├── providers/AppProviders.tsx
@@ -314,10 +316,12 @@ pnpm cli -t crud -n product --no-install  # 非交互生成 CRUD 业务模块（
 
 面向 C 端的前台应用，使用 **Base UI + shadcn/ui**（来自 `@repo/ui`）与 Tailwind 4。
 
-- 页面：`/`（首页）、`/auth/*`（登录 / 注册 / 忘记密码 / 重置密码）、`/comparison`（竞品调研）、`/markdown/*`（Markdown 渲染示例）
+- 页面：`/`（首页）、`/auth/*`（登录 / 注册 / 忘记密码 / 重置密码）、`/account`（**个人中心**，受保护用户区）、`/comparison`（竞品调研）、`/markdown/*`（Markdown 渲染示例）
 - Server Actions（`actions/auth.actions.ts`）封装登录 / 注册 / 忘记密码 / 重置密码 / 登出，token 写入 httpOnly cookie
 - `lib/server-client.ts`：浏览器端单例（`LocalStorageCredentialsManager` 管理 token，baseUrl 走 `NEXT_PUBLIC_SERVER_URL`）+ 服务端无状态客户端（`MemoryCredentialsManager` + 显式传入 token，baseUrl 走运行时 `SERVER_URL`）；httpOnly cookie 在 `lib/auth-session.ts` 读取
-- `providers/QueryProvider.tsx` 注入 TanStack Query
+- `providers/QueryProvider.tsx` 注入 TanStack Query（`QueryCache` / `MutationCache` 的 `onError` 统一 toast）；`providers/WebStorageProvider.tsx` 把 `@repo/ui` 的上传组件接到 `storage.getPresignedUrl`
+- 受保护页两层守卫：`src/proxy.ts` 中间件（只查 cookie → 无 cookie 真实 307 到 `/auth/login?next=`，`matcher` 只挂 `/account/:path*`）+ `app/account/layout.tsx` 的 SSR 会话校验；`?next=` 回跳经 `lib/redirect.ts` 过滤（防开放重定向）
+- 应用级兜底：`app/error.tsx`（可重试）、`app/not-found.tsx`、`app/loading.tsx`
 - `app/layout.tsx` 标记 `force-dynamic`：前端根 layout 统一动态渲染（每次请求 SSR，不做静态预渲染）
 - `next.config.ts`：`output: 'standalone'`、React Compiler、transpile `@repo/ui`
 
@@ -329,8 +333,11 @@ pnpm cli -t crud -n product --no-install  # 非交互生成 CRUD 业务模块（
 登录使用**后台管理员**账号（`AdminEntity`，`/admin/*` 接口），与前台用户体系隔离。
 
 - 页面：`/auth/login`（管理员登录）、`/main/dashboard`、`/main/todo`、`/main/user-center`、
-  `/main/system/users`、`/main/system/admins`（管理员管理）、`/main/monitor/rules`（告警规则）、
-  `/main/monitor/logs`（告警记录）、`/main/automation`（自动化演示）
+  `/main/system/users`、`/main/system/admins`（管理员管理）、`/main/monitor/live`（**实时告警**，SSE）、
+  `/main/monitor/rules`（告警规则）、`/main/monitor/logs`（告警记录）、`/main/automation`（自动化演示）
+- 实时告警页把 SSE 链路走通：`client.createStream()`（`@repo/sdk`）→ `useStream`（`@repo/ui`）
+  → 告警发送后 `StreamHub.publish('admin:all', 'alert.fired')` 实时到达；页内「触发测试告警」
+  可一键自检全链路（协议与频道权限见 `stream` skill 与 `docs/design/frontend-foundation.md`）
 - 布局：`AppHeader` + `AppSider` + `AppMenu`；根 `app/layout.tsx` 与 `main/layout.tsx` 均标记
   `force-dynamic`（前者让前端根 layout 统一动态渲染，后者在 SSR 侧通过 cookie 调用
   `admin.getMe()` 做鉴权，失败 `redirect()` 到登录页）
@@ -935,7 +942,9 @@ await this.dbService.getFullSqlStatement(builder)             // 返回完整 SQ
   `logger.log('<域>.<动作>', { id })`。不要再使用 `@Logger()` 装饰器（已删除）；
 - **请求日志由 `common/request-logger` 的 `RequestLoggerMiddleware` 记录**：method / url / statusCode /
   durationMs / requestId / userId / adminId，按状态码分级（`<400` info、`4xx` warn、`5xx` error）。
-  它直接从请求上下文 ALS 取身份；日志 `requestId` 即响应头 `X-Request-Id`；
+  它在中间件注册时**捕获请求上下文 ALS 的 store 引用**（而不是在 `finish` 时现取）：普通请求恰好
+  能现取是因为 `end()` 同步发生在处理链路内，而 SSE 等长连接的响应结束发生在 socket 的异步上下文里，
+  那时作用域早已退出（曾因此让长连接日志的 requestId 全为 null）；日志 `requestId` 即响应头 `X-Request-Id`；
 - **输出目标**：开发 `pino-pretty` 彩色；生产 JSON；生产且配置 `loki` 时多目标 transport
   （`pino/file` 落盘 + `pino-loki` 推送，带 labels 与批量间隔）。注意 `pino-loki` 依赖必须声明在
   `@repo/shared`（创建 pino 实例的包），挪到 kits 会报 `unable to determine transport target`；
@@ -983,6 +992,8 @@ packages 的 `dist` 声明，所以刚改过 packages 源码要先 `pnpm build:p
 | `pnpm dev:admin`    | 启动 Admin 后台（9845）                 |
 | `pnpm kill:dev`     | 一键停掉全部 dev 服务（Web / Admin / Server / packages watcher；`--dry-run` 仅预览） |
 | `pnpm build`        | 全量构建（turbo）                       |
+| `pnpm typecheck`    | 全量类型检查（turbo `typecheck`；覆盖 web / admin / ui） |
+| `pnpm test`         | 全量单测（turbo `test`；http-client / kits / server / ui / web / admin） |
 | `pnpm start:server` | 启动生产 Server                         |
 | `pnpm start:web`    | 启动生产 Web                            |
 | `pnpm db:gen <name>`| 生成 TypeORM 迁移（写入 `apps/server/src/database/migrations/`） |
@@ -992,6 +1003,7 @@ packages 的 `dist` 声明，所以刚改过 packages 源码要先 `pnpm build:p
 | `pnpm clean`        | 清理 node_modules / dist / 缓存         |
 | `pnpm check:inject` | 守卫：构造器 `@Inject` / providers `@Injectable` 一致性检查 |
 | `pnpm check:scaffold` | 守卫：脚手架模板与工作区包一致性检查（导入名 + service/crud 渲染类型检查） |
+| `pnpm check:ui`     | 守卫：前端约定（自有组件必须从 `packages/ui/src/index.ts` 导出；前端包必须有 `typecheck` 脚本） |
 
 ## Docker
 
@@ -1120,6 +1132,7 @@ AI 编码 Agent 按任务**按需加载**，工具无关（Claude Code / Codex /
 - [docs/design/nestjs-migration.md](docs/design/nestjs-migration.md) — 后端重构设计（删除 @repo/di、迁移 NestJS 12、kits 全面 Nest 化）
 - [docs/design/backend-kits-refactor.md](docs/design/backend-kits-refactor.md) — kits 通用能力封装设计（一个基础设施一个 module）
 - [docs/design/sse.md](docs/design/sse.md) — 服务端推送（SSE / StreamHub）设计
+- [docs/design/frontend-foundation.md](docs/design/frontend-foundation.md) — 前端基础建设（质量门 + SSE 前端链路 + 前台业务闭环 + 实测记录）
 - [docs/design/monitor-alert.md](docs/design/monitor-alert.md) — 监控告警设计（规则 / 触发 / 通道）
 - [docs/design/auth-session.md](docs/design/auth-session.md) — 认证与会话设计（JWT + Redis 会话）
 - [docs/queue.md](docs/queue.md) — 已废弃（BullMQ 队列方案，已被 Kafka 取代，仅存档）

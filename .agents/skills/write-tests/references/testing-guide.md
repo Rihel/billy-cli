@@ -6,15 +6,24 @@
 
 ## 1. 工程测试现状与接入
 
-- 框架：**vitest**（由各测试包自行声明：`@repo/http-client`、`@repo/kits`、`@app/server`；根 `package.json` 不含 vitest）。
+- 框架：**vitest**（由各测试包自行声明：`@repo/http-client`、`@repo/kits`、`@app/server`、
+  `@repo/ui`、`@app/web`、`@app/admin`；根 `package.json` 不含 vitest）。
 - 现有示例：`packages/http-client/test/`（http-client.test.ts 覆盖策略 / 管理器 / provider /
   请求流程；stream-parser / stream-transport / stream-client 覆盖 SSE 解析与状态机）；
   `packages/kits/test/stream-hub.test.ts`（mock ioredis 的 pub/sub，覆盖本地直推、跨实例广播、
   自回环过滤、连接注销幂等、心跳与断线自关）。
-- 测试命令：`packages/http-client/package.json` 已有 `"test": "vitest run"`；
-  **新增测试的包需自行在 package.json 加同款 `test` 脚本**。跑单个包：
-  `pnpm --filter <包名> test`；全量跑用 `pnpm -r --if-present test`
-  （加 `--if-present` 跳过无 test 脚本的包，否则会报错）。
+- **前端测试（2026-09-17 起）**：
+  - `@repo/ui` 用 **jsdom + @testing-library/react**（hook / 组件级测试），配置在
+    `packages/ui/vitest.config.ts`（`environment: 'jsdom'`，JSX 由 vitest 4 的 oxc 转换，
+    不要再设 `esbuild.jsx` 否则被忽略并告警）；测试经 `test/` 目录，示例
+    `test/tag.test.tsx`（组件 DOM 断言）、`test/use-stream.test.ts`（`renderHook` + 手写替身客户端）。
+  - `@app/web` / `@app/admin` 用默认 **node 环境**测纯逻辑（`test/constants.test.ts` /
+    `test/redirect.test.ts` / `test/theme.store.test.ts`），需要 DOM 时再改 jsdom。
+  - 包内 `#components/*` / `#lib/*` 子路径导入由 vite 解析 package.json 的 `imports` 字段，
+    无需 alias；测试文件也应被 `typecheck` 覆盖（`packages/ui/tsconfig.json` 的 `include` 含 `test`）。
+- 测试命令：各包已有 `"test": "vitest run"`；**新增测试的包需自行在 package.json 加同款脚本**
+  （并声明 `typecheck`，否则 `pnpm check:ui` 会拦下）。跑单个包 `pnpm --filter <包名> test`；
+  全量用根 `pnpm test`（turbo `test` task），类型检查用根 `pnpm typecheck`。
 - 文件位置约定：包内 `test/*.test.ts`（沿用 http-client 的做法），或与源码同目录的
   `*.test.ts`；**不要**把测试放进 `dist` / `src/index.ts` 导出链。
 

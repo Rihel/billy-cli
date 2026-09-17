@@ -92,8 +92,8 @@ token 采用**双存储**，各有分工：
 
 ## 5. 路由守卫（Next.js）
 
-- **proxy 中间件**（`apps/admin/src/proxy.ts`；web 无 proxy）：按 `PublicPaths`
-  判断公开页，非公开页无 cookie 时 `redirect(login)`。`matcher` 排除静态资源。
+- **admin proxy 中间件**（`apps/admin/src/proxy.ts`）：按 `PublicPaths` 判断公开页，
+  非公开页无 cookie 时 `redirect(login)`。`matcher` 排除静态资源。
 - **SSR 守卫**（`apps/admin/src/app/main/layout.tsx`）：`force-dynamic` + `cookies()` 取
   token → `createServerClient(token).admin.getMe()`，失败 `redirect(login?reason=expired)`；
   成功把管理员信息预取进 `AuthStoreProvider`（Zustand）。
@@ -102,8 +102,17 @@ token 采用**双存储**，各有分工：
   `auth.getMe()`，把 `authEnabled` / `user` 传给页面各区块（首页即 Header / Hero /
   CtaSection / Footer）；**账号入口（登录 / 注册 / 忘记密码 / 重置密码）一律由它决定是否渲染**，
   已登录时全部不渲染，避免出现「登录后首页还挂着登录按钮」。会话失效返回 `null`
-  （前台不强制登录，不跳转）。web 前台无 proxy，公开页不强制登录。
-- 修改 `PublicPaths` / `Pages` 在 `apps/*/src/lib/constants.ts`（admin 有 `PublicPaths`，web 无）。
+  （前台不强制登录，不跳转）。公开页不强制登录。
+- **web 受保护页两层守卫**（2026-09-17 起，参考 `/account`）：
+  ① `apps/web/src/proxy.ts` 只对 `config.matcher` 里的受保护前缀生效，查 `access-token` cookie
+  是否存在，无 cookie 直接 **307** 到登录页并带 `?next=<原路径>`（**必须走中间件**：嵌套 layout
+  的 `redirect()` 在流式响应开始后只能得到 200 + RSC 跳转意图，禁用 JS 就不跳）；
+  ② 该区 `layout.tsx` 调 `getWebAuthState()` 判定「cookie 在但服务端会话已失效」→ 跳登录页，
+  `AUTH_ENABLED=false` → 回首页（中间件不请求后端，避免每个请求多一次往返）。
+- **`?next=` 回跳必须过滤**：`resolveNextPath`（`apps/web/src/lib/redirect.ts`）只接受站内相对路径
+  （拒绝 `https://evil.com` 与 `//evil.com`），登录 / 注册成功后跳它，注册链接也带上 `next`。
+- 修改 `PublicPaths` / `Pages` 在 `apps/*/src/lib/constants.ts`（admin 有 `PublicPaths`，web 用
+  `Pages` + `proxy.ts` 的 `matcher`）。
 
 ## 6. 找回 / 重置 / 修改密码
 

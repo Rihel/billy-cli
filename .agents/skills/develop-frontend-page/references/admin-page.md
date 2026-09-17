@@ -128,3 +128,27 @@ export const saveXxxAction = defineAction(async (input: SaveXxxDto) => {
 
 - `defineAction` / `callAction` 用法见 `packages/ui/src/action.ts`；
   `callAction(action, input, { onSuccess, onError })` 处理结果。
+
+## 7. 实时页面（SSE 推流）
+
+参考实现：`apps/admin/src/app/main/monitor/live/page.tsx`（实时告警）。要点：
+
+```tsx
+const client = useServerClient()
+const [generation, setGeneration] = useState(0)                       // 手动重连：自增即重建引用
+const stream = useMemo(() => client.createStream(), [client, generation])
+const { state, connected } = useStream(stream, {
+  [STREAM_ALERT_FIRED_EVENT]: (raw) => {
+    const parsed = AlertFiredEventSchema.safeParse(raw)               // 共享契约解析，脏数据丢弃
+    if (parsed.success) setEvents((prev) => [parsed.data, ...prev].slice(0, 50))
+  },
+})
+```
+
+- **`useMemo` 稳定引用是硬要求**：`useStream` 以 `client` 引用变化为「关旧连新」的依据，
+  每次渲染新建客户端会导致反复重连。
+- handlers 用内联对象无妨（hook 内部存 ref）：函数身份变化不重连，事件名集合变化才重建订阅。
+- 事件负载用 `@repo/shared` 的 schema 解析；`state` 取值 `idle | connecting | open |
+  reconnecting | closed`，用 `connected` 判断是否就绪。
+- 长连接是**增量**展示，历史查询仍走列表页（不要用 SSE 事件当数据源）。
+- 完整协议、频道权限与踩坑见 `stream` skill。

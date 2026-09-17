@@ -30,4 +30,34 @@ export const xxxAction = wrapAction(async (input: I) => {
   `const [state, formAction, isPending] = useActionState(handler, init)`，
   失败返回 `{ error }` 展示，成功 `router.replace(目标页)`（`useEffect` 监听 redirect）。
 - 客户端数据用 TanStack Query（`QueryProvider` 已全局注入）；查询键规范
-  `['domain', 'method', { params }]`。
+  `['domain', 'method', { params }]`。完整用例见 `apps/web/src/app/account/page.tsx`
+  （`useQuery` 取 `auth.getMe()` + `useMutation` 改资料 / 改密码 + `queryClient.setQueryData` 就地更新）。
+
+## 3. 受保护页面（需要登录态）
+
+前台守卫分两层，**两层都必要、职责不重叠**（参考 `/account`）：
+
+| 层 | 文件 | 职责 |
+| --- | --- | --- |
+| 边缘中间件 | `apps/web/src/proxy.ts` | 只查 `access-token` cookie 是否存在 → 无 cookie 直接 **307** 到登录页并带 `?next=`；`matcher` 只挂受保护前缀（`['/account/:path*']`），其它页面零开销 |
+| 页面 layout | `apps/web/src/app/<区>/layout.tsx` | SSR 调 `getWebAuthState()`（读 cookie → `/auth/get-me`），处理「cookie 在但会话已失效」→ 跳登录页；`AUTH_ENABLED=false` → 回首页 |
+
+- **为什么不能只放 layout**：根 layout 是 `force-dynamic` 且带 `<html>` 外壳，嵌套 layout 抛
+  `redirect()` 时响应已在流式输出 —— 只能得到 `HTTP 200` + RSC 里的跳转意图（禁用 JS 就不跳）。
+  要真正的 307 必须走中间件。
+- **为什么不在中间件调后端**：每个受保护页请求都多一次网络往返；会话有效性判定交给 layout。
+- 登录 / 注册页支持 `?next=` 回跳，**必须经 `resolveNextPath`（`apps/web/src/lib/redirect.ts`）
+  过滤**：只接受站内相对路径，否则 `?next=https://evil.com` 就是开放重定向。
+- 前台登录态有两条凭证链路，页面要用对：SSR / Server Action 用 httpOnly cookie
+  （`apps/web/src/lib/auth-session.ts`），浏览器端 SDK 调用用 localStorage token
+  （登录 / 注册成功后 `saveToken`）；登出时两条都要清（`removeToken` + `logoutAction`）。
+
+## 4. 前台全局装配（新增能力时最多改这三处）
+
+| 装配 | 文件 | 说明 |
+| --- | --- | --- |
+| Query + 错误提示 | `apps/web/src/providers/QueryProvider.tsx` | `QueryCache` / `MutationCache` 的 `onError` 统一 toast（与 admin 同策略，错误不静默） |
+| 对象存储 | `apps/web/src/providers/WebStorageProvider.tsx` | 把 `@repo/ui` 的 `ImageUpload` / `FileUpload` / `useStorage` 接到 `client.storage.getPresignedUrl` 与 `formatStorageUrl` 上；**不装配则上传组件抛错**（`@repo/ui` 不依赖 sdk，必须由应用注入） |
+| Toast 容器 | `apps/web/src/app/layout.tsx` 的 `<Toaster />` | 没有它 `toastSuccess` / Query 错误提示全都无声 |
+
+- 应用级兜底文件：`app/error.tsx`（客户端，`reset` 重试）、`app/not-found.tsx`、`app/loading.tsx`。
