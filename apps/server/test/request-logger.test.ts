@@ -117,4 +117,50 @@ describe('RequestLoggerMiddleware（替代 pino-http 的请求日志）', () => 
 
     expect(calls).toHaveLength(1)
   })
+
+  it('响应在 ALS 作用域之外结束（SSE 长连接）仍带 requestId 与身份', () => {
+    const { logger, calls } = makeLogger()
+    const middleware = new RequestLoggerMiddleware(logger)
+    const res = makeResponse(200)
+
+    // 注册监听与 next() 在作用域内（与真实链路一致）
+    requestContext.run(
+      { requestId: 'rid-sse', userId: null, adminId: null },
+      () => {
+        middleware.use(request as never, res as never, vi.fn())
+      },
+    )
+
+    // 关键：finish 在作用域**之外**触发 —— SSE 的响应结束来自 socket 的 close 回调，
+    // 那时 AsyncLocalStorage 里已经没有本次请求的 store（`run()` 在 next() 返回时就退出了）。
+    // 回归背景：曾经用 `requestContext.get(...)` 在 write() 里读，导致 SSE 的请求日志
+    // requestId / userId / adminId 全为 null，响应头与日志对不上。
+    expect(requestContext.getStore()).toBeUndefined()
+    res.emit('finish')
+
+    expect(calls).toHaveLength(1)
+    expect(calls[0].data).toMatchObject({
+      requestId: 'rid-sse',
+      userId: null,
+      adminId: null,
+      status: 200,
+    })
+  })
+
+  it('长连接的身份在守卫写入后可见（持有 store 引用的可变性）', () => {
+    const { logger, calls } = makeLogger()
+    const middleware = new RequestLoggerMiddleware(logger)
+    const res = makeResponse(200)
+    const store = { requestId: 'rid-live', userId: null as string | null, adminId: null as string | null }
+
+    requestContext.run(store, () => {
+      middleware.use(request as never, res as never, vi.fn())
+      // 模拟守卫在请求链路中写入身份
+      requestContext.set('userId', 'u-late')
+    })
+
+    res.emit('close')
+
+    expect(calls[0].data).toMatchObject({ requestId: 'rid-live', userId: 'u-late' })
+  })
 })

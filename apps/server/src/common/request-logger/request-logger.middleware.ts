@@ -37,6 +37,14 @@ export class RequestLoggerMiddleware implements NestMiddleware {
     // finish 与 close 可能都触发（正常响应也会 close），只记一条
     let logged = false
 
+    // **在 ALS 作用域内**取 store 引用，而不是等 write() 时再 `requestContext.get(...)`：
+    // finish / close 是 socket 的异步上下文触发的，而 `requestContext.run(store, () => next())`
+    // 的作用域在 next() 返回时就已经退出 —— 普通请求恰好是因为 end() 同步发生在处理链路内才
+    // 读得到；长连接（SSE）的响应结束发生在 `await connection.closed` 之后，早已脱离作用域，
+    // 表现为 requestId / userId / adminId 全成 null（响应头与日志对不上，排障断链）。
+    // store 是可变共享对象：守卫随后写入的 userId / adminId 依然读得到。
+    const store = requestContext.getStore()
+
     const write = (): void => {
       if (logged) return
       logged = true
@@ -49,9 +57,9 @@ export class RequestLoggerMiddleware implements NestMiddleware {
         url,
         status,
         durationMs,
-        requestId: requestContext.get('requestId') ?? null,
-        userId: requestContext.get('userId') ?? null,
-        adminId: requestContext.get('adminId') ?? null,
+        requestId: store?.requestId ?? null,
+        userId: store?.userId ?? null,
+        adminId: store?.adminId ?? null,
       }
       const message = `${request.method} ${url} ${status} ${durationMs}ms`
 
