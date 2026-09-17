@@ -3,6 +3,7 @@
 import { loginAction } from '@/actions/auth.actions'
 import { saveToken, useServerClient } from '@/lib/server-client'
 import { Pages, AppName } from '@/lib/constants'
+import { resolveNextPath } from '@/lib/redirect'
 import {
   Button,
   Input,
@@ -14,7 +15,7 @@ import {
   Separator,
 } from '@repo/ui'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { useActionState, useEffect } from 'react'
 
 type LoginState = {
@@ -25,6 +26,8 @@ type LoginState = {
 export default function LoginPage() {
   const router = useRouter()
   const client = useServerClient()
+  // 受保护页跳转过来时带 `?next=`，登录后回跳（只接受站内相对路径，防开放重定向）
+  const nextPath = resolveNextPath(useSearchParams().get('next'))
 
   // 用户体系开关关闭：登录页无意义，直接回首页
   useEffect(() => {
@@ -63,9 +66,9 @@ export default function LoginPage() {
 
   useEffect(() => {
     if (state.redirect) {
-      router.replace(Pages.home)
+      router.replace(nextPath)
     }
-  }, [state.redirect, router])
+  }, [state.redirect, nextPath, router])
 
   return (
     <div className="space-y-8">
@@ -147,7 +150,11 @@ export default function LoginPage() {
       <p className="text-center text-sm text-muted-foreground">
         还没有账号？{' '}
         <Link
-          href={Pages.register}
+          href={
+            nextPath === Pages.home
+              ? Pages.register
+              : `${Pages.register}?next=${encodeURIComponent(nextPath)}`
+          }
           className="font-medium text-foreground underline underline-offset-4 hover:opacity-80 transition-opacity"
         >
           创建账号

@@ -4,6 +4,8 @@ export const Pages = {
   register: '/auth/register',
   forgotPassword: '/auth/forgot-password',
   resetPassword: '/auth/reset-password',
+  /** 受保护的用户区（未登录访问会跳登录页并带 `?next=` 回跳） */
+  account: '/account',
   markdown: '/markdown',
 }
 

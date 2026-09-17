@@ -1,7 +1,8 @@
 import type { Metadata } from "next"
 import { Geist, Geist_Mono, Space_Grotesk } from "next/font/google"
-import { TooltipProvider } from "@repo/ui"
+import { Toaster, TooltipProvider } from "@repo/ui"
 import { QueryProvider } from "@/providers/QueryProvider"
+import { WebStorageProvider } from "@/providers/WebStorageProvider"
 import "./globals.css"
 
 const geist = Geist({
@@ -40,8 +41,12 @@ export default function RootLayout({
     >
       <body className="min-h-screen bg-background font-sans antialiased">
         <QueryProvider>
-          <TooltipProvider>{children}</TooltipProvider>
+          <WebStorageProvider>
+            <TooltipProvider>{children}</TooltipProvider>
+          </WebStorageProvider>
         </QueryProvider>
+        {/* 全局 toast 容器：TanStack Query 的统一错误提示 / 页面操作反馈都经它渲染 */}
+        <Toaster />
       </body>
     </html>
   )

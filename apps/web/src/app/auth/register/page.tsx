@@ -3,6 +3,7 @@
 import { registerAction } from '@/actions/auth.actions'
 import { saveToken, useServerClient } from '@/lib/server-client'
 import { Pages, AppName } from '@/lib/constants'
+import { resolveNextPath } from '@/lib/redirect'
 import {
   Button,
   Input,
@@ -14,7 +15,7 @@ import {
   Separator,
 } from '@repo/ui'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { useActionState, useEffect, useState } from 'react'
 
 type RegisterState = {
@@ -25,6 +26,8 @@ type RegisterState = {
 export default function RegisterPage() {
   const router = useRouter()
   const client = useServerClient()
+  // 与登录页一致：注册成功后回跳受保护页（只接受站内相对路径）
+  const nextPath = resolveNextPath(useSearchParams().get('next'))
   const [confirmPassword, setConfirmPassword] = useState('')
   const [password, setPassword] = useState('')
   const mismatch = password && confirmPassword && password !== confirmPassword
@@ -72,9 +75,9 @@ export default function RegisterPage() {
 
   useEffect(() => {
     if (state.redirect) {
-      router.replace(Pages.home)
+      router.replace(nextPath)
     }
-  }, [state.redirect, router])
+  }, [state.redirect, nextPath, router])
 
   return (
     <div className="space-y-8">

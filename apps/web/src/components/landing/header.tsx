@@ -84,7 +84,11 @@ export function Header({ user, authEnabled }: HeaderProps) {
         <div className="hidden items-center gap-2 md:flex">
           {user ? (
             <>
-              <div className="flex items-center gap-2" title={displayName}>
+              <Link
+                href={Pages.account}
+                className="flex items-center gap-2 rounded-md px-2 py-1 transition-colors hover:bg-zinc-100"
+                title={`进入个人中心（${displayName}）`}
+              >
                 {user.avatar ? (
                   <img
                     src={formatStorageUrl(user.avatar)}
@@ -99,7 +103,7 @@ export function Header({ user, authEnabled }: HeaderProps) {
                 <span className="max-w-32 truncate text-sm text-zinc-600">
                   {displayName}
                 </span>
-              </div>
+              </Link>
               <Button
                 variant="ghost"
                 size="sm"
