@@ -76,6 +76,14 @@ export class AppExceptionFilter implements ExceptionFilter {
       // 告警链路异常不影响返回
     }
 
+    // 响应头已发出（典型：SSE 长连接写头之后才抛错）：已无法改写状态码与 body，
+    // 再调 response.json 会抛 ERR_HTTP_HEADERS_SENT —— 那会把异常过滤器自己也炸掉、
+    // 连接被硬断且日志里只剩「二次故障」。这里直接结束响应，保留首因日志。
+    if (response.headersSent) {
+      if (!response.writableEnded) response.end()
+      return
+    }
+
     response
       .status(descriptor.http)
       .json(ResponseUtils.error(descriptor.value, descriptor.label))
