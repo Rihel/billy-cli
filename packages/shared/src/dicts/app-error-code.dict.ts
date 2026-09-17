@@ -101,6 +101,21 @@ export const AppErrorCodes = createDict({
     value: 3102,
     http: 409,
   },
+  StorageKeyInvalid: {
+    label: '文件 key 非法',
+    value: 3201,
+    http: 400,
+  },
+  StorageKeyForbidden: {
+    label: '无权访问该文件',
+    value: 3202,
+    http: 403,
+  },
+  StorageAdminOnly: {
+    label: '该存储操作仅限管理员',
+    value: 3203,
+    http: 403,
+  },
   InvalidInput: {
     label: '参数校验失败',
     value: 4001,
