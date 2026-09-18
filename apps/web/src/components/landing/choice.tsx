@@ -54,27 +54,27 @@ const stackChoices = [
 /** 选型：凭什么选 Billy + 技术栈为什么这么选 */
 export function Choice() {
   return (
-    <section id="choice" className="scroll-mt-20 border-t border-zinc-200/70 bg-zinc-50">
+    <section id="choice" className="scroll-mt-20 border-t border-border/70 bg-muted">
       <div className="mx-auto max-w-7xl px-4 py-20 sm:px-6 lg:px-8 lg:py-28">
         {/* 头部 */}
         <Reveal>
           <div className="flex items-center gap-3">
-            <span className="h-px w-8 bg-indigo-500" aria-hidden />
-            <p className="font-mono text-xs font-medium tracking-[0.18em] text-indigo-600 uppercase">
+            <span className="h-px w-8 bg-brand" aria-hidden />
+            <p className="font-mono text-xs font-medium tracking-[0.18em] text-brand uppercase">
               选型
             </p>
           </div>
-          <h2 className="font-heading mt-4 max-w-2xl text-3xl font-semibold tracking-tight text-zinc-950 sm:text-4xl md:text-5xl">
+          <h2 className="font-heading mt-4 max-w-2xl text-3xl font-semibold tracking-tight text-foreground sm:text-4xl md:text-5xl">
             凭什么选 Billy
           </h2>
-          <p className="mt-4 max-w-xl text-base leading-relaxed text-zinc-600">
+          <p className="mt-4 max-w-xl text-base leading-relaxed text-muted-foreground">
             免费的有 Open SaaS、Ixartz，收费的有 Makerkit、Gravity、Supastarter。
             Open SaaS 同样 AI-ready，Billy 的差别在：通用 TS monorepo 而非 Wasp DSL 单体、
             不锁定多租户计费场景、免费开源而非付费垂直。
           </p>
           <Link
             href="/comparison"
-            className="mt-5 inline-flex items-center gap-1.5 text-sm font-medium text-indigo-700 hover:text-indigo-600"
+            className="mt-5 inline-flex items-center gap-1.5 text-sm font-medium text-brand hover:text-brand"
           >
             查看完整竞品调研 <span aria-hidden>→</span>
           </Link>
@@ -84,40 +84,40 @@ export function Choice() {
         <div className="mt-14">
           {rivals.map((item, i) => (
             <Reveal key={item.rival} delay={i * 40}>
-              <div className="grid gap-3 border-t border-zinc-200 py-7 md:grid-cols-[1fr_1.2fr_1.2fr] md:gap-8">
+              <div className="grid gap-3 border-t border-border py-7 md:grid-cols-[1fr_1.2fr_1.2fr] md:gap-8">
                 <div>
-                  <p className="text-sm font-medium text-zinc-950">{item.rival}</p>
-                  <p className="mt-1 font-mono text-xs text-zinc-400">{item.examples}</p>
+                  <p className="text-sm font-medium text-foreground">{item.rival}</p>
+                  <p className="mt-1 font-mono text-xs text-muted-foreground">{item.examples}</p>
                 </div>
-                <p className="text-sm leading-relaxed text-zinc-500">{item.their}</p>
-                <p className="text-sm leading-relaxed text-zinc-700">{item.ours}</p>
+                <p className="text-sm leading-relaxed text-muted-foreground">{item.their}</p>
+                <p className="text-sm leading-relaxed text-foreground">{item.ours}</p>
               </div>
             </Reveal>
           ))}
-          <div className="border-t border-zinc-200" aria-hidden />
+          <div className="border-t border-border" aria-hidden />
         </div>
 
         {/* 技术栈选型 */}
         <Reveal delay={40}>
           <div className="mt-16 flex items-center gap-3">
-            <span className="h-px w-8 bg-indigo-500" aria-hidden />
-            <p className="font-mono text-xs font-medium tracking-[0.18em] text-indigo-600 uppercase">
+            <span className="h-px w-8 bg-brand" aria-hidden />
+            <p className="font-mono text-xs font-medium tracking-[0.18em] text-brand uppercase">
               技术栈选型
             </p>
           </div>
         </Reveal>
-        <div className="mt-6 border-t border-zinc-200">
+        <div className="mt-6 border-t border-border">
           {stackChoices.map((item, i) => (
             <Reveal key={item.picked} delay={i * 40}>
-              <div className="grid gap-3 border-b border-zinc-200 py-7 last:border-b-0 md:grid-cols-[4.5rem_1fr_1.2fr_1.6fr] md:items-baseline md:gap-8">
-                <span className="font-heading text-xl font-semibold tracking-tight text-indigo-600/60">
+              <div className="grid gap-3 border-b border-border py-7 last:border-b-0 md:grid-cols-[4.5rem_1fr_1.2fr_1.6fr] md:items-baseline md:gap-8">
+                <span className="font-heading text-xl font-semibold tracking-tight text-brand/60">
                   {String(i + 1).padStart(2, '0')}
                 </span>
-                <h3 className="font-heading text-xl font-semibold tracking-tight text-zinc-950">
+                <h3 className="font-heading text-xl font-semibold tracking-tight text-foreground">
                   {item.picked}
                 </h3>
-                <p className="text-xs text-zinc-400 md:pt-1">{item.instead}</p>
-                <p className="text-sm leading-relaxed text-zinc-600">
+                <p className="text-xs text-muted-foreground md:pt-1">{item.instead}</p>
+                <p className="text-sm leading-relaxed text-muted-foreground">
                   {item.reason}
                 </p>
               </div>

@@ -25,7 +25,7 @@ const techStack = [
  */
 export function TechMarquee() {
   return (
-    <section aria-label="技术栈" className="border-b border-zinc-200/70 py-4">
+    <section aria-label="技术栈" className="border-b border-border/70 py-4">
       <div className="relative mx-auto min-h-[36px] max-w-7xl overflow-hidden px-4 sm:px-6 lg:px-8">
         <div
           aria-hidden
@@ -45,10 +45,10 @@ export function TechMarquee() {
           {techStack.map((name) => (
             <span
               key={name}
-              className="mr-10 inline-flex shrink-0 items-center gap-10 font-mono text-sm text-zinc-400"
+              className="mr-10 inline-flex shrink-0 items-center gap-10 font-mono text-sm text-muted-foreground"
             >
               {name}
-              <span className="size-1 rounded-full bg-zinc-300" aria-hidden />
+              <span className="size-1 rounded-full bg-muted-foreground/40" aria-hidden />
             </span>
           ))}
         </Marquee>

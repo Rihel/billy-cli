@@ -15,26 +15,26 @@ const prerequisites = [
 /** 快速开始：一条 bootstrap 完成初始化 + 并行启动（深色终端对比块） */
 export function QuickStart() {
   return (
-    <section id="quickstart" className="scroll-mt-20 overflow-hidden border-t border-zinc-200/70 bg-zinc-50">
+    <section id="quickstart" className="scroll-mt-20 overflow-hidden border-t border-border/70 bg-muted">
       <div className="mx-auto grid max-w-7xl grid-cols-1 items-center gap-12 px-4 py-20 sm:px-6 lg:grid-cols-2 lg:px-8 lg:py-28">
         <Reveal>
-          <h2 className="font-heading max-w-md text-3xl font-semibold tracking-tight text-zinc-950 sm:text-4xl md:text-5xl">
+          <h2 className="font-heading max-w-md text-3xl font-semibold tracking-tight text-foreground sm:text-4xl md:text-5xl">
             五分钟，跑起来
           </h2>
-          <p className="mt-4 max-w-md text-base leading-relaxed text-zinc-600">
-            一条 <code className="font-mono text-sm text-zinc-900">pnpm bootstrap</code>{' '}
+          <p className="mt-4 max-w-md text-base leading-relaxed text-muted-foreground">
+            一条 <code className="font-mono text-sm text-foreground">pnpm bootstrap</code>{' '}
             完成全部初始化，再并行启动开发环境，前后端热更新同步开发。
           </p>
 
           <ul className="mt-8 space-y-4">
             {steps.map((step, i) => (
               <li key={step.cmd} className="flex items-start gap-3">
-                <span className="mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-full bg-indigo-500/10 font-mono text-xs font-semibold text-indigo-700">
+                <span className="mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-full bg-brand/10 font-mono text-xs font-semibold text-brand">
                   {i + 1}
                 </span>
                 <div>
-                  <code className="font-mono text-sm text-zinc-900">{step.cmd}</code>
-                  <p className="mt-0.5 text-sm text-zinc-500">{step.note}</p>
+                  <code className="font-mono text-sm text-foreground">{step.cmd}</code>
+                  <p className="mt-0.5 text-sm text-muted-foreground">{step.note}</p>
                 </div>
               </li>
             ))}
@@ -42,8 +42,8 @@ export function QuickStart() {
 
           <div className="mt-8 space-y-2">
             {prerequisites.map((item) => (
-              <p key={item} className="flex items-center gap-2 text-sm text-zinc-600">
-                <CheckCircle2 className="size-4 text-indigo-600" />
+              <p key={item} className="flex items-center gap-2 text-sm text-muted-foreground">
+                <CheckCircle2 className="size-4 text-brand" />
                 {item}
               </p>
             ))}
@@ -54,66 +54,66 @@ export function QuickStart() {
           <div className="relative">
             <div
               aria-hidden
-              className="absolute -inset-6 rounded-3xl bg-gradient-to-tl from-indigo-500/10 via-transparent to-transparent blur-2xl"
+              className="absolute -inset-6 rounded-3xl bg-gradient-to-tl from-brand/10 via-transparent to-transparent blur-2xl"
             />
-            <div className="relative overflow-hidden rounded-2xl border border-indigo-100 bg-gradient-to-b from-white to-indigo-50/40 shadow-xl shadow-indigo-950/10 ring-1 ring-indigo-100/60">
-              <div className="flex items-center gap-2 border-b border-indigo-100/80 bg-indigo-50/60 px-4 py-3">
-                <span className="size-3 rounded-full bg-red-400/80" />
-                <span className="size-3 rounded-full bg-amber-400/80" />
-                <span className="size-3 rounded-full bg-emerald-400/80" />
-                <span className="ml-2 font-mono text-xs text-zinc-500">快速开始</span>
-                <span className="ml-auto inline-flex items-center gap-1.5 rounded-md border border-zinc-200 bg-zinc-50 px-2 py-0.5 font-mono text-[10px] text-zinc-500">
+            <div className="relative overflow-hidden rounded-2xl border border-brand/20 bg-gradient-to-b from-white to-brand/10 shadow-xl shadow-brand/10 ring-1 ring-brand/20">
+              <div className="flex items-center gap-2 border-b border-brand/20 bg-brand/10 px-4 py-3">
+                <span className="size-3 rounded-full bg-destructive/80" />
+                <span className="size-3 rounded-full bg-warning/80" />
+                <span className="size-3 rounded-full bg-success/80" />
+                <span className="ml-2 font-mono text-xs text-muted-foreground">快速开始</span>
+                <span className="ml-auto inline-flex items-center gap-1.5 rounded-md border border-border bg-muted px-2 py-0.5 font-mono text-[10px] text-muted-foreground">
                   <TerminalSquare className="size-3" />
                   zsh
                 </span>
               </div>
               <pre className="overflow-x-auto p-5 font-mono text-[13px] leading-7">
                 <div>
-                  <span className="select-none text-zinc-400">$ </span>
-                  <span className="text-emerald-600"># ① 一键初始化（交互确认，-y 全默认）</span>
+                  <span className="select-none text-muted-foreground">$ </span>
+                  <span className="text-success"># ① 一键初始化（交互确认，-y 全默认）</span>
                 </div>
                 <div>
-                  <span className="select-none text-zinc-400">$ </span>
-                  <span className="text-zinc-800">pnpm bootstrap</span>
+                  <span className="select-none text-muted-foreground">$ </span>
+                  <span className="text-foreground">pnpm bootstrap</span>
                 </div>
                 <div>
-                  <span className="select-none text-zinc-400">  </span>
-                  <span className="text-zinc-500">[1/6] 环境检查 ✓</span>
+                  <span className="select-none text-muted-foreground">  </span>
+                  <span className="text-muted-foreground">[1/6] 环境检查 ✓</span>
                 </div>
                 <div>
-                  <span className="select-none text-zinc-400">  </span>
-                  <span className="text-zinc-500">[2/6] Docker 依赖服务 ✓</span>
+                  <span className="select-none text-muted-foreground">  </span>
+                  <span className="text-muted-foreground">[2/6] Docker 依赖服务 ✓</span>
                 </div>
                 <div>
-                  <span className="select-none text-zinc-400">  </span>
-                  <span className="text-zinc-500">[3/6] 环境变量文件 ✓</span>
+                  <span className="select-none text-muted-foreground">  </span>
+                  <span className="text-muted-foreground">[3/6] 环境变量文件 ✓</span>
                 </div>
                 <div>
-                  <span className="select-none text-zinc-400">  </span>
-                  <span className="text-zinc-500">[4/6] 依赖安装 ✓</span>
+                  <span className="select-none text-muted-foreground">  </span>
+                  <span className="text-muted-foreground">[4/6] 依赖安装 ✓</span>
                 </div>
                 <div>
-                  <span className="select-none text-zinc-400">  </span>
-                  <span className="text-zinc-500">[5/6] 数据库迁移与种子 ✓</span>
+                  <span className="select-none text-muted-foreground">  </span>
+                  <span className="text-muted-foreground">[5/6] 数据库迁移与种子 ✓</span>
                 </div>
                 <div>
-                  <span className="select-none text-zinc-400">  </span>
-                  <span className="text-zinc-500">[6/6] 服务冒烟验证 ✓</span>
+                  <span className="select-none text-muted-foreground">  </span>
+                  <span className="text-muted-foreground">[6/6] 服务冒烟验证 ✓</span>
                 </div>
                 <div className="mt-1">
-                  <span className="select-none text-zinc-400">$ </span>
-                  <span className="text-emerald-600"># ② 并行启动开发环境</span>
+                  <span className="select-none text-muted-foreground">$ </span>
+                  <span className="text-success"># ② 并行启动开发环境</span>
                 </div>
                 <div>
-                  <span className="select-none text-zinc-400">$ </span>
-                  <span className="text-zinc-800">pnpm dev:pkgs &amp; pnpm dev:server &amp; pnpm dev:web</span>
+                  <span className="select-none text-muted-foreground">$ </span>
+                  <span className="text-foreground">pnpm dev:pkgs &amp; pnpm dev:server &amp; pnpm dev:web</span>
                 </div>
                 <div className="mt-1">
-                  <span className="select-none text-zinc-400">$ </span>
-                  <span className="text-emerald-600">➜</span>{' '}
-                  <span className="text-zinc-800">ready</span>{' '}
-                  <span className="text-zinc-500">· http://localhost:9840</span>
-                  <span className="ml-1 inline-block h-4 w-2 translate-y-0.5 animate-pulse bg-indigo-500" />
+                  <span className="select-none text-muted-foreground">$ </span>
+                  <span className="text-success">➜</span>{' '}
+                  <span className="text-foreground">ready</span>{' '}
+                  <span className="text-muted-foreground">· http://localhost:9840</span>
+                  <span className="ml-1 inline-block h-4 w-2 translate-y-0.5 animate-pulse bg-brand" />
                 </div>
               </pre>
             </div>

@@ -22,10 +22,10 @@ export function CtaSection({ user, authEnabled }: CtaSectionProps) {
       />
       <div className="relative mx-auto max-w-7xl px-4 py-24 sm:px-6 lg:px-8">
         <Reveal className="mx-auto max-w-2xl text-center">
-          <h2 className="text-3xl font-semibold tracking-tight text-zinc-950 sm:text-5xl">
+          <h2 className="text-3xl font-semibold tracking-tight text-foreground sm:text-5xl">
             现在就开始你的全栈之旅
           </h2>
-          <p className="mx-auto mt-5 max-w-md text-base leading-relaxed text-zinc-600">
+          <p className="mx-auto mt-5 max-w-md text-base leading-relaxed text-muted-foreground">
             创建账号，体验完整的认证、用户与业务模块，或直接进入管理后台一览全貌。
           </p>
           {user || !authEnabled ? null : (
@@ -33,7 +33,7 @@ export function CtaSection({ user, authEnabled }: CtaSectionProps) {
               <Button
                 render={<Link href={Pages.register} />}
                 size="lg"
-                className="bg-zinc-950 text-white shadow-lg shadow-zinc-950/20 hover:bg-zinc-800"
+                className="bg-primary text-primary-foreground shadow-lg hover:bg-primary/90"
               >
                 创建账号
                 <ArrowRight data-icon="inline-end" />
@@ -42,7 +42,7 @@ export function CtaSection({ user, authEnabled }: CtaSectionProps) {
                 render={<Link href={Pages.login} />}
                 size="lg"
                 variant="outline"
-                className="border-zinc-300 bg-white text-zinc-700 hover:bg-zinc-50 hover:text-zinc-900"
+                className="border-border bg-card text-foreground hover:bg-muted hover:text-foreground"
               >
                 <LogIn data-icon="inline-start" />
                 登录

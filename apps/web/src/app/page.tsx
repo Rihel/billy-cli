@@ -16,7 +16,7 @@ export default async function HomePage() {
   const { authEnabled, user } = await getWebAuthState()
 
   return (
-    <div className="min-h-screen bg-white text-zinc-900 selection:bg-indigo-200">
+    <div className="min-h-screen bg-background text-foreground selection:bg-brand/30">
       <Header user={user} authEnabled={authEnabled} />
       <main>
         <Hero user={user} authEnabled={authEnabled} />

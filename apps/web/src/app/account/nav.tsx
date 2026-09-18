@@ -15,7 +15,7 @@ export function AccountNav() {
   const pathname = usePathname()
 
   return (
-    <nav className="border-b border-zinc-200 bg-white/80 backdrop-blur" aria-label="个人中心导航">
+    <nav className="border-b border-border bg-background/80 backdrop-blur" aria-label="个人中心导航">
       <div className="mx-auto flex max-w-3xl gap-1 overflow-x-auto px-4 sm:px-6">
         {items.map((item) => {
           const active = pathname === item.href
@@ -26,8 +26,8 @@ export function AccountNav() {
               className={cn(
                 'border-b-2 px-3 py-3 text-sm whitespace-nowrap transition-colors',
                 active
-                  ? 'border-zinc-900 font-medium text-zinc-900'
-                  : 'border-transparent text-zinc-500 hover:text-zinc-900',
+                  ? 'border-foreground font-medium text-foreground'
+                  : 'border-transparent text-muted-foreground hover:text-foreground',
               )}
             >
               {item.label}

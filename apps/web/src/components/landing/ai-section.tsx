@@ -84,23 +84,23 @@ const points = [
 /** AI 原生能力：Agent Skills 驱动的开发体验 */
 export function AiSection() {
   return (
-    <section id="ai" className="relative scroll-mt-20 overflow-hidden border-t border-zinc-200/70 bg-zinc-50">
+    <section id="ai" className="relative scroll-mt-20 overflow-hidden border-t border-border/70 bg-muted">
       <div
         aria-hidden
-        className="absolute -top-40 left-1/4 h-96 w-150 -translate-x-1/2 rounded-full bg-indigo-500/[0.08] blur-3xl motion-safe:animate-[glow_12s_ease-in-out_infinite]"
+        className="absolute -top-40 left-1/4 h-96 w-150 -translate-x-1/2 rounded-full bg-brand/[0.08] blur-3xl motion-safe:animate-[glow_12s_ease-in-out_infinite]"
       />
       <div className="relative mx-auto max-w-7xl px-4 py-20 sm:px-6 lg:px-8 lg:py-28">
         <Reveal>
           <div className="flex items-center gap-3">
-            <span className="h-px w-8 bg-indigo-500" aria-hidden />
-            <p className="font-mono text-xs font-medium tracking-[0.18em] text-indigo-600 uppercase">
+            <span className="h-px w-8 bg-brand" aria-hidden />
+            <p className="font-mono text-xs font-medium tracking-[0.18em] text-brand uppercase">
               AI 原生
             </p>
           </div>
-          <h2 className="font-heading mt-4 max-w-2xl text-3xl font-semibold tracking-tight text-zinc-950 sm:text-4xl md:text-5xl">
+          <h2 className="font-heading mt-4 max-w-2xl text-3xl font-semibold tracking-tight text-foreground sm:text-4xl md:text-5xl">
             让 AI 按你的规范写代码
           </h2>
-          <p className="mt-4 max-w-xl text-base leading-relaxed text-zinc-600">
+          <p className="mt-4 max-w-xl text-base leading-relaxed text-muted-foreground">
             工程内置 17 个 Agent Skills，把架构规范与完整流程变成 AI
             可执行的规范，AI 写的代码也能符合你的工程标准。
           </p>
@@ -109,14 +109,14 @@ export function AiSection() {
         <div className="mt-12 grid grid-cols-1 gap-4 lg:grid-cols-5">
           {/* 左：AI 会话演示（浅色聊天气泡） */}
           <Reveal className="lg:col-span-3">
-            <div className="flex h-full flex-col overflow-hidden rounded-xl border border-zinc-200 bg-white">
-              <div className="flex items-center gap-2 border-b border-zinc-200 bg-zinc-50/80 px-4 py-3">
-                <span className="flex size-6 items-center justify-center rounded-md bg-indigo-500/10 text-indigo-700">
+            <div className="flex h-full flex-col overflow-hidden rounded-xl border border-border bg-card">
+              <div className="flex items-center gap-2 border-b border-border bg-muted/80 px-4 py-3">
+                <span className="flex size-6 items-center justify-center rounded-md bg-brand/10 text-brand">
                   <Bot className="size-3.5" />
                 </span>
-                <span className="font-mono text-xs text-zinc-500">AI 编码会话</span>
-                <span className="ml-auto inline-flex items-center gap-1.5 rounded-md border border-emerald-500/20 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-medium text-emerald-700">
-                  <span className="size-1.5 rounded-full bg-emerald-500" />
+                <span className="font-mono text-xs text-muted-foreground">AI 编码会话</span>
+                <span className="ml-auto inline-flex items-center gap-1.5 rounded-md border border-success/20 bg-success/10 px-2 py-0.5 text-[10px] font-medium text-success">
+                  <span className="size-1.5 rounded-full bg-success" />
                   已连接
                 </span>
               </div>
@@ -130,8 +130,8 @@ export function AiSection() {
                     <div
                       className={`max-w-[85%] rounded-2xl px-4 py-2.5 text-sm leading-relaxed ${
                         msg.role === 'dev'
-                          ? 'rounded-br-md border border-indigo-200 bg-indigo-500/10 text-indigo-900'
-                          : 'rounded-bl-md border border-zinc-200 bg-zinc-50 text-zinc-700'
+                          ? 'rounded-br-md border border-brand/30 bg-brand/10 text-brand'
+                          : 'rounded-bl-md border border-border bg-muted text-foreground'
                       }`}
                     >
                       {msg.text}
@@ -139,15 +139,15 @@ export function AiSection() {
                   </div>
                 ))}
 
-                <div className="mt-5 rounded-xl border border-zinc-200 bg-zinc-50 p-4">
-                  <p className="mb-3 flex items-center gap-2 text-xs font-medium text-zinc-600">
-                    <CheckCircle2 className="size-3.5 text-emerald-600" />
+                <div className="mt-5 rounded-xl border border-border bg-muted p-4">
+                  <p className="mb-3 flex items-center gap-2 text-xs font-medium text-muted-foreground">
+                    <CheckCircle2 className="size-3.5 text-success" />
                     交付检查清单
                   </p>
                   <ul className="space-y-1.5">
                     {checks.map((check) => (
-                      <li key={check} className="flex items-center gap-2 font-mono text-xs text-zinc-600">
-                        <span className="text-emerald-600">✓</span>
+                      <li key={check} className="flex items-center gap-2 font-mono text-xs text-muted-foreground">
+                        <span className="text-success">✓</span>
                         {check}
                       </li>
                     ))}
@@ -160,9 +160,9 @@ export function AiSection() {
           {/* 右：skill 规则示例 + skill 墙 + 价值点 */}
           <div className="flex flex-col gap-4 lg:col-span-2">
             <Reveal>
-              <div className="rounded-2xl border border-indigo-200 bg-indigo-500/[0.06] p-5">
-                <p className="text-xs font-medium text-indigo-700">skill 里的硬性规则（示例）</p>
-                <ul className="mt-3 space-y-1.5 font-mono text-xs leading-relaxed text-zinc-600">
+              <div className="rounded-2xl border border-brand/30 bg-brand/[0.06] p-5">
+                <p className="text-xs font-medium text-brand">skill 里的硬性规则（示例）</p>
+                <ul className="mt-3 space-y-1.5 font-mono text-xs leading-relaxed text-muted-foreground">
                   <li>· controller 只做校验与转发，业务逻辑在 service</li>
                   <li>· 错误继承 AppError，code 在 AppErrorCodes（3xxx 段）</li>
                   <li>· schema / dict / entity 字段一致并注册 index.ts</li>
@@ -171,10 +171,10 @@ export function AiSection() {
             </Reveal>
             {skillGroups.map((group, gi) => (
               <Reveal key={group.label} delay={gi * 60}>
-                <div className="rounded-xl border border-zinc-200 bg-white p-5">
+                <div className="rounded-xl border border-border bg-card p-5">
                   <p
                     className={`mb-3 text-xs font-medium ${
-                      group.highlight ? 'text-indigo-700' : 'text-zinc-500'
+                      group.highlight ? 'text-brand' : 'text-muted-foreground'
                     }`}
                   >
                     {group.label}
@@ -185,8 +185,8 @@ export function AiSection() {
                         key={skillName}
                         className={`rounded-lg border px-2.5 py-1 font-mono text-xs ${
                           group.highlight
-                            ? 'border-indigo-500/30 bg-indigo-500/10 text-indigo-700'
-                            : 'border-zinc-200 bg-zinc-50 text-zinc-600'
+                            ? 'border-brand/30 bg-brand/10 text-brand'
+                            : 'border-border bg-muted text-muted-foreground'
                         }`}
                       >
                         {skillName}
@@ -202,14 +202,14 @@ export function AiSection() {
                 {points.map((point) => (
                   <div
                     key={point.title}
-                    className="flex items-start gap-3 rounded-xl border border-zinc-200 bg-white px-4 py-3.5 transition-all hover:-translate-y-0.5 hover:border-indigo-400/60 hover:shadow-sm"
+                    className="flex items-start gap-3 rounded-xl border border-border bg-card px-4 py-3.5 transition-all hover:-translate-y-0.5 hover:border-brand/60 hover:shadow-sm"
                   >
-                    <span className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-lg bg-zinc-100 text-indigo-700">
+                    <span className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-lg bg-muted text-brand">
                       <point.icon className="size-4" />
                     </span>
                     <div>
-                      <p className="text-sm font-medium text-zinc-900">{point.title}</p>
-                      <p className="mt-0.5 text-xs leading-relaxed text-zinc-600">{point.desc}</p>
+                      <p className="text-sm font-medium text-foreground">{point.title}</p>
+                      <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">{point.desc}</p>
                     </div>
                   </div>
                 ))}

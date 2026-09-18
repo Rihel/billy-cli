@@ -16,11 +16,11 @@ const items = [
 export function MarkdownNav() {
   const pathname = usePathname()
   return (
-    <header className="sticky top-0 z-50 border-b border-zinc-200/80 bg-white/80 backdrop-blur-xl">
+    <header className="sticky top-0 z-50 border-b border-border/80 bg-background/80 backdrop-blur-xl">
       <div className="mx-auto flex h-14 max-w-5xl items-center justify-between gap-4 px-4 sm:px-6">
         <Link
           href={Pages.home}
-          className="shrink-0 text-sm text-zinc-500 transition-colors hover:text-zinc-900"
+          className="shrink-0 text-sm text-muted-foreground transition-colors hover:text-foreground"
         >
           <span aria-hidden="true">← </span>返回首页
         </Link>
@@ -35,8 +35,8 @@ export function MarkdownNav() {
               className={cn(
                 'relative whitespace-nowrap px-3 py-2 text-sm transition-colors',
                 pathname === item.href
-                  ? 'font-medium text-zinc-900 after:absolute after:inset-x-2 after:-bottom-px after:h-0.5 after:rounded-full after:bg-zinc-900'
-                  : 'text-zinc-500 hover:text-zinc-900',
+                  ? 'font-medium text-foreground after:absolute after:inset-x-2 after:-bottom-px after:h-0.5 after:rounded-full after:bg-foreground'
+                  : 'text-muted-foreground hover:text-foreground',
               )}
             >
               {item.label}

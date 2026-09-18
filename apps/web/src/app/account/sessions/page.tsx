@@ -57,7 +57,7 @@ export default function SessionsPage() {
     <div className="space-y-6">
       <div>
         <h1 className="font-heading text-xl font-semibold tracking-tight">登录设备</h1>
-        <p className="mt-1 text-sm text-zinc-500">
+        <p className="mt-1 text-sm text-muted-foreground">
           这些设备正在使用你的账号。发现不认识的设备请立即下线，并修改密码。
         </p>
       </div>
@@ -68,7 +68,7 @@ export default function SessionsPage() {
           <Skeleton className="h-20 w-full rounded-xl" />
         </div>
       ) : items.length === 0 ? (
-        <p className="rounded-xl border border-dashed border-zinc-300 px-4 py-10 text-center text-sm text-zinc-500">
+        <p className="rounded-xl border border-dashed border-border px-4 py-10 text-center text-sm text-muted-foreground">
           暂无登录记录
         </p>
       ) : (
@@ -102,12 +102,12 @@ function SessionCard({
   return (
     <li
       className={cn(
-        'flex items-start justify-between gap-4 rounded-xl border bg-white px-4 py-3.5',
-        session.current ? 'border-indigo-200 ring-1 ring-indigo-100' : 'border-zinc-200',
+        'flex items-start justify-between gap-4 rounded-xl border bg-card px-4 py-3.5',
+        session.current ? 'border-brand/30 ring-1 ring-brand/20' : 'border-border',
       )}
     >
       <div className="flex min-w-0 gap-3">
-        <span className="mt-0.5 grid size-9 shrink-0 place-items-center rounded-lg bg-zinc-100 text-zinc-600">
+        <span className="mt-0.5 grid size-9 shrink-0 place-items-center rounded-lg bg-muted text-muted-foreground">
           <Icon className="size-4.5" />
         </span>
         <div className="min-w-0">
@@ -117,10 +117,10 @@ function SessionCard({
             </span>
             {session.current ? <Tag color="blue">本机</Tag> : null}
           </div>
-          <div className="mt-1 text-xs text-zinc-500">
+          <div className="mt-1 text-xs text-muted-foreground">
             {agent.os} · {session.ip ?? 'IP 未知'}
           </div>
-          <div className="mt-0.5 text-xs text-zinc-400">
+          <div className="mt-0.5 text-xs text-muted-foreground">
             登录于 {formatDateTime(session.createdAt)} · 最后活跃{' '}
             {formatDateTime(session.lastSeenAt)}
           </div>
@@ -128,7 +128,7 @@ function SessionCard({
       </div>
 
       {session.current ? (
-        <span className="pt-1 text-xs whitespace-nowrap text-zinc-400">当前设备</span>
+        <span className="pt-1 text-xs whitespace-nowrap text-muted-foreground">当前设备</span>
       ) : (
         <ConfirmAction
           danger

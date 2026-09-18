@@ -14,6 +14,7 @@ import {
 } from '@/lib/constants'
 import { removeToken } from '@/lib/server-client'
 import { logoutAction } from '@/actions/auth.actions'
+import { ThemeToggle } from '@/components/ThemeToggle'
 import { cn } from '@repo/ui'
 import type { AuthUserModel } from '@repo/shared'
 
@@ -51,7 +52,7 @@ export function Header({ user, authEnabled }: HeaderProps) {
   }
 
   return (
-    <header className="sticky top-0 z-50 border-b border-zinc-200/80 bg-white/80 backdrop-blur-xl">
+    <header className="sticky top-0 z-50 border-b border-border/80 bg-background/80 backdrop-blur-xl">
       <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
         {/* 品牌 */}
         <Link
@@ -59,10 +60,10 @@ export function Header({ user, authEnabled }: HeaderProps) {
           className="group flex items-center gap-2.5"
           aria-label={`${AppName} 首页`}
         >
-          <span className="flex size-8 items-center justify-center rounded-lg bg-gradient-to-br from-indigo-500 to-violet-600 text-white shadow-md shadow-indigo-600/25 transition-transform group-hover:scale-105">
+          <span className="flex size-8 items-center justify-center rounded-lg bg-gradient-to-br from-brand to-violet-600 text-white shadow-md shadow-brand/25 transition-transform group-hover:scale-105">
             <TerminalSquare className="size-4.5" strokeWidth={2.2} />
           </span>
-          <span className="font-heading text-[15px] font-semibold tracking-tight text-zinc-900">
+          <span className="font-heading text-[15px] font-semibold tracking-tight text-foreground">
             {AppName}
           </span>
         </Link>
@@ -73,20 +74,21 @@ export function Header({ user, authEnabled }: HeaderProps) {
             <Link
               key={link.href}
               href={link.href}
-              className="rounded-lg px-3 py-2 text-sm text-zinc-600 transition-colors hover:bg-zinc-100 hover:text-zinc-900"
+              className="rounded-lg px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
             >
               {link.label}
             </Link>
           ))}
         </nav>
 
-        {/* 桌面操作：登录后显示用户信息；未登录且用户体系开启时显示登录/注册 */}
+        {/* 桌面操作：主题切换 + 登录后显示用户信息；未登录且用户体系开启时显示登录/注册 */}
         <div className="hidden items-center gap-2 md:flex">
+          <ThemeToggle />
           {user ? (
             <>
               <Link
                 href={Pages.account}
-                className="flex items-center gap-2 rounded-md px-2 py-1 transition-colors hover:bg-zinc-100"
+                className="flex items-center gap-2 rounded-md px-2 py-1 transition-colors hover:bg-muted"
                 title={`进入个人中心（${displayName}）`}
               >
                 {user.avatar ? (
@@ -96,18 +98,18 @@ export function Header({ user, authEnabled }: HeaderProps) {
                     className="size-8 rounded-full object-cover"
                   />
                 ) : (
-                  <span className="grid size-8 place-items-center rounded-full bg-indigo-500/10 text-sm font-medium text-indigo-700">
+                  <span className="grid size-8 place-items-center rounded-full bg-brand/10 text-sm font-medium text-brand">
                     {initial}
                   </span>
                 )}
-                <span className="max-w-32 truncate text-sm text-zinc-600">
+                <span className="max-w-32 truncate text-sm text-muted-foreground">
                   {displayName}
                 </span>
               </Link>
               <Button
                 variant="ghost"
                 size="sm"
-                className="text-zinc-500 hover:text-zinc-900"
+                className="text-muted-foreground hover:text-foreground"
                 onClick={() => void logout()}
               >
                 <LogOutIcon />
@@ -118,14 +120,14 @@ export function Header({ user, authEnabled }: HeaderProps) {
             <>
               <Link
                 href={Pages.login}
-                className="rounded-md px-3 py-2 text-sm text-zinc-600 transition-colors hover:bg-zinc-100 hover:text-zinc-900"
+                className="rounded-md px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
               >
                 登录
               </Link>
               <Button
                 render={<Link href={Pages.register} />}
                 size="sm"
-                className="bg-zinc-950 px-3.5 text-white shadow-sm shadow-zinc-950/15 hover:bg-zinc-800"
+                className="bg-primary text-primary-foreground shadow-sm hover:bg-primary/90"
               >
                 注册
                 <ArrowRight data-icon="inline-end" />
@@ -137,7 +139,7 @@ export function Header({ user, authEnabled }: HeaderProps) {
         {/* 移动端菜单按钮 */}
         <button
           type="button"
-          className="inline-flex size-9 items-center justify-center rounded-lg text-zinc-600 transition-colors hover:bg-zinc-100 hover:text-zinc-900 md:hidden"
+          className="inline-flex size-9 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground md:hidden"
           aria-label={open ? '关闭菜单' : '打开菜单'}
           aria-expanded={open}
           onClick={() => setOpen((v) => !v)}
@@ -149,7 +151,7 @@ export function Header({ user, authEnabled }: HeaderProps) {
       {/* 移动端抽屉 */}
       <div
         className={cn(
-          'overflow-hidden border-zinc-200/80 transition-[max-height,opacity] duration-300 ease-out md:hidden',
+          'overflow-hidden border-border/80 transition-[max-height,opacity] duration-300 ease-out md:hidden',
           open ? 'max-h-96 border-t opacity-100' : 'max-h-0 opacity-0',
         )}
       >
@@ -159,13 +161,13 @@ export function Header({ user, authEnabled }: HeaderProps) {
               key={link.href}
               href={link.href}
               onClick={() => setOpen(false)}
-              className="block rounded-lg px-3 py-2.5 text-sm text-zinc-600 transition-colors hover:bg-zinc-100 hover:text-zinc-900"
+              className="block rounded-lg px-3 py-2.5 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
             >
               {link.label}
             </Link>
           ))}
           {user ? (
-            <div className="mt-3 flex items-center gap-2 border-t border-zinc-200/80 pt-3">
+            <div className="mt-3 flex items-center gap-2 border-t border-border/80 pt-3">
               <div className="flex min-w-0 flex-1 items-center gap-2">
                 {user.avatar ? (
                   <img
@@ -174,18 +176,18 @@ export function Header({ user, authEnabled }: HeaderProps) {
                     className="size-8 shrink-0 rounded-full object-cover"
                   />
                 ) : (
-                  <span className="grid size-8 shrink-0 place-items-center rounded-full bg-indigo-500/10 text-sm font-medium text-indigo-700">
+                  <span className="grid size-8 shrink-0 place-items-center rounded-full bg-brand/10 text-sm font-medium text-brand">
                     {initial}
                   </span>
                 )}
-                <span className="truncate text-sm text-zinc-600">
+                <span className="truncate text-sm text-muted-foreground">
                   {displayName}
                 </span>
               </div>
               <Button
                 variant="ghost"
                 size="sm"
-                className="shrink-0 text-zinc-500"
+                className="shrink-0 text-muted-foreground"
                 onClick={() => {
                   setOpen(false)
                   void logout()
@@ -196,18 +198,18 @@ export function Header({ user, authEnabled }: HeaderProps) {
               </Button>
             </div>
           ) : authEnabled ? (
-            <div className="mt-3 flex items-center gap-2 border-t border-zinc-200/80 pt-3">
+            <div className="mt-3 flex items-center gap-2 border-t border-border/80 pt-3">
               <Link
                 href={Pages.login}
                 onClick={() => setOpen(false)}
-                className="flex-1 rounded-lg px-3 py-2 text-center text-sm text-zinc-600 transition-colors hover:bg-zinc-100 hover:text-zinc-900"
+                className="flex-1 rounded-lg px-3 py-2 text-center text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
               >
                 登录
               </Link>
               <Button
                 render={<Link href={Pages.register} onClick={() => setOpen(false)} />}
                 size="sm"
-                className="flex-1 bg-zinc-950 text-white hover:bg-zinc-800"
+                className="flex-1 bg-primary text-primary-foreground hover:bg-primary/90"
               >
                 注册
               </Button>
@@ -218,10 +220,15 @@ export function Header({ user, authEnabled }: HeaderProps) {
             target="_blank"
             rel="noreferrer"
             onClick={() => setOpen(false)}
-            className="block rounded-lg px-3 py-2.5 text-sm text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-900"
+            className="block rounded-lg px-3 py-2.5 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
           >
-            前往管理后台 <span className="text-zinc-400">↗</span>
+            前往管理后台 <span className="text-muted-foreground">↗</span>
           </a>
+          {/* 主题切换（移动端：左侧文字 + 右侧图标按钮） */}
+          <div className="flex items-center justify-between rounded-lg px-3 py-2.5">
+            <span className="text-sm text-muted-foreground">主题</span>
+            <ThemeToggle />
+          </div>
         </nav>
       </div>
     </header>

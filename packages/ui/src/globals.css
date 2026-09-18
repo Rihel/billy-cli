@@ -8,8 +8,8 @@
  * token 分两层，**改上层会全局联动**（这是设计体系的核心价值）：
  *   ① 原始层：真正独立的决策（面 / 前景 / 主色 / 品牌点缀 / 语义色 / 圆角）
  *   ② 派生层：一律用 var() 引用上层，**不抄字面量** —— 例：--sidebar-primary: var(--primary)
- * 于是「换品牌色」只需改 --ring（品牌点缀）与 --primary（主按钮），
- * sidebar / chart / 强调面 / 侧栏前景会自动跟随。
+ * 于是「换品牌色」只需改 --brand（品牌色，焦点环 / 图表首色 / 强调面都由它派生）与
+ * --primary（主按钮），sidebar / chart / 强调面 / 侧栏前景会自动跟随。
  * **新增 token 时先问「它是不是某个已有 token 的另一种说法」**，是就写 var() 引用
  * （守卫 packages/ui/test/tokens.test.ts 会拦下只写浅色 / 漏映射 / 映射指向别处）。
  *
@@ -53,6 +53,7 @@
     --color-chart-2: var(--chart-2);
     --color-chart-1: var(--chart-1);
     --color-ring: var(--ring);
+    --color-brand: var(--brand);
     --color-input: var(--input);
     --color-border: var(--border);
     --color-destructive: var(--destructive);
@@ -109,8 +110,9 @@
     --accent: oklch(0.955 0 0);
     /* 描边 */
     --border: oklch(0.922 0 0);
-    /* 品牌点缀：焦点环 + 图表首色（低密度，靛紫，非 antd 蓝） */
-    --ring: oklch(0.585 0.233 277.117);
+    /* 品牌点缀：**品牌色本身**（低密度，靛紫，非 antd 蓝）。焦点环与图表首色都由它派生，
+       落地页的强调色（图标底 / 徽标 / 渐变起点 / 发光）也走 bg-brand / text-brand */
+    --brand: oklch(0.585 0.233 277.117);
     /* 语义色：浅色取调色板 700 档，保证作文字色时达 WCAG AA */
     --destructive: oklch(0.577 0.245 27.325);
     --success: oklch(0.508 0.118 165.612);
@@ -129,6 +131,8 @@
     --muted: var(--secondary);
     --accent-foreground: var(--primary);
     --input: var(--border);
+    /* 焦点环跟随品牌色（换 --brand 即同时换焦点环与图表首色） */
+    --ring: var(--brand);
     --success-foreground: var(--background);
     --warning-foreground: var(--background);
     --info-foreground: var(--background);
@@ -180,7 +184,7 @@
     --muted-foreground: oklch(0.708 0 0);
     --accent: var(--secondary);
     --border: oklch(1 0 0 / 10%);
-    --ring: oklch(0.673 0.182 276.935);
+    --brand: oklch(0.673 0.182 276.935);
     /* 语义色：深色取调色板 400 档（亮色文字配深底） */
     --destructive: oklch(0.704 0.191 22.216);
     --success: oklch(0.765 0.177 163.223);
@@ -197,6 +201,8 @@
     --accent-foreground: var(--foreground);
     /* 深色下输入框描边比普通描边略亮，故不沿用 --border */
     --input: oklch(1 0 0 / 15%);
+    /* 焦点环跟随品牌色 */
+    --ring: var(--brand);
     --success-foreground: var(--background);
     --warning-foreground: var(--background);
     --info-foreground: var(--background);

@@ -49,15 +49,15 @@ export default function MarkdownOverviewPage() {
           <Link
             key={demo.href}
             href={demo.href}
-            className="group rounded-xl border border-zinc-200 bg-white p-5 transition-all hover:-translate-y-0.5 hover:border-indigo-400/60 hover:shadow-sm"
+            className="group rounded-xl border border-border bg-card p-5 transition-all hover:-translate-y-0.5 hover:border-brand/60 hover:shadow-sm"
           >
-            <h2 className="font-heading text-base font-semibold tracking-tight text-zinc-900 group-hover:text-indigo-600">
+            <h2 className="font-heading text-base font-semibold tracking-tight text-foreground group-hover:text-brand">
               {demo.title}
-              <span aria-hidden="true" className="ml-1 text-zinc-300 transition-transform group-hover:translate-x-0.5">
+              <span aria-hidden="true" className="ml-1 text-muted-foreground transition-transform group-hover:translate-x-0.5">
                 →
               </span>
             </h2>
-            <p className="mt-1.5 text-sm leading-relaxed text-zinc-500">
+            <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground">
               {demo.description}
             </p>
           </Link>

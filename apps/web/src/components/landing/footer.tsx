@@ -51,7 +51,7 @@ export function Footer({ user, authEnabled }: FooterProps) {
   const groups = hideAccount ? navGroups.filter((group) => group.title !== '账号') : navGroups
 
   return (
-    <footer className="border-t border-zinc-200/70 bg-zinc-50">
+    <footer className="border-t border-border/70 bg-muted">
       <div className="mx-auto max-w-7xl px-4 py-14 sm:px-6 lg:px-8">
         <div
           className={
@@ -62,21 +62,21 @@ export function Footer({ user, authEnabled }: FooterProps) {
         >
           <div>
             <Link href={Pages.home} className="flex items-center gap-2.5">
-              <span className="flex size-8 items-center justify-center rounded-lg bg-gradient-to-br from-indigo-500 to-violet-600 text-white shadow-md shadow-indigo-600/25">
+              <span className="flex size-8 items-center justify-center rounded-lg bg-gradient-to-br from-brand to-violet-600 text-white shadow-md shadow-brand/25">
                 <TerminalSquare className="size-4.5" strokeWidth={2.2} />
               </span>
-              <span className="font-heading text-[15px] font-semibold tracking-tight text-zinc-900">
+              <span className="font-heading text-[15px] font-semibold tracking-tight text-foreground">
                 {AppName}
               </span>
             </Link>
-            <p className="mt-4 max-w-xs text-sm leading-relaxed text-zinc-500">
+            <p className="mt-4 max-w-xs text-sm leading-relaxed text-muted-foreground">
               一套基于 NestJS 12 与 Next.js 16 的全栈应用 Monorepo 模板，数据结构先行、双前端开箱即用。
             </p>
           </div>
 
           {groups.map((group) => (
             <nav key={group.title} aria-label={group.title}>
-              <h3 className="font-heading text-sm font-semibold text-zinc-700">
+              <h3 className="font-heading text-sm font-semibold text-foreground">
                 {group.title}
               </h3>
               <ul className="mt-4 space-y-2.5">
@@ -87,7 +87,7 @@ export function Footer({ user, authEnabled }: FooterProps) {
                         href={link.href}
                         target="_blank"
                         rel="noreferrer"
-                        className="inline-flex items-center gap-1.5 text-sm text-zinc-500 transition-colors hover:text-indigo-600"
+                        className="inline-flex items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-brand"
                       >
                         {link.label}
                         <ExternalLink className="size-3" />
@@ -95,7 +95,7 @@ export function Footer({ user, authEnabled }: FooterProps) {
                     ) : (
                       <Link
                         href={link.href}
-                        className="inline-flex text-sm text-zinc-500 transition-colors hover:text-indigo-600"
+                        className="inline-flex text-sm text-muted-foreground transition-colors hover:text-brand"
                       >
                         {link.label}
                       </Link>
@@ -107,11 +107,11 @@ export function Footer({ user, authEnabled }: FooterProps) {
           ))}
         </div>
 
-        <div className="mt-12 flex flex-col items-start justify-between gap-3 border-t border-zinc-200/70 pt-6 sm:flex-row sm:items-center">
-          <p className="text-xs text-zinc-500">
+        <div className="mt-12 flex flex-col items-start justify-between gap-3 border-t border-border/70 pt-6 sm:flex-row sm:items-center">
+          <p className="text-xs text-muted-foreground">
             © {new Date().getFullYear()} {AppName}。保留所有权利。
           </p>
-          <p className="font-mono text-xs text-zinc-500">Made with TypeScript · NestJS · Next.js</p>
+          <p className="font-mono text-xs text-muted-foreground">Made with TypeScript · NestJS · Next.js</p>
         </div>
       </div>
     </footer>

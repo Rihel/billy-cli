@@ -98,12 +98,12 @@ export default function AccountPage() {
 
   return (
     <div className="space-y-10">
-      <section className="space-y-6 border-b border-zinc-200 pb-10">
+      <section className="space-y-6 border-b border-border pb-10">
         <div>
           <h1 className="font-heading text-xl font-semibold tracking-tight">
             账号资料
           </h1>
-          <p className="mt-1 text-sm text-zinc-500">
+          <p className="mt-1 text-sm text-muted-foreground">
             头像与昵称会展示在你的账号信息中
           </p>
         </div>
@@ -126,11 +126,11 @@ export default function AccountPage() {
 
             <dl className="flex min-w-0 flex-1 flex-col gap-4 text-sm">
               <div className="flex items-center gap-4">
-                <dt className="w-20 shrink-0 text-zinc-500">邮箱</dt>
+                <dt className="w-20 shrink-0 text-muted-foreground">邮箱</dt>
                 <dd className="min-w-0 truncate font-medium">{user?.email}</dd>
               </div>
               <div className="flex items-center gap-4">
-                <dt className="w-20 shrink-0 text-zinc-500">昵称</dt>
+                <dt className="w-20 shrink-0 text-muted-foreground">昵称</dt>
                 <dd className="min-w-0">
                   <EditableInput
                     value={user?.realName ?? null}
@@ -142,7 +142,7 @@ export default function AccountPage() {
                 </dd>
               </div>
               <div className="flex items-center gap-4">
-                <dt className="w-20 shrink-0 text-zinc-500">注册时间</dt>
+                <dt className="w-20 shrink-0 text-muted-foreground">注册时间</dt>
                 <dd className="font-medium">
                   <DisplayValue type="date" value={user?.createdAt} />
                 </dd>
@@ -157,7 +157,7 @@ export default function AccountPage() {
           <h2 className="font-heading text-lg font-semibold tracking-tight">
             修改密码
           </h2>
-          <p className="mt-1 text-sm text-zinc-500">
+          <p className="mt-1 text-sm text-muted-foreground">
             修改成功后当前会话会失效，需要用新密码重新登录
           </p>
         </div>

@@ -38,20 +38,20 @@ const values = [
  */
 export function Why() {
   return (
-    <section id="why" className="scroll-mt-20 border-t border-zinc-200/70">
+    <section id="why" className="scroll-mt-20 border-t border-border/70">
       <div className="mx-auto max-w-7xl px-4 py-24 sm:px-6 lg:grid lg:grid-cols-[1fr_1.6fr] lg:gap-20 lg:px-8 lg:py-36">
         {/* 左栏：sticky 宣言 */}
         <div className="lg:sticky lg:top-24 lg:self-start">
           <Reveal>
-            <p className="font-mono text-xs font-medium tracking-[0.18em] text-indigo-600 uppercase">
+            <p className="font-mono text-xs font-medium tracking-[0.18em] text-brand uppercase">
               设计理念
             </p>
-            <h2 className="font-heading mt-5 text-4xl leading-[1.05] font-semibold tracking-tight text-zinc-950 sm:text-5xl">
+            <h2 className="font-heading mt-5 text-4xl leading-[1.05] font-semibold tracking-tight text-foreground sm:text-5xl">
               把答案
               <br />
               写进骨架
             </h2>
-            <p className="mt-6 max-w-sm text-base leading-relaxed text-zinc-600">
+            <p className="mt-6 max-w-sm text-base leading-relaxed text-muted-foreground">
               模板的职责，是把反复出现的工程难题先想清楚：接口怎么定、能力怎么复用、边界怎么划。
               想清楚的部分交给骨架，你只负责业务本身。
             </p>
@@ -63,22 +63,22 @@ export function Why() {
           <div>
             {principles.map((principle, i) => (
               <Reveal key={principle.no} delay={i * 40}>
-                <div className="grid gap-4 border-t border-zinc-200 py-9 md:grid-cols-[4.5rem_1fr] md:gap-10">
-                  <span className="font-heading text-2xl font-semibold tracking-tight text-indigo-600/70">
+                <div className="grid gap-4 border-t border-border py-9 md:grid-cols-[4.5rem_1fr] md:gap-10">
+                  <span className="font-heading text-2xl font-semibold tracking-tight text-brand/70">
                     {principle.no}
                   </span>
                   <div>
-                    <h3 className="font-heading text-2xl font-semibold tracking-tight text-zinc-950">
+                    <h3 className="font-heading text-2xl font-semibold tracking-tight text-foreground">
                       {principle.title}
                     </h3>
-                    <p className="mt-3 max-w-xl text-base leading-relaxed text-zinc-600">
+                    <p className="mt-3 max-w-xl text-base leading-relaxed text-muted-foreground">
                       {principle.desc}
                     </p>
                   </div>
                 </div>
               </Reveal>
             ))}
-            <div className="border-t border-zinc-200" aria-hidden />
+            <div className="border-t border-border" aria-hidden />
           </div>
 
           {/* 价值三列 */}
@@ -86,10 +86,10 @@ export function Why() {
             {values.map((value, i) => (
               <Reveal key={value.title} delay={i * 40}>
                 <div>
-                  <h3 className="text-sm font-semibold text-zinc-950">
+                  <h3 className="text-sm font-semibold text-foreground">
                     {value.title}
                   </h3>
-                  <p className="mt-2 text-sm leading-relaxed text-zinc-600">
+                  <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
                     {value.desc}
                   </p>
                 </div>

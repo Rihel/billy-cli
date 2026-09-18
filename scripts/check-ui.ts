@@ -148,9 +148,9 @@ const PALETTE_PATTERN =
   /(?:^|[^a-zA-Z0-9-])(?:bg|text|border|ring|from|via|to|fill|stroke|decoration|outline|divide|shadow|placeholder|caret|accent)-(?:slate|gray|zinc|neutral|stone|red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose)-\d{2,3}/g
 
 /**
- * 存量基线：文件 → 允许出现的硬编码调色板类**上限**（2026-09-17 实测）。
+ * 存量基线：文件 → 允许出现的硬编码调色板类**上限**（2026-09-18 实测）。
  *
- * 只许减少不许增加，故存量收敛后**无需**维护这张表（上限仍宽松）；想收紧时手动下调。
+ * 只许减少不许增加：收敛后把上限下调到实测值，这样"再写回硬编码"当场会被拦下。
  * 不在表内的文件 = 上限 0（新增文件一律不得硬编码）。
  */
 const PALETTE_BASELINE: Record<string, number> = {
@@ -160,34 +160,15 @@ const PALETTE_BASELINE: Record<string, number> = {
   'apps/admin/src/app/main/monitor/live/page.tsx': 4,
   'apps/admin/src/app/main/todo/page.tsx': 1,
   'apps/admin/src/components/AppSider.tsx': 3,
-  // apps/web 存量（前台落地页为主，待独立一轮收敛到语义 token）
-  'apps/web/src/app/account/layout.tsx': 5,
-  'apps/web/src/app/account/nav.tsx': 5,
-  'apps/web/src/app/account/page.tsx': 6,
-  'apps/web/src/app/account/sessions/page.tsx': 11,
-  'apps/web/src/app/auth/forgot-password/page.tsx': 4,
-  'apps/web/src/app/auth/layout.tsx': 9,
-  'apps/web/src/app/auth/login/page.tsx': 4,
-  'apps/web/src/app/auth/register/page.tsx': 4,
-  'apps/web/src/app/auth/reset-password/page.tsx': 4,
-  'apps/web/src/app/comparison/page.tsx': 42,
-  'apps/web/src/app/error.tsx': 3,
-  'apps/web/src/app/markdown/layout.tsx': 2,
-  'apps/web/src/app/markdown/nav.tsx': 7,
-  'apps/web/src/app/markdown/page.tsx': 6,
-  'apps/web/src/app/not-found.tsx': 2,
-  'apps/web/src/app/page.tsx': 2,
-  'apps/web/src/components/landing/ai-section.tsx': 48,
-  'apps/web/src/components/landing/architecture.tsx': 15,
-  'apps/web/src/components/landing/choice.tsx': 22,
-  'apps/web/src/components/landing/cta-section.tsx': 9,
-  'apps/web/src/components/landing/features.tsx': 57,
-  'apps/web/src/components/landing/footer.tsx': 15,
-  'apps/web/src/components/landing/header.tsx': 42,
-  'apps/web/src/components/landing/hero.tsx': 20,
-  'apps/web/src/components/landing/quick-start.tsx': 50,
-  'apps/web/src/components/landing/tech-marquee.tsx': 3,
-  'apps/web/src/components/landing/why.tsx': 11,
+  // apps/web：2026-09-18 已全量收敛到语义 token（含 bg-white / text-white 这类旧守卫漏掉的）
+  // 仅剩品牌渐变的**终点色** to-violet-600 —— violet 无对应 token，且该渐变在明暗两种底色上都成立，
+  // 故保留并锁 1 处/文件；想彻底归零就先给设计系统加"品牌次色"token
+  'apps/web/src/app/auth/forgot-password/page.tsx': 1,
+  'apps/web/src/app/auth/login/page.tsx': 1,
+  'apps/web/src/app/auth/register/page.tsx': 1,
+  'apps/web/src/app/auth/reset-password/page.tsx': 1,
+  'apps/web/src/components/landing/footer.tsx': 1,
+  'apps/web/src/components/landing/header.tsx': 1,
   // packages/ui 存量（tag.tsx 的 antd 装饰色名，待独立一轮收敛）
   'packages/ui/src/components/display.tsx': 1,
   'packages/ui/src/components/tag.tsx': 30,

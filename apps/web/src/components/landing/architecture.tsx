@@ -37,15 +37,15 @@ export function Architecture() {
       <div className="mx-auto max-w-7xl px-4 py-20 sm:px-6 lg:px-8 lg:py-28">
         <Reveal>
           <div className="flex items-center gap-3">
-            <span className="h-px w-8 bg-indigo-500" aria-hidden />
-            <p className="font-mono text-xs font-medium tracking-[0.18em] text-indigo-600 uppercase">
+            <span className="h-px w-8 bg-brand" aria-hidden />
+            <p className="font-mono text-xs font-medium tracking-[0.18em] text-brand uppercase">
               架构
             </p>
           </div>
-          <h2 className="font-heading mt-4 max-w-2xl text-3xl font-semibold tracking-tight text-zinc-950 sm:text-4xl md:text-5xl">
+          <h2 className="font-heading mt-4 max-w-2xl text-3xl font-semibold tracking-tight text-foreground sm:text-4xl md:text-5xl">
             一次请求，四层各司其职
           </h2>
-          <p className="mt-4 max-w-xl text-base leading-relaxed text-zinc-600">
+          <p className="mt-4 max-w-xl text-base leading-relaxed text-muted-foreground">
             数据流自底向上设计、自顶向下调用，每一层边界清晰，替换与测试都从容。
           </p>
         </Reveal>
@@ -53,18 +53,18 @@ export function Architecture() {
         <Reveal delay={80}>
           <div className="mt-14 max-w-3xl">
             {steps.map((step, i) => (
-              <div key={step.title} className="flex gap-6 border-t border-zinc-200 py-7 first:border-t-0 md:gap-10">
-                <span className="font-heading w-10 shrink-0 text-2xl font-semibold tracking-tight text-indigo-600/60">
+              <div key={step.title} className="flex gap-6 border-t border-border py-7 first:border-t-0 md:gap-10">
+                <span className="font-heading w-10 shrink-0 text-2xl font-semibold tracking-tight text-brand/60">
                   {String(i + 1).padStart(2, '0')}
                 </span>
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-                    <h3 className="font-heading text-xl font-semibold tracking-tight text-zinc-950">
+                    <h3 className="font-heading text-xl font-semibold tracking-tight text-foreground">
                       {step.title}
                     </h3>
-                    <span className="font-mono text-xs text-indigo-700">{step.tag}</span>
+                    <span className="font-mono text-xs text-brand">{step.tag}</span>
                   </div>
-                  <p className="mt-2 max-w-xl text-base leading-relaxed text-zinc-600">
+                  <p className="mt-2 max-w-xl text-base leading-relaxed text-muted-foreground">
                     {step.desc}
                   </p>
                 </div>
@@ -74,14 +74,14 @@ export function Architecture() {
         </Reveal>
 
         <Reveal delay={140}>
-          <div className="mt-10 flex flex-wrap items-center gap-3 rounded-xl border border-indigo-500/20 bg-indigo-500/[0.06] px-5 py-4">
-            <ShieldCheck className="size-5 shrink-0 text-indigo-700" />
-            <p className="text-sm text-zinc-700">依赖方向规范：</p>
+          <div className="mt-10 flex flex-wrap items-center gap-3 rounded-xl border border-brand/20 bg-brand/[0.06] px-5 py-4">
+            <ShieldCheck className="size-5 shrink-0 text-brand" />
+            <p className="text-sm text-foreground">依赖方向规范：</p>
             <div className="flex flex-wrap gap-2">
               {rules.map((rule) => (
                 <code
                   key={rule}
-                  className="rounded-lg border border-zinc-200 bg-white px-2.5 py-1 font-mono text-xs text-zinc-600"
+                  className="rounded-lg border border-border bg-card px-2.5 py-1 font-mono text-xs text-muted-foreground"
                 >
                   {rule}
                 </code>
