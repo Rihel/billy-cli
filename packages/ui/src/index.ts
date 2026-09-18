@@ -1,5 +1,8 @@
 export { cn } from "#lib/utils.ts"
 
+// 主题（纯逻辑 + 防闪烁脚本不带 'use client'，服务端 layout 可直接调用）
+export * from "#lib/theme.ts"
+
 // 核心组件
 export * from "#components/ui/button.tsx"
 export * from "#components/ui/card.tsx"
@@ -72,11 +75,16 @@ export * from "#components/dict-select.tsx"
 export * from "#components/data-list.tsx"
 export * from "#components/markdown.tsx"
 export * from "#components/storage-provider.tsx"
+export * from "#components/storage-client-provider.tsx"
 export * from "#components/use-storage.ts"
 export * from "#components/image-upload.tsx"
 export * from "#components/file-upload.tsx"
 export * from "#components/file-preview.tsx"
 export * from "#components/sortable-file-list.tsx"
+export * from "#components/query-provider.tsx"
+export * from "#components/route-error.tsx"
+export * from "#components/route-not-found.tsx"
+export * from "#components/theme.tsx"
 export * from "#hooks/use-disclosure.ts"
 export * from "#hooks/use-rect.ts"
 export * from "#hooks/use-paste-files.ts"

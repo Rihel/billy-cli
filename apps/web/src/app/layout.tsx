@@ -1,8 +1,10 @@
 import type { Metadata } from "next"
 import { Geist, Geist_Mono, Space_Grotesk } from "next/font/google"
-import { Toaster, TooltipProvider } from "@repo/ui"
+import { createThemeBootScript, Toaster, TooltipProvider } from "@repo/ui"
 import { QueryProvider } from "@/providers/QueryProvider"
+import { ThemeProvider } from "@/providers/ThemeProvider"
 import { WebStorageProvider } from "@/providers/WebStorageProvider"
+import { ThemeKey } from "@/lib/constants"
 import "./globals.css"
 
 /* 字体接线：下面三个变量名必须**写成字面量** —— next/font 的加载器要求编译期可静态分析的值，
@@ -33,6 +35,12 @@ export const metadata: Metadata = {
 /** 前端根 layout 统一动态渲染（每次请求 SSR，不做整站静态预渲染）。 */
 export const dynamic = "force-dynamic"
 
+/**
+ * 主题引导脚本（生成器在 `@repo/ui`）：在 React 水合前根据 localStorage / 系统偏好设置 .dark，
+ * 避免深色模式刷新时白屏闪烁（FOUC）。key 用前台自己的，与后台互不干扰。
+ */
+const themeBootScript = createThemeBootScript({ storageKey: ThemeKey })
+
 export default function RootLayout({
   children,
 }: {
@@ -44,11 +52,14 @@ export default function RootLayout({
       className={`${geist.variable} ${geistMono.variable} ${spaceGrotesk.variable}`}
     >
       <body className="min-h-screen bg-background font-sans antialiased">
-        <QueryProvider>
-          <WebStorageProvider>
-            <TooltipProvider>{children}</TooltipProvider>
-          </WebStorageProvider>
-        </QueryProvider>
+        <script dangerouslySetInnerHTML={{ __html: themeBootScript }} />
+        <ThemeProvider>
+          <QueryProvider>
+            <WebStorageProvider>
+              <TooltipProvider>{children}</TooltipProvider>
+            </WebStorageProvider>
+          </QueryProvider>
+        </ThemeProvider>
         {/* 全局 toast 容器：TanStack Query 的统一错误提示 / 页面操作反馈都经它渲染 */}
         <Toaster />
       </body>

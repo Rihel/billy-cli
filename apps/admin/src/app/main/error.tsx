@@ -1,10 +1,11 @@
 'use client'
 
-import { Button } from '@repo/ui'
+import { Button, RouteError } from '@repo/ui'
 import { useRouter } from 'next/navigation'
-import { HomeIcon, RefreshCwIcon } from 'lucide-react'
+import { HomeIcon } from 'lucide-react'
 import { Pages } from '@/lib/constants'
 
+/** 后台主区错误兜底：除重试外还给一条「回到工作台」的退路（版式在 `@repo/ui`） */
 export default function MainError({
   error,
   reset,
@@ -15,23 +16,20 @@ export default function MainError({
   const router = useRouter()
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-background">
-      <div className="flex flex-col items-center gap-4 text-center">
-        <div className="text-5xl font-semibold">页面加载失败</div>
-        <p className="text-sm text-muted-foreground">
-          加载数据时遇到问题，请重试或返回首页。
-        </p>
-        <div className="flex gap-2">
-          <Button onClick={reset}>
-            <RefreshCwIcon />
-            重试
-          </Button>
-          <Button variant="outline" onClick={() => router.replace(Pages.dashboard)}>
-            <HomeIcon />
-            回到首页
-          </Button>
-        </div>
-      </div>
-    </div>
+    <RouteError
+      error={error}
+      reset={reset}
+      title="页面加载失败"
+      description="加载数据时遇到问题，请重试或返回首页。"
+      action={
+        <Button
+          variant="outline"
+          onClick={() => router.replace(Pages.dashboard)}
+        >
+          <HomeIcon />
+          回到首页
+        </Button>
+      }
+    />
   )
 }

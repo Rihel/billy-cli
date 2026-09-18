@@ -3,9 +3,9 @@ import { Geist, Geist_Mono, Space_Grotesk } from 'next/font/google'
 
 import './globals.css'
 
-import { cn } from '@repo/ui'
+import { cn, createThemeBootScript } from '@repo/ui'
 import { Providers } from '@/providers/AppProviders'
-import { AppName } from '@/lib/constants'
+import { AppName, ThemeKey } from '@/lib/constants'
 import { Suspense } from 'react'
 
 /* 字体接线：下面三个变量名必须**写成字面量** —— next/font 的加载器要求编译期可静态分析的值，
@@ -36,10 +36,10 @@ export const metadata: Metadata = {
 export const dynamic = 'force-dynamic'
 
 /**
- * 主题引导脚本：在 React 水合前根据 localStorage / 系统偏好设置 .dark，
- * 避免深色模式刷新时白屏闪烁（FOUC）。
+ * 主题引导脚本（生成器在 `@repo/ui`）：在 React 水合前根据 localStorage / 系统偏好设置 .dark，
+ * 避免深色模式刷新时白屏闪烁（FOUC）。key 用 admin 自己的，与前台互不干扰。
  */
-const themeBootScript = `(function(){try{var t=localStorage.getItem('billy-admin-theme');var d=t==='dark'||((!t||t==='system')&&window.matchMedia('(prefers-color-scheme: dark)').matches);document.documentElement.classList.toggle('dark',d)}catch(e){}})()`
+const themeBootScript = createThemeBootScript({ storageKey: ThemeKey })
 
 export default function RootLayout({
   children,

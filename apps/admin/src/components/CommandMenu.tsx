@@ -32,7 +32,8 @@ import {
   UserRoundIcon,
   UsersIcon,
 } from 'lucide-react'
-import { useThemeStore, type ThemeMode } from '@/stores/theme.store'
+import { useTheme } from '@/stores/theme.store'
+import type { ThemeMode } from '@repo/ui'
 import { useCommands } from '@/lib/commands'
 
 type CommandItemData = {
@@ -58,7 +59,7 @@ const THEME_OPTIONS: { mode: ThemeMode; label: string; icon: typeof SunIcon }[] 
 export function CommandMenu({ sidebar = false }: { sidebar?: boolean }) {
   const router = useRouter()
   const [open, setOpen] = useState(false)
-  const setMode = useThemeStore((s) => s.setMode)
+  const setMode = useTheme().setMode
   const actions = useCommands()
 
   // 页面注册的快捷动作 → 按分组聚合
