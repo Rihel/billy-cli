@@ -68,11 +68,11 @@ apps/web | apps/admin   应用：globals.css 接入 + 字体字面量 + 页面
 
 ## 4. 设计系统构成
 
-### 4.1 token 清单（50 个 CSS 变量，明暗各一套）
+### 4.1 token 清单（51 个 CSS 变量，明暗各一套）
 
 | 分组 | 数量 | 说明 |
 | --- | --- | --- |
-| 颜色语义 token | 37 | `background` / `foreground` / `card` / `popover` / `primary` / `secondary` / `muted` / `accent` / `destructive` / **`success`** / **`warning`** / **`info`**（各含 `-foreground`）/ `border` / `input` / `ring` / `chart-1..5` / `sidebar-*` |
+| 颜色语义 token | 38 | `background` / `foreground` / `card` / `popover` / `primary` / `secondary` / `muted` / `accent` / `destructive` / **`success`** / **`warning`** / **`info`**（各含 `-foreground`）/ **`brand`** / `border` / `input` / `ring` / `chart-1..5` / `sidebar-*` |
 | markdown 高亮 | 11 | `--md-hl-*`（hljs token 色，CSS 规则直接消费，不生成工具类） |
 | 圆角 | 1 | `--radius`（派生 `rounded-sm…4xl` 整套尺度） |
 | 字体 | 1 | `--font-display` 回退链（`--font-sans` / `--font-mono` 在 `@theme` 内联） |
@@ -167,7 +167,7 @@ apps/web | apps/admin   应用：globals.css 接入 + 字体字面量 + 页面
 | 守卫 | 拦截什么 | 反向验证 |
 | --- | --- | --- |
 | `packages/ui/test/tokens.test.ts`（5 项，**纯 CSS 自洽、零手工清单**） | ① 明暗不对称（浅色与深色的键集合必须完全一致）② `@theme` 映射不自洽（`--color-X: var(--Y)` 指向别的变量 → 工具类取值落空）③ 映射来源变量缺定义 ④ 颜色 token 漏映射 ⑤ 根层专属 token 缺失 ⑥ 字体回退链未引用 app 注入的变量 | 删深色 `--success`（2 项红）/ 摘 `@theme` 映射 / 把映射指向不存在的变量 / 新增 token 只写浅色 → **各自红灯** |
-| `pnpm check:ui` ③ 禁止新增硬编码调色板 | 在 `packages/ui/src` 与 `apps/<app>/src` **新增**调色板类（`bg-blue-500` 等） | 基线按「文件 → 上限」冻结（33 文件 / 465 处），超限即违例；只许减少不许增加 |
+| `pnpm check:ui` ③ 禁止新增硬编码调色板 | 在 `packages/ui/src` 与 `apps/<app>/src` **新增**调色板类（`bg-blue-500` 等） | 基线按「文件 → 上限」冻结（2026-09-18 收敛后：`apps/web` 只剩 6 处 `to-violet-600`，其余文件上限已降到 0 / 实测值），超限即违例；只许减少不许增加 |
 | `pnpm check:ui` ④ 样式入口可解析 | `apps/*/src`、`packages/ui/src`、`scripts/cli/templates` 里 `@import "@repo/x/y.css"` 指向不存在的文件 | 包改名 / 导出改名后引用静默失效（实测抓到过 IDE 入口 `tailwind-ide.css` 的残留引用） |
 | `pnpm check:ui` ⑤ 字体契约一致 | `apps/<app>/src/app/layout.tsx` 与 client 模板的 `next/font` 变量名与 `globals.css` 字体回退链不一致（契约**从 CSS 推导**，不维护第二份清单） | 改一个字体字面量即违例 |
 | `pnpm check:ui` ①②（既有） | 自有组件未导出 / 前端包缺 `typecheck` 脚本 | — |
@@ -270,10 +270,73 @@ ui 包不参与类名扫描的声明（它自己不经 Tailwind 构建）。
 
 ## 9. 已知缺口（记在案，本轮不修）
 
-1. **`apps/web` 465 处硬编码调色板类**（33 个文件，落地页为主）：收敛到语义 token 后
-   web 才能获得暗色能力。守卫已冻结存量、禁止新增，可作为独立一轮推进。
+1. ~~**`apps/web` 465 处硬编码调色板类**（33 个文件，落地页为主）：收敛到语义 token 后
+   web 才能获得暗色能力。守卫已冻结存量、禁止新增，可作为独立一轮推进。~~
+   **→ 已于 2026-09-18 完成，见 §10。**
 2. **`tag.tsx` 的 antd 装饰色名**（`gold` / `volcano` / `geekblue` / `magenta` / `cyan` /
    `processing`）：属「去 antd 指纹」，需连带改调用方。
 3. **admin 主按钮质感规则缺失**（原规则从未生效，见 §8.2 ①）：待决定「按 `variant="default"`
    修好并两端共享」还是「永久删除」—— 属视觉决策，未擅自替用户决定。
 4. **非颜色 token（间距 / 动效 / 层级）**：依据见 §2，等出现真实不一致证据再加。
+
+## 10. 2026-09-18 更新：`--brand` token + web 全量收敛 + 主题能力上移
+
+§1 / §9 记的「web 绕过 token、465 处硬编码」已解决；本节是落地记录与新增依据。
+
+### 10.1 新增 `--brand`（第 38 个颜色 token）
+
+落地页用的强调色（图标底 / 徽标 / 渐变起点 / 发光 / 分节线）原本是硬编码 `indigo-*`，而
+`--primary` 是**刻意近黑**（避开 antd 蓝实心按钮指纹）、`--ring` 只叫「焦点环」—— 拿它当文字色
+命名上讲不通。故把**已有取值**升格为独立 token：
+
+| 位置 | 浅色 | 深色 |
+| --- | --- | --- |
+| `--brand` | `oklch(0.585 0.233 277.117)`（= 原 `--ring`） | `oklch(0.673 0.182 276.935)`（= 原深色 `--ring`） |
+| `--ring` | `var(--brand)`（派生） | 同 |
+| `--chart-1` | `var(--ring)`（不变） | 同 |
+
+**浅色零视觉变化**（取值就是原来的 `--ring`），深色下 brand 作文字色取 400 档满足对比度 ——
+与既有 `--destructive` / `--success` 的档位模式一致。新增 token 后 `tokens.test.ts` 六项守卫全绿
+（明暗对称 / `@theme` 映射 / 派生层不抄字面量）。
+
+### 10.2 `apps/web` 全量收敛
+
+- **411 处替换**（25 个文件）：`zinc-*` → `foreground` / `muted-foreground` / `muted` / `border` /
+  `card` / `background`；`bg-zinc-950 text-white`（近黑主 CTA）→ `bg-primary text-primary-foreground`；
+  `emerald` / `red` / `amber` → `success` / `destructive` / `warning`；`indigo-*` → `brand`（带透明度
+  的形态走 `bg-brand/10` 这类 alpha，而不是再养一套 subtle token）。
+- **守卫漏网的白/黑也清了**：`bg-white`(21) / `text-white`(10) 不在 `check:ui` 的调色板正则里
+  （该正则只认 `-<色阶数字>`），但它们是暗色真正的拦路虎 —— 一并处理：页面级 → `bg-background`、
+  卡片/面板 → `bg-card`、吸顶栏 → `bg-background/80`、渐变徽标上的 `text-white` **保留**
+  （白字配饱和渐变在明暗两态都成立）。
+- **有意保留的 1 个例外**：品牌渐变终点 `to-violet-600`（6 处）—— violet 无对应 token，
+  且该渐变在两种底色上都成立；基线按文件锁 1 处，想归零就先加「品牌次色」token。
+- 基线从「33 文件 / 465 处」收紧到「6 文件 / 各 1 处」，并**反向验证过有牙齿**：
+  往 `hero.tsx` 塞回一个 `bg-indigo-500` 立刻退出码 1。
+
+### 10.3 主题能力上移 `@repo/ui`
+
+此前主题（三态 `light/dark/system` + 持久化 + `.dark` 切换 + 系统偏好监听 + 防闪烁脚本）只在
+`apps/admin`，前台拿不到暗色。现落点：
+
+| 内容 | 位置 | 说明 |
+| --- | --- | --- |
+| 纯逻辑 + 防闪烁脚本 | `packages/ui/src/lib/theme.ts` | `resolveDark` / `applyThemeClass` / `readStoredMode` / `writeStoredMode` / `createThemeBootScript`；**不带 `'use client'`**，服务端 layout 可直接调用 |
+| React 侧 | `packages/ui/src/components/theme.tsx` | `createTheme({ storageKey })` → `{ useTheme, initTheme }`（模块闭包 + `useSyncExternalStore`，**不引入 zustand**）+ 受控组件 `ThemeToggle` |
+| app 侧 | `apps/{web,admin}/src/stores/theme.ts` | 各 6 行：只给**本应用的存储 key** |
+
+**为什么 key 必须参数化**：同域部署时 `localStorage` 共享，写死一个 key 会让后台切深色把前台也改掉
+（与 `TokenKey` 必须两端不同同一个道理）。测试里专门有一条「两个 app 不同 key 互不干扰」。
+
+落地页头部与移动端抽屉各挂了一个主题入口；`apps/admin` 行为不变（key 仍是 `billy-admin-theme`，
+防闪烁脚本改由 `createThemeBootScript` 生成，不再手抄字面量）。
+
+### 10.4 本轮验证
+
+`typecheck`（8 包）/ `test`（7 包；ui 52 项含新增主题 13 项）/ `check:ui` / `check:scaffold` 全绿；
+运行中 dev：web 首页 200（236 KB，CSS 291 KB）、`bg-brand`/`text-brand`/`bg-muted`/`bg-card` 等
+新工具类**确实进了产物 CSS**、`.dark` 块存在、防闪烁脚本带 `billy-theme`；admin 登录页 200 且脚本为
+`billy-admin-theme`；web `/nope` 404、`/auth/login` 200。
+
+**已知残留**：暗色是「结构性可用」（token / 切换 / 脚本 / 产物类名都已验证），
+但**没有做逐页视觉回归** —— 落地页在深色下的实际观感建议人工过一眼（尤其渐变发光与阴影部分）。

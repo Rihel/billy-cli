@@ -53,6 +53,18 @@ apps/web | apps/admin（页面、Server Actions、providers、stores）
 | 实时告警页 | `apps/admin/src/app/main/monitor/live/page.tsx` | 前端页面归 app（placement 第 9 条） |
 | 前台受保护用户区 | `apps/web/src/app/account/*` | 同上 |
 
+**应用装配的机制 / 策略分界**（2026-09-18 收口，此前两个 app 各抄一份）：机制归共享层，取值与善后策略留在 app。
+
+| 能力性质 | 落点 | 依据 |
+| --- | --- | --- |
+| 应用 HTTP 客户端装配（浏览器单例 / 服务端无状态客户端 / 凭证读写 / 401 清凭证） | `packages/sdk/src/app-clients.ts` 的 `createAppClients()` | 它包着 `ServerClient`，而 `@repo/ui` 不允许依赖 sdk / http-client |
+| 认证 cookie 的安全默认（httpOnly / sameSite / path / secure） | `packages/shared/src/utils/cookie.utils.ts` | 安全契约不能两端各写一份；变化的只有 `maxAge` / `secure` |
+| 地址回落与 key → URL 拼接 | `packages/shared/src/utils/url.utils.ts` 的 `createAppUrlConfig()` | 机制共享；**`process.env` 读取必须留在 app**（`NEXT_PUBLIC_*` 需构建期替换，被外置的包内不替换） |
+| Server Action 结果约定 | `@repo/ui/action` 的 `defineAction` | 已有实现，web 曾自带一套 `{ success }` 与之分叉 |
+| 主题（三态 / 持久化 / `.dark` 切换 / 防闪烁脚本 / 切换组件） | `packages/ui/src/lib/theme.ts` + `components/theme.tsx` 的 `createTheme()` | 机制共享；**存储 key 由 app 传入**（同域 localStorage 共享，写死会互相改主题） |
+| tokenKey / 路由表 / 401 之后干什么（跳哪、是否撤销会话） | 各 app 的 `lib/constants.ts` / `lib/server-client.ts` | 应用私有，作为参数注入 |
+| `proxy.ts` / `layout.tsx` / `next/font` 字面量 | 各 app（框架机制，搬不走） | Next 的文件约定与 `next/font` 字面量要求（§7.1） |
+
 **关键取舍**：`useStream` **刻意不依赖 `@repo/http-client`** —— 它只要求一个结构化接口
 `StreamClientLike`（`currentState` / `on` / `connect` / `close`），`HttpStreamClient` 天然满足。
 理由：`@repo/ui` 是表现层库，若依赖传输包会把「UI 组件库」绑死在某个 HTTP 客户端上，

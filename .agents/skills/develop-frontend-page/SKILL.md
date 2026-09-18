@@ -43,6 +43,11 @@ token / 主题 / 字体回退链 / 组件质感的**唯一定义处**是 `@repo/
   「这是不是跨端共享的」（是 → 放 `packages/ui/src/globals.css`）。
 - **token 没有 JS 副本**：具体值就是那些 CSS 变量本身，页面里用 Tailwind 语义类消费；
   拿不到类的场景（图表 / SVG / 内联 style）直接写 `var(--chart-1)`，随明暗自动切换。
+- **主题（浅色 / 深色 / 跟随系统）能力在 `@repo/ui`**：app 侧只写
+  `createTheme({ storageKey: 本应用的 ThemeKey })`（出 `useTheme` / `initTheme`）+ 根 layout 用
+  `createThemeBootScript({ storageKey })` 生成防刷新白闪的内联脚本。**存储 key 必须各 app 不同**
+  （同域部署 localStorage 共享，否则前后台互相改主题）；页面视觉取值只用语义 token，
+  硬编码调色板在暗色下必然出错（`pnpm check:ui` 会拦）。
 - 字体：app 的 `layout.tsx` 里 `next/font` 的 `variable` **必须写字面量**
   （框架要求，传变量直接构建失败）；契约放在 `globals.css` 的字体回退链里，
   `pnpm check:ui` 第 ⑤ 条从 CSS 推导并校验两侧一致。
@@ -91,7 +96,7 @@ pnpm check:ui    # 守卫五条：组件导出 / 前端包 typecheck 脚本 / �
 | 文件 | 内容 | 何时读 |
 | --- | --- | --- |
 | [references/admin-page.md](./references/admin-page.md) | Admin 页骨架、DataTable / DataList 选型、@tanstack/react-form 声明式表单、缓存同步、展示辅助、defineAction、实时页面（SSE） | 写 Admin 页面时（必读） |
-| [references/web-page.md](./references/web-page.md) | Web 页 wrapAction + useActionState + @repo/ui 组件、受保护页面两层守卫、前台全局装配 | 写 Web 前台页面时（必读） |
+| [references/web-page.md](./references/web-page.md) | Web 页 defineAction + useActionState + @repo/ui 组件、受保护页面两层守卫、前台全局装配 | 写 Web 前台页面时（必读） |
 
 ## 菜单与路由
 
@@ -114,7 +119,7 @@ pnpm check:ui    # 守卫五条：组件导出 / 前端包 typecheck 脚本 / �
 - [ ] 增删改走 `useMutation` + `toastSuccess` + 缓存同步（refetch 或 immer 就地更新）
 - [ ] 表单用 `ModalForm` / `DrawerForm` 声明式 items（@tanstack/react-form），onSubmit 写在 `useForm` 里
 - [ ] 字典列用 `DictTag` / `getLabel`；时间用 `DisplayValue`；文件用 `formatStorageUrl`
-- [ ] Server Actions 统一走 `defineAction`（admin）或 `wrapAction`（web）的错误处理封装
+- [ ] Server Actions 统一走 `defineAction`（`@repo/ui/action`，两个前端同一套 `{ ok }` 结果约定）
 - [ ] admin 新页面已登记 `AppMenu.tsx` 菜单
 - [ ] 需要登录态的前台页：已加进 `apps/web/src/proxy.ts` 的 `matcher`（真实 307）+ layout 做 SSR 会话校验 + `?next=` 经 `lib/redirect.ts` 过滤
 - [ ] 用到上传 / toast / Query：确认 `<Toaster />` 与存储 Provider（web `WebStorageProvider` / admin `AppProviders`）已装配

@@ -321,8 +321,8 @@ pnpm cli -t crud -n product --no-install  # 非交互生成 CRUD 业务模块（
 
 - 页面：`/`（首页）、`/auth/*`（登录 / 注册 / 忘记密码 / 重置密码）、`/account`（**个人中心**：账号资料）与 `/account/sessions`（**登录设备**：列表 + 单设备下线），受保护用户区、`/comparison`（竞品调研）、`/markdown/*`（Markdown 渲染示例）
 - Server Actions（`actions/auth.actions.ts`）封装登录 / 注册 / 忘记密码 / 重置密码 / 登出，token 写入 httpOnly cookie
-- `lib/server-client.ts`：浏览器端单例（`LocalStorageCredentialsManager` 管理 token，baseUrl 走 `NEXT_PUBLIC_SERVER_URL`）+ 服务端无状态客户端（`MemoryCredentialsManager` + 显式传入 token，baseUrl 走运行时 `SERVER_URL`）；httpOnly cookie 在 `lib/auth-session.ts` 读取
-- `providers/QueryProvider.tsx` 注入 TanStack Query（`QueryCache` / `MutationCache` 的 `onError` 统一 toast）；`providers/WebStorageProvider.tsx` 把 `@repo/ui` 的上传组件接到 `storage.getPresignedUrl`
+- `lib/server-client.ts`：调用 `@repo/sdk` 的 `createAppClients` 装配 HTTP 客户端（浏览器端单例 + 服务端无状态客户端 + 凭证读写），本文件只注入 `tokenKey` / 两端地址 / 401 善后；`lib/constants.ts` 的地址解析走 `@repo/shared` 的 `createAppUrlConfig`（环境变量读取留在 app，`NEXT_PUBLIC_*` 需构建期替换）；httpOnly cookie 在 `lib/auth-session.ts` 读取
+- `providers/QueryProvider.tsx` 注入 TanStack Query（`QueryCache` / `MutationCache` 的 `onError` 统一 toast）；`providers/WebStorageProvider.tsx` 把 `@repo/ui` 的上传组件接到 `storage.getPresignedUrl`；`providers/ThemeProvider.tsx` 应用已存储 / 系统的主题（**前台已支持暗色**，入口在落地页头部与移动端抽屉）
 - 受保护页两层守卫：`src/proxy.ts` 中间件（只查 cookie → 无 cookie 真实 307 到 `/auth/login?next=`，`matcher` 只挂 `/account/:path*`）+ `app/account/layout.tsx` 的 SSR 会话校验；`?next=` 回跳经 `lib/redirect.ts` 过滤（防开放重定向）
 - 应用级兜底：`app/error.tsx`（可重试）、`app/not-found.tsx`、`app/loading.tsx`
 - `app/layout.tsx` 标记 `force-dynamic`：前端根 layout 统一动态渲染（每次请求 SSR，不做静态预渲染）
@@ -677,7 +677,11 @@ const todos = await client.todo.cursorQuery({ size: 20 })
 （理由见 `docs/design/design-system.md` §4.2）。
 
 - 语义色：`primary` / `secondary` / `muted` / `accent` / `destructive` / `success` /
-  `warning` / `info` / `chart-1..5` / `sidebar-*`（共 37 个颜色 token，明暗对称）；
+  `warning` / `info` / `brand`（品牌强调色，前台落地页用）/ `chart-1..5` / `sidebar-*`
+  （共 38 个颜色 token，明暗对称）；
+- 主题：三态（浅色 / 深色 / 跟随系统）能力在 ui 包 —— `createTheme({ storageKey })` 出
+  `useTheme` / `initTheme`，`createThemeBootScript()` 生成防刷新白闪的内联脚本，
+  `ThemeToggle` 是受控展示组件；**存储 key 由各 app 传**（同域部署下 front/back 互不干扰）；
 - 守卫：`packages/ui/test/tokens.test.ts` 用**零手工清单**的纯 CSS 自洽断言守着
   「明暗对称 + `@theme` 映射自洽 + 字体回退链」；`pnpm check:ui` 拦新增硬编码调色板、
   校验样式入口可解析与字体契约一致；
@@ -702,8 +706,11 @@ sidebar / toast / chart 等），Tailwind 4 主题变量来自同包的 `globals
 - 列表：`DataList`（react-virtuoso 游标滚动加载）
 - 表单：`ModalForm` / `DrawerForm` / `FormRenderer`（@tanstack/react-form 声明式
   items：widget + required/validate 校验）/ `EditableInput`
-- 存储：`StorageProvider` / `useStorage` / `ImageUpload` / `FileUpload` / `FilePreview` /
-  `SortableFileList`（配合 `/storage/*` 接口）
+- 存储：`StorageProvider` / `StorageClientProvider`（把 SDK 客户端接到上传组件上，两个前端共用）/
+  `useStorage` / `ImageUpload` / `FileUpload` / `FilePreview` / `SortableFileList`（配合 `/storage/*` 接口）
+- 应用装配：`QueryProviders`（QueryClient + 统一错误 toast，策略由 app 传）/
+  `RouteError` / `RouteNotFound`（`app/error.tsx` / `not-found.tsx` 的版式，两个前端共用）/
+  `createTheme` / `ThemeToggle`（主题，存储 key 由 app 传）
 - 展示：`DictTag` / `DisplayValue` / `DisplayRender` / `Tag` / `Icon` / `IconText` /
   `PageLoading` / `Group` / `AutoSize` 等
 - `action.ts`：`defineAction` / `callAction` —— Server Action 的 `{ ok, data } | { ok: false, error }`
@@ -772,7 +779,7 @@ sidebar / toast / chart 等），Tailwind 4 主题变量来自同包的 `globals
 - 公开接口（注册 / 登录 / 管理员登录 / 忘记密码 / 重置密码）不加 Guard
 - Admin SSR 侧：`main/layout.tsx` 用 cookie 调 `getMe()`，失败 `redirect()`；`proxy.ts`
   中间件做首屏路由守卫
-- Web 侧：`onUnauthorized` 回调 + Server Actions 返回 `ActionResult` 结构
+- Web 侧：Server Actions 用 `@repo/ui/action` 的 `defineAction` 统一 `{ ok, data | error }` 结果约定（两个前端同一套）
 - Admin 客户端：token 存 localStorage，同时写 httpOnly cookie 供 SSR 守卫使用
 - **登录设备（会话管理）**：会话写入 Redis 时带 `sessionId` / `ip` / `userAgent` / 时间；
   `POST /session/list`（标出 `current`）与 `POST /session/remove`（按 `sessionId` 幂等下线），
@@ -987,7 +994,10 @@ await this.dbService.getFullSqlStatement(builder)             // 返回完整 SQ
 `eta` 模板引擎（模板文件见 `scripts/cli/templates/files/`），可生成四类模板：
 
 - `package` — 新 workspace 包（tsdown 构建）
-- `client` — Next.js 前端应用（@repo/ui 技术栈）
+- `client` — Next.js 前端应用（@repo/ui 技术栈）：布局 + 设计系统入口 + **应用装配**
+  （`lib/constants.ts` 的地址解析走 `@repo/shared`、`lib/server-client.ts` 调 `@repo/sdk` 的
+  `createAppClients`、`providers/AppProviders.tsx` 挂 `QueryProviders` + `StorageClientProvider`）
+  + **应用级兜底**（`error.tsx` / `not-found.tsx` / `loading.tsx`，版式取 `@repo/ui`）+ `typecheck` 脚本
 - `service` — NestJS 服务端应用骨架（`main.ts` + `root.module.ts` + `app-config.ts` + `config.ts` + `data-source.ts` + `lib/http.ts` + `common/` 的请求上下文 / 请求日志 / 请求指标自注册中间件）
 - `crud` — 完整 CRUD 业务模块（NestJS 实体 / repository / service / controller / module / errors / schema）
 
@@ -1003,10 +1013,12 @@ SDK 方法、admin 页面，并运行 `pnpm db:gen` 生成迁移。
 请求指标三件自注册中间件（组合根 `imports` 内的顺序有铁律，见生成物注释）、限流模块，
 以及 75s / 80s 的长连接超时默认值（前置网关场景，见「前置反向代理」一节）。
 
-模板与工作区包的一致性由 `pnpm check:scaffold` 保证，它做三件事：汇总所有模板对
+模板与工作区包的一致性由 `pnpm check:scaffold` 保证，它做四件事：汇总所有模板对
 `@repo/kits` / `@repo/shared` 的具名导入、把 `service` 模板整体渲染成一套骨架做类型检查、
-**真的调 CLI 生成一个 crud 模块**（并补上它提示的两个手动步骤）做类型检查。注意 tsc 读的是
-packages 的 `dist` 声明，所以刚改过 packages 源码要先 `pnpm build:pkgs`（脚本会告警）。
+把 `client` 模板整体渲染成一套前端源码（落在 `apps/web/.scaffold-check-client/`，故 `next` /
+`react` / `@repo/ui` 都能按真实相对路径解析）做类型检查、**真的调 CLI 生成一个 crud 模块**
+（并补上它提示的两个手动步骤）做类型检查。注意 tsc 读的是 packages 的 `dist` 声明，所以刚改过
+packages 源码要先 `pnpm build:pkgs`（脚本会告警）。
 
 ## 脚本
 
@@ -1030,8 +1042,9 @@ packages 的 `dist` 声明，所以刚改过 packages 源码要先 `pnpm build:p
 | `pnpm docker:up`    | `docker compose up -d --build`          |
 | `pnpm clean`        | 清理 node_modules / dist / 缓存         |
 | `pnpm check:inject` | 守卫：构造器 `@Inject` / providers `@Injectable` 一致性检查 |
-| `pnpm check:scaffold` | 守卫：脚手架模板与工作区包一致性检查（导入名 + service/crud 渲染类型检查） |
+| `pnpm check:scaffold` | 守卫：脚手架模板与工作区包一致性检查（导入名 + service/client/crud 渲染类型检查） |
 | `pnpm check:ui`     | 守卫：前端约定五条（组件导出 / 前端包 `typecheck` 脚本 / 禁止新增硬编码调色板 / 脚手架模板样式入口可解析 / `next/font` 变量名与设计系统契约一致） |
+| `pnpm codegraph:setup` | 初始化 codegraph 代码图谱（装 CLI + 建仓库根索引；可选增强，接入见「AI 使用配置」） |
 
 ## Docker
 
@@ -1152,6 +1165,35 @@ AI 编码 Agent 按任务**按需加载**，工具无关（Claude Code / Codex /
   service）→ 接口（controller + 错误码）→ SDK → 前端页面
 - **维护**：新增 / 修改 skill 走 `manage-skills`（目录与 frontmatter 规范、references 拆分、索引注册）；
   **代码变更后须同步受影响的 skill 与文档**
+
+## AI 使用配置
+
+skill 是纯 Markdown，agent 接上就能读；下面是让 AI **真正好用**（少读文件、句句有据）需要在本机
+做的配置。都属**可选增强**：不入仓库、不进依赖树，不做也不影响项目运行。
+
+**codegraph 代码图谱**（推荐）：预索引的代码知识图谱，让 agent 一次调用就拿到相关符号的原文 +
+调用路径 + 改动影响面，替代 grep / read 逐文件爬。
+
+```bash
+pnpm codegraph:setup   # 装 CLI（已装则跳过）+ 在仓库根建索引；产物 .codegraph/（已 gitignore）
+codegraph status       # 查看索引状态与 Added / Modified 待同步项
+codegraph sync         # 手动同步（触发条件见下）
+codegraph ui           # 浏览器看图：http://127.0.0.1:4747
+```
+
+- **接 MCP 才算真正用上**：`codegraph install` 可自动配置 Claude Code / Codex / Cursor 等，但
+  **不支持 DeepSeek Harness**。DSH 需手动在 `$DSH_HOME/profiles/<profile>/cordis.patch.yml` 加一条
+  `@deepseek-ai/dsh-mcp-client` 的 `insert`，并**显式指定 `--path` 指向本仓库**（MCP 子进程继承的是
+  DSH host 进程的 cwd，未必是本仓库，不给会索引错项目）；接线后模型工具列表出现
+  `mcp__codegraph__codegraph_explore`。完整片段见
+  [`codegraph` skill 的接入说明](.agents/skills/codegraph/references/codegraph-guide.md)。
+- **索引同步有前提**：只有 MCP server（`codegraph serve --mcp`，自带文件 watcher）或 daemon 在跑时，
+  改代码才会自动进索引；否则索引会**静默过期**（实测能落后一天多），agent 据此读到旧代码——此时
+  改完代码手动 `codegraph sync`。
+- 未接 MCP 时，agent 经 bash 调 CLI（`query` / `callers` / `impact` 等）同样可用，只是每次多一次
+  工具调用。
+
+> 一句话：配了它，agent 改代码时能看见「谁调用、改它影响谁」；不配就退回 grep + 逐文件 read。
 
 ## 文档
 

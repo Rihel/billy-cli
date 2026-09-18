@@ -9,18 +9,25 @@
 ```ts
 'use server'
 
-export type ActionResult<T = void> = { success: true; data: T } | { success: false; error: string }
+import { defineAction } from '@repo/ui/action'
 
-export const xxxAction = wrapAction(async (input: I) => {
-  const client = createServerClient()
-  return client.xxx.do(input)
-})
+export const xxxAction = defineAction(
+  async (input: I) => {
+    const client = createServerClient()
+    return client.xxx.do(input)
+  },
+  { fallbackError: '操作失败，请稍后重试', getError },
+)
 ```
 
-- web 侧用本地 `wrapAction`（`apps/web/src/actions/auth.actions.ts` 的模板），返回
-  `{ success, data | error }`；`ApiError` 取 `err.message`，其余兜底文案。
-- 涉及会话的操作经 `cookies()` 读写 `TokenKey`（`access-token`，httpOnly cookie，7 天），
-  参考 auth.actions.ts 的 `cookieOptions`。
+- **两个前端共用同一套约定**：`defineAction`（`@repo/ui/action`）返回
+  `{ ok: true, data } | { ok: false, error }`，调用方判 `if (!result.ok)` ——
+  不要再各写一份 `wrapAction`（web 曾自带一套 `{ success }`，与 admin 的 `{ ok }` 分叉）。
+- 错误文案：`getError` 里 `ApiError` 取 `error.message`（后端中文提示），其余兜底。
+- 涉及会话的操作经 `cookies()` 读写 `TokenKey`（`access-token`，httpOnly cookie，7 天）：
+  cookie 的安全默认（httpOnly / sameSite / path / secure）取 `@repo/shared` 的
+  `authCookieOptions({ maxAge, secure })`，只把「有效期 / 是否生产」传进去。
+- 登出用 `try / catch / finally`：撤销会话失败**不能阻断**登出，cookie 必须在 `finally` 里清掉。
 
 ## 2. 页面与表单
 
@@ -56,11 +63,13 @@ export const xxxAction = wrapAction(async (input: I) => {
 
 | 装配 | 文件 | 说明 |
 | --- | --- | --- |
-| Query + 错误提示 | `apps/web/src/providers/QueryProvider.tsx` | `QueryCache` / `MutationCache` 的 `onError` 统一 toast（与 admin 同策略，错误不静默） |
-| 对象存储 | `apps/web/src/providers/WebStorageProvider.tsx` | 把 `@repo/ui` 的 `ImageUpload` / `FileUpload` / `useStorage` 接到 `client.storage.getPresignedUrl` 与 `formatStorageUrl` 上；**不装配则上传组件抛错**（`@repo/ui` 不依赖 sdk，必须由应用注入） |
+| Query + 错误提示 | `apps/web/src/providers/QueryProvider.tsx` | 机制（`QueryCache` / `MutationCache` 的 `onError` 统一 toast、Provider）在 `@repo/ui` 的 `QueryProviders`；app 文件只传前台的策略（`staleTime`） |
+| 对象存储 | `apps/web/src/providers/WebStorageProvider.tsx` | 用 `@repo/ui` 的 `StorageClientProvider`（`client` + `resolveUrl`）把 `ImageUpload` / `FileUpload` / `useStorage` 接到 `client.storage.getPresignedUrl` 上；**不装配则上传组件抛错**（`@repo/ui` 不依赖 sdk，必须由应用注入） |
 | Toast 容器 | `apps/web/src/app/layout.tsx` 的 `<Toaster />` | 没有它 `toastSuccess` / Query 错误提示全都无声 |
 
-- 应用级兜底文件：`app/error.tsx`（客户端，`reset` 重试）、`app/not-found.tsx`、`app/loading.tsx`。
+- 应用级兜底文件：`app/error.tsx`（客户端，`reset` 重试）、`app/not-found.tsx`、`app/loading.tsx` ——
+  **文件必须在位，但只留一行壳**，版式取 `@repo/ui` 的 `RouteError` / `RouteNotFound`（文案、回跳目标、
+  是否展示 `digest` 由 app 决定；`RouteNotFound` 的动作区由 app 传元素，组件库不 import `next/link`）。
 
 ## 5. 受保护区内的多页导航
 
