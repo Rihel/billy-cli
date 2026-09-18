@@ -1,12 +1,38 @@
 'use client'
 
 import type { ReactNode } from 'react'
-import { Toaster, TooltipProvider } from '@repo/ui'
+import {
+  QueryProviders,
+  StorageClientProvider,
+  Toaster,
+  TooltipProvider,
+} from '@repo/ui'
+import { formatStorageUrl } from '@/lib/constants'
+import { useServerClient } from '@/lib/server-client'
+
+/**
+ * 对象存储装配：`@repo/ui` 不依赖 `@repo/sdk`，所以「向谁要预签名」必须由应用注入
+ * —— 不装配则 `ImageUpload` / `FileUpload` / `useStorage` 直接抛错。
+ */
+function AppStorageProvider({ children }: { children: ReactNode }) {
+  return (
+    <StorageClientProvider client={useServerClient()} resolveUrl={formatStorageUrl}>
+      {children}
+    </StorageClientProvider>
+  )
+}
 
 export function Providers({ children }: { children: ReactNode }) {
   return (
     <TooltipProvider>
-      {children}
+      {/*
+        QueryClient 装配（+ 请求失败统一 toast，错误不静默）在 `@repo/ui` 的 `QueryProviders`；
+        缓存策略按需传，例如 <QueryProviders staleTime={60 * 1000}>。
+      */}
+      <QueryProviders>
+        <AppStorageProvider>{children}</AppStorageProvider>
+      </QueryProviders>
+      {/* 全局 toast 容器：没有它 toastSuccess / Query 错误提示全都无声 */}
       <Toaster />
     </TooltipProvider>
   )

@@ -11,38 +11,52 @@ import {
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { createServiceTemplate } from './cli/templates/service.js'
+import { createClientTemplate } from './cli/templates/client.js'
 import { pascalize } from './cli/templates/crud.js'
 
 /**
  * 脚手架模板守卫（`pnpm check:scaffold`）。
  *
- * 背景：CLI 脚手架（`scripts/cli/templates/files/`）是 `@repo/kits` / `@repo/shared` 的**下游副本**，
- * 包里的导出一旦改名或删除（如 `QueueModule` 随 BullMQ 移除、`Logger` 被 `NestLoggerAdapter` 取代），
- * 模板会静默失效 —— 直到有人真的生成新项目才发现编译不过。本脚本把这类漂移挡在前面，三件事：
+ * 背景：CLI 脚手架（`scripts/cli/templates/files/`）是 `@repo/kits` / `@repo/shared` / `@repo/ui` /
+ * `@repo/sdk` 的**下游副本**，包里的导出一旦改名或删除（如 `QueueModule` 随 BullMQ 移除、
+ * `Logger` 被 `NestLoggerAdapter` 取代、`StorageProvider` 由 `StorageClientProvider` 取代），
+ * 模板会静默失效 —— 直到有人真的生成新项目才发现编译不过。本脚本把这类漂移挡在前面，四件事：
  *
  * 1. **名称检查**：抽取全部模板中来自 `@repo/kits` / `@repo/shared` 的具名导入，汇总成探针文件，
  *    缺任何一个导出都会被 tsc 报错；
  * 2. **service 整体检查**：按 `templates/service.ts` 的真实文件映射把 service 模板全部渲染成一套
  *    完整应用源码（放在 `apps/server/.scaffold-check/`），真实类型检查 —— 连配置形状
  *    （`forRootAsync` 工厂返回值、`superRefine`）一起验；新增模板自动纳入；
- * 3. **crud 整体检查**：**真的调用 CLI**（`pnpm cli -t crud`，stdin 非 TTY 故用默认字段）生成模块，
+ * 3. **client 整体检查**：按 `templates/client.ts` 的真实文件映射把 client 模板渲染成一套完整前端
+ *    源码（放在 `apps/web/.scaffold-check-client/`，**故意放在 apps/web 里**，这样 `next` / `react` /
+ *    `@repo/ui` 都能按真实生成物的相对路径解析到），用模板自己那份 tsconfig 做类型检查 ——
+ *    `@/lib/*` 路径别名、`@repo/ui` 的组件导出、`@repo/sdk` 的装配 API 一起验；
+ * 4. **crud 整体检查**：**真的调用 CLI**（`pnpm cli -t crud`，stdin 非 TTY 故用默认字段）生成模块，
  *    再补上 CLI 提示的两个手动步骤（schema 导出、错误码登记），重建 `@repo/shared`，然后用
  *    `apps/server` 自己的 tsconfig 类型检查，最后删干净并把两个被改动的文件还原。
  *    用连字符名 `scaffold-probe`，顺带锁住「模块名 → PascalCase 标识符」的转换。
  *
- * **两个已知前提（脚本会检查 / 提示）**：
+ * **三个已知前提（脚本会检查 / 提示）**：
  * - tsc 把 `@repo/kits` / `@repo/shared` 解析到它们的**构建产物** `dist/*.d.mts`（不是 src），
  *   所以刚改完 packages 源码要先 `pnpm build:pkgs`，否则本检查是在对着旧产物做判断（脚本会告警）；
  * - crud 检查会**临时改动** `packages/shared/src/{schema/index.ts,dicts/app-error-code.dict.ts}`
- *   并在 `apps/server` 下写入生成物，跑完即还原（含中断残留的自清理）。
+ *   并在 `apps/server` 下写入生成物，跑完即还原（含中断残留的自清理）；
+ * - client 探针目录在 `apps/web` 内，故 `apps/web/tsconfig.json` 的 `exclude` 里必须留着
+ *   `.scaffold-check-client` —— 否则中断残留会被 `pnpm typecheck` 当成真实源码。
  */
 const workspaceRoot = fileURLToPath(new URL('..', import.meta.url))
 const serverDir = join(workspaceRoot, 'apps/server')
+const webDir = join(workspaceRoot, 'apps/web')
 const templatesDir = join(workspaceRoot, 'scripts/cli/templates/files')
 const checkDir = join(serverDir, '.scaffold-check')
+/** client 探针目录：**故意落在 apps/web 内**，让 next / react / @repo/ui 按真实相对路径解析到 */
+const clientCheckDir = join(webDir, '.scaffold-check-client')
 
-/** 会被检查的工作区包（`@repo/ui` 属前端，不在本脚本范围） */
+/** 名称探针覆盖的工作区包（`@repo/ui` / `@repo/sdk` 由 client 整体检查覆盖，见上） */
 const TRACKED_PACKAGES = ['@repo/kits', '@repo/shared'] as const
+
+// ---- client 探针 ----
+const CLIENT_PROBE_NAME = 'scaffold-client-probe'
 
 // ---- crud 探针涉及的路径与标记 ----
 const CRUD_NAME = 'scaffold-probe'
@@ -252,8 +266,77 @@ function runCrudProbe(): { ok: boolean; output: string } {
   }
 }
 
-// ---------------------------------------------------------------- 主流程
+/**
+ * 由模板那份 tsconfig **推导**探针的 `paths`：跨包目标（`../` 开头）的层级 +1，其余原样。
+ *
+ * 为什么不手写一份：模板的 paths 是按真实生成位置 `apps/<name>/` 写的，而探针在
+ * `apps/web/.scaffold-check-client/`（多一层，这样 `next` / `react` / `@repo/ui` 才解析得到）。
+ * 手写等于造第二个真相 —— 模板里层级写错也验不出来；推导则相反：模板错、探针一起错，当场报错。
+ */
+function deriveProbePaths(
+  templateTsconfig: string,
+): Record<string, string[]> {
+  const parsed = JSON.parse(templateTsconfig) as {
+    compilerOptions?: { paths?: Record<string, string[]> }
+  }
+  const paths = parsed.compilerOptions?.paths ?? {}
 
+  return Object.fromEntries(
+    Object.entries(paths).map(([alias, targets]) => [
+      alias,
+      targets.map((target) =>
+        target.startsWith('../') ? `../${target}` : target,
+      ),
+    ]),
+  )
+}
+
+/**
+ * 把 client 模板按真实文件映射渲染成一套前端源码（含模板自己那份 tsconfig.json）。
+ * 与 service 探针同一思路：不手写副本，模板加了文件就自动纳入检查。
+ *
+ * 额外再写一份 `tsconfig.probe.json`（extends 模板那份，**只覆盖由模板推导出的 paths**），
+ * 这样模板的 `@/*` 别名、include 与各路径层级仍是**被检查**的对象。
+ */
+function writeClientScaffold(): number {
+  rmSync(clientCheckDir, { recursive: true, force: true })
+
+  const template = createClientTemplate(CLIENT_PROBE_NAME)
+  let count = 0
+  for (const [relativePath, content] of Object.entries(template.files)) {
+    const target = join(clientCheckDir, relativePath)
+    mkdirSync(dirname(target), { recursive: true })
+    writeFileSync(target, content, 'utf8')
+    count += 1
+  }
+
+  const probeTsconfig = {
+    extends: './tsconfig.json',
+    compilerOptions: {
+      paths: deriveProbePaths(template.files['tsconfig.json'] ?? '{}'),
+    },
+  }
+  writeFileSync(
+    join(clientCheckDir, 'tsconfig.probe.json'),
+    `${JSON.stringify(probeTsconfig, null, 2)}\n`,
+    'utf8',
+  )
+
+  return count
+}
+
+/** client 整体检查：用模板自己的 tsconfig 类型检查渲染结果（路径别名 / 组件导出 / SDK 装配一起验） */
+function runClientProbe(): { ok: boolean; output: string } {
+  const tsc = runCommand(
+    'pnpm',
+    ['exec', 'tsc', '--noEmit', '-p', '.scaffold-check-client/tsconfig.probe.json'],
+    webDir,
+    'ignore',
+  )
+  return { ok: tsc.ok, output: tsc.output }
+}
+
+// ---------------------------------------------------------------- 主流程
 function run(): void {
   warnIfDistStale()
 
@@ -270,8 +353,10 @@ function run(): void {
   )
   const importedNames = writeImportProbe(collectImportedNames())
   const renderedFiles = writeServiceScaffold()
+  const clientFiles = writeClientScaffold()
   console.log(
-    `[check:scaffold] 探针就绪：导入名 ${importedNames} 个 + service 模板 ${renderedFiles} 个文件`,
+    `[check:scaffold] 探针就绪：导入名 ${importedNames} 个 + service 模板 ${renderedFiles} 个文件 ` +
+      `+ client 模板 ${clientFiles} 个文件`,
   )
 
   const service = runCommand(
@@ -281,15 +366,25 @@ function run(): void {
     'inherit',
   )
 
-  // 检查 3：crud（真实 CLI + 真实 apps/server tsconfig）
+  // 检查 3：client（模板自己那份 tsconfig + apps/web 里的依赖解析）
+  const client = runClientProbe()
+  console.log(
+    `[check:scaffold] client 探针：${CLIENT_PROBE_NAME}（应用装配 + 兜底页 + @ 路径别名）`,
+  )
+
+  // 检查 4：crud（真实 CLI + 真实 apps/server tsconfig）
   const crud = runCrudProbe()
   console.log(`[check:scaffold] crud 探针：${CRUD_NAME}（模块 + 实体 + schema + 手动步骤）`)
 
-  if (!service.ok || !crud.ok) {
+  if (!service.ok || !client.ok || !crud.ok) {
     console.error('[check:scaffold] ❌ 脚手架模板与工作区包已不一致：')
     if (!service.ok) {
       console.error('\n--- service 渲染结果 ---')
       console.error(service.output || '（tsc 无输出，退出码非 0）')
+    }
+    if (!client.ok) {
+      console.error('\n--- client 渲染结果 ---')
+      console.error(client.output || '（tsc 无输出，退出码非 0）')
     }
     if (!crud.ok) {
       console.error('\n--- crud 渲染结果 ---')
@@ -302,7 +397,7 @@ function run(): void {
     process.exitCode = 1
     return
   }
-  console.log('[check:scaffold] ✅ 导入名、service 骨架与 crud 模块均通过类型检查')
+  console.log('[check:scaffold] ✅ 导入名、service / client 骨架与 crud 模块均通过类型检查')
 }
 
 try {
@@ -310,4 +405,5 @@ try {
 } finally {
   // 探针目录每次重建：避免上一次中断留下的文件污染本次结论
   rmSync(checkDir, { recursive: true, force: true })
+  rmSync(clientCheckDir, { recursive: true, force: true })
 }

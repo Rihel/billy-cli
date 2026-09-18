@@ -90,7 +90,13 @@ export function createClientTemplate(name: string): Template {
       'src/app/layout.tsx': renderFile('client/layout', { name }),
       'src/app/page.tsx': renderFile('client/page', {}),
       'src/app/globals.css': renderFile('client/globals-css', {}),
+      // 应用级兜底：文件必须在位，版式来自 @repo/ui（与 apps/web / apps/admin 同一套）
+      'src/app/error.tsx': renderFile('client/error', {}),
+      'src/app/not-found.tsx': renderFile('client/not-found', {}),
+      'src/app/loading.tsx': renderFile('client/loading', {}),
       'src/lib/constants.ts': renderFile('client/constants', { name }),
+      // 应用装配：机制在 @repo/sdk 的 createAppClients，这里只注入取值与 401 善后
+      'src/lib/server-client.ts': renderFile('client/server-client', {}),
       'src/providers/AppProviders.tsx': renderFile('client/app-providers', {}),
     },
   }
