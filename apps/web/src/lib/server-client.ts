@@ -1,57 +1,25 @@
-import { ServerClient } from '@repo/sdk'
-import {
-  LocalStorageCredentialsManager,
-  MemoryCredentialsManager,
-  BearerTokenCredentials,
-} from '@repo/http-client'
+import { createAppClients } from '@repo/sdk'
 import { Pages, PublicServerUrl, ServerUrl, TokenKey } from './constants'
 
-const tokenManager = new LocalStorageCredentialsManager<BearerTokenCredentials>(
-  TokenKey,
-)
-
-export async function saveToken(token: string): Promise<void> {
-  await tokenManager.setCredentials({ token })
-}
-
-export async function removeToken(): Promise<void> {
-  await tokenManager.clearCredentials()
-}
-
-let clientInstance: ServerClient | null = null
-
-/** 浏览器端单例（localStorage 存 token）；走浏览器可达的公开地址 */
-export function getServerClient(): ServerClient {
-  if (!clientInstance) {
-    clientInstance = new ServerClient({
-      baseUrl: PublicServerUrl,
-      credentialsManager: tokenManager,
-      callbacks: {
-        onUnauthorized: async () => {
-          if (typeof window === 'undefined') return
-          tokenManager.clearCredentials()
-          window.location.replace(Pages.login)
-        },
-      },
-    })
-  }
-  return clientInstance
-}
-
-export function useServerClient(): ServerClient {
-  return getServerClient()
-}
-
-/** 服务端（SSR / Server Actions）无状态客户端；走运行时 SERVER_URL，容器内可指内网 */
-export function createServerClient(token?: string) {
-  const mgr = new MemoryCredentialsManager<BearerTokenCredentials>()
-  if (token) mgr.setCredentials({ token })
-
-  return new ServerClient({
-    baseUrl: ServerUrl,
-    credentialsManager: mgr,
-    callbacks: {
-      onUnauthorized: async () => {},
-    },
-  })
-}
+/**
+ * 应用侧 HTTP 客户端装配。
+ *
+ * 机制（浏览器单例 / 服务端无状态客户端 / 凭证读写 / 401 时清凭证）在 `@repo/sdk` 的
+ * `createAppClients`；这里只注入本应用的取值与**应用独有**的 401 善后策略
+ * —— 无需再手写一遍 ServerClient 的构造与凭证管理器（那是两个 app 曾经各抄一份的部分）。
+ */
+export const {
+  getServerClient,
+  useServerClient,
+  createServerClient,
+  saveToken,
+  removeToken,
+} = createAppClients({
+  tokenKey: TokenKey,
+  publicBaseUrl: PublicServerUrl,
+  serverBaseUrl: ServerUrl,
+  onUnauthorized: () => {
+    if (typeof window === 'undefined') return
+    window.location.replace(Pages.login)
+  },
+})

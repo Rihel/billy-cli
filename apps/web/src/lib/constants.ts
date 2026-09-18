@@ -1,3 +1,5 @@
+import { createAppUrlConfig } from '@repo/shared'
+
 export const Pages = {
   home: '/',
   login: '/auth/login',
@@ -22,30 +24,35 @@ export const LandingAnchors = {
 export const TokenKey = 'access-token'
 export const AppName = 'Billy CLI'
 
-/** 浏览器端 API 地址（`NEXT_PUBLIC_*` 在构建期内联，只有浏览器读得到） */
-export const PublicServerUrl =
-  process.env.NEXT_PUBLIC_SERVER_URL || 'http://localhost:9989'
+/**
+ * 主题模式的存储 key（同域部署时 localStorage 共享，前后台各用各的，避免互相改主题）。
+ * 主题能力在 `@repo/ui` 的 `createTheme`，本常量在 store 与 layout 的防闪烁脚本里消费。
+ */
+export const ThemeKey = 'billy-theme'
 
 /**
- * 服务端（SSR / Server Actions）API 地址。
+ * 地址解析：机制（回落顺序 / key 拼接）在 `@repo/shared`，**环境变量的读取留在 app** ——
+ * `NEXT_PUBLIC_*` 由 Next 在构建期替换，搬进包里就不再替换（本地正常、容器里回落 localhost）。
  *
- * `SERVER_URL` 是**运行时**环境变量（非 NEXT_PUBLIC，不会内联），所以容器里可以指向内网地址
- * （compose 的 `SERVER_URL=http://server:9989`）；未配置时回落浏览器地址，本地开发零配置。
- * 与 admin（`apps/admin/src/lib/constants.ts`）同一套约定。
+ * `SERVER_URL` 是**运行时**环境变量（非 NEXT_PUBLIC，不会内联），容器里可指向内网地址
+ * （compose 的 `SERVER_URL=http://server:9989`）；未配置时回落公开地址，本地开发零配置。
  */
-export const ServerUrl = process.env.SERVER_URL || PublicServerUrl
+const urls = createAppUrlConfig({
+  publicServerUrl: process.env.NEXT_PUBLIC_SERVER_URL,
+  runtimeServerUrl: process.env.SERVER_URL,
+  storageUrl: process.env.NEXT_PUBLIC_STORAGE_URL,
+})
 
-/** 对象存储（与 admin 同一套，用户头像等资源 key 拼接完整 URL） */
-export const StorageUrl =
-  process.env.NEXT_PUBLIC_STORAGE_URL || 'http://localhost:9000/billy-cli'
+/** 浏览器端 API 地址 */
+export const PublicServerUrl = urls.publicServerUrl
 
-export const formatStorageUrl = (key: string) => {
-  if (!key) return ''
-  if (key.startsWith('http://') || key.startsWith('https://')) {
-    return key
-  }
-  return `${StorageUrl}/${key}`
-}
+/** 服务端（SSR / Server Actions）API 地址 */
+export const ServerUrl = urls.serverUrl
+
+/** 对象存储基地址（用户头像等资源 key 拼接完整 URL） */
+export const StorageUrl = urls.storageUrl
+
+export const formatStorageUrl = urls.formatStorageUrl
 
 /** Admin 后台入口（开发环境 9845） */
 export const AdminUrl = process.env.NEXT_PUBLIC_ADMIN_URL || 'http://localhost:9845'

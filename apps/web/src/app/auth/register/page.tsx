@@ -64,7 +64,7 @@ export default function RegisterPage() {
         password: pw,
         realName: (formData.get('realName') as string) || undefined,
       })
-      if (!result.success) {
+      if (!result.ok) {
         return { error: result.error }
       }
       await saveToken(result.data.token)
@@ -84,7 +84,7 @@ export default function RegisterPage() {
       {/* Mobile-only branding */}
       <div className="space-y-1.5 lg:hidden">
         <div className="flex items-center gap-2.5">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-indigo-500 to-violet-600 text-white font-bold text-xs shadow-sm shadow-indigo-600/25 ring-1 ring-indigo-200/60">
+          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-brand to-violet-600 text-white font-bold text-xs shadow-sm shadow-brand/25 ring-1 ring-brand/30">
             B
           </div>
           <span className="font-heading text-lg font-semibold tracking-tight">{AppName}</span>

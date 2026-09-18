@@ -1,6 +1,7 @@
 'use server'
 
 import { cookies } from 'next/headers'
+import { authCookieOptions } from '@repo/shared'
 import { createServerClient } from '@/lib/server-client'
 import { TokenKey } from '@/lib/constants'
 import { logger } from '@/lib/logger'
@@ -8,14 +9,12 @@ import { defineAction } from '@repo/ui/action'
 
 const COOKIE_MAX_AGE = 7 * 24 * 60 * 60 // 7 days
 
+/** 安全默认（httpOnly / sameSite / path / secure）在 `@repo/shared`，这里只给取值 */
 function cookieOptions(maxAge: number) {
-  return {
-    httpOnly: true,
-    sameSite: 'lax' as const,
-    path: '/',
+  return authCookieOptions({
     maxAge,
     secure: process.env.NODE_ENV === 'production',
-  }
+  })
 }
 
 export const loginAction = defineAction(
