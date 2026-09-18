@@ -15,11 +15,33 @@
    - `curl -fsSL https://raw.githubusercontent.com/colbymchenry/codegraph/main/install.sh | sh`
      —— 走 GitHub Releases CDN，**国内网络常超时不通**（实测连 HEAD 都超时），故优先 npm
 2. **建索引**：仓库根 `codegraph init`（生成 `.codegraph/`，同一步建全图）。
-3. **接 agent（MCP）**：`codegraph install`（自动配置 Claude Code / Codex / Cursor 等）；
+3. **接 agent（MCP）**：`codegraph install` 能自动配置 Claude Code / Codex / Cursor 等，但
+   **不支持 DeepSeek Harness**（DSH 不在其 target 列表里）。DSH 需手动接入：在
+   `$DSH_HOME/profiles/<profile>/cordis.patch.yml` 里加一条 `insert`（临时试可用
+   `dsh web --patch <file.yml>`）；换项目只改 `--path` 与 `cwd` 两处：
+
+   ```yaml
+   - insert:
+       - id: mcp-codegraph
+         name: '@deepseek-ai/dsh-mcp-client'
+         config:
+           serverName: codegraph
+           transport: stdio
+           command: codegraph
+           args: [serve, '--mcp', '--path', <被索引的项目根>]
+           cwd: <被索引的项目根>
+   ```
+
+   接上后模型工具列表里出现 `mcp__codegraph__codegraph_explore`（该 server 只暴露这一个工具）。
+   **必须显式给 `--path`**：MCP 子进程继承的是 DSH host 进程的 cwd（未必是本仓库），不给会索引
+   错项目。改完 patch 用 `dsh --profile <name> --dump-config` 校验合并结果（不启动服务）。
    未接 MCP 时用 CLI 命令（经 bash）同样可用。
 4. 升级 `codegraph upgrade`；看图 `codegraph ui`（浏览器 `http://127.0.0.1:4747`）。
 
-> 索引默认自动同步（文件 watcher），改代码即更新，无需重跑；`.codegraph/` 已在 `.gitignore` 排除。
+> **索引同步有前提**：只有 `codegraph serve --mcp`（默认带文件 watcher，`--no-watch` 才关）或
+> daemon 在跑时，改代码才会自动进索引。未接 MCP / daemon 时索引会**静默过期**（实测落后一天多，
+> agent 据此读到旧代码），此时改完代码须手动 `codegraph sync`，并用 `codegraph status` 查看
+> Added / Modified 待同步文件。`.codegraph/` 已在 `.gitignore` 排除。
 
 ## 2. CLI 速查
 
