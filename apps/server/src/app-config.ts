@@ -150,6 +150,18 @@ export const serverAppConfigSchema = z.object({
     /** 单个子 agent 的墙钟上限（ms；0 = 沿用 runTimeoutMs） */
     subAgentTimeoutMs: z.coerce.number().int().nonnegative().default(0),
   }),
+  /**
+   * AI 模型模块配置（配置类数据：供应商 / 模型，见设计文档 §4.8）。
+   *
+   * 与本模块的数据表配套：密钥加密口令 + "要不要用环境变量做首次种子"。
+   * 运行时用哪个模型**不在这里** —— 它只来自库（§4.9）。
+   */
+  aiModel: z.object({
+    /** 密钥加密口令（AES-256-GCM）；缺省回落 `jwt.secret`，两者都缺 → 服务层抛 3405 */
+    encryptionKey: z.string().optional(),
+    /** 首次启动时是否允许用 `MASTRA_*` 环境变量种子初始化供应商与模型（库里有供应商就什么都不做） */
+    seedFromEnv: z.boolean().default(true),
+  }),
 })
 
 export type ServerAppConfig = z.infer<typeof serverAppConfigSchema>
@@ -303,6 +315,11 @@ export const mapServerEnv = (
     subAgentMaxDepth: optional(env.AGENT_SUB_AGENT_MAX_DEPTH),
     subAgentMaxSteps: optional(env.AGENT_SUB_AGENT_MAX_STEPS),
     subAgentTimeoutMs: optional(env.AGENT_SUB_AGENT_TIMEOUT_MS),
+  },
+  aiModel: {
+    encryptionKey: optional(env.AI_MODEL_ENCRYPTION_KEY),
+    // 未设置时留 undefined，由 schema 默认值（true）兜底
+    seedFromEnv: parseBoolean(env.AGENT_SEED_FROM_ENV),
   },
 })
 

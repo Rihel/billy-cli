@@ -1,11 +1,12 @@
 import { z } from 'zod'
 import { AiModelSource, AiProviderKind } from '../dicts/ai-model.dict'
+import { BasePaginateSchema } from './base.schema'
 
 /**
  * AI 模型模块契约：**与两张表一一对应的对外模型**（供应商 / 模型）。
  *
- * 本轮只落地**数据表 + 对外模型**（双轨同步，见 skill `define-data-structure`）；
- * CRUD / 同步接口的 DTO 在做模块时再加（设计已定，见 `docs/design/ai-agent.md` §4.8）。
+ * 覆盖三层：**表模型**（供应商 / 模型）、**管理台 CRUD 入参**（§4.8.4）、
+ * **运行时选模型**（§4.9：一轮对话只能选"已配置且启用"的模型）。
  *
  * 三条与表结构绑定的口径：
  * - **密钥只进不出**：表里存密文 + 提示，对外模型只有 `apiKeyHint` 与 `hasApiKey`，明文永不出现在响应里；
@@ -31,6 +32,8 @@ export const AiProviderSchema = z.object({
   id: z.string(),
   /** 展示名（唯一）：如「DeepSeek 官方」「自建网关」 */
   name: z.string(),
+  /** ASCII 标识（唯一，软删感知）：模型对外标识的前半段 —— `<slug>/<modelKey>`，如 `deepseek/deepseek-chat` */
+  slug: z.string(),
   /** 见 `AiProviderKind` 字典（决定用哪家的"列模型"接口拉明细） */
   kind: z.string(),
   /** 接口地址；留空表示用该 kind 的官方默认地址 */
@@ -81,3 +84,141 @@ export const AiModelSchema = z.object({
 })
 
 export type AiModelModel = z.infer<typeof AiModelSchema>
+
+// ─────────────────────── 管理台入参（`/ai-model/*`，全部管理员鉴权） ───────────────────────
+
+/** 供应商分页 */
+export const AiProviderListSchema = BasePaginateSchema
+export type AiProviderListDto = z.infer<typeof AiProviderListSchema>
+
+/** 新建供应商（`apiKey` 只进不出：服务端加密存，响应只回提示） */
+export const AiProviderCreateSchema = z.object({
+  name: z.string().min(1).max(64),
+  kind: AiProviderKindField,
+  /** ASCII 标识（模型对外标识的前半段：`<slug>/<modelKey>`）；留空由 name 生成 */
+  slug: z
+    .string()
+    .regex(/^[a-z0-9][a-z0-9-]*$/, '只能是小写字母 / 数字 / 连字符')
+    .max(32)
+    .optional(),
+  /** 留空用该 kind 的官方地址；自建网关 / 代理必须填 */
+  baseUrl: z.string().url().max(255).optional(),
+  apiKey: z.string().min(1).max(512).optional(),
+  enabled: z.boolean().optional().default(true),
+})
+export type AiProviderCreateDto = z.infer<typeof AiProviderCreateSchema>
+
+/** 供应商 id 入参（detail / remove / sync 共用） */
+export const AiProviderIdSchema = z.object({ providerId: z.string().min(1).max(32) })
+export type AiProviderIdDto = z.infer<typeof AiProviderIdSchema>
+
+/** 更新供应商（`apiKey` 省略 = 不改；给空串 = 清空密钥） */
+export const AiProviderUpdateSchema = z.object({
+  providerId: z.string().min(1).max(32),
+  name: z.string().min(1).max(64).optional(),
+  kind: AiProviderKindField.optional(),
+  slug: z.string().regex(/^[a-z0-9][a-z0-9-]*$/).max(32).optional(),
+  baseUrl: z.string().url().max(255).nullable().optional(),
+  apiKey: z.string().max(512).optional(),
+  enabled: z.boolean().optional(),
+})
+export type AiProviderUpdateDto = z.infer<typeof AiProviderUpdateSchema>
+
+/** 连通性测试（支持"未保存先测"：给了 providerId 就用库里已存的密钥） */
+export const AiProviderTestSchema = z.object({
+  kind: AiProviderKindField,
+  baseUrl: z.string().url().max(255).optional(),
+  apiKey: z.string().max(512).optional(),
+  providerId: z.string().min(1).max(32).optional(),
+})
+export type AiProviderTestDto = z.infer<typeof AiProviderTestSchema>
+
+export const AiProviderTestResultSchema = z.object({
+  ok: z.boolean(),
+  /** 拉到的模型数（成功时） */
+  modelCount: z.number().int().nonnegative(),
+  /** 失败原因（供应商原文，截断到可读长度） */
+  error: z.string().nullable(),
+  /** 实际请求的地址（排障第一步：确认打到了哪） */
+  endpoint: z.string(),
+  durationMs: z.number().int().nonnegative(),
+})
+export type AiProviderTestResultModel = z.infer<typeof AiProviderTestResultSchema>
+
+/** 同步结果（幂等：重复执行结果一致） */
+export const AiProviderSyncResultSchema = z.object({
+  providerId: z.string(),
+  created: z.number().int().nonnegative(),
+  updated: z.number().int().nonnegative(),
+  unchanged: z.number().int().nonnegative(),
+  /** 本次**未返回**的已有模型数（下线或限流；只提示，不自动禁用） */
+  missing: z.number().int().nonnegative(),
+  /** 供应商本次返回的模型总数 */
+  total: z.number().int().nonnegative(),
+  syncedAt: dateField,
+})
+export type AiProviderSyncResultModel = z.infer<typeof AiProviderSyncResultSchema>
+
+/** 模型分页（按供应商 + 可选关键词） */
+export const AiModelListSchema = BasePaginateSchema.extend({
+  providerId: z.string().min(1).max(32),
+  keyword: z.string().max(128).optional(),
+})
+export type AiModelListDto = z.infer<typeof AiModelListSchema>
+
+/** 手工新增模型（自建网关 `/models` 拉不全、想手填窗口时用；`source='manual'`，同步不覆盖） */
+export const AiModelCreateSchema = z.object({
+  providerId: z.string().min(1).max(32),
+  modelKey: z.string().min(1).max(128),
+  displayName: z.string().min(1).max(128).optional(),
+  contextWindow: z.number().int().positive().nullable().optional(),
+  maxOutputTokens: z.number().int().positive().nullable().optional(),
+  enabled: z.boolean().optional().default(true),
+})
+export type AiModelCreateDto = z.infer<typeof AiModelCreateSchema>
+
+/** 更新模型（启停 / 展示名 / 手工修正窗口） */
+export const AiModelUpdateSchema = z.object({
+  modelId: z.string().min(1).max(32),
+  displayName: z.string().min(1).max(128).optional(),
+  contextWindow: z.number().int().positive().nullable().optional(),
+  maxOutputTokens: z.number().int().positive().nullable().optional(),
+  enabled: z.boolean().optional(),
+})
+export type AiModelUpdateDto = z.infer<typeof AiModelUpdateSchema>
+
+export const AiModelIdSchema = z.object({ modelId: z.string().min(1).max(32) })
+export type AiModelIdDto = z.infer<typeof AiModelIdSchema>
+
+// ─────────────────────── 运行时可选模型（会话页选择器 + 一轮对话指定） ───────────────────────
+
+/**
+ * 可选用模型（**只含"供应商启用 + 模型启用"的**，见 §4.9）。
+ *
+ * `modelRef` 是稳定的对外标识（`<provider.slug>/<modelKey>`，如 `deepseek/deepseek-chat`），
+ * 也是 Mastra 认识的形式；`id` 是库里的行 id —— 发请求时**用 id**（不解析字符串，最不容易出错）。
+ */
+export const AiAvailableModelSchema = z.object({
+  id: z.string(),
+  /** `<slug>/<modelKey>`：给人看、给日志用，也是 Mastra 的模型标识形态 */
+  modelRef: z.string(),
+  modelKey: z.string(),
+  displayName: z.string(),
+  providerId: z.string(),
+  providerName: z.string(),
+  providerKind: z.string(),
+  providerSlug: z.string(),
+  contextWindow: z.number().int().positive().nullable(),
+  capabilities: z.record(z.string(), z.unknown()).nullable(),
+})
+
+export type AiAvailableModelModel = z.infer<typeof AiAvailableModelSchema>
+
+/** 可选模型清单（`POST /ai-model/available`；会话页用它渲染选择器） */
+export const AiAvailableModelListSchema = z.object({
+  models: z.array(AiAvailableModelSchema),
+  /** 未显式选择时的落点（第一个启用的模型；库空时为 null） */
+  defaultModelId: z.string().nullable(),
+})
+
+export type AiAvailableModelListModel = z.infer<typeof AiAvailableModelListSchema>

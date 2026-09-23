@@ -16,6 +16,7 @@
     "db:generate": "bash -c 'node --import tsx node_modules/typeorm/cli.js migration:generate \"src/database/migrations/$0\" -d ./data-source.ts'",
     "db:migrate": "node --import tsx node_modules/typeorm/cli.js migration:run -d ./data-source.ts",
     "seed:admin": "node --import tsx/esm scripts/seed-admin.ts",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "vitest run",
     "test:watch": "vitest"
   },

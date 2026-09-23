@@ -6,6 +6,7 @@ import {
   ActivityIcon,
   BellRingIcon,
   BotIcon,
+  CpuIcon,
   LayoutDashboardIcon,
   ListTodoIcon,
   RadioTowerIcon,
@@ -52,6 +53,7 @@ const MENU_ITEMS: MenuItem[] = [
     key: 'ai',
     children: [
       { label: 'AI 会话', key: '/main/ai/chat', icon: BotIcon },
+      { label: '模型管理', key: '/main/ai/models', icon: CpuIcon },
       { label: '审计与复盘', key: '/main/ai/audit', icon: SparklesIcon },
     ],
   },

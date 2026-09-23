@@ -43,10 +43,17 @@ export type AgentListModel = z.infer<typeof AgentListSchema>
 
 /** Agent 能力状态（`POST /agent/status`：前端据此决定展示对话区还是配置指引） */
 export const AgentStatusSchema = z.object({
-  /** 是否已配置模型与密钥（未配置时 AI 能力不可用） */
+  /**
+   * AI 能力是否可用 = **库里有没有"供应商启用 + 模型启用"的模型**（§4.9）。
+   *
+   * 注意语义变了：过去看环境变量配没配，现在只看**后台有没有配模型** ——
+   * 这正是"agent 只能使用配的模型"的对外体现。
+   */
   available: z.boolean(),
-  /** 当前默认模型标识（`provider/model`；未配置时为 null） */
+  /** 默认模型的标识（`<providerSlug>/<modelKey>`；库空时为 null） */
   model: z.string().nullable(),
+  /** 可选用模型数量 */
+  modelCount: z.number().int().nonnegative(),
   /** 已注册的 agent 数量 */
   agentCount: z.number().int().nonnegative(),
 })
@@ -210,6 +217,13 @@ export const AgentChatSchema = z.object({
   conversationId: z.string().min(1).max(32).optional(),
   /** 新建会话时用哪个 agent；省略用默认 agent */
   agentKey: z.string().min(1).max(64).optional(),
+  /**
+   * 本轮用哪个模型（`ai_models.id`）；省略 = 用服务端的默认模型。
+   *
+   * **只能选"供应商启用 + 模型启用"的**（§4.9）：传了不存在 / 已禁用的 id 直接 3402 / 3404，
+   * 不做"静默回落" —— 用户明确选了 A 却跑了 B 是最坏的体验。
+   */
+  modelId: z.string().min(1).max(32).optional(),
   /** 本轮用户输入 */
   message: z.string().min(1).max(8000),
 })

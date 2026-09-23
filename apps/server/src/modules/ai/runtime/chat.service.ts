@@ -28,7 +28,12 @@ import {
 } from '../core/ai.errors.js'
 import { AGENT_REGISTRY } from '../core/ai.registry.js'
 import { MASTRA } from '../core/ai.mastra.js'
-import { AGENT_RUNTIME_KEY, type AgentRuntimeEnvelope } from '../core/ai.core.types.js'
+import {
+  AGENT_RUNTIME_KEY,
+  type AgentRuntimeEnvelope,
+  type RuntimeModel,
+} from '../core/ai.core.types.js'
+import { AiModelService } from '../../ai-model/index.js'
 import type { AgentDefinition, AgentRegistry } from '../core/ai.types.js'
 import { SkillLoader } from '../skills/index.js'
 import { ToolBuilder } from '../tools/tool.builder.js'
@@ -110,6 +115,7 @@ export class AgentChatService {
     @Inject(AgentStreamStore) private readonly streamStore: AgentStreamStore,
     @Inject(ToolBuilder) private readonly toolBuilder: ToolBuilder,
     @Inject(SkillLoader) private readonly skillLoader: SkillLoader,
+    @Inject(AiModelService) private readonly models: AiModelService,
     @Inject(AppLogger) private readonly logger: AppLogger,
   ) {}
 
@@ -125,11 +131,27 @@ export class AgentChatService {
     const startedAt = Date.now()
 
     try {
-      // ① 组装上下文（超限则先压缩一次，再重新组装；只压一次，防止反复烧钱）
-      let built = await this.buildContext(conversation.id, definition, input.message)
+      // ① 解析本轮模型（**只能来自库里的配置**；解析不出来直接 3406/3402，不建流不烧钱）
+      const model = await this.resolveRuntimeModel(definition, input.modelId)
+
+      // ② 组装上下文（窗口优先用库里配的实测值；超限则先压缩一次再重新组装，只压一次）
+      let built = await this.buildContext(conversation.id, definition, input.message, model)
       if (built.needsCompaction && built.compactionRange) {
-        await this.summarize(conversation.id, run.id, definition, built.compactionRange)
-        built = await this.buildContext(conversation.id, definition, input.message)
+        const requestContextForSummary = await this.buildRuntimeContext(
+          conversation.id,
+          run.id,
+          definition,
+          userId,
+          model,
+        )
+        await this.summarize(
+          conversation.id,
+          run.id,
+          definition,
+          built.compactionRange,
+          requestContextForSummary,
+        )
+        built = await this.buildContext(conversation.id, definition, input.message, model)
       }
 
       // ② 用户消息先落库（之后无论成败，审计上都能看到"用户问了什么"）
@@ -144,8 +166,14 @@ export class AgentChatService {
         finishedAt: now,
       })
 
-      // ③ 调模型（工具往返都在这一步内部完成；运行时信封让 `run-sub-agent` 知道自己在哪一轮）
-      const requestContext = await this.buildRuntimeContext(conversation.id, run.id, definition, userId)
+      // ④ 调模型（工具往返都在这一步内部完成；运行时信封带"这一轮用哪个模型"）
+      const requestContext = await this.buildRuntimeContext(
+        conversation.id,
+        run.id,
+        definition,
+        userId,
+        model,
+      )
       const agent = mastra.getAgent(definition.key)
       const result = await agent.generate(built.messages as never, {
         maxSteps: AGENT_MAX_STEPS,
@@ -170,7 +198,7 @@ export class AgentChatService {
         durationMs,
       })
       await this.runs.saveRequestSnapshot(run.id, {
-        model: this.config.model ?? null,
+        model: model.modelRef,
         agentKey: definition.key,
         toolKeys: [...definition.tools],
         skillKeys: [...definition.skills],
@@ -290,13 +318,39 @@ export class AgentChatService {
     conversationId: string,
     definition: AgentDefinition,
     userMessage: string,
+    model: RuntimeModel,
   ) {
     return this.context.buildInput({
       conversationId,
-      modelId: this.config.model ?? '',
+      // 标识用 `<providerSlug>/<modelKey>`（ContextService 据此查窗口，查不到用兜底值）
+      modelId: model.modelRef,
       systemPrompt: definition.instructions,
       userMessage,
+      // 库里配过窗口就用它（实测值优先于 tokenlens 的估算）
+      ...(model.contextWindow ? { windowTokens: model.contextWindow } : {}),
     })
+  }
+
+  /**
+   * 解析本轮模型（**唯一的模型来源**，§4.9）。
+   *
+   * 顺序：本轮显式指定（会话页选择器传 `modelId`）→ agent 声明的默认模型 → 库里第一个启用的。
+   * **没有环境变量兜底**：一条都没有时抛 3406，让前端明确提示"先去后台配模型"。
+   */
+  private async resolveRuntimeModel(
+    definition: AgentDefinition,
+    modelId?: string,
+  ): Promise<RuntimeModel> {
+    const resolved = await this.models.resolveForRuntime(modelId ?? definition.model)
+    return {
+      id: resolved.id,
+      modelRef: resolved.modelRef,
+      modelKey: resolved.modelKey,
+      displayName: resolved.displayName,
+      ...(resolved.baseURL ? { baseURL: resolved.baseURL } : {}),
+      apiKey: resolved.apiKey,
+      contextWindow: resolved.contextWindow,
+    }
   }
 
   /** 把一段旧对话压缩成摘要事件（原文保留，摘要只作"给模型看的新起点"） */
@@ -305,6 +359,7 @@ export class AgentChatService {
     runId: string,
     definition: AgentDefinition,
     range: { fromSeq: number; toSeq: number },
+    requestContext: RequestContext,
   ): Promise<void> {
     const mastra = this.requireMastra()
     const events = await this.timelines.listRange(conversationId, range.fromSeq, range.toSeq, {
@@ -335,7 +390,8 @@ export class AgentChatService {
           { role: 'user', content: `以下是需要压缩的历史对话：\n\n${lines.join('\n')}` },
           { role: 'user', content: SUMMARY_INSTRUCTION },
         ] as never,
-        { maxSteps: 1 },
+        // 动态模型要信封（否则模型函数不知道这一轮用哪个模型）
+        { maxSteps: 1, requestContext },
       )
       const text = ((result.text as string) ?? '').slice(0, SUMMARY_MAX_CHARS)
       if (!text) return
@@ -512,10 +568,20 @@ export class AgentChatService {
     const run = await this.startRun(conversation, definition.key, userId)
     const startedAt = Date.now()
 
-    let built = await this.buildContext(conversation.id, definition, input.message)
+    // 本轮模型：**只能来自库里的配置**（解析失败直接抛，连流都不建）
+    const model = await this.resolveRuntimeModel(definition, input.modelId)
+
+    let built = await this.buildContext(conversation.id, definition, input.message, model)
     if (built.needsCompaction && built.compactionRange) {
-      await this.summarize(conversation.id, run.id, definition, built.compactionRange)
-      built = await this.buildContext(conversation.id, definition, input.message)
+      // 注意：这一步在建流之前，**此时还没有中止控制器**（`abort` 后面才声明）→ 信封不带 abortSignal
+      await this.summarize(
+        conversation.id,
+        run.id,
+        definition,
+        built.compactionRange,
+        await this.buildRuntimeContext(conversation.id, run.id, definition, userId, model),
+      )
+      built = await this.buildContext(conversation.id, definition, input.message, model)
     }
 
     const now = new Date()
@@ -576,6 +642,7 @@ export class AgentChatService {
         run.id,
         definition,
         userId,
+        model,
         abort.signal,
       )
       const agent = mastra.getAgent(definition.key)
@@ -677,7 +744,7 @@ export class AgentChatService {
       })
       await this.runs.setActiveStream(run.id, null)
       await this.runs.saveRequestSnapshot(run.id, {
-        model: this.config.model ?? null,
+        model: model.modelRef,
         agentKey: definition.key,
         toolKeys: [...definition.tools],
         skillKeys: [...definition.skills],
@@ -872,6 +939,7 @@ export class AgentChatService {
     parentRunId: string,
     definition: AgentDefinition,
     userId: string,
+    model: RuntimeModel,
     abortSignal?: AbortSignal,
   ): Promise<RequestContext> {
     const envelope: AgentRuntimeEnvelope = {
@@ -879,6 +947,7 @@ export class AgentChatService {
       parentRunId,
       triggeredBy: userId,
       depth: 0,
+      model,
       // 子 agent 的工具面 = 全部 − 委派类（于是它不能再造子 agent，深度天然为 1）
       childTools: this.toolBuilder.buildDelegable(),
       childSkills: await this.skillLoader.resolve(definition.skills),

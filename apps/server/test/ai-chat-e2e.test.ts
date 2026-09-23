@@ -95,6 +95,21 @@ beforeAll(async () => {
     silentLogger,
   )
   await db.onApplicationBootstrap()
+
+  // 模型解析替身：这些测试不走"从库里取模型"那条链路（那是 ai-model 模块测试的事），
+  // 但编排层现在必须拿到一个解析结果 —— 给它一个恒定的 mock 模型即可
+  const modelsStub = {
+    resolveForRuntime: async () => ({
+      id: 'model_mock',
+      modelRef: 'mock/mock-model',
+      modelKey: 'mock-model',
+      displayName: 'Mock 模型',
+      baseURL: mock.baseURL,
+      apiKey: 'test-key',
+      contextWindow: null,
+    }),
+  } as never
+
   if (!db.dataSource.isInitialized) throw new Error('数据库初始化失败')
 
   conversationRepo = new ConversationRepository(db)
@@ -160,7 +175,8 @@ beforeAll(async () => {
 
   const skillLoader = new SkillLoader(silentLogger)
   const mastra = await createMastra({
-    model: { model: 'mock/mock-model', apiKey: 'test-key', baseURL: mock.baseURL },
+    // 模型改为"按 requestContext 解析"的动态参数；这些测试不验证选模型，给恒定 mock 模型
+    resolveModel: () => ({ id: 'mock/mock-model', url: mock.baseURL, apiKey: 'test-key' }),
     definitions: registry.all(),
     resolveTools: (keys) => toolBuilder.build(keys),
     resolveSkills: (names) => skillLoader.resolve(names),
@@ -188,6 +204,7 @@ beforeAll(async () => {
     {} as never,
     toolBuilder,
     skillLoader,
+    modelsStub,
     silentLogger,
   )
 

@@ -41,6 +41,7 @@ import { TimelineEntity } from './database/entities/timeline-entity.js'
 import { TodoEntity } from './database/entities/todo-entity.js'
 import { UserEntity } from './database/entities/user-entity.js'
 import { AdminModule } from './modules/admin/index.js'
+import { AiModelModule } from './modules/ai-model/index.js'
 import { AiModule } from './modules/ai/index.js'
 import { AuthModule } from './modules/auth/index.js'
 import { AlertTrigger, MonitorModule } from './modules/monitor/index.js'
@@ -164,6 +165,8 @@ import { UserModule } from './modules/user/index.js'
     AdminModule,
     UserModule,
     TodoModule,
+    // AI 模型配置（供应商 / 模型两张表 + 明细同步 + 运行时模型解析；AiModule 依赖它的 AiModelService）
+    AiModelModule,
     // AI Agent（Mastra）：模型未配置时模块照常装配，仅 /agent/* 返回 3301
     AiModule,
     StorageModule,

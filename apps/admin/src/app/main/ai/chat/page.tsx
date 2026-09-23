@@ -45,6 +45,7 @@ import {
 } from '@repo/ui/components/ai-elements/prompt-input.tsx'
 import type { AgentConversationModel } from '@repo/shared'
 import { useServerClient } from '@/lib/server-client'
+import { ModelPicker } from './model-picker'
 import { SubAgentPanel, type SubAgentDelta, type SubAgentState } from './sub-agent-panel'
 import { toSubAgentDetail, toUIMessages } from './history'
 
@@ -68,6 +69,8 @@ export default function AiChatPage() {
   const queryClient = useQueryClient()
   const [conversationId, setConversationId] = useState<string>()
   const [agentKey, setAgentKey] = useState<string>()
+  // 本轮选中的模型（`ai_models.id`；不选就走服务端默认）。选择器只列后台配过且启用的模型
+  const [modelId, setModelId] = useState<string>()
   const [runId, setRunId] = useState<string>()
   const [errorText, setErrorText] = useState<string>()
   // 停止按钮要用它；放在 ref 里避免每次拿到 runId 就重建 transport
@@ -88,8 +91,10 @@ export default function AiChatPage() {
    */
   const conversationIdRef = useRef<string | undefined>(undefined)
   const agentKeyRef = useRef<string | undefined>(undefined)
+  const modelIdRef = useRef<string | undefined>(undefined)
   conversationIdRef.current = conversationId
   agentKeyRef.current = agentKey
+  modelIdRef.current = modelId
 
   const transport = useMemo(
     () =>
@@ -114,6 +119,8 @@ export default function AiChatPage() {
                 ? { conversationId: conversationIdRef.current }
                 : {}),
               ...(agentKeyRef.current ? { agentKey: agentKeyRef.current } : {}),
+              // 这一轮用哪个模型（后台配过且启用的）：服务端会校验，不可用直接报错，**不静默回落**
+              ...(modelIdRef.current ? { modelId: modelIdRef.current } : {}),
               message,
             },
           }
@@ -262,6 +269,7 @@ export default function AiChatPage() {
             <Badge variant={status === 'error' ? 'destructive' : 'outline'}>{status}</Badge>
           ) : null}
           <div className="ml-auto flex items-center gap-2">
+            <ModelPicker value={modelId} onChange={setModelId} disabled={streaming} />
             {agents.length > 1 && (
               <select
                 className="h-8 rounded-md border border-border bg-background px-2 text-sm"

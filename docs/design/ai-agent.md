@@ -1473,6 +1473,59 @@ adapter 是**纯函数 + 一次 fetch**，可以脱离数据库单测（有 mock
 `3405` 未配置密钥加密口令（`AI_MODEL_ENCRYPTION_KEY` 与 `JWT_SECRET` 都缺）。
 （已撤回未使用的错误码 —— 不留死代码；实现模块那一步一起加。）
 
+### 4.9 运行时只用"配过的模型"（选模型怎么落到 agent 上）
+
+**要求**：agent 只能使用后台配好的模型；会话页要能选。
+
+#### 4.9.1 关键机制：Mastra 的模型是 `DynamicArgument`
+
+已核实（`@mastra/core` 1.69.0）：`AgentConfig.model?: DynamicArgument<MastraModelConfig>`，
+即**可以传一个 `({ requestContext }) => 模型` 的函数**，每次调用时求值。
+
+这条性质决定了整个设计：**选模型不需要重建 agent，也不需要退回环境变量** ——
+模型从我们已有的**运行时信封**（`requestContext`，§3.14.4）里取，子 agent 读同一个信封，天然继承。
+
+```ts
+new Agent({
+  model: ({ requestContext }) => resolveModel(definition, requestContext),  // 每次调用求值
+  ...
+})
+```
+
+#### 4.9.2 模型解析顺序（**没有环境变量兜底**）
+
+```
+本轮显式指定 modelId（会话页选择器）
+  → agent 声明里的默认模型
+  → 库里第一个"供应商启用 + 模型启用"的模型
+  → 一条都没有 → 3406「还没有配置可用的模型，请先在后台模型管理添加」
+```
+
+几条硬口径：
+
+1. **解析不出来就不建流、不烧钱**：编排层在组装上下文**之前**就解析模型（失败即抛，run 落 `failed` 留痕）；
+2. **不做静默回落**：传了不存在 / 已禁用的 `modelId` 直接 3402 / 3404 —— 用户选了 A 却跑了 B 是最坏的体验；
+3. **`MASTRA_MODEL` / `MASTRA_API_KEY` / `MASTRA_BASE_URL` 降级为可选的"种子"**：
+   库里一条供应商都没有、而这三个配了时，boot 自动建一条供应商 + 一个模型（`AiModelSeedService`，
+   `AGENT_SEED_FROM_ENV=false` 可关）。运行时**永远只从库里解析**；
+4. **子 agent 继承父这一轮的模型**（同一个信封），不单独选 —— 避免"父子俩用了两个模型"；
+5. **窗口优先用库里配的实测值**（`ai_models.context_window`）：自建网关上的私有模型 tokenlens 根本不认识，
+   实测值比公开数据可信；缺失才回落 tokenlens → 兜底值（`ContextWindowResolution.source = 'provider'`）。
+
+#### 4.9.3 前端：模型选择器（ai-elements 现成组件）
+
+会话页顶部用 ai-elements 的 `ModelSelector`（Dialog + Command 那一套：
+`ModelSelectorContent / Input / List / Group / Item / Name / Logo`），按供应商分组、显示
+`<slug>/<modelKey>` 与窗口、当前项打勾；选中的 `modelId` 随每轮请求发给服务端。
+
+数据源是 `POST /agent/models`（**只回"供应商启用 + 模型启用"的**）：选择器里能看到的每个模型都是确定能用的；
+**库空时不给可点入口**，直接提示"请到模型管理添加供应商并启用模型" —— 这是"只能使用配的模型"的界面表达。
+
+#### 4.9.4 与 §4.8 的关系
+
+§4.8 是"配置的真相源"（供应商 / 模型的表与同步），§4.9 是"配置怎么被消费"。
+一句话：**后台配什么，agent 就能用什么；没配的一律用不了**（这不是约定，是解析路径上只有一条）。
+
 ## 5. 前端全细节流式（调研已回，本节定稿）
 
 ### 5.1 传输与协议（已核实）

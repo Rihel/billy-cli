@@ -4,10 +4,11 @@ import { DEFAULT_AGENT_KEY, createAgentDefinitions } from './agents/index.js'
 import { AiController } from './ai.controller.js'
 import {
   AgentConfig,
-  isAgentConfigured,
-  resolveAgentModel,
+  toAgentModelId,
   type AgentConfig as AgentConfigValue,
 } from './core/ai.config.js'
+import { readAgentRuntime } from './core/ai.core.types.js'
+import { AiModelModule, AiModelService } from '../ai-model/index.js'
 import { MASTRA, createMastra } from './core/ai.mastra.js'
 import { AGENT_REGISTRY, createAgentRegistry } from './core/ai.registry.js'
 import { AgentService } from './core/ai.service.js'
@@ -69,7 +70,8 @@ const prompts = createPromptEngine()
  * 加一个技能：`skills/catalog/<名字>/SKILL.md`（+ 可选 `references/`）。
  */
 @Module({
-  imports: [AuthModule, TodoModule],
+  // AiModelModule 提供"这一轮用哪个模型"的真相源（模型与供应商都在库里，§4.9）
+  imports: [AuthModule, TodoModule, AiModelModule],
   controllers: [AiController],
   providers: [
     {
@@ -110,7 +112,7 @@ const prompts = createPromptEngine()
     // ---- Mastra 实例：未配置模型时注入 null（其余功能照常可用）----
     {
       provide: MASTRA,
-      inject: [AgentConfig, AGENT_REGISTRY, ToolBuilder, SkillLoader, Db, AppLogger],
+      inject: [AgentConfig, AGENT_REGISTRY, ToolBuilder, SkillLoader, Db, AppLogger, AiModelService],
       useFactory: async (
         config: AgentConfigValue,
         registry: AgentRegistryValue,
@@ -118,10 +120,28 @@ const prompts = createPromptEngine()
         skillLoader: SkillLoader,
         db: Db,
         logger: AppLogger,
+        models: AiModelService,
       ) => {
-        if (!isAgentConfigured(config)) return null
         return createMastra({
-          model: resolveAgentModel(config),
+          /**
+           * 模型**每次调用**从运行时信封里取（编排层已经从库里解析好，§4.9）。
+           *
+           * 这里不做任何兜底：拿不到信封说明调用没走编排层（配置错误），直接抛 ——
+           * 静默回落到某个默认模型会让"agent 只能用配的模型"失效。
+           */
+          resolveModel: (_definition, requestContext) => {
+            const model = readAgentRuntime(requestContext)?.model
+            if (!model) {
+              throw new Error(
+                '缺少模型运行时信封：调用 agent 必须由编排层注入 requestContext（配置错误）',
+              )
+            }
+            return {
+              id: toAgentModelId(model.modelRef),
+              ...(model.baseURL ? { url: model.baseURL } : {}),
+              apiKey: model.apiKey,
+            }
+          },
           definitions: registry.all(),
           resolveTools: (ids) => toolBuilder.build(ids),
           resolveSkills: (names) => skillLoader.resolve(names),

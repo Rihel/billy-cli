@@ -17,7 +17,14 @@ const MAX_EVENTS = 2000
 /** 窗口解析结果（含来源，落进快照供审计） */
 export interface ContextWindowResolution {
   windowTokens: number
-  source: 'config' | 'registry' | 'fallback'
+  /**
+   * 窗口的来源：
+   * - `provider`：**后台模型配置里的实测值**（`ai_models.context_window`）——最可信，优先用它；
+   * - `config`：配置里按模型覆盖的窗口（`AGENT_CONTEXT_MODEL_WINDOWS`）；
+   * - `registry`：tokenlens 查到的公开窗口；
+   * - `fallback`：都没查到，用保守兜底值（会打 warn）。
+   */
+  source: 'provider' | 'config' | 'registry' | 'fallback'
 }
 
 /** 落 `runs.request_snapshot.context` 的证据：给了什么、没给什么、拿什么顶替了 */
@@ -54,6 +61,13 @@ export interface BuildContextInput {
   conversationId: string
   /** 当前使用的模型标识（决定窗口） */
   modelId: string
+  /**
+   * 直接给出窗口 token（可选）。
+   *
+   * 来源是后台模型配置里的**实测值**（`ai_models.context_window`）——有它就用它，
+   * 比 tokenlens 的公开数据更准（自建网关上的私有模型 tokenlens 根本不认识）。
+   */
+  windowTokens?: number
   /** 该 agent 的系统提示词（渲染产物） */
   systemPrompt: string
   /** 本轮用户输入（参与估算） */
@@ -130,7 +144,10 @@ export class ContextService {
 
   /** 组装一次输入（不做压缩；需要压缩时通过 `needsCompaction` + `compactionRange` 告知编排层） */
   async buildInput(input: BuildContextInput): Promise<BuiltContext> {
-    const window = this.resolveWindow(input.modelId)
+    // 窗口优先级：后台配的实测值（`ai_models.context_window`）> tokenlens > 兜底值
+    const window = input.windowTokens
+      ? { windowTokens: input.windowTokens, source: 'provider' as const }
+      : this.resolveWindow(input.modelId)
     const triggerTokens = Math.floor(window.windowTokens * this.config.contextTriggerRatio)
     const trimTargetTokens = Math.floor(
       window.windowTokens * this.config.contextTrimTargetRatio,

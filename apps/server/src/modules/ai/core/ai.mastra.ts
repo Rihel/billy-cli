@@ -1,9 +1,11 @@
 import { Agent, type ToolsInput } from '@mastra/core/agent'
 import { Mastra } from '@mastra/core/mastra'
+import type { RequestContext } from '@mastra/core/request-context'
 import type { MastraCompositeStore } from '@mastra/core/storage'
 import type { InlineSkill } from '@mastra/core/skills'
-import type { AgentModelId, ResolvedAgentModel } from './ai.config.js'
+import type { AgentModelId } from './ai.config.js'
 import { toAgentModelId } from './ai.config.js'
+import { readAgentRuntime } from './ai.core.types.js'
 import type { AgentDefinition } from './ai.types.js'
 
 /**
@@ -15,8 +17,17 @@ import type { AgentDefinition } from './ai.types.js'
 export const MASTRA = Symbol.for('MASTRA')
 
 export interface CreateMastraOptions {
-  /** 默认模型（agent 定义里可用 `model` 覆盖） */
-  model: ResolvedAgentModel
+  /**
+   * **按调用解析模型**（Mastra 的 `DynamicArgument`：构造期给函数，每次调用时用 requestContext 求值）。
+   *
+   * 为什么不是构造期定死一个模型：模型是**每个供应商配置里的一项**（`ai_models`），
+   * 一轮对话可以用不同的模型（会话页能选），而且**只能用它**（§4.9）。
+   * 构造期定死就意味着"选模型"要重建 agent，或者退回环境变量 —— 两条都不要。
+   */
+  resolveModel: (
+    definition: AgentDefinition,
+    requestContext: RequestContext | undefined,
+  ) => { id: AgentModelId; url?: string; apiKey: string }
   /** 已渲染的 agent 定义（来自注册表） */
   definitions: readonly AgentDefinition[]
   /**
@@ -58,7 +69,7 @@ export interface CreateMastraOptions {
  * `@mastra/ai-sdk` 的流转换，HTTP 边界由本模块自己的控制器承担。
  */
 export const createMastra = async ({
-  model,
+  resolveModel,
   definitions,
   resolveTools,
   resolveSkills,
@@ -74,12 +85,10 @@ export const createMastra = async ({
         id: definition.key,
         name: definition.name,
         instructions: definition.instructions,
-        model: {
-          // agent 可覆盖默认模型（多模型时按角色分配贵 / 便宜模型）
-          id: definition.model ? toAgentModelId(definition.model) : model.model,
-          url: model.baseURL,
-          apiKey: model.apiKey,
-        },
+        // 模型是**每次调用**按 requestContext 里的"这一轮用哪个模型"求值的：
+        // 供应商地址与密钥都来自后台配置（`ai_models` / `ai_providers`），没有环境变量兜底路径
+        model: ({ requestContext }: { requestContext: RequestContext }) =>
+          resolveModel(definition, requestContext),
         tools: resolveTools(definition.tools),
         // 技能按角色授权；Mastra 会为配置了 skills 的 Agent 自动加上技能激活与注入
         skills: await resolveSkills(definition.skills),

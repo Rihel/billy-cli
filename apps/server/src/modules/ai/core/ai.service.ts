@@ -1,11 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common'
 import type { AgentListModel, AgentStatusModel } from '@repo/shared'
 import type { Mastra } from '@mastra/core/mastra'
-import {
-  AgentConfig,
-  isAgentConfigured,
-  type AgentConfig as AgentConfigValue,
-} from './ai.config.js'
+import { AiModelService } from '../../ai-model/index.js'
 import { AGENT_REGISTRY } from './ai.registry.js'
 import type { AgentRegistry } from './ai.types.js'
 import { MASTRA } from './ai.mastra.js'
@@ -24,14 +20,21 @@ export class AgentService {
     /** 未配置模型时为 null（模块工厂决定）：调用方据此走「未配置」分支，而不是 500 */
     @Inject(MASTRA) private readonly mastra: Mastra | null,
     @Inject(AGENT_REGISTRY) private readonly registry: AgentRegistry,
-    @Inject(AgentConfig) private readonly config: AgentConfigValue,
+    @Inject(AiModelService) private readonly models: AiModelService,
   ) {}
 
-  /** 能力状态：前端据此决定展示对话区还是「未配置」指引 */
-  status(): AgentStatusModel {
+  /**
+   * 能力状态：前端据此决定展示对话区还是「先去后台配模型」指引。
+   *
+   * **可用性只看库里有没有"供应商启用 + 模型启用"的模型**（§4.9）——
+   * 环境变量不再决定 AI 能不能用（它只是可选的种子，见 `AiModelSeedService`）。
+   */
+  async status(): Promise<AgentStatusModel> {
+    const available = await this.models.listAvailable()
     return {
-      available: isAgentConfigured(this.config),
-      model: this.config.model ?? null,
+      available: available.models.length > 0,
+      model: available.models.find((item) => item.id === available.defaultModelId)?.modelRef ?? null,
+      modelCount: available.models.length,
       agentCount: this.registry.all().length,
     }
   }

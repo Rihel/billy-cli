@@ -32,6 +32,7 @@ import type { Response } from 'express'
 import { currentUserId } from '../../common/index.js'
 import { UserAuthGuard } from '../auth/index.js'
 import { AgentService } from './core/ai.service.js'
+import { AiModelService } from '../ai-model/index.js'
 import { AgentChatService } from './runtime/chat.service.js'
 import { AgentConversationService } from './runtime/conversation.service.js'
 import { AgentRunService } from './runtime/run.service.js'
@@ -52,6 +53,7 @@ import { AgentTimelineService } from './runtime/timeline.service.js'
 export class AiController {
   constructor(
     @Inject(AgentService) private readonly agentService: AgentService,
+    @Inject(AiModelService) private readonly modelService: AiModelService,
     @Inject(AgentConversationService)
     private readonly conversations: AgentConversationService,
     @Inject(AgentTimelineService) private readonly timelines: AgentTimelineService,
@@ -69,6 +71,18 @@ export class AiController {
   @HttpCode(200)
   list() {
     return this.agentService.list()
+  }
+
+  /**
+   * 本轮**可选的模型**（会话页选择器的数据源）。
+   *
+   * 只回"供应商启用 + 模型启用"的（§4.9）—— 也就是说，选择器里能看到的每一个模型，
+   * 都是后台配过的、确定能用的；库空时返回空数组（前端据此提示"先去后台配模型"）。
+   */
+  @Post('models')
+  @HttpCode(200)
+  models() {
+    return this.modelService.listAvailable()
   }
 
   /**

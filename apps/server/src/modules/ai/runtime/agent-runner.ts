@@ -9,7 +9,11 @@ import {
   TimelineRole,
 } from '@repo/shared'
 import { AGENT_MAX_STEPS } from '../core/ai.constants.js'
-import { AgentConfig, resolveAgentModel, type AgentConfig as AgentConfigValue } from '../core/ai.config.js'
+import {
+  AgentConfig,
+  toAgentModelId,
+  type AgentConfig as AgentConfigValue,
+} from '../core/ai.config.js'
 import type { AgentRuntimeEnvelope } from '../core/ai.core.types.js'
 import { toUsageRecord, usageField } from './usage.js'
 import { RunRepository } from './run.repository.js'
@@ -207,7 +211,8 @@ export class AgentRunner {
 
     let text = ''
     try {
-      const model = resolveAgentModel(this.config)
+      // 子 agent **继承父这一轮的模型**（信封里带着）：不单独选模型，也就不会出现"父子用了两个模型"
+      const model = envelope.model
       const agent = new Agent({
         // 临时实例：跑完即弃，**不注册进 Mastra**（否则会污染 agent 清单、且同名会冲突）
         id: `${agentKey}#${child.id}`,
@@ -215,7 +220,8 @@ export class AgentRunner {
         // **完全用主 agent 写的提示词**：我们不加 partial、不改一个字
         instructions: request.systemPrompt,
         model: {
-          id: model.model,
+          // modelRef 是 `<providerSlug>/<modelKey>`，正是 Mastra 认识的 `provider/model` 形态
+          id: toAgentModelId(model.modelRef),
           url: model.baseURL,
           apiKey: model.apiKey,
         },

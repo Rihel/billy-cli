@@ -167,6 +167,36 @@ export const AppErrorCodes = createDict({
     value: 3310,
     http: 504,
   },
+  ProviderNotFound: {
+    label: '模型供应商不存在',
+    value: 3401,
+    http: 404,
+  },
+  ModelNotFound: {
+    label: '模型不存在',
+    value: 3402,
+    http: 404,
+  },
+  ModelSyncFailed: {
+    label: '拉取模型明细失败',
+    value: 3403,
+    http: 502,
+  },
+  ProviderDisabled: {
+    label: '该模型供应商已禁用',
+    value: 3404,
+    http: 409,
+  },
+  ProviderKeyUnavailable: {
+    label: '未配置密钥加密口令，无法保存密钥',
+    value: 3405,
+    http: 500,
+  },
+  ModelNotConfigured: {
+    label: '还没有配置可用的模型，请先在后台「模型管理」添加',
+    value: 3406,
+    http: 409,
+  },
   InvalidInput: {
     label: '参数校验失败',
     value: 4001,

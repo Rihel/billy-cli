@@ -38,6 +38,27 @@ export const AGENT_CORES = Symbol.for('AgentCores')
  *
  * 用 `setRaw` / `getRaw` 存取（运行时键，不进 schema 校验，见 Mastra 的 `RequestContext` 注释）。
  */
+/**
+ * **这一轮实际使用的模型**（由编排层从库里解析出来，放进信封）。
+ *
+ * 与 `ai-model` 模块的 `ResolvedRuntimeModel` **结构一致**（不 import 它是为了不把 core 绑到那个模块）：
+ * 编排层解析完直接塞进来，Mastra 的模型函数与子 agent 都从这里取 ——
+ * **运行时不存在"没配也能用"的路径**（解析不出来就是 3406，见设计文档 §4.9）。
+ */
+export interface RuntimeModel {
+  /** `ai_models.id` */
+  id: string
+  /** `<providerSlug>/<modelKey>`（Mastra 的模型标识形态，日志与快照里用它） */
+  modelRef: string
+  modelKey: string
+  displayName: string
+  /** 供应商地址（留空走官方端点） */
+  baseURL?: string
+  /** 解密后的密钥（**只在内存里流转**） */
+  apiKey: string
+  contextWindow: number | null
+}
+
 export interface AgentRuntimeEnvelope {
   /** 当前会话（子 agent 的 run 与时间线都挂在这个会话上） */
   conversationId: string
@@ -47,6 +68,8 @@ export interface AgentRuntimeEnvelope {
   triggeredBy: string | null
   /** 当前深度（根 = 0；子 agent = 1） */
   depth: number
+  /** **本轮使用的模型**（子 agent 继承它，不单独选模型） */
+  model: RuntimeModel
   /** 算好的**子 agent 工具面**（全部工具 − 委派类工具） */
   childTools: ToolsInput
   /** 子 agent 的技能面（与父 agent 同一口径） */

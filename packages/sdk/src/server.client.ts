@@ -1,4 +1,18 @@
 import {
+  AiAvailableModelListModel,
+  AiModelCreateDto,
+  AiModelIdDto,
+  AiModelListDto,
+  AiModelModel,
+  AiModelUpdateDto,
+  AiProviderCreateDto,
+  AiProviderIdDto,
+  AiProviderListDto,
+  AiProviderModel,
+  AiProviderSyncResultModel,
+  AiProviderTestDto,
+  AiProviderTestResultModel,
+  AiProviderUpdateDto,
   AdminAuthResultModel,
   AdminLoginDto,
   AdminModel,
@@ -387,6 +401,14 @@ export class ServerClient extends HttpClient<BearerTokenCredentials> {
         this.post<AgentRunDetailModel>('/agent/run/detail', data),
     },
 
+    /**
+     * 本轮可选的模型清单（**只有"供应商启用 + 模型启用"的**）。
+     *
+     * 会话页的选择器用它渲染；`defaultModelId` 是未选择时的落点（库空时为 null →
+     * 前端应当提示"先去后台配模型"）。
+     */
+    models: () => this.post<AiAvailableModelListModel>('/agent/models'),
+
     timeline: {
       /** 时间线分页（消息 / 推理 / 工具调用与结果 / 步骤 / 计划 / 摘要…） */
       list: (data: AgentTimelineListDto) =>
@@ -424,6 +446,58 @@ export class ServerClient extends HttpClient<BearerTokenCredentials> {
       // Bearer 策略只看凭证，故这里给一份最小的空上下文
       const context = await this.authStrategy.getAuthContext(credentials, { headers: {} })
       return context.headers ?? {}
+    },
+  }
+
+  /* ========== AI 模型与供应商（后台管理） ========== */
+
+  /**
+   * 模型管理（**管理员鉴权**）：供应商与模型的增删改查 + "从供应商接口拉模型明细"。
+   *
+   * 这里的配置就是 agent 能用的**全部**模型（§4.9），没有环境变量兜底路径。
+   */
+  aiModel = {
+    provider: {
+      list: (data: AiProviderListDto) =>
+        this.post<AppPageQueryResponse<AiProviderModel>>('/ai-model/provider/list', data),
+
+      /** 新建供应商（`apiKey` 只进不出：响应只回提示） */
+      create: (data: AiProviderCreateDto) =>
+        this.post<AiProviderModel>('/ai-model/provider/create', data),
+
+      detail: (data: AiProviderIdDto) =>
+        this.post<AiProviderModel>('/ai-model/provider/detail', data),
+
+      /** 更新（`apiKey` 省略 = 不改密钥；给空串 = 清空） */
+      update: (data: AiProviderUpdateDto) =>
+        this.post<AiProviderModel>('/ai-model/provider/update', data),
+
+      /** 软删供应商（其下模型一并软删） */
+      remove: (data: AiProviderIdDto) =>
+        this.post<SuccessResultModel>('/ai-model/provider/remove', data),
+
+      /** **从供应商接口拉模型明细**（幂等：重复执行结果一致） */
+      sync: (data: AiProviderIdDto) =>
+        this.post<AiProviderSyncResultModel>('/ai-model/provider/sync', data),
+
+      /** 连通性测试（支持未保存先测；失败原因回供应商原文） */
+      test: (data: AiProviderTestDto) =>
+        this.post<AiProviderTestResultModel>('/ai-model/provider/test', data),
+    },
+
+    model: {
+      list: (data: AiModelListDto) =>
+        this.post<AppPageQueryResponse<AiModelModel>>('/ai-model/model/list', data),
+
+      /** 手工新增（自建网关拉不全 / 想手填窗口时用） */
+      create: (data: AiModelCreateDto) =>
+        this.post<AiModelModel>('/ai-model/model/create', data),
+
+      update: (data: AiModelUpdateDto) =>
+        this.post<AiModelModel>('/ai-model/model/update', data),
+
+      remove: (data: AiModelIdDto) =>
+        this.post<SuccessResultModel>('/ai-model/model/remove', data),
     },
   }
 

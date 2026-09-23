@@ -20,11 +20,27 @@ import { Column, Entity, Index } from 'typeorm'
   unique: true,
   where: 'deleted_at IS NULL',
 })
+// 模型对外标识的前半段（`<slug>/<modelKey>`）也必须是软删感知唯一的：
+// 删掉一个供应商后重建同名 slug 不应被历史行挡住
+@Index('uk_provider_slug', ['slug'], {
+  unique: true,
+  where: 'deleted_at IS NULL',
+})
 @Index('idx_provider_enabled', ['enabled'])
 export class AiProviderEntity extends AuditEntity {
   /** 展示名（软删感知的唯一）：如「DeepSeek 官方」「自建网关」 */
   @Column({ name: 'name', type: 'varchar', length: 64 })
   name!: string
+
+  /**
+   * 机器可读标识（软删感知的唯一）：**ASCII 小写字母 / 数字 / 连字符**，
+   * 如 `deepseek` / `my-gateway`。
+   *
+   * 它是模型对外标识的前半段 `'<slug>/<modelKey>'`，也是 Mastra 认识的 `provider/model` 形态；
+   * 由服务层保证合法性（`name` 生成或调用方手填），表上不给默认值。
+   */
+  @Column({ name: 'slug', type: 'varchar', length: 32 })
+  slug!: string
 
   /** 供应商类型：见 `AiProviderKind` 字典（决定用哪个"列模型"接口） */
   @Column({

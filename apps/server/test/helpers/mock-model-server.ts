@@ -17,8 +17,22 @@ export interface MockModelServer {
   baseURL: string
   /** 收到的请求体（便于断言"模型到底收到了什么"） */
   requests: Array<Record<string, unknown>>
+  /** 收到的 `GET /models` 请求（url + Authorization 头；供 AI 模型模块的同步测试断言） */
+  listRequests: Array<{ url: string; authorization: string | undefined }>
   close: () => Promise<void>
 }
+
+/**
+ * `GET {base}/models` 返回的 OpenAI 形态假模型列表。
+ *
+ * 刻意覆盖两种情形，供"同步落模型明细"的测试断言：
+ * - 字段齐全（`id` / `created` / `owned_by` 都有，全量进 `raw`）；
+ * - 窗口类字段本来就没有（OpenAI 的 `/models` 不返回窗口）—— 同步后必须是 `null`，**不许编造**。
+ */
+export const MOCK_MODEL_LIST = [
+  { id: 'mock-chat', object: 'model', created: 1700000000, owned_by: 'mock-vendor' },
+  { id: 'mock-reasoner', object: 'model', created: 1700000001, owned_by: 'mock-vendor' },
+]
 
 /** 固定回复文本（断言用） */
 export const MOCK_FINAL_TEXT = '已为你查到最近的待办，共 2 条。'
@@ -229,8 +243,19 @@ const sseSlow = async (
 /** 启动 mock 服务（端口随机，避免与本机其它服务冲突） */
 export const startMockModelServer = async (): Promise<MockModelServer> => {
   const requests: Array<Record<string, unknown>> = []
+  const listRequests: Array<{ url: string; authorization: string | undefined }> = []
   const server: Server = createServer((req, res) => {
     void (async () => {
+      // OpenAI 形态的"列模型"接口：同步链路与连通性测试都打这里
+      if (req.method === 'GET' && req.url?.includes('/models')) {
+        listRequests.push({
+          url: req.url,
+          authorization: req.headers.authorization,
+        })
+        res.writeHead(200, { 'content-type': 'application/json' })
+        res.end(JSON.stringify({ object: 'list', data: MOCK_MODEL_LIST }))
+        return
+      }
       if (req.method !== 'POST' || !req.url?.includes('/chat/completions')) {
         res.writeHead(404).end()
         return
@@ -248,6 +273,7 @@ export const startMockModelServer = async (): Promise<MockModelServer> => {
   return {
     baseURL: `http://127.0.0.1:${port}/v1`,
     requests,
+    listRequests,
     close: () =>
       new Promise<void>((resolve, reject) =>
         server.close((error) => (error ? reject(error) : resolve())),
