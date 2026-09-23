@@ -1407,6 +1407,72 @@ const toolCalls = await output.toolCalls
 **每一步/每个工具的耗时与用量直接读 `timelines` 对应行**（时间线视图天然带这些列，不用额外聚合）；
 用量与上下文占比交给 ai-elements 的 `context` 组件（`usedTokens` / `maxTokens` + `usage`）。
 
+### 4.8 AI 模型模块：供应商表 + 模型表（配置类数据，与 agent 运行时解耦）
+
+> **落地状态（本轮）**：**只落地数据表**（`ai_providers` / `ai_models`，实体 + 迁移 + 对外模型契约，
+> 迁移已应用）。CRUD / 同步接口 / 管理页按 §4.8.4 后续实现；错误码（§4.8.6）随模块一起加。
+
+**要解决的问题**：模型与密钥目前只能靠环境变量（`MASTRA_MODEL` / `MASTRA_API_KEY` / `MASTRA_BASE_URL`）配置，
+改一次要动部署；而且"这家供应商现在到底有哪些模型、窗口多大、支持不支持工具调用"只能靠人去查文档。
+本模块把这两件事搬进库里，并**用供应商自己的接口把模型明细拉回来**。
+
+#### 4.8.1 两张表（配置类，允许软删）
+
+| 表 | 一行是什么 | 关键列 |
+| --- | --- | --- |
+| `ai_providers` | 一个模型供应商接入（哪家、什么地址、什么密钥、启用没） | `name`（唯一）/ `kind` / `base_url` / `api_key_cipher` + `api_key_hint` / `enabled` / `last_synced_at` / `last_sync_error` |
+| `ai_models` | 该供应商的一个模型 | `provider_id` / `model_key` / `display_name` / `context_window` / `max_output_tokens` / `capabilities` / `source` / `enabled` / `last_seen_at` / `raw` |
+
+三条口径要先说清（都是刻意的）：
+
+1. **密钥加密存**：`api_key_cipher` = AES-256-GCM（口令取 `AI_MODEL_ENCRYPTION_KEY`，缺省回落 `JWT_SECRET`；
+   两者都没配 → 明确报错，**不静默存明文**）。接口**永不回传明文**，只回 `apiKeyHint`（`sk-…abcd`）与 `hasApiKey`；
+2. **`raw` 全量留存**：供应商原始 JSON 原样落库（不裁剪）——"模型什么时候消失 / 参数什么时候变了"可复盘；
+3. **唯一键 = 同步锚点**：`uk_provider_name (name)`、`uk_model_provider_key (provider_id, model_key)`。
+   同步按后者 upsert，所以**重复执行结果一致（幂等）**。
+
+#### 4.8.2 拉模型明细：按 `kind` 选一个 adapter
+
+供应商的"列模型"接口形态不统一，所以按 `kind` 分派（**新增一家 = 加一个 adapter + 登记一行**）：
+
+| `kind` | 请求 | 鉴权 | 响应（我们取什么） | 状态 |
+| --- | --- | --- | --- | --- |
+| `openai` / `openai-compatible`（含 DeepSeek、阿里百炼兼容模式、vLLM、One-API、自建网关） | `GET {base}/models` | `Authorization: Bearer <key>` | `data[]`：`id` / `created` / `owned_by` | **已实测**（本仓 mock 服务按此形态实现，端到端跑通） |
+| `anthropic` | `GET https://api.anthropic.com/v1/models?limit=1000`（要翻页） | `x-api-key` + `anthropic-version: 2023-06-01` | `data[]`：`id` / `display_name` / `created_at` | 按官方文档实现，**未实测**（需 Anthropic key） |
+| `google`（Gemini） | `GET https://generativelanguage.googleapis.com/v1beta/models?key=<key>&pageSize=1000` | 查询参数带 key | `models[]`：`name`（`models/xxx`，去掉前缀）/ `displayName` / `inputTokenLimit` / `outputTokenLimit` / `supportedGenerationMethods` | 按官方文档实现，**未实测**（需 Google key） |
+
+解析结果统一成：`{ modelKey, displayName?, contextWindow?, maxOutputTokens?, capabilities?, raw }` ——
+adapter 是**纯函数 + 一次 fetch**，可以脱离数据库单测（有 mock 服务就够）。
+
+#### 4.8.3 同步的语义（哪些会自动改、哪些绝不自动改）
+
+| 情况 | 行为 |
+| --- | --- |
+| 新模型 | 插入，`source='sync'`，`enabled=true` |
+| 已存在的模型 | 更新 `display_name` / 窗口 / `capabilities` / `raw` / `last_seen_at`；**不动 `enabled`**（用户的启停是人的决定，不能被同步覆盖） |
+| 这次**没返回**的模型（下线 / 限流 / 权限变化） | **只不更新 `last_seen_at`**，页面显示"本次未返回"，**绝不自动禁用**（限流就会误杀） |
+| 同步失败 | 供应商原文写 `last_sync_error` 并抛 3403；成功则清空 |
+| 手工添加的模型（`source='manual'`） | 同步不碰（用户自己填的窗口 / 展示名优先） |
+
+#### 4.8.4 接口（`/ai-model/*`，AdminAuthGuard，全部 POST）
+
+`provider/list | create | detail | update | remove | sync | test`、`model/list | update | remove`。
+`provider/remove` 与其下模型**软删**（配置类数据保留历史，便于排查"当时用的是哪个模型"）；
+`provider/test` 只测连通性不落库（配错了当场知道）。
+
+#### 4.8.5 与 agent 运行时的关系（**本轮不接管**）
+
+本轮 agent 仍按环境变量解析模型（`MASTRA_MODEL` 等），本模块只做"配置与明细的真相源 + 管理页"。
+下一步（已设计、未实现）的模型解析顺序：**本轮显式指定的模型 → 库中启用的默认模型 → 环境变量兜底**，
+并把 `context_window` 接进 §3.9 的窗口解析（优先库里的实测值，tokenlens 兜底）。
+**不一起做的理由**：运行时那套已经端到端验证过，换模型来源属于行为变更，单独一轮做+单独验证更稳。
+
+#### 4.8.6 错误码（34xx 段，**随模块实现时再加**）
+
+`3401` 供应商不存在 / `3402` 模型不存在 / `3403` 拉取模型明细失败 / `3404` 供应商已禁用 /
+`3405` 未配置密钥加密口令（`AI_MODEL_ENCRYPTION_KEY` 与 `JWT_SECRET` 都缺）。
+（已撤回未使用的错误码 —— 不留死代码；实现模块那一步一起加。）
+
 ## 5. 前端全细节流式（调研已回，本节定稿）
 
 ### 5.1 传输与协议（已核实）

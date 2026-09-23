@@ -23,6 +23,7 @@ description: 在 Billy 工程中使用 PostgreSQL / TypeORM 做数据库设计�
 | SQL 调试 | `DbService.getFullSqlStatement(builder)` 或同名纯函数：把占位符还原成可粘贴执行的完整 SQL；**要打日志由调用方用自己注入的 `AppLogger` 打**（`DbService` 不注入 logger） |
 | 事务 | `typeorm-transactional`：service 层写方法 `@Transactional()`（`import { Transactional } from '@repo/kits'`） |
 | 外键 | **硬规则：绝对不加物理外键**（`@ManyToOne` / `@JoinColumn` / 迁移里的 `FOREIGN KEY` 一律不用）。关联字段只建普通索引，关系由应用层维护；理由：高写入量表的 FK 检查是纯开销、写入顺序耦合、软删下级联语义本就不需要，且全库统一（既有表 0 个外键）。代价是可能出现孤儿行 —— 由写入口保证不发生，不能靠数据库兜底 |
+| **软删表的唯一约束必须带 `WHERE deleted_at IS NULL`** | 软删行还在表里，普通唯一索引会把历史行算进去 —— 删掉一个再建同名的直接撞唯一键（`ai_providers.name` / `ai_models.(provider_id, model_key)` 就是部分唯一索引） |
 
 ## 常用命令（速查）
 

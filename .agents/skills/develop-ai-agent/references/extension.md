@@ -66,6 +66,15 @@ export class XxxCore implements AgentCore {
   超限**不抛异常炸整轮**，把原因作为工具结论返回给模型；
 - 幂等：同一 `(parent_run_id, tool_call_id)` 已成功过 → 复用上次结论（不重跑、不重复扣费）。
 
+## 6.5 AI 模型与供应商（表已落地，模块待做）
+
+`ai_providers`（供应商接入：kind / base_url / 密钥密文 + 提示 / 启停 / 同步状态）与
+`ai_models`（模型：`model_key` / 展示名 / 窗口 / 能力 / 来源 / 启停 / `raw` / `last_seen_at`）
+两张表已落地（实体 + 迁移 + 对外模型），**CRUD / 同步接口 / 管理页尚未实现**。
+改这块之前先读 `docs/design/ai-agent.md` §4.8（含三家供应商"列模型"接口的形态、同步语义、
+密钥加密口径），别在别处另起一套。两条容易踩的：密钥只进不出（明文永不落库/回传）、
+两张表的唯一索引是**软删感知**的（`WHERE deleted_at IS NULL`）。
+
 ## 7. 契约、SDK 与前端
 
 - 契约加在 `packages/shared/src/schema/agent.schema.ts`，**改完必须 `pnpm build:pkgs`**；
