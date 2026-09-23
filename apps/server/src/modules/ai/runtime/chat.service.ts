@@ -776,6 +776,25 @@ export class AgentChatService {
   }
 
   /**
+   * 断线重连（**不报 runId 的版本**，`GET /agent/run/stream?offset=N`）：
+   *
+   * 页面刷新 / 换设备后，前端并不知道 runId（它只在流里的 `data-run` 块里给过一次）。
+   * 与其让前端把它存进 localStorage（换设备就丢），不如按**登录用户**在库里找"当前进行中的那一轮"
+   * —— 真相在 Postgres，浏览器只是个显示器。
+   *
+   * 返回 false 表示当前没有进行中的运行 → 控制器回 204（AI SDK 的续传约定，客户端静默收尾）。
+   */
+  async resumeCurrentRun(
+    userId: string,
+    offset: number,
+    response: StreamResponseLike,
+  ): Promise<boolean> {
+    const active = await this.runs.findActiveByUser(userId)
+    if (!active) return false
+    return this.resumeRun(userId, active.id, offset, response)
+  }
+
+  /**
    * 断线重连（`GET /agent/run/:runId/stream?offset=N`）：
    * 先从 Redis 输出记录**补发** `offset` 之后的片段（不重跑、不重复扣费），再接实时广播。
    *

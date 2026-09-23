@@ -119,14 +119,16 @@ export default function AiChatPage() {
           }
         },
         /**
-         * 断线重连：AI SDK 传进来的 `id` 是**会话 id**，而我们的续流端点是**按 run** 的
-         * （`GET /agent/run/:runId/stream?offset=N`）→ 用 ref 里那次运行的 runId。
-         * 没有进行中的流时服务端回 204，SDK 自己收尾（不报错）。
+         * 断线重连：**一定要指向一个允许 GET 的地址**。
+         *
+         * AI SDK 的 `reconnectToStream` 固定发 GET，而建流端点是 POST-only ——
+         * 这里如果退回建流地址，浏览器就会对 `POST /agent/chat/stream` 发一次 GET，**404**
+         * （踩过的坑）。所以无 runId 时用"按登录用户找当前进行中那一轮"的端点：
+         * 有在跑的流就补发接回，没有就 204，SDK 静默收尾。
          */
-        prepareReconnectToStreamRequest: () =>
-          runIdRef.current
-            ? { api: client.agent.resumeStreamUrl(runIdRef.current) }
-            : { api: client.agent.chatStreamUrl() },
+        prepareReconnectToStreamRequest: () => ({
+          api: client.agent.currentRunStreamUrl(),
+        }),
       }),
     [client],
   )

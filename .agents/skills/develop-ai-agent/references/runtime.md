@@ -29,8 +29,10 @@
 
 ## 3. SSE 流式协议（AI SDK v6 UI Message Stream）
 
-- 端点：`POST /agent/chat/stream`（建流，**不套业务信封**）、`GET /agent/run/:runId/stream?offset=N`（重连，
-  无进行中的流回 **204**）、`POST /agent/run/stop`（停止）；
+- 端点：`POST /agent/chat/stream`（建流，**不套业务信封**）、`GET /agent/run/:runId/stream?offset=N`
+  （知道 runId 时续流）、`GET /agent/run/stream?offset=N`（**不知道 runId 时续流**：服务端按登录用户找
+  当前进行中的那一轮，没有回 204）、`POST /agent/run/stop`（停止）；两条续流都必须是 GET —— AI SDK 的
+  `reconnectToStream` 固定发 GET，指到 POST-only 的建流地址会 **404**（踩过）；
 - 帧格式 `data: {json}\n\n`，结束 `data: [DONE]\n\n`；响应头有 `x-vercel-ai-ui-message-stream: v1`、
   `x-accel-buffering: no`；心跳是 SSE 注释帧 `: ping\n\n`（自写，15s）；
 - **`[DONE]` 在收尾落库之后才发** —— 客户端见到它就代表终态已写库；

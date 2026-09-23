@@ -102,10 +102,30 @@ export class AiController {
   }
 
   /**
+   * 断线重连（**不知道 runId 时用**）：按登录用户在库里找当前进行中的那一轮。
+   *
+   * 前端 `useChat({ resume: true })` 挂载时调的就是它 —— 刷新 / 换设备都能接回正在跑的流；
+   * 没有进行中的运行回 204（AI SDK 据此静默结束重连，不报错、不刷红）。
+   */
+  @Get('run/stream')
+  async resumeCurrentRun(
+    @Query('offset') offset: string,
+    @Res() response: Response,
+  ): Promise<void> {
+    const from = Number.parseInt(offset ?? '0', 10)
+    const resumed = await this.chat.resumeCurrentRun(
+      currentUserId(),
+      Number.isFinite(from) && from > 0 ? from : 0,
+      response,
+    )
+    if (!resumed) response.status(204).end()
+  }
+
+  /**
    * 断线重连：按 `offset` 从 Redis 输出记录补发，再接实时。
    *
-   * 这是**全工程第二处 GET 例外**（第一处是 ops 探针）：AI SDK 的续传约定就是 GET +
-   * 204 表示"没有进行中的流"，改成 POST 会与 `useChat({ resume: true })` 不兼容。
+   * GET 例外（全工程第一处是 ops 探针，这里是第二、三处，见 `run/stream`）：AI SDK 的续传约定
+   * 就是 GET + 204 表示"没有进行中的流"，改成 POST 会与 `useChat({ resume: true })` 不兼容。
    */
   @Get('run/:runId/stream')
   async resumeRun(

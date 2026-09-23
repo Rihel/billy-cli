@@ -394,6 +394,55 @@ describe('流式链路端到端（mock 模型 + 真实 DB + 真实 Redis）', ()
     await streamStore.clearRun(run.id)
   })
 
+  it('按用户续流（不知道 runId 时）：找到进行中的那一轮就补发，没有就返回 false → 204', async () => {
+    // 场景：页面刷新后前端不知道 runId（它只在 data-run 块里给过一次）→ 服务端按登录用户找
+    const conversation = await conversations.create(USER, {})
+    createdConversationIds.push(conversation.id)
+
+    // ① 没有进行中的运行 → false（控制器回 204，AI SDK 静默收尾）
+    const emptyFrames: string[] = []
+    const none = await chat.resumeCurrentRun(USER, 0, {
+      writeHead: () => undefined,
+      write: (chunk: string) => emptyFrames.push(chunk),
+      end: () => undefined,
+      writableEnded: false,
+      on: () => undefined,
+    })
+    expect(none).toBe(false)
+    expect(emptyFrames).toHaveLength(0)
+
+    // ② 有进行中的运行 → 补发（含本轮身份 data-run，前端据此重新拿到 runId）
+    const run = await runs.create({
+      conversationId: conversation.id,
+      agentKey: DEFAULT_AGENT_KEY,
+      status: RunStatus.Running,
+      triggeredBy: USER,
+    })
+    await streamStore.startRun(run.id, { status: RunStatus.Running, stage: 'generating' })
+    await streamStore.appendChunk(run.id, {
+      type: 'data-run',
+      data: { runId: run.id, conversationId: conversation.id, agentKey: DEFAULT_AGENT_KEY },
+    })
+    await streamStore.appendChunk(run.id, { type: 'text-delta', id: 't1', delta: '接回来了' })
+    await streamStore.appendChunk(run.id, { type: STREAM_END_MARKER })
+
+    const frames: string[] = []
+    const resumed = await chat.resumeCurrentRun(USER, 0, {
+      writeHead: () => undefined,
+      flushHeaders: () => undefined,
+      write: (chunk: string) => frames.push(chunk),
+      end: () => undefined,
+      writableEnded: false,
+      on: () => undefined,
+    })
+    expect(resumed).toBe(true)
+    expect(frames.join('')).toContain('接回来了')
+    expect(frames.join('')).toContain(run.id)
+
+    await runs.finish(run.id, { status: RunStatus.Interrupted })
+    await streamStore.clearRun(run.id)
+  }, 30_000)
+
   it('没有进行中的流 → 重连返回 false（控制器据此回 204）', async () => {
     const conversation = await conversations.create(USER, {})
     createdConversationIds.push(conversation.id)

@@ -399,9 +399,17 @@ export class ServerClient extends HttpClient<BearerTokenCredentials> {
     /** POST 建流地址（交给 AI SDK transport 的 `api`） */
     chatStreamUrl: (): string => `${this.agentBaseUrl}${AGENT_CHAT_STREAM_PATH}`,
 
-    /** GET 续流地址（交给 AI SDK transport 的 `prepareReconnectToStreamRequest`） */
+    /** GET 续流地址（知道 runId 时用；交给 AI SDK transport 的 `prepareReconnectToStreamRequest`） */
     resumeStreamUrl: (runId: string, offset = 0): string =>
       `${this.agentBaseUrl}${agentResumeStreamPath(runId)}?offset=${offset}`,
+
+    /**
+     * GET 续流地址（**不知道 runId 时用**）：服务端按登录用户找当前进行中的那一轮，
+     * 没有就回 204。`useChat({ resume: true })` 挂载时该用它 —— 刷新 / 换设备都能接回，
+     * 且不会在"没有进行中的流"时打到只收 POST 的建流路由（那会 404）。
+     */
+    currentRunStreamUrl: (offset = 0): string =>
+      `${this.agentBaseUrl}/agent/run/stream?offset=${offset}`,
 
     /**
      * 当前凭证的鉴权头（给 AI SDK transport 用）。

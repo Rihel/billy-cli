@@ -74,6 +74,25 @@ export class RunRepository {
     })
   }
 
+  /**
+   * 该用户**当前进行中的根运行**（跨会话找最近一条）。
+   *
+   * 用途：断线重连时不要求客户端报出 runId —— 刷新页面、换设备、甚至换浏览器都能接回
+   * 正在跑的那一轮（真相在库里，不在浏览器内存里）。`order by created_at desc` 取最近一条：
+   * 同一用户理论上可能有多个会话各有一轮在跑（不同标签页），接回最近发起的那一个。
+   */
+  async findActiveByUser(userId: string): Promise<RunEntity | null> {
+    const repo = await this.repo()
+    return repo.findOne({
+      where: {
+        triggeredBy: userId,
+        parentRunId: IsNull(),
+        status: In([RunStatus.Pending, RunStatus.Running]),
+      },
+      order: { createdAt: 'DESC' },
+    })
+  }
+
   /** 幂等查：某个父工具调用是否已经建过子 run（崩溃恢复重放时复用它，不重复扣费） */
   async findChildByToolCall(
     parentRunId: string,

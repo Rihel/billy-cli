@@ -1447,6 +1447,14 @@ AI SDK v6 的续传是**两层 API**（不是同一方法的两个名字）：
 读 activeStreamId → 落库 partial 的 assistant 消息 → 取消 producer → **仅当 activeStreamId 仍相同才清空**；
 并且**禁止在组件 unmount / 路由 cleanup 里调 stop**（那会把正在跑的生成掐掉）。
 
+**续流为什么必须暴露成 GET（两处 GET 例外）**：AI SDK 的 `reconnectToStream` **固定发 GET**，
+所以"按 run 续流"（`GET /agent/run/:runId/stream?offset=N`）与"不知道 runId 时按登录用户续流"
+（`GET /agent/run/stream?offset=N`，服务端在库里找当前进行中的那一轮，没有就 204）都只能是 GET。
+
+⚠️ **踩过的坑**：`useChat({ resume: true })` 挂载时**一定会**发一次续流 GET。若 `prepareReconnectToStreamRequest`
+在拿不到 runId 时退回建流地址（`/agent/chat/stream`，POST-only），浏览器就会对建流路由发 GET → **404**。
+前端侧的正确做法是用"按用户续流"那个端点（没有进行中的流 → 204 → SDK 静默收尾）。
+
 ### 5.4 业务状态机怎么进前端（同一条流、两种通道）
 
 - **持久 `data-*` part（固定 id）**：同 id 重写即**就地 reconcile**，且**刷新后随历史 `messages` 自动还原**
