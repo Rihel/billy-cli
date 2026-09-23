@@ -8,6 +8,8 @@ export const Pages = {
   resetPassword: '/auth/reset-password',
   /** 受保护的用户区（未登录访问会跳登录页并带 `?next=` 回跳） */
   account: '/account',
+  /** AI 会话页（同样受保护：AI 会话按用户归属，未登录没有会话） */
+  aiChat: '/ai/chat',
   markdown: '/markdown',
 }
 

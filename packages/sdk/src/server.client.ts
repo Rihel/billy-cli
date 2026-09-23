@@ -52,6 +52,22 @@ import {
   UpdateTodoDto,
   UpdateUserDto,
   UserModel,
+  AgentChatDto,
+  AgentChatResultModel,
+  AgentConversationCreateDto,
+  AgentConversationIdDto,
+  AgentConversationListDto,
+  AgentConversationModel,
+  AgentListModel,
+  AgentRunDetailModel,
+  AgentRunIdDto,
+  AgentRunListDto,
+  AgentRunModel,
+  AgentRunStopDto,
+  AgentRunStopResultModel,
+  AgentStatusModel,
+  AgentTimelineItemModel,
+  AgentTimelineListDto,
 } from '@repo/shared'
 import { HttpClient, HttpStreamClient, type HttpClientOptions } from '@repo/http-client'
 import type {
@@ -75,11 +91,20 @@ export interface CreateStreamOptions {
 /** SSE 订阅路由（与 apps/server 的 StreamController 对应） */
 const STREAM_SUBSCRIBE_PATH = '/sse/subscribe'
 
+/** 建流路由：响应体是 AI SDK v6 的 UI Message Stream（**不套业务信封**） */
+const AGENT_CHAT_STREAM_PATH = '/agent/chat/stream'
+
+/** 续流路由：`GET ...?offset=N`，无进行中的流时服务端回 204（AI SDK 续传约定） */
+const agentResumeStreamPath = (runId: string): string =>
+  `/agent/run/${encodeURIComponent(runId)}/stream`
+
 export class ServerClient extends HttpClient<BearerTokenCredentials> {
   /** SSE 长连接复用的凭证（与普通请求同一份，避免「HTTP 认证了、推流没认证」） */
   private readonly streamCredentials: CredentialsManager<BearerTokenCredentials>
   /** SSE 订阅地址：完整 URL（客户端不做 baseUrl 拼接，故在构造期算好） */
   private readonly streamUrl: string
+  /** 规范化后的 baseUrl（无尾斜杠）：给 AI SDK transport 拼完整 URL 用 */
+  private readonly agentBaseUrl: string
 
   constructor(
     options: Omit<HttpClientOptions<BearerTokenCredentials>, 'authStrategy'>,
@@ -89,7 +114,8 @@ export class ServerClient extends HttpClient<BearerTokenCredentials> {
       authStrategy: new BearerTokenStrategy(),
     })
     this.streamCredentials = options.credentialsManager
-    this.streamUrl = `${options.baseUrl.replace(/\/+$/, '')}${STREAM_SUBSCRIBE_PATH}`
+    this.agentBaseUrl = options.baseUrl.replace(/\/+$/, '')
+    this.streamUrl = `${this.agentBaseUrl}${STREAM_SUBSCRIBE_PATH}`
   }
 
   /**
@@ -301,6 +327,96 @@ export class ServerClient extends HttpClient<BearerTokenCredentials> {
 
     health: () =>
       this.post<MonitorHealthModel>('/monitor/health', undefined, { skipAuth: true }),
+  }
+
+  /* ========== AI 对话 ========== */
+
+  /**
+   * AI 能力（会话 / 运行 / 时间线）。
+   *
+   * 两条**不走 HttpClient 管线**的旁路，因为请求由 AI SDK 自己发出：
+   * - {@link ServerClient.chatStreamUrl}（POST 建流）
+   * - {@link ServerClient.resumeStreamUrl}（GET 续流，断线重连）
+   * 两者都需要鉴权头，故另给 {@link ServerClient.authHeaders}。
+   */
+  agent = {
+    /** AI 能力状态（是否可用、默认 agent、可用 agent 数） */
+    status: () => this.post<AgentStatusModel>('/agent/status'),
+
+    /** agent 清单（含 skills 与子 agent，供前端选择器与能力展示） */
+    list: () => this.post<AgentListModel>('/agent/list'),
+
+    /** 一轮问答（非流式）：跑完才返回，期间无任何输出 */
+    chat: (data: AgentChatDto) =>
+      this.post<AgentChatResultModel>('/agent/chat', data),
+
+    /** 停止某一轮（幂等；跨副本时服务端内部广播，前端无需关心） */
+    stopRun: (data: AgentRunStopDto) =>
+      this.post<AgentRunStopResultModel>('/agent/run/stop', data),
+
+    conversation: {
+      /** 新建会话（省略 agentKey 用默认 agent） */
+      create: (data: AgentConversationCreateDto) =>
+        this.post<AgentConversationModel>('/agent/conversation/create', data),
+
+      /** 会话分页（按最近活跃排序） */
+      list: (data: AgentConversationListDto) =>
+        this.post<AppPageQueryResponse<AgentConversationModel>>(
+          '/agent/conversation/list',
+          data,
+        ),
+
+      detail: (data: AgentConversationIdDto) =>
+        this.post<AgentConversationModel>('/agent/conversation/detail', data),
+
+      /** 软删会话（唯一的删除入口；运行记录与时间线不提供删除） */
+      remove: (data: AgentConversationIdDto) =>
+        this.post<SuccessResultModel>('/agent/conversation/remove', data),
+    },
+
+    run: {
+      /**
+       * 运行列表（审计 / 复盘）：**含子 agent 的 run**，带 `parentRunId` / `depth`，
+       * 调用方据此拼父子树。
+       */
+      list: (data: AgentRunListDto) =>
+        this.post<AppPageQueryResponse<AgentRunModel>>('/agent/run/list', data),
+
+      /** 运行详情：**输入快照**（送给模型的输入、子 agent 的提示词与任务）+ 错误原文 + 子 run */
+      detail: (data: AgentRunIdDto) =>
+        this.post<AgentRunDetailModel>('/agent/run/detail', data),
+    },
+
+    timeline: {
+      /** 时间线分页（消息 / 推理 / 工具调用与结果 / 步骤 / 计划 / 摘要…） */
+      list: (data: AgentTimelineListDto) =>
+        this.post<AppPageQueryResponse<AgentTimelineItemModel>>(
+          '/agent/timeline/list',
+          data,
+        ),
+    },
+
+    /** POST 建流地址（交给 AI SDK transport 的 `api`） */
+    chatStreamUrl: (): string => `${this.agentBaseUrl}${AGENT_CHAT_STREAM_PATH}`,
+
+    /** GET 续流地址（交给 AI SDK transport 的 `prepareReconnectToStreamRequest`） */
+    resumeStreamUrl: (runId: string, offset = 0): string =>
+      `${this.agentBaseUrl}${agentResumeStreamPath(runId)}?offset=${offset}`,
+
+    /**
+     * 当前凭证的鉴权头（给 AI SDK transport 用）。
+     *
+     * 走的是与普通请求**同一套** authStrategy，故头格式只有一处定义；
+     * 未登录返回 `{}`（后端会回 401，与普通请求行为一致）。
+     */
+    authHeaders: async (): Promise<Record<string, string>> => {
+      const credentials = await this.streamCredentials.getCredentials()
+      if (!credentials?.token) return {}
+      // 策略接口要求传一份"当前请求上下文"（它可能据此改 URL / body，如 HMAC 策略）；
+      // Bearer 策略只看凭证，故这里给一份最小的空上下文
+      const context = await this.authStrategy.getAuthContext(credentials, { headers: {} })
+      return context.headers ?? {}
+    },
   }
 
   /* ========== 登录设备（会话） ========== */

@@ -3,10 +3,11 @@ import 'dotenv/config'
 import { ConfigService } from '@nestjs/config'
 import { NestFactory } from '@nestjs/core'
 import type { NestExpressApplication } from '@nestjs/platform-express'
-import { NestLoggerAdapter } from '@repo/kits'
+import { NestLoggerAdapter, setAuditUserProvider } from '@repo/kits'
 import { RootModule } from './root.module.js'
 import { loadServerAppConfig } from './app-config.js'
 import { resolveServerConfig } from './config.js'
+import { requestContext } from './common/index.js'
 import { AlertTrigger } from './modules/monitor/index.js'
 
 /**
@@ -22,6 +23,9 @@ import { AlertTrigger } from './modules/monitor/index.js'
  *
  * 请求级横切中间件（请求上下文 ALS / 请求日志 / 请求指标）由 `common/` 的三个自注册模块装配，
  * 本文件只负责引导与全局 Express 配置（CORS / body 上限）。
+ *
+ * 审计操作人：TypeORM 的订阅者由它自己实例化（拿不到 Nest 容器），所以在这里挂一次
+ * `setAuditUserProvider`，把「当前操作人」接到请求上下文（无上下文时由 kits 回落成 `system`）。
  */
 export const program = async (): Promise<void> => {
   // 先加载并校验应用配置（AppConfigFacade 缓存），再创建应用：
@@ -35,6 +39,12 @@ export const program = async (): Promise<void> => {
   app.useLogger(app.get(NestLoggerAdapter))
   // 适配器即 Nest 的 LoggerService：`(message, context?)`，错误对象会带出堆栈
   const logger = app.get(NestLoggerAdapter)
+
+  // 审计操作人来源：优先前台用户，其次后台管理员；无请求上下文（启动期脚本）时 kits 记为 system
+  setAuditUserProvider(
+    // `requestContext.get` 缺失时返回 null（ALS 未启用或未登录），转成 undefined 交给 kits 回落
+    () => requestContext.get('userId') ?? requestContext.get('adminId') ?? undefined,
+  )
 
   app.enableCors()
   // 不暴露服务端指纹响应头

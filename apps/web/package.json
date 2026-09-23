@@ -12,6 +12,7 @@
     "test:watch": "vitest"
   },
   "dependencies": {
+    "@ai-sdk/react": "3.0.292",
     "@base-ui/react": "^1.7.0",
     "@repo/http-client": "workspace:*",
     "@repo/sdk": "workspace:*",
@@ -19,6 +20,7 @@
     "@repo/ui": "workspace:*",
     "@shadcn/react": "^0.2.1",
     "@tanstack/react-query": "^5.101.4",
+    "ai": "6.0.289",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "cmdk": "^1.1.1",

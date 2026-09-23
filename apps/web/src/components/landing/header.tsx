@@ -3,7 +3,14 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { LogOutIcon, Menu, X, ArrowRight, TerminalSquare } from 'lucide-react'
+import {
+  ArrowRight,
+  LogOutIcon,
+  Menu,
+  SparklesIcon,
+  TerminalSquare,
+  X,
+} from 'lucide-react'
 import { Button } from '@repo/ui'
 import {
   AppName,
@@ -86,6 +93,16 @@ export function Header({ user, authEnabled }: HeaderProps) {
           <ThemeToggle />
           {user ? (
             <>
+              {/* AI 会话页入口（受保护页：未登录不会走到这里） */}
+              <Button
+                render={<Link href={Pages.aiChat} />}
+                variant="ghost"
+                size="sm"
+                className="text-muted-foreground hover:text-foreground"
+              >
+                <SparklesIcon />
+                AI 助手
+              </Button>
               <Link
                 href={Pages.account}
                 className="flex items-center gap-2 rounded-md px-2 py-1 transition-colors hover:bg-muted"

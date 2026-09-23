@@ -101,6 +101,55 @@ export const serverAppConfigSchema = z.object({
   lark: LarkConfigSchema.optional(),
   /** Kafka：未配置 brokers 则不装配 KafkaModule */
   kafka: KafkaConfigSchema.optional(),
+  /**
+   * AI Agent 业务配置（AgentConfig 命名空间，见 modules/ai/core/ai.config.ts）。
+   *
+   * 恒存在（不像 lark / kafka 那样整体可选）：模型与密钥缺任意一个都只是「能力不可用」，
+   * `/agent/*` 返回 3301 并保留其余功能；这样前端能拿到确定的状态结构而不是 404。
+   */
+  agent: z.object({
+    /** 默认模型标识（`provider/model`，如 `deepseek/deepseek-chat` / `openai/gpt-4o-mini`） */
+    model: z.string().optional(),
+    /** 模型 API Key */
+    apiKey: z.string().optional(),
+    /** OpenAI 兼容端点地址（自建网关 / 代理）；留空走 provider 默认端点 */
+    baseURL: z.string().optional(),
+    // ── 上下文策略（详见 docs/design/ai-agent.md §3.9）──
+    /** 触发线：估算用量超过「模型窗口 × 本比例」就开始裁剪/压缩 */
+    contextTriggerRatio: z.coerce.number().positive().max(1).default(0.7),
+    /** 裁剪目标：裁到「窗口 × 本比例」为止 */
+    contextTrimTargetRatio: z.coerce.number().positive().max(1).default(0.5),
+    /** 压缩目标：摘要后到「窗口 × 本比例」为止 */
+    contextCompactTargetRatio: z.coerce.number().positive().max(1).default(0.4),
+    /** 最近几轮永不裁（保底能正常对话） */
+    contextKeepRecentTurns: z.coerce.number().int().positive().default(3),
+    /** 单条工具结果给模型的视图上限（相对窗口；落库仍是完整原文） */
+    contextToolResultMaxRatio: z.coerce.number().positive().max(1).default(0.1),
+    /** 未知模型的保守窗口（tokenlens 查不到时用；会打 warn 日志） */
+    contextFallbackWindow: z.coerce.number().int().positive().default(32_000),
+    /** 按模型覆盖窗口：`provider/model=65536,其它=32768`（最高优先） */
+    contextModelWindows: z.record(z.string(), z.coerce.number().int().positive()).default({}),
+    // ── 可恢复执行与看门狗（设计文档 §3.13）──
+    /** 是否开启可恢复执行（durable）：开启后逐步落快照，崩溃后可从快照续跑（会重放/重跑，真花钱） */
+    durableEnabled: z.boolean().default(true),
+    /** 心跳超时（ms）：超过就认为这一轮已经没人管了（崩溃或卡死） */
+    heartbeatTimeoutMs: z.coerce.number().int().positive().default(60_000),
+    /** 单轮总时长上限（ms）：超过即判超时（防"进程活着但模型 hang 住"永远挂着） */
+    runTimeoutMs: z.coerce.number().int().positive().default(10 * 60_000),
+    /** 看门狗扫描间隔（ms） */
+    watchdogIntervalMs: z.coerce.number().int().positive().default(30_000),
+    /** 是否多实例部署：true 时要求配置 Redis（断线补发 / 停止 / 恢复租约都依赖它） */
+    multiInstance: z.boolean().default(false),
+    // ── 子 agent（设计文档 §3.14.7）──
+    /** 同一父 run 下允许创建的子 agent 个数上限（超出把"配额已满"作为工具结论返回，不炸整轮） */
+    subAgentMaxPerRun: z.coerce.number().int().positive().default(4),
+    /** 子 agent 深度上限（当前工具面已保证为 1，留配置位给将来） */
+    subAgentMaxDepth: z.coerce.number().int().positive().default(1),
+    /** 单个子 agent 的步数上限（0 = 沿用 AGENT_MAX_STEPS） */
+    subAgentMaxSteps: z.coerce.number().int().nonnegative().default(0),
+    /** 单个子 agent 的墙钟上限（ms；0 = 沿用 runTimeoutMs） */
+    subAgentTimeoutMs: z.coerce.number().int().nonnegative().default(0),
+  }),
 })
 
 export type ServerAppConfig = z.infer<typeof serverAppConfigSchema>
@@ -111,6 +160,22 @@ const optional = (value: string | undefined): string | undefined =>
 
 const parseBoolean = (value: string | undefined): boolean | undefined =>
   value === undefined ? undefined : value === 'true'
+
+/** 解析 `key=number,key=number`（用于按模型覆盖上下文窗口） */
+const parseKeyValueNumbers = (
+  value: string | undefined,
+): Record<string, number> | undefined => {
+  if (!value) return undefined
+  const result: Record<string, number> = {}
+  for (const pair of value.split(',')) {
+    const [key, raw] = pair.split('=')
+    const parsed = Number(raw)
+    if (key?.trim() && Number.isFinite(parsed) && parsed > 0) {
+      result[key.trim()] = Math.trunc(parsed)
+    }
+  }
+  return Object.keys(result).length > 0 ? result : undefined
+}
 
 const parseList = (value: string | undefined): string[] | undefined =>
   value === undefined
@@ -217,6 +282,28 @@ export const mapServerEnv = (
         unavailableCooldownMs: optional(env.KAFKA_UNAVAILABLE_COOLDOWN_MS),
       }
     : undefined,
+  agent: {
+    model: optional(env.MASTRA_MODEL),
+    apiKey: optional(env.MASTRA_API_KEY),
+    baseURL: optional(env.MASTRA_BASE_URL),
+    contextTriggerRatio: optional(env.AGENT_CONTEXT_TRIGGER_RATIO),
+    contextTrimTargetRatio: optional(env.AGENT_CONTEXT_TRIM_TARGET_RATIO),
+    contextCompactTargetRatio: optional(env.AGENT_CONTEXT_COMPACT_TARGET_RATIO),
+    contextKeepRecentTurns: optional(env.AGENT_CONTEXT_KEEP_RECENT_TURNS),
+    contextToolResultMaxRatio: optional(env.AGENT_CONTEXT_TOOL_RESULT_MAX_RATIO),
+    contextFallbackWindow: optional(env.AGENT_CONTEXT_FALLBACK_WINDOW),
+    contextModelWindows: parseKeyValueNumbers(env.AGENT_CONTEXT_MODEL_WINDOWS),
+    durableEnabled:
+      env.AGENT_DURABLE_ENABLED === undefined ? undefined : env.AGENT_DURABLE_ENABLED !== 'false',
+    heartbeatTimeoutMs: optional(env.AGENT_HEARTBEAT_TIMEOUT_MS),
+    runTimeoutMs: optional(env.AGENT_RUN_TIMEOUT_MS),
+    watchdogIntervalMs: optional(env.AGENT_WATCHDOG_INTERVAL_MS),
+    multiInstance: parseBoolean(env.AGENT_MULTI_INSTANCE),
+    subAgentMaxPerRun: optional(env.AGENT_SUB_AGENT_MAX_PER_RUN),
+    subAgentMaxDepth: optional(env.AGENT_SUB_AGENT_MAX_DEPTH),
+    subAgentMaxSteps: optional(env.AGENT_SUB_AGENT_MAX_STEPS),
+    subAgentTimeoutMs: optional(env.AGENT_SUB_AGENT_TIMEOUT_MS),
+  },
 })
 
 /**

@@ -9,6 +9,7 @@ import {
   ListTodoIcon,
   RadioTowerIcon,
   ShieldCheckIcon,
+  SparklesIcon,
   TerminalIcon,
   UsersIcon,
 } from 'lucide-react'
@@ -42,6 +43,14 @@ const MENU_ITEMS: MenuItem[] = [
     children: [
       { label: '任务管理', key: '/main/todo', icon: ListTodoIcon },
       { label: '自动化', key: '/main/automation', icon: TerminalIcon },
+    ],
+  },
+  // AI：会话 / 运行的审计与复盘（只读，不提供删除 —— 运行与时间线是审计证据）
+  {
+    label: 'AI',
+    key: 'ai',
+    children: [
+      { label: '审计与复盘', key: '/main/ai/audit', icon: SparklesIcon },
     ],
   },
   // 运维监控：独立于用户体系开关（监控告警为运维能力，始终可见）

@@ -116,6 +116,57 @@ export const AppErrorCodes = createDict({
     value: 3203,
     http: 403,
   },
+  AgentUnavailable: {
+    label: 'AI 能力未配置（缺少模型或密钥）',
+    value: 3301,
+    http: 503,
+  },
+  AgentFailed: {
+    label: 'AI 回复失败，请稍后再试',
+    value: 3302,
+    http: 502,
+  },
+  AgentNotFound: {
+    label: '指定的 AI 助手不存在',
+    value: 3303,
+    http: 404,
+  },
+  ConversationNotFound: {
+    // 刻意不区分「不存在」与「不是你的」：避免被用来探测他人会话
+    label: '会话不存在或无权访问',
+    value: 3304,
+    http: 404,
+  },
+  RunNotFound: {
+    label: '运行记录不存在',
+    value: 3305,
+    http: 404,
+  },
+  ConversationBusy: {
+    label: '该会话已有正在进行的对话，请稍候',
+    value: 3306,
+    http: 409,
+  },
+  ContextTooLong: {
+    label: '上下文过长，请开启新会话或精简问题',
+    value: 3307,
+    http: 400,
+  },
+  ProviderAuthFailed: {
+    label: '模型鉴权失败，请检查服务端模型配置',
+    value: 3308,
+    http: 502,
+  },
+  ProviderRateLimited: {
+    label: '模型服务繁忙，请稍后再试',
+    value: 3309,
+    http: 429,
+  },
+  RunTimeout: {
+    label: '本次对话超时，请重试',
+    value: 3310,
+    http: 504,
+  },
   InvalidInput: {
     label: '参数校验失败',
     value: 4001,

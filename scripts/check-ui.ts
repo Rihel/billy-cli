@@ -6,10 +6,16 @@
  *
  * 五条不变量：
  *
- *  A. **自有组件导出完整性**：`packages/ui/src/components/` 下的自有组件（不含 shadcn 管理的
- *     `components/ui/` 子目录）每个文件都必须在 `packages/ui/src/index.ts` 的「自有组件」区段导出。
+ *  A. **自有组件导出完整性**：`packages/ui/src/components/` 下的自有组件（不含走子路径的
+ *     `components/ui/` 与 `components/ai-elements/` 两个子目录）每个文件都必须在
+ *     `packages/ui/src/index.ts` 的「自有组件」区段导出。
  *     失败意味着「写了组件没导出」，下一个人搜不到就会再造一个。
- *     `components/ui/` 不检查：重型组件（chart / carousel / command 等）刻意走子路径按需引入。
+ *     两个子路径组件区**不做 barrel 检查**：
+ *     - `components/ui/`：shadcn 受管的基础组件，重型者（chart / carousel / command 等）刻意按需引入；
+ *     - `components/ai-elements/`：从 Vercel ai-elements registry 内置的组件集，
+ *       单文件体量大（code-block / prompt-input 等数百行）、依赖重（shiki / @xyflow/react / media-chrome），
+ *       走 `@repo/ui/components/ai-elements/<name>` 子路径按需引入，
+ *       若进 barrel 会让任何 `import { X } from "@repo/ui"` 都把整棵 AI 组件树拉进首屏包。
  *
  *  B. **前端包质量脚本齐备**：凡是依赖 `next` 的 `apps/`（含 `pnpm cli -t client` 生成的新前端）
  *     与 `packages/ui`，都必须声明 `typecheck` 脚本。失败意味着新前端包漏网 ——
@@ -79,7 +85,13 @@ function collectFiles(dir: string, pattern: RegExp): string[] {
   })
 }
 
-/** A. 自有组件是否都在 index.ts 导出 */
+/** 走子路径、不进 barrel 的组件区（目录名 → 不检查 barrel 的原因，供报错提示复用） */
+const SUBPATH_COMPONENT_DIRS: Record<string, string> = {
+  ui: 'shadcn 受管的基础组件区，重型组件刻意走子路径按需引入',
+  'ai-elements': 'ai-elements registry 内置组件区，体积大 / 依赖重，走子路径按需引入以免拖累首屏',
+}
+
+/** A. 自有组件是否都在 index.ts 导出（`components/ui/`、`components/ai-elements/` 除外） */
 export function scanOwnComponentExports(cwd = process.cwd()): UiViolation[] {
   const componentsDir = join(cwd, UI_ROOT, 'src/components')
   const indexPath = join(cwd, UI_ROOT, 'src/index.ts')
@@ -88,9 +100,23 @@ export function scanOwnComponentExports(cwd = process.cwd()): UiViolation[] {
   const indexSource = readFileSync(indexPath, 'utf8')
   const violations: UiViolation[] = []
 
+  // 目录是子路径组件区（ui / ai-elements），按设计不进 barrel：
+  // 它们体量大 / 依赖重，必须按需引入，进了 barrel 会让 `import { X } from "@repo/ui"` 拖累首屏。
+  // 这里顺带守住「这些区确实存在」——目录被改名 / 被删时立刻报出，避免豁免规则悄悄失效。
+  for (const [dir, reason] of Object.entries(SUBPATH_COMPONENT_DIRS)) {
+    if (!existsSync(join(componentsDir, dir))) {
+      violations.push({
+        kind: 'export',
+        target: `packages/ui/src/components/${dir}`,
+        detail: `${UI_ROOT}/src/components/${dir} 不存在（${reason}）；若已改目录名，请同步 SUBPATH_COMPONENT_DIRS`,
+      })
+    }
+  }
+
   for (const entry of readdirSync(componentsDir)) {
     const full = join(componentsDir, entry)
-    // 只查自有组件：跳过 shadcn 管理的 ui/ 子目录与 hooks 无关目录
+    // 只查「平铺的自有组件」：目录一律不参与 barrel 约定 ——
+    // 其中 components/ui 与 components/ai-elements 是刻意的子路径组件区（理由见 SUBPATH_COMPONENT_DIRS）
     if (statSync(full).isDirectory()) continue
     if (!/\.(ts|tsx)$/.test(entry)) continue
 

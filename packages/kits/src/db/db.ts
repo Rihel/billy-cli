@@ -1,4 +1,5 @@
 import { createDb } from './create-db.js'
+import { deleteDataSourceByName } from 'typeorm-transactional'
 import type {
   EntityManager,
   EntityTarget,
@@ -65,6 +66,10 @@ export class Db implements OnApplicationBootstrap, OnApplicationShutdown {
         await this.dataSource.destroy()
         this.logger.info('数据库连接已关闭')
       }
+      // 顺手从 typeorm-transactional 的注册表移除本条：
+      // 它按 **名字** 注册（默认 'default'），不移除的话同一进程里再次 `new Db(...)`
+      // 会直接抛 "DataSource with name \"default\" has already added"（单测里尤其明显）
+      deleteDataSourceByName(this.dataSource.name)
     })
   }
 }

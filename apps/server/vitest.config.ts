@@ -7,6 +7,9 @@ import { defineConfig } from 'vitest/config'
  */
 export default defineConfig({
   test: {
+    // 共库集成测试（AI 会话/流式那几份）都会写同一批表与 Redis：
+    // 文件之间**串行**执行，避免互相清数据造成的偶发失败
+    fileParallelism: false,
     deps: {
       inline: ['@repo/kits', '@repo/shared'],
     },

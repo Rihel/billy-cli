@@ -3,6 +3,7 @@ import { ConfigModule, ConfigService } from '@nestjs/config'
 import { APP_FILTER, APP_INTERCEPTOR, APP_PIPE } from '@nestjs/core'
 import {
   AppConfigModule,
+  AuditSubscriber,
   DbModule,
   IdGenerationModule,
   JwtModule,
@@ -32,9 +33,13 @@ import {
 import { AdminEntity } from './database/entities/admin-entity.js'
 import { AlertLogEntity } from './database/entities/alert-log-entity.js'
 import { AlertRuleEntity } from './database/entities/alert-rule-entity.js'
+import { ConversationEntity } from './database/entities/conversation-entity.js'
+import { RunEntity } from './database/entities/run-entity.js'
+import { TimelineEntity } from './database/entities/timeline-entity.js'
 import { TodoEntity } from './database/entities/todo-entity.js'
 import { UserEntity } from './database/entities/user-entity.js'
 import { AdminModule } from './modules/admin/index.js'
+import { AiModule } from './modules/ai/index.js'
 import { AuthModule } from './modules/auth/index.js'
 import { AlertTrigger, MonitorModule } from './modules/monitor/index.js'
 import { OpsModule } from './modules/ops/index.js'
@@ -91,7 +96,13 @@ import { UserModule } from './modules/user/index.js'
           AdminEntity,
           AlertRuleEntity,
           AlertLogEntity,
+          ConversationEntity,
+          RunEntity,
+          TimelineEntity,
         ],
+        // 审计订阅者：给继承 AuditEntity 的实体自动写 created_by / updated_by / deleted_by
+        // （操作人由 main.ts 的 setAuditUserProvider 提供）
+        subscribers: [AuditSubscriber],
       }),
     }),
     RedisModule.forRootAsync({
@@ -148,6 +159,8 @@ import { UserModule } from './modules/user/index.js'
     AdminModule,
     UserModule,
     TodoModule,
+    // AI Agent（Mastra）：模型未配置时模块照常装配，仅 /agent/* 返回 3301
+    AiModule,
     StorageModule,
     StreamModule,
     SessionModule,

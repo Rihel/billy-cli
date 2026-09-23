@@ -3,7 +3,7 @@ import type { NextRequest } from 'next/server'
 import { Pages, TokenKey } from './lib/constants'
 
 /**
- * 受保护用户区（`/account`）的**边缘路由守卫**。
+ * 受保护用户区（`/account`、`/ai`）的**边缘路由守卫**。
  *
  * 为什么不能只靠 `account/layout.tsx` 的 SSR 校验：根 layout 是 `force-dynamic` 且带 `<html>` 外壳，
  * 等嵌套 layout 抛 `redirect()` 时响应已开始流式输出 —— Next 只能把跳转意图塞进 RSC 负载
@@ -27,6 +27,6 @@ export function proxy(request: NextRequest) {
 }
 
 export const config = {
-  // 只挂受保护用户区：首页 / auth / markdown 等页面完全不经过中间件（零额外开销）
-  matcher: ['/account/:path*'],
+  // 只挂受保护区（个人中心 + AI 会话）：首页 / auth / markdown 等页面完全不经过中间件（零额外开销）
+  matcher: ['/account/:path*', '/ai/:path*'],
 }

@@ -9,5 +9,7 @@ import { TodoService } from './todo.service.js'
   imports: [AdminModule],
   controllers: [TodoController],
   providers: [TodoRepository, TodoService],
+  // 对外导出：AI agent 的工具经 TodoService 读写真实业务数据（见 modules/ai）
+  exports: [TodoService],
 })
 export class TodoModule {}
