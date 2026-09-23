@@ -101,16 +101,24 @@ export function createTheme(options: {
     }
   }
 
+  // getSnapshot / cycle 放在闭包里：引用天然稳定（useSyncExternalStore 要求 getSnapshot
+  // 稳定），也不会被编译器搬走。**不要**把它们写成传给 useSyncExternalStore 的内联箭头函数
+  // —— React Compiler 会把无捕获的内联函数提升到模块级（编译产物里的 `_temp`），而 `state`
+  // 是 createTheme 的闭包变量，提升后运行时必然 `state is not defined`。
+  const getSnapshot = () => state
+
+  const cycle = () => {
+    const index = THEME_MODES.indexOf(state.mode)
+    setMode(THEME_MODES[(index + 1) % THEME_MODES.length] as ThemeMode)
+  }
+
   const useTheme = (): ThemeApi => {
     // 服务端快照与服务端渲染一致（默认模式），避免水合不匹配
-    const snapshot = useSyncExternalStore(subscribe, () => state, () => state)
+    const snapshot = useSyncExternalStore(subscribe, getSnapshot, getSnapshot)
     return {
       ...snapshot,
       setMode,
-      cycle: () => {
-        const index = THEME_MODES.indexOf(state.mode)
-        setMode(THEME_MODES[(index + 1) % THEME_MODES.length] as ThemeMode)
-      },
+      cycle,
     }
   }
 
