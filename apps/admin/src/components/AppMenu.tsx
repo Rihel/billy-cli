@@ -5,6 +5,7 @@ import type { ComponentType } from 'react'
 import {
   ActivityIcon,
   BellRingIcon,
+  BotIcon,
   LayoutDashboardIcon,
   ListTodoIcon,
   RadioTowerIcon,
@@ -50,6 +51,7 @@ const MENU_ITEMS: MenuItem[] = [
     label: 'AI',
     key: 'ai',
     children: [
+      { label: 'AI 会话', key: '/main/ai/chat', icon: BotIcon },
       { label: '审计与复盘', key: '/main/ai/audit', icon: SparklesIcon },
     ],
   },

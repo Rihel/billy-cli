@@ -42,6 +42,9 @@ importers:
 
   apps/admin:
     dependencies:
+      '@ai-sdk/react':
+        specifier: 3.0.292
+        version: 3.0.292(react@19.3.0)(zod@4.6.5)
       '@repo/http-client':
         specifier: workspace:*
         version: link:../../packages/http-client
@@ -63,6 +66,9 @@ importers:
       '@tanstack/react-store':
         specifier: ^0.11.0
         version: 0.11.0(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
+      ai:
+        specifier: 6.0.289
+        version: 6.0.289(zod@4.6.5)
       clsx:
         specifier: ^2.1.1
         version: 2.1.1
@@ -215,9 +221,6 @@ importers:
 
   apps/web:
     dependencies:
-      '@ai-sdk/react':
-        specifier: 3.0.292
-        version: 3.0.292(react@19.3.0)(zod@4.6.5)
       '@base-ui/react':
         specifier: ^1.7.0
         version: 1.7.0(@date-fns/tz@1.5.0)(@types/react@19.3.0)(date-fns@4.4.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
@@ -239,9 +242,6 @@ importers:
       '@tanstack/react-query':
         specifier: ^5.101.4
         version: 5.101.4(react@19.3.0)
-      ai:
-        specifier: 6.0.289
-        version: 6.0.289(zod@4.6.5)
       class-variance-authority:
         specifier: ^0.7.1
         version: 0.7.1

@@ -49,7 +49,7 @@ import { SubAgentPanel, type SubAgentDelta, type SubAgentState } from './sub-age
 import { toSubAgentDetail, toUIMessages } from './history'
 
 /**
- * AI 会话页（`/ai/chat`）—— 需求 E 的落点：**AI 跑的每个细节都要看得见**。
+ * AI 会话页（`/main/ai/chat`）—— 需求 E 的落点：**AI 跑的每个细节都要看得见**。
  *
  * 三条数据链路（各管一段，互不冒充）：
  * 1. **流**（`useChat` + `/agent/chat/stream`）：文本 / 推理 / 工具入参出参 / 步骤 / 子助手明细，
@@ -208,8 +208,10 @@ export default function AiChatPage() {
   const agents = agentsQuery.data?.agents ?? []
   const activeAgent = agents.find((agent) => agent.key === (agentKey ?? agentsQuery.data?.defaultAgentKey))
 
+  // 高度基准：admin 的 `main` 是 flex-1 + overflow-hidden（见 main/layout.tsx），
+  // 页面用 `h-full` 填满即可 —— 别用 web 前台那套 `calc(100vh - Header)`（父容器不是同一个）
   return (
-    <div className="mx-auto flex h-[calc(100vh-4rem)] w-full max-w-6xl gap-4 px-4 py-4">
+    <div className="mx-auto flex h-full w-full max-w-6xl gap-4 p-4">
       {/* 左：会话列表（库里的真相） */}
       <aside className="hidden w-64 shrink-0 flex-col gap-2 md:flex">
         <div className="flex items-center gap-2">
