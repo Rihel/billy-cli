@@ -22,10 +22,18 @@ description: 在 Billy 工程中开发前端页面：Admin 后台页（@repo/ui 
 **两套前端统一使用 `@repo/ui`（shadcn/ui 风格）与 `@repo/ui`（设计系统：token / 主题 /
 字体契约 / 组件质感）**。
 
-**组件目录约定（硬性）**：`@repo/ui` 的 `components/ui/*` 是 shadcn 管理的目录
-（用 shadcn CLI 增删组件，保留其文件，需要时可直接更新其内容）；**自有封装一律放
-`components/*`**（如 data-table / modal-form / markdown / dict-select），严禁把自封装
-组件放进 `components/ui/*`。新增组件后在 `packages/ui/src/index.ts` 的「自有组件」区段导出。
+**组件目录约定（硬性）**：
+- `components/ui/*` 是 shadcn 管理的目录（用 shadcn CLI 增删，保留其文件，需要时可直接更新内容）；
+- **自有封装一律放 `components/*`**（data-table / modal-form / markdown / dict-select 等），
+  严禁把自封装组件放进 `components/ui/*`；新增后在 `packages/ui/src/index.ts` 的「自有组件」区段导出；
+- **`components/ai-elements/*` 是 AI 会话专用的子路径区**（48 个上游组件，见
+  `docs/design/ai-agent.md` §1）：**不进 barrel**（体积大、按需引入），`check:ui` 与 `components/ui/*`
+  同样豁免 barrel 检查。引入方式**必须带扩展名**（`exports` 的通配映射不做扩展名补全）：
+  ```tsx
+  import { Message, MessageContent, MessageResponse } from '@repo/ui/components/ai-elements/message.tsx'
+  ```
+  这些组件**不读 `message.parts`** —— 状态由调用方从 part 里取出来当 props 传（映射写法见
+  `apps/web/src/app/ai/chat/page.tsx`）。
 
 ## 设计系统（硬性）—— 视觉取值只走语义 token
 

@@ -33,6 +33,14 @@ description: 在 Billy 工程中使用服务端推送（SSE，命名统一为 st
   注释行保活；响应头 `writeHead` 后必须 `flushHeaders()`（否则客户端 fetch 要等到第一次
   write 才 resolve，状态停在 connecting）。
 
+## 与 AI 会话流的边界（别混用）
+
+AI 会话的流式输出**不走本 skill 的 StreamHub/HttpStreamClient**：它用的是 AI SDK v6 的
+UI Message Stream 协议（前端 `useChat` 直接消费），服务端自己写 SSE 帧、自己用
+`AgentStreamStore`（Redis）做输出记录与广播，端点是 `POST /agent/chat/stream`（建流）+
+`GET /agent/run/:runId/stream?offset=N`（重连，无进行中流回 204）+ `POST /agent/run/stop`（停止）。
+要改那一条链路，看 skill `develop-ai-agent` 的 `references/runtime.md`（含 `data-*` 块约定与两处官方语义坑）。
+
 ## 参考文件（本 skill 的组成部分）
 
 | 文件 | 内容 | 何时读 |

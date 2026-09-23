@@ -22,6 +22,7 @@ description: 在 Billy 工程中使用 PostgreSQL / TypeORM 做数据库设计�
 | 软删审计 | `DbService.safeDelete(entity, where)`：操作人默认取 `getAuditUser()`（`setAuditUserProvider` 挂的钩子），可显式覆盖；**先写 `deletedBy` 再软删** |
 | SQL 调试 | `DbService.getFullSqlStatement(builder)` 或同名纯函数：把占位符还原成可粘贴执行的完整 SQL；**要打日志由调用方用自己注入的 `AppLogger` 打**（`DbService` 不注入 logger） |
 | 事务 | `typeorm-transactional`：service 层写方法 `@Transactional()`（`import { Transactional } from '@repo/kits'`） |
+| 外键 | **硬规则：绝对不加物理外键**（`@ManyToOne` / `@JoinColumn` / 迁移里的 `FOREIGN KEY` 一律不用）。关联字段只建普通索引，关系由应用层维护；理由：高写入量表的 FK 检查是纯开销、写入顺序耦合、软删下级联语义本就不需要，且全库统一（既有表 0 个外键）。代价是可能出现孤儿行 —— 由写入口保证不发生，不能靠数据库兜底 |
 
 ## 常用命令（速查）
 

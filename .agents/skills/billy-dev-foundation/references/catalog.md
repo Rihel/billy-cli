@@ -10,6 +10,7 @@
 | [`database`](../../database/SKILL.md) | PostgreSQL / TypeORM 数据库开发手册：表建模、索引设计、查询写法、数据访问层（repository / 事务 / 软删），含常用操作命令 | 建表设计、索引、写查询 / repository、数据库操作时 |
 | [`develop-business-module`](../../develop-business-module/SKILL.md) | 开发完整业务模块：契约 → 数据 → 业务 → 接口 → SDK → 页面全链路 | 新增模块、新功能、CRUD、业务接口、列表 / 表单页时 |
 | [`develop-backend-api`](../../develop-backend-api/SKILL.md) | 后端接口开发的质量维度：幂等 / 鲁棒 / 安全 / 一致 + 执行策略（同步 / 异步）、可观测性、性能与契约演进、可测试性 | 开发 / 修改后端接口、接口质量自查时 |
+| [`develop-ai-agent`](../../develop-ai-agent/SKILL.md) | 开发 AI 能力（`modules/ai`）：agent / 工具 bean / core bean（`asTools()`：规划、子 agent）/ 技能 / eta 提示词 / 会话运行时间线落库 / SSE 流式协议 / 动态子 agent / 上下文压缩 / 崩溃恢复 | 改 AI 模块、加 agent / 工具 / core bean / 技能、动流式协议或落库时 |
 | [`develop-frontend-page`](../../develop-frontend-page/SKILL.md) | 开发前端页面：Admin 后台（@repo/ui 的 DataTable / ModalForm / 存储组件 + TanStack Table/Form）+ Web 前台（shadcn / Server Actions）；视觉取值走 @repo/ui 设计系统 token | 写页面、列表 / 表单、组件、Server Action、设计系统 / token / 主题时 |
 | [`implement-auth`](../../implement-auth/SKILL.md) | 认证与权限：登录 / 注册 / 找回密码、token 与 cookie、路由守卫、用户 / 管理员双体系 | 登录注册、鉴权、权限、守卫、token 相关任务时 |
 | [`object-storage`](../../object-storage/SKILL.md) | 对象存储与文件上传下载：S3/COS 门面、预签名 URL、STS、FileUpload / ImageUpload | 文件上传 / 下载 / 图片存储时 |
