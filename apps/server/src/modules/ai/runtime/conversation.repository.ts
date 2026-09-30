@@ -1,17 +1,27 @@
 import { Inject, Injectable } from '@nestjs/common'
 import { Db, getAuditUser, pageWith, safeDelete, type PageQueryResult } from '@repo/kits'
-import type { AgentConversationListDto, AgentConversationModel } from '@repo/shared'
-import type { DeepPartial } from 'typeorm'
+import { RunStatus, type AgentConversationListDto, type AgentConversationModel } from '@repo/shared'
+import { In, IsNull, type DeepPartial } from 'typeorm'
 import { ConversationEntity } from '../../../database/entities/conversation-entity.js'
+import { RunEntity } from '../../../database/entities/run-entity.js'
 
-/** 实体 → 对外模型（bigint 在 TypeORM 里是字符串，这里转成 number 给前端） */
-export const toConversationModel = (record: ConversationEntity): AgentConversationModel => ({
+/**
+ * 实体 → 对外模型（bigint 在 TypeORM 里是字符串，这里转成 number 给前端）。
+ *
+ * `running` 由调用方查一下运行表给出（默认 false）：**它不是会话表上的字段** ——
+ * 会话语义上是"有没有在跑的一轮"，真相在 `runs`（根 run 的 pending / running）。
+ */
+export const toConversationModel = (
+  record: ConversationEntity,
+  running = false,
+): AgentConversationModel => ({
   id: record.id,
   agentKey: record.agentKey,
   title: record.title,
   status: record.status,
   turnCount: record.turnCount,
   totalTokens: Number(record.totalTokens),
+  running,
   lastActiveAt: record.lastActiveAt,
   createdAt: record.createdAt,
   updatedAt: record.updatedAt,
@@ -53,7 +63,38 @@ export class ConversationRepository {
       .addOrderBy('c.id', 'DESC')
     if (includeDeleted) builder.withDeleted()
     const { data, total } = await pageWith(builder, page, size)
-    return { items: data.map(toConversationModel), total, page, size }
+    const runningIds = await this.runningIds(data.map((record) => record.id))
+    return {
+      items: data.map((record) => toConversationModel(record, runningIds.has(record.id))),
+      total,
+      page,
+      size,
+    }
+  }
+
+  /**
+   * 这一页里**正在跑**的会话 id（一次查询批量算，不逐条查）。
+   *
+   * 只看**根 run**（`parent_run_id IS NULL`）：子 agent 在跑不代表"这一轮还没结束" —— 恰恰相反，父在等它。
+   * 状态用字典值（`pending` / `running`），与部分唯一索引 `uk_run_active_conversation` 同一口径。
+   */
+  async runningIds(conversationIds: readonly string[]): Promise<Set<string>> {
+    if (conversationIds.length === 0) return new Set()
+    const repo = await this.repo()
+    const rows = await repo.manager.getRepository(RunEntity).find({
+      where: {
+        conversationId: In([...conversationIds]),
+        parentRunId: IsNull(),
+        status: In([RunStatus.Pending, RunStatus.Running]),
+      },
+      select: { conversationId: true },
+    })
+    return new Set(rows.map((row) => row.conversationId))
+  }
+
+  /** 单个会话是否正在跑（详情路径用） */
+  async isRunning(conversationId: string): Promise<boolean> {
+    return (await this.runningIds([conversationId])).has(conversationId)
   }
 
   /**

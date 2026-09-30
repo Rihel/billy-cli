@@ -77,6 +77,13 @@ export const AgentConversationSchema = z.object({
   status: z.string(),
   /** 轮数（一次问答算一轮） */
   turnCount: z.number().int().nonnegative(),
+  /**
+   * 这个会话**现在有正在跑的一轮**（根 run 处于 pending / running）。
+   *
+   * 由 `conversation/list` 与 `conversation/detail` 查询时计算：
+   * `create` / `rename` 这类写操作不回这个字段（一律 false），前端以列表/详情为准。
+   */
+  running: z.boolean(),
   /** 累计 token（跨轮合计） */
   totalTokens: z.number().int().nonnegative(),
   lastActiveAt: z.union([z.string(), z.date()]),

@@ -70,7 +70,11 @@ export class AgentConversationService {
     userId: string,
     input: AgentConversationIdDto,
   ): Promise<AgentConversationModel> {
-    return toConversationModel(await this.requireOwned(userId, input.conversationId))
+    const conversation = await this.requireOwned(userId, input.conversationId)
+    return toConversationModel(
+      conversation,
+      await this.conversations.isRunning(conversation.id),
+    )
   }
 
   /**

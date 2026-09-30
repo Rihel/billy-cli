@@ -50,6 +50,9 @@ import { conversationPath, newConversationPath, CHAT_ROOT } from './routes'
 /** 会话列表栏的默认 / 最小 / 最大宽度（数字即像素） */
 const SIDEBAR_WIDTH = { default: 264, min: 180, max: 420 } as const
 
+/** 有会话在跑时的列表轮询间隔（毫秒）：只为把「跑完了」这件事捞回来，不追求实时 */
+const RUNNING_POLL_INTERVAL = 5000
+
 export default function ChatLayout({ children }: { children: ReactNode }) {
   const client = useServerClient()
   const pathname = usePathname()
@@ -60,6 +63,11 @@ export default function ChatLayout({ children }: { children: ReactNode }) {
     queryKey: ['ai', 'conversations'],
     queryFn: () =>
       client.agent.conversation.list({ page: 1, size: 20, includeDeleted: false }),
+    // 有会话在跑就轮询：运行状态是**服务端的事实**（根 run 的 pending / running），
+    // 前端没有别的地方能知道它什么时候结束 —— 一轮跑完要么标题变了、要么轮数 +1，
+    // 靠这次轮询顺手带回来；全都跑完了就停（false），不留一个一直在转的定时器。
+    refetchInterval: (query) =>
+      query.state.data?.items.some((item) => item.running) ? RUNNING_POLL_INTERVAL : false,
   })
 
   /**
@@ -166,8 +174,19 @@ export default function ChatLayout({ children }: { children: ReactNode }) {
                               消耗数字统一在对话框右下角（本轮 `data-run-usage`），
                               列表里再放一个"跨轮累计"会让同一个词（token）指两个不同的东西。
                               累计值在库里（`conversations.total_tokens`），将来要展示就放会话详情，不塞列表行。 */}
-                          <span className="text-xs text-muted-foreground">
-                            {conversation.turnCount} 轮
+                          <span className="flex items-center gap-2 text-xs text-muted-foreground">
+                            {/* 正在跑的呼吸灯：外圈扩散 + 内点常亮（纯装饰，语义在文字「运行中」上，
+                                读屏才不会被一个空 span 打扰） */}
+                            {conversation.running ? (
+                              <span className="flex items-center gap-1.5 text-success">
+                                <span className="relative flex size-1.5" aria-hidden>
+                                  <span className="absolute inline-flex size-full animate-ping rounded-full bg-success opacity-75" />
+                                  <span className="relative inline-flex size-1.5 rounded-full bg-success" />
+                                </span>
+                                运行中
+                              </span>
+                            ) : null}
+                            <span>{conversation.turnCount} 轮</span>
                           </span>
                         </Link>
                         {/* 操作：悬停 / 键盘聚焦时出现（与任务列表同一手感） */}
