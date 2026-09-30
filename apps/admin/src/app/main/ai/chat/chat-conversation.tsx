@@ -38,6 +38,8 @@ import { MessageRow } from './message-row'
 import { toUIMessages } from './history'
 import { usageLineText, usageLineTitle } from './format'
 import { conversationPath, isNewConversation } from './routes'
+import type { AgentConversationModel } from '@repo/shared'
+import type { AppPageQueryResponse } from '@repo/shared'
 import { lastRunUsage, loadWholeRuns, loadWholeTimeline } from './data'
 
 /**
@@ -154,6 +156,36 @@ export function ChatConversation({ conversationId }: { conversationId: string })
     resume: true,
     experimental_throttle: 60,
     onData: (part) => {
+      /**
+       * 首轮结束时的**自动命名**：服务端在收尾阶段把新标题推下来（`data-conversation-title`）。
+       *
+       * 为什么要推：命名发生在服务端收尾，前端那份"会话列表 / 会话详情"缓存不会自己知道 ——
+       * 就地改缓存（而不是整份重拉）才能让侧栏与页头**当场**换名字，且不多一次请求。
+       * 服务端没推（没改名 / 起名失败）时什么都不做：前端本来就显示着兜底标题。
+       */
+      if (part.type === 'data-conversation-title') {
+        const data = part.data as { conversationId?: string; title?: string }
+        const targetId = data.conversationId ?? activeConversationIdRef.current
+        if (!targetId || !data.title) return
+        queryClient.setQueryData<AppPageQueryResponse<AgentConversationModel>>(
+          ['ai', 'conversations'],
+          (current) =>
+            current
+              ? {
+                  ...current,
+                  items: current.items.map((item) =>
+                    item.id === targetId ? { ...item, title: data.title! } : item,
+                  ),
+                }
+              : current,
+        )
+        queryClient.setQueryData<AgentConversationModel>(
+          ['ai', 'conversation', targetId],
+          (current) => (current ? { ...current, title: data.title! } : current),
+        )
+        return
+      }
+
       // 本轮身份：记住 runId 与（新建会话时的）真实会话 id
       if (part.type !== 'data-run') return
       const data = part.data as { runId?: string; conversationId?: string }
@@ -175,6 +207,31 @@ export function ChatConversation({ conversationId }: { conversationId: string })
   })
 
   const streaming = status === 'streaming' || status === 'submitted'
+
+  /**
+   * 一轮**结束后对账**：把侧栏列表与该会话详情失效重取。
+   *
+   * 为什么要这一步：这一轮在服务端改了三样前端看不到的东西 ——
+   * **轮数 +1**、token 累计、以及首轮结束时的**自动命名**（标题）。
+   * 标题另有 `data-conversation-title` 实时推送（见 `onData`），但轮数 / 累计 / 列表排序
+   * 只在库里变，不重取就一直显示旧值（"跑完还是 0 轮"这种）。两个小请求，换一次干净的对账。
+   *
+   * 只在**从流式回到空闲**那一次触发（用 ref 记"刚才确实在跑"），不是每次渲染都拉。
+   */
+  const wasStreaming = useRef(false)
+  useEffect(() => {
+    if (streaming) {
+      wasStreaming.current = true
+      return
+    }
+    if (!wasStreaming.current) return
+    wasStreaming.current = false
+    void queryClient.invalidateQueries({ queryKey: ['ai', 'conversations'] })
+    const detailId = activeConversationIdRef.current ?? (isNew ? undefined : conversationId)
+    if (detailId) {
+      void queryClient.invalidateQueries({ queryKey: ['ai', 'conversation', detailId] })
+    }
+  }, [streaming, isNew, conversationId, queryClient])
 
   /**
    * 从库里重建本会话的历史（刷新 / 直接用地址打开 / 从侧栏点进来都走这里）。
@@ -221,13 +278,14 @@ export function ChatConversation({ conversationId }: { conversationId: string })
   )
   const usage = lastRunUsage(messages)
   /**
-   * 这是该会话的第几轮 = 已有的助手回复数 + 1（正在跑的这一轮也算第 N 轮）。
+   * 这是该会话的第几轮 = 助手消息条数（至少 1）。
    *
    * 口径依据：`toUIMessages` 是**一个根 run = 一条 user + 一条 assistant**，
-   * 所以助手消息条数就是已完成的轮数。用户消息中途落库，所以在流跑起来之后这个数就已经 +1 了。
+   * 而 `useChat` 的 `messages` 里**已经包含正在流的那条助手消息** ——
+   * 所以"+1"会多算一轮（踩过：第一轮答完就显示"2 轮"）。用 max(1, n) 兜住"还没开始/刚发出"的瞬间。
    * 若将来一轮产出多条 assistant 消息，这里要改成按 `data-run` 的 runId 去重计数。
    */
-  const turn = messages.filter((message) => message.role === 'assistant').length + 1
+  const turn = Math.max(1, messages.filter((message) => message.role === 'assistant').length)
 
   /**
    * 用户主动停止。

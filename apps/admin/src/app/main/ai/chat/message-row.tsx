@@ -156,6 +156,11 @@ export function MessageRow({
             // 用量统一在输入框右下角渲染（RunUsageInline），消息里不再重复
             return null
           }
+          if (part.type === 'data-conversation-title') {
+            // 自动命名改的是**会话名**（侧栏 + 页头），与消息内容无关：
+            // 这里显式吃掉，别让它掉进"未知 part"分支渲染成一个徽标
+            return null
+          }
           // 未知 part 类型显式露出来：协议演进时"看得见"比"静默丢掉"好排障
           return (
             <span key={index} className="text-xs text-muted-foreground">
