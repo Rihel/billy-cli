@@ -1120,7 +1120,7 @@ AI SDK 的 `data-sub-agent` part，和主内容走同一条 SSE：
 | --- | --- | --- |
 | 机制（基础设施） | `packages/kits/src/foundation/command/`（`CommandRunner` + `command.platform.ts` + `CommandModule`） | 跨平台执行：shell 解析、超时、杀进程树、输出上限、取消、结果结构化 |
 | 策略（AI 模块） | `apps/server/src/modules/ai/core/command.core.ts`（core bean `command`） | 开关、工作目录边界、时长 / 输出上限、审计日志 |
-| 提示词 | `prompts/templates/partials/conventions.eta`（「关于执行命令」） | 什么时候用 / 不用、有副作用的命令先问用户、失败要读懂原因 |
+| 提示词 | `prompts/templates/partials/tools.eta`（「`run-command` 怎么用」） | 什么时候用 / 不用、能力问题先验证、有副作用先问 / 只读公开请求可直接跑、失败要读懂原因 |
 
 **为什么用 `execa` 而不是自己拼 `child_process`**（早先手写过一版，已弃）：三条硬约束恰好是它的内建能力 ——
 `shell` 在 Unix/Windows 各自的默认解释器、`killDescendants`（Unix 进程组 / Windows `taskkill`）、
@@ -1128,6 +1128,17 @@ AI SDK 的 `data-sub-agent` part，和主内容走同一条 SSE：
 （`timedOut` / `isCanceled` / `isMaxBuffer` / `exitCode`），比在 catch 里猜错误码可靠。
 手写版在 Windows 上**无解**（没有进程组信号，孙进程会残留）。
 依赖声明在 `packages/kits/package.json`（`execa@^10`，engines ≥22，与 `node:24-alpine` 基线一致）。
+
+**提示词的结构口径**（用户口径：角色 / 要求 / 工具 / 原则）：所有 agent 的系统提示词都按这四段组织 ——
+
+| 段 | 文件 | 放什么 |
+| --- | --- | --- |
+| `# 角色` | `templates/<agent>.eta` | 它是谁 + **这个角色的边界**（如"没有绑定业务工具"） |
+| `# 要求` | `partials/requirements.eta` | 交付与格式的硬要求（中文、结论先行、只依据工具返回值、多步任务先写清单） |
+| `# 工具` | `partials/tools.eta` | `# 工具`清单由**实际授权**渲染（`toolBuilder.describe`），下面按 `## <key> 怎么用` 逐条给用法纪律（条件渲染：没授权的工具不出现） |
+| `# 原则` | `partials/principles.eta` | 行为取向（尽量用工具把事办成、任务宽泛先动手、未知与失败如实说） |
+
+首轮注入的 `# 运行环境`（`partials/environment.eta`）跟在最后，也算一段。
 
 #### 3.15.3 安全边界（**如实记录，不假装这是沙箱**）
 
@@ -1174,7 +1185,7 @@ AGENT_COMMAND_WORK_DIR=               # 缺省 = 服务进程工作目录
 | 动作 | 对象 |
 | --- | --- |
 | 新增 | kits `foundation/command/{command.runner,command.platform,command.module,index}`、`ai/core/command.core.ts`、`ai/prompts/environment.ts`、`ai/prompts/templates/partials/environment.eta` |
-| 改动 | `tool-keys`（`runCommand`）、`assistant.agent`（授权）、`conventions.eta`（用法与确认纪律）、`ai.mastra`（`instructions` 改动态参数：追加环境片段）、`ai.core.types`（信封加 `environment`）、`chat.service`（注入 `PROMPT_ENGINE` + 首轮渲染）、`ai.module`（`CommandCore` + `PROMPT_ENGINE` provider）、`app-config`（`command*`）、`root.module`（`CommandModule`）、依赖 `execa` |
+| 改动 | `tool-keys`（`runCommand`）、`assistant.agent`（授权）、提示词片段（用法与确认纪律，现落在 `partials/tools.eta`）、`ai.mastra`（`instructions` 改动态参数：用信封里的渲染全文）、`ai.core.types`（信封加 `systemPrompt`）、`chat.service`（注入 `PROMPT_ENGINE` + 渲染 + 落快照）、`ai.module`（`CommandCore` + `PROMPT_ENGINE` provider）、`app-config`（`command*`）、`root.module`（`CommandModule`）、依赖 `execa` |
 | 测试 | kits 10 项（正常 / 非零退出 / 超时 / 孙进程不拖死 / 截断 / cwd / 起不来 / 中止 / 三端画像）；server：环境片段 3 项 + 命令策略 5 项（开关 / 目录越界 / 目录内 / 时长夹紧）+ e2e 两条（真跑一条跨平台命令并完整落库；首轮注入且第二轮不再注入） |
 
 ## 4. 记忆与落库（调研已回，本节定稿）

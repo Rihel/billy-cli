@@ -290,9 +290,11 @@ describe('查看系统指令（前端「查看系统指令」的数据源）', (
     const result = service.instructions({})
     expect(result.agentKey).toBe(DEFAULT_AGENT_KEY)
     expect(result.name).toBeTruthy()
-    // 工具清单与通用约定都在里面（提示词由模板渲染，工具清单来自实际授权）
-    expect(result.instructions).toContain('可用工具')
-    expect(result.instructions).toContain('通用约定')
+    // 四段结构（角色 / 要求 / 工具 / 原则）都在，且工具清单来自**实际授权**（不是手抄）
+    expect(result.instructions).toContain('# 角色')
+    expect(result.instructions).toContain('# 要求')
+    expect(result.instructions).toContain('# 工具')
+    expect(result.instructions).toContain('# 原则')
     expect(result.instructions).toContain('todo-write')
   })
 
