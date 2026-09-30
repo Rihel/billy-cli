@@ -329,7 +329,7 @@ export type PromptInputActionAddAttachmentsProps = ComponentProps<typeof Dropdow
   label?: string
 }
 
-export const PromptInputActionAddAttachments = ({ label = "Add photos or files", ...props }: PromptInputActionAddAttachmentsProps) => {
+export const PromptInputActionAddAttachments = ({ label = "添加图片或文件", ...props }: PromptInputActionAddAttachmentsProps) => {
   const attachments = usePromptInputAttachments()
 
   const handleSelect = useCallback(
@@ -361,7 +361,7 @@ type PromptInputBaseUIEvent<E extends React.SyntheticEvent = React.SyntheticEven
   preventDefault: () => void
 }
 
-export const PromptInputActionAddScreenshot = ({ label = "Take screenshot", onSelect, ...props }: PromptInputActionAddScreenshotProps) => {
+export const PromptInputActionAddScreenshot = ({ label = "截屏", onSelect, ...props }: PromptInputActionAddScreenshotProps) => {
   const attachments = usePromptInputAttachments()
 
   const handleSelect = useCallback(
@@ -791,12 +791,12 @@ export const PromptInput = ({
     <>
       <input
         accept={accept}
-        aria-label="Upload files"
+        aria-label="上传文件"
         className="hidden"
         multiple={multiple}
         onChange={handleChange}
         ref={inputRef}
-        title="Upload files"
+        title="上传文件"
         type="file"
       />
       <form className={cn("w-full", className)} onSubmit={handleSubmit} ref={formRef} {...props}>
@@ -1049,7 +1049,7 @@ export const PromptInputSubmit = ({
 
   return (
     <InputGroupButton
-      aria-label={isGenerating ? "Stop" : "Submit"}
+      aria-label={isGenerating ? "停止" : "发送"}
       className={cn(className)}
       onClick={handleClick}
       size={size}

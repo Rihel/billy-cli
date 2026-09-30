@@ -83,7 +83,9 @@ export function MessageRow({
   }
 
   return (
-    <Message from={message.role}>
+    // `max-w-full` 覆盖 ai-elements 默认的 `max-w-[95%]`：助手侧的工具卡要**铺满**整行
+    // （左边"跑了什么"、右边"跑到哪了"），留 5% 的缝只会让工具条看着没对齐
+    <Message from={message.role} className="max-w-full">
       <MessageContent>
         {message.parts.map((part, index) => {
           if (isTextUIPart(part)) {

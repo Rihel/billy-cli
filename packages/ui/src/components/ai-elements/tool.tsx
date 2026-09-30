@@ -31,13 +31,13 @@ export type ToolHeaderProps = {
 )
 
 const statusLabels: Record<ToolPart["state"], string> = {
-  "approval-requested": "Awaiting Approval",
-  "approval-responded": "Responded",
-  "input-available": "Running",
-  "input-streaming": "Pending",
-  "output-available": "Completed",
-  "output-denied": "Denied",
-  "output-error": "Error",
+  "approval-requested": "等待确认",
+  "approval-responded": "已回应",
+  "input-available": "执行中",
+  "input-streaming": "待执行",
+  "output-available": "已完成",
+  "output-denied": "已拒绝",
+  "output-error": "出错",
 }
 
 const statusIcons: Record<ToolPart["state"], ReactNode> = {
@@ -61,13 +61,12 @@ export const ToolHeader = ({ className, title, type, state, toolName, ...props }
   const derivedName = type === "dynamic-tool" ? toolName : type.split("-").slice(1).join("-")
 
   return (
-    <CollapsibleTrigger className={cn("flex w-full items-center justify-between gap-4 p-3", className)} {...props}>
-      <div className="flex items-center gap-2">
-        <WrenchIcon className="size-4 text-muted-foreground" />
-        <span className="font-medium text-sm">{title ?? derivedName}</span>
-        {getStatusBadge(state)}
-      </div>
-      <ChevronDownIcon className="size-4 text-muted-foreground transition-transform group-data-[state=open]:rotate-180" />
+    <CollapsibleTrigger className={cn("flex w-full items-center gap-2 p-3", className)} {...props}>
+      {/* 工具条铺满整行：左边「跑了什么」，右边「跑到哪了」 */}
+      <WrenchIcon className="size-4 shrink-0 text-muted-foreground" />
+      <span className="truncate font-medium text-sm">{title ?? derivedName}</span>
+      <span className="ml-auto shrink-0">{getStatusBadge(state)}</span>
+      <ChevronDownIcon className="size-4 shrink-0 text-muted-foreground transition-transform group-data-[state=open]:rotate-180" />
     </CollapsibleTrigger>
   )
 }
@@ -90,7 +89,7 @@ export type ToolInputProps = ComponentProps<"div"> & {
 
 export const ToolInput = ({ className, input, ...props }: ToolInputProps) => (
   <div className={cn("space-y-2 overflow-hidden", className)} {...props}>
-    <h4 className="font-medium text-muted-foreground text-xs uppercase tracking-wide">Parameters</h4>
+    <h4 className="font-medium text-muted-foreground text-xs tracking-wide">入参</h4>
     <div className="rounded-md bg-muted/50">
       <CodeBlock code={JSON.stringify(input, null, 2)} language="json" />
     </div>
@@ -117,7 +116,7 @@ export const ToolOutput = ({ className, output, errorText, ...props }: ToolOutpu
 
   return (
     <div className={cn("space-y-2", className)} {...props}>
-      <h4 className="font-medium text-muted-foreground text-xs uppercase tracking-wide">{errorText ? "Error" : "Result"}</h4>
+      <h4 className="font-medium text-muted-foreground text-xs tracking-wide">{errorText ? "错误" : "结果"}</h4>
       <div
         className={cn(
           "overflow-x-auto rounded-md text-xs [&_table]:w-full",
