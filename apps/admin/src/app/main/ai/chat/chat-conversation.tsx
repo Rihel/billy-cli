@@ -5,7 +5,17 @@ import { useRouter } from 'next/navigation'
 import { useChat } from '@ai-sdk/react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { DefaultChatTransport, isTextUIPart, type UIMessage } from 'ai'
-import { Alert, AlertDescription, Badge } from '@repo/ui'
+import {
+  Alert,
+  AlertDescription,
+  Badge,
+  Button,
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@repo/ui'
 // ai-elements 组件**走子路径**（不进 barrel：体积大、按需引入，见 docs/design/ai-agent.md §1）
 import {
   Conversation,
@@ -21,6 +31,7 @@ import {
   PromptInputTextarea,
   PromptInputTools,
 } from '@repo/ui/components/ai-elements/prompt-input.tsx'
+import { ScrollTextIcon } from 'lucide-react'
 import { useServerClient } from '@/lib/server-client'
 import { ModelPicker } from './model-picker'
 import { MessageRow } from './message-row'
@@ -252,23 +263,30 @@ export function ChatConversation({ conversationId }: { conversationId: string })
         {status !== 'ready' ? (
           <Badge variant={status === 'error' ? 'destructive' : 'outline'}>{status}</Badge>
         ) : null}
-        {agents.length > 1 && (
-          <select
-            className="ml-auto h-8 rounded-md border border-border bg-background px-2 text-sm"
-            value={agentKey ?? agentsQuery.data?.defaultAgentKey ?? ''}
-            onChange={(event) => {
-              // 改选只对"接下来这一轮"生效（服务端每轮从入参取 agentKey）
-              setAgentKeyOverride(event.target.value)
-            }}
-            disabled={streaming}
-          >
-            {agents.map((agent) => (
-              <option key={agent.key} value={agent.key}>
-                {agent.name}
-              </option>
-            ))}
-          </select>
-        )}
+        {/* 右侧：查看系统指令 + 换 agent */}
+        <div className="ml-auto flex items-center gap-2">
+          <SystemInstructions
+            client={client}
+            agentKey={agentKey ?? agentsQuery.data?.defaultAgentKey}
+          />
+          {agents.length > 1 && (
+            <select
+              className="h-8 rounded-md border border-border bg-background px-2 text-sm"
+              value={agentKey ?? agentsQuery.data?.defaultAgentKey ?? ''}
+              onChange={(event) => {
+                // 改选只对"接下来这一轮"生效（服务端每轮从入参取 agentKey）
+                setAgentKeyOverride(event.target.value)
+              }}
+              disabled={streaming}
+            >
+              {agents.map((agent) => (
+                <option key={agent.key} value={agent.key}>
+                  {agent.name}
+                </option>
+              ))}
+            </select>
+          )}
+        </div>
       </header>
 
       {errorText || error ? (
@@ -277,7 +295,8 @@ export function ChatConversation({ conversationId }: { conversationId: string })
         </Alert>
       ) : null}
 
-      <Conversation className="min-h-0 flex-1 rounded-lg border border-border">
+      {/* 消息列表不画外框：整块与页面同底，气泡 / 工具卡自己带层次，边框只会把界面切成一块块 */}
+      <Conversation className="min-h-0 flex-1">
         <ConversationContent>
           {loading ? (
             <p className="p-3 text-xs text-muted-foreground">正在加载会话历史…</p>
@@ -326,6 +345,62 @@ export function ChatConversation({ conversationId }: { conversationId: string })
         </PromptInputFooter>
       </PromptInput>
     </>
+  )
+}
+
+/**
+ * 「查看系统指令」：把**当前 agent 的系统提示词原文**显示出来（只读弹窗）。
+ *
+ * 数据源是 `POST /agent/instructions`（直接回装配期渲染好的那份，服务端不另存副本）：
+ * 于是这里看到的就是真正挂在这个 agent 上的提示词 —— 页面与运行时不可能各说一套。
+ * 会话首轮末尾还会追加「运行环境」片段（操作系统 + 当前时间，见设计文档 §3.15.4），
+ * 那段是**按轮拼上去的**、不在静态指令里，弹窗底部如实说明。
+ *
+ * 打开时才请求（`enabled: open`）：没点开就不该多一次往返，更不该让"看一眼"变成每次进页面都拉。
+ */
+function SystemInstructions({
+  client,
+  agentKey,
+}: {
+  client: ReturnType<typeof useServerClient>
+  agentKey?: string
+}) {
+  const [open, setOpen] = useState(false)
+  const query = useQuery({
+    queryKey: ['ai', 'instructions', agentKey ?? 'default'],
+    queryFn: () => client.agent.instructions(agentKey ? { agentKey } : {}),
+    enabled: open,
+  })
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <Button variant="outline" size="sm" className="gap-1.5" onClick={() => setOpen(true)}>
+        <ScrollTextIcon className="size-3.5" />
+        系统指令
+      </Button>
+      <DialogContent className="max-h-[80vh] gap-3 sm:max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>
+            系统指令{query.data ? ` · ${query.data.name}` : ''}
+          </DialogTitle>
+          <DialogDescription>
+            这个 agent 现在被怎么要求（可用工具、通用约定、角色约定）。会话第一轮还会在末尾
+            追加一段「运行环境」（操作系统 + 当前时间），需要精确时间时它会用 `run-command` 自己取。
+          </DialogDescription>
+        </DialogHeader>
+        {query.isLoading ? (
+          <p className="text-xs text-muted-foreground">正在加载系统指令…</p>
+        ) : query.isError ? (
+          <p className="text-xs text-destructive">
+            加载失败：{query.error instanceof Error ? query.error.message : String(query.error)}
+          </p>
+        ) : (
+          <pre className="max-h-[55vh] overflow-auto rounded-md bg-muted/40 p-3 font-mono text-xs leading-relaxed whitespace-pre-wrap">
+            {query.data?.instructions ?? ''}
+          </pre>
+        )}
+      </DialogContent>
+    </Dialog>
   )
 }
 
