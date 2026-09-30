@@ -111,6 +111,72 @@ describe('toUIMessages', () => {
     })
   })
 
+  it('工具卡按**调用发生的位置**就地铺开（踩过：攒到最后会让刷新后的历史与当时的界面不一样）', () => {
+    // 复刻用户那条会话的形状：正文 → 两次工具调用 → 结果 → 正文 → 又一次工具调用 → 结果
+    const messages = toUIMessages(
+      [
+        item({ seq: 1, kind: 'text', role: 'user', payload: { text: 'AI小说市场调研' } }),
+        item({ seq: 2, kind: 'text', payload: { text: '先看看本机有没有素材。' } }),
+        item({
+          seq: 3,
+          kind: 'tool-call',
+          toolKey: 'run-command',
+          toolCallId: 'call_1',
+          payload: { input: { command: 'pwd && ls -la' } },
+        }),
+        item({
+          seq: 4,
+          kind: 'tool-result',
+          toolKey: 'run-command',
+          toolCallId: 'call_1',
+          payload: { output: { ok: true, stdout: 'src' }, isError: false },
+        }),
+        item({
+          seq: 5,
+          kind: 'tool-call',
+          toolKey: 'run-command',
+          toolCallId: 'call_2',
+          payload: { input: { command: 'uname -a' } },
+        }),
+        item({
+          seq: 6,
+          kind: 'tool-result',
+          toolKey: 'run-command',
+          toolCallId: 'call_2',
+          payload: { output: { ok: true, stdout: 'Darwin' }, isError: false },
+        }),
+        item({ seq: 7, kind: 'text', payload: { text: '翻完了，交待一下结果。' } }),
+        item({
+          seq: 8,
+          kind: 'tool-call',
+          toolKey: 'run-command',
+          toolCallId: 'call_3',
+          payload: { input: { command: 'ls ../' } },
+        }),
+        item({
+          seq: 9,
+          kind: 'tool-result',
+          toolKey: 'run-command',
+          toolCallId: 'call_3',
+          payload: { output: { ok: true, stdout: 'billy' }, isError: false },
+        }),
+      ],
+      [run(ROOT_RUN, null)],
+    )
+
+    const kinds = messages[1].parts.map((part) =>
+      part.type === 'text' ? 'text' : part.type === 'dynamic-tool' ? 'tool' : part.type,
+    )
+    expect(kinds).toEqual(['text', 'tool', 'tool', 'text', 'tool'])
+    // 而且每个工具卡都配上了出参（就地补，不是另起一张）
+    const tools = messages[1].parts.filter((part) => part.type === 'dynamic-tool')
+    expect(tools).toHaveLength(3)
+    for (const tool of tools) {
+      expect(tool).toMatchObject({ state: 'output-available' })
+      expect((tool as { output?: unknown }).output).toBeDefined()
+    }
+  })
+
   it('子 agent：明细不进主对话，但结论合成成 data-sub-agent part（与实时流同构）', () => {
     const messages = toUIMessages(
       [
