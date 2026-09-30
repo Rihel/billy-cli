@@ -149,6 +149,12 @@ export function MessageRow({
             // 增量块本身不渲染（已并入上面的面板），避免重复显示
             return null
           }
+          if (part.type === 'step-start') {
+            // **步骤边界是协议管道**（AI SDK 每进一个 agent step 就往 parts 里 push 一个 `step-start`）：
+            // 界面上「Thought for N seconds」+ 工具卡已经把"这一步干了什么"表达完了，
+            // 再挂一个 step-start 徽标纯属噪音（用户看到的就是这个）
+            return null
+          }
           if (part.type === 'data-run') {
             return null
           }
@@ -176,7 +182,9 @@ export function MessageRow({
             history={messagePlan.history}
           />
         ) : null}
-        {message.parts.length === 0 ? (
+        {/* 空消息占位只在"库里确实是空的"历史消息上出现：流刚建立时 parts 也是空的，
+            那几百毫秒里闪一个「（空消息）」纯属噪声（streaming 时不显示） */}
+        {message.parts.length === 0 && !streaming ? (
           <span className="text-xs text-muted-foreground">（空消息）</span>
         ) : null}
       </MessageContent>

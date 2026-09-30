@@ -110,6 +110,12 @@ export const toUIMessages = (
       } as UIMessage['parts'][number])
     }
 
+    /**
+     * **一个 part 都铺不出来时不要这条消息**：刷新可能发生在"这一轮刚开跑、库里只有 step 行"的时候，
+     * 那种时候历史解析出来是个空壳 —— 界面上就是一个「（空消息）」气泡，看着像坏了；
+     * 这轮真正的内容由重连补发（或下次刷新）补上，不需要历史先占一个空位。
+     */
+    if (parts.length === 0) continue
     messages.push({ id: assistantMessageId ?? `${runId}-assistant`, role: 'assistant', parts })
   }
   return messages
