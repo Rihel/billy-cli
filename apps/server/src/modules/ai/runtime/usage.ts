@@ -10,6 +10,13 @@
  *
  * 各 provider 上这些字段**都可能为 `undefined`**（如不支持缓存或不返回推理 token）→
  * 统一落 `null`，前端缺失就显示"—"，**不编造 0**（0 与"没上报"是两件事）。
+ *
+ * ⚠️ **缓存读要读两处**（实测确认，踩过）：Mastra 的 `totalUsage` **顶层**就有
+ * `cachedInputTokens`（DeepSeek 同一段提示第二次请求实测 1408），而嵌套的
+ * `inputTokenDetails.cacheReadTokens` 在该适配下是空的 ——
+ * 早先只读嵌套那一处，于是**缓存命中永远是 `null`**（用户看到的"缓存命中没数"）。
+ * 顶层优先（跨 provider 更普遍），嵌套作兜底（保留 AI SDK 新形态）。
+ * 推理 token 同理会出现在 `reasoningTokens` 或 `outputTokenDetails.reasoningTokens`。
  */
 export const toUsageRecord = (
   usage: Record<string, unknown> | undefined | null,
@@ -23,9 +30,16 @@ export const toUsageRecord = (
     inputTokens: input ?? null,
     outputTokens: output ?? null,
     totalTokens: (usage.totalTokens as number | undefined) ?? null,
-    cacheReadTokens: (inputDetails.cacheReadTokens as number | undefined) ?? null,
+    cacheReadTokens:
+      (usage.cachedInputTokens as number | undefined) ??
+      (inputDetails.cacheReadTokens as number | undefined) ??
+      null,
+    // 写缓存（cache write）目前只有部分 provider 上报，且只在嵌套结构里
     cacheWriteTokens: (inputDetails.cacheWriteTokens as number | undefined) ?? null,
-    reasoningTokens: (outputDetails.reasoningTokens as number | undefined) ?? null,
+    reasoningTokens:
+      (usage.reasoningTokens as number | undefined) ??
+      (outputDetails.reasoningTokens as number | undefined) ??
+      null,
   }
 }
 

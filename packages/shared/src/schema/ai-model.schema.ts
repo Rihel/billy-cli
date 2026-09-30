@@ -60,7 +60,7 @@ export const AiModelSchema = z.object({
   id: z.string(),
   /** 所属供应商（逻辑引用，无物理外键） */
   providerId: z.string(),
-  /** 供应商侧的模型 id（如 `deepseek-chat`；Gemini 的 `models/xxx` 去掉前缀后存这里） */
+  /** 供应商侧的模型 id（如 `deepseek-chat`；即供应商 `/models` 返回的 `data[].id`） */
   modelKey: z.string(),
   displayName: z.string(),
   /** 上下文窗口（同步来的实测值；手工可改，将来供 §3.9 的窗口解析优先使用） */

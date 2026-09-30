@@ -165,6 +165,92 @@ describe('toUIMessages', () => {
     // 子 run 的文本没有变成主对话里的 text part
     expect(parts.some((part) => part.type === 'text' && part.text.includes('子助手结论'))).toBe(false)
   })
+
+  it('一轮的用量合成成 data-run-usage part（否则回看历史时统计全空）', () => {
+    const messages = toUIMessages(
+      [item({ seq: 1, kind: 'text', role: 'user', payload: { text: '跑一轮' } })],
+      [
+        {
+          ...run(ROOT_RUN, null),
+          usage: { inputTokens: 120, outputTokens: 30, totalTokens: 150, cacheReadTokens: null },
+          stepCount: 2,
+          toolCallCount: 1,
+          durationMs: 1234,
+        } as AgentRunModel,
+      ],
+    )
+
+    const usagePart = messages[1].parts.find((part) => part.type === 'data-run-usage')
+    expect(usagePart).toBeDefined()
+    expect((usagePart as { data: unknown }).data).toEqual({
+      runId: ROOT_RUN,
+      usage: { inputTokens: 120, outputTokens: 30, totalTokens: 150, cacheReadTokens: null },
+      stepCount: 2,
+      toolCallCount: 1,
+      durationMs: 1234,
+    })
+    // 附在 parts 末尾：与实时流（收尾下发）的位置一致
+    expect(messages[1].parts.at(-1)?.type).toBe('data-run-usage')
+  })
+
+  it('没有用量记录时不合成该 part（不编造 0）', () => {
+    const messages = toUIMessages(
+      [
+        item({ seq: 1, kind: 'text', role: 'user', payload: { text: '问一句' } }),
+        item({ seq: 2, kind: 'text', payload: { text: '回答' } }),
+      ],
+      [run(ROOT_RUN, null)],
+    )
+    expect(messages[1].parts.some((part) => part.type === 'data-run-usage')).toBe(false)
+  })
+
+  it('计划事件合成成 data-plan part（payload 原样带上，供计划面板渲染）', () => {    // 新协议：plan 工具的出参 = { plan: Plan, change: { op, ... } }
+    const planPayload = {
+      plan: {
+        goal: '整理待办周报',
+        revision: 2,
+        tasks: [
+          { id: 't1', title: '取数', status: 'done' },
+          { id: 't2', title: '写周报', status: 'in_progress', note: '等 t1' },
+        ],
+      },
+      change: { op: 'update-task', taskId: 't2', status: 'in_progress' },
+    }
+
+    const messages = toUIMessages(
+      [
+        item({ seq: 1, kind: 'text', role: 'user', payload: { text: '整理一份待办周报' } }),
+        item({
+          seq: 2,
+          kind: 'tool-call',
+          toolKey: 'plan-update-task',
+          toolCallId: 'call_plan',
+          payload: { toolCallId: 'call_plan', toolName: 'plan-update-task', input: { taskId: 't2' } },
+        }),
+        item({
+          seq: 3,
+          kind: 'tool-result',
+          toolKey: 'plan-update-task',
+          toolCallId: 'call_plan',
+          payload: {
+            toolCallId: 'call_plan',
+            toolName: 'plan-update-task',
+            output: planPayload,
+            isError: false,
+          },
+        }),
+        // 计划事件（刷新后从库里重建的唯一来源）
+        item({ seq: 4, kind: 'plan', payload: planPayload }),
+      ],
+      [run(ROOT_RUN, null)],
+    )
+
+    const planPart = messages[1].parts.find((part) => part.type === 'data-plan')
+    expect(planPart).toBeDefined()
+    expect(planPart).toMatchObject({ type: 'data-plan', id: 'plan-4' })
+    // payload 原样带上（计划面板自己容错解析，history 不做二次加工）
+    expect((planPart as { data: unknown }).data).toEqual(planPayload)
+  })
 })
 
 describe('toSubAgentDetail', () => {

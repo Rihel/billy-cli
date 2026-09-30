@@ -119,22 +119,23 @@ export class AgentWorkflowsStorage extends WorkflowsStorage {
 
     if ((affected.affected ?? 0) > 0) return
 
-    // 没有对应的运行记录：说明这是"不经过我们自己编排"的裸运行（例如恢复重跑）。
-    // 落一条最小记录，让后续的 list/load 能查到它（宁可留一条来源不明的记录，也不要丢快照）。
-    this.appLogger.warn('ai.storage.snapshot_without_run', {
+    /**
+     * 没有对应的运行记录 → **只记日志，绝不插一行**（踩过的坑）。
+     *
+     * 早先这里"落一条最小记录"，用 `conversationId: ''` 造了个**影子 run**，结果第二次持久化就撞
+     * `uk_run_active_conversation`（该部分唯一索引约束的是"同一会话只允许一轮进行中的**根 run**"，
+     * 而影子行 `parent_run_id IS NULL` + `status='running'`，两张影子行同属"会话 `''`"）——
+     * 启动 durable agent 时直接抛 QueryFailedError。
+     *
+     * 更根本的是：`runs` 是**审计记录**，一行必须对应一次真实的用户问答；适配层凭空造行，
+     * 会让"这一轮是谁问的、问了什么"永远查不到。快照找不到宿主，说明编排层没把 engine runId
+     * 回写（已在 `chat.service` 修：`attachEngineRun`），这时**丢的是快照、不是账**，如实记日志即可。
+     */
+    this.appLogger.warn('ai.storage.snapshot_orphan_skipped', {
       workflowName: input.workflowName,
       runId: input.runId,
+      reason: '没有对应的 runs 行（engine_run_id 未回写？）—— 跳过快照，绝不造影子记录',
     })
-    const created = repo.create({
-      conversationId: '',
-      agentKey: input.workflowName,
-      status: status ?? RunStatus.Running,
-      engineRunId: input.runId,
-      snapshot: input.snapshot as unknown as Record<string, unknown>,
-      startedAt: input.createdAt ?? new Date(),
-      heartbeatAt: new Date(),
-    })
-    await repo.save(created)
   }
 
   /** 读快照（恢复时用它重建现场） */

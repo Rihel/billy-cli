@@ -50,11 +50,19 @@ export class ToolBuilder {
       this.byKey.set(tool.key, tool)
     }
     for (const tool of tools) register(tool, 'AGENT_TOOLS')
+    let coreToolCount = 0
     for (const core of cores) {
-      for (const tool of core.asTools()) register(tool, `core:${core.key}`)
+      const provided = core.asTools()
+      for (const tool of provided) register(tool, `core:${core.key}`)
+      coreToolCount += provided.length
     }
-    if (this.byKey.size === 0) {
-      throw new Error('没有注册任何工具：AGENT_TOOLS 与 AGENT_CORES 汇总为空')
+    // 业务工具**允许为空**（AI 模块与业务模块解耦后就是空的，`AGENT_TOOLS` 是扩展点）；
+    // 但工具池必须有运行时能力（规划 / 子 agent），否则 agent 连"能干什么"都没有 —— 这是装配错误
+    if (coreToolCount === 0) {
+      throw new Error(
+        'core bean 未提供任何工具：AGENT_CORES 至少要有一个交出工具的 core bean' +
+          '（业务工具 AGENT_TOOLS 允许为空）',
+      )
     }
   }
 

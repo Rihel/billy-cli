@@ -9,8 +9,11 @@ import {
   AiModelRepository,
   AiModelService,
   AiProviderRepository,
+  DEFAULT_PROVIDER_BASE_URLS,
+  PROVIDER_ENDPOINTS,
   decryptSecret,
   hintOf,
+  listProviderModels,
   type AiModelConfig,
 } from '../src/modules/ai-model/index.js'
 import {
@@ -152,7 +155,9 @@ describe('AI 模型模块（真实数据库 + mock 供应商）', () => {
   it('③ 建供应商：slug 由名称生成；密钥加密入库，对外只回 hint / hasApiKey', async () => {
     const created = await service.createProvider({
       name: 'My Mock Gateway',
-      kind: AiProviderKind.OpenaiCompatible,
+      // mock 服务就是通用 OpenAI 兼容形态：用国内厂商 kind + 显式 baseUrl 指向 mock，
+      // 验证"厂商 kind 走通用 adapter，且显式地址覆盖厂商默认地址"
+      kind: AiProviderKind.Deepseek,
       baseUrl: mock.baseURL,
       apiKey: TEST_API_KEY,
       enabled: true,
@@ -179,7 +184,7 @@ describe('AI 模型模块（真实数据库 + mock 供应商）', () => {
     await expect(
       service.createProvider({
         name: '纯中文名称',
-        kind: AiProviderKind.OpenaiCompatible,
+        kind: AiProviderKind.Deepseek,
         baseUrl: mock.baseURL,
         apiKey: TEST_API_KEY,
       }),
@@ -266,7 +271,7 @@ describe('AI 模型模块（真实数据库 + mock 供应商）', () => {
 
   it('⑧ provider/test：连通性测试只测不落库，回来的是模型数', async () => {
     const result = await service.testProvider({
-      kind: AiProviderKind.OpenaiCompatible,
+      kind: AiProviderKind.Deepseek,
       baseUrl: mock.baseURL,
       apiKey: TEST_API_KEY,
     })
@@ -316,7 +321,7 @@ describe('AI 模型模块（真实数据库 + mock 供应商）', () => {
     // name / slug 唯一冲突 → 可读错误（4001），而不是数据库 23505
     const second = await service.createProvider({
       name: 'Second Gateway',
-      kind: AiProviderKind.OpenaiCompatible,
+      kind: AiProviderKind.Moonshot,
       baseUrl: mock.baseURL,
       apiKey: TEST_API_KEY,
     })
@@ -366,5 +371,36 @@ describe('AI 模型模块（真实数据库 + mock 供应商）', () => {
     expect(modelRows.every((row) => row.deleted_at !== null)).toBe(true)
     await expect(service.listAvailable()).resolves.toEqual({ models: [], defaultModelId: null })
     expect(await providerIdsOf()).not.toContain(providerId)
+  })
+
+  it('⑫ 不支持列模型的厂商（讯飞星火）：不发请求，直接给明确中文提示', async () => {
+    await expect(
+      listProviderModels({ kind: AiProviderKind.Spark, apiKey: 'sk-test' }),
+    ).rejects.toMatchObject({ code: 3403 })
+    await expect(
+      listProviderModels({ kind: AiProviderKind.Spark, apiKey: 'sk-test' }),
+    ).rejects.toThrow(/该供应商不支持自动拉取模型明细，请手工新增模型/)
+  })
+
+  it('⑬ 未知 kind / 没有默认地址：发请求前就拦住并明确报错', async () => {
+    await expect(
+      listProviderModels({ kind: 'not-a-vendor', apiKey: 'sk-test' }),
+    ).rejects.toThrow(/不支持的供应商类型/)
+
+    // openai-compatible 是"协议形态兜底"，没有官方默认地址：baseUrl 留空必须手填
+    await expect(
+      listProviderModels({ kind: AiProviderKind.OpenaiCompatible, apiKey: 'sk-test' }),
+    ).rejects.toThrow(/必须配置 baseUrl/)
+  })
+
+  it('⑭ 默认地址表：国内厂商带兼容路径，兜底项刻意没有默认地址', () => {
+    expect(DEFAULT_PROVIDER_BASE_URLS[AiProviderKind.Deepseek]).toBe('https://api.deepseek.com')
+    // 百炼 / 火山方舟 / 智谱的兼容路径都不是 /v1
+    expect(PROVIDER_ENDPOINTS[AiProviderKind.Dashscope].baseUrl).toContain('/compatible-mode/v1')
+    expect(PROVIDER_ENDPOINTS[AiProviderKind.Volcengine].baseUrl).toContain('/api/v3')
+    expect(PROVIDER_ENDPOINTS[AiProviderKind.Zhipu].baseUrl).toContain('/api/paas/v4')
+    expect(DEFAULT_PROVIDER_BASE_URLS[AiProviderKind.OpenaiCompatible]).toBeUndefined()
+    // 只有"确认不支持列模型"的那一家在表里被标 false
+    expect(PROVIDER_ENDPOINTS[AiProviderKind.Spark].supportsModelList).toBe(false)
   })
 })

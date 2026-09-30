@@ -10,13 +10,11 @@ import {
   DEFAULT_AGENT_KEY,
   createAgentDefinitions,
 } from '../src/modules/ai/agents/index.js'
+import { AGENT_MAX_STEPS } from '../src/modules/ai/core/ai.constants.js'
 import { createMastra } from '../src/modules/ai/core/ai.mastra.js'
 import { createAgentRegistry } from '../src/modules/ai/core/ai.registry.js'
 import { createPromptEngine } from '../src/modules/ai/prompts/index.js'
 import { SkillLoader } from '../src/modules/ai/skills/index.js'
-import { CreateTodoTool } from '../src/modules/ai/tools/create-todo.tool.js'
-import { GetTodoTool } from '../src/modules/ai/tools/get-todo.tool.js'
-import { ListTodosTool } from '../src/modules/ai/tools/list-todos.tool.js'
 import { ToolBuilder } from '../src/modules/ai/tools/tool.builder.js'
 import { PlannerCore } from '../src/modules/ai/core/planner.core.js'
 import { SubAgentCore } from '../src/modules/ai/core/subagent.core.js'
@@ -27,10 +25,10 @@ import { ConversationRepository } from '../src/modules/ai/runtime/conversation.r
 import { ContextService } from '../src/modules/ai/runtime/context.service.js'
 import { RunRepository } from '../src/modules/ai/runtime/run.repository.js'
 import { TimelineRepository } from '../src/modules/ai/runtime/timeline.repository.js'
-import { TodoService } from '../src/modules/todo/todo.service.js'
 import {
   MOCK_FINAL_TEXT,
-  MOCK_TOOL_INPUT,
+  MOCK_TODO_INITIAL,
+  MOCK_TODO_TOOL,
   type MockModelServer,
   startMockModelServer,
 } from './helpers/mock-model-server.js'
@@ -39,8 +37,12 @@ import {
  * 对话链路端到端测试：**假模型（本地 mock）+ 真实数据库**，不需要任何外部密钥。
  *
  * 验证的是"真的跑通一条链路"：
- *   建 run → 组装上下文 → 落用户消息 → 模型调工具（真实执行 TodoService）→ 落时间线（入参出参完整）
- *   → 收尾（消耗 / 步数 / 轮数 / 标题）→ 数据可查、可复盘。
+ *   建 run → 组装上下文 → 落用户消息 → 模型调工具（真实执行 core bean 的 `todo-write`）
+ *   → 落时间线（入参出参完整、计划落成 `plan` 事件）→ 收尾（消耗 / 步数 / 轮数 / 标题）
+ *   → 数据可查、可复盘。
+ *
+ * AI 模块已与业务模块解耦：这里**没有业务工具 bean**（`AGENT_TOOLS` 为空数组），
+ * 工具池只有 core bean 交出的运行时能力（规划 + 子 agent）。
  */
 
 const USER = 'user_ai_e2e'
@@ -116,57 +118,14 @@ beforeAll(async () => {
   runs = new RunRepository(db)
   timelines = new TimelineRepository(db)
 
-  // 工具 bean：需要一个可用的 TodoService（注入 Db；它内部用事务管理器，用 Db 门面包一层）
-  const todoService = new TodoService(
-    {
-      async page() {
-        return {
-          items: [
-            {
-              id: 't1',
-              title: '写设计文档',
-              description: null,
-              completed: false,
-              createdAt: new Date(),
-              updatedAt: new Date(),
-            },
-          ],
-          total: 1,
-          page: 1,
-          size: 3,
-        }
-      },
-      async get() {
-        return {
-          id: 't1',
-          title: '写设计文档',
-          description: null,
-          completed: false,
-          createdAt: new Date(),
-          updatedAt: new Date(),
-        }
-      },
-      async create() {
-        return {
-          id: 't2',
-          title: '新建的待办',
-          description: null,
-          completed: false,
-          createdAt: new Date(),
-          updatedAt: new Date(),
-        }
-      },
-    } as never,
-    silentLogger,
-  )
-
   // 这份配置要能用"默认模型"造子 agent（跑不跑是另一回事）：baseURL 缺了会退到 model router 报错
   const config = { ...TEST_CONFIG, baseURL: mock.baseURL } as never
   const runner = new AgentRunner(runs, timelines, config, silentLogger)
   const toolBuilder = new ToolBuilder(
-    [new ListTodosTool(todoService), new GetTodoTool(todoService), new CreateTodoTool(todoService)],
+    // 业务工具**为空**：AI 模块与业务模块解耦后的常态（`AGENT_TOOLS` 是扩展点）
+    [],
     // core bean（规划 + 子 agent）：与 `ai.module.ts` 的装配口径一致
-    [new PlannerCore(), new SubAgentCore(runner, silentLogger)],
+    [new PlannerCore(timelines), new SubAgentCore(runner, silentLogger)],
   )
   const registry = createAgentRegistry(
     createAgentDefinitions(createPromptEngine(), toolBuilder),
@@ -242,33 +201,50 @@ describe('对话链路端到端（mock 模型 + 真实数据库）', () => {
     expect(run?.usage).toMatchObject({ totalTokens: expect.any(Number) })
     expect(run?.requestSnapshot).toMatchObject({
       agentKey: DEFAULT_AGENT_KEY,
-      params: { maxSteps: 5 },
+      // 断言"落库的上限 = 运行时实际用的那个"，不写死数字（改上限时不要假红）
+      params: { maxSteps: AGENT_MAX_STEPS },
       context: { strategy: expect.any(String), windowTokens: expect.any(Number) },
     })
 
-    // 3) 时间线：用户消息 → 工具调用 → 工具结果 → 助手文本 → 每步用量
+    // 3) 时间线：用户消息 → 工具调用 → 工具结果 → 计划事件 → 助手文本 → 每步用量
     const page = await timelines.list({ conversationId: result.conversationId, page: 1, size: 100 })
     const kinds = page.items.map((item) => item.kind)
     expect(kinds).toContain(TimelineKind.Text)
     expect(kinds).toContain(TimelineKind.ToolCall)
     expect(kinds).toContain(TimelineKind.ToolResult)
+    expect(kinds).toContain(TimelineKind.Plan)
     expect(kinds).toContain(TimelineKind.Step)
 
     const toolCall = page.items.find((item) => item.kind === TimelineKind.ToolCall)
-    expect(toolCall?.toolKey).toBe('list-todos')
-    // **入参完整落库**（与 mock 给定的一致）
-    expect(toolCall?.payload?.input).toEqual(MOCK_TOOL_INPUT)
+    expect(toolCall?.toolKey).toBe(MOCK_TODO_TOOL)
+    // **入参完整落库**（提交的完整清单与 mock 给定的一字不差）
+    expect(toolCall?.payload?.input).toEqual(MOCK_TODO_INITIAL)
 
     const toolResult = page.items.find((item) => item.kind === TimelineKind.ToolResult)
-    expect(toolResult?.payload?.output).toMatchObject({ total: 1 })
+    // **出参完整落库、不裁剪**：整份清单 + 摘要都在
+    expect(toolResult?.payload?.output).toMatchObject({
+      goal: MOCK_TODO_INITIAL.goal,
+      revision: 1,
+      tasks: MOCK_TODO_INITIAL.tasks,
+    })
+    expect((toolResult?.payload?.output as { summary?: string }).summary).toContain('共 2 项')
     expect(toolResult?.state).toBe('output-available')
 
-    // 4) 步级用量落在 step 行（不是塞进 runs）
+    // 4) 计划落成 `plan` 事件（当前计划 = 最后一条 plan 事件）
+    const planRow = page.items.find((item) => item.kind === TimelineKind.Plan)
+    expect(planRow?.payload).toEqual({
+      goal: MOCK_TODO_INITIAL.goal,
+      revision: 1,
+      tasks: MOCK_TODO_INITIAL.tasks,
+    })
+    expect(planRow!.seq).toBeGreaterThan(toolResult!.seq)
+
+    // 5) 步级用量落在 step 行（不是塞进 runs）
     const stepRows = page.items.filter((item) => item.kind === TimelineKind.Step)
     expect(stepRows.length).toBe(result.stepCount)
     expect(stepRows[0].usage).toMatchObject({ inputTokens: expect.any(Number) })
 
-    // 5) 会话累计与标题（不额外调模型）
+    // 6) 会话累计与标题（不额外调模型）
     const conversation = await conversations.detail(USER, { conversationId: result.conversationId })
     expect(conversation.turnCount).toBe(1)
     expect(conversation.totalTokens).toBeGreaterThan(0)
@@ -302,8 +278,8 @@ describe('对话链路端到端（mock 模型 + 真实数据库）', () => {
     // 最后一次模型请求里应当包含第一轮的用户消息（上下文真的带上了）
     const lastRequest = mock.requests.at(-1)!
     expect(JSON.stringify(lastRequest.messages)).toContain('记住：我叫小王')
-    // 且请求里带着工具定义（能力边界由授权的工具决定）
-    expect(JSON.stringify(lastRequest.tools)).toContain('list-todos')
+    // 且请求里带着工具定义（能力边界由授权的工具决定：业务工具为空，只有运行时能力）
+    expect(JSON.stringify(lastRequest.tools)).toContain(MOCK_TODO_TOOL)
 
     const conversation = await conversations.detail(USER, { conversationId: first.conversationId })
     expect(conversation.turnCount).toBe(2)

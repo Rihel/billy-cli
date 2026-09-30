@@ -15,7 +15,7 @@ import type { UIMessage } from 'ai'
  *
  * 1. **只有根 run 的事件变成消息**（子 agent 的明细不铺进主对话，见第 3 条）；
  * 2. 一行时间线事件 → 一个 part：`text` / `reasoning` / 工具调用与结果（按 `tool_call_id` 配对）
- *    / `plan`（从 `write-plan` 的结论渲染）；
+ *    / `plan`（合成 `data-plan`，与会话页里的计划面板对齐）；
  * 3. `run-sub-agent` 的结论额外合成一条 `data-sub-agent` part —— 于是**历史里的子助手卡片
  *    与实时流看到的是同一种结构**（面板组件只认这一种 part）；
  * 4. 子 agent 的**完整过程**（推理 / 工具往返）不进主对话：它在子 run 的时间线里，
@@ -60,6 +60,7 @@ export const toUIMessages = (
   }
 
   const messages: UIMessage[] = []
+  const runById = new Map(runs.map((run) => [run.id, run]))
   for (const [runId, events] of [...byRun.entries()].sort(
     (a, b) => (a[1][0]?.seq ?? 0) - (b[1][0]?.seq ?? 0),
   )) {
@@ -78,11 +79,25 @@ export const toUIMessages = (
       })
     }
 
-    messages.push({
-      id: `${runId}-assistant`,
-      role: 'assistant',
-      parts: toParts(sorted),
-    })
+    const parts = toParts(sorted)
+    // 用量：实时是收尾下发的 `data-run-usage`，历史（刷新 / 切会话）只能从 runs 重建 ——
+    // 缺了它，回看历史时就只剩正文、统计全空（用户看到的"统计只在当场那一轮有"）。
+    // 追加在最后，与实时流的位置一致。
+    const run = runById.get(runId)
+    if (run?.usage) {
+      parts.push({
+        type: 'data-run-usage',
+        data: {
+          runId,
+          usage: run.usage,
+          stepCount: run.stepCount,
+          toolCallCount: run.toolCallCount,
+          durationMs: run.durationMs ?? null,
+        },
+      } as UIMessage['parts'][number])
+    }
+
+    messages.push({ id: `${runId}-assistant`, role: 'assistant', parts })
   }
   return messages
 }
@@ -93,6 +108,8 @@ const toParts = (events: AgentTimelineItemModel[]): UIMessage['parts'] => {
   // 工具调用与结果要配对成一个 part（AI SDK 的工具 part 本身同时带 input 与 output）
   const tools = new Map<string, ToolPair>()
   const order: string[] = []
+  // 计划事件单独攒着，最后统一追加（工具 part 是在循环之后才铺开的）
+  const plans: AgentTimelineItemModel[] = []
 
   for (const item of events) {
     if (item.role === TimelineRole.User) continue
@@ -115,6 +132,12 @@ const toParts = (events: AgentTimelineItemModel[]): UIMessage['parts'] => {
         if (item.kind === TimelineKind.ToolCall) pair.call = item
         else pair.result = item
         tools.set(key, pair)
+        break
+      }
+      case TimelineKind.Plan: {
+        // 计划事件 → `data-plan` part：**payload 原样带上**（计划卡片自己容错解析），
+        // 于是历史里的计划与实时流"取最后一次 plan 出参"看到的是同一种结构
+        plans.push(item)
         break
       }
       default:
@@ -153,6 +176,16 @@ const toParts = (events: AgentTimelineItemModel[]): UIMessage['parts'] => {
         } as UIMessage['parts'][number])
       }
     }
+  }
+
+  // 计划 part 追加在最后：会话页把"当前计划"渲染在消息末尾，历史与实时因此落在同一个位置。
+  // `id` 用 `plan-<seq>` —— 一个 run 里可能有多条计划事件（每次 plan 工具调用一条），id 必须唯一。
+  for (const item of plans) {
+    parts.push({
+      type: 'data-plan',
+      id: `plan-${item.seq}`,
+      data: item.payload ?? {},
+    } as UIMessage['parts'][number])
   }
   return parts
 }

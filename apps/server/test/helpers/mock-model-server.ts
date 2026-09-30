@@ -5,8 +5,13 @@ import type { AddressInfo } from 'node:net'
  * 离线 mock 模型服务（OpenAI 兼容）：**端到端测试用的假模型**，不依赖任何外部密钥。
  *
  * 行为刻意做得确定，便于断言：
- * 1. 请求里带了工具、且还没有任何 tool 结果 → 先发一次工具调用（`list-todos`）；
+ * 1. 请求里带了工具、且本轮还没有任何工具结果 → 先发一次工具调用（默认 `todo-write`）；
  * 2. 否则 → 回固定文本（代表"拿到工具结果后的最终回答"）。
+ *
+ * 三个标记载荷把"多步行为"确定下来（都写在**用户消息**里）：
+ * - `[delegate]`：改调 `run-sub-agent`；
+ * - `[todo-overwrite]`：第二轮提交一份**改动过的完整清单**（加任务 / 改状态 / 隐式删任务）；
+ * - `[todo-react]`：**同一轮内连提交两次**（第二次的入参里带上第一次新增的任务）。
  *
  * 同时支持非流式（`stream: false`）与流式（`stream: true`，SSE）两种响应，
  * 因为运行时的两条链路都要用它验证。
@@ -35,47 +40,68 @@ export const MOCK_MODEL_LIST = [
 ]
 
 /** 固定回复文本（断言用） */
-export const MOCK_FINAL_TEXT = '已为你查到最近的待办，共 2 条。'
-/** 固定工具入参（断言"入参完整落库"用） */
-export const MOCK_TOOL_INPUT = { limit: 3, keyword: '演示' }
-/** 固定工具出参（断言"出参完整落库、不裁剪"用） */
-export const MOCK_TOOL_OUTPUT = { total: 2, items: [{ id: 't1', title: '写设计文档' }] }
+export const MOCK_FINAL_TEXT = '好，清单已经记下，我按步骤继续推进。'
 
-const readBody = async (req: IncomingMessage): Promise<Record<string, unknown>> => {
-  const chunks: Buffer[] = []
-  for await (const chunk of req) chunks.push(chunk as Buffer)
-  const raw = Buffer.concat(chunks).toString('utf8')
-  try {
-    return JSON.parse(raw) as Record<string, unknown>
-  } catch {
-    return {}
-  }
-}
+// ── 任务清单（`todo-write`）─────────────────────────────────────────────────
+/** 唯一的通用工具 key：提交**完整任务清单**（全量覆盖） */
+export const MOCK_TODO_TOOL = 'todo-write'
 
-/** 判断这一轮该不该发工具调用 */
-const shouldCallTool = (body: Record<string, unknown>): boolean => {
-  const tools = body.tools
-  if (!Array.isArray(tools) || tools.length === 0) return false
-  const messages = Array.isArray(body.messages) ? body.messages : []
-  return !messages.some((message) => (message as { role?: string }).role === 'tool')
-}
-
-const usage = () => ({ prompt_tokens: 128, completion_tokens: 24, total_tokens: 152 })
-
-/** 用户消息里带这个标记时，模型改为调用「规划」工具（验证规划能力） */
-export const MOCK_PLAN_MARKER = '[plan]'
-/** 固定计划（断言"计划完整落库"用） */
-export const MOCK_PLAN = {
+/** 默认的首次提交：一份完整清单（全量提交，不是增量） */
+export const MOCK_TODO_INITIAL = {
   goal: '把待办整理成周报',
-  steps: [
-    { id: 's1', title: '取最近的待办', status: 'in_progress' },
-    { id: 's2', title: '按主题分组', status: 'pending' },
+  tasks: [
+    { id: 't1', title: '取最近的待办', status: 'in_progress' },
+    { id: 't2', title: '按主题分组', status: 'pending' },
   ],
 }
 
-const wantsPlan = (body: Record<string, unknown>): boolean =>
-  JSON.stringify(body.messages ?? []).includes(MOCK_PLAN_MARKER)
+/** 用户消息里带这个标记时，第二轮提交一份改动过的完整清单（验证全量覆盖） */
+export const MOCK_TODO_OVERWRITE_MARKER = '[todo-overwrite]'
+/** 覆盖版清单里新增任务的标题标记（用来判断"这一版已经提交过了"） */
+export const MOCK_OVERWRITE_TOKEN = '[覆盖]'
+/**
+ * 覆盖版：t1 完成、t3 新增、**t2 不再出现（= 删除）**，目标也改了一版。
+ *
+ * 一份提交同时表达"加 / 改 / 删 / 换目标"四件事 —— 这正是全量清单语义要证明的能力。
+ */
+export const MOCK_TODO_OVERWRITE = {
+  goal: '把待办整理成周报（已收敛）',
+  tasks: [
+    { id: 't1', title: '取最近的待办', status: 'completed' },
+    { id: 't3', title: `补充核对口径 ${MOCK_OVERWRITE_TOKEN}`, status: 'in_progress' },
+  ],
+}
 
+/** 用户消息里带这个标记时：同一轮内连提交两次清单（验证同轮内能读到彼此的结果） */
+export const MOCK_TODO_REACT_MARKER = '[todo-react]'
+/** 第一次提交新增的任务标题标记 */
+export const MOCK_REACT_FIRST_TOKEN = '[react-1]'
+/** 第二次提交新增的任务标题标记 */
+export const MOCK_REACT_SECOND_TOKEN = '[react-2]'
+/** 同一轮内的第一次提交：替换掉上一版，新增 r2 */
+export const MOCK_TODO_REACT_FIRST = {
+  goal: '整理评审材料',
+  tasks: [
+    { id: 'r1', title: '起草初稿', status: 'completed' },
+    { id: 'r2', title: `补充数据 ${MOCK_REACT_FIRST_TOKEN}`, status: 'in_progress' },
+  ],
+}
+/**
+ * 同一轮内的第二次提交：**入参里带着第一次新增的 r2**，并把它标成完成、再加一项 r3。
+ *
+ * 运行时在整轮结束后才落 `plan` 事件，所以第二次能算出"比第一次更大的 revision"，
+ * 只可能是因为它读到了第一次在本轮内存里留下的结果 —— 这就是"react 循环里能调整清单"的硬证明。
+ */
+export const MOCK_TODO_REACT_SECOND = {
+  goal: '整理评审材料',
+  tasks: [
+    { id: 'r1', title: '起草初稿', status: 'completed' },
+    { id: 'r2', title: `补充数据 ${MOCK_REACT_FIRST_TOKEN}`, status: 'completed' },
+    { id: 'r3', title: `交叉校验 ${MOCK_REACT_SECOND_TOKEN}`, status: 'in_progress' },
+  ],
+}
+
+// ── 子 agent ──────────────────────────────────────────────────────────────
 /** 子 agent 那一轮的标记（只出现在**主 agent 现场写的 system_prompt** 里） */
 export const MOCK_CHILD_MARKER = '[child]'
 
@@ -92,46 +118,131 @@ export const MOCK_SUBAGENT_TASK = '统计当前待办的完成情况，给出总
 /** 子 agent 那一轮的固定结论文本（父拿到的工具出参里应含它） */
 export const MOCK_CHILD_TEXT = '子助手结论：共 2 条待办，其中 1 条已完成。'
 
-const wantsDelegate = (body: Record<string, unknown>): boolean =>
-  JSON.stringify(body.messages ?? []).includes(MOCK_DELEGATE_MARKER)
+/** 用户消息里带这个标记时，逐字慢速输出（用于验证"停止"与"断线补发"） */
+export const MOCK_SLOW_MARKER = '[slow]'
 
-const toolCallPayload = (body?: Record<string, unknown>) => {
-  if (body && wantsDelegate(body)) {
-    return [
-      {
-        index: 0,
-        id: 'call_mock_delegate',
-        type: 'function',
-        function: {
-          name: MOCK_DELEGATE_TOOL,
-          // 动态子 agent 的协议：提示词由主 agent 现写、任务自包含
-          arguments: JSON.stringify({
-            name: MOCK_SUBAGENT_NAME,
-            system_prompt: MOCK_SUBAGENT_PROMPT,
-            task: MOCK_SUBAGENT_TASK,
-          }),
-        },
-      },
-    ]
-  }
-  const plan = body && wantsPlan(body)
-  return [
-    {
-      index: 0,
-      id: plan ? 'call_mock_plan' : 'call_mock_1',
-      type: 'function',
-      function: {
-        name: plan ? 'write-plan' : 'list-todos',
-        arguments: JSON.stringify(plan ? MOCK_PLAN : MOCK_TOOL_INPUT),
-      },
-    },
-  ]
+/** 一次工具调用的决定（OpenAI 的 tool_calls 形态从这里生成） */
+interface MockToolCall {
+  id: string
+  name: string
+  args: Record<string, unknown>
 }
 
+const TODO_INITIAL_CALL: MockToolCall = {
+  id: 'call_mock_todo_initial',
+  name: MOCK_TODO_TOOL,
+  args: MOCK_TODO_INITIAL as unknown as Record<string, unknown>,
+}
+const TODO_OVERWRITE_CALL: MockToolCall = {
+  id: 'call_mock_todo_overwrite',
+  name: MOCK_TODO_TOOL,
+  args: MOCK_TODO_OVERWRITE as unknown as Record<string, unknown>,
+}
+const TODO_REACT_FIRST_CALL: MockToolCall = {
+  id: 'call_mock_todo_react_1',
+  name: MOCK_TODO_TOOL,
+  args: MOCK_TODO_REACT_FIRST as unknown as Record<string, unknown>,
+}
+const TODO_REACT_SECOND_CALL: MockToolCall = {
+  id: 'call_mock_todo_react_2',
+  name: MOCK_TODO_TOOL,
+  args: MOCK_TODO_REACT_SECOND as unknown as Record<string, unknown>,
+}
+const DELEGATE_CALL: MockToolCall = {
+  id: 'call_mock_delegate',
+  name: MOCK_DELEGATE_TOOL,
+  args: {
+    name: MOCK_SUBAGENT_NAME,
+    system_prompt: MOCK_SUBAGENT_PROMPT,
+    task: MOCK_SUBAGENT_TASK,
+  },
+}
+
+const readBody = async (req: IncomingMessage): Promise<Record<string, unknown>> => {
+  const chunks: Buffer[] = []
+  for await (const chunk of req) chunks.push(chunk as Buffer)
+  const raw = Buffer.concat(chunks).toString('utf8')
+  try {
+    return JSON.parse(raw) as Record<string, unknown>
+  } catch {
+    return {}
+  }
+}
+
+const messagesOf = (body: Record<string, unknown>): Array<Record<string, unknown>> =>
+  Array.isArray(body.messages) ? (body.messages as Array<Record<string, unknown>>) : []
+
+/** 本轮（含历史）是否已经有工具结果 —— 有就说明"模型已经拿到过工具反馈" */
+const hasToolResult = (body: Record<string, unknown>): boolean =>
+  messagesOf(body).some((message) => message.role === 'tool')
+
+/** 只把**工具结果**拼起来找标记（工具调用入参里也会出现同样的文字，混在一起会误判） */
+const toolResultText = (body: Record<string, unknown>): string =>
+  messagesOf(body)
+    .filter((message) => message.role === 'tool')
+    .map((message) => JSON.stringify(message))
+    .join('\n')
+
+const containsResult = (body: Record<string, unknown>, token: string): boolean =>
+  toolResultText(body).includes(token)
+
+const wanted = (body: Record<string, unknown>, marker: string): boolean =>
+  JSON.stringify(body.messages ?? []).includes(marker)
+
+/**
+ * 这一轮该发哪个工具调用 —— 唯一的决策入口（非流式与流式共用，避免两条链路行为漂移）。
+ *
+ * 返回 null 表示"不发工具调用"（回到文本回答）。
+ */
+const decideToolCall = (body: Record<string, unknown>): MockToolCall | null => {
+  const tools = body.tools
+  if (!Array.isArray(tools) || tools.length === 0) return null
+
+  if (wanted(body, MOCK_DELEGATE_MARKER)) {
+    return hasToolResult(body) ? null : DELEGATE_CALL
+  }
+  if (wanted(body, MOCK_TODO_REACT_MARKER)) {
+    // 同一轮内两次提交：第二次要等第一次的结果（它带着 [react-1]）出现
+    if (!containsResult(body, MOCK_REACT_FIRST_TOKEN)) return TODO_REACT_FIRST_CALL
+    if (!containsResult(body, MOCK_REACT_SECOND_TOKEN)) return TODO_REACT_SECOND_CALL
+    return null
+  }
+  if (wanted(body, MOCK_TODO_OVERWRITE_MARKER)) {
+    return containsResult(body, MOCK_OVERWRITE_TOKEN) ? null : TODO_OVERWRITE_CALL
+  }
+  // 默认：带工具且本轮还没有任何工具结果 → 提交任务清单
+  // （业务工具已全部移除，`todo-write` 是当前唯一的通用工具）
+  return hasToolResult(body) ? null : TODO_INITIAL_CALL
+}
+
+/**
+ * 用量（OpenAI 形态）。
+ *
+ * `prompt_tokens_details.cached_tokens` 刻意给一个非零值：缓存命中是**用户要看的一列**
+ * （`cachedInputTokens` → `usage.cacheReadTokens`），早先这条链路只读嵌套字段导致永远是 `null`；
+ * mock 里带上它，端到端就能断言"命中数确实一路传到了库里、也下发给前端了"。
+ */
+const usage = () => ({
+  prompt_tokens: 128,
+  completion_tokens: 24,
+  total_tokens: 152,
+  prompt_tokens_details: { cached_tokens: 64 },
+})
+
+/** 决定 → OpenAI 的 `tool_calls` 数组 */
+const toToolCalls = (call: MockToolCall): unknown[] => [
+  {
+    index: 0,
+    id: call.id,
+    type: 'function',
+    function: { name: call.name, arguments: JSON.stringify(call.args) },
+  },
+]
+
 const respondJson = (res: ServerResponse, body: Record<string, unknown>): void => {
-  const useTool = shouldCallTool(body)
-  const message = useTool
-    ? { role: 'assistant', content: null, tool_calls: toolCallPayload(body) }
+  const call = decideToolCall(body)
+  const message = call
+    ? { role: 'assistant', content: null, tool_calls: toToolCalls(call) }
     : { role: 'assistant', content: finalText(body) }
   res.writeHead(200, { 'content-type': 'application/json' })
   res.end(
@@ -144,7 +255,7 @@ const respondJson = (res: ServerResponse, body: Record<string, unknown>): void =
         {
           index: 0,
           message,
-          finish_reason: useTool ? 'tool_calls' : 'stop',
+          finish_reason: call ? 'tool_calls' : 'stop',
         },
       ],
       usage: usage(),
@@ -156,9 +267,6 @@ const sse = (res: ServerResponse, payload: unknown): void => {
   res.write(`data: ${JSON.stringify(payload)}\n\n`)
 }
 
-/** 用户消息里带这个标记时，逐字慢速输出（用于验证"停止"与"断线补发"） */
-export const MOCK_SLOW_MARKER = '[slow]'
-
 /** 这一轮请求是不是"子 agent 那一轮"（看系统提示词里有没有标记） */
 const isChildTurn = (body: Record<string, unknown>): boolean =>
   JSON.stringify(body.messages ?? []).includes(MOCK_CHILD_MARKER)
@@ -167,15 +275,13 @@ const isChildTurn = (body: Record<string, unknown>): boolean =>
 const finalText = (body: Record<string, unknown>): string =>
   isChildTurn(body) ? MOCK_CHILD_TEXT : MOCK_FINAL_TEXT
 
-const isSlow = (body: Record<string, unknown>): boolean => {
-  const messages = Array.isArray(body.messages) ? body.messages : []
-  return JSON.stringify(messages).includes(MOCK_SLOW_MARKER)
-}
+const isSlow = (body: Record<string, unknown>): boolean =>
+  JSON.stringify(messagesOf(body)).includes(MOCK_SLOW_MARKER)
 
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms))
 
 const respondStream = (res: ServerResponse, body: Record<string, unknown>): void => {
-  const useTool = shouldCallTool(body)
+  const call = decideToolCall(body)
   res.writeHead(200, {
     'content-type': 'text/event-stream',
     'cache-control': 'no-cache',
@@ -189,13 +295,13 @@ const respondStream = (res: ServerResponse, body: Record<string, unknown>): void
     model: 'mock-model',
   }
 
-  if (useTool) {
+  if (call) {
     sse(res, {
       ...base,
       choices: [
         {
           index: 0,
-          delta: { role: 'assistant', tool_calls: toolCallPayload(body) },
+          delta: { role: 'assistant', tool_calls: toToolCalls(call) },
           finish_reason: null,
         },
       ],

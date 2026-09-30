@@ -69,6 +69,13 @@ export interface ResolvedRuntimeModel {
   displayName: string
   /** 供应商地址（留空走官方端点） */
   baseURL?: string
+  /**
+   * 供应商类型（`ai_providers.kind`）。
+   *
+   * 运行时**靠它决定走官方适配还是通用 OpenAI 兼容**（见 `usesOfficialAdapter`）——
+   * 刻意不用 `modelRef` 的前缀：那是 slug（人能改、还能撞名），只有 `kind` 是权威字段。
+   */
+  providerKind: string
   /** 解密后的密钥（**只在内存里流转，绝不落库 / 回传**） */
   apiKey: string
   contextWindow: number | null
@@ -441,6 +448,7 @@ export class AiModelService {
       modelRef: `${provider.slug}/${model.modelKey}`,
       modelKey: model.modelKey,
       displayName: model.displayName,
+      providerKind: provider.kind,
       ...(provider.baseUrl ? { baseURL: provider.baseUrl } : {}),
       apiKey: this.decryptProviderKey(provider),
       contextWindow: model.contextWindow,

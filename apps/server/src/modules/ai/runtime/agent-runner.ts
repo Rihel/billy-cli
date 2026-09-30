@@ -18,6 +18,7 @@ import type { AgentRuntimeEnvelope } from '../core/ai.core.types.js'
 import { toUsageRecord, usageField } from './usage.js'
 import { RunRepository } from './run.repository.js'
 import { StreamRecorder } from './stream-recorder.js'
+import { readStreamSteps, readStreamUsage } from './stream-result.js'
 import { TimelineRepository } from './timeline.repository.js'
 
 /** 子 agent 的最终结论（**这个对象会作为 `run-sub-agent` 的工具出参交给主 agent**，故字段要自解释） */
@@ -316,17 +317,12 @@ export class AgentRunner {
     output: unknown,
     error: string | null,
   ): Promise<SubAgentOutcome> {
-    // 步级用量只有读完流才知道；`output` 为 null（抛错路径）时只用录制器已知的部分
-    const steps = output
-      ? ((await (output as { steps: Promise<unknown> }).steps) as unknown[] as never[])
-      : []
+    // 步级用量只有读完流才知道；`output` 为 null（抛错路径）时只用录制器已知的部分。
+    // **必须走 stream-result 的读取口径**：durable 下 `agent.stream()` 返回的是包装对象
+    // （`{ output, fullStream, … }`），直接读 `output.steps` 拿到 undefined（踩过，见 stream-result.ts）
+    const steps = output ? ((await readStreamSteps(output)) as unknown as never[]) : []
     const usage = output
-      ? toUsageRecord(
-          (await (output as { totalUsage: Promise<unknown> }).totalUsage) as Record<
-            string,
-            unknown
-          >,
-        )
+      ? toUsageRecord(await readStreamUsage(output))
       : null
     const persisted = await recorder.finish(steps)
     const durationMs = Date.now() - startedAt

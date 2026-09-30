@@ -12,9 +12,6 @@ import { createMastra } from '../src/modules/ai/core/ai.mastra.js'
 import { createAgentRegistry } from '../src/modules/ai/core/ai.registry.js'
 import { createPromptEngine } from '../src/modules/ai/prompts/index.js'
 import { SkillLoader } from '../src/modules/ai/skills/index.js'
-import { CreateTodoTool } from '../src/modules/ai/tools/create-todo.tool.js'
-import { GetTodoTool } from '../src/modules/ai/tools/get-todo.tool.js'
-import { ListTodosTool } from '../src/modules/ai/tools/list-todos.tool.js'
 import { ToolBuilder } from '../src/modules/ai/tools/tool.builder.js'
 import { PlannerCore } from '../src/modules/ai/core/planner.core.js'
 import { SubAgentCore } from '../src/modules/ai/core/subagent.core.js'
@@ -31,6 +28,8 @@ import {
   MOCK_DELEGATE_MARKER,
   MOCK_FINAL_TEXT,
   MOCK_SLOW_MARKER,
+  MOCK_TODO_INITIAL,
+  MOCK_TODO_TOOL,
   type MockModelServer,
   startMockModelServer,
 } from './helpers/mock-model-server.js'
@@ -150,39 +149,14 @@ beforeAll(async () => {
   runs = new RunRepository(db)
   timelines = new TimelineRepository(db)
 
-  const todoService = {
-    async page() {
-      return {
-        items: [
-          {
-            id: 't1',
-            title: '写设计文档',
-            description: null,
-            completed: false,
-            createdAt: new Date(),
-            updatedAt: new Date(),
-          },
-        ],
-        total: 1,
-        page: 1,
-        size: 3,
-      }
-    },
-    async get() {
-      return { id: 't1', title: '写设计文档', description: null, completed: false, createdAt: new Date(), updatedAt: new Date() }
-    },
-    async create() {
-      return { id: 't2', title: 'x', description: null, completed: false, createdAt: new Date(), updatedAt: new Date() }
-    },
-  } as never
-
   // 子 agent 执行器（core bean `subagent` 依赖它）：配置必须给全子 agent 字段 + mock 的 baseURL
   const config = { ...TEST_CONFIG, baseURL: mock.baseURL } as never
   const runner = new AgentRunner(runs, timelines, config, silentLogger)
   const toolBuilder = new ToolBuilder(
-    [new ListTodosTool(todoService), new GetTodoTool(todoService), new CreateTodoTool(todoService)],
+    // 业务工具**为空**：AI 模块与业务模块解耦后的常态（`AGENT_TOOLS` 是扩展点）
+    [],
     // core bean（规划 + 子 agent）：与 `ai.module.ts` 的装配口径一致
-    [new PlannerCore(), new SubAgentCore(runner, silentLogger)],
+    [new PlannerCore(timelines), new SubAgentCore(runner, silentLogger)],
   )
   const registry = createAgentRegistry(
     createAgentDefinitions(createPromptEngine(), toolBuilder),
@@ -272,6 +246,15 @@ describe('流式链路端到端（mock 模型 + 真实 DB + 真实 Redis）', ()
     expect(kinds).toContain(TimelineKind.ToolCall)
     expect(kinds).toContain(TimelineKind.ToolResult)
     expect(kinds).toContain(TimelineKind.Step)
+    // 流式链路同样把 `todo-write` 的出参落成 `plan` 事件（与工具结果同一套保真口径）
+    expect(kinds).toContain(TimelineKind.Plan)
+    const planRow = page.items.find((item) => item.kind === TimelineKind.Plan)
+    expect(planRow?.payload).toMatchObject({ revision: 1, goal: MOCK_TODO_INITIAL.goal })
+    // 工具结果行也要认得出是哪个工具：AI SDK 的结果片段不带工具名（只有 toolCallId），
+    // 录制器必须用入参那一步记下的名字补上（否则审计与 `plan` 识别都会失效）
+    expect(page.items.find((item) => item.kind === TimelineKind.ToolResult)?.toolKey).toBe(
+      MOCK_TODO_TOOL,
+    )
 
     // 助手文本与工具结果都完整落库
     const assistantText = page.items
@@ -286,6 +269,12 @@ describe('流式链路端到端（mock 模型 + 真实 DB + 真实 Redis）', ()
     )
     expect(runRow[0]?.status).toBe(RunStatus.Succeeded)
     expect(runRow[0]?.usage).toBeTruthy()
+    // 缓存命中**必须落到库里**（Mastra 放在顶层 `cachedInputTokens`，早先只读嵌套字段 → 永远是 null，
+    // 用户看到"缓存命中没数"；mock 的 `prompt_tokens_details.cached_tokens = 64` 就是为这条链路加的）。
+    // 数值口径：本轮是**两步**流程（先 todo-write 再回答）= 两次模型调用，mock 每次命中 64，
+    // Mastra 把两次**累加**成 128 —— 所以这里断言"命中被记下来了且大于 0"，
+    // 精确的字段优先级（顶层 64 胜过嵌套）由 `ai-usage.test.ts` 的纯函数单测钉住。
+    expect(runRow[0]?.usage).toMatchObject({ cacheReadTokens: 128 })
   })
 
   it('子 agent 的实时明细走**同一条流**（data-sub-agent 状态块 + data-sub-agent-delta 增量块）', async () => {

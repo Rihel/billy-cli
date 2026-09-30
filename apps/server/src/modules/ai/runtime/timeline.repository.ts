@@ -8,6 +8,7 @@ import {
 } from '@repo/shared'
 import type { DeepPartial } from 'typeorm'
 import { TimelineEntity } from '../../../database/entities/timeline-entity.js'
+import { toPlan, type Plan } from './plan.js'
 
 /** 实体 → 对外模型 */
 export const toTimelineModel = (record: TimelineEntity): AgentTimelineItemModel => ({
@@ -87,6 +88,22 @@ export class TimelineRepository {
     if (runId) builder.andWhere('t.runId = :runId', { runId })
     const { data, total } = await pageWith(builder, page, size)
     return { items: data.map(toTimelineModel), total, page, size }
+  }
+
+  /**
+   * **当前计划** = 该会话里最后一条 `kind='plan'` 事件（append-only，见 `runtime/plan.ts`）。
+   *
+   * 这是规划能力的**唯一真相源**：规划工具每次执行时都从这里读出"现在改到哪一版了"
+   * （而不是把计划塞进运行时信封的快照里 —— 同一轮内多次工具调用会读到过期版本）。
+   * 形状不认识（历史遗留 / 半真半假）时返回 null，调用方当作"还没有计划"处理。
+   */
+  async latestPlan(conversationId: string): Promise<Plan | null> {
+    const repo = await this.repo()
+    const row = await repo.findOne({
+      where: { conversationId, kind: TimelineKind.Plan },
+      order: { seq: 'DESC' },
+    })
+    return toPlan(row?.payload)
   }
 
   /** 最新一条上下文摘要（组装上下文时用它定位"从哪之后看原文"） */

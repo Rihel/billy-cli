@@ -14,6 +14,24 @@ const SEED_PROVIDER_NAME = '环境变量默认'
 const SEED_PROVIDER_SLUG = 'env-default'
 
 /**
+ * 从 `MASTRA_MODEL` 的前缀推导供应商类型（`deepseek/deepseek-flash` → `deepseek`）。
+ *
+ * 为什么必须推导而不是一律写 `openai-compatible`（踩过）：`kind` 是运行时判断
+ * "走官方 SDK 还是通用兼容"的**唯一依据**（见 `usesOfficialAdapter`）。种子若把 DeepSeek
+ * 写成通用兼容，就会出现"前台配着 DeepSeek 却拿不到思考"——通用兼容层不认
+ * `reasoning_content`，整段思考被丢掉，而且 `agent.stream()` 的返回形态也跟着变。
+ *
+ * 认不出的前缀（自建网关 / 别的模型名）才回落 `openai-compatible`（那也是它的语义：
+ * 协议形态兜底，不是某一家厂商）。
+ */
+const providerKindFromModelRef = (modelRef: string): string => {
+  const prefix = modelRef.includes('/') ? modelRef.slice(0, modelRef.indexOf('/')) : ''
+  return (AiProviderKind.values as string[]).includes(prefix)
+    ? prefix
+    : AiProviderKind.OpenaiCompatible
+}
+
+/**
  * **环境变量种子服务**：把历史上只能用 `MASTRA_MODEL` / `MASTRA_API_KEY` / `MASTRA_BASE_URL`
  * 配置的模型，在**首次启动**时搬进库里（设计文档 §4.9：环境变量从此只是可选种子，不是运行时来源）。
  *
@@ -42,45 +60,77 @@ export class AiModelSeedService implements OnApplicationBootstrap {
     if (!envModel || !envApiKey) return
 
     try {
-      if ((await this.providers.countIncludingDeleted()) > 0) return
+      const seedKind = providerKindFromModelRef(envModel)
 
-      const secret = resolveEncryptionSecret({
-        encryptionKey: this.config.encryptionKey,
-        fallbackSecret: this.config.fallbackSecret,
-      })
-      const baseUrl = process.env.MASTRA_BASE_URL?.trim() || null
-      const modelKey = envModel.includes('/')
-        ? envModel.slice(envModel.lastIndexOf('/') + 1)
-        : envModel
+      // ① 还没种过：库里一条供应商都没有 → 建种子供应商 + 种子模型
+      if ((await this.providers.countIncludingDeleted()) === 0) {
+        const secret = resolveEncryptionSecret({
+          encryptionKey: this.config.encryptionKey,
+          fallbackSecret: this.config.fallbackSecret,
+        })
+        const baseUrl = process.env.MASTRA_BASE_URL?.trim() || null
+        const modelKey = envModel.includes('/')
+          ? envModel.slice(envModel.lastIndexOf('/') + 1)
+          : envModel
 
-      const provider = await this.providers.create({
-        name: SEED_PROVIDER_NAME,
-        slug: SEED_PROVIDER_SLUG,
-        kind: AiProviderKind.OpenaiCompatible,
-        baseUrl,
-        apiKeyCipher: encryptSecret(envApiKey, secret),
-        apiKeyHint: hintOf(envApiKey),
-        enabled: true,
-      })
-      await this.models.create({
-        providerId: provider.id,
-        modelKey,
-        displayName: modelKey,
-        source: AiModelSource.Manual,
-        enabled: true,
-        lastSeenAt: null,
-        syncedAt: null,
-        raw: null,
-      })
+        const provider = await this.providers.create({
+          name: SEED_PROVIDER_NAME,
+          slug: SEED_PROVIDER_SLUG,
+          kind: seedKind,
+          baseUrl,
+          apiKeyCipher: encryptSecret(envApiKey, secret),
+          apiKeyHint: hintOf(envApiKey),
+          enabled: true,
+        })
+        await this.models.create({
+          providerId: provider.id,
+          modelKey,
+          displayName: modelKey,
+          source: AiModelSource.Manual,
+          enabled: true,
+          lastSeenAt: null,
+          syncedAt: null,
+          raw: null,
+        })
 
-      this.logger.log(
-        '已用环境变量种子初始化，后续请在后台模型管理维护（环境变量不再决定运行时模型）',
-        { providerId: provider.id, slug: provider.slug, modelKey, hasBaseUrl: Boolean(baseUrl) },
-      )
+        this.logger.log(
+          '已用环境变量种子初始化，后续请在后台模型管理维护（环境变量不再决定运行时模型）',
+          {
+            providerId: provider.id,
+            slug: provider.slug,
+            kind: provider.kind,
+            modelKey,
+            hasBaseUrl: Boolean(baseUrl),
+          },
+        )
+        return
+      }
+
+      // ② 种子供应商的类型自愈：早期版本把种子一律写成 `openai-compatible`，
+      //    于是"官方适配"失效（思考字段整段丢失、流返回形态变成包装对象）。
+      //    **只修种子供应商**（slug 固定、名固定），人自己建的供应商一律不动。
+      await this.repairSeedProviderKind(seedKind)
     } catch (error) {
       // 种子失败不能拖垮启动：AI 能力不可用是可接受的状态（页面会提示去后台配模型）
       this.logger.error('环境变量种子初始化失败（已跳过，不影响启动）', { error })
     }
+  }
+
+  /**
+   * 把种子供应商的 `kind` 修正为从 `MASTRA_MODEL` 推导出来的值（已是正确值则不动）。
+   *
+   * 判据刻意收紧：**slug 与名都等于种子固定值**才修 —— 人可能把种子那家改成别的，
+   * 那时它就不再是"种子"，不能替人做决定。
+   */
+  private async repairSeedProviderKind(seedKind: string): Promise<void> {
+    const seed = await this.providers.findBySlug(SEED_PROVIDER_SLUG)
+    if (!seed || seed.name !== SEED_PROVIDER_NAME || seed.kind === seedKind) return
+    await this.providers.update(seed.id, { kind: seedKind })
+    this.logger.warn('种子供应商类型已修正（否则官方适配不生效、思考字段会丢）', {
+      providerId: seed.id,
+      from: seed.kind,
+      to: seedKind,
+    })
   }
 }
 

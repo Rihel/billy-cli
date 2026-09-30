@@ -42,7 +42,7 @@ export function ModelPicker({
   const client = useServerClient()
   const [open, setOpen] = useState(false)
 
-  const { data, isFetching } = useQuery({
+  const { data, isFetching, isError, error, refetch } = useQuery({
     queryKey: ['ai', 'available-models'],
     queryFn: () => client.agent.models(),
   })
@@ -64,7 +64,29 @@ export function ModelPicker({
     return [...byProvider.entries()]
   }, [models])
 
-  if (!isFetching && models.length === 0) {
+  /**
+   * 三种状态必须分清（踩过）：**加载失败** ≠ **确实没配模型**。
+   *
+   * 早先只判断"空数组"，于是 401（AI 接口曾只认前台用户守卫）也被显示成
+   * "还没有可用的模型：请到模型管理添加" —— 把真实的鉴权错误伪装成配置问题，
+   * 用户会跑去后台白折腾一圈。现在错误单独提示并给重试。
+   */
+  if (isError) {
+    return (
+      <button
+        type="button"
+        onClick={() => void refetch()}
+        className="rounded-md border border-destructive/40 px-2 py-1 text-xs text-destructive"
+        title={error instanceof Error ? error.message : String(error)}
+      >
+        模型清单加载失败，点击重试
+      </button>
+    )
+  }
+  if (isFetching && models.length === 0) {
+    return <Badge variant="outline" className="text-muted-foreground">正在加载模型…</Badge>
+  }
+  if (models.length === 0) {
     return (
       <Badge variant="outline" className="text-muted-foreground">
         还没有可用的模型：请到「模型管理」添加供应商并启用模型

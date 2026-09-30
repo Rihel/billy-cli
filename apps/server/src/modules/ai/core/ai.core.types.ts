@@ -54,6 +54,8 @@ export interface RuntimeModel {
   displayName: string
   /** 供应商地址（留空走官方端点） */
   baseURL?: string
+  /** 供应商类型（`ai_providers.kind`）：运行时靠它判断走官方 SDK 还是通用 OpenAI 兼容 */
+  providerKind: string
   /** 解密后的密钥（**只在内存里流转**） */
   apiKey: string
   contextWindow: number | null

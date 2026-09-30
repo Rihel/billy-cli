@@ -876,6 +876,10 @@ key: agent:run:{runId}          TTL: 6h
 ③ 已结束（succeeded / failed / interrupted / canceled）→ 不重连流
    POST /agent/timeline { conversationId, runId? } → 拿 timelines 重建
    → 消息、推理、工具调用与结果、摘要都在里面，渲染成完整历史
+   ⚠️ 这是**分页接口**（`BasePaginateSchema`：`size ≤ 100`），而历史重建要的是**完整**时间线：
+   前端必须**翻页取全**（`page` 递增到 `items.length >= total`），不能写一个大 `size`
+   —— 越界会直接 400（踩过：会话页原先传 `size: 500`，于是"点会话什么都不显示"）。
+   同理，"按 run 拉子助手明细"也必须翻页。
 
 ④ 补发失败也不丢内容
    Redis 输出记录过期/丢失 → 退化成"先按 timelines 拉历史，再接后续新内容"
@@ -1431,18 +1435,25 @@ const toolCalls = await output.toolCalls
 3. **唯一键 = 同步锚点**：`uk_provider_name (name)`、`uk_model_provider_key (provider_id, model_key)`。
    同步按后者 upsert，所以**重复执行结果一致（幂等）**。
 
-#### 4.8.2 拉模型明细：按 `kind` 选一个 adapter
+#### 4.8.2 拉模型明细：只收国内厂商，统一走 OpenAI 兼容 adapter
 
-供应商的"列模型"接口形态不统一，所以按 `kind` 分派（**新增一家 = 加一个 adapter + 登记一行**）：
+适配范围**限定国内厂商**（OpenAI / Anthropic / Google 三家海外厂商已剔除）。这些厂商对外都提供
+OpenAI 形态的"列模型"接口，所以**只有一个通用 adapter**，厂商差别只落在默认 baseURL 上：
 
-| `kind` | 请求 | 鉴权 | 响应（我们取什么） | 状态 |
-| --- | --- | --- | --- | --- |
-| `openai` / `openai-compatible`（含 DeepSeek、阿里百炼兼容模式、vLLM、One-API、自建网关） | `GET {base}/models` | `Authorization: Bearer <key>` | `data[]`：`id` / `created` / `owned_by` | **已实测**（本仓 mock 服务按此形态实现，端到端跑通） |
-| `anthropic` | `GET https://api.anthropic.com/v1/models?limit=1000`（要翻页） | `x-api-key` + `anthropic-version: 2023-06-01` | `data[]`：`id` / `display_name` / `created_at` | 按官方文档实现，**未实测**（需 Anthropic key） |
-| `google`（Gemini） | `GET https://generativelanguage.googleapis.com/v1beta/models?key=<key>&pageSize=1000` | 查询参数带 key | `models[]`：`name`（`models/xxx`，去掉前缀）/ `displayName` / `inputTokenLimit` / `outputTokenLimit` / `supportedGenerationMethods` | 按官方文档实现，**未实测**（需 Google key） |
+| 请求 | 鉴权 | 响应（我们取什么） |
+| --- | --- | --- |
+| `GET {base}/models` | `Authorization: Bearer <key>` | `data[]`：`id` 是同步锚点；`created` / `owned_by` 等原样进 `raw` |
+
+`kind → 默认 baseURL / 是否支持列模型 / 备注` 登记在 `apps/server/src/modules/ai-model/provider-adapters.ts`
+的 `PROVIDER_ENDPOINTS`：DeepSeek、阿里云百炼（`/compatible-mode/v1`）、智谱（`/api/paas/v4`）、
+月之暗面、火山方舟（`/api/v3`，列表可能只返回部分）、硅基流动、MiniMax、百度千帆、腾讯混元、阶跃星辰。
+讯飞星火官方只提供 chat/completions、没有列模型接口，标 `supportsModelList: false` → 同步直接提示
+「请手工新增模型」，**不发必然失败的请求**；`openai-compatible` 保留为**协议形态兜底**
+（自建网关 / One-API / vLLM），没有官方默认地址，必须显式配 `baseUrl`。
 
 解析结果统一成：`{ modelKey, displayName?, contextWindow?, maxOutputTokens?, capabilities?, raw }` ——
 adapter 是**纯函数 + 一次 fetch**，可以脱离数据库单测（有 mock 服务就够）。
+OpenAI 兼容形态通常一页返回全部，翻页只保留"最多 10 页 + `has_more` / `last_id`"的死循环兜底。
 
 #### 4.8.3 同步的语义（哪些会自动改、哪些绝不自动改）
 
@@ -1512,16 +1523,83 @@ new Agent({
 5. **窗口优先用库里配的实测值**（`ai_models.context_window`）：自建网关上的私有模型 tokenlens 根本不认识，
    实测值比公开数据可信；缺失才回落 tokenlens → 兜底值（`ContextWindowResolution.source = 'provider'`）。
 
-#### 4.9.3 前端：模型选择器（ai-elements 现成组件）
+#### 4.9.3 前端：模型选择器 + 输出统计（都在输入框底栏）
 
-会话页顶部用 ai-elements 的 `ModelSelector`（Dialog + Command 那一套：
-`ModelSelectorContent / Input / List / Group / Item / Name / Logo`），按供应商分组、显示
-`<slug>/<modelKey>` 与窗口、当前项打勾；选中的 `modelId` 随每轮请求发给服务端。
+底栏（ai-elements 的 `PromptInputFooter`）分左右两半：
 
-数据源是 `POST /agent/models`（**只回"供应商启用 + 模型启用"的**）：选择器里能看到的每个模型都是确定能用的；
-**库空时不给可点入口**，直接提示"请到模型管理添加供应商并启用模型" —— 这是"只能使用配的模型"的界面表达。
+- **左下角：模型选择器**。ai-elements 的 `ModelSelector`（Dialog + Command 那一套：
+  `ModelSelectorContent / Input / List / Group / Item / Name / Logo`），按供应商分组、显示
+  `<slug>/<modelKey>` 与窗口、当前项打勾；选中的 `modelId` 随每轮请求发给服务端。
+  数据源是 `POST /agent/models`（**只回"供应商启用 + 模型启用"的**）：选择器里能看到的每个模型都是确定能用的；
+  **库空时不给可点入口**，直接提示"请到模型管理添加供应商并启用模型" —— 这是"只能使用配的模型"的界面表达。
+- **右下角：本轮统计** —— 行内 `N 轮 M 步，输入 X，输出 Y，缓存命中 Z`（`chat/format.ts` 的
+  `usageLineText`），悬停给精确值与合计 / 推理 / 耗时（`usageLineTitle`）。数据来自 `data-run-usage`
+  （见 §5.4 的 data 块表），历史回看时由 `history.ts` 从 `runs.usage` 重建同一块。
+  四条口径：
+  1. **数字用 k / m 缩写**（`compactNumber`：`3179` → `3.2k`、`1_250_000` → `1.3m`，一位小数、
+     去掉多余的 `.0`、进位后不出现 `1000k`），悬停看精确值（千分位）；
+  2. **轮 / 步**：轮 = 该会话第几轮（前端按"已有助手回复数 + 1"算），步 = 这一轮模型被调了几次（`stepCount`）；
+  3. **缺失的项整项不显示**（provider 没上报不是 0，编造 0 会让人误判）——
+     没有缓存命中时连"缓存命中"四个字都不出现；
+  4. 只在这一处显示本轮消耗（见下）。
 
-#### 4.9.4 与 §4.8 的关系
+**消耗只在这一个地方显示本轮值**：侧栏会话列表**不放 token**（只显示"几轮"）。
+`conversations.total_tokens` 是**跨轮累计**，和右下角的"本轮消耗"是两个不同的数 ——
+同一个词（token）在同一个界面里指两件事，必然让人对不上账。
+累计值仍留在库里（§4.7 记的口径），将来要展示就放到会话详情里，不塞列表行。
+子助手面板里的那份是**子助手自己的消耗**（已计入父那一轮的合计，`rollUpUsage`），
+属于"明细"，与右下角的"合计"并存是刻意的（谁花的钱要查得到）。
+
+**缓存命中（`cacheReadTokens`）的取数口径**（实测确认，踩过）：Mastra 的 `totalUsage` **顶层**就有
+`cachedInputTokens`（DeepSeek 同一段提示第二次请求实测 1408），而嵌套的
+`inputTokenDetails.cacheReadTokens` 在部分 provider 适配下是空的。`usage.ts` 的 `toUsageRecord`
+**顶层优先、嵌套兜底** —— 早先只读嵌套那处，于是"缓存命中"永远是 `null`
+（`ai-usage.test.ts` 用实测样本把这条钉住，`ai-stream-e2e.test.ts` 断言 mock 的命中数确实落到库里）。
+
+#### 4.9.4 前端：一个会话一个路由
+
+```
+/main/ai/chat                 → 重定向到 /main/ai/chat/new
+/main/ai/chat/new             → 「还没建会话」的保留段（首轮发出后服务端回真实 id，页面 replace 成真实地址）
+/main/ai/chat/<conversationId> → 某个会话（历史从 timelines + runs 重建）
+```
+
+- 侧栏会话列表在 **`chat/layout.tsx`**（路由的 `layout`）：切换会话**不重挂载列表**，
+  滚动位置与 query 缓存都保留；列表项是 `<Link href={conversationPath(id)}>`（可新开标签、可前进后退）。
+- 对话区在 **`chat/[conversationId]/page.tsx`** → `ChatConversation`，**`key` 用会话 id**：
+  切换会话整棵重挂载，`useChat` 内部消息、reasoning 展开态、子助手增量缓存全部隔离（不串会话）。
+- 新会话的首轮：流里的 `data-run` 带回真实 `conversationId` → `router.replace` 换地址。
+  **同一动态路由换参数不会重挂载**，所以正在流的这一轮不中断（这也是不把首轮拆成"先建会话再跳"的原因：
+  那样会多一次往返、还要处理"建了会话却发失败"的空会话）。
+
+#### 4.9.5 跑对话用哪个 SDK：**由供应商 `kind` 决定，不由 slug 决定**
+
+`kind` 同时驱动两件事，两者刻意分开（`modules/ai-model/provider-adapters.ts`）：
+
+| 表 | 管什么 |
+| --- | --- |
+| `PROVIDER_ENDPOINTS` | **列模型**怎么拉（`GET {base}/models` 的形态与默认地址） |
+| `OFFICIAL_ADAPTER_KINDS` | **跑对话**用哪个 SDK（`usesOfficialAdapter(kind)`） |
+
+两条硬约束（都踩过，直接表现为"前端看不到思考"与"运行判成失败"）：
+
+1. **官方适配不能传 `url`**：`{ id, url, apiKey }` 里的 `url` 会把请求降级到通用 OpenAI 兼容层 ——
+   DeepSeek 的思考字段叫 `reasoning_content`，通用层不认它，**整段思考被丢掉**；同时
+   `agent.stream()` 的返回形态也从 `MastraModelOutput` 变成可恢复执行的工作流包装对象
+   （`{ output, fullStream, runId, … }`，真正的输出在 `output` 字段里）。
+   → 官方适配只传 `{ id, apiKey }`；用户若配了 `baseURL` 会被忽略，但**必须记一条 warn**（不静默）。
+2. **判据是 `ai_providers.kind`，不是 `modelRef` 的 slug 前缀**：slug 是展示字段，人能改、还能撞名
+   （种子供应商的 slug 就是 `env-default`）—— 用 slug 判断会让官方适配在改个 slug 之后静默失效。
+
+决策收敛成一个纯函数 `decideModelForMastra(model)`（`modules/ai/core/ai.model-decision.ts`），
+由单测直接锁住上面两条（`test/ai-model-decision.test.ts` + 端到端 `test/ai-model-selection-e2e.test.ts`）。
+
+**流结果的读取口径**（`modules/ai/runtime/stream-result.ts`）：`agent.stream()` 有**两种返回形态**
+（普通 / durable 包装），`steps` 与 `totalUsage` 一律经 `readStreamSteps` / `readStreamUsage` 读，
+**绝不直接写 `output.steps`** —— durable 下那是 `undefined`，`steps.entries()` 会把**已经跑完并展示给用户的
+一轮**判成 failed（现象：回答流出来了，但运行是失败的、会话没有轮次与标题）。
+
+#### 4.9.6 与 §4.8 的关系
 
 §4.8 是"配置的真相源"（供应商 / 模型的表与同步），§4.9 是"配置怎么被消费"。
 一句话：**后台配什么，agent 就能用什么；没配的一律用不了**（这不是约定，是解析路径上只有一条）。
@@ -1589,6 +1667,7 @@ AI SDK v6 的续传是**两层 API**（不是同一方法的两个名字）：
 | 块 | id | 谁写 | 用途 |
 | --- | --- | --- | --- |
 | `data-run` | 不带 | 编排层（`chatStream` 开头第一个片段） | **本轮身份**：`runId` / `conversationId` / `agentKey` —— 前端据此记住 runId（停止与重连只认它），新建会话时也靠它拿到 conversationId |
+| `data-run-usage` | 不带 | 编排层（**收尾落库之后、`[DONE]` 之前**） | **本轮用量**：`usage`（输入 / 输出 / 缓存读 / 推理 token，缺失一律 `null`）+ `stepCount` / `toolCallCount` / `durationMs`。为什么走流而不是让前端再查一次：用量只有收尾时才知道，而这个位置是唯一能保证"客户端看到用量时库里也一定有了"的地方；同时进 Redis 输出记录与广播，所以断线补发也拿得到。前端渲染在**输入框右下角**（k / m 缩写 + 悬停精确值，见 §4.9.3）；历史回看时 `history.ts` 从 `runs.usage` 重建同一块 |
 | `data-sub-agent` | **带**（= 子 run id） | `run-sub-agent` 工具（经工具上下文的 `writer`） | 子助手状态快照：status / 结论 / 步数与工具次数 / usage（§3.14.5） |
 | `data-sub-agent-delta` | 不带 | 同上 | 子助手的流式增量（text / reasoning），一块一个 |
 

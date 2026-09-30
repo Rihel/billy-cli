@@ -170,14 +170,14 @@ describe('两条硬规则', () => {
       event({
         role: 'assistant',
         kind: 'tool-call',
-        toolKey: 'get-todo',
+        toolKey: 'todo-write',
         toolCallId: 'call_1',
         payload: { toolCallId: 'call_1', input: { todoId: 't1' } },
       }),
       event({
         role: 'assistant',
         kind: 'tool-result',
-        toolKey: 'get-todo',
+        toolKey: 'todo-write',
         toolCallId: 'call_1',
         payload: { toolCallId: 'call_1', output: { title: '完整出参' } },
       }),
@@ -205,14 +205,14 @@ describe('两条硬规则', () => {
       event({
         role: 'assistant',
         kind: 'tool-call',
-        toolKey: 'list-todos',
+        toolKey: 'todo-write',
         toolCallId: 'call_2',
         payload: { input: {} },
       }),
       event({
         role: 'assistant',
         kind: 'tool-result',
-        toolKey: 'list-todos',
+        toolKey: 'todo-write',
         toolCallId: 'call_2',
         payload: { output: huge },
       }),

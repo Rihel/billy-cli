@@ -29,8 +29,8 @@ import {
   type AgentTimelineListDto,
 } from '@repo/shared'
 import type { Response } from 'express'
-import { currentUserId } from '../../common/index.js'
-import { UserAuthGuard } from '../auth/index.js'
+import { requestContext } from '../../common/index.js'
+import { AnyAuthGuard } from '../auth/index.js'
 import { AgentService } from './core/ai.service.js'
 import { AiModelService } from '../ai-model/index.js'
 import { AgentChatService } from './runtime/chat.service.js'
@@ -44,12 +44,12 @@ import { AgentTimelineService } from './runtime/timeline.service.js'
  * 分两组：
  * - **装配查询**（status / list）：AI 能力状态与 agent 清单；
  * - **会话读写**（conversation/*、timeline/list）：会话增删查与时间线查询。
- *   归属一律由服务端从鉴权上下文取 userId（`currentUserId()`），**不接受前端传**。
+ *   归属一律由服务端从鉴权上下文取 userId（`this.ownerId()`），**不接受前端传**。
  *
  * 对话与流式推送（建流 / 重连 / 停止）在后续步骤接入，见设计文档 §3.13 与 §5。
  */
 @Controller('agent')
-@UseGuards(UserAuthGuard)
+@UseGuards(AnyAuthGuard)
 export class AiController {
   constructor(
     @Inject(AgentService) private readonly agentService: AgentService,
@@ -60,6 +60,22 @@ export class AiController {
     @Inject(AgentRunService) private readonly runs: AgentRunService,
     @Inject(AgentChatService) private readonly chat: AgentChatService,
   ) {}
+
+  /**
+   * 当前身份 id：**前台用户优先，其次管理员**。
+   *
+   * 为什么不用 `currentUserId()`：AI 能力对两端都开放（会话页在 **admin** 里，带的是管理员 token），
+   * 而 `currentUserId()` 在管理员身份下会**抛错**（`currentAdminId()` 反之亦然）。
+   * 与 SSE 订阅同一套做法：从请求上下文里读，读到谁就是谁。
+   */
+  private ownerId(): string {
+    const userId = requestContext.get('userId')
+    if (userId) return userId
+    const adminId = requestContext.get('adminId')
+    if (adminId) return adminId
+    // 走到这里说明守卫放行了却没写身份（真正的编程错误，而不是"没登录"）
+    throw new Error('Authenticated request context is unavailable')
+  }
 
   @Post('status')
   @HttpCode(200)
@@ -92,7 +108,7 @@ export class AiController {
   @Post('chat')
   @HttpCode(200)
   chatOnce(@Body({ schema: AgentChatSchema }) input: AgentChatDto) {
-    return this.chat.chat(currentUserId(), input)
+    return this.chat.chat(this.ownerId(), input)
   }
 
   /**
@@ -105,14 +121,14 @@ export class AiController {
     @Body({ schema: AgentChatSchema }) input: AgentChatDto,
     @Res() response: Response,
   ): Promise<void> {
-    await this.chat.chatStream(currentUserId(), input, response)
+    await this.chat.chatStream(this.ownerId(), input, response)
   }
 
   /** 停止某一轮（本进程 abort；在别的副本上则广播） */
   @Post('run/stop')
   @HttpCode(200)
   stopRun(@Body({ schema: AgentRunStopSchema }) input: AgentRunStopDto) {
-    return this.chat.stopRun(currentUserId(), input.runId)
+    return this.chat.stopRun(this.ownerId(), input.runId)
   }
 
   /**
@@ -128,7 +144,7 @@ export class AiController {
   ): Promise<void> {
     const from = Number.parseInt(offset ?? '0', 10)
     const resumed = await this.chat.resumeCurrentRun(
-      currentUserId(),
+      this.ownerId(),
       Number.isFinite(from) && from > 0 ? from : 0,
       response,
     )
@@ -149,7 +165,7 @@ export class AiController {
   ): Promise<void> {
     const from = Number.parseInt(offset ?? '0', 10)
     const resumed = await this.chat.resumeRun(
-      currentUserId(),
+      this.ownerId(),
       runId,
       Number.isFinite(from) && from > 0 ? from : 0,
       response,
@@ -162,7 +178,7 @@ export class AiController {
   createConversation(
     @Body({ schema: AgentConversationCreateSchema }) input: AgentConversationCreateDto,
   ) {
-    return this.conversations.create(currentUserId(), input)
+    return this.conversations.create(this.ownerId(), input)
   }
 
   @Post('conversation/list')
@@ -170,7 +186,7 @@ export class AiController {
   listConversations(
     @Body({ schema: AgentConversationListSchema }) input: AgentConversationListDto,
   ) {
-    return this.conversations.list(currentUserId(), input)
+    return this.conversations.list(this.ownerId(), input)
   }
 
   @Post('conversation/detail')
@@ -178,7 +194,7 @@ export class AiController {
   detailConversation(
     @Body({ schema: AgentConversationIdSchema }) input: AgentConversationIdDto,
   ) {
-    return this.conversations.detail(currentUserId(), input)
+    return this.conversations.detail(this.ownerId(), input)
   }
 
   /** 软删会话（**唯一的删除入口**；运行记录与时间线不提供删除） */
@@ -187,7 +203,7 @@ export class AiController {
   async removeConversation(
     @Body({ schema: AgentConversationIdSchema }) input: AgentConversationIdDto,
   ) {
-    await this.conversations.remove(currentUserId(), input)
+    await this.conversations.remove(this.ownerId(), input)
     return { removed: true }
   }
 
@@ -195,19 +211,19 @@ export class AiController {
   @Post('run/list')
   @HttpCode(200)
   listRuns(@Body({ schema: AgentRunListSchema }) input: AgentRunListDto) {
-    return this.runs.list(currentUserId(), input)
+    return this.runs.list(this.ownerId(), input)
   }
 
   /** 运行详情（输入快照 + 上游错误原文 + 子 agent 列表）：复盘的深挖入口 */
   @Post('run/detail')
   @HttpCode(200)
   detailRun(@Body({ schema: AgentRunIdSchema }) input: AgentRunIdDto) {
-    return this.runs.detail(currentUserId(), input)
+    return this.runs.detail(this.ownerId(), input)
   }
 
   @Post('timeline/list')
   @HttpCode(200)
   listTimeline(@Body({ schema: AgentTimelineListSchema }) input: AgentTimelineListDto) {
-    return this.timelines.list(currentUserId(), input)
+    return this.timelines.list(this.ownerId(), input)
   }
 }

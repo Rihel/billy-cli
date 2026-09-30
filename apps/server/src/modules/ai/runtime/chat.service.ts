@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common'
-import { AppLogger } from '@repo/kits'
+import { AppError, AppLogger } from '@repo/kits'
 import {
   AppErrorCodes,
   RunErrorStage,
@@ -46,6 +46,7 @@ import { RunRepository } from './run.repository.js'
 import { TimelineRepository } from './timeline.repository.js'
 import { AgentStreamStore } from './stream-store.service.js'
 import { StreamRecorder } from './stream-recorder.js'
+import { readStreamSteps, readStreamUsage } from './stream-result.js'
 import { toPlanPayload } from './plan.js'
 import { mergeUsage, toUsageRecord, totalTokensOf } from './usage.js'
 
@@ -74,8 +75,16 @@ const SUMMARY_MAX_CHARS = 2_000
 const titleFrom = (message: string): string =>
   message.replace(/\s+/g, ' ').trim().slice(0, 40)
 
-/** 上游错误分类：鉴权失败 / 限流 单独成码，其余归通用失败 */
+/**
+ * 上游错误分类：鉴权失败 / 限流 单独成码，其余归通用失败。
+ *
+ * **我们自己抛的业务错（`AppError` 家族）原样返回**（踩过）：早先这里无条件包一层
+ * `AgentFailedError`，于是 3402「模型已禁用」/3406「还没配模型」这些**明确、可行动**的错误码
+ * 全被降级成 3302「AI 回复失败」—— 前端只能显示一句泛泛的失败，
+ * "去后台启用模型"这种修复动作就传递不出去（错误码的意义正在于此）。
+ */
 const classifyModelError = (error: unknown): Error => {
+  if (error instanceof AppError) return error
   const raw = error instanceof Error ? error.message : String(error)
   const lower = raw.toLowerCase()
   if (
@@ -347,6 +356,8 @@ export class AgentChatService {
       modelRef: resolved.modelRef,
       modelKey: resolved.modelKey,
       displayName: resolved.displayName,
+      // 供应商类型：Mastra 的模型函数靠它决定走官方 SDK 还是通用 OpenAI 兼容（思考字段的成败在这）
+      providerKind: resolved.providerKind,
       ...(resolved.baseURL ? { baseURL: resolved.baseURL } : {}),
       apiKey: resolved.apiKey,
       contextWindow: resolved.contextWindow,
@@ -728,11 +739,11 @@ export class AgentChatService {
       await recorder.flushPending()
 
       // 收尾：**先 Postgres 终态，再清 Redis 进度**（反过来会留下"没进度也没结果"的窗口）
-      const steps = (await output.steps) as unknown as StepLike[]
-      const usage = await this.rollUpUsage(
-        run.id,
-        toUsageRecord((await output.totalUsage) as unknown as Record<string, unknown>),
-      )
+      // 步骤 / 用量一律走 stream-result 的读取口径：`agent.stream()` 在**可恢复执行（durable）**下
+      // 返回的是包装对象（`{ output, fullStream, … }`），真正的 `MastraModelOutput` 在 `output` 里 ——
+      // 直接读 `output.steps` 会拿到 undefined（踩过的崩点，见 stream-result.ts 的注释）
+      const steps = (await readStreamSteps(output)) as unknown as StepLike[]
+      const usage = await this.rollUpUsage(run.id, toUsageRecord(await readStreamUsage(output)))
       const persisted = await recorder.finish(steps)
       const durationMs = Date.now() - startedAt
       await this.runs.finish(run.id, {
@@ -762,6 +773,29 @@ export class AgentChatService {
         toolCallCount: persisted.toolCallCount,
         durationMs,
       })
+
+      /**
+       * **本轮用量**下发（`data-run-usage`，**不带 id**：一块一个）。
+       *
+       * 为什么走流而不是让前端再查一次：用量只有收尾时才知道，而"收尾已落库"与"[DONE]"之间
+       * 是唯一能保证"客户端看到用量时，库里也一定有了"的位置；同时进 Redis 记录与广播，
+       * 于是**断线重连补发**也拿得到（否则刷新后这一段就丢了）。
+       *
+       * 字段刻意保留 `null` 语义（provider 没上报就是 null，不编造 0）：前端据此显示"—"。
+       */
+      const usageChunk = {
+        type: 'data-run-usage',
+        data: {
+          runId: run.id,
+          usage,
+          stepCount: steps.length,
+          toolCallCount: persisted.toolCallCount,
+          durationMs,
+        },
+      }
+      if (!response.writableEnded) response.write(sseFrame(usageChunk))
+      offset = await this.streamStore.appendChunk(run.id, usageChunk)
+      await this.streamStore.publishChunk(run.id, usageChunk)
 
       // 终态已落库 → 现在才告诉客户端"这一轮结束"
       if (!response.writableEnded) {

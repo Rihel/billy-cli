@@ -43,6 +43,14 @@ export class StreamRecorder {
   private readonly texts = new Map<string, string>()
   /** 推理片段：id → 累积内容 */
   private readonly reasonings = new Map<string, string>()
+  /**
+   * toolCallId → 工具 key。
+   *
+   * AI SDK v6 的 `tool-input-available` 带 `toolName`，但 `tool-output-available` **只有
+   * toolCallId**（实测）。不把工具名从入参那一步记下来，工具结果行就会 `tool_key = null`
+   * （审计里认不出这是哪个工具），依赖工具名的识别（如 `plan` 事件）也永远不成立。
+   */
+  private readonly toolNames = new Map<string, string>()
   private messageId = ''
   private toolCallCount = 0
   private errorText: string | null = null
@@ -81,6 +89,7 @@ export class StreamRecorder {
         return
       case 'tool-input-available':
         this.toolCallCount += 1
+        if (chunk.toolCallId) this.toolNames.set(chunk.toolCallId, chunk.toolName ?? '')
         await this.append({
           role: TimelineRole.Assistant,
           kind: TimelineKind.ToolCall,
@@ -95,22 +104,24 @@ export class StreamRecorder {
         })
         return
       case 'tool-output-available': {
+        // 结果片段不带工具名（AI SDK v6 只给 toolCallId）→ 用入参那一步记下的名字补上
+        const toolName = chunk.toolName ?? this.toolNameOf(chunk.toolCallId)
         await this.append({
           role: TimelineRole.Assistant,
           kind: TimelineKind.ToolResult,
           state: 'output-available',
-          toolKey: chunk.toolName ?? null,
+          toolKey: toolName,
           toolCallId: chunk.toolCallId ?? null,
           payload: {
             toolCallId: chunk.toolCallId ?? null,
-            toolName: chunk.toolName ?? null,
+            toolName,
             // **出参完整落库，不裁剪**
             output: chunk.output ?? null,
             isError: false,
           },
         })
-        // 规划能力：write-plan 的输出额外落一条 `plan` 事件（当前计划 = 最后一条）
-        const plan = toPlanPayload(chunk.toolName ?? null, chunk.output)
+        // 规划能力：todo-write 的输出额外落一条 `plan` 事件（当前计划 = 最后一条 plan 事件）
+        const plan = toPlanPayload(toolName, chunk.output)
         if (plan) {
           await this.append({
             role: TimelineRole.Assistant,
@@ -120,22 +131,24 @@ export class StreamRecorder {
         }
         return
       }
-      case 'tool-output-error':
+      case 'tool-output-error': {
+        const toolName = chunk.toolName ?? this.toolNameOf(chunk.toolCallId)
         await this.append({
           role: TimelineRole.Assistant,
           kind: TimelineKind.ToolResult,
           state: 'output-error',
-          toolKey: chunk.toolName ?? null,
+          toolKey: toolName,
           toolCallId: chunk.toolCallId ?? null,
           payload: {
             toolCallId: chunk.toolCallId ?? null,
-            toolName: chunk.toolName ?? null,
+            toolName,
             output: null,
             isError: true,
             errorText: chunk.errorText ?? null,
           },
         })
         return
+      }
       case 'tool-input-error':
         await this.append({
           role: TimelineRole.Assistant,
@@ -181,9 +194,17 @@ export class StreamRecorder {
     for (const id of [...this.reasonings.keys()]) await this.flushReasoning(id)
   }
 
-  /** 流结束后补步骤行（每步的 token 与结束原因） */
-  async finish(steps: StepLikeLite[]): Promise<{ toolCallCount: number; errorText: string | null }> {
-    for (const [index, step] of steps.entries()) {
+  /**
+   * 流结束后补步骤行（每步的 token 与结束原因）。
+   *
+   * `steps` 允许缺失（`undefined` / 非数组）：调用方读不到步级元数据时按"没有步骤行"处理。
+   * 这里必须自己兜住 —— 早先直接 `steps.entries()`，durable 形态下 `steps` 是 `undefined`，
+   * 异常把**已经跑完并展示给用户的一轮**判成 failed（用户看到"回答出来了但运行失败"）。
+   */
+  async finish(
+    steps: StepLikeLite[] | undefined | null,
+  ): Promise<{ toolCallCount: number; errorText: string | null }> {
+    for (const [index, step] of (Array.isArray(steps) ? steps : []).entries()) {
       await this.append({
         role: TimelineRole.Assistant,
         kind: TimelineKind.Step,
@@ -194,8 +215,14 @@ export class StreamRecorder {
     return { toolCallCount: this.toolCallCount, errorText: this.errorText }
   }
 
-  private async flushText(id: string): Promise<void> {
-    const text = (this.texts.get(id) ?? '').trim()
+  /** 由 toolCallId 找回工具 key（结果片段不带工具名，见 `toolNames` 的注释） */
+  private toolNameOf(toolCallId: string | undefined): string | null {
+    if (!toolCallId) return null
+    const name = this.toolNames.get(toolCallId)
+    return name ? name : null
+  }
+
+  private async flushText(id: string): Promise<void> {    const text = (this.texts.get(id) ?? '').trim()
     this.texts.delete(id)
     if (!text) return
     await this.append({

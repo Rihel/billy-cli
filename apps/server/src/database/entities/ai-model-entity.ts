@@ -6,7 +6,7 @@ import { Column, Entity, Index } from 'typeorm'
  * **AI 模型**（配置类数据）。
  *
  * 一行 = 某个供应商下的一个可调用模型。明细主要靠**供应商的"列模型"接口同步**拉回来
- * （OpenAI 兼容 `GET /models`、Anthropic `GET /v1/models`、Gemini `GET /v1beta/models`），
+ * （国内厂商都提供 OpenAI 形态的 `GET {base}/models`，见 `modules/ai-model/provider-adapters.ts`），
  * 拉不全或想手工补时也能手工建（`source='manual'`）。
  *
  * 三条口径（详见设计文档 §4.8）：
@@ -28,11 +28,11 @@ export class AiModelEntity extends AuditEntity {
   @Column({ name: 'provider_id', type: 'varchar', length: 20 })
   providerId!: string
 
-  /** 供应商侧的模型 id（如 `deepseek-chat`；Gemini 的 `models/xxx` 去掉前缀后存这里） */
+  /** 供应商侧的模型 id（如 `deepseek-chat`；即供应商 `/models` 返回的 `data[].id`） */
   @Column({ name: 'model_key', type: 'varchar', length: 128 })
   modelKey!: string
 
-  /** 展示名（Anthropic 的 `display_name` / Gemini 的 `displayName`；缺省用 model_key） */
+  /** 展示名（OpenAI 形态的 `/models` 不返回展示名，缺省用 model_key） */
   @Column({ name: 'display_name', type: 'varchar', length: 128 })
   displayName!: string
 
@@ -40,7 +40,7 @@ export class AiModelEntity extends AuditEntity {
   @Column({ name: 'context_window', type: 'int', nullable: true })
   contextWindow: number | null = null
 
-  /** 单次输出上限（Gemini 的 `outputTokenLimit` 等） */
+  /** 单次输出上限（OpenAI 形态的 `/models` 通常不返回，留 null；手工可改） */
   @Column({ name: 'max_output_tokens', type: 'int', nullable: true })
   maxOutputTokens: number | null = null
 

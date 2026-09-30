@@ -151,6 +151,17 @@ export class RunRepository {
     )
   }
 
+  /**
+   * 把 Mastra 的 **engine runId** 回写到我们这一行（durable 快照靠它找到宿主）。
+   *
+   * 为什么要单独一个方法而不是复用 `markRunning`：那个会把 `started_at` / `heartbeat_at` 重置成现在，
+   * 而这里只是补一个标识，**不能动真实开始时间**（耗时统计要准）。
+   */
+  async attachEngineRun(id: string, engineRunId: string): Promise<void> {
+    const repo = await this.repo()
+    await repo.update({ id }, { engineRunId })
+  }
+
   /** 心跳（运行中定期刷新；恢复与超时判定都看它） */
   async touchHeartbeat(id: string): Promise<void> {
     const repo = await this.repo()

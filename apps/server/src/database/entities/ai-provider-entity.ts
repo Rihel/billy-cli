@@ -6,7 +6,8 @@ import { Column, Entity, Index } from 'typeorm'
  * **AI 模型供应商**（配置类数据）。
  *
  * 一行 = 一个"接入"：哪家、什么地址、什么密钥、启用没。它是"模型明细从哪来"的锚点 ——
- * `kind` 决定用哪家的"列模型"接口去拉（OpenAI 兼容 / Anthropic / Gemini，见设计文档 §4.8.2）。
+ * `kind` 决定用哪家的"列模型"接口去拉（当前只收国内厂商 + OpenAI 兼容兜底，
+ * 见 `modules/ai-model/provider-adapters.ts` 的 `PROVIDER_ENDPOINTS`）。
  *
  * 三条口径：
  * - **密钥只存密文**：`api_key_cipher`（AES-256-GCM），另存 `api_key_hint`（`sk-…abcd`）供人辨认；

@@ -144,7 +144,7 @@ describe('会话运行时（真实数据库）', () => {
         conversationId: conversation.id,
         role: 'assistant',
         kind: 'tool-result',
-        toolKey: 'get-todo',
+        toolKey: 'todo-write',
         toolCallId: 'call_test_1',
         payload: { output: { title: '完整出参不裁剪' } },
       },
@@ -157,7 +157,7 @@ describe('会话运行时（真实数据库）', () => {
     })
     expect(page.total).toBe(3)
     expect(page.items.map((item) => item.seq)).toEqual([1, 2, 3])
-    expect(page.items[2].toolKey).toBe('get-todo')
+    expect(page.items[2].toolKey).toBe('todo-write')
     // 保真：工具出参原样可读
     expect(page.items[2].payload).toEqual({ output: { title: '完整出参不裁剪' } })
   })

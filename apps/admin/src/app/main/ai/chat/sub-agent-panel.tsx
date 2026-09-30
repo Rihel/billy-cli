@@ -24,6 +24,7 @@ import {
   ToolOutput,
 } from '@repo/ui/components/ai-elements/tool.tsx'
 import { ChevronDownIcon, BotIcon } from 'lucide-react'
+import { tokenText } from './format'
 
 /** 子助手面板的状态（来自 `data-sub-agent` 块：带 id、按 id 归并，读到的永远是当前态） */
 export interface SubAgentState {
@@ -141,7 +142,11 @@ export function SubAgentPanel({
           <span className="text-xs text-muted-foreground">
             {agent.stepCount ?? 0} 步 / {agent.toolCallCount ?? 0} 次工具 ·{' '}
             {formatDuration(agent.durationMs)}
-            {agent.usage?.totalTokens ? ` · ${String(agent.usage.totalTokens)} token` : ''}
+            {/* 子助手自己的消耗（k / m 缩写，与右下角统计同一套口径）；
+                注意它**已计入父那一轮的合计**（`rollUpUsage`），不是额外再花一份 */}
+            {typeof agent.usage?.totalTokens === 'number'
+              ? ` · ${tokenText(agent.usage.totalTokens)} token`
+              : ''}
           </span>
           <ChevronDownIcon
             className={cn('ml-auto size-4 transition-transform', open && 'rotate-180')}

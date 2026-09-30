@@ -4,10 +4,13 @@ import type { ToolsInput } from '@mastra/core/agent'
  * 工具 bean 的契约：**一个工具 = 一个 `@Injectable()` bean**。
  *
  * 为什么不做成「一个函数返回一堆工具」：
- * - 工具的执行依赖（`TodoService` 等）由 Nest 注入，天然拿到与业务接口同一条链路，
+ * - 工具的执行依赖（某个业务模块的 service）由 Nest 注入，天然拿到与业务接口同一条链路，
  *   不需要在装配处手工 `new`、也不需要把依赖层层透传；
  * - 一个工具一个文件，改了哪个工具 diff 一眼可见；工具级单测可以直接 `new` 出来测；
  * - `ToolBuilder` 负责汇总（见 `tool.builder.ts`），装配处只登记 provider，不做收集逻辑。
+ *
+ * 当前业务工具为 0 个（AI 模块与业务模块解耦），工具池里只有 core bean 交出的运行时能力；
+ * 但这条契约与 `AGENT_TOOLS` 汇总机制保持不变，是将来接入业务工具的扩展点。
  */
 export interface AgentTool {
   /** 工具 key（kebab-case，模型可见；从 `tool-keys.ts` 取，禁止裸字符串） */
