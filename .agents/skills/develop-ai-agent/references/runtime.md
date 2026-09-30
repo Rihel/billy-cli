@@ -67,4 +67,8 @@
 - **只在首轮**（开局 `turnCount === 0`）+ **只在标题还是兜底那版**（用户改过名就不动）；
 - 失败 / 超时（10s）/ 收拾不出名字 → 保留"首条消息"那版（起名不能拖垮一轮问答）；
 - 这次调用的 usage **并进该轮 run**：`{ ...usageBase, ...(mergeUsage(usageBase, title.usage) ?? {}) }`
-  —— 注意**先展开 usageBase**，否则 `usage.subAgents` 这类非 token 字段会被 `mergeUsage` 抹掉（踩过）。
+  —— 注意**先展开 usageBase**，否则 `usage.subAgents` 这类非 token 字段会被 `mergeUsage` 抹掉（踩过）；
+- **新标题要推给前端**：收尾时下发 `data-conversation-title`（与 `data-run-usage` 同一手法进 Redis，
+  断线补发也拿得到），前端 `onData` 就地改会话列表与详情缓存；另外一轮结束时前端还要失效
+  `['ai','conversations']` / `['ai','conversation',id]` —— 轮数、token 累计、排序只在库里变，
+  不重取就一直显示旧值（用户反馈"重命名没有前端实时响应"就是这么来的）。
