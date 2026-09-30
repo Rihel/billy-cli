@@ -1,4 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common'
+import dedent from 'dedent'
 import { AppError, AppLogger } from '@repo/kits'
 import {
   AppErrorCodes,
@@ -64,12 +65,14 @@ interface PgError {
 }
 
 /** 生成摘要用的指令（只做压缩，不做回答） */
-const SUMMARY_INSTRUCTION = `请把上面的对话压缩成一份简明摘要，供后续对话继续使用。
-要求：
-1. 保留事实（用户是谁、问过什么、结论是什么、涉及的具体数据）；
-2. 保留未完成的事项与用户明确的偏好；
-3. 不要评价、不要扩写、不要编造；
-4. 用简体中文，控制在 500 字以内。`
+const SUMMARY_INSTRUCTION = dedent`
+  请把上面的对话压缩成一份简明摘要，供后续对话继续使用。
+  要求：
+  1. 保留事实（用户是谁、问过什么、结论是什么、涉及的具体数据）；
+  2. 保留未完成的事项与用户明确的偏好；
+  3. 不要评价、不要扩写、不要编造；
+  4. 用简体中文，控制在 500 字以内。
+`
 
 /** 摘要正文之外，摘要事件还要记住它覆盖了哪一段 */
 const SUMMARY_MAX_CHARS = 2_000

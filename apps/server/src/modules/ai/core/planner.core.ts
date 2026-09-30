@@ -1,4 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common'
+import dedent from 'dedent'
 import { createTool } from '@mastra/core/tools'
 import type { RequestContext } from '@mastra/core/request-context'
 import { z } from 'zod'
@@ -38,8 +39,7 @@ const TodoWriteInputSchema = z.object({
           .max(32)
           .optional()
           .describe(
-            '任务标识（如 t1）。不传则由工具生成 `task-<n>`；**同一批任务的 id 要稳定**——' +
-              '状态变更靠 id 对应，换 id 等于把旧任务删掉再建一个新的',
+            `任务标识（如 t1）。不传则由工具生成 \`task-<n>\`；**同一批任务的 id 要稳定**——状态变更靠 id 对应，换 id 等于把旧任务删掉再建一个新的`,
           ),
         title: z.string().min(1).max(200).describe('这一项要做什么（动词开头，可执行、可验证）'),
         status: z
@@ -113,19 +113,21 @@ export class PlannerCore implements AgentCore {
      * 口径：一个工具的"是什么 / 什么时候用 / 有什么纪律"只写在这里 ——
      * 别在提示词模板里再写一份（两处必然漂移，改一处忘一处）。
      */
-    const description = `提交当前的**完整任务清单**（全量覆盖，不是增量）：加任务 / 删任务 / 改状态 / 重规划都靠"把当前清单整个写一遍"表达 —— 上一版里有、这一版里没有的项**即视为删除**。
+    const description = dedent`
+      提交当前的**完整任务清单**（全量覆盖，不是增量）：加任务 / 删任务 / 改状态 / 重规划都靠"把当前清单整个写一遍"表达 —— 上一版里有、这一版里没有的项**即视为删除**。
 
-什么时候用：
-- 需要**多步**完成的任务：**先**提交一份拆细的清单再动手，并边做边更新；
-- 只做一步就能答完的事、寒暄与闲聊：**不要写清单**（别为单问单答套流程）。
+      什么时候用：
+      - 需要**多步**完成的任务：**先**提交一份拆细的清单再动手，并边做边更新；
+      - 只做一步就能答完的事、寒暄与闲聊：**不要写清单**（别为单问单答套流程）。
 
-纪律：
-- 状态只有三个：\`pending\`（未开始）/ \`in_progress\`（进行中）/ \`completed\`（已完成），
-  **同时只允许一个 \`in_progress\`** —— 开始做某一项就标它，其余保持 pending；
-- **做完一项就立刻标成 \`completed\` 再继续**，不许攒到最后一起标；每完成一项**再次提交完整清单**，
-  让它始终反映真实进度；中途发现新工作、或某项不做了，也用同一份清单的新版本表达
-  （阻塞、口径、依赖写进 \`note\`）；
-- 清单是给你自己跟踪进度用的：**不要把清单内容当成给用户的回答**，该交付什么照常用自己的话交付。`
+      纪律：
+      - 状态只有三个：\`pending\`（未开始）/ \`in_progress\`（进行中）/ \`completed\`（已完成），
+        **同时只允许一个 \`in_progress\`** —— 开始做某一项就标它，其余保持 pending；
+      - **做完一项就立刻标成 \`completed\` 再继续**，不许攒到最后一起标；每完成一项**再次提交完整清单**，
+        让它始终反映真实进度；中途发现新工作、或某项不做了，也用同一份清单的新版本表达
+        （阻塞、口径、依赖写进 \`note\`）；
+      - 清单是给你自己跟踪进度用的：**不要把清单内容当成给用户的回答**，该交付什么照常用自己的话交付。
+    `
     this.todoWrite = {
       key,
       title: '提交任务清单',
@@ -161,8 +163,7 @@ export class PlannerCore implements AgentCore {
       // （`AgentRunner` 造临时 Agent 时不透传 requestContext）—— 后者是常态，
       // 所以口令是"交回主 agent"而不是"联系维护者"：清单归属发起这一轮的主 agent。
       throw new Error(
-        'todo-write 缺少运行时上下文（编排层未注入 requestContext）：任务清单只在发起这一轮的主 agent 那里维护，' +
-          '子助手请把结果交回主 agent，不要自己另开一份清单',
+        `todo-write 缺少运行时上下文（编排层未注入 requestContext）：任务清单只在发起这一轮的主 agent 那里维护，子助手请把结果交回主 agent，不要自己另开一份清单`,
       )
     }
 

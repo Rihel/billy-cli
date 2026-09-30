@@ -60,8 +60,7 @@ export class ToolBuilder {
     // 但工具池必须有运行时能力（规划 / 子 agent），否则 agent 连"能干什么"都没有 —— 这是装配错误
     if (coreToolCount === 0) {
       throw new Error(
-        'core bean 未提供任何工具：AGENT_CORES 至少要有一个交出工具的 core bean' +
-          '（业务工具 AGENT_TOOLS 允许为空）',
+        `core bean 未提供任何工具：AGENT_CORES 至少要有一个交出工具的 core bean（业务工具 AGENT_TOOLS 允许为空）`,
       )
     }
   }

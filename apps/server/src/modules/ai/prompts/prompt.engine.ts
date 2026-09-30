@@ -45,10 +45,12 @@ const TEMPLATE_TAGS: [string, string] = ['{{', '}}']
  *   `<` 变成 `&lt;`，模型读到的就是坏文本；
  * - `cache: true`：编译结果按模板名缓存，每次对话只做一次字符串拼接级别的渲染。
  *
- * 渲染结果只做**首尾空行**清理：**不能**用 `dedent` —— 实测它会把提示词里
- * 「列表续行的 2 空格缩进」一起吃掉（`dedent('- 第一行\n  第二行续')` → 第二行缩进消失），
- * 而那段缩进在 Markdown 里是有意义的（续行属于同一个列表项）。
- * `dedent` 的用途是「代码里手写多行字符串」的场景（模板字面量的公共缩进），见下面的错误信息。
+ * 渲染结果只做**首尾空行**清理，**不再 `dedent` 一遍**：模板渲染出来的缩进是有意义的
+ * （Markdown 列表续行的 2 空格），而 `dedent` 是"按所有非空行的最小缩进取齐" ——
+ * 对一份**已经渲染好**的文本再跑一遍，等于把真正需要保留的公共缩进也削掉。
+ * `dedent` 的正确用法是包住**源码里手写的模板字面量**（模块里的工具说明 / 指令就是这么写的）：
+ * 源码可以按代码缩进排版，运行时还原成顶格文本。它有一个坑：字面量**要以换行开头**，
+ * 否则第一行会被当成"没有缩进"而多削一层 —— `dedent('- 第一行\n  第二行续')` 会把续行的 2 空格吃掉。
  *
  * 失败抛普通 `Error`（不是 `AppError`）：模板问题是**装配期**问题，应当在启动时炸出来，
  * 不需要走边界错误码映射。
@@ -93,7 +95,7 @@ export const createPromptEngine = (options: PromptEngineOptions = {}): PromptEng
 
   const render = (template: string, data: object): string => {
     try {
-      // 只清首尾空行，保留正文里的缩进（见上方注释：dedent 会吃掉列表续行缩进）
+      // 只清首尾空行，保留正文里的缩进（见上方注释：不要对渲染结果再 dedent）
       return eta.render(template, data).replace(/^\n+/, '').replace(/\s+$/, '')
     } catch (error) {
       const reason = error instanceof Error ? error.message : String(error)
