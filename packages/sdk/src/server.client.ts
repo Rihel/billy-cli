@@ -72,6 +72,9 @@ import {
   AgentConversationIdDto,
   AgentConversationListDto,
   AgentConversationModel,
+  AgentConversationRenameDto,
+  AgentInstructionsDto,
+  AgentInstructionsModel,
   AgentListModel,
   AgentRunDetailModel,
   AgentRunIdDto,
@@ -360,6 +363,10 @@ export class ServerClient extends HttpClient<BearerTokenCredentials> {
     /** agent 清单（含 skills 与子 agent，供前端选择器与能力展示） */
     list: () => this.post<AgentListModel>('/agent/list'),
 
+    /** 某个 agent 的**系统指令原文**（前端「查看系统指令」） */
+    instructions: (data: AgentInstructionsDto) =>
+      this.post<AgentInstructionsModel>('/agent/instructions', data),
+
     /** 一轮问答（非流式）：跑完才返回，期间无任何输出 */
     chat: (data: AgentChatDto) =>
       this.post<AgentChatResultModel>('/agent/chat', data),
@@ -382,6 +389,10 @@ export class ServerClient extends HttpClient<BearerTokenCredentials> {
 
       detail: (data: AgentConversationIdDto) =>
         this.post<AgentConversationModel>('/agent/conversation/detail', data),
+
+      /** 重命名会话（用户手动改名；空标题 / 超长由服务端契约拦下） */
+      rename: (data: AgentConversationRenameDto) =>
+        this.post<AgentConversationModel>('/agent/conversation/rename', data),
 
       /** 软删会话（唯一的删除入口；运行记录与时间线不提供删除） */
       remove: (data: AgentConversationIdDto) =>

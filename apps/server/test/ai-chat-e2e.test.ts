@@ -1,5 +1,5 @@
 import 'dotenv/config'
-import { Db, setAuditUserProvider } from '@repo/kits'
+import { CommandRunner, Db, describePlatform, resolveShell, setAuditUserProvider } from '@repo/kits'
 import { AppErrorCodes, RunStatus, TimelineKind } from '@repo/shared'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { ConversationEntity } from '../src/database/entities/conversation-entity.js'
@@ -14,10 +14,12 @@ import { AGENT_MAX_STEPS } from '../src/modules/ai/core/ai.constants.js'
 import { createMastra } from '../src/modules/ai/core/ai.mastra.js'
 import { createAgentRegistry } from '../src/modules/ai/core/ai.registry.js'
 import { createPromptEngine } from '../src/modules/ai/prompts/index.js'
+import { AgentTitleService } from '../src/modules/ai/runtime/title.service.js'
 import { SkillLoader } from '../src/modules/ai/skills/index.js'
 import { ToolBuilder } from '../src/modules/ai/tools/tool.builder.js'
 import { PlannerCore } from '../src/modules/ai/core/planner.core.js'
 import { SubAgentCore } from '../src/modules/ai/core/subagent.core.js'
+import { CommandCore } from '../src/modules/ai/core/command.core.js'
 import { AgentRunner } from '../src/modules/ai/runtime/agent-runner.js'
 import { AgentChatService } from '../src/modules/ai/runtime/chat.service.js'
 import { AgentConversationService } from '../src/modules/ai/runtime/conversation.service.js'
@@ -26,8 +28,13 @@ import { ContextService } from '../src/modules/ai/runtime/context.service.js'
 import { RunRepository } from '../src/modules/ai/runtime/run.repository.js'
 import { TimelineRepository } from '../src/modules/ai/runtime/timeline.repository.js'
 import {
+  MOCK_COMMAND,
+  MOCK_COMMAND_MARKER,
+  MOCK_COMMAND_OUTPUT,
+  MOCK_COMMAND_TOOL,
   MOCK_FINAL_TEXT,
   MOCK_TODO_INITIAL,
+  MOCK_TITLE_TEXT,
   MOCK_TODO_TOOL,
   type MockModelServer,
   startMockModelServer,
@@ -81,6 +88,10 @@ const TEST_CONFIG = {
   subAgentMaxDepth: 1,
   subAgentMaxSteps: 5,
   subAgentTimeoutMs: 60_000,
+  // 命令执行（core bean `command`）：端到端要能真跑一条命令，这里给全部字段
+  commandEnabled: true,
+  commandTimeoutMs: 5_000,
+  commandMaxOutputBytes: 64 * 1024,
 }
 
 const createdConversationIds: string[] = []
@@ -125,7 +136,12 @@ beforeAll(async () => {
     // 业务工具**为空**：AI 模块与业务模块解耦后的常态（`AGENT_TOOLS` 是扩展点）
     [],
     // core bean（规划 + 子 agent）：与 `ai.module.ts` 的装配口径一致
-    [new PlannerCore(timelines), new SubAgentCore(runner, silentLogger)],
+    [
+      new PlannerCore(timelines),
+      new SubAgentCore(runner, silentLogger),
+      // 命令执行 core：与 `ai.module.ts` 的装配口径一致（assistant 已授权 run-command）
+      new CommandCore(new CommandRunner(), config, silentLogger),
+    ],
   )
   const registry = createAgentRegistry(
     createAgentDefinitions(createPromptEngine(), toolBuilder),
@@ -165,6 +181,8 @@ beforeAll(async () => {
     skillLoader,
     modelsStub,
     silentLogger,
+    createPromptEngine(),
+    new AgentTitleService(timelines, createPromptEngine(), silentLogger),
   )
 
   setAuditUserProvider(() => USER)
@@ -176,6 +194,23 @@ afterAll(async () => {
     await db.dataSource.query('DELETE FROM timelines WHERE conversation_id = $1', [id])
     await db.dataSource.query('DELETE FROM runs WHERE conversation_id = $1', [id])
     await db.dataSource.query('DELETE FROM conversations WHERE id = $1', [id])
+  }
+
+  /**
+   * 兜底：有些会话是经 HTTP / 流式端点建的、**没进 `createdConversationIds`** ——
+   * 按测试用户再扫一遍。不扫的代价很实在：`DB_URL` 指向哪个库就往哪儿写，开发机上就是开发库，
+   * 每跑一次测试都会多出一堆"看着像真会话"的假数据（还会出现在会话页侧栏里）。
+   */
+  for (const userId of [USER]) {
+    await db.dataSource.query(
+      'DELETE FROM timelines WHERE conversation_id IN (SELECT id FROM conversations WHERE user_id = $1)',
+      [userId],
+    )
+    await db.dataSource.query(
+      'DELETE FROM runs WHERE conversation_id IN (SELECT id FROM conversations WHERE user_id = $1)',
+      [userId],
+    )
+    await db.dataSource.query('DELETE FROM conversations WHERE user_id = $1', [userId])
   }
   await db.onApplicationShutdown()
   await mock.close()
@@ -244,11 +279,11 @@ describe('对话链路端到端（mock 模型 + 真实数据库）', () => {
     expect(stepRows.length).toBe(result.stepCount)
     expect(stepRows[0].usage).toMatchObject({ inputTokens: expect.any(Number) })
 
-    // 6) 会话累计与标题（不额外调模型）
+    // 6) 会话累计与标题：标题来自**首轮结束后那次隔离的命名调用**（不是首条消息的截断版）
     const conversation = await conversations.detail(USER, { conversationId: result.conversationId })
     expect(conversation.turnCount).toBe(1)
     expect(conversation.totalTokens).toBeGreaterThan(0)
-    expect(conversation.title).toBe('帮我看看最近有哪些待办')
+    expect(conversation.title).toBe(MOCK_TITLE_TEXT)
   })
 
   it('同一会话并发：已有进行中的一轮 → 3306（真相在数据库的唯一索引）', async () => {
@@ -283,5 +318,92 @@ describe('对话链路端到端（mock 模型 + 真实数据库）', () => {
 
     const conversation = await conversations.detail(USER, { conversationId: first.conversationId })
     expect(conversation.turnCount).toBe(2)
+  })
+
+  it('命令执行：模型调 run-command → 真跑一条跨平台命令，入参出参完整落库', async () => {
+    const result = await chat.chat(USER, { message: `${MOCK_COMMAND_MARKER} 跑一下看看这台机器的环境` })
+    createdConversationIds.push(result.conversationId)
+
+    expect(result.status).toBe(RunStatus.Succeeded)
+    expect(result.toolCallCount).toBe(1)
+
+    const page = await timelines.list({ conversationId: result.conversationId, page: 1, size: 100 })
+    const toolCall = page.items.find((item) => item.kind === TimelineKind.ToolCall)
+    expect(toolCall?.toolKey).toBe(MOCK_COMMAND_TOOL)
+    // 入参完整落库：就是模型写的那条命令
+    expect(toolCall?.payload?.input).toEqual({ command: MOCK_COMMAND })
+
+    // 出参完整落库：真的跑了（退出码 0、stdout 里有输出、shell 按当前平台解析）
+    const toolResult = page.items.find((item) => item.kind === TimelineKind.ToolResult)
+    const output = toolResult?.payload?.output as Record<string, unknown>
+    expect(output.ok).toBe(true)
+    expect(output.exitCode).toBe(0)
+    expect(String(output.stdout)).toContain(MOCK_COMMAND_OUTPUT)
+    expect(output.shell).toBe(resolveShell(process.platform))
+    expect(output.timedOut).toBe(false)
+    expect(output.truncated).toBe(false)
+    expect(toolResult?.state).toBe('output-available')
+  })
+
+  it('首轮结束后用模型起名：≤10 字，且与当前 agent 上下文**完全隔离**', async () => {
+    const before = mock.requests.length
+    const result = await chat.chat(USER, { message: '帮我看看最近有哪些待办' })
+    createdConversationIds.push(result.conversationId)
+
+    // 1) 标题来自那次命名调用（首条消息那版 12 字只是兜底，被模型名覆盖）
+    const conversation = await conversations.detail(USER, { conversationId: result.conversationId })
+    expect(conversation.title).toBe(MOCK_TITLE_TEXT)
+    expect(Array.from(conversation.title).length).toBeLessThanOrEqual(10)
+
+    // 2) 命名调用**确实发生过**，且能从请求里认出它：唯一不带工具的请求
+    const titleRequests = mock.requests
+      .slice(before)
+      .filter((body) => !Array.isArray(body.tools) || body.tools.length === 0)
+    expect(titleRequests).toHaveLength(1)
+    const titleBody = titleRequests[0]
+    const serialized = JSON.stringify(titleBody.messages)
+
+    // 3) 隔离性（这条是"完全隔离"的硬证据）：只有命名指令 + 这一轮的记录，
+    //    **没有** agent 的系统提示词（工具清单 / 通用约定 / 角色约定），也**没有**工具定义
+    expect(serialized).toContain('会话命名助手')
+    expect(serialized).not.toContain('可用工具')
+    expect(serialized).not.toContain('通用约定')
+    expect(serialized).not.toContain('本角色的额外约定')
+    expect(serialized).toContain('用户：帮我看看最近有哪些待办')
+    expect(titleBody.tools ?? []).toEqual([])
+  })
+
+  it('用户改过名之后：第二轮结束时不再重命名（人工名字不会被后台冲掉）', async () => {
+    const first = await chat.chat(USER, { message: '记住：我叫小王' })
+    createdConversationIds.push(first.conversationId)
+    await conversations.rename(USER, { conversationId: first.conversationId, title: '人工名字' })
+
+    await chat.chat(USER, { conversationId: first.conversationId, message: '我叫什么？' })
+
+    const conversation = await conversations.detail(USER, { conversationId: first.conversationId })
+    expect(conversation.title).toBe('人工名字')
+    expect(conversation.turnCount).toBe(2)
+  })
+
+  it('会话开局的运行环境：只在首轮注入（第二轮不再动系统提示词，保住前缀缓存）', async () => {
+    const beforeFirst = mock.requests.length
+    const first = await chat.chat(USER, { message: '今天几号？' })
+    createdConversationIds.push(first.conversationId)
+
+    const firstTurnRequests = mock.requests.slice(beforeFirst)
+    expect(firstTurnRequests.length).toBeGreaterThan(0)
+    const firstTurnBody = JSON.stringify(firstTurnRequests[0])
+    // 注入的是**当前平台**的画像与时间，不是写死的文案
+    // （标记用片段的完整标题：正文里另有"命令按运行环境里那个 shell 语法写"这类提法，不能用"运行环境"当标记）
+    expect(firstTurnBody).toContain('运行环境（本会话开始时）')
+    expect(firstTurnBody).toContain(describePlatform().label)
+    expect(firstTurnBody).toContain(String(new Date().getFullYear()))
+
+    const beforeSecond = mock.requests.length
+    await chat.chat(USER, { conversationId: first.conversationId, message: '那现在呢？' })
+    const secondTurnRequests = mock.requests.slice(beforeSecond)
+    expect(secondTurnRequests.length).toBeGreaterThan(0)
+    // 第二轮的系统提示词回到基础版：环境片段**不再出现**
+    expect(JSON.stringify(secondTurnRequests[0])).not.toContain('运行环境（本会话开始时）')
   })
 })

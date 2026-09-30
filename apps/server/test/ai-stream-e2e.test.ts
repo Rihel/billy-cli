@@ -1,7 +1,7 @@
 import 'dotenv/config'
 import { createServer, type Server } from 'node:http'
 import type { AddressInfo } from 'node:net'
-import { Db, IdGeneration, RedisStore, setAuditUserProvider } from '@repo/kits'
+import { CommandRunner, Db, IdGeneration, RedisStore, setAuditUserProvider } from '@repo/kits'
 import { RunStatus, TimelineKind } from '@repo/shared'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { ConversationEntity } from '../src/database/entities/conversation-entity.js'
@@ -11,10 +11,12 @@ import { DEFAULT_AGENT_KEY, createAgentDefinitions } from '../src/modules/ai/age
 import { createMastra } from '../src/modules/ai/core/ai.mastra.js'
 import { createAgentRegistry } from '../src/modules/ai/core/ai.registry.js'
 import { createPromptEngine } from '../src/modules/ai/prompts/index.js'
+import { AgentTitleService } from '../src/modules/ai/runtime/title.service.js'
 import { SkillLoader } from '../src/modules/ai/skills/index.js'
 import { ToolBuilder } from '../src/modules/ai/tools/tool.builder.js'
 import { PlannerCore } from '../src/modules/ai/core/planner.core.js'
 import { SubAgentCore } from '../src/modules/ai/core/subagent.core.js'
+import { CommandCore } from '../src/modules/ai/core/command.core.js'
 import { AgentRunner } from '../src/modules/ai/runtime/agent-runner.js'
 import { AgentChatService, STREAM_END_MARKER } from '../src/modules/ai/runtime/chat.service.js'
 import { AgentConversationService } from '../src/modules/ai/runtime/conversation.service.js'
@@ -86,6 +88,10 @@ const TEST_CONFIG = {
   subAgentMaxDepth: 1,
   subAgentMaxSteps: 5,
   subAgentTimeoutMs: 60_000,
+  // 命令执行（core bean `command`）：端到端要能真跑一条命令，这里给全部字段
+  commandEnabled: true,
+  commandTimeoutMs: 5_000,
+  commandMaxOutputBytes: 64 * 1024,
 } as never
 
 const createdConversationIds: string[] = []
@@ -156,7 +162,12 @@ beforeAll(async () => {
     // 业务工具**为空**：AI 模块与业务模块解耦后的常态（`AGENT_TOOLS` 是扩展点）
     [],
     // core bean（规划 + 子 agent）：与 `ai.module.ts` 的装配口径一致
-    [new PlannerCore(timelines), new SubAgentCore(runner, silentLogger)],
+    [
+      new PlannerCore(timelines),
+      new SubAgentCore(runner, silentLogger),
+      // 命令执行 core：与 `ai.module.ts` 的装配口径一致（assistant 已授权 run-command）
+      new CommandCore(new CommandRunner(), config, silentLogger),
+    ],
   )
   const registry = createAgentRegistry(
     createAgentDefinitions(createPromptEngine(), toolBuilder),
@@ -186,6 +197,8 @@ beforeAll(async () => {
     new SkillLoader(silentLogger),
     modelsStub,
     silentLogger,
+    createPromptEngine(),
+    new AgentTitleService(timelines, createPromptEngine(), silentLogger),
   )
 
   // 真 HTTP 服务：让 `pipeUIMessageStreamToResponse` 走真实的 ServerResponse
@@ -215,6 +228,23 @@ afterAll(async () => {
     await db.dataSource.query('DELETE FROM timelines WHERE conversation_id = $1', [id])
     await db.dataSource.query('DELETE FROM runs WHERE conversation_id = $1', [id])
     await db.dataSource.query('DELETE FROM conversations WHERE id = $1', [id])
+  }
+
+  /**
+   * 兜底：有些会话是经 HTTP / 流式端点建的、**没进 `createdConversationIds`** ——
+   * 按测试用户再扫一遍。不扫的代价很实在：`DB_URL` 指向哪个库就往哪儿写，开发机上就是开发库，
+   * 每跑一次测试都会多出一堆"看着像真会话"的假数据（还会出现在会话页侧栏里）。
+   */
+  for (const userId of [USER]) {
+    await db.dataSource.query(
+      'DELETE FROM timelines WHERE conversation_id IN (SELECT id FROM conversations WHERE user_id = $1)',
+      [userId],
+    )
+    await db.dataSource.query(
+      'DELETE FROM runs WHERE conversation_id IN (SELECT id FROM conversations WHERE user_id = $1)',
+      [userId],
+    )
+    await db.dataSource.query('DELETE FROM conversations WHERE user_id = $1', [userId])
   }
   await new Promise<void>((resolve) => http.close(() => resolve()))
   await redis.onApplicationShutdown()
@@ -272,9 +302,10 @@ describe('流式链路端到端（mock 模型 + 真实 DB + 真实 Redis）', ()
     // 缓存命中**必须落到库里**（Mastra 放在顶层 `cachedInputTokens`，早先只读嵌套字段 → 永远是 null，
     // 用户看到"缓存命中没数"；mock 的 `prompt_tokens_details.cached_tokens = 64` 就是为这条链路加的）。
     // 数值口径：本轮是**两步**流程（先 todo-write 再回答）= 两次模型调用，mock 每次命中 64，
-    // Mastra 把两次**累加**成 128 —— 所以这里断言"命中被记下来了且大于 0"，
+    // Mastra 把两次**累加**成 128；再加上**首轮自动命名**那次隔离调用（同样是 64）→ 192。
+    // 命名调用**并进这一轮的 usage**（`runs.usage` 的语义就是"这一轮花掉的钱"，见设计文档 §4.10.1）。
     // 精确的字段优先级（顶层 64 胜过嵌套）由 `ai-usage.test.ts` 的纯函数单测钉住。
-    expect(runRow[0]?.usage).toMatchObject({ cacheReadTokens: 128 })
+    expect(runRow[0]?.usage).toMatchObject({ cacheReadTokens: 192 })
   })
 
   it('子 agent 的实时明细走**同一条流**（data-sub-agent 状态块 + data-sub-agent-delta 增量块）', async () => {

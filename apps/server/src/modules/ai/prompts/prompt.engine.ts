@@ -56,9 +56,28 @@ const TEMPLATE_TAGS: [string, string] = ['{{', '}}']
 export interface PromptEngine {
   /** 渲染模板（不存在 / 语法错 → 抛错，错误信息带模板名与可用清单） */
   render: (template: string, data: PromptData) => string
+  /**
+   * 渲染**片段**（partial）：数据是任意键值。
+   *
+   * 与 `render` 的区别只有类型契约：agent 提示词的模板数据必须带
+   * `agentKey` / `agentName` / `tools`（工具清单与实际授权同源，不许漏），
+   * 而「运行环境」这类**按轮求值**的片段没有这些字段 —— 用一个显式的口子区分，
+   * 不去放宽 `PromptData`（放宽了，工具清单漏注入就没人拦得住了）。
+   */
+  renderPartial: (template: string, data: Record<string, unknown>) => string
   /** 全部可用模板名（诊断 / 测试用） */
   templateNames: () => string[]
 }
+
+/**
+ * 提示词引擎的注入 token。
+ *
+ * 引擎本身是工厂产物（`createPromptEngine()`），装配期渲染 agent 定义要用它；
+ * **运行期也要用它** —— 会话开局那段「运行环境」（操作系统 + 当前时间）是按轮渲染的，
+ * 不能写死在装配期的提示词里。于是它进容器（value provider），与「不走容器」的
+ * 纯函数工具区分开：判断标准仍是「有没有第二处消费方」。
+ */
+export const PROMPT_ENGINE = Symbol.for('PromptEngine')
 
 export interface PromptEngineOptions {
   /** 模板目录；默认本文件同级的 `templates/`（dev 走 src，构建后走 dist，由 copy-assets 保证存在） */
@@ -72,23 +91,27 @@ export const createPromptEngine = (options: PromptEngineOptions = {}): PromptEng
   const views = options.templatesDir ?? defaultTemplatesDir()
   const eta = new Eta({ views, cache: true, autoEscape: false, tags: TEMPLATE_TAGS })
 
+  const render = (template: string, data: object): string => {
+    try {
+      // 只清首尾空行，保留正文里的缩进（见上方注释：dedent 会吃掉列表续行缩进）
+      return eta.render(template, data).replace(/^\n+/, '').replace(/\s+$/, '')
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error)
+      throw new Error(
+        dedent`
+          提示词模板渲染失败: ${template}
+          模板目录: ${views}
+          可用模板: ${listTemplateNames(views).join(', ')}
+          原因: ${reason}
+        `,
+      )
+    }
+  }
+
   return {
-    render: (template, data) => {
-      try {
-        // 只清首尾空行，保留正文里的缩进（见上方注释：dedent 会吃掉列表续行缩进）
-        return eta.render(template, data).replace(/^\n+/, '').replace(/\s+$/, '')
-      } catch (error) {
-        const reason = error instanceof Error ? error.message : String(error)
-        throw new Error(
-          dedent`
-            提示词模板渲染失败: ${template}
-            模板目录: ${views}
-            可用模板: ${listTemplateNames(views).join(', ')}
-            原因: ${reason}
-          `,
-        )
-      }
-    },
+    render: (template, data) => render(template, data),
+    // 行期片段（如会话开局的「运行环境」）：数据没有 agentKey / tools 那一套，故单独开一个口子
+    renderPartial: (template, data) => render(template, data),
     templateNames: () => listTemplateNames(views),
   }
 }

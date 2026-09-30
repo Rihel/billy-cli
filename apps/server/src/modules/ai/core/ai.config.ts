@@ -44,6 +44,21 @@ export interface AgentConfig {
   subAgentMaxSteps: number
   /** 单个子 agent 的墙钟上限（ms；0 = 沿用 `runTimeoutMs`） */
   subAgentTimeoutMs: number
+
+  // ── 命令执行（core bean `command`，§3.15）──
+  /**
+   * 是否允许 agent 在本机执行命令行命令。
+   *
+   * 关掉时工具仍在（装配期 core bean 必须交出工具），但每次调用返回"已被关闭"的结论 ——
+   * 模型能理解并改口，好过遇到一个不存在的工具。
+   */
+  commandEnabled: boolean
+  /** 单条命令的时长**默认值与硬上限**（ms）：模型传更小就听它的，传更大一律夹到这里 */
+  commandTimeoutMs: number
+  /** 单条流（stdout / stderr 各自）的输出上限（字节）；超出即截断并终止命令 */
+  commandMaxOutputBytes: number
+  /** 命令的工作根目录（缺省 = 服务进程工作目录）；agent 传入的 `cwd` 只能在这个目录之内 */
+  commandWorkDir?: string
 }
 
 /**

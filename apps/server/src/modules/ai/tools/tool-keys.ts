@@ -18,6 +18,13 @@ export const TOOL_KEYS = {
   todoWrite: 'todo-write',
   /** 子 agent 能力：**运行期动态创建一个子 agent 并跑完**（提示词由主 agent 现写） */
   runSubAgent: 'run-sub-agent',
+  /**
+   * 命令执行能力：在本机跑一条命令行命令（跨平台：Windows `cmd.exe` / POSIX `/bin/sh`）。
+   *
+   * 安全边界见 `core/command.core.ts` 类注释：命令以**服务进程的身份与权限**执行，
+   * 由 `agent.command*` 配置决定开关、默认落点目录与时长 / 输出上限。
+   */
+  runCommand: 'run-command',
 } as const
 
 /** 工具 key 联合类型（`ToolBuilder` 与 agent 声明的入参类型） */

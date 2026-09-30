@@ -149,6 +149,21 @@ export const serverAppConfigSchema = z.object({
     subAgentMaxSteps: z.coerce.number().int().nonnegative().default(0),
     /** 单个子 agent 的墙钟上限（ms；0 = 沿用 runTimeoutMs） */
     subAgentTimeoutMs: z.coerce.number().int().nonnegative().default(0),
+    // ── 命令执行（core bean `command`，设计文档 §3.15）──
+    /**
+     * 是否允许 agent 在本机执行命令行命令（**默认开**）。
+     *
+     * 这是**让模型在本机跑命令**的能力：命令以服务进程的身份与权限执行。
+     * 自用 / 内网部署默认开；对外提供服务的部署应显式置 `false`，
+     * 或把命令执行搬到容器 / 沙箱里（见 `ai-agent.md` §3.15 的安全边界）。
+     */
+    commandEnabled: z.boolean().default(true),
+    /** 单条命令的时长默认值与硬上限（ms） */
+    commandTimeoutMs: z.coerce.number().int().positive().default(15_000),
+    /** 单条流的输出上限（字节）；超出即截断并终止命令 */
+    commandMaxOutputBytes: z.coerce.number().int().positive().default(64 * 1024),
+    /** 命令的工作根目录（缺省 = 服务进程工作目录）；agent 只能在这个目录之内指定 cwd */
+    commandWorkDir: z.string().optional(),
   }),
   /**
    * AI 模型模块配置（配置类数据：供应商 / 模型，见设计文档 §4.8）。
@@ -315,6 +330,10 @@ export const mapServerEnv = (
     subAgentMaxDepth: optional(env.AGENT_SUB_AGENT_MAX_DEPTH),
     subAgentMaxSteps: optional(env.AGENT_SUB_AGENT_MAX_STEPS),
     subAgentTimeoutMs: optional(env.AGENT_SUB_AGENT_TIMEOUT_MS),
+    commandEnabled: parseBoolean(env.AGENT_COMMAND_ENABLED),
+    commandTimeoutMs: optional(env.AGENT_COMMAND_TIMEOUT_MS),
+    commandMaxOutputBytes: optional(env.AGENT_COMMAND_MAX_OUTPUT_BYTES),
+    commandWorkDir: optional(env.AGENT_COMMAND_WORK_DIR),
   },
   aiModel: {
     encryptionKey: optional(env.AI_MODEL_ENCRYPTION_KEY),

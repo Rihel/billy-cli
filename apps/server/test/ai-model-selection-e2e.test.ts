@@ -1,6 +1,6 @@
 import 'dotenv/config'
 import { randomBytes } from 'node:crypto'
-import { Db, setAuditUserProvider } from '@repo/kits'
+import { CommandRunner, Db, setAuditUserProvider } from '@repo/kits'
 import { AiProviderKind, RunStatus } from '@repo/shared'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { AiModelEntity } from '../src/database/entities/ai-model-entity.js'
@@ -15,7 +15,9 @@ import { readAgentRuntime } from '../src/modules/ai/core/ai.core.types.js'
 import { decideModelForMastra } from '../src/modules/ai/core/ai.model-decision.js'
 import { PlannerCore } from '../src/modules/ai/core/planner.core.js'
 import { SubAgentCore } from '../src/modules/ai/core/subagent.core.js'
+import { CommandCore } from '../src/modules/ai/core/command.core.js'
 import { createPromptEngine } from '../src/modules/ai/prompts/index.js'
+import { AgentTitleService } from '../src/modules/ai/runtime/title.service.js'
 import { AgentChatService } from '../src/modules/ai/runtime/chat.service.js'
 import { AgentConversationService } from '../src/modules/ai/runtime/conversation.service.js'
 import { ConversationRepository } from '../src/modules/ai/runtime/conversation.repository.js'
@@ -96,6 +98,10 @@ const TEST_CONFIG = {
   subAgentMaxDepth: 1,
   subAgentMaxSteps: 5,
   subAgentTimeoutMs: 60_000,
+  // 命令执行（core bean `command`）：端到端要能真跑一条命令，这里给全部字段
+  commandEnabled: true,
+  commandTimeoutMs: 5_000,
+  commandMaxOutputBytes: 64 * 1024,
 } as never
 
 /** mock 收到的**对话请求**（`GET /models` 是同步用的，不算） */
@@ -166,6 +172,8 @@ beforeAll(async () => {
   const toolBuilder = new ToolBuilder([], [
     new PlannerCore(timelines),
     new SubAgentCore(runner, silentLogger),
+    // 命令执行 core：与 `ai.module.ts` 的装配口径一致（assistant 已授权 run-command）
+    new CommandCore(new CommandRunner(), config, silentLogger),
   ])
   const registry = createAgentRegistry(
     createAgentDefinitions(createPromptEngine(), toolBuilder),
@@ -204,6 +212,8 @@ beforeAll(async () => {
     skillLoader,
     modelService,
     silentLogger,
+    createPromptEngine(),
+    new AgentTitleService(timelines, createPromptEngine(), silentLogger),
   )
 })
 
@@ -213,6 +223,23 @@ afterAll(async () => {
     await db.dataSource.query('DELETE FROM timelines WHERE conversation_id = $1', [id])
     await db.dataSource.query('DELETE FROM runs WHERE conversation_id = $1', [id])
     await db.dataSource.query('DELETE FROM conversations WHERE id = $1', [id])
+  }
+
+  /**
+   * 兜底：有些会话是经 HTTP / 流式端点建的、**没进 `createdConversationIds`** ——
+   * 按测试用户再扫一遍。不扫的代价很实在：`DB_URL` 指向哪个库就往哪儿写，开发机上就是开发库，
+   * 每跑一次测试都会多出一堆"看着像真会话"的假数据（还会出现在会话页侧栏里）。
+   */
+  for (const userId of [TEST_USER]) {
+    await db.dataSource.query(
+      'DELETE FROM timelines WHERE conversation_id IN (SELECT id FROM conversations WHERE user_id = $1)',
+      [userId],
+    )
+    await db.dataSource.query(
+      'DELETE FROM runs WHERE conversation_id IN (SELECT id FROM conversations WHERE user_id = $1)',
+      [userId],
+    )
+    await db.dataSource.query('DELETE FROM conversations WHERE user_id = $1', [userId])
   }
   if (providerId) {
     await db.dataSource.query('DELETE FROM ai_models WHERE provider_id = $1', [providerId])

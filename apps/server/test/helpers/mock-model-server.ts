@@ -10,6 +10,7 @@ import type { AddressInfo } from 'node:net'
  *
  * 三个标记载荷把"多步行为"确定下来（都写在**用户消息**里）：
  * - `[delegate]`：改调 `run-sub-agent`；
+ * - `[command]`：改调 `run-command`（真跑一条 `echo`，验证跨平台命令执行链路）；
  * - `[todo-overwrite]`：第二轮提交一份**改动过的完整清单**（加任务 / 改状态 / 隐式删任务）；
  * - `[todo-react]`：**同一轮内连提交两次**（第二次的入参里带上第一次新增的任务）。
  *
@@ -118,6 +119,29 @@ export const MOCK_SUBAGENT_TASK = '统计当前待办的完成情况，给出总
 /** 子 agent 那一轮的固定结论文本（父拿到的工具出参里应含它） */
 export const MOCK_CHILD_TEXT = '子助手结论：共 2 条待办，其中 1 条已完成。'
 
+// ── 命令执行 ───────────────────────────────────────────────────────────────
+/** 用户消息里带这个标记时，模型改为调用「命令执行工具」（验证跨平台跑命令这条链路） */
+export const MOCK_COMMAND_MARKER = '[command]'
+/** 命令执行工具 key（agent 用它在本机跑一条命令） */
+export const MOCK_COMMAND_TOOL = 'run-command'
+/** 命令输出的标记串（断言 stdout 里真的有它） */
+export const MOCK_COMMAND_OUTPUT = 'billy-command-ok'
+/**
+ * 要执行的命令：`echo` 在 `cmd.exe` 与 `/bin/sh` 下都存在，
+ * 所以同一条命令在三端都能跑通 —— 测的正是"跨平台"这件事。
+ */
+export const MOCK_COMMAND = `echo ${MOCK_COMMAND_OUTPUT}`
+
+// ── 会话命名（首轮结束后那次隔离调用） ─────────────────────────────────
+/**
+ * 命名调用的模型回复。
+ *
+ * 它**不需要标记**就能被认出来：命名调用是唯一**不带任何工具**的请求
+ * （临时 agent 只有命名指令，见 `runtime/title.service.ts`），mock 据此分流。
+ * 刻意与 `MOCK_FINAL_TEXT` 不同、且 ≤10 字，测试才能断言"标题确实来自这一次调用"。
+ */
+export const MOCK_TITLE_TEXT = '待办整理周报'
+
 /** 用户消息里带这个标记时，逐字慢速输出（用于验证"停止"与"断线补发"） */
 export const MOCK_SLOW_MARKER = '[slow]'
 
@@ -156,6 +180,11 @@ const DELEGATE_CALL: MockToolCall = {
     system_prompt: MOCK_SUBAGENT_PROMPT,
     task: MOCK_SUBAGENT_TASK,
   },
+}
+const COMMAND_CALL: MockToolCall = {
+  id: 'call_mock_command',
+  name: MOCK_COMMAND_TOOL,
+  args: { command: MOCK_COMMAND },
 }
 
 const readBody = async (req: IncomingMessage): Promise<Record<string, unknown>> => {
@@ -198,6 +227,10 @@ const decideToolCall = (body: Record<string, unknown>): MockToolCall | null => {
   const tools = body.tools
   if (!Array.isArray(tools) || tools.length === 0) return null
 
+  // 命令执行：跑一次拿到工具结论后回到文本回答（与其它标记同一套路）
+  if (wanted(body, MOCK_COMMAND_MARKER)) {
+    return hasToolResult(body) ? null : COMMAND_CALL
+  }
   if (wanted(body, MOCK_DELEGATE_MARKER)) {
     return hasToolResult(body) ? null : DELEGATE_CALL
   }
@@ -271,9 +304,20 @@ const sse = (res: ServerResponse, payload: unknown): void => {
 const isChildTurn = (body: Record<string, unknown>): boolean =>
   JSON.stringify(body.messages ?? []).includes(MOCK_CHILD_MARKER)
 
-/** 这一轮的最终文本（子 agent 与主 agent 用不同文本，便于断言"结论确实来自子助手"） */
-const finalText = (body: Record<string, unknown>): string =>
-  isChildTurn(body) ? MOCK_CHILD_TEXT : MOCK_FINAL_TEXT
+/**
+ * 这一轮请求是不是"会话命名那一轮"：**唯一不带工具**的请求。
+ *
+ * 命名用的临时 agent 没有工具（与当前 agent 上下文完全隔离），而主 agent / 子 agent 都有；
+ * 所以"没有 tools"就是它的指纹，不必在**生产提示词**里塞测试标记。
+ */
+const isTitleTurn = (body: Record<string, unknown>): boolean =>
+  !Array.isArray(body.tools) || body.tools.length === 0
+
+/** 这一轮的最终文本（命名 / 子 agent / 主 agent 各用不同文本，便于断言"文本确实来自那一轮"） */
+const finalText = (body: Record<string, unknown>): string => {
+  if (isTitleTurn(body)) return MOCK_TITLE_TEXT
+  return isChildTurn(body) ? MOCK_CHILD_TEXT : MOCK_FINAL_TEXT
+}
 
 const isSlow = (body: Record<string, unknown>): boolean =>
   JSON.stringify(messagesOf(body)).includes(MOCK_SLOW_MARKER)

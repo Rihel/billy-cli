@@ -16,6 +16,8 @@ import {
   AgentConversationCreateSchema,
   AgentConversationIdSchema,
   AgentConversationListSchema,
+  AgentConversationRenameSchema,
+  AgentInstructionsSchema,
   AgentRunIdSchema,
   AgentRunListSchema,
   AgentTimelineListSchema,
@@ -26,6 +28,8 @@ import {
   type AgentConversationCreateDto,
   type AgentConversationIdDto,
   type AgentConversationListDto,
+  type AgentConversationRenameDto,
+  type AgentInstructionsDto,
   type AgentTimelineListDto,
 } from '@repo/shared'
 import type { Response } from 'express'
@@ -87,6 +91,13 @@ export class AiController {
   @HttpCode(200)
   list() {
     return this.agentService.list()
+  }
+
+  /** 某个 agent 的**系统指令原文**（前端「查看系统指令」）：直接回装配期渲染好的那份，不另存副本 */
+  @Post('instructions')
+  @HttpCode(200)
+  instructions(@Body({ schema: AgentInstructionsSchema }) input: AgentInstructionsDto) {
+    return this.agentService.instructions(input)
   }
 
   /**
@@ -195,6 +206,15 @@ export class AiController {
     @Body({ schema: AgentConversationIdSchema }) input: AgentConversationIdDto,
   ) {
     return this.conversations.detail(this.ownerId(), input)
+  }
+
+  /** 重命名会话（用户手动改名；会记一条时间线事件，见服务层注释） */
+  @Post('conversation/rename')
+  @HttpCode(200)
+  renameConversation(
+    @Body({ schema: AgentConversationRenameSchema }) input: AgentConversationRenameDto,
+  ) {
+    return this.conversations.rename(this.ownerId(), input)
   }
 
   /** 软删会话（**唯一的删除入口**；运行记录与时间线不提供删除） */

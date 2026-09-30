@@ -4,6 +4,7 @@ import { APP_FILTER, APP_INTERCEPTOR, APP_PIPE } from '@nestjs/core'
 import {
   AppConfigModule,
   AuditSubscriber,
+  CommandModule,
   DbModule,
   IdGenerationModule,
   JwtModule,
@@ -81,6 +82,7 @@ import { UserModule } from './modules/user/index.js'
     IdGenerationModule,
     TelemetryModule,
     SchedulerModule,
+    CommandModule,
     // ---- 基础设施：配置由 ConfigService 惰性解析 ----
     LoggerModule.forRootAsync({
       imports: [ConfigModule],

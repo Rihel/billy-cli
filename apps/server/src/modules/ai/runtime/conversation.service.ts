@@ -8,6 +8,7 @@ import {
   type AgentConversationIdDto,
   type AgentConversationListDto,
   type AgentConversationModel,
+  type AgentConversationRenameDto,
 } from '@repo/shared'
 import type { PageQueryResult } from '@repo/kits'
 import type { ConversationEntity } from '../../../database/entities/conversation-entity.js'
@@ -68,6 +69,48 @@ export class AgentConversationService {
     input: AgentConversationIdDto,
   ): Promise<AgentConversationModel> {
     return toConversationModel(await this.requireOwned(userId, input.conversationId))
+  }
+
+  /**
+   * 重命名会话（用户手动改名）。
+   *
+   * 与「首轮自动起名」（`runtime/title.service.ts`）的分工：自动名只在**第一轮结束时**生成一次，
+   * 而且**用户改过之后不再覆盖**（那条规则由编排层按"标题是否还是当时的自动值"判断，
+   * 于是"人改的名字"永远不会被后台悄悄冲掉）。
+   *
+   * 改名本身**记一条时间线事件**（谁在什么时候把标题从什么改成了什么）——
+   * 与删除会话同一口径：会改变用户可见状态的动作都要留痕，审计页看得到。
+   */
+  async rename(
+    userId: string,
+    input: AgentConversationRenameDto,
+  ): Promise<AgentConversationModel> {
+    const conversation = await this.requireOwned(userId, input.conversationId)
+    const from = conversation.title
+    // 名字没变就不写库、不记事件（避免"点开又确认"刷出一条无意义的审计）
+    if (from === input.title) return toConversationModel(conversation)
+
+    await this.conversations.setTitle(input.conversationId, input.title)
+    await this.timelines.append({
+      conversationId: input.conversationId,
+      role: TimelineRole.System,
+      kind: TimelineKind.Status,
+      payload: {
+        reason: 'conversation_renamed',
+        from,
+        to: input.title,
+        operator: userId,
+      },
+      finishedAt: new Date(),
+    })
+    this.logger.log('ai.conversation.renamed', {
+      conversationId: input.conversationId,
+      from,
+      to: input.title,
+      operator: userId,
+    })
+    conversation.title = input.title
+    return toConversationModel(conversation)
   }
 
   /**

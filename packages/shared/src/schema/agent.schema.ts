@@ -111,6 +111,44 @@ export const AgentConversationIdSchema = z.object({
 
 export type AgentConversationIdDto = z.infer<typeof AgentConversationIdSchema>
 
+/**
+ * 会话重命名入参（`POST /agent/conversation/rename`）—— 用户手动改名。
+ *
+ * 长度上限 30，与"首轮自动起名"（≤10 字，见 `runtime/title.service.ts`）是两个口径：
+ * 自动名短是为了在侧栏一行放得下，手动名给宽一点（用户想怎么写就怎么写）。
+ * `.trim()` 写在 `.min(1)` 之前：全是空格的名字拦在边界，
+ * 否则库里会出现"看不见的标题"（列表里那一行空白，谁都不知道发生了什么）。
+ */
+export const AgentConversationRenameSchema = AgentConversationIdSchema.extend({
+  title: z.string().trim().min(1).max(30),
+})
+
+export type AgentConversationRenameDto = z.infer<typeof AgentConversationRenameSchema>
+
+/** 系统指令查询入参（`POST /agent/instructions`；省略 agentKey 用默认 agent） */
+export const AgentInstructionsSchema = z.object({
+  agentKey: z.string().min(1).max(64).optional(),
+})
+
+export type AgentInstructionsDto = z.infer<typeof AgentInstructionsSchema>
+
+/**
+ * 系统指令（`POST /agent/instructions`）。
+ *
+ * 返回**装配期渲染好的当前定义**（`AgentDefinition.instructions`）：可用工具、通用约定、
+ * 角色约定全在里面，等于"这个 agent 现在被怎么要求"的原文。
+ * 与某一次运行的差异（会话首轮末尾还会追加「运行环境」片段，§3.15.4）是**按轮拼上去的**，
+ * 不在这份静态指令里 —— 接口口径就是"静态系统指令"。
+ */
+export const AgentInstructionsModelSchema = z.object({
+  agentKey: z.string(),
+  name: z.string(),
+  description: z.string(),
+  instructions: z.string(),
+})
+
+export type AgentInstructionsModel = z.infer<typeof AgentInstructionsModelSchema>
+
 /** 时间线查询入参（`POST /agent/timeline/list`） */
 export const AgentTimelineListSchema = BasePaginateSchema.extend({
   conversationId: z.string().min(1).max(32),

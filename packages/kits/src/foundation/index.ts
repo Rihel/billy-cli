@@ -1,3 +1,4 @@
+export * from './command/index.js'
 export * from './config/index.js'
 export * from './infra-module.js'
 export * from './errors/app-error.js'

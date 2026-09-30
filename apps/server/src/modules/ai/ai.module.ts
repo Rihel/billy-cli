@@ -17,7 +17,8 @@ import type { AgentRegistry as AgentRegistryValue } from './core/ai.types.js'
 import { AGENT_CORES, type AgentCore } from './core/ai.core.types.js'
 import { PlannerCore } from './core/planner.core.js'
 import { SubAgentCore } from './core/subagent.core.js'
-import { createPromptEngine } from './prompts/index.js'
+import { CommandCore } from './core/command.core.js'
+import { createPromptEngine, PROMPT_ENGINE } from './prompts/index.js'
 import {
   AgentChatService,
   AgentConversationService,
@@ -27,6 +28,7 @@ import {
   AgentRunner,
   AgentStreamStore,
   AgentTimelineService,
+  AgentTitleService,
   ContextService,
   ConversationRepository,
   RunRepository,
@@ -42,9 +44,10 @@ import { AuthModule } from '../auth/auth.module.js'
 /**
  * 提示词引擎（单例）。
  *
- * 刻意**不进 DI 容器**：它没有依赖、也不需要被替换（要换模板目录就在测试里直接
- * `createPromptEngine({ templatesDir })`）—— 按本工程「不经容器装配的类不写装饰器」的约定，
- * 在这里做模块级单例最直白。
+ * 有**两处**消费方，所以以 value provider 的形式进容器（token `PROMPT_ENGINE`）：
+ * 1. 装配期：把所有 agent 声明渲染成定义（提示词里的工具清单来自实际授权）；
+ * 2. 运行期：渲染只属于**会话开局**的「运行环境」片段（操作系统 + 当前时间，见 §3.15）——
+ *    这段文本按轮求值，不能写死在装配期的提示词里。
  */
 const prompts = createPromptEngine()
 
@@ -94,6 +97,8 @@ let warnedMissingEnvelope = false
       useFactory: (config: ConfigService): AgentConfigValue =>
         config.getOrThrow<AgentConfigValue>('agent'),
     },
+    // 提示词引擎：装配期（渲染 agent 定义）与运行期（渲染开局环境片段）共用同一个实例
+    { provide: PROMPT_ENGINE, useValue: prompts },
     // ---- 工具：业务工具 bean 的汇总点（**当前为空**，AI 模块与业务模块解耦）----
     // 新增业务工具时：写一个 `@Injectable()` 的 tool bean + 在下面 inject 里加一行
     {
@@ -106,9 +111,10 @@ let warnedMissingEnvelope = false
     AgentRunner,
     PlannerCore,
     SubAgentCore,
+    CommandCore,
     {
       provide: AGENT_CORES,
-      inject: [PlannerCore, SubAgentCore],
+      inject: [PlannerCore, SubAgentCore, CommandCore],
       useFactory: (...cores: AgentCore[]) => cores,
     },
     ToolBuilder,
@@ -209,6 +215,7 @@ let warnedMissingEnvelope = false
     AgentRunService,
     ContextService,
     AgentChatService,
+    AgentTitleService,
     AgentStreamStore,
     AgentRecoveryService,
   ],

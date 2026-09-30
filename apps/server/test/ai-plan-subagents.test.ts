@@ -1,5 +1,5 @@
 import 'dotenv/config'
-import { Db, setAuditUserProvider } from '@repo/kits'
+import { CommandRunner, Db, setAuditUserProvider } from '@repo/kits'
 import { RunStatus, TimelineKind, TimelineRole } from '@repo/shared'
 import { RequestContext } from '@mastra/core/request-context'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
@@ -17,7 +17,9 @@ import {
 } from '../src/modules/ai/core/ai.core.types.js'
 import { PlannerCore, type TodoWriteOutput } from '../src/modules/ai/core/planner.core.js'
 import { SubAgentCore } from '../src/modules/ai/core/subagent.core.js'
+import { CommandCore } from '../src/modules/ai/core/command.core.js'
 import { createPromptEngine } from '../src/modules/ai/prompts/index.js'
+import { AgentTitleService } from '../src/modules/ai/runtime/title.service.js'
 import { SkillLoader } from '../src/modules/ai/skills/index.js'
 import { ToolBuilder } from '../src/modules/ai/tools/tool.builder.js'
 import { TOOL_KEYS } from '../src/modules/ai/tools/tool-keys.js'
@@ -348,7 +350,11 @@ describe('子 agent（core bean + 运行期动态创建）', () => {
   })
 
   it('Mastra 装配里不再有静态子 agent（`agents:{}` 已删除）', async () => {
-    const toolBuilder = buildToolBuilder([new PlannerCore(stubTimeline), fakeSpawnerCore()])
+    const toolBuilder = buildToolBuilder([
+      new PlannerCore(stubTimeline),
+      fakeSpawnerCore(),
+      fakeCommandCore(),
+    ])
     const registry = createAgentRegistry(
       createAgentDefinitions(createPromptEngine(), toolBuilder),
       DEFAULT_AGENT_KEY,
@@ -641,6 +647,19 @@ const executeTodoWrite = async (
  *
  * 这样"工具面 = 全部 − 委派类"这条规则可以脱离数据库与模型单独验证。
  */
+/** 命令执行 core 的替身：只关心"工具清单能不能渲染出来"的用例用它，不真跑命令 */
+const fakeCommandCore = (): AgentCore => ({
+  key: 'fake-command',
+  asTools: () => [
+    {
+      key: TOOL_KEYS.runCommand,
+      title: '执行命令行命令',
+      description: 'x',
+      tool: {} as never,
+    },
+  ],
+})
+
 const fakeSpawnerCore = (): AgentCore => ({
   key: 'fake-subagent',
   asTools: () => [
@@ -674,6 +693,10 @@ const TEST_CONFIG = {
   subAgentMaxDepth: 1,
   subAgentMaxSteps: 5,
   subAgentTimeoutMs: 60_000,
+  // 命令执行（core bean `command`）：端到端要能真跑一条命令，这里给全部字段
+  commandEnabled: true,
+  commandTimeoutMs: 5_000,
+  commandMaxOutputBytes: 64 * 1024,
 } as never
 
 const buildStack = async () => {
@@ -710,7 +733,12 @@ const buildStack = async () => {
   const runner = new AgentRunner(runs, timelines, config, silentLogger)
   const skillLoader = new SkillLoader(silentLogger)
   const planner = new PlannerCore(timelines)
-  const toolBuilder = buildToolBuilder([planner, new SubAgentCore(runner, silentLogger)])
+  const toolBuilder = buildToolBuilder([
+    planner,
+    new SubAgentCore(runner, silentLogger),
+    // 命令执行 core：与 `ai.module.ts` 的装配口径一致（assistant 已授权 run-command）
+    new CommandCore(new CommandRunner(), config, silentLogger),
+  ])
   const registry = createAgentRegistry(
     createAgentDefinitions(createPromptEngine(), toolBuilder),
     DEFAULT_AGENT_KEY,
@@ -744,6 +772,8 @@ const buildStack = async () => {
     skillLoader,
     modelsStub,
     silentLogger,
+    createPromptEngine(),
+    new AgentTitleService(timelines, createPromptEngine(), silentLogger),
   )
 
   const runService = new AgentRunService(runs, conversations)
@@ -758,6 +788,20 @@ beforeAll(async () => {
 afterAll(async () => {
   setAuditUserProvider(undefined)
   if (stackPromise) {
+    /**
+     * 清理这次跑出来的数据：本文件用例多、会话是 `chat.chat()` 直连建的，**没有逐个登记 id**，
+     * 所以按测试用户整批删。不清理的代价很实在：`DB_URL` 指向哪个库就往哪儿写 ——
+     * 开发机上就是开发库，跑一次就多一堆"看着像真会话"的假数据（还会出现在会话页侧栏里）。
+     */
+    await db.dataSource.query(
+      'DELETE FROM timelines WHERE conversation_id IN (SELECT id FROM conversations WHERE user_id = $1)',
+      [USER],
+    )
+    await db.dataSource.query(
+      'DELETE FROM runs WHERE conversation_id IN (SELECT id FROM conversations WHERE user_id = $1)',
+      [USER],
+    )
+    await db.dataSource.query('DELETE FROM conversations WHERE user_id = $1', [USER])
     await db.onApplicationShutdown()
   }
   await mock.close()

@@ -8,6 +8,8 @@ import { TimelineEntity } from '../src/database/entities/timeline-entity.js'
 import { DEFAULT_AGENT_KEY, createAgentDefinitions } from '../src/modules/ai/agents/index.js'
 import { createPromptEngine } from '../src/modules/ai/prompts/index.js'
 import { createAgentRegistry } from '../src/modules/ai/core/ai.registry.js'
+import { AgentService } from '../src/modules/ai/core/ai.service.js'
+import type { AgentRegistry } from '../src/modules/ai/core/ai.types.js'
 import { AgentConversationService } from '../src/modules/ai/runtime/conversation.service.js'
 import { ConversationRepository } from '../src/modules/ai/runtime/conversation.repository.js'
 import { RunRepository } from '../src/modules/ai/runtime/run.repository.js'
@@ -43,6 +45,7 @@ let runs: RunRepository
 let timelines: TimelineRepository
 let conversationService: AgentConversationService
 let timelineService: AgentTimelineService
+let registry: AgentRegistry
 
 /** 测试造的会话 id（结束时清理） */
 const createdConversationIds: string[] = []
@@ -65,7 +68,7 @@ beforeAll(async () => {
   runs = new RunRepository(db)
   timelines = new TimelineRepository(db)
 
-  const registry = createAgentRegistry(
+  registry = createAgentRegistry(
     createAgentDefinitions(createPromptEngine(), {
       describe: (keys: readonly string[]) =>
         keys.map((key) => ({ key, title: key, description: key })),
@@ -92,6 +95,23 @@ afterAll(async () => {
     await db.dataSource.query('DELETE FROM timelines WHERE conversation_id = $1', [id])
     await db.dataSource.query('DELETE FROM runs WHERE conversation_id = $1', [id])
     await db.dataSource.query('DELETE FROM conversations WHERE id = $1', [id])
+  }
+
+  /**
+   * 兜底：有些会话是经 HTTP / 流式端点建的、**没进 `createdConversationIds`** ——
+   * 按测试用户再扫一遍。不扫的代价很实在：`DB_URL` 指向哪个库就往哪儿写，开发机上就是开发库，
+   * 每跑一次测试都会多出一堆"看着像真会话"的假数据（还会出现在会话页侧栏里）。
+   */
+  for (const userId of [USER, OTHER_USER]) {
+    await db.dataSource.query(
+      'DELETE FROM timelines WHERE conversation_id IN (SELECT id FROM conversations WHERE user_id = $1)',
+      [userId],
+    )
+    await db.dataSource.query(
+      'DELETE FROM runs WHERE conversation_id IN (SELECT id FROM conversations WHERE user_id = $1)',
+      [userId],
+    )
+    await db.dataSource.query('DELETE FROM conversations WHERE user_id = $1', [userId])
   }
   await db.onApplicationShutdown()
 })
@@ -203,5 +223,83 @@ describe('会话运行时（真实数据库）', () => {
       reason: 'conversation_removed',
       operator: USER,
     })
+  })
+})
+
+describe('会话重命名（用户手动改名）', () => {
+  it('改名成功：详情立刻是新名字，并留一条审计事件（谁把什么改成了什么）', async () => {
+    const conversation = await conversationService.create(USER, {})
+    createdConversationIds.push(conversation.id)
+
+    const renamed = await conversationService.rename(USER, {
+      conversationId: conversation.id,
+      title: '缓存穿透排查',
+    })
+    expect(renamed.title).toBe('缓存穿透排查')
+    expect(
+      (await conversationService.detail(USER, { conversationId: conversation.id })).title,
+    ).toBe('缓存穿透排查')
+
+    // 改名会改变用户可见状态 → 必须留痕（与删除会话同一口径）
+    const rows = await db.dataSource.query<
+      { payload: Record<string, unknown> }[]
+    >("SELECT payload FROM timelines WHERE conversation_id = $1 AND kind = 'status'", [
+      conversation.id,
+    ])
+    expect(rows[0]?.payload).toMatchObject({
+      reason: 'conversation_renamed',
+      from: '',
+      to: '缓存穿透排查',
+      operator: USER,
+    })
+  })
+
+  it('名字没变：不写库也不记事件（避免"点开又确认"刷出一条无意义的审计）', async () => {
+    const conversation = await conversationService.create(USER, { title: '老名字' })
+    createdConversationIds.push(conversation.id)
+
+    await conversationService.rename(USER, {
+      conversationId: conversation.id,
+      title: '老名字',
+    })
+    const rows = await db.dataSource.query<{ count: string }[]>(
+      "SELECT count(*)::text AS count FROM timelines WHERE conversation_id = $1 AND kind = 'status'",
+      [conversation.id],
+    )
+    expect(rows[0]?.count).toBe('0')
+  })
+
+  it('改别人的会话：3304（不存在与不属于自己返回同一个错，避免被用来探测）', async () => {
+    const conversation = await conversationService.create(USER, {})
+    createdConversationIds.push(conversation.id)
+
+    await expect(
+      conversationService.rename(OTHER_USER, {
+        conversationId: conversation.id,
+        title: '偷改',
+      }),
+    ).rejects.toMatchObject({ code: AppErrorCodes.ConversationNotFound })
+  })
+})
+
+describe('查看系统指令（前端「查看系统指令」的数据源）', () => {
+  it('返回装配期渲染好的原文：与真正挂上去的那份是同一个字符串，不另存副本', () => {
+    // MASTRA / 模型服务与"读系统指令"无关：给 null / 替身即可（这条路径只碰注册表）
+    const service = new AgentService(null, registry, {} as never)
+
+    const result = service.instructions({})
+    expect(result.agentKey).toBe(DEFAULT_AGENT_KEY)
+    expect(result.name).toBeTruthy()
+    // 工具清单与通用约定都在里面（提示词由模板渲染，工具清单来自实际授权）
+    expect(result.instructions).toContain('可用工具')
+    expect(result.instructions).toContain('通用约定')
+    expect(result.instructions).toContain('todo-write')
+  })
+
+  it('未注册的 agentKey：3303，**不静默回落**成默认 agent（否则会让人看错对象）', () => {
+    const service = new AgentService(null, registry, {} as never)
+    expect(() => service.instructions({ agentKey: 'not-exists' })).toThrowError(
+      expect.objectContaining({ code: AppErrorCodes.AgentNotFound }),
+    )
   })
 })

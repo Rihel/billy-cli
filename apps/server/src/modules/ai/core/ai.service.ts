@@ -1,5 +1,10 @@
 import { Inject, Injectable } from '@nestjs/common'
-import type { AgentListModel, AgentStatusModel } from '@repo/shared'
+import type {
+  AgentInstructionsDto,
+  AgentInstructionsModel,
+  AgentListModel,
+  AgentStatusModel,
+} from '@repo/shared'
 import type { Mastra } from '@mastra/core/mastra'
 import { AiModelService } from '../../ai-model/index.js'
 import { AGENT_REGISTRY } from './ai.registry.js'
@@ -42,6 +47,26 @@ export class AgentService {
   /** agent 清单：前端选择器的数据源 */
   list(): AgentListModel {
     return this.registry.list()
+  }
+
+  /**
+   * 某个 agent 的**系统指令原文**（前端「查看系统指令」用它）。
+   *
+   * 直接回装配期渲染好的 `instructions`：**没有第二份副本** ——
+   * 前端看到的与真正挂到这个 agent 上的提示词是同一个字符串
+   * （要改就在模板里改，不可能出现"页面上是一套、跑起来是另一套"）。
+   *
+   * 未注册的 agentKey 由注册表抛 3303，**不静默回落成默认 agent**：
+   * 回落会让人以为"我看的是这个 agent 的指令"，其实不是。
+   */
+  instructions(input: AgentInstructionsDto): AgentInstructionsModel {
+    const definition = this.registry.resolve(input.agentKey)
+    return {
+      agentKey: definition.key,
+      name: definition.name,
+      description: definition.description,
+      instructions: definition.instructions,
+    }
   }
 
   /** 已装配的 Mastra 实例（会话运行时的入口；未配置模型时为 null） */

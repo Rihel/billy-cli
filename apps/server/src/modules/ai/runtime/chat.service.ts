@@ -35,11 +35,14 @@ import {
 } from '../core/ai.core.types.js'
 import { AiModelService } from '../../ai-model/index.js'
 import type { AgentDefinition, AgentRegistry } from '../core/ai.types.js'
+import { buildEnvironmentData } from '../prompts/environment.js'
+import { PROMPT_ENGINE, type PromptEngine } from '../prompts/prompt.engine.js'
 import { SkillLoader } from '../skills/index.js'
 import { ToolBuilder } from '../tools/tool.builder.js'
 import type { ConversationEntity } from '../../../database/entities/conversation-entity.js'
 import type { TimelineEntity } from '../../../database/entities/timeline-entity.js'
 import { AgentConversationService } from './conversation.service.js'
+import { AgentTitleService, type FirstTurnTitle } from './title.service.js'
 import { ContextService } from './context.service.js'
 import { ConversationRepository } from './conversation.repository.js'
 import { RunRepository } from './run.repository.js'
@@ -126,7 +129,51 @@ export class AgentChatService {
     @Inject(SkillLoader) private readonly skillLoader: SkillLoader,
     @Inject(AiModelService) private readonly models: AiModelService,
     @Inject(AppLogger) private readonly logger: AppLogger,
+    @Inject(PROMPT_ENGINE) private readonly prompts: PromptEngine,
+    @Inject(AgentTitleService) private readonly titles: AgentTitleService,
   ) {}
+
+  /**
+   * **首轮结束时给会话起名**（模型生成、≤10 字、与当前 agent 上下文完全隔离）。
+   *
+   * 三个前提全满足才做；任何一条不满足就返回 null（保住"首条消息"那版兜底标题）：
+   * 1. **这一轮是首轮**（开局时 `turnCount === 0`，第一轮之后不再改名）；
+   * 2. 标题**还是兜底那版** —— 用户中途改过名就永远听用户的，后台不许悄悄冲掉它；
+   * 3. 命名调用成功且从模型输出里收拾出了名字（超时 / 报错 / 空输出都算失败）。
+   *
+   * 为什么这次调用的 token 计进这一轮：`runs.usage` 的语义是"这一轮花掉的钱"，
+   * 为这一轮起的名字正是这一轮花的 —— 分开记会让账目凭空少一块（它不占 `step` 行，
+   * 因为它不是回答的一步）。
+   */
+  private async generateFirstTurnTitle(
+    conversation: ConversationEntity,
+    runId: string,
+    message: string,
+    model: RuntimeModel,
+  ): Promise<FirstTurnTitle | null> {
+    if (conversation.turnCount > 0) return null
+    if (conversation.title && conversation.title !== titleFrom(message)) return null
+    return this.titles.generateFirstTurnTitle({
+      conversationId: conversation.id,
+      runId,
+      model,
+    })
+  }
+
+  /** 落标题：模型起的名优先；没起成则只在标题为空时用首条消息兜底（用户改过的名不动） */
+  private async applyTitle(
+    conversation: ConversationEntity,
+    message: string,
+    generated: FirstTurnTitle | null,
+  ): Promise<void> {
+    if (generated?.title) {
+      await this.conversationRepo.setTitle(conversation.id, generated.title)
+      return
+    }
+    if (!conversation.title) {
+      await this.conversationRepo.setTitle(conversation.id, titleFrom(message))
+    }
+  }
 
   /** 本进程内活动运行的中止控制器（跨副本经 Redis 停止频道广播） */
   private readonly activeRuns = new Map<string, AbortController>()
@@ -175,13 +222,14 @@ export class AgentChatService {
         finishedAt: now,
       })
 
-      // ④ 调模型（工具往返都在这一步内部完成；运行时信封带"这一轮用哪个模型"）
+      // ④ 调模型（工具往返都在这一步内部完成；运行时信封带"这一轮用哪个模型"+ 开局环境）
       const requestContext = await this.buildRuntimeContext(
         conversation.id,
         run.id,
         definition,
         userId,
         model,
+        { environment: this.renderEnvironment(conversation) },
       )
       const agent = mastra.getAgent(definition.key)
       const result = await agent.generate(built.messages as never, {
@@ -193,11 +241,24 @@ export class AgentChatService {
       const steps = (result.steps ?? []) as unknown as StepLike[]
       const persisted = await this.persistSteps(conversation.id, run.id, steps)
 
-      // ⑤ 收尾：终态 + 消耗（含子 agent 汇总）+ 统计 + 会话累计 + 标题
-      const usage = await this.rollUpUsage(
+      // ⑤ 首轮命名：把这一轮的记录交给模型起个短名（与 agent 上下文完全隔离的一次小调用）
+      const title = await this.generateFirstTurnTitle(
+        conversation,
+        run.id,
+        input.message,
+        model,
+      )
+
+      // ⑤ 收尾：终态 + 消耗（含子 agent 汇总与这次命名）+ 统计 + 会话累计 + 标题
+      const usageBase = await this.rollUpUsage(
         run.id,
         toUsageRecord(result.totalUsage ?? result.usage ?? null),
       )
+      // 并账要**保留 usageBase 里的非 token 字段**（如 `subAgents`）：
+      // `mergeUsage` 只逐字段加 token，直接把它的结果当 usage 会把那些字段抹掉（踩过：子 agent 明细消失）
+      const usage = title?.usage
+        ? { ...usageBase, ...(mergeUsage(usageBase, title.usage) ?? {}) }
+        : usageBase
       const durationMs = Date.now() - startedAt
       await this.runs.finish(run.id, {
         status: RunStatus.Succeeded,
@@ -215,9 +276,7 @@ export class AgentChatService {
         context: built.snapshot,
       })
       await this.conversationRepo.accumulate(conversation.id, totalTokensOf(usage))
-      if (!conversation.title) {
-        await this.conversationRepo.setTitle(conversation.id, titleFrom(input.message))
-      }
+      await this.applyTitle(conversation, input.message, title)
 
       this.logger.log('ai.chat.succeeded', {
         conversationId: conversation.id,
@@ -654,7 +713,8 @@ export class AgentChatService {
         definition,
         userId,
         model,
-        abort.signal,
+        // 中止信号（用户停止要停整棵树）+ 会话开局环境（仅首轮）
+        { abortSignal: abort.signal, environment: this.renderEnvironment(conversation) },
       )
       const agent = mastra.getAgent(definition.key)
       const output = await agent.stream(built.messages as never, {
@@ -743,8 +803,20 @@ export class AgentChatService {
       // 返回的是包装对象（`{ output, fullStream, … }`），真正的 `MastraModelOutput` 在 `output` 里 ——
       // 直接读 `output.steps` 会拿到 undefined（踩过的崩点，见 stream-result.ts 的注释）
       const steps = (await readStreamSteps(output)) as unknown as StepLike[]
-      const usage = await this.rollUpUsage(run.id, toUsageRecord(await readStreamUsage(output)))
       const persisted = await recorder.finish(steps)
+      // 首轮命名：与 agent 上下文完全隔离的一次小调用（失败不影响这一轮，见 title.service.ts）
+      const title = await this.generateFirstTurnTitle(
+        conversation,
+        run.id,
+        input.message,
+        model,
+      )
+      const usageBase = await this.rollUpUsage(run.id, toUsageRecord(await readStreamUsage(output)))
+      // 并账要**保留 usageBase 里的非 token 字段**（如 `subAgents`）：
+      // `mergeUsage` 只逐字段加 token，直接把它的结果当 usage 会把那些字段抹掉（踩过：子 agent 明细消失）
+      const usage = title?.usage
+        ? { ...usageBase, ...(mergeUsage(usageBase, title.usage) ?? {}) }
+        : usageBase
       const durationMs = Date.now() - startedAt
       await this.runs.finish(run.id, {
         status: RunStatus.Succeeded,
@@ -763,9 +835,7 @@ export class AgentChatService {
         context: built.snapshot,
       })
       await this.conversationRepo.accumulate(conversation.id, totalTokensOf(usage))
-      if (!conversation.title) {
-        await this.conversationRepo.setTitle(conversation.id, titleFrom(input.message))
-      }
+      await this.applyTitle(conversation, input.message, title)
       this.logger.log('ai.stream.succeeded', {
         conversationId: conversation.id,
         runId: run.id,
@@ -967,6 +1037,8 @@ export class AgentChatService {
    * 为什么由编排层算：`run-sub-agent` 工具需要"子 agent 能用哪些工具"，
    * 而这依赖 `ToolBuilder`；若让 core bean 自己注入 `ToolBuilder`，装配会成环
    * （ToolBuilder 依赖 core bean）。信封把这份依赖倒过来，见设计文档 §3.14.4。
+   *
+   * `environment` 只在**会话第一轮**传（见 {@link renderEnvironment}）。
    */
   private async buildRuntimeContext(
     conversationId: string,
@@ -974,7 +1046,7 @@ export class AgentChatService {
     definition: AgentDefinition,
     userId: string,
     model: RuntimeModel,
-    abortSignal?: AbortSignal,
+    options: { abortSignal?: AbortSignal; environment?: string } = {},
   ): Promise<RequestContext> {
     const envelope: AgentRuntimeEnvelope = {
       conversationId,
@@ -985,11 +1057,35 @@ export class AgentChatService {
       // 子 agent 的工具面 = 全部 − 委派类（于是它不能再造子 agent，深度天然为 1）
       childTools: this.toolBuilder.buildDelegable(),
       childSkills: await this.skillLoader.resolve(definition.skills),
-      ...(abortSignal ? { abortSignal } : {}),
+      ...(options.environment ? { environment: options.environment } : {}),
+      ...(options.abortSignal ? { abortSignal: options.abortSignal } : {}),
     }
     const requestContext = new RequestContext()
     requestContext.setRaw(AGENT_RUNTIME_KEY, envelope)
     return requestContext
+  }
+
+  /**
+   * 会话**开局**的运行环境片段（操作系统 + 当前时间）；非首轮返回 `undefined`。
+   *
+   * 「首轮」= 这个会话还没有完成过任何一轮（`turnCount === 0`）。两个刻意的取舍：
+   * 1. **只在首轮注入**：系统提示词是请求前缀，每轮塞一个新时间戳会让提供方的前缀缓存
+   *    每轮失效（本工程专门统计缓存命中，不能自己把它打掉）；需要精确时间时模型用
+   *    `run-command` 自己取。中途某一轮失败重试仍是 `turnCount === 0`，环境会重新注入 —— 无妨。
+   * 2. **渲染失败不打断问答**：环境片段是"锦上添花"，模板出问题记一条 warn 继续跑，
+   *    不让一轮已经付过钱的问答因为一段附加文本而失败。
+   */
+  private renderEnvironment(conversation: ConversationEntity): string | undefined {
+    if (conversation.turnCount > 0) return undefined
+    try {
+      return this.prompts.renderPartial('partials/environment', buildEnvironmentData())
+    } catch (error) {
+      this.logger.warn('ai.environment.render_failed', {
+        conversationId: conversation.id,
+        reason: error instanceof Error ? error.message : String(error),
+      })
+      return undefined
+    }
   }
 
   /**
