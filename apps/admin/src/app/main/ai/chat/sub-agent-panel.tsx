@@ -58,7 +58,8 @@ export interface SubAgentDelta {
   text: string
 }
 
-const statusLabel: Record<string, string> = {
+/** 运行状态 → 人话（右栏的「子 agent 运行」也用这一份，口径不分叉） */
+export const statusLabel: Record<string, string> = {
   running: '进行中',
   succeeded: '已完成',
   failed: '失败',
@@ -66,7 +67,7 @@ const statusLabel: Record<string, string> = {
   rejected: '未执行',
 }
 
-const statusVariant = (status?: string): 'default' | 'secondary' | 'destructive' | 'outline' => {
+export const statusVariant = (status?: string): 'default' | 'secondary' | 'destructive' | 'outline' => {
   if (status === 'succeeded') return 'default'
   if (status === 'failed') return 'destructive'
   if (status === 'running') return 'secondary'

@@ -7,9 +7,14 @@ import {
   isToolUIPart,
   type UIMessage,
 } from 'ai'
-import { Badge } from '@repo/ui'
+import { Badge, cn } from '@repo/ui'
 // ai-elements 组件**走子路径**（不进 barrel：体积大、按需引入，见 docs/design/ai-agent.md §1）
-import { Message, MessageContent, MessageResponse } from '@repo/ui/components/ai-elements/message.tsx'
+import {
+  Message,
+  MessageActions,
+  MessageContent,
+  MessageResponse,
+} from '@repo/ui/components/ai-elements/message.tsx'
 import {
   Reasoning,
   ReasoningContent,
@@ -26,6 +31,7 @@ import { useServerClient } from '@/lib/server-client'
 import { PlanPanel, collectMessagePlan, isPlanToolName } from './plan-panel'
 import { SubAgentPanel, type SubAgentDelta, type SubAgentState } from './sub-agent-panel'
 import { toSubAgentDetail } from './history'
+import { MessageCopyMenu } from './message-copy'
 import { loadWholeTimeline } from './data'
 
 /**
@@ -35,6 +41,9 @@ import { loadWholeTimeline } from './data'
  * 文本 → `MessageResponse`（流式 Markdown）、推理 → `Reasoning`、
  * 工具 → `Tool*`（七态徽标 + 入参出参）、子助手 → `SubAgentPanel`（嵌套卡片）、
  * 计划 → `PlanPanel`（**一条消息只渲染一次当前计划**，放在 parts 末尾）。
+ *
+ * 消息末尾挂一条**操作行**（目前只有"复制"）：悬停 / 键盘聚焦时才显形 ——
+ * 每条消息底下常驻一排按钮会把对话切得七零八落。
  */
 export function MessageRow({
   message,
@@ -190,6 +199,15 @@ export function MessageRow({
           <span className="text-xs text-muted-foreground">（空消息）</span>
         ) : null}
       </MessageContent>
+      {/* 操作行：用户消息靠右（贴在气泡同侧），助手消息靠左 */}
+      <MessageActions
+        className={cn(
+          'w-full -mt-1 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100',
+          isUser && 'justify-end',
+        )}
+      >
+        <MessageCopyMenu message={message} />
+      </MessageActions>
     </Message>
   )
 }

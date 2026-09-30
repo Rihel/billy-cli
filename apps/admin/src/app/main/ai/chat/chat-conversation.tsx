@@ -10,12 +10,16 @@ import {
   AlertDescription,
   Badge,
   Button,
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
+  IconText,
+  toastError,
+  toastSuccess,
 } from '@repo/ui'
+// 可拖动分栏：`components/ui/*` 属重型基础组件，走子路径按需引入（不进 barrel，带扩展名）
+import {
+  ResizableHandle,
+  ResizablePanel,
+  ResizablePanelGroup,
+} from '@repo/ui/components/ui/resizable.tsx'
 // ai-elements 组件**走子路径**（不进 barrel：体积大、按需引入，见 docs/design/ai-agent.md §1）
 import {
   Conversation,
@@ -31,16 +35,30 @@ import {
   PromptInputTextarea,
   PromptInputTools,
 } from '@repo/ui/components/ai-elements/prompt-input.tsx'
-import { ScrollTextIcon } from 'lucide-react'
+import { CopyIcon, PanelRightIcon } from 'lucide-react'
 import { useServerClient } from '@/lib/server-client'
 import { ModelPicker } from './model-picker'
 import { MessageRow } from './message-row'
 import { toUIMessages } from './history'
+import { ConversationRightPanel } from './right-panel'
+import { copyText } from './clipboard'
 import { usageLineText, usageLineTitle } from './format'
 import { conversationPath, isNewConversation } from './routes'
 import type { AgentConversationModel } from '@repo/shared'
 import type { AppPageQueryResponse } from '@repo/shared'
 import { lastRunUsage, loadWholeRuns, loadWholeTimeline } from './data'
+
+/**
+ * 右栏开关的持久化 key：换会话 / 刷新都记住上次的选择。
+ *
+ * 为什么存在浏览器而不是每个会话一份：右栏是"看记录 / 看提示词"的工具，
+ * 打开了就该一直开着；而且新会话首轮发出后地址会 `replace`（组件重挂载），
+ * 状态放内存里会被这一次重挂载清掉。
+ */
+const PANEL_OPEN_STORAGE_KEY = 'ai-chat-right-panel-open'
+
+/** 右栏宽度（数字即像素）：与侧栏同一套口径 —— 栏保持像素宽，窗口变宽由对话区吸收 */
+const PANEL_WIDTH = { default: 340, min: 260, max: '55%' } as const
 
 /**
  * 一个会话的对话区（`/main/ai/chat/[conversationId]` 渲染它）。
@@ -73,6 +91,8 @@ export function ChatConversation({ conversationId }: { conversationId: string })
   const [runId, setRunId] = useState<string>()
   const [errorText, setErrorText] = useState<string>()
   const [loading, setLoading] = useState(!isNew)
+  /** 右栏（系统指令 / 子 agent 运行）是否显示；真实值由挂载后的 effect 从浏览器里读回来 */
+  const [panelOpen, setPanelOpen] = useState(false)
   // 停止按钮要用它；放在 ref 里避免每次拿到 runId 就重建 transport
   const runIdRef = useRef<string | undefined>(undefined)
   /**
@@ -102,6 +122,30 @@ export function ChatConversation({ conversationId }: { conversationId: string })
   const modelIdRef = useRef<string | undefined>(undefined)
   agentKeyRef.current = agentKey ?? undefined
   modelIdRef.current = modelId
+
+  /**
+   * 开关状态用 effect 读回（而不是 `useState` 的惰性初值）：SSR 时读不到 localStorage，
+   * 惰性初值会让首帧与 SSR 不一致（hydration 报错）；写成 effect，首帧两处都是"关"。
+   */
+  useEffect(() => {
+    setPanelOpen(window.localStorage.getItem(PANEL_OPEN_STORAGE_KEY) === '1')
+  }, [])
+
+  const togglePanel = () => {
+    const next = !panelOpen
+    setPanelOpen(next)
+    window.localStorage.setItem(PANEL_OPEN_STORAGE_KEY, next ? '1' : '0')
+  }
+
+  /** 复制会话 id（会话 id 是要贴给别人的东西：排障时一次贴清楚，比截图靠谱） */
+  const copyConversationId = async () => {
+    try {
+      await copyText(conversationId)
+      toastSuccess('已复制会话 id')
+    } catch (error) {
+      toastError(error instanceof Error ? error.message : String(error))
+    }
+  }
 
   const transport = useMemo(
     () =>
@@ -331,14 +375,19 @@ export function ChatConversation({ conversationId }: { conversationId: string })
         {status !== 'ready' ? (
           <Badge variant={status === 'error' ? 'destructive' : 'outline'}>{status}</Badge>
         ) : null}
-        {/* 右侧：查看系统指令 + 换 agent */}
+        {/* 右侧：复制会话 id + 换 agent + 右栏开关 */}
         <div className="ml-auto flex items-center gap-2">
-          <SystemInstructions
-            client={client}
-            agentKey={agentKey ?? agentsQuery.data?.defaultAgentKey}
-            // 新会话首轮发出后会換成真实会话 id（ref 里是最新的），这里读它即可
-            conversationId={activeConversationIdRef.current}
-          />
+          {/* 新会话还没有 id（首轮发出后地址会换成真实 id，那时这个按钮才出现） */}
+          {!isNew ? (
+            <IconText
+              icon={<CopyIcon />}
+              size="small"
+              type="primary"
+              tooltip="复制会话 id"
+              aria-label="复制会话 id"
+              onClick={copyConversationId}
+            />
+          ) : null}
           {agents.length > 1 && (
             <select
               className="h-8 rounded-md border border-border bg-background px-2 text-sm"
@@ -356,6 +405,16 @@ export function ChatConversation({ conversationId }: { conversationId: string })
               ))}
             </select>
           )}
+          <Button
+            variant={panelOpen ? 'secondary' : 'outline'}
+            size="icon-sm"
+            aria-pressed={panelOpen}
+            aria-label={panelOpen ? '隐藏右栏' : '显示右栏'}
+            title={panelOpen ? '隐藏右栏（系统指令 / 子 agent 运行）' : '显示右栏（系统指令 / 子 agent 运行）'}
+            onClick={togglePanel}
+          >
+            <PanelRightIcon className="size-3.5" />
+          </Button>
         </div>
       </header>
 
@@ -365,121 +424,85 @@ export function ChatConversation({ conversationId }: { conversationId: string })
         </Alert>
       ) : null}
 
-      {/* 消息列表不画外框：整块与页面同底，气泡 / 工具卡自己带层次，边框只会把界面切成一块块 */}
-      <Conversation className="min-h-0 flex-1">
-        <ConversationContent>
-          {loading ? (
-            <p className="p-3 text-xs text-muted-foreground">正在加载会话历史…</p>
-          ) : messages.length === 0 ? (
-            <ConversationEmptyState
-              title={isNew ? '问点什么' : '这个会话还没有内容'}
-              description="试着问「最近有哪些待办」，或让它「分步整理一份待办周报」——它会自己规划、必要时造一个子助手"
-            />
-          ) : (
-            messages.map((message) => (
-              <MessageRow
-                key={message.id}
-                message={message}
-                streaming={streaming}
-                client={client}
-                conversationId={isNew ? undefined : conversationId}
-              />
-            ))
-          )}
-        </ConversationContent>
-        <ConversationScrollButton />
-      </Conversation>
+      {/* 对话区 + 右栏：可拖动分栏。右栏可关（页头那个图标），关掉时对话区独占整宽 */}
+      <ResizablePanelGroup orientation="horizontal" className="min-h-0 flex-1">
+        <ResizablePanel minSize={320} className="h-full" style={{ overflow: 'hidden' }}>
+          <div className="flex h-full min-h-0 flex-col gap-3">
+            {/* 消息列表不画外框：整块与页面同底，气泡 / 工具卡自己带层次，边框只会把界面切成一块块 */}
+            <Conversation className="min-h-0 flex-1">
+              <ConversationContent>
+                {loading ? (
+                  <p className="p-3 text-xs text-muted-foreground">正在加载会话历史…</p>
+                ) : messages.length === 0 ? (
+                  <ConversationEmptyState
+                    title={isNew ? '问点什么' : '这个会话还没有内容'}
+                    description="试着问「最近有哪些待办」，或让它「分步整理一份待办周报」——它会自己规划、必要时造一个子助手"
+                  />
+                ) : (
+                  messages.map((message) => (
+                    <MessageRow
+                      key={message.id}
+                      message={message}
+                      streaming={streaming}
+                      client={client}
+                      conversationId={isNew ? undefined : conversationId}
+                    />
+                  ))
+                )}
+              </ConversationContent>
+              <ConversationScrollButton />
+            </Conversation>
 
-      <PromptInput
-        onSubmit={({ text }) => {
-          const content = text.trim()
-          if (!content || streaming) return
-          setErrorText(undefined)
-          clearError()
-          void sendMessage({ text: content })
-        }}
-      >
-        <PromptInputBody>
-          <PromptInputTextarea placeholder="说说你想做什么…（Enter 发送，Shift+Enter 换行）" />
-        </PromptInputBody>
-        {/* 左下角：本轮用哪个模型；右下角：本轮统计 + 发送/停止 */}
-        <PromptInputFooter className="gap-2">
-          <PromptInputTools>
-            <ModelPicker value={modelId} onChange={setModelId} disabled={streaming} />
-          </PromptInputTools>
-          <div className="flex min-w-0 items-center gap-2">
-            <RunUsageInline usage={usage} turn={turn} />
-            {/* 流式中这个按钮就是"停止"（内部按 status 换成方块图标），onStop 里做真正的取消 */}
-            <PromptInputSubmit status={status} onStop={() => void stopRun()} />
+            <PromptInput
+              onSubmit={({ text }) => {
+                const content = text.trim()
+                if (!content || streaming) return
+                setErrorText(undefined)
+                clearError()
+                void sendMessage({ text: content })
+              }}
+            >
+              <PromptInputBody>
+                <PromptInputTextarea placeholder="说说你想做什么…（Enter 发送，Shift+Enter 换行）" />
+              </PromptInputBody>
+              {/* 左下角：本轮用哪个模型；右下角：本轮统计 + 发送/停止 */}
+              <PromptInputFooter className="gap-2">
+                <PromptInputTools>
+                  <ModelPicker value={modelId} onChange={setModelId} disabled={streaming} />
+                </PromptInputTools>
+                <div className="flex min-w-0 items-center gap-2">
+                  <RunUsageInline usage={usage} turn={turn} />
+                  {/* 流式中这个按钮就是"停止"（内部按 status 换成方块图标），onStop 里做真正的取消 */}
+                  <PromptInputSubmit status={status} onStop={() => void stopRun()} />
+                </div>
+              </PromptInputFooter>
+            </PromptInput>
           </div>
-        </PromptInputFooter>
-      </PromptInput>
+        </ResizablePanel>
+
+        {panelOpen ? (
+          <>
+            {/* 分隔条：1px 发丝线（与左栏分隔条同一套交互） */}
+            <ResizableHandle className="mx-2 bg-border transition-colors data-[separator=hover]:bg-primary/40 data-[separator=active]:bg-primary" />
+            <ResizablePanel
+              defaultSize={PANEL_WIDTH.default}
+              minSize={PANEL_WIDTH.min}
+              maxSize={PANEL_WIDTH.max}
+              groupResizeBehavior="preserve-pixel-size"
+              className="h-full"
+              style={{ overflow: 'hidden' }}
+            >
+              <ConversationRightPanel
+                client={client}
+                // 新会话还没有 id：系统指令仍可看静态定义，子 agent tab 给空态
+                conversationId={isNew ? undefined : conversationId}
+                agentKey={agentKey ?? agentsQuery.data?.defaultAgentKey}
+              />
+            </ResizablePanel>
+          </>
+        ) : null}
+      </ResizablePanelGroup>
     </>
-  )
-}
-
-/**
- * 「查看系统指令」：把**这个会话真正用过的系统指令**显示出来（只读弹窗）。
- *
- * 数据源是 `POST /agent/instructions`：
- * - 带 `conversationId` → 回该会话**渲染后的快照**（服务端在每轮把"实际送进模型的全文"落成
- *   `system` 时间线事件，提示词没变时不重复写）—— 这才是"当时模型看到的那份"，
- *   首轮那份末尾还带「运行环境」（操作系统 + 当前时间，§3.15.4）；
- * - 会话还没有快照（刚建 / 历史会话早于这一步）→ 回静态定义，弹窗里如实标明来源，不假装是快照。
- *
- * 打开时才请求（`enabled: open`）：没点开就不该多一次往返；每次打开都会重新取（默认 staleTime 0），
- * 于是"这一轮刚改了提示词"也能立刻看到。
- */
-function SystemInstructions({
-  client,
-  agentKey,
-  conversationId,
-}: {
-  client: ReturnType<typeof useServerClient>
-  agentKey?: string
-  conversationId?: string
-}) {
-  const [open, setOpen] = useState(false)
-  const query = useQuery({
-    queryKey: ['ai', 'instructions', conversationId ?? 'none', agentKey ?? 'default'],
-    queryFn: () =>
-      client.agent.instructions({
-        ...(conversationId ? { conversationId } : {}),
-        ...(agentKey ? { agentKey } : {}),
-      }),
-    enabled: open,
-  })
-
-  return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <Button variant="outline" size="sm" className="gap-1.5" onClick={() => setOpen(true)}>
-        <ScrollTextIcon className="size-3.5" />
-        系统指令
-      </Button>
-      <DialogContent className="max-h-[80vh] gap-3 sm:max-w-2xl">
-        <DialogHeader>
-          <DialogTitle>
-            系统指令{query.data ? ` · ${query.data.name}` : ''}
-          </DialogTitle>
-          <DialogDescription>
-            {query.data?.source === 'conversation'
-              ? '本会话实际使用的系统指令（渲染后的快照）：可用工具、通用约定、角色约定，首轮那份末尾还带「运行环境」。'
-              : '当前 agent 的静态系统指令（本会话还没有运行记录，因此没有快照可回）：可用工具、通用约定、角色约定。'}
-          </DialogDescription>
-        </DialogHeader>
-        {query.isLoading ? (
-          <p className="text-xs text-muted-foreground">正在加载系统指令…</p>
-        ) : query.isError ? (
-          <p className="text-xs text-destructive">
-            加载失败：{query.error instanceof Error ? query.error.message : String(query.error)}
-          </p>
-        ) : (
-          <pre className="max-h-[55vh] overflow-auto rounded-md bg-muted/40 p-3 font-mono text-xs leading-relaxed whitespace-pre-wrap">
-            {query.data?.instructions ?? ''}
-          </pre>
-        )}
-      </DialogContent>
-    </Dialog>
   )
 }
 

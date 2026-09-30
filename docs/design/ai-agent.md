@@ -1871,6 +1871,40 @@ AI SDK v6 的续传是**两层 API**（不是同一方法的两个名字）：
 6. 官方文档里 `writer.write({ type: 'source' })` 与按 `part.type === 'source'` 渲染**都是错的** ——
    v6 只有 `source-url` / `source-document`。
 
+### 5.7 会话页的"旁证"：运行态、复制与右栏（**本轮新增，以此为准**）
+
+**① 会话列表的运行态（呼吸灯）**：`AgentConversationModel.running` 是**查询时算出来的**，
+不是会话表上的字段 —— 真相在 `runs`：根 run（`parent_run_id IS NULL`）状态为 `pending` / `running`
+即为"这一轮还在跑"（与部分唯一索引 `uk_run_active_conversation` 同一口径）。
+`conversation/list` 对本页会话**批量查一次**，`conversation/detail` 单查；
+`create` / `rename` 这类写操作一律回 `false`（前端以列表 / 详情为准，不靠写操作的返回值判断运行态）。
+前端：行内呼吸灯 + **只要还有在跑的会话就 5s 轮询列表**，全跑完立刻停（不留一个常转的定时器）。
+⚠️ 服务端看门狗把超时的一轮判成 `failed` 之后，`running` 自然回落 —— **呼吸灯消失不等于"跑过"**，
+排障要回 `runs` 看真实状态与 `error_code`。
+
+**② 复制**：页头可复制**会话 id**（排障时一次贴清楚，比截图靠谱）；
+每条消息可复制为 **Markdown**（保留结构：思考用引用块、工具与代码用围栏）或 **纯文本**
+（剥掉 Markdown 标记）。两条硬口径：
+- **顺序即所见**：按 `message.parts` 原始顺序导出，工具卡就地铺开（不是攒到结尾）；
+- **协议管道不进导出**：`step-start` / `data-run` / `data-run-usage` / `data-conversation-title` /
+  子助手增量块都不导；被计划卡片吸收的计划类工具调用也不重复导（与 `MessageRow` 渲染口径一致）。
+
+`markdownToPlainText` 是**够用就好的剥离器**（先把围栏代码块整体摘出，再处理行内与块级标记），
+不是完整 Markdown 解析器 —— 目标是"粘进记事本不带符号"，不是无损反解析。
+
+**③ 右栏**（页头图标开关；宽度可拖、开关状态存在浏览器里）：
+
+| tab | 内容 | 数据源 |
+| --- | --- | --- |
+| 系统指令 | 本会话**渲染后的快照**（没有快照时回静态定义并标注来源），`Markdown` 组件渲染 + 一键复制 | `POST /agent/instructions` |
+| 子 agent 运行 | 内层再分 tab：**一个子 run 一个 tab**（同名跑多次补 `#序号`） | `run/list` + `timeline/list?runId=` |
+
+- 系统指令原来挤在页头弹窗里（§4.10）——本轮搬进右栏，**弹窗撤掉**（同一件事不留两个入口）；
+- 子助手的过程用**主对话同一个** `MessageRow`，消息用 `toUIMessages(items, runs, { onlyRunIds })` 重建：
+  "渲染和主 agent 一样"是**结构上的事实**（同一套映射 + 同一套组件），不是照抄样式；
+- 只挂**当前那个 tab** 的时间线查询：多个子 run 一起拉是白花的请求；
+- 右栏默认 340px、最小 260px，`preserve-pixel-size`（窗口变宽由对话区吸收，与左侧列表栏同一套口径）。
+
 ## 6. 依赖、代价与风险（先说清代价，再谈做不做）
 
 ### 6.1 新增依赖（版本已核实）
