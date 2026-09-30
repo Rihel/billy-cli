@@ -229,7 +229,7 @@ export class AgentChatService {
         definition,
         userId,
         model,
-        { environment: this.renderEnvironment(conversation) },
+        { systemPrompt: await this.resolveSystemPrompt(conversation, run.id, definition) },
       )
       const agent = mastra.getAgent(definition.key)
       const result = await agent.generate(built.messages as never, {
@@ -713,8 +713,11 @@ export class AgentChatService {
         definition,
         userId,
         model,
-        // 中止信号（用户停止要停整棵树）+ 会话开局环境（仅首轮）
-        { abortSignal: abort.signal, environment: this.renderEnvironment(conversation) },
+        // 中止信号（用户停止要停整棵树）+ 渲染后的系统指令（首轮末尾带运行环境）
+        {
+          abortSignal: abort.signal,
+          systemPrompt: await this.resolveSystemPrompt(conversation, run.id, definition),
+        },
       )
       const agent = mastra.getAgent(definition.key)
       const output = await agent.stream(built.messages as never, {
@@ -1011,8 +1014,26 @@ export class AgentChatService {
     response.flushHeaders?.()
 
     const backlog = (await this.streamStore.readChunks(runId, offset)) as UiChunkLike[]
+
+    /**
+     * **补发的第一块必须是 `start`**（消息身份所在的那块）。
+     *
+     * AI SDK 的 `useChat({ resume: true })` 在补发时先按自己的规则生成一个消息 id，
+     * 收到带 `messageId` 的 `start` 块才把它换成正主；而"第一块"就会触发一次写消息 ——
+     * 如果第一块不是 `start`，它会先在列表里**新 push 一条**空消息（正主随后写进去），
+     * 于是刷新后同一个回答在界面上出现两份（还会互相覆盖着长，看起来像"没重连"）。
+     *
+     * 我们为了让前端尽早拿到 runId，`data-run` 是写在 `start` 之前的（实时流这样没问题，
+     * 因为那时列表里还没有同 id 的消息）—— 所以**补发时把 `start` 挪到最前面**。
+     */
+    const startIndex = backlog.findIndex((chunk) => chunk?.type === 'start')
+    const ordered =
+      startIndex > 0
+        ? [backlog[startIndex], ...backlog.slice(0, startIndex), ...backlog.slice(startIndex + 1)]
+        : backlog
+
     let ended = false
-    for (const chunk of backlog) {
+    for (const chunk of ordered) {
       if (chunk?.type === STREAM_END_MARKER) {
         ended = true
         break
@@ -1061,7 +1082,7 @@ export class AgentChatService {
    * 而这依赖 `ToolBuilder`；若让 core bean 自己注入 `ToolBuilder`，装配会成环
    * （ToolBuilder 依赖 core bean）。信封把这份依赖倒过来，见设计文档 §3.14.4。
    *
-   * `environment` 只在**会话第一轮**传（见 {@link renderEnvironment}）。
+   * `systemPrompt` 是**渲染后的系统指令全文**（见 {@link resolveSystemPrompt}）；不传则用装配期的基础指令。
    */
   private async buildRuntimeContext(
     conversationId: string,
@@ -1069,7 +1090,7 @@ export class AgentChatService {
     definition: AgentDefinition,
     userId: string,
     model: RuntimeModel,
-    options: { abortSignal?: AbortSignal; environment?: string } = {},
+    options: { abortSignal?: AbortSignal; systemPrompt?: string } = {},
   ): Promise<RequestContext> {
     const envelope: AgentRuntimeEnvelope = {
       conversationId,
@@ -1080,7 +1101,7 @@ export class AgentChatService {
       // 子 agent 的工具面 = 全部 − 委派类（于是它不能再造子 agent，深度天然为 1）
       childTools: this.toolBuilder.buildDelegable(),
       childSkills: await this.skillLoader.resolve(definition.skills),
-      ...(options.environment ? { environment: options.environment } : {}),
+      ...(options.systemPrompt ? { systemPrompt: options.systemPrompt } : {}),
       ...(options.abortSignal ? { abortSignal: options.abortSignal } : {}),
     }
     const requestContext = new RequestContext()
@@ -1098,6 +1119,46 @@ export class AgentChatService {
    * 2. **渲染失败不打断问答**：环境片段是"锦上添花"，模板出问题记一条 warn 继续跑，
    *    不让一轮已经付过钱的问答因为一段附加文本而失败。
    */
+  /**
+   * 本轮**真正送进模型的系统指令全文**：基础指令 +（仅首轮的）运行环境，并**落一条快照**。
+   *
+   * 为什么要把这份文本存库（用户要求）：
+   * - 前端「查看系统指令」要看的是**这个会话实际用过的**那份 —— 它随会话而变（首轮末尾有环境片段，
+   *   之后没有），静态定义答不了这个问题；
+   * - 审计回看时，"当时模型被怎么要求"是可查的事实，而不是"现在模板长什么样"的猜测。
+   *
+   * 落库规则（与字典里那句"同一会话提示词没变时只写一次"一致）：和上一条快照**逐字相同就不写** ——
+   * 于是每个会话只在"提示词真的变了"的拐点留点（首轮一条、之后不再），不会每轮灌一条重复行。
+   */
+  private async resolveSystemPrompt(
+    conversation: ConversationEntity,
+    runId: string,
+    definition: AgentDefinition,
+  ): Promise<string> {
+    const environment = this.renderEnvironment(conversation)
+    const systemPrompt = environment
+      ? `${definition.instructions}\n\n${environment}`
+      : definition.instructions
+
+    const previous = await this.timelines.latestSystemPrompt(conversation.id)
+    if (previous?.text === systemPrompt) return systemPrompt
+
+    await this.timelines.append({
+      conversationId: conversation.id,
+      runId,
+      role: TimelineRole.System,
+      kind: TimelineKind.System,
+      payload: {
+        text: systemPrompt,
+        agentKey: definition.key,
+        // 便于一眼看出这条快照是哪种形态（首轮那条为 true）
+        environmentInjected: Boolean(environment),
+      },
+      finishedAt: new Date(),
+    })
+    return systemPrompt
+  }
+
   private renderEnvironment(conversation: ConversationEntity): string | undefined {
     if (conversation.turnCount > 0) return undefined
     try {

@@ -257,7 +257,17 @@ export function ChatConversation({ conversationId }: { conversationId: string })
           loadWholeRuns(client, conversationId),
         ])
         if (cancelled) return
-        setMessages(toUIMessages(items, runs))
+        /**
+         * 历史装载**不能直接覆盖**：挂载时 `useChat({ resume: true })` 可能已经接回正在跑的流，
+         * 补发内容是边到边渲染的 —— 一覆盖就把已经渲染出来的部分抹掉，看起来就是"刷新后没重连"。
+         * 按 id 归并：**同一条消息（messageId 相同）以流里那份为准**，历史只补它没有的那些。
+         */
+        const history = toUIMessages(items, runs)
+        setMessages((current) => {
+          if (current.length === 0) return history
+          const liveIds = new Set(current.map((message) => message.id))
+          return [...history.filter((message) => !liveIds.has(message.id)), ...current]
+        })
       } catch (loadError) {
         if (cancelled) return
         setErrorText(
@@ -326,6 +336,8 @@ export function ChatConversation({ conversationId }: { conversationId: string })
           <SystemInstructions
             client={client}
             agentKey={agentKey ?? agentsQuery.data?.defaultAgentKey}
+            // 新会话首轮发出后会換成真实会话 id（ref 里是最新的），这里读它即可
+            conversationId={activeConversationIdRef.current}
           />
           {agents.length > 1 && (
             <select
@@ -407,26 +419,34 @@ export function ChatConversation({ conversationId }: { conversationId: string })
 }
 
 /**
- * 「查看系统指令」：把**当前 agent 的系统提示词原文**显示出来（只读弹窗）。
+ * 「查看系统指令」：把**这个会话真正用过的系统指令**显示出来（只读弹窗）。
  *
- * 数据源是 `POST /agent/instructions`（直接回装配期渲染好的那份，服务端不另存副本）：
- * 于是这里看到的就是真正挂在这个 agent 上的提示词 —— 页面与运行时不可能各说一套。
- * 会话首轮末尾还会追加「运行环境」片段（操作系统 + 当前时间，见设计文档 §3.15.4），
- * 那段是**按轮拼上去的**、不在静态指令里，弹窗底部如实说明。
+ * 数据源是 `POST /agent/instructions`：
+ * - 带 `conversationId` → 回该会话**渲染后的快照**（服务端在每轮把"实际送进模型的全文"落成
+ *   `system` 时间线事件，提示词没变时不重复写）—— 这才是"当时模型看到的那份"，
+ *   首轮那份末尾还带「运行环境」（操作系统 + 当前时间，§3.15.4）；
+ * - 会话还没有快照（刚建 / 历史会话早于这一步）→ 回静态定义，弹窗里如实标明来源，不假装是快照。
  *
- * 打开时才请求（`enabled: open`）：没点开就不该多一次往返，更不该让"看一眼"变成每次进页面都拉。
+ * 打开时才请求（`enabled: open`）：没点开就不该多一次往返；每次打开都会重新取（默认 staleTime 0），
+ * 于是"这一轮刚改了提示词"也能立刻看到。
  */
 function SystemInstructions({
   client,
   agentKey,
+  conversationId,
 }: {
   client: ReturnType<typeof useServerClient>
   agentKey?: string
+  conversationId?: string
 }) {
   const [open, setOpen] = useState(false)
   const query = useQuery({
-    queryKey: ['ai', 'instructions', agentKey ?? 'default'],
-    queryFn: () => client.agent.instructions(agentKey ? { agentKey } : {}),
+    queryKey: ['ai', 'instructions', conversationId ?? 'none', agentKey ?? 'default'],
+    queryFn: () =>
+      client.agent.instructions({
+        ...(conversationId ? { conversationId } : {}),
+        ...(agentKey ? { agentKey } : {}),
+      }),
     enabled: open,
   })
 
@@ -442,8 +462,9 @@ function SystemInstructions({
             系统指令{query.data ? ` · ${query.data.name}` : ''}
           </DialogTitle>
           <DialogDescription>
-            这个 agent 现在被怎么要求（可用工具、通用约定、角色约定）。会话第一轮还会在末尾
-            追加一段「运行环境」（操作系统 + 当前时间），需要精确时间时它会用 `run-command` 自己取。
+            {query.data?.source === 'conversation'
+              ? '本会话实际使用的系统指令（渲染后的快照）：可用工具、通用约定、角色约定，首轮那份末尾还带「运行环境」。'
+              : '当前 agent 的静态系统指令（本会话还没有运行记录，因此没有快照可回）：可用工具、通用约定、角色约定。'}
           </DialogDescription>
         </DialogHeader>
         {query.isLoading ? (

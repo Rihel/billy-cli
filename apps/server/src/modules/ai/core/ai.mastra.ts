@@ -85,19 +85,17 @@ export const createMastra = async ({
         id: definition.key,
         name: definition.name,
         /**
-         * 系统提示词 = 装配期渲染的**基础提示词** + （仅首轮）运行环境片段。
+         * 系统提示词：**编排层渲染好的那一份**（基础提示词 + 首轮运行环境）优先。
          *
          * 为什么用动态参数而不是拼成一个固定字符串：`definition.instructions` 在装配期就定了，
-         * 而「操作系统 + 当前时间」得在**会话开局那一刻**求值（§3.15）。片段由编排层渲染好
-         * 放进运行时信封（提示词文本只走模板引擎，core 因此不依赖提示词引擎）。
+         * 而「操作系统 + 当前时间」得在**会话开局那一刻**求值（§3.15）。编排层把全文放进运行时信封
+         * （提示词文本只走模板引擎，core 因此不依赖提示词引擎），并且**同一份文本会落库成快照**。
          *
          * ⚠️ 与下面的模型一样，Mastra 构造 durable agent 时可能**不带 requestContext** 求值一次
          * → 这里不能抛错：拿不到信封就用基础提示词。
          */
-        instructions: ({ requestContext }: { requestContext: RequestContext }) => {
-          const environment = readAgentRuntime(requestContext)?.environment
-          return environment ? `${definition.instructions}\n\n${environment}` : definition.instructions
-        },
+        instructions: ({ requestContext }: { requestContext: RequestContext }) =>
+          readAgentRuntime(requestContext)?.systemPrompt ?? definition.instructions,
         // 模型是**每次调用**按 requestContext 里的"这一轮用哪个模型"求值的：
         // 供应商地址与密钥都来自后台配置（`ai_models` / `ai_providers`），没有环境变量兜底路径
         model: ({ requestContext }: { requestContext: RequestContext }) =>

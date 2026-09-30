@@ -20,6 +20,8 @@ import type { UIMessage } from 'ai'
  *    与实时流看到的是同一种结构**（面板组件只认这一种 part）；
  * 4. **顺序与实时流一致**：工具卡按"调用发生的位置"就地铺开（结果到达时补出参），
  *    不能攒到最后统一追加 —— 那会让刷新后的历史与当时的界面长得不一样；
+ * 5. **消息 id 与服务端流同源**（用时间线里的 `messageId`）：刷新后重连补发时，
+ *    SDK 靠 id 认出"这就是同一条回答"才会**替换**而不是再 push 一条；
  * 4. 子 agent 的**完整过程**（推理 / 工具往返）不进主对话：它在子 run 的时间线里，
  *    由面板按需拉取（同一套只读接口，见 §3.14.3）。
  */
@@ -62,6 +64,20 @@ export const toUIMessages = (
   )) {
     const sorted = [...events].sort((a, b) => a.seq - b.seq)
 
+    /**
+     * 消息 id **优先用时间线里的 `messageId`**（= 服务端流的 `start` 块里那个 id）。
+     *
+     * 为什么这件事很关键：刷新时 `useChat({ resume: true })` 会从 offset 0 重放整轮，
+     * SDK 拿重放流里的 messageId 去比对"最后一条消息" —— 对得上就**替换**，对不上就**再 push 一条**。
+     * 历史里的 id 若是自己拼的（`<runId>-assistant`），永远对不上 → 同一个回答在界面上出现两份，
+     * 而且历史一覆盖、流接着推，内容还会"缩水重来"（用户看到的"刷新后像没重连"）。
+     */
+    const userMessageId =
+      sorted.find((item) => item.role === TimelineRole.User && item.messageId)?.messageId ?? undefined
+    const assistantMessageId =
+      sorted.find((item) => item.role === TimelineRole.Assistant && item.messageId)?.messageId ??
+      undefined
+
     const userText = sorted
       .filter((item) => item.kind === TimelineKind.Text && item.role === TimelineRole.User)
       .map(textOf)
@@ -69,7 +85,8 @@ export const toUIMessages = (
       .join('\n')
     if (userText) {
       messages.push({
-        id: `${runId}-user`,
+        // 用户消息没有 messageId（服务端只在助手侧落），用稳定的 run 前缀 id
+        id: userMessageId ?? `${runId}-user`,
         role: 'user',
         parts: [{ type: 'text', text: userText }],
       })
@@ -93,7 +110,7 @@ export const toUIMessages = (
       } as UIMessage['parts'][number])
     }
 
-    messages.push({ id: `${runId}-assistant`, role: 'assistant', parts })
+    messages.push({ id: assistantMessageId ?? `${runId}-assistant`, role: 'assistant', parts })
   }
   return messages
 }

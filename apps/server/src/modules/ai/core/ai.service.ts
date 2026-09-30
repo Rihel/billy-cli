@@ -66,6 +66,9 @@ export class AgentService {
       name: definition.name,
       description: definition.description,
       instructions: definition.instructions,
+      // 静态定义：没有会话、也没有快照时间
+      source: 'definition',
+      recordedAt: null,
     }
   }
 

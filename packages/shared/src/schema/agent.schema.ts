@@ -125,9 +125,17 @@ export const AgentConversationRenameSchema = AgentConversationIdSchema.extend({
 
 export type AgentConversationRenameDto = z.infer<typeof AgentConversationRenameSchema>
 
-/** 系统指令查询入参（`POST /agent/instructions`；省略 agentKey 用默认 agent） */
+/**
+ * 系统指令查询入参（`POST /agent/instructions`）。
+ *
+ * 两种口径：
+ * - 给了 `conversationId` → 回**那个会话实际用过的系统指令**（渲染后的快照，含首轮运行环境）；
+ * - 只给 `agentKey` / 都不给 → 回**当前装配期渲染好的静态指令**（还没跑过任何一轮时是唯一可回的东西）。
+ */
 export const AgentInstructionsSchema = z.object({
   agentKey: z.string().min(1).max(64).optional(),
+  /** 会话 id：给了就优先回该会话的系统指令快照 */
+  conversationId: z.string().min(1).max(32).optional(),
 })
 
 export type AgentInstructionsDto = z.infer<typeof AgentInstructionsSchema>
@@ -145,6 +153,14 @@ export const AgentInstructionsModelSchema = z.object({
   name: z.string(),
   description: z.string(),
   instructions: z.string(),
+  /**
+   * 这份指令的来源：
+   * - `conversation`：会话时间线里的**渲染后快照**（真正送进模型的那份，可能含首轮运行环境）；
+   * - `definition`：装配期的**静态定义**（该会话还没跑过任何一轮，或历史会话早于"落快照"这一步）。
+   */
+  source: z.enum(['conversation', 'definition']),
+  /** 快照的落库时间（`source='definition'` 时为 null） */
+  recordedAt: z.union([z.string(), z.date()]).nullable(),
 })
 
 export type AgentInstructionsModel = z.infer<typeof AgentInstructionsModelSchema>

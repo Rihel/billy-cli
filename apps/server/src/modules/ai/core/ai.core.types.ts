@@ -77,13 +77,14 @@ export interface AgentRuntimeEnvelope {
   /** 子 agent 的技能面（与父 agent 同一口径） */
   childSkills: readonly InlineSkill[]
   /**
-   * **会话开局**的运行环境片段（操作系统 + 当前时间，已渲染成文本）；非首轮为 `undefined`。
+   * **本轮真正送进模型的系统指令全文**（基础指令 + 首轮运行环境，已渲染）。
    *
    * 为什么由编排层渲染好塞进来、而不是 core 自己拼：提示词文本**只走模板引擎**（本工程硬约定），
-   * 而 core（`ai.mastra.ts`）刻意不依赖提示词引擎 —— 它只把这段文本追加到系统提示词后面。
-   * 只在首轮出现的理由（前缀缓存）见 `prompts/environment.ts`。
+   * 而 core（`ai.mastra.ts`）刻意不依赖提示词引擎 —— 它只把这段文本当成系统提示词用。
+   * 编排层同一份文本还会**落一条 `system` 时间线快照**，于是"模型看到的"与"库里存的"永远是同一个字符串。
+   * 只有首轮带运行环境的理由（前缀缓存）见 `prompts/environment.ts`。
    */
-  environment?: string
+  systemPrompt?: string
   /** 当前这一轮的中止信号（用户停止要停整棵树） */
   abortSignal?: AbortSignal
 }

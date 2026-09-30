@@ -23,7 +23,7 @@ const item = (
     id: `t${partial.seq}`,
     conversationId: CONVERSATION,
     runId: ROOT_RUN,
-    messageId: 'msg_1',
+    messageId: '',
     attempt: 1,
     role: 'assistant',
     state: null,
@@ -109,6 +109,27 @@ describe('toUIMessages', () => {
       input: { limit: 3 },
       output: { total: 2 },
     })
+  })
+
+  it('消息 id 优先用时间线里的 messageId（与服务端流同源，重连才能"替换"而不是再 push 一条）', () => {
+    const ASSISTANT_MESSAGE_ID = 'msg-assistant-uuid'
+    const messages = toUIMessages(
+      [
+        item({ seq: 1, kind: 'text', role: 'user', payload: { text: '问一句' } }),
+        item({
+          seq: 2,
+          kind: 'text',
+          messageId: ASSISTANT_MESSAGE_ID,
+          payload: { text: '回答' },
+        }),
+      ],
+      [run(ROOT_RUN, null)],
+    )
+
+    // 助手消息的 id 就是流里的 messageId（`useChat({ resume: true })` 靠它对上号）
+    expect(messages[1].id).toBe(ASSISTANT_MESSAGE_ID)
+    // 用户消息在库里没有 messageId：退回稳定的 run 前缀 id（同 run 内唯一即可）
+    expect(messages[0].id).toBe(`${ROOT_RUN}-user`)
   })
 
   it('工具卡按**调用发生的位置**就地铺开（踩过：攒到最后会让刷新后的历史与当时的界面不一样）', () => {

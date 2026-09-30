@@ -93,11 +93,20 @@ export class AiController {
     return this.agentService.list()
   }
 
-  /** 某个 agent 的**系统指令原文**（前端「查看系统指令」）：直接回装配期渲染好的那份，不另存副本 */
+  /**
+   * 系统指令原文（前端「查看系统指令」）。
+   *
+   * 分流一次就够，所以放在 HTTP 边界：
+   * - 带 `conversationId` → 该会话**实际用过的快照**（渲染后、含首轮运行环境，归属校验走会话服务）；
+   * - 不带 → 装配期渲染好的**静态定义**（还没跑过任何一轮时唯一可回的东西）。
+   * 两条路径回同一个契约（`source` 字段标明来源），前端不用分支。
+   */
   @Post('instructions')
   @HttpCode(200)
   instructions(@Body({ schema: AgentInstructionsSchema }) input: AgentInstructionsDto) {
-    return this.agentService.instructions(input)
+    return input.conversationId
+      ? this.conversations.instructions(this.ownerId(), input)
+      : this.agentService.instructions(input)
   }
 
   /**

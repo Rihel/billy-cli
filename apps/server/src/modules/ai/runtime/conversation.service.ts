@@ -9,6 +9,8 @@ import {
   type AgentConversationListDto,
   type AgentConversationModel,
   type AgentConversationRenameDto,
+  type AgentInstructionsDto,
+  type AgentInstructionsModel,
 } from '@repo/shared'
 import type { PageQueryResult } from '@repo/kits'
 import type { ConversationEntity } from '../../../database/entities/conversation-entity.js'
@@ -125,6 +127,48 @@ export class AgentConversationService {
       throw new ConversationNotFoundError(conversationId)
     }
     return conversation
+  }
+
+  /**
+   * **本会话实际用过的系统指令**（渲染后的快照，含首轮运行环境）。
+   *
+   * 与 `AgentService.instructions`（静态定义）的分工：
+   * - 有快照 → 回快照（`source='conversation'`）：这才是"这个会话的模型当时看到的那份"；
+   * - 还没有快照（会话刚建、或历史会话早于落快照这一步）→ 退回静态定义（`source='definition'`），
+   *   **不编造**一份"看起来像快照"的东西。
+   * 归属校验与其它读接口同一道门（不存在 / 不是自己的 → 3304）。
+   */
+  async instructions(
+    userId: string,
+    input: AgentInstructionsDto,
+  ): Promise<AgentInstructionsModel> {
+    const conversation = await this.requireOwned(userId, input.conversationId ?? '')
+    const definition = this.registry.resolve(input.agentKey ?? conversation.agentKey)
+    const snapshot = await this.timelines.latestSystemPrompt(conversation.id)
+
+    if (snapshot) {
+      // 快照里的 agentKey 才是"当时用的是谁"；注册表里还认得出来就带上展示名与描述
+      const snapshotAgent = snapshot.agentKey
+        ? this.registry.get(snapshot.agentKey)
+        : undefined
+      return {
+        agentKey: snapshot.agentKey ?? definition.key,
+        name: snapshotAgent?.name ?? definition.name,
+        description: snapshotAgent?.description ?? definition.description,
+        instructions: snapshot.text,
+        source: 'conversation',
+        recordedAt: snapshot.createdAt,
+      }
+    }
+
+    return {
+      agentKey: definition.key,
+      name: definition.name,
+      description: definition.description,
+      instructions: definition.instructions,
+      source: 'definition',
+      recordedAt: null,
+    }
   }
 
   /**

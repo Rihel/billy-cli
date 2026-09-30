@@ -121,6 +121,29 @@ export class TimelineRepository {
    * `rootOnly`：排除**子 agent 的事件**——子 agent 的内部过程是审计资料，
    * 不该被当成对话历史回灌给主模型（既浪费窗口也污染上下文，见 §3.14.3）。
    */
+  /**
+   * 该会话**最后一条系统指令快照**（`kind='system'`）；没有则 null。
+   *
+   * 两个用途：① 编排层判断"这一轮的提示词和上一轮一样吗"（一样就不重复写，见 §4.10.1）；
+   * ② 前端「查看系统指令」回本会话真正用过的原文。
+   */
+  async latestSystemPrompt(
+    conversationId: string,
+  ): Promise<{ text: string; agentKey: string | null; createdAt: Date | null } | null> {
+    const repo = await this.repo()
+    const row = await repo.findOne({
+      where: { conversationId, kind: TimelineKind.System },
+      order: { seq: 'DESC' },
+    })
+    const text = row?.payload?.text
+    if (typeof text !== 'string' || !text) return null
+    return {
+      text,
+      agentKey: typeof row?.payload?.agentKey === 'string' ? row.payload.agentKey : null,
+      createdAt: row?.createdAt ?? null,
+    }
+  }
+
   async listRange(
     conversationId: string,
     fromSeq: number,

@@ -85,8 +85,9 @@ export class XxxCore implements AgentCore {
 - SDK 的 typed 方法在 `packages/sdk/src/server.client.ts` 的 `agent` 分组（含 `chatStreamUrl` /
   `resumeStreamUrl` / `authHeaders` 三个给 AI SDK 用的旁路）；
 - **会话维护类接口**（前端会话页用）：`conversation/rename`（手动改名，会记一条 `status` 审计事件）、
-  `conversation/remove`（软删，**唯一删除入口**）、`instructions`（回装配期渲染好的系统指令原文，
-  未知 agentKey 抛 3303 不回落）；侧栏行操作（改名 / 删除）要放在 `<Link>` 的**兄弟节点**上。
+  `conversation/remove`（软删，**唯一删除入口**）、`instructions`（带 `conversationId` 回该会话
+  **渲染后的系统指令快照**，不带则回静态定义；`source` 字段标明来源，未知 agentKey 抛 3303 不回落）；
+  侧栏行操作（改名 / 删除）要放在 `<Link>` 的**兄弟节点**上。
 - 前端页面：web `apps/web/src/app/ai/chat`（useChat + ai-elements，渲染每个 part），
   审计页 admin `apps/admin/src/app/main/ai/audit`（会话 → 运行树 → 时间线 + 输入快照）。
 
