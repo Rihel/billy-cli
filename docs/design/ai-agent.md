@@ -1097,6 +1097,86 @@ AI SDK 的 `data-sub-agent` part，和主内容走同一条 SSE：
 | 契约 | 新增 `AgentRunStopResult*`（已有）、`AgentRunModel` 增 `parentRunId` / `depth`；`AgentTimelineItemModel` 增子 agent 归属信息 |
 | 测试 | 重写子 agent 用例（core bean 聚合 / 动态创建 / 明细入库 / 工具面继承 / 幂等去重 / 配额 / 流里的 `data-sub-agent`） |
 
+### 3.15 命令执行（`run-command`）与运行环境注入（**本轮新增，以此为准**）
+
+#### 3.15.1 需求与硬约束
+
+需求两条（用户口径）：**做一个跨平台的命令行工具给 agent 调用**；**系统指令里告知是什么操作系统、当前日期时间**。
+
+硬约束（按"三端不一致 / 挂死 / 烧资源"三类真实事故点定）：
+
+| 约束 | 为什么 |
+| --- | --- |
+| 三端一致（Windows / Linux / macOS） | 命令语法与 shell 不同；用户可能在任意一端部署 |
+| 超时必须**真杀掉进程树** | 只杀 shell 会留下孤儿孙进程（资源泄漏） |
+| 输出必须有上限 | `ls -R /` 这类命令能把内存打满 |
+| 失败**永不抛异常** | 工具抛异常会把一整轮判失败；失败应当作为"结论"回给模型，让它自己纠正 |
+| 可被用户停止 | 停止要连命令一起停，不是只断前端连接 |
+| 每次调用可审计 | 让模型在本机跑命令是敏感能力，入参出参必须可复盘 |
+
+#### 3.15.2 能力归位：机制在 kits，策略在 AI 模块
+
+| 层 | 位置 | 职责 |
+| --- | --- | --- |
+| 机制（基础设施） | `packages/kits/src/foundation/command/`（`CommandRunner` + `command.platform.ts` + `CommandModule`） | 跨平台执行：shell 解析、超时、杀进程树、输出上限、取消、结果结构化 |
+| 策略（AI 模块） | `apps/server/src/modules/ai/core/command.core.ts`（core bean `command`） | 开关、工作目录边界、时长 / 输出上限、审计日志 |
+| 提示词 | `prompts/templates/partials/conventions.eta`（「关于执行命令」） | 什么时候用 / 不用、有副作用的命令先问用户、失败要读懂原因 |
+
+**为什么用 `execa` 而不是自己拼 `child_process`**（早先手写过一版，已弃）：三条硬约束恰好是它的内建能力 ——
+`shell` 在 Unix/Windows 各自的默认解释器、`killDescendants`（Unix 进程组 / Windows `taskkill`）、
+`reject: false` 把"非零退出 / 超时 / 取消 / 输出超限 / 起不来"都落成结果字段
+（`timedOut` / `isCanceled` / `isMaxBuffer` / `exitCode`），比在 catch 里猜错误码可靠。
+手写版在 Windows 上**无解**（没有进程组信号，孙进程会残留）。
+依赖声明在 `packages/kits/package.json`（`execa@^10`，engines ≥22，与 `node:24-alpine` 基线一致）。
+
+#### 3.15.3 安全边界（**如实记录，不假装这是沙箱**）
+
+命令以**服务进程的身份与权限**运行 —— 能读写该身份能读写的一切。本轮的取舍是"把可控的部分做死"：
+
+| 控制点 | 落法 |
+| --- | --- |
+| 开关 | `AGENT_COMMAND_ENABLED`（默认 `true`）。关掉时工具**仍在**（装配期 core bean 必须交出工具），每次调用返回"已被关闭"的结论 —— 模型能理解并改口 |
+| 目录边界 | `AGENT_COMMAND_WORK_DIR`（默认服务进程工作目录）。agent 传入的 `cwd` 必须落在其内，越界**拒绝并说明边界**（不静默夹回）；判边界用 `path.relative`，天然处理 `..` 逃逸与 Windows 大小写差异 |
+| 时长上限 | `AGENT_COMMAND_TIMEOUT_MS`（默认 15s）：它**既是默认值也是硬上限** —— 模型传更小听它的，传更大一律夹到这里 |
+| 输出上限 | `AGENT_COMMAND_MAX_OUTPUT_BYTES`（默认 64KB / 每条流）：超出即截断并终止命令 |
+| 停止 | 运行时信封的 `abortSignal`（与"停止整棵树"同一口径） |
+| 审计 | 完整入参出参落时间线（`tool-call` / `tool-result`，不裁剪）+ 每次执行一条 `ai.command.executed` info 日志 |
+| 已知差异 | 中文 Windows 的 `cmd.exe` 输出按 UTF-8 解码可能乱码 —— **如实暴露**（乱码在 stdout 里看得见），不静默转码猜测 |
+
+要做强隔离（不可信用户 + 对外服务）得把执行放进容器 / 沙箱，那是另一件事，本模块不假装做到。
+
+#### 3.15.4 运行环境注入（操作系统 + 当前时间）
+
+- **注入位置**：系统提示词的末尾（"系统指令告知"的字面落实）。渲染走模板
+  `prompts/templates/partials/environment.eta`（提示词文本只走引擎的硬约定不破），
+  数据由 `prompts/environment.ts` 组装：平台画像来自 kits 的 `describePlatform`，
+  时间用 `Intl` 出「2026年9月30日星期三 17:55:00（Asia/Shanghai，UTC+08:00）」。
+- **只在会话第一轮注入**（`conversations.turnCount === 0`）：系统提示词是整段请求的**前缀**，
+  每轮塞一个新时间戳会让提供方的前缀缓存每轮失效（本工程专门统计缓存命中，不能自己打掉它）。
+  需要精确时间时模型用 `run-command` 自己取 —— 这正是两个需求互相咬合的地方。
+- **取环境信息不依赖平台专属命令**：`uname` / `ver` 只在部分系统存在，故一律走 `node:os`
+  （`process.platform` / `os.release()` / `os.arch()`）；`resolveShell` 按平台给
+  `cmd.exe`（Windows）/ `/bin/sh`（POSIX），与 `execa` 的默认行为一致。
+- **子 agent 不注入**：它的提示词由主 agent 现写（§3.14.2），`request_snapshot` 里要保持
+  "父写的那份"的原样；需要环境信息由父写进它的提示词。
+
+#### 3.15.5 配置项（app-config 的 `agent` 命名空间 → `.env`）
+
+```bash
+AGENT_COMMAND_ENABLED=true            # 关掉后工具仍在，但每次调用返回"已关闭"的结论
+AGENT_COMMAND_TIMEOUT_MS=15000        # 单条命令的时长默认值与硬上限
+AGENT_COMMAND_MAX_OUTPUT_BYTES=65536  # 每条流（stdout / stderr）的输出上限
+AGENT_COMMAND_WORK_DIR=               # 缺省 = 服务进程工作目录
+```
+
+#### 3.15.6 本轮改动面（自查用）
+
+| 动作 | 对象 |
+| --- | --- |
+| 新增 | kits `foundation/command/{command.runner,command.platform,command.module,index}`、`ai/core/command.core.ts`、`ai/prompts/environment.ts`、`ai/prompts/templates/partials/environment.eta` |
+| 改动 | `tool-keys`（`runCommand`）、`assistant.agent`（授权）、`conventions.eta`（用法与确认纪律）、`ai.mastra`（`instructions` 改动态参数：追加环境片段）、`ai.core.types`（信封加 `environment`）、`chat.service`（注入 `PROMPT_ENGINE` + 首轮渲染）、`ai.module`（`CommandCore` + `PROMPT_ENGINE` provider）、`app-config`（`command*`）、`root.module`（`CommandModule`）、依赖 `execa` |
+| 测试 | kits 10 项（正常 / 非零退出 / 超时 / 孙进程不拖死 / 截断 / cwd / 起不来 / 中止 / 三端画像）；server：环境片段 3 项 + 命令策略 5 项（开关 / 目录越界 / 目录内 / 时长夹紧）+ e2e 两条（真跑一条跨平台命令并完整落库；首轮注入且第二轮不再注入） |
+
 ## 4. 记忆与落库（调研已回，本节定稿）
 
 ### 4.1 配置形状与职责边界
@@ -1568,6 +1648,14 @@ new Agent({
   滚动位置与 query 缓存都保留；列表项是 `<Link href={conversationPath(id)}>`（可新开标签、可前进后退）。
 - 对话区在 **`chat/[conversationId]/page.tsx`** → `ChatConversation`，**`key` 用会话 id**：
   切换会话整棵重挂载，`useChat` 内部消息、reasoning 展开态、子助手增量缓存全部隔离（不串会话）。
+- **页面铺满内容区、两栏之间可拖动改宽**：页面**不写 `mx-auto max-w-*`**（宽屏下那等于两侧留白，
+  内容区有多宽就用多宽）；左右两栏用 `@repo/ui` 的 `resizable`（shadcn 封装的 `react-resizable-panels`）
+  分隔，列表栏按**像素**保持宽度（`preserve-pixel-size`，默认 264 / 最小 180 / 最大 420），
+  窗口变化时由对话区吸收，分隔条也支持键盘（方向键）。**窄屏（<768px）不渲染列表栏** ——
+  用 `@repo/ui` 的 `useIsMobile` 判定（与 Sidebar 同一套口径），条件是"整个 Panel 不渲染"而不是
+  给它加 `hidden`（Panel 的尺寸在库的内联样式上，类名盖不住）。
+- 消息列表（`Conversation`）与列表行**都不画边框 / 分隔线**：层次靠气泡底色与卡片自己表达，
+  两栏的分隔交给那根分隔条。
 - 新会话的首轮：流里的 `data-run` 带回真实 `conversationId` → `router.replace` 换地址。
   **同一动态路由换参数不会重挂载**，所以正在流的这一轮不中断（这也是不把首轮拆成"先建会话再跳"的原因：
   那样会多一次往返、还要处理"建了会话却发失败"的空会话）。
@@ -1603,6 +1691,49 @@ new Agent({
 
 §4.8 是"配置的真相源"（供应商 / 模型的表与同步），§4.9 是"配置怎么被消费"。
 一句话：**后台配什么，agent 就能用什么；没配的一律用不了**（这不是约定，是解析路径上只有一条）。
+
+### 4.10 会话命名、会话改名与「查看系统指令」（**本轮新增，以此为准**）
+
+#### 4.10.1 首轮自动命名：**让模型起名，且与 agent 上下文完全隔离**
+
+要求（用户口径）：第一轮对话结束后，把对话记录交给模型起一个**≤10 字**的名字，
+**与当前 agent 上下文完全隔离**。
+
+| 决策 | 落法 | 为什么 |
+| --- | --- | --- |
+| 时机 | 收尾阶段（`recorder.finish` 之后、`runs.finish` 之前），**只在首轮**（开局 `turnCount === 0`） | "这一轮完了"才拿得到完整记录；首轮之后名字已定，不必再花一次钱 |
+| 隔离 | 现场造一个临时 agent：**只有命名指令、没有工具 / 技能 / 记忆 / 运行时信封**，模型用这一轮实际用的那个 | 直接复用 `mastra.getAgent()` 会把整套 agent 系统提示词与工具定义带进去 —— 那不是"隔离" |
+| 输入 | 只取该 run 的**用户 / 助手文本**（按 seq），封顶 2000 字符 | 工具入参出参与推理过程对命名是噪声 |
+| 长度 | 提示词写死 `≤10 字` + 输出 `maxOutputTokens: 32` + **按码点硬截断**（`Array.from`，emoji / 生僻字不会被切成半个） | "只输出名字"这条要求模型经常做不到，得收拾：只取首行、剥 Markdown / 引号 / 书名号 / 序号 / 结尾标点（`sanitizeTitle`，有单测） |
+| 花费 | 这次调用的 usage **并进该轮 run**（`mergeUsage`） | `runs.usage` 的语义是"这一轮花掉的钱"；分开记会让账目凭空少一块。它**不占 `step` 行**（不是回答的一步） |
+| 兜底 | 超时（10s `AbortSignal.timeout`）/ 报错 / 收拾不出名字 → **保留"首条消息"那版** | 起名是锦上添花，不能影响一轮问答 |
+| 不覆盖人工名 | 只在标题**还是兜底那版**时才改名 | 用户改过的名字永远不被后台悄悄冲掉 |
+| 模板 | 命名指令走 `prompts/templates/title.eta`（提示词文本只走引擎的硬约定不破） | 与其它提示词同一处可评审 |
+
+> 注：这一条**推翻了早先"标题不额外调模型（省钱）"的取舍** —— 首条消息截断出来的名字
+> （"帮我看看最近有哪些待办"）在侧栏又长又难认，用户明确要求改为模型起名。
+
+#### 4.10.2 会话改名（手动）与会话删除（前端接上）
+
+- `POST /agent/conversation/rename`（`{ conversationId, title(1..30) }`）：归属校验（3304）→
+  `setTitle` → **记一条 `status` 时间线事件**（`reason='conversation_renamed'`，带 `from` / `to` / `operator`）。
+  名字没变则不写库也不记事件（避免"点开又确认"刷出无意义审计）。
+- `POST /agent/conversation/remove`（已有）：软删会话（**唯一删除入口**），删前先结束在跑的运行并记事件。
+- 前端（admin `main/ai/chat`）：侧栏每行悬停出现 `重命名` / `删除`；
+  **行操作是 `<Link>` 的兄弟节点**（`ConfirmAction` 的触发自带 onClick，嵌在 Link 里点一下会连带跳转）。
+  删除的正好是当前会话时跳回 `/main/ai/chat/new`。
+
+#### 4.10.3 查看系统指令
+
+- `POST /agent/instructions`（`{ agentKey? }`）→ `{ agentKey, name, description, instructions }`：
+  直接回**装配期渲染好的那份**（`AgentDefinition.instructions`），前端不另存副本 ——
+  页面看到的与真正挂到 agent 上的提示词是同一个字符串。
+- 未注册的 agentKey 抛 3303，**不静默回落成默认 agent**（回落会让人以为"我看的是这个 agent"）。
+- 前端在会话页页头放「系统指令」按钮 → 弹窗（等宽、可滚动）显示原文；
+  弹窗里说明"会话首轮还会追加「运行环境」片段"（§3.15.4），那段是按轮拼上去的、不在静态指令里。
+- **仍未落地**：`TimelineKind.System`（"系统提示词快照"）字典里留着但没有任何地方写入 ——
+  当前能力是"**看现在的**系统指令"，不是"看某一轮当时的"。要做后者就得在每个 root run 落一条
+  快照事件（含首轮的环境片段），那是独立的一步。
 
 ## 5. 前端全细节流式（调研已回，本节定稿）
 

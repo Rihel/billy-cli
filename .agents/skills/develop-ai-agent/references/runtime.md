@@ -56,3 +56,15 @@
 - **恢复会重发模型调用、重跑工具**（官方语义，钱会重复花一次）：`recovery_count` 上限 1，
   工具靠 `tool_call_id` upsert 去重；子 agent 不做 durable（父重跑 spawn 工具 → 命中幂等复用）；
 - 恢复不了就标 `interrupted`（前端提示可重试），不要假装成功。
+
+## 6. 收尾里还做了一件"隔离"的事：首轮自动命名
+
+第一轮问答收尾时（`recorder.finish` 之后、`runs.finish` 之前），把**这一轮的记录**交给模型起一个
+≤10 字的会话名（`runtime/title.service.ts`，指令模板 `prompts/templates/title.eta`）：
+
+- **与 agent 上下文完全隔离**：现场造临时 agent（只有命名指令，**没有工具 / 技能 / 记忆 / 信封**），
+  不复用 `mastra.getAgent()`；mock 侧就是靠"唯一不带 tools 的请求"认出它；
+- **只在首轮**（开局 `turnCount === 0`）+ **只在标题还是兜底那版**（用户改过名就不动）；
+- 失败 / 超时（10s）/ 收拾不出名字 → 保留"首条消息"那版（起名不能拖垮一轮问答）；
+- 这次调用的 usage **并进该轮 run**：`{ ...usageBase, ...(mergeUsage(usageBase, title.usage) ?? {}) }`
+  —— 注意**先展开 usageBase**，否则 `usage.subAgents` 这类非 token 字段会被 `mergeUsage` 抹掉（踩过）。

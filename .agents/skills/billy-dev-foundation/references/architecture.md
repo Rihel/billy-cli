@@ -64,7 +64,8 @@ apps/server   NestJS HTTP 边界 + 业务模块 + 实体 / 迁移 + 配置 + 唯
               · telemetry/    Telemetry / TelemetryModule
               · foundation/   config（可插拔 ConfigLoader 抽象 + 内置 env / memory / consul loader
                               + AppConfigFacade + AppConfigModule：把已加载配置接进 @nestjs/config
-                              的全局 ConfigService）/ errors / id-generation / logger / scheduler
+                              的全局 ConfigService）/ command（跨平台命令执行：CommandRunner +
+                              CommandModule，底层 execa）/ errors / id-generation / logger / scheduler
               · 配置对象即模块自身注入 bean；未 import 即未装配；实体由 app 在
                 DbModule.forRootAsync 的工厂里注入（类引用无法来自环境变量）
 @repo/shared  Zod schema（契约）+ dicts（错误码 / 字典）+ AppResponse（响应格式）

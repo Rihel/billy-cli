@@ -227,7 +227,7 @@ pnpm cli -t crud -n product --no-install  # 非交互生成 CRUD 业务模块（
 │   │       └── utils/                   # nanoid / dayjs / md5 / tree / dict / user-agent（登录设备展示用）等工具
 │   ├── kits/                            # @repo/kits — 后端通用能力封装（无业务实体）
 │   │   └── src/
-│   │       ├── foundation/              # 横切基础：config / errors / id-generation / logger / scheduler / time-wheel
+│   │       ├── foundation/              # 横切基础：command / config / errors / id-generation / logger / scheduler / time-wheel
 │   │       ├── db/                      # Db / DbService 门面 + DbModule：create-db / db / db.service /
 │   │       │                            #   db.config / base-entity / audit-entity / audit-subscriber /
 │   │       │                            #   pagination / batch / safe-delete / sql / database.module
@@ -417,7 +417,8 @@ Zod schema 单一事实源，同时派生 TypeScript 类型（`*.schema.ts` 导�
   - `telemetry/`：`telemetry.ts`（Counter / Gauge / Histogram）+ `telemetry.module.ts`
 - `foundation/`：`config/`（**配置模块**：可插拔 `ConfigLoader` 抽象 + 内置 `envConfigLoader` /
   `memoryConfigLoader` / `consulConfigLoader` + `AppConfigFacade` + `AppConfigModule`；Zod 4 默认值物化 +
-  带字段路径的校验错误）、`errors/`（AppError / InfrastructureError）、`id-generation/`（`IdGeneration` + `IdGenerationModule`）、
+  带字段路径的校验错误）、`command/`（跨平台命令执行：`CommandRunner` + `CommandModule`，底层 `execa` ——
+  shell 按平台解析、超时按进程树杀、输出有上限、失败不抛异常）、`errors/`（AppError / InfrastructureError）、`id-generation/`（`IdGeneration` + `IdGenerationModule`）、
   `logger/`（`app-logger.ts` + `logger.config.ts` + `logger.options.ts` + `LoggerModule`）、`scheduler/`（croner + `SchedulerModule`）、
   `time-wheel/`（`TimeWheel` 进程内高频调度原语：秒级/毫秒级刻度 + 自适应补偿 + 落后任务防堆积。
   **普通类非 DI 门面**——需构造参数且天然多实例，用 `new TimeWheel(tickDuration, wheelsCount)`

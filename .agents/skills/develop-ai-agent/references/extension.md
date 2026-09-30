@@ -31,11 +31,15 @@ export class XxxCore implements AgentCore {
 - **不要注入 `ToolBuilder`**（它会依赖 core bean → 成环）：需要"全部工具"之类的信息，
   让编排层算好、经 `requestContext` 的**运行时信封**传进来（见下）；
 - 委派类工具标 `delegation: true` —— 子 agent 的工具面 = 全部 − 委派类。
+- **能力有基础设施底座时，机制放 `packages/kits`**：一个能力一个 `foundation/<name>/` 目录 +
+  `@Global()` 模块，core bean 只写策略（开关 / 边界 / 上限）与结论映射 ——
+  参考 `command.core.ts` + `kits/src/foundation/command/`（跨平台命令执行，底层 execa）。
 
 ## 3. 运行时信封（工具怎么知道"我在哪一轮"）
 
 编排层（`AgentChatService.buildRuntimeContext`）在发起一轮时把信封塞进 Mastra `requestContext`：
-`{ conversationId, parentRunId, triggeredBy, depth, childTools, childSkills, abortSignal }`。
+`{ conversationId, parentRunId, triggeredBy, depth, model, childTools, childSkills, environment?, abortSignal? }`
+（`model` 是这一轮从库里解析出的模型；`environment` 只在会话首轮有值，见 §8）。
 
 工具侧只读四样（都在 `ToolExecutionContext` 上，已核实）：
 `requestContext`（信封）/ `agent.toolCallId`（幂等键）/ `writer`（写 `data-*` 到父流）/ `abortSignal`（停止传播）。
@@ -80,5 +84,25 @@ export class XxxCore implements AgentCore {
 - 契约加在 `packages/shared/src/schema/agent.schema.ts`，**改完必须 `pnpm build:pkgs`**；
 - SDK 的 typed 方法在 `packages/sdk/src/server.client.ts` 的 `agent` 分组（含 `chatStreamUrl` /
   `resumeStreamUrl` / `authHeaders` 三个给 AI SDK 用的旁路）；
+- **会话维护类接口**（前端会话页用）：`conversation/rename`（手动改名，会记一条 `status` 审计事件）、
+  `conversation/remove`（软删，**唯一删除入口**）、`instructions`（回装配期渲染好的系统指令原文，
+  未知 agentKey 抛 3303 不回落）；侧栏行操作（改名 / 删除）要放在 `<Link>` 的**兄弟节点**上。
 - 前端页面：web `apps/web/src/app/ai/chat`（useChat + ai-elements，渲染每个 part），
   审计页 admin `apps/admin/src/app/main/ai/audit`（会话 → 运行树 → 时间线 + 输入快照）。
+
+## 8. 首轮运行环境注入（操作系统 + 当前时间）
+
+需求口径：**系统指令告知 agent 是什么操作系统、当前日期时间**（设计文档 §3.15.4）。
+
+- **组装**：`prompts/environment.ts` 的 `buildEnvironmentData(now?, platform?, timeZone?)` ——
+  三个入参都可注入，所以可单测（跨平台代码只在本机跑过 = 另外两端没测）；
+- **模板**：`prompts/templates/partials/environment.eta`（提示词文本只走引擎，不手拼字符串）；
+- **渲染时机**：`AgentChatService.renderEnvironment(conversation)`，只在 `turnCount === 0`（会话第一轮）
+  渲染 —— 系统提示词是请求前缀，每轮换时间戳会把提供方的前缀缓存打掉；
+- **怎么进提示词**：渲染结果放进运行时信封的 `environment` 字段，由 `ai.mastra.ts` 的
+  `instructions` 动态参数追加到基础提示词后面（拿不到信封就用基础提示词，**不能抛错**：
+  Mastra 构造 durable agent 时会不带 requestContext 求值一次）；
+- **引擎怎么拿到**：`PROMPT_ENGINE` token（`ai.module.ts` 用 value provider 注入）；
+  按轮求值的片段走 `promptEngine.renderPartial(template, data)`（`render` 的 `PromptData` 要求
+  `agentKey` / `tools` 那套字段，不放宽它，否则"工具清单忘了注入"就没人拦）；
+- **子 agent 不注入**：它的提示词由主 agent 现写，`request_snapshot` 要保持原样。

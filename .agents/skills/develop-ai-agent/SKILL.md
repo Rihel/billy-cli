@@ -28,10 +28,10 @@ description: >-
 
 | 目录 | 放什么 | 加东西时改哪 |
 | --- | --- | --- |
-| `core/` | 机制 + **core bean**：`ai.config` / `ai.types` / `ai.registry` / `ai.mastra` / `planner.core` / `subagent.core` | 加 core bean：写类 + 注册 `AGENT_CORES` |
+| `core/` | 机制 + **core bean**：`ai.config` / `ai.types` / `ai.registry` / `ai.mastra` / `planner.core` / `subagent.core` / `command.core` | 加 core bean：写类 + 注册 `AGENT_CORES` |
 | `agents/` | **顶层** agent 声明（前端能选的就这些）+ `index.ts` 唯一登记处 | 加 agent：一个文件 + `AGENT_SPECS` 一行 + 一个 eta 模板 |
 | `tools/` | **业务**工具 bean（绑单一业务模块）+ `tool-keys` + `ToolBuilder` | 加工具：一个 bean + `AGENT_TOOLS` 一行 + `TOOL_KEYS` 一个 key |
-| `prompts/` | 提示词引擎 + `templates/*.eta` + `partials/` | 模板变量由装配层注入（工具清单来自 `ToolBuilder.describe`） |
+| `prompts/` | 提示词引擎 + `templates/*.eta` + `partials/` + 运行环境组装（`environment.ts`，见 `extension.md` §8） | 模板变量由装配层注入（工具清单来自 `ToolBuilder.describe`）；按轮求值的片段走 `renderPartial` |
 | `skills/` | `SkillLoader` + `catalog/<name>/SKILL.md`（+ `references/`） | 加技能：一个目录 + 在 agent 声明的 `skills` 里授权 |
 | `runtime/` | 会话 / 运行 / 时间线仓储与服务、上下文、流记录、子 agent 执行器、看门狗 | 改行为先看 `runtime.md` |
 
