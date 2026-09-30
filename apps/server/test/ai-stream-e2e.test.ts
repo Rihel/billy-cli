@@ -30,6 +30,7 @@ import {
   MOCK_DELEGATE_MARKER,
   MOCK_FINAL_TEXT,
   MOCK_SLOW_MARKER,
+  MOCK_TITLE_TEXT,
   MOCK_TODO_INITIAL,
   MOCK_TODO_TOOL,
   type MockModelServer,
@@ -306,6 +307,26 @@ describe('流式链路端到端（mock 模型 + 真实 DB + 真实 Redis）', ()
     // 命名调用**并进这一轮的 usage**（`runs.usage` 的语义就是"这一轮花掉的钱"，见设计文档 §4.10.1）。
     // 精确的字段优先级（顶层 64 胜过嵌套）由 `ai-usage.test.ts` 的纯函数单测钉住。
     expect(runRow[0]?.usage).toMatchObject({ cacheReadTokens: 192 })
+  })
+
+  it('首轮自动命名：收尾时用 `data-conversation-title` 实时下发（前端不必等下一次刷新）', async () => {
+    const { status, text } = await postStream({ message: '帮我看看最近有哪些待办' })
+    expect(status).toBe(200)
+
+    // 与 `data-run-usage` 同一手法：先给客户端，再进 Redis 输出记录（于是断线补发也拿得到）
+    expect(text).toContain('data-conversation-title')
+    expect(text).toContain(MOCK_TITLE_TEXT)
+
+    const conversationId = /"conversationId":"([^"]+)"/.exec(text)?.[1]
+    expect(conversationId).toBeTruthy()
+    if (conversationId) createdConversationIds.push(conversationId)
+
+    // 推送与落库**同一口径**：库里也确实是这个名字
+    const rows = await db.dataSource.query<{ title: string }[]>(
+      'SELECT title FROM conversations WHERE id = $1',
+      [conversationId],
+    )
+    expect(rows[0]?.title).toBe(MOCK_TITLE_TEXT)
   })
 
   it('子 agent 的实时明细走**同一条流**（data-sub-agent 状态块 + data-sub-agent-delta 增量块）', async () => {

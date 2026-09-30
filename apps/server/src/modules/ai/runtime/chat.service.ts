@@ -836,6 +836,29 @@ export class AgentChatService {
       })
       await this.conversationRepo.accumulate(conversation.id, totalTokensOf(usage))
       await this.applyTitle(conversation, input.message, title)
+
+      /**
+       * 标题变更**实时下发**（`data-conversation-title`）。
+       *
+       * 自动命名发生在收尾阶段，前端那份"会话列表 / 会话详情"缓存不会自己知道 ——
+       * 不推的话侧栏与页头要等下一次刷新或切会话才显示新名字（用户反馈：重命名没有实时响应）。
+       * 与 `data-run-usage` 同一手法：先给客户端，再进 Redis 记录 + 广播，于是断线补发也拿得到。
+       * 只在下发时**确实改过名字**（`title` 非空）时才发；名字没变时前端本来就有正确的值。
+       */
+      if (title?.title) {
+        const titleChunk = {
+          type: 'data-conversation-title',
+          data: {
+            runId: run.id,
+            conversationId: conversation.id,
+            title: title.title,
+          },
+        }
+        if (!response.writableEnded) response.write(sseFrame(titleChunk))
+        offset = await this.streamStore.appendChunk(run.id, titleChunk)
+        await this.streamStore.publishChunk(run.id, titleChunk)
+      }
+
       this.logger.log('ai.stream.succeeded', {
         conversationId: conversation.id,
         runId: run.id,
