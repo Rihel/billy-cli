@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useId, useRef, useState } from "react"
 import type { ReactNode } from "react"
 import type { AnyFormApi } from "#components/form"
 
@@ -82,6 +82,13 @@ export function ModalForm<Values extends object>({
   onError,
 }: ModalFormProps<Values>) {
   const [submitting, setSubmitting] = useState(false)
+  /**
+   * 表单 id：**底部提交按钮在 `<form>` 之外**（页脚要固定在底部、不随内容滚动），
+   * 所以必须用 `form={formId}` 把按钮显式关联回表单 ——
+   * 少了这一步，`type="submit"` 的按钮点下去**什么都不发生**（native submit 找不到所属表单）。
+   * `DrawerForm` 一直是这么写的，这里是补齐。
+   */
+  const formId = useId()
   const prevOpen = useRef(false)
   const fieldNames = collectFieldNames(items)
 
@@ -142,6 +149,7 @@ export function ModalForm<Values extends object>({
             </div>
           ) : null}
           <form
+            id={formId}
             className="flex flex-col gap-5 px-5 py-4"
             onSubmit={(event) => {
               event.preventDefault()
@@ -161,7 +169,7 @@ export function ModalForm<Values extends object>({
           >
             {cancelText}
           </Button>
-          <Button type="submit" disabled={loading || submitting}>
+          <Button type="submit" form={formId} disabled={loading || submitting}>
             {submitting ? <Spinner data-icon="inline-start" /> : null}
             {submitText}
           </Button>
