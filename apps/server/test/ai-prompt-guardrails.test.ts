@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest'
+import { CommandRunner } from '@repo/kits'
+import { CommandCore } from '../src/modules/ai/core/command.core.js'
 import { createPromptEngine } from '../src/modules/ai/prompts/index.js'
 import { DEFAULT_AGENT_KEY, createAgentDefinitions } from '../src/modules/ai/agents/index.js'
 
@@ -19,19 +21,38 @@ const assistantPrompt = (): string => {
   return assistant.instructions
 }
 
+/**
+ * 工具自己的说明（= 系统提示词「工具」段渲染的那份，也是模型选工具时看到的定义）。
+ *
+ * ⚠️ 纪律句的位置：**工具专属的纪律写在工具的 `description` 里**（一个工具只写一处），
+ * 所以这里直接查那份说明 —— 不再从提示词模板里找（模板里已经不重复写了）。
+ */
+const runCommandDescription = (): string => {
+  const core = new CommandCore(
+    new CommandRunner(),
+    { commandEnabled: true, commandTimeoutMs: 5_000, commandMaxOutputBytes: 64 * 1024 } as never,
+    { info: () => undefined, warn: () => undefined, error: () => undefined } as never,
+  )
+  const tool = core.asTools().find((item) => item.key === 'run-command')
+  if (!tool) throw new Error('没有 run-command 工具')
+  return tool.description
+}
+
 describe('提示词纪律句（执行命令 / 能力边界 / 宽泛任务）', () => {
   const prompt = assistantPrompt()
 
-  it('能力问题先验证：不许凭印象说"我做不到"', () => {
-    expect(prompt).toContain('能力问题先验证')
-    expect(prompt).toContain('"我做不到"必须有依据')
+  it('能力问题先验证：不许凭印象说"我做不到"（写在 run-command 的说明里）', () => {
+    const description = runCommandDescription()
+    expect(description).toContain('能力问题先验证')
+    expect(description).toContain('"我做不到"必须有依据')
   })
 
-  it('副作用与只读的边界写清楚：只读公开请求不必先问', () => {
+  it('副作用与只读的边界写清楚：只读公开请求不必先问（写在 run-command 的说明里）', () => {
     // 早先这里写的是"任何往外部发的请求都要先问"，模型据此把一条只读 curl 也归进"要确认"，
     // 于是出现"我不会联网 / 我得先问你"这种看着很笨的回合
-    expect(prompt).toContain('只读的公开请求不必先问')
-    expect(prompt).toContain('会改变外部状态')
+    const description = runCommandDescription()
+    expect(description).toContain('只读的公开请求不必先问')
+    expect(description).toContain('会改变外部状态')
   })
 
   it('尽量用工具把事办成：一种方法不行就换第二种', () => {

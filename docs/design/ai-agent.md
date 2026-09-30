@@ -1135,7 +1135,7 @@ AI SDK 的 `data-sub-agent` part，和主内容走同一条 SSE：
 | --- | --- | --- |
 | `# 角色` | `templates/<agent>.eta` | 它是谁 + **这个角色的边界**（如"没有绑定业务工具"） |
 | `# 要求` | `partials/requirements.eta` | 交付与格式的硬要求（中文、结论先行、只依据工具返回值、多步任务先写清单） |
-| `# 工具` | `partials/tools.eta` | `# 工具`清单由**实际授权**渲染（`toolBuilder.describe`），下面按 `## <key> 怎么用` 逐条给用法纪律（条件渲染：没授权的工具不出现） |
+| `# 工具` | `partials/tools.eta` | 只渲染**实际授权**的清单（key + 标题）与**每个工具自己的 `description`** —— 工具的适用场景 / 边界 / 纪律**只写一处**（`AgentTool.description`），模板里不再重复一遍（两处写必然漂移；那份说明同时也是模型选工具时看到的定义） |
 | `# 原则` | `partials/principles.eta` | 行为取向（尽量用工具把事办成、任务宽泛先动手、未知与失败如实说） |
 
 首轮注入的 `# 运行环境`（`partials/environment.eta`）跟在最后，也算一段。
