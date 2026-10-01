@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { UIMessage } from 'ai'
-import { lastRunUsage } from '../src/app/main/ai/chat/data.ts'
+import { lastRunUsage } from '../src/app/(standalone)/main/ai/chat/data.ts'
 
 /**
  * `lastRunUsage`：从消息里取"最近一轮"的用量。

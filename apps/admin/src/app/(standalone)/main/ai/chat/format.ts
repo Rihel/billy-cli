@@ -131,3 +131,43 @@ export const usageLineTitle = (usage: Record<string, unknown> | null, turn: numb
     .map((segment) => segment.trim())
     .join(' · ')
 }
+
+/**
+ * **相对时间**：`刚刚` / `N 秒前` / `N 分钟前` / `N 小时前` / `N 天前`（超过一周回落到日期）。
+ *
+ * 为什么会话列表要相对时间：列表是"最近聊过什么"的入口，用户扫的是**新旧**而不是具体时刻 ——
+ * `17:23` 得先在脑子里算"现在几点"，`3 分钟前` 一眼就知道该点哪个。
+ * 超过一周之后相对值反而失真（"9 天前"不如 `9月22日` 有用），所以设了回落阈值。
+ *
+ * 三条口径：
+ * - **`now` 可注入**：纯函数，测试不用冻结时钟；
+ * - **未来时间**（时钟漂移 / 服务端与浏览器不同步）按 `刚刚` 处理，不显示"负 3 分钟前"；
+ * - 认不出 / 缺失 → `null`，由调用方决定显示什么（**不编造时间**）。
+ */
+export const relativeTimeText = (
+  value: string | Date | null | undefined,
+  now: number = Date.now(),
+): string | null => {
+  if (value === null || value === undefined) return null
+  const time = value instanceof Date ? value.getTime() : Date.parse(value)
+  if (!Number.isFinite(time)) return null
+
+  const diffMs = now - time
+  if (diffMs < 60_000) return '刚刚'
+
+  const minutes = Math.floor(diffMs / 60_000)
+  if (minutes < 60) return `${minutes} 分钟前`
+
+  const hours = Math.floor(minutes / 60)
+  if (hours < 24) return `${hours} 小时前`
+
+  const days = Math.floor(hours / 24)
+  if (days < 7) return `${days} 天前`
+
+  // 超过一周：给日期（同年省略年份，跨年才带上，避免每个列表项都拖一串数字）
+  const date = new Date(time)
+  const sameYear = date.getFullYear() === new Date(now).getFullYear()
+  return sameYear
+    ? `${date.getMonth() + 1}月${date.getDate()}日`
+    : `${date.getFullYear()}年${date.getMonth() + 1}月${date.getDate()}日`
+}

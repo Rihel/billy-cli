@@ -35,6 +35,7 @@ import {
   TriangleAlertIcon,
 } from 'lucide-react'
 import { ToolConfigPanel } from './config-panels'
+import { ToolEventsPanel } from './tool-events'
 import { buildToolUpdatePayload, toFormValues } from './tool-payload'
 import type { ToolFormValues } from './tool-payload'
 
@@ -286,6 +287,13 @@ export function ToolFormModal({
                 <ParamSchemaBlock schema={tool.paramSchema} />
               </ReadonlyItem>
             </div>
+          </FormSection>
+
+          <FormSection
+            title="自定义事件（只读）"
+            description="事件在代码里声明、启动期镜像入库，页面只读；这里看的是「可能发什么」，实发内容在对话流的工具卡里看"
+          >
+            <ToolEventsPanel events={tool.events} />
           </FormSection>
 
           <FormSection

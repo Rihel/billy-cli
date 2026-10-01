@@ -1,13 +1,14 @@
 import { describe, expect, it } from 'vitest'
 import {
   cacheHitPercentText,
+  relativeTimeText,
   compactNumber,
   durationText,
   exactNumberText,
   tokenText,
   usageLineText,
   usageLineTitle,
-} from '../src/app/main/ai/chat/format.ts'
+} from '../src/app/(standalone)/main/ai/chat/format.ts'
 
 /**
  * 统计行的数字与文案格式化。
@@ -135,5 +136,39 @@ describe('usageLineTitle（悬停精确值）', () => {
       1,
     ).split(' · ')
     expect(segments).toEqual(['1 轮', '1 步', '输入 100', '输出 5', '合计 105', '耗时 500ms'])
+  })
+})
+
+describe('relativeTimeText（会话列表的相对时间）', () => {
+  const now = Date.parse('2026-10-01T18:00:00.000Z')
+
+  it('分钟以内一律「刚刚」（不显示 0 秒前 / 负值）', () => {
+    expect(relativeTimeText('2026-10-01T18:00:00.000Z', now)).toBe('刚刚')
+    expect(relativeTimeText('2026-10-01T17:59:01.000Z', now)).toBe('刚刚')
+    // 未来时间（时钟漂移）：也按刚刚，不出现"-3 分钟前"
+    expect(relativeTimeText('2026-10-01T18:05:00.000Z', now)).toBe('刚刚')
+  })
+
+  it('秒 / 分钟 / 小时按用户口径给中文相对值', () => {
+    expect(relativeTimeText('2026-10-01T17:58:30.000Z', now)).toBe('1 分钟前')
+    expect(relativeTimeText('2026-10-01T17:35:00.000Z', now)).toBe('25 分钟前')
+    expect(relativeTimeText('2026-10-01T15:00:00.000Z', now)).toBe('3 小时前')
+  })
+
+  it('超过一天给「N 天前」，超过一周回落成日期（同年省略年份）', () => {
+    expect(relativeTimeText('2026-09-29T18:00:00.000Z', now)).toBe('2 天前')
+    // 日期部分按**本地时区**取：这里用"本地正午"写用例，跨时区都稳定
+    expect(relativeTimeText('2026-09-20T12:00:00', now)).toBe('9月20日')
+    expect(relativeTimeText('2025-12-31T12:00:00', now)).toBe('2025年12月31日')
+  })
+
+  it('认不出的输入返回 null（调用方不显示，不编造时间）', () => {
+    expect(relativeTimeText(null, now)).toBeNull()
+    expect(relativeTimeText(undefined, now)).toBeNull()
+    expect(relativeTimeText('不是时间', now)).toBeNull()
+  })
+
+  it('接受 Date 实例（历史合成路径传的是 Date）', () => {
+    expect(relativeTimeText(new Date('2026-10-01T17:00:00.000Z'), now)).toBe('1 小时前')
   })
 })

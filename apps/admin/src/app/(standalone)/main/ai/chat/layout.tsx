@@ -24,8 +24,10 @@ import {
   ResizablePanel,
   ResizablePanelGroup,
 } from '@repo/ui/components/ui/resizable.tsx'
-import { PencilIcon, PlusIcon, Trash2Icon } from 'lucide-react'
+import { LayoutDashboardIcon, PencilIcon, PlusIcon, Trash2Icon } from 'lucide-react'
+import { Pages } from '@/lib/constants'
 import { useServerClient } from '@/lib/server-client'
+import { relativeTimeText } from './format'
 import { conversationPath, newConversationPath, CHAT_ROOT } from './routes'
 
 /**
@@ -131,6 +133,20 @@ export default function ChatLayout({ children }: { children: ReactNode }) {
               style={{ overflow: 'hidden' }}
             >
               <aside className="flex h-full w-full flex-col gap-2 p-3">
+                {/* 会话页是独立布局（没有管理台左菜单）——「返回管理台」必须是**看得见的一行**，
+                    不能只靠页头那个图标（用户实测找不到）。列表栏在桌面上恒在，放这里最稳 */}
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="justify-start gap-1.5"
+                  nativeButton={false}
+                  render={
+                    <Link href={Pages.dashboard}>
+                      <LayoutDashboardIcon className="size-3.5" />
+                      返回管理台
+                    </Link>
+                  }
+                />
                 <div className="flex items-center gap-2">
                   {/* 新建 = 跳到 `new` 这个保留段：首轮发出后服务端给会话 id，页面再 replace 成真实地址 */}
                   <Button
@@ -187,6 +203,11 @@ export default function ChatLayout({ children }: { children: ReactNode }) {
                               </span>
                             ) : null}
                             <span>{conversation.turnCount} 轮</span>
+                            {/* 相对时间（用户口径）：列表扫的是"新旧"，不是具体时刻 ——
+                                超过一周自动回落成日期，见 `relativeTimeText` */}
+                            {relativeTimeText(conversation.updatedAt ?? conversation.createdAt) ? (
+                              <span>{relativeTimeText(conversation.updatedAt ?? conversation.createdAt)}</span>
+                            ) : null}
                           </span>
                         </Link>
                         {/* 操作：悬停 / 键盘聚焦时出现（与任务列表同一手感） */}

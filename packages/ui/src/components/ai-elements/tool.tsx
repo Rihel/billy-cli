@@ -21,6 +21,13 @@ export type ToolPart = ToolUIPart | DynamicToolUIPart
 export type ToolHeaderProps = {
   title?: string
   className?: string
+  /**
+   * 标题与状态徽标之间的**只读元信息**（例如这次调用的耗时）。
+   *
+   * 为什么由调用方传而不是组件自己算：耗时是**领域数据**（服务端审计里有，历史回放时也在时间线里），
+   * 组件自己只能算"挂载到结束"这段时间，刷新后就没了。
+   */
+  meta?: ReactNode
 } & (
   | { type: ToolUIPart["type"]; state: ToolUIPart["state"]; toolName?: never }
   | {
@@ -57,7 +64,7 @@ export const getStatusBadge = (status: ToolPart["state"]) => (
   </Badge>
 )
 
-export const ToolHeader = ({ className, title, type, state, toolName, ...props }: ToolHeaderProps) => {
+export const ToolHeader = ({ className, title, type, state, toolName, meta, ...props }: ToolHeaderProps) => {
   const derivedName = type === "dynamic-tool" ? toolName : type.split("-").slice(1).join("-")
 
   return (
@@ -65,6 +72,7 @@ export const ToolHeader = ({ className, title, type, state, toolName, ...props }
       {/* 工具条铺满整行：左边「跑了什么」，右边「跑到哪了」 */}
       <WrenchIcon className="size-4 shrink-0 text-muted-foreground" />
       <span className="truncate font-medium text-sm">{title ?? derivedName}</span>
+      {meta ? <span className="shrink-0 text-xs text-muted-foreground tabular-nums">{meta}</span> : null}
       <span className="ml-auto shrink-0">{getStatusBadge(state)}</span>
       <ChevronDownIcon className="size-4 shrink-0 text-muted-foreground transition-transform group-data-[state=open]:rotate-180" />
     </CollapsibleTrigger>

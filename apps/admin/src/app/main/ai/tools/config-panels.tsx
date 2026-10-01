@@ -1,5 +1,6 @@
 'use client'
 
+import dedent from 'dedent'
 import { Button, Input, Switch } from '@repo/ui'
 import { RotateCcwIcon } from 'lucide-react'
 
@@ -33,7 +34,7 @@ export type ToolConfigPanelProps = {
   onChange: (key: string, value: unknown) => void
 }
 
-/** `run-command`：命令执行能力的配置（时长与输出上限都会在服务端再夹一次） */
+/** `run-command`：命令执行能力的配置（时长 / 输出字节上限会在服务端按部署边界再夹一次） */
 const RUN_COMMAND_FIELDS: ConfigFieldSpec[] = [
   {
     key: 'enabled',
@@ -51,7 +52,7 @@ const RUN_COMMAND_FIELDS: ConfigFieldSpec[] = [
     key: 'maxOutputBytes',
     label: '单条流输出上限（字节）',
     kind: 'number',
-    hint: 'stdout / stderr 各自的上限，超出即截断并终止命令',
+    hint: 'stdout / stderr 各自的上限，超出即截断并终止命令；填得更大也会被部署上限夹紧',
   },
   {
     key: 'workDir',

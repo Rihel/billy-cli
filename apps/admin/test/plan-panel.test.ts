@@ -1,15 +1,17 @@
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
+import { PlanSummaryCard } from '../src/app/(standalone)/main/ai/chat/plan-summary-card.tsx'
 import {
   PlanPanel,
   collectMessagePlan,
+  conversationPlanOf,
   describeChange,
   toPlanSnapshot,
   type Plan,
   type PlanSourcePart,
   type PlanStatus,
-} from '../src/app/main/ai/chat/plan-panel.tsx'
+} from '../src/app/(standalone)/main/ai/chat/plan-panel.tsx'
 
 /**
  * 计划面板：出参容错 + "当前计划"的取舍规则 + 卡片渲染（node 环境 SSR 冒烟）。
@@ -65,7 +67,7 @@ describe('toPlanSnapshot', () => {
 })
 
 describe('collectMessagePlan', () => {
-  it('实时：取 revision 最高的 plan 工具出参，其余进变更历史', () => {
+  it('实时形态一（`dynamic-tool` + `toolName`）：取 revision 最高的出参，其余进变更历史', () => {
     const messagePlan = collectMessagePlan([
       part({ type: 'text' }),
       part({
@@ -123,6 +125,55 @@ describe('collectMessagePlan', () => {
       ]),
     ).toBeNull()
   })
+
+  /**
+   * 实时流的**真实 part 形态**（实测：服务端下发的片段带 `dynamic:false`，AI SDK 于是按静态工具
+   * 建 part —— `type` 是 `tool-<工具名>`，**没有 `toolName` 字段**）。
+   * 只认 `dynamic-tool` 会让计划在实时阶段永远收集不到，用户看到的就是"任务清单不显示"。
+   */
+  it('实时形态二（`tool-<名字>`，无 toolName 字段）也要能收集到，且吸收原工具卡', () => {
+    const messagePlan = collectMessagePlan([
+      part({ type: 'text' }),
+      part({
+        type: 'tool-plan-complete',
+        state: 'output-available',
+        output: { goal: '整理待办周报', revision: 5, tasks: [{ id: 't1', title: '取数', status: 'done' }] },
+      }),
+    ])
+
+    expect(messagePlan).not.toBeNull()
+    expect(messagePlan?.current.plan.revision).toBe(5)
+    expect(messagePlan?.current.plan.tasks).toHaveLength(1)
+    expect(messagePlan?.current.plan.tasks[0]).toMatchObject({ id: 't1', title: '取数', status: 'done' })
+    expect(messagePlan?.history).toHaveLength(0)
+    expect(messagePlan?.consumed).toEqual([1])
+  })
+
+  it('`tool-` 前缀但不是计划工具的照旧不认（不误吞普通工具卡）', () => {
+    expect(
+      collectMessagePlan([
+        part({ type: 'tool-run-command', state: 'output-available', output: { ok: true } }),
+        part({ type: 'tool-plan-create', state: 'input-available' }),
+      ]),
+    ).toBeNull()
+  })
+
+  it('历史：同一版既有工具出参又有 `data-plan` 时，**两份来源都被吸收**（不重复渲染原始卡）', () => {
+    const plan = {
+      goal: '整理待办周报',
+      revision: 2,
+      tasks: [{ id: 't1', title: '取数', status: 'pending' as PlanStatus }],
+    }
+    const messagePlan = collectMessagePlan([
+      part({ type: 'tool-plan-update-task', state: 'output-available', output: plan }),
+      part({ type: 'data-plan', id: 'plan-9', data: plan }),
+      part({ type: 'text' }),
+    ])
+
+    expect(messagePlan?.current.plan.revision).toBe(2)
+    expect(messagePlan?.history).toHaveLength(0)
+    expect(messagePlan?.consumed).toEqual([0, 1])
+  })
 })
 
 describe('describeChange', () => {
@@ -171,5 +222,106 @@ describe('PlanPanel', () => {
     expect(html).toContain('来自 list-todos')
     expect(html).toContain('刚刚：把 t2 标记为进行中')
     expect(html).toContain('变更历史（1）')
+  })
+})
+
+describe('conversationPlanOf（右栏「任务」tab 的数据来源）', () => {
+  const message = (...parts: PlanSourcePart[]) => ({ parts })
+
+  it('没有任何计划 → null（右栏给空态，不画空壳卡片）', () => {
+    expect(conversationPlanOf([message(part({ type: 'text' }))])).toBeNull()
+    expect(conversationPlanOf([])).toBeNull()
+  })
+
+  it('跨消息取**最高版本**当当前计划，更早的版本进历史并按版本升序', () => {
+    const conversation = conversationPlanOf([
+      // 第 1 轮：建清单（revision 1）
+      message(
+        part({
+          type: 'tool-plan-create',
+          state: 'output-available',
+          output: snapshot(1, ['pending', 'pending']),
+        }),
+      ),
+      // 第 3 轮：改状态（revision 3）
+      message(
+        part({
+          type: 'dynamic-tool',
+          toolName: 'plan-complete',
+          state: 'output-available',
+          output: snapshot(3, ['done', 'in_progress']),
+        }),
+      ),
+    ])
+
+    expect(conversation?.current.plan.revision).toBe(3)
+    expect(conversation?.history.map((item) => item.plan.revision)).toEqual([1])
+  })
+
+  it('同一版本在多条消息里重复出现（`data-plan` + 工具出参）只算一次', () => {
+    const conversation = conversationPlanOf([
+      message(
+        part({ type: 'data-plan', id: 'plan-5', data: snapshot(5, ['done']) }),
+        part({ type: 'tool-plan-reorder', state: 'output-available', output: snapshot(5, ['done']) }),
+      ),
+      message(part({ type: 'data-plan', id: 'plan-6', data: snapshot(5, ['done']) })),
+    ])
+
+    expect(conversation?.current.plan.revision).toBe(5)
+    expect(conversation?.history).toHaveLength(0)
+  })
+
+  it('全是无版本号的旧协议数据（revision 0）也能取到最后一条', () => {
+    const conversation = conversationPlanOf([
+      message(part({ type: 'data-plan', id: 'plan-1', data: { goal: '旧 A', steps: [] } })),
+      message(part({ type: 'data-plan', id: 'plan-2', data: { goal: '旧 B', steps: [] } })),
+    ])
+
+    expect(conversation?.current.plan.goal).toBe('旧 B')
+    expect(conversation?.current.plan.revision).toBe(0)
+  })
+})
+
+describe('PlanSummaryCard（消息里的紧凑卡）', () => {
+  const plan: Plan = {
+    goal: '整理待办周报',
+    revision: 4,
+    tasks: [
+      { id: 't1', title: '取数', status: 'done' },
+      { id: 't2', title: '写周报', status: 'in_progress' },
+      { id: 't3', title: '发出去', status: 'blocked' },
+    ],
+  }
+
+  it('只给"做到哪了"这一眼：目标 + 进度 + 正在做的那一项 + 受阻数', () => {
+    const html = renderToStaticMarkup(createElement(PlanSummaryCard, { plan }))
+
+    expect(html).toContain('整理待办周报')
+    expect(html).toContain('已完成 1 / 共 3')
+    expect(html).toContain('正在做：写周报')
+    expect(html).toContain('1 项受阻')
+    // 完整清单（含备注与变更历史）在右栏，紧凑卡里不重复铺任务行
+    expect(html).not.toContain('取数</')
+  })
+
+  it('没有 `onOpen` 时不渲染入口按钮（子 run 里复用同一张卡时不该有跳转）', () => {
+    const withoutEntry = renderToStaticMarkup(createElement(PlanSummaryCard, { plan }))
+    const withEntry = renderToStaticMarkup(
+      createElement(PlanSummaryCard, { plan, onOpen: () => undefined }),
+    )
+
+    expect(withoutEntry).not.toContain('查看清单')
+    expect(withEntry).toContain('查看清单')
+  })
+
+  it('没有进行中的任务时不占位那一行', () => {
+    const html = renderToStaticMarkup(
+      createElement(PlanSummaryCard, {
+        plan: { ...plan, tasks: [{ id: 't1', title: '取数', status: 'done' }] },
+      }),
+    )
+
+    expect(html).not.toContain('正在做：')
+    expect(html).not.toContain('受阻')
   })
 })

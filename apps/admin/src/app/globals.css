@@ -9,3 +9,29 @@
 /* admin 此前在这里维护的「本地覆盖层」（字体回退链 / 等宽数字对齐 / 滚动条）已上移到
  * @repo/ui 的 globals.css —— 前台与后台共用同一套，避免两端手感分叉。
  * 设计系统定义与取舍依据见 docs/design/design-system.md。 */
+
+/**
+ * AI 会话页的**字号基准：12px**（比管理台正文小一号）。
+ *
+ * 为什么改 CSS 变量而不是逐处改类名：Tailwind v4 的 `text-*` 工具类编译成
+ * `font-size: var(--text-sm)`（构建产物里实测），所以在这一层重定义整条阶梯，
+ * 子树里所有既有字号类**整体降一档** —— 不用动几十处类名，也不会影响别的页面
+ * （作用域只在这个类里面；类名只挂在会话页独立布局的根上）。
+ *
+ * 行高变量必须一起给：只改 `font-size` 会让 12px 的字配 20px 的行高（1.67），看着发散。
+ */
+.chat-type-scale {
+  --text-xs: 0.6875rem; /* 11px */
+  --text-xs--line-height: 1rem;
+  --text-sm: 0.75rem; /* 12px ← 基准 */
+  --text-sm--line-height: 1.125rem;
+  --text-base: 0.875rem; /* 14px */
+  --text-base--line-height: 1.25rem;
+  --text-lg: 1rem; /* 16px */
+  --text-lg--line-height: 1.375rem;
+  --text-xl: 1.125rem; /* 18px */
+  --text-xl--line-height: 1.5rem;
+  --text-2xl: 1.25rem; /* 20px */
+  --text-2xl--line-height: 1.625rem;
+  font-size: var(--text-sm);
+}

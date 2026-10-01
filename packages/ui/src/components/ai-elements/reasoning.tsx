@@ -122,7 +122,9 @@ const defaultGetThinkingMessage = (isStreaming: boolean, duration?: number) => {
     return <Shimmer duration={1}>思考中…</Shimmer>
   }
   if (duration === undefined) {
-    return <p>思考了几秒</p>
+    // 拿不到时长时**不许编造**（这里曾经是写死的"思考了几秒"占位文案）：
+    // 历史回放 / 只有结果没有过程时本来就没有秒数可算，如实说"思考完成"
+    return <p>思考完成</p>
   }
   return (
     <p>

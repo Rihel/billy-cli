@@ -134,6 +134,29 @@ interface ToolPartLike {
   input?: unknown
   output?: unknown
   errorText?: string
+  /**
+   * 这次调用的耗时（毫秒）—— 取服务端审计里的 `payload.outcome.durationMs`。
+   *
+   * 为什么从库里取而不是前端现算：刷新后前端只能从"挂载"开始算，算出来的是错的值；
+   * 审计里那份是网关时钟量的真实耗时（`AuditEndPlugin`）。
+   */
+  durationMs?: number
+}
+
+/**
+ * 从时间线行里取**真实耗时**（毫秒）。
+ *
+ * 两份来源，按可靠性排：
+ * 1. 审计里的 `payload.outcome.durationMs`（网关时钟量的，工具卡用它）；
+ * 2. 行自己的 `durationMs` 列（思考 / 文本行落库时记的，如果有）。
+ *
+ * 取不到就返回 `undefined` —— 调用方**不显示**，而不是拿"挂载到现在"冒充（那是错的值）。
+ */
+const durationMsOf = (item: AgentTimelineItemModel | undefined): number | undefined => {
+  const audited = asRecord(item?.payload?.outcome)?.durationMs
+  if (typeof audited === 'number' && Number.isFinite(audited)) return audited
+  const own = item?.durationMs
+  return typeof own === 'number' && Number.isFinite(own) ? own : undefined
 }
 
 /** 工具调用（或只有结果的历史残留）→ 一张卡；结果还没到时 `state` 是 `input-available` */
@@ -152,6 +175,7 @@ const toToolPart = (
     state: result ? (isError ? 'output-error' : 'output-available') : 'input-available',
     input: call?.payload?.input,
     ...(result ? (isError ? { errorText: JSON.stringify(output ?? '') } : { output }) : {}),
+    ...(durationMsOf(result) !== undefined ? { durationMs: durationMsOf(result) } : {}),
   }
 }
 
@@ -162,6 +186,10 @@ const applyToolResult = (part: ToolPartLike, result: AgentTimelineItemModel): vo
   part.state = isError ? 'output-error' : 'output-available'
   if (isError) part.errorText = JSON.stringify(output ?? '')
   else part.output = output
+  // 耗时在这里也要挂一次：绝大多数工具卡是"调用行 + 结果行"**配对**出来的（走这条路径），
+  // 只在 `toToolPart` 挂会漏掉它们
+  const durationMs = durationMsOf(result)
+  if (durationMs !== undefined) part.durationMs = durationMs
 }
 
 /** 子助手的工具结论 → `data-sub-agent` part（与实时流同构）；不是子助手返回 null */
@@ -205,7 +233,16 @@ const toParts = (events: AgentTimelineItemModel[]): UIMessage['parts'] => {
       }
       case TimelineKind.Reasoning: {
         const text = textOf(item)
-        if (text) parts.push({ type: 'reasoning', text, state: 'done' })
+        if (text) {
+          // 思考时长：时间线行有起止时间，算得出真实秒数（否则 reasoning 组件会显示"思考完成"）
+          const reasoningMs = durationMsOf(item)
+          parts.push({
+            type: 'reasoning',
+            text,
+            state: 'done',
+            ...(reasoningMs !== undefined ? { durationMs: reasoningMs } : {}),
+          })
+        }
         break
       }
       case TimelineKind.ToolCall: {
@@ -251,43 +288,4 @@ const toParts = (events: AgentTimelineItemModel[]): UIMessage['parts'] => {
     } as UIMessage['parts'][number])
   }
   return parts
-}
-
-/** 从某个子 run 的时间线里抽出它在面板里要展示的片段（推理 / 文本 / 工具事件） */
-export interface SubAgentDetail {
-  reasoning: string
-  text: string
-  events: Array<{
-    kind: 'tool-call' | 'tool-result'
-    toolKey: string | null
-    input?: unknown
-    output?: unknown
-    isError?: boolean
-  }>
-}
-
-export const toSubAgentDetail = (items: AgentTimelineItemModel[]): SubAgentDetail => {
-  const detail: SubAgentDetail = { reasoning: '', text: '', events: [] }
-  for (const item of [...items].sort((a, b) => a.seq - b.seq)) {
-    if (item.role === TimelineRole.User) continue
-    if (item.kind === TimelineKind.Reasoning) {
-      detail.reasoning += textOf(item)
-    } else if (item.kind === TimelineKind.Text) {
-      detail.text += textOf(item)
-    } else if (item.kind === TimelineKind.ToolCall) {
-      detail.events.push({
-        kind: 'tool-call',
-        toolKey: item.toolKey,
-        input: item.payload?.input,
-      })
-    } else if (item.kind === TimelineKind.ToolResult) {
-      detail.events.push({
-        kind: 'tool-result',
-        toolKey: item.toolKey,
-        output: item.payload?.output,
-        isError: item.payload?.isError === true,
-      })
-    }
-  }
-  return detail
 }

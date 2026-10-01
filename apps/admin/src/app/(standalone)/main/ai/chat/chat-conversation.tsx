@@ -13,6 +13,7 @@ import {
   IconText,
   toastError,
   toastSuccess,
+  useIsMobile,
 } from '@repo/ui'
 // 可拖动分栏：`components/ui/*` 属重型基础组件，走子路径按需引入（不进 barrel，带扩展名）
 import {
@@ -35,12 +36,19 @@ import {
   PromptInputTextarea,
   PromptInputTools,
 } from '@repo/ui/components/ai-elements/prompt-input.tsx'
-import { CopyIcon, PanelRightIcon } from 'lucide-react'
+import { CopyIcon, LayoutDashboardIcon, PanelRightIcon } from 'lucide-react'
+import { Pages } from '@/lib/constants'
 import { useServerClient } from '@/lib/server-client'
 import { ModelPicker } from './model-picker'
 import { MessageRow } from './message-row'
 import { toUIMessages } from './history'
-import { ConversationRightPanel } from './right-panel'
+import { conversationPlanOf } from './plan-panel'
+import { ConversationRightPanel, type RightPanelTab } from './right-panel'
+import { RunActivity } from './run-activity'
+import { isSubAgentActive, liveSubAgentsOf } from './sub-agent-live'
+// 自动展开的判据与工具卡共用同一份（`shouldAutoOpen`：有东西可看 + 用户没动过手）——
+// 同一套纪律只写一次，避免两处各有一套"用户手动优先"的实现漂移
+import { shouldAutoOpen } from './tool-card'
 import { copyText } from '@/lib/clipboard'
 import { usageLineText, usageLineTitle } from './format'
 import { conversationPath, isNewConversation } from './routes'
@@ -93,6 +101,33 @@ export function ChatConversation({ conversationId }: { conversationId: string })
   const [loading, setLoading] = useState(!isNew)
   /** 右栏（系统指令 / 子 agent 运行）是否显示；真实值由挂载后的 effect 从浏览器里读回来 */
   const [panelOpen, setPanelOpen] = useState(false)
+  /**
+   * 用户是否**自己开合过**右栏（`undefined` = 还没从浏览器读回来）。
+   *
+   * 只用于"要不要自动展开"这一件事：动过一次手，此后一律听用户的（见下面的自动展开 effect）。
+   * 判据来自持久化的那个 key —— **key 存在 = 用户动过手**（自动展开不写 key，所以"没动过"不会被误判成"动过"）。
+   * `undefined` 这一档是为了**不等读回就下判断**：自动展开与"读回用户意图"是同一个挂载周期里的
+   * 两个 effect，先读后判才不会在"用户早就关过"的会话上又弹一次。
+   */
+  const [panelToggledByUser, setPanelToggledByUser] = useState<boolean | undefined>(undefined)
+  /**
+   * **切右栏 tab 的请求**（`null` = 没有请求）。
+   *
+   * 为什么是"请求 + nonce"而不是"当前 tab"：tab 的最终归属在用户手里，会话页只该**发一次请求**。
+   * `nonce` 每次自增，面板只在它变化时响应 —— 于是"同一个请求"不会反复把用户切走的 tab 抢回来。
+   *
+   * 两个发起方：① 子助手开始跑时的自动展开（落到「子 agent」）；② 消息里紧凑计划卡的「查看清单」
+   * （落到「任务」）。两者都只**请求**，用户随后的手动切换不受影响。
+   */
+  const [panelFocus, setPanelFocus] = useState<{ tab: RightPanelTab; nonce: number } | null>(null)
+  const panelFocusNonce = useRef(0)
+
+  /** 打开右栏并请求切到某个 tab（用户手动开合过之后，"自动展开"不再走这里，见下） */
+  const focusRightPanel = (tab: RightPanelTab) => {
+    panelFocusNonce.current += 1
+    setPanelFocus({ tab, nonce: panelFocusNonce.current })
+    setPanelOpen(true)
+  }
   // 停止按钮要用它；放在 ref 里避免每次拿到 runId 就重建 transport
   const runIdRef = useRef<string | undefined>(undefined)
   /**
@@ -128,11 +163,20 @@ export function ChatConversation({ conversationId }: { conversationId: string })
    * 惰性初值会让首帧与 SSR 不一致（hydration 报错）；写成 effect，首帧两处都是"关"。
    */
   useEffect(() => {
-    setPanelOpen(window.localStorage.getItem(PANEL_OPEN_STORAGE_KEY) === '1')
+    const stored = window.localStorage.getItem(PANEL_OPEN_STORAGE_KEY)
+    // key 存在 → 用户以前自己开合过：把"用户意图优先"这件事也一并读回来
+    if (stored !== null) {
+      setPanelToggledByUser(true)
+      setPanelOpen(stored === '1')
+    }
   }, [])
 
   const togglePanel = () => {
     const next = !panelOpen
+    // 用户动过手 → 记下来：此后自动展开永远让位（与 tool-card 的 `userToggled` 同一条纪律）
+    setPanelToggledByUser(true)
+    // 手动开的时候按原口径落在「系统指令」：清掉上一次的切换请求，别让焦点粘住
+    setPanelFocus(null)
     setPanelOpen(next)
     window.localStorage.setItem(PANEL_OPEN_STORAGE_KEY, next ? '1' : '0')
   }
@@ -253,6 +297,67 @@ export function ChatConversation({ conversationId }: { conversationId: string })
   const streaming = status === 'streaming' || status === 'submitted'
 
   /**
+   * 右栏「子 agent」要用的**实时过程**：从最后一条含子助手块的消息里收（见 `sub-agent-live.ts`）。
+   *
+   * 为什么在会话页收、往下传：面板与消息在**同一次渲染**里，直接把这份数据递给面板即可
+   * —— 不必为"运行中"另开后端接口，也不必让面板自己去猜哪条消息里有增量。
+   * 跑完之后右栏改用库里的完整时间线，所以这份数据是"实时的那一份"，不是唯一来源。
+   */
+  const liveSubAgents = useMemo(() => liveSubAgentsOf(messages), [messages])
+
+  /**
+   * **整个会话的当前计划**（右栏「任务」tab 的数据）。
+   *
+   * 与消息里那张紧凑卡**同一份收集逻辑**（`conversationPlanOf` 内部就是逐消息调 `collectMessagePlan`），
+   * 所以两处显示的进度永远一致；这里只是把范围从"一条消息"放大到"整会话"，
+   * 因为规划工具可能在任意一轮被调用（第一轮建清单、第五轮改顺序）。
+   */
+  const conversationPlan = useMemo(() => conversationPlanOf(messages), [messages])
+
+  /**
+   * 窄屏（<768px）不放右栏的**自动展开**。
+   *
+   * 右栏不是覆盖层而是**分栏挤压**（`ResizablePanelGroup` 里的一栏），窄屏上一开就把对话区挤到
+   * 不足 40% 宽 —— 正文被压成一条，"自动"反倒帮了倒忙。真要看得自己点页头那个按钮。
+   * `useIsMobile` 与 layout 隐藏会话列表栏是同一套口径（首帧返回 false，挂载后纠正）。
+   */
+  const isMobile = useIsMobile()
+
+  /**
+   * **子助手正在跑**（不是"历史里有子助手"）—— 只有这种情况才值得把右栏自动推给用户。
+   *
+   * 为什么区分这两件事：翻看**旧会话**时历史里往往躺着一堆已结束的子助手，
+   * 那时自动弹开右栏是**打扰**（用户在看结论，不需要过程）；而运行中弹开是**帮忙**
+   * （过程在流里长出来，不弹开就只能看到一句"过程见右栏"）。已结束的那些，
+   * 紧凑卡上的入口与页头按钮都在，想看随时点。
+   */
+  const hasActiveSubAgent = liveSubAgents.some(isSubAgentActive)
+
+  /**
+   * **有子助手正在跑就自动展开一次右栏**。
+   *
+   * 为什么需要：子助手在主时间线只有一张紧凑卡（结论 + "过程见右栏"），过程全在右栏 ——
+   * 面板默认关着的话，那句话就是空话（用户报的"子助手的输出没在右侧面板显示"就有这一层）。
+   *
+   * 五条约束：
+   * - **只在运行中自动开**：判据是 `hasActiveSubAgent`，翻旧会话不会被弹开（见上）；
+   * - **用户手动优先**：判据直接复用 `tool-card.tsx` 的 `shouldAutoOpen`（"有东西可看"+"用户没动过手"），
+   *   不另造一套；`panelToggledByUser` 为真之后永远不再自动开；
+   * - **窄屏不自动开**：见 `isMobile`（分栏挤压，不是覆盖层，但仍会把正文挤没）；
+   * - **活动期不反复触发**：判据吃的是布尔量，同一段活动里 effect 不会重复跑；
+   * - **自动展开要落在「子 agent」tab 上**：面板默认停在「系统指令」，自动开了却停在系统提示词上
+   *   等于白开 —— 请求里的 tab 才是「子 agent」（用户自己开/自己切都不受影响）。
+   */
+  useEffect(() => {
+    if (isMobile) return
+    // 用户意图还没读回来（同一挂载周期里先读后判）→ 这次先不动，读回后 effect 会重跑
+    if (panelToggledByUser === undefined) return
+    if (!shouldAutoOpen(hasActiveSubAgent, panelToggledByUser)) return
+    // 自动展开 = 一次"请切到子 agent"的请求（不写 localStorage：没动过手 ≠ 动过手）
+    focusRightPanel('subagents')
+  }, [isMobile, hasActiveSubAgent, panelToggledByUser])
+
+  /**
    * 一轮**结束后对账**：把侧栏列表与该会话详情失效重取。
    *
    * 为什么要这一步：这一轮在服务端改了三样前端看不到的东西 ——
@@ -361,6 +466,17 @@ export function ChatConversation({ conversationId }: { conversationId: string })
   return (
     <>
       <header className="flex items-center gap-2">
+        {/* 独立布局没有左菜单：这里是**唯一的退出入口**（移动端列表栏本来就隐藏，更不能没有）。
+            用图标按钮而不是文字链接（页头横向空间要留给标题与模型选择），形态与右侧的
+            "复制会话 id" 一致 —— 都是 `IconText`，不自己拼按钮样式 */}
+        <IconText
+          icon={<LayoutDashboardIcon />}
+          size="small"
+          type="primary"
+          tooltip="回到管理台"
+          aria-label="回到管理台"
+          onClick={() => router.push(Pages.dashboard)}
+        />
         <h1 className="font-heading text-lg font-semibold">
           {isNew ? '新会话' : conversationQuery.data?.title || '会话'}
         </h1>
@@ -427,10 +543,12 @@ export function ChatConversation({ conversationId }: { conversationId: string })
       {/* 对话区 + 右栏：可拖动分栏。右栏可关（页头那个图标），关掉时对话区独占整宽 */}
       <ResizablePanelGroup orientation="horizontal" className="min-h-0 flex-1">
         <ResizablePanel minSize={320} className="h-full" style={{ overflow: 'hidden' }}>
-          <div className="flex h-full min-h-0 flex-col gap-3">
+          <div className="flex h-full min-h-0 flex-col gap-2">
             {/* 消息列表不画外框：整块与页面同底，气泡 / 工具卡自己带层次，边框只会把界面切成一块块 */}
             <Conversation className="min-h-0 flex-1">
-              <ConversationContent>
+              {/* 覆盖 ai-elements 的 `gap-8 p-4`：管理台是**高密度工作台**，
+                  消息间距收到 12px、留白收到 12px（下面每张卡自己再收一层） */}
+              <ConversationContent className="gap-3 p-3">
                 {loading ? (
                   <p className="p-3 text-xs text-muted-foreground">正在加载会话历史…</p>
                 ) : messages.length === 0 ? (
@@ -444,11 +562,14 @@ export function ChatConversation({ conversationId }: { conversationId: string })
                       key={message.id}
                       message={message}
                       streaming={streaming}
-                      client={client}
-                      conversationId={isNew ? undefined : conversationId}
+                      onOpenPlan={() => focusRightPanel('plan')}
                     />
                   ))
                 )}
+                {/* 运行指示：站在**最后一条消息之后、输入框之上**（消息列表在 StickToBottom 里，
+                    放在这里它才会跟着一起吸底）。出现 / 消失由 `RunActivity` 自己按 `status` 判定
+                    （判据是纯函数，有用例钉住"跑完即消失"），所以这里不重复写一遍条件。 */}
+                <RunActivity messages={messages} status={status} />
               </ConversationContent>
               <ConversationScrollButton />
             </Conversation>
@@ -497,6 +618,10 @@ export function ChatConversation({ conversationId }: { conversationId: string })
                 // 新会话还没有 id：系统指令仍可看静态定义，子 agent tab 给空态
                 conversationId={isNew ? undefined : conversationId}
                 agentKey={agentKey ?? agentsQuery.data?.defaultAgentKey}
+                liveSubAgents={liveSubAgents}
+                // 自动展开时直接停在「子 agent」——自动开了却停在系统提示词上等于白开
+                plan={conversationPlan}
+                focus={panelFocus}
               />
             </ResizablePanel>
           </>

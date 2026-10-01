@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { AgentRunModel, AgentTimelineItemModel } from '@repo/shared'
-import { toSubAgentDetail, toUIMessages } from '../src/app/main/ai/chat/history.ts'
+import { toUIMessages } from '../src/app/(standalone)/main/ai/chat/history.ts'
 
 /**
  * 时间线 → UIMessage 的映射（纯逻辑，node 环境）。
@@ -340,21 +340,37 @@ describe('toUIMessages', () => {
   })
 })
 
-describe('toSubAgentDetail', () => {
-  it('按顺序汇总推理 / 文本 / 工具事件，跳过任务本身（user 行）', () => {
-    const detail = toSubAgentDetail([
-      item({ seq: 1, runId: CHILD_RUN, kind: 'text', role: 'user', payload: { text: '任务' } }),
-      item({ seq: 2, runId: CHILD_RUN, kind: 'reasoning', payload: { text: '先取数' } }),
-      item({ seq: 3, runId: CHILD_RUN, kind: 'tool-call', toolKey: 'list-todos', payload: { input: { limit: 3 } } }),
-      item({ seq: 4, runId: CHILD_RUN, kind: 'tool-result', toolKey: 'list-todos', payload: { output: { total: 2 } } }),
-      item({ seq: 5, runId: CHILD_RUN, kind: 'text', payload: { text: '共 2 条' } }),
-    ])
+describe('历史里的耗时（工具条与思考块要显示真实值）', () => {
+  it('工具结果里的审计耗时（payload.outcome.durationMs）挂到工具卡 part 上', () => {
+    const messages = toUIMessages(
+      [
+        item({ seq: 1, kind: 'tool-call', toolKey: 'run-command', toolCallId: 'call_1' }),
+        item({
+          seq: 2,
+          kind: 'tool-result',
+          toolKey: 'run-command',
+          toolCallId: 'call_1',
+          payload: { output: { ok: true }, isError: false, outcome: { durationMs: 2345 } },
+        }),
+      ],
+      [run(ROOT_RUN, null)],
+    )
 
-    expect(detail.reasoning).toBe('先取数')
-    expect(detail.text).toBe('共 2 条')
-    expect(detail.events).toEqual([
-      { kind: 'tool-call', toolKey: 'list-todos', input: { limit: 3 } },
-      { kind: 'tool-result', toolKey: 'list-todos', output: { total: 2 }, isError: false },
-    ])
+    const toolPart = messages
+      .flatMap((message) => message.parts)
+      .find((part) => part.type === 'dynamic-tool') as { durationMs?: number } | undefined
+    expect(toolPart?.durationMs).toBe(2345)
+  })
+
+  it('思考行自带 durationMs → 挂到 reasoning part 上（否则界面只能显示"思考完成"）', () => {
+    const messages = toUIMessages(
+      [item({ seq: 1, kind: 'reasoning', payload: { text: '想一下' }, durationMs: 3200 })],
+      [run(ROOT_RUN, null)],
+    )
+
+    const reasoningPart = messages
+      .flatMap((message) => message.parts)
+      .find((part) => part.type === 'reasoning') as { durationMs?: number } | undefined
+    expect(reasoningPart?.durationMs).toBe(3200)
   })
 })

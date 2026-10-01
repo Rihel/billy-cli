@@ -75,8 +75,10 @@ export interface PlanSnapshot {
 
 /** 一份计划在消息 parts 里的来源位置（渲染时据此跳过原始工具卡） */
 export interface PlanSourcePart {
+  /** part 类型：`data-plan`，或工具 part（`tool-<名字>` / `dynamic-tool`） */
   type: string
   id?: string
+  /** 只有 `dynamic-tool` 形态才有；`tool-<名字>` 形态的名字在 `type` 里 */
   toolName?: string
   state?: string
   output?: unknown
@@ -204,6 +206,21 @@ export const toPlanSnapshot = (raw: unknown): PlanSnapshot | null => {
 export const isPlanToolName = (toolName?: string): boolean =>
   typeof toolName === 'string' && (toolName.startsWith('plan-') || toolName === 'write-plan')
 
+/**
+ * 工具 part 的工具名 —— **必须同时认两种形态**（实测，见交付报告）：
+ *
+ * - `dynamic-tool` + `toolName`：AI SDK 对"工具名不静态可知"的调用使用的形态，`history.ts` 合成的也是它；
+ * - `tool-<工具名>`：**实时流真正下发的形态**。服务端片段带 `dynamic:false`（Redis 里录到的原文），
+ *   SDK 于是按静态工具建 part —— 名字藏在 `type` 里，part 上**没有 `toolName` 字段**。
+ *
+ * 只认前者会让"当前计划"在实时阶段**永远收集不到**（用户看到的"任务清单不显示"就是这么来的），
+ * 刷新后走历史合成又另有一套形态 —— 两条路必须在这里合流。
+ */
+const toolPartName = (part: PlanSourcePart): string | undefined => {
+  if (part.type === 'dynamic-tool') return part.toolName
+  return part.type.startsWith('tool-') ? part.type.slice('tool-'.length) : undefined
+}
+
 const taskIdOf = (change: PlanChange): string | undefined => {
   const direct = asText(change.taskId) ?? asText(change.task_id) ?? asText(change.id)
   if (direct) return direct
@@ -275,13 +292,14 @@ export const describeChange = (change?: PlanChange, plan?: Plan): string | undef
  * 从一条消息的 parts 里挑出"当前计划 + 更早的版本"。
  *
  * 两条数据链路合到同一个入口：
- * - **实时**：`dynamic-tool` 且 `toolName` 以 `plan-` 开头，取它的 `output`；
+ * - **实时**：工具 part 且工具名是 `plan-*`（形态 `tool-plan-create` 或 `dynamic-tool` + `toolName`），取它的 `output`；
  * - **历史**：`history.ts` 合成的 `data-plan` part，取它的 `data`（`plan` 事件的 payload）。
  *
  * 取舍规则：按 `revision` 取最大者（同版只留一条，历史的 `data-plan` 与工具出参指向同一版时
  * 优先保留带 `change` 的那条）；没有 revision 的旧数据按"最后一个"算。
- * 返回的 `consumed` 是被计划卡片吸收的 part 下标 —— 调用方据此跳过原始工具卡，
- * **认不出的出参不吸收**，确保"看不懂的东西仍然看得见"。
+ * 返回的 `consumed` 是**所有被认出来的计划来源 part 下标** —— 调用方据此跳过原始工具卡
+ * （否则同一次计划调用会既出计划卡又出一张裸工具卡；两条链路对同一版各有一份，两份都要吸收），
+ * **认不出的出参不在 consumed 里**，确保"看不懂的东西仍然看得见"。
  */
 export const collectMessagePlan = (parts: readonly PlanSourcePart[]): MessagePlan | null => {
   const candidates: Array<{ index: number; snapshot: PlanSnapshot }> = []
@@ -292,11 +310,11 @@ export const collectMessagePlan = (parts: readonly PlanSourcePart[]): MessagePla
       if (snapshot) candidates.push({ index, snapshot })
       return
     }
-    if (part.type === 'dynamic-tool' && isPlanToolName(part.toolName)) {
-      if (part.state !== 'output-available') return
-      const snapshot = toPlanSnapshot(part.output)
-      if (snapshot) candidates.push({ index, snapshot })
-    }
+    const toolName = toolPartName(part)
+    if (!toolName || !isPlanToolName(toolName)) return
+    if (part.state !== 'output-available') return
+    const snapshot = toPlanSnapshot(part.output)
+    if (snapshot) candidates.push({ index, snapshot })
   })
   if (candidates.length === 0) return null
 
@@ -331,7 +349,9 @@ export const collectMessagePlan = (parts: readonly PlanSourcePart[]): MessagePla
   return {
     current: deduped[currentIndex].snapshot,
     history: deduped.filter((_, index) => index !== currentIndex).map((candidate) => candidate.snapshot),
-    consumed: deduped.map((candidate) => candidate.index),
+    // 吸收的是**所有认出来的来源 part**（不是 deduped 里剩下那几条）：
+    // 同一版可能同时以 `tool-plan-*` 与 `data-plan` 出现，两条都留着就会重复渲染原始工具卡
+    consumed: candidates.map((candidate) => candidate.index),
   }
 }
 
@@ -373,7 +393,7 @@ function PlanTaskRow({ task }: { task: PlanTask }) {
   return (
     <li
       className={cn(
-        'flex items-start gap-2 rounded-md px-2 py-1.5',
+        'flex items-start gap-2 rounded-md px-1.5 py-1',
         task.status === 'in_progress' && 'bg-muted/60',
       )}
     >
@@ -433,7 +453,7 @@ export function PlanPanel({ plan, change, history = [] }: PlanPanelProps) {
       </div>
 
       <PlanContent>
-        <ul className="flex flex-col gap-1">
+        <ul className="flex flex-col gap-0.5">
           {plan.tasks.map((task) => (
             <PlanTaskRow key={task.id} task={task} />
           ))}
@@ -479,4 +499,64 @@ export function PlanPanel({ plan, change, history = [] }: PlanPanelProps) {
       ) : null}
     </PlanCard>
   )
+}
+
+/** 一整个会话里与计划有关的一切（跨消息合流后的结果） */
+export interface ConversationPlan {
+  /** 当前计划 = 见过的**最高版本**（同一版只留一条） */
+  current: PlanSnapshot
+  /** 被替代的更早版本（同样按版本去重，供右栏展开「变更历史」） */
+  history: PlanSnapshot[]
+}
+
+/**
+ * 把**整个会话**的计划合流成一份（右栏「任务」tab 用它）。
+ *
+ * 为什么要跨消息合流，而不是只看最后一条：
+ * - 规划工具可能在**任意一轮**被调用（第一轮建清单、第五轮改顺序），计划躺在当时那条消息里；
+ * - 一条消息内 `collectMessagePlan` 已经做了"同版去重 + 取最高版本"，这里只需把**多条消息**的结果
+ *   再合一次：版本号最高的当当前计划，其余按版本去重后进历史（顺序保持"先出现的在前"）。
+ *
+ * 判据与消息内那份**完全一致**（都走 `collectMessagePlan`），所以"消息里看到的计划"与
+ * "右栏里看到的计划"不会各说各话 —— 两处只有呈现形态不同。
+ */
+export const conversationPlanOf = (
+  messages: readonly { parts: readonly PlanSourcePart[] }[],
+): ConversationPlan | null => {
+  const found: PlanSnapshot[] = []
+  for (const message of messages) {
+    const plan = collectMessagePlan(message.parts)
+    if (!plan) continue
+    found.push(plan.current, ...plan.history)
+  }
+  if (found.length === 0) return null
+
+  // 按版本去重（首见者胜：同一版可能同时以 `data-plan` 与工具出参出现，保留先出现的那条）
+  const byRevision = new Map<number, PlanSnapshot>()
+  const unversioned: PlanSnapshot[] = []
+  for (const snapshot of found) {
+    const revision = snapshot.plan.revision
+    if (revision <= 0) {
+      unversioned.push(snapshot)
+      continue
+    }
+    const seen = byRevision.get(revision)
+    // 同一版有两条时，把「变更摘要」补齐：谁有 `change` 就用谁的那份
+    if (!seen) byRevision.set(revision, snapshot)
+    else if (!seen.change && snapshot.change) byRevision.set(revision, snapshot)
+  }
+
+  let current: PlanSnapshot | undefined
+  for (const snapshot of byRevision.values()) {
+    if (!current || snapshot.plan.revision >= current.plan.revision) current = snapshot
+  }
+  // 全是无版本号（revision ≤ 0）的旧数据：按出现顺序取最后一条当当前计划
+  if (!current) current = unversioned.at(-1)
+  if (!current) return null
+
+  const history = [...byRevision.values()]
+    .filter((snapshot) => snapshot !== current)
+    .sort((a, b) => a.plan.revision - b.plan.revision)
+
+  return { current, history: [...history, ...unversioned.filter((s) => s !== current)] }
 }
