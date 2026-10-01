@@ -59,9 +59,10 @@ ai/
 > 配置（开关 / 作用域 / 限额 / 秘钥）入库并可后台修改；Mastra 的词汇收进 `ai/mastra/**` 适配器。
 > 下面这段保留作**历史与背景**（"为什么一个工具一个 bean"的论证仍然成立）。
 >
-> **机制再演进（2026-10-01）**：工具 DSL 现在是**装饰器 + 工具类** —— 一个工具 = 一个 `@Injectable()` 类
-> （类上 `@ToolDecl`、方法上 `@ToolExec`），`AGENT_TOOLS` 汇总的是**工具类实例**；`AgentCore` / `asTools()`
-> 已取消。见 `docs/design/ai-agent-tool-engine.md` §5.2。
+> **机制再演进（2026-10-01）**：工具 DSL 现在是**工具组 + 方法即工具** —— 一个工具组 = 一个
+> `@Injectable()` 类（类上可选 `@ToolGroup`），**组内一个 `@ToolDecl` 方法就是一个工具**；
+> `AGENT_TOOL_GROUPS` 汇总的是**工具组实例**（一个组 1..n 个工具）；`AgentCore` / `asTools()` 已取消。
+> 见 `docs/design/ai-agent-tool-engine.md` §5.2。
 
 - `ListTodosTool` / `GetTodoTool` / `CreateTodoTool` 各自 `@Injectable()`，构造器注入
   `TodoService`，在构造期用 `createTool` 绑定 `execute`；
@@ -919,7 +920,7 @@ key: agent:run:{runId}          TTL: 6h
 ### 3.14 「core bean」与动态子 agent（**本轮修正，以此为准**）
 
 > **机制演进（2026-10-01）**：`AgentCore` / `asTools()` 已取消 —— 规划 / 子 agent / 取页都是
-> **工具类**（`@ToolDecl` + `@ToolExec`，一类一工具），`AGENT_TOOLS` 汇总工具类实例。
+> **工具组**（`@ToolGroup` + 方法级 `@ToolDecl`，一个方法一个工具），`AGENT_TOOL_GROUPS` 汇总工具组实例。
 > 口径见 `docs/design/ai-agent-tool-engine.md` §5.2；本节其余"core bean"表述保留作历史。
 
 本节覆盖前面所有关于多 agent 的描述。修正来自四条要求（原文）：
@@ -1132,7 +1133,7 @@ AI SDK 的 `data-sub-agent` part，和主内容走同一条 SSE：
 | 层 | 位置 | 职责 |
 | --- | --- | --- |
 | 机制（基础设施） | `packages/kits/src/foundation/command/`（`CommandRunner` + `command.platform.ts` + `CommandModule`） | 跨平台执行：shell 解析、超时、杀进程树、输出上限、取消、结果结构化 |
-| 策略（AI 模块） | `apps/server/src/modules/ai/core/beans/command.tool.ts`（工具类 `RunCommandTool`） | 开关、工作目录边界、时长 / 输出上限、审计日志 |
+| 策略（AI 模块） | `apps/server/src/modules/ai/core/beans/command.tool.ts`（工具组 `RunCommandTool`） | 开关、工作目录边界、时长 / 输出上限、审计日志 |
 | 提示词 | `prompts/templates/partials/tools.eta`（「`run-command` 怎么用」） | 什么时候用 / 不用、能力问题先验证、有副作用先问 / 只读公开请求可直接跑、失败要读懂原因 |
 
 **为什么用 `execa` 而不是自己拼 `child_process`**（早先手写过一版，已弃）：三条硬约束恰好是它的内建能力 ——

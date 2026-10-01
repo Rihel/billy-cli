@@ -225,18 +225,23 @@ AGENT_CORES（core bean.asTools()）───┘        │
 
 ### 5.2 工具 DSL
 
-落点 `ai/tools/tools.types.ts`（`ToolSpec` 类型）+ `ai/tools/tool.decorator.ts`（`@ToolDecl` /
-`@ToolExec` / `@ToolPrecheck` / `@ToolNormalize`）+ `ai/tools/tool.class.ts`
-（`buildToolSpec(instance)` 把"类 + 装饰器元数据"拼成 `ToolSpec`）—— 纯类型与纯函数，禁止 import `@mastra`。
+落点 `ai/tools/tools.types.ts`（`ToolSpec` 类型）+ `ai/tools/tool.decorator.ts`（`@ToolGroup` 类级 +
+方法级 `@ToolDecl`）+ `ai/tools/tool.class.ts`（`buildToolSpecs(instance)` 把"工具组实例 + 装饰器元数据"
+拆成 **1..n** 个 `ToolSpec`）—— 纯类型与纯函数，禁止 import `@mastra`。
 
-**写法（2026-10-01 起：装饰器 + 一类一工具）**：一个工具 = 一个 `@Injectable()` 类 + 类上 `@ToolDecl({...})`
-+ 方法上 `@ToolExec()`（可选 `@ToolPrecheck()` 只读前置条件、`@ToolNormalize()` 配置夹紧）。
-依赖（仓储 / 执行器 / 日志）全部走构造器 `@Inject`，与业务代码**同一条 IoC 链路**，装配处不必手工 `new`。
-`params` / `config` 是**同一文件里的模块级 zod 常量**（装饰器在类定义期求值，不能引用本类 static）。
-`buildToolSpec(instance)` 是**唯一的装配入口**：漏 `@ToolDecl`、漏 `@ToolExec`、缺 `params` / `config`
+**写法（2026-10-01 起：工具组 + 方法即工具）**：一个工具组 = 一个 `@Injectable()` 类
+（可选类上 `@ToolGroup({ category?, scope?, child? })` 给组内共同默认值），
+**组内一个 `@ToolDecl` 方法就是一个工具**（声明 + 执行体同一处）。钩子不另设装饰器，
+**按方法名写在声明里**：`precheck: 'checkWorkDir'` / `normalize: 'normalizeConfig'`。
+依赖（仓储 / 执行器 / 日志）全部走构造器 `@Inject`，组内工具共享，与业务代码**同一条 IoC 链路**，
+装配处不必手工 `new`。`params` / `config` 是**同一文件里的模块级 zod 常量**
+（装饰器在类定义期求值，不能引用本类 static）。
+`buildToolSpecs(instance)` 是**唯一的装配入口**：组内没有 `@ToolDecl` 方法、缺 `key`/`title`/`description`/
+`params`/`config`、类别与作用域既没写在声明里也继承不到、组内 key 重复、钩子方法不存在 ——
 一律**启动期抛错**（宁可起不来，也不要带一个"看起来在册、实际调不动"的工具跑）。
+**一个类一个工具 = 组里只有一个方法**：形状只有一种，不必为"单工具"另写。
 
-`buildToolSpec()` 产出的内部形状仍是 `ToolSpec`（网关 / 注册机 / 后台页只认它）：
+`buildToolSpecs()` 产出的内部形状仍是 `ToolSpec`（网关 / 注册机 / 后台页只认它）：
 
 ```ts
 export interface ToolSpec<C = unknown, I = unknown, O = unknown> {
@@ -281,9 +286,9 @@ export interface ToolSpec<C = unknown, I = unknown, O = unknown> {
 | 部署上限 | env | 库被改坏也突破不了部署边界 |
 
 与现有 `AgentTool` 的关系：字段语义保留（`key` / `title` / `description` / `delegation`），
-`tool: AgentToolInstance` 换成 `params + config + exec`。`AGENT_TOOLS` 的语义是
-**工具类实例数组**（不再是"声明数组"）：注册机对每个实例 `buildToolSpec()` 拿声明；
-`AGENT_CORES` / `asToolSpecs()` 已取消（每个工具一个类，不再有"core bean 交出多个声明"这一层）。
+`tool: AgentToolInstance` 换成 `params + config + exec`。`AGENT_TOOL_GROUPS` 的语义是
+**工具组实例数组**（不再是"声明数组"）：注册机对每个组 `buildToolSpecs()` 拿 1..n 个声明；
+`AGENT_CORES` / `asToolSpecs()` 已取消（每个工具是一个 `@ToolDecl` 方法，不再有"core bean 交出多个声明"这一层）。
 
 ### 5.3 注册机
 
@@ -291,9 +296,9 @@ export interface ToolSpec<C = unknown, I = unknown, O = unknown> {
 
 四件事：
 
-1. 注册：对 `AGENT_TOOLS` 里的每个**工具类实例**跑 `buildToolSpec()`，建立 key→spec 表。
-   重复 key、缺装饰器声明（`@ToolDecl` / `@ToolExec`）、`params`/`config` 不是 zod schema —— 启动即失败；
-   工具池为空（`AGENT_TOOLS` 一个实例都没有）同样启动即失败。
+1. 注册：对 `AGENT_TOOL_GROUPS` 里的每个**工具组实例**跑 `buildToolSpecs()`，建立 key→spec 表
+   （一个组 1..n 个工具）。重复 key、组内没有 `@ToolDecl` 方法、缺 `key`/`title`/`description`/`params`/`config`、
+   `params`/`config` 不是 zod schema —— 启动即失败；工具池为空（一个组都没有）同样启动即失败。
 2. 对账入库：启动时把声明写进 `ai_tools`。`source='manual'` 的行只更新 `last_seen_at`，不覆盖人工改动；
    代码里删掉的工具保留配置行（历史 run 的时间线还引用着它），只记 `last_seen_at`。
 3. 读配置：`settings(key)` 返回合并后的生效配置，进程内缓存，保存后失效。
@@ -385,7 +390,7 @@ DeepSeek Harness 就用它做底座（本机有源码，vendor 成 `@deepseek-ai
 
 不引入的三条理由：
 
-1. 我们已经有 NestJS 作为唯一组合根（`forRootAsync` 取配置、`AGENT_TOOLS`（工具类实例）汇总、
+1. 我们已经有 NestJS 作为唯一组合根（`forRootAsync` 取配置、`AGENT_TOOL_GROUPS`（工具组实例）汇总、
    `check:inject` 守构造器注入）。再进一个容器就是两套生命周期，工具的依赖会跨两个容器，
    现有的守卫也管不到跨容器那部分。
 2. Cordis 的强项是**第三方插件生态**：运行期装载/卸载、依赖驱动的启停、隔离、热插拔。
@@ -562,9 +567,9 @@ durable 恢复会重放工具调用，页不一致会让上下文自相矛盾。
 `RequestContext`，再接测试库（`ai-plan-subagents.test.ts`）。类型断言把入参校验绕过去了，
 Mastra 一改 execute 的形态，所有工具测试一起红。
 
-**现在的做法（装饰器 + 类 DSL，§5.2）**：`buildToolSpec(new XxxTool(...fake 依赖...))` 拿 `ToolSpec`，
-直接调 `spec.exec(input, ctx)`；依赖从构造器传 fake，`ctx` 用 `makeToolContext()` 造 ——
-全程不碰 `createTool` 产物，也不 import `@mastra`。
+**现在的做法（工具组 + 方法即工具 DSL，§5.2）**：`buildToolSpecs(new XxxTools(...fake 依赖...))` 拿
+`ToolSpec[]`（单工具测试按 key 取那一个），直接调 `spec.exec(input, ctx)`；依赖从构造器传 fake，
+`ctx` 用 `makeToolContext()` 造 —— 全程不碰 `createTool` 产物，也不 import `@mastra`。
 
 结构约定（对工具作者的要求）：
 
@@ -615,9 +620,9 @@ Mastra 一改 execute 的形态，所有工具测试一起红。
 
 | 对象 | 是不是工具 | 难点 | 落法 |
 | --- | --- | --- | --- |
-| `run-sub-agent` | 是（工具类 `RunSubAgentTool`） | `exec` 要跑一个完整 agent：模型调用、建子 run、落时间线、转发流 | 把执行体放到端口 `SubAgentExecutor` 后面：生产实现是 `AgentRunner`，测试实现返回固定结论。spec 只留入参契约与 `precheck`（深度是纯判断；配额要查库，走 bean 注入的只读端口）。`AgentRunner` 现在自己 `new Agent`（`agent-runner.ts:217`），改成注入 agent 工厂（适配器提供）。深度、幂等复用、配额三条守卫用 fake 仓储单测；端到端保留一条（mock 模型）证接线正确 |
-| 规划四个工具（`core/beans/planner/plan-*.tool.ts`） | 是（工具类，一个文件一个工具） | 跨轮状态（per-run 内存、串行队列）、读时间线取当前计划 | 它们自己不写库（输出是纯数据），所以最好测：直接调 `exec` 加 fake 仓储。已覆盖：首建 / 追加 / id 重复 / 总量上限 / 缺信封（create），order 少·多·重复 / 未知 id / 标 in_progress（reorder），批量 + 幂等 + note（complete），批量删 / 删空（delete）；另有一条同轮串行读改写的端到端 |
-| `run-command` | 是（工具类 `RunCommandTool`） | 真执行外部命令 | 机制（`CommandRunner`）在 kits，那边已有独立单测，AI 侧只测策略（`ai-command-core.test.ts:9-13` 就是这个分工）。策略上移到插件后，工具单测变成入参契约与出参形状，插件单测管开关、边界、夹紧。现有那条"真跑 30 秒命令再比 `Date.now()`"（`ai-command-core.test.ts:87-101`）改成注入可控时钟加 fake runner，断言传下去的 `timeoutMs` |
+| `run-sub-agent` | 是（工具组 `RunSubAgentTool`，组内一个方法） | `exec` 要跑一个完整 agent：模型调用、建子 run、落时间线、转发流 | 把执行体放到端口 `SubAgentExecutor` 后面：生产实现是 `AgentRunner`，测试实现返回固定结论。spec 只留入参契约与 `precheck`（深度是纯判断；配额要查库，走 bean 注入的只读端口）。`AgentRunner` 现在自己 `new Agent`（`agent-runner.ts:217`），改成注入 agent 工厂（适配器提供）。深度、幂等复用、配额三条守卫用 fake 仓储单测；端到端保留一条（mock 模型）证接线正确 |
+| 规划工具组（`core/beans/planner/planner.tools.ts`，组内四个 `@ToolDecl` 方法） | 是（工具组，一个方法一个工具） | 跨轮状态（per-run 内存、串行队列）、读时间线取当前计划 | 它们自己不写库（输出是纯数据），所以最好测：直接调 `exec` 加 fake 仓储。已覆盖：首建 / 追加 / id 重复 / 总量上限 / 缺信封（create），order 少·多·重复 / 未知 id / 标 in_progress（reorder），批量 + 幂等 + note（complete），批量删 / 删空（delete）；另有一条同轮串行读改写的端到端 |
+| `run-command` | 是（工具组 `RunCommandTool`，组内一个方法） | 真执行外部命令 | 机制（`CommandRunner`）在 kits，那边已有独立单测，AI 侧只测策略（`ai-command-core.test.ts:9-13` 就是这个分工）。策略上移到插件后，工具单测变成入参契约与出参形状，插件单测管开关、边界、夹紧。现有那条"真跑 30 秒命令再比 `Date.now()`"（`ai-command-core.test.ts:87-101`）改成注入可控时钟加 fake runner，断言传下去的 `timeoutMs` |
 | `SkillLoader` | **不是工具** | 启动期读盘、校验、缓存 | 它已经为测试留了可注入目录（`skill.loader.ts:19-22`、`:48-53`）。目前没有针对它的单测，只在 e2e 里用真实目录 new 出来；补：临时目录注入、缺 `SKILL.md` 报错、校验失败报错、未知技能名报错、`references/` 读取 |
 | Mastra 的技能工具（`skill` / `skill_search` / `skill_read`）与技能目录注入 | 是工具，但不在注册机里 | 见下面「技能：现状与三条路线」 | 同上 |
 | storage adapter、model resolution | 不是工具 | — | 各自的单测（适配器契约、纯函数），不进工具标准测试集 |

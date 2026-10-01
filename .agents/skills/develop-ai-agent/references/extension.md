@@ -2,33 +2,37 @@
 
 > 本文件是 `develop-ai-agent` skill 的组成部分。设计依据见 `docs/design/ai-agent.md` §1、§3.14。
 
-## 1. 加一个工具（`@ToolDecl` + `@ToolExec` 的类）
+## 1. 加一个工具（工具组：一个方法一个工具）
 
-适用：模型可调用的任何能力（业务模块操作、跨业务的运行时能力都是**同一套写法**）。五步：
+适用：模型可调用的任何能力（业务模块操作、跨业务的运行时能力都是**同一套写法**）。
+**先找组**：能放进已有工具组就加一个方法；没有合适的组就新建一个组类。五步：
 
 1. 在 `tools/tool-keys.ts` 的 `TOOL_KEYS` 加一个 key（**不写裸字符串**：写错 key 是编译期错误）；
-2. 写 `@Injectable()` 工具类（放 `tools/<名字>.tool.ts` 或 `core/beans/<名字>.tool.ts`），
-   构造器 `@Inject` 依赖（业务 service / 仓储 / `AgentRunner` / 日志）—— 与业务接口同一条 IoC 链路；
-3. 类上 `@ToolDecl({ key, title, description, category, scope, params, config, ... })`：`params` / `config`
-   用**同一文件里的模块级 zod 常量**（装饰器在类定义期求值，不能引用本类 static），`config` 每个字段都要
-   `.default()`，`description` 写"是什么 / 什么时候用 / 什么时候不用 / 纪律"；
-4. 方法上 `@ToolExec()`（可选 `@ToolPrecheck()` 只读前置条件、`@ToolNormalize()` 配置夹紧）；
-   **执行体只写业务动作** —— 开关、边界、分页、审计都在网关插件里；
-5. 在 `ai.module.ts` 的 `AGENT_TOOLS` 工厂登记一行（`providers` 里也加一行），需要的 agent 声明里授权该 key，
-   并写 `test/ai-tools/<key>.test.ts`（标准测试集强制：`buildToolSpec(new XxxTool(...))` 拿 spec 直接调 `exec`）。
+2. **组类**（新建组才要）：写 `@Injectable()` 类（放 `tools/<名字>.tool.ts` 或 `core/beans/<名字>.tool.ts`），
+   类上 `@ToolGroup({ category?, scope?, child? })` 给组内共同默认值；构造器 `@Inject` 依赖
+   （业务 service / 仓储 / `AgentRunner` / 日志）—— 组内工具共享，与业务接口同一条 IoC 链路；
+3. **方法 + 方法级 `@ToolDecl({ key, title, description, params, config, ... })`**：一个方法就是一个工具；
+   `params` / `config` 用**同一文件里的模块级 zod 常量**（装饰器在类定义期求值，不能引用本类 static），
+   `config` 每个字段都要 `.default()`，`description` 写"是什么 / 什么时候用 / 什么时候不用 / 纪律"；
+4. **钩子按方法名写在声明里**：`precheck: 'checkXxx'` / `normalize: 'normalizeConfig'`（被指向的方法写成
+   组类普通方法）。**执行体只写业务动作** —— 开关、边界、分页、审计都在网关插件里；
+5. **装配与测试**：新组才要在 `ai.module.ts` 的 `AGENT_TOOL_GROUPS` 工厂登记一行（`providers` 里也加一行）；
+   需要的 agent 声明里授权该 key，并写 `test/ai-tools/<key>.test.ts`
+   （标准测试集强制：`specByKey(new XxxTools(...), key)` 拿 spec 直接调 `exec`）。
 
 入参契约用 zod 写**给模型看的说明**（`.describe()`）；执行体出参**原样返回、不裁剪**（运行时会把完整出参落时间线）。
 子 agent 不能用的标 `child: 'deny'`；委派类标 `delegation: true`（子 agent 工具面 = 全部 − 委派类 − deny）。
+**一个类一个工具 = 组里只有一个方法**：形状只有一种，不必为"单工具"另写。
 
 ## 2. 跨业务的运行时能力（原「core bean」）
 
-规划 / 子 agent / 取页这些**跨业务**的运行时能力**已不再有单独的 core bean 层**：每个能力就是一个工具类
-（写法同上，放 `core/beans/**`），依赖走构造器注入。共同点：
+规划 / 子 agent / 取页这些**跨业务**的运行时能力**已不再有单独的 core bean 层**：每个能力就是一个工具组
+（写法同上，放 `core/beans/**`；规划四个工具就是 `PlannerTools` 组内的四个方法），依赖走构造器注入。共同点：
 
 - **不要注入 `ToolRegistry`**（会成环）：需要"全部工具"之类的信息，让编排层算好、经 `requestContext` 的
   **运行时信封**传进来（见 §3）；
 - **能力有基础设施底座时，机制放 `packages/kits`**：一个能力一个 `foundation/<name>/` 目录 +
-  `@Global()` 模块，工具类只写策略（开关 / 边界 / 上限）与结论映射 ——
+  `@Global()` 模块，工具组只写策略（开关 / 边界 / 上限）与结论映射 ——
   参考 `RunCommandTool`（`core/beans/command.tool.ts`）+ `kits/src/foundation/command/`（跨平台命令执行，底层 execa）。
 
 ## 3. 运行时信封（工具怎么知道"我在哪一轮"）
