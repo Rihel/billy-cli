@@ -7,8 +7,8 @@
 适用：模型可调用的任何能力（业务模块操作、跨业务的运行时能力都是**同一套写法**）。
 **先找组**：能放进已有工具组就加一个方法；没有合适的组就新建一个组类。五步：
 
-1. 在 `tools/tool-keys.ts` 的 `TOOL_KEYS` 加一个 key（**不写裸字符串**：写错 key 是编译期错误）；
-2. **组类**（新建组才要）：写 `@Injectable()` 类（放 `tools/<名字>.tool.ts` 或 `core/beans/<名字>.tool.ts`），
+1. 在 `core/tools/tool-keys.ts` 的 `TOOL_KEYS` 加一个 key（**不写裸字符串**：写错 key 是编译期错误）；
+2. **组类**（新建组才要）：写 `@Injectable()` 类放 `tools/**`（具体工具按能力分组，如 `tools/planner/planner.tools.ts`），
    类上 `@ToolGroup({ category?, scope?, child? })` 给组内共同默认值；构造器 `@Inject` 依赖
    （业务 service / 仓储 / `AgentRunner` / 日志）—— 组内工具共享，与业务接口同一条 IoC 链路；
 3. **方法 + 方法级 `@ToolDecl({ key, title, description, params, config, ... })`**：一个方法就是一个工具；
@@ -27,13 +27,13 @@
 ## 2. 跨业务的运行时能力（原「core bean」）
 
 规划 / 子 agent / 取页这些**跨业务**的运行时能力**已不再有单独的 core bean 层**：每个能力就是一个工具组
-（写法同上，放 `core/beans/**`；规划四个工具就是 `PlannerTools` 组内的四个方法），依赖走构造器注入。共同点：
+（写法同上，放 `tools/**`；规划四个工具就是 `PlannerTools` 组内的四个方法），依赖走构造器注入。共同点：
 
 - **不要注入 `ToolRegistry`**（会成环）：需要"全部工具"之类的信息，让编排层算好、经 `requestContext` 的
   **运行时信封**传进来（见 §3）；
 - **能力有基础设施底座时，机制放 `packages/kits`**：一个能力一个 `foundation/<name>/` 目录 +
   `@Global()` 模块，工具组只写策略（开关 / 边界 / 上限）与结论映射 ——
-  参考 `RunCommandTool`（`core/beans/command.tool.ts`）+ `kits/src/foundation/command/`（跨平台命令执行，底层 execa）。
+  参考 `RunCommandTool`（`tools/command.tool.ts`）+ `kits/src/foundation/command/`（跨平台命令执行，底层 execa）。
 
 ## 3. 运行时信封（工具怎么知道"我在哪一轮"）
 

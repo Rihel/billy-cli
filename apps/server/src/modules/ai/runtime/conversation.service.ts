@@ -14,9 +14,9 @@ import {
 } from '@repo/shared'
 import type { PageQueryResult } from '@repo/kits'
 import type { ConversationEntity } from '../../../database/entities/conversation-entity.js'
-import { ConversationNotFoundError } from '../core/ai.errors.js'
-import { AGENT_REGISTRY } from '../core/ai.registry.js'
-import type { AgentRegistry } from '../core/ai.types.js'
+import { ConversationNotFoundError } from '../core/errors.js'
+import { AGENT_REGISTRY } from '../agents/registry.js'
+import type { AgentRegistry } from '../agents/types.js'
 import {
   ConversationRepository,
   toConversationModel,

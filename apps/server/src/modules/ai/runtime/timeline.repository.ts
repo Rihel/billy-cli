@@ -8,7 +8,7 @@ import {
 } from '@repo/shared'
 import type { DeepPartial } from 'typeorm'
 import { TimelineEntity } from '../../../database/entities/timeline-entity.js'
-import { toPlan, type Plan } from '../core/beans/planner/plan.protocol.js'
+import { toPlan, type Plan } from './plan.protocol.js'
 
 /** 实体 → 对外模型 */
 export const toTimelineModel = (record: TimelineEntity): AgentTimelineItemModel => ({
@@ -91,7 +91,7 @@ export class TimelineRepository {
   }
 
   /**
-   * **当前计划** = 该会话里最后一条 `kind='plan'` 事件（append-only，见 `core/beans/planner/plan.protocol.ts`）。
+   * **当前计划** = 该会话里最后一条 `kind='plan'` 事件（append-only，见 `runtime/plan.protocol.ts`）。
    *
    * 这是规划能力的**唯一真相源**：规划工具每次执行时都从这里读出"现在改到哪一版了"
    * （而不是把计划塞进运行时信封的快照里 —— 同一轮内多次工具调用会读到过期版本）。

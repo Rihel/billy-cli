@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import { RunSubAgentTool } from '../../src/modules/ai/core/beans/subagent.tool.js'
-import { TOOL_KEYS } from '../../src/modules/ai/tools/tool-keys.js'
-import { ToolDeniedError } from '../../src/modules/ai/tools/tools.types.js'
+import { RunSubAgentTool } from '../../src/modules/ai/tools/subagent.tool.js'
+import { TOOL_KEYS } from '../../src/modules/ai/core/tools/tool-keys.js'
+import { ToolDeniedError } from '../../src/modules/ai/core/tools/tools.types.js'
 import { buildToolStackDeps, makeToolContext, specByKey } from '../helpers/ai-tool-stack.js'
 
 /**

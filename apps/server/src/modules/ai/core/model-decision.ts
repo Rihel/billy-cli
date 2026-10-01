@@ -1,6 +1,6 @@
 import { usesOfficialAdapter } from '../../ai-model/provider-adapters.js'
-import { toAgentModelId, type AgentModelId } from './ai.config.js'
-import type { RuntimeModel } from './ai.core.types.js'
+import { toAgentModelId, type AgentModelId } from './config.js'
+import type { RuntimeModel } from './envelope.js'
 
 /**
  * 「这一轮用哪个模型」的**纯决策**：把编排层解析出来的模型翻译成 Mastra 的模型对象，

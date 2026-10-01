@@ -1,11 +1,11 @@
 import { Inject, Injectable } from '@nestjs/common'
 import dedent from 'dedent'
 import { z } from 'zod'
-import { ToolDecl, ToolGroup } from '../../../tools/tool.decorator.js'
-import { TOOL_KEYS } from '../../../tools/tool-keys.js'
-import { ToolDeniedError } from '../../../tools/tools.types.js'
-import type { ToolCallContext } from '../../../tools/tools.types.js'
-import type { PlanTask, PlanTaskStatus } from './plan.protocol.js'
+import { ToolDecl, ToolGroup } from '../../core/tools/tool.decorator.js'
+import { TOOL_KEYS } from '../../core/tools/tool-keys.js'
+import { ToolDeniedError } from '../../core/tools/tools.types.js'
+import type { ToolCallContext } from '../../core/tools/tools.types.js'
+import type { PlanTask, PlanTaskStatus } from '../../runtime/plan.protocol.js'
 import {
   MAX_PLAN_TASKS,
   PlanCompleteInputSchema,

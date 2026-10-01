@@ -2,8 +2,8 @@ import { Agent } from '@mastra/core/agent'
 import type { ToolsInput } from '@mastra/core/agent'
 import type { InlineSkill } from '@mastra/core/skills'
 import type { RequestContext } from '@mastra/core/request-context'
-import { toAgentModelId, type AgentModelId } from '../core/ai.config.js'
-import type { AgentRuntimeEnvelope, RuntimeModel } from '../core/ai.core.types.js'
+import { toAgentModelId, type AgentModelId } from '../core/config.js'
+import type { AgentRuntimeEnvelope, RuntimeModel } from '../core/envelope.js'
 import { readEnvelope } from './context.adapter.js'
 
 /**
@@ -57,7 +57,7 @@ export const createMastraAgent = (options: MastraAgentOptions): Agent =>
 /**
  * 主 agent 的模型解析：**从信封取**，构造期（Mastra 不带 requestContext 求值）给占位。
  *
- * `decision` 由调用方注入（`core/ai.model-decision.ts` 的纯函数负责"官方适配还是通用兼容"），
+ * `decision` 由调用方注入（`core/model-decision.ts` 的纯函数负责"官方适配还是通用兼容"），
  * 适配器不掺业务判断。
  */
 export const modelFromEnvelope = (

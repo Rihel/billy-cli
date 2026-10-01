@@ -1,4 +1,4 @@
-import type { AgentRuntimeEnvelope } from '../core/ai.core.types.js'
+import type { AgentRuntimeEnvelope } from '../envelope.js'
 import type { ToolCaller } from './tools.types.js'
 
 /**

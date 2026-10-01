@@ -1,6 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common'
 import { AppLogger } from '@repo/kits'
-import type { AgentRuntimeEnvelope } from '../core/ai.core.types.js'
+import type { AgentRuntimeEnvelope } from '../envelope.js'
 import { toCaller } from './tool.caller.js'
 import { ToolConfigService } from './tool.config.service.js'
 import { TOOL_CLOCK } from './tool.ports.js'

@@ -1,5 +1,5 @@
 import { RequestContext } from '@mastra/core/request-context'
-import { AGENT_RUNTIME_KEY, type AgentRuntimeEnvelope } from '../core/ai.core.types.js'
+import { AGENT_RUNTIME_KEY, type AgentRuntimeEnvelope } from '../core/envelope.js'
 
 /**
  * **运行时信封 ↔ Mastra `RequestContext`** 的读写（适配器，设计 §5.8）。

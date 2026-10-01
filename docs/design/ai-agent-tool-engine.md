@@ -31,7 +31,7 @@ AGENT_CORES（core bean.asTools()）───┘        │
 
 三个 core bean 的写法一样：构造器里手动调 `createTool({ id, description, inputSchema, execute })`，
 说明文本、入参 schema、执行体、开关判断、边界检查全写在同一个文件里。
-`run-command`（`core/beans/command.core.ts`，215 行）是典型：工具说明占 24 行，`execute` 里前 30 行做开关、
+`run-command`（`tools/command.core.ts`，215 行）是典型：工具说明占 24 行，`execute` 里前 30 行做开关、
 目录边界、时长夹紧，剩下的才是"跑命令"这件事本身。
 
 ### 1.2 三条现状约束
@@ -59,7 +59,7 @@ AGENT_CORES（core bean.asTools()）───┘        │
 
 ### P2 开关和限额在 env 里，改一次要重启
 
-`run-command` 的四个旋钮全在环境变量（`core/ai.config.ts:55-61`）：开关、超时、输出上限、工作目录。
+`run-command` 的四个旋钮全在环境变量（`core/config.ts:55-61`）：开关、超时、输出上限、工作目录。
 `app-config.ts:160-166` 是它们的 schema 和默认值。
 
 想临时关掉命令执行，或者把超时从 15 秒放宽到 30 秒，都要改 `.env` 再重启服务。
@@ -89,7 +89,7 @@ AGENT_CORES（core bean.asTools()）───┘        │
 
 `@mastra/*` 的 import 有 27 处，散在 16 个文件里。我们自己的领域类型本身也是 Mastra 类型的别名：
 `tools/tools.types.ts:34` 的 `AgentToolInstance = ToolsInput[string]`，
-`core/ai.core.types.ts:76-78` 的运行时信封里装的是 `ToolsInput` 和 `InlineSkill`。
+`core/envelope.ts:76-78` 的运行时信封里装的是 `ToolsInput` 和 `InlineSkill`。
 
 `tool-keys.ts:4-6` 已经写过这条原则（"不把它的词引进我们的领域"），但只是写在注释里，
 没有目录边界，也没有检查。所以升级 Mastra 或者以后换掉它，影响面是摊开的。
@@ -134,7 +134,7 @@ AGENT_CORES（core bean.asTools()）───┘        │
 | 3 | 拒绝、越界只有 warn 日志 | 每次调用落一条带结论的时间线记录（含拒绝原因、耗时、配置版本） | 前端工具卡片能看到"被拒：不在工作目录内"，按会话能查出来 |
 | 4 | 截断即丢，模型只能重跑 | 模型拿到第一页和页柄，可用 `read-tool-result` 取下一页，库里仍是全量 | mock 模型跑一次大结果：模型收到页、能取第 2 页、时间线原文完整 |
 | 5 | 模型调不存在的工具，只有英文错误 | 落一条标记过的记录、附近似工具名、计数 | 时间线上能看到该次调用被标为未知工具 |
-| 6 | 27 处 Mastra import 散在 16 个文件 | 适配器目录收口，`ai/tools/**` 禁止 import `@mastra`，未收口的文件进允许清单（只减不增） | `pnpm check:mastra` 能拦住新引入的依赖 |
+| 6 | 27 处 Mastra import 散在 16 个文件 | 适配器目录收口，`ai/core/tools/**`（引擎）与 `ai/tools/**`（具体工具）禁止 import `@mastra`，未收口的文件进允许清单（只减不增） | `pnpm check:mastra` 能拦住新引入的依赖 |
 | 7 | 工具秘钥只能进 env | 入库加密（复用 AES-256-GCM），接口只回提示串，日志与出参自动脱敏 | 后台填一个 token，库里是密文，接口不返回明文 |
 | 8 | 测一个工具要穿透 `createTool`、造 Mastra 上下文，`planner` 一类还要连库 | 直接调 `exec(input, ctx)`，依赖走构造器注入；注册机驱动的标准测试集覆盖全部工具 | 每个工具的单测不连模型与数据库；新工具漏写测试会被标准测试集兜住 |
 | 9 | 技能工具在工具清单外、不可控，提示词与实际工具面对不上 | 一期：如实登记为 runtime 工具（提示词与后台清单分开列，审计标 `source: 'runtime'`），提示词措辞改准确。二期：技能进注册机，可开关、可限额、正文可分页 | 后台工具清单里技能工具与注册工具分开列且能对上账；提示词不再声称"清单外都没有" |
@@ -225,8 +225,8 @@ AGENT_CORES（core bean.asTools()）───┘        │
 
 ### 5.2 工具 DSL
 
-落点 `ai/tools/tools.types.ts`（`ToolSpec` 类型）+ `ai/tools/tool.decorator.ts`（`@ToolGroup` 类级 +
-方法级 `@ToolDecl`）+ `ai/tools/tool.class.ts`（`buildToolSpecs(instance)` 把"工具组实例 + 装饰器元数据"
+落点 `ai/core/tools/tools.types.ts`（`ToolSpec` 类型）+ `ai/core/tools/tool.decorator.ts`（`@ToolGroup` 类级 +
+方法级 `@ToolDecl`）+ `ai/core/tools/tool.class.ts`（`buildToolSpecs(instance)` 把"工具组实例 + 装饰器元数据"
 拆成 **1..n** 个 `ToolSpec`）—— 纯类型与纯函数，禁止 import `@mastra`。
 
 **写法（2026-10-01 起：工具组 + 方法即工具）**：一个工具组 = 一个 `@Injectable()` 类
@@ -292,7 +292,7 @@ export interface ToolSpec<C = unknown, I = unknown, O = unknown> {
 
 ### 5.3 注册机
 
-落点 `ai/tools/tool.registry.ts`。
+落点 `ai/core/tools/tool.registry.ts`。
 
 四件事：
 
@@ -320,7 +320,7 @@ export type Toolbox = ReadonlyMap<string, Tool>
 
 ### 5.4 网关与插件
 
-落点 `ai/tools/tool.gateway.ts` 与 `ai/tools/plugins/*.ts`。
+落点 `ai/core/tools/tool.gateway.ts` 与 `ai/core/tools/plugins/*.ts`。
 
 ```ts
 export interface ToolPlugin {
@@ -460,7 +460,7 @@ DeepSeek Harness 就用它做底座（本机有源码，vendor 成 `@deepseek-ai
 `reset`（恢复代码默认）。新增错误码 3407 `ToolNotRegistered`、3408 `ToolConfigInvalid`。
 工具调用期的拒绝不走 HTTP 错误码，它们是工具结论，落时间线。
 
-表和服务放在 `modules/ai/tools/` 下（路由前缀仍用 `/ai-tool/*`）。
+表和服务放在 `modules/ai/api/` 下（路由前缀仍用 `/ai-tool/*`）。
 理由：配置合法性只有 `spec.config` 知道，拆成独立模块要么互相依赖成环，
 要么为传 schema 发明一个 `forRootAsync` 校验器。
 
@@ -513,7 +513,7 @@ durable 恢复会重放工具调用，页不一致会让上下文自相矛盾。
 | 作用域 | `ai_tools.scope` / `allowed_agents` / `enabled` | 这一次调用允不允许 |
 
 可用 = 授权 ∩ 作用域。作用域判定需要运行时信封里有 `agentKey`，现在没有
-（`ai.core.types.ts:64-90`），要补一个字段，装配处只有 `chat.service.ts` 的 `buildRuntimeContext` 一处。
+（`core/envelope.ts:64-90`），要补一个字段，装配处只有 `chat.service.ts` 的 `buildRuntimeContext` 一处。
 
 | scope | 判据 |
 | --- | --- |
@@ -621,7 +621,7 @@ Mastra 一改 execute 的形态，所有工具测试一起红。
 | 对象 | 是不是工具 | 难点 | 落法 |
 | --- | --- | --- | --- |
 | `run-sub-agent` | 是（工具组 `RunSubAgentTool`，组内一个方法） | `exec` 要跑一个完整 agent：模型调用、建子 run、落时间线、转发流 | 把执行体放到端口 `SubAgentExecutor` 后面：生产实现是 `AgentRunner`，测试实现返回固定结论。spec 只留入参契约与 `precheck`（深度是纯判断；配额要查库，走 bean 注入的只读端口）。`AgentRunner` 现在自己 `new Agent`（`agent-runner.ts:217`），改成注入 agent 工厂（适配器提供）。深度、幂等复用、配额三条守卫用 fake 仓储单测；端到端保留一条（mock 模型）证接线正确 |
-| 规划工具组（`core/beans/planner/planner.tools.ts`，组内四个 `@ToolDecl` 方法） | 是（工具组，一个方法一个工具） | 跨轮状态（per-run 内存、串行队列）、读时间线取当前计划 | 它们自己不写库（输出是纯数据），所以最好测：直接调 `exec` 加 fake 仓储。已覆盖：首建 / 追加 / id 重复 / 总量上限 / 缺信封（create），order 少·多·重复 / 未知 id / 标 in_progress（reorder），批量 + 幂等 + note（complete），批量删 / 删空（delete）；另有一条同轮串行读改写的端到端 |
+| 规划工具组（`tools/planner/planner.tools.ts`，组内四个 `@ToolDecl` 方法） | 是（工具组，一个方法一个工具） | 跨轮状态（per-run 内存、串行队列）、读时间线取当前计划 | 它们自己不写库（输出是纯数据），所以最好测：直接调 `exec` 加 fake 仓储。已覆盖：首建 / 追加 / id 重复 / 总量上限 / 缺信封（create），order 少·多·重复 / 未知 id / 标 in_progress（reorder），批量 + 幂等 + note（complete），批量删 / 删空（delete）；另有一条同轮串行读改写的端到端 |
 | `run-command` | 是（工具组 `RunCommandTool`，组内一个方法） | 真执行外部命令 | 机制（`CommandRunner`）在 kits，那边已有独立单测，AI 侧只测策略（`ai-command-core.test.ts:9-13` 就是这个分工）。策略上移到插件后，工具单测变成入参契约与出参形状，插件单测管开关、边界、夹紧。现有那条"真跑 30 秒命令再比 `Date.now()`"（`ai-command-core.test.ts:87-101`）改成注入可控时钟加 fake runner，断言传下去的 `timeoutMs` |
 | `SkillLoader` | **不是工具** | 启动期读盘、校验、缓存 | 它已经为测试留了可注入目录（`skill.loader.ts:19-22`、`:48-53`）。目前没有针对它的单测，只在 e2e 里用真实目录 new 出来；补：临时目录注入、缺 `SKILL.md` 报错、校验失败报错、未知技能名报错、`references/` 读取 |
 | Mastra 的技能工具（`skill` / `skill_search` / `skill_read`）与技能目录注入 | 是工具，但不在注册机里 | 见下面「技能：现状与三条路线」 | 同上 |
@@ -762,7 +762,7 @@ Mastra 一改 execute 的形态，所有工具测试一起红。
 仿 `scripts/check-inject-decorators.ts`（`pnpm check:inject`）新增
 `scripts/check-mastra-boundary.ts` → `pnpm check:mastra`：
 
-- `ai/tools/**` 出现 `@mastra`：失败；
+- `ai/core/tools/**`（引擎）/ `ai/tools/**`（具体工具）出现 `@mastra`：失败；
 - `ai/mastra/**`：允许；
 - 其余 14 个 AI 文件进允许清单并记录 import 条数，只减不增。
 
@@ -776,7 +776,7 @@ Mastra 一改 execute 的形态，所有工具测试一起红。
 | 新增（适配器） | `mastra/tool.adapter.ts`、`agent.adapter.ts`、`context.adapter.ts`、`stream.adapter.ts`、`contracts.test.ts` |
 | 新增（其他） | `ai-tool-entity.ts` 加迁移；`ai-tool.controller.ts`；shared 的 schema、字典、错误码 3407 与 3408；SDK `aiTool`；后台 `ai/tools/page.tsx` 加菜单；`scripts/check-mastra-boundary.ts` |
 | 新增（测试） | `test/helpers/tool-kit.ts`；`test/ai-tools/<key>.test.ts` 与 `registry.battery.test.ts`；`test/ai-plugins/*.test.ts`；`test/ai-gateway.test.ts`；`test/ai-tool-config.test.ts`；`test/ai-mastra/contracts.test.ts` |
-| 改动 | `tools.types.ts`、`tool.builder.ts`、三个 core bean、`ai.core.types.ts`、`ai.mastra.ts`、`agent-runner.ts`（信封传下去、`new Agent` 改走适配器）、`chat.service.ts`、`context.service.ts`、`stream-recorder.ts`、`timeline.repository.ts`（`latestPlan` 只看根 run）、`ai.module.ts`、`app-config.ts`、`root.module.ts`、`package.json` |
+| 改动 | `tools.types.ts`、`tool.builder.ts`、三个 core bean、`core/envelope.ts`、`ai.mastra.ts`、`agent-runner.ts`（信封传下去、`new Agent` 改走适配器）、`chat.service.ts`、`context.service.ts`、`stream-recorder.ts`、`timeline.repository.ts`（`latestPlan` 只看根 run）、`ai.module.ts`、`app-config.ts`、`root.module.ts`、`package.json` |
 | 不动 | Mastra 装配与 durable 机制、`runs` / `timelines` 写入口径、`tool-keys.ts`、提示词模板、子 agent 工具面的"排除法"（仍是排除，只是多一个 `child: deny` 轴） |
 
 ### 5.14 实施顺序
@@ -811,7 +811,7 @@ Mastra 一改 execute 的形态，所有工具测试一起红。
 | 适配器单测 | §5.8 的四条契约；结论到返回值与错误结果的映射 |
 | 集成 | 改库后下一次调用生效；被禁工具落 `tool-result(isError)` 且整轮不失败；大结果取第 2 页且时间线完整；种子对账幂等 |
 | 迁移 | 建表；partial unique 条件；`(conversation_id, tool_call_id)` 索引 |
-| 守卫 | `ai/tools/**` 引入 `@mastra` 必须失败 |
+| 守卫 | `ai/core/tools/**` 引入 `@mastra` 必须失败 |
 | 回归 | `pnpm typecheck && pnpm test && pnpm check:ui && pnpm check:inject && pnpm check:mastra`；离线 mock 模型加一条"大结果分页到取页"的端到端断言 |
 
 ### 5.16 风险
@@ -831,7 +831,7 @@ Mastra 一改 execute 的形态，所有工具测试一起红。
 
 1. 插件清单：§5.4 的 10 个是否合适，`validate` 与 `precheck` 可以合成 1 个。
 2. 秘钥归属：放 `ai_tools.secrets_cipher`（每工具一份，本稿按此写），还是建一张统一凭据表（多工具共用、便于轮换）。
-3. 配置模块归位：本稿建议表与服务放 `modules/ai/tools/`、路由用 `/ai-tool/*`；若坚持独立 `modules/ai-tool`，需要补一个 schema 传递机制。
+3. 配置模块归位：本稿建议表与服务放 `modules/ai/api/`、路由用 `/ai-tool/*`；若坚持独立 `modules/ai-tool`，需要补一个 schema 传递机制。
 4. 作用域：一期做四档，还是先做 `all` / `admin`。
 5. `read-tool-result`：作为内建工具常驻在工具清单里（本稿按此写），还是只在被分页时通过提示词临时告知。
 6. 技能路线：一期走 A（只登记边界），还是直接做 B（技能进注册机）。B 一旦做了，技能就能开关、能限额、正文能分页，代价见 §5.10 的「技能：现状与三条路线」。C 需要先验证，不建议。
@@ -847,7 +847,7 @@ Mastra 一改 execute 的形态，所有工具测试一起红。
 | 网关 | `ToolGateway`：所有工具调用的必经之路 |
 | 插件 | `ToolPlugin`：一个处理单元，pre 阶段可短路 |
 | 适配器 | `ai/mastra/**`：我们与 Mastra 之间的唯一接口 |
-| 主体 | `ai/tools/**`：不出现 Mastra 词汇的部分 |
+| 主体 | `ai/core/tools/**` + `ai/tools/**`：不出现 Mastra 词汇的部分 |
 | 生效配置 | `env 硬上限 夹紧 (库里的值 ?? 代码默认值)` |
 | 页柄 | 分页结果的取回凭据，同轮查进程内，跨轮查时间线 |
 | 契约测试 | 固定"我们依赖的 Mastra 行为"的测试，升级时先跑它 |
@@ -902,7 +902,7 @@ Mastra 一改 execute 的形态，所有工具测试一起红。
 四条设计口径：
 
 1. **工具是增量的，协议仍是全量快照**：四个工具的出参**永远是完整清单**（`{goal, revision, tasks, summary, warnings?}`），
-   于是「当前计划」仍然 = 该会话最后一条 `plan` 事件（`core/beans/planner/plan.protocol.ts` 的协议不变，前端与复盘不用改形状）。
+   于是「当前计划」仍然 = 该会话最后一条 `plan` 事件（`runtime/plan.protocol.ts` 的协议不变，前端与复盘不用改形状）。
    增量工具让模型一次只表达一件事（这几项完成 / 这几项删掉），清单长的时候省 token、也少一类"漏抄一项"的错；
 2. **四个工具都 `child: 'deny'`**：清单归属发起这一轮的主 agent（子助手把结论交回父），
    顺带堵住"子 agent 的清单顶掉父的当前计划"；

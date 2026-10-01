@@ -1,5 +1,5 @@
-import { TOOL_KEYS } from '../tools/tool-keys.js'
-import type { AgentSpec } from '../core/ai.types.js'
+import { TOOL_KEYS } from '../core/tools/tool-keys.js'
+import type { AgentSpec } from './types.js'
 
 /**
  * 默认 agent：通用助手（会写任务清单、能造子助手、能执行命令）。

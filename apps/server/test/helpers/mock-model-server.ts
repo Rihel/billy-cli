@@ -49,7 +49,7 @@ export const MOCK_FINAL_TEXT = '好，清单已经记下，我按步骤继续推
 /**
  * 规划工具集里 mock 用到的工具 key。
  *
- * 规划能力现在是一组**增量工具**（出参永远是完整清单快照，见 `core/beans/planner/plan.protocol.ts`）：
+ * 规划能力现在是一组**增量工具**（出参永远是完整清单快照，见 `runtime/plan.protocol.ts`）：
  * mock 只能发它"认得"的工具名，所以逐个列出来；默认发 `plan-create`。
  */
 export const MOCK_PLAN_CREATE_TOOL = 'plan-create'

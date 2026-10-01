@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { PlannerStore, PlannerTools, type PlanOutput } from '../../src/modules/ai/core/beans/planner/index.js'
-import { TOOL_KEYS } from '../../src/modules/ai/tools/tool-keys.js'
+import { PlannerStore, PlannerTools, type PlanOutput } from '../../src/modules/ai/tools/planner/index.js'
+import { TOOL_KEYS } from '../../src/modules/ai/core/tools/tool-keys.js'
 import { buildToolStackDeps, makeToolContext, silentLogger, specByKey } from '../helpers/ai-tool-stack.js'
 
 /**

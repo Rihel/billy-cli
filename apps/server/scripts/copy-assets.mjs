@@ -3,7 +3,7 @@
  *
  * 为什么需要：server 用 `tsc` 构建，**tsc 只编译 TS、不搬其它文件**。提示词模板是运行时
  * 用 `import.meta.dirname` 相对定位读取的（dev 走 src、构建后走 dist），少了这一步，
- * 生产镜像里 `dist/modules/ai/prompts/templates/` 就是空的 → 启动即报「模板渲染失败」。
+ * 生产镜像里 `dist/modules/ai/core/prompts/templates/` 就是空的 → 启动即报「模板渲染失败」。
  *
  * 用 `.mjs` 而不是 TS：构建脚本要能在**没有 tsx 的 runner 阶段**、且 devDeps 齐全的 builder
  * 阶段都稳定运行，纯 Node ESM 最省事。

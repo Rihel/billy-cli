@@ -1,9 +1,9 @@
 import { Inject, Injectable } from '@nestjs/common'
-import { type Plan, type PlanTask } from './plan.protocol.js'
-import { TimelineRepository } from '../../../runtime/timeline.repository.js'
-import { ToolDeniedError } from '../../../tools/tools.types.js'
-import type { ToolCallContext } from '../../../tools/tools.types.js'
-import type { AgentRuntimeEnvelope } from '../../ai.core.types.js'
+import { type Plan, type PlanTask } from '../../runtime/plan.protocol.js'
+import { TimelineRepository } from '../../runtime/timeline.repository.js'
+import { ToolDeniedError } from '../../core/tools/tools.types.js'
+import type { ToolCallContext } from '../../core/tools/tools.types.js'
+import type { AgentRuntimeEnvelope } from '../../core/envelope.js'
 import type { PlanOutput, TaskInput } from './planner.schemas.js'
 
 /** 本轮内存里最多保留多少份计划（按 runId 隔离；超出按插入顺序淘汰） */

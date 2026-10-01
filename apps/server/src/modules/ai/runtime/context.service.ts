@@ -7,10 +7,10 @@ import type { TimelineEntity } from '../../../database/entities/timeline-entity.
 import {
   AgentConfig,
   type AgentConfig as AgentConfigValue,
-} from '../core/ai.config.js'
-import { ContextTooLongError } from '../core/ai.errors.js'
-import { paginate, serializeToolValue, toModelPage } from '../tools/paginate.js'
-import { isPagedToolValue } from '../tools/tools.types.js'
+} from '../core/config.js'
+import { ContextTooLongError } from '../core/errors.js'
+import { paginate, serializeToolValue, toModelPage } from '../core/tools/paginate.js'
+import { isPagedToolValue } from '../core/tools/tools.types.js'
 import { TimelineRepository } from './timeline.repository.js'
 
 /** 一次组装最多读这么多事件（防止超长会话把内存撑爆；超出的本来就该被压缩） */

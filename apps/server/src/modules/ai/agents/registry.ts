@@ -1,6 +1,6 @@
-import { TOOL_KEYS } from '../tools/tool-keys.js'
-import { AgentNotFoundError } from './ai.errors.js'
-import type { AgentDefinition, AgentRegistry as AgentRegistryShape } from './ai.types.js'
+import { TOOL_KEYS } from '../core/tools/tool-keys.js'
+import { AgentNotFoundError } from '../core/errors.js'
+import type { AgentDefinition, AgentRegistry as AgentRegistryShape } from './types.js'
 
 /**
  * 注册表的注入 token。

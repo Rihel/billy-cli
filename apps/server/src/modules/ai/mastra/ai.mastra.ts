@@ -2,10 +2,10 @@ import { Mastra } from '@mastra/core/mastra'
 import type { ToolsInput } from '@mastra/core/agent'
 import type { MastraCompositeStore } from '@mastra/core/storage'
 import type { InlineSkill } from '@mastra/core/skills'
-import type { AgentModelId } from '../core/ai.config.js'
-import type { RuntimeModel } from '../core/ai.core.types.js'
+import type { AgentModelId } from '../core/config.js'
+import type { RuntimeModel } from '../core/envelope.js'
 import { createMastraAgent, modelFromEnvelope } from './agent.adapter.js'
-import type { AgentDefinition } from '../core/ai.types.js'
+import type { AgentDefinition } from '../agents/types.js'
 
 /**
  * Mastra 实例的注入 token（值为 `Mastra | null`：未配置模型时注入 null）。

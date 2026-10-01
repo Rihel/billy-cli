@@ -27,12 +27,12 @@ export interface AgentDefinition {
    */
   tools: readonly string[]
   /**
-   * 允许使用的**技能名子集**（`skills/catalog/<name>/SKILL.md`）。
+   * 允许使用的**技能名子集**（`core/skills/catalog/<name>/SKILL.md`）。
    *
    * 与 tools 同一思路：技能也是按角色授权的；未知技能名在装配期报错（见 `SkillLoader.resolve`）。
    */
   skills: readonly string[]
-  /** 系统提示词（渲染产物：文本来自 `prompts/templates/*.eta`） */
+  /** 系统提示词（渲染产物：文本来自 `core/prompts/templates/*.eta`） */
   instructions: string
   /** 覆盖默认模型（多模型时用；本轮留位，装配处已支持） */
   model?: string
@@ -52,7 +52,7 @@ export interface AgentSpec {
   description: string
   /** 允许调用的工具 key 子集（从 `tools/tool-keys.ts` 取，避免手写魔数） */
   tools: readonly string[]
-  /** 允许使用的技能名子集（`skills/catalog/<name>/`；未知名字装配期报错） */
+  /** 允许使用的技能名子集（`core/skills/catalog/<name>/`；未知名字装配期报错） */
   skills?: readonly string[]
   /** 提示词模板：`templates/<template>.eta` + 自定义变量 */
   prompt: { template: string; data?: Record<string, unknown> }

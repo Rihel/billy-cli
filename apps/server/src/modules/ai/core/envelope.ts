@@ -1,5 +1,5 @@
-import type { SkillRef } from '../skills/skills.types.js'
-import type { Toolbox } from '../tools/tools.types.js'
+import type { SkillRef } from './skills/skills.types.js'
+import type { Toolbox } from './tools/tools.types.js'
 
 /**
  * **运行时信封**：编排层在发起一轮时放进 Mastra `requestContext` 的上下文。

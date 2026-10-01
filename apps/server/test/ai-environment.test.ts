@@ -1,7 +1,7 @@
 import { describePlatform } from '@repo/kits'
 import { describe, expect, it } from 'vitest'
-import { buildEnvironmentData } from '../src/modules/ai/prompts/environment.js'
-import { createPromptEngine } from '../src/modules/ai/prompts/index.js'
+import { buildEnvironmentData } from '../src/modules/ai/core/prompts/environment.js'
+import { createPromptEngine } from '../src/modules/ai/core/prompts/index.js'
 
 /**
  * 会话开局的「运行环境」片段（操作系统 + 当前时间）。

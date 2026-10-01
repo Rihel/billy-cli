@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { PLAN_TASK_STATUSES, type Plan } from './plan.protocol.js'
+import { PLAN_TASK_STATUSES, type Plan } from '../../runtime/plan.protocol.js'
 
 /**
  * 规划工具集的**入参契约**（给模型看的契约）与出参类型。

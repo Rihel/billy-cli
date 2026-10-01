@@ -1,5 +1,5 @@
 import { createSkill, type InlineSkill } from '@mastra/core/skills'
-import type { SkillRef } from '../skills/skills.types.js'
+import type { SkillRef } from '../core/skills/skills.types.js'
 
 /**
  * **我们的技能 → Mastra 的技能对象**（适配器）：主体只认 `SkillRef`（名字 / 说明 / 正文 / 参考文件），

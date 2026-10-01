@@ -5,7 +5,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { loadServerAppConfig } from '../src/app-config.js'
 import { RootModule } from '../src/root.module.js'
 import { AiModule } from '../src/modules/ai/ai.module.js'
-import { ToolRegistry } from '../src/modules/ai/tools/tool.registry.js'
+import { ToolRegistry } from '../src/modules/ai/core/tools/tool.registry.js'
 
 /**
  * **组合根启动冒烟**（这一条是被两个真实 bug 逼出来的）。

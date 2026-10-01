@@ -102,7 +102,7 @@ export const serverAppConfigSchema = z.object({
   /** Kafka：未配置 brokers 则不装配 KafkaModule */
   kafka: KafkaConfigSchema.optional(),
   /**
-   * AI Agent 业务配置（AgentConfig 命名空间，见 modules/ai/core/ai.config.ts）。
+   * AI Agent 业务配置（AgentConfig 命名空间，见 modules/ai/core/config.ts）。
    *
    * 恒存在（不像 lark / kafka 那样整体可选）：模型与密钥缺任意一个都只是「能力不可用」，
    * `/agent/*` 返回 3301 并保留其余功能；这样前端能拿到确定的状态结构而不是 404。

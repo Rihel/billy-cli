@@ -1,13 +1,13 @@
-import type { PromptData, PromptEngine } from '../prompts/index.js'
-import type { ToolRegistry } from '../tools/tool.registry.js'
-import type { AgentDefinition, AgentSpec } from '../core/ai.types.js'
+import type { PromptData, PromptEngine } from '../core/prompts/index.js'
+import type { ToolRegistry } from '../core/tools/tool.registry.js'
+import type { AgentDefinition, AgentSpec } from './types.js'
 import { assistantAgent } from './assistant.agent.js'
 
 /**
  * 全部**顶层** agent 声明：**唯一登记处**（前端能选的就是这些）。
  *
  * 新增一个 agent = 在 `agents/` 加一个 `<名字>.agent.ts` + 在这里加一行
- * （+ `prompts/templates/<模板>.eta`）——不需要改 core 的任何装配代码。
+ * （+ `core/prompts/templates/<模板>.eta`）——不需要改 core 的任何装配代码。
  *
  * ⚠️ **子 agent 不在这里登记**：它们由主 agent 在运行期调用 `run-sub-agent` 工具动态创建
  * （提示词由主 agent 现写，工具面 = 全部 − 委派类），详见 `docs/design/ai-agent.md` §3.14。

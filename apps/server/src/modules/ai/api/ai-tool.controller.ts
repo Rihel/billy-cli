@@ -5,8 +5,8 @@ import {
   AiToolUpdateSchema,
 } from '@repo/shared'
 import type { AiToolKeyDto, AiToolListDto, AiToolUpdateDto } from '@repo/shared'
-import { AdminAuthGuard } from '../admin/admin-auth.guard.js'
-import { AiToolService } from './tools/ai-tool.service.js'
+import { AdminAuthGuard } from '../../admin/admin-auth.guard.js'
+import { AiToolService } from './ai-tool.service.js'
 
 /**
  * 工具配置路由（`/ai-tool/*`，**全部后台管理员鉴权** + 全部 POST，见设计 §5.5 / §5.11）。

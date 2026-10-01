@@ -1,4 +1,4 @@
-import type { ToolRateCounter } from '../../src/modules/ai/tools/tool.ports.js'
+import type { ToolRateCounter } from '../../src/modules/ai/core/tools/tool.ports.js'
 
 /**
  * 测试用的**内存端口实现**（设计 §5.9：生产实现是 Redis，测试实现是内存）。

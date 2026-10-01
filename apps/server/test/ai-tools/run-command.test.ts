@@ -1,8 +1,8 @@
 import { tmpdir } from 'node:os'
 import { CommandRunner } from '@repo/kits'
 import { describe, expect, it } from 'vitest'
-import { RunCommandTool } from '../../src/modules/ai/core/beans/command.tool.js'
-import { TOOL_KEYS } from '../../src/modules/ai/tools/tool-keys.js'
+import { RunCommandTool } from '../../src/modules/ai/tools/command.tool.js'
+import { TOOL_KEYS } from '../../src/modules/ai/core/tools/tool-keys.js'
 import { buildToolStackDeps, makeToolContext, silentLogger, specByKey } from '../helpers/ai-tool-stack.js'
 
 /**

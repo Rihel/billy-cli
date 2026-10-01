@@ -9,16 +9,16 @@ import {
   RedactPlugin,
   ScopePlugin,
   ValidatePlugin,
-} from '../../src/modules/ai/tools/plugins/index.js'
-import { ToolCallMetaStore } from '../../src/modules/ai/tools/tool.meta.js'
-import { buildToolSpecs } from '../../src/modules/ai/tools/tool.class.js'
-import { ToolResultStore } from '../../src/modules/ai/tools/tool-result.store.js'
-import { systemToolClock } from '../../src/modules/ai/tools/tool.clock.js'
+} from '../../src/modules/ai/core/tools/plugins/index.js'
+import { ToolCallMetaStore } from '../../src/modules/ai/core/tools/tool.meta.js'
+import { buildToolSpecs } from '../../src/modules/ai/core/tools/tool.class.js'
+import { ToolResultStore } from '../../src/modules/ai/core/tools/tool-result.store.js'
+import { systemToolClock } from '../../src/modules/ai/core/tools/tool.clock.js'
 import { MemoryToolRateCounter } from './tool-kit-ports.js'
-import { ToolConfigService } from '../../src/modules/ai/tools/tool.config.service.js'
-import type { ToolConfigRow, ToolConfigSource } from '../../src/modules/ai/tools/tool.config.ports.js'
-import { TOOL_CONFIG_SOURCE, TOOL_ENV_CAPS } from '../../src/modules/ai/tools/tool.config.ports.js'
-import type { ToolEnvCaps, ToolSpec } from '../../src/modules/ai/tools/tools.types.js'
+import { ToolConfigService } from '../../src/modules/ai/core/tools/tool.config.service.js'
+import type { ToolConfigRow, ToolConfigSource } from '../../src/modules/ai/core/tools/tool.config.ports.js'
+import { TOOL_CONFIG_SOURCE, TOOL_ENV_CAPS } from '../../src/modules/ai/core/tools/tool.config.ports.js'
+import type { ToolEnvCaps, ToolSpec } from '../../src/modules/ai/core/tools/tools.types.js'
 
 /**
  * 测试用的**工具引擎装配**（设计 §5.9）：把网关 / 注册机 / 配置服务用假依赖拼起来，
@@ -83,7 +83,7 @@ export interface ToolStackOptions {
   /** 时间线（`ToolResultStore` 的兜底） */
   timelines?: { findToolOutput: (conversationId: string, toolCallId: string) => Promise<string | null> }
   /** 插件（默认不装插件：单测工具本体时不想被开关 / 限流挡） */
-  plugins?: readonly import('../../src/modules/ai/tools/tools.types.js').ToolPlugin[]
+  plugins?: readonly import('../../src/modules/ai/core/tools/tools.types.js').ToolPlugin[]
 }
 
 /**
@@ -128,13 +128,13 @@ export const buildToolStackDeps = (options: ToolStackOptions = {}) => {
  * 要测"没有信封"的分支就显式传 `caller: null` 并 `envelope: null`。
  */
 export const makeToolContext = (options: {
-  spec: import('../../src/modules/ai/tools/tools.types.js').ToolSpec
-  settings: import('../../src/modules/ai/tools/tools.types.js').ToolSettings
+  spec: import('../../src/modules/ai/core/tools/tools.types.js').ToolSpec
+  settings: import('../../src/modules/ai/core/tools/tools.types.js').ToolSettings
   input?: unknown
   envelope?: unknown
-  caller?: import('../../src/modules/ai/tools/tools.types.js').ToolCaller | null
+  caller?: import('../../src/modules/ai/core/tools/tools.types.js').ToolCaller | null
   toolCallId?: string
-}): import('../../src/modules/ai/tools/tools.types.js').ToolCallContext => ({
+}): import('../../src/modules/ai/core/tools/tools.types.js').ToolCallContext => ({
   spec: options.spec,
   toolKey: options.spec.key,
   toolCallId: options.toolCallId ?? 'call-test',

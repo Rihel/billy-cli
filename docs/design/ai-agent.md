@@ -938,7 +938,7 @@ key: agent:run:{runId}          TTL: 6h
 #### 3.14.1 core bean：跨业务的运行时能力，用 `asTools()` 交出来
 
 ```ts
-/** ai/core/ai.types.ts */
+/** ai/agents/types.ts */
 export interface AgentCore {
   /** core bean 的 key（诊断 / 日志用，与工具 key 不是一回事） */
   readonly key: string
@@ -1105,7 +1105,7 @@ AI SDK 的 `data-sub-agent` part，和主内容走同一条 SSE：
 
 | 动作 | 对象 |
 | --- | --- |
-| 新增 | `ai/core/ai.core.types.ts`（`AgentCore`）、`ai/core/beans/planner/planner.core.ts`、`ai/core/beans/subagent.core.ts`、`ai/runtime/agent-runner.ts`（子 run 执行器） |
+| 新增 | `ai/core/envelope.ts`（`AgentCore`）、`ai/tools/planner/planner.core.ts`、`ai/tools/subagent.core.ts`、`ai/runtime/agent-runner.ts`（子 run 执行器） |
 | 改动 | `ToolBuilder`（两个来源 + `buildDelegable()`）、`AgentChatService`（注入运行时信封；收尾汇总子 run 消耗）、`runs` 实体与迁移（`parent_run_id` / `depth` / `tool_call_id` + 唯一索引换条件）、`AGENT_CORES` 装配 |
 | 删除 | `AgentSpec.subAgents`、`AgentDefinition.subAgents`、`agents/analyst.agent.ts`、`prompts/templates/analyst.eta`、`createMastra` 的 `agents:{}` 与拓扑排序 |
 | 契约 | 新增 `AgentRunStopResult*`（已有）、`AgentRunModel` 增 `parentRunId` / `depth`；`AgentTimelineItemModel` 增子 agent 归属信息 |
@@ -1133,7 +1133,7 @@ AI SDK 的 `data-sub-agent` part，和主内容走同一条 SSE：
 | 层 | 位置 | 职责 |
 | --- | --- | --- |
 | 机制（基础设施） | `packages/kits/src/foundation/command/`（`CommandRunner` + `command.platform.ts` + `CommandModule`） | 跨平台执行：shell 解析、超时、杀进程树、输出上限、取消、结果结构化 |
-| 策略（AI 模块） | `apps/server/src/modules/ai/core/beans/command.tool.ts`（工具组 `RunCommandTool`） | 开关、工作目录边界、时长 / 输出上限、审计日志 |
+| 策略（AI 模块） | `apps/server/src/modules/ai/tools/command.tool.ts`（工具组 `RunCommandTool`） | 开关、工作目录边界、时长 / 输出上限、审计日志 |
 | 提示词 | `prompts/templates/partials/tools.eta`（「`run-command` 怎么用」） | 什么时候用 / 不用、能力问题先验证、有副作用先问 / 只读公开请求可直接跑、失败要读懂原因 |
 
 **为什么用 `execa` 而不是自己拼 `child_process`**（早先手写过一版，已弃）：三条硬约束恰好是它的内建能力 ——
@@ -1198,8 +1198,8 @@ AGENT_COMMAND_WORK_DIR=               # 缺省 = 服务进程工作目录
 
 | 动作 | 对象 |
 | --- | --- |
-| 新增 | kits `foundation/command/{command.runner,command.platform,command.module,index}`、`ai/core/beans/command.tool.ts`、`ai/prompts/environment.ts`、`ai/prompts/templates/partials/environment.eta` |
-| 改动 | `tool-keys`（`runCommand`）、`assistant.agent`（授权）、提示词片段（用法与确认纪律，现落在 `partials/tools.eta`）、`ai.mastra`（`instructions` 改动态参数：用信封里的渲染全文）、`ai.core.types`（信封加 `systemPrompt`）、`chat.service`（注入 `PROMPT_ENGINE` + 渲染 + 落快照）、`ai.module`（`CommandCore` + `PROMPT_ENGINE` provider）、`app-config`（`command*`）、`root.module`（`CommandModule`）、依赖 `execa` |
+| 新增 | kits `foundation/command/{command.runner,command.platform,command.module,index}`、`ai/tools/command.tool.ts`、`ai/core/prompts/environment.ts`、`ai/core/prompts/templates/partials/environment.eta` |
+| 改动 | `tool-keys`（`runCommand`）、`assistant.agent`（授权）、提示词片段（用法与确认纪律，现落在 `partials/tools.eta`）、`ai.mastra`（`instructions` 改动态参数：用信封里的渲染全文）、`core/envelope`（信封加 `systemPrompt`）、`chat.service`（注入 `PROMPT_ENGINE` + 渲染 + 落快照）、`ai.module`（`CommandCore` + `PROMPT_ENGINE` provider）、`app-config`（`command*`）、`root.module`（`CommandModule`）、依赖 `execa` |
 | 测试 | kits 10 项（正常 / 非零退出 / 超时 / 孙进程不拖死 / 截断 / cwd / 起不来 / 中止 / 三端画像）；server：环境片段 3 项 + 命令策略 5 项（开关 / 目录越界 / 目录内 / 时长夹紧）+ e2e 两条（真跑一条跨平台命令并完整落库；首轮注入且第二轮不再注入） |
 
 ## 4. 记忆与落库（调研已回，本节定稿）
@@ -1708,7 +1708,7 @@ new Agent({
 2. **判据是 `ai_providers.kind`，不是 `modelRef` 的 slug 前缀**：slug 是展示字段，人能改、还能撞名
    （种子供应商的 slug 就是 `env-default`）—— 用 slug 判断会让官方适配在改个 slug 之后静默失效。
 
-决策收敛成一个纯函数 `decideModelForMastra(model)`（`modules/ai/core/ai.model-decision.ts`），
+决策收敛成一个纯函数 `decideModelForMastra(model)`（`modules/ai/core/model-decision.ts`），
 由单测直接锁住上面两条（`test/ai-model-decision.test.ts` + 端到端 `test/ai-model-selection-e2e.test.ts`）。
 
 **流结果的读取口径**（`modules/ai/runtime/stream-result.ts`）：`agent.stream()` 有**两种返回形态**

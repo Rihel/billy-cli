@@ -13,11 +13,11 @@ import {
 } from '@repo/shared'
 import type { Mastra } from '@mastra/core/mastra'
 import { RequestContext } from '@mastra/core/request-context'
-import { AGENT_MAX_STEPS } from '../core/ai.constants.js'
+import { AGENT_MAX_STEPS } from '../core/constants.js'
 import {
   AgentConfig,
   type AgentConfig as AgentConfigValue,
-} from '../core/ai.config.js'
+} from '../core/config.js'
 import {
   AgentFailedError,
   AgentUnavailableError,
@@ -25,21 +25,21 @@ import {
   ProviderAuthFailedError,
   ProviderRateLimitedError,
   RunNotFoundError,
-} from '../core/ai.errors.js'
-import { AGENT_REGISTRY } from '../core/ai.registry.js'
+} from '../core/errors.js'
+import { AGENT_REGISTRY } from '../agents/registry.js'
 import { MASTRA } from '../mastra/ai.mastra.js'
 import {
   AGENT_RUNTIME_KEY,
   type AgentRuntimeEnvelope,
   type RuntimeModel,
-} from '../core/ai.core.types.js'
+} from '../core/envelope.js'
 import { AiModelService } from '../../ai-model/index.js'
-import type { AgentDefinition, AgentRegistry } from '../core/ai.types.js'
-import { buildEnvironmentData } from '../prompts/environment.js'
-import { PROMPT_ENGINE, type PromptEngine } from '../prompts/prompt.engine.js'
-import { SkillLoader } from '../skills/index.js'
-import { ToolRegistry } from '../tools/tool.registry.js'
-import { ToolCallMetaStore } from '../tools/tool.meta.js'
+import type { AgentDefinition, AgentRegistry } from '../agents/types.js'
+import { buildEnvironmentData } from '../core/prompts/environment.js'
+import { PROMPT_ENGINE, type PromptEngine } from '../core/prompts/prompt.engine.js'
+import { SkillLoader } from '../core/skills/index.js'
+import { ToolRegistry } from '../core/tools/tool.registry.js'
+import { ToolCallMetaStore } from '../core/tools/tool.meta.js'
 import { toUiStream } from '../mastra/stream.adapter.js'
 import { toRequestContext } from '../mastra/context.adapter.js'
 import type { ConversationEntity } from '../../../database/entities/conversation-entity.js'
@@ -53,7 +53,7 @@ import { TimelineRepository } from './timeline.repository.js'
 import { AgentStreamStore } from './stream-store.service.js'
 import { StreamRecorder } from './stream-recorder.js'
 import { readStreamSteps, readStreamUsage } from './stream-result.js'
-import { toPlanPayload } from '../core/beans/planner/plan.protocol.js'
+import { toPlanPayload } from './plan.protocol.js'
 import { mergeUsage, toUsageRecord, totalTokensOf } from './usage.js'
 
 /** 并发保护的唯一索引名（同一会话同时只允许一轮进行中） */

@@ -1,4 +1,4 @@
-import { TOOL_KEYS } from '../../../tools/tool-keys.js'
+import { TOOL_KEYS } from '../core/tools/tool-keys.js'
 
 /**
  * **任务清单协议**（规划能力的唯一事实源）。

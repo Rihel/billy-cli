@@ -1,6 +1,6 @@
 import { TimelineKind, TimelineRole, ToolResultState } from '@repo/shared'
-import type { ToolCallMeta, ToolCallMetaStore } from '../tools/tool.meta.js'
-import { toPlanPayload } from '../core/beans/planner/plan.protocol.js'
+import type { ToolCallMeta, ToolCallMetaStore } from '../core/tools/tool.meta.js'
+import { toPlanPayload } from './plan.protocol.js'
 import type { TimelineRepository } from './timeline.repository.js'
 
 /** AI SDK UI Message Stream 的片段（只取我们关心的字段，避免把它的联合类型铺满本文件） */

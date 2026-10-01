@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { ReadToolResultTool } from '../../src/modules/ai/tools/read-tool-result.tool.js'
-import { makePageHandle } from '../../src/modules/ai/tools/paginate.js'
-import { TOOL_KEYS } from '../../src/modules/ai/tools/tool-keys.js'
-import { ToolDeniedError } from '../../src/modules/ai/tools/tools.types.js'
+import { makePageHandle } from '../../src/modules/ai/core/tools/paginate.js'
+import { TOOL_KEYS } from '../../src/modules/ai/core/tools/tool-keys.js'
+import { ToolDeniedError } from '../../src/modules/ai/core/tools/tools.types.js'
 import { buildToolStackDeps, makeToolContext, specByKey } from '../helpers/ai-tool-stack.js'
 
 /**

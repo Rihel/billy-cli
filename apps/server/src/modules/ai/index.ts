@@ -1,33 +1,34 @@
 /**
- * AI 模块（Mastra）：多 agent 注册表 + 提示词模板引擎 + 工具引擎 + 技能加载器 + 会话运行时。
+ * AI 模块（Mastra）：接口 + 核心引擎 + 会话运行时 + agent 声明 + 具体工具 + 适配器。
  *
  * 目录约定（新增 AI 能力时的落点）：
- * - `core/`        机制层（与具体 agent 无关）：领域原语 `ai.types` / `ai.core.types` / `ai.errors` /
- *                  `ai.constants` / `ai.model-decision`，配置 `ai.config`，注册表 `ai.registry` 与
- *                  装配查询服务 `ai.service`；
- * - `core/beans/`  **工具组**（与业务无关的运行时能力）：一个组一个 `@Injectable()` 类、**组内一个
- *                  方法一个工具**（`@ToolGroup` + 方法上的 `@ToolDecl`）：`command.tool` /
- *                  `subagent.tool` / `planner/`（`planner.tools` 四个规划工具 + `plan.protocol` 协议）；
- * - `agents/`      每个 agent 一个声明文件 + `index.ts` 唯一登记处；
- * - `tools/`       工具主体（**禁 import `@mastra`**）：DSL / 注册机 / 网关 / 插件 / 配置入库 / 分页取页，
- *                  以及后台工具配置服务 `ai-tool.service`；
- * - `mastra/`      适配器（**唯一可 import `@mastra`**）：`ai.mastra` 装配 + tool / agent / context /
- *                  stream / skill 适配器；
- * - `runtime/`     会话 / 运行 / 时间线 / 上下文 / 流记录 / 子 agent 执行器 / 崩溃恢复；
- * - `prompts/`     提示词引擎 + `templates/*.eta` 模板（含 `partials/`）；
- * - `skills/`      `SkillLoader`（加载 + 校验）+ `catalog/<名字>/SKILL.md` 技能内容。
+ * - `api/`          接口层：`ai.controller`（对话路由）/ `ai-tool.controller`（工具配置路由）/
+ *                   `ai-tool.service`（后台工具配置服务）；
+ * - `core/`         核心引擎（与"具体是哪件事"无关）：`envelope`（运行时信封）/ `config` /
+ *                   `constants` / `errors` / `model-decision`；外加
+ *                   `core/tools/**`（**工具引擎**：DSL 装饰器 / 注册机 / 网关 / 插件 / 配置入库 / 分页取页）、
+ *                   `core/skills/**`（`SkillLoader` + `catalog/<名字>/SKILL.md`）、
+ *                   `core/prompts/**`（提示词引擎 + `templates/*.eta`）；
+ * - `runtime/`      会话 / 运行 / 时间线 / 上下文 / 流记录 / 子 agent 执行器 / 崩溃恢复 +
+ *                   `plan.protocol`（计划协议）；
+ * - `agents/`       agent 声明（一个文件一个）+ `index.ts` 唯一登记处 + `types` / `registry` / `service`；
+ * - `tools/`        具体工具（用 `core/tools` 的引擎写）：`command.tool` / `subagent.tool` /
+ *                   `read-tool-result.tool` / `planner/**`（规划工具组）；
+ * - `mastra/`       适配器（**唯一可 import `@mastra`**）：`ai.mastra` 装配 + tool / agent / context /
+ *                   stream / skill 适配器。
  */
 export * from './ai.module.js'
-export * from './ai.controller.js'
-export * from './core/ai.service.js'
+export * from './api/ai.controller.js'
+export * from './agents/service.js'
 export * from './mastra/ai.mastra.js'
-export * from './core/ai.registry.js'
-export * from './core/ai.config.js'
-export * from './core/ai.constants.js'
-export * from './core/ai.errors.js'
-export type { AgentDefinition, AgentSpec, AgentRegistry } from './core/ai.types.js'
+export * from './agents/registry.js'
+export * from './core/config.js'
+export * from './core/constants.js'
+export * from './core/errors.js'
+export type { AgentDefinition, AgentSpec, AgentRegistry } from './agents/types.js'
 export * from './runtime/index.js'
 export * from './agents/index.js'
-export * from './tools/index.js'
-export * from './skills/index.js'
-export * from './prompts/index.js'
+export * from './core/tools/index.js'
+export * from './core/skills/index.js'
+export * from './core/prompts/index.js'
+export * from './tools/read-tool-result.tool.js'

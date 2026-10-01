@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import { CommandRunner } from '@repo/kits'
-import { RunCommandTool } from '../src/modules/ai/core/beans/command.tool.js'
-import { TOOL_KEYS } from '../src/modules/ai/tools/tool-keys.js'
+import { RunCommandTool } from '../src/modules/ai/tools/command.tool.js'
+import { TOOL_KEYS } from '../src/modules/ai/core/tools/tool-keys.js'
 import { specByKey } from './helpers/ai-tool-stack.js'
-import { createPromptEngine } from '../src/modules/ai/prompts/index.js'
+import { createPromptEngine } from '../src/modules/ai/core/prompts/index.js'
 import { DEFAULT_AGENT_KEY, createAgentDefinitions } from '../src/modules/ai/agents/index.js'
 
 /**

@@ -7,8 +7,8 @@ import type {
 } from '@repo/shared'
 import type { Mastra } from '@mastra/core/mastra'
 import { AiModelService } from '../../ai-model/index.js'
-import { AGENT_REGISTRY } from './ai.registry.js'
-import type { AgentRegistry } from './ai.types.js'
+import { AGENT_REGISTRY } from './registry.js'
+import type { AgentRegistry } from './types.js'
 import { MASTRA } from '../mastra/ai.mastra.js'
 
 /**

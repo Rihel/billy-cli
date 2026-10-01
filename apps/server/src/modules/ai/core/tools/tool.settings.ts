@@ -1,5 +1,5 @@
 import type { AnyToolSpec, ToolEnvCaps, ToolLimits, ToolSettings, ToolSpec } from './tools.types.js'
-import { hintOf } from '../../ai-model/secret-hint.js'
+import { hintOf } from '../../../ai-model/secret-hint.js'
 import type { ToolConfigRow } from './tool.config.ports.js'
 
 /**

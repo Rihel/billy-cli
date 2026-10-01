@@ -2,12 +2,12 @@ import { Inject, Injectable } from '@nestjs/common'
 import dedent from 'dedent'
 import { z } from 'zod'
 import { AppLogger } from '@repo/kits'
-import { ToolDecl, ToolGroup } from '../../tools/tool.decorator.js'
-import { TOOL_KEYS } from '../../tools/tool-keys.js'
-import { ToolDeniedError } from '../../tools/tools.types.js'
-import type { ToolCallContext } from '../../tools/tools.types.js'
-import { AgentRunner, type SubAgentOutcome } from '../../runtime/agent-runner.js'
-import type { AgentRuntimeEnvelope } from '../ai.core.types.js'
+import { ToolDecl, ToolGroup } from '../core/tools/tool.decorator.js'
+import { TOOL_KEYS } from '../core/tools/tool-keys.js'
+import { ToolDeniedError } from '../core/tools/tools.types.js'
+import type { ToolCallContext } from '../core/tools/tools.types.js'
+import { AgentRunner, type SubAgentOutcome } from '../runtime/agent-runner.js'
+import type { AgentRuntimeEnvelope } from '../core/envelope.js'
 
 /**
  * 子 agent 工具的入参契约（**给模型看的契约**）。

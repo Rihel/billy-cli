@@ -1,6 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common'
 import type { PageQueryResult } from '@repo/kits'
-import { RunNotFoundError } from '../core/ai.errors.js'
+import { RunNotFoundError } from '../core/errors.js'
 import type {
   AgentRunDetailModel,
   AgentRunIdDto,

@@ -2,20 +2,20 @@ import { Module } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import { AppLogger, Db, RedisStore } from '@repo/kits'
 import { DEFAULT_AGENT_KEY, createAgentDefinitions } from './agents/index.js'
-import { AiController } from './ai.controller.js'
-import { AiToolController } from './ai-tool.controller.js'
-import { AiToolService } from './tools/ai-tool.service.js'
-import { AgentConfig, toAgentModelId, type AgentConfig as AgentConfigValue } from './core/ai.config.js'
-import { decideModelForMastra } from './core/ai.model-decision.js'
+import { AiController } from './api/ai.controller.js'
+import { AiToolController } from './api/ai-tool.controller.js'
+import { AiToolService } from './api/ai-tool.service.js'
+import { AgentConfig, toAgentModelId, type AgentConfig as AgentConfigValue } from './core/config.js'
+import { decideModelForMastra } from './core/model-decision.js'
 import { AiModelModule, AiModelService } from '../ai-model/index.js'
 import { MASTRA, createMastra } from './mastra/ai.mastra.js'
-import { AGENT_REGISTRY, createAgentRegistry } from './core/ai.registry.js'
-import { AgentService } from './core/ai.service.js'
-import type { AgentRegistry as AgentRegistryValue } from './core/ai.types.js'
-import { RunCommandTool } from './core/beans/command.tool.js'
-import { RunSubAgentTool } from './core/beans/subagent.tool.js'
-import { PlannerStore, PlannerTools } from './core/beans/planner/index.js'
-import { createPromptEngine, PROMPT_ENGINE } from './prompts/index.js'
+import { AGENT_REGISTRY, createAgentRegistry } from './agents/registry.js'
+import { AgentService } from './agents/service.js'
+import type { AgentRegistry as AgentRegistryValue } from './agents/types.js'
+import { RunCommandTool } from './tools/command.tool.js'
+import { RunSubAgentTool } from './tools/subagent.tool.js'
+import { PlannerStore, PlannerTools } from './tools/planner/index.js'
+import { createPromptEngine, PROMPT_ENGINE } from './core/prompts/index.js'
 import {
   AgentChatService,
   AgentConversationService,
@@ -31,27 +31,27 @@ import {
   RunRepository,
   TimelineRepository,
 } from './runtime/index.js'
-import { SkillLoader } from './skills/index.js'
+import { SkillLoader } from './core/skills/index.js'
 import { toMastraSkills } from './mastra/skill.adapter.js'
 import { toMastraTools } from './mastra/tool.adapter.js'
-import { AGENT_TOOL_GROUPS } from './tools/tools.types.js'
-import type { ToolEnvCaps } from './tools/tools.types.js'
-import type { AgentToolGroup } from './tools/tool.class.js'
-import { AGENT_TOOL_PLUGINS, ToolGateway } from './tools/tool.gateway.js'
-import { ToolRegistry } from './tools/tool.registry.js'
-import { ToolSeedService } from './tools/tool.seed.service.js'
-import { ToolConfigRepository } from './tools/tool.config.repository.js'
+import { AGENT_TOOL_GROUPS } from './core/tools/tools.types.js'
+import type { ToolEnvCaps } from './core/tools/tools.types.js'
+import type { AgentToolGroup } from './core/tools/tool.class.js'
+import { AGENT_TOOL_PLUGINS, ToolGateway } from './core/tools/tool.gateway.js'
+import { ToolRegistry } from './core/tools/tool.registry.js'
+import { ToolSeedService } from './core/tools/tool.seed.service.js'
+import { ToolConfigRepository } from './core/tools/tool.config.repository.js'
 import {
   TIMELINE_REPOSITORY,
   TOOL_CONFIG_SOURCE,
   TOOL_ENV_CAPS,
-} from './tools/tool.config.ports.js'
-import { ToolConfigService } from './tools/tool.config.service.js'
-import { TOOL_CLOCK, TOOL_RATE_COUNTER } from './tools/tool.ports.js'
-import { RedisToolRateCounter } from './tools/tool.rate-counter.redis.js'
-import { systemToolClock } from './tools/tool.clock.js'
-import { ToolCallMetaStore } from './tools/tool.meta.js'
-import { ToolResultStore } from './tools/tool-result.store.js'
+} from './core/tools/tool.config.ports.js'
+import { ToolConfigService } from './core/tools/tool.config.service.js'
+import { TOOL_CLOCK, TOOL_RATE_COUNTER } from './core/tools/tool.ports.js'
+import { RedisToolRateCounter } from './core/tools/tool.rate-counter.redis.js'
+import { systemToolClock } from './core/tools/tool.clock.js'
+import { ToolCallMetaStore } from './core/tools/tool.meta.js'
+import { ToolResultStore } from './core/tools/tool-result.store.js'
 import { ReadToolResultTool } from './tools/read-tool-result.tool.js'
 import {
   AuditEndPlugin,
@@ -63,7 +63,7 @@ import {
   RedactPlugin,
   ScopePlugin,
   ValidatePlugin,
-} from './tools/plugins/index.js'
+} from './core/tools/plugins/index.js'
 import { AdminModule } from '../admin/admin.module.js'
 import { AuthModule } from '../auth/auth.module.js'
 

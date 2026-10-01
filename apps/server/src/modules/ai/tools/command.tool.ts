@@ -3,9 +3,9 @@ import dedent from 'dedent'
 import { Inject, Injectable } from '@nestjs/common'
 import { z } from 'zod'
 import { AppLogger, CommandRunner, type CommandResult } from '@repo/kits'
-import { ToolDecl, ToolGroup } from '../../tools/tool.decorator.js'
-import { TOOL_KEYS } from '../../tools/tool-keys.js'
-import type { ToolCallContext, ToolEnvCaps } from '../../tools/tools.types.js'
+import { ToolDecl, ToolGroup } from '../core/tools/tool.decorator.js'
+import { TOOL_KEYS } from '../core/tools/tool-keys.js'
+import type { ToolCallContext, ToolEnvCaps } from '../core/tools/tools.types.js'
 
 /**
  * `run-command` 的**参数契约**（给模型看的契约）。

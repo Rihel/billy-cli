@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { z } from 'zod'
-import { clampLimits, codeDefaults, mergeToolSettings } from '../src/modules/ai/tools/tool.settings.js'
-import type { ToolConfigRow } from '../src/modules/ai/tools/tool.config.ports.js'
-import type { ToolEnvCaps, ToolSpec } from '../src/modules/ai/tools/tools.types.js'
+import { clampLimits, codeDefaults, mergeToolSettings } from '../src/modules/ai/core/tools/tool.settings.js'
+import type { ToolConfigRow } from '../src/modules/ai/core/tools/tool.config.ports.js'
+import type { ToolEnvCaps, ToolSpec } from '../src/modules/ai/core/tools/tools.types.js'
 
 /**
  * 配置三级合并（设计 §5.5）：`env 硬上限 夹紧 ( 库里的值 ?? 代码默认值 )`。

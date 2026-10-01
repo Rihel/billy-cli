@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import { z } from 'zod'
-import { ToolGateway } from '../src/modules/ai/tools/tool.gateway.js'
-import { ToolDeniedError } from '../src/modules/ai/tools/tools.types.js'
+import { ToolGateway } from '../src/modules/ai/core/tools/tool.gateway.js'
+import { ToolDeniedError } from '../src/modules/ai/core/tools/tools.types.js'
 import type {
   ToolCallContext,
   ToolPlugin,
   ToolSpec,
-} from '../src/modules/ai/tools/tools.types.js'
+} from '../src/modules/ai/core/tools/tools.types.js'
 import { buildToolStackDeps, silentLogger } from './helpers/ai-tool-stack.js'
 import type { ToolStackOptions } from './helpers/ai-tool-stack.js'
 
@@ -72,7 +72,7 @@ describe('网关：顺序、短路、结论', () => {
   it('入参在 pre 之后被归一化（`validate` 插件补默认值），执行体拿到的是归一化后的入参', async () => {
     let seen: unknown
     const stack = deps()
-    const { ValidatePlugin } = await import('../src/modules/ai/tools/plugins/index.js')
+    const { ValidatePlugin } = await import('../src/modules/ai/core/tools/plugins/index.js')
     const outcome = await gatewayOf(stack, [new ValidatePlugin()]).invoke(
       spec({
         exec: async (input: unknown) => {
@@ -89,7 +89,7 @@ describe('网关：顺序、短路、结论', () => {
 
   it('执行体抛 `ToolDeniedError` → 对应 reason（不当成 internal）', async () => {
     const stack = deps()
-    const { AuditEndPlugin } = await import('../src/modules/ai/tools/plugins/index.js')
+    const { AuditEndPlugin } = await import('../src/modules/ai/core/tools/plugins/index.js')
     const outcome = await gatewayOf(stack, [new AuditEndPlugin(stack.metas, silentLogger as never)]).invoke(
       spec({
         exec: async () => {
@@ -148,7 +148,7 @@ describe('网关：顺序、短路、结论', () => {
 
   it('拒绝也要被审计记下来（post 链对失败同样跑）', async () => {
     const stack = deps()
-    const { AuditEndPlugin } = await import('../src/modules/ai/tools/plugins/index.js')
+    const { AuditEndPlugin } = await import('../src/modules/ai/core/tools/plugins/index.js')
     await gatewayOf(stack, [
       { name: 'deny', pre: () => ({ ok: false as const, reason: 'disabled' as const, message: '关了' }) },
       new AuditEndPlugin(stack.metas, silentLogger as never),
@@ -161,7 +161,7 @@ describe('网关：顺序、短路、结论', () => {
 
   it('有信封时：拒绝会记账，且 caller 能从信封读出来', async () => {
     const stack = deps()
-    const { AuditEndPlugin, ScopePlugin } = await import('../src/modules/ai/tools/plugins/index.js')
+    const { AuditEndPlugin, ScopePlugin } = await import('../src/modules/ai/core/tools/plugins/index.js')
     const envelope = {
       conversationId: 'conv-1',
       parentRunId: 'run-1',

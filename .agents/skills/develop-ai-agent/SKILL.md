@@ -32,14 +32,12 @@ description: >-
 
 | 目录 | 放什么 | 加东西时改哪 |
 | --- | --- | --- |
-| `core/` | 机制层（与具体 agent 无关）：`ai.config` / `ai.types` / `ai.core.types` / `ai.registry` / `ai.service` / `ai.errors` / `ai.constants` / `ai.model-decision`；**工具组在 `core/beans/`**：`command.tool` / `subagent.tool` / **`planner/`**（规划工具组 `planner.tools`：组内四个 `@ToolDecl` 方法 + `planner.store` 机制 + `planner.schemas` 契约 + `plan.protocol` 计划协议） | 加工具：在合适的组里加一个 `@ToolDecl` 方法（没有合适的组就新建一个 `@ToolGroup` 类）+ 在 `AGENT_TOOL_GROUPS` 登记一行 |
-| `tools/` | **工具主体**（禁 import `@mastra`）：`tools.types`（DSL）/ `tool.decorator` + `tool.class`（工具组 DSL 与 `buildToolSpecs`）/ `tool.registry`（注册机 + 种子）/ `tool.gateway`（网关）/ `plugins/*.plugin.ts`（一个插件一个文件）/ `tool.settings`（合并纯函数）/ `tool.config.service`（缓存）/ `tool.config.repository`（`ai_tools`）/ `paginate` + `read-tool-result.tool`（大返回分页与回取）/ `ai-tool.service`（后台工具配置服务） | 加工具：在工具组里加一个 `@ToolDecl` 方法 + `AGENT_TOOL_GROUPS` 一行 + `TOOL_KEYS` 一个 key + `test/ai-tools/<key>.test.ts`（标准测试集强制） |
+| `api/` | **接口层**：`ai.controller`（对话路由）/ `ai-tool.controller`（工具配置路由）/ `ai-tool.service`（后台工具配置服务） | 加路由：写 controller + 在 `ai.module.ts` 的 `controllers` 登记一行 |
+| `core/` | **核心引擎**（与"具体是哪件事"无关）：共享契约 `envelope`（运行时信封）/ `config` / `constants` / `errors` / `model-decision`；**工具引擎 `core/tools/**`**（`tools.types` DSL / `tool.decorator` + `tool.class`（工具组 DSL 与 `buildToolSpecs`）/ `tool.registry`（注册机 + 种子）/ `tool.gateway`（网关）/ `plugins/*.plugin.ts`（一个插件一个文件）/ `tool.settings`（合并纯函数）/ `tool.config.service`（缓存）/ `tool.config.repository`（`ai_tools`）/ `paginate` + `tool-result.store`（大返回分页与回取））；`core/skills/**`（`SkillLoader` + `catalog/<name>/SKILL.md`）；`core/prompts/**`（提示词引擎 + `templates/*.eta` + `partials/` + 运行环境组装 `environment.ts`） | 加引擎能力：改 `core/tools/**`（**禁 import `@mastra`**） |
+| `runtime/` | 会话 / 运行 / 时间线仓储与服务、上下文、流记录、子 agent 执行器、崩溃恢复 + `plan.protocol`（计划协议） | 改行为先看 `runtime.md` |
+| `agents/` | **顶层** agent 声明（前端能选的就这些，一个文件一个）+ `index.ts` 唯一登记处 + `types` / `registry` / `service`（注册表与装配查询） | 加 agent：一个文件 + `AGENT_SPECS` 一行 + 一个 eta 模板 |
+| `tools/` | **具体工具**（用 `core/tools` 的引擎写，**禁 import `@mastra`**）：`command.tool` / `subagent.tool` / `read-tool-result.tool` / `planner/**`（规划工具组 `planner.tools`：组内四个 `@ToolDecl` 方法 + `planner.store` 机制 + `planner.schemas` 契约） | 加工具：在合适的组里加一个 `@ToolDecl` 方法（没有合适的组就新建一个 `@ToolGroup` 类）+ 在 `AGENT_TOOL_GROUPS` 登记一行 |
 | `mastra/` | **适配器**（唯一可 import `@mastra`）：`ai.mastra`（Mastra 实例装配）/ `tool.adapter`（含 `toModelOutput` 分页）/ `agent.adapter` / `context.adapter`（信封 ↔ RequestContext）/ `stream.adapter` / `skill.adapter` | 升级 Mastra 先跑 `test/ai-mastra-contract.test.ts` 的契约，再改这里 |
-| `agents/` | **顶层** agent 声明（前端能选的就这些）+ `index.ts` 唯一登记处 | 加 agent：一个文件 + `AGENT_SPECS` 一行 + 一个 eta 模板 |
-
-| `prompts/` | 提示词引擎 + `templates/*.eta` + `partials/` + 运行环境组装（`environment.ts`，见 `extension.md` §8） | 模板变量由装配层注入（工具清单来自 `ToolRegistry.describe`）；按轮求值的片段走 `renderPartial` |
-| `skills/` | `SkillLoader` + `catalog/<name>/SKILL.md`（+ `references/`） | 加技能：一个目录 + 在 agent 声明的 `skills` 里授权 |
-| `runtime/` | 会话 / 运行 / 时间线仓储与服务、上下文、流记录、子 agent 执行器、看门狗 | 改行为先看 `runtime.md` |
 
 细节：会话运行链、上下文策略、SSE 协议与恢复 → [references/runtime.md](./references/runtime.md)；
 扩展点（加 agent / 工具 / 技能 / 子 agent）→ [references/extension.md](./references/extension.md)。
@@ -57,6 +55,9 @@ ai/mastra/** 适配器 ──→ Toolbox/SkillRef/信封 映射成 Mastra 的 To
 
 `ai.module.ts` 是唯一装配处：新增工具都要在那里登记一行（显式的代价换来一目了然）。
 
+**目录分层（依赖方向单向）**：`api/` → `agents/` → `core/`；`tools/`（具体工具）→ `core/tools` + `runtime/plan.protocol`；
+`core/tools`（引擎）**不许**依赖 `runtime/`、`agents/`、`tools/`、`api/`。
+
 **两个只在启动时才暴露的坑**（各踩过一次，`test/app-bootstrap.test.ts` 现在守着）：
 
 1. `exports` 里写了一个没在 `providers` 里提供的 token → `UnknownExportException`（类型检查与单测都发现不了，
@@ -69,12 +70,12 @@ ai/mastra/** 适配器 ──→ Toolbox/SkillRef/信封 映射成 Mastra 的 To
 ## 2.1 如何新增一个工具（工具组：方法即工具）
 
 **先找组**：能放进已有工具组就加一个方法；没有合适的组就新建一个组类
-（`core/beans/<名字>.tool.ts` 放与业务无关的运行时能力，`tools/<名字>.tool.ts` 放工具主体）。
+（具体工具与工具组都放 `tools/**`，按能力分组，如 `tools/planner/planner.tools.ts`）。
 
 1. **组类**（新建时才要）：`@Injectable()` 类 + 类上 `@ToolGroup({ category?, scope?, child? })`
    给组内工具共同默认值；依赖（仓储 / 执行器 / 日志）**全部走构造器 `@Inject`**，组内工具共享；
 2. **方法 + 方法级 `@ToolDecl({...})`**（**一个方法 = 一个工具**，声明与执行体同一处）：
-   `key` 取自 `TOOL_KEYS`（先在 `tool-keys.ts` 加一个 key）；`params` / `config` 用**同一文件里的
+   `key` 取自 `TOOL_KEYS`（先在 `core/tools/tool-keys.ts` 加一个 key）；`params` / `config` 用**同一文件里的
    模块级 zod 常量**（不能引用本类 static —— 装饰器在类定义期求值）；`config` 每个字段都必须 `.default()`；
    `description` 写"是什么 / 什么时候用 / 什么时候不用 / 纪律"；
 3. **钩子按方法名写在声明里**：`precheck: 'checkXxx'`（只读前置条件）/ `normalize: 'normalizeConfig'`
@@ -145,9 +146,9 @@ pnpm typecheck && pnpm test && pnpm check:ui && pnpm check:inject && pnpm check:
 
 三条改它之前必须知道的：
 - **出参永远是完整清单快照**（`{goal, revision, tasks, summary, warnings?}`）→ 每个工具都会落一条 `plan`
-  时间线事件，「当前计划」= 最后一条（`core/beans/planner/plan.protocol.ts` 的 `PLAN_TOOL_KEYS` 要跟着登记新 key）；
+  时间线事件，「当前计划」= 最后一条（`runtime/plan.protocol.ts` 的 `PLAN_TOOL_KEYS` 要跟着登记新 key）；
 - **四个都 `child: 'deny'`**（只给主 agent），内部共享"本轮内存 → 时间线 + 同轮串行 + 失败不改内存"的机制；
-- 加第五个规划工具时：`tool-keys.ts` 加 key → `PLAN_TOOL_KEYS` 登记 → 在 `PlannerTools` 里加一个
+- 加第五个规划工具时：`core/tools/tool-keys.ts` 加 key → `PLAN_TOOL_KEYS` 登记 → 在 `PlannerTools` 里加一个
   `@ToolDecl` 方法（`PlannerStore` 已在组构造器注入）→ `assistant.agent.ts` 授权 → `test/ai-tools/<key>.test.ts`（标准测试集强制）。
 
 - **离线 mock 模型**在 `test/helpers/mock-model-server.ts`（`[todo-overwrite]` / `[todo-react]` /

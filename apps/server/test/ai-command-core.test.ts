@@ -1,10 +1,10 @@
 import { tmpdir } from 'node:os'
 import { CommandRunner, type CommandResult } from '@repo/kits'
 import { describe, expect, it } from 'vitest'
-import { ToolGateway } from '../src/modules/ai/tools/tool.gateway.js'
-import { RunCommandTool } from '../src/modules/ai/core/beans/command.tool.js'
-import { TOOL_KEYS } from '../src/modules/ai/tools/tool-keys.js'
-import type { ToolCallContext, ToolSpec } from '../src/modules/ai/tools/tools.types.js'
+import { ToolGateway } from '../src/modules/ai/core/tools/tool.gateway.js'
+import { RunCommandTool } from '../src/modules/ai/tools/command.tool.js'
+import { TOOL_KEYS } from '../src/modules/ai/core/tools/tool-keys.js'
+import type { ToolCallContext, ToolSpec } from '../src/modules/ai/core/tools/tools.types.js'
 import {
   buildToolStackDeps,
   silentLogger,

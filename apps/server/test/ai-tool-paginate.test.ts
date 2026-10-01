@@ -5,7 +5,7 @@ import {
   parsePageHandle,
   serializeToolValue,
   toModelPage,
-} from '../src/modules/ai/tools/paginate.js'
+} from '../src/modules/ai/core/tools/paginate.js'
 
 /**
  * 分页纯函数（设计 §5.6）。

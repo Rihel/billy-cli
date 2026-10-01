@@ -33,14 +33,14 @@ import {
   type AgentTimelineListDto,
 } from '@repo/shared'
 import type { Response } from 'express'
-import { requestContext } from '../../common/index.js'
-import { AnyAuthGuard } from '../auth/index.js'
-import { AgentService } from './core/ai.service.js'
-import { AiModelService } from '../ai-model/index.js'
-import { AgentChatService } from './runtime/chat.service.js'
-import { AgentConversationService } from './runtime/conversation.service.js'
-import { AgentRunService } from './runtime/run.service.js'
-import { AgentTimelineService } from './runtime/timeline.service.js'
+import { requestContext } from '../../../common/index.js'
+import { AnyAuthGuard } from '../../auth/index.js'
+import { AgentService } from '../agents/service.js'
+import { AiModelService } from '../../ai-model/index.js'
+import { AgentChatService } from '../runtime/chat.service.js'
+import { AgentConversationService } from '../runtime/conversation.service.js'
+import { AgentRunService } from '../runtime/run.service.js'
+import { AgentTimelineService } from '../runtime/timeline.service.js'
 
 /**
  * AI 路由（`/agent/*`，前台用户鉴权；全部 POST + 显式 `@HttpCode(200)`）。

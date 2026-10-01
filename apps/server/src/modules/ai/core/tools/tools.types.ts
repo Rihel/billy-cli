@@ -189,7 +189,7 @@ export interface ToolCallContext<C = Record<string, unknown>> {
   /** 调用方信息（信封缺失时为 null） */
   readonly caller: ToolCaller | null
   readonly settings: ToolSettings<C>
-  /** 原始运行时信封（core 工具要用它，如子 agent 的模型与工具面）。类型见 `core/ai.core.types` */
+  /** 原始运行时信封（core 工具要用它，如子 agent 的模型与工具面）。类型见 `core/envelope` */
   readonly envelope: unknown
   readonly signal?: AbortSignal
   readonly log: ToolLogger

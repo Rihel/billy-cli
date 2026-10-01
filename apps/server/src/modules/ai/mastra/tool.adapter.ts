@@ -1,9 +1,9 @@
 import type { ToolsInput } from '@mastra/core/agent'
 import { createTool } from '@mastra/core/tools'
 import type { RequestContext } from '@mastra/core/request-context'
-import { paginate, serializeToolValue, toModelPage } from '../tools/paginate.js'
-import { isPagedToolValue } from '../tools/tools.types.js'
-import type { Tool, ToolLogger, Toolbox } from '../tools/tools.types.js'
+import { paginate, serializeToolValue, toModelPage } from '../core/tools/paginate.js'
+import { isPagedToolValue } from '../core/tools/tools.types.js'
+import type { Tool, ToolLogger, Toolbox } from '../core/tools/tools.types.js'
 import { readEnvelope } from './context.adapter.js'
 
 /**
