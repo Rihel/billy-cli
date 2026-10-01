@@ -1,6 +1,8 @@
 import { Injectable } from '@nestjs/common'
 import { execa } from 'execa'
-import { resolveShell } from './command.platform.js'
+import type { Options as ExecaOptions } from 'execa'
+import { resolveCommandRun, toCommandResult } from './command.result.js'
+import type { ExecaResultLike, ResolvedCommandRun } from './command.result.js'
 
 /**
  * 命令执行的入参。
@@ -51,30 +53,29 @@ export interface CommandResult {
 }
 
 /**
- * execa 结果里**我们用到的那几个字段**。
+ * execa 的流式子进程里我们用到的面：`stdout` / `stderr` 可读流 + 可 await 的结果。
  *
- * 不把 execa 的泛型签名铺进本文件（它的 `Result` 类型随 options 变化，读起来成本很高）：
- * 这里声明最小面，`run()` 里做一次收窄 —— 与 `planner.core.ts` 的 `ToolContextLike` 同一手法。
+ * 只声明最小面，不把 execa 的泛型铺进来（`ExecaResultLike` 同理）。
  */
-interface ExecaResultLike {
-  /** 是否失败（非零退出 / 超时 / 被取消 / 输出超限 / 起不来） */
-  failed: boolean
-  timedOut: boolean
-  isCanceled: boolean
-  isMaxBuffer: boolean
-  exitCode?: number
-  stdout: string
-  stderr: string
-  durationMs: number
-  message?: string
-}
-
-const DEFAULT_TIMEOUT_MS = 15_000
-const MAX_TIMEOUT_MS = 5 * 60_000
-const DEFAULT_MAX_OUTPUT_BYTES = 64 * 1024
-
-const clamp = (value: number, min: number, max: number): number =>
-  Math.min(Math.max(Math.trunc(value), min), max)
+/**
+ * execa 的调用选项 —— 只此一处（结果映射与它同源，见 `command.result.ts`），
+ * 否则"杀进程树 / 不抛异常 / 平台 shell"这些语义会在某一条链路上悄悄漏掉。
+ */
+const execaOptionsOf = (run: ResolvedCommandRun, signal?: AbortSignal): ExecaOptions => ({
+  // 显式给 shell：与"操作系统画像"里的口径完全一致（审计里能解释这条命令被谁解释）
+  shell: run.shell,
+  cwd: run.cwd,
+  timeout: run.timeoutMs,
+  maxBuffer: run.maxOutputBytes,
+  // 超时 / 取消时连孙进程一起杀（Unix 进程组、Windows taskkill）
+  killDescendants: true,
+  // 本进程退出时清理子进程（execa 默认值，写出来是为了让人看见）
+  cleanup: true,
+  // 不抛异常：所有失败形态都落成结果对象，再映射成中文结论
+  reject: false,
+  windowsHide: true,
+  ...(signal ? { cancelSignal: signal } : {}),
+})
 
 /**
  * **跨平台命令执行门面**（基础设施能力）。
@@ -89,6 +90,13 @@ const clamp = (value: number, min: number, max: number): number =>
  * 3. **定平台口径**：shell 与"操作系统画像"由 {@link resolveShell} 按 `process.platform` 解析
  *    （`uname` / `ver` 这类命令只在部分平台存在，不作为能力底座）。
  *
+ * 取数方式只有一种：**跑完一次拿全量**（{@link run}）。
+ *
+ * 曾经有过 `runStreaming`（按行回调、把过程实时发成 AI 工具事件），2026-10-01 **按用户口径删除**：
+ * agent 用的命令通常一两秒就结束，逐行事件只剩闪烁；而输出本来就完整落在出参里（工具卡结果区
+ * 会显示同一份内容），等于同一份内容在界面上出现两遍，还把消息撑长。真要"边跑边看"的长任务，
+ * 应当由业务侧显式声明事件（机制还在，见设计 §5.17），而不是所有命令默认都走流式。
+ *
  * 为什么用 execa 而不是自己 `child_process.exec`（早先手写过一版，已弃）：
  * - **跨平台**：Unix `/bin/sh -c`、Windows `cmd.exe /d /s /c` 由它处理，不用我们写分支；
  * - **杀进程树**：`killDescendants: true` 在 Unix 用进程组、在 Windows 用 `taskkill` ——
@@ -102,67 +110,14 @@ const clamp = (value: number, min: number, max: number): number =>
  */
 @Injectable()
 export class CommandRunner {
+  /** 跑完一次拿全量输出（`CommandResult` 里 stdout / stderr / exitCode 都是完整的） */
   async run(options: CommandRunOptions): Promise<CommandResult> {
-    const platform = options.platform ?? process.platform
-    const shell = options.shell ?? resolveShell(platform)
-    const cwd = options.cwd ?? process.cwd()
-    const timeoutMs = clamp(options.timeoutMs ?? DEFAULT_TIMEOUT_MS, 1, MAX_TIMEOUT_MS)
-    const maxOutputBytes = clamp(
-      options.maxOutputBytes ?? DEFAULT_MAX_OUTPUT_BYTES,
-      1,
-      Number.MAX_SAFE_INTEGER,
-    )
-
-    const result = (await execa(options.command, {
-      // 显式给 shell：与"操作系统画像"里的口径完全一致（审计里能解释这条命令被谁解释）
-      shell,
-      cwd,
-      timeout: timeoutMs,
-      maxBuffer: maxOutputBytes,
-      // 超时 / 取消时连孙进程一起杀（Unix 进程组、Windows taskkill）
-      killDescendants: true,
-      // 本进程退出时清理子进程（execa 默认值，写出来是为了让人看见）
-      cleanup: true,
-      // 不抛异常：所有失败形态都落成结果对象，由下面映射成中文结论
-      reject: false,
-      windowsHide: true,
-      ...(options.signal ? { cancelSignal: options.signal } : {}),
-    })) as unknown as ExecaResultLike
-
-    const base: CommandResult = {
-      ok: !result.failed,
-      command: options.command,
-      shell,
-      cwd,
-      exitCode: result.exitCode ?? null,
-      stdout: result.stdout ?? '',
-      stderr: result.stderr ?? '',
-      timedOut: result.timedOut,
-      aborted: result.isCanceled,
-      truncated: result.isMaxBuffer,
-      durationMs: result.durationMs,
-    }
-    if (!result.failed) return base
-
-    if (result.isCanceled) {
-      return { ...base, reason: '命令已被中止（用户停止或这一轮已结束）' }
-    }
-    if (result.timedOut) {
-      return {
-        ...base,
-        reason: `命令超过 ${timeoutMs}ms 仍未结束，已被终止（输出为终止前已读到的部分）`,
-      }
-    }
-    if (result.isMaxBuffer) {
-      return {
-        ...base,
-        reason: `命令输出超过 ${maxOutputBytes} 字节，已截断并终止（输出为已读到的部分）`,
-      }
-    }
-    if (typeof result.exitCode === 'number') {
-      return { ...base, reason: `命令以退出码 ${result.exitCode} 结束` }
-    }
-    // 进程根本没跑起来（cwd 不存在 / shell 找不到 / 权限不足…）：execa 把原因放在 message 里
-    return { ...base, reason: `命令未能执行：${result.message ?? '未知原因'}` }
+    const run = resolveCommandRun(options)
+    const result = (await execa(
+      options.command,
+      execaOptionsOf(run, options.signal),
+    )) as unknown as ExecaResultLike
+    return toCommandResult(run, result)
   }
+
 }

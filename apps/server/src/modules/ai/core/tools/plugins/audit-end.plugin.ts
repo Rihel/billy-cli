@@ -28,6 +28,8 @@ export class AuditEndPlugin implements ToolPlugin {
       this.metas.put(caller.runId, ctx.toolCallId, {
         ok: outcome?.ok === true,
         ...(outcome?.ok === false ? { reason: outcome.reason } : {}),
+        // "这次为什么调它"（模型必填的 reason）—— 拒绝路径上也要留下，才能解释"模型当时想干什么"
+        ...(ctx.reason ? { callReason: ctx.reason } : {}),
         configVersion: ctx.configVersion ?? ctx.settings.version,
         durationMs,
         ...(ctx.page ? { page: ctx.page } : {}),
@@ -46,6 +48,8 @@ export class AuditEndPlugin implements ToolPlugin {
       outputBytes,
       pages: ctx.page?.totalPages ?? null,
       reason: denied ? outcome.reason : null,
+      // 模型写的调用理由（与上面的拒绝 reason 是两个东西，字段名分开）
+      callReason: ctx.reason,
       configVersion: ctx.configVersion ?? ctx.settings.version,
     })
   }

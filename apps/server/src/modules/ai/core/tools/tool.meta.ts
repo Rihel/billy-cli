@@ -15,6 +15,13 @@ export interface ToolCallMeta {
   ok: boolean
   /** 失败原因（`ToolDenyReason` 的取值） */
   reason?: string
+  /**
+   * 这次调用的**理由**（模型必填，设计 §5.18）：为什么用它。
+   *
+   * 刻意与上面的 `reason`（拒绝原因）分开命名：两者语义完全不同，
+   * 合成一个字段会让"为什么调它"和"为什么被拒"混在一起，审计时无法区分。
+   */
+  callReason?: string
   /** 配置版本（库里那行的 updatedAt；解释"重放时判定为什么不一样"） */
   configVersion: string
   durationMs: number

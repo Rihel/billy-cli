@@ -1143,21 +1143,29 @@ export class AgentChatService {
    *   之后没有），静态定义答不了这个问题；
    * - 审计回看时，"当时模型被怎么要求"是可查的事实，而不是"现在模板长什么样"的猜测。
    *
-   * 落库规则（与字典里那句"同一会话提示词没变时只写一次"一致）：和上一条快照**逐字相同就不写** ——
-   * 于是每个会话只在"提示词真的变了"的拐点留点（首轮一条、之后不再），不会每轮灌一条重复行。
+   * **口径（用户拍板）：每个会话首轮生成一次**。
+   *
+   * 实现方式：先读这个会话已有的快照 —— **同一个 agent 就直接逐字复用**（不重算）。
+   * 于是"会话进行中改了提示词模板 / 调了工具面"都不会让这个会话中途换系统提示词：
+   * 前缀缓存不被打断（本工程专门统计缓存命中），审计回看也确定。
+   *
+   * 唯一的例外是**显式换 agent**（会话里那个 agent 选择器）：那时按新 agent 重新生成并落一条新快照 ——
+   * 不重生成的话，用户切了 agent 却还在用旧提示词，属于把功能做哑了。
+   * 老快照没有 `agentKey`（该字段是后加的）时同样走重生成，只会多落一条、不会丢信息。
    */
   private async resolveSystemPrompt(
     conversation: ConversationEntity,
     runId: string,
     definition: AgentDefinition,
   ): Promise<string> {
+    // ★ 首轮生成一次：同一个 agent 的后续轮次**逐字复用**首轮那份（不是"重算后比对"）
+    const previous = await this.timelines.latestSystemPrompt(conversation.id)
+    if (previous && previous.agentKey === definition.key) return previous.text
+
     const environment = this.renderEnvironment(conversation)
     const systemPrompt = environment
       ? `${definition.instructions}\n\n${environment}`
       : definition.instructions
-
-    const previous = await this.timelines.latestSystemPrompt(conversation.id)
-    if (previous?.text === systemPrompt) return systemPrompt
 
     await this.timelines.append({
       conversationId: conversation.id,

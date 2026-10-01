@@ -8,6 +8,7 @@ import { RUNTIME_TOOLS } from '../core/tools/tool-keys.js'
 import { ToolConfigRepository } from '../core/tools/tool.config.repository.js'
 import { TOOL_ENV_CAPS } from '../core/tools/tool.config.ports.js'
 import { ToolConfigInvalidError, ToolNotRegisteredError } from '../core/tools/tool.errors.js'
+import { toAiToolEventModels } from '../core/tools/tool-event.js'
 import { toJsonSchema } from '../core/tools/tool.schema.js'
 import { codeDefaults } from '../core/tools/tool.settings.js'
 import { ToolRegistry } from '../core/tools/tool.registry.js'
@@ -144,6 +145,7 @@ export class AiToolService {
       limits: {},
       source: 'seed',
       paramSchema: null,
+      events: [],
       pageBytes: null,
       editable: false,
       updatedBy: null,
@@ -196,6 +198,8 @@ export class AiToolService {
       source: settings.source,
       // 参数契约同样取库里的镜像（启动期写入）；老行缺列时现算一次兜底
       paramSchema: settings.paramSchema ?? toJsonSchema(spec),
+      // 自定义事件声明同属"基础信息镜像"：库里那份与代码声明同源（见 §5.17），老行现算兜底
+      events: [...(settings.events ?? toAiToolEventModels(spec.events))],
       pageBytes: spec.paginate?.pageBytes ?? null,
       editable: true,
       updatedBy: null,

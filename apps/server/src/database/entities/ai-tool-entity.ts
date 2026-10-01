@@ -1,5 +1,6 @@
 import { AuditEntity } from '@repo/kits'
 import { ToolScope, ToolSource } from '@repo/shared'
+import type { AiToolEventModel } from '@repo/shared'
 import { Column, Entity, Index } from 'typeorm'
 
 /**
@@ -42,6 +43,16 @@ export class AiToolEntity extends AuditEntity {
   /** 参数契约的 JSON Schema（**代码声明的镜像**：页面只读展示"模型看到的入参长什么样"） */
   @Column({ name: 'param_schema', type: 'jsonb', nullable: true })
   paramSchema: Record<string, unknown> | null = null
+
+  /**
+   * 自定义事件声明（**代码声明的镜像**，设计 §5.17）：启动期全量覆盖写，页面只读。
+   *
+   * 与 `param_schema` 同一口径：不可变的基础信息留在代码、启动期镜像入库，
+   * 于是"这个工具会往流里吐什么"在库里查得到、也能与代码声明对账。
+   * 用 `'[]'` 作默认值而不是 NULL：事件是**列表**，"没有事件"与"还没同步过"能区分开。
+   */
+  @Column({ name: 'events', type: 'jsonb', default: () => "'[]'" })
+  events: AiToolEventModel[] = []
 
   /**
    * 类别（`core` / `business`）：**冗余列**，由种子同步从声明写过来。

@@ -1,5 +1,7 @@
 import { readToolDecls, readToolGroup } from './tool.decorator.js'
 import type { ToolDeclMeta, ToolGroupMeta } from './tool.decorator.js'
+import { withCallReason } from './call-reason.js'
+import { normalizeToolEventDecls } from './tool-event.js'
 import type { ToolSpec } from './tools.types.js'
 
 /**
@@ -12,7 +14,8 @@ import type { ToolSpec } from './tools.types.js'
  * 1. 组里至少有一个 `@ToolDecl` 方法；
  * 2. 每个工具必须有 `key` / `title` / `description` / `params` / `config`，类别与作用域可从组级继承；
  * 3. 组内 key 不重复（全局重复由注册机再查一次）；
- * 4. `precheck` / `normalize` 指向的方法必须真实存在。
+ * 4. `precheck` / `normalize` 指向的方法必须真实存在；
+ * 5. 自定义事件声明合法（名字组内唯一、标题与说明非空、mode 合法），见 `tool-event.ts`。
  */
 
 /** 工具组类的形状：只要有带 `@ToolDecl` 的方法就是（成员类型由各自实现守） */
@@ -68,10 +71,14 @@ const buildOne = (
     ...(meta.child ? { child: meta.child } : {}),
     ...(meta.paginate ? { paginate: meta.paginate } : {}),
     params: meta.params,
+    // 给模型看的那一份 = 原契约 + 引擎注入的必填 `reason`（工具作者不用自己写，见 `call-reason.ts`）
+    modelParams: withCallReason(meta.params),
     ...(meta.result ? { result: meta.result } : {}),
     config: meta.config,
     ...(meta.secrets ? { secrets: meta.secrets } : {}),
     ...(meta.secretFields ? { secretFields: meta.secretFields } : {}),
+    // 事件声明归一化：名字 / 标题 / 说明 / mode 校验在这里，payload 契约同时转出 JSON Schema 镜像
+    events: normalizeToolEventDecls(meta.events, `工具组 ${at}（${meta.key}）`),
     // 执行体 = 这个方法本身（声明与实现同一处）
     exec: (input: unknown, ctx: never) =>
       bound<(input: unknown, ctx: never) => Promise<unknown>>(

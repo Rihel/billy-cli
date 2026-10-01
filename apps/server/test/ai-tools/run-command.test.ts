@@ -3,7 +3,13 @@ import { CommandRunner } from '@repo/kits'
 import { describe, expect, it } from 'vitest'
 import { RunCommandTool } from '../../src/modules/ai/tools/command.tool.js'
 import { TOOL_KEYS } from '../../src/modules/ai/core/tools/tool-keys.js'
-import { buildToolStackDeps, makeToolContext, silentLogger, specByKey } from '../helpers/ai-tool-stack.js'
+import {
+  buildToolStackDeps,
+  makeToolContext,
+  silentLogger,
+  specByKey,
+  TEST_TOOL_ENV_CAPS,
+} from '../helpers/ai-tool-stack.js'
 
 /**
  * `run-command` 的单测（策略的完整矩阵见 `test/ai-command-core.test.ts`；

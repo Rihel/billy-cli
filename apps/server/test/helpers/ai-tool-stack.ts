@@ -44,6 +44,9 @@ export class MemoryToolConfigSource implements ToolConfigSource {
       limits: null,
       title: null,
       description: null,
+      paramSchema: null,
+      // 事件声明的镜像：默认"库里这份是空的"，合并时回落到代码声明（设计 §5.17）
+      events: null,
       source: 'seed',
       version: 'test',
       secrets: null,
@@ -156,6 +159,14 @@ export const makeToolContext = (options: {
   clock: systemToolClock,
   rawInput: options.input,
   input: options.input,
+  /** 调用理由（`reason` 由网关从入参里摘出来；直接调 `exec` 的单测没有它，给 null） */
+  reason: null,
+  /**
+   * 事件出口：网关总会注入真正的 `emit`，这里是"没走网关直接调 `exec`"时的兜底 no-op
+   * （与"没有 writer 就静默 no-op"同口径）。**要断言事件就走 `gateway.invoke` + 假 writer** ——
+   * 那条路径才是生产里事件真正走的链路（声明校验 / id 策略 / 写流排队都在里面）。
+   */
+  emit: () => undefined,
 })
 
 /** 静默日志（测试里不关心日志；结构与 AppLogger 一致） */

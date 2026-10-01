@@ -23,6 +23,7 @@ const spec: ToolSpec<{ timeoutMs: number; workDir: string; enabled: boolean }> =
     workDir: z.string().default(''),
     enabled: z.boolean().default(true),
   }),
+  events: [],
   exec: async () => ({}),
 }
 
@@ -34,10 +35,11 @@ const row = (over: Partial<ToolConfigRow> = {}): ToolConfigRow => ({
   limits: null,
   title: null,
   description: null,
+  paramSchema: null,
+  events: null,
   source: 'seed',
   version: 'v1',
   secrets: {},
-  secretHints: {},
   ...over,
 })
 
@@ -94,18 +96,19 @@ describe('工具配置合并（纯函数）', () => {
     }
     const settings = mergeToolSettings(withNormalize, row({ config: { timeoutMs: 9999 } }), {
       ...caps,
-      command: { enabled: true, timeoutMsMax: 500, maxOutputBytesMax: 1, workDir: '/srv' },
+      command: {
+        enabled: true,
+        timeoutMsMax: 500,
+        maxOutputBytesMax: 1,
+        workDir: '/srv',
+      },
     })
     expect(settings.config.timeoutMs).toBe(500)
     expect(settings.config.workDir).toBe('/srv')
   })
 
-  it('秘钥：没有默认值，缺就是未配置；提示串可读而明文只在内存里', () => {
-    const settings = mergeToolSettings(
-      spec,
-      row({ secrets: { token: 'plain-secret' }, secretHints: { token: 'pla…cret' } }),
-      caps,
-    )
+  it('秘钥：没有默认值，缺就是未配置；提示串读取时从明文派生', () => {
+    const settings = mergeToolSettings(spec, row({ secrets: { token: 'plain-secret' } }), caps)
     expect(settings.secret('token')).toBe('plain-secret')
     expect(settings.secretHint('token')).toBe('pla…cret')
     expect(settings.secret('missing')).toBeNull()

@@ -1,5 +1,6 @@
 import type { AnyToolSpec, ToolEnvCaps, ToolLimits, ToolSettings, ToolSpec } from './tools.types.js'
 import { hintOf } from '../../../ai-model/secret-hint.js'
+import { toAiToolEventModels } from './tool-event.js'
 import type { ToolConfigRow } from './tool.config.ports.js'
 
 /**
@@ -79,6 +80,9 @@ export const mergeToolSettings = <C>(
     limits: clampLimits((row?.limits ?? {}) as ToolLimits, caps),
     source: row?.source === 'manual' ? 'manual' : 'seed',
     paramSchema: row?.paramSchema ?? null,
+    // 事件声明的镜像：库里没有（老行 / 还没同步）就用代码声明现算一次兜底
+    events:
+      row?.events && row.events.length > 0 ? row.events : toAiToolEventModels(spec.events),
     version: row?.version ?? 'code-default',
     secret: (name) => row?.secrets?.[name] ?? null,
     // 提示串从明文派生：库里不存提示列，"配的是哪一把"永远与明文一致

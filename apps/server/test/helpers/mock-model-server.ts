@@ -11,10 +11,14 @@ import type { AddressInfo } from 'node:net'
  * 标记把"多步行为"确定下来（都写在**用户消息**里）：
  * - `[delegate]`：改调 `run-sub-agent`；
  * - `[command]`：改调 `run-command`（真跑一条 `echo`，验证跨平台命令执行链路）；
+ * - `[no-reason]`：**先故意不发 `reason`**（验证"被拒 → 模型改正后成功"这条纪律闭环）；
  * - `[todo-overwrite]`：发**一串增量规划调用**（`plan-complete` → `plan-create` → `plan-delete`，
  *   依次表达"改状态 / 加任务 / 删任务"；每步等上一步的出参里出现对应标记再发下一个）；
  * - `[todo-react]`：**同一轮内串行两次规划调用**（`plan-create` → `plan-complete`，
  *   第二次的入参里带上第一次新增的任务 —— 证明同轮内串行读改写）。
+ *
+ * 所有工具调用都带 `reason`（引擎把它做成必填，模型不写就调不动，见设计 §5.18）；
+ * 想验"不写会怎样"用 `[no-reason]`。
  *
  * 同时支持非流式（`stream: false`）与流式（`stream: true`，SSE）两种响应，
  * 因为运行时的两条链路都要用它验证。
@@ -44,6 +48,18 @@ export const MOCK_MODEL_LIST = [
 
 /** 固定回复文本（断言用） */
 export const MOCK_FINAL_TEXT = '好，清单已经记下，我按步骤继续推进。'
+
+// ── 调用理由（`reason`：引擎注入的必填字段，见设计 §5.18） ──────────────────
+/**
+ * 每个工具调用都要带的 `reason` —— **不给就该被拒**（引擎把它做成了必填）。
+ *
+ * mock 一律带上它：真实模型会被要求说明"为什么这次要用这个工具"。
+ */
+export const MOCK_REASON = '按用户要求推进这一步'
+/** 用户消息里带这个标记时：第一次调用**故意不写 reason**（验证"被拒 → 改正后成功"） */
+export const MOCK_NO_REASON_MARKER = '[no-reason]'
+/** 改正后那次调用写的理由（断言它进了时间线 / 审计） */
+export const MOCK_NO_REASON_FIXED = '刚才漏了说明理由，这次补上：按用户要求跑这一步'
 
 // ── 任务清单（规划工具集：plan-create / plan-reorder / plan-complete / plan-delete）──────
 /**
@@ -187,6 +203,16 @@ export const MOCK_TITLE_TEXT = '待办整理周报'
 /** 用户消息里带这个标记时，逐字慢速输出（用于验证"停止"与"断线补发"） */
 export const MOCK_SLOW_MARKER = '[slow]'
 
+// ── 工具自定义事件 ─────────────────────────────────────────────────────────
+/** 用户消息里带这个标记时，模型改为调用「事件演示工具」（验证 `data-tool-event` 这条链路） */
+export const MOCK_EVENTS_MARKER = '[events]'
+/** 事件演示工具 key（由测试专用工具组 `tool-event-testkit` 交出，**不进生产装配**） */
+export const MOCK_EVENTS_TOOL = 'test-event-tool'
+/** 状态事件的载荷（断言"后发的覆盖先发的"用最后一个值） */
+export const MOCK_EVENT_PROGRESS = { state: 'done', percent: 100 }
+/** 流水事件的载荷（断言统一事件名不带 id、逐条追加） */
+export const MOCK_EVENT_LINE = '事件演示的流水行'
+
 /** 一次工具调用的决定（OpenAI 的 tool_calls 形态从这里生成） */
 interface MockToolCall {
   id: string
@@ -197,35 +223,35 @@ interface MockToolCall {
 const PLAN_INITIAL_CALL: MockToolCall = {
   id: 'call_mock_plan_initial',
   name: MOCK_PLAN_CREATE_TOOL,
-  args: MOCK_PLAN_INITIAL as unknown as Record<string, unknown>,
+  args: { ...(MOCK_PLAN_INITIAL as unknown as Record<string, unknown>), reason: MOCK_REASON },
 }
 /** 覆盖序列第 1 步：把原 t1 标完成 */
 const PLAN_OVERWRITE_COMPLETE_CALL: MockToolCall = {
   id: 'call_mock_plan_overwrite_complete',
   name: MOCK_PLAN_COMPLETE_TOOL,
-  args: { ids: ['t1'] },
+  args: { ids: ['t1'], reason: MOCK_REASON },
 }
 /** 覆盖序列第 2 步：追加 t3（goal 省略 = 沿用当前目标） */
 const PLAN_OVERWRITE_ADD_CALL: MockToolCall = {
   id: 'call_mock_plan_overwrite_add',
   name: MOCK_PLAN_CREATE_TOOL,
-  args: MOCK_PLAN_OVERWRITE_ADD as unknown as Record<string, unknown>,
+  args: { ...(MOCK_PLAN_OVERWRITE_ADD as unknown as Record<string, unknown>), reason: MOCK_REASON },
 }
 /** 覆盖序列第 3 步：删掉 t2 */
 const PLAN_OVERWRITE_DELETE_CALL: MockToolCall = {
   id: 'call_mock_plan_overwrite_delete',
   name: MOCK_PLAN_DELETE_TOOL,
-  args: { ids: ['t2'] },
+  args: { ids: ['t2'], reason: MOCK_REASON },
 }
 const PLAN_REACT_FIRST_CALL: MockToolCall = {
   id: 'call_mock_plan_react_1',
   name: MOCK_PLAN_CREATE_TOOL,
-  args: MOCK_PLAN_REACT_FIRST as unknown as Record<string, unknown>,
+  args: { ...(MOCK_PLAN_REACT_FIRST as unknown as Record<string, unknown>), reason: MOCK_REASON },
 }
 const PLAN_REACT_SECOND_CALL: MockToolCall = {
   id: 'call_mock_plan_react_2',
   name: MOCK_PLAN_COMPLETE_TOOL,
-  args: MOCK_PLAN_REACT_SECOND as unknown as Record<string, unknown>,
+  args: { ...(MOCK_PLAN_REACT_SECOND as unknown as Record<string, unknown>), reason: MOCK_REASON },
 }
 const DELEGATE_CALL: MockToolCall = {
   id: 'call_mock_delegate',
@@ -234,12 +260,31 @@ const DELEGATE_CALL: MockToolCall = {
     name: MOCK_SUBAGENT_NAME,
     system_prompt: MOCK_SUBAGENT_PROMPT,
     task: MOCK_SUBAGENT_TASK,
+    reason: MOCK_REASON,
   },
 }
 const COMMAND_CALL: MockToolCall = {
   id: 'call_mock_command',
   name: MOCK_COMMAND_TOOL,
-  args: { command: MOCK_COMMAND },
+  args: { command: MOCK_COMMAND, reason: MOCK_REASON },
+}
+/** 事件演示：跑一次会把"状态快照 + 流水行"写进父流（断言 SSE 里出现 `data-tool-event`） */
+const EVENTS_CALL: MockToolCall = {
+  id: 'call_mock_events',
+  name: MOCK_EVENTS_TOOL,
+  args: { keyword: MOCK_EVENT_LINE, reason: MOCK_REASON },
+}
+/** 漏写 reason 的那一次（`reason` 给了空串：模型"写了字段但没说清"的最常见形态） */
+const COMMAND_NO_REASON_CALL: MockToolCall = {
+  id: 'call_mock_command_no_reason',
+  name: MOCK_COMMAND_TOOL,
+  args: { command: MOCK_COMMAND, reason: '' },
+}
+/** 被拒之后改正的那一次：同一件事，这次理由写清楚了 */
+const COMMAND_RETRY_REASON_CALL: MockToolCall = {
+  id: 'call_mock_command_retry_reason',
+  name: MOCK_COMMAND_TOOL,
+  args: { command: MOCK_COMMAND, reason: MOCK_NO_REASON_FIXED },
 }
 
 const readBody = async (req: IncomingMessage): Promise<Record<string, unknown>> => {
@@ -280,18 +325,52 @@ const containsResult = (body: Record<string, unknown>, token: string): boolean =
 const wanted = (body: Record<string, unknown>, marker: string): boolean =>
   JSON.stringify(body.messages ?? []).includes(marker)
 
+/** 一个 mock 服务实例内的短期状态（跨请求要记住"这条已经发过几次"） */
+interface MockServerState {
+  /** `[no-reason]` 已经发过的次数（1 = 那条故意的坏调用已经发了，下一次要改正） */
+  noReasonCalls: number
+}
+
+/**
+ * `[no-reason]`：**第一次故意不写 reason**（空串 = "写了字段但没说清"），之后改正。
+ *
+ * 只用请求里的消息判定（不靠进程级全局）：第一次没有任何工具结果 → 发坏的那条；
+ * 有工具结果（那次拒绝会以 `tool` 角色的错误结果回到模型）→ 发改正后的那条。
+ */
+const decideNoReasonCall = (body: Record<string, unknown>, state: MockServerState): MockToolCall | null => {
+  if (!hasToolResult(body) && state.noReasonCalls === 0) {
+    state.noReasonCalls += 1
+    return COMMAND_NO_REASON_CALL
+  }
+  if (state.noReasonCalls === 1 && latestToolResultText(body)?.includes('reason')) {
+    state.noReasonCalls += 1
+    return COMMAND_RETRY_REASON_CALL
+  }
+  return null
+}
+
 /**
  * 这一轮该发哪个工具调用 —— 唯一的决策入口（非流式与流式共用，避免两条链路行为漂移）。
  *
  * 返回 null 表示"不发工具调用"（回到文本回答）。
  */
-const decideToolCall = (body: Record<string, unknown>): MockToolCall | null => {
+const decideToolCall = (
+  body: Record<string, unknown>,
+  state: MockServerState,
+): MockToolCall | null => {
   const tools = body.tools
   if (!Array.isArray(tools) || tools.length === 0) return null
 
+  // 纪律闭环：漏写 reason → 被拒 → 模型改正后成功（设计 §5.18）
+  if (wanted(body, MOCK_NO_REASON_MARKER)) {
+    return decideNoReasonCall(body, state)
+  }
   // 命令执行：跑一次拿到工具结论后回到文本回答（与其它标记同一套路）
   if (wanted(body, MOCK_COMMAND_MARKER)) {
     return hasToolResult(body) ? null : COMMAND_CALL
+  }
+  if (wanted(body, MOCK_EVENTS_MARKER)) {
+    return hasToolResult(body) ? null : EVENTS_CALL
   }
   if (wanted(body, MOCK_DELEGATE_MARKER)) {
     return hasToolResult(body) ? null : DELEGATE_CALL
@@ -338,8 +417,12 @@ const toToolCalls = (call: MockToolCall): unknown[] => [
   },
 ]
 
-const respondJson = (res: ServerResponse, body: Record<string, unknown>): void => {
-  const call = decideToolCall(body)
+const respondJson = (
+  res: ServerResponse,
+  body: Record<string, unknown>,
+  state: MockServerState,
+): void => {
+  const call = decideToolCall(body, state)
   const message = call
     ? { role: 'assistant', content: null, tool_calls: toToolCalls(call) }
     : { role: 'assistant', content: finalText(body) }
@@ -390,8 +473,12 @@ const isSlow = (body: Record<string, unknown>): boolean =>
 
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms))
 
-const respondStream = (res: ServerResponse, body: Record<string, unknown>): void => {
-  const call = decideToolCall(body)
+const respondStream = (
+  res: ServerResponse,
+  body: Record<string, unknown>,
+  state: MockServerState,
+): void => {
+  const call = decideToolCall(body, state)
   res.writeHead(200, {
     'content-type': 'text/event-stream',
     'cache-control': 'no-cache',
@@ -460,6 +547,8 @@ const sseSlow = async (
 export const startMockModelServer = async (): Promise<MockModelServer> => {
   const requests: Array<Record<string, unknown>> = []
   const listRequests: Array<{ url: string; authorization: string | undefined }> = []
+  /** 跨请求的短期状态（`[no-reason]` 要说清"这条已经发过几次"） */
+  const state: MockServerState = { noReasonCalls: 0 }
   const server: Server = createServer((req, res) => {
     void (async () => {
       // OpenAI 形态的"列模型"接口：同步链路与连通性测试都打这里
@@ -478,8 +567,8 @@ export const startMockModelServer = async (): Promise<MockModelServer> => {
       }
       const body = await readBody(req)
       requests.push(body)
-      if (body.stream === true) respondStream(res, body)
-      else respondJson(res, body)
+      if (body.stream === true) respondStream(res, body, state)
+      else respondJson(res, body, state)
     })()
   })
 

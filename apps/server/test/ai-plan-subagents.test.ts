@@ -50,6 +50,7 @@ import {
   MOCK_PLAN_REACT_MARKER,
   MOCK_PLAN_REACT_SECOND,
   MOCK_PLAN_REORDER_TOOL,
+  MOCK_REASON,
   MOCK_SUBAGENT_NAME,
   MOCK_SUBAGENT_PROMPT,
   MOCK_SUBAGENT_TASK,
@@ -212,8 +213,8 @@ describe('规划能力（规划工具组 + plan 事件）', () => {
       MOCK_PLAN_CREATE_TOOL,
       MOCK_PLAN_DELETE_TOOL,
     ])
-    // 第 2 步是**追加**：goal 省略（沿用当前目标），入参里只有新增的 t3
-    expect(calls[1].payload?.input).toEqual(MOCK_PLAN_OVERWRITE_ADD)
+    // 第 2 步是**追加**：goal 省略（沿用当前目标），入参里只有新增的 t3（+ 引擎注入的必填 reason）
+    expect(calls[1].payload?.input).toEqual({ ...MOCK_PLAN_OVERWRITE_ADD, reason: MOCK_REASON })
 
     const plans = await planEvents(first.conversationId)
     // 每一步都落一条 plan 事件（首建 + 第二轮三步），revision 每成功变更 +1
@@ -269,9 +270,9 @@ describe('规划能力（规划工具组 + plan 事件）', () => {
       MOCK_PLAN_CREATE_TOOL,
       MOCK_PLAN_COMPLETE_TOOL,
     ])
-    expect(calls[0].payload?.input).toEqual(MOCK_PLAN_REACT_FIRST)
+    expect(calls[0].payload?.input).toEqual({ ...MOCK_PLAN_REACT_FIRST, reason: MOCK_REASON })
     // 第二次调用的入参里**带着第一次新增的 r2**（用 ids 引用它），并把 [react-2] 写进它的备注
-    expect(calls[1].payload?.input).toEqual(MOCK_PLAN_REACT_SECOND)
+    expect(calls[1].payload?.input).toEqual({ ...MOCK_PLAN_REACT_SECOND, reason: MOCK_REASON })
   }, 30_000)
 
   it('④ 同时多个 in_progress：不阻断提交，但在出参里给出纪律提示', async () => {
@@ -628,6 +629,8 @@ describe('子 agent（core bean + 运行期动态创建）', () => {
       name: MOCK_SUBAGENT_NAME,
       system_prompt: MOCK_SUBAGENT_PROMPT,
       task: MOCK_SUBAGENT_TASK,
+      // 引擎注入的必填 reason 也一并落库（设计 §5.18）
+      reason: MOCK_REASON,
     })
     const output = page.items.find(
       (item) => item.kind === TimelineKind.ToolResult && item.toolKey === MOCK_DELEGATE_TOOL,

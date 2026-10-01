@@ -53,6 +53,13 @@ export class StreamRecorder {
   /** 推理片段：id → 累积内容 */
   private readonly reasonings = new Map<string, string>()
   /**
+   * 推理片段：id → **开始时间**（毫秒）。
+   *
+   * 为什么单独记：思考行要能显示"思考了 N 秒"。结束时间落库时是 `Date.now()`，
+   * 但开始时间不在事件里 —— 不记的话历史里的思考块只能显示"思考完成"（前端不编造秒数）。
+   */
+  private readonly reasoningStartedAt = new Map<string, number>()
+  /**
    * toolCallId → 工具 key。
    *
    * AI SDK v6 的 `tool-input-available` 带 `toolName`，但 `tool-output-available` **只有
@@ -87,8 +94,13 @@ export class StreamRecorder {
         return
       case 'reasoning-start':
         this.reasonings.set(chunk.id ?? '', '')
+        this.reasoningStartedAt.set(chunk.id ?? '', Date.now())
         return
       case 'reasoning-delta':
+        // 有些提供方不发 `reasoning-start`：第一次见到增量时补记开始时间
+        if (!this.reasoningStartedAt.has(chunk.id ?? '')) {
+          this.reasoningStartedAt.set(chunk.id ?? '', Date.now())
+        }
         this.reasonings.set(
           chunk.id ?? '',
           (this.reasonings.get(chunk.id ?? '') ?? '') + (chunk.delta ?? ''),
@@ -267,12 +279,19 @@ export class StreamRecorder {
 
   private async flushReasoning(id: string): Promise<void> {
     const text = (this.reasonings.get(id) ?? '').trim()
+    const startedAt = this.reasoningStartedAt.get(id)
     this.reasonings.delete(id)
+    this.reasoningStartedAt.delete(id)
     if (!text) return
+    const finishedAt = Date.now()
     await this.append({
       role: TimelineRole.Assistant,
       kind: TimelineKind.Reasoning,
       payload: { text },
+      // 真实时长（前端据此显示"思考了 N 秒"；拿不到就不写，界面显示"思考完成"而不是假数字）
+      ...(startedAt !== undefined
+        ? { startedAt: new Date(startedAt), finishedAt: new Date(finishedAt), durationMs: Math.max(0, finishedAt - startedAt) }
+        : {}),
     })
   }
 
@@ -284,8 +303,12 @@ export class StreamRecorder {
     toolCallId?: string | null
     usage?: Record<string, unknown> | null
     payload: Record<string, unknown>
+    /** 覆盖开始/结束时间与时长（思考行用它记"思考了多久"；缺省 = 就是"现在这一刻"） */
+    startedAt?: Date
+    finishedAt?: Date
+    durationMs?: number
   }): Promise<void> {
-    const now = new Date()
+    const now = data.finishedAt ?? new Date()
     await this.timelines.append({
       conversationId: this.ctx.conversationId,
       runId: this.ctx.runId,
@@ -297,8 +320,9 @@ export class StreamRecorder {
       toolCallId: data.toolCallId ?? null,
       usage: data.usage ?? null,
       payload: data.payload,
-      startedAt: now,
+      startedAt: data.startedAt ?? now,
       finishedAt: now,
+      ...(data.durationMs !== undefined ? { durationMs: data.durationMs } : {}),
     })
   }
 }

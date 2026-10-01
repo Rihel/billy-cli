@@ -1,6 +1,7 @@
 import type { z } from 'zod'
 import type {
   ToolCategoryValue,
+  ToolEventDeclMeta,
   ToolScopeValue,
   ToolSecretField,
 } from './tools.types.js'
@@ -77,10 +78,19 @@ export interface ToolDeclMeta<C = unknown, I = unknown, O = unknown> {
    * `parse({})` 失败说明默认值没给全 —— 注册机在**启动期**就报错。
    */
   config: AnySchema
-  /** 秘钥契约：字段一律可选、**没有默认值**（默认状态是"未配置"） */
+  /**
+   * 秘钥契约：字段一律可选、**没有默认值**（默认状态是"未配置"）
+   */
   secrets?: AnySchema
   /** 秘钥字段元信息（页面渲染 + "缺哪个"的结论文案） */
   secretFields?: readonly ToolSecretField[]
+  /**
+   * **自定义事件**声明（设计 §5.17）：这个工具运行时会往父流里吐哪些过程事件。
+   *
+   * 声明后执行体用 `ctx.emit(name, payload?)` 发（未声明的名字发不出去）；
+   * 名字组内唯一、payload 契约在启动期归一化成 JSON Schema 镜像入库，管理页只读展示。
+   */
+  events?: readonly ToolEventDeclMeta[]
   /** 覆盖组级默认值：类别 `core`（运行时能力）/ `business`（绑定业务模块） */
   category?: ToolCategoryValue
   /** 覆盖组级默认值：默认作用域（库里可覆盖） */

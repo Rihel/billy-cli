@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { ToolCategory, ToolScope, ToolSource } from '../dicts/ai-tool.dict'
+import { AiToolEventSchema } from './ai-tool-event.schema'
 import { BasePaginateSchema } from './base.schema'
 
 /**
@@ -88,6 +89,11 @@ export const AiToolSchema = z.object({
   source: z.string(),
   /** 参数契约的 JSON Schema（页面只读展示，便于核对"模型看到的入参长什么样"） */
   paramSchema: z.record(z.string(), z.unknown()).nullable(),
+  /**
+   * 自定义事件声明（**代码声明的镜像**，启动期全量写入，页面只读）：
+   * 这个工具会在运行时往流里吐哪些事件、payload 长什么样。见 `ai-tool-event.schema.ts`。
+   */
+  events: z.array(AiToolEventSchema),
   /** 声明了分页才有值：单次给模型的默认字节上限 */
   pageBytes: z.number().int().positive().nullable(),
   /** 能否被后台改（runtime 工具为 false） */

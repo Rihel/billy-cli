@@ -57,6 +57,7 @@ export interface AgentConfig {
   commandTimeoutMs: number
   /** 单条流（stdout / stderr 各自）的输出上限（字节）；超出即截断并终止命令 */
   commandMaxOutputBytes: number
+  /** 每类流（stdout / stderr 各自）最多实时发多少行的**部署上限**（后台可调低，但调不出这个上限） */
   /** 命令的工作根目录（缺省 = 服务进程工作目录）；agent 传入的 `cwd` 只能在这个目录之内 */
   commandWorkDir?: string
 

@@ -57,7 +57,9 @@ export const toMastraTool = (tool: Tool, logger: ToolLogger): ToolsInput[string]
   createTool({
     id: tool.key,
     description: tool.spec.description,
-    inputSchema: tool.spec.params,
+    // 给模型的是**含必填 reason** 的那一份（引擎注入，见 `core/tools/call-reason.ts`）：
+    // 模型据此知道每次调用都要说明"为什么用它"，Mastra 也按它校验
+    inputSchema: tool.spec.modelParams ?? tool.spec.params,
     execute: async (input: unknown, context: unknown) => {
       const runtime = context as ToolExecutionContextLike
       const envelope = readEnvelope(runtime?.requestContext)

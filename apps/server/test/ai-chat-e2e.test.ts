@@ -19,6 +19,11 @@ import { SkillLoader } from '../src/modules/ai/core/skills/index.js'
 import { RunCommandTool } from '../src/modules/ai/tools/command.tool.js'
 import { RunSubAgentTool } from '../src/modules/ai/tools/subagent.tool.js'
 import { PlannerStore, PlannerTools } from '../src/modules/ai/tools/planner/index.js'
+import {
+  TOOL_CALL_REASON_FIELD,
+  TOOL_CALL_REASON_MAX,
+  TOOL_CALL_REASON_MIN,
+} from '../src/modules/ai/core/tools/call-reason.js'
 import { AgentRunner } from '../src/modules/ai/runtime/agent-runner.js'
 import { AgentChatService } from '../src/modules/ai/runtime/chat.service.js'
 import { toMastraSkills } from '../src/modules/ai/mastra/skill.adapter.js'
@@ -38,8 +43,11 @@ import {
   MOCK_COMMAND_OUTPUT,
   MOCK_COMMAND_TOOL,
   MOCK_FINAL_TEXT,
+  MOCK_NO_REASON_FIXED,
+  MOCK_NO_REASON_MARKER,
   MOCK_PLAN_CREATE_TOOL,
   MOCK_PLAN_INITIAL,
+  MOCK_REASON,
   MOCK_TITLE_TEXT,
   type MockModelServer,
   startMockModelServer,
@@ -275,8 +283,8 @@ describe('对话链路端到端（mock 模型 + 真实数据库）', () => {
 
     const toolCall = page.items.find((item) => item.kind === TimelineKind.ToolCall)
     expect(toolCall?.toolKey).toBe(MOCK_PLAN_CREATE_TOOL)
-    // **入参完整落库**（提交的清单与 mock 给定的一字不差）
-    expect(toolCall?.payload?.input).toEqual(MOCK_PLAN_INITIAL)
+    // **入参完整落库**（提交的清单与 mock 给定的一字不差）+ 引擎注入的必填 `reason`（设计 §5.18）
+    expect(toolCall?.payload?.input).toEqual({ ...MOCK_PLAN_INITIAL, reason: MOCK_REASON })
 
     const toolResult = page.items.find((item) => item.kind === TimelineKind.ToolResult)
     // **出参完整落库、不裁剪**：整份清单 + 摘要都在
@@ -339,6 +347,23 @@ describe('对话链路端到端（mock 模型 + 真实数据库）', () => {
     // 且请求里带着工具定义（能力边界由授权的工具决定：业务工具为空，只有运行时能力）
     expect(JSON.stringify(lastRequest.tools)).toContain(MOCK_PLAN_CREATE_TOOL)
 
+    /**
+     * **模型真的被要求填 reason**（设计 §5.18）：请求体里的工具定义必须把 `reason` 写进 `required`。
+     *
+     * 这是"引擎级注入"在**模型侧**的端到端证据：模型不是靠提示词"记得"要写，
+     * 而是工具的参数契约里就有这个必填字段。
+     */
+    const toolDefinitions = lastRequest.tools as Array<{
+      function: { name: string; parameters: { properties: Record<string, unknown>; required: string[] } }
+    }>
+    const planTool = toolDefinitions.find((tool) => tool.function.name === MOCK_PLAN_CREATE_TOOL)
+    expect(planTool?.function.parameters.required).toContain(TOOL_CALL_REASON_FIELD)
+    expect(planTool?.function.parameters.properties[TOOL_CALL_REASON_FIELD]).toMatchObject({
+      type: 'string',
+      minLength: TOOL_CALL_REASON_MIN,
+      maxLength: TOOL_CALL_REASON_MAX,
+    })
+
     const conversation = await conversations.detail(USER, { conversationId: first.conversationId })
     expect(conversation.turnCount).toBe(2)
   })
@@ -353,8 +378,8 @@ describe('对话链路端到端（mock 模型 + 真实数据库）', () => {
     const page = await timelines.list({ conversationId: result.conversationId, page: 1, size: 100 })
     const toolCall = page.items.find((item) => item.kind === TimelineKind.ToolCall)
     expect(toolCall?.toolKey).toBe(MOCK_COMMAND_TOOL)
-    // 入参完整落库：就是模型写的那条命令
-    expect(toolCall?.payload?.input).toEqual({ command: MOCK_COMMAND })
+    // 入参完整落库：就是模型写的那条命令（外加引擎注入的必填 `reason`）
+    expect(toolCall?.payload?.input).toEqual({ command: MOCK_COMMAND, reason: MOCK_REASON })
 
     // 出参完整落库：真的跑了（退出码 0、stdout 里有输出、shell 按当前平台解析）
     const toolResult = page.items.find((item) => item.kind === TimelineKind.ToolResult)
@@ -366,6 +391,51 @@ describe('对话链路端到端（mock 模型 + 真实数据库）', () => {
     expect(output.timedOut).toBe(false)
     expect(output.truncated).toBe(false)
     expect(toolResult?.state).toBe('output-available')
+  })
+
+  /**
+   * **这个特性的价值所在**（设计 §5.18）：模型漏写 `reason` → 被拒 → 模型拿到明确话术 → 改正后成功。
+   *
+   * 端到端验三件事：
+   * 1. 拒绝**不炸整轮**（失败是结论，模型还能继续）；
+   * 2. 拒绝话术**点名 reason**（模型据此才知道要补什么）；
+   * 3. 改正后的那次调用**带着理由落进时间线**（审计查得到"这次为什么调它"）。
+   */
+  it('漏写 reason 被拒 → 模型改正后成功（纪律闭环）', async () => {
+    const result = await chat.chat(USER, {
+      message: `${MOCK_NO_REASON_MARKER} 跑一下看看这台机器的环境`,
+    })
+    createdConversationIds.push(result.conversationId)
+
+    // 整轮照样成功（拒绝是结论，不是崩溃）
+    expect(result.status).toBe(RunStatus.Succeeded)
+
+    const page = await timelines.list({ conversationId: result.conversationId, page: 1, size: 100 })
+    const rows = page.items.filter((item) => item.kind === TimelineKind.ToolResult)
+
+    // 1) 漏写 reason 的那次被拒：结论里明确写着"要说明 reason"
+    const rejected = rows.find(
+      (item) => (item.payload?.output as Record<string, unknown> | undefined)?.error === true,
+    )
+    expect(rejected, '漏写 reason 的那次调用应当被拒').toBeDefined()
+    expect(JSON.stringify(rejected?.payload ?? {})).toContain('reason')
+
+    // 2) 改正后那次成功：命令真的跑了（两条结果里只有一条带 ok）
+    const succeeded = rows.find(
+      (item) => (item.payload?.output as Record<string, unknown> | undefined)?.ok === true,
+    )
+    expect(succeeded, '改正后应当成功').toBeDefined()
+    expect(String((succeeded?.payload?.output as Record<string, unknown>)?.stdout)).toContain(
+      MOCK_COMMAND_OUTPUT,
+    )
+    expect(rows).toHaveLength(2)
+
+    // 3) 落库的入参里带着模型改正后写的理由（引用同一份常量，改文案不会假红）
+    const calls = page.items.filter((item) => item.kind === TimelineKind.ToolCall)
+    const retried = calls.find(
+      (item) => (item.payload?.input as { reason?: string } | undefined)?.reason === MOCK_NO_REASON_FIXED,
+    )
+    expect(retried, '改正后的那次调用应当带着 reason 落库').toBeDefined()
   })
 
   it('首轮结束后用模型起名：≤10 字，且与当前 agent 上下文**完全隔离**', async () => {
@@ -408,25 +478,45 @@ describe('对话链路端到端（mock 模型 + 真实数据库）', () => {
     expect(conversation.turnCount).toBe(2)
   })
 
-  it('会话开局的运行环境：只在首轮注入（第二轮不再动系统提示词，保住前缀缓存）', async () => {
+  it('系统提示词：**每个会话首轮生成一次**，之后逐字复用（含运行环境段），且只落一条快照', async () => {
     const beforeFirst = mock.requests.length
     const first = await chat.chat(USER, { message: '今天几号？' })
     createdConversationIds.push(first.conversationId)
 
     const firstTurnRequests = mock.requests.slice(beforeFirst)
     expect(firstTurnRequests.length).toBeGreaterThan(0)
-    const firstTurnBody = JSON.stringify(firstTurnRequests[0])
-    // 注入的是**当前平台**的画像与时间，不是写死的文案
-    // （标记用片段的完整标题：正文里另有"命令按运行环境里那个 shell 语法写"这类提法，不能用"运行环境"当标记）
-    expect(firstTurnBody).toContain('运行环境（本会话开始时）')
-    expect(firstTurnBody).toContain(describePlatform().label)
-    expect(firstTurnBody).toContain(String(new Date().getFullYear()))
+    // 首轮那份里注入了**当前平台**的画像与时间，不是写死的文案
+    //（标记用片段的完整标题：正文里另有"命令按运行环境里那个 shell 语法写"这类提法，不能用"运行环境"当标记）
+    const firstSystem = String(
+      (firstTurnRequests[0]!.messages as Array<{ role: string; content: unknown }>).find(
+        (message) => message.role === 'system',
+      )?.content ?? '',
+    )
+    expect(firstSystem).toContain('运行环境（本会话开始时）')
+    expect(firstSystem).toContain(describePlatform().label)
+    expect(firstSystem).toContain(String(new Date().getFullYear()))
 
     const beforeSecond = mock.requests.length
     await chat.chat(USER, { conversationId: first.conversationId, message: '那现在呢？' })
     const secondTurnRequests = mock.requests.slice(beforeSecond)
     expect(secondTurnRequests.length).toBeGreaterThan(0)
-    // 第二轮的系统提示词回到基础版：环境片段**不再出现**
-    expect(JSON.stringify(secondTurnRequests[0])).not.toContain('运行环境（本会话开始时）')
+    const secondSystem = String(
+      (secondTurnRequests[0]!.messages as Array<{ role: string; content: unknown }>).find(
+        (message) => message.role === 'system',
+      )?.content ?? '',
+    )
+
+    /**
+     * **口径（用户拍板）**：系统提示词每个会话首轮生成一次 —— 第二轮用的就是首轮那一份**逐字相同**
+     * （运行环境段仍在里面）。这样前缀缓存整段命中；会话进行中改了提示词模板也不会中途换掉它。
+     */
+    expect(secondSystem).toBe(firstSystem)
+
+    /** 快照只落一条：不是每轮灌一行（否则"这个会话的系统提示词"会被重复行淹没） */
+    const rows = (await db.dataSource.query(
+      "SELECT count(*)::int AS count FROM timelines WHERE conversation_id = $1 AND kind = 'system'",
+      [first.conversationId],
+    )) as Array<{ count: number }>
+    expect(rows[0]?.count).toBe(1)
   })
 })

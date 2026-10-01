@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest'
 import { ToolGateway } from '../src/modules/ai/core/tools/tool.gateway.js'
 import { RunCommandTool } from '../src/modules/ai/tools/command.tool.js'
 import { TOOL_KEYS } from '../src/modules/ai/core/tools/tool-keys.js'
-import type { ToolCallContext, ToolSpec } from '../src/modules/ai/core/tools/tools.types.js'
+import type { ToolCallContext, ToolEnvCaps, ToolSpec } from '../src/modules/ai/core/tools/tools.types.js'
 import {
   buildToolStackDeps,
   silentLogger,
@@ -24,8 +24,14 @@ import {
  * - `precheck`：目录越界拒绝并说明；
  * - `exec`：真跑命令时的时长夹紧与出参形状。
  */
-const buildStack = (options: { sourceRows?: Record<string, Record<string, unknown>> } = {}) => {
-  const deps = buildToolStackDeps()
+const buildStack = (
+  options: {
+    sourceRows?: Record<string, Record<string, unknown>>
+    /** 部署上限覆盖（测"env 没配这一项"等情形；缺省 `TEST_TOOL_ENV_CAPS`） */
+    caps?: ToolEnvCaps
+  } = {},
+) => {
+  const deps = buildToolStackDeps(options.caps ? { caps: options.caps } : {})
   for (const [key, row] of Object.entries(options.sourceRows ?? {})) {
     deps.source.set(key, row as never)
   }
@@ -98,7 +104,7 @@ describe('run-command 的策略（开关 / 目录边界 / 时长上限）', () =
     const { deps, gateway, spec } = buildStack({
       sourceRows: { [TOOL_KEYS.runCommand]: { enabled: false } },
     })
-    const outcome = await gateway.invoke(spec, { command: 'echo should-not-run' }, {
+    const outcome = await gateway.invoke(spec, { command: 'echo should-not-run', reason: '验证开关关掉时不会真的执行命令' }, {
       callId: 'call-1',
       envelope: null,
       log: silentLogger as never,
@@ -113,7 +119,7 @@ describe('run-command 的策略（开关 / 目录边界 / 时长上限）', () =
     const { deps, gateway, spec } = buildStack({
       sourceRows: { [TOOL_KEYS.runCommand]: { config: { enabled: false } } },
     })
-    const outcome = await gateway.invoke(spec, { command: 'echo should-not-run' }, {
+    const outcome = await gateway.invoke(spec, { command: 'echo should-not-run', reason: '验证开关关掉时不会真的执行命令' }, {
       callId: 'call-2',
       envelope: null,
       log: silentLogger as never,
@@ -125,7 +131,7 @@ describe('run-command 的策略（开关 / 目录边界 / 时长上限）', () =
     const { deps, gateway, spec } = buildStack({
       sourceRows: { [TOOL_KEYS.runCommand]: { config: { workDir: tmpdir() } } },
     })
-    const outcome = await gateway.invoke(spec, { command: 'echo nope', cwd: '../../' }, {
+    const outcome = await gateway.invoke(spec, { command: 'echo nope', cwd: '../../', reason: '验证目录越界会被拒绝' }, {
       callId: 'call-3',
       envelope: null,
       log: silentLogger as never,
@@ -140,7 +146,7 @@ describe('run-command 的策略（开关 / 目录边界 / 时长上限）', () =
     const { deps, gateway, spec } = buildStack({
       sourceRows: { [TOOL_KEYS.runCommand]: { config: { workDir: tmpdir() } } },
     })
-    const outcome = await gateway.invoke(spec, { command: 'echo in-workdir' }, {
+    const outcome = await gateway.invoke(spec, { command: 'echo in-workdir', reason: '验证工作目录之内可以正常执行' }, {
       callId: 'call-4',
       envelope: null,
       log: silentLogger as never,
@@ -160,7 +166,7 @@ describe('run-command 的策略（开关 / 目录边界 / 时长上限）', () =
     // 模型要 120 秒，配置上限 300ms：必须以 300ms 为准
     const outcome = await gateway.invoke(
       spec,
-      { command: 'node -e "setTimeout(function () {}, 30000)"', timeout_ms: 120_000 },
+      { command: 'node -e "setTimeout(function () {}, 30000)"', timeout_ms: 120_000, reason: '验证超长超时会被夹到配置上限' },
       { callId: 'call-5', envelope: null, log: silentLogger as never },
     )
     expect(outcome.ok).toBe(true)

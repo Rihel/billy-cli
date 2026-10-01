@@ -1,3 +1,4 @@
+import type { AiToolEventModel } from '@repo/shared'
 import type { z } from 'zod'
 
 /**
@@ -22,6 +23,51 @@ export type ToolScopeValue = 'all' | 'admin' | 'user' | 'agent'
 
 /** 工具类别 */
 export type ToolCategoryValue = 'core' | 'business'
+
+/**
+ * 自定义事件的发出方式（`@repo/shared` 的 `ToolEventMode` 字典是唯一事实源，
+ * 这里用字面量收窄，避免主体依赖字典实现）。
+ *
+ * 取值决定 AI SDK 的 id 归并策略，进而在前端表现为「最新快照」或「全部流水」（设计 §5.17）。
+ */
+export type ToolEventModeValue = 'state' | 'stream'
+
+/**
+ * 事件**声明**（`@ToolDecl({ events })` 里写的那一份，归一化前）。
+ *
+ * 为什么要单独声明：事件是工具往父流里吐的**额外过程信息**，前端按名字找渲染器；
+ * 名字 / 标题 / 说明 / 形状只有代码知道，所以声明在代码、镜像入库供管理页只读展示。
+ */
+export interface ToolEventDeclMeta {
+  /** 事件名：工具内唯一（≤64），前端渲染器按它匹配（禁止裸字符串拼接，用声明里的常量） */
+  name: string
+  /** 人读标题（管理页展示 + 前端兜底渲染的标题） */
+  title: string
+  /** 什么时候发、payload 各字段什么意思 */
+  description: string
+  /** 省略 = `'state'`（状态快照：带稳定 id，后发覆盖先发） */
+  mode?: ToolEventModeValue
+  /** payload 契约（可选；写了就在发射时 `safeParse`，不合契约的事件被丢弃并记 warn） */
+  payload?: z.ZodType
+}
+
+/**
+ * 事件声明**归一化后**的形态（注册机拍平进 `ToolSpec.events`）。
+ *
+ * `payloadSchema` 是 `payload` 契约的 JSON Schema 化（**没声明 payload 契约时为 null**），
+ * 只给管理页只读展示 —— 运行时校验用的是 `payload` 本体，不必再过一次 JSON Schema。
+ */
+export interface ToolEventDecl {
+  readonly name: string
+  readonly title: string
+  readonly description: string
+  readonly mode: ToolEventModeValue
+  readonly payload?: z.ZodType
+  readonly payloadSchema: Record<string, unknown> | null
+}
+
+/** 事件声明的宽类型（内部管道不关心 payload 的具体泛型） */
+export type AnyToolEventDecl = ToolEventDecl
 
 /** 日志门面（结构上兼容 `@repo/kits` 的 AppLogger，测试里给静默实现即可） */
 export interface ToolLogger {
@@ -88,6 +134,13 @@ export interface ToolSettings<C = Record<string, unknown>> {
   source: 'seed' | 'manual'
   /** 参数契约的 JSON Schema（库里的声明镜像；缺省时由声明现算） */
   paramSchema?: Record<string, unknown> | null
+  /**
+   * 自定义事件声明的**镜像**（库里的值；缺省时用代码声明，见设计 §5.17）。
+   *
+   * 只给管理台读（与 `paramSchema` 同一口径），**不参与运行时** ——
+   * 发射器认的是 `spec.events`（代码声明是唯一事实源，库被改坏也发不出未声明的事件）。
+   */
+  events?: readonly AiToolEventModel[]
   /** 配置版本（库里那行的 updatedAt ISO；没有配置行时 `code-default`）——落审计，重放可解释 */
   version: string
   /** 取秘钥明文（未配置返回 null）。只在这一次调用内使用，禁止落库 / 进日志 */
@@ -194,6 +247,13 @@ export interface ToolCallContext<C = Record<string, unknown>> {
   readonly signal?: AbortSignal
   readonly log: ToolLogger
   readonly clock: ToolClock
+  /**
+   * 这次调用的**理由**（模型必填，设计 §5.18）：为什么这次要用这个工具。
+   *
+   * 由网关从入参里摘出来统一赋值（`ValidatePlugin` 把 `reason` 从业务入参里分离），
+   * 工具**可以**读它写进自己的业务日志，但**不要求**任何工具去读。
+   */
+  reason: string | null
   /** 归一化前的入参（审计用） */
   readonly rawInput: unknown
   /** 归一化后的入参（`spec.exec` 只应读它） */
@@ -210,6 +270,16 @@ export interface ToolCallContext<C = Record<string, unknown>> {
   pagesRead?: number
   /** 实时明细出口（Mastra 工具上下文给的；非流式调用时为 undefined） */
   readonly writer?: ToolWriter
+  /**
+   * 往父流发一条**自定义事件**（设计 §5.17）：`emit(name, payload?)`。
+   *
+   * 语义（由网关实现，执行体只当它是一个开关）：
+   * - **同步、永不抛**：事件失败（未声明 / payload 不合契约 / 写流报错）只记 warn，
+   *   绝不影响本次工具调用的结论 —— 事件是过程，出参才是结论；
+   * - **没有 writer 就静默 no-op**（后台调用 / 非流式链路没有父流可写）；
+   * - 归并策略按声明里的 `mode` 在服务端定，前端不判断去重。
+   */
+  readonly emit: (name: string, payload?: unknown) => void
 }
 
 /** 工具声明：不可变的部分（代码里写死；值入库的是 `ToolSettings`） */
@@ -223,6 +293,16 @@ export interface ToolSpec<C = Record<string, unknown>, I = unknown, O = unknown>
   readonly category: ToolCategoryValue
   /** 参数契约（给模型的 JSON Schema 由它生成） */
   readonly params: z.ZodType<I>
+  /**
+   * **给模型看的那一份参数契约** = `params` + 引擎注入的必填 `reason`（设计 §5.18）。
+   *
+   * 由 `buildToolSpecs` 统一包好（工具作者不用管），两个消费方：
+   * - 适配器把它当 Mastra 的 `inputSchema`（→ 模型看到的 JSON Schema 里 `reason` 必填）；
+   * - 网关的 `ValidatePlugin` 用它校验入参，再把 `reason` 摘回 `ctx.reason`。
+   *
+   * 因此**执行体拿到的 `input` 仍是 `params` 的形状**（缺失时回落到 `params`，测试替身无需构造它）。
+   */
+  readonly modelParams?: z.ZodType<I & { reason: string }>
   /** 出参契约（可选：标准测试集可校验实现是否守约） */
   readonly result?: z.ZodType<O>
   /**
@@ -236,6 +316,13 @@ export interface ToolSpec<C = Record<string, unknown>, I = unknown, O = unknown>
   readonly secrets?: z.ZodType<Record<string, string | undefined>>
   /** 秘钥字段元信息（页面渲染与"缺哪个"的结论文案） */
   readonly secretFields?: readonly ToolSecretField[]
+  /**
+   * 自定义事件声明（归一化后；没声明就是空数组）。
+   *
+   * 网关按它造 `ctx.emit`：**未声明的名字发不出去**，payload 不合契约的也被丢弃 ——
+   * 于是"工具会吐什么"在代码里是封闭的、可对账的（设计 §5.17）。
+   */
+  readonly events: readonly ToolEventDecl[]
   /** 默认作用域（库里可覆盖） */
   readonly scope: ToolScopeValue
   /** 委派类工具（创建 / 指挥子 agent）：子 agent 工具面要把它们排除 */

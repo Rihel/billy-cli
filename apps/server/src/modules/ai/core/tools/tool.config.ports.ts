@@ -1,3 +1,4 @@
+import type { AiToolEventModel } from '@repo/shared'
 import type { AnyToolSpec } from './tools.types.js'
 
 /**
@@ -15,6 +16,12 @@ export interface ToolConfigRow {
   description: string | null
   /** 参数契约的 JSON Schema（代码声明的镜像；老行可能为 null） */
   paramSchema: Record<string, unknown> | null
+  /**
+   * 自定义事件声明的**镜像**（代码声明是唯一事实源；老行可能是空数组，见设计 §5.17）。
+   *
+   * 读出来的是 `AiToolEventModel[]`（入库时已归一化），与 `ToolSpec.events` 一一对应。
+   */
+  events: AiToolEventModel[] | null
   source: string
   /** 配置版本（`updated_at` 的 ISO；用于审计与缓存失效） */
   version: string

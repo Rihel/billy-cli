@@ -3,6 +3,7 @@ import { AppLogger } from '@repo/kits'
 import type { AgentRuntimeEnvelope } from '../envelope.js'
 import { toCaller } from './tool.caller.js'
 import { ToolConfigService } from './tool.config.service.js'
+import { createToolEventEmitter } from './tool-event.js'
 import { TOOL_CLOCK } from './tool.ports.js'
 import { ToolDeniedError } from './tools.types.js'
 import type {
@@ -17,6 +18,20 @@ import type {
 
 /** 插件链的注入 token（数组顺序 = 执行顺序，装配处一眼可见） */
 export const AGENT_TOOL_PLUGINS = Symbol.for('AgentToolPlugins')
+
+/**
+ * 从**原始入参**里取这次调用的理由（设计 §5.18）。
+ *
+ * 为什么读原始入参而不是等 `ValidatePlugin` 写完：审计旁证与结构化日志要在**拒绝路径**上
+ * 也能拿到它（缺 reason 被拒的那一次，理由字段本身可能是空串 / 非字符串）；
+ * 校验通过后 `ValidatePlugin` 会用摘干净的值覆盖它（那时 `reason` 一定合法）。
+ * 只接受字符串：别的类型不往 `ctx` 里塞，免得工具读到"半个"值。
+ */
+const rawCallReason = (rawInput: unknown): string | null => {
+  if (rawInput === null || typeof rawInput !== 'object' || Array.isArray(rawInput)) return null
+  const value = (rawInput as Record<string, unknown>).reason
+  return typeof value === 'string' ? value : null
+}
 
 /**
  * **工具网关**（设计 §5.4）：所有工具调用的必经之路。
@@ -59,6 +74,7 @@ export class ToolGateway {
   async invoke(spec: ToolSpec, rawInput: unknown, call: ToolCallInput): Promise<ToolOutcome> {
     const settings = await this.config.settings(spec)
     const envelope = (call.envelope ?? null) as AgentRuntimeEnvelope | null
+    const log = call.log ?? this.logger
     const ctx: ToolCallContext = {
       spec,
       toolKey: spec.key,
@@ -68,11 +84,23 @@ export class ToolGateway {
       envelope,
       ...(call.signal ? { signal: call.signal } : {}),
       ...(call.writer ? { writer: call.writer } : {}),
-      log: call.log ?? this.logger,
+      log,
       clock: this.clock,
       rawInput,
       input: rawInput,
+      // 模型必填的"为什么用它"（设计 §5.18）：校验通过后由 `ValidatePlugin` 覆盖成摘干净的值
+      reason: rawCallReason(rawInput),
       configVersion: settings.version,
+      // 自定义事件出口（设计 §5.17）：按**声明**过滤 + payload 校验 + 失败只记 warn，
+      // 组装在这里而不是执行体里 —— 工具作者只写 `ctx.emit(...)`，纪律只有一份实现
+      emit: createToolEventEmitter({
+        ...(call.writer ? { writer: call.writer } : {}),
+        toolKey: spec.key,
+        toolCallId: call.callId,
+        agentKey: envelope?.agentKey ?? null,
+        events: spec.events,
+        log,
+      }),
     }
 
     // ② pre：任一插件给结论就短路（安全类插件只累积拒绝，不互相覆盖）

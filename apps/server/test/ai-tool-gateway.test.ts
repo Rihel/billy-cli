@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { z } from 'zod'
+import { withCallReason } from '../src/modules/ai/core/tools/call-reason.js'
 import { ToolGateway } from '../src/modules/ai/core/tools/tool.gateway.js'
 import { ToolDeniedError } from '../src/modules/ai/core/tools/tools.types.js'
 import type {
@@ -32,6 +33,8 @@ const spec = (over: Partial<ToolSpec> = {}): ToolSpec =>
     scope: 'all',
     params: z.object({ value: z.string().default('x') }),
     config: z.object({}),
+    // 没声明自定义事件（`ctx.emit` 仍然存在，见事件测试）
+    events: [],
     exec: async () => ({ ok: 'done' }),
     ...over,
   }) as ToolSpec
@@ -200,5 +203,108 @@ describe('网关：顺序、短路、结论', () => {
     expect(ctx.settings.key).toBe('demo')
     expect(ctx.caller).toBeNull()
     expect(typeof ctx.clock.now()).toBe('number')
+  })
+})
+
+/**
+ * **必填 `reason`**（设计 §5.18）："为什么这次要用这个工具"由引擎注入、网关校验。
+ *
+ * 这里测的是**网关这一层**（它同时是兜底层：给模型那份 schema 缺失时、以及任何没走 Mastra
+ * 校验的调用路径 —— 直接 `gateway.invoke` / 后台调用 —— 都靠它把纪律守住）。
+ * 模型侧的 JSON Schema 必填由标准测试集与 e2e 覆盖。
+ */
+describe('网关：必填 reason（为什么用这个工具）', () => {
+  /** 带注入字段的那份契约（真实工具声明走 `buildToolSpecs` 时就是这样） */
+  const modelSpec = (over: Partial<ToolSpec> = {}): ToolSpec => {
+    const params = z.object({ value: z.string().default('x') })
+    return spec({ params, modelParams: withCallReason(params), ...over })
+  }
+
+  it('缺 reason → `invalid-input`，结论文案点名 reason（模型据此改正）', async () => {
+    const { ValidatePlugin } = await import('../src/modules/ai/core/tools/plugins/index.js')
+    const outcome = await gatewayOf(deps(), [new ValidatePlugin()]).invoke(
+      modelSpec(),
+      { value: 'v' },
+      call(),
+    )
+    expect(outcome).toMatchObject({ ok: false, reason: 'invalid-input' })
+    if (outcome.ok) throw new Error('应当被拒绝')
+    expect(outcome.message).toContain('reason')
+    expect(outcome.hint).toContain('reason')
+  })
+
+  it('`reason` 是空白串 → 同样拒绝（"写了字段但没说清"不算说明目的）', async () => {
+    const { ValidatePlugin } = await import('../src/modules/ai/core/tools/plugins/index.js')
+    const outcome = await gatewayOf(deps(), [new ValidatePlugin()]).invoke(
+      modelSpec(),
+      { value: 'v', reason: '   ' },
+      call(),
+    )
+    expect(outcome).toMatchObject({ ok: false, reason: 'invalid-input' })
+    if (outcome.ok) throw new Error('应当被拒绝')
+    expect(outcome.message).toContain('reason')
+  })
+
+  it('`reason` 非字符串 → 同样拒绝（不给"半个值"混进审计）', async () => {
+    const { ValidatePlugin } = await import('../src/modules/ai/core/tools/plugins/index.js')
+    const outcome = await gatewayOf(deps(), [new ValidatePlugin()]).invoke(
+      modelSpec(),
+      { value: 'v', reason: 42 },
+      call(),
+    )
+    expect(outcome).toMatchObject({ ok: false, reason: 'invalid-input' })
+  })
+
+  it('给了合法 reason → 正常执行；`ctx.reason` 拿得到它，而执行体的 `input` 里**没有**它', async () => {
+    const { ValidatePlugin } = await import('../src/modules/ai/core/tools/plugins/index.js')
+    let seenInput: unknown
+    let seenReason: string | null = null
+    const outcome = await gatewayOf(deps(), [new ValidatePlugin()]).invoke(
+      modelSpec({
+        exec: async (input: unknown, ctx: unknown) => {
+          seenInput = input
+          seenReason = (ctx as ToolCallContext).reason
+          return 'ok'
+        },
+      }),
+      { value: 'v', reason: '用户要看这台机器的环境' },
+      call(),
+    )
+    expect(outcome).toEqual({ ok: true, data: 'ok' })
+    // 执行体拿到的仍是原契约（注入字段被摘掉了，工具签名与行为不变）
+    expect(seenInput).toEqual({ value: 'v' })
+    // 理由单独交给 ctx（工具可以读它写业务日志）
+    expect(seenReason).toBe('用户要看这台机器的环境')
+  })
+
+  it('reason 也进审计账本（`callReason`，与拒绝原因 `reason` 分开）', async () => {
+    const stack = deps()
+    const { AuditEndPlugin, ValidatePlugin } = await import(
+      '../src/modules/ai/core/tools/plugins/index.js'
+    )
+    const envelope = {
+      conversationId: 'conv-1',
+      parentRunId: 'run-1',
+      triggeredBy: 'user-1',
+      isAdmin: false,
+      depth: 0,
+      agentKey: 'assistant',
+      rootAgentKey: 'assistant',
+      model: {},
+      childToolbox: new Map(),
+      skills: [],
+    }
+    await gatewayOf(stack, [
+      new ValidatePlugin(),
+      new AuditEndPlugin(stack.metas, silentLogger as never),
+    ]).invoke(
+      modelSpec(),
+      { value: 'v', reason: '用户要看这台机器的环境' },
+      call({ callId: 'call-reason', envelope }),
+    )
+    expect(stack.metas.take('run-1', 'call-reason')).toMatchObject({
+      ok: true,
+      callReason: '用户要看这台机器的环境',
+    })
   })
 })

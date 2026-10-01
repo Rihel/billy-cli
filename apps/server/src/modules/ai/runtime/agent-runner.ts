@@ -561,7 +561,9 @@ export class AgentRunner {
     await request.writer.write({
       type: 'data-sub-agent',
       id: subRunId,
-      data: { runId: subRunId, name: request.name, ...data },
+      // `toolCallId` = 发起这次委派的 `run-sub-agent` 调用 id：前端据此把"原始工具卡"与
+      // "子助手紧凑卡"去重（同一件事不画两张卡），以及把事件并进对应的卡
+      data: { runId: subRunId, toolCallId: request.toolCallId, name: request.name, ...data },
     })
   }
 }

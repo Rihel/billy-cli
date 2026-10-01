@@ -31,6 +31,7 @@ import { AgentStreamStore } from '../src/modules/ai/runtime/stream-store.service
 import { TimelineRepository } from '../src/modules/ai/runtime/timeline.repository.js'
 import {
   MOCK_CHILD_TEXT,
+  MOCK_COMMAND_MARKER,
   MOCK_DELEGATE_MARKER,
   MOCK_FINAL_TEXT,
   MOCK_PLAN_CREATE_TOOL,

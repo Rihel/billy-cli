@@ -3,6 +3,7 @@ import { AppLogger, Db, pageWith, type PageQueryResult } from '@repo/kits'
 import { ToolSource, type AiToolListDto } from '@repo/shared'
 import type { DeepPartial } from 'typeorm'
 import { AiToolEntity } from '../../../../database/entities/ai-tool-entity.js'
+import { toAiToolEventModels } from './tool-event.js'
 import { toJsonSchema } from './tool.schema.js'
 import type { ToolConfigRow, ToolConfigSource } from './tool.config.ports.js'
 import { codeDefaults } from './tool.settings.js'
@@ -51,6 +52,7 @@ export class ToolConfigRepository implements ToolConfigSource {
       title: row.title,
       description: row.description,
       paramSchema: row.paramSchema,
+      events: row.events,
       source: row.source,
       version: (row.updatedAt ?? row.createdAt ?? new Date()).toISOString(),
       secrets: row.secrets ?? {},
@@ -99,6 +101,8 @@ export class ToolConfigRepository implements ToolConfigSource {
       description: spec.description,
       category: spec.category,
       paramSchema: toJsonSchema(spec),
+      // 事件声明同属基础信息：每次启动全量覆盖（库里那份是只读镜像，见设计 §5.17）
+      events: toAiToolEventModels(spec.events),
     }
     if (!existing) {
       await repo.save(
