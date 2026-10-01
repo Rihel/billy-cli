@@ -13,7 +13,7 @@ export interface PromptData {
   agentKey: string
   /** agent 展示名 */
   agentName: string
-  /** 该 agent 被授权的工具（工具 key + 标题 + 说明，来自 ToolBuilder.describe） */
+  /** 该 agent 被授权的工具（工具 key + 标题 + 说明，来自 ToolRegistry.describe） */
   tools: ReadonlyArray<{ key: string; title: string; description: string }>
   /** 模板自定义变量（agent 定义里传） */
   [key: string]: unknown

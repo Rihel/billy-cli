@@ -10,8 +10,8 @@ import { Column, Entity, Index } from 'typeorm'
  * 见 `modules/ai-model/provider-adapters.ts` 的 `PROVIDER_ENDPOINTS`）。
  *
  * 三条口径：
- * - **密钥只存密文**：`api_key_cipher`（AES-256-GCM），另存 `api_key_hint`（`sk-…abcd`）供人辨认；
- *   对外接口永不回传明文（见 `packages/shared` 的 `AiProviderSchema`）；
+ * - **密钥明文入库**（`api_key`，2026-10-01 决定）：对外接口只回 `hintOf` 派生的提示串
+ *   （见 `packages/shared` 的 `AiProviderSchema`），页面据此显示"配的是哪一把"；
  * - **唯一键是软删感知的**：`uk_provider_name ... WHERE deleted_at IS NULL` —— 否则删掉一个供应商后
  *   再建同名的会被历史行挡住（这是"软删 + 唯一约束"的经典坑）；
  * - 与 `ai_models` 是**逻辑引用**，不加物理外键（工程硬规则）。
@@ -56,13 +56,16 @@ export class AiProviderEntity extends AuditEntity {
   @Column({ name: 'base_url', type: 'varchar', length: 255, nullable: true })
   baseUrl: string | null = null
 
-  /** 密钥密文（AES-256-GCM：`base64(iv | tag | ciphertext)`；**明文不落库**） */
-  @Column({ name: 'api_key_cipher', type: 'text', nullable: true })
-  apiKeyCipher: string | null = null
+  /**
+   * 密钥（**明文入库**，列名 `api_key`）。
+   *
+   * 工程取舍（2026-10-01 用户决定）：自建 / 内网场景下把"能否直接查库排障"排在"防库泄露"之前。
+   * 代价如实记录：**库被读走就等于密钥泄露**。补偿只有两条：接口不回明文（只回
+   * `hintOf` 派生的提示串），以及 `hasApiKey` 供页面判断"配没配"。
+   */
+  @Column({ name: 'api_key', type: 'text', nullable: true })
+  apiKey: string | null = null
 
-  /** 密钥提示（`sk-…abcd`）：只够辨认"配的是哪一把" */
-  @Column({ name: 'api_key_hint', type: 'varchar', length: 32, nullable: true })
-  apiKeyHint: string | null = null
 
   /** 是否启用（禁用后不允许被选中，也不允许同步） */
   @Column({ name: 'enabled', type: 'boolean', default: true })

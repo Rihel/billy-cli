@@ -33,6 +33,7 @@ import {
 } from './common/index.js'
 import { AdminEntity } from './database/entities/admin-entity.js'
 import { AiModelEntity } from './database/entities/ai-model-entity.js'
+import { AiToolEntity } from './database/entities/ai-tool-entity.js'
 import { AiProviderEntity } from './database/entities/ai-provider-entity.js'
 import { AlertLogEntity } from './database/entities/alert-log-entity.js'
 import { AlertRuleEntity } from './database/entities/alert-rule-entity.js'
@@ -107,6 +108,8 @@ import { UserModule } from './modules/user/index.js'
           // AI 模型模块（配置类：供应商 + 模型；表结构见 docs/design/ai-agent.md §4.8）
           AiProviderEntity,
           AiModelEntity,
+          // 工具配置（配置类：开关 / 作用域 / 限额 / 配置值 / 秘钥；见 docs/design/ai-agent-tool-engine.md §5.5）
+          AiToolEntity,
         ],
         // 审计订阅者：给继承 AuditEntity 的实体自动写 created_by / updated_by / deleted_by
         // （操作人由 main.ts 的 setAuditUserProvider 提供）

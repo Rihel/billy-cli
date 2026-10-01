@@ -149,7 +149,7 @@ export const serverAppConfigSchema = z.object({
     subAgentMaxSteps: z.coerce.number().int().nonnegative().default(0),
     /** 单个子 agent 的墙钟上限（ms；0 = 沿用 runTimeoutMs） */
     subAgentTimeoutMs: z.coerce.number().int().nonnegative().default(0),
-    // ── 命令执行（core bean `command`，设计文档 §3.15）──
+    // ── 命令执行（工具类 `RunCommandTool`，设计文档 §3.15）──
     /**
      * 是否允许 agent 在本机执行命令行命令（**默认开**）。
      *
@@ -164,16 +164,24 @@ export const serverAppConfigSchema = z.object({
     commandMaxOutputBytes: z.coerce.number().int().positive().default(64 * 1024),
     /** 命令的工作根目录（缺省 = 服务进程工作目录）；agent 只能在这个目录之内指定 cwd */
     commandWorkDir: z.string().optional(),
+    // ── 工具引擎（设计 ai-agent-tool-engine.md §5.5 / §5.6）──
+    /**
+     * 单次给模型的工具出参上限（字节）**硬上限**。
+     *
+     * 工具的分页阈值可以在后台按工具改，但改不出这个上限 —— DB 被改坏也突破不了部署边界。
+     */
+    toolPageBytesMax: z.coerce.number().int().positive().default(8 * 1024),
+    /** 每轮取页次数**硬上限**（防模型反复取页烧 token） */
+    toolMaxPagesPerTurnMax: z.coerce.number().int().positive().default(5),
   }),
   /**
    * AI 模型模块配置（配置类数据：供应商 / 模型，见设计文档 §4.8）。
    *
-   * 与本模块的数据表配套：密钥加密口令 + "要不要用环境变量做首次种子"。
-   * 运行时用哪个模型**不在这里** —— 它只来自库（§4.9）。
+   * 与本模块的数据表配套：只要"要不要用环境变量做首次种子"。
+   * 密钥**明文入库**（2026-10-01 决定），所以这里不再有加密口令。
    */
   aiModel: z.object({
     /** 密钥加密口令（AES-256-GCM）；缺省回落 `jwt.secret`，两者都缺 → 服务层抛 3405 */
-    encryptionKey: z.string().optional(),
     /** 首次启动时是否允许用 `MASTRA_*` 环境变量种子初始化供应商与模型（库里有供应商就什么都不做） */
     seedFromEnv: z.boolean().default(true),
   }),
@@ -334,9 +342,10 @@ export const mapServerEnv = (
     commandTimeoutMs: optional(env.AGENT_COMMAND_TIMEOUT_MS),
     commandMaxOutputBytes: optional(env.AGENT_COMMAND_MAX_OUTPUT_BYTES),
     commandWorkDir: optional(env.AGENT_COMMAND_WORK_DIR),
+    toolPageBytesMax: optional(env.AGENT_TOOL_PAGE_BYTES_MAX),
+    toolMaxPagesPerTurnMax: optional(env.AGENT_TOOL_MAX_PAGES_PER_TURN),
   },
   aiModel: {
-    encryptionKey: optional(env.AI_MODEL_ENCRYPTION_KEY),
     // 未设置时留 undefined，由 schema 默认值（true）兜底
     seedFromEnv: parseBoolean(env.AGENT_SEED_FROM_ENV),
   },

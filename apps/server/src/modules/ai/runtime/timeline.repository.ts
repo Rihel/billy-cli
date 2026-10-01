@@ -8,7 +8,7 @@ import {
 } from '@repo/shared'
 import type { DeepPartial } from 'typeorm'
 import { TimelineEntity } from '../../../database/entities/timeline-entity.js'
-import { toPlan, type Plan } from './plan.js'
+import { toPlan, type Plan } from '../core/beans/planner/plan.protocol.js'
 
 /** 实体 → 对外模型 */
 export const toTimelineModel = (record: TimelineEntity): AgentTimelineItemModel => ({
@@ -91,7 +91,7 @@ export class TimelineRepository {
   }
 
   /**
-   * **当前计划** = 该会话里最后一条 `kind='plan'` 事件（append-only，见 `runtime/plan.ts`）。
+   * **当前计划** = 该会话里最后一条 `kind='plan'` 事件（append-only，见 `core/beans/planner/plan.protocol.ts`）。
    *
    * 这是规划能力的**唯一真相源**：规划工具每次执行时都从这里读出"现在改到哪一版了"
    * （而不是把计划塞进运行时信封的快照里 —— 同一轮内多次工具调用会读到过期版本）。
@@ -99,11 +99,44 @@ export class TimelineRepository {
    */
   async latestPlan(conversationId: string): Promise<Plan | null> {
     const repo = await this.repo()
+    // **只看根 run**：子 agent 的清单不该顶掉父的当前计划（信封补上以后子 agent 也有 plan 的可能性，
+    // 见设计 §5.10「子 agent」缺口 3）。相关子查询走 `runs` 主键，与 `excludeSubAgentEvents` 同一手法。
+    const builder = repo
+      .createQueryBuilder('t')
+      .where('t.conversationId = :conversationId', { conversationId })
+      .andWhere('t.kind = :kind', { kind: TimelineKind.Plan })
+      .orderBy('t.seq', 'DESC')
+      .limit(1)
+    excludeSubAgentEvents(builder)
+    const row = await builder.getOne()
+    return toPlan(row?.payload)
+  }
+
+  /**
+   * 取某次工具调用的**完整出参原文**（工具结果分页的回取路径，设计 §5.6）。
+   *
+   * 用途：跨轮 / 跨实例时按 `(会话, toolCallId)` 找到当初那份出参 —— 原文永久保留，
+   * 所以"内存里那份被淘汰了""换了个副本"都还能取到页。
+   */
+  async findToolOutput(conversationId: string, toolCallId: string): Promise<string | null> {
+    const repo = await this.repo()
     const row = await repo.findOne({
-      where: { conversationId, kind: TimelineKind.Plan },
+      where: {
+        conversationId,
+        toolCallId,
+        kind: TimelineKind.ToolResult,
+      },
       order: { seq: 'DESC' },
     })
-    return toPlan(row?.payload)
+    const output = row?.payload?.output
+    if (output === undefined) return null
+    // 分页过的结果在时间线里是 `{ __toolPaged, page, data }`（全量在 `data` 里）：
+    // 取页要的是**全量原文本身**，所以这里脱一层壳
+    const value =
+      typeof output === 'object' && output !== null && '__toolPaged' in output
+        ? (output as { data?: unknown }).data
+        : output
+    return JSON.stringify(value ?? null)
   }
 
   /** 最新一条上下文摘要（组装上下文时用它定位"从哪之后看原文"） */

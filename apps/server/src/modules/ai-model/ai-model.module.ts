@@ -6,7 +6,7 @@ import { AdminModule } from '../admin/admin.module.js'
 import { AiModelController } from './ai-model.controller.js'
 import { AiModelRepository, AiProviderRepository } from './ai-model.repository.js'
 import { AI_MODEL_CONFIG, AiModelService, type AiModelConfig } from './ai-model.service.js'
-import { encryptSecret, hintOf, resolveEncryptionSecret } from './model-secret.js'
+import { hintOf } from './secret-hint.js'
 
 /** 环境变量种子初始化时创建的供应商展示名（固定值，便于人辨认"这是自动建的"） */
 const SEED_PROVIDER_NAME = '环境变量默认'
@@ -64,10 +64,6 @@ export class AiModelSeedService implements OnApplicationBootstrap {
 
       // ① 还没种过：库里一条供应商都没有 → 建种子供应商 + 种子模型
       if ((await this.providers.countIncludingDeleted()) === 0) {
-        const secret = resolveEncryptionSecret({
-          encryptionKey: this.config.encryptionKey,
-          fallbackSecret: this.config.fallbackSecret,
-        })
         const baseUrl = process.env.MASTRA_BASE_URL?.trim() || null
         const modelKey = envModel.includes('/')
           ? envModel.slice(envModel.lastIndexOf('/') + 1)
@@ -78,8 +74,7 @@ export class AiModelSeedService implements OnApplicationBootstrap {
           slug: SEED_PROVIDER_SLUG,
           kind: seedKind,
           baseUrl,
-          apiKeyCipher: encryptSecret(envApiKey, secret),
-          apiKeyHint: hintOf(envApiKey),
+          apiKey: envApiKey,
           enabled: true,
         })
         await this.models.create({
@@ -138,8 +133,7 @@ export class AiModelSeedService implements OnApplicationBootstrap {
  * AI 模型模块：供应商 / 模型的配置与明细同步（`/ai-model/*`）+ 运行时模型解析（供 `AiModule` 用）。
  *
  * `AI_MODEL_CONFIG` 是**本模块自己的配置 bean**（配置即模块自身注入的 bean，惰性取 `ConfigService`）：
- * - `encryptionKey` 取 `aiModel.encryptionKey`（env `AI_MODEL_ENCRYPTION_KEY`，可选）；
- * - `fallbackSecret` 取 `jwt.secret`（两者都缺 → 服务层抛 3405，不静默存明文）；
+ * - 密钥**明文入库**（2026-10-01 决定），所以装配里不再有加密口令；
  * - `seedFromEnv` 取 `aiModel.seedFromEnv`（env `AGENT_SEED_FROM_ENV`，默认 true）。
  *
  * **exports `AiModelService`**：`AiModule` 的运行时靠它解析"这一轮用哪个模型"。
@@ -154,8 +148,7 @@ export class AiModelSeedService implements OnApplicationBootstrap {
       provide: AI_MODEL_CONFIG,
       inject: [ConfigService],
       useFactory: (config: ConfigService): AiModelConfig => ({
-        encryptionKey: config.get<string>('aiModel.encryptionKey'),
-        fallbackSecret: config.get<string>('jwt.secret'),
+
         seedFromEnv: config.get<boolean>('aiModel.seedFromEnv') ?? true,
       }),
     },

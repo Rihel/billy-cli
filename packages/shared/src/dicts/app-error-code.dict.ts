@@ -188,14 +188,24 @@ export const AppErrorCodes = createDict({
     http: 409,
   },
   ProviderKeyUnavailable: {
-    label: '未配置密钥加密口令，无法保存密钥',
+    label: '模型供应商未配置密钥，请先在后台「模型管理」补上',
     value: 3405,
-    http: 500,
+    http: 409,
   },
   ModelNotConfigured: {
     label: '还没有配置可用的模型，请先在后台「模型管理」添加',
     value: 3406,
     http: 409,
+  },
+  ToolNotRegistered: {
+    label: '工具不存在或未注册',
+    value: 3407,
+    http: 404,
+  },
+  ToolConfigInvalid: {
+    label: '工具配置不合法',
+    value: 3408,
+    http: 400,
   },
   InvalidInput: {
     label: '参数校验失败',

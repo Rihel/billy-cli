@@ -9,7 +9,7 @@ import type { Mastra } from '@mastra/core/mastra'
 import { AiModelService } from '../../ai-model/index.js'
 import { AGENT_REGISTRY } from './ai.registry.js'
 import type { AgentRegistry } from './ai.types.js'
-import { MASTRA } from './ai.mastra.js'
+import { MASTRA } from '../mastra/ai.mastra.js'
 
 /**
  * Agent 装配查询服务：能力状态 + agent 清单 + 取用已装配的 Mastra 实例。

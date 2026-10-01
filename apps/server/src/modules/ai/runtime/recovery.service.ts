@@ -3,7 +3,7 @@ import { AppLogger, RedisStore } from '@repo/kits'
 import { RunErrorStage, RunStatus, TimelineKind, TimelineRole } from '@repo/shared'
 import type { Mastra } from '@mastra/core/mastra'
 import { AgentConfig, type AgentConfig as AgentConfigValue } from '../core/ai.config.js'
-import { MASTRA } from '../core/ai.mastra.js'
+import { MASTRA } from '../mastra/ai.mastra.js'
 import { RunRepository } from './run.repository.js'
 import { TimelineRepository } from './timeline.repository.js'
 

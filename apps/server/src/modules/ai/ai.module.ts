@@ -1,23 +1,26 @@
 import { Module } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
+import { AppLogger, Db, RedisStore } from '@repo/kits'
 import { DEFAULT_AGENT_KEY, createAgentDefinitions } from './agents/index.js'
 import { AiController } from './ai.controller.js'
-import {
-  AgentConfig,
-  toAgentModelId,
-  type AgentConfig as AgentConfigValue,
-} from './core/ai.config.js'
-import { readAgentRuntime } from './core/ai.core.types.js'
+import { AiToolController } from './ai-tool.controller.js'
+import { AiToolService } from './tools/ai-tool.service.js'
+import { AgentConfig, toAgentModelId, type AgentConfig as AgentConfigValue } from './core/ai.config.js'
 import { decideModelForMastra } from './core/ai.model-decision.js'
 import { AiModelModule, AiModelService } from '../ai-model/index.js'
-import { MASTRA, createMastra } from './core/ai.mastra.js'
+import { MASTRA, createMastra } from './mastra/ai.mastra.js'
 import { AGENT_REGISTRY, createAgentRegistry } from './core/ai.registry.js'
 import { AgentService } from './core/ai.service.js'
 import type { AgentRegistry as AgentRegistryValue } from './core/ai.types.js'
-import { AGENT_CORES, type AgentCore } from './core/ai.core.types.js'
-import { PlannerCore } from './core/planner.core.js'
-import { SubAgentCore } from './core/subagent.core.js'
-import { CommandCore } from './core/command.core.js'
+import { RunCommandTool } from './core/beans/command.tool.js'
+import { RunSubAgentTool } from './core/beans/subagent.tool.js'
+import {
+  PlanCompleteTool,
+  PlanCreateTool,
+  PlanDeleteTool,
+  PlanReorderTool,
+  PlannerStore,
+} from './core/beans/planner/index.js'
 import { createPromptEngine, PROMPT_ENGINE } from './prompts/index.js'
 import {
   AgentChatService,
@@ -35,9 +38,38 @@ import {
   TimelineRepository,
 } from './runtime/index.js'
 import { SkillLoader } from './skills/index.js'
-import { ToolBuilder } from './tools/tool.builder.js'
-import { AGENT_TOOLS, type AgentTool } from './tools/tools.types.js'
-import { AppLogger, Db } from '@repo/kits'
+import { toMastraSkills } from './mastra/skill.adapter.js'
+import { toMastraTools } from './mastra/tool.adapter.js'
+import { AGENT_TOOLS } from './tools/tools.types.js'
+import type { ToolEnvCaps } from './tools/tools.types.js'
+import type { AgentToolClass } from './tools/tool.class.js'
+import { AGENT_TOOL_PLUGINS, ToolGateway } from './tools/tool.gateway.js'
+import { ToolRegistry } from './tools/tool.registry.js'
+import { ToolSeedService } from './tools/tool.seed.service.js'
+import { ToolConfigRepository } from './tools/tool.config.repository.js'
+import {
+  TIMELINE_REPOSITORY,
+  TOOL_CONFIG_SOURCE,
+  TOOL_ENV_CAPS,
+} from './tools/tool.config.ports.js'
+import { ToolConfigService } from './tools/tool.config.service.js'
+import { TOOL_CLOCK, TOOL_RATE_COUNTER } from './tools/tool.ports.js'
+import { RedisToolRateCounter } from './tools/tool.rate-counter.redis.js'
+import { systemToolClock } from './tools/tool.clock.js'
+import { ToolCallMetaStore } from './tools/tool.meta.js'
+import { ToolResultStore } from './tools/tool-result.store.js'
+import { ReadToolResultTool } from './tools/read-tool-result.tool.js'
+import {
+  AuditEndPlugin,
+  AuditStartPlugin,
+  EnabledPlugin,
+  PaginatePlugin,
+  PrecheckPlugin,
+  RateLimitPlugin,
+  RedactPlugin,
+  ScopePlugin,
+  ValidatePlugin,
+} from './tools/plugins/index.js'
 import { AdminModule } from '../admin/admin.module.js'
 import { AuthModule } from '../auth/auth.module.js'
 
@@ -46,50 +78,31 @@ import { AuthModule } from '../auth/auth.module.js'
  *
  * 有**两处**消费方，所以以 value provider 的形式进容器（token `PROMPT_ENGINE`）：
  * 1. 装配期：把所有 agent 声明渲染成定义（提示词里的工具清单来自实际授权）；
- * 2. 运行期：渲染只属于**会话开局**的「运行环境」片段（操作系统 + 当前时间，见 §3.15）——
- *    这段文本按轮求值，不能写死在装配期的提示词里。
+ * 2. 运行期：渲染只属于**会话开局**的「运行环境」片段。
  */
 const prompts = createPromptEngine()
-
-/**
- * 「哪些供应商走官方 SDK 适配」的**权威名单**在 `modules/ai-model/provider-adapters.ts`
- * 的 `OFFICIAL_ADAPTER_KINDS`（那边同时服务"列模型"与"跑对话"两件事）。
- *
- * 为什么用 `ai_providers.kind` 而不是 `modelRef` 的 slug 前缀判断：slug 是展示用的、人能改、
- * 还能撞名 —— 靠它判断会让官方适配在"改个 slug"之后静默失效（踩过：思考整段丢失）。
- * 加一家 = 装上它的 `@ai-sdk/<provider>`（版本要匹配 `ai@6`）并把 kind 写进那张表。
- */
 
 /** 构造期求值动态模型时只警告一次（每个 agent 各求值一次，别刷屏） */
 let warnedMissingEnvelope = false
 
 /**
- * AI 模块：把 Mastra 装进 Nest 的 DI。
+ * AI 模块：把 Mastra 装进 Nest 的 DI（工具侧见 `docs/design/ai-agent-tool-engine.md`）。
  *
  * 装配链路（全部在 **bootstrap 期**完成校验，坏配置起不来）：
- *   `ConfigService.get('agent')`
- *     → `AgentConfig` bean
- *     → `AGENT_TOOLS`（业务工具 bean，**当前为空**）+ `AGENT_CORES`（core bean 的 `asTools()`）
- *     → `ToolBuilder`：把两个来源拍平成一张 key → 工具表（重复 key 直接报错；
- *        业务工具可以为空，但 core bean 必须交出工具）
- *     → `AgentRunner`：子 agent 执行器（core bean `subagent` 依赖它）
- *     → `SkillLoader`：加载 `skills/catalog/**`（SKILL.md 校验失败直接报错）
- *     → `AGENT_REGISTRY`：agent 声明 + 提示词模板渲染（工具清单从 ToolBuilder 注入）
- *     → `MASTRA`：`createMastra` 把 agent / 工具 / 技能装配成实例；未配置模型时注入 null
- *     → `AgentService` 查询装配结果 + `AiController` 暴露只读路由。
+ *   `ConfigService.get('agent')` → `AgentConfig` bean
+ *     → `ToolGateway`（插件链）+ `AGENT_TOOLS`（工具类实例数组）
+ *     → `ToolRegistry`：对每个实例 `buildToolSpec()` 拍平成一张 key → 工具表
+ *       （重复 key、缺装饰器声明、默认值没给全，直接报错）
+ *     → `ToolSeedService`：启动时把声明对账进 `ai_tools`（只补不覆盖人工改动）
+ *     → `AGENT_REGISTRY`：agent 声明 + 提示词渲染（工具清单从注册机来，与实际挂载同源）
+ *     → `MASTRA`：`createMastra` 装配实例（工具 / 技能经 `ai/mastra/**` 适配器转成 Mastra 词汇）
  *
- * 加一个 agent：`agents/<名字>.agent.ts` + `agents/index.ts` 登记 + `prompts/templates/<模板>.eta`。
- * 加一个业务工具：写一个 `@Injectable()` 工具 bean + 在 `AGENT_TOOLS` 的 `inject` 里加一行。
- * 加一个 core bean：写一个 `@Injectable()` 类实现 `AgentCore.asTools()` + 在 `AGENT_CORES` 登记。
- * 加一个技能：`skills/catalog/<名字>/SKILL.md`（+ 可选 `references/`）。
+ * 加一个 agent：`agents/<名字>.agent.ts` + `agents/index.ts` 登记 + 模板。
+ * 加一个工具：写一个 `@Injectable()` 工具类（`@ToolDecl` + `@ToolExec`）+ 在 `AGENT_TOOLS` 登记一行。
  */
 @Module({
-  // AiModelModule 提供"这一轮用哪个模型"的真相源（模型与供应商都在库里，§4.9）
-  // 不 import 任何业务模块：AI 模块与业务模块解耦（业务能力将来经 AGENT_TOOLS 以工具 bean 接入）
-  // AdminModule：AiController 挂 AnyAuthGuard（前台用户 **或** 管理员），
-  // 而该守卫内部依赖 AdminAuthGuard —— **守卫的依赖模块也要 import**，否则启动报 UnknownDependencies（踩过）
   imports: [AuthModule, AdminModule, AiModelModule],
-  controllers: [AiController],
+  controllers: [AiController, AiToolController],
   providers: [
     {
       provide: AgentConfig,
@@ -99,42 +112,97 @@ let warnedMissingEnvelope = false
     },
     // 提示词引擎：装配期（渲染 agent 定义）与运行期（渲染开局环境片段）共用同一个实例
     { provide: PROMPT_ENGINE, useValue: prompts },
-    // ---- 工具：业务工具 bean 的汇总点（**当前为空**，AI 模块与业务模块解耦）----
-    // 新增业务工具时：写一个 `@Injectable()` 的 tool bean + 在下面 inject 里加一行
+
+    // ───────────────────────── 工具引擎（主体） ─────────────────────────
+    // 工具类实例（**唯一的工具来源**）：注册机对每个实例读装饰器声明
     {
       provide: AGENT_TOOLS,
-      inject: [],
-      useFactory: (): AgentTool[] => [],
+      inject: [
+        RunCommandTool,
+        RunSubAgentTool,
+        PlanCreateTool,
+        PlanReorderTool,
+        PlanCompleteTool,
+        PlanDeleteTool,
+        ReadToolResultTool,
+      ],
+      useFactory: (...tools: AgentToolClass[]): AgentToolClass[] => tools,
     },
-    // ---- core bean：跨业务的运行时能力（`asTools()` 交出工具）----
-    // 新增 core bean 在此登记一行：`AGENT_CORES` 汇总后由 ToolBuilder 与业务工具拍平成一张表
-    AgentRunner,
-    PlannerCore,
-    SubAgentCore,
-    CommandCore,
+    // 部署上限（env）：库里的值再大也突破不了
     {
-      provide: AGENT_CORES,
-      inject: [PlannerCore, SubAgentCore, CommandCore],
-      useFactory: (...cores: AgentCore[]) => cores,
+      provide: TOOL_ENV_CAPS,
+      inject: [AgentConfig],
+      useFactory: (config: AgentConfigValue): ToolEnvCaps => ({
+        pageBytesMax: config.toolPageBytesMax,
+        maxPagesPerTurnMax: config.toolMaxPagesPerTurnMax,
+        command: {
+          enabled: config.commandEnabled,
+          timeoutMsMax: config.commandTimeoutMs,
+          maxOutputBytesMax: config.commandMaxOutputBytes,
+          ...(config.commandWorkDir ? { workDir: config.commandWorkDir } : {}),
+        },
+      }),
     },
-    ToolBuilder,
-    // ---- 技能加载器（catalog 目录默认；`SKILL_CATALOG_DIR` 为可选的覆盖 token）----
+    { provide: TOOL_CLOCK, useValue: systemToolClock },
+    ToolCallMetaStore,
+    ToolConfigRepository,
+    { provide: TOOL_CONFIG_SOURCE, useExisting: ToolConfigRepository },
+    { provide: TIMELINE_REPOSITORY, useExisting: TimelineRepository },
+    { provide: TOOL_RATE_COUNTER, inject: [RedisStore], useFactory: (redis: RedisStore) => new RedisToolRateCounter(redis) },
+    ToolResultStore,
+    ToolConfigService,
+    // 网关插件链：**数组顺序 = 执行顺序**（redact → paginate → audit-end 不能换）
+    {
+      provide: AGENT_TOOL_PLUGINS,
+      inject: [TOOL_RATE_COUNTER, AppLogger, ToolResultStore, TOOL_ENV_CAPS, ToolCallMetaStore],
+      useFactory: (
+        counter: RedisToolRateCounter,
+        logger: AppLogger,
+        results: ToolResultStore,
+        caps: ToolEnvCaps,
+        metas: ToolCallMetaStore,
+      ) => [
+        new EnabledPlugin(),
+        new ScopePlugin(),
+        new RateLimitPlugin(counter, logger),
+        new ValidatePlugin(),
+        new PrecheckPlugin(),
+        new AuditStartPlugin(),
+        new RedactPlugin(logger),
+        new PaginatePlugin(results, caps, logger),
+        new AuditEndPlugin(metas, logger),
+      ],
+    },
+    ToolGateway,
+    ToolRegistry,
+    ToolSeedService,
+
+    // ───────────────────────── 工具类（运行时能力） ─────────────────────────
+    AgentRunner,
+    PlannerStore,
+    RunCommandTool,
+    RunSubAgentTool,
+    PlanCreateTool,
+    PlanReorderTool,
+    PlanCompleteTool,
+    PlanDeleteTool,
+    ReadToolResultTool,
+
+    // ───────────────────────── agent 注册表与 Mastra 实例 ─────────────────────────
     SkillLoader,
-    // ---- agent 注册表：声明 + 提示词渲染（提示词里的工具清单来自 ToolBuilder）----
     {
       provide: AGENT_REGISTRY,
-      inject: [ToolBuilder],
-      useFactory: (toolBuilder: ToolBuilder): AgentRegistryValue =>
-        createAgentRegistry(createAgentDefinitions(prompts, toolBuilder), DEFAULT_AGENT_KEY),
+      inject: [ToolRegistry],
+      useFactory: (registry: ToolRegistry): AgentRegistryValue =>
+        createAgentRegistry(createAgentDefinitions(prompts, registry), DEFAULT_AGENT_KEY),
     },
-    // ---- Mastra 实例：未配置模型时注入 null（其余功能照常可用）----
     {
       provide: MASTRA,
-      inject: [AgentConfig, AGENT_REGISTRY, ToolBuilder, SkillLoader, Db, AppLogger, AiModelService],
+      inject: [AgentConfig, AGENT_REGISTRY, ToolRegistry, SkillLoader, Db, AppLogger, AiModelService],
       useFactory: async (
         config: AgentConfigValue,
         registry: AgentRegistryValue,
-        toolBuilder: ToolBuilder,
+        tools: ToolRegistry,
         skillLoader: SkillLoader,
         db: Db,
         logger: AppLogger,
@@ -142,48 +210,12 @@ let warnedMissingEnvelope = false
       ) => {
         return createMastra({
           /**
-           * 模型**每次调用**从运行时信封里取（编排层已经从库里解析好，§4.9）。
+           * 模型**每次调用**从运行时信封里取（编排层已经从库里解析好）。
            *
-           * 这里不做任何兜底：拿不到信封说明调用没走编排层（配置错误），直接抛 ——
-           * 静默回落到某个默认模型会让"agent 只能用配的模型"失效。
+           * 这里不做兜底：真实调用的收口在编排层（`AgentChatService.resolveRuntimeModel`），
+           * 解析不出来抛 3406/3402/3404，连流都不会建；构造期拿不到信封时由适配器给占位模型。
            */
-          /**
-           * 模型**每次调用**从运行时信封里取（编排层已经把这一轮的模型从库里解析好，§4.9）。
-           *
-           * ⚠️ **这里不能抛错**（踩过的坑）：Mastra 在 `new Mastra({ agents })` 构造 durable agent 时
-           * 就会**先求值一次**动态模型（`Agent.getModel()` 要拿模型做持久化元数据），那一刻
-           * `requestContext` 是空的 —— 早先在这里 throw 直接把服务启动打挂了。
-           *
-           * 所以：拿不到信封时返回一个**占位模型**（不会被真正用于任何请求），
-           * 真正的收口在编排层：`AgentChatService.resolveRuntimeModel()` 在任何调用之前
-           * 就从库里解析模型并塞进信封，解析不出来抛 3406/3402/3404，连流都不会建。
-           */
-          resolveModel: (_definition, requestContext) => {
-            const model = readAgentRuntime(requestContext)?.model
-            if (!model) {
-              if (!warnedMissingEnvelope) {
-                warnedMissingEnvelope = true
-                logger.warn('ai.model.envelope_missing', {
-                  reason:
-                    '构造期或未注入运行时信封的调用（占位模型不会被真正使用；真实调用请走编排层）',
-                })
-              }
-              // 占位：id 必须是 `provider/model` 形态；地址指向本机一个不监听的端口，
-              // 万一真的被用于请求，会立刻连接失败而不是静默打到某个真实供应商上
-              return {
-                id: toAgentModelId('placeholder/not-configured'),
-                url: 'http://127.0.0.1:1/v1',
-                apiKey: 'placeholder',
-              }
-            }
-            /**
-             * **走官方适配还是通用 OpenAI 兼容**：决策在 `decideModelForMastra`（纯函数，可单测）。
-             *
-             * 两条硬约束（都踩过，详见那个文件的注释）：
-             * - 官方适配**不能传 `url`**：传了就退化成通用兼容层，思考字段（DeepSeek 的
-             *   `reasoning_content`）整段丢失，且 `agent.stream()` 的返回形态变成工作流包装对象；
-             * - 判据是**供应商类型**（`ai_providers.kind`），不是 `modelRef` 的 slug 前缀。
-             */
+          resolveModel: (_definition, model) => {
             const decision = decideModelForMastra(model)
             if (decision.ignoredBaseURL) {
               // 不静默：用户确实配了地址却被忽略，排障时"我明明配了地址"必须有据可查
@@ -197,19 +229,28 @@ let warnedMissingEnvelope = false
             return decision.model
           },
           definitions: registry.all(),
-          resolveTools: (ids) => toolBuilder.build(ids),
-          resolveSkills: (names) => skillLoader.resolve(names),
-          // 存储适配层：快照落我们自己的表（只实现 workflows 域）
+          resolveTools: (ids) => toMastraTools(tools.toolbox(ids), logger),
+          resolveSkills: async (names) => toMastraSkills(await skillLoader.resolve(names)),
           storage: new AgentMastraStore(db, logger),
           durableAgents: config.durableEnabled,
+          onMissingEnvelope: () => {
+            if (warnedMissingEnvelope) return
+            warnedMissingEnvelope = true
+            logger.warn('ai.model.envelope_missing', {
+              reason:
+                '构造期或未注入运行时信封的调用（占位模型不会被真正使用；真实调用请走编排层）',
+            })
+          },
         })
       },
     },
-    AgentService,
-    // ---- 会话运行时：仓储 + 服务（会话增删查 / 时间线查询）----
+
+    // ---- 会话运行时：仓储（服务都注入它们；漏了就在启动时 UnknownDependencies）----
     ConversationRepository,
     RunRepository,
     TimelineRepository,
+    AgentService,
+    AiToolService,
     AgentConversationService,
     AgentTimelineService,
     AgentRunService,
@@ -221,9 +262,12 @@ let warnedMissingEnvelope = false
   ],
   exports: [
     AgentService,
+    AiToolService,
     AgentRunService,
     AGENT_REGISTRY,
-    ToolBuilder,
+    ToolRegistry,
+    ToolGateway,
+    ToolConfigService,
     SkillLoader,
     AgentConversationService,
     AgentTimelineService,

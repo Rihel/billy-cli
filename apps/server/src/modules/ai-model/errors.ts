@@ -60,7 +60,7 @@ export class ProviderDisabledError extends AppError {
  * 密钥加密口令不可用（3405）。
  *
  * 三种情形共用（都要求"明确报错、不静默"）：
- * - `AI_MODEL_ENCRYPTION_KEY` 与 `JWT_SECRET` 都没配 → 无法加密 / 解密；
+ * - 供应商密钥没配（明文入库后不再有"解不开"这条路）；
  * - 密文解不开（口令变更 / 密文损坏）→ 绝不返回空串；
  * - 供应商压根没配密钥，却被运行时选中。
  */
@@ -68,7 +68,7 @@ export class ProviderKeyUnavailableError extends AppError {
   readonly code = AppErrorCodes.ProviderKeyUnavailable
 
   constructor(
-    message = '未配置密钥加密口令（AI_MODEL_ENCRYPTION_KEY 与 JWT_SECRET 都为空），无法加解密供应商密钥',
+    message = '模型供应商未配置密钥，请先在后台「模型管理」补上',
   ) {
     super(message)
   }

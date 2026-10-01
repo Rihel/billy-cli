@@ -1,7 +1,28 @@
-export * from './tools.types.js'
+/**
+ * 工具引擎（主体）对外出口。
+ *
+ * 纪律：这个目录**不许 import `@mastra/*`**（`pnpm check:mastra` 守）；
+ * Mastra 只经 `../mastra/**` 适配器接入。
+ */
 export * from './tool-keys.js'
-export * from './tool.builder.js'
-// 业务工具 bean（`*.tool.ts`）当前为空：AI 模块已与业务模块解耦。
-// 新增业务工具时：写一个 `@Injectable()` bean + 在 `ai.module.ts` 的 `AGENT_TOOLS` 登记一行。
-// 规划（todo-write）与子 agent（run-sub-agent）等**跨业务的运行时能力**不在本目录：
-// 它们是 core bean（`ai/core/*.core.ts`，用 `asTools()` 交出工具），见 docs/design/ai-agent.md §3.14.1。
+export * from './tools.types.js'
+export * from './tool.decorator.js'
+export * from './tool.class.js'
+export * from './paginate.js'
+export * from './tool.settings.js'
+export * from './tool.config.ports.js'
+export * from './tool.config.service.js'
+export * from './tool.errors.js'
+export * from './tool.schema.js'
+export * from './tool.caller.js'
+export * from './tool.clock.js'
+export * from './tool.rate-counter.redis.js'
+export * from './tool.ports.js'
+export * from './tool.seed.service.js'
+export * from './tool.meta.js'
+export * from './tool-result.store.js'
+export * from './tool.gateway.js'
+export * from './tool.registry.js'
+export * from './tool.config.repository.js'
+export * from './read-tool-result.tool.js'
+export * from './plugins/index.js'

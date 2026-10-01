@@ -23,6 +23,10 @@ import { Column, Entity, Index } from 'typeorm'
   unique: true,
   where: 'tool_call_id IS NOT NULL',
 })
+// 工具结果分页的**回取**路径：按 (会话, toolCallId) 找原文（设计 §5.6）
+@Index('idx_timeline_conversation_tool_call', ['conversationId', 'toolCallId'], {
+  where: 'tool_call_id IS NOT NULL',
+})
 // 组装上下文时快速定位「最新一条摘要」
 @Index('idx_timeline_summary', ['conversationId', 'seq'], { where: "kind = 'summary'" })
 export class TimelineEntity extends AuditEntity {

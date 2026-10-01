@@ -1,6 +1,6 @@
-import { Agent } from '@mastra/core/agent'
-import { toAISdkStream } from '@mastra/ai-sdk'
 import { Inject, Injectable } from '@nestjs/common'
+import { ModuleRef } from '@nestjs/core'
+import dedent from 'dedent'
 import { AppLogger } from '@repo/kits'
 import {
   RunErrorStage,
@@ -9,11 +9,14 @@ import {
   TimelineRole,
 } from '@repo/shared'
 import { AGENT_MAX_STEPS } from '../core/ai.constants.js'
-import {
-  AgentConfig,
-  toAgentModelId,
-  type AgentConfig as AgentConfigValue,
-} from '../core/ai.config.js'
+import { createMastraAgent, toMastraModel } from '../mastra/agent.adapter.js'
+import { toMastraSkills } from '../mastra/skill.adapter.js'
+import { toUiStream } from '../mastra/stream.adapter.js'
+import { toRequestContext } from '../mastra/context.adapter.js'
+import { toMastraTools } from '../mastra/tool.adapter.js'
+import { ToolRegistry } from '../tools/tool.registry.js'
+import { ToolCallMetaStore } from '../tools/tool.meta.js'
+import { AgentConfig, type AgentConfig as AgentConfigValue } from '../core/ai.config.js'
 import type { AgentRuntimeEnvelope } from '../core/ai.core.types.js'
 import { toUsageRecord, usageField } from './usage.js'
 import { RunRepository } from './run.repository.js'
@@ -41,6 +44,14 @@ export interface SubAgentOutcome {
   reason?: string
 }
 
+/** 子 agent 的四个旋钮（来自 `run-sub-agent` 的工具配置；0 = 沿用部署默认） */
+export interface SubAgentQuotas {
+  maxPerRun?: number
+  maxDepth?: number
+  maxSteps?: number
+  timeoutMs?: number
+}
+
 /** 发起一个子 agent 的入参（工具层解析完后交过来） */
 export interface SubAgentRequest {
   /** 子助手短标识（主 agent 起的名字） */
@@ -55,6 +66,8 @@ export interface SubAgentRequest {
   envelope: AgentRuntimeEnvelope
   /** 把实时明细写进父流（非流式调用时为 undefined） */
   writer?: SubAgentWriter
+  /** 四个旋钮（来自工具配置；缺省走部署默认） */
+  quotas?: SubAgentQuotas
 }
 
 /** Mastra 的工具输出流（`ToolStream` 的最小面；只用到 `write`） */
@@ -84,6 +97,30 @@ const DEFAULT_RUN_TIMEOUT_MS = 10 * 60_000
 const DEFAULT_MAX_PER_RUN = 4
 const DEFAULT_MAX_DEPTH = 1
 
+/**
+ * 给子 agent 的提示词**追加一段固定的能力段**（设计 §5.10 第 4 条，待拍板项按"追加"实现）。
+ *
+ * 为什么追加：主 agent 写的那份是"任务指令"，但子 agent 的上下文里**没有我们的《工具》模板段**
+ * （它的提示词由主 agent 现写），于是它不知道自己手上有什么、也不知道"不能再造子助手"这条边界。
+ * 这段尾巴不覆盖主 agent 的原话，只补三件事：工具清单、边界、交付要求。
+ */
+const withCapabilityTail = (
+  writtenByParent: string,
+  envelope: AgentRuntimeEnvelope,
+): string => {
+  const tools = [...envelope.childToolbox.keys()]
+  const toolList = tools.length > 0 ? tools.map((key) => `\`${key}\``).join('、') : '（无）'
+  return dedent`
+    ${writtenByParent.trim()}
+
+    # 你的能力与边界（系统补充，不要与上面的要求冲突）
+    - 你可以调用的工具：${toolList}；
+    - 你**不能**创建子助手，也不要假装有清单外的工具；需要别的能力就把结论交回主 agent；
+    - 你看到的上下文只有上面的任务说明，主 agent 与用户的对话你**看不到**；
+    - 交付要求：给出结论 + 关键依据（口径、命令、文件路径），不要转贴大段原始输出。
+  `
+}
+
 /** 子 agent 名称 → 入库用的 agent key（`sub:<slug>`，列宽 64） */
 const toSubAgentKey = (name: string): string =>
   `sub:${name.trim().replace(/\s+/g, '-').slice(0, 48)}`
@@ -99,7 +136,7 @@ const toSubAgentKey = (name: string): string =>
  * - 实时明细经工具上下文的 `writer` 写成 `data-sub-agent*` 块，进的是**父的那一条流**；
  * - 幂等：同一 `(parent_run_id, tool_call_id)` 已成功过 → 直接复用结论（不重跑、不重复扣费）。
  *
- * 它是普通 bean（**不是** core bean）：core bean 负责"把能力交出去"，本类负责"怎么跑"。
+ * 它是普通 bean（**不是**工具类）：工具类负责"把能力交出去"，本类负责"怎么跑"。
  */
 @Injectable()
 export class AgentRunner {
@@ -108,7 +145,26 @@ export class AgentRunner {
     @Inject(TimelineRepository) private readonly timelines: TimelineRepository,
     @Inject(AgentConfig) private readonly config: AgentConfigValue,
     @Inject(AppLogger) private readonly logger: AppLogger,
+    @Inject(ToolCallMetaStore) private readonly toolMetas: ToolCallMetaStore,
+    /**
+     * ⚠️ 注册机**只能惰性取**（`ModuleRef`），不能进构造器。
+     *
+     * 原因：`ToolRegistry → AGENT_TOOLS → RunSubAgentTool → AgentRunner`，若这里再注入注册机就成了环；
+     * 而 Nest 对**工厂型 provider** 的环**不报错、直接静默死锁**（实测：进程 CPU 0%，永远停在启动中）。
+     * 这里只在真正要写时间线时取一次，那时容器早就绪了。
+     */
+    @Inject(ModuleRef) private readonly moduleRef: ModuleRef,
   ) {}
+
+  /** 惰性取注册机（用于把"模型编出来的工具名"标成 `unknown-tool`）；取不到就退化为"不判定" */
+  private knownToolPredicate(): ((toolKey: string) => boolean) | undefined {
+    try {
+      const registry = this.moduleRef.get(ToolRegistry, { strict: false })
+      return (toolKey: string) => Boolean(registry.get(toolKey))
+    } catch {
+      return undefined
+    }
+  }
 
   /** 跑一个子 agent（工具 `run-sub-agent` 的唯一入口；**不抛业务异常**，失败作为工具结论返回） */
   async runSubAgent(request: SubAgentRequest): Promise<SubAgentOutcome> {
@@ -116,7 +172,9 @@ export class AgentRunner {
     const startedAt = Date.now()
 
     // ① 深度守卫（当前工具面已保证为 1：子 agent 拿不到委派类工具，这里是第二道闸）
-    if (envelope.depth + 1 > (this.config.subAgentMaxDepth || DEFAULT_MAX_DEPTH)) {
+    const quotas = request.quotas ?? {}
+    const maxDepth = quotas.maxDepth || this.config.subAgentMaxDepth || DEFAULT_MAX_DEPTH
+    if (envelope.depth + 1 > maxDepth) {
       return this.rejected(request, startedAt, '子助手不能再创建子助手（已达深度上限）')
     }
 
@@ -151,7 +209,7 @@ export class AgentRunner {
 
     // ③ 配额守卫：**不抛异常炸整轮**，把"配额已满"作为结论交回给模型，让它自己收场
     const existingChildren = await this.runs.countChildren(envelope.parentRunId)
-    const maxPerRun = this.config.subAgentMaxPerRun || DEFAULT_MAX_PER_RUN
+    const maxPerRun = quotas.maxPerRun || this.config.subAgentMaxPerRun || DEFAULT_MAX_PER_RUN
     if (existingChildren >= maxPerRun) {
       return this.rejected(
         request,
@@ -194,13 +252,19 @@ export class AgentRunner {
     })
     await this.writeState(request, child.id, { status: RunStatus.Running, task: request.task })
 
-    const recorder = new StreamRecorder(this.timelines, {
-      conversationId: envelope.conversationId,
-      runId: child.id,
-    })
+    const recorder = new StreamRecorder(
+      this.timelines,
+      { conversationId: envelope.conversationId, runId: child.id },
+      {
+        metas: this.toolMetas,
+        ...(this.knownToolPredicate()
+          ? { isKnownTool: this.knownToolPredicate() as (toolKey: string) => boolean }
+          : {}),
+      },
+    )
     // 子 agent 的墙钟上限（0 = 沿用单轮上限）；心跳照跳，看门狗不会误杀长跑的子 agent
     const timeoutMs =
-      this.config.subAgentTimeoutMs || this.config.runTimeoutMs || DEFAULT_RUN_TIMEOUT_MS
+      quotas.timeoutMs || this.config.subAgentTimeoutMs || this.config.runTimeoutMs || DEFAULT_RUN_TIMEOUT_MS
     const timeoutController = new AbortController()
     const timeoutTimer = setTimeout(() => timeoutController.abort(), timeoutMs)
     const signals = [timeoutController.signal]
@@ -214,32 +278,39 @@ export class AgentRunner {
     try {
       // 子 agent **继承父这一轮的模型**（信封里带着）：不单独选模型，也就不会出现"父子用了两个模型"
       const model = envelope.model
-      const agent = new Agent({
+      /**
+       * 子 agent 的信封：**继承父的**，只改这几项。
+       *
+       * 为什么必须传下去（设计 §5.10）：网关要判身份 / 作用域 / 限流，审计要写会话与发起人；
+       * 早先子 agent 那轮没有信封，规划工具（`plan-*`）每次调用都白烧一步。
+       */
+      const childEnvelope: AgentRuntimeEnvelope = {
+        ...envelope,
+        depth: envelope.depth + 1,
+        agentKey,
+        // 作用域仍按**根** agent 判（子 agent 沿用父的判定）
+        rootAgentKey: envelope.rootAgentKey,
+        // 子 agent 的工具面 / 技能面：与父同一个口径（编排层在装配信封时算好）
+        childToolbox: envelope.childToolbox,
+      }
+      const agent = createMastraAgent({
         // 临时实例：跑完即弃，**不注册进 Mastra**（否则会污染 agent 清单、且同名会冲突）
         id: `${agentKey}#${child.id}`,
         name: request.name,
-        // **完全用主 agent 写的提示词**：我们不加 partial、不改一个字
-        instructions: request.systemPrompt,
-        model: {
-          // modelRef 是 `<providerSlug>/<modelKey>`，正是 Mastra 认识的 `provider/model` 形态
-          id: toAgentModelId(model.modelRef),
-          url: model.baseURL,
-          apiKey: model.apiKey,
-        },
-        tools: envelope.childTools,
-        skills: [...envelope.childSkills],
+        // **完全用主 agent 写的提示词** + 我们追加的一段能力尾巴（工具清单 / 边界 / 交付要求）
+        instructions: withCapabilityTail(request.systemPrompt, childEnvelope),
+        model: () => toMastraModel(model),
+        tools: toMastraTools(envelope.childToolbox, this.logger),
+        skills: toMastraSkills(envelope.skills),
       })
 
       const output = await agent.stream([{ role: 'user', content: request.task }] as never, {
-        maxSteps: this.config.subAgentMaxSteps || AGENT_MAX_STEPS,
+        maxSteps: quotas.maxSteps || this.config.subAgentMaxSteps || AGENT_MAX_STEPS,
         abortSignal,
+        // 信封传下去：子 agent 那一轮的工具调用因此也能过网关的权限与审计
+        requestContext: toRequestContext(childEnvelope),
       })
-      const uiStream = toAISdkStream(output, {
-        from: 'agent',
-        version: 'v6',
-        sendReasoning: true,
-        sendSources: true,
-      })
+      const uiStream = toUiStream(output)
 
       const reader = (uiStream as unknown as ReadableStream<ChunkLike>).getReader()
       for (;;) {

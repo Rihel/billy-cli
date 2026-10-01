@@ -45,11 +45,11 @@ export interface AgentConfig {
   /** 单个子 agent 的墙钟上限（ms；0 = 沿用 `runTimeoutMs`） */
   subAgentTimeoutMs: number
 
-  // ── 命令执行（core bean `command`，§3.15）──
+  // ── 命令执行（工具类 `RunCommandTool`，§3.15）──
   /**
    * 是否允许 agent 在本机执行命令行命令。
    *
-   * 关掉时工具仍在（装配期 core bean 必须交出工具），但每次调用返回"已被关闭"的结论 ——
+   * 关掉时工具仍在（装配期工具池必须非空），但每次调用返回"已被关闭"的结论 ——
    * 模型能理解并改口，好过遇到一个不存在的工具。
    */
   commandEnabled: boolean
@@ -59,6 +59,12 @@ export interface AgentConfig {
   commandMaxOutputBytes: number
   /** 命令的工作根目录（缺省 = 服务进程工作目录）；agent 传入的 `cwd` 只能在这个目录之内 */
   commandWorkDir?: string
+
+  // ── 工具引擎（设计 ai-agent-tool-engine.md §5.5 / §5.6）──
+  /** 单次给模型的工具出参上限（字节）**硬上限**（后台可改工具级阈值，但改不出这个上限） */
+  toolPageBytesMax: number
+  /** 每轮取页次数**硬上限** */
+  toolMaxPagesPerTurnMax: number
 }
 
 /**

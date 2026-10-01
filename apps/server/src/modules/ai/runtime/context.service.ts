@@ -9,6 +9,8 @@ import {
   type AgentConfig as AgentConfigValue,
 } from '../core/ai.config.js'
 import { ContextTooLongError } from '../core/ai.errors.js'
+import { paginate, serializeToolValue, toModelPage } from '../tools/paginate.js'
+import { isPagedToolValue } from '../tools/tools.types.js'
 import { TimelineRepository } from './timeline.repository.js'
 
 /** 一次组装最多读这么多事件（防止超长会话把内存撑爆；超出的本来就该被压缩） */
@@ -337,7 +339,48 @@ export class ContextService {
       if (event.kind === TimelineKind.ToolResult) {
         const toolCallId = event.toolCallId ?? ''
         const toolName = event.toolKey ?? 'unknown'
-        const output = event.payload?.output ?? null
+        const raw = event.payload?.output ?? null
+        /**
+         * **跨轮的分页视图**（设计 §5.6）：结果被分页过时，库里存的是 `{__toolPaged, page, data}`，
+         * 模型这一轮看到的应当是**同一页**（第 1 页 + 页头 + 取页提示）—— 用与执行时**同一个纯函数**
+         * 重算，保证前后逐字节一致（否则模型会看到"同一结果的两个不同开头"）。
+         */
+        if (isPagedToolValue(raw)) {
+          const page = paginate(
+            serializeToolValue(raw.data),
+            raw.page.pageSize,
+            1,
+            raw.page.handle,
+          )
+          const view = JSON.stringify(toModelPage(page))
+          const index = toolCallSegments.get(toolCallId)
+          const resultMessage: ModelMessage = {
+            role: 'tool',
+            content: [
+              {
+                type: 'tool-result',
+                toolCallId,
+                toolName,
+                output: { type: 'json', value: toModelPage(page) as never },
+              },
+            ],
+          }
+          const tokenCost = estimateTokens(view) + 8
+          if (index !== undefined) {
+            segments[index].messages.push(resultMessage)
+            segments[index].seqs.push(event.seq)
+            segments[index].tokens += tokenCost
+          } else {
+            segments.push({
+              messages: [resultMessage],
+              seqs: [event.seq],
+              tokens: tokenCost,
+              turnIndex,
+            })
+          }
+          continue
+        }
+        const output = raw
         const serialized = JSON.stringify(output ?? null)
         const truncated = serialized.length > toolResultCharLimit
         if (truncated) trimmedCount += 1

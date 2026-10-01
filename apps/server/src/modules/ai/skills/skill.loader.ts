@@ -1,9 +1,9 @@
 import { Inject, Injectable, Optional } from '@nestjs/common'
-import { createSkill, validateSkillContent, type InlineSkill } from '@mastra/core/skills'
+import { validateSkillContent } from '@mastra/core/skills'
 import { AppLogger } from '@repo/kits'
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs'
 import { join, relative, sep } from 'node:path'
-import type { AgentSkill, AgentSkillMeta } from './skills.types.js'
+import type { AgentSkill, AgentSkillMeta, SkillRef } from './skills.types.js'
 
 /** 技能内容目录（与 loader 同级的 `catalog/`，dev 走 src、构建后走 dist，由 copy-assets 保证存在） */
 const defaultCatalogDir = (): string => join(import.meta.dirname, 'catalog')
@@ -67,7 +67,7 @@ export class SkillLoader {
    * 未知技能名**抛错**：agent 声明了不存在的技能属于装配错误，
    * 必须启动即失败，而不是让模型在缺技能的情况下"自由发挥"。
    */
-  async resolve(names: readonly string[]): Promise<InlineSkill[]> {
+  async resolve(names: readonly string[]): Promise<SkillRef[]> {
     const skills = await this.loadAll()
     const byName = new Map(skills.map((skill) => [skill.name, skill]))
     return names.map((name) => {
@@ -77,7 +77,7 @@ export class SkillLoader {
           `agent 声明了不存在的技能: ${name}（已加载: ${[...byName.keys()].join(', ') || '无'}）`,
         )
       }
-      return skill.skill
+      return skill
     })
   }
 
@@ -133,14 +133,7 @@ export class SkillLoader {
     const instructions = validation.instructions ?? ''
     const references = this.loadReferences(skillPath)
 
-    return {
-      name,
-      description,
-      instructions,
-      path: skillPath,
-      references,
-      skill: createSkill({ name, description, instructions, references }),
-    }
+    return { name, description, instructions, path: skillPath, references }
   }
 
   /** 读取 `references/` 下的全部文件（技能长内容按需加载，故这里是「打包进技能」而非注入提示词） */

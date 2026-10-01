@@ -11,7 +11,6 @@ import {
   type AgentChatResultModel,
   type AgentRunStopResultModel,
 } from '@repo/shared'
-import { toAISdkStream } from '@mastra/ai-sdk'
 import type { Mastra } from '@mastra/core/mastra'
 import { RequestContext } from '@mastra/core/request-context'
 import { AGENT_MAX_STEPS } from '../core/ai.constants.js'
@@ -28,7 +27,7 @@ import {
   RunNotFoundError,
 } from '../core/ai.errors.js'
 import { AGENT_REGISTRY } from '../core/ai.registry.js'
-import { MASTRA } from '../core/ai.mastra.js'
+import { MASTRA } from '../mastra/ai.mastra.js'
 import {
   AGENT_RUNTIME_KEY,
   type AgentRuntimeEnvelope,
@@ -39,7 +38,10 @@ import type { AgentDefinition, AgentRegistry } from '../core/ai.types.js'
 import { buildEnvironmentData } from '../prompts/environment.js'
 import { PROMPT_ENGINE, type PromptEngine } from '../prompts/prompt.engine.js'
 import { SkillLoader } from '../skills/index.js'
-import { ToolBuilder } from '../tools/tool.builder.js'
+import { ToolRegistry } from '../tools/tool.registry.js'
+import { ToolCallMetaStore } from '../tools/tool.meta.js'
+import { toUiStream } from '../mastra/stream.adapter.js'
+import { toRequestContext } from '../mastra/context.adapter.js'
 import type { ConversationEntity } from '../../../database/entities/conversation-entity.js'
 import type { TimelineEntity } from '../../../database/entities/timeline-entity.js'
 import { AgentConversationService } from './conversation.service.js'
@@ -51,7 +53,7 @@ import { TimelineRepository } from './timeline.repository.js'
 import { AgentStreamStore } from './stream-store.service.js'
 import { StreamRecorder } from './stream-recorder.js'
 import { readStreamSteps, readStreamUsage } from './stream-result.js'
-import { toPlanPayload } from './plan.js'
+import { toPlanPayload } from '../core/beans/planner/plan.protocol.js'
 import { mergeUsage, toUsageRecord, totalTokensOf } from './usage.js'
 
 /** 并发保护的唯一索引名（同一会话同时只允许一轮进行中） */
@@ -128,7 +130,8 @@ export class AgentChatService {
     @Inject(TimelineRepository) private readonly timelines: TimelineRepository,
     @Inject(ContextService) private readonly context: ContextService,
     @Inject(AgentStreamStore) private readonly streamStore: AgentStreamStore,
-    @Inject(ToolBuilder) private readonly toolBuilder: ToolBuilder,
+    @Inject(ToolRegistry) private readonly toolRegistry: ToolRegistry,
+    @Inject(ToolCallMetaStore) private readonly toolMetas: ToolCallMetaStore,
     @Inject(SkillLoader) private readonly skillLoader: SkillLoader,
     @Inject(AiModelService) private readonly models: AiModelService,
     @Inject(AppLogger) private readonly logger: AppLogger,
@@ -181,7 +184,11 @@ export class AgentChatService {
   /** 本进程内活动运行的中止控制器（跨副本经 Redis 停止频道广播） */
   private readonly activeRuns = new Map<string, AbortController>()
 
-  async chat(userId: string, input: AgentChatDto): Promise<AgentChatResultModel> {
+  async chat(
+    userId: string,
+    input: AgentChatDto,
+    isAdmin = false,
+  ): Promise<AgentChatResultModel> {
     const mastra = this.requireMastra()
     const conversation = await this.resolveConversation(userId, input)
     const definition = this.registry.resolve(input.agentKey ?? conversation.agentKey)
@@ -634,6 +641,7 @@ export class AgentChatService {
     userId: string,
     input: AgentChatDto,
     response: StreamResponseLike,
+    isAdmin = false,
   ): Promise<void> {
     const mastra = this.requireMastra()
     const conversation = await this.resolveConversation(userId, input)
@@ -652,7 +660,9 @@ export class AgentChatService {
         run.id,
         definition,
         built.compactionRange,
-        await this.buildRuntimeContext(conversation.id, run.id, definition, userId, model),
+        await this.buildRuntimeContext(conversation.id, run.id, definition, userId, model, {
+          isAdmin,
+        }),
       )
       built = await this.buildContext(conversation.id, definition, input.message, model)
     }
@@ -680,10 +690,14 @@ export class AgentChatService {
       step: 0,
     })
 
-    const recorder = new StreamRecorder(this.timelines, {
-      conversationId: conversation.id,
-      runId: run.id,
-    })
+    const recorder = new StreamRecorder(
+      this.timelines,
+      { conversationId: conversation.id, runId: run.id },
+      {
+        metas: this.toolMetas,
+        isKnownTool: (toolKey) => Boolean(this.toolRegistry.get(toolKey)),
+      },
+    )
     let offset = 0
     let stepCount = 0
     let lastProgressAt = 0
@@ -730,12 +744,7 @@ export class AgentChatService {
       })
       // 子 agent 的实时明细**不走** Mastra 的静态子 agent 通道（我们没有静态子 agent）：
       // 由 `run-sub-agent` 工具经 `context.writer` 写成 `data-sub-agent*` 块进这条流，见 §3.14.5
-      const uiStream = toAISdkStream(output, {
-        from: 'agent',
-        version: 'v6',
-        sendReasoning: true,
-        sendSources: true,
-      })
+      const uiStream = toUiStream(output)
 
       const recorded = (uiStream as unknown as ReadableStream<UiChunkLike>).pipeThrough(
         new TransformStream<UiChunkLike, UiChunkLike>({
@@ -1082,8 +1091,8 @@ export class AgentChatService {
    * 组装并放入**运行时信封**（`requestContext`）。
    *
    * 为什么由编排层算：`run-sub-agent` 工具需要"子 agent 能用哪些工具"，
-   * 而这依赖 `ToolBuilder`；若让 core bean 自己注入 `ToolBuilder`，装配会成环
-   * （ToolBuilder 依赖 core bean）。信封把这份依赖倒过来，见设计文档 §3.14.4。
+   * 而这依赖注册机；若让工具自己注入注册机，装配会成环
+   * （注册机依赖工具）。信封把这份依赖倒过来，见设计文档 §3.14.4。
    *
    * `systemPrompt` 是**渲染后的系统指令全文**（见 {@link resolveSystemPrompt}）；不传则用装配期的基础指令。
    */
@@ -1093,23 +1102,27 @@ export class AgentChatService {
     definition: AgentDefinition,
     userId: string,
     model: RuntimeModel,
-    options: { abortSignal?: AbortSignal; systemPrompt?: string } = {},
+    options: { abortSignal?: AbortSignal; systemPrompt?: string; isAdmin?: boolean } = {},
   ): Promise<RequestContext> {
     const envelope: AgentRuntimeEnvelope = {
       conversationId,
       parentRunId,
       triggeredBy: userId,
+      // 身份由编排层给（控制器从鉴权上下文取）：工具作用域判定用它，**不由模型决定**
+      isAdmin: options.isAdmin ?? false,
       depth: 0,
+      agentKey: definition.key,
+      // 根 agent key：子 agent 沿用父的判定（作用域按它算）
+      rootAgentKey: definition.key,
       model,
-      // 子 agent 的工具面 = 全部 − 委派类（于是它不能再造子 agent，深度天然为 1）
-      childTools: this.toolBuilder.buildDelegable(),
-      childSkills: await this.skillLoader.resolve(definition.skills),
+      // 子 agent 的工具面 = 全部 − 委派类 − child:deny（于是它不能再造子 agent，深度天然为 1）
+      childToolbox: this.toolRegistry.childToolbox(),
+      skills: await this.skillLoader.resolve(definition.skills),
       ...(options.systemPrompt ? { systemPrompt: options.systemPrompt } : {}),
       ...(options.abortSignal ? { abortSignal: options.abortSignal } : {}),
     }
-    const requestContext = new RequestContext()
-    requestContext.setRaw(AGENT_RUNTIME_KEY, envelope)
-    return requestContext
+    // 与 `RequestContext` 的读写收在适配器里（主体不认识 Mastra 的这个词）
+    return toRequestContext(envelope)
   }
 
   /**

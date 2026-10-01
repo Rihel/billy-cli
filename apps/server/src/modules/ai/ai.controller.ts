@@ -72,6 +72,16 @@ export class AiController {
    * 而 `currentUserId()` 在管理员身份下会**抛错**（`currentAdminId()` 反之亦然）。
    * 与 SSE 订阅同一套做法：从请求上下文里读，读到谁就是谁。
    */
+  /**
+   * 当前身份**是不是管理员**。
+   *
+   * 工具作用域（`admin` / `user`）需要这个判据，而 `ownerId()` 把两种身份揉成了一个字符串；
+   * 判据与它同源：**有 userId 就是前台用户，只有 adminId 才是管理员**。
+   */
+  private isAdminIdentity(): boolean {
+    return !requestContext.get('userId') && Boolean(requestContext.get('adminId'))
+  }
+
   private ownerId(): string {
     const userId = requestContext.get('userId')
     if (userId) return userId
@@ -128,7 +138,7 @@ export class AiController {
   @Post('chat')
   @HttpCode(200)
   chatOnce(@Body({ schema: AgentChatSchema }) input: AgentChatDto) {
-    return this.chat.chat(this.ownerId(), input)
+    return this.chat.chat(this.ownerId(), input, this.isAdminIdentity())
   }
 
   /**
@@ -141,7 +151,7 @@ export class AiController {
     @Body({ schema: AgentChatSchema }) input: AgentChatDto,
     @Res() response: Response,
   ): Promise<void> {
-    await this.chat.chatStream(this.ownerId(), input, response)
+    await this.chat.chatStream(this.ownerId(), input, response, this.isAdminIdentity())
   }
 
   /** 停止某一轮（本进程 abort；在别的副本上则广播） */

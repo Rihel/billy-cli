@@ -1,5 +1,6 @@
-import { TimelineKind, TimelineRole } from '@repo/shared'
-import { toPlanPayload } from './plan.js'
+import { TimelineKind, TimelineRole, ToolResultState } from '@repo/shared'
+import type { ToolCallMeta, ToolCallMetaStore } from '../tools/tool.meta.js'
+import { toPlanPayload } from '../core/beans/planner/plan.protocol.js'
 import type { TimelineRepository } from './timeline.repository.js'
 
 /** AI SDK UI Message Stream 的片段（只取我们关心的字段，避免把它的联合类型铺满本文件） */
@@ -25,6 +26,14 @@ export interface StepLikeLite {
 export interface RecorderContext {
   conversationId: string
   runId: string
+}
+
+/** 录制器的可选项（审计与"未知工具"标记都要它） */
+export interface RecorderOptions {
+  /** 一次工具调用的审计旁证（网关写的；写 `tool-result` 行时按 toolCallId 取走） */
+  metas?: ToolCallMetaStore
+  /** 工具 key 是否在注册表里（不在 = 模型编出来的名字，落一个可排查的 state） */
+  isKnownTool?: (toolKey: string) => boolean
 }
 
 /**
@@ -58,6 +67,7 @@ export class StreamRecorder {
   constructor(
     private readonly timelines: TimelineRepository,
     private readonly ctx: RecorderContext,
+    private readonly options: RecorderOptions = {},
   ) {}
 
   /** 记一个片段；未知类型忽略（start/finish/data-* 等不影响落库完整性） */
@@ -106,21 +116,23 @@ export class StreamRecorder {
       case 'tool-output-available': {
         // 结果片段不带工具名（AI SDK v6 只给 toolCallId）→ 用入参那一步记下的名字补上
         const toolName = chunk.toolName ?? this.toolNameOf(chunk.toolCallId)
+        const meta = this.takeMeta(chunk.toolCallId)
         await this.append({
           role: TimelineRole.Assistant,
           kind: TimelineKind.ToolResult,
-          state: 'output-available',
+          state: ToolResultState._source.Available.value,
           toolKey: toolName,
           toolCallId: chunk.toolCallId ?? null,
           payload: {
             toolCallId: chunk.toolCallId ?? null,
             toolName,
-            // **出参完整落库，不裁剪**
+            // **出参完整落库，不裁剪**（分页只改"给模型那一份"，见设计 §5.6）
             output: chunk.output ?? null,
             isError: false,
+            ...(meta ? { outcome: meta } : {}),
           },
         })
-        // 规划能力：todo-write 的输出额外落一条 `plan` 事件（当前计划 = 最后一条 plan 事件）
+        // 规划能力：四个规划工具的输出都额外落一条 `plan` 事件（当前计划 = 最后一条 plan 事件）
         const plan = toPlanPayload(toolName, chunk.output)
         if (plan) {
           await this.append({
@@ -133,10 +145,18 @@ export class StreamRecorder {
       }
       case 'tool-output-error': {
         const toolName = chunk.toolName ?? this.toolNameOf(chunk.toolCallId)
+        const errorText = chunk.errorText ?? null
+        // 模型编了个不存在的工具：上游把它落成工具错误结果（整轮不失败）。这里**单独标一个 state**，
+        // 让它在时间线上可查、可计数 —— 这是"提示词与工具面不一致"的信号（设计 §5.4）
+        const unknownTool =
+          Boolean(toolName) && this.options.isKnownTool ? !this.options.isKnownTool(toolName!) : false
+        const meta = this.takeMeta(chunk.toolCallId)
         await this.append({
           role: TimelineRole.Assistant,
           kind: TimelineKind.ToolResult,
-          state: 'output-error',
+          state: unknownTool
+            ? ToolResultState._source.UnknownTool.value
+            : ToolResultState._source.Error.value,
           toolKey: toolName,
           toolCallId: chunk.toolCallId ?? null,
           payload: {
@@ -144,7 +164,9 @@ export class StreamRecorder {
             toolName,
             output: null,
             isError: true,
-            errorText: chunk.errorText ?? null,
+            errorText,
+            ...(unknownTool ? { reason: 'unknown-tool' } : {}),
+            ...(meta ? { outcome: meta } : {}),
           },
         })
         return
@@ -213,6 +235,17 @@ export class StreamRecorder {
       })
     }
     return { toolCallCount: this.toolCallCount, errorText: this.errorText }
+  }
+
+  /**
+   * 取走这次调用的审计旁证（网关写的）。
+   *
+   * 为什么要"取走"而不是"读"：同一次工具调用只会有一条 `tool-result` 行，
+   * 取走即删避免崩溃恢复重放时把上一轮的旁证贴到新一轮上。
+   */
+  private takeMeta(toolCallId: string | undefined): ToolCallMeta | null {
+    if (!toolCallId || !this.options.metas) return null
+    return this.options.metas.take(this.ctx.runId, toolCallId)
   }
 
   /** 由 toolCallId 找回工具 key（结果片段不带工具名，见 `toolNames` 的注释） */

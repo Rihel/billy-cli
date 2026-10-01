@@ -33,7 +33,7 @@ import {
   ProviderNotFoundError,
   ProviderSlugInvalidError,
 } from './errors.js'
-import { decryptSecret, encryptSecret, hintOf, resolveEncryptionSecret } from './model-secret.js'
+import { hintOf } from './secret-hint.js'
 import { listProviderModels, type ListProviderModelsResult } from './provider-adapters.js'
 
 /**
@@ -44,10 +44,8 @@ import { listProviderModels, type ListProviderModelsResult } from './provider-ad
  * 而装饰器 `@Inject(token)` 在类定义期求值，循环导入会直接撞上 TDZ 报错。
  */
 export interface AiModelConfig {
-  /** 密钥加密口令（`AI_MODEL_ENCRYPTION_KEY`）；缺省回落 `jwt.secret` */
-  encryptionKey?: string
-  /** 回落口令（通常是 `jwt.secret`） */
-  fallbackSecret?: string
+  // 密钥**明文入库**（2026-10-01 决定），所以这里不再有加密口令相关的字段；
+  // 接口层仍只回 `hintOf` 派生的提示串。
   /** 是否允许首次启动时用环境变量种子初始化（`AGENT_SEED_FROM_ENV`，默认 true） */
   seedFromEnv: boolean
 }
@@ -142,15 +140,14 @@ export class AiModelService {
       kind: input.kind,
       slug,
       baseUrl: input.baseUrl ?? null,
-      apiKeyCipher: apiKey ? encryptSecret(apiKey, this.requireSecret()) : null,
-      apiKeyHint: apiKey ? hintOf(apiKey) : null,
+      apiKey: apiKey || null,
       enabled: input.enabled ?? true,
     })
     this.logger.log('ai-model.provider.created', {
       id: record.id,
       name: record.name,
       slug: record.slug,
-      hasApiKey: Boolean(record.apiKeyCipher),
+      hasApiKey: Boolean(record.apiKey),
     })
     return this.toProviderModel(record, 0)
   }
@@ -162,8 +159,7 @@ export class AiModelService {
 
   /**
    * 更新供应商（**三态语义**，前端按此传参，必须严格对齐）：
-   * - `apiKey`：`undefined`（省略）= **不改**；`''` = **清空**（`apiKeyCipher` 与 `apiKeyHint` 一起置 null）；
-   *   有值 = 加密覆盖；
+   * - `apiKey`：`undefined`（省略）= **不改**；`''` = **清空**；有值 = 覆盖（明文入库）；
    * - `baseUrl`：`undefined` = **不改**；`null` = **清空**（落库 NULL，回到该 kind 的官方默认地址）；
    *   字符串 = 覆盖；
    * - `slug` / `name`：改动时都做软删感知的唯一性检查，冲突给可读错误（不让 23505 冒到 HTTP 边界）。
@@ -192,13 +188,7 @@ export class AiModelService {
     if (input.enabled !== undefined) changes.enabled = input.enabled
     if (input.apiKey !== undefined) {
       const apiKey = input.apiKey.trim()
-      if (apiKey) {
-        changes.apiKeyCipher = encryptSecret(apiKey, this.requireSecret())
-        changes.apiKeyHint = hintOf(apiKey)
-      } else {
-        changes.apiKeyCipher = null
-        changes.apiKeyHint = null
-      }
+      changes.apiKey = apiKey || null
     }
 
     const record = await this.providers.update(existing.id, changes)
@@ -229,12 +219,13 @@ export class AiModelService {
   async syncProvider(input: AiProviderIdDto): Promise<AiProviderSyncResultModel> {
     const provider = await this.requireProvider(input.providerId)
     if (!provider.enabled) throw new ProviderDisabledError(provider.id)
-    if (!provider.apiKeyCipher) {
+    // 同步路径的"没配密钥"给 3403（与"拉取失败"同一类：都是同步做不成），文案指向"去填密钥"
+    const apiKey = provider.apiKey?.trim()
+    if (!apiKey) {
       throw new ModelSyncFailedError(
         `供应商「${provider.name}」未配置密钥，无法拉取模型明细；请先在「编辑供应商」里填入 API Key`,
       )
     }
-    const apiKey = this.decryptProviderKey(provider)
 
     const syncedAt = new Date()
     let listing: ListProviderModelsResult
@@ -312,7 +303,7 @@ export class AiModelService {
       const provider = await this.requireProvider(input.providerId)
       kind = input.kind ?? provider.kind
       if (baseUrl === undefined) baseUrl = provider.baseUrl ?? undefined
-      if (!apiKey && provider.apiKeyCipher) apiKey = this.decryptProviderKey(provider)
+      if (!apiKey && provider.apiKey) apiKey = provider.apiKey
     }
 
     if (!apiKey) {
@@ -450,7 +441,7 @@ export class AiModelService {
       displayName: model.displayName,
       providerKind: provider.kind,
       ...(provider.baseUrl ? { baseURL: provider.baseUrl } : {}),
-      apiKey: this.decryptProviderKey(provider),
+      apiKey: this.requireProviderKey(provider),
       contextWindow: model.contextWindow,
     }
   }
@@ -465,8 +456,9 @@ export class AiModelService {
       slug: record.slug,
       kind: record.kind,
       baseUrl: record.baseUrl,
-      apiKeyHint: record.apiKeyHint,
-      hasApiKey: Boolean(record.apiKeyCipher),
+      // 提示串**读取时从明文派生**（库里不再存提示列）
+      apiKeyHint: record.apiKey ? hintOf(record.apiKey) : null,
+      hasApiKey: Boolean(record.apiKey),
       enabled: record.enabled,
       lastSyncedAt: record.lastSyncedAt ?? undefined,
       lastSyncError: record.lastSyncError,
@@ -512,30 +504,20 @@ export class AiModelService {
     }
   }
 
-  /** 取加密口令（未配置 → 3405） */
-  private requireSecret(): string {
-    return resolveEncryptionSecret({
-      encryptionKey: this.config.encryptionKey,
-      fallbackSecret: this.config.fallbackSecret,
-    })
-  }
-
-  /** 解出供应商密钥明文（**只在内存里流转**；解不开 / 没配都明确抛 3405） */
-  private decryptProviderKey(provider: AiProviderEntity): string {
-    const cipher = provider.apiKeyCipher
-    if (!cipher) {
+  /**
+   * 取供应商密钥（**明文入库**，这里只做"配没配"的收口）。
+   *
+   * 没配时仍抛 3405（`ProviderKeyUnavailable`）—— 语义从"加密口令不可用"变成"没配密钥"，
+   * 错误码沿用（前端已有对应提示映射）。
+   */
+  private requireProviderKey(provider: AiProviderEntity): string {
+    const apiKey = provider.apiKey?.trim()
+    if (!apiKey) {
       throw new ProviderKeyUnavailableError(
         `供应商「${provider.name}」未配置密钥，无法用于对话；请先在后台「模型管理」补上`,
       )
     }
-    const secret = this.requireSecret()
-    try {
-      return decryptSecret(cipher, secret)
-    } catch (error) {
-      throw new ProviderKeyUnavailableError(
-        `供应商「${provider.name}」密钥解密失败，请重新保存密钥：${messageOf(error)}`,
-      )
-    }
+    return apiKey
   }
 
   /** 名称唯一性检查（软删感知：软删的历史名可以复用，与库里的部分唯一索引同一口径） */
