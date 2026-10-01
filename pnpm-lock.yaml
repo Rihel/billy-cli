@@ -75,6 +75,9 @@ importers:
       dayjs:
         specifier: ^1.11.21
         version: 1.11.21
+      dedent:
+        specifier: ^1.7.2
+        version: 1.7.2
       immer:
         specifier: ^11.1.15
         version: 11.1.15

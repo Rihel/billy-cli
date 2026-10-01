@@ -17,7 +17,7 @@ import {
 } from '@repo/ui'
 import { MessageAction } from '@repo/ui/components/ai-elements/message.tsx'
 import { CopyIcon } from 'lucide-react'
-import { copyText } from './clipboard'
+import { copyText } from '@/lib/clipboard'
 import { collectMessagePlan, type PlanTask } from './plan-panel'
 
 /**

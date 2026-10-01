@@ -14,6 +14,7 @@ import {
   SparklesIcon,
   TerminalIcon,
   UsersIcon,
+  WrenchIcon,
 } from 'lucide-react'
 import {
   SidebarGroup,
@@ -54,6 +55,7 @@ const MENU_ITEMS: MenuItem[] = [
     children: [
       { label: 'AI 会话', key: '/main/ai/chat', icon: BotIcon },
       { label: '模型管理', key: '/main/ai/models', icon: CpuIcon },
+      { label: '工具配置', key: '/main/ai/tools', icon: WrenchIcon },
       { label: '审计与复盘', key: '/main/ai/audit', icon: SparklesIcon },
     ],
   },

@@ -13,6 +13,10 @@ import {
   AiProviderTestDto,
   AiProviderTestResultModel,
   AiProviderUpdateDto,
+  AiToolKeyDto,
+  AiToolListDto,
+  AiToolModel,
+  AiToolUpdateDto,
   AdminAuthResultModel,
   AdminLoginDto,
   AdminModel,
@@ -510,6 +514,31 @@ export class ServerClient extends HttpClient<BearerTokenCredentials> {
       remove: (data: AiModelIdDto) =>
         this.post<SuccessResultModel>('/ai-model/model/remove', data),
     },
+  }
+
+  /* ========== AI 工具配置（后台管理） ========== */
+
+  /**
+   * 工具配置（**管理员鉴权**）：工具清单 / 详情 / 更新 / 恢复默认。
+   *
+   * 三条与后端约定绑定的口径：
+   * - **秘钥只进不出**：`update` 里的 `secrets` 是唯一写入入口，响应只回 `secretFields[].hint`；
+   * - **省略 = 不改**：`update` 只提交要改的字段，`secrets` 里给空串才是清空；
+   * - **runtime 工具只读**：Mastra 自带的技能工具 `editable` 为 false，`update` / `reset` 会被拒。
+   */
+  aiTool = {
+    /** 列表：分页 + 关键字 / 类别 / 开关 / 来源筛选 */
+    list: (data: AiToolListDto) =>
+      this.post<AppPageQueryResponse<AiToolModel>>('/ai-tool/list', data),
+
+    /** 详情：含默认值、秘钥提示串、哪些 agent 授权了它 */
+    detail: (data: AiToolKeyDto) => this.post<AiToolModel>('/ai-tool/detail', data),
+
+    /** 更新（省略的字段 = 不改；`secrets` 给空串 = 清空该秘钥） */
+    update: (data: AiToolUpdateDto) => this.post<AiToolModel>('/ai-tool/update', data),
+
+    /** 恢复默认（清掉人工覆盖与已配秘钥，回到代码声明） */
+    reset: (data: AiToolKeyDto) => this.post<AiToolModel>('/ai-tool/reset', data),
   }
 
   /* ========== 登录设备（会话） ========== */

@@ -19,7 +19,7 @@ import { loadWholeRuns, loadWholeTimeline, type ServerClient } from './data'
 import { toUIMessages } from './history'
 import { MessageRow } from './message-row'
 import { statusLabel, statusVariant } from './sub-agent-panel'
-import { copyText } from './clipboard'
+import { copyText } from '@/lib/clipboard'
 import { durationText, tokenText } from './format'
 
 /**
