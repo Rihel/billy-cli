@@ -1,8 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import { PlanCompleteTool, PlannerStore, type PlanOutput } from '../../src/modules/ai/core/beans/planner/index.js'
+import { PlannerStore, PlannerTools, type PlanOutput } from '../../src/modules/ai/core/beans/planner/index.js'
 import { TOOL_KEYS } from '../../src/modules/ai/tools/tool-keys.js'
-import { buildToolSpec } from '../../src/modules/ai/tools/tool.class.js'
-import { buildToolStackDeps, makeToolContext, silentLogger } from '../helpers/ai-tool-stack.js'
+import { buildToolStackDeps, makeToolContext, silentLogger, specByKey } from '../helpers/ai-tool-stack.js'
 
 /**
  * `plan-complete`（规划工具集之一）的单测：把**一个或多个**做完的任务标成 `completed`
@@ -23,7 +22,7 @@ const SEED = {
 const build = (latestPlan: unknown = SEED) => {
   const deps = buildToolStackDeps()
   const timelines = { latestPlan: async () => latestPlan, findToolOutput: async () => null }
-  const spec = buildToolSpec(new PlanCompleteTool(new PlannerStore(timelines as never)))
+  const spec = specByKey(new PlannerTools(new PlannerStore(timelines as never)), TOOL_KEYS.planComplete)
   const envelope = {
     conversationId: 'conv-1',
     parentRunId: 'run-1',

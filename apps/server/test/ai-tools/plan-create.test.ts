@@ -1,8 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import { PlanCreateTool, PlannerStore, type PlanOutput } from '../../src/modules/ai/core/beans/planner/index.js'
+import { PlannerStore, PlannerTools, type PlanOutput } from '../../src/modules/ai/core/beans/planner/index.js'
 import { TOOL_KEYS } from '../../src/modules/ai/tools/tool-keys.js'
-import { buildToolSpec } from '../../src/modules/ai/tools/tool.class.js'
-import { buildToolStackDeps, makeToolContext, silentLogger } from '../helpers/ai-tool-stack.js'
+import { buildToolStackDeps, makeToolContext, silentLogger, specByKey } from '../helpers/ai-tool-stack.js'
 
 /**
  * `plan-create`（规划工具集之一）的单测（设计 §5.9 的标准测试集要求每个工具有自己的测试文件）。
@@ -16,7 +15,7 @@ const T1 = { id: 't1', title: '取最近的待办', status: 'completed' }
 const build = (latestPlan: unknown = null) => {
   const deps = buildToolStackDeps()
   const timelines = { latestPlan: async () => latestPlan, findToolOutput: async () => null }
-  const spec = buildToolSpec(new PlanCreateTool(new PlannerStore(timelines as never)))
+  const spec = specByKey(new PlannerTools(new PlannerStore(timelines as never)), TOOL_KEYS.planCreate)
   const envelope = {
     conversationId: 'conv-1',
     parentRunId: 'run-1',

@@ -1,8 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import { PlanReorderTool, PlannerStore, type PlanOutput } from '../../src/modules/ai/core/beans/planner/index.js'
+import { PlannerStore, PlannerTools, type PlanOutput } from '../../src/modules/ai/core/beans/planner/index.js'
 import { TOOL_KEYS } from '../../src/modules/ai/tools/tool-keys.js'
-import { buildToolSpec } from '../../src/modules/ai/tools/tool.class.js'
-import { buildToolStackDeps, makeToolContext, silentLogger } from '../helpers/ai-tool-stack.js'
+import { buildToolStackDeps, makeToolContext, silentLogger, specByKey } from '../helpers/ai-tool-stack.js'
 
 /**
  * `plan-reorder`（规划工具集之一）的单测：**改顺序**（`order` 必须是全部 id 的一个排列）
@@ -22,7 +21,7 @@ const SEED = {
 const build = (latestPlan: unknown = SEED) => {
   const deps = buildToolStackDeps()
   const timelines = { latestPlan: async () => latestPlan, findToolOutput: async () => null }
-  const spec = buildToolSpec(new PlanReorderTool(new PlannerStore(timelines as never)))
+  const spec = specByKey(new PlannerTools(new PlannerStore(timelines as never)), TOOL_KEYS.planReorder)
   const envelope = {
     conversationId: 'conv-1',
     parentRunId: 'run-1',

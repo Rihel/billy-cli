@@ -3,13 +3,7 @@ import { join } from 'node:path'
 import { CommandRunner } from '@repo/kits'
 import { describe, expect, it } from 'vitest'
 import { RunCommandTool } from '../src/modules/ai/core/beans/command.tool.js'
-import {
-  PlanCompleteTool,
-  PlanCreateTool,
-  PlanDeleteTool,
-  PlanReorderTool,
-  PlannerStore,
-} from '../src/modules/ai/core/beans/planner/index.js'
+import { PlannerStore, PlannerTools } from '../src/modules/ai/core/beans/planner/index.js'
 import { RunSubAgentTool } from '../src/modules/ai/core/beans/subagent.tool.js'
 import { ReadToolResultTool } from '../src/modules/ai/tools/read-tool-result.tool.js'
 import { ToolGateway } from '../src/modules/ai/tools/tool.gateway.js'
@@ -36,19 +30,16 @@ const buildRegistry = () => {
     findToolOutput: async () => null,
   }
   const runnerLike = { runSubAgent: async () => ({ status: 'succeeded' }) }
-  // 工具类实例数组（`AGENT_TOOLS` 的新语义）：注册机对每个实例读装饰器声明
+  // 工具组实例数组（`AGENT_TOOL_GROUPS` 的语义）：注册机对每个组 `buildToolSpecs()` 拿 1..n 个工具
   const store = new PlannerStore(timelinesLike as never)
-  const tools = [
+  const groups = [
+    new PlannerTools(store),
     new RunCommandTool(new CommandRunner(), silentLogger as never),
     new RunSubAgentTool(runnerLike as never, silentLogger as never),
-    new PlanCreateTool(store),
-    new PlanReorderTool(store),
-    new PlanCompleteTool(store),
-    new PlanDeleteTool(store),
     new ReadToolResultTool(deps.results, deps.counter, deps.caps),
   ]
-  const registry = new ToolRegistry(tools, gateway, deps.config)
-  return { deps, registry }
+  const registry = new ToolRegistry(groups, gateway, deps.config)
+  return { deps, registry, groups }
 }
 
 const registeredSpecs = (): ToolSpec[] => buildRegistry().registry.specs()

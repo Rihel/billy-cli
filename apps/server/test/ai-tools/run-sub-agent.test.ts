@@ -2,8 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { RunSubAgentTool } from '../../src/modules/ai/core/beans/subagent.tool.js'
 import { TOOL_KEYS } from '../../src/modules/ai/tools/tool-keys.js'
 import { ToolDeniedError } from '../../src/modules/ai/tools/tools.types.js'
-import { buildToolSpec } from '../../src/modules/ai/tools/tool.class.js'
-import { buildToolStackDeps, makeToolContext } from '../helpers/ai-tool-stack.js'
+import { buildToolStackDeps, makeToolContext, specByKey } from '../helpers/ai-tool-stack.js'
 
 /**
  * `run-sub-agent` 的单测：**执行体在端口后面**（`AgentRunner`），测试给一个假 runner，
@@ -31,7 +30,7 @@ const build = (runnerResult: unknown = { status: 'succeeded', result: 'done' }) 
       return runnerResult
     },
   }
-  const spec = buildToolSpec(
+  const spec = specByKey(
     new RunSubAgentTool(runner as never, {
       info: () => undefined,
       warn: () => undefined,
@@ -39,6 +38,7 @@ const build = (runnerResult: unknown = { status: 'succeeded', result: 'done' }) 
       log: () => undefined,
       debug: () => undefined,
     } as never),
+    TOOL_KEYS.runSubAgent,
   )
   return { deps, spec, calls, runner }
 }

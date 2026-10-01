@@ -10,14 +10,7 @@ import { createMastra } from '../src/modules/ai/mastra/ai.mastra.js'
 import { createAgentRegistry } from '../src/modules/ai/core/ai.registry.js'
 import type { AgentSpec } from '../src/modules/ai/core/ai.types.js'
 import { type AgentRuntimeEnvelope, type RuntimeModel } from '../src/modules/ai/core/ai.core.types.js'
-import {
-  PlanCompleteTool,
-  PlanCreateTool,
-  PlanDeleteTool,
-  PlanReorderTool,
-  PlannerStore,
-  type PlanOutput,
-} from '../src/modules/ai/core/beans/planner/index.js'
+import { PlannerStore, PlannerTools, type PlanOutput } from '../src/modules/ai/core/beans/planner/index.js'
 import { RunSubAgentTool } from '../src/modules/ai/core/beans/subagent.tool.js'
 import { RunCommandTool } from '../src/modules/ai/core/beans/command.tool.js'
 import { createPromptEngine } from '../src/modules/ai/prompts/index.js'
@@ -26,7 +19,7 @@ import { SkillLoader } from '../src/modules/ai/skills/index.js'
 import { toMastraSkills } from '../src/modules/ai/mastra/skill.adapter.js'
 import { toMastraTools } from '../src/modules/ai/mastra/tool.adapter.js'
 import { ReadToolResultTool } from '../src/modules/ai/tools/read-tool-result.tool.js'
-import { buildToolSpec, type AgentToolClass } from '../src/modules/ai/tools/tool.class.js'
+import { buildToolSpecs, type AgentToolGroup } from '../src/modules/ai/tools/tool.class.js'
 import { ToolGateway } from '../src/modules/ai/tools/tool.gateway.js'
 import { ToolRegistry } from '../src/modules/ai/tools/tool.registry.js'
 import { TOOL_KEYS } from '../src/modules/ai/tools/tool-keys.js'
@@ -66,8 +59,9 @@ import {
 
 /**
  * 规划能力（任务清单）与**动态子 agent**（设计文档 §3.14）：
- * - 工具类是**唯一来源**：`RunCommandTool` / `RunSubAgentTool` / 四个规划工具 / `ReadToolResultTool`
- *   各自用 `@ToolDecl` + `@ToolExec` 声明，`ToolRegistry` 对每个实例 `buildToolSpec()` 拍平成一张表；
+ * - 工具组是**唯一来源**：`PlannerTools`（组内四个 `@ToolDecl` 方法）/ `RunCommandTool` /
+ *   `RunSubAgentTool` / `ReadToolResultTool` 各自用 `@ToolGroup` + `@ToolDecl` 声明，
+ *   `ToolRegistry` 对每个组 `buildToolSpecs()` 拍平成一张表（一个组 1..n 个工具）；
  * - 规划：现在是**一组四个增量工具**（create / reorder / complete / delete）——一次只表达一件事，
  *   但**出参永远是完整清单快照**，所以协议仍然只有一种形状（「当前计划」= 最后一条 `plan` 事件）；
  *   工具**自己不写库**，由运行时落成时间线的 `plan` 事件（append-only）；
@@ -75,7 +69,7 @@ import {
  *   一切明细入库（独立 run + 完整时间线）、消耗汇总进父、同一 toolCallId 幂等复用。
  */
 
-/** 规划工具集的四个 key（与 `AGENT_TOOLS` 里四个规划工具类的登记顺序一致） */
+/** 规划工具组的四个 key（与 `PlannerTools` 里四个 `@ToolDecl` 方法的登记顺序一致） */
 const PLAN_KEYS = [
   TOOL_KEYS.planCreate,
   TOOL_KEYS.planReorder,
@@ -99,20 +93,14 @@ const stubTimeline = { latestPlan: async () => null } as never
 const deps = buildToolStackDeps()
 const gateway = new ToolGateway(deps.config, silentLogger, [], deps.clock)
 
-/** 纯装配断言用的规划四工具（共享一个 store）；与 `ai.module.ts` 的装配口径一致 */
-const buildPlannerTools = (timeline: unknown = stubTimeline): AgentToolClass[] => {
-  const store = new PlannerStore(timeline as never)
-  return [
-    new PlanCreateTool(store),
-    new PlanReorderTool(store),
-    new PlanCompleteTool(store),
-    new PlanDeleteTool(store),
-  ]
-}
+/** 纯装配断言用的规划工具组（四个工具共享一个 store）；与 `ai.module.ts` 的装配口径一致 */
+const buildPlannerGroups = (timeline: unknown = stubTimeline): AgentToolGroup[] => [
+  new PlannerTools(new PlannerStore(timeline as never)),
+]
 
-/** 工具池 = 传入的实例数组（默认只放规划四工具）；与 `ai.module.ts` 的装配口径一致 */
-const buildRegistry = (tools: AgentToolClass[] = buildPlannerTools()): ToolRegistry =>
-  new ToolRegistry(tools, gateway, deps.config)
+/** 工具池 = 传入的工具组数组（默认只放规划组）；与 `ai.module.ts` 的装配口径一致 */
+const buildRegistry = (groups: AgentToolGroup[] = buildPlannerGroups()): ToolRegistry =>
+  new ToolRegistry(groups, gateway, deps.config)
 
 /** 测试用的 agent 声明（只关心工具授权，故其余字段按空补上） */
 const spec = (partial: Partial<AgentSpec> & { key: string }): AgentSpec => ({
@@ -124,9 +112,9 @@ const spec = (partial: Partial<AgentSpec> & { key: string }): AgentSpec => ({
   ...partial,
 })
 
-describe('规划能力（四个规划工具类 + plan 事件）', () => {
-  it('四个规划工具类交出四个规划声明（增量操作、不是委派类、只给主 agent）', () => {
-    const specs = buildPlannerTools().map((tool) => buildToolSpec(tool))
+describe('规划能力（规划工具组 + plan 事件）', () => {
+  it('规划工具组交出四个规划声明（增量操作、不是委派类、只给主 agent）', () => {
+    const specs = buildToolSpecs(new PlannerTools(new PlannerStore(stubTimeline)))
     expect(specs.map((item) => item.key)).toEqual([...PLAN_KEYS])
     // 声明的工具名就是 mock 认得的工具名（mock 只能发它"认得"的工具）
     expect(specs.map((item) => item.key)).toEqual([
@@ -152,8 +140,8 @@ describe('规划能力（四个规划工具类 + plan 事件）', () => {
     // 工具池不能为空 → 装配错误（宁可起不来，也不要静默少能力）
     expect(() => buildRegistry([])).toThrow(/工具池不能为空/)
 
-    // 同一个 key 由两个实例提供 → 装配错误（宁可起不来，也不要静默覆盖）
-    expect(() => buildRegistry([...buildPlannerTools(), ...buildPlannerTools()])).toThrow(
+    // 同一个 key 由两个组提供 → 装配错误（宁可起不来，也不要静默覆盖）
+    expect(() => buildRegistry([...buildPlannerGroups(), ...buildPlannerGroups()])).toThrow(
       /工具 key 重复/,
     )
   })
@@ -568,7 +556,7 @@ describe('规划能力（四个规划工具类 + plan 事件）', () => {
 describe('子 agent（core bean + 运行期动态创建）', () => {
   it('工具面：子 agent = 全部 − 委派类 − child:deny（于是它不能再造子 agent）', () => {
     const registry = buildRegistry([
-      ...buildPlannerTools(),
+      ...buildPlannerGroups(),
       new RunSubAgentTool(
         { runSubAgent: async () => ({ status: 'succeeded' }) } as never,
         silentLogger,
@@ -600,7 +588,7 @@ describe('子 agent（core bean + 运行期动态创建）', () => {
 
   it('Mastra 装配里不再有静态子 agent（`agents:{}` 已删除）', async () => {
     const toolRegistry = buildRegistry([
-      ...buildPlannerTools(),
+      ...buildPlannerGroups(),
       new RunSubAgentTool(
         { runSubAgent: async () => ({ status: 'succeeded' }) } as never,
         silentLogger,
@@ -954,7 +942,7 @@ const buildStack = async () => {
   // 子 agent 用的是**默认模型**（由配置构造），所以配置里必须有 mock 的 baseURL ——
   // 少了它，子 agent 会退到 model router 解析而报 "No API URL found"
   const config = { ...TEST_CONFIG, baseURL: mock.baseURL } as never
-  // 工具类实例（唯一的工具来源）：与 `ai.module.ts` 的装配口径一致
+  // 工具组实例（唯一的工具来源）：与 `ai.module.ts` 的装配口径一致
   const plannerStore = new PlannerStore(timelines)
   // registry 与 runner 互相引用：给 runner 一个**延迟求值**的在册端口，避免装配成环
   let toolRegistry: ToolRegistry
@@ -974,10 +962,7 @@ const buildStack = async () => {
       // 命令执行：与 `ai.module.ts` 的装配口径一致（assistant 已授权 run-command）
       new RunCommandTool(new CommandRunner(), silentLogger),
       new RunSubAgentTool(runner, silentLogger),
-      new PlanCreateTool(plannerStore),
-      new PlanReorderTool(plannerStore),
-      new PlanCompleteTool(plannerStore),
-      new PlanDeleteTool(plannerStore),
+      new PlannerTools(plannerStore),
       new ReadToolResultTool(deps.results, deps.counter, deps.caps),
     ],
     gateway,

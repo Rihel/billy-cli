@@ -3,7 +3,7 @@ import dedent from 'dedent'
 import { Inject, Injectable } from '@nestjs/common'
 import { z } from 'zod'
 import { AppLogger, CommandRunner, type CommandResult } from '@repo/kits'
-import { ToolDecl, ToolExec, ToolNormalize, ToolPrecheck } from '../../tools/tool.decorator.js'
+import { ToolDecl, ToolGroup } from '../../tools/tool.decorator.js'
 import { TOOL_KEYS } from '../../tools/tool-keys.js'
 import type { ToolCallContext, ToolEnvCaps } from '../../tools/tools.types.js'
 
@@ -58,11 +58,11 @@ interface CommandEnvelopeLike {
 }
 
 /**
- * **命令执行能力**：一个工具一个类（设计 §5.2）。
+ * **命令执行工具组**：一个组一个类，**组内一个方法一个工具**（设计 §5.2）。
  *
  * - 机制在基础设施门面（`@repo/kits` 的 `CommandRunner`，底层 execa），本类只写**业务动作**；
  * - 依赖走构造器注入（`CommandRunner` / `AppLogger`）—— 与业务代码同一条 IoC 链路；
- * - 开关判断、目录边界、时长夹紧分别是 `@ToolNormalize` 与 `@ToolPrecheck`（网关按声明调用），
+ * - 开关判断、目录边界、时长夹紧分别是声明里的 `precheck` / `normalize` 钩子（网关按声明调用），
  *   于是"同一类判断"在工程里只有一份实现，新工具不会漏写。
  *
  * 安全边界（**如实记录，不假装这是沙箱**）：命令以**服务进程的身份与权限**执行，
@@ -71,41 +71,11 @@ interface CommandEnvelopeLike {
  * 真要强隔离，得把执行放到容器 / 沙箱里（那是另一件事，不在本类里假装做到）。
  */
 @Injectable()
-@ToolDecl({
-  key: TOOL_KEYS.runCommand,
-  title: '执行命令行命令',
+@ToolGroup({
   category: 'core',
   scope: 'all',
   // 子 agent 也拿得到（它不是委派类工具）
   child: 'allow',
-  // 声明会返回大结果：输出上限几十 KB，超了就给模型一页 + 取页句柄
-  paginate: { pageBytes: 8 * 1024 },
-  params: RunCommandParams,
-  config: RunCommandConfig,
-  description: dedent`
-    在本机执行一条命令行命令，拿到退出码、stdout 与 stderr。
-
-    什么时候用：答案**只能靠真实执行**得到的事（看目录与文件、跑脚本或测试、查版本与环境、
-    做一次计算、取当前时间）；命令按**运行环境里那个操作系统**的 shell 语法写
-    （Windows 是 \`cmd.exe\`，Linux/macOS 是 \`/bin/sh\`），环境不确定就先用它查（\`whoami\`、\`pwd\` 之类）。
-
-    什么时候不用：能从已知信息直接回答的、需要用户拍板才能改的、
-    需要持续输入或长时间挂着的（没有 stdin，会被超时终止）。
-
-    纪律：
-    - **能力问题先验证，别凭印象下结论**：不确定能不能连外网、有没有某个命令 / 文件 / 数据时，
-      先用一条**短超时**的只读命令试（\`curl -sS -m 5 -o /dev/null -w '%{http_code}' https://example.com\`、
-      \`which xxx\`、\`ls\`），再按结果回答；**"我做不到"必须有依据**（试过报错、或工具清单里确实没有
-      这个能力），不能是没试过的猜测 —— 猜错要当着用户的面改口，比一句"我先试一下"难看得多；
-    - **有副作用的命令先问过用户**：删除 / 覆盖 / 移动文件、安装依赖、改系统或服务配置、发布与部署、
-      以及**会改变外部状态**的请求（POST / 提交表单 / 下单 / 发消息）—— 先说清"要跑什么、会改什么"，
-      等用户确认再跑；**只读的公开请求不必先问**（\`curl\` 取一个公开页面 / 榜单 / 公开接口读一眼），
-      直接跑并把结果如实报出来；
-    - 工作目录只能在工作根目录之内（越界会被拒绝）；命令尽量**幂等、可重复**，别把一次性的破坏性操作当常规手段；
-    - 输出可能很大：用能收窄输出的写法（管道 \`head\` / \`grep\`，或只列需要的字段），别让一整棵目录树淹没上下文；
-    - 失败（非零退出 / 超时 / 输出超限）是**结论**不是意外：读懂原因再决定下一步，**不要原样重试**；
-      跑失败了就如实说没拿到，不要凭印象补一个结果。
-  `,
 })
 export class RunCommandTool {
   constructor(
@@ -113,47 +83,41 @@ export class RunCommandTool {
     @Inject(AppLogger) private readonly logger: AppLogger,
   ) {}
 
-  /**
-   * **配置归一化**（纯函数）：把库里的值夹到**部署边界**（env）之内。
-   *
-   * 开关是"两边都开才放行"：`caps.command.enabled`（env）为 false 时，库里的 true 也不生效 ——
-   * 于是既有部署的 `AGENT_COMMAND_ENABLED=false` 依然管用（谁也没法在页面上把它绕过去）。
-   */
-  @ToolNormalize()
-  normalize(config: RunCommandConfigValue, caps: ToolEnvCaps): RunCommandConfigValue {
-    return {
-      enabled: config.enabled && (caps.command?.enabled ?? true),
-      timeoutMs: Math.min(config.timeoutMs, caps.command?.timeoutMsMax ?? config.timeoutMs),
-      maxOutputBytes: Math.min(
-        config.maxOutputBytes,
-        caps.command?.maxOutputBytesMax ?? config.maxOutputBytes,
-      ),
-      workDir: config.workDir.trim() || caps.command?.workDir?.trim() || '',
-    }
-  }
-
-  /**
-   * **只读前置条件**：工作目录必须在边界之内（越界**拒绝并说明**，不静默夹回）。
-   *
-   * 用 `path.relative` 判边界而不是字符串前缀：既天然处理 `..` 逃逸，
-   * 也不会被 Windows 的大小写差异（`C:\Users` vs `c:\users`）误判。
-   */
-  @ToolPrecheck()
-  checkWorkDir(
-    input: z.infer<typeof RunCommandParams>,
-    ctx: ToolCallContext<RunCommandConfigValue>,
-  ): string | null {
-    if (!input.cwd) return null
-    const root = resolve(ctx.settings.config.workDir || process.cwd())
-    const target = resolve(root, input.cwd)
-    const rel = relative(root, target)
-    const inside = rel === '' || (!rel.startsWith('..') && !isAbsolute(rel))
-    if (inside) return null
-    return `工作目录只能在工作根目录之内（${root}），收到的是 ${input.cwd}`
-  }
-
   /** **执行体**：只写业务动作（开关与边界已经在插件 / normalize 里判过） */
-  @ToolExec()
+  @ToolDecl({
+    key: TOOL_KEYS.runCommand,
+    title: '执行命令行命令',
+    // 声明会返回大结果：输出上限几十 KB，超了就给模型一页 + 取页句柄
+    paginate: { pageBytes: 8 * 1024 },
+    params: RunCommandParams,
+    config: RunCommandConfig,
+    precheck: 'checkWorkDir',
+    normalize: 'normalizeConfig',
+    description: dedent`
+      在本机执行一条命令行命令，拿到退出码、stdout 与 stderr。
+
+      什么时候用：答案**只能靠真实执行**得到的事（看目录与文件、跑脚本或测试、查版本与环境、
+      做一次计算、取当前时间）；命令按**运行环境里那个操作系统**的 shell 语法写
+      （Windows 是 \`cmd.exe\`，Linux/macOS 是 \`/bin/sh\`），环境不确定就先用它查（\`whoami\`、\`pwd\` 之类）。
+
+      什么时候不用：能从已知信息直接回答的、需要用户拍板才能改的、
+      需要持续输入或长时间挂着的（没有 stdin，会被超时终止）。
+
+      纪律：
+      - **能力问题先验证，别凭印象下结论**：不确定能不能连外网、有没有某个命令 / 文件 / 数据时，
+        先用一条**短超时**的只读命令试（\`curl -sS -m 5 -o /dev/null -w '%{http_code}' https://example.com\`、
+        \`which xxx\`、\`ls\`），再按结果回答；**"我做不到"必须有依据**（试过报错、或工具清单里确实没有
+        这个能力），不能是没试过的猜测 —— 猜错要当着用户的面改口，比一句"我先试一下"难看得多；
+      - **有副作用的命令先问过用户**：删除 / 覆盖 / 移动文件、安装依赖、改系统或服务配置、发布与部署、
+        以及**会改变外部状态**的请求（POST / 提交表单 / 下单 / 发消息）—— 先说清"要跑什么、会改什么"，
+        等用户确认再跑；**只读的公开请求不必先问**（\`curl\` 取一个公开页面 / 榜单 / 公开接口读一眼），
+        直接跑并把结果如实报出来；
+      - 工作目录只能在工作根目录之内（越界会被拒绝）；命令尽量**幂等、可重复**，别把一次性的破坏性操作当常规手段；
+      - 输出可能很大：用能收窄输出的写法（管道 \`head\` / \`grep\`，或只列需要的字段），别让一整棵目录树淹没上下文；
+      - 失败（非零退出 / 超时 / 输出超限）是**结论**不是意外：读懂原因再决定下一步，**不要原样重试**；
+        跑失败了就如实说没拿到，不要凭印象补一个结果。
+    `,
+  })
   async execute(
     input: z.infer<typeof RunCommandParams>,
     ctx: ToolCallContext<RunCommandConfigValue>,
@@ -190,5 +154,42 @@ export class RunCommandTool {
 
     // 出参**原样返回**（运行时会把完整出参落时间线，不裁剪；分页只改给模型的那一份）
     return result
+  }
+
+  /**
+   * **配置归一化**（纯函数）：把库里的值夹到**部署边界**（env）之内。
+   *
+   * 开关是"两边都开才放行"：`caps.command.enabled`（env）为 false 时，库里的 true 也不生效 ——
+   * 于是既有部署的 `AGENT_COMMAND_ENABLED=false` 依然管用（谁也没法在页面上把它绕过去）。
+   */
+  normalizeConfig(config: RunCommandConfigValue, caps: ToolEnvCaps): RunCommandConfigValue {
+    return {
+      enabled: config.enabled && (caps.command?.enabled ?? true),
+      timeoutMs: Math.min(config.timeoutMs, caps.command?.timeoutMsMax ?? config.timeoutMs),
+      maxOutputBytes: Math.min(
+        config.maxOutputBytes,
+        caps.command?.maxOutputBytesMax ?? config.maxOutputBytes,
+      ),
+      workDir: config.workDir.trim() || caps.command?.workDir?.trim() || '',
+    }
+  }
+
+  /**
+   * **只读前置条件**：工作目录必须在边界之内（越界**拒绝并说明**，不静默夹回）。
+   *
+   * 用 `path.relative` 判边界而不是字符串前缀：既天然处理 `..` 逃逸，
+   * 也不会被 Windows 的大小写差异（`C:\Users` vs `c:\users`）误判。
+   */
+  checkWorkDir(
+    input: z.infer<typeof RunCommandParams>,
+    ctx: ToolCallContext<RunCommandConfigValue>,
+  ): string | null {
+    if (!input.cwd) return null
+    const root = resolve(ctx.settings.config.workDir || process.cwd())
+    const target = resolve(root, input.cwd)
+    const rel = relative(root, target)
+    const inside = rel === '' || (!rel.startsWith('..') && !isAbsolute(rel))
+    if (inside) return null
+    return `工作目录只能在工作根目录之内（${root}），收到的是 ${input.cwd}`
   }
 }

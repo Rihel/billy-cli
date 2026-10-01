@@ -136,7 +136,7 @@ const toSubAgentKey = (name: string): string =>
  * - 实时明细经工具上下文的 `writer` 写成 `data-sub-agent*` 块，进的是**父的那一条流**；
  * - 幂等：同一 `(parent_run_id, tool_call_id)` 已成功过 → 直接复用结论（不重跑、不重复扣费）。
  *
- * 它是普通 bean（**不是**工具类）：工具类负责"把能力交出去"，本类负责"怎么跑"。
+ * 它是普通 bean（**不是**工具组）：工具组负责"把能力交出去"，本类负责"怎么跑"。
  */
 @Injectable()
 export class AgentRunner {
@@ -149,7 +149,7 @@ export class AgentRunner {
     /**
      * ⚠️ 注册机**只能惰性取**（`ModuleRef`），不能进构造器。
      *
-     * 原因：`ToolRegistry → AGENT_TOOLS → RunSubAgentTool → AgentRunner`，若这里再注入注册机就成了环；
+     * 原因：`ToolRegistry → AGENT_TOOL_GROUPS → RunSubAgentTool → AgentRunner`，若这里再注入注册机就成了环；
      * 而 Nest 对**工厂型 provider** 的环**不报错、直接静默死锁**（实测：进程 CPU 0%，永远停在启动中）。
      * 这里只在真正要写时间线时取一次，那时容器早就绪了。
      */

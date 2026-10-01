@@ -3,8 +3,7 @@ import { CommandRunner } from '@repo/kits'
 import { describe, expect, it } from 'vitest'
 import { RunCommandTool } from '../../src/modules/ai/core/beans/command.tool.js'
 import { TOOL_KEYS } from '../../src/modules/ai/tools/tool-keys.js'
-import { buildToolSpec } from '../../src/modules/ai/tools/tool.class.js'
-import { buildToolStackDeps, makeToolContext, silentLogger } from '../helpers/ai-tool-stack.js'
+import { buildToolStackDeps, makeToolContext, silentLogger, specByKey } from '../helpers/ai-tool-stack.js'
 
 /**
  * `run-command` 的单测（策略的完整矩阵见 `test/ai-command-core.test.ts`；
@@ -13,7 +12,10 @@ import { buildToolStackDeps, makeToolContext, silentLogger } from '../helpers/ai
 const build = (config: Record<string, unknown> = {}) => {
   const deps = buildToolStackDeps()
   deps.source.set(TOOL_KEYS.runCommand, { config })
-  const spec = buildToolSpec(new RunCommandTool(new CommandRunner(), silentLogger as never))
+  const spec = specByKey(
+    new RunCommandTool(new CommandRunner(), silentLogger as never),
+    TOOL_KEYS.runCommand,
+  )
   return { deps, spec }
 }
 

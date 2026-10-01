@@ -2,7 +2,7 @@ import { Inject, Injectable } from '@nestjs/common'
 import dedent from 'dedent'
 import { z } from 'zod'
 import { AppLogger } from '@repo/kits'
-import { ToolDecl, ToolExec } from '../../tools/tool.decorator.js'
+import { ToolDecl, ToolGroup } from '../../tools/tool.decorator.js'
 import { TOOL_KEYS } from '../../tools/tool-keys.js'
 import { ToolDeniedError } from '../../tools/tools.types.js'
 import type { ToolCallContext } from '../../tools/tools.types.js'
@@ -67,40 +67,37 @@ type SubAgentConfig = z.infer<typeof SubAgentConfigSchema>
  * 否则注册机（依赖本工具）与本工具会互相依赖，装配成环。
  */
 @Injectable()
-@ToolDecl({
-  key: TOOL_KEYS.runSubAgent,
-  title: '创建子助手',
-  category: 'core',
-  scope: 'all',
-  // 关键标记：子 agent 的工具面要把委派类排除（于是它拿不到本工具，深度天然封顶）
-  delegation: true,
-  child: 'deny',
-  params: RunSubAgentInputSchema,
-  config: SubAgentConfigSchema,
-  // 工具说明 = **这个工具的唯一一份说明**（系统提示词里的「工具」段直接渲染它）
-  description: dedent`
-    创建一个**专职子助手**并让它完成一件明确的事，然后继续你自己的流程。
-
-    什么时候用：可以独立完成、且独立完成后能一句话交代清楚结果的子任务
-    （长文档撰写、批量核对、独立分析、多方案并行的其中一路）。
-
-    什么时候不用：一步就能答完的事、需要边做边和用户确认的事、以及"把整个任务原样丢出去"。
-
-    纪律：
-    - \`system_prompt\` 由你现写、\`task\` 由你交代，两者都必须**自包含** —— 它**看不到你与用户的对话**，
-      背景、约束、交付物格式都得写进去，别指望它"猜"；
-    - 它有你的全部工具（除了不能再造子助手）；**你的工具列表里没有的能力，它同样没有**，别把做不到的事交出去；
-    - 它返回结论、步数、工具调用次数与消耗；**你要用自己的话把结论汇报给用户**，不要整段转贴；
-    - 用完后把它的关键结论与你自己后续的动作接起来 —— 你仍然是这一轮的责任人。
-  `,
-})
+@ToolGroup({ category: 'core', scope: 'all', child: 'deny' })
 export class RunSubAgentTool {
   constructor(
     @Inject(AgentRunner) private readonly runner: AgentRunner,
     @Inject(AppLogger) private readonly logger: AppLogger,
   ) {}
 
-  @ToolExec()
+  // 工具说明 = **这个工具的唯一一份说明**（系统提示词里的「工具」段直接渲染它）
+  @ToolDecl({
+    key: TOOL_KEYS.runSubAgent,
+    title: '创建子助手',
+    // 关键标记：子 agent 的工具面要把委派类排除（于是它拿不到本工具，深度天然封顶）
+    delegation: true,
+    params: RunSubAgentInputSchema,
+    config: SubAgentConfigSchema,
+    description: dedent`
+      创建一个**专职子助手**并让它完成一件明确的事，然后继续你自己的流程。
+
+      什么时候用：可以独立完成、且独立完成后能一句话交代清楚结果的子任务
+      （长文档撰写、批量核对、独立分析、多方案并行的其中一路）。
+
+      什么时候不用：一步就能答完的事、需要边做边和用户确认的事、以及"把整个任务原样丢出去"。
+
+      纪律：
+      - \`system_prompt\` 由你现写、\`task\` 由你交代，两者都必须**自包含** —— 它**看不到你与用户的对话**，
+        背景、约束、交付物格式都得写进去，别指望它"猜"；
+      - 它有你的全部工具（除了不能再造子助手）；**你的工具列表里没有的能力，它同样没有**，别把做不到的事交出去；
+      - 它返回结论、步数、工具调用次数与消耗；**你要用自己的话把结论汇报给用户**，不要整段转贴；
+      - 用完后把它的关键结论与你自己后续的动作接起来 —— 你仍然是这一轮的责任人。
+    `,
+  })
   async execute(
     input: z.infer<typeof RunSubAgentInputSchema>,
     ctx: ToolCallContext<SubAgentConfig>,

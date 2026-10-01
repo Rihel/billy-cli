@@ -1,75 +1,69 @@
-import {
-  readToolDecl,
-  readToolMethod,
-  TOOL_EXEC_KEY,
-  TOOL_NORMALIZE_KEY,
-  TOOL_PRECHECK_KEY,
-} from './tool.decorator.js'
+import { readToolDecls, readToolGroup } from './tool.decorator.js'
+import type { ToolDeclMeta, ToolGroupMeta } from './tool.decorator.js'
 import type { ToolSpec } from './tools.types.js'
 
 /**
- * **工具类 → 工具声明**（设计 §5.2）：注册机唯一的装配入口。
+ * **工具组类 → 工具声明数组**（设计 §5.2）：注册机唯一的装配入口。
  *
- * 一个工具类 = `@Injectable()` 类 + 类上 `@ToolDecl` + 方法上 `@ToolExec`（可选 `@ToolPrecheck`
- * / `@ToolNormalize`）。本文件把它们读出来拼成注册机认识的 `ToolSpec`，
- * 于是"装饰器声明"与"网关 / 注册机 / 后台页"之间只有这一处映射。
+ * 一个工具组类 = `@Injectable()` 类 + 若干带 `@ToolDecl` 的方法。本文件把组级默认值与每个方法的
+ * 声明合并成 `ToolSpec`，于是"装饰器声明"与"网关 / 注册机 / 后台页"之间只有这一处映射。
  *
- * 校验都在**启动期**做（漏声明 / 漏执行体 / 元数据不成对一律抛错），
- * 宁可起不来，也不要带着一个"看起来在册、实际调不动"的工具跑。
+ * 校验全部在**启动期**做（宁可起不来，也不要带着一个"看起来在册、实际调不动"的工具跑）：
+ * 1. 组里至少有一个 `@ToolDecl` 方法；
+ * 2. 每个工具必须有 `key` / `title` / `description` / `params` / `config`，类别与作用域可从组级继承；
+ * 3. 组内 key 不重复（全局重复由注册机再查一次）；
+ * 4. `precheck` / `normalize` 指向的方法必须真实存在。
  */
 
-/** 工具类的形状：只要有 `@ToolDecl` + `@ToolExec` 就是（成员类型由各自实现守） */
-export type AgentToolClass = object
+/** 工具组类的形状：只要有带 `@ToolDecl` 的方法就是（成员类型由各自实现守） */
+export type AgentToolGroup = object
 
-/** 规范化为数组（调用方少写一层类型体操） */
-export type ToolInstanceList = readonly AgentToolClass[]
-
-/** 从实例上取方法（装饰器登记的是方法名；方法不存在说明类被改坏了） */
-const bound = <T>(instance: AgentToolClass, key: string | symbol, label: string): T => {
-  const fn = (instance as Record<string | symbol, unknown>)[key]
+/** 取实例上的方法并绑定（装饰器登记的是方法名） */
+const bound = <T>(instance: AgentToolGroup, name: string, label: string): T => {
+  const fn = (instance as Record<string, unknown>)[name]
   if (typeof fn !== 'function') {
-    throw new Error(
-      `工具类 ${instance.constructor.name} 的 @${label} 指向 ${String(key)}，但它不是方法`,
-    )
+    throw new Error(`工具组 ${instance.constructor.name} 的 ${label} 指向 ${name}，但它不是方法`)
   }
   return (fn as (...args: unknown[]) => unknown).bind(instance) as T
 }
 
-/**
- * 把工具类实例拼成 `ToolSpec`。
- *
- * 未知 / 不成对的情况全部抛错并指明是哪个类、缺了什么：
- * - 没有 `@ToolDecl`；
- * - 没有 `@ToolExec`；
- * - `@ToolDecl` 里缺 `key` / `params` / `config`（配置契约与参数契约是硬要求）。
- */
-export const buildToolSpec = (instance: AgentToolClass): ToolSpec => {
-  const ctor = instance.constructor
-  const meta = readToolDecl(ctor)
-  if (!meta) {
-    throw new Error(
-      `工具类 ${ctor.name} 没有 @ToolDecl(...)：每个工具类都要用装饰器声明"是什么"`,
-    )
-  }
-  if (!meta.key?.trim()) throw new Error(`工具类 ${ctor.name} 的 @ToolDecl 缺少 key`)
-  if (!meta.params) throw new Error(`工具类 ${ctor.name} 的 @ToolDecl 缺少 params（参数契约）`)
-  if (!meta.config) throw new Error(`工具类 ${ctor.name} 的 @ToolDecl 缺少 config（配置契约）`)
+/** 合并组级默认值与单个工具的声明（工具自己的值优先；委派类隐含不许子 agent 用） */
+const mergeDecl = (group: ToolGroupMeta, decl: ToolDeclMeta): ToolDeclMeta => ({
+  ...decl,
+  ...(decl.child === undefined && group.child !== undefined ? { child: group.child } : {}),
+  ...(decl.delegation === true && decl.child === undefined ? { child: 'deny' } : {}),
+})
 
-  const execKey = readToolMethod(ctor, TOOL_EXEC_KEY)
-  if (!execKey) {
-    throw new Error(
-      `工具类 ${ctor.name} 没有 @ToolExec() 方法：声明了工具就要有执行体（只写业务动作）`,
-    )
+/** 组装一个工具（校验 + 绑定方法） */
+const buildOne = (
+  instance: AgentToolGroup,
+  methodName: string,
+  decl: ToolDeclMeta,
+  group: ToolGroupMeta,
+): ToolSpec => {
+  const className = instance.constructor.name
+  const meta = mergeDecl(group, decl)
+  const at = `${className}.${methodName}`
+  if (!meta.key?.trim()) throw new Error(`工具组 ${at} 的 @ToolDecl 缺少 key`)
+  if (!meta.title?.trim()) throw new Error(`工具组 ${at}（${meta.key}）缺少标题`)
+  if (!meta.description?.trim()) throw new Error(`工具组 ${at}（${meta.key}）缺少说明`)
+  if (!meta.params) throw new Error(`工具组 ${at}（${meta.key}）缺少 params（参数契约）`)
+  if (!meta.config) throw new Error(`工具组 ${at}（${meta.key}）缺少 config（配置契约）`)
+  const category = meta.category ?? group.category
+  const scope = meta.scope ?? group.scope
+  if (!category) {
+    throw new Error(`工具组 ${at}（${meta.key}）没有类别：在 @ToolDecl 或 @ToolGroup 里给 category`)
   }
-  const precheckKey = readToolMethod(ctor, TOOL_PRECHECK_KEY)
-  const normalizeKey = readToolMethod(ctor, TOOL_NORMALIZE_KEY)
+  if (!scope) {
+    throw new Error(`工具组 ${at}（${meta.key}）没有作用域：在 @ToolDecl 或 @ToolGroup 里给 scope`)
+  }
 
   return {
     key: meta.key,
     title: meta.title,
     description: meta.description,
-    category: meta.category,
-    scope: meta.scope,
+    category,
+    scope,
     ...(meta.delegation === true ? { delegation: true } : {}),
     ...(meta.child ? { child: meta.child } : {}),
     ...(meta.paginate ? { paginate: meta.paginate } : {}),
@@ -78,29 +72,58 @@ export const buildToolSpec = (instance: AgentToolClass): ToolSpec => {
     config: meta.config,
     ...(meta.secrets ? { secrets: meta.secrets } : {}),
     ...(meta.secretFields ? { secretFields: meta.secretFields } : {}),
+    // 执行体 = 这个方法本身（声明与实现同一处）
     exec: (input: unknown, ctx: never) =>
-      bound<(input: unknown, ctx: never) => Promise<unknown>>(instance, execKey, 'ToolExec')(
-        input,
-        ctx,
-      ),
-    ...(precheckKey
+      bound<(input: unknown, ctx: never) => Promise<unknown>>(
+        instance,
+        methodName,
+        '@ToolDecl 方法',
+      )(input, ctx),
+    ...(meta.precheck
       ? {
           precheck: (input: unknown, ctx: never) =>
             bound<(input: unknown, ctx: never) => Promise<string | null> | string | null>(
               instance,
-              precheckKey,
-              'ToolPrecheck',
+              meta.precheck as string,
+              'precheck',
             )(input, ctx),
         }
       : {}),
-    ...(normalizeKey
+    ...(meta.normalize
       ? {
           normalize: (config: never, caps: never) =>
-            bound<(config: never, caps: never) => never>(instance, normalizeKey, 'ToolNormalize')(
-              config,
-              caps,
-            ),
+            bound<(config: never, caps: never) => never>(
+              instance,
+              meta.normalize as string,
+              'normalize',
+            )(config, caps),
         }
       : {}),
   } as ToolSpec
+}
+
+/**
+ * 把一个**工具组实例**拆成 1..n 个工具声明。
+ *
+ * 注册机对每个实例调用它；组内 key 重复、缺声明、钩子方法不存在都在这里抛错（启动期）。
+ */
+export const buildToolSpecs = (instance: AgentToolGroup): ToolSpec[] => {
+  const className = instance.constructor.name
+  const decls = readToolDecls(instance.constructor)
+  const group = readToolGroup(instance.constructor)
+  const methodNames = Object.keys(decls)
+  if (methodNames.length === 0) {
+    throw new Error(`工具组 ${className} 没有任何 @ToolDecl 方法：一个工具组至少要交出一个工具`)
+  }
+  const specs = methodNames.map((methodName) =>
+    buildOne(instance, methodName, decls[methodName], group),
+  )
+  const seen = new Set<string>()
+  for (const spec of specs) {
+    if (seen.has(spec.key)) {
+      throw new Error(`工具组 ${className} 内部 key 重复：${spec.key}`)
+    }
+    seen.add(spec.key)
+  }
+  return specs
 }

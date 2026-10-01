@@ -18,13 +18,7 @@ import { AgentTitleService } from '../src/modules/ai/runtime/title.service.js'
 import { SkillLoader } from '../src/modules/ai/skills/index.js'
 import { RunCommandTool } from '../src/modules/ai/core/beans/command.tool.js'
 import { RunSubAgentTool } from '../src/modules/ai/core/beans/subagent.tool.js'
-import {
-  PlanCompleteTool,
-  PlanCreateTool,
-  PlanDeleteTool,
-  PlanReorderTool,
-  PlannerStore,
-} from '../src/modules/ai/core/beans/planner/index.js'
+import { PlannerStore, PlannerTools } from '../src/modules/ai/core/beans/planner/index.js'
 import { AgentRunner } from '../src/modules/ai/runtime/agent-runner.js'
 import { AgentChatService } from '../src/modules/ai/runtime/chat.service.js'
 import { toMastraSkills } from '../src/modules/ai/mastra/skill.adapter.js'
@@ -59,8 +53,8 @@ import {
  *   → 落时间线（入参出参完整、计划落成 `plan` 事件）→ 收尾（消耗 / 步数 / 轮数 / 标题）
  *   → 数据可查、可复盘。
  *
- * AI 模块已与业务模块解耦：这里**没有业务工具 bean**（`AGENT_TOOLS` 为空数组），
- * 工具池只有 core bean 交出的运行时能力（规划 + 子 agent）。
+ * AI 模块已与业务模块解耦：`AGENT_TOOL_GROUPS` 只登记四个工具组（规划 / 命令 / 子 agent / 取页），
+ * 没有业务工具组。
  */
 
 const USER = 'user_ai_e2e'
@@ -159,16 +153,13 @@ beforeAll(async () => {
     deps.metas,
     moduleRefPort,
   )
-  // 工具类实例（唯一的工具来源）：与 `ai.module.ts` 的装配口径一致
+  // 工具组实例（唯一的工具来源）：与 `ai.module.ts` 的装配口径一致
   const plannerStore = new PlannerStore(timelines)
   toolRegistry = new ToolRegistry(
     [
       new RunCommandTool(new CommandRunner(), silentLogger),
       new RunSubAgentTool(runner, silentLogger),
-      new PlanCreateTool(plannerStore),
-      new PlanReorderTool(plannerStore),
-      new PlanCompleteTool(plannerStore),
-      new PlanDeleteTool(plannerStore),
+      new PlannerTools(plannerStore),
       new ReadToolResultTool(deps.results, deps.counter, deps.caps),
     ],
     gateway,

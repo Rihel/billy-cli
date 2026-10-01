@@ -149,7 +149,7 @@ export const serverAppConfigSchema = z.object({
     subAgentMaxSteps: z.coerce.number().int().nonnegative().default(0),
     /** 单个子 agent 的墙钟上限（ms；0 = 沿用 runTimeoutMs） */
     subAgentTimeoutMs: z.coerce.number().int().nonnegative().default(0),
-    // ── 命令执行（工具类 `RunCommandTool`，设计文档 §3.15）──
+    // ── 命令执行（工具组 `RunCommandTool`，设计文档 §3.15）──
     /**
      * 是否允许 agent 在本机执行命令行命令（**默认开**）。
      *

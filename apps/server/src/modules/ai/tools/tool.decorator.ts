@@ -1,44 +1,64 @@
 import type { z } from 'zod'
 import type {
   ToolCategoryValue,
-  ToolEnvCaps,
   ToolScopeValue,
   ToolSecretField,
 } from './tools.types.js'
 
 /**
- * **工具 DSL 的装饰器**（设计 §5.2）：声明写在类上，执行体写在方法上。
+ * **工具组 DSL 的装饰器**（设计 §5.2）：一个工具组一个类，**组内一个方法一个工具**。
  *
- * 为什么用装饰器 + 类，而不是"构造器里拼一个对象"：
- * 1. **一个工具就是一个 `@Injectable()` 类** —— 依赖（仓储 / 命令执行器 / 日志 / 其它 bean）
- *    全部走构造器注入，与业务代码同一条链路，不需要在装配处手工 `new`；
- * 2. **声明与实现同处一个文件、一眼看完**：类上的 `@ToolDecl` 是它"是什么"，方法上的
- *    `@ToolExecute` 是它"怎么做"；
- * 3. **装配期校验有依据**：注册机从元数据里读声明，缺声明 / 缺执行体 / 配置默认值没给全
- *    都是**启动即失败**（而不是等用户提问时才发现某个能力静默缺失）。
+ * ```
+ * @Injectable()
+ * @ToolGroup({ category: 'core', child: 'deny' })   // 组级：共同默认值（可选）
+ * export class PlannerTools {
+ *   constructor(@Inject(PlannerStore) private readonly store: PlannerStore) {}
  *
- * 三个方法级装饰器是可选的（`@ToolPrecheck` / `@ToolNormalize`），语义见各自的文档注释。
+ *   @ToolDecl({ key, title, description, params, config })   // 方法级 = 一个工具
+ *   async create(input, ctx) { … }
+ *
+ *   @ToolDecl({ key: …, precheck: 'checkGoal' })
+ *   async reorder(input, ctx) { … }
+ * }
+ * ```
+ *
+ * 为什么这样分两层：
+ * - **组 = 一类能力的集合**（规划四件事、命令执行、子 agent…）—— 共享依赖（构造器注入一次）、
+ *   共享默认元数据（category / scope / child），于是同类工具不会各写一遍；
+ * - **方法 = 一个工具**（声明 + 执行体同一处）—— 模型看到的工具与代码里的方法一一对应，
+ *   加一个工具就是加一个方法，不新增文件也不新增装配；
+ * - **单工具组也照这个写法**（一个方法）：形状只有一种，不必区分"单工具类"和"工具组"。
+ *
+ * 三个方法级钩子是**按方法名**挂在声明里的（`precheck` / `normalize`），不另设装饰器：
+ * 一个工具最多各有一个，写在同一条声明里最直观，注册机在**启动期**校验方法确实存在
+ * （写错名字起不来，而不是运行时静默失效）。
  */
 
-/** 类级声明的元数据键（`Reflect` 元数据；用 Symbol 避免与其它库撞名） */
-export const TOOL_DECL_KEY = Symbol.for('billy.tool.decl')
-/** 执行体的方法名 */
-export const TOOL_EXEC_KEY = Symbol.for('billy.tool.exec')
-/** 只读前置条件的方法名 */
-export const TOOL_PRECHECK_KEY = Symbol.for('billy.tool.precheck')
-/** 配置归一化的方法名 */
-export const TOOL_NORMALIZE_KEY = Symbol.for('billy.tool.normalize')
+/** 组级声明的元数据键 */
+export const TOOL_GROUP_KEY = Symbol.for('billy.tool.group')
+/** 组内所有工具声明的元数据键（值是 `{ 方法名 → 声明 }`） */
+export const TOOL_DECLS_KEY = Symbol.for('billy.tool.decls')
 
 /** zod 契约的宽类型（装饰器只做登记，不在类型层做推导） */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AnySchema = z.ZodType<any>
 
 /**
- * 类级声明：这个工具**是什么**（不可变的部分，代码是唯一事实源）。
+ * 组级声明：给组内工具**共同默认值**（每个工具可以在自己的 `@ToolDecl` 里覆盖）。
  *
- * 注意：`params` / `config` / `secrets` 是同一文件里定义的 zod 常量
- * （**不能**引用本类的 static —— 装饰器在类定义期求值，那时 static 还没初始化）。
+ * 只放"同类工具都一样"的那几项；标题 / 说明 / 参数 / 配置是**每个工具各不相同**的，
+ * 必须写在各自的 `@ToolDecl` 里（写错地方就报错，见 `tool.class.ts` 的校验）。
  */
+export interface ToolGroupMeta {
+  /** 类别：`core`（运行时能力）/ `business`（绑定业务模块） */
+  category?: ToolCategoryValue
+  /** 默认作用域（库里可覆盖） */
+  scope?: ToolScopeValue
+  /** 子 agent 能不能用（默认能） */
+  child?: 'allow' | 'deny'
+}
+
+/** 单个工具的声明：这个方法**是什么工具** */
 export interface ToolDeclMeta<C = unknown, I = unknown, O = unknown> {
   /** 名称：稳定对外标识（取自 `tool-keys.ts`，禁止裸字符串） */
   key: string
@@ -46,16 +66,6 @@ export interface ToolDeclMeta<C = unknown, I = unknown, O = unknown> {
   title: string
   /** 唯一一份说明：是什么 / 什么时候用 / 什么时候不用 / 纪律（模型选工具看到的也是它） */
   description: string
-  /** 类别：`core`（运行时能力）/ `business`（绑定业务模块） */
-  category: ToolCategoryValue
-  /** 默认作用域（库里可覆盖） */
-  scope: ToolScopeValue
-  /** 委派类工具（创建 / 指挥子 agent）：子 agent 工具面要把它们排除 */
-  delegation?: boolean
-  /** 子 agent 能不能用（默认能；`delegation` 隐含不能） */
-  child?: 'allow' | 'deny'
-  /** 声明"我会返回大结果"才分页（不声明就不套这一层） */
-  paginate?: { readonly pageBytes: number }
   /** 参数契约（给模型的 JSON Schema 由它生成） */
   params: AnySchema
   /** 出参契约（可选；标准测试集用它校验实现有没有守约） */
@@ -71,58 +81,54 @@ export interface ToolDeclMeta<C = unknown, I = unknown, O = unknown> {
   secrets?: AnySchema
   /** 秘钥字段元信息（页面渲染 + "缺哪个"的结论文案） */
   secretFields?: readonly ToolSecretField[]
+  /** 覆盖组级默认值：类别 `core`（运行时能力）/ `business`（绑定业务模块） */
+  category?: ToolCategoryValue
+  /** 覆盖组级默认值：默认作用域（库里可覆盖） */
+  scope?: ToolScopeValue
+  /** 覆盖组级默认值：`delegation: true` = 委派类（创建 / 指挥子 agent） */
+  delegation?: boolean
+  /** 覆盖组级默认值：子 agent 能不能用（`delegation` 隐含不能） */
+  child?: 'allow' | 'deny'
+  /** 声明"我会返回大结果"才分页（不声明就不套这一层） */
+  paginate?: { readonly pageBytes: number }
+  /** **只读前置条件**的方法名（可选）：返回一句拒绝理由，或 `null` 表示通过 */
+  precheck?: string
+  /** **配置归一化**的方法名（可选）：把配置夹到部署上限，纯函数 */
+  normalize?: string
 }
 
-/** 类级装饰器：声明这个工具是什么（一个工具类必须且只能有一个） */
+/**
+ * 类级装饰器（可选）：标记这个类是工具组，并给组内工具共同默认值。
+ *
+ * 不写也行（组内每个 `@ToolDecl` 自带 `category` / `scope`）；写了就不用在每个工具上重复。
+ */
+export const ToolGroup =
+  (meta: ToolGroupMeta = {}) =>
+  (target: object): void => {
+    Reflect.defineMetadata(TOOL_GROUP_KEY, meta, target)
+  }
+
+/**
+ * 方法级装饰器：**这个方法是一个工具**（声明 + 执行体同一处）。
+ *
+ * 方法签名：`(input, ctx) => Promise<出参>`——入参已由网关归一化，ctx 带配置 / 信封 / 日志 /
+ * 时钟 / 取消信号。只写业务动作：开关、边界、分页、审计都在网关插件里（设计 §5.4）。
+ */
 export const ToolDecl =
   <C = unknown, I = unknown, O = unknown>(meta: ToolDeclMeta<C, I, O>) =>
-  (target: object): void => {
-    Reflect.defineMetadata(TOOL_DECL_KEY, meta, target)
+  (target: object, propertyKey: string | symbol): void => {
+    const existing = (Reflect.getMetadata(TOOL_DECLS_KEY, target.constructor) ?? {}) as Record<
+      string,
+      ToolDeclMeta
+    >
+    existing[String(propertyKey)] = meta as ToolDeclMeta
+    Reflect.defineMetadata(TOOL_DECLS_KEY, existing, target.constructor)
   }
 
-/**
- * 方法级装饰器：**执行体**（一个工具类必须且只能有一个）。
- *
- * 入参：归一化后的入参 + 调用上下文（配置 / 信封 / 日志 / 时钟 / 取消信号）。
- * 只写业务动作 —— 开关、边界、分页、审计都在网关插件里（见设计 §5.4）。
- */
-export const ToolExec =
-  (): MethodDecorator => (target, propertyKey): void => {
-    Reflect.defineMetadata(TOOL_EXEC_KEY, propertyKey, target.constructor)
-  }
+/** 读组级元数据（没写 `@ToolGroup` 就是空对象） */
+export const readToolGroup = (target: object): ToolGroupMeta =>
+  (Reflect.getMetadata(TOOL_GROUP_KEY, target) as ToolGroupMeta | undefined) ?? {}
 
-/**
- * 方法级装饰器：**只读前置条件**（可选）。
- *
- * 返回一句拒绝理由（模型能读懂、能改），或 `null` 表示通过。
- * 必须**只读**：它失败时不该留下任何副作用。需要查库可以（依赖由构造器注入），但不要写。
- */
-export const ToolPrecheck =
-  (): MethodDecorator => (target, propertyKey): void => {
-    Reflect.defineMetadata(TOOL_PRECHECK_KEY, propertyKey, target.constructor)
-  }
-
-/**
- * 方法级装饰器：**配置归一化**（可选）。
- *
- * 纯函数：把合并后的配置夹到部署上限（`ToolEnvCaps`），或计算派生值。
- * 于是"工具自己看到的配置"永远已经是安全取值（例：`run-command` 把时长夹到 env 上限）。
- */
-export const ToolNormalize =
-  (): MethodDecorator => (target, propertyKey): void => {
-    Reflect.defineMetadata(TOOL_NORMALIZE_KEY, propertyKey, target.constructor)
-  }
-
-/** 读类上的声明元数据（注册机用；没有就是漏写 `@ToolDecl`） */
-export const readToolDecl = (target: object): ToolDeclMeta | undefined =>
-  Reflect.getMetadata(TOOL_DECL_KEY, target) as ToolDeclMeta | undefined
-
-/** 读方法级元数据（注册机用） */
-export const readToolMethod = (
-  target: object,
-  key: symbol,
-): string | symbol | undefined =>
-  Reflect.getMetadata(key, target) as string | symbol | undefined
-
-/** 归一化钩子的签名（装饰器只登记方法名，签名由实现方守） */
-export type ToolNormalizeFn<C> = (config: C, caps: ToolEnvCaps) => C
+/** 读组内全部工具声明（`方法名 → 声明`；没有就是漏写 `@ToolDecl`） */
+export const readToolDecls = (target: object): Record<string, ToolDeclMeta> =>
+  (Reflect.getMetadata(TOOL_DECLS_KEY, target) as Record<string, ToolDeclMeta> | undefined) ?? {}

@@ -15,7 +15,7 @@ import { ToolRegistry } from '../src/modules/ai/tools/tool.registry.js'
  *
  * 1. `exports` 里写了没在 `providers` 里提供的 token → `UnknownExportException`；
  * 2. **工厂型 provider 成环** → Nest **不报错、直接静默死锁**（实测：进程 CPU 0%）
- *    —— 踩过一次：`ToolRegistry → AGENT_TOOLS → RunSubAgentTool → AgentRunner → ToolRegistry`。
+ *    —— 踩过一次：`ToolRegistry → AGENT_TOOL_GROUPS → RunSubAgentTool → AgentRunner → ToolRegistry`。
  *
  * 这里只**编译并 init**（不 listen 端口）：init 会跑 `onModuleInit` / `onApplicationBootstrap`，
  * 于是 DB 初始化、种子对账、路由映射这些真实链路都被覆盖一次，跑完立刻 close。

@@ -14,13 +14,7 @@ import { AgentService } from './core/ai.service.js'
 import type { AgentRegistry as AgentRegistryValue } from './core/ai.types.js'
 import { RunCommandTool } from './core/beans/command.tool.js'
 import { RunSubAgentTool } from './core/beans/subagent.tool.js'
-import {
-  PlanCompleteTool,
-  PlanCreateTool,
-  PlanDeleteTool,
-  PlanReorderTool,
-  PlannerStore,
-} from './core/beans/planner/index.js'
+import { PlannerStore, PlannerTools } from './core/beans/planner/index.js'
 import { createPromptEngine, PROMPT_ENGINE } from './prompts/index.js'
 import {
   AgentChatService,
@@ -40,9 +34,9 @@ import {
 import { SkillLoader } from './skills/index.js'
 import { toMastraSkills } from './mastra/skill.adapter.js'
 import { toMastraTools } from './mastra/tool.adapter.js'
-import { AGENT_TOOLS } from './tools/tools.types.js'
+import { AGENT_TOOL_GROUPS } from './tools/tools.types.js'
 import type { ToolEnvCaps } from './tools/tools.types.js'
-import type { AgentToolClass } from './tools/tool.class.js'
+import type { AgentToolGroup } from './tools/tool.class.js'
 import { AGENT_TOOL_PLUGINS, ToolGateway } from './tools/tool.gateway.js'
 import { ToolRegistry } from './tools/tool.registry.js'
 import { ToolSeedService } from './tools/tool.seed.service.js'
@@ -90,15 +84,16 @@ let warnedMissingEnvelope = false
  *
  * 装配链路（全部在 **bootstrap 期**完成校验，坏配置起不来）：
  *   `ConfigService.get('agent')` → `AgentConfig` bean
- *     → `ToolGateway`（插件链）+ `AGENT_TOOLS`（工具类实例数组）
- *     → `ToolRegistry`：对每个实例 `buildToolSpec()` 拍平成一张 key → 工具表
+ *     → `ToolGateway`（插件链）+ `AGENT_TOOL_GROUPS`（工具组实例数组）
+ *     → `ToolRegistry`：对每个组 `buildToolSpecs()` 拍平成一张 key → 工具表（一个组 1..n 个工具）
  *       （重复 key、缺装饰器声明、默认值没给全，直接报错）
  *     → `ToolSeedService`：启动时把声明对账进 `ai_tools`（只补不覆盖人工改动）
  *     → `AGENT_REGISTRY`：agent 声明 + 提示词渲染（工具清单从注册机来，与实际挂载同源）
  *     → `MASTRA`：`createMastra` 装配实例（工具 / 技能经 `ai/mastra/**` 适配器转成 Mastra 词汇）
  *
  * 加一个 agent：`agents/<名字>.agent.ts` + `agents/index.ts` 登记 + 模板。
- * 加一个工具：写一个 `@Injectable()` 工具类（`@ToolDecl` + `@ToolExec`）+ 在 `AGENT_TOOLS` 登记一行。
+ * 加一个工具：在合适的工具组类里加一个 `@ToolDecl` 方法（没有合适的组就新建一个 `@ToolGroup` 类）
+ * + 在 `AGENT_TOOL_GROUPS` 登记一行。
  */
 @Module({
   imports: [AuthModule, AdminModule, AiModelModule],
@@ -114,19 +109,11 @@ let warnedMissingEnvelope = false
     { provide: PROMPT_ENGINE, useValue: prompts },
 
     // ───────────────────────── 工具引擎（主体） ─────────────────────────
-    // 工具类实例（**唯一的工具来源**）：注册机对每个实例读装饰器声明
+    // 工具组实例（**唯一的工具来源**）：注册机对每个组跑 `buildToolSpecs()` 拿 1..n 个工具
     {
-      provide: AGENT_TOOLS,
-      inject: [
-        RunCommandTool,
-        RunSubAgentTool,
-        PlanCreateTool,
-        PlanReorderTool,
-        PlanCompleteTool,
-        PlanDeleteTool,
-        ReadToolResultTool,
-      ],
-      useFactory: (...tools: AgentToolClass[]): AgentToolClass[] => tools,
+      provide: AGENT_TOOL_GROUPS,
+      inject: [PlannerTools, RunCommandTool, RunSubAgentTool, ReadToolResultTool],
+      useFactory: (...groups: AgentToolGroup[]): AgentToolGroup[] => groups,
     },
     // 部署上限（env）：库里的值再大也突破不了
     {
@@ -177,15 +164,12 @@ let warnedMissingEnvelope = false
     ToolRegistry,
     ToolSeedService,
 
-    // ───────────────────────── 工具类（运行时能力） ─────────────────────────
+    // ───────────────────────── 工具组（运行时能力） ─────────────────────────
     AgentRunner,
     PlannerStore,
+    PlannerTools,
     RunCommandTool,
     RunSubAgentTool,
-    PlanCreateTool,
-    PlanReorderTool,
-    PlanCompleteTool,
-    PlanDeleteTool,
     ReadToolResultTool,
 
     // ───────────────────────── agent 注册表与 Mastra 实例 ─────────────────────────

@@ -269,13 +269,13 @@ export interface ToolSpec<C = Record<string, unknown>, I = unknown, O = unknown>
 export type AnyToolSpec = ToolSpec<any, any, any>
 
 /**
- * 全部**工具类实例**的注入 token（Nest 多 provider 惯用法）。
+ * 全部**工具组实例**的注入 token（Nest 多 provider 惯用法）。
  *
- * 在 `ai.module.ts` 里用 `{ provide: AGENT_TOOLS, inject: [A, B, C], useFactory: (...tools) => tools }`
- * 汇总 —— 新增工具要在这里登记一行。注册机对每个实例跑 `buildToolSpec()` 拿声明
- * （工具类用 `@ToolDecl` / `@ToolExec` 装饰器声明，见 `tool.decorator.ts`）。
+ * 在 `ai.module.ts` 里用 `{ provide: AGENT_TOOL_GROUPS, inject: [A, B, C], useFactory: (...groups) => groups }`
+ * 汇总 —— 新增工具组要在这里登记一行。注册机对每个实例跑 `buildToolSpecs()` 拿声明数组
+ * （**一个组 1..n 个工具**；组类用 `@ToolGroup` + 方法上的 `@ToolDecl` 声明，见 `tool.decorator.ts`）。
  */
-export const AGENT_TOOLS = Symbol.for('AgentTools')
+export const AGENT_TOOL_GROUPS = Symbol.for('AgentToolGroups')
 
 /** 网关包装后的工具（注册机对外只发这种；适配器把它转成 Mastra 工具） */
 export interface Tool {

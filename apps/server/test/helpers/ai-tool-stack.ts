@@ -11,13 +11,14 @@ import {
   ValidatePlugin,
 } from '../../src/modules/ai/tools/plugins/index.js'
 import { ToolCallMetaStore } from '../../src/modules/ai/tools/tool.meta.js'
+import { buildToolSpecs } from '../../src/modules/ai/tools/tool.class.js'
 import { ToolResultStore } from '../../src/modules/ai/tools/tool-result.store.js'
 import { systemToolClock } from '../../src/modules/ai/tools/tool.clock.js'
 import { MemoryToolRateCounter } from './tool-kit-ports.js'
 import { ToolConfigService } from '../../src/modules/ai/tools/tool.config.service.js'
 import type { ToolConfigRow, ToolConfigSource } from '../../src/modules/ai/tools/tool.config.ports.js'
 import { TOOL_CONFIG_SOURCE, TOOL_ENV_CAPS } from '../../src/modules/ai/tools/tool.config.ports.js'
-import type { ToolEnvCaps } from '../../src/modules/ai/tools/tools.types.js'
+import type { ToolEnvCaps, ToolSpec } from '../../src/modules/ai/tools/tools.types.js'
 
 /**
  * 测试用的**工具引擎装配**（设计 §5.9）：把网关 / 注册机 / 配置服务用假依赖拼起来，
@@ -164,4 +165,15 @@ export const silentLogger: Pick<AppLogger, 'debug' | 'log' | 'info' | 'warn' | '
   info: () => undefined,
   warn: () => undefined,
   error: () => undefined,
+}
+
+/**
+ * 从一个**工具组实例**里按 key 取它交出的那个声明。
+ *
+ * 一个组可能交出 1..n 个工具（少则一个方法，多则一类能力），所以单工具测试先建组、再按 key 取。
+ */
+export const specByKey = (group: object, key: string): ToolSpec => {
+  const spec = buildToolSpecs(group).find((item) => item.key === key)
+  if (!spec) throw new Error(`工具组 ${group.constructor.name} 没有交出工具 ${key}`)
+  return spec
 }

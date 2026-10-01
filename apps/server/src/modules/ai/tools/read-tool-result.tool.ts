@@ -1,7 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common'
 import dedent from 'dedent'
 import { z } from 'zod'
-import { ToolDecl, ToolExec } from './tool.decorator.js'
+import { ToolDecl, ToolGroup } from './tool.decorator.js'
 import { paginate, parsePageHandle } from './paginate.js'
 import { TOOL_RATE_COUNTER } from './tool.ports.js'
 import type { ToolRateCounter } from './tool.ports.js'
@@ -48,28 +48,9 @@ const ReadToolResultOutputSchema = z.object({
   content: z.string(),
 })
 
-/** **取页工具**：一个工具一个类（设计 §5.2），依赖走构造器注入 */
+/** **取页工具组**：一个组一个类、组内一个方法一个工具（设计 §5.2），依赖走构造器注入 */
 @Injectable()
-@ToolDecl({
-  key: TOOL_RESULT_KEYS.readToolResult,
-  title: '读取工具结果的下一页',
-  category: 'core',
-  scope: 'all',
-  params: ReadToolResultInputSchema,
-  result: ReadToolResultOutputSchema,
-  config: ReadToolResultConfigSchema,
-  description: dedent`
-    读取某个工具结果的**后续页**。
-
-    什么时候用：工具结果里出现 \`page\` 与 \`handle\`（说明它太大，只给了你一页），
-    而你需要后面的内容时 —— 传回那个 \`handle\` 与要取的 \`page\`。
-
-    纪律：
-    - 先看第一页够不够用；够用就别取（每次取页都要花 token）；
-    - 取页拿不到"摘要"，拿到的是**原文片段**，自己判断该看哪一页；
-    - 同一个 \`handle\` 可以反复取（结果已入库），但每轮取页次数有上限。
-  `,
-})
+@ToolGroup({ category: 'core', scope: 'all' })
 export class ReadToolResultTool {
   constructor(
     @Inject(ToolResultStore) private readonly store: ToolResultStore,
@@ -77,7 +58,24 @@ export class ReadToolResultTool {
     @Inject(TOOL_ENV_CAPS) private readonly caps: ToolEnvCaps,
   ) {}
 
-  @ToolExec()
+  @ToolDecl({
+    key: TOOL_RESULT_KEYS.readToolResult,
+    title: '读取工具结果的下一页',
+    params: ReadToolResultInputSchema,
+    result: ReadToolResultOutputSchema,
+    config: ReadToolResultConfigSchema,
+    description: dedent`
+      读取某个工具结果的**后续页**。
+
+      什么时候用：工具结果里出现 \`page\` 与 \`handle\`（说明它太大，只给了你一页），
+      而你需要后面的内容时 —— 传回那个 \`handle\` 与要取的 \`page\`。
+
+      纪律：
+      - 先看第一页够不够用；够用就别取（每次取页都要花 token）；
+      - 取页拿不到"摘要"，拿到的是**原文片段**，自己判断该看哪一页；
+      - 同一个 \`handle\` 可以反复取（结果已入库），但每轮取页次数有上限。
+    `,
+  })
   async execute(
     input: z.infer<typeof ReadToolResultInputSchema>,
     ctx: ToolCallContext<z.infer<typeof ReadToolResultConfigSchema>>,

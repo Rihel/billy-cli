@@ -3,8 +3,7 @@ import { ReadToolResultTool } from '../../src/modules/ai/tools/read-tool-result.
 import { makePageHandle } from '../../src/modules/ai/tools/paginate.js'
 import { TOOL_KEYS } from '../../src/modules/ai/tools/tool-keys.js'
 import { ToolDeniedError } from '../../src/modules/ai/tools/tools.types.js'
-import { buildToolSpec } from '../../src/modules/ai/tools/tool.class.js'
-import { buildToolStackDeps, makeToolContext } from '../helpers/ai-tool-stack.js'
+import { buildToolStackDeps, makeToolContext, specByKey } from '../helpers/ai-tool-stack.js'
 
 /**
  * `read-tool-result`（取页）的单测：分页的回取通道。
@@ -37,7 +36,10 @@ const caller = {
 
 const build = (timelineOutput: string | null = null) => {
   const deps = buildToolStackDeps({ timelines: { findToolOutput: async () => timelineOutput } })
-  const spec = buildToolSpec(new ReadToolResultTool(deps.results, deps.counter, deps.caps))
+  const spec = specByKey(
+    new ReadToolResultTool(deps.results, deps.counter, deps.caps),
+    TOOL_KEYS.readToolResult,
+  )
   return { deps, spec }
 }
 

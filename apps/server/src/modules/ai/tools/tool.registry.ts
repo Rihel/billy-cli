@@ -1,8 +1,8 @@
 import { Inject, Injectable } from '@nestjs/common'
-import { buildToolSpec, type AgentToolClass } from './tool.class.js'
+import { buildToolSpecs, type AgentToolGroup } from './tool.class.js'
 import { ToolGateway } from './tool.gateway.js'
 import { ToolConfigService } from './tool.config.service.js'
-import { AGENT_TOOLS } from './tools.types.js'
+import { AGENT_TOOL_GROUPS } from './tools.types.js'
 import type {
   Tool,
   ToolCategoryValue,
@@ -23,8 +23,8 @@ export interface ToolMeta {
  * **工具注册机**（设计 §5.3）：工具的唯一来源。
  *
  * 四件事：
- * 1. **注册与校验**：对 `AGENT_TOOLS` 里的每个**工具类实例**跑 `buildToolSpec()` 拿声明，
- *    key 重复、声明不全、`config.parse({})` 给不出默认值 —— 一律**启动即失败**；
+ * 1. **注册与校验**：对 `AGENT_TOOL_GROUPS` 里的每个**工具组实例**跑 `buildToolSpecs()` 拿声明数组
+ *    （一个组 1..n 个工具），key 重复、声明不全、`config.parse({})` 给不出默认值 —— 一律**启动即失败**；
  * 2. **发工具**：`toolbox()` / `childToolbox()` 交给适配器装配 Agent 的，都是网关包装过的工具。
  *    主 agent（`mastra/ai.mastra`）与子 agent（`agent-runner`）都从这里取，**没有旁路**；
  * 3. **读配置**：`settings(key)` 走 `ToolConfigService`（缓存 + 合并 + env 上限）；
@@ -37,7 +37,7 @@ export class ToolRegistry {
   private readonly byKey = new Map<string, { spec: ToolSpec; tool: Tool }>()
 
   constructor(
-    @Inject(AGENT_TOOLS) tools: readonly AgentToolClass[],
+    @Inject(AGENT_TOOL_GROUPS) groups: readonly AgentToolGroup[],
     @Inject(ToolGateway) gateway: ToolGateway,
     @Inject(ToolConfigService) private readonly config: ToolConfigService,
   ) {
@@ -58,12 +58,14 @@ export class ToolRegistry {
       this.byKey.set(spec.key, { spec, tool: gateway.wrap(spec) })
     }
 
-    // 声明从工具类上的装饰器元数据里读（漏 `@ToolDecl` / `@ToolExec` 会在这里抛错）
-    for (const instance of tools) register(buildToolSpec(instance), instance.constructor.name)
+    // 声明从工具组类上的装饰器元数据里读（组内没有 `@ToolDecl` 方法会在 builder 里抛错）
+    for (const group of groups) {
+      for (const spec of buildToolSpecs(group)) register(spec, group.constructor.name)
+    }
     // 工具池不能为空 —— 否则 agent 连"能干什么"都没有
     if (this.byKey.size === 0) {
       throw new Error(
-        '工具池不能为空：AGENT_TOOLS 至少要登记一个工具类实例（否则 agent 连"能干什么"都没有）',
+        '工具池不能为空：AGENT_TOOL_GROUPS 至少要登记一个工具组实例（否则 agent 连"能干什么"都没有）',
       )
     }
   }

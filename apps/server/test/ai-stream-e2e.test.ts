@@ -15,13 +15,7 @@ import { AgentTitleService } from '../src/modules/ai/runtime/title.service.js'
 import { SkillLoader } from '../src/modules/ai/skills/index.js'
 import { RunCommandTool } from '../src/modules/ai/core/beans/command.tool.js'
 import { RunSubAgentTool } from '../src/modules/ai/core/beans/subagent.tool.js'
-import {
-  PlanCompleteTool,
-  PlanCreateTool,
-  PlanDeleteTool,
-  PlanReorderTool,
-  PlannerStore,
-} from '../src/modules/ai/core/beans/planner/index.js'
+import { PlannerStore, PlannerTools } from '../src/modules/ai/core/beans/planner/index.js'
 import { AgentRunner } from '../src/modules/ai/runtime/agent-runner.js'
 import { AgentChatService, STREAM_END_MARKER } from '../src/modules/ai/runtime/chat.service.js'
 import { toMastraSkills } from '../src/modules/ai/mastra/skill.adapter.js'
@@ -185,16 +179,13 @@ beforeAll(async () => {
     deps.metas,
     moduleRefPort,
   )
-  // 工具类实例（唯一的工具来源）：与 `ai.module.ts` 的装配口径一致
+  // 工具组实例（唯一的工具来源）：与 `ai.module.ts` 的装配口径一致
   const plannerStore = new PlannerStore(timelines)
   toolRegistry = new ToolRegistry(
     [
       new RunCommandTool(new CommandRunner(), silentLogger),
       new RunSubAgentTool(runner, silentLogger),
-      new PlanCreateTool(plannerStore),
-      new PlanReorderTool(plannerStore),
-      new PlanCompleteTool(plannerStore),
-      new PlanDeleteTool(plannerStore),
+      new PlannerTools(plannerStore),
       new ReadToolResultTool(deps.results, deps.counter, deps.caps),
     ],
     gateway,

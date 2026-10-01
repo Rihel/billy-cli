@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { CommandRunner } from '@repo/kits'
 import { RunCommandTool } from '../src/modules/ai/core/beans/command.tool.js'
-import { buildToolSpec } from '../src/modules/ai/tools/tool.class.js'
+import { TOOL_KEYS } from '../src/modules/ai/tools/tool-keys.js'
+import { specByKey } from './helpers/ai-tool-stack.js'
 import { createPromptEngine } from '../src/modules/ai/prompts/index.js'
 import { DEFAULT_AGENT_KEY, createAgentDefinitions } from '../src/modules/ai/agents/index.js'
 
@@ -29,13 +30,13 @@ const assistantPrompt = (): string => {
  * 所以这里直接查那份说明 —— 不再从提示词模板里找（模板里已经不重复写了）。
  */
 const runCommandDescription = (): string => {
-  // 改造后工具类交的是**声明**（装饰器元数据 → `buildToolSpec()`），说明文本就在声明上
-  const tool = new RunCommandTool(new CommandRunner(), {
+  // 改造后工具组交的是**声明**（装饰器元数据 → `buildToolSpecs()`），说明文本就在声明上
+  const group = new RunCommandTool(new CommandRunner(), {
     info: () => undefined,
     warn: () => undefined,
     error: () => undefined,
   } as never)
-  return buildToolSpec(tool).description
+  return specByKey(group, TOOL_KEYS.runCommand).description
 }
 
 describe('提示词纪律句（执行命令 / 能力边界 / 宽泛任务）', () => {

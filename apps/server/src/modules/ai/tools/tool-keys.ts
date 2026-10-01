@@ -7,8 +7,8 @@
  * 不把 key 写成裸字符串：agent 授权写错工具名，过去只会在运行时表现为「模型少了个能力」，
  * 现在是编译期错误（符号写错直接 undefined → 类型检查就红）。
  *
- * 当前工具都是**运行时能力**（一个工具一个 `@Injectable()` 类，用 `@ToolDecl` / `@ToolExec`
- * 装饰器声明）：AI 模块已与业务模块解耦，业务工具一个都没有（`AGENT_TOOLS` 是加工具的登记处）。
+ * 当前工具都是**运行时能力**（工具组：一个组一个 `@Injectable()` 类，组内一个 `@ToolDecl` 方法一个工具）：
+ * AI 模块已与业务模块解耦，业务工具一个都没有（`AGENT_TOOL_GROUPS` 是加工具的登记处）。
  */
 export const TOOL_KEYS = {
   /**
@@ -66,10 +66,10 @@ export const RUNTIME_TOOLS: readonly { key: string; title: string; description: 
   },
 ]
 
-/** 内建（工具类交出、但 key 单独收在这里）的工具 key */
+/** 内建（工具组交出、但 key 单独收在这里）的工具 key */
 export const TOOL_RESULT_KEYS = {
   readToolResult: TOOL_KEYS.readToolResult,
 } as const
 
-/** 工具 key 联合类型（工具类的 `@ToolDecl.key` 与 agent 声明的入参类型） */
+/** 工具 key 联合类型（工具组 `@ToolDecl.key` 与 agent 声明的入参类型） */
 export type ToolKey = (typeof TOOL_KEYS)[keyof typeof TOOL_KEYS]

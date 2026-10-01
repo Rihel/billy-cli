@@ -3,12 +3,12 @@ import { CommandRunner, type CommandResult } from '@repo/kits'
 import { describe, expect, it } from 'vitest'
 import { ToolGateway } from '../src/modules/ai/tools/tool.gateway.js'
 import { RunCommandTool } from '../src/modules/ai/core/beans/command.tool.js'
-import { buildToolSpec } from '../src/modules/ai/tools/tool.class.js'
 import { TOOL_KEYS } from '../src/modules/ai/tools/tool-keys.js'
 import type { ToolCallContext, ToolSpec } from '../src/modules/ai/tools/tools.types.js'
 import {
   buildToolStackDeps,
   silentLogger,
+  specByKey,
   TEST_TOOL_ENV_CAPS,
 } from './helpers/ai-tool-stack.js'
 
@@ -30,7 +30,7 @@ const buildStack = (options: { sourceRows?: Record<string, Record<string, unknow
     deps.source.set(key, row as never)
   }
   const gateway = new ToolGateway(deps.config, silentLogger as never, deps.plugins, deps.clock)
-  const spec = buildToolSpec(new RunCommandTool(new CommandRunner(), silentLogger as never))
+  const spec = specByKey(new RunCommandTool(new CommandRunner(), silentLogger as never), TOOL_KEYS.runCommand)
   return { deps, gateway, spec }
 }
 
