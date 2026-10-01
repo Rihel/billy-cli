@@ -54,6 +54,15 @@ ai/
 
 ### 1.2 工具：一个工具一个 bean + `ToolBuilder` 统一管理
 
+> **⚠️ 本节已被 `docs/design/ai-agent-tool-engine.md` 取代（2026-10-01）**：工具不再是"一个 bean 自己
+> `createTool`"，而是**一份声明（`ToolSpec`）+ 注册机（`ToolRegistry`）+ 网关插件链（`ToolGateway`）**；
+> 配置（开关 / 作用域 / 限额 / 秘钥）入库并可后台修改；Mastra 的词汇收进 `ai/mastra/**` 适配器。
+> 下面这段保留作**历史与背景**（"为什么一个工具一个 bean"的论证仍然成立）。
+>
+> **机制再演进（2026-10-01）**：工具 DSL 现在是**装饰器 + 工具类** —— 一个工具 = 一个 `@Injectable()` 类
+> （类上 `@ToolDecl`、方法上 `@ToolExec`），`AGENT_TOOLS` 汇总的是**工具类实例**；`AgentCore` / `asTools()`
+> 已取消。见 `docs/design/ai-agent-tool-engine.md` §5.2。
+
 - `ListTodosTool` / `GetTodoTool` / `CreateTodoTool` 各自 `@Injectable()`，构造器注入
   `TodoService`，在构造期用 `createTool` 绑定 `execute`；
 - 模块里用 `AGENT_TOOLS` token 汇总成数组（Nest 多 provider），`ToolBuilder` 负责：
@@ -909,6 +918,10 @@ key: agent:run:{runId}          TTL: 6h
 
 ### 3.14 「core bean」与动态子 agent（**本轮修正，以此为准**）
 
+> **机制演进（2026-10-01）**：`AgentCore` / `asTools()` 已取消 —— 规划 / 子 agent / 取页都是
+> **工具类**（`@ToolDecl` + `@ToolExec`，一类一工具），`AGENT_TOOLS` 汇总工具类实例。
+> 口径见 `docs/design/ai-agent-tool-engine.md` §5.2；本节其余"core bean"表述保留作历史。
+
 本节覆盖前面所有关于多 agent 的描述。修正来自四条要求（原文）：
 
 > 1. 我们会有 core 的 bean，这些 bean 会有 `asTools` 方法，比如 planner；
@@ -1091,7 +1104,7 @@ AI SDK 的 `data-sub-agent` part，和主内容走同一条 SSE：
 
 | 动作 | 对象 |
 | --- | --- |
-| 新增 | `ai/core/ai.core.types.ts`（`AgentCore`）、`ai/core/planner.core.ts`、`ai/core/subagent.core.ts`、`ai/runtime/agent-runner.ts`（子 run 执行器） |
+| 新增 | `ai/core/ai.core.types.ts`（`AgentCore`）、`ai/core/beans/planner/planner.core.ts`、`ai/core/beans/subagent.core.ts`、`ai/runtime/agent-runner.ts`（子 run 执行器） |
 | 改动 | `ToolBuilder`（两个来源 + `buildDelegable()`）、`AgentChatService`（注入运行时信封；收尾汇总子 run 消耗）、`runs` 实体与迁移（`parent_run_id` / `depth` / `tool_call_id` + 唯一索引换条件）、`AGENT_CORES` 装配 |
 | 删除 | `AgentSpec.subAgents`、`AgentDefinition.subAgents`、`agents/analyst.agent.ts`、`prompts/templates/analyst.eta`、`createMastra` 的 `agents:{}` 与拓扑排序 |
 | 契约 | 新增 `AgentRunStopResult*`（已有）、`AgentRunModel` 增 `parentRunId` / `depth`；`AgentTimelineItemModel` 增子 agent 归属信息 |
@@ -1119,7 +1132,7 @@ AI SDK 的 `data-sub-agent` part，和主内容走同一条 SSE：
 | 层 | 位置 | 职责 |
 | --- | --- | --- |
 | 机制（基础设施） | `packages/kits/src/foundation/command/`（`CommandRunner` + `command.platform.ts` + `CommandModule`） | 跨平台执行：shell 解析、超时、杀进程树、输出上限、取消、结果结构化 |
-| 策略（AI 模块） | `apps/server/src/modules/ai/core/command.core.ts`（core bean `command`） | 开关、工作目录边界、时长 / 输出上限、审计日志 |
+| 策略（AI 模块） | `apps/server/src/modules/ai/core/beans/command.tool.ts`（工具类 `RunCommandTool`） | 开关、工作目录边界、时长 / 输出上限、审计日志 |
 | 提示词 | `prompts/templates/partials/tools.eta`（「`run-command` 怎么用」） | 什么时候用 / 不用、能力问题先验证、有副作用先问 / 只读公开请求可直接跑、失败要读懂原因 |
 
 **为什么用 `execa` 而不是自己拼 `child_process`**（早先手写过一版，已弃）：三条硬约束恰好是它的内建能力 ——
@@ -1146,7 +1159,7 @@ AI SDK 的 `data-sub-agent` part，和主内容走同一条 SSE：
 
 | 控制点 | 落法 |
 | --- | --- |
-| 开关 | `AGENT_COMMAND_ENABLED`（默认 `true`）。关掉时工具**仍在**（装配期 core bean 必须交出工具），每次调用返回"已被关闭"的结论 —— 模型能理解并改口 |
+| 开关 | `AGENT_COMMAND_ENABLED`（默认 `true`）。关掉时工具**仍在**（装配期工具池必须非空），每次调用返回"已被关闭"的结论 —— 模型能理解并改口 |
 | 目录边界 | `AGENT_COMMAND_WORK_DIR`（默认服务进程工作目录）。agent 传入的 `cwd` 必须落在其内，越界**拒绝并说明边界**（不静默夹回）；判边界用 `path.relative`，天然处理 `..` 逃逸与 Windows 大小写差异 |
 | 时长上限 | `AGENT_COMMAND_TIMEOUT_MS`（默认 15s）：它**既是默认值也是硬上限** —— 模型传更小听它的，传更大一律夹到这里 |
 | 输出上限 | `AGENT_COMMAND_MAX_OUTPUT_BYTES`（默认 64KB / 每条流）：超出即截断并终止命令 |
@@ -1184,7 +1197,7 @@ AGENT_COMMAND_WORK_DIR=               # 缺省 = 服务进程工作目录
 
 | 动作 | 对象 |
 | --- | --- |
-| 新增 | kits `foundation/command/{command.runner,command.platform,command.module,index}`、`ai/core/command.core.ts`、`ai/prompts/environment.ts`、`ai/prompts/templates/partials/environment.eta` |
+| 新增 | kits `foundation/command/{command.runner,command.platform,command.module,index}`、`ai/core/beans/command.tool.ts`、`ai/prompts/environment.ts`、`ai/prompts/templates/partials/environment.eta` |
 | 改动 | `tool-keys`（`runCommand`）、`assistant.agent`（授权）、提示词片段（用法与确认纪律，现落在 `partials/tools.eta`）、`ai.mastra`（`instructions` 改动态参数：用信封里的渲染全文）、`ai.core.types`（信封加 `systemPrompt`）、`chat.service`（注入 `PROMPT_ENGINE` + 渲染 + 落快照）、`ai.module`（`CommandCore` + `PROMPT_ENGINE` provider）、`app-config`（`command*`）、`root.module`（`CommandModule`）、依赖 `execa` |
 | 测试 | kits 10 项（正常 / 非零退出 / 超时 / 孙进程不拖死 / 截断 / cwd / 起不来 / 中止 / 三端画像）；server：环境片段 3 项 + 命令策略 5 项（开关 / 目录越界 / 目录内 / 时长夹紧）+ e2e 两条（真跑一条跨平台命令并完整落库；首轮注入且第二轮不再注入） |
 
@@ -1503,6 +1516,10 @@ const toolCalls = await output.toolCalls
 用量与上下文占比交给 ai-elements 的 `context` 组件（`usedTokens` / `maxTokens` + `usage`）。
 
 ### 4.8 AI 模型模块：供应商表 + 模型表（配置类数据，与 agent 运行时解耦）
+
+> **⚠️ 密钥存储口径已变更（2026-10-01）**：`ai_providers` 的密钥从 AES-GCM 密文改为**明文**
+> （列 `api_key`），提示串 `hintOf` 在读取时派生；接口仍不回明文。理由与代价见
+> `ai-agent-tool-engine.md` 的「实施记录」第 11 条。
 
 > **落地状态（本轮）**：**只落地数据表**（`ai_providers` / `ai_models`，实体 + 迁移 + 对外模型契约，
 > 迁移已应用）。CRUD / 同步接口 / 管理页按 §4.8.4 后续实现；错误码（§4.8.6）随模块一起加。
