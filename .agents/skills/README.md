@@ -9,7 +9,7 @@
 
 ## 加载顺序
 
-当前共 **21 个** skill（必读 1 + 功能 19 + 元 1）；数量与清单变更时同步
+当前共 **23 个** skill（必读 1 + 功能 21 + 元 1）；数量与清单变更时同步
 `billy-dev-foundation/references/catalog.md` 与仓库根 `README.md` 的「Agent Skills」章节。
 
 | 顺序 | Skill | 用途 |
@@ -21,6 +21,7 @@
 | 功能 | [`develop-business-module`](./develop-business-module/SKILL.md) | 开发完整业务模块（契约 → 数据 → 业务 → 接口 → SDK → 页面） |
 | 功能 | [`develop-backend-api`](./develop-backend-api/SKILL.md) | 后端接口开发的质量维度（幂等 / 鲁棒 / 安全 / 一致、同步异步选型、可观测、性能、契约演进、可测试性） |
 | 功能 | [`develop-ai-agent`](./develop-ai-agent/SKILL.md) | 开发 AI 能力（agent / 工具 / core bean / 技能 / 流式协议 / 子 agent / 恢复） |
+| 功能 | [`ai-agent-engineering`](./ai-agent-engineering/SKILL.md) | AI 能力的工程级规范（能力设计取舍、运行时账本与上下文、安全与审计、契约与质量验收；「怎么写」看 develop-ai-agent） |
 | 功能 | [`develop-frontend-page`](./develop-frontend-page/SKILL.md) | 开发前端页面（Admin 后台 @repo/ui + TanStack / Web 前台 shadcn + Server Actions；视觉取值走 @repo/ui 设计系统 token） |
 | 功能 | [`implement-auth`](./implement-auth/SKILL.md) | 认证与权限（登录注册、token/cookie、路由守卫、双体系） |
 | 功能 | [`object-storage`](./object-storage/SKILL.md) | 对象存储与文件上传下载（S3/COS、预签名、STS） |

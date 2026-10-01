@@ -108,7 +108,11 @@ pnpm check:ui    # 守卫五条：组件导出 / 前端包 typecheck 脚本 / �
 
 ## 菜单与路由
 
-- admin：新页面放 `apps/admin/src/app/main/xxx/page.tsx`，并在 `AppMenu.tsx` 的 items 加菜单项
+- admin：新页面放 `apps/admin/src/app/main/xxx/page.tsx`，并在 `AppMenu.tsx` 的 items 加菜单项。
+  **例外（全窗口工作台类页面）**：需要脱离管理台外壳（无左侧菜单 / 无页头）、又不想改 URL 时，
+  放到路由组下并自带 layout —— 见 `apps/admin/src/app/(standalone)/main/layout.tsx`（AI 会话页就是这么做的：
+  路由组不产生 URL 段，地址仍是 `/main/ai/chat/...`）；**鉴权必须复用 `components/AdminAuthBoundary.tsx`**，
+  并自己导出 `dynamic = 'force-dynamic'`，别忘了给页面一个「回管理台」入口（外壳导航没了）
   （`key` 为路由路径，如 `/main/xxx`）。
 - **两个前端的根 layout 统一动态渲染**：`apps/web/src/app/layout.tsx` 与 `apps/admin/src/app/layout.tsx`
   都标了 `export const dynamic = 'force-dynamic'`（每次请求 SSR，不做整站静态预渲染）——新页面不要依赖

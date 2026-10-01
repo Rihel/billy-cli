@@ -7,6 +7,7 @@ description: >-
   新增技能（SkillLoader catalog）、写提示词（eta 模板）、改会话 / 运行 / 时间线落库与 SSE 流式协议、
   动态子 agent、上下文裁剪与压缩、崩溃恢复与看门狗。触发词：AI、agent、agent key、工具、
   tool、工具组、@ToolGroup、@ToolDecl、装饰器、ToolSpec、ToolRegistry、注册机、ToolGateway、网关、插件、plugin、
+  工具自定义事件、事件声明、ctx.emit、data-tool-event、事件渲染器、
   ai_tools、工具配置、planner、子 agent、sub-agent、技能、skill、提示词、prompt、eta、
   会话、conversation、run、运行、时间线、timeline、流式、SSE、AI SDK、Mastra、token 消耗、
   上下文压缩、恢复、看门狗。
@@ -16,6 +17,8 @@ description: >-
 
 前置：先加载必读 skill `billy-dev-foundation`；数据结构改动配合 `define-data-structure` /
 `database`，接口质量自查看 `develop-backend-api`，写页面看 `develop-frontend-page`。
+**分工**：本 skill 讲**怎么写**（机制与配方）；**该不该做、工具面怎么切、权限与成本、安全与审计、
+怎么验收**看工程级 skill `ai-agent-engineering`。
 **权威设计文档**：`docs/design/ai-agent.md`（运行时）+ `docs/design/ai-agent-tool-engine.md`
 （工具 DSL / 注册机 / 网关插件 / 配置入库 / Mastra 适配器）—— 改 AI 前先读，改完同步。
 
@@ -33,7 +36,7 @@ description: >-
 | 目录 | 放什么 | 加东西时改哪 |
 | --- | --- | --- |
 | `api/` | **接口层**：`ai.controller`（对话路由）/ `ai-tool.controller`（工具配置路由）/ `ai-tool.service`（后台工具配置服务） | 加路由：写 controller + 在 `ai.module.ts` 的 `controllers` 登记一行 |
-| `core/` | **核心引擎**（与"具体是哪件事"无关）：共享契约 `envelope`（运行时信封）/ `config` / `constants` / `errors` / `model-decision`；**工具引擎 `core/tools/**`**（`tools.types` DSL / `tool.decorator` + `tool.class`（工具组 DSL 与 `buildToolSpecs`）/ `tool.registry`（注册机 + 种子）/ `tool.gateway`（网关）/ `plugins/*.plugin.ts`（一个插件一个文件）/ `tool.settings`（合并纯函数）/ `tool.config.service`（缓存）/ `tool.config.repository`（`ai_tools`）/ `paginate` + `tool-result.store`（大返回分页与回取））；`core/skills/**`（`SkillLoader` + `catalog/<name>/SKILL.md`）；`core/prompts/**`（提示词引擎 + `templates/*.eta` + `partials/` + 运行环境组装 `environment.ts`） | 加引擎能力：改 `core/tools/**`（**禁 import `@mastra`**） |
+| `core/` | **核心引擎**（与"具体是哪件事"无关）：共享契约 `envelope`（运行时信封）/ `config` / `constants` / `errors` / `model-decision`；**工具引擎 `core/tools/**`**（`tools.types` DSL / `tool.decorator` + `tool.class`（工具组 DSL 与 `buildToolSpecs`）/ `tool.registry`（注册机 + 种子）/ `tool.gateway`（网关）/ `plugins/*.plugin.ts`（一个插件一个文件）/ `tool.settings`（合并纯函数）/ `tool.config.service`（缓存）/ `tool.config.repository`（`ai_tools`）/ `tool-event`（事件声明归一化 + 发射，见 §2.2）/ `paginate` + `tool-result.store`（大返回分页与回取））；`core/skills/**`（`SkillLoader` + `catalog/<name>/SKILL.md`）；`core/prompts/**`（提示词引擎 + `templates/*.eta` + `partials/` + 运行环境组装 `environment.ts`） | 加引擎能力：改 `core/tools/**`（**禁 import `@mastra`**） |
 | `runtime/` | 会话 / 运行 / 时间线仓储与服务、上下文、流记录、子 agent 执行器、崩溃恢复 + `plan.protocol`（计划协议） | 改行为先看 `runtime.md` |
 | `agents/` | **顶层** agent 声明（前端能选的就这些，一个文件一个）+ `index.ts` 唯一登记处 + `types` / `registry` / `service`（注册表与装配查询） | 加 agent：一个文件 + `AGENT_SPECS` 一行 + 一个 eta 模板 |
 | `tools/` | **具体工具**（用 `core/tools` 的引擎写，**禁 import `@mastra`**）：`command.tool` / `subagent.tool` / `read-tool-result.tool` / `planner/**`（规划工具组 `planner.tools`：组内四个 `@ToolDecl` 方法 + `planner.store` 机制 + `planner.schemas` 契约） | 加工具：在合适的组里加一个 `@ToolDecl` 方法（没有合适的组就新建一个 `@ToolGroup` 类）+ 在 `AGENT_TOOL_GROUPS` 登记一行 |
@@ -87,6 +90,11 @@ ai/mastra/** 适配器 ──→ Toolbox/SkillRef/信封 映射成 Mastra 的 To
 5. **测试与授权**：写 `test/ai-tools/<key>.test.ts`（标准测试集强制：`specByKey(new MyTools(...), key)`
    或 `buildToolSpecs(group)` 拿 spec 直接调 `exec`），并在 `agents/assistant.agent.ts` 的授权清单加 key。
 
+**`reason` 不用你写**：每次调用必填的"为什么用这个工具"由**引擎注入**（`core/tools/call-reason.ts` 的
+`withCallReason`，`buildToolSpecs` 组装声明时统一包成 `modelParams`）。它只作用于"给模型的 schema +
+网关校验"这一层，执行体拿到的 `input` 仍是你的原契约（`reason` 被 `ValidatePlugin` 摘掉；
+要写业务日志就读 `ctx.reason`，可选、不要求）。设计见 `docs/design/ai-agent-tool-engine.md` §5.18。
+
 **一个类一个工具 = 组里只有一个方法**：形状只有一种，不必为"单工具"另写。
 
 ```ts
@@ -116,6 +124,54 @@ export class MyTools {
 }
 ```
 
+## 2.2 如何让工具往流里发事件（自定义事件 DSL）
+
+工具除了给出参，还能在**执行过程中**往这条流里发事件，让前端实时渲染（进度、阶段、产物行……）。
+声明与发射都在同一个 `@ToolDecl` 上：
+
+```ts
+const RunEvents = [
+  { name: 'progress', title: '执行进度', mode: 'state',
+    description: dedent`每完成一个阶段发一次；percent 是 0-100 的整数，stage 是当前阶段的中文名`,
+    payload: z.object({ percent: z.number(), stage: z.string() }) },
+  { name: 'artifact', title: '产物', mode: 'stream',
+    description: dedent`每写出一份产物发一条；url 可直接展示`,
+    payload: z.object({ url: z.string(), label: z.string() }) },
+] as const
+
+@ToolDecl({ key: TOOL_KEYS.myFirst, title: '...', params: GreetInput, config: GreetConfig,
+  description: dedent`...`, events: RunEvents })
+async first(input: z.infer<typeof GreetInput>, ctx: ToolCallContext<z.infer<typeof GreetConfig>>) {
+  ctx.emit('progress', { percent: 30, stage: '读取' })   // 执行过程中随时发
+  return this.service.do(input.who, ctx.settings.config)
+}
+```
+
+五条口径（细节见设计 §5.17）：
+
+1. **`mode` 决定前端看到什么，由服务端定**：`state`（默认）= 带稳定 id
+   `<toolCallId>:<事件名>`，AI SDK 按 id 归并（同 id 后者覆盖前者）→ 前端**只看到最新快照**
+   （进度不刷屏）；`stream` = 不带 id，一块一条 → 前端按序追加（日志行、产物行）。
+   前端**不自己实现去重**，只按 `parts` 顺序遍历。
+2. **未声明不许发**：`ctx.emit` 只认声明里的 `name`（组内唯一）；未声明、或 payload 不合声明的
+   zod 契约 → **丢弃 + `log.warn`**。事件是锦上添花，**绝不能让工具执行失败**。
+3. **事件是过程，出参是结论**：事件只走流，**不落时间线**（`stream-recorder` 的 `default` 分支）；
+   刷新后还要看见的东西**必须写进出参**（出参全量落库）。这是口径不是 bug。
+4. **声明是基础信息**：`events` 与 `title` / `description` / `param_schema` 一样启动期镜像进
+   `ai_tools.events`，后台工具页只读展示（前端只配 config / limits / secrets）。
+5. **前端渲染是代码注册的**：认不出的事件走内置兜底（标题 + 事件名徽标 + 折叠 JSON，绝不静默丢）；
+   要自定义外观就在 `apps/admin` 侧 `registerToolEventRenderer(toolKey, event, renderer)`
+   （优先级：精确 > 工具通配 > 全局精确 > 全局通配 > 兜底）。
+
+**非流式 / 后台调用没有 writer，`ctx.emit` 是安全 no-op** —— 所以业务事实不能只放在事件里。
+
+**目前没有生产工具在发事件**（`run-command` 曾按行发过 stdout / stderr + 一个 exit 状态块，
+2026-10-01 **按用户口径移除**：它把出参里已有的内容又放了一遍，命令通常一两秒就结束，逐行只剩闪烁，
+还把消息撑长）。**声明事件之前先答一句**：过程信息本身有没有独立价值（时长很长、用户会在等待中做判断）？
+"把出参提前展示一遍"不算价值。真要做时照 §2.2 的骨架写，前端**无需改代码就有兜底渲染**
+（标题 + 事件名徽标 + 折叠 JSON）；要终端 / 图表这类外观再写 `registerToolEventRenderer` 并在会话页
+模块加载期 import。机制本身的测试与设计见设计文档 §5.17。
+
 ## 3. 验证与质量门
 
 ```bash
@@ -129,10 +185,17 @@ pnpm typecheck && pnpm test && pnpm check:ui && pnpm check:inject && pnpm check:
 **两条铁律（工具引擎按它写，别的包同样适用）**：文字性多行字符串一律 ``dedent`...` ``；
 除纯类型文件外**一个文件一个职责**（见 `billy-dev-foundation/references/code-conventions.md` 第 11 / 12 条）。
 
+**带装饰器的测试夹具只能放 `src/**`**：`test/**` 下的文件 Vitest 不做 TS 装饰器转换
+（`SyntaxError: Invalid or unexpected token`，`test/helpers/` 与 `*.test.ts` 内联类都失败，
+加 `esbuild.tsconfigRaw.experimentalDecorators` 也无效；无装饰器的测试文件正常）。
+需要 `@ToolGroup` 声明的测试工具组放 `src/modules/ai/tools/*testkit*.ts`，**不进 `AGENT_TOOL_GROUPS`**，
+并靠 `tsconfig.build.json` 的 `**/*testkit*.ts` 排除出构建产物（生产误引则构建失败）。
+
 ## 4. 工具配置的三条口径（2026-10-01 定，改之前先看）
 
 1. **基础信息留在代码、启动期全量镜像入库**：`title` / `description` / `category` / `param_schema`
-   由 `ToolSeedService` 每次启动按声明**覆盖写**（代码是唯一事实源）；后台页只读展示，**不提供编辑**。
+   / `events`（自定义事件声明，见 §2.2）由 `ToolSeedService` 每次启动按声明**覆盖写**（代码是唯一事实源）；
+   后台页只读展示，**不提供编辑**。
 2. **前端只配"配置"**：可改的只有开关 / 作用域 / 限额 / 配置值 / 秘钥；`config` 与 `limits` 是
    **整列替换**（jsonb 不按 key 合并），所以前端提交"整份生效配置"。
 3. **秘钥明文入库**（含 `ai_providers.api_key`）：没有加解密，提示串由 `hintOf` **读取时派生**；

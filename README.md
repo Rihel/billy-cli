@@ -1156,10 +1156,11 @@ AI 编码 Agent 按任务**按需加载**，工具无关（Claude Code / Codex /
 - **最高准则**：[AGENTS.md](AGENTS.md)（8 条首要准则，先于一切 skill 与规范）；Claude Code 入口为
   [CLAUDE.md](CLAUDE.md)
 - **必读入口**：`billy-dev-foundation`（分层架构、代码约定含「不重复造轮子」实现查找顺序、常用命令、标准流程）
-- **共 21 个 skill**：必读 1（`billy-dev-foundation`）+ 功能 19（`define-data-structure` / `define-dict-enum` /
-  `database` / `develop-business-module` / `develop-backend-api` / `develop-frontend-page` / `implement-auth` /
-  `object-storage` / `concurrency` / `kafka` / `scheduler` / `stream` / `telemetry` / `notification` / `lark` /
-  `state-machine` / `write-tests` / `git-workflow` / `codegraph`）+ 元 1（`manage-skills`）；完整索引见
+- **共 23 个 skill**：必读 1（`billy-dev-foundation`）+ 功能 21（`define-data-structure` / `define-dict-enum` /
+  `database` / `develop-business-module` / `develop-backend-api` / `develop-frontend-page` / `develop-ai-agent` /
+  `ai-agent-engineering` / `implement-auth` / `object-storage` / `concurrency` / `kafka` / `scheduler` / `stream` /
+  `telemetry` / `notification` / `lark` / `state-machine` / `write-tests` / `git-workflow` / `codegraph`）+
+  元 1（`manage-skills`）；完整索引见
   [`.agents/skills/README.md`](.agents/skills/README.md) 与
   [`billy-dev-foundation/references/catalog.md`](.agents/skills/billy-dev-foundation/references/catalog.md)
 - **典型全链路**（`develop-business-module`）：数据结构（schema + 实体）→ 建表迁移 → 业务（repository /

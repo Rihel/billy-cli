@@ -21,8 +21,16 @@
 
 ## 2. 上下文策略（按模型窗口比例，不拍脑袋）
 
-`AgentConfig` 的四个比例：触发 0.7 → 裁剪到 0.5 → 压缩到 0.4，最近 3 轮永不裁，
-单条工具结果给模型的视图上限 0.1（**落库仍是完整原文**）。窗口来自 `tokenlens`，查不到用兜底值。
+`AgentConfig` 的比例（比例都相对**模型窗口**，窗口来自 `tokenlens`，查不到用兜底值）：
+**触发 0.7**（`contextTriggerRatio`，`runtime/context.service.ts:153`）→ **裁剪到 0.5**
+（`contextTrimTargetRatio`，`:155`）；**最近 3 轮永不裁**；单条工具结果给模型的视图上限 0.1
+（`contextToolResultMaxRatio`，`:162`；**落库仍是完整原文**）。
+
+> ⚠️ **`contextCompactTargetRatio`（默认 0.4）是未被读取的旋钮**（2026-10-01 核实）：它在
+> `app-config.ts:123,333` 可配、`core/config.ts:18` 有类型，但 `runtime/context.service.ts` 里
+> **没有任何消费方** —— 压缩（`trim+compact`）以 `kind='summary'` 的摘要事件顶替被压缩区间，
+> 之后**没有"压到某个比例"的目标线**，真实兜底是"连最近 1 轮都装不下就抛 `ContextTooLongError`"
+>（`:278`）。要么接线，要么删掉这个旋钮，别让它继续误导（本行此前写"压缩到 0.4"即为误述，已更正）。
 
 **组装上下文只看根 run 的事件**（`listSince(..., { rootOnly: true })`）：子 agent 的内部过程是审计资料，
 回灌给主模型既费窗口又污染上下文。压缩产物是 `kind='summary'` 的事件（原文保留，摘要只是"给模型的新起点"）。

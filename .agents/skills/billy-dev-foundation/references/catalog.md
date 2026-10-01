@@ -11,6 +11,7 @@
 | [`develop-business-module`](../../develop-business-module/SKILL.md) | 开发完整业务模块：契约 → 数据 → 业务 → 接口 → SDK → 页面全链路 | 新增模块、新功能、CRUD、业务接口、列表 / 表单页时 |
 | [`develop-backend-api`](../../develop-backend-api/SKILL.md) | 后端接口开发的质量维度：幂等 / 鲁棒 / 安全 / 一致 + 执行策略（同步 / 异步）、可观测性、性能与契约演进、可测试性 | 开发 / 修改后端接口、接口质量自查时 |
 | [`develop-ai-agent`](../../develop-ai-agent/SKILL.md) | 开发 AI 能力（`modules/ai`）：agent / 工具组（`@ToolGroup` + 方法级 `@ToolDecl`：规划、子 agent、取页）/ 技能 / eta 提示词 / 会话运行时间线落库 / SSE 流式协议 / 动态子 agent / 上下文压缩 / 崩溃恢复 | 改 AI 模块、加 agent / 工具 / 技能、动流式协议或落库时 |
+| [`ai-agent-engineering`](../../ai-agent-engineering/SKILL.md) | AI 能力的**工程级**规范：能力设计（工具面 / 粒度 / 权限 / 成本预算）、运行时（token 与上下文压缩 / 限流 / 取消与恢复 / 可观测）、安全与审计（越权 / 秘钥 / 命令边界 / 注入 / 全量入库与配置版本）、契约与质量（schema → SDK → 前端闭环 / 测试策略 / 验收清单） | 决定"要不要做这个 AI 能力、怎么做才对"、评审 AI 改动、验收 AI 能力时 |
 | [`develop-frontend-page`](../../develop-frontend-page/SKILL.md) | 开发前端页面：Admin 后台（@repo/ui 的 DataTable / ModalForm / 存储组件 + TanStack Table/Form）+ Web 前台（shadcn / Server Actions）；视觉取值走 @repo/ui 设计系统 token | 写页面、列表 / 表单、组件、Server Action、设计系统 / token / 主题时 |
 | [`implement-auth`](../../implement-auth/SKILL.md) | 认证与权限：登录 / 注册 / 找回密码、token 与 cookie、路由守卫、用户 / 管理员双体系 | 登录注册、鉴权、权限、守卫、token 相关任务时 |
 | [`object-storage`](../../object-storage/SKILL.md) | 对象存储与文件上传下载：S3/COS 门面、预签名 URL、STS、FileUpload / ImageUpload | 文件上传 / 下载 / 图片存储时 |
