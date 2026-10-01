@@ -9,13 +9,18 @@ import { ConversationEntity } from '../src/database/entities/conversation-entity
 import { RunEntity } from '../src/database/entities/run-entity.js'
 import { TimelineEntity } from '../src/database/entities/timeline-entity.js'
 import { DEFAULT_AGENT_KEY, createAgentDefinitions } from '../src/modules/ai/agents/index.js'
-import { createMastra } from '../src/modules/ai/core/ai.mastra.js'
+import { createMastra } from '../src/modules/ai/mastra/ai.mastra.js'
 import { createAgentRegistry } from '../src/modules/ai/core/ai.registry.js'
-import { readAgentRuntime } from '../src/modules/ai/core/ai.core.types.js'
 import { decideModelForMastra } from '../src/modules/ai/core/ai.model-decision.js'
-import { PlannerCore } from '../src/modules/ai/core/planner.core.js'
-import { SubAgentCore } from '../src/modules/ai/core/subagent.core.js'
-import { CommandCore } from '../src/modules/ai/core/command.core.js'
+import { RunCommandTool } from '../src/modules/ai/core/beans/command.tool.js'
+import { RunSubAgentTool } from '../src/modules/ai/core/beans/subagent.tool.js'
+import {
+  PlanCompleteTool,
+  PlanCreateTool,
+  PlanDeleteTool,
+  PlanReorderTool,
+  PlannerStore,
+} from '../src/modules/ai/core/beans/planner/index.js'
 import { createPromptEngine } from '../src/modules/ai/prompts/index.js'
 import { AgentTitleService } from '../src/modules/ai/runtime/title.service.js'
 import { AgentChatService } from '../src/modules/ai/runtime/chat.service.js'
@@ -26,7 +31,11 @@ import { AgentRunner } from '../src/modules/ai/runtime/agent-runner.js'
 import { RunRepository } from '../src/modules/ai/runtime/run.repository.js'
 import { TimelineRepository } from '../src/modules/ai/runtime/timeline.repository.js'
 import { SkillLoader } from '../src/modules/ai/skills/index.js'
-import { ToolBuilder } from '../src/modules/ai/tools/tool.builder.js'
+import { toMastraSkills } from '../src/modules/ai/mastra/skill.adapter.js'
+import { toMastraTools } from '../src/modules/ai/mastra/tool.adapter.js'
+import { ReadToolResultTool } from '../src/modules/ai/tools/read-tool-result.tool.js'
+import { ToolGateway } from '../src/modules/ai/tools/tool.gateway.js'
+import { ToolRegistry } from '../src/modules/ai/tools/tool.registry.js'
 import {
   AiModelRepository,
   AiModelService,
@@ -38,6 +47,7 @@ import {
   type MockModelServer,
   startMockModelServer,
 } from './helpers/mock-model-server.js'
+import { buildToolStackDeps } from './helpers/ai-tool-stack.js'
 
 /**
  * **"会话页选的模型，真的被用了"** 端到端（真实数据库 + 离线 mock 供应商，不需要外部密钥）。
@@ -131,7 +141,6 @@ beforeAll(async () => {
   const providerRepo = new AiProviderRepository(db)
   const modelRepo = new AiModelRepository(db)
   const modelConfig: AiModelConfig = {
-    encryptionKey: TEST_SECRET,
     fallbackSecret: undefined,
     seedFromEnv: false,
   }
@@ -167,28 +176,48 @@ beforeAll(async () => {
   const runs = new RunRepository(db)
   const timelines = new TimelineRepository(db)
   const config = { ...TEST_CONFIG, baseURL: mock.baseURL } as never
-  const runner = new AgentRunner(runs, timelines, config, silentLogger)
-  const skillLoader = new SkillLoader(silentLogger)
-  const toolBuilder = new ToolBuilder([], [
-    new PlannerCore(timelines),
-    new SubAgentCore(runner, silentLogger),
-    // 命令执行 core：与 `ai.module.ts` 的装配口径一致（assistant 已授权 run-command）
-    new CommandCore(new CommandRunner(), config, silentLogger),
-  ])
+  // 工具引擎装配（设计 §5.9）：插件链为空（e2e 只关心行为），依赖用测试替身
+  const deps = buildToolStackDeps()
+  const gateway = new ToolGateway(deps.config, silentLogger, [], deps.clock)
+  // registry 与 runner 互相引用：给 runner 一个**延迟求值**的在册端口，避免装配成环
+  let toolRegistry: ToolRegistry
+  // `AgentRunner` 通过 ModuleRef **惰性**取注册机（构造期不依赖它，否则成环死锁）：
+  // 测试给一个只实现 `get` 的替身，语义与生产一致
+  const moduleRefPort = { get: () => toolRegistry } as never
+  const runner = new AgentRunner(
+    runs,
+    timelines,
+    config,
+    silentLogger,
+    deps.metas,
+    moduleRefPort,
+  )
+  // 工具类实例（唯一的工具来源）：与 `ai.module.ts` 的装配口径一致
+  const plannerStore = new PlannerStore(timelines)
+  toolRegistry = new ToolRegistry(
+    [
+      new RunCommandTool(new CommandRunner(), silentLogger),
+      new RunSubAgentTool(runner, silentLogger),
+      new PlanCreateTool(plannerStore),
+      new PlanReorderTool(plannerStore),
+      new PlanCompleteTool(plannerStore),
+      new PlanDeleteTool(plannerStore),
+      new ReadToolResultTool(deps.results, deps.counter, deps.caps),
+    ],
+    gateway,
+    deps.config,
+  )
   const registry = createAgentRegistry(
-    createAgentDefinitions(createPromptEngine(), toolBuilder),
+    createAgentDefinitions(createPromptEngine(), toolRegistry),
     DEFAULT_AGENT_KEY,
   )
+  const skillLoader = new SkillLoader(silentLogger)
   const mastra = await createMastra({
-    resolveModel: (_definition, requestContext) => {
-      // 与 `ai.module.ts` 完全同一套决策（纯函数，另有专门的单测锁它的两条硬约束）
-      const model = readAgentRuntime(requestContext)?.model
-      if (!model) throw new Error('测试栈：运行时信封里没有模型')
-      return decideModelForMastra(model).model
-    },
+    // 与 `ai.module.ts` 完全同一套决策：模型由编排层放进信封，这里直接吃信封里的 RuntimeModel
+    resolveModel: (_definition, model) => decideModelForMastra(model).model,
     definitions: registry.all(),
-    resolveTools: (keys) => toolBuilder.build(keys),
-    resolveSkills: (names) => skillLoader.resolve(names),
+    resolveTools: (keys) => toMastraTools(toolRegistry.toolbox(keys), silentLogger),
+    resolveSkills: async (names) => toMastraSkills(await skillLoader.resolve(names)),
   })
 
   conversations = new AgentConversationService(
@@ -208,7 +237,8 @@ beforeAll(async () => {
     timelines,
     new ContextService(timelines, config, silentLogger),
     {} as never,
-    toolBuilder,
+    toolRegistry,
+    deps.metas,
     skillLoader,
     modelService,
     silentLogger,

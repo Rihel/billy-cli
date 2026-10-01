@@ -5,14 +5,16 @@ import type { AddressInfo } from 'node:net'
  * 离线 mock 模型服务（OpenAI 兼容）：**端到端测试用的假模型**，不依赖任何外部密钥。
  *
  * 行为刻意做得确定，便于断言：
- * 1. 请求里带了工具、且本轮还没有任何工具结果 → 先发一次工具调用（默认 `todo-write`）；
+ * 1. 请求里带了工具、且本轮还没有任何工具结果 → 先发一次工具调用（默认 `plan-create`）；
  * 2. 否则 → 回固定文本（代表"拿到工具结果后的最终回答"）。
  *
- * 三个标记载荷把"多步行为"确定下来（都写在**用户消息**里）：
+ * 标记把"多步行为"确定下来（都写在**用户消息**里）：
  * - `[delegate]`：改调 `run-sub-agent`；
  * - `[command]`：改调 `run-command`（真跑一条 `echo`，验证跨平台命令执行链路）；
- * - `[todo-overwrite]`：第二轮提交一份**改动过的完整清单**（加任务 / 改状态 / 隐式删任务）；
- * - `[todo-react]`：**同一轮内连提交两次**（第二次的入参里带上第一次新增的任务）。
+ * - `[todo-overwrite]`：发**一串增量规划调用**（`plan-complete` → `plan-create` → `plan-delete`，
+ *   依次表达"改状态 / 加任务 / 删任务"；每步等上一步的出参里出现对应标记再发下一个）；
+ * - `[todo-react]`：**同一轮内串行两次规划调用**（`plan-create` → `plan-complete`，
+ *   第二次的入参里带上第一次新增的任务 —— 证明同轮内串行读改写）。
  *
  * 同时支持非流式（`stream: false`）与流式（`stream: true`，SSE）两种响应，
  * 因为运行时的两条链路都要用它验证。
@@ -43,12 +45,20 @@ export const MOCK_MODEL_LIST = [
 /** 固定回复文本（断言用） */
 export const MOCK_FINAL_TEXT = '好，清单已经记下，我按步骤继续推进。'
 
-// ── 任务清单（`todo-write`）─────────────────────────────────────────────────
-/** 唯一的通用工具 key：提交**完整任务清单**（全量覆盖） */
-export const MOCK_TODO_TOOL = 'todo-write'
+// ── 任务清单（规划工具集：plan-create / plan-reorder / plan-complete / plan-delete）──────
+/**
+ * 规划工具集里 mock 用到的工具 key。
+ *
+ * 规划能力现在是一组**增量工具**（出参永远是完整清单快照，见 `core/beans/planner/plan.protocol.ts`）：
+ * mock 只能发它"认得"的工具名，所以逐个列出来；默认发 `plan-create`。
+ */
+export const MOCK_PLAN_CREATE_TOOL = 'plan-create'
+export const MOCK_PLAN_REORDER_TOOL = 'plan-reorder'
+export const MOCK_PLAN_COMPLETE_TOOL = 'plan-complete'
+export const MOCK_PLAN_DELETE_TOOL = 'plan-delete'
 
-/** 默认的首次提交：一份完整清单（全量提交，不是增量） */
-export const MOCK_TODO_INITIAL = {
+/** 默认的首次调用：`plan-create` 建一份清单（一次建多个，id 由模型给） */
+export const MOCK_PLAN_INITIAL = {
   goal: '把待办整理成周报',
   tasks: [
     { id: 't1', title: '取最近的待办', status: 'in_progress' },
@@ -56,31 +66,53 @@ export const MOCK_TODO_INITIAL = {
   ],
 }
 
-/** 用户消息里带这个标记时，第二轮提交一份改动过的完整清单（验证全量覆盖） */
-export const MOCK_TODO_OVERWRITE_MARKER = '[todo-overwrite]'
-/** 覆盖版清单里新增任务的标题标记（用来判断"这一版已经提交过了"） */
+/** 用户消息里带这个标记时，发一串增量调用（验证 create 追加 / reorder 改状态 / delete 删除） */
+export const MOCK_PLAN_OVERWRITE_MARKER = '[todo-overwrite]'
+/** 覆盖序列里新增任务的标题标记（用来判断"这一步已经提交过了"） */
 export const MOCK_OVERWRITE_TOKEN = '[覆盖]'
 /**
- * 覆盖版：t1 完成、t3 新增、**t2 不再出现（= 删除）**，目标也改了一版。
+ * 覆盖序列第 1 步的落地标记。
  *
- * 一份提交同时表达"加 / 改 / 删 / 换目标"四件事 —— 这正是全量清单语义要证明的能力。
+ * 刻意选**单调**的摘要片段（`plan-complete` 之后每一版快照里都写着"已完成 1 项"）：
+ * 若用"t1 in_progress→completed"这种只在当步摘要里出现的串，后面的步骤会把最近一次结果换成
+ * 新快照，第 1 步的判定又变回"没做"，于是无限重发同一个调用（还会撞上 tool_call 唯一索引）。
  */
-export const MOCK_TODO_OVERWRITE = {
-  goal: '把待办整理成周报（已收敛）',
+export const MOCK_OVERWRITE_COMPLETE_TOKEN = '已完成 1 项'
+/** 覆盖序列第 3 步的判断标记：t2 还在清单里（用它的标题串；被删掉后这条串就不再出现） */
+export const MOCK_OVERWRITE_KEEP_T2_TOKEN = '按主题分组'
+
+/**
+ * 覆盖序列第 2 步：**追加** t3（`goal` 省略 = 沿用当前目标；已有任务不受影响）。
+ *
+ * 这一版刻意不再"整份重写"：加、改、删各由一次增量调用表达。
+ */
+export const MOCK_PLAN_OVERWRITE_ADD = {
+  tasks: [{ id: 't3', title: `补充核对口径 ${MOCK_OVERWRITE_TOKEN}` }],
+}
+
+/**
+ * 覆盖序列跑完后的**当前计划**（时间线最后一条 `plan` 事件）。
+ *
+ * t1 变 completed、t3 新增（默认 pending）、**t2 被 plan-delete 删掉**，目标沿用未改。
+ * `revision` = 初始 1 + 三步各 +1 = 4。
+ */
+export const MOCK_PLAN_OVERWRITE_FINAL = {
+  goal: MOCK_PLAN_INITIAL.goal,
+  revision: 4,
   tasks: [
     { id: 't1', title: '取最近的待办', status: 'completed' },
-    { id: 't3', title: `补充核对口径 ${MOCK_OVERWRITE_TOKEN}`, status: 'in_progress' },
+    { id: 't3', title: `补充核对口径 ${MOCK_OVERWRITE_TOKEN}`, status: 'pending' },
   ],
 }
 
-/** 用户消息里带这个标记时：同一轮内连提交两次清单（验证同轮内能读到彼此的结果） */
-export const MOCK_TODO_REACT_MARKER = '[todo-react]'
-/** 第一次提交新增的任务标题标记 */
+/** 用户消息里带这个标记时：同一轮内串行两次规划调用（验证同轮内能读到彼此的结果） */
+export const MOCK_PLAN_REACT_MARKER = '[todo-react]'
+/** 第一次调用新增的任务标题标记 */
 export const MOCK_REACT_FIRST_TOKEN = '[react-1]'
-/** 第二次提交新增的任务标题标记 */
+/** 第二次调用写进备注的标记 */
 export const MOCK_REACT_SECOND_TOKEN = '[react-2]'
-/** 同一轮内的第一次提交：替换掉上一版，新增 r2 */
-export const MOCK_TODO_REACT_FIRST = {
+/** 同一轮内的第一次调用：`plan-create` 建一份新清单，新增 r2 */
+export const MOCK_PLAN_REACT_FIRST = {
   goal: '整理评审材料',
   tasks: [
     { id: 'r1', title: '起草初稿', status: 'completed' },
@@ -88,17 +120,27 @@ export const MOCK_TODO_REACT_FIRST = {
   ],
 }
 /**
- * 同一轮内的第二次提交：**入参里带着第一次新增的 r2**，并把它标成完成、再加一项 r3。
+ * 同一轮内的第二次调用：**入参里带着第一次新增的 r2**（用 `ids` 引用它），并把它标成完成。
  *
  * 运行时在整轮结束后才落 `plan` 事件，所以第二次能算出"比第一次更大的 revision"，
  * 只可能是因为它读到了第一次在本轮内存里留下的结果 —— 这就是"react 循环里能调整清单"的硬证明。
  */
-export const MOCK_TODO_REACT_SECOND = {
+export const MOCK_PLAN_REACT_SECOND = {
+  ids: ['r2'],
+  note: `交叉校验 ${MOCK_REACT_SECOND_TOKEN}`,
+}
+/** 两次调用之后的**当前计划**（时间线最后一条 `plan` 事件）：r2 完成，备注里带着 [react-2] */
+export const MOCK_PLAN_REACT_FINAL = {
   goal: '整理评审材料',
+  revision: 2,
   tasks: [
     { id: 'r1', title: '起草初稿', status: 'completed' },
-    { id: 'r2', title: `补充数据 ${MOCK_REACT_FIRST_TOKEN}`, status: 'completed' },
-    { id: 'r3', title: `交叉校验 ${MOCK_REACT_SECOND_TOKEN}`, status: 'in_progress' },
+    {
+      id: 'r2',
+      title: `补充数据 ${MOCK_REACT_FIRST_TOKEN}`,
+      status: 'completed',
+      note: `交叉校验 ${MOCK_REACT_SECOND_TOKEN}`,
+    },
   ],
 }
 
@@ -152,25 +194,38 @@ interface MockToolCall {
   args: Record<string, unknown>
 }
 
-const TODO_INITIAL_CALL: MockToolCall = {
-  id: 'call_mock_todo_initial',
-  name: MOCK_TODO_TOOL,
-  args: MOCK_TODO_INITIAL as unknown as Record<string, unknown>,
+const PLAN_INITIAL_CALL: MockToolCall = {
+  id: 'call_mock_plan_initial',
+  name: MOCK_PLAN_CREATE_TOOL,
+  args: MOCK_PLAN_INITIAL as unknown as Record<string, unknown>,
 }
-const TODO_OVERWRITE_CALL: MockToolCall = {
-  id: 'call_mock_todo_overwrite',
-  name: MOCK_TODO_TOOL,
-  args: MOCK_TODO_OVERWRITE as unknown as Record<string, unknown>,
+/** 覆盖序列第 1 步：把原 t1 标完成 */
+const PLAN_OVERWRITE_COMPLETE_CALL: MockToolCall = {
+  id: 'call_mock_plan_overwrite_complete',
+  name: MOCK_PLAN_COMPLETE_TOOL,
+  args: { ids: ['t1'] },
 }
-const TODO_REACT_FIRST_CALL: MockToolCall = {
-  id: 'call_mock_todo_react_1',
-  name: MOCK_TODO_TOOL,
-  args: MOCK_TODO_REACT_FIRST as unknown as Record<string, unknown>,
+/** 覆盖序列第 2 步：追加 t3（goal 省略 = 沿用当前目标） */
+const PLAN_OVERWRITE_ADD_CALL: MockToolCall = {
+  id: 'call_mock_plan_overwrite_add',
+  name: MOCK_PLAN_CREATE_TOOL,
+  args: MOCK_PLAN_OVERWRITE_ADD as unknown as Record<string, unknown>,
 }
-const TODO_REACT_SECOND_CALL: MockToolCall = {
-  id: 'call_mock_todo_react_2',
-  name: MOCK_TODO_TOOL,
-  args: MOCK_TODO_REACT_SECOND as unknown as Record<string, unknown>,
+/** 覆盖序列第 3 步：删掉 t2 */
+const PLAN_OVERWRITE_DELETE_CALL: MockToolCall = {
+  id: 'call_mock_plan_overwrite_delete',
+  name: MOCK_PLAN_DELETE_TOOL,
+  args: { ids: ['t2'] },
+}
+const PLAN_REACT_FIRST_CALL: MockToolCall = {
+  id: 'call_mock_plan_react_1',
+  name: MOCK_PLAN_CREATE_TOOL,
+  args: MOCK_PLAN_REACT_FIRST as unknown as Record<string, unknown>,
+}
+const PLAN_REACT_SECOND_CALL: MockToolCall = {
+  id: 'call_mock_plan_react_2',
+  name: MOCK_PLAN_COMPLETE_TOOL,
+  args: MOCK_PLAN_REACT_SECOND as unknown as Record<string, unknown>,
 }
 const DELEGATE_CALL: MockToolCall = {
   id: 'call_mock_delegate',
@@ -205,15 +260,22 @@ const messagesOf = (body: Record<string, unknown>): Array<Record<string, unknown
 const hasToolResult = (body: Record<string, unknown>): boolean =>
   messagesOf(body).some((message) => message.role === 'tool')
 
-/** 只把**工具结果**拼起来找标记（工具调用入参里也会出现同样的文字，混在一起会误判） */
-const toolResultText = (body: Record<string, unknown>): string =>
-  messagesOf(body)
-    .filter((message) => message.role === 'tool')
-    .map((message) => JSON.stringify(message))
-    .join('\n')
+/** 最近一次工具结果的原文（"上一步"的判定只看它） */
+const latestToolResultText = (body: Record<string, unknown>): string | null => {
+  const results = messagesOf(body).filter((message) => message.role === 'tool')
+  if (results.length === 0) return null
+  return JSON.stringify(results[results.length - 1])
+}
 
+/**
+ * **最近一次**工具结果里有没有某个标记串 —— 多步序列靠它判断"上一步做完了没有"。
+ *
+ * 为什么只看最近一次：规划工具的出参是**完整清单快照**，历史结果里也有老任务
+ * （如 t2 的标题），扫全部结果会把"t2 已经删掉了"误判成"t2 还在"，于是无限重发删除调用。
+ * 标记串一律选**不含引号**的片段，避免 `JSON.stringify` 把引号转义掉。
+ */
 const containsResult = (body: Record<string, unknown>, token: string): boolean =>
-  toolResultText(body).includes(token)
+  latestToolResultText(body)?.includes(token) ?? false
 
 const wanted = (body: Record<string, unknown>, marker: string): boolean =>
   JSON.stringify(body.messages ?? []).includes(marker)
@@ -234,18 +296,22 @@ const decideToolCall = (body: Record<string, unknown>): MockToolCall | null => {
   if (wanted(body, MOCK_DELEGATE_MARKER)) {
     return hasToolResult(body) ? null : DELEGATE_CALL
   }
-  if (wanted(body, MOCK_TODO_REACT_MARKER)) {
-    // 同一轮内两次提交：第二次要等第一次的结果（它带着 [react-1]）出现
-    if (!containsResult(body, MOCK_REACT_FIRST_TOKEN)) return TODO_REACT_FIRST_CALL
-    if (!containsResult(body, MOCK_REACT_SECOND_TOKEN)) return TODO_REACT_SECOND_CALL
+  if (wanted(body, MOCK_PLAN_REACT_MARKER)) {
+    // 同一轮内串行两次：第二次要等第一次新增的 r2（带着 [react-1]）出现在上一步结果里
+    if (!containsResult(body, MOCK_REACT_FIRST_TOKEN)) return PLAN_REACT_FIRST_CALL
+    if (!containsResult(body, MOCK_REACT_SECOND_TOKEN)) return PLAN_REACT_SECOND_CALL
     return null
   }
-  if (wanted(body, MOCK_TODO_OVERWRITE_MARKER)) {
-    return containsResult(body, MOCK_OVERWRITE_TOKEN) ? null : TODO_OVERWRITE_CALL
+  if (wanted(body, MOCK_PLAN_OVERWRITE_MARKER)) {
+    // 一串增量调用表达"改状态 / 加任务 / 删任务"：每一步都以上一步的出参（完整清单快照）为准
+    if (!containsResult(body, MOCK_OVERWRITE_COMPLETE_TOKEN)) return PLAN_OVERWRITE_COMPLETE_CALL
+    if (!containsResult(body, MOCK_OVERWRITE_TOKEN)) return PLAN_OVERWRITE_ADD_CALL
+    if (containsResult(body, MOCK_OVERWRITE_KEEP_T2_TOKEN)) return PLAN_OVERWRITE_DELETE_CALL
+    return null
   }
-  // 默认：带工具且本轮还没有任何工具结果 → 提交任务清单
-  // （业务工具已全部移除，`todo-write` 是当前唯一的通用工具）
-  return hasToolResult(body) ? null : TODO_INITIAL_CALL
+  // 默认：带工具且本轮还没有任何工具结果 → 建一份任务清单
+  // （业务工具已全部移除，规划工具集是当前唯一会主动调用的运行时能力）
+  return hasToolResult(body) ? null : PLAN_INITIAL_CALL
 }
 
 /**

@@ -8,17 +8,27 @@ import { ConversationEntity } from '../src/database/entities/conversation-entity
 import { RunEntity } from '../src/database/entities/run-entity.js'
 import { TimelineEntity } from '../src/database/entities/timeline-entity.js'
 import { DEFAULT_AGENT_KEY, createAgentDefinitions } from '../src/modules/ai/agents/index.js'
-import { createMastra } from '../src/modules/ai/core/ai.mastra.js'
+import { createMastra } from '../src/modules/ai/mastra/ai.mastra.js'
 import { createAgentRegistry } from '../src/modules/ai/core/ai.registry.js'
 import { createPromptEngine } from '../src/modules/ai/prompts/index.js'
 import { AgentTitleService } from '../src/modules/ai/runtime/title.service.js'
 import { SkillLoader } from '../src/modules/ai/skills/index.js'
-import { ToolBuilder } from '../src/modules/ai/tools/tool.builder.js'
-import { PlannerCore } from '../src/modules/ai/core/planner.core.js'
-import { SubAgentCore } from '../src/modules/ai/core/subagent.core.js'
-import { CommandCore } from '../src/modules/ai/core/command.core.js'
+import { RunCommandTool } from '../src/modules/ai/core/beans/command.tool.js'
+import { RunSubAgentTool } from '../src/modules/ai/core/beans/subagent.tool.js'
+import {
+  PlanCompleteTool,
+  PlanCreateTool,
+  PlanDeleteTool,
+  PlanReorderTool,
+  PlannerStore,
+} from '../src/modules/ai/core/beans/planner/index.js'
 import { AgentRunner } from '../src/modules/ai/runtime/agent-runner.js'
 import { AgentChatService, STREAM_END_MARKER } from '../src/modules/ai/runtime/chat.service.js'
+import { toMastraSkills } from '../src/modules/ai/mastra/skill.adapter.js'
+import { toMastraTools } from '../src/modules/ai/mastra/tool.adapter.js'
+import { ReadToolResultTool } from '../src/modules/ai/tools/read-tool-result.tool.js'
+import { ToolGateway } from '../src/modules/ai/tools/tool.gateway.js'
+import { ToolRegistry } from '../src/modules/ai/tools/tool.registry.js'
 import { AgentConversationService } from '../src/modules/ai/runtime/conversation.service.js'
 import { ConversationRepository } from '../src/modules/ai/runtime/conversation.repository.js'
 import { ContextService } from '../src/modules/ai/runtime/context.service.js'
@@ -29,13 +39,14 @@ import {
   MOCK_CHILD_TEXT,
   MOCK_DELEGATE_MARKER,
   MOCK_FINAL_TEXT,
+  MOCK_PLAN_CREATE_TOOL,
+  MOCK_PLAN_INITIAL,
   MOCK_SLOW_MARKER,
   MOCK_TITLE_TEXT,
-  MOCK_TODO_INITIAL,
-  MOCK_TODO_TOOL,
   type MockModelServer,
   startMockModelServer,
 } from './helpers/mock-model-server.js'
+import { buildToolStackDeps } from './helpers/ai-tool-stack.js'
 
 /**
  * 流式链路端到端：假模型 + 真实数据库 + **真实 Redis**，不需要外部密钥。
@@ -158,28 +169,48 @@ beforeAll(async () => {
 
   // 子 agent 执行器（core bean `subagent` 依赖它）：配置必须给全子 agent 字段 + mock 的 baseURL
   const config = { ...TEST_CONFIG, baseURL: mock.baseURL } as never
-  const runner = new AgentRunner(runs, timelines, config, silentLogger)
-  const toolBuilder = new ToolBuilder(
-    // 业务工具**为空**：AI 模块与业务模块解耦后的常态（`AGENT_TOOLS` 是扩展点）
-    [],
-    // core bean（规划 + 子 agent）：与 `ai.module.ts` 的装配口径一致
+  // 工具引擎装配（设计 §5.9）：插件链为空（e2e 只关心行为），依赖用测试替身
+  const deps = buildToolStackDeps()
+  const gateway = new ToolGateway(deps.config, silentLogger, [], deps.clock)
+  // registry 与 runner 互相引用：给 runner 一个**延迟求值**的在册端口，避免装配成环
+  let toolRegistry: ToolRegistry
+  // `AgentRunner` 通过 ModuleRef **惰性**取注册机（构造期不依赖它，否则成环死锁）：
+  // 测试给一个只实现 `get` 的替身，语义与生产一致
+  const moduleRefPort = { get: () => toolRegistry } as never
+  const runner = new AgentRunner(
+    runs,
+    timelines,
+    config,
+    silentLogger,
+    deps.metas,
+    moduleRefPort,
+  )
+  // 工具类实例（唯一的工具来源）：与 `ai.module.ts` 的装配口径一致
+  const plannerStore = new PlannerStore(timelines)
+  toolRegistry = new ToolRegistry(
     [
-      new PlannerCore(timelines),
-      new SubAgentCore(runner, silentLogger),
-      // 命令执行 core：与 `ai.module.ts` 的装配口径一致（assistant 已授权 run-command）
-      new CommandCore(new CommandRunner(), config, silentLogger),
+      new RunCommandTool(new CommandRunner(), silentLogger),
+      new RunSubAgentTool(runner, silentLogger),
+      new PlanCreateTool(plannerStore),
+      new PlanReorderTool(plannerStore),
+      new PlanCompleteTool(plannerStore),
+      new PlanDeleteTool(plannerStore),
+      new ReadToolResultTool(deps.results, deps.counter, deps.caps),
     ],
+    gateway,
+    deps.config,
   )
   const registry = createAgentRegistry(
-    createAgentDefinitions(createPromptEngine(), toolBuilder),
+    createAgentDefinitions(createPromptEngine(), toolRegistry),
     DEFAULT_AGENT_KEY,
   )
+  const skillLoader = new SkillLoader(silentLogger)
   const mastra = await createMastra({
-    // 模型改为"按 requestContext 解析"的动态参数；这些测试不验证选模型，给恒定 mock 模型
+    // 模型改为"按 envelope 里的模型"求值的动态参数；这些测试不验证选模型，给恒定 mock 模型
     resolveModel: () => ({ id: 'mock/mock-model', url: mock.baseURL, apiKey: 'test-key' }),
     definitions: registry.all(),
-    resolveTools: (keys) => toolBuilder.build(keys),
-    resolveSkills: (names) => new SkillLoader(silentLogger).resolve(names),
+    resolveTools: (keys) => toMastraTools(toolRegistry.toolbox(keys), silentLogger),
+    resolveSkills: async (names) => toMastraSkills(await skillLoader.resolve(names)),
   })
 
   conversations = new AgentConversationService(conversationRepo, runs, timelines, registry, silentLogger)
@@ -194,8 +225,9 @@ beforeAll(async () => {
     timelines,
     context,
     streamStore,
-    toolBuilder,
-    new SkillLoader(silentLogger),
+    toolRegistry,
+    deps.metas,
+    skillLoader,
     modelsStub,
     silentLogger,
     createPromptEngine(),
@@ -277,14 +309,14 @@ describe('流式链路端到端（mock 模型 + 真实 DB + 真实 Redis）', ()
     expect(kinds).toContain(TimelineKind.ToolCall)
     expect(kinds).toContain(TimelineKind.ToolResult)
     expect(kinds).toContain(TimelineKind.Step)
-    // 流式链路同样把 `todo-write` 的出参落成 `plan` 事件（与工具结果同一套保真口径）
+    // 流式链路同样把 `plan-create` 的出参落成 `plan` 事件（与工具结果同一套保真口径）
     expect(kinds).toContain(TimelineKind.Plan)
     const planRow = page.items.find((item) => item.kind === TimelineKind.Plan)
-    expect(planRow?.payload).toMatchObject({ revision: 1, goal: MOCK_TODO_INITIAL.goal })
+    expect(planRow?.payload).toMatchObject({ revision: 1, goal: MOCK_PLAN_INITIAL.goal })
     // 工具结果行也要认得出是哪个工具：AI SDK 的结果片段不带工具名（只有 toolCallId），
     // 录制器必须用入参那一步记下的名字补上（否则审计与 `plan` 识别都会失效）
     expect(page.items.find((item) => item.kind === TimelineKind.ToolResult)?.toolKey).toBe(
-      MOCK_TODO_TOOL,
+      MOCK_PLAN_CREATE_TOOL,
     )
 
     // 助手文本与工具结果都完整落库
@@ -302,7 +334,7 @@ describe('流式链路端到端（mock 模型 + 真实 DB + 真实 Redis）', ()
     expect(runRow[0]?.usage).toBeTruthy()
     // 缓存命中**必须落到库里**（Mastra 放在顶层 `cachedInputTokens`，早先只读嵌套字段 → 永远是 null，
     // 用户看到"缓存命中没数"；mock 的 `prompt_tokens_details.cached_tokens = 64` 就是为这条链路加的）。
-    // 数值口径：本轮是**两步**流程（先 todo-write 再回答）= 两次模型调用，mock 每次命中 64，
+    // 数值口径：本轮是**两步**流程（先 plan-create 再回答）= 两次模型调用，mock 每次命中 64，
     // Mastra 把两次**累加**成 128；再加上**首轮自动命名**那次隔离调用（同样是 64）→ 192。
     // 命名调用**并进这一轮的 usage**（`runs.usage` 的语义就是"这一轮花掉的钱"，见设计文档 §4.10.1）。
     // 精确的字段优先级（顶层 64 胜过嵌套）由 `ai-usage.test.ts` 的纯函数单测钉住。

@@ -1,30 +1,36 @@
 import 'dotenv/config'
 import { CommandRunner, Db, setAuditUserProvider } from '@repo/kits'
 import { RunStatus, TimelineKind, TimelineRole } from '@repo/shared'
-import { RequestContext } from '@mastra/core/request-context'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { ConversationEntity } from '../src/database/entities/conversation-entity.js'
 import { RunEntity } from '../src/database/entities/run-entity.js'
 import { TimelineEntity } from '../src/database/entities/timeline-entity.js'
 import { DEFAULT_AGENT_KEY, createAgentDefinitions } from '../src/modules/ai/agents/index.js'
-import { createMastra } from '../src/modules/ai/core/ai.mastra.js'
+import { createMastra } from '../src/modules/ai/mastra/ai.mastra.js'
 import { createAgentRegistry } from '../src/modules/ai/core/ai.registry.js'
 import type { AgentSpec } from '../src/modules/ai/core/ai.types.js'
+import { type AgentRuntimeEnvelope, type RuntimeModel } from '../src/modules/ai/core/ai.core.types.js'
 import {
-  AGENT_RUNTIME_KEY,
-  type AgentCore,
-  type AgentRuntimeEnvelope,
-} from '../src/modules/ai/core/ai.core.types.js'
-import { PlannerCore, type TodoWriteOutput } from '../src/modules/ai/core/planner.core.js'
-import { SubAgentCore } from '../src/modules/ai/core/subagent.core.js'
-import { CommandCore } from '../src/modules/ai/core/command.core.js'
+  PlanCompleteTool,
+  PlanCreateTool,
+  PlanDeleteTool,
+  PlanReorderTool,
+  PlannerStore,
+  type PlanOutput,
+} from '../src/modules/ai/core/beans/planner/index.js'
+import { RunSubAgentTool } from '../src/modules/ai/core/beans/subagent.tool.js'
+import { RunCommandTool } from '../src/modules/ai/core/beans/command.tool.js'
 import { createPromptEngine } from '../src/modules/ai/prompts/index.js'
 import { AgentTitleService } from '../src/modules/ai/runtime/title.service.js'
 import { SkillLoader } from '../src/modules/ai/skills/index.js'
-import { ToolBuilder } from '../src/modules/ai/tools/tool.builder.js'
+import { toMastraSkills } from '../src/modules/ai/mastra/skill.adapter.js'
+import { toMastraTools } from '../src/modules/ai/mastra/tool.adapter.js'
+import { ReadToolResultTool } from '../src/modules/ai/tools/read-tool-result.tool.js'
+import { buildToolSpec, type AgentToolClass } from '../src/modules/ai/tools/tool.class.js'
+import { ToolGateway } from '../src/modules/ai/tools/tool.gateway.js'
+import { ToolRegistry } from '../src/modules/ai/tools/tool.registry.js'
 import { TOOL_KEYS } from '../src/modules/ai/tools/tool-keys.js'
-import type { AgentTool } from '../src/modules/ai/tools/tools.types.js'
-import { toPlanPayload } from '../src/modules/ai/runtime/plan.js'
+import { toPlanPayload } from '../src/modules/ai/core/beans/planner/plan.protocol.js'
 import { AgentChatService } from '../src/modules/ai/runtime/chat.service.js'
 import { AgentRunner } from '../src/modules/ai/runtime/agent-runner.js'
 import { AgentConversationService } from '../src/modules/ai/runtime/conversation.service.js'
@@ -33,33 +39,49 @@ import { ConversationRepository } from '../src/modules/ai/runtime/conversation.r
 import { ContextService } from '../src/modules/ai/runtime/context.service.js'
 import { RunRepository } from '../src/modules/ai/runtime/run.repository.js'
 import { TimelineRepository } from '../src/modules/ai/runtime/timeline.repository.js'
+import { buildToolStackDeps } from './helpers/ai-tool-stack.js'
 import {
   MOCK_CHILD_TEXT,
+  MOCK_COMMAND_TOOL,
   MOCK_DELEGATE_MARKER,
   MOCK_DELEGATE_TOOL,
+  MOCK_PLAN_COMPLETE_TOOL,
+  MOCK_PLAN_CREATE_TOOL,
+  MOCK_PLAN_DELETE_TOOL,
+  MOCK_PLAN_INITIAL,
+  MOCK_PLAN_OVERWRITE_ADD,
+  MOCK_PLAN_OVERWRITE_FINAL,
+  MOCK_PLAN_OVERWRITE_MARKER,
+  MOCK_PLAN_REACT_FINAL,
+  MOCK_PLAN_REACT_FIRST,
+  MOCK_PLAN_REACT_MARKER,
+  MOCK_PLAN_REACT_SECOND,
+  MOCK_PLAN_REORDER_TOOL,
   MOCK_SUBAGENT_NAME,
   MOCK_SUBAGENT_PROMPT,
   MOCK_SUBAGENT_TASK,
-  MOCK_TODO_INITIAL,
-  MOCK_TODO_OVERWRITE,
-  MOCK_TODO_OVERWRITE_MARKER,
-  MOCK_TODO_REACT_MARKER,
-  MOCK_TODO_REACT_SECOND,
-  MOCK_TODO_TOOL,
   type MockModelServer,
   startMockModelServer,
 } from './helpers/mock-model-server.js'
 
 /**
  * 规划能力（任务清单）与**动态子 agent**（设计文档 §3.14）：
- * - core bean：`PlannerCore` / `SubAgentCore` 用 `asTools()` 交出能力，`ToolBuilder` 把
- *   「业务工具（当前为空）+ core 工具」拍平成一张表；
- * - 规划：`todo-write` 提交**完整任务清单**（全量覆盖语义）——加任务 / 删任务 / 改状态 /
- *   重规划都由同一份清单的不同版本表达；工具**自己不写库**，由运行时落成时间线的 `plan` 事件
- *   （append-only，「当前计划」= 最后一条）；
- * - 子 agent：**运行期由工具创建**（提示词由主 agent 现写）、工具面 = 全部 − 委派类、
+ * - 工具类是**唯一来源**：`RunCommandTool` / `RunSubAgentTool` / 四个规划工具 / `ReadToolResultTool`
+ *   各自用 `@ToolDecl` + `@ToolExec` 声明，`ToolRegistry` 对每个实例 `buildToolSpec()` 拍平成一张表；
+ * - 规划：现在是**一组四个增量工具**（create / reorder / complete / delete）——一次只表达一件事，
+ *   但**出参永远是完整清单快照**，所以协议仍然只有一种形状（「当前计划」= 最后一条 `plan` 事件）；
+ *   工具**自己不写库**，由运行时落成时间线的 `plan` 事件（append-only）；
+ * - 子 agent：**运行期由工具创建**（提示词由主 agent 现写）、工具面 = 全部 − 委派类 − `child: deny`、
  *   一切明细入库（独立 run + 完整时间线）、消耗汇总进父、同一 toolCallId 幂等复用。
  */
+
+/** 规划工具集的四个 key（与 `AGENT_TOOLS` 里四个规划工具类的登记顺序一致） */
+const PLAN_KEYS = [
+  TOOL_KEYS.planCreate,
+  TOOL_KEYS.planReorder,
+  TOOL_KEYS.planComplete,
+  TOOL_KEYS.planDelete,
+] as const
 
 const USER = 'user_ai_plan'
 const silentLogger = {
@@ -73,8 +95,24 @@ const silentLogger = {
 /** 纯装配断言用的替身：不读时间线（"从时间线读当前计划"由专门用例覆盖） */
 const stubTimeline = { latestPlan: async () => null } as never
 
-/** 业务工具为空 + core bean 两个来源（与 `ai.module.ts` 的装配口径一致） */
-const buildToolBuilder = (cores: AgentCore[] = []): ToolBuilder => new ToolBuilder([], cores)
+/** 纯装配断言用的工具栈依赖（不碰 DB / Redis / 模型） */
+const deps = buildToolStackDeps()
+const gateway = new ToolGateway(deps.config, silentLogger, [], deps.clock)
+
+/** 纯装配断言用的规划四工具（共享一个 store）；与 `ai.module.ts` 的装配口径一致 */
+const buildPlannerTools = (timeline: unknown = stubTimeline): AgentToolClass[] => {
+  const store = new PlannerStore(timeline as never)
+  return [
+    new PlanCreateTool(store),
+    new PlanReorderTool(store),
+    new PlanCompleteTool(store),
+    new PlanDeleteTool(store),
+  ]
+}
+
+/** 工具池 = 传入的实例数组（默认只放规划四工具）；与 `ai.module.ts` 的装配口径一致 */
+const buildRegistry = (tools: AgentToolClass[] = buildPlannerTools()): ToolRegistry =>
+  new ToolRegistry(tools, gateway, deps.config)
 
 /** 测试用的 agent 声明（只关心工具授权，故其余字段按空补上） */
 const spec = (partial: Partial<AgentSpec> & { key: string }): AgentSpec => ({
@@ -86,49 +124,56 @@ const spec = (partial: Partial<AgentSpec> & { key: string }): AgentSpec => ({
   ...partial,
 })
 
-describe('规划能力（core bean + todo-write + plan 事件）', () => {
-  it('PlannerCore 通过 asTools() 交出唯一的 todo-write（全量清单语义，不是委派类工具）', () => {
-    const core = new PlannerCore(stubTimeline)
-    expect(core.key).toBe('planner')
-    const tools = core.asTools()
-    expect(tools.map((tool) => tool.key)).toEqual([TOOL_KEYS.todoWrite])
-    expect(tools[0].key).toBe(MOCK_TODO_TOOL)
-    // 规划不是委派类工具：子 agent 也能拿到它（工具面 = 全部 − 委派类）
-    expect(tools[0].delegation).toBeUndefined()
+describe('规划能力（四个规划工具类 + plan 事件）', () => {
+  it('四个规划工具类交出四个规划声明（增量操作、不是委派类、只给主 agent）', () => {
+    const specs = buildPlannerTools().map((tool) => buildToolSpec(tool))
+    expect(specs.map((item) => item.key)).toEqual([...PLAN_KEYS])
+    // 声明的工具名就是 mock 认得的工具名（mock 只能发它"认得"的工具）
+    expect(specs.map((item) => item.key)).toEqual([
+      MOCK_PLAN_CREATE_TOOL,
+      MOCK_PLAN_REORDER_TOOL,
+      MOCK_PLAN_COMPLETE_TOOL,
+      MOCK_PLAN_DELETE_TOOL,
+    ])
+    for (const item of specs) {
+      // 规划不是委派类工具（`delegation` 未标记）；但都是 `child: 'deny'`：
+      // 清单归属发起这一轮的主 agent（也顺手堵住"子 agent 的清单顶掉父的当前计划"）
+      expect(item.delegation).toBeUndefined()
+      expect(item.child).toBe('deny')
+      // 说明是"能给模型看"的一段话（什么时候用 / 什么时候不用 / 纪律）
+      expect(item.description.length).toBeGreaterThan(60)
+    }
   })
 
-  it('ToolBuilder：业务工具允许为空，但 core bean 必须交出工具；重复 key 启动期报错', () => {
-    const builder = buildToolBuilder([new PlannerCore(stubTimeline)])
-    expect(builder.keys()).toEqual([TOOL_KEYS.todoWrite])
+  it('ToolRegistry：工具池不能为空；重复 key 启动期报错', () => {
+    const registry = buildRegistry()
+    expect(registry.keys()).toEqual([...PLAN_KEYS])
 
-    // 一个工具都没有（业务工具空 + core 也没交）→ 装配错误（宁可起不来，也不要静默少能力）
-    expect(() => buildToolBuilder([])).toThrow(/core bean 未提供任何工具/)
+    // 工具池不能为空 → 装配错误（宁可起不来，也不要静默少能力）
+    expect(() => buildRegistry([])).toThrow(/工具池不能为空/)
 
-    // 同一个 key 由两个来源提供 → 装配错误（宁可起不来，也不要静默覆盖）
-    const duplicated: AgentCore = {
-      key: 'fake',
-      asTools: () => [
-        { key: TOOL_KEYS.todoWrite, title: 'x', description: 'x', tool: {} as never },
-      ],
-    }
-    expect(() => buildToolBuilder([new PlannerCore(stubTimeline), duplicated])).toThrow(
+    // 同一个 key 由两个实例提供 → 装配错误（宁可起不来，也不要静默覆盖）
+    expect(() => buildRegistry([...buildPlannerTools(), ...buildPlannerTools()])).toThrow(
       /工具 key 重复/,
     )
   })
 
-  it('只有 todo-write 的输出会被认成计划（别的工具不会误伤，形状不对也不认）', () => {
-    const output = { ...MOCK_TODO_INITIAL, revision: 1, summary: '共 2 项' }
+  it('四个规划工具的输出都会被认成计划（别的工具不会误伤，形状不对也不认）', () => {
+    const output = { ...MOCK_PLAN_INITIAL, revision: 1, summary: '共 2 项' }
     expect(toPlanPayload(MOCK_DELEGATE_TOOL, output)).toBeNull()
-    expect(toPlanPayload(TOOL_KEYS.todoWrite, output)).toMatchObject({
-      goal: MOCK_TODO_INITIAL.goal,
-      revision: 1,
-    })
+    // 四个 key 都在 `PLAN_TOOL_KEYS` 里登记过：任意一个的出参都落 `plan` 事件
+    for (const key of PLAN_KEYS) {
+      expect(toPlanPayload(key, output)).toMatchObject({
+        goal: MOCK_PLAN_INITIAL.goal,
+        revision: 1,
+      })
+    }
     // 缺 revision / tasks 形状不对 → 不认（半真半假的计划不如没有）
-    expect(toPlanPayload(TOOL_KEYS.todoWrite, { goal: 'g', tasks: [] })).toBeNull()
-    expect(toPlanPayload(TOOL_KEYS.todoWrite, { goal: 'g', revision: 1 })).toBeNull()
+    expect(toPlanPayload(TOOL_KEYS.planCreate, { goal: 'g', tasks: [] })).toBeNull()
+    expect(toPlanPayload(TOOL_KEYS.planCreate, { goal: 'g', revision: 1 })).toBeNull()
     // 状态必须落在三态里
     expect(
-      toPlanPayload(TOOL_KEYS.todoWrite, {
+      toPlanPayload(TOOL_KEYS.planCreate, {
         goal: 'g',
         revision: 1,
         tasks: [{ id: 't1', title: 'x', status: 'blocked' }],
@@ -136,7 +181,7 @@ describe('规划能力（core bean + todo-write + plan 事件）', () => {
     ).toBeNull()
   })
 
-  it('① 首次提交：模型调 todo-write → plan 事件（payload 含 goal/tasks/revision=1）', async () => {
+  it('① 首次创建：模型调 plan-create → plan 事件（payload 含 goal/tasks/revision=1）', async () => {
     const { chat, conversations } = await stack()
     const result = await chat.chat(USER, { message: '帮我把待办整理成周报' })
     expect(result.status).toBe(RunStatus.Succeeded)
@@ -146,9 +191,9 @@ describe('规划能力（core bean + todo-write + plan 事件）', () => {
     expect(plans).toHaveLength(1)
     // payload 就是那一版清单本身（goal / revision / tasks），不夹带摘要
     expect(plans[0].payload).toEqual({
-      goal: MOCK_TODO_INITIAL.goal,
+      goal: MOCK_PLAN_INITIAL.goal,
       revision: 1,
-      tasks: MOCK_TODO_INITIAL.tasks,
+      tasks: MOCK_PLAN_INITIAL.tasks,
     })
     // 计划事件紧跟在工具结果之后（seq 连续，前端按顺序渲染）
     const page = await timelinesPage(result.conversationId)
@@ -159,42 +204,64 @@ describe('规划能力（core bean + todo-write + plan 事件）', () => {
     expect(conversation.id).toBe(result.conversationId)
   }, 30_000)
 
-  it('② 全量覆盖：第二轮提交改动后的清单 → 新 plan 事件（revision=2，且就是提交的那一份）', async () => {
+  it('② 增量序列：complete t1 → create 追加 t3 → delete t2；每步落一条 plan 事件且 revision 递增', async () => {
     const { chat } = await stack()
     const first = await chat.chat(USER, { message: '把待办整理成周报' })
     const second = await chat.chat(USER, {
       conversationId: first.conversationId,
-      message: `按新口径再来一版 ${MOCK_TODO_OVERWRITE_MARKER}`,
+      message: `按新口径再来一版 ${MOCK_PLAN_OVERWRITE_MARKER}`,
     })
     expect(second.status).toBe(RunStatus.Succeeded)
+    // 一次只表达一件事：第二轮是**三次增量调用**（不是重写整份清单）
+    expect(second.toolCallCount).toBe(3)
+
+    const page = await timelinesPage(first.conversationId)
+    const calls = page.items.filter(
+      (item) => item.kind === TimelineKind.ToolCall && item.runId === second.runId,
+    )
+    expect(calls.map((item) => item.toolKey)).toEqual([
+      MOCK_PLAN_COMPLETE_TOOL,
+      MOCK_PLAN_CREATE_TOOL,
+      MOCK_PLAN_DELETE_TOOL,
+    ])
+    // 第 2 步是**追加**：goal 省略（沿用当前目标），入参里只有新增的 t3
+    expect(calls[1].payload?.input).toEqual(MOCK_PLAN_OVERWRITE_ADD)
 
     const plans = await planEvents(first.conversationId)
-    expect(plans.map((item) => (item.payload as { revision: number }).revision)).toEqual([1, 2])
-    // 一份提交同时表达"换目标 / 改状态 / 加任务 / 删任务"：
-    // t1 变 completed、t3 新增、**t2 不再出现即视为删除**
-    expect(plans[1].payload).toEqual({
-      goal: MOCK_TODO_OVERWRITE.goal,
-      revision: 2,
-      tasks: MOCK_TODO_OVERWRITE.tasks,
+    // 每一步都落一条 plan 事件（首建 + 第二轮三步），revision 每成功变更 +1
+    expect(plans.map((item) => (item.payload as { revision: number }).revision)).toEqual([1, 2, 3, 4])
+    // 中间那一步（create 追加）的出参是**完整快照**：t1 已完成、t2 还在、t3 刚加进来
+    expect(plans[2].payload).toMatchObject({
+      revision: 3,
+      tasks: [
+        { id: 't1', status: 'completed' },
+        { id: 't2', status: 'pending' },
+        { id: 't3', status: 'pending' },
+      ],
     })
+    // 「当前计划」= 最后一条：t1 completed、t3 新增、t2 已删除、目标沿用
+    expect(plans[3].payload).toEqual(MOCK_PLAN_OVERWRITE_FINAL)
 
-    // 工具出参里能看到这次改了哪几项（模型据此确认自己的改动生效了）
-    const page = await timelinesPage(first.conversationId)
+    // 工具出参里能看到这一步改了哪几项（模型据此确认自己的改动生效了）
     const results = page.items.filter(
       (item) => item.kind === TimelineKind.ToolResult && item.runId === second.runId,
     )
-    const output = results[0]?.payload?.output as TodoWriteOutput
-    expect(output.summary).toContain('删除 t2')
-    expect(output.summary).toContain('t1 in_progress→completed')
-    expect(output.summary).toContain('新增 t3')
+    expect(results.map((item) => item.toolKey)).toEqual([
+      MOCK_PLAN_COMPLETE_TOOL,
+      MOCK_PLAN_CREATE_TOOL,
+      MOCK_PLAN_DELETE_TOOL,
+    ])
+    expect((results[0].payload?.output as PlanOutput).summary).toContain('t1 in_progress→completed')
+    expect((results[1].payload?.output as PlanOutput).summary).toContain('新增 t3')
+    expect((results[2].payload?.output as PlanOutput).summary).toContain('删除 t2')
   }, 30_000)
 
-  it('③ 同一轮内连续两次提交：第二次读到第一次新增的任务（revision=1 → 2）', async () => {
+  it('③ 同一轮内串行读改写：第二次调用读到第一次新增的 r2（revision=1 → 2）', async () => {
     const { chat } = await stack()
-    // 全新会话：这一轮本身就是首次提交 —— 第一次是 revision=1，第二次必须是 2
-    const result = await chat.chat(USER, { message: `一口气把清单写两版 ${MOCK_TODO_REACT_MARKER}` })
+    // 全新会话：这一轮本身就是首次创建 —— 第一次是 revision=1，第二次必须是 2
+    const result = await chat.chat(USER, { message: `一口气把清单写两版 ${MOCK_PLAN_REACT_MARKER}` })
     expect(result.status).toBe(RunStatus.Succeeded)
-    // 一轮里真的调了两次 `todo-write`
+    // 一轮里真的调了两次规划工具（plan-create → plan-complete）
     expect(result.toolCallCount).toBe(2)
 
     const page = await timelinesPage(result.conversationId)
@@ -205,26 +272,22 @@ describe('规划能力（core bean + todo-write + plan 事件）', () => {
     // 第二次能算出 revision=2（而不是又算一次 1），只能是因为它读到了
     // 第一次在本轮内存里留下的结果 —— 这就是"react 循环里能调整清单"的硬证明。
     expect(runPlans.map((item) => (item.payload as { revision: number }).revision)).toEqual([1, 2])
-    expect(runPlans[1].payload).toEqual({
-      goal: MOCK_TODO_REACT_SECOND.goal,
-      revision: 2,
-      tasks: MOCK_TODO_REACT_SECOND.tasks,
-    })
+    expect(runPlans[1].payload).toEqual(MOCK_PLAN_REACT_FINAL)
 
-    // 第二次提交的入参里**带着第一次新增的 r2**（并把它标成了 completed）
     const calls = page.items.filter(
-      (item) =>
-        item.kind === TimelineKind.ToolCall &&
-        item.toolKey === MOCK_TODO_TOOL &&
-        item.runId === result.runId,
+      (item) => item.kind === TimelineKind.ToolCall && item.runId === result.runId,
     )
-    expect(calls).toHaveLength(2)
-    expect(JSON.stringify(calls[1].payload?.input)).toContain('r2')
-    expect(calls[1].payload?.input).toMatchObject({ tasks: MOCK_TODO_REACT_SECOND.tasks })
+    expect(calls.map((item) => item.toolKey)).toEqual([
+      MOCK_PLAN_CREATE_TOOL,
+      MOCK_PLAN_COMPLETE_TOOL,
+    ])
+    expect(calls[0].payload?.input).toEqual(MOCK_PLAN_REACT_FIRST)
+    // 第二次调用的入参里**带着第一次新增的 r2**（用 ids 引用它），并把 [react-2] 写进它的备注
+    expect(calls[1].payload?.input).toEqual(MOCK_PLAN_REACT_SECOND)
   }, 30_000)
 
   it('④ 同时多个 in_progress：不阻断提交，但在出参里给出纪律提示', async () => {
-    const { planner, timelines, conversations, runs } = await stack()
+    const { toolRegistry, timelines, conversations, runs } = await stack()
     const conversation = await conversations.create(USER, {})
     const run = await runs.create({
       conversationId: conversation.id,
@@ -232,8 +295,9 @@ describe('规划能力（core bean + todo-write + plan 事件）', () => {
       status: RunStatus.Running,
     })
 
-    const output = await executeTodoWrite(
-      planner,
+    const output = await executePlanTool(
+      toolRegistry,
+      TOOL_KEYS.planCreate,
       {
         goal: '并行推进两件事',
         tasks: [
@@ -241,7 +305,7 @@ describe('规划能力（core bean + todo-write + plan 事件）', () => {
           { id: 'b', title: '拉数据', status: 'in_progress' },
         ],
       },
-      runtimeContext(conversation.id, run.id),
+      runtimeEnvelope(conversation.id, run.id),
     )
 
     expect(output.revision).toBe(1)
@@ -254,8 +318,8 @@ describe('规划能力（core bean + todo-write + plan 事件）', () => {
     await runs.finish(run.id, { status: RunStatus.Canceled })
   }, 30_000)
 
-  it('⑤ 当前计划从时间线读：上一版 revision=1 → 本次提交是 revision=2，且沿用未给的目标', async () => {
-    const { planner, timelines, conversations, runs } = await stack()
+  it('⑤ 当前计划从时间线读 + create 是追加：沿用未给的目标、原任务保留、revision=2', async () => {
+    const { toolRegistry, timelines, conversations, runs } = await stack()
     const conversation = await conversations.create(USER, {})
     const run = await runs.create({
       conversationId: conversation.id,
@@ -275,22 +339,195 @@ describe('规划能力（core bean + todo-write + plan 事件）', () => {
       },
     })
     // 用一个**新的 runId**（= 新的一轮，本轮内存里没有活计划）提交
-    const output = await executeTodoWrite(
-      planner,
+    const output = await executePlanTool(
+      toolRegistry,
+      TOOL_KEYS.planCreate,
       { tasks: [{ id: 'n1', title: '按主题分组', status: 'in_progress' }] },
-      runtimeContext(conversation.id, `${run.id}_next`),
+      runtimeEnvelope(conversation.id, `${run.id}_next`),
     )
 
     expect(output.revision).toBe(2)
     expect(output.goal).toBe('把待办整理成周报') // goal 省略 → 沿用时间线里的目标
-    expect(output.tasks.map((task) => task.id)).toEqual(['n1'])
-    expect(output.summary).toContain('删除 old1')
+    // 追加语义：old1 **原样保留**（不再有"没出现即删除"这回事）
+    expect(output.tasks.map((task) => task.id)).toEqual(['old1', 'n1'])
+    expect(output.summary).toContain('新增 n1')
 
     await runs.finish(run.id, { status: RunStatus.Canceled })
   }, 30_000)
 
-  it('入参校验：首次提交必须给 goal；同一份清单里 id 重复要报错', async () => {
-    const { planner, conversations, runs } = await stack()
+  it('⑥ plan-reorder：order 必须与全部 id 一一对应，updates 就地改标题 / 标 in_progress', async () => {
+    const { toolRegistry, timelines, conversations, runs } = await stack()
+    const conversation = await conversations.create(USER, {})
+    const run = await runs.create({
+      conversationId: conversation.id,
+      agentKey: DEFAULT_AGENT_KEY,
+      status: RunStatus.Running,
+    })
+    await timelines.append({
+      conversationId: conversation.id,
+      runId: run.id,
+      role: TimelineRole.Assistant,
+      kind: TimelineKind.Plan,
+      payload: {
+        goal: '把待办整理成周报',
+        revision: 1,
+        tasks: [
+          { id: 'a', title: '写方案', status: 'pending' },
+          { id: 'b', title: '拉数据', status: 'pending' },
+        ],
+      },
+    })
+    const envelope = runtimeEnvelope(conversation.id, `${run.id}_reorder`)
+
+    // order 少了 / 多了 / 有重复 → 一律拒绝（并把当前清单列出来）
+    await expect(
+      executePlanTool(toolRegistry, TOOL_KEYS.planReorder, { order: ['a'] }, envelope),
+    ).rejects.toThrow(/一一对应/)
+    await expect(
+      executePlanTool(toolRegistry, TOOL_KEYS.planReorder, { order: ['a', 'b', 'c'] }, envelope),
+    ).rejects.toThrow(/一一对应/)
+    await expect(
+      executePlanTool(toolRegistry, TOOL_KEYS.planReorder, { order: ['a', 'a'] }, envelope),
+    ).rejects.toThrow(/一一对应/)
+    // updates 未知 id → 拒绝
+    await expect(
+      executePlanTool(toolRegistry, TOOL_KEYS.planReorder, { updates: [{ id: 'zzz' }] }, envelope),
+    ).rejects.toThrow(/任务不存在/)
+
+    // 合法：一次调用同时重排 + 改标题 + 标 in_progress（失败的那几次没有污染内存）
+    const output = await executePlanTool(
+      toolRegistry,
+      TOOL_KEYS.planReorder,
+      {
+        order: ['b', 'a'],
+        updates: [
+          { id: 'b', status: 'in_progress' },
+          { id: 'a', title: '写方案（v2）' },
+        ],
+      },
+      envelope,
+    )
+    expect(output.revision).toBe(2)
+    expect(output.tasks.map((task) => [task.id, task.status])).toEqual([
+      ['b', 'in_progress'],
+      ['a', 'pending'],
+    ])
+    expect(output.tasks[1].title).toBe('写方案（v2）')
+    expect(output.summary).toContain('顺序已重排')
+    expect(output.summary).toContain('b pending→in_progress')
+    expect(output.summary).toContain('a 标题已更新')
+
+    await runs.finish(run.id, { status: RunStatus.Canceled })
+  }, 30_000)
+
+  it('⑦ plan-complete：批量完成 + note 写进备注；重复标同一批是幂等的', async () => {
+    const { toolRegistry, timelines, conversations, runs } = await stack()
+    const conversation = await conversations.create(USER, {})
+    const run = await runs.create({
+      conversationId: conversation.id,
+      agentKey: DEFAULT_AGENT_KEY,
+      status: RunStatus.Running,
+    })
+    await timelines.append({
+      conversationId: conversation.id,
+      runId: run.id,
+      role: TimelineRole.Assistant,
+      kind: TimelineKind.Plan,
+      payload: {
+        goal: '把待办整理成周报',
+        revision: 1,
+        tasks: [
+          { id: 'c1', title: '起草', status: 'in_progress' },
+          { id: 'c2', title: '校对', status: 'pending' },
+          { id: 'c3', title: '发布', status: 'pending' },
+        ],
+      },
+    })
+    const envelope = runtimeEnvelope(conversation.id, `${run.id}_complete`)
+
+    const output = await executePlanTool(
+      toolRegistry,
+      TOOL_KEYS.planComplete,
+      { ids: ['c1', 'c2'], note: '结论：已核对' },
+      envelope,
+    )
+    expect(output.revision).toBe(2)
+    expect(output.tasks.map((task) => task.status)).toEqual([
+      'completed',
+      'completed',
+      'pending',
+    ])
+    expect(output.tasks[0].note).toBe('结论：已核对')
+    expect(output.tasks[2].note).toBeUndefined()
+
+    // 幂等：已经完成的再标一次不报错，摘要说明"本来就是已完成"
+    const again = await executePlanTool(
+      toolRegistry,
+      TOOL_KEYS.planComplete,
+      { ids: ['c1'] },
+      envelope,
+    )
+    expect(again.revision).toBe(3)
+    expect(again.summary).toContain('本来就是已完成')
+
+    // 未知 id → 拒绝，并把当前清单列出来
+    await expect(
+      executePlanTool(toolRegistry, TOOL_KEYS.planComplete, { ids: ['zzz'] }, envelope),
+    ).rejects.toThrow(/任务不存在：zzz/)
+
+    await runs.finish(run.id, { status: RunStatus.Canceled })
+  }, 30_000)
+
+  it('⑧ plan-delete：批量删除、允许删空（目标保留）、未知 id 拒绝', async () => {
+    const { toolRegistry, timelines, conversations, runs } = await stack()
+    const conversation = await conversations.create(USER, {})
+    const run = await runs.create({
+      conversationId: conversation.id,
+      agentKey: DEFAULT_AGENT_KEY,
+      status: RunStatus.Running,
+    })
+    await timelines.append({
+      conversationId: conversation.id,
+      runId: run.id,
+      role: TimelineRole.Assistant,
+      kind: TimelineKind.Plan,
+      payload: {
+        goal: '把待办整理成周报',
+        revision: 1,
+        tasks: [
+          { id: 'd1', title: '取待办', status: 'pending' },
+          { id: 'd2', title: '分组', status: 'pending' },
+          { id: 'd3', title: '写周报', status: 'pending' },
+        ],
+      },
+    })
+    const envelope = runtimeEnvelope(conversation.id, `${run.id}_delete`)
+
+    const output = await executePlanTool(toolRegistry, TOOL_KEYS.planDelete, { ids: ['d2'] }, envelope)
+    expect(output.revision).toBe(2)
+    expect(output.tasks.map((task) => task.id)).toEqual(['d1', 'd3'])
+    expect(output.summary).toContain('删除 d2')
+
+    // 未知 id（含刚被删掉的那个）→ 拒绝
+    await expect(
+      executePlanTool(toolRegistry, TOOL_KEYS.planDelete, { ids: ['d2'] }, envelope),
+    ).rejects.toThrow(/任务不存在：d2/)
+
+    // 删空是允许的：任务清空但目标保留
+    const emptied = await executePlanTool(
+      toolRegistry,
+      TOOL_KEYS.planDelete,
+      { ids: ['d1', 'd3'] },
+      envelope,
+    )
+    expect(emptied.tasks).toEqual([])
+    expect(emptied.goal).toBe('把待办整理成周报')
+
+    await runs.finish(run.id, { status: RunStatus.Canceled })
+  }, 30_000)
+
+  it('入参校验：首次创建必须给 goal；同一批里 id 重复要报错', async () => {
+    const { toolRegistry, conversations, runs } = await stack()
     const conversation = await conversations.create(USER, {})
     const run = await runs.create({
       conversationId: conversation.id,
@@ -300,17 +537,19 @@ describe('规划能力（core bean + todo-write + plan 事件）', () => {
 
     // 这个会话里**还没有任何计划** → 省略 goal 无从沿用，必须报错
     await expect(
-      executeTodoWrite(
-        planner,
+      executePlanTool(
+        toolRegistry,
+        TOOL_KEYS.planCreate,
         { tasks: [{ title: '没有目标' }] },
-        runtimeContext(conversation.id, `${run.id}_blank`),
+        runtimeEnvelope(conversation.id, `${run.id}_blank`),
       ),
     ).rejects.toThrow(/必须给 goal/)
 
-    // 同一份清单里 id 重复 → 拒绝（否则"改状态"就会变成掷骰子）
+    // 同一批里 id 重复 → 拒绝（否则"改状态"就会变成掷骰子）
     await expect(
-      executeTodoWrite(
-        planner,
+      executePlanTool(
+        toolRegistry,
+        TOOL_KEYS.planCreate,
         {
           goal: 'x',
           tasks: [
@@ -318,7 +557,7 @@ describe('规划能力（core bean + todo-write + plan 事件）', () => {
             { id: 'dup', title: 'b', status: 'pending' },
           ],
         },
-        runtimeContext(conversation.id, `${run.id}_dup`),
+        runtimeEnvelope(conversation.id, `${run.id}_dup`),
       ),
     ).rejects.toThrow(/id 重复/)
 
@@ -327,20 +566,30 @@ describe('规划能力（core bean + todo-write + plan 事件）', () => {
 })
 
 describe('子 agent（core bean + 运行期动态创建）', () => {
-  it('工具面：子 agent = 全部工具 − 委派类（于是它不能再造子 agent）', () => {
-    const builder = buildToolBuilder([new PlannerCore(stubTimeline), fakeSpawnerCore()])
-    expect(builder.delegationKeys()).toEqual([MOCK_DELEGATE_TOOL])
-    const childTools = builder.buildDelegable()
-    expect(Object.keys(childTools)).toEqual(expect.arrayContaining([TOOL_KEYS.todoWrite]))
+  it('工具面：子 agent = 全部 − 委派类 − child:deny（于是它不能再造子 agent）', () => {
+    const registry = buildRegistry([
+      ...buildPlannerTools(),
+      new RunSubAgentTool(
+        { runSubAgent: async () => ({ status: 'succeeded' }) } as never,
+        silentLogger,
+      ),
+      new RunCommandTool(new CommandRunner(), silentLogger),
+    ])
+    expect(registry.delegationKeys()).toEqual([MOCK_DELEGATE_TOOL])
+    const childKeys = [...registry.childToolbox().keys()]
+    // 非委派类工具照给子 agent（如 run-command）
+    expect(childKeys).toContain(TOOL_KEYS.runCommand)
     // 关键：子 agent 拿不到委派工具 → 递归在**能力上**不可能，不靠提示词自律
-    expect(Object.keys(childTools)).not.toContain(MOCK_DELEGATE_TOOL)
+    expect(childKeys).not.toContain(MOCK_DELEGATE_TOOL)
+    // `child: 'deny'` 的工具同样不给（四个规划工具都只给主 agent，子助手把结论交回即可）
+    for (const key of PLAN_KEYS) expect(childKeys).not.toContain(key)
   })
 
   it('对外清单用 canSpawnSubAgents 表达能力（不再有静态子 agent 名单）', () => {
     const registry = createAgentRegistry(
       [
-        spec({ key: 'a', tools: [TOOL_KEYS.todoWrite, MOCK_DELEGATE_TOOL] }),
-        spec({ key: 'b', tools: [TOOL_KEYS.todoWrite] }),
+        spec({ key: 'a', tools: [TOOL_KEYS.planCreate, MOCK_DELEGATE_TOOL] }),
+        spec({ key: 'b', tools: [TOOL_KEYS.planCreate] }),
       ],
       'a',
     )
@@ -350,20 +599,24 @@ describe('子 agent（core bean + 运行期动态创建）', () => {
   })
 
   it('Mastra 装配里不再有静态子 agent（`agents:{}` 已删除）', async () => {
-    const toolBuilder = buildToolBuilder([
-      new PlannerCore(stubTimeline),
-      fakeSpawnerCore(),
-      fakeCommandCore(),
+    const toolRegistry = buildRegistry([
+      ...buildPlannerTools(),
+      new RunSubAgentTool(
+        { runSubAgent: async () => ({ status: 'succeeded' }) } as never,
+        silentLogger,
+      ),
+      new RunCommandTool(new CommandRunner(), silentLogger),
     ])
     const registry = createAgentRegistry(
-      createAgentDefinitions(createPromptEngine(), toolBuilder),
+      createAgentDefinitions(createPromptEngine(), toolRegistry),
       DEFAULT_AGENT_KEY,
     )
+    const skillLoader = new SkillLoader(silentLogger)
     const mastra = await createMastra({
-      model: { model: 'mock/mock-model', apiKey: 'k', baseURL: 'http://127.0.0.1:1/v1' },
+      resolveModel: () => ({ id: 'mock/mock-model', apiKey: 'k', url: 'http://127.0.0.1:1/v1' }),
       definitions: registry.all(),
-      resolveTools: (keys) => toolBuilder.build(keys),
-      resolveSkills: (names) => new SkillLoader(silentLogger).resolve(names),
+      resolveTools: (keys) => toMastraTools(toolRegistry.toolbox(keys), silentLogger),
+      resolveSkills: async (names) => toMastraSkills(await skillLoader.resolve(names)),
     })
     const assistant = mastra.getAgent(DEFAULT_AGENT_KEY)
     expect(Object.keys(await assistant.listAgents())).toEqual([])
@@ -464,7 +717,10 @@ describe('子 agent（core bean + 运行期动态创建）', () => {
     const toolNames = (childRequest?.tools as Array<{ function?: { name?: string } }>).map(
       (tool) => tool.function?.name,
     )
-    expect(toolNames).toContain(MOCK_TODO_TOOL)
+    // 工具面 = 全部 − 委派类 − child:deny：run-command 在，run-sub-agent 与四个规划工具都不在
+    // （规划工具都是 `child: 'deny'`：清单归属主 agent，子助手只把结论交回）
+    expect(toolNames).toContain(MOCK_COMMAND_TOOL)
+    for (const key of PLAN_KEYS) expect(toolNames).not.toContain(key)
     expect(toolNames).not.toContain(MOCK_DELEGATE_TOOL)
   }, 30_000)
 
@@ -482,14 +738,7 @@ describe('子 agent（core bean + 运行期动态创建）', () => {
       task: MOCK_SUBAGENT_TASK,
       // **同一个 toolCallId**：崩溃恢复重放就是这个形态
       toolCallId: child.toolCallId!,
-      envelope: {
-        conversationId: conversation.id,
-        parentRunId: result.runId,
-        triggeredBy: USER,
-        depth: 0,
-        childTools: {},
-        childSkills: [],
-      },
+      envelope: runtimeEnvelope(conversation.id, result.runId),
     })
 
     expect(outcome.reused).toBe(true)
@@ -551,14 +800,7 @@ describe('子 agent（core bean + 运行期动态创建）', () => {
       systemPrompt: MOCK_SUBAGENT_PROMPT,
       task: MOCK_SUBAGENT_TASK,
       toolCallId: null,
-      envelope: {
-        conversationId: conversation.id,
-        parentRunId: result.runId,
-        triggeredBy: USER,
-        depth: 0,
-        childTools: {},
-        childSkills: [],
-      },
+      envelope: runtimeEnvelope(conversation.id, result.runId),
     }
 
     // 深度超限：拿一个"已经在第 1 层"的信封
@@ -591,8 +833,7 @@ let stackPromise: Promise<{
   runs: RunRepository
   runner: AgentRunner
   runService: AgentRunService
-  planner: PlannerCore
-  toolBuilder: ToolBuilder
+  toolRegistry: ToolRegistry
 }> | null = null
 
 const stack = async () => {
@@ -611,67 +852,50 @@ const timelinesPage = async (conversationId: string) => {
   return timelines.list({ conversationId, page: 1, size: 300 })
 }
 
-/** 手工装配运行时信封（直接执行工具时用；域内只关心会话与 run） */
-const runtimeContext = (
-  conversationId: string,
-  parentRunId: string,
-): { requestContext: RequestContext } => {
-  const requestContext = new RequestContext()
-  const envelope = {
-    conversationId,
-    parentRunId,
-    triggeredBy: USER,
-    depth: 0,
-    childTools: {},
-    childSkills: [],
-  } as unknown as AgentRuntimeEnvelope
-  requestContext.setRaw(AGENT_RUNTIME_KEY, envelope)
-  return { requestContext }
-}
+/** 测试用的**运行时模型**（直接执行工具 / 造信封时用；域内不验证选模型） */
+const runtimeModel = (): RuntimeModel => ({
+  id: 'model_mock',
+  modelRef: 'mock/mock-model',
+  modelKey: 'mock-model',
+  displayName: 'Mock 模型',
+  providerKind: 'openai-compatible',
+  baseURL: mock.baseURL,
+  apiKey: 'test-key',
+  contextWindow: null,
+})
 
-/** 直接执行 `todo-write`（绕过模型，验证工具本身的契约） */
-const executeTodoWrite = async (
-  planner: PlannerCore,
-  input: unknown,
-  context: { requestContext: RequestContext },
-): Promise<TodoWriteOutput> => {
-  const tool = planner.asTools().find((item) => item.key === TOOL_KEYS.todoWrite) as AgentTool
-  const instance = tool.tool as unknown as {
-    execute: (value: unknown, ctx: unknown) => Promise<TodoWriteOutput>
-  }
-  return instance.execute(input, context)
-}
+/** 手工装配运行时信封（直接执行工具时用；域内只关心会话与 run） */
+const runtimeEnvelope = (conversationId: string, parentRunId: string): AgentRuntimeEnvelope => ({
+  conversationId,
+  parentRunId,
+  triggeredBy: USER,
+  isAdmin: false,
+  depth: 0,
+  agentKey: DEFAULT_AGENT_KEY,
+  rootAgentKey: DEFAULT_AGENT_KEY,
+  model: runtimeModel(),
+  childToolbox: new Map(),
+  skills: [],
+})
 
 /**
- * 纯装配断言用的"假委派类 core"：只暴露一个带 `delegation` 标记的工具。
+ * 直接执行某个规划工具（绕过模型，走网关 → 执行体，验证工具本身的契约）。
  *
- * 这样"工具面 = 全部 − 委派类"这条规则可以脱离数据库与模型单独验证。
+ * 网关把失败折成统一结论（`ok: false` + message），这里把 message 抛出来 —— 与
+ * `rejects.toThrow(/必须给 goal/)` 这类断言语义一致，同时顺带覆盖了"拒绝是结论不是崩溃"这条链路。
  */
-/** 命令执行 core 的替身：只关心"工具清单能不能渲染出来"的用例用它，不真跑命令 */
-const fakeCommandCore = (): AgentCore => ({
-  key: 'fake-command',
-  asTools: () => [
-    {
-      key: TOOL_KEYS.runCommand,
-      title: '执行命令行命令',
-      description: 'x',
-      tool: {} as never,
-    },
-  ],
-})
-
-const fakeSpawnerCore = (): AgentCore => ({
-  key: 'fake-subagent',
-  asTools: () => [
-    {
-      key: MOCK_DELEGATE_TOOL,
-      title: '创建子助手',
-      description: 'x',
-      delegation: true,
-      tool: {} as never,
-    },
-  ],
-})
+const executePlanTool = async (
+  toolRegistry: ToolRegistry,
+  key: string,
+  input: unknown,
+  envelope: AgentRuntimeEnvelope,
+): Promise<PlanOutput> => {
+  const tool = toolRegistry.get(key)
+  if (!tool) throw new Error(`测试栈：注册机里没有 ${key}`)
+  const outcome = await tool.run(input, { callId: null, envelope, log: silentLogger })
+  if (!outcome.ok) throw new Error(outcome.message)
+  return outcome.data as PlanOutput
+}
 
 /** 测试用配置：**必须给全子 agent 相关字段**（缺了 `undefined` 进 setTimeout 会立刻超时） */
 const TEST_CONFIG = {
@@ -730,25 +954,46 @@ const buildStack = async () => {
   // 子 agent 用的是**默认模型**（由配置构造），所以配置里必须有 mock 的 baseURL ——
   // 少了它，子 agent 会退到 model router 解析而报 "No API URL found"
   const config = { ...TEST_CONFIG, baseURL: mock.baseURL } as never
-  const runner = new AgentRunner(runs, timelines, config, silentLogger)
-  const skillLoader = new SkillLoader(silentLogger)
-  const planner = new PlannerCore(timelines)
-  const toolBuilder = buildToolBuilder([
-    planner,
-    new SubAgentCore(runner, silentLogger),
-    // 命令执行 core：与 `ai.module.ts` 的装配口径一致（assistant 已授权 run-command）
-    new CommandCore(new CommandRunner(), config, silentLogger),
-  ])
+  // 工具类实例（唯一的工具来源）：与 `ai.module.ts` 的装配口径一致
+  const plannerStore = new PlannerStore(timelines)
+  // registry 与 runner 互相引用：给 runner 一个**延迟求值**的在册端口，避免装配成环
+  let toolRegistry: ToolRegistry
+  // `AgentRunner` 通过 ModuleRef **惰性**取注册机（构造期不依赖它，否则成环死锁）：
+  // 测试给一个只实现 `get` 的替身，语义与生产一致
+  const moduleRefPort = { get: () => toolRegistry } as never
+  const runner = new AgentRunner(
+    runs,
+    timelines,
+    config,
+    silentLogger,
+    deps.metas,
+    moduleRefPort,
+  )
+  toolRegistry = new ToolRegistry(
+    [
+      // 命令执行：与 `ai.module.ts` 的装配口径一致（assistant 已授权 run-command）
+      new RunCommandTool(new CommandRunner(), silentLogger),
+      new RunSubAgentTool(runner, silentLogger),
+      new PlanCreateTool(plannerStore),
+      new PlanReorderTool(plannerStore),
+      new PlanCompleteTool(plannerStore),
+      new PlanDeleteTool(plannerStore),
+      new ReadToolResultTool(deps.results, deps.counter, deps.caps),
+    ],
+    gateway,
+    deps.config,
+  )
   const registry = createAgentRegistry(
-    createAgentDefinitions(createPromptEngine(), toolBuilder),
+    createAgentDefinitions(createPromptEngine(), toolRegistry),
     DEFAULT_AGENT_KEY,
   )
+  const skillLoader = new SkillLoader(silentLogger)
   const mastra = await createMastra({
-    // 模型改为"按 requestContext 解析"的动态参数；这些测试不验证选模型，给恒定 mock 模型
+    // 模型改为"按 envelope 里的模型"求值的动态参数；这些测试不验证选模型，给恒定 mock 模型
     resolveModel: () => ({ id: 'mock/mock-model', url: mock.baseURL, apiKey: 'test-key' }),
     definitions: registry.all(),
-    resolveTools: (keys) => toolBuilder.build(keys),
-    resolveSkills: (names) => skillLoader.resolve(names),
+    resolveTools: (keys) => toMastraTools(toolRegistry.toolbox(keys), silentLogger),
+    resolveSkills: async (names) => toMastraSkills(await skillLoader.resolve(names)),
   })
   const conversations = new AgentConversationService(
     conversationRepo,
@@ -768,7 +1013,8 @@ const buildStack = async () => {
     timelines,
     context,
     {} as never,
-    toolBuilder,
+    toolRegistry,
+    deps.metas,
     skillLoader,
     modelsStub,
     silentLogger,
@@ -777,7 +1023,7 @@ const buildStack = async () => {
   )
 
   const runService = new AgentRunService(runs, conversations)
-  return { chat, conversations, timelines, runs, runner, runService, planner, toolBuilder }
+  return { chat, conversations, timelines, runs, runner, runService, toolRegistry }
 }
 
 beforeAll(async () => {

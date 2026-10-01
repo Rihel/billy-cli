@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { CommandRunner } from '@repo/kits'
-import { CommandCore } from '../src/modules/ai/core/command.core.js'
+import { RunCommandTool } from '../src/modules/ai/core/beans/command.tool.js'
+import { buildToolSpec } from '../src/modules/ai/tools/tool.class.js'
 import { createPromptEngine } from '../src/modules/ai/prompts/index.js'
 import { DEFAULT_AGENT_KEY, createAgentDefinitions } from '../src/modules/ai/agents/index.js'
 
@@ -28,14 +29,13 @@ const assistantPrompt = (): string => {
  * 所以这里直接查那份说明 —— 不再从提示词模板里找（模板里已经不重复写了）。
  */
 const runCommandDescription = (): string => {
-  const core = new CommandCore(
-    new CommandRunner(),
-    { commandEnabled: true, commandTimeoutMs: 5_000, commandMaxOutputBytes: 64 * 1024 } as never,
-    { info: () => undefined, warn: () => undefined, error: () => undefined } as never,
-  )
-  const tool = core.asTools().find((item) => item.key === 'run-command')
-  if (!tool) throw new Error('没有 run-command 工具')
-  return tool.description
+  // 改造后工具类交的是**声明**（装饰器元数据 → `buildToolSpec()`），说明文本就在声明上
+  const tool = new RunCommandTool(new CommandRunner(), {
+    info: () => undefined,
+    warn: () => undefined,
+    error: () => undefined,
+  } as never)
+  return buildToolSpec(tool).description
 }
 
 describe('提示词纪律句（执行命令 / 能力边界 / 宽泛任务）', () => {

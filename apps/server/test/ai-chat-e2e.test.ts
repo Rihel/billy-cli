@@ -11,17 +11,28 @@ import {
   createAgentDefinitions,
 } from '../src/modules/ai/agents/index.js'
 import { AGENT_MAX_STEPS } from '../src/modules/ai/core/ai.constants.js'
-import { createMastra } from '../src/modules/ai/core/ai.mastra.js'
+import { createMastra } from '../src/modules/ai/mastra/ai.mastra.js'
 import { createAgentRegistry } from '../src/modules/ai/core/ai.registry.js'
 import { createPromptEngine } from '../src/modules/ai/prompts/index.js'
 import { AgentTitleService } from '../src/modules/ai/runtime/title.service.js'
 import { SkillLoader } from '../src/modules/ai/skills/index.js'
-import { ToolBuilder } from '../src/modules/ai/tools/tool.builder.js'
-import { PlannerCore } from '../src/modules/ai/core/planner.core.js'
-import { SubAgentCore } from '../src/modules/ai/core/subagent.core.js'
-import { CommandCore } from '../src/modules/ai/core/command.core.js'
+import { RunCommandTool } from '../src/modules/ai/core/beans/command.tool.js'
+import { RunSubAgentTool } from '../src/modules/ai/core/beans/subagent.tool.js'
+import {
+  PlanCompleteTool,
+  PlanCreateTool,
+  PlanDeleteTool,
+  PlanReorderTool,
+  PlannerStore,
+} from '../src/modules/ai/core/beans/planner/index.js'
 import { AgentRunner } from '../src/modules/ai/runtime/agent-runner.js'
 import { AgentChatService } from '../src/modules/ai/runtime/chat.service.js'
+import { toMastraSkills } from '../src/modules/ai/mastra/skill.adapter.js'
+import { toMastraTools } from '../src/modules/ai/mastra/tool.adapter.js'
+import { ReadToolResultTool } from '../src/modules/ai/tools/read-tool-result.tool.js'
+import { ToolGateway } from '../src/modules/ai/tools/tool.gateway.js'
+import { ToolRegistry } from '../src/modules/ai/tools/tool.registry.js'
+import { buildToolStackDeps } from './helpers/ai-tool-stack.js'
 import { AgentConversationService } from '../src/modules/ai/runtime/conversation.service.js'
 import { ConversationRepository } from '../src/modules/ai/runtime/conversation.repository.js'
 import { ContextService } from '../src/modules/ai/runtime/context.service.js'
@@ -33,9 +44,9 @@ import {
   MOCK_COMMAND_OUTPUT,
   MOCK_COMMAND_TOOL,
   MOCK_FINAL_TEXT,
-  MOCK_TODO_INITIAL,
+  MOCK_PLAN_CREATE_TOOL,
+  MOCK_PLAN_INITIAL,
   MOCK_TITLE_TEXT,
-  MOCK_TODO_TOOL,
   type MockModelServer,
   startMockModelServer,
 } from './helpers/mock-model-server.js'
@@ -44,7 +55,7 @@ import {
  * 对话链路端到端测试：**假模型（本地 mock）+ 真实数据库**，不需要任何外部密钥。
  *
  * 验证的是"真的跑通一条链路"：
- *   建 run → 组装上下文 → 落用户消息 → 模型调工具（真实执行 core bean 的 `todo-write`）
+ *   建 run → 组装上下文 → 落用户消息 → 模型调工具（真实执行 core bean 的 `plan-create`）
  *   → 落时间线（入参出参完整、计划落成 `plan` 事件）→ 收尾（消耗 / 步数 / 轮数 / 标题）
  *   → 数据可查、可复盘。
  *
@@ -131,30 +142,50 @@ beforeAll(async () => {
 
   // 这份配置要能用"默认模型"造子 agent（跑不跑是另一回事）：baseURL 缺了会退到 model router 报错
   const config = { ...TEST_CONFIG, baseURL: mock.baseURL } as never
-  const runner = new AgentRunner(runs, timelines, config, silentLogger)
-  const toolBuilder = new ToolBuilder(
-    // 业务工具**为空**：AI 模块与业务模块解耦后的常态（`AGENT_TOOLS` 是扩展点）
-    [],
-    // core bean（规划 + 子 agent）：与 `ai.module.ts` 的装配口径一致
+  // 工具引擎装配（设计 §5.9）：配置 / 限流 / 时钟用测试替身，插件链为空（e2e 只关心行为）
+  const deps = buildToolStackDeps()
+  const gateway = new ToolGateway(deps.config, silentLogger, [], deps.clock)
+  // registry 与 runner 互相引用：runner 只在运行时用 registry 做"工具是否在册"判定，
+  // 所以给 runner 一个**延迟求值**的端口，先建 runner 再建真正的 registry（不成环）
+  let toolRegistry: ToolRegistry
+  // `AgentRunner` 通过 ModuleRef **惰性**取注册机（构造期不依赖它，否则成环死锁）：
+  // 测试给一个只实现 `get` 的替身，语义与生产一致
+  const moduleRefPort = { get: () => toolRegistry } as never
+  const runner = new AgentRunner(
+    runs,
+    timelines,
+    config,
+    silentLogger,
+    deps.metas,
+    moduleRefPort,
+  )
+  // 工具类实例（唯一的工具来源）：与 `ai.module.ts` 的装配口径一致
+  const plannerStore = new PlannerStore(timelines)
+  toolRegistry = new ToolRegistry(
     [
-      new PlannerCore(timelines),
-      new SubAgentCore(runner, silentLogger),
-      // 命令执行 core：与 `ai.module.ts` 的装配口径一致（assistant 已授权 run-command）
-      new CommandCore(new CommandRunner(), config, silentLogger),
+      new RunCommandTool(new CommandRunner(), silentLogger),
+      new RunSubAgentTool(runner, silentLogger),
+      new PlanCreateTool(plannerStore),
+      new PlanReorderTool(plannerStore),
+      new PlanCompleteTool(plannerStore),
+      new PlanDeleteTool(plannerStore),
+      new ReadToolResultTool(deps.results, deps.counter, deps.caps),
     ],
+    gateway,
+    deps.config,
   )
   const registry = createAgentRegistry(
-    createAgentDefinitions(createPromptEngine(), toolBuilder),
+    createAgentDefinitions(createPromptEngine(), toolRegistry),
     DEFAULT_AGENT_KEY,
   )
 
   const skillLoader = new SkillLoader(silentLogger)
   const mastra = await createMastra({
-    // 模型改为"按 requestContext 解析"的动态参数；这些测试不验证选模型，给恒定 mock 模型
+    // 模型改为"按 envelope 里的模型"求值的动态参数；这些测试不验证选模型，给恒定 mock 模型
     resolveModel: () => ({ id: 'mock/mock-model', url: mock.baseURL, apiKey: 'test-key' }),
     definitions: registry.all(),
-    resolveTools: (keys) => toolBuilder.build(keys),
-    resolveSkills: (names) => skillLoader.resolve(names),
+    resolveTools: (keys) => toMastraTools(toolRegistry.toolbox(keys), silentLogger),
+    resolveSkills: async (names) => toMastraSkills(await skillLoader.resolve(names)),
   })
 
   conversations = new AgentConversationService(
@@ -177,7 +208,8 @@ beforeAll(async () => {
     context,
     // 非流式路径不碰 Redis：这里给一个最小替身（流式链路有专门的端到端测试覆盖）
     {} as never,
-    toolBuilder,
+    toolRegistry,
+    deps.metas,
     skillLoader,
     modelsStub,
     silentLogger,
@@ -251,16 +283,16 @@ describe('对话链路端到端（mock 模型 + 真实数据库）', () => {
     expect(kinds).toContain(TimelineKind.Step)
 
     const toolCall = page.items.find((item) => item.kind === TimelineKind.ToolCall)
-    expect(toolCall?.toolKey).toBe(MOCK_TODO_TOOL)
-    // **入参完整落库**（提交的完整清单与 mock 给定的一字不差）
-    expect(toolCall?.payload?.input).toEqual(MOCK_TODO_INITIAL)
+    expect(toolCall?.toolKey).toBe(MOCK_PLAN_CREATE_TOOL)
+    // **入参完整落库**（提交的清单与 mock 给定的一字不差）
+    expect(toolCall?.payload?.input).toEqual(MOCK_PLAN_INITIAL)
 
     const toolResult = page.items.find((item) => item.kind === TimelineKind.ToolResult)
     // **出参完整落库、不裁剪**：整份清单 + 摘要都在
     expect(toolResult?.payload?.output).toMatchObject({
-      goal: MOCK_TODO_INITIAL.goal,
+      goal: MOCK_PLAN_INITIAL.goal,
       revision: 1,
-      tasks: MOCK_TODO_INITIAL.tasks,
+      tasks: MOCK_PLAN_INITIAL.tasks,
     })
     expect((toolResult?.payload?.output as { summary?: string }).summary).toContain('共 2 项')
     expect(toolResult?.state).toBe('output-available')
@@ -268,9 +300,9 @@ describe('对话链路端到端（mock 模型 + 真实数据库）', () => {
     // 4) 计划落成 `plan` 事件（当前计划 = 最后一条 plan 事件）
     const planRow = page.items.find((item) => item.kind === TimelineKind.Plan)
     expect(planRow?.payload).toEqual({
-      goal: MOCK_TODO_INITIAL.goal,
+      goal: MOCK_PLAN_INITIAL.goal,
       revision: 1,
-      tasks: MOCK_TODO_INITIAL.tasks,
+      tasks: MOCK_PLAN_INITIAL.tasks,
     })
     expect(planRow!.seq).toBeGreaterThan(toolResult!.seq)
 
@@ -314,7 +346,7 @@ describe('对话链路端到端（mock 模型 + 真实数据库）', () => {
     const lastRequest = mock.requests.at(-1)!
     expect(JSON.stringify(lastRequest.messages)).toContain('记住：我叫小王')
     // 且请求里带着工具定义（能力边界由授权的工具决定：业务工具为空，只有运行时能力）
-    expect(JSON.stringify(lastRequest.tools)).toContain(MOCK_TODO_TOOL)
+    expect(JSON.stringify(lastRequest.tools)).toContain(MOCK_PLAN_CREATE_TOOL)
 
     const conversation = await conversations.detail(USER, { conversationId: first.conversationId })
     expect(conversation.turnCount).toBe(2)

@@ -164,7 +164,7 @@ describe('会话运行时（真实数据库）', () => {
         conversationId: conversation.id,
         role: 'assistant',
         kind: 'tool-result',
-        toolKey: 'todo-write',
+        toolKey: 'plan-create',
         toolCallId: 'call_test_1',
         payload: { output: { title: '完整出参不裁剪' } },
       },
@@ -177,7 +177,7 @@ describe('会话运行时（真实数据库）', () => {
     })
     expect(page.total).toBe(3)
     expect(page.items.map((item) => item.seq)).toEqual([1, 2, 3])
-    expect(page.items[2].toolKey).toBe('todo-write')
+    expect(page.items[2].toolKey).toBe('plan-create')
     // 保真：工具出参原样可读
     expect(page.items[2].payload).toEqual({ output: { title: '完整出参不裁剪' } })
   })
@@ -295,7 +295,8 @@ describe('查看系统指令（前端「查看系统指令」的数据源）', (
     expect(result.instructions).toContain('# 要求')
     expect(result.instructions).toContain('# 工具')
     expect(result.instructions).toContain('# 原则')
-    expect(result.instructions).toContain('todo-write')
+    // 工具清单来自**实际授权**（规划工具集是当前 core bean 交出的能力）
+    expect(result.instructions).toContain('plan-create')
   })
 
   it('未注册的 agentKey：3303，**不静默回落**成默认 agent（否则会让人看错对象）', () => {

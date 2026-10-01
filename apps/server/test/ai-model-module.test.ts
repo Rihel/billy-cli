@@ -11,7 +11,6 @@ import {
   AiProviderRepository,
   DEFAULT_PROVIDER_BASE_URLS,
   PROVIDER_ENDPOINTS,
-  decryptSecret,
   hintOf,
   listProviderModels,
   type AiModelConfig,
@@ -89,7 +88,6 @@ beforeAll(async () => {
   providers = new AiProviderRepository(db)
   models = new AiModelRepository(db)
   const config: AiModelConfig = {
-    encryptionKey: TEST_SECRET,
     fallbackSecret: undefined,
     seedFromEnv: false,
   }
@@ -152,7 +150,7 @@ describe('AI 模型模块（真实数据库 + mock 供应商）', () => {
     await expect(service.listAvailable()).resolves.toEqual({ models: [], defaultModelId: null })
   })
 
-  it('③ 建供应商：slug 由名称生成；密钥加密入库，对外只回 hint / hasApiKey', async () => {
+  it('③ 建供应商：slug 由名称生成；密钥**明文入库**，对外只回 hint / hasApiKey', async () => {
     const created = await service.createProvider({
       name: 'My Mock Gateway',
       // mock 服务就是通用 OpenAI 兼容形态：用国内厂商 kind + 显式 baseUrl 指向 mock，
@@ -171,13 +169,12 @@ describe('AI 模型模块（真实数据库 + mock 供应商）', () => {
     expect(Object.keys(created)).not.toContain('apiKey')
     expect(JSON.stringify(created)).not.toContain(TEST_API_KEY)
 
-    // 库里只有密文，且能用口令解回原文
-    const rows = await db.dataSource.query<{ api_key_cipher: string; api_key_hint: string }[]>(
-      'SELECT api_key_cipher, api_key_hint FROM ai_providers WHERE id = $1',
+    // 明文入库（2026-10-01 决定）：库里直接是原文，且**没有**提示列（提示串读取时派生）
+    const rows = await db.dataSource.query<{ api_key: string | null }[]>(
+      'SELECT api_key FROM ai_providers WHERE id = $1',
       [created.id],
     )
-    expect(rows[0].api_key_cipher).not.toContain(TEST_API_KEY)
-    expect(decryptSecret(rows[0].api_key_cipher, TEST_SECRET)).toBe(TEST_API_KEY)
+    expect(rows[0].api_key).toBe(TEST_API_KEY)
   })
 
   it('③b 名称里没有可用 ASCII 字符 → slug 无法生成，明确报错（4001）', async () => {
@@ -283,19 +280,19 @@ describe('AI 模型模块（真实数据库 + mock 供应商）', () => {
 
   it('⑨ updateProvider 三态：apiKey 省略不改 / 空串清空、baseUrl null 真的清空、name+slug 冲突报 4001', async () => {
     const providerId = createdProviderIds[0]
-    const cipherOf = async (): Promise<string | null> => {
-      const rows = await db.dataSource.query<{ api_key_cipher: string | null }[]>(
-        'SELECT api_key_cipher FROM ai_providers WHERE id = $1',
+    const keyOf = async (): Promise<string | null> => {
+      const rows = await db.dataSource.query<{ api_key: string | null }[]>(
+        'SELECT api_key FROM ai_providers WHERE id = $1',
         [providerId],
       )
-      return rows[0].api_key_cipher
+      return rows[0].api_key
     }
-    const before = await cipherOf()
+    const before = await keyOf()
 
-    // apiKey 省略 → 不改（密文与提示都不动）；baseUrl 给字符串 → 覆盖
+    // apiKey 省略 → 不改（库里的明文与派生的提示都不动）；baseUrl 给字符串 → 覆盖
     const kept = await service.updateProvider({ providerId, baseUrl: mock.baseURL })
     expect(kept.apiKeyHint).toBe('sk-…abcd')
-    expect(await cipherOf()).toBe(before)
+    expect(await keyOf()).toBe(before)
 
     // baseUrl = null → 真的清空（落库 NULL，运行时回到官方默认地址）
     const cleared = await service.updateProvider({ providerId, baseUrl: null })
@@ -313,10 +310,10 @@ describe('AI 模型模块（真实数据库 + mock 供应商）', () => {
     await expect(service.syncProvider({ providerId })).rejects.toMatchObject({ code: 3403 })
     await expect(service.syncProvider({ providerId })).rejects.toThrow(/未配置密钥/)
 
-    // apiKey 有值 → 加密覆盖（提示跟着变）
+    // apiKey 有值 → 明文覆盖（提示跟着变）
     const rekeyed = await service.updateProvider({ providerId, apiKey: 'sk-other-key-zzzz' })
     expect(rekeyed.apiKeyHint).toBe('sk-…zzzz')
-    expect(await cipherOf()).not.toBe(before)
+    expect(await keyOf()).not.toBe(before)
 
     // name / slug 唯一冲突 → 可读错误（4001），而不是数据库 23505
     const second = await service.createProvider({

@@ -165,6 +165,9 @@ describe('组装策略（70% 触发 → 裁剪 → 压缩 → 兜底）', () => 
 describe('两条硬规则', () => {
   it('工具调用与结果配成一段（永不拆开），且结果在段内', async () => {
     seq = 0
+    // 这里刻意用**旧工具名** `todo-write` 造事件：时间线协议不校验 key 是否在册，
+    // 历史事件的 toolKey 只是标签 —— 覆盖"旧数据仍能被上下文组装读出来"。
+    // （当前规划工具集是 plan-create / plan-reorder / plan-complete / plan-delete）
     const events: TimelineEntity[] = [
       ...turns(1),
       event({

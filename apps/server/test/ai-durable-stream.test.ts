@@ -9,11 +9,17 @@ import { ConversationEntity } from '../src/database/entities/conversation-entity
 import { RunEntity } from '../src/database/entities/run-entity.js'
 import { TimelineEntity } from '../src/database/entities/timeline-entity.js'
 import { DEFAULT_AGENT_KEY, createAgentDefinitions } from '../src/modules/ai/agents/index.js'
-import { createMastra } from '../src/modules/ai/core/ai.mastra.js'
+import { createMastra } from '../src/modules/ai/mastra/ai.mastra.js'
 import { createAgentRegistry } from '../src/modules/ai/core/ai.registry.js'
-import { PlannerCore } from '../src/modules/ai/core/planner.core.js'
-import { SubAgentCore } from '../src/modules/ai/core/subagent.core.js'
-import { CommandCore } from '../src/modules/ai/core/command.core.js'
+import { RunCommandTool } from '../src/modules/ai/core/beans/command.tool.js'
+import { RunSubAgentTool } from '../src/modules/ai/core/beans/subagent.tool.js'
+import {
+  PlanCompleteTool,
+  PlanCreateTool,
+  PlanDeleteTool,
+  PlanReorderTool,
+  PlannerStore,
+} from '../src/modules/ai/core/beans/planner/index.js'
 import { createPromptEngine } from '../src/modules/ai/prompts/index.js'
 import { AgentTitleService } from '../src/modules/ai/runtime/title.service.js'
 import { AgentChatService } from '../src/modules/ai/runtime/chat.service.js'
@@ -25,13 +31,18 @@ import { RunRepository } from '../src/modules/ai/runtime/run.repository.js'
 import { AgentStreamStore } from '../src/modules/ai/runtime/stream-store.service.js'
 import { TimelineRepository } from '../src/modules/ai/runtime/timeline.repository.js'
 import { SkillLoader } from '../src/modules/ai/skills/index.js'
-import { ToolBuilder } from '../src/modules/ai/tools/tool.builder.js'
+import { toMastraSkills } from '../src/modules/ai/mastra/skill.adapter.js'
+import { toMastraTools } from '../src/modules/ai/mastra/tool.adapter.js'
+import { ReadToolResultTool } from '../src/modules/ai/tools/read-tool-result.tool.js'
+import { ToolGateway } from '../src/modules/ai/tools/tool.gateway.js'
+import { ToolRegistry } from '../src/modules/ai/tools/tool.registry.js'
 import {
   MOCK_FINAL_TEXT,
-  MOCK_TODO_TOOL,
+  MOCK_PLAN_CREATE_TOOL,
   type MockModelServer,
   startMockModelServer,
 } from './helpers/mock-model-server.js'
+import { buildToolStackDeps } from './helpers/ai-tool-stack.js'
 
 /**
  * **可恢复执行（`durable: true`）下的流式收尾**回归。
@@ -146,23 +157,47 @@ beforeAll(async () => {
   timelines = new TimelineRepository(db)
 
   const config = { ...TEST_CONFIG, baseURL: mock.baseURL } as never
-  const runner = new AgentRunner(runs, timelines, config, silentLogger)
-  const skillLoader = new SkillLoader(silentLogger)
-  const toolBuilder = new ToolBuilder([], [
-    new PlannerCore(timelines),
-    new SubAgentCore(runner, silentLogger),
-    // 命令执行 core：与 `ai.module.ts` 的装配口径一致（assistant 已授权 run-command）
-    new CommandCore(new CommandRunner(), config, silentLogger),
-  ])
+  // 工具引擎装配（设计 §5.9）：插件链为空（e2e 只关心行为），依赖用测试替身
+  const deps = buildToolStackDeps()
+  const gateway = new ToolGateway(deps.config, silentLogger, [], deps.clock)
+  // registry 与 runner 互相引用：给 runner 一个**延迟求值**的在册端口，避免装配成环
+  let toolRegistry: ToolRegistry
+  // `AgentRunner` 通过 ModuleRef **惰性**取注册机（构造期不依赖它，否则成环死锁）：
+  // 测试给一个只实现 `get` 的替身，语义与生产一致
+  const moduleRefPort = { get: () => toolRegistry } as never
+  const runner = new AgentRunner(
+    runs,
+    timelines,
+    config,
+    silentLogger,
+    deps.metas,
+    moduleRefPort,
+  )
+  // 工具类实例（唯一的工具来源）：与 `ai.module.ts` 的装配口径一致
+  const plannerStore = new PlannerStore(timelines)
+  toolRegistry = new ToolRegistry(
+    [
+      new RunCommandTool(new CommandRunner(), silentLogger),
+      new RunSubAgentTool(runner, silentLogger),
+      new PlanCreateTool(plannerStore),
+      new PlanReorderTool(plannerStore),
+      new PlanCompleteTool(plannerStore),
+      new PlanDeleteTool(plannerStore),
+      new ReadToolResultTool(deps.results, deps.counter, deps.caps),
+    ],
+    gateway,
+    deps.config,
+  )
   const registry = createAgentRegistry(
-    createAgentDefinitions(createPromptEngine(), toolBuilder),
+    createAgentDefinitions(createPromptEngine(), toolRegistry),
     DEFAULT_AGENT_KEY,
   )
+  const skillLoader = new SkillLoader(silentLogger)
   const mastra = await createMastra({
     resolveModel: () => ({ id: 'mock/mock-model', url: mock.baseURL, apiKey: 'test-key' }),
     definitions: registry.all(),
-    resolveTools: (keys) => toolBuilder.build(keys),
-    resolveSkills: (names) => skillLoader.resolve(names),
+    resolveTools: (keys) => toMastraTools(toolRegistry.toolbox(keys), silentLogger),
+    resolveSkills: async (names) => toMastraSkills(await skillLoader.resolve(names)),
     // durable 的每步快照必须有地方落：测试用 Mastra 自带的内存 store（不碰我们的 workflows 表）
     storage: new InMemoryStore() as never,
     durableAgents: true,
@@ -186,7 +221,8 @@ beforeAll(async () => {
     timelines,
     context,
     streamStore,
-    toolBuilder,
+    toolRegistry,
+    deps.metas,
     skillLoader,
     modelsStub,
     silentLogger,
@@ -283,7 +319,7 @@ describe('可恢复执行（durable）下的流式收尾', () => {
     expect(kinds).toContain(TimelineKind.ToolResult)
     expect(kinds).toContain(TimelineKind.Step)
     expect(page.items.find((item) => item.kind === TimelineKind.ToolResult)?.toolKey).toBe(
-      MOCK_TODO_TOOL,
+      MOCK_PLAN_CREATE_TOOL,
     )
     const assistantText = page.items
       .filter((item) => item.kind === TimelineKind.Text && item.role === 'assistant')
