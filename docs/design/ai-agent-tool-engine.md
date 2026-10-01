@@ -827,6 +827,267 @@ Mastra 一改 execute 的形态，所有工具测试一起红。
 | 秘钥进工具配置扩大敏感面 | 复用现有加密与提示串口径，`redact` 插件兜日志与出参，接口只回提示串 |
 | 工具作者绕过可单测的约定（`exec` 里读 env、用 `Date.now()`、直接 `new` 依赖） | 标准测试集用 fake 依赖与确定性断言把这类写法暴露出来；约定清单进 `develop-ai-agent` skill |
 
+### 5.17 工具自定义事件（2026-10-01 追加）
+
+**结论**：工具除了给出参（结论），还可以在**执行过程中**往父流里发**自定义事件**（过程）。
+声明写在 `@ToolDecl({ events })` 里，运行时用 `ctx.emit(name, payload?)` 发，形状是 AI SDK 的
+`data-tool-event` part —— 与子 agent 的 `data-sub-agent*` 同一套机制，只是这次把它变成**声明的契约**。
+
+#### 背景与痛点
+
+| # | 现象 | 代价 |
+| --- | --- | --- |
+| 1 | 一次工具调用要跑几十秒到几分钟（长命令、批量处理），**过程中的信息全被憋在出参里** | 用户看一个转圈的卡片，直到结束才知道进展；中途卡住也看不出卡在哪 |
+| 2 | 工具想"边做边说"（一行行日志、逐条产物），**没有出口** | 只能塞进出参拼成一大段字符串，前端再切分 —— 形状各写一套，模型也跟着多读一堆过程噪声 |
+| 3 | 子 agent 的实时明细（`data-sub-agent*`）**靠硬编码**在 `agent-runner` 里 | 同类需求每来一个就要在运行时加一个分支，前端也要加一个渲染器；"有哪些过程信息"永远查不全 |
+| 4 | 管理台看不到"这个工具会吐什么" | 直到运行时才发现多了个没渲染器的 part（前端显示成裸 JSON 或直接空白） |
+
+#### 契约
+
+两端共用一份契约（`packages/shared/src/schema/ai-tool-event.schema.ts`），不各写一份防止漂移：
+
+| 名字 | 是什么 |
+| --- | --- |
+| `AiToolEventSchema` | 事件**声明**：`name` / `title` / `description` / `mode` / `payloadSchema`（`ai_tools.events` 的镜像形状） |
+| `TOOL_EVENT_PART_TYPE` | 流 part 类型：`'data-tool-event'` |
+| `ToolEventPartDataSchema` | part 的 `data`：`toolKey` / `toolCallId` / `event` / `eventTitle` / `mode` / `seq` / `payload` / `agentKey` |
+| `parseToolEventPart` | 前端**宽容解析**：认不出的 part 返回 `null`，由前端按"未知 part"处理（宁可露个徽标，也不要白屏） |
+
+`data` 刻意**自带描述字段**（`eventTitle` / `mode`）：前端渲染器是**代码注册**的、拿不到库里那份声明，
+认不出的事件靠这两个字段也能渲染出一条像样的兜底卡片。
+
+#### DSL 用法
+
+```ts
+const ExportProgress = z.object({
+  state: z.string().describe('当前阶段'),
+  percent: z.number().min(0).max(100).describe('完成百分比'),
+})
+
+@ToolDecl({
+  key: TOOL_KEYS.exportOrder,
+  title: '导出订单',
+  description: dedent`
+    把筛选出的订单导出成一个文件。
+
+    什么时候用：用户明确要"导出 / 下载 / 给我一份文件"，且条数超过一屏（否则直接查给他看更快）。
+    什么时候不用：只要看几条数据（直接查）。
+  `,
+  params: ExportParams,
+  config: ExportConfig,
+  // 事件声明：形状与出参契约同一处写、启动期校验（名字重复 / 标题为空 / mode 非法 = 起不来）
+  events: [
+    {
+      name: 'progress',
+      title: '导出进度',
+      description: '每导出 5% 更新一次快照（前端只显示最新一次）',
+      mode: 'state',
+      payload: ExportProgress,
+    },
+    {
+      name: 'line',
+      title: '导出明细行',
+      description: '每写完一批追加一行（前端按顺序累积）',
+      mode: 'stream',
+      payload: z.string(),
+    },
+  ],
+})
+async execute(input: z.infer<typeof ExportParams>, ctx: ToolCallContext<ExportConfigValue>) {
+  ctx.emit('progress', { state: 'counting', percent: 0 })
+  // …过程…
+  ctx.emit('progress', { state: 'writing', percent: 40 })
+  ctx.emit('line', '第 1 批 500 条已写出')
+  // 未声明的名字发不出去；payload 不合契约也被丢弃 —— 两者都只记 warn，不影响下面的出参
+  return { fileKey, rows: total }   // ← 结论：完整落库的那一份
+}
+```
+
+四条口径：
+
+1. **未声明不许发**：`emit` 只认声明过的名字（同名重复声明是**启动期错误**）。未声明、或 payload 不合契约
+   的事件被**丢弃并记 warn**（`ai.tool.event_undeclared` / `ai.tool.event_payload_invalid`），
+   `emit` 本身**同步且永不抛** —— 事件失败不能拖垮工具；
+2. **没有 writer 就静默 no-op**：非流式调用 / 后台直接调工具时没有父流可写，这不是错误，连 warn 都不记；
+3. **写流失败也吞掉**（`ai.tool.event_write_failed`）：Mastra 的 `writer.write` 可能异步 reject，
+   内部把写入串成一条**队列**（先 emit 的先进流，`seq` 只有一处递增）；
+4. **管理台只读**：`title` / `description` / `mode` / `payloadSchema` 与 `paramSchema` 同一口径 ——
+   代码声明是唯一事实源，启动期由种子**全量覆盖**写进 `ai_tools.events`；`AiToolUpdateSchema` 里
+   **没有** `events` 字段，前端也传不进来。
+
+#### `mode`：归并策略必须在服务端定
+
+AI SDK v6 的 data part 语义是「**同 `id` 后者覆盖前者**」（实测，见 §5.10 子 agent 那段）。于是：
+
+| mode | part 的 `id` | 前端看到 | 用在哪 |
+| --- | --- | --- | --- |
+| `state`（省略即它） | `` `${toolCallId ?? toolKey}:${name}` ``（**稳定 id**） | 只有**最新快照**（前几块被同 id 覆盖） | 进度 / 当前阶段 |
+| `stream` | **不带 `id`** | **逐条追加**（一块一条） | 日志行 / 产物行 |
+
+为什么把这条判断放在服务端：前端渲染器只该"画"，不该"猜"。如果让前端自己按事件名去判断要不要去重，
+那么"这个事件是状态还是流水"就有了两份实现（服务端发的方式 + 前端的猜测），协议演进必然漂移。
+现在**服务端怎么发，前端就怎么看到** —— 前端按 `id` 有无所见即所得。
+
+`id` 取 `toolCallId` 而不是 `runId`：同一次运行里同一个工具可能被调用多次，
+状态快照必须**按次**归并（否则第二次调用的进度会覆盖第一次的），前端把事件并进对应工具卡也是按 `toolCallId`。
+
+#### 为什么不落库
+
+`stream-recorder` 的 `default:` 分支明确「未知 `data-*` 不落行」，事件保持这条口径，理由与 `data-sub-agent*` 相同：
+
+- **事件是过程，出参是结论**：用户刷新后还要看见的东西，必须写进**工具出参**（出参全量落库）；
+- 事件是高频、粗粒度、可丢弃的（一条日志行、一次百分比），逐条落行会把 `timelines` 写爆，
+  而审计真正需要的是"这一次调用给了什么结论 + 配置版本 + 谁调的"（`AuditEndPlugin` 已经落了）；
+- 于是刷新 / 断线重连后**看不到历史事件**是**如实记录的代价**，不是疏漏。真需要重放的过程信息，
+  应该由工具把它写进出参（例如"最后 N 行日志"）。
+
+#### 前端渲染器注册表（协议侧口径）
+
+协议只规定"发什么"，**渲染是前端自己的事**（当前落点是 `apps/admin` 会话页的
+`apps/admin/src/app/(standalone)/main/ai/chat/tool-event.tsx` 注册表；将来 web 前台要渲染就在那边另建一份）：
+
+- 按**事件名**注册渲染器，组件从 `data.payload` 取值（payload 契约在声明里，与后端同一份 zod 语义）；
+- **必须**走 `parseToolEventPart` 而不是自己断言类型：协议演进时宁可露个徽标，也不要白屏；
+- 认不出的事件用兜底卡片：`eventTitle` 当标题 + payload 原样展示（工程师看得懂就行）；
+- `mode='stream'` 的块按到达顺序累积（前端不必自己去重）；`state` 的块只留最后一块。
+
+#### 迁移路径
+
+`data-sub-agent` / `data-sub-agent-delta` 是**同类机制的特例**（一个自带 id 的状态块 + 一批不带 id 的增量块），
+只是当年没有声明这一层。本方案落地后它们可以统一到事件机制上：
+
+- 一期（本次）：**不动**既有 `data-sub-agent*` 的行为（它已经有 e2e 钉住），只把机制沉淀成声明契约；
+- 后续：子 agent 的明细改成"运行时声明的事件"（`agent-runner` 用同一套 `createToolEventEmitter` 或
+  等价的发射器），前端把两个渲染器合并成一个；那时 `data-sub-agent*` 作为别名保留一段过渡期。
+
+这样做的收益不是"少写两个分支"，而是**过程信息的形状回到一张表里**：管理台列得出、前端对得上、
+测试有统一的断言方式（`seq` + `id` 有无所见即所得）。
+
+#### 怎么测（本次落地）
+
+| 层 | 用例 |
+| --- | --- |
+| 契约 | part 形状、`seq` 从 0 起、`id` 的有无即 `mode`；`parseToolEventPart` 对认不出的 part 返回 `null` |
+| 声明 | `mode` 默认值、payload 契约 → JSON Schema 镜像；名字重复 / 空标题 / 空说明 / mode 非法 / 名字超 64 → **启动失败** |
+| 发射 | `state` 带稳定 id、`stream` 不带 id、`seq` 递增、未声明被丢弃 + warn、payload 不合契约被丢弃、写流抛错不影响工具结果、无 writer 安全 no-op |
+| 入库 | 种子把归一化后的声明**全量覆盖**写进 `ai_tools.events`（跑两次幂等、无事件写 `[]`） |
+| 接口 | `ai-tool.list` / `detail` 返回的 `events` 与代码声明一致；`AiToolUpdateSchema` 里没有 `events`（不可编辑） |
+| 端到端 | mock 模型跑一轮真实 agent 流：SSE 里出现 `data-tool-event`（状态块同 id、流水块无 id），且时间线里**没有**事件行 |
+
+#### 第一个真实消费者：run-command 流式执行（**已于同日按用户口径移除**）
+
+**曾经的形态**：`run-command` 把命令输出按行实时发成 `stdout` / `stderr`（`stream`）事件，
+结束时发一条 `exit`（`state`）事件；机制下沉在 `CommandRunner.runStreaming()`，
+按行解码在 `command.stream.ts`；配置里加了 `streamLinesMax`（每类流最多发多少行 + env 硬上限），
+前端有专用渲染器把行画成终端并把流水合成一整块。
+
+**为什么移除**（2026-10-01，用户实测后拍板）：**收益兑现不了，代价却是实打实的**。
+
+1. **和出参重复**：完整 stdout / stderr 本来就落在工具出参里（工具卡的结果区会显示同一份内容），
+   事件流只是把同一份内容在界面上再放一遍 —— 一条命令的输出出现两遍；
+2. **agent 的命令通常一两秒就结束**（`ls` / `grep` / `curl -m 5`），逐行事件只剩闪烁，没有信息量；
+   真正需要"边跑边看"的场景（构建、`tail -f`）在这个工具里很少发生（默认 15s 超时）；
+3. **每行是一个 part**：命令稍啰嗦就把消息撑长，与"读对话"这件事相互干扰；
+4. 代价不轻：按行解码 + `StringDecoder` 兜多字节 + 行数上限 + env 上限 + 前端渲染器 + 流水合块规则，
+   全都要长期维护。
+
+**保留了什么**：**事件机制本身**（`@ToolDecl({ events })` / `ctx.emit` / `data-tool-event` /
+前端渲染器注册表 / 兜底渲染）一行未动 —— 它是通用能力，将来真有"长任务 + 过程有价值"的工具
+（业务侧的导出、批处理、抓取）再声明事件即可。**判据写在这里，避免后人凭直觉又加回来**：
+只有当"过程信息本身有独立价值、且出参无法承载（例如时长很长、用户会在等待中做判断）"时才声明事件；
+**只是把出参的内容提前展示一遍，不算价值**。
+
+移除同时清掉了：`CommandRunner.runStreaming` / `command.stream.ts` / 三个事件声明 / `streamLinesMax`
+配置项与 `AGENT_COMMAND_STREAM_LINES_MAX` 部署上限 / 前端 `run-command.renderer.tsx` 及其注册。
+
+
+### 5.18 必填的调用理由 `reason`（2026-10-02 追加）
+
+**结论**：每个工具的入参里，由**引擎**注入一个必填字段 `reason` —— "为什么这次要用这个工具"。
+模型调任何工具都必须写它；网关校验并把它摘进 `ctx.reason`；入参（含 `reason`）原样落
+`tool-call` 时间线行，并进审计旁证。工具作者**一行都不用写**。
+
+#### 背景与痛点
+
+| # | 现象 | 代价 |
+| --- | --- | --- |
+| 1 | 时间线上只有"模型调了什么、入参是什么"，没有"为什么要调" | 复盘一轮翻车时只能猜动机（是用户要求的？还是模型自己加的戏？） |
+| 2 | 用户看到的工具卡只有工具名与 JSON 入参 | 非技术用户根本不知道这一步在干什么、为什么要干 |
+| 3 | 逐工具手写"reason 字段 + 校验" | 工具会越加越多，靠自觉守不住；写法还会各写一套（长度、话术、要不要拒绝） |
+
+#### 为什么是引擎级注入，而不是逐工具手写
+
+抓的主要矛盾是**纪律的可复制性**：`reason` 是"所有工具都一样"的横切要求，属于引擎的职责。
+落在 `core/tools/call-reason.ts` 的 `withCallReason(params)` 里，于是：
+
+- **一处实现、全量生效**：`buildToolSpecs()` 组装声明时对每个工具跑一次，以后新加的工具自动就有；
+- **标准测试集对每个注册工具断言同一条不变式**（`reason` 进 `required`、`minLength=4`、`maxLength=200`），
+  引擎被改坏立刻红 —— 这条不变式比"记得给新工具加 reason"可靠；
+- **拒绝口径唯一**：话术是"每次调用工具都必须用 reason 说明为什么"（明确可纠正），
+  不是各工具各写一句"入参不合法"。
+
+#### 三条边界（契约怎么分）
+
+| 层次 | 是什么 | 谁负责 |
+| --- | --- | --- |
+| `ToolSpec.params` | 原契约（工具的业务入参） | 工具作者 |
+| `ToolSpec.modelParams` | `params` + 必填 `reason`（给模型看的那一份） | 引擎注入（`buildToolSpecs`） |
+| 执行体 `input` | **去掉 `reason` 之后的原契约入参** | 网关的 `ValidatePlugin` 摘掉 |
+
+关键点：**注入只发生在"给模型的 schema 与网关校验"这一层**。执行体签名仍是
+`input: z.infer<typeof XxxParams>`，现有工具一个都不用改 —— 若把 `reason` 塞进 `params`，
+所有工具的类型都会报错（这正是不能那么做的原因）。
+
+`reason` 契约（`call-reason.ts`，也是 `@repo/shared` 之外唯一一处定义）：
+
+- 名字 `reason`、类型 `string`、`minLength 4`（防空话）、`maxLength 200`（它是给人与审计看的**一句话**）；
+- `description` = "为什么这次要用这个工具：一句话说明目的（用户要解决什么、这一步要达到什么）"；
+- 一律进 `required`（**无论原 `required` 是什么**）。
+
+#### 校验链（两道，各有各的职责）
+
+```
+模型 tool_calls
+   ① Mastra 按 inputSchema（= modelParams）校验 → 缺 reason 直接落成工具错误结果，执行体不会被调用
+   ② 网关 ValidatePlugin 再校验一次 → 缺 / 非字符串 / 空白串 → invalid-input 结论 + 纠正话术
+      ↑ 兜底层：直接 gateway.invoke 的调用路径（后台 / 测试）、modelParams 缺失的替身、
+        以及任何绕过 Mastra 校验的入口，都靠它把纪律守住
+```
+
+`ValidatePlugin` 通过后把 `reason` 放进 `ctx.reason`（供工具写业务日志），并把摘干净的 `input`
+交给执行体。**不要求任何工具去读 `ctx.reason`** —— 它是可选项，不是工具的义务。
+
+#### 落库与审计
+
+`reason` 就在入参里，于是天然全量落 `tool-call` 行（`stream-recorder` 的 `input` 原样落库，
+不裁剪），刷新后仍可查；审计这一侧另有两处：
+
+| 位置 | 字段 | 说明 |
+| --- | --- | --- |
+| `ToolCallMeta`（`audit-end` 写、`tool-result` 行合并） | `callReason` | 与拒绝原因 `reason` **分开命名**：一个是"为什么调它"，一个是"为什么被拒"，混在一起就解释不清 |
+| 结构化日志 `ai.tool.invoked` / `ai.tool.denied` | `callReason` | 排障时一眼看到模型当时的意图（拒绝路径上可能是空串 / 非字符串，如实记） |
+
+为什么 `callReason` 要进拒绝路径：模型"漏写理由"本身就是要审计的事（谁在乱调工具）。
+
+#### 前端
+
+工具卡（`tool-card.tsx`）在**头部之下、入参之上**加一行只读的「为什么：…」：
+动机比入参更该先被扫到，折进入参 JSON 里等于没做这个特性。取值用纯函数 `toolCallReason(input)`，
+入参还没到 / 结构异常 / 空串一律**不渲染、不抛**（工具卡是过程视图，缺一行比白屏好）。
+
+#### 提示词
+
+`partials/requirements.eta` 补一条：每次调用工具都要先想清楚 `reason` 再填、如实填写
+（它是审计证据，也会展示给用户），并明确"不要写'为了完成任务'这类空话"。
+契约（必填字段）管住"填不填"，提示词管住"填得好不好"。
+
+#### 对既有工具的零侵入
+
+- 执行体签名与行为不变（`reason` 被摘掉才进 `exec`）；
+- 工具测试不变（单测直接调 `spec.exec`，入参就是业务入参）；
+- 只有"走真实网关"的测试需要在入参里补 `reason`（它们验的就是网关纪律）；
+- 离线 mock 模型的每个工具调用都带上 `reason`，并留一条 `[no-reason]`：漏写 → 被拒 → 改正后成功。
+
 ## 6. 待拍板
 
 1. 插件清单：§5.4 的 10 个是否合适，`validate` 与 `precheck` 可以合成 1 个。
