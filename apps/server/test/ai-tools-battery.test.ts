@@ -222,3 +222,19 @@ describe('注册机标准测试集（对每个注册工具）', () => {
     expect(caps.maxPagesPerTurnMax).toBeGreaterThan(0)
   })
 })
+
+/**
+ * **说明体量护栏**（2026-10-01 加）：工具说明是**每轮请求的前缀**，长一点就按会话重复付 token。
+ *
+ * 判据来自实测：改前 `run-command` 的说明 913 字符，其中 643 是"纪律"段，且大半是**跨工具**的
+ * （先验证 / 有副作用的先确认 / 失败不要原样重试）—— 那些已上移到全局段（`partials/principles.eta`
+ * 的「纪律（所有工具通用）」），工具说明只该留"是什么 / 什么时候用不用 / 自己特有的约束"。
+ * 参考 DSH 自己的系统提示词：规则集中写一遍，单个工具只留一句。
+ */
+describe('工具说明的体量护栏', () => {
+  it('每个注册工具的说明 ≤ 380 字符（论证性散文不进提示词）', () => {
+    for (const spec of registeredSpecs()) {
+      expect(spec.description.length, `工具 ${spec.key} 的说明过长：请把"为什么"移到设计文档`).toBeLessThanOrEqual(380)
+    }
+  })
+})

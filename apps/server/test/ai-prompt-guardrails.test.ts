@@ -42,19 +42,30 @@ const runCommandDescription = (): string => {
 describe('提示词纪律句（执行命令 / 能力边界 / 宽泛任务）', () => {
   const prompt = assistantPrompt()
 
-  it('能力问题先验证：不许凭印象说"我做不到"（写在 run-command 的说明里）', () => {
-    const description = runCommandDescription()
-    expect(description).toContain('能力问题先验证')
-    expect(description).toContain('"我做不到"必须有依据')
+  /**
+   * 这三条**共性纪律写在全局段**（`partials/principles.eta` 的「纪律（所有工具通用）」），
+   * 不再逐个工具重复 —— 每个工具的说明只留它自己特有的边界。
+   *
+   * 为什么改：纪律是**跨工具**的，写在每个工具说明里等于按工具数重复付 token；
+   * 参考 DSH 自己的系统提示词（规则集中写一遍、工具只留一句）。
+   */
+  it('能力问题先验证：不许凭印象说"我做不到"（写在全局纪律段）', () => {
+    expect(prompt).toContain('不确定就先验证')
+    expect(prompt).toContain('"我做不到"必须有依据')
   })
 
-  it('副作用与只读的边界写清楚：只读公开请求不必先问（写在 run-command 的说明里）', () => {
+  it('副作用与只读的边界写清楚：只读公开请求不必先问（写在全局纪律段）', () => {
     // 早先这里写的是"任何往外部发的请求都要先问"，模型据此把一条只读 curl 也归进"要确认"，
     // 于是出现"我不会联网 / 我得先问你"这种看着很笨的回合
-    const description = runCommandDescription()
-    expect(description).toContain('只读的公开请求不必先问')
-    expect(description).toContain('会改变外部状态')
+    expect(prompt).toContain('只读的公开请求不必先问')
+    expect(prompt).toContain('会改变外部状态')
   })
+
+  it('失败处理写在全局纪律段：读懂原因、不要原样重试', () => {
+    expect(prompt).toContain('失败是结论不是意外')
+    expect(prompt).toContain('不要原样重试')
+  })
+
 
   it('尽量用工具把事办成：一种方法不行就换第二种', () => {
     expect(prompt).toContain('尽量用工具把事办成')

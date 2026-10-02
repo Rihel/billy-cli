@@ -65,15 +65,13 @@ export class ReadToolResultTool {
     result: ReadToolResultOutputSchema,
     config: ReadToolResultConfigSchema,
     description: dedent`
-      读取某个工具结果的**后续页**。
+      读取某个工具结果的**后续页**（结果太大时只给了你一页）。
 
-      什么时候用：工具结果里出现 \`page\` 与 \`handle\`（说明它太大，只给了你一页），
-      而你需要后面的内容时 —— 传回那个 \`handle\` 与要取的 \`page\`。
+      什么时候用：出参里有 \`page\` 与 \`handle\`，而你需要后面的内容 —— 传回 \`handle\` 与要取的 \`page\`。
+      什么时候不用：第一页够用就别取（每次取页都要花 token）。
 
-      纪律：
-      - 先看第一页够不够用；够用就别取（每次取页都要花 token）；
-      - 取页拿不到"摘要"，拿到的是**原文片段**，自己判断该看哪一页；
-      - 同一个 \`handle\` 可以反复取（结果已入库），但每轮取页次数有上限。
+      约束：取到的是**原文片段**（没有摘要），自己判断该看哪一页；
+      同一个 \`handle\` 可以反复取（结果已入库），但每轮取页次数有上限。
     `,
   })
   async execute(

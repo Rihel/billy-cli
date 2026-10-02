@@ -80,7 +80,9 @@ ai/mastra/** 适配器 ──→ Toolbox/SkillRef/信封 映射成 Mastra 的 To
 2. **方法 + 方法级 `@ToolDecl({...})`**（**一个方法 = 一个工具**，声明与执行体同一处）：
    `key` 取自 `TOOL_KEYS`（先在 `core/tools/tool-keys.ts` 加一个 key）；`params` / `config` 用**同一文件里的
    模块级 zod 常量**（不能引用本类 static —— 装饰器在类定义期求值）；`config` 每个字段都必须 `.default()`；
-   `description` 写"是什么 / 什么时候用 / 什么时候不用 / 纪律"；
+   `description` 写"是什么 / 什么时候用 / 什么时候不用 / **自己特有的约束**"——
+   **共性纪律与"为什么"都不写进工具说明**（纪律统一放 `partials/principles.eta` 的全局纪律段，
+   理由放设计文档）：工具说明是每轮请求的前缀，标准测试集有 `≤380 字符` 的体量护栏；
 3. **钩子按方法名写在声明里**：`precheck: 'checkXxx'`（只读前置条件）/ `normalize: 'normalizeConfig'`
    （把配置夹到部署上限）；被指向的方法写成组类的普通方法。执行体只写业务动作 —— 开关、边界、分页、
    审计都在网关插件里；
