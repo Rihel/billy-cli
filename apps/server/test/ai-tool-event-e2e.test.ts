@@ -33,6 +33,7 @@ import { RunRepository } from '../src/modules/ai/runtime/run.repository.js'
 import { AgentStreamStore } from '../src/modules/ai/runtime/stream-store.service.js'
 import { TimelineRepository } from '../src/modules/ai/runtime/timeline.repository.js'
 import { buildToolStackDeps } from './helpers/ai-tool-stack.js'
+import { stubAttachments } from './helpers/attachments.js'
 import {
   MOCK_EVENT_LINE,
   MOCK_EVENT_PROGRESS,
@@ -200,6 +201,9 @@ beforeAll(async () => {
 
   conversations = new AgentConversationService(conversationRepo, runs, timelines, registry, silentLogger)
   const context = new ContextService(timelines, config, silentLogger)
+  // 附件替身：e2e 不带附件，但构造器是位置参数，少一个会让后面整体错位
+  const chatAttachments = stubAttachments(silentLogger)
+
   chat = new AgentChatService(
     mastra,
     registry,
@@ -209,6 +213,7 @@ beforeAll(async () => {
     runs,
     timelines,
     context,
+    chatAttachments,
     streamStore,
     toolRegistry,
     deps.metas,

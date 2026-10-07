@@ -9,7 +9,7 @@ import {
   TimelineRole,
 } from '@repo/shared'
 import { AGENT_MAX_STEPS } from '../core/constants.js'
-import { createMastraAgent, toMastraModel } from '../mastra/agent.adapter.js'
+import { createMastraAgent, toMastraModel, toMastraModelInstance } from '../mastra/agent.adapter.js'
 import { toMastraSkills } from '../mastra/skill.adapter.js'
 import { toUiStream } from '../mastra/stream.adapter.js'
 import { toRequestContext } from '../mastra/context.adapter.js'
@@ -307,6 +307,12 @@ export class AgentRunner {
       const output = await agent.stream([{ role: 'user', content: request.task }] as never, {
         maxSteps: quotas.maxSteps || this.config.subAgentMaxSteps || AGENT_MAX_STEPS,
         abortSignal,
+        /**
+         * 显式传模型实例：Agent 上挂的是动态 model，而 Mastra 在那条路径上会把多模态 content
+         * 压平成纯字符串（图片会被静默丢掉，见 `toMastraModelInstance` 的注释）。
+         * 子 agent 这一轮目前只有文本任务，但同一条路径不该有第二种行为 —— 一旦将来给它带图就现形。
+         */
+        model: (await toMastraModelInstance(model)).instance as never,
         // 信封传下去：子 agent 那一轮的工具调用因此也能过网关的权限与审计
         requestContext: toRequestContext(childEnvelope),
       })

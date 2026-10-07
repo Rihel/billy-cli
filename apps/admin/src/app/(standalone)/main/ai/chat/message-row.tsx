@@ -2,13 +2,15 @@
 
 import {
   getToolName,
+  isFileUIPart,
   isReasoningUIPart,
   isTextUIPart,
   isToolUIPart,
   type UIMessage,
 } from 'ai'
 import { TOOL_EVENT_PART_TYPE } from '@repo/shared'
-import { Badge, cn } from '@repo/ui'
+import { Badge, PromptAttachments, cn, useStorageAdapter } from '@repo/ui'
+import type { PromptAttachmentItem } from '@repo/ui'
 // ai-elements 组件**走子路径**（不进 barrel：体积大、按需引入，见 docs/design/ai-agent.md §1）
 import {
   Message,
@@ -55,17 +57,39 @@ const partDurationMs = (part: unknown): number | undefined => {
   return typeof value === 'number' && Number.isFinite(value) ? value : undefined
 }
 
+/**
+ * 附件 part 上带的**存储 key 与字节数**。
+ *
+ * AI SDK 的 `FileUIPart` 类型里没有这两个字段，但它们是**我们自己的历史重建**（`history.ts`
+ * 从时间线 payload 合成）挂上去的 —— 回看时要显示大小、要能按 key 去签下载地址。
+ * 读不出来就是 undefined（实时那条流里确实没有），不编造。
+ */
+const attachmentKeyOf = (part: unknown): string | undefined => {
+  const value = (part as { attachmentKey?: unknown }).attachmentKey
+  return typeof value === 'string' && value ? value : undefined
+}
+
+const attachmentBytesOf = (part: unknown): number | undefined => {
+  const value = (part as { attachmentBytes?: unknown }).attachmentBytes
+  return typeof value === 'number' && Number.isFinite(value) ? value : undefined
+}
+
 export function MessageRow({
   message,
   streaming,
   onOpenPlan,
+  onPreviewImage,
 }: {
   message: UIMessage
   streaming: boolean
   /** 点"查看清单"：会话页负责把右栏切到「任务」tab（不传则只展示） */
   onOpenPlan?: () => void
+  /** 点附件里的图片：会话页打开大图查看器（与输入框待发附件共用同一套交互） */
+  onPreviewImage?: (items: readonly PromptAttachmentItem[], index: number) => void
 }) {
   const isUser = message.role === 'user'
+  /** 历史里的附件只有存储 key：用应用注入的规则拼成可访问地址（实时那条消息自带地址） */
+  const { resolveUrl } = useStorageAdapter()
 
   /**
    * 计划：两条链路在这里合流 ——
@@ -86,12 +110,50 @@ export function MessageRow({
   /** 被委派的 `run-sub-agent` 调用 id：子助手卡已代表它们（见 `delegatedToolCallIds` 的说明） */
   const delegatedToolCalls = delegatedToolCallIds(subAgentLives)
 
+  /**
+   * 附件（用户消息的 file part）：**合并成一条附件行**渲染，不逐 part 铺。
+   *
+   * 为什么不逐个 part 渲染：一条消息里连粘三张图会出三行、行与行之间还被消息的 `gap-1.5` 撑着，
+   * 看着像三条独立消息。附件行本身由 `@repo/ui` 的 `PromptAttachments` 出（与输入框上方那条
+   * 待发附件**同一个外观**，用户对"我发出去的东西"和"我正要发的东西"看到的是同一种卡）。
+   */
+  const fileParts = message.parts.filter(isFileUIPart)
+  const firstFilePartIndex = message.parts.findIndex(isFileUIPart)
+  const attachmentItems: PromptAttachmentItem[] = fileParts.map((part, index) => {
+    const storageKey = attachmentKeyOf(part)
+    /**
+     * 预览地址从哪来（两条链路各有一份）：
+     * - 历史（从时间线重建）：只有存储 key → 用应用注入的 `resolveUrl` 拼；
+     * - 实时（刚发出去那条）：part 自带 `url`（本地 blob 或 data URL）→ 直接可用，
+     *   而且不必等对象存储。
+     */
+    const previewUrl = part.url || (storageKey ? resolveUrl(storageKey) : '')
+    return {
+      key: storageKey ?? `${message.id}-file-${index}`,
+      filename: part.filename ?? '未命名文件',
+      mediaType: part.mediaType ?? '',
+      ...(attachmentBytesOf(part) !== undefined ? { bytes: attachmentBytesOf(part) } : {}),
+      ...(previewUrl ? { previewUrl } : {}),
+    }
+  })
+
   return (
     // `max-w-full` 覆盖 ai-elements 默认的 `max-w-[95%]`：助手侧的工具卡要**铺满**整行
     // （左边"跑了什么"、右边"跑到哪了"），留 5% 的缝只会让工具条看着没对齐
     <Message from={message.role} className="max-w-full gap-1.5">
       <MessageContent className="gap-1.5 group-[.is-user]:px-3 group-[.is-user]:py-2">
         {message.parts.map((part, index) => {
+          if (isFileUIPart(part)) {
+            // 附件行只在**第一个** file part 的位置铺一次（其余位置留空，别重复）
+            if (index !== firstFilePartIndex) return null
+            return (
+              <PromptAttachments
+                key={`files-${index}`}
+                items={attachmentItems}
+                {...(onPreviewImage ? { onPreviewImage } : {})}
+              />
+            )
+          }
           if (isTextUIPart(part)) {
             return isUser ? (
               <p key={index} className="whitespace-pre-wrap">

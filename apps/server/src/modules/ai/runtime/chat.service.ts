@@ -1,23 +1,25 @@
-import { Inject, Injectable } from '@nestjs/common'
-import dedent from 'dedent'
-import { AppError, AppLogger } from '@repo/kits'
+import { Inject, Injectable } from '@nestjs/common';
+import dedent from 'dedent';
+import { AppError, AppLogger } from '@repo/kits';
 import {
   AppErrorCodes,
   RunErrorStage,
   RunStatus,
   TimelineKind,
   TimelineRole,
+  estimateContentTokens,
   type AgentChatDto,
   type AgentChatResultModel,
   type AgentRunStopResultModel,
-} from '@repo/shared'
-import type { Mastra } from '@mastra/core/mastra'
-import { RequestContext } from '@mastra/core/request-context'
-import { AGENT_MAX_STEPS } from '../core/constants.js'
+  type ChatAttachmentModel,
+} from '@repo/shared';
+import type { Mastra } from '@mastra/core/mastra';
+import { RequestContext } from '@mastra/core/request-context';
+import { AGENT_MAX_STEPS } from '../core/constants.js';
 import {
   AgentConfig,
   type AgentConfig as AgentConfigValue,
-} from '../core/config.js'
+} from '../core/config.js';
 import {
   AgentFailedError,
   AgentUnavailableError,
@@ -25,45 +27,54 @@ import {
   ProviderAuthFailedError,
   ProviderRateLimitedError,
   RunNotFoundError,
-} from '../core/errors.js'
-import { AGENT_REGISTRY } from '../agents/registry.js'
-import { MASTRA } from '../mastra/ai.mastra.js'
+} from '../core/errors.js';
+import { AGENT_REGISTRY } from '../agents/registry.js';
+import { MASTRA } from '../mastra/ai.mastra.js';
 import {
   AGENT_RUNTIME_KEY,
   type AgentRuntimeEnvelope,
   type RuntimeModel,
-} from '../core/envelope.js'
-import { AiModelService } from '../../ai-model/index.js'
-import type { AgentDefinition, AgentRegistry } from '../agents/types.js'
-import { buildEnvironmentData } from '../core/prompts/environment.js'
-import { PROMPT_ENGINE, type PromptEngine } from '../core/prompts/prompt.engine.js'
-import { SkillLoader } from '../core/skills/index.js'
-import { ToolRegistry } from '../core/tools/tool.registry.js'
-import { ToolCallMetaStore } from '../core/tools/tool.meta.js'
-import { toUiStream } from '../mastra/stream.adapter.js'
-import { toRequestContext } from '../mastra/context.adapter.js'
-import type { ConversationEntity } from '../../../database/entities/conversation-entity.js'
-import type { TimelineEntity } from '../../../database/entities/timeline-entity.js'
-import { AgentConversationService } from './conversation.service.js'
-import { AgentTitleService, type FirstTurnTitle } from './title.service.js'
-import { ContextService } from './context.service.js'
-import { ConversationRepository } from './conversation.repository.js'
-import { RunRepository } from './run.repository.js'
-import { TimelineRepository } from './timeline.repository.js'
-import { AgentStreamStore } from './stream-store.service.js'
-import { StreamRecorder } from './stream-recorder.js'
-import { readStreamSteps, readStreamUsage } from './stream-result.js'
-import { toPlanPayload } from './plan.protocol.js'
-import { mergeUsage, toUsageRecord, totalTokensOf } from './usage.js'
+} from '../core/envelope.js';
+import { AiModelService } from '../../ai-model/index.js';
+import type { ResolvedRuntimeModel } from '../../ai-model/index.js';
+import type { AgentDefinition, AgentRegistry } from '../agents/types.js';
+import { buildEnvironmentData } from '../core/prompts/environment.js';
+import {
+  PROMPT_ENGINE,
+  type PromptEngine,
+} from '../core/prompts/prompt.engine.js';
+import { SkillLoader } from '../core/skills/index.js';
+import { ToolRegistry } from '../core/tools/tool.registry.js';
+import { ToolCallMetaStore } from '../core/tools/tool.meta.js';
+import { toUiStream } from '../mastra/stream.adapter.js';
+import { toMastraModelInstance } from '../mastra/agent.adapter.js';
+import { toRequestContext } from '../mastra/context.adapter.js';
+import type { ConversationEntity } from '../../../database/entities/conversation-entity.js';
+import type { TimelineEntity } from '../../../database/entities/timeline-entity.js';
+import { AgentConversationService } from './conversation.service.js';
+import { AgentTitleService, type FirstTurnTitle } from './title.service.js';
+import { ContextService } from './context.service.js';
+import {
+  ChatAttachmentService,
+  withUserContent,
+} from './chat-attachment.service.js';
+import { ConversationRepository } from './conversation.repository.js';
+import { RunRepository } from './run.repository.js';
+import { TimelineRepository } from './timeline.repository.js';
+import { AgentStreamStore } from './stream-store.service.js';
+import { StreamRecorder } from './stream-recorder.js';
+import { readStreamSteps, readStreamUsage } from './stream-result.js';
+import { toPlanPayload } from './plan.protocol.js';
+import { mergeUsage, toUsageRecord, totalTokensOf } from './usage.js';
 
 /** 并发保护的唯一索引名（同一会话同时只允许一轮进行中） */
-const ACTIVE_RUN_CONSTRAINT = 'uk_run_active_conversation'
+const ACTIVE_RUN_CONSTRAINT = 'uk_run_active_conversation';
 
 /** PG 错误的最小结构（TypeORM 会把它放在 driverError 里） */
 interface PgError {
-  code?: string
-  constraint?: string
-  detail?: string
+  code?: string;
+  constraint?: string;
+  detail?: string;
 }
 
 /** 生成摘要用的指令（只做压缩，不做回答） */
@@ -74,14 +85,26 @@ const SUMMARY_INSTRUCTION = dedent`
   2. 保留未完成的事项与用户明确的偏好；
   3. 不要评价、不要扩写、不要编造；
   4. 用简体中文，控制在 500 字以内。
-`
+`;
 
 /** 摘要正文之外，摘要事件还要记住它覆盖了哪一段 */
-const SUMMARY_MAX_CHARS = 2_000
+const SUMMARY_MAX_CHARS = 2_000;
 
 /** 用首条用户消息生成会话标题（不额外调模型，省钱） */
 const titleFrom = (message: string): string =>
-  message.replace(/\s+/g, ' ').trim().slice(0, 40)
+  message.replace(/\s+/g, ' ').trim().slice(0, 40);
+
+/**
+ * 用户消息的落库载荷。
+ *
+ * 没有附件时形状与过去**逐字节一致**（`{ text }`）—— 历史数据与既有渲染路径不受影响；
+ * 有附件才多一个 `attachments`（只存存储 key 与文件元数据，**不存文件内容**：
+ * 图片转 base64 动辄几 MB，塞进 jsonb 会把这张审计表撑变形，回看历史时按 key 再解析即可）。
+ */
+const userMessagePayload = (input: AgentChatDto): Record<string, unknown> =>
+  input.attachments && input.attachments.length > 0
+    ? { text: input.message, attachments: input.attachments }
+    : { text: input.message };
 
 /**
  * 上游错误分类：鉴权失败 / 限流 单独成码，其余归通用失败。
@@ -92,22 +115,26 @@ const titleFrom = (message: string): string =>
  * "去后台启用模型"这种修复动作就传递不出去（错误码的意义正在于此）。
  */
 const classifyModelError = (error: unknown): Error => {
-  if (error instanceof AppError) return error
-  const raw = error instanceof Error ? error.message : String(error)
-  const lower = raw.toLowerCase()
+  if (error instanceof AppError) return error;
+  const raw = error instanceof Error ? error.message : String(error);
+  const lower = raw.toLowerCase();
   if (
     lower.includes('401') ||
     lower.includes('unauthorized') ||
     lower.includes('invalid api key') ||
     lower.includes('incorrect api key')
   ) {
-    return new ProviderAuthFailedError(raw)
+    return new ProviderAuthFailedError(raw);
   }
-  if (lower.includes('429') || lower.includes('rate limit') || lower.includes('too many requests')) {
-    return new ProviderRateLimitedError(raw)
+  if (
+    lower.includes('429') ||
+    lower.includes('rate limit') ||
+    lower.includes('too many requests')
+  ) {
+    return new ProviderRateLimitedError(raw);
   }
-  return new AgentFailedError(raw)
-}
+  return new AgentFailedError(raw);
+};
 
 /**
  * 一轮问答的编排（非流式；流式端点复用同一套落库与收尾逻辑）。
@@ -124,11 +151,15 @@ export class AgentChatService {
     @Inject(MASTRA) private readonly mastra: Mastra | null,
     @Inject(AGENT_REGISTRY) private readonly registry: AgentRegistry,
     @Inject(AgentConfig) private readonly config: AgentConfigValue,
-    @Inject(AgentConversationService) private readonly conversations: AgentConversationService,
-    @Inject(ConversationRepository) private readonly conversationRepo: ConversationRepository,
+    @Inject(AgentConversationService)
+    private readonly conversations: AgentConversationService,
+    @Inject(ConversationRepository)
+    private readonly conversationRepo: ConversationRepository,
     @Inject(RunRepository) private readonly runs: RunRepository,
     @Inject(TimelineRepository) private readonly timelines: TimelineRepository,
     @Inject(ContextService) private readonly context: ContextService,
+    @Inject(ChatAttachmentService)
+    private readonly attachments: ChatAttachmentService,
     @Inject(AgentStreamStore) private readonly streamStore: AgentStreamStore,
     @Inject(ToolRegistry) private readonly toolRegistry: ToolRegistry,
     @Inject(ToolCallMetaStore) private readonly toolMetas: ToolCallMetaStore,
@@ -157,13 +188,14 @@ export class AgentChatService {
     message: string,
     model: RuntimeModel,
   ): Promise<FirstTurnTitle | null> {
-    if (conversation.turnCount > 0) return null
-    if (conversation.title && conversation.title !== titleFrom(message)) return null
+    if (conversation.turnCount > 0) return null;
+    if (conversation.title && conversation.title !== titleFrom(message))
+      return null;
     return this.titles.generateFirstTurnTitle({
       conversationId: conversation.id,
       runId,
       model,
-    })
+    });
   }
 
   /** 落标题：模型起的名优先；没起成则只在标题为空时用首条消息兜底（用户改过的名不动） */
@@ -173,35 +205,44 @@ export class AgentChatService {
     generated: FirstTurnTitle | null,
   ): Promise<void> {
     if (generated?.title) {
-      await this.conversationRepo.setTitle(conversation.id, generated.title)
-      return
+      await this.conversationRepo.setTitle(conversation.id, generated.title);
+      return;
     }
     if (!conversation.title) {
-      await this.conversationRepo.setTitle(conversation.id, titleFrom(message))
+      await this.conversationRepo.setTitle(conversation.id, titleFrom(message));
     }
   }
 
   /** 本进程内活动运行的中止控制器（跨副本经 Redis 停止频道广播） */
-  private readonly activeRuns = new Map<string, AbortController>()
+  private readonly activeRuns = new Map<string, AbortController>();
 
   async chat(
     userId: string,
     input: AgentChatDto,
     isAdmin = false,
   ): Promise<AgentChatResultModel> {
-    const mastra = this.requireMastra()
-    const conversation = await this.resolveConversation(userId, input)
-    const definition = this.registry.resolve(input.agentKey ?? conversation.agentKey)
+    const mastra = this.requireMastra();
+    const conversation = await this.resolveConversation(userId, input);
+    const definition = this.registry.resolve(
+      input.agentKey ?? conversation.agentKey,
+    );
 
-    const run = await this.startRun(conversation, definition.key, userId)
-    const startedAt = Date.now()
+    const run = await this.startRun(conversation, definition.key, userId);
+    const startedAt = Date.now();
 
     try {
       // ① 解析本轮模型（**只能来自库里的配置**；解析不出来直接 3406/3402，不建流不烧钱）
-      const model = await this.resolveRuntimeModel(definition, input.modelId)
+      const model = await this.resolveRuntimeModel(definition, input.modelId);
+      const modelInstance = await this.resolveModelInstance(model);
 
       // ② 组装上下文（窗口优先用库里配的实测值；超限则先压缩一次再重新组装，只压一次）
-      let built = await this.buildContext(conversation.id, definition, input.message, model)
+      let built = await this.buildContext(
+        conversation.id,
+        definition,
+        input.message,
+        model,
+        input.attachments,
+      );
       if (built.needsCompaction && built.compactionRange) {
         const requestContextForSummary = await this.buildRuntimeContext(
           conversation.id,
@@ -209,28 +250,34 @@ export class AgentChatService {
           definition,
           userId,
           model,
-        )
+        );
         await this.summarize(
           conversation.id,
           run.id,
           definition,
           built.compactionRange,
           requestContextForSummary,
-        )
-        built = await this.buildContext(conversation.id, definition, input.message, model)
+        );
+        built = await this.buildContext(
+          conversation.id,
+          definition,
+          input.message,
+          model,
+          input.attachments,
+        );
       }
 
       // ② 用户消息先落库（之后无论成败，审计上都能看到"用户问了什么"）
-      const now = new Date()
+      const now = new Date();
       await this.timelines.append({
         conversationId: conversation.id,
         runId: run.id,
         role: TimelineRole.User,
         kind: TimelineKind.Text,
-        payload: { text: input.message },
+        payload: userMessagePayload(input),
         startedAt: now,
         finishedAt: now,
-      })
+      });
 
       // ④ 调模型（工具往返都在这一步内部完成；运行时信封带"这一轮用哪个模型"+ 开局环境）
       const requestContext = await this.buildRuntimeContext(
@@ -239,17 +286,27 @@ export class AgentChatService {
         definition,
         userId,
         model,
-        { systemPrompt: await this.resolveSystemPrompt(conversation, run.id, definition) },
-      )
-      const agent = mastra.getAgent(definition.key)
+        {
+          systemPrompt: await this.resolveSystemPrompt(
+            conversation,
+            run.id,
+            definition,
+          ),
+        },
+      );
+      const agent = mastra.getAgent(definition.key);
       const result = await agent.generate(built.messages as never, {
         maxSteps: AGENT_MAX_STEPS,
         requestContext,
-      })
+        // 显式传模型实例：不依赖 Agent 上的动态 model（Mastra 自解析配置那一层曾丢过多模态，见 resolveModelInstance）
+        model: modelInstance as never,
+        // 与流式同一口径：引擎 runId 由我们定、并回写到 `runs.engine_run_id`（durable 快照靠它认亲）
+        runId: run.engineRunId,
+      });
 
       // ④ 逐事件落时间线（保真：文本 / 推理 / 工具入参出参 / 每步用量）
-      const steps = (result.steps ?? []) as unknown as StepLike[]
-      const persisted = await this.persistSteps(conversation.id, run.id, steps)
+      const steps = (result.steps ?? []) as unknown as StepLike[];
+      const persisted = await this.persistSteps(conversation.id, run.id, steps);
 
       // ⑤ 首轮命名：把这一轮的记录交给模型起个短名（与 agent 上下文完全隔离的一次小调用）
       const title = await this.generateFirstTurnTitle(
@@ -257,26 +314,26 @@ export class AgentChatService {
         run.id,
         input.message,
         model,
-      )
+      );
 
       // ⑤ 收尾：终态 + 消耗（含子 agent 汇总与这次命名）+ 统计 + 会话累计 + 标题
       const usageBase = await this.rollUpUsage(
         run.id,
         toUsageRecord(result.totalUsage ?? result.usage ?? null),
-      )
+      );
       // 并账要**保留 usageBase 里的非 token 字段**（如 `subAgents`）：
       // `mergeUsage` 只逐字段加 token，直接把它的结果当 usage 会把那些字段抹掉（踩过：子 agent 明细消失）
       const usage = title?.usage
         ? { ...usageBase, ...(mergeUsage(usageBase, title.usage) ?? {}) }
-        : usageBase
-      const durationMs = Date.now() - startedAt
+        : usageBase;
+      const durationMs = Date.now() - startedAt;
       await this.runs.finish(run.id, {
         status: RunStatus.Succeeded,
         usage,
         stepCount: steps.length,
         toolCallCount: persisted.toolCallCount,
         durationMs,
-      })
+      });
       await this.runs.saveRequestSnapshot(run.id, {
         model: model.modelRef,
         agentKey: definition.key,
@@ -284,9 +341,12 @@ export class AgentChatService {
         skillKeys: [...definition.skills],
         params: { maxSteps: AGENT_MAX_STEPS },
         context: built.snapshot,
-      })
-      await this.conversationRepo.accumulate(conversation.id, totalTokensOf(usage))
-      await this.applyTitle(conversation, input.message, title)
+      });
+      await this.conversationRepo.accumulate(
+        conversation.id,
+        totalTokensOf(usage),
+      );
+      await this.applyTitle(conversation, input.message, title);
 
       this.logger.log('ai.chat.succeeded', {
         conversationId: conversation.id,
@@ -295,7 +355,7 @@ export class AgentChatService {
         stepCount: steps.length,
         toolCallCount: persisted.toolCallCount,
         durationMs,
-      })
+      });
 
       return {
         conversationId: conversation.id,
@@ -306,22 +366,24 @@ export class AgentChatService {
         toolCallCount: persisted.toolCallCount,
         usage,
         durationMs,
-      }
+      };
     } catch (error) {
-      const mapped = classifyModelError(error)
-      const durationMs = Date.now() - startedAt
-      const message = mapped.message
+      const mapped = classifyModelError(error);
+      const durationMs = Date.now() - startedAt;
+      const message = mapped.message;
       await this.runs.finish(run.id, {
         status: RunStatus.Failed,
         // 失败也要把子 agent 已经烧掉的 token 记在账上（否则这笔钱在库里查不到）
         usage: await this.rollUpUsage(run.id, null),
-        errorCode: String((mapped as { code?: number }).code ?? AppErrorCodes.AgentFailed),
+        errorCode: String(
+          (mapped as { code?: number }).code ?? AppErrorCodes.AgentFailed,
+        ),
         errorStage: RunErrorStage.Model,
         errorMessage: message,
         // 上游原文全量保留（脱敏在日志层做；这里不做截断 —— 审计要能查原话）
         errorDetail: { raw: message },
         durationMs,
-      })
+      });
       await this.timelines.append({
         conversationId: conversation.id,
         runId: run.id,
@@ -329,14 +391,14 @@ export class AgentChatService {
         kind: TimelineKind.Error,
         payload: { message, stage: RunErrorStage.Model },
         finishedAt: new Date(),
-      })
+      });
       this.logger.error('ai.chat.failed', {
         conversationId: conversation.id,
         runId: run.id,
         reason: message,
         durationMs,
-      })
-      throw mapped
+      });
+      throw mapped;
     }
   }
 
@@ -346,12 +408,14 @@ export class AgentChatService {
     input: AgentChatDto,
   ): Promise<ConversationEntity> {
     if (input.conversationId) {
-      return this.conversations.requireOwned(userId, input.conversationId)
+      return this.conversations.requireOwned(userId, input.conversationId);
     }
-    const created = await this.conversations.create(userId, { agentKey: input.agentKey })
-    const entity = await this.conversationRepo.findEntity(created.id)
-    if (!entity) throw new AgentFailedError('会话创建后立即读取失败')
-    return entity
+    const created = await this.conversations.create(userId, {
+      agentKey: input.agentKey,
+    });
+    const entity = await this.conversationRepo.findEntity(created.id);
+    if (!entity) throw new AgentFailedError('会话创建后立即读取失败');
+    return entity;
   }
 
   /**
@@ -371,34 +435,72 @@ export class AgentChatService {
         agentKey,
         status: RunStatus.Pending,
         triggeredBy: userId,
-      })
-      await this.runs.markRunning(run.id)
-      return run
+      });
+      /**
+       * **把引擎 runId 定死成我们这一行的 id**，起跑时就回写。
+       *
+       * 为什么必须在这里定：durable 的快照落库是
+       * `UPDATE runs SET snapshot ... WHERE engine_run_id = :runId` —— 找不到宿主就**丢掉快照**
+       * （`ai.storage.snapshot_orphan_skipped`）。而引擎 runId 由 Mastra 生成、我们原本拿不到，
+       * 于是**所有快照都被丢掉**：库里 60 条运行、只有 13 条（早期手工造的）有快照，
+       * 启动恢复因此永远找不到"没跑完的" —— "崩溃后能续跑"这条线等于没通。
+       *
+       * 现在由我们生成并同时交给 Mastra（`agent.stream(..., { runId })`），
+       * 双方用同一个 id，快照就能落到正确那一行上。
+       */
+      const engineRunId = `eng_${run.id}`;
+      await this.runs.markRunning(run.id, engineRunId);
+      return { ...run, engineRunId };
     } catch (error) {
       // TypeORM 把 PG 的错误信息放在 `driverError` 里（顶层只有 message），两处都取一下
-      const driver = (error as { driverError?: PgError }).driverError
-      const top = error as PgError
-      const code = driver?.code ?? top.code
-      const constraint = driver?.constraint ?? top.constraint ?? ''
-      const detail = driver?.detail ?? top.detail ?? ''
+      const driver = (error as { driverError?: PgError }).driverError;
+      const top = error as PgError;
+      const code = driver?.code ?? top.code;
+      const constraint = driver?.constraint ?? top.constraint ?? '';
+      const detail = driver?.detail ?? top.detail ?? '';
       if (
         code === '23505' &&
-        (constraint === ACTIVE_RUN_CONSTRAINT || detail.includes(ACTIVE_RUN_CONSTRAINT))
+        (constraint === ACTIVE_RUN_CONSTRAINT ||
+          detail.includes(ACTIVE_RUN_CONSTRAINT))
       ) {
-        throw new ConversationBusyError(conversation.id)
+        throw new ConversationBusyError(conversation.id);
       }
-      throw error
+      throw error;
     }
   }
 
-  /** 组装上下文（薄封装，便于以后在流式路径复用） */
-  private buildContext(
+  /**
+   * 组装上下文（薄封装，便于以后在流式路径复用）。
+   *
+   * 附件在这里落地，顺序很关键：
+   * 1. 先按存储 key 取回附件，拼出**当前用户消息**的多模态内容（图片 / 文件 / 内联文本）；
+   * 2. 把这份内容的 token 成本交给 `ContextService` **参与裁剪与压缩的判断** ——
+   *    不参与的话，一张图能让实际输入远超估算，我们会在"以为没超"的情况下把请求发出去挨上游 400；
+   * 3. 组装完成后，把最后一条用户消息的 content 换成多模态内容（历史部分不受影响）。
+   */
+  private async buildContext(
     conversationId: string,
     definition: AgentDefinition,
     userMessage: string,
     model: RuntimeModel,
+    /**
+     * 本轮附件。
+     *
+     * 归属校验由 `ChatAttachmentService` 经 `AttachmentKeyPolicy` 在**读对象之前**完成
+     * （它读的是请求上下文里的登录身份），这里不重复判。
+     */
+    attachments?: readonly ChatAttachmentModel[],
   ) {
-    return this.context.buildInput({
+    const hasAttachments = Boolean(attachments && attachments.length > 0);
+    const userContent = hasAttachments
+      ? await this.attachments.buildUserContent(
+          userMessage,
+          attachments,
+          model.inputModalities,
+        )
+      : null;
+
+    const built = await this.context.buildInput({
       conversationId,
       // 标识用 `<providerSlug>/<modelKey>`（ContextService 据此查窗口，查不到用兜底值）
       modelId: model.modelRef,
@@ -406,7 +508,23 @@ export class AgentChatService {
       userMessage,
       // 库里配过窗口就用它（实测值优先于 tokenlens 的估算）
       ...(model.contextWindow ? { windowTokens: model.contextWindow } : {}),
-    })
+      ...(userContent
+        ? { extraInputTokens: estimateContentTokens(userContent) }
+        : {}),
+    });
+
+    if (!userContent) {
+      return built;
+    }
+    /**
+     * 把最后一条用户消息换成多模态内容。
+     *
+     * ⚠️ **别忘了 `agent.stream(..., { model })`**：不显式给模型实例的话，
+     * 多模态内容曾在 Mastra 那一层被压平成纯字符串（图片静默丢失）。
+     * 回归防线在 `ai-mastra-contract.test.ts` 的"durable 下的多模态"。
+     */
+    const injected = withUserContent(built.messages, userContent);
+    return { ...built, messages: injected };
   }
 
   /**
@@ -419,7 +537,24 @@ export class AgentChatService {
     definition: AgentDefinition,
     modelId?: string,
   ): Promise<RuntimeModel> {
-    const resolved = await this.models.resolveForRuntime(modelId ?? definition.model)
+    return this.toRuntimeModel(
+      await this.models.resolveForRuntime(modelId ?? definition.model),
+    );
+  }
+
+  /**
+   * 取"这一轮要用的**模型实例**"。
+   *
+   * 必须在调用 `agent.stream` / `agent.generate` 时显式传它：Agent 上挂的是**动态 model**
+   * （每轮按信封求值），而 Mastra 在那条路径上会把多模态消息的 `content` 压平成纯字符串 ——
+   * 图片被静默丢掉。详见 `toMastraModelInstance` 的注释与实测数据。
+   */
+  private async resolveModelInstance(model: RuntimeModel): Promise<unknown> {
+    return (await toMastraModelInstance(model)).instance;
+  }
+
+  /** 解析结果 → 我们的运行时模型（含输入模态，供附件校验用） */
+  private toRuntimeModel(resolved: ResolvedRuntimeModel): RuntimeModel {
     return {
       id: resolved.id,
       modelRef: resolved.modelRef,
@@ -430,7 +565,9 @@ export class AgentChatService {
       ...(resolved.baseURL ? { baseURL: resolved.baseURL } : {}),
       apiKey: resolved.apiKey,
       contextWindow: resolved.contextWindow,
-    }
+      // 这个模型的输入模态：附件校验与"喂得进去吗"都看它（null = 未声明 → 不拦，只提示）
+      inputModalities: resolved.inputModalities,
+    };
   }
 
   /** 把一段旧对话压缩成摘要事件（原文保留，摘要只作"给模型看的新起点"） */
@@ -441,40 +578,52 @@ export class AgentChatService {
     range: { fromSeq: number; toSeq: number },
     requestContext: RequestContext,
   ): Promise<void> {
-    const mastra = this.requireMastra()
-    const events = await this.timelines.listRange(conversationId, range.fromSeq, range.toSeq, {
-      rootOnly: true,
-    })
-    const lines: string[] = []
+    const mastra = this.requireMastra();
+    const events = await this.timelines.listRange(
+      conversationId,
+      range.fromSeq,
+      range.toSeq,
+      {
+        rootOnly: true,
+      },
+    );
+    const lines: string[] = [];
     for (const event of events) {
       if (event.kind === TimelineKind.Text) {
-        const text = typeof event.payload?.text === 'string' ? event.payload.text : ''
-        if (text) lines.push(`${event.role === TimelineRole.User ? '用户' : '助手'}：${text}`)
+        const text =
+          typeof event.payload?.text === 'string' ? event.payload.text : '';
+        if (text)
+          lines.push(
+            `${event.role === TimelineRole.User ? '用户' : '助手'}：${text}`,
+          );
       } else if (event.kind === TimelineKind.ToolCall) {
         lines.push(
           `[工具调用] ${event.toolKey ?? '未知'} 入参：${JSON.stringify(event.payload?.input ?? {})}`,
-        )
+        );
       } else if (event.kind === TimelineKind.ToolResult) {
         lines.push(
           `[工具结果] ${event.toolKey ?? '未知'} 出参：${JSON.stringify(event.payload?.output ?? null)}`,
-        )
+        );
       }
     }
-    if (lines.length === 0) return
+    if (lines.length === 0) return;
 
-    const startedAt = new Date()
-    const agent = mastra.getAgent(definition.key)
+    const startedAt = new Date();
+    const agent = mastra.getAgent(definition.key);
     try {
       const result = await agent.generate(
         [
-          { role: 'user', content: `以下是需要压缩的历史对话：\n\n${lines.join('\n')}` },
+          {
+            role: 'user',
+            content: `以下是需要压缩的历史对话：\n\n${lines.join('\n')}`,
+          },
           { role: 'user', content: SUMMARY_INSTRUCTION },
         ] as never,
         // 动态模型要信封（否则模型函数不知道这一轮用哪个模型）
         { maxSteps: 1, requestContext },
-      )
-      const text = ((result.text as string) ?? '').slice(0, SUMMARY_MAX_CHARS)
-      if (!text) return
+      );
+      const text = ((result.text as string) ?? '').slice(0, SUMMARY_MAX_CHARS);
+      if (!text) return;
       await this.timelines.append({
         conversationId,
         runId,
@@ -490,20 +639,20 @@ export class AgentChatService {
         startedAt,
         finishedAt: new Date(),
         durationMs: Date.now() - startedAt.getTime(),
-      })
+      });
       this.logger.log('ai.context.compacted', {
         conversationId,
         runId,
         coversSeqs: [range.fromSeq, range.toSeq],
         sourceEventCount: events.length,
-      })
+      });
     } catch (error) {
       // 压缩失败不阻断这一轮：降级为纯裁剪，并记一条状态事件（复盘能看出"这里本该有摘要"）
       this.logger.warn('ai.context.compact_failed', {
         conversationId,
         runId,
         reason: error instanceof Error ? error.message : String(error),
-      })
+      });
       await this.timelines.append({
         conversationId,
         runId,
@@ -514,7 +663,7 @@ export class AgentChatService {
           coversSeqs: [range.fromSeq, range.toSeq],
         },
         finishedAt: new Date(),
-      })
+      });
     }
   }
 
@@ -524,20 +673,20 @@ export class AgentChatService {
     runId: string,
     steps: StepLike[],
   ): Promise<{ toolCallCount: number }> {
-    let toolCallCount = 0
+    let toolCallCount = 0;
     for (const [index, step] of steps.entries()) {
-      const messageId = `msg_${runId}_${index}`
-      const items: Array<Record<string, unknown>> = []
+      const messageId = `msg_${runId}_${index}`;
+      const items: Array<Record<string, unknown>> = [];
 
       // 推理（只审计；组装上下文时不回灌，见 ContextService）
-      const reasoning = this.joinReasoning(step)
+      const reasoning = this.joinReasoning(step);
       if (reasoning) {
         items.push({
           role: TimelineRole.Assistant,
           kind: TimelineKind.Reasoning,
           messageId,
           payload: { text: reasoning },
-        })
+        });
       }
       if (step.text) {
         items.push({
@@ -545,11 +694,11 @@ export class AgentChatService {
           kind: TimelineKind.Text,
           messageId,
           payload: { text: step.text },
-        })
+        });
       }
       for (const call of step.toolCalls ?? []) {
-        const payload = call.payload ?? {}
-        toolCallCount += 1
+        const payload = call.payload ?? {};
+        toolCallCount += 1;
         items.push({
           role: TimelineRole.Assistant,
           kind: TimelineKind.ToolCall,
@@ -561,10 +710,10 @@ export class AgentChatService {
             toolName: payload.toolName ?? null,
             input: payload.args ?? null,
           },
-        })
+        });
       }
       for (const toolResult of step.toolResults ?? []) {
-        const payload = toolResult.payload ?? {}
+        const payload = toolResult.payload ?? {};
         items.push({
           role: TimelineRole.Assistant,
           kind: TimelineKind.ToolResult,
@@ -579,17 +728,17 @@ export class AgentChatService {
             output: payload.result ?? null,
             isError: payload.isError ?? false,
           },
-        })
+        });
         // 规划能力：write-plan 的输出额外落一条 `plan` 事件 —— **当前计划 = 最后一条 plan 事件**，
         // 且"什么时候把哪一步标成完成"成为可复盘的历史
-        const plan = toPlanPayload(payload.toolName ?? null, payload.result)
+        const plan = toPlanPayload(payload.toolName ?? null, payload.result);
         if (plan) {
           items.push({
             role: TimelineRole.Assistant,
             kind: TimelineKind.Plan,
             messageId,
             payload: plan as unknown as Record<string, unknown>,
-          })
+          });
         }
       }
       // 每个模型调用步落一行（带该步的 token 与边界）
@@ -602,9 +751,9 @@ export class AgentChatService {
           stepIndex: index,
           finishReason: step.finishReason ?? null,
         },
-      })
+      });
 
-      const finishedAt = new Date()
+      const finishedAt = new Date();
       await this.timelines.appendMany(
         items.map((item) => ({
           conversationId,
@@ -614,21 +763,21 @@ export class AgentChatService {
           finishedAt,
           ...item,
         })) as never,
-      )
+      );
     }
-    return { toolCallCount }
+    return { toolCallCount };
   }
 
   /** 汇总一步里的推理增量文本 */
   private joinReasoning(step: StepLike): string {
-    const chunks = step.reasoning ?? []
+    const chunks = step.reasoning ?? [];
     return chunks
       .map((chunk) => {
-        const text = chunk.payload?.text
-        return typeof text === 'string' ? text : ''
+        const text = chunk.payload?.text;
+        return typeof text === 'string' ? text : '';
       })
       .join('')
-      .trim()
+      .trim();
   }
 
   /**
@@ -643,16 +792,25 @@ export class AgentChatService {
     response: StreamResponseLike,
     isAdmin = false,
   ): Promise<void> {
-    const mastra = this.requireMastra()
-    const conversation = await this.resolveConversation(userId, input)
-    const definition = this.registry.resolve(input.agentKey ?? conversation.agentKey)
-    const run = await this.startRun(conversation, definition.key, userId)
-    const startedAt = Date.now()
+    const mastra = this.requireMastra();
+    const conversation = await this.resolveConversation(userId, input);
+    const definition = this.registry.resolve(
+      input.agentKey ?? conversation.agentKey,
+    );
+    const run = await this.startRun(conversation, definition.key, userId);
+    const startedAt = Date.now();
 
     // 本轮模型：**只能来自库里的配置**（解析失败直接抛，连流都不建）
-    const model = await this.resolveRuntimeModel(definition, input.modelId)
+    const model = await this.resolveRuntimeModel(definition, input.modelId);
+    const modelInstance = await this.resolveModelInstance(model);
 
-    let built = await this.buildContext(conversation.id, definition, input.message, model)
+    let built = await this.buildContext(
+      conversation.id,
+      definition,
+      input.message,
+      model,
+      input.attachments,
+    );
     if (built.needsCompaction && built.compactionRange) {
       // 注意：这一步在建流之前，**此时还没有中止控制器**（`abort` 后面才声明）→ 信封不带 abortSignal
       await this.summarize(
@@ -660,35 +818,48 @@ export class AgentChatService {
         run.id,
         definition,
         built.compactionRange,
-        await this.buildRuntimeContext(conversation.id, run.id, definition, userId, model, {
-          isAdmin,
-        }),
-      )
-      built = await this.buildContext(conversation.id, definition, input.message, model)
+        await this.buildRuntimeContext(
+          conversation.id,
+          run.id,
+          definition,
+          userId,
+          model,
+          {
+            isAdmin,
+          },
+        ),
+      );
+      built = await this.buildContext(
+        conversation.id,
+        definition,
+        input.message,
+        model,
+        input.attachments,
+      );
     }
 
-    const now = new Date()
+    const now = new Date();
     await this.timelines.append({
       conversationId: conversation.id,
       runId: run.id,
       role: TimelineRole.User,
       kind: TimelineKind.Text,
-      payload: { text: input.message },
+      payload: userMessagePayload(input),
       startedAt: now,
       finishedAt: now,
-    })
+    });
 
-    const streamId = `${run.id}-${Date.now()}`
-    const abort = new AbortController()
-    this.activeRuns.set(run.id, abort)
-    await this.runs.setActiveStream(run.id, streamId)
+    const streamId = `${run.id}-${Date.now()}`;
+    const abort = new AbortController();
+    this.activeRuns.set(run.id, abort);
+    await this.runs.setActiveStream(run.id, streamId);
     await this.streamStore.startRun(run.id, {
       status: RunStatus.Running,
       stage: 'generating',
       streamId,
       offset: 0,
       step: 0,
-    })
+    });
 
     const recorder = new StreamRecorder(
       this.timelines,
@@ -697,30 +868,30 @@ export class AgentChatService {
         metas: this.toolMetas,
         isKnownTool: (toolKey) => Boolean(this.toolRegistry.get(toolKey)),
       },
-    )
-    let offset = 0
-    let stepCount = 0
-    let lastProgressAt = 0
+    );
+    let offset = 0;
+    let stepCount = 0;
+    let lastProgressAt = 0;
 
     // 心跳：SSE 注释帧。间隔必须显著小于网关空闲超时（默认 15s < keepAliveTimeout 75s），
     // 否则"AI 想得久一点就断流"。自己写而不用 `withSseHeartbeat`：后者收的是 Web Response。
     const heartbeat = setInterval(() => {
-      if (!response.writableEnded) response.write(': ping\n\n')
-    }, STREAM_HEARTBEAT_MS)
+      if (!response.writableEnded) response.write(': ping\n\n');
+    }, STREAM_HEARTBEAT_MS);
 
     // 跨副本停止：订阅本 run 的停止频道（请求落在别的副本时也停得掉）
-    let unsubscribeStop: (() => Promise<void>) | null = null
+    let unsubscribeStop: (() => Promise<void>) | null = null;
     try {
       unsubscribeStop = await this.streamStore.subscribeRun(
         run.id,
         () => undefined,
         () => abort.abort(),
-      )
+      );
     } catch (error) {
       this.logger.warn('ai.stream.stop_subscribe_failed', {
         runId: run.id,
         reason: error instanceof Error ? error.message : String(error),
-      })
+      });
     }
 
     try {
@@ -733,32 +904,45 @@ export class AgentChatService {
         // 中止信号（用户停止要停整棵树）+ 渲染后的系统指令（首轮末尾带运行环境）
         {
           abortSignal: abort.signal,
-          systemPrompt: await this.resolveSystemPrompt(conversation, run.id, definition),
+          systemPrompt: await this.resolveSystemPrompt(
+            conversation,
+            run.id,
+            definition,
+          ),
         },
-      )
-      const agent = mastra.getAgent(definition.key)
+      );
+      const agent = mastra.getAgent(definition.key);
       const output = await agent.stream(built.messages as never, {
         maxSteps: AGENT_MAX_STEPS,
         abortSignal: abort.signal,
         requestContext,
-      })
+        // 显式传模型实例：不依赖 Agent 上的动态 model（Mastra 自解析配置那一层曾丢过多模态，见 resolveModelInstance）
+        model: modelInstance as never,
+        /**
+         * **双方共用一个引擎 runId**：Mastra 的 durable 快照按这个 id 落库，
+         * 而我们的存储适配层用 `engine_run_id` 找宿主行 —— id 对不上就丢快照（见 `startRun`）。
+         */
+        runId: run.engineRunId,
+      });
       // 子 agent 的实时明细**不走** Mastra 的静态子 agent 通道（我们没有静态子 agent）：
       // 由 `run-sub-agent` 工具经 `context.writer` 写成 `data-sub-agent*` 块进这条流，见 §3.14.5
-      const uiStream = toUiStream(output)
+      const uiStream = toUiStream(output);
 
-      const recorded = (uiStream as unknown as ReadableStream<UiChunkLike>).pipeThrough(
+      const recorded = (
+        uiStream as unknown as ReadableStream<UiChunkLike>
+      ).pipeThrough(
         new TransformStream<UiChunkLike, UiChunkLike>({
           transform: async (chunk, controller) => {
             // 先给客户端，再落库：用户的体感不该被落库拖慢
-            controller.enqueue(chunk)
+            controller.enqueue(chunk);
             try {
-              await recorder.consume(chunk)
-              offset = await this.streamStore.appendChunk(run.id, chunk)
-              await this.streamStore.publishChunk(run.id, chunk)
-              if (chunk.type === 'start-step') stepCount += 1
-              const nowMs = Date.now()
+              await recorder.consume(chunk);
+              offset = await this.streamStore.appendChunk(run.id, chunk);
+              await this.streamStore.publishChunk(run.id, chunk);
+              if (chunk.type === 'start-step') stepCount += 1;
+              const nowMs = Date.now();
               if (nowMs - lastProgressAt >= STREAM_PROGRESS_THROTTLE_MS) {
-                lastProgressAt = nowMs
+                lastProgressAt = nowMs;
                 await this.streamStore.patchRun(run.id, {
                   stage:
                     chunk.type === 'tool-input-available'
@@ -767,80 +951,87 @@ export class AgentChatService {
                   offset,
                   step: stepCount,
                   heartbeatAt: new Date().toISOString(),
-                })
-                await this.runs.touchHeartbeat(run.id)
+                });
+                await this.runs.touchHeartbeat(run.id);
               }
             } catch (error) {
               // 录制失败不掐断用户正在看的流：记日志继续（真相仍在，稍后可补）
               this.logger.warn('ai.stream.record_failed', {
                 runId: run.id,
                 reason: error instanceof Error ? error.message : String(error),
-              })
+              });
             }
           },
         }),
-      )
+      );
 
       // 手写流而不是用 `pipeUIMessageStreamToResponse`：要自己控制"什么时候结束响应"——
       // **收尾（终态 / 消耗 / 统计）落库之后才发 `[DONE]`**，于是客户端看到 `[DONE]`
       // 就代表服务端已经落好终态（否则会出现"收到 [DONE] 但查运行还是 running"的窗口）。
-      response.writeHead(200, UI_STREAM_HEADERS)
-      response.flushHeaders?.()
+      response.writeHead(200, UI_STREAM_HEADERS);
+      response.flushHeaders?.();
 
       // 先把"这一轮的身份"发给客户端：**前端要靠它记住 runId**（停止与断线重连都只认 runId）。
       // 它走与业务片段**同一条记录 + 广播通道**，所以补发连接也一定会先拿到它。
       const runHead = {
         type: 'data-run',
-        data: { runId: run.id, conversationId: conversation.id, agentKey: definition.key },
-      }
-      if (!response.writableEnded) response.write(sseFrame(runHead))
-      offset = await this.streamStore.appendChunk(run.id, runHead)
-      await this.streamStore.publishChunk(run.id, runHead)
+        data: {
+          runId: run.id,
+          conversationId: conversation.id,
+          agentKey: definition.key,
+        },
+      };
+      if (!response.writableEnded) response.write(sseFrame(runHead));
+      offset = await this.streamStore.appendChunk(run.id, runHead);
+      await this.streamStore.publishChunk(run.id, runHead);
 
-      const reader = recorded.getReader()
+      const reader = recorded.getReader();
       for (;;) {
-        const { done, value } = await reader.read()
-        if (done) break
-        if (response.writableEnded) break
-        response.write(sseFrame(value))
+        const { done, value } = await reader.read();
+        if (done) break;
+        if (response.writableEnded) break;
+        response.write(sseFrame(value));
       }
 
       // 被中止时 Mastra 会**正常返回**（流被截断但不抛错）→ 必须自己判定"这不是成功，是取消"
       if (abort.signal.aborted) {
-        await recorder.flushPending()
-        throw new Error('stream_aborted_by_user')
+        await recorder.flushPending();
+        throw new Error('stream_aborted_by_user');
       }
       // 收尾前把没有 text-end 的残余内容也落库（防御性：正常结束一般不会有）
-      await recorder.flushPending()
+      await recorder.flushPending();
 
       // 收尾：**先 Postgres 终态，再清 Redis 进度**（反过来会留下"没进度也没结果"的窗口）
       // 步骤 / 用量一律走 stream-result 的读取口径：`agent.stream()` 在**可恢复执行（durable）**下
       // 返回的是包装对象（`{ output, fullStream, … }`），真正的 `MastraModelOutput` 在 `output` 里 ——
       // 直接读 `output.steps` 会拿到 undefined（踩过的崩点，见 stream-result.ts 的注释）
-      const steps = (await readStreamSteps(output)) as unknown as StepLike[]
-      const persisted = await recorder.finish(steps)
+      const steps = (await readStreamSteps(output)) as unknown as StepLike[];
+      const persisted = await recorder.finish(steps);
       // 首轮命名：与 agent 上下文完全隔离的一次小调用（失败不影响这一轮，见 title.service.ts）
       const title = await this.generateFirstTurnTitle(
         conversation,
         run.id,
         input.message,
         model,
-      )
-      const usageBase = await this.rollUpUsage(run.id, toUsageRecord(await readStreamUsage(output)))
+      );
+      const usageBase = await this.rollUpUsage(
+        run.id,
+        toUsageRecord(await readStreamUsage(output)),
+      );
       // 并账要**保留 usageBase 里的非 token 字段**（如 `subAgents`）：
       // `mergeUsage` 只逐字段加 token，直接把它的结果当 usage 会把那些字段抹掉（踩过：子 agent 明细消失）
       const usage = title?.usage
         ? { ...usageBase, ...(mergeUsage(usageBase, title.usage) ?? {}) }
-        : usageBase
-      const durationMs = Date.now() - startedAt
+        : usageBase;
+      const durationMs = Date.now() - startedAt;
       await this.runs.finish(run.id, {
         status: RunStatus.Succeeded,
         usage,
         stepCount: steps.length,
         toolCallCount: persisted.toolCallCount,
         durationMs,
-      })
-      await this.runs.setActiveStream(run.id, null)
+      });
+      await this.runs.setActiveStream(run.id, null);
       await this.runs.saveRequestSnapshot(run.id, {
         model: model.modelRef,
         agentKey: definition.key,
@@ -848,9 +1039,12 @@ export class AgentChatService {
         skillKeys: [...definition.skills],
         params: { maxSteps: AGENT_MAX_STEPS },
         context: built.snapshot,
-      })
-      await this.conversationRepo.accumulate(conversation.id, totalTokensOf(usage))
-      await this.applyTitle(conversation, input.message, title)
+      });
+      await this.conversationRepo.accumulate(
+        conversation.id,
+        totalTokensOf(usage),
+      );
+      await this.applyTitle(conversation, input.message, title);
 
       /**
        * 标题变更**实时下发**（`data-conversation-title`）。
@@ -868,10 +1062,10 @@ export class AgentChatService {
             conversationId: conversation.id,
             title: title.title,
           },
-        }
-        if (!response.writableEnded) response.write(sseFrame(titleChunk))
-        offset = await this.streamStore.appendChunk(run.id, titleChunk)
-        await this.streamStore.publishChunk(run.id, titleChunk)
+        };
+        if (!response.writableEnded) response.write(sseFrame(titleChunk));
+        offset = await this.streamStore.appendChunk(run.id, titleChunk);
+        await this.streamStore.publishChunk(run.id, titleChunk);
       }
 
       this.logger.log('ai.stream.succeeded', {
@@ -880,7 +1074,7 @@ export class AgentChatService {
         stepCount: steps.length,
         toolCallCount: persisted.toolCallCount,
         durationMs,
-      })
+      });
 
       /**
        * **本轮用量**下发（`data-run-usage`，**不带 id**：一块一个）。
@@ -900,44 +1094,53 @@ export class AgentChatService {
           toolCallCount: persisted.toolCallCount,
           durationMs,
         },
-      }
-      if (!response.writableEnded) response.write(sseFrame(usageChunk))
-      offset = await this.streamStore.appendChunk(run.id, usageChunk)
-      await this.streamStore.publishChunk(run.id, usageChunk)
+      };
+      if (!response.writableEnded) response.write(sseFrame(usageChunk));
+      offset = await this.streamStore.appendChunk(run.id, usageChunk);
+      await this.streamStore.publishChunk(run.id, usageChunk);
 
       // 终态已落库 → 现在才告诉客户端"这一轮结束"
       if (!response.writableEnded) {
-        response.write('data: [DONE]\n\n')
-        response.end()
+        response.write('data: [DONE]\n\n');
+        response.end();
       }
     } catch (error) {
-      const durationMs = Date.now() - startedAt
-      const reason = error instanceof Error ? error.message : String(error)
+      const durationMs = Date.now() - startedAt;
+      const reason = error instanceof Error ? error.message : String(error);
       if (abort.signal.aborted) {
         // 用户主动停止：是 canceled，不是 failed（语义要分清）
-        await this.runs.finish(run.id, { status: RunStatus.Canceled, durationMs })
+        await this.runs.finish(run.id, {
+          status: RunStatus.Canceled,
+          durationMs,
+        });
         await this.timelines.append({
           conversationId: conversation.id,
           runId: run.id,
           role: TimelineRole.System,
           kind: TimelineKind.Status,
-          payload: { status: RunStatus.Canceled, reason: 'user_stopped', operator: userId },
+          payload: {
+            status: RunStatus.Canceled,
+            reason: 'user_stopped',
+            operator: userId,
+          },
           finishedAt: new Date(),
-        })
-        this.logger.log('ai.stream.canceled', { runId: run.id, durationMs })
+        });
+        this.logger.log('ai.stream.canceled', { runId: run.id, durationMs });
       } else {
         // 响应头已发出：不能抛（会把"流里的错误"变成无声失败），错误已随 error chunk 给到客户端
-        const mapped = classifyModelError(error)
+        const mapped = classifyModelError(error);
         await this.runs.finish(run.id, {
           status: RunStatus.Failed,
           // 失败也要把子 agent 已经烧掉的 token 记在账上
           usage: await this.rollUpUsage(run.id, null),
-          errorCode: String((mapped as { code?: number }).code ?? AppErrorCodes.AgentFailed),
+          errorCode: String(
+            (mapped as { code?: number }).code ?? AppErrorCodes.AgentFailed,
+          ),
           errorStage: RunErrorStage.Model,
           errorMessage: mapped.message,
           errorDetail: { raw: reason },
           durationMs,
-        })
+        });
         await this.timelines.append({
           conversationId: conversation.id,
           runId: run.id,
@@ -945,43 +1148,52 @@ export class AgentChatService {
           kind: TimelineKind.Error,
           payload: { message: mapped.message, stage: RunErrorStage.Model },
           finishedAt: new Date(),
-        })
-        this.logger.error('ai.stream.failed', { runId: run.id, reason, durationMs })
+        });
+        this.logger.error('ai.stream.failed', {
+          runId: run.id,
+          reason,
+          durationMs,
+        });
       }
-      await this.runs.setActiveStream(run.id, null)
+      await this.runs.setActiveStream(run.id, null);
       if (!response.writableEnded) {
         // 失败也要给客户端一个明确收尾（错误本身已随 error chunk 下发）
-        response.write('data: [DONE]\n\n')
-        response.end()
+        response.write('data: [DONE]\n\n');
+        response.end();
       }
     } finally {
-      clearInterval(heartbeat)
-      if (unsubscribeStop) await unsubscribeStop()
-      this.activeRuns.delete(run.id)
+      clearInterval(heartbeat);
+      if (unsubscribeStop) await unsubscribeStop();
+      this.activeRuns.delete(run.id);
       // 通知"还在补发中的重连连接"：本轮结束了（同一条流协议里的结束标记）
       try {
-        await this.streamStore.publishChunk(run.id, { type: STREAM_END_MARKER })
+        await this.streamStore.publishChunk(run.id, {
+          type: STREAM_END_MARKER,
+        });
       } catch {
         // 广播失败无碍：补发连接会被客户端的 idle 处理或下一次刷新收敛
       }
-      await this.streamStore.clearRun(run.id)
-      if (!response.writableEnded) response.end()
+      await this.streamStore.clearRun(run.id);
+      if (!response.writableEnded) response.end();
     }
   }
 
   /** 停止某一轮：本进程直接 abort；不在本进程则广播（跨副本） */
-  async stopRun(userId: string, runId: string): Promise<AgentRunStopResultModel> {
-    const run = await this.runs.findEntity(runId)
-    if (!run) throw new RunNotFoundError(runId)
-    await this.conversations.requireOwned(userId, run.conversationId)
+  async stopRun(
+    userId: string,
+    runId: string,
+  ): Promise<AgentRunStopResultModel> {
+    const run = await this.runs.findEntity(runId);
+    if (!run) throw new RunNotFoundError(runId);
+    await this.conversations.requireOwned(userId, run.conversationId);
 
-    const controller = this.activeRuns.get(runId)
+    const controller = this.activeRuns.get(runId);
     if (controller) {
-      controller.abort()
-      return { stopped: true, injected: 'local' }
+      controller.abort();
+      return { stopped: true, injected: 'local' };
     }
-    await this.streamStore.publishStop(runId)
-    return { stopped: true, injected: 'broadcast' }
+    await this.streamStore.publishStop(runId);
+    return { stopped: true, injected: 'broadcast' };
   }
 
   /**
@@ -998,9 +1210,9 @@ export class AgentChatService {
     offset: number,
     response: StreamResponseLike,
   ): Promise<boolean> {
-    const active = await this.runs.findActiveByUser(userId)
-    if (!active) return false
-    return this.resumeRun(userId, active.id, offset, response)
+    const active = await this.runs.findActiveByUser(userId);
+    if (!active) return false;
+    return this.resumeRun(userId, active.id, offset, response);
   }
 
   /**
@@ -1015,17 +1227,20 @@ export class AgentChatService {
     offset: number,
     response: StreamResponseLike,
   ): Promise<boolean> {
-    const run = await this.runs.findEntity(runId)
-    if (!run) throw new RunNotFoundError(runId)
-    await this.conversations.requireOwned(userId, run.conversationId)
+    const run = await this.runs.findEntity(runId);
+    if (!run) throw new RunNotFoundError(runId);
+    await this.conversations.requireOwned(userId, run.conversationId);
 
-    const progress = await this.streamStore.readRun(runId)
-    if (!progress || progress.status !== RunStatus.Running) return false
+    const progress = await this.streamStore.readRun(runId);
+    if (!progress || progress.status !== RunStatus.Running) return false;
 
-    response.writeHead(200, UI_STREAM_HEADERS)
-    response.flushHeaders?.()
+    response.writeHead(200, UI_STREAM_HEADERS);
+    response.flushHeaders?.();
 
-    const backlog = (await this.streamStore.readChunks(runId, offset)) as UiChunkLike[]
+    const backlog = (await this.streamStore.readChunks(
+      runId,
+      offset,
+    )) as UiChunkLike[];
 
     /**
      * **补发的第一块必须是 `start`**（消息身份所在的那块）。
@@ -1038,53 +1253,57 @@ export class AgentChatService {
      * 我们为了让前端尽早拿到 runId，`data-run` 是写在 `start` 之前的（实时流这样没问题，
      * 因为那时列表里还没有同 id 的消息）—— 所以**补发时把 `start` 挪到最前面**。
      */
-    const startIndex = backlog.findIndex((chunk) => chunk?.type === 'start')
+    const startIndex = backlog.findIndex((chunk) => chunk?.type === 'start');
     const ordered =
       startIndex > 0
-        ? [backlog[startIndex], ...backlog.slice(0, startIndex), ...backlog.slice(startIndex + 1)]
-        : backlog
+        ? [
+            backlog[startIndex],
+            ...backlog.slice(0, startIndex),
+            ...backlog.slice(startIndex + 1),
+          ]
+        : backlog;
 
-    let ended = false
+    let ended = false;
     for (const chunk of ordered) {
       if (chunk?.type === STREAM_END_MARKER) {
-        ended = true
-        break
+        ended = true;
+        break;
       }
-      if (!response.writableEnded) response.write(sseFrame(chunk))
+      if (!response.writableEnded) response.write(sseFrame(chunk));
     }
     if (ended) {
-      if (!response.writableEnded) response.end()
-      return true
+      if (!response.writableEnded) response.end();
+      return true;
     }
 
     // 挂住连接，转发实时片段直到客户端断开或本轮结束
     await new Promise<void>((resolve) => {
-      let unsubscribe: (() => Promise<void>) | null = null
+      let unsubscribe: (() => Promise<void>) | null = null;
       const finish = (): void => {
-        void unsubscribe?.()
-        resolve()
-      }
-      response.on('close', finish)
+        void unsubscribe?.();
+        resolve();
+      };
+      response.on('close', finish);
       void this.streamStore
         .subscribeRun(
           runId,
           (chunk) => {
-            const typed = chunk as UiChunkLike
+            const typed = chunk as UiChunkLike;
             if (typed?.type === STREAM_END_MARKER) {
-              finish()
-              return
+              finish();
+              return;
             }
-            if (!response.writableEnded) response.write(sseFrame(chunk))
+            if (!response.writableEnded) response.write(sseFrame(chunk));
           },
           () => undefined,
         )
         .then((fn) => {
-          unsubscribe = fn
+          unsubscribe = fn;
         })
-        .catch(() => finish())
-    })
-    if (!response.writableEnded) response.end()
-    return true
+        .catch(() => finish());
+    });
+    if (!response.writableEnded) response.end();
+    return true;
   }
 
   /**
@@ -1102,7 +1321,11 @@ export class AgentChatService {
     definition: AgentDefinition,
     userId: string,
     model: RuntimeModel,
-    options: { abortSignal?: AbortSignal; systemPrompt?: string; isAdmin?: boolean } = {},
+    options: {
+      abortSignal?: AbortSignal;
+      systemPrompt?: string;
+      isAdmin?: boolean;
+    } = {},
   ): Promise<RequestContext> {
     const envelope: AgentRuntimeEnvelope = {
       conversationId,
@@ -1120,9 +1343,9 @@ export class AgentChatService {
       skills: await this.skillLoader.resolve(definition.skills),
       ...(options.systemPrompt ? { systemPrompt: options.systemPrompt } : {}),
       ...(options.abortSignal ? { abortSignal: options.abortSignal } : {}),
-    }
+    };
     // 与 `RequestContext` 的读写收在适配器里（主体不认识 Mastra 的这个词）
-    return toRequestContext(envelope)
+    return toRequestContext(envelope);
   }
 
   /**
@@ -1159,13 +1382,13 @@ export class AgentChatService {
     definition: AgentDefinition,
   ): Promise<string> {
     // ★ 首轮生成一次：同一个 agent 的后续轮次**逐字复用**首轮那份（不是"重算后比对"）
-    const previous = await this.timelines.latestSystemPrompt(conversation.id)
-    if (previous && previous.agentKey === definition.key) return previous.text
+    const previous = await this.timelines.latestSystemPrompt(conversation.id);
+    if (previous && previous.agentKey === definition.key) return previous.text;
 
-    const environment = this.renderEnvironment(conversation)
+    const environment = this.renderEnvironment(conversation);
     const systemPrompt = environment
       ? `${definition.instructions}\n\n${environment}`
-      : definition.instructions
+      : definition.instructions;
 
     await this.timelines.append({
       conversationId: conversation.id,
@@ -1179,20 +1402,25 @@ export class AgentChatService {
         environmentInjected: Boolean(environment),
       },
       finishedAt: new Date(),
-    })
-    return systemPrompt
+    });
+    return systemPrompt;
   }
 
-  private renderEnvironment(conversation: ConversationEntity): string | undefined {
-    if (conversation.turnCount > 0) return undefined
+  private renderEnvironment(
+    conversation: ConversationEntity,
+  ): string | undefined {
+    if (conversation.turnCount > 0) return undefined;
     try {
-      return this.prompts.renderPartial('partials/environment', buildEnvironmentData())
+      return this.prompts.renderPartial(
+        'partials/environment',
+        buildEnvironmentData(),
+      );
     } catch (error) {
       this.logger.warn('ai.environment.render_failed', {
         conversationId: conversation.id,
         reason: error instanceof Error ? error.message : String(error),
-      })
-      return undefined
+      });
+      return undefined;
     }
   }
 
@@ -1206,39 +1434,39 @@ export class AgentChatService {
     runId: string,
     own: Record<string, unknown> | null,
   ): Promise<Record<string, unknown> | null> {
-    const children = await this.runs.listChildUsages(runId)
-    if (children.length === 0) return own
-    const subAgents = mergeUsage(...children)
-    return { ...(own ?? {}), subAgents, ...(mergeUsage(own, subAgents) ?? {}) }
+    const children = await this.runs.listChildUsages(runId);
+    if (children.length === 0) return own;
+    const subAgents = mergeUsage(...children);
+    return { ...(own ?? {}), subAgents, ...(mergeUsage(own, subAgents) ?? {}) };
   }
 
   private requireMastra(): Mastra {
-    if (!this.mastra) throw new AgentUnavailableError()
-    return this.mastra
+    if (!this.mastra) throw new AgentUnavailableError();
+    return this.mastra;
   }
 }
 
 /** Mastra step 结果的最小结构（只取我们要落库的字段，避免把它的内部类型铺满本文件） */
 interface StepLike {
-  text?: string
-  reasoning?: Array<{ payload?: { text?: string } }>
+  text?: string;
+  reasoning?: Array<{ payload?: { text?: string } }>;
   toolCalls?: Array<{
-    payload?: { toolCallId?: string; toolName?: string; args?: unknown }
-  }>
+    payload?: { toolCallId?: string; toolName?: string; args?: unknown };
+  }>;
   toolResults?: Array<{
     payload?: {
-      toolCallId?: string
-      toolName?: string
-      result?: unknown
-      isError?: boolean
-    }
-  }>
-  usage?: unknown
-  finishReason?: string
+      toolCallId?: string;
+      toolName?: string;
+      result?: unknown;
+      isError?: boolean;
+    };
+  }>;
+  usage?: unknown;
+  finishReason?: string;
 }
 
 /** 时间线事件（仅用于类型收口） */
-export type { TimelineEntity }
+export type { TimelineEntity };
 
 /**
  * 流式编排与停止 / 重连（挂在 `AgentChatService` 上，复用同一套会话、上下文、落库与收尾逻辑）。
@@ -1250,29 +1478,29 @@ export type { TimelineEntity }
  * - 停止：本进程 abort + 跨副本经 Redis 频道广播；
  * - 重连：按 `offset` 从输出记录补发，再接实时；没有进行中的流则回 204。
  */
-export const STREAM_HEARTBEAT_MS = 15_000
-export const STREAM_PROGRESS_THROTTLE_MS = 1_000
+export const STREAM_HEARTBEAT_MS = 15_000;
+export const STREAM_PROGRESS_THROTTLE_MS = 1_000;
 
 /** 流式片段的最小结构（录制器与转发共用） */
 interface UiChunkLike {
-  type?: string
-  toolName?: string
-  messageId?: string
+  type?: string;
+  toolName?: string;
+  messageId?: string;
 }
 
 /** Express Response 的最小接口（只在编排层用，避免把 express 类型铺进来） */
 export interface StreamResponseLike {
-  writeHead: (status: number, headers: Record<string, string>) => unknown
-  flushHeaders?: () => void
-  write: (chunk: string) => unknown
-  end: () => unknown
-  status?: (code: number) => { end: () => unknown }
-  writableEnded?: boolean
-  on: (event: string, handler: () => void) => unknown
+  writeHead: (status: number, headers: Record<string, string>) => unknown;
+  flushHeaders?: () => void;
+  write: (chunk: string) => unknown;
+  end: () => unknown;
+  status?: (code: number) => { end: () => unknown };
+  writableEnded?: boolean;
+  on: (event: string, handler: () => void) => unknown;
 }
 
 /** 输出记录里的"本轮结束"标记（补发连接见到它就收尾） */
-export const STREAM_END_MARKER = '__run_end__'
+export const STREAM_END_MARKER = '__run_end__';
 
 const UI_STREAM_HEADERS: Record<string, string> = {
   'content-type': 'text/event-stream',
@@ -1281,6 +1509,7 @@ const UI_STREAM_HEADERS: Record<string, string> = {
   // 协议自描述（官方客户端不校验，但自建后端写上便于排查）与关掉网关缓冲
   'x-vercel-ai-ui-message-stream': 'v1',
   'x-accel-buffering': 'no',
-}
+};
 
-const sseFrame = (chunk: unknown): string => `data: ${JSON.stringify(chunk)}\n\n`
+const sseFrame = (chunk: unknown): string =>
+  `data: ${JSON.stringify(chunk)}\n\n`;

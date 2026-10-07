@@ -37,6 +37,7 @@ import {
   startMockModelServer,
 } from './helpers/mock-model-server.js'
 import { buildToolStackDeps } from './helpers/ai-tool-stack.js'
+import { stubAttachments } from './helpers/attachments.js'
 
 /**
  * **可恢复执行（`durable: true`）下的流式收尾**回归。
@@ -135,6 +136,9 @@ beforeAll(async () => {
       baseURL: mock.baseURL,
       apiKey: 'test-key',
       contextWindow: null,
+      mode: 'chat',
+      // 未声明输入模态：附件校验因此**不拦**（与国内厂商普遍不给模态同一姿态）
+      inputModalities: null,
     }),
   } as never
 
@@ -202,6 +206,9 @@ beforeAll(async () => {
     silentLogger,
   )
   const context = new ContextService(timelines, config, silentLogger)
+  // 附件替身：e2e 不带附件，但构造器是位置参数，少一个会让后面整体错位
+  const chatAttachments = stubAttachments(silentLogger)
+
   chat = new AgentChatService(
     mastra,
     registry,
@@ -211,6 +218,7 @@ beforeAll(async () => {
     runs,
     timelines,
     context,
+    chatAttachments,
     streamStore,
     toolRegistry,
     deps.metas,

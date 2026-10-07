@@ -22,8 +22,8 @@
   },
   "dependencies": {
     "@ai-sdk/deepseek": "^1.0.60",
-    "@mastra/ai-sdk": "^1.10.4",
-    "@mastra/core": "^1.69.0",
+    "@mastra/ai-sdk": "^1.10.6",
+    "@mastra/core": "^1.75.0",
     "@nestjs/common": "^12.0.1",
     "@nestjs/config": "^12.0.0",
     "@nestjs/core": "^12.0.1",

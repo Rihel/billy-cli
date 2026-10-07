@@ -33,6 +33,7 @@ import { ContextService } from '../src/modules/ai/runtime/context.service.js'
 import { RunRepository } from '../src/modules/ai/runtime/run.repository.js'
 import { TimelineRepository } from '../src/modules/ai/runtime/timeline.repository.js'
 import { buildToolStackDeps } from './helpers/ai-tool-stack.js'
+import { stubAttachments } from './helpers/attachments.js'
 import {
   MOCK_CHILD_TEXT,
   MOCK_COMMAND_TOOL,
@@ -991,6 +992,9 @@ const buildStack = async () => {
     silentLogger,
   )
   const context = new ContextService(timelines, config, silentLogger)
+  // 附件替身：e2e 不带附件，但构造器是位置参数，少一个会让后面整体错位
+  const chatAttachments = stubAttachments(silentLogger)
+
   const chat = new AgentChatService(
     mastra,
     registry,
@@ -1000,6 +1004,7 @@ const buildStack = async () => {
     runs,
     timelines,
     context,
+    chatAttachments,
     {} as never,
     toolRegistry,
     deps.metas,

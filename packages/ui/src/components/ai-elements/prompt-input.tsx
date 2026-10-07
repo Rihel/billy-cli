@@ -9,7 +9,7 @@ import { Spinner } from "#components/ui/spinner.tsx"
 import { Tooltip, TooltipContent, TooltipTrigger } from "#components/ui/tooltip.tsx"
 import { cn } from "#lib/utils.ts"
 import type { ChatStatus, FileUIPart, SourceDocumentUIPart } from "ai"
-import { CornerDownLeftIcon, ImageIcon, Monitor, PlusIcon, SquareIcon, XIcon } from "lucide-react"
+import { CornerDownLeftIcon, ImageIcon, Monitor, PaperclipIcon, PlusIcon, SquareIcon, XIcon } from "lucide-react"
 import { nanoid } from "nanoid"
 import type {
   ChangeEvent,
@@ -124,7 +124,7 @@ const captureScreenshot = async (): Promise<File | null> => {
 // ============================================================================
 
 export interface AttachmentsContext {
-  files: (FileUIPart & { id: string })[]
+  files: (PromptInputFilePart & { id: string })[]
   add: (files: File[] | FileList) => void
   remove: (id: string) => void
   clear: () => void
@@ -183,7 +183,7 @@ export const PromptInputProvider = ({ initialInput: initialTextInput = "", child
   const clearInput = useCallback(() => setTextInput(""), [])
 
   // ----- attachments state (global when wrapped)
-  const [attachmentFiles, setAttachmentFiles] = useState<(FileUIPart & { id: string })[]>([])
+  const [attachmentFiles, setAttachmentFiles] = useState<(PromptInputFilePart & { id: string })[]>([])
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   // oxlint-disable-next-line eslint(no-empty-function)
   const openRef = useRef<() => void>(() => {})
@@ -200,6 +200,8 @@ export const PromptInputProvider = ({ initialInput: initialTextInput = "", child
         filename: file.name,
         id: nanoid(),
         mediaType: file.type,
+        // 原始文件随 part 一起留着：调用方要按内容算 key、要直传对象存储都得用它
+        rawFile: file,
         type: "file" as const,
         url: URL.createObjectURL(file),
       })),
@@ -394,9 +396,22 @@ export const PromptInputActionAddScreenshot = ({ label = "截屏", onSelect, ...
   )
 }
 
+/**
+ * 附件 part 的**本地原件**：`FileUIPart` 只带一个 `url`（上传后被转成 data URL），
+ * 而调用方常常需要原始 `File`（要按内容算 md5、要直传对象存储）——
+ * 从 data URL 反解既费事又可能失真，所以随 part 一起给出。
+ */
+export interface PromptInputFilePart extends FileUIPart {
+  rawFile?: File
+}
+
 export interface PromptInputMessage {
   text: string
-  files: FileUIPart[]
+  /**
+   * 本轮的附件。默认与上游一致（`FileUIPart[]`）；`PromptInputTextarea` 的同名 part 上
+   * 额外带 `rawFile`（见 {@link PromptInputFilePart}），调用方按需取。
+   */
+  files: PromptInputFilePart[]
 }
 
 export type PromptInputProps = Omit<HTMLAttributes<HTMLFormElement>, "onSubmit" | "onError"> & {
@@ -437,7 +452,7 @@ export const PromptInput = ({
   const formRef = useRef<HTMLFormElement | null>(null)
 
   // ----- Local attachments (only used when no provider)
-  const [items, setItems] = useState<(FileUIPart & { id: string })[]>([])
+  const [items, setItems] = useState<(PromptInputFilePart & { id: string })[]>([])
   const files = usingProvider ? controller.attachments.files : items
 
   // ----- Local referenced sources (always local to PromptInput)
@@ -507,12 +522,13 @@ export const PromptInput = ({
             message: "Too many files. Some were not added.",
           })
         }
-        const next: (FileUIPart & { id: string })[] = []
+        const next: (PromptInputFilePart & { id: string })[] = []
         for (const file of capped) {
           next.push({
             filename: file.name,
             id: nanoid(),
             mediaType: file.type,
+            rawFile: file,
             type: "file",
             url: URL.createObjectURL(file),
           })
@@ -815,13 +831,22 @@ export type PromptInputBodyProps = HTMLAttributes<HTMLDivElement>
 
 export const PromptInputBody = ({ className, ...props }: PromptInputBodyProps) => <div className={cn("contents", className)} {...props} />
 
-export type PromptInputTextareaProps = ComponentProps<typeof InputGroupTextarea>
+export type PromptInputTextareaProps = ComponentProps<typeof InputGroupTextarea> & {
+  /**
+   * 哪些回车组合**提交**（其余回车一律当换行）：
+   * - `enter`（默认，与上游一致）：单独回车提交，Shift+回车换行；
+   * - `mod+enter`：Cmd（macOS）/ Ctrl（其它平台）加回车提交，单独回车换行 ——
+   *   长文本场景下"回车即发送"太容易误发，Billy 的管理台采用这一档。
+   */
+  submitOn?: "enter" | "mod+enter"
+}
 
 export const PromptInputTextarea = ({
   onChange,
   onKeyDown,
   className,
   placeholder = "What would you like to know?",
+  submitOn = "enter",
   ...props
 }: PromptInputTextareaProps) => {
   const controller = useOptionalPromptInputController()
@@ -839,10 +864,14 @@ export const PromptInputTextarea = ({
       }
 
       if (e.key === "Enter") {
+        // 中文 / 日文等输入法组字期间的回车是"选字确认"，不是提交
         if (isComposing || e.nativeEvent.isComposing) {
           return
         }
-        if (e.shiftKey) {
+        // 哪几种回车算"提交"：默认档是单独回车，`mod+enter` 档只认 Cmd（macOS）/ Ctrl（其它平台）加回车
+        const isModEnter = (e.metaKey || e.ctrlKey) && !e.altKey
+        const shouldSubmit = submitOn === "mod+enter" ? isModEnter : !e.shiftKey
+        if (!shouldSubmit) {
           return
         }
         e.preventDefault()
@@ -866,7 +895,7 @@ export const PromptInputTextarea = ({
         }
       }
     },
-    [onKeyDown, isComposing, attachments],
+    [onKeyDown, isComposing, attachments, submitOn],
   )
 
   const handlePaste: ClipboardEventHandler<HTMLTextAreaElement> = useCallback(
@@ -977,6 +1006,46 @@ export const PromptInputButton = ({ variant = "ghost", className, size, tooltip,
         {shortcut && <span className="ml-2 text-muted-foreground">{shortcut}</span>}
       </TooltipContent>
     </Tooltip>
+  )
+}
+
+export type PromptInputAttachmentButtonProps = PromptInputButtonProps & {
+  /** 按钮上的文案；不传就是个纯图标按钮 */
+  label?: string
+}
+
+/**
+ * **点击上传附件**的按钮（打开系统的文件选择框）。
+ *
+ * 上游只在"加号菜单"里提供了这个入口（`PromptInputActionAddAttachments`，是个 `DropdownMenuItem`）——
+ * 而"点一下就能选文件"是几乎所有对话界面的默认预期，藏进菜单等于让用户猜。
+ * 校验仍归调用方（`accept` 只是选择框的提示，`maxFileSize` 是整批拒绝的粗粒度行为）。
+ */
+export const PromptInputAttachmentButton = ({
+  label,
+  className,
+  disabled,
+  tooltip,
+  ...props
+}: PromptInputAttachmentButtonProps) => {
+  const attachments = usePromptInputAttachments()
+
+  return (
+    <PromptInputButton
+      className={cn(className)}
+      disabled={disabled}
+      onClick={() => {
+        // 禁用态在部分浏览器里仍会派发 click（disabled 只挡默认行为），自己再挡一道
+        if (disabled) return
+        attachments.openFileDialog()
+      }}
+      tooltip={tooltip ?? "上传图片或文件（也可直接粘贴）"}
+      type="button"
+      {...props}
+    >
+      <PaperclipIcon className="size-4" />
+      {label ? <span className="text-xs">{label}</span> : null}
+    </PromptInputButton>
   )
 }
 

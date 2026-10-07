@@ -152,11 +152,11 @@ importers:
         specifier: ^1.0.60
         version: 1.0.60(zod@4.6.5)
       '@mastra/ai-sdk':
-        specifier: ^1.10.4
-        version: 1.10.4(@mastra/core@1.69.0(ai@6.0.289(zod@4.6.5))(express@5.2.1(supports-color@8.1.1))(rxjs@7.8.1)(supports-color@8.1.1)(zod-to-json-schema@3.25.2(zod@4.6.5))(zod@4.6.5))(zod@4.6.5)
+        specifier: ^1.10.6
+        version: 1.10.6(@mastra/core@1.75.0(ai@6.0.289(zod@4.6.5))(express@5.2.1(supports-color@8.1.1))(rxjs@7.8.1)(supports-color@8.1.1)(zod-to-json-schema@3.25.2(zod@4.6.5))(zod@4.6.5))(zod@4.6.5)
       '@mastra/core':
-        specifier: ^1.69.0
-        version: 1.69.0(ai@6.0.289(zod@4.6.5))(express@5.2.1(supports-color@8.1.1))(rxjs@7.8.1)(supports-color@8.1.1)(zod-to-json-schema@3.25.2(zod@4.6.5))(zod@4.6.5)
+        specifier: ^1.75.0
+        version: 1.75.0(ai@6.0.289(zod@4.6.5))(express@5.2.1(supports-color@8.1.1))(rxjs@7.8.1)(supports-color@8.1.1)(zod-to-json-schema@3.25.2(zod@4.6.5))(zod@4.6.5)
       '@nestjs/common':
         specifier: ^12.0.1
         version: 12.0.1(reflect-metadata@0.2.2)(rxjs@7.8.1)(supports-color@8.1.1)
@@ -521,7 +521,7 @@ importers:
         version: 3.0.0
       pino-pretty:
         specifier: ^13.1.3
-        version: 13.1.3
+        version: 13.2.0
       spark-md5:
         specifier: ^3.0.2
         version: 3.0.2
@@ -1809,21 +1809,21 @@ packages:
     resolution: {integrity: sha512-qC72D4+CDdjGqJvkFMMEAtancHUQ7/d/tAiHf64z8MopFDmcrtbcJuerDtFceuAfQJ2pDSfCKCtbqoGBNnwg0w==}
     engines: {node: '>=8'}
 
-  '@mastra/ai-sdk@1.10.4':
-    resolution: {integrity: sha512-mzeKWSnPjhV/N1vfqxKNF06A7x0FxiWy0bTu10YWxFFKlbls1bt0KFqx4xAETn0/SpdHVwgEhJaX5Luc85nWng==}
+  '@mastra/ai-sdk@1.10.6':
+    resolution: {integrity: sha512-9F/BvH8PRLquY6r8intzVPt7278IYnwaVICkNLkb/RU97uhoQdbmv3sSzjsSZwL7hyX3Gn9DdYzxN9QsPajSJQ==}
     engines: {node: '>=22.13.0'}
     peerDependencies:
       '@mastra/core': '>=1.5.0-0 <2.0.0-0'
       zod: ^3.25.0 || ^4.0.0
 
-  '@mastra/core@1.69.0':
-    resolution: {integrity: sha512-W/kwQnOe8MSVoNW7w3BkRMfyjOFPe/N/o1CVhW5mHt85m27UBAUVKHEcpVNyPJw+tk0xgde1mUbP6HunUxPVFA==}
+  '@mastra/core@1.75.0':
+    resolution: {integrity: sha512-1yw89tyha4HU1eO34IC5sYdSCbXuw8WCVf4+pqmNyRmoHp0ZcPzyberdsbq9O8CTHuxKZbf7cgsI2QNI2L3SRA==}
     engines: {node: '>=22.13.0'}
     peerDependencies:
       zod: ^3.25.0 || ^4.0.0
 
-  '@mastra/schema-compat@1.3.11':
-    resolution: {integrity: sha512-NvR+wYk4/d0uqzk702Aehd8Vbop+844c1Dp7TMkZVis71LzPORWJbFPQswrom9o+v5ollUfif+28lZzutGMq+A==}
+  '@mastra/schema-compat@1.3.13':
+    resolution: {integrity: sha512-L3AkWcujcCC9qKYiGOxjRN0NrNMIxLAwn/ayjNlD3zhFSUBDI45LmlFxAYHLeAz315uogKb+9tZA/TjHnjb95w==}
     engines: {node: '>=22.13.0'}
     peerDependencies:
       zod: ^3.25.0 || ^4.0.0
@@ -5901,8 +5901,8 @@ packages:
     engines: {node: '>=20'}
     hasBin: true
 
-  pino-pretty@13.1.3:
-    resolution: {integrity: sha512-ttXRkkOz6WWC95KeY9+xxWL6AtImwbyMHrL1mSwqwW9u+vLp/WIElvHvCSDg0xO/Dzrggz1zv3rN5ovTRVowKg==}
+  pino-pretty@13.2.0:
+    resolution: {integrity: sha512-jjghD1ML+Di/WxjJDz6j6Y4FT7hIXOlb8h27AyJ+ohtAXJXH4PS/xkv7si+RCCIW59HMgZsMKTDgzdr0RhuRrg==}
     hasBin: true
 
   pino-std-serializers@7.1.0:
@@ -6057,6 +6057,10 @@ packages:
   raw-body@3.0.2:
     resolution: {integrity: sha512-K5zQjDllxWkf7Z5xJdV0/B0WTNqx6vxG70zJE4N0kBs4LovmEYWJzQGxC9bS9RAKu3bgM40lrd5zoLJ12MQ5BA==}
     engines: {node: '>= 0.10'}
+
+  re2js@2.8.6:
+    resolution: {integrity: sha512-xLgQil4kIUCrAzVk9fRSkxkFNwmygLFjVxXrLc65aE1F0+Zsb8rxumFBy4XKyvgMCTL6kilDq3EZ0piE2dP/Dg==}
+    engines: {node: '>=18.0.0'}
 
   react-day-picker@10.0.1:
     resolution: {integrity: sha512-eNh6BlwcYInWaJtRv18mXQ06Ys/H6rdTZAnTaSdOYJuTpwP1JMCHNd1FDRadA+gbeinq+psdULN5Xnowy9mV8w==}
@@ -6456,6 +6460,9 @@ packages:
 
   sonic-boom@4.2.1:
     resolution: {integrity: sha512-w6AxtubXa2wTXAUsZMMWERrsIRAdrK0Sc+FUytWvYAhBJLyuI4llrMIC1DtlNSdI99EI86KZum2MMq3EAZlF9Q==}
+
+  sonic-boom@5.0.1:
+    resolution: {integrity: sha512-I1E9tHuKe6SdS/Uab4bl2o1ZUBm2SCTDFF9eQ66ehyVcFIBixfecy9DlwXCtnRF8CUzPw7Q4Dn6JQE/8iVl/FQ==}
 
   source-map-js@1.2.1:
     resolution: {integrity: sha512-UXWMKhLOwVKb728IUtQPXxfYU+usdybtUrK/8uGE8CQMvrhOpwvzDBwj0QhSL7MQc7vIsISBG8VQ8+IDQxpfQA==}
@@ -8511,12 +8518,12 @@ snapshots:
     dependencies:
       '@lukeed/csprng': 1.1.0
 
-  '@mastra/ai-sdk@1.10.4(@mastra/core@1.69.0(ai@6.0.289(zod@4.6.5))(express@5.2.1(supports-color@8.1.1))(rxjs@7.8.1)(supports-color@8.1.1)(zod-to-json-schema@3.25.2(zod@4.6.5))(zod@4.6.5))(zod@4.6.5)':
+  '@mastra/ai-sdk@1.10.6(@mastra/core@1.75.0(ai@6.0.289(zod@4.6.5))(express@5.2.1(supports-color@8.1.1))(rxjs@7.8.1)(supports-color@8.1.1)(zod-to-json-schema@3.25.2(zod@4.6.5))(zod@4.6.5))(zod@4.6.5)':
     dependencies:
-      '@mastra/core': 1.69.0(ai@6.0.289(zod@4.6.5))(express@5.2.1(supports-color@8.1.1))(rxjs@7.8.1)(supports-color@8.1.1)(zod-to-json-schema@3.25.2(zod@4.6.5))(zod@4.6.5)
+      '@mastra/core': 1.75.0(ai@6.0.289(zod@4.6.5))(express@5.2.1(supports-color@8.1.1))(rxjs@7.8.1)(supports-color@8.1.1)(zod-to-json-schema@3.25.2(zod@4.6.5))(zod@4.6.5)
       zod: 4.6.5
 
-  '@mastra/core@1.69.0(ai@6.0.289(zod@4.6.5))(express@5.2.1(supports-color@8.1.1))(rxjs@7.8.1)(supports-color@8.1.1)(zod-to-json-schema@3.25.2(zod@4.6.5))(zod@4.6.5)':
+  '@mastra/core@1.75.0(ai@6.0.289(zod@4.6.5))(express@5.2.1(supports-color@8.1.1))(rxjs@7.8.1)(supports-color@8.1.1)(zod-to-json-schema@3.25.2(zod@4.6.5))(zod@4.6.5)':
     dependencies:
       '@a2a-js/sdk-v0_3': '@a2a-js/sdk@0.3.14(express@5.2.1(supports-color@8.1.1))'
       '@a2a-js/sdk-v1': '@a2a-js/sdk@1.0.1(express@5.2.1(supports-color@8.1.1))'
@@ -8527,7 +8534,7 @@ snapshots:
       '@ai-sdk/provider-v7': '@ai-sdk/provider@4.0.17'
       '@isaacs/ttlcache': 2.1.5
       '@lukeed/uuid': 2.0.1
-      '@mastra/schema-compat': 1.3.11(zod@4.6.5)
+      '@mastra/schema-compat': 1.3.13(zod@4.6.5)
       '@standard-schema/spec': 1.1.0
       chat: 4.41.0(ai@6.0.289(zod@4.6.5))(supports-color@8.1.1)(zod@4.6.5)
       croner: 10.0.1
@@ -8545,6 +8552,7 @@ snapshots:
       p-retry: 7.1.1
       picomatch: 4.0.7
       posthog-node: 5.52.5(rxjs@7.8.1)
+      re2js: 2.8.6
       ws: 8.21.3
       xxhash-wasm: 1.1.0
       zod: 4.6.5
@@ -8567,7 +8575,7 @@ snapshots:
       - zod-openapi
       - zod-to-json-schema
 
-  '@mastra/schema-compat@1.3.11(zod@4.6.5)':
+  '@mastra/schema-compat@1.3.13(zod@4.6.5)':
     dependencies:
       json-schema-to-zod: 2.8.1
       zod: 4.6.5
@@ -12758,7 +12766,7 @@ snapshots:
       pino-abstract-transport: 3.0.0
       pump: 3.0.4
 
-  pino-pretty@13.1.3:
+  pino-pretty@13.2.0:
     dependencies:
       colorette: 2.0.20
       dateformat: 4.6.3
@@ -12771,7 +12779,7 @@ snapshots:
       pino-abstract-transport: 3.0.0
       pump: 3.0.4
       secure-json-parse: 4.1.0
-      sonic-boom: 4.2.1
+      sonic-boom: 5.0.1
       strip-json-comments: 5.0.3
 
   pino-std-serializers@7.1.0: {}
@@ -12933,6 +12941,8 @@ snapshots:
       http-errors: 2.0.1
       iconv-lite: 0.7.3
       unpipe: 1.0.0
+
+  re2js@2.8.6: {}
 
   react-day-picker@10.0.1(@types/react@19.3.0)(react@19.3.0):
     dependencies:
@@ -13532,6 +13542,10 @@ snapshots:
   sisteransi@1.0.5: {}
 
   sonic-boom@4.2.1:
+    dependencies:
+      atomic-sleep: 1.0.0
+
+  sonic-boom@5.0.1:
     dependencies:
       atomic-sleep: 1.0.0
 

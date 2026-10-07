@@ -72,3 +72,46 @@ export class ProviderRateLimitedError extends AppError {
     super(`模型服务繁忙: ${reason}`)
   }
 }
+
+/**
+ * 附件取不回来（对象不存在 / 存储不可用）。
+ *
+ * 为什么不静默跳过这条附件：用户发出去的东西在他眼里"已经发出去了"，模型却看不到 ——
+ * 那会得到一段**对看不见的附件胡说**的回复，比直接报错坏得多。
+ */
+export class ChatAttachmentFailedError extends AppError {
+  readonly code = AppErrorCodes.ChatAttachmentFailed
+  constructor(readonly filename: string) {
+    super(`附件读取失败: ${filename}`)
+  }
+}
+
+/**
+ * 这一轮的附件超出了当前模型能收的范围（不支持图片 / 不支持文件）。
+ *
+ * 为什么要在**我们这边**拦：给一个收不了图的模型发图，最坏的结果是上游**静默忽略** ——
+ * 用户以为模型看过了图，其实它什么也没看到，接着基于幻觉回答。宁可当场说清楚。
+ */
+export class ModelCapabilityMismatchError extends AppError {
+  readonly code = AppErrorCodes.ModelCapabilityMismatch
+  constructor(
+    readonly filename: string,
+    readonly reason: string,
+  ) {
+    super(`${reason}：${filename}`)
+  }
+}
+
+/**
+ * 上下文组装出来的最后一条不是用户消息（内部不变量被破坏）。
+ *
+ * 正常情况下 `ContextService` 一定把当前输入放在最后 —— 一旦不成立，附件就会**静默丢掉**。
+ * 宁可当场报错：这类"今天正好成立"的隐式依赖，出事时表现为"模型看不见我发的图"，
+ * 从现象往回查要绕很久。
+ */
+export class UserContentNotAppendableError extends AppError {
+  readonly code = AppErrorCodes.ModelCapabilityMismatch
+  constructor(readonly messageCount: number) {
+    super(`上下文末条不是用户消息（共 ${messageCount} 条），附件无法注入`)
+  }
+}

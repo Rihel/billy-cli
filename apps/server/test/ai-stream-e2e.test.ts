@@ -2,7 +2,7 @@ import 'dotenv/config'
 import { createServer, type Server } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { CommandRunner, Db, IdGeneration, RedisStore, setAuditUserProvider } from '@repo/kits'
-import { RunStatus, TimelineKind } from '@repo/shared'
+import { RunStatus, TimelineKind, TimelineRole } from '@repo/shared'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { ConversationEntity } from '../src/database/entities/conversation-entity.js'
 import { RunEntity } from '../src/database/entities/run-entity.js'
@@ -42,6 +42,7 @@ import {
   startMockModelServer,
 } from './helpers/mock-model-server.js'
 import { buildToolStackDeps } from './helpers/ai-tool-stack.js'
+import { STUB_IMAGE_BYTES, stubAttachments } from './helpers/attachments.js'
 
 /**
  * 流式链路端到端：假模型 + 真实数据库 + **真实 Redis**，不需要外部密钥。
@@ -207,6 +208,9 @@ beforeAll(async () => {
 
   conversations = new AgentConversationService(conversationRepo, runs, timelines, registry, silentLogger)
   const context = new ContextService(timelines, config, silentLogger)
+  // 附件替身：e2e 不带附件，但构造器是位置参数，少一个会让后面整体错位
+  const chatAttachments = stubAttachments(silentLogger)
+
   chat = new AgentChatService(
     mastra,
     registry,
@@ -216,6 +220,7 @@ beforeAll(async () => {
     runs,
     timelines,
     context,
+    chatAttachments,
     streamStore,
     toolRegistry,
     deps.metas,
@@ -318,11 +323,23 @@ describe('流式链路端到端（mock 模型 + 真实 DB + 真实 Redis）', ()
       .join('')
     expect(assistantText).toContain(MOCK_FINAL_TEXT)
 
-    const runRow = await db.dataSource.query<{ status: string; usage: unknown }[]>(
-      'SELECT status, usage FROM runs WHERE conversation_id = $1',
+    const runRow = await db.dataSource.query<
+      { id: string; status: string; usage: unknown; engine_run_id: string | null; snapshot: unknown }[]
+    >(
+      'SELECT id, status, usage, engine_run_id, snapshot FROM runs WHERE conversation_id = $1',
       [conversationId],
     )
     expect(runRow[0]?.status).toBe(RunStatus.Succeeded)
+    /**
+     * **引擎 runId 必须回写、快照必须落库**（2026-10-07 修的洞）。
+     *
+     * 曾经这两个字段一直是空的：`runs.engine_run_id` 没人写，而快照落库是
+     * `UPDATE runs SET snapshot ... WHERE engine_run_id = :runId` —— 找不到宿主就**丢掉快照**，
+     * 于是"崩溃后从快照续跑"这条线**从未真正生效**（库里 60 条运行只有 13 条早期手工造的带快照）。
+     * 现在引擎 runId 由我们生成（`eng_<runId>`）并同时交给 Mastra，两边对得上。
+     */
+    expect(runRow[0]?.engine_run_id).toBe(`eng_${runRow[0]?.id}`)
+    // 快照是否真的落库由 `ai-storage-recovery.test.ts` 专门验（那里的装配开了 durable；这个 e2e 没开）
     expect(runRow[0]?.usage).toBeTruthy()
     // 缓存命中**必须落到库里**（Mastra 放在顶层 `cachedInputTokens`，早先只读嵌套字段 → 永远是 null，
     // 用户看到"缓存命中没数"；mock 的 `prompt_tokens_details.cached_tokens = 64` 就是为这条链路加的）。
@@ -541,5 +558,45 @@ describe('流式链路端到端（mock 模型 + 真实 DB + 真实 Redis）', ()
       on: () => undefined,
     })
     expect(resumed).toBe(false)
+  })
+
+  /**
+   * 带附件的**流式**用例（2026-10-07 补）。
+   *
+   * 为什么必须单独有这一条：用户实际走的就是流式，而"带附件"的用例原先只覆盖了非流式 ——
+   * 曾经有个 bug（Mastra 在 durable 下把多模态 content 压平成字符串、图片静默丢失）
+   * 恰好只在"官方适配器 + 某条调用路径"上现形，非流式用例与 mock 路径都看不见它。
+   * 这里断言的是**模型真的收到了图**，而不只是"接口返回 200"。
+   */
+  it('带附件：图片真的进了模型请求（流式路径同样不被压平）', async () => {
+    const attachment = {
+      key: 'user_ai_stream/shot.png',
+      filename: 'shot.png',
+      mediaType: 'image/png',
+      bytes: STUB_IMAGE_BYTES.length,
+    }
+    const expectedDataUrl = `data:image/png;base64,${STUB_IMAGE_BYTES.toString('base64')}`
+
+    mock.requests.length = 0
+    const { status, text } = await postStream({ message: '这张图里有什么？', attachments: [attachment] })
+    expect(status).toBe(200)
+    expect(text).toContain('[DONE]')
+
+    // 1) 模型请求里有这张图（data URL 形式的 image part）
+    const withImage = mock.requests.filter((body) => JSON.stringify(body).includes(expectedDataUrl))
+    expect(withImage.length).toBeGreaterThanOrEqual(1)
+
+    // 2) 库里只落元数据：**不含 base64**（审计表不被内容撑变形）
+    const conversation = await conversations.list(USER, { page: 1, size: 1, includeDeleted: false })
+    const conversationId = conversation.items[0].id
+    createdConversationIds.push(conversationId)
+    const rows = await db.dataSource.query<{ payload: Record<string, unknown> }[]>(
+      'SELECT payload FROM timelines WHERE conversation_id = $1 AND role = $2',
+      [conversationId, TimelineRole.User],
+    )
+    expect(rows.length).toBeGreaterThanOrEqual(1)
+    const dumped = JSON.stringify(rows.map((row) => row.payload))
+    expect(dumped).not.toContain('base64')
+    expect(dumped).toContain('shot.png')
   })
 })

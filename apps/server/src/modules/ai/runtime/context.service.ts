@@ -1,6 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common'
 import { AppLogger } from '@repo/kits'
-import { TimelineKind, TimelineRole } from '@repo/shared'
+import { TimelineKind, TimelineRole, estimateContentTokens } from '@repo/shared'
 import type { ModelMessage } from 'ai'
 import { getContextWindow } from 'tokenlens'
 import type { TimelineEntity } from '../../../database/entities/timeline-entity.js'
@@ -74,6 +74,15 @@ export interface BuildContextInput {
   systemPrompt: string
   /** 本轮用户输入（参与估算） */
   userMessage: string
+  /**
+   * 本轮**附件的 token 成本**（没有附件就是 0）。
+   *
+   * 为什么由调用方算好传进来，而不是在这里自己读附件：附件内容要为模型**再读一次**对象存储
+   * （context 只认数据结构、不碰存储），两边各读一次是纯浪费。调用方先按存储 key 取回并算出
+   * 成本，这里只负责**让这份成本参与裁剪与压缩的判断**：
+   * 不参与的话，一张图能让实际输入远超估算，我们会在"以为没超"的情况下把请求发出去挨上游 400。
+   */
+  extraInputTokens?: number
 }
 
 /**
@@ -186,7 +195,9 @@ export class ContextService {
       })
     }
     const baseTokens = this.messagesTokens(systemMessages)
-    const userTokens = estimateTokens(input.userMessage) + 4
+    // 本轮输入 = 用户文字 + 附件成本（附件成本由调用方按真实内容算好；没有附件就是 0）
+    const extraInputTokens = Math.max(0, Math.trunc(input.extraInputTokens ?? 0))
+    const userTokens = estimateTokens(input.userMessage) + 4 + extraInputTokens
 
     // 保护：最近 N 轮的起始轮号（轮号越小越旧）
     const lastTurnIndex = segments.length > 0 ? segments[segments.length - 1].turnIndex : 0
@@ -205,7 +216,7 @@ export class ContextService {
         ...kept.flatMap((segment) => segment.messages),
         { role: 'user', content: input.userMessage },
       ]
-      const estimated = this.messagesTokens(messages)
+      const estimated = this.messagesTokens(messages) + extraInputTokens
       const snapshot: ContextSnapshot = {
         strategy,
         model: input.modelId,
@@ -425,16 +436,30 @@ export class ContextService {
     return { segments, trimmedCount }
   }
 
+  /**
+   * 估算一组消息的 token。
+   *
+   * 多模态消息（带图片 / 文件的用户消息）**不能按 JSON 长度猜**：一张 2MB 图片转成 data URL
+   * 后是几百万字符，按字符折算会得出"上下文已经爆了"的假结论，随即触发一次毫无必要的压缩
+   * （压缩要真花钱）。所以媒体部分按**固定成本**计（各家视觉模型的图片计价差异很大，
+   * 宁可估高一点：估高只会让我们更早裁历史，估低会直接被上游 400）。
+   */
   private messagesTokens(messages: ModelMessage[]): number {
     let total = 0
     for (const message of messages) {
-      if (typeof message.content === 'string') {
-        total += estimateTokens(message.content) + 4
-      } else {
-        total += estimateTokens(JSON.stringify(message.content)) + 4
-      }
+      total += this.contentTokens(message.content) + 4
     }
     return total
+  }
+
+  /**
+   * 一条消息内容的 token：文本走字符折算、媒体 part 走固定成本。
+   *
+   * 规则本身在 `@repo/shared` 的 `estimateContentTokens`（同一份规则前端也要用：
+   * 会话页要显示"这条消息大概占多少"）。这里只做 ModelMessage 层的外包。
+   */
+  private contentTokens(content: ModelMessage['content']): number {
+    return estimateContentTokens(content)
   }
 
   /** 把零散 seq 合并成区间，便于审计阅读 */

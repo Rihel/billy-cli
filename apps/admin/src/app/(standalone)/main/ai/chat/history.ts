@@ -1,10 +1,13 @@
 import {
+  ChatAttachmentSchema,
   TimelineKind,
   TimelineRole,
   type AgentRunModel,
   type AgentTimelineItemModel,
+  type ChatAttachmentModel,
 } from '@repo/shared'
 import type { UIMessage } from 'ai'
+import { z } from 'zod'
 
 /**
  * 时间线（数据库里的真相）→ UI 消息（AI SDK 的 `UIMessage`）。
@@ -30,6 +33,32 @@ const textOf = (item: AgentTimelineItemModel): string => {
   const text = item.payload?.text
   return typeof text === 'string' ? text : ''
 }
+
+/**
+ * 从用户消息事件里取出**附件元数据**（`payload.attachments`，见 `AgentUserMessagePayloadSchema`）。
+ *
+ * 只有 key 与元数据、没有文件内容 —— 回看时展示文件名与大小，要看原图/下载由页面另外签地址。
+ * 形状不认识就返回空数组（老数据没有这个字段，是正常情况，不该报错）。
+ */
+const attachmentsOf = (item: AgentTimelineItemModel): ChatAttachmentModel[] => {
+  const raw = item.payload?.attachments
+  if (!Array.isArray(raw)) return []
+  const parsed = z.array(ChatAttachmentSchema).safeParse(raw)
+  return parsed.success ? parsed.data : []
+}
+
+/** 附件 → UI 的 file part（`url` 留空：回看时没有可直接渲染的地址，展示靠文件名与元数据） */
+const toFileParts = (attachments: readonly ChatAttachmentModel[]): UIMessage['parts'] =>
+  attachments.map((attachment) => ({
+    type: 'file' as const,
+    mediaType: attachment.mediaType,
+    filename: attachment.filename,
+    url: '',
+    // 自带的字段（AI SDK 的类型不认识，但 JSON 会原样带到渲染层）
+    attachmentKey: attachment.key,
+    attachmentBytes: attachment.bytes,
+  })) as unknown as UIMessage['parts']
+
 
 const asRecord = (value: unknown): Record<string, unknown> | null =>
   value && typeof value === 'object' ? (value as Record<string, unknown>) : null
@@ -82,17 +111,29 @@ export const toUIMessages = (
       sorted.find((item) => item.role === TimelineRole.Assistant && item.messageId)?.messageId ??
       undefined
 
-    const userText = sorted
-      .filter((item) => item.kind === TimelineKind.Text && item.role === TimelineRole.User)
+    const userItems = sorted.filter(
+      (item) => item.kind === TimelineKind.Text && item.role === TimelineRole.User,
+    )
+    const userText = userItems
       .map(textOf)
       .filter(Boolean)
       .join('\n')
-    if (userText) {
+    const attachments = userItems.flatMap(attachmentsOf)
+    /**
+     * 用户消息的重建条件：**有文字或有附件**。
+     *
+     * 早先的判据是"有文字"，于是"只发了一张图、没打字"的那条消息在刷新后**整条消失**
+     * （附件是它的全部内容）。附件元数据从同一批用户事件里取。
+     */
+    if (userText || attachments.length > 0) {
       messages.push({
         // 用户消息没有 messageId（服务端只在助手侧落），用稳定的 run 前缀 id
         id: userMessageId ?? `${runId}-user`,
         role: 'user',
-        parts: [{ type: 'text', text: userText }],
+        parts: [
+          ...(userText ? [{ type: 'text' as const, text: userText }] : []),
+          ...toFileParts(attachments),
+        ],
       })
     }
 

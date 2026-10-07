@@ -38,7 +38,7 @@ minimumReleaseAgeExclude:
   - '@ai-sdk/gateway@3.0.199'
   - '@ai-sdk/provider-utils@4.0.53'
   - '@ai-sdk/provider@3.0.17'
-  - '@mastra/core@1.69.0'
+  - '@mastra/core@1.75.0'
   - ai@6.0.289
   - framer-motion@13.4.1
   - motion-dom@13.4.1

@@ -373,4 +373,79 @@ describe('历史里的耗时（工具条与思考块要显示真实值）', () =
       .find((part) => part.type === 'reasoning') as { durationMs?: number } | undefined
     expect(reasoningPart?.durationMs).toBe(3200)
   })
+  it('带附件的用户消息：重建出 file part（含存储 key 与字节数，供回看展示）', () => {
+    const messages = toUIMessages(
+      [
+        item({
+          seq: 1,
+          kind: 'text',
+          role: 'user',
+          payload: {
+            text: '看看这张图',
+            attachments: [
+              { key: 'k1', filename: 'shot.png', mediaType: 'image/png', bytes: 2048 },
+            ],
+          },
+        }),
+        item({ seq: 2, kind: 'text', payload: { text: '这是一张截图。' } }),
+      ],
+      [run(ROOT_RUN, null)],
+    )
+
+    const userParts = messages[0].parts as unknown as Array<Record<string, unknown>>
+    expect(userParts.map((part) => part.type)).toEqual(['text', 'file'])
+    expect(userParts[1]).toMatchObject({
+      type: 'file',
+      filename: 'shot.png',
+      mediaType: 'image/png',
+      attachmentKey: 'k1',
+      attachmentBytes: 2048,
+    })
+  })
+
+  it('**只发附件、没打字**的用户消息也要重建（否则刷新后整条消失）', () => {
+    const messages = toUIMessages(
+      [
+        item({
+          seq: 1,
+          kind: 'text',
+          role: 'user',
+          payload: {
+            text: '',
+            attachments: [
+              { key: 'k2', filename: 'doc.pdf', mediaType: 'application/pdf', bytes: 1024 },
+            ],
+          },
+        }),
+        item({ seq: 2, kind: 'text', payload: { text: '这份文档讲的是……' } }),
+      ],
+      [run(ROOT_RUN, null)],
+    )
+
+    expect(messages).toHaveLength(2)
+    const userParts = messages[0].parts as unknown as Array<Record<string, unknown>>
+    expect(userParts).toHaveLength(1)
+    expect(userParts[0]).toMatchObject({ type: 'file', filename: 'doc.pdf' })
+  })
+
+  it('附件形状不认识时当没有附件（老数据没有这个字段是正常的，不该把消息弄丢）', () => {
+    // 两条用户消息要落在**不同 run** 上：同一个 run 里的用户事件会合并成一条消息
+    const messages = toUIMessages(
+      [
+        item({ seq: 1, kind: 'text', role: 'user', payload: { text: '正常一问' } }),
+        item({
+          seq: 2,
+          kind: 'text',
+          role: 'user',
+          runId: CHILD_RUN,
+          payload: { text: '怪数据', attachments: 'oops' },
+        }),
+      ],
+      [run(ROOT_RUN, null), run(CHILD_RUN, null)],
+    )
+
+    expect(messages).toHaveLength(2)
+    expect(messages[1].parts).toHaveLength(1)
+    expect(messages[1].parts[0]).toMatchObject({ type: 'text', text: '怪数据' })
+  })
 })

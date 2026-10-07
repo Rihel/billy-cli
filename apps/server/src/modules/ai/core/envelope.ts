@@ -33,6 +33,13 @@ export interface RuntimeModel {
   /** 解密后的密钥（**只在内存里流转**） */
   apiKey: string
   contextWindow: number | null
+  /**
+   * 这个模型的**输入模态**（`["text","image","file"]`；`null` = 未声明）。
+   *
+   * 直接来自模型实体的独立字段（不再从 `capabilities` 里猜字段名）。附件校验靠它 ——
+   * 给收不了图的模型发图，最坏是上游静默忽略，用户以为模型看过了。
+   */
+  inputModalities: string[] | null
 }
 
 export interface AgentRuntimeEnvelope {

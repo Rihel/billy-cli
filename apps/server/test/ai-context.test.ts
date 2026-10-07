@@ -114,6 +114,30 @@ describe('组装策略（70% 触发 → 裁剪 → 压缩 → 兜底）', () => 
     expect(built.needsCompaction).toBe(false)
   })
 
+  it('附件的 token 成本参与估算**与阈值判断**（否则带一张图就被动挨上游 400）', async () => {
+    seq = 0
+    const service = buildService(turns(2))
+    const withoutAttachment = await service.buildInput({
+      conversationId: 'c1',
+      modelId: 'deepseek/deepseek-chat',
+      systemPrompt: '你是助手',
+      userMessage: '看看这个',
+    })
+    seq = 0
+    const withAttachment = await service.buildInput({
+      conversationId: 'c1',
+      modelId: 'deepseek/deepseek-chat',
+      systemPrompt: '你是助手',
+      userMessage: '看看这个',
+      // 模拟一张图（`MULTIMODAL_PART_TOKENS`）：组装器看不到图片内容，只认这份成本
+      extraInputTokens: 1500,
+    })
+
+    expect(withAttachment.snapshot.estimatedInputTokens).toBe(
+      withoutAttachment.snapshot.estimatedInputTokens + 1500,
+    )
+  })
+
   it('超 70% → 裁剪（trim），最近 3 轮被保护、丢弃区间如实记录', async () => {
     seq = 0
     // 每轮约 10k token（中文重复），窗口 128k → 触发线 89.6k：20 轮必然超

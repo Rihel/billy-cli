@@ -42,6 +42,7 @@ import {
   startMockModelServer,
 } from './helpers/mock-model-server.js'
 import { buildToolStackDeps } from './helpers/ai-tool-stack.js'
+import { stubAttachments } from './helpers/attachments.js'
 
 /**
  * **"会话页选的模型，真的被用了"** 端到端（真实数据库 + 离线 mock 供应商，不需要外部密钥）。
@@ -218,6 +219,9 @@ beforeAll(async () => {
     registry,
     silentLogger,
   )
+  // 附件替身：e2e 不带附件，但构造器是位置参数，少一个会让后面整体错位
+  const chatAttachments = stubAttachments(silentLogger)
+
   chat = new AgentChatService(
     mastra,
     registry,
@@ -227,6 +231,7 @@ beforeAll(async () => {
     runs,
     timelines,
     new ContextService(timelines, config, silentLogger),
+    chatAttachments,
     {} as never,
     toolRegistry,
     deps.metas,

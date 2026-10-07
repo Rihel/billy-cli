@@ -11,6 +11,37 @@ import { BasePaginateSchema } from './base.schema'
  * 先摆一套"无状态一问一答"的数据结构会误导调用方以为消息已被保存，故留空待设计。
  */
 
+/**
+ * 对话附件的**大小上限**（字节）：前端拦截与后端校验用同一个数。
+ *
+ * 为什么是 2MB：服务端请求体上限就是 2mb（`main.ts` 的 `useBodyParser`），而附件走
+ * 「预签名直传对象存储 + 只传存储 key」这条路，请求体里没有文件内容 —— 这个上限约束的是
+ * **单份文件本身**，模型侧再把它转成 data URL 送进去。
+ */
+export const CHAT_ATTACHMENT_MAX_BYTES = 2 * 1024 * 1024
+
+/** 一轮问答最多带几个附件 */
+export const CHAT_ATTACHMENT_MAX_COUNT = 3
+
+/**
+ * 一轮问答的附件（已上传到对象存储的那一份）。
+ *
+ * 只带**存储 key 与元数据**，不带文件内容：请求体因此与文件大小无关（不会撑爆 2mb 上限），
+ * 时间线落库也只存这份元数据，回看历史时按需再解析可访问地址。
+ */
+export const ChatAttachmentSchema = z.object({
+  /** 对象存储 key（前端经 `POST /storage/get-presigned-url` 直传后拿到） */
+  key: z.string().min(1).max(512),
+  /** 原始文件名（展示与提示词里都用它） */
+  filename: z.string().min(1).max(255),
+  /** IANA 媒体类型；缺省按 `application/octet-stream` 处理 */
+  mediaType: z.string().min(1).max(128),
+  /** 字节数（服务端据此复核上限，不信前端自述也得有个对照） */
+  bytes: z.number().int().nonnegative().max(CHAT_ATTACHMENT_MAX_BYTES),
+})
+
+export type ChatAttachmentModel = z.infer<typeof ChatAttachmentSchema>
+
 /** 单个 agent 的对外画像（前端 agent 选择器据此渲染） */
 export const AgentInfoSchema = z.object({
   /** agent key：稳定的对外标识（加 agent 时声明，前后端与数据库都用它） */
@@ -206,6 +237,20 @@ export const AgentTimelineItemSchema = z.object({
 
 export type AgentTimelineItemModel = z.infer<typeof AgentTimelineItemSchema>
 
+/**
+ * 用户消息事件（`kind='text'` 且 `role='user'`）的载荷形状。
+ *
+ * 落库时刻的原始形状是 `{ text, attachments? }`；这里给它一个**可选**的类型收口，
+ * 让前后端对同一份形状有共同说法（前端重建历史、后台审计页都读它）。
+ * 没有附件的历史事件保持 `{ text }` 的老形状，所以 `attachments` 是可选的。
+ */
+export const AgentUserMessagePayloadSchema = z.object({
+  text: z.string(),
+  attachments: z.array(ChatAttachmentSchema).optional(),
+})
+
+export type AgentUserMessagePayloadModel = z.infer<typeof AgentUserMessagePayloadSchema>
+
 /** 运行（一轮问答的记录）对外模型 */
 export const AgentRunSchema = z.object({
   id: z.string(),
@@ -273,21 +318,39 @@ export const AgentRunListSchema = BasePaginateSchema.extend({
 export type AgentRunListDto = z.infer<typeof AgentRunListSchema>
 
 /** 一轮问答入参（`POST /agent/chat`，非流式；流式见后续 `/agent/chat/stream`） */
-export const AgentChatSchema = z.object({
-  /** 会话 id；省略则新建会话 */
-  conversationId: z.string().min(1).max(32).optional(),
-  /** 新建会话时用哪个 agent；省略用默认 agent */
-  agentKey: z.string().min(1).max(64).optional(),
-  /**
-   * 本轮用哪个模型（`ai_models.id`）；省略 = 用服务端的默认模型。
-   *
-   * **只能选"供应商启用 + 模型启用"的**（§4.9）：传了不存在 / 已禁用的 id 直接 3402 / 3404，
-   * 不做"静默回落" —— 用户明确选了 A 却跑了 B 是最坏的体验。
-   */
-  modelId: z.string().min(1).max(32).optional(),
-  /** 本轮用户输入 */
-  message: z.string().min(1).max(8000),
-})
+export const AgentChatSchema = z
+  .object({
+    /** 会话 id；省略则新建会话 */
+    conversationId: z.string().min(1).max(32).optional(),
+    /** 新建会话时用哪个 agent；省略用默认 agent */
+    agentKey: z.string().min(1).max(64).optional(),
+    /**
+     * 本轮用哪个模型（`ai_models.id`）；省略 = 用服务端的默认模型。
+     *
+     * **只能选"供应商启用 + 模型启用"的**（§4.9）：传了不存在 / 已禁用的 id 直接 3402 / 3404，
+     * 不做"静默回落" —— 用户明确选了 A 却跑了 B 是最坏的体验。
+     */
+    modelId: z.string().min(1).max(32).optional(),
+    /**
+     * 本轮用户输入。
+     *
+     * 允许为空串：**可以只发附件不说话**（拖一张图上来问"这是什么"时，文字本来就是空的），
+     * 但「文字与附件不能同时为空」由下面的 `superRefine` 兜住 —— 空轮次没有意义，
+     * 让它到服务端才发现是白跑一轮。
+     */
+    message: z.string().max(8000),
+    /** 本轮附件（最多 {@link CHAT_ATTACHMENT_MAX_COUNT} 个，每个 ≤ {@link CHAT_ATTACHMENT_MAX_BYTES}） */
+    attachments: z.array(ChatAttachmentSchema).max(CHAT_ATTACHMENT_MAX_COUNT).optional(),
+  })
+  .superRefine((value, ctx) => {
+    if (value.message.trim().length === 0 && (value.attachments?.length ?? 0) === 0) {
+      ctx.addIssue({
+        code: 'custom',
+        message: '文字与附件不能同时为空',
+        path: ['message'],
+      })
+    }
+  })
 
 export type AgentChatDto = z.infer<typeof AgentChatSchema>
 

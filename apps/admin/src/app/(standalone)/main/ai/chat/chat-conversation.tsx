@@ -11,10 +11,13 @@ import {
   Badge,
   Button,
   IconText,
+  PromptInputAttachmentsBar,
   toastError,
   toastSuccess,
+  useImageLightbox,
   useIsMobile,
 } from '@repo/ui'
+import type { PromptAttachmentItem } from '@repo/ui'
 // 可拖动分栏：`components/ui/*` 属重型基础组件，走子路径按需引入（不进 barrel，带扩展名）
 import {
   ResizableHandle,
@@ -30,6 +33,7 @@ import {
 } from '@repo/ui/components/ai-elements/conversation.tsx'
 import {
   PromptInput,
+  PromptInputAttachmentButton,
   PromptInputBody,
   PromptInputFooter,
   PromptInputSubmit,
@@ -52,9 +56,37 @@ import { shouldAutoOpen } from './tool-card'
 import { copyText } from '@/lib/clipboard'
 import { usageLineText, usageLineTitle } from './format'
 import { conversationPath, isNewConversation } from './routes'
-import type { AgentConversationModel } from '@repo/shared'
+import { ATTACHMENT_ACCEPT, formatFileSize } from './attachment-utils'
+import { rejectedText, scanFiles, useAttachmentsUpload } from './use-attachments-upload'
+import { currentModelModalities, useAvailableModels } from './use-available-models'
+import type { AgentConversationModel, ChatAttachmentModel } from '@repo/shared'
 import type { AppPageQueryResponse } from '@repo/shared'
+import {
+  CHAT_ATTACHMENT_MAX_BYTES,
+  CHAT_ATTACHMENT_MAX_COUNT,
+  ChatAttachmentSchema,
+} from '@repo/shared'
+import { z } from 'zod'
 import { lastRunUsage, loadWholeRuns, loadWholeTimeline } from './data'
+
+/** 附件上限的展示文案（与 `AgentChatSchema` 的常量同源，改一处就够） */
+const ATTACHMENT_LIMIT_TEXT = `单个附件不超过 ${formatFileSize(CHAT_ATTACHMENT_MAX_BYTES)}`
+
+/**
+ * 从 `sendMessage` 传来的 `requestMetadata` 里取出附件元数据。
+ *
+ * 用 zod **真校验**而不是 `as` 断言：这份数据会被直接塞进请求体 ——
+ * 形状不认识（或某一条不合格）就当作没有附件，而不是把半成品发给服务端。
+ * `metadata` 是跨层的弱约定（类型系统管不到），所以这里必须自己把住。
+ */
+const attachmentMetadataOf = (metadata: unknown): ChatAttachmentModel[] => {
+  if (!metadata || typeof metadata !== 'object') return []
+  const parsed = z
+    .array(ChatAttachmentSchema)
+    .max(CHAT_ATTACHMENT_MAX_COUNT)
+    .safeParse((metadata as { attachments?: unknown }).attachments)
+  return parsed.success ? parsed.data : []
+}
 
 /**
  * 右栏开关的持久化 key：换会话 / 刷新都记住上次的选择。
@@ -94,6 +126,43 @@ export function ChatConversation({ conversationId }: { conversationId: string })
   const isNew = isNewConversation(conversationId)
 
   const [modelId, setModelId] = useState<string>()
+  /** 附件的上传通道（预签名直传对象存储）：点提交时先把文件传完，再带着 key 发这一轮 */
+  const attachmentUpload = useAttachmentsUpload()
+  /**
+   * 附件大图查看器（图片可缩放拖动，其它文件按类型预览）。
+   *
+   * **页面级只挂一个**：待发附件与每条消息的附件都往它里面送"这次要看的那一组"，
+   * 于是不用给每个附件条各配一份查看器状态。
+   */
+  const lightbox = useImageLightbox()
+
+  /** 点附件里的图片：把这一组交给查看器（图片走缩放看图，其它走文件预览） */
+  const previewAttachments = (items: readonly PromptAttachmentItem[], index: number) => {
+    lightbox.open(
+      items.map((item) => ({
+        id: item.key,
+        src: item.previewUrl ?? '',
+        alt: item.filename,
+        filename: item.filename,
+        mediaType: item.mediaType,
+        ...(item.bytes === undefined ? {} : { bytes: item.bytes }),
+      })),
+      index,
+    )
+  }
+  /**
+   * 本轮用的模型的**输入模态**（`null` = 未声明）。
+   *
+   * 与顶部模型选择器共用同一份查询缓存（`useAvailableModels` 的口径只写一次）。
+   * 「未声明」（`null`）与「清单还没到手」（`undefined`）都**不禁用**上传：
+   * 国内厂商普遍不给模态信息，硬禁用会把真正的视觉模型也误伤。
+   */
+  const inputModalities = currentModelModalities(useAvailableModels(modelId).current)
+  const attachmentsAllowed =
+    inputModalities === undefined ||
+    inputModalities === null ||
+    inputModalities.includes('image') ||
+    inputModalities.includes('file')
   /** 本轮改选的 agent（会话自带的 agentKey 由详情给出；这里是"覆盖值"，null 表示未覆盖） */
   const [agentKeyOverride, setAgentKeyOverride] = useState<string | null>(null)
   const [runId, setRunId] = useState<string>()
@@ -198,16 +267,22 @@ export function ChatConversation({ conversationId }: { conversationId: string })
         // 鉴权头与普通请求同一套（未登录返回 {}，后端会回 401）
         headers: async () => client.agent.authHeaders(),
         /**
-         * 我们的建流接口收的是**业务入参**（`{ conversationId?, agentKey?, message }`），
+         * 我们的建流接口收的是**业务入参**（`{ conversationId?, agentKey?, modelId?, message, attachments? }`），
          * 不是 AI SDK 默认的 `{ messages, id, trigger }` —— 在这里做一次转换。
+         *
+         * 附件为什么从 `requestMetadata` 取、而不是从消息的 file part 里反推：file part 里装的是
+         * **预览地址**（本地 blob / 对象存储直链），而服务端要的是**存储 key** ——
+         * key 只有上传那一步才知道。所以上传结果随 `sendMessage` 的 metadata 一起过来，
+         * 消息本身只负责"界面上长什么样"。
          */
-        prepareSendMessagesRequest: ({ messages }) => {
+        prepareSendMessagesRequest: ({ messages, requestMetadata }) => {
           const last = messages.at(-1)
           const message = (last?.parts ?? [])
             .filter((part) => isTextUIPart(part))
             .map((part) => part.text)
             .join('\n')
             .trim()
+          const attachments = attachmentMetadataOf(requestMetadata)
           return {
             body: {
               // 已有会话就带上；新会话不带（服务端会建一个，并从流里把 id 回给我们）
@@ -218,6 +293,7 @@ export function ChatConversation({ conversationId }: { conversationId: string })
               // 这一轮用哪个模型（后台配过且启用的）：服务端会校验，不可用直接报错，**不静默回落**
               ...(modelIdRef.current ? { modelId: modelIdRef.current } : {}),
               message,
+              ...(attachments.length > 0 ? { attachments } : {}),
             },
           }
         },
@@ -563,6 +639,7 @@ export function ChatConversation({ conversationId }: { conversationId: string })
                       message={message}
                       streaming={streaming}
                       onOpenPlan={() => focusRightPanel('plan')}
+                      onPreviewImage={previewAttachments}
                     />
                   ))
                 )}
@@ -575,21 +652,117 @@ export function ChatConversation({ conversationId }: { conversationId: string })
             </Conversation>
 
             <PromptInput
-              onSubmit={({ text }) => {
+              /**
+               * 附件的大小 / 类型校验**刻意不交给 `PromptInput` 的 `maxFileSize` / `accept`**，
+               * 而是放在下面的提交预检（`scanFiles`）里做。两条原因：
+               *
+               * 1. `accept` 只是文件选择框的提示，**粘贴进来的文件根本不过它**，拦不住；
+               * 2. `maxFileSize` 是"整批里有一个超限就把**这一批全丢掉**"的粗粒度行为 ——
+               *    用户粘三张图、其中一张大了点，结果三张全没了，且提示只有一句"都超限"。
+               *
+               * 提交预检给的是逐文件的原因（哪个、为什么、多大），且**有不合格的就不发这一轮** ——
+               * 静默丢掉用户粘进来的东西，比让他重来一次更糟。
+               */
+              accept={ATTACHMENT_ACCEPT}
+              multiple
+              onSubmit={async ({ text, files }) => {
                 const content = text.trim()
-                if (!content || streaming) return
+                if ((!content && files.length === 0) || streaming || attachmentUpload.uploading) {
+                  return
+                }
+
+                // 待发附件：只认本地文件（`files` 是 PromptInput 从附件状态里整理出来的）
+                const localFiles = files
+                  .map((part) => part.rawFile)
+                  .filter((file): file is File => file instanceof File)
+
+                const scanned = scanFiles(localFiles, inputModalities)
+                if (scanned.rejected.length > 0) {
+                  // 有不合格的**整轮不发**：静默丢掉用户粘进来的东西，比让他重来一次更糟
+                  toastError(rejectedText(scanned.rejected))
+                  throw new Error('附件不符合要求，已取消本次发送')
+                }
+                /**
+                 * 数量也整轮不发（与 `AgentChatSchema.attachments` 的 `.max()` 同一个常量）。
+                 *
+                 * 为什么不"自动只带前 N 个"：那等于**背着用户丢掉**他明确选中的文件，
+                 * 而他以为都发出去了。宁可挡住这一轮、让他自己决定去掉哪几个。
+                 */
+                if (scanned.accepted.length > CHAT_ATTACHMENT_MAX_COUNT) {
+                  toastError(
+                    `一轮最多带 ${CHAT_ATTACHMENT_MAX_COUNT} 个附件，当前有 ${scanned.accepted.length} 个，请先移除多余的`,
+                  )
+                  throw new Error('附件数量超出上限，已取消本次发送')
+                }
+
                 setErrorText(undefined)
                 clearError()
-                void sendMessage({ text: content })
+
+                let attachments: ChatAttachmentModel[] = []
+                if (scanned.accepted.length > 0) {
+                  try {
+                    attachments = await attachmentUpload.upload(scanned.accepted)
+                  } catch (uploadError) {
+                    const reason =
+                      uploadError instanceof Error ? uploadError.message : String(uploadError)
+                    toastError(`附件上传失败：${reason}`)
+                    // 抛出去让 `PromptInput` 知道"这一轮没发成"，输入框里的附件与文字都留着
+                    throw uploadError
+                  }
+                }
+
+                await sendMessage(
+                  {
+                    text: content,
+                    // 直接把附件 part 交给 useChat：消息里因此带上 file part，气泡里就能显示附件。
+                    // 真正发给服务端的不是它，而是 metadata 里那份"存储 key + 元数据"
+                    // （part 里装的是预览地址，服务端要的是 key，见 prepareSendMessagesRequest）
+                    ...(files.length > 0 ? { files } : {}),
+                  },
+                  { metadata: { attachments } },
+                )
               }}
             >
+              {/* 待发附件条：粘完、发之前就能看清带了什么（图给缩略图，别的给文件名与大小） */}
               <PromptInputBody>
-                <PromptInputTextarea placeholder="说说你想做什么…（Enter 发送，Shift+Enter 换行）" />
+                <PromptInputAttachmentsBar onPreviewImage={previewAttachments} />
+                <PromptInputTextarea
+                  placeholder={`说说你想做什么…（⌘/Ctrl + Enter 发送，Enter 换行；可粘贴图片或文件，${ATTACHMENT_LIMIT_TEXT}）`}
+                  submitOn="mod+enter"
+                />
               </PromptInputBody>
               {/* 左下角：本轮用哪个模型；右下角：本轮统计 + 发送/停止 */}
               <PromptInputFooter className="gap-2">
                 <PromptInputTools>
                   <ModelPicker value={modelId} onChange={setModelId} disabled={streaming} />
+                  {/* 点击上传的入口：粘贴之外总得有"点一下选文件"这条路 */}
+                  <PromptInputAttachmentButton
+                    disabled={streaming || !attachmentsAllowed}
+                    tooltip={
+                      streaming
+                        ? '正在回复中，回复结束后再上传'
+                        : attachmentsAllowed
+                          ? '上传图片或文件（也可直接粘贴）'
+                          : '当前模型不支持图片 / 文件输入：可在后台「模型管理」声明，或换一个模型'
+                    }
+                  />
+                  {!attachmentsAllowed ? (
+                    <span className="text-xs text-muted-foreground">当前模型不支持附件</span>
+                  ) : inputModalities === null ? (
+                    // 未声明 ≠ 不支持：国内厂商的"列模型"接口普遍不给模态，所以只提醒、不拦。
+                    // 真不能收图时，服务端会明确报错（3312），比在这里瞎猜强。
+                    <span
+                      className="text-xs text-muted-foreground"
+                      title="后台「模型管理」里可以声明该模型支持哪些输入模态"
+                    >
+                      该模型未声明输入模态，图片 / 文件可能读不了
+                    </span>
+                  ) : null}
+                  {attachmentUpload.uploading ? (
+                    <span className="text-xs text-muted-foreground">
+                      正在上传附件 {attachmentUpload.progress.done}/{attachmentUpload.progress.total}…
+                    </span>
+                  ) : null}
                 </PromptInputTools>
                 <div className="flex min-w-0 items-center gap-2">
                   <RunUsageInline usage={usage} turn={turn} />
@@ -627,6 +800,9 @@ export function ChatConversation({ conversationId }: { conversationId: string })
           </>
         ) : null}
       </ResizablePanelGroup>
+
+      {/* 附件查看器：挂在会话页最外层，全局只有一个实例 */}
+      {lightbox.lightbox}
     </>
   )
 }

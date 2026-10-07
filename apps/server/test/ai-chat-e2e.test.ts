@@ -1,6 +1,6 @@
 import 'dotenv/config'
 import { CommandRunner, Db, describePlatform, resolveShell, setAuditUserProvider } from '@repo/kits'
-import { AppErrorCodes, RunStatus, TimelineKind } from '@repo/shared'
+import { AppErrorCodes, RunStatus, TimelineKind, TimelineRole } from '@repo/shared'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { ConversationEntity } from '../src/database/entities/conversation-entity.js'
 import { RunEntity } from '../src/database/entities/run-entity.js'
@@ -32,6 +32,7 @@ import { ReadToolResultTool } from '../src/modules/ai/tools/read-tool-result.too
 import { ToolGateway } from '../src/modules/ai/core/tools/tool.gateway.js'
 import { ToolRegistry } from '../src/modules/ai/core/tools/tool.registry.js'
 import { buildToolStackDeps } from './helpers/ai-tool-stack.js'
+import { STUB_IMAGE_BYTES, stubAttachments } from './helpers/attachments.js'
 import { AgentConversationService } from '../src/modules/ai/runtime/conversation.service.js'
 import { ConversationRepository } from '../src/modules/ai/runtime/conversation.repository.js'
 import { ContextService } from '../src/modules/ai/runtime/context.service.js'
@@ -133,6 +134,9 @@ beforeAll(async () => {
       baseURL: mock.baseURL,
       apiKey: 'test-key',
       contextWindow: null,
+      mode: 'chat',
+      // 未声明输入模态：附件校验因此**不拦**（与国内厂商普遍不给模态同一姿态）
+      inputModalities: null,
     }),
   } as never
 
@@ -196,6 +200,9 @@ beforeAll(async () => {
   )
   const context = new ContextService(timelines, config, silentLogger)
 
+  // 附件替身：e2e 不带附件，但构造器是位置参数，少一个会让后面整体错位
+  const chatAttachments = stubAttachments(silentLogger)
+
   chat = new AgentChatService(
     mastra,
     registry,
@@ -205,6 +212,7 @@ beforeAll(async () => {
     runs,
     timelines,
     context,
+    chatAttachments,
     // 非流式路径不碰 Redis：这里给一个最小替身（流式链路有专门的端到端测试覆盖）
     {} as never,
     toolRegistry,
@@ -518,5 +526,71 @@ describe('对话链路端到端（mock 模型 + 真实数据库）', () => {
       [first.conversationId],
     )) as Array<{ count: number }>
     expect(rows[0]?.count).toBe(1)
+  })
+
+  it('带附件：**只传存储 key**，服务端按 key 取回并作为图片喂给模型；时间线只落元数据（不落 base64）', async () => {
+    const attachment = {
+      key: 'user_ai_e2e/shot.png',
+      filename: 'shot.png',
+      mediaType: 'image/png',
+      bytes: STUB_IMAGE_BYTES.length,
+    }
+
+    mock.requests.length = 0
+    const result = await chat.chat(USER, {
+      message: '这张图里有什么？',
+      attachments: [attachment],
+    })
+    createdConversationIds.push(result.conversationId)
+
+    // 1) 用户消息事件：只落 key 与元数据
+    const events = await timelines.listSince(result.conversationId, 0, 100, { rootOnly: true })
+    const userEvent = events.find(
+      (event) => event.role === TimelineRole.User && event.kind === TimelineKind.Text,
+    )
+    expect(userEvent?.payload).toMatchObject({
+      text: '这张图里有什么？',
+      attachments: [attachment],
+    })
+    /**
+     * **接口请求体里不能有附件内容** —— 它只带 key 与元数据。
+     * 这一条是"2MB 的附件怎么进得了 2mb 的请求体"那个主要矛盾的回归防线。
+     */
+    expect(JSON.stringify(userEvent?.payload)).not.toContain('base64')
+
+    /**
+     * 2) 模型请求里真的有这张图（data URL 形式的 image part）。
+     *
+     * 遍历而不是取最后一条：收尾阶段还会为"会话命名"发一次请求（那条只带文本转录），
+     * 取 `at(-1)` 会拿到它 —— 这也顺带说明命名请求**不带图**（省 token，见 §4.10）。
+     */
+    const expectedDataUrl = `data:image/png;base64,${STUB_IMAGE_BYTES.toString('base64')}`
+    /**
+     * **这一条是回归防线**：模型请求里必须真的带图。
+     *
+     * 它此前测不出来，是因为这个文件用 `as never` 的模型桩**绕过了模型装配层**
+     * （桩直接给 Mastra 一个模型对象，而生产走的是"按调用传模型实例"那条路）。
+     * 于是"Mastra 会把多模态 content 压平成纯字符串、图片被静默丢掉"这个 bug
+     * 在 373 个测试全绿的情况下依然存在。现在真实链路（`toMastraModelInstance`）被覆盖到了。
+     */
+    const withImage = mock.requests.filter((body) =>
+      JSON.stringify(body).includes(expectedDataUrl),
+    )
+    // 至少一次；带工具的一轮里，后续那次模型调用也会把整段对话（含图）重发一遍
+    expect(withImage.length).toBeGreaterThanOrEqual(1)
+    // 而且**不是**那条"会话命名"请求：命名只看文本转录（图不该进命名提示词）
+    const titleRequests = mock.requests.filter((body) =>
+      JSON.stringify(body).includes('会话命名助手'),
+    )
+    expect(titleRequests.every((body) => !JSON.stringify(body).includes(expectedDataUrl))).toBe(true)
+
+    // 3) 落库的那一行同样不含 base64（审计表不被内容撑变形）
+    const rows = await db.dataSource.query<{ payload: Record<string, unknown> }[]>(
+      'SELECT payload FROM timelines WHERE run_id = $1 AND role = $2',
+      [result.runId, TimelineRole.User],
+    )
+    expect(rows).toHaveLength(1)
+    expect(JSON.stringify(rows[0].payload)).not.toContain('base64')
+    expect(JSON.stringify(rows[0].payload)).toContain('shot.png')
   })
 })
