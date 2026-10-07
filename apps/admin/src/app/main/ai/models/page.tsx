@@ -306,18 +306,16 @@ export default function AiModelsPage() {
     createModelDialog.open()
   }
 
+  /**
+   * 打开"编辑模型"。
+   *
+   * ⚠️ **不要在这里 `modelForm.reset(...)` 回填**：`ModalForm` 的注释写得很清楚 ——
+   * 弹窗场景下 tanstack 的 `reset` 有**渲染同步问题**（值进了 store，界面不跟着变），
+   * 所以它是用 `values` + `setFieldValue` 逐字段写入来绕开的。
+   * 之前这里既 `reset` 又没给 `ModalForm` 传 `values`，于是弹窗打开时**所有字段都是空的**
+   * （2026-10-07 用户报的"编辑模型弹窗没有回填数据"）。
+   */
   const openEditModel = (model: AiModelModel) => {
-    modelForm.reset({
-      modelKey: model.modelKey,
-      displayName: model.displayName,
-      contextWindow: model.contextWindow ?? undefined,
-      maxOutputTokens: model.maxOutputTokens ?? undefined,
-      enabled: model.enabled,
-      mode: model.mode,
-      // `null` = 未声明（区别于"空数组 = 明确声明什么都不支持"）
-      inputModalities: model.inputModalities ?? undefined,
-      outputModalities: model.outputModalities ?? undefined,
-    })
     editModelDialog.open(model)
   }
 
@@ -630,12 +628,17 @@ export default function AiModelsPage() {
           name: 'mode',
           label: '模型类型',
           hint: '只有对话 / 文本补全类会出现在会话页的模型选择器里（未声明的照列，真选错了报错也看得懂）',
-          render: ({ field }: FormFieldContext<ModelForm>) => (
+          /**
+           * ⚠️ 自定义 `render` 字段取显示值**必须读 `values`**，不能读 `field.state.value` ——
+           * 后者在弹窗里可能滞后于 `form.reset()`，表现就是"编辑弹窗不回填"（踩过）。
+           * 内置控件之所以没这个问题，是因为 `FormRenderer` 把 `values[name]` 传给了它们。
+           */
+          render: ({ values, field }: FormFieldContext<ModelForm>) => (
             <DictSelect
               dict={AiModelMode}
               onValueChange={(next) => field.handleChange(next ?? 'chat')}
               triggerClassName="w-full"
-              value={(field.state.value as string) || 'chat'}
+              value={typeof values.mode === 'string' && values.mode ? values.mode : 'chat'}
             />
           ),
         },
@@ -643,12 +646,12 @@ export default function AiModelsPage() {
           name: 'inputModalities',
           label: '输入模态',
           span: 2,
-          render: ({ field }) => (
+          render: ({ values, field }: FormFieldContext<ModelForm>) => (
             <div className="flex flex-col gap-1">
               <span className="text-sm">输入模态</span>
               <ModalityPicker
                 onChange={(next) => field.handleChange(next as never)}
-                value={field.state.value as string[] | undefined}
+                value={Array.isArray(values.inputModalities) ? values.inputModalities : undefined}
               />
               <span className="text-xs text-muted-foreground">
                 供应商的「列模型」接口多数不给这项；不声明时附件不会被拦下，只在会话页提醒
@@ -660,12 +663,12 @@ export default function AiModelsPage() {
           name: 'outputModalities',
           label: '输出模态',
           span: 2,
-          render: ({ field }) => (
+          render: ({ values, field }: FormFieldContext<ModelForm>) => (
             <div className="flex flex-col gap-1">
               <span className="text-sm">输出模态</span>
               <ModalityPicker
                 onChange={(next) => field.handleChange(next as never)}
-                value={field.state.value as string[] | undefined}
+                value={Array.isArray(values.outputModalities) ? values.outputModalities : undefined}
               />
               <span className="text-xs text-muted-foreground">我们只做对话，通常只勾「文本」</span>
             </div>
@@ -1162,6 +1165,30 @@ export default function AiModelsPage() {
         form={modelForm}
         dialogClassName="sm:max-w-xl"
         items={modelFormItems(editModelDialog.isOpen)}
+        /**
+         * 编辑时把这一行的值交给 `ModalForm` 逐字段写入（新建时不传，走表单默认值）。
+         *
+         * 两个刻意的转换：
+         * - `null` → `undefined`：`ModalForm` 只写**非 undefined** 的字段，传 `null` 会被它跳过，
+         *   于是表单留着上一次的值（比空更糟）；而 `undefined` 在本表单里就是"未声明"的表示
+         *   （`ModalityPicker` 也这么读），语义正好对得上；
+         * - `outputModalities` 缺失时回落到 `['text']`：与 `useForm` 的默认值一致，
+         *   免得编辑一个老模型时"输出模态"突然变成空。
+         */
+        values={
+          editModelDialog.data
+            ? {
+                modelKey: editModelDialog.data.modelKey,
+                displayName: editModelDialog.data.displayName,
+                contextWindow: editModelDialog.data.contextWindow ?? undefined,
+                maxOutputTokens: editModelDialog.data.maxOutputTokens ?? undefined,
+                enabled: editModelDialog.data.enabled,
+                mode: editModelDialog.data.mode,
+                inputModalities: editModelDialog.data.inputModalities ?? undefined,
+                outputModalities: editModelDialog.data.outputModalities ?? ['text'],
+              }
+            : undefined
+        }
         description={
           editModelDialog.isOpen
             ? '可改展示名 / 上下文窗口 / 最大输出 / 启停；模型标识由供应商侧决定，不可改。'

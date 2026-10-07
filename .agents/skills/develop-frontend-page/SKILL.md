@@ -49,6 +49,21 @@ description: 在 Billy 工程中开发前端页面：Admin 后台页（@repo/ui 
   这些组件**不读 `message.parts`** —— 状态由调用方从 part 里取出来当 props 传（映射写法见
   `apps/web/src/app/ai/chat/page.tsx`）。
 
+## 弹窗表单回填（硬性）—— 走 `ModalForm` 的 `values`
+
+`ModalForm` / `DrawerForm` 的回填入口是 **`values` 属性**（内部用 `form.setFieldValue` 逐字段写，
+注释里写明这是为了**绕开 tanstack `reset` 在弹窗场景的渲染同步问题**）。
+**不要**用 `openEditXxx` 里 `form.reset(...)` 当回填手段 —— 值会进 store 但界面不跟着变，
+表现就是"编辑弹窗打开后**所有字段都是空的**"（2026-10-07 踩过）。
+
+- 编辑：`values={editDialog.data ? { ...从 data 映射字段 } : undefined}`；
+- 新建：不传 `values`，吃表单的 `defaultValues`；
+- `null` 要转成 `undefined`：`ModalForm` 只写**非 undefined** 的字段，传 `null` 会被跳过，
+  于是表单留着上一次的值（比空更糟）。
+
+回归防线：`packages/ui/test/modal-form-backfill.test.tsx`（给 `values` 就要真的显示出来；
+破坏回填它立刻变红）。
+
 ## 设计系统（硬性）—— 视觉取值只走语义 token
 
 token / 主题 / 字体回退链 / 组件质感的**唯一定义处**是 `@repo/ui`
