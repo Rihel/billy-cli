@@ -593,4 +593,42 @@ describe('对话链路端到端（mock 模型 + 真实数据库）', () => {
     expect(JSON.stringify(rows[0].payload)).not.toContain('base64')
     expect(JSON.stringify(rows[0].payload)).toContain('shot.png')
   })
+
+  /**
+   * PDF 用例（2026-10-07 修"识别不了 PDF"）。
+   *
+   * 为什么要端到端钉住：PDF **不能只依赖供应商的文件通道** —— DeepSeek 官方适配器只认
+   * `image/*` 的 file part，PDF 会被它记一条警告后静默丢掉（运行照样"成功"，
+   * 用户看到的是模型对着一份看不见的 PDF 胡说）。正确做法是**本地抽文字内联**，
+   * 所以这里断言"模型请求里真的出现了 PDF 的文字"，而不只是接口返回 200。
+   */
+  it('PDF 附件：抽出的文字真的进了模型请求（而不是发个 file part 被上游丢掉）', async () => {
+    const attachment = {
+      key: 'user_ai_e2e/doc.pdf',
+      filename: 'doc.pdf',
+      mediaType: 'application/pdf',
+      bytes: 590,
+    }
+
+    mock.requests.length = 0
+    const result = await chat.chat(USER, {
+      message: '这份 PDF 讲了什么？',
+      attachments: [attachment],
+    })
+    createdConversationIds.push(result.conversationId)
+
+    // PDF 的文字出现在发给模型的请求里（替身按 `.pdf` 后缀返回那份最小 PDF）
+    const withPdfText = mock.requests.filter((body) =>
+      JSON.stringify(body).includes('Billy PDF secret phrase'),
+    )
+    expect(withPdfText.length).toBeGreaterThanOrEqual(1)
+
+    // 库里仍只落元数据（**不落正文**：审计表不该被文件内容撑大）
+    const rows = await db.dataSource.query<{ payload: Record<string, unknown> }[]>(
+      'SELECT payload FROM timelines WHERE run_id = $1 AND role = $2',
+      [result.runId, TimelineRole.User],
+    )
+    expect(JSON.stringify(rows[0]?.payload)).toContain('doc.pdf')
+    expect(JSON.stringify(rows[0]?.payload)).not.toContain('secret phrase')
+  })
 })

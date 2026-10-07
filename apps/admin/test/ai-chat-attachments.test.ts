@@ -116,15 +116,22 @@ describe('scanFiles', () => {
     expect(result.rejected[0]).toContain('不支持图片输入')
   })
 
-  it('模型支持图片但不支持文件：PDF 被拦下，图片照收（两种模态是独立的）', () => {
+  it('**PDF 不再被"文件输入"能力拦下**（服务端会抽文字层内联，任何模型都能读）', () => {
     const result = scanFiles(
       [fileOf('doc.pdf', 'application/pdf', 1024), fileOf('shot.png', 'image/png', 1024)],
       ['text', 'image'],
     )
 
-    expect(result.accepted.map((file) => file.name)).toEqual(['shot.png'])
-    expect(result.rejected[0]).toContain('doc.pdf')
-    expect(result.rejected[0]).toContain('不支持文件输入')
+    // 2026-10-07 修：PDF 走文本提取，不该因为模型没声明 `file` 就被拒；
+    // 真正需要"文件输入"能力的只有"抽不出文字层的扫描件"，那一步在服务端读文件时判
+    expect(result.accepted.map((file) => file.name)).toEqual(['doc.pdf', 'shot.png'])
+    expect(result.rejected).toHaveLength(0)
+  })
+
+  it('只收文本的模型：图片仍被拦（放宽的只有 PDF，图片判据不变）', () => {
+    const result = scanFiles([fileOf('shot.png', 'image/png', 1024)], ['text'])
+    expect(result.accepted).toHaveLength(0)
+    expect(result.rejected[0]).toContain('不支持图片输入')
   })
 
   it('**未声明（null）时一律放行**，只在会话页提醒（国内厂商普遍不给模态）', () => {

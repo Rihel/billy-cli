@@ -1261,7 +1261,7 @@ AGENT_COMMAND_WORK_DIR=               # 缺省 = 服务进程工作目录
 | **对象存储**（`ObjectStorage`） | **文件本体**：前端经预签名 URL 直传（`use-attachments-upload.ts` 的 md5 key + `PUT`） | 只有它适合放二进制；放请求体必然撞 2mb 上限 |
 | **请求体**（`AgentChatSchema.attachments`） | 只传 `{key, filename, mediaType, bytes}` | 与文件大小无关（2MB 图 base64 后 +33% 必然 413） |
 | **`timelines.payload`** | 同样的 `{key, filename, mediaType, bytes}`（`userMessagePayload`） | **绝不落 base64**：`runs` / `timelines` 是审计表，"一律不裁剪"的口径下塞几 MB 图片会把表撑变形、把时间线分页拖慢；要展示再按 key 解析 |
-| 模型输入 | 图片 → `image` part 的 data URL；文本类 → 内联文本；PDF → `file` part | 不依赖"供应商能不能访问我们的对象存储"（预签名地址对内网不可达、会过期） |
+| 模型输入 | 图片 → `image` part 的 data URL；文本类 → 内联文本；**PDF → 本地抽出文字层后内联成文本** | 不依赖"供应商能不能访问我们的对象存储"（预签名地址对内网不可达、会过期）；PDF 也不依赖供应商的文件通道（见下） |
 
 **键的命名空间**：前台用户上传时服务端把 key 改写成 `user/<自己的 id>/<basename>`
 （`resolveUploadKey` 清掉 `/` 与 `..`，防目录穿越与伪造他人前缀）；管理员后台上传不加前缀。
@@ -1279,7 +1279,8 @@ AGENT_COMMAND_WORK_DIR=               # 缺省 = 服务进程工作目录
 | --- | --- | --- |
 | 图片（png/jpeg/webp/gif） | `image` part，内容用 **data URL** | 不依赖"供应商能不能访问我们的存储"：预签名地址对内网对象存储不可达，且会过期 |
 | 文本类（txt/md/csv 及常见代码后缀） | 取回后**内联成文本** part（≤2 万字符，截断明示） | 模型看的就是文字，没必要走文件通道；一份 2MB 文本吃掉整轮预算不划算 |
-| PDF 等二进制 | `file` part（data URL） | 交给模型 / 供应商自己解析；供应商不支持时由上游报错，错误经既有链路回到界面 |
+| **PDF（有文字层）** | **本地抽文字 → 内联成 `text` part** | 供应商的文件通道**不可靠**：DeepSeek 官方适配器只认 `image/*` 的 file part，PDF 会被它记一条警告后**静默丢掉**（运行照样成功）。抽出的文字对任何模型都有效 |
+| PDF（扫描件 / 无文字层） | 退回 `file` part | 抽不出文字只能交给模型；此时**才**要求模型的"文件输入"能力，不支持就当场抛错说清 |
 
 **判据只看我们自己的**（媒体类型 + 文件名后缀）：前端传来的 `mediaType` 是"用户设备认为的类型"，
 不可当可信输入（浏览器常把 `.md` 报成 `application/octet-stream`，所以有后缀兜底）。
@@ -1398,13 +1399,15 @@ OpenRouter 的 `architecture.*`、LiteLLM 的 `supports_vision` / `supports_pdf_
 
 **三层校验，判据同一份**（`attachmentCapabilityIssue`，输入是模态数组）：
 
-1. **前端预检**（提交前）：图片要 `image`、PDF 要 `file`；明确声明不支持就**整轮不发**并逐条说明；
+1. **前端预检**（提交前）：只判图片（要 `image`）—— PDF 与文本类我们都能本地转成文字，不需要模型有对应能力；明确声明不支持就**整轮不发**并逐条说明；
    清单还没到手（`undefined`）或模型未声明（`null`）都**不拦**（交给服务端）；
 2. **服务端权威校验**（`ChatAttachmentService.assertSupported`）：前端可以绕过，所以必须再判一次 ——
    明确不支持抛 3312；未声明只留一条 warn（便于排障"用户发图后模型说看不到"）；
 3. **读不出来时的降级**（`readAttachment` 的顺序，有讲究）：
-   图片 → `image` part；PDF → `file` part（**必须排在"当文本试"之前**，否则 PDF 里的
-   `%PDF-1.4` / 对象字典那一段可读 ASCII 会让它被当成乱码内联进提示词，白烧一窗口 token）；
+   图片 → `image` part；**PDF → 先本地抽文字层（`extractPdfText`）**，抽到就内联成文本，
+   抽不到（扫描件 / 加密）才退回 `file` part —— 退回时**才**判模型的"文件输入"能力，不支持就抛错；
+   这一步**必须排在"当文本试"之前**，否则 PDF 里的 `%PDF-1.4` / 对象字典那段可读 ASCII
+   会让它被当成乱码内联进提示词，白烧一窗口 token；
    认不出类型的 → **先当文本试**（读得出来就内联，任何模型都能用）；都不行 → 明确拒绝。
 
 **界面**：模型选择器的每一项与触发按钮上标「图」/「文件」徽标（选之前就知道）；
@@ -2209,7 +2212,7 @@ AI SDK v6 的续传是**两层 API**（不是同一方法的两个名字）：
 | **子 agent 的提示词** | **由主 agent 现场撰写**（工具的 `system_prompt` 入参，必填）；不再有 `analyst.eta` 这类静态子 agent 提示词 |
 | **子 agent 的工具面** | **全部工具 − 委派类工具**（`delegation` 标记）→ 天然深度 1，不会无限递归 |
 | **子 agent 的落库** | 独立 `runs` 行（`parent_run_id` / `depth` / `tool_call_id`）+ 自己完整的 `timelines`；动态 prompt 全量落 `request_snapshot`；消耗汇总进父 run，**轮数只数根 run** |
-| **对话附件** | **只传存储 key、不传文件内容**（请求体与文件大小无关）；图片走 `image` part 的 data URL、文本类内联、PDF 走 `file` part；时间线只落元数据（§3.16） |
+| **对话附件** | **只传存储 key、不传文件内容**（请求体与文件大小无关）；图片走 `image` part 的 data URL、文本类内联、**PDF 本地抽文字内联**；时间线只落元数据（§3.16） |
 | **多模态能力的建模** | **模型实体的独立字段**（`mode` + `input_modalities` + `output_modalities`），不塞进 `capabilities` jsonb。模态数组对齐 **OpenRouter** 的 `architecture.input_modalities`，类型字段对齐 **LiteLLM** 的 `mode`（§3.16.5） |
 | **未声明的语义** | `null` = 未声明（**不拦**附件，只提醒）与 `[]` = 明确什么都不支持（拦）**是两件事**；供应商给了就落库、没给不编造；同步不覆盖人工填的值 |
 

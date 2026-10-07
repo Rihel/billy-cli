@@ -5,6 +5,7 @@ import {
   attachmentCapabilityIssue,
   looksLikeImage,
   looksLikePdf,
+  modalitySupport,
   type ChatAttachmentModel,
 } from '@repo/shared'
 import type { ModelMessage, UserContent } from 'ai'
@@ -14,6 +15,7 @@ import {
   UserContentNotAppendableError,
 } from '../core/errors.js'
 import { AttachmentKeyPolicy } from './attachment-key.js'
+import { extractPdfText } from './pdf-text.js'
 
 /**
  * 一轮问答里的附件：把「对象存储里的 key」变成「模型能消费的消息内容」。
@@ -139,7 +141,7 @@ export class ChatAttachmentService {
     }
 
     for (const attachment of attachments) {
-      const content = await this.readAttachment(attachment)
+      const content = await this.readAttachment(attachment, inputModalities)
       if (content.kind === 'image') {
         parts.push({
           type: 'image',
@@ -206,6 +208,7 @@ export class ChatAttachmentService {
    */
   private async readAttachment(
     attachment: ChatAttachmentModel,
+    inputModalities: readonly string[] | null | undefined,
   ): Promise<
     | { kind: 'image'; dataUrl: string; mediaType: string }
     | { kind: 'file'; dataUrl: string; mediaType: string }
@@ -237,13 +240,47 @@ export class ChatAttachmentService {
     }
 
     /**
-     * PDF 走文件通道（交给模型 / 供应商解析）。
+     * PDF：**先本地抽文字内联**，抽不出再退回文件通道。
      *
-     * ⚠️ 这一条必须在"当文本试"**之前**：PDF 的字节里也有一大段可读的 ASCII
-     * （`%PDF-1.4`、对象字典、xref…），先试文本会把整份 PDF 当成乱码内联进提示词 ——
-     * 既没用，又白烧一窗口的 token（踩过）。
+     * ⚠️ 这条必须在"当文本试"**之前**：PDF 字节里也有一大段可读 ASCII
+     * （`%PDF-1.4`、对象字典、xref…），先试文本会把整份 PDF 当乱码内联 ——
+     * 既没用，又白烧一窗口 token（踩过）。
+     *
+     * ⚠️ 也**不能只依赖文件通道**：供应商的"文件输入"并不可靠 —— DeepSeek 官方适配器的
+     * user 分支只认 `image/*` 的文件，PDF 会被它记一条警告后**静默丢掉**，运行照样成功
+     * （2026-10-07"识别不了 PDF"的实际原因）。抽出的文字对任何模型都有效。
      */
     if (looksLikePdf(attachment)) {
+      const pdf = await extractPdfText(body)
+      if (pdf) {
+        return {
+          kind: 'text',
+          text: this.toTextBlock(attachment, Buffer.from(pdf.text, 'utf8'), {
+            kindLabel: 'PDF 文档',
+            extra: `共 ${pdf.pages} 页`,
+          }),
+        }
+      }
+      /**
+       * 抽不出文字（扫描件 / 纯图 PDF / 加密）→ 退回文件通道：模型若支持文件输入还能读；
+       * 不支持时由能力校验（`assertSupported`）在上游之前拦下并说清原因，
+       * 而不是像过去那样发出去被静默丢掉。
+       */
+      this.logger.warn('ai.attachment.pdf_no_text_layer', {
+        filename: attachment.filename,
+        bytes: attachment.bytes,
+      })
+      /**
+       * 退回文件通道**只有这一步**真正需要模型的"文件输入"能力（文本型 PDF 走的是内联文本）。
+       * 明确声明不支持就当场拦下说清；未声明（`null`）仍放行 —— 与图片同一姿态，
+       * 国内厂商普遍不声明模态，硬拦会误伤。
+       */
+      if (modalitySupport(inputModalities, 'file') === false) {
+        throw new ModelCapabilityMismatchError(
+          attachment.filename,
+          '这份 PDF 没有文字层（扫描件），当前模型又不支持文件输入',
+        )
+      }
       return {
         kind: 'file',
         dataUrl: `data:${mediaType};base64,${body.toString('base64')}`,
@@ -281,16 +318,30 @@ export class ChatAttachmentService {
     }
   }
 
-  /** 文本类附件 → 带来源标注的一段文字（截断是明示的） */
-  private toTextBlock(attachment: ChatAttachmentModel, body: Buffer): string {
+  /**
+   * 文本类附件 → 带来源标注的一段文字（截断是明示的）。
+   *
+   * `options.kindLabel` / `options.extra` 供 PDF 这类"内容是抽出来的"场景补充说明
+   * （写清"这是 PDF、共 N 页"，模型才能判断自己拿到的是不是完整内容）。
+   */
+  private toTextBlock(
+    attachment: ChatAttachmentModel,
+    body: Buffer,
+    options?: { kindLabel?: string; extra?: string },
+  ): string {
     const decoded = body.toString('utf8')
     const limit = ChatAttachmentService.TEXT_INLINE_LIMIT
     const truncated = decoded.length > limit
     const content = truncated ? decoded.slice(0, limit) : decoded
     const name = this.escapeName(attachment.filename)
+    const kindLabel = options?.kindLabel ?? '附件'
+    const details = [
+      `整份文件 ${attachment.bytes} 字节`,
+      ...(options?.extra ? [options.extra] : []),
+    ].join('，')
 
     return dedent`
-      以下是用户上传的附件《${name}》的内容（整份文件 ${attachment.bytes} 字节）：
+      以下是用户上传的 ${kindLabel}《${name}》的内容（${details}）：
       ${content}
       ${truncated ? `\n（内容过长，以上只截取了前 ${limit} 个字符，需要其余部分请让用户分段提供）` : ''}
     `

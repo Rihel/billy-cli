@@ -52,29 +52,27 @@ export const looksLikePdf = (hint: AttachmentTypeHint): boolean =>
  * 返回三态，因为"未声明"与"明确不支持"必须分开处理：
  * - `{ code: 'undeclared', ... }`：模型**没声明**模态 —— **不拦**，只在界面上提示
  *   （国内厂商普遍不给，硬拦会把真正的视觉模型误伤）；
- * - `{ code: 'vision' | 'file', ... }`：明确声明收不了 → 拦下并说清是哪个文件；
- * - `null`：没问题（声明支持，或这批附件根本不依赖模型能力，比如文本类）。
+ * - `{ code: 'vision', ... }`：明确声明收不了图片 → 拦下并说清是哪个文件；
+ * - `null`：没问题。
  *
  * **前后端共用这一份判据**：前端拿它提前拦，服务端拿它做权威校验（前端可以绕过，判据不能有两套）。
- * 为什么只按"图片"和"PDF"两类判：其余类型（文本 / 未知二进制）我们都能自己读出来内联成文字，
- * 不依赖模型的输入能力 —— 那类附件给任何模型都不会"静默丢掉"。
+ *
+ * **只判图片**：其余类型我们都能自己读出来内联成文字（文本直接读、**PDF 本地抽文字层**、
+ * 未知类型先当文本试），完全不依赖模型的输入能力 —— 那类附件给任何模型都不会"静默丢掉"。
+ * PDF 因此**不再要求 `file` 能力**：它只在"抽不出文字层（扫描件）退回文件通道"那一步才需要，
+ * 而那一步在服务端读文件时才知道（见 `ChatAttachmentService.readAttachment`）。
  */
 export const attachmentCapabilityIssue = (
   inputModalities: readonly string[] | null | undefined,
   attachments: readonly AttachmentTypeHint[],
-): { code: 'vision' | 'file' | 'undeclared'; filename: string } | null => {
+): { code: 'vision' | 'undeclared'; filename: string } | null => {
   for (const attachment of attachments) {
-    const needsVision = looksLikeImage(attachment)
-    const needsFile = !needsVision && looksLikePdf(attachment)
-    if (!needsVision && !needsFile) continue
+    // 只判图片：PDF 与文本类我们都能自己转成文字，不需要模型有对应能力
+    if (!looksLikeImage(attachment)) continue
 
-    const support = modalitySupport(inputModalities, needsVision ? 'image' : 'file')
-    if (support === false) {
-      return { code: needsVision ? 'vision' : 'file', filename: attachment.filename }
-    }
-    if (support === null) {
-      return { code: 'undeclared', filename: attachment.filename }
-    }
+    const support = modalitySupport(inputModalities, 'image')
+    if (support === false) return { code: 'vision', filename: attachment.filename }
+    if (support === null) return { code: 'undeclared', filename: attachment.filename }
   }
   return null
 }

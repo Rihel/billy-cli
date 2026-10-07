@@ -97,8 +97,14 @@
 **那条必须走 `durable: true`**。另外：调用时显式传模型实例是稳妥做法（别依赖 Agent 上的动态 model
 去让 Mastra 自解析配置，那一层曾丢过多模态）。
 
-**降级顺序**（`readAttachment`）：图片 → image；PDF → file（必须排在"当文本试"**之前**，
-否则 PDF 里那段可读 ASCII 会被当文本内联）；认不出类型的 → 先当文本试；都不行才拒绝。
+**降级顺序**（`readAttachment`）：图片 → image；**PDF → 先本地抽文字层（`extractPdfText` / unpdf）
+内联成文本**，抽不到（扫描件 / 加密）才退回 file —— 退回时**才**判模型的"文件输入"能力；
+这一步必须排在"当文本试"**之前**（否则 PDF 里那段可读 ASCII 会被当文本内联）；认不出类型的 → 先当文本试；都不行才拒绝。
+
+⚠️ **别只依赖供应商的文件通道**：DeepSeek 官方适配器只认 `mediaType` 以 `image/` 开头的 file part，
+PDF 会被它记一条 `Unsupported user message part type` 警告后**静默丢掉**（运行照样"成功"，
+模型回答"我没收到文件"）。所以 PDF 一律先本地抽文字 —— 那条路对任何模型都有效。
+能力判据 `attachmentCapabilityIssue` 因此**只判图片**：PDF / 文本类不需要模型有对应能力。
 
 测试：`test/ai-chat-attachment.test.ts`（三类喂法 / 截断 / 取不回抛错 / 能力校验 / 文本降级 / `withUserContent`）；
 **测试里手工 `new AgentChatService(...)` 是位置参数**，加依赖时必须同步补位（`test/helpers/attachments.ts`

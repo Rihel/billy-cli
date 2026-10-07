@@ -7,6 +7,8 @@ import {
 } from '../src/modules/ai/runtime/chat-attachment.service.js'
 import type { ObjectStorage } from '@repo/kits'
 import { AttachmentKeyPolicy } from '../src/modules/ai/runtime/attachment-key.js'
+import { extractPdfText } from '../src/modules/ai/runtime/pdf-text.js'
+import { minimalPdf } from './helpers/pdf.js'
 import { requestContext } from '../src/common/request-context/request-context.js'
 import type { ModelMessage } from 'ai'
 
@@ -289,5 +291,56 @@ describe('附件 key 归属校验（**读对象之前**，防越权）', () => {
     ).rejects.toThrow(/无权访问/)
 
     expect(getObject).not.toHaveBeenCalled()
+  })
+})
+
+describe('extractPdfText（PDF → 文字，本地提取）', () => {
+  /**
+   * 为什么这条链路必须存在：供应商的"文件输入"并不可靠 —— DeepSeek 官方适配器只认
+   * `image/*` 的文件 part，PDF 会被它记一条警告后**静默丢掉**（运行照样"成功"，
+   * 用户看到的是模型对着一份看不见的 PDF 胡说）。抽出文字内联进提示词对任何模型都有效。
+   */
+  it('能抽出文字的 PDF → 返回文字与页数', async () => {
+    // 夹具刻意用 ASCII：PDF 里的**中文需要 ToUnicode 映射**，而我们手搓的最小 PDF 用
+    // Helvetica（单字节拉丁编码），塞中文抽出来会是乱码 —— 那是夹具的局限，不是解析器的问题。
+    // 中文的真实提取能力由"用户那份 PDF"在生产链路上验证过（762 字完整抽出）。
+    const result = await extractPdfText(minimalPdf('Billy PDF attachment'))
+    expect(result?.pages).toBe(1)
+    expect(result?.text).toContain('Billy PDF attachment')
+  })
+
+  it('**抽不出文字时不抛错**（扫描件 / 加密 / 损坏交给调用方兜底）', async () => {
+    await expect(extractPdfText(Buffer.from('not a pdf at all'))).resolves.toBeNull()
+    await expect(extractPdfText(Buffer.alloc(0))).resolves.toBeNull()
+  })
+})
+
+describe('PDF 附件的分发（抽到文字走文本，抽不到才退回文件）', () => {
+  const pdfAttachment = {
+    filename: 'doc.pdf',
+    mediaType: 'application/pdf',
+  }
+
+  it('有文字层 → 内联成 text part（并把文件名 / 页数写进提示词）', async () => {
+    const service = serviceOf({ k1: minimalPdf('Billy PDF attachment') })
+    const content = await service.buildUserContent('这是啥', [attachment(pdfAttachment)], TEXT_ONLY)
+
+    const parts = (content ?? []) as Array<{ type: string; text?: string }>
+    expect(parts.map((part) => part.type)).toEqual(['text', 'text'])
+    // 提示词里必须交代"这是什么文件、多少页"，模型才知道自己拿到的是不是完整内容
+    expect(parts[1].text).toContain('doc.pdf')
+    expect(parts[1].text).toContain('共 1 页')
+    expect(parts[1].text).toContain('Billy PDF attachment')
+  })
+
+  it('没有文字层 → 退回 file part（模型若支持文件输入仍能读）', async () => {
+    // 一份"看起来是 PDF 但解析不出文字"的字节（缺 xref 与内容流）
+    const broken = Buffer.from('%PDF-1.4\n% 没有 xref / 没有内容流\n%%EOF\n')
+    const service = serviceOf({ k1: broken })
+    const content = await service.buildUserContent('这是啥', [attachment(pdfAttachment)], VISION_AND_FILE)
+
+    const parts = (content ?? []) as Array<{ type: string }>
+    expect(parts.map((part) => part.type)).toEqual(['text', 'file'])
+    expect(parts[1]).toMatchObject({ type: 'file', mediaType: 'application/pdf' })
   })
 })

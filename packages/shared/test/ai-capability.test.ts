@@ -36,11 +36,11 @@ describe('attachmentCapabilityIssue', () => {
     })
   })
 
-  it('明确只声明了文本 → PDF 被拦下', () => {
-    expect(attachmentCapabilityIssue(['text'], [pdf])).toEqual({
-      code: 'file',
-      filename: 'doc.pdf',
-    })
+  it('**PDF 一律放行**，不要求模型有"文件输入"能力', () => {
+    // PDF 我们自己抽文字层内联（抽不出才退回文件通道，那一步在服务端读文件时判能力），
+    // 所以这里不该因为模型没声明 `file` 就把用户的 PDF 拦下（2026-10-07 修）
+    expect(attachmentCapabilityIssue(['text'], [pdf])).toBeNull()
+    expect(attachmentCapabilityIssue(null, [pdf])).toBeNull()
   })
 
   it('空数组（明确声明什么都不支持）也拦', () => {
@@ -51,9 +51,9 @@ describe('attachmentCapabilityIssue', () => {
     expect(attachmentCapabilityIssue(['text', 'image', 'file'], [image, pdf, text])).toBeNull()
   })
 
-  it('只有 image 没有 file 时：图片放行、PDF 拦下', () => {
+  it('只声明了 image：图片放行，PDF 也放行（PDF 走文本提取）', () => {
     expect(attachmentCapabilityIssue(['text', 'image'], [image])).toBeNull()
-    expect(attachmentCapabilityIssue(['text', 'image'], [pdf])?.code).toBe('file')
+    expect(attachmentCapabilityIssue(['text', 'image'], [pdf])).toBeNull()
   })
 
   it('文本类附件**任何模型都放行**（我们自己读出来内联，不依赖模型能力）', () => {
