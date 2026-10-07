@@ -33,13 +33,13 @@
 
 > 状态：待评审 · 难度：复杂（架构级改造）· 依据：`billy-dev-foundation/references/design.md`
 > 触发背景：第一版目标仿 rihel-base 包划分（基建独立成包、业务归应用层），
-> 修正 billy 演化路径中「基建被顺带抽入 core」的偏移，使能力归位。
+> 修正 billy 演化路径中「基建被顺带抽入 core」的偏移，使能力放置位置。
 
 ## 1. 背景与目标
 
 ### 1.1 现状问题
 
-- `packages/core` 是「业务核心（modules）+ 基建门面（infrastructure）+ 横切能力（foundation）+ 组合根（runtime.ts）」的混合体，与它「把核心业务逻辑抽取为包」的原始定位不符；
+- `packages/core` 是「业务核心（modules）+ 基建统一入口（infrastructure）+ 横切能力（foundation）+ 组合根（runtime.ts）」的混合体，与它「把核心业务逻辑抽取为包」的原始定位不符；
 - `packages/db` 同时含**通用能力**（createDb / pagination / BaseEntity）与**业务资产**（User/Todo/Admin 实体 + 迁移），模板包不应持有具体业务 schema；
 - 任何需要基建的非业务消费者（worker / cron / 未来服务）必须依赖 core 全量，背上业务模块与全量依赖；
 - 组合根 `createAppContext` 位于 core，但组合根本质属于应用层。
@@ -55,8 +55,8 @@ packages/kits        后端通用能力封装（无任何业务实体，纯能�
   db/                createDb / pagination(pageWith/cursorPageWith) / BaseEntity /
                      typeorm-transactional re-export
   入口               KitsModule.forRoot({ db: { entities, url, sync }, ... })
-DI 容器            @nestjs/common 原生容器（原 @repo/di InversifyJS 门面已删除）
-packages/shared      不动（跨端契约 / DICT / 工具）
+DI 容器            @nestjs/common 原生容器（原 @repo/di InversifyJS 容器已删除）
+packages/shared      不动（跨端数据结构 / DICT / 工具）
 packages/sdk         不动（前端全类型客户端）
 apps/server          database/(实体 + data-source + migrations)
                      modules/(业务：auth/user/todo/admin，module/controller/service/repository 同目录)
@@ -65,9 +65,9 @@ scripts/cli          不动（脚手架生成器，已确认不依赖 core/db）
 ```
 
 - `packages/core`、`packages/db` 两个包**删除**；
-- 业务模块物理移入 `apps/server`，但**业务逻辑与 HTTP 边界分离**（分层铁律不破：controller 只做校验与转发，业务逻辑在 service / repository）。
+- 业务模块物理移入 `apps/server`，但**业务逻辑与 HTTP 边界分离**（分层规则不破：controller 只做校验与转发，业务逻辑在 service / repository）。
 
-## 2. 落点映射（文件级）
+## 2. 位置映射（文件级）
 
 ### 2.1 新建 `packages/kits`（来源：core + db 的通用部分）
 
@@ -135,12 +135,12 @@ scripts/cli          不动（脚手架生成器，已确认不依赖 core/db）
 | --- | --- |
 | `billy-dev-foundation/SKILL.md` | 完成检查清单：实体注册 / runtime 注册项改为 kits + server 路径 |
 | `billy-dev-foundation/references/architecture.md` | 分层图重画（kits/server 替代 core/db） |
-| `billy-dev-foundation/references/placement.md` | 归位表：基建 → kits，业务 → server，实体 → server/database |
+| `billy-dev-foundation/references/placement.md` | 放置位置表：基建 → kits，业务 → server，实体 → server/database |
 | `billy-dev-foundation/references/commands.md` | `db:gen` 指向 server |
 | `billy-dev-foundation/references/code-conventions.md` | core/db 引用路径更新 |
 | `billy-dev-foundation/references/workflow.md` | 全链路路径更新 |
 | `define-data-structure/*` | 实体路径 + createDb 注册 + 迁移路径（大改） |
-| `develop-business-module/*` | 模块落点 + 三处注册改两处（kits 装配 + server 注册）（大改） |
+| `develop-business-module/*` | 模块位置 + 三处注册改两处（kits 装配 + server 注册）（大改） |
 | `implement-auth/references/auth-guide.md` | token-signer/session-store 路径 |
 | `write-tests/references/testing-guide.md` | `@repo/core` 引用 |
 | `define-dict-enum/references/dict-guide.md` | core modules 路径 |

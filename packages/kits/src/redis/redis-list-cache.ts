@@ -3,7 +3,7 @@ import { RedisStoreError } from '../foundation/errors/infrastructure-errors.js'
 import type { RedisStore } from './redis-store.js'
 
 /**
- * Redis Hash 列表缓存门面：把一个 `T[]` 整体缓存在一个 Hash 里
+ * Redis Hash 列表缓存统一入口：把一个 `T[]` 整体缓存在一个 Hash 里
  * （field = 主键值，value = 单条记录的 JSON），支持按主键增量增删改。
  *
  * 适用「全量小、读多写少、按主键定位」的字典 / 配置 / 组织架构类数据；

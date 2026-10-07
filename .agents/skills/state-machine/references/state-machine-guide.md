@@ -47,7 +47,7 @@ export function transition(current: string, event: string): string {
 - 转移表是**纯数据**，转移函数是**纯函数** → 放 `shared/utils`，天然可单测。
 - 非法转移**抛错**（业务错误，带错误码），由 service 层捕获转成用户可读错误。
 
-## 3. 数据与 schema 落点
+## 3. 数据与 schema 位置
 
 - **状态存实体 string 列**（字典 value，不用 PG enum），默认值引用字典（见 `define-dict-enum` / `define-data-structure`）：
   ```ts
@@ -78,15 +78,15 @@ async updateStatus(input: { orderId: string; event: string }): Promise<OrderMode
 
 仅当需要**守卫（guard）、副作用（action）、上下文（context）、嵌套状态图**等重特性时，
 才引入（先按「实现查找顺序」确认无更轻方案）：
-- 门面放 `kits/foundation`（横切基础能力）或 `server/modules` 独立模块，业务模块只依赖门面，不散落 import 库。
+- 统一入口放 `kits/foundation`（横切基础能力）或 `server/modules` 独立模块，业务模块只依赖统一入口，不散落 import 库。
 
-## 7. 归位汇总
+## 7. 放置位置汇总
 
-| 内容 | 落点 |
+| 内容 | 位置 |
 | --- | --- |
 | 状态字典 | `shared/dicts/<domain>-status.dict.ts` |
 | 转移表 + 转移函数（纯） | `shared/utils/<domain>-state.utils.ts` |
 | 状态字段 | 实体 string 列（`apps/server/src/database/entities`） |
 | 状态校验 | schema `z.enum` |
-| 状态机库门面（如引 xstate） | `kits/foundation` |
+| 状态机库封装（如引 xstate） | `kits/foundation` |
 | 业务编排 / 持久化 | `apps/server/src/modules/<domain>/*.service.ts` |

@@ -30,7 +30,7 @@ import {
 } from 'lucide-react'
 
 /**
- * 计划面板：渲染 agent 的**任务清单**（规划能力的前端落点）。
+ * 计划面板：渲染 agent 的**任务清单**（规划能力的前端位置）。
  *
  * 协议（后端五个 plan-* 工具的出参，以及时间线里的 `plan` 事件）：
  * - `PlanTask = { id, title, status: 'pending' | 'in_progress' | 'done' | 'blocked', note? }`

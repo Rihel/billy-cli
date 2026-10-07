@@ -139,7 +139,7 @@ const [generation, setGeneration] = useState(0)                       // 手动�
 const stream = useMemo(() => client.createStream(), [client, generation])
 const { state, connected } = useStream(stream, {
   [STREAM_ALERT_FIRED_EVENT]: (raw) => {
-    const parsed = AlertFiredEventSchema.safeParse(raw)               // 共享契约解析，脏数据丢弃
+    const parsed = AlertFiredEventSchema.safeParse(raw)               // 共享数据结构解析，脏数据丢弃
     if (parsed.success) setEvents((prev) => [parsed.data, ...prev].slice(0, 50))
   },
 })

@@ -62,7 +62,7 @@ const nowTime = () =>
  * 适用「大量任务 + 毫秒/秒级精度」的场景（限流窗口、批量节流、心跳轮），
  * O(1) 槽位插入，避免为每个任务各挂一个 `setTimeout`。
  *
- * 与 `foundation/scheduler` 的 `Scheduler`（croner，平台级定时任务门面）职责不同：
+ * 与 `foundation/scheduler` 的 `Scheduler`（croner，平台级定时任务统一入口）职责不同：
  * 前者管「每天 3 点跑对账」，本类管「每 N 毫秒 tick 一次」。
  *
  * 关键设计：
@@ -72,7 +72,7 @@ const nowTime = () =>
  *   避免卡顿后瞬间补跑一堆任务；
  * - 任务异常交给 `onError` 处理并吞掉，不打断 tick 循环。
  *
- * 归位：横切基础能力 → `packages/kits/src/foundation/time-wheel/`（`placement.md` §7 调度器）。
+ * 放置：横切基础能力 → `packages/kits/src/foundation/time-wheel/`（`placement.md` §7 调度器）。
  *
  * **为什么不做成 `XxxModule` 单例**：本类需要构造参数（刻度时长 / 刻度数），
  * 不同场景精度不同 → 天然多实例；且无外部资源连接，不需要 Nest 托管生命周期。

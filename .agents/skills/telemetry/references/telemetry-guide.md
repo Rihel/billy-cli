@@ -3,12 +3,12 @@
 > 本文件是 `telemetry` skill 的组成部分，由主 SKILL.md 引用。
 > 做埋点 / 指标告警时必读。
 
-## 1. 门面与装配
+## 1. 统一入口与装配
 
 `Telemetry`（`kits/src/telemetry/telemetry.ts`）是普通类——构造器的 `windowSeconds` 是数值参数
 （非注入 token），由 `TelemetryModule`（`@Global()`，无配置）用 `useFactory: () => new Telemetry()` 装配，
 故刻意不标 `@Injectable()`。业务侧仅 `@Inject(Telemetry)` 使用，无需注册。
-归位：横切基础能力 → `kits/foundation`。
+放置：横切基础能力 → `kits/foundation`。
 
 ## 2. 三个埋点方法
 

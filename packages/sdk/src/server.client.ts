@@ -394,7 +394,7 @@ export class ServerClient extends HttpClient<BearerTokenCredentials> {
       detail: (data: AgentConversationIdDto) =>
         this.post<AgentConversationModel>('/agent/conversation/detail', data),
 
-      /** 重命名会话（用户手动改名；空标题 / 超长由服务端契约拦下） */
+      /** 重命名会话（用户手动改名；空标题 / 超长由服务端数据结构拦下） */
       rename: (data: AgentConversationRenameDto) =>
         this.post<AgentConversationModel>('/agent/conversation/rename', data),
 
@@ -419,7 +419,7 @@ export class ServerClient extends HttpClient<BearerTokenCredentials> {
     /**
      * 本轮可选的模型清单（**只有"供应商启用 + 模型启用"的**）。
      *
-     * 会话页的选择器用它渲染；`defaultModelId` 是未选择时的落点（库空时为 null →
+     * 会话页的选择器用它渲染；`defaultModelId` 就是未选择时用的那个（库空时为 null →
      * 前端应当提示"先去后台配模型"）。
      */
     models: () => this.post<AiAvailableModelListModel>('/agent/models'),

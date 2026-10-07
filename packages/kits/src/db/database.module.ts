@@ -11,7 +11,7 @@ export type DbModuleOptions = z.input<typeof DbConfigSchema>
 /**
  * 数据库模块：`forRoot(options)` 显式传入本模块配置，配置对象本身即注入 bean（DbConfig）。
  *
- * 提供 `Db`（连接生命周期门面）与 `DbService`（注入式数据操作门面：批量 / 软删 / 打印 SQL）。
+ * 提供 `Db`（连接生命周期统一入口）与 `DbService`（注入式数据操作统一入口：批量 / 软删 / 打印 SQL）。
  *
  * @example
  * imports: [DbModule.forRoot({ url: process.env.DB_URL, entities: [UserEntity], sync: true })]

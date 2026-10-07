@@ -15,7 +15,7 @@ import type { AgentSpec } from './types.js'
  * 子助手不是注册表成员，所以这里不需要声明任何"子 agent 名单"。
  *
  * `run-command` 是**跨平台命令执行**（Windows `cmd.exe` / POSIX `/bin/sh`，底层 execa）：
- * 开关与边界（默认落点目录 / 时长 / 输出上限）由 `agent.command*` 配置收口，见 §3.15。
+ * 开关与边界（默认工作目录 / 时长 / 输出上限）由 `agent.command*` 配置收口，见 §3.15。
  * 它**不是**委派类工具，所以子助手也拿得到（"有你的全部工具"这条口径不变）。
  */
 export const assistantAgent: AgentSpec = {

@@ -33,15 +33,15 @@
 | `verifyToken` 查库校验实体状态 | ✓ | DB 查询 | ✗（需额外黑名单） | 可行，但打 DB 且登出需额外机制 |
 | **服务端会话存 Redis** | ✓ | Redis 读（快） | ✓（撤销会话） | **采纳** |
 
-选型依据：工程已有 `RedisStore` 门面（`setJson` / `del` / raw 客户端），复用不重复造轮子；
+选型依据：工程已有 `RedisStore` 统一入口（`setJson` / `del` / raw 客户端），复用不重复造轮子；
 Redis 会话支持**主动失效**（登出 / 禁用 / 删除即踢下线），且天然支持多设备会话管理。
 
-## 3. 能力归位
+## 3. 能力放置位置
 
 | 项 | 决定 |
 | --- | --- |
-| 能力性质 | 横切基础设施（认证会话门面） |
-| 落点 | `packages/kits/src/session/session-store.ts`（`SessionStore`） |
+| 能力性质 | 横切基础设施（认证会话统一入口） |
+| 位置 | `packages/kits/src/session/session-store.ts`（`SessionStore`） |
 | 注册 | `SessionStoreModule` 装配（`@Global()`，复用 `JwtModule` 的 `JwtConfig` 与 `RedisModule` 的 `RedisStore`；业务模块直接 `@Inject(SessionStore)`）；`session/index.ts` 聚合后由 `packages/kits/src/index.ts` 导出 |
 | 依赖 | 复用 `RedisStore`（ioredis）+ `AppConfig`（`jwt.expiresIn` 解析 TTL），无新增依赖 |
 | 错误 | `RedisStoreError`（`AppErrorCodes.Internal`） |

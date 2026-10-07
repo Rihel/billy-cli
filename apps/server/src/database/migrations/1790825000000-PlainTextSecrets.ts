@@ -1,7 +1,7 @@
 import type { MigrationInterface, QueryRunner } from "typeorm"
 
 /**
- * **密钥改明文存储**（2026-10-01 用户决定），并给 `ai_tools` 加"参数契约镜像"列。
+ * **密钥改明文存储**（2026-10-01 用户决定），并给 `ai_tools` 加"参数定义镜像"列。
  *
  * 三件事：
  * 1. `ai_providers` 加 `api_key`（text），把已有密文**就地解密回填**（口令取

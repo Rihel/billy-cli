@@ -8,7 +8,7 @@ import { z } from 'zod'
  *    写在引擎里，以后新加的工具自动就有（标准测试集对每个注册工具断言同一条不变式）；
  * 2. **零侵入**：现有工具的执行体签名是 `input: z.infer<typeof XxxParams>`，往 `params` 里塞字段
  *    会让它们全部报类型错。所以注入发生在**给模型的 schema + 网关校验**这一层（`modelParams` /
- *    本文件），执行体拿到的 `input` 仍是原契约（`reason` 由 `ValidatePlugin` 摘掉）；
+ *    本文件），执行体拿到的 `input` 仍是原定义（`reason` 由 `ValidatePlugin` 摘掉）；
  * 3. **可审计**：`reason` 进模型入参 → 原样落 `tool-call` 时间线行 → 也进审计旁证，
  *    一眼能查到"这次为什么调它"。
  */
@@ -27,7 +27,7 @@ export const TOOL_CALL_REASON_DESCRIPTION =
   '为什么这次要用这个工具：一句话说明目的（用户要解决什么、这一步要达到什么）'
 
 /**
- * 必填 `reason` 的契约（**约束给模型看的那一份**）。
+ * 必填 `reason` 的定义（**约束给模型看的那一份**）。
  *
  * 刻意不做 `trim()` 归一化：留白串必须在 `ValidatePlugin` 里被**拒绝**（明确的纠正信号），
  * 而不是被静默改成合法值 —— 静默归一化会让模型学不会"每次都要说明理由"。
@@ -39,7 +39,7 @@ export const toolCallReasonSchema = z
   .describe(TOOL_CALL_REASON_DESCRIPTION)
 
 /**
- * 把一个工具的入参契约包成**给模型看的那一份**：`params.shape` + 必填 `reason`。
+ * 把一个工具的入参定义包成**给模型看的那一份**：`params.shape` + 必填 `reason`。
  *
  * - 对象型（绝大多数工具，含 `.refine()` 后的 ZodObject）：用 `.extend()` 保留字段说明与所有校验；
  * - 非对象型（理论上不该有）：退化成 `looseObject({ reason })`，让 `reason` 照旧必填、
@@ -61,7 +61,7 @@ export const withCallReason = <I>(params: z.ZodType<I>): z.ZodType<I & { reason:
 /**
  * 一次调用的**校验结论**（`ValidatePlugin` 唯一消费它）。
  *
- * `input` 是**摘掉 `reason` 之后的原契约入参** —— 于是工具执行体永远看不到 `reason`，
+ * `input` 是**摘掉 `reason` 之后的原定义入参** —— 于是工具执行体永远看不到 `reason`，
  * 签名与行为都不变；`reason` 单独交给网关放进 `ctx.reason`。
  */
 export type ToolCallCheck =
@@ -111,7 +111,7 @@ export const checkToolCall = (
     }
     return { ok: false, message: `入参不合法（${describeIssues(parsed.error.issues)}）` }
   }
-  /** 摘掉注入字段：执行体只应看到原契约的入参（`ToolSpec.exec` 的签名因此完全不变） */
+  /** 摘掉注入字段：执行体只应看到原定义的入参（`ToolSpec.exec` 的签名因此完全不变） */
   const { [TOOL_CALL_REASON_FIELD]: reason, ...input } = parsed.data as Record<string, unknown> & {
     reason: string
   }

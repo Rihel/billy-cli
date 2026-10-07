@@ -25,7 +25,7 @@ const defaultConcurrency = 5
 /**
  * 解析实际并发度。
  *
- * **铁律**：事务进行中必须串行 —— 事务内开并发会让多个 query 争用同一连接与事务快照，
+ * **规范**：事务进行中必须串行 —— 事务内开并发会让多个 query 争用同一连接与事务快照，
  * 轻则连接池排队，重则死锁。故 `isTransactionActive` 时一律降为 1。
  */
 export const resolveBatchConcurrency = (

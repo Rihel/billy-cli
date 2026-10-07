@@ -225,7 +225,7 @@ ai/
 
 崩溃恢复会**重跑工具**。当前 `create-todo` 会在重跑时**再建一条待办** —— 这是必须解决的问题：
 - 幂等键：`runId + toolCallId`（Mastra 的历史消息里带 toolCallId；重放时同一 toolCallId 只生效一次）；
-- 落点：业务侧一张轻量去重表（或复用 `RedisStore` 的 `setJson + TTL`）；
+- 位置：业务侧一张轻量去重表（或复用 `RedisStore` 的 `setJson + TTL`）；
 - 只读工具（`list-todos` / `get-todo`）天然幂等，无需处理。
 
 ### 3.5 前端全细节流式
@@ -260,7 +260,7 @@ ai/
 
 **分场景规则（每一行都要落到代码，不是口号）**
 
-| 场景 | run 状态 | 动作与落点 |
+| 场景 | run 状态 | 动作与位置 |
 | --- | --- | --- |
 | 我们侧校验失败（未配置 / agent 不存在 / 会话不存在或无权 / 参数错） | **不创建 run** | 边界错误码经响应信封返回，不留垃圾记录 |
 | 本地限流（4002） | **不创建 run** | 守卫层拦截 |
@@ -276,7 +276,7 @@ ai/
 | 运行卡死 / 总时长超限 | `failed`（timeout） | **看门狗**：总时长或心跳超限 → abort + 标超时；否则会永久停在 `running`。多副本下用**条件 UPDATE 抢执行权**（§3.10），不用分布式锁 |
 | 同一会话并发的第二次请求 | 拒绝，不创建 | 部分唯一索引挡住 → 错误码 3306（会话正忙） |
 
-**错误落点三处，各司其职**
+**错误落在三处，各司其职**
 
 1. `runs`：`error_code` / `error_stage` / `error_message` / `error_detail`（上游原文**全量保留**，仅做密钥掩码，不截断）；
 2. `timelines`：落一行 `kind='error'`（带 `started_at` / `finished_at` / `duration_ms`）——
@@ -514,7 +514,7 @@ AGENT_CONTEXT_MODEL_WINDOWS={"deepseek/deepseek-chat":65536}   # 按模型覆盖
 **总原则**：**不让任何状态只活在某个进程的内存里**。凡是"连接落在哪个副本会改变行为"的东西，
 一律外置：Postgres 存真相，Redis 存运行期数据（可补发的输出记录、跨副本通知）。
 
-**四类状态与落点**
+**四类状态与位置**
 
 | 状态 | 谁产生 | 放哪 | 多副本下怎么用 |
 | --- | --- | --- | --- |
@@ -980,7 +980,7 @@ core bean **不注入 `ToolBuilder`**。子 agent 需要的工具面由**编排�
 
 #### 3.14.2 子 agent 是**运行期对象**，不是注册表成员
 
-工具入参（给模型看的契约）：
+工具入参（给模型看的数据结构）：
 
 | 字段 | 必填 | 含义 |
 | --- | --- | --- |
@@ -1011,7 +1011,7 @@ core bean **不注入 `ToolBuilder`**。子 agent 需要的工具面由**编排�
 
 明细分三处落，**都不裁剪**：
 
-| 落点 | 内容 | 用途 |
+| 位置 | 内容 | 用途 |
 | --- | --- | --- |
 | `runs.request_snapshot` | `{ name, systemPrompt, task, toolKeys, parentRunId }` 全量 | "子 agent 为什么这么干"的唯一证据（动态 prompt 不落库就等于不可审计） |
 | `timelines`（子 run 的） | 任务（user）/ 推理 / 文本 / 工具调用与结果 / 每步用量 / 错误 | 与主 agent **同一套录制器**（`StreamRecorder`），细节不缩水 |
@@ -1108,7 +1108,7 @@ AI SDK 的 `data-sub-agent` part，和主内容走同一条 SSE：
 | 新增 | `ai/core/envelope.ts`（`AgentCore`）、`ai/tools/planner/planner.core.ts`、`ai/tools/subagent.core.ts`、`ai/runtime/agent-runner.ts`（子 run 执行器） |
 | 改动 | `ToolBuilder`（两个来源 + `buildDelegable()`）、`AgentChatService`（注入运行时信封；收尾汇总子 run 消耗）、`runs` 实体与迁移（`parent_run_id` / `depth` / `tool_call_id` + 唯一索引换条件）、`AGENT_CORES` 装配 |
 | 删除 | `AgentSpec.subAgents`、`AgentDefinition.subAgents`、`agents/analyst.agent.ts`、`prompts/templates/analyst.eta`、`createMastra` 的 `agents:{}` 与拓扑排序 |
-| 契约 | 新增 `AgentRunStopResult*`（已有）、`AgentRunModel` 增 `parentRunId` / `depth`；`AgentTimelineItemModel` 增子 agent 归属信息 |
+| 数据结构 | 新增 `AgentRunStopResult*`（已有）、`AgentRunModel` 增 `parentRunId` / `depth`；`AgentTimelineItemModel` 增子 agent 归属信息 |
 | 测试 | 重写子 agent 用例（core bean 聚合 / 动态创建 / 明细入库 / 工具面继承 / 幂等去重 / 配额 / 流里的 `data-sub-agent`） |
 
 ### 3.15 命令执行（`run-command`）与运行环境注入（**本轮新增，以此为准**）
@@ -1128,7 +1128,7 @@ AI SDK 的 `data-sub-agent` part，和主内容走同一条 SSE：
 | 可被用户停止 | 停止要连命令一起停，不是只断前端连接 |
 | 每次调用可审计 | 让模型在本机跑命令是敏感能力，入参出参必须可复盘 |
 
-#### 3.15.2 能力归位：机制在 kits，策略在 AI 模块
+#### 3.15.2 新能力放哪里：机制在 kits，策略在 AI 模块
 
 | 层 | 位置 | 职责 |
 | --- | --- | --- |
@@ -1454,17 +1454,17 @@ return toAISdkMessages(messages, { version: 'v6' }) // 从 '@mastra/ai-sdk/ui' �
 
 **代价**：可能出现"孤儿行"（引用不存在的会话）→ 由运行服务保证不发生；
 若审计时发现，即视为数据缺陷（而不是靠数据库兜底）。
-原方案的「第 4 张表（工作记忆落点）」**随"记忆先不做"取消**，本轮不再需要。
+原方案的「第 4 张表（工作记忆位置）」**随"记忆先不做"取消**，本轮不再需要。
 Mastra 存储接口里 `memory` domain 也不再实现（见 §4.4）。
 
-### 4.7 消耗、轮数与步数：统计口径与落点（对齐你的问题）
+### 4.7 消耗、轮数与步数：统计口径与位置（对齐你的问题）
 
 **术语统一**（避免一轮/一步混用）：「**轮**」= 一次问答（多轮对话的那个轮）；
 「**步**」= 一次模型调用（agent 循环的一步）；**「回合」这个词弃用**，两层各自只用一个词。
 
 先说**口径**（三张表各管一段，避免前后端两套数）：
 
-| 词 | 定义 | 权威来源 | 落点 |
+| 词 | 定义 | 权威来源 | 位置 |
 | --- | --- | --- | --- |
 | **轮（turn）** | 一次「用户发言 → agent 答完」= 一次问答（**只数根 run**：`parent_run_id IS NULL`；子 agent 不是一轮） | 我们的 `runs` 记录数 | `runs` 一行；`conversations.turn_count` 冗余累计 |
 | **步（step）** | 一次**模型调用**（含它引发的工具往返；受 `AGENT_MAX_STEPS` 限流） | Mastra 流对象的 `steps` | `runs.step_count` |
@@ -1522,7 +1522,7 @@ const toolCalls = await output.toolCalls
 > （列 `api_key`），提示串 `hintOf` 在读取时派生；接口仍不回明文。理由与代价见
 > `ai-agent-tool-engine.md` 的「实施记录」第 11 条。
 
-> **落地状态（本轮）**：**只落地数据表**（`ai_providers` / `ai_models`，实体 + 迁移 + 对外模型契约，
+> **落地状态（本轮）**：**只落地数据表**（`ai_providers` / `ai_models`，实体 + 迁移 + 对外模型数据结构，
 > 迁移已应用）。CRUD / 同步接口 / 管理页按 §4.8.4 后续实现；错误码（§4.8.6）随模块一起加。
 
 **要解决的问题**：模型与密钥目前只能靠环境变量（`MASTRA_MODEL` / `MASTRA_API_KEY` / `MASTRA_BASE_URL`）配置，
@@ -1970,7 +1970,7 @@ AI SDK v6 的续传是**两层 API**（不是同一方法的两个名字）：
 | zod | **全仓升 `^4.6.5`**（已执行并验证：typecheck 4 包 + test 7 包全绿） |
 | 数据表 | **不用官方表，自己设计** → 自己实现 storage adapter（§4.4） |
 | 记忆 | **先不做**：不引入 `@mastra/memory`、不建记忆表；上下文自己从 `timelines` 取最近 N 条（§4.3） |
-| 消耗统计 | 口径与落点见 §4.7：**轮** = `runs` 行、**步** = `steps.length`、token = `totalUsage`；**金额不落库** |
+| 消耗统计 | 口径与位置见 §4.7：**轮** = `runs` 行、**步** = `steps.length`、token = `totalUsage`；**金额不落库** |
 | 删除口径 | **只能删会话、只能软删**；`runs` / `timelines` 无删除入口（审计证据）；软删前先结束在跑的运行（§4.5） |
 | 防篡改 | **先不做 hash 链**，改为：应用层只追加 + 部署只授 INSERT/SELECT + 删除只做软删标记（§3.8 A） |
 | **子 agent 的创建方式** | **运行期由工具动态创建**（`SubAgentCore.asTools()` 的 `run-sub-agent`），**删除**装配期静态 `subAgents` 声明与 Mastra 的 `agents:{}` 委派（§3.14） |
@@ -1998,7 +1998,7 @@ AI SDK v6 的续传是**两层 API**（不是同一方法的两个名字）：
 6. **流式端点**：POST 建流 / GET 续流（含 204 语义）+ 独立 stop 端点 + 业务状态的持久 `data-*` part；
 7. **core bean 与动态子 agent**（§3.14）：`AgentCore.asTools()` + `PlannerCore` / `SubAgentCore` +
    `AgentRunner`（子 run 执行器）+ 运行时信封 + 迁移（父子列与索引换条件）+ 子 agent 明细入库 + 配额守卫；
-8. **契约 + SDK + 前端会话页 / 后台审计页**（AI SDK v6 + ai-elements 全量组件，含用量与统计、嵌套子 agent 面板）；
+8. **数据结构 + SDK + 前端会话页 / 后台审计页**（AI SDK v6 + ai-elements 全量组件，含用量与统计、嵌套子 agent 面板）；
 9. 守卫与验收（含离线 mock 端到端）+ 文档 / skill 同步 + 提交。
 
 ## 附：本轮已推翻的错误假设（记录以防重犯）
@@ -2008,7 +2008,7 @@ AI SDK v6 的续传是**两层 API**（不是同一方法的两个名字）：
 | 「run 状态应该有自己的表，查 `mastra_agent_runs`」 | 没有该表；run 快照在 `mastra_workflow_snapshot` |
 | 「重启恢复就是重新 attach 一下」 | 进程死后只能 `recover()`，**会重跑**（重发 LLM 调用 + 重跑工具） |
 | 「Mastra 有 HTTP 续传端点」 | 没有；`resume-stream` 是恢复 suspended run，不是续传断线流 |
-| 「`agent-controller` 是 run 状态机」 | 它是给 TUI 用的多 mode 编排门面，`runId` 在其中 0 命中 |
+| 「`agent-controller` 是 run 状态机」 | 它是给 TUI 用的多 mode 编排统一入口，`runId` 在其中 0 命中 |
 | 「app 层要用 `chatRoute()`」 | 它依赖 Mastra server；我们只能用 `handleChatStream` / `toAISdkStream` |
 | 「子 agent 该在装配期用 `subAgents` 静态声明」（旧设计） | 与"提示词由主 agent 现写、通过工具创建"冲突；`context.writer` + `data-*` 透传已核实，**运行期动态创建才是正解**（§3.14） |
 | 「工具拿不到运行时上下文」 | `ToolExecutionContext` 里有 `requestContext` / `agent.toolCallId` / `writer` / `abortSignal` 四样，编排层注入信封即可（§3.14.4） |

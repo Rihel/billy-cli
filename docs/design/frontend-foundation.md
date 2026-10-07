@@ -1,17 +1,17 @@
-# 前端基础建设：质量门 + 能力接线 + 业务闭环
+# 前端基础建设：质量检查 + 能力接线 + 业务闭环
 
 > 目标：把前端从「底座基本齐、但无验证手段且已有能力没接上线」补到与后端对等的基建完备度。
-> 范围四项：**A 质量门**（typecheck / test / check:ui）、**B SSE 前端链路**（契约 → sdk → hook → 页面）、
+> 范围四项：**A 质量检查**（typecheck / test / check:ui）、**B SSE 前端链路**（数据结构 → sdk → hook → 页面）、
 > **C web 前台业务闭环**（受保护用户区 + 应用级兜底 + 启用 TanStack Query）、**D 本文档**。
 
 ## 1. 现状与缺口（审计结论，均为 2026-09-17 实测）
 
-前端**不是**从头建设 —— 请求层、契约层、组件库、应用骨架都已具备：
+前端**不是**从头建设 —— 请求层、数据结构层、组件库、应用骨架都已具备：
 
 | 层 | 现状 | 证据 |
 | --- | --- | --- |
 | 传输 | `@repo/http-client`：4 认证策略 + 4 凭证管理器 + SSE 客户端 | 98 个单测 |
-| 契约 | `@repo/shared`：zod schema / 字典 / 错误码，前后端同一份 | `schema/*.schema.ts` |
+| 数据结构 | `@repo/shared`：zod schema / 字典 / 错误码，前后端同一份 | `schema/*.schema.ts` |
 | 客户端 | `@repo/sdk` 的 `ServerClient` 覆盖 auth / admin / user / todo / storage / monitor / config | `server.client.ts` |
 | 组件库 | `@repo/ui`：60 个 shadcn 原语 + 24 个自有管理组件 + 4 个 hook | `components/*` |
 | 应用骨架 | admin：布局 / 菜单 / 命令面板 / 主题 / Query / 上传 / `proxy.ts` 守卫 / SSR 鉴权 / `defineAction`，10 页可跑；web：落地页 + 4 auth 页 + markdown 示例，SSR 会话探测 | `apps/*/src` |
@@ -21,32 +21,32 @@
 | # | 缺口 | 实证 |
 | --- | --- | --- |
 | 1 | **SSE 前端链路断裂** | 后端 `StreamHub`（含排空协议）与客户端 `HttpStreamClient` 均完备，但 `@repo/sdk` 无 stream 入口、两个 app 对 `StreamClient` **零引用**、后端 `streamHub.publish` **零调用** → 对外宣称的实时推送无法验证 |
-| 2 | **前端零质量门** | `apps/web` / `apps/admin` / `packages/ui` 均无 `typecheck` / `test` 脚本，turbo 只声明 `dev` / `build`，`@repo/ui` 连 `scripts` 都没有；真实前端测试文件 **0**（唯一的 `*.test.*` 是陈旧产物 `tsconfig.test.tsbuildinfo`）；类型检查只能人工 `npx tsc --noEmit` |
+| 2 | **前端零质量检查** | `apps/web` / `apps/admin` / `packages/ui` 均无 `typecheck` / `test` 脚本，turbo 只声明 `dev` / `build`，`@repo/ui` 连 `scripts` 都没有；真实前端测试文件 **0**（唯一的 `*.test.*` 是陈旧产物 `tsconfig.test.tsbuildinfo`）；类型检查只能人工 `npx tsc --noEmit` |
 | 3 | **web 前台业务链路断** | 11 个 page 中 4 个 auth + 5 个 markdown 示例 + 落地页 + comparison；登录后**无受保护业务页**；`QueryProvider` 已挂载但全站零 `useQuery` / `useMutation`；缺 `error.tsx` / `not-found.tsx` / `loading.tsx`（admin 三者齐备） |
 | 4 | **前端规范沉淀薄** | `docs/design/` 此前 11 篇无前端基建方案；`develop-frontend-page` 含 references 共 238 行，未覆盖 SSE 接线 / 前端测试 / 应用级兜底 |
 
 **主要矛盾**：后端的「基建完善」由三件事构成 —— **能力 + 生产级默认 + 守卫/测试**；前端第一件基本齐、
 第二件一半、第三件接近零。故本轮不做「堆业务页面」，而是补齐**验证手段**与**能力接线**。
 
-## 2. 分层与落点
+## 2. 分层与位置
 
 前端依赖方向（自底向上，禁止反向）：
 
 ```
-@repo/shared（契约：schema / 字典 / 错误码）
+@repo/shared（数据结构：schema / 字典 / 错误码）
    ↓
 @repo/http-client（传输：认证注入、凭证管理、SSE 客户端）
    ↓
-@repo/sdk（应用契约：ServerClient 类型化方法 + createStream）
+@repo/sdk（应用数据结构：ServerClient 类型化方法 + createStream）
    ↓
 @repo/ui（表现层：shadcn 原语 + 自有组件 + 通用 hook）  ← 不得依赖 http-client / sdk
    ↓
 apps/web | apps/admin（页面、Server Actions、providers、stores）
 ```
 
-| 能力性质 | 落点 | 依据 |
+| 能力性质 | 位置 | 依据 |
 | --- | --- | --- |
-| SSE 事件契约（事件名 / 负载 schema） | `packages/shared/src/schema/stream.schema.ts` | 共享契约归 `shared/schema`（placement 第 2 条） |
+| SSE 事件数据结构（事件名 / 负载 schema） | `packages/shared/src/schema/stream.schema.ts` | 共享数据结构归 `shared/schema`（placement 第 2 条） |
 | SSE 连接创建 | `packages/sdk/src/server.client.ts` 的 `createStream()` | 全类型客户端归 `sdk`（placement 第 9 条） |
 | SSE 订阅的 React 生命周期 | `packages/ui/src/hooks/use-stream.ts` | 通用前端能力归 `@repo/ui` 自有目录（`components/*` / `hooks/*`） |
 | 告警广播发布 | `apps/server/src/modules/monitor/alert-trigger.ts` | 业务推流在业务模块（stream skill §2） |
@@ -55,10 +55,10 @@ apps/web | apps/admin（页面、Server Actions、providers、stores）
 
 **应用装配的机制 / 策略分界**（2026-09-18 收口，此前两个 app 各抄一份）：机制归共享层，取值与善后策略留在 app。
 
-| 能力性质 | 落点 | 依据 |
+| 能力性质 | 位置 | 依据 |
 | --- | --- | --- |
 | 应用 HTTP 客户端装配（浏览器单例 / 服务端无状态客户端 / 凭证读写 / 401 清凭证） | `packages/sdk/src/app-clients.ts` 的 `createAppClients()` | 它包着 `ServerClient`，而 `@repo/ui` 不允许依赖 sdk / http-client |
-| 认证 cookie 的安全默认（httpOnly / sameSite / path / secure） | `packages/shared/src/utils/cookie.utils.ts` | 安全契约不能两端各写一份；变化的只有 `maxAge` / `secure` |
+| 认证 cookie 的安全默认（httpOnly / sameSite / path / secure） | `packages/shared/src/utils/cookie.utils.ts` | 安全定义不能两端各写一份；变化的只有 `maxAge` / `secure` |
 | 地址回落与 key → URL 拼接 | `packages/shared/src/utils/url.utils.ts` 的 `createAppUrlConfig()` | 机制共享；**`process.env` 读取必须留在 app**（`NEXT_PUBLIC_*` 需构建期替换，被外置的包内不替换） |
 | Server Action 结果约定 | `@repo/ui/action` 的 `defineAction` | 已有实现，web 曾自带一套 `{ success }` 与之分叉 |
 | 主题（三态 / 持久化 / `.dark` 切换 / 防闪烁脚本 / 切换组件） | `packages/ui/src/lib/theme.ts` + `components/theme.tsx` 的 `createTheme()` | 机制共享；**存储 key 由 app 传入**（同域 localStorage 共享，写死会互相改主题） |
@@ -70,7 +70,7 @@ apps/web | apps/admin（页面、Server Actions、providers、stores）
 理由：`@repo/ui` 是表现层库，若依赖传输包会把「UI 组件库」绑死在某个 HTTP 客户端上，
 `apps/*` 也无法注入自定义实现（如测试替身 / 未来的 gRPC-Web 流）。
 
-## 3. A · 前端质量门
+## 3. A · 前端质量检查
 
 对齐后端已有的三道门（`vitest` + `tsc` + 自定义 `check:*` 守卫）：
 
@@ -100,8 +100,8 @@ apps/web | apps/admin（页面、Server Actions、providers、stores）
 接上（真实业务事件，不是假数据）：
 
 - `AlertTrigger.deliver()` 是测试告警与规则告警的**唯一发送出口**，在「发送 + 落库」之后
-  `publish('admin:all', { event: 'alert.fired', data })`，数据用共享契约 `AlertFiredEventSchema`
-  显式构造（**不直接推实体**：实体时间戳的生成时机依赖 ORM，契约要稳定）。
+  `publish('admin:all', { event: 'alert.fired', data })`，数据用共享数据结构 `AlertFiredEventSchema`
+  显式构造（**不直接推实体**：实体时间戳的生成时机依赖 ORM，数据结构要稳定）。
 - 事件名与负载 schema 落 `@repo/shared`（`STREAM_ALERT_FIRED_EVENT` / `AlertFiredEventSchema`），
   与 `STREAM_SHUTDOWN_EVENT` 同处 `stream.schema.ts`。
 
@@ -171,13 +171,13 @@ SSE → 页面即时出现新事件，形成**端到端自证**（不需要额�
 
 ## 8. 落地记录与实测（2026-09-17）
 
-### 8.1 实际落点
+### 8.1 实际位置
 
 | 项 | 文件 |
 | --- | --- |
-| 前端质量门 | 三包 `typecheck` / `test` 脚本、`turbo.json`（`typecheck` / `test` task）、根 `pnpm typecheck` / `pnpm test` / `pnpm check:ui`、`packages/ui/vitest.config.ts`（jsdom）、`scripts/check-ui.ts` |
+| 前端质量检查 | 三包 `typecheck` / `test` 脚本、`turbo.json`（`typecheck` / `test` task）、根 `pnpm typecheck` / `pnpm test` / `pnpm check:ui`、`packages/ui/vitest.config.ts`（jsdom）、`scripts/check-ui.ts` |
 | 样板测试 | `packages/ui/test/{utils,action,use-stream,tag}.test.*`（26 项）、`apps/web/test/{constants,redirect}.test.ts`（9 项）、`apps/admin/test/theme.store.test.ts`（4 项） |
-| SSE 契约 | `packages/shared/src/schema/stream.schema.ts`：`STREAM_ADMIN_BROADCAST_CHANNEL` / `STREAM_ALERT_FIRED_EVENT` / `AlertFiredEventSchema` |
+| SSE 数据结构 | `packages/shared/src/schema/stream.schema.ts`：`STREAM_ADMIN_BROADCAST_CHANNEL` / `STREAM_ALERT_FIRED_EVENT` / `AlertFiredEventSchema` |
 | SSE 服务端 | `modules/stream/{options,stream-auth.guard,stream.controller,stream.module}.ts`（`auth: 'both'`、`broadcastChannels`、同域校验、`flushHeaders`）、`modules/monitor/alert-trigger.ts`（发送后 publish） |
 | SSE 客户端 | `packages/sdk/src/server.client.ts`（`createStream`）、`packages/ui/src/hooks/use-stream.ts`（`useStream`）、`packages/http-client`（`StreamClientOptions` 凭证泛型化） |
 | SSE 页面 | `apps/admin/src/app/main/monitor/live/page.tsx` + `AppMenu` 菜单 |

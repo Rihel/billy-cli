@@ -1,6 +1,6 @@
 ---
 name: stream
-description: 在 Billy 工程中使用服务端推送（SSE，命名统一为 stream 系）：基于 kits 的 StreamHub 门面（publish 推流 / 频道订阅 / Redis pub/sub 跨实例广播）与 @repo/http-client 的 HttpStreamClient 客户端，覆盖频道命名与身份频道、业务频道白名单、心跳与断线。触发词：SSE、服务端推送、实时推送、推流、事件推送、流式输出、AI 流式、任务进度、实时通知、StreamHub、HttpStreamClient、publish 频道、订阅频道。
+description: 在 Billy 工程中使用服务端推送（SSE，命名统一为 stream 系）：基于 kits 的 StreamHub 统一入口（publish 推流 / 频道订阅 / Redis pub/sub 跨实例广播）与 @repo/http-client 的 HttpStreamClient 客户端，覆盖频道命名与身份频道、业务频道白名单、心跳与断线。触发词：SSE、服务端推送、实时推送、推流、事件推送、流式输出、AI 流式、任务进度、实时通知、StreamHub、HttpStreamClient、publish 频道、订阅频道。
 ---
 
 # 服务端推送（SSE / stream 系）
@@ -14,7 +14,7 @@ description: 在 Billy 工程中使用服务端推送（SSE，命名统一为 st
   订阅路由 `StreamController`（`apps/server/src/modules/stream/stream.controller.ts`，
   `POST /sse/subscribe`）+ 客户端 `HttpStreamClient`（`@repo/http-client`，浏览器 / Node 双环境）+
   客户端入口 `ServerClient.createStream()`（`@repo/sdk`）+ React 生命周期 `useStream`
-  （`@repo/ui`）+ 协议契约 `StreamEventSchema` / `StreamSubscribeSchema`（`@repo/shared`）。
+  （`@repo/ui`）+ 协议约定 `StreamEventSchema` / `StreamSubscribeSchema`（`@repo/shared`）。
 - **推流**：任意业务模块构造器 `@Inject(StreamHub)` 注入 → `publish(channel, event)`，
   本实例直推 + Redis 广播（其他实例收到后推各自的本地连接）。
 - **频道约定**：`<域>:<id>`（如 `user:42` / `task:42`）；身份频道 `user:{userId}` /
@@ -49,10 +49,10 @@ UI Message Stream 协议（前端 `useChat` 直接消费），服务端自己写
 
 ## 完成检查清单
 
-- [ ] 复用 `StreamHub` 门面（构造器 `@Inject(StreamHub)`），未自写 SSE 传输 / 未引第三方 SSE 库
+- [ ] 复用 `StreamHub` 统一入口（构造器 `@Inject(StreamHub)`），未自写 SSE 传输 / 未引第三方 SSE 库
 - [ ] 业务频道已按 `SSE_ROUTE_OPTIONS.allowChannel` 白名单校验（默认仅身份频道，不裸放 `user:*` / `admin:*`）；
       需要全体管理员广播时用 `broadcastChannels`（如 `STREAM_ADMIN_BROADCAST_CHANNEL`），不要在控制器里手写频道名
-- [ ] 事件负载用共享契约（`event` + `data`，专用事件在 `packages/shared/src/schema/stream.schema.ts` 定 schema），频道名符合 `<域>:<id>` 约定
+- [ ] 事件负载用共享数据结构（`event` + `data`，专用事件在 `packages/shared/src/schema/stream.schema.ts` 定 schema），频道名符合 `<域>:<id>` 约定
 - [ ] 前端用 `client.createStream()` + `@repo/ui` 的 `useStream`（不要手写 EventSource / 自己管 useEffect 重连）；
       非 React 场景才直接用 `HttpStreamClient`，且页面卸载必须 `close()`
 - [ ] 新增 / 修改了 SSE 路由实现时，控制器保持 `writeHead` 后 `flushHeaders()`，并确认异常过滤器在 `headersSent` 时不会二次崩溃

@@ -6,7 +6,7 @@ import { z } from 'zod'
 import { startMockModelServer, type MockModelServer } from './helpers/mock-model-server.js'
 
 /**
- * 适配器契约测试（设计 §5.8）：**我们押在 Mastra 上的行为**，升级 `@mastra/core` 时先跑它。
+ * 适配器一致性测试（设计 §5.8）：**我们押在 Mastra 上的行为**，升级 `@mastra/core` 时先跑它。
  *
  * 挂了说明 `ai/mastra/**` 的适配器要改，主体（`ai/tools/**`）不受影响。
  * 三条结论都是在本机实测出来的（2026-10-01，`@mastra/core@1.69.0`）：
@@ -16,7 +16,7 @@ import { startMockModelServer, type MockModelServer } from './helpers/mock-model
  *    不破坏"入参出参全量入库"这条硬规则（设计 §5.6）；
  * 2. **agent 级 `beforeToolCall` 在 durable 下同样生效，且能短路**（返回 `{proceed:false, output}`）。
  *    我们仍然选择包 `execute`：那样网关与插件不必认识 Mastra 的钩子 API，主体保持框架无关
- *    （适配器只做一次映射）。这条契约固定"钩子是可用选项"这个事实，避免以后误判；
+ *    （适配器只做一次映射）。这条行为约定固定"钩子是可用选项"这个事实，避免以后误判；
  * 3. **未知工具落成 `tool-output-error`，整轮继续**（错误文本里是 `ToolNotFoundError`）⇒
  *    "拦截不存在的工具"是补强与审计，不是从零实现。
  */
@@ -46,7 +46,7 @@ interface ChunkLike {
 const buildTool = (options: { toModelOutput?: boolean; id?: string } = {}) =>
   createTool({
     id: options.id ?? 'plan-create',
-    description: '契约测试用工具：返回一份大出参',
+    description: '一致性测试用工具：返回一份大出参',
     inputSchema: z.object({ goal: z.string().optional(), tasks: z.array(z.unknown()).optional() }),
     ...(options.toModelOutput
       ? {
@@ -105,7 +105,7 @@ const buildAgent = (
     ...(options.hooks ? { hooks: options.hooks as never } : {}),
   })
 
-describe('适配器契约：Mastra 行为（升级前先跑这份）', () => {
+describe('适配器行为约定：Mastra 行为（升级前先跑这份）', () => {
   let mock: MockModelServer
 
   beforeAll(async () => {
@@ -116,14 +116,14 @@ describe('适配器契约：Mastra 行为（升级前先跑这份）', () => {
     await mock.close()
   })
 
-  it('契约 ①：durable 下 toModelOutput 生效 —— 流里是全量，模型收到映射结果', async () => {
+  it('用例 ①：durable 下 toModelOutput 生效 —— 流里是全量，模型收到映射结果', async () => {
     const chunks: ChunkLike[] = []
     const agent = buildAgent(mock, {
       id: 'contract-durable',
       tools: { 'plan-create': buildTool({ toModelOutput: true }) },
     })
 
-    await runOnce(agent, '[契约-durable]', chunks)
+    await runOnce(agent, '[用例-durable]', chunks)
 
     // 流里（→ 时间线 → 前端）必须是全量
     const resultChunk = chunks.find((chunk) => chunk.type === 'tool-output-available')
@@ -138,22 +138,22 @@ describe('适配器契约：Mastra 行为（升级前先跑这份）', () => {
     expect(modelSaw).not.toContain(FULL_MARKER)
   })
 
-  it('契约 ①-b（对照）：不配 toModelOutput 时，模型收到的是全量', async () => {
+  it('用例 ①-b（对照）：不配 toModelOutput 时，模型收到的是全量', async () => {
     const agent = buildAgent(mock, {
       id: 'contract-plain',
       tools: { 'plan-create': buildTool() },
     })
 
-    await runOnce(agent, '[契约-对照]')
+    await runOnce(agent, '[用例-对照]')
     expect(lastToolMessage(mock)).toContain(FULL_MARKER)
   })
 
-  it('契约 ②：agent 级 beforeToolCall 在 durable 下生效，且能短路（proceed:false 返回结论）', async () => {
+  it('用例 ②：agent 级 beforeToolCall 在 durable 下生效，且能短路（proceed:false 返回结论）', async () => {
     const hookCalls: string[] = []
     let executed = 0
     const tool = createTool({
       id: 'plan-create',
-      description: '契约测试：短路用',
+      description: '一致性测试：短路用',
       inputSchema: z.object({ goal: z.string().optional(), tasks: z.array(z.unknown()).optional() }),
       execute: async () => {
         executed += 1
@@ -172,7 +172,7 @@ describe('适配器契约：Mastra 行为（升级前先跑这份）', () => {
       },
     })
 
-    await runOnce(agent, '[契约-hooks]')
+    await runOnce(agent, '[用例-hooks]')
 
     // 钩子被调用（所以 durable 下这条路是通的），工具被短路（没执行）
     expect(hookCalls).toEqual(['plan-create'])
@@ -181,14 +181,14 @@ describe('适配器契约：Mastra 行为（升级前先跑这份）', () => {
     expect(lastToolMessage(mock)).toContain('HOOK-SHORT-CIRCUIT')
   })
 
-  it('契约 ③：未知工具落成 tool-output-error，整轮继续跑完', async () => {
+  it('用例 ③：未知工具落成 tool-output-error，整轮继续跑完', async () => {
     const chunks: ChunkLike[] = []
     const agent = buildAgent(mock, {
       id: 'contract-unknown',
       tools: { 'some-other-tool': buildTool({ id: 'some-other-tool' }) },
     })
 
-    await runOnce(agent, '[契约-未知工具]', chunks)
+    await runOnce(agent, '[用例-未知工具]', chunks)
 
     const errorChunk = chunks.find((chunk) => chunk.type === 'tool-output-error')
     expect(errorChunk, '未知工具应该有 tool-output-error 片段').toBeDefined()

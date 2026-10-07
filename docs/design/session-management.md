@@ -63,10 +63,10 @@ interface StoredSession {
 - 「当前会话」判定：用请求自带 token 算 sha 与会话条目比对，标 `current: true`。
   （JWT 里没有 sessionId，也不打算为此改 token 结构。）
 - 放在独立 `modules/session`：用户会话来自身份、管理员会话来自身份，业务逻辑完全一样，
-  在两处各写一遍控制器属于重复劳动；`SessionStore` 本身就是数据访问门面，故本模块**只有
+  在两处各写一遍控制器属于重复劳动；`SessionStore` 本身就是数据访问统一入口，故本模块**只有
   controller + service，没有 repository**。
 
-### 2.3 契约与客户端
+### 2.3 数据结构与客户端
 
 - `packages/shared/src/schema/session.schema.ts`：`SessionEntrySchema`（sessionId / createdAt /
   lastSeenAt / ip / userAgent / current）、`SessionListSchema`、`RemoveSessionSchema`。

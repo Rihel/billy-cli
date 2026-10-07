@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { createAppClients } from '@repo/sdk'
 
 /**
- * AI 流的三个地址（SDK 契约，纯字符串，node 环境）。
+ * AI 流的三个地址（SDK 约定，纯字符串，node 环境）。
  *
  * 为什么值得单测：这三条地址的**方法**必须不同，且重连必须是**能被 GET 的**地址。
  * 曾经踩过的坑：`useChat({ resume: true })` 挂载时一定会发 **GET**，而建流端点是 POST-only ——
@@ -17,7 +17,7 @@ const { createServerClient } = createAppClients({
 
 const client = createServerClient('test-token')
 
-describe('AI 流地址契约', () => {
+describe('AI 流地址', () => {
   it('建流是 POST 地址（/agent/chat/stream）', () => {
     expect(client.agent.chatStreamUrl()).toBe('http://server.test/agent/chat/stream')
   })

@@ -1,7 +1,7 @@
 # 验证：接口自测（develop-backend-api 引用文件）
 
 > 本文件是 `develop-backend-api` skill 的组成部分，由主 SKILL.md 引用。
-> 接口交付前按本文件自测；契约细节见 [response-contract.md](./response-contract.md)。
+> 接口交付前按本文件自测；响应格式细节见 [response-contract.md](./response-contract.md)。
 
 1. `pnpm dev:pkgs` 先确保改动的包已构建；`pnpm dev:server` 起服务。
 2. curl 自测主路径 + 错误路径，断言 body `code`（与 `AppErrorCodes` 一致）与 HTTP 状态：

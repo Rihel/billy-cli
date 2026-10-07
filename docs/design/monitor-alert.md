@@ -26,13 +26,13 @@
   - **通知**：FileClient（node fs 追加写，零依赖，始终可用）+ 既有 LarkClient / EmailClient；
   - **评估**：`Scheduler` 周期任务（metric / surge 规则按 periodSeconds 评估）。
 
-## 2. 能力归位
+## 2. 能力放在哪
 
 | 项 | 决定 |
 | --- | --- |
-| 遥测层（通用埋点） | `packages/kits/src/telemetry/`：`Telemetry` 门面（Counter / Histogram / Gauge + 窗口聚合 + 分位计算 + 指标注册），由 `TelemetryModule` 装配（`@Global()` 无配置纯模块）；**任何业务可埋点** |
+| 遥测层（通用埋点） | `packages/kits/src/telemetry/`：`Telemetry` 统一入口（Counter / Histogram / Gauge + 窗口聚合 + 分位计算 + 指标注册），由 `TelemetryModule` 装配（`@Global()` 无配置纯模块）；**任何业务可埋点** |
 | 文件输出通道 | `packages/kits/src/notification/file/`：`FileClient`（通知写文件，默认 `logs/alerts.log`，始终 configured） |
-| 通知门面 | `notifier.ts` 增加 `file` 通道（默认：无真实通道配置时兜底文件输出） |
+| 通知统一入口 | `notifier.ts` 增加 `file` 通道（默认：无真实通道配置时兜底文件输出） |
 | 规则实体 | `alert_rules` 扩展：`threshold` / `thresholdWindowSeconds`（event）+ `metric` / `operator` / `thresholdValue` / `periodSeconds`（metric / surge） |
 | 评估引擎 | `apps/server/src/modules/monitor/alert-trigger.ts`（`AlertTrigger`）：事件计数窗口 + `Scheduler` 周期评估 metric / surge |
 | 框架埋点 | `apps/server/src/common/request-metrics/request-metrics.middleware.ts`（`main.ts` 用 `app.use()` 注册）+ `modules/monitor/monitor.controller.ts`：全局请求埋点（耗时直方图 / 请求数 / 5xx）+ 内存采样 |

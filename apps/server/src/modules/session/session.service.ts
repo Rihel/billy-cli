@@ -11,7 +11,7 @@ export interface SessionIdentity {
 /**
  * 会话（登录设备）业务：
  *
- * 本模块**没有 repository** —— `SessionStore`（kits）本身就是会话的数据访问门面，
+ * 本模块**没有 repository** —— `SessionStore`（kits）本身就是会话的数据访问统一入口，
  * 再包一层仓储只是空转；service 只负责「身份 → 会话作用域」与响应整形。
  */
 @Injectable()

@@ -71,7 +71,7 @@ export const mapError = (error: unknown): ErrorDescriptor => {
   return describeErrorCode(AppErrorCodes.Internal)
 }
 
-/** Zod 校验失败：HTTP 200 + code 400 契约（前端 SDK 按 code 判错） */
+/** Zod 校验失败：HTTP 200 + code 400 格式（前端 SDK 按 code 判错） */
 export class ZodValidationFailedError extends Error {
   constructor(readonly detail: string) {
     super(detail)

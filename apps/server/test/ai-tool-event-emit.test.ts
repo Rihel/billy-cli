@@ -13,7 +13,7 @@ import { capturingWriter, waitFor, warningLog } from './helpers/tool-events.js'
  * 前端才不必自己实现去重。
  */
 
-/** 共享契约里的 part 形状（这里只声明断言要读的字段，避免把 shared 的联合类型铺进来） */
+/** 共享数据结构里的 part 形状（这里只声明断言要读的字段，避免把 shared 的联合类型铺进来） */
 interface PartLike {
   type: string
   id?: string
@@ -26,8 +26,8 @@ const events: readonly ToolEventDecl[] = normalizeToolEventDecls(
     { name: 'log-line', title: '日志行', description: '流水一行', mode: 'stream' },
     {
       name: 'typed',
-      title: '带契约的事件',
-      description: 'payload 必须过契约',
+      title: '带定义的事件',
+      description: 'payload 必须过校验',
       payload: z.object({ percent: z.number().min(0).max(100) }),
     },
   ],
@@ -108,7 +108,7 @@ describe('事件发射：形状与归并', () => {
     expect((writer.chunks[0] as PartLike).id).toBe('test-event-tool:progress')
   })
 
-  it('没有 payload 的事件：payload 落成 null（契约里 payload 字段永远在）', async () => {
+  it('没有 payload 的事件：payload 落成 null（定义里 payload 字段永远在）', async () => {
     const writer = capturingWriter()
     emitterOf({ writer })('progress')
     await waitFor(() => writer.chunks.length === 1)
@@ -127,7 +127,7 @@ describe('事件发射：丢弃与容错（事件失败不影响工具结果）'
     expect(log.warnings[0].data).toMatchObject({ toolKey: 'test-event-tool', event: 'nope' })
   })
 
-  it('payload 不合契约 → 丢弃 + warn（列出具体哪个字段错了）', () => {
+  it('payload 不符合定义 → 丢弃 + warn（列出具体哪个字段错了）', () => {
     const writer = capturingWriter()
     const log = warningLog()
     emitterOf({ writer, log })('typed', { percent: 200 })
@@ -136,7 +136,7 @@ describe('事件发射：丢弃与容错（事件失败不影响工具结果）'
     expect(JSON.stringify(log.warnings[0].data)).toContain('percent')
   })
 
-  it('payload 合契约 → 发出（安全边界内的取值不被误杀）', async () => {
+  it('payload 符合定义 → 发出（安全边界内的取值不被误杀）', async () => {
     const writer = capturingWriter()
     emitterOf({ writer })('typed', { percent: 100 })
     await waitFor(() => writer.chunks.length === 1)

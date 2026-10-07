@@ -40,7 +40,7 @@ export const TOOL_GROUP_KEY = Symbol.for('billy.tool.group')
 /** 组内所有工具声明的元数据键（值是 `{ 方法名 → 声明 }`） */
 export const TOOL_DECLS_KEY = Symbol.for('billy.tool.decls')
 
-/** zod 契约的宽类型（装饰器只做登记，不在类型层做推导） */
+/** zod 定义的宽类型（装饰器只做登记，不在类型层做推导） */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AnySchema = z.ZodType<any>
 
@@ -67,19 +67,19 @@ export interface ToolDeclMeta<C = unknown, I = unknown, O = unknown> {
   title: string
   /** 唯一一份说明：是什么 / 什么时候用 / 什么时候不用 / 纪律（模型选工具看到的也是它） */
   description: string
-  /** 参数契约（给模型的 JSON Schema 由它生成） */
+  /** 参数定义（给模型的 JSON Schema 由它生成） */
   params: AnySchema
-  /** 出参契约（可选；标准测试集用它校验实现有没有守约） */
+  /** 出参定义（可选；标准测试集用它校验实现有没有守约） */
   result?: AnySchema
   /**
-   * 配置契约：**每个字段都必须用 zod `.default()` 给出默认值**。
+   * 配置定义：**每个字段都必须用 zod `.default()` 给出默认值**。
    *
    * 代码默认值由 `config.parse({})` 得到（不单列 `defaults`，单列就会与 schema 漂移）；
    * `parse({})` 失败说明默认值没给全 —— 注册机在**启动期**就报错。
    */
   config: AnySchema
   /**
-   * 秘钥契约：字段一律可选、**没有默认值**（默认状态是"未配置"）
+   * 秘钥定义：字段一律可选、**没有默认值**（默认状态是"未配置"）
    */
   secrets?: AnySchema
   /** 秘钥字段元信息（页面渲染 + "缺哪个"的结论文案） */
@@ -88,7 +88,7 @@ export interface ToolDeclMeta<C = unknown, I = unknown, O = unknown> {
    * **自定义事件**声明（设计 §5.17）：这个工具运行时会往父流里吐哪些过程事件。
    *
    * 声明后执行体用 `ctx.emit(name, payload?)` 发（未声明的名字发不出去）；
-   * 名字组内唯一、payload 契约在启动期归一化成 JSON Schema 镜像入库，管理页只读展示。
+   * 名字组内唯一、payload 定义在启动期归一化成 JSON Schema 镜像入库，管理页只读展示。
    */
   events?: readonly ToolEventDeclMeta[]
   /** 覆盖组级默认值：类别 `core`（运行时能力）/ `business`（绑定业务模块） */

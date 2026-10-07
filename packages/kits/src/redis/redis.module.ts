@@ -11,7 +11,7 @@ export type RedisModuleOptions = z.input<typeof RedisConfigSchema>
 /**
  * Redis 模块：`forRoot(options)` 显式传入连接配置，配置对象本身即注入 bean（RedisConfig）。
  *
- * 提供两个门面（依赖 Redis 的模块直接注入 RedisStore / RedisConfig）：
+ * 提供两个统一入口（依赖 Redis 的模块直接注入 RedisStore / RedisConfig）：
  * - RedisStore：键值与 JSON 读写、分布式锁基础版；
  * - RedisLockService：自旋等待 + 看门狗续期的分布式锁。
  * 限流器归 RateLimitModule（同目录结构的独立模块）。

@@ -54,7 +54,7 @@ const catchCode = (fn: () => unknown): number => {
 }
 
 describe('StorageController（双身份 + key 命名空间约束）', () => {
-  it('前台用户上传：门面收到带前缀的 key，且响应 key 已改写（前端据此落库）', async () => {
+  it('前台用户上传：统一入口收到带前缀的 key，且响应 key 已改写（前端据此落库）', async () => {
     const { controller, getPresignedUrl } = makeController()
 
     const result = await asUser('u-1', () =>
@@ -81,7 +81,7 @@ describe('StorageController（双身份 + key 命名空间约束）', () => {
     expect(getDownloadUrl).toHaveBeenCalledWith({ key: 'user/u-1/a.png' })
   })
 
-  it('前台用户下载他人文件：403 且不调门面', () => {
+  it('前台用户下载他人文件：403 且不调统一入口', () => {
     const { controller, getDownloadUrl } = makeController()
 
     const code = catchCode(() =>
@@ -92,7 +92,7 @@ describe('StorageController（双身份 + key 命名空间约束）', () => {
     expect(getDownloadUrl).not.toHaveBeenCalled()
   })
 
-  it('前台用户取 STS 临时凭证：403 且不调门面（整桶权限不发前台）', () => {
+  it('前台用户取 STS 临时凭证：403 且不调统一入口（整桶权限不发前台）', () => {
     const { controller, getTemporaryCredentials } = makeController()
 
     const code = catchCode(() => asUser('u-1', () => controller.getTemporaryCredentials()))

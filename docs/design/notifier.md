@@ -2,7 +2,7 @@
 
 > 目标：为工程提供**通用通知能力**——飞书（Lark）与邮件（SMTP）。
 > **每个第三方服务 = 独立客户端模块**（与 `kits/src/` 下其它基础设施目录平级），
-> **`Notifier` 门面通过 DI 注入各通知客户端**做统一编排与路由，自身不实现任何发送。
+> **`Notifier` 统一入口通过 DI 注入各通知客户端**做统一编排与路由，自身不实现任何发送。
 >
 > 飞书分两层：
 > - **`LarkClient`**（`kits/src/lark/`）：独立 bean，**飞书官方 SDK
@@ -34,13 +34,13 @@
   - **飞书**：官方 SDK **`@larksuiteoapi/node-sdk`**（自研 webhook fetch 被否——用官方客户端）；
   - **邮件**：`nodemailer`（标准 SMTP 客户端）作为 EmailClient 底层；
   - **组织方式**：底层客户端（官方 SDK 封装）+ 通知客户端（注入底层客户端）+ Notifier
-    （注入通知客户端），三层各自平级 bean，复用 `@nestjs/common` 的 DI 门面（`@Injectable` + 构造器 `@Inject`）。
+    （注入通知客户端），三层各自平级 bean，复用 `@nestjs/common` 的 DI 机制（`@Injectable` + 构造器 `@Inject`）。
 
-## 2. 能力归位
+## 2. 能力放在哪
 
 | 项 | 决定 |
 | --- | --- |
-| Notifier 门面 | `packages/kits/src/notification/notifier.ts`（`@Injectable`，构造注入 `LarkNotifyClient` + `EmailClient`，`send(channel, payload)` 路由；`NotifyClient` 接口 + `SendResult`） |
+| Notifier 统一入口 | `packages/kits/src/notification/notifier.ts`（`@Injectable`，构造注入 `LarkNotifyClient` + `EmailClient`，`send(channel, payload)` 路由；`NotifyClient` 接口 + `SendResult`） |
 | 飞书官方 SDK 封装 | `packages/kits/src/lark/`（`lark.client.ts` → **`LarkClient`**（独立 bean，暴露 `raw: lark.Client`）+ `lark.module.ts` + `index.ts`） |
 | 飞书通知客户端 | `packages/kits/src/notification/lark-notify/`（`lark-notify.client.ts` → **`LarkNotifyClient`**（`@Optional()` 注入 `LarkClient` + `NotifyConfig.lark`，发文本消息）+ `index.ts`） |
 | 邮件客户端 | `packages/kits/src/notification/email/`（`email.client.ts` → `EmailClient`，nodemailer + `index.ts`） |
@@ -72,7 +72,7 @@ type NotifyPayload =
 
 interface SendResult { ok: boolean; error?: string }
 
-// ===== Notifier 门面：注入通知客户端，仅编排路由 =====
+// ===== Notifier 统一入口：注入通知客户端，仅编排路由 =====
 @Injectable()
 class Notifier {
   constructor(
@@ -104,7 +104,7 @@ interface NotifyConfig {
 ```
 packages/kits/src/
 ├── notification/                  ← 通知能力目录（NotificationModule）
-│   ├── notifier.ts                Notifier 门面（@Inject LarkNotifyClient + EmailClient）
+│   ├── notifier.ts                Notifier 统一入口（@Inject LarkNotifyClient + EmailClient）
 │   ├── notify.config.ts           NotifyConfig（file / lark / email 段）
 │   ├── notification.module.ts     @Global + forRoot：NotifyConfig + Notifier + 三个客户端
 │   ├── lark-notify/               LarkNotifyClient（@Optional 注入 LarkClient，**第一版**）

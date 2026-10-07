@@ -120,7 +120,7 @@ const newRun = async (status: string, heartbeatMsAgo = 0) => {
 }
 
 describe('存储适配层（快照落我们自己的表）', () => {
-  it('Mastra 门面暴露 workflows 域（只此一域：记忆不做）', async () => {
+  it('Mastra 统一入口暴露 workflows 域（只此一域：记忆不做）', async () => {
     const workflows = await store.getStore('workflows')
     expect(workflows).toBeTruthy()
   })

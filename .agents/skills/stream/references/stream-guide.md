@@ -3,12 +3,12 @@
 > 本文件是 `stream` skill 的组成部分，由主 SKILL.md 引用。
 > 使用 SSE / 实时推送 / 事件推送时必读。协议与实现细节见 `docs/design/sse.md`（设计文档）。
 
-## 1. 能力组成与归位
+## 1. 能力组成与放置位置
 
 | 项 | 位置 |
 | --- | --- |
-| 协议契约（事件 / 订阅体 / 广播频道 / 专用事件） | `packages/shared/src/schema/stream.schema.ts`（`StreamEventSchema` / `StreamSubscribeSchema` / `STREAM_ADMIN_BROADCAST_CHANNEL` / `STREAM_ALERT_FIRED_EVENT` / `AlertFiredEventSchema`） |
-| 服务端推流门面 | `packages/kits/src/stream/stream-hub.ts`（`StreamHub`）+ `stream-connection.ts`（`StreamConnection`） |
+| 协议约定（事件 / 订阅体 / 广播频道 / 专用事件） | `packages/shared/src/schema/stream.schema.ts`（`StreamEventSchema` / `StreamSubscribeSchema` / `STREAM_ADMIN_BROADCAST_CHANNEL` / `STREAM_ALERT_FIRED_EVENT` / `AlertFiredEventSchema`） |
+| 服务端推流统一入口 | `packages/kits/src/stream/stream-hub.ts`（`StreamHub`）+ `stream-connection.ts`（`StreamConnection`） |
 | 订阅路由 | `apps/server/src/modules/stream/stream.controller.ts`（`StreamController`，`POST /sse/subscribe`）+ `stream-auth.guard.ts` / `stream.options.ts` |
 | 客户端（通用） | `packages/http-client/src/stream/`（`HttpStreamClient`，浏览器 / Node 双环境） |
 | 客户端（应用层入口） | `packages/sdk/src/server.client.ts` 的 `ServerClient.createStream()` —— 复用同一份 baseUrl / 凭证 / Bearer 策略 |
@@ -39,7 +39,7 @@ streamHub.publish(STREAM_ADMIN_BROADCAST_CHANNEL, {
   广播消息携带发布实例 `instanceId`，自回环消息直接丢弃（避免双推）。
 - Redis 故障时本实例直推不受影响；广播 key 为 `stream:{channel}`（内部命名空间，勿手动改）。
 - **专有事件一律在 `@repo/shared` 定 schema**（如 `AlertFiredEventSchema`），前后端共用同一份解析；
-  不要把 ORM 实体直接塞进 `data`（实体字段与时间戳由 ORM 决定，契约会跟着漂）。
+  不要把 ORM 实体直接塞进 `data`（实体字段与时间戳由 ORM 决定，数据结构会跟着漂）。
 - 推流是**旁路**：只读展示用，publish 失败不要影响主流程（现成用例用 try/catch + warn 日志）。
 
 ## 3. 服务端：订阅路由与频道权限（安全要点）
@@ -100,7 +100,7 @@ const stream = useMemo(() => sdk.createStream(), [sdk])
 // 2) 事件名 → 处理函数；函数身份每次渲染变化不会触发重连（内部存 ref）
 const { state, connected } = useStream(stream, {
   [STREAM_ALERT_FIRED_EVENT]: (raw) => {
-    const parsed = AlertFiredEventSchema.safeParse(raw) // 3) 共享契约解析，脏数据丢弃
+    const parsed = AlertFiredEventSchema.safeParse(raw) // 3) 共享数据结构解析，脏数据丢弃
     if (parsed.success) append(parsed.data)
   },
 })
@@ -135,7 +135,7 @@ sse.close()
   （1s → 2s → 4s，上限 30s，服务端 `retry:` 帧可覆盖），重连前重新解析凭证。
 - 内置状态事件 `open` / `reconnecting` / `closed`；`on` 返回取消订阅函数。
 - 浏览器默认页面隐藏时断开（`openWhenHidden: true` 可保持）；**恢复可见后必须自动重连**
-  （这是 `openWhenHidden` 的契约，`HttpStreamClient` 已用「每次连接尝试新建 AbortController」
+  （这是 `openWhenHidden` 的约定，`HttpStreamClient` 已用「每次连接尝试新建 AbortController」
   保证——AbortSignal 一旦 abort 就永久 aborted，复用会让恢复后的重连立即被中断、被 transport
   当成正常结束而直接进入 `closed`，表现为切回标签页后流静默失效；回归用例见
   `packages/http-client/test/stream-client.test.ts` 的「恢复可见后自动重连」）。
@@ -174,4 +174,4 @@ sse.close()
 - `packages/ui/test/use-stream.test.ts`：hook 生命周期（建连 / 卸载 close / handler 身份变化不重连 /
   事件名集合变化重连 / client 引用变化关旧连新），用手写替身客户端（正好证明 hook 不依赖传输包）。
 - `apps/server/test/alert-trigger.test.ts`：告警发送后 publish 到 `admin:all`，且负载通过
-  `AlertFiredEventSchema` 解析（契约一致性由测试锁住）。
+  `AlertFiredEventSchema` 解析（数据结构一致性由测试锁住）。

@@ -14,7 +14,7 @@ interface Call {
 class Foo {}
 
 /**
- * 假的基础日志门面：记录「哪个 context 的哪条日志」，不碰真实 pino。
+ * 假的基础日志统一入口：记录「哪个 context 的哪条日志」，不碰真实 pino。
  *
  * 这样测的是 AppLogger / NestLoggerAdapter 自身的逻辑（context、meta 归置、参数约定），
  * 而不是 pino 的输出格式。`setContext` 按真实实现语义切换 context（真实实现会 derive child）。

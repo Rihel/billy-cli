@@ -351,7 +351,7 @@ describe('对话链路端到端（mock 模型 + 真实数据库）', () => {
      * **模型真的被要求填 reason**（设计 §5.18）：请求体里的工具定义必须把 `reason` 写进 `required`。
      *
      * 这是"引擎级注入"在**模型侧**的端到端证据：模型不是靠提示词"记得"要写，
-     * 而是工具的参数契约里就有这个必填字段。
+     * 而是工具的参数定义里就有这个必填字段。
      */
     const toolDefinitions = lastRequest.tools as Array<{
       function: { name: string; parameters: { properties: Record<string, unknown>; required: string[] } }

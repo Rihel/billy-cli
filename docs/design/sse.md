@@ -35,23 +35,23 @@
 **分工边界**：`HttpStreamClient` 只做「传输 + 状态机 + 事件分发 + 认证编排」；认证的凭证存取、
 策略注入、刷新去重复用 http-client 本包实现，不重复定义。
 
-## 2. 能力归位
+## 2. 能力放在哪
 
 | 项 | 决定 |
 | --- | --- |
-| 协议层（事件契约 / 频道约定） | `packages/shared/src/schema/stream.schema.ts`（zod），`schema/index.ts` 导出 |
-| 服务端推流门面 | `packages/kits/src/stream/stream-hub.ts`（`StreamHub`）+ `stream-connection.ts` + `index.ts`，`stream/index.ts` 聚合后由 `packages/kits/src/index.ts` 导出 |
+| 协议层（事件数据结构 / 频道约定） | `packages/shared/src/schema/stream.schema.ts`（zod），`schema/index.ts` 导出 |
+| 服务端推流统一入口 | `packages/kits/src/stream/stream-hub.ts`（`StreamHub`）+ `stream-connection.ts` + `index.ts`，`stream/index.ts` 聚合后由 `packages/kits/src/index.ts` 导出 |
 | 服务端 SSE 路由 | `apps/server/src/modules/stream/stream.controller.ts`（`StreamController`，`@Controller('sse')` + `POST subscribe`），鉴权在 `stream-auth.guard.ts`（按 `SSE_ROUTE_OPTIONS.auth` 委派用户 / 管理员守卫） |
 | SSE 客户端能力 | `packages/http-client/src/stream/`（`HttpStreamClient` + `stream-transport` + `stream-parser` + `types` + `errors`），随 `@repo/http-client` 导出（**http-stream-client 定位**：流式客户端是 http-client 的能力子模块，不拆独立包） |
 | 依赖 | `@repo/http-client`：**零第三方依赖**（认证用本包凭证体系）；广播用 kits 既有 `RedisStore.raw`，零新增 |
 | 注册 | `StreamHubModule` 装配（`@Global()`，复用 `RedisConfig` + `IdGeneration`）；生命周期 `OnApplicationBootstrap` 建 pub/sub，`OnApplicationShutdown` 清理 |
 | 错误 | `StreamHubError` 加入 `infrastructure-errors.ts`（`AppErrorCodes.Internal`） |
 
-归位依据：`placement.md` §6「外部资源门面 → `kits/src/<基础设施>/`」；HTTP 边界 → controller。
+放置依据：`placement.md` §6「外部资源统一入口 → `kits/src/<基础设施>/`」；HTTP 边界 → controller。
 
 ## 3. 数据结构
 
-### 3.1 协议层（shared 契约，前后端共用）
+### 3.1 协议层（shared 数据结构，前后端共用）
 
 SSE 帧标准：`id` / `event` / `data` / `retry`。
 

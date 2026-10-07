@@ -75,7 +75,7 @@
 
 ## 5. billy 特定用法
 
-- **验证分层依赖方向**（`billy-dev-foundation` 分层铁律：shared 不依赖业务包、kits 不 import
+- **验证分层依赖方向**（`billy-dev-foundation` 分层规则：shared 不依赖业务包、kits 不 import
   `apps/*`）：用 `codegraph callers <某类>` 或 `impact <某类>` 查反向依赖，快速发现越层 import。
 - **NestJS 调用链（实测注意）**：`callers`（反向依赖）与 `impact`（影响面）对 NestJS 显式
   `@Inject` 架构**准确**，可用它们验证分层方向；但 `callees`（正向方法调用边）对 DI 链**不可靠**

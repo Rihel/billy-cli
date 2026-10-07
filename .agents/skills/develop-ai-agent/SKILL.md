@@ -36,11 +36,11 @@ description: >-
 | 目录 | 放什么 | 加东西时改哪 |
 | --- | --- | --- |
 | `api/` | **接口层**：`ai.controller`（对话路由）/ `ai-tool.controller`（工具配置路由）/ `ai-tool.service`（后台工具配置服务） | 加路由：写 controller + 在 `ai.module.ts` 的 `controllers` 登记一行 |
-| `core/` | **核心引擎**（与"具体是哪件事"无关）：共享契约 `envelope`（运行时信封）/ `config` / `constants` / `errors` / `model-decision`；**工具引擎 `core/tools/**`**（`tools.types` DSL / `tool.decorator` + `tool.class`（工具组 DSL 与 `buildToolSpecs`）/ `tool.registry`（注册机 + 种子）/ `tool.gateway`（网关）/ `plugins/*.plugin.ts`（一个插件一个文件）/ `tool.settings`（合并纯函数）/ `tool.config.service`（缓存）/ `tool.config.repository`（`ai_tools`）/ `tool-event`（事件声明归一化 + 发射，见 §2.2）/ `paginate` + `tool-result.store`（大返回分页与回取））；`core/skills/**`（`SkillLoader` + `catalog/<name>/SKILL.md`）；`core/prompts/**`（提示词引擎 + `templates/*.eta` + `partials/` + 运行环境组装 `environment.ts`） | 加引擎能力：改 `core/tools/**`（**禁 import `@mastra`**） |
+| `core/` | **核心引擎**（与"具体是哪件事"无关）：共享数据结构 `envelope`（运行时信封）/ `config` / `constants` / `errors` / `model-decision`；**工具引擎 `core/tools/**`**（`tools.types` DSL / `tool.decorator` + `tool.class`（工具组 DSL 与 `buildToolSpecs`）/ `tool.registry`（注册机 + 种子）/ `tool.gateway`（网关）/ `plugins/*.plugin.ts`（一个插件一个文件）/ `tool.settings`（合并纯函数）/ `tool.config.service`（缓存）/ `tool.config.repository`（`ai_tools`）/ `tool-event`（事件声明归一化 + 发射，见 §2.2）/ `paginate` + `tool-result.store`（大返回分页与回取））；`core/skills/**`（`SkillLoader` + `catalog/<name>/SKILL.md`）；`core/prompts/**`（提示词引擎 + `templates/*.eta` + `partials/` + 运行环境组装 `environment.ts`） | 加引擎能力：改 `core/tools/**`（**禁 import `@mastra`**） |
 | `runtime/` | 会话 / 运行 / 时间线仓储与服务、上下文、流记录、子 agent 执行器、崩溃恢复 + `plan.protocol`（计划协议） | 改行为先看 `runtime.md` |
 | `agents/` | **顶层** agent 声明（前端能选的就这些，一个文件一个）+ `index.ts` 唯一登记处 + `types` / `registry` / `service`（注册表与装配查询） | 加 agent：一个文件 + `AGENT_SPECS` 一行 + 一个 eta 模板 |
-| `tools/` | **具体工具**（用 `core/tools` 的引擎写，**禁 import `@mastra`**）：`command.tool` / `subagent.tool` / `read-tool-result.tool` / `planner/**`（规划工具组 `planner.tools`：组内四个 `@ToolDecl` 方法 + `planner.store` 机制 + `planner.schemas` 契约） | 加工具：在合适的组里加一个 `@ToolDecl` 方法（没有合适的组就新建一个 `@ToolGroup` 类）+ 在 `AGENT_TOOL_GROUPS` 登记一行 |
-| `mastra/` | **适配器**（唯一可 import `@mastra`）：`ai.mastra`（Mastra 实例装配）/ `tool.adapter`（含 `toModelOutput` 分页）/ `agent.adapter` / `context.adapter`（信封 ↔ RequestContext）/ `stream.adapter` / `skill.adapter` | 升级 Mastra 先跑 `test/ai-mastra-contract.test.ts` 的契约，再改这里 |
+| `tools/` | **具体工具**（用 `core/tools` 的引擎写，**禁 import `@mastra`**）：`command.tool` / `subagent.tool` / `read-tool-result.tool` / `planner/**`（规划工具组 `planner.tools`：组内四个 `@ToolDecl` 方法 + `planner.store` 机制 + `planner.schemas` 数据结构） | 加工具：在合适的组里加一个 `@ToolDecl` 方法（没有合适的组就新建一个 `@ToolGroup` 类）+ 在 `AGENT_TOOL_GROUPS` 登记一行 |
+| `mastra/` | **适配器**（唯一可 import `@mastra`）：`ai.mastra`（Mastra 实例装配）/ `tool.adapter`（含 `toModelOutput` 分页）/ `agent.adapter` / `context.adapter`（信封 ↔ RequestContext）/ `stream.adapter` / `skill.adapter` | 升级 Mastra 先跑 `test/ai-mastra-contract.test.ts` 的数据结构，再改这里 |
 
 细节：会话运行链、上下文策略、SSE 协议与恢复 → [references/runtime.md](./references/runtime.md)；
 扩展点（加 agent / 工具 / 技能 / 子 agent）→ [references/extension.md](./references/extension.md)。
@@ -94,7 +94,7 @@ ai/mastra/** 适配器 ──→ Toolbox/SkillRef/信封 映射成 Mastra 的 To
 
 **`reason` 不用你写**：每次调用必填的"为什么用这个工具"由**引擎注入**（`core/tools/call-reason.ts` 的
 `withCallReason`，`buildToolSpecs` 组装声明时统一包成 `modelParams`）。它只作用于"给模型的 schema +
-网关校验"这一层，执行体拿到的 `input` 仍是你的原契约（`reason` 被 `ValidatePlugin` 摘掉；
+网关校验"这一层，执行体拿到的 `input` 仍是你的原定义（`reason` 被 `ValidatePlugin` 摘掉；
 要写业务日志就读 `ctx.reason`，可选、不要求）。设计见 `docs/design/ai-agent-tool-engine.md` §5.18。
 
 **一个类一个工具 = 组里只有一个方法**：形状只有一种，不必为"单工具"另写。
@@ -156,7 +156,7 @@ async first(input: z.infer<typeof GreetInput>, ctx: ToolCallContext<z.infer<type
    （进度不刷屏）；`stream` = 不带 id，一块一条 → 前端按序追加（日志行、产物行）。
    前端**不自己实现去重**，只按 `parts` 顺序遍历。
 2. **未声明不许发**：`ctx.emit` 只认声明里的 `name`（组内唯一）；未声明、或 payload 不合声明的
-   zod 契约 → **丢弃 + `log.warn`**。事件是锦上添花，**绝不能让工具执行失败**。
+   zod 定义 → **丢弃 + `log.warn`**。事件是锦上添花，**绝不能让工具执行失败**。
 3. **事件是过程，出参是结论**：事件只走流，**不落时间线**（`stream-recorder` 的 `default` 分支）；
    刷新后还要看见的东西**必须写进出参**（出参全量落库）。这是口径不是 bug。
 4. **声明是基础信息**：`events` 与 `title` / `description` / `param_schema` 一样启动期镜像进
@@ -174,17 +174,17 @@ async first(input: z.infer<typeof GreetInput>, ctx: ToolCallContext<z.infer<type
 （标题 + 事件名徽标 + 折叠 JSON）；要终端 / 图表这类外观再写 `registerToolEventRenderer` 并在会话页
 模块加载期 import。机制本身的测试与设计见设计文档 §5.17。
 
-## 3. 验证与质量门
+## 3. 验证与质量检查
 
 ```bash
 pnpm --filter @app/server test test/ai-plan-subagents.test.ts   # 规划 / 子 agent / 审计
 pnpm --filter @app/server test test/ai-tools-battery.test.ts    # 注册机标准测试集（每个工具）
-pnpm --filter @app/server test test/ai-mastra-contract.test.ts  # 适配器契约（升级 Mastra 先跑）
+pnpm --filter @app/server test test/ai-mastra-contract.test.ts  # 适配器行为约定（升级 Mastra 先跑）
 pnpm --filter @app/server test                                  # 含真实 Redis 的流式 e2e
-pnpm typecheck && pnpm test && pnpm check:ui && pnpm check:inject && pnpm check:mastra   # 全仓门
+pnpm typecheck && pnpm test && pnpm check:ui && pnpm check:inject && pnpm check:mastra   # 全仓检查
 ```
 
-**两条铁律（工具引擎按它写，别的包同样适用）**：文字性多行字符串一律 ``dedent`...` ``；
+**两条规定（工具引擎按它写，别的包同样适用）**：文字性多行字符串一律 ``dedent`...` ``；
 除纯类型文件外**一个文件一个职责**（见 `billy-dev-foundation/references/code-conventions.md` 第 11 / 12 条）。
 
 **带装饰器的测试夹具只能放 `src/**`**：`test/**` 下的文件 Vitest 不做 TS 装饰器转换
@@ -219,6 +219,6 @@ pnpm typecheck && pnpm test && pnpm check:ui && pnpm check:inject && pnpm check:
 - **离线 mock 模型**在 `test/helpers/mock-model-server.ts`（`[todo-overwrite]` / `[todo-react]` /
   `[delegate]` / `[command]` / `[slow]` 标记），
   不需要任何外部密钥；新增能力优先给它加一个标记 + 一条端到端断言；
-- 改契约（`@repo/shared`）后**必须** `pnpm build:pkgs`，否则 `@repo/*` 仍解析 dist；
+- 改数据结构（`@repo/shared`）后**必须** `pnpm build:pkgs`，否则 `@repo/*` 仍解析 dist；
 - 迁移：`pnpm --filter @app/server db:generate <名字>` → 迁移文件首行改 `import type`，
   并**人工检查部分索引（partial unique）的条件变化**（TypeORM 检测不到）。

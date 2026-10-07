@@ -42,7 +42,7 @@ AGENT_CORES（core bean.asTools()）───┘        │
 | --- | --- | --- |
 | 工具清单在 `new Agent()` 时一次性交给 Mastra | `mastra/ai.mastra.ts:103` | 运行期只能拦掉调用，不能靠"不让模型看见"实现权限 |
 | durable（崩溃恢复）默认开启 | `app-config.ts:134` | 引擎必须走 durable 也成立的路径 |
-| durable 路径直接调 `tool.execute`；**agent 级 `beforeToolCall` 仍然生效且能短路**（钩子在 Agent 层包装工具实例，不走 durable 文件） | `create-durable-agent-*.js:4576` 直接调 `execute`；**实测**（`test/ai-mastra-contract.test.ts` 契约 ②）：钩子被调用，`{proceed:false, output}` 能短路且结论交给模型 | 钩子是可用选项；我们仍选择包 `execute`，让网关与插件不必认识 Mastra 的钩子 API（主体框架无关） |
+| durable 路径直接调 `tool.execute`；**agent 级 `beforeToolCall` 仍然生效且能短路**（钩子在 Agent 层包装工具实例，不走 durable 文件） | `create-durable-agent-*.js:4576` 直接调 `execute`；**实测**（`test/ai-mastra-contract.test.ts` 用例 ②）：钩子被调用，`{proceed:false, output}` 能短路且结论交给模型 | 钩子是可用选项；我们仍选择包 `execute`，让网关与插件不必认识 Mastra 的钩子 API（主体框架无关） |
 
 另有一条落库规则要一起考虑：工具入参出参全量入时间线（`stream-recorder.ts:106-133` 不裁剪），
 能省的只有"给模型看的那一份"（`context.service.ts:342-358` 超限截断）。
@@ -153,7 +153,7 @@ AGENT_CORES（core bean.asTools()）───┘        │
 | 运维动作从"改 env 再重启"变成"后台改" | `run-command` 的 4 个配置在 env（`ai.config.ts:55-61`）；重启的代价是一次发布流程 |
 | 排障入口从日志变成时间线 | 现在只有 `command.core.ts:124`、`:130` 两条 warn，工具级拒绝无审计 |
 | 大结果可回取（新增能力） | 现在只有截断，没有取回通道（`context.service.ts:342-358`） |
-| 依赖变更的影响面收敛 | 27 处、16 个文件 → 1 个适配器目录加一份契约测试；`ai.model-decision.ts` 与 `agent-mastra-store.ts` 已经是这个定位 |
+| 依赖变更的影响面收敛 | 27 处、16 个文件 → 1 个适配器目录加一份一致性测试；`ai.model-decision.ts` 与 `agent-mastra-store.ts` 已经是这个定位 |
 | 秘钥可轮换且有脱敏 | 工具现在没有秘钥存放位置，只能进 env |
 | 工具测试不再依赖模型与数据库 | 现在测一个工具要从 `createTool` 产物里抠 `execute` 并手工造 `RequestContext`（`test/ai-command-core.test.ts:32-38`、`ai-plan-subagents.test.ts`）；改后直接调 `exec`，插件与网关用 fake 依赖 |
 
@@ -183,10 +183,10 @@ AGENT_CORES（core bean.asTools()）───┘        │
 
 ## 5. 具体实施方案
 
-> **编码约定（铁律）**：本工程所有**文字性多行字符串**（工具说明、提示词片段、错误话术、落库正文）
+> **编码约定（规范）**：本工程所有**文字性多行字符串**（工具说明、提示词片段、错误话术、落库正文）
 > 一律写成 ``dedent`...` ``，禁止 `+` 拼接与 `[...].join('\n')`。
 > 另：**除纯类型文件外，一个文件一个职责**（所有包都适用）—— 工具引擎因此按
-> "契约 / 端口 / 纯逻辑 / 服务 / 实现 / 插件"拆成一文件一件事，插件是**一个插件一个文件**。
+> "数据结构 / 端口 / 纯逻辑 / 服务 / 实现 / 插件"拆成一文件一件事，插件是**一个插件一个文件**。
 > 两条都已写进 `.agents/skills/billy-dev-foundation/references/code-conventions.md` 第 11 / 12 条。
 
 ### 5.1 总体结构
@@ -225,7 +225,7 @@ AGENT_CORES（core bean.asTools()）───┘        │
 
 ### 5.2 工具 DSL
 
-落点 `ai/core/tools/tools.types.ts`（`ToolSpec` 类型）+ `ai/core/tools/tool.decorator.ts`（`@ToolGroup` 类级 +
+位置 `ai/core/tools/tools.types.ts`（`ToolSpec` 类型）+ `ai/core/tools/tool.decorator.ts`（`@ToolGroup` 类级 +
 方法级 `@ToolDecl`）+ `ai/core/tools/tool.class.ts`（`buildToolSpecs(instance)` 把"工具组实例 + 装饰器元数据"
 拆成 **1..n** 个 `ToolSpec`）—— 纯类型与纯函数，禁止 import `@mastra`。
 
@@ -249,9 +249,9 @@ export interface ToolSpec<C = unknown, I = unknown, O = unknown> {
   readonly title: string           // 人读标题（提示词列举用）
   readonly description: string     // 唯一一份说明：模型选工具看到的也是它
   readonly category: 'core' | 'business'
-  readonly params: z.ZodType<I>    // 参数契约
-  readonly result?: z.ZodType<O>   // 出参契约（可选）
-  readonly config: z.ZodType<C>    // 配置契约：**每个字段都必须自带默认值**（见下）
+  readonly params: z.ZodType<I>    // 参数定义
+  readonly result?: z.ZodType<O>   // 出参定义（可选）
+  readonly config: z.ZodType<C>    // 配置定义：**每个字段都必须自带默认值**（见下）
   readonly secrets?: z.ZodType     // 秘钥字段（一律可选、没有默认值）
   readonly scope: ToolScope        // 默认作用域，可被库里覆盖
   readonly delegation?: boolean    // 委派类工具（算子 agent 工具面时排除）
@@ -292,7 +292,7 @@ export interface ToolSpec<C = unknown, I = unknown, O = unknown> {
 
 ### 5.3 注册机
 
-落点 `ai/core/tools/tool.registry.ts`。
+位置 `ai/core/tools/tool.registry.ts`。
 
 四件事：
 
@@ -320,7 +320,7 @@ export type Toolbox = ReadonlyMap<string, Tool>
 
 ### 5.4 网关与插件
 
-落点 `ai/core/tools/tool.gateway.ts` 与 `ai/core/tools/plugins/*.ts`。
+位置 `ai/core/tools/tool.gateway.ts` 与 `ai/core/tools/plugins/*.ts`。
 
 ```ts
 export interface ToolPlugin {
@@ -395,7 +395,7 @@ DeepSeek Harness 就用它做底座（本机有源码，vendor 成 `@deepseek-ai
    现有的守卫也管不到跨容器那部分。
 2. Cordis 的强项是**第三方插件生态**：运行期装载/卸载、依赖驱动的启停、隔离、热插拔。
    我们的插件是仓库内的策略单元（10 个、固定顺序、随应用发布），这些能力用不上。
-3. 用 4.0 RC 的框架承载核心链路不划算；而且我们要的收益（统一闸门、可单测）用一个
+3. 用 4.0 RC 的框架承载核心链路不划算；而且我们要的收益（统一关卡、可单测）用一个
    `ToolPlugin[]` 加纯 ctx 对象就能拿到，不需要框架。
 
 借它的两条做法（不引依赖）：
@@ -427,7 +427,7 @@ DeepSeek Harness 就用它做底座（本机有源码，vendor 成 `@deepseek-ai
 | `scope` | varchar(16) | `all` / `admin` / `user` / `agent` |
 | `allowed_agents` | jsonb | `scope=agent` 时的清单 |
 | `config` | jsonb | 配置值（可以只存被改过的字段），写入前过 `spec.config` 校验，不含秘钥 |
-| `param_schema` | jsonb | **代码声明的镜像**：参数契约的 JSON Schema（启动期全量写入） |
+| `param_schema` | jsonb | **代码声明的镜像**：参数定义的 JSON Schema（启动期全量写入） |
 | `secrets` | jsonb | `{ 字段名: 明文 }`（**明文入库**；提示串读取时派生） |
 | `limits` | jsonb | 每轮次数、限流、页大小、每轮取页次数上限 |
 | `source` | varchar(16) | `seed` / `manual` |
@@ -530,7 +530,7 @@ durable 恢复会重放工具调用，页不一致会让上下文自相矛盾。
 
 ### 5.8 适配器
 
-落点 `ai/mastra/**`。
+位置 `ai/mastra/**`。
 
 | 适配器 | 现在散在哪 | 收口后做什么 |
 | --- | --- | --- |
@@ -549,10 +549,10 @@ durable 恢复会重放工具调用，页不一致会让上下文自相矛盾。
 | --- | --- | --- |
 | 1 | 工具面在 `new Agent()` 时一次求值 | "只能拦不能藏"这个前提 |
 | 2 | durable 直接调 `tool.execute`，但 agent 级 `beforeToolCall` 仍生效且能短路（实测） | 网关包 `execute` 是**主动选择**（框架无关），不是被迫 |
-| 3 | durable 以 `toModelOutput(result)` 单参调用，模型侧确实收到映射结果 | 分页的落点 |
+| 3 | durable 以 `toModelOutput(result)` 单参调用，模型侧确实收到映射结果 | 分页的位置 |
 | 4 | 未知工具与非法入参落成工具错误结果，整轮不失败 | P5 的处理方式 |
 
-升级 Mastra 的流程：先跑这组契约测试，再看适配器要改什么。主体不受影响。
+升级 Mastra 的流程：先跑这组一致性测试，再看适配器要改什么。主体不受影响。
 
 降级路径：如果第 0 期实验发现 durable 下 `toModelOutput` 不生效，
 `tool.adapter` 改成"包装 `exec` 返回页，再追加一条 `tool-output-full` 时间线事件存全文"，
@@ -586,7 +586,7 @@ Mastra 一改 execute 的形态，所有工具测试一起红。
 
 1. key 在 `TOOL_KEYS` 里，`title` 与 `description` 非空，`category` 合法；
 2. `params`、`config`、`secrets` 都是 zod schema；**`config.parse({})` 必须成功**（这就是"所有配置都有默认值"的机械保证），且 `secrets` 里不允许出现 default；
-3. 入参契约：最小合法入参通过，缺必填被拒，超长或越界被拒；
+3. 入参定义：最小合法入参通过，缺必填被拒，超长或越界被拒；
 4. `exec` 用全 fake 依赖的 ctx 能跑完；声明了 `result` 的工具，出参要能过校验；
 5. 出参可序列化（分页依赖 `JSON.stringify`：没有循环引用、`BigInt`、函数）；
 6. 确定性：同一入参加同一 settings 跑两次，结果一致（确实依赖外部世界的用例在测试里显式豁免）；
@@ -599,7 +599,7 @@ Mastra 一改 execute 的形态，所有工具测试一起红。
 
 要造的测试设施：
 
-| 落点 | 作用 |
+| 位置 | 作用 |
 | --- | --- |
 | `test/helpers/tool-kit.ts` | `makeToolContext()`（信封、settings、静默 logger、可控时钟）、`runToolSpec(spec, input, overrides)`、标准测试集 `describeToolSpec(spec)` |
 | `test/ai-tools/<key>.test.ts` | 每个工具自己的业务断言（策略与边界），用上面的 helper |
@@ -607,9 +607,9 @@ Mastra 一改 execute 的形态，所有工具测试一起红。
 | `test/ai-plugins/*.test.ts` | 每个插件一个文件，用 fake ctx 直接调 `pre` / `post` |
 | `test/ai-gateway.test.ts` | 插件顺序、短路、异常兜底、超时，全部用 fake 插件 |
 | `test/ai-tool-config.test.ts` | 三级合并纯函数、种子对账幂等 |
-| `test/ai-mastra/contracts.test.ts` | §5.8 的四条适配器契约 |
+| `test/ai-mastra/contracts.test.ts` | §5.8 的四条适配器行为约定 |
 
-为了让这些测试不需要 DB 与 Redis，依赖注入的落点也一起定下来：网关注入读配置的端口
+为了让这些测试不需要 DB 与 Redis，依赖注入的位置也一起定下来：网关注入读配置的端口
 （`ToolSettingsProvider`）与日志；限流插件注入一个计数器端口（生产实现是 kits 的 `RedisStore`，
 测试实现是内存 Map）。生产装配在 `ai.module.ts`，测试装配在 helper 里。
 
@@ -620,12 +620,12 @@ Mastra 一改 execute 的形态，所有工具测试一起红。
 
 | 对象 | 是不是工具 | 难点 | 落法 |
 | --- | --- | --- | --- |
-| `run-sub-agent` | 是（工具组 `RunSubAgentTool`，组内一个方法） | `exec` 要跑一个完整 agent：模型调用、建子 run、落时间线、转发流 | 把执行体放到端口 `SubAgentExecutor` 后面：生产实现是 `AgentRunner`，测试实现返回固定结论。spec 只留入参契约与 `precheck`（深度是纯判断；配额要查库，走 bean 注入的只读端口）。`AgentRunner` 现在自己 `new Agent`（`agent-runner.ts:217`），改成注入 agent 工厂（适配器提供）。深度、幂等复用、配额三条守卫用 fake 仓储单测；端到端保留一条（mock 模型）证接线正确 |
+| `run-sub-agent` | 是（工具组 `RunSubAgentTool`，组内一个方法） | `exec` 要跑一个完整 agent：模型调用、建子 run、落时间线、转发流 | 把执行体放到端口 `SubAgentExecutor` 后面：生产实现是 `AgentRunner`，测试实现返回固定结论。spec 只留入参定义与 `precheck`（深度是纯判断；配额要查库，走 bean 注入的只读端口）。`AgentRunner` 现在自己 `new Agent`（`agent-runner.ts:217`），改成注入 agent 工厂（适配器提供）。深度、幂等复用、配额三条守卫用 fake 仓储单测；端到端保留一条（mock 模型）证接线正确 |
 | 规划工具组（`tools/planner/planner.tools.ts`，组内四个 `@ToolDecl` 方法） | 是（工具组，一个方法一个工具） | 跨轮状态（per-run 内存、串行队列）、读时间线取当前计划 | 它们自己不写库（输出是纯数据），所以最好测：直接调 `exec` 加 fake 仓储。已覆盖：首建 / 追加 / id 重复 / 总量上限 / 缺信封（create），order 少·多·重复 / 未知 id / 标 in_progress（reorder），批量 + 幂等 + note（complete），批量删 / 删空（delete）；另有一条同轮串行读改写的端到端 |
-| `run-command` | 是（工具组 `RunCommandTool`，组内一个方法） | 真执行外部命令 | 机制（`CommandRunner`）在 kits，那边已有独立单测，AI 侧只测策略（`ai-command-core.test.ts:9-13` 就是这个分工）。策略上移到插件后，工具单测变成入参契约与出参形状，插件单测管开关、边界、夹紧。现有那条"真跑 30 秒命令再比 `Date.now()`"（`ai-command-core.test.ts:87-101`）改成注入可控时钟加 fake runner，断言传下去的 `timeoutMs` |
+| `run-command` | 是（工具组 `RunCommandTool`，组内一个方法） | 真执行外部命令 | 机制（`CommandRunner`）在 kits，那边已有独立单测，AI 侧只测策略（`ai-command-core.test.ts:9-13` 就是这个分工）。策略上移到插件后，工具单测变成入参定义与出参形状，插件单测管开关、边界、夹紧。现有那条"真跑 30 秒命令再比 `Date.now()`"（`ai-command-core.test.ts:87-101`）改成注入可控时钟加 fake runner，断言传下去的 `timeoutMs` |
 | `SkillLoader` | **不是工具** | 启动期读盘、校验、缓存 | 它已经为测试留了可注入目录（`skill.loader.ts:19-22`、`:48-53`）。目前没有针对它的单测，只在 e2e 里用真实目录 new 出来；补：临时目录注入、缺 `SKILL.md` 报错、校验失败报错、未知技能名报错、`references/` 读取 |
 | Mastra 的技能工具（`skill` / `skill_search` / `skill_read`）与技能目录注入 | 是工具，但不在注册机里 | 见下面「技能：现状与三条路线」 | 同上 |
-| storage adapter、model resolution | 不是工具 | — | 各自的单测（适配器契约、纯函数），不进工具标准测试集 |
+| storage adapter、model resolution | 不是工具 | — | 各自的单测（适配器行为约定、纯函数），不进工具标准测试集 |
 
 ### 5.10 技能与子 agent 的能力面
 
@@ -784,7 +784,7 @@ Mastra 一改 execute 的形态，所有工具测试一起红。
 | 批次 | 内容 | 结束标志 |
 | --- | --- | --- |
 | 0 | 两个实验：durable 下 `toModelOutput` 是否生效（流里是全量、模型收到页）；恢复重放时句柄 Map 是否自洽 | 结论落进 §5.8 的降级选择 |
-| 1 | 适配器四个加契约测试加 `check:mastra`；`ToolSpec` / `Toolbox` / `ToolOutcome` 类型；信封去掉 Mastra 词汇并加 `agentKey`；子 agent 也注入信封（`depth + 1`）；`latestPlan` 只看根 run；`test/helpers/tool-kit.ts` 与标准测试集 | 守卫绿，现有测试不回归，标准测试集能跑通一个示例工具 |
+| 1 | 适配器四个加一致性测试加 `check:mastra`；`ToolSpec` / `Toolbox` / `ToolOutcome` 类型；信封去掉 Mastra 词汇并加 `agentKey`；子 agent 也注入信封（`depth + 1`）；`latestPlan` 只看根 run；`test/helpers/tool-kit.ts` 与标准测试集 | 守卫绿，现有测试不回归，标准测试集能跑通一个示例工具 |
 | 2 | 注册机、网关、9 个插件；core bean 改交声明，行为保持等价；规划工具标 `child: deny`（子 agent 工具面 = 全部 − 委派类 − deny）；插件与网关的测试文件、每个工具的测试文件 | 工具行为与现在一致，边界判断只有一份；标准测试集覆盖注册机里全部工具 |
 | 3 | `ai_tools` 加迁移加种子加配置服务加 `/ai-tool/*` 加 SDK 加后台页；`run-command` 的 4 个旋钮迁入库；配置合并与种子对账的测试 | 后台改开关或超时，下一次调用生效，服务未重启；种子跑两次幂等 |
 | 4 | 分页纯函数、`paginate` 插件、`toModelOutput`、跨轮入口、`read-tool-result`、句柄两级解析、越权与滥用防护；分页边界与确定性的测试 | 大结果模型只收一页并能取下一页，库里仍是全量 |
@@ -808,7 +808,7 @@ Mastra 一改 execute 的形态，所有工具测试一起红。
 | 工具单测 | 每个工具一个文件测自己的策略与边界；`registry.battery.test.ts` 对注册机里全部工具跑标准测试集（§5.9 的 7 条），漏写即红 |
 | 子 agent | 子 agent 的工具调用在时间线里有会话与身份字段；规划工具在子 agent 里得到明确结论而不是抛错；深度、配额、幂等复用三条守卫用 fake 仓储测 |
 | 无依赖 | 工具、插件、网关、配置合并的单测不连模型、数据库、Redis（用 helper 里的 fake 依赖与内存计数器） |
-| 适配器单测 | §5.8 的四条契约；结论到返回值与错误结果的映射 |
+| 适配器单测 | §5.8 的四条行为约定；结论到返回值与错误结果的映射 |
 | 集成 | 改库后下一次调用生效；被禁工具落 `tool-result(isError)` 且整轮不失败；大结果取第 2 页且时间线完整；种子对账幂等 |
 | 迁移 | 建表；partial unique 条件；`(conversation_id, tool_call_id)` 索引 |
 | 守卫 | `ai/core/tools/**` 引入 `@mastra` 必须失败 |
@@ -822,7 +822,7 @@ Mastra 一改 execute 的形态，所有工具测试一起红。
 | 配置入库后"为什么这个工具能用"多了一个变动源 | 时间线落配置版本号，审计列有 `updated_by`，后台页显示 `source` |
 | 分页与 durable 重放的确定性 | §5.6 的硬要求加单测（同句柄同页两次取到的字节一致） |
 | 前端不认识新的 state 与结论元数据 | 与文档同批改工具卡片渲染，列入第 4 批的结束标志 |
-| 适配器多一层间接 | 收益是升级影响面收敛和降级只改一处，用契约测试守住 |
+| 适配器多一层间接 | 收益是升级影响面收敛和降级只改一处，用一致性测试守住 |
 | 一期不能动态改工具面 | 后台页写明"关闭后模型仍可见，调用时被拒" |
 | 秘钥进工具配置扩大敏感面 | 复用现有加密与提示串口径，`redact` 插件兜日志与出参，接口只回提示串 |
 | 工具作者绕过可单测的约定（`exec` 里读 env、用 `Date.now()`、直接 `new` 依赖） | 标准测试集用 fake 依赖与确定性断言把这类写法暴露出来；约定清单进 `develop-ai-agent` skill |
@@ -831,7 +831,7 @@ Mastra 一改 execute 的形态，所有工具测试一起红。
 
 **结论**：工具除了给出参（结论），还可以在**执行过程中**往父流里发**自定义事件**（过程）。
 声明写在 `@ToolDecl({ events })` 里，运行时用 `ctx.emit(name, payload?)` 发，形状是 AI SDK 的
-`data-tool-event` part —— 与子 agent 的 `data-sub-agent*` 同一套机制，只是这次把它变成**声明的契约**。
+`data-tool-event` part —— 与子 agent 的 `data-sub-agent*` 同一套机制，只是这次把它变成**声明的数据结构**。
 
 #### 背景与痛点
 
@@ -842,9 +842,9 @@ Mastra 一改 execute 的形态，所有工具测试一起红。
 | 3 | 子 agent 的实时明细（`data-sub-agent*`）**靠硬编码**在 `agent-runner` 里 | 同类需求每来一个就要在运行时加一个分支，前端也要加一个渲染器；"有哪些过程信息"永远查不全 |
 | 4 | 管理台看不到"这个工具会吐什么" | 直到运行时才发现多了个没渲染器的 part（前端显示成裸 JSON 或直接空白） |
 
-#### 契约
+#### 数据结构
 
-两端共用一份契约（`packages/shared/src/schema/ai-tool-event.schema.ts`），不各写一份防止漂移：
+两端共用一份数据结构（`packages/shared/src/schema/ai-tool-event.schema.ts`），不各写一份防止漂移：
 
 | 名字 | 是什么 |
 | --- | --- |
@@ -875,7 +875,7 @@ const ExportProgress = z.object({
   `,
   params: ExportParams,
   config: ExportConfig,
-  // 事件声明：形状与出参契约同一处写、启动期校验（名字重复 / 标题为空 / mode 非法 = 起不来）
+  // 事件声明：形状与出参定义同一处写、启动期校验（名字重复 / 标题为空 / mode 非法 = 起不来）
   events: [
     {
       name: 'progress',
@@ -898,14 +898,14 @@ async execute(input: z.infer<typeof ExportParams>, ctx: ToolCallContext<ExportCo
   // …过程…
   ctx.emit('progress', { state: 'writing', percent: 40 })
   ctx.emit('line', '第 1 批 500 条已写出')
-  // 未声明的名字发不出去；payload 不合契约也被丢弃 —— 两者都只记 warn，不影响下面的出参
+  // 未声明的名字发不出去；payload 不符合定义也被丢弃 —— 两者都只记 warn，不影响下面的出参
   return { fileKey, rows: total }   // ← 结论：完整落库的那一份
 }
 ```
 
 四条口径：
 
-1. **未声明不许发**：`emit` 只认声明过的名字（同名重复声明是**启动期错误**）。未声明、或 payload 不合契约
+1. **未声明不许发**：`emit` 只认声明过的名字（同名重复声明是**启动期错误**）。未声明、或 payload 不符合定义
    的事件被**丢弃并记 warn**（`ai.tool.event_undeclared` / `ai.tool.event_payload_invalid`），
    `emit` 本身**同步且永不抛** —— 事件失败不能拖垮工具；
 2. **没有 writer 就静默 no-op**：非流式调用 / 后台直接调工具时没有父流可写，这不是错误，连 warn 都不记；
@@ -943,10 +943,10 @@ AI SDK v6 的 data part 语义是「**同 `id` 后者覆盖前者**」（实测�
 
 #### 前端渲染器注册表（协议侧口径）
 
-协议只规定"发什么"，**渲染是前端自己的事**（当前落点是 `apps/admin` 会话页的
+协议只规定"发什么"，**渲染是前端自己的事**（当前位置是 `apps/admin` 会话页的
 `apps/admin/src/app/(standalone)/main/ai/chat/tool-event.tsx` 注册表；将来 web 前台要渲染就在那边另建一份）：
 
-- 按**事件名**注册渲染器，组件从 `data.payload` 取值（payload 契约在声明里，与后端同一份 zod 语义）；
+- 按**事件名**注册渲染器，组件从 `data.payload` 取值（payload 定义在声明里，与后端同一份 zod 语义）；
 - **必须**走 `parseToolEventPart` 而不是自己断言类型：协议演进时宁可露个徽标，也不要白屏；
 - 认不出的事件用兜底卡片：`eventTitle` 当标题 + payload 原样展示（工程师看得懂就行）；
 - `mode='stream'` 的块按到达顺序累积（前端不必自己去重）；`state` 的块只留最后一块。
@@ -956,7 +956,7 @@ AI SDK v6 的 data part 语义是「**同 `id` 后者覆盖前者**」（实测�
 `data-sub-agent` / `data-sub-agent-delta` 是**同类机制的特例**（一个自带 id 的状态块 + 一批不带 id 的增量块），
 只是当年没有声明这一层。本方案落地后它们可以统一到事件机制上：
 
-- 一期（本次）：**不动**既有 `data-sub-agent*` 的行为（它已经有 e2e 钉住），只把机制沉淀成声明契约；
+- 一期（本次）：**不动**既有 `data-sub-agent*` 的行为（它已经有 e2e 钉住），只把机制沉淀成声明数据结构；
 - 后续：子 agent 的明细改成"运行时声明的事件"（`agent-runner` 用同一套 `createToolEventEmitter` 或
   等价的发射器），前端把两个渲染器合并成一个；那时 `data-sub-agent*` 作为别名保留一段过渡期。
 
@@ -967,9 +967,9 @@ AI SDK v6 的 data part 语义是「**同 `id` 后者覆盖前者**」（实测�
 
 | 层 | 用例 |
 | --- | --- |
-| 契约 | part 形状、`seq` 从 0 起、`id` 的有无即 `mode`；`parseToolEventPart` 对认不出的 part 返回 `null` |
-| 声明 | `mode` 默认值、payload 契约 → JSON Schema 镜像；名字重复 / 空标题 / 空说明 / mode 非法 / 名字超 64 → **启动失败** |
-| 发射 | `state` 带稳定 id、`stream` 不带 id、`seq` 递增、未声明被丢弃 + warn、payload 不合契约被丢弃、写流抛错不影响工具结果、无 writer 安全 no-op |
+| 数据结构 | part 形状、`seq` 从 0 起、`id` 的有无即 `mode`；`parseToolEventPart` 对认不出的 part 返回 `null` |
+| 声明 | `mode` 默认值、payload 定义 → JSON Schema 镜像；名字重复 / 空标题 / 空说明 / mode 非法 / 名字超 64 → **启动失败** |
+| 发射 | `state` 带稳定 id、`stream` 不带 id、`seq` 递增、未声明被丢弃 + warn、payload 不符合定义被丢弃、写流抛错不影响工具结果、无 writer 安全 no-op |
 | 入库 | 种子把归一化后的声明**全量覆盖**写进 `ai_tools.events`（跑两次幂等、无事件写 `[]`） |
 | 接口 | `ai-tool.list` / `detail` 返回的 `events` 与代码声明一致；`AiToolUpdateSchema` 里没有 `events`（不可编辑） |
 | 端到端 | mock 模型跑一轮真实 agent 流：SSE 里出现 `data-tool-event`（状态块同 id、流水块无 id），且时间线里**没有**事件行 |
@@ -1033,19 +1033,19 @@ AI SDK v6 的 data part 语义是「**同 `id` 后者覆盖前者**」（实测�
 - **拒绝口径唯一**：话术是"每次调用工具都必须用 reason 说明为什么"（明确可纠正），
   不是各工具各写一句"入参不合法"。
 
-#### 三条边界（契约怎么分）
+#### 三条边界（数据结构怎么分）
 
 | 层次 | 是什么 | 谁负责 |
 | --- | --- | --- |
-| `ToolSpec.params` | 原契约（工具的业务入参） | 工具作者 |
+| `ToolSpec.params` | 原定义（工具的业务入参） | 工具作者 |
 | `ToolSpec.modelParams` | `params` + 必填 `reason`（给模型看的那一份） | 引擎注入（`buildToolSpecs`） |
-| 执行体 `input` | **去掉 `reason` 之后的原契约入参** | 网关的 `ValidatePlugin` 摘掉 |
+| 执行体 `input` | **去掉 `reason` 之后的原定义入参** | 网关的 `ValidatePlugin` 摘掉 |
 
 关键点：**注入只发生在"给模型的 schema 与网关校验"这一层**。执行体签名仍是
 `input: z.infer<typeof XxxParams>`，现有工具一个都不用改 —— 若把 `reason` 塞进 `params`，
 所有工具的类型都会报错（这正是不能那么做的原因）。
 
-`reason` 契约（`call-reason.ts`，也是 `@repo/shared` 之外唯一一处定义）：
+`reason` 定义（`call-reason.ts`，也是 `@repo/shared` 之外唯一一处定义）：
 
 - 名字 `reason`、类型 `string`、`minLength 4`（防空话）、`maxLength 200`（它是给人与审计看的**一句话**）；
 - `description` = "为什么这次要用这个工具：一句话说明目的（用户要解决什么、这一步要达到什么）"；
@@ -1086,7 +1086,7 @@ AI SDK v6 的 data part 语义是「**同 `id` 后者覆盖前者**」（实测�
 
 `partials/requirements.eta` 补一条：每次调用工具都要先想清楚 `reason` 再填、如实填写
 （它是审计证据，也会展示给用户），并明确"不要写'为了完成任务'这类空话"。
-契约（必填字段）管住"填不填"，提示词管住"填得好不好"。
+数据结构（必填字段）管住"填不填"，提示词管住"填得好不好"。
 
 #### 对既有工具的零侵入
 
@@ -1099,7 +1099,7 @@ AI SDK v6 的 data part 语义是「**同 `id` 后者覆盖前者**」（实测�
 
 1. 插件清单：§5.4 的 10 个是否合适，`validate` 与 `precheck` 可以合成 1 个。
 2. 秘钥归属：放 `ai_tools.secrets_cipher`（每工具一份，本稿按此写），还是建一张统一凭据表（多工具共用、便于轮换）。
-3. 配置模块归位：本稿建议表与服务放 `modules/ai/api/`、路由用 `/ai-tool/*`；若坚持独立 `modules/ai-tool`，需要补一个 schema 传递机制。
+3. 配置模块放置：本稿建议表与服务放 `modules/ai/api/`、路由用 `/ai-tool/*`；若坚持独立 `modules/ai-tool`，需要补一个 schema 传递机制。
 4. 作用域：一期做四档，还是先做 `all` / `admin`。
 5. `read-tool-result`：作为内建工具常驻在工具清单里（本稿按此写），还是只在被分页时通过提示词临时告知。
 6. 技能路线：一期走 A（只登记边界），还是直接做 B（技能进注册机）。B 一旦做了，技能就能开关、能限额、正文能分页，代价见 §5.10 的「技能：现状与三条路线」。C 需要先验证，不建议。
@@ -1118,7 +1118,7 @@ AI SDK v6 的 data part 语义是「**同 `id` 后者覆盖前者**」（实测�
 | 主体 | `ai/core/tools/**` + `ai/tools/**`：不出现 Mastra 词汇的部分 |
 | 生效配置 | `env 硬上限 夹紧 (库里的值 ?? 代码默认值)` |
 | 页柄 | 分页结果的取回凭据，同轮查进程内，跨轮查时间线 |
-| 契约测试 | 固定"我们依赖的 Mastra 行为"的测试，升级时先跑它 |
+| 一致性测试 | 固定"我们依赖的 Mastra 行为"的测试，升级时先跑它 |
 
 ## 实施记录（一期，2026-10-01）
 
@@ -1127,25 +1127,25 @@ AI SDK v6 的 data part 语义是「**同 `id` 后者覆盖前者**」（实测�
 
 | # | 设计稿 | 实施 | 理由 |
 | --- | --- | --- | --- |
-| 1 | 契约 ②「durable 不跑 agent 级工具钩子」 | **实测是跑的**，且 `{proceed:false, output}` 能短路 | 最早的结论来自对 dist 的 grep（durable 文件命中 0 次），但钩子是在 **Agent 层**包装工具实例的 —— 以实测为准，`test/ai-mastra-contract.test.ts` 把它钉住。我们**仍**包 `execute`，因为那样网关不必认识 Mastra 的钩子 API（主体框架无关），不是被迫 |
+| 1 | 用例 ②「durable 不跑 agent 级工具钩子」 | **实测是跑的**，且 `{proceed:false, output}` 能短路 | 最早的结论来自对 dist 的 grep（durable 文件命中 0 次），但钩子是在 **Agent 层**包装工具实例的 —— 以实测为准，`test/ai-mastra-contract.test.ts` 把它钉住。我们**仍**包 `execute`，因为那样网关不必认识 Mastra 的钩子 API（主体框架无关），不是被迫 |
 | 2 | pre 插件 10 个（含 `exists`） | **9 个**（去掉 `exists`） | 它要注入注册机，而注册机 → 网关 → 插件 → 注册机**成环**；且网关只会包注册机里的声明，这个分支运行期到不了。"模型编了个不存在的工具"在更靠前的地方就被上游落成工具错误结果，由**录制器**标成 `unknown-tool` state（可查、可计数）才算数 |
 | 3 | 分页「按字节切」 | 按**码点边界**切（每页仍受字节预算约束） | 按固定字节偏移硬切会让页边界压进半个汉字里，页与页之间**既重复又漏字**（单测逮住过）。现在逐字符累加，保证所有页拼起来逐字节等于原文 |
 | 4 | 表结构里没有"类别"列 | 加 `ai_tools.category`（冗余列，种子从声明写过来） | 后台页要按类别筛选；类别只在代码声明里，不落列就只能"先分页再过滤"（分页就假了） |
 | 5 | 待拍板 7：子 agent 提示词是否追加能力段 | **追加**（`withCapabilityTail`） | 子 agent 的提示词由主 agent 现写，它看不到我们的《工具》模板段，于是不知道自己有什么工具、也不知道"不能再造子助手"；追加不覆盖主 agent 的原话 |
 | 6 | 技能路线 A/B/C 待拍板 | **一期走 A**：三个技能工具登记为 runtime 工具（后台只读一组 + 提示词措辞改准） | B 要重做技能激活与目录渲染，收益（开关 / 分页）与代价不匹配；与"动态工具面"一起放二期 |
-| 7 | 内存限流实现"测试实现放 helper" | 落实：`src/` 只留接口与 token，Redis 版一个文件、测试用的内存版在 `test/helpers/` | 单一职责铁律：`src/` 不该出现第二套计数实现 |
+| 7 | 内存限流实现"测试实现放 helper" | 落实：`src/` 只留接口与 token，Redis 版一个文件、测试用的内存版在 `test/helpers/` | 单一职责规范：`src/` 不该出现第二套计数实现 |
 | 8 | 遥测指标（Telemetry 计数 / P95） | 一期只做**结构化日志 + 时间线**；指标列二期 | 先把审计证据落全（日志字段已经带耗时 / 字节数 / 页数 / 拒绝原因），指标是消费侧的事 |
-| 9 | 工具标准的"契约测试"文件路径 `test/ai-mastra/contracts.test.ts` | 落在 `test/ai-mastra-contract.test.ts` | 与 `apps/server/test/` 既有的扁平命名一致（该目录无子目录惯例） |
+| 9 | 工具标准的"一致性测试"文件路径 `test/ai-mastra/contracts.test.ts` | 落在 `test/ai-mastra-contract.test.ts` | 与 `apps/server/test/` 既有的扁平命名一致（该目录无子目录惯例） |
 
-实施中新增的两条工程铁律（已写进 `billy-dev-foundation/references/code-conventions.md`）：
+实施中新增的两条工程规范（已写进 `billy-dev-foundation/references/code-conventions.md`）：
 
 - 第 11 条：文字性多行字符串一律 ``dedent`...` ``，禁止 `+` 拼接与 `[...].join('\n')`；
 - 第 12 条：除纯类型文件外**一个文件一个职责**（所有包）—— 工具引擎因此拆成
-  "契约 / 端口 / 纯逻辑 / 服务 / 实现 / 一个插件一个文件"。
+  "数据结构 / 端口 / 纯逻辑 / 服务 / 实现 / 一个插件一个文件"。
 
 ### 追加决定（同日，用户口径）
 
-| # | 决定 | 落点 |
+| # | 决定 | 位置 |
 | --- | --- | --- |
 | 10 | **配置整列替换**：`config` / `limits` 是 jsonb **整列**写，不按 key 合并 | 前端在配置有改动时提交**整份生效配置**（这样"把某项改回默认值"才表达得出来）；后端语义不变 |
 | 11 | **秘钥明文存储**（含 `ai_providers.api_key`） | 删掉 AES-GCM 加解密（`model-secret.ts` → 只剩 `hintOf` 的 `secret-hint.ts`）；迁移把老密文**就地解密回填**（解不开留 NULL 并告警）；配置项 `AI_MODEL_ENCRYPTION_KEY` 随之删除 |

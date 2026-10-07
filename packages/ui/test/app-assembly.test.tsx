@@ -10,7 +10,7 @@ import { RouteError } from '../src/components/route-error.tsx'
 import { RouteNotFound } from '../src/components/route-not-found.tsx'
 
 /**
- * 应用装配组件（StorageClientProvider / QueryProviders / 路由兜底）的契约。
+ * 应用装配组件（StorageClientProvider / QueryProviders / 路由兜底）的数据结构。
  *
  * 这几件事原先在 web / admin 各有一份，测试要盯住的是**被抽出来的机制**：
  * 预签名入参形状、Query 缓存是否挂了统一错误处理、策略是否真的透传。
@@ -21,7 +21,7 @@ import { RouteNotFound } from '../src/components/route-not-found.tsx'
 afterEach(cleanup)
 
 describe('StorageClientProvider', () => {
-  it('把 storage.getPresignedUrl({ key }) 暴露给上传组件（入参形状是契约）', async () => {
+  it('把 storage.getPresignedUrl({ key }) 暴露给上传组件（入参形状是数据结构）', async () => {
     const getPresignedUrl = vi.fn(async ({ key }: { key: string }) => ({
       key,
       url: `https://cdn.test/${key}`,

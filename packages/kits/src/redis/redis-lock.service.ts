@@ -25,7 +25,7 @@ return 0
 const RETRY_INTERVAL_MS = 100
 
 /**
- * 分布式锁门面（Redis SET NX EX + Lua 原子释放/续期 + 看门狗自动续期）。
+ * 分布式锁统一入口（Redis SET NX EX + Lua 原子释放/续期 + 看门狗自动续期）。
  *
  * 与 {@link RedisStore.acquireLock} 的区别：这里解决「临界区长于锁 TTL」与「锁被占用时排队」
  * 两个工程问题 —— 看门狗按 TTL/3 自动续期，`lock()` 自旋等待直到拿到锁或超时。

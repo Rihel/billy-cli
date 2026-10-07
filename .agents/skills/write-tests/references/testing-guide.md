@@ -86,7 +86,7 @@ const fn = vi.fn(handler ?? (async () => ({ ok: true })))
 // 断言调用次数 / 参数：expect(fn).toHaveBeenCalledTimes(1)
 ```
 
-### 3.4.1 测 repository（mock Db 门面）
+### 3.4.1 测 repository（mock Db 统一入口）
 
 repository 注入 `Db`：mock `db.getRepository(Entity)` 返回假 TypeORM repo
 （`findOneBy` / `save` / `remove` / `createQueryBuilder` 各给 `vi.fn()`），

@@ -16,7 +16,7 @@ import type { InfraModuleAsyncOptions } from '../infra-module.js'
 /** LoggerModule.forRoot 入参 = LoggerConfigSchema 的输入类型 */
 export type LoggerModuleOptions = z.input<typeof LoggerConfigSchema>
 
-/** 用应用配置建出**唯一**的基础日志门面（含 transport，只建一次） */
+/** 用应用配置建出**唯一**的基础日志统一入口（含 transport，只建一次） */
 const createLoggerInstance = (config: LoggerConfig) =>
   createLogger(
     config.prefix,

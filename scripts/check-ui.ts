@@ -1,7 +1,7 @@
 /**
- * 前端约定守卫（把「前端质量门 + 组件库目录约定 + 设计系统约定」变成可执行检查）。
+ * 前端约定守卫（把「前端质量检查 + 组件库目录约定 + 设计系统约定」变成可执行检查）。
  *
- * 背景：后端有 `check:inject`（DI 铁律）与 `check:scaffold`（模板漂移）两道守卫，
+ * 背景：后端有 `check:inject`（DI 规范）与 `check:scaffold`（模板漂移）两道守卫，
  * 前端此前**一道也没有** —— 约定只写在 skill 里，靠人眼遵守。本脚本补上前端那一道。
  *
  * 五条不变量：
@@ -34,9 +34,9 @@
  *     包改名 / 导出改名后这些引用会**静默失效**（client 模板不在 `check:scaffold` 覆盖范围内，
  *     IDE 入口 `tailwind-ide.css` 也不参与构建，坏了没人发现）。
  *
- *  E. **字体契约一致**：`apps/<app>/src/app/layout.tsx` 与 client 模板的 `next/font` 变量名
- *     必须与 `globals.css` 里字体回退链引用的变量一致 —— 契约**从 CSS 推导**，不维护第二份清单。
- *     （`next/font` 要求字面量，传变量直接构建失败，故 app 侧无法 import 契约，只能靠守卫兜住。）
+ *  E. **字体规范一致**：`apps/<app>/src/app/layout.tsx` 与 client 模板的 `next/font` 变量名
+ *     必须与 `globals.css` 里字体回退链引用的变量一致 —— 规范**从 CSS 推导**，不维护第二份清单。
+ *     （`next/font` 要求字面量，传变量直接构建失败，故 app 侧无法 import 定义，只能靠守卫兜住。）
  *
  * 用法：`pnpm check:ui`（非零退出码表示存在违例）。
  */
@@ -44,7 +44,7 @@ import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs'
 import { join, relative } from 'node:path'
 import { pathToFileURL } from 'node:url'
 
-/** UI 包根目录（相对 cwd）—— 组件库 + 设计系统（token / 字体契约）都在这里 */
+/** UI 包根目录（相对 cwd）—— 组件库 + 设计系统（token / 字体规范）都在这里 */
 const UI_ROOT = 'packages/ui'
 /** 前端应用扫描根目录（相对 cwd） */
 const APPS_ROOT = 'apps'
@@ -57,7 +57,7 @@ export interface UiViolation {
    * 'script'   = 前端包缺 typecheck 脚本
    * 'palette'  = 新增硬编码业务调色板类（应走设计系统语义 token）
    * 'template' = 脚手架模板的样式入口无法解析
-   * 'font'     = next/font 变量名与设计系统契约不一致
+   * 'font'     = next/font 变量名与设计系统规范不一致
    */
   kind: 'export' | 'script' | 'palette' | 'template' | 'font'
   /** 涉及的包 / 文件（相对 cwd） */
@@ -272,7 +272,7 @@ export function scanStyleEntries(cwd = process.cwd()): UiViolation[] {
   return violations
 }
 
-/** E. next/font 变量名是否与设计系统契约一致（契约从 globals.css 推导，不维护第二份清单） */
+/** E. next/font 变量名是否与设计系统规范一致（规范从 globals.css 推导，不维护第二份清单） */
 export function scanFontContract(cwd = process.cwd()): UiViolation[] {
   const violations: UiViolation[] = []
 
@@ -307,7 +307,7 @@ export function scanFontContract(cwd = process.cwd()): UiViolation[] {
         kind: 'font',
         target: relative(cwd, target),
         detail:
-          `next/font 变量名与 ${UI_ROOT}/src/globals.css 的字体契约不一致，缺少字面量：` +
+          `next/font 变量名与 ${UI_ROOT}/src/globals.css 的字体规范不一致，缺少字面量：` +
           `${missing.join(' / ')}（next/font 要求字面量，无法 import 常量）`,
       })
     }
@@ -332,7 +332,7 @@ function main(): void {
   const violations = scanFrontendConventions()
   if (violations.length === 0) {
     console.log(
-      '[check:ui] ✅ 组件导出完整 / 前端包质量脚本齐备 / 无新增硬编码调色板 / 模板样式入口可解析 / 字体契约一致',
+      '[check:ui] ✅ 组件导出完整 / 前端包质量脚本齐备 / 无新增硬编码调色板 / 模板样式入口可解析 / 字体规范一致',
     )
     return
   }

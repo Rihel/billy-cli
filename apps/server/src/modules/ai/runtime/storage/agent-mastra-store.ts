@@ -258,7 +258,7 @@ export class AgentWorkflowsStorage extends WorkflowsStorage {
 }
 
 /**
- * Mastra 存储门面：**只挂 workflows 域**（记忆不做），且 `disableInit` ——
+ * Mastra 存储统一入口：**只挂 workflows 域**（记忆不做），且 `disableInit` ——
  * 表由我们自己的迁移建，绝不让 Mastra 去建它那一整套 `mastra_*` 表。
  */
 export class AgentMastraStore extends MastraCompositeStore {

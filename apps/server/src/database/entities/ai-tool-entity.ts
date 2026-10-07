@@ -7,7 +7,7 @@ import { Column, Entity, Index } from 'typeorm'
  * **AI 工具配置**（配置类数据，设计 `docs/design/ai-agent-tool-engine.md` §5.5）。
  *
  * 一行 = 一个**注册工具**的可变部分：开关、作用域、限额、工具专属配置、秘钥、文案覆盖。
- * 不可变的那些（参数契约、配置 schema、默认值、执行体）留在代码声明（`ToolSpec`）里 ——
+ * 不可变的那些（参数定义、配置 schema、默认值、执行体）留在代码声明（`ToolSpec`）里 ——
  * 配置的合法性只有声明知道，所以表里只存"值"。
  *
  * 五条口径：
@@ -40,7 +40,7 @@ export class AiToolEntity extends AuditEntity {
   @Column({ name: 'description', type: 'text', nullable: true })
   description: string | null = null
 
-  /** 参数契约的 JSON Schema（**代码声明的镜像**：页面只读展示"模型看到的入参长什么样"） */
+  /** 参数定义的 JSON Schema（**代码声明的镜像**：页面只读展示"模型看到的入参长什么样"） */
   @Column({ name: 'param_schema', type: 'jsonb', nullable: true })
   paramSchema: Record<string, unknown> | null = null
 

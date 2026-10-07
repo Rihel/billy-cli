@@ -78,12 +78,12 @@ const execaOptionsOf = (run: ResolvedCommandRun, signal?: AbortSignal): ExecaOpt
 })
 
 /**
- * **跨平台命令执行门面**（基础设施能力）。
+ * **跨平台命令执行统一入口**（基础设施能力）。
  *
- * 归位：横切基础能力 → `kits/src/foundation/command`（与 `scheduler` 同一层：
+ * 放置：横切基础能力 → `kits/src/foundation/command`（与 `scheduler` 同一层：
  * 提供的是与具体业务无关的"本机进程能力"）。
  *
- * **机制交给 `execa`，本门面只做三件事**（这三件才是我们的领域决策）：
+ * **机制交给 `execa`，这层封装只做三件事**（这三件才是我们的领域决策）：
  * 1. **定策略**：把 timeout / 输出上限 clamp 到有默认、有上限的确定值（模型传什么都不越界）；
  * 2. **定口径**：把执行结果映射成**永不抛异常**的中文结果（agent 工具链路要的是可读结论，
  *    抛异常会变成"这一轮失败"）；

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { scanInjectDecorators } from '../../scripts/check-inject-decorators'
 
 /**
- * DI 装饰器一致性（工程铁律第 6 条的可执行守卫）。
+ * DI 装饰器一致性（工程规范第 6 条的可执行守卫）。
  *
  * 开发态用 tsx（esbuild）不产出 `design:paramtypes`，由容器装配的类若漏写 `@Inject(token)`，
  * Nest 会**静默注入 `undefined`**（不报错，运行时才炸）。这条守卫把约定变成红灯，

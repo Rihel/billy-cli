@@ -42,7 +42,7 @@ vi.mock('rate-limiter-flexible', () => {
 const createLimiter = (): RateLimiter =>
   new RateLimiter({ raw: {} } as RedisStore)
 
-describe('RateLimiter（rate-limiter-flexible 门面）', () => {
+describe('RateLimiter（rate-limiter-flexible 统一入口）', () => {
   beforeEach(() => {
     mockLimiters.length = 0
     consumeFn.mockResolvedValue({ remainingPoints: 0 })

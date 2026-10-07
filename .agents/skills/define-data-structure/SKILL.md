@@ -1,6 +1,6 @@
 ---
 name: define-data-structure
-description: 在 Billy 工程中定义数据结构：数据库表（TypeORM 实体）与共享契约（Zod schema / DTO / 模型），并保证两轨同步、正确注册与生成迁移。触发词：定义数据结构、建表、加字段、数据库表、schema、DTO、模型、实体、Entity、迁移、db:gen。
+description: 在 Billy 工程中定义数据结构：数据库表（TypeORM 实体）与共享数据结构（Zod schema / DTO / 模型），并保证两轨同步、正确注册与生成迁移。触发词：定义数据结构、建表、加字段、数据库表、schema、DTO、模型、实体、Entity、迁移、db:gen。
 ---
 
 # 定义数据结构：数据库表、schema
@@ -11,10 +11,10 @@ description: 在 Billy 工程中定义数据结构：数据库表（TypeORM 实�
 ## 核心要点
 
 - **双轨制**：数据库表（`apps/server/src/database/entities/<name>-entity.ts`，TypeORM 实体）+
-  共享契约（`packages/shared/src/schema/<name>.schema.ts`，Zod），两轨字段必须一致。
+  共享数据结构（`packages/shared/src/schema/<name>.schema.ts`，Zod），两轨字段必须一致。
 - 实体继承 `BaseEntity`（来自 `@repo/kits`，自动 id / 时间戳 / 软删除）；表名复数；
   列名 snake_case；索引 / 唯一约束显式命名 `idx_*` / `uk_*`。
-- 契约命名（硬性）：schema 常量一律 `Schema` 结尾（值后缀）；入参类型 `XxxDto`、响应类型
+- 数据结构命名（硬性）：schema 常量一律 `Schema` 结尾（值后缀）；入参类型 `XxxDto`、响应类型
   `XxxModel`（类型后缀），两者 `z.infer` 导出在**同一文件**；`z.enum` 值域只导出 `XxxSchema`。
 - DTO 命名：`CreateXxx` / `UpdateXxx` / `GetDetailXxx` / `RemoveXxx` / `PageQueryXxx` /
   `CursorQueryXxx`，均 `z.infer` 出 `XxxDto` 类型。
@@ -26,7 +26,7 @@ description: 在 Billy 工程中定义数据结构：数据库表（TypeORM 实�
 
 | 文件 | 内容 | 何时读 |
 | --- | --- | --- |
-| [references/structure-guide.md](./references/structure-guide.md) | 实体规范、契约规范（模型 / DTO / 分页）、注册与迁移、同步清单 | 建表 / 改字段 / 写 schema / 跑迁移时（必读） |
+| [references/structure-guide.md](./references/structure-guide.md) | 实体规范、数据结构规范（模型 / DTO / 分页）、注册与迁移、同步清单 | 建表 / 改字段 / 写 schema / 跑迁移时（必读） |
 
 ## 完成检查清单
 

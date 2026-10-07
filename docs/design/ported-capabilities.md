@@ -11,9 +11,9 @@
 | 时间轮 | 中 | 引入新的横切调度能力，与既有 `Scheduler`（croner）职责需划清 |
 | Kafka 本地设施 | 简单 | 代码与接线已就绪，只缺可运行的 broker |
 
-## 2. 落点（按 `placement.md` 归位）
+## 2. 位置（依据 `placement.md`）
 
-| 能力 | 落点 | 依据 |
+| 能力 | 位置 | 依据 |
 | --- | --- | --- |
 | 通用数据访问（批量） | `packages/kits/src/db/batch.ts` | §1.5 通用数据访问能力 → `kits/src/db/` |
 | 软删（带操作人） | `packages/kits/src/db/safe-delete.ts` | 同上 |
@@ -21,13 +21,13 @@
 | 时间轮 | `packages/kits/src/foundation/time-wheel/` | §1.7 横切基础能力（调度器） |
 | Kafka 本地设施 | `docker-compose.yaml`（`profiles: [kafka]`） | billy 单 compose 约定；kafka 可选，不默认启动 |
 
-### 纯函数内核 + `DbService` 注入式门面
+### 纯函数内核 + `DbService` 注入式统一入口
 
-`Db` 是**连接生命周期门面**（`onApplicationBootstrap` 连接 / `onApplicationShutdown` 释放），
+`Db` 是**连接生命周期统一入口**（`onApplicationBootstrap` 连接 / `onApplicationShutdown` 释放），
 而批量写入是**对 `EntityManager` 的操作**，二者生命周期不同：批量方法在事务内必须复用调用方
 传入的 `manager`（否则 `@Transactional()` 失效）。
 
-因此按两层落地（对齐 `pagination.ts` 的既有做法 + kits 其它基础设施门面的形态）：
+因此按两层落地（对齐 `pagination.ts` 的既有做法 + kits 其它基础设施统一入口的形态）：
 
 1. **纯函数内核**（`batch.ts` / `safe-delete.ts` / `sql.ts`）：显式吃 `manager`，可直接单测，
    脱离 Nest 也能用；
@@ -49,12 +49,12 @@
 billy 另有两个 rihel 没有的游标分页方法。不额外造 rihel 的别名，避免一个能力两个名字。
 
 > ③ 第三版仍给 `DbService` 注入了 `AppLogger`（只为 `printSql`）。用户质疑后核对：kits 里
-> 所有注入 AppLogger 的门面都有 3~5 处运维日志，唯独 `DbService` 只有 1 处 `debug` 且属于
+> 所有注入 AppLogger 的统一入口都有 3~5 处运维日志，唯独 `DbService` 只有 1 处 `debug` 且属于
 > **调用方的排障动作**；而 repository / service 按工程约定本就注入了 AppLogger。故去掉该依赖，
 > 连 `printSql` 一并去掉（它的方法体只有一次 logger 调用，去掉日志依赖即无内容），
 > 只留纯函数的 `getFullSqlStatement`。这是 rihel `DBService` 里唯一没搬的方法。
 
-**不注入 `AppLogger` 的判据**：门面是否需要 logger，看它**自己是否产生运维日志**
+**不注入 `AppLogger` 的判据**：统一入口是否需要 logger，看它**自己是否产生运维日志**
 （连接 / 重试 / 生命周期 / 失败）。`Db`、`KafkaService`、`RedisStore` 等是「是」；
 `DbService` 是「否」——它只转发数据操作，把「要不要打这条 SQL」留给持有 SQL 的调用方决定。
 
@@ -75,7 +75,7 @@ billy 另有两个 rihel 没有的游标分页方法。不额外造 rihel 的别
 
 | | `Scheduler`（已有） | `TimeWheel`（本次） |
 | --- | --- | --- |
-| 定位 | 平台级定时任务门面 | 进程内高频调度原语 |
+| 定位 | 平台级定时任务统一入口 | 进程内高频调度原语 |
 | 精度 | 秒级以上（croner） | 毫秒 / 秒级刻度 |
 | 规模 | 少量命名任务 | 大量任务（O(1) 槽位插入） |
 | 时间基准 | wall clock | `performance.now()` 单调时钟 |
@@ -99,7 +99,7 @@ interface BatchOptions { chunkSize?: number; concurrency?: number }  // 默认 1
   代价是每条一次 SELECT 判断 INSERT/UPDATE。
 - `batchUpsert(manager, entityType, data, conflictPaths, options)`：`INSERT ... ON CONFLICT DO UPDATE`。
 
-**铁律**：并发度按事务状态自动降到 1——
+**规范**：并发度按事务状态自动降到 1——
 
 ```ts
 const concurrency = manager.queryRunner?.isTransactionActive ? 1 : (options.concurrency ?? 5)
@@ -123,7 +123,7 @@ const concurrency = manager.queryRunner?.isTransactionActive ? 1 : (options.conc
 
 1. **cron 分支改用 croner**（kits 既有依赖，避免新增 `cron-parser`）：
    `new Cron(expr, { paused: true }).nextRun(new Date(base))`；
-2. `TimeWheelType`（`interval` / `once` / `cron`）与类同文件（是该能力自身的词汇，不是共享契约，
+2. `TimeWheelType`（`interval` / `once` / `cron`）与类同文件（是该能力自身的词汇，不是共享数据结构，
    不放进 `shared/dicts`）；
 3. 复用 `@repo/shared` 的 `nanoid` / `maybePromise`。
 

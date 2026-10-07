@@ -6,13 +6,13 @@
 ## 标准开发流程
 
 > 动手前先按 `design.md` 评估难度：简单需求直接走下面流程；中等 / 复杂需求先出
-> 设计落地方案（落点 + 关键数据结构 + 关键流程 + 测试点），再实现。
+> 设计落地方案（位置 + 关键数据结构 + 关键流程 + 测试点），再实现。
 
-1. **读需求，拆落点**：明确涉及哪些层（契约 / 数据 / 业务 / 接口 / SDK / 页面），
+1. **读需求，拆到具体位置**：明确涉及哪些层（数据结构 / 数据 / 业务 / 接口 / SDK / 页面），
    同时按 `code-conventions.md` 第 10 条的「实现查找顺序」盘点各层现成实现，
    避免重复造轮子。**先查历史**：`grep` `docs/dev-logs/` 相关模块的历史日志
    （坑点 / 解法）与 `docs/design/` 相关设计文档，站在前人经验上开工，不重复踩坑。
-2. **契约先行**：先定义 `@repo/shared` 的 schema 与 dict（含错误码），这是前后端共同的语言。
+2. **数据结构先行**：先定义 `@repo/shared` 的 schema 与 dict（含错误码），这是前后端共同的语言。
 3. **自底向上实现**：实体（server/database）→ 迁移 → repository / service / errors
    （server/modules）→ controller + module → 模块注册（`root.module.ts` 的 `imports`，
    实体在 `DbModule.forRootAsync` 工厂里补 `entities`）→ SDK → 前端页面。

@@ -9,7 +9,7 @@ pnpm dev:server    # 启动 NestJS 服务（9989；node --watch --import tsx/esm
 pnpm dev:web       # Web 前台（9840）
 pnpm dev:admin     # Admin 后台（9845）
 pnpm kill:dev      # 一键停掉全部 dev 服务（Web / Admin / Server / packages watcher；--dry-run 仅预览）
-pnpm build:pkgs    # 仅构建 packages（http-client / kits / sdk / shared；ui 源码直出，无 build 脚本）
+pnpm build:pkgs    # 仅构建 packages（http-client / kits / sdk / shared；ui 直接用源码，无 build 脚本）
 pnpm build         # 全量构建（turbo，按依赖拓扑）
 pnpm typecheck     # 全量类型检查（turbo typecheck；覆盖 apps/web、apps/admin、packages/ui 三包）
 pnpm test          # 全量单测（turbo test；http-client / kits / server / ui / web / admin 六包）

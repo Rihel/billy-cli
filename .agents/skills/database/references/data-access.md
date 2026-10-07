@@ -39,7 +39,7 @@ async update(id: string, data: DeepPartial<TodoEntity>): Promise<TodoModel | nul
 
 - 为什么「先查后改」：走实体 `save` 才能触发 `@UpdateDateColumn` 时间戳与 `@BeforeInsert`
   等钩子，并拿到完整行做返回 / 校验；盲目 `update({ id }, data)` 会绕过这些。
-- 入参用 `DeepPartial<XxxEntity>`，类型由 DTO 契约保证（字段值已在 service 层校验过）。
+- 入参用 `DeepPartial<XxxEntity>`，类型由 DTO 数据结构保证（字段值已在 service 层校验过）。
 
 ## 3. 事务：在 service 层声明
 

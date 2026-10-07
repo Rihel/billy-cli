@@ -1,20 +1,20 @@
-# 契约与质量：三轨闭环 / 流协议 / 测试分层 / 验收（ai-agent-engineering 引用文件）
+# 数据结构与质量：三轨闭环 / 流协议 / 测试分层 / 验收（ai-agent-engineering 引用文件）
 
 > 本文件是 `ai-agent-engineering` skill 的组成部分，由主 SKILL.md 引用。
 
 前置：机制（工具组 DSL、注册机、网关插件、适配器映射、提示词引擎）见 `develop-ai-agent`；
 写测试的通用套路见 `write-tests`，前端组件与设计 token 见 `develop-frontend-page`。
 
-## 1. 契约三轨：shared schema → 服务端 → SDK → 页面
+## 1. 数据结构三轨：shared schema → 服务端 → SDK → 页面
 
 | 轨 | 文件 | 谁读它 |
 | --- | --- | --- |
-| 契约 | `packages/shared/src/schema/ai-tool.schema.ts`（对外模型 `:64-106`、入参 `:132-142`、限额 `:31-48`、秘钥字段 `:53-60`）；`ai-tool-event.schema.ts`（声明 `:31-42`、流 part `:81-85`、`TOOL_EVENT_PART_TYPE` `:47`） | 服务端与前端**共用同一份 zod** |
+| 数据结构 | `packages/shared/src/schema/ai-tool.schema.ts`（对外模型 `:64-106`、入参 `:132-142`、限额 `:31-48`、秘钥字段 `:53-60`）；`ai-tool-event.schema.ts`（声明 `:31-42`、流 part `:81-85`、`TOOL_EVENT_PART_TYPE` `:47`） | 服务端与前端**共用同一份 zod** |
 | 服务端 | `api/ai-tool.controller.ts` + `api/ai-tool.service.ts` + `core/tools/tool.config.repository.ts`（`ai_tools` 表）+ `core/tools/tool.seed.service.ts`（启动期镜像） | 落库与读库 |
 | SDK | `packages/sdk/src/server.client.ts`：`aiTool.list/detail/update/reset`（`:532-541`）、`chatStreamUrl` / `resumeStreamUrl`（`:437-449`）、`stop`（`:380`） | admin 只经 SDK 调接口 |
 | 页面 | `apps/admin/src/app/main/ai/tools/**`（`page` / `tool-form` / `tool-columns` / `config-panels` / `tool-events` / `tool-payload`） | 管理员 |
 
-- **改契约后必须 `pnpm build:pkgs`**：类型走源码、**运行时走 `dist`**；不跑就出现"类型过了、运行时还是旧字段"。
+- **改数据结构后必须 `pnpm build:pkgs`**：类型走源码、**运行时走 `dist`**；不跑就出现"类型过了、运行时还是旧字段"。
 - **基础信息是代码的镜像**：`title` / `description` / `category` / `param_schema` / `events` 由启动期种子
   **全量覆盖写**（代码声明是唯一事实源），页面只读；`runtime` 工具 `editable: false`（`ai-tool.schema.ts:9-16, 67-70, 90-96, 99-100`）。
 - **前端只配"配置"**：`AiToolUpdateSchema` 只有 `toolKey` / `enabled` / `scope` / `allowedAgents` / `config` /
@@ -104,7 +104,7 @@
 | 纯函数单测 | `test/ai-context` / `ai-usage` / `ai-title` / `ai-tool-paginate` / `ai-tool-settings` / `ai-prompt-guardrails` | 判定与归一化逻辑，不需要 DB / Redis / 模型 |
 | 规范工具单测 | `test/ai-tools/<key>.test.ts`（当前 7 个，与 `TOOL_KEYS` 一一对应） | 单个工具的入参 / 出参 / 拒绝路径 |
 | 标准测试集 | `pnpm --filter @app/server test test/ai-tools-battery.test.ts` | 结构不变量（`:48-130`、`:140-144`）+ **文件存在性**（`:132-138`） |
-| 适配器契约 | `... test/ai-mastra-contract.test.ts` | 契约①durable 下 `toModelOutput` 生效（`:119-140`）/ ①-b 对照（`:141-150`）/ ②`beforeToolCall` 可短路（`:151-183`）/ ③未知工具不炸整轮（`:184-201`），全程 `durable: true`（`:104`） |
+| 适配器行为约定 | `... test/ai-mastra-contract.test.ts` | 用例 ①durable 下 `toModelOutput` 生效（`:119-140`）/ ①-b 对照（`:141-150`）/ ②`beforeToolCall` 可短路（`:151-183`）/ ③未知工具不炸整轮（`:184-201`），全程 `durable: true`（`:104`） |
 | e2e | 4 份 `test/ai-*-e2e.test.ts` + `test/ai-durable-stream.test.ts` | 真实 DB + 真实 Redis + 离线 mock 模型的端到端链路 |
 | 前端渲染 | `apps/admin/test/*.test.ts`（9 份） | `renderToStaticMarkup` SSR 冒烟 + 纯函数（`tool-card.test.ts:2`）；**不装 jsdom / happy-dom**，不许为测试加 DOM 依赖 |
 
@@ -114,7 +114,7 @@
 - ⚠️ **battery 里的工具组是测试内手写的 4 个**（`:35-40`），**不读生产的 `AGENT_TOOL_GROUPS`**（登记处
   `ai.module.ts:113-117`）。所以新增一个工具组后：battery 不会自动覆盖它 —— 必须**先登记进 battery 的 groups，
   否则那个组的工具完全不被断言（静默漏测）**；生产装配另在 `ai.module.ts` 登记一行。
-- **升级 `@mastra/core` 先跑契约测试**（`ai-mastra-contract.test.ts:9-11`）：挂了说明 `ai/mastra/**` 适配器要改，
+- **升级 `@mastra/core` 先跑一致性测试**（`ai-mastra-contract.test.ts:9-11`）：挂了说明 `ai/mastra/**` 适配器要改，
   主体 `ai/tools/**` 不受影响。
 - **e2e 的离线标记**（写在用户消息里，`helpers/mock-model-server.ts`）：`[command]`（`:166`）、`[delegate]`（`:152`）、
   `[todo-overwrite]`（`:70`）、`[todo-react]`（`:109`）、`[child]`（`:149`）、`[slow]`（`:188`，验证停止与补发）、
@@ -141,11 +141,11 @@
 - 时间与计数走端口（`ToolClock`，`tools.types.ts:81-84`；`TOOL_RATE_COUNTER`，`tool.ports.ts`），
   测试换内存实现即可，不必 sleep、不必连 Redis。
 
-## 8. 质量门与验收
+## 8. 质量检查与验收
 
 ```bash
 pnpm --filter @app/server test test/ai-tools-battery.test.ts     # 标准测试集（每个工具）
-pnpm --filter @app/server test test/ai-mastra-contract.test.ts   # 适配器契约（升级 Mastra 先跑）
+pnpm --filter @app/server test test/ai-mastra-contract.test.ts   # 适配器行为约定（升级 Mastra 先跑）
 pnpm --filter @app/server test                                   # 含真实 Redis 的 e2e（串行）
 pnpm build:pkgs                                                  # 改了 @repo/shared / @repo/sdk 后必跑
 pnpm typecheck && pnpm test && pnpm check:ui && pnpm check:inject && pnpm check:mastra
@@ -154,7 +154,7 @@ pnpm typecheck && pnpm test && pnpm check:ui && pnpm check:inject && pnpm check:
 | 门 | 命令 | 守什么 |
 | --- | --- | --- |
 | 类型 / 单测 | `pnpm typecheck` / `pnpm test`（`package.json:19-20`，turbo） | 全仓编译与测试 |
-| UI | `pnpm check:ui`（`scripts/check-ui.ts`，五条不变量见文件头 `:1-35`） | 组件导出 / 前端包 typecheck / 禁硬编码调色板 / 样式入口 / 字体契约 |
+| UI | `pnpm check:ui`（`scripts/check-ui.ts`，五条不变量见文件头 `:1-35`） | 组件导出 / 前端包 typecheck / 禁硬编码调色板 / 样式入口 / 字体规范 |
 | DI | `pnpm check:inject`（`scripts/check-inject-decorators.ts`） | 构造器 `@Inject` 不漏、`providers` 裸类名有 `@Injectable()` |
 | Mastra 边界 | `pnpm check:mastra`（`scripts/check-mastra-boundary.ts`） | `core/tools/**` 与 `tools/**` **禁 import `@mastra`**（`:22-25`）；其余文件走**只减不增**的允许清单（`:37-44`） |
 
@@ -171,7 +171,7 @@ pnpm typecheck && pnpm test && pnpm check:ui && pnpm check:inject && pnpm check:
 
 ## 9. 自查清单
 
-- [ ] 改了 `@repo/shared` 的契约后跑了 `pnpm build:pkgs`，并且 SDK / 页面同步改了？
+- [ ] 改了 `@repo/shared` 的数据结构后跑了 `pnpm build:pkgs`，并且 SDK / 页面同步改了？
 - [ ] 新增的 part / 事件是"加"不是"改"（旧客户端认不出时**看得见**，兜底分支没被删）？
 - [ ] 新增的 `data-*` part 在前端有明确分支（渲染、或显式 `return null` 并写清为什么不展示）？
 - [ ] 新渲染器文件在会话页**有 import**（模块加载期注册），并且加了 `resetToolEventRenderers` 可测？

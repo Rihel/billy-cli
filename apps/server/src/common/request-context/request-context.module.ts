@@ -5,7 +5,7 @@ import { requestContextMiddleware } from './request-context.middleware.js'
  * 请求上下文模块：自注册 ALS 中间件（`forRoutes('*')`），业务侧直接 `import { requestContext }`
  * 读写（守卫写身份、service / repository 读身份），无需注入任何 provider。
  *
- * **顺序铁律（两条一起才成立）**：
+ * **顺序规定（两条一起才成立）**：
  * 1. 必须标 `@Global()`：Nest 12 装配中间件时按模块 distance 排序，**全局模块的中间件排在最前**
  *    （`middleware-module.js`：`distance === Number.MAX_VALUE` 视为全局，排序权重 -1），
  *    不标则会被其它全局模块的中间件压在后面；

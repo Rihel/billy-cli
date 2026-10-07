@@ -4,7 +4,7 @@ import type { CommandResult, CommandRunOptions } from './command.runner.js'
 /**
  * 命令执行的**公共口径**：入参收窄 + 「execa 结果 → `CommandResult`」的纯映射。
  *
- * 为什么单独一个文件：命令执行门面（`command.runner.ts`）只该管"怎么跑进程"，
+ * 为什么单独一个文件：命令执行统一入口（`command.runner.ts`）只该管"怎么跑进程"，
  * 只是**取数据的方式**不同，但"失败怎么归类、退出码怎么读、输出超限算不算失败"必须是**同一套判断** ——
  * 否则同一台机器上，同一条命令经两条链路会给出两个结论，工具出参就不可信了。
  * 这里就是那唯一一份判断（纯函数：不碰进程、不读时钟，只吃 execa 的结果对象）。
@@ -54,7 +54,7 @@ export interface ResolvedCommandRun {
  * 把调用方给的入参收窄成"有默认、有上限"的确定值。
  *
  * 这是**唯一的策略入口**：模型 / 工具传什么都不越界（时长与输出上限都在这里夹紧），
- * 门面里不再混着"结果怎么读"的细节。
+ * 统一入口里不再混着"结果怎么读"的细节。
  */
 export const resolveCommandRun = (options: CommandRunOptions): ResolvedCommandRun => {
   const platform = options.platform ?? process.platform
@@ -72,7 +72,7 @@ export const resolveCommandRun = (options: CommandRunOptions): ResolvedCommandRu
 }
 
 /**
- * execa 结果 → **永不抛异常**的中文结果（出参契约的唯一事实源）。
+ * execa 结果 → **永不抛异常**的中文结果（出参定义的唯一事实源）。
  *
  * 失败一律落成可读结论而不是异常：agent 工具链路要的是"模型能自己纠正的结论"，
  * 抛出去会变成"这一轮失败"。分类顺序是刻意的：中止 → 超时 → 截断 → 非零退出 → 没跑起来，

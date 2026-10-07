@@ -51,7 +51,7 @@ packages/shared/src/logger.ts   createLogger(name, pretty, level) → 仅 name/l
 
 - 请求日志：由 `pino-http` 自动记录；requestId 走 `genReqId`（读响应头 `X-Request-Id`），
   登录身份走 `customProps`（读 ALS）。
-- **中间件顺序铁律**正是为 pino-http 立的：`RequestContextModule` 必须 `@Global` 且写在
+- **中间件顺序规定**正是为 pino-http 立的：`RequestContextModule` 必须 `@Global` 且写在
   `LoggerModule` 之前，否则 `req.id` / `customProps` 取不到值。
 - 业务侧 **19 个类注入 `@Inject(AppLogger)`** —— 这次改造必须让它们**一行不改**。
 
@@ -106,7 +106,7 @@ apps/server/src/main.ts          去掉 `app.useLogger(app.get(Logger))`（nestj
   `pino` / `pino-pretty` 留在 `@repo/shared`（`createLogger` 用）。
 - 代码：上表 8 个文件；`apps/server/src/main.ts`；`root.module.ts` 的 imports 注释与顺序；
   `common/request-context/*` 里 3 处「pino-http」注释。
-- 文档 / skill：README（后端日志整节）、`architecture.md`（日志行 + 中间件顺序铁律 + 数据流第 2 步）、
+- 文档 / skill：README（后端日志整节）、`architecture.md`（日志行 + 中间件顺序规定 + 数据流第 2 步）、
   `billy-dev-foundation/SKILL.md`（若提到 nestjs-pino）、`develop-backend-api`（可观测性）、
   `docs/design/backend-kits-refactor.md`？（历史文档不改）、dev-log。
 - 记忆：MEMORY 里「后端日志已按 rihel-base 方式改造为 nestjs-pino」这条要更新。

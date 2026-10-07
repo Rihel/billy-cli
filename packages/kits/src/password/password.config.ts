@@ -1,7 +1,7 @@
 import { z } from 'zod'
 
 /**
- * 密码模块配置（PasswordHasher 门面）：密码哈希强度。
+ * 密码模块配置（PasswordHasher 统一入口）：密码哈希强度。
  * 认证的业务策略（如找回密码 token 有效期）不属于 kits，由应用层自行定义配置。
  */
 export const PasswordConfigSchema = z.object({

@@ -8,7 +8,7 @@ import type { AgentListModel } from '@repo/shared'
  */
 export interface AgentDefinition {
   /**
-   * 对外标识 **agent key**：契约字段 / 数据库列 / 前端选择器都用它（全局唯一，注册时校验）。
+   * 对外标识 **agent key**：数据结构字段 / 数据库列 / 前端选择器都用它（全局唯一，注册时校验）。
    *
    * 与 Mastra 的 `Agent.id` 是同一个字符串：装配时由我们映射过去（Mastra 的字段叫 id 是它的接口，
    * 我们的领域词汇统一叫 key，避免两套词混用）。

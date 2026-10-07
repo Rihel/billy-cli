@@ -12,7 +12,7 @@
 > 2026-09-12 二次更新：本文 §3.2 的 `KitsModule.forRoot` 聚合模块**已拆除**，改为
 > 「一个基础设施一个 module，配置即模块自身 bean」（`DbModule.forRoot` / `RedisModule.forRoot` /
 > `JwtModule.forRoot` / `NotificationModule.forRoot` / `KafkaModule.forRoot` …，均 `@Global()`）。
-> 本文其余结论（删除 `@repo/di`、Hono → NestJS 12、显式 `@Inject` 约束、HTTP 契约保持不变）仍然成立。
+> 本文其余结论（删除 `@repo/di`、Hono → NestJS 12、显式 `@Inject` 约束、HTTP 数据结构保持不变）仍然成立。
 >
 > 2026-09-15 三次更新（**推翻本文的日志结论**）：本文正文写的「改用 nestjs-pino、请求日志由
 > pino-http 自动记录」**已作废**。现为自建 logger：kits `LoggerModule` 用
@@ -47,7 +47,7 @@
 
 ## 1. 目标
 
-1. 删除 `packages/di`（InversifyJS 8 门面）。
+1. 删除 `packages/di`（InversifyJS 8 容器）。
 2. HTTP 层由 Hono 4 换成 NestJS 12。
 3. `packages/kits` 的全部 bean 用 NestJS 12 封装。
 
@@ -60,7 +60,7 @@
   `scripts/cli` 模板、kits 测试。
 - 服务端是 Hono「薄边界」：`features/*.ts` 路由工厂 + `lib/`（ALS 请求上下文 / 请求日志 /
   限流 / 鉴权 / 错误映射 / `jsonBody` Zod 校验）+ `main.ts` 组合根。
-- 隐式契约（前端 SDK / Web / Admin 全依赖，必须原样保住）：全部 `POST`；成功 `{ code: 0, data }`
+- 隐含约定（前端 SDK / Web / Admin 全依赖，必须原样保住）：全部 `POST`；成功 `{ code: 0, data }`
   且 **HTTP 200**；校验失败 **HTTP 200** + `{ code: 400, message }`；业务错误按 `AppErrorCodes`
   字典映射 HTTP；路由未命中 `{ code: 404, message: '接口不存在' }`；未知错误 HTTP 500 +
   `{ code: 5001 }`；`X-Request-Id` 响应头；SSE 为 `POST /sse/subscribe`。
@@ -71,7 +71,7 @@
 | --- | --- |
 | `@nestjs/core@12.0.1` 为 latest，**ESM-only**，运行需 Node ≥ 20.19 / 22.12 | 本仓库 `type: module` + `module: nodenext` + Node 24，天然匹配，无需改造模块格式 |
 | `@nestjs/platform-express@12.0.1` 内置 Express 5.2.1 | Express 5 通配路由语法变更，故横切中间件改用 `app.use()` 而非 Nest 中间件 |
-| `@HttpCode` 仍是**方法级**（无类级） | 每个业务方法显式 `@HttpCode(200)`，否则 POST 默认 201，破坏契约 |
+| `@HttpCode` 仍是**方法级**（无类级） | 每个业务方法显式 `@HttpCode(200)`，否则 POST 默认 201，破坏约定 |
 | 生命周期钩子按组件层级调用 | 原 `OnAppStart` / `OnAppStop` 映射为 `OnApplicationBootstrap` / `OnApplicationShutdown` |
 | 注入器 `reflectConstructorParams` 用 `@Inject` 元数据覆盖 `design:paramtypes` | **只要每个构造器参数都显式 `@Inject(token)`，即使拿不到 `design:paramtypes` 也能正确装配** |
 | `@Optional()` 在依赖解析抛错时兜底为 `undefined` | 保留「按配置存在装配」的条件语义 |
@@ -123,16 +123,16 @@ apps/server/src/
 └── modules/<业务>/   module + controller + service + repository + errors
 ```
 
-分层铁律相应更新：`modules/` 现在**含 controller**（NestJS 惯例），但 controller 只做
+分层规则相应更新：`modules/` 现在**含 controller**（NestJS 惯例），但 controller 只做
 HTTP 边界（守卫 + Zod 校验 + 调 service + 返回数据），业务逻辑仍在 service / repository；
 `common/` 放横切构件，且不反向依赖业务模块（技术错误告警通过 `ERROR_ALERT_HOOK` token 由
 `app.module.ts` 注入 `AlertTrigger`）。
 
-### 3.4 契约映射（逐项对照）
+### 3.4 数据结构映射（逐项对照）
 
 | 旧（Hono） | 新（NestJS） |
 | --- | --- |
-| `jsonBody(Schema)` 中间件 | 原生 `@Body({ schema: Schema })` + 全局 `StandardSchemaValidationPipe` 与 `exceptionFactory`（保 200 + code 400 契约） |
+| `jsonBody(Schema)` 中间件 | 原生 `@Body({ schema: Schema })` + 全局 `StandardSchemaValidationPipe` 与 `exceptionFactory`（保 200 + code 400 格式） |
 | `success(context, data)` | `ResponseEnvelopeInterceptor` 统一包 `{ code: 0, data }` |
 | `errorHandler` / `notFound` | `AppExceptionFilter`（`@Catch()`）；框架 404 / 解析 400 不告警不记错误 |
 | `makeRequireAuth` / `makeRequireAdminAuth` 中间件 | `UserAuthGuard` / `AdminAuthGuard`（`CanActivate`）|
@@ -147,7 +147,7 @@ HTTP 边界（守卫 + Zod 校验 + 调 service + 返回数据），业务逻辑
 
 - **不保留** `design:paramtypes` 依赖：用「显式 `@Inject`」换取 tsx / 任何打包器下行为一致。
 - **不保留** `autoRegister` 的隐式登记：新增业务模块需显式进 `imports`，换来可读的依赖图。
-- **不放宽** 契约：校验失败仍是 HTTP 200 + `code 400`（前端 SDK 按 `code` 判错）。
+- **不放宽** 校验：校验失败仍是 HTTP 200 + `code 400`（前端 SDK 按 `code` 判错）。
 - 请求体上限从 Express 默认 100kb 提升到 2mb（`bodyParser: false` + `useBodyParser`）。
 
 ## 4. 验证
@@ -155,7 +155,7 @@ HTTP 边界（守卫 + Zod 校验 + 调 service + 返回数据），业务逻辑
 - `packages/kits` / `apps/server` 单测：49 + 23 通过；`@repo/http-client` 90 通过。
 - `tsc` 零错误（kits、server `src` + `scripts`）；`pnpm build` 7/7 任务成功。
 - 开发态（`tsx src/main.ts`）与编译态（`node dist/main.js`）双态启动，47 条路由映射正确。
-- 契约冒烟：成功 200 信封、未认证 401 / `1006`、无效 token 401 / `1005`、
+- 接口冒烟：成功 200 信封、未认证 401 / `1006`、无效 token 401 / `1005`、
   校验失败 200 / `400` + 中文文案、未知路由 404 / `404`、畸形 JSON 400 / `400`、
   限流 429 / `4002` + `Retry-After`、健康检查 DB + Redis 正常。
 - SSE 端到端：`POST /sse/subscribe` 返回 200 + `text/event-stream`，经 Redis 广播收到

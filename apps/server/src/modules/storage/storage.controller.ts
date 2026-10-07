@@ -23,7 +23,7 @@ import { assertDownloadKey, resolveUploadKey } from './storage-key.js'
  *   临时凭证（`providers/s3.ts`），与「前缀约束」不是一回事，发给 C 端等于把桶交出去
  *   （要放开需先在 provider 侧支持按前缀限定 policy，见设计文档「演进」）。
  *
- * 控制器只做边界：解析身份 → 应用 key 策略 → 调 kits 门面（`ObjectStorage`）。
+ * 控制器只做边界：解析身份 → 应用 key 策略 → 调 kits 统一入口（`ObjectStorage`）。
  */
 @Controller('storage')
 @UseGuards(AnyAuthGuard)

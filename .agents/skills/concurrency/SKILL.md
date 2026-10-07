@@ -1,6 +1,6 @@
 ---
 name: concurrency
-description: 在 Billy 工程中处理高并发与一致性：缓存、限流、幂等、分布式锁，基于 RedisStore 门面（acquireLock / incr / setJson+TTL）。触发词：高并发、并发、缓存、限流、幂等、分布式锁、锁、防重、计数、Redis、QPS。
+description: 在 Billy 工程中处理高并发与一致性：缓存、限流、幂等、分布式锁，基于 RedisStore 统一入口（acquireLock / incr / setJson+TTL）。触发词：高并发、并发、缓存、限流、幂等、分布式锁、锁、防重、计数、Redis、QPS。
 ---
 
 # 高并发与一致性
@@ -13,7 +13,7 @@ description: 在 Billy 工程中处理高并发与一致性：缓存、限流、
 - 基础设施 `RedisStore`（`kits/src/redis/redis-store.ts`）提供：`setJson` / `getJson`
   （缓存）、`incr`（限流计数）、`acquireLock` / `releaseLock`（分布式锁）。
 - **缓存**：`setJson(key, val, ttl)` + `getJson`，写后失效 / 删除。
-- **限流**：HTTP 接口用 `RateLimiter` 门面（`kits/src/rate-limit/`，由独立的 `RateLimitModule` 装配，基于
+- **限流**：HTTP 接口用 `RateLimiter` 统一入口（`kits/src/rate-limit/`，由独立的 `RateLimitModule` 装配，基于
   **rate-limiter-flexible** 的 RateLimiterRedis，Redis 存储固定窗口）+ server 的
   `RateLimitGuard` 守卫与 `@RateLimit({ scope })`（按 IP、白名单豁免，白名单匹配用 **ipaddr.js**）；
   纯业务侧计数用 `incr` + `expire`；精确限流用 `raw` 的 ZSet 滑窗。
@@ -24,11 +24,11 @@ description: 在 Billy 工程中处理高并发与一致性：缓存、限流、
 
 | 文件 | 内容 | 何时读 |
 | --- | --- | --- |
-| [references/concurrency-guide.md](./references/concurrency-guide.md) | 缓存 / 限流 / 幂等 / 分布式锁各模式、RedisStore 用法、锁的铁律与归位 | 做高并发 / 一致性时（必读） |
+| [references/concurrency-guide.md](./references/concurrency-guide.md) | 缓存 / 限流 / 幂等 / 分布式锁各模式、RedisStore 用法、锁的规范与放置位置 | 做高并发 / 一致性时（必读） |
 
 ## 完成检查清单
 
-- [ ] 复用 `RedisStore` 门面（`@Inject`），未自写 Redis 连接 / 未引多余库
+- [ ] 复用 `RedisStore` 统一入口（`@Inject`），未自写 Redis 连接 / 未引多余库
 - [ ] 分布式锁：带 TTL、释放带 token、业务短、获取失败有降级
 - [ ] 缓存带 TTL，写后失效；热点 key 防击穿 / 雪崩
 - [ ] 限流窗口与阈值明确，超限有明确行为（抛错 / 排队）

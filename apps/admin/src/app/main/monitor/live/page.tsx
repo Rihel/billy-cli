@@ -61,7 +61,7 @@ export default function LiveAlertsPage() {
   const [receivedCount, setReceivedCount] = useState(0)
 
   const { state, connected } = useStream(stream, {
-    // 用前后端共用的契约解析：负载不合规直接丢弃，不让脏数据进 UI
+    // 用前后端共用的数据结构解析：负载不合规直接丢弃，不让脏数据进 UI
     [STREAM_ALERT_FIRED_EVENT]: (data) => {
       const parsed = AlertFiredEventSchema.safeParse(data)
       if (!parsed.success) return

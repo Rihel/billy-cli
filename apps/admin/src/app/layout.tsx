@@ -10,7 +10,7 @@ import { Suspense } from 'react'
 
 /* 字体接线：下面三个变量名必须**写成字面量** —— next/font 的加载器要求编译期可静态分析的值，
  * 传变量会构建失败（Font loader values must be explicitly written literals）。
- * 变量名的契约在 @repo/ui/fonts，由 `pnpm check:ui` 校验这里与契约一致；
+ * 变量名的规范在 @repo/ui/fonts，由 `pnpm check:ui` 校验这里与规范一致；
  * 族回退链定义在 ui 包的 globals.css 里，由 packages/ui/test/tokens.test.ts 守卫。 */
 const geist = Geist({
   subsets: ['latin'],

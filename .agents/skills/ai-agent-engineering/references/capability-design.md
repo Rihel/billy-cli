@@ -6,7 +6,7 @@
 
 ## 1. 该不该做成 AI 能力
 
-| 情形 | 判断 | 为什么 | 依据 / 落点 |
+| 情形 | 判断 | 为什么 | 依据 / 位置 |
 | --- | --- | --- | --- |
 | 确定性逻辑（算价、状态流转、字段映射） | **不该** | 模型只是把确定性函数重新猜一遍：慢、不可测、会漂移 | 下沉到服务端代码，提示词不参与 |
 | 需要真实外部数据（当前时间、文件、接口、库） | **该** | 模型的记忆不可信，答案只能来自执行 | `run-command`，`tools/command.tool.ts:188-211` |
@@ -29,15 +29,15 @@
 
 **工具面越大越贵**：每个工具的 `key` / `title` / `description` 都渲染进系统提示词（`core/prompts/templates/partials/tools.eta:6,11`）。工具越多、描述越长 → 前缀越长、选错概率越高。因此：一个方法一个工具；能复用不新增（见 §7）；没有合适的组才新建组。
 
-## 3. 命名与描述契约
+## 3. 命名与描述数据结构
 
-| 字段 | 契约 | 依据 |
+| 字段 | 数据结构 | 依据 |
 | --- | --- | --- |
 | `key` | **稳定对外标识**，唯一事实源为 `core/tools/tool-keys.ts`；禁止裸字符串（写错是编译期错误） | `tool-keys.ts:1-12`、`core/tools/tools.types.ts:282-283` |
 | `title` | 人读标题，给模型扫读 + 后台列表 | `tools.types.ts:284-285`、`tool.registry.ts:96-104` |
 | `description` | **唯一一份说明**，四段式：是什么 / 什么时候用 / 什么时候不用 / 纪律 | `tools.types.ts:286-287`、`tool.decorator.ts:68` |
-| `params` | zod 契约，每个字段 `.describe()` 是**给模型的字段说明** | 范例 `command.tool.ts:16-37` |
-| `config` | zod 契约，**每个字段必须 `.default()`**；`config.parse({})` 失败 → 启动即失败 | `tools.types.ts:293-299`、`tool.registry.ts:49-57` |
+| `params` | zod 定义，每个字段 `.describe()` 是**给模型的字段说明** | 范例 `command.tool.ts:16-37` |
+| `config` | zod 定义，**每个字段必须 `.default()`**；`config.parse({})` 失败 → 启动即失败 | `tools.types.ts:293-299`、`tool.registry.ts:49-57` |
 
 **为什么四段缺一个模型就会乱用**：
 
@@ -50,7 +50,7 @@
 
 ## 4. 权限与作用域
 
-**两层闸门**：授权（agent 声明里有哪些 key，`agents/assistant.agent.ts:26-33`）∩ 作用域（这一次调用允不允许）。
+**两层关卡**：授权（agent 声明里有哪些 key，`agents/assistant.agent.ts:26-33`）∩ 作用域（这一次调用允不允许）。
 
 | `scope` | 语义 | 判据 | 适用 |
 | --- | --- | --- | --- |

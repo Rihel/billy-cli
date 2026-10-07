@@ -11,7 +11,7 @@ import { waitFor } from './helpers/tool-events.js'
  * 适配器这条边（设计 §5.17）：AI SDK 把 `writer` 放进工具执行上下文，由 `tool.adapter` 转成
  * `ToolCallInput.writer`（本次不改适配器，这里只是把"事件确实沿着适配器往上走"钉住）。
  *
- * 顺带把**共享契约**（`@repo/shared` 的 `parseToolEventPart`）当裁判：服务端发出去的 part
+ * 顺带把**共享数据结构**（`@repo/shared` 的 `parseToolEventPart`）当裁判：服务端发出去的 part
  * 必须能被前端那个宽容解析器原样解出来 —— 这是"两轨不漂移"的硬证据。
  * 另外验**没有 writer** 的真实路径（非流式调用 / 后台直接调工具）：事件一条都不写，工具照常出结果。
  */
@@ -27,7 +27,7 @@ const buildTool = () => {
 type ExecutableTool = { execute: (input: unknown, context: unknown) => Promise<unknown> }
 
 describe('适配器：writer 的有无', () => {
-  it('有 writer（流式）：事件沿适配器写进父流，且能被共享契约解析出来', async () => {
+  it('有 writer（流式）：事件沿适配器写进父流，且能被共享数据结构解析出来', async () => {
     const chunks: unknown[] = []
     const tool = buildTool() as unknown as ExecutableTool
     const output = await tool.execute(
@@ -42,7 +42,7 @@ describe('适配器：writer 的有无', () => {
     // `emit` 是同步的、写流是异步的（串行队列）：等队列跑完再断言
     await waitFor(() => chunks.length >= 3)
 
-    // ① 共享契约是裁判：每一块都能被前端的宽容解析器解出来
+    // ① 共享数据结构是裁判：每一块都能被前端的宽容解析器解出来
     const parts = chunks.map((chunk) => parseToolEventPart(chunk))
     expect(parts.some((part) => part === null)).toBe(false)
     const parsed = parts.filter((part) => part !== null)

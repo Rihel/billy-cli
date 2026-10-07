@@ -16,8 +16,8 @@ import { requestContext } from '../request-context/request-context.js'
 import { ZodValidationFailedError } from '../http/zod-validation.js'
 
 /**
- * 全局异常过滤器（统一的错误映射 + 404 + 校验失败契约）：
- * - Zod 校验失败 → **HTTP 200** + `{ code: 400, message }`（历史契约）；
+ * 全局异常过滤器（统一的错误映射 + 404 + 校验失败响应）：
+ * - Zod 校验失败 → **HTTP 200** + `{ code: 400, message }`（历史格式）；
  * - 边界错误（守卫 / 限流）→ 携带的 HTTP 状态 + 可选响应头 + AppResponse 信封；
  * - 业务 / 基础设施错误（AppError.code）→ 查字典映射 HTTP + 中文文案；
  * - Nest 路由未命中 → HTTP 404 `{ code: 404, message: '接口不存在' }`；

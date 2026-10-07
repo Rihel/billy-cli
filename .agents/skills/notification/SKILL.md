@@ -1,16 +1,16 @@
 ---
 name: notification
-description: 在 Billy 工程中发送通知：Notifier 编排门面 + FileClient / LarkNotifyClient / EmailClient 三通道、通道配置与未配置降级、发送结果与失败处理、告警通知与新增通道。触发词：通知、发通知、推送通知、告警通知、邮件、SMTP、email、飞书通知、Notifier、NotifyClient、EmailClient、FileClient、LarkNotifyClient、通知通道。
+description: 在 Billy 工程中发送通知：Notifier 编排统一入口 + FileClient / LarkNotifyClient / EmailClient 三通道、通道配置与未配置降级、发送结果与失败处理、告警通知与新增通道。触发词：通知、发通知、推送通知、告警通知、邮件、SMTP、email、飞书通知、Notifier、NotifyClient、EmailClient、FileClient、LarkNotifyClient、通知通道。
 ---
 
 # 通知（Notifier / 三通道）
 
 前置：先加载必读 skill `billy-dev-foundation`（「不重复造轮子」实现查找顺序——发通知复用
-`Notifier` 门面与各通道客户端，不自引 nodemailer / 飞书 SDK；飞书协议细节见 `lark` skill）。
+`Notifier` 统一入口与各通道客户端，不自引 nodemailer / 飞书 SDK；飞书协议细节见 `lark` skill）。
 
 ## 核心要点
 
-- 编排门面 `Notifier`（`kits/src/notification/notifier.ts`）：`send(channel, payload)` 按通道路由，
+- 编排统一入口 `Notifier`（`kits/src/notification/notifier.ts`）：`send(channel, payload)` 按通道路由，
   自身零发送实现；由 `NotificationModule.forRootAsync`（notify 命名空间）装配。
 - **三通道**：`file`（FileClient，零配置默认兜底，追加写 `logs/alerts.log`）、`lark`（LarkNotifyClient，
   基于 LarkClient 发文本）、`email`（EmailClient，nodemailer SMTP）。

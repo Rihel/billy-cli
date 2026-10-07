@@ -37,7 +37,7 @@
 
 所有 8 个 registry 条目的 `type` 均为 `registry:component`，`files[0].target` 均为 `components/ai-elements/<name>.tsx`。
 
-**关于「最小用法示例」：8 个 registry JSON 均未查到。** 逐文件 `grep` 结果：`content` 中不含 `@example`、不含 `Usage` 段落（`context.tsx` 命中一次 `Usage` 也只是组件名 `ContextInputUsage` 等），JSON 顶层除 `$schema/dependencies/description/devDependencies/files/name/registryDependencies/title/type` 外**没有 docs/examples/meta 字段**。故本文档第 5 项要求统一记为「未查到（registry 内无示例代码）」，改以「从源码可确认的调用契约」替代（见各节「契约推断」）。
+**关于「最小用法示例」：8 个 registry JSON 均未查到。** 逐文件 `grep` 结果：`content` 中不含 `@example`、不含 `Usage` 段落（`context.tsx` 命中一次 `Usage` 也只是组件名 `ContextInputUsage` 等），JSON 顶层除 `$schema/dependencies/description/devDependencies/files/name/registryDependencies/title/type` 外**没有 docs/examples/meta 字段**。故本文档第 5 项要求统一记为「未查到（registry 内无示例代码）」，改以「从源码可确认的调用方式」替代（见各节「用法推断」）。
 
 **引用的 AI SDK 类型**来自本地已解包的 `ai@6.0.289`（`/tmp/aiv6/ai/package/dist/index.d.ts`，与 AI Elements 同批下载），用于解释组件 props 里引用的外部类型（`ToolUIPart["state"]`、`UIMessage["role"]`、`LanguageModelUsage`）。
 
@@ -151,7 +151,7 @@ const getMessageText = (message: UIMessage): string =>
 
 ### 1.5 最小用法
 
-registry 内**未查到**示例代码。从源码可确认的最小契约：
+registry 内**未查到**示例代码。从源码可确认的最小调用方式：
 
 ```tsx
 <Conversation>
@@ -311,7 +311,7 @@ message.tsx **没有显式的 `isStreaming` / `state === ...` 分支**（`grep` 
 
 ### 2.5 最小用法
 
-registry 内**未查到**示例。从源码可确认的最小契约：
+registry 内**未查到**示例。从源码可确认的最小调用方式：
 
 ```tsx
 <Message from={message.role}>
@@ -473,7 +473,7 @@ const defaultGetThinkingMessage = (isStreaming: boolean, duration?: number) => {
 
 ### 3.5 最小用法
 
-registry 内**未查到**示例。源码内**自带的调用契约**（L157-165 的默认文案 + L69 的默认展开）：
+registry 内**未查到**示例。源码内**自带的调用方式**（L157-165 的默认文案 + L69 的默认展开）：
 
 ```tsx
 <Reasoning isStreaming={part.state === "streaming"} duration={partDurationSec}>
@@ -622,7 +622,7 @@ export const getStatusBadge = (status: ToolPart["state"]) => (
 
 ### 4.5 最小用法
 
-registry 内**未查到**示例。由 L35-45 与 L115-133 可确认的调用契约：
+registry 内**未查到**示例。由 L35-45 与 L115-133 可确认的调用方式：
 
 ```tsx
 <Tool>
@@ -709,7 +709,7 @@ export const Task = ({
 
 ### 5.5 最小用法
 
-registry 内**未查到**示例。由源码可确认的契约：
+registry 内**未查到**示例。由源码可确认的调用方式：
 
 ```tsx
 <Task defaultOpen>
@@ -798,7 +798,7 @@ export const Source = ({ href, title, children, ...props }: SourceProps) => (
 
 ### 6.5 最小用法
 
-registry 内**未查到**示例。由源码可确认的契约：
+registry 内**未查到**示例。由源码可确认的调用方式：
 
 ```tsx
 <Sources>
@@ -1002,7 +1002,7 @@ export const ConfirmationRejected = ({
 
 ### 7.5 最小用法
 
-registry 内**未查到**示例。由源码可确认的契约：
+registry 内**未查到**示例。由源码可确认的调用方式：
 
 ```tsx
 <Confirmation approval={part.approval} state={part.state}>
@@ -1135,7 +1135,7 @@ export const Context = ({ usedTokens, maxTokens, usage, modelId, ...props }: Con
 
 ### 8.5 最小用法
 
-registry 内**未查到**示例。由源码可确认的契约：
+registry 内**未查到**示例。由源码可确认的调用方式：
 
 ```tsx
 <Context usedTokens={usage?.totalTokens ?? 0} maxTokens={128000} usage={usage} modelId="openai/gpt-4o">

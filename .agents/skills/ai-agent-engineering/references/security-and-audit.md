@@ -11,9 +11,9 @@
 | HTTP 身份 | `api/ai.controller.ts:55-56`（`AnyAuthGuard`） | 认人：`isAdminIdentity()` 判管理员、`ownerId()` 取发起人 | 无身份或身份混淆 → 越权 |
 | 运行时信封 | `core/envelope.ts:38-69` | 把会话 / 根 agent / 深度 / 模型 / 子工具面 / `isAdmin` 送进调用 | 工具拿不到身份，作用域判不了 |
 | `ToolCaller` | `core/tools/tool.caller.ts:10-21` | 信封 → 调用方的纯映射（无信封为 `null`） | 伪造放行（当前实现：无信封 = 拒绝） |
-| 插件闸门 pre | 顺序 `enabled → scope → rate-limit → validate → precheck → audit-start`（`ai.module.ts:144-163`） | 开关 / 权限 / 限流 / 入参 / 前置条件 | 漏哪一环，那类调用就无条件放行 |
+| 插件关卡 pre | 顺序 `enabled → scope → rate-limit → validate → precheck → audit-start`（`ai.module.ts:144-163`） | 开关 / 权限 / 限流 / 入参 / 前置条件 | 漏哪一环，那类调用就无条件放行 |
 | 执行体 | `tools/**` | 只写业务动作 | 边界判断散进业务，新工具必漏 |
-| 插件闸门 post | 顺序 `redact → paginate → audit-end` | 脱敏 / 分页给模型 / 审计 | 秘钥进日志、大结果灌上下文、查无实据 |
+| 插件关卡 post | 顺序 `redact → paginate → audit-end` | 脱敏 / 分页给模型 / 审计 | 秘钥进日志、大结果灌上下文、查无实据 |
 
 纪律：**数组顺序就是执行顺序**（`core/tools/tool.gateway.ts:19,90-98,104-116`）；安全类插件只累积拒绝、不互相覆盖（`tools.types.ts:373-377`）；**被拒绝的调用也要跑 post**（拒绝必须被记下来，`tool.gateway.ts:103`）。
 
@@ -46,7 +46,7 @@
 **取用纪律**：
 
 - 只经 `ctx.settings.secret(name)` 取明文（`tools.types.ts:148-149`）；页面与日志只给 `secretHint()`（`:150-151`）；
-- 秘钥契约字段**一律可选、没有默认值**，缺了就是"未配置"（`tools.types.ts:300-303`）；必填秘钥缺失由 `precheck` 给 `precheck-failed` 结论并点名缺哪个（`plugins/precheck.plugin.ts:10-22`）。
+- 秘钥定义字段**一律可选、没有默认值**，缺了就是"未配置"（`tools.types.ts:300-303`）；必填秘钥缺失由 `precheck` 给 `precheck-failed` 结论并点名缺哪个（`plugins/precheck.plugin.ts:10-22`）。
 
 **`redact` 插件覆盖什么 / 不覆盖什么**（`plugins/redact.plugin.ts:17-43`）：
 
@@ -71,7 +71,7 @@
 | 实时刷屏 | 逐行事件必须限流（行数上限 + 如实报省略量），并给部署侧硬上限；完整内容始终在出参 | 机制见 `docs/design/ai-agent-tool-engine.md` §5.17 |
 | 纪律 | 有副作用的命令先问用户；只读公开请求不必先问；失败不原样重试 | `command.tool.ts:198-210` |
 
-**明确的代码里写着这不是沙箱**（类注释原话，`command.tool.ts:110-113`；提示词 `partials/environment.eta:8-9` 也要求模型不要把环境描述当成沙箱）：没有文件系统隔离、没有网络策略、没有资源限制。当前工程只做四件事 —— 可开关、限默认落点（workdir）、限时长与输出、**每次调用完整入库**（时间线里的入参出参就是审计证据）。**真要强隔离，得把执行放进容器 / 沙箱**，那是另一件事，不在本工具里假装做到。
+**明确的代码里写着这不是沙箱**（类注释原话，`command.tool.ts:110-113`；提示词 `partials/environment.eta:8-9` 也要求模型不要把环境描述当成沙箱）：没有文件系统隔离、没有网络策略、没有资源限制。当前工程只做四件事 —— 可开关、限默认目录（workdir）、限时长与输出、**每次调用完整入库**（时间线里的入参出参就是审计证据）。**真要强隔离，得把执行放进容器 / 沙箱**，那是另一件事，不在本工具里假装做到。
 
 ## 5. 不可信内容与注入
 
@@ -79,12 +79,12 @@
 
 | 现有防线 | 依据 |
 | --- | --- |
-| 权限闸门：即使模型被说动，越权调用仍被 `scope` 拒 | `plugins/scope.plugin.ts:13-53` |
+| 权限关卡：即使模型被说动，越权调用仍被 `scope` 拒 | `plugins/scope.plugin.ts:13-53` |
 | 破坏性动作的前置确认**纪律**写进工具描述（提示词层，非机制） | `command.tool.ts:203-206` |
 | 全量审计：每次调用的入参出参都落时间线，事后可复现模型看到什么 | `runtime/stream-recorder.ts:100-134` |
 | 未知工具单独标 `unknown-tool` 状态，是"提示词与工具面不一致"的信号 | `stream-recorder.ts:146-172` |
 
-**现状缺口（如实记录）**：AI 模块**没有专门的注入过滤层** —— 没有"把工具输出标记为不可信数据"的渲染隔离，也没有内容级检测。当前靠**提示词纪律 + 权限闸门 + 全量审计**三件事兜，属于**缓解**，不是消除。（`pnpm check:inject` 是 DI 装饰器守卫 `scripts/check-inject-decorators.ts`，与提示词注入无关，别混淆。）
+**现状缺口（如实记录）**：AI 模块**没有专门的注入过滤层** —— 没有"把工具输出标记为不可信数据"的渲染隔离，也没有内容级检测。当前靠**提示词纪律 + 权限关卡 + 全量审计**三件事兜，属于**缓解**，不是消除。（`pnpm check:inject` 是 DI 装饰器守卫 `scripts/check-inject-decorators.ts`，与提示词注入无关，别混淆。）
 
 工具作者的写作纪律：把工具出参当**数据**交给模型，不拼"请你现在调用 X"这类祈使句；外部内容保留来源与原文，不做"替我执行"的加工；模型侧也不因为内容里写了"请执行"就去执行。
 
@@ -110,7 +110,7 @@
 
 **现状缺口**：
 
-- **AI 模块没有接 `telemetry` 门面**（模块内 grep 无匹配）：只有结构化日志（`ai.tool.invoked` / `ai.tool.denied` / `ai.command.executed`）与用量落库，**没有指标 / 分位 / 告警**。要补时看 `telemetry` skill；
+- **AI 模块没有接 `telemetry` 统一入口**（模块内 grep 无匹配）：只有结构化日志（`ai.tool.invoked` / `ai.tool.denied` / `ai.command.executed`）与用量落库，**没有指标 / 分位 / 告警**。要补时看 `telemetry` skill；
 - **谁归档 / 删除 / 停止 / 重试了，没有操作人**，只有软删标记 —— `docs/design/ai-agent.md:328`；
 - 时间线**没有 hash 链防篡改**，靠"应用层只追加 + 部署只授 `INSERT` / `SELECT`"（`ai-agent.md:387,1975`）。
 

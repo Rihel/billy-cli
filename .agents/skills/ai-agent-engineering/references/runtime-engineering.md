@@ -119,7 +119,7 @@ post: redact → paginate → audit-end        （拒绝也要跑 post，tool.ga
   （缺口）**——要上限就照 `caps` 的口径加一项并在 `clampLimits` 里夹。
 - **多实例**：同一会话只允许一次进行中的**根**运行，由部分唯一索引挡（`run-entity.ts:25-28`
   `uk_run_active_conversation`）→ 一轮粘在一个实例上，同轮不会跨实例；限流计数在 Redis，跨实例一致。
-- 命令能力是**两层闸门**：配置里的 `config.enabled` 与部署的 `caps.command.enabled` 都开才放行
+- 命令能力是**两层关卡**：配置里的 `config.enabled` 与部署的 `caps.command.enabled` 都开才放行
   （`command.tool.ts:286-288`）。
 
 ## 5. 取消与超时
@@ -183,7 +183,7 @@ post: redact → paginate → audit-end        （拒绝也要跑 post，tool.ga
   `request_snapshot` 记 model / agentKey / toolKeys / skillKeys / params / context（`chat.service.ts:844-851`）。
 - **配置变更留痕**：行上的 `created_by` / `updated_by`（`packages/kits/src/db/audit-entity.ts:15-19`，由
   `AuditSubscriber` 自动填） + 一条 `ai.tool.config_updated` 日志；`ai_tools` **没有独立的审计表（缺口）**。
-- **现状缺口：AI 模块未接 `telemetry` 门面** —— `grep -rn telemetry apps/server/src/modules/ai/` 无命中；
+- **现状缺口：AI 模块未接 `telemetry` 统一入口** —— `grep -rn telemetry apps/server/src/modules/ai/` 无命中；
   现在只有结构化日志事件 + 用量落库（`runs.usage` / `timelines` 的 step 行），**没有 Counter / Histogram / 告警**。
   要看 QPS、错误率、P95、token 环比与 `surge` 告警，按 `telemetry` skill 埋点，并把指标口径写进设计文档。
 

@@ -20,7 +20,7 @@ description: 在 Billy 工程中开发前端页面：Admin 后台页（@repo/ui 
 | 典型页面 | `/`、`/auth/login`、`/auth/register` | `/main/*`（dashboard / todo / system/users 等） |
 
 **两套前端统一使用 `@repo/ui`（shadcn/ui 风格）与 `@repo/ui`（设计系统：token / 主题 /
-字体契约 / 组件质感）**。
+字体规范 / 组件质感）**。
 
 **组件目录约定（硬性）**：
 - `components/ui/*` 是 shadcn 管理的目录（用 shadcn CLI 增删，保留其文件，需要时可直接更新内容）；
@@ -57,7 +57,7 @@ token / 主题 / 字体回退链 / 组件质感的**唯一定义处**是 `@repo/
   （同域部署 localStorage 共享，否则前后台互相改主题）；页面视觉取值只用语义 token，
   硬编码调色板在暗色下必然出错（`pnpm check:ui` 会拦）。
 - 字体：app 的 `layout.tsx` 里 `next/font` 的 `variable` **必须写字面量**
-  （框架要求，传变量直接构建失败）；契约放在 `globals.css` 的字体回退链里，
+  （框架要求，传变量直接构建失败）；数据结构放在 `globals.css` 的字体回退链里，
   `pnpm check:ui` 第 ⑤ 条从 CSS 推导并校验两侧一致。
 - 新增 / 修改 token 时：补 `@theme inline` 映射（格式必须是 `--color-X: var(--X)`）、
   补深色取值（明暗键集合必须完全一致）；`packages/ui/test/tokens.test.ts` 会拦下
@@ -74,14 +74,14 @@ app 专属的才留在 app。参考实现：
 `packages/ui/src/globals.css`（等宽数字对齐 / 滚动条等全局规则）、
 `apps/admin/src/components/AppMenu.tsx`（间距全用 className）。
 
-**视觉 / 设计质量（门面型页面可借全局设计 skill）**：Web 前台 / 落地页等「门面型」视觉任务，
+**视觉 / 设计质量（展示型页面可借全局设计 skill）**：Web 前台 / 落地页等「展示型」视觉任务，
 可**按需参考**全局设计 skill（`shadcn` / `design-taste-frontend` / `impeccable` /
 `redesign-existing-projects` 等）提升审美与布局——它们只作设计参考，**不纳入本工程规范 / 必读**
 （全局 skill 不受 git 管理、不可复现）。若某设计规范长期复用，按 `manage-skills` 的
 `find-external-skill.md`「评估 → 适配 → 登记」沉淀为项目内 skill；最终仍统一遵循
 `@repo/ui`（shadcn 风格）与本文的 className / @layer / 语义 token 约定。
 
-## 前端质量门（写完页面必跑）
+## 前端质量检查（写完页面必跑）
 
 与后端对等，前端也有可执行的门（命令说明见
 `billy-dev-foundation/references/commands.md`）：
@@ -90,14 +90,14 @@ app 专属的才留在 app。参考实现：
 pnpm typecheck   # turbo：web / admin / ui / design 四包 tsc --noEmit
 pnpm test        # turbo：七包单测（ui 用 jsdom + testing-library，design / 两个 app 用 node 环境）
 pnpm check:ui    # 守卫五条：组件导出 / 前端包 typecheck 脚本 / 禁止新增硬编码调色板 /
-                 #   脚手架模板样式入口可解析 / next/font 变量名与设计系统契约一致
+                 #   脚手架模板样式入口可解析 / next/font 变量名与设计系统规范一致
 ```
 
 - 新增前端包（含 `pnpm cli -t client` 生成的应用）**必须声明 `typecheck` 脚本**，否则守卫拦下。
 - 纯逻辑（常量 / 格式化 / 守卫判定）写 `test/*.test.ts` 用 node 环境；hook / 组件写 jsdom 用例，
   样板见 `packages/ui/test/{tag.test.tsx,use-stream.test.ts}`。写法见 `write-tests` skill。
 - 改 `@repo/ui` 的自有组件目录时，别忘在 `packages/ui/src/index.ts` 补导出（守卫会拦）。
-- 改 `@repo/ui` 的 token / 字体契约后，跑 `pnpm --filter @repo/ui test`（守卫会拦不对称与漏映射）。
+- 改 `@repo/ui` 的 token / 字体规范后，跑 `pnpm --filter @repo/ui test`（守卫会拦不对称与漏映射）。
 
 ## 参考文件（本 skill 的组成部分）
 

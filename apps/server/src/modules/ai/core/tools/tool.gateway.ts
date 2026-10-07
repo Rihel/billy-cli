@@ -48,7 +48,7 @@ const rawCallReason = (rawInput: unknown): string | null => {
  *
  * 三条纪律：
  * - **失败是结论**：插件与执行体都不抛业务异常；抛出去的那是我们自己写错了（装配错误），
- *   只记 `internal` 结论 + error 日志。工具错误在 Mastra 那边不会炸整轮（契约 ③ 实测过）；
+ *   只记 `internal` 结论 + error 日志。工具错误在 Mastra 那边不会炸整轮（用例 ③ 实测过）；
  * - **顺序固定**：`AGENT_TOOL_PLUGINS` 的数组顺序就是执行顺序；
  * - **不 import @mastra**：网关是主体的一部分（`check:mastra` 守）。
  */

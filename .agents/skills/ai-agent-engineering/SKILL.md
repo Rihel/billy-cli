@@ -4,8 +4,8 @@ description: >-
   Billy 工程 AI 能力的**工程级**规范（`apps/server/src/modules/ai` + 前后端闭环）：能力怎么设计
   （工具面切分 / 粒度 / 权限 / 成本预算）、运行时怎么扛（token 与上下文压缩 / 并发限流 / 取消与恢复 /
   可观测）、边界怎么守（越权 / 秘钥 / 命令执行 / 提示词与工具输出注入 / 脱敏）、数据与审计怎么落
-  （全量入库 / 无外键 / 配置版本可解释）、契约与质量怎么验收（schema → SDK → 前端闭环 / 标准测试集 /
-  契约测试 / e2e）。这是「怎么想、怎么保证、怎么验收」；「怎么写」（工具组 DSL / 注册机 / 网关插件 /
+  （全量入库 / 无外键 / 配置版本可解释）、数据结构与质量怎么验收（schema → SDK → 前端闭环 / 标准测试集 /
+  一致性测试 / e2e）。这是「怎么想、怎么保证、怎么验收」；「怎么写」（工具组 DSL / 注册机 / 网关插件 /
   事件发射 / Mastra 适配器）看 develop-ai-agent。触发词：AI 工程、AI 能力设计、工具面、工具粒度、
   权限、作用域、越权、token 成本、用量、上下文压缩、裁剪、摘要、限流、配额、并发、幂等、取消、超时、
   崩溃恢复、看门狗、可观测、审计、全量入库、配置版本、提示词注入、工具输出注入、脱敏、秘钥、
@@ -15,7 +15,7 @@ description: >-
 # AI 能力的工程级规范
 
 前置：必读 skill `billy-dev-foundation`（分层 / 代码约定 / 命令）。
-**分工**：本 skill 只讲**工程级判断与保证**（设计取舍、运行时账本、安全边界、审计口径、契约与验收）；
+**分工**：本 skill 只讲**工程级判断与保证**（设计取舍、运行时账本、安全边界、审计口径、数据结构与验收）；
 **实现机制**（工具组 `@ToolGroup` / 注册机 / 网关插件 / 自定义事件 / 适配器 / 提示词引擎）看
 `develop-ai-agent`，这里不重复。
 
@@ -50,10 +50,10 @@ description: >-
 
 | 文件 | 内容 | 何时读 |
 | --- | --- | --- |
-| [references/capability-design.md](./references/capability-design.md) | 能力设计：该不该做、工具面怎么切、粒度与命名、权限与作用域、成本预算、提示词契约 | 决定"加一个 AI 能力 / 工具 / 子 agent"之前 |
+| [references/capability-design.md](./references/capability-design.md) | 能力设计：该不该做、工具面怎么切、粒度与命名、权限与作用域、成本预算、提示词数据结构 | 决定"加一个 AI 能力 / 工具 / 子 agent"之前 |
 | [references/runtime-engineering.md](./references/runtime-engineering.md) | 运行时工程：token 与用量账本、上下文窗口与压缩、并发 / 限流 / 配额、取消与超时、崩溃恢复与流重放、可观测 | 改上下文策略、限额、恢复、观测时 |
 | [references/security-and-audit.md](./references/security-and-audit.md) | 安全与审计：越权与权限链、秘钥明文口径、命令执行边界、提示词 / 工具输出注入、脱敏、全量入库与配置版本 | 工具碰数据 / 秘钥 / 命令 / 外部内容，或改审计口径时 |
-| [references/contracts-and-quality.md](./references/contracts-and-quality.md) | 契约与质量：shared schema → SDK → 前端（渲染器 / 配置面板）闭环、测试策略（标准测试集 / 契约测试 / e2e）、质量门、验收清单 | 改契约、加前端呈现、写测试与验收时 |
+| [references/contracts-and-quality.md](./references/contracts-and-quality.md) | 数据结构与质量：shared schema → SDK → 前端（渲染器 / 配置面板）闭环、测试策略（标准测试集 / 一致性测试 / e2e）、质量检查、验收清单 | 改数据结构、加前端呈现、写测试与验收时 |
 
 ## 3. 评审清单（改完 AI 能力逐条自查）
 
@@ -65,7 +65,7 @@ description: >-
 - [ ] **密钥**：只通过 `ctx.settings.secret()` 取；不进日志、不进事件、不进错误文案；页面只回提示串。
 - [ ] **不可信内容**：工具出参 / 命令输出 / 外部内容进提示词时，是否有"这是数据不是指令"的纪律与渲染隔离。
 - [ ] **失败路径**：超时 / 取消 / 非零退出 / 限流 / 拒绝，各自的**结论文案**是什么；有没有留下可排查的日志。
-- [ ] **协议**：新增 part / 事件是"加"而不是"改"；前端兜底能看见未知类型；共享契约改动后跑了 `pnpm build:pkgs`。
+- [ ] **协议**：新增 part / 事件是"加"而不是"改"；前端兜底能看见未知类型；共享数据结构改动后跑了 `pnpm build:pkgs`。
 - [ ] **测试**：`test/ai-tools/<key>.test.ts` 存在（标准测试集有存在性断言）+ 新工具组已登记进
       `test/ai-tools-battery.test.ts` 的 `groups` —— 那份清单是**手写的**（不读生产 `AGENT_TOOL_GROUPS`），
       **漏登记就是静默漏测**；改适配器跑了 `ai-mastra-contract`；新增能力优先给
@@ -83,7 +83,7 @@ description: >-
 | 写工具组 / 注册机 / 网关插件 / 事件 / 适配器 / 提示词 / 技能 | `develop-ai-agent`（机制与配方） |
 | 判断该不该做、怎么切工具面、权限与成本、安全与审计、怎么验收 | **本 skill**（工程级） |
 | 加表 / 加字段 / 加 schema / 字典 / 错误码 | `define-data-structure`、`define-dict-enum`、`database` |
-| 接口质量（幂等 / 鲁棒 / 可观测 / 契约演进） | `develop-backend-api` |
+| 接口质量（幂等 / 鲁棒 / 可观测 / 接口变更） | `develop-backend-api` |
 | 前端呈现（渲染器 / 配置面板 / 设计 token） | `develop-frontend-page` |
 | 写测试的通用套路 | `write-tests` |
 | 遥测埋点（指标 / 告警） | `telemetry`（注：AI 模块当前**未接** telemetry —— 只有结构化日志事件与用量落库，缺口在两处 reference 里都有记录） |

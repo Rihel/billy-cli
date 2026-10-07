@@ -10,7 +10,7 @@ import type { ToolCallContext, ToolEnvCaps, ToolPlugin } from '../tools.types.js
  * 分页：出参超过上限时，**返回值仍是全量**，只有"给模型的那一份"被适配器换成第一页。
  *
  * 为什么这样：`timelines` 存的是工具返回值（全量入库是硬规则），模型看到的是
- * `toModelOutput` 映射后的视图（契约 ① 实测）。本插件只负责把全量放进回取存储 + 记页头。
+ * `toModelOutput` 映射后的视图（用例 ① 实测）。本插件只负责把全量放进回取存储 + 记页头。
  */
 @Injectable()
 export class PaginatePlugin implements ToolPlugin {

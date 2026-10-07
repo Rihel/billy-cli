@@ -45,7 +45,7 @@ describe('管理台接口：events 与代码声明一致', () => {
     expect(withoutEvents?.events).toEqual([])
   })
 
-  it('events 不可编辑：更新入参契约里根本没有这个字段（前端也传不进来）', () => {
+  it('events 不可编辑：更新入参定义里根本没有这个字段（前端也传不进来）', () => {
     const parsed = AiToolUpdateSchema.safeParse({ toolKey: 'test-event-decl', events: [{ name: '偷偷加的' }] })
     expect(parsed.success).toBe(true)
     // 未知字段被剥掉，写库那条路上永远拿不到 events

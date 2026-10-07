@@ -196,7 +196,7 @@ export class AiToolService {
       secretFields,
       limits: settings.limits,
       source: settings.source,
-      // 参数契约同样取库里的镜像（启动期写入）；老行缺列时现算一次兜底
+      // 参数定义同样取库里的镜像（启动期写入）；老行缺列时现算一次兜底
       paramSchema: settings.paramSchema ?? toJsonSchema(spec),
       // 自定义事件声明同属"基础信息镜像"：库里那份与代码声明同源（见 §5.17），老行现算兜底
       events: [...(settings.events ?? toAiToolEventModels(spec.events))],

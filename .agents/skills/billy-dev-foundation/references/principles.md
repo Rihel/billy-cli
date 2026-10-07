@@ -30,7 +30,7 @@
 ```
 首要准则（本文件 / AGENTS.md）       —— 立场与方法，统摄一切
   ├─ design.md         —— 怎么想（难度评估、系统化思维、借鉴/第一性原理）
-  ├─ placement.md      —— 放哪（能力归位）
+  ├─ placement.md      —— 放哪（放置位置）
   ├─ code-conventions.md —— 怎么写（不重复造轮子 + 硬性约定）
   └─ workflow.md       —— 什么顺序（标准流程）
 ```

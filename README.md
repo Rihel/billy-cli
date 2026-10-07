@@ -39,7 +39,7 @@ packages/
 | 异步消息   | Kafka（kafkajs）           | 生产者 `KafkaService.send` / 消费者 `@KafkaConsumer`；按 `KAFKA_BROKERS` 按需装配 |
 | 服务端推送 | SSE（StreamHub + HttpStreamClient） | 实时推送：AI 流式 / 任务进度 / 通知，Redis pub/sub 跨实例广播 |
 | 对象存储   | S3 / COS                   | 预签名 URL + 临时凭证（STS）                |
-| 构建工具   | tsdown（ui 除外）          | 快速 bundler；shared / kits / http-client / sdk 产出 dts，@repo/ui 源码直出（exports 指向 `./src/*`，不参与构建） |
+| 构建工具   | tsdown（ui 除外）          | 快速 bundler；shared / kits / http-client / sdk 产出 dts，@repo/ui 直接用源码（exports 指向 `./src/*`，不参与构建） |
 | 容器化     | Docker multi-stage         | server + web 独立部署，compose 一键起依赖   |
 
 ## 快速开始
@@ -116,7 +116,7 @@ pnpm db:migrate
 ### 启动（开发）
 
 ```bash
-# 终端 1：并行 watch 构建 packages（shared / kits / http-client / sdk；@repo/ui 源码直出，无需构建）
+# 终端 1：并行 watch 构建 packages（shared / kits / http-client / sdk；@repo/ui 直接用源码，无需构建）
 pnpm dev:pkgs
 
 # 终端 2：启动 NestJS 服务（http://localhost:9989）
@@ -228,7 +228,7 @@ pnpm cli -t crud -n product --no-install  # 非交互生成 CRUD 业务模块（
 │   ├── kits/                            # @repo/kits — 后端通用能力封装（无业务实体）
 │   │   └── src/
 │   │       ├── foundation/              # 横切基础：command / config / errors / id-generation / logger / scheduler / time-wheel
-│   │       ├── db/                      # Db / DbService 门面 + DbModule：create-db / db / db.service /
+│   │       ├── db/                      # Db / DbService 统一入口 + DbModule：create-db / db / db.service /
 │   │       │                            #   db.config / base-entity / audit-entity / audit-subscriber /
 │   │       │                            #   pagination / batch / safe-delete / sql / database.module
 │   │       ├── redis/                   # RedisStore / RedisLockService / RedisListCache + RedisModule
@@ -255,7 +255,7 @@ pnpm cli -t crud -n product --no-install  # 非交互生成 CRUD 业务模块（
 │   │   └── src/
 │   │       └── server.client.ts         # ServerClient（全类型化业务 API，继承 http-client 的 HttpClient）
 │   └── ui/                               # @repo/ui — shadcn 组件（src/components/ui/*）+ 自有组件（src/components/* 平铺）
-│                                         #   + 设计系统：token / 主题 / 字体契约（src/globals.css，唯一定义处）
+│                                         #   + 设计系统：token / 主题 / 字体规范（src/globals.css，唯一定义处）
 ├── docker/                              # Dockerfile.base / .server / .web + init-db.sql
 ├── k8s/                                 # server 的 Kubernetes 清单（Deployment / Service / PDB / Ingress + 部署说明）
 ├── docs/                                # pagination.md（分页指南）/ sdk-refactor.md / billy-pitch.md / queue.md（已废弃存档）/ design/ / dev-logs/
@@ -359,7 +359,7 @@ pnpm cli -t crud -n product --no-install  # 非交互生成 CRUD 业务模块（
 
 Zod schema 单一事实源，同时派生 TypeScript 类型（`*.schema.ts` 导出 `XxxModel` / `XxxDto`）：
 
-- **契约命名（硬性）**：schema 常量一律 `XxxSchema` 结尾（值后缀）；入参类型 `XxxDto`、响应类型
+- **数据结构命名（硬性）**：schema 常量一律 `XxxSchema` 结尾（值后缀）；入参类型 `XxxDto`、响应类型
   `XxxModel`（类型后缀），两者 `z.infer` 导出在**同一文件**、紧贴其 schema；`z.enum` 值域 schema
   （如 `AdminStatusSchema` / `AlertLevelSchema`）只导出 schema，不建类型别名；`base.schema.ts` 的
   `BaseModelSchema` / `BasePaginateSchema` / `BaseCursorPaginateSchema` 只作 `extend` / `intersection`
@@ -383,8 +383,8 @@ Zod schema 单一事实源，同时派生 TypeScript 类型（`*.schema.ts` 导�
 `LarkConfig` / `KafkaConfig`），不再由应用聚合成一个中央 kits 模块。所有模块均 `@Global()`，
 装配进 `apps/server/src/root.module.ts` 的 `imports`：
 
-- `db/`：`create-db.ts`（PostgreSQL DataSource 工厂，实体由应用注入）、`db.ts`（`Db`：连接生命周期门面）、
-  `db.service.ts`（`DbService`：**注入式数据操作门面**——四种分页 / 批量写入与删除 / 软删 /
+- `db/`：`create-db.ts`（PostgreSQL DataSource 工厂，实体由应用注入）、`db.ts`（`Db`：连接生命周期统一入口）、
+  `db.service.ts`（`DbService`：**注入式数据操作统一入口**——四种分页 / 批量写入与删除 / 软删 /
   SQL 还原；只依赖 `Db`，不注入 logger，
   自动带默认 manager 与当前操作人。纯函数是内核，本类只是把它接进容器，
   见下文「批量写入」）、`db.config.ts`（`DbConfig`）、`database.module.ts`（`DbModule`）、
@@ -421,7 +421,7 @@ Zod schema 单一事实源，同时派生 TypeScript 类型（`*.schema.ts` 导�
   shell 按平台解析、超时按进程树杀、输出有上限、失败不抛异常）、`errors/`（AppError / InfrastructureError）、`id-generation/`（`IdGeneration` + `IdGenerationModule`）、
   `logger/`（`app-logger.ts` + `logger.config.ts` + `logger.options.ts` + `LoggerModule`）、`scheduler/`（croner + `SchedulerModule`）、
   `time-wheel/`（`TimeWheel` 进程内高频调度原语：秒级/毫秒级刻度 + 自适应补偿 + 落后任务防堆积。
-  **普通类非 DI 门面**——需构造参数且天然多实例，用 `new TimeWheel(tickDuration, wheelsCount)`
+  **普通类（不走 DI）的封装**——需构造参数且天然多实例，用 `new TimeWheel(tickDuration, wheelsCount)`
   自行 `start()` / `stop()`，故无 module）
 - **模块清单**（均在 `packages/kits/src` 下，全部 `@Global()`）：
 
@@ -492,7 +492,7 @@ database/
 **使用方式（应用组合根 `apps/server/src/root.module.ts`）：**
 
 > 下面只给骨架，省略了 `RequestContextModule` / `RequestLoggerModule` / `RequestMetricsModule`
-> （三者顺序有铁律，见上文）与完整实体列表；实际装配以 `apps/server/src/root.module.ts` 为准。
+> （三者顺序有先后规定，见上文）与完整实体列表；实际装配以 `apps/server/src/root.module.ts` 为准。
 
 ```ts
 import { Module } from '@nestjs/common'
@@ -610,7 +610,7 @@ export class TodoModule {}
 
 - 生命周期组件实现 `OnApplicationBootstrap` / `OnApplicationShutdown`（`@nestjs/common`），由 Nest 在装配完成后按 providers 声明顺序启动，`app.close()` 时逆序释放
 - 各组件持有独立连接、停止期互不依赖；单个组件释放失败由框架记录，不阻断其余
-- **第 6 条铁律**：项目用 `tsx`（esbuild）编译，**不产出 `design:paramtypes`**，因此**每个构造器参数必须显式写 `@Inject(token)`**，不能依赖 TypeScript 类型推断；漏写会静默注入 `undefined` 而不报错（controller / service / repository / guard / filter 一律如此）
+- **第 6 条规定**：项目用 `tsx`（esbuild）编译，**不产出 `design:paramtypes`**，因此**每个构造器参数必须显式写 `@Inject(token)`**，不能依赖 TypeScript 类型推断；漏写会静默注入 `undefined` 而不报错（controller / service / repository / guard / filter 一律如此）
 - **开发态必须用 `node --import tsx/esm`**（`pnpm dev:server` 已内置）：`tsx` CLI 会同时挂 CJS 钩子，导致 CJS 依赖（如 `pino`、`pg`）`require('@nestjs/core')` 与 ESM `import` 拿到**两份模块实例**，`ApplicationConfig` 这类跨包 class token 对不上而启动失败；只挂 ESM 加载器即与 `node dist/main.js` 行为一致
 - 例外：kits 内部对带可选数值参数的构造器（如 `Telemetry`）用 `useFactory` 显式装配；`RateLimitGuard` 用 `Reflect.getMetadata` 直接读方法元数据而不注入 `Reflector`
 
@@ -669,9 +669,9 @@ const me = await client.auth.getMe()
 const todos = await client.todo.cursorQuery({ size: 20 })
 ```
 
-### @repo/ui 的设计系统（token / 主题 / 字体契约）
+### @repo/ui 的设计系统（token / 主题 / 字体规范）
 
-`packages/ui/src/globals.css` 是 web 与 admin 共用的**视觉契约唯一定义处**：语义 token
+`packages/ui/src/globals.css` 是 web 与 admin 共用的**视觉规范唯一定义处**：语义 token
 （颜色 / 圆角，明暗各一套）、Tailwind 4 `@theme` 映射、字体族回退链、组件质感规则
 （等宽数字对齐 / 细滚动条）。**token 没有 JS 副本** —— 具体值就是这些 CSS 变量本身，
 页面里用 Tailwind 语义类消费；内联 style / SVG 场景直接写 `var(--primary)`
@@ -685,7 +685,7 @@ const todos = await client.todo.cursorQuery({ size: 20 })
   `ThemeToggle` 是受控展示组件；**存储 key 由各 app 传**（同域部署下 front/back 互不干扰）；
 - 守卫：`packages/ui/test/tokens.test.ts` 用**零手工清单**的纯 CSS 自洽断言守着
   「明暗对称 + `@theme` 映射自洽 + 字体回退链」；`pnpm check:ui` 拦新增硬编码调色板、
-  校验样式入口可解析与字体契约一致；
+  校验样式入口可解析与字体规范一致；
 - 设计决策、取舍依据与已知缺口见 `docs/design/design-system.md`，
   admin 应用层约定见 `docs/design/admin-design-language.md`。
 
@@ -745,7 +745,7 @@ sidebar / toast / chart 等），Tailwind 4 主题变量来自同包的 `globals
   `SchedulerModule` 无配置；模块内部 `Schema.parse(...)` 校验 + 补默认值，**配置对象本身就是该模块的
   注入 bean**（`DbConfig` / `RedisConfig` / `JwtConfig` / `PasswordConfig` / `StorageConfig` /
   `NotifyConfig` / `LarkConfig` / `KafkaConfig`）
-- **配置链路（惰性铁律）**：`AppConfigFacade.initial({ schema, loader })` 在
+- **配置链路（惰性规则）**：`AppConfigFacade.initial({ schema, loader })` 在
   `NestFactory.create` **之前**完成「加载 → 校验 → 补默认值 → 缓存」；
   `schema` 是应用自定义的 shape（zod），`loader` 决定来源（内置 `env` / `memory` / `consul`，
   或自定义实例 / `registerConfigLoader` 注册的名字）；`AppConfigModule.forRoot()` 用
@@ -810,7 +810,7 @@ sidebar / toast / chart 等），Tailwind 4 主题变量来自同包的 `globals
 { "code": 1000, "message": "邮箱不存在" }
 ```
 
-错误响应契约（`AppExceptionFilter` 统一映射，保持历史契约不变）：
+错误响应格式（`AppExceptionFilter` 统一映射，保持历史格式不变）：
 
 - 校验失败：**HTTP 200** + `{ "code": 400, "message": "中文文案" }`（历史上不使用 HTTP 400，勿改）
 - 路由未命中：HTTP 404 + `{ "code": 404, "message": "接口不存在" }`
@@ -917,7 +917,7 @@ sidebar / toast / chart 等），Tailwind 4 主题变量来自同包的 `globals
 查询优先使用对应的 Deferred 方法。完整原理、SQL、索引与选型指南见
 [分页设计指南](docs/pagination.md)。
 
-### 数据操作门面（DbService）
+### 数据操作统一入口（DbService）
 
 业务代码里**注入 `DbService`**（`packages/kits/src/db/db.service.ts`，由 `DbModule` 装配、`@Global`），
 它把 kits 的数据能力收成统一入口，方法面与 rihel-base 的 `DBService` 对齐且是其超集：
@@ -1011,7 +1011,7 @@ pnpm cli --help     # 查看参数
 SDK 方法、admin 页面，并运行 `pnpm db:gen` 生成迁移。
 
 `service` 骨架的生产级默认与 `apps/server` 对齐：请求上下文（`X-Request-Id`）/ 请求日志 /
-请求指标三件自注册中间件（组合根 `imports` 内的顺序有铁律，见生成物注释）、限流模块，
+请求指标三件自注册中间件（组合根 `imports` 内的顺序有先后规定，见生成物注释）、限流模块，
 以及 75s / 80s 的长连接超时默认值（前置网关场景，见「前置反向代理」一节）。
 
 模板与工作区包的一致性由 `pnpm check:scaffold` 保证，它做四件事：汇总所有模板对
@@ -1044,7 +1044,7 @@ packages 源码要先 `pnpm build:pkgs`（脚本会告警）。
 | `pnpm clean`        | 清理 node_modules / dist / 缓存         |
 | `pnpm check:inject` | 守卫：构造器 `@Inject` / providers `@Injectable` 一致性检查 |
 | `pnpm check:scaffold` | 守卫：脚手架模板与工作区包一致性检查（导入名 + service/client/crud 渲染类型检查） |
-| `pnpm check:ui`     | 守卫：前端约定五条（组件导出 / 前端包 `typecheck` 脚本 / 禁止新增硬编码调色板 / 脚手架模板样式入口可解析 / `next/font` 变量名与设计系统契约一致） |
+| `pnpm check:ui`     | 守卫：前端约定五条（组件导出 / 前端包 `typecheck` 脚本 / 禁止新增硬编码调色板 / 脚手架模板样式入口可解析 / `next/font` 变量名与设计系统规范一致） |
 | `pnpm codegraph:setup` | 初始化 codegraph 代码图谱（装 CLI + 建仓库根索引；可选增强，接入见「AI 使用配置」） |
 
 ## Docker
@@ -1206,7 +1206,7 @@ codegraph ui           # 浏览器看图：http://127.0.0.1:4747
 - [docs/design/sse.md](docs/design/sse.md) — 服务端推送（SSE / StreamHub）设计
 - [docs/design/session-management.md](docs/design/session-management.md) — 会话管理（登录设备列表 + 单设备下线）
 - [docs/design/storage-access-policy.md](docs/design/storage-access-policy.md) — 对象存储访问策略（前台可上传 + key 命名空间约束）
-- [docs/design/frontend-foundation.md](docs/design/frontend-foundation.md) — 前端基础建设（质量门 + SSE 前端链路 + 前台业务闭环 + 实测记录）
+- [docs/design/frontend-foundation.md](docs/design/frontend-foundation.md) — 前端基础建设（质量检查 + SSE 前端链路 + 前台业务闭环 + 实测记录）
 - [docs/design/monitor-alert.md](docs/design/monitor-alert.md) — 监控告警设计（规则 / 触发 / 通道）
 - [docs/design/auth-session.md](docs/design/auth-session.md) — 认证与会话设计（JWT + Redis 会话）
 - [docs/queue.md](docs/queue.md) — 已废弃（BullMQ 队列方案，已被 Kafka 取代，仅存档）

@@ -1,4 +1,4 @@
-# 响应与错误契约（develop-backend-api 引用文件）
+# 响应与错误格式（develop-backend-api 引用文件）
 
 > 本文件是 `develop-backend-api` skill 的组成部分，由主 SKILL.md 引用。
 > 写任何后端接口前先读本文件——它是其它所有维度的地基。

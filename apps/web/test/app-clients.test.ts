@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createAppClients } from '@repo/sdk'
 
 /**
- * `createAppClients` 的装配契约（原先两个 app 各抄一份的那段）。
+ * `createAppClients` 的装配约定（原先两个 app 各抄一份的那段）。
  *
  * node 环境没有 DOM：凭证管理器只在浏览器路径才写 `localStorage`，这里给它一个最小替身。
  */

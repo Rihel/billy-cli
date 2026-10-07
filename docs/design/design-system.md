@@ -1,6 +1,6 @@
 # 前端设计系统（@repo/ui）
 
-> web 与 admin 共用的视觉契约（token / 主题 / 字体回退链 / 组件质感）统一归属 `@repo/ui`，
+> web 与 admin 共用的视觉规范（token / 主题 / 字体回退链 / 组件质感）统一归属 `@repo/ui`，
 > 与其组件库同包。本文记录它的构成、守卫、取舍依据，以及落地过程中的实测结论与已知缺口。
 >
 > **token 的真相就是 `packages/ui/src/globals.css` 里的 CSS 变量本身** —— 没有 JS 副本、
@@ -47,7 +47,7 @@
 | **不做展示页 / Storybook** | `docs/design/frontend-foundation.md` §7 已裁定不做（无自动化保障其与 token 同步，维护成本高于收益） |
 | **不做 web 暗色切换** | 需要 web 全部样式先收敛到 token（即「不迁移」的前置），非本轮可完成的因果链 |
 
-## 3. 落点
+## 3. 位置
 
 设计系统与组件库**同属 `@repo/ui`**（不新开包）：两者演进节奏一致（一次改动同时动 token 与组件），
 消费方式相同（app 装同一个依赖），且**共用同一条 Turbopack 解析链路**（见 §7.2）。
@@ -58,10 +58,10 @@
 apps/web | apps/admin   应用：globals.css 接入 + 字体字面量 + 页面
 ```
 
-| 能力 | 落点 |
+| 能力 | 位置 |
 | --- | --- |
 | 颜色 / 圆角 token、`@theme` 映射、base 层、`@custom-variant dark` | `packages/ui/src/globals.css` |
-| 字体变量契约（回退链引用的变量名） | 同上（`@theme inline` 与 `:root` 里的 `--font-*`） |
+| 字体变量规范（回退链引用的变量名） | 同上（`@theme inline` 与 `:root` 里的 `--font-*`） |
 | 组件质感规则（等宽数字 / 滚动条）、markdown 渲染与高亮 token | 同上（`@layer` 之外的规则） |
 | 字体加载（`next/font`） | `apps/<app>/src/app/layout.tsx`（框架要求字面量，见 §7.1） |
 | app 专属样式（前台 keyframes 等） | `apps/<app>/src/app/globals.css` |
@@ -152,7 +152,7 @@ apps/web | apps/admin   应用：globals.css 接入 + 字体字面量 + 页面
 ## 5. 迁移步骤（已落地）
 
 1. `packages/ui/src/globals.css` 承接 token / base 层 / `@custom-variant dark` / 组件质感规则
-   （设计系统**只有这一个落点**）。
+   （设计系统**只有这一个位置**）。
 2. 两个 app 的 `globals.css` 删掉重复的字体回退链与 `@custom-variant dark`（已上移）。
 3. admin 覆盖层里**真正生效**的规则（等宽数字 / 滚动条）上移 ui 包，两端共用；
    死规则不迁移（见 §8.2 ①）。
@@ -169,7 +169,7 @@ apps/web | apps/admin   应用：globals.css 接入 + 字体字面量 + 页面
 | `packages/ui/test/tokens.test.ts`（5 项，**纯 CSS 自洽、零手工清单**） | ① 明暗不对称（浅色与深色的键集合必须完全一致）② `@theme` 映射不自洽（`--color-X: var(--Y)` 指向别的变量 → 工具类取值落空）③ 映射来源变量缺定义 ④ 颜色 token 漏映射 ⑤ 根层专属 token 缺失 ⑥ 字体回退链未引用 app 注入的变量 | 删深色 `--success`（2 项红）/ 摘 `@theme` 映射 / 把映射指向不存在的变量 / 新增 token 只写浅色 → **各自红灯** |
 | `pnpm check:ui` ③ 禁止新增硬编码调色板 | 在 `packages/ui/src` 与 `apps/<app>/src` **新增**调色板类（`bg-blue-500` 等） | 基线按「文件 → 上限」冻结（2026-09-18 收敛后：`apps/web` 只剩 6 处 `to-violet-600`，其余文件上限已降到 0 / 实测值），超限即违例；只许减少不许增加 |
 | `pnpm check:ui` ④ 样式入口可解析 | `apps/*/src`、`packages/ui/src`、`scripts/cli/templates` 里 `@import "@repo/x/y.css"` 指向不存在的文件 | 包改名 / 导出改名后引用静默失效（实测抓到过 IDE 入口 `tailwind-ide.css` 的残留引用） |
-| `pnpm check:ui` ⑤ 字体契约一致 | `apps/<app>/src/app/layout.tsx` 与 client 模板的 `next/font` 变量名与 `globals.css` 字体回退链不一致（契约**从 CSS 推导**，不维护第二份清单） | 改一个字体字面量即违例 |
+| `pnpm check:ui` ⑤ 字体规范一致 | `apps/<app>/src/app/layout.tsx` 与 client 模板的 `next/font` 变量名与 `globals.css` 字体回退链不一致（规范**从 CSS 推导**，不维护第二份清单） | 改一个字体字面量即违例 |
 | `pnpm check:ui` ①②（既有） | 自有组件未导出 / 前端包缺 `typecheck` 脚本 | — |
 
 > `tokens.test.ts` 顶部有 `// @vitest-environment node`：ui 包默认是 jsdom 环境，
@@ -189,7 +189,7 @@ Error: Font loader values must be explicitly written literals.
 
 这是框架机制（加载器需要编译期静态可解析的值），**与包边界无关** —— 即便把 `next/font`
 调用搬进组件库同样过不去。故字体接线最终形态是「**字面量 + 守卫**」：
-app 写死字面量，契约放在 `globals.css` 的回退链里，`check:ui` 第 ⑤ 条保证两侧一致
+app 写死字面量，数据结构放在 `globals.css` 的回退链里，`check:ui` 第 ⑤ 条保证两侧一致
 （守卫从 CSS 推导期望值，避免多出一份清单）。
 历史参考：[vercel/next.js#51476](https://github.com/vercel/next.js/issues/51476)。
 
@@ -226,7 +226,7 @@ ui 包不参与类名扫描的声明（它自己不经 Tailwind 构建）。
 
 ## 8. 落地记录与实测（2026-09-17）
 
-### 8.1 实际落点
+### 8.1 实际位置
 
 | 项 | 文件 |
 | --- | --- |
@@ -243,7 +243,7 @@ ui 包不参与类名扫描的声明（它自己不经 Tailwind 构建）。
    `[data-slot="button"][data-variant="primary"]`，但按钮 variant 名是 **`default`**，
    且 `Button` 只渲染 `data-slot` 而**没有** `data-variant` 属性 —— 这条规则自写入起就是死代码。
    故本轮**不迁移**它（迁移死规则会让 web 一起继承无效样式），改为记入 §9。
-2. **`next/font` 要求字面量** → 字体契约改为「字面量 + 守卫」（§7.1）。
+2. **`next/font` 要求字面量** → 字体规范改为「字面量 + 守卫」（§7.1）。
 3. **独立成包导致 dev 全挂** → 回退合并进 `@repo/ui`（§7.2）。
 4. **`tokens.ts` / `fonts.ts` 是零消费者的抽象** → 删除，守卫改为从 CSS 推导（§4.2、§6）。
 5. **守卫有漏洞**：`--color-input: var(--input-typo)`（映射指向不存在的变量）曾能通过测试 ——
@@ -317,7 +317,7 @@ ui 包不参与类名扫描的声明（它自己不经 Tailwind 构建）。
 ### 10.3 主题能力上移 `@repo/ui`
 
 此前主题（三态 `light/dark/system` + 持久化 + `.dark` 切换 + 系统偏好监听 + 防闪烁脚本）只在
-`apps/admin`，前台拿不到暗色。现落点：
+`apps/admin`，前台拿不到暗色。现位置：
 
 | 内容 | 位置 | 说明 |
 | --- | --- | --- |

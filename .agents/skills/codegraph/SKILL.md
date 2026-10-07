@@ -5,7 +5,7 @@ description: 在 Billy 工程中用 codegraph 代码图谱工具快速理解代�
 
 # codegraph 代码图谱
 
-前置：先加载必读 skill `billy-dev-foundation`（分层铁律——codegraph 可**辅助验证**依赖方向，
+前置：先加载必读 skill `billy-dev-foundation`（分层规则——codegraph 可**辅助验证**依赖方向，
 但工程约束仍以 `code-conventions.md` 为准；codegraph 是理解工具，不是规范来源）。
 
 ## 核心要点
@@ -38,4 +38,4 @@ description: 在 Billy 工程中用 codegraph 代码图谱工具快速理解代�
 - [ ] 理解架构 / 调用关系 / 影响面时，先用 codegraph（explore / query / callers / impact），未逐文件 grep/read 爬
 - [ ] 简单单文件修改未滥用图谱（直接 read）
 - [ ] 未把 `.codegraph/` 提交入库
-- [ ] 结论最终落回 `billy-dev-foundation` 的分层铁律与 code-conventions，未把图谱结果当规范本身
+- [ ] 结论最终落回 `billy-dev-foundation` 的分层规则与 code-conventions，未把图谱结果当规范本身

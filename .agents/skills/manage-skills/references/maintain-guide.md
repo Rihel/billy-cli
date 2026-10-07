@@ -37,23 +37,23 @@ skill**，否则 agent 会按过时规范写代码。触发场景：
 ## 3. 架构变更的专项处理（区别于普通代码变更）
 
 架构变更（分层调整、包职责 / 依赖方向变化、入口重构、数据流变化）会推翻 skill 的
-**骨架**——分层心智模型、依赖方向铁律、落点清单、目录约定——不能只用第 2 节的
+**骨架**——分层心智模型、依赖方向规范、位置清单、目录约定——不能只用第 2 节的
 「grep 改路径」流程，要专项处理：
 
-1. **影响评估**：列出被推翻的核心假设——哪些 skill 的分层图、铁律、落点清单失效
+1. **影响评估**：列出被推翻的核心假设——哪些 skill 的分层图、规范、位置清单失效
    （不止是路径变了，是「结构」变了）。
 2. **先改 foundation**：`billy-dev-foundation` 的 `references/architecture.md`（分层图 /
-   数据流）与 `references/code-conventions.md`（铁律 / 目录约定）是其他 skill 的
+   数据流）与 `references/code-conventions.md`（规范 / 目录约定）是其他 skill 的
    心智模型来源，必须**最先**更新，否则下游 skill 全站在旧骨架上。
-3. **再改受影响的功能 skill**：按依赖方向更新落点清单、参考路径、代码模板
-   （如 develop-business-module 的 8 落点、define-data-structure 的注册点）。
+3. **再改受影响的功能 skill**：按依赖方向更新位置清单、参考路径、代码模板
+   （如 develop-business-module 的 8 个位置、define-data-structure 的注册点）。
 4. **评估 skill 划分是否要变**：架构变了，原 skill 边界可能不再合理——该合并 / 新增 /
    删除（走 create-guide 的「先判断」）。
 5. **复审**：架构变更影响面大，更新后建议重新跑一轮 skill 审查（如多 reviewer 分头
    核对每个 skill 与真实代码一致），而非只靠 grep。
 
 实例：本次 kits 化改造把分层从 `server → core → db/shared` 改为
-`server → kits → shared` 时，foundation 分层图、develop-business-module 的落点、
+`server → kits → shared` 时，foundation 分层图、develop-business-module 的位置、
 define-data-structure 的注册点都要动，而非只改路径。
 
 ## 4. 大文件拆分规则

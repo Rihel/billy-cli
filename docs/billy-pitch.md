@@ -24,7 +24,7 @@
 3. **能力，随时可换** —— 数据库、缓存、消息、存储、推送，都封装成标准接口，业务只认接口不认实现。今天用这套，明天换那套，业务一行不改。
 4. **前端，拆成两套** —— 用户端重表达，管理端重效率，拆成两个应用、隔离两套权限边界与依赖树，而非一个应用里用路由分组硬拼；共用同一份数据结构，改一个字段两边同时生效。
 
-价值落点：
+价值体现：
 
 - **对开发者**：样板交给模板，你只写业务。
 - **对 AI**：交付符合规范的代码，而不是能跑的代码。
@@ -66,7 +66,7 @@
 数据流自底向上设计、自顶向下调用，每一层边界清晰。
 
 1. **@repo/sdk 前端调用**：ServerClient 全类型化方法发起请求
-2. **apps/server controller 边界**：`@Controller` + `@Post` + `@HttpCode(200)`，`@Body({ schema })` 声明契约、全局 `StandardSchemaValidationPipe` 校验，薄边界零业务
+2. **apps/server controller 边界**：`@Controller` + `@Post` + `@HttpCode(200)`，`@Body({ schema })` 声明数据结构、全局 `StandardSchemaValidationPipe` 校验，薄边界零业务
 3. **apps/server/src/modules 业务核心**：Service + Repository（`@nestjs/common` 的 `@Injectable` / `@Inject` 注入）
 4. **@repo/kits 能力底座**：TypeORM 底座 + 分页 + 事务 + 存储 + SSE 推送
 

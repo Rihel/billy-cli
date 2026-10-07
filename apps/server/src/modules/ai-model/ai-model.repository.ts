@@ -297,7 +297,7 @@ export class AiModelRepository {
   /**
    * "供应商启用 + 模型启用"的全部模型（**运行时唯一的模型来源**，见 §4.9）。
    *
-   * 排序即"未显式选择时的默认落点"：供应商创建时间升序 → `model_key` 升序。
+   * 排序即"未显式选择时用的那个"：供应商创建时间升序 → `model_key` 升序。
    * 两步查询（模型 join 过滤 + 按 id 批量取供应商）而不是 N+1：
    * `AiModelEntity` 与 `AiProviderEntity` 之间没有 TypeORM relation（工程不加物理外键，
    * 也不为此引入虚拟 relation），所以 join 条件只用于筛选、供应商行单独一次 `In(...)` 取回。

@@ -2,13 +2,13 @@ import { z } from 'zod'
 import { BasePaginateSchema } from './base.schema'
 
 /**
- * AI Agent 契约（前后端 + SDK 共用）。
+ * AI Agent 数据结构（前后端 + SDK 共用）。
  *
- * 当前只有**装配层**的只读契约：能力状态与 agent 清单。
+ * 当前只有**装配层**的只读数据结构：能力状态与 agent 清单。
  *
- * **对话 / 会话契约刻意还没有定义**：会话要落库（消息、推理过程）、要有短期与长期记忆、
+ * **对话 / 会话的约定刻意还没有定义**：会话要落库（消息、推理过程）、要有短期与长期记忆、
  * 要有可恢复的运行状态机，这些的字段形状取决于运行时方案（见 `docs/design/ai-agent.md`）。
- * 先摆一套"无状态一问一答"的契约会误导调用方以为消息已被保存，故留空待设计。
+ * 先摆一套"无状态一问一答"的数据结构会误导调用方以为消息已被保存，故留空待设计。
  */
 
 /** 单个 agent 的对外画像（前端 agent 选择器据此渲染） */
@@ -17,7 +17,7 @@ export const AgentInfoSchema = z.object({
   key: z.string(),
   name: z.string(),
   description: z.string(),
-  /** 是否为默认 agent（前端未选择时的落点） */
+  /** 是否为默认 agent（前端未选择时用它） */
   isDefault: z.boolean(),
   /** 该 agent 已装配的技能名（排查"模型没按技能回答"时的第一眼依据） */
   skills: z.array(z.string()),
@@ -35,7 +35,7 @@ export type AgentInfoModel = z.infer<typeof AgentInfoSchema>
 /** agent 清单（`POST /agent/list`） */
 export const AgentListSchema = z.object({
   agents: z.array(AgentInfoSchema),
-  /** 默认 agent 的 key（请求省略 agentKey 时的落点） */
+  /** 默认 agent 的 key（请求省略 agentKey 时用它） */
   defaultAgentKey: z.string(),
 })
 

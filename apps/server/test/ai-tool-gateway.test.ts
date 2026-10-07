@@ -214,7 +214,7 @@ describe('网关：顺序、短路、结论', () => {
  * 模型侧的 JSON Schema 必填由标准测试集与 e2e 覆盖。
  */
 describe('网关：必填 reason（为什么用这个工具）', () => {
-  /** 带注入字段的那份契约（真实工具声明走 `buildToolSpecs` 时就是这样） */
+  /** 带注入字段的那份数据结构（真实工具声明走 `buildToolSpecs` 时就是这样） */
   const modelSpec = (over: Partial<ToolSpec> = {}): ToolSpec => {
     const params = z.object({ value: z.string().default('x') })
     return spec({ params, modelParams: withCallReason(params), ...over })
@@ -271,7 +271,7 @@ describe('网关：必填 reason（为什么用这个工具）', () => {
       call(),
     )
     expect(outcome).toEqual({ ok: true, data: 'ok' })
-    // 执行体拿到的仍是原契约（注入字段被摘掉了，工具签名与行为不变）
+    // 执行体拿到的仍是原定义（注入字段被摘掉了，工具签名与行为不变）
     expect(seenInput).toEqual({ value: 'v' })
     // 理由单独交给 ctx（工具可以读它写业务日志）
     expect(seenReason).toBe('用户要看这台机器的环境')

@@ -870,7 +870,7 @@ const runtimeEnvelope = (conversationId: string, parentRunId: string): AgentRunt
 })
 
 /**
- * 直接执行某个规划工具（绕过模型，走网关 → 执行体，验证工具本身的契约）。
+ * 直接执行某个规划工具（绕过模型，走网关 → 执行体，验证工具本身的行为约定）。
  *
  * 网关把失败折成统一结论（`ok: false` + message），这里把 message 抛出来 —— 与
  * `rejects.toThrow(/必须给 goal/)` 这类断言语义一致，同时顺带覆盖了"拒绝是结论不是崩溃"这条链路。

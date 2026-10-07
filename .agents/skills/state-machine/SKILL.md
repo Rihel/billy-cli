@@ -1,6 +1,6 @@
 ---
 name: state-machine
-description: 在 Billy 工程中实现业务状态机：状态字典 + 转移表纯函数（轻量方案）或 xstate 门面（复杂方案），状态字段落实体、并发安全（乐观锁 / 分布式锁）。触发词：状态机、状态流转、状态转移、订单状态、审批流、transition、转移表、状态图。
+description: 在 Billy 工程中实现业务状态机：状态字典 + 转移表纯函数（轻量方案）或 xstate 封装（复杂方案），状态字段落实体、并发安全（乐观锁 / 分布式锁）。触发词：状态机、状态流转、状态转移、订单状态、审批流、transition、转移表、状态图。
 ---
 
 # 状态机
@@ -16,13 +16,13 @@ description: 在 Billy 工程中实现业务状态机：状态字典 + 转移表
   纯函数可单测；非法转移抛错由 service 捕获。
 - **数据**：状态存实体 string 列（字典 value），schema 用 `z.enum` 校验。
 - **并发安全**：状态变更不可裸奔「读-改-写」，用乐观锁（version 列）或分布式锁。
-- **复杂方案**：仅当需要守卫 / 副作用 / 上下文时才引 xstate，门面放 `kits/foundation`。
+- **复杂方案**：仅当需要守卫 / 副作用 / 上下文时才引 xstate，统一入口放 `kits/foundation`。
 
 ## 参考文件（本 skill 的组成部分）
 
 | 文件 | 内容 | 何时读 |
 | --- | --- | --- |
-| [references/state-machine-guide.md](./references/state-machine-guide.md) | 轻量转移表代码、数据落点、service 用法、并发安全、复杂方案、归位表 | 做状态流转时（必读） |
+| [references/state-machine-guide.md](./references/state-machine-guide.md) | 轻量转移表代码、数据位置、service 用法、并发安全、复杂方案、放置位置表 | 做状态流转时（必读） |
 
 ## 完成检查清单
 

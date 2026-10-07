@@ -94,7 +94,7 @@ const SLUG_PATTERN = /^[a-z0-9][a-z0-9-]*$/
 const URL_PATTERN = /^https?:\/\/\S+$/
 
 /**
- * 取时间戳（契约里这两个时间字段是 `string | Date | undefined`，直接 `new Date(Date)` 过不了类型）。
+ * 取时间戳（定义里这两个时间字段是 `string | Date | undefined`，直接 `new Date(Date)` 过不了类型）。
  * 取不到（未同步 / 从未出现）返回 undefined —— 调用方据此不标注。
  */
 const toTimestamp = (value?: string | Date | null): number | undefined => {

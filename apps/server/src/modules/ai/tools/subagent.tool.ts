@@ -10,7 +10,7 @@ import { AgentRunner, type SubAgentOutcome } from '../runtime/agent-runner.js'
 import type { AgentRuntimeEnvelope } from '../core/envelope.js'
 
 /**
- * 子 agent 工具的入参契约（**给模型看的契约**）。
+ * 子 agent 工具的入参定义（**给模型看的数据结构**）。
  *
  * 三个字段都是必需的，其中 `system_prompt` 是本设计的关键：
  * 子 agent 的提示词**没有静态模板**，必须由主 agent 在调用时现写 ——

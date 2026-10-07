@@ -336,7 +336,7 @@ describe('AlertTrigger（规则匹配 → 限频 → 通知 → 落审计）', (
     expect(notifier.send).toHaveBeenCalledWith('file', expect.anything())
   })
 
-  it('每次通道发送后推 SSE 告警事件到管理员广播频道（负载符合共享契约）', async () => {
+  it('每次通道发送后推 SSE 告警事件到管理员广播频道（负载符合共享数据结构）', async () => {
     const { service, streamHub } = createService({ rules: [mockRule()] })
 
     await service.notifyError(Object.assign(new Error('邮箱或密码错误'), { code: 1002 }), {

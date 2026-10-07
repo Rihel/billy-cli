@@ -11,7 +11,7 @@ export type PostgresDataSourceOptions = Extract<
 >
 
 /**
- * 创建并注册 TypeORM DataSource（kits 的 Db 门面内部使用）。
+ * 创建并注册 TypeORM DataSource（kits 的 Db 统一入口内部使用）。
  *
  * `type` 由本工厂固定为 postgres，调用方无需（也不应）再传 ——
  * DataSourceOptions 是按 driver 判别的联合类型，若由调用方传 type，spread 后无法正确判别。

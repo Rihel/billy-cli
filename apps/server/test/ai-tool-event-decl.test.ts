@@ -11,10 +11,10 @@ import {
 import type { ToolEventDeclMeta } from '../src/modules/ai/core/tools/tools.types.js'
 
 /**
- * 事件声明（设计 §5.17）：**启动期**校验 + payload 契约 → JSON Schema 镜像。
+ * 事件声明（设计 §5.17）：**启动期**校验 + payload 定义 → JSON Schema 镜像。
  *
  * 这一份测的是"声明写错就起不来"：事件名组内唯一、标题 / 说明非空、mode 合法、
- * payload 契约能转出 JSON Schema（管理页只读展示用）。
+ * payload 定义能转出 JSON Schema（管理页只读展示用）。
  */
 describe('事件声明：normalizeToolEventDecls', () => {
   it('mode 省略 = state；给了 stream 就用 stream', () => {
@@ -28,11 +28,11 @@ describe('事件声明：normalizeToolEventDecls', () => {
     expect(decls.map((decl) => decl.mode)).toEqual(['state', 'stream'])
   })
 
-  it('payload 契约生成 JSON Schema；没写 payload 时为 null', () => {
+  it('payload 定义生成 JSON Schema；没写 payload 时为 null', () => {
     const [withPayload, without] = normalizeToolEventDecls(
       [
-        { name: 'a', title: 'A', description: '带契约', payload: ProgressPayload },
-        { name: 'b', title: 'B', description: '不带契约' },
+        { name: 'a', title: 'A', description: '带定义', payload: ProgressPayload },
+        { name: 'b', title: 'B', description: '不带定义' },
       ],
       '测试工具',
     )
@@ -101,7 +101,7 @@ describe('事件声明：经 buildToolSpecs 落到 ToolSpec', () => {
     expect(spec.events[1].payloadSchema).toBeNull()
   })
 
-  it('没声明事件的工具：events 是空数组（契约字段永远在，读侧不必判 undefined）', () => {
+  it('没声明事件的工具：events 是空数组（数据结构字段永远在，读侧不必判 undefined）', () => {
     expect(buildToolSpecs(new NoEventTool())[0].events).toEqual([])
   })
 

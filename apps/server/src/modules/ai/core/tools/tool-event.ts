@@ -8,12 +8,12 @@ import type { ToolEventDecl, ToolEventDeclMeta, ToolEventModeValue, ToolLogger }
  * 两件事放一个文件，因为它们是同一个机制的两端（声明里的 `mode` 直接决定发射时带不带 `id`）：
  *
  * 1. `normalizeToolEventDecls`：启动期把 `@ToolDecl({ events })` 的声明**校验 + 归一化**
- *    （zod 契约 → JSON Schema 镜像）。违规一律**抛错**（注册机在启动期调用它 —— 宁可起不来，
+ *    （zod 定义 → JSON Schema 镜像）。违规一律**抛错**（注册机在启动期调用它 —— 宁可起不来，
  *    也不要带着一个"声明了却发不出去"的事件跑）；
  * 2. `createToolEventEmitter`：把一次工具调用的 `emit` 造出来，形状 = AI SDK 的 `data-*` part。
  *
  * 三条口径：
- * - **未声明不许发**：`emit` 只认声明过的名字，payload 不合契约也被丢弃（都记 warn 不外抛）——
+ * - **未声明不许发**：`emit` 只认声明过的名字，payload 不符合定义也被丢弃（都记 warn 不外抛）——
  *   事件是过程，出参才是结论，事件失败不能拖垮工具；
  * - **归并策略在服务端定**：AI SDK v6 的 data part 是「同 `id` 后者覆盖前者」，
  *   所以 `state` 带稳定 id（前端只看到最新快照）、`stream` **不带 id**（前端按顺序追加）。
@@ -21,13 +21,13 @@ import type { ToolEventDecl, ToolEventDeclMeta, ToolEventModeValue, ToolLogger }
  * - **没有 writer 就静默 no-op**（后台调用 / 非流式链路没有父流可写，不是错误）。
  */
 
-/** zod 契约的最小面（只用到 `toJSONSchema`；不 import zod 的运行时类型，避免多一层耦合） */
+/** zod 定义的最小面（只用到 `toJSONSchema`；不 import zod 的运行时类型，避免多一层耦合） */
 interface JsonSchemaCapable {
   toJSONSchema?: () => Record<string, unknown>
 }
 
 /**
- * payload 契约 → JSON Schema（**仅管理页只读展示**，让管理员看到"这个事件会吐什么"）。
+ * payload 定义 → JSON Schema（**仅管理页只读展示**，让管理员看到"这个事件会吐什么"）。
  *
  * 与 `tool.schema.ts` 对 `params` 的做法一致：转不出来返回 null 而不是抛错 ——
  * 自定义 schema 转不出来只影响展示位，不该让整个工具引擎起不来。

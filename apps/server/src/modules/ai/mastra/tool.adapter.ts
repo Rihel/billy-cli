@@ -17,7 +17,7 @@ import { readEnvelope } from './context.adapter.js'
  * | 统一结论 | 返回值 / 抛错（→ 模型看到的工具错误） |
  * | 分页视图 | `toModelOutput` |
  *
- * 两条与分页相关的口径（契约 ① 实测过）：
+ * 两条与分页相关的口径（用例 ① 实测过）：
  * - 工具**照旧返回全量** ⇒ 流里有全量 ⇒ 时间线全量 ⇒ 前端全量；
  * - `toModelOutput` 只把"给模型的那一份"换成第一页 —— 于是"入参出参全量入库"这条硬规则不破。
  */
@@ -76,7 +76,7 @@ export const toMastraTool = (tool: Tool, logger: ToolLogger): ToolsInput[string]
     /**
      * 分页只改"给模型的那一份"：全量在返回值里（→ 时间线）。
      *
-     * durable 与不 durable 都以 `toModelOutput(result)` 单参调用（契约 ①/② 实测），
+     * durable 与不 durable 都以 `toModelOutput(result)` 单参调用（用例 ①/② 实测），
      * 所以这里只认输出本身、不依赖任何上下文。
      */
     toModelOutput: (output: unknown) => {

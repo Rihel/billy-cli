@@ -43,7 +43,7 @@ export interface DbOperationOptions {
 }
 
 /**
- * 数据库操作门面（注入式）。
+ * 数据库操作统一入口（注入式）。
  *
  * 与 `db/pagination.ts` / `db/batch.ts` / `db/safe-delete.ts` / `db/sql.ts` 的纯函数是
  * **同一套实现**：纯函数是可直接单测的内核，本类把它们接进 Nest 容器，
@@ -65,7 +65,7 @@ export interface DbOperationOptions {
  * 且 billy 多出游标（cursor）两种，能力是超集；
  * 唯一未搬的是 rihel 的 `printSql`——它的方法体只有一次 logger 调用，去掉日志依赖即无内容。
  *
- * 归位：通用数据访问能力 → `packages/kits/src/db/`，由 `DbModule` 装配（`@Global`）。
+ * 放置：通用数据访问能力 → `packages/kits/src/db/`，由 `DbModule` 装配（`@Global`）。
  *
  * **事务注意**：`batch*` / `safeDelete` 在**事务内**必须显式传事务的 `manager`
  * （`@Transactional()` 方法里用调用方 manager），否则会落到根 manager 上脱离事务。

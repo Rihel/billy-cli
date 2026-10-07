@@ -16,17 +16,17 @@ import { ChevronDownIcon } from 'lucide-react'
  * 它是**声明**不是运行记录：这里看到的是"可能发什么"，实际发没发在对话流的工具卡里看。
  */
 
-/** payloadSchema（声明里 zod 契约的 JSON Schema 化）折叠展示；没声明契约时只给一句话 */
+/** payloadSchema（声明里 zod 定义的 JSON Schema 化）折叠展示；没声明数据结构时只给一句话 */
 const PayloadSchemaBlock = ({ schema }: { schema: Record<string, unknown> | null }) => {
   const [open, setOpen] = useState(false)
   if (!schema) {
-    return <span className="text-xs text-muted-foreground">没有声明 payload 契约（发什么由代码决定）</span>
+    return <span className="text-xs text-muted-foreground">没有声明 payload 定义（发什么由代码决定）</span>
   }
   return (
     <Collapsible open={open} onOpenChange={setOpen}>
       <CollapsibleTrigger className="flex cursor-pointer items-center gap-1 text-xs text-muted-foreground transition-colors hover:text-foreground">
         <ChevronDownIcon className={cn('size-3.5 transition-transform', open && 'rotate-180')} />
-        {open ? '收起 payload 契约' : '展开 payload 契约'}
+        {open ? '收起 payload 定义' : '展开 payload 定义'}
       </CollapsibleTrigger>
       <CollapsibleContent>
         <pre className="mt-2 max-h-72 overflow-auto rounded-md border bg-muted/40 p-3 font-mono text-xs">

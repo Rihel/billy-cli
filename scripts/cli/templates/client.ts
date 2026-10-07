@@ -14,7 +14,7 @@ export function createClientTemplate(name: string): Template {
           dev: 'next dev',
           build: 'next build',
           start: 'next start',
-          // 前端质量门（与 apps/web / apps/admin 对齐）：根 `pnpm typecheck` 靠它才能覆盖新前端包，
+          // 前端质量检查（与 apps/web / apps/admin 对齐）：根 `pnpm typecheck` 靠它才能覆盖新前端包，
           // 缺了会被 `pnpm check:ui` 拦下（见 docs/design/frontend-foundation.md）
           typecheck: 'tsc --noEmit',
         },

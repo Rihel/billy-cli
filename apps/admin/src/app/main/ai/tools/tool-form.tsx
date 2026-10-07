@@ -43,7 +43,7 @@ import type { ToolFormValues } from './tool-payload'
  * 工具配置编辑弹窗。
  *
  * 分三块，对应三类信息：
- * 1. **只读区** —— 来自代码声明与运行期快照，后台改不了（key / 类别 / 入参契约 / 哪些 agent 用它）；
+ * 1. **只读区** —— 来自代码声明与运行期快照，后台改不了（key / 类别 / 入参定义 / 哪些 agent 用它）；
  * 2. **治理区** —— 开关、作用域、`allowedAgents`、限额（`ai_tools` 表里那一行）；
  * 3. **工具区** —— 工具专属配置（一期按 key 手写面板）与秘钥。
  *
@@ -137,11 +137,11 @@ const NumberField = ({
   </div>
 )
 
-/** 入参契约（`paramSchema`）折叠展示：只读，便于核对"模型看到的入参长什么样" */
+/** 入参定义（`paramSchema`）折叠展示：只读，便于核对"模型看到的入参长什么样" */
 const ParamSchemaBlock = ({ schema }: { schema: Record<string, unknown> | null }) => {
   const [open, setOpen] = useState(false)
   if (!schema) {
-    return <span className="text-xs text-muted-foreground">该工具没有声明参数契约</span>
+    return <span className="text-xs text-muted-foreground">该工具没有声明参数定义</span>
   }
   return (
     <Collapsible open={open} onOpenChange={setOpen}>
@@ -265,7 +265,7 @@ export function ToolFormModal({
                   </span>
                 ) : (
                   <span className="text-xs text-muted-foreground">
-                    没有 agent 声明使用它（作用域与授权是两层闸门）
+                    没有 agent 声明使用它（作用域与授权是两层关卡）
                   </span>
                 )}
               </ReadonlyItem>
@@ -283,7 +283,7 @@ export function ToolFormModal({
                   </span>
                 </ReadonlyItem>
               ) : null}
-              <ReadonlyItem label="入参契约 paramSchema（只读）" span={2}>
+              <ReadonlyItem label="入参定义 paramSchema（只读）" span={2}>
                 <ParamSchemaBlock schema={tool.paramSchema} />
               </ReadonlyItem>
             </div>
@@ -321,7 +321,7 @@ export function ToolFormModal({
                   onValueChange={(next) => form.setFieldValue('scope', next ?? ToolScope.All)}
                 />
                 <span className="text-xs text-muted-foreground">
-                  这一次调用允不允许；作用域是第二层闸门，授权仍在 agent 声明里
+                  这一次调用允不允许；作用域是第二层关卡，授权仍在 agent 声明里
                 </span>
               </div>
               {values.scope === ToolScope.Agent ? (

@@ -5,7 +5,7 @@
 
 ## 1. 基础设施：RedisStore（kits/src/redis/redis-store.ts）
 
-所有能力基于 `RedisStore` 门面（`@Inject(RedisStore)`，生命周期组件）：
+所有能力基于 `RedisStore` 统一入口（`@Inject(RedisStore)`，生命周期组件）：
 
 | 能力 | 方法 | 适用 |
 | --- | --- | --- |
@@ -29,7 +29,7 @@ if (data === null) {
 
 - **写后失效 / 双写**：更新数据时 `del` 或重新 `setJson` 缓存，避免脏读。
 - **防击穿 / 雪崩**：缓存带 TTL；热点 key 的过期时间加随机抖动；单飞用分布式锁兜底。
-- 归位：通用缓存封装可放 `kits/foundation`，业务内直接注入 `RedisStore` 用即可。
+- 放置：通用缓存封装可放 `kits/foundation`，业务内直接注入 `RedisStore` 用即可。
 
 ## 3. 限流模式
 
@@ -47,7 +47,7 @@ login(@Body({ schema: LoginSchema }) input: LoginDto) { ... }
 - `RateLimiter`（`kits/src/rate-limit/rate-limiter.ts`，由 `RateLimitModule` 装配）基于 **rate-limiter-flexible** 的
   `RateLimiterRedis`（Redis 存储，底层 Lua 原子计数）；`check(key, limit, windowSeconds)`
   返回 `{ allowed, remaining, retryAfterSeconds }`；底层实例按 `(limit, window)` 组合缓存复用。
-- 守卫按 **IP** 计数（门面 key `scope:ip`，底层由 `RateLimiter` 统一加 `ratelimit:` 前缀），
+- 守卫按 **IP** 计数（统一入口 key `scope:ip`，底层由 `RateLimiter` 统一加 `ratelimit:` 前缀），
   超限抛边界错误返回 429 + `Retry-After`；
   白名单豁免（**ipaddr.js** 匹配：精确 IP / IPv4·IPv6 CIDR，env `RATE_LIMIT_WHITELIST`，命中跳过计数）。
 - **IP 来源**：`apps/server/src/common/security/rate-limit.guard.ts` 的 `clientIp()` 统一提取，
@@ -89,7 +89,7 @@ try {
 }
 ```
 
-**铁律**：
+**规范**：
 1. **锁必须带 TTL**（`acquireLock` 的第 2 参），防止持有者崩溃导致死锁。
 2. **释放必须带 token**：`releaseLock` 用 Lua 校验 token，只释放**自己**的锁，避免误删他人刚续上的锁。
 3. **拿到锁后业务尽量短**，长任务在过期前续期（`expire`）或拆成队列任务。
@@ -141,7 +141,7 @@ const all = await cache.get()              // 无数据返回 []
 （该场景走 DB + 索引 + `pageWith`/`cursorPageWith`）。key 的前缀由 `RedisStore` 的
 `keyPrefix` 统一处理，这里传裸 key。
 
-## 8. 归位与注意
+## 8. 放置位置与注意
 
 - 封装：通用并发工具（限流器、幂等表）放 `kits/foundation`；业务内直接注入 `RedisStore` 用。
 - 引用 `RedisStore` 经 DI（`@Inject(RedisStore)`），不要 `new` 连接。

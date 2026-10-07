@@ -4,7 +4,7 @@ import { TodoController } from './todo.controller.js'
 import { TodoRepository } from './todo.repository.js'
 import { TodoService } from './todo.service.js'
 
-/** 待办模块（全链路示例模块：契约 / 实体 / repository / service / 路由） */
+/** 待办模块（全链路示例模块：数据结构 / 实体 / repository / service / 路由） */
 @Module({
   imports: [AdminModule],
   controllers: [TodoController],

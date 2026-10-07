@@ -6,11 +6,11 @@ import { CommandRunner } from '../src/foundation/command/command.runner.js'
 import { describePlatform, resolveShell } from '../src/foundation/command/command.platform.js'
 
 /**
- * 跨平台命令执行门面：**三端行为一致**是它的全部价值，所以这里钉住的都是"边界"：
+ * 跨平台命令执行统一入口：**三端行为一致**是它的全部价值，所以这里钉住的都是"边界"：
  * 超时、截断、非零退出、目录不存在、中止信号、孙进程不拖死调用 —— 以及"永不抛异常"这条硬约定。
  *
  * 机制在 `execa` 里（跨平台 shell、杀进程树、输出上限都是它的能力），本测试断言的是
- * **我们门面的口径**：失败也返回结构化中文结果、`timedOut` / `aborted` / `truncated` 分得清。
+ * **我们这层封装的口径**：失败也返回结构化中文结果、`timedOut` / `aborted` / `truncated` 分得清。
  *
  * 环境信息（`describePlatform`）用**注入的入参**覆盖 Windows / Linux / macOS 三种取值：
  * CI 只跑一种系统，不把三端逻辑测出来等于没测。

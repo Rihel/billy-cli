@@ -3,9 +3,9 @@ import { ToolEventMode } from '../dicts/ai-tool-event.dict'
 
 /**
  * 工具自定义事件：**声明**（DSL `@ToolDecl({ events })` → 入库 `ai_tools.events` 镜像）
- * 与**线上形态**（AI SDK `data-*` 流 part）共用同一份契约（设计 §5.17）。
+ * 与**线上形态**（AI SDK `data-*` 流 part）共用同一份数据结构（设计 §5.17）。
  *
- * 为什么两件事放一个文件：它们是同一契约的两端 —— 代码里声明了哪些事件，流里就按**同名**发出来，
+ * 为什么两件事放一个文件：它们是同一数据结构的两端 —— 代码里声明了哪些事件，流里就按**同名**发出来，
  * 前端按同名找渲染器；改名字 / 改 mode / 改 payload 三者必然同因变更，拆开只会漂移。
  *
  * 三条口径：
@@ -14,7 +14,7 @@ import { ToolEventMode } from '../dicts/ai-tool-event.dict'
  * - **`mode` 在服务端定归并策略**：AI SDK data part 是「同 `id` 后者覆盖前者」，
  *   于是 `state` 带稳定 id（前端只看到最新快照）、`stream` 不带 id（前端按顺序追加）；
  * - **未声明不许发**：`emit` 只认声明过的名字（同名重复声明是启动期错误），
- *   未声明或 payload 不合契约的事件被**丢弃并记 warn**（不抛给工具，事件失败不能拖垮工具）。
+ *   未声明或 payload 不符合定义的事件被**丢弃并记 warn**（不抛给工具，事件失败不能拖垮工具）。
  */
 
 /** 事件发出方式的取值（字典是唯一事实源） */
@@ -25,7 +25,7 @@ export const ToolEventModeField = z.enum(
 /**
  * 事件声明（DSL → `ai_tools.events` 镜像）。
  *
- * `payloadSchema` 是**声明里 zod 契约的 JSON Schema 化**（没有 payload 时为 null）：
+ * `payloadSchema` 是**声明里 zod 定义的 JSON Schema 化**（没有 payload 时为 null）：
  * 管理页只读展示，让人一眼看出"这个工具会吐什么、里面的字段是什么"。
  */
 export const AiToolEventSchema = z.object({
@@ -37,7 +37,7 @@ export const AiToolEventSchema = z.object({
   description: z.string(),
   /** 见 `ToolEventMode` 字典 */
   mode: ToolEventModeField,
-  /** payload 的 JSON Schema（声明里没写 payload 契约时为 null） */
+  /** payload 的 JSON Schema（声明里没写 payload 定义时为 null） */
   payloadSchema: z.record(z.string(), z.unknown()).nullable(),
 })
 

@@ -1,7 +1,7 @@
 import { z } from 'zod'
 
 /**
- * 数据库组件配置（Db 门面）：连接串 / 同步建表 / 实体注入。
+ * 数据库组件配置（Db 统一入口）：连接串 / 同步建表 / 实体注入。
  * 实体由应用层注入（kits 不持有任何业务实体），schema 校验在装配时执行。
  */
 export const DbConfigSchema = z.object({

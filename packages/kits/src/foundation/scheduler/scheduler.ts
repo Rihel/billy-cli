@@ -30,7 +30,7 @@ interface JobRegistration {
 type TimerHandle = ReturnType<typeof setTimeout>
 
 /**
- * 调度基础设施（定时器 + Cron）门面。
+ * 调度基础设施（定时器 + Cron）统一入口。
  *
  * - `scheduleCron`：按 cron 表达式周期触发（基于 croner，支持秒级/时区/漏跑恢复）。
  * - `scheduleInterval`：固定间隔周期触发（基于 setInterval）。
@@ -39,7 +39,7 @@ type TimerHandle = ReturnType<typeof setTimeout>
  * - 处理器异常由调度器统一记日志并吞掉，避免单次失败打断整个调度循环。
  * - 应用停止（`onApplicationShutdown`）时统一清理全部任务，幂等。
  *
- * 归位：横切基础能力 → `core/foundation`（`placement.md` §7 将「调度器」归为横切能力）。
+ * 放置：横切基础能力 → `core/foundation`（`placement.md` §7 将「调度器」算作横切能力）。
  */
 @Injectable()
 export class Scheduler implements OnApplicationShutdown {

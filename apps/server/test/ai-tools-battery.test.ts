@@ -55,7 +55,7 @@ const registeredSpecs = (): ToolSpec[] => buildRegistry().registry.specs()
 /**
  * 每个工具的**一份合法业务入参**（用于验证"给模型的那一份"确实多要一个 `reason`）。
  *
- * 刻意写成一张按 key 索引的表：工具的入参契约一改，这里就会当场变红
+ * 刻意写成一张按 key 索引的表：工具的入参定义一改，这里就会当场变红
  * （`spec.params.safeParse(template)` 先失败），于是这张表不会静默过期 ——
  * 标准测试集要的正是"对**每个**注册工具"的同一条断言，所以模板也必须每个工具都有。
  */
@@ -92,7 +92,7 @@ describe('注册机标准测试集（对每个注册工具）', () => {
     }
   })
 
-  it('参数契约是 zod schema（可 safeParse）', () => {
+  it('参数定义是 zod schema（可 safeParse）', () => {
     for (const spec of registeredSpecs()) {
       expect(typeof spec.params.safeParse, spec.key).toBe('function')
     }
@@ -104,7 +104,7 @@ describe('注册机标准测试集（对每个注册工具）', () => {
    * 这条是"引擎级注入"的验收点：它保证**以后新加的工具自动也有**（工具作者不用自己写），
    * 漏了就是引擎被改坏了，而不是某个工具忘了。
    */
-  it('引擎注入：任何参数契约包上 `withCallReason` 后，schema 里 `reason` 必填', () => {
+  it('引擎注入：任何参数定义包上 `withCallReason` 后，schema 里 `reason` 必填', () => {
     for (const spec of registeredSpecs()) {
       const withReason = withCallReason(spec.params)
       const schema = withReason.toJSONSchema() as {
@@ -116,20 +116,20 @@ describe('注册机标准测试集（对每个注册工具）', () => {
       expect(field.minLength, spec.key).toBe(TOOL_CALL_REASON_MIN)
       expect(field.maxLength, spec.key).toBe(TOOL_CALL_REASON_MAX)
       expect(field.description, spec.key).toBe(TOOL_CALL_REASON_DESCRIPTION)
-      // 无论原契约的 required 是什么，`reason` 都必须在里面
+      // 无论原定义的 required 是什么，`reason` 都必须在里面
       expect(schema.required ?? [], `${spec.key} 的 reason 没进 required`).toContain(
         TOOL_CALL_REASON_FIELD,
       )
-      // 缺 reason 一定不合法（原契约之外的新约束确实生效了）
+      // 缺 reason 一定不合法（原定义之外的新约束确实生效了）
       expect(withReason.safeParse({}).success, spec.key).toBe(false)
     }
   })
 
-  it('每个注册工具都拿得到"给模型看的那一份"（`modelParams` = 原契约 + 必填 reason）', () => {
+  it('每个注册工具都拿得到"给模型看的那一份"（`modelParams` = 原定义 + 必填 reason）', () => {
     for (const spec of registeredSpecs()) {
       const model = spec.modelParams
       expect(model, `${spec.key} 没有 modelParams（引擎没注入 reason）`).toBeDefined()
-      // 后台镜像（`toJsonSchema`）与给模型的那一份必须是同一份契约
+      // 后台镜像（`toJsonSchema`）与给模型的那一份必须是同一份数据结构
       expect(toJsonSchema(spec), `${spec.key} 的后台镜像少了 reason`).toEqual(
         withCallReason(spec.params).toJSONSchema(),
       )
@@ -138,7 +138,7 @@ describe('注册机标准测试集（对每个注册工具）', () => {
       // 模板必须是**合法业务入参**（模板过期时在这里当场变红）
       expect(
         spec.params.safeParse(template).success,
-        `${spec.key} 的入参模板已过期（原契约不认它）`,
+        `${spec.key} 的入参模板已过期（原定义不认它）`,
       ).toBe(true)
       // 给模型的那一份：原入参 + reason 才行，只给原入参会被拒
       expect(model?.safeParse(template).success, `${spec.key} 缺 reason 应当被拒`).toBe(false)
@@ -149,14 +149,14 @@ describe('注册机标准测试集（对每个注册工具）', () => {
     }
   })
 
-  it('配置默认值给全了：`config.parse({})` 必须成功（铁律：所有配置都要有默认值）', () => {
+  it('配置默认值给全了：`config.parse({})` 必须成功（规范：所有配置都要有默认值）', () => {
     for (const spec of registeredSpecs()) {
       const parsed = spec.config.safeParse({})
       expect(parsed.success, `${spec.key} 的 config 缺少默认值`).toBe(true)
     }
   })
 
-  it('秘钥契约（若有）不能带默认值：`secrets.parse({})` 必须成功且不产出明文', () => {
+  it('秘钥定义（若有）不能带默认值：`secrets.parse({})` 必须成功且不产出明文', () => {
     for (const spec of registeredSpecs()) {
       if (!spec.secrets) continue
       const parsed = spec.secrets.safeParse({})
@@ -216,7 +216,7 @@ describe('注册机标准测试集（对每个注册工具）', () => {
     }
   })
 
-  it('env 上限的类型契约：分页上限与取页上限都是正数', () => {
+  it('env 上限的类型定义：分页上限与取页上限都是正数', () => {
     const caps: ToolEnvCaps = buildRegistry().deps.caps
     expect(caps.pageBytesMax).toBeGreaterThan(0)
     expect(caps.maxPagesPerTurnMax).toBeGreaterThan(0)

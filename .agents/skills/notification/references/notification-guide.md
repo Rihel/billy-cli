@@ -3,9 +3,9 @@
 > 本文件是 `notification` skill 的组成部分，由主 SKILL.md 引用。
 > 发通知 / 接通知通道时必读。
 
-## 1. 门面与装配
+## 1. 统一入口与装配
 
-`Notifier`（`kits/src/notification/notifier.ts`）是编排门面：`send(channel, payload)` 按通道路由，
+`Notifier`（`kits/src/notification/notifier.ts`）是编排统一入口：`send(channel, payload)` 按通道路由，
 自身零发送实现。`NotificationModule.forRootAsync`（notify 命名空间）装配 Notifier + 三个客户端；
 未导入 `LarkModule` 时 `LarkClient` 缺失，`LarkNotifyClient` 以 `@Optional()` 降级。
 

@@ -90,7 +90,7 @@ describe('事件声明入库镜像（真实库）', () => {
     expect(row[0].events).toEqual([])
   })
 
-  it('配置行读出来带上 events（管理台与参数契约同一条读取链路）', async () => {
+  it('配置行读出来带上 events（管理台与参数定义同一条读取链路）', async () => {
     const loaded = await repository.load(specOf(new EventDeclTool(), 'test-event-decl'))
     expect(loaded?.events?.map((event) => event.name)).toEqual(['progress', 'log-line', 'stage'])
   })

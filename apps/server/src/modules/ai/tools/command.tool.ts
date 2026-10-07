@@ -8,7 +8,7 @@ import { TOOL_KEYS } from '../core/tools/tool-keys.js'
 import type { ToolCallContext, ToolEnvCaps } from '../core/tools/tools.types.js'
 
 /**
- * `run-command` 的**参数契约**（给模型看的契约）。
+ * `run-command` 的**参数定义**（给模型看的数据结构）。
  *
  * 三个字段刻意保持极简：命令、在哪个目录跑、最多跑多久。
  * 上限（时长 / 输出）由**配置**再夹一次（库里可改，env 是硬上限），模型传什么都不越界。
@@ -36,7 +36,7 @@ const RunCommandParams = z.object({
     .describe('这次命令最多等多久（毫秒）；省略用服务端默认值（超过服务端上限会被夹到上限）'),
 })
 
-/** **配置契约**：每个字段都必须有默认值（注册机在启动期用 `config.parse({})` 校验） */
+/** **配置定义**：每个字段都必须有默认值（注册机在启动期用 `config.parse({})` 校验） */
 const RunCommandConfig = z.object({
   /** 能力级开关（配置表里还有一个治理级开关 `enabled`，两者都开才放行） */
   enabled: z.boolean().default(true),
@@ -60,13 +60,13 @@ interface CommandEnvelopeLike {
 /**
  * **命令执行工具组**：一个组一个类，**组内一个方法一个工具**（设计 §5.2）。
  *
- * - 机制在基础设施门面（`@repo/kits` 的 `CommandRunner`，底层 execa），本类只写**业务动作**；
+ * - 机制在基础设施统一入口（`@repo/kits` 的 `CommandRunner`，底层 execa），本类只写**业务动作**；
  * - 依赖走构造器注入（`CommandRunner` / `AppLogger`）—— 与业务代码同一条 IoC 链路；
  * - 开关判断、目录边界、时长夹紧分别是声明里的 `precheck` / `normalize` 钩子（网关按声明调用），
  *   于是"同一类判断"在工程里只有一份实现，新工具不会漏写。
  *
  * 安全边界（**如实记录，不假装这是沙箱**）：命令以**服务进程的身份与权限**执行，
- * 能读写该身份能读写的一切。工程的取舍：由配置决定开不开、由 workdir 限制默认落点、
+ * 能读写该身份能读写的一切。工程的取舍：由配置决定开不开、由 workdir 限制默认目录、
  * 由超时与输出上限兜住资源，且**每一次调用都完整入库**（时间线里的入参出参就是审计证据）。
  * 真要强隔离，得把执行放到容器 / 沙箱里（那是另一件事，不在本类里假装做到）。
  */

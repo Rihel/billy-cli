@@ -68,7 +68,7 @@ const sidKey = (type: SessionType, sub: string, sessionId: string) =>
 const TOUCH_INTERVAL_MS = 60_000
 
 /**
- * 服务端会话门面（Redis）：
+ * 服务端会话统一入口（Redis）：
  * 登录/注册签发 JWT 后登记会话，每次请求校验 JWT 的同时查 Redis 会话，
  * 登出 / 禁用 / 删除时撤销会话 —— 实体状态变更对已签发 token 即时生效。
  * 另提供「登录设备列表 + 单设备下线」（用户在个人中心管理自己的登录设备）。

@@ -73,7 +73,7 @@ import { UserModule } from './modules/user/index.js'
     // ---- 应用配置（全局 ConfigService + AppConfig bean）----
     AppConfigModule.forRoot(),
     // ---- 请求级横切中间件（自注册模块）----
-    // 顺序铁律：RequestContextModule（写 ALS）必须排在 RequestLoggerModule / RequestMetricsModule 之前
+    // 顺序规定：RequestContextModule（写 ALS）必须排在 RequestLoggerModule / RequestMetricsModule 之前
     // —— 后两者要在请求结束时从 ALS 读 requestId / userId / adminId。三者均 @Global，
     // Nest 12 让全局模块的中间件排在最前、全局模块之间按本 imports 顺序稳定装配。
     RequestContextModule,

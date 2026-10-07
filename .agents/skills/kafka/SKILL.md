@@ -6,7 +6,7 @@ description: 在 Billy 工程中使用 Kafka 做异步消息与事件驱动：ki
 # 异步消息与事件（Kafka）
 
 前置：先加载必读 skill `billy-dev-foundation`（「不重复造轮子」实现查找顺序见其
-`references/code-conventions.md` 第 10 条——**异步消息用工程自带的 Kafka 门面，不引其它 MQ**）。
+`references/code-conventions.md` 第 10 条——**异步消息用工程自带的 Kafka 统一入口，不引其它 MQ**）。
 延迟 / 周期任务见 `scheduler` skill；进度回推前端见 `stream` skill。
 
 ## 核心要点
@@ -30,7 +30,7 @@ description: 在 Billy 工程中使用 Kafka 做异步消息与事件驱动：ki
   失败补偿自己安排（重试 topic / 落表 + `scheduler` 补偿）。
   5 次重试仍失败则在**本进程内不再自动重试**，Kafka 恢复后需重启服务。
 
-## 可用性契约：Kafka 挂了不能拖住服务（改动这条要谨慎）
+## 可用性规则：Kafka 挂了不能拖住服务（改动这条要谨慎）
 
 1. **不阻塞启动**：连接是**惰性**的 —— DI / 构造只建 kafkajs 客户端对象、不发网络请求；
    消费者扫描在 `onApplicationBootstrap` 里**同步返回**、建连走后台浮动 Promise
@@ -58,7 +58,7 @@ Kafka 是**分区日志 + 消费组**，没有 per-message 延迟投递、优先
 | 需求 | 用什么 |
 | --- | --- |
 | 即时异步 / 削峰 / 跨服务解耦 / 事件驱动 | 本文：`KafkaService.send` + `@KafkaConsumer` |
-| **延迟投递 / 定时 / 周期任务** | `scheduler` skill（croner 门面）或 `foundation/time-wheel`，触发后再 publish |
+| **延迟投递 / 定时 / 周期任务** | `scheduler` skill（croner 统一入口）或 `foundation/time-wheel`，触发后再 publish |
 | 单条失败重试 / 死信 | 消费端自己实现（重试 topic、或落表 + `scheduler` 补偿） |
 | 任务进度推给前端 | `stream` skill（SSE StreamHub） |
 
@@ -80,4 +80,4 @@ Kafka 是**分区日志 + 消费组**，没有 per-message 延迟投递、优先
       `KafkaUnavailableError` → 降级 / 补偿），未让 broker 故障拖成请求超时
 - [ ] 延迟 / 周期任务用 `scheduler` 或 `time-wheel`，未指望 Kafka 提供延迟投递
 - [ ] topic 名语义化（建议 `<域>.<事件>`，如 `order.created`），需独立消费组时显式传 `groupId`
-- [ ] 消息负载用共享契约（`@repo/shared` 的 Zod schema），不随手传内部对象
+- [ ] 消息负载用共享数据结构（`@repo/shared` 的 Zod schema），不随手传内部对象

@@ -5,8 +5,8 @@
 
 ## 1. 基础设施：Scheduler（kits/src/foundation/scheduler/scheduler.ts）
 
-基于 **croner** 的调度门面，由 `SchedulerModule` 装配（`@Global()`，无配置依赖的纯模块），
-业务侧仅 `@Inject(Scheduler)` 使用，无需自行注册。归位：横切基础能力 → `kits/foundation`。
+基于 **croner** 的调度统一入口，由 `SchedulerModule` 装配（`@Global()`，无配置依赖的纯模块），
+业务侧仅 `@Inject(Scheduler)` 使用，无需自行注册。放置：横切基础能力 → `kits/foundation`。
 
 | 方法 | 用途 |
 | --- | --- |
@@ -47,7 +47,7 @@ export class OrderService {
 - **停止**：`stop(name)` 幂等；应用停止（`onApplicationShutdown`）统一 `stopAll()`。
 - **时间**：cron 用 `croner` 语法（含秒级）；interval / timeout 传毫秒。
 
-## 4. 归位与注意
+## 4. 放置位置与注意
 
 - 调度器在 `kits/foundation`（横切基础能力）；业务模块注入 `Scheduler` 用，不散落 `croner`。
 - 定时任务**跨实例会重复执行**：多实例部署时如需互斥，配合 `concurrency` skill 的

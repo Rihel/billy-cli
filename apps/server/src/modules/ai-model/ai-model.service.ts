@@ -465,7 +465,7 @@ export class AiModelService {
       metadata: record.metadata,
       createdAt: record.createdAt,
       updatedAt: record.updatedAt,
-      // 契约（AiProviderSchema）暂未声明 modelCount，但列表页要用；多带一个字段不影响校验
+      // 数据结构（AiProviderSchema）暂未声明 modelCount，但列表页要用；多带一个字段不影响校验
       modelCount,
     }
   }

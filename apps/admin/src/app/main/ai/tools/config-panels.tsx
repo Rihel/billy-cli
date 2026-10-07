@@ -40,7 +40,7 @@ const RUN_COMMAND_FIELDS: ConfigFieldSpec[] = [
     key: 'enabled',
     label: '命令执行能力开关',
     kind: 'switch',
-    hint: '与治理层的「启用」是两层闸门：两层都开才放行',
+    hint: '与治理层的「启用」是两层关卡：两层都开才放行',
   },
   {
     key: 'timeoutMs',

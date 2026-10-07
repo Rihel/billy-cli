@@ -61,7 +61,7 @@ export interface PromptEngine {
   /**
    * 渲染**片段**（partial）：数据是任意键值。
    *
-   * 与 `render` 的区别只有类型契约：agent 提示词的模板数据必须带
+   * 与 `render` 的区别只有类型定义：agent 提示词的模板数据必须带
    * `agentKey` / `agentName` / `tools`（工具清单与实际授权同源，不许漏），
    * 而「运行环境」这类**按轮求值**的片段没有这些字段 —— 用一个显式的口子区分，
    * 不去放宽 `PromptData`（放宽了，工具清单漏注入就没人拦得住了）。

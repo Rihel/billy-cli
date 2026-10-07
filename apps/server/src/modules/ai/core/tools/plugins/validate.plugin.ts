@@ -22,7 +22,7 @@ export class ValidatePlugin implements ToolPlugin {
         retryable: false,
       }
     }
-    // 先把 reason 摘到 ctx（工具可以读它），再让执行体拿到**不含 reason** 的原契约入参
+    // 先把 reason 摘到 ctx（工具可以读它），再让执行体拿到**不含 reason** 的原定义入参
     ctx.reason = checked.reason
     ctx.input = checked.input
   }

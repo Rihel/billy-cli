@@ -16,7 +16,7 @@ description: 在 Billy 工程中使用 PostgreSQL / TypeORM 做数据库设计�
 | 数据库 | PostgreSQL 17：`docker compose up postgres`（宿主 15432，root/pg1234/billy-cli）；`pnpm bootstrap` 可一键起依赖 + 生成 .env + 迁移 |
 | ORM | TypeORM；CLI 迁移用 `apps/server/data-source.ts`（glob 实体与迁移，`synchronize: false`，迁移 SQL 需人工检查） |
 | 实体 | 继承 `@repo/kits` 的 `BaseEntity`（`packages/kits/src/db/base-entity.ts`）：`id` varchar(20)（nanoid，`@BeforeInsert` 生成）+ `createdAt` / `updatedAt` / `deletedAt`（timestamp(3)，软删） |
-| 数据入口 | 业务 repository 注入 **`Db`** + 调纯函数（当前业务统一写法，见 `apps/server/src/modules/todo/todo.repository.ts`）；kits 另提供注入式门面 **`DbService`**（`@repo/kits` `db/db.service.ts`，由 `DbModule` 装配且 `@Global`）：与纯函数同名同参，自动带默认 manager 与操作人，需要时 `@Inject(DbService)` 直接用。纯函数内核（`pagination.ts` / `batch.ts` / `safe-delete.ts` / `sql.ts`）脱离 DI 时也可直接用 |
+| 数据入口 | 业务 repository 注入 **`Db`** + 调纯函数（当前业务统一写法，见 `apps/server/src/modules/todo/todo.repository.ts`）；kits 另提供注入式统一入口 **`DbService`**（`@repo/kits` `db/db.service.ts`，由 `DbModule` 装配且 `@Global`）：与纯函数同名同参，自动带默认 manager 与操作人，需要时 `@Inject(DbService)` 直接用。纯函数内核（`pagination.ts` / `batch.ts` / `safe-delete.ts` / `sql.ts`）脱离 DI 时也可直接用 |
 | 分页 | `DbService.pageWith` / `pageWithDeferred` / `cursorPageWith` / `cursorPageWithDeferred`（`db/pagination.ts`）：offset 页 / 两阶段 offset / 游标 / 两阶段游标 |
 | 批量写入 | `DbService.batchInsert` / `batchSave` / `batchUpsert` / `batchDelete` / `batch`：**事务内自动降为串行**，部分失败聚合抛 `BatchOperationError` |
 | 软删审计 | `DbService.safeDelete(entity, where)`：操作人默认取 `getAuditUser()`（`setAuditUserProvider` 挂的钩子），可显式覆盖；**先写 `deletedBy` 再软删** |
@@ -44,7 +44,7 @@ description: 在 Billy 工程中使用 PostgreSQL / TypeORM 做数据库设计�
 | --- | --- |
 | 表结构 / schema / 迁移的落地步骤 | `define-data-structure` |
 | 新模块 repository / service 代码模板 | `develop-business-module` |
-| 接口质量（查询性能 / 契约演进等） | `develop-backend-api` |
+| 接口质量（查询性能 / 接口变更等） | `develop-backend-api` |
 | 枚举列 / 状态字段（string 列存字典 value） | `define-dict-enum` |
 
 ## 参考文件（本 skill 的组成部分）

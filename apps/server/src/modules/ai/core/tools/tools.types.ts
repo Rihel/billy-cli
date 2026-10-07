@@ -2,13 +2,13 @@ import type { AiToolEventModel } from '@repo/shared'
 import type { z } from 'zod'
 
 /**
- * **工具 DSL 与运行时契约**（设计 `docs/design/ai-agent-tool-engine.md` §5.2 / §5.4）。
+ * **工具 DSL 与运行时数据结构**（设计 `docs/design/ai-agent-tool-engine.md` §5.2 / §5.4）。
  *
  * 这一层是**主体**：不许 import `@mastra/*`（由 `pnpm check:mastra` 守）。
  * Mastra 只经 `ai/mastra/tool.adapter.ts` 接入，词汇映射只在那里做一次。
  *
  * 术语：
- * - **声明（ToolSpec）**：一个工具不可变的部分 —— 名称 / 说明 / 参数契约 / 配置契约（含默认值）/
+ * - **声明（ToolSpec）**：一个工具不可变的部分 —— 名称 / 说明 / 参数定义 / 配置定义（含默认值）/
  *   执行体。写在代码里，启动期注册。
  * - **配置（ToolSettings）**：可变的那些（开关 / 作用域 / 限额 / 配置值 / 秘钥），入库、免重启生效。
  * - **网关（ToolGateway）**：所有工具调用的必经之路（插件链、统一结论）。
@@ -47,14 +47,14 @@ export interface ToolEventDeclMeta {
   description: string
   /** 省略 = `'state'`（状态快照：带稳定 id，后发覆盖先发） */
   mode?: ToolEventModeValue
-  /** payload 契约（可选；写了就在发射时 `safeParse`，不合契约的事件被丢弃并记 warn） */
+  /** payload 定义（可选；写了就在发射时 `safeParse`，不符合定义的事件被丢弃并记 warn） */
   payload?: z.ZodType
 }
 
 /**
  * 事件声明**归一化后**的形态（注册机拍平进 `ToolSpec.events`）。
  *
- * `payloadSchema` 是 `payload` 契约的 JSON Schema 化（**没声明 payload 契约时为 null**），
+ * `payloadSchema` 是 `payload` 数据结构的 JSON Schema 化（**没声明 payload 定义时为 null**），
  * 只给管理页只读展示 —— 运行时校验用的是 `payload` 本体，不必再过一次 JSON Schema。
  */
 export interface ToolEventDecl {
@@ -69,7 +69,7 @@ export interface ToolEventDecl {
 /** 事件声明的宽类型（内部管道不关心 payload 的具体泛型） */
 export type AnyToolEventDecl = ToolEventDecl
 
-/** 日志门面（结构上兼容 `@repo/kits` 的 AppLogger，测试里给静默实现即可） */
+/** 日志统一入口（结构上兼容 `@repo/kits` 的 AppLogger，测试里给静默实现即可） */
 export interface ToolLogger {
   debug(message?: string, data?: unknown): void
   log(message?: string, data?: unknown): void
@@ -132,7 +132,7 @@ export interface ToolSettings<C = Record<string, unknown>> {
   limits: ToolLimits
   /** 来源：`seed`（只有代码默认值）/ `manual`（人工改过配置） */
   source: 'seed' | 'manual'
-  /** 参数契约的 JSON Schema（库里的声明镜像；缺省时由声明现算） */
+  /** 参数定义的 JSON Schema（库里的声明镜像；缺省时由声明现算） */
   paramSchema?: Record<string, unknown> | null
   /**
    * 自定义事件声明的**镜像**（库里的值；缺省时用代码声明，见设计 §5.17）。
@@ -219,7 +219,7 @@ export type ToolOutcome<T = unknown> =
  *
  * 为什么要有它：`exec` 的返回类型是"成功的数据"，没法表达"我拒绝"；而拒绝又不该是
  * `internal`（那是我们写错了）。用这个异常把两者分开，且**它永远不会炸整轮**
- * （Mastra 把工具错误落成工具错误结果，契约 ③ 实测）。
+ * （Mastra 把工具错误落成工具错误结果，用例 ③ 实测）。
  */
 export class ToolDeniedError extends Error {
   constructor(
@@ -235,7 +235,7 @@ export class ToolDeniedError extends Error {
 
 /** 一次工具调用的上下文（插件只读它；执行体只读 `input` / `settings` / `envelope`） */
 export interface ToolCallContext<C = Record<string, unknown>> {
-  /** 这一次调用的**声明**（参数 / 配置契约、秘钥字段、precheck 都在它上面） */
+  /** 这一次调用的**声明**（参数 / 配置定义、秘钥字段、precheck 都在它上面） */
   readonly spec: ToolSpec<C>
   readonly toolKey: string
   readonly toolCallId: string | null
@@ -274,7 +274,7 @@ export interface ToolCallContext<C = Record<string, unknown>> {
    * 往父流发一条**自定义事件**（设计 §5.17）：`emit(name, payload?)`。
    *
    * 语义（由网关实现，执行体只当它是一个开关）：
-   * - **同步、永不抛**：事件失败（未声明 / payload 不合契约 / 写流报错）只记 warn，
+   * - **同步、永不抛**：事件失败（未声明 / payload 不符合定义 / 写流报错）只记 warn，
    *   绝不影响本次工具调用的结论 —— 事件是过程，出参才是结论；
    * - **没有 writer 就静默 no-op**（后台调用 / 非流式链路没有父流可写）；
    * - 归并策略按声明里的 `mode` 在服务端定，前端不判断去重。
@@ -291,10 +291,10 @@ export interface ToolSpec<C = Record<string, unknown>, I = unknown, O = unknown>
   /** 唯一一份说明：是什么 / 什么时候用 / 什么时候不用 / 纪律（模型选工具看到的也是它） */
   readonly description: string
   readonly category: ToolCategoryValue
-  /** 参数契约（给模型的 JSON Schema 由它生成） */
+  /** 参数定义（给模型的 JSON Schema 由它生成） */
   readonly params: z.ZodType<I>
   /**
-   * **给模型看的那一份参数契约** = `params` + 引擎注入的必填 `reason`（设计 §5.18）。
+   * **给模型看的那一份参数定义** = `params` + 引擎注入的必填 `reason`（设计 §5.18）。
    *
    * 由 `buildToolSpecs` 统一包好（工具作者不用管），两个消费方：
    * - 适配器把它当 Mastra 的 `inputSchema`（→ 模型看到的 JSON Schema 里 `reason` 必填）；
@@ -303,23 +303,23 @@ export interface ToolSpec<C = Record<string, unknown>, I = unknown, O = unknown>
    * 因此**执行体拿到的 `input` 仍是 `params` 的形状**（缺失时回落到 `params`，测试替身无需构造它）。
    */
   readonly modelParams?: z.ZodType<I & { reason: string }>
-  /** 出参契约（可选：标准测试集可校验实现是否守约） */
+  /** 出参定义（可选：标准测试集可校验实现是否守约） */
   readonly result?: z.ZodType<O>
   /**
-   * 配置契约：**每个字段都必须用 zod `.default()` 给出默认值**。
+   * 配置定义：**每个字段都必须用 zod `.default()` 给出默认值**。
    *
    * 代码默认值由 `spec.config.parse({})` 得到（不单列 `defaults` 字段，单列就会与 schema 漂移）；
    * `parse({})` 失败说明默认值没给全，启动即失败。
    */
   readonly config: z.ZodType<C>
-  /** 秘钥契约：字段一律可选、**没有默认值**（默认状态是"未配置"） */
+  /** 秘钥定义：字段一律可选、**没有默认值**（默认状态是"未配置"） */
   readonly secrets?: z.ZodType<Record<string, string | undefined>>
   /** 秘钥字段元信息（页面渲染与"缺哪个"的结论文案） */
   readonly secretFields?: readonly ToolSecretField[]
   /**
    * 自定义事件声明（归一化后；没声明就是空数组）。
    *
-   * 网关按它造 `ctx.emit`：**未声明的名字发不出去**，payload 不合契约的也被丢弃 ——
+   * 网关按它造 `ctx.emit`：**未声明的名字发不出去**，payload 不符合定义的也被丢弃 ——
    * 于是"工具会吐什么"在代码里是封闭的、可对账的（设计 §5.17）。
    */
   readonly events: readonly ToolEventDecl[]

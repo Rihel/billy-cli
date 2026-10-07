@@ -16,7 +16,7 @@ export type NotificationModuleOptions = z.input<typeof NotifyConfigSchema>
 /**
  * 通知模块：`forRoot(options)` 显式传入通道配置，配置对象本身即注入 bean（NotifyConfig）。
  *
- * 装配 Notifier（编排门面）+ 文件输出（默认通道）+ 邮件 + 飞书通知；
+ * 装配 Notifier（编排统一入口）+ 文件输出（默认通道）+ 邮件 + 飞书通知；
  * 未导入 LarkModule 时 LarkClient 缺失，LarkNotifyClient 以 `@Optional()` 降级，
  * 对应通道 send 返回「通道未配置」。
  */

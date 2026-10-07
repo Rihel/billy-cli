@@ -6,24 +6,24 @@
 > 延迟 / 周期任务由 `foundation/scheduler`（croner）与 `foundation/time-wheel` 承担，
 > 与 BullMQ 的定位重叠。本文仅作历史存档，**不要再按本文实现**。
 >
-> 目标：把 BullMQ 引入为工程**基础设施门面**（不是某个业务模块），
-> 让业务模块通过统一门面生产 / 消费任务，不散落 `import bullmq`。
+> 目标：把 BullMQ 引入为工程**基础设施统一入口**（不是某个业务模块），
+> 让业务模块通过统一入口生产 / 消费任务，不散落 `import bullmq`。
 
-## 1. 能力定位与落点
+## 1. 能力定位与位置
 
 | 项 | 决定 |
 | --- | --- |
-| 能力性质 | 外部资源门面（MQ / 任务队列） |
-| 落点 | `packages/kits/src/queue/queue.ts`（`QueueManager` 门面）+ `queue.module.ts` |
+| 能力性质 | 外部资源统一入口（MQ / 任务队列） |
+| 位置 | `packages/kits/src/queue/queue.ts`（`QueueManager` 统一入口）+ `queue.module.ts` |
 | 注册 | `QueueModule` 装配（`@Global()`，复用 `RedisModule` 的 `RedisConfig`；业务侧 `@Inject(QueueManager)`），`queue/index.ts` 导出 |
 | 依赖 | `bullmq` 加入 `packages/kits/package.json`（ioredis 已在依赖中，满足 BullMQ 的 peer） |
 
-归位依据：`billy-dev-foundation/references/placement.md` §2「外部资源门面 → `kits/src/<基础设施>/`」、
-§5「消息队列/延迟任务 → 门面 `kits/src/queue/queue.ts`」。
+放置依据：`billy-dev-foundation/references/placement.md` §2「外部资源统一入口 → `kits/src/<基础设施>/`」、
+§5「消息队列/延迟任务 → 统一入口 `kits/src/queue/queue.ts`」。
 
 ## 2. 关键设计
 
-- **门面职责**：生产者 `addJob`、消费者 `registerWorker`、按需取队列 `getQueue`（raw 兜底）。
+- **统一入口职责**：生产者 `addJob`、消费者 `registerWorker`、按需取队列 `getQueue`（raw 兜底）。
 - **连接**：每个 `Queue` / `Worker` 独立建一个 ioredis 连接，从 `config.redis.url` 构造，
   设 `maxRetriesPerRequest: null`（Worker 阻塞命令所需）；prefix 取 `config.redis.keyPrefix ?? 'bull'`。
   连接由 BullMQ 自身管理（传入实例即被 Queue/Worker 接管，close 时释放）。

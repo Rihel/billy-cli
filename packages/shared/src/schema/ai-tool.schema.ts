@@ -4,7 +4,7 @@ import { AiToolEventSchema } from './ai-tool-event.schema'
 import { BasePaginateSchema } from './base.schema'
 
 /**
- * 工具配置模块契约（`/ai-tool/*`，全部后台管理员鉴权）—— 设计 §5.5 / §5.11。
+ * 工具配置模块定义（`/ai-tool/*`，全部后台管理员鉴权）—— 设计 §5.5 / §5.11。
  *
  * 四条与表结构绑定的口径：
  * - **基础信息在代码、镜像入库**：`title` / `description` / `category` / `paramSchema` 由启动期的
@@ -87,7 +87,7 @@ export const AiToolSchema = z.object({
   limits: AiToolLimitsSchema,
   /** 见 `ToolSource` 字典 */
   source: z.string(),
-  /** 参数契约的 JSON Schema（页面只读展示，便于核对"模型看到的入参长什么样"） */
+  /** 参数定义的 JSON Schema（页面只读展示，便于核对"模型看到的入参长什么样"） */
   paramSchema: z.record(z.string(), z.unknown()).nullable(),
   /**
    * 自定义事件声明（**代码声明的镜像**，启动期全量写入，页面只读）：

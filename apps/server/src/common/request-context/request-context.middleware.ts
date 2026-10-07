@@ -7,7 +7,7 @@ import { requestContext } from './request-context.js'
  * 生成 requestId、同时写入 `X-Request-Id` 响应头与 `req.id`，并让后续整条链路运行在
  * AsyncLocalStorage 作用域内（守卫写入身份、service 读取身份）。
  *
- * 顺序铁律：必须早于请求日志 / 请求指标与所有守卫、拦截器执行，因此：
+ * 顺序规定：必须早于请求日志 / 请求指标与所有守卫、拦截器执行，因此：
  * - 由 `RequestContextModule` 在**模块中间件**中注册（`forRoutes('*')`）；
  * - 该模块在组合根 `imports` 里排在 `RequestLoggerModule` / `RequestMetricsModule` **之前**
  *   （Nest 按模块注册顺序挂载中间件）。

@@ -415,7 +415,7 @@ export async function POST(req: Request) {
 }
 ```
 
-**GET：续流 + 204 契约**（同文件 L163-191 原文）：
+**GET：续流 + 204 响应约定**（同文件 L163-191 原文）：
 
 ```ts filename="app/api/chat/[id]/stream/route.ts"
 import { readChat } from '@util/chat-store';
@@ -508,7 +508,7 @@ pipeUIMessageStreamToResponse<UI_MESSAGE extends UIMessage>(
 | --- | --- | --- |
 | 建响应 | `createUIMessageStreamResponse({ stream })` | `pipeUIMessageStreamToResponse({ response, stream })` |
 | 后台续跑 | `after()` from `next/server` | 无 `after`，须自建 worker/常驻进程 |
-| 端点契约 | 必须保留 `GET {api}/{chatId}/stream` + **204** | 同左，否则 `resume: true` 失效 |
+| 端点定义 | 必须保留 `GET {api}/{chatId}/stream` + **204** | 同左，否则 `resume: true` 失效 |
 | 反向代理 | `x-accel-buffering: no` 关 nginx 缓冲 | 同样必要 |
 | 跨语言后端 | — | 官方允许（`50-stream-protocol.mdx:13-17`），须设 `x-vercel-ai-ui-message-stream: v1` |
 

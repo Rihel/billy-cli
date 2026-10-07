@@ -5,7 +5,7 @@ import { lastRunUsage } from '../src/app/(standalone)/main/ai/chat/data.ts'
 /**
  * `lastRunUsage`：从消息里取"最近一轮"的用量。
  *
- * 这个文件是**契约测试**（服务端块形状 ↔ 前端读取）：踩过一次层级错位 ——
+ * 这个文件是**一致性测试**（服务端块形状 ↔ 前端读取）：踩过一次层级错位 ——
  * 服务端把 token 放在 `data.usage` 里（外层还有 `stepCount` / `durationMs`），
  * 前端直接返回了 `data`，于是界面行内只剩"轮 / 步"是真的、**token 全是"—"**（用户截图指出）。
  */

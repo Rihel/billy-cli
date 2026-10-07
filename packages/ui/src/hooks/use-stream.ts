@@ -18,7 +18,7 @@ export type StreamState =
   | 'closed'
 
 /**
- * `useStream` 需要的最小客户端契约（结构化接口）。
+ * `useStream` 需要的最小客户端数据结构（结构化接口）。
  *
  * `HttpStreamClient`（`@repo/http-client`）天然满足，无需适配器；
  * 测试里传一个手写替身即可。

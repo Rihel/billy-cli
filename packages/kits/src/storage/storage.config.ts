@@ -1,6 +1,6 @@
 import { z } from 'zod'
 
-/** 对象存储组件配置（ObjectStorage 门面）：provider + 凭证 + 端点。 */
+/** 对象存储组件配置（ObjectStorage 统一入口）：provider + 凭证 + 端点。 */
 export const StorageConfigSchema = z.object({
   provider: z.enum(['s3', 'cos']).default('s3'),
   region: z.string().default('us-east-1'),

@@ -3,7 +3,7 @@ import { parseZodIssues } from '@repo/shared'
 import type { ZodIssue } from 'zod'
 
 /**
- * Zod 校验失败：走「HTTP 200 + code 400」的历史契约（前端 SDK 按 code 判错，
+ * Zod 校验失败：走「HTTP 200 + code 400」的历史格式（前端 SDK 按 code 判错，
  * 与成功响应同为 200，便于统一拦截器处理；勿改成 HTTP 400）。
  */
 export class ZodValidationFailedError extends Error {

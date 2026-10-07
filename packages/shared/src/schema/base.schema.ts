@@ -4,8 +4,8 @@ import { z } from 'zod'
 const dateField = z.union([z.string(), z.date()]).optional()
 
 /**
- * 契约基类：只作 `extend` / `intersection` 的基石，不导出类型
- * （它们不是可直接使用的入参 / 响应；具体契约各自在同一文件导出 `XxxDto` / `XxxModel`）。
+ * 数据结构基类：只作 `extend` / `intersection` 的基石，不导出类型
+ * （它们不是可直接使用的入参 / 响应；具体数据结构各自在同一文件导出 `XxxDto` / `XxxModel`）。
  */
 export const BaseModelSchema = z.object({
   createdAt: dateField,

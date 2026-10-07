@@ -12,23 +12,23 @@ import type { ToolCallContext } from '../core/tools/tools.types.js'
  * 代价由 `tsconfig.build.json` 里"排除所有名字含 testkit 的文件"那条规则兜住 —— **不进构建产物**；
  * 生产代码一旦误引它，`pnpm --filter @app/server run build` 会直接失败（刻意的哨兵）。
  *
- * 事件声明里引用的 zod 契约必须是**模块级常量**：装饰器在类定义期求值，
+ * 事件声明里引用的 zod 定义必须是**模块级常量**：装饰器在类定义期求值，
  * 引用类自身的 static 会拿到 undefined。
  */
 
-/** 事件声明测试的入参契约（与本文件的事件无关，够用即可） */
+/** 事件声明测试的入参定义（与本文件的事件无关，够用即可） */
 export const EventDeclParams = z.object({ keyword: z.string() })
 
-/** 事件声明测试的配置契约（每个字段都必须有默认值，注册机启动期会校验） */
+/** 事件声明测试的配置定义（每个字段都必须有默认值，注册机启动期会校验） */
 export const EventDeclConfig = z.object({ enabled: z.boolean().default(true) })
 
-/** payload 契约示例：转 JSON Schema 与运行时 `safeParse` 都用它 */
+/** payload 定义示例：转 JSON Schema 与运行时 `safeParse` 都用它 */
 export const ProgressPayload = z.object({
   percent: z.number().min(0).max(100).describe('完成百分比'),
   note: z.string().optional(),
 })
 
-/** 声明齐全的工具组：默认 mode、显式 stream、带 payload 契约三种情形各一条 */
+/** 声明齐全的工具组：默认 mode、显式 stream、带 payload 定义三种情形各一条 */
 @ToolGroup({ category: 'core', scope: 'all' })
 export class EventDeclTool {
   @ToolDecl({
@@ -85,10 +85,10 @@ export class DuplicateEventTool {
 /** 事件演示的入参：`keyword` 就是要当成流水行发出去的那段文本 */
 const EventDemoParams = z.object({ keyword: z.string().min(1) })
 
-/** 事件演示的配置（无旋钮，但契约必须有） */
+/** 事件演示的配置（无旋钮，但数据结构必须有） */
 const EventDemoConfig = z.object({})
 
-/** 状态快照的 payload 契约（验"带了契约就按契约校验"） */
+/** 状态快照的 payload 定义（验"带了定义就按定义校验"） */
 const EventProgressPayload = z.object({
   state: z.string(),
   percent: z.number().min(0).max(100),

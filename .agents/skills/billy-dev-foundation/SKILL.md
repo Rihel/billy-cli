@@ -16,7 +16,7 @@ description: Billy 工程（billy-cli monorepo）开发必读 skill。任何在�
 完整目录（19 个功能 + 1 个元 skill，含用途与加载时机）见
 [references/catalog.md](./references/catalog.md)；以 `.agents/skills/README.md` 为同步索引。
 
-## 分层铁律
+## 分层规则
 
 依赖方向不可逆：`shared` 不依赖业务包；`kits` 不 import `apps/*`；`apps/server` 是业务
 与组合根的归属，`root.module.ts` 是唯一组合根（`common/` 放横切 HTTP 构件且不依赖具体业务
@@ -27,7 +27,7 @@ description: Billy 工程（billy-cli monorepo）开发必读 skill。任何在�
 （`schema` 是应用自定义 shape，`loader` 决定来源：内置 env / memory / consul，或自定义 loader），经
 `AppConfigModule.forRoot()` 接进 Nest 的全局 `ConfigService`，各模块用 `forRootAsync` 惰性取分片。
 
-## 第 6 条铁律：构造器必须显式 `@Inject`（且 DI 装饰器保持二元统一）
+## 第 6 条规定：构造器必须显式 `@Inject`（且 DI 装饰器保持二元统一）
 
 项目开发用 `tsx`（esbuild），**不产出 `design:paramtypes`**。因此 NestJS 的**每一个构造器
 参数都必须显式写 `@Inject(token)`**，不能依赖 TypeScript 类型推断 —— 漏写会**静默注入
@@ -42,7 +42,7 @@ description: Billy 工程（billy-cli monorepo）开发必读 skill。任何在�
 退出码。判据、守卫实现与「为什么不像 rihel-base 那样省掉 `@Inject`」见
 [references/code-conventions.md](./references/code-conventions.md) 第 5 条。
 
-## 第 7 条铁律：配置必须「惰性取」
+## 第 7 条规定：配置必须「惰性取」
 
 应用配置链路（对齐 rihel-base）：
 
@@ -70,7 +70,7 @@ description: Billy 工程（billy-cli monorepo）开发必读 skill。任何在�
 | 文件 | 内容 | 何时读 |
 | --- | --- | --- |
 | [references/architecture.md](./references/architecture.md) | 工程定位、技术栈、分层架构详解、数据流 | 每次任务开始（必读） |
-| [references/placement.md](./references/placement.md) | 能力归位决策：新能力该放哪个包 / 目录 / 文件，各落点的模式要求 | 遇到无基础能力的新需求（状态机 / 异步消息 / 心跳 / 限流等）时（必读） |
+| [references/placement.md](./references/placement.md) | 新能力该放哪里：放哪个包 / 目录 / 文件，各位置的模式要求 | 遇到无基础能力的新需求（状态机 / 异步消息 / 心跳 / 限流等）时（必读） |
 | [references/design.md](./references/design.md) | 设计决策：评估难度决定是否出方案、方案原则、借鉴成熟方案 | 中等 / 复杂需求动手前（必读） |
 | [references/code-conventions.md](./references/code-conventions.md) | 硬性代码约定 11 条，含「不重复造轮子」查找顺序 | 写任何代码前（必读） |
 | [references/commands.md](./references/commands.md) | 常用命令 | 需要执行命令时 |

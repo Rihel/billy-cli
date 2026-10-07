@@ -17,7 +17,7 @@ import {
 import { ActivityIcon, ChevronDownIcon } from 'lucide-react'
 
 /**
- * 工具自定义事件的前端落点：**渲染器注册表 + 渲染组件**。
+ * 工具自定义事件的前端位置：**渲染器注册表 + 渲染组件**。
  *
  * 三条口径：
  * - **看得见优先**：没注册渲染器的事件走内置兜底（标题 + 事件名徽标 + 折叠 JSON），

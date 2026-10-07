@@ -1,4 +1,4 @@
-# 能力归位决策（billy-dev-foundation 引用文件）
+# 新能力该放哪里（billy-dev-foundation 引用文件）
 
 > 本文件是 `billy-dev-foundation` skill 的组成部分。
 > 遇到「工程里还没有基础能力」的新需求（状态机、队列、心跳、限流、幂等、异步任务等，
@@ -9,32 +9,32 @@
 拿到一个全新能力，先判断它的「性质」，再落到对应位置：
 
 1. 是**纯函数 / 无状态工具**（无 IO、无生命周期）？ → `packages/shared/src/utils/`
-2. 是**跨层共享的契约 / 类型**（DTO、模型）？ → `packages/shared/src/schema/`
+2. 是**跨层共享的数据结构 / 类型**（DTO、模型）？ → `packages/shared/src/schema/`
 3. 是**字典 / 枚举 / 错误码**？ → `packages/shared/src/dicts/`
 4. 是**数据库表结构**？ → `apps/server/src/database/entities/`
 5. 是**通用数据访问能力**（分页、批量、游标等，不绑定具体业务）？ → `packages/kits/src/db/`
-6. 是**外部资源门面**（DB / Redis / MQ / S3 / 消息推送…）？ → `packages/kits/src/<基础设施>/`
+6. 是**外部资源统一入口**（DB / Redis / MQ / S3 / 消息推送…）？ → `packages/kits/src/<基础设施>/`
    （如 `redis/` / `rate-limit/` / `stream/` / `storage/` / `kafka/` / `lark/` / `notification/`）
 7. 是**横切基础能力**（多源配置 / 日志 / ID 生成 / 错误 / 调度器…）？ → `packages/kits/src/foundation/<能力>/`
 8. 是**业务逻辑**（有状态、有 service + repository + errors 三层）？ → `apps/server/src/modules/<业务>/`
 9. 是 **HTTP 边界 / 全类型客户端 / 前端页面**？ → `apps/server/src/modules/<业务>/<业务>.controller.ts` + `packages/sdk/` + `apps/web|admin/`
 
-## 2. 归位表（能力 → 落点 + 必须遵循的模式）
+## 2. 放置位置表（能力 → 位置 + 必须遵循的模式）
 
 | 能力性质 | 包 / 目录 / 文件 | 必须遵循的模式 |
 | --- | --- | --- |
 | 纯函数工具 | `packages/shared/src/utils/<name>.utils.ts` | 纯函数、无 IO、在 `utils/index.ts` 导出 |
-| 共享契约 | `packages/shared/src/schema/<name>.schema.ts` | Zod，`z.infer` 出类型，`schema/index.ts` 导出 |
+| 共享数据结构 | `packages/shared/src/schema/<name>.schema.ts` | Zod，`z.infer` 出类型，`schema/index.ts` 导出 |
 | 字典 / 枚举 / 错误码 | `packages/shared/src/dicts/<name>.dict.ts` | `createDict`，`dicts/index.ts` 导出 |
 | 数据库表 | `apps/server/src/database/entities/<name>-entity.ts` | 继承 `BaseEntity`（`@repo/kits`），在 `root.module.ts` 的 `DbModule.forRootAsync` 工厂里补进 `entities` |
 | 通用数据访问 | `packages/kits/src/db/<name>.ts`（如 pagination.ts） | 与 `db/` 同目录，`db/index.ts` 导出 |
-| 外部资源门面 | `packages/kits/src/<name>/`（provider + `<name>.config.ts` + `<name>.module.ts` + `index.ts`） | 见下方「基础设施模块」模式 |
+| 外部资源统一入口 | `packages/kits/src/<name>/`（provider + `<name>.config.ts` + `<name>.module.ts` + `index.ts`） | 见下方「基础设施模块」模式 |
 | 横切基础能力 | `packages/kits/src/foundation/<name>/`（同上四件套） | `@Injectable()` + 放进对应 `<name>.module.ts` 的 `providers` / `exports` |
 | 业务逻辑 | `apps/server/src/modules/<业务>/{errors, <业务>.repository, <业务>.service, <业务>.module, index}.ts` | 三层 + module `providers` 声明，再把模块加入 `root.module.ts` 的 `imports`；实体在 `DbModule.forRootAsync` 工厂里注入 |
 | HTTP 边界 | `apps/server/src/modules/<业务>/<业务>.controller.ts` | `@Controller` + `@Post` + `@HttpCode(200)` + `@Body({ schema: Schema })`，加入本模块 `controllers` |
 | 横切 HTTP 构件 | `apps/server/src/common/{error,request-context,request-logger,request-metrics,security,http}/<name>.ts`（外部从 `common/index.ts` 导入） | 不依赖具体业务模块（跨模块协作走 token 由 `root.module.ts` 注入） |
 
-## 3. 每个落点的模式要求（新增能力必守）
+## 3. 每个位置的模式要求（新增能力必守）
 
 ### kits/<基础设施>/ —— 一个基础设施一个目录
 
@@ -42,13 +42,13 @@
 
 | 文件 | 作用 |
 | --- | --- |
-| 门面实现（如 `<name>.ts`） | `@Injectable()`，构造器注入自己的配置 bean；**每个构造器参数显式 `@Inject(token)`**（tsx 不产出 `design:paramtypes`） |
+| 统一入口实现（如 `<name>.ts`） | `@Injectable()`，构造器注入自己的配置 bean；**每个构造器参数显式 `@Inject(token)`**（tsx 不产出 `design:paramtypes`） |
 | `<name>.config.ts` | 配置 schema + 类型 + Symbol token（如需配置），由 `forRoot` 内 `Schema.parse(options)` 校验 + 补默认值 |
-| `<name>.module.ts` | `@Global()` + `static forRoot(options)`（同步：`Schema.parse(options)`）与 `static forRootAsync(options: InfraModuleAsyncOptions<...>)`（异步：`useFactory` 惰性返回分片，模块内仍 `Schema.parse`）；提供「配置 bean + 门面实例」并 `exports` |
+| `<name>.module.ts` | `@Global()` + `static forRoot(options)`（同步：`Schema.parse(options)`）与 `static forRootAsync(options: InfraModuleAsyncOptions<...>)`（异步：`useFactory` 惰性返回分片，模块内仍 `Schema.parse`）；提供「配置 bean + 统一入口实例」并 `exports` |
 | `index.ts` | 聚合导出，供 `packages/kits/src/index.ts` 转出 |
 
 - 把该模块加入 `apps/server/src/root.module.ts` 的 `imports` 即完成装配；**不 import 即视为未启用**。
-- **需要配置的模块应用 `forRootAsync` + `ConfigService` 惰性取**（见 `SKILL.md` 第 7 条铁律）：
+- **需要配置的模块应用 `forRootAsync` + `ConfigService` 惰性取**（见 `SKILL.md` 第 7 条规定）：
   `forRootAsync({ imports: [ConfigModule], inject: [ConfigService], useFactory: (config) => config.get('<命名空间>') })`；
   同步 `forRoot(options)` 仅用于配置不在应用配置里的场景（如 CLI 生成的独立服务）。
 - 应用侧配置定义在 `apps/server/src/app-config.ts`：`serverAppConfigSchema` **复用 kits 各模块的
@@ -102,23 +102,23 @@
 2. 依赖里已有？（ioredis 的 List / ZSet / PubSub / Stream 都可用）
 3. 都没有 → 联网找库（如 Kafka 客户端 `kafkajs`、xstate 状态机）。
 
-引入新依赖后的归位铁律：
+引入新依赖后的放置规范：
 
-- **门面独立成 `kits/src/<基础设施>/` 目录**（如 Kafka 的封装 → `kits/src/kafka/`、
-  S3 的封装 → `kits/src/storage/`），业务模块只依赖门面，不散落 `import` 第三方库。
+- **统一入口独立成 `kits/src/<基础设施>/` 目录**（如 Kafka 的封装 → `kits/src/kafka/`、
+  S3 的封装 → `kits/src/storage/`），业务模块只依赖统一入口，不散落 `import` 第三方库。
 - 纯函数型库（如 xstate 纯状态机）可放 `shared/utils` 或 `kits/src/foundation/<能力>/`，
   视是否依赖 DI / 配置而定。
 - 新依赖必须在对应包 `package.json` 声明，并在 `pnpm-lock.yaml` 落锁。
 
-## 5. 示例：几个「无基础能力」的归位
+## 5. 示例：几个「无基础能力」的放置位置
 
-| 需求 | 归位 | 说明 |
+| 需求 | 放置位置 | 说明 |
 | --- | --- | --- |
 | 状态机（订单状态流转） | 轻量：`shared/utils` 字典 + 转移表纯函数；复杂：`kits/foundation` 或独立 `server/modules` | 状态字典放 `dicts/`；转移规则是纯逻辑 |
-| 异步消息 / 事件驱动 | 门面 `kits/src/kafka/`（`KafkaService` 生产者 + `@KafkaConsumer` 注解消费者）+ `KafkaModule` | 生产者 / 消费者都经门面，不散落 `import kafkajs`；**延迟 / 周期任务交 `foundation/scheduler`**，别指望 MQ |
+| 异步消息 / 事件驱动 | 统一入口 `kits/src/kafka/`（`KafkaService` 生产者 + `@KafkaConsumer` 注解消费者）+ `KafkaModule` | 生产者 / 消费者都经统一入口，不散落 `import kafkajs`；**延迟 / 周期任务交 `foundation/scheduler`**，别指望 MQ |
 | 心跳 / 任务 lease | `kits/src/redis/`（封装 set+ttl 续期 + 锁）或业务 service 内 | 复用 `RedisStore`，不引新库 |
 | 高并发：限流 / 幂等 / 缓存 | 限流用 `kits/src/rate-limit/`；幂等 / 缓存复用 `RedisStore` | 复用 `RedisStore` |
-| 定时任务 / 调度 | `kits/src/foundation/scheduler/`（Scheduler 门面，croner） | 由 `SchedulerModule` 装配（无配置依赖的纯模块） |
+| 定时任务 / 调度 | `kits/src/foundation/scheduler/`（Scheduler 统一入口，croner） | 由 `SchedulerModule` 装配（无配置依赖的纯模块） |
 
-> 核心原则：**先归位，再实现**——先明确「这是什么性质的能力、落在哪个包/目录/文件、
+> 核心原则：**先定放置位置，再实现**——先明确「这是什么性质的能力、落在哪个包/目录/文件、
 > 遵循什么模式」，再写代码。拿不准时读同目录既有文件对照，不要凭空发明位置。

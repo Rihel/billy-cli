@@ -11,7 +11,7 @@ import { resolveConfigLoader } from './loaders/index.js'
 import { mergeSchemaDefaults } from './schema-defaults.js'
 
 /**
- * 应用配置门面（shape 由应用自定义，来源由 loader 决定）。
+ * 应用配置统一入口（shape 由应用自定义，来源由 loader 决定）。
  *
  * 为什么需要它：模块装饰器（含 `ConfigModule.forRoot` 的 `load` 工厂、各模块 `forRootAsync` 工厂）
  * 的求值**早于** `main()` 里的配置加载；而加载（尤其 Consul）是异步的。因此约定：

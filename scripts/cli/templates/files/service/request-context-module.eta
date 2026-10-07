@@ -6,7 +6,7 @@ import { requestContextMiddleware } from './request-context.middleware.js'
  * `import { requestContext } from '../common/index.js'` 读写（守卫写身份、service 读身份），
  * 无需注入任何 provider。
  *
- * **顺序铁律（两条一起才成立）**：
+ * **顺序规定（两条一起才成立）**：
  * 1. 必须标 `@Global()`：Nest 12 装配中间件时按模块 distance 排序，**全局模块的中间件排在最前**
  *    （`distance === Number.MAX_VALUE` 视为全局，排序权重 -1），不标则会被其它全局模块压在后面；
  * 2. 全局模块之间按容器注册顺序（即组合根 `imports` 顺序）稳定排序，因此本模块必须写在

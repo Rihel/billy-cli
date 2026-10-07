@@ -3,9 +3,9 @@
 > 本文件是 `object-storage` skill 的组成部分，由主 SKILL.md 引用。
 > 使用对象存储 / 实现文件上传下载时必读。
 
-## 1. 后端门面（kits/src/storage）
+## 1. 后端统一入口（kits/src/storage）
 
-`ObjectStorage` 门面（`packages/kits/src/storage/object-storage.ts`），
+`ObjectStorage` 统一入口（`packages/kits/src/storage/object-storage.ts`），
 支持 **S3 / COS** 双 provider，公共方法：
 
 - `getPresignedUrl(dto)` → 上传预签名 URL（`StoragePresignedUrlModel`）
@@ -86,4 +86,4 @@ await fetch(presigned.url, { method: 'PUT', body: file, ... })  // 直传
 - **业务只存 key，不存完整 URL**：URL 会过期 / 更换域名，key 才是稳定标识。
 - **上传不经服务端**：用预签名 URL 直传，避免大文件占服务端带宽与内存。
 - **STS 场景**：需要客户端直接写桶（非浏览器 PUT 预签名）时用 `getTemporaryCredentials`。
-- 新接口涉及文件读写时，先按「实现查找顺序」确认用上述门面 / SDK，不要自写 S3 SDK 调用。
+- 新接口涉及文件读写时，先按「实现查找顺序」确认用上述统一入口 / SDK，不要自写 S3 SDK 调用。

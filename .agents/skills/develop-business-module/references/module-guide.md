@@ -16,7 +16,7 @@ pnpm cli -t crud -n <name>
 `apps/server/src/root.module.ts` 的 `imports` 注册 + 实体注入
 `DbModule.forRootAsync` 工厂的 `entities`、迁移、SDK、admin 页面。
 
-## 1. ① 契约：错误码 + schema
+## 1. ① 数据结构：错误码 + schema
 
 - `AppErrorCodes` 增加 `XxxNotFound: { label: 'Xxx 不存在', value: 3xxx, http: 404 }`
   及模块内其他错误（value 从 3xxx 起连续分配，不与其他模块冲突）。
@@ -147,7 +147,7 @@ export class XxxController {
 - 入参一律 `@Body({ schema: Schema })`；返回数据由全局 `ResponseEnvelopeInterceptor` 包
   `{ code: 0, data }`，controller 不手写响应信封。
 - 构造器参数必须显式 `@Inject(token)`：项目用 tsx（esbuild）不产出 `design:paramtypes`，
-  漏写会静默注入 undefined（第 6 条铁律，见 `billy-dev-foundation`）。
+  漏写会静默注入 undefined（第 6 条规定，见 `billy-dev-foundation`）。
 
 鉴权按需选择（细节见 `implement-auth` skill）：
 - 用户接口：`@UseGuards(UserAuthGuard)`（`modules/auth/user-auth.guard.ts`）。

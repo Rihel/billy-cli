@@ -16,14 +16,14 @@ export interface RateLimitDecision {
 }
 
 /**
- * 限流门面（基于 rate-limiter-flexible 的 RateLimiterRedis，Redis 存储）。
+ * 限流统一入口（基于 rate-limiter-flexible 的 RateLimiterRedis，Redis 存储）。
  *
  * - 默认固定窗口（points / duration），底层 Lua 脚本原子计数；
  * - 底层实例按 `(limit, windowSeconds)` 组合缓存复用（不同 scope 可配不同阈值）；
  * - `consume` 超限抛 `RateLimiterResError`（带 msBeforeNext），映射为
  *   `{ allowed: false, retryAfterSeconds }`；非限流错误（如 Redis 故障）原样上抛。
  *
- * key 约定：调用方传 `scope:标识`（如 `login:1.2.3.4`），门面统一加 `ratelimit:` 前缀。
+ * key 约定：调用方传 `scope:标识`（如 `login:1.2.3.4`），统一入口统一加 `ratelimit:` 前缀。
  * 需要更精确的算法（滑动窗口 / 令牌桶）时，改用 RateLimiterSlidingWindow / RateLimiterTokenBucket。
  */
 @Injectable()

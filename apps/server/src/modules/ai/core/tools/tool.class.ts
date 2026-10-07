@@ -50,8 +50,8 @@ const buildOne = (
   if (!meta.key?.trim()) throw new Error(`工具组 ${at} 的 @ToolDecl 缺少 key`)
   if (!meta.title?.trim()) throw new Error(`工具组 ${at}（${meta.key}）缺少标题`)
   if (!meta.description?.trim()) throw new Error(`工具组 ${at}（${meta.key}）缺少说明`)
-  if (!meta.params) throw new Error(`工具组 ${at}（${meta.key}）缺少 params（参数契约）`)
-  if (!meta.config) throw new Error(`工具组 ${at}（${meta.key}）缺少 config（配置契约）`)
+  if (!meta.params) throw new Error(`工具组 ${at}（${meta.key}）缺少 params（参数定义）`)
+  if (!meta.config) throw new Error(`工具组 ${at}（${meta.key}）缺少 config（配置定义）`)
   const category = meta.category ?? group.category
   const scope = meta.scope ?? group.scope
   if (!category) {
@@ -71,13 +71,13 @@ const buildOne = (
     ...(meta.child ? { child: meta.child } : {}),
     ...(meta.paginate ? { paginate: meta.paginate } : {}),
     params: meta.params,
-    // 给模型看的那一份 = 原契约 + 引擎注入的必填 `reason`（工具作者不用自己写，见 `call-reason.ts`）
+    // 给模型看的那一份 = 原定义 + 引擎注入的必填 `reason`（工具作者不用自己写，见 `call-reason.ts`）
     modelParams: withCallReason(meta.params),
     ...(meta.result ? { result: meta.result } : {}),
     config: meta.config,
     ...(meta.secrets ? { secrets: meta.secrets } : {}),
     ...(meta.secretFields ? { secretFields: meta.secretFields } : {}),
-    // 事件声明归一化：名字 / 标题 / 说明 / mode 校验在这里，payload 契约同时转出 JSON Schema 镜像
+    // 事件声明归一化：名字 / 标题 / 说明 / mode 校验在这里，payload 定义同时转出 JSON Schema 镜像
     events: normalizeToolEventDecls(meta.events, `工具组 ${at}（${meta.key}）`),
     // 执行体 = 这个方法本身（声明与实现同一处）
     exec: (input: unknown, ctx: never) =>

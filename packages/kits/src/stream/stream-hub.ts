@@ -27,7 +27,7 @@ interface StreamBroadcastMessage {
 const BROADCAST_PATTERN = 'stream:*'
 
 /**
- * SSE 服务端推流门面（多实例广播）。
+ * SSE 服务端推流统一入口（多实例广播）。
  *
  * 职责：
  * - 连接注册表（connections）+ 频道索引（channels）；

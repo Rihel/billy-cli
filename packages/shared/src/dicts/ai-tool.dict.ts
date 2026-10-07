@@ -20,7 +20,7 @@ export const ToolCategory = createDict({
   Runtime: { label: '运行时自带', value: 'runtime' },
 })
 
-/** 工具作用域：这一次调用允不允许（授权在 agent 声明里，作用域是第二层闸门） */
+/** 工具作用域：这一次调用允不允许（授权在 agent 声明里，作用域是第二层关卡） */
 export const ToolScope = createDict({
   All: { label: '所有调用者', value: 'all' },
   Admin: { label: '仅管理员', value: 'admin' },

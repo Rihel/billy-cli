@@ -73,7 +73,7 @@ export function ToolCard({ part, events, defaultOpen, streaming, durationMs }: T
   /**
    * **实时耗时**（用户要求"工具条显示耗时"）：从卡片出现（= 这次调用开始流给我们）到拿到结果。
    *
-   * 为什么运行中要每 0.5s 刷一次：工具卡是"正在调什么、跑了多久"的唯一落点，数字停着不动
+   * 为什么运行中要每 0.5s 刷一次：工具卡是"正在调什么、跑了多久"的唯一位置，数字停着不动
    * 会让人以为卡死。有历史耗时（`durationMs`，服务端审计量的）时**不自己算** —— 那才是真值。
    */
   const isFinished = part.state === 'output-available' || part.state === 'output-error'

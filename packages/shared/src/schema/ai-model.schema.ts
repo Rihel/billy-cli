@@ -3,7 +3,7 @@ import { AiModelSource, AiProviderKind } from '../dicts/ai-model.dict'
 import { BasePaginateSchema } from './base.schema'
 
 /**
- * AI 模型模块契约：**与两张表一一对应的对外模型**（供应商 / 模型）。
+ * AI 模型模块定义：**与两张表一一对应的对外模型**（供应商 / 模型）。
  *
  * 覆盖三层：**表模型**（供应商 / 模型）、**管理台 CRUD 入参**（§4.8.4）、
  * **运行时选模型**（§4.9：一轮对话只能选"已配置且启用"的模型）。
@@ -217,7 +217,7 @@ export type AiAvailableModelModel = z.infer<typeof AiAvailableModelSchema>
 /** 可选模型清单（`POST /ai-model/available`；会话页用它渲染选择器） */
 export const AiAvailableModelListSchema = z.object({
   models: z.array(AiAvailableModelSchema),
-  /** 未显式选择时的落点（第一个启用的模型；库空时为 null） */
+  /** 未显式选择时用它（第一个启用的模型；库空时为 null） */
   defaultModelId: z.string().nullable(),
 })
 

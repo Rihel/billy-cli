@@ -14,7 +14,7 @@ export interface CursorResult<T> {
   nextCursor: unknown
 }
 
-/** API 响应契约（service 层使用，与 @repo/sdk 的 AppPageQueryResponse 对应） */
+/** API 响应格式（service 层使用，与 @repo/sdk 的 AppPageQueryResponse 对应） */
 export interface PageQueryResult<T> {
   items: T[]
   total: number
@@ -22,7 +22,7 @@ export interface PageQueryResult<T> {
   size: number
 }
 
-/** API 响应契约（service 层使用） */
+/** API 响应格式（service 层使用） */
 export interface CursorQueryResult<T, TCursor> {
   items: T[]
   nextCursor: TCursor | null

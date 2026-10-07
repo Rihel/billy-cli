@@ -25,9 +25,9 @@ export interface CreateLoggerOptions {
 }
 
 /**
- * `createLogger` 的返回值：日志门面 + `child()`。
+ * `createLogger` 的返回值：日志统一入口 + `child()`。
  *
- * `child(context)` 在**同一个 pino 实例**上派生子门面——pino 的 `transport` 会为每个实例拉起
+ * `child(context)` 在**同一个 pino 实例**上派生子封装——pino 的 `transport` 会为每个实例拉起
  * 一个 worker 线程，所以多 context 场景（如每个宿主类一个 logger）必须走 `child()`，
  * 不能反复调 `createLogger()`。
  */
@@ -35,7 +35,7 @@ export interface CreateLoggerResult extends AppLogger {
   child(context: string): CreateLoggerResult
 }
 
-/** 在一个已有 pino 实例上包一层门面（`child()` 复用它，避免重复创建 transport） */
+/** 在一个已有 pino 实例上包一层封装（`child()` 复用它，避免重复创建 transport） */
 const wrap = (instance: pino.Logger): CreateLoggerResult => {
   let logger = instance
   /** 兼容既有调用：第二参传字符串时视为「消息前缀」 */

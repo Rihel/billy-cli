@@ -10,7 +10,7 @@
 | 轨道 | 位置 | 职责 |
 | --- | --- | --- |
 | 实体（数据库表） | `apps/server/src/database/entities/<name>-entity.ts` | TypeORM 表结构、索引、唯一约束 |
-| 契约（Zod schema） | `packages/shared/src/schema/<name>.schema.ts` | 请求 / 响应校验与类型（前后端共享） |
+| 数据结构（Zod schema） | `packages/shared/src/schema/<name>.schema.ts` | 请求 / 响应校验与类型（前后端共享） |
 
 动笔前先按「实现查找顺序」确认现成能力：`apps/server/src/database/entities/` 与
 `packages/shared/src/schema/` 下同类结构（base / todo / user / admin）就是参考模板，
@@ -61,7 +61,7 @@ export class TodoEntity extends BaseEntity {            // 必须继承 BaseEnti
    `default: UserStatus.Enabled` + `length` + `comment` 中文注释。
 7. 实体里**不写业务逻辑**，只做映射与约束。
 
-## 3. 契约规范（Zod schema）
+## 3. 数据结构规范（Zod schema）
 
 参考：`packages/shared/src/schema/{base,todo,user,admin}.schema.ts`。
 
@@ -73,7 +73,7 @@ export class TodoEntity extends BaseEntity {            // 必须继承 BaseEnti
 | 入参类型 | `z.infer` 出 `XxxDto`，导出在**同一文件**、紧贴其 schema | `export type CreateTodoDto = z.infer<typeof CreateTodoSchema>` |
 | 响应类型 | `z.infer` 出 `XxxModel`，同样同文件导出 | `export type TodoModel = z.infer<typeof TodoSchema>` |
 | 值域枚举 schema | `z.enum` 只导出 `XxxSchema`，**不导出类型别名** | `AdminStatusSchema`、`AlertLevelSchema`；需类型处写 `z.infer<typeof XxxSchema>` |
-| 契约基类（`base.schema.ts`） | 只作 `extend` / `intersection` 基石，**不导出类型** | `BaseModelSchema`、`BasePaginateSchema`、`BaseCursorPaginateSchema` |
+| 数据结构基类（`base.schema.ts`） | 只作 `extend` / `intersection` 基石，**不导出类型** | `BaseModelSchema`、`BasePaginateSchema`、`BaseCursorPaginateSchema` |
 | id 入参基类 | `XxxIdInputSchema` + `XxxIdInputDto` | `TodoIdInputSchema`、`AdminIdInputSchema` |
 
 > **`Dto` / `Model` 是类型后缀，`Schema` 是值后缀**，二者不可混用：

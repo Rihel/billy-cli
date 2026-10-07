@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { AppName, ThemeKey, TokenKey } from '../src/lib/constants'
 
 /**
- * admin 应用私有取值的契约测试（node 环境）。
+ * admin 应用私有取值的一致性测试（node 环境）。
  *
  * 为什么值得锁：admin 与前台可能同域部署，`localStorage` 与 cookie 是共享的 ——
  * 主题 key / 凭证 key 一旦撞上，就会出现「切后台主题把前台也改了」「登出后台把前台也蹬了」

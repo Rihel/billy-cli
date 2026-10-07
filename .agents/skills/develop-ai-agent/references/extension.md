@@ -20,7 +20,7 @@
    需要的 agent 声明里授权该 key，并写 `test/ai-tools/<key>.test.ts`
    （标准测试集强制：`specByKey(new XxxTools(...), key)` 拿 spec 直接调 `exec`）。
 
-入参契约用 zod 写**给模型看的说明**（`.describe()`）；执行体出参**原样返回、不裁剪**（运行时会把完整出参落时间线）。
+入参定义用 zod 写**给模型看的说明**（`.describe()`）；执行体出参**原样返回、不裁剪**（运行时会把完整出参落时间线）。
 子 agent 不能用的标 `child: 'deny'`；委派类标 `delegation: true`（子 agent 工具面 = 全部 − 委派类 − deny）。
 **一个类一个工具 = 组里只有一个方法**：形状只有一种，不必为"单工具"另写。
 
@@ -79,9 +79,9 @@
 密钥加密口径），别在别处另起一套。两条容易踩的：密钥只进不出（明文永不落库/回传）、
 两张表的唯一索引是**软删感知**的（`WHERE deleted_at IS NULL`）。
 
-## 7. 契约、SDK 与前端
+## 7. 数据结构、SDK 与前端
 
-- 契约加在 `packages/shared/src/schema/agent.schema.ts`，**改完必须 `pnpm build:pkgs`**；
+- 数据结构加在 `packages/shared/src/schema/agent.schema.ts`，**改完必须 `pnpm build:pkgs`**；
 - SDK 的 typed 方法在 `packages/sdk/src/server.client.ts` 的 `agent` 分组（含 `chatStreamUrl` /
   `resumeStreamUrl` / `authHeaders` 三个给 AI SDK 用的旁路）；
 - **会话维护类接口**（前端会话页用）：`conversation/rename`（手动改名，会记一条 `status` 审计事件）、

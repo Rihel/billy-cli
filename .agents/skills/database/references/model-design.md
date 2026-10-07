@@ -6,7 +6,7 @@
 
 ## 1. 一张表 = 一个业务聚合
 
-- 先有业务对象与契约（`packages/shared/src/schema/`），再落实体——schema 是前后端契约，
+- 先有业务对象与数据结构（`packages/shared/src/schema/`），再落实体——schema 是前后端数据结构，
   实体是落库形状，两者字段必须一致（双轨，见 `define-data-structure`）。
 - 表名复数（`users` / `todos` / `admins` / `alert_logs`），实体类 `XxxEntity`，文件
   `apps/server/src/database/entities/<name>-entity.ts`。

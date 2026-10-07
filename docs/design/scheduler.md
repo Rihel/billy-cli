@@ -1,7 +1,7 @@
 # 调度基础设施（定时器 + Cron）落地方案
 
 > 目标：为工程提供**进程内**的定时器 / Cron 调度能力，与调度原语解耦。
-> 引入 `croner` 作为 cron 引擎，封装为 `core/foundation` 的 `Scheduler` 门面。
+> 引入 `croner` 作为 cron 引擎，封装为 `core/foundation` 的 `Scheduler` 统一入口。
 
 ## 1. 背景与能力定位
 
@@ -13,17 +13,17 @@
   **不采用时间轮**：时间轮仅在高频海量短时定时器场景（如数万连接超时检测）才划算，
   当前业务 cron / 定时器场景用成熟 cron 库更可靠，不引入内存定时器在重启后丢失的复杂度。
 
-## 2. 能力归位
+## 2. 能力放在哪
 
 | 项 | 决定 |
 | --- | --- |
 | 能力性质 | 横切基础能力（进程内调度器） |
-| 落点 | `packages/kits/src/foundation/scheduler/scheduler.ts`（`Scheduler`） |
+| 位置 | `packages/kits/src/foundation/scheduler/scheduler.ts`（`Scheduler`） |
 | 注册 | `SchedulerModule` 装配（`@Global()` 无配置纯模块，业务侧 `@Inject(Scheduler)`）；`foundation/index.ts` 导出 |
 | 依赖 | `croner@^10.0.1`（kits），`vitest` 仅 devDependency |
 | 错误 | `SchedulerError`（`AppErrorCodes.Internal`），加入 `infrastructure-errors.ts` |
 
-归位依据：`placement.md` §7「横切基础能力 → core/foundation」、§5「定时任务/调度」。
+放置依据：`placement.md` §7「横切基础能力 → core/foundation」、§5「定时任务/调度」。
 
 ## 3. 关键设计
 

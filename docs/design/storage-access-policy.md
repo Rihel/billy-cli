@@ -30,7 +30,7 @@
 
 ## 2. key 规则（纯函数）
 
-落点：`apps/server/src/modules/storage/storage-key.ts`（纯函数，无 IO，可单测）。
+位置：`apps/server/src/modules/storage/storage-key.ts`（纯函数，无 IO，可单测）。
 
 ```ts
 /** 前台用户的 key 命名空间前缀 */

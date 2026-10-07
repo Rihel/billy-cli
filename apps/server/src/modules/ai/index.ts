@@ -1,7 +1,7 @@
 /**
  * AI 模块（Mastra）：接口 + 核心引擎 + 会话运行时 + agent 声明 + 具体工具 + 适配器。
  *
- * 目录约定（新增 AI 能力时的落点）：
+ * 目录约定（新增 AI 能力时的位置）：
  * - `api/`          接口层：`ai.controller`（对话路由）/ `ai-tool.controller`（工具配置路由）/
  *                   `ai-tool.service`（后台工具配置服务）；
  * - `core/`         核心引擎（与"具体是哪件事"无关）：`envelope`（运行时信封）/ `config` /

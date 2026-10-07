@@ -17,12 +17,12 @@ billy-cli 是一套**全栈应用 Monorepo 模板**：pnpm + Turbo 构建，Type
 | 服务端 HTTP | NestJS 12（`@nestjs/core` + `@nestjs/common` + `@nestjs/platform-express`，底层 Express 5；`apps/server`，端口 9989） |
 | 服务端推流 | `@repo/kits` 的 `StreamHub`（`POST /sse/subscribe` 长连接 + Redis pub/sub 跨实例广播）+ `@repo/http-client` 的 `HttpStreamClient`（浏览器 / Node 双环境，默认 POST + Bearer 认证） |
 | 服务端日志 | 自建 logger（`@repo/shared/logger` 的 `createLogger`，**不用 nestjs-pino**）：kits `LoggerModule` 建唯一 pino 实例（pino-pretty 开发美化；生产可多目标 transport 推送 pino-loki；redact 脱敏），`AppLogger` 供业务注入、`NestLoggerAdapter` 接管 Nest 框架日志；请求日志由 `common/request-logger` 的中间件自记录 |
-| 业务落点 | `apps/server/src/modules/<业务>/{module, controller, service, repository, errors, index}`（业务 + 实体 + 迁移归 server） |
+| 业务位置 | `apps/server/src/modules/<业务>/{module, controller, service, repository, errors, index}`（业务 + 实体 + 迁移归 server） |
 | 通用能力 | `@repo/kits`（一个基础设施一个目录 = `provider + <name>.config.ts + <name>.module.ts + index.ts`，均 `@Global()` + `XxxModule.forRoot(options)` / `forRootAsync(options)`，配置对象即模块自身 bean，无业务实体） |
 | 应用配置 | `AppConfigFacade`（bootstrap 前用 Zod 加载校验 + 缓存）+ `@nestjs/config` 的全局 `ConfigService`（各模块 `forRootAsync` 惰性取命名空间分片；应用级业务配置由业务层 `resolveServerConfig(config)` 取 `server` 分片，不单设配置 bean） |
 | 依赖注入 | NestJS 内建 DI（`@nestjs/common` 的 `@Injectable` / `@Inject` / `@Optional` + 构造器注入 + 生命周期钩子） |
 | ORM | TypeORM（`@repo/kits` 的 `Db` + `apps/server` 的实体 / 迁移，PostgreSQL） |
-| 契约 / 共享 | Zod + 字典 + 响应工具（`@repo/shared`） |
+| 数据结构 / 共享 | Zod + 字典 + 响应工具（`@repo/shared`） |
 | 前台 | Next.js 16 App Router + Base UI + shadcn/ui + Tailwind 4（`apps/web`，9840） |
 | 后台 | Next.js 16 + `@repo/ui`（shadcn/ui）+ TanStack Query / Table / Form（`apps/admin`，9845） |
 | API 客户端 | `@repo/http-client`（通用 HTTP 客户端：请求 + SSE 流式推送，浏览器 / Node 双环境）+ `@repo/sdk`（业务全类型化 ServerClient） |
@@ -44,7 +44,7 @@ apps/server   NestJS HTTP 边界 + 业务模块 + 实体 / 迁移 + 配置 + 唯
    ↓ 只依赖
 @repo/kits    后端通用能力封装：一个基础设施一个目录（provider + <name>.config.ts +
               <name>.module.ts + index.ts，均 @Global + XxxModule.forRoot(options)）
-              · db/           Db 门面（连接生命周期）/ DbService（注入式数据操作门面：四种分页 +
+              · db/           Db 统一入口（连接生命周期）/ DbService（注入式数据操作统一入口：四种分页 +
                               批量写入/删除 + safeDelete + getFullSqlStatement；只依赖 Db，不注入
                               logger），自动带默认 manager 与操作人）/
                               DbConfig / DbModule / create-db / BaseEntity / AuditEntity +
@@ -68,8 +68,8 @@ apps/server   NestJS HTTP 边界 + 业务模块 + 实体 / 迁移 + 配置 + 唯
                               CommandModule，底层 execa）/ errors / id-generation / logger / scheduler
               · 配置对象即模块自身注入 bean；未 import 即未装配；实体由 app 在
                 DbModule.forRootAsync 的工厂里注入（类引用无法来自环境变量）
-@repo/shared  Zod schema（契约）+ dicts（错误码 / 字典）+ AppResponse（响应格式）
-   ↑ 被 kits / server / sdk / 前端共同依赖 —— 契约先行
+@repo/shared  Zod schema（数据结构）+ dicts（错误码 / 字典）+ AppResponse（响应格式）
+   ↑ 被 kits / server / sdk / 前端共同依赖 —— 数据结构先行
 @repo/sdk     ServerClient：全类型化业务 API 调用（前端 / 脚本使用）
 @repo/http-client  通用 HTTP 客户端：请求管线 + SSE 客户端（fetch 流 + 状态机，认证凭证体系
                    CredentialsManager / AuthStrategy / CredentialProvider / CredentialResolver，
@@ -99,7 +99,7 @@ controller 只做 HTTP 边界，业务逻辑在 service / repository。
    校验失败走 HTTP 200 + `{ code: 400 }`，未知错误一律 5001 / 500。
 7. 成功由 `ResponseEnvelopeInterceptor` 统一包为 `{ code: 0, data }`（HTTP 200）。
 
-**中间件顺序铁律（Nest 12）**：模块中间件按模块 `distance` 排序装配，**`@Global()` 模块排在最前**
+**中间件顺序规定（Nest 12）**：模块中间件按模块 `distance` 排序装配，**`@Global()` 模块排在最前**
 （`middleware-module.js` 把 `distance === Number.MAX_VALUE` 视为全局、权重 -1），全局模块之间再按
 容器注册顺序（即组合根 `imports` 顺序）稳定排序。因此请求上下文模块必须：① 标 `@Global()`；
 ② 在 `imports` 里写在 `RequestLoggerModule` / `RequestMetricsModule` 之前。顺序错了的后果：

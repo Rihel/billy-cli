@@ -14,7 +14,7 @@ import { assistantAgent } from './assistant.agent.js'
  */
 export const AGENT_SPECS: readonly AgentSpec[] = [assistantAgent]
 
-/** 默认 agent：前端未选择 / 请求省略 `agentKey` 时的落点 */
+/** 默认 agent：前端未选择 / 请求省略 `agentKey` 时用它 */
 export const DEFAULT_AGENT_KEY = assistantAgent.key
 
 /**

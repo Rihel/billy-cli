@@ -36,14 +36,14 @@ export interface KafkaAvailability {
 }
 
 /**
- * Kafka 生产 / 消费门面（kafkajs 封装）。
+ * Kafka 生产 / 消费统一入口（kafkajs 封装）。
  *
  * - 生产者：`send(topic, payload, key?)`，内置有限重试；
  * - 消费者：业务用 `@KafkaConsumer(topic)` 标注方法，由 KafkaConsumerScanner 启动时自动订阅；
  * - topic / groupId 按配置加前缀，避免多环境共用集群时串 topic；
  * - 与应用生命周期绑定：`onApplicationShutdown` 统一断开全部生产者 / 消费者。
  *
- * **可用性契约（重要）**：
+ * **可用性规则（重要）**：
  * 1. **不阻塞启动**：连接是惰性的 —— DI / 构造阶段只建 kafkajs 客户端对象、不发网络请求，
  *    只有真正 `send` 或消费者启动时才建连。故 broker 挂掉不会推迟 HTTP 服务可用
  *    （实测黑洞地址下 725ms 可服务，不配 Kafka 为 682ms，差异属噪声）。
@@ -52,7 +52,7 @@ export interface KafkaAvailability {
  *    `KafkaUnavailableError`，让调用方快速降级（落表补偿 / 进重试 topic），
  *    而不是让请求线程陪着连接超时一起耗。
  *
- * 归位：横切基础能力 → `packages/kits/src/kafka/`（只在导入 `KafkaModule.forRoot(...)` 时装配：未装配则无 Kafka provider）。
+ * 放置：横切基础能力 → `packages/kits/src/kafka/`（只在导入 `KafkaModule.forRoot(...)` 时装配：未装配则无 Kafka provider）。
  */
 @Injectable()
 export class KafkaService implements OnApplicationShutdown {

@@ -6,7 +6,7 @@
 
 ## 1. 取 repository
 
-repository 注入 `Db`（DataSource 门面），私有 `repo()` 惰性拿实体仓库：
+repository 注入 `Db`（DataSource 统一入口），私有 `repo()` 惰性拿实体仓库：
 
 ```ts
 constructor(@Inject(Db) private readonly db: Db) {}
@@ -65,11 +65,11 @@ if (keyword) {
   `pageWithDeferred` / `cursorPageWithDeferred`（先只取主键再回表，当前业务未用，
   极大表启用）。列表别默认给「跳页到第 N 万页」的能力。
 
-## 5. 批量写入（@repo/kits 纯函数 / `DbService` 门面）
+## 5. 批量写入（@repo/kits 纯函数 / `DbService` 统一入口）
 
 导入 / 同步 / 批处理别在循环里逐条写库。当前业务 repository 的写法是注入 `Db` + 调纯函数
 （`batchInsert` / `batchSave` / `batchUpsert` / `safeDelete` 等，见
-`apps/server/src/modules/todo/todo.repository.ts`）；kits 另提供 `DbService` 注入式门面
+`apps/server/src/modules/todo/todo.repository.ts`）；kits 另提供 `DbService` 注入式统一入口
 （与纯函数同名同参，自动带默认 manager 与操作人），需要时 `@Inject(DbService)` 直接用：
 
 ```ts
@@ -117,7 +117,7 @@ await this.dbService.safeDelete(TodoEntity, { id })
 - 常规 where / 排序 / 分页都用 queryBuilder，**不手写 SQL 字符串**。
 - 只有 queryBuilder 表达不动时才用原生（复杂聚合、窗口函数、递归 CTE）：
   `this.db.query(sql, params)`（DataSource.query，同样绑定参数）。
-- 写完仍是参数化语句；raw SQL 属于「能力归位」的例外，需注释说明为什么。
+- 写完仍是参数化语句；raw SQL 属于「能力放置位置」的例外，需注释说明为什么。
 
 检查项：值全部绑定参数；排序列 schema 白名单；游标与索引配套；无循环内查库；
 分页未 join 一对多；响应经映射裁剪。

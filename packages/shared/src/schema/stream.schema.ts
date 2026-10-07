@@ -2,7 +2,7 @@ import { z } from 'zod'
 import { AlertChannelSchema } from './monitor.schema'
 
 /**
- * SSE 事件（服务端 → 客户端推流负载契约，前后端共用）。
+ * SSE 事件（服务端 → 客户端推流负载数据结构，前后端共用）。
  *
  * 对应 SSE 帧的 `event` / `id` / `data` 三字段；`data` 为任意 JSON 负载，
  * 传输层序列化为字符串，客户端反序列化后按 `event` 分发。
@@ -45,7 +45,7 @@ export const STREAM_ALERT_FIRED_EVENT = 'alert.fired'
 /**
  * 告警触发推送负载（SSE `alert.fired`）。
  *
- * 刻意**不复用告警日志实体**：实体字段与时间戳由 ORM 决定，跨端契约必须稳定，
+ * 刻意**不复用告警日志实体**：实体字段与时间戳由 ORM 决定，跨端数据结构必须稳定，
  * 故显式声明展示所需字段，前后端共用同一份 schema 解析。
  */
 export const AlertFiredEventSchema = z.object({
