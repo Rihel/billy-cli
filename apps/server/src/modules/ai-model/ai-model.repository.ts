@@ -29,6 +29,12 @@ export interface UpsertSyncedModelInput {
   contextWindow: number | null
   maxOutputTokens: number | null
   capabilities: Record<string, unknown> | null
+  /** 模型类型（见 `AiModelMode`） */
+  mode: string
+  /** 输入模态；`null` = 未声明（此时保留库里已有的值，见 `upsertSyncedModel`） */
+  inputModalities: string[] | null
+  /** 输出模态；同上 */
+  outputModalities: string[] | null
   /** 供应商原始 JSON（全量留存，不裁剪） */
   raw: Record<string, unknown>
   /** 本次同步的时间戳（同时写 `syncedAt` 与 `lastSeenAt`） */
@@ -167,6 +173,12 @@ export class AiModelRepository {
     return repo.findOneBy({ providerId, modelKey })
   }
 
+  /** 某供应商下的全部模型（软删行不计）。同步流程用它一次性取回，避免逐个查询 */
+  async listByProvider(providerId: string): Promise<AiModelEntity[]> {
+    const repo = await this.repo()
+    return repo.find({ where: { providerId }, order: { modelKey: 'ASC' } })
+  }
+
   /** 某供应商下的模型数（软删行不计） */
   async countModels(providerId: string): Promise<number> {
     const repo = await this.repo()
@@ -207,9 +219,11 @@ export class AiModelRepository {
    *
    * 行为（设计文档 §4.8.3）：
    * - 不存在 → 插入，`source='sync'`、`enabled=true`，返回 `created`；
-   * - 已存在 → 只更新 `display_name` / 窗口 / `capabilities` / `raw` / `synced_at` / `last_seen_at`，
-   *   **绝不动 `enabled`**（用户的启停不被同步覆盖）；内容没变时返回 `unchanged`、
-   *   变了返回 `updated`；
+   * - 已存在 → 只更新 `display_name` / 窗口 / `mode` / 模态 / `capabilities` / `raw` /
+   *   `synced_at` / `last_seen_at`，**绝不动 `enabled`**（用户的启停不被同步覆盖）；
+   *   内容没变时返回 `unchanged`、变了返回 `updated`；
+   * - **模态是"同步给了才覆盖"**：供应商没给（`null`）时保留库里已有的值 —— 那多半是人手工填的
+   *   （国内厂商普遍不给模态信息），被一次同步抹掉的话，附件能力会悄悄退回"未声明"；
    * - 已存在但 `source='manual'`（手工补的）→ **同步完全不碰**（用户自己填的窗口 / 展示名优先），
    *   返回 `unchanged`。
    */
@@ -228,6 +242,9 @@ export class AiModelRepository {
           displayName: input.displayName,
           contextWindow: input.contextWindow,
           maxOutputTokens: input.maxOutputTokens,
+          mode: input.mode,
+          inputModalities: input.inputModalities,
+          outputModalities: input.outputModalities,
           capabilities: input.capabilities,
           source: AiModelSource.Sync,
           enabled: true,
@@ -242,10 +259,17 @@ export class AiModelRepository {
     // 手工补的模型：同步不碰（连 last_seen_at 都不改，否则"本次未返回"的口径会被污染）
     if (existing.source === AiModelSource.Manual) return 'unchanged'
 
+    // 模态：同步给了就用同步的，没给（null）保留库里的（可能是人手工填的）
+    const nextInputModalities = input.inputModalities ?? existing.inputModalities
+    const nextOutputModalities = input.outputModalities ?? existing.outputModalities
+
     const unchanged =
       existing.displayName === input.displayName &&
       existing.contextWindow === input.contextWindow &&
       existing.maxOutputTokens === input.maxOutputTokens &&
+      existing.mode === input.mode &&
+      sameJson(existing.inputModalities, nextInputModalities) &&
+      sameJson(existing.outputModalities, nextOutputModalities) &&
       sameJson(existing.capabilities, input.capabilities) &&
       sameJson(existing.raw, input.raw)
 
@@ -253,6 +277,9 @@ export class AiModelRepository {
     existing.displayName = input.displayName
     existing.contextWindow = input.contextWindow
     existing.maxOutputTokens = input.maxOutputTokens
+    existing.mode = input.mode
+    existing.inputModalities = nextInputModalities
+    existing.outputModalities = nextOutputModalities
     existing.capabilities = input.capabilities
     existing.raw = input.raw
     existing.syncedAt = input.syncedAt

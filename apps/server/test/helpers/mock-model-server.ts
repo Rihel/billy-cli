@@ -44,6 +44,17 @@ export interface MockModelServer {
 export const MOCK_MODEL_LIST = [
   { id: 'mock-chat', object: 'model', created: 1700000000, owned_by: 'mock-vendor' },
   { id: 'mock-reasoner', object: 'model', created: 1700000001, owned_by: 'mock-vendor' },
+  /**
+   * 第三个带上**模态声明**：真实的多数国内厂商不给这项，但 OpenRouter 之类的网关会给 ——
+   * 用它验证"供应商给了就落库"，而前两个验证"没给就是未声明（不编造）"。
+   */
+  {
+    id: 'mock-vision',
+    object: 'model',
+    created: 1700000002,
+    owned_by: 'mock-vendor',
+    architecture: { input_modalities: ['text', 'image'], output_modalities: ['text'] },
+  },
 ]
 
 /** 固定回复文本（断言用） */

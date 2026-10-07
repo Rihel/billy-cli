@@ -192,14 +192,18 @@ describe('AI 模型模块（真实数据库 + mock 供应商）', () => {
     const providerId = createdProviderIds[0]
     const result = await service.syncProvider({ providerId })
 
-    expect(result).toMatchObject({ created: 2, updated: 0, unchanged: 0, missing: 0, total: 2 })
+    expect(result).toMatchObject({ created: 3, updated: 0, unchanged: 0, missing: 0, total: 3 })
     // 同步确实打了 mock 的 GET /models，且带 Bearer 密钥
     expect(mock.listRequests.at(-1)?.url).toContain('/models')
     expect(mock.listRequests.at(-1)?.authorization).toBe(`Bearer ${TEST_API_KEY}`)
 
     const page = await service.listModels({ providerId, page: 1, size: 10 })
-    expect(page.total).toBe(2)
-    expect(page.items.map((item) => item.modelKey)).toEqual(['mock-chat', 'mock-reasoner'])
+    expect(page.total).toBe(3)
+    expect(page.items.map((item) => item.modelKey)).toEqual([
+      'mock-chat',
+      'mock-reasoner',
+      'mock-vision',
+    ])
 
     const first = page.items[0]
     expect(first.source).toBe('sync')
@@ -214,16 +218,74 @@ describe('AI 模型模块（真实数据库 + mock 供应商）', () => {
     const detail = await service.detailProvider({ providerId })
     expect(detail.lastSyncError).toBeNull()
     expect(detail.lastSyncedAt).toBeTruthy()
-    expect((detail as { modelCount: number }).modelCount).toBe(2)
+    expect((detail as { modelCount: number }).modelCount).toBe(3)
   })
 
   it('⑤ 重复同步幂等：不插重复行，全部记为 unchanged', async () => {
     const providerId = createdProviderIds[0]
     const again = await service.syncProvider({ providerId })
-    expect(again).toMatchObject({ created: 0, updated: 0, unchanged: 2, total: 2 })
+    expect(again).toMatchObject({ created: 0, updated: 0, unchanged: 3, total: 3 })
 
     const count = await models.countModels(providerId)
-    expect(count).toBe(2)
+    expect(count).toBe(3)
+  })
+
+  it('⑤b 模态与类型：供应商给了就落库，没给就是**未声明**（不编造）', async () => {
+    const providerId = createdProviderIds[0]
+    const page = await service.listModels({ providerId, page: 1, size: 10 })
+    const withModalities = page.items.find((item) => item.modelKey === 'mock-vision')!
+    const without = page.items.find((item) => item.modelKey === 'mock-chat')!
+
+    // 供应商给了 `architecture.input_modalities` → 原样归一落库
+    expect(withModalities.inputModalities).toEqual(['text', 'image'])
+    expect(withModalities.outputModalities).toEqual(['text'])
+
+    // 没给 → null（"未声明"），**不是空数组**（"明确什么都不支持"是另一件事）
+    expect(without.inputModalities).toBeNull()
+    expect(without.outputModalities).toBeNull()
+    // 类型认不出就是 unknown（不猜成 chat：猜错会让不能对话的模型出现在选择器里）
+    expect(without.mode).toBe('unknown')
+  })
+
+  it('⑤c 人工填的模态**不被同步覆盖**（供应商没给时保留库里的值）', async () => {
+    const providerId = createdProviderIds[0]
+    const page = await service.listModels({ providerId, page: 1, size: 10 })
+    const target = page.items.find((item) => item.modelKey === 'mock-chat')!
+
+    // 人在后台填了"支持图片"（国内厂商多数不给这项，只能手填）
+    await service.updateModel({ modelId: target.id, inputModalities: ['text', 'image'] })
+    expect((await models.findById(target.id))?.inputModalities).toEqual(['text', 'image'])
+
+    // 再同步一次：供应商没给模态 → 保留人工填的（否则附件能力会悄悄退回"未声明"）
+    await service.syncProvider({ providerId })
+    expect((await models.findById(target.id))?.inputModalities).toEqual(['text', 'image'])
+  })
+
+  it('⑤d 显式传 null 可以撤成"未声明"', async () => {
+    const providerId = createdProviderIds[0]
+    const page = await service.listModels({ providerId, page: 1, size: 10 })
+    const target = page.items.find((item) => item.modelKey === 'mock-chat')!
+
+    await service.updateModel({ modelId: target.id, inputModalities: null })
+    expect((await models.findById(target.id))?.inputModalities).toBeNull()
+  })
+
+  it('⑤e 可选模型清单**按类型过滤**：embedding 不列，未声明的照列', async () => {
+    const providerId = createdProviderIds[0]
+    // 新建一个明确是 embedding 的模型（**不动共享的 mock-* 行**：后面的用例还要用它们）
+    const embedding = await service.createModel({
+      providerId,
+      modelKey: 'mock-embedding',
+      mode: 'embedding',
+    })
+
+    const available = await service.listAvailable()
+    const keys = available.models.map((model) => model.modelKey)
+    expect(keys).not.toContain('mock-embedding')
+    // 未声明类型的照列（国内厂商多数不给类型，按类型过滤会把正常模型也挡住）
+    expect(keys).toContain('mock-chat')
+
+    await service.removeModel({ modelId: embedding.id })
   })
 
   it('⑥ 同步不覆盖启停：手工禁用某模型后再同步，enabled 保持不变，也没有重复行', async () => {
@@ -236,7 +298,7 @@ describe('AI 模型模块（真实数据库 + mock 供应商）', () => {
 
     const after = await models.findById(target.id)
     expect(after?.enabled).toBe(false)
-    expect(await models.countModels(providerId)).toBe(2)
+    expect(await models.countModels(providerId)).toBe(3)
   })
 
   it('⑦ resolveForRuntime：只用启用模型；禁用 / 不存在的 id 报错；库里全禁用 → 3406', async () => {
@@ -259,9 +321,11 @@ describe('AI 模型模块（真实数据库 + mock 供应商）', () => {
     // 不存在的 id → 3402
     await expect(service.resolveForRuntime('not-exist-model')).rejects.toMatchObject({ code: 3402 })
 
-    // 列表里只有启用的两个之外的一个 → 清单里不含被禁用的
+    // 清单里不含被禁用的那个（其余照列）
     const available = await service.listAvailable()
-    expect(available.models.map((item) => item.modelKey)).toEqual(['mock-chat'])
+    const keys = available.models.map((item) => item.modelKey)
+    expect(keys).not.toContain('mock-reasoner')
+    expect(keys).toContain('mock-chat')
     expect(available.models[0].providerSlug).toBe((await providers.findById(providerId))!.slug)
     expect(available.defaultModelId).toBe(resolved.id)
   })
@@ -364,7 +428,8 @@ describe('AI 模型模块（真实数据库 + mock 供应商）', () => {
       [providerId],
     )
     expect(providerRows[0].deleted_at).not.toBeNull()
-    expect(modelRows.length).toBe(2)
+    // 同步落了三行（不写死总数：前面的用例可能临时建过模型）
+    expect(modelRows.length).toBeGreaterThanOrEqual(3)
     expect(modelRows.every((row) => row.deleted_at !== null)).toBe(true)
     await expect(service.listAvailable()).resolves.toEqual({ models: [], defaultModelId: null })
     expect(await providerIdsOf()).not.toContain(providerId)

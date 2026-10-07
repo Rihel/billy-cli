@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { AI_MODALITIES, AI_MODEL_MODES } from '../dicts/ai-modality.dict'
 import { AiModelSource, AiProviderKind } from '../dicts/ai-model.dict'
 import { BasePaginateSchema } from './base.schema'
 
@@ -67,7 +68,17 @@ export const AiModelSchema = z.object({
   contextWindow: z.number().int().positive().nullable(),
   /** 单次输出上限 */
   maxOutputTokens: z.number().int().positive().nullable(),
-  /** 能力标记（`tools` / `reasoning` / `vision` / `methods` 等，供应商给什么存什么） */
+  /** 模型类型：见 `AiModelMode` 字典（只有对话类能进 agent 的模型选择器） */
+  mode: z.string(),
+  /**
+   * 输入模态（`["text","image","file"]`，取值见 `AiModality`）。
+   *
+   * **三态**：`null` = 未声明（不拦附件，只提示）；`[]` = 什么都不支持；`["text"]` = 明确只收文本。
+   */
+  inputModalities: z.array(z.string()).nullable(),
+  /** 输出模态（同上） */
+  outputModalities: z.array(z.string()).nullable(),
+  /** 供应商原始能力标记（`tools` / `reasoning` / `methods` 等，给什么存什么；判能力别看它，看上面的模态） */
   capabilities: z.record(z.string(), z.unknown()).nullable(),
   /** 见 `AiModelSource` 字典：同步来的 / 手工补的（手工的同步时不覆盖） */
   source: z.string(),
@@ -174,16 +185,34 @@ export const AiModelCreateSchema = z.object({
   contextWindow: z.number().int().positive().nullable().optional(),
   maxOutputTokens: z.number().int().positive().nullable().optional(),
   enabled: z.boolean().optional().default(true),
+  /** 模型类型（省略按对话模型） */
+  mode: z.enum(AI_MODEL_MODES).optional(),
+  /** 输入模态（省略 = 未声明；`[]` = 明确不支持任何输入） */
+  inputModalities: z.array(z.enum(AI_MODALITIES)).nullable().optional(),
+  /** 输出模态（省略 = 未声明） */
+  outputModalities: z.array(z.enum(AI_MODALITIES)).nullable().optional(),
 })
 export type AiModelCreateDto = z.infer<typeof AiModelCreateSchema>
 
-/** 更新模型（启停 / 展示名 / 手工修正窗口） */
+/** 更新模型（启停 / 展示名 / 手工修正窗口 / 人工声明输入能力） */
 export const AiModelUpdateSchema = z.object({
   modelId: z.string().min(1).max(32),
   displayName: z.string().min(1).max(128).optional(),
   contextWindow: z.number().int().positive().nullable().optional(),
   maxOutputTokens: z.number().int().positive().nullable().optional(),
   enabled: z.boolean().optional(),
+  /** 模型类型（改错了会让模型从选择器里消失或重现，所以允许人工纠正） */
+  mode: z.enum(AI_MODEL_MODES).optional(),
+  /**
+   * 输入模态（`null` = 撤成"未声明"，空数组 = 明确声明什么都不支持）。
+   *
+   * 为什么人工要能改：供应商的"列模型"接口多数**不给**这些信息，只靠同步就不知道
+   * 这个模型能不能收图；而给收不了图的模型发图，最坏的结果是上游**静默忽略**
+   * （用户以为模型看过了，其实没看到）。
+   */
+  inputModalities: z.array(z.enum(AI_MODALITIES)).nullable().optional(),
+  /** 输出模态（同上） */
+  outputModalities: z.array(z.enum(AI_MODALITIES)).nullable().optional(),
 })
 export type AiModelUpdateDto = z.infer<typeof AiModelUpdateSchema>
 
@@ -209,6 +238,11 @@ export const AiAvailableModelSchema = z.object({
   providerKind: z.string(),
   providerSlug: z.string(),
   contextWindow: z.number().int().positive().nullable(),
+  /** 见 `AiModelMode`；选择器只列对话类，但字段仍回给前端（排查"为什么没列出来"） */
+  mode: z.string(),
+  /** 输入模态；`null` = 未声明（前端据此**提醒但不阻止**附件） */
+  inputModalities: z.array(z.string()).nullable(),
+  outputModalities: z.array(z.string()).nullable(),
   capabilities: z.record(z.string(), z.unknown()).nullable(),
 })
 

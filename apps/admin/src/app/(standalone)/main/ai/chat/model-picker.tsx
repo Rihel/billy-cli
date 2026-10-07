@@ -1,7 +1,6 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
 import { Badge, Button, cn } from '@repo/ui'
 // ai-elements 走子路径（不进 barrel，见 docs/design/ai-agent.md §1）
 import {
@@ -19,7 +18,37 @@ import {
 } from '@repo/ui/components/ai-elements/model-selector.tsx'
 import type { AiAvailableModelModel } from '@repo/shared'
 import { CheckIcon, ChevronsUpDownIcon } from 'lucide-react'
-import { useServerClient } from '@/lib/server-client'
+import { useAvailableModels } from './use-available-models'
+
+/**
+ * 输入模态标记（图片 / 文件）。
+ *
+ * 为什么要显示出来："这个模型能不能收图"是**选了之后才知道就太晚**的信息 ——
+ * 用户粘了图、点了发送，才被告知"当前模型读不了图片"，等于让他白做一遍。
+ *
+ * **未声明（`null`）不标**：不写"不支持"，也不写"支持" —— 我们确实不知道，
+ * 标了反而让人以为结论有依据（会话页那边也一样，未声明只提醒、不拦）。
+ */
+function ModelModalityBadges({ inputModalities }: { inputModalities: string[] | null }) {
+  const modalities = inputModalities ?? []
+  const hasImage = modalities.includes('image')
+  const hasFile = modalities.includes('file')
+  if (!hasImage && !hasFile) return null
+  return (
+    <span className="flex shrink-0 items-center gap-1">
+      {hasImage ? (
+        <Badge variant="outline" className="px-1 py-0 text-[10px]">
+          图
+        </Badge>
+      ) : null}
+      {hasFile ? (
+        <Badge variant="outline" className="px-1 py-0 text-[10px]">
+          文件
+        </Badge>
+      ) : null}
+    </span>
+  )
+}
 
 /**
  * 模型选择器（会话页顶部）—— **只列后台配过且启用的模型**。
@@ -39,19 +68,9 @@ export function ModelPicker({
   onChange: (modelId: string) => void
   disabled?: boolean
 }) {
-  const client = useServerClient()
   const [open, setOpen] = useState(false)
 
-  const { data, isFetching, isError, error, refetch } = useQuery({
-    queryKey: ['ai', 'available-models'],
-    queryFn: () => client.agent.models(),
-  })
-
-  const models = data?.models ?? []
-  const current = useMemo(
-    () => models.find((item) => item.id === value) ?? models.find((item) => item.id === data?.defaultModelId),
-    [data?.defaultModelId, models, value],
-  )
+  const { models, current, isFetching, isError, error, refetch } = useAvailableModels(value)
 
   // 按供应商分组：同一家的模型放一起，便于在长列表里找
   const grouped = useMemo(() => {
@@ -100,6 +119,7 @@ export function ModelPicker({
         render={
           <Button variant="outline" size="sm" disabled={disabled} className="max-w-56 gap-2">
             <span className="truncate">{current?.displayName ?? '选择模型'}</span>
+            {current ? <ModelModalityBadges inputModalities={current.inputModalities} /> : null}
             <ChevronsUpDownIcon className="size-3.5 shrink-0 opacity-60" />
           </Button>
         }
@@ -124,6 +144,7 @@ export function ModelPicker({
                     <ModelSelectorLogo provider={model.providerSlug} />
                   </ModelSelectorLogoGroup>
                   <ModelSelectorName>{model.displayName}</ModelSelectorName>
+                  <ModelModalityBadges inputModalities={model.inputModalities} />
                   <span className="font-mono text-xs text-muted-foreground">{model.modelRef}</span>
                   {model.contextWindow ? (
                     <span className="text-xs text-muted-foreground">

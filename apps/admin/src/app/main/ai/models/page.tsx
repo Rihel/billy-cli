@@ -1,5 +1,6 @@
 'use client'
 
+import { AI_MODALITIES, AiModality, AiModelMode } from '@repo/shared'
 import { useServerClient } from '@/lib/server-client'
 import { useForm } from '@tanstack/react-form'
 import { useMutation, useQuery } from '@tanstack/react-query'
@@ -85,6 +86,63 @@ type ModelForm = {
   contextWindow?: number
   maxOutputTokens?: number
   enabled: boolean
+  /** 模型类型（见 `AiModelMode`） */
+  mode: string
+  /**
+   * 输入模态（多选）。
+   *
+   * `undefined` = **未声明**（供应商没给、人也没填）→ 附件不拦，只提醒；
+   * `[]` = 明确声明什么输入都不支持 → 图片 / 文件会被拦下。
+   */
+  inputModalities?: string[]
+  /** 输出模态（多选；我们只做对话，实际基本就是 `text`） */
+  outputModalities?: string[]
+}
+
+/** 模态多选（用复选框而不是下拉多选：取值少、一眼看清当前声明了什么） */
+function ModalityPicker({
+  value,
+  onChange,
+  disabled,
+}: {
+  value: string[] | undefined
+  onChange: (next: string[] | undefined) => void
+  disabled?: boolean
+}) {
+  const selected = value ?? []
+  const isUndeclared = value === undefined
+  return (
+    <div className="flex flex-col gap-1">
+      <div className="flex flex-wrap items-center gap-3">
+        {AI_MODALITIES.map((modality) => (
+          <label key={modality} className="flex items-center gap-1.5 text-sm">
+            <Checkbox
+              checked={selected.includes(modality)}
+              disabled={disabled}
+              onCheckedChange={(checked) => {
+                const next = checked
+                  ? [...selected, modality]
+                  : selected.filter((item) => item !== modality)
+                // 一个都不留 = 明确声明"什么输入都不支持"（与"未声明"是两件事）
+                onChange(next)
+              }}
+            />
+            <DictTag dict={AiModality} value={modality} />
+          </label>
+        ))}
+      </div>
+      <div className="flex items-center gap-2">
+        <span className="text-xs text-muted-foreground">
+          {isUndeclared ? '当前：未声明（附件不会被拦下，只在会话页提醒）' : `当前：${selected.length ? selected.join(' / ') : '明确声明不支持任何输入'}`}
+        </span>
+        {!isUndeclared ? (
+          <Button onClick={() => onChange(undefined)} size="sm" type="button" variant="ghost">
+            撤回未声明
+          </Button>
+        ) : null}
+      </div>
+    </div>
+  )
 }
 
 /** slug 规则与后端一致：小写字母 / 数字 / 连字符，且以字母或数字开头 */
@@ -255,6 +313,10 @@ export default function AiModelsPage() {
       contextWindow: model.contextWindow ?? undefined,
       maxOutputTokens: model.maxOutputTokens ?? undefined,
       enabled: model.enabled,
+      mode: model.mode,
+      // `null` = 未声明（区别于"空数组 = 明确声明什么都不支持"）
+      inputModalities: model.inputModalities ?? undefined,
+      outputModalities: model.outputModalities ?? undefined,
     })
     editModelDialog.open(model)
   }
@@ -338,6 +400,9 @@ export default function AiModelsPage() {
       contextWindow: undefined as number | undefined,
       maxOutputTokens: undefined as number | undefined,
       enabled: true,
+      mode: 'chat',
+      inputModalities: undefined,
+      outputModalities: ['text'],
     } as ModelForm,
     onSubmit: async ({ value }) => {
       const displayName = value.displayName.trim()
@@ -350,6 +415,10 @@ export default function AiModelsPage() {
           contextWindow: value.contextWindow ?? null,
           maxOutputTokens: value.maxOutputTokens ?? null,
           enabled: value.enabled,
+          mode: value.mode as never,
+          // 三态：`undefined` = 撤成"未声明"（传 null），数组就是明确声明
+          inputModalities: (value.inputModalities ?? null) as never,
+          outputModalities: (value.outputModalities ?? null) as never,
         })
         toastSuccess('模型已更新')
         editModelDialog.close()
@@ -556,6 +625,51 @@ export default function AiModelsPage() {
           label: '启用',
           widget: 'switch',
           hint: '只有启用的模型才能被 agent 运行时选用（关闭不被同步覆盖）',
+        },
+        {
+          name: 'mode',
+          label: '模型类型',
+          hint: '只有对话 / 文本补全类会出现在会话页的模型选择器里（未声明的照列，真选错了报错也看得懂）',
+          render: ({ field }: FormFieldContext<ModelForm>) => (
+            <DictSelect
+              dict={AiModelMode}
+              onValueChange={(next) => field.handleChange(next ?? 'chat')}
+              triggerClassName="w-full"
+              value={(field.state.value as string) || 'chat'}
+            />
+          ),
+        },
+        {
+          name: 'inputModalities',
+          label: '输入模态',
+          span: 2,
+          render: ({ field }) => (
+            <div className="flex flex-col gap-1">
+              <span className="text-sm">输入模态</span>
+              <ModalityPicker
+                onChange={(next) => field.handleChange(next as never)}
+                value={field.state.value as string[] | undefined}
+              />
+              <span className="text-xs text-muted-foreground">
+                供应商的「列模型」接口多数不给这项；不声明时附件不会被拦下，只在会话页提醒
+              </span>
+            </div>
+          ),
+        },
+        {
+          name: 'outputModalities',
+          label: '输出模态',
+          span: 2,
+          render: ({ field }) => (
+            <div className="flex flex-col gap-1">
+              <span className="text-sm">输出模态</span>
+              <ModalityPicker
+                onChange={(next) => field.handleChange(next as never)}
+                value={field.state.value as string[] | undefined}
+              />
+              <span className="text-xs text-muted-foreground">我们只做对话，通常只勾「文本」</span>
+            </div>
+          ),
         },
       ],
     },
@@ -801,6 +915,38 @@ export default function AiModelsPage() {
           {row.original.maxOutputTokens?.toLocaleString()}
         </EmptyValue>
       ),
+    },
+    {
+      header: '类型',
+      accessorKey: 'mode',
+      meta: { width: 110 },
+      cell: ({ row }) => <DictTag dict={AiModelMode} value={row.original.mode} />,
+    },
+    {
+      header: '输入模态',
+      accessorKey: 'inputModalities',
+      meta: { width: 150 },
+      cell: ({ row }) => {
+        /**
+         * **未声明（null）与"什么都不支持"（空数组）要分清**：
+         * 前者是"我们不知道"（附件不会被拦，只在会话页提醒），后者是明确声明不支持。
+         * 混成一句话显示，用户会误以为要去后台补配置 —— 或者更糟，以为模型能收图。
+         */
+        const modalities = row.original.inputModalities
+        if (modalities === null) {
+          return <span className="text-xs text-muted-foreground">未声明</span>
+        }
+        if (modalities.length === 0) {
+          return <span className="text-xs text-warning">仅文本（明确声明）</span>
+        }
+        return (
+          <span className="flex flex-wrap items-center gap-1">
+            {modalities.map((modality) => (
+              <DictTag key={modality} dict={AiModality} value={modality} />
+            ))}
+          </span>
+        )
+      },
     },
     {
       header: '来源',

@@ -1,5 +1,5 @@
 import { AppLogger, Transactional, type PageQueryResult } from '@repo/kits'
-import { AiModelSource } from '@repo/shared'
+import { AiModelSource, CHAT_CAPABLE_MODES, DEFAULT_MODEL_MODE } from '@repo/shared'
 import type {
   AiAvailableModelListModel,
   AiAvailableModelModel,
@@ -77,10 +77,25 @@ export interface ResolvedRuntimeModel {
   /** 解密后的密钥（**只在内存里流转，绝不落库 / 回传**） */
   apiKey: string
   contextWindow: number | null
+  /** 模型类型（见 `AiModelMode`） */
+  mode: string
+  /**
+   * 输入模态（`null` = 未声明）。附件校验靠它 —— **不再从 `capabilities` 里猜字段名**。
+   */
+  inputModalities: string[] | null
 }
 
 /** 对外供应商模型（额外带 `modelCount`：列表页要显示"这家有几个模型"） */
 export type AiProviderViewModel = AiProviderModel & { modelCount: number }
+
+/**
+ * 这个类型的模型能不能进会话页的模型选择器。
+ *
+ * `chat` / `completion` 是对话类；`unknown`（未声明）**照列** —— 国内厂商多数不给类型，
+ * 按类型过滤会把正常模型也挡在外面，而真选错了，报错信息比"模型不在列表里"好懂得多。
+ */
+const isChatCapableMode = (mode: string): boolean =>
+  mode === 'unknown' || CHAT_CAPABLE_MODES.includes(mode as never)
 
 /** slug 自动生成：只保留 ASCII 小写字母 / 数字，其余折叠成单个连字符 */
 const slugFromName = (name: string): string =>
@@ -257,6 +272,10 @@ export class AiModelService {
         displayName: model.displayName ?? model.modelKey,
         contextWindow: model.contextWindow ?? null,
         maxOutputTokens: model.maxOutputTokens ?? null,
+        // 类型与模态现在都是**独立字段**；供应商没给（null）时由 repository 保留库里已有的值
+        mode: model.mode,
+        inputModalities: model.inputModalities,
+        outputModalities: model.outputModalities,
         capabilities: model.capabilities ?? null,
         raw: model.raw,
         syncedAt,
@@ -356,6 +375,11 @@ export class AiModelService {
       maxOutputTokens: input.maxOutputTokens ?? null,
       source: AiModelSource.Manual,
       enabled: input.enabled ?? true,
+      mode: input.mode ?? DEFAULT_MODEL_MODE,
+      // 输入：**不预设**（未声明 —— 供应商给不给模态信息我们并不知道，编造会让附件校验走错分支）
+      inputModalities: input.inputModalities ?? null,
+      // 输出：手工建的模型是拿来对话的，默认声明文本输出
+      outputModalities: input.outputModalities ?? ['text'],
       lastSeenAt: null,
       syncedAt: null,
       raw: null,
@@ -377,6 +401,17 @@ export class AiModelService {
     if (input.contextWindow !== undefined) changes.contextWindow = input.contextWindow
     if (input.maxOutputTokens !== undefined) changes.maxOutputTokens = input.maxOutputTokens
     if (input.enabled !== undefined) changes.enabled = input.enabled
+    /**
+     * 类型与模态都是**独立字段**，直接改（不再往 `capabilities` 里塞约定键）。
+     * 三态：`undefined` = 不动，`null` = 撤成"未声明"，数组 = 明确声明。
+     */
+    if (input.mode !== undefined) changes.mode = input.mode
+    if (input.inputModalities !== undefined) {
+      changes.inputModalities = input.inputModalities ? [...input.inputModalities] : input.inputModalities
+    }
+    if (input.outputModalities !== undefined) {
+      changes.outputModalities = input.outputModalities ? [...input.outputModalities] : input.outputModalities
+    }
 
     const record = await this.models.update(existing.id, changes)
     if (!record) throw new ModelNotFoundError(input.modelId)
@@ -384,6 +419,8 @@ export class AiModelService {
       id: record.id,
       enabled: record.enabled,
       fields: Object.keys(changes),
+      mode: record.mode,
+      inputModalities: record.inputModalities,
     })
     return this.toModelModel(record)
   }
@@ -398,10 +435,18 @@ export class AiModelService {
 
   // ─────────────────────────── 运行时选模型（§4.9） ───────────────────────────
 
-  /** 可选用模型清单：**只含"供应商启用 + 模型启用"的**（会话页选择器的数据源） */
+  /**
+   * 可选用模型清单：**只含"供应商启用 + 模型启用 + 类型是对话类"的**（会话页选择器的数据源）。
+   *
+   * 为什么要按类型过滤：一个 embedding / 图像生成 / rerank 模型也能被"启用"，
+   * 但它**根本不能对话** —— 列出来让人选中，必然报错（选之前看不出来）。
+   * `unknown`（未声明）**照列**：国内厂商多数不给类型，按类型过滤会把正常模型也挡在外面；
+   * 真选错了，报错信息比"这个模型根本不在列表里"好懂得多。
+   */
   async listAvailable(): Promise<AiAvailableModelListModel> {
     const rows = await this.models.listEnabledWithProvider()
-    const models = rows.map((row) => this.toAvailableModel(row.model, row.provider))
+    const chatCapable = rows.filter((row) => isChatCapableMode(row.model.mode))
+    const models = chatCapable.map((row) => this.toAvailableModel(row.model, row.provider))
     return { models, defaultModelId: models[0]?.id ?? null }
   }
 
@@ -443,6 +488,8 @@ export class AiModelService {
       ...(provider.baseUrl ? { baseURL: provider.baseUrl } : {}),
       apiKey: this.requireProviderKey(provider),
       contextWindow: model.contextWindow,
+      mode: model.mode,
+      inputModalities: model.inputModalities,
     }
   }
 
@@ -478,6 +525,9 @@ export class AiModelService {
       displayName: record.displayName,
       contextWindow: record.contextWindow,
       maxOutputTokens: record.maxOutputTokens,
+      mode: record.mode,
+      inputModalities: record.inputModalities,
+      outputModalities: record.outputModalities,
       capabilities: record.capabilities,
       source: record.source,
       enabled: record.enabled,
@@ -500,6 +550,9 @@ export class AiModelService {
       providerKind: provider.kind,
       providerSlug: provider.slug,
       contextWindow: model.contextWindow,
+      mode: model.mode,
+      inputModalities: model.inputModalities,
+      outputModalities: model.outputModalities,
       capabilities: model.capabilities,
     }
   }

@@ -44,7 +44,35 @@ export class AiModelEntity extends AuditEntity {
   @Column({ name: 'max_output_tokens', type: 'int', nullable: true })
   maxOutputTokens: number | null = null
 
-  /** 能力标记（`tools` / `reasoning` / `vision` / `methods`…；供应商给什么存什么，不编造） */
+  /**
+   * 模型类型（`chat` / `embedding` / `image_generation`…，对齐 LiteLLM 的 `mode`）。
+   *
+   * 为什么单独一列：agent 的模型选择器**只该列对话类** —— 没有这个字段时，
+   * 一个 embedding 模型也能被选中，选中了必然报错。
+   * 默认 `chat`：库里的老数据与手工新增都按对话模型处理（这是本工程的主要用途）。
+   */
+  @Column({ name: 'mode', type: 'varchar', length: 32, default: 'chat' })
+  mode: string = 'chat'
+
+  /**
+   * **输入模态**（`["text","image","file"]`，取值见 `AiModality`），对齐 OpenRouter 的
+   * `architecture.input_modalities`。
+   *
+   * 三态语义（长度 0 与 null 是两件事，别压成一种）：
+   * - `null` = **未声明**（供应商没给、人也没填）→ 附件不拦，只提示；
+   * - `[]` = 明确声明"什么输入都不支持"；
+   * - `["text"]` = 明确只收文本 → 图片 / 文件要拦下并说清。
+   *
+   * 选数组而不是若干布尔：加一种模态不用改表，且与业界对外口径一致。
+   */
+  @Column({ name: 'input_modalities', type: 'jsonb', nullable: true })
+  inputModalities: string[] | null = null
+
+  /** 输出模态（同上；我们只做对话，所以实际取值基本就是 `["text"]`） */
+  @Column({ name: 'output_modalities', type: 'jsonb', nullable: true })
+  outputModalities: string[] | null = null
+
+  /** 供应商原始能力标记（`tools` / `reasoning` / `methods`…；**给什么存什么、不编造**） */
   @Column({ name: 'capabilities', type: 'jsonb', nullable: true })
   capabilities: Record<string, unknown> | null = null
 
