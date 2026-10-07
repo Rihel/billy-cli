@@ -32,6 +32,20 @@ description: 在 Billy 工程中开发前端页面：Admin 后台页（@repo/ui 
   ```tsx
   import { Message, MessageContent, MessageResponse } from '@repo/ui/components/ai-elements/message.tsx'
   ```
+  两处**本地改造**（改上游文件，改之前先看这里的理由）：
+  - **发送键可配**：`PromptInputTextarea` 多一个 `submitOn="enter" | "mod+enter"`（默认保持上游的
+    Enter 语义）；管理台用 `mod+enter`（长文本下"回车即发送"太容易误发）；
+  - **附件带原件**：`PromptInputMessage.files` 的每一项多一个 `rawFile`（`PromptInputFilePart`）——
+    `FileUIPart` 只有一个 `url`，而调用方常常需要原始 `File`（按内容算 md5、直传对象存储）。
+    附件校验**不要依赖 `maxFileSize` / `accept`**：`accept` 只提示文件选择框（粘贴不过它），
+    `maxFileSize` 是"一个超限整批丢"的粗粒度行为 —— 提交前自己逐文件预检并逐个说明原因。
+  - 待发附件条用 `PromptInputAttachmentsBar`（必须放在 `<PromptInput>` 内部），
+    已发送消息里的附件用 `PromptAttachments`（`@repo/ui` 的 `components/prompt-attachments.tsx`，走 barrel）；
+  - **点击上传**用 `PromptInputAttachmentButton`（也是本地新增：上游只把这个入口放在"加号菜单"里，
+    而"点一下就能选文件"是对话界面的默认预期）；粘贴上传是 `PromptInput` 自带的。
+  - 附件能不能发，看**当前模型的 `inputModalities`**（模型实体字段，见 `AiModality`）：
+    `null` = 未声明（提醒但不拦）、`[]` / 只有 `text` = 明确不支持（拦下并说清）。
+
   这些组件**不读 `message.parts`** —— 状态由调用方从 part 里取出来当 props 传（映射写法见
   `apps/web/src/app/ai/chat/page.tsx`）。
 

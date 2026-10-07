@@ -35,6 +35,75 @@
 **组装上下文只看根 run 的事件**（`listSince(..., { rootOnly: true })`）：子 agent 的内部过程是审计资料，
 回灌给主模型既费窗口又污染上下文。压缩产物是 `kind='summary'` 的事件（原文保留，摘要只是"给模型的新起点"）。
 
+## 2.1 对话附件（多模态输入）
+
+**只传存储 key，不传文件内容**：请求体上限就是 2mb（`main.ts` 的 `useBodyParser`），
+把 2MB 的图内联进去必然 413。链路是「前端预签名直传对象存储 → 随消息只交 key →
+服务端按 key 取回」（`AgentChatSchema.attachments`）。
+
+| 类型 | 喂法 |
+| --- | --- |
+| 图片（png/jpeg/webp/gif） | `image` part，内容用 data URL（不依赖供应商能否访问内网存储） |
+| 文本类（txt/md/csv 及常见代码后缀） | 内联成 `text` part，≤2 万字符、截断明示 |
+| 其它二进制 | `file` part（data URL），交给上游解析 |
+
+三件改它之前必须知道的事：
+
+1. **附件的 token 成本要参与裁剪判断**：`buildContext` 先取回内容、算出成本，经
+   `BuildContextInput.extraInputTokens` 传给 `ContextService`（估算与 0.7 阈值都算上）。
+   早先把它放在 `buildInput` 之后注入，结果是裁剪决策看不见它 —— 一张图按 data URL 长度
+   折算能得出几十万 token 的假结论。规则本身在 `@repo/shared` 的 `estimateContentTokens`。
+2. **`withUserContent` 不静默失败**：末条不是 user 消息时抛错（否则附件被悄悄丢掉）。
+3. **历史轮次的图片不回灌**（`toSegments` 只读 `payload.text`）：这是**明确取舍**，
+   不是 bug；多轮图片对话从第二轮起模型看不到上一轮的图。要做就得同时解决"每次组装都取对象"
+   与"把 data URL 塞进历史"两件事。
+
+**模型不一定收图**：能力是**模型实体的独立字段**，不在 `capabilities` jsonb 里（那一列是
+"供应商给什么存什么"，同步会整列覆盖）：
+
+| 字段 | 说明 |
+| --- | --- |
+| `mode` | 模型类型（`AiModelMode`，对齐 LiteLLM 的 `mode`）；agent 的可选模型只列对话类，`unknown` 照列 |
+| `input_modalities` | 输入模态数组（`AiModality`，对齐 OpenRouter 的 `architecture.input_modalities`） |
+| `output_modalities` | 输出模态数组 |
+
+**三态**：`null` = 未声明（**不拦**附件，只提醒）/ `[]` = 明确什么都不支持（拦）/
+`["text"]` = 明确只收文本（拦图片与文件）。判据是 `@repo/shared` 的 `attachmentCapabilityIssue`
+（输入是模态数组），前后端共用；服务端权威校验在 `ChatAttachmentService.assertSupported`，
+明确不支持抛 **3312**，未声明只留 warn。
+
+**解析在适配器里**（`provider-adapters.ts` 的 `parseModalities` / `parseMode`）：认 OpenRouter 的
+`architecture.*`、LiteLLM 的 `supports_vision` / `supports_pdf_input` 布尔位、顶层
+`input_modalities` / `modalities`、以及 `capabilities` 里的词（认 `vision`→`image`、`pdf`→`file` 同义词）。
+**都认不出落 `null`，绝不编造** —— 包括不把输出默认成 `["text"]`（清单里混着 embedding / 图像生成模型）。
+同步时 `input.inputModalities ?? existing.inputModalities`：供应商没给就**保留人工填的**，
+别改回"整列覆盖"（`ai-model-module.test.ts` 的 ⑤c 钉住）。
+
+**一份附件在三个地方各存什么**：对象存储存**文件本体**（前端预签名直传）、请求体只传
+`{key, filename, mediaType, bytes}`、`timelines.payload` 落**同样的元数据**（绝不落 base64 ——
+审计表"一律不裁剪"，塞几 MB 图片会撑变形）。模型输入那一步再按 key 取回转成 data URL。
+
+⚠️ **key 是客户端给的，读对象前必须校验归属**（`AttachmentKeyPolicy.assertOwned`）：
+前台用户必须落在 `user/<自己的 id>/` 前缀内，否则就是一条越权读取（伪造
+`user/<别人的 id>/x.png` 就能把别人的文件读出来喂给模型）。越权抛 3202，**不静默跳过那条附件**。
+管理员与鉴权关闭按现状放行（与 `StorageController` 同一姿态）。改附件链路时这一步不能省。
+
+⚠️ **多模态 + `durable: true` 曾整段丢图（2026-10-07 事故，已随升级修复）**：
+`@mastra/core@1.69.0` 在 durable（可恢复执行，线上默认开）下会把 `content` 数组**压平成纯字符串**，
+出站请求只有 **156 字节**、`content: "看图"` —— 症状是"模型说没收到图片"，看着像模型不支持读图。
+**升到 `1.75.0` 后正常**（上游已修）。排查这类问题的正确姿势：**让真实路径跑一次并抓出站请求**，
+不要逐环节证明"某环节没问题"；同时**实验必须与生产同配置**（早期实验全用 `new Agent()` 默认非 durable，
+所以完全看不见它）。回归防线在 `ai-mastra-contract.test.ts` 的"durable 下的多模态"，
+**那条必须走 `durable: true`**。另外：调用时显式传模型实例是稳妥做法（别依赖 Agent 上的动态 model
+去让 Mastra 自解析配置，那一层曾丢过多模态）。
+
+**降级顺序**（`readAttachment`）：图片 → image；PDF → file（必须排在"当文本试"**之前**，
+否则 PDF 里那段可读 ASCII 会被当文本内联）；认不出类型的 → 先当文本试；都不行才拒绝。
+
+测试：`test/ai-chat-attachment.test.ts`（三类喂法 / 截断 / 取不回抛错 / 能力校验 / 文本降级 / `withUserContent`）；
+**测试里手工 `new AgentChatService(...)` 是位置参数**，加依赖时必须同步补位（`test/helpers/attachments.ts`
+给了替身），漏补的症状是"logger 不是函数"这类与真实原因毫不相干的报错。
+
 ## 3. SSE 流式协议（AI SDK v6 UI Message Stream）
 
 - 端点：`POST /agent/chat/stream`（建流，**不套业务信封**）、`GET /agent/run/:runId/stream?offset=N`
@@ -59,11 +128,21 @@
 
 ## 5. 崩溃恢复（三档，代价要说清）
 
-- 开启 `AGENT_DURABLE_ENABLED`（默认 true）后 agent 逐步落快照到**我们的表**（`AgentMastraStore`，
-  只实现 workflows 域 9 个方法）；boot 时取 Redis 租约 → `recoverAllDurableAgents()`；
-- **恢复会重发模型调用、重跑工具**（官方语义，钱会重复花一次）：`recovery_count` 上限 1，
-  工具靠 `tool_call_id` upsert 去重；子 agent 不做 durable（父重跑 spawn 工具 → 命中幂等复用）；
-- 恢复不了就标 `interrupted`（前端提示可重试），不要假装成功。
+**durable 是什么**（一句话）：这一轮问答跑到一半、服务崩了/重启了，回来能**接着跑**。
+做法是**每走完一步就把状态存一份**到 `runs.snapshot`；启动时抢 Redis 租约 →
+`mastra.recoverAllDurableAgents()` 接上。代价：恢复是**从上一个快照重放**，
+会重发模型调用、重跑工具，**真花钱** —— 所以工具必须幂等、恢复次数有上限、要有看门狗兜底。
+
+⚠️ **两条改它之前必须知道的**：
+1. **快照能落库的前提是 `runs.engine_run_id` 有值**：落库语句是
+   `UPDATE runs SET snapshot ... WHERE engine_run_id = :runId`，对不上就静默丢快照
+   （只记 `ai.storage.snapshot_orphan_skipped`）。**2026-10-07 之前这里是空的**，
+   于是"崩溃续跑"从未真正生效（60 条运行只有 13 条早期手工造的带快照）。
+   现在由我们生成 `eng_<runId>` 并起跑时回写、同时交给 `agent.stream(..., { runId })`。
+   **别改成"让 Mastra 自己生成"** —— 那样 id 又对不上了。
+2. **`durable: true` 会让 Mastra 走另一条代码路径**，多模态内容在那里曾被压平
+   （§附件那节的记录）。排查"图片没到模型"这类问题，**务必用与生产相同的 durable 配置复现**；
+   早期实验全用 `new Agent()`（默认非 durable），所以完全看不见那个 bug。
 
 ## 6. 收尾里还做了一件"隔离"的事：首轮自动命名
 

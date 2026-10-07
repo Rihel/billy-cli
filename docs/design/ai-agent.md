@@ -166,6 +166,44 @@ ai/
 
 ## 3. 运行时设计
 
+### 3.0.0 先把「durable（可恢复执行）」说清楚（**2026-10-07 补，因为这块知识原先散在 §2.2 / §3.3 / §3.13 三处**）
+
+**一句话**：durable = **这一轮问答跑到一半，服务崩了/重启了，回来能接着往下跑**。
+
+**它解决什么**：一轮问答可能要走很多步（每次模型调用算一步，中间还会执行工具）。举例：用户让助手
+"整理一份周报"，要跑 5 步、耗时一分钟。跑到第 3 步时服务被重启：
+
+| | 结果 |
+| --- | --- |
+| **没有 durable** | 这一轮断在原地，用户看到失败、前面花的钱白花，得重发一次从头再来 |
+| **有 durable** | 服务起来后知道"跑到第 3 步了、前两步产出了什么"，**接着跑完**，用户几乎无感 |
+
+**它怎么做到**：**每走完一步，就把"这一轮目前的状态"存一份**到 `runs.snapshot`（JSONB 列，
+内容是 Mastra 的工作流快照：`runId` / `agentId` / `messageListState`（序列化的消息与 part）/
+`toolsMetadata`）。启动时 `AgentRecoveryService` 抢一把 Redis 租约（多副本只有一个动手），
+调 `mastra.recoverAllDurableAgents()` 把"没跑完的"接上。
+
+**代价（当初就写明了，不是新发现）**：恢复是**从上一个快照重放** ——
+会**重发模型调用、重跑工具，真花钱**。所以配套要求：**工具必须幂等**、恢复次数有上限
+（`recovery_count`）、运行超时 + 看门狗兜底。
+
+**怎么开关**：`AGENT_DURABLE_ENABLED`（默认 `true`）。关掉就没有"崩溃续跑"，但图片等多模态
+不受影响（见 §3.16.2.1 那次事故）。
+
+**⚠️ 快照能落库的前提：`runs.engine_run_id` 必须是引擎那个 runId**。快照落库是
+`UPDATE runs SET snapshot ... WHERE engine_run_id = :runId` —— id 对不上就**丢掉快照**并记
+`ai.storage.snapshot_orphan_skipped`。2026-10-07 之前这里一直是空的（没人写 `engine_run_id`），
+所以 **"崩溃续跑"这条线从未真正生效**：库里 60 条运行只有 13 条（早期手工造的）带快照。
+现在由**我们生成**（`eng_<我们的 runId>`）、起跑时回写，并同时交给 Mastra
+（`agent.stream(..., { runId })`），两边用同一个 id。
+
+**两次踩坑都跟它有关**（都记在案，别再犯）：
+1. **多模态被压平**：`@mastra/core@1.69.0` 在 durable 下把 `content` 数组压平成纯字符串，
+   图片静默丢失（§3.16.2.1）—— 症状像"模型不支持读图"，实为框架 bug，升级 `1.75.0` 修复；
+2. **实验与生产配置不一致**：排查时我的实验一律用 `new Agent()`（默认**非** durable），
+   而生产是 `createMastraAgent({ durable: true })`，于是**完全复现不出来**。
+   **教训：A/B 只能改一个变量，且实验必须与生产同配置。**
+
 ### 3.0 已拍板的三条（本轮确定，作为后续设计前提）
 
 | 决策 | 结论 | 对设计的影响 |
@@ -1202,6 +1240,200 @@ AGENT_COMMAND_WORK_DIR=               # 缺省 = 服务进程工作目录
 | 改动 | `tool-keys`（`runCommand`）、`assistant.agent`（授权）、提示词片段（用法与确认纪律，现落在 `partials/tools.eta`）、`ai.mastra`（`instructions` 改动态参数：用信封里的渲染全文）、`core/envelope`（信封加 `systemPrompt`）、`chat.service`（注入 `PROMPT_ENGINE` + 渲染 + 落快照）、`ai.module`（`CommandCore` + `PROMPT_ENGINE` provider）、`app-config`（`command*`）、`root.module`（`CommandModule`）、依赖 `execa` |
 | 测试 | kits 10 项（正常 / 非零退出 / 超时 / 孙进程不拖死 / 截断 / cwd / 起不来 / 中止 / 三端画像）；server：环境片段 3 项 + 命令策略 5 项（开关 / 目录越界 / 目录内 / 时长夹紧）+ e2e 两条（真跑一条跨平台命令并完整落库；首轮注入且第二轮不再注入） |
 
+### 3.16 附件（多模态输入）：只传存储 key，按类型分别喂给模型（**本轮新增，以此为准**）
+
+#### 3.16.1 主要矛盾：2MB 的附件进不了 2mb 的请求体
+
+服务端请求体上限 **2mb**（`apps/server/src/main.ts` 的 `useBodyParser`），而附件上限也是 2MB ——
+一旦把文件内联进请求体，光是 base64 膨胀（+33%）就必然 413。所以链路定成：
+
+```
+前端 --预签名直传--> 对象存储 --只回 key--> 随消息提交 --服务端按 key 取回--> 转成模型内容
+```
+
+于是请求体大小与文件大小无关，时间线落库也只存元数据（**绝不把 base64 写进 `timelines.payload`**：
+那会把审计表撑变形，而 payload 的口径是"一律不裁剪"，见 §4.6）。
+
+#### 3.16.1.1 一份附件在三个地方各存什么（账目要清）
+
+| 位置 | 存什么 | 为什么不存另一种 |
+| --- | --- | --- |
+| **对象存储**（`ObjectStorage`） | **文件本体**：前端经预签名 URL 直传（`use-attachments-upload.ts` 的 md5 key + `PUT`） | 只有它适合放二进制；放请求体必然撞 2mb 上限 |
+| **请求体**（`AgentChatSchema.attachments`） | 只传 `{key, filename, mediaType, bytes}` | 与文件大小无关（2MB 图 base64 后 +33% 必然 413） |
+| **`timelines.payload`** | 同样的 `{key, filename, mediaType, bytes}`（`userMessagePayload`） | **绝不落 base64**：`runs` / `timelines` 是审计表，"一律不裁剪"的口径下塞几 MB 图片会把表撑变形、把时间线分页拖慢；要展示再按 key 解析 |
+| 模型输入 | 图片 → `image` part 的 data URL；文本类 → 内联文本；PDF → `file` part | 不依赖"供应商能不能访问我们的对象存储"（预签名地址对内网不可达、会过期） |
+
+**键的命名空间**：前台用户上传时服务端把 key 改写成 `user/<自己的 id>/<basename>`
+（`resolveUploadKey` 清掉 `/` 与 `..`，防目录穿越与伪造他人前缀）；管理员后台上传不加前缀。
+
+**归属校验（2026-10-07 补的漏洞）**：附件链路的 key 是**客户端给的**——不校验的话，前台用户把 key
+写成 `user/<别人的 id>/x.png`，服务端就会把别人的文件读出来喂给模型（内容还会经模型回显）。
+所以读对象**之前**先过 `AttachmentKeyPolicy.assertOwned`（`ai/runtime/attachment-key.ts`）：
+前台用户必须落在自己的前缀内，管理员与鉴权关闭按现状放行（与 `StorageController` 同一姿态）。
+越权抛 3202（`StorageKeyForbidden`），**不静默跳过那条附件** —— 跳过会让模型对着看不见的附件胡说。
+`ai-chat-attachment.test.ts` 的 6 条用例钉住它，其中包括"越权时**根本没调用** `getObject`"。
+
+#### 3.16.2 三类附件、三种喂法（`ChatAttachmentService`）
+
+| 类型 | 怎么给模型 | 为什么 |
+| --- | --- | --- |
+| 图片（png/jpeg/webp/gif） | `image` part，内容用 **data URL** | 不依赖"供应商能不能访问我们的存储"：预签名地址对内网对象存储不可达，且会过期 |
+| 文本类（txt/md/csv 及常见代码后缀） | 取回后**内联成文本** part（≤2 万字符，截断明示） | 模型看的就是文字，没必要走文件通道；一份 2MB 文本吃掉整轮预算不划算 |
+| PDF 等二进制 | `file` part（data URL） | 交给模型 / 供应商自己解析；供应商不支持时由上游报错，错误经既有链路回到界面 |
+
+**判据只看我们自己的**（媒体类型 + 文件名后缀）：前端传来的 `mediaType` 是"用户设备认为的类型"，
+不可当可信输入（浏览器常把 `.md` 报成 `application/octet-stream`，所以有后缀兜底）。
+
+**读不回来就抛错（3311）终止这一轮**：静默丢掉用户发的东西，会让模型对着一份看不见的附件胡说，
+比直接报错难查得多。
+
+#### 3.16.2.1 最坑的一个：**durable（崩溃恢复）开启时图片被 Mastra 压平**（已修，改之前必读）
+
+**症状**：图片一路正确（前端传 key、时间线落元数据、服务端按 key 取回、组装成 `image` part、
+`built.messages` 末条 content 是 `["text","image"]`），但模型回答"我没收到图片"。
+看现象像"模型不支持读图"，实际与模型能力**无关**。
+
+**根因**：`@mastra/core@1.69.0` 在 **`durable: true`**（可恢复执行，线上默认开启，见 §3.3）下，
+会把多模态消息的 `content` **压平成纯字符串**，图片被静默丢掉：
+
+| 形态（同一张图、同一个官方适配器） | 出站请求 |
+| --- | --- |
+| ❌ `durable: true`（**线上默认**） | **156 字节**，`content: "看图"` —— 图没了 |
+| ✅ `durable: false` | 含 `image_url` 的正常请求 |
+| ✅ `durable: true` + **`@mastra/core@1.75.0`** | 含 `image_url` 的正常请求（**上游已修**） |
+
+**修法**：把 `@mastra/core` 从 `1.69.0` 升到 **`1.75.0`**（`@mastra/ai-sdk` 同步到 `1.10.6`）。
+我们这边的适配代码**没有错**（模型实例、消息组装、`image` part 都是对的），所以不要去改它们。
+
+**回归防线**：`ai-mastra-contract.test.ts` 的"durable 下的多模态"——断言 durable agent 的出站请求里
+`user.content` 是**part 数组**且含 `image_url`（压平时是纯字符串）。
+**这条必须走 `durable: true`**：不传 durable 时这个 bug 根本不出现（早先的 e2e 用 mock 且非 durable，
+所以完全看不见它 —— 这也是它藏了这么久的原因）。
+
+**排查教训（比 bug 本身值钱）**：
+1. 逐环节证明"每个环节都没问题"**不等于**定位了问题 —— 必须让**真实那条路径**跑一次并看**出站请求**；
+2. 我一直漏了 `durable` 这个变量：实验里用的都是 `new Agent()`（默认非 durable），
+   而生产是 `createMastraAgent({ durable: true })`。**"实验环境与生产不一致"是排查中最贵的坑**；
+3. 早期一版 A/B 得出了"动态 `model` 参数会导致压平"的**错误结论**并写进了注释 ——
+   那次对照没有控制 durable 变量。结论要能复现，**A/B 必须只改一个变量**。
+
+#### 3.16.3 两个自己发现的坑（都已修，写在代码注释里）
+
+1. **附件的 token 成本原先在 `buildInput` 之后才注入** → 裁剪决策看不见它。
+   一张图按 data URL 长度折算能得出几十万 token 的假结论，于是每次带图都触发一次
+   **要真花钱**的压缩，或者直接抛 3307（不硬塞）。现在由调用方算好成本、经
+   `BuildContextInput.extraInputTokens` 传进去，**估算与阈值判断都算上**，快照也如实体现在
+   `estimatedInputTokens` 里（对模型可以省，对审计必须诚实 —— 与 §3.9 同一姿态）。
+   估算规则本身在 `@repo/shared` 的 `estimateContentTokens`（媒体 part 按固定成本 1500，
+   与 data URL 长度无关）。
+2. **`withUserContent` 在"末条不是 user 消息"时静默返回** → 附件被悄悄丢掉。
+   改为抛错：这是内部不变量，靠"今天正好成立"迟早出事，而症状（模型看不见我发的图）离原因很远。
+
+#### 3.16.4 前端口径
+
+- **发送键是 ⌘/Ctrl + Enter**（`PromptInputTextarea` 的 `submitOn="mod+enter"`，默认仍是上游的 Enter 语义）：
+  长文本场景下"回车即发送"太容易误发；输入法组字期间的回车不触发提交。
+- **粘贴上传**由 ai-elements 的 `PromptInput` 自带（`onPaste` → 附件状态），加上输入框上方的
+  待发附件条（缩略图 / 文件名 / 大小 / "内容会读给模型"）。
+- **校验刻意不交给 `maxFileSize` / `accept`**：`accept` 只提示文件选择框（粘贴不过它），
+  `maxFileSize` 是"一个超限就把整批丢掉"的粗粒度行为。改为**提交前逐文件预检**：
+  有不合格的就整轮不发，并逐个说清"哪个文件、为什么、多大"（上限常量与 `AgentChatSchema` 同源）。
+- **提交时序**：先把附件传完再 `sendMessage`（失败即不发这一轮，输入框里的文字与附件都留着）——
+  先发后传会让用户得到一段"对不存在的附件评头论足"的回复。附件 key 随 `sendMessage` 的
+  metadata 交给 transport（key 只有上传那一步才知道，file part 里装的是预览地址）。
+- **历史回看**：从 `timelines.payload.attachments` 重建 file part。**只发图不打字的消息此前会整条消失**
+  （早先的重建判据是"有文字"），现在判据是"有文字或有附件"。
+
+#### 3.16.5 多模态能力是**模型实体的独立字段**（本轮重构，以此为准）
+
+**主要矛盾**：给一个收不了图的模型发图，最坏的结果不是报错，而是上游**静默忽略** ——
+用户以为模型看过图了，其实它什么也没看到，接着基于幻觉回答。所以"这个模型能收什么输入"
+必须是一份**显式、可查、能人工纠正**的事实。
+
+**上一版做错了什么**：把它塞进 `ai_models.capabilities` 这个 jsonb 的约定键（`vision` / `file`）。
+那一列的语义是"**供应商给什么存什么**"，同步会整列覆盖 —— 于是同步时得写代码特判保住人工声明，
+前端要猜字段名，语义上也不对（它不是供应商的原始数据，是我们的模型画像）。
+
+**业界怎么做**（本节的事实依据）：
+
+| | OpenRouter（[Models API 标准](https://openrouter.ai/docs/guides/overview/models)） | LiteLLM（[model_prices_and_context_window.json](https://docs.litellm.ai/docs/provider_registration/add_model_pricing)） |
+| --- | --- | --- |
+| 形态 | `architecture.input_modalities: ["text","image","file"]` + `output_modalities`（实测 465 个模型，取值 `text` / `image` / `file` / `audio` / `video`） | 扁平布尔：`supports_vision`（2234/4485）、`supports_pdf_input`（1015）、`supports_audio_input`（746）、`supports_video_input`（126），另有 `max_images_per_prompt` / `max_pdf_size_mb` 这类上限位 |
+| 类型 | `architecture.modality` 人类可读串 | `mode`（chat / embedding / image_generation…，4476/4485 都有） |
+
+共识：**输入 / 输出模态是模型的一等属性**。我们取 **OpenRouter 的数组形态**（加一种模态不用改表，
+将来对接 / 导出模型清单字段也对得上），并借 **LiteLLM 的 `mode`** 解决"选模型下拉里混进 embedding"。
+
+**落地的三个字段**（`ai_models`）：
+
+| 字段 | 含义 |
+| --- | --- |
+| `mode` | 模型类型（见 `AiModelMode`），默认 `chat`；agent 的可选模型**只列对话类**，`unknown` 照列 |
+| `input_modalities` | 输入模态数组；取值见 `AiModality`（`text` / `image` / `file` / `audio` / `video`） |
+| `output_modalities` | 输出模态数组（我们只做对话，实际基本是 `["text"]`） |
+
+`capabilities` **保留但语义收窄**：它只是"供应商原始能力标记"的留存（排查用），判能力一律看模态字段。
+
+**三态，不是两态**（`null` 与 `[]` 是两件事）：
+
+| 值 | 含义 | 附件怎么办 |
+| --- | --- | --- |
+| `null` | **未声明**（供应商没给、人也没填） | **不拦**，只在会话页提醒"该模型未声明输入模态，图片 / 文件可能读不了" |
+| `[]` | 明确声明"什么输入都不支持" | 拦 |
+| `["text"]` | 明确只收文本 | 图片 / 文件拦下并说清是哪个文件 |
+
+为什么未声明**不拦**：国内厂商的"列模型"接口普遍不给模态信息，硬按"不支持"处理会把真正的视觉模型
+也误伤（用户粘了图却被告知不支持，而其实模型能看）。真不能收图时，服务端会明确报错（3312），
+比前端瞎猜强。
+
+**供应商给了就落库**（`provider-adapters.ts` 的 `parseModalities` / `parseMode`，认过的形态）：
+OpenRouter 的 `architecture.*`、LiteLLM 的 `supports_vision` / `supports_pdf_input` 等布尔位、
+顶层 `input_modalities` / `modalities` / `input_types`、以及 `capabilities` 里的词
+（认 `vision` → `image`、`pdf` → `file` 这类同义词）。**都认不出就是 `null`，绝不编造** ——
+包括不把"输出"默认成 `["text"]`：清单里混着 embedding / 图像生成模型，替它们声明输出是编造。
+
+**同步不覆盖人工填的模态**：`upsertSyncedModel` 里 `input.inputModalities ?? existing.inputModalities`
+（输出同理）—— 供应商没给（`null`）时保留库里的值。上一版靠"合并 capabilities"来实现同一目的，
+现在字段独立了，一条 `??` 就够（`ai-model-module.test.ts` 的 ⑤c 钉住）。
+
+**三层校验，判据同一份**（`attachmentCapabilityIssue`，输入是模态数组）：
+
+1. **前端预检**（提交前）：图片要 `image`、PDF 要 `file`；明确声明不支持就**整轮不发**并逐条说明；
+   清单还没到手（`undefined`）或模型未声明（`null`）都**不拦**（交给服务端）；
+2. **服务端权威校验**（`ChatAttachmentService.assertSupported`）：前端可以绕过，所以必须再判一次 ——
+   明确不支持抛 3312；未声明只留一条 warn（便于排障"用户发图后模型说看不到"）；
+3. **读不出来时的降级**（`readAttachment` 的顺序，有讲究）：
+   图片 → `image` part；PDF → `file` part（**必须排在"当文本试"之前**，否则 PDF 里的
+   `%PDF-1.4` / 对象字典那一段可读 ASCII 会让它被当成乱码内联进提示词，白烧一窗口 token）；
+   认不出类型的 → **先当文本试**（读得出来就内联，任何模型都能用）；都不行 → 明确拒绝。
+
+**界面**：模型选择器的每一项与触发按钮上标「图」/「文件」徽标（选之前就知道）；
+四项都不支持时上传按钮禁用并说明；**未声明**时给一句提醒（不拦）。
+
+**后台「模型管理」**：模型类型用字典下拉（`DictSelect` + `AiModelMode`），输入 / 输出模态用
+复选框多选（`ModalityPicker`），并显示当前是"未声明"还是"明确声明了哪几项"，可一键撤回未声明。
+
+**错误码**：3312（`ModelCapabilityMismatch`）。
+
+#### 3.16.6 已知取舍（写下来，免得日后当 bug）
+
+1. **历史轮次的图片不回灌上下文**：`toSegments` 只读 `payload.text`，所以多轮图片对话从第二轮起
+   模型看不到上一轮的图。回灌要么每次组装都去取对象（慢、且要把 data URL 塞进历史），
+   要么另建缓存 —— 这一轮不做，界面上也没承诺"它能记住图"。
+2. **模态靠"供应商给的 + 人工补的"**：供应商不给时（国内厂商普遍如此）需要人在后台声明。
+   刻意**不内置一份"哪些模型支持视觉"的清单**：那是会过期的外部知识，猜错的代价是用户的图被静默丢掉；
+   认不出就诚实地写"未声明"。
+3. **请求体上限仍是 2mb**：单个附件 2MB 走存储没问题，但若日后要把文件内联进请求体，
+   得先动这个上限。
+
+#### 3.16.7 本轮改动面（自查用）
+
+| 动作 | 对象 |
+| --- | --- |
+| 新增 | `ai/runtime/chat-attachment.service.ts`、`shared/utils/token.utils.ts`、`shared/dicts/ai-capability.dict.ts`、**`shared/dicts/ai-modality.dict.ts`**、`@repo/ui` 的 `components/prompt-attachments.tsx`、admin 的 `attachment-utils.ts` / `use-attachments-upload.ts` / `use-available-models.ts` |
+| 改动 | `agent.schema`（`ChatAttachmentSchema` + 上限常量 + `AgentChatSchema` 的 `attachments` 与"文字与附件不能同时为空"）、**`ai-model-entity` + `ai-model.schema`（`mode` / `input_modalities` / `output_modalities` 三个字段 + 迁移）**、`provider-adapters`（模态与类型解析）、`ai-model.repository`（同步不覆盖人工填的模态）、`ai-model.service`（可选模型按类型过滤）、`chat.service`（注入附件服务 + `buildContext` 先取内容再组装 + 附件落库 + **每轮显式传模型实例**）、**`mastra/agent.adapter.ts`（`toMastraModelInstance`）与 `runtime/agent-runner.ts`（子 agent 同样显式传实例）**、`context.service`（`extraInputTokens` 参与估算与阈值）、`core/envelope` + `RuntimeModel`（带能力）、`core/errors` + `app-error-code`（3311 / 3312）、`ai.module` / `runtime/index`（登记）、`prompt-input.tsx`（`submitOn` / `PromptInputFilePart.rawFile` / `PromptInputAttachmentButton`）、admin 会话页（点击上传 + 能力预检 + 提交前上传 + `prepareSendMessagesRequest` 带附件 + 历史重建）、admin 模型页（能力三态选择器） |
+| 测试 | server：**带附件的对话端到端 1 项**（只传 key / 时间线不落 base64 / 图片真到模型 / 命名不带图）、**附件归属校验 6 项**、**模态与类型解析 11 项**、**模型模块（含同步不覆盖人工模态、按类型过滤）19 项**、附件服务 20 项（三类喂法 / 截断明示 / 取不回抛错 / 能力校验 / 文本降级 / `withUserContent` 不静默）、上下文附件成本 1 项、模型同步保留人工能力 2 项；shared：token 估算 6 项 + 入参校验 8 项 + 能力判据 17 项；admin：前端预检 18 项 + 历史重建附件 3 项 |
+
 ## 4. 记忆与落库（调研已回，本节定稿）
 
 ### 4.1 配置形状与职责边界
@@ -1977,6 +2209,9 @@ AI SDK v6 的续传是**两层 API**（不是同一方法的两个名字）：
 | **子 agent 的提示词** | **由主 agent 现场撰写**（工具的 `system_prompt` 入参，必填）；不再有 `analyst.eta` 这类静态子 agent 提示词 |
 | **子 agent 的工具面** | **全部工具 − 委派类工具**（`delegation` 标记）→ 天然深度 1，不会无限递归 |
 | **子 agent 的落库** | 独立 `runs` 行（`parent_run_id` / `depth` / `tool_call_id`）+ 自己完整的 `timelines`；动态 prompt 全量落 `request_snapshot`；消耗汇总进父 run，**轮数只数根 run** |
+| **对话附件** | **只传存储 key、不传文件内容**（请求体与文件大小无关）；图片走 `image` part 的 data URL、文本类内联、PDF 走 `file` part；时间线只落元数据（§3.16） |
+| **多模态能力的建模** | **模型实体的独立字段**（`mode` + `input_modalities` + `output_modalities`），不塞进 `capabilities` jsonb。模态数组对齐 **OpenRouter** 的 `architecture.input_modalities`，类型字段对齐 **LiteLLM** 的 `mode`（§3.16.5） |
+| **未声明的语义** | `null` = 未声明（**不拦**附件，只提醒）与 `[]` = 明确什么都不支持（拦）**是两件事**；供应商给了就落库、没给不编造；同步不覆盖人工填的值 |
 
 **仍待你定**（给了推荐，你可以直接说"按推荐"）：
 
