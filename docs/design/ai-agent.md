@@ -1279,7 +1279,7 @@ AGENT_COMMAND_WORK_DIR=               # 缺省 = 服务进程工作目录
 | --- | --- | --- |
 | 图片（png/jpeg/webp/gif） | `image` part，内容用 **data URL** | 不依赖"供应商能不能访问我们的存储"：预签名地址对内网对象存储不可达，且会过期 |
 | 文本类（txt/md/csv 及常见代码后缀） | 取回后**内联成文本** part（≤2 万字符，截断明示） | 模型看的就是文字，没必要走文件通道；一份 2MB 文本吃掉整轮预算不划算 |
-| **PDF（有文字层）** | **本地抽文字 → 内联成 `text` part** | 供应商的文件通道**不可靠**：DeepSeek 官方适配器只认 `image/*` 的 file part，PDF 会被它记一条警告后**静默丢掉**（运行照样成功）。抽出的文字对任何模型都有效 |
+| **PDF（有文字层）** | **本地抽文字 → 内联成 `text` part** | **DeepSeek 的文件通道只支持图片格式**（实测 `/chat/completions` 发 PDF 直接 `400`：`file is valid and has one of the following formats: webp, png, jpeg, and gif`；Files API 文档同）。而 `@ai-sdk/deepseek` 对非图片 file part 只记一条警告后**静默丢掉**（运行照样"成功"）——所以 PDF 必须自己抽文字，那条路对任何模型都有效 |
 | PDF（扫描件 / 无文字层） | 退回 `file` part | 抽不出文字只能交给模型；此时**才**要求模型的"文件输入"能力，不支持就当场抛错说清 |
 
 **判据只看我们自己的**（媒体类型 + 文件名后缀）：前端传来的 `mediaType` 是"用户设备认为的类型"，

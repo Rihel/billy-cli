@@ -101,9 +101,10 @@
 内联成文本**，抽不到（扫描件 / 加密）才退回 file —— 退回时**才**判模型的"文件输入"能力；
 这一步必须排在"当文本试"**之前**（否则 PDF 里那段可读 ASCII 会被当文本内联）；认不出类型的 → 先当文本试；都不行才拒绝。
 
-⚠️ **别只依赖供应商的文件通道**：DeepSeek 官方适配器只认 `mediaType` 以 `image/` 开头的 file part，
-PDF 会被它记一条 `Unsupported user message part type` 警告后**静默丢掉**（运行照样"成功"，
-模型回答"我没收到文件"）。所以 PDF 一律先本地抽文字 —— 那条路对任何模型都有效。
+⚠️ **别只依赖供应商的文件通道**：**DeepSeek 的文件通道只支持图片格式**（实测发 PDF 直接 `400`：
+`one of the following formats: webp, png, jpeg, and gif`），而 `@ai-sdk/deepseek` 对非图片 file part
+只记一条警告后**静默丢掉**（运行照样"成功"，模型回答"我没收到文件"）。
+所以 PDF 一律先本地抽文字 —— 那条路对任何模型都有效，也不受各供应商能力差异影响。
 能力判据 `attachmentCapabilityIssue` 因此**只判图片**：PDF / 文本类不需要模型有对应能力。
 
 测试：`test/ai-chat-attachment.test.ts`（三类喂法 / 截断 / 取不回抛错 / 能力校验 / 文本降级 / `withUserContent`）；
