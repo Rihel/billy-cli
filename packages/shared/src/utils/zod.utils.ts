@@ -61,6 +61,14 @@ function translateOne(issue: any): string {
     }
 
     case 'too_small': {
+      // `origin` 区分「数字下限 / 数组条数 / 字符串长度」：数字说「个字符」会让人以为
+      // 是在限制输入长度（分页的 size 超限就被报成"每页条数不能超过100个字符"）。
+      if (issue.origin === 'number') {
+        return `${label}不能小于${issue.minimum}`
+      }
+      if (issue.origin === 'array' || issue.origin === 'set') {
+        return `${label}至少需要 ${issue.minimum} 项`
+      }
       if (issue.minimum === 1 && issue.path.length > 0) {
         return `${label}不能为空`
       }
@@ -72,6 +80,10 @@ function translateOne(issue: any): string {
 
     case 'too_big': {
       if (typeof issue.maximum === 'number') {
+        if (issue.origin === 'number') return `${label}不能超过${issue.maximum}`
+        if (issue.origin === 'array' || issue.origin === 'set') {
+          return `${label}最多 ${issue.maximum} 项`
+        }
         return `${label}不能超过${issue.maximum}个字符`
       }
       return `${label}不符合最大长度要求`

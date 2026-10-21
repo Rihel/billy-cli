@@ -1,19 +1,20 @@
 'use client'
 
 import { useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useInfiniteQuery, useQuery } from '@tanstack/react-query'
 import {
   Badge,
   Button,
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
   DataTable,
   DictTag,
   DisplayValue,
   Markdown,
   RefreshButton,
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
   Switch,
   cn,
 } from '@repo/ui'
@@ -26,7 +27,6 @@ import {
 } from '@repo/shared'
 import type {
   AgentConversationModel,
-  AgentRunModel,
   AgentTimelineItemModel,
 } from '@repo/shared'
 import { useServerClient } from '@/lib/server-client'
@@ -43,9 +43,16 @@ import { useServerClient } from '@/lib/server-client'
  *
  * 硬约束（与后端一致）：运行与时间线**只读**，没有删除入口 —— 它们是审计证据；
  * 只有会话能软删，且删除动作本身会记进时间线。
+ *
+ * 交互：会话列表留在页面上，点「查看运行」在**右侧 50% 抽屉**里看这一会话的运行 / 快照 / 时间线。
+ * 抽屉里独立滚动，页面不会因为一次复盘被拉成很长的一列。
  */
 const PAGE_SIZE = 10
-const TIMELINE_SIZE = 200
+/**
+ * 后端 `BasePaginateSchema` 的硬上限是 100（再多会被 400 拒绝）。
+ * 审计要尽量一次看全，所以按上限取，取不完再「加载更多」。
+ */
+const STREAM_PAGE_SIZE = 100
 
 const formatDuration = (ms: number | null | undefined): string =>
   ms === null || ms === undefined ? '—' : ms < 1000 ? `${ms} ms` : `${(ms / 1000).toFixed(2)} s`
@@ -60,12 +67,17 @@ const tokenSummary = (usage: Record<string, unknown> | null): string => {
   return `${total ?? '-'}（入 ${input ?? '-'} / 出 ${output ?? '-'}）`
 }
 
+/** 分页游标：后端返回 `page / size / total`，还有下一页就再要一页 */
+const nextPageParam = (last: { page: number; size: number; total: number }): number | undefined =>
+  last.page * last.size < last.total ? last.page + 1 : undefined
+
 export default function AiAuditPage() {
   const client = useServerClient()
   const [page, setPage] = useState(1)
   const [includeDeleted, setIncludeDeleted] = useState(false)
   const [conversation, setConversation] = useState<AgentConversationModel>()
   const [runId, setRunId] = useState<string>()
+  const [drawerOpen, setDrawerOpen] = useState(false)
 
   const conversationsQuery = useQuery({
     queryKey: ['ai', 'conversation', 'list', { page, includeDeleted }],
@@ -73,35 +85,56 @@ export default function AiAuditPage() {
       client.agent.conversation.list({ page, size: PAGE_SIZE, includeDeleted }),
   })
 
-  // 运行列表：一次拿全（含子 agent），前端据此拼父子树
-  const runsQuery = useQuery({
-    enabled: Boolean(conversation),
+  // 运行列表：一次 100 条（含子 agent），前端据此拼父子树；不够再加载
+  const runsQuery = useInfiniteQuery({
+    enabled: drawerOpen && Boolean(conversation),
     queryKey: ['ai', 'run', 'list', { conversationId: conversation?.id }],
-    queryFn: () =>
+    queryFn: ({ pageParam }) =>
       client.agent.run.list({
         conversationId: conversation!.id,
-        page: 1,
-        size: 100,
+        page: pageParam,
+        size: STREAM_PAGE_SIZE,
       }),
+    initialPageParam: 1,
+    getNextPageParam: nextPageParam,
   })
 
   const runDetailQuery = useQuery({
-    enabled: Boolean(runId),
+    enabled: drawerOpen && Boolean(runId),
     queryKey: ['ai', 'run', 'detail', { runId }],
     queryFn: () => client.agent.run.detail({ runId: runId! }),
   })
 
-  const timelineQuery = useQuery({
-    enabled: Boolean(conversation),
+  // 时间线：按 100 条一页续取。审计场景可能上万条，不能指望一次装下
+  const timelineQuery = useInfiniteQuery({
+    enabled: drawerOpen && Boolean(conversation),
     queryKey: ['ai', 'timeline', 'list', { conversationId: conversation?.id, runId }],
-    queryFn: () =>
+    queryFn: ({ pageParam }) =>
       client.agent.timeline.list({
         conversationId: conversation!.id,
         ...(runId ? { runId } : {}),
-        page: 1,
-        size: TIMELINE_SIZE,
+        page: pageParam,
+        size: STREAM_PAGE_SIZE,
       }),
+    initialPageParam: 1,
+    getNextPageParam: nextPageParam,
   })
+
+  const runs = runsQuery.data?.pages.flatMap((item) => item.items) ?? []
+  const runTotal = runsQuery.data?.pages[0]?.total ?? 0
+  const timeline = timelineQuery.data?.pages.flatMap((item) => item.items) ?? []
+  const timelineTotal = timelineQuery.data?.pages[0]?.total ?? 0
+
+  const openRuns = (next: AgentConversationModel) => {
+    setConversation(next)
+    setRunId(undefined)
+    setDrawerOpen(true)
+  }
+
+  const closeDrawer = (open: boolean) => {
+    setDrawerOpen(open)
+    if (!open) setRunId(undefined)
+  }
 
   const conversationColumns: DataTableColumnDef<AgentConversationModel>[] = [
     {
@@ -149,11 +182,10 @@ export default function AiAuditPage() {
       cell: ({ row }) => (
         <Button
           size="sm"
-          variant={conversation?.id === row.original.id ? 'default' : 'outline'}
-          onClick={() => {
-            setConversation(row.original)
-            setRunId(undefined)
-          }}
+          variant={
+            drawerOpen && conversation?.id === row.original.id ? 'default' : 'outline'
+          }
+          onClick={() => openRuns(row.original)}
         >
           查看运行
         </Button>
@@ -161,84 +193,11 @@ export default function AiAuditPage() {
     },
   ]
 
-  const runs = runsQuery.data?.items ?? []
-  const runColumns: DataTableColumnDef<AgentRunModel>[] = [
-    {
-      header: '层级',
-      accessorKey: 'depth',
-      meta: { width: 200 },
-      cell: ({ row }) => (
-        <div className="flex items-center gap-2">
-          <span className={cn(row.original.depth > 0 && 'pl-4 text-muted-foreground')}>
-            {row.original.depth > 0 ? '└ ' : ''}
-            {row.original.depth === 0 ? '本轮' : '子助手'}
-          </span>
-          <span className="font-mono text-xs">{row.original.agentKey}</span>
-        </div>
-      ),
-    },
-    {
-      header: '状态',
-      accessorKey: 'status',
-      meta: { width: 100 },
-      cell: ({ row }) => <DictTag dict={RunStatus} value={row.original.status} />,
-    },
-    {
-      header: '步 / 工具',
-      id: 'counts',
-      meta: { width: 110 },
-      cell: ({ row }) => `${row.original.stepCount} / ${row.original.toolCallCount}`,
-    },
-    { header: '耗时', accessorKey: 'durationMs', meta: { width: 100 }, cell: ({ row }) => formatDuration(row.original.durationMs) },
-    {
-      header: '消耗',
-      accessorKey: 'usage',
-      meta: { width: 220 },
-      cell: ({ row }) => tokenSummary(row.original.usage),
-    },
-    {
-      header: '失败环节',
-      accessorKey: 'errorStage',
-      meta: { width: 140 },
-      cell: ({ row }) =>
-        row.original.errorStage ? (
-          <span className="text-destructive">
-            {row.original.errorStage}
-            {row.original.errorMessage ? `：${row.original.errorMessage}` : ''}
-          </span>
-        ) : (
-          <span className="text-muted-foreground">—</span>
-        ),
-    },
-    {
-      header: '开始时间',
-      accessorKey: 'startedAt',
-      meta: { width: 180 },
-      cell: ({ row }) => <DisplayValue type="date" value={row.original.startedAt} />,
-    },
-    {
-      header: '操作',
-      id: 'actions',
-      meta: { width: 130 },
-      cell: ({ row }) => (
-        <Button
-          size="sm"
-          variant={runId === row.original.id ? 'default' : 'outline'}
-          onClick={() => setRunId(runId === row.original.id ? undefined : row.original.id)}
-        >
-          {runId === row.original.id ? '看整个会话' : '只看这一轮'}
-        </Button>
-      ),
-    },
-  ]
-
-  const timeline = timelineQuery.data?.items ?? []
-
   return (
     <div className="flex flex-col gap-4">
       <DataTable<AgentConversationModel>
         title="AI 会话审计"
-        description="按会话 → 运行 → 时间线三层复盘；运行与时间线只读（审计证据，不提供删除）"
+        description="按会话 → 运行 → 时间线三层复盘；点「查看运行」在右侧抽屉查看，运行与时间线只读（审计证据，不提供删除）"
         columns={conversationColumns}
         data={conversationsQuery.data?.items}
         loading={conversationsQuery.isFetching}
@@ -253,106 +212,193 @@ export default function AiAuditPage() {
               <Switch checked={includeDeleted} onCheckedChange={setIncludeDeleted} />
               含已删除会话
             </label>
-            <RefreshButton
-              onClick={() => {
-                void conversationsQuery.refetch()
-                void runsQuery.refetch()
-                void timelineQuery.refetch()
-                void runDetailQuery.refetch()
-              }}
-            />
+            <RefreshButton onClick={() => void conversationsQuery.refetch()} />
           </div>
         }
       />
 
-      {conversation ? (
-        <DataTable<AgentRunModel>
-          title={`运行记录：${conversation.title || conversation.id}`}
-          description="一次问答一行；子 agent 是独立一行（同一张表，靠父子列分树）——它的消耗已汇总进父的合计"
-          columns={runColumns}
-          data={runs}
-          loading={runsQuery.isFetching}
-          rowKey="id"
-          emptyText="这个会话还没有运行记录"
-        />
-      ) : null}
-
-      {conversation && runId && runDetailQuery.data ? (
-        <Card>
-          <CardHeader className="flex-row items-center justify-between gap-2">
-            <CardTitle className="text-base">
-              输入快照（复盘：当时**送给模型的输入**）
-            </CardTitle>
-            <Button size="sm" variant="ghost" onClick={() => setRunId(undefined)}>
-              关闭
-            </Button>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-3">
-            <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
-              <span>runId：{runDetailQuery.data.id}</span>
-              <span>请求 id：{runDetailQuery.data.requestId ?? '—'}</span>
-              <span>发起人：{runDetailQuery.data.triggeredBy ?? '—'}</span>
-              <span>恢复次数：{runDetailQuery.data.recoveryCount}</span>
-            </div>
-            <pre className="max-h-80 overflow-auto rounded-md border border-border bg-muted/40 p-3 text-xs">
-              {JSON.stringify(runDetailQuery.data.requestSnapshot ?? {}, null, 2)}
-            </pre>
-            {runDetailQuery.data.errorDetail ? (
-              <div className="flex flex-col gap-2">
-                <span className="text-sm font-medium text-destructive">上游错误原文（全量）</span>
-                <pre className="max-h-60 overflow-auto rounded-md border border-destructive/40 bg-destructive/5 p-3 text-xs">
-                  {JSON.stringify(runDetailQuery.data.errorDetail, null, 2)}
-                </pre>
-              </div>
-            ) : null}
-            {runDetailQuery.data.children.length > 0 ? (
-              <div className="flex flex-col gap-2">
-                <span className="text-sm font-medium">子助手（{runDetailQuery.data.children.length}）</span>
-                <div className="flex flex-col gap-1 text-xs text-muted-foreground">
-                  {runDetailQuery.data.children.map((child) => (
-                    <button
-                      key={child.id}
-                      type="button"
-                      className="flex items-center justify-between rounded-md border border-border px-3 py-2 text-left hover:bg-muted/50"
-                      onClick={() => setRunId(child.id)}
-                    >
-                      <span className="font-mono">{child.agentKey}</span>
-                      <span>
-                        {child.stepCount} 步 / {child.toolCallCount} 次工具 ·{' '}
-                        {formatDuration(child.durationMs)} · {tokenSummary(child.usage)}
-                      </span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-            ) : null}
-          </CardContent>
-        </Card>
-      ) : null}
-
-      {conversation ? (
-        <Card>
-          <CardHeader className="flex-row items-center justify-between gap-2">
-            <CardTitle className="text-base">
-              时间线{runId ? '（只看这一轮 / 该子助手）' : '（整个会话，含子 agent）'}
-            </CardTitle>
-            <div className="flex items-center gap-2 text-xs text-muted-foreground">
-              <span>共 {timeline.length} 条</span>
-              <RefreshButton onClick={() => void timelineQuery.refetch()} />
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div className="flex max-h-[36rem] flex-col gap-2 overflow-auto pr-1">
-              {timeline.map((item) => (
-                <TimelineRow key={item.id} item={item} />
-              ))}
-              {timeline.length === 0 && !timelineQuery.isFetching ? (
-                <span className="text-sm text-muted-foreground">没有事件</span>
+      <Sheet open={drawerOpen} onOpenChange={closeDrawer}>
+        <SheetContent
+          side="right"
+          className="flex w-full flex-col gap-0 overflow-hidden p-0 data-[side=right]:w-full data-[side=right]:sm:max-w-[50vw]"
+        >
+          <SheetHeader className="shrink-0 border-b pr-12">
+            <SheetTitle className="truncate">
+              运行记录：{conversation?.title || conversation?.id || '—'}
+            </SheetTitle>
+            <SheetDescription className="flex flex-wrap items-center gap-x-3 gap-y-1">
+              <span className="font-mono">{conversation?.id}</span>
+              <span>{conversation?.agentKey}</span>
+              {conversation ? (
+                <DictTag dict={ConversationStatus} value={conversation.status} />
               ) : null}
-            </div>
-          </CardContent>
-        </Card>
-      ) : null}
+            </SheetDescription>
+          </SheetHeader>
+
+          <div className="min-h-0 flex-1 space-y-5 overflow-y-auto p-4">
+            <section className="space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                <h3 className="text-sm font-medium">
+                  运行记录
+                  <span className="ml-1 text-xs font-normal text-muted-foreground">
+                    {runsQuery.isLoading ? '加载中…' : `共 ${runTotal} 条`}
+                  </span>
+                </h3>
+                <RefreshButton
+                  onClick={() => {
+                    void runsQuery.refetch()
+                    void timelineQuery.refetch()
+                    void runDetailQuery.refetch()
+                  }}
+                />
+              </div>
+
+              <div className="flex flex-col gap-1">
+                {runs.map((run) => (
+                  <button
+                    key={run.id}
+                    type="button"
+                    className={cn(
+                      'flex flex-col gap-1 rounded-md border border-border px-3 py-2 text-left transition-colors hover:bg-muted/50',
+                      runId === run.id && 'border-primary bg-muted/40',
+                    )}
+                    onClick={() => setRunId(runId === run.id ? undefined : run.id)}
+                  >
+                    <div className="flex flex-wrap items-center gap-2 text-sm">
+                      <span className={cn('font-mono', run.depth > 0 && 'text-muted-foreground')}>
+                        {run.depth > 0 ? '└ ' : ''}
+                        {run.agentKey}
+                      </span>
+                      <Badge variant={run.depth > 0 ? 'outline' : 'secondary'}>
+                        {run.depth === 0 ? '本轮' : '子助手'}
+                      </Badge>
+                      <DictTag dict={RunStatus} value={run.status} />
+                      <span className="text-xs text-muted-foreground">
+                        {run.stepCount} 步 / {run.toolCallCount} 次工具 ·{' '}
+                        {formatDuration(run.durationMs)} · {tokenSummary(run.usage)}
+                      </span>
+                      <span className="ml-auto text-xs text-primary">
+                        {runId === run.id ? '收起快照' : '看输入快照'}
+                      </span>
+                    </div>
+                    {run.errorStage ? (
+                      <span className="text-xs text-destructive">
+                        {run.errorStage}
+                        {run.errorMessage ? `：${run.errorMessage}` : ''}
+                      </span>
+                    ) : null}
+                    <span className="flex flex-wrap gap-3 font-mono text-xs text-muted-foreground">
+                      <span>{run.id}</span>
+                      <span>
+                        <DisplayValue type="date" value={run.startedAt} />
+                      </span>
+                    </span>
+                  </button>
+                ))}
+                {!runsQuery.isLoading && runs.length === 0 ? (
+                  <span className="text-sm text-muted-foreground">这个会话还没有运行记录</span>
+                ) : null}
+                {runsQuery.hasNextPage ? (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    disabled={runsQuery.isFetchingNextPage}
+                    onClick={() => void runsQuery.fetchNextPage()}
+                  >
+                    {runsQuery.isFetchingNextPage ? '加载中…' : '加载更多运行'}
+                  </Button>
+                ) : null}
+              </div>
+            </section>
+
+            {runId && runDetailQuery.data ? (
+              <section className="space-y-2">
+                <div className="flex items-center justify-between gap-2">
+                  <h3 className="text-sm font-medium">输入快照（当时送给模型的输入）</h3>
+                  <Button size="sm" variant="ghost" onClick={() => setRunId(undefined)}>
+                    收起
+                  </Button>
+                </div>
+                <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
+                  <span>runId：{runDetailQuery.data.id}</span>
+                  <span>请求 id：{runDetailQuery.data.requestId ?? '—'}</span>
+                  <span>发起人：{runDetailQuery.data.triggeredBy ?? '—'}</span>
+                  <span>恢复次数：{runDetailQuery.data.recoveryCount}</span>
+                </div>
+                <pre className="max-h-72 overflow-auto rounded-md border border-border bg-muted/40 p-3 text-xs">
+                  {JSON.stringify(runDetailQuery.data.requestSnapshot ?? {}, null, 2)}
+                </pre>
+                {runDetailQuery.data.errorDetail ? (
+                  <div className="flex flex-col gap-2">
+                    <span className="text-sm font-medium text-destructive">
+                      上游错误原文（全量）
+                    </span>
+                    <pre className="max-h-60 overflow-auto rounded-md border border-destructive/40 bg-destructive/5 p-3 text-xs">
+                      {JSON.stringify(runDetailQuery.data.errorDetail, null, 2)}
+                    </pre>
+                  </div>
+                ) : null}
+                {runDetailQuery.data.children.length > 0 ? (
+                  <div className="flex flex-col gap-2">
+                    <span className="text-sm font-medium">
+                      子助手（{runDetailQuery.data.children.length}）
+                    </span>
+                    <div className="flex flex-col gap-1 text-xs text-muted-foreground">
+                      {runDetailQuery.data.children.map((child) => (
+                        <button
+                          key={child.id}
+                          type="button"
+                          className="flex items-center justify-between rounded-md border border-border px-3 py-2 text-left hover:bg-muted/50"
+                          onClick={() => setRunId(child.id)}
+                        >
+                          <span className="font-mono">{child.agentKey}</span>
+                          <span>
+                            {child.stepCount} 步 / {child.toolCallCount} 次工具 ·{' '}
+                            {formatDuration(child.durationMs)} · {tokenSummary(child.usage)}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+              </section>
+            ) : null}
+
+            <section className="space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                <h3 className="text-sm font-medium">
+                  时间线
+                  <span className="ml-1 text-xs font-normal text-muted-foreground">
+                    {runId ? '（只看这一轮 / 该子助手）' : '（整个会话，含子 agent）'} ·{' '}
+                    {timelineQuery.isLoading
+                      ? '加载中…'
+                      : `${timeline.length} / ${timelineTotal} 条`}
+                  </span>
+                </h3>
+                <RefreshButton onClick={() => void timelineQuery.refetch()} />
+              </div>
+              <div className="flex flex-col gap-2">
+                {timeline.map((item) => (
+                  <TimelineRow key={item.id} item={item} />
+                ))}
+                {!timelineQuery.isLoading && timeline.length === 0 ? (
+                  <span className="text-sm text-muted-foreground">没有事件</span>
+                ) : null}
+                {timelineQuery.hasNextPage ? (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    disabled={timelineQuery.isFetchingNextPage}
+                    onClick={() => void timelineQuery.fetchNextPage()}
+                  >
+                    {timelineQuery.isFetchingNextPage ? '加载中…' : '加载更多事件'}
+                  </Button>
+                ) : null}
+              </div>
+            </section>
+          </div>
+        </SheetContent>
+      </Sheet>
     </div>
   )
 }
