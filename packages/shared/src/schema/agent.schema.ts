@@ -317,6 +317,73 @@ export const AgentRunListSchema = BasePaginateSchema.extend({
 
 export type AgentRunListDto = z.infer<typeof AgentRunListSchema>
 
+/**
+ * 控制台「AI 用量」查询（`POST /agent/usage/summary`，管理员）。
+ *
+ * 只统计**根 run**（`parent_run_id IS NULL`）：子 agent 的消耗已经汇总进父 run，
+ * 再按行加总会重复计费。
+ */
+export const AgentUsageSummaryQuerySchema = z.object({
+  /** 看最近多少天（含今天），默认 7，最多 90 */
+  days: z.number().int().min(1).max(90).optional().default(7),
+})
+
+export type AgentUsageSummaryQueryDto = z.infer<typeof AgentUsageSummaryQuerySchema>
+
+/** 每日用量（日期按数据库时区，格式 YYYY-MM-DD） */
+export const AgentUsageDailySchema = z.object({
+  date: z.string(),
+  runs: z.number().int().nonnegative(),
+  totalTokens: z.number().int().nonnegative(),
+  inputTokens: z.number().int().nonnegative(),
+  outputTokens: z.number().int().nonnegative(),
+})
+
+export type AgentUsageDailyModel = z.infer<typeof AgentUsageDailySchema>
+
+/** 按模型 / agent 聚合的一行 */
+export const AgentUsageBucketSchema = z.object({
+  key: z.string(),
+  runs: z.number().int().nonnegative(),
+  totalTokens: z.number().int().nonnegative(),
+})
+
+export type AgentUsageBucketModel = z.infer<typeof AgentUsageBucketSchema>
+
+/** 区间汇总 */
+export const AgentUsageTotalsSchema = z.object({
+  runs: z.number().int().nonnegative(),
+  succeeded: z.number().int().nonnegative(),
+  failed: z.number().int().nonnegative(),
+  canceled: z.number().int().nonnegative(),
+  interrupted: z.number().int().nonnegative(),
+  totalTokens: z.number().int().nonnegative(),
+  inputTokens: z.number().int().nonnegative(),
+  outputTokens: z.number().int().nonnegative(),
+  cacheReadTokens: z.number().int().nonnegative(),
+  reasoningTokens: z.number().int().nonnegative(),
+  durationMs: z.number().int().nonnegative(),
+  avgDurationMs: z.number().int().nonnegative(),
+  avgFirstTokenMs: z.number().int().nonnegative(),
+  steps: z.number().int().nonnegative(),
+  toolCalls: z.number().int().nonnegative(),
+})
+
+export type AgentUsageTotalsModel = z.infer<typeof AgentUsageTotalsSchema>
+
+/** 控制台「AI 用量」返回 */
+export const AgentUsageSummaryModelSchema = z.object({
+  days: z.number().int().positive(),
+  /** 区间起点（ISO 字符串，含当天 00:00） */
+  since: z.string(),
+  totals: AgentUsageTotalsSchema,
+  daily: z.array(AgentUsageDailySchema),
+  byAgent: z.array(AgentUsageBucketSchema),
+  byModel: z.array(AgentUsageBucketSchema),
+})
+
+export type AgentUsageSummaryModel = z.infer<typeof AgentUsageSummaryModelSchema>
+
 /** 一轮问答入参（`POST /agent/chat`，非流式；流式见后续 `/agent/chat/stream`） */
 export const AgentChatSchema = z
   .object({

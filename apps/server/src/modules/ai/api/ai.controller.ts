@@ -22,6 +22,7 @@ import {
   AgentRunIdSchema,
   AgentRunListSchema,
   AgentTimelineListSchema,
+  AgentUsageSummaryQuerySchema,
   type AgentRunIdDto,
   type AgentRunListDto,
   type AgentChatDto,
@@ -33,10 +34,12 @@ import {
   type AgentConversationRenameDto,
   type AgentInstructionsDto,
   type AgentTimelineListDto,
+  type AgentUsageSummaryQueryDto,
 } from '@repo/shared'
 import type { Response } from 'express'
 import { requestContext } from '../../../common/index.js'
 import { AnyAuthGuard } from '../../auth/index.js'
+import { AdminAuthGuard } from '../../admin/index.js'
 import { AgentService } from '../agents/service.js'
 import { AiModelService } from '../../ai-model/index.js'
 import { AgentChatService } from '../runtime/chat.service.js'
@@ -273,6 +276,17 @@ export class AiController {
   @HttpCode(200)
   detailRun(@Body({ schema: AgentRunIdSchema }) input: AgentRunIdDto) {
     return this.runs.detail(this.ownerId(), input)
+  }
+
+  /**
+   * 控制台「AI 用量」汇总（**管理员**）：跨用户看近 N 天的 token / 轮数 / 成功率 /
+   * 分模型与 agent。只聚合根 run，子 agent 的消耗已并入父 run，不重复计费。
+   */
+  @Post('usage/summary')
+  @HttpCode(200)
+  @UseGuards(AdminAuthGuard)
+  usageSummary(@Body({ schema: AgentUsageSummaryQuerySchema }) input: AgentUsageSummaryQueryDto) {
+    return this.runs.usageSummary(input)
   }
 
   @Post('timeline/list')

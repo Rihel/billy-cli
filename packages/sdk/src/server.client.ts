@@ -80,6 +80,8 @@ import {
   AgentStatusModel,
   AgentTimelineItemModel,
   AgentTimelineListDto,
+  AgentUsageSummaryModel,
+  AgentUsageSummaryQueryDto,
 } from '@repo/shared'
 import { HttpClient, HttpStreamClient, type HttpClientOptions } from '@repo/http-client'
 import type {
@@ -402,6 +404,10 @@ export class ServerClient extends HttpClient<BearerTokenCredentials> {
           data,
         ),
     },
+
+    /** 控制台「AI 用量」汇总（管理员）：近 N 天 token / 轮数 / 成功率 / 分模型与 agent */
+    usageSummary: (data: AgentUsageSummaryQueryDto) =>
+      this.post<AgentUsageSummaryModel>('/agent/usage/summary', data),
 
     /** POST 建流地址（交给 AI SDK transport 的 `api`） */
     chatStreamUrl: (): string => `${this.agentBaseUrl}${AGENT_CHAT_STREAM_PATH}`,

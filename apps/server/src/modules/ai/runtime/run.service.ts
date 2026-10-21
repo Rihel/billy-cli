@@ -6,6 +6,8 @@ import type {
   AgentRunIdDto,
   AgentRunListDto,
   AgentRunModel,
+  AgentUsageSummaryModel,
+  AgentUsageSummaryQueryDto,
 } from '@repo/shared'
 import { AgentConversationService } from './conversation.service.js'
 import { RunRepository } from './run.repository.js'
@@ -35,6 +37,15 @@ export class AgentRunService {
   async list(userId: string, input: AgentRunListDto): Promise<PageQueryResult<AgentRunModel>> {
     await this.conversations.requireOwned(userId, input.conversationId)
     return this.runs.listByConversation(input.conversationId, input.page, input.size)
+  }
+
+  /**
+   * 控制台「AI 用量」汇总（管理员）：近 N 天的 token / 轮数 / 成功率 / 分模型与 agent。
+   *
+   * 只走聚合 SQL，不把 run 行拉回内存；子 agent 的消耗已经并进根 run，避免重复计费。
+   */
+  async usageSummary(input: AgentUsageSummaryQueryDto): Promise<AgentUsageSummaryModel> {
+    return this.runs.usageSummary(input.days)
   }
 
   /**

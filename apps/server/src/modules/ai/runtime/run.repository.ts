@@ -5,10 +5,49 @@ import {
   RunErrorStage,
   RunStatus,
   type AgentRunModel,
+  type AgentUsageBucketModel,
+  type AgentUsageDailyModel,
+  type AgentUsageSummaryModel,
 } from '@repo/shared'
 import { In, IsNull, LessThan, type DeepPartial } from 'typeorm'
 import { jsonbPatch } from './jsonb.js'
 import { RunEntity } from '../../../database/entities/run-entity.js'
+
+
+/** SQL 聚合返回的数字列可能是 bigint 字符串（pg 驱动行为），统一用 Number 收口 */
+type Numeric = number | string
+
+interface UsageTotalsRow {
+  runs: Numeric
+  succeeded: Numeric
+  failed: Numeric
+  canceled: Numeric
+  interrupted: Numeric
+  totalTokens: Numeric
+  inputTokens: Numeric
+  outputTokens: Numeric
+  cacheReadTokens: Numeric
+  reasoningTokens: Numeric
+  durationMs: Numeric
+  avgDurationMs: Numeric
+  avgFirstTokenMs: Numeric
+  steps: Numeric
+  toolCalls: Numeric
+}
+
+interface UsageDailyRow {
+  date: string
+  runs: Numeric
+  totalTokens: Numeric
+  inputTokens: Numeric
+  outputTokens: Numeric
+}
+
+interface UsageBucketRow {
+  key: string | null
+  runs: Numeric
+  totalTokens: Numeric
+}
 
 /** 进程重启后遗留 run 的终态说明（用户可见：明确告诉他"重试就行"，不是他的错） */
 const INTERRUPTED_RUN_MESSAGE = '服务重启，这一轮已中断，请重试'
@@ -384,5 +423,137 @@ export class RunRepository {
       take: size,
     })
     return { items: rows.map(toModel), total, page, size }
+  }
+
+  /**
+   * 控制台「AI 用量」聚合（管理员视角，跨用户）。
+   *
+   * **只算根 run**（`parent_run_id IS NULL`）：子 agent 的 usage 在收尾时已按字段汇总进
+   * 父 run 的 `usage`（§4.7），再按行加一遍就是重复计费。
+   *
+   * 时间窗按 `COALESCE(started_at, created_at)` 落日；`generate_series` 把没有数据的日期
+   * 也补成 0，前端画柱状图时不用自己补空档。
+   */
+  async usageSummary(days: number): Promise<AgentUsageSummaryModel> {
+    const windowStart = "date_trunc('day', now()) - ($1::int - 1) * interval '1 day'"
+
+    const [totalsRow] = await this.db.dataSource.query<UsageTotalsRow[]>(
+      `SELECT
+         COUNT(*)::int AS "runs",
+         COUNT(*) FILTER (WHERE status = 'succeeded')::int AS "succeeded",
+         COUNT(*) FILTER (WHERE status = 'failed')::int AS "failed",
+         COUNT(*) FILTER (WHERE status = 'canceled')::int AS "canceled",
+         COUNT(*) FILTER (WHERE status = 'interrupted')::int AS "interrupted",
+         COALESCE(SUM(NULLIF(usage->>'totalTokens', '')::bigint), 0)::bigint AS "totalTokens",
+         COALESCE(SUM(NULLIF(usage->>'inputTokens', '')::bigint), 0)::bigint AS "inputTokens",
+         COALESCE(SUM(NULLIF(usage->>'outputTokens', '')::bigint), 0)::bigint AS "outputTokens",
+         COALESCE(SUM(NULLIF(usage->>'cacheReadTokens', '')::bigint), 0)::bigint AS "cacheReadTokens",
+         COALESCE(SUM(NULLIF(usage->>'reasoningTokens', '')::bigint), 0)::bigint AS "reasoningTokens",
+         COALESCE(SUM(duration_ms), 0)::bigint AS "durationMs",
+         COALESCE(AVG(duration_ms) FILTER (WHERE duration_ms IS NOT NULL), 0)::int AS "avgDurationMs",
+         COALESCE(AVG(first_token_ms) FILTER (WHERE first_token_ms IS NOT NULL), 0)::int AS "avgFirstTokenMs",
+         COALESCE(SUM(step_count), 0)::bigint AS "steps",
+         COALESCE(SUM(tool_call_count), 0)::bigint AS "toolCalls"
+       FROM runs
+       WHERE parent_run_id IS NULL
+         AND COALESCE(started_at, created_at) >= ${windowStart}`,
+      [days],
+    )
+
+    const dailyRows = await this.db.dataSource.query<UsageDailyRow[]>(
+      `WITH days AS (
+         SELECT to_char(d, 'YYYY-MM-DD') AS date
+         FROM generate_series(
+           date_trunc('day', now()) - ($1::int - 1) * interval '1 day',
+           date_trunc('day', now()),
+           interval '1 day'
+         ) AS d
+       )
+       SELECT days.date,
+         COUNT(r.id)::int AS "runs",
+         COALESCE(SUM(NULLIF(r.usage->>'totalTokens', '')::bigint), 0)::bigint AS "totalTokens",
+         COALESCE(SUM(NULLIF(r.usage->>'inputTokens', '')::bigint), 0)::bigint AS "inputTokens",
+         COALESCE(SUM(NULLIF(r.usage->>'outputTokens', '')::bigint), 0)::bigint AS "outputTokens"
+       FROM days
+       LEFT JOIN runs r
+         ON r.parent_run_id IS NULL
+        AND to_char(COALESCE(r.started_at, r.created_at), 'YYYY-MM-DD') = days.date
+       GROUP BY days.date
+       ORDER BY days.date`,
+      [days],
+    )
+
+    const byAgentRows = await this.db.dataSource.query<UsageBucketRow[]>(
+      `SELECT agent_key AS "key",
+         COUNT(*)::int AS "runs",
+         COALESCE(SUM(NULLIF(usage->>'totalTokens', '')::bigint), 0)::bigint AS "totalTokens"
+       FROM runs
+       WHERE parent_run_id IS NULL
+         AND COALESCE(started_at, created_at) >= ${windowStart}
+       GROUP BY agent_key
+       ORDER BY "totalTokens" DESC, "runs" DESC
+       LIMIT 10`,
+      [days],
+    )
+
+    const byModelRows = await this.db.dataSource.query<UsageBucketRow[]>(
+      `SELECT COALESCE(NULLIF(request_snapshot->>'model', ''), '未记录') AS "key",
+         COUNT(*)::int AS "runs",
+         COALESCE(SUM(NULLIF(usage->>'totalTokens', '')::bigint), 0)::bigint AS "totalTokens"
+       FROM runs
+       WHERE parent_run_id IS NULL
+         AND COALESCE(started_at, created_at) >= ${windowStart}
+       GROUP BY 1
+       ORDER BY "totalTokens" DESC, "runs" DESC
+       LIMIT 10`,
+      [days],
+    )
+
+    const num = (value: Numeric | null | undefined): number => Number(value ?? 0)
+
+    const daily: AgentUsageDailyModel[] = dailyRows.map((row) => ({
+      date: row.date,
+      runs: num(row.runs),
+      totalTokens: num(row.totalTokens),
+      inputTokens: num(row.inputTokens),
+      outputTokens: num(row.outputTokens),
+    }))
+
+    const byAgent: AgentUsageBucketModel[] = byAgentRows.map((row) => ({
+      key: row.key ?? '未知 agent',
+      runs: num(row.runs),
+      totalTokens: num(row.totalTokens),
+    }))
+
+    const byModel: AgentUsageBucketModel[] = byModelRows.map((row) => ({
+      key: row.key ?? '未记录',
+      runs: num(row.runs),
+      totalTokens: num(row.totalTokens),
+    }))
+
+    return {
+      days,
+      since: `${daily[0]?.date ?? new Date().toISOString().slice(0, 10)}T00:00:00.000Z`,
+      totals: {
+        runs: num(totalsRow?.runs),
+        succeeded: num(totalsRow?.succeeded),
+        failed: num(totalsRow?.failed),
+        canceled: num(totalsRow?.canceled),
+        interrupted: num(totalsRow?.interrupted),
+        totalTokens: num(totalsRow?.totalTokens),
+        inputTokens: num(totalsRow?.inputTokens),
+        outputTokens: num(totalsRow?.outputTokens),
+        cacheReadTokens: num(totalsRow?.cacheReadTokens),
+        reasoningTokens: num(totalsRow?.reasoningTokens),
+        durationMs: num(totalsRow?.durationMs),
+        avgDurationMs: num(totalsRow?.avgDurationMs),
+        avgFirstTokenMs: num(totalsRow?.avgFirstTokenMs),
+        steps: num(totalsRow?.steps),
+        toolCalls: num(totalsRow?.toolCalls),
+      },
+      daily,
+      byAgent,
+      byModel,
+    }
   }
 }
