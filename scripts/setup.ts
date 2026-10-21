@@ -1,6 +1,7 @@
-import { spawn } from 'node:child_process'
+import { execFileSync, spawn } from 'node:child_process'
 import { copyFileSync, existsSync } from 'node:fs'
 import net from 'node:net'
+import { join } from 'node:path'
 import process from 'node:process'
 import { fileURLToPath } from 'node:url'
 import { confirm } from '@inquirer/prompts'
@@ -38,7 +39,36 @@ const envFiles: Array<{ path: string; example: string; label: string }> = [
 
 /* ---------------- 工具 ---------------- */
 
+const isWin = process.platform === 'win32'
+
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
+
+/**
+ * 终止服务进程树。
+ *
+ * 为什么不能只 `process.kill(-pid)`：Windows 没有进程组语义，负 pid 会直接抛错；
+ * 而 `node` 启动的 Nest 进程树里可能有 tsx loader / esbuild 等子进程，只杀父进程会留孤儿占住 9989。
+ * 所以 Windows 走 `taskkill /T /F`（同步执行，确保退出前端口已释放），POSIX 走进程组信号。
+ */
+const stopTree = (pid: number): void => {
+  if (isWin) {
+    try {
+      execFileSync('taskkill.exe', ['/PID', String(pid), '/T', '/F'], {
+        stdio: 'ignore',
+        windowsHide: true,
+      })
+    } catch {
+      // 进程已退出
+    }
+    return
+  }
+
+  try {
+    process.kill(-pid, 'SIGTERM')
+  } catch {
+    // 进程已退出
+  }
+}
 
 /** 探测端口是否可连接（本机） */
 const probePort = (
@@ -281,27 +311,23 @@ async function smokeTest(yes: boolean, skip: boolean): Promise<void> {
 
   const serverUrl = 'http://localhost:9989/config/get'
   const alreadyRunning = await probePort(9989)
+  // 直接用 node 加载 tsx（1 个进程），不走 `pnpm exec tsx`（Windows 上会叠出
+  // pnpm 包装链 + tsx CLI 子进程，且冒烟结束后更难整树回收）。
+  // 冒烟只需「起来 → 探活 → 停止」，不加 --watch，避免子进程常驻。
   const child =
     alreadyRunning
       ? null
-      : spawn(
-          'pnpm',
-          ['--filter', '@app/server', 'exec', 'tsx', 'src/main.ts'],
-          { cwd: workspaceRoot, detached: true, stdio: 'ignore' },
-        )
+      : spawn(process.execPath, ['--import', 'tsx/esm', 'src/main.ts'], {
+          cwd: join(workspaceRoot, 'apps/server'),
+          detached: !isWin,
+          stdio: 'ignore',
+        })
 
   process.stdout.write('  正在启动服务并请求 /config/get')
   const ok = await waitForHttp(serverUrl, 45_000)
   console.log()
 
-  if (child && child.pid) {
-    // detached 子进程为独立进程组，负 pid 信号可整组终止
-    try {
-      process.kill(-child.pid, 'SIGTERM')
-    } catch {
-      // 进程已退出
-    }
-  }
+  if (child && child.pid) stopTree(child.pid)
 
   if (ok) {
     console.log(colors.green('  ✓ 服务启动成功，API 可正常响应（冒烟通过）'))

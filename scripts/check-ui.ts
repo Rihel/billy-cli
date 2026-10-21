@@ -214,7 +214,9 @@ export function scanHardcodedPalette(cwd = process.cwd()): UiViolation[] {
 
   for (const root of roots) {
     for (const file of collectFiles(root, /\.(ts|tsx)$/)) {
-      const target = relative(cwd, file)
+      // 基线键一律用 POSIX 分隔符：Windows 的 path.relative 会给反斜杠，
+      // 不归一化会让所有基线命中不到（表现为「存量文件全部超限」）。
+      const target = relative(cwd, file).replaceAll('\\', '/')
       const hits = [...readFileSync(file, 'utf8').matchAll(PALETTE_PATTERN)].length
       const limit = PALETTE_BASELINE[target] ?? 0
       if (hits > limit) {

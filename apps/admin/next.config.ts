@@ -21,6 +21,8 @@ const nextConfig: NextConfig = {
   experimental: {
     authInterrupts: true,
   },
+  // 本地用 127.0.0.1 打开时，Next 16 会把 dev 资源当跨源请求拦掉（页面不水合、交互失效）
+  allowedDevOrigins: ['127.0.0.1', 'localhost'],
 
   transpilePackages: ['@repo/ui'],
   serverExternalPackages: [

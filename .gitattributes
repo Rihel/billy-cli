@@ -1,0 +1,29 @@
+# 行尾统一：macOS 与 Windows 双端工作区、仓库内一律 LF
+# 说明：Git for Windows 安装器默认 core.autocrlf=true，会把检出写成 CRLF，
+# 导致同一仓库在不同机器上行尾不一致（.sh / Dockerfile 在 Linux 容器里带 ^M 直接报错）。
+# 本文件的 eol=lf 属性优先于 core.autocrlf 配置，两端行为因此一致。
+* text=auto eol=lf
+
+# 仅能在原生 cmd.exe 下执行的脚本，保留 CRLF
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# 二进制文件：禁止任何行尾转换，避免内容损坏
+*.ico binary
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.avif binary
+*.bmp binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.otf binary
+*.pdf binary
+*.zip binary
+*.gz binary
+*.mp3 binary
+*.mp4 binary
+*.webm binary

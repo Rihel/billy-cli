@@ -4,12 +4,17 @@ dist
 .turbo
 .qoder
 .next
+# ⚠️ 必须覆盖 .next 的所有「改名兄弟」：把 .next 挪成 .next-old-xxx 这类操作
+# Tailwind v4 的自动源探测会把它当源码扫，从中抽出畸形候选 → dev 直接 CSS 解析失败
+.next*/
 .pnpm-store
 *.tsbuildinfo
 .agent-teams
 .scaffold-check
 .codegraph
 logs/
+# 本地验证截图（无头浏览器抓的画面，不入库）
+.shots/
 
 # 环境变量（本地敏感配置不入库；仓库提供 .env.example / .env.local.example 模板）
 .env

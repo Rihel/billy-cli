@@ -1,7 +1,10 @@
 import 'dotenv/config'
 import { DataSource } from 'typeorm'
 import path from 'node:path'
-const __dirname = path.dirname(new URL(import.meta.url).pathname)
+import { fileURLToPath } from 'node:url'
+// Windows 下 `new URL(...).pathname` 会带前导 `/`（`/D:/...`），glob 匹配不到任何文件；
+// fileURLToPath 才是跨平台写法（迁移此前因此一直「No migrations are pending」）。
+const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
 /**
  * TypeORM CLI（migration:generate / migration:run）使用的 DataSource。
