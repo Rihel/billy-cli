@@ -16,13 +16,13 @@
 等值条件列在前，排序 / 范围列在后：
 
 - 游标分页：排序是 `updatedAt desc, id desc` → 建 `(updatedAt, id)` 组合索引
-  （todo 现状 `@Index('idx_update_at_id', ['updatedAt', 'id'])`——注意实体字段名是
-  `updatedAt`，TypeORM 会映射到列）。
+  （`@Index('idx_update_at_id', ['updatedAt', 'id'])`——注意实体字段名是 `updatedAt`，
+  TypeORM 会映射到列）
 - 只有等值条件的场景（如按 `rule_id + status` 过滤列表）→ `(ruleId, status)` 等值在前。
 
 ## 3. 游标分页必须有配套索引
 
-- `cursorPageWith` 要求排序与 `cursorColumns` 一致（todo：`cursorColumns: ['updatedAt','id']` +
+- `cursorPageWith` 要求排序与 `cursorColumns` 一致（游标列表：`cursorColumns: ['updatedAt','id']` +
   `orderBy updatedAt desc, id desc`），**必须有 `(updatedAt, id)` 索引**，否则深翻页会扫全表。
 - offset 分页（`pageWith`）在数据量大了会越来越慢（skip 越翻越深）——量大换游标
   或启用 `@repo/kits` 的 deferred 变体（只取主键再回表，当前业务未用，极大表再启用）。
@@ -37,7 +37,7 @@
 ## 5. ILIKE 与索引失效（常见坑）
 
 - `ILIKE '%keyword%'`（前后都通配）**无法走普通 B-tree 索引**，数据量大就是全表扫。
-  量小可接受（todo 现状）；量大了要评估：
+  量小可接受；量大了要评估：
   - 前缀匹配 `keyword%` 可以走索引；
   - 子串搜索上 pg_trgm（GIN 索引）或分词，别硬扛。
 - 函数包住列（`lower(col)`、`DATE(col)` 等）也会让索引失效——把函数挪到值一侧。

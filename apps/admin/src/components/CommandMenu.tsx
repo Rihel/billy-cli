@@ -21,14 +21,12 @@ import {
   ActivityIcon,
   BellRingIcon,
   LayoutDashboardIcon,
-  ListTodoIcon,
   MonitorIcon,
   MoonIcon,
   PlusIcon,
   SearchIcon,
   ShieldCheckIcon,
   SunIcon,
-  TerminalIcon,
   UserRoundIcon,
   UsersIcon,
 } from 'lucide-react'
@@ -97,8 +95,6 @@ export function CommandMenu({ sidebar = false }: { sidebar?: boolean }) {
 
   const pages: CommandItemData[] = [
     { label: '控制台', icon: LayoutDashboardIcon, run: () => go('/main/dashboard') },
-    { label: '任务管理', icon: ListTodoIcon, run: () => go('/main/todo') },
-    { label: '自动化', icon: TerminalIcon, run: () => go('/main/automation') },
     { label: '告警规则', icon: BellRingIcon, run: () => go('/main/monitor/rules') },
     { label: '告警记录', icon: ActivityIcon, run: () => go('/main/monitor/logs') },
     { label: '用户管理', icon: UsersIcon, run: () => go('/main/system/users') },

@@ -36,11 +36,11 @@
 
 ```ts
 // 生产者（业务 service 内）
-await queueManager.addJob('todo', 'processTodo', { todoId }, { delay: 1000 })
+await queueManager.addJob('article', 'processArticle', { articleId }, { delay: 1000 })
 
 // 消费者（业务 service 构造期注册）
-queueManager.registerWorker<TodoProcessPayload>('todo', async (job) => {
-  const { todoId } = job.data
+queueManager.registerWorker<ArticleProcessPayload>('article', async (job) => {
+  const { articleId } = job.data
   // ... 处理逻辑
 })
 ```

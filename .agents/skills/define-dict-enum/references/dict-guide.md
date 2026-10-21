@@ -38,7 +38,7 @@ export const UserStatus = createDict({
 ```ts
 // packages/shared/src/dicts/app-error-code.dict.ts（参考现有实现）
 export const AppErrorCodes = createDict({
-  TodoNotFound: { label: 'Todo 不存在', value: 3001, http: 404 },
+  UserNotFound: { label: '用户不存在', value: 2001, http: 404 },
   InvalidInput: { label: '参数校验失败', value: 4001, http: 400 },
   // ...
 })
@@ -50,8 +50,8 @@ export const AppErrorCodes = createDict({
 - 必须带 `http` 字段（仅 400 / 401 / 403 / 404 / 409 / 429 / 500），
   `apps/server/src/common/error/error-descriptor.ts` 的 `describeErrorCode`（边界经
   `common/error/boundary-error.ts` 映射）会自动映射为 HTTP 状态码与中文文案，**无需任何额外代码**。
-- 业务层错误类引用它：`readonly code = AppErrorCodes.TodoNotFound`
-  （见 `apps/server/src/modules/todo/errors.ts`）。
+- 业务层错误类引用它：`readonly code = AppErrorCodes.UserNotFound`
+  （见 `apps/server/src/modules/user/errors.ts`）。
 
 ## 3. createDict 产物 API（前后端通用）
 
@@ -76,7 +76,7 @@ export const AppErrorCodes = createDict({
 - **Zod enum**（`z.enum([...])`）：用于**请求 / 响应字段的强类型校验**，值域固定且
   需要服务端校验，典型是排序字段：
   ```ts
-  // packages/shared/src/schema/todo.schema.ts（现有用法）
+  // packages/shared/src/schema/user.schema.ts（现有用法）
   orderBy: z.enum(['updatedAt', 'createdAt']).optional().default('updatedAt'),
   order: z.enum(['asc', 'desc']).optional().default('desc'),
   ```

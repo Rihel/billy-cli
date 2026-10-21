@@ -86,7 +86,7 @@
   再把该模块加入 `apps/server/src/root.module.ts` 的 `imports`（无副作用导入与自动注册）。
   实现 `OnApplicationBootstrap` / `OnApplicationShutdown` 钩子的类由 Nest 按生命周期调度。
   （实体另在 `root.module.ts` 的 `DbModule.forRootAsync` 工厂里注入。）
-- 参考：`apps/server/src/modules/todo/`。
+- 参考：`apps/server/src/modules/user/`。
 
 ### shared/utils —— 纯工具
 

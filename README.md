@@ -192,9 +192,9 @@ pnpm cli -t crud -n product --no-install  # 非交互生成 CRUD 业务模块（
 │   │       │                            #   security/（token 与身份读取 · 限流守卫）
 │   │       │                            #   http/（Zod 校验管道 · 响应信封拦截器）
 │   │       ├── database/
-│   │       │   ├── entities/            # 业务实体：UserEntity / TodoEntity / AdminEntity / AlertRuleEntity / AlertLogEntity
+│   │       │   ├── entities/            # 业务实体：UserEntity / AdminEntity / AlertRuleEntity / AlertLogEntity
 │   │       │   └── migrations/          # TypeORM 迁移产物
-│   │       └── modules/                 # 业务模块：auth / admin / user / todo / monitor / storage / stream / runtime-config
+│   │       └── modules/                 # 业务模块：auth / admin / user / monitor / storage / stream / runtime-config
 │   │                                    #   每模块 module + controller + service + index（repository / errors 按需）
 │   ├── web/                             # Next.js 16 前台（@app/web，端口 9840）
 │   │   └── src/
@@ -210,7 +210,7 @@ pnpm cli -t crud -n product --no-install  # 非交互生成 CRUD 业务模块（
 │           ├── actions/auth.actions.ts  # Server Actions（@repo/ui defineAction）
 │           ├── app/
 │           │   ├── auth/                # login / register / forgot-password / reset-password
-│           │   └── main/                # dashboard / todo / user-center / system/{users,admins} / monitor/{live,rules,logs} / automation
+│           │   └── main/                # dashboard / user-center / system/{users,admins} / monitor/{live,rules,logs}
 │           ├── components/              # AppHeader / AppMenu / AppSider
 │           ├── lib/                     # constants / server-client / logger
 │           ├── providers/AppProviders.tsx
@@ -219,7 +219,7 @@ pnpm cli -t crud -n product --no-install  # 非交互生成 CRUD 业务模块（
 ├── packages/
 │   ├── shared/                          # @repo/shared
 │   │   └── src/
-│   │       ├── schema/                  # Zod 共享 schema（auth / admin / user / todo / object-storage / session / stream / monitor）
+│   │       ├── schema/                  # Zod 共享 schema（auth / admin / user / object-storage / session / stream / monitor）
 │   │       ├── dicts/                   # app-error-code / user-status 错误码与字典
 │   │       ├── app-response.ts          # AppResponse 统一响应格式 + ResponseUtils
 │   │       ├── logger.ts                # 日志工厂 createLogger（前后端共用；后端经 kits LoggerModule 包装成 AppLogger）
@@ -286,7 +286,7 @@ pnpm cli -t crud -n product --no-install  # 非交互生成 CRUD 业务模块（
   **惰性**取自己的分片（`LoggerModule` / `DbModule` / `RedisModule` / `JwtModule` / `PasswordModule` /
   `ObjectStorageModule` / `NotificationModule`），无自有配置的直接引模块（`RateLimitModule` /
   `StreamHubModule` / `SessionStoreModule`）；可选模块 `LarkModule` / `KafkaModule` 用展开语法按 env 是否存在决定；
-  再注册各业务模块（`AuthModule` / `AdminModule` / `UserModule` / `TodoModule` / `StorageModule` /
+  再注册各业务模块（`AuthModule` / `AdminModule` / `UserModule` / `StorageModule` /
   `StreamModule` / `MonitorModule` / `RuntimeConfigModule`）；`providers` 里用 `APP_PIPE` / `APP_FILTER` /
   `APP_INTERCEPTOR` 注册全局管道、过滤器与拦截器。
 - **入口**：`main.ts` 用 `NestFactory.create<NestExpressApplication>(RootModule, { bodyParser: false })`
@@ -336,9 +336,9 @@ pnpm cli -t crud -n product --no-install  # 非交互生成 CRUD 业务模块（
 （`ModalForm` / `DrawerForm` / `FormRenderer` 声明式 items），适合表格 / 表单 / 权限类页面。
 登录使用**后台管理员**账号（`AdminEntity`，`/admin/*` 接口），与前台用户体系隔离。
 
-- 页面：`/auth/login`（管理员登录）、`/main/dashboard`、`/main/todo`、`/main/user-center`（含**登录设备**区块）、
+- 页面：`/auth/login`（管理员登录）、`/main/dashboard`、`/main/user-center`（含**登录设备**区块）、
   `/main/system/users`、`/main/system/admins`（管理员管理）、`/main/monitor/live`（**实时告警**，SSE）、
-  `/main/monitor/rules`（告警规则）、`/main/monitor/logs`（告警记录）、`/main/automation`（自动化演示）
+  `/main/monitor/rules`（告警规则）、`/main/monitor/logs`（告警记录）
 - 实时告警页把 SSE 链路走通：`client.createStream()`（`@repo/sdk`）→ `useStream`（`@repo/ui`）
   → 告警发送后 `StreamHub.publish('admin:all', 'alert.fired')` 实时到达；页内「触发测试告警」
   可一键自检全链路（协议与频道权限见 `stream` skill 与 `docs/design/frontend-foundation.md`）
@@ -364,7 +364,7 @@ Zod schema 单一事实源，同时派生 TypeScript 类型（`*.schema.ts` 导�
   （如 `AdminStatusSchema` / `AlertLevelSchema`）只导出 schema，不建类型别名；`base.schema.ts` 的
   `BaseModelSchema` / `BasePaginateSchema` / `BaseCursorPaginateSchema` 只作 `extend` / `intersection`
   基石，不导出类型。
-- `schema/`：auth / admin / user / todo / stream（SSE 事件与订阅）/ monitor（告警规则、日志、健康检查）/
+- `schema/`：auth / admin / user / stream（SSE 事件与订阅）/ monitor（告警规则、日志、健康检查）/
   object-storage / app-config / base（模型与分页、游标基类）
 - `dicts/`：`app-error-code.dict.ts`（错误码字典：`value` + `http` + `label`，业务抛错、server 映射、
   前端文案共用同一份定义）、`user-status.dict.ts`
@@ -458,7 +458,7 @@ Zod schema 单一事实源，同时派生 TypeScript 类型（`*.schema.ts` 导�
 ### apps/server 业务模块
 
 业务三层（module + controller + service + repository + errors）位于
-`apps/server/src/modules/{auth,admin,user,todo,monitor,storage,stream,session,runtime-config}`，
+`apps/server/src/modules/{auth,admin,user,monitor,storage,stream,session,runtime-config}`，
 实体 / 迁移位于 `apps/server/src/database/`（`data-source.ts` 供 `db:generate` / `db:migrate`），
 横切 HTTP 构件位于 `apps/server/src/common/`：
 
@@ -470,7 +470,6 @@ modules/                       # 业务领域（每个模块同目录：module +
 │                   #   + admin.repository.ts + admin.controller.ts + admin-auth.guard.ts + errors
 │                   #   token 带 type='admin'，与前台用户隔离
 ├── user/           # user.service.ts + user.repository.ts + user.controller.ts + errors
-├── todo/           # todo.service.ts + todo.repository.ts + todo.controller.ts + errors
 ├── monitor/        # MonitorHealthController（免鉴权 /monitor/health）+ MonitorController + 告警规则 / 记录
 ├── storage/        # storage.controller.ts（预签名 URL / STS 临时凭证）
 ├── stream/         # stream.controller.ts + stream-auth.guard.ts + stream.options.ts（SSE_ROUTE_OPTIONS）
@@ -485,7 +484,7 @@ common/                        # 横切 HTTP 构件（不依赖业务模块；�
 └── http/        # zod-validation.ts（`@Body({ schema })` 校验管道）+ response-envelope.interceptor.ts（响应信封）
 │                #   + ops-probe.ts（探针路径判定：请求日志 / 指标据此跳过探针）
 database/
-├── entities/     # UserEntity / TodoEntity / AdminEntity / AlertRuleEntity / AlertLogEntity（继承 @repo/kits 的 BaseEntity）
+├── entities/     # UserEntity / AdminEntity / AlertRuleEntity / AlertLogEntity（继承 @repo/kits 的 BaseEntity）
 └── migrations/   # TypeORM 迁移产物
 ```
 
@@ -519,8 +518,8 @@ import {
   ResponseEnvelopeInterceptor,
   createZodValidationPipe,
 } from './common/index.js'
-import { TodoEntity } from './database/entities/todo-entity.js'
-import { TodoModule } from './modules/todo/index.js'
+import { UserEntity } from './database/entities/user-entity.js'
+import { UserModule } from './modules/user/index.js'
 
 @Module({
   imports: [
@@ -542,7 +541,7 @@ import { TodoModule } from './modules/todo/index.js'
       useFactory: (config: ConfigService) => ({
         ...config.get('db'),
         // 实体是类引用，无法来自环境变量，由组合根补上
-        entities: [TodoEntity],
+        entities: [UserEntity],
       }),
     }),
     RedisModule.forRootAsync({
@@ -574,7 +573,7 @@ import { TodoModule } from './modules/todo/index.js'
       useFactory: (config: ConfigService) => config.get('notify')!,
     }),
     // 业务模块在 imports 注册（模块内 providers 声明自己的 repository / service）
-    TodoModule,
+    UserModule,
   ],
   providers: [
     { provide: APP_PIPE, useFactory: createZodValidationPipe },
@@ -597,13 +596,14 @@ const app = await NestFactory.create<NestExpressApplication>(RootModule, {
 ```
 
 ```ts
-// modules/todo/todo.module.ts
+// modules/user/user.module.ts
 @Module({
   imports: [AdminModule],
-  controllers: [TodoController],
-  providers: [TodoRepository, TodoService],
+  controllers: [UserController],
+  providers: [UserRepository, UserService],
+  exports: [UserRepository, UserService],
 })
-export class TodoModule {}
+export class UserModule {}
 ```
 
 **生命周期设计：**
@@ -641,7 +641,7 @@ skipAuth 检查
 ```
 
 - `ServerClient extends HttpClient`（`@repo/sdk`）：按业务分组的全类型化方法
-  （`config` / `auth` / `admin` / `user` / `todo` / `storage` / `monitor`），请求 / 响应类型全部来自 `@repo/shared`
+  （`config` / `auth` / `admin` / `user` / `storage` / `monitor`），请求 / 响应类型全部来自 `@repo/shared`
 - 认证策略：`BearerToken` / `ApiKey` / `OAuth2` / `HMAC`
 - 凭证管理器：`localStorage` / `memory` / `cookie` / `env`
 - 凭证供应器：`empty-check` / `expires-at`（配合 OAuth2 自动续期）
@@ -666,7 +666,7 @@ await client.credentialsManager.setCredentials({ token })
 
 // 需鉴权接口
 const me = await client.auth.getMe()
-const todos = await client.todo.cursorQuery({ size: 20 })
+const users = await client.user.pageQuery({ page: 1, size: 20 })
 ```
 
 ### @repo/ui 的设计系统（token / 主题 / 字体规范）
@@ -844,12 +844,6 @@ sidebar / toast / chart 等），Tailwind 4 主题变量来自同包的 `globals
 | `POST /user/update`                  | 更新用户         | 管理员 |
 | `POST /user/remove`                  | 删除用户         | 管理员 |
 | `POST /user/reset-password`          | 重置用户密码     | 管理员 |
-| `POST /todo/create`                  | 创建 Todo        | 管理员 |
-| `POST /todo/page-query`              | Todo 页码分页    | 管理员 |
-| `POST /todo/cursor-query`            | Todo 游标分页    | 管理员 |
-| `POST /todo/detail`                  | Todo 详情        | 管理员 |
-| `POST /todo/update`                  | 更新 Todo        | 管理员 |
-| `POST /todo/remove`                  | 删除 Todo        | 管理员 |
 | `POST /storage/get-presigned-url`    | 获取上传预签名 URL（前台用户 key 被改写进 `user/{userId}/`） | 用户 / 管理员 |
 | `POST /storage/get-download-url`     | 获取下载预签名 URL（前台用户仅限自己前缀，越界 403） | 用户 / 管理员 |
 | `POST /storage/get-temporary-credentials` | 获取 STS 临时凭证（整桶权限，**仅管理员**） | 管理员 |
@@ -869,7 +863,7 @@ sidebar / toast / chart 等），Tailwind 4 主题变量来自同包的 `globals
 | `POST /monitor/test`               | 测试通知（手动验证通道） | 管理员 |
 | `POST /config/get`                 | 公开运行配置（返回 `authEnabled`） | 否 |
 
-> 鉴权列：**管理员** = `AdminAuthGuard`（后台管理员令牌，`/admin/*`、`/user/*`、`/todo/*`、`/monitor/*`、`/storage/*` 都是它）；
+> 鉴权列：**管理员** = `AdminAuthGuard`（后台管理员令牌，`/admin/*`、`/user/*`、`/monitor/*`、`/storage/*` 都是它）；
 > `UserAuthGuard`（前台用户令牌）只用在 `/auth/get-me`、`/auth/update-info`、`/auth/change-password`；两者都从 Bearer / cookie 取令牌。
 > `/sse/subscribe` 标「是」指 SSE 专用的 `StreamAuthGuard`（Bearer / cookie，强制订阅身份频道）。
 
@@ -932,11 +926,11 @@ await this.dbService.cursorPageWith(builder, { cursorColumns, getCursor, size })
 await this.dbService.cursorPageWithDeferred(builder, { ... })
 
 // 批量
-await this.dbService.batchInsert(TodoEntity, rows)            // 默认 manager
+await this.dbService.batchInsert(UserEntity, rows)            // 默认 manager
 await this.dbService.batchSave(rows)
-await this.dbService.batchUpsert(TodoEntity, rows, ['sku'])
-await this.dbService.batchDelete(TodoEntity, { selectIds })
-await this.dbService.safeDelete(TodoEntity, { id })           // 操作人默认取当前身份
+await this.dbService.batchUpsert(UserEntity, rows, ['sku'])
+await this.dbService.batchDelete(UserEntity, { selectIds })
+await this.dbService.safeDelete(UserEntity, { id })           // 操作人默认取当前身份
 await this.dbService.getFullSqlStatement(builder)             // 返回完整 SQL，要打日志自己打
 ```
 

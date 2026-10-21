@@ -43,6 +43,7 @@ export const assistantAgent: AgentSpec = {
     TOOL_KEYS.webRequest,
     TOOL_KEYS.webSearch,
   ],
-  skills: ['todo-report'],
+  // 默认不带业务技能；新增技能时在此授权名字（见 core/skills/catalog）
+  skills: [],
   prompt: { template: 'assistant' },
 }

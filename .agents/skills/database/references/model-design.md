@@ -8,10 +8,9 @@
 
 - 先有业务对象与数据结构（`packages/shared/src/schema/`），再落实体——schema 是前后端数据结构，
   实体是落库形状，两者字段必须一致（双轨，见 `define-data-structure`）。
-- 表名复数（`users` / `todos` / `admins` / `alert_logs`），实体类 `XxxEntity`，文件
+- 表名复数（`users` / `admins` / `alert_logs`），实体类 `XxxEntity`，文件
   `apps/server/src/database/entities/<name>-entity.ts`。
-- 参考实现（照抄风格即可，不要自创）：`todo-entity.ts`（基础列 + 游标索引）、
-  `user-entity.ts`（唯一约束含软删）、`admin-entity.ts`。
+- 参考实现（照抄风格即可，不要自创）：`user-entity.ts`（唯一约束含软删）、`admin-entity.ts`。
 
 ## 2. 继承 BaseEntity，别重复造轮子
 
@@ -30,7 +29,7 @@
 | --- | --- | --- |
 | 无长度上限文本（title / description / email / password） | `text` | 仓库主流的写法 |
 | 固定长度短值（status 等枚举串） | `varchar(length)` + `default` + `comment`（中文注释） | 例：`status varchar(20) default UserStatus.Enabled comment '用户状态'` |
-| 布尔 | `boolean` + `default: false` | 例：todo.completed |
+| 布尔 | `boolean` + `default: false` | 例：alert_rule.enabled |
 | 时间 | `timestamp` + `precision: 3` | BaseEntity 之外的时间列（如 `reset_password_token_expiry`） |
 | 状态 / 类型等枚举 | **string 列存字典 value**，不用 PG enum | 改值 / 迁移友好；见 `define-dict-enum` |
 

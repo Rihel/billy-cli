@@ -64,8 +64,8 @@ ai/
 > `AGENT_TOOL_GROUPS` 汇总的是**工具组实例**（一个组 1..n 个工具）；`AgentCore` / `asTools()` 已取消。
 > 见 `docs/design/ai-agent-tool-engine.md` §5.2。
 
-- `ListTodosTool` / `GetTodoTool` / `CreateTodoTool` 各自 `@Injectable()`，构造器注入
-  `TodoService`，在构造期用 `createTool` 绑定 `execute`；
+- 业务工具（若接入）各自 `@Injectable()`，构造器注入对应业务 service，在构造期用 `createTool` 绑定
+  `execute`；本脚手架默认不绑定业务工具，AI 模块与业务模块解耦；
 - 模块里用 `AGENT_TOOLS` token 汇总成数组（Nest 多 provider），`ToolBuilder` 负责：
   按 id 取用（`build`）、给提示词提供元数据（`describe`）、**装配期校验**（未知 id 直接启动失败）；
 - agent 声明里只写**工具 key**（来自 `tool-keys.ts` 常量），能力边界 = 工具可见性；
@@ -77,7 +77,7 @@ ai/
 ### 1.3 提示词：引擎 + eta 模板（**所有提示词只走引擎**）
 
 - 标签统一 `{{ }}`（执行）/ `{{= }}`（插值）/ `{{~ }}`（include）/ `{{ /* */ }}`（注释）；
-  不用 eta 默认的 `<% %>`：提示词是 Markdown，正文里大量 `<` `>`（`<todoId>`、HTML 示例）容易撞标签；
+  不用 eta 默认的 `<% %>`：提示词是 Markdown，正文里大量 `<` `>`（`<xxxId>`、HTML 示例）容易撞标签；
 - **提示词的"可用工具"段落由 agent 实际授权的工具渲染**（`ToolBuilder.describe`），
   提示词与权限不会各写一份、互相漂移；公共段落走 `partials/`（改一次全 agent 生效）；
 - 引擎配置：`autoEscape: false`（提示词是纯文本，HTML 转义会把引号变 `&#34;`）、`cache: true`；
@@ -90,7 +90,7 @@ ai/
 - 技能内容用 **Agent Skills 标准格式**（`SKILL.md` 的 YAML frontmatter + Markdown 正文 + `references/`），
   与仓库根 `.agents/skills/` 同构；
 - 加载即用 Mastra 的 `validateSkillContent` 校验（不自造规则），失败**在启动期报错**；
-- 加载结果缓存；agent 按名字授权（`skills: ['todo-report']`），未知名字装配期报错；
+- 加载结果缓存；agent 按名字授权（`skills: ['<skill-name>']`），未知名字装配期报错；
 - 为什么不直接用 Mastra 的目录能力：`WorkspaceSkills` 不在公开子路径导出，无法启动期校验、
   也无法把技能清单暴露给接口（`/agent/list` 会返回每个 agent 装了哪些技能）。
 
@@ -98,7 +98,7 @@ ai/
 
 - `pnpm --filter @app/server exec tsc --noEmit` 通过；`pnpm check:inject` 通过；
 - 实跑（tsx 直跑，不依赖数据库与模型密钥）：两个 agent 的提示词渲染正确（工具清单由授权生成、
-  技能授权正确、缩进保留）；`SkillLoader` 加载出 `todo-report`（含 `references/report-template.md`），
+  技能授权正确、缩进保留）；`SkillLoader` 加载出技能正文（含 `references/` 下的参考文件），
   未知技能名按预期抛错。
 
 ## 2. 调研结论：Mastra 的运行时与可恢复性（源码级证据）
@@ -261,10 +261,10 @@ ai/
 
 ### 3.4 工具幂等（② 的硬前提）
 
-崩溃恢复会**重跑工具**。当前 `create-todo` 会在重跑时**再建一条待办** —— 这是必须解决的问题：
+崩溃恢复会**重跑工具**。当前业务写工具（若接入）会在重跑时**再写一条数据** —— 这是必须解决的问题：
 - 幂等键：`runId + toolCallId`（Mastra 的历史消息里带 toolCallId；重放时同一 toolCallId 只生效一次）；
 - 位置：业务侧一张轻量去重表（或复用 `RedisStore` 的 `setJson + TTL`）；
-- 只读工具（`list-todos` / `get-todo`）天然幂等，无需处理。
+- 只读工具（`list-xxx` / `get-xxx`）天然幂等，无需处理。
 
 ### 3.5 前端全细节流式
 
@@ -795,7 +795,7 @@ WHERE id = $1 AND status = 'running' AND heartbeat_at < now() - interval '…'
   │               │ 10 落输入快照 ──────────────────────────────────────────────────────────►│ UPDATE runs.request_snapshot
   │               │ 11 落用户消息 ────────────────────────────────►│ INSERT timelines(user)
   │               │ 12 agent.stream ──────────────►│              │             │           │
-  │               │                  │              │ 13 工具往返（业务事务，见下）│          │ → todos 等业务表
+  │               │                  │              │ 13 工具往返（业务事务，见下）│          │ → 业务表
   │               │ 14 part 流 ◄───────────────────┤              │             │           │
   │ 15 SSE 帧 ◄───┤                  │              │              │             │           │
   │               │ 16 每个 part 完成 ────────────────────────────►│ INSERT timelines
@@ -815,7 +815,7 @@ WHERE id = $1 AND status = 'running' AND heartbeat_at < now() - interval '…'
 
 - AI 侧落库**不用跨表大事务**：流式写入是长过程（可能几分钟），包进一个事务会长时间占连接、
   也会和"边跑边落"的目标冲突。因此是**逐条追加**（允许部分成功）；
-- 工具的业务写入（`todos` 等）走业务 service 自己的 `@Transactional()`，
+- 工具的业务写入（若接入）走业务 service 自己的 `@Transactional()`，
   **与 AI 落库不在同一事务**：业务写成功而时间线落库失败时，靠"时间线缺行 + run 状态"体现，
   **不靠回滚**（回滚会连带撤掉用户已经看到的业务结果）；
 - 因此幂等键（`engine_run_id + tool_call_id`）是必须的：重跑时 upsert，而不是再插一条。
@@ -935,7 +935,7 @@ key: agent:run:{runId}          TTL: 6h
 ④ 重跑时不产生脏数据
    工具调用按 (engine_run_id + tool_call_id) upsert，attempt 次数 +1
    → 时间线里不出现两条一模一样的工具调用
-   → 业务写入要幂等（create-todo 用同一个幂等键只会建一条）
+   → 业务写入要幂等（写工具用同一个幂等键只会写一条）
 
 ⑤ 输出继续往两边写
    新产出继续落 timelines（Postgres，真相）与 Redis 里的输出记录（供小范围补发）
@@ -1038,7 +1038,7 @@ export interface AgentCore {
 
 | 来源 | 目录 | 是什么 | 依赖特征 |
 | --- | --- | --- | --- |
-| 业务工具 bean | `ai/tools/*.tool.ts` | 某个业务模块的操作（待办的查/建） | 注入业务 service（`TodoService`），与业务接口同一条链路 |
+| 业务工具 bean | `ai/tools/*.tool.ts` | 某个业务模块的操作（若接入） | 注入业务 service，与业务接口同一条链路 |
 | **core bean** | `ai/core/*.core.ts` | **跨业务的运行时能力**（规划、子 agent） | 注入仓储 / runner / 技能加载器，不绑定任何业务模块 |
 
 为什么必须分开：planner 与 sub-agent 不是"某个业务的操作"，它们要碰**运行时会话与运行记录**；
@@ -2226,7 +2226,7 @@ AI SDK v6 的续传是**两层 API**（不是同一方法的两个名字）：
 
 1. **崩溃恢复要真花钱**：`recover()` 重发 LLM 调用并重跑工具（官方明文）—— 恢复一条长会话
    可能等于再付一次模型费用；
-2. **工具必须幂等**：否则恢复一次就多一条脏数据（`create-todo` 现在就会）；
+2. **工具必须幂等**：否则恢复一次就多一条脏数据（业务写工具现在就会）；
 3. **自建 storage adapter 有维护成本**：要跟着 Mastra 的 storage 接口演进（目前 memory 10 + workflows 9 个方法），
    Mastra 升级时要回归一次。换来的是表结构完全自主、无运行时 DDL 权限需求、也没有双写不一致问题；
 4. **向量检索还有额外成本**：embedder 按 token 计费 + 向量存储与索引维护。

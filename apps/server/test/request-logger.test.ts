@@ -33,7 +33,7 @@ const makeResponse = (statusCode: number) => {
   return res
 }
 
-const request = { method: 'POST', originalUrl: '/todo/create?x=1' }
+const request = { method: 'POST', originalUrl: '/user/create?x=1' }
 
 /** 在请求上下文（ALS）里跑一次「请求 → 响应结束」，模拟真实链路 */
 const runRequest = (
@@ -68,14 +68,14 @@ describe('RequestLoggerMiddleware（替代 pino-http 的请求日志）', () => 
     expect(calls[0].level).toBe('info')
     expect(calls[0].data).toMatchObject({
       method: 'POST',
-      url: '/todo/create?x=1',
+      url: '/user/create?x=1',
       status: 200,
       requestId: 'rid-1',
       userId: 'u-1',
       adminId: null,
     })
     expect(typeof calls[0].data.durationMs).toBe('number')
-    expect(calls[0].message).toContain('POST /todo/create?x=1 200')
+    expect(calls[0].message).toContain('POST /user/create?x=1 200')
   })
 
   it('按状态码分级：4xx → warn，5xx → error', () => {

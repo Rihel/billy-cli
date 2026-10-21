@@ -4,7 +4,7 @@
 > 写操作 / 事务 / 状态变更 / 缓存更新时必读。
 
 - 事务：跨多行 / 多表的写操作方法加 `@Transactional()`
-  （`import { Transactional } from '@repo/kits'`），参考 todo.service 的 create / update / remove；
+  （`import { Transactional } from '@repo/kits'`），参考 user.service 的 create / update / remove；
   纯读不加。
 - 并发读改写：状态流转 / 库存扣减 / 余额变更等「读-改-写」必须防并发——乐观锁（version 列）
   或分布式锁（原语见 `concurrency`，状态机见 `state-machine`），不裸奔。

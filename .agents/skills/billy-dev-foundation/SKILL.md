@@ -74,7 +74,7 @@ description: Billy 工程（billy-cli monorepo）开发必读 skill。任何在�
 | [references/design.md](./references/design.md) | 设计决策：评估难度决定是否出方案、方案原则、借鉴成熟方案 | 中等 / 复杂需求动手前（必读） |
 | [references/code-conventions.md](./references/code-conventions.md) | 硬性代码约定 11 条，含「不重复造轮子」查找顺序 | 写任何代码前（必读） |
 | [references/commands.md](./references/commands.md) | 常用命令 | 需要执行命令时 |
-| [references/workflow.md](./references/workflow.md) | 标准开发流程、参考实现（todo 全链路） | 任务执行过程中 |
+| [references/workflow.md](./references/workflow.md) | 标准开发流程、参考实现（user 全链路） | 任务执行过程中 |
 
 ## 完成检查清单
 

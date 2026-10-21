@@ -5,7 +5,7 @@
 
 ## 0. 骨架生成（可选，推荐）
 
-新模块骨架可用代码生成器一键生成（对齐 todo 范例的 entity / repository /
+新模块骨架可用代码生成器一键生成（对齐 user 范例的 entity / repository /
 service / errors / controller / module / schema）：
 
 ```bash
@@ -118,7 +118,7 @@ export class XxxService {
 ## 4. ④ Controller（HTTP 边界）
 
 ```ts
-// apps/server/src/modules/xxx/xxx.controller.ts（参考 modules/todo/todo.controller.ts）
+// apps/server/src/modules/xxx/xxx.controller.ts（参考 modules/user/user.controller.ts）
 @Controller('xxx')
 @UseGuards(AdminAuthGuard)
 export class XxxController {

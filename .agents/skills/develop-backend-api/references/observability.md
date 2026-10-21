@@ -13,8 +13,8 @@
   <400 info / 4xx warn / 5xx error）。日志里的 `requestId` 与响应头 `X-Request-Id` 同值，
   排障时用它关联一次请求。
 - 业务事件结构化日志：构造器注入 `@Inject(AppLogger)`（`AppLogger` 来自 `@repo/kits`，
-  `context` 自动取宿主类名），关键写动作记 `logger.log('<域>.<动作>', { ... })`（参考 todo：
-  `todo.created` / `todo.updated` / `todo.removed`）——事件名语义化、上下文放对象里便于检索。
+  `context` 自动取宿主类名），关键写动作记 `logger.log('<域>.<动作>', { ... })`（参考 user：
+  `user.created` / `user.updated` / `user.removed`）——事件名语义化、上下文放对象里便于检索。
 - 错误兜底：抛错统一走全局异常过滤器 `AppExceptionFilter`
   （`apps/server/src/common/error/app-exception.filter.ts`，注册为 `APP_FILTER`；映射 code/http +
   异步告警 `AlertTrigger.notifyError`），

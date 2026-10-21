@@ -1,7 +1,7 @@
 # 查询：怎么写（database 引用文件）
 
 > 本文件是 `database` skill 的组成部分，由主 SKILL.md 引用。
-> 实现读接口 / 列表 / 详情 / 搜索时必读。代码以 `apps/server/src/modules/todo/todo.repository.ts`
+> 实现读接口 / 列表 / 详情 / 搜索时必读。代码以 `apps/server/src/modules/user/user.repository.ts`
 > 为参考实现（user / admin / monitor 的 repository 同构）。
 
 ## 1. 取 repository
@@ -36,7 +36,7 @@ if (keyword) {
 
 - **排序列必须走 DTO 白名单**：`orderBy` 由 schema 限定枚举（如
   `orderBy: z.enum(['updatedAt', 'createdAt'])`）后再拼进模板串——直接拼接前端传入列名
-  就是 SQL 注入面（todo / alert-log repository 均为此写法）。
+  就是 SQL 注入面（user / alert-log repository 均为此写法）。
 - 关键字搜索：`ILIKE :keyword`（大小写不敏感）；`%kw%` 无法走索引的量级问题见
   [indexing.md](./indexing.md) §5。
 
@@ -50,13 +50,13 @@ if (keyword) {
   ```
 - **游标分页**（数据增长快、需要稳定翻页）：`cursorPageWith(builder, options)`，
   排序必须与 `cursorColumns` + `order` 一致，配 `(updatedAt, id)` 索引
-  （todo 的 cursor 实现）：
+  （游标列表的 cursor 实现；游标字段按业务命名）：
   ```ts
   builder.orderBy('t.updatedAt', 'DESC').addOrderBy('t.id', 'DESC')
-  const result = await cursorPageWith<TodoEntity>(builder, {
+  const result = await cursorPageWith<UserEntity>(builder, {
     cursorColumns: ['updatedAt', 'id'],
-    cursorValues: cursor ? [new Date(cursor.updatedAt), cursor.todoId] : undefined,
-    getCursor: (row) => ({ updatedAt: row.updatedAt.toISOString(), todoId: row.id }),
+    cursorValues: cursor ? [new Date(cursor.updatedAt), cursor.id] : undefined,
+    getCursor: (row) => ({ updatedAt: row.updatedAt.toISOString(), id: row.id }),
     order: 'desc',
     size,
   })
@@ -69,20 +69,20 @@ if (keyword) {
 
 导入 / 同步 / 批处理别在循环里逐条写库。当前业务 repository 的写法是注入 `Db` + 调纯函数
 （`batchInsert` / `batchSave` / `batchUpsert` / `safeDelete` 等，见
-`apps/server/src/modules/todo/todo.repository.ts`）；kits 另提供 `DbService` 注入式统一入口
+`apps/server/src/modules/user/user.repository.ts`）；kits 另提供 `DbService` 注入式统一入口
 （与纯函数同名同参，自动带默认 manager 与操作人），需要时 `@Inject(DbService)` 直接用：
 
 ```ts
 constructor(@Inject(DbService) private readonly dbService: DbService) {}
 
 // 无关联的纯数据写入：一条 INSERT ... VALUES (...)，不触发实体钩子、不级联
-await this.dbService.batchInsert(TodoEntity, rows, { chunkSize: 100, concurrency: 5 })
+await this.dbService.batchInsert(UserEntity, rows, { chunkSize: 100, concurrency: 5 })
 // 有关联关系、需要实体钩子：走 save（每条一次 SELECT 判断 INSERT/UPDATE，更慢）
 await this.dbService.batchSave(rows)
 // 导入 / 同步：INSERT ... ON CONFLICT DO UPDATE，无需预判存在
-await this.dbService.batchUpsert(TodoEntity, rows, ['sku'], { chunkSize: 100 })
+await this.dbService.batchUpsert(UserEntity, rows, ['sku'], { chunkSize: 100 })
 // 软删 + 记操作人（实体须继承 AuditEntity）
-await this.dbService.safeDelete(TodoEntity, { id })
+await this.dbService.safeDelete(UserEntity, { id })
 ```
 
 比裸函数少传两个到处都有的参数：**默认 manager**（`Db.dataSource.manager`）与
@@ -90,7 +90,7 @@ await this.dbService.safeDelete(TodoEntity, { id })
 内核是可单测纯函数（`db/batch.ts` / `db/safe-delete.ts` / `db/sql.ts`），脱离 DI 时直接调用
 （签名里显式吃 `manager`）。
 
-- **事务内必须显式传事务 manager**：`this.dbService.batchInsert(TodoEntity, rows, {}, manager)`。
+- **事务内必须显式传事务 manager**：`this.dbService.batchInsert(UserEntity, rows, {}, manager)`。
   不传会落到根 manager 上**脱离事务**。并发度经 `resolveBatchConcurrency` 解析，
   `manager.queryRunner.isTransactionActive` 为真时强制降为 1——事务里开并发会争用同一连接与
   事务快照，轻则排队重则死锁。

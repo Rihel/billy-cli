@@ -80,7 +80,7 @@
 - **NestJS 调用链（实测注意）**：`callers`（反向依赖）与 `impact`（影响面）对 NestJS 显式
   `@Inject` 架构**准确**，可用它们验证分层方向；但 `callees`（正向方法调用边）对 DI 链**不可靠**
   —— `this.xxx.method()` 调用边建不出、`@Post` 等装饰器还会误判成别的方法（实测 `callees
-  TodoController` 只返回 http-client 的 `post`）。追 controller → service → repository 正向链时，
+  UserController` 只返回 http-client 的 `post`）。追 controller → service → repository 正向链时，
   用 `callers`（反向定位）＋ `read` 直接读，别用 `callees`。
 - **改动评估**：改公开导出 / 基础设施前用 `impact` 看影响面，配合 `affected` 定位受影响测试
   （如 `git diff --name-only | codegraph affected --stdin --quiet | xargs pnpm vitest run`）。

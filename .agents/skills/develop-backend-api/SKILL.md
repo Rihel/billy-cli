@@ -35,7 +35,7 @@ description: 在 Billy 工程中开发 / 修改后端接口（service / reposito
 - **可观测性**：请求链路日志全局已处理（`common/request-logger` 的中间件记录 method / url /
   status / 耗时 / requestId / userId / adminId，日志 `requestId` 即响应头 `X-Request-Id`，
   排障按它关联），不要自写请求日志；关键业务动作记结构化事件
-  （构造器注入 `AppLogger` + `logger.log('<域>.<动作>', {...})`，参考 todo）；错误由
+  （构造器注入 `AppLogger` + `logger.log('<域>.<动作>', {...})`，参考 user）；错误由
   `AppExceptionFilter` 统一映射 + 告警，不自行吞掉。
 - **性能与查询效率**：列表先想查询计划——量小 `pageWith`，量大 / 深翻页 `cursorPageWith`
   （配 `(updatedAt, id)` 索引）；`ILIKE '%kw%'` 量大无法走索引需另评估；循环里不逐条查库

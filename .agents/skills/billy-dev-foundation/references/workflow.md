@@ -27,12 +27,12 @@
 
 ## 参考实现
 
-- **完整 CRUD 最小链路**：todo 模块——schema
-  `packages/shared/src/schema/todo.schema.ts` → 实体
-  `apps/server/src/database/entities/todo-entity.ts` → 业务
-  `apps/server/src/modules/todo/*`（repository / service / errors）→ HTTP 边界
-  `apps/server/src/modules/todo/todo.controller.ts` + 模块
-  `apps/server/src/modules/todo/todo.module.ts` → SDK
-  `packages/sdk/src/server.client.ts` → admin 页
-  `apps/admin/src/app/main/todo/page.tsx`。
+- **完整 CRUD 最小链路**：user 模块——schema
+  `packages/shared/src/schema/user.schema.ts` → 实体
+  `apps/server/src/database/entities/user-entity.ts` → 业务
+  `apps/server/src/modules/user/*`（repository / service / errors）→ HTTP 边界
+  `apps/server/src/modules/user/user.controller.ts` + 模块
+  `apps/server/src/modules/user/user.module.ts` → SDK
+  `packages/sdk/src/server.client.ts` 的 `user` 段 → admin 页
+  `apps/admin/src/app/main/system/users/page.tsx`。
 - **架构决策与历史**：`README.md`、`docs/sdk-refactor.md`（API 客户端职责划分）。

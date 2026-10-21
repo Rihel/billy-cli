@@ -20,7 +20,7 @@ export class ZodValidationFailedError extends Error {
  *
  *   @Post('create')
  *   @HttpCode(200)
- *   create(@Body({ schema: CreateTodoSchema }) input: CreateTodoDto) { ... }
+ *   create(@Body({ schema: CreateUserSchema }) input: CreateUserDto) { ... }
  *
  * 管道从参数元数据（`ArgumentMetadata.schema`）读取 schema 并校验：
  * - 成功 → 返回解析后的值（含 Zod 默认值补全）；

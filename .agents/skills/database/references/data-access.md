@@ -2,7 +2,7 @@
 
 > 本文件是 `database` skill 的组成部分，由主 SKILL.md 引用。
 > 写 repository / 处理事务、软删、并发写入时必读。代码以
-> `apps/server/src/modules/{todo,user,admin,monitor}/*repository.ts` 为参考。
+> `apps/server/src/modules/{user,admin,monitor}/*repository.ts` 为参考。
 
 ## 1. 分层职责（别越界）
 
@@ -18,22 +18,22 @@
 
 ## 2. 写操作模式（先查后改）
 
-参考 todo.repository，四种写统一套路：
+参考 user.repository，四种写统一套路：
 
 ```ts
 // create：repo.create 生成实体 → save 插入
-async create(data: DeepPartial<TodoEntity>): Promise<TodoModel> {
+async create(data: DeepPartial<UserEntity>): Promise<UserModel> {
   const repo = await this.repo()
-  return toTodo(await repo.save(repo.create(data)))
+  return toUser(await repo.save(repo.create(data)))
 }
 
 // update / remove：先 findOneBy 判空（null 由 service 抛错）→ 再改
-async update(id: string, data: DeepPartial<TodoEntity>): Promise<TodoModel | null> {
+async update(id: string, data: DeepPartial<UserEntity>): Promise<UserModel | null> {
   const repo = await this.repo()
   const existing = await repo.findOneBy({ id })
   if (!existing) return null
   Object.assign(existing, data)
-  return toTodo(await repo.save(existing))
+  return toUser(await repo.save(existing))
 }
 ```
 
@@ -47,7 +47,7 @@ async update(id: string, data: DeepPartial<TodoEntity>): Promise<TodoModel | nul
   （`import { Transactional } from '@repo/kits'`，基于 typeorm-transactional）：
   方法内所有 repository 调用共享同一事务，抛错自动回滚。
 - repository 方法**不**自开事务边界；纯读方法不加 `@Transactional()`。
-- 参考 todo.service 的 create / update / remove。
+- 参考 user.service 的 create / update / remove。
 
 ## 4. 软删行为（TypeORM DeleteDateColumn）
 
@@ -73,7 +73,7 @@ async update(id: string, data: DeepPartial<TodoEntity>): Promise<TodoModel | nul
 
 ## 7. 返回映射
 
-- 对外响应走模型裁剪：todo 用 `toTodo` 剥掉 `deletedAt` 等内部字段再返回
+- 对外响应走模型裁剪：user 用 `toUser` 剥掉 `deletedAt` 等内部字段再返回
   （响应里不泄露软删标记）。
 - user / admin repository 内部直接返回实体（auth 流程内部使用）；**出接口前仍应裁剪**
   敏感 / 内部字段（见 `develop-backend-api` 安全性）。

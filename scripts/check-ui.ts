@@ -184,7 +184,6 @@ const PALETTE_BASELINE: Record<string, number> = {
   'apps/admin/src/app/auth/layout.tsx': 13,
   'apps/admin/src/app/main/dashboard/page.tsx': 5,
   'apps/admin/src/app/main/monitor/live/page.tsx': 4,
-  'apps/admin/src/app/main/todo/page.tsx': 1,
   'apps/admin/src/components/AppSider.tsx': 3,
   // apps/web：2026-09-18 已全量收敛到语义 token（含 bg-white / text-white 这类旧守卫漏掉的）
   // 仅剩品牌渐变的**终点色** to-violet-600 —— violet 无对应 token，且该渐变在明暗两种底色上都成立，

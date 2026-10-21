@@ -42,17 +42,6 @@ export default function DashboardPage() {
       }),
     retry: 0,
   })
-  const todos = useQuery({
-    queryKey: ['dashboard', 'todos'],
-    queryFn: () =>
-      client.todo.pageQuery({
-        page: 1,
-        size: 1,
-        orderBy: 'createdAt',
-        order: 'desc',
-      }),
-    retry: 0,
-  })
   const rules = useQuery({
     queryKey: ['dashboard', 'rules'],
     queryFn: () =>
@@ -104,9 +93,8 @@ export default function DashboardPage() {
       </div>
 
       {/* 数据概览：嵌入式大数字（hairline 分列） */}
-      <div className="grid grid-cols-2 gap-x-8 gap-y-8 sm:grid-cols-4 sm:gap-y-10">
+      <div className="grid grid-cols-2 gap-x-8 gap-y-8 sm:grid-cols-3 sm:gap-y-10">
         <StatBlock label="用户" value={users.data?.total ?? null} />
-        <StatBlock label="任务" value={todos.data?.total ?? null} />
         <StatBlock label="告警规则" value={rules.data?.total ?? null} />
         <StatBlock label="告警记录" value={logs.data?.total ?? null} />
       </div>

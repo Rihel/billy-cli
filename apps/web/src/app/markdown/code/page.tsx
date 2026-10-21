@@ -56,13 +56,11 @@ curl -X POST http://localhost:9989/api/health
 ## SQL
 
 \`\`\`sql
-SELECT u.name, count(t.id) AS todo_count
-FROM users u
-LEFT JOIN todos t ON t.user_id = u.id AND t.deleted_at IS NULL
-WHERE u.active = true
-GROUP BY u.id
-ORDER BY todo_count DESC
-LIMIT 10;
+SELECT status, count(*) AS user_count
+FROM users
+WHERE deleted_at IS NULL
+GROUP BY status
+ORDER BY user_count DESC;
 \`\`\`
 
 ## Python

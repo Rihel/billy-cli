@@ -10,8 +10,6 @@ const fieldLabels: Record<string, string> = {
   avatar: '头像',
   title: '标题',
   description: '描述',
-  completed: '完成状态',
-  todoId: '待办ID',
   userId: '用户ID',
   key: '键',
   access: '访问权限',

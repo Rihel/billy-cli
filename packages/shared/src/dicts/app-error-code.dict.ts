@@ -86,11 +86,6 @@ export const AppErrorCodes = createDict({
     value: 2007,
     http: 403,
   },
-  TodoNotFound: {
-    label: 'Todo 不存在',
-    value: 3001,
-    http: 404,
-  },
   AlertRuleNotFound: {
     label: '告警规则不存在',
     value: 3101,

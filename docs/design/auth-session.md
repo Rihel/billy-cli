@@ -17,7 +17,7 @@
 | 级别 | 问题 | 实证 |
 | --- | --- | --- |
 | P0 | `verifyToken` 只验 JWT 签名、不查实体与状态 | 禁用用户后，其旧 token 调 `/auth/get-me` 仍返回 200（status 已是 disabled） |
-| P1 | 路由鉴权靠人工挂载，无机制保障 | `/user`、`/todo`、`/storage` 三处管理接口都误挂 `makeRequireAuth`（前台用户），admin token 调用必 401 |
+| P1 | 路由鉴权靠人工挂载，无机制保障 | `/user`、`/storage` 两处管理接口都误挂 `makeRequireAuth`（前台用户），admin token 调用必 401 |
 | P1 | 用户 token 无类型标识，校验不对称 | 用户 token 只签 `{ sub }`，admin 签 `{ sub, type: 'admin' }`；用户侧用排除法（`type !== 'admin'` 即放行） |
 | P2 | 密码重置 token 明文存库、forgot 响应返回 token | 安全弱点（本次不处理，见演进） |
 | P2 | web 前台鉴权薄弱（无守卫 / 无登出） | 本次补 logoutAction，页面入口待做 |
@@ -104,7 +104,7 @@ JWT 验签 → 体系校验（用户拒 type=admin / 管理员要求 type=admin�
 | 禁用 admin 后，其旧 token 调 `/admin/get-me` | **401** |
 | 恢复启用 → 重新登录 | 200 |
 | admin token 调 `/auth/*` / 用户 token 调 `/user/*` | 401（双体系隔离完好） |
-| admin token 调 `/user/*`、`/todo/*`、`/storage/*` | 200 |
+| admin token 调 `/user/*`、`/storage/*` | 200 |
 
 **一次性影响**：改造前签发的 token 无 Redis 会话，全部失效需重新登录（可接受）。
 

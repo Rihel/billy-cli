@@ -17,7 +17,7 @@ description: 在 Billy 工程中开发前端页面：Admin 后台页（@repo/ui 
 | UI 基础 | `@repo/ui`（Base UI + shadcn 风格）+ Tailwind 4 | `@repo/ui`（同源，含 DataTable / ModalForm 等管理组件）+ Tailwind 4 |
 | 表格 / 表单 | —（营销页为主） | `@tanstack/react-table`（DataTable）+ `@tanstack/react-form`（ModalForm / DrawerForm / FormRenderer） |
 | 状态 | TanStack Query + Server Actions | TanStack Query + Zustand/Immer + Server Actions |
-| 典型页面 | `/`、`/auth/login`、`/auth/register` | `/main/*`（dashboard / todo / system/users 等） |
+| 典型页面 | `/`、`/auth/login`、`/auth/register` | `/main/*`（dashboard / system/users 等） |
 
 **两套前端统一使用 `@repo/ui`（shadcn/ui 风格）与 `@repo/ui`（设计系统：token / 主题 /
 字体规范 / 组件质感）**。

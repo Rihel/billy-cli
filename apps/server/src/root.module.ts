@@ -40,7 +40,6 @@ import { AlertRuleEntity } from './database/entities/alert-rule-entity.js'
 import { ConversationEntity } from './database/entities/conversation-entity.js'
 import { RunEntity } from './database/entities/run-entity.js'
 import { TimelineEntity } from './database/entities/timeline-entity.js'
-import { TodoEntity } from './database/entities/todo-entity.js'
 import { UserEntity } from './database/entities/user-entity.js'
 import { AdminModule } from './modules/admin/index.js'
 import { AiModelModule } from './modules/ai-model/index.js'
@@ -52,7 +51,6 @@ import { SessionModule } from './modules/session/index.js'
 import { RuntimeConfigModule } from './modules/runtime-config/index.js'
 import { StorageModule } from './modules/storage/index.js'
 import { StreamModule } from './modules/stream/index.js'
-import { TodoModule } from './modules/todo/index.js'
 import { UserModule } from './modules/user/index.js'
 
 /**
@@ -98,7 +96,6 @@ import { UserModule } from './modules/user/index.js'
         // 实体是类引用，无法来自环境变量，由组合根注入
         entities: [
           UserEntity,
-          TodoEntity,
           AdminEntity,
           AlertRuleEntity,
           AlertLogEntity,
@@ -169,7 +166,6 @@ import { UserModule } from './modules/user/index.js'
     AuthModule,
     AdminModule,
     UserModule,
-    TodoModule,
     // AI 模型配置（供应商 / 模型两张表 + 明细同步 + 运行时模型解析；AiModule 依赖它的 AiModelService）
     AiModelModule,
     // AI Agent（Mastra）：模型未配置时模块照常装配，仅 /agent/* 返回 3301

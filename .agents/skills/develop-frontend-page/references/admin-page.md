@@ -1,8 +1,7 @@
 # Admin 页面模式（develop-frontend-page 引用文件）
 
 > 本文件是 `develop-frontend-page` skill 的组成部分，由主 SKILL.md 引用。
-> 写 Admin 后台页面时必读。参考 `apps/admin/src/app/main/system/users/page.tsx`
-> 与 `main/todo/page.tsx`。
+> 写 Admin 后台页面时必读。参考 `apps/admin/src/app/main/system/users/page.tsx`。
 
 ## 1. 骨架
 
@@ -35,7 +34,7 @@ export default function XxxPage() {
   列定义用 `DataTableColumnDef<T>`：`header` + `accessorKey` + `cell: ({ row, getValue })`，
   列宽用 `meta: { width }`。
 - **游标 / 无限滚动**：`DataList<T>` + `useInfiniteQuery`，`getNextPageParam`
-  取 `nextCursor`，数据 `pages.flatMap((r) => r.items)`（参考 todo 页）。
+  取 `nextCursor`，数据 `pages.flatMap((r) => r.items)`。
 - 操作列：`TableActions` 包裹 `IconText`（编辑）、`ConfirmAction`（删除确认，`danger`）。
 
 ## 3. 表单：@tanstack/react-form（声明式）
@@ -96,7 +95,7 @@ const form = useForm({
 
 - 简单场景：`useMutation` 成功后 `toastSuccess(...)` + `refetch()`。
 - 就地更新（游标列表）：`queryClient.setQueryData(queryKey, (cur) => produce(cur, ...))`，
-  用 immer 在 `draft.pages` 上 unshift / splice / Object.assign（todo 页的 prepend/update/remove 模式）。
+  用 immer 在 `draft.pages` 上 unshift / splice / Object.assign（游标列表的 prepend/update/remove 模式）。
 - 删除确认：`ConfirmAction`；危险操作用 `danger`。
 
 ## 5. 展示辅助（@repo/ui）

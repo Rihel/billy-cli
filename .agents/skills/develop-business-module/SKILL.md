@@ -26,8 +26,8 @@ description: 在 Billy 工程中开发完整业务模块（如商品、订单、
 ```
 
 **推荐顺序**：先 ①② 定数据结构 → ③④ 落数据 → ⑤⑥⑦ 打通接口 → ⑧ 出页面。
-**参考实现**：todo 模块（schema / entity / 业务 `apps/server/src/modules/todo/*` /
-`modules/todo/todo.controller.ts` / SDK `todo` 段 / `main/todo/page.tsx`），拿不准直接照抄。
+**参考实现**：user 模块（schema / entity / 业务 `apps/server/src/modules/user/*` /
+`modules/user/user.controller.ts` / SDK `user` 段 / `main/system/users/page.tsx`），拿不准直接照抄。
 **每一层实现前先按「实现查找顺序」确认现成能力**：分页 `pageWith` / `cursorPageWith`、
 @repo/ui 组件、schema 基类、SDK 既有方法——全部没有才自己写。
 

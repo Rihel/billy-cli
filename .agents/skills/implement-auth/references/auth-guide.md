@@ -56,7 +56,7 @@ token 里带类型标识，`verifyToken` 分别校验，混用必然失败。
 ## 3. 服务端守卫使用（新模块 controller 选型）
 
 ```ts
-// apps/server/src/modules/xxx/xxx.controller.ts（参考 modules/todo/todo.controller.ts）
+// apps/server/src/modules/xxx/xxx.controller.ts（参考 modules/user/user.controller.ts）
 @Controller('xxx')
 @UseGuards(UserAuthGuard)          // 前台用户
 // @UseGuards(AdminAuthGuard)      // 后台管理员（参考 modules/admin/admin.controller.ts）
@@ -76,7 +76,6 @@ export class XxxController {}
 | `/auth/*` | register / login / forgot-password / reset-password 公开；get-me / update-info / change-password 用 `@UseGuards(UserAuthGuard)` | 前台用户自助 |
 | `/admin/*` | login / logout 公开；其余 `@UseGuards(AdminAuthGuard)` | 后台管理员 |
 | `/user/*` | `@UseGuards(AdminAuthGuard)` | 管理员管理用户 |
-| `/todo/*` | `@UseGuards(AdminAuthGuard)` | 后台功能（admin 页） |
 | `/storage/*` | `@UseGuards(AdminAuthGuard)` | 上传/下载/STS（admin 页 ImageUpload） |
 
 ## 4. 前端：Server Actions + 双存储模型

@@ -117,7 +117,7 @@ describe('web-request（发 HTTP 请求）', () => {
     )) as WebPageOutput
     expect(page.status).toBe(200)
     // 服务端看到的查询串必须是编码过的（空格会被编码成 `+`，这是 URLSearchParams 的口径）
-    expect(seen.url).toContain('q=%E5%A4%AB%E5%AD%90+%E6%95%99%E7%A8%8B')
+    expect(seen.url).toContain('q=Billy+%E6%95%99%E7%A8%8B')
     expect(seen.url).toContain('page=2')
     expect(page.content).toContain('"method": "GET"')
   })

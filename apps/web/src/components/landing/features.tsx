@@ -48,15 +48,14 @@ function ArchitectureDiagram() {
 function ZodSnippet() {
   return (
     <pre className="mt-6 overflow-x-auto rounded-xl border border-border bg-muted p-4 font-mono text-xs leading-6">
-      <span className="text-muted-foreground">const</span> <span className="text-foreground">TodoSchema</span>{' '}
+      <span className="text-muted-foreground">const</span> <span className="text-foreground">UserSchema</span>{' '}
       <span className="text-muted-foreground">=</span> z.<span className="text-brand">object</span>
       {'({'}
       {'\n  '}
-      <span className="text-foreground">title</span>: z.<span className="text-brand">string</span>(),
+      <span className="text-foreground">email</span>: z.<span className="text-brand">string</span>().<span className="text-brand">email</span>(),
       {'\n  '}
-      <span className="text-foreground">completed</span>: z.
-      <span className="text-brand">boolean</span>().<span className="text-brand">default</span>
-      (<span className="text-foreground">false</span>),
+      <span className="text-foreground">status</span>: z.
+      <span className="text-brand">enum</span>(<span className="text-foreground">['enabled', 'disabled']</span>),
       {'\n'}
       {'})'}
     </pre>

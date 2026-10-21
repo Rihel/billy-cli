@@ -8,8 +8,6 @@ import { ThemeToggle } from './ThemeToggle'
 /** 路由 → 页面标题（与 AppMenu 菜单项一致） */
 const PAGE_TITLES: Record<string, string> = {
   '/main/dashboard': '控制台',
-  '/main/todo': '任务管理',
-  '/main/automation': '自动化',
   '/main/monitor/rules': '告警规则',
   '/main/monitor/logs': '告警记录',
   '/main/system/users': '用户管理',

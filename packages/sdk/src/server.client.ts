@@ -22,28 +22,22 @@ import {
   AdminModel,
   AdminUpdateInfoDto,
   AppConfigModel,
-  AppCursorQueryResponse,
   AppPageQueryResponse,
   AuthResultModel,
   AuthUserModel,
   ChangePasswordDto,
   CreateAdminDto,
-  CreateTodoDto,
   CreateUserDto,
-  CursorQueryTodoDto,
   ForgotPasswordDto,
   GetAdminDetailDto,
-  GetDetailTodoDto,
   GetStorageDownloadUrlDto,
   GetStorageUploadPresignedUrlDto,
   GetUserDetailDto,
   LoginDto,
   PageQueryAdminDto,
-  PageQueryTodoDto,
   PageQueryUserDto,
   RegisterDto,
   RemoveAdminDto,
-  RemoveTodoDto,
   RemoveSessionDto,
   RemoveUserDto,
   ResetAdminPasswordDto,
@@ -53,8 +47,6 @@ import {
   StoragePresignedUrlModel,
   StorageStsModel,
   SuccessResultModel,
-  TodoCursorModel,
-  TodoModel,
   UpdateAdminDto,
   UpdateInfoDto,
   CreateAlertRuleDto,
@@ -67,7 +59,6 @@ import {
   AlertRuleModel,
   AlertLogModel,
   MonitorHealthModel,
-  UpdateTodoDto,
   UpdateUserDto,
   UserModel,
   AgentChatDto,
@@ -255,28 +246,6 @@ export class ServerClient extends HttpClient<BearerTokenCredentials> {
     /** 需要管理员 token：重置管理员密码 */
     resetPassword: (data: ResetAdminPasswordDto) =>
       this.post<SuccessResultModel>('/admin/reset-password', data),
-  }
-
-  /* ========== 待办事项 ========== */
-
-  todo = {
-    create: (data: CreateTodoDto) => this.post<TodoModel>('/todo/create', data),
-
-    pageQuery: (data: PageQueryTodoDto) =>
-      this.post<AppPageQueryResponse<TodoModel>>('/todo/page-query', data),
-
-    cursorQuery: (data: CursorQueryTodoDto) =>
-      this.post<AppCursorQueryResponse<TodoModel, TodoCursorModel>>(
-        '/todo/cursor-query',
-        data,
-      ),
-
-    detail: (data: GetDetailTodoDto) =>
-      this.post<TodoModel>('/todo/detail', data),
-
-    update: (data: UpdateTodoDto) => this.post<TodoModel>('/todo/update', data),
-
-    remove: (data: RemoveTodoDto) => this.post<TodoModel>('/todo/remove', data),
   }
 
   /* ========== 用户 ========== */

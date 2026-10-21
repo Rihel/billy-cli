@@ -132,7 +132,7 @@ export function camelize(name: string): string {
   return pascal.charAt(0).toLowerCase() + pascal.slice(1)
 }
 
-/** 单个字段的 TypeORM 列定义（2 空格缩进 + 换行，参考 todo-entity.ts） */
+/** 单个字段的 TypeORM 列定义（2 空格缩进 + 换行，参考现有实体（如 user-entity.ts）） */
 function renderColumn(f: CrudField): string {
   const colName = snakeCase(f.name)
   const unique = f.unique ? ', unique: true' : ''

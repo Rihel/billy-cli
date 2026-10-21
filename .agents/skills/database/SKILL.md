@@ -16,7 +16,7 @@ description: 在 Billy 工程中使用 PostgreSQL / TypeORM 做数据库设计�
 | 数据库 | PostgreSQL 17：`docker compose up postgres`（宿主 15432，root/pg1234/billy-cli）；`pnpm bootstrap` 可一键起依赖 + 生成 .env + 迁移 |
 | ORM | TypeORM；CLI 迁移用 `apps/server/data-source.ts`（glob 实体与迁移，`synchronize: false`，迁移 SQL 需人工检查） |
 | 实体 | 继承 `@repo/kits` 的 `BaseEntity`（`packages/kits/src/db/base-entity.ts`）：`id` varchar(20)（nanoid，`@BeforeInsert` 生成）+ `createdAt` / `updatedAt` / `deletedAt`（timestamp(3)，软删） |
-| 数据入口 | 业务 repository 注入 **`Db`** + 调纯函数（当前业务统一写法，见 `apps/server/src/modules/todo/todo.repository.ts`）；kits 另提供注入式统一入口 **`DbService`**（`@repo/kits` `db/db.service.ts`，由 `DbModule` 装配且 `@Global`）：与纯函数同名同参，自动带默认 manager 与操作人，需要时 `@Inject(DbService)` 直接用。纯函数内核（`pagination.ts` / `batch.ts` / `safe-delete.ts` / `sql.ts`）脱离 DI 时也可直接用 |
+| 数据入口 | 业务 repository 注入 **`Db`** + 调纯函数（当前业务统一写法，见 `apps/server/src/modules/user/user.repository.ts`）；kits 另提供注入式统一入口 **`DbService`**（`@repo/kits` `db/db.service.ts`，由 `DbModule` 装配且 `@Global`）：与纯函数同名同参，自动带默认 manager 与操作人，需要时 `@Inject(DbService)` 直接用。纯函数内核（`pagination.ts` / `batch.ts` / `safe-delete.ts` / `sql.ts`）脱离 DI 时也可直接用 |
 | 分页 | `DbService.pageWith` / `pageWithDeferred` / `cursorPageWith` / `cursorPageWithDeferred`（`db/pagination.ts`）：offset 页 / 两阶段 offset / 游标 / 两阶段游标 |
 | 批量写入 | `DbService.batchInsert` / `batchSave` / `batchUpsert` / `batchDelete` / `batch`：**事务内自动降为串行**，部分失败聚合抛 `BatchOperationError` |
 | 软删审计 | `DbService.safeDelete(entity, where)`：操作人默认取 `getAuditUser()`（`setAuditUserProvider` 挂的钩子），可显式覆盖；**先写 `deletedBy` 再软删** |
@@ -34,9 +34,9 @@ description: 在 Billy 工程中使用 PostgreSQL / TypeORM 做数据库设计�
 - 种子：`pnpm seed:admin`（首个管理员，幂等——靠邮箱唯一约束兜底）
 - 验证查询：psql 里 `EXPLAIN (ANALYZE, BUFFERS) <sql>`
 - **建表只走迁移**：`docker/init-db.sql` 只放库级设置（扩展等），**禁止往里加建表 DDL**。
-  历史教训：它曾照 drizzle 时代的迁移建过 `todos` / `users` / `admins`，而 TypeORM 的 initial
-  迁移是裸 `CREATE TABLE`（无 `IF NOT EXISTS`），于是**全新数据卷**上
-  `docker compose up postgres` → `pnpm db:migrate` 会报 `relation "todos" already exists`。
+  历史教训：它曾照早期迁移建过 `users` / `admins` 等表，而 TypeORM 的 initial 迁移是裸
+  `CREATE TABLE`（无 `IF NOT EXISTS`），于是**全新数据卷**上 `docker compose up postgres` →
+  `pnpm db:migrate` 会报 `relation "users" already exists`。
 
 ## 与既有 skill 的分工
 

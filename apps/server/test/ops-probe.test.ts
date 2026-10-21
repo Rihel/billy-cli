@@ -17,7 +17,7 @@ describe('isOpsProbePath', () => {
   it('不误伤业务路径（含前缀相同的路径）', () => {
     expect(isOpsProbePath('/readyzz')).toBe(false)
     expect(isOpsProbePath('/info')).toBe(false)
-    expect(isOpsProbePath('/todo/page-query')).toBe(false)
+    expect(isOpsProbePath('/user/page-query')).toBe(false)
     expect(isOpsProbePath(undefined)).toBe(false)
   })
 })
@@ -71,7 +71,7 @@ describe('运维探针不进请求日志', () => {
   })
 
   it('业务路径照常记录一条', () => {
-    expect(runLogger('/todo/create').calls).toHaveLength(1)
+    expect(runLogger('/user/create').calls).toHaveLength(1)
   })
 })
 
@@ -97,7 +97,7 @@ describe('运维探针不进请求指标', () => {
     const res = makeResponse(500)
 
     middleware.use(
-      { method: 'POST', path: '/todo/create' } as never,
+      { method: 'POST', path: '/user/create' } as never,
       res as never,
       vi.fn(),
     )

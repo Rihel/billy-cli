@@ -8,11 +8,9 @@ import {
   BotIcon,
   CpuIcon,
   LayoutDashboardIcon,
-  ListTodoIcon,
   RadioTowerIcon,
   ShieldCheckIcon,
   SparklesIcon,
-  TerminalIcon,
   UsersIcon,
   WrenchIcon,
 } from 'lucide-react'
@@ -39,14 +37,6 @@ const MENU_ITEMS: MenuItem[] = [
     label: '控制台',
     key: '/main/dashboard',
     icon: LayoutDashboardIcon,
-  },
-  {
-    label: '示例',
-    key: 'demo',
-    children: [
-      { label: '任务管理', key: '/main/todo', icon: ListTodoIcon },
-      { label: '自动化', key: '/main/automation', icon: TerminalIcon },
-    ],
   },
   // AI：会话 / 运行的审计与复盘（只读，不提供删除 —— 运行与时间线是审计证据）
   {
