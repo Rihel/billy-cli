@@ -172,6 +172,11 @@ export const AppErrorCodes = createDict({
     value: 3311,
     http: 400,
   },
+  RunNotSuspended: {
+    label: '这一轮没有在等待回答，无法续跑',
+    value: 3313,
+    http: 409,
+  },
   ModelCapabilityMismatch: {
     label: '当前模型读不了这个附件，请换一个支持图片 / 文件的模型或去掉附件',
     value: 3312,

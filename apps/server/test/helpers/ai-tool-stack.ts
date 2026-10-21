@@ -76,6 +76,13 @@ export const TEST_TOOL_ENV_CAPS: ToolEnvCaps = {
     timeoutMsMax: 15_000,
     maxOutputBytesMax: 64 * 1024,
   },
+  web: {
+    enabled: true,
+    timeoutMsMax: 20_000,
+    maxBytesMax: 2 * 1024 * 1024,
+    // 测试要打本机起的临时 HTTP 服务，所以这里放行内网（生产默认关）
+    allowPrivateNetwork: true,
+  },
 }
 
 export interface ToolStackOptions {

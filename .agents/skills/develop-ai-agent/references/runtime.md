@@ -18,6 +18,15 @@
 **进度放 Redis、结果放 Postgres**：运行中的 step / 当前动作 / offset / 心跳在 Redis（`agent:run:{runId}`，TTL 6h），
 跑完删；终态、消耗、统计落 `runs`（长期保留）。看门狗按 `heartbeat_at` 与总时长判超时
 （`markTimeout` 的判据必须与 `findStale` **完全一致**，否则会出现"心跳还在跳但超时"处置不掉的 bug）。
+看门狗必须同时扫 **`pending`**（`startRun` 先插 pending 再置 running，中间失败会卡死会话），
+判据用 `COALESCE(heartbeat_at, created_at)` / `COALESCE(started_at, created_at)` ——
+pending 行两个时间列为 NULL，直接比较会永远为 false。
+
+**进程重启的清理（单副本）**：`AgentRecoveryService` 启动时先 `recoverOnBoot()`，再把
+`updated_at < 启动时刻` 的 `pending/running` 标成 `interrupted`（`RunRepository.interruptActiveBefore`）。
+不这样做的话，`node --watch` 每次重启都会让上一轮"没人管却仍是 running"，用户下一次发送只能
+拿到 3306，直到看门狗 60s 后判超时。多副本不做（别的副本可能还在跑）；测试环境跳过
+（`app-bootstrap` 会把应用跑在开发库上，不能误伤开发者正在跑的一轮）。
 
 ## 2. 上下文策略（按模型窗口比例，不拍脑袋）
 
@@ -119,8 +128,19 @@
   `reconnectToStream` 固定发 GET，指到 POST-only 的建流地址会 **404**（踩过）；
 - 帧格式 `data: {json}\n\n`，结束 `data: [DONE]\n\n`；响应头有 `x-vercel-ai-ui-message-stream: v1`、
   `x-accel-buffering: no`；心跳是 SSE 注释帧 `: ping\n\n`（自写，15s）；
+- ⚠️ **心跳写入必须先续租、且只在 `writeHead` 之后写**：客户端断开 / 响应已结束时
+  `response.write()` 会抛「Connection is closed.」，而它跑在定时器里 = 进程级未捕获异常 =
+  `process.exit(1)`（表现为"聊着聊着服务重启、其它会话全丢"）。响应头之前写还会隐式发出 200，
+  随后 `writeHead(200, SSE_HEADERS)` 抛 `ERR_HTTP_HEADERS_SENT`。统一走 `writeSse` / `endSse`。
+- **`startRun` 之后的所有步骤都要在 try 里**：模型解析 / 读附件 / 组装上下文失败时，
+  早先只留下一条 `running` 行（没有错误、后续 3306）；现在失败落终态，且响应头未发时把真实
+  错误码抛回 HTTP（3406 / 3311 才能传到前端 `onError`）。
 - **`[DONE]` 在收尾落库之后才发** —— 客户端见到它就代表终态已写库；
 - 每个片段同时落三处：时间线（真相）/ Redis 输出记录（补发）/ pub/sub（跨副本）；
+- ⚠️ **补发不能直接从 offset 切**：offset 可能落在 reasoning / text / tool-input 中间，
+  AI SDK 的状态机收到没有 `*-start` 的 delta 会整页报错。`resumeRun` 先读全量，
+  由 `runtime/stream-resume.ts` 回退到当前块开头并补回消息 `start`；找不到开头时补 start，
+  孤立 end 丢弃。改续流逻辑时别绕过它；
 - **`data-*` 块**（前端渲染的细节都在这）：`data-run`（本轮身份，**第一个块**，不带 id）/
   `data-sub-agent`（子助手状态快照，**带 id = 子 run id，同 id 覆盖**）/
   `data-sub-agent-delta`（子助手增量，**不带 id，一块一个**）。

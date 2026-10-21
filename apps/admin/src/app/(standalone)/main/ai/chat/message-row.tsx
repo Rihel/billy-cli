@@ -29,6 +29,7 @@ import { SubAgentCard } from './sub-agent-card'
 import { collectSubAgentLives, delegatedToolCallIds } from './sub-agent-live'
 import { ToolCard } from './tool-card'
 import { ToolEventCard, ToolEventsBody, groupToolEventsByToolCall } from './tool-event'
+import { QuestionCard, type AnswerQuestionsInput, type SuspendedPartData } from './question-card'
 import { MessageCopyMenu } from './message-copy'
 
 /**
@@ -79,6 +80,8 @@ export function MessageRow({
   streaming,
   onOpenPlan,
   onPreviewImage,
+  onAnswerQuestions,
+  showTrailingCards = true,
 }: {
   message: UIMessage
   streaming: boolean
@@ -86,6 +89,15 @@ export function MessageRow({
   onOpenPlan?: () => void
   /** 点附件里的图片：会话页打开大图查看器（与输入框待发附件共用同一套交互） */
   onPreviewImage?: (items: readonly PromptAttachmentItem[], index: number) => void
+  /** 回答工具挂起的问题：会话页负责 POST resume 并把续跑的流并回当前消息 */
+  onAnswerQuestions?: (input: AnswerQuestionsInput) => Promise<void>
+  /**
+   * 是否渲染"计划卡 / 问题卡"这类悬浮卡。
+   *
+   * 会话主区把它关掉：这两类卡固定在输入框上方（`ChatConversation` 的 dock），
+   * 不再跟着消息滚走；右栏的历史预览仍然保留默认的 true。
+   */
+  showTrailingCards?: boolean
 }) {
   const isUser = message.role === 'user'
   /** 历史里的附件只有存储 key：用应用注入的规则拼成可访问地址（实时那条消息自带地址） */
@@ -187,15 +199,17 @@ export function MessageRow({
                 <ToolEventsBody key={index} toolKey={getToolName(part)} parts={events} />
               ) : null
             }
+            const toolName = getToolName(part)
+            // 问题工具由挂起卡片代表；只有真的报错时才露出原始工具卡
+            if (toolName === 'ask-user-questions' && part.state !== 'output-error') return null
             // 计划工具：出参已由消息末尾的 PlanSummaryCard 代表（完整清单在右栏），不再铺原始工具卡；
             // 认不出的出参不在 consumed 里，这里照旧显示原文（"看不懂的东西也要看得见"）
             if (messagePlan?.consumed.includes(index)) {
               // 工具卡被计划卡片吸收了，但它发出的事件是**过程**，不能跟着一起消失
               return events.length > 0 ? (
-                <ToolEventsBody key={index} toolKey={getToolName(part)} parts={events} />
+                <ToolEventsBody key={index} toolKey={toolName} parts={events} />
               ) : null
             }
-            const toolName = getToolName(part)
             return (
               <ToolCard
                 key={index}
@@ -238,13 +252,26 @@ export function MessageRow({
             // 增量块本身不渲染（已并入子助手卡片 / 右栏），避免重复显示
             return null
           }
+          if (part.type === 'data-tool-call-suspended') {
+            // 主区把这组卡放在输入框上方（dock），消息流里不再重复
+            if (!showTrailingCards) return null
+            const data = (part as { data?: SuspendedPartData }).data
+            if (!data || data.resumed) return null
+            return (
+              <QuestionCard
+                key={index}
+                data={data}
+                {...(onAnswerQuestions ? { onSubmit: onAnswerQuestions } : {})}
+              />
+            )
+          }
           if (part.type === 'step-start') {
             // **步骤边界是协议管道**（AI SDK 每进一个 agent step 就往 parts 里 push 一个 `step-start`）：
             // 界面上「Thought for N seconds」+ 工具卡已经把"这一步干了什么"表达完了，
             // 再挂一个 step-start 徽标纯属噪音（用户看到的就是这个）
             return null
           }
-          if (part.type === 'data-run') {
+          if (part.type === 'data-run' || part.type === 'data-run-suspended') {
             return null
           }
           if (part.type === 'data-run-usage') {
@@ -266,7 +293,7 @@ export function MessageRow({
         {/* 当前计划固定在消息末尾：一个消息里只渲染一次。
             这里只给"有没有计划、做到哪了"这一眼 —— 完整清单（含备注与变更历史）在右栏「任务」tab，
             点卡片上的「查看清单」跳过去（消息里铺整份清单会把对话切成两半，且它随每轮变长） */}
-        {messagePlan ? (
+        {messagePlan && showTrailingCards ? (
           <PlanSummaryCard plan={messagePlan.current.plan} onOpen={onOpenPlan} />
         ) : null}
         {/* 空消息占位只在"库里确实是空的"历史消息上出现：流刚建立时 parts 也是空的，

@@ -241,4 +241,73 @@ describe('看门狗（条件 UPDATE 抢执行权）', () => {
     )
     expect(rows[0].status).toBe(RunStatus.Failed)
   })
+
+  /**
+   * **卡在 pending 的运行也要能被看门狗收掉**（2026-10-18 修）。
+   *
+   * `startRun` 先插 pending 再置 running；若中间失败 / 进程重启，这一行会永远 pending。
+   * 早先看门狗只扫 running，且判据里 `heartbeat_at` 为 NULL 时 `NULL < x` 恒为 false ——
+   * 这条会话会**永久** 3306。现在判据用 `COALESCE(..., created_at)` 且包含 pending。
+   */
+  it('卡在 pending 的运行：超过心跳阈值后由看门狗收掉（不再永久锁死会话）', async () => {
+    const { run } = await newRun(RunStatus.Pending)
+    await db.dataSource.query(
+      "UPDATE runs SET created_at = now() - interval '1 minute' WHERE id = $1",
+      [run.id],
+    )
+
+    await recovery.sweepStaleRuns()
+    const rows = await db.dataSource.query<{ status: string }[]>(
+      'SELECT status FROM runs WHERE id = $1',
+      [run.id],
+    )
+    expect(rows[0].status).toBe(RunStatus.Failed)
+  })
+})
+
+describe('启动清理（进程重启留下的活跃运行）', () => {
+  /**
+   * **单副本重启后立刻释放会话**（2026-10-18 修）。
+   *
+   * `node --watch` 改代码就重启，旧进程手里的 run 没人管；看门狗要等 60s 才处置，
+   * 这段时间用户每次发送都得到 3306。启动清理把"启动后没有被任何人碰过（updated_at 更早）"
+   * 的活跃运行直接标成 interrupted，会话马上可重试。
+   */
+  it('把启动前遗留的 running/pending 标成 interrupted，并留下可追溯的错误环节', async () => {
+    const { conversation, run } = await newRun(RunStatus.Running)
+    await db.dataSource.query(
+      "UPDATE runs SET updated_at = now() - interval '1 minute' WHERE id = $1",
+      [run.id],
+    )
+
+    const bootedAt = new Date()
+    const interrupted = await runs.interruptActiveBefore(bootedAt)
+    expect(interrupted.some((item) => item.id === run.id)).toBe(true)
+
+    const rows = await db.dataSource.query<
+      { status: string; error_stage: string; finished_at: Date | null }[]
+    >('SELECT status, error_stage, finished_at FROM runs WHERE id = $1', [run.id])
+    expect(rows[0].status).toBe(RunStatus.Interrupted)
+    expect(rows[0].error_stage).toBe('recovery')
+    expect(rows[0].finished_at).not.toBeNull()
+
+    // 会话不再被这条运行挡住
+    expect(await runs.findActive(conversation.id)).toBeNull()
+  })
+
+  it('启动后才被恢复流程碰过的运行不误伤（updated_at >= 启动时刻）', async () => {
+    const { run } = await newRun(RunStatus.Running)
+    // updated_at 就是"现在"（newRun 刚插入）→ 视为本次启动后仍有人在管
+    const interrupted = await runs.interruptActiveBefore(new Date(Date.now() - 60_000))
+    expect(interrupted.some((item) => item.id === run.id)).toBe(false)
+
+    const rows = await db.dataSource.query<{ status: string }[]>(
+      'SELECT status FROM runs WHERE id = $1',
+      [run.id],
+    )
+    expect(rows[0].status).toBe(RunStatus.Running)
+
+    // 收尾，避免影响其它用例
+    await runs.finish(run.id, { status: RunStatus.Canceled })
+  })
 })

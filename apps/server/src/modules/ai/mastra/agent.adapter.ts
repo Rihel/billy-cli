@@ -41,7 +41,7 @@ const PLACEHOLDER_MODEL: { id: AgentModelId; url?: string; apiKey: string } = {
  * 症状：发图后模型回答"我没收到图片"，看着像"模型不支持读图"。
  * 实测：`@mastra/core@1.69.0` 在 **`durable: true`**（崩溃恢复，线上默认开）时，
  * 会把多模态消息的 `content` 数组**压平成纯字符串** —— 出站请求只有 **156 字节**、
- * `content: "看图"`，图片被静默丢掉；同一份输入在 `1.75.0` 上是含 `image_url` 的正常请求。
+ * `content: "看图"`，图片被静默丢掉；同一份输入在 `1.78.0` 上是含 `image_url` 的正常请求。
  *
  * 排查时一度误判成"动态 model 参数形态"的问题（当时没意识到 durable 才是变量），
  * 所以**这一条别当结论用**：先看 durable 相关的回归测试
@@ -96,6 +96,8 @@ export interface MastraAgentOptions {
   tools: ToolsInput
   skills: InlineSkill[]
   durable?: boolean
+  /** 对话记忆（durable resume 需要它把工具结果续回消息列表；不传则不启用记忆） */
+  memory?: import('@mastra/core/memory').MastraMemory
 }
 
 /** 造一个 Mastra Agent（主 agent 与临时子 agent 共用） */
@@ -108,6 +110,7 @@ export const createMastraAgent = (options: MastraAgentOptions): Agent =>
     tools: options.tools,
     skills: options.skills,
     ...(options.durable ? { durable: true } : {}),
+    ...(options.memory ? { memory: options.memory } : {}),
   })
 
 /**

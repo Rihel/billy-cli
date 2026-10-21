@@ -8,12 +8,14 @@ import { ConversationEntity } from '../src/database/entities/conversation-entity
 import { RunEntity } from '../src/database/entities/run-entity.js'
 import { TimelineEntity } from '../src/database/entities/timeline-entity.js'
 import { DEFAULT_AGENT_KEY, createAgentDefinitions } from '../src/modules/ai/agents/index.js'
+import { agentMemory } from '../src/modules/ai/mastra/agent-memory.js'
 import { createMastra } from '../src/modules/ai/mastra/ai.mastra.js'
 import { createAgentRegistry } from '../src/modules/ai/agents/registry.js'
 import { createPromptEngine } from '../src/modules/ai/core/prompts/index.js'
 import { AgentTitleService } from '../src/modules/ai/runtime/title.service.js'
 import { SkillLoader } from '../src/modules/ai/core/skills/index.js'
 import { RunCommandTool } from '../src/modules/ai/tools/command.tool.js'
+import { WebTools } from '../src/modules/ai/tools/web.tools.js'
 import { RunSubAgentTool } from '../src/modules/ai/tools/subagent.tool.js'
 import { PlannerStore, PlannerTools } from '../src/modules/ai/tools/planner/index.js'
 import { AgentRunner } from '../src/modules/ai/runtime/agent-runner.js'
@@ -28,8 +30,11 @@ import { ConversationRepository } from '../src/modules/ai/runtime/conversation.r
 import { ContextService } from '../src/modules/ai/runtime/context.service.js'
 import { RunRepository } from '../src/modules/ai/runtime/run.repository.js'
 import { AgentStreamStore } from '../src/modules/ai/runtime/stream-store.service.js'
+import { AgentMastraStore } from '../src/modules/ai/runtime/storage/agent-mastra-store.js'
 import { TimelineRepository } from '../src/modules/ai/runtime/timeline.repository.js'
 import {
+  MOCK_ASK_MARKER,
+  MOCK_ASK_TOOL,
   MOCK_CHILD_TEXT,
   MOCK_COMMAND_MARKER,
   MOCK_DELEGATE_MARKER,
@@ -71,6 +76,7 @@ let redis: RedisStore
 let streamStore: AgentStreamStore
 let mock: MockModelServer
 let chat: AgentChatService
+let mastra: Awaited<ReturnType<typeof createMastra>>
 let conversations: AgentConversationService
 let runs: RunRepository
 let timelines: TimelineRepository
@@ -105,6 +111,8 @@ const TEST_CONFIG = {
 const createdConversationIds: string[] = []
 /** HTTP 处理器里逃逸出来的错误（诊断用） */
 const serverErrors: unknown[] = []
+/** 让下一轮"解析模型"失败（模拟 3406 / 库配置被删这类建流前错误） */
+let failModelResolution = false
 
 /** 轮询等待条件成立（收尾发生在响应结束之后的一瞬间，测试要等它） */
 const waitFor = async (check: () => Promise<boolean>, timeoutMs = 3_000): Promise<void> => {
@@ -127,6 +135,49 @@ const postStream = async (body: Record<string, unknown>): Promise<{ status: numb
   return { status: response.status, headers: response.headers, text }
 }
 
+/** 从 `data-run` 块取应用会话 id（不拿"最近一条会话"，避免并行测试互相抢） */
+const conversationIdOfSse = (sse: string): string | undefined => {
+  for (const line of sse.split('\n')) {
+    if (!line.startsWith('data: {')) continue
+    try {
+      const chunk = JSON.parse(line.slice(6)) as {
+        type?: string
+        data?: { conversationId?: string }
+      }
+      if (chunk.type === 'data-run') return chunk.data?.conversationId
+    } catch {
+      // 忽略非 JSON 的注释帧
+    }
+  }
+  return undefined
+}
+
+/** 从 UI Message Stream 的 SSE 原文里拼出正文（delta 是逐字的，不能直接对原文 toContain） */
+const uiTextOfSse = (sse: string): string =>
+  sse
+    .split('\n')
+    .filter((line) => line.startsWith('data: {'))
+    .map((line) => {
+      try {
+        return JSON.parse(line.slice(6)) as { type?: string; delta?: string }
+      } catch {
+        return null
+      }
+    })
+    .filter((chunk): chunk is { type: string; delta: string } => chunk?.type === 'text-delta')
+    .map((chunk) => chunk.delta)
+    .join('')
+
+/** 回答挂起的一轮（同样是 SSE，收完再断言） */
+const postResume = async (body: Record<string, unknown>): Promise<{ status: number; text: string }> => {
+  const response = await fetch(`${httpBase}/chat/resume`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  return { status: response.status, text: await response.text() }
+}
+
 beforeAll(async () => {
   mock = await startMockModelServer()
 
@@ -143,15 +194,18 @@ beforeAll(async () => {
   // 模型解析替身：这些测试不走"从库里取模型"那条链路（那是 ai-model 模块测试的事），
   // 但编排层现在必须拿到一个解析结果 —— 给它一个恒定的 mock 模型即可
   const modelsStub = {
-    resolveForRuntime: async () => ({
-      id: 'model_mock',
-      modelRef: 'mock/mock-model',
-      modelKey: 'mock-model',
-      displayName: 'Mock 模型',
-      baseURL: mock.baseURL,
-      apiKey: 'test-key',
-      contextWindow: null,
-    }),
+    resolveForRuntime: async () => {
+      if (failModelResolution) throw new Error('模拟：库里没有可用模型')
+      return {
+        id: 'model_mock',
+        modelRef: 'mock/mock-model',
+        modelKey: 'mock-model',
+        displayName: 'Mock 模型',
+        baseURL: mock.baseURL,
+        apiKey: 'test-key',
+        contextWindow: null,
+      }
+    },
   } as never
 
 
@@ -189,6 +243,7 @@ beforeAll(async () => {
       new RunSubAgentTool(runner, silentLogger),
       new PlannerTools(plannerStore),
       new ReadToolResultTool(deps.results, deps.counter, deps.caps),
+      new WebTools(silentLogger as never),
     ],
     gateway,
     deps.config,
@@ -198,12 +253,14 @@ beforeAll(async () => {
     DEFAULT_AGENT_KEY,
   )
   const skillLoader = new SkillLoader(silentLogger)
-  const mastra = await createMastra({
+  mastra = await createMastra({
     // 模型改为"按 envelope 里的模型"求值的动态参数；这些测试不验证选模型，给恒定 mock 模型
     resolveModel: () => ({ id: 'mock/mock-model', url: mock.baseURL, apiKey: 'test-key' }),
     definitions: registry.all(),
     resolveTools: (keys) => toMastraTools(toolRegistry.toolbox(keys), silentLogger),
     resolveSkills: async (names) => toMastraSkills(await skillLoader.resolve(names)),
+    durableAgents: true,
+    storage: new AgentMastraStore(db, silentLogger),
   })
 
   conversations = new AgentConversationService(conversationRepo, runs, timelines, registry, silentLogger)
@@ -237,13 +294,15 @@ beforeAll(async () => {
     req.on('data', (chunk) => chunks.push(chunk as Buffer))
     req.on('end', () => {
       const body = JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}') as Record<string, unknown>
-      void chat
-        .chatStream(USER, body as never, res)
-        .catch((error: unknown) => {
-          serverErrors.push(error)
-          if (!res.writableEnded) res.statusCode = 500
-          res.end()
-        })
+      const run =
+        req.url === '/chat/resume'
+          ? chat.resumeChat(USER, body as never, res)
+          : chat.chatStream(USER, body as never, res)
+      void run.catch((error: unknown) => {
+        serverErrors.push(error)
+        if (!res.writableEnded) res.statusCode = 500
+        res.end()
+      })
     })
   })
   await new Promise<void>((resolve) => http.listen(0, '127.0.0.1', resolve))
@@ -542,6 +601,33 @@ describe('流式链路端到端（mock 模型 + 真实 DB + 真实 Redis）', ()
     await streamStore.clearRun(run.id)
   }, 30_000)
 
+  /**
+   * 崩溃重启后旧进程没来得及删 Redis 进度（TTL 6h），而 Postgres 里这一轮已经被
+   * 启动清理标成 `interrupted`。重连必须以 **Postgres 终态**为准返回 false，
+   * 否则客户端会"接回"一条永远没有新片段的死流。
+   */
+  it('已中断的运行：即使 Redis 进度还在，也不接回（Postgres 终态优先）', async () => {
+    const conversation = await conversations.create(USER, {})
+    createdConversationIds.push(conversation.id)
+    const run = await runs.create({
+      conversationId: conversation.id,
+      agentKey: DEFAULT_AGENT_KEY,
+      status: RunStatus.Interrupted,
+    })
+    // 模拟旧进程留下的进度键
+    await streamStore.startRun(run.id, { status: RunStatus.Running, stage: 'generating' })
+
+    const resumed = await chat.resumeRun(USER, run.id, 0, {
+      writeHead: () => undefined,
+      write: () => undefined,
+      end: () => undefined,
+      writableEnded: false,
+      on: () => undefined,
+    })
+    expect(resumed).toBe(false)
+    await streamStore.clearRun(run.id)
+  })
+
   it('没有进行中的流 → 重连返回 false（控制器据此回 204）', async () => {
     const conversation = await conversations.create(USER, {})
     createdConversationIds.push(conversation.id)
@@ -598,5 +684,130 @@ describe('流式链路端到端（mock 模型 + 真实 DB + 真实 Redis）', ()
     const dumped = JSON.stringify(rows.map((row) => row.payload))
     expect(dumped).not.toContain('base64')
     expect(dumped).toContain('shot.png')
+  })
+
+  it('工具挂起：问题卡事件落库，回答后用同一个 run 续跑', async () => {
+    const { status, text } = await postStream({ message: `先问我几个问题 ${MOCK_ASK_MARKER}` })
+    expect(status).toBe(200)
+    expect(text).toContain('data-tool-call-suspended')
+    expect(text).toContain('这份给谁看')
+
+    const conversationId = conversationIdOfSse(text)!
+    expect(conversationId).toBeTruthy()
+    createdConversationIds.push(conversationId)
+
+    // 挂起不是成功：会话仍被这一轮占着，状态是 suspended
+    const suspended = await runs.findActive(conversationId)
+    expect(suspended?.status).toBe(RunStatus.Suspended)
+    expect(suspended?.id).toBeTruthy()
+    const before = await timelines.list({ conversationId, page: 1, size: 200 })
+    expect(before.items.some((item) => item.kind === TimelineKind.ToolSuspended)).toBe(true)
+    const snap = await db.dataSource.query<{ snapshot: unknown; engine_run_id: string }[]>(
+      'SELECT snapshot, engine_run_id FROM runs WHERE id = $1',
+      [suspended!.id],
+    )
+    // 外层 loop 与内层 execution 两个快照都要在；只留一个会让 resume 丢 typedInput
+    expect(Object.keys(snap[0]?.snapshot as object).sort()).toEqual([
+      'durable-agentic-execution',
+      'durable-agentic-loop',
+    ])
+    const suspendedRuns = (await mastra.getAgent('assistant').listSuspendedRuns()) as {
+      total: number
+    }
+    expect(suspendedRuns.total).toBeGreaterThan(0)
+    const memory = await agentMemory.recall({
+      threadId: conversationId,
+      resourceId: USER,
+    })
+    expect(memory.total).toBeGreaterThan(0)
+
+    // 挂起期间同一会话不能再开一轮（部分唯一索引把 suspended 算作进行中）。
+    // 这个测试 HTTP 壳没有全局 AppErrorFilter，所以只断言"被挡住"，不锁 409。
+    const busy = await postStream({ conversationId, message: '挂起期间再开一轮' })
+    expect(busy.status).not.toBe(200)
+    serverErrors.length = 0
+
+    const resumed = await postResume({
+      runId: suspended!.id,
+      toolCallId: 'call_mock_ask',
+      answers: [
+        { id: 'audience', value: '长辈自己' },
+        { id: 'topics', value: ['接电话'] },
+      ],
+    })
+    expect(resumed.status).toBe(200)
+    expect(uiTextOfSse(resumed.text)).toContain(MOCK_FINAL_TEXT)
+    expect(resumed.text).toContain('[DONE]')
+    expect(resumed.text).toContain('[DONE]')
+
+    // 同一条 run 走完：不再占会话，状态 succeeded
+    expect(await runs.findActive(conversationId)).toBeNull()
+    const rows = await db.dataSource.query<{ status: string }[]>(
+      'SELECT status FROM runs WHERE id = $1',
+      [suspended!.id],
+    )
+    expect(rows[0]?.status).toBe(RunStatus.Succeeded)
+
+    // 工具结果行也要认得出是哪个工具（历史重建靠它把问题卡收起来）
+    const after = await timelines.list({ conversationId, page: 1, size: 200 })
+
+    expect(
+      after.items.some(
+        (item) => item.kind === TimelineKind.ToolResult && item.toolKey === MOCK_ASK_TOOL,
+      ),
+    ).toBe(true)
+  }, 30_000)
+
+  it('挂起中的一轮可以主动停止，释放会话', async () => {
+    const { status, text } = await postStream({ message: `问完就停 ${MOCK_ASK_MARKER}` })
+    expect(status).toBe(200)
+    expect(text).toContain('data-tool-call-suspended')
+
+    const conversationId = conversationIdOfSse(text)!
+    expect(conversationId).toBeTruthy()
+    createdConversationIds.push(conversationId)
+    const suspended = await runs.findActive(conversationId)
+    expect(suspended?.status).toBe(RunStatus.Suspended)
+
+    await chat.stopRun(USER, suspended!.id)
+    expect(await runs.findActive(conversationId)).toBeNull()
+    const rows = await db.dataSource.query<{ status: string }[]>(
+      'SELECT status FROM runs WHERE id = $1',
+      [suspended!.id],
+    )
+    expect(rows[0]?.status).toBe(RunStatus.Canceled)
+  }, 30_000)
+
+  /**
+   * **建流前失败也必须落终态**（2026-10-18 修）。
+   *
+   * 早先"解析模型 / 读附件 / 组装上下文"写在 try 外面：一失败只留下一条 `running` 的行，
+   * 前端看不到错误，下一次发送还会被部分唯一索引挡成 3306，直到看门狗 60s 后判超时。
+   * 这里用"模型解析失败"复现，断言：
+   * 1. 请求本身报错（不是空回答）；
+   * 2. 会话**立刻**可以再发一轮（没有遗留的进行中运行）。
+   */
+  it('建流前失败：运行落终态，会话不会被锁死（可直接重试）', async () => {
+    const conversation = await conversations.create(USER, {})
+    createdConversationIds.push(conversation.id)
+
+    failModelResolution = true
+    try {
+      const failed = await postStream({ conversationId: conversation.id, message: '这一轮应该失败' })
+      expect(failed.status).not.toBe(200)
+    } finally {
+      failModelResolution = false
+    }
+
+    // 没有遗留的进行中运行 —— 下一个 3306 就不会出现
+    expect(await runs.findActive(conversation.id)).toBeNull()
+
+    // 紧接着重试：同一个会话应当能直接开跑（不被 3306 挡）
+    const retried = await postStream({ conversationId: conversation.id, message: '再试一次' })
+    expect(retried.status).toBe(200)
+    expect(retried.text).toContain('[DONE]')
+
+    // 这个用例故意让处理器抛了一次错，清掉以免影响后面的断言（本文件把它们当"意外"）
+    serverErrors.length = 0
   })
 })

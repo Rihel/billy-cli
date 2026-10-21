@@ -13,12 +13,16 @@ import { ModelSyncFailedError } from './errors.js'
  *
  * 收录范围：**国内厂商**（不含 OpenAI / Anthropic / Google）。这些厂商都对外提供
  * OpenAI 形态的 `GET {base}/models`（`Authorization: Bearer`，响应 `{ object: 'list', data: [...] }`），
- * 所以本层**只有一个通用 OpenAI 兼容 adapter** —— 厂商之间的差别**只落在默认 baseURL 上**，
- * 统一登记在 {@link PROVIDER_ENDPOINTS}（新增一家 = 表里加一行）。
+ * 所以本层**只有一个通用 OpenAI 兼容 adapter** —— 厂商之间的差别只在两处：
+ * **默认 baseURL**（登记在 {@link PROVIDER_ENDPOINTS}，新增一家 = 表里加一行）与
+ * **规格字段的写法**（窗口 / 输出上限 / 展示名各叫各的，见 {@link CONTEXT_WINDOW_PATHS} 一带的候选表）。
  *
  * 三条硬口径：
  * - **容错解析**：字段缺失不报错（拿不到就是 `undefined`），但**绝不编造** ——
  *   拿不到上下文窗口就是 `null`，不猜一个"看起来合理"的数；
+ *   （反过来，**供应商给了就必须拿到**：DeepSeek 官方 `/models` 现在返回
+ *   `name` / `context_window` / `max_output_tokens` / `input_modalities` / `output_modalities`，
+ *   早期只有 `id` / `object` / `owned_by`，别再按旧印象写"OpenAI 形态不返回窗口"）；
  * - **非 2xx 带原文**：错误信息里带响应体前 300 字符（排障要看供应商原话）；
  * - **超时**：`AbortSignal.timeout`，默认 15s，避免一个卡死的网关把同步拖到天荒地老。
  *
@@ -30,11 +34,11 @@ import { ModelSyncFailedError } from './errors.js'
 export interface RemoteModel {
   /** 供应商侧的模型 id（`data[].id`；这是同步的幂等锚点） */
   modelKey: string
-  /** 展示名（OpenAI 形态不返回展示名，留空则由上层回落 `modelKey`） */
+  /** 展示名（DeepSeek 的 `name`、部分厂商的 `display_name`；拿不到就由上层回落 `modelKey`） */
   displayName?: string
-  /** 上下文窗口（OpenAI 形态不返回，拿不到就是 undefined） */
+  /** 上下文窗口（厂商写法不一：`context_window` / `context_length` / `max_model_len`…） */
   contextWindow?: number
-  /** 单次输出上限（OpenAI 形态不返回，拿不到就是 undefined） */
+  /** 单次输出上限（DeepSeek 的 `max_output_tokens`、OpenRouter 的 `top_provider.max_completion_tokens`） */
   maxOutputTokens?: number
   /** 能力标记（供应商原始字段；拿不到就是 undefined） */
   capabilities?: Record<string, unknown>
@@ -90,7 +94,7 @@ export const PROVIDER_ENDPOINTS: Record<string, ProviderEndpointProfile> = {
   [AiProviderKind.Deepseek]: {
     baseUrl: 'https://api.deepseek.com',
     supportsModelList: true,
-    note: '官方文档 base_url 就是 https://api.deepseek.com（不带 /v1）；GET /models 返回 data[]（id / object / owned_by）。',
+    note: '官方文档 base_url 就是 https://api.deepseek.com（不带 /v1）；GET /models 的 data[] 除 id / object / owned_by，还带 name / context_window / max_output_tokens / input_modalities / output_modalities / effort（窗口与输出上限就靠它，早期版本只返回前三个字段）。',
   },
   [AiProviderKind.Dashscope]: {
     baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
@@ -302,19 +306,30 @@ const MODE_KEY_HINTS: ReadonlyArray<readonly [RegExp, AiModelModeValue]> = [
   [/(^|[/-])dall-e|stable-diffusion|flux|image-gen/i, 'image_generation'],
 ]
 
-/** 把可能就是模态名的值收进集合（字符串 / 字符串数组；`"text,image"` 也拆） */
+/**
+ * 把可能就是模态名的值收进集合（字符串 / 字符串数组；`"text,image"` 也拆）。
+ *
+ * 返回值是**"认出了至少一个模态"**，不是"集合变大了" ——
+ * 后者会把"供应商明确声明 `input_modalities: ["text"]`"判成没证据
+ * （`text` 本来就在初始集合里，size 没变），于是明明说了却落成"未声明"。
+ */
 const collectModalities = (into: Set<string>, value: unknown): boolean => {
-  const before = into.size
+  let matched = false
   if (typeof value === 'string') {
     for (const raw of value.toLowerCase().split(/[\s,;|+/]+/)) {
       // 先按同义词翻译，再按取值表收（认不出的词直接忽略）
       const token = MODALITY_ALIASES[raw] ?? raw
-      if (MODALITY_SET.has(token)) into.add(token)
+      if (MODALITY_SET.has(token)) {
+        into.add(token)
+        matched = true
+      }
     }
   } else if (Array.isArray(value)) {
-    for (const item of value) collectModalities(into, item)
+    for (const item of value) {
+      if (collectModalities(into, item)) matched = true
+    }
   }
-  return into.size !== before
+  return matched
 }
 
 /**
@@ -339,9 +354,11 @@ const parseModalities = (
   let sawInputEvidence = false
 
   const readInto = (target: Set<string>, ...sources: unknown[]) => {
-    const before = target.size
-    for (const source of sources) collectModalities(target, source)
-    return target.size !== before
+    let matched = false
+    for (const source of sources) {
+      if (collectModalities(target, source)) matched = true
+    }
+    return matched
   }
 
   // ① 直接声明输入模态的字段（最明确）
@@ -422,6 +439,122 @@ const parseMode = (record: Record<string, unknown>, modelKey: string): AiModelMo
   return 'unknown'
 }
 
+// ─────────────────────────── 规格字段（窗口 / 输出上限 / 展示名 / 能力） ───────────────────────────
+
+/** 取正整数（只认整数，字符串形态也收；`0` / 负数 / 非数字一律当作没给） */
+const asPositiveInt = (value: unknown): number | undefined => {
+  if (typeof value === 'number' && Number.isInteger(value) && value > 0) return value
+  if (typeof value === 'string' && /^\d+$/.test(value.trim())) {
+    const parsed = Number(value.trim())
+    if (parsed > 0) return parsed
+  }
+  return undefined
+}
+
+/** 按路径取值（`['limits', 'context_length']` → `record.limits.context_length`） */
+const pickPath = (record: Record<string, unknown>, path: readonly string[]): unknown =>
+  path.reduce<unknown>((acc, key) => asRecord(acc)?.[key], record)
+
+/** 按候选路径依次取第一个正整数（都取不到就是 undefined） */
+const firstInt = (
+  record: Record<string, unknown>,
+  paths: ReadonlyArray<readonly string[]>,
+): number | undefined => {
+  for (const path of paths) {
+    const value = asPositiveInt(pickPath(record, path))
+    if (value !== undefined) return value
+  }
+  return undefined
+}
+
+/**
+ * **上下文窗口**（token）在各家 `/models` 里的写法。
+ *
+ * 口径说明：DeepSeek 官方文档写明 `context_window` 是"输入与输出 token 合计"，
+ * 而多数厂商的 `context_length` 指的是"能塞进去的输入"。**两者我们都按"窗口总量"用** ——
+ * 上下文策略（`ai/runtime/context.service.ts`）拿它当整个窗口做估算，取较小/合计的口径更保守，
+ * 宁可早裁历史也不要被上游 400。
+ *
+ * 刻意**不收录** `max_input_tokens` / `maxTokens`：那在 OpenAI 形态里通常是"请求默认值"，
+ * 不是窗口上限，采进来会把窗口系统性估小。
+ */
+const CONTEXT_WINDOW_PATHS: ReadonlyArray<readonly string[]> = [
+  ['context_window'],
+  ['contextWindow'],
+  ['context_length'],
+  ['contextLength'],
+  ['max_context_length'],
+  ['maxContextLength'],
+  ['context_size'],
+  ['contextSize'],
+  ['context_tokens'],
+  ['contextTokens'],
+  ['max_model_len'], // vLLM / 多数自建网关
+  ['maxModelLen'],
+  ['model_max_length'],
+  ['modelMaxLength'],
+  ['limits', 'context_length'],
+  ['architecture', 'context_length'],
+]
+
+/**
+ * **单次输出上限**的写法。
+ *
+ * 同样不收录裸 `max_tokens`：DeepSeek 文档里它是"本次请求想要多少"，不是"最多能要多少"。
+ */
+const MAX_OUTPUT_PATHS: ReadonlyArray<readonly string[]> = [
+  ['max_output_tokens'],
+  ['maxOutputTokens'],
+  ['max_completion_tokens'],
+  ['maxCompletionTokens'],
+  ['output_token_limit'],
+  ['max_new_tokens'],
+  ['maxNewTokens'],
+  ['top_provider', 'max_completion_tokens'], // OpenRouter
+  ['limits', 'max_output_tokens'],
+]
+
+/** 展示名的写法（DeepSeek 用 `name`；部分自建清单用 `display_name` / `title`） */
+const DISPLAY_NAME_PATHS: ReadonlyArray<readonly string[]> = [
+  ['display_name'],
+  ['displayName'],
+  ['name'],
+  ['title'],
+  ['model_name'],
+  ['modelName'],
+]
+
+const parseContextWindow = (record: Record<string, unknown>): number | undefined =>
+  firstInt(record, CONTEXT_WINDOW_PATHS)
+
+const parseMaxOutputTokens = (record: Record<string, unknown>): number | undefined =>
+  firstInt(record, MAX_OUTPUT_PATHS)
+
+const parseDisplayName = (record: Record<string, unknown>): string | undefined => {
+  for (const path of DISPLAY_NAME_PATHS) {
+    const value = asString(pickPath(record, path))
+    if (value) return value
+  }
+  return undefined
+}
+
+/**
+ * 能力标记：**给什么存什么**（不解释、不编造）。
+ *
+ * 形态有三种：对象（多数）、数组（自建清单常见）、没有。数组包一层 `{ list }` 存，
+ * 免得 jsonb 里一会儿是对象一会儿是数组，下游每次都要分支。
+ * DeepSeek 的 `effort`（思考强度档位）一并收进来 —— 它是运行时 `reasoning_effort` 的取值来源。
+ */
+const parseCapabilities = (
+  record: Record<string, unknown>,
+): Record<string, unknown> | undefined => {
+  const raw = record.capabilities
+  const base = asRecord(raw) ?? (Array.isArray(raw) ? { list: raw } : undefined)
+  const effort = record.effort
+  if (base === undefined && effort === undefined) return undefined
+  return { ...(base ?? {}), ...(effort !== undefined ? { effort } : {}) }
+}
+
 // ─────────────────────────── 通用 OpenAI 兼容形态（全部国内厂商共用） ───────────────────────────
 
 /**
@@ -462,6 +595,10 @@ const listOpenAiCompatibleModels = async (
       const modalities = parseModalities(record)
       models.push({
         modelKey,
+        displayName: parseDisplayName(record),
+        contextWindow: parseContextWindow(record),
+        maxOutputTokens: parseMaxOutputTokens(record),
+        capabilities: parseCapabilities(record),
         raw: record,
         mode: parseMode(record, modelKey),
         inputModalities: modalities.input,

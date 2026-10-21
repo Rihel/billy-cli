@@ -8,7 +8,7 @@ export default function NotFound() {
   return (
     <RouteNotFound
       action={
-        <Button render={<Link href={Pages.home} />}>
+        <Button nativeButton={false} render={<Link href={Pages.home} />}>
           <HomeIcon />
           回到首页
         </Button>

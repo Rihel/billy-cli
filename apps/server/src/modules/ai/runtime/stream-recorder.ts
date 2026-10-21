@@ -125,6 +125,37 @@ export class StreamRecorder {
           },
         })
         return
+      case 'data-tool-call-suspended': {
+        // 挂起也是"过程事实"：刷新 / 换设备后要靠这一行把问题卡重建出来。
+        // 它不是 tool-result（工具还没返回），所以单独一种 kind，别和结果混在一起。
+        const data = (chunk.data ?? {}) as Record<string, unknown>
+        // `resumed=true` 是"同一个挂起点继续"，不是新的一次挂起；再写一行会重复，
+        // 也会让历史重建出两张问题卡。但工具名要记下：后面 tool-output-available
+        // 只给 toolCallId，不补名字结果行的 tool_key 就是 null。
+        if (data.resumed === true) {
+          if (typeof data.toolCallId === 'string' && typeof data.toolName === 'string') {
+            this.toolNames.set(data.toolCallId, data.toolName)
+          }
+          return
+        }
+        await this.append({
+          role: TimelineRole.Assistant,
+          kind: TimelineKind.ToolSuspended,
+          toolKey: typeof data.toolName === 'string' ? data.toolName : null,
+          toolCallId: typeof data.toolCallId === 'string' ? data.toolCallId : null,
+          payload: {
+            toolCallId: data.toolCallId ?? null,
+            toolName: data.toolName ?? null,
+            // 前端回答时调 `/agent/chat/resume`，要的是**应用 run id**；
+            // Mastra 的 `data.runId` 是 engineRunId（eng_...），放另一个字段留审计。
+            runId: this.ctx.runId,
+            engineRunId: data.engineRunId ?? null,
+            suspendPayload: data.suspendPayload ?? null,
+            resumeSchema: data.resumeSchema ?? null,
+          },
+        })
+        return
+      }
       case 'tool-output-available': {
         // 结果片段不带工具名（AI SDK v6 只给 toolCallId）→ 用入参那一步记下的名字补上
         const toolName = chunk.toolName ?? this.toolNameOf(chunk.toolCallId)

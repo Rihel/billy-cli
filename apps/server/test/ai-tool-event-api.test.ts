@@ -22,7 +22,7 @@ const serviceOf = () => {
   )
   // agent 授权清单只用于 `agents` 字段，这两条断言用不到 → 给空注册表
   const agents = { all: () => [] } as never
-  return new AiToolService(registry, {} as never, agents, silentLogger as never)
+  return new AiToolService(registry, {} as never, agents, silentLogger as never, deps.config)
 }
 
 describe('管理台接口：events 与代码声明一致', () => {

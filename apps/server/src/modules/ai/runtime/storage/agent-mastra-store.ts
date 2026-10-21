@@ -16,8 +16,10 @@ import { jsonbPatch } from '../jsonb.js'
  * 存储适配层：**把 Mastra 的运行快照落进我们自己的表**（设计文档 §4.4）。
  *
  * 只实现 `workflows` 这一个域（其余域用不到：记忆不做、agent 配置在代码里）。
- * 快照存 `runs.snapshot`（JSONB，**我们不解析**），运行状态仍由我们自己的运行服务维护 ——
- * 于是"崩溃恢复"需要的快照与"业务真相"在同一行上，不会两处打架。
+ * 快照存 `runs.snapshot`（JSONB）；一轮 durable agent 会同时产生外层 loop 与内层
+ * execution 两个 workflow 快照，所以值是 `{ [workflowName]: snapshot }`，按名读取。
+ * 运行状态仍由我们自己的运行服务维护 —— 于是"崩溃恢复"需要的快照与"业务真相"在同一行上，
+ * 不会两处打架。
  *
  * 三条硬规则：
  * 1. **加锁**：Mastra 的 snapshot 是它的内部状态，我们只当黑盒存取，不做业务查询；
@@ -38,10 +40,11 @@ const toRunStatus = (status: string | undefined): string | undefined => {
       return RunStatus.Failed
     case 'canceled':
       return RunStatus.Canceled
+    case 'suspended':
+      return RunStatus.Suspended
     case 'pending':
     case 'waiting':
     case 'paused':
-    case 'suspended':
       return RunStatus.Running
     default:
       return undefined
@@ -53,6 +56,8 @@ const toMastraStatus = (status: string): string | undefined => {
   switch (status) {
     case RunStatus.Running:
       return 'running'
+    case RunStatus.Suspended:
+      return 'suspended'
     case RunStatus.Succeeded:
       return 'success'
     case RunStatus.Failed:
@@ -69,6 +74,37 @@ const toMastraStatus = (status: string): string | undefined => {
 /** 直接引用基类的参数 / 返回类型：StepResult 的泛型参数数量随版本变化，跟着它走最稳 */
 type UpdateResultsInput = Parameters<WorkflowsStorage['updateWorkflowResults']>[0]
 type UpdateResultsOutput = Awaited<ReturnType<WorkflowsStorage['updateWorkflowResults']>>
+
+/**
+ * 一轮 durable agent 会同时产生**多个 workflow 的快照**：外层 `durable-agentic-loop`
+ * 与内层 `durable-agentic-execution`。它们共用一个 engine runId，
+ * 所以不能只存"最后一个快照"—— 否则外层会覆盖内层，resume 时内层 step 的 input 就没了
+ * （实测报 `Cannot destructure property 'agentId' of 'typedInput'`）。
+ *
+ * `runs.snapshot` 因此存成 `{ [workflowName]: WorkflowRunState }`。旧数据是单个快照对象，
+ * 读取时按 legacy 兼容。
+ */
+type SnapshotMap = Record<string, WorkflowRunState>
+
+const isWorkflowSnapshot = (value: unknown): value is WorkflowRunState =>
+  Boolean(value) &&
+  typeof value === 'object' &&
+  ('context' in (value as object) || 'status' in (value as object)) &&
+  'runId' in (value as object)
+
+const snapshotMapOf = (value: unknown): SnapshotMap => {
+  if (!value || typeof value !== 'object') return {}
+  if (isWorkflowSnapshot(value)) {
+    // 旧格式：单快照。外层 workflow 名是 Mastra 的固定 id，用它兜底。
+    return { 'durable-agentic-loop': value }
+  }
+  return value as SnapshotMap
+}
+
+const pickSnapshot = (map: SnapshotMap, workflowName?: string): WorkflowRunState | undefined => {
+  if (workflowName) return map[workflowName]
+  return Object.values(map)[0]
+}
 
 export class AgentWorkflowsStorage extends WorkflowsStorage {
   constructor(
@@ -105,12 +141,15 @@ export class AgentWorkflowsStorage extends WorkflowsStorage {
   }): Promise<void> {
     const repo = await this.db.getRepository(RunEntity)
     const status = toRunStatus(input.snapshot?.status as string | undefined)
+    const existing = await repo.findOne({ where: { engineRunId: input.runId } })
+    const map = snapshotMapOf(existing?.snapshot)
+    map[input.workflowName] = input.snapshot
     const affected = await repo
       .createQueryBuilder()
       .update(RunEntity)
       .set(
         jsonbPatch<RunEntity>({
-          snapshot: input.snapshot as unknown as Record<string, unknown>,
+          snapshot: map as unknown as Record<string, unknown>,
           ...(status ? { status } : {}),
         }),
       )
@@ -146,7 +185,7 @@ export class AgentWorkflowsStorage extends WorkflowsStorage {
     const repo = await this.db.getRepository(RunEntity)
     const row = await repo.findOne({ where: { engineRunId: input.runId } })
     if (!row?.snapshot) return null
-    return row.snapshot as unknown as WorkflowRunState
+    return pickSnapshot(snapshotMapOf(row.snapshot), input.workflowName) ?? null
   }
 
   /** 列出运行（恢复流程据此找"在跑的"） */
@@ -157,7 +196,6 @@ export class AgentWorkflowsStorage extends WorkflowsStorage {
       .where('r.engineRunId IS NOT NULL')
       .orderBy('r.createdAt', 'DESC')
 
-    if (args.workflowName) builder.andWhere('r.agentKey = :agentKey', { agentKey: args.workflowName })
     if (args.fromDate) builder.andWhere('r.createdAt >= :fromDate', { fromDate: args.fromDate })
     if (args.toDate) builder.andWhere('r.createdAt <= :toDate', { toDate: args.toDate })
     if (args.status) {
@@ -178,7 +216,10 @@ export class AgentWorkflowsStorage extends WorkflowsStorage {
     }
 
     const [rows, total] = await builder.getManyAndCount()
-    return { runs: rows.map((row) => this.toWorkflowRun(row)), total }
+    const runs = rows
+      .map((row) => this.toWorkflowRun(row, args.workflowName))
+      .filter((run): run is WorkflowRun => Boolean(run))
+    return { runs, total }
   }
 
   async getWorkflowRunById(input: {
@@ -186,13 +227,8 @@ export class AgentWorkflowsStorage extends WorkflowsStorage {
     workflowName?: string
   }): Promise<WorkflowRun | null> {
     const repo = await this.db.getRepository(RunEntity)
-    const row = await repo.findOne({
-      where: {
-        engineRunId: input.runId,
-        ...(input.workflowName ? { agentKey: input.workflowName } : {}),
-      },
-    })
-    return row ? this.toWorkflowRun(row) : null
+    const row = await repo.findOne({ where: { engineRunId: input.runId } })
+    return row ? this.toWorkflowRun(row, input.workflowName) : null
   }
 
   /**
@@ -246,11 +282,17 @@ export class AgentWorkflowsStorage extends WorkflowsStorage {
     await this.persistWorkflowSnapshot({ workflowName, runId, snapshot })
   }
 
-  private toWorkflowRun(row: RunEntity): WorkflowRun {
+  private toWorkflowRun(row: RunEntity, workflowName?: string): WorkflowRun | null {
+    const map = snapshotMapOf(row.snapshot)
+    if (workflowName && !map[workflowName]) return null
+    const name = workflowName && map[workflowName] ? workflowName : Object.keys(map)[0]
+    if (!name) return null
+    const snapshot = map[name]
+    if (!snapshot) return null
     return {
-      workflowName: row.agentKey,
+      workflowName: name,
       runId: row.engineRunId ?? row.id,
-      snapshot: (row.snapshot ?? {}) as unknown as WorkflowRunState,
+      snapshot,
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
     }

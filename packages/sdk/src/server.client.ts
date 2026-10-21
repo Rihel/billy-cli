@@ -355,10 +355,11 @@ export class ServerClient extends HttpClient<BearerTokenCredentials> {
   /**
    * AI 能力（会话 / 运行 / 时间线）。
    *
-   * 两条**不走 HttpClient 管线**的旁路，因为请求由 AI SDK 自己发出：
+   * 三条**不走 HttpClient 管线**的旁路，因为请求由 AI SDK / 流式 fetch 自己发出：
    * - {@link ServerClient.chatStreamUrl}（POST 建流）
+   * - {@link ServerClient.chatResumeUrl}（POST 回答挂起，响应仍是 SSE）
    * - {@link ServerClient.resumeStreamUrl}（GET 续流，断线重连）
-   * 两者都需要鉴权头，故另给 {@link ServerClient.authHeaders}。
+   * 它们都需要鉴权头，故另给 {@link ServerClient.authHeaders}。
    */
   agent = {
     /** AI 能力状态（是否可用、默认 agent、可用 agent 数） */
@@ -435,6 +436,9 @@ export class ServerClient extends HttpClient<BearerTokenCredentials> {
 
     /** POST 建流地址（交给 AI SDK transport 的 `api`） */
     chatStreamUrl: (): string => `${this.agentBaseUrl}${AGENT_CHAT_STREAM_PATH}`,
+
+    /** POST 续跑地址（回答 `ask-user-questions` 的挂起；响应同样是 SSE） */
+    chatResumeUrl: (): string => `${this.agentBaseUrl}/agent/chat/resume`,
 
     /** GET 续流地址（知道 runId 时用；交给 AI SDK transport 的 `prepareReconnectToStreamRequest`） */
     resumeStreamUrl: (runId: string, offset = 0): string =>

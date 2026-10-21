@@ -257,7 +257,7 @@ const toSubAgentPart = (
  * 与实时流（AI SDK 边调边铺）的形态对不上 —— 用户看到的"刷新后工具调用排到后面去了"就是它。
  * 配对靠"先铺卡、结果到达时就地补出参"（对象按引用改，位置不变）。
  */
-const toParts = (events: AgentTimelineItemModel[]): UIMessage['parts'] => {
+export const toParts = (events: AgentTimelineItemModel[]): UIMessage['parts'] => {
   const parts: UIMessage['parts'] = []
   /** `toolCallId` → 已经铺开的那张卡（结果到达时就地补） */
   const pending = new Map<string, ToolPartLike>()
@@ -287,12 +287,39 @@ const toParts = (events: AgentTimelineItemModel[]): UIMessage['parts'] => {
         break
       }
       case TimelineKind.ToolCall: {
+        // 问题工具不铺原始工具卡：调用 + 挂起由 `data-tool-call-suspended` 一张卡表达
+        if (item.toolKey === 'ask-user-questions') break
         const part = toToolPart(item, undefined)
         parts.push(part as unknown as UIMessage['parts'][number])
         if (item.toolCallId) pending.set(item.toolCallId, part)
         break
       }
+      case TimelineKind.ToolSuspended: {
+        // 挂起行 → 问题卡。若同一 toolCallId 后面已经有 ToolResult，说明已经续跑过：
+        // 刷新后不再让用户重复回答（`resumed: true` 让卡片自己收起来）。
+        const toolCallId = item.toolCallId ?? undefined
+        const answered = events.some(
+          (event) =>
+            event.kind === TimelineKind.ToolResult &&
+            event.toolCallId === toolCallId &&
+            event.toolKey === 'ask-user-questions',
+        )
+        parts.push({
+          type: 'data-tool-call-suspended',
+          id: toolCallId ?? `suspended-${item.seq}`,
+          data: {
+            runId: item.payload?.runId ?? undefined,
+            toolCallId,
+            toolName: item.toolKey ?? 'ask-user-questions',
+            suspendPayload: item.payload?.suspendPayload,
+            resumed: answered,
+          },
+        } as unknown as UIMessage['parts'][number])
+        break
+      }
       case TimelineKind.ToolResult: {
+        // `ask-user-questions` 的结果不进正文：问题卡已经表达了这次交互
+        if (item.toolKey === 'ask-user-questions') break
         const part = item.toolCallId ? pending.get(item.toolCallId) : undefined
         if (part) {
           applyToolResult(part, item)

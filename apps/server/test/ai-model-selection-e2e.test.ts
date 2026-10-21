@@ -13,6 +13,7 @@ import { createMastra } from '../src/modules/ai/mastra/ai.mastra.js'
 import { createAgentRegistry } from '../src/modules/ai/agents/registry.js'
 import { decideModelForMastra } from '../src/modules/ai/core/model-decision.js'
 import { RunCommandTool } from '../src/modules/ai/tools/command.tool.js'
+import { WebTools } from '../src/modules/ai/tools/web.tools.js'
 import { RunSubAgentTool } from '../src/modules/ai/tools/subagent.tool.js'
 import { PlannerStore, PlannerTools } from '../src/modules/ai/tools/planner/index.js'
 import { createPromptEngine } from '../src/modules/ai/core/prompts/index.js'
@@ -192,6 +193,7 @@ beforeAll(async () => {
   toolRegistry = new ToolRegistry(
     [
       new RunCommandTool(new CommandRunner(), silentLogger),
+      new WebTools(silentLogger as never),
       new RunSubAgentTool(runner, silentLogger),
       new PlannerTools(plannerStore),
       new ReadToolResultTool(deps.results, deps.counter, deps.caps),

@@ -12,6 +12,7 @@ import {
 } from '@nestjs/common'
 import {
   AgentChatSchema,
+  AgentChatResumeSchema,
   AgentRunStopSchema,
   AgentConversationCreateSchema,
   AgentConversationIdSchema,
@@ -24,6 +25,7 @@ import {
   type AgentRunIdDto,
   type AgentRunListDto,
   type AgentChatDto,
+  type AgentChatResumeDto,
   type AgentRunStopDto,
   type AgentConversationCreateDto,
   type AgentConversationIdDto,
@@ -152,6 +154,19 @@ export class AiController {
     @Res() response: Response,
   ): Promise<void> {
     await this.chat.chatStream(this.ownerId(), input, response, this.isAdminIdentity())
+  }
+
+  /**
+   * 回答挂起中的一轮：`ask-user-questions` 挂起后，前端把整组答案发到这里，
+   * 服务端用同一个 engine runId 续跑并继续以 SSE 返回。
+   */
+  @Post('chat/resume')
+  @HttpCode(200)
+  async chatResume(
+    @Body({ schema: AgentChatResumeSchema }) input: AgentChatResumeDto,
+    @Res() response: Response,
+  ): Promise<void> {
+    await this.chat.resumeChat(this.ownerId(), input, response)
   }
 
   /** 停止某一轮（本进程 abort；在别的副本上则广播） */

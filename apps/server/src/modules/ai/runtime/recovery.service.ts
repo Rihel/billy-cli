@@ -46,7 +46,20 @@ export class AgentRecoveryService implements OnApplicationBootstrap, OnApplicati
       )
     }
 
+    /**
+     * `bootedAt` 必须在恢复**之前**取：恢复接管的 run 会写快照把 `updated_at` 顶到它之后，
+     * 启动清理据此把它们让开（只处置"启动之后没有任何人碰过"的遗留行）。
+     */
+    const bootedAt = new Date()
     await this.recoverOnBoot()
+    try {
+      await this.interruptOrphansOnBoot(bootedAt)
+    } catch (error) {
+      // 启动清理失败不是致命错误：看门狗仍会在 heartbeatTimeoutMs 后兜底
+      this.logger.error('ai.recovery.interrupt_failed', {
+        reason: error instanceof Error ? error.message : String(error),
+      })
+    }
 
     this.timer = setInterval(() => {
       void this.sweepStaleRuns().catch((error: unknown) => {
@@ -104,6 +117,55 @@ export class AgentRecoveryService implements OnApplicationBootstrap, OnApplicati
     } finally {
       // 租约留着不主动释放：TTL 到期自然释放，避免"释放瞬间另一个副本又抢到并重复恢复"
     }
+  }
+
+  /**
+   * **启动清理**：上一进程遗留的进行中运行，立即标 `interrupted`（不必等看门狗 60s）。
+   *
+   * 为什么单副本才做：多副本下"本地没有它的心跳"不能证明别的副本没在跑 ——
+   * 那种场景的正确判据仍是心跳超时（看门狗）。单副本则不同：新进程起来了，
+   * 旧进程一定已经退出，它手里的 run **不可能**还有人在管。
+   *
+   * 用户可见的收益：改代码触发 `node --watch` 重启、或进程崩溃重启后，
+   * 会话立刻可以重新发送，而不是先吃一个 3306「该会话已有正在进行中的对话」。
+   */
+  private async interruptOrphansOnBoot(bootedAt: Date): Promise<void> {
+    /**
+     * 测试环境**不做**启动清理：`app-bootstrap` 这类用例会把整个应用跑在**开发库**上，
+     * 而"单副本"的前提在测试进程 + 开发服务同时存在时不成立 —— 那会把开发者正在跑的
+     * 一轮当成"上一进程遗留"标成中断。启动清理的判据本身由
+     * `ai-storage-recovery.test.ts` 直接测 repository。
+     */
+    if (process.env.NODE_ENV === 'test') return
+    if (this.config.multiInstance) {
+      this.logger.log('ai.recovery.interrupt_skipped', {
+        reason: '多副本部署：遗留运行交给心跳看门狗判定（别的副本可能还在跑）',
+      })
+      return
+    }
+
+    const interrupted = await this.runs.interruptActiveBefore(bootedAt)
+    if (interrupted.length === 0) return
+
+    for (const run of interrupted) {
+      await this.timelines.append({
+        conversationId: run.conversationId,
+        runId: run.id,
+        role: TimelineRole.System,
+        kind: TimelineKind.Status,
+        payload: {
+          status: RunStatus.Interrupted,
+          stage: RunErrorStage.Recovery,
+          reason: 'process_restarted',
+          operator: 'system',
+        },
+        finishedAt: new Date(),
+      })
+    }
+    this.logger.warn('ai.recovery.interrupted_orphans', {
+      count: interrupted.length,
+      runIds: interrupted.map((run) => run.id),
+    })
   }
 
   /**

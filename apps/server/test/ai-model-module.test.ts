@@ -221,6 +221,24 @@ describe('AI 模型模块（真实数据库 + mock 供应商）', () => {
     expect((detail as { modelCount: number }).modelCount).toBe(3)
   })
 
+  it('④b 规格字段：供应商给了窗口 / 输出上限 / 展示名 → 同步后必须落库', async () => {
+    const providerId = createdProviderIds[0]
+    const page = await service.listModels({ providerId, page: 1, size: 10 })
+    const withSpecs = page.items.find((item) => item.modelKey === 'mock-vision')!
+
+    /**
+     * 为什么这条必须钉在集成层：上下文窗口是上下文裁剪与压缩策略的**唯一输入**
+     * （`ai/runtime/context.service.ts` 拿它算触发线）。解析出来却没落库，
+     * 症状不是报错，而是静默退回 32K 兜底窗口并打一条 warn —— 单测层看不出来。
+     */
+    expect(withSpecs.contextWindow).toBe(131_072)
+    expect(withSpecs.maxOutputTokens).toBe(8_192)
+    expect(withSpecs.displayName).toBe('Mock Vision')
+    // 明确声明 `input_modalities: ['text','image']` 必须认成"已声明"，不能落成"未声明"
+    expect(withSpecs.inputModalities).toEqual(['text', 'image'])
+    expect(withSpecs.outputModalities).toEqual(['text'])
+  })
+
   it('⑤ 重复同步幂等：不插重复行，全部记为 unchanged', async () => {
     const providerId = createdProviderIds[0]
     const again = await service.syncProvider({ providerId })
@@ -286,6 +304,33 @@ describe('AI 模型模块（真实数据库 + mock 供应商）', () => {
     expect(keys).toContain('mock-chat')
 
     await service.removeModel({ modelId: embedding.id })
+  })
+
+  it('⑤f 手工填的上下文窗口**不被同步清空**（供应商没给时保留人的值）', async () => {
+    const providerId = createdProviderIds[0]
+    const page = await service.listModels({ providerId, page: 1, size: 10 })
+    // mock-chat 在 mock 清单里没有窗口字段（多数厂商还是老形态，只能人填）
+    const target = page.items.find((item) => item.modelKey === 'mock-chat')!
+
+    await service.updateModel({
+      modelId: target.id,
+      contextWindow: 65_536,
+      maxOutputTokens: 4_096,
+    })
+    expect((await models.findById(target.id))?.contextWindow).toBe(65_536)
+
+    // 再同步一次：供应商没给窗口 → 保留人工填的（否则每次同步都把人的判断抹掉）
+    await service.syncProvider({ providerId })
+    const after = await models.findById(target.id)
+    expect(after?.contextWindow).toBe(65_536)
+    expect(after?.maxOutputTokens).toBe(4_096)
+
+    // 撤回去：⑦ 要断言"供应商没给窗口 → resolveForRuntime 拿到 null"，别把它带成 65536
+    await service.updateModel({
+      modelId: target.id,
+      contextWindow: null,
+      maxOutputTokens: null,
+    })
   })
 
   it('⑥ 同步不覆盖启停：手工禁用某模型后再同步，enabled 保持不变，也没有重复行', async () => {

@@ -19,6 +19,7 @@ import { ToolGateway } from '../src/modules/ai/core/tools/tool.gateway.js'
 import { ToolRegistry } from '../src/modules/ai/core/tools/tool.registry.js'
 import { TOOL_KEYS } from '../src/modules/ai/core/tools/tool-keys.js'
 import { RunCommandTool } from '../src/modules/ai/tools/command.tool.js'
+import { WebTools } from '../src/modules/ai/tools/web.tools.js'
 import { RunSubAgentTool } from '../src/modules/ai/tools/subagent.tool.js'
 import { ReadToolResultTool } from '../src/modules/ai/tools/read-tool-result.tool.js'
 import { PlannerStore, PlannerTools } from '../src/modules/ai/tools/planner/index.js'
@@ -137,6 +138,7 @@ beforeAll(async () => {
   toolRegistry = new ToolRegistry(
     [
       new RunCommandTool(new CommandRunner(), silentLogger),
+      new WebTools(silentLogger as never),
       new RunSubAgentTool(runner, silentLogger),
       new PlannerTools(plannerStore),
       new ReadToolResultTool(deps.results, deps.counter, deps.caps),

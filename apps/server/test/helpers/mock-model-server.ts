@@ -37,15 +37,18 @@ export interface MockModelServer {
 /**
  * `GET {base}/models` 返回的 OpenAI 形态假模型列表。
  *
- * 刻意覆盖两种情形，供"同步落模型明细"的测试断言：
+ * 刻意覆盖三种情形，供"同步落模型明细"的测试断言：
  * - 字段齐全（`id` / `created` / `owned_by` 都有，全量进 `raw`）；
- * - 窗口类字段本来就没有（OpenAI 的 `/models` 不返回窗口）—— 同步后必须是 `null`，**不许编造**。
+ * - 窗口类字段**给了**（DeepSeek 官方 `/models` 的 schema 就带 `name` / `context_window` /
+ *   `max_output_tokens` / `input_modalities` / `output_modalities` / `effort`）→ 必须落库，
+ *   丢了会静默退回 32K 兜底窗口；
+ * - 窗口类字段**没给**（多数厂商还是老形态）→ 同步后必须是 `null`，**不许编造**。
  */
 export const MOCK_MODEL_LIST = [
   { id: 'mock-chat', object: 'model', created: 1700000000, owned_by: 'mock-vendor' },
   { id: 'mock-reasoner', object: 'model', created: 1700000001, owned_by: 'mock-vendor' },
   /**
-   * 第三个带上**模态声明**：真实的多数国内厂商不给这项，但 OpenRouter 之类的网关会给 ——
+   * 第三个带上**模态 + 规格声明**（DeepSeek 官方形态）：
    * 用它验证"供应商给了就落库"，而前两个验证"没给就是未声明（不编造）"。
    */
   {
@@ -53,6 +56,12 @@ export const MOCK_MODEL_LIST = [
     object: 'model',
     created: 1700000002,
     owned_by: 'mock-vendor',
+    name: 'Mock Vision',
+    context_window: 131_072,
+    max_output_tokens: 8_192,
+    input_modalities: ['text', 'image'],
+    output_modalities: ['text'],
+    effort: { supported_levels: ['low', 'high'], default_level: 'high' },
     architecture: { input_modalities: ['text', 'image'], output_modalities: ['text'] },
   },
 ]
@@ -92,6 +101,27 @@ export const MOCK_PLAN_INITIAL = {
     { id: 't2', title: '按主题分组', status: 'pending' },
   ],
 }
+
+/** 用户消息里带这个标记时：先调 `ask-user-questions` 挂起，续跑后回固定文本 */
+export const MOCK_ASK_MARKER = '[ask]'
+/** 问题工具（Mastra 原生工具；不经过我们的工具注册机） */
+export const MOCK_ASK_TOOL = 'ask-user-questions'
+export const MOCK_ASK_QUESTIONS = [
+  {
+    id: 'audience',
+    type: 'single',
+    title: '这份给谁看？',
+    options: [{ label: '长辈自己' }, { label: '子女看了去教' }],
+    required: true,
+  },
+  {
+    id: 'topics',
+    type: 'multi',
+    title: '先教哪几件？',
+    options: [{ label: '接电话' }, { label: '发微信' }],
+    required: true,
+  },
+]
 
 /** 用户消息里带这个标记时，发一串增量调用（验证 create 追加 / reorder 改状态 / delete 删除） */
 export const MOCK_PLAN_OVERWRITE_MARKER = '[todo-overwrite]'
@@ -279,6 +309,11 @@ const COMMAND_CALL: MockToolCall = {
   name: MOCK_COMMAND_TOOL,
   args: { command: MOCK_COMMAND, reason: MOCK_REASON },
 }
+const ASK_CALL: MockToolCall = {
+  id: 'call_mock_ask',
+  name: MOCK_ASK_TOOL,
+  args: { questions: MOCK_ASK_QUESTIONS, reason: MOCK_REASON },
+}
 /** 事件演示：跑一次会把"状态快照 + 流水行"写进父流（断言 SSE 里出现 `data-tool-event`） */
 const EVENTS_CALL: MockToolCall = {
   id: 'call_mock_events',
@@ -398,6 +433,10 @@ const decideToolCall = (
     if (!containsResult(body, MOCK_OVERWRITE_TOKEN)) return PLAN_OVERWRITE_ADD_CALL
     if (containsResult(body, MOCK_OVERWRITE_KEEP_T2_TOKEN)) return PLAN_OVERWRITE_DELETE_CALL
     return null
+  }
+  // 问题工具：第一次发 ask-user-questions（会挂起）；续跑请求里已有工具结果 → 回文本
+  if (wanted(body, MOCK_ASK_MARKER)) {
+    return hasToolResult(body) ? null : ASK_CALL
   }
   // 默认：带工具且本轮还没有任何工具结果 → 建一份任务清单
   // （业务工具已全部移除，规划工具集是当前唯一会主动调用的运行时能力）

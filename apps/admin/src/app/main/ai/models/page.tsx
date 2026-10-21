@@ -99,6 +99,58 @@ type ModelForm = {
   outputModalities?: string[]
 }
 
+/** 供应商表单初值（新建用） */
+const PROVIDER_FORM_DEFAULTS: ProviderForm = {
+  name: '',
+  kind: AiProviderKind.OpenaiCompatible,
+  slug: '',
+  baseUrl: '',
+  apiKey: '',
+  clearApiKey: false,
+  enabled: true,
+}
+
+/** 模型表单初值（新建用；输出模态默认声明「文本」） */
+const MODEL_FORM_DEFAULTS: ModelForm = {
+  modelKey: '',
+  displayName: '',
+  contextWindow: undefined,
+  maxOutputTokens: undefined,
+  enabled: true,
+  mode: 'chat',
+  inputModalities: undefined,
+  outputModalities: ['text'],
+}
+
+/**
+ * 编辑前的**清空值**（两个表单共用思路）。
+ *
+ * 为什么不能只靠 `values` 回填：`ModalForm` 会跳过值为 `undefined` 的键
+ * （`packages/ui/src/components/modal-form.tsx`），于是"未声明"的字段会**保留上一条记录的值** ——
+ * 编辑一个"输出模态未声明"的模型时，会把上一条的 `['text']` 静默写回去。
+ * 所以编辑前先 `reset` 到这份全空值，再由 `values` 覆盖有值的键。
+ */
+const PROVIDER_FORM_BLANK: ProviderForm = {
+  name: '',
+  kind: '',
+  slug: '',
+  baseUrl: '',
+  apiKey: '',
+  clearApiKey: false,
+  enabled: false,
+}
+
+const MODEL_FORM_BLANK: ModelForm = {
+  modelKey: '',
+  displayName: '',
+  contextWindow: undefined,
+  maxOutputTokens: undefined,
+  enabled: false,
+  mode: 'chat',
+  inputModalities: undefined,
+  outputModalities: undefined,
+}
+
 /** 模态多选（用复选框而不是下拉多选：取值少、一眼看清当前声明了什么） */
 function ModalityPicker({
   value,
@@ -177,6 +229,16 @@ export default function AiModelsPage() {
   const [testResult, setTestResult] = useState<AiProviderTestResultModel>()
   // 最近一次同步结果（只在对应供应商的模型表上方展示）
   const [syncResult, setSyncResult] = useState<AiProviderSyncResultModel>()
+  /**
+   * 编辑**回填值**（走 `ModalForm` 的 `values` 通道）。
+   *
+   * 为什么不能只靠 `form.reset(...)`：这套 UI 里 widget 的显示值取自 `form.store.values`，
+   * 而自定义 `render`（本页的「模型类型」下拉与「输入 / 输出模态」）读的是 `field.state.value` ——
+   * 它滞后于 reset，表现就是"点了编辑，下拉框和多选框还是空的"。
+   * `ModalForm` 为此专门留了 `values`（打开时逐字段 `setFieldValue`），编辑一律走这里。
+   */
+  const [providerValues, setProviderValues] = useState<Partial<ProviderForm>>()
+  const [modelValues, setModelValues] = useState<Partial<ModelForm>>()
 
   const createProviderDialog = useDisclosure()
   const editProviderDialog = useDisclosure<AiProviderModel>()
@@ -280,13 +342,16 @@ export default function AiModelsPage() {
   }
 
   const openCreateProvider = () => {
-    providerForm.reset()
+    providerForm.reset(PROVIDER_FORM_DEFAULTS)
+    setProviderValues(undefined)
     setTestResult(undefined)
     createProviderDialog.open()
   }
 
   const openEditProvider = (provider: AiProviderModel) => {
-    providerForm.reset({
+    // 先清成空壳（避免上一次编辑的残留串过来），再由 ModalForm 的 `values` 回填
+    providerForm.reset(PROVIDER_FORM_BLANK)
+    setProviderValues({
       name: provider.name,
       kind: provider.kind,
       // slug 回显当前值：它是模型对外标识的前半段，改了要让人看见改的是什么
@@ -302,20 +367,24 @@ export default function AiModelsPage() {
   }
 
   const openCreateModel = () => {
-    modelForm.reset()
+    modelForm.reset(MODEL_FORM_DEFAULTS)
+    setModelValues(undefined)
     createModelDialog.open()
   }
 
-  /**
-   * 打开"编辑模型"。
-   *
-   * ⚠️ **不要在这里 `modelForm.reset(...)` 回填**：`ModalForm` 的注释写得很清楚 ——
-   * 弹窗场景下 tanstack 的 `reset` 有**渲染同步问题**（值进了 store，界面不跟着变），
-   * 所以它是用 `values` + `setFieldValue` 逐字段写入来绕开的。
-   * 之前这里既 `reset` 又没给 `ModalForm` 传 `values`，于是弹窗打开时**所有字段都是空的**
-   * （2026-10-07 用户报的"编辑模型弹窗没有回填数据"）。
-   */
   const openEditModel = (model: AiModelModel) => {
+    modelForm.reset(MODEL_FORM_BLANK)
+    setModelValues({
+      modelKey: model.modelKey,
+      displayName: model.displayName,
+      contextWindow: model.contextWindow ?? undefined,
+      maxOutputTokens: model.maxOutputTokens ?? undefined,
+      enabled: model.enabled,
+      mode: model.mode,
+      // `null` = 未声明（区别于"空数组 = 明确声明什么都不支持"）
+      inputModalities: model.inputModalities ?? undefined,
+      outputModalities: model.outputModalities ?? undefined,
+    })
     editModelDialog.open(model)
   }
 
@@ -342,16 +411,8 @@ export default function AiModelsPage() {
   }
 
   const providerForm = useForm({
-    defaultValues: {
-      name: '',
-      // openai-compatible 是本工程主力（DeepSeek / 百炼兼容模式 / vLLM / 自建网关都是这个形态）
-      kind: AiProviderKind.OpenaiCompatible as string,
-      slug: '',
-      baseUrl: '',
-      apiKey: '',
-      clearApiKey: false,
-      enabled: true,
-    } as ProviderForm,
+    // openai-compatible 是本工程主力（DeepSeek / 百炼兼容模式 / vLLM / 自建网关都是这个形态）
+    defaultValues: PROVIDER_FORM_DEFAULTS,
     onSubmit: async ({ value }) => {
       const name = value.name.trim()
       const slug = value.slug.trim()
@@ -392,16 +453,7 @@ export default function AiModelsPage() {
   })
 
   const modelForm = useForm({
-    defaultValues: {
-      modelKey: '',
-      displayName: '',
-      contextWindow: undefined as number | undefined,
-      maxOutputTokens: undefined as number | undefined,
-      enabled: true,
-      mode: 'chat',
-      inputModalities: undefined,
-      outputModalities: ['text'],
-    } as ModelForm,
+    defaultValues: MODEL_FORM_DEFAULTS,
     onSubmit: async ({ value }) => {
       const displayName = value.displayName.trim()
 
@@ -610,7 +662,7 @@ export default function AiModelsPage() {
           name: 'contextWindow',
           label: '上下文窗口（token）',
           widget: 'number',
-          hint: '同步会按供应商给的实测值更新；手工填的值在同步后会以供应商为准',
+          hint: '上下文裁剪与压缩的触发线就按它算。同步时供应商给了就用供应商的，没给就保留这里填的值；留空退回 32K 兜底并打一条 warn',
         },
         {
           name: 'maxOutputTokens',
@@ -628,17 +680,12 @@ export default function AiModelsPage() {
           name: 'mode',
           label: '模型类型',
           hint: '只有对话 / 文本补全类会出现在会话页的模型选择器里（未声明的照列，真选错了报错也看得懂）',
-          /**
-           * ⚠️ 自定义 `render` 字段取显示值**必须读 `values`**，不能读 `field.state.value` ——
-           * 后者在弹窗里可能滞后于 `form.reset()`，表现就是"编辑弹窗不回填"（踩过）。
-           * 内置控件之所以没这个问题，是因为 `FormRenderer` 把 `values[name]` 传给了它们。
-           */
-          render: ({ values, field }: FormFieldContext<ModelForm>) => (
+          render: ({ field }: FormFieldContext<ModelForm>) => (
             <DictSelect
               dict={AiModelMode}
               onValueChange={(next) => field.handleChange(next ?? 'chat')}
               triggerClassName="w-full"
-              value={typeof values.mode === 'string' && values.mode ? values.mode : 'chat'}
+              value={(field.state.value as string) || 'chat'}
             />
           ),
         },
@@ -646,12 +693,12 @@ export default function AiModelsPage() {
           name: 'inputModalities',
           label: '输入模态',
           span: 2,
-          render: ({ values, field }: FormFieldContext<ModelForm>) => (
+          render: ({ field }) => (
             <div className="flex flex-col gap-1">
               <span className="text-sm">输入模态</span>
               <ModalityPicker
                 onChange={(next) => field.handleChange(next as never)}
-                value={Array.isArray(values.inputModalities) ? values.inputModalities : undefined}
+                value={field.state.value as string[] | undefined}
               />
               <span className="text-xs text-muted-foreground">
                 供应商的「列模型」接口多数不给这项；不声明时附件不会被拦下，只在会话页提醒
@@ -663,12 +710,12 @@ export default function AiModelsPage() {
           name: 'outputModalities',
           label: '输出模态',
           span: 2,
-          render: ({ values, field }: FormFieldContext<ModelForm>) => (
+          render: ({ field }) => (
             <div className="flex flex-col gap-1">
               <span className="text-sm">输出模态</span>
               <ModalityPicker
                 onChange={(next) => field.handleChange(next as never)}
-                value={Array.isArray(values.outputModalities) ? values.outputModalities : undefined}
+                value={field.state.value as string[] | undefined}
               />
               <span className="text-xs text-muted-foreground">我们只做对话，通常只勾「文本」</span>
             </div>
@@ -1148,6 +1195,8 @@ export default function AiModelsPage() {
         title={editProviderDialog.isOpen ? '编辑供应商' : '新建供应商'}
         open={createProviderDialog.isOpen || editProviderDialog.isOpen}
         form={providerForm}
+        // 编辑才回填；新建保持初值（避免上一次编辑的值出现在新建表单里）
+        values={editProviderDialog.isOpen ? providerValues : undefined}
         dialogClassName="sm:max-w-xl"
         items={providerFormItems}
         description="供应商 = 一家模型服务接入（哪家 / 地址 / 密钥）。保存后回到列表点「同步模型」拉明细。"
@@ -1163,32 +1212,9 @@ export default function AiModelsPage() {
         title={editModelDialog.isOpen ? '编辑模型' : '手工新增模型'}
         open={createModelDialog.isOpen || editModelDialog.isOpen}
         form={modelForm}
+        values={editModelDialog.isOpen ? modelValues : undefined}
         dialogClassName="sm:max-w-xl"
         items={modelFormItems(editModelDialog.isOpen)}
-        /**
-         * 编辑时把这一行的值交给 `ModalForm` 逐字段写入（新建时不传，走表单默认值）。
-         *
-         * 两个刻意的转换：
-         * - `null` → `undefined`：`ModalForm` 只写**非 undefined** 的字段，传 `null` 会被它跳过，
-         *   于是表单留着上一次的值（比空更糟）；而 `undefined` 在本表单里就是"未声明"的表示
-         *   （`ModalityPicker` 也这么读），语义正好对得上；
-         * - `outputModalities` 缺失时回落到 `['text']`：与 `useForm` 的默认值一致，
-         *   免得编辑一个老模型时"输出模态"突然变成空。
-         */
-        values={
-          editModelDialog.data
-            ? {
-                modelKey: editModelDialog.data.modelKey,
-                displayName: editModelDialog.data.displayName,
-                contextWindow: editModelDialog.data.contextWindow ?? undefined,
-                maxOutputTokens: editModelDialog.data.maxOutputTokens ?? undefined,
-                enabled: editModelDialog.data.enabled,
-                mode: editModelDialog.data.mode,
-                inputModalities: editModelDialog.data.inputModalities ?? undefined,
-                outputModalities: editModelDialog.data.outputModalities ?? ['text'],
-              }
-            : undefined
-        }
         description={
           editModelDialog.isOpen
             ? '可改展示名 / 上下文窗口 / 最大输出 / 启停；模型标识由供应商侧决定，不可改。'

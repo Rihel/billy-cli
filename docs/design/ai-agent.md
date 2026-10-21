@@ -284,8 +284,10 @@ ai/
 
 ### 3.7 异常与状态处理（失败是一等状态，不能只写日志）
 
-**状态枚举**（`RunStatus` 字典，保持 6 个，不搞状态爆炸）：
-`pending`（排队）/ `running`（运行中）/ `succeeded` / `failed` / `interrupted` / `canceled`。
+**状态枚举**（`RunStatus` 字典，7 个，不搞状态爆炸）：
+`pending`（排队）/ `running`（运行中）/ `suspended`（等待用户回答）/ `succeeded` / `failed` /
+`interrupted` / `canceled`。`suspended` 不设 `finished_at`，也不被看门狗判超时；
+用户回答、停止或删除会话才离开。
 崩溃恢复期间状态**回到 `running`**，用 `recovery_count` + 时间线上一条 `status` 事件如实标注"已恢复重跑"，
 不为它单开一个状态。
 
@@ -307,8 +309,9 @@ ai/
 | 模型上游 5xx / 网络抖动 | 先由 SDK `maxRetries` 重试，仍失败 → `failed` | `error_stage=model`，`error_detail` 存脱敏原文 |
 | 上下文超长 | `failed` | 独立错误码（前端提示开新会话 / 精简上下文） |
 | **工具执行失败** | **run 未必失败** | 工具错误回给模型（它可以改参数重试）→ 时间线落 `kind=error`（`state=output-error`）；模型最终放弃才 `failed`，`error_stage=tool` |
+| **工具挂起（`ask-user-questions`）** | `suspended` | 流收尾但**不 finish**：落 `tool-suspended` 时间线 + 保存 engine runId / 用量；同一会话的部分唯一索引把 `suspended` 也算作"进行中"，防止另开一轮。用户回答走 `POST /agent/chat/resume`；停止走同一 stop 端点（直接 `canceled`） |
 | 用户点停止 | `canceled` | stop 端点：落 partial → abort → **仅当 activeStreamId 未变才清空**（§5.3） |
-| 用户删除会话 | 先停 run 再软删 | 有 `pending` / `running` 的 run → 先 `canceled`，再软删会话；**运行记录与时间线一律保留**（§4.5） |
+| 用户删除会话 | 先停 run 再软删 | 有 `pending` / `running` / `suspended` 的 run → 先 `canceled`，再软删会话；**运行记录与时间线一律保留**（§4.5） |
 | **客户端断线 / 刷新页面** | **继续 `running`（不取消）** | 这是刻意设计：服务端不因客户端断开而停；内容继续落库，用户回来靠续传或历史看到完整结果（所以**禁止在 unmount 里 stop**） |
 | 进程崩溃 / 重启 | 启动期恢复 | `heartbeat_at` 过期 → `recover()`（**最多 1 次**，`recovery_count+1`）；恢复失败或超次数 → `interrupted`，前端可手动重试 |
 | 运行卡死 / 总时长超限 | `failed`（timeout） | **看门狗**：总时长或心跳超限 → abort + 标超时；否则会永久停在 `running`。多副本下用**条件 UPDATE 抢执行权**（§3.10），不用分布式锁 |
@@ -344,6 +347,47 @@ ai/
 **重试语义（必须与"恢复"分开）**：用户点"重试"= **新建一个 run**（旧 run 的失败记录保留）；
 崩溃恢复 = 同一 run 的 `recover()`（会重发模型调用、重跑工具，故工具必须幂等，§3.4）。
 两者不可混用，否则要么丢审计、要么重复扣费。
+
+
+### 3.7.1 工具挂起与续跑（`ask-user-questions`，Mastra 原生 suspend/resume）
+
+**为什么走原生**：问题卡不是普通工具结果，而是"这一轮暂停、等用户输入"；用 Mastra 的
+`Tool.suspend()` + `agent.resumeStream()` 才能保持同一个 engine run、同一段消息历史，
+不用伪造一条用户消息。
+
+**服务端链路**
+
+1. `ask-user-questions` 是**原生 Mastra 工具**（`mastra/ask-user-questions.tool.ts`，只给主 agent）：
+   `suspendSchema={questions}`、`resumeSchema={answers}`；
+2. 工具 `execute` 在无 `resumeData` 时调用 `context.agent.suspend({questions})`；
+   resume 时把答案排成模型可读文本返回；
+3. `chatStream` 看到 `data-tool-call-suspended` 后**主动停止读流**，走 `runs.suspend()`：
+   状态 `suspended`、保存用量 / 步数、释放 active stream，但**不写 `finished_at`**；
+4. 前端把答案 POST 到 `POST /agent/chat/resume`；`resumeChat` 用**应用 runId** 找回
+   run / conversation，调 `agent.resumeStream(..., { runId: engineRunId, toolCallId })`；
+5. Mastra 只恢复工具、不会自动再跑一轮模型；`resumeChat` 再起一段新 engine run
+   （复用同一 memory thread + 新用户消息），把续跑推到最终文本，并把新 engineRunId
+   回写到 `runs.engine_run_id`。
+
+**两个实现要点（都是踩过的坑）**
+
+- **一个 `runs.snapshot` 存多个 workflow 快照**：durable agent 同时产生
+  `durable-agentic-loop`（外层）和 `durable-agentic-execution`（内层）。只存最后一个，
+  resume 时内层 `typedInput` 会丢（`Cannot destructure property 'agentId'`）。
+  因此 `runs.snapshot` 存 `{ [workflowName]: snapshot }`，按名读取；
+- **必须有 memory thread**：Mastra 1.78 的 resume 在无 thread 时只恢复工具，不发起下一次
+  模型调用（实测 mock 请求数停在 1）。`chatStream` 按会话建 thread，
+  `agent.stream` / `resumeStream` 都带 `memory: { thread: conversationId, resource: userId }`，
+  并 `savePerStep: true`。当前 memory 用 `InMemoryStore`（进程内），**重启续跑**仍需换成
+  落库的 memory 存储域或启动时从 `timelines` 回灌 —— 这是已知缺口。
+
+**时间线 / 历史**
+
+- 挂起落 `kind='tool-suspended'`，payload 带 `runId`（应用 runId）、`engineRunId`、
+  `toolCallId`、`toolName`、`suspendPayload`、`resumeSchema`；
+- 续跑成功补一条 `tool-result`（`toolKey='ask-user-questions'`），历史据此把问题卡标记为
+  已回答并收起；
+- `resumed=true` 的挂起事件**不重复落** `tool-suspended`，只补记 toolName，避免历史出现两张卡。
 
 
 ### 3.8 可审计 / 可复盘审视（自查结论：部分满足，有三处硬缺口）
@@ -687,6 +731,11 @@ WHERE id = $1 AND status = 'running' AND heartbeat_at < now() - interval '…'
        ├─ 命中 Redis 输出记录 → 补发 N 之后的内容（**不重跑、不重复扣费**）
        └─ 订阅 pub/sub → 副本 A 的新内容实时续上
 ```
+
+> **offset 落在块中间时不能直接补发**：AI SDK 的 UI 状态机要求
+> `reasoning-delta` / `text-delta` 前必须有对应的 start。补发前由
+> `runtime/stream-resume.ts` 把起点回退到当前块开头，找不到开头就补 start；
+> 否则会出现 `Received reasoning-delta for missing reasoning part` 整页报错。
 
 #### 3.11.4 数据链路 C：崩溃恢复与看门狗
 
@@ -1198,8 +1247,8 @@ AI SDK 的 `data-sub-agent` part，和主内容走同一条 SSE：
 
 | 控制点 | 落法 |
 | --- | --- |
-| 开关 | `AGENT_COMMAND_ENABLED`（默认 `true`）。关掉时工具**仍在**（装配期工具池必须非空），每次调用返回"已被关闭"的结论 —— 模型能理解并改口 |
-| 目录边界 | `AGENT_COMMAND_WORK_DIR`（默认服务进程工作目录）。agent 传入的 `cwd` 必须落在其内，越界**拒绝并说明边界**（不静默夹回）；判边界用 `path.relative`，天然处理 `..` 逃逸与 Windows 大小写差异 |
+| 开关 | `AGENT_COMMAND_ENABLED`（**默认 `false`**，自用 / 内网确需时显式打开）。关掉时工具**仍在**（装配期工具池必须非空），每次调用返回"已被关闭"的结论 —— 模型能理解并改口 |
+| 目录边界 | `AGENT_COMMAND_WORK_DIR`（默认服务进程工作目录）。agent 传入的 `cwd` 必须落在其内，越界**拒绝并说明边界**（不静默夹回）；判边界用 `path.relative`，天然处理 `..` 逃逸与 Windows 大小写差异。**注意：它只约束 `cwd`，不约束命令读什么** —— 命令里的 `..` / 绝对路径 / 脚本里的 `fs` 仍能读到工作目录之外；真正的隔离只能靠容器 / 低权限用户 / 只读挂载 |
 | 时长上限 | `AGENT_COMMAND_TIMEOUT_MS`（默认 15s）：它**既是默认值也是硬上限** —— 模型传更小听它的，传更大一律夹到这里 |
 | 输出上限 | `AGENT_COMMAND_MAX_OUTPUT_BYTES`（默认 64KB / 每条流）：超出即截断并终止命令 |
 | 停止 | 运行时信封的 `abortSignal`（与"停止整棵树"同一口径） |
@@ -1226,7 +1275,7 @@ AI SDK 的 `data-sub-agent` part，和主内容走同一条 SSE：
 #### 3.15.5 配置项（app-config 的 `agent` 命名空间 → `.env`）
 
 ```bash
-AGENT_COMMAND_ENABLED=true            # 关掉后工具仍在，但每次调用返回"已关闭"的结论
+AGENT_COMMAND_ENABLED=false           # 默认关闭；自用 / 内网确需时显式改 true
 AGENT_COMMAND_TIMEOUT_MS=15000        # 单条命令的时长默认值与硬上限
 AGENT_COMMAND_MAX_OUTPUT_BYTES=65536  # 每条流（stdout / stderr）的输出上限
 AGENT_COMMAND_WORK_DIR=               # 缺省 = 服务进程工作目录
@@ -2251,3 +2300,80 @@ AI SDK v6 的续传是**两层 API**（不是同一方法的两个名字）：
 | 「子 agent 该在装配期用 `subAgents` 静态声明」（旧设计） | 与"提示词由主 agent 现写、通过工具创建"冲突；`context.writer` + `data-*` 透传已核实，**运行期动态创建才是正解**（§3.14） |
 | 「工具拿不到运行时上下文」 | `ToolExecutionContext` 里有 `requestContext` / `agent.toolCallId` / `writer` / `abortSignal` 四样，编排层注入信封即可（§3.14.4） |
 | 「子 run 会和父 run 撞 `uk_run_active_conversation`」 | 会；该部分唯一索引必须加 `parent_run_id IS NULL`（§3.14.3） |
+
+### 3.17 联网（搜索 / 抓取 / 请求）（**以此为准**）
+
+#### 3.17.1 三个工具，各管一段
+
+| 工具 | 给谁用 | 行为 | 返回 |
+| --- | --- | --- | --- |
+| `web-search` | 模型**找** | 调 DeepSeek 搜索接口（`/v1/tools/search`） | 排序后的来源清单：标题 / 链接 / 摘要 / 时间 / 相关度 / 权威度 |
+| `web-fetch` | 模型**读** | 一次 GET，HTML → Markdown（Turndown），脚本 / 样式 / `nav` / `aside` 丢掉 | 正文按页 + 标题 + 状态 |
+| `web-request` | 模型**调** | 任意方法 / 头 / body，不洗正文（HTML 才转 md，JSON 展开成多行） | 状态码 + 响应头子集 + 正文按页 |
+
+为什么不合成一个：三件事的"下一步"不同。搜索只回答"**去哪找**"（给摘要与 URL，不搬正文）；
+抓取回答"**这页写了什么**"；请求回答"**这个接口返回了什么**（含 401 / 500）"。
+合起来会让"一次搜索"顺带把多页正文塞进上下文，也会让 `web-request` 的非 2xx 语义
+被搜索的错误口径污染（搜索的非 200 全是接口错误，抓取的非 2xx 却是要原样给模型看的结论）。
+
+**选择顺序（2026-10-19 定）**：`web-fetch` / `web-request` **优先** —— 有 URL 就直取、
+有接口就直调；`web-search` 是**兜底**（确实不知道去哪找），搜到 URL 后仍用 `web-fetch`
+读正文。这条口径写在两处：工具说明约束"单次选择"，`assistant.eta` 的边界段约束"这一轮的路线"。
+
+#### 3.17.2 分页：按行，不按字节
+
+引擎那套 `paginate` 是按**字节**切的，给任意 JSON 出参兜底没问题，但网页正文按字节切会切在
+句子中间，而且取下一页要走 `read-tool-result`（模型得先知道有这个工具）。所以抓取与请求
+这两个工具**不声明 `paginate`**，自己按行分页（搜索不分页）：
+
+| 口径 | 值 |
+| --- | --- |
+| 每页行数 | 1000（工具配置 `pageLines`，可调；页数按它算，改配置等于另一份缓存） |
+| 出参元信息 | `document.chars` / `document.lines` / `document.pages` / `document.pageLines` / `document.bytes` |
+| 本页位置 | `page.current` / `page.total` / `page.remaining` / `page.isLast` |
+| 页脚 | 每页**正文末尾**追加一行：`共 N 页，当前第 X 页，还剩 Y 页（1 页 = 1000 行）`；最后一页写 `共 N 页，当前第 X 页，最后一页` |
+| 续页 | 传回 `ref` + `page=2`。**不要重传 url**：服务端从缓存切片，不发第二次请求 |
+
+页脚必须写在正文里（而不是只做一个字段）：模型读到哪句，"还有没有"就在哪句旁边，
+它不需要回头数 `page.total` —— 数错了就会在"已经读完"的时候反复取页。
+页码越界不报错，夹到有效范围 + `notice` 说明。
+
+#### 3.17.3 缓存：抓一次，翻页只切片
+
+- **进程内** LRU + TTL（`WebCache`：24 条 / 24M 字符双上限，TTL 默认 10 分钟）；
+- `ref = sha1(工具 + 方法 + 地址 + body + pageLines) 前 12 位` —— 同一份请求同一个 ref，
+  模型重复调同一个 url 也命中缓存；
+- 入缓存时算一次分页边界（`bounds`），取页 O(1)，不复制全文；
+- 过期 / 重启后 ref 失效 → 明确说"缓存里已经没有它了，重新传 url 抓一次"，
+  而不是静默给空内容。
+
+#### 3.17.4 出网层（`tools/web/http.ts`）：三件事只有一处
+
+| 点 | 落法 | 为什么 |
+| --- | --- | --- |
+| 身份 | 固定浏览器 UA（Chrome / Windows）+ `Accept` / `Accept-Language` / `Sec-Fetch-*` / `sec-ch-ua` | 几个工具分头写必然漂移；缺客户端提示会被有 WAF 的站点直接 403 |
+| 预算 | 超时（默认 20s）+ 字节上限（默认 2MB，流式读到上限即 `cancel()`） | `res.text()` 会把 500MB 的文件或不会结束的 SSE 流整个读进内存 |
+| 内网闸 | 协议白名单 + 主机名后缀 + **DNS 解析结果逐地址校验**（`10/8`、`172.16/12`、`192.168/16`、`127/8`、`169.254/16`（云元数据）、`::1`、`fc00::/7`…） | 网页内容可以诱导模型去请求 `169.254.169.254`，这是 SSRF 的常规入口 |
+
+重定向逐跳校验（每一跳都重新解析并判内网），不是只判第一次；UA 与请求头只在**真正出网**
+那一层加，工具层不各写一份。
+
+#### 3.17.5 配置项（`agent` 命名空间 → `.env`，两层开关）
+
+```bash
+AGENT_WEB_ENABLED=true                        # 关掉后工具仍在，但每次调用返回"已关闭"
+AGENT_WEB_TIMEOUT_MS=20000                    # 单次请求总时长（默认值与硬上限）
+AGENT_WEB_MAX_BYTES=2097152                   # 单次最多读多少字节（硬上限）
+AGENT_WEB_ALLOW_PRIVATE_NETWORK=false         # 内网 / 回环默认拦截（SSRF）
+```
+
+部署边界是**硬闸**：env 没开内网，后台把工具配置里的同名字段打开也不生效。
+搜索复用 DeepSeek 官方模型密钥（当前会话模型是 DeepSeek 官方时），也可在工具配置里显式给
+`web-search` 的 API Key；两者都没有时 `precheck` 给出"先用 web-fetch 读已知来源"的结论。
+
+#### 3.17.6 不做的事（明确划出去）
+
+- 不做浏览器渲染（没有 JS 执行 / 截图）：要读 SPA 请用接口或站点兜底表；
+- 不做登录态注入（cookie 只由工具配置显式给，不自动带用户会话）；
+- 不做全站爬取 / 递归抓取：这是"模型按需读一页"，不是爬虫；
+- 不做 PDF / 二进制解析：那是附件链路的事（§3.16），联网工具只处理文本与 HTML。

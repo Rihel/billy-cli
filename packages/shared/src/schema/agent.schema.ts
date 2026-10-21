@@ -354,6 +354,29 @@ export const AgentChatSchema = z
 
 export type AgentChatDto = z.infer<typeof AgentChatSchema>
 
+/**
+ * 工具向用户提问的答案。
+ *
+ * `value`：单选 / 问答是字符串；多选是字符串数组（选项 label）。
+ */
+export const AgentQuestionAnswerSchema = z.object({
+  id: z.string().min(1).max(48),
+  value: z.union([z.string().max(2000), z.array(z.string().max(200)).max(8)]),
+})
+
+/** 回答挂起中的一轮（`POST /agent/chat/resume`） */
+export const AgentChatResumeSchema = z.object({
+  /** 挂起的那一轮（不是会话 id） */
+  runId: z.string().min(1).max(64),
+  /** 一次回答多个问题 */
+  answers: z.array(AgentQuestionAnswerSchema).min(1).max(8),
+  /** 同时有多个挂起工具时，指定回答哪一个（省略 = Mastra 自己选） */
+  toolCallId: z.string().min(1).max(128).optional(),
+})
+
+export type AgentQuestionAnswer = z.infer<typeof AgentQuestionAnswerSchema>
+export type AgentChatResumeDto = z.infer<typeof AgentChatResumeSchema>
+
 /** 一轮问答结果（非流式） */
 export const AgentChatResultSchema = z.object({
   conversationId: z.string(),

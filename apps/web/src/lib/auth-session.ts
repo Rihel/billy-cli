@@ -5,12 +5,39 @@ import { createServerClient } from './server-client'
 import { TokenKey } from './constants'
 
 /**
+ * 后端探测的硬超时（毫秒）。
+ *
+ * 前台是**公开页面**：后端没起、正在迁移、或者卡死了，都不该让读者盯着白屏。
+ * 原来没有超时，后端端口占着但不响应时，整个 SSR 会挂住一百多秒 —— 这在实际里就等于挂站。
+ * 1.5s 足够一次正常的 `/config/get`，超了就走兜底逻辑。
+ */
+const AUTH_PROBE_TIMEOUT = 1500
+
+function withTimeout<T>(task: Promise<T>, ms = AUTH_PROBE_TIMEOUT): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(`auth probe timeout ${ms}ms`)), ms)
+    // dev 下别让定时器拖住进程退出
+    timer.unref?.()
+    task.then(
+      (v) => {
+        clearTimeout(timer)
+        resolve(v)
+      },
+      (e) => {
+        clearTimeout(timer)
+        reject(e)
+      },
+    )
+  })
+}
+
+/**
  * 用户体系开关（服务端）：调后端 `/config/get`。
- * 获取失败保守按「开启」处理 —— 与 admin 的 `main/layout.tsx` / `proxy.ts` 同一策略。
+ * 获取失败或超时保守按「开启」处理 —— 与 admin 的 `main/layout.tsx` / `proxy.ts` 同一策略。
  */
 export const getAuthEnabled = cache(async (): Promise<boolean> => {
   try {
-    const config = await createServerClient().config.get()
+    const config = await withTimeout(createServerClient().config.get())
     return config.authEnabled
   } catch {
     return true
@@ -26,7 +53,7 @@ export const getAuthUser = cache(async (): Promise<AuthUserModel | null> => {
   if (!token) return null
 
   try {
-    return await createServerClient(token).auth.getMe()
+    return await withTimeout(createServerClient(token).auth.getMe())
   } catch {
     return null
   }

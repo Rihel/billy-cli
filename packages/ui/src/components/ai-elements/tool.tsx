@@ -99,7 +99,18 @@ export const ToolInput = ({ className, input, ...props }: ToolInputProps) => (
   <div className={cn("space-y-2 overflow-hidden", className)} {...props}>
     <h4 className="font-medium text-muted-foreground text-xs tracking-wide">入参</h4>
     <div className="rounded-md bg-muted/50">
-      <CodeBlock code={JSON.stringify(input, null, 2)} language="json" />
+      {/*
+        入参**可能还没到**：AI SDK 收到 `tool-input-start` 时会把 part 置成 `input-streaming`，
+        此时 `input` 是 `undefined`，要等第一个 delta 才有半成品。默认展开的计划卡会在这一刻
+        直接渲染到这里 —— `JSON.stringify(undefined)` 返回的也是 `undefined`（不是字符串），
+        再交给 CodeBlock 就会在 `code.split` 处抛错、把整棵会话树打崩。
+        缺入参时给一句状态说明，等下一帧数据到了自然换成 JSON。
+      */}
+      {input === undefined ? (
+        <p className="px-4 py-3 text-muted-foreground text-xs">（暂无入参）</p>
+      ) : (
+        <CodeBlock code={JSON.stringify(input, null, 2)} language="json" />
+      )}
     </div>
   </div>
 )

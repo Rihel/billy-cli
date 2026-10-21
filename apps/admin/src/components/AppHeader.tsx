@@ -17,11 +17,29 @@ const PAGE_TITLES: Record<string, string> = {
   '/main/user-center': '个人中心',
 }
 
+/**
+ * 取当前页标题：**先精确匹配，再逐段回退**。
+ *
+ * 回退是为了详情页（`/main/xxx/<id>` / `/main/tools/<id>/edit`）—— 它们没有独立标题，
+ * 但页头空着会让人不知道自己在哪一层；回退到最近的一个已知父级即可。
+ */
+const titleOf = (pathname: string): string => {
+  const exact = PAGE_TITLES[pathname]
+  if (exact) return exact
+  const segments = pathname.split('/').filter(Boolean)
+  while (segments.length > 1) {
+    segments.pop()
+    const found = PAGE_TITLES[`/${segments.join('/')}`]
+    if (found) return found
+  }
+  return ''
+}
+
 export type AppHeaderProps = Partial<{} & ComponentProps<'div'>>
 
 export const AppHeader = ({ className, ...props }: AppHeaderProps) => {
   const pathname = usePathname()
-  const title = PAGE_TITLES[pathname] ?? ''
+  const title = titleOf(pathname)
 
   return (
     <div

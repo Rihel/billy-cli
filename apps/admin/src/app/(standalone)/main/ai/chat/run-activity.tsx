@@ -11,7 +11,7 @@ import { LoaderCircleIcon } from 'lucide-react'
 import { isSubAgentActive, liveSubAgentsOf } from './sub-agent-live'
 
 /**
- * 时间线**最底部**的运行指示：转圈 + 一句会变的中文状态。
+ * **输入框上方**的运行指示：转圈 + 一句会变的中文状态（不跟消息滚走）。
  *
  * 为什么需要它：一轮问答里模型可能连续跑几十次工具、几分钟不吐正文，
  * 界面上除了**已经发生**的内容没有任何"它在干活"的信号 —— 用户会怀疑卡死。
@@ -68,7 +68,7 @@ export const runActivityText = (
 }
 
 /**
- * 底部运行指示。
+ * 输入框上方的运行指示。
  *
  * **自己判断该不该出现**（文案为 `null` 就返回 `null`）：这一轮没在跑就什么都不渲染，
  * 组件卸载 / 不渲染都不会留残影。`role="status"` + 固定高度（`h-6`）：

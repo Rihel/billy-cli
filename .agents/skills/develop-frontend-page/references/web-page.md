@@ -80,3 +80,18 @@ export const xxxAction = defineAction(
 列表 + 行内操作（如「下线该设备」）的样板见 `apps/web/src/app/account/sessions/page.tsx`：
 `useQuery` 拉列表 → `ConfirmAction`（`@repo/ui`，危险操作二次确认）→ `useMutation` +
 `invalidateQueries` 刷新；本机条目不给危险按钮（要退出请用登出）。
+
+## 6. SSR 读公开内容（不需要登录的数据）
+
+公开内容（谁都能看的数据）在 **async Server Component 里直接调 SDK**，不经过浏览器请求、
+也不放 Server Action：
+
+- **SDK 的公开方法必须带 `{ skipAuth: true }`**。`post` 默认先解析凭证，服务端客户端没有
+  token 时会直接抛「鉴权失败」，**一个请求都发不出去**；页面表现为永远停在加载态。
+- 用 React `cache` 把读取包一层：`generateMetadata` 与页面在同一次请求里只打一次后端。
+- **读失败不抛 500**：返回 `{ items, error }`，页面上给「暂时打不开 + 重试」；
+  后端明确 404（未发布 / 已下架 / 不存在）才 `notFound()`，判据是 `ApiError.status === 404`。
+- **给 SSR 请求加 2–3 秒超时**（同 `apps/web/src/lib/auth-session.ts` 的 `withTimeout`）：
+  后端挂了不能把整页 SSR 拖住。
+- 数据每个请求现取：不依赖构建期静态数据；没有读 cookie 的详情页要显式
+  `export const dynamic = 'force-dynamic'`。

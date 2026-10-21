@@ -13,6 +13,7 @@ import { type AgentRuntimeEnvelope, type RuntimeModel } from '../src/modules/ai/
 import { PlannerStore, PlannerTools, type PlanOutput } from '../src/modules/ai/tools/planner/index.js'
 import { RunSubAgentTool } from '../src/modules/ai/tools/subagent.tool.js'
 import { RunCommandTool } from '../src/modules/ai/tools/command.tool.js'
+import { WebTools } from '../src/modules/ai/tools/web.tools.js'
 import { createPromptEngine } from '../src/modules/ai/core/prompts/index.js'
 import { AgentTitleService } from '../src/modules/ai/runtime/title.service.js'
 import { SkillLoader } from '../src/modules/ai/core/skills/index.js'
@@ -564,6 +565,7 @@ describe('子 agent（core bean + 运行期动态创建）', () => {
         silentLogger,
       ),
       new RunCommandTool(new CommandRunner(), silentLogger),
+      new WebTools(silentLogger as never),
     ])
     expect(registry.delegationKeys()).toEqual([MOCK_DELEGATE_TOOL])
     const childKeys = [...registry.childToolbox().keys()]
@@ -596,6 +598,7 @@ describe('子 agent（core bean + 运行期动态创建）', () => {
         silentLogger,
       ),
       new RunCommandTool(new CommandRunner(), silentLogger),
+      new WebTools(silentLogger as never),
     ])
     const registry = createAgentRegistry(
       createAgentDefinitions(createPromptEngine(), toolRegistry),
@@ -965,6 +968,7 @@ const buildStack = async () => {
     [
       // 命令执行：与 `ai.module.ts` 的装配口径一致（assistant 已授权 run-command）
       new RunCommandTool(new CommandRunner(), silentLogger),
+      new WebTools(silentLogger as never),
       new RunSubAgentTool(runner, silentLogger),
       new PlannerTools(plannerStore),
       new ReadToolResultTool(deps.results, deps.counter, deps.caps),

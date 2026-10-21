@@ -26,3 +26,21 @@ export const newConversationPath = (): string => `${CHAT_ROOT}/${NEW_CONVERSATIO
 /** 这个路由参数是不是"还没建会话"的占位 */
 export const isNewConversation = (conversationId: string | undefined): boolean =>
   !conversationId || conversationId === NEW_CONVERSATION_SLUG
+
+/**
+ * 会话页的"隔离代次"：只有真正换会话时才递增。
+ *
+ * `new → 真实 id` 是同一次发送的延续，不能递增——递增会让页面 key 变化，
+ * 整棵对话区重挂载，正在流的 `useChat` 连接和刚收到的消息一起被掐掉。
+ * 其余变化（A→B、A→new）都必须递增，避免把上一个会话的 Chat 状态带过去。
+ */
+export const nextChatGeneration = (
+  previousId: string,
+  nextId: string,
+  generation: number,
+): number => {
+  if (previousId === nextId) return generation
+  const wasNew = isNewConversation(previousId)
+  const nowNew = isNewConversation(nextId)
+  return wasNew && !nowNew ? generation : generation + 1
+}

@@ -24,7 +24,9 @@ import { Column, Entity, Index } from 'typeorm'
  */
 @Index('uk_run_active_conversation', ['conversationId'], {
   unique: true,
-  where: "parent_run_id IS NULL AND status IN ('pending','running')",
+  // suspended 也算「占着会话」：等用户回答期间不能再开新的一轮，否则同一会话会有两条
+  // 同时活着的根 run（一条挂起、一条新跑），上下文与取消都会分叉。
+  where: "parent_run_id IS NULL AND status IN ('pending','running','suspended')",
 })
 /** 按父查子（子 agent 的树形展示与配额统计） */
 @Index('idx_run_parent', ['parentRunId'])
@@ -59,7 +61,7 @@ export class RunEntity extends AuditEntity {
   @Column({ name: 'tool_call_id', type: 'varchar', length: 64, nullable: true })
   toolCallId: string | null = null
 
-  /** 状态：见 RunStatus 字典（pending / running / succeeded / failed / interrupted / canceled） */
+  /** 状态：见 RunStatus 字典（pending / running / suspended / succeeded / failed / interrupted / canceled） */
   @Column({ name: 'status', type: 'varchar', length: 20, default: RunStatus.Pending })
   status: string = RunStatus.Pending
 

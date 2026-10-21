@@ -61,6 +61,26 @@ export interface AgentConfig {
   /** 命令的工作根目录（缺省 = 服务进程工作目录）；agent 传入的 `cwd` 只能在这个目录之内 */
   commandWorkDir?: string
 
+  // ── 联网（工具组 `WebTools`：`web-fetch` / `web-request` / `web-search`）──
+  /**
+   * 是否允许 agent 出网。
+   *
+   * 关掉时工具仍在（装配期工具池必须非空），但每次调用返回"已被关闭"的结论 ——
+   * 模型能理解并改口，好过遇到一个不存在的工具。
+   */
+  webEnabled: boolean
+  /** 单次请求的总时长默认值与**硬上限**（ms）：整条重定向链共用这一个预算 */
+  webTimeoutMs: number
+  /** 单次请求最多读多少字节的**硬上限**（后台可调低，调不出这个上限） */
+  webMaxBytes: number
+  /**
+   * 是否允许访问内网 / 回环地址（**默认关**）。
+   *
+   * 这是"让模型能被网页内容诱导去请求 `169.254.169.254` 之类的地址吗"这个问题的回答。
+   * 打开它等于放弃 SSRF 防护，只在自用 / 内网环境下打开。
+   */
+  webAllowPrivateNetwork: boolean
+
   // ── 工具引擎（设计 ai-agent-tool-engine.md §5.5 / §5.6）──
   /** 单次给模型的工具出参上限（字节）**硬上限**（后台可改工具级阈值，但改不出这个上限） */
   toolPageBytesMax: number

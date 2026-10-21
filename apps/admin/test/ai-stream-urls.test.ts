@@ -2,9 +2,9 @@ import { describe, expect, it } from 'vitest'
 import { createAppClients } from '@repo/sdk'
 
 /**
- * AI 流的三个地址（SDK 约定，纯字符串，node 环境）。
+ * AI 流的四个地址（SDK 约定，纯字符串，node 环境）。
  *
- * 为什么值得单测：这三条地址的**方法**必须不同，且重连必须是**能被 GET 的**地址。
+ * 为什么值得单测：这四条地址的**方法**必须不同，且重连必须是**能被 GET 的**地址。
  * 曾经踩过的坑：`useChat({ resume: true })` 挂载时一定会发 **GET**，而建流端点是 POST-only ——
  * 把重连指到建流地址，浏览器就会对 `POST /agent/chat/stream` 发 GET，**接口直接 404**。
  * 这条用例把"哪个地址用来干什么"钉死，改坏了当场红。
@@ -20,6 +20,10 @@ const client = createServerClient('test-token')
 describe('AI 流地址', () => {
   it('建流是 POST 地址（/agent/chat/stream）', () => {
     expect(client.agent.chatStreamUrl()).toBe('http://server.test/agent/chat/stream')
+  })
+
+  it('回答挂起走 POST /agent/chat/resume', () => {
+    expect(client.agent.chatResumeUrl()).toBe('http://server.test/agent/chat/resume')
   })
 
   it('重连（不知道 runId）走 GET /agent/run/stream —— **绝不能是建流地址**', () => {

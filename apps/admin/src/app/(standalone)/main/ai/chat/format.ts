@@ -171,3 +171,57 @@ export const relativeTimeText = (
     ? `${date.getMonth() + 1}月${date.getDate()}日`
     : `${date.getFullYear()}年${date.getMonth() + 1}月${date.getDate()}日`
 }
+
+/** 一次失败的对话请求（`onError` 能拿到的、对用户有意义的部分） */
+export interface ChatErrorInfo {
+  /** 业务错误码（3306 会话忙 / 3310 超时…）；不是业务错误时为 undefined */
+  code?: number
+  /** 给人看的一句话（服务端信封里的 message；拿不到就退回原始文本） */
+  message: string
+}
+
+/**
+ * 把 `useChat` 抛出的错误整理成"用户看得懂的一句话"。
+ *
+ * 为什么需要：服务端错误是 JSON 信封（`{"code":3306,"message":"…","requestId":"…"}`），
+ * AI SDK 会把**整段 JSON** 当 `Error.message` 抛出来 —— 界面上就是截图里那串大括号。
+ * 真正有用的是 `message` 字段；`code` 留给调用方做特殊处理（例如 3306 提示"上一轮还在跑"）。
+ *
+ * 解析失败（网络错误 / 网关返回 HTML / 空响应）**原样返回**，不吞掉线索：
+ * 排障时"原始文本"往往比一句笼统的"请求失败"更有用。
+ */
+export const parseChatError = (error: unknown): ChatErrorInfo => {
+  const raw = error instanceof Error ? error.message : String(error ?? '')
+  const text = raw.trim()
+  if (!text) return { message: '请求失败（服务端没有返回原因）' }
+
+  const tryParse = (value: string): ChatErrorInfo | null => {
+    try {
+      const parsed = JSON.parse(value) as { code?: unknown; message?: unknown }
+      if (!parsed || typeof parsed !== 'object') return null
+      const code = typeof parsed.code === 'number' ? parsed.code : Number(parsed.code)
+      const message = typeof parsed.message === 'string' ? parsed.message.trim() : ''
+      if (!Number.isFinite(code) && !message) return null
+      return {
+        ...(Number.isFinite(code) ? { code } : {}),
+        message: message || text,
+      }
+    } catch {
+      return null
+    }
+  }
+
+  // ① 整个响应体就是 JSON（服务端异常过滤器就是这么回的）
+  const direct = tryParse(text)
+  if (direct) return direct
+
+  // ② 网关 / 代理有时会包一层前缀（`HTTP 409: {...}`）：取第一对花括号再试一次
+  const start = text.indexOf('{')
+  const end = text.lastIndexOf('}')
+  if (start >= 0 && end > start) {
+    const embedded = tryParse(text.slice(start, end + 1))
+    if (embedded) return embedded
+  }
+
+  return { message: text }
+}

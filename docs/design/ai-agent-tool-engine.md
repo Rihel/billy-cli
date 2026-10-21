@@ -25,9 +25,13 @@ AGENT_CORES（core bean.asTools()）───┘        │
                                                    Mastra Agent → 模型
 ```
 
-工具池里现在有 7 个，都由 core bean 提供：规划一组四个（`plan-create` / `plan-reorder` / `plan-complete` /
-`plan-delete`）、`run-sub-agent`（子 agent）、`run-command`（命令行）、`read-tool-result`（大结果取页）。
-业务工具一个都没有，`AGENT_TOOLS` 是留出来的扩展点。
+工具池里现在有 10 个，都由工具组（core bean）提供：规划一组四个（`plan-create` / `plan-reorder` /
+`plan-complete` / `plan-delete`）、`run-sub-agent`（子 agent）、`run-command`（命令行）、
+`read-tool-result`（大结果取页）、联网三件套 `web-search` / `web-fetch` / `web-request`。
+业务工具一个都没有，`AGENT_TOOL_GROUPS` 是留出来的扩展点。
+
+另有一个**运行时自带、不进注册机**的交互原语 `ask-user-questions`（Mastra 原生工具，
+走 suspend/resume，见 `ai-agent.md` §3.7.1）与 Mastra 随技能自动挂载的 `skill*` 三个。
 
 三个 core bean 的写法一样：构造器里手动调 `createTool({ id, description, inputSchema, execute })`，
 说明文本、入参 schema、执行体、开关判断、边界检查全写在同一个文件里。
@@ -525,8 +529,11 @@ durable 恢复会重放工具调用，页不一致会让上下文自相矛盾。
 边界是权限的一部分，由插件执行：目录边界、每轮次数与时间窗限流、单次时长、输出上限。
 
 不做 RBAC：工程只有 `UserAuthGuard` / `AdminAuthGuard` 两套身份，造角色权限体系的代价跟这件事不匹配。
-审批（Mastra 的 `requireApproval` 加 suspend/resume）列三期，一期继续靠提示词纪律
-（"有副作用的操作先问用户"），现状就是这样。
+**问题工具（`ask-user-questions`）已经走通 Mastra 原生 `suspend()` / `resumeStream()`**，
+它是交互原语、不是业务工具：绕过工具注册机与网关（网关会把所有异常转成工具失败，
+而 `suspend` 是控制流），只给主 agent，详见 `ai-agent.md` §3.7.1。
+审批（`requireApproval`）仍未接入，有副作用的业务工具继续靠提示词纪律
+（"有副作用的操作先问用户"）。
 
 ### 5.8 适配器
 
@@ -789,7 +796,7 @@ Mastra 一改 execute 的形态，所有工具测试一起红。
 | 3 | `ai_tools` 加迁移加种子加配置服务加 `/ai-tool/*` 加 SDK 加后台页；`run-command` 的 4 个旋钮迁入库；配置合并与种子对账的测试 | 后台改开关或超时，下一次调用生效，服务未重启；种子跑两次幂等 |
 | 4 | 分页纯函数、`paginate` 插件、`toModelOutput`、跨轮入口、`read-tool-result`、句柄两级解析、越权与滥用防护；分页边界与确定性的测试 | 大结果模型只收一页并能取下一页，库里仍是全量 |
 | 二期 | 条目级分页；配额细化；动态工具面；技能收进注册机（路线 B：`skill-activate` 与 `skill-read` 加自己渲染目录段）；`skill.adapter` 收口；允许清单继续收敛 | — |
-| 三期 | 人工审批（suspend/resume 加前端批准框加恢复链路） | — |
+| 三期 | 人工审批（`requireApproval` 加前端批准框）；问题工具的原生 suspend/resume 已先行（见 `ai-agent.md` §3.7.1） | — |
 
 第 2 批刻意保持行为等价，只搬家不改语义，把重构和新能力分成两次提交，出问题好定位。
 

@@ -5,6 +5,8 @@ import type { InlineSkill } from '@mastra/core/skills'
 import type { AgentModelId } from '../core/config.js'
 import type { RuntimeModel } from '../core/envelope.js'
 import { createMastraAgent, modelFromEnvelope } from './agent.adapter.js'
+import { agentMemory } from './agent-memory.js'
+import { askUserQuestionsTool } from './ask-user-questions.tool.js'
 import type { AgentDefinition } from '../agents/types.js'
 
 /**
@@ -41,6 +43,8 @@ export interface CreateMastraOptions {
   storage?: MastraCompositeStore
   /** 是否开启可恢复执行（durable）：开启后每步都落快照，崩溃后可从快照续跑（会重放 / 重跑，真花钱） */
   durableAgents?: boolean
+  /** 对话记忆：durable resume 继续 agentic loop 需要（不传则 agent 无记忆） */
+  memory?: import('@mastra/core/memory').MastraMemory
   /** 构造期取不到信封时警告一次（每个 agent 各求值一次，别刷屏） */
   onMissingEnvelope?: () => void
 }
@@ -61,10 +65,13 @@ export const createMastra = async ({
   resolveSkills,
   storage,
   durableAgents = false,
+  memory,
   onMissingEnvelope,
 }: CreateMastraOptions): Promise<Mastra> => {
   const built = new Map<string, ReturnType<typeof createMastraAgent>>()
   for (const definition of definitions) {
+    const tools = resolveTools(definition.tools)
+    if (definition.key === 'assistant') tools['ask-user-questions'] = askUserQuestionsTool as never
     built.set(
       definition.key,
       createMastraAgent({
@@ -89,10 +96,12 @@ export const createMastra = async ({
           (model) => resolveModel(definition, model),
           () => onMissingEnvelope?.(),
         ),
-        tools: resolveTools(definition.tools),
+        tools,
+        memory: memory ?? agentMemory,
         // 技能按角色授权；Mastra 会为配置了 skills 的 Agent 自动加上技能激活与注入
         skills: await resolveSkills(definition.skills),
         ...(durableAgents ? { durable: true } : {}),
+        ...(memory ? { memory } : {}),
       }),
     )
   }

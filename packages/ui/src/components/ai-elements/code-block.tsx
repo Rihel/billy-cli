@@ -289,26 +289,34 @@ export const CodeBlockContent = ({
   language: BundledLanguage
   showLineNumbers?: boolean
 }) => {
+  /**
+   * `code` 的类型是 `string`，但运行时可能是 `undefined` —— 最常见的来源是调用方写
+   * `JSON.stringify(value)`：值本身是 `undefined` 时，`JSON.stringify` 返回的是 `undefined`，
+   * 而它的 lib 类型却声明成 `string`，编译器拦不住。展示组件不该因为这一种入参把整棵树打崩
+   * （2026-10-18「仙逆剧本」会话白屏就是它：`createRawTokens` 里 `code.split` 直接抛 TypeError）。
+   */
+  const safeCode = typeof code === "string" ? code : ""
+
   // Memoized raw tokens for immediate display
-  const rawTokens = useMemo(() => createRawTokens(code), [code])
+  const rawTokens = useMemo(() => createRawTokens(safeCode), [safeCode])
 
   // Synchronous cache lookup — avoids setState in effect for cached results
-  const syncTokens = useMemo(() => highlightCode(code, language) ?? rawTokens, [code, language, rawTokens])
+  const syncTokens = useMemo(() => highlightCode(safeCode, language) ?? rawTokens, [safeCode, language, rawTokens])
 
   // Async highlighting result (populated after shiki loads)
   const [asyncTokens, setAsyncTokens] = useState<TokenizedCode | null>(null)
-  const asyncKeyRef = useRef({ code, language })
+  const asyncKeyRef = useRef({ code: safeCode, language })
 
   // Invalidate stale async tokens synchronously during render
-  if (asyncKeyRef.current.code !== code || asyncKeyRef.current.language !== language) {
-    asyncKeyRef.current = { code, language }
+  if (asyncKeyRef.current.code !== safeCode || asyncKeyRef.current.language !== language) {
+    asyncKeyRef.current = { code: safeCode, language }
     setAsyncTokens(null)
   }
 
   useEffect(() => {
     let cancelled = false
 
-    highlightCode(code, language, (result) => {
+    highlightCode(safeCode, language, (result) => {
       if (!cancelled) {
         setAsyncTokens(result)
       }
@@ -317,7 +325,7 @@ export const CodeBlockContent = ({
     return () => {
       cancelled = true
     }
-  }, [code, language])
+  }, [safeCode, language])
 
   const tokenized = asyncTokens ?? syncTokens
 
@@ -329,7 +337,8 @@ export const CodeBlockContent = ({
 }
 
 export const CodeBlock = ({ code, language, showLineNumbers = false, className, children, ...props }: CodeBlockProps) => {
-  const contextValue = useMemo(() => ({ code }), [code])
+  // 复制按钮读的是 context：与正文同样兜住运行时的 `undefined`（否则复制出来是字符串 "undefined"）
+  const contextValue = useMemo(() => ({ code: typeof code === "string" ? code : "" }), [code])
 
   return (
     <CodeBlockContext.Provider value={contextValue}>

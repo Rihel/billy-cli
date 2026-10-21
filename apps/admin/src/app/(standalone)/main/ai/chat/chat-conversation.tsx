@@ -4,7 +4,15 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useChat } from '@ai-sdk/react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { DefaultChatTransport, isTextUIPart, type UIMessage } from 'ai'
+import {
+  DefaultChatTransport,
+  isTextUIPart,
+  parseJsonEventStream,
+  readUIMessageStream,
+  uiMessageChunkSchema,
+  type UIMessage,
+  type UIMessageChunk,
+} from 'ai'
 import {
   Alert,
   AlertDescription,
@@ -49,12 +57,18 @@ import { toUIMessages } from './history'
 import { conversationPlanOf } from './plan-panel'
 import { ConversationRightPanel, type RightPanelTab } from './right-panel'
 import { RunActivity } from './run-activity'
+import { PlanSummaryCard } from './plan-summary-card'
+import {
+  QuestionCard,
+  type AnswerQuestionsInput,
+  type SuspendedPartData,
+} from './question-card'
 import { isSubAgentActive, liveSubAgentsOf } from './sub-agent-live'
 // 自动展开的判据与工具卡共用同一份（`shouldAutoOpen`：有东西可看 + 用户没动过手）——
 // 同一套纪律只写一次，避免两处各有一套"用户手动优先"的实现漂移
 import { shouldAutoOpen } from './tool-card'
 import { copyText } from '@/lib/clipboard'
-import { usageLineText, usageLineTitle } from './format'
+import { parseChatError, usageLineText, usageLineTitle } from './format'
 import { conversationPath, isNewConversation } from './routes'
 import { ATTACHMENT_ACCEPT, formatFileSize } from './attachment-utils'
 import { rejectedText, scanFiles, useAttachmentsUpload } from './use-attachments-upload'
@@ -115,9 +129,10 @@ const PANEL_WIDTH = { default: 340, min: 260, max: '55%' } as const
  *
  * 路由化之后的新口径（"每个会话一个地址"）：
  * - `conversationId` 由**路由参数**给出（`new` = 还没建会话）；
- * - 新会话首轮发出后，流里的 `data-run` 带回真实会话 id → `router.replace` 换成真实地址
- *   （**不重挂载**：`replace` 到同一个动态路由的另一个参数不会重建组件，正在流的这一轮不中断）；
- * - 切换会话 = 换地址：组件按 key 重挂载，历史由 `useEffect` 从库里重建。
+ * - 新会话首轮发出后，流里的 `data-run` 带回真实会话 id → `router.replace` 换成真实地址；
+ *   页面层的 key 把 `new → 真实 id` 视为同一次会话（不重挂载），并让 `useChat` 的实例 id
+ *   在组件生命周期内稳定，正在流的这一轮不中断；
+ * - 切换会话 = 换地址：页面 key 递增、整棵对话区重挂载，历史由 `useEffect` 从库里重建。
  */
 export function ChatConversation({ conversationId }: { conversationId: string }) {
   const client = useServerClient()
@@ -205,6 +220,17 @@ export function ChatConversation({ conversationId }: { conversationId: string })
    * 与路由参数分开：新会话时路由是 `.../new`，而发请求要带的是服务端给的 id（还是 undefined）。
    */
   const activeConversationIdRef = useRef<string | undefined>(isNew ? undefined : conversationId)
+  /** 这棵对话区是不是从 `new` 开始的首轮（决定拿到 id 后要不要改地址） */
+  const startedAsNewRef = useRef(isNew)
+  /** 刚由本轮新建出来的会话 id：历史 effect 不要再把刚流进来的消息清掉 / 开 loading */
+  const adoptedConversationRef = useRef<string | undefined>(undefined)
+  /**
+   * useChat 的实例 id 必须在**组件生命周期内稳定**。
+   *
+   * 不能直接写 `billy-ai-chat-${conversationId}`：`new → 真实 id` 时它会让 SDK 重建 Chat 状态，
+   * 正在流的这一轮就被掐断。真正换会话时页面会用 key 重挂载，这里自然拿到新 id。
+   */
+  const chatIdRef = useRef(`billy-ai-chat-${conversationId}`)
 
   const agentsQuery = useQuery({
     queryKey: ['ai', 'agents'],
@@ -313,8 +339,8 @@ export function ChatConversation({ conversationId }: { conversationId: string })
   )
 
   const { messages, sendMessage, status, stop, setMessages, error, clearError } = useChat({
-    // 一个会话一个 Chat 实例：带上会话 id，切换会话时 SDK 内部状态也隔离
-    id: `billy-ai-chat-${conversationId}`,
+    // 实例 id 整个组件生命周期稳定；换会话由页面 key 重挂载来隔离
+    id: chatIdRef.current,
     transport,
     // 挂载即尝试重连（React 19 StrictMode 下有并发去重，别自己在 useEffect 里调 resumeStream）
     resume: true,
@@ -361,13 +387,30 @@ export function ChatConversation({ conversationId }: { conversationId: string })
         activeConversationIdRef.current = data.conversationId
         // 侧栏列表要立刻出现这条新会话（同一个 QueryClient，不用 prop 传递）
         void queryClient.invalidateQueries({ queryKey: ['ai', 'conversations'] })
-        if (isNew) {
-          // 换地址但**不重挂载**（同一动态路由换参数），正在流的这一轮不中断
-          router.replace(conversationPath(data.conversationId))
+        if (startedAsNewRef.current) {
+          // 先记住"这个 id 是本轮流出来的"：页面 key 不变、组件不重挂载，
+          // 历史 effect 也不能把它当成"打开了一个已有会话"去开 loading / 覆盖消息
+          adoptedConversationRef.current = data.conversationId
+          // 地址换掉但不滚动、不重挂载；正在流的这一轮继续
+          router.replace(conversationPath(data.conversationId), { scroll: false })
         }
       }
     },
-    onError: (chatError) => setErrorText(chatError.message),
+    /**
+     * 错误显示**只取信封里的 `message`**，不把整段 JSON 甩给用户（截图里那串大括号就是它）。
+     *
+     * 3306（会话忙）额外说明一句：它通常不是"新消息出错"，而是**上一轮还在服务端跑**
+     * （页面连接断过 / 刚重启过，前端以为空闲了）—— 告诉用户"等它结束或刷新接回"，
+     * 比只显示"请稍候"更能解释他看到的异常。
+     */
+    onError: (chatError) => {
+      const info = parseChatError(chatError)
+      setErrorText(
+        info.code === 3306
+          ? `${info.message}（上一轮可能还在服务端生成：等它结束，或刷新页面接回进度）`
+          : info.message,
+      )
+    },
   })
 
   const streaming = status === 'streaming' || status === 'submitted'
@@ -389,6 +432,23 @@ export function ChatConversation({ conversationId }: { conversationId: string })
    * 因为规划工具可能在任意一轮被调用（第一轮建清单、第五轮改顺序）。
    */
   const conversationPlan = useMemo(() => conversationPlanOf(messages), [messages])
+
+  /**
+   * 当前**还没回答**的问题卡。主区把它固定在输入框上方，不跟消息滚走；
+   * 已回答（`resumed=true`）或没有挂起时为 null。
+   */
+  const activeQuestion = useMemo<SuspendedPartData | null>(() => {
+    for (let messageIndex = messages.length - 1; messageIndex >= 0; messageIndex -= 1) {
+      const parts = messages[messageIndex]?.parts ?? []
+      for (let partIndex = parts.length - 1; partIndex >= 0; partIndex -= 1) {
+        const part = parts[partIndex]!
+        if (part.type !== 'data-tool-call-suspended') continue
+        const data = (part as { data?: SuspendedPartData }).data
+        if (data && data.resumed !== true && data.suspendPayload) return data
+      }
+    }
+    return null
+  }, [messages])
 
   /**
    * 窄屏（<768px）不放右栏的**自动展开**。
@@ -473,6 +533,12 @@ export function ChatConversation({ conversationId }: { conversationId: string })
       setLoading(false)
       return
     }
+    // new → 真实 id：消息已经在本轮流里，历史不需要再拉；
+    // 这里若照常 setLoading(true)，就是用户看到的"发出去闪一下"。
+    if (adoptedConversationRef.current === conversationId) {
+      setLoading(false)
+      return
+    }
     let cancelled = false
     setLoading(true)
     void (async () => {
@@ -536,6 +602,67 @@ export function ChatConversation({ conversationId }: { conversationId: string })
       await client.agent.stopRun({ runId: target })
     } catch (stopError) {
       setErrorText(stopError instanceof Error ? stopError.message : String(stopError))
+    }
+  }
+
+  /**
+   * 回答工具挂起的问题：POST `/agent/chat/resume`，拿到同一轮的续跑流，
+   * 用 `readUIMessageStream` 把它并回**原助手消息**（不是新开一条）。
+   *
+   * 为什么不用 `useChat` 的 `sendMessage`：那会生成一条新的用户消息 / 新的一轮；
+   * 挂起的语义是"同一轮从工具处继续"，用户答案不是新的聊天输入。
+   */
+  const answerQuestions = async (input: AnswerQuestionsInput) => {
+    const response = await fetch(client.agent.chatResumeUrl(), {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        ...(await client.agent.authHeaders()),
+      },
+      body: JSON.stringify(input),
+    })
+    if (!response.ok) {
+      const detail = await response.text().catch(() => '')
+      throw new Error(detail || `续跑失败（HTTP ${response.status}）`)
+    }
+    if (!response.body) throw new Error('续跑没有返回流')
+
+    const seed =
+      messages.find((message) =>
+        message.parts.some(
+          (part) =>
+            part.type === 'data-tool-call-suspended' &&
+            (part as { data?: { toolCallId?: string } }).data?.toolCallId === input.toolCallId,
+        ),
+      ) ?? messages[messages.length - 1]
+    if (!seed) return
+
+    const seedIndex = Math.max(0, messages.indexOf(seed))
+    const parsed = parseJsonEventStream({
+      stream: response.body,
+      schema: uiMessageChunkSchema,
+    }) as unknown as ReadableStream<
+      { success: true; value: UIMessageChunk } | { success: false; error: unknown }
+    >
+    // `parseJsonEventStream` 交的是 `ParseResult`：成功解一层，失败直接终止流。
+    const chunks = parsed.pipeThrough(
+      new TransformStream<
+        { success: true; value: UIMessageChunk } | { success: false; error: unknown },
+        UIMessageChunk
+      >({
+        transform(result, controller) {
+          if (result.success) controller.enqueue(result.value)
+          else controller.error(result.error)
+        },
+      }),
+    )
+    for await (const updated of readUIMessageStream({ message: seed, stream: chunks })) {
+      // 续跑是同一轮的延长：id 必须保持不变，否则界面上会多出一条助手消息
+      setMessages((current) =>
+        current.map((message, index) =>
+          index === seedIndex ? { ...updated, id: seed.id } : message,
+        ),
+      )
     }
   }
 
@@ -640,16 +767,30 @@ export function ChatConversation({ conversationId }: { conversationId: string })
                       streaming={streaming}
                       onOpenPlan={() => focusRightPanel('plan')}
                       onPreviewImage={previewAttachments}
+                      onAnswerQuestions={answerQuestions}
+                      // 计划卡 / 问题卡固定在输入框上方，消息流里不再重复
+                      showTrailingCards={false}
                     />
                   ))
                 )}
-                {/* 运行指示：站在**最后一条消息之后、输入框之上**（消息列表在 StickToBottom 里，
-                    放在这里它才会跟着一起吸底）。出现 / 消失由 `RunActivity` 自己按 `status` 判定
-                    （判据是纯函数，有用例钉住"跑完即消失"），所以这里不重复写一遍条件。 */}
-                <RunActivity messages={messages} status={status} />
               </ConversationContent>
               <ConversationScrollButton />
             </Conversation>
+
+            {/* 输入框上方的常驻 dock：运行状态 / 当前任务进度 / 待回答的问题。
+                放在 Conversation 外面，所以不会被消息列表滚走；问题卡永远贴着输入框。 */}
+            <div className="flex max-h-[55vh] shrink-0 flex-col gap-2 overflow-y-auto px-3">
+              <RunActivity messages={messages} status={status} />
+              {conversationPlan ? (
+                <PlanSummaryCard
+                  plan={conversationPlan.current.plan}
+                  onOpen={() => focusRightPanel('plan')}
+                />
+              ) : null}
+              {activeQuestion ? (
+                <QuestionCard data={activeQuestion} onSubmit={answerQuestions} />
+              ) : null}
+            </div>
 
             <PromptInput
               /**

@@ -259,14 +259,22 @@ export class AiModelRepository {
     // 手工补的模型：同步不碰（连 last_seen_at 都不改，否则"本次未返回"的口径会被污染）
     if (existing.source === AiModelSource.Manual) return 'unchanged'
 
-    // 模态：同步给了就用同步的，没给（null）保留库里的（可能是人手工填的）
+    /**
+     * **"同步给了就用同步的，没给就保留库里的"**（模态 / 窗口同类）。
+     *
+     * 窗口为什么必须与模态同口径：多数厂商的 `/models` 还是老形态（不给窗口），
+     * 人手工填的那个值就是**唯一的数据源**；若同步拿 `null` 直接覆盖，
+     * 每次同步都把人的判断抹掉 —— 而这条数据偏偏是上下文裁剪策略的唯一输入。
+     */
     const nextInputModalities = input.inputModalities ?? existing.inputModalities
     const nextOutputModalities = input.outputModalities ?? existing.outputModalities
+    const nextContextWindow = input.contextWindow ?? existing.contextWindow
+    const nextMaxOutputTokens = input.maxOutputTokens ?? existing.maxOutputTokens
 
     const unchanged =
       existing.displayName === input.displayName &&
-      existing.contextWindow === input.contextWindow &&
-      existing.maxOutputTokens === input.maxOutputTokens &&
+      existing.contextWindow === nextContextWindow &&
+      existing.maxOutputTokens === nextMaxOutputTokens &&
       existing.mode === input.mode &&
       sameJson(existing.inputModalities, nextInputModalities) &&
       sameJson(existing.outputModalities, nextOutputModalities) &&
@@ -275,8 +283,8 @@ export class AiModelRepository {
 
     // 即便内容没变也要刷 synced_at / last_seen_at：它们记录的是"本次见到过"
     existing.displayName = input.displayName
-    existing.contextWindow = input.contextWindow
-    existing.maxOutputTokens = input.maxOutputTokens
+    existing.contextWindow = nextContextWindow
+    existing.maxOutputTokens = nextMaxOutputTokens
     existing.mode = input.mode
     existing.inputModalities = nextInputModalities
     existing.outputModalities = nextOutputModalities

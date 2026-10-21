@@ -146,6 +146,16 @@ post: redact → paginate → audit-end        （拒绝也要跑 post，tool.ga
   租约**故意不主动释放**（`:104-106`，避免释放瞬间另一副本重复恢复）。
 - **多实例自检**：`AGENT_MULTI_INSTANCE=true` 但没配 `REDIS_URL` → **启动直接失败**（`:43-47`）——
   宁可起不来，也不要悄悄降级成"偶发断流、停止不生效"。
+- **启动清理（单副本）**：`recoverOnBoot()` 之后把 `updated_at < 启动时刻` 的 `pending/running`
+  标成 `interrupted`（`RunRepository.interruptActiveBefore`）—— 进程重启（`node --watch` / 崩溃）
+  留下的 run 不必等看门狗 60s，会话立刻可重试；多副本跳过（别的副本可能还在跑），测试环境也跳过
+  （`app-bootstrap` 会把应用跑在开发库上）。
+- **看门狗覆盖 `pending` 且判据用 `COALESCE`**：`startRun` 先插 pending 再置 running，中间失败会卡死会话；
+  pending 的心跳列是 NULL，`NULL < x` 恒为 false。`findStale` / `markTimeout` 两处判据必须完全一致。
+- **进程级异常不能从 SSE 心跳里冒出来**：`response.write()` 在客户端断开 / 响应结束后会抛
+  「Connection is closed.」，定时器回调里的异常会触发 `uncaughtException` → `process.exit(1)`。
+  心跳必须**先续租再 best-effort 写**，且在 `writeHead` 之后才写；收尾时**先清心跳再 `end()`**。
+  建流前的失败（模型解析 / 读附件 / 组装上下文）也必须落终态，否则同样表现为"下一次发送 3306"。
 - **看门狗**：每 `watchdogIntervalMs` 一轮（`:51-57`）；`findStale` → **条件 UPDATE** 抢执行权
   （`affected !== 1` 说明别的副本先抢到，`:114-123`）；标记超时 + 落 status 事件（`:124-140`）。
   `markTimeout` 的判据必须与 `findStale` **完全一致**（见 `develop-ai-agent` runtime 参考）。

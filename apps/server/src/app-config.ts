@@ -151,19 +151,39 @@ export const serverAppConfigSchema = z.object({
     subAgentTimeoutMs: z.coerce.number().int().nonnegative().default(0),
     // ── 命令执行（工具组 `RunCommandTool`，设计文档 §3.15）──
     /**
-     * 是否允许 agent 在本机执行命令行命令（**默认开**）。
+     * 是否允许 agent 在本机执行命令行命令（**默认关**）。
      *
-     * 这是**让模型在本机跑命令**的能力：命令以服务进程的身份与权限执行。
-     * 自用 / 内网部署默认开；对外提供服务的部署应显式置 `false`，
-     * 或把命令执行搬到容器 / 沙箱里（见 `ai-agent.md` §3.15 的安全边界）。
+     * 这是**让模型在本机跑命令**的能力：命令以服务进程的身份与权限执行，
+     * **能读写该身份能读写的一切，不是沙箱**（工具自己也在注释里写明了）。
+     * 默认关；自用 / 内网确需时显式设 `AGENT_COMMAND_ENABLED=true`，
+     * 对外部署保持关闭，真要本机执行请放进容器 / 低权限用户 / 只读工作区。
      */
-    commandEnabled: z.boolean().default(true),
+    commandEnabled: z.boolean().default(false),
     /** 单条命令的时长默认值与硬上限（ms） */
     commandTimeoutMs: z.coerce.number().int().positive().default(15_000),
     /** 单条流的输出上限（字节）；超出即截断并终止命令 */
     commandMaxOutputBytes: z.coerce.number().int().positive().default(64 * 1024),
     /** 命令的工作根目录（缺省 = 服务进程工作目录）；agent 只能在这个目录之内指定 cwd */
     commandWorkDir: z.string().optional(),
+    // ── 联网（工具组 `WebTools`：`web-fetch` / `web-request` / `web-search`）──
+    /**
+     * 是否允许 agent 出网（**默认开**）。
+     *
+     * 关掉后联网工具仍在，但每次调用返回"已被关闭"的结论。
+     * 完全不给模型联网能力的部署置 `false`。
+     */
+    webEnabled: z.boolean().default(true),
+    /** 单次请求的总时长默认值与硬上限（ms）：整条重定向链共用这一个预算 */
+    webTimeoutMs: z.coerce.number().int().positive().default(20_000),
+    /** 单次请求最多读多少字节（超出即截断，工具出参里给 `truncated`） */
+    webMaxBytes: z.coerce.number().int().positive().default(2 * 1024 * 1024),
+    /**
+     * 是否允许访问内网 / 回环地址（**默认关**）。
+     *
+     * 关着的时候 `127.0.0.1` / `10.x` / `169.254.169.254` 一律拒绝 ——
+     * 网页内容可以诱导模型去请求这些地址（SSRF）。要抓本机服务时，这里与工具配置**两处都要打开**。
+     */
+    webAllowPrivateNetwork: z.boolean().default(false),
     // ── 工具引擎（设计 ai-agent-tool-engine.md §5.5 / §5.6）──
     /**
      * 单次给模型的工具出参上限（字节）**硬上限**。
@@ -342,6 +362,10 @@ export const mapServerEnv = (
     commandTimeoutMs: optional(env.AGENT_COMMAND_TIMEOUT_MS),
     commandMaxOutputBytes: optional(env.AGENT_COMMAND_MAX_OUTPUT_BYTES),
     commandWorkDir: optional(env.AGENT_COMMAND_WORK_DIR),
+    webEnabled: parseBoolean(env.AGENT_WEB_ENABLED),
+    webTimeoutMs: optional(env.AGENT_WEB_TIMEOUT_MS),
+    webMaxBytes: optional(env.AGENT_WEB_MAX_BYTES),
+    webAllowPrivateNetwork: parseBoolean(env.AGENT_WEB_ALLOW_PRIVATE_NETWORK),
     toolPageBytesMax: optional(env.AGENT_TOOL_PAGE_BYTES_MAX),
     toolMaxPagesPerTurnMax: optional(env.AGENT_TOOL_MAX_PAGES_PER_TURN),
   },

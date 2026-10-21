@@ -1,9 +1,17 @@
 import { Inject, Injectable } from '@nestjs/common'
 import { Db, type PageQueryResult } from '@repo/kits'
-import { AppErrorCodes, RunStatus, type AgentRunModel } from '@repo/shared'
-import { In, IsNull, type DeepPartial } from 'typeorm'
+import {
+  AppErrorCodes,
+  RunErrorStage,
+  RunStatus,
+  type AgentRunModel,
+} from '@repo/shared'
+import { In, IsNull, LessThan, type DeepPartial } from 'typeorm'
 import { jsonbPatch } from './jsonb.js'
 import { RunEntity } from '../../../database/entities/run-entity.js'
+
+/** 进程重启后遗留 run 的终态说明（用户可见：明确告诉他"重试就行"，不是他的错） */
+const INTERRUPTED_RUN_MESSAGE = '服务重启，这一轮已中断，请重试'
 
 /** 实体 → 对外模型 */
 const toModel = (record: RunEntity): AgentRunModel => ({
@@ -68,7 +76,7 @@ export class RunRepository {
       where: {
         conversationId,
         parentRunId: IsNull(),
-        status: In([RunStatus.Pending, RunStatus.Running]),
+        status: In([RunStatus.Pending, RunStatus.Running, RunStatus.Suspended]),
       },
       order: { createdAt: 'DESC' },
     })
@@ -87,7 +95,7 @@ export class RunRepository {
       where: {
         triggeredBy: userId,
         parentRunId: IsNull(),
-        status: In([RunStatus.Pending, RunStatus.Running]),
+        status: In([RunStatus.Pending, RunStatus.Running, RunStatus.Suspended]),
       },
       order: { createdAt: 'DESC' },
     })
@@ -183,6 +191,29 @@ export class RunRepository {
     )
   }
 
+  /**
+   * 挂起：等用户回答工具提问。**不是终态** —— 不写 `finishedAt`，也不清 usage。
+   *
+   * 挂起期间看门狗不扫它（`findStale` 只找 pending/running）；用户回答走 resume，
+   * 放弃则走 stop / cancel。把已经烧掉的 token 先记在账上，别等用户回答才结算。
+   */
+  async suspend(
+    id: string,
+    input: { usage?: Record<string, unknown> | null; stepCount?: number; toolCallCount?: number; durationMs?: number },
+  ): Promise<void> {
+    const repo = await this.repo()
+    await repo.update(
+      { id },
+      jsonbPatch<RunEntity>({
+        status: RunStatus.Suspended,
+        usage: input.usage ?? null,
+        stepCount: input.stepCount ?? 0,
+        toolCallCount: input.toolCallCount ?? 0,
+        durationMs: input.durationMs ?? null,
+      }),
+    )
+  }
+
   /** 终态收尾（跑完 / 失败 / 取消 / 中断都走这里） */
   async finish(id: string, input: FinishRunInput): Promise<void> {
     const repo = await this.repo()
@@ -213,7 +244,10 @@ export class RunRepository {
   async cancelActive(conversationId: string): Promise<number> {
     const repo = await this.repo()
     const result = await repo.update(
-      { conversationId, status: In([RunStatus.Pending, RunStatus.Running]) },
+      {
+        conversationId,
+        status: In([RunStatus.Pending, RunStatus.Running, RunStatus.Suspended]),
+      },
       { status: RunStatus.Canceled, finishedAt: new Date() },
     )
     return result.affected ?? 0
@@ -231,14 +265,26 @@ export class RunRepository {
     limit = 50,
   ): Promise<Array<{ id: string; conversationId: string }>> {
     const repo = await this.repo()
+    /**
+     * **必须把 `pending` 也算进来**（踩过的洞）：`startRun` 先插 pending 再置 running，
+     * 若中间失败（DB 抖动 / 进程重启），这一行会永远停在 pending —— 早先这里只扫 running，
+     * 于是它的会话**永久** 3306，连看门狗都救不回来。
+     * 判据里用 `COALESCE(..., created_at)`：pending 行没有 started_at / heartbeat_at，
+     * 否则 `NULL < x` 恒为 false，同样永远判不出来。
+     */
     const rows = await repo
       .createQueryBuilder('r')
       .select(['r.id AS id', 'r.conversation_id AS "conversationId"'])
-      .where('r.status = :status', { status: RunStatus.Running })
-      .andWhere('(r.heartbeatAt < :heartbeatBefore OR r.startedAt < :startedBefore)', {
-        heartbeatBefore,
-        startedBefore,
+      .where('r.status IN (:...statuses)', {
+        statuses: [RunStatus.Pending, RunStatus.Running],
       })
+      .andWhere(
+        '(COALESCE(r.heartbeat_at, r.created_at) < :heartbeatBefore OR COALESCE(r.started_at, r.created_at) < :startedBefore)',
+        {
+          heartbeatBefore,
+          startedBefore,
+        },
+      )
       .limit(limit)
       .getRawMany<{ id: string; conversationId: string }>()
     return rows
@@ -263,13 +309,65 @@ export class RunRepository {
         finishedAt: new Date(),
       })
       .where('id = :id', { id })
-      .andWhere('status = :status', { status: RunStatus.Running })
-      .andWhere('(heartbeatAt < :heartbeatBefore OR startedAt < :startedBefore)', {
-        heartbeatBefore,
-        startedBefore,
+      .andWhere('status IN (:...statuses)', {
+        statuses: [RunStatus.Pending, RunStatus.Running],
       })
+      .andWhere(
+        '(COALESCE(heartbeat_at, created_at) < :heartbeatBefore OR COALESCE(started_at, created_at) < :startedBefore)',
+        {
+          heartbeatBefore,
+          startedBefore,
+        },
+      )
       .execute()
     return result.affected ?? 0
+  }
+
+  /**
+   * 进程重启的**启动清理**：把上一进程遗留的进行中运行标成 `interrupted`。
+   *
+   * 为什么需要它（单副本场景）：`node --watch` 改一行代码就重启一次，上一进程手里的 run
+   * 既没有心跳、也没有人再管它；而看门狗要等 `heartbeatTimeoutMs`（默认 60s）才动手。
+   * 这 60 秒里用户重新发消息只会得到 3306「该会话已有正在进行的对话」—— 看起来像"坏了"。
+   *
+   * 判据里的 `updated_at < since`（`since` = 本次进程启动时刻）是**防误伤**：
+   * 启动恢复（durable）若真的接管了某条 run，会写快照、把 `updated_at` 顶到启动之后，
+   * 这一条就不会被标中断。多副本部署不走这里（别的副本可能还在正常跑，交给心跳看门狗）。
+   *
+   * 条件 UPDATE + 影响行数判定：多进程并发启动时也只有抢到的那一个会写（天然幂等）。
+   */
+  async interruptActiveBefore(
+    since: Date,
+  ): Promise<Array<{ id: string; conversationId: string }>> {
+    const repo = await this.repo()
+    const rows = await repo.find({
+      where: {
+        status: In([RunStatus.Pending, RunStatus.Running]),
+        updatedAt: LessThan(since),
+      },
+      select: { id: true, conversationId: true },
+    })
+
+    const interrupted: Array<{ id: string; conversationId: string }> = []
+    for (const row of rows) {
+      const result = await repo
+        .createQueryBuilder()
+        .update(RunEntity)
+        .set({
+          status: RunStatus.Interrupted,
+          errorStage: RunErrorStage.Recovery,
+          errorMessage: INTERRUPTED_RUN_MESSAGE,
+          finishedAt: new Date(),
+        })
+        .where('id = :id', { id: row.id })
+        .andWhere('status IN (:...statuses)', {
+          statuses: [RunStatus.Pending, RunStatus.Running],
+        })
+        .andWhere('updated_at < :since', { since })
+        .execute()
+      if ((result.affected ?? 0) === 1) interrupted.push(row)
+    }
+    return interrupted
   }
 
   /** 某会话的运行记录（按创建时间倒序，分页） */

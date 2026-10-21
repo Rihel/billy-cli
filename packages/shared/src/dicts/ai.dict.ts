@@ -19,6 +19,8 @@ export const ConversationStatus = createDict({
 export const RunStatus = createDict({
   Pending: { label: '排队中', value: 'pending' },
   Running: { label: '运行中', value: 'running' },
+  /** 挂起：等用户回答工具提出的问题；不是失败，也不能被看门狗判超时 */
+  Suspended: { label: '等待回答', value: 'suspended' },
   Succeeded: { label: '已完成', value: 'succeeded' },
   Failed: { label: '失败', value: 'failed' },
   /** 进程崩溃/中断后未能恢复 —— 前端提示"可重试"（重试 = 新建一轮） */
@@ -50,6 +52,8 @@ export const TimelineKind = createDict({
   Reasoning: { label: '推理过程', value: 'reasoning' },
   ToolCall: { label: '工具调用', value: 'tool-call' },
   ToolResult: { label: '工具结果', value: 'tool-result' },
+  /** 工具挂起：等用户回答（payload 里有问题定义与 runId） */
+  ToolSuspended: { label: '等待回答', value: 'tool-suspended' },
   /** 一次模型调用的边界（带该步的 token 与耗时） */
   Step: { label: '模型调用步', value: 'step' },
   Source: { label: '引用来源', value: 'source' },

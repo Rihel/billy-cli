@@ -41,6 +41,14 @@ export class RunNotFoundError extends AppError {
   }
 }
 
+/** 这一轮没有挂起（已结束 / 被取消 / 状态不对），不能 resume */
+export class RunNotSuspendedError extends AppError {
+  readonly code = AppErrorCodes.RunNotSuspended
+  constructor(readonly runId: string) {
+    super(`Run is not suspended: ${runId}`)
+  }
+}
+
 /** 该会话已有进行中的一轮（并发拒绝；底层由 runs 的部分唯一索引兜住） */
 export class ConversationBusyError extends AppError {
   readonly code = AppErrorCodes.ConversationBusy

@@ -96,6 +96,18 @@ export interface ToolEnvCaps {
     maxOutputBytesMax: number
     workDir?: string
   }
+  /**
+   * 联网的部署边界（`AGENT_WEB_*`）。
+   *
+   * `allowPrivateNetwork` 在这里是**硬闸**：env 没打开时，后台把工具配置里的同名字段打开也不生效 ——
+   * 允许模型访问内网是部署方的决定，不该由页面上的一个开关决定。
+   */
+  web?: {
+    enabled: boolean
+    timeoutMsMax: number
+    maxBytesMax: number
+    allowPrivateNetwork: boolean
+  }
 }
 
 /** 工具往"父流"里写实时明细的最小面（子 agent 靠它把过程写进父那一条流） */
@@ -230,6 +242,8 @@ export class ToolDeniedError extends Error {
   ) {
     super(message)
     this.name = 'ToolDeniedError'
+    // 业务拒绝只给结论（原因 + 提示），不要把内部堆栈带到模型/前端可见的错误卡片里
+    this.stack = undefined
   }
 }
 

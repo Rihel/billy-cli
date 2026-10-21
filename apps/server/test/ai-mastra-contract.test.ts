@@ -4,6 +4,8 @@ import { toAISdkStream } from '@mastra/ai-sdk'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import { z } from 'zod'
 import { createMastraAgent, toMastraModelInstance } from '../src/modules/ai/mastra/agent.adapter.js'
+import { ToolOutcomeError } from '../src/modules/ai/mastra/tool.adapter.js'
+import { toUiStream } from '../src/modules/ai/mastra/stream.adapter.js'
 import { createDeepSeek } from '@ai-sdk/deepseek'
 import type { RuntimeModel } from '../src/modules/ai/core/envelope.js'
 import { startMockModelServer, type MockModelServer } from './helpers/mock-model-server.js'
@@ -86,6 +88,18 @@ const runOnce = async (
   return chunkSink
 }
 
+/** 收集一条 UI 流的全部片段（`toUiStream` 出口，与线上同一条转换） */
+const collectUi = async (stream: ReadableStream<unknown>): Promise<ChunkLike[]> => {
+  const reader = (stream as unknown as ReadableStream<ChunkLike>).getReader()
+  const chunks: ChunkLike[] = []
+  for (;;) {
+    const { done, value } = await reader.read()
+    if (done) break
+    chunks.push(value)
+  }
+  return chunks
+}
+
 /** 模型最近一次请求里带工具结果的那条消息（`role: 'tool'`）的全文 */
 const lastToolMessage = (mock: MockModelServer): string => {
   const withToolResult = mock.requests.filter((body) =>
@@ -96,7 +110,7 @@ const lastToolMessage = (mock: MockModelServer): string => {
 
 const buildAgent = (
   mock: MockModelServer,
-  options: { tools: Record<string, unknown>; id: string; hooks?: unknown },
+  options: { tools: Record<string, unknown>; id: string; hooks?: unknown; durable?: boolean },
 ) =>
   new Agent({
     id: options.id,
@@ -104,7 +118,7 @@ const buildAgent = (
     instructions: '按工具结果回答',
     model: { id: 'openai/mock-model', url: mock.baseURL, apiKey: 'test' },
     tools: options.tools as never,
-    durable: true,
+    durable: options.durable ?? true,
     ...(options.hooks ? { hooks: options.hooks as never } : {}),
   })
 
@@ -202,6 +216,44 @@ describe('适配器行为约定：Mastra 行为（升级前先跑这份）', () 
       '整轮应继续跑完并产出文本',
     ).toBeGreaterThan(0)
   })
+
+  /**
+   * 用例 ④：**工具失败的错误文本只有结论**（2026-10 用户反馈"为啥错误直接把 json 和堆栈都弄出来了"）。
+   *
+   * 上游 `@mastra/ai-sdk` 默认把错误对象 `JSON.stringify` 成 `errorText`：
+   * - durable 开：错误序列化成 `{ name, message, stack }` 普通对象 → JSON 里带整段 `@mastra/core` 堆栈；
+   * - durable 关：`MastraError` 实例 → 名字 / cause / details 一起进 JSON。
+   * 我们在 `toUiStream` 里给了 `onError = toErrorText`，两条路都必须只剩一句结论。
+   */
+  it('用例 ④：工具失败的错误文本只有结论 —— 无堆栈、无 JSON（durable 开 / 关都验）', async () => {
+    const message = '请求失败：https://example.com（Connect Timeout Error）'
+    const hint = '站点可能不可达或被墙；换一个来源'
+    const failingTool = createTool({
+      id: 'plan-create',
+      description: '一致性测试：每次都失败',
+      inputSchema: z.object({ goal: z.string().optional(), tasks: z.array(z.unknown()).optional() }),
+      execute: async () => {
+        throw new ToolOutcomeError('invalid-input', message, hint)
+      },
+    }) as never
+
+    for (const durable of [false, true]) {
+      const agent = buildAgent(mock, {
+        id: `contract-error-${durable}`,
+        tools: { 'plan-create': failingTool },
+        durable,
+      })
+      const output = await agent.stream([{ role: 'user', content: '跑一次 [用例-失败]' }] as never, {
+        maxSteps: 4,
+      })
+      const chunks = await collectUi(toUiStream(output))
+      const errorChunk = chunks.find((chunk) => chunk.type === 'tool-output-error')
+      expect(errorChunk, `durable=${durable} 应该有工具错误片段`).toBeDefined()
+      expect(errorChunk?.errorText, `durable=${durable} 的错误文本应只有结论`).toBe(
+        `${message}（${hint}）`,
+      )
+    }
+  })
 })
 
 describe('toMastraModelInstance（多模态回归防线）', () => {
@@ -255,7 +307,7 @@ describe('durable 下的多模态（图片必须真的发到供应商）', () =>
    * 实测根因**不在我们的适配代码**：`@mastra/core@1.69.0` 在 **`durable: true`**
    * （崩溃恢复，线上默认开启）时会把多模态消息的 `content` 数组**压平成纯字符串** ——
    * 出站请求 156 字节、`content: "看图"`，图片被静默丢掉。
-   * 升级到 `1.75.0` 后同样输入变成含 `image_url` 的 1.7KB+ 请求。
+   * 升级到 `1.78.0` 后同样输入变成含 `image_url` 的 1.7KB+ 请求。
    *
    * 这条测试挡的是**回归**：一旦退化，它立刻红，而不是等用户发现"模型读不到图"。
    * 注意它必须走 `durable: true` 这条路 —— 不传 durable 时这个 bug 根本不出现

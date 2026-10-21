@@ -130,6 +130,28 @@ describe('toolCallReason（为什么用这个工具）', () => {
   })
 })
 
+describe('入参还在流式接收（input 还没到）', () => {
+  it('展开状态下渲染不抛错', () => {
+    const streamingPart = {
+      type: 'dynamic-tool',
+      toolName: 'plan-create',
+      toolCallId: 'call_streaming',
+      state: 'input-streaming',
+    } as unknown as ToolPart
+
+    expect(() =>
+      renderToStaticMarkup(
+        createElement(ToolCard, {
+          part: streamingPart,
+          events: [],
+          defaultOpen: true,
+          streaming: true,
+        }),
+      ),
+    ).not.toThrow()
+  })
+})
+
 describe('工具条上的耗时（用户要求）', () => {
   it('给了历史耗时（服务端审计量的）→ 显示在标题行', () => {
     const html = renderToStaticMarkup(

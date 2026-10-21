@@ -43,6 +43,15 @@ describe('server 分片：HTTP 长连接超时', () => {
   })
 })
 
+describe('agent 分片：命令执行默认关闭', () => {
+  it('默认 commandEnabled=false；要本机执行必须显式 AGENT_COMMAND_ENABLED=true', () => {
+    const defaults = serverAppConfigSchema.parse(mapServerEnv({} as NodeJS.ProcessEnv))
+    expect(defaults.agent.commandEnabled).toBe(false)
+    const mapped = mapServerEnv({ AGENT_COMMAND_ENABLED: 'true' } as NodeJS.ProcessEnv)
+    expect(serverAppConfigSchema.parse(mapped).agent.commandEnabled).toBe(true)
+  })
+})
+
 describe('server 分片：优雅关闭', () => {
   it('默认 shutdownTimeoutMs=25s，且留有余量给 k8s 的 grace + preStop（60s + 8s）', () => {
     const server = parseServer({})

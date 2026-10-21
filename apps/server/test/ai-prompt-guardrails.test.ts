@@ -75,6 +75,19 @@ describe('提示词纪律句（执行命令 / 能力边界 / 宽泛任务）', (
     expect(prompt).toContain('不要只列一份"我的能力限制清单"')
   })
 
+  /**
+   * 联网的**选择顺序**（用户 2026-10-19 定）：默认先直取，搜索只作兜底。
+   *
+   * 为什么要钉：模型天然倾向"先搜一下"，而搜索按次计费、还多一层摘要损耗；
+   * 有 URL / 接口地址时 `web-fetch` / `web-request` 更准。这条口径同时写在工具说明里，
+   * 这里守提示词那一半 —— 只改一处会漂移。
+   */
+  it('联网优先直取：有 URL / 接口先用 web-fetch / web-request，搜索是兜底', () => {
+    expect(prompt).toContain('联网优先直取')
+    expect(prompt).toContain('只有确实不知道去哪找时')
+    expect(prompt).toContain('搜到 URL 后仍回到 `web-fetch` 读正文')
+  })
+
   it('宽泛任务先动手：不要把"能查的"也推回给用户', () => {
     expect(prompt).toContain('任务宽泛 / 意图不明时**先动手**')
   })

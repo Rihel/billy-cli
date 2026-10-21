@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   cacheHitPercentText,
+  parseChatError,
   relativeTimeText,
   compactNumber,
   durationText,
@@ -26,6 +27,31 @@ const USAGE = {
   stepCount: 2,
   durationMs: 1234,
 }
+
+describe('parseChatError', () => {
+  it('服务端 JSON 信封：只取 message，并保留 code', () => {
+    expect(
+      parseChatError(
+        new Error('{"code":3306,"message":"该会话已有正在进行中的对话，请稍候","requestId":"x"}'),
+      ),
+    ).toEqual({ code: 3306, message: '该会话已有正在进行中的对话，请稍候' })
+  })
+
+  it('网关包了一层前缀：仍能从花括号里解析出信封', () => {
+    expect(parseChatError(new Error('HTTP 409: {"code":3310,"message":"本次对话超时"}'))).toEqual({
+      code: 3310,
+      message: '本次对话超时',
+    })
+  })
+
+  it('不是 JSON（网络错误 / HTML）：原样返回，不吞掉排障线索', () => {
+    expect(parseChatError(new Error('Failed to fetch'))).toEqual({ message: 'Failed to fetch' })
+  })
+
+  it('空错误：给一句明确文案，而不是空字符串', () => {
+    expect(parseChatError(undefined).message).toContain('没有返回原因')
+  })
+})
 
 describe('compactNumber', () => {
   it('小于 1000 原样显示', () => {

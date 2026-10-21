@@ -9,6 +9,7 @@ import {
   TimelineRole,
   estimateContentTokens,
   type AgentChatDto,
+  type AgentChatResumeDto,
   type AgentChatResultModel,
   type AgentRunStopResultModel,
   type ChatAttachmentModel,
@@ -27,9 +28,11 @@ import {
   ProviderAuthFailedError,
   ProviderRateLimitedError,
   RunNotFoundError,
+  RunNotSuspendedError,
 } from '../core/errors.js';
 import { AGENT_REGISTRY } from '../agents/registry.js';
-import { MASTRA } from '../mastra/ai.mastra.js';
+import { MASTRA } from '../mastra/ai.mastra.js'
+import { agentMemory as sharedAgentMemory } from '../mastra/agent-memory.js';
 import {
   AGENT_RUNTIME_KEY,
   type AgentRuntimeEnvelope,
@@ -64,6 +67,7 @@ import { TimelineRepository } from './timeline.repository.js';
 import { AgentStreamStore } from './stream-store.service.js';
 import { StreamRecorder } from './stream-recorder.js';
 import { readStreamSteps, readStreamUsage } from './stream-result.js';
+import { resumeSafeChunks } from './stream-resume.js';
 import { toPlanPayload } from './plan.protocol.js';
 import { mergeUsage, toUsageRecord, totalTokensOf } from './usage.js';
 
@@ -170,6 +174,24 @@ export class AgentChatService {
     @Inject(AgentTitleService) private readonly titles: AgentTitleService,
   ) {}
 
+  /** 主 agent 的对话记忆（与 createMastra 共用同一个单例） */
+  private readonly agentMemory = sharedAgentMemory;
+
+  private async ensureAgentThread(
+    conversationId: string,
+    userId: string,
+  ): Promise<{ thread: string; resource: string }> {
+    const existing = await this.agentMemory.getThreadById({ threadId: conversationId });
+    if (!existing) {
+      await this.agentMemory.createThread({
+        threadId: conversationId,
+        resourceId: userId,
+        title: conversationId,
+      });
+    }
+    return { thread: conversationId, resource: userId };
+  }
+
   /**
    * **首轮结束时给会话起名**（模型生成、≤10 字、与当前 agent 上下文完全隔离）。
    *
@@ -229,6 +251,16 @@ export class AgentChatService {
 
     const run = await this.startRun(conversation, definition.key, userId);
     const startedAt = Date.now();
+
+    // 心跳：**非流式路径也必须续租**，理由与流式那处逐字相同（见 `chatStream` 里的长注释）——
+    // 看门狗判的是「还有没有人在管这一轮」（进程活着 = 有人管），不是「有没有产出」。
+    // 这条路径上唯一的长 await 就是 `agent.generate()`：工具往返全在里面，模型思考期间不产任何东西，
+    // 不续租就会被判成 3310 超时。而这里没有 SSE 兜着（离线脚本 / CLI / 服务端自调用都走
+    // `POST /agent/chat`），一旦判了就是「进程还在跑、库里已标 failed」两份互相矛盾的真相。
+    const heartbeat = setInterval(() => {
+      void this.runs.touchHeartbeat(run.id).catch(() => undefined)
+    }, STREAM_HEARTBEAT_MS)
+    heartbeat.unref?.()
 
     try {
       // ① 解析本轮模型（**只能来自库里的配置**；解析不出来直接 3406/3402，不建流不烧钱）
@@ -357,6 +389,7 @@ export class AgentChatService {
         durationMs,
       });
 
+      clearInterval(heartbeat);
       return {
         conversationId: conversation.id,
         runId: run.id,
@@ -398,6 +431,7 @@ export class AgentChatService {
         reason: message,
         durationMs,
       });
+      clearInterval(heartbeat);
       throw mapped;
     }
   }
@@ -785,6 +819,24 @@ export class AgentChatService {
    *
    * 与 {@link chat} 共用前半段（会话 / 运行 / 上下文 / 用户消息落库），
    * 差别在产出：这里把流写给客户端，同时**每个片段落三处**（时间线 / 输出记录 / 广播）。
+   *
+   * ## 终态保证（2026-10-18 修）
+   *
+   * `startRun` 之后的一切都在这一个 `try` 里：**解析模型、组装上下文、读附件、落用户消息、
+   * 建 Redis 进度**这些「建流之前」的步骤同样可能失败（3406 没配模型 / 3311 附件读不回来 /
+   * 3407 会话不合法…）。早先它们写在 `try` 外面，一失败就**只留下一条 `running` 的运行记录**：
+   * 前端看不到任何错误，下一次发消息还会被部分唯一索引挡成 3306「该会话已有进行中的对话」，
+   * 直到看门狗 60 秒后把它判超时。现在任何一步失败都会落终态（并写一条 `error` 时间线），
+   * 会话立刻可以重试；**如果流还没建（响应头未发），错误原样抛回 HTTP 层**，
+   * 前端 `onError` 能看到 3406 / 3311 这种具体原因，而不是一个空回答。
+   *
+   * ## 心跳为什么先续租、再写 ping（2026-10-18 修）
+   *
+   * 心跳回调里 `response.write(': ping')` 在客户端断开 / 响应已结束时**会抛
+   * 「Connection is closed.」** —— 这是定时器里的异常，进程级 `uncaughtException` 会直接
+   * `process.exit(1)`：表现为「聊着聊着服务重启了、正在跑的几轮全丢、再发消息 3306」。
+   * 所以顺序改成**先 `touchHeartbeat`（保租约），再 best-effort 写 ping**；
+   * 写失败只丢这一帧 SSE 注释，不影响运行，也不会把进程带走。
    */
   async chatStream(
     userId: string,
@@ -797,104 +849,139 @@ export class AgentChatService {
     const definition = this.registry.resolve(
       input.agentKey ?? conversation.agentKey,
     );
+
     const run = await this.startRun(conversation, definition.key, userId);
     const startedAt = Date.now();
 
-    // 本轮模型：**只能来自库里的配置**（解析失败直接抛，连流都不建）
-    const model = await this.resolveRuntimeModel(definition, input.modelId);
-    const modelInstance = await this.resolveModelInstance(model);
+    // 本进程内中止控制器：**在建流之前就登记**，否则"解析模型时用户点停止"找不到目标
+    const abort = new AbortController();
+    this.activeRuns.set(run.id, abort);
 
-    let built = await this.buildContext(
-      conversation.id,
-      definition,
-      input.message,
-      model,
-      input.attachments,
-    );
-    if (built.needsCompaction && built.compactionRange) {
-      // 注意：这一步在建流之前，**此时还没有中止控制器**（`abort` 后面才声明）→ 信封不带 abortSignal
-      await this.summarize(
-        conversation.id,
-        run.id,
-        definition,
-        built.compactionRange,
-        await this.buildRuntimeContext(
-          conversation.id,
-          run.id,
-          definition,
-          userId,
-          model,
-          {
-            isAdmin,
-          },
-        ),
-      );
-      built = await this.buildContext(
+    let heartbeat: NodeJS.Timeout | undefined;
+    let unsubscribeStop: (() => Promise<void>) | null = null;
+    /** 响应头是否已经发出（决定失败时是「抛回 HTTP」还是「按 SSE 收尾」） */
+    let streamStarted = false;
+
+    const stopHeartbeat = (): void => {
+      if (!heartbeat) return;
+      clearInterval(heartbeat);
+      heartbeat = undefined;
+    };
+
+    /**
+     * 起心跳：SSE 注释帧（保连接）+ **DB 租约**（保这一轮不被看门狗误杀）。
+     *
+     * 间隔必须显著小于网关空闲超时（默认 15s < keepAliveTimeout 75s），否则"AI 想得久一点就断流"。
+     * 模型在**吐出第一个 token 之前**可能安静很久（长上下文 + 推理型模型），
+     * 所以从建流前就开始续租 —— 看门狗判的是「还有没有人在管这一轮」，不是「有没有产出」。
+     */
+    const ensureHeartbeat = (): void => {
+      if (heartbeat) return;
+      heartbeat = setInterval(() => {
+        // ① 先续租：即使客户端已经断开，这一轮仍然有人在管（生成还在继续，可重连续看）
+        void this.runs.touchHeartbeat(run.id).catch(() => undefined);
+        // ② 再 best-effort 写注释帧：写失败只说明连接没了，不能把进程带走。
+        //    必须等 `writeHead` 之后才写 —— 在响应头之前写会隐式发出 200 + 默认响应头，
+        //    随后 `writeHead(200, SSE_HEADERS)` 会抛 ERR_HTTP_HEADERS_SENT（长握手 + 15s 心跳就会踩到）。
+        if (streamStarted) writeSse(response, ': ping\n\n');
+      }, STREAM_HEARTBEAT_MS);
+      heartbeat.unref?.();
+    };
+
+    try {
+      // ① 解析本轮模型（**只能来自库里的配置**；解析不出来直接 3406/3402，不建流不烧钱）
+      const model = await this.resolveRuntimeModel(definition, input.modelId);
+      const modelInstance = await this.resolveModelInstance(model);
+
+      // ② 组装上下文（窗口优先用库里配的实测值；超限则先压缩一次再重新组装，只压一次）
+      let built = await this.buildContext(
         conversation.id,
         definition,
         input.message,
         model,
         input.attachments,
       );
-    }
+      if (built.needsCompaction && built.compactionRange) {
+        // 注意：压缩发生在建流之前（尚未 writeHead），它的模型调用不单独接 abortSignal ——
+        // 失败会降级为纯裁剪（见 summarize），不会阻断这一轮
+        await this.summarize(
+          conversation.id,
+          run.id,
+          definition,
+          built.compactionRange,
+          await this.buildRuntimeContext(
+            conversation.id,
+            run.id,
+            definition,
+            userId,
+            model,
+            {
+              isAdmin,
+            },
+          ),
+        );
+        built = await this.buildContext(
+          conversation.id,
+          definition,
+          input.message,
+          model,
+          input.attachments,
+        );
+      }
 
-    const now = new Date();
-    await this.timelines.append({
-      conversationId: conversation.id,
-      runId: run.id,
-      role: TimelineRole.User,
-      kind: TimelineKind.Text,
-      payload: userMessagePayload(input),
-      startedAt: now,
-      finishedAt: now,
-    });
-
-    const streamId = `${run.id}-${Date.now()}`;
-    const abort = new AbortController();
-    this.activeRuns.set(run.id, abort);
-    await this.runs.setActiveStream(run.id, streamId);
-    await this.streamStore.startRun(run.id, {
-      status: RunStatus.Running,
-      stage: 'generating',
-      streamId,
-      offset: 0,
-      step: 0,
-    });
-
-    const recorder = new StreamRecorder(
-      this.timelines,
-      { conversationId: conversation.id, runId: run.id },
-      {
-        metas: this.toolMetas,
-        isKnownTool: (toolKey) => Boolean(this.toolRegistry.get(toolKey)),
-      },
-    );
-    let offset = 0;
-    let stepCount = 0;
-    let lastProgressAt = 0;
-
-    // 心跳：SSE 注释帧。间隔必须显著小于网关空闲超时（默认 15s < keepAliveTimeout 75s），
-    // 否则"AI 想得久一点就断流"。自己写而不用 `withSseHeartbeat`：后者收的是 Web Response。
-    const heartbeat = setInterval(() => {
-      if (!response.writableEnded) response.write(': ping\n\n');
-    }, STREAM_HEARTBEAT_MS);
-
-    // 跨副本停止：订阅本 run 的停止频道（请求落在别的副本时也停得掉）
-    let unsubscribeStop: (() => Promise<void>) | null = null;
-    try {
-      unsubscribeStop = await this.streamStore.subscribeRun(
-        run.id,
-        () => undefined,
-        () => abort.abort(),
-      );
-    } catch (error) {
-      this.logger.warn('ai.stream.stop_subscribe_failed', {
+      // ③ 用户消息先落库（之后无论成败，审计上都能看到"用户问了什么"）
+      const now = new Date();
+      await this.timelines.append({
+        conversationId: conversation.id,
         runId: run.id,
-        reason: error instanceof Error ? error.message : String(error),
+        role: TimelineRole.User,
+        kind: TimelineKind.Text,
+        payload: userMessagePayload(input),
+        startedAt: now,
+        finishedAt: now,
       });
-    }
 
-    try {
+      // ④ 建流：进度 / 录制器 / 心跳 / 跨副本停止
+      const streamId = `${run.id}-${Date.now()}`;
+      await this.runs.setActiveStream(run.id, streamId);
+      await this.streamStore.startRun(run.id, {
+        status: RunStatus.Running,
+        stage: 'generating',
+        streamId,
+        offset: 0,
+        step: 0,
+      });
+
+      const recorder = new StreamRecorder(
+        this.timelines,
+        { conversationId: conversation.id, runId: run.id },
+        {
+          metas: this.toolMetas,
+          isKnownTool: (toolKey) => Boolean(this.toolRegistry.get(toolKey)),
+        },
+      );
+      let offset = 0;
+      let stepCount = 0;
+      let lastProgressAt = 0;
+      /** 这一轮流里是否出现了工具挂起（`ask-user-questions`） */
+      let suspended = false;
+
+      ensureHeartbeat();
+
+      // 跨副本停止：订阅本 run 的停止频道（请求落在别的副本时也停得掉）
+      try {
+        unsubscribeStop = await this.streamStore.subscribeRun(
+          run.id,
+          () => undefined,
+          () => abort.abort(),
+        );
+      } catch (error) {
+        this.logger.warn('ai.stream.stop_subscribe_failed', {
+          runId: run.id,
+          reason: error instanceof Error ? error.message : String(error),
+        });
+      }
+
       const requestContext = await this.buildRuntimeContext(
         conversation.id,
         run.id,
@@ -912,10 +999,13 @@ export class AgentChatService {
         },
       );
       const agent = mastra.getAgent(definition.key);
+      const memoryThread = await this.ensureAgentThread(conversation.id, userId);
       const output = await agent.stream(built.messages as never, {
         maxSteps: AGENT_MAX_STEPS,
         abortSignal: abort.signal,
         requestContext,
+        memory: memoryThread,
+        savePerStep: true,
         // 显式传模型实例：不依赖 Agent 上的动态 model（Mastra 自解析配置那一层曾丢过多模态，见 resolveModelInstance）
         model: modelInstance as never,
         /**
@@ -923,6 +1013,7 @@ export class AgentChatService {
          * 而我们的存储适配层用 `engine_run_id` 找宿主行 —— id 对不上就丢快照（见 `startRun`）。
          */
         runId: run.engineRunId,
+        closeOnSuspend: true,
       });
       // 子 agent 的实时明细**不走** Mastra 的静态子 agent 通道（我们没有静态子 agent）：
       // 由 `run-sub-agent` 工具经 `context.writer` 写成 `data-sub-agent*` 块进这条流，见 §3.14.5
@@ -933,12 +1024,15 @@ export class AgentChatService {
       ).pipeThrough(
         new TransformStream<UiChunkLike, UiChunkLike>({
           transform: async (chunk, controller) => {
+            // 挂起是这一轮的"暂停"，不是成功；收尾分支据此决定 finish 还是 suspend。
+            if (chunk.type === 'data-tool-call-suspended') suspended = true;
+            const outgoing = normalizeSuspendedChunk(chunk, run.id);
             // 先给客户端，再落库：用户的体感不该被落库拖慢
-            controller.enqueue(chunk);
+            controller.enqueue(outgoing);
             try {
-              await recorder.consume(chunk);
-              offset = await this.streamStore.appendChunk(run.id, chunk);
-              await this.streamStore.publishChunk(run.id, chunk);
+              await recorder.consume(outgoing);
+              offset = await this.streamStore.appendChunk(run.id, outgoing);
+              await this.streamStore.publishChunk(run.id, outgoing);
               if (chunk.type === 'start-step') stepCount += 1;
               const nowMs = Date.now();
               if (nowMs - lastProgressAt >= STREAM_PROGRESS_THROTTLE_MS) {
@@ -970,6 +1064,10 @@ export class AgentChatService {
       // 就代表服务端已经落好终态（否则会出现"收到 [DONE] 但查运行还是 running"的窗口）。
       response.writeHead(200, UI_STREAM_HEADERS);
       response.flushHeaders?.();
+      streamStarted = true;
+      // 客户端断开是常态（刷新 / 换网络 / 关标签页）：不要让 socket 的 error 事件
+      // 变成进程级未捕获异常（那会 `process.exit(1)`，把其它会话也一起带走）
+      response.on?.('error', () => undefined);
 
       // 先把"这一轮的身份"发给客户端：**前端要靠它记住 runId**（停止与断线重连都只认 runId）。
       // 它走与业务片段**同一条记录 + 广播通道**，所以补发连接也一定会先拿到它。
@@ -981,7 +1079,7 @@ export class AgentChatService {
           agentKey: definition.key,
         },
       };
-      if (!response.writableEnded) response.write(sseFrame(runHead));
+      writeSse(response, sseFrame(runHead));
       offset = await this.streamStore.appendChunk(run.id, runHead);
       await this.streamStore.publishChunk(run.id, runHead);
 
@@ -989,8 +1087,16 @@ export class AgentChatService {
       for (;;) {
         const { done, value } = await reader.read();
         if (done) break;
-        if (response.writableEnded) break;
-        response.write(sseFrame(value));
+        // 客户端断开后**继续读**：这一轮的内容仍要落库 / 落 Redis，
+        // 用户重新接回来（resume）时才能补发 —— 不能因为一次断线就把整轮丢掉。
+        writeSse(response, sseFrame(value));
+        // 挂起事件到了就主动收流：Mastra 的挂起流不会再自己结束（它在等 resume），
+        // 继续 read 会一直挂着，会话永远不释放。cancel 上游，下面按 suspended 收尾。
+        if (value.type === 'data-tool-call-suspended') {
+          // 不 cancel 上游：挂起后 Mastra 还要把嵌套 workflow 的快照补完整；
+          // 直接断读会让 resume 拿到缺了嵌套 step input 的快照。
+          break;
+        }
       }
 
       // 被中止时 Mastra 会**正常返回**（流被截断但不抛错）→ 必须自己判定"这不是成功，是取消"
@@ -1000,6 +1106,43 @@ export class AgentChatService {
       }
       // 收尾前把没有 text-end 的残余内容也落库（防御性：正常结束一般不会有）
       await recorder.flushPending();
+
+      /**
+       * 工具挂起（`ask-user-questions`）：这一轮**没有结束**，只是停在等用户回答。
+       *
+       * 不能走下面的 `finish(Succeeded)`；否则会话被释放、快照被当成"已完成"，
+       * 用户回答时没有可续跑的 run。这里把状态落成 `suspended`，保住 `engine_run_id` 与 Mastra 快照，
+       * 回答时走 `/agent/chat/resume` 从同一条 run 继续。
+       */
+      if (suspended) {
+        const suspendSteps = (await readStreamSteps(output)) as unknown as StepLike[];
+        const persistedSuspend = await recorder.finish(suspendSteps);
+        const suspendUsage = await this.rollUpUsage(
+          run.id,
+          toUsageRecord(await readStreamUsage(output)),
+        );
+        await this.runs.suspend(run.id, {
+          usage: suspendUsage,
+          stepCount: suspendSteps.length,
+          toolCallCount: persistedSuspend.toolCallCount,
+          durationMs: Date.now() - startedAt,
+        });
+        await this.runs.setActiveStream(run.id, null);
+        stopHeartbeat();
+        writeSse(response, sseFrame({
+          type: 'data-run-suspended',
+          data: { runId: run.id, conversationId: conversation.id },
+        }));
+        writeSse(response, 'data: [DONE]\n\n');
+        endSse(response);
+        this.logger.log('ai.stream.suspended', {
+          conversationId: conversation.id,
+          runId: run.id,
+          stepCount: suspendSteps.length,
+          toolCallCount: persistedSuspend.toolCallCount,
+        });
+        return;
+      }
 
       // 收尾：**先 Postgres 终态，再清 Redis 进度**（反过来会留下"没进度也没结果"的窗口）
       // 步骤 / 用量一律走 stream-result 的读取口径：`agent.stream()` 在**可恢复执行（durable）**下
@@ -1063,7 +1206,7 @@ export class AgentChatService {
             title: title.title,
           },
         };
-        if (!response.writableEnded) response.write(sseFrame(titleChunk));
+        writeSse(response, sseFrame(titleChunk));
         offset = await this.streamStore.appendChunk(run.id, titleChunk);
         await this.streamStore.publishChunk(run.id, titleChunk);
       }
@@ -1095,18 +1238,20 @@ export class AgentChatService {
           durationMs,
         },
       };
-      if (!response.writableEnded) response.write(sseFrame(usageChunk));
+      writeSse(response, sseFrame(usageChunk));
       offset = await this.streamStore.appendChunk(run.id, usageChunk);
       await this.streamStore.publishChunk(run.id, usageChunk);
 
-      // 终态已落库 → 现在才告诉客户端"这一轮结束"
-      if (!response.writableEnded) {
-        response.write('data: [DONE]\n\n');
-        response.end();
-      }
+      // 终态已落库 → 先停心跳，再告诉客户端"这一轮结束"：
+      // 顺序反了会留出"response 已 end、定时器又写一帧"的窗口（正是进程被杀的那个 bug）
+      stopHeartbeat();
+      writeSse(response, 'data: [DONE]\n\n');
+      endSse(response);
     } catch (error) {
       const durationMs = Date.now() - startedAt;
       const reason = error instanceof Error ? error.message : String(error);
+      let mapped: Error | null = null;
+
       if (abort.signal.aborted) {
         // 用户主动停止：是 canceled，不是 failed（语义要分清）
         await this.runs.finish(run.id, {
@@ -1127,8 +1272,7 @@ export class AgentChatService {
         });
         this.logger.log('ai.stream.canceled', { runId: run.id, durationMs });
       } else {
-        // 响应头已发出：不能抛（会把"流里的错误"变成无声失败），错误已随 error chunk 给到客户端
-        const mapped = classifyModelError(error);
+        mapped = classifyModelError(error);
         await this.runs.finish(run.id, {
           status: RunStatus.Failed,
           // 失败也要把子 agent 已经烧掉的 token 记在账上
@@ -1155,15 +1299,33 @@ export class AgentChatService {
           durationMs,
         });
       }
+
       await this.runs.setActiveStream(run.id, null);
-      if (!response.writableEnded) {
-        // 失败也要给客户端一个明确收尾（错误本身已随 error chunk 下发）
-        response.write('data: [DONE]\n\n');
-        response.end();
+
+      /**
+       * 响应头还没发 → 这一轮**根本没建流**（模型解析 / 附件读取 / 上下文组装失败）。
+       * 此时必须把真实错误**抛回 HTTP 层**：控制器会把 3406 / 3311 这类具体错误码
+       * 原样返回，前端 `onError` 能显示"去后台配模型"这种可行动的原因。
+       * 若在这里吞掉并写一个 `[DONE]`，客户端只会看到"空回答"，而错误码永远传不出去。
+       */
+      if (!streamStarted) {
+        throw mapped ?? error;
       }
+
+      // 失败也要给客户端一个明确收尾（错误本身已随 error chunk 下发）
+      writeSse(response, 'data: [DONE]\n\n');
+      endSse(response);
     } finally {
-      clearInterval(heartbeat);
-      if (unsubscribeStop) await unsubscribeStop();
+      stopHeartbeat();
+      try {
+        if (unsubscribeStop) await unsubscribeStop();
+      } catch (error) {
+        // 取消订阅失败无碍：那条订阅连接会随进程 / Redis 自然回收
+        this.logger.warn('ai.stream.unsubscribe_failed', {
+          runId: run.id,
+          reason: error instanceof Error ? error.message : String(error),
+        });
+      }
       this.activeRuns.delete(run.id);
       // 通知"还在补发中的重连连接"：本轮结束了（同一条流协议里的结束标记）
       try {
@@ -1173,8 +1335,255 @@ export class AgentChatService {
       } catch {
         // 广播失败无碍：补发连接会被客户端的 idle 处理或下一次刷新收敛
       }
-      await this.streamStore.clearRun(run.id);
-      if (!response.writableEnded) response.end();
+      try {
+        await this.streamStore.clearRun(run.id);
+      } catch {
+        // Redis 短暂不可用不改变终态：看门狗以 Postgres 的心跳为准
+      }
+      // 只有"确实建过流"才由这里收尾响应；没建流时留给 HTTP 错误处理器写 JSON 信封
+      if (streamStarted) endSse(response);
+    }
+  }
+
+  /**
+   * 回答挂起中的一轮（`POST /agent/chat/resume`）。
+   *
+   * 与 {@link chatStream} 的关键区别：**不新建业务 run、不把答案写成用户消息、不重建上下文** ——
+   * Mastra 已经通过 durable 快照把这一轮的模型消息、工具调用与挂起点存在 `runs.snapshot` 里；
+   * 这里先把 `{ answers }` 交给 `agent.resumeStream()` 从工具处恢复，再另起一段新 engine run
+   * （同一 memory thread + 一条只给模型看的"用户已回答"消息）把 agentic loop 推到最终回答。
+   *
+   * 为什么把续跑单独写一个入口：挂起期间用户可能刷新 / 换设备，甚至换一个副本；
+   * 续跑请求必须能从库里的 run 重建，不能依赖"原来那个进程里的闭包"。
+   */
+  async resumeChat(
+    userId: string,
+    input: AgentChatResumeDto,
+    response: StreamResponseLike,
+  ): Promise<void> {
+    const mastra = this.requireMastra();
+    const run = await this.runs.findEntity(input.runId);
+    if (!run) throw new RunNotFoundError(input.runId);
+    const conversation = await this.conversations.requireOwned(userId, run.conversationId);
+    if (run.status !== RunStatus.Suspended || !run.engineRunId) {
+      throw new RunNotSuspendedError(run.id);
+    }
+
+    const definition = this.registry.resolve(conversation.agentKey);
+    const startedAt = Date.now();
+    const abort = new AbortController();
+    this.activeRuns.set(run.id, abort);
+
+    let heartbeat: NodeJS.Timeout | undefined;
+    let streamStarted = false;
+    const stopHeartbeat = (): void => {
+      if (!heartbeat) return;
+      clearInterval(heartbeat);
+      heartbeat = undefined;
+    };
+    const ensureHeartbeat = (): void => {
+      if (heartbeat) return;
+      heartbeat = setInterval(() => {
+        void this.runs.touchHeartbeat(run.id).catch(() => undefined);
+        if (streamStarted) writeSse(response, ': ping\n\n');
+      }, STREAM_HEARTBEAT_MS);
+      heartbeat.unref?.();
+    };
+
+    try {
+      const model = await this.resolveRuntimeModel(definition, undefined);
+      const modelInstance = await this.resolveModelInstance(model);
+
+      // 挂起期间状态是 suspended；续跑开始先回到 running（占用会话，防止同会话另一轮插进来）
+      await this.runs.markRunning(run.id, run.engineRunId);
+
+      const requestContext = await this.buildRuntimeContext(
+        conversation.id,
+        run.id,
+        definition,
+        userId,
+        model,
+        {
+          abortSignal: abort.signal,
+          systemPrompt: await this.resolveSystemPrompt(conversation, run.id, definition),
+        },
+      );
+      const agent = mastra.getAgent(definition.key);
+      const memoryThread = await this.ensureAgentThread(conversation.id, userId);
+      const runOptions = {
+        runId: run.engineRunId,
+        // 与 chatStream 同一口径：续跑必须给足步数。
+        // 不传时 Mastra 默认 maxSteps=5 —— 续跑会在第 5 步悄悄结束，
+        // 表现为"壳体建完就断了，要用户再发一句继续"（会话 rfitk3uq... 实测）。
+        maxSteps: AGENT_MAX_STEPS,
+        requestContext,
+        model: modelInstance as never,
+        abortSignal: abort.signal,
+        memory: memoryThread,
+        savePerStep: true,
+      };
+      const resumeOutput = await agent.resumeStream(
+        { answers: input.answers },
+        {
+          ...runOptions,
+          ...(input.toolCallId ? { toolCallId: input.toolCallId } : {}),
+        },
+      );
+
+      response.writeHead(200, UI_STREAM_HEADERS);
+      streamStarted = true;
+      ensureHeartbeat();
+
+      const recorder = new StreamRecorder(
+        this.timelines,
+        { conversationId: conversation.id, runId: run.id },
+        {
+          metas: this.toolMetas,
+          isKnownTool: (toolKey) => Boolean(this.toolRegistry.get(toolKey)),
+        },
+      );
+
+      let suspendedAgain = false;
+      const consume = async (stream: unknown): Promise<void> => {
+        const reader = (
+          toUiStream(stream as never) as unknown as ReadableStream<UiChunkLike>
+        ).getReader();
+        for (;;) {
+          const next = await reader.read();
+          if (next.done) break;
+          const chunk = next.value;
+          // `data-tool-call-suspended` 有两种：新的挂起（resumed=false）和续跑成功
+          // （resumed=true）。后者只是同一个工具从挂起点继续，不能当成"又问了下一个问题"。
+          const resumedEvent =
+            chunk.type === 'data-tool-call-suspended' &&
+            (chunk as { data?: { resumed?: boolean } }).data?.resumed === true;
+          if (chunk.type === 'data-tool-call-suspended' && !resumedEvent) suspendedAgain = true;
+          const outgoing = normalizeSuspendedChunk(chunk, run.id);
+          writeSse(response, sseFrame(outgoing));
+          await recorder.consume(outgoing);
+          if (suspendedAgain) break;
+        }
+      };
+
+      await consume(resumeOutput);
+      /**
+       * 挂起工具的"结果"由我们补一条时间线：Mastra 的 resume 流只发
+       * `tool-call-resumed`，不会把 ask-user-questions 的出参再发一遍。
+       * 没有这行，历史重建会把已回答的问题卡又当成待回答显示出来。
+       */
+      if (input.toolCallId) {
+        const existing = await this.timelines.findToolOutput(
+          conversation.id,
+          input.toolCallId,
+        );
+        if (existing === null) {
+          await this.timelines.append({
+            conversationId: conversation.id,
+            runId: run.id,
+            role: TimelineRole.Assistant,
+            kind: TimelineKind.ToolResult,
+            toolKey: 'ask-user-questions',
+            toolCallId: input.toolCallId,
+            payload: { output: { answers: input.answers } },
+          });
+        }
+      }
+      // resume 只恢复了工具；要继续 agentic loop，再起一段**新引擎 run**，
+      // 复用同一个 memory thread。旧 engine run 已经结束，拿它调 stream 不会发起模型调用。
+      // 旧引擎 run 可能还占着 agent 的 active stream 槽位；先放掉，否则新 stream 不发起模型调用
+      agent.abortRunStream?.(run.engineRunId)
+      const { runId: _finishedEngineRunId, ...continuationOptions } = runOptions;
+      const answerText = input.answers
+        .map(
+          (answer) =>
+            `- ${answer.id}: ${Array.isArray(answer.value) ? answer.value.join('、') : answer.value}`,
+        )
+        .join('\n');
+      const output = suspendedAgain
+        ? resumeOutput
+        : await agent.stream(
+            [{ role: 'user', content: `用户已回答：\n${answerText}\n\n请基于这些回答继续。` }],
+            continuationOptions,
+          );
+      if (!suspendedAgain) {
+        const nextEngineRunId = (output as { runId?: string }).runId;
+        if (nextEngineRunId) await this.runs.attachEngineRun(run.id, nextEngineRunId);
+        await consume(output);
+      }
+      await recorder.flushPending();
+
+      const steps = (await readStreamSteps(output)) as unknown as StepLike[];
+      const persisted = await recorder.finish(steps);
+      const priorUsage = (run.usage ?? null) as Record<string, unknown> | null;
+      const resumedUsage = await this.rollUpUsage(
+        run.id,
+        toUsageRecord(await readStreamUsage(output)),
+      );
+      const usage = priorUsage ? (mergeUsage(priorUsage, resumedUsage) ?? resumedUsage) : resumedUsage;
+
+      // 续跑后模型又问了下一个问题：仍然停在 suspended，不能当成成功。
+      if (suspendedAgain) {
+        await this.runs.suspend(run.id, {
+          usage,
+          stepCount: (run.stepCount ?? 0) + steps.length,
+          toolCallCount: (run.toolCallCount ?? 0) + persisted.toolCallCount,
+          durationMs: (run.durationMs ?? 0) + (Date.now() - startedAt),
+        });
+        await this.runs.setActiveStream(run.id, null);
+        stopHeartbeat();
+        writeSse(response, 'data: [DONE]\n\n');
+        endSse(response);
+        return;
+      }
+      const stepCount = (run.stepCount ?? 0) + steps.length;
+      const toolCallCount = (run.toolCallCount ?? 0) + persisted.toolCallCount;
+      const durationMs = (run.durationMs ?? 0) + (Date.now() - startedAt);
+
+      await this.runs.finish(run.id, {
+        status: RunStatus.Succeeded,
+        usage,
+        stepCount,
+        toolCallCount,
+        durationMs,
+      });
+      await this.runs.setActiveStream(run.id, null);
+      await this.conversationRepo.accumulate(conversation.id, totalTokensOf(usage));
+      stopHeartbeat();
+      writeSse(response, 'data: [DONE]\n\n');
+      endSse(response);
+      this.logger.log('ai.stream.resumed', {
+        conversationId: conversation.id,
+        runId: run.id,
+        stepCount: steps.length,
+        toolCallCount: persisted.toolCallCount,
+      });
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+      if (abort.signal.aborted) {
+        await this.runs.finish(run.id, {
+          status: RunStatus.Canceled,
+          durationMs: Date.now() - startedAt,
+        });
+        this.logger.log('ai.stream.resume_canceled', { runId: run.id });
+      } else {
+        await this.runs.finish(run.id, {
+          status: RunStatus.Failed,
+          usage: await this.rollUpUsage(run.id, null),
+          errorCode: String(AppErrorCodes.AgentFailed),
+          errorStage: RunErrorStage.Model,
+          errorMessage: reason,
+          durationMs: Date.now() - startedAt,
+        });
+        this.logger.error('ai.stream.resume_failed', { runId: run.id, reason });
+      }
+      await this.runs.setActiveStream(run.id, null);
+      if (!streamStarted) throw error;
+      writeSse(response, 'data: [DONE]\n\n');
+      endSse(response);
+    } finally {
+      stopHeartbeat();
+      this.activeRuns.delete(run.id);
+      if (streamStarted) endSse(response);
     }
   }
 
@@ -1186,6 +1595,16 @@ export class AgentChatService {
     const run = await this.runs.findEntity(runId);
     if (!run) throw new RunNotFoundError(runId);
     await this.conversations.requireOwned(userId, run.conversationId);
+
+    // 挂起中的一轮没有"本进程里的流"可 abort：直接把状态落成 canceled，释放会话。
+    // 不处理的话，用户想放弃这一轮只能一直卡在 3306（该会话已有进行中的对话）。
+    if (run.status === RunStatus.Suspended) {
+      await this.runs.finish(run.id, {
+        status: RunStatus.Canceled,
+        ...(run.durationMs != null ? { durationMs: run.durationMs } : {}),
+      });
+      return { stopped: true, injected: 'local' };
+    }
 
     const controller = this.activeRuns.get(runId);
     if (controller) {
@@ -1231,16 +1650,33 @@ export class AgentChatService {
     if (!run) throw new RunNotFoundError(runId);
     await this.conversations.requireOwned(userId, run.conversationId);
 
+    /**
+     * **Postgres 终态优先于 Redis 进度**：进程崩溃时旧进程没来得及删进度键
+     * （TTL 6h），启动清理把 run 标成 `interrupted` 后，Redis 里可能仍写着 `running`。
+     * 只看 Redis 会让客户端"接回"一条永远不会有新片段的死流（挂到超时）。
+     */
+    if (run.status !== RunStatus.Running && run.status !== RunStatus.Pending) {
+      return false;
+    }
+
     const progress = await this.streamStore.readRun(runId);
     if (!progress || progress.status !== RunStatus.Running) return false;
 
     response.writeHead(200, UI_STREAM_HEADERS);
     response.flushHeaders?.();
+    // 断线后的补发连接同样可能随时消失：socket 的 error 事件不能变成进程级未捕获异常
+    response.on?.('error', () => undefined);
 
-    const backlog = (await this.streamStore.readChunks(
-      runId,
-      offset,
-    )) as UiChunkLike[];
+    /**
+     * 补发起点不能直接信任 offset：它可能落在 reasoning / text / tool-input 的
+     * 中间。AI SDK 的 UI 状态机收到没有 `*-start` 的 delta 会整页报错
+     * `Received reasoning-delta for missing reasoning part`。
+     *
+     * 先读全量（上限 20k 条，正常一轮远小于此），再由 `resumeSafeChunks`
+     * 把起点回退到当前块的开头；找不到开头时补 start，孤立 end 丢弃。
+     */
+    const all = (await this.streamStore.readChunks(runId, 0)) as UiChunkLike[];
+    const backlog = resumeSafeChunks(all, offset) as UiChunkLike[];
 
     /**
      * **补发的第一块必须是 `start`**（消息身份所在的那块）。
@@ -1269,10 +1705,10 @@ export class AgentChatService {
         ended = true;
         break;
       }
-      if (!response.writableEnded) response.write(sseFrame(chunk));
+      writeSse(response, sseFrame(chunk));
     }
     if (ended) {
-      if (!response.writableEnded) response.end();
+      endSse(response);
       return true;
     }
 
@@ -1293,7 +1729,7 @@ export class AgentChatService {
               finish();
               return;
             }
-            if (!response.writableEnded) response.write(sseFrame(chunk));
+            writeSse(response, sseFrame(chunk));
           },
           () => undefined,
         )
@@ -1302,7 +1738,7 @@ export class AgentChatService {
         })
         .catch(() => finish());
     });
-    if (!response.writableEnded) response.end();
+    endSse(response);
     return true;
   }
 
@@ -1486,9 +1922,27 @@ interface UiChunkLike {
   type?: string;
   toolName?: string;
   messageId?: string;
+  [key: string]: unknown;
 }
 
 /** Express Response 的最小接口（只在编排层用，避免把 express 类型铺进来） */
+/**
+ * 挂起块里的 `runId` 是 Mastra 的 engineRunId（`eng_...`）；前端回答时要调
+ * `POST /agent/chat/resume`，参数必须是**应用 run id**。这里换掉并保留 engineRunId。
+ */
+const normalizeSuspendedChunk = <T extends UiChunkLike>(chunk: T, runId: string): T => {
+  if (chunk.type !== 'data-tool-call-suspended') return chunk;
+  const data = (chunk.data ?? {}) as Record<string, unknown>;
+  return {
+    ...chunk,
+    data: {
+      ...data,
+      engineRunId: data.runId ?? null,
+      runId,
+    },
+  } as T;
+};
+
 export interface StreamResponseLike {
   writeHead: (status: number, headers: Record<string, string>) => unknown;
   flushHeaders?: () => void;
@@ -1513,3 +1967,31 @@ const UI_STREAM_HEADERS: Record<string, string> = {
 
 const sseFrame = (chunk: unknown): string =>
   `data: ${JSON.stringify(chunk)}\n\n`;
+
+/**
+ * 向 SSE 响应写一帧（**客户端断开时不抛错**）。
+ *
+ * 为什么必须包一层：`ServerResponse.write()` 在 socket 已经关闭 / 响应已经 end 时会抛
+ * 「Connection is closed.」。此前它直接出现在**心跳定时器**里 —— 定时器回调抛异常 = 进程级
+ * `uncaughtException` = `process.exit(1)`，于是"一个客户端刷新页面"就能把整个服务重启，
+ * 正在跑的其它会话跟着全丢（排查很久才定位到）。写失败只说明这一帧没人收，返回 false 即可。
+ */
+const writeSse = (response: StreamResponseLike, chunk: string): boolean => {
+  if (response.writableEnded) return false;
+  try {
+    response.write(chunk);
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+/** 结束 SSE 响应（幂等；客户端已断开时静默） */
+const endSse = (response: StreamResponseLike): void => {
+  if (response.writableEnded) return;
+  try {
+    response.end();
+  } catch {
+    // 连接已经没了：没有可收尾的对象
+  }
+};

@@ -15,6 +15,7 @@ import type { AgentRegistry as AgentRegistryValue } from './agents/types.js'
 import { RunCommandTool } from './tools/command.tool.js'
 import { RunSubAgentTool } from './tools/subagent.tool.js'
 import { PlannerStore, PlannerTools } from './tools/planner/index.js'
+import { WebTools } from './tools/web.tools.js'
 import { createPromptEngine, PROMPT_ENGINE } from './core/prompts/index.js'
 import {
   AgentChatService,
@@ -114,7 +115,7 @@ let warnedMissingEnvelope = false
     // 工具组实例（**唯一的工具来源**）：注册机对每个组跑 `buildToolSpecs()` 拿 1..n 个工具
     {
       provide: AGENT_TOOL_GROUPS,
-      inject: [PlannerTools, RunCommandTool, RunSubAgentTool, ReadToolResultTool],
+      inject: [PlannerTools, RunCommandTool, RunSubAgentTool, ReadToolResultTool, WebTools],
       useFactory: (...groups: AgentToolGroup[]): AgentToolGroup[] => groups,
     },
     // 部署上限（env）：库里的值再大也突破不了
@@ -129,6 +130,12 @@ let warnedMissingEnvelope = false
           timeoutMsMax: config.commandTimeoutMs,
           maxOutputBytesMax: config.commandMaxOutputBytes,
           ...(config.commandWorkDir ? { workDir: config.commandWorkDir } : {}),
+        },
+        web: {
+          enabled: config.webEnabled,
+          timeoutMsMax: config.webTimeoutMs,
+          maxBytesMax: config.webMaxBytes,
+          allowPrivateNetwork: config.webAllowPrivateNetwork,
         },
       }),
     },
@@ -173,6 +180,7 @@ let warnedMissingEnvelope = false
     RunCommandTool,
     RunSubAgentTool,
     ReadToolResultTool,
+    WebTools,
 
     // ───────────────────────── agent 注册表与 Mastra 实例 ─────────────────────────
     SkillLoader,

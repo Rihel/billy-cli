@@ -11,6 +11,7 @@ import { ToolConfigInvalidError, ToolNotRegisteredError } from '../core/tools/to
 import { toAiToolEventModels } from '../core/tools/tool-event.js'
 import { toJsonSchema } from '../core/tools/tool.schema.js'
 import { codeDefaults } from '../core/tools/tool.settings.js'
+import { ToolConfigService } from '../core/tools/tool.config.service.js'
 import { ToolRegistry } from '../core/tools/tool.registry.js'
 import type { AiToolSecretField } from '@repo/shared'
 import type { AnyToolSpec, ToolSettings } from '../core/tools/tools.types.js'
@@ -33,6 +34,7 @@ export class AiToolService {
     @Inject(ToolConfigRepository) private readonly repository: ToolConfigRepository,
     @Inject(AGENT_REGISTRY) private readonly agents: AgentRegistry,
     @Inject(AppLogger) private readonly logger: AppLogger,
+    @Inject(ToolConfigService) private readonly toolConfig: ToolConfigService,
   ) {}
 
   /** 列表：注册工具（带配置）+ runtime 工具（只读），支持关键字 / 类别 / 开关 / 来源筛选 */
@@ -106,6 +108,9 @@ export class AiToolService {
       toolKey: input.toolKey,
       fields: Object.keys(input).filter((key) => key !== 'toolKey'),
     })
+    // 同进程立即生效：配置缓存 5 秒是为了每次调用不查库，保存后要主动失效；
+    // 多实例下别的实例仍最多晚 5 秒（如实记录，不假装强一致）
+    this.toolConfig.invalidate(input.toolKey)
     return this.detail(input.toolKey)
   }
 
@@ -114,6 +119,7 @@ export class AiToolService {
     const spec = this.requireSpec(toolKey)
     await this.repository.reset(spec)
     this.logger.warn('ai.tool.config_reset', { toolKey })
+    this.toolConfig.invalidate(toolKey)
     return this.detail(toolKey)
   }
 

@@ -41,7 +41,7 @@ const pagedModelOutput = (data: unknown, pageSize: number, handle: string): unkn
 }
 
 /** 工具拒绝 / 失败：抛出去让 Mastra 落成 `tool-output-error`（模型看到 message，继续下一轮） */
-class ToolOutcomeError extends Error {
+export class ToolOutcomeError extends Error {
   constructor(
     readonly reason: string,
     message: string,
@@ -49,6 +49,8 @@ class ToolOutcomeError extends Error {
   ) {
     super(hint ? `${message}（${hint}）` : message)
     this.name = 'ToolOutcomeError'
+    // 工具失败结论只保留原因与提示；堆栈留给服务端日志，不要带到模型/前端
+    this.stack = undefined
   }
 }
 

@@ -1,5 +1,6 @@
 "use client"
 
+import { useState } from "react"
 import { FileTextIcon, XIcon } from "lucide-react"
 
 import { usePromptInputAttachments } from "#components/ai-elements/prompt-input.tsx"
@@ -58,6 +59,14 @@ export const PromptAttachmentChip = ({
   const image = isImageMedia(item.filename, item.mediaType)
   const clickable = Boolean(onClick)
   const Wrapper = clickable ? "button" : "div"
+  /**
+   * 预览地址加载失败时退回文件图标。
+   *
+   * 为什么按 URL 记而不是一个布尔：同一条附件在"历史重建 → 重新签地址"后 URL 会变，
+   * 用布尔会把新地址也永久判死。地址变了就重新试一次。
+   */
+  const [failedUrl, setFailedUrl] = useState<string | null>(null)
+  const showImage = image && Boolean(item.previewUrl) && failedUrl !== item.previewUrl
 
   return (
     <Wrapper
@@ -70,11 +79,18 @@ export const PromptAttachmentChip = ({
       )}
       title={item.filename}
     >
-      {image && item.previewUrl ? (
+      {showImage ? (
         // 用原生 `<img>`：预览地址可能是 blob（本地未上传）或对象存储直链，
         // 都不该进 Next 的图片优化管线（前者根本走不通）
         // eslint-disable-next-line @next/next/no-img-element
-        <img alt={item.filename} className="size-10 rounded object-cover" src={item.previewUrl} />
+        <img
+          alt={item.filename}
+          className="size-10 rounded object-cover"
+          src={item.previewUrl}
+          // 地址失效（桶配错 / 预签名过期 / 对象被删）时退回文件卡，
+          // 而不是给用户一个破图 —— 文件名与大小仍然看得见
+          onError={() => setFailedUrl(item.previewUrl ?? null)}
+        />
       ) : (
         <span className="flex size-10 items-center justify-center rounded bg-background">
           <FileTextIcon className="size-4 text-muted-foreground" />

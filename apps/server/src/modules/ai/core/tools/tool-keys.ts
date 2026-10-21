@@ -40,6 +40,29 @@ export const TOOL_KEYS = {
    * 内建工具（`ReadToolResultTool`），走同一套网关 —— 于是取页也受限流与审计约束。
    */
   readToolResult: 'read-tool-result',
+  /**
+   * **搜索网页**：调 DeepSeek 搜索接口（`/v1/tools/search`），返回排序后的来源清单。
+   *
+   * 与 `web-fetch` 的分工：`web-search` 解决"**不知道答案在哪个网页**"（找来源），
+   * `web-fetch` 解决"**已经拿到 URL**"（读正文）。**默认先直取**（fetch / request），
+   * 搜索只在不知道来源时兜底；搜到 URL 仍回到 `web-fetch`，两者不是重复能力。
+   */
+  webSearch: 'web-search',
+  /**
+   * **抓网页**：下载 HTML → 转 Markdown → 按行分页返回（1 页 1000 行）。
+   *
+   * 与 `web-request` 的分工：它**只管读文章**（GET、洗正文、丢导航与脚本）。
+   * 两者共用同一套出网预算（统一浏览器 UA / 超时 / 字节上限 / 内网拦截）
+   * 与同一套分页缓存（`ref` + `page` 续读，不重复请求）。
+   */
+  webFetch: 'web-fetch',
+  /**
+   * **发 HTTP 请求**：任意方法 / 头 / body，拿状态码、响应头与响应体（同样按页返回）。
+   *
+   * 存在的理由：API 不是文章 —— JSON 洗成 Markdown 就没法用了，
+   * 而"接口返回 401 还是 500"本身就是要看的结论。
+   */
+  webRequest: 'web-request',
 } as const
 
 /**
