@@ -45,7 +45,7 @@ export const AppSider = ({}: AppSiderProps) => {
   const initial = displayName.charAt(0).toUpperCase()
 
   return (
-    <Sidebar collapsible="icon">
+    <Sidebar collapsible="icon" variant="floating" className="p-3">
       <SidebarHeader>
         {/* 品牌区：与前台一致的亮蓝渐变 TerminalSquare 方块 + 字标 + mono 副标 */}
         <div className="flex items-center gap-2.5 px-1 py-0.5">

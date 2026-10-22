@@ -111,8 +111,9 @@
 
 ## 9. 壳组件（`apps/admin/src/components`）
 
-- **AppSider**：logo = 品牌靛紫方块（`bg-brand`）+ 字标 + mono 副标「admin console」；
-  菜单激活态 = 品牌色淡底（`--sidebar-accent`）+ 品牌前景色；侧栏面层 `--surface-3`。
+- **AppSider**：悬浮式侧栏（`variant="floating"`）—— 白面圆角胶囊，四周留 12px，靠面层差浮起、
+  不叠投影；logo = 品牌靛紫方块（`bg-brand`）+ 字标 + mono 副标「admin console」；
+  菜单激活态 = 品牌色淡底（`--sidebar-accent`）+ 品牌前景色。折叠后是一条图标导轨，仍是同一块胶囊。
 - **AppHeader**：左侧页面标题（**与侧栏菜单同源**：`menuTitleOf` 由 `MENU_ITEMS` 推导，
   新增页面只改菜单即可，标题不会空着）+ 右侧主题切换；底色 `bg-background/85` + 轻模糊。
 - **登录页**：左栏品牌叙事 + 纯面色底，右侧白面表单卡；品牌标记同 `bg-brand`，不做装饰渐变。
