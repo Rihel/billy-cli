@@ -24,7 +24,6 @@ import {
 } from '@repo/ui'
 import { LogOutIcon, TerminalSquareIcon, UserRoundIcon } from 'lucide-react'
 import { AppMenu } from './AppMenu'
-import { CommandMenu } from './CommandMenu'
 
 export type AppSiderProps = Partial<{}>
 
@@ -62,10 +61,6 @@ export const AppSider = ({}: AppSiderProps) => {
           </div>
         </div>
       </SidebarHeader>
-      {/* 搜索入口：logo 正下方 */}
-      <div className="mb-1 shrink-0">
-        <CommandMenu sidebar />
-      </div>
       <SidebarContent>
         <AppMenu />
       </SidebarContent>

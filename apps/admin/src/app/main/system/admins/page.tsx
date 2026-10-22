@@ -2,10 +2,9 @@
 
 import { formatStorageUrl } from '@/lib/constants'
 import { useServerClient } from '@/lib/server-client'
-import { registerCommand } from '@/lib/commands'
 import { useForm } from '@tanstack/react-form'
 import { useMutation, useQuery } from '@tanstack/react-query'
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import {
   Avatar,
   AvatarFallback,
@@ -63,16 +62,6 @@ export default function AdminsPage() {
   const [status, setStatus] = useState<'enabled' | 'disabled' | undefined>()
   const createDialog = useDisclosure()
   const editDialog = useDisclosure<AdminModel>()
-  useEffect(
-    () =>
-      registerCommand({
-        label: '新建管理员',
-        group: '管理员管理',
-        run: () => createDialog.open(),
-      }),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [],
-  )
   const resetPasswordDialog = useDisclosure<AdminModel>()
 
   const { data, isFetching, refetch } = useQuery({

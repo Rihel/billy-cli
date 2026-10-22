@@ -14,7 +14,7 @@
 | 数据结构 | `@repo/shared`：zod schema / 字典 / 错误码，前后端同一份 | `schema/*.schema.ts` |
 | 客户端 | `@repo/sdk` 的 `ServerClient` 覆盖 auth / admin / user / storage / monitor / config | `server.client.ts` |
 | 组件库 | `@repo/ui`：60 个 shadcn 原语 + 24 个自有管理组件 + 4 个 hook | `components/*` |
-| 应用骨架 | admin：布局 / 菜单 / 命令面板 / 主题 / Query / 上传 / `proxy.ts` 守卫 / SSR 鉴权 / `defineAction`，10 页可跑；web：落地页 + 4 auth 页 + markdown 示例，SSR 会话探测 | `apps/*/src` |
+| 应用骨架 | admin：布局 / 菜单 / 主题 / Query / 上传 / `proxy.ts` 守卫 / SSR 鉴权 / `defineAction`，10 页可跑；web：落地页 + 4 auth 页 + markdown 示例，SSR 会话探测 | `apps/*/src` |
 
 缺口集中在四处（按影响面排序）：
 
