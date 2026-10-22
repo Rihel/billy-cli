@@ -82,6 +82,25 @@ function StatBlock({
   )
 }
 
+/** 规模数字：辅助层级 —— 标签 + 数字排成一行，不占视觉重心 */
+function CompactStat({
+  label,
+  value,
+  icon,
+}: {
+  label: string
+  value: number | null
+  icon?: ReactNode
+}) {
+  return (
+    <span className="inline-flex items-center gap-2">
+      {icon ? <span className="text-muted-foreground">{icon}</span> : null}
+      <span className="text-xs text-muted-foreground">{label}</span>
+      <span className="font-mono text-sm tabular-nums text-foreground/80">{value ?? '-'}</span>
+    </span>
+  )
+}
+
 /** 千分位以内原样、千 / 百万缩写（用量数字只看量级，不堆精确位） */
 const compactNumber = (value: number): string => {
   if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M`
@@ -191,6 +210,18 @@ export default function DashboardPage() {
       }),
     retry: 0,
   })
+  const openAlerts = useQuery({
+    queryKey: ['dashboard', 'open-alerts'],
+    queryFn: () =>
+      client.monitor.alert.pageQuery({
+        page: 1,
+        size: 1,
+        status: 'firing',
+        orderBy: 'lastFiredAt',
+        order: 'desc',
+      }),
+    retry: 0,
+  })
   const usage = useQuery({
     queryKey: ['dashboard', 'ai-usage', usageDays],
     queryFn: () => client.agent.usageSummary({ days: usageDays }),
@@ -215,50 +246,96 @@ export default function DashboardPage() {
             Billy Cli 管理后台，系统运行总览
           </p>
         </div>
-        <div
-          className={cn(
-            'inline-flex items-center gap-2 rounded-full px-2.5 py-1 text-xs font-medium',
-            health.isSuccess && healthOk
-              ? 'bg-success/10 text-success'
-              : health.isSuccess
-                ? 'bg-warning/12 text-warning'
-                : 'bg-muted text-muted-foreground',
-          )}
-        >
-          <span
-            className={cn(
-              'size-1.5 rounded-full',
-              health.isSuccess && healthOk
-                ? 'bg-success'
-                : health.isSuccess
-                  ? 'bg-warning'
-                  : 'bg-muted-foreground',
-            )}
-          />
-          {health.isSuccess ? (healthOk ? '服务正常' : '服务降级') : '检测中'}
-        </div>
       </div>
 
-      {/* 数据概览：嵌入式大数字（hairline 分列） */}
-      <div className="grid grid-cols-2 gap-x-8 gap-y-8 sm:grid-cols-3 sm:gap-y-10">
-        <StatBlock
-          label="用户"
-          value={users.data?.total ?? null}
-          icon={<UsersIcon className="size-4" />}
-        />
-        <StatBlock
-          label="告警规则"
-          value={rules.data?.length ?? null}
-          tone="warning"
-          icon={<BellRingIcon className="size-4" />}
-        />
-        <StatBlock
-          label="告警记录"
-          value={logs.data?.total ?? null}
-          tone="info"
-          icon={<ScrollTextIcon className="size-4" />}
-        />
-      </div>
+      {/* 主内容：系统现在怎么样（健康 + 未恢复告警） */}
+      <section className="rounded-2xl bg-surface-1 p-5">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h2 className="font-heading text-base font-medium tracking-tight">运行状态</h2>
+          <span
+            className={cn(
+              'inline-flex items-center gap-2 rounded-full px-2.5 py-1 text-xs font-medium',
+              health.isSuccess && healthOk
+                ? 'bg-success/10 text-success'
+                : health.isSuccess
+                  ? 'bg-warning/12 text-warning'
+                  : 'bg-muted text-muted-foreground',
+            )}
+          >
+            <span
+              className={cn(
+                'size-1.5 rounded-full',
+                health.isSuccess && healthOk
+                  ? 'bg-success'
+                  : health.isSuccess
+                    ? 'bg-warning'
+                    : 'bg-muted-foreground',
+              )}
+            />
+            {health.isSuccess ? (healthOk ? '服务正常' : '服务降级') : '检测中'}
+          </span>
+        </div>
+
+        <div className="mt-5 grid gap-6 sm:grid-cols-[1.7fr_1fr]">
+          {/* 左：依赖健康 */}
+          <div>
+            <div className="text-[11px] font-medium tracking-wide text-muted-foreground uppercase">
+              依赖健康
+            </div>
+            <div className="mt-3 flex flex-wrap items-center gap-x-7 gap-y-2.5">
+              {Object.entries(health.data?.checks ?? {}).map(([name, state]) => (
+                <span key={name} className="inline-flex items-center gap-2 text-sm">
+                  <span
+                    className={cn(
+                      'size-1.5 rounded-full',
+                      state === 'ok' ? 'bg-success' : 'bg-destructive',
+                    )}
+                  />
+                  <span className="font-mono text-xs text-foreground/80">{name}</span>
+                  <span className="text-xs text-muted-foreground">
+                    {state === 'ok' ? 'ok' : 'down'}
+                  </span>
+                </span>
+              ))}
+              <span className="inline-flex items-center gap-2 text-sm">
+                <span className="size-1.5 rounded-full bg-success" />
+                <span className="font-mono text-xs text-foreground/80">uptime</span>
+                <span className="text-xs text-muted-foreground">
+                  {health.data?.uptimeSeconds != null
+                    ? `${Math.round(health.data.uptimeSeconds)}s`
+                    : '-'}
+                </span>
+              </span>
+            </div>
+          </div>
+
+          {/* 右：未恢复告警（需要处理的事） */}
+          <div className="rounded-xl bg-surface-2 px-4 py-3">
+            <div className="flex items-center justify-between text-[11px] font-medium tracking-wide text-muted-foreground uppercase">
+              未恢复告警
+              <Link
+                href="/main/monitor/logs"
+                className="text-[11px] font-normal normal-case tracking-normal underline-offset-4 hover:text-foreground hover:underline"
+              >
+                查看记录 →
+              </Link>
+            </div>
+            <div className="mt-2 flex items-baseline gap-2">
+              <span
+                className={cn(
+                  'font-heading text-3xl font-medium tabular-nums tracking-tight',
+                  (openAlerts.data?.total ?? 0) > 0 ? 'text-destructive' : 'text-foreground',
+                )}
+              >
+                {openAlerts.data?.total ?? '-'}
+              </span>
+              <span className="text-xs text-muted-foreground">
+                {(openAlerts.data?.total ?? 0) > 0 ? '条告警待处理' : '暂时没有未恢复告警'}
+              </span>
+            </div>
+          </div>
+        </div>
+      </section>
 
       {/* AI 用量：token / 轮数 / 成功率 / 首字延迟 + 按天柱状 + 模型与 agent 占比 */}
       <section className="rounded-2xl bg-surface-1 p-5">
@@ -362,39 +439,26 @@ export default function DashboardPage() {
         )}
       </section>
 
-      {/* 服务状态：嵌入式 hairline 行（checks + uptime mono） */}
-      <div className="rounded-xl bg-surface-1 px-4 py-4">
-        <div className="flex flex-wrap items-center gap-x-7 gap-y-2.5">
-          <span className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
-            服务状态
-          </span>
-          {Object.entries(health.data?.checks ?? {}).map(([name, state]) => (
-            <span
-              key={name}
-              className="inline-flex items-center gap-2 font-mono text-xs text-foreground/80"
-            >
-              <span
-                className={cn(
-                  'size-1.5 rounded-full',
-                  state === 'ok' ? 'bg-success' : 'bg-destructive',
-                )}
-              />
-              {name}
-              <span className="text-muted-foreground/70">
-                {state === 'ok' ? 'ok' : 'down'}
-              </span>
-            </span>
-          ))}
-          <span className="inline-flex items-center gap-2 font-mono text-xs text-foreground/80">
-            <span className="size-1.5 rounded-full bg-success" />
-            uptime
-            <span className="text-muted-foreground/70">
-              {health.data?.uptimeSeconds != null
-                ? `${Math.round(health.data.uptimeSeconds)}s`
-                : '-'}
-            </span>
-          </span>
-        </div>
+      {/* 辅助：数据规模（不是判断依据，收成一行小数字） */}
+      <div className="flex flex-wrap items-center gap-x-9 gap-y-3 rounded-2xl bg-surface-1 px-5 py-3.5">
+        <span className="text-[11px] font-medium tracking-wide text-muted-foreground uppercase">
+          规模
+        </span>
+        <CompactStat
+          label="用户"
+          value={users.data?.total ?? null}
+          icon={<UsersIcon className="size-3.5" />}
+        />
+        <CompactStat
+          label="告警规则"
+          value={rules.data?.length ?? null}
+          icon={<BellRingIcon className="size-3.5" />}
+        />
+        <CompactStat
+          label="告警记录"
+          value={logs.data?.total ?? null}
+          icon={<ScrollTextIcon className="size-3.5" />}
+        />
       </div>
     </div>
   )

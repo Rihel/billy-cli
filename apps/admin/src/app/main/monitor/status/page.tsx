@@ -97,6 +97,16 @@ export default function MonitorStatusPage() {
 
   const status = statusQuery.data
   const staleMetrics = (status?.metrics ?? []).filter((metric) => metric.stale)
+  // 水位结论：页面首要回答「现在有没有指标越线」，逐条比对阈值
+  const breached = (
+    [
+      ['堆内存', 'process.memoryRatio', 0.85],
+      ['HTTP 错误率', 'request.errorRate', 0.05],
+      ['HTTP P99', 'request.p99', 1000],
+    ] as const
+  )
+    .filter(([, key, threshold]) => (latestMap.get(key)?.value ?? 0) >= threshold)
+    .map(([label]) => label)
   const labelOf = (key: string) => definitionMap.get(key)?.title ?? key
   const chartData = (key: string, scale = 1) =>
     (seriesQuery.data?.[key] ?? []).map((point) => ({
@@ -120,28 +130,29 @@ export default function MonitorStatusPage() {
 
   const layouts = {
     lg: [
-      { i: 'overview', x: 0, y: 0, w: 12, h: 3 },
-      { i: 'qps', x: 0, y: 3, w: 6, h: 5 },
-      { i: 'water', x: 6, y: 3, w: 6, h: 6 },
+      // 主：余量与异常信号（当前该不该处理）；元信息沉到底部
+      { i: 'water', x: 0, y: 0, w: 12, h: 4 },
+      { i: 'qps', x: 0, y: 4, w: 7, h: 5 },
+      { i: 'stale', x: 7, y: 4, w: 5, h: 5 },
       { i: 'metrics', x: 0, y: 9, w: 12, h: 11 },
-      { i: 'stale', x: 0, y: 20, w: 6, h: 6 },
-      { i: 'rules', x: 6, y: 20, w: 6, h: 6 },
+      { i: 'rules', x: 0, y: 20, w: 12, h: 5 },
+      { i: 'overview', x: 0, y: 25, w: 12, h: 3 },
     ],
     md: [
-      { i: 'overview', x: 0, y: 0, w: 10, h: 3 },
-      { i: 'qps', x: 0, y: 3, w: 5, h: 5 },
-      { i: 'water', x: 5, y: 3, w: 5, h: 6 },
+      { i: 'water', x: 0, y: 0, w: 10, h: 4 },
+      { i: 'qps', x: 0, y: 4, w: 6, h: 5 },
+      { i: 'stale', x: 6, y: 4, w: 4, h: 5 },
       { i: 'metrics', x: 0, y: 9, w: 10, h: 11 },
-      { i: 'stale', x: 0, y: 20, w: 5, h: 6 },
-      { i: 'rules', x: 5, y: 20, w: 5, h: 6 },
+      { i: 'rules', x: 0, y: 20, w: 10, h: 5 },
+      { i: 'overview', x: 0, y: 25, w: 10, h: 3 },
     ],
     sm: [
-      { i: 'overview', x: 0, y: 0, w: 6, h: 4 },
-      { i: 'qps', x: 0, y: 4, w: 6, h: 5 },
-      { i: 'water', x: 0, y: 9, w: 6, h: 6 },
+      { i: 'water', x: 0, y: 0, w: 6, h: 5 },
+      { i: 'qps', x: 0, y: 5, w: 6, h: 5 },
+      { i: 'stale', x: 0, y: 10, w: 6, h: 5 },
       { i: 'metrics', x: 0, y: 15, w: 6, h: 12 },
-      { i: 'stale', x: 0, y: 27, w: 6, h: 6 },
-      { i: 'rules', x: 0, y: 33, w: 6, h: 6 },
+      { i: 'rules', x: 0, y: 27, w: 6, h: 6 },
+      { i: 'overview', x: 0, y: 33, w: 6, h: 4 },
     ],
   }
 
@@ -250,10 +261,32 @@ export default function MonitorStatusPage() {
             <div key="water" className="min-w-0">
               <Card className="h-full overflow-hidden">
                 <CardHeader className="cursor-move drag-handle pb-1">
-                  <CardTitle className="text-sm">关键水位</CardTitle>
-                  <CardDescription className="text-[11px]">
-                    内存、错误率、P99 与今日 token 合并看余量
-                  </CardDescription>
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                      <CardTitle className="text-sm">关键水位</CardTitle>
+                      <CardDescription className="text-[11px]">
+                        内存、错误率、P99 与今日 token 合并看余量
+                      </CardDescription>
+                    </div>
+                    <span
+                      className={cn(
+                        'inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-medium',
+                        breached.length > 0
+                          ? 'bg-destructive/10 text-destructive'
+                          : 'bg-success/10 text-success',
+                      )}
+                    >
+                      <span
+                        className={cn(
+                          'size-1.5 rounded-full',
+                          breached.length > 0 ? 'bg-destructive' : 'bg-success',
+                        )}
+                      />
+                      {breached.length > 0
+                        ? `${breached.join('、')} ${breached.length > 1 ? '均' : ''}越线`
+                        : '全部在阈值内'}
+                    </span>
+                  </div>
                 </CardHeader>
                 <CardContent className="grid grid-cols-2 gap-x-2 gap-y-2 pt-0 sm:grid-cols-4">
                   <WaterLevelGauge
