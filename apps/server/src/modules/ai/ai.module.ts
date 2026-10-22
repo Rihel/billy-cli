@@ -68,6 +68,8 @@ import {
   ValidatePlugin,
 } from './core/tools/plugins/index.js'
 import { AdminModule } from '../admin/admin.module.js'
+import { AiUsageModule } from '../ai-usage/ai-usage.module.js'
+import { AiMonitoringModule } from './monitoring/ai-monitoring.module.js'
 import { AuthModule } from '../auth/auth.module.js'
 
 /**
@@ -99,7 +101,7 @@ let warnedMissingEnvelope = false
  * + 在 `AGENT_TOOL_GROUPS` 登记一行。
  */
 @Module({
-  imports: [AuthModule, AdminModule, AiModelModule],
+  imports: [AuthModule, AdminModule, AiModelModule, AiUsageModule, AiMonitoringModule],
   controllers: [AiController, AiToolController],
   providers: [
     {

@@ -8,7 +8,7 @@ import { RootModule } from './root.module.js'
 import { loadServerAppConfig } from './app-config.js'
 import { resolveServerConfig } from './config.js'
 import { requestContext } from './common/index.js'
-import { AlertTrigger } from './modules/monitor/index.js'
+import { MonitorEngine } from './modules/monitor/index.js'
 
 /**
  * 应用入口（NestJS 12 + Express）。
@@ -70,7 +70,7 @@ export const program = async (): Promise<void> => {
   process.on('uncaughtException', (error) => {
     logger.error(error, '未捕获异常', 'bootstrap')
     try {
-      void app.get(AlertTrigger).notifyError(error)
+      void app.get(MonitorEngine).ingestError(error)
     } catch {
       // 告警链路异常不影响退出
     }
@@ -79,7 +79,7 @@ export const program = async (): Promise<void> => {
   process.on('unhandledRejection', (reason) => {
     logger.error(reason, '未处理的 Promise 拒绝', 'bootstrap')
     try {
-      void app.get(AlertTrigger).notifyError(reason)
+      void app.get(MonitorEngine).ingestError(reason)
     } catch {
       // 忽略
     }

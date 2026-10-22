@@ -3,15 +3,20 @@ import { BaseEntity } from '@repo/kits'
 
 /** 告警发送记录（审计）：每次通道发送落一条，admin 后台可查。 */
 @Entity('alert_logs')
+@Index('idx_alert_log_alert_id', ['alertId', 'sentAt'])
 @Index('idx_alert_log_sent_at', ['sentAt'])
 @Index('idx_alert_log_rule_id', ['ruleId'])
 export class AlertLogEntity extends BaseEntity {
-  /** 命中的规则 id（默认规则为空） */
+  /** 指向 monitor_alerts.id；默认告警或历史数据为空 */
+  @Column({ name: 'alert_id', type: 'varchar', length: 20, nullable: true })
+  alertId: string | null = null
+
+  /** 命中的规则 id（历史数据可为空） */
   @Column({ name: 'rule_id', type: 'varchar', nullable: true })
   ruleId: string | null = null
 
   /** 规则名 */
-  @Column({ name: 'rule_name', type: 'varchar', length: 50 })
+  @Column({ name: 'rule_name', type: 'varchar', length: 100 })
   ruleName!: string
 
   /** 告警标题 */
@@ -22,7 +27,7 @@ export class AlertLogEntity extends BaseEntity {
   @Column({ name: 'message', type: 'text' })
   message!: string
 
-  /** 发送通道：lark / email */
+  /** 发送通道：file / lark / email */
   @Column({ name: 'channel', type: 'varchar', length: 20 })
   channel!: string
 

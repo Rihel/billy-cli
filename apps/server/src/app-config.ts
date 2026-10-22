@@ -96,6 +96,10 @@ export const serverAppConfigSchema = z.object({
     enabled: z.boolean().default(true),
     /** 邮件告警默认接收人（email 通道的 to） */
     emailTo: z.string().optional(),
+    /** 实例标识；缺省用 hostname:pid */
+    instanceId: z.string().optional(),
+    /** 指标样本保留天数 */
+    retentionDays: z.number().int().positive().default(30),
   }),
   /** 飞书应用凭据：未配置则不装配 LarkModule */
   lark: LarkConfigSchema.optional(),
@@ -213,6 +217,12 @@ export type ServerAppConfig = z.infer<typeof serverAppConfigSchema>
 const optional = (value: string | undefined): string | undefined =>
   value ? value : undefined
 
+const optionalNumber = (value: string | undefined): number | undefined => {
+  if (!value) return undefined
+  const parsed = Number(value)
+  return Number.isFinite(parsed) && parsed > 0 ? Math.trunc(parsed) : undefined
+}
+
 const parseBoolean = (value: string | undefined): boolean | undefined =>
   value === undefined ? undefined : value === 'true'
 
@@ -293,6 +303,8 @@ export const mapServerEnv = (
   monitor: {
     enabled: env.ALERT_ENABLED === undefined ? undefined : env.ALERT_ENABLED !== 'false',
     emailTo: optional(env.ALERT_EMAIL_TO),
+    instanceId: optional(env.MONITOR_INSTANCE_ID),
+    retentionDays: optionalNumber(env.MONITOR_SAMPLE_RETENTION_DAYS),
   },
   notify: {
     lark: env.LARK_NOTIFY_RECEIVE_ID

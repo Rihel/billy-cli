@@ -1,16 +1,42 @@
 import { Module } from '@nestjs/common'
-import { AdminModule } from '../admin/admin.module.js'
-import { AlertLogRepository } from './alert-log.repository.js'
-import { AlertRuleRepository } from './alert-rule.repository.js'
-import { AlertRuleService } from './alert-rule.service.js'
-import { AlertTrigger } from './alert-trigger.js'
 import { ConfigService } from '@nestjs/config'
+import { AdminModule } from '../admin/admin.module.js'
 import { MonitorConfig } from './config.js'
-import { MonitorController, MonitorHealthController } from './monitor.controller.js'
+import { AlertDeliveryService } from './engine/alert-delivery.service.js'
+import { AlertLifecycleService } from './engine/alert-lifecycle.service.js'
+import { AlertLogRepository } from './engine/alert-log.repository.js'
+import { AlertRepository } from './engine/alert.repository.js'
+import { AlertStreamService } from './engine/alert-stream.service.js'
+import { CleanupService } from './engine/cleanup.service.js'
+import { DerivedMetricService } from './engine/derived-metric.service.js'
+import { EventRuleService } from './engine/event-rule.service.js'
+import { MetricCollectService } from './engine/metric-collect.service.js'
+import { MetricRegistry } from './engine/metric.registry.js'
+import { MetricSampleRepository } from './engine/metric-sample.repository.js'
+import { MonitorEngine } from './engine/monitor.engine.js'
+import { MonitorInstanceService } from './engine/instance.service.js'
+import { MonitorRegistry } from './engine/monitor.registry.js'
+import { MonitorRuleRepository } from './engine/monitor-rule.repository.js'
+import { MonitorTimeline } from './engine/monitor.timeline.js'
+import { RuleEvaluatorService } from './engine/rule-evaluator.service.js'
+import { RuleRegistry } from './engine/rule.registry.js'
+import { SeedService } from './engine/seed.service.js'
+import { SilenceService } from './engine/silence.service.js'
+import { StaleGuard } from './engine/stale.guard.js'
+import { StreamStateService } from './engine/stream-state.service.js'
+import { ProcessSource } from './sources/process.source.js'
+import { TelemetrySource } from './sources/telemetry.source.js'
+import { MonitorAlertService } from './api/monitor-alert.service.js'
+import { MonitorController } from './api/monitor.controller.js'
+import { MonitorEngineService } from './api/monitor-engine.service.js'
+import { MonitorHealthController } from './api/monitor-health.controller.js'
+import { MonitorMetricService } from './api/monitor-metric.service.js'
+import { MonitorRuleService } from './api/monitor-rule.service.js'
+import { MonitorTestService } from './api/monitor-test.service.js'
 
 /**
- * 监控告警模块：告警规则 CRUD + 告警触发（事件规则 / 指标规则）+ 审计日志 + 健康检查。
- * AlertTrigger 对外导出，供组合根注册为全局异常过滤器的「技术错误告警」钩子。
+ * 监控模块：指标采集 / 样本、规则评估、告警生命周期、通知、API。
+ * 业务模块通过 import 本模块拿到 MonitorRegistry 注册定义；本模块不 import 业务模块。
  */
 @Module({
   imports: [AdminModule],
@@ -22,11 +48,36 @@ import { MonitorController, MonitorHealthController } from './monitor.controller
       useFactory: (config: ConfigService) =>
         config.get<import('./config.js').MonitorConfig>('monitor'),
     },
-    AlertRuleRepository,
+    TelemetrySource,
+    ProcessSource,
+    MetricRegistry,
+    RuleRegistry,
+    MonitorRegistry,
+    MonitorRuleRepository,
+    MetricSampleRepository,
+    AlertRepository,
     AlertLogRepository,
-    AlertRuleService,
-    AlertTrigger,
+    SilenceService,
+    AlertStreamService,
+    StaleGuard,
+    StreamStateService,
+    DerivedMetricService,
+    MetricCollectService,
+    AlertLifecycleService,
+    AlertDeliveryService,
+    EventRuleService,
+    CleanupService,
+    SeedService,
+    MonitorTimeline,
+    MonitorInstanceService,
+    RuleEvaluatorService,
+    MonitorEngine,
+    MonitorRuleService,
+    MonitorAlertService,
+    MonitorMetricService,
+    MonitorEngineService,
+    MonitorTestService,
   ],
-  exports: [AlertTrigger, AlertRuleService, AlertLogRepository],
+  exports: [MonitorEngine, MonitorRegistry],
 })
 export class MonitorModule {}

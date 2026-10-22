@@ -330,6 +330,13 @@ export const AgentUsageSummaryQuerySchema = z.object({
 
 export type AgentUsageSummaryQueryDto = z.infer<typeof AgentUsageSummaryQuerySchema>
 
+/** 手动回填 AI 用量日表（管理员） */
+export const AgentUsageRangeSchema = z.object({
+  from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+})
+export type AgentUsageRangeDto = z.infer<typeof AgentUsageRangeSchema>
+
 /** 每日用量（日期按数据库时区，格式 YYYY-MM-DD） */
 export const AgentUsageDailySchema = z.object({
   date: z.string(),

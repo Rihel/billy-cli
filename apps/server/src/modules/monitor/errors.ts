@@ -1,16 +1,30 @@
 import { AppErrorCodes } from '@repo/shared'
 import { AppError } from '@repo/kits'
 
-export class AlertRuleNotFoundError extends AppError {
-  readonly code = AppErrorCodes.AlertRuleNotFound
-  constructor(readonly ruleId: string) {
-    super(`Alert rule not found: ${ruleId}`)
+export class MonitorRuleNotFoundError extends AppError {
+  readonly code = AppErrorCodes.MonitorRuleNotFound
+  constructor(readonly ruleKey: string) {
+    super(`Monitor rule not found: ${ruleKey}`)
   }
 }
 
-export class AlertRuleNameTakenError extends AppError {
-  readonly code = AppErrorCodes.AlertRuleNameTaken
-  constructor(readonly name: string) {
-    super(`Alert rule name already exists: ${name}`)
+export class MonitorRuleConfigInvalidError extends AppError {
+  readonly code = AppErrorCodes.MonitorRuleConfigInvalid
+  constructor(readonly detail: string) {
+    super(`Monitor rule config invalid: ${detail}`)
+  }
+}
+
+export class MonitorMetricNotFoundError extends AppError {
+  readonly code = AppErrorCodes.MonitorMetricNotFound
+  constructor(readonly metricKey: string) {
+    super(`Monitor metric not found: ${metricKey}`)
+  }
+}
+
+export class MonitorAlertNotFoundError extends AppError {
+  readonly code = AppErrorCodes.MonitorAlertNotFound
+  constructor(readonly alertId: string) {
+    super(`Monitor alert not found: ${alertId}`)
   }
 }

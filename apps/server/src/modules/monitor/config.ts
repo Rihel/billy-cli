@@ -6,8 +6,12 @@
 export const MonitorConfig = Symbol.for('MonitorConfig')
 
 export interface MonitorConfig {
-  /** 告警总开关：false 时 notifyError 直接跳过（默认 true） */
+  /** 告警总开关：false 时 ingestError 直接跳过（默认 true） */
   enabled: boolean
   /** 邮件告警默认接收人（email 通道的 to；未配则 email 通道发送失败落日志） */
   emailTo?: string
+  /** 实例标识；缺省用 hostname:pid */
+  instanceId?: string
+  /** 指标样本保留天数 */
+  retentionDays: number
 }

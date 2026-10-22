@@ -23,6 +23,7 @@ import {
   AgentRunListSchema,
   AgentTimelineListSchema,
   AgentUsageSummaryQuerySchema,
+  AgentUsageRangeSchema,
   type AgentRunIdDto,
   type AgentRunListDto,
   type AgentChatDto,
@@ -35,6 +36,7 @@ import {
   type AgentInstructionsDto,
   type AgentTimelineListDto,
   type AgentUsageSummaryQueryDto,
+  type AgentUsageRangeDto,
 } from '@repo/shared'
 import type { Response } from 'express'
 import { requestContext } from '../../../common/index.js'
@@ -46,6 +48,7 @@ import { AgentChatService } from '../runtime/chat.service.js'
 import { AgentConversationService } from '../runtime/conversation.service.js'
 import { AgentRunService } from '../runtime/run.service.js'
 import { AgentTimelineService } from '../runtime/timeline.service.js'
+import { AiUsageService } from '../../ai-usage/ai-usage.service.js'
 
 /**
  * AI 路由（`/agent/*`，前台用户鉴权；全部 POST + 显式 `@HttpCode(200)`）。
@@ -67,6 +70,7 @@ export class AiController {
     private readonly conversations: AgentConversationService,
     @Inject(AgentTimelineService) private readonly timelines: AgentTimelineService,
     @Inject(AgentRunService) private readonly runs: AgentRunService,
+    @Inject(AiUsageService) private readonly aiUsage: AiUsageService,
     @Inject(AgentChatService) private readonly chat: AgentChatService,
   ) {}
 
@@ -287,6 +291,13 @@ export class AiController {
   @UseGuards(AdminAuthGuard)
   usageSummary(@Body({ schema: AgentUsageSummaryQuerySchema }) input: AgentUsageSummaryQueryDto) {
     return this.runs.usageSummary(input)
+  }
+
+  @Post('usage/rollup')
+  @HttpCode(200)
+  @UseGuards(AdminAuthGuard)
+  usageRollup(@Body({ schema: AgentUsageRangeSchema }) input: AgentUsageRangeDto) {
+    return this.aiUsage.backfill(input.from, input.to).then((days) => ({ days }))
   }
 
   @Post('timeline/list')

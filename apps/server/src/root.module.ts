@@ -36,7 +36,11 @@ import { AiModelEntity } from './database/entities/ai-model-entity.js'
 import { AiToolEntity } from './database/entities/ai-tool-entity.js'
 import { AiProviderEntity } from './database/entities/ai-provider-entity.js'
 import { AlertLogEntity } from './database/entities/alert-log-entity.js'
-import { AlertRuleEntity } from './database/entities/alert-rule-entity.js'
+import { AiUsageDailyEntity } from './database/entities/ai-usage-daily-entity.js'
+import { AiUsageDailyDimensionEntity } from './database/entities/ai-usage-daily-dimension-entity.js'
+import { MonitorAlertEntity } from './database/entities/monitor-alert-entity.js'
+import { MonitorMetricSampleEntity } from './database/entities/monitor-metric-sample-entity.js'
+import { MonitorRuleEntity } from './database/entities/monitor-rule-entity.js'
 import { ConversationEntity } from './database/entities/conversation-entity.js'
 import { RunEntity } from './database/entities/run-entity.js'
 import { TimelineEntity } from './database/entities/timeline-entity.js'
@@ -45,7 +49,7 @@ import { AdminModule } from './modules/admin/index.js'
 import { AiModelModule } from './modules/ai-model/index.js'
 import { AiModule } from './modules/ai/index.js'
 import { AuthModule } from './modules/auth/index.js'
-import { AlertTrigger, MonitorModule } from './modules/monitor/index.js'
+import { MonitorEngine, MonitorModule } from './modules/monitor/index.js'
 import { OpsModule } from './modules/ops/index.js'
 import { SessionModule } from './modules/session/index.js'
 import { RuntimeConfigModule } from './modules/runtime-config/index.js'
@@ -97,8 +101,12 @@ import { UserModule } from './modules/user/index.js'
         entities: [
           UserEntity,
           AdminEntity,
-          AlertRuleEntity,
           AlertLogEntity,
+          AiUsageDailyEntity,
+          AiUsageDailyDimensionEntity,
+          MonitorRuleEntity,
+          MonitorMetricSampleEntity,
+          MonitorAlertEntity,
           ConversationEntity,
           RunEntity,
           TimelineEntity,
@@ -177,12 +185,12 @@ import { UserModule } from './modules/user/index.js'
     RuntimeConfigModule,
   ],
   providers: [
-    // 技术错误告警钩子：把 AlertTrigger 适配为 common 层 token（避免 HTTP 边界层反向依赖业务模块）
+    // 技术错误告警钩子：把 MonitorEngine 适配为 common 层 token（避免 HTTP 边界层反向依赖业务模块）
     {
       provide: ERROR_ALERT_HOOK,
-      useFactory: (alertTrigger: AlertTrigger): ErrorAlertHook =>
-        (error, context) => alertTrigger.notifyError(error, context),
-      inject: [AlertTrigger],
+      useFactory: (engine: MonitorEngine): ErrorAlertHook =>
+        (error, context) => engine.ingestError(error, context),
+      inject: [MonitorEngine],
     },
     // 全局 Zod 校验：读取路由参数上的 `@Body({ schema })` 元数据（NestJS 12 原生 Standard Schema）
     { provide: APP_PIPE, useFactory: createZodValidationPipe },

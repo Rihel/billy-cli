@@ -11,6 +11,7 @@ import type {
 } from '@repo/shared'
 import { AgentConversationService } from './conversation.service.js'
 import { RunRepository } from './run.repository.js'
+import { AiUsageService } from '../../ai-usage/ai-usage.service.js'
 
 /**
  * 运行查询服务（**只读**）：审计 / 复盘页的数据源。
@@ -26,6 +27,7 @@ export class AgentRunService {
   constructor(
     @Inject(RunRepository) private readonly runs: RunRepository,
     @Inject(AgentConversationService) private readonly conversations: AgentConversationService,
+    @Inject(AiUsageService) private readonly aiUsage: AiUsageService,
   ) {}
 
   /**
@@ -45,7 +47,7 @@ export class AgentRunService {
    * 只走聚合 SQL，不把 run 行拉回内存；子 agent 的消耗已经并进根 run，避免重复计费。
    */
   async usageSummary(input: AgentUsageSummaryQueryDto): Promise<AgentUsageSummaryModel> {
-    return this.runs.usageSummary(input.days)
+    return this.aiUsage.summary(input.days)
   }
 
   /**

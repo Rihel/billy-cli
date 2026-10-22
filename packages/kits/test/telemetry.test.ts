@@ -50,7 +50,7 @@ describe('Telemetry（埋点 + 窗口聚合）', () => {
     expect(qps).toBeCloseTo(200 / 60)
   })
 
-  it('窗口滚动：超时后当前计数归档为前一窗口（surge 环比基线），当前重置', async () => {
+  it('窗口滚动：超时后当前计数归档到已结束窗口，当前重置', async () => {
     const telemetry = createTelemetry(0.05) // 50ms 窗口
     telemetry.incr('request.count', 100)
     await sleep(80)
@@ -58,8 +58,28 @@ describe('Telemetry（埋点 + 窗口聚合）', () => {
 
     const snapshot = telemetry.snapshot()
     expect(snapshot.counters['request.count']).toBe(300) // 当前窗口
-    expect(snapshot.previousCounters['request.count']).toBe(100) // 前一窗口（基线）
-    expect(snapshot.previousWindowStartAt).not.toBeNull()
+    const completed = telemetry.drainCompleted()
+    const firstWindow = completed.find((window) => window.counters['request.count'] === 100)
+    expect(firstWindow).toBeDefined()
+    expect(firstWindow!.windowEndAt - firstWindow!.windowStartAt).toBe(50)
+  })
+
+  it('drainCompleted：按墙钟切出已结束窗口，返回后清空', () => {
+    const telemetry = createTelemetry(0.1) // 100ms 窗口
+    telemetry.incr('request.count', 5)
+    telemetry.histogram('request.duration', 100)
+    const currentStart = telemetry.snapshot().windowStartAt
+
+    const windows = telemetry.drainCompleted(currentStart + 250)
+    expect(windows).toHaveLength(2)
+    expect(windows[0].counters['request.count']).toBe(5)
+    expect(windows[0].histograms['request.duration']?.count).toBe(1)
+    expect(windows[1].counters['request.count']).toBeUndefined()
+    expect(windows[0].windowEndAt).toBe(windows[1].windowStartAt)
+    expect(windows[1].windowEndAt - windows[1].windowStartAt).toBe(100)
+
+    // 已取走的窗口不会再次返回
+    expect(telemetry.drainCompleted(currentStart + 250)).toEqual([])
   })
 
   it('首个窗口无基线（previousWindowStartAt 为 null）', () => {

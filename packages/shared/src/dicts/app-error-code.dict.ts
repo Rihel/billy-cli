@@ -96,6 +96,26 @@ export const AppErrorCodes = createDict({
     value: 3102,
     http: 409,
   },
+  MonitorRuleNotFound: {
+    label: '监控规则不存在',
+    value: 3103,
+    http: 404,
+  },
+  MonitorRuleConfigInvalid: {
+    label: '监控规则配置非法',
+    value: 3104,
+    http: 400,
+  },
+  MonitorMetricNotFound: {
+    label: '监控指标不存在',
+    value: 3105,
+    http: 404,
+  },
+  MonitorAlertNotFound: {
+    label: '告警记录不存在',
+    value: 3106,
+    http: 404,
+  },
   StorageKeyInvalid: {
     label: '文件 key 非法',
     value: 3201,

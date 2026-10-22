@@ -13,6 +13,9 @@ dist
 .scaffold-check
 .codegraph
 logs/
+# 管理台「告警记录」页面目录名也叫 logs，不能被上面的全局忽略吃掉
+!apps/admin/src/app/main/monitor/logs/
+!apps/admin/src/app/main/monitor/logs/**
 # 本地验证截图（无头浏览器抓的画面，不入库）
 .shots/
 

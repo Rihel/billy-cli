@@ -49,16 +49,25 @@ import {
   SuccessResultModel,
   UpdateAdminDto,
   UpdateInfoDto,
-  CreateAlertRuleDto,
-  UpdateAlertRuleDto,
-  GetAlertRuleDetailDto,
-  RemoveAlertRuleDto,
-  PageQueryAlertRuleDto,
-  PageQueryAlertLogDto,
-  TestAlertDto,
-  AlertRuleModel,
-  AlertLogModel,
+  GetMonitorAlertDetailDto,
+  ListMonitorRuleDto,
+  MonitorAlertDeliveryModel,
+  MonitorAlertDetailModel,
+  MonitorAlertModel,
+  MonitorEngineStatusModel,
   MonitorHealthModel,
+  MonitorMetricDefinitionModel,
+  MonitorMetricLatestModel,
+  MonitorMetricLatestQueryDto,
+  MonitorMetricSeriesDto,
+  MonitorMetricSeriesModel,
+  MonitorRuleDefinitionModel,
+  MonitorRuleModel,
+  PageQueryMonitorAlertDto,
+  PageQueryMonitorLogDto,
+  ResetMonitorRuleDto,
+  TestAlertDto,
+  UpdateMonitorRuleDto,
   UpdateUserDto,
   UserModel,
   AgentChatDto,
@@ -82,6 +91,7 @@ import {
   AgentTimelineListDto,
   AgentUsageSummaryModel,
   AgentUsageSummaryQueryDto,
+  AgentUsageRangeDto,
 } from '@repo/shared'
 import { HttpClient, HttpStreamClient, type HttpClientOptions } from '@repo/http-client'
 import type {
@@ -287,28 +297,49 @@ export class ServerClient extends HttpClient<BearerTokenCredentials> {
 
   monitor = {
     rule: {
-      create: (data: CreateAlertRuleDto) =>
-        this.post<AlertRuleModel>('/monitor/rule/create', data),
+      definitions: () =>
+        this.post<MonitorRuleDefinitionModel[]>('/monitor/rule/definitions', {}),
 
-      pageQuery: (data: PageQueryAlertRuleDto) =>
-        this.post<AppPageQueryResponse<AlertRuleModel>>(
-          '/monitor/rule/page-query',
+      list: (data: ListMonitorRuleDto) =>
+        this.post<MonitorRuleModel[]>('/monitor/rule/list', data),
+
+      update: (data: UpdateMonitorRuleDto) =>
+        this.post<MonitorRuleModel>('/monitor/rule/update', data),
+
+      reset: (data: ResetMonitorRuleDto) =>
+        this.post<MonitorRuleModel>('/monitor/rule/reset', data),
+    },
+
+    alert: {
+      pageQuery: (data: PageQueryMonitorAlertDto) =>
+        this.post<AppPageQueryResponse<MonitorAlertModel>>(
+          '/monitor/alert/page-query',
           data,
         ),
 
-      detail: (data: GetAlertRuleDetailDto) =>
-        this.post<AlertRuleModel>('/monitor/rule/detail', data),
+      detail: (data: GetMonitorAlertDetailDto) =>
+        this.post<MonitorAlertDetailModel>('/monitor/alert/detail', data),
+    },
 
-      update: (data: UpdateAlertRuleDto) =>
-        this.post<AlertRuleModel>('/monitor/rule/update', data),
+    metric: {
+      definitions: () =>
+        this.post<MonitorMetricDefinitionModel[]>('/monitor/metric/definitions', {}),
 
-      remove: (data: RemoveAlertRuleDto) =>
-        this.post<AlertRuleModel>('/monitor/rule/remove', data),
+      series: (data: MonitorMetricSeriesDto) =>
+        this.post<MonitorMetricSeriesModel>('/monitor/metric/series', data),
+
+      latest: (data: MonitorMetricLatestQueryDto) =>
+        this.post<MonitorMetricLatestModel[]>('/monitor/metric/latest', data),
+    },
+
+    engine: {
+      status: () =>
+        this.post<MonitorEngineStatusModel>('/monitor/engine/status', {}),
     },
 
     log: {
-      pageQuery: (data: PageQueryAlertLogDto) =>
-        this.post<AppPageQueryResponse<AlertLogModel>>(
+      pageQuery: (data: PageQueryMonitorLogDto) =>
+        this.post<AppPageQueryResponse<MonitorAlertDeliveryModel>>(
           '/monitor/log/page-query',
           data,
         ),
@@ -408,6 +439,10 @@ export class ServerClient extends HttpClient<BearerTokenCredentials> {
     /** 控制台「AI 用量」汇总（管理员）：近 N 天 token / 轮数 / 成功率 / 分模型与 agent */
     usageSummary: (data: AgentUsageSummaryQueryDto) =>
       this.post<AgentUsageSummaryModel>('/agent/usage/summary', data),
+
+    /** 手动回填 AI 用量日表（管理员） */
+    usageRollup: (data: AgentUsageRangeDto) =>
+      this.post<{ days: number }>('/agent/usage/rollup', data),
 
     /** POST 建流地址（交给 AI SDK transport 的 `api`） */
     chatStreamUrl: (): string => `${this.agentBaseUrl}${AGENT_CHAT_STREAM_PATH}`,
