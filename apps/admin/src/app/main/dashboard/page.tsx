@@ -6,21 +6,29 @@ import { useServerClient } from '@/lib/server-client'
 import { useQuery } from '@tanstack/react-query'
 import { cn } from '@repo/ui'
 import type { AgentUsageBucketModel } from '@repo/shared'
+import { AnimatedNumber } from '@/components/animated-number'
+import { DistributionPie, UsageBarChart } from '@/components/monitor-charts'
 
 /** 统计块：大数字（嵌入式，hairline 左分列，无卡片） */
 function StatBlock({
   label,
   value,
   hint,
+  format,
 }: {
   label: string
   value: string | number | null
   hint?: string
+  format?: (value: number) => string
 }) {
   return (
-    <div className="border-l border-border pl-4 first:border-l-0 first:pl-0">
+    <div className="rounded-lg bg-surface-2 px-4 py-3 transition-colors hover:bg-surface-3">
       <div className="font-heading text-2xl font-medium tracking-tight tabular-nums sm:text-3xl">
-        {value ?? '-'}
+        {typeof value === 'number' ? (
+          <AnimatedNumber value={value} format={format ?? ((next) => String(Math.round(next)))} />
+        ) : (
+          (value ?? '-')
+        )}
       </div>
       <div className="mt-1.5 text-xs text-muted-foreground">{label}</div>
       {hint ? <div className="mt-1 text-[11px] text-muted-foreground/70">{hint}</div> : null}
@@ -32,18 +40,19 @@ function StatBlock({
 const compactNumber = (value: number): string => {
   if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M`
   if (value >= 1000) return `${(value / 1000).toFixed(1)}k`
-  return String(value)
+  return String(Math.round(value))
 }
 
 /** 毫秒 → 人话（首字 / 平均耗时都不该显示 123456ms） */
 const durationText = (ms: number): string => {
-  if (!ms) return '—'
-  return ms < 1000 ? `${ms}ms` : `${(ms / 1000).toFixed(1)}s`
+  if (!ms) return '-'
+  const rounded = Math.round(ms)
+  return rounded < 1000 ? `${rounded}ms` : `${(rounded / 1000).toFixed(1)}s`
 }
 
 const dateLabel = (date: string): string => date.slice(5)
 
-/** 按模型 / agent 的横向占比条（没有图表库，用宽度表达占比） */
+/** 按模型 / agent 的占比：环图看分布，横条看明细 */
 function UsageBreakdown({
   title,
   items,
@@ -64,7 +73,13 @@ function UsageBreakdown({
       {items.length === 0 ? (
         <p className="text-xs text-muted-foreground">暂无数据</p>
       ) : (
-        <div className="space-y-2">
+        <div className="grid grid-cols-[104px_1fr] items-center gap-3">
+          <div className="h-24">
+            <DistributionPie
+              data={items.map((item) => ({ name: item.key, value: item.totalTokens }))}
+            />
+          </div>
+          <div className="space-y-2">
           {items.map((item) => {
             const ratio = totalTokens > 0 ? (item.totalTokens / totalTokens) * 100 : 0
             return (
@@ -86,6 +101,7 @@ function UsageBreakdown({
               </div>
             )
           })}
+          </div>
         </div>
       )}
     </div>
@@ -115,13 +131,7 @@ export default function DashboardPage() {
   })
   const rules = useQuery({
     queryKey: ['dashboard', 'rules'],
-    queryFn: () =>
-      client.monitor.rule.pageQuery({
-        page: 1,
-        size: 1,
-        orderBy: 'createdAt',
-        order: 'desc',
-      }),
+    queryFn: () => client.monitor.rule.list({}),
     retry: 0,
   })
   const logs = useQuery({
@@ -144,7 +154,6 @@ export default function DashboardPage() {
   const healthOk = health.data?.status === 'ok'
   const totals = usage.data?.totals
   const daily = usage.data?.daily ?? []
-  const maxDailyTokens = Math.max(...daily.map((day) => day.totalTokens), 1)
   const successRate =
     totals && totals.runs > 0 ? Math.round((totals.succeeded / totals.runs) * 100) : null
 
@@ -176,12 +185,12 @@ export default function DashboardPage() {
       {/* 数据概览：嵌入式大数字（hairline 分列） */}
       <div className="grid grid-cols-2 gap-x-8 gap-y-8 sm:grid-cols-3 sm:gap-y-10">
         <StatBlock label="用户" value={users.data?.total ?? null} />
-        <StatBlock label="告警规则" value={rules.data?.total ?? null} />
+        <StatBlock label="告警规则" value={rules.data?.length ?? null} />
         <StatBlock label="告警记录" value={logs.data?.total ?? null} />
       </div>
 
       {/* AI 用量：token / 轮数 / 成功率 / 首字延迟 + 按天柱状 + 模型与 agent 占比 */}
-      <section className="border-t border-border pt-5">
+      <section className="rounded-2xl bg-surface-1 p-5">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <h2 className="font-heading text-base font-medium tracking-tight">AI 用量</h2>
@@ -190,7 +199,7 @@ export default function DashboardPage() {
             </p>
           </div>
           <div className="flex items-center gap-3">
-            <div className="inline-flex rounded-md border border-border p-0.5">
+            <div className="inline-flex rounded-md bg-surface-2 p-0.5">
               {([7, 30] as const).map((days) => (
                 <button
                   key={days}
@@ -232,45 +241,31 @@ export default function DashboardPage() {
               <StatBlock label={`近 ${usageDays} 天对话`} value={totals.runs} hint={`${totals.steps} 步模型调用`} />
               <StatBlock
                 label={`近 ${usageDays} 天 tokens`}
-                value={compactNumber(totals.totalTokens)}
+                value={totals.totalTokens}
+                format={compactNumber}
                 hint={`入 ${compactNumber(totals.inputTokens)} / 出 ${compactNumber(totals.outputTokens)}`}
               />
               <StatBlock
                 label="成功率"
-                value={successRate == null ? null : `${successRate}%`}
+                value={successRate}
+                format={(next) => `${Math.round(next)}%`}
                 hint={`成功 ${totals.succeeded} · 失败 ${totals.failed}`}
               />
               <StatBlock
                 label="平均首字延迟"
-                value={totals.avgFirstTokenMs ? durationText(totals.avgFirstTokenMs) : null}
+                value={totals.avgFirstTokenMs || null}
+                format={durationText}
                 hint={`平均耗时 ${durationText(totals.avgDurationMs)}`}
               />
             </div>
 
-            <div className="mt-5">
-              <div className="flex items-end gap-1.5 sm:gap-2" style={{ height: '7rem' }}>
-                {daily.map((day) => (
-                  <div
-                    key={day.date}
-                    className="group flex h-full min-w-0 flex-1 flex-col justify-end"
-                    title={`${day.date}：${compactNumber(day.totalTokens)} tokens / ${day.runs} 轮`}
-                  >
-                    <div
-                      className="w-full rounded-t-sm bg-primary/40 transition-colors group-hover:bg-primary/70"
-                      style={{
-                        height: `${Math.max(2, (day.totalTokens / maxDailyTokens) * 100)}%`,
-                      }}
-                    />
-                  </div>
-                ))}
-              </div>
-              <div className="mt-1.5 flex justify-between text-[10px] tabular-nums text-muted-foreground/70">
-                <span>{daily[0] ? dateLabel(daily[0].date) : ''}</span>
-                <span>{daily[daily.length - 1] ? dateLabel(daily[daily.length - 1]!.date) : ''}</span>
-              </div>
+            <div className="mt-5 h-44">
+              <UsageBarChart
+                data={daily.map((day) => ({ label: dateLabel(day.date), value: day.totalTokens }))}
+              />
             </div>
 
-            <div className="mt-5 grid gap-6 border-t border-border pt-4 sm:grid-cols-2">
+            <div className="mt-5 grid gap-6 pt-4 sm:grid-cols-2">
               <UsageBreakdown
                 title="按模型"
                 items={usage.data?.byModel ?? []}
@@ -287,7 +282,7 @@ export default function DashboardPage() {
       </section>
 
       {/* 服务状态：嵌入式 hairline 行（checks + uptime mono） */}
-      <div className="border-t border-border pt-5">
+      <div className="rounded-xl bg-surface-1 px-4 py-4">
         <div className="flex flex-wrap items-center gap-x-7 gap-y-2.5">
           <span className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
             服务状态
@@ -310,7 +305,7 @@ export default function DashboardPage() {
             </span>
           ))}
           <span className="inline-flex items-center gap-2 font-mono text-xs text-foreground/80">
-            <span className="size-1.5 rounded-full bg-indigo-500" />
+            <span className="size-1.5 rounded-full bg-success" />
             uptime
             <span className="text-muted-foreground/70">
               {health.data?.uptimeSeconds != null

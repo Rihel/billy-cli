@@ -35,3 +35,23 @@
   --text-2xl--line-height: 1.625rem;
   font-size: var(--text-sm);
 }
+
+/* 监控水位图的液面波动；减弱动态时停在水位线上 */
+@keyframes monitor-water-wave {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+.water-wave {
+  animation: monitor-water-wave 5s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .water-wave {
+    animation: none;
+  }
+}
