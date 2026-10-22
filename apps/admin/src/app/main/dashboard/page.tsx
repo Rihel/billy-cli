@@ -235,7 +235,7 @@ export default function DashboardPage() {
     totals && totals.runs > 0 ? Math.round((totals.succeeded / totals.runs) * 100) : null
 
   return (
-    <div className="flex h-full flex-col gap-5 overflow-auto p-4 sm:p-8">
+    <div className="flex h-full flex-col gap-5 overflow-auto p-4 sm:py-6">
       <PageToolbar
         title="控制台"
         description="Billy Cli 管理后台，系统运行总览"

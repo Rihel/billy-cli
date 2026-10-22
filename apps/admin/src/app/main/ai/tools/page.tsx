@@ -105,7 +105,7 @@ export default function AiToolsPage() {
   })
 
   return (
-    <div className="flex h-full w-full flex-col gap-4 overflow-auto p-4 sm:p-8">
+    <div className="flex h-full w-full flex-col gap-4 overflow-auto p-4 sm:py-6">
       <DataTable<AiToolModel>
         title="AI 工具配置"
         description="开关、作用域、限额与专属配置；这份清单与模型看到的工具面一致"

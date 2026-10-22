@@ -102,7 +102,7 @@ export default function MonitorMetricsPage() {
   const recent = [...points].reverse()
 
   return (
-    <div className="flex h-full w-full flex-col gap-5 overflow-auto p-4 sm:p-8">
+    <div className="flex h-full w-full flex-col gap-5 overflow-auto p-4 sm:py-6">
       <PageToolbar
         title="监控指标"
         description="选中一个指标，看它最近的走势、当前值和区间分布。"

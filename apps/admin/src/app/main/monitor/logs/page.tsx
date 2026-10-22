@@ -139,7 +139,7 @@ export default function MonitorAlertsPage() {
   ]
 
   return (
-    <div className="h-full w-full overflow-auto p-4 sm:p-8">
+    <div className="h-full w-full overflow-auto p-4 sm:py-6">
       <DataTable<MonitorAlertModel>
         title="告警记录"
         description="一条告警从首次命中到恢复的完整记录；详情可看首末数据快照与逐通道发送记录。"

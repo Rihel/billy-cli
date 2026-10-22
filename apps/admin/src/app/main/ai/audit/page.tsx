@@ -209,7 +209,7 @@ export default function AiAuditPage() {
   ]
 
   return (
-    <div className="flex h-full w-full flex-col gap-4 overflow-auto p-4 sm:p-8">
+    <div className="flex h-full w-full flex-col gap-4 overflow-auto p-4 sm:py-6">
       <DataTable<AgentConversationModel>
         title="AI 会话审计"
         description="按会话 → 运行 → 时间线三层复盘；点「查看运行」在右侧抽屉查看，运行与时间线只读（审计证据，不提供删除）"

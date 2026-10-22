@@ -258,7 +258,7 @@ export default function UsersPage() {
   ]
 
   return (
-    <div className="h-full w-full overflow-auto p-4 sm:p-8">
+    <div className="h-full w-full overflow-auto p-4 sm:py-6">
       <DataTable<UserModel>
         title="用户管理"
         description="前台用户体系管理，支持关键词搜索与状态筛选"

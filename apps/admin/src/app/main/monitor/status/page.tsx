@@ -158,7 +158,7 @@ export default function MonitorStatusPage() {
   }
 
   return (
-    <div className="flex h-full w-full flex-col gap-4 overflow-auto p-4 sm:p-8">
+    <div className="flex h-full w-full flex-col gap-4 overflow-auto p-4 sm:py-6">
       <PageToolbar
         title={
           <span className="inline-flex items-center gap-2">

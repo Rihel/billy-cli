@@ -88,7 +88,7 @@ export default function LiveAlertsPage() {
   const stateView = STATE_VIEW[state] ?? STATE_VIEW.idle
 
   return (
-    <div className="flex h-full flex-col gap-6 overflow-auto p-4 sm:p-8">
+    <div className="flex h-full flex-col gap-6 overflow-auto p-4 sm:py-6">
       <PageToolbar
         title="实时告警"
         description="管理员广播频道 admin:all 的实时事件流（SSE）"

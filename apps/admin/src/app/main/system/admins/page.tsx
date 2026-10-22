@@ -258,7 +258,7 @@ export default function AdminsPage() {
   ]
 
   return (
-    <div className="h-full w-full overflow-auto p-4 sm:p-8">
+    <div className="h-full w-full overflow-auto p-4 sm:py-6">
       <DataTable<AdminModel>
         title="管理员管理"
         description="后台管理员账号管理，可重置密码与启停账号"

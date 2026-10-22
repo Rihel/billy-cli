@@ -1087,7 +1087,7 @@ export default function AiModelsPage() {
   ]
 
   return (
-    <div className="flex h-full w-full flex-col gap-4 overflow-auto p-4 sm:p-8">
+    <div className="flex h-full w-full flex-col gap-4 overflow-auto p-4 sm:py-6">
       <DataTable<AiProviderModel>
         title="模型供应商"
         description="先配「哪家 / 地址 / 密钥」，再从它的接口同步模型明细；密钥只进不出，明文永不回传"

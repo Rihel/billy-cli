@@ -29,7 +29,7 @@ export const AppHeader = ({ className, ...props }: AppHeaderProps) => {
   return (
     <div
       className={cn(
-        'flex h-12 shrink-0 items-center justify-between gap-3 bg-background/85 px-4 backdrop-blur-sm sm:px-6',
+        'flex h-12 shrink-0 items-center justify-between gap-3 bg-background/85 px-4 backdrop-blur-sm',
         className,
       )}
       {...props}

@@ -168,7 +168,7 @@ export default function MonitorRulesPage() {
     : undefined
 
   return (
-    <div className="h-full w-full overflow-auto p-4 sm:p-8">
+    <div className="h-full w-full overflow-auto p-4 sm:py-6">
       <DataTable<MonitorRuleModel>
         title="告警规则"
         description="规则由代码定义；这里改阈值、级别、通道、静默期和开关，保存后下一轮评估生效。"
