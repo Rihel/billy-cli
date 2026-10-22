@@ -24,19 +24,34 @@ export type HeroProps = {
 export function Hero({ user, authEnabled }: HeroProps) {
   return (
     <section className="relative flex min-h-[calc(100dvh-4rem)] flex-col overflow-hidden">
-      {/* 背景：细网格（顶部集中）+ 双光斑 */}
+      {/*
+        背景：60 秒循环的「信号织物」。
+        - 静音自动播放（浏览器只允许 muted 自动播），音轨保留，用户点开声音即可听配乐版；
+        - `playsInline` 防止 iOS 全屏劫持；
+        - 系统开启「减弱动态效果」时不加载视频，只显示同一帧的封面图。
+        成片与制作说明见 opus-video/billy-hero-ambient/。
+      */}
       <div
         aria-hidden
-        className="absolute inset-0 bg-[linear-gradient(to_right,rgb(9_9_11/0.04)_1px,transparent_1px),linear-gradient(to_bottom,rgb(9_9_11/0.04)_1px,transparent_1px)] bg-[size:56px_56px] [mask-image:radial-gradient(ellipse_75%_70%_at_50%_0%,black,transparent)]"
-      />
-      <div
-        aria-hidden
-        className="absolute -top-40 left-1/2 h-[30rem] w-[52rem] max-w-none -translate-x-1/2 rounded-full bg-brand/10 blur-3xl motion-safe:animate-[drift_18s_ease-in-out_infinite]"
-      />
-      <div
-        aria-hidden
-        className="absolute top-1/3 -right-32 size-[28rem] rounded-full bg-brand/10 blur-3xl motion-safe:animate-[glow_10s_ease-in-out_infinite]"
-      />
+        className="pointer-events-none absolute inset-0 overflow-hidden [mask-image:radial-gradient(ellipse_88%_82%_at_56%_38%,black,transparent)]"
+      >
+        <video
+          className="absolute inset-0 size-full object-cover motion-reduce:hidden"
+          poster="/hero/scaffold-hero.jpg"
+          autoPlay
+          muted
+          loop
+          playsInline
+          preload="metadata"
+        >
+          <source src="/hero/scaffold-hero.mp4" type="video/mp4" />
+        </video>
+        <img
+          src="/hero/scaffold-hero.jpg"
+          alt=""
+          className="absolute inset-0 hidden size-full object-cover motion-reduce:block"
+        />
+      </div>
 
       {/* 主内容：纵向堆叠，巨型标题居左 */}
       <div className="relative mx-auto flex w-full max-w-7xl flex-1 flex-col justify-center px-4 py-20 sm:px-6 lg:px-8 lg:py-0">

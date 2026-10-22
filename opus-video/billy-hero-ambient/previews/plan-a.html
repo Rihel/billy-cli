@@ -1,0 +1,185 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>plan-a signal fabric</title>
+<style>
+  @font-face { font-family: "Geist"; src: url("fonts/geist.woff2") format("woff2"); font-weight: 100 900; }
+  @font-face { font-family: "Geist Mono"; src: url("fonts/geist-mono.woff2") format("woff2"); font-weight: 100 900; }
+  @font-face { font-family: "Space Grotesk"; src: url("fonts/space-grotesk.woff2") format("woff2"); font-weight: 300 700; }
+  html, body { margin: 0; height: 100%; background: #f0f2f7; overflow: hidden; }
+  canvas { display: block; width: 100vw; height: 100vh; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<script>
+/* ========== 方案 A 预览：Signal Fabric ==========
+   浅底网格上的一张信号网：脉冲沿正交路径行进，节点被点亮后衰减。
+   左侧 40% 保持安静（首屏标题压在这里）。画面完全由 t 决定。 */
+const W = 1920, H = 1080;
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+canvas.width = W; canvas.height = H;
+
+const INK = [13, 15, 21];
+const BRAND = [96, 87, 231];
+const GRID = 56;
+
+// 固定种子伪随机
+function rnd(seed) {
+  let x = Math.sin(seed * 127.1 + 311.7) * 43758.5453123;
+  return x - Math.floor(x);
+}
+const rgba = (c, a) => `rgba(${c[0]},${c[1]},${c[2]},${a})`;
+
+// 网格节点：只取画面中部偏右的一片，左侧留白
+const NODES = [];
+const COLS = 34, ROWS = 19;
+for (let r = 0; r < ROWS; r++) {
+  for (let c = 0; c < COLS; c++) {
+    const x = c * GRID + 8, y = r * GRID + 8;
+    if (x < W * 0.34) continue;
+    NODES.push({ id: r * COLS + c, x, y, r, c });
+  }
+}
+const byId = new Map(NODES.map(n => [n.id, n]));
+
+// 正交边：每个节点连右边和下边（形成棋盘状织物）
+const EDGES = [];
+for (const n of NODES) {
+  const right = byId.get(n.id + 1);
+  const down = byId.get(n.id + COLS);
+  if (right && right.r === n.r) EDGES.push({ a: n, b: right, dir: 'h' });
+  if (down) EDGES.push({ a: n, b: down, dir: 'v' });
+}
+
+// 脉冲：一条边上一颗光点，周期 20 秒，用种子排布
+const PULSES = [];
+for (let i = 0; i < 26; i++) {
+  const e = EDGES[Math.floor(rnd(i * 3.7 + 1) * EDGES.length)];
+  PULSES.push({
+    e,
+    phase: rnd(i * 9.1 + 2),
+    period: 9 + Math.floor(rnd(i * 4.3) * 9),
+    lane: i,
+  });
+}
+
+// 大节点：偶尔被点亮并显示注释
+const ANNOTATIONS = [
+  { x: 0.52, y: 0.34, text: 'apps/server', sub: 'NestJS 12' },
+  { x: 0.72, y: 0.52, text: 'apps/admin', sub: 'Next.js 16' },
+  { x: 0.63, y: 0.72, text: 'packages/*', sub: 'ui · sdk · shared' },
+  { x: 0.86, y: 0.30, text: 'agent skills', sub: '17' },
+];
+
+window.render = function (t) {
+  ctx.clearRect(0, 0, W, H);
+
+  // 底色
+  ctx.fillStyle = '#f0f2f7';
+  ctx.fillRect(0, 0, W, H);
+
+  // 极淡网格
+  ctx.strokeStyle = rgba(INK, 0.03);
+  ctx.lineWidth = 1;
+  for (let x = 0; x <= W; x += GRID) {
+    ctx.beginPath(); ctx.moveTo(x + 0.5, 0); ctx.lineTo(x + 0.5, H); ctx.stroke();
+  }
+  for (let y = 0; y <= H; y += GRID) {
+    ctx.beginPath(); ctx.moveTo(0, y + 0.5); ctx.lineTo(W, y + 0.5); ctx.stroke();
+  }
+
+  // 织物：整体缓慢呼吸 + 向右漂移
+  const breath = 1 + 0.012 * Math.sin(t * 0.22);
+  const drift = 14 * Math.sin(t * 0.08);
+  ctx.save();
+  ctx.translate(W * 0.66 + drift, H * 0.5);
+  ctx.scale(breath, breath);
+  ctx.translate(-W * 0.66, -H * 0.5);
+
+  // 大尺度行波：一条斜向的亮带缓慢扫过整张网，让画面有「一大块」结构而不是均匀噪点
+  const waveAt = (x, y) => {
+    const u = (x * 0.62 + y * 0.78) / 1600;
+    return 0.5 + 0.5 * Math.sin(u * 3.1 - t * 0.42);
+  };
+
+  // 边
+  ctx.lineWidth = 1;
+  for (const e of EDGES) {
+    const k = 1 - Math.min(1, Math.abs(e.a.x - W * 0.66) / (W * 0.5));
+    const wv = 0.35 + 0.65 * waveAt(e.a.x, e.a.y);
+    ctx.strokeStyle = rgba(INK, (0.05 + 0.10 * k) * wv);
+    ctx.beginPath();
+    ctx.moveTo(e.a.x, e.a.y);
+    ctx.lineTo(e.b.x, e.b.y);
+    ctx.stroke();
+  }
+
+  // 节点
+  for (const n of NODES) {
+    const dist = Math.hypot(n.x - W * 0.66, n.y - H * 0.5);
+    const k = Math.max(0, 1 - dist / (W * 0.62));
+    const pulse = 0.5 + 0.5 * Math.sin(t * 0.9 + n.id * 0.37);
+    const wv = waveAt(n.x, n.y);
+    ctx.fillStyle = rgba(INK, (0.05 + 0.13 * k) * (0.3 + 0.9 * wv) + 0.05 * pulse * k);
+    ctx.beginPath();
+    ctx.arc(n.x, n.y, 1.6 + 1.4 * k * wv, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // 脉冲：沿边走，头亮尾淡
+  for (const p of PULSES) {
+    const local = ((t / p.period) + p.phase) % 1;
+    const span = 0.55; // 一颗粒子只在周期的 55% 里可见
+    if (local > span) continue;
+    const k = local / span;
+    const ease = k * k * (3 - 2 * k);
+    const x = p.e.a.x + (p.e.b.x - p.e.a.x) * ease;
+    const y = p.e.a.y + (p.e.b.y - p.e.a.y) * ease;
+    const edgeK = 1 - Math.min(1, Math.abs(p.e.a.x - W * 0.66) / (W * 0.55));
+    const alpha = (0.28 + 0.55 * edgeK) * Math.sin(Math.PI * Math.min(1, k));
+    // 尾迹
+    ctx.strokeStyle = rgba(BRAND, alpha * 0.5);
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(p.e.a.x + (p.e.b.x - p.e.a.x) * Math.max(0, ease - 0.12), p.e.a.y + (p.e.b.y - p.e.a.y) * Math.max(0, ease - 0.12));
+    ctx.lineTo(x, y);
+    ctx.stroke();
+    // 头
+    ctx.fillStyle = rgba(BRAND, Math.min(0.9, alpha * 1.35));
+    ctx.beginPath();
+    ctx.arc(x, y, 2.6, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.restore();
+
+  // 注释：极低对比，浮在右侧
+  ctx.textBaseline = 'alphabetic';
+  for (let i = 0; i < ANNOTATIONS.length; i++) {
+    const a = ANNOTATIONS[i];
+    const appear = 0.5 + 0.5 * Math.sin(t * 0.35 + i * 1.7);
+    if (appear < 0.25) continue;
+    const x = a.x * W, y = a.y * H;
+    ctx.globalAlpha = 0.16 + 0.34 * appear;
+    // 连接短线
+    ctx.strokeStyle = rgba(BRAND, 0.35);
+    ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(x - 46, y - 6); ctx.lineTo(x, y - 6); ctx.stroke();
+    ctx.beginPath(); ctx.arc(x, y - 6, 2.2, 0, Math.PI * 2); ctx.fillStyle = rgba(BRAND, 0.8); ctx.fill();
+    ctx.font = '500 15px "Geist Mono", monospace';
+    ctx.fillStyle = rgba(INK, 1);
+    ctx.fillText(a.text, x + 10, y - 2);
+    ctx.font = '400 12px "Geist Mono", monospace';
+    ctx.fillStyle = rgba(INK, 0.7);
+    ctx.fillText(a.sub, x + 10, y + 15);
+    ctx.globalAlpha = 1;
+  }
+};
+
+window.ready = false;
+document.fonts.ready.then(() => { window.render(2); window.ready = true; });
+</script>
+</body>
+</html>

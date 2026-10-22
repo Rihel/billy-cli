@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>plan-c flythrough</title>
+<style>
+  @font-face { font-family: "Geist Mono"; src: url("fonts/geist-mono.woff2") format("woff2"); font-weight: 100 900; }
+  @font-face { font-family: "Space Grotesk"; src: url("fonts/space-grotesk.woff2") format("woff2"); font-weight: 300 700; }
+  html, body { margin: 0; height: 100%; background: #f0f2f7; overflow: hidden; }
+  #stage { position: absolute; inset: 0; perspective: 1500px; perspective-origin: 62% 50%; }
+  #world { position: absolute; inset: 0; transform-style: preserve-3d; }
+  .plane {
+    position: absolute; left: 0; top: 0; white-space: nowrap;
+    font-family: "Geist Mono", monospace; color: #0d0f15;
+    transform-origin: 50% 50%;
+  }
+  .big { font-family: "Space Grotesk", "Geist Mono", sans-serif; font-weight: 500; letter-spacing: -0.02em; }
+  .brand { color: #6057e7; }
+</style>
+</head>
+<body>
+<div id="stage"><div id="world"></div></div>
+<script>
+/* ========== 方案 C 预览：一次飞越 ==========
+   镜头以恒定速度穿过一片「路径字」空间：apps/web、packages/sdk、17 skills……
+   字是这条片子的主角；两侧密、中间疏，左侧留白给首屏标题。整段一个镜头，不切。 */
+const W = 1920, H = 1080;
+const world = document.getElementById('world');
+
+const TEXT = [
+  'apps/web', 'apps/admin', 'apps/server', 'packages/ui', 'packages/sdk',
+  'packages/shared', 'packages/kits', 'http-client', 'AI agent', 'tools',
+  'monitor engine', 'SSE', 'auth', '17 skills', 'pnpm bootstrap',
+  'Next.js 16', 'NestJS 12', 'PostgreSQL', 'Redis', 'design tokens',
+  'tool registry', 'gateway plugin', 'timeline', 'watchdog',
+  'conversation', 'usage stats', 'seed service', 'migrations',
+];
+
+// 固定种子随机
+function rnd(seed) {
+  const x = Math.sin(seed * 127.1 + 311.7) * 43758.5453123;
+  return x - Math.floor(x);
+}
+
+const FIELD = 2600;   // 一个完整循环的深度
+const SPEED = 160;    // 世界单位 / 秒
+
+const PLANES = [];
+let seed = 0;
+// 右侧六列 × 七行铺字：格子保证不互相压字，深度错开造出纵深感
+const COLS = 4, ROWS = 5;
+for (let c = 0; c < COLS; c++) {
+  for (let r = 0; r < ROWS; r++) {
+    seed++;
+    const text = TEXT[(c * ROWS + r) % TEXT.length];
+    const x = 900 + c * 430 + (rnd(seed * 3.1) - 0.5) * 70;
+    const y = 130 + r * (H - 260) / (ROWS - 1) + (rnd(seed * 7.7) - 0.5) * 60;
+    const z = ((r * COLS + c) / (COLS * ROWS) * FIELD + rnd(seed * 11.3) * 300) % FIELD;
+    const size = 22 + Math.floor(rnd(seed * 13.7) * 3) * 7;   // 22 / 29 / 36
+    const isBig = rnd(seed * 17.1) > 0.9;
+    const isBrand = rnd(seed * 19.3) > 0.84;
+
+    const el = document.createElement('div');
+    el.className = 'plane' + (isBig ? ' big' : '') + (isBrand ? ' brand' : '');
+    el.textContent = text;
+    el.style.fontSize = `${isBig ? size + 22 : size}px`;
+    el.style.letterSpacing = isBig ? '-0.02em' : '0.10em';
+    el.style.opacity = '0';
+    world.appendChild(el);
+    PLANES.push({ el, x, y, z, base: isBig ? 0.34 : 0.18 });
+  }
+}
+
+window.render = function (t) {
+  const camZ = (t * SPEED) % FIELD;
+
+  for (const p of PLANES) {
+    // 相对相机的深度：始终落在 [-FIELD, 0)，0 表示正好穿过镜头
+    let dz = (((p.z - camZ) % FIELD) + FIELD) % FIELD - FIELD;
+
+    // 太靠近镜头的字会糊成一片，最后 320 单位淡出
+    const alphaNear = Math.min(1, Math.max(0, -dz / 320));
+    // 远处淡出（雾）
+    const alphaFar = Math.min(1, Math.max(0, 1 - (-dz) / (FIELD * 1.25)));
+    const alpha = p.base * (0.25 + 0.95 * alphaFar) * alphaNear;
+
+    if (alpha < 0.004) { p.el.style.display = 'none'; continue; }
+    p.el.style.display = 'block';
+    p.el.style.opacity = alpha.toFixed(3);
+    p.el.style.transform = `translate3d(${p.x}px, ${p.y}px, ${dz.toFixed(1)}px) translate(-50%, -50%)`;
+  }
+};
+
+window.ready = false;
+document.fonts.ready.then(() => { window.render(2); window.ready = true; });
+</script>
+</body>
+</html>
