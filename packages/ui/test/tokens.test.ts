@@ -125,13 +125,14 @@ describe('设计系统 token 体系（globals.css 自洽性）', () => {
       ['.dark', blockOf('.dark')],
     ] as const) {
       const raw = declaredRaw(block)
-      const literal = derived.filter((name) => !raw.get(name)?.startsWith('var('))
+      // 允许 var() 与基于 var() 的 color-mix 表达式（如品牌色淡底），只拦真正的手抄字面量
+      const literal = derived.filter((name) => !raw.get(name)?.includes('var('))
       expect(literal, `${selector} 里这些 token 抄了字面量（改主色不会联动）`).toEqual([])
     }
     // 关键目标关系（浅色）：这三条错了，换品牌色就不会全局生效
     const rootRaw = declaredRaw(rootBlock)
-    expect(rootRaw.get('sidebar-primary')).toBe('var(--primary)')
+    expect(rootRaw.get('sidebar-primary')).toBe('var(--brand)')
     expect(rootRaw.get('sidebar-ring')).toBe('var(--ring)')
-    expect(rootRaw.get('chart-1')).toBe('var(--ring)')
+    expect(rootRaw.get('chart-1')).toBe('var(--brand)')
   })
 })

@@ -101,28 +101,31 @@
 
 :root {
     /* ============ ① 原始层：真正独立的决策 ============ */
-    /* 面：内容区 / 卡片 */
-    --background: oklch(0.985 0 0);
+    /* 面：内容区 / 卡片
+       中性色一律带一丝冷色相（chroma 0.004~0.008 / hue 265），纯 0 彩度的灰在不同屏幕上
+       都显得发闷、发脏；这点彩度看不出来，但白不再惨白、灰不再像雾。 */
+    --background: oklch(0.962 0.006 265);
     --card: oklch(1 0 0);
-    /* 微色阶：同一中性色相上 1.3% 左右的明度差，用面层明度表达层级，不靠描边。
-       surface-1 最接近页面底，surface-4 最靠近内容；深色模式反向逐级提亮。 */
-    --surface-1: oklch(0.975 0 0);
-    --surface-2: oklch(0.962 0 0);
-    --surface-3: oklch(0.948 0 0);
-    --surface-4: oklch(0.932 0 0);
+    /* 微色阶：同一中性色相上 1.5%~2% 的明度差，用面层明度表达层级，不靠描边。
+       surface-1 最接近卡片面（近白），surface-4 最靠近内容；深色模式反向逐级提亮。
+       页面底（--background 0.962）比 surface-1 深，卡片自带抬升感。 */
+    --surface-1: oklch(0.988 0.004 265);
+    --surface-2: oklch(0.972 0.005 265);
+    --surface-3: oklch(0.952 0.006 265);
+    --surface-4: oklch(0.928 0.008 265);
     /* 前景主色（正文） */
-    --foreground: oklch(0.145 0 0);
+    --foreground: oklch(0.17 0.012 265);
     /* 主色（主按钮）：近黑，刻意避开 antd 蓝实心按钮指纹 */
-    --primary: oklch(0.205 0 0);
+    --primary: oklch(0.21 0.012 265);
     /* 次级面 / 静默面 / hover 激活面 */
-    --secondary: oklch(0.96 0 0);
-    --muted-foreground: oklch(0.556 0 0);
-    --accent: oklch(0.955 0 0);
+    --secondary: oklch(0.965 0.006 265);
+    --muted-foreground: oklch(0.5 0.014 265);
+    --accent: oklch(0.955 0.008 265);
     /* 描边 */
-    --border: oklch(0.922 0 0);
+    --border: oklch(0.9 0.008 265);
     /* 品牌点缀：**品牌色本身**（低密度，靛紫，非 antd 蓝）。焦点环与图表首色都由它派生，
-       落地页的强调色（图标底 / 徽标 / 渐变起点 / 发光）也走 bg-brand / text-brand */
-    --brand: oklch(0.585 0.233 277.117);
+       侧栏激活项、链接与图标底也走 bg-brand / text-brand */
+    --brand: oklch(0.55 0.21 280);
     /* 语义色：浅色取调色板 700 档，保证作文字色时达 WCAG AA */
     --destructive: oklch(0.577 0.245 27.325);
     --success: oklch(0.508 0.118 165.612);
@@ -136,31 +139,31 @@
     --card-foreground: var(--foreground);
     --popover: var(--card);
     --popover-foreground: var(--foreground);
-    --primary-foreground: var(--background);
+    --primary-foreground: var(--card);
     --secondary-foreground: var(--primary);
     --muted: var(--secondary);
-    --accent-foreground: var(--primary);
+    --accent-foreground: var(--brand);
     --input: var(--border);
     /* 焦点环跟随品牌色（换 --brand 即同时换焦点环与图表首色） */
     --ring: var(--brand);
-    --success-foreground: var(--background);
-    --warning-foreground: var(--background);
-    --info-foreground: var(--background);
+    --success-foreground: var(--card);
+    --warning-foreground: var(--card);
+    --info-foreground: var(--card);
 
-    /* 图表：首色跟随品牌点缀，末色跟随正文（改 --ring 即换整条主色） */
-    --chart-1: var(--ring);
-    --chart-2: oklch(0.707 0.165 254.624);
-    --chart-3: oklch(0.623 0.214 259.815);
-    --chart-4: oklch(0.511 0.262 276.966);
-    --chart-5: oklch(0.156 0 0);
+    /* 图表：首色跟随品牌点缀，其余取可区分的低饱和色相（靛紫 → 青 → 琥珀 → 品红 → 石板灰） */
+    --chart-1: var(--brand);
+    --chart-2: oklch(0.68 0.118 200);
+    --chart-3: oklch(0.76 0.145 72);
+    --chart-4: oklch(0.62 0.16 335);
+    --chart-5: oklch(0.55 0.02 265);
 
-    /* 侧边栏：整套由主 token 派生，不再另抄一份 */
-    --sidebar: var(--card);
+    /* 侧边栏：面比内容区略深一档；激活项用品牌色淡底 + 品牌前景，给导航一个色彩锚点 */
+    --sidebar: var(--surface-3);
     --sidebar-foreground: var(--foreground);
-    --sidebar-primary: var(--primary);
-    --sidebar-primary-foreground: var(--primary-foreground);
-    --sidebar-accent: var(--accent);
-    --sidebar-accent-foreground: var(--accent-foreground);
+    --sidebar-primary: var(--brand);
+    --sidebar-primary-foreground: var(--card);
+    --sidebar-accent: color-mix(in oklab, var(--brand) 10%, transparent);
+    --sidebar-accent-foreground: var(--brand);
     --sidebar-border: var(--border);
     --sidebar-ring: var(--ring);
 
@@ -185,21 +188,21 @@
 
 .dark {
     /* ============ ① 原始层（深色取值）============ */
-    --background: oklch(0.145 0 0);
-    --card: oklch(0.205 0 0);
-    /* 深色模式下越靠内容越亮：0.165 → 0.225 */
-    --surface-1: oklch(0.165 0 0);
-    --surface-2: oklch(0.185 0 0);
-    --surface-3: oklch(0.205 0 0);
-    --surface-4: oklch(0.225 0 0);
-    --foreground: oklch(0.985 0 0);
+    --background: oklch(0.16 0.008 265);
+    --card: oklch(0.205 0.008 265);
+    /* 深色模式下越靠内容越亮：0.175 → 0.235 */
+    --surface-1: oklch(0.175 0.008 265);
+    --surface-2: oklch(0.195 0.009 265);
+    --surface-3: oklch(0.215 0.01 265);
+    --surface-4: oklch(0.235 0.01 265);
+    --foreground: oklch(0.985 0.002 265);
     /* 主按钮：反白（Vercel 式） */
-    --primary: oklch(0.922 0 0);
-    --secondary: oklch(0.269 0 0);
-    --muted-foreground: oklch(0.708 0 0);
+    --primary: oklch(0.922 0.004 265);
+    --secondary: oklch(0.269 0.01 265);
+    --muted-foreground: oklch(0.708 0.012 265);
     --accent: var(--secondary);
     --border: oklch(1 0 0 / 10%);
-    --brand: oklch(0.673 0.182 276.935);
+    --brand: oklch(0.673 0.182 277);
     /* 语义色：深色取调色板 400 档（亮色文字配深底） */
     --destructive: oklch(0.704 0.191 22.216);
     --success: oklch(0.765 0.177 163.223);
@@ -222,18 +225,18 @@
     --warning-foreground: var(--background);
     --info-foreground: var(--background);
 
-    --chart-1: var(--ring);
-    --chart-2: oklch(0.707 0.165 254.624);
-    --chart-3: oklch(0.623 0.214 259.815);
-    --chart-4: var(--info);
-    --chart-5: var(--foreground);
+    --chart-1: var(--brand);
+    --chart-2: oklch(0.78 0.11 200);
+    --chart-3: oklch(0.83 0.13 78);
+    --chart-4: oklch(0.74 0.14 335);
+    --chart-5: oklch(0.72 0.02 265);
 
-    --sidebar: var(--card);
+    --sidebar: var(--surface-3);
     --sidebar-foreground: var(--foreground);
-    --sidebar-primary: var(--primary);
-    --sidebar-primary-foreground: var(--primary-foreground);
-    --sidebar-accent: var(--accent);
-    --sidebar-accent-foreground: var(--accent-foreground);
+    --sidebar-primary: var(--brand);
+    --sidebar-primary-foreground: var(--background);
+    --sidebar-accent: color-mix(in oklab, var(--brand) 18%, transparent);
+    --sidebar-accent-foreground: color-mix(in oklab, var(--brand) 55%, white);
     --sidebar-border: var(--border);
     --sidebar-ring: var(--ring);
 
