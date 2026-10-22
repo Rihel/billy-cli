@@ -69,12 +69,12 @@ export function SessionsPanel() {
             return (
               <div
                 key={session.sessionId}
-                className="flex items-center justify-between gap-4 rounded-lg px-2 py-3 even:bg-surface-2"
+                className="flex items-center justify-between gap-4 rounded-lg px-2 py-3 transition-colors hover:bg-surface-2"
               >
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="text-sm">{agent.device} · {agent.browser}</span>
-                    {session.current ? <Tag color="blue">本机</Tag> : null}
+                    {session.current ? <Tag color="processing">本机</Tag> : null}
                   </div>
                   <div className="mt-0.5 font-mono text-xs text-muted-foreground">
                     {agent.os} · {session.ip ?? 'IP 未知'} · 登录于{' '}

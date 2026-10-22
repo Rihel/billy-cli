@@ -92,14 +92,14 @@ export function ModelPicker({
    */
   if (isError) {
     return (
-      <button
-        type="button"
+      <Button
+        variant="destructive"
+        size="xs"
         onClick={() => void refetch()}
-        className="rounded-md bg-destructive/10 px-2 py-1 text-xs text-destructive"
         title={error instanceof Error ? error.message : String(error)}
       >
         模型清单加载失败，点击重试
-      </button>
+      </Button>
     )
   }
   if (isFetching && models.length === 0) {

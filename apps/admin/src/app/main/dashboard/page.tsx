@@ -4,7 +4,7 @@ import { useState, type ReactNode } from 'react'
 import Link from 'next/link'
 import { useServerClient } from '@/lib/server-client'
 import { useQuery } from '@tanstack/react-query'
-import { cn, PageToolbar } from '@repo/ui'
+import { Button, cn, PageToolbar } from '@repo/ui'
 import type { AgentUsageBucketModel } from '@repo/shared'
 import {
   BellRingIcon,
@@ -342,19 +342,18 @@ export default function DashboardPage() {
           <div className="flex items-center gap-3">
             <div className="inline-flex rounded-md bg-surface-2 p-0.5">
               {([7, 30] as const).map((days) => (
-                <button
+                <Button
                   key={days}
-                  type="button"
+                  size="xs"
+                  variant={usageDays === days ? 'default' : 'ghost'}
                   className={cn(
-                    'rounded px-2.5 py-1 text-xs transition-colors',
-                    usageDays === days
-                      ? 'bg-primary text-primary-foreground'
-                      : 'text-muted-foreground hover:text-foreground',
+                    'rounded px-2.5',
+                    usageDays !== days && 'text-muted-foreground',
                   )}
                   onClick={() => setUsageDays(days)}
                 >
                   {days} 天
-                </button>
+                </Button>
               ))}
             </div>
             <Link

@@ -18,6 +18,7 @@ import {
   AlertDescription,
   Badge,
   Button,
+  DictSelect,
   IconText,
   PromptInputAttachmentsBar,
   toastError,
@@ -48,7 +49,7 @@ import {
   PromptInputTextarea,
   PromptInputTools,
 } from '@repo/ui/components/ai-elements/prompt-input.tsx'
-import { CopyIcon, LayoutDashboardIcon, PanelRightIcon } from 'lucide-react'
+import { BotIcon, CopyIcon, LayoutDashboardIcon, PanelRightIcon } from 'lucide-react'
 import { Pages } from '@/lib/constants'
 import { useServerClient } from '@/lib/server-client'
 import { ModelPicker } from './model-picker'
@@ -708,21 +709,15 @@ export function ChatConversation({ conversationId }: { conversationId: string })
             />
           ) : null}
           {agents.length > 1 && (
-            <select
-              className="h-8 rounded-md bg-surface-2 px-2 text-sm"
-              value={agentKey ?? agentsQuery.data?.defaultAgentKey ?? ''}
-              onChange={(event) => {
-                // 改选只对"接下来这一轮"生效（服务端每轮从入参取 agentKey）
-                setAgentKeyOverride(event.target.value)
-              }}
+            <DictSelect
+              size="sm"
+              triggerClassName="h-8 w-40"
+              options={agents.map((agent) => ({ label: agent.name, value: agent.key }))}
+              value={agentKey ?? agentsQuery.data?.defaultAgentKey ?? null}
+              // 改选只对"接下来这一轮"生效（服务端每轮从入参取 agentKey）
+              onValueChange={(next) => setAgentKeyOverride(next)}
               disabled={streaming}
-            >
-              {agents.map((agent) => (
-                <option key={agent.key} value={agent.key}>
-                  {agent.name}
-                </option>
-              ))}
-            </select>
+            />
           )}
           <Button
             variant={panelOpen ? 'secondary' : 'outline'}
@@ -755,10 +750,19 @@ export function ChatConversation({ conversationId }: { conversationId: string })
                 {loading ? (
                   <p className="p-3 text-xs text-muted-foreground">正在加载会话历史…</p>
                 ) : messages.length === 0 ? (
-                  <ConversationEmptyState
-                    title={isNew ? '问点什么' : '这个会话还没有内容'}
-                    description="试着问「最近有哪些待办」，或让它「分步整理一份待办周报」——它会自己规划、必要时造一个子助手"
-                  />
+                  <ConversationEmptyState className="gap-4">
+                    <span className="grid size-11 place-items-center rounded-xl bg-surface-2 text-muted-foreground">
+                      <BotIcon className="size-5" />
+                    </span>
+                    <div className="space-y-1.5">
+                      <h3 className="font-heading text-base font-medium tracking-tight">
+                        {isNew ? '问点什么' : '这个会话还没有内容'}
+                      </h3>
+                      <p className="max-w-md text-xs leading-relaxed text-muted-foreground">
+                        试着问「最近有哪些待办」，或让它「分步整理一份待办周报」——它会自己规划、必要时造一个子助手
+                      </p>
+                    </div>
+                  </ConversationEmptyState>
                 ) : (
                   messages.map((message) => (
                     <MessageRow

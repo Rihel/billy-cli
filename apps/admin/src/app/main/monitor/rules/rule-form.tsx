@@ -12,9 +12,11 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
+  DictSelect,
   Input,
   Switch,
   Tag,
+  Label,
 } from '@repo/ui'
 
 type RuleFormModalProps = {
@@ -158,7 +160,7 @@ function FieldControl({
             const optionValue = String(option.value)
             const checked = selected.includes(optionValue)
             return (
-              <label key={optionValue} className="flex items-center gap-2 text-sm">
+              <Label key={optionValue} className="gap-2 text-sm font-normal">
                 <Checkbox
                   checked={checked}
                   onCheckedChange={(next) =>
@@ -170,7 +172,7 @@ function FieldControl({
                   }
                 />
                 {option.label}
-              </label>
+              </Label>
             )
           })}
         </div>
@@ -179,7 +181,7 @@ function FieldControl({
   }
 
   return (
-    <label className="flex flex-col gap-2">
+    <Label className="flex-col items-stretch gap-2">
       <span className="text-sm font-medium">{field.label}</span>
       {field.type === 'number' ? (
         <Input
@@ -191,21 +193,17 @@ function FieldControl({
           onChange={(event) => onChange(Number(event.target.value))}
         />
       ) : field.type === 'select' ? (
-        <select
-          className="h-9 rounded-md bg-surface-2 px-3 text-sm"
+        <DictSelect
+          options={(field.options ?? []).map((option) => ({
+            label: option.label,
+            value: String(option.value),
+          }))}
           value={String(value ?? '')}
-          onChange={(event) => {
-            const next = event.target.value
+          onValueChange={(next) => {
             const option = field.options?.find((item) => String(item.value) === next)
             onChange(option?.value ?? next)
           }}
-        >
-          {(field.options ?? []).map((option) => (
-            <option key={String(option.value)} value={String(option.value)}>
-              {option.label}
-            </option>
-          ))}
-        </select>
+        />
       ) : field.type === 'switch' ? (
         <Switch checked={value === true} onCheckedChange={onChange} />
       ) : (
@@ -214,6 +212,6 @@ function FieldControl({
       {field.description ? (
         <span className="text-xs text-muted-foreground">{field.description}</span>
       ) : null}
-    </label>
+    </Label>
   )
 }

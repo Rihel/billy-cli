@@ -7,7 +7,6 @@ import {
   Button,
   ConfirmAction,
   DictTag,
-  EmptyValue,
   IconText,
   Switch,
   TableActions,
@@ -63,41 +62,28 @@ const CategoryCell = ({ tool }: { tool: AiToolModel }) => {
   return <DictTag dict={ToolCategory} value={tool.category} emptyText={tool.category} />
 }
 
-/** 限额摘要：三行紧凑展示（没配的显示"不限 / 用默认"） */
+/**
+ * 限额摘要：**只显示被覆盖的项**。
+ * 全部走默认时给一个「默认」，避免每行都铺三行「不限 / 不限 / 用默认」——
+ * 那是字段说明书，不是这一行的信息。
+ */
 const LimitsCell = ({ tool }: { tool: AiToolModel }) => {
   const limits = tool.limits ?? {}
-  // 单页字节以工具声明里的值为准，限额只是覆盖它
-  const pageBytes = limits.pageBytes ?? tool.pageBytes
+  const parts: string[] = []
+  if (limits.maxPerTurn != null) parts.push(`每轮 ${limits.maxPerTurn}`)
+  if (limits.rateLimit?.max != null) {
+    parts.push(`限流 ${limits.rateLimit.max}/${limits.rateLimit.windowSeconds}s`)
+  }
+  if (limits.pageBytes != null) parts.push(`单页 ${limits.pageBytes.toLocaleString()}B`)
+
+  if (parts.length === 0) {
+    return <span className="text-xs text-muted-foreground">默认</span>
+  }
   return (
     <div className="flex flex-col gap-0.5 text-xs">
-      <span>
-        每轮：
-        <EmptyValue
-          value={limits.maxPerTurn}
-          emptyText={<span className="text-muted-foreground">不限</span>}
-        >
-          {limits.maxPerTurn}
-        </EmptyValue>
-      </span>
-      <span>
-        限流：
-        <EmptyValue
-          value={limits.rateLimit?.max}
-          emptyText={<span className="text-muted-foreground">不限</span>}
-        >
-          {`${limits.rateLimit?.max} / ${limits.rateLimit?.windowSeconds}s`}
-        </EmptyValue>
-      </span>
-      <span>
-        单页：
-        <EmptyValue
-          value={pageBytes}
-          emptyText={<span className="text-muted-foreground">用默认</span>}
-        >
-          {pageBytes?.toLocaleString()}
-        </EmptyValue>
-        {pageBytes ? ' 字节' : ''}
-      </span>
+      {parts.map((part) => (
+        <span key={part}>{part}</span>
+      ))}
     </div>
   )
 }
@@ -173,7 +159,7 @@ export const buildToolColumns = (
   {
     header: '操作',
     id: 'actions',
-    meta: { width: 250 },
+    meta: { width: 150 },
     cell: ({ row }) => (
       <TableActions>
         <IconText
@@ -198,13 +184,6 @@ export const buildToolColumns = (
         >
           恢复默认
         </ConfirmAction>
-        <IconText
-          icon={<CopyIcon />}
-          size="small"
-          onClick={() => void copyToolKey(row.original.toolKey)}
-        >
-          复制 key
-        </IconText>
       </TableActions>
     ),
   },

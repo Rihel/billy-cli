@@ -4,7 +4,7 @@ import { AI_MODALITIES, AiModality, AiModelMode } from '@repo/shared'
 import { useServerClient } from '@/lib/server-client'
 import { useForm } from '@tanstack/react-form'
 import { useMutation, useQuery } from '@tanstack/react-query'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
   Alert,
   AlertDescription,
@@ -28,6 +28,7 @@ import {
   toastError,
   toastSuccess,
   useDisclosure,
+  Label,
 } from '@repo/ui'
 import type { DataTableColumnDef, FormFieldContext, FormItem } from '@repo/ui'
 import { AiModelSource, AiProviderKind } from '@repo/shared'
@@ -167,7 +168,7 @@ function ModalityPicker({
     <div className="flex flex-col gap-1">
       <div className="flex flex-wrap items-center gap-3">
         {AI_MODALITIES.map((modality) => (
-          <label key={modality} className="flex items-center gap-1.5 text-sm">
+          <Label key={modality} className="gap-1.5 text-sm font-normal">
             <Checkbox
               checked={selected.includes(modality)}
               disabled={disabled}
@@ -180,7 +181,7 @@ function ModalityPicker({
               }}
             />
             <DictTag dict={AiModality} value={modality} />
-          </label>
+          </Label>
         ))}
       </div>
       <div className="flex items-center gap-2">
@@ -271,6 +272,17 @@ export default function AiModelsPage() {
         size: modelPageSize,
       }),
   })
+
+  // 首次拿到供应商列表时默认选中第一个：不选就没有「模型明细」，进来看到空表会以为坏了
+  const autoSelectedRef = useRef(false)
+  useEffect(() => {
+    if (autoSelectedRef.current || selectedProvider) return
+    const first = providersQuery.data?.items[0]
+    if (first) {
+      autoSelectedRef.current = true
+      setSelectedProvider(first)
+    }
+  }, [providersQuery.data, selectedProvider])
 
   const refetchProviders = providersQuery.refetch
   const refetchModels = modelsQuery.refetch
@@ -584,7 +596,7 @@ export default function AiModelsPage() {
           render: ({ values, field }: FormFieldContext<ProviderForm>) => {
             const checked = values.clearApiKey === true
             return (
-              <label className="flex items-start gap-2 text-sm">
+              <Label className="items-start gap-2 text-sm font-normal">
                 <Checkbox
                   checked={checked}
                   onCheckedChange={(next) => field.handleChange(next === true)}
@@ -597,7 +609,7 @@ export default function AiModelsPage() {
                       : '勾选后保存将删除已存密钥；不勾选且上方留空 = 不修改'}
                   </span>
                 </span>
-              </label>
+              </Label>
             )
           },
         },
@@ -818,28 +830,21 @@ export default function AiModelsPage() {
     {
       header: '最后同步',
       accessorKey: 'lastSyncedAt',
-      meta: { width: 170 },
-      cell: ({ getValue }) => (
-        <DisplayValue
-          type="date"
-          value={getValue()}
-          emptyText={<span className="text-muted-foreground">从未同步</span>}
-        />
-      ),
-    },
-    {
-      header: '同步失败原因',
-      accessorKey: 'lastSyncError',
-      meta: { width: 200 },
-      cell: ({ row }) => (
-        <EmptyValue
-          value={row.original.lastSyncError}
-          emptyText={<span className="text-muted-foreground">-</span>}
-        >
-          <EllipsisText className="max-w-[180px] text-destructive">
-            {row.original.lastSyncError}
-          </EllipsisText>
-        </EmptyValue>
+      meta: { width: 190 },
+      cell: ({ getValue, row }) => (
+        <div className="flex flex-col gap-0.5">
+          <DisplayValue
+            type="date"
+            value={getValue()}
+            className="text-xs text-muted-foreground"
+            emptyText={<span className="text-muted-foreground">从未同步</span>}
+          />
+          {row.original.lastSyncError ? (
+            <EllipsisText className="max-w-[170px] text-[11px] text-destructive" tooltip>
+              {row.original.lastSyncError}
+            </EllipsisText>
+          ) : null}
+        </div>
       ),
     },
     {
@@ -890,7 +895,7 @@ export default function AiModelsPage() {
               )
             }
           >
-            同步模型
+            同步
           </IconText>
           <ConfirmAction
             title={`确认删除供应商「${row.original.name}」？`}
@@ -990,10 +995,8 @@ export default function AiModelsPage() {
           return <span className="text-xs text-warning">仅文本（明确声明）</span>
         }
         return (
-          <span className="flex flex-wrap items-center gap-1">
-            {modalities.map((modality) => (
-              <DictTag key={modality} dict={AiModality} value={modality} />
-            ))}
+          <span className="text-xs">
+            {modalities.map((modality) => AiModality.getLabel(modality) ?? modality).join(' · ')}
           </span>
         )
       },

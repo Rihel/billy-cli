@@ -17,6 +17,7 @@ import {
   SheetTitle,
   Switch,
   cn,
+  Label,
 } from '@repo/ui'
 import type { DataTableColumnDef } from '@repo/ui'
 import {
@@ -222,10 +223,10 @@ export default function AiAuditPage() {
         onPageChange={(next) => setPage(next)}
         toolbar={
           <div className="flex items-center gap-4">
-            <label className="flex items-center gap-2 text-sm text-muted-foreground">
+            <Label className="gap-2 text-sm font-normal text-muted-foreground">
               <Switch checked={includeDeleted} onCheckedChange={setIncludeDeleted} />
               含已删除会话
-            </label>
+            </Label>
             <RefreshButton onClick={() => void conversationsQuery.refetch()} />
           </div>
         }
@@ -269,11 +270,11 @@ export default function AiAuditPage() {
 
               <div className="flex flex-col gap-1">
                 {runs.map((run) => (
-                  <button
+                  <Button
                     key={run.id}
-                    type="button"
+                    variant="ghost"
                     className={cn(
-                      'flex flex-col gap-1 rounded-md bg-surface-1 px-3 py-2 text-left transition-colors hover:bg-surface-2',
+                      'flex h-auto w-full flex-col items-stretch justify-start gap-1 rounded-md bg-surface-1 px-3 py-2 text-left font-normal whitespace-normal',
                       runId === run.id && 'bg-surface-3',
                     )}
                     onClick={() => setRunId(runId === run.id ? undefined : run.id)}
@@ -307,7 +308,7 @@ export default function AiAuditPage() {
                         <DisplayValue type="date" value={run.startedAt} />
                       </span>
                     </span>
-                  </button>
+                  </Button>
                 ))}
                 {!runsQuery.isLoading && runs.length === 0 ? (
                   <span className="text-sm text-muted-foreground">这个会话还没有运行记录</span>
@@ -359,10 +360,10 @@ export default function AiAuditPage() {
                     </span>
                     <div className="flex flex-col gap-1 text-xs text-muted-foreground">
                       {runDetailQuery.data.children.map((child) => (
-                        <button
+                        <Button
                           key={child.id}
-                          type="button"
-                          className="flex items-center justify-between rounded-md bg-surface-1 px-3 py-2 text-left hover:bg-surface-2"
+                          variant="ghost"
+                          className="flex h-auto w-full items-center justify-between rounded-md bg-surface-1 px-3 py-2 text-left font-normal whitespace-normal"
                           onClick={() => setRunId(child.id)}
                         >
                           <span className="font-mono">{child.agentKey}</span>
@@ -370,7 +371,7 @@ export default function AiAuditPage() {
                             {child.stepCount} 步 / {child.toolCallCount} 次工具 ·{' '}
                             {formatDuration(child.durationMs)} · {tokenSummary(child.usage)}
                           </span>
-                        </button>
+                        </Button>
                       ))}
                     </div>
                   </div>

@@ -7,6 +7,7 @@ import {
   CardContent,
   CardHeader,
   CardTitle,
+  DictSelect,
   DisplayValue,
   PageToolbar,
   RefreshButton,
@@ -107,17 +108,17 @@ export default function MonitorMetricsPage() {
         description="选中一个指标，看它最近的走势、当前值和区间分布。"
         extra={
           <>
-            <select
-              className="h-9 w-72 rounded-md bg-surface-2 px-3 text-sm"
-              value={metricKey ?? ''}
-              onChange={(event) => setMetricKey(event.target.value)}
-            >
-              {definitions.map((item) => (
-                <option key={item.key} value={item.key}>
-                  {item.title}（{item.key}）
-                </option>
-              ))}
-            </select>
+            <DictSelect
+              className="w-72"
+              triggerClassName="w-72"
+              placeholder="选择指标"
+              options={definitions.map((item) => ({
+                label: `${item.title}（${item.key}）`,
+                value: item.key,
+              }))}
+              value={metricKey ?? null}
+              onValueChange={(next) => setMetricKey(next ?? undefined)}
+            />
             <RefreshButton
               loading={seriesQuery.isFetching || definitionsQuery.isFetching}
               onClick={() => {

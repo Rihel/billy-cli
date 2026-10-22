@@ -115,7 +115,7 @@ function SessionCard({
             <span className="text-sm font-medium">
               {agent.device} · {agent.browser}
             </span>
-            {session.current ? <Tag color="blue">本机</Tag> : null}
+            {session.current ? <Tag color="processing">本机</Tag> : null}
           </div>
           <div className="mt-1 text-xs text-muted-foreground">
             {agent.os} · {session.ip ?? 'IP 未知'}

@@ -27,6 +27,7 @@ import {
   toastError,
   toastWarning,
   cn,
+  Label,
 } from '@repo/ui'
 import {
   ChevronDownIcon,
@@ -422,7 +423,7 @@ export function ToolFormModal({
                           })
                         }
                       />
-                      <label className="flex items-center gap-2 text-xs text-muted-foreground">
+                      <Label className="gap-2 text-xs font-normal text-muted-foreground">
                         <Checkbox
                           checked={cleared}
                           disabled={!field.hint}
@@ -434,7 +435,7 @@ export function ToolFormModal({
                           }
                         />
                         清空已配置的秘钥（提交空串；输入框禁用期间填的内容不会提交）
-                      </label>
+                      </Label>
                     </div>
                   )
                 })}

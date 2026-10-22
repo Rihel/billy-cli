@@ -16,6 +16,7 @@ import {
   Switch,
   toastSuccess,
   useDisclosure,
+  Label,
 } from '@repo/ui'
 import { BanIcon, HistoryIcon, InfoIcon, SearchIcon } from 'lucide-react'
 import { useServerClient } from '@/lib/server-client'
@@ -105,37 +106,9 @@ export default function AiToolsPage() {
 
   return (
     <div className="flex h-full w-full flex-col gap-4 overflow-auto p-4 sm:p-8">
-      <div className="flex flex-col gap-2">
-        <Alert>
-          <InfoIcon />
-          <AlertTitle>改完不需要重启</AlertTitle>
-          <AlertDescription>
-            配置保存后下一次工具调用就生效，不用重启服务；已经在跑的那一轮不受影响。
-          </AlertDescription>
-        </Alert>
-        <Alert>
-          <BanIcon />
-          <AlertTitle>工具面是装配期快照</AlertTitle>
-          <AlertDescription>
-            关掉一个工具后，模型的提示词里仍然列着它 —— 快照在装配期就算好了。
-            区别是调用会被拒（结论落在时间线上），不是"模型看不见它"。
-          </AlertDescription>
-        </Alert>
-        <Alert>
-          <HistoryIcon />
-          <AlertTitle>runtime 类别不受开关与限额控制</AlertTitle>
-          <AlertDescription>
-            {dedent`
-              runtime 类别是 Mastra 自带的技能工具（skill / skill_search / skill_read）：
-              它们包装配期就挂上了，网关拦不到，所以开关与限额对它们无效，后台只能查看。
-            `}
-          </AlertDescription>
-        </Alert>
-      </div>
-
       <DataTable<AiToolModel>
         title="AI 工具配置"
-        description="工具的开关 / 作用域 / 限额 / 专属配置都在这里改；工具清单与模型手上看到的那份对得上账"
+        description="开关、作用域、限额与专属配置；这份清单与模型看到的工具面一致"
         toolbar={
           <>
             <RefreshButton
@@ -183,7 +156,7 @@ export default function AiToolsPage() {
                 setPage(1)
               }}
             />
-            <label className="flex items-center gap-2 text-xs text-muted-foreground">
+            <Label className="gap-2 text-xs font-normal text-muted-foreground">
               <Switch
                 checked={onlyEnabled}
                 aria-label="只看已启用"
@@ -193,7 +166,7 @@ export default function AiToolsPage() {
                 }}
               />
               只看已启用
-            </label>
+            </Label>
           </>
         }
         rowKey="toolKey"
@@ -218,6 +191,41 @@ export default function AiToolsPage() {
         onReset={handleReset}
         onClose={editDialog.close}
       />
+
+      {/* 辅助：口径说明默认折叠 —— 它是参考材料，不该占主内容的位置 */}
+      <details className="shrink-0 rounded-xl bg-surface-1 px-4 py-3">
+        <summary className="cursor-pointer text-xs font-medium text-muted-foreground">
+          配置口径说明（3 条）
+        </summary>
+        <div className="mt-3 flex flex-col gap-2">
+                    <Alert>
+            <InfoIcon />
+            <AlertTitle>改完不需要重启</AlertTitle>
+            <AlertDescription>
+              配置保存后下一次工具调用就生效，不用重启服务；已经在跑的那一轮不受影响。
+            </AlertDescription>
+          </Alert>
+          <Alert>
+            <BanIcon />
+            <AlertTitle>工具面是装配期快照</AlertTitle>
+            <AlertDescription>
+              关掉一个工具后，模型的提示词里仍然列着它 —— 快照在装配期就算好了。
+              区别是调用会被拒（结论落在时间线上），不是"模型看不见它"。
+            </AlertDescription>
+          </Alert>
+          <Alert>
+            <HistoryIcon />
+            <AlertTitle>runtime 类别不受开关与限额控制</AlertTitle>
+            <AlertDescription>
+              {dedent`
+                runtime 类别是 Mastra 自带的技能工具（skill / skill_search / skill_read）：
+                它们包装配期就挂上了，网关拦不到，所以开关与限额对它们无效，后台只能查看。
+              `}
+            </AlertDescription>
+          </Alert>
+      
+        </div>
+      </details>
     </div>
   )
 }
