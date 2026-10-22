@@ -3,35 +3,22 @@
 import { usePathname } from 'next/navigation'
 import { cn, SidebarTrigger } from '@repo/ui'
 import { ComponentProps } from 'react'
+import { menuTitleOf } from './AppMenu'
 import { ThemeToggle } from './ThemeToggle'
 
-/** 路由 → 页面标题（与 AppMenu 菜单项一致） */
-const PAGE_TITLES: Record<string, string> = {
-  '/main/dashboard': '控制台',
-  '/main/monitor/rules': '告警规则',
-  '/main/monitor/logs': '告警记录',
-  '/main/system/users': '用户管理',
-  '/main/system/admins': '管理员管理',
+/** 菜单之外的独立页面（个人中心在侧栏底部入口里） */
+const EXTRA_TITLES: Record<string, string> = {
   '/main/user-center': '个人中心',
 }
 
 /**
- * 取当前页标题：**先精确匹配，再逐段回退**。
+ * 取当前页标题：标题来源是**侧栏菜单本身**（`menuTitleOf`），菜单之外的页面查 `EXTRA_TITLES`。
  *
- * 回退是为了详情页（`/main/xxx/<id>` / `/main/tools/<id>/edit`）—— 它们没有独立标题，
- * 但页头空着会让人不知道自己在哪一层；回退到最近的一个已知父级即可。
+ * 详情页（`/main/xxx/<id>` / `/main/tools/<id>/edit`）没有独立标题，按路径逐段回退到最近父级，
+ * 免得页头空着、让人不知道自己在哪一层。
  */
-const titleOf = (pathname: string): string => {
-  const exact = PAGE_TITLES[pathname]
-  if (exact) return exact
-  const segments = pathname.split('/').filter(Boolean)
-  while (segments.length > 1) {
-    segments.pop()
-    const found = PAGE_TITLES[`/${segments.join('/')}`]
-    if (found) return found
-  }
-  return ''
-}
+const titleOf = (pathname: string): string =>
+  EXTRA_TITLES[pathname] ?? menuTitleOf(pathname)
 
 export type AppHeaderProps = Partial<{} & ComponentProps<'div'>>
 

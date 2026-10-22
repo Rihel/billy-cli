@@ -81,7 +81,7 @@ export default function MonitorRulesPage() {
       cell: ({ row }) => (
         <div className="flex flex-col gap-0.5">
           <span className="font-medium">{row.original.name}</span>
-          <span className="font-mono text-xs text-muted-foreground">{row.original.ruleKey}</span>
+          <span className="font-mono text-[11px] text-muted-foreground">{row.original.ruleKey}</span>
         </div>
       ),
     },
@@ -89,11 +89,9 @@ export default function MonitorRulesPage() {
       header: '分类 / 指标',
       accessorKey: 'metricKey',
       cell: ({ row }) => (
-        <div className="flex flex-col gap-0.5">
+        <div className="flex flex-col gap-0.5 text-xs text-muted-foreground">
           <span>{row.original.category === 'system' ? '系统' : '业务'}</span>
-          <span className="font-mono text-xs text-muted-foreground">
-            {row.original.metricKey ?? '事件规则'}
-          </span>
+          <span className="font-mono">{row.original.metricKey ?? '事件规则'}</span>
         </div>
       ),
     },
@@ -111,7 +109,7 @@ export default function MonitorRulesPage() {
       accessorKey: 'config',
       meta: { width: 120 },
       cell: ({ row }) => (
-        <span className="font-mono text-xs">
+        <span className="font-mono text-xs tabular-nums text-foreground/80">
           {operatorLabel(row.original.config.operator)} {row.original.config.threshold}
         </span>
       ),
@@ -121,7 +119,7 @@ export default function MonitorRulesPage() {
       accessorKey: 'evaluationIntervalSeconds',
       meta: { width: 120 },
       cell: ({ row }) => (
-        <span className="text-xs">
+        <span className="text-xs tabular-nums text-muted-foreground">
           {row.original.evaluationIntervalSeconds}s / {row.original.windowSeconds}s
         </span>
       ),
@@ -131,7 +129,12 @@ export default function MonitorRulesPage() {
       accessorKey: 'lastFiredAt',
       meta: { width: 170 },
       cell: ({ getValue }) => (
-        <DisplayValue type="date" value={getValue() as string | null | undefined} emptyText="从未" />
+        <DisplayValue
+          type="date"
+          value={getValue() as string | null | undefined}
+          emptyText="从未"
+          className="text-xs text-muted-foreground"
+        />
       ),
     },
     {

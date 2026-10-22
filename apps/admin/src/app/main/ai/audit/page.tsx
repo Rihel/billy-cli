@@ -163,17 +163,31 @@ export default function AiAuditPage() {
       header: '轮数',
       accessorKey: 'turnCount',
       meta: { width: 80 },
+      cell: ({ getValue }) => (
+        <span className="text-xs tabular-nums text-muted-foreground">{String(getValue())}</span>
+      ),
     },
     {
       header: '累计 token',
       accessorKey: 'totalTokens',
       meta: { width: 120 },
+      cell: ({ getValue }) => (
+        <span className="font-mono text-xs tabular-nums text-muted-foreground">
+          {String(getValue() ?? '-')}
+        </span>
+      ),
     },
     {
       header: '最后活动',
       accessorKey: 'lastActiveAt',
       meta: { width: 180 },
-      cell: ({ row }) => <DisplayValue type="date" value={row.original.lastActiveAt} />,
+      cell: ({ row }) => (
+        <DisplayValue
+          type="date"
+          value={row.original.lastActiveAt}
+          className="text-xs text-muted-foreground"
+        />
+      ),
     },
     {
       header: '操作',
@@ -194,7 +208,7 @@ export default function AiAuditPage() {
   ]
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex h-full w-full flex-col gap-4 overflow-auto p-4 sm:p-8">
       <DataTable<AgentConversationModel>
         title="AI 会话审计"
         description="按会话 → 运行 → 时间线三层复盘；点「查看运行」在右侧抽屉查看，运行与时间线只读（审计证据，不提供删除）"

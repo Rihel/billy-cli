@@ -10,6 +10,7 @@ import {
   DisplayValue,
   RefreshButton,
   Tag,
+  cn,
 } from '@repo/ui'
 import { useServerClient } from '@/lib/server-client'
 
@@ -107,19 +108,23 @@ export default function MonitorMetricsPage() {
           </p>
         ) : (
           <div className="overflow-hidden rounded-lg bg-surface-1">
-            {[...points].reverse().map((point) => (
+            {[...points].reverse().map((point, index) => (
               <div
                 key={`${point.windowKey}-${point.instanceId}-${point.dimensionType}-${point.dimensionKey}`}
-                className="grid grid-cols-[170px_1fr_90px] items-center gap-3 px-3 py-2 text-xs even:bg-surface-2"
+                className={cn(
+                  'grid grid-cols-[170px_1fr_90px] items-center gap-3 px-3 py-2 text-xs',
+                  // 最新一个窗口是主信息，其余窗口降为背景
+                  index === 0 ? 'bg-surface-2 font-medium' : 'text-muted-foreground',
+                )}
               >
                 <DisplayValue type="date" value={point.windowEnd} />
                 <div className="h-2 overflow-hidden rounded bg-muted">
                   <div
-                    className="h-full rounded bg-primary"
+                    className="h-full rounded bg-brand/70"
                     style={{ width: `${Math.max((point.value / max) * 100, 2)}%` }}
                   />
                 </div>
-                <span className="text-right font-mono">{formatValue(point.value)}</span>
+                <span className="text-right font-mono tabular-nums">{formatValue(point.value)}</span>
               </div>
             ))}
           </div>

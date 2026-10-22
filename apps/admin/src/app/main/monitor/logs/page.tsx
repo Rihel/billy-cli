@@ -53,7 +53,9 @@ export default function MonitorAlertsPage() {
       header: '首次告警',
       accessorKey: 'firstFiredAt',
       meta: { width: 170 },
-      cell: ({ getValue }) => <DisplayValue type="date" value={getValue()} />,
+      cell: ({ getValue }) => (
+        <DisplayValue type="date" value={getValue()} className="text-xs text-muted-foreground" />
+      ),
     },
     {
       header: '级别',
@@ -80,33 +82,48 @@ export default function MonitorAlertsPage() {
       accessorKey: 'ruleName',
       cell: ({ row }) => (
         <div className="flex flex-col gap-0.5">
-          <span>{row.original.ruleName}</span>
-          <span className="font-mono text-xs text-muted-foreground">{row.original.ruleKey}</span>
+          <span className="font-medium">{row.original.ruleName}</span>
+          <span className="font-mono text-[11px] text-muted-foreground">{row.original.ruleKey}</span>
         </div>
       ),
     },
     {
       header: '主体',
       accessorKey: 'subjectId',
-      cell: ({ getValue }) => <span className="font-mono text-xs">{String(getValue())}</span>,
+      cell: ({ getValue }) => (
+        <span className="font-mono text-[11px] text-muted-foreground">{String(getValue())}</span>
+      ),
     },
     {
       header: '持续',
       accessorKey: 'durationMs',
       meta: { width: 110 },
-      cell: ({ getValue }) => formatDuration(getValue() as number | null | undefined),
+      cell: ({ getValue }) => (
+        <span className="text-xs tabular-nums text-foreground/80">
+          {formatDuration(getValue() as number | null | undefined)}
+        </span>
+      ),
     },
     {
       header: '最近命中',
       accessorKey: 'lastFiredAt',
       meta: { width: 170 },
-      cell: ({ getValue }) => <DisplayValue type="date" value={getValue()} />,
+      cell: ({ getValue }) => (
+        <DisplayValue type="date" value={getValue()} className="text-xs text-muted-foreground" />
+      ),
     },
     {
       header: '恢复时间',
       accessorKey: 'recoveredAt',
       meta: { width: 170 },
-      cell: ({ getValue }) => <DisplayValue type="date" value={getValue()} emptyText="未恢复" />,
+      cell: ({ getValue }) => (
+        <DisplayValue
+          type="date"
+          value={getValue()}
+          emptyText="未恢复"
+          className="text-xs text-muted-foreground"
+        />
+      ),
     },
     {
       header: '操作',

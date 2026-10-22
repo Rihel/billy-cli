@@ -33,7 +33,7 @@ type MenuItem = {
   children?: MenuItem[]
 }
 
-const MENU_ITEMS: MenuItem[] = [
+export const MENU_ITEMS: MenuItem[] = [
   {
     label: '控制台',
     key: '/main/dashboard',
@@ -101,6 +101,25 @@ const MENU_ITEMS: MenuItem[] = [
     ],
   },
 ]
+
+/**
+ * 路由 → 菜单标题：页头标题与侧栏菜单同源，避免两处手抄清单漂移
+ * （新增页面只改 MENU_ITEMS，页头自动跟上）。详情页按路径前缀逐段回退到父级。
+ */
+export function menuTitleOf(pathname: string): string {
+  const flat = MENU_ITEMS.flatMap((item) => (item.children ? item.children : [item]))
+  const exact = flat.find((item) => item.key === pathname)
+  if (exact) return exact.label
+
+  const segments = pathname.split('/').filter(Boolean)
+  while (segments.length > 1) {
+    segments.pop()
+    const key = `/${segments.join('/')}`
+    const found = flat.find((item) => item.key === key)
+    if (found) return found.label
+  }
+  return ''
+}
 
 export type AppMenuProps = Partial<{}>
 

@@ -174,13 +174,17 @@ export default function UsersPage() {
           </Avatar>
         ) : null,
     },
-    { header: '邮箱', accessorKey: 'email' },
+    {
+      header: '邮箱',
+      accessorKey: 'email',
+      cell: ({ getValue }) => <span className="font-medium">{String(getValue())}</span>,
+    },
     {
       header: '姓名',
       accessorKey: 'realName',
       cell: ({ row }) => (
         <EmptyValue value={row.original.realName} emptyText={<Tag>未设置</Tag>}>
-          {row.original.realName}
+          <span className="text-muted-foreground">{row.original.realName}</span>
         </EmptyValue>
       ),
     },
@@ -213,7 +217,9 @@ export default function UsersPage() {
       header: '创建时间',
       accessorKey: 'createdAt',
       meta: { width: 180 },
-      cell: ({ getValue }) => <DisplayValue type="date" value={getValue()} />,
+      cell: ({ getValue }) => (
+        <DisplayValue type="date" value={getValue()} className="text-xs text-muted-foreground" />
+      ),
     },
     {
       header: '操作',

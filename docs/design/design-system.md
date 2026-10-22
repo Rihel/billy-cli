@@ -399,7 +399,20 @@ ui 包不参与类名扫描的声明（它自己不经 Tailwind 构建）。
 ring / border / shadow。表单控件保留自身描边（输入框的边界是可用性，不是装饰）。
 面积图用 `fillOpacity` 平涂；水位图用同色半透明填充；登录页左栏不做光晕。
 
-### 11.6 验证
+### 11.6 信息主次
+
+每个页面只允许一层「主信息」，其余按次级 / 辅助递减：
+
+| 层级 | 取值 | 例子 |
+| --- | --- | --- |
+| 主信息 | `text-foreground` + `font-medium`（数字 `tabular-nums`） | 控制台大数字、列表主列（规则名 / 邮箱 / 会话标题）、监控当前值 |
+| 次级 | `text-muted-foreground` | 说明文案、分类、补充状态 |
+| 辅助 | `font-mono text-[11px] text-muted-foreground` | ID、metric key、时间戳、耗时 |
+
+同一行最多一个 `font-medium`；状态色只表达状态，不参与层级。页头标题与侧栏菜单同源
+（`menuTitleOf` 从 `MENU_ITEMS` 推导），避免新增页面时标题空着。
+
+### 11.7 验证
 
 `pnpm typecheck`（5 包）/ `pnpm check:ui` / `pnpm --filter @repo/ui test`（71 项，含 token 守卫）
 通过；admin 与 monitor 页在明暗两套主题下逐页截图对比（无头 Chrome + CDP 注入登录态）。
