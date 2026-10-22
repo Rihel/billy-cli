@@ -45,19 +45,20 @@ function StatBlock({
         : tone === 'success'
           ? 'bg-success/12 text-success'
           : 'bg-brand/10 text-brand'
+  // 平涂淡色（不用渐变：大面积渐变在浅底上会显脏）
   const washClass =
     tone === 'warning'
-      ? 'from-warning/[0.07]'
+      ? 'bg-warning/[0.07]'
       : tone === 'info'
-        ? 'from-info/[0.07]'
+        ? 'bg-info/[0.06]'
         : tone === 'success'
-          ? 'from-success/[0.07]'
-          : 'from-brand/[0.07]'
+          ? 'bg-success/[0.06]'
+          : 'bg-brand/[0.06]'
 
   return (
     <div
       className={cn(
-        'rounded-xl bg-gradient-to-br to-transparent px-4 py-3.5 shadow-[0_1px_2px_rgb(23_23_32/0.04)] ring-1 ring-inset ring-black/[0.02] transition-colors dark:bg-none dark:bg-surface-2 dark:ring-0',
+        'rounded-xl px-4 py-3.5 shadow-[0_1px_2px_rgb(23_23_32/0.04)] ring-1 ring-inset ring-black/[0.02] transition-colors dark:bg-surface-2 dark:ring-0',
         washClass,
       )}
     >

@@ -7,9 +7,6 @@ export default function AuthLayout({
     <div className="flex min-h-dvh flex-col bg-background lg:flex-row">
       {/* 左：品牌叙事栏（lg 以上显示，浅色编辑感 / dark 深蓝氛围） */}
       <div className="relative hidden flex-col justify-between overflow-hidden bg-surface-1 p-10 lg:flex lg:w-[44%] xl:w-[40%]">
-        {/* 品牌光晕：极低密度的靛紫径向渐变，给纯中性底加一点空气感（不是装饰色块） */}
-        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(120%_90%_at_0%_0%,oklch(0.55_0.21_280/0.12),transparent_58%)]" />
-        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(90%_70%_at_100%_100%,oklch(0.55_0.21_280/0.06),transparent_60%)]" />
         <div className="relative z-10 flex items-center gap-2.5">
           <span className="grid size-8 place-items-center rounded-md bg-brand text-white shadow-[0_2px_8px_-2px_rgb(79_70_229/0.55)]">
             <span className="font-mono text-sm font-bold">›</span>
