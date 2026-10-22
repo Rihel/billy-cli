@@ -58,7 +58,7 @@ function StatBlock({
   return (
     <div
       className={cn(
-        'rounded-xl px-4 py-3.5 shadow-[0_1px_2px_rgb(23_23_32/0.04)] ring-1 ring-inset ring-black/[0.02] transition-colors dark:bg-surface-2 dark:ring-0',
+        'rounded-xl px-4 py-3.5 transition-colors dark:bg-surface-2',
         washClass,
       )}
     >

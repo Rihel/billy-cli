@@ -124,7 +124,7 @@ export function DataTable<T extends object>({
 
       <div
         className={cn(
-          "flex flex-col overflow-hidden rounded-xl bg-card shadow-[0_1px_2px_rgb(23_23_32/0.04)]",
+          "flex flex-col overflow-hidden rounded-xl bg-card",
           tableClassName,
         )}
       >

@@ -47,15 +47,7 @@ export function WaterLevelGauge({
               <circle cx="50" cy="50" r="44" />
             </clipPath>
           </defs>
-          <circle cx="50" cy="50" r="44" fill="var(--surface-2)" />
-          <circle
-            cx="50"
-            cy="50"
-            r="44"
-            fill="none"
-            stroke="var(--border)"
-            strokeWidth="1"
-          />
+          <circle cx="50" cy="50" r="44" fill="var(--surface-3)" />
           <g clipPath={`url(#${clipId})`}>
             <rect
               x="0"
