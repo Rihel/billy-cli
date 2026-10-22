@@ -707,7 +707,6 @@ export default function AiModelsPage() {
           span: 2,
           render: ({ field }) => (
             <div className="flex flex-col gap-1">
-              <span className="text-sm">输入模态</span>
               <ModalityPicker
                 onChange={(next) => field.handleChange(next as never)}
                 value={field.state.value as string[] | undefined}
@@ -724,7 +723,6 @@ export default function AiModelsPage() {
           span: 2,
           render: ({ field }) => (
             <div className="flex flex-col gap-1">
-              <span className="text-sm">输出模态</span>
               <ModalityPicker
                 onChange={(next) => field.handleChange(next as never)}
                 value={field.state.value as string[] | undefined}
