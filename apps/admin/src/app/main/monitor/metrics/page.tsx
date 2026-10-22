@@ -8,6 +8,7 @@ import {
   CardHeader,
   CardTitle,
   DisplayValue,
+  PageToolbar,
   RefreshButton,
   Tag,
   cn,
@@ -47,35 +48,33 @@ export default function MonitorMetricsPage() {
   )
 
   return (
-    <div className="flex h-full w-full flex-col gap-6 overflow-auto p-4 sm:p-8">
-      <div className="flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <h1 className="text-lg font-semibold">监控指标</h1>
-          <p className="text-sm text-muted-foreground">
-            最近 60 个窗口的采集值；衍生指标由同窗口原始指标计算。
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <select
-            className="h-9 w-72 rounded-md bg-surface-2 px-3 text-sm"
-            value={metricKey ?? ''}
-            onChange={(event) => setMetricKey(event.target.value)}
-          >
-            {definitions.map((item) => (
-              <option key={item.key} value={item.key}>
-                {item.title}（{item.key}）
-              </option>
-            ))}
-          </select>
-          <RefreshButton
-            loading={seriesQuery.isFetching || definitionsQuery.isFetching}
-            onClick={() => {
-              void definitionsQuery.refetch()
-              void seriesQuery.refetch()
-            }}
-          />
-        </div>
-      </div>
+    <div className="flex h-full w-full flex-col gap-5 overflow-auto p-4 sm:p-8">
+      <PageToolbar
+        title="监控指标"
+        description="最近 60 个窗口的采集值；衍生指标由同窗口原始指标计算。"
+        extra={
+          <>
+            <select
+              className="h-9 w-72 rounded-md bg-surface-2 px-3 text-sm"
+              value={metricKey ?? ''}
+              onChange={(event) => setMetricKey(event.target.value)}
+            >
+              {definitions.map((item) => (
+                <option key={item.key} value={item.key}>
+                  {item.title}（{item.key}）
+                </option>
+              ))}
+            </select>
+            <RefreshButton
+              loading={seriesQuery.isFetching || definitionsQuery.isFetching}
+              onClick={() => {
+                void definitionsQuery.refetch()
+                void seriesQuery.refetch()
+              }}
+            />
+          </>
+        }
+      />
 
       {definition ? (
         <Card>

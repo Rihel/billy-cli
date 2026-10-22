@@ -6,39 +6,33 @@ import { cn } from "#lib/utils"
 import { Badge } from "#components/ui/badge"
 
 /**
- * 常见预设色名 → 样式类映射。
+ * 预设色名 → 样式类映射。
  *
- * - **语义四色**（success / error / warning / processing）消费本包 `globals.css` 的语义 token
- *   （`--success` / `--destructive` / `--warning` / `--info`），底色与边框用透明度派生 ——
- *   比 antd 的 color-1/3/7 三件套更少 token，且深浅色模式自动适配；
- * - 其余色名（blue / cyan / green / gold / orange / purple / magenta / geekblue / volcano）是
- *   历史遗留的装饰色（部分沿用 antd 命名，正被页面使用），暂用 Tailwind 调色板，
- *   待独立一轮收敛（记档于 docs/design/design-system.md 的已知缺口）。
+ * **只有四类语义色**（success / error / warning / processing）与中性 default：
+ * 全部消费本包 `globals.css` 的语义 token（`--success` / `--destructive` / `--warning` / `--info`），
+ * 极淡底 + 语义前景，深浅色自动适配。
  *
- * 现代克制风格：极淡底 + 细边框 + 深色文字（非 antd 的强彩 100 底块）。
+ * 历史色名（blue / cyan / green / red / gold / orange / purple / magenta / geekblue / volcano）
+ * 保留为**别名**，统一折算到语义色或品牌色 —— 调用方不用改，界面不再出现 antd 装饰色。
+ * 新代码请直接用语义色名。
  */
 const PRESET_COLORS: Record<string, string> = {
-  default:
-    "bg-muted/40 text-muted-foreground",
-  success:
-    "bg-success/10 text-success",
-  error:
-    "bg-destructive/10 text-destructive",
-  warning:
-    "bg-warning/10 text-warning",
-  processing:
-    "bg-info/10 text-info",
-  blue: "bg-indigo-50 text-indigo-700",
-  cyan: "bg-cyan-50 text-cyan-700",
-  green: "bg-emerald-50 text-emerald-700",
-  red: "bg-red-50 text-red-700",
-  gold: "bg-amber-50 text-amber-700",
-  orange: "bg-orange-50 text-orange-700",
-  purple: "bg-purple-50 text-purple-700",
-  magenta: "bg-pink-50 text-pink-700",
-  geekblue:
-    "bg-indigo-50 text-indigo-700",
-  volcano: "bg-orange-50 text-orange-700",
+  default: "bg-muted/40 text-muted-foreground",
+  success: "bg-success/10 text-success",
+  error: "bg-destructive/10 text-destructive",
+  warning: "bg-warning/10 text-warning",
+  processing: "bg-info/10 text-info",
+  // ---- 历史色名别名：收敛到语义色 / 品牌色 ----
+  blue: "bg-info/10 text-info",
+  cyan: "bg-info/10 text-info",
+  green: "bg-success/10 text-success",
+  red: "bg-destructive/10 text-destructive",
+  gold: "bg-warning/10 text-warning",
+  orange: "bg-warning/10 text-warning",
+  volcano: "bg-warning/10 text-warning",
+  purple: "bg-brand/10 text-brand",
+  magenta: "bg-brand/10 text-brand",
+  geekblue: "bg-brand/10 text-brand",
 }
 
 export type TagProps = {

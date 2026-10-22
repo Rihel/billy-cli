@@ -4,7 +4,7 @@ import { useState, type ReactNode } from 'react'
 import Link from 'next/link'
 import { useServerClient } from '@/lib/server-client'
 import { useQuery } from '@tanstack/react-query'
-import { cn } from '@repo/ui'
+import { cn, PageToolbar } from '@repo/ui'
 import type { AgentUsageBucketModel } from '@repo/shared'
 import {
   BellRingIcon,
@@ -235,18 +235,11 @@ export default function DashboardPage() {
     totals && totals.runs > 0 ? Math.round((totals.succeeded / totals.runs) * 100) : null
 
   return (
-    <div className="flex h-full flex-col gap-6 overflow-auto p-4 sm:p-8">
-      {/* 标题带：左标题 + 右服务状态 pill */}
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <div>
-          <h1 className="font-heading text-xl font-medium tracking-tight">
-            控制台
-          </h1>
-          <p className="mt-1 text-[13px] text-muted-foreground">
-            Billy Cli 管理后台，系统运行总览
-          </p>
-        </div>
-      </div>
+    <div className="flex h-full flex-col gap-5 overflow-auto p-4 sm:p-8">
+      <PageToolbar
+        title="控制台"
+        description="Billy Cli 管理后台，系统运行总览"
+      />
 
       {/* 主内容：系统现在怎么样（健康 + 未恢复告警） */}
       <section className="rounded-2xl bg-surface-1 p-5">

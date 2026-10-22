@@ -14,6 +14,7 @@ import {
   CardHeader,
   CardTitle,
   DisplayValue,
+  PageToolbar,
   RefreshButton,
   Tag,
   cn,
@@ -158,43 +159,45 @@ export default function MonitorStatusPage() {
 
   return (
     <div className="flex h-full w-full flex-col gap-4 overflow-auto p-4 sm:p-8">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <div className="flex items-center gap-2">
-            <h1 className="text-lg font-semibold">监控状态</h1>
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-surface-2 px-2 py-0.5 text-[10px] text-muted-foreground">
+      <PageToolbar
+        title={
+          <span className="inline-flex items-center gap-2">
+            监控状态
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-surface-2 px-2 py-0.5 text-[10px] font-normal tracking-normal text-muted-foreground">
               <span
                 className={cn(
                   'size-1.5 rounded-full',
-                  statusQuery.isError ? 'bg-destructive' : 'animate-pulse bg-success motion-reduce:animate-none',
+                  statusQuery.isError
+                    ? 'bg-destructive'
+                    : 'animate-pulse bg-success motion-reduce:animate-none',
                 )}
               />
               {statusQuery.isError ? '连接异常' : '实时'}
             </span>
-          </div>
-          <p className="mt-1 text-sm text-muted-foreground">
-            所有实例采集，主节点评估；卡片可拖拽、可缩放。
-          </p>
-        </div>
-        <div className="flex items-center gap-3">
-          <span className="text-[11px] tabular-nums text-muted-foreground">
-            {statusQuery.dataUpdatedAt
-              ? `更新于 ${new Date(statusQuery.dataUpdatedAt).toLocaleTimeString('zh-CN', {
-                  hour12: false,
-                })}`
-              : '等待首次数据'}
           </span>
-          <RefreshButton
-            className="border-0 bg-surface-2 hover:bg-surface-3"
-            loading={statusQuery.isFetching || seriesQuery.isFetching || latestQuery.isFetching}
-            onClick={() => {
-              void statusQuery.refetch()
-              void seriesQuery.refetch()
-              void latestQuery.refetch()
-            }}
-          />
-        </div>
-      </div>
+        }
+        description="所有实例采集，主节点评估；卡片可拖拽、可缩放。"
+        extra={
+          <>
+            <span className="text-[11px] tabular-nums text-muted-foreground">
+              {statusQuery.dataUpdatedAt
+                ? `更新于 ${new Date(statusQuery.dataUpdatedAt).toLocaleTimeString('zh-CN', {
+                    hour12: false,
+                  })}`
+                : '等待首次数据'}
+            </span>
+            <RefreshButton
+              className="border-0 bg-surface-2 hover:bg-surface-3"
+              loading={statusQuery.isFetching || seriesQuery.isFetching || latestQuery.isFetching}
+              onClick={() => {
+                void statusQuery.refetch()
+                void seriesQuery.refetch()
+                void latestQuery.refetch()
+              }}
+            />
+          </>
+        }
+      />
 
       <div ref={containerRef} className="min-h-0 w-full">
         {mounted ? (
@@ -542,7 +545,13 @@ function MetricTile({
     >
       <div className="flex items-start justify-between gap-2">
         <span className="truncate text-[11px] text-muted-foreground">{definition.title}</span>
-        {stale ? <span className="size-1.5 shrink-0 rounded-full bg-destructive" /> : null}
+        {stale ? (
+          <span className="flex shrink-0 items-center gap-1 text-[10px] text-destructive">
+            <span className="size-1.5 rounded-full bg-destructive" />
+            <span className="sr-only">陈旧：</span>
+            陈旧
+          </span>
+        ) : null}
       </div>
       <div className="mt-1 font-heading text-base font-medium tabular-nums tracking-tight">
         {value == null ? '-' : formatMetricValue(value, definition.unit)}

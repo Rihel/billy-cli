@@ -132,7 +132,7 @@ export default function ChatLayout({ children }: { children: ReactNode }) {
               className="h-full"
               style={{ overflow: 'hidden' }}
             >
-              <aside className="flex h-full w-full flex-col gap-2 p-3">
+              <aside className="flex h-full w-full flex-col gap-2 bg-surface-3 p-3">
                 {/* 会话页是独立布局（没有管理台左菜单）——「返回管理台」必须是**看得见的一行**，
                     不能只靠页头那个图标（用户实测找不到）。列表栏在桌面上恒在，放这里最稳 */}
                 <Button
@@ -179,8 +179,8 @@ export default function ChatLayout({ children }: { children: ReactNode }) {
                           className={cn(
                             // 右边留出操作区的位置：悬停时按钮浮上来，标题不会被压住
                             'flex w-full flex-col gap-1 rounded-md py-2 pr-14 pl-3 text-left text-sm',
-                            'transition-colors hover:bg-muted/50',
-                            active && 'bg-muted',
+                            'transition-colors hover:bg-surface-4/60',
+                            active && 'bg-surface-4',
                           )}
                         >
                           <span className="truncate font-medium">
