@@ -21,6 +21,7 @@ import {
   DictTag,
   Input,
   ModalForm,
+  SegmentedControl,
   Switch,
   Tag,
   TagsInput,
@@ -315,11 +316,15 @@ export function ToolFormModal({
               </div>
               <div className="flex flex-col gap-1.5">
                 <span className="text-sm font-medium">作用域</span>
-                <DictSelect
-                  dict={ToolScope}
+                <SegmentedControl
                   value={values.scope}
-                  triggerClassName="w-full"
-                  onValueChange={(next) => form.setFieldValue('scope', next ?? ToolScope.All)}
+                  options={[ToolScope.All, ToolScope.Agent].map((scope) => ({
+                    label: ToolScope.getLabel(scope),
+                    value: scope,
+                  }))}
+                  onValueChange={(next) =>
+                    form.setFieldValue('scope', next as typeof ToolScope.All)
+                  }
                 />
                 <span className="text-xs text-muted-foreground">
                   这一次调用允不允许；作用域是第二层关卡，授权仍在 agent 声明里

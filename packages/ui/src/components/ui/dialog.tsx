@@ -44,11 +44,18 @@ function DialogContent({
   children,
   showCloseButton = true,
   container,
+  bodyScroll = true,
   ...props
 }: DialogPrimitive.Popup.Props & {
   showCloseButton?: boolean
   /** 显式指定 portal 容器（默认是 body；页面里有 offset 容器时用） */
   container?: DialogPrimitive.Portal.Props['container']
+  /**
+   * 内容区是否由组件接管滚动（默认接管）。
+   * 头部与底部始终固定：组件把 children 放进滚动层，`DialogHeader` / `DialogFooter` 用 sticky 贴边。
+   * 已经自己实现了「固定头 + 内部滚动 + 固定底」的表单（`ModalForm`）传 `false`，避免套两层滚动。
+   */
+  bodyScroll?: boolean
 }) {
   return (
     <DialogPortal container={container}>
@@ -56,19 +63,35 @@ function DialogContent({
       <DialogPrimitive.Popup
         data-slot="dialog-content"
         className={cn(
-          'fixed top-1/2 left-1/2 z-50 grid w-full max-w-[calc(100%-2rem)] -translate-x-1/2 -translate-y-1/2 gap-4 rounded-xl bg-surface-2 p-4 text-sm text-popover-foreground duration-100 outline-none sm:max-w-sm data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95',
+          'fixed top-1/2 left-1/2 z-50 flex max-h-[calc(100dvh-2rem)] w-full max-w-[calc(100%-2rem)] -translate-x-1/2 -translate-y-1/2 flex-col rounded-xl bg-surface-2 p-0 text-sm text-popover-foreground duration-100 outline-none sm:max-w-sm data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95',
           className,
         )}
         {...props}
       >
-        {children}
+        {bodyScroll ? (
+          <div
+            data-slot="dialog-body"
+            className={cn(
+            // 内容层自己滚动；内边距交给头/尾与内容子项，避免滚动层带 padding 时
+            // sticky 头尾粘在 content-box 上、顶部漏出一条 16px 的缝
+            'flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto overscroll-contain rounded-xl p-0',
+            '[&>:not([data-slot=dialog-header]):not([data-slot=dialog-footer])]:px-4',
+            '[&>:first-child:not([data-slot=dialog-header])]:pt-4',
+            '[&>:last-child:not([data-slot=dialog-footer])]:pb-4',
+          )}
+          >
+            {children}
+          </div>
+        ) : (
+          children
+        )}
         {showCloseButton && (
           <DialogPrimitive.Close
             data-slot="dialog-close"
             render={
               <Button
                 variant="ghost"
-                className="absolute top-2 right-2"
+                className="absolute top-2 right-2 z-30"
                 size="icon-sm"
               />
             }
@@ -86,7 +109,11 @@ function DialogHeader({ className, ...props }: React.ComponentProps<'div'>) {
   return (
     <div
       data-slot="dialog-header"
-      className={cn('flex flex-col gap-2', className)}
+      // 贴住滚动层顶部：bg 必须与弹窗底色一致，否则滚动内容会从下面透出来
+      className={cn(
+        'sticky top-0 z-20 flex flex-col gap-2 rounded-t-xl bg-surface-2 px-4 pt-4 pb-2',
+        className,
+      )}
       {...props}
     />
   )
@@ -104,7 +131,8 @@ function DialogFooter({
     <div
       data-slot="dialog-footer"
       className={cn(
-        '-mx-4 -mb-4 flex flex-col-reverse gap-2 rounded-b-xl bg-surface-1 p-4 sm:flex-row sm:justify-end',
+        // 贴住滚动层底部：mt-auto 让短内容时也落在弹窗底边
+        'sticky bottom-0 z-20 mt-auto flex flex-col-reverse gap-2 rounded-b-xl bg-surface-1 px-4 py-3 sm:flex-row sm:justify-end',
         className,
       )}
       {...props}

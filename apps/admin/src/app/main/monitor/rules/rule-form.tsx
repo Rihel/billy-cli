@@ -14,6 +14,7 @@ import {
   DialogTitle,
   DictSelect,
   Input,
+  SegmentedControl,
   Switch,
   Tag,
   Label,
@@ -61,7 +62,7 @@ export function RuleFormModal({
 
   return (
     <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
-      <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-2xl">
+      <DialogContent className="sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle>{rule?.name ?? '编辑规则'}</DialogTitle>
           <DialogDescription>
@@ -193,17 +194,32 @@ function FieldControl({
           onChange={(event) => onChange(Number(event.target.value))}
         />
       ) : field.type === 'select' ? (
-        <DictSelect
-          options={(field.options ?? []).map((option) => ({
-            label: option.label,
-            value: String(option.value),
-          }))}
-          value={String(value ?? '')}
-          onValueChange={(next) => {
-            const option = field.options?.find((item) => String(item.value) === next)
-            onChange(option?.value ?? next)
-          }}
-        />
+        // 选项少的枚举直接铺开（级别只有 3 个），多选仍走下位选择
+        (field.options ?? []).length <= 4 ? (
+          <SegmentedControl
+            options={(field.options ?? []).map((option) => ({
+              label: option.label,
+              value: String(option.value),
+            }))}
+            value={String(value ?? '')}
+            onValueChange={(next) => {
+              const option = field.options?.find((item) => String(item.value) === next)
+              onChange(option?.value ?? next)
+            }}
+          />
+        ) : (
+          <DictSelect
+            options={(field.options ?? []).map((option) => ({
+              label: option.label,
+              value: String(option.value),
+            }))}
+            value={String(value ?? '')}
+            onValueChange={(next) => {
+              const option = field.options?.find((item) => String(item.value) === next)
+              onChange(option?.value ?? next)
+            }}
+          />
+        )
       ) : field.type === 'switch' ? (
         <Switch checked={value === true} onCheckedChange={onChange} />
       ) : (

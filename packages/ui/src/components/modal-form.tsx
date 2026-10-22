@@ -131,6 +131,7 @@ export function ModalForm<Values extends object>({
       }}
     >
       <DialogContent
+        bodyScroll={false}
         className={cn(
           "flex max-h-[calc(100dvh-2rem)] flex-col gap-0 overflow-hidden p-0 sm:max-w-lg",
           dialogClassName,

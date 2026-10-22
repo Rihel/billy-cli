@@ -35,7 +35,7 @@ export function AlertDetailDialog({
 
   return (
     <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
-      <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-3xl">
+      <DialogContent className="sm:max-w-3xl">
         <DialogHeader>
           <DialogTitle>{alert?.ruleName ?? '告警详情'}</DialogTitle>
         </DialogHeader>

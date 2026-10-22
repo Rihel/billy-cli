@@ -26,6 +26,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "#components/ui/select"
+import { SegmentedControl } from "#components/ui/segmented-control"
 import { Switch } from "#components/ui/switch"
 import { Textarea } from "#components/ui/textarea"
 
@@ -200,6 +201,20 @@ const renderWidget = (
       const options = (props.options as SelectOption[] | undefined) ?? []
       const multiple =
         props.multiple === true || (props.mode as string) === "multiple"
+      // 选项很少的枚举直接铺开成分段选择：一眼看全，少一次展开
+      if (!multiple && options.length > 0 && options.length <= 4) {
+        return (
+          <SegmentedControl
+            value={(value as string | null) ?? null}
+            options={options.map((option) => ({
+              label: option.label,
+              value: String(option.value),
+            }))}
+            disabled={disabled}
+            onValueChange={(next) => field.handleChange(next)}
+          />
+        )
+      }
       const resolveLabel = (item: unknown): ReactNode => {
         const match = options.find(
           (option) => String(option.value) === String(item),

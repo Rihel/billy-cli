@@ -136,6 +136,8 @@
 
 - [ ] 先写清这一页的主内容 / 次内容 / 辅助内容，再动手排
 - [ ] 页头用 `PageToolbar`，列表用 `DataTable` / `DataList`，弹窗用 `ModalForm` / `DrawerForm`
+- [ ] 选项 ≤4 的枚举用 `SegmentedControl`，不要用下拉
+- [ ] 弹窗 / 抽屉的头尾固定，只有内容区滚动
 - [ ] 视觉取值只用语义 token，不写 `bg-blue-500` 这类调色板类（`pnpm check:ui` 会拦新增）
 - [ ] 不加结构边框、不加卡片投影、不用渐变；层次用面层明度差
 - [ ] 同一行最多一个 `font-medium`；ID / 时间 / 路径用 `font-mono`
