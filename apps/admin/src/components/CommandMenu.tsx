@@ -18,19 +18,15 @@ import {
   CommandList,
 } from '#components/ui/command'
 import {
-  ActivityIcon,
-  BellRingIcon,
-  GaugeIcon,
-  LayoutDashboardIcon,
   MonitorIcon,
   MoonIcon,
   PlusIcon,
   SearchIcon,
-  ShieldCheckIcon,
   SunIcon,
   UserRoundIcon,
-  UsersIcon,
 } from 'lucide-react'
+import { MENU_ITEMS } from './AppMenu'
+import { useAuthStore } from '@/stores/auth.store'
 import { useTheme } from '@/stores/theme.store'
 import type { ThemeMode } from '@repo/ui'
 import { useCommands } from '@/lib/commands'
@@ -94,14 +90,17 @@ export function CommandMenu({ sidebar = false }: { sidebar?: boolean }) {
     router.push(path)
   }
 
+  // 页面清单从侧栏菜单派生：图标 / 文案 / 路由只有一份，不会出现「菜单加了、搜索里没有」
+  const authEnabled = useAuthStore((state) => state.authEnabled)
+
   const pages: CommandItemData[] = [
-    { label: '控制台', icon: LayoutDashboardIcon, run: () => go('/main/dashboard') },
-    { label: '告警规则', icon: BellRingIcon, run: () => go('/main/monitor/rules') },
-    { label: '告警记录', icon: ActivityIcon, run: () => go('/main/monitor/logs') },
-    { label: '监控指标', icon: ActivityIcon, run: () => go('/main/monitor/metrics') },
-    { label: '监控状态', icon: GaugeIcon, run: () => go('/main/monitor/status') },
-    { label: '用户管理', icon: UsersIcon, run: () => go('/main/system/users') },
-    { label: '管理员管理', icon: ShieldCheckIcon, run: () => go('/main/system/admins') },
+    ...MENU_ITEMS.filter((item) => !item.authRequired || authEnabled)
+      .flatMap((item) => (item.children ? item.children : [item]))
+      .map((item) => ({
+        label: item.label,
+        icon: item.icon,
+        run: () => go(item.key),
+      })),
     { label: '个人中心', icon: UserRoundIcon, run: () => go('/main/user-center') },
   ]
 

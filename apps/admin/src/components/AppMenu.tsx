@@ -3,15 +3,16 @@
 import { usePathname, useRouter } from 'next/navigation'
 import type { ComponentType } from 'react'
 import {
-  ActivityIcon,
   BellRingIcon,
   BotIcon,
+  ChartLineIcon,
   CpuIcon,
   GaugeIcon,
+  HistoryIcon,
   LayoutDashboardIcon,
   RadioTowerIcon,
+  ScrollTextIcon,
   ShieldCheckIcon,
-  SparklesIcon,
   UsersIcon,
   WrenchIcon,
 } from 'lucide-react'
@@ -47,7 +48,7 @@ export const MENU_ITEMS: MenuItem[] = [
       { label: 'AI 会话', key: '/main/ai/chat', icon: BotIcon },
       { label: '模型管理', key: '/main/ai/models', icon: CpuIcon },
       { label: '工具配置', key: '/main/ai/tools', icon: WrenchIcon },
-      { label: '审计与复盘', key: '/main/ai/audit', icon: SparklesIcon },
+      { label: '审计与复盘', key: '/main/ai/audit', icon: HistoryIcon },
     ],
   },
   // 运维监控：独立于用户体系开关（监控告警为运维能力，始终可见）
@@ -68,12 +69,12 @@ export const MENU_ITEMS: MenuItem[] = [
       {
         label: '告警记录',
         key: '/main/monitor/logs',
-        icon: ActivityIcon,
+        icon: ScrollTextIcon,
       },
       {
         label: '监控指标',
         key: '/main/monitor/metrics',
-        icon: ActivityIcon,
+        icon: ChartLineIcon,
       },
       {
         label: '监控状态',
