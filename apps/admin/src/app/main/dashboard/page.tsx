@@ -242,7 +242,7 @@ export default function DashboardPage() {
       />
 
       {/* 主内容：系统现在怎么样（健康 + 未恢复告警） */}
-      <section className="rounded-2xl bg-surface-1 p-5">
+      <section className="shrink-0 rounded-2xl bg-surface-1 p-5">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h2 className="font-heading text-base font-medium tracking-tight">运行状态</h2>
           <span
@@ -331,7 +331,7 @@ export default function DashboardPage() {
       </section>
 
       {/* AI 用量：token / 轮数 / 成功率 / 首字延迟 + 按天柱状 + 模型与 agent 占比 */}
-      <section className="rounded-2xl bg-surface-1 p-5">
+      <section className="shrink-0 rounded-2xl bg-surface-1 p-5">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <h2 className="font-heading text-base font-medium tracking-tight">AI 用量</h2>
@@ -433,7 +433,7 @@ export default function DashboardPage() {
       </section>
 
       {/* 辅助：数据规模（不是判断依据，收成一行小数字） */}
-      <div className="flex flex-wrap items-center gap-x-9 gap-y-3 rounded-2xl bg-surface-1 px-5 py-3.5">
+      <div className="flex shrink-0 flex-wrap items-center gap-x-9 gap-y-3 rounded-2xl bg-surface-1 px-5 py-3.5">
         <span className="text-[11px] font-medium tracking-wide text-muted-foreground uppercase">
           规模
         </span>
