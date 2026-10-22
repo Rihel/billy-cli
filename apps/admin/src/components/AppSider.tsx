@@ -6,9 +6,6 @@ import { useAuthStore } from '@/stores/auth.store'
 import { logoutAction } from '@/actions/auth.actions'
 import { removeToken } from '@/lib/server-client'
 import {
-  Avatar,
-  AvatarFallback,
-  AvatarImage,
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -21,6 +18,7 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
+  UserAvatar,
 } from '@repo/ui'
 import { LogOutIcon, TerminalSquareIcon, UserRoundIcon } from 'lucide-react'
 import { AppMenu } from './AppMenu'
@@ -41,7 +39,6 @@ export const AppSider = ({}: AppSiderProps) => {
   }
 
   const displayName = adminInfo?.realName || adminInfo?.email || '个人中心'
-  const initial = displayName.charAt(0).toUpperCase()
 
   return (
     <Sidebar collapsible="icon" variant="floating" className="p-3">
@@ -76,18 +73,12 @@ export const AppSider = ({}: AppSiderProps) => {
                   delay={0}
                   render={
                     <SidebarMenuButton size="lg" className="py-2">
-                      {adminInfo?.avatar ? (
-                        <Avatar className="size-8 shrink-0 rounded-lg">
-                          <AvatarImage src={formatStorageUrl(adminInfo.avatar)} />
-                          <AvatarFallback className="rounded-lg">
-                            {initial}
-                          </AvatarFallback>
-                        </Avatar>
-                      ) : (
-                        <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-muted text-sm font-medium text-muted-foreground">
-                          {initial}
-                        </span>
-                      )}
+                      <UserAvatar
+                        src={adminInfo?.avatar ? formatStorageUrl(adminInfo.avatar) : null}
+                        name={displayName}
+                        shape="rounded"
+                        className="shrink-0"
+                      />
                       <span className="truncate">{displayName}</span>
                     </SidebarMenuButton>
                   }

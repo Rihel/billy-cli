@@ -6,9 +6,6 @@ import { useForm } from '@tanstack/react-form'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
 import {
-  Avatar,
-  AvatarFallback,
-  AvatarImage,
   Button,
   ConfirmAction,
   DataTable,
@@ -25,6 +22,7 @@ import {
   Tag,
   toastError,
   toastSuccess,
+  UserAvatar,
   useDisclosure,
 } from '@repo/ui'
 import type { DataTableColumnDef } from '@repo/ui'
@@ -151,15 +149,12 @@ export default function UsersPage() {
       header: '头像',
       accessorKey: 'avatar',
       meta: { width: 72 },
-      cell: ({ row }) =>
-        row.original.avatar ? (
-          <Avatar className="size-8">
-            <AvatarImage src={formatStorageUrl(row.original.avatar)} />
-            <AvatarFallback>
-              {(row.original.realName || row.original.email || 'U').slice(0, 1)}
-            </AvatarFallback>
-          </Avatar>
-        ) : null,
+      cell: ({ row }) => (
+        <UserAvatar
+          src={row.original.avatar ? formatStorageUrl(row.original.avatar) : null}
+          name={row.original.realName || row.original.email}
+        />
+      ),
     },
     {
       header: '邮箱',

@@ -58,6 +58,7 @@ export * from "#components/ui/alert-dialog.tsx"
 // 自有组件（位于 components/*；components/ui/* 由 shadcn 维护，勿在 ui/* 放自有封装）
 export * from "#components/icon.tsx"
 export * from "#components/tag.tsx"
+export * from "#components/user-avatar.tsx"
 export * from "#components/page-toolbar.tsx"
 export * from "#components/auto-size.tsx"
 export * from "#components/group.tsx"
