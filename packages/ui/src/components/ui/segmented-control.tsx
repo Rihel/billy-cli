@@ -42,7 +42,8 @@ export function SegmentedControl({
       onValueChange={(next) => onValueChange?.(String(next ?? ''))}
       disabled={disabled}
       className={cn(
-        'inline-flex w-fit flex-row gap-0.5 rounded-lg bg-surface-3 p-0.5',
+        // 焦点环画在整组上（每项自己带环会在选中项外面再套一圈，看起来像没对齐）
+        'inline-flex w-fit flex-row items-center gap-0.5 rounded-lg bg-surface-3 p-0.5 focus-within:ring-2 focus-within:ring-ring/50',
         className,
       )}
     >
@@ -53,7 +54,6 @@ export function SegmentedControl({
             key={option.value}
             className={cn(
               'relative cursor-pointer gap-0 rounded-md px-3 text-xs font-normal transition-colors',
-              'focus-within:ring-2 focus-within:ring-ring/50',
               size === 'sm' ? 'h-6' : 'h-7',
               active
                 ? 'bg-brand/12 font-medium text-brand'
@@ -61,10 +61,14 @@ export function SegmentedControl({
               option.disabled && 'cursor-not-allowed opacity-50',
             )}
           >
+            {/* 单选框本体不占位：绝对铺满整格、透明。
+                用 `sr-only` 不行 —— 它的 position/size 会被 RadioGroupItem 自带的
+                `relative` / `size-4` 按 CSS 顺序盖掉，结果 16px 的圆点挤在文字前面，
+                选中格被撑宽、文字看着偏右。 */}
             <RadioGroupItem
               value={option.value}
               disabled={option.disabled}
-              className="sr-only"
+              className="absolute inset-0 size-full cursor-pointer opacity-0"
             />
             {option.label}
           </Label>
