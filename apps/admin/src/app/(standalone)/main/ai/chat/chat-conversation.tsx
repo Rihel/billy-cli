@@ -796,126 +796,128 @@ export function ChatConversation({ conversationId }: { conversationId: string })
               ) : null}
             </div>
 
-            <PromptInput
-              /**
-               * 附件的大小 / 类型校验**刻意不交给 `PromptInput` 的 `maxFileSize` / `accept`**，
-               * 而是放在下面的提交预检（`scanFiles`）里做。两条原因：
-               *
-               * 1. `accept` 只是文件选择框的提示，**粘贴进来的文件根本不过它**，拦不住；
-               * 2. `maxFileSize` 是"整批里有一个超限就把**这一批全丢掉**"的粗粒度行为 ——
-               *    用户粘三张图、其中一张大了点，结果三张全没了，且提示只有一句"都超限"。
-               *
-               * 提交预检给的是逐文件的原因（哪个、为什么、多大），且**有不合格的就不发这一轮** ——
-               * 静默丢掉用户粘进来的东西，比让他重来一次更糟。
-               */
-              accept={ATTACHMENT_ACCEPT}
-              multiple
-              onSubmit={async ({ text, files }) => {
-                const content = text.trim()
-                if ((!content && files.length === 0) || streaming || attachmentUpload.uploading) {
-                  return
-                }
-
-                // 待发附件：只认本地文件（`files` 是 PromptInput 从附件状态里整理出来的）
-                const localFiles = files
-                  .map((part) => part.rawFile)
-                  .filter((file): file is File => file instanceof File)
-
-                const scanned = scanFiles(localFiles, inputModalities)
-                if (scanned.rejected.length > 0) {
-                  // 有不合格的**整轮不发**：静默丢掉用户粘进来的东西，比让他重来一次更糟
-                  toastError(rejectedText(scanned.rejected))
-                  throw new Error('附件不符合要求，已取消本次发送')
-                }
+            <div className="px-3 pb-3">
+              <PromptInput
                 /**
-                 * 数量也整轮不发（与 `AgentChatSchema.attachments` 的 `.max()` 同一个常量）。
+                 * 附件的大小 / 类型校验**刻意不交给 `PromptInput` 的 `maxFileSize` / `accept`**，
+                 * 而是放在下面的提交预检（`scanFiles`）里做。两条原因：
                  *
-                 * 为什么不"自动只带前 N 个"：那等于**背着用户丢掉**他明确选中的文件，
-                 * 而他以为都发出去了。宁可挡住这一轮、让他自己决定去掉哪几个。
+                 * 1. `accept` 只是文件选择框的提示，**粘贴进来的文件根本不过它**，拦不住；
+                 * 2. `maxFileSize` 是"整批里有一个超限就把**这一批全丢掉**"的粗粒度行为 ——
+                 *    用户粘三张图、其中一张大了点，结果三张全没了，且提示只有一句"都超限"。
+                 *
+                 * 提交预检给的是逐文件的原因（哪个、为什么、多大），且**有不合格的就不发这一轮** ——
+                 * 静默丢掉用户粘进来的东西，比让他重来一次更糟。
                  */
-                if (scanned.accepted.length > CHAT_ATTACHMENT_MAX_COUNT) {
-                  toastError(
-                    `一轮最多带 ${CHAT_ATTACHMENT_MAX_COUNT} 个附件，当前有 ${scanned.accepted.length} 个，请先移除多余的`,
-                  )
-                  throw new Error('附件数量超出上限，已取消本次发送')
-                }
-
-                setErrorText(undefined)
-                clearError()
-
-                let attachments: ChatAttachmentModel[] = []
-                if (scanned.accepted.length > 0) {
-                  try {
-                    attachments = await attachmentUpload.upload(scanned.accepted)
-                  } catch (uploadError) {
-                    const reason =
-                      uploadError instanceof Error ? uploadError.message : String(uploadError)
-                    toastError(`附件上传失败：${reason}`)
-                    // 抛出去让 `PromptInput` 知道"这一轮没发成"，输入框里的附件与文字都留着
-                    throw uploadError
+                accept={ATTACHMENT_ACCEPT}
+                multiple
+                onSubmit={async ({ text, files }) => {
+                  const content = text.trim()
+                  if ((!content && files.length === 0) || streaming || attachmentUpload.uploading) {
+                    return
                   }
-                }
 
-                await sendMessage(
-                  {
-                    text: content,
-                    // 直接把附件 part 交给 useChat：消息里因此带上 file part，气泡里就能显示附件。
-                    // 真正发给服务端的不是它，而是 metadata 里那份"存储 key + 元数据"
-                    // （part 里装的是预览地址，服务端要的是 key，见 prepareSendMessagesRequest）
-                    ...(files.length > 0 ? { files } : {}),
-                  },
-                  { metadata: { attachments } },
-                )
-              }}
-            >
-              {/* 待发附件条：粘完、发之前就能看清带了什么（图给缩略图，别的给文件名与大小） */}
-              <PromptInputBody>
-                <PromptInputAttachmentsBar onPreviewImage={previewAttachments} />
-                <PromptInputTextarea
-                  placeholder={`说说你想做什么…（⌘/Ctrl + Enter 发送，Enter 换行；可粘贴图片或文件，${ATTACHMENT_LIMIT_TEXT}）`}
-                  submitOn="mod+enter"
-                />
-              </PromptInputBody>
-              {/* 左下角：本轮用哪个模型；右下角：本轮统计 + 发送/停止 */}
-              <PromptInputFooter className="gap-2">
-                <PromptInputTools>
-                  <ModelPicker value={modelId} onChange={setModelId} disabled={streaming} />
-                  {/* 点击上传的入口：粘贴之外总得有"点一下选文件"这条路 */}
-                  <PromptInputAttachmentButton
-                    disabled={streaming || !attachmentsAllowed}
-                    tooltip={
-                      streaming
-                        ? '正在回复中，回复结束后再上传'
-                        : attachmentsAllowed
-                          ? '上传图片或文件（也可直接粘贴）'
-                          : '当前模型不支持图片 / 文件输入：可在后台「模型管理」声明，或换一个模型'
+                  // 待发附件：只认本地文件（`files` 是 PromptInput 从附件状态里整理出来的）
+                  const localFiles = files
+                    .map((part) => part.rawFile)
+                    .filter((file): file is File => file instanceof File)
+
+                  const scanned = scanFiles(localFiles, inputModalities)
+                  if (scanned.rejected.length > 0) {
+                    // 有不合格的**整轮不发**：静默丢掉用户粘进来的东西，比让他重来一次更糟
+                    toastError(rejectedText(scanned.rejected))
+                    throw new Error('附件不符合要求，已取消本次发送')
+                  }
+                  /**
+                   * 数量也整轮不发（与 `AgentChatSchema.attachments` 的 `.max()` 同一个常量）。
+                   *
+                   * 为什么不"自动只带前 N 个"：那等于**背着用户丢掉**他明确选中的文件，
+                   * 而他以为都发出去了。宁可挡住这一轮、让他自己决定去掉哪几个。
+                   */
+                  if (scanned.accepted.length > CHAT_ATTACHMENT_MAX_COUNT) {
+                    toastError(
+                      `一轮最多带 ${CHAT_ATTACHMENT_MAX_COUNT} 个附件，当前有 ${scanned.accepted.length} 个，请先移除多余的`,
+                    )
+                    throw new Error('附件数量超出上限，已取消本次发送')
+                  }
+
+                  setErrorText(undefined)
+                  clearError()
+
+                  let attachments: ChatAttachmentModel[] = []
+                  if (scanned.accepted.length > 0) {
+                    try {
+                      attachments = await attachmentUpload.upload(scanned.accepted)
+                    } catch (uploadError) {
+                      const reason =
+                        uploadError instanceof Error ? uploadError.message : String(uploadError)
+                      toastError(`附件上传失败：${reason}`)
+                      // 抛出去让 `PromptInput` 知道"这一轮没发成"，输入框里的附件与文字都留着
+                      throw uploadError
                     }
+                  }
+
+                  await sendMessage(
+                    {
+                      text: content,
+                      // 直接把附件 part 交给 useChat：消息里因此带上 file part，气泡里就能显示附件。
+                      // 真正发给服务端的不是它，而是 metadata 里那份"存储 key + 元数据"
+                      // （part 里装的是预览地址，服务端要的是 key，见 prepareSendMessagesRequest）
+                      ...(files.length > 0 ? { files } : {}),
+                    },
+                    { metadata: { attachments } },
+                  )
+                }}
+              >
+                {/* 待发附件条：粘完、发之前就能看清带了什么（图给缩略图，别的给文件名与大小） */}
+                <PromptInputBody>
+                  <PromptInputAttachmentsBar onPreviewImage={previewAttachments} />
+                  <PromptInputTextarea
+                    placeholder={`说说你想做什么…（⌘/Ctrl + Enter 发送，Enter 换行；可粘贴图片或文件，${ATTACHMENT_LIMIT_TEXT}）`}
+                    submitOn="mod+enter"
                   />
-                  {!attachmentsAllowed ? (
-                    <span className="text-xs text-muted-foreground">当前模型不支持附件</span>
-                  ) : inputModalities === null ? (
-                    // 未声明 ≠ 不支持：国内厂商的"列模型"接口普遍不给模态，所以只提醒、不拦。
-                    // 真不能收图时，服务端会明确报错（3312），比在这里瞎猜强。
-                    <span
-                      className="text-xs text-muted-foreground"
-                      title="后台「模型管理」里可以声明该模型支持哪些输入模态"
-                    >
-                      该模型未声明输入模态，图片 / 文件可能读不了
-                    </span>
-                  ) : null}
-                  {attachmentUpload.uploading ? (
-                    <span className="text-xs text-muted-foreground">
-                      正在上传附件 {attachmentUpload.progress.done}/{attachmentUpload.progress.total}…
-                    </span>
-                  ) : null}
-                </PromptInputTools>
-                <div className="flex min-w-0 items-center gap-2">
-                  <RunUsageInline usage={usage} turn={turn} />
-                  {/* 流式中这个按钮就是"停止"（内部按 status 换成方块图标），onStop 里做真正的取消 */}
-                  <PromptInputSubmit status={status} onStop={() => void stopRun()} />
-                </div>
-              </PromptInputFooter>
-            </PromptInput>
+                </PromptInputBody>
+                {/* 左下角：本轮用哪个模型；右下角：本轮统计 + 发送/停止 */}
+                <PromptInputFooter className="gap-2">
+                  <PromptInputTools>
+                    <ModelPicker value={modelId} onChange={setModelId} disabled={streaming} />
+                    {/* 点击上传的入口：粘贴之外总得有"点一下选文件"这条路 */}
+                    <PromptInputAttachmentButton
+                      disabled={streaming || !attachmentsAllowed}
+                      tooltip={
+                        streaming
+                          ? '正在回复中，回复结束后再上传'
+                          : attachmentsAllowed
+                            ? '上传图片或文件（也可直接粘贴）'
+                            : '当前模型不支持图片 / 文件输入：可在后台「模型管理」声明，或换一个模型'
+                      }
+                    />
+                    {!attachmentsAllowed ? (
+                      <span className="text-xs text-muted-foreground">当前模型不支持附件</span>
+                    ) : inputModalities === null ? (
+                      // 未声明 ≠ 不支持：国内厂商的"列模型"接口普遍不给模态，所以只提醒、不拦。
+                      // 真不能收图时，服务端会明确报错（3312），比在这里瞎猜强。
+                      <span
+                        className="text-xs text-muted-foreground"
+                        title="后台「模型管理」里可以声明该模型支持哪些输入模态"
+                      >
+                        该模型未声明输入模态，图片 / 文件可能读不了
+                      </span>
+                    ) : null}
+                    {attachmentUpload.uploading ? (
+                      <span className="text-xs text-muted-foreground">
+                        正在上传附件 {attachmentUpload.progress.done}/{attachmentUpload.progress.total}…
+                      </span>
+                    ) : null}
+                  </PromptInputTools>
+                  <div className="flex min-w-0 items-center gap-2">
+                    <RunUsageInline usage={usage} turn={turn} />
+                    {/* 流式中这个按钮就是"停止"（内部按 status 换成方块图标），onStop 里做真正的取消 */}
+                    <PromptInputSubmit status={status} onStop={() => void stopRun()} />
+                  </div>
+                </PromptInputFooter>
+              </PromptInput>
+            </div>
           </div>
         </ResizablePanel>
 
