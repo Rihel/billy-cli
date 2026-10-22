@@ -199,7 +199,7 @@ export default function MonitorStatusPage() {
             resizeConfig={{ enabled: true }}
           >
             <div key="overview" className="min-w-0">
-              <Card className="h-full overflow-hidden bg-surface-3 shadow-none">
+              <Card className="h-full overflow-hidden">
                 <CardHeader className="cursor-move drag-handle pb-0">
                   <div className="flex items-center justify-between gap-2">
                     <CardTitle className="text-sm">运行概览</CardTitle>
@@ -248,7 +248,7 @@ export default function MonitorStatusPage() {
             </div>
 
             <div key="water" className="min-w-0">
-              <Card className="h-full overflow-hidden bg-surface-2 shadow-none">
+              <Card className="h-full overflow-hidden">
                 <CardHeader className="cursor-move drag-handle pb-1">
                   <CardTitle className="text-sm">关键水位</CardTitle>
                   <CardDescription className="text-[11px]">
@@ -291,7 +291,7 @@ export default function MonitorStatusPage() {
             </div>
 
             <div key="metrics" className="min-w-0">
-              <Card className="h-full overflow-hidden bg-surface-2 shadow-none">
+              <Card className="h-full overflow-hidden">
                 <CardHeader className="cursor-move drag-handle pb-2">
                   <CardTitle className="text-sm">指标健康度</CardTitle>
                   <CardDescription>
@@ -331,7 +331,7 @@ export default function MonitorStatusPage() {
             </div>
 
             <div key="stale" className="min-w-0">
-              <Card className="h-full overflow-hidden bg-surface-1 shadow-none">
+              <Card className="h-full overflow-hidden">
                 <CardHeader className="cursor-move drag-handle pb-2">
                   <div className="flex items-center justify-between gap-2">
                     <CardTitle className="text-sm">采集异常</CardTitle>
@@ -369,7 +369,7 @@ export default function MonitorStatusPage() {
             </div>
 
             <div key="rules" className="min-w-0">
-              <Card className="h-full overflow-hidden bg-surface-1 shadow-none">
+              <Card className="h-full overflow-hidden">
                 <CardHeader className="cursor-move drag-handle pb-2">
                   <CardTitle className="text-sm">规则评估</CardTitle>
                   <CardDescription>上次评估与最近触发；名称来自规则定义</CardDescription>
@@ -458,7 +458,7 @@ function ChartCard({
   thresholdLabel?: string
 }) {
   return (
-    <Card className="flex h-full flex-col overflow-hidden bg-surface-1 shadow-none transition-colors hover:bg-surface-2">
+    <Card className="flex h-full flex-col overflow-hidden">
       <CardHeader className="cursor-move drag-handle pb-1">
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0">
@@ -503,7 +503,7 @@ function MetricTile({
     <div
       className={cn(
         'group/tile min-w-0 rounded-lg px-2.5 py-2 transition-colors',
-        stale ? 'bg-destructive/10 hover:bg-destructive/15' : 'bg-surface-3 hover:bg-surface-4',
+        stale ? 'bg-destructive/10 hover:bg-destructive/15' : 'bg-surface-2 hover:bg-surface-3',
       )}
       title={`${definition.key}${latest ? ` · ${latest.windowKey}` : ''}`}
     >

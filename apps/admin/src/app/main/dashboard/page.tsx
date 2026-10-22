@@ -1,37 +1,82 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import Link from 'next/link'
 import { useServerClient } from '@/lib/server-client'
 import { useQuery } from '@tanstack/react-query'
 import { cn } from '@repo/ui'
 import type { AgentUsageBucketModel } from '@repo/shared'
+import {
+  BellRingIcon,
+  CircleCheckIcon,
+  CoinsIcon,
+  MessagesSquareIcon,
+  ScrollTextIcon,
+  TimerIcon,
+  UsersIcon,
+} from 'lucide-react'
 import { AnimatedNumber } from '@/components/animated-number'
 import { DistributionPie, UsageBarChart } from '@/components/monitor-charts'
 
-/** 统计块：大数字（嵌入式，hairline 左分列，无卡片） */
+/**
+ * 统计块：大数字 + 可选图标色片。
+ * 图标色调只用来分组（品牌色 / 警示色 / 信息色），数字本身保持前景色，避免满屏彩色数字。
+ */
 function StatBlock({
   label,
   value,
   hint,
   format,
+  icon,
+  tone = 'brand',
 }: {
   label: string
   value: string | number | null
   hint?: string
   format?: (value: number) => string
+  icon?: ReactNode
+  tone?: 'brand' | 'warning' | 'info' | 'success'
 }) {
+  const toneClass =
+    tone === 'warning'
+      ? 'bg-warning/12 text-warning'
+      : tone === 'info'
+        ? 'bg-info/12 text-info'
+        : tone === 'success'
+          ? 'bg-success/12 text-success'
+          : 'bg-brand/10 text-brand'
+  const washClass =
+    tone === 'warning'
+      ? 'from-warning/[0.07]'
+      : tone === 'info'
+        ? 'from-info/[0.07]'
+        : tone === 'success'
+          ? 'from-success/[0.07]'
+          : 'from-brand/[0.07]'
+
   return (
-    <div className="rounded-lg bg-surface-2 px-4 py-3 transition-colors hover:bg-surface-3">
-      <div className="font-heading text-2xl font-medium tracking-tight tabular-nums sm:text-3xl">
+    <div
+      className={cn(
+        'rounded-xl bg-gradient-to-br to-transparent px-4 py-3.5 shadow-[0_1px_2px_rgb(23_23_32/0.04)] ring-1 ring-inset ring-black/[0.02] transition-colors dark:bg-none dark:bg-surface-2 dark:ring-0',
+        washClass,
+      )}
+    >
+      <div className="flex items-center gap-2">
+        {icon ? (
+          <span className={cn('grid size-6 shrink-0 place-items-center rounded-md', toneClass)}>
+            {icon}
+          </span>
+        ) : null}
+        <span className="truncate text-xs text-muted-foreground">{label}</span>
+      </div>
+      <div className="mt-2.5 font-heading text-2xl font-medium tracking-tight tabular-nums sm:text-3xl">
         {typeof value === 'number' ? (
           <AnimatedNumber value={value} format={format ?? ((next) => String(Math.round(next)))} />
         ) : (
           (value ?? '-')
         )}
       </div>
-      <div className="mt-1.5 text-xs text-muted-foreground">{label}</div>
-      {hint ? <div className="mt-1 text-[11px] text-muted-foreground/70">{hint}</div> : null}
+      {hint ? <div className="mt-1 text-[11px] text-muted-foreground/80">{hint}</div> : null}
     </div>
   )
 }
@@ -94,7 +139,7 @@ function UsageBreakdown({
                 </div>
                 <div className="h-1 overflow-hidden rounded-full bg-muted">
                   <div
-                    className="h-full rounded-full bg-primary/70"
+                    className="h-full rounded-full bg-brand/70"
                     style={{ width: `${Math.max(1, Math.min(100, ratio))}%` }}
                   />
                 </div>
@@ -169,24 +214,49 @@ export default function DashboardPage() {
             Billy Cli 管理后台，系统运行总览
           </p>
         </div>
-        <div className="inline-flex items-center gap-2 text-xs">
+        <div
+          className={cn(
+            'inline-flex items-center gap-2 rounded-full px-2.5 py-1 text-xs font-medium',
+            health.isSuccess && healthOk
+              ? 'bg-success/10 text-success'
+              : health.isSuccess
+                ? 'bg-warning/12 text-warning'
+                : 'bg-muted text-muted-foreground',
+          )}
+        >
           <span
             className={cn(
               'size-1.5 rounded-full',
-              health.isSuccess && healthOk ? 'bg-emerald-500' : 'bg-red-500',
+              health.isSuccess && healthOk
+                ? 'bg-success'
+                : health.isSuccess
+                  ? 'bg-warning'
+                  : 'bg-muted-foreground',
             )}
           />
-          <span className="text-muted-foreground">
-            {health.isSuccess ? (healthOk ? '服务正常' : '服务降级') : '检测中'}
-          </span>
+          {health.isSuccess ? (healthOk ? '服务正常' : '服务降级') : '检测中'}
         </div>
       </div>
 
       {/* 数据概览：嵌入式大数字（hairline 分列） */}
       <div className="grid grid-cols-2 gap-x-8 gap-y-8 sm:grid-cols-3 sm:gap-y-10">
-        <StatBlock label="用户" value={users.data?.total ?? null} />
-        <StatBlock label="告警规则" value={rules.data?.length ?? null} />
-        <StatBlock label="告警记录" value={logs.data?.total ?? null} />
+        <StatBlock
+          label="用户"
+          value={users.data?.total ?? null}
+          icon={<UsersIcon className="size-4" />}
+        />
+        <StatBlock
+          label="告警规则"
+          value={rules.data?.length ?? null}
+          tone="warning"
+          icon={<BellRingIcon className="size-4" />}
+        />
+        <StatBlock
+          label="告警记录"
+          value={logs.data?.total ?? null}
+          tone="info"
+          icon={<ScrollTextIcon className="size-4" />}
+        />
       </div>
 
       {/* AI 用量：token / 轮数 / 成功率 / 首字延迟 + 按天柱状 + 模型与 agent 占比 */}
@@ -238,24 +308,34 @@ export default function DashboardPage() {
         ) : (
           <>
             <div className="mt-4 grid grid-cols-2 gap-x-8 gap-y-6 sm:grid-cols-4">
-              <StatBlock label={`近 ${usageDays} 天对话`} value={totals.runs} hint={`${totals.steps} 步模型调用`} />
+              <StatBlock
+                label={`近 ${usageDays} 天对话`}
+                value={totals.runs}
+                hint={`${totals.steps} 步模型调用`}
+                icon={<MessagesSquareIcon className="size-4" />}
+              />
               <StatBlock
                 label={`近 ${usageDays} 天 tokens`}
                 value={totals.totalTokens}
                 format={compactNumber}
                 hint={`入 ${compactNumber(totals.inputTokens)} / 出 ${compactNumber(totals.outputTokens)}`}
+                icon={<CoinsIcon className="size-4" />}
               />
               <StatBlock
                 label="成功率"
                 value={successRate}
                 format={(next) => `${Math.round(next)}%`}
                 hint={`成功 ${totals.succeeded} · 失败 ${totals.failed}`}
+                tone="success"
+                icon={<CircleCheckIcon className="size-4" />}
               />
               <StatBlock
                 label="平均首字延迟"
                 value={totals.avgFirstTokenMs || null}
                 format={durationText}
                 hint={`平均耗时 ${durationText(totals.avgDurationMs)}`}
+                tone="info"
+                icon={<TimerIcon className="size-4" />}
               />
             </div>
 
@@ -295,7 +375,7 @@ export default function DashboardPage() {
               <span
                 className={cn(
                   'size-1.5 rounded-full',
-                  state === 'ok' ? 'bg-emerald-500' : 'bg-red-500',
+                  state === 'ok' ? 'bg-success' : 'bg-destructive',
                 )}
               />
               {name}

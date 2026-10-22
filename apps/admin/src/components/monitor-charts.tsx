@@ -26,7 +26,7 @@ const axisStyle = { fontSize: 10, fill: 'var(--muted-foreground)' }
 /** 时间序列面积图：QPS / 内存 / 错误率都用它 */
 export function TrendAreaChart({
   data,
-  color = 'var(--primary)',
+  color = 'var(--chart-1)',
   unit = '',
   format = (value) => String(value),
   threshold,
@@ -45,7 +45,7 @@ export function TrendAreaChart({
   }
   return (
     <ResponsiveContainer width="100%" height="100%">
-      <AreaChart data={data} margin={{ top: 8, right: 8, bottom: 0, left: -18 }}>
+      <AreaChart data={data} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
         <defs>
           <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
             <stop offset="0%" stopColor={color} stopOpacity={0.28} />
@@ -53,7 +53,7 @@ export function TrendAreaChart({
           </linearGradient>
         </defs>
         <XAxis dataKey="label" tick={axisStyle} tickLine={false} axisLine={false} minTickGap={24} />
-        <YAxis tick={axisStyle} tickLine={false} axisLine={false} width={44} />
+        <YAxis tick={axisStyle} tickLine={false} axisLine={false} width={40} />
         {threshold !== undefined ? (
           <ReferenceLine
             y={threshold}
@@ -97,9 +97,9 @@ export function UsageBarChart({ data }: { data: TrendPoint[] }) {
   if (data.length === 0) return <EmptyChart text="还没有数据" />
   return (
     <ResponsiveContainer width="100%" height="100%">
-      <BarChart data={data} margin={{ top: 8, right: 8, bottom: 0, left: -18 }}>
+      <BarChart data={data} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
         <XAxis dataKey="label" tick={axisStyle} tickLine={false} axisLine={false} />
-        <YAxis tick={axisStyle} tickLine={false} axisLine={false} width={44} />
+        <YAxis tick={axisStyle} tickLine={false} axisLine={false} width={40} />
         <Tooltip
           cursor={{ fill: 'var(--muted)', opacity: 0.4 }}
           contentStyle={{
@@ -111,7 +111,7 @@ export function UsageBarChart({ data }: { data: TrendPoint[] }) {
           }}
           formatter={(value) => [compact(Number(value)), 'tokens']}
         />
-        <Bar dataKey="value" fill="var(--primary)" radius={[4, 4, 0, 0]} maxBarSize={32} />
+        <Bar dataKey="value" fill="var(--chart-1)" radius={[4, 4, 0, 0]} maxBarSize={32} />
       </BarChart>
     </ResponsiveContainer>
   )
@@ -120,13 +120,21 @@ export function UsageBarChart({ data }: { data: TrendPoint[] }) {
 /** 占比 / 分布环图 */
 export function DistributionPie({
   data,
-  colors = ['var(--primary)', 'var(--chart-2)', 'var(--chart-3)', 'var(--chart-4)'],
+  colors = [
+    'var(--chart-1)',
+    'var(--chart-2)',
+    'var(--chart-3)',
+    'var(--chart-4)',
+    'var(--chart-5)',
+  ],
 }: {
   data: Array<{ name: string; value: number }>
   colors?: string[]
 }) {
   const total = data.reduce((sum, item) => sum + item.value, 0)
   if (total === 0) return <EmptyChart text="暂无数据" />
+  // 只有一项时整圈是一种颜色，留缝反而像被切掉一块
+  const gap = data.length > 1 ? 2 : 0
   return (
     <ResponsiveContainer width="100%" height="100%">
       <PieChart>
@@ -136,9 +144,10 @@ export function DistributionPie({
           nameKey="name"
           innerRadius="58%"
           outerRadius="82%"
-          paddingAngle={2}
-          stroke="var(--background)"
+          paddingAngle={gap}
+          stroke={gap ? "var(--background)" : "none"}
           strokeWidth={2}
+          isAnimationActive={false}
         >
           {data.map((item, index) => (
             <Cell key={item.name} fill={colors[index % colors.length]} />

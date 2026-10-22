@@ -7,8 +7,11 @@ export default function AuthLayout({
     <div className="flex min-h-dvh flex-col bg-background lg:flex-row">
       {/* 左：品牌叙事栏（lg 以上显示，浅色编辑感 / dark 深蓝氛围） */}
       <div className="relative hidden flex-col justify-between overflow-hidden bg-surface-1 p-10 lg:flex lg:w-[44%] xl:w-[40%]">
+        {/* 品牌光晕：极低密度的靛紫径向渐变，给纯中性底加一点空气感（不是装饰色块） */}
+        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(120%_90%_at_0%_0%,oklch(0.55_0.21_280/0.12),transparent_58%)]" />
+        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(90%_70%_at_100%_100%,oklch(0.55_0.21_280/0.06),transparent_60%)]" />
         <div className="relative z-10 flex items-center gap-2.5">
-          <span className="grid size-8 place-items-center rounded-md bg-surface-3 text-foreground">
+          <span className="grid size-8 place-items-center rounded-md bg-brand text-white shadow-[0_2px_8px_-2px_rgb(79_70_229/0.55)]">
             <span className="font-mono text-sm font-bold">›</span>
           </span>
           <span className="font-heading text-lg font-semibold tracking-tight">
@@ -28,9 +31,9 @@ export default function AuthLayout({
             NestJS 12 + Next.js 16 双前端，数据结构先行、AI 原生工程规范，从脚手架到生产一步到位。
           </p>
         </div>
-        <div className="relative z-10 rounded-lg bg-surface-2 px-3 py-3">
+        <div className="relative z-10 rounded-lg bg-card/80 px-3 py-3 shadow-[0_1px_2px_rgb(23_23_32/0.04)] backdrop-blur">
           <div className="flex items-center gap-2 font-mono text-[11px] tracking-wider text-muted-foreground uppercase">
-            <span className="size-1.5 rounded-full bg-emerald-500" />
+            <span className="size-1.5 rounded-full bg-success" />
             admin console · running
           </div>
         </div>
@@ -38,10 +41,10 @@ export default function AuthLayout({
 
       {/* 右：表单区（玻璃卡悬浮） */}
       <div className="flex flex-1 items-center justify-center p-6 sm:p-10">
-        <div className="w-full max-w-sm rounded-2xl bg-surface-1 p-6 sm:p-8">
+        <div className="w-full max-w-sm rounded-2xl bg-card p-6 shadow-[0_1px_2px_rgb(23_23_32/0.04),0_12px_32px_-12px_rgb(23_23_32/0.12)] sm:p-8">
           {/* 移动端品牌（lg 以下） */}
           <div className="mb-8 flex items-center gap-2.5 lg:hidden">
-            <span className="grid size-8 place-items-center rounded-md bg-surface-3 text-foreground">
+            <span className="grid size-8 place-items-center rounded-md bg-brand text-white">
               <span className="font-mono text-sm font-bold">›</span>
             </span>
             <span className="font-heading text-lg font-semibold tracking-tight">

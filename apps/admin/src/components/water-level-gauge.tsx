@@ -24,7 +24,9 @@ export function WaterLevelGauge({
   unit?: string
   className?: string
 }) {
-  const clipId = `water-${useId().replace(/:/g, '')}`
+  const uid = useId().replace(/:/g, '')
+  const clipId = `water-${uid}`
+  const fillId = `water-fill-${uid}`
   const ratio = value == null || max <= 0 ? 0 : Math.max(0, Math.min(1, value / max))
   const thresholdRatio = max <= 0 ? 0 : Math.max(0, Math.min(1, threshold / max))
   const waterY = 100 - ratio * 88 - 6
@@ -46,24 +48,35 @@ export function WaterLevelGauge({
             <clipPath id={clipId}>
               <circle cx="50" cy="50" r="44" />
             </clipPath>
+            {/* 液面自带渐变：单一平涂色在浅色底上会像一块实心圆，渐变让水位读起来像液体 */}
+            <linearGradient id={fillId} x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor={color} stopOpacity={0.52} />
+              <stop offset="100%" stopColor={color} stopOpacity={0.28} />
+            </linearGradient>
           </defs>
-          <circle cx="50" cy="50" r="44" fill="var(--surface-3)" />
+          <circle cx="50" cy="50" r="44" fill="var(--surface-2)" />
+          <circle
+            cx="50"
+            cy="50"
+            r="44"
+            fill="none"
+            stroke="var(--border)"
+            strokeWidth="1"
+          />
           <g clipPath={`url(#${clipId})`}>
             <rect
               x="0"
               y={waterY + 6}
               width="100"
               height={Math.max(0, 100 - waterY - 6)}
-              fill={color}
-              fillOpacity="0.42"
+              fill={`url(#${fillId})`}
             />
             {ratio > 0 ? (
               <g transform={`translate(0 ${waterY})`}>
                 <g className="water-wave">
                   <path
                     d="M0 6 Q 12.5 0 25 6 T 50 6 T 75 6 T 100 6 T 125 6 T 150 6 T 175 6 T 200 6 V 18 H0 Z"
-                    fill={color}
-                    fillOpacity="0.42"
+                    fill={`url(#${fillId})`}
                   />
                 </g>
               </g>
