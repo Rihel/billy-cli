@@ -29,7 +29,7 @@ const PayloadSchemaBlock = ({ schema }: { schema: Record<string, unknown> | null
         {open ? '收起 payload 定义' : '展开 payload 定义'}
       </CollapsibleTrigger>
       <CollapsibleContent>
-        <pre className="mt-2 max-h-72 overflow-auto rounded-md border bg-muted/40 p-3 font-mono text-xs">
+        <pre className="mt-2 max-h-72 overflow-auto rounded-md bg-surface-1 p-3 font-mono text-xs">
           {JSON.stringify(schema, null, 2)}
         </pre>
       </CollapsibleContent>
@@ -39,7 +39,7 @@ const PayloadSchemaBlock = ({ schema }: { schema: Record<string, unknown> | null
 
 /** 一条事件声明：name / title / mode 徽标 / description / payloadSchema */
 const ToolEventDeclRow = ({ event }: { event: AiToolEventModel }) => (
-  <div className="flex flex-col gap-2 rounded-md border p-3">
+  <div className="flex flex-col gap-2 rounded-md bg-surface-1 p-3">
     <div className="flex flex-wrap items-center gap-2 text-sm">
       <span className="font-medium">{event.title}</span>
       <Badge variant="outline" className="font-mono">

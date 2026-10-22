@@ -222,7 +222,7 @@ export default function AiAuditPage() {
           side="right"
           className="flex w-full flex-col gap-0 overflow-hidden p-0 data-[side=right]:w-full data-[side=right]:sm:max-w-[50vw]"
         >
-          <SheetHeader className="shrink-0 border-b pr-12">
+          <SheetHeader className="shrink-0 bg-surface-1 pr-12">
             <SheetTitle className="truncate">
               运行记录：{conversation?.title || conversation?.id || '—'}
             </SheetTitle>
@@ -259,8 +259,8 @@ export default function AiAuditPage() {
                     key={run.id}
                     type="button"
                     className={cn(
-                      'flex flex-col gap-1 rounded-md border border-border px-3 py-2 text-left transition-colors hover:bg-muted/50',
-                      runId === run.id && 'border-primary bg-muted/40',
+                      'flex flex-col gap-1 rounded-md bg-surface-1 px-3 py-2 text-left transition-colors hover:bg-surface-2',
+                      runId === run.id && 'bg-surface-3',
                     )}
                     onClick={() => setRunId(runId === run.id ? undefined : run.id)}
                   >
@@ -325,7 +325,7 @@ export default function AiAuditPage() {
                   <span>发起人：{runDetailQuery.data.triggeredBy ?? '—'}</span>
                   <span>恢复次数：{runDetailQuery.data.recoveryCount}</span>
                 </div>
-                <pre className="max-h-72 overflow-auto rounded-md border border-border bg-muted/40 p-3 text-xs">
+                <pre className="max-h-72 overflow-auto rounded-md bg-surface-1 p-3 text-xs">
                   {JSON.stringify(runDetailQuery.data.requestSnapshot ?? {}, null, 2)}
                 </pre>
                 {runDetailQuery.data.errorDetail ? (
@@ -333,7 +333,7 @@ export default function AiAuditPage() {
                     <span className="text-sm font-medium text-destructive">
                       上游错误原文（全量）
                     </span>
-                    <pre className="max-h-60 overflow-auto rounded-md border border-destructive/40 bg-destructive/5 p-3 text-xs">
+                    <pre className="max-h-60 overflow-auto rounded-md bg-destructive/10 p-3 text-xs">
                       {JSON.stringify(runDetailQuery.data.errorDetail, null, 2)}
                     </pre>
                   </div>
@@ -348,7 +348,7 @@ export default function AiAuditPage() {
                         <button
                           key={child.id}
                           type="button"
-                          className="flex items-center justify-between rounded-md border border-border px-3 py-2 text-left hover:bg-muted/50"
+                          className="flex items-center justify-between rounded-md bg-surface-1 px-3 py-2 text-left hover:bg-surface-2"
                           onClick={() => setRunId(child.id)}
                         >
                           <span className="font-mono">{child.agentKey}</span>
@@ -407,7 +407,7 @@ export default function AiAuditPage() {
 function TimelineRow({ item }: { item: AgentTimelineItemModel }) {
   const text = item.payload?.text
   return (
-    <details className="group rounded-md border border-border bg-card px-3 py-2">
+    <details className="group rounded-md bg-surface-1 px-3 py-2">
       <summary className="flex cursor-pointer flex-wrap items-center gap-2 text-xs text-muted-foreground">
         <span className="font-mono">#{item.seq}</span>
         <DictTag dict={TimelineKind} value={item.kind} emptyText={<span>{item.kind}</span>} />
@@ -421,7 +421,7 @@ function TimelineRow({ item }: { item: AgentTimelineItemModel }) {
         {item.usage ? <span>token {String(item.usage.totalTokens ?? '—')}</span> : null}
         {item.state ? <span>{item.state}</span> : null}
       </summary>
-      <div className="mt-2 border-t border-border pt-2 text-sm">
+      <div className="mt-2 rounded-md bg-surface-2 px-3 py-2 text-sm">
         {typeof text === 'string' ? (
           <Markdown content={text} />
         ) : (

@@ -131,7 +131,7 @@ export function ToolCard({ part, events, defaultOpen, streaming, durationMs }: T
           放在 `ToolContent` 内是为了跟着展开态走（与入参出参同一层），只读一行、不参与交互。
         */}
         {reason && (
-          <p className="border-border border-l-2 pl-2 text-xs text-muted-foreground">
+          <p className="rounded-md bg-surface-1 px-2 py-1.5 text-xs text-muted-foreground">
             <span className="font-medium">为什么：</span>
             {reason}
           </p>

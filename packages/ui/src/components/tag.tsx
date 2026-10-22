@@ -19,26 +19,26 @@ import { Badge } from "#components/ui/badge"
  */
 const PRESET_COLORS: Record<string, string> = {
   default:
-    "border border-border bg-muted/40 text-muted-foreground",
+    "bg-muted/40 text-muted-foreground",
   success:
-    "border border-success/30 bg-success/10 text-success",
+    "bg-success/10 text-success",
   error:
-    "border border-destructive/30 bg-destructive/10 text-destructive",
+    "bg-destructive/10 text-destructive",
   warning:
-    "border border-warning/30 bg-warning/10 text-warning",
+    "bg-warning/10 text-warning",
   processing:
-    "border border-info/30 bg-info/10 text-info",
-  blue: "border border-indigo-200 bg-indigo-50 text-indigo-700",
-  cyan: "border border-cyan-200 bg-cyan-50 text-cyan-700",
-  green: "border border-emerald-200 bg-emerald-50 text-emerald-700",
-  red: "border border-red-200 bg-red-50 text-red-700",
-  gold: "border border-amber-200 bg-amber-50 text-amber-700",
-  orange: "border border-orange-200 bg-orange-50 text-orange-700",
-  purple: "border border-purple-200 bg-purple-50 text-purple-700",
-  magenta: "border border-pink-200 bg-pink-50 text-pink-700",
+    "bg-info/10 text-info",
+  blue: "bg-indigo-50 text-indigo-700",
+  cyan: "bg-cyan-50 text-cyan-700",
+  green: "bg-emerald-50 text-emerald-700",
+  red: "bg-red-50 text-red-700",
+  gold: "bg-amber-50 text-amber-700",
+  orange: "bg-orange-50 text-orange-700",
+  purple: "bg-purple-50 text-purple-700",
+  magenta: "bg-pink-50 text-pink-700",
   geekblue:
-    "border border-indigo-200 bg-indigo-50 text-indigo-700",
-  volcano: "border border-orange-200 bg-orange-50 text-orange-700",
+    "bg-indigo-50 text-indigo-700",
+  volcano: "bg-orange-50 text-orange-700",
 }
 
 export type TagProps = {

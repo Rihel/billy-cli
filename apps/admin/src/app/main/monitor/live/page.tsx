@@ -111,7 +111,7 @@ export default function LiveAlertsPage() {
       />
 
       {/* 连接状态 + 计数：嵌入式 hairline 行（与 dashboard 同一语言） */}
-      <div className="flex flex-wrap items-center gap-x-7 gap-y-2.5 border-y border-border py-3">
+      <div className="flex flex-wrap items-center gap-x-7 gap-y-2.5 rounded-lg bg-surface-1 px-3 py-3">
         <span className="inline-flex items-center gap-2 text-xs">
           <span className={cn('size-1.5 rounded-full', stateView.dot)} />
           <span className="text-muted-foreground">{stateView.text}</span>
@@ -143,7 +143,7 @@ export default function LiveAlertsPage() {
           {events.map((event, index) => (
             <div
               key={`${event.sentAt}-${index}`}
-              className="flex items-start gap-4 border-b border-border py-3"
+              className="flex items-start gap-4 rounded-lg px-3 py-3 even:bg-surface-1"
             >
               <span className="w-16 shrink-0 pt-0.5 font-mono text-xs text-muted-foreground tabular-nums">
                 {dayjs(event.sentAt).format('HH:mm:ss')}

@@ -72,8 +72,8 @@ export const PromptAttachmentChip = ({
     <Wrapper
       {...(clickable ? { onClick: () => onClick?.(item.key), type: "button" as const } : {})}
       className={cn(
-        "relative flex items-center gap-2 rounded-md border border-border bg-muted/40 p-1.5",
-        clickable && "text-left hover:border-primary/40",
+        "relative flex items-center gap-2 rounded-md bg-surface-2 p-1.5",
+        clickable && "text-left hover:bg-surface-3",
         onRemove && "pr-7",
         className,
       )}

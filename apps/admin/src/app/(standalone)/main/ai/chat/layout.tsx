@@ -252,7 +252,7 @@ export default function ChatLayout({ children }: { children: ReactNode }) {
             </ResizablePanel>
 
             {/* 分隔条：1px 发丝线，左右各 2px 的命中区（悬停 / 拖动时高亮，键盘也能调） */}
-            <ResizableHandle className="bg-border transition-colors data-[separator=hover]:bg-primary/40 data-[separator=active]:bg-primary" />
+            <ResizableHandle className="bg-surface-3 transition-colors data-[separator=hover]:bg-primary/40 data-[separator=active]:bg-primary" />
           </>
         )}
 

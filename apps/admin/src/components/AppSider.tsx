@@ -49,7 +49,7 @@ export const AppSider = ({}: AppSiderProps) => {
       <SidebarHeader>
         {/* 品牌区：与前台一致的亮蓝渐变 TerminalSquare 方块 + 字标 + mono 副标 */}
         <div className="flex items-center gap-2.5 px-1 py-0.5">
-          <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-gradient-to-br from-indigo-500 to-violet-600 text-white shadow-md shadow-indigo-600/25">
+          <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-surface-3 text-foreground">
             <TerminalSquareIcon className="size-4" strokeWidth={2.2} />
           </span>
           <div className="flex min-w-0 flex-col leading-tight">

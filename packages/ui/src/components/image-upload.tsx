@@ -63,7 +63,7 @@ export function ImageUpload({
             alt="预览图"
             className={cn(
               rootClassName,
-              "rounded-lg border border-border object-cover",
+              "rounded-lg bg-surface-1 object-cover",
             )}
           />
           <Button
@@ -82,7 +82,7 @@ export function ImageUpload({
           onClick={() => inputRef.current?.click()}
           className={cn(
             rootClassName,
-            "flex cursor-pointer flex-col items-center justify-center gap-1 rounded-lg border border-dashed border-border bg-muted/50 text-muted-foreground transition-colors hover:bg-muted",
+            "flex cursor-pointer flex-col items-center justify-center gap-1 rounded-lg bg-surface-1 text-muted-foreground transition-colors hover:bg-muted",
             disabled && "cursor-not-allowed opacity-50",
           )}
         >

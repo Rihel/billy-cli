@@ -26,7 +26,7 @@ export function PlanSummaryCard({
   const percent = total === 0 ? 0 : Math.round((done / total) * 100)
 
   return (
-    <div className="flex flex-col gap-1.5 rounded-md border border-border bg-muted/30 px-2.5 py-1.5">
+    <div className="flex flex-col gap-1.5 rounded-md bg-surface-2 px-2.5 py-1.5">
       <div className="flex flex-wrap items-center gap-2">
         <ListTodoIcon className="size-4 shrink-0 text-muted-foreground" />
         <span className="min-w-0 flex-1 truncate text-sm font-medium" title={plan.goal}>
@@ -36,7 +36,7 @@ export function PlanSummaryCard({
           已完成 {done} / 共 {total}
         </Badge>
         {blocked > 0 ? (
-          <Badge variant="outline" className="shrink-0 border-warning/40 text-warning">
+          <Badge variant="outline" className="shrink-0 text-warning">
             {blocked} 项受阻
           </Badge>
         ) : null}

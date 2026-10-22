@@ -34,7 +34,7 @@ export function Group({
       {...props}
       className={cn(
         "w-full",
-        bordered && "border border-border p-4",
+        bordered && "bg-surface-1 p-4",
         className,
       )}
     >
@@ -49,7 +49,7 @@ export function Group({
           <div
             className={cn(
               "text-base font-medium",
-              mark && "border-l-2 border-l-primary pl-3 leading-5",
+              mark && "bg-primary/5 px-3 leading-5",
             )}
           >
             {title}

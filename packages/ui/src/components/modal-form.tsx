@@ -137,7 +137,7 @@ export function ModalForm<Values extends object>({
         )}
       >
         {/* 头部：固定不滚动 */}
-        <DialogHeader className="shrink-0 border-b px-5 py-4">
+        <DialogHeader className="shrink-0 bg-surface-1 px-5 py-4">
           <DialogTitle>{title}</DialogTitle>
         </DialogHeader>
 
@@ -161,7 +161,7 @@ export function ModalForm<Values extends object>({
         </div>
 
         {/* 底部：固定不滚动 */}
-        <DialogFooter className="mx-0 mb-0 shrink-0 rounded-none border-t bg-muted/40 px-5 py-3">
+        <DialogFooter className="mx-0 mb-0 shrink-0 rounded-none bg-surface-1 px-5 py-3">
           <Button
             variant="outline"
             disabled={loading || submitting}

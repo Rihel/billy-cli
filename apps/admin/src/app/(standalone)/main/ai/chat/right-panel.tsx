@@ -241,7 +241,7 @@ function SystemPromptPanel({
           onClick={copy}
         />
       </div>
-      <div className="min-h-0 flex-1 overflow-auto rounded-md border border-border/60 bg-muted/20 p-2.5">
+      <div className="min-h-0 flex-1 overflow-auto rounded-md bg-surface-1 p-2.5">
         {query.isLoading ? (
           <p className="text-xs text-muted-foreground">正在加载系统指令…</p>
         ) : query.isError ? (

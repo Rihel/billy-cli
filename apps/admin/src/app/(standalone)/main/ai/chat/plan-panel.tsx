@@ -364,25 +364,25 @@ const STATUS_STYLE: Record<
     label: '待办',
     Icon: CircleDashedIcon,
     iconClass: 'text-muted-foreground',
-    badgeClass: 'border-border text-muted-foreground',
+    badgeClass: 'bg-surface-2 text-muted-foreground',
   },
   in_progress: {
     label: '进行中',
     Icon: LoaderCircleIcon,
     iconClass: 'text-primary',
-    badgeClass: 'border-primary/40 text-primary',
+    badgeClass: 'bg-primary/10 text-primary',
   },
   done: {
     label: '已完成',
     Icon: CircleCheckIcon,
     iconClass: 'text-success',
-    badgeClass: 'border-success/40 text-success',
+    badgeClass: 'bg-success/10 text-success',
   },
   blocked: {
     label: '受阻',
     Icon: CircleAlertIcon,
     iconClass: 'text-warning',
-    badgeClass: 'border-warning/40 text-warning',
+    badgeClass: 'bg-warning/10 text-warning',
   },
 }
 
@@ -462,7 +462,7 @@ export function PlanPanel({ plan, change, history = [] }: PlanPanelProps) {
 
         {history.length > 0 ? (
           <Collapsible
-            className="mt-2 border-t border-border pt-2"
+            className="mt-2 rounded-md bg-surface-1 px-2 py-2"
             open={historyOpen}
             onOpenChange={setHistoryOpen}
           >

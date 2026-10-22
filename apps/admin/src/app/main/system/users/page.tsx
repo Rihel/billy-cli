@@ -262,7 +262,7 @@ export default function UsersPage() {
               loading={isFetching}
               onClick={() => void refetch()}
             />
-            <div className="flex items-center gap-1 border-b border-transparent transition-colors focus-within:border-foreground/30">
+            <div className="flex items-center gap-1 rounded-lg bg-surface-2 px-2 transition-colors focus-within:ring-2 focus-within:ring-ring/40">
               <SearchIcon className="ml-0.5 size-3.5 text-muted-foreground" />
               <Input
                 placeholder="搜索邮箱..."

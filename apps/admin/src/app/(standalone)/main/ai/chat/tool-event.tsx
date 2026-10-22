@@ -255,7 +255,7 @@ const EventJson = ({ payload }: { payload: unknown }) => {
         {open ? '收起 JSON' : '展开 JSON'}
       </CollapsibleTrigger>
       <CollapsibleContent>
-        <pre className="mt-2 max-h-72 overflow-auto rounded-md border bg-muted/40 p-3 font-mono text-xs">
+        <pre className="mt-2 max-h-72 overflow-auto rounded-md bg-surface-1 p-3 font-mono text-xs">
           {JSON.stringify(payload, null, 2)}
         </pre>
       </CollapsibleContent>
@@ -406,7 +406,7 @@ export function ToolEventsBody({
 export function ToolEventCard({ part }: { part: ToolEventPart }) {
   const [open, setOpen] = useState(true)
   return (
-    <Card className="gap-0 border-dashed py-0">
+    <Card className="gap-0 py-0">
       <Collapsible open={open} onOpenChange={setOpen}>
         <CollapsibleTrigger
           className={cn(

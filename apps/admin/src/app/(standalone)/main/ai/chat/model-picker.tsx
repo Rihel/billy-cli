@@ -95,7 +95,7 @@ export function ModelPicker({
       <button
         type="button"
         onClick={() => void refetch()}
-        className="rounded-md border border-destructive/40 px-2 py-1 text-xs text-destructive"
+        className="rounded-md bg-destructive/10 px-2 py-1 text-xs text-destructive"
         title={error instanceof Error ? error.message : String(error)}
       >
         模型清单加载失败，点击重试

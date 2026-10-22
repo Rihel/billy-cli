@@ -40,7 +40,7 @@ export function SubAgentCard({ agent }: { agent: SubAgentLive }) {
   const body = subAgentBodyText(agent)
 
   return (
-    <Card className="gap-0 border-dashed py-0">
+    <Card className="gap-0 py-0">
       <Collapsible open={open} onOpenChange={setOpen}>
         <CollapsibleTrigger
           className={cn(
@@ -76,7 +76,7 @@ export function SubAgentCard({ agent }: { agent: SubAgentLive }) {
         <CollapsibleContent>
           {body ? (
             // 正文可能是整篇报告（几万字），给一个限高 + 内部滚动：不撑爆时间线，也读得完
-            <div className="max-h-80 overflow-auto border-t border-border px-3 py-2">
+            <div className="max-h-80 overflow-auto bg-surface-1 px-3 py-2">
               <Message from="assistant" className="max-w-full gap-0">
                 <MessageContent className="gap-1">
                   <MessageResponse>{body}</MessageResponse>
@@ -84,12 +84,12 @@ export function SubAgentCard({ agent }: { agent: SubAgentLive }) {
               </Message>
             </div>
           ) : (
-            <p className="border-t border-border px-3 py-2 text-xs text-muted-foreground">
+            <p className="bg-surface-1 px-3 py-2 text-xs text-muted-foreground">
               {active ? '正在干活，还没有产出正文 —— 过程（推理与工具往返）在右栏。' : '这个子助手没有留下正文 —— 过程在右栏。'}
             </p>
           )}
           {agent.error ? (
-            <p className="border-t border-border px-3 py-2 text-xs text-destructive">{agent.error}</p>
+            <p className="bg-destructive/10 px-3 py-2 text-xs text-destructive">{agent.error}</p>
           ) : null}
         </CollapsibleContent>
       </Collapsible>

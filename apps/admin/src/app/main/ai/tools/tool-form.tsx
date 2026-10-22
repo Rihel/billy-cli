@@ -84,7 +84,7 @@ const FormSection = ({
   description?: ReactNode
   children: ReactNode
 }) => (
-  <section className="flex flex-col gap-3 rounded-lg border p-4">
+  <section className="flex flex-col gap-3 rounded-lg bg-surface-1 p-4">
     <div className="flex flex-col gap-0.5">
       <h3 className="text-sm font-semibold">{title}</h3>
       {description ? (
@@ -150,7 +150,7 @@ const ParamSchemaBlock = ({ schema }: { schema: Record<string, unknown> | null }
         {open ? '收起 JSON' : '展开 JSON'}
       </CollapsibleTrigger>
       <CollapsibleContent>
-        <pre className="mt-2 max-h-72 overflow-auto rounded-md border bg-muted/40 p-3 font-mono text-xs">
+        <pre className="mt-2 max-h-72 overflow-auto rounded-md bg-surface-1 p-3 font-mono text-xs">
           {JSON.stringify(schema, null, 2)}
         </pre>
       </CollapsibleContent>

@@ -141,7 +141,7 @@ export function QuestionCard({
   }
 
   return (
-    <div className="w-full rounded-lg border bg-card p-3 text-sm">
+    <div className="w-full rounded-lg bg-surface-1 p-3 text-sm">
       <div className="mb-2 flex items-center gap-2">
         <Badge variant="secondary">需要你回答</Badge>
         <span className="text-xs text-muted-foreground">

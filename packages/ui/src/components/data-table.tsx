@@ -195,7 +195,7 @@ export function DataTable<T extends object>({
         </Table>
 
         {renderPagination ? (
-          <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border px-1 py-2.5 text-xs text-muted-foreground">
+          <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-surface-1 px-3 py-2.5 text-xs text-muted-foreground">
             <div className="flex items-center gap-3">
               <span className="font-mono tabular-nums text-foreground/80">
                 共 {totalCount} 条

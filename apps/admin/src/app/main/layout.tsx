@@ -22,7 +22,7 @@ export type MainLayoutProps = Partial<{
  */
 const MainLayout = async ({ children }: MainLayoutProps) => (
   <AdminAuthBoundary>
-    <div className="relative flex h-screen w-screen overflow-hidden bg-background">
+    <div className="relative flex h-dvh w-screen overflow-hidden bg-background">
       <SidebarProvider>
         <AppSider />
         {/* 内容区：嵌入式（与侧栏同底连续，无漂浮面板；顶栏 hairline 分隔） */}

@@ -200,8 +200,8 @@ export function FileUpload({
             onDragLeave={() => setDragging(false)}
             onDrop={handleDrop}
             className={cn(
-              "flex cursor-pointer flex-col items-center justify-center gap-1 rounded-lg border border-dashed border-border bg-muted/30 px-4 py-6 text-center transition-colors hover:bg-muted",
-              dragging && "border-primary bg-muted",
+              "flex cursor-pointer flex-col items-center justify-center gap-1 rounded-lg bg-surface-1 px-4 py-6 text-center transition-colors hover:bg-muted",
+              dragging && "bg-surface-3",
               disabled && "cursor-not-allowed opacity-50",
             )}
           >

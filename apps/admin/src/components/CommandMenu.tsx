@@ -20,6 +20,7 @@ import {
 import {
   ActivityIcon,
   BellRingIcon,
+  GaugeIcon,
   LayoutDashboardIcon,
   MonitorIcon,
   MoonIcon,
@@ -97,6 +98,8 @@ export function CommandMenu({ sidebar = false }: { sidebar?: boolean }) {
     { label: '控制台', icon: LayoutDashboardIcon, run: () => go('/main/dashboard') },
     { label: '告警规则', icon: BellRingIcon, run: () => go('/main/monitor/rules') },
     { label: '告警记录', icon: ActivityIcon, run: () => go('/main/monitor/logs') },
+    { label: '监控指标', icon: ActivityIcon, run: () => go('/main/monitor/metrics') },
+    { label: '监控状态', icon: GaugeIcon, run: () => go('/main/monitor/status') },
     { label: '用户管理', icon: UsersIcon, run: () => go('/main/system/users') },
     { label: '管理员管理', icon: ShieldCheckIcon, run: () => go('/main/system/admins') },
     { label: '个人中心', icon: UserRoundIcon, run: () => go('/main/user-center') },
@@ -110,7 +113,7 @@ export function CommandMenu({ sidebar = false }: { sidebar?: boolean }) {
           <SidebarMenuItem>
             <SidebarMenuButton
               tooltip="搜索页面 (⌘K)"
-              className="group/search h-8 rounded-lg border border-border/80 bg-muted/30 text-muted-foreground hover:bg-muted/60 hover:text-foreground data-[active=true]:bg-muted/60"
+              className="group/search h-8 rounded-lg bg-surface-2 text-muted-foreground hover:bg-surface-3 hover:text-foreground data-[active=true]:bg-surface-3"
               onClick={() => setOpen(true)}
             >
               <SearchIcon />
@@ -126,12 +129,12 @@ export function CommandMenu({ sidebar = false }: { sidebar?: boolean }) {
           {/* 顶栏入口：放大镜胶囊 */}
           <Button
             variant="outline"
-            className="hidden h-8 w-56 justify-start gap-2 rounded-lg border-border bg-background/60 px-2.5 text-sm font-normal text-muted-foreground shadow-none hover:bg-muted/60 hover:text-foreground sm:flex"
+            className="hidden h-8 w-56 justify-start gap-2 rounded-lg bg-surface-2 px-2.5 text-sm font-normal text-muted-foreground shadow-none hover:bg-surface-3 hover:text-foreground sm:flex"
             onClick={() => setOpen(true)}
           >
             <SearchIcon className="size-3.5" />
             <span className="flex-1 text-left">搜索页面…</span>
-            <kbd className="pointer-events-none inline-flex h-5 items-center gap-0.5 rounded border border-border bg-muted/60 px-1 font-mono text-[10px] text-muted-foreground">
+            <kbd className="pointer-events-none inline-flex h-5 items-center gap-0.5 rounded bg-surface-3 px-1 font-mono text-[10px] text-muted-foreground">
               ⌘K
             </kbd>
           </Button>

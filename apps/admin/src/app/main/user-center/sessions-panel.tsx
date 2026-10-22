@@ -47,7 +47,7 @@ export function SessionsPanel() {
   const items = sessions.data?.items ?? []
 
   return (
-    <section className="border-t border-border pt-6">
+    <section className="rounded-xl bg-surface-1 p-4">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <h2 className="font-heading text-base font-medium tracking-tight">登录设备</h2>
         <span className="text-xs text-muted-foreground">
@@ -69,7 +69,7 @@ export function SessionsPanel() {
             return (
               <div
                 key={session.sessionId}
-                className="flex items-center justify-between gap-4 border-b border-border py-3 last:border-b-0"
+                className="flex items-center justify-between gap-4 rounded-lg px-2 py-3 even:bg-surface-2"
               >
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">

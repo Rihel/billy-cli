@@ -76,7 +76,7 @@ const SortableFileItem = ({
     <div
       ref={setNodeRef}
       className={cn(
-        "flex min-h-14 items-center gap-3 border-b border-border px-3 py-2 last:border-b-0",
+        "flex min-h-14 items-center gap-3 rounded-md px-3 py-2 even:bg-surface-1",
         isDragging && "relative z-10 bg-popover shadow-md",
       )}
       style={{
@@ -215,7 +215,7 @@ export function SortableFileList({
         items={files.map((file) => file.key)}
         strategy={verticalListSortingStrategy}
       >
-        <div className={cn("border-y border-border", className)}>
+        <div className={cn("rounded-lg bg-surface-1", className)}>
           {files.map((file) => (
             <SortableFileItem
               key={file.key}

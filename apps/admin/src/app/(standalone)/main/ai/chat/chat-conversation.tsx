@@ -709,7 +709,7 @@ export function ChatConversation({ conversationId }: { conversationId: string })
           ) : null}
           {agents.length > 1 && (
             <select
-              className="h-8 rounded-md border border-border bg-background px-2 text-sm"
+              className="h-8 rounded-md bg-surface-2 px-2 text-sm"
               value={agentKey ?? agentsQuery.data?.defaultAgentKey ?? ''}
               onChange={(event) => {
                 // 改选只对"接下来这一轮"生效（服务端每轮从入参取 agentKey）
@@ -918,7 +918,7 @@ export function ChatConversation({ conversationId }: { conversationId: string })
         {panelOpen ? (
           <>
             {/* 分隔条：1px 发丝线（与左栏分隔条同一套交互） */}
-            <ResizableHandle className="mx-2 bg-border transition-colors data-[separator=hover]:bg-primary/40 data-[separator=active]:bg-primary" />
+            <ResizableHandle className="mx-2 bg-surface-3 transition-colors data-[separator=hover]:bg-primary/40 data-[separator=active]:bg-primary" />
             <ResizablePanel
               defaultSize={PANEL_WIDTH.default}
               minSize={PANEL_WIDTH.min}

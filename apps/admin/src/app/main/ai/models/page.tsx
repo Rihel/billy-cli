@@ -1126,7 +1126,7 @@ export default function AiModelsPage() {
               disabled={!selectedProvider}
               onClick={() => void refetchModels()}
             />
-            <div className="flex items-center gap-1 border-b border-transparent transition-colors focus-within:border-foreground/30">
+            <div className="flex items-center gap-1 rounded-lg bg-surface-2 px-2 transition-colors focus-within:ring-2 focus-within:ring-ring/40">
               <SearchIcon className="ml-0.5 size-3.5 text-muted-foreground" />
               <Input
                 placeholder="搜索模型标识 / 展示名..."

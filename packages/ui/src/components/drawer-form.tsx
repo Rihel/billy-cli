@@ -89,7 +89,7 @@ export function DrawerForm<Values extends object>({
         className={cn("flex max-h-dvh flex-col gap-0 overflow-hidden p-0", WIDTH_CLASS[width])}
       >
         {/* 头部：固定不滚动 */}
-        <SheetHeader className="shrink-0 border-b">
+        <SheetHeader className="shrink-0 bg-surface-1">
           <SheetTitle>{title}</SheetTitle>
         </SheetHeader>
         {/* 内容区：说明 + 字段，独立滚动 */}
@@ -111,7 +111,7 @@ export function DrawerForm<Values extends object>({
           </form>
         </div>
         {/* 底部：固定不滚动 */}
-        <div className="flex shrink-0 justify-end gap-2 border-t bg-muted/40 px-4 py-3">
+        <div className="flex shrink-0 justify-end gap-2 bg-surface-1 px-4 py-3">
           <Button
             variant="outline"
             disabled={loading || submitting}

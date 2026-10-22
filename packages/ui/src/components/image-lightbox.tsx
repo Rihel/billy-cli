@@ -402,10 +402,10 @@ export const ImageLightbox = ({ items, index, onIndexChange, onClose }: ImageLig
                 key={item.id}
                 aria-label={`查看第 ${itemIndex + 1} 张`}
                 className={cn(
-                  "size-10 overflow-hidden rounded border transition-all",
+                  "size-10 overflow-hidden rounded bg-surface-2 transition-all",
                   itemIndex === index
-                    ? "border-primary ring-1 ring-primary"
-                    : "border-border opacity-70 hover:opacity-100",
+                    ? "ring-1 ring-primary"
+                    : "opacity-70 hover:opacity-100",
                 )}
                 onClick={() => onIndexChange(items.findIndex((candidate) => candidate.id === item.id))}
                 type="button"
