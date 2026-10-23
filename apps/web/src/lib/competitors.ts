@@ -1,4 +1,4 @@
-/** 竞品调研数据（2026-09-02 调研，数据以 GitHub 为准，star 与价格会随时间变化） */
+/** 竞品调研数据（2026-09-02 调研，2026-10-23 复核；数据以 GitHub 为准，star 与价格会随时间变化） */
 export type Competitor = {
   name: string
   /** 官网或 GitHub 仓库链接 */

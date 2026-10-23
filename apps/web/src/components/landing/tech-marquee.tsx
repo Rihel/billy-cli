@@ -7,15 +7,19 @@ const techStack = [
   'NestJS',
   'Express 5',
   'Next.js 16',
+  'Mastra',
+  'AI SDK 6',
   'TypeORM',
   'PostgreSQL',
   'Redis',
+  'Kafka',
   'Zod',
   'Tailwind 4',
   'Base UI',
   'shadcn/ui',
   'TanStack',
   'Docker',
+  'Kubernetes',
 ]
 
 /**

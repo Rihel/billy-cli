@@ -4,12 +4,6 @@ import { Button } from '@repo/ui'
 import { Pages } from '@/lib/constants'
 import type { AuthUserModel } from '@repo/shared'
 
-const heroFacts = [
-  { k: '17', v: 'Agent Skills' },
-  { k: '2', v: '前端应用' },
-  { k: '1', v: '数据结构' },
-]
-
 export type HeroProps = {
   /** 服务端探测到的登录用户：已登录时隐藏「开始使用 / 登录」账号入口 */
   user: AuthUserModel | null
@@ -19,7 +13,7 @@ export type HeroProps = {
 
 /**
  * 首页主视觉：全屏沉浸式编辑宣言。
- * 无右侧终端卡；超大 display 标题 + 编排式事实行，靠浅色网格与蓝色氛围撑满首屏。
+ * 只放四个元素：眉标、两行标题、一句说明、账号入口；事实数字交给下方横带。
  */
 export function Hero({ user, authEnabled }: HeroProps) {
   return (
@@ -29,7 +23,7 @@ export function Hero({ user, authEnabled }: HeroProps) {
         - 静音自动播放（浏览器只允许 muted 自动播），音轨保留，用户点开声音即可听配乐版；
         - `playsInline` 防止 iOS 全屏劫持；
         - 系统开启「减弱动态效果」时不加载视频，只显示同一帧的封面图。
-        成片与制作说明见 opus-video/billy-hero-ambient/。
+        成片在 `public/hero/`；制作工程属本地产物，不入库（见 .gitignore）。
       */}
       <div
         aria-hidden
@@ -53,28 +47,25 @@ export function Hero({ user, authEnabled }: HeroProps) {
         />
       </div>
 
-      {/* 主内容：纵向堆叠，巨型标题居左 */}
-      <div className="relative mx-auto flex w-full max-w-7xl flex-1 flex-col justify-center px-4 py-20 sm:px-6 lg:px-8 lg:py-0">
-        <div className="max-w-5xl">
+      <div className="relative mx-auto flex w-full max-w-7xl flex-1 flex-col justify-center px-4 py-24 sm:px-6 lg:px-8">
+        <div className="max-w-4xl">
           <div className="mb-8 flex items-center gap-3">
             <span className="h-px w-10 bg-brand" aria-hidden />
             <span className="font-mono text-xs font-medium tracking-[0.2em] text-brand uppercase">
-              AI 原生全栈模板
+              开箱即用的 AI 应用开发
             </span>
           </div>
 
-          <h1 className="font-heading text-5xl leading-[1.02] font-bold tracking-tighter text-foreground sm:text-6xl md:text-7xl lg:text-8xl">
-            AI 原生工程，
+          <h1 className="font-heading text-5xl leading-[1.04] font-bold tracking-tighter text-foreground sm:text-6xl md:text-7xl">
+            别再从零搭
             <br />
-            一套模板<span className="text-brand">全栈直达</span>
+            <span className="text-brand">一个 AI 应用</span>
           </h1>
 
-          <p className="mt-8 max-w-2xl text-lg leading-relaxed text-muted-foreground sm:text-xl">
-            工程规范写进 17 个 Agent Skills，AI 开工先读规范、按你的标准交付；
-            NestJS 12 + Next.js 16 双前端开箱即用，pnpm bootstrap 一键初始化。
+          <p className="mt-8 max-w-xl text-lg leading-relaxed text-muted-foreground sm:text-xl">
+            会话、流式、工具、模型、审计都已就位，改改就是你的产品。
           </p>
 
-          {/* 账号入口：仅「未登录且用户体系开启」时渲染（已登录用户由顶部导航承担用户信息与退出） */}
           {user || !authEnabled ? null : (
             <div className="mt-10 flex flex-wrap items-center gap-3">
               <Button
@@ -96,29 +87,6 @@ export function Hero({ user, authEnabled }: HeroProps) {
               </Button>
             </div>
           )}
-        </div>
-
-        {/* 编排式事实行（hairline 分隔，替代终端卡的节奏） */}
-        <div className="mt-16 grid max-w-3xl grid-cols-3 gap-6 border-t border-border pt-8 sm:gap-10">
-          {heroFacts.map((fact) => (
-            <div key={fact.v}>
-              <div className="font-heading text-3xl font-semibold tracking-tight text-foreground sm:text-4xl">
-                {fact.k}
-              </div>
-              <div className="mt-1 text-xs text-muted-foreground uppercase tracking-wider">
-                {fact.v}
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* 底部 hairline 信息带 */}
-      <div className="relative border-t border-border/80">
-        <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-3 font-mono text-[11px] tracking-wider text-muted-foreground uppercase sm:px-6 lg:px-8">
-          <span>TypeScript monorepo</span>
-          <span className="hidden sm:inline">NestJS · Next.js 16 · PostgreSQL · Redis</span>
-          <span className="hidden text-success sm:inline">● ready</span>
         </div>
       </div>
     </section>

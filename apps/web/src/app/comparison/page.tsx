@@ -119,8 +119,9 @@ export default function ComparisonPage() {
           同类模板，逐一核实
         </h1>
         <p className="mt-5 max-w-2xl text-base leading-relaxed text-muted-foreground">
-          调研日期 2026-09-02，数据以 GitHub 为准；star 与价格会随时间变化。
+          调研日期 2026-09-02（2026-10-23 复核），数据以 GitHub 为准；star 与价格会随时间变化。
           仅收录「模板 / 脚手架」类，纯技术框架（Wasp / RedwoodJS / Midway）、工具与工作流已剔除。
+          AI 应用框架（Mastra / Dify / LangGraph）单列一条赛道：它们给运行时零件，不给业务基座。
         </p>
 
         {/* 筛选标准 */}

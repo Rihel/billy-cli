@@ -10,13 +10,12 @@ const navGroups: { title: string; links: FooterLink[] }[] = [
     title: '产品',
     links: [
       { href: Pages.home, label: '首页' },
-      { href: LandingAnchors.why, label: '设计理念' },
-      { href: LandingAnchors.features, label: '特性' },
-      { href: LandingAnchors.choice, label: '选型' },
-      { href: '/comparison', label: '竞品调研' },
-      { href: LandingAnchors.ai, label: 'AI 能力' },
-      { href: LandingAnchors.architecture, label: '架构' },
+      { href: LandingAnchors.ai, label: 'AI 应用开发' },
+      { href: LandingAnchors.observability, label: '可观测性' },
+      { href: LandingAnchors.design, label: '设计系统' },
+      { href: LandingAnchors.maintainability, label: '维护性' },
       { href: LandingAnchors.quickstart, label: '快速开始' },
+      { href: '/comparison', label: '竞品调研' },
     ],
   },
   {
@@ -70,7 +69,7 @@ export function Footer({ user, authEnabled }: FooterProps) {
               </span>
             </Link>
             <p className="mt-4 max-w-xs text-sm leading-relaxed text-muted-foreground">
-              一套基于 NestJS 12 与 Next.js 16 的全栈应用 Monorepo 模板，数据结构先行、双前端开箱即用。
+              开箱即用的 AI 应用开发基座：会话、工具、可观测与设计系统都在仓库里。
             </p>
           </div>
 

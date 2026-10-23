@@ -23,10 +23,10 @@ export function CtaSection({ user, authEnabled }: CtaSectionProps) {
       <div className="relative mx-auto max-w-7xl px-4 py-24 sm:px-6 lg:px-8">
         <Reveal className="mx-auto max-w-2xl text-center">
           <h2 className="text-3xl font-semibold tracking-tight text-foreground sm:text-5xl">
-            现在就开始你的全栈之旅
+            先跑起来，再改成你的
           </h2>
           <p className="mx-auto mt-5 max-w-md text-base leading-relaxed text-muted-foreground">
-            创建账号，体验完整的认证、用户与业务模块，或直接进入管理后台一览全貌。
+            一条命令起本地环境，进后台看会话、模型、工具与审计，再决定从哪里开始改。
           </p>
           {user || !authEnabled ? null : (
             <div className="mt-9 flex flex-wrap items-center justify-center gap-3">
@@ -35,7 +35,7 @@ export function CtaSection({ user, authEnabled }: CtaSectionProps) {
                 size="lg"
                 className="bg-primary text-primary-foreground shadow-lg hover:bg-primary/90"
               >
-                创建账号
+                开始使用
                 <ArrowRight data-icon="inline-end" />
               </Button>
               <Button

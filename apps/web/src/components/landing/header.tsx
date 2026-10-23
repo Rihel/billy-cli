@@ -19,13 +19,12 @@ import { cn } from '@repo/ui'
 import type { AuthUserModel } from '@repo/shared'
 
 const anchorLinks = [
-  { href: LandingAnchors.why, label: '设计理念' },
-  { href: LandingAnchors.features, label: '特性' },
-  { href: LandingAnchors.choice, label: '选型' },
-  { href: LandingAnchors.ai, label: 'AI 能力' },
-  { href: LandingAnchors.architecture, label: '架构' },
+  { href: LandingAnchors.ai, label: 'AI 应用' },
+  { href: LandingAnchors.observability, label: '可观测性' },
+  { href: LandingAnchors.design, label: '设计系统' },
+  { href: LandingAnchors.maintainability, label: '维护性' },
   { href: LandingAnchors.quickstart, label: '快速开始' },
-  { href: Pages.markdown, label: 'Markdown' },
+  { href: '/comparison', label: '竞品' },
 ]
 
 export type HeaderProps = {

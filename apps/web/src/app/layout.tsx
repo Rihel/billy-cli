@@ -27,9 +27,9 @@ const spaceGrotesk = Space_Grotesk({
 })
 
 export const metadata: Metadata = {
-  title: "Billy CLI - 全栈应用 Monorepo 模板",
+  title: "Billy CLI - 开箱即用的 AI 应用开发",
   description:
-    "基于 NestJS 12 与 Next.js 16 的全栈应用模板：数据结构先行、双前端开箱即用，从脚手架到生产部署一步到位。",
+    "会话、流式、工具、模型、审计都已就位，改改就是你的 AI 产品；可观测性、设计系统与分层约束一并开箱。基于 NestJS 12 与 Next.js 16 的 AI 应用开发基座。",
 }
 
 /** 前端根 layout 统一动态渲染（每次请求 SSR，不做整站静态预渲染）。 */
