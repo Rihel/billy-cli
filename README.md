@@ -1,5 +1,13 @@
 # Billy
 
+> 开箱即用的 AI 应用开发基座：会话 / 流式 / 工具 / 模型 / 审计的运行时已经在仓库里，
+> 可观测性、设计系统与分层约束一并开箱。
+>
+> 四个卖点：**开箱即用的 AI 应用开发能力**（`modules/ai` + 后台四个页面）、
+> **可观测性**（日志 / 指标 / 告警 / 探针 / AI 审计）、
+> **高颜值**（一套设计 token 与组件库，`check:ui` 守漂移）、
+> **高维护性**（数据结构一份、依赖单向、六道检查）。
+>
 > 一套基于 NestJS 12、TypeScript 与 Next.js 16 的全栈应用 Monorepo 模板。
 > 后端采用「NestJS 薄边界 + 业务模块（apps/server）+ 通用能力封装 @repo/kits（一个基础设施一个 NestJS module，
 > 各自 `XxxModule.forRoot(options)` / `forRootAsync(options)` 显式接收自己的配置，配置对象即该模块的注入 bean）」；
@@ -38,6 +46,7 @@ packages/
 | 缓存       | Redis（ioredis）           | Set / List / Hash / PubSub / 分布式锁       |
 | 异步消息   | Kafka（kafkajs）           | 生产者 `KafkaService.send` / 消费者 `@KafkaConsumer`；按 `KAFKA_BROKERS` 按需装配 |
 | 服务端推送 | SSE（StreamHub + HttpStreamClient） | 实时推送：AI 流式 / 任务进度 / 通知，Redis pub/sub 跨实例广播 |
+| AI 运行时  | Mastra + AI SDK 6          | agent 执行、工具调用、流式交给框架；工具网关、落库、恢复、审计与用量留在本工程（适配层隔离） |
 | 对象存储   | S3 / COS                   | 预签名 URL + 临时凭证（STS）                |
 | 构建工具   | tsdown（ui 除外）          | 快速 bundler；shared / kits / http-client / sdk 产出 dts，@repo/ui 直接用源码（exports 指向 `./src/*`，不参与构建） |
 | 容器化     | Docker multi-stage         | server + web 独立部署，compose 一键起依赖   |
@@ -458,7 +467,7 @@ Zod schema 单一事实源，同时派生 TypeScript 类型（`*.schema.ts` 导�
 ### apps/server 业务模块
 
 业务三层（module + controller + service + repository + errors）位于
-`apps/server/src/modules/{auth,admin,user,monitor,storage,stream,session,runtime-config}`，
+`apps/server/src/modules/{auth,admin,user,session,monitor,storage,stream,ai,ai-model,ai-usage,runtime-config,ops}`，
 实体 / 迁移位于 `apps/server/src/database/`（`data-source.ts` 供 `db:generate` / `db:migrate`），
 横切 HTTP 构件位于 `apps/server/src/common/`：
 
@@ -474,6 +483,10 @@ modules/                       # 业务领域（每个模块同目录：module +
 ├── storage/        # storage.controller.ts（预签名 URL / STS 临时凭证）
 ├── stream/         # stream.controller.ts + stream-auth.guard.ts + stream.options.ts（SSE_ROUTE_OPTIONS）
 ├── ops/            # OpsController（根路径 GET /healthz、/readyz、/info，全工程唯一 GET 例外）+ OpsModule
+├── session/        # 多设备会话管理（登录设备列表 / 踢下线）
+├── ai/             # 会话 / 运行 / 时间线 / 工具面 / 技能 / 恢复（详见「内置 AI 对话」）
+├── ai-model/       # 供应商与模型配置（后台配置即生效，运行时只用配过的模型）
+├── ai-usage/       # 每日用量汇总 + 定时 rollup（按模型 / 按 agent）
 └── runtime-config/ # RuntimeConfigController（公开 POST /config/get）+ RuntimeConfigModule
 │                   #   目录名与类名刻意区别于 kits 的 AppConfigModule
 common/                        # 横切 HTTP 构件（不依赖业务模块；外部统一从 common/index.ts 导入）
@@ -1140,6 +1153,43 @@ key、白名单失效）。
 k8s 侧配套：`terminationGracePeriodSeconds` 要大于 `SHUTDOWN_TIMEOUT_MS` + preStop 耗时；
 preStop 先 `sleep` 数秒等 endpoint 摘除生效；探针指向 `GET /healthz`（liveness，不探依赖）与
 `GET /readyz`（readiness，依赖不可用返 503 主动摘流），滚动策略用 `maxUnavailable: 0`。
+
+## AI 能力（内置对话）
+
+模板自带一套能上生产的 AI 对话，代码在 `apps/server/src/modules/ai`（运行时）+
+`ai-model`（供应商 / 模型配置）+ `ai-usage`（用量汇总），后台有会话、模型、工具、审计四个页面。
+它和「用 AI 写这个模板」是两件事：后者靠 Agent Skills（见下节），前者是产品里的 AI。
+
+接口在 `/agent` 前缀下（`AnyAuthGuard`：前台用户与管理员同一套）：
+
+```text
+POST /agent/chat/stream        建立流式对话（SSE）
+POST /agent/chat/resume        断线后用 offset 续传
+GET  /agent/run/stream         重连当前运行
+GET  /agent/run/:runId/stream  重连指定运行
+POST /agent/conversation/*     会话增删改查
+POST /agent/run/*              运行列表 / 详情 / 停止（审计与复盘）
+POST /agent/usage/summary      用量汇总
+```
+
+**运行时能力**
+
+- **会话与运行**：`conversations` / `runs` / `timelines` 三张表；运行中进度放 Redis，跑完落 Postgres；
+  刷新页面能接着看，服务重启后在跑的会话会恢复（durable 可配）。
+- **流式与续传**：文本、推理、工具调用、步骤、来源全细节推送，断线从上次位置继续。
+- **工具面**：一个工具一条 `@ToolDecl`（`@ToolGroup` 类 + 方法即工具），注册后统一过网关——
+  开关、作用域（主 agent / 子 agent）、限额、自定义事件、审计、大结果分页与 `read-tool-result` 回取。
+  内建 10 个：计划四件套、`run-sub-agent`、`run-command`、`read-tool-result`、`web-search`、`web-fetch`、`web-request`。
+- **运行控制**：动态子 agent（提示词由主 agent 现场写）、命令执行（开关 / 工作目录 / 时长与输出上限可配）、
+  联网预算（统一 UA、超时、字节上限、内网拦截）。
+- **多模态附件**：图片与 PDF 走对象存储，只传 key；附件 key 做归属校验，不能越权读他人文件。
+- **上下文**：达到模型窗口 70% 触发裁剪 / 压缩，原文保留可回看。
+- **模型与用量**：供应商表 + 模型表在后台配（不用改环境变量），运行时只用配过的模型；
+  每轮 tokens 与步数入库，按日 rollup，按模型 / 按 agent 汇总；`ai/audit` 页面可回放调用。
+- **前端**：`@repo/ui` 内置 48 个 ai-elements，后台会话页开箱可用。
+
+**配置位置**：模型与供应商在「AI → 模型管理」，工具开关与限额在「AI → 工具配置」，
+用量在「AI → 审计」与控制台。设计细节与取舍见 [`docs/design/ai-agent.md`](docs/design/ai-agent.md)。
 
 ## Agent Skills（AI 原生开发）
 
