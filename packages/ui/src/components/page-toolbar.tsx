@@ -26,7 +26,9 @@ export function PageToolbar({
   const compact = rect.width > 0 && rect.width < 640
 
   return (
-    <div ref={ref} className={cn(className)}>
+    // 工具条默认铺满容器（放在 flex-col / grid 里都按整行算）；
+    // 要收窄由调用方传 className 覆盖，不要在组件里写死宽度
+    <div ref={ref} className={cn("w-full", className)}>
       <div
         className={cn(
           "flex gap-4",

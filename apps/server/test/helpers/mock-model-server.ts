@@ -244,6 +244,15 @@ export const MOCK_TITLE_TEXT = '待办整理周报'
 /** 用户消息里带这个标记时，逐字慢速输出（用于验证"停止"与"断线补发"） */
 export const MOCK_SLOW_MARKER = '[slow]'
 
+/** 用户消息里带这个标记时，模型**一步**派出 4 个子 agent（验证并行执行与"同时最多 3 个"的闸门） */
+export const MOCK_DELEGATE_PARALLEL_MARKER = '[delegate-parallel]'
+
+/**
+ * 并行子助手的提示词：带 `[child]` 让 mock 认出是子 agent，带 `[slow]` 让每个孩子
+ * 跑得够久（逐字 40ms），测试才能从运行区间上量出"真的重叠、且不超过 3"。
+ */
+const MOCK_SUBAGENT_PROMPT_SLOW = `你是并行测试子助手 ${MOCK_CHILD_MARKER} ${MOCK_SLOW_MARKER}：只做统计，输出结论与口径。`
+
 // ── 工具自定义事件 ─────────────────────────────────────────────────────────
 /** 用户消息里带这个标记时，模型改为调用「事件演示工具」（验证 `data-tool-event` 这条链路） */
 export const MOCK_EVENTS_MARKER = '[events]'
@@ -304,6 +313,17 @@ const DELEGATE_CALL: MockToolCall = {
     reason: MOCK_REASON,
   },
 }
+/** 一步派 4 个子助手：并发闸门是 3，第 4 个必须等前面有一个跑完 */
+const DELEGATE_PARALLEL_CALLS: MockToolCall[] = Array.from({ length: 4 }, (_, index) => ({
+  id: `call_mock_delegate_parallel_${index + 1}`,
+  name: MOCK_DELEGATE_TOOL,
+  args: {
+    name: `并行子助手${index + 1}`,
+    system_prompt: MOCK_SUBAGENT_PROMPT_SLOW,
+    task: `${MOCK_SUBAGENT_TASK}（第 ${index + 1} 路）`,
+    reason: MOCK_REASON,
+  },
+}))
 const COMMAND_CALL: MockToolCall = {
   id: 'call_mock_command',
   name: MOCK_COMMAND_TOOL,
@@ -444,6 +464,23 @@ const decideToolCall = (
 }
 
 /**
+ * 这一轮要发的全部工具调用（0..n 条）。
+ *
+ * 只有 `[delegate-parallel]` 会一次发多条（验证子 agent 并行）；其余仍走单条决策，
+ * 避免两条链路的行为分叉。
+ */
+const decideToolCalls = (
+  body: Record<string, unknown>,
+  state: MockServerState,
+): MockToolCall[] => {
+  if (wanted(body, MOCK_DELEGATE_PARALLEL_MARKER)) {
+    return hasToolResult(body) ? [] : DELEGATE_PARALLEL_CALLS
+  }
+  const call = decideToolCall(body, state)
+  return call ? [call] : []
+}
+
+/**
  * 用量（OpenAI 形态）。
  *
  * `prompt_tokens_details.cached_tokens` 刻意给一个非零值：缓存命中是**用户要看的一列**
@@ -457,25 +494,25 @@ const usage = () => ({
   prompt_tokens_details: { cached_tokens: 64 },
 })
 
-/** 决定 → OpenAI 的 `tool_calls` 数组 */
-const toToolCalls = (call: MockToolCall): unknown[] => [
-  {
-    index: 0,
+/** 决定 → OpenAI 的 `tool_calls` 数组（一步可以有多条，index 递增） */
+const toToolCalls = (calls: readonly MockToolCall[]): unknown[] =>
+  calls.map((call, index) => ({
+    index,
     id: call.id,
     type: 'function',
     function: { name: call.name, arguments: JSON.stringify(call.args) },
-  },
-]
+  }))
 
 const respondJson = (
   res: ServerResponse,
   body: Record<string, unknown>,
   state: MockServerState,
 ): void => {
-  const call = decideToolCall(body, state)
-  const message = call
-    ? { role: 'assistant', content: null, tool_calls: toToolCalls(call) }
-    : { role: 'assistant', content: finalText(body) }
+  const calls = decideToolCalls(body, state)
+  const message =
+    calls.length > 0
+      ? { role: 'assistant', content: null, tool_calls: toToolCalls(calls) }
+      : { role: 'assistant', content: finalText(body) }
   res.writeHead(200, { 'content-type': 'application/json' })
   res.end(
     JSON.stringify({
@@ -487,7 +524,7 @@ const respondJson = (
         {
           index: 0,
           message,
-          finish_reason: call ? 'tool_calls' : 'stop',
+          finish_reason: calls.length > 0 ? 'tool_calls' : 'stop',
         },
       ],
       usage: usage(),
@@ -528,7 +565,7 @@ const respondStream = (
   body: Record<string, unknown>,
   state: MockServerState,
 ): void => {
-  const call = decideToolCall(body, state)
+  const calls = decideToolCalls(body, state)
   res.writeHead(200, {
     'content-type': 'text/event-stream',
     'cache-control': 'no-cache',
@@ -542,13 +579,13 @@ const respondStream = (
     model: 'mock-model',
   }
 
-  if (call) {
+  if (calls.length > 0) {
     sse(res, {
       ...base,
       choices: [
         {
           index: 0,
-          delta: { role: 'assistant', tool_calls: toToolCalls(call) },
+          delta: { role: 'assistant', tool_calls: toToolCalls(calls) },
           finish_reason: null,
         },
       ],

@@ -16,7 +16,7 @@ import {
 } from '@repo/shared';
 import type { Mastra } from '@mastra/core/mastra';
 import { RequestContext } from '@mastra/core/request-context';
-import { AGENT_MAX_STEPS } from '../core/constants.js';
+import { AGENT_MAX_STEPS, AGENT_TOOL_CONCURRENCY } from '../core/constants.js';
 import {
   AgentConfig,
   type AgentConfig as AgentConfigValue,
@@ -329,6 +329,9 @@ export class AgentChatService {
       const agent = mastra.getAgent(definition.key);
       const result = await agent.generate(built.messages as never, {
         maxSteps: AGENT_MAX_STEPS,
+        // 工具调用并发策略：只有真的调用了挂起类工具的那一步串行，其余按并发跑
+        // （子 agent 的并行由此打开；同时跑几个由 AgentRunner 的闸门管，见 constants.ts）
+        toolCallConcurrency: AGENT_TOOL_CONCURRENCY,
         requestContext,
         // 显式传模型实例：不依赖 Agent 上的动态 model（Mastra 自解析配置那一层曾丢过多模态，见 resolveModelInstance）
         model: modelInstance as never,
@@ -1002,6 +1005,10 @@ export class AgentChatService {
       const memoryThread = await this.ensureAgentThread(conversation.id, userId);
       const output = await agent.stream(built.messages as never, {
         maxSteps: AGENT_MAX_STEPS,
+        // 工具调用并发策略：`called` = 只有真的调用了挂起类工具的那一步才串行。
+        // 默认的 `available` 会因为工具集里有 ask-user-questions 把**整步**压成串行，
+        // 子 agent 于是只能一个一个跑（见 constants.ts 的注释与闸门）
+        toolCallConcurrency: AGENT_TOOL_CONCURRENCY,
         abortSignal: abort.signal,
         requestContext,
         memory: memoryThread,
@@ -1416,6 +1423,8 @@ export class AgentChatService {
         // 不传时 Mastra 默认 maxSteps=5 —— 续跑会在第 5 步悄悄结束，
         // 表现为"壳体建完就断了，要用户再发一句继续"（会话 rfitk3uq... 实测）。
         maxSteps: AGENT_MAX_STEPS,
+        // 续跑后的下一段同样可能派子 agent：并发策略与主路径一致
+        toolCallConcurrency: AGENT_TOOL_CONCURRENCY,
         requestContext,
         model: modelInstance as never,
         abortSignal: abort.signal,

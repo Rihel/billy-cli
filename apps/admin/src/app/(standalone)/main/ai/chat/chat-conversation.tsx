@@ -639,6 +639,33 @@ export function ChatConversation({ conversationId }: { conversationId: string })
     if (!seed) return
 
     const seedIndex = Math.max(0, messages.indexOf(seed))
+    /** 提交前那份挂起数据：续跑流里的同 id 块会覆盖它，问题原文得从这里补回来 */
+    const seedSuspended = seed.parts.find((part) => {
+      if (part.type !== 'data-tool-call-suspended') return false
+      const data = (part as { data?: SuspendedPartData }).data
+      return data?.toolCallId === input.toolCallId
+    }) as { data?: SuspendedPartData } | undefined
+    /**
+     * 续跑块只带 `resumed: true`（AI SDK 同 id 后者覆盖前者），问题原文会被冲掉；
+     * 这里补回 `suspendPayload` 并挂上本轮答案 —— 回答完的问题卡要在原位置留成记录。
+     */
+    const withAnsweredRecord = (message: UIMessage): UIMessage => ({
+      ...message,
+      parts: message.parts.map((part) => {
+        if (part.type !== 'data-tool-call-suspended') return part
+        const data = (part as { data?: SuspendedPartData }).data
+        const callId = data?.toolCallId ?? (part as { id?: string }).id
+        if (callId !== input.toolCallId) return part
+        return {
+          ...part,
+          data: {
+            ...data,
+            suspendPayload: data?.suspendPayload ?? seedSuspended?.data?.suspendPayload,
+            answers: input.answers,
+          },
+        } as typeof part
+      }),
+    })
     const parsed = parseJsonEventStream({
       stream: response.body,
       schema: uiMessageChunkSchema,
@@ -661,7 +688,7 @@ export function ChatConversation({ conversationId }: { conversationId: string })
       // 续跑是同一轮的延长：id 必须保持不变，否则界面上会多出一条助手消息
       setMessages((current) =>
         current.map((message, index) =>
-          index === seedIndex ? { ...updated, id: seed.id } : message,
+          index === seedIndex ? withAnsweredRecord({ ...updated, id: seed.id }) : message,
         ),
       )
     }

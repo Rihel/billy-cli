@@ -204,6 +204,14 @@ describe('注册机标准测试集（对每个注册工具）', () => {
     }
   })
 
+  it('子 agent 没有问答能力：问答工具不进子 agent 工具面', () => {
+    // `ask-user-questions` 是 Mastra 原生工具，只挂在主 agent 上（见 mastra/ai.mastra.ts）。
+    // 将来若把它迁进注册机，这条会红 —— 必须显式 `child: 'deny'`：
+    // 子 agent 是临时执行体、没人能回答它，缺信息只能把问题交回主 agent。
+    const { registry } = buildRegistry()
+    expect([...registry.childToolbox().keys()]).not.toContain('ask-user-questions')
+  })
+
   it('装配期校验：重复 key 直接失败；工具池不能为空（一个 key 只能有一个提供者）', () => {
     const { deps } = buildRegistry()
     const gateway = new ToolGateway(deps.config, silentLogger as never, [], deps.clock)

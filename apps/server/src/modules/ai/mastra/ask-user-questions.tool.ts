@@ -60,6 +60,20 @@ const AskUserQuestionsResumeSchema = z.object({
 type Question = z.infer<typeof QuestionSchema>
 type Answer = z.infer<typeof AskUserQuestionsResumeSchema>['answers'][number]
 
+/**
+ * 续跑时的出参：**给模型读的那一段 + 结构化答案**。
+ *
+ * 为什么不再只返回字符串：时间线要能按题还原"问了什么 / 答了什么"（前端逐题翻看、
+ * 审计一眼看懂），纯文本做不到且解析脆弱。模型那边由 `toModelOutput` 只取 `text`，
+ * 它看到的形状与以前完全一样。
+ */
+export interface AskUserAnswerOutput {
+  /** 模型读的那段（保留题号 / 多选聚合），同时落库 */
+  text: string
+  /** 结构化答案：前端按题还原问答记录 */
+  answers: Answer[]
+}
+
 /** 把结构化答案排成模型能直接读的一段（保留题号 / 多选聚合）。 */
 function formatAnswers(questions: Question[], answers: Answer[]): string {
   const byId = new Map(answers.map((answer) => [answer.id, answer.value]))
@@ -81,6 +95,20 @@ export const askUserQuestionsTool = createTool({
   inputSchema: AskUserQuestionsInputSchema,
   suspendSchema: AskUserQuestionsSuspendSchema,
   resumeSchema: AskUserQuestionsResumeSchema,
+  /**
+   * 只改"给模型的那一份"：结构化出参落库、给前端还原问答记录，
+   * 模型仍只读 `text`（与改造前逐字一致，避免 JSON 噪音抬高 token 与干扰理解）。
+   */
+  toModelOutput: (output: unknown) =>
+    typeof output === 'string'
+      ? { type: 'text', value: output }
+      : {
+          type: 'text',
+          value:
+            output && typeof output === 'object' && typeof (output as { text?: unknown }).text === 'string'
+              ? (output as { text: string }).text
+              : '',
+        },
   execute: async ({ questions }, context) => {
     // 续跑：Mastra 把上一轮的 suspendPayload 与本轮 resumeData 一起带回来。
     // 兼容两种挂载点：新版本在 context 顶层，内置 ask_user 走 context.agent（实测以 agent 为准）。
@@ -88,7 +116,10 @@ export const askUserQuestionsTool = createTool({
     const resumeData = (agentContext?.resumeData ??
       context?.resumeData) as z.infer<typeof AskUserQuestionsResumeSchema> | undefined
     if (resumeData?.answers?.length) {
-      return formatAnswers(questions, resumeData.answers)
+      return {
+        text: formatAnswers(questions, resumeData.answers),
+        answers: resumeData.answers,
+      } satisfies AskUserAnswerOutput
     }
 
     // 正常路径：挂起本轮，把问题交给前端渲染

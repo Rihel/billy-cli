@@ -10,3 +10,21 @@
  *   以及看门狗的单轮墙钟上限（`runTimeoutMs`）。再调大这个数字只是放大"反复调同一个工具"的成本。
  */
 export const AGENT_MAX_STEPS = 100
+
+/**
+ * 主 agent 的工具调用并发策略（Mastra 的 `toolCallConcurrency`）。
+ *
+ * 为什么显式指定：默认策略 `available` 下，工具集里只要有挂起 / 审批类工具
+ * （`ask-user-questions`），**整步**工具调用都会被压成串行，子 agent 因此只能一个一个跑。
+ * 改成 `called`：只有真的调用了挂起类工具的那一步才串行；同时跑几个子 agent
+ * 另由 `SUB_AGENT_MAX_CONCURRENT` 的闸门限制（工具并发 ≠ 子 agent 并发）。
+ */
+export const AGENT_TOOL_CONCURRENCY = { strategy: 'called' } as const
+
+/**
+ * 单轮会话里**同时运行**的子 agent 上限（并发闸门按父 run 计）。
+ *
+ * 与总数配额（工具配置的 `maxPerRun`，默认 4）是两回事：超出并发的排队，
+ * 超出总数的直接拒绝；第 4 个等前面任意一个跑完再开始。
+ */
+export const SUB_AGENT_MAX_CONCURRENT = 3

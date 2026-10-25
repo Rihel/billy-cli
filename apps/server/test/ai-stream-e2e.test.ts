@@ -38,6 +38,7 @@ import {
   MOCK_CHILD_TEXT,
   MOCK_COMMAND_MARKER,
   MOCK_DELEGATE_MARKER,
+  MOCK_DELEGATE_PARALLEL_MARKER,
   MOCK_FINAL_TEXT,
   MOCK_PLAN_CREATE_TOOL,
   MOCK_PLAN_INITIAL,
@@ -98,7 +99,7 @@ const TEST_CONFIG = {
   runTimeoutMs: 60_000,
   watchdogIntervalMs: 30_000,
   multiInstance: false,
-  subAgentMaxPerRun: 3,
+  subAgentMaxPerRun: 4,
   subAgentMaxDepth: 1,
   subAgentMaxSteps: 5,
   subAgentTimeoutMs: 60_000,
@@ -756,7 +757,58 @@ describe('流式链路端到端（mock 模型 + 真实 DB + 真实 Redis）', ()
         (item) => item.kind === TimelineKind.ToolResult && item.toolKey === MOCK_ASK_TOOL,
       ),
     ).toBe(true)
+
+    // 问答记录要能**结构化**重建：时间线存的是 `{ answers }`（不是拼给模型看的文本），
+    // 历史重建据此按题还原"问了什么 / 答了什么"，卡片留在原位置
+    const answerRow = after.items.find(
+      (item) => item.kind === TimelineKind.ToolResult && item.toolKey === MOCK_ASK_TOOL,
+    )
+    const answerOutput = (answerRow?.payload as
+      | { output?: { text?: unknown; answers?: unknown } }
+      | undefined)?.output
+    // 出参是结构化对象：`text` 给模型读、`answers` 给前端还原；模型那份由 toModelOutput 只取 text
+    expect(answerOutput?.text).toContain('用户已回答')
+    expect(answerOutput?.answers).toEqual([
+      { id: 'audience', value: '长辈自己' },
+      { id: 'topics', value: ['接电话'] },
+    ])
   }, 30_000)
+
+  it('子 agent 并行：一步派 4 个，最多同时跑 3 个（第 4 个排队）', async () => {
+    const { status, text } = await postStream({
+      message: `并行跑四路子助手 ${MOCK_DELEGATE_PARALLEL_MARKER}`,
+    })
+    expect(status).toBe(200)
+    const conversationId = conversationIdOfSse(text)!
+    expect(conversationId).toBeTruthy()
+    createdConversationIds.push(conversationId)
+
+    const children = await db.dataSource.query<
+      { id: string; status: string; started_at: string; finished_at: string }[]
+    >(
+      `SELECT id, status, started_at, finished_at FROM runs
+        WHERE conversation_id = $1 AND parent_run_id IS NOT NULL
+        ORDER BY started_at`,
+      [conversationId],
+    )
+    expect(children).toHaveLength(4)
+    expect(children.every((row) => row.status === RunStatus.Succeeded)).toBe(true)
+
+    // 并发峰值 = 运行区间的最大重叠数：闸门是 3，第 4 个必须等前面有一个跑完
+    const points = children
+      .flatMap((row) => [
+        { at: new Date(row.started_at).getTime(), delta: 1 },
+        { at: new Date(row.finished_at).getTime(), delta: -1 },
+      ])
+      .sort((left, right) => left.at - right.at || left.delta - right.delta)
+    let active = 0
+    let peak = 0
+    for (const point of points) {
+      active += point.delta
+      peak = Math.max(peak, active)
+    }
+    expect(peak).toBe(3)
+  }, 60_000)
 
   it('挂起中的一轮可以主动停止，释放会话', async () => {
     const { status, text } = await postStream({ message: `问完就停 ${MOCK_ASK_MARKER}` })

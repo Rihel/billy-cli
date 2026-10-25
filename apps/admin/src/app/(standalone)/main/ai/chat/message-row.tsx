@@ -94,8 +94,9 @@ export function MessageRow({
   /**
    * 是否渲染"计划卡 / 问题卡"这类悬浮卡。
    *
-   * 会话主区把它关掉：这两类卡固定在输入框上方（`ChatConversation` 的 dock），
-   * 不再跟着消息滚走；右栏的历史预览仍然保留默认的 true。
+   * 会话主区把它关掉：待回答的问题卡固定在输入框上方（`ChatConversation` 的 dock），
+   * 计划卡也固定在输入框上方；**已回答的问题卡不受这个开关影响**，永远留在
+   * 时间线的原位置当问答记录。右栏的历史预览保留默认的 true。
    */
   showTrailingCards?: boolean
 }) {
@@ -153,7 +154,15 @@ export function MessageRow({
     // `max-w-full` 覆盖 ai-elements 默认的 `max-w-[95%]`：助手侧的工具卡要**铺满**整行
     // （左边"跑了什么"、右边"跑到哪了"），留 5% 的缝只会让工具条看着没对齐
     <Message from={message.role} className="max-w-full gap-1.5">
-      <MessageContent className="gap-1.5 group-[.is-user]:px-3 group-[.is-user]:py-2">
+      <MessageContent
+        className={cn(
+          'gap-1.5 group-[.is-user]:px-3 group-[.is-user]:py-2',
+          // 助手侧的内容默认铺满消息宽度：工具条 / 子助手卡 / 事件条都是"整行的条"，
+          // 默认的 `w-fit` 会让只有一次工具调用、文字又短的那条缩成半截。
+          // 用户气泡仍保持 `w-fit`（贴着内容收紧，不撑成整行）。
+          !isUser && 'w-full',
+        )}
+      >
         {message.parts.map((part, index) => {
           if (isFileUIPart(part)) {
             // 附件行只在**第一个** file part 的位置铺一次（其余位置留空，别重复）
@@ -253,17 +262,21 @@ export function MessageRow({
             return null
           }
           if (part.type === 'data-tool-call-suspended') {
-            // 主区把这组卡放在输入框上方（dock），消息流里不再重复
-            if (!showTrailingCards) return null
             const data = (part as { data?: SuspendedPartData }).data
-            if (!data || data.resumed) return null
-            return (
-              <QuestionCard
-                key={index}
-                data={data}
-                {...(onAnswerQuestions ? { onSubmit: onAnswerQuestions } : {})}
-              />
-            )
+            if (!data) return null
+            // 待回答：主区把这组卡放在输入框上方（dock），消息流里不再重复；
+            // 已回答：**留在原位置**当只读的问答记录 —— 否则刷新后整组问答在时间线上消失。
+            if (data.resumed !== true) {
+              if (!showTrailingCards) return null
+              return (
+                <QuestionCard
+                  key={index}
+                  data={data}
+                  {...(onAnswerQuestions ? { onSubmit: onAnswerQuestions } : {})}
+                />
+              )
+            }
+            return <QuestionCard key={index} data={data} />
           }
           if (part.type === 'step-start') {
             // **步骤边界是协议管道**（AI SDK 每进一个 agent step 就往 parts 里 push 一个 `step-start`）：

@@ -71,6 +71,9 @@ export const createMastra = async ({
   const built = new Map<string, ReturnType<typeof createMastraAgent>>()
   for (const definition of definitions) {
     const tools = resolveTools(definition.tools)
+    // 问答（向用户提问并挂起）**只给主 agent**：子 agent 是临时执行体，没人能回答它。
+    // 子 agent 的工具面来自注册机（`childToolbox()`），本来就拿不到这个原生工具；
+    // 它缺信息时只能把问题交回主 agent（见 `agent-runner.ts` 的能力尾巴）。
     if (definition.key === 'assistant') tools['ask-user-questions'] = askUserQuestionsTool as never
     built.set(
       definition.key,

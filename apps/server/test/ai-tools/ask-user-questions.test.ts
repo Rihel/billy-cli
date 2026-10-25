@@ -3,13 +3,18 @@ import { askUserQuestionsTool } from '../../src/modules/ai/mastra/ask-user-quest
 
 /**
  * `ask-user-questions` 的执行体（不启 agent、不跑 Mastra 运行时）：
- * - 有 `resumeData` → 把答案排成模型可读的一段；
+ * - 有 `resumeData` → 返回"给模型的文本 + 结构化答案"（时间线存结构，模型读文本）；
  * - 没有 `suspend`（直接调用）→ 返回兜底问题文本，不静默丢。
  */
 const execute = askUserQuestionsTool.execute as unknown as (
   input: unknown,
   context: unknown,
-) => Promise<string | undefined>
+) => Promise<{ text: string; answers: { id: string; value: string | string[] }[] } | string | undefined>
+
+const toModelOutput = askUserQuestionsTool.toModelOutput as unknown as (output: unknown) => {
+  type: string
+  value: string
+}
 
 const questions = [
   {
@@ -33,8 +38,8 @@ const questions = [
 ]
 
 describe('ask-user-questions', () => {
-  it('续跑时把单选 / 多选 / 问答排成模型可读的答案', async () => {
-    const text = await execute(
+  it('续跑时返回结构化答案 + 给模型读的文本', async () => {
+    const output = await execute(
       { questions },
       {
         resumeData: {
@@ -46,11 +51,31 @@ describe('ask-user-questions', () => {
         },
       },
     )
-    expect(text).toContain('用户已回答')
-    expect(text).toContain('这份剧本给谁看？')
-    expect(text).toContain('长辈自己')
-    expect(text).toContain('接电话、拍照')
-    expect(text).toContain('字要大')
+    expect(typeof output).not.toBe('string')
+    const result = output as { text: string; answers: unknown[] }
+    expect(result.text).toContain('用户已回答')
+    expect(result.text).toContain('这份剧本给谁看？')
+    expect(result.text).toContain('长辈自己')
+    expect(result.text).toContain('接电话、拍照')
+    expect(result.text).toContain('字要大')
+    // 结构化答案**原样**保留：前端按题还原问答记录，不靠解析那段文本
+    expect(result.answers).toEqual([
+      { id: 'goal', value: '长辈自己' },
+      { id: 'topics', value: ['接电话', '拍照'] },
+      { id: 'note', value: '字要大' },
+    ])
+  })
+
+  it('给模型的那一份只有文本（结构化答案不进模型消息）', () => {
+    const view = toModelOutput({
+      text: '用户已回答：\n1. 这份剧本给谁看？\n   长辈自己',
+      answers: [{ id: 'goal', value: '长辈自己' }],
+    })
+    expect(view).toEqual({
+      type: 'text',
+      value: '用户已回答：\n1. 这份剧本给谁看？\n   长辈自己',
+    })
+    expect(toModelOutput('兜底文本')).toEqual({ type: 'text', value: '兜底文本' })
   })
 
   it('没有 suspend 的直调给兜底问题，不静默丢', async () => {

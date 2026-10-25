@@ -8,6 +8,7 @@ import {
 } from '@repo/shared'
 import type { UIMessage } from 'ai'
 import { z } from 'zod'
+import { questionsOf, type Question, type QuestionAnswer, type SuspendedPartData } from './question-card'
 
 /**
  * 时间线（数据库里的真相）→ UI 消息（AI SDK 的 `UIMessage`）。
@@ -62,6 +63,52 @@ const toFileParts = (attachments: readonly ChatAttachmentModel[]): UIMessage['pa
 
 const asRecord = (value: unknown): Record<string, unknown> | null =>
   value && typeof value === 'object' ? (value as Record<string, unknown>) : null
+
+/**
+ * 问答的答案：挂起行只记"问了什么"，答案在续跑成功补的那条 `tool-result` 里。
+ *
+ * 先把答案按 `toolCallId` 配好，挂起行才能**一次画出完整的问答**，
+ * 而且卡片仍留在它自己的位置 —— 不能被挪到结果行去（那会打乱时间线顺序）。
+ */
+const answersByCallOf = (
+  events: readonly AgentTimelineItemModel[],
+): Map<string, unknown> => {
+  const map = new Map<string, unknown>()
+  for (const item of events) {
+    if (item.kind !== TimelineKind.ToolResult || item.toolKey !== 'ask-user-questions') continue
+    if (!item.toolCallId) continue
+    map.set(item.toolCallId, item.payload?.output)
+  }
+  return map
+}
+
+/**
+ * 老数据的兜底：2026-10-25 之前的续跑出参是 `formatAnswers()` 拼的整段文本
+ * （`用户已回答：\n1. 题\n   答`），没有结构化 `answers`。
+ *
+ * 按题号切回来，让历史里的问答记录仍能逐题翻看；切不出来就放弃 ——
+ * 宁可退化成"已回答但看不到原答"，也不猜用户答了什么。
+ */
+const parseLegacyAnswers = (
+  output: unknown,
+  questions: readonly Question[],
+): QuestionAnswer[] | null => {
+  const head = '用户已回答：'
+  if (typeof output !== 'string' || !output.startsWith(head)) return null
+  const groups: string[][] = []
+  for (const rawLine of output.slice(head.length).split('\n')) {
+    if (/^\d+\.\s/.test(rawLine)) {
+      groups.push([])
+      continue
+    }
+    if (groups.length > 0 && rawLine.trim()) groups[groups.length - 1]!.push(rawLine.trim())
+  }
+  if (groups.length !== questions.length) return null
+  return questions.map((question, index) => ({
+    id: question.id,
+    value: groups[index]!.join('\n'),
+  }))
+}
 
 /**
  * 把某个会话的时间线重建为消息列表。
@@ -259,6 +306,8 @@ const toSubAgentPart = (
  */
 export const toParts = (events: AgentTimelineItemModel[]): UIMessage['parts'] => {
   const parts: UIMessage['parts'] = []
+  /** 问答的答案（按 toolCallId 索引）：挂起行没有答案，配在续跑后的结果行里 */
+  const answersByCall = answersByCallOf(events)
   /** `toolCallId` → 已经铺开的那张卡（结果到达时就地补） */
   const pending = new Map<string, ToolPartLike>()
   // 计划事件单独攒着，最后统一追加（与实时流一致：当前计划渲染在消息末尾）
@@ -296,14 +345,19 @@ export const toParts = (events: AgentTimelineItemModel[]): UIMessage['parts'] =>
       }
       case TimelineKind.ToolSuspended: {
         // 挂起行 → 问题卡。若同一 toolCallId 后面已经有 ToolResult，说明已经续跑过：
-        // 刷新后不再让用户重复回答（`resumed: true` 让卡片自己收起来）。
+        // 卡片不再让用户重复回答，而是**留在原位置**当只读的问答记录（`resumed: true`）。
         const toolCallId = item.toolCallId ?? undefined
-        const answered = events.some(
-          (event) =>
-            event.kind === TimelineKind.ToolResult &&
-            event.toolCallId === toolCallId &&
-            event.toolKey === 'ask-user-questions',
-        )
+        const output = toolCallId ? answersByCall.get(toolCallId) : undefined
+        const answered = toolCallId ? answersByCall.has(toolCallId) : false
+        const structured = asRecord(output)?.answers
+        const answers = Array.isArray(structured)
+          ? (structured as QuestionAnswer[])
+          : parseLegacyAnswers(
+              output,
+              questionsOf({
+                suspendPayload: item.payload?.suspendPayload,
+              } as SuspendedPartData),
+            ) ?? undefined
         parts.push({
           type: 'data-tool-call-suspended',
           id: toolCallId ?? `suspended-${item.seq}`,
@@ -313,6 +367,7 @@ export const toParts = (events: AgentTimelineItemModel[]): UIMessage['parts'] =>
             toolName: item.toolKey ?? 'ask-user-questions',
             suspendPayload: item.payload?.suspendPayload,
             resumed: answered,
+            ...(answers ? { answers } : {}),
           },
         } as unknown as UIMessage['parts'][number])
         break

@@ -1,5 +1,20 @@
 import { describe, expect, it } from 'vitest'
-import { questionsOf } from '../src/app/(standalone)/main/ai/chat/question-card'
+import { isAnswered, questionsOf } from '../src/app/(standalone)/main/ai/chat/question-card'
+
+describe('isAnswered', () => {
+  const base = { id: 'q1', title: '给谁看？' }
+
+  it('文本 / 单选：去掉空白后非空才算答过', () => {
+    expect(isAnswered({ ...base, type: 'text' }, '   ')).toBe(false)
+    expect(isAnswered({ ...base, type: 'text' }, undefined)).toBe(false)
+    expect(isAnswered({ ...base, type: 'single' }, '长辈')).toBe(true)
+  })
+
+  it('多选：勾了至少一项才算答过', () => {
+    expect(isAnswered({ ...base, type: 'multi' }, [])).toBe(false)
+    expect(isAnswered({ ...base, type: 'multi' }, ['接电话'])).toBe(true)
+  })
+})
 
 describe('questionsOf', () => {
   it('批量问题：原样取 questions', () => {

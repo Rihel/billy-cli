@@ -8,7 +8,7 @@ import {
   TimelineKind,
   TimelineRole,
 } from '@repo/shared'
-import { AGENT_MAX_STEPS } from '../core/constants.js'
+import { AGENT_MAX_STEPS, SUB_AGENT_MAX_CONCURRENT } from '../core/constants.js'
 import { createMastraAgent, toMastraModel, toMastraModelInstance } from '../mastra/agent.adapter.js'
 import { toMastraSkills } from '../mastra/skill.adapter.js'
 import { toUiStream } from '../mastra/stream.adapter.js'
@@ -20,6 +20,7 @@ import { AgentConfig, type AgentConfig as AgentConfigValue } from '../core/confi
 import type { AgentRuntimeEnvelope } from '../core/envelope.js'
 import { toUsageRecord, usageField } from './usage.js'
 import { RunRepository } from './run.repository.js'
+import { KeyedSemaphore } from './keyed-semaphore.js'
 import { StreamRecorder } from './stream-recorder.js'
 import { readStreamSteps, readStreamUsage } from './stream-result.js'
 import { TimelineRepository } from './timeline.repository.js'
@@ -116,6 +117,7 @@ const withCapabilityTail = (
     # 你的能力与边界（系统补充，不要与上面的要求冲突）
     - 你可以调用的工具：${toolList}；
     - 你**不能**创建子助手，也不要假装有清单外的工具；需要别的能力就把结论交回主 agent；
+    - 你**不能**向用户提问，也不能挂起等回答（没有问答工具）；缺信息或需要拍板时，把问题连同已知前提写清楚，和结论一起交回主 agent；
     - 你看到的上下文只有上面的任务说明，主 agent 与用户的对话你**看不到**；
     - 交付要求：给出结论 + 关键依据（口径、命令、文件路径），不要转贴大段原始输出。
   `
@@ -155,6 +157,29 @@ export class AgentRunner {
      */
     @Inject(ModuleRef) private readonly moduleRef: ModuleRef,
   ) {}
+
+  /** 子 agent 并发闸门（按父 run 计）：同一轮最多同时跑 `SUB_AGENT_MAX_CONCURRENT` 个 */
+  private readonly subAgentSlots = new KeyedSemaphore(SUB_AGENT_MAX_CONCURRENT)
+
+  /** 父 run → "配额判定 + 建子 run"队列：并发的 `count → create` 不能交错 */
+  private readonly subAgentAdmissions = new Map<string, Promise<unknown>>()
+
+  /** 把"配额判定 + 建子 run"按父 run 串行化（与 `PlannerStore` 的同一手法） */
+  private enqueueAdmission<T>(parentRunId: string, task: () => Promise<T>): Promise<T> {
+    const previous = this.subAgentAdmissions.get(parentRunId) ?? Promise.resolve()
+    const run = previous.then(task, task)
+    const tail = run.then(
+      () => undefined,
+      () => undefined,
+    )
+    this.subAgentAdmissions.set(parentRunId, tail)
+    void tail.then(() => {
+      if (this.subAgentAdmissions.get(parentRunId) === tail) {
+        this.subAgentAdmissions.delete(parentRunId)
+      }
+    })
+    return run
+  }
 
   /** 惰性取注册机（用于把"模型编出来的工具名"标成 `unknown-tool`）；取不到就退化为"不判定" */
   private knownToolPredicate(): ((toolKey: string) => boolean) | undefined {
@@ -207,28 +232,68 @@ export class AgentRunner {
       }
     }
 
-    // ③ 配额守卫：**不抛异常炸整轮**，把"配额已满"作为结论交回给模型，让它自己收场
-    const existingChildren = await this.runs.countChildren(envelope.parentRunId)
+    /**
+     * ③ 并发闸门：同一父 run 最多同时跑 `SUB_AGENT_MAX_CONCURRENT` 个子 agent。
+     *
+     * 限的是"同时跑着的子 run 数"，不是总数（总数仍由工具配置的 `maxPerRun` 管）。
+     * 槽位在子 agent 整个生命周期里占着，成功 / 失败 / 取消都从下面的 `finally` 释放；
+     * 第 4 个会在这里排队，等前面任意一个跑完再开始。
+     */
+    const parentRunId = envelope.parentRunId
+    await this.subAgentSlots.acquire(parentRunId)
+    try {
+      if (envelope.abortSignal?.aborted) {
+        return this.rejected(request, startedAt, '这一轮已停止，子助手不再启动')
+      }
+      return await this.runAdmittedSubAgent(request, startedAt)
+    } finally {
+      this.subAgentSlots.release(parentRunId)
+    }
+  }
+
+  /**
+   * 已拿到并发槽位的子 agent：配额判定 → 建子 run → 跑完 → 收尾。
+   *
+   * 单独一个方法，是为了让槽位释放只有一个出口（`runSubAgent` 的 `finally`）；
+   * 配额判定与建子 run 走同一父 run 的**串行队列** —— 子 agent 并行后，两个调用同时
+   * `count → create` 会一起看到"还差一个"，一起越过上限。
+   */
+  private async runAdmittedSubAgent(
+    request: SubAgentRequest,
+    startedAt: number,
+  ): Promise<SubAgentOutcome> {
+    const { envelope } = request
+    const quotas = request.quotas ?? {}
     const maxPerRun = quotas.maxPerRun || this.config.subAgentMaxPerRun || DEFAULT_MAX_PER_RUN
-    if (existingChildren >= maxPerRun) {
+
+    const admitted = await this.enqueueAdmission(envelope.parentRunId, async () => {
+      const existingChildren = await this.runs.countChildren(envelope.parentRunId)
+      if (existingChildren >= maxPerRun) {
+        return { admitted: false as const, existingChildren }
+      }
+      // 建子 run（与父同会话；**不参与**"同一会话只允许一轮进行中"的唯一索引，见迁移）
+      const agentKey = toSubAgentKey(request.name)
+      const child = await this.runs.create({
+        conversationId: envelope.conversationId,
+        agentKey,
+        status: RunStatus.Pending,
+        triggeredBy: envelope.triggeredBy,
+        parentRunId: envelope.parentRunId,
+        depth: envelope.depth + 1,
+        toolCallId: request.toolCallId,
+      })
+      return { admitted: true as const, child, agentKey }
+    })
+
+    if (!admitted.admitted) {
       return this.rejected(
         request,
         startedAt,
-        `本次已创建 ${existingChildren} 个子助手，达到上限（${maxPerRun}），请自己完成剩余工作`,
+        `本次已创建 ${admitted.existingChildren} 个子助手，达到上限（${maxPerRun}），请自己完成剩余工作`,
       )
     }
 
-    // ④ 建子 run（与父同会话；**不参与**"同一会话只允许一轮进行中"的唯一索引，见迁移）
-    const agentKey = toSubAgentKey(request.name)
-    const child = await this.runs.create({
-      conversationId: envelope.conversationId,
-      agentKey,
-      status: RunStatus.Pending,
-      triggeredBy: envelope.triggeredBy,
-      parentRunId: envelope.parentRunId,
-      depth: envelope.depth + 1,
-      toolCallId: request.toolCallId,
-    })
+    const { child, agentKey } = admitted
     await this.runs.markRunning(child.id)
     // 动态提示词与任务**全量落库**（不裁剪）：这是子 agent 行为的唯一证据链
     await this.runs.saveRequestSnapshot(child.id, {
