@@ -7,6 +7,7 @@
     "dev": "next dev --port 9845",
     "build": "next build",
     "start": "sh scripts/start.sh",
+    "sync:vendor": "node scripts/sync-vendor.mjs",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest"
@@ -46,6 +47,7 @@
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "babel-plugin-react-compiler": "1.0.0",
+    "gsap": "^3.15.0",
     "tailwindcss": "^4",
     "tsx": "^4.23.13",
     "typescript": "^7.0.2",

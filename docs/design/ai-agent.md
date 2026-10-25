@@ -385,8 +385,13 @@ ai/
 
 - 挂起落 `kind='tool-suspended'`，payload 带 `runId`（应用 runId）、`engineRunId`、
   `toolCallId`、`toolName`、`suspendPayload`、`resumeSchema`；
-- 续跑成功补一条 `tool-result`（`toolKey='ask-user-questions'`），历史据此把问题卡标记为
-  已回答并收起；
+- 续跑成功补一条 `tool-result`（`toolKey='ask-user-questions'`），出参是结构化的
+  `{ text, answers }`：`text` 给模型读（`toModelOutput` 只交给模型这一份），`answers`
+  给前端按题还原；历史据此把问题卡标成已回答，并**留在它自己的位置**改成只读的问答记录
+  （问题 + 答案，逐题翻看），不再让用户重复回答，也不把整组问答挪到结果行；
+- 问题卡是**逐题**交互：一次只显示一道题，答完当前题才能「下一题」，可用
+  「上一题 / 下一题」来回切换；最后一题「提交回答」，一次交整组 `answers`
+  （resume 入参是整组，不是单题）；
 - `resumed=true` 的挂起事件**不重复落** `tool-suspended`，只补记 toolName，避免历史出现两张卡。
 
 
@@ -1085,6 +1090,12 @@ core bean **不注入 `ToolBuilder`**。子 agent 需要的工具面由**编排�
 | 模型 | 默认沿用默认模型；`subAgent.model` 可覆盖（留位） | 子任务通常该用便宜模型，但不预设 |
 | durable | **不开**（子 agent 是临时对象，恢复由父 run 重跑 spawn 工具承担） | 见 §3.14.6 |
 
+> 问答能力（`ask-user-questions`，向用户提问并挂起）**只挂在主 agent 上**，不在子 agent 的工具面里。
+> 子 agent 是临时执行体，没人能回答它 —— 缺信息或要拍板时，它必须把问题和已知前提写进结论交回主 agent。
+>
+> 子 agent **可以并行**（同一步里模型派多个时一起跑），但同一父 run 最多同时跑 3 个，超出的排队；
+> 打开并行的开关是主 agent 的 `toolCallConcurrency: { strategy: 'called' }`，闸门与配额见 §3.14.7。
+
 #### 3.14.3 子 agent 的明细怎么入库（要求 3 的答案）
 
 **子 agent = 一个独立 run 行**（同一张 `runs` 表，不做第二张表），父子的差别只在两列：
@@ -1183,10 +1194,22 @@ AI SDK 的 `data-sub-agent` part，和主内容走同一条 SSE：
 
 | 配置 | 默认 | 作用 |
 | --- | --- | --- |
-| `subAgentMaxPerRun` | 4 | 同一父 run 下同时存在的子 run 上限；超出**不抛异常炸整轮**，而是把"配额已满"作为工具结论返回给模型 |
+| `subAgentMaxPerRun` | 4 | 同一父 run 下的子 run **总数**上限；超出**不抛异常炸整轮**，而是把"配额已满"作为工具结论返回给模型 |
+| 并发（代码常量） | 3 | **同时运行**的子 agent 上限（`SUB_AGENT_MAX_CONCURRENT`）。超出的**排队**，跑完一个再进一个；与总数上限是两回事 |
 | `subAgentMaxDepth` | 1 | 深度上限（当前工具面已保证为 1，留配置位给将来） |
 | `subAgentMaxSteps` | 沿用 `AGENT_MAX_STEPS` | 单个子 agent 的步数上限 |
 | `subAgentTimeoutMs` | 沿用 `runTimeoutMs` | 单个子 agent 的墙钟上限 |
+
+三条实现要点（改并发相关逻辑前必看）：
+
+- **工具调用本身要允许并行**：主 agent 的 `agent.stream` / `agent.generate` 传
+  `toolCallConcurrency: { strategy: 'called' }`。默认的 `available` 策略只要工具集里有
+  `ask-user-questions`（挂起类），就会把**整步**工具调用压成串行 —— 这是"子 agent 只能一个一个跑"的直接原因；
+  `called` 只让"真的调用了挂起工具的那一步"串行。
+- **并发闸门按父 run 计**（`KeyedSemaphore`，`AgentRunner`）：槽位在子 agent 整个生命周期里占着，
+  成功 / 失败 / 取消都释放；第 4 个在 `acquire` 上排队，不占用配额、也不会被拒。
+- **配额判定与建子 run 串行**（按父 run 的 promise 队列）：并行后两个调用同时 `count → create`
+  会一起看到"还差一个"，一起越过 `maxPerRun`；排队只包这两次 DB 往返，不挡执行。
 
 #### 3.14.8 本轮改动面（自查用）
 
@@ -2206,6 +2229,33 @@ AI SDK v6 的续传是**两层 API**（不是同一方法的两个名字）：
   "渲染和主 agent 一样"是**结构上的事实**（同一套映射 + 同一套组件），不是照抄样式；
 - 只挂**当前那个 tab** 的时间线查询：多个子 run 一起拉是白花的请求；
 - 右栏默认 340px、最小 260px，`preserve-pixel-size`（窗口变宽由对话区吸收，与左侧列表栏同一套口径）。
+
+### 5.8 富内容围栏：模型直接画图、写页面、做动画
+
+正文里的围栏按语言标识分流渲染，扩展点是 Streamdown 的 `plugins.renderers`（`language → 组件`），
+**不需要 fork 解析层**。完整设计（含安全模型与测试点）见
+[ai-markdown-fences.md](./ai-markdown-fences.md)，这里只留结论：
+
+| 围栏 | 渲染 | 说明 |
+| --- | --- | --- |
+| ```` ```mermaid ```` | mermaid 11 → SVG | 已有（`@streamdown/mermaid`） |
+| `$$ … $$` | KaTeX 块级公式 | 已有；本轮补上 `katex.min.css`（没样式时公式是错位的）；`$…$` 行内**保持关闭**（会和金额撞） |
+| ```` ```xflow ```` | JSON → React Flow | 模型只给"谁连谁"，排版由前端用 **dagre**（官方布局示例同款）算，画布与 dagre 一起按需加载 |
+| ```` ```html ```` | 沙箱 iframe 直出页面 | 能跑 `<script>`，但拿不到后台权限；可全屏 |
+| ```` ```gsap ```` | 沙箱 iframe + 内置 gsap | gsap 由父页面同源取回（`public/vendor/gsap.min.js`），版本走 `pnpm -F @app/admin sync:vendor` 同步；可全屏 |
+| ```` ```json ```` | 可折叠 JSON 树 | 组件是 `@repo/ui` 的 `JsonView`（有 200KB / 2000 条上限，超了退回原文） |
+
+三条必须守住的边界：
+
+1. **沙箱不是可选项**：`sandbox="allow-scripts"`（不带 `allow-same-origin`）+ 文档内 CSP `default-src 'none'`，
+   模型写的代码连不出去，也读不到父页面；
+2. **围栏没闭合不渲染**：`html` / `gsap` 每来一个 token 重建 iframe 等于把脚本反复重跑，`xflow` 会来回跳；
+   判定靠 `isAnimating`（`message-row` 传 `streaming && part.state === 'streaming'`）；
+3. **提示词要说清能写什么**：围栏存在 ≠ 模型会用，写法与"不要引用外部资源"写在
+   `core/prompts/templates/partials/requirements.eta` 的「富内容围栏」一节；同一节还**禁止字符画拼图**
+   （中文等宽两格，框线必然错位），结构图一律走 `xflow` / `mermaid`；
+4. **正文代码块不带行号**：`MessageResponse` 显式传 `lineNumbers={false}`（上游默认 `true`），
+   否则字符画 / 长行文本会被行号栏挤窄。
 
 ## 6. 依赖、代价与风险（先说清代价，再谈做不做）
 

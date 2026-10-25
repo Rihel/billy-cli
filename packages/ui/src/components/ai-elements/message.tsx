@@ -12,7 +12,12 @@ import type { UIMessage } from "ai"
 import { ChevronLeftIcon, ChevronRightIcon } from "lucide-react"
 import type { ComponentProps, HTMLAttributes, ReactElement } from "react"
 import { createContext, memo, useCallback, useContext, useEffect, useMemo, useState } from "react"
+
 import { Streamdown } from "streamdown"
+
+import "katex/dist/katex.min.css"
+
+import { markdownFenceRenderers } from "./markdown-fences/renderers.tsx"
 
 export type MessageProps = HTMLAttributes<HTMLDivElement> & {
   from: UIMessage["role"]
@@ -246,13 +251,24 @@ export const MessageBranchPage = ({ className, ...props }: MessageBranchPageProp
 
 export type MessageResponseProps = ComponentProps<typeof Streamdown>
 
-const streamdownPlugins = { cjk, code, math, mermaid }
+/**
+ * 正文插件：CJK 断行 / Shiki 高亮 / KaTeX 公式 / mermaid 图，外加**富内容围栏**
+ * （`xflow` / `html` / `gsap`，见 `./markdown-fences/renderers.tsx`）。
+ *
+ * `renderers` 按语言标识匹配：命中就交给对应组件渲染，没命中才落到普通代码块。
+ * 围栏组件里的重依赖（React Flow）自己按需加载，不因为注册就在这里打进首屏包。
+ */
+const streamdownPlugins = { cjk, code, math, mermaid, renderers: markdownFenceRenderers }
 
 export const MessageResponse = memo(
   ({ className, ...props }: MessageResponseProps) => (
     <Streamdown
       className={cn("size-full [&>*:first-child]:mt-0 [&>*:last-child]:mb-0", className)}
       plugins={streamdownPlugins}
+      // 正文里不带行号：聊天里的代码是"读"的，不是"讨论第 12 行"的；而语言是 text 的那种
+      // 字符画（架构图、树形图）被行号挤窄后更难读，多出来的数字栏也让人以为看的是源码。
+      // 需要行号时调用方传 `lineNumbers` 覆盖即可。
+      lineNumbers={false}
       {...props}
     />
   ),

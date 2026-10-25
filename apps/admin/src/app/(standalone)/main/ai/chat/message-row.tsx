@@ -181,7 +181,12 @@ export function MessageRow({
                 {part.text}
               </p>
             ) : (
-              <MessageResponse key={index}>{part.text}</MessageResponse>
+              // `isAnimating` 决定「最后一段围栏算不算还没闭合」：流式中它是 true，Streamdown 就把
+              // 正在增长的那一块标成不完整 —— 富内容围栏（xflow / html / gsap）据此先显示占位、
+              // 等这一段写完再渲染；否则每来一个 token 就重建一次 iframe、重排一次图。
+              <MessageResponse key={index} isAnimating={streaming && part.state === 'streaming'}>
+                {part.text}
+              </MessageResponse>
             )
           }
           if (isReasoningUIPart(part)) {

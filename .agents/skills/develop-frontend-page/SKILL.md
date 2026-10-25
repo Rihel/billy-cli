@@ -46,6 +46,13 @@ description: 在 Billy 工程中开发前端页面：Admin 后台页（@repo/ui 
   - 附件能不能发，看**当前模型的 `inputModalities`**（模型实体字段，见 `AiModality`）：
     `null` = 未声明（提醒但不拦）、`[]` / 只有 `text` = 明确不支持（拦下并说清）。
 
+  - **富内容围栏**在 `components/ai-elements/markdown-fences/`：`xflow`（JSON → React Flow，画布按需加载）、
+    `html` / `gsap`（沙箱 iframe，`sandbox="allow-scripts"` 不带 same-origin + 文档内 CSP 禁网）；
+    注册表是 `markdownFenceRenderers`，`message.tsx` 已接进 Streamdown 的 `plugins.renderers`。
+    加一种新围栏 = 写组件 + 注册 + 改 `requirements.eta`；围栏**没闭合时只渲染占位**（靠 `MessageResponse`
+    的 `isAnimating`），别为了"看起来实时"改成每个 token 重渲染 —— iframe 会反复重跑脚本、图会来回跳。
+    设计见 `docs/design/ai-markdown-fences.md`。
+
   这些组件**不读 `message.parts`** —— 状态由调用方从 part 里取出来当 props 传（映射写法见
   `apps/web/src/app/ai/chat/page.tsx`）。
 

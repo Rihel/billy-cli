@@ -158,6 +158,11 @@ export type ReasoningContentProps = ComponentProps<typeof CollapsibleContent> & 
   children: string
 }
 
+/**
+ * 思考过程只解 Markdown 与公式/图，**不接富内容围栏**（`renderers` 见 `message.tsx`）：
+ * 思考是过程记录，里面出现 `html` / `gsap` 围栏时在折叠块里跑沙箱 iframe 没有意义，
+ * 反倒是白白多一层；正文才需要那种表达力。
+ */
 const streamdownPlugins = { cjk, code, math, mermaid }
 
 export const ReasoningContent = memo(({ className, children, ...props }: ReasoningContentProps) => (
