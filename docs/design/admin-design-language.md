@@ -114,6 +114,10 @@
   `Checkbox` / `RadioGroup` / `Label`；不写原生 `<select>` / `<input>` / `<button>`。
   原生 `<form>` 只在需要回车提交时保留（语义容器，不是控件）。
 - **图表**：无网格线、无边框；阈值线用 `--warning` 虚线；tooltip 无边框、用投影（浮层允许投影）。
+- **结构化数据（JSON）**：一律用 `JsonView`（`@repo/ui`），**不要** `<pre>{JSON.stringify(value, null, 2)}</pre>`。
+  它是可折叠的树（容器带 `{n 个字段}` / `[n 项]` 摘要，长字符串可展开），自带「原文 / 树形」切换与复制，
+  并且对超大内容有上限（原文 > 200KB 或条目 > 2000 退回原文）—— 手写 `<pre>` 既读不出层次，
+  又会在一个巨型快照上把页面卡死。只在**不是结构化数据**时用 `<pre>`（命令行输出、日志片段这类纯文本）。
 
 ## 9. 壳组件（`apps/admin/src/components`）
 
@@ -146,5 +150,6 @@
 - [ ] 同一行最多一个 `font-medium`；ID / 时间 / 路径用 `font-mono`
 - [ ] 状态「颜色 + 文案」成对出现
 - [ ] 表单控件全部来自组件库（原生 `<select>` / `<input>` / `<button>` 一个不留）
+- [ ] 展示 JSON 用 `JsonView`，不手写 `<pre>{JSON.stringify(...)}</pre>`
 - [ ] 浅色与深色模式都过一遍（`ThemeToggle` 切换验证）
 - [ ] 主按钮 / 表单 / 焦点环对比度达 AA

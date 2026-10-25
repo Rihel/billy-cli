@@ -18,6 +18,7 @@ import {
   Switch,
   cn,
   Label,
+  JsonView,
 } from '@repo/ui'
 import type { DataTableColumnDef } from '@repo/ui'
 import {
@@ -340,17 +341,13 @@ export default function AiAuditPage() {
                   <span>发起人：{runDetailQuery.data.triggeredBy ?? '—'}</span>
                   <span>恢复次数：{runDetailQuery.data.recoveryCount}</span>
                 </div>
-                <pre className="max-h-72 overflow-auto rounded-md bg-surface-1 p-3 text-xs">
-                  {JSON.stringify(runDetailQuery.data.requestSnapshot ?? {}, null, 2)}
-                </pre>
+                <JsonView maxHeight={288} value={runDetailQuery.data.requestSnapshot ?? {}} />
                 {runDetailQuery.data.errorDetail ? (
                   <div className="flex flex-col gap-2">
                     <span className="text-sm font-medium text-destructive">
                       上游错误原文（全量）
                     </span>
-                    <pre className="max-h-60 overflow-auto rounded-md bg-destructive/10 p-3 text-xs">
-                      {JSON.stringify(runDetailQuery.data.errorDetail, null, 2)}
-                    </pre>
+                    <JsonView maxHeight={240} value={runDetailQuery.data.errorDetail} />
                   </div>
                 ) : null}
                 {runDetailQuery.data.children.length > 0 ? (
@@ -440,9 +437,7 @@ function TimelineRow({ item }: { item: AgentTimelineItemModel }) {
         {typeof text === 'string' ? (
           <Markdown content={text} />
         ) : (
-          <pre className="max-h-72 overflow-auto whitespace-pre-wrap break-all rounded-md bg-muted/40 p-2 text-xs">
-            {JSON.stringify(item.payload ?? {}, null, 2)}
-          </pre>
+          <JsonView maxHeight={288} value={item.payload ?? {}} />
         )}
       </div>
     </details>

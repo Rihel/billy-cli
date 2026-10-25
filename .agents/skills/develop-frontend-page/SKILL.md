@@ -52,6 +52,10 @@ description: 在 Billy 工程中开发前端页面：Admin 后台页（@repo/ui 
     加一种新围栏 = 写组件 + 注册 + 改 `requirements.eta`；围栏**没闭合时只渲染占位**（靠 `MessageResponse`
     的 `isAnimating`），别为了"看起来实时"改成每个 token 重渲染 —— iframe 会反复重跑脚本、图会来回跳。
     设计见 `docs/design/ai-markdown-fences.md`。
+  - **展示 JSON 一律用 `JsonView`**（`@repo/ui` 的 `components/json-view.tsx`，走 barrel）：可折叠的树、
+    容器带字段/项数摘要、原文/树形切换与复制、对超大内容有上限。**不要** `<pre>{JSON.stringify(v, null, 2)}</pre>`
+    —— 后台的告警快照、审计请求快照、时间线 payload、工具入参/出参、参数定义都已换成它；
+    `<pre>` 只留给非结构化文本（命令行输出、日志片段）。
 
   这些组件**不读 `message.parts`** —— 状态由调用方从 part 里取出来当 props 传（映射写法见
   `apps/web/src/app/ai/chat/page.tsx`）。

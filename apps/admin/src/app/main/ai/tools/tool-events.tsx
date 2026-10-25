@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { ToolEventMode } from '@repo/shared'
 import type { AiToolEventModel } from '@repo/shared'
-import { Badge, Collapsible, CollapsibleContent, CollapsibleTrigger, DictTag, cn } from '@repo/ui'
+import { Badge, Collapsible, CollapsibleContent, CollapsibleTrigger, DictTag, JsonView, cn } from '@repo/ui'
 import { ChevronDownIcon } from 'lucide-react'
 
 /**
@@ -29,9 +29,9 @@ const PayloadSchemaBlock = ({ schema }: { schema: Record<string, unknown> | null
         {open ? '收起 payload 定义' : '展开 payload 定义'}
       </CollapsibleTrigger>
       <CollapsibleContent>
-        <pre className="mt-2 max-h-72 overflow-auto rounded-md bg-surface-1 p-3 font-mono text-xs">
-          {JSON.stringify(schema, null, 2)}
-        </pre>
+        <div className="mt-2">
+          <JsonView maxHeight={288} value={schema} />
+        </div>
       </CollapsibleContent>
     </Collapsible>
   )

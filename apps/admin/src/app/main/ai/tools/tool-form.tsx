@@ -29,6 +29,7 @@ import {
   toastWarning,
   cn,
   Label,
+  JsonView,
 } from '@repo/ui'
 import {
   ChevronDownIcon,
@@ -152,9 +153,9 @@ const ParamSchemaBlock = ({ schema }: { schema: Record<string, unknown> | null }
         {open ? '收起 JSON' : '展开 JSON'}
       </CollapsibleTrigger>
       <CollapsibleContent>
-        <pre className="mt-2 max-h-72 overflow-auto rounded-md bg-surface-1 p-3 font-mono text-xs">
-          {JSON.stringify(schema, null, 2)}
-        </pre>
+        <div className="mt-2">
+          <JsonView maxHeight={288} value={schema} />
+        </div>
       </CollapsibleContent>
     </Collapsible>
   )

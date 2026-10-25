@@ -12,6 +12,7 @@ import {
   DialogTitle,
   DisplayValue,
   Tag,
+  JsonView,
 } from '@repo/ui'
 import { useServerClient } from '@/lib/server-client'
 
@@ -116,9 +117,11 @@ function Snapshot({ title, value }: { title: string; value: unknown }) {
   return (
     <section className="flex flex-col gap-2">
       <h3 className="text-sm font-semibold">{title}</h3>
-      <pre className="max-h-60 overflow-auto rounded-lg bg-surface-1 p-3 text-xs">
-        {value ? JSON.stringify(value, null, 2) : '无'}
-      </pre>
+      {value ? (
+        <JsonView maxHeight={240} value={value} />
+      ) : (
+        <span className="text-muted-foreground text-xs">无</span>
+      )}
     </section>
   )
 }
