@@ -85,14 +85,32 @@ ai/
 - `dedent` 已装，但**只用于代码里手写的多行字符串**（如错误信息）：实测
   `dedent('- 第一行\n  第二行续')` 会把列表续行的缩进吃掉，而那段缩进在 Markdown 里有意义。
 
-### 1.4 技能：`SkillLoader` 加载 + 校验
+### 1.4 技能：`SkillLoader` 发现 / 校验 + Mastra 加载
 
-- 技能内容用 **Agent Skills 标准格式**（`SKILL.md` 的 YAML frontmatter + Markdown 正文 + `references/`），
-  与仓库根 `.agents/skills/` 同构；
-- 加载即用 Mastra 的 `validateSkillContent` 校验（不自造规则），失败**在启动期报错**；
-- 加载结果缓存；agent 按名字授权（`skills: ['<skill-name>']`），未知名字装配期报错；
-- 为什么不直接用 Mastra 的目录能力：`WorkspaceSkills` 不在公开子路径导出，无法启动期校验、
-  也无法把技能清单暴露给接口（`/agent/list` 会返回每个 agent 装了哪些技能）。
+技能内容用 **Agent Skills 标准格式**（`SKILL.md` 的 YAML frontmatter + Markdown 正文 + `references/`），
+与仓库根 `.agents/skills/` 同构。**加载分两段，各管一段**：
+
+| 谁 | 管什么 |
+| --- | --- |
+| `SkillLoader`（我们） | **发现**（扫目录）、**校验**（`validateSkillContent`，启动期）、**授权**（按名字给出技能目录绝对路径） |
+| Mastra（`Agent({ skills: [目录路径] })` → `LocalSkillSource` / `WorkspaceSkills`） | 清单（名字 + 描述）注入提示词；正文与 `references/` 由 `skill` / `skill_search` / `skill_read` 工具**按需读盘** |
+
+- **不把正文读进内存**：#技能可能几十个、参考文件上百个，内联（`createSkill`）等于启动全读；
+  路径形态下 Mastra 按需读，技能改了也不必重启（带冷却的自刷新）。
+- 目录来源（按优先级）：① `core/skills/catalog/`（随部署打包，**校验不过 = 启动失败**）；
+  ② `AgentConfig.skillsDirs`（默认 `~/.agents/skills`，`AGENT_SKILLS_DIRS` 逗号分隔多个；
+  **坏一个只跳过并记错误日志**——别人的技能库不该绑架启动）。重名时前面的目录赢。
+- agent 按名字授权（`skills: ['<skill-name>']`；`skills: [ALL_SKILLS]` = 全部已加载技能，
+  **装配期展开成真实名字**，于是 `/agent/list` 与 `request_snapshot.skillKeys` 里是具体技能名）。未知名字装配期报错。
+- 早先不直接用 Mastra 的目录能力，理由是"无法启动期校验、也无法把清单暴露给接口"——
+  现在这两件事都由 `SkillLoader` 自己做了（校验在启动期、清单进 `/agent/list`），
+  所以内容侧重新交回 Mastra，避免我们自己实现一套读盘 / 缓存 / 参考文件服务。
+
+**实测（2026-10-27，`~/.agents/skills` 24 个技能）**：加载 23 个（`xilo-opus-video` 的 description
+超 1024 字符被跳过）；`/agent/list` 返回这 23 个名字；让模型"列一下你能用的技能"能答出
+`ant-design / impeccable / minimalist-ui / shadcn / humanizer-zh`。
+代价是**每轮多约 11k token**（该轮 inputTokens 15690，我们自己的估算 4004 只覆盖到提示词本身，
+不含 Mastra 后注入的技能清单）——技能描述很长时这笔开销是真的，要省就瘦身 description 或收窄授权名单。
 
 ### 1.5 已跑通的验证（实测）
 
@@ -1993,8 +2011,17 @@ new Agent({
 - 消息列表（`Conversation`）与列表行**都不画边框 / 分隔线**：层次靠气泡底色与卡片自己表达，
   两栏的分隔交给那根分隔条。
 - 新会话的首轮：流里的 `data-run` 带回真实 `conversationId` → `router.replace` 换地址。
-  **同一动态路由换参数不会重挂载**，所以正在流的这一轮不中断（这也是不把首轮拆成"先建会话再跳"的原因：
-  那样会多一次往返、还要处理"建了会话却发失败"的空会话）。
+  这也是不把首轮拆成"先建会话再跳"的原因：那样会多一次往返、还要处理"建了会话却发失败"的空会话。
+  **⚠️ 修正（2026-10-27，Next 16.3.5 实测）**：早先这里写的是"同一动态路由换参数不会重挂载"，
+  这是**错的** —— 换参数时 Next 要重新取这一段 RSC，页面子树会被卸载再挂回来（CDP 实测：`textarea`
+  元素被换掉、`loading` 又变回 true）。`useChat` 的消息不丢，是因为 Chat 实例按 `id` 存在组件外；
+  **组件里的 `useState` 会全部归零**。所以会话页凡是要跨"首轮建会话"活下来的选择，都必须存在
+  React 之外，别再假设"挂载一次、状态只有一份"。
+- **模型选择按会话存在浏览器里**（`ai-chat-model:<会话 id>`，见 `chat-conversation.tsx` 的
+  `MODEL_STORAGE_PREFIX`）：正因为上面那次重挂载，只放组件 state 的选择会被清掉，表现成"选了非默认模型，
+  一发消息就回到默认"（那一轮实际用的仍是选中的模型，`runs.request_snapshot.model` 可查）。`new` 那一段
+  是"下一个新会话的待用选择"，首轮拿到真实 id 时搬到真实 id 上；存的选择若已不在可选清单（模型被删 /
+  停用）由 effect 归零，交回服务端默认 —— 否则每轮都会拿一个不存在的 id 去换 3402。
 
 #### 4.9.5 跑对话用哪个 SDK：**由供应商 `kind` 决定，不由 slug 决定**
 

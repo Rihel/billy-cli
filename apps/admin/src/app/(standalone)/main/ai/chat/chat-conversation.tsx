@@ -116,6 +116,23 @@ const PANEL_OPEN_STORAGE_KEY = 'ai-chat-right-panel-open'
 const PANEL_WIDTH = { default: 340, min: 260, max: '55%' } as const
 
 /**
+ * 选中的模型按会话记在浏览器里（`ai-chat-model:<会话 id>`，新会话用 `new` 这一段）。
+ *
+ * 为什么不能只放组件 state（**实测踩过**）：新会话首轮发出后，地址从 `new` replace 成真实 id，
+ * 这一次跳转会**重挂载整棵对话区** —— Next 在动态段换参数时要重新取 RSC，页面被卸载再挂回来
+ * （对着 DOM 实测：textarea 元素被换掉、`loading` 又变回 true）。而 `runs` 里那一轮的 `model`
+ * 仍是选中的那个：数据没错，**只有界面被重置**，于是表现成"选了非默认模型，一发消息就回到默认"。
+ * 存进浏览器，重挂载 / 刷新 / 从侧栏点回来都不会丢。
+ *
+ * 两条口径：
+ * - `new` 那一份是"下一个新会话的待用选择" —— 新建会话沿用上次选的模型；
+ * - 模型被删 / 停用后由组件里的 effect 归零（见"存的选择已不在清单里"那段）。
+ */
+const MODEL_STORAGE_PREFIX = 'ai-chat-model'
+const modelStorageKey = (conversationId: string): string =>
+  `${MODEL_STORAGE_PREFIX}:${conversationId}`
+
+/**
  * 一个会话的对话区（`/main/ai/chat/[conversationId]` 渲染它）。
  *
  * 三条数据链路（各管一段，互不冒充）：
@@ -142,6 +159,11 @@ export function ChatConversation({ conversationId }: { conversationId: string })
   const isNew = isNewConversation(conversationId)
 
   const [modelId, setModelId] = useState<string>()
+  /** 选模型：写进浏览器，别只留在 state 里（见 `MODEL_STORAGE_PREFIX` 的说明） */
+  const chooseModel = (next: string) => {
+    setModelId(next)
+    window.localStorage.setItem(modelStorageKey(conversationId), next)
+  }
   /** 附件的上传通道（预签名直传对象存储）：点提交时先把文件传完，再带着 key 发这一轮 */
   const attachmentUpload = useAttachmentsUpload()
   /**
@@ -166,6 +188,7 @@ export function ChatConversation({ conversationId }: { conversationId: string })
       index,
     )
   }
+  const availableModels = useAvailableModels(modelId)
   /**
    * 本轮用的模型的**输入模态**（`null` = 未声明）。
    *
@@ -173,7 +196,7 @@ export function ChatConversation({ conversationId }: { conversationId: string })
    * 「未声明」（`null`）与「清单还没到手」（`undefined`）都**不禁用**上传：
    * 国内厂商普遍不给模态信息，硬禁用会把真正的视觉模型也误伤。
    */
-  const inputModalities = currentModelModalities(useAvailableModels(modelId).current)
+  const inputModalities = currentModelModalities(availableModels.current)
   const attachmentsAllowed =
     inputModalities === undefined ||
     inputModalities === null ||
@@ -266,6 +289,31 @@ export function ChatConversation({ conversationId }: { conversationId: string })
       setPanelOpen(stored === '1')
     }
   }, [])
+
+  /**
+   * 读回这个会话上次选的模型。
+   *
+   * 用 effect 而不是 `useState` 的惰性初值：SSR 时读不到 localStorage，惰性初值会让首帧
+   * 与 SSR 不一致（hydration 报错）；写成 effect，首帧两边都是"服务端默认"，挂载后再纠正 ——
+   * 与右栏开关同一套口径。
+   */
+  useEffect(() => {
+    const stored = window.localStorage.getItem(modelStorageKey(conversationId))
+    if (stored) setModelId(stored)
+  }, [conversationId])
+
+  /**
+   * 存的选择已经不在可选清单里（模型被删 / 停用）：归零，交回服务端默认。
+   *
+   * 不清掉的话，发出去的是一个不存在的 id —— 服务端按"不静默回落"的原则直接报 3402
+   * （§4.9.2 第 2 条），用户看到的是"每一轮都发不出去"，还看不出为什么。
+   */
+  useEffect(() => {
+    if (!modelId || availableModels.models.length === 0) return
+    if (availableModels.models.some((model) => model.id === modelId)) return
+    setModelId(undefined)
+    window.localStorage.removeItem(modelStorageKey(conversationId))
+  }, [availableModels.models, conversationId, modelId])
 
   const togglePanel = () => {
     const next = !panelOpen
@@ -389,10 +437,19 @@ export function ChatConversation({ conversationId }: { conversationId: string })
         // 侧栏列表要立刻出现这条新会话（同一个 QueryClient，不用 prop 传递）
         void queryClient.invalidateQueries({ queryKey: ['ai', 'conversations'] })
         if (startedAsNewRef.current) {
-          // 先记住"这个 id 是本轮流出来的"：页面 key 不变、组件不重挂载，
-          // 历史 effect 也不能把它当成"打开了一个已有会话"去开 loading / 覆盖消息
+          // 先记住"这个 id 是本轮流出来的"：历史 effect 不能把它当成"打开了一个已有会话"
+          // 去开 loading / 覆盖消息
           adoptedConversationRef.current = data.conversationId
-          // 地址换掉但不滚动、不重挂载；正在流的这一轮继续
+          /**
+           * 模型选择要跟着会话搬家：地址换掉之后对话区会重挂载（见 `MODEL_STORAGE_PREFIX`），
+           * 新组件按**真实 id** 读回选择 —— 这里先把 `new` 那一份落到真实 id 上，
+           * 否则重挂载后读不到，选择又回到默认。
+           */
+          const pendingModelId = window.localStorage.getItem(modelStorageKey(conversationId))
+          if (pendingModelId) {
+            window.localStorage.setItem(modelStorageKey(data.conversationId), pendingModelId)
+          }
+          // 地址换掉但不滚动；正在流的这一轮由 `useChat`（按 id 存的实例）接住，不中断
           router.replace(conversationPath(data.conversationId), { scroll: false })
         }
       }
@@ -907,7 +964,7 @@ export function ChatConversation({ conversationId }: { conversationId: string })
                 {/* 左下角：本轮用哪个模型；右下角：本轮统计 + 发送/停止 */}
                 <PromptInputFooter className="gap-2">
                   <PromptInputTools>
-                    <ModelPicker value={modelId} onChange={setModelId} disabled={streaming} />
+                    <ModelPicker value={modelId} onChange={chooseModel} disabled={streaming} />
                     {/* 点击上传的入口：粘贴之外总得有"点一下选文件"这条路 */}
                     <PromptInputAttachmentButton
                       disabled={streaming || !attachmentsAllowed}

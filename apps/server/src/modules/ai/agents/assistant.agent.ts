@@ -1,4 +1,5 @@
 import { TOOL_KEYS } from '../core/tools/tool-keys.js'
+import { ALL_SKILLS } from '../core/skills/skills.types.js'
 import type { AgentSpec } from './types.js'
 
 /**
@@ -43,7 +44,15 @@ export const assistantAgent: AgentSpec = {
     TOOL_KEYS.webRequest,
     TOOL_KEYS.webSearch,
   ],
-  // 默认不带业务技能；新增技能时在此授权名字（见 core/skills/catalog）
-  skills: [],
+  /**
+   * 技能：**全部已加载技能**（`core/skills/catalog/` + `AGENT_SKILLS_DIRS` 配置的目录）。
+   *
+   * 为什么给全部而不是挑几个：技能是**渐进披露**的 —— 提示词里只放"名字 + 什么时候用"，
+   * 正文与参考文件由 `skill` / `skill_read` 工具按需取。所以多装几个的成本是目录里多几行字，
+   * 不会把上下文撑爆；真要用时模型自己挑。
+   *
+   * 要收紧成白名单时，把这里换成具体名字数组即可（未知名字装配期就报错）。
+   */
+  skills: [ALL_SKILLS],
   prompt: { template: 'assistant' },
 }

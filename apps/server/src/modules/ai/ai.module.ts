@@ -34,7 +34,7 @@ import {
   RunRepository,
   TimelineRepository,
 } from './runtime/index.js'
-import { SkillLoader } from './core/skills/index.js'
+import { SKILL_DIRS, SkillLoader } from './core/skills/index.js'
 import { toMastraSkills } from './mastra/skill.adapter.js'
 import { toMastraTools } from './mastra/tool.adapter.js'
 import { AGENT_TOOL_GROUPS } from './core/tools/tools.types.js'
@@ -185,12 +185,26 @@ let warnedMissingEnvelope = false
     WebTools,
 
     // ───────────────────────── agent 注册表与 Mastra 实例 ─────────────────────────
+    // 额外技能目录：配置 → loader（loader 只管扫目录，不认配置从哪来）
+    {
+      provide: SKILL_DIRS,
+      inject: [AgentConfig],
+      useFactory: (config: AgentConfigValue): readonly string[] => config.skillsDirs,
+    },
     SkillLoader,
     {
       provide: AGENT_REGISTRY,
-      inject: [ToolRegistry],
-      useFactory: (registry: ToolRegistry): AgentRegistryValue =>
-        createAgentRegistry(createAgentDefinitions(prompts, registry), DEFAULT_AGENT_KEY),
+      // 技能名清单要在装配期拿到（`skills: ['*']` 展开成真实名字），故这个 factory 是 async 的：
+      // 展开之后 `/agent/list`、`request_snapshot.skillKeys`、审计页看到的都是具体技能名
+      inject: [ToolRegistry, SkillLoader],
+      useFactory: async (
+        registry: ToolRegistry,
+        skills: SkillLoader,
+      ): Promise<AgentRegistryValue> =>
+        createAgentRegistry(
+          createAgentDefinitions(prompts, registry, { allSkillNames: await skills.names() }),
+          DEFAULT_AGENT_KEY,
+        ),
     },
     {
       provide: MASTRA,

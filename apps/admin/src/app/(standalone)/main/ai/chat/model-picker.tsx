@@ -1,7 +1,7 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import { Badge, Button, cn } from '@repo/ui'
+import { Badge, Button } from '@repo/ui'
 // ai-elements 走子路径（不进 barrel，见 docs/design/ai-agent.md §1）
 import {
   ModelSelector,
@@ -17,7 +17,7 @@ import {
   ModelSelectorTrigger,
 } from '@repo/ui/components/ai-elements/model-selector.tsx'
 import type { AiAvailableModelModel } from '@repo/shared'
-import { CheckIcon, ChevronsUpDownIcon } from 'lucide-react'
+import { ChevronsUpDownIcon } from 'lucide-react'
 import { useAvailableModels } from './use-available-models'
 
 /**
@@ -134,6 +134,12 @@ export function ModelPicker({
                 <ModelSelectorItem
                   key={model.id}
                   value={`${model.modelRef} ${model.displayName}`}
+                  /**
+                   * 当前项打勾**用 CommandItem 自带的那个勾**（`group-data-[checked=true]` 控显隐）。
+                   * 自己再画一个会多占 `8 + 16`px，行里还会出现两个勾图标 —— 窄弹窗下这笔开销
+                   * 直接落在"模型名被挤没"上。
+                   */
+                  data-checked={current?.id === model.id ? 'true' : undefined}
                   onSelect={() => {
                     onChange(model.id)
                     setOpen(false)
@@ -145,15 +151,18 @@ export function ModelPicker({
                   </ModelSelectorLogoGroup>
                   <ModelSelectorName>{model.displayName}</ModelSelectorName>
                   <ModelModalityBadges inputModalities={model.inputModalities} />
-                  <span className="font-mono text-xs text-muted-foreground">{model.modelRef}</span>
+                  {/* `provider/model` 与窗口是"辅助信息"：挤的时候让它们先缩 / 先截断，名字后让 */}
+                  <span
+                    className="min-w-0 shrink truncate font-mono text-xs text-muted-foreground"
+                    title={model.modelRef}
+                  >
+                    {model.modelRef}
+                  </span>
                   {model.contextWindow ? (
-                    <span className="text-xs text-muted-foreground">
+                    <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
                       {Math.round(model.contextWindow / 1000)}K
                     </span>
                   ) : null}
-                  <CheckIcon
-                    className={cn('ml-2 size-4', current?.id === model.id ? 'opacity-100' : 'opacity-0')}
-                  />
                 </ModelSelectorItem>
               ))}
             </ModelSelectorGroup>

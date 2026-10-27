@@ -25,10 +25,19 @@ export type ModelSelectorContentProps = ComponentProps<typeof DialogContent> & {
   title?: ReactNode
 }
 
+/**
+ * 模型选择弹窗。
+ *
+ * 宽度**必须自己给**：`DialogContent` 的默认宽度是 `sm:max-w-sm`（384px），
+ * 而一行模型要放"名字 + 模态徽标 + `provider/model` + 窗口"四样东西 —— 384px 装不下，
+ * 剩下的名字被压到只剩一个字母（实测名字列 7.9px，界面看起来就是模型名消失了）。
+ * 672px（`max-w-2xl`）刚好让名字占住主要宽度、`provider/model` 与窗口各就各位；
+ * 窄屏仍由 `DialogContent` 的 `max-w-[calc(100%-2rem)]` 兜住。
+ */
 export const ModelSelectorContent = ({ className, children, title = "Model Selector", ...props }: ModelSelectorContentProps) => (
   <DialogContent
     aria-describedby={undefined}
-    className={cn("outline! border-none! p-0 outline-border! outline-solid!", className)}
+    className={cn("sm:max-w-2xl outline! border-none! p-0 outline-border! outline-solid!", className)}
     {...props}
   >
     <DialogTitle className="sr-only">{title}</DialogTitle>
@@ -157,6 +166,12 @@ export const ModelSelectorLogoGroup = ({ className, ...props }: ModelSelectorLog
 
 export type ModelSelectorNameProps = ComponentProps<"span">
 
+/**
+ * 模型名（行内最主要的信息，优先占宽）。
+ *
+ * `min-w-0` 是必须的：flex 子项的 `min-width: auto` 会按内容撑住不肯缩，
+ * 一旦同一行还有 `provider/model` 这种长串，被挤扁的就是名字（踩过）。
+ */
 export const ModelSelectorName = ({ className, ...props }: ModelSelectorNameProps) => (
-  <span className={cn("flex-1 truncate text-left", className)} {...props} />
+  <span className={cn("min-w-0 flex-1 truncate text-left", className)} {...props} />
 )

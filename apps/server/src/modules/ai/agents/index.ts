@@ -1,5 +1,6 @@
 import type { PromptData, PromptEngine } from '../core/prompts/index.js'
 import type { ToolRegistry } from '../core/tools/tool.registry.js'
+import { ALL_SKILLS } from '../core/skills/skills.types.js'
 import type { AgentDefinition, AgentSpec } from './types.js'
 import { assistantAgent } from './assistant.agent.js'
 
@@ -24,10 +25,18 @@ export const DEFAULT_AGENT_KEY = assistantAgent.key
  * `registry.describe(spec.tools)` 渲染而来，所以「写进提示词的工具」与
  * 「真正挂上去的工具」永远是同一份清单。工具 key 写错会在这里（bootstrap 期）直接抛错，
  * 不会拖到用户提问时才暴露。
+ *
+ * 技能同理：`skills: [ALL_SKILLS]` 在这里**展开成真实名字**（装配期从 `SkillLoader` 拿到的清单），
+ * 于是 `/agent/list`、`runs.request_snapshot.skillKeys`、审计页看到的都是具体技能名，
+ * 而不是一个看不懂的 `*`。
  */
 export const createAgentDefinitions = (
   prompts: PromptEngine,
   registry: ToolRegistry,
+  options: {
+    /** 当前加载到的全部技能名（`ALL_SKILLS` 展开用；未传 = 只能声明具体名字） */
+    allSkillNames?: readonly string[]
+  } = {},
 ): AgentDefinition[] =>
   AGENT_SPECS.map((spec) => {
     const data: PromptData = {
@@ -36,12 +45,15 @@ export const createAgentDefinitions = (
       tools: registry.describe(spec.tools),
       ...spec.prompt.data,
     }
+    const declared = spec.skills ?? []
     return {
       key: spec.key,
       name: spec.name,
       description: spec.description,
       tools: spec.tools,
-      skills: spec.skills ?? [],
+      skills: declared.includes(ALL_SKILLS)
+        ? [...(options.allSkillNames ?? [])]
+        : [...declared],
       model: spec.model,
       instructions: prompts.render(spec.prompt.template, data),
     }

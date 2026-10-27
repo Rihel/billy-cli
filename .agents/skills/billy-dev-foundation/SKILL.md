@@ -11,6 +11,19 @@ description: Billy 工程（billy-cli monorepo）开发必读 skill。任何在�
 这是本工程唯一的「必读」skill。开始任何编码任务前，先阅读本文件及其引用的
 `references/` 文件，再按下文「Skill 目录」按需加载功能 skill。
 
+## 记忆：先查查过的东西
+
+已查清的结论（坑、链路地图、实测数字、定过的取舍）在 `.agents/memory/`：
+
+1. 动手前先读 [`memory/README.md`](../../memory/README.md) 的索引（约 2K 字符内），**只读命中主题的卡片**；
+2. 看卡片顶部的**查证优先级**（级别与判据以 `AGENTS.md` 的「用记忆时的查证优先级」为准），
+   按级别决定要不要现场核；发现与代码不符先改记忆，不要照着写；
+3. 这是查证顺序的第 1 级。没命中就按 `AGENTS.md` 的「查证顺序」往下走：
+   **codegraph → 开发日志 → 代码**（代码最贵，放最后）；
+4. 收尾时把本次可复用的结论写回该目录——同主题**改旧卡**，不并排新增。
+
+分工：skill 讲「该怎么做」，memory 记「查过才知道的」。不要把规范抄进 memory。
+
 ## Skill 目录（工程 skill 一览）
 
 完整目录（19 个功能 + 1 个元 skill，含用途与加载时机）见
@@ -74,7 +87,7 @@ description: Billy 工程（billy-cli monorepo）开发必读 skill。任何在�
 | [references/design.md](./references/design.md) | 设计决策：评估难度决定是否出方案、方案原则、借鉴成熟方案 | 中等 / 复杂需求动手前（必读） |
 | [references/code-conventions.md](./references/code-conventions.md) | 硬性代码约定 11 条，含「不重复造轮子」查找顺序 | 写任何代码前（必读） |
 | [references/commands.md](./references/commands.md) | 常用命令 | 需要执行命令时 |
-| [references/workflow.md](./references/workflow.md) | 标准开发流程、参考实现（user 全链路） | 任务执行过程中 |
+| [references/workflow.md](./references/workflow.md) | 标准开发流程、**验证与收尾清理**（界面交用户验 / 临时脚本删除 / 进程停干净）、参考实现（user 全链路） | 任务执行过程中、收尾前（必读） |
 
 ## 完成检查清单
 
@@ -92,9 +105,14 @@ description: Billy 工程（billy-cli monorepo）开发必读 skill。任何在�
 - [ ] admin 页面已加入 `apps/admin/src/components/AppMenu.tsx` 菜单
 - [ ] 相对导入后缀与所在包既有风格一致；纯类型用 `import type`
 - [ ] 改动触及 skill 提到的包 / 组件 / 命令时，已按 `manage-skills` 的「代码变更后的 skill 同步」更新相关 skill
+- [ ] 本次有可复用结论（坑 / 地图 / 实测数字 / 取舍）时，已写进 `.agents/memory/` 并更新其索引，
+      卡片标了查证优先级（标「必核」的必须附核对命令）
 - [ ] 未重复造轮子：已按「实现查找顺序」确认无现成实现
 - [ ] 已把本次开发记录追加到 `docs/dev-logs/yyyy-MM-dd.md`（单次 ≤500 字符）
 - [ ] 输出文案 / 程序日志 / 注释 / 文档均为简体中文
 - [ ] `pnpm dev:pkgs` 与目标 app 类型检查通过
 - [ ] 前端改动：已跑 `pnpm typecheck` / `pnpm test` / `pnpm check:ui`（新增前端包必须声明 `typecheck`
   脚本、自有组件必须在 `packages/ui/src/index.ts` 导出，否则守卫拦下）
+- [ ] 界面验证已交回用户，附「看哪个页面、哪一步操作、期望看到什么」的清单；**没有自己跑无头浏览器**
+- [ ] 收尾已清理：验证用的临时脚本已删除；为测试起的进程已用 `pnpm kill:dev` 停掉、端口已释放
+      （三条要求的出处见 `references/workflow.md` 的「验证与收尾清理」）

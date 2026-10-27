@@ -8,13 +8,24 @@ import { Button } from "#components/ui/button.tsx"
 import { Input } from "#components/ui/input.tsx"
 import { Textarea } from "#components/ui/textarea.tsx"
 
+/**
+ * 输入组（输入框 + 附加按钮 / 文本的容器）。
+ *
+ * 禁用态只认**组自己的输入控件**（`has-[[data-slot=input-group-control]:disabled]`），
+ * 不要写成 `has-disabled:`（= `:has(:disabled)`，组里任何一个后代被禁用就成立）。
+ *
+ * 踩过的坑：AI 会话输入框的「上传附件」按钮在"当前模型不收附件"时是禁用态，
+ * 于是整个输入卡连同模型选择、占位符、发送按钮、用量统计一起被降到 50% 透明度 ——
+ * 用户看到的就是"选了个不支持附件的模型，输入框整块变暗了"。
+ * 输入组的禁用态说的是"这个输入整体不可用"，不是"组里有个按钮点不了"。
+ */
 function InputGroup({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div
       data-slot="input-group"
       role="group"
       className={cn(
-        "group/input-group relative flex h-8 w-full min-w-0 items-center rounded-lg bg-surface-2 transition-colors outline-none in-data-[slot=combobox-content]:in-data-[slot=combobox-content]:focus-within:ring-0 has-disabled:bg-surface-1 has-disabled:opacity-50 has-[[data-slot=input-group-control]:focus-visible]:ring-3 has-[[data-slot=input-group-control]:focus-visible]:ring-ring/50 has-[[data-slot][aria-invalid=true]]:ring-3 has-[[data-slot][aria-invalid=true]]:ring-destructive/20 has-[>[data-align=block-end]]:h-auto has-[>[data-align=block-end]]:flex-col has-[>[data-align=block-start]]:h-auto has-[>[data-align=block-start]]:flex-col has-[>textarea]:h-auto dark:bg-surface-2 dark:has-disabled:bg-surface-1 dark:has-[[data-slot][aria-invalid=true]]:ring-destructive/40 has-[>[data-align=block-end]]:[&>input]:pt-3 has-[>[data-align=block-start]]:[&>input]:pb-3 has-[>[data-align=inline-end]]:[&>input]:pr-1.5 has-[>[data-align=inline-start]]:[&>input]:pl-1.5",
+        "group/input-group relative flex h-8 w-full min-w-0 items-center rounded-lg bg-surface-2 transition-colors outline-none in-data-[slot=combobox-content]:in-data-[slot=combobox-content]:focus-within:ring-0 has-[[data-slot=input-group-control]:disabled]:bg-surface-1 has-[[data-slot=input-group-control]:disabled]:opacity-50 has-[[data-slot=input-group-control]:focus-visible]:ring-3 has-[[data-slot=input-group-control]:focus-visible]:ring-ring/50 has-[[data-slot][aria-invalid=true]]:ring-3 has-[[data-slot][aria-invalid=true]]:ring-destructive/20 has-[>[data-align=block-end]]:h-auto has-[>[data-align=block-end]]:flex-col has-[>[data-align=block-start]]:h-auto has-[>[data-align=block-start]]:flex-col has-[>textarea]:h-auto dark:bg-surface-2 dark:has-[[data-slot=input-group-control]:disabled]:bg-surface-1 dark:has-[[data-slot][aria-invalid=true]]:ring-destructive/40 has-[>[data-align=block-end]]:[&>input]:pt-3 has-[>[data-align=block-start]]:[&>input]:pb-3 has-[>[data-align=inline-end]]:[&>input]:pr-1.5 has-[>[data-align=inline-start]]:[&>input]:pl-1.5",
         className
       )}
       {...props}

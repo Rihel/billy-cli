@@ -42,6 +42,7 @@
 
 1. **任何开发任务开始前，先加载必读 skill `billy-dev-foundation`**——它是加载入口，
    内含「Skill 目录」：工程全部 skill 的用途与加载时机总索引（下表仅为速览）。
+   动手前同时看 [`memory/README.md`](../memory/README.md) 的索引：**已经查过的结论不必再查一遍**。
 2. 根据任务类型选择功能 skill，完整列表与「何时加载」以 `billy-dev-foundation` 的
    「Skill 目录」为准（字典/枚举 → `define-dict-enum`；表/schema → `define-data-structure`；
    完整模块 → `develop-business-module`；页面 → `develop-frontend-page`；认证 →

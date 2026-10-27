@@ -9,6 +9,16 @@ export interface AgentConfig {
   /** OpenAI 兼容端点地址（自建网关 / 代理）；留空走 provider 默认端点 */
   baseURL?: string
 
+  // ── 技能目录（`core/skills`，设计与机制见 §1.4）──
+  /**
+   * **额外的**技能目录（随部署打包的 `core/skills/catalog/` 之外的）。
+   *
+   * 每个目录下按 `<技能名>/SKILL.md` 组织（与仓库根 `.agents/skills/`、`~/.agents/skills/` 同构）。
+   * 默认 `['~/.agents/skills']`：装了就自动可用，没装就是空目录、跳过并记一条日志。
+   * 目录里的坏技能只跳过（记错误日志），不会让服务起不来 —— 见 `SkillLoader`。
+   */
+  skillsDirs: readonly string[]
+
   // ── 上下文策略（schema 与默认值在 apps/server/src/app-config.ts；详见设计文档 §3.9）──
   /** 触发线：估算用量超过「模型窗口 × 本比例」就开始裁剪/压缩 */
   contextTriggerRatio: number

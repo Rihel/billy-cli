@@ -195,5 +195,8 @@ xxx = {
      -d '{"...": "..."}'
    ```
 3. 错误路径验证：不存在的 id 应返回 `{ code: 3xxx, message: 'Xxx 不存在' }` 且 HTTP 404。
-4. 页面自测：增删改查 + 分页 / 关键字搜索 + 字典列展示。
-5. 最后对照 `billy-dev-foundation` 主文件的「完成检查清单」逐项自查。
+4. 页面验证交回用户：把「打开哪个页面、做哪几步、期望看到什么」列成清单
+   （增删改查 + 分页 / 关键字搜索 + 字典列展示），**不自己跑无头浏览器截图**；
+   规则见 `billy-dev-foundation/references/workflow.md` 的「验证与收尾清理」。
+5. 收尾：临时脚本删除、`pnpm kill:dev --dry-run` 确认后再 `pnpm kill:dev` 停掉测试进程。
+6. 最后对照 `billy-dev-foundation` 主文件的「完成检查清单」逐项自查。

@@ -1,7 +1,6 @@
 import { Mastra } from '@mastra/core/mastra'
 import type { ToolsInput } from '@mastra/core/agent'
 import type { MastraCompositeStore } from '@mastra/core/storage'
-import type { InlineSkill } from '@mastra/core/skills'
 import type { AgentModelId } from '../core/config.js'
 import type { RuntimeModel } from '../core/envelope.js'
 import { createMastraAgent, modelFromEnvelope } from './agent.adapter.js'
@@ -37,8 +36,13 @@ export interface CreateMastraOptions {
    * 工具池（业务能力）与 Mastra 装配（机制）解耦，各自可单独替换 / 测试。
    */
   resolveTools: (toolIds: readonly string[]) => ToolsInput
-  /** 按授权清单取技能（**已转成 Mastra 的 `InlineSkill`**） */
-  resolveSkills: (skillNames: readonly string[]) => Promise<InlineSkill[]>
+  /**
+   * 按授权清单取技能（**已转成 Mastra 的技能入参：技能目录路径**）。
+   *
+   * 路径而不是内联内容：Mastra 的 `LocalSkillSource` / `WorkspaceSkills` 会自己读盘，
+   * 清单进提示词、正文与 `references/` 按需取（见 `SkillLoader` 与 `skill.adapter.ts`）。
+   */
+  resolveSkills: (skillNames: readonly string[]) => Promise<string[]>
   /** 存储适配层（我们写给 Mastra 的，只实现 workflows 域） */
   storage?: MastraCompositeStore
   /** 是否开启可恢复执行（durable）：开启后每步都落快照，崩溃后可从快照续跑（会重放 / 重跑，真花钱） */
@@ -101,8 +105,9 @@ export const createMastra = async ({
         ),
         tools,
         memory: memory ?? agentMemory,
-        // 技能按角色授权；Mastra 会为配置了 skills 的 Agent 自动加上技能激活与注入
-        skills: await resolveSkills(definition.skills),
+        // 技能按角色授权，交**目录路径**给 Mastra：清单注入 + 正文/参考文件按需读都由它负责
+        // （`skill` / `skill_search` / `skill_read` 工具；我们只管发现与校验，见 `SkillLoader`）
+        skills: [...(await resolveSkills(definition.skills))],
         ...(durableAgents ? { durable: true } : {}),
         ...(memory ? { memory } : {}),
       }),

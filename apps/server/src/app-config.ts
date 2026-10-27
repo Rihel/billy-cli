@@ -118,6 +118,14 @@ export const serverAppConfigSchema = z.object({
     apiKey: z.string().optional(),
     /** OpenAI 兼容端点地址（自建网关 / 代理）；留空走 provider 默认端点 */
     baseURL: z.string().optional(),
+    // ── 技能目录（机制见 docs/design/ai-agent.md §1.4）──
+    /**
+     * 额外的技能目录（随部署打包的 `core/skills/catalog/` 之外）。
+     *
+     * 每个子目录一个技能（`<名字>/SKILL.md`）；默认 `~/.agents/skills`，可用 `AGENT_SKILLS_DIRS`
+     * （逗号分隔多个）换成自己的目录。目录不存在就跳过；里面的坏技能只跳过、不拦启动。
+     */
+    skillsDirs: z.array(z.string()).default(['~/.agents/skills']),
     // ── 上下文策略（详见 docs/design/ai-agent.md §3.9）──
     /** 触发线：估算用量超过「模型窗口 × 本比例」就开始裁剪/压缩 */
     contextTriggerRatio: z.coerce.number().positive().max(1).default(0.7),
@@ -353,6 +361,7 @@ export const mapServerEnv = (
     model: optional(env.MASTRA_MODEL),
     apiKey: optional(env.MASTRA_API_KEY),
     baseURL: optional(env.MASTRA_BASE_URL),
+    skillsDirs: parseList(env.AGENT_SKILLS_DIRS),
     contextTriggerRatio: optional(env.AGENT_CONTEXT_TRIGGER_RATIO),
     contextTrimTargetRatio: optional(env.AGENT_CONTEXT_TRIM_TARGET_RATIO),
     contextCompactTargetRatio: optional(env.AGENT_CONTEXT_COMPACT_TARGET_RATIO),

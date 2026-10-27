@@ -177,4 +177,6 @@ pnpm check:ui    # 守卫五条：组件导出 / 前端包 typecheck 脚本 / �
 - [ ] 用到上传 / toast / Query：确认 `<Toaster />` 与存储 Provider（web `WebStorageProvider` / admin `AppProviders`）已装配
 - [ ] 实时页面用 `client.createStream()` + `useStream`（`useMemo` 稳定引用），事件负载用共享 schema 解析
 - [ ] 已跑 `pnpm typecheck` / `pnpm test` / `pnpm check:ui`（新增前端包确认已声明 `typecheck` 脚本）
+- [ ] 界面验证交回用户：列清「打开哪个页面、做什么操作、期望看到什么」，**不自己跑无头浏览器截图**
+      （规则见 `billy-dev-foundation/references/workflow.md` 的「验证与收尾清理」）
 - [ ] 视觉取值只用语义 token（不用 `bg-blue-500` 这类调色板类）；样式调整优先用组件 className；必须写 CSS 覆盖时写在 `@layer` 之外

@@ -2,7 +2,6 @@ import { createDeepSeek } from '@ai-sdk/deepseek'
 import { Agent } from '@mastra/core/agent'
 import { resolveModelConfig } from '@mastra/core/llm'
 import type { ToolsInput } from '@mastra/core/agent'
-import type { InlineSkill } from '@mastra/core/skills'
 import type { RequestContext } from '@mastra/core/request-context'
 import { toAgentModelId, type AgentModelId } from '../core/config.js'
 import { decideModelForMastra } from '../core/model-decision.js'
@@ -94,7 +93,8 @@ export interface MastraAgentOptions {
   /** 模型：按调用从信封取（主 agent），或固定（临时子 agent 继承父这一轮的模型） */
   model: (args: { requestContext: RequestContext }) => { id: AgentModelId; url?: string; apiKey: string }
   tools: ToolsInput
-  skills: InlineSkill[]
+  /** 技能目录路径（交给 Mastra 的技能加载机制，见 `toMastraSkills`） */
+  skills: string[]
   durable?: boolean
   /** 对话记忆（durable resume 需要它把工具结果续回消息列表；不传则不启用记忆） */
   memory?: import('@mastra/core/memory').MastraMemory

@@ -1209,6 +1209,10 @@ AI 编码 Agent 按任务**按需加载**，工具无关（Claude Code / Codex /
   [`billy-dev-foundation/references/catalog.md`](.agents/skills/billy-dev-foundation/references/catalog.md)
 - **典型全链路**（`develop-business-module`）：数据结构（schema + 实体）→ 建表迁移 → 业务（repository /
   service）→ 接口（controller + 错误码）→ SDK → 前端页面
+- **记忆**：[`.agents/memory/`](.agents/memory/README.md) 记「查过才知道的」——坑、链路地图、实测数字、
+  定过的取舍。入口是索引表（30 条以内，每条一句话），命中主题再读卡片；卡片带「依据」「失效信号」与
+  **查证优先级**（必核 / 抽核 / 免核：行号与库里的值用前必核，机制性结论免核），前提变了改旧卡。
+  目的是同一个问题只调查一次，不必每次重新翻代码
 - **维护**：新增 / 修改 skill 走 `manage-skills`（目录与 frontmatter 规范、references 拆分、索引注册）；
   **代码变更后须同步受影响的 skill 与文档**
 
