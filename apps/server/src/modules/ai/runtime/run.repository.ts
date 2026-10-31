@@ -52,6 +52,14 @@ interface UsageBucketRow {
 /** 进程重启后遗留 run 的终态说明（用户可见：明确告诉他"重试就行"，不是他的错） */
 const INTERRUPTED_RUN_MESSAGE = '服务重启，这一轮已中断，请重试'
 
+/**
+ * 看门狗判超时的两条判据（`findStale` 与 `markTimeout` 共用，含义完全不同）：
+ * - `stale_heartbeat`：长时间没有心跳 —— 进程 / 容器 / 网络已经没了，或者心跳写库一直失败；
+ * - `run_timeout`：心跳还在跳，但单轮总时长超限 —— 真的跑太久。
+ * 混成一个 3310 会让"重启"与"模型太慢"无从区分（fuzi 现场就是这么被误读的）。
+ */
+export type TimeoutReason = 'stale_heartbeat' | 'run_timeout'
+
 /** 实体 → 对外模型 */
 const toModel = (record: RunEntity): AgentRunModel => ({
   id: record.id,
@@ -302,7 +310,7 @@ export class RunRepository {
     heartbeatBefore: Date,
     startedBefore: Date,
     limit = 50,
-  ): Promise<Array<{ id: string; conversationId: string }>> {
+  ): Promise<Array<{ id: string; conversationId: string; reason: TimeoutReason }>> {
     const repo = await this.repo()
     /**
      * **必须把 `pending` 也算进来**（踩过的洞）：`startRun` 先插 pending 再置 running，
@@ -310,10 +318,20 @@ export class RunRepository {
      * 于是它的会话**永久** 3306，连看门狗都救不回来。
      * 判据里用 `COALESCE(..., created_at)`：pending 行没有 started_at / heartbeat_at，
      * 否则 `NULL < x` 恒为 false，同样永远判不出来。
+     *
+     * 同时把"是哪条判据命中的"一起选出来：两者含义不同（没人续租 = 进程/网络没了；
+     * 总时长超限 = 还在跑但太久），后续处置与复盘都要按这个分。
      */
     const rows = await repo
       .createQueryBuilder('r')
-      .select(['r.id AS id', 'r.conversation_id AS "conversationId"'])
+      .select([
+        'r.id AS id',
+        'r.conversation_id AS "conversationId"',
+        `CASE
+           WHEN COALESCE(r.heartbeat_at, r.created_at) < :heartbeatBefore THEN 'stale_heartbeat'
+           ELSE 'run_timeout'
+         END AS "reason"`,
+      ])
       .where('r.status IN (:...statuses)', {
         statuses: [RunStatus.Pending, RunStatus.Running],
       })
@@ -324,8 +342,9 @@ export class RunRepository {
           startedBefore,
         },
       )
+      .setParameters({ heartbeatBefore, startedBefore })
       .limit(limit)
-      .getRawMany<{ id: string; conversationId: string }>()
+      .getRawMany<{ id: string; conversationId: string; reason: TimeoutReason }>()
     return rows
   }
 
@@ -334,9 +353,26 @@ export class RunRepository {
    *
    * **判据必须与 {@link findStale} 完全一致**（心跳过期 OR 总时长超限）；
    * 早先只判心跳，导致"心跳还在跳但总时长超限"的卡死运行永远处置不掉（测试抓出来的）。
+   *
+   * `counts` 是看门狗从时间线算出来的"已经走到哪了"：超时的行**也**要留下进度，
+   * 否则看板上一律显示"0 步 0 工具"，看起来像什么都没发生。
    */
-  async markTimeout(id: string, heartbeatBefore: Date, startedBefore: Date): Promise<number> {
+  async markTimeout(
+    id: string,
+    heartbeatBefore: Date,
+    startedBefore: Date,
+    input: {
+      reason: TimeoutReason
+      stepCount: number
+      toolCallCount: number
+      finishedAt: Date
+    },
+  ): Promise<number> {
     const repo = await this.repo()
+    const message =
+      input.reason === 'stale_heartbeat'
+        ? '本次对话超时（服务端长时间没有收到该轮的心跳，判定为已无人处理），请重试'
+        : '本次对话超时（超过单轮总时长上限），请重试'
     const result = await repo
       .createQueryBuilder()
       .update(RunEntity)
@@ -344,8 +380,11 @@ export class RunRepository {
         status: RunStatus.Failed,
         errorStage: 'timeout',
         errorCode: String(AppErrorCodes.RunTimeout),
-        errorMessage: '本次对话超时（服务端看门狗判定），请重试',
-        finishedAt: new Date(),
+        errorMessage: message,
+        finishedAt: input.finishedAt,
+        // 进度回填：时间线里真实发生过多少步 / 多少次工具调用
+        stepCount: input.stepCount,
+        toolCallCount: input.toolCallCount,
       })
       .where('id = :id', { id })
       .andWhere('status IN (:...statuses)', {
@@ -360,6 +399,24 @@ export class RunRepository {
       )
       .execute()
     return result.affected ?? 0
+  }
+
+  /** 数一下这条 run 已经产生了多少步 / 多少次工具调用（看门狗回填进度用） */
+  async countProgress(id: string): Promise<{ stepCount: number; toolCallCount: number }> {
+    const rows = await this.db.dataSource.query<
+      Array<{ stepCount: number | string; toolCallCount: number | string }>
+    >(
+      `SELECT
+         COUNT(*) FILTER (WHERE kind = 'step')::int AS "stepCount",
+         COUNT(*) FILTER (WHERE kind = 'tool-call')::int AS "toolCallCount"
+       FROM timelines WHERE run_id = $1 AND deleted_at IS NULL`,
+      [id],
+    )
+    const row = rows[0]
+    return {
+      stepCount: Number(row?.stepCount ?? 0),
+      toolCallCount: Number(row?.toolCallCount ?? 0),
+    }
   }
 
   /**

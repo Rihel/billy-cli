@@ -384,9 +384,19 @@ describe('流式链路端到端（mock 模型 + 真实 DB + 真实 Redis）', ()
     expect(assistantText).toContain(MOCK_FINAL_TEXT)
 
     const runRow = await db.dataSource.query<
-      { id: string; status: string; usage: unknown; engine_run_id: string | null; snapshot: unknown }[]
+      {
+        id: string
+        status: string
+        usage: unknown
+        engine_run_id: string | null
+        snapshot: unknown
+        first_token_ms: number | null
+        duration_ms: number | null
+        request_snapshot: Record<string, unknown> | null
+      }[]
     >(
-      'SELECT id, status, usage, engine_run_id, snapshot FROM runs WHERE conversation_id = $1',
+      `SELECT id, status, usage, engine_run_id, snapshot, first_token_ms, duration_ms, request_snapshot
+       FROM runs WHERE conversation_id = $1`,
       [conversationId],
     )
     expect(runRow[0]?.status).toBe(RunStatus.Succeeded)
@@ -408,6 +418,34 @@ describe('流式链路端到端（mock 模型 + 真实 DB + 真实 Redis）', ()
     // 命名调用**并进这一轮的 usage**（`runs.usage` 的语义就是"这一轮花掉的钱"，见设计文档 §4.10.1）。
     // 精确的字段优先级（顶层 64 胜过嵌套）由 `ai-usage.test.ts` 的纯函数单测钉住。
     expect(runRow[0]?.usage).toMatchObject({ cacheReadTokens: 192 })
+
+    /**
+     * **观测三件套（2026-10-29 加）**：首 token 耗时 / 输入快照 / 进度+耗时列。
+     *
+     * 曾经 `runs.first_token_ms` 全库为空（代码里没有任何写入点）、快照只在成功收尾时写、
+     * 步与工具的耗时只躺在 `payload.outcome` 里 —— 于是"慢在哪一层"永远查不出来。
+     */
+    expect(typeof runRow[0]?.first_token_ms).toBe('number')
+    expect(runRow[0]?.first_token_ms as number).toBeGreaterThanOrEqual(0)
+    expect(typeof runRow[0]?.duration_ms).toBe('number')
+    // 快照里要有模型与上下文取舍（失败轮也会写，这里先钉成功路径）
+    expect(runRow[0]?.request_snapshot).toMatchObject({
+      agentKey: DEFAULT_AGENT_KEY,
+      params: { maxSteps: expect.any(Number) },
+    })
+    expect(runRow[0]?.request_snapshot?.context).toBeTruthy()
+
+    // 步耗时与工具耗时落到列上（不是只留在 payload.outcome）
+    const stepRow = page.items.find((item) => item.kind === TimelineKind.Step)
+    expect(typeof stepRow?.durationMs).toBe('number')
+    expect(stepRow?.durationMs as number).toBeGreaterThanOrEqual(0)
+    // 工具耗时要靠网关的审计旁证（这个 e2e 刻意不装插件，见装配处的 `new ToolGateway(..., [])`），
+    // 因此"耗时落列 + 拒绝分桶"由 `ai-stream-recorder-observability.test.ts` 用 meta 替身钉住
+    expect(
+      page.items
+        .filter((item) => item.kind === TimelineKind.ToolResult)
+        .map((item) => item.state),
+    ).toContain('output-available')
   })
 
   it('首轮自动命名：收尾时用 `data-conversation-title` 实时下发（前端不必等下一次刷新）', async () => {

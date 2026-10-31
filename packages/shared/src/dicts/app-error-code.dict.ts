@@ -197,6 +197,11 @@ export const AppErrorCodes = createDict({
     value: 3312,
     http: 400,
   },
+  ModelNoResponse: {
+    label: '模型长时间没有响应，请重试或换个模型',
+    value: 3314,
+    http: 504,
+  },
   ProviderNotFound: {
     label: '模型供应商不存在',
     value: 3401,

@@ -37,6 +37,40 @@ export interface RecorderOptions {
 }
 
 /**
+ * 工具**把失败当结果返回**时，从出参里认出这次失败。
+ *
+ * 口径：出参顶层 `ok: false` = 这次调用没做到它该做的事（写库 / 发请求 / 校验没通过）。
+ * 与之相对，"执行成功但结论是否定的"应当用 `valid` / `errors` 这类字段表达，不用 `ok`。
+ * 不认 `ok: true`、也不猜嵌套结构 —— 猜错了会把正常结果标成失败，比漏计更难查。
+ */
+export const toolFailureOf = (output: unknown): { failed: boolean; message: string | null } => {
+  if (!output || typeof output !== 'object' || Array.isArray(output)) {
+    return { failed: false, message: null }
+  }
+  const record = output as Record<string, unknown>
+  if (record.ok !== false) return { failed: false, message: null }
+  const candidates = [record.message, record.reason, record.error, record.errorText]
+  const message = candidates.find((item): item is string => typeof item === 'string' && item !== '')
+  return { failed: true, message: message ?? null }
+}
+
+/** 网关拒绝原因 → 时间线 state（`ToolDenyReason` 与 `ToolResultState` 的映射，设计 §5.4） */
+const stateOfToolFailure = (reason: string | undefined, unknownTool: boolean): string => {
+  if (unknownTool) return ToolResultState._source.UnknownTool.value
+  if (reason === 'invalid-input') return ToolResultState._source.Invalid.value
+  if (
+    reason === 'disabled' ||
+    reason === 'forbidden' ||
+    reason === 'rate-limited' ||
+    reason === 'precheck-failed'
+  ) {
+    return ToolResultState._source.Denied.value
+  }
+  return ToolResultState._source.Error.value
+}
+
+
+/**
  * 流式录制器：把 UI Message Stream 的片段累积成时间线事件。
  *
  * 落库时机（控制写放大，同时保证"刷新不丢"）：
@@ -70,6 +104,17 @@ export class StreamRecorder {
   private messageId = ''
   private toolCallCount = 0
   private errorText: string | null = null
+  /**
+   * 第一段**对用户可见输出**的时间（毫秒时间戳）：首个文本 / 推理增量。
+   *
+   * 为什么记在录制器里：只有它能看见流片段；编排层只拿得到"开始"与"结束"。
+   * 首 token 耗时 = `firstOutputAt - startedAt`，落 `runs.first_token_ms`。
+   */
+  private firstOutputAt: number | null = null
+  /** 当前步的开始时间（`start-step` 到 `finish-step` 之间） */
+  private stepStartedAt: number | null = null
+  /** 每步耗时（按 `finish-step` 出现顺序；缺的步就是没有值，不编造） */
+  private readonly stepDurations: number[] = []
 
   constructor(
     private readonly timelines: TimelineRepository,
@@ -77,16 +122,43 @@ export class StreamRecorder {
     private readonly options: RecorderOptions = {},
   ) {}
 
+  /**
+   * 第一段输出的时间戳（毫秒）；从未输出过就是 null。
+   *
+   * 编排层用它算 `first_token_ms`。**不在这里算差**：录制器不知道这一轮是什么时候起的
+   * （resume 场景的起点与首轮不同），让调用方决定减去哪个 startedAt。
+   */
+  get firstOutputAtMs(): number | null {
+    return this.firstOutputAt
+  }
+
+  /** 只在第一次见到增量时记：之后都是噪声 */
+  private markFirstOutput(): void {
+    if (this.firstOutputAt === null) this.firstOutputAt = Date.now()
+  }
+
   /** 记一个片段；未知类型忽略（start/finish/data-* 等不影响落库完整性） */
   async consume(chunk: ChunkLike): Promise<void> {
     switch (chunk.type) {
       case 'start':
         this.messageId = chunk.messageId ?? ''
         return
+      case 'start-step':
+        this.stepStartedAt = Date.now()
+        return
+      case 'finish-step': {
+        // 步耗时只有这里知道（步行在 finish() 里统一落，见下方注释）
+        if (this.stepStartedAt !== null) {
+          this.stepDurations.push(Math.max(0, Date.now() - this.stepStartedAt))
+          this.stepStartedAt = null
+        }
+        return
+      }
       case 'text-start':
         this.texts.set(chunk.id ?? '', '')
         return
       case 'text-delta':
+        this.markFirstOutput()
         this.texts.set(chunk.id ?? '', (this.texts.get(chunk.id ?? '') ?? '') + (chunk.delta ?? ''))
         return
       case 'text-end':
@@ -97,6 +169,7 @@ export class StreamRecorder {
         this.reasoningStartedAt.set(chunk.id ?? '', Date.now())
         return
       case 'reasoning-delta':
+        this.markFirstOutput()
         // 有些提供方不发 `reasoning-start`：第一次见到增量时补记开始时间
         if (!this.reasoningStartedAt.has(chunk.id ?? '')) {
           this.reasoningStartedAt.set(chunk.id ?? '', Date.now())
@@ -160,18 +233,31 @@ export class StreamRecorder {
         // 结果片段不带工具名（AI SDK v6 只给 toolCallId）→ 用入参那一步记下的名字补上
         const toolName = chunk.toolName ?? this.toolNameOf(chunk.toolCallId)
         const meta = this.takeMeta(chunk.toolCallId)
+        /**
+         * 出参是"失败当结果返回"（顶层 `ok: false`）时也标成失败。
+         *
+         * 以前这里硬编码 `isError: false`，于是"工具说没做到"在时间线与用量里都算成功 ——
+         * 失败率被系统性低估（fuzi 的写幕工具 17 次入参/写入失败全没被计）。
+         * 落库仍然是**完整出参**：模型确实收到了这份数据，审计要能对得上。
+         */
+        const failure = toolFailureOf(chunk.output)
         await this.append({
           role: TimelineRole.Assistant,
           kind: TimelineKind.ToolResult,
-          state: ToolResultState._source.Available.value,
+          state: failure.failed
+            ? ToolResultState._source.Error.value
+            : ToolResultState._source.Available.value,
           toolKey: toolName,
           toolCallId: chunk.toolCallId ?? null,
+          // 耗时来自网关的旁证（以前只留在 payload.outcome 里，列上永远是空的）
+          ...(typeof meta?.durationMs === 'number' ? { durationMs: meta.durationMs } : {}),
           payload: {
             toolCallId: chunk.toolCallId ?? null,
             toolName,
             // **出参完整落库，不裁剪**（分页只改"给模型那一份"，见设计 §5.6）
             output: chunk.output ?? null,
-            isError: false,
+            isError: failure.failed,
+            ...(failure.message ? { dataFailure: failure.message } : {}),
             ...(meta ? { outcome: meta } : {}),
           },
         })
@@ -194,14 +280,15 @@ export class StreamRecorder {
         const unknownTool =
           Boolean(toolName) && this.options.isKnownTool ? !this.options.isKnownTool(toolName!) : false
         const meta = this.takeMeta(chunk.toolCallId)
+        // 拒绝原因 → state（关掉 / 无权限 / 限流 / 前置条件不满足 单独成桶，不再一律算"执行出错"）
+        const state = stateOfToolFailure(meta?.reason, unknownTool)
         await this.append({
           role: TimelineRole.Assistant,
           kind: TimelineKind.ToolResult,
-          state: unknownTool
-            ? ToolResultState._source.UnknownTool.value
-            : ToolResultState._source.Error.value,
+          state,
           toolKey: toolName,
           toolCallId: chunk.toolCallId ?? null,
+          ...(typeof meta?.durationMs === 'number' ? { durationMs: meta.durationMs } : {}),
           payload: {
             toolCallId: chunk.toolCallId ?? null,
             toolName,
@@ -275,6 +362,10 @@ export class StreamRecorder {
         kind: TimelineKind.Step,
         usage: (step.usage ?? null) as Record<string, unknown> | null,
         payload: { stepIndex: index, finishReason: step.finishReason ?? null },
+        // 步耗时按 `start-step` / `finish-step` 的时间差记；拿不到就不写（不编 0）
+        ...(this.stepDurations[index] !== undefined
+          ? { durationMs: this.stepDurations[index] }
+          : {}),
       })
     }
     return { toolCallCount: this.toolCallCount, errorText: this.errorText }

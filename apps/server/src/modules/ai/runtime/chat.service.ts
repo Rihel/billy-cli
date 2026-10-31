@@ -25,6 +25,7 @@ import {
   AgentFailedError,
   AgentUnavailableError,
   ConversationBusyError,
+  ModelNoResponseError,
   ProviderAuthFailedError,
   ProviderRateLimitedError,
   RunNotFoundError,
@@ -65,7 +66,8 @@ import { ConversationRepository } from './conversation.repository.js';
 import { RunRepository } from './run.repository.js';
 import { TimelineRepository } from './timeline.repository.js';
 import { AgentStreamStore } from './stream-store.service.js';
-import { StreamRecorder } from './stream-recorder.js';
+import { StreamRecorder, toolFailureOf } from './stream-recorder.js';
+import { fitMessagesToToolBudget } from './turn-budget.js';
 import { readStreamSteps, readStreamUsage } from './stream-result.js';
 import { resumeSafeChunks } from './stream-resume.js';
 import { toPlanPayload } from './plan.protocol.js';
@@ -94,9 +96,34 @@ const SUMMARY_INSTRUCTION = dedent`
 /** 摘要正文之外，摘要事件还要记住它覆盖了哪一段 */
 const SUMMARY_MAX_CHARS = 2_000;
 
-/** 用首条用户消息生成会话标题（不额外调模型，省钱） */
-const titleFrom = (message: string): string =>
-  message.replace(/\s+/g, ' ').trim().slice(0, 40);
+/** 兜底会话名：首条消息里没有可用文字时用它，**不拿 URL 当名字** */
+const DEFAULT_CONVERSATION_TITLE = '新对话';
+
+/**
+ * 这条消息能不能直接拿来当标题。
+ *
+ * 为什么不能直接用：首条消息经常只贴了一个链接（"帮我看看这个"），截 40 字得到的
+ * 是一串 `https://…` 或裸域名 —— 侧栏里两行都一样，谁也认不出是哪次对话。
+ * 判据刻意保守：只拒绝"整体就是一个链接 / 域名 / 纯符号"的消息，正常中文开头的一句
+ * 带链接的话仍然照常截断（那句话本身有信息量）。
+ */
+const looksLikeUrlOnly = (text: string): boolean => {
+  const compact = text.trim();
+  if (!compact) return true;
+  if (/^https?:\/\/\S+$/i.test(compact)) return true;
+  if (/^www\.\S+$/i.test(compact)) return true;
+  // 裸域名（例如 example.com/path）：要求整串只有域名与路径，不含空格
+  if (/^[\w-]+(\.[\w-]+)+(\/\S*)?(\?\S*)?$/i.test(compact)) return true;
+  // 纯标点 / 纯符号
+  return !/[\p{L}\p{N}]/u.test(compact);
+};
+
+/** 用首条用户消息生成会话标题（不额外调模型，省钱）；没有可用文字时给默认名 */
+const titleFrom = (message: string): string => {
+  const text = message.replace(/\s+/g, ' ').trim();
+  if (looksLikeUrlOnly(text)) return DEFAULT_CONVERSATION_TITLE;
+  return text.slice(0, 40);
+};
 
 /**
  * 用户消息的落库载荷。
@@ -235,6 +262,27 @@ export class AgentChatService {
     }
   }
 
+  /**
+   * 失败 / 超时的一轮也要把兜底标题落下去。
+   *
+   * 标题原本只在**成功收尾**时写；首轮失败（模型超时、上下文过长）就留一条空白会话，
+   * 侧栏里认不出来。这里只补"还没有标题"的会话，用户改过的名不动；失败也不影响原错误上抛。
+   */
+  private async ensureFallbackTitle(
+    conversation: ConversationEntity,
+    message: string,
+  ): Promise<void> {
+    if (conversation.title) return;
+    try {
+      await this.applyTitle(conversation, message, null);
+    } catch (error) {
+      this.logger.warn('ai.conversation.title_fallback_failed', {
+        conversationId: conversation.id,
+        reason: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
   /** 本进程内活动运行的中止控制器（跨副本经 Redis 停止频道广播） */
   private readonly activeRuns = new Map<string, AbortController>();
 
@@ -299,6 +347,17 @@ export class AgentChatService {
         );
       }
 
+      // ② 输入快照**在调模型之前就落库**：失败 / 超时 / 进程被杀的运行也要查得到"给了模型什么"
+      //    （以前只在成功收尾时写，于是"失败的那一轮"在审计里没有输入侧证据）
+      await this.runs.saveRequestSnapshot(run.id, {
+        model: model.modelRef,
+        agentKey: definition.key,
+        toolKeys: [...definition.tools],
+        skillKeys: [...definition.skills],
+        params: { maxSteps: AGENT_MAX_STEPS },
+        context: built.snapshot,
+      });
+
       // ② 用户消息先落库（之后无论成败，审计上都能看到"用户问了什么"）
       const now = new Date();
       await this.timelines.append({
@@ -337,6 +396,8 @@ export class AgentChatService {
         model: modelInstance as never,
         // 与流式同一口径：引擎 runId 由我们定、并回写到 `runs.engine_run_id`（durable 快照靠它认亲）
         runId: run.engineRunId,
+        // 轮内预算：每一步前把工具结果的累计体积压回窗口预算内
+        prepareStep: this.buildPrepareStep(built.snapshot.windowTokens),
       });
 
       // ④ 逐事件落时间线（保真：文本 / 推理 / 工具入参出参 / 每步用量）
@@ -368,14 +429,6 @@ export class AgentChatService {
         stepCount: steps.length,
         toolCallCount: persisted.toolCallCount,
         durationMs,
-      });
-      await this.runs.saveRequestSnapshot(run.id, {
-        model: model.modelRef,
-        agentKey: definition.key,
-        toolKeys: [...definition.tools],
-        skillKeys: [...definition.skills],
-        params: { maxSteps: AGENT_MAX_STEPS },
-        context: built.snapshot,
       });
       await this.conversationRepo.accumulate(
         conversation.id,
@@ -434,6 +487,8 @@ export class AgentChatService {
         reason: message,
         durationMs,
       });
+      // 失败的一轮也要有会话名（否则首轮失败就留一条空白会话）
+      await this.ensureFallbackTitle(conversation, input.message);
       clearInterval(heartbeat);
       throw mapped;
     }
@@ -504,6 +559,32 @@ export class AgentChatService {
       }
       throw error;
     }
+  }
+
+  /**
+   * `prepareStep`：**每一步**开始前把工具结果的累计体积压回预算内（细节见 `turn-budget.ts`）。
+   *
+   * 为什么是"每步"而不是"轮前"：一轮里的工具往返是上下文暴涨的真正来源，
+   * 而轮前压缩只在开头判定一次；等这一轮结束再压，钱已经烧掉了。
+   * 只改"给模型的视图"，时间线里的出参仍由录制器全量落库。
+   */
+  private buildPrepareStep(windowTokens: number) {
+    const budgetChars = Math.max(
+      256,
+      Math.floor(windowTokens * this.config.contextToolResultTotalRatio * 2),
+    );
+    return (args: { messages?: unknown }) => {
+      const result = fitMessagesToToolBudget(args?.messages, { budgetChars });
+      if (result.trimmedCount === 0) return undefined;
+      this.logger.warn('ai.context.turn_trim', {
+        budgetChars,
+        trimmedCount: result.trimmedCount,
+        beforeChars: result.beforeChars,
+        afterChars: result.afterChars,
+      });
+      // Mastra 的 payload 类型是 MastraDBMessage[]；我们只按结构压结果，不改别的字段
+      return { messages: result.messages as never };
+    };
   }
 
   /**
@@ -864,6 +945,37 @@ export class AgentChatService {
     let unsubscribeStop: (() => Promise<void>) | null = null;
     /** 响应头是否已经发出（决定失败时是「抛回 HTTP」还是「按 SSE 收尾」） */
     let streamStarted = false;
+    /**
+     * 首 token 看护：从发起模型调用到**第一段输出**之间没有任何动静就中止。
+     *
+     * 单独一个标记而不是直接看 `abort.signal.aborted`：那个信号也用于"用户点停止"，
+     * 两者语义不同（一个是 3314 失败，一个是 canceled），必须在收尾时分得清。
+     */
+    let firstTokenTimer: NodeJS.Timeout | undefined;
+    let firstTokenTimedOut = false;
+    let firstTokenSeen = false;
+
+    const stopFirstTokenTimer = (): void => {
+      if (!firstTokenTimer) return;
+      clearTimeout(firstTokenTimer);
+      firstTokenTimer = undefined;
+    };
+    /** 收到第一段输出（文本 / 推理 / 工具入参）就撤掉看护 */
+    const markFirstTokenSeen = (): void => {
+      if (firstTokenSeen) return;
+      firstTokenSeen = true;
+      stopFirstTokenTimer();
+    };
+    const armFirstTokenTimer = (): void => {
+      const timeoutMs = this.config.firstTokenTimeoutMs;
+      if (!timeoutMs || firstTokenTimer) return;
+      firstTokenTimer = setTimeout(() => {
+        firstTokenTimedOut = true;
+        // 走同一个 abort：Mastra 收流后会正常返回，收尾分支按"超时失败"处理
+        abort.abort();
+      }, timeoutMs);
+      firstTokenTimer.unref?.();
+    };
 
     const stopHeartbeat = (): void => {
       if (!heartbeat) return;
@@ -931,6 +1043,16 @@ export class AgentChatService {
           input.attachments,
         );
       }
+
+      // ③ 输入快照**在调模型之前就落库**（失败 / 超时 / 进程被杀的运行也要查得到输入侧证据）
+      await this.runs.saveRequestSnapshot(run.id, {
+        model: model.modelRef,
+        agentKey: definition.key,
+        toolKeys: [...definition.tools],
+        skillKeys: [...definition.skills],
+        params: { maxSteps: AGENT_MAX_STEPS },
+        context: built.snapshot,
+      });
 
       // ③ 用户消息先落库（之后无论成败，审计上都能看到"用户问了什么"）
       const now = new Date();
@@ -1003,6 +1125,8 @@ export class AgentChatService {
       );
       const agent = mastra.getAgent(definition.key);
       const memoryThread = await this.ensureAgentThread(conversation.id, userId);
+      // 模型可能"卡住不吐字"：从发起调用开始计时，第一段输出到了就撤（见上方 firstTokenTimer）
+      armFirstTokenTimer();
       const output = await agent.stream(built.messages as never, {
         maxSteps: AGENT_MAX_STEPS,
         // 工具调用并发策略：`called` = 只有真的调用了挂起类工具的那一步才串行。
@@ -1021,6 +1145,8 @@ export class AgentChatService {
          */
         runId: run.engineRunId,
         closeOnSuspend: true,
+        // 轮内预算：每一步前把工具结果的累计体积压回窗口预算内（与轮前压缩是两层）
+        prepareStep: this.buildPrepareStep(built.snapshot.windowTokens),
       });
       // 子 agent 的实时明细**不走** Mastra 的静态子 agent 通道（我们没有静态子 agent）：
       // 由 `run-sub-agent` 工具经 `context.writer` 写成 `data-sub-agent*` 块进这条流，见 §3.14.5
@@ -1031,13 +1157,23 @@ export class AgentChatService {
       ).pipeThrough(
         new TransformStream<UiChunkLike, UiChunkLike>({
           transform: async (chunk, controller) => {
+            // 第一段输出到了：撤掉首 token 看护（文本 / 推理 / 工具入参都算"模型动了"）
+            if (
+              chunk.type === 'text-delta' ||
+              chunk.type === 'reasoning-delta' ||
+              chunk.type === 'tool-input-available'
+            ) {
+              markFirstTokenSeen();
+            }
             // 挂起是这一轮的"暂停"，不是成功；收尾分支据此决定 finish 还是 suspend。
             if (chunk.type === 'data-tool-call-suspended') suspended = true;
-            const outgoing = normalizeSuspendedChunk(chunk, run.id);
+            const recordedChunk = normalizeSuspendedChunk(chunk, run.id);
+            // 客户端看到的那一份：`ok:false` 的结果按失败呈现（录制器仍拿原始片段，出参全量入库）
+            const outgoing = toClientToolChunk(recordedChunk);
             // 先给客户端，再落库：用户的体感不该被落库拖慢
             controller.enqueue(outgoing);
             try {
-              await recorder.consume(outgoing);
+              await recorder.consume(recordedChunk);
               offset = await this.streamStore.appendChunk(run.id, outgoing);
               await this.streamStore.publishChunk(run.id, outgoing);
               if (chunk.type === 'start-step') stepCount += 1;
@@ -1109,7 +1245,8 @@ export class AgentChatService {
       // 被中止时 Mastra 会**正常返回**（流被截断但不抛错）→ 必须自己判定"这不是成功，是取消"
       if (abort.signal.aborted) {
         await recorder.flushPending();
-        throw new Error('stream_aborted_by_user');
+        // 首 token 超时也走 abort，但语义是"失败"不是"用户取消"（收尾分支据此分流）
+        throw new Error(firstTokenTimedOut ? 'first_token_timeout' : 'stream_aborted_by_user');
       }
       // 收尾前把没有 text-end 的残余内容也落库（防御性：正常结束一般不会有）
       await recorder.flushPending();
@@ -1180,16 +1317,11 @@ export class AgentChatService {
         stepCount: steps.length,
         toolCallCount: persisted.toolCallCount,
         durationMs,
+        // 首 token 耗时（毫秒）：只有流式路径量得到；没有输出过就是 null，不编 0
+        firstTokenMs:
+          recorder.firstOutputAtMs === null ? null : recorder.firstOutputAtMs - startedAt,
       });
       await this.runs.setActiveStream(run.id, null);
-      await this.runs.saveRequestSnapshot(run.id, {
-        model: model.modelRef,
-        agentKey: definition.key,
-        toolKeys: [...definition.tools],
-        skillKeys: [...definition.skills],
-        params: { maxSteps: AGENT_MAX_STEPS },
-        context: built.snapshot,
-      });
       await this.conversationRepo.accumulate(
         conversation.id,
         totalTokensOf(usage),
@@ -1259,7 +1391,34 @@ export class AgentChatService {
       const reason = error instanceof Error ? error.message : String(error);
       let mapped: Error | null = null;
 
-      if (abort.signal.aborted) {
+      // 首 token 超时也调用了 abort，但它是**失败**（3314），不是用户取消（canceled）
+      if (firstTokenTimedOut) {
+        mapped = new ModelNoResponseError(this.config.firstTokenTimeoutMs);
+        await this.runs.finish(run.id, {
+          status: RunStatus.Failed,
+          usage: await this.rollUpUsage(run.id, null),
+          errorCode: String(AppErrorCodes.ModelNoResponse),
+          errorStage: RunErrorStage.Model,
+          errorMessage: mapped.message,
+          errorDetail: { raw: reason, timeoutMs: this.config.firstTokenTimeoutMs },
+          durationMs,
+        });
+        await this.timelines.append({
+          conversationId: conversation.id,
+          runId: run.id,
+          role: TimelineRole.System,
+          kind: TimelineKind.Error,
+          payload: { message: mapped.message, stage: RunErrorStage.Model, reason: 'first_token_timeout' },
+          finishedAt: new Date(),
+        });
+        this.logger.error('ai.stream.first_token_timeout', {
+          runId: run.id,
+          timeoutMs: this.config.firstTokenTimeoutMs,
+          durationMs,
+        });
+        // 失败的一轮也要有会话名（否则侧栏是一条空白）
+        await this.ensureFallbackTitle(conversation, input.message);
+      } else if (abort.signal.aborted) {
         // 用户主动停止：是 canceled，不是 failed（语义要分清）
         await this.runs.finish(run.id, {
           status: RunStatus.Canceled,
@@ -1305,6 +1464,8 @@ export class AgentChatService {
           reason,
           durationMs,
         });
+        // 失败的一轮也要有会话名（以前只有成功收尾才落标题 → 失败会话在侧栏是一条空白）
+        await this.ensureFallbackTitle(conversation, input.message);
       }
 
       await this.runs.setActiveStream(run.id, null);
@@ -1324,6 +1485,7 @@ export class AgentChatService {
       endSse(response);
     } finally {
       stopHeartbeat();
+      stopFirstTokenTimer();
       try {
         if (unsubscribeStop) await unsubscribeStop();
       } catch (error) {
@@ -1397,6 +1559,30 @@ export class AgentChatService {
       heartbeat.unref?.();
     };
 
+    /** 首 token 看护：续跑同样要防"模型卡住不吐字"（与 chatStream 同一口径） */
+    let firstTokenTimer: NodeJS.Timeout | undefined;
+    let firstTokenTimedOut = false;
+    let firstTokenSeen = false;
+    const stopFirstTokenTimer = (): void => {
+      if (!firstTokenTimer) return;
+      clearTimeout(firstTokenTimer);
+      firstTokenTimer = undefined;
+    };
+    const armFirstTokenTimer = (): void => {
+      const timeoutMs = this.config.firstTokenTimeoutMs;
+      if (!timeoutMs || firstTokenTimer) return;
+      firstTokenTimer = setTimeout(() => {
+        firstTokenTimedOut = true;
+        abort.abort();
+      }, timeoutMs);
+      firstTokenTimer.unref?.();
+    };
+    const markFirstTokenSeen = (): void => {
+      if (firstTokenSeen) return;
+      firstTokenSeen = true;
+      stopFirstTokenTimer();
+    };
+
     try {
       const model = await this.resolveRuntimeModel(definition, undefined);
       const modelInstance = await this.resolveModelInstance(model);
@@ -1417,6 +1603,14 @@ export class AgentChatService {
       );
       const agent = mastra.getAgent(definition.key);
       const memoryThread = await this.ensureAgentThread(conversation.id, userId);
+      /**
+       * 轮内预算按**这一轮的窗口**算：优先用首轮落库的上下文快照（同一份判定），
+       * 快照没有（旧数据）就现场解析一次。续跑的步数通常不多，但"套用首轮口径"
+       * 能让同一条 run 的两段用同一个预算，不出现第二段突然收紧。
+       */
+      const windowTokens =
+        (run.requestSnapshot?.context as { windowTokens?: number } | undefined)?.windowTokens ??
+        this.context.resolveWindow(model.modelRef).windowTokens;
       const runOptions = {
         runId: run.engineRunId,
         // 与 chatStream 同一口径：续跑必须给足步数。
@@ -1430,7 +1624,10 @@ export class AgentChatService {
         abortSignal: abort.signal,
         memory: memoryThread,
         savePerStep: true,
+        // 轮内预算：与首轮同一口径
+        prepareStep: this.buildPrepareStep(windowTokens),
       };
+      armFirstTokenTimer();
       const resumeOutput = await agent.resumeStream(
         { answers: input.answers },
         {
@@ -1467,9 +1664,17 @@ export class AgentChatService {
             chunk.type === 'data-tool-call-suspended' &&
             (chunk as { data?: { resumed?: boolean } }).data?.resumed === true;
           if (chunk.type === 'data-tool-call-suspended' && !resumedEvent) suspendedAgain = true;
-          const outgoing = normalizeSuspendedChunk(chunk, run.id);
+          if (
+            chunk.type === 'text-delta' ||
+            chunk.type === 'reasoning-delta' ||
+            chunk.type === 'tool-input-available'
+          ) {
+            markFirstTokenSeen();
+          }
+          const recordedChunk = normalizeSuspendedChunk(chunk, run.id);
+          const outgoing = toClientToolChunk(recordedChunk);
           writeSse(response, sseFrame(outgoing));
-          await recorder.consume(outgoing);
+          await recorder.consume(recordedChunk);
           if (suspendedAgain) break;
         }
       };
@@ -1568,7 +1773,22 @@ export class AgentChatService {
       });
     } catch (error) {
       const reason = error instanceof Error ? error.message : String(error);
-      if (abort.signal.aborted) {
+      if (firstTokenTimedOut) {
+        const mapped = new ModelNoResponseError(this.config.firstTokenTimeoutMs);
+        await this.runs.finish(run.id, {
+          status: RunStatus.Failed,
+          usage: await this.rollUpUsage(run.id, null),
+          errorCode: String(AppErrorCodes.ModelNoResponse),
+          errorStage: RunErrorStage.Model,
+          errorMessage: mapped.message,
+          errorDetail: { raw: reason, timeoutMs: this.config.firstTokenTimeoutMs },
+          durationMs: Date.now() - startedAt,
+        });
+        this.logger.error('ai.stream.resume_first_token_timeout', {
+          runId: run.id,
+          timeoutMs: this.config.firstTokenTimeoutMs,
+        });
+      } else if (abort.signal.aborted) {
         await this.runs.finish(run.id, {
           status: RunStatus.Canceled,
           durationMs: Date.now() - startedAt,
@@ -1591,6 +1811,7 @@ export class AgentChatService {
       endSse(response);
     } finally {
       stopHeartbeat();
+      stopFirstTokenTimer();
       this.activeRuns.delete(run.id);
       if (streamStarted) endSse(response);
     }
@@ -1949,6 +2170,23 @@ const normalizeSuspendedChunk = <T extends UiChunkLike>(chunk: T, runId: string)
       engineRunId: data.runId ?? null,
       runId,
     },
+  } as T;
+};
+
+/**
+ * 工具把失败当结果返回（顶层 `ok: false`）时，**客户端也按失败呈现**。
+ *
+ * 录制器那边同样会把它标成 `output-error`（口径一致）；模型看到的数据不变 ——
+ * 它已经拿到了这份结果，只是前端与统计不该把它算成"成功"。
+ */
+const toClientToolChunk = <T extends UiChunkLike>(chunk: T): T => {
+  if (chunk.type !== 'tool-output-available') return chunk;
+  const failure = toolFailureOf((chunk as { output?: unknown }).output);
+  if (!failure.failed) return chunk;
+  return {
+    ...chunk,
+    type: 'tool-output-error',
+    errorText: failure.message ?? '工具报告失败（ok: false）',
   } as T;
 };
 

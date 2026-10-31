@@ -111,6 +111,20 @@ export class ModelCapabilityMismatchError extends AppError {
 }
 
 /**
+ * 模型**长时间一个字都没吐**（首 token 超时）。
+ *
+ * 为什么要单独成码而不是等看门狗判 3310：10 分钟的总时长上限是为"真的长"准备的，
+ * 而"一个字都没有"说明上游已经卡住 —— 继续等只会让用户干看着，还占着会话（3306）。
+ * 这个错误在**建流之后**抛出，走 SSE 收尾；前端能立刻显示"换个模型 / 重试"。
+ */
+export class ModelNoResponseError extends AppError {
+  readonly code = AppErrorCodes.ModelNoResponse
+  constructor(readonly timeoutMs: number) {
+    super(`模型长时间没有响应（超过 ${Math.round(timeoutMs / 1000)} 秒没有输出）`)
+  }
+}
+
+/**
  * 上下文组装出来的最后一条不是用户消息（内部不变量被破坏）。
  *
  * 正常情况下 `ContextService` 一定把当前输入放在最后 —— 一旦不成立，附件就会**静默丢掉**。

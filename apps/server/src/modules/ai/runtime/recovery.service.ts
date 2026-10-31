@@ -1,6 +1,6 @@
 import { Inject, Injectable, type OnApplicationBootstrap, type OnApplicationShutdown } from '@nestjs/common'
 import { AppLogger, RedisStore } from '@repo/kits'
-import { RunErrorStage, RunStatus, TimelineKind, TimelineRole } from '@repo/shared'
+import { AppErrorCodes, RunErrorStage, RunStatus, TimelineKind, TimelineRole } from '@repo/shared'
 import type { Mastra } from '@mastra/core/mastra'
 import { AgentConfig, type AgentConfig as AgentConfigValue } from '../core/config.js'
 import { MASTRA } from '../mastra/ai.mastra.js'
@@ -180,9 +180,39 @@ export class AgentRecoveryService implements OnApplicationBootstrap, OnApplicati
     let swept = 0
 
     for (const candidate of candidates) {
-      const affected = await this.runs.markTimeout(candidate.id, heartbeatBefore, startedBefore)
+      const finishedAt = new Date()
+      // 先把"已经走到哪了"从时间线数出来：超时的行也要有进度，否则看板一律显示 0 步 0 工具
+      const progress = await this.runs.countProgress(candidate.id)
+      const affected = await this.runs.markTimeout(candidate.id, heartbeatBefore, startedBefore, {
+        reason: candidate.reason,
+        stepCount: progress.stepCount,
+        toolCallCount: progress.toolCallCount,
+        finishedAt,
+      })
       if (affected !== 1) continue // 别的副本先抢到了（或它已经自己结束了）
       swept += 1
+      /**
+       * 超时的 run 也要有输入快照：否则复盘时只能看到"超时了"，不知道它拿到的上下文与参数。
+       * 只在**还没有快照**时补（正常路径在建流前就写过了，别拿一份残缺的覆盖它）。
+       */
+      try {
+        const entity = await this.runs.findEntity(candidate.id)
+        if (entity && !entity.requestSnapshot) {
+          await this.runs.saveRequestSnapshot(candidate.id, {
+            failure: {
+              stage: RunErrorStage.Timeout,
+              code: String(AppErrorCodes.RunTimeout),
+              reason: candidate.reason,
+            },
+            context: null,
+          })
+        }
+      } catch (error) {
+        this.logger.warn('ai.watchdog.snapshot_failed', {
+          runId: candidate.id,
+          reason: error instanceof Error ? error.message : String(error),
+        })
+      }
       if (candidate.conversationId) {
         await this.timelines.append({
           conversationId: candidate.conversationId,
@@ -192,15 +222,24 @@ export class AgentRecoveryService implements OnApplicationBootstrap, OnApplicati
           payload: {
             status: RunStatus.Failed,
             stage: RunErrorStage.Timeout,
-            reason: 'watchdog_timeout',
+            // 两条判据分开记：`stale_heartbeat` = 没人续租（进程/网络），`run_timeout` = 跑太久
+            reason: candidate.reason,
             operator: 'system',
             heartbeatTimeoutMs: this.config.heartbeatTimeoutMs,
             runTimeoutMs: this.config.runTimeoutMs,
+            stepCount: progress.stepCount,
+            toolCallCount: progress.toolCallCount,
           },
-          finishedAt: new Date(),
+          finishedAt,
         })
       }
-      this.logger.warn('ai.watchdog.marked_timeout', { runId: candidate.id, conversationId: candidate.conversationId })
+      this.logger.warn('ai.watchdog.marked_timeout', {
+        runId: candidate.id,
+        conversationId: candidate.conversationId,
+        reason: candidate.reason,
+        stepCount: progress.stepCount,
+        toolCallCount: progress.toolCallCount,
+      })
     }
 
     return swept

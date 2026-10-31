@@ -110,6 +110,15 @@ interface MessageSegment {
   turnIndex: number
 }
 
+/** 一条工具结果**给模型的视图**（累计预算会二次截断它；落库的原文不动） */
+interface ResultPart {
+  part: { type: string; toolCallId: string; toolName: string; output: unknown }
+  /** 当前视图的文本（字符数就是预算口径） */
+  text: string
+  /** 它并进了哪个段（截断后要同步修正段的 token 估算） */
+  segment: MessageSegment
+}
+
 /**
  * 上下文组装：把时间线还原成给模型的消息，并按「模型窗口的 70%」触发裁剪与压缩。
  *
@@ -172,6 +181,11 @@ export class ContextService {
           2 /* 1 token ≈ 2 字符的保守折算 */,
       ),
     )
+    // 本轮所有工具结果的**累计**上限：单条上限随窗口线性放大，1M 窗口下等于不裁
+    const toolResultTotalCharLimit = Math.max(
+      256,
+      Math.floor(window.windowTokens * this.config.contextToolResultTotalRatio * 2),
+    )
 
     const summary = await this.timelines.latestSummary(input.conversationId)
     // 只看**根 run** 的事件：子 agent 的内部过程是审计资料，回灌给主模型既费窗口又污染上下文
@@ -182,7 +196,10 @@ export class ContextService {
       { rootOnly: true },
     )
 
-    const { segments, trimmedCount } = this.toSegments(events, toolResultCharLimit)
+    const { segments, trimmedCount } = this.toSegments(events, {
+      perResultChars: toolResultCharLimit,
+      totalChars: toolResultTotalCharLimit,
+    })
 
     // 基础消息：系统提示词 + （若有）摘要
     const systemMessages: ModelMessage[] = [{ role: 'system', content: input.systemPrompt }]
@@ -230,7 +247,7 @@ export class ContextService {
         summarySeq: summary?.seq ?? null,
         toolResultTrim: {
           trimmedCount,
-          policy: `maxCharsPerToolResult=${toolResultCharLimit}`,
+          policy: `maxCharsPerToolResult=${toolResultCharLimit};maxCharsPerTurnTotal=${toolResultTotalCharLimit}`,
         },
         keepRecentTurns: this.config.contextKeepRecentTurns,
       }
@@ -299,11 +316,14 @@ export class ContextService {
   /** 时间线事件 → 消息段（工具调用与结果配成一段；推理/步骤/来源等只审计、不进模型输入） */
   private toSegments(
     events: TimelineEntity[],
-    toolResultCharLimit: number,
+    limits: { perResultChars: number; totalChars: number },
   ): { segments: MessageSegment[]; trimmedCount: number } {
+    const toolResultCharLimit = limits.perResultChars
     const segments: MessageSegment[] = []
     let turnIndex = 0
     let trimmedCount = 0
+    /** 本轮所有工具结果给模型的视图（累计预算要从旧到新再压一层） */
+    const resultParts: ResultPart[] = []
     /** toolCallId → 段索引（用于把 tool-result 并进对应的 tool-call 段） */
     const toolCallSegments = new Map<string, number>()
 
@@ -365,29 +385,31 @@ export class ContextService {
           )
           const view = JSON.stringify(toModelPage(page))
           const index = toolCallSegments.get(toolCallId)
+          const part = {
+            type: 'tool-result' as const,
+            toolCallId,
+            toolName,
+            output: { type: 'json' as const, value: toModelPage(page) as never },
+          }
           const resultMessage: ModelMessage = {
             role: 'tool',
-            content: [
-              {
-                type: 'tool-result',
-                toolCallId,
-                toolName,
-                output: { type: 'json', value: toModelPage(page) as never },
-              },
-            ],
+            content: [part],
           }
           const tokenCost = estimateTokens(view) + 8
           if (index !== undefined) {
             segments[index].messages.push(resultMessage)
             segments[index].seqs.push(event.seq)
             segments[index].tokens += tokenCost
+            resultParts.push({ part, text: view, segment: segments[index] })
           } else {
-            segments.push({
+            const segment: MessageSegment = {
               messages: [resultMessage],
               seqs: [event.seq],
               tokens: tokenCost,
               turnIndex,
-            })
+            }
+            segments.push(segment)
+            resultParts.push({ part, text: view, segment })
           }
           continue
         }
@@ -395,22 +417,21 @@ export class ContextService {
         const serialized = JSON.stringify(output ?? null)
         const truncated = serialized.length > toolResultCharLimit
         if (truncated) trimmedCount += 1
+        const modelText = truncated
+          ? `${serialized.slice(0, toolResultCharLimit)}\n…[已截断，完整内容已入库]`
+          : serialized
+        const part = {
+          type: 'tool-result' as const,
+          toolCallId,
+          toolName,
+          // 超阈值时给模型"截断 + 明确提示"；**落库仍是完整原文**（设计文档 §4.6 保真原则）
+          output: truncated
+            ? { type: 'text' as const, value: modelText }
+            : { type: 'json' as const, value: output as never },
+        }
         const resultMessage: ModelMessage = {
           role: 'tool',
-          content: [
-            {
-              type: 'tool-result',
-              toolCallId,
-              toolName,
-              // 超阈值时给模型"截断 + 明确提示"；**落库仍是完整原文**（设计文档 §4.6 保真原则）
-              output: truncated
-                ? {
-                    type: 'text',
-                    value: `${serialized.slice(0, toolResultCharLimit)}\n…[已截断，完整内容已入库]`,
-                  }
-                : { type: 'json', value: output as never },
-            },
-          ],
+          content: [part],
         }
         const tokenCost =
           estimateTokens(truncated ? serialized.slice(0, toolResultCharLimit) : serialized) + 8
@@ -420,20 +441,53 @@ export class ContextService {
           segments[index].messages.push(resultMessage)
           segments[index].seqs.push(event.seq)
           segments[index].tokens += tokenCost
+          resultParts.push({ part, text: modelText, segment: segments[index] })
         } else {
-          segments.push({
+          const segment: MessageSegment = {
             messages: [resultMessage],
             seqs: [event.seq],
             tokens: tokenCost,
             turnIndex,
-          })
+          }
+          segments.push(segment)
+          resultParts.push({ part, text: modelText, segment })
         }
         continue
       }
       // 其余（reasoning / step / source / status / error）只用于审计与展示，不进模型输入
     }
 
+    // 累计预算：单条都没超，但加起来超了 → 从**最旧**的开始再压一层
+    trimmedCount += this.trimToolResultsByBudget(resultParts, limits.totalChars)
     return { segments, trimmedCount }
+  }
+
+  /**
+   * 累计预算：本轮所有工具结果的字符总量超线时，把**较早**的那些再压一层。
+   *
+   * 为什么按"旧→新"：模型下一步最需要的是**刚刚**那次调用的结果，
+   * 压旧的信息损失最小。最近 4 条一律不动（正在用的上下文）。
+   * 只改给模型的视图；时间线里的出参仍由录制器全量落库，需要细节可重新调用 / 取回原文。
+   */
+  private trimToolResultsByBudget(parts: ResultPart[], totalChars: number): number {
+    if (parts.length === 0) return 0
+    let total = parts.reduce((sum, item) => sum + item.text.length, 0)
+    if (total <= totalChars) return 0
+    const keepRecent = 4
+    const shrinkTo = Math.max(400, Math.floor(totalChars / Math.max(1, parts.length * 2)))
+    let trimmed = 0
+    for (let index = 0; index < parts.length && total > totalChars; index += 1) {
+      if (index >= parts.length - keepRecent) break
+      const item = parts[index]
+      if (item.text.length <= shrinkTo) continue
+      const nextText = `${item.text.slice(0, shrinkTo)}…[本轮工具结果超出上下文预算，已截断；完整内容已入库]`
+      item.part.output = { type: 'text', value: nextText }
+      item.segment.tokens += estimateTokens(nextText) - estimateTokens(item.text)
+      total -= item.text.length - nextText.length
+      item.text = nextText
+      trimmed += 1
+    }
+    return trimmed
   }
 
   /**

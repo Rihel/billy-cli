@@ -30,6 +30,8 @@ export interface AgentConfig {
   contextKeepRecentTurns: number
   /** 单条工具结果给模型的视图上限（相对窗口） */
   contextToolResultMaxRatio: number
+  /** 一轮之内所有工具结果给模型的累计上限（相对窗口） */
+  contextToolResultTotalRatio: number
   /** 未知模型的保守窗口 */
   contextFallbackWindow: number
   /** 按模型覆盖窗口（最高优先） */
@@ -40,6 +42,8 @@ export interface AgentConfig {
   heartbeatTimeoutMs: number
   /** 单轮总时长上限（ms） */
   runTimeoutMs: number
+  /** 首 token 超时（ms；0 = 关闭，只由总时长兜底） */
+  firstTokenTimeoutMs: number
   /** 看门狗扫描间隔（ms） */
   watchdogIntervalMs: number
   /** 是否多实例部署（true 时启动自检要求 Redis） */

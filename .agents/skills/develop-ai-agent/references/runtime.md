@@ -28,18 +28,28 @@ pending 行两个时间列为 NULL，直接比较会永远为 false。
 拿到 3306，直到看门狗 60s 后判超时。多副本不做（别的副本可能还在跑）；测试环境跳过
 （`app-bootstrap` 会把应用跑在开发库上，不能误伤开发者正在跑的一轮）。
 
+**看门狗两种超时要分开**（2026-10-29）：`findStale` 把命中判据一起选出来 ——
+`stale_heartbeat`（没人续租：进程/网络没了）与 `run_timeout`（心跳还在跳但超过单轮上限）。
+处置时还要从时间线**回填 `step_count` / `tool_call_count`**，否则超时的运行在看板上一律是
+"0 步 0 工具"（`markTimeout` 不写计数，看起来像"什么都没发生"）。
+
 ## 2. 上下文策略（按模型窗口比例，不拍脑袋）
 
 `AgentConfig` 的比例（比例都相对**模型窗口**，窗口来自 `tokenlens`，查不到用兜底值）：
-**触发 0.7**（`contextTriggerRatio`，`runtime/context.service.ts:153`）→ **裁剪到 0.5**
-（`contextTrimTargetRatio`，`:155`）；**最近 3 轮永不裁**；单条工具结果给模型的视图上限 0.1
-（`contextToolResultMaxRatio`，`:162`；**落库仍是完整原文**）。
+**触发 0.7**（`contextTriggerRatio`）→ **裁剪到 0.5**（`contextTrimTargetRatio`）；
+**最近 3 轮永不裁**；单条工具结果给模型的视图上限 0.1（`contextToolResultMaxRatio`；
+**落库仍是完整原文**）。
+
+**两层工具结果预算（2026-10-29 加）**：单条上限随窗口线性放大（1M 窗口 ≈ 20 万字符 = 不裁），
+所以再加 ①**轮前累计上限** 0.3（`contextToolResultTotalRatio`，从最旧的压，最近 4 条不动）与
+②**轮内每步复查**（Mastra 的 `prepareStep`，见 `runtime/turn-budget.ts`）—— 只改"给模型的视图"，
+不动时间线出参与 Mastra 记忆里的消息对象。压缩仍只在**轮前**判定一次（轮内不做摘要）。
 
 > ⚠️ **`contextCompactTargetRatio`（默认 0.4）是未被读取的旋钮**（2026-10-01 核实）：它在
 > `app-config.ts:123,333` 可配、`core/config.ts:18` 有类型，但 `runtime/context.service.ts` 里
 > **没有任何消费方** —— 压缩（`trim+compact`）以 `kind='summary'` 的摘要事件顶替被压缩区间，
 > 之后**没有"压到某个比例"的目标线**，真实兜底是"连最近 1 轮都装不下就抛 `ContextTooLongError`"
->（`:278`）。要么接线，要么删掉这个旋钮，别让它继续误导（本行此前写"压缩到 0.4"即为误述，已更正）。
+>（`context.service.ts` 的 buildInput 兜底分支）。要么接线，要么删掉这个旋钮，别让它继续误导（本行此前写"压缩到 0.4"即为误述，已更正）。
 
 **组装上下文只看根 run 的事件**（`listSince(..., { rootOnly: true })`）：子 agent 的内部过程是审计资料，
 回灌给主模型既费窗口又污染上下文。压缩产物是 `kind='summary'` 的事件（原文保留，摘要只是"给模型的新起点"）。

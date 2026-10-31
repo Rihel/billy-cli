@@ -137,6 +137,13 @@ export const serverAppConfigSchema = z.object({
     contextKeepRecentTurns: z.coerce.number().int().positive().default(3),
     /** 单条工具结果给模型的视图上限（相对窗口；落库仍是完整原文） */
     contextToolResultMaxRatio: z.coerce.number().positive().max(1).default(0.1),
+    /**
+     * 一轮之内**所有工具结果**给模型的累计上限（相对窗口；落库仍是完整原文）。
+     *
+     * 单条上限按窗口线性放大，1M 窗口下等于"不裁"；真正决定上下文暴涨的是
+     * 「调用次数 × 每条多大」，所以需要一条累计预算（见 docs/design/ai-agent.md §3.9）。
+     */
+    contextToolResultTotalRatio: z.coerce.number().positive().max(1).default(0.3),
     /** 未知模型的保守窗口（tokenlens 查不到时用；会打 warn 日志） */
     contextFallbackWindow: z.coerce.number().int().positive().default(32_000),
     /** 按模型覆盖窗口：`provider/model=65536,其它=32768`（最高优先） */
@@ -148,6 +155,13 @@ export const serverAppConfigSchema = z.object({
     heartbeatTimeoutMs: z.coerce.number().int().positive().default(60_000),
     /** 单轮总时长上限（ms）：超过即判超时（防"进程活着但模型 hang 住"永远挂着） */
     runTimeoutMs: z.coerce.number().int().positive().default(10 * 60_000),
+    /**
+     * 首 token 超时（ms）：从发起模型调用到**第一段输出**之间没有任何动静就判失败。
+     *
+     * 与 `runTimeoutMs`（总时长）是两件事：总时长防"跑不完"，这条防"卡住不吐字"。
+     * 设为 0 表示关闭（完全交给总时长兜底）。
+     */
+    firstTokenTimeoutMs: z.coerce.number().int().nonnegative().default(120_000),
     /** 看门狗扫描间隔（ms） */
     watchdogIntervalMs: z.coerce.number().int().positive().default(30_000),
     /** 是否多实例部署：true 时要求配置 Redis（断线补发 / 停止 / 恢复租约都依赖它） */
@@ -367,12 +381,14 @@ export const mapServerEnv = (
     contextCompactTargetRatio: optional(env.AGENT_CONTEXT_COMPACT_TARGET_RATIO),
     contextKeepRecentTurns: optional(env.AGENT_CONTEXT_KEEP_RECENT_TURNS),
     contextToolResultMaxRatio: optional(env.AGENT_CONTEXT_TOOL_RESULT_MAX_RATIO),
+    contextToolResultTotalRatio: optional(env.AGENT_CONTEXT_TOOL_RESULT_TOTAL_RATIO),
     contextFallbackWindow: optional(env.AGENT_CONTEXT_FALLBACK_WINDOW),
     contextModelWindows: parseKeyValueNumbers(env.AGENT_CONTEXT_MODEL_WINDOWS),
     durableEnabled:
       env.AGENT_DURABLE_ENABLED === undefined ? undefined : env.AGENT_DURABLE_ENABLED !== 'false',
     heartbeatTimeoutMs: optional(env.AGENT_HEARTBEAT_TIMEOUT_MS),
     runTimeoutMs: optional(env.AGENT_RUN_TIMEOUT_MS),
+    firstTokenTimeoutMs: optional(env.AGENT_FIRST_TOKEN_TIMEOUT_MS),
     watchdogIntervalMs: optional(env.AGENT_WATCHDOG_INTERVAL_MS),
     multiInstance: parseBoolean(env.AGENT_MULTI_INSTANCE),
     subAgentMaxPerRun: optional(env.AGENT_SUB_AGENT_MAX_PER_RUN),

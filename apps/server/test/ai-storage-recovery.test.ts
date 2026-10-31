@@ -202,7 +202,10 @@ describe('看门狗（条件 UPDATE 抢执行权）', () => {
 
     const audit = await timelines.list({ conversationId: conversation.id, page: 1, size: 20 })
     const event = audit.items.find((item) => item.kind === TimelineKind.Status)
-    expect(event?.payload).toMatchObject({ reason: 'watchdog_timeout', operator: 'system' })
+    // 两条判据分开记：这条是"没人续租"（stale_heartbeat），不是"跑太久"（run_timeout）
+    expect(event?.payload).toMatchObject({ reason: 'stale_heartbeat', operator: 'system' })
+    // 进度回填：时间线里没有 step / tool-call 才是 0，不能是"看门狗没写"造成的 0
+    expect(event?.payload).toMatchObject({ stepCount: 0, toolCallCount: 0 })
   })
 
   it('心跳正常的运行不动它', async () => {

@@ -35,5 +35,14 @@ export async function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/((?!_next/static|_next/image|favicon.ico|api).*)'],
+  /**
+   * 不经过登录守卫的路径。
+   *
+   * **图标必须在名单里**：`/icon.svg`、`/apple-icon.png`、`/opengraph-image` 是 Next 的
+   * 元数据路由，未登录时同样会被浏览器请求 —— 被拦成 307 到登录页，表现是"图标/分享卡片静默不显示"
+   * （浏览器不报错，只在网络面板里有一个 307）。`api` 与静态资源本来就在名单里。
+   */
+  matcher: [
+    '/((?!_next/static|_next/image|favicon.ico|icon.svg|apple-icon.png|opengraph-image|twitter-image|api).*)',
+  ],
 }
