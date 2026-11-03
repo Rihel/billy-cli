@@ -49,6 +49,16 @@
   `focus` / `scrollIntoView` 照样改 `scrollTop`）—— 表现是切右栏 tab 时"整屏被顶上去一截"。
   两处修：Group 传 `style={{ height: 'auto' }}` 交给 `flex-1`；独立布局根用 `overflow-clip`（不建立滚动容器）。
 
+- **同步游标不能死认"最后一项"**（2026-11-03 踩到）：`sync` 原先把 `applied - 1` 当重放起点，
+  只能接住尾部原地更新；但"问题卡被标成已回答""计划被合并"这类改写发生在**消息中间** ——
+  中间那段永远同步不到，表现是答案提交了、dock 上的问题卡还挂着。正确做法：按 parts 的**引用快照**
+  找"第一个变了的 part"再从那起重放（尾部命中时成本仍与增量成正比）。
+
+- **续跑（回答工具挂起的问题）不算 `useChat` 的 streaming**：它不走 `sendMessage`，`status` 停在
+  `ready` → 「AI 正在处理」的指示和停止入口都会消失。需要自己的 `resuming` 标记并入 `streaming` 口径。
+  另外**提交动作只覆盖到"请求被接受"**：早先 `await` 到整个续跑流结束才返回，服务端已经在输出、
+  卡片却一直显示「提交中…」，用户以为没提交成功。
+
 - 计时别再"500ms 采样 + 0.1s 精度"混着用：数字会按 0.5 一跳（0ms→500ms→1s→1.5s）。
   统一用 `use-elapsed.ts`：250ms 采样、状态存**整秒**（值不变 React 直接 bail out → 每秒只重渲染一次），
   结束向上取整冻结；历史耗时（审计 `durationMs`）保持一位小数显示。
@@ -56,7 +66,8 @@
 ## 依据
 
 - `chat-session.ts`（归约 + store + 订阅）、`chat-transport.ts`（transient）、`message-row.tsx`（单元渲染）
-- 单测：`apps/admin/test/chat-session-store.test.ts`（一万 delta 仍一个单元 / 重放幂等 / 去重规则）
+- 单测：`apps/admin/test/chat-session-store.test.ts`（一万 delta 仍一个单元 / 重放幂等 / 中间 part 改写 / 去重规则）、
+  `apps/admin/test/resume-answer.test.ts`（回答后立刻转只读问答记录）
 - 方案：`docs/design/ai-chat-state.md`
 
 ## 失效信号
