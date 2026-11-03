@@ -153,7 +153,8 @@ pending 行两个时间列为 NULL，直接比较会永远为 false。
   孤立 end 丢弃。改续流逻辑时别绕过它；
 - **`data-*` 块**（前端渲染的细节都在这）：`data-run`（本轮身份，**第一个块**，不带 id）/
   `data-sub-agent`（子助手状态快照，**带 id = 子 run id，同 id 覆盖**）/
-  `data-sub-agent-delta`（子助手增量，**不带 id，一块一个**）。
+  `data-sub-agent-delta`（子助手增量，**不带 id，一块一个**；前端在 `chat-transport.ts` 把它标成
+  `transient: true`，只走 `onData` 不落 part —— 落成 part 会一块一个、把页面拖死，见 `docs/design/ai-chat-state.md`）。
   ⚠️ AI SDK 的 data part 按 id 归并 —— 增量绝不能用固定 id，否则只会剩最后一块。
 
 ## 4. 停止与重连（两处官方语义坑）

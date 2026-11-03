@@ -60,6 +60,7 @@
 | [ai-agent-file-map](ai-agent-file-map.md) | AI 运行期关键链路的位置速查（上下文、时间线、记忆、技能、子 agent） | 抽核 | 2026-10-25 |
 | [dev-session-log](dev-session-log.md) | 开发会话记录在 `~/.dsh/sessions/`，zstd + JSONL，可直接统计调用与用量 | 抽核 | 2026-10-25 |
 | [token-cost-model](token-cost-model.md) | skill 只占工具输出 1%–3%，成本主项是「调用次数 × 累积上下文」 | 免核 | 2026-10-25 |
+| [ai-chat-render-state](ai-chat-render-state.md) | 会话页按 part 类型增量归约成渲染单元；逐帧增量走 transient（后端不改），渲染期不再扫 parts | 抽核 | 2026-11-03 |
 | [ai-chat-route-remount](ai-chat-route-remount.md) | 会话页 `new → 真实 id` 的 replace 会重挂载页面子树，`useState` 全丢（选择类状态要存 React 之外） | 抽核 | 2026-10-27 |
 | [ai-skills-loading](ai-skills-loading.md) | 技能：我们只发现/校验/授权路径，正文与 references 由 Mastra 按需读；`~/.agents/skills` 默认加载（每轮约 +11k token） | 抽核 | 2026-10-27 |
 | [ai-runtime-observability](ai-runtime-observability.md) | 首 token / 步与工具耗时都有写入点；失败按 denied / invalid / output-error 分桶；快照在调模型前落库 | 必核 | 2026-10-29 |

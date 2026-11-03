@@ -2203,7 +2203,7 @@ AI SDK v6 的续传是**两层 API**（不是同一方法的两个名字）：
 | `data-run` | 不带 | 编排层（`chatStream` 开头第一个片段） | **本轮身份**：`runId` / `conversationId` / `agentKey` —— 前端据此记住 runId（停止与重连只认它），新建会话时也靠它拿到 conversationId |
 | `data-run-usage` | 不带 | 编排层（**收尾落库之后、`[DONE]` 之前**） | **本轮用量**：`usage`（输入 / 输出 / 缓存读 / 推理 token，缺失一律 `null`）+ `stepCount` / `toolCallCount` / `durationMs`。为什么走流而不是让前端再查一次：用量只有收尾时才知道，而这个位置是唯一能保证"客户端看到用量时库里也一定有了"的地方；同时进 Redis 输出记录与广播，所以断线补发也拿得到。前端渲染在**输入框右下角**（k / m 缩写 + 悬停精确值，见 §4.9.3）；历史回看时 `history.ts` 从 `runs.usage` 重建同一块 |
 | `data-sub-agent` | **带**（= 子 run id） | `run-sub-agent` 工具（经工具上下文的 `writer`） | 子助手状态快照：status / 结论 / 步数与工具次数 / usage（§3.14.5） |
-| `data-sub-agent-delta` | 不带 | 同上 | 子助手的流式增量（text / reasoning），一块一个 |
+| `data-sub-agent-delta` | 不带 | 同上 | 子助手的流式增量（text / reasoning），一块一个。**前端在传输层把它标成 `transient`**（`chat-transport.ts`），只走 `onData`、不落 part —— 否则一块一个 part 会把页面拖死，见 `ai-chat-state.md` |
 
 ⚠️ `data-run` 与业务片段走**同一条记录 + 广播通道**（进 Redis 输出记录），所以断线补发时也一定先拿到它
 —— 前端不需要额外接口去问"我刚才那一轮的 runId 是多少"。

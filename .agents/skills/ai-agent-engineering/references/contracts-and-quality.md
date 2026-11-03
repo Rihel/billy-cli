@@ -32,7 +32,7 @@
 | `data-conversation-title` | `chat.service.ts:863-875`（只在真改过名时发） | 否 | 否 | `message-row.tsx:192-196` null；`onData` `chat-conversation.tsx:218-239` 就地改缓存 |
 | `data-tool-event` | `core/tools/tool-event.ts:184-197` | `state` 带 `<toolCallId>:<事件名>`；`stream` 不带（由 `mode` 决定） | 否 | `message-row.tsx:151-161`：并进对应工具卡，无主的独立成卡 |
 | `data-sub-agent` | `agent-runner.ts:561-565`（子助手状态快照） | **是**，`id = subRunId`（同 id 覆盖） | 否 | `message-row.tsx:162-174` → `SubAgentPanel` |
-| `data-sub-agent-delta` | `agent-runner.ts:548-551` | 否（一块一个） | 否 | `message-row.tsx:175-178` null（已并入面板） |
+| `data-sub-agent-delta` | `agent-runner.ts:548-551` | 否（一块一个） | 否（前端标 `transient`，不落 part） | 折叠进子助手聚合正文（`chat-session.ts`），不产生渲染单元 |
 | `data-plan` | **服务端不发**；只有 `history.ts:246-252` 从 `kind='plan'` 时间线行合成 | 是（`plan-<seq>`） | 源头是 `plan` 时间线行（`stream-recorder.ts:135-143`） | `message-row.tsx:142-150`：被 `PlanPanel` 吸收，否则露徽标 |
 | `data-status` | **当前仓库内无发射方** | — | 是（录成 `kind='status'` 行，`stream-recorder.ts:195-201`） | 无分支 → 落进未知 part 徽标（`message-row.tsx:197-202`） |
 
