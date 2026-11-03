@@ -88,6 +88,7 @@ import {
 } from '@repo/shared'
 import { z } from 'zod'
 import { lastRunUsage, loadWholeRuns, loadWholeTimeline } from './data'
+import { markSuspendedAnswered } from './resume-answer'
 
 /** 附件上限的展示文案（与 `AgentChatSchema` 的常量同源，改一处就够） */
 const ATTACHMENT_LIMIT_TEXT = `单个附件不超过 ${formatFileSize(CHAT_ATTACHMENT_MAX_BYTES)}`
@@ -210,6 +211,14 @@ export function ChatConversation({ conversationId }: { conversationId: string })
   /** 本轮改选的 agent（会话自带的 agentKey 由详情给出；这里是"覆盖值"，null 表示未覆盖） */
   const [agentKeyOverride, setAgentKeyOverride] = useState<string | null>(null)
   const [runId, setRunId] = useState<string>()
+  /**
+   * **续跑中**（回答完工具挂起的问题之后，同一轮在服务端继续生成）。
+   *
+   * 为什么必须单独记：续跑不走 `useChat` 的 `sendMessage`，`status` 会一直停在 `ready` ——
+   * 于是"AI 正在处理"的指示消失、输入框的停止按钮也没了，用户看起来像这一轮已经结束。
+   * 这个标记让续跑也进入 `streaming` 口径（与普通一轮同一种表现）。
+   */
+  const [resuming, setResuming] = useState(false)
   const [errorText, setErrorText] = useState<string>()
   const [loading, setLoading] = useState(!isNew)
   /** 右栏（系统指令 / 子 agent 运行）是否显示；真实值由挂载后的 effect 从浏览器里读回来 */
@@ -508,7 +517,8 @@ export function ChatConversation({ conversationId }: { conversationId: string })
     sessionStore.sync(messages)
   }, [sessionStore, messages])
 
-  const streaming = status === 'streaming' || status === 'submitted'
+  // 续跑也算"在跑"：它不走 `useChat` 的发送通道，`status` 不会自己变成 streaming
+  const streaming = status === 'streaming' || status === 'submitted' || resuming
 
   /**
    * 右栏「子 agent」要用的**实时过程**：从最后一条含子助手块的消息里收（见 `sub-agent-live.ts`）。
@@ -711,6 +721,15 @@ export function ChatConversation({ conversationId }: { conversationId: string })
    *
    * 为什么不用 `useChat` 的 `sendMessage`：那会生成一条新的用户消息 / 新的一轮；
    * 挂起的语义是"同一轮从工具处继续"，用户答案不是新的聊天输入。
+   *
+   * 两条时序要求（都踩过）：
+   * 1. **提交动作只覆盖"请求被接受"这一段**：早先整个函数 `await` 到续跑流结束才返回，
+   *    于是服务端已经在疯狂输出、卡片却一直显示「提交中…」，用户以为没提交成功；
+   * 2. **续跑期间要算"在跑"**（`resuming`）：否则 `useChat` 的 `status` 停在 `ready`，
+   *    「AI 正在处理」的指示与停止入口都会消失。
+   *
+   * 所以：请求成功 → 立刻把这题标成"已回答"（dock 收起、时间线留只读记录）→ 打开 `resuming`
+   * → 把续跑流交给后台消费，函数马上返回。
    */
   const answerQuestions = async (input: AnswerQuestionsInput) => {
     const response = await fetch(client.agent.chatResumeUrl(), {
@@ -746,51 +765,66 @@ export function ChatConversation({ conversationId }: { conversationId: string })
     }) as { data?: SuspendedPartData } | undefined
     /**
      * 续跑块只带 `resumed: true`（AI SDK 同 id 后者覆盖前者），问题原文会被冲掉；
-     * 这里补回 `suspendPayload` 并挂上本轮答案 —— 回答完的问题卡要在原位置留成记录。
+     * `markSuspendedAnswered` 负责补回 `suspendPayload` 并挂上本轮答案
+     * —— 回答完的问题卡要在原位置留成记录（同一个函数也用于第一个续跑块到达之前）。
      */
-    const withAnsweredRecord = (message: UIMessage): UIMessage => ({
-      ...message,
-      parts: message.parts.map((part) => {
-        if (part.type !== 'data-tool-call-suspended') return part
-        const data = (part as { data?: SuspendedPartData }).data
-        const callId = data?.toolCallId ?? (part as { id?: string }).id
-        if (callId !== input.toolCallId) return part
-        return {
-          ...part,
-          data: {
-            ...data,
-            suspendPayload: data?.suspendPayload ?? seedSuspended?.data?.suspendPayload,
-            answers: input.answers,
-          },
-        } as typeof part
-      }),
-    })
-    const parsed = parseJsonEventStream({
-      stream: response.body,
-      schema: uiMessageChunkSchema,
-    }) as unknown as ReadableStream<
-      { success: true; value: UIMessageChunk } | { success: false; error: unknown }
-    >
-    // `parseJsonEventStream` 交的是 `ParseResult`：成功解一层，失败直接终止流。
-    const chunks = parsed.pipeThrough(
-      new TransformStream<
-        { success: true; value: UIMessageChunk } | { success: false; error: unknown },
-        UIMessageChunk
-      >({
-        transform(result, controller) {
-          if (result.success) controller.enqueue(result.value)
-          else controller.error(result.error)
-        },
-      }),
+    const withAnsweredRecord = (message: UIMessage): UIMessage =>
+      markSuspendedAnswered(message, {
+        ...(input.toolCallId ? { toolCallId: input.toolCallId } : {}),
+        answers: input.answers,
+        ...(seedSuspended?.data?.suspendPayload
+          ? { suspendPayload: seedSuspended.data.suspendPayload }
+          : {}),
+      })
+
+    /**
+     * **先把这题标成已回答**：不等第一个续跑块到达。
+     *
+     * 为什么要抢先：服务端从收到答案到吐出第一块之间有一段（模型重新起算）——
+     * 这段时间里 dock 上的问题卡还挂着、按钮还是「提交中…」，用户看到的就是"没提交成功"。
+     * 标成 answered 之后：dock 立刻收起，这组问答以只读形态留在时间线里。
+     */
+    setMessages((current) =>
+      current.map((message, index) => (index === seedIndex ? withAnsweredRecord(message) : message)),
     )
-    for await (const updated of readUIMessageStream({ message: seed, stream: chunks })) {
-      // 续跑是同一轮的延长：id 必须保持不变，否则界面上会多出一条助手消息
-      setMessages((current) =>
-        current.map((message, index) =>
-          index === seedIndex ? withAnsweredRecord({ ...updated, id: seed.id }) : message,
-        ),
-      )
-    }
+    setResuming(true)
+
+    /** 后台消费续跑流：不 await（上面的理由），失败只影响提示，不回滚已回答的记录 */
+    void (async () => {
+      try {
+        const parsed = parseJsonEventStream({
+          stream: response.body as ReadableStream<Uint8Array>,
+          schema: uiMessageChunkSchema,
+        }) as unknown as ReadableStream<
+          { success: true; value: UIMessageChunk } | { success: false; error: unknown }
+        >
+        // `parseJsonEventStream` 交的是 `ParseResult`：成功解一层，失败直接终止流。
+        const chunks = parsed.pipeThrough(
+          new TransformStream<
+            { success: true; value: UIMessageChunk } | { success: false; error: unknown },
+            UIMessageChunk
+          >({
+            transform(result, controller) {
+              if (result.success) controller.enqueue(result.value)
+              else controller.error(result.error)
+            },
+          }),
+        )
+        for await (const updated of readUIMessageStream({ message: seed, stream: chunks })) {
+          // 续跑是同一轮的延长：id 必须保持不变，否则界面上会多出一条助手消息
+          setMessages((current) =>
+            current.map((message, index) =>
+              index === seedIndex ? withAnsweredRecord({ ...updated, id: seed.id }) : message,
+            ),
+          )
+        }
+      } catch (cause) {
+        setErrorText(`续跑中断：${cause instanceof Error ? cause.message : String(cause)}`)
+      } finally {
+        // 收尾即回到空闲：`streaming` 随之回落，"轮结束后对账"那个 effect 会刷新列表与详情
+        setResuming(false)
+      }
+    })()
   }
 
   return (
@@ -941,7 +975,7 @@ export function ChatConversation({ conversationId }: { conversationId: string })
             <div className="flex max-h-[55vh] shrink-0 flex-col gap-2 overflow-y-auto px-3">
               <RunActivity
                 messages={messages}
-                status={status}
+                status={resuming ? 'streaming' : status}
                 activeSubAgentName={activeSubAgentName}
               />
               {conversationPlan ? (
@@ -1072,7 +1106,7 @@ export function ChatConversation({ conversationId }: { conversationId: string })
                   <div className="flex min-w-0 items-center gap-2">
                     <RunUsageInline usage={usage} turn={turn} />
                     {/* 流式中这个按钮就是"停止"（内部按 status 换成方块图标），onStop 里做真正的取消 */}
-                    <PromptInputSubmit status={status} onStop={() => void stopRun()} />
+                    <PromptInputSubmit status={resuming ? 'streaming' : status} onStop={() => void stopRun()} />
                   </div>
                 </PromptInputFooter>
               </PromptInput>

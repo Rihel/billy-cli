@@ -1,0 +1,77 @@
+import { describe, expect, it } from 'vitest'
+import type { UIMessage } from 'ai'
+import { markSuspendedAnswered } from '../src/app/(standalone)/main/ai/chat/resume-answer.ts'
+
+/**
+ * 回答完问题时的消息改写（纯逻辑，node 环境）。
+ *
+ * 要钉住的是「提交那一刻就变成只读问答记录」这条口径：
+ * 1. 只改**这一次问答**的挂起块，其它 part 与不相关的消息保持原引用（行级 memo 才不被作废）；
+ * 2. 续跑块不带问题原文，得从提交前那份挂起数据里补回来（否则只读卡片只剩答案没有题目）；
+ * 3. 认块口径与续跑流一致：优先 `data.toolCallId`，退化用 part 的 `id`。
+ */
+
+const suspendedPart = (toolCallId: string | undefined, data: Record<string, unknown> = {}) =>
+  ({
+    type: 'data-tool-call-suspended',
+    ...(toolCallId ? {} : { id: 'part-id-1' }),
+    data: { toolCallId, runId: 'run_1', ...data },
+  }) as never
+
+const message = (parts: unknown[]): UIMessage =>
+  ({ id: 'm1', role: 'assistant', parts }) as unknown as UIMessage
+
+const answers = [{ id: 'q1', value: '一周内' }]
+
+describe('markSuspendedAnswered', () => {
+  it('命中的挂起块被改成 resumed + answers，且补回问题原文', () => {
+    const source = message([{ type: 'text', text: '先问几个问题' }, suspendedPart('call_1')])
+    const next = markSuspendedAnswered(source, {
+      toolCallId: 'call_1',
+      answers,
+      suspendPayload: { questions: [{ id: 'q1', type: 'single', title: '多久了' }] },
+    })
+
+    const part = next.parts[1] as unknown as { data: Record<string, unknown> }
+    expect(part.data.resumed).toBe(true)
+    expect(part.data.answers).toEqual(answers)
+    expect(part.data.suspendPayload).toEqual({
+      questions: [{ id: 'q1', type: 'single', title: '多久了' }],
+    })
+    // 其它 part 原样（引用不变）
+    expect(next.parts[0]).toBe(source.parts[0])
+  })
+
+  it('不认识的 toolCallId：整条消息原样返回（不留无谓的新对象）', () => {
+    const source = message([suspendedPart('call_1')])
+    const next = markSuspendedAnswered(source, { toolCallId: 'call_other', answers })
+    expect(next).toBe(source)
+  })
+
+  it('没有 toolCallId 时用 part 的 id 兜底认块', () => {
+    const source = message([suspendedPart(undefined)])
+    const next = markSuspendedAnswered(source, { toolCallId: 'part-id-1', answers })
+    const part = next.parts[0] as unknown as { data: Record<string, unknown> }
+    expect(part.data.resumed).toBe(true)
+    expect(part.data.answers).toEqual(answers)
+  })
+
+  it('块里已有问题原文时不覆盖（历史回放的真实原文优先）', () => {
+    const original = { questions: [{ id: 'q1', type: 'single', title: '原来的题' }] }
+    const source = message([suspendedPart('call_1', { suspendPayload: original })])
+    const next = markSuspendedAnswered(source, {
+      toolCallId: 'call_1',
+      answers,
+      suspendPayload: { questions: [] },
+    })
+    const part = next.parts[0] as unknown as { data: Record<string, unknown> }
+    expect(part.data.suspendPayload).toEqual(original)
+  })
+
+  it('幂等：同一份答案再标一次，结果一致（续跑流每帧都会调它）', () => {
+    const source = message([suspendedPart('call_1')])
+    const once = markSuspendedAnswered(source, { toolCallId: 'call_1', answers })
+    const twice = markSuspendedAnswered(once, { toolCallId: 'call_1', answers })
+    expect(twice.parts).toEqual(once.parts)
+  })
+})

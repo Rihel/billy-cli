@@ -191,6 +191,55 @@ describe('ChatSessionStore：实时数据（onData）', () => {
   })
 })
 
+describe('消息中间的 part 被改写（答案提交 / 问题卡转只读）', () => {
+  it('从第一个引用变了的 part 起重放：中间的挂起块改动同步得到', () => {
+    const store = new ChatSessionStore()
+    const suspended = {
+      type: 'data-tool-call-suspended',
+      data: {
+        toolCallId: 'call_1',
+        runId: 'run_1',
+        resumed: false,
+        suspendPayload: { questions: [{ id: 'q1', type: 'single', title: '多久了' }] },
+      },
+    }
+    store.sync([
+      message([
+        { type: 'text', text: '先问几个问题' },
+        suspended,
+        { type: 'text', text: '然后继续' },
+      ]),
+    ])
+    expect(unitsOf(store).map((unit) => unit.kind)).toEqual(['text', 'question', 'text'])
+
+    // 提交答案：同一位置换成 resumed: true（part 引用变了、parts 长度不变）
+    store.sync([
+      message([
+        { type: 'text', text: '先问几个问题' },
+        { ...suspended, data: { ...suspended.data, resumed: true, answers: [{ id: 'q1', value: '一周内' }] } },
+        { type: 'text', text: '然后继续' },
+      ]),
+    ])
+
+    const question = unitsOf(store).find((unit) => unit.kind === 'question') as {
+      data: { resumed?: boolean; answers?: unknown }
+    }
+    expect(question.data.resumed).toBe(true)
+    expect(question.data.answers).toEqual([{ id: 'q1', value: '一周内' }])
+    // 相邻的两个文本单元不受影响
+    expect(textOf(store)).toBe('先问几个问题然后继续')
+  })
+
+  it('parts 没变的重复同步不换状态对象（行级 memo 的前提）', () => {
+    const store = new ChatSessionStore()
+    const parts = [{ type: 'text', text: '答案' }]
+    store.sync([message(parts)])
+    const before = store.getSnapshot().messages[0]
+    store.sync([message(parts)])
+    expect(store.getSnapshot().messages[0]).toBe(before)
+  })
+})
+
 describe('markTransientChunks（逐帧增量不落 part）', () => {
   const collect = async (chunks: unknown[]): Promise<unknown[]> => {
     const input = new ReadableStream<unknown>({

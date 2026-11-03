@@ -451,6 +451,8 @@ const LIVE_FLUSH_MS = 100
  */
 export class ChatSessionStore {
   private states = new Map<string, ChatMessageState>()
+  /** 每条消息上次同步时的 parts（引用快照）：用来定位"第一个变了的 part" */
+  private syncedParts = new Map<string, readonly unknown[]>()
   private order: string[] = []
   private live = new Map<string, SubAgentLive>()
   private listeners = new Set<() => void>()
@@ -477,23 +479,44 @@ export class ChatSessionStore {
 
     for (const message of messages) {
       order.push(message.id)
+      const parts = message.parts
+      const previous = this.syncedParts.get(message.id)
       const existing = this.states.get(message.id)
       if (!existing) {
-        const created = createMessageState(message)
-        const next = reduceMessage(created, message, 0)
+        const next = reduceMessage(createMessageState(message), message, 0)
         this.states.set(message.id, next)
+        this.syncedParts.set(message.id, parts)
         changed = true
         continue
       }
-      if (message.parts.length < existing.applied) {
+      if (previous && parts.length < previous.length) {
         // 续传重放 / 消息被替换：parts 从 0 重来 → 整条重建，避免残留旧内容
         const next = reduceMessage(createMessageState(message), message, 0)
         this.states.set(message.id, next)
+        this.syncedParts.set(message.id, parts)
         changed = true
         continue
       }
-      // 从最后一项重放：流式的文本 / 推理 / 工具结果都是"同一下标就地更新"
-      const next = reduceMessage(existing, message, Math.max(0, existing.applied - 1))
+      /**
+       * 从**第一个引用变了的 part**起重放（而不是死认最后一项）。
+       *
+       * 流式文本 / 推理 / 工具结果都是尾部原地更新，扫描到尾部就命中，成本与增量成正比；
+       * 但"问题卡被标成已回答""计划被合并"这类改写发生在**消息中间** ——
+       * 只从 `applied - 1` 重放的话，中间那一段永远同步不到渲染状态
+       * （表现：答案提交了，dock 上的问题卡却一直挂着）。
+       */
+      const limit = previous ? Math.min(previous.length, parts.length) : parts.length
+      let from = limit
+      if (previous) {
+        for (let index = 0; index < limit; index += 1) {
+          if (previous[index] !== parts[index]) {
+            from = index
+            break
+          }
+        }
+      }
+      const next = reduceMessage(existing, message, from)
+      this.syncedParts.set(message.id, parts)
       if (next !== existing) {
         this.states.set(message.id, next)
         changed = true
@@ -508,7 +531,10 @@ export class ChatSessionStore {
     if (this.states.size > order.length) {
       const alive = new Set(order)
       for (const id of [...this.states.keys()]) {
-        if (!alive.has(id)) this.states.delete(id)
+        if (!alive.has(id)) {
+          this.states.delete(id)
+          this.syncedParts.delete(id)
+        }
       }
     }
     if (changed) this.publish()
