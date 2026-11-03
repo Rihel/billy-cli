@@ -32,7 +32,7 @@ import { collectMessagePlan, type PlanTask } from './plan-panel'
  * 1. **顺序即所见**：按 `message.parts` 的原始顺序导出，和界面上从上到下看到的一致
  *    （工具卡就地铺开，不是攒到结尾）；
  * 2. **只导有内容的东西**：协议管道（`step-start` / `data-run` / 用量 / 自动命名 / 增量块）
- *    不进导出；被计划卡片吸收掉的计划类工具调用也不重复导出（与 `MessageRow` 的渲染口径完全一致）。
+ *    不进导出；被计划卡片吸收掉的计划类工具调用也不重复导出（与 `ChatMessage` 的渲染口径完全一致）。
  */
 
 type CopyBlock =

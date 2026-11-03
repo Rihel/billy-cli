@@ -522,10 +522,24 @@ export interface ConversationPlan {
  */
 export const conversationPlanOf = (
   messages: readonly { parts: readonly PlanSourcePart[] }[],
+): ConversationPlan | null =>
+  mergeConversationPlans(messages.map((message) => collectMessagePlan(message.parts)))
+
+/**
+ * 同上，但输入是**已经算好的消息级计划**（会话页的渲染状态里就是这一份）。
+ *
+ * 为什么要这个入口：会话页现在按 part 增量归约，`collectMessagePlan` 只在 part 到达时算一次，
+ * 并挂在消息状态上；右栏「任务」tab 就不必每帧再把所有消息重算一遍。
+ */
+export const conversationPlanOfPlans = (
+  plans: readonly (MessagePlan | null | undefined)[],
+): ConversationPlan | null => mergeConversationPlans(plans)
+
+const mergeConversationPlans = (
+  plans: readonly (MessagePlan | null | undefined)[],
 ): ConversationPlan | null => {
   const found: PlanSnapshot[] = []
-  for (const message of messages) {
-    const plan = collectMessagePlan(message.parts)
+  for (const plan of plans) {
     if (!plan) continue
     found.push(plan.current, ...plan.history)
   }

@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { getToolName } from 'ai'
 // ai-elements 组件**走子路径且带扩展名**（不进 barrel：体积大、按需引入，见 docs/design/ai-agent.md §1）
 import {
@@ -13,6 +13,7 @@ import {
 import type { ToolPart } from '@repo/ui/components/ai-elements/tool.tsx'
 import type { ToolEventPart } from '@repo/shared'
 import { durationText } from './format'
+import { useElapsedSeconds } from './use-elapsed'
 import { ToolEventsBody } from './tool-event'
 
 /**
@@ -73,30 +74,19 @@ export function ToolCard({ part, events, defaultOpen, streaming, durationMs }: T
   /**
    * **实时耗时**（用户要求"工具条显示耗时"）：从卡片出现（= 这次调用开始流给我们）到拿到结果。
    *
-   * 为什么运行中要每 0.5s 刷一次：工具卡是"正在调什么、跑了多久"的唯一位置，数字停着不动
-   * 会让人以为卡死。有历史耗时（`durationMs`，服务端审计量的）时**不自己算** —— 那才是真值。
+   * 口径分两种：
+   * - 有 `durationMs`（服务端审计量的真实耗时，历史回放）：原样显示 `1.2s`，不自己算；
+   * - 运行中：按**整秒**跳（`useElapsedSeconds`，秒边界翻字），不是每 500ms 抖一下 ——
+   *   半秒采样 + 一位小数会得到 0ms → 500ms → 1s → 1.5s 这种不齐的节奏（用户反馈"怪怪的"）。
    */
   const isFinished = part.state === 'output-available' || part.state === 'output-error'
-  const startedAtRef = useRef<number | null>(null)
-  const [elapsedMs, setElapsedMs] = useState<number | null>(null)
-
-  useEffect(() => {
-    if (durationMs !== undefined) return
-    if (isFinished) {
-      if (startedAtRef.current !== null) {
-        setElapsedMs(Date.now() - startedAtRef.current)
-        startedAtRef.current = null
-      }
-      return
-    }
-    if (startedAtRef.current === null) startedAtRef.current = Date.now()
-    const timer = setInterval(() => {
-      if (startedAtRef.current !== null) setElapsedMs(Date.now() - startedAtRef.current)
-    }, 500)
-    return () => clearInterval(timer)
-  }, [durationMs, isFinished])
-
-  const shownMs = durationMs ?? elapsedMs
+  const liveSeconds = useElapsedSeconds(durationMs === undefined && !isFinished)
+  const durationLabel =
+    durationMs !== undefined
+      ? durationText(durationMs)
+      : liveSeconds === null
+        ? undefined
+        : `${liveSeconds}s`
 
   useEffect(() => {
     if (!streaming) return
@@ -122,7 +112,7 @@ export function ToolCard({ part, events, defaultOpen, streaming, durationMs }: T
         state={part.state}
         toolName={toolName}
         className="px-2.5 py-1.5"
-        meta={shownMs !== null && shownMs !== undefined ? durationText(shownMs) : undefined}
+        meta={durationLabel}
       />
       <ToolContent className="space-y-2 p-2.5">
         {/*

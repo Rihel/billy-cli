@@ -88,10 +88,9 @@ describe('collectSubAgentLives', () => {
       stepCount: 3,
       toolCallCount: 5,
     })
-    expect(lives[0]!.deltas).toEqual([
-      { kind: 'reasoning', text: '先查公开资料' },
-      { kind: 'text', text: '结论一' },
-    ])
+    // 增量在写入时已聚合成字符串（不再保留逐帧数组）
+    expect(lives[0]!.reasoning).toBe('先查公开资料')
+    expect(lives[0]!.text).toBe('结论一')
   })
 
   it('状态块只带 `event`（真实流的形态）时仍然认得出它在跑，工具往返也留得下', () => {
@@ -123,7 +122,7 @@ describe('collectSubAgentLives', () => {
     ])
 
     expect(lives.map((live) => live.runId)).toEqual(['sub2', 'sub3'])
-    expect(lives[1]).toMatchObject({ name: '市场线', deltas: [{ kind: 'text', text: '开始' }] })
+    expect(lives[1]).toMatchObject({ name: '市场线', text: '开始' })
   })
 
   it('没有最终状态的按"进行中"算；已经收尾的按库里那份展示', () => {
@@ -158,14 +157,8 @@ describe('subAgentTabs', () => {
     const tabs = subAgentTabs(
       [run({ id: 'run_1', status: 'succeeded' }), run({ id: 'run_2', status: 'running', agentKey: 'sub:中国网文线' })],
       [
-        {
-          runId: 'run_2',
-          name: '中国网文线',
-          status: 'succeeded',
-          deltas: [],
-          events: [],
-        },
-        { runId: 'run_3', name: '新起的子助手', deltas: [], events: [] },
+        { runId: 'run_2', name: '中国网文线', status: 'succeeded', text: '', reasoning: '', events: [] },
+        { runId: 'run_3', name: '新起的子助手', text: '', reasoning: '', events: [] },
       ],
     )
 
@@ -237,33 +230,28 @@ describe('subAgentBodyText（紧凑卡展开后的正文）', () => {
   const live = (over: Partial<import('../src/app/(standalone)/main/ai/chat/sub-agent-live.ts').SubAgentLive>) => ({
     runId: 'run-1',
     name: '子助手',
-    deltas: [],
+    text: '',
+    reasoning: '',
     events: [],
     ...over,
   })
 
   it('跑完优先给最终结论（result）', () => {
     expect(
-      subAgentBodyText(live({ result: '两榜都抓到了。', deltas: [{ kind: 'text', text: '中间的碎碎念' }] })),
+      subAgentBodyText(live({ result: '两榜都抓到了。', text: '中间的碎碎念' })),
     ).toBe('两榜都抓到了。')
   })
 
   it('运行中还没有结论时，给已经产出的正文（所以展开是"边跑边长"）', () => {
     expect(
       subAgentBodyText(
-        live({
-          deltas: [
-            { kind: 'reasoning', text: '想一下' },
-            { kind: 'text', text: '先取时间戳。' },
-            { kind: 'text', text: '再抓榜单。' },
-          ],
-        }),
+        live({ reasoning: '想一下', text: '先取时间戳。再抓榜单。' }),
       ),
     ).toBe('先取时间戳。再抓榜单。')
   })
 
   it('啥都没有 → null（卡片给诚实提示，不显示空白）', () => {
-    expect(subAgentBodyText(live({ deltas: [{ kind: 'reasoning', text: '只有推理' }] }))).toBeNull()
+    expect(subAgentBodyText(live({ reasoning: '只有推理' }))).toBeNull()
     expect(subAgentBodyText(live({ result: '   ' }))).toBeNull()
   })
 })

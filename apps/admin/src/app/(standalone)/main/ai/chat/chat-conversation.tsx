@@ -1,11 +1,10 @@
 'use client'
 
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useChat } from '@ai-sdk/react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
-  DefaultChatTransport,
   isTextUIPart,
   parseJsonEventStream,
   readUIMessageStream,
@@ -53,9 +52,16 @@ import { BotIcon, CopyIcon, LayoutDashboardIcon, PanelRightIcon } from 'lucide-r
 import { Pages } from '@/lib/constants'
 import { useServerClient } from '@/lib/server-client'
 import { ModelPicker } from './model-picker'
-import { MessageRow } from './message-row'
+import { ChatMessage } from './message-row'
+import {
+  useActiveSubAgentName,
+  useChatMessages,
+  useChatSessionStore,
+  useHasActiveSubAgent,
+} from './chat-session'
+import { ChatTransport } from './chat-transport'
 import { toUIMessages } from './history'
-import { conversationPlanOf } from './plan-panel'
+import { conversationPlanOfPlans } from './plan-panel'
 import { ConversationRightPanel, type RightPanelTab } from './right-panel'
 import { RunActivity } from './run-activity'
 import { PlanSummaryCard } from './plan-summary-card'
@@ -64,7 +70,6 @@ import {
   type AnswerQuestionsInput,
   type SuspendedPartData,
 } from './question-card'
-import { isSubAgentActive, liveSubAgentsOf } from './sub-agent-live'
 // 自动展开的判据与工具卡共用同一份（`shouldAutoOpen`：有东西可看 + 用户没动过手）——
 // 同一套纪律只写一次，避免两处各有一套"用户手动优先"的实现漂移
 import { shouldAutoOpen } from './tool-card'
@@ -231,11 +236,16 @@ export function ChatConversation({ conversationId }: { conversationId: string })
   const panelFocusNonce = useRef(0)
 
   /** 打开右栏并请求切到某个 tab（用户手动开合过之后，"自动展开"不再走这里，见下） */
-  const focusRightPanel = (tab: RightPanelTab) => {
+  const focusRightPanel = useCallback((tab: RightPanelTab) => {
     panelFocusNonce.current += 1
     setPanelFocus({ tab, nonce: panelFocusNonce.current })
     setPanelOpen(true)
-  }
+  }, [])
+  /**
+   * 消息行上的"查看清单"入口：必须是**稳定引用**，否则 `ChatMessage` 的 memo 每帧都会失效
+   * （整行重渲染 = 把刚省下的渲染成本又还回去）。
+   */
+  const openPlanPanel = useCallback(() => focusRightPanel('plan'), [focusRightPanel])
   // 停止按钮要用它；放在 ref 里避免每次拿到 runId 就重建 transport
   const runIdRef = useRef<string | undefined>(undefined)
   /**
@@ -337,7 +347,7 @@ export function ChatConversation({ conversationId }: { conversationId: string })
 
   const transport = useMemo(
     () =>
-      new DefaultChatTransport<UIMessage>({
+      new ChatTransport({
         api: client.agent.chatStreamUrl(),
         // 鉴权头与普通请求同一套（未登录返回 {}，后端会回 401）
         headers: async () => client.agent.authHeaders(),
@@ -387,6 +397,15 @@ export function ChatConversation({ conversationId }: { conversationId: string })
     [client],
   )
 
+  /**
+   * 会话渲染状态：parts → 渲染单元的增量归约 + 子助手实时数据（见 `chat-session.ts`）。
+   *
+   * store 由**页面层**（`[conversationId]/page.tsx` 的 `ChatSessionProvider`）创建并下发 ——
+   * 不能在本组件里建：Provider 一旦是本组件 `return` 的一部分，组件体里的 `useContext`
+   * 永远读不到它（SSR 直接报"会话 store 缺失"，整页退化为客户端渲染）。
+   */
+  const sessionStore = useChatSessionStore()
+
   const { messages, sendMessage, status, stop, setMessages, error, clearError } = useChat({
     // 实例 id 整个组件生命周期稳定；换会话由页面 key 重挂载来隔离
     id: chatIdRef.current,
@@ -395,6 +414,14 @@ export function ChatConversation({ conversationId }: { conversationId: string })
     resume: true,
     experimental_throttle: 60,
     onData: (part) => {
+      /**
+       * 实时过程进 store：子助手的状态 / 增量在这里合并成"当前值"。
+       *
+       * 为什么不在渲染期从 parts 收集：逐帧增量以前会一块一个 part，数万条把页面拖死；
+       * 现在增量块在传输层被标成 transient（不落 part），只走这里 —— 数据照样逐块到达，
+       * 但一次追加是 O(1)，并且由 store 按 100ms 合并通知，不让每个增量都进 React。
+       */
+      sessionStore.applyChunk(part as { type: string; id?: string; data?: unknown })
       /**
        * 首轮结束时的**自动命名**：服务端在收尾阶段把新标题推下来（`data-conversation-title`）。
        *
@@ -471,6 +498,16 @@ export function ChatConversation({ conversationId }: { conversationId: string })
     },
   })
 
+  /**
+   * useChat 的 messages → 会话渲染状态（增量归约）。
+   *
+   * 只处理"新增的 part"与"尾部被就地更新的那一个"：流式文本 / 工具结果都是原位更新，
+   * 所以这一步的成本与"这一帧新增了多少内容"成正比，而不是与整条消息的长度成正比。
+   */
+  useEffect(() => {
+    sessionStore.sync(messages)
+  }, [sessionStore, messages])
+
   const streaming = status === 'streaming' || status === 'submitted'
 
   /**
@@ -480,7 +517,8 @@ export function ChatConversation({ conversationId }: { conversationId: string })
    * —— 不必为"运行中"另开后端接口，也不必让面板自己去猜哪条消息里有增量。
    * 跑完之后右栏改用库里的完整时间线，所以这份数据是"实时的那一份"，不是唯一来源。
    */
-  const liveSubAgents = useMemo(() => liveSubAgentsOf(messages), [messages])
+  /** 渲染用的消息列表（归约后的单元）：组件只吃这一份，不再回头扫 parts */
+  const messageStates = useChatMessages()
 
   /**
    * **整个会话的当前计划**（右栏「任务」tab 的数据）。
@@ -489,24 +527,26 @@ export function ChatConversation({ conversationId }: { conversationId: string })
    * 所以两处显示的进度永远一致；这里只是把范围从"一条消息"放大到"整会话"，
    * 因为规划工具可能在任意一轮被调用（第一轮建清单、第五轮改顺序）。
    */
-  const conversationPlan = useMemo(() => conversationPlanOf(messages), [messages])
+  const conversationPlan = useMemo(
+    () => conversationPlanOfPlans(messageStates.map((state) => state.plan)),
+    [messageStates],
+  )
 
   /**
    * 当前**还没回答**的问题卡。主区把它固定在输入框上方，不跟消息滚走；
    * 已回答（`resumed=true`）或没有挂起时为 null。
    */
   const activeQuestion = useMemo<SuspendedPartData | null>(() => {
-    for (let messageIndex = messages.length - 1; messageIndex >= 0; messageIndex -= 1) {
-      const parts = messages[messageIndex]?.parts ?? []
-      for (let partIndex = parts.length - 1; partIndex >= 0; partIndex -= 1) {
-        const part = parts[partIndex]!
-        if (part.type !== 'data-tool-call-suspended') continue
-        const data = (part as { data?: SuspendedPartData }).data
-        if (data && data.resumed !== true && data.suspendPayload) return data
+    for (let messageIndex = messageStates.length - 1; messageIndex >= 0; messageIndex -= 1) {
+      const units = messageStates[messageIndex]?.units ?? []
+      for (let unitIndex = units.length - 1; unitIndex >= 0; unitIndex -= 1) {
+        const unit = units[unitIndex]!
+        if (unit.kind !== 'question') continue
+        if (unit.data.resumed !== true && unit.data.suspendPayload) return unit.data
       }
     }
     return null
-  }, [messages])
+  }, [messageStates])
 
   /**
    * 窄屏（<768px）不放右栏的**自动展开**。
@@ -525,7 +565,9 @@ export function ChatConversation({ conversationId }: { conversationId: string })
    * （过程在流里长出来，不弹开就只能看到一句"过程见右栏"）。已结束的那些，
    * 紧凑卡上的入口与页头按钮都在，想看随时点。
    */
-  const hasActiveSubAgent = liveSubAgents.some(isSubAgentActive)
+  const hasActiveSubAgent = useHasActiveSubAgent()
+  /** 正在跑的子助手名字（运行指示用；只在这一项变化时重渲染） */
+  const activeSubAgentName = useActiveSubAgentName()
 
   /**
    * **有子助手正在跑就自动展开一次右栏**。
@@ -823,8 +865,29 @@ export function ChatConversation({ conversationId }: { conversationId: string })
       ) : null}
 
       {/* 对话区 + 右栏：可拖动分栏。右栏可关（页头那个图标），关掉时对话区独占整宽 */}
-      <ResizablePanelGroup orientation="horizontal" className="min-h-0 flex-1">
-        <ResizablePanel minSize={320} className="h-full" style={{ overflow: 'hidden' }}>
+      {/*
+        分栏组的高度**必须由 flex 决定**，不能吃库的内联 `height: 100%`：
+        本页是「页头 + 分栏组」的竖排 flex，`100%` 按的是整个 section 的高度，
+        会多出一个页头的高度（实测溢出 ~57px）。这层溢出被父级 `overflow-hidden` 裁掉后，
+        最外层仍留下可被程序滚动的余量 —— 切右栏 tab 时焦点一动，整页就被顶上去一截。
+        传 `height: auto` 覆盖掉内联值，交给 `flex-1` 分配"剩余空间"。
+      */}
+      <ResizablePanelGroup
+        orientation="horizontal"
+        className="min-h-0 flex-1"
+        style={{ height: 'auto' }}
+      >
+        {/*
+          `contain: paint` 是**必需**的，不是保险（实测）：右栏子助手记录能长到 8000px，
+          即使被面板内部滚动区裁住，它的可滚动溢出仍会被算进 `document.scrollingElement.scrollHeight`
+          （900 → 8149）——于是整页多出一条滚动条、切换 tab 时整屏被顶动。
+          只加 `overflow: hidden` / `clip` 都压不住，`contain: paint` 才能把它从根滚动区隔离。
+        */}
+        <ResizablePanel
+          minSize={320}
+          className="h-full"
+          style={{ overflow: 'hidden', contain: 'paint' }}
+        >
           <div className="flex h-full min-h-0 flex-col gap-2">
             {/* 消息列表不画外框：整块与页面同底，气泡 / 工具卡自己带层次，边框只会把界面切成一块块 */}
             <Conversation className="min-h-0 flex-1">
@@ -833,7 +896,9 @@ export function ChatConversation({ conversationId }: { conversationId: string })
               <ConversationContent className="gap-3 p-3">
                 {loading ? (
                   <p className="p-3 text-xs text-muted-foreground">正在加载会话历史…</p>
-                ) : messages.length === 0 ? (
+                ) : messageStates.length === 0 && messages.length > 0 ? (
+                  <p className="p-3 text-xs text-muted-foreground">正在整理会话…</p>
+                ) : messageStates.length === 0 ? (
                   <ConversationEmptyState className="gap-4">
                     <span className="grid size-11 place-items-center rounded-xl bg-surface-2 text-muted-foreground">
                       <BotIcon className="size-5" />
@@ -848,18 +913,24 @@ export function ChatConversation({ conversationId }: { conversationId: string })
                     </div>
                   </ConversationEmptyState>
                 ) : (
-                  messages.map((message) => (
-                    <MessageRow
-                      key={message.id}
-                      message={message}
-                      streaming={streaming}
-                      onOpenPlan={() => focusRightPanel('plan')}
-                      onPreviewImage={previewAttachments}
-                      onAnswerQuestions={answerQuestions}
-                      // 计划卡 / 问题卡固定在输入框上方，消息流里不再重复
-                      showTrailingCards={false}
-                    />
-                  ))
+                  messageStates.map((message) => {
+                    // 只给"真的用得上"的行挂回调：其余行拿到稳定的 undefined，memo 才不会每帧失效
+                    const needsPlan = message.plan !== null
+                    const needsPreview = message.files.length > 0
+                    const needsQuestion = message.units.some((unit) => unit.kind === 'question')
+                    return (
+                      <ChatMessage
+                        key={message.id}
+                        message={message}
+                        streaming={streaming}
+                        {...(needsPlan ? { onOpenPlan: openPlanPanel } : {})}
+                        {...(needsPreview ? { onPreviewImage: previewAttachments } : {})}
+                        {...(needsQuestion ? { onAnswerQuestions: answerQuestions } : {})}
+                        // 计划卡 / 问题卡固定在输入框上方，消息流里不再重复
+                        showTrailingCards={false}
+                      />
+                    )
+                  })
                 )}
               </ConversationContent>
               <ConversationScrollButton />
@@ -868,7 +939,11 @@ export function ChatConversation({ conversationId }: { conversationId: string })
             {/* 输入框上方的常驻 dock：运行状态 / 当前任务进度 / 待回答的问题。
                 放在 Conversation 外面，所以不会被消息列表滚走；问题卡永远贴着输入框。 */}
             <div className="flex max-h-[55vh] shrink-0 flex-col gap-2 overflow-y-auto px-3">
-              <RunActivity messages={messages} status={status} />
+              <RunActivity
+                messages={messages}
+                status={status}
+                activeSubAgentName={activeSubAgentName}
+              />
               {conversationPlan ? (
                 <PlanSummaryCard
                   plan={conversationPlan.current.plan}
@@ -1015,14 +1090,14 @@ export function ChatConversation({ conversationId }: { conversationId: string })
               maxSize={PANEL_WIDTH.max}
               groupResizeBehavior="preserve-pixel-size"
               className="h-full"
-              style={{ overflow: 'hidden' }}
+              // 同左栏：子助手过程是长文档，必须把它的可滚动溢出从根滚动区隔离出去
+              style={{ overflow: 'hidden', contain: 'paint' }}
             >
               <ConversationRightPanel
                 client={client}
                 // 新会话还没有 id：系统指令仍可看静态定义，子 agent tab 给空态
                 conversationId={isNew ? undefined : conversationId}
                 agentKey={agentKey ?? agentsQuery.data?.defaultAgentKey}
-                liveSubAgents={liveSubAgents}
                 // 自动展开时直接停在「子 agent」——自动开了却停在系统提示词上等于白开
                 plan={conversationPlan}
                 focus={panelFocus}

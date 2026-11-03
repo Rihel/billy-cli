@@ -17,10 +17,11 @@ import {
 import { BotIcon, CopyIcon, ListTodoIcon, LoaderCircleIcon, ScrollTextIcon } from 'lucide-react'
 import { loadWholeRuns, loadWholeTimeline, type ServerClient } from './data'
 import { toUIMessages } from './history'
-import { MessageRow } from './message-row'
+import { ChatMessage } from './message-row'
 import { PlanPanel, type ConversationPlan } from './plan-panel'
 import { SubAgentLiveView, statusLabel, statusVariant } from './sub-agent-panel'
-import { isSubAgentActive, subAgentTabs, type SubAgentLive, type SubAgentTab } from './sub-agent-live'
+import { isSubAgentActive, subAgentTabs, type SubAgentTab } from './sub-agent-live'
+import { toMessageState, useLiveSubAgents } from './chat-session'
 import { copyText } from '@/lib/clipboard'
 import { durationText, tokenText } from './format'
 
@@ -41,11 +42,11 @@ export type RightPanelTab = 'system' | 'subagents' | 'plan'
  *    消息里只留一张紧凑卡（目标 + 进度 + 跳过来的入口）。数据由会话页用**与消息内同一份**
  *    收集逻辑（`conversationPlanOf` → `collectMessagePlan`）算好传进来，两处不会各说各话；
  * 3. **子 agent 运行** —— 这一会话里每个子助手**各自的完整过程**（推理 / 工具往返 / 正文）。
- *    内容区再分一层 tab（一个子 run 一个 tab），渲染用**主对话同一个 `MessageRow`**：
+ *    内容区再分一层 tab（一个子 run 一个 tab），渲染用**主对话同一个 `ChatMessage`**：
  *    同一套映射 + 同一个组件，所以"看起来和主 agent 一样"是结构上的事实，不是照着抄的样式。
  *
  * 两条数据链路（运行中 / 已结束）：
- * - **运行中**：实时块（`data-sub-agent*`）由会话页从最后一条消息里收好、作为 `liveSubAgents` 传进来，
+ * - **运行中**：面板自己订阅会话 store 里的实时数据（`onData` 收的 `data-sub-agent*` 块），
  *   tab 立刻就有内容、且**边跑边长** —— 不必等库里的时间线落完，也不新增任何后端接口；
  * - **已结束 / 刷新后**：按需拉该子 run 的完整时间线（`loadWholeTimeline` + 主对话同一套渲染）。
  *
@@ -57,7 +58,6 @@ export function ConversationRightPanel({
   conversationId,
   agentKey,
   plan = null,
-  liveSubAgents = [],
   defaultTab = 'system',
   focus = null,
 }: {
@@ -67,8 +67,6 @@ export function ConversationRightPanel({
   agentKey?: string
   /** 这一会话的当前计划（会话页算好；没有任务清单时为 null） */
   plan?: ConversationPlan | null
-  /** 实时流里收集到的子助手过程（见 `sub-agent-live.ts`）；运行中也有内容 */
-  liveSubAgents?: SubAgentLive[]
   /** 首次挂载停在哪个 tab（面板此后受控，由用户与 `focus` 驱动） */
   defaultTab?: RightPanelTab
   /**
@@ -80,6 +78,14 @@ export function ConversationRightPanel({
    */
   focus?: { tab: RightPanelTab; nonce: number } | null
 }) {
+  /**
+   * 本次运行中各子助手的实时过程。
+   *
+   * 面板自己订阅 store（而不是由会话页把数据传下来）：实时增量一窗合并一次，
+   * 只有面板这个子树跟着更新，消息列表不受影响。
+   */
+  const liveSubAgents = useLiveSubAgents()
+
   // 初始 tab 优先取"这次的切换请求"：请求与"打开面板"是同一次 state 更新，
   // 所以面板首次挂载就能直接落在目标 tab 上，不会先闪一下「系统指令」
   const [tab, setTab] = useState<RightPanelTab>(focus?.tab ?? defaultTab)
@@ -410,7 +416,7 @@ function SubRunView({
         <p className="text-xs text-muted-foreground">这个子助手没有留下可显示的过程记录。</p>
       ) : (
         messages.map((message) => (
-          <MessageRow key={message.id} message={message} streaming={false} />
+          <ChatMessage key={message.id} message={toMessageState(message)} streaming={false} />
         ))
       )}
     </div>

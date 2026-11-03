@@ -38,11 +38,14 @@ const toolLabel = (name: string): string => (name ? ` ${name}` : '工具')
 export const runActivityText = (
   messages: readonly UIMessage[],
   status: string,
+  activeSubAgentName?: string | null,
 ): string | null => {
   if (status !== 'streaming' && status !== 'submitted') return null
   if (status === 'submitted') return '正在准备…'
 
-  // 子助手在跑时它才是"当前正在干活的那个"（主 agent 在等它返回）
+  // 子助手在跑时它才是"当前正在干活的那个"（主 agent 在等它返回）。
+  // 名字优先取会话 store 的实时数据（运行中最早、最准）；没传再退回消息里的子助手块。
+  if (activeSubAgentName) return `子助手「${activeSubAgentName}」正在干活…`
   const activeSubAgent = liveSubAgentsOf(messages).find(isSubAgentActive)
   if (activeSubAgent) return `子助手「${activeSubAgent.name}」正在干活…`
 
@@ -77,11 +80,14 @@ export const runActivityText = (
 export function RunActivity({
   messages,
   status,
+  activeSubAgentName,
 }: {
   messages: readonly UIMessage[]
   status: string
+  /** 正在跑的子助手名字（会话 store 的实时数据；没有就退回消息里的子助手块） */
+  activeSubAgentName?: string | null
 }) {
-  const text = runActivityText(messages, status)
+  const text = runActivityText(messages, status, activeSubAgentName)
   if (!text) return null
 
   return (

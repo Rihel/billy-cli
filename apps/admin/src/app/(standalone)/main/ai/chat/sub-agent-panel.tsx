@@ -26,7 +26,7 @@ import { isSubAgentActive, type SubAgentLive } from './sub-agent-live'
  * 这份视图只在"还在跑 / 库里暂时没有该 run"时出场。
  *
  * 正文用 `whitespace-pre-wrap` 而不是 Markdown 渲染：这一段是**每个增量 tick 都在变**的长文本，
- * 边跑边做一遍 Markdown 解析纯属浪费；跑到终点后由 `SubRunView` 用主对话同一个 `MessageRow`
+ * 边跑边做一遍 Markdown 解析纯属浪费；跑到终点后由 `SubRunView` 用主对话同一个 `ChatMessage`
  * 渲染成正式的样子。
  */
 
@@ -51,14 +51,10 @@ const formatDuration = (ms?: number): string =>
 
 export function SubAgentLiveView({ live }: { live: SubAgentLive }) {
   const active = isSubAgentActive(live)
-  const streamedText = live.deltas
-    .filter((delta) => delta.kind === 'text')
-    .map((delta) => delta.text)
-    .join('')
-  const streamedReasoning = live.deltas
-    .filter((delta) => delta.kind === 'reasoning')
-    .map((delta) => delta.text)
-    .join('')
+  // 正文 / 推理在写入时已经聚合成字符串（见 `sub-agent-live.ts` 的文件头）：
+  // 这里不再每帧 filter+map+join 数万条增量
+  const streamedText = live.text
+  const streamedReasoning = live.reasoning
   const text = streamedText || live.result || ''
   const hasAnything =
     Boolean(live.task) || Boolean(streamedReasoning) || Boolean(text) || live.events.length > 0
