@@ -1,7 +1,7 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import { Badge, Button, Checkbox, Label, RadioGroup, RadioGroupItem, Textarea } from '@repo/ui'
+import { Badge, Button, Checkbox, Input, Label, RadioGroup, RadioGroupItem, Textarea } from '@repo/ui'
 
 /**
  * 工具挂起后的一张问题卡（`data-tool-call-suspended`）。
@@ -96,6 +96,46 @@ export function isAnswered(
   return Array.isArray(value) ? value.length > 0 : Boolean(String(value ?? '').trim())
 }
 
+/**
+ * 「其他（自行填写）」在单选 / 多选里的哨兵值。
+ *
+ * 为什么不直接存用户输入的文本：选项选择与自由填写得能互相切换、且"勾了别的项"与
+ * "自己写了一段"是两件事。用选项里不可能出现的哨兵值占位，真正的文本单独存。
+ */
+export const OTHER_OPTION = '\u0000other'
+
+/** 「其他」那一行的文案（单选 / 多选共用，改一处就够） */
+export const OTHER_OPTION_LABEL = '其他（自行填写）'
+
+/**
+ * 「选中项 + 其他文本」→ 真正提交给模型的答案（纯函数，可单测）。
+ *
+ * 任何题型都必须能写"模型没给的选项"：
+ * - 单选：选中「其他」时答案就是输入框里的文字；否则就是选中的 label；
+ * - 多选：勾选项 + （勾了「其他」时的）输入文字，按顺序合成一个数组；
+ * - 问答：本身就是文本框，原样返回。
+ *
+ * 空文本不算作答：单选选了「其他」却没写、多选只勾了「其他」却没写，都会被 `isAnswered`
+ * 判成"没答" —— 必答题因此拦住"下一题"，而不是把空字符串当答案交上去。
+ */
+export const resolveAnswerValue = (
+  question: Question,
+  value: string | string[] | undefined,
+  otherText: string,
+): string | string[] => {
+  const other = otherText.trim()
+  if (question.type === 'multi') {
+    const list = Array.isArray(value) ? value : []
+    const chosen = list.filter((item) => item !== OTHER_OPTION)
+    return list.includes(OTHER_OPTION) && other ? [...chosen, other] : chosen
+  }
+  if (question.type === 'single') {
+    const single = typeof value === 'string' ? value : ''
+    return single === OTHER_OPTION ? other : single
+  }
+  return typeof value === 'string' ? value : ''
+}
+
 const typeLabel = (type: Question['type']): string =>
   type === 'single' ? '单选' : type === 'multi' ? '多选' : '问答'
 
@@ -113,6 +153,8 @@ export function QuestionCard({
   const [submitting, setSubmitting] = useState(false)
   const [submitted, setSubmitted] = useState(false)
   const [error, setError] = useState<string>()
+  /** 「其他（自行填写）」的文本（按题目 id 存；与选项选中状态分开，见 `OTHER_OPTION`） */
+  const [others, setOthers] = useState<Record<string, string>>({})
 
   if (questions.length === 0) return null
 
@@ -137,9 +179,16 @@ export function QuestionCard({
     return Array.isArray(value) ? value.join('、') : String(value ?? '')
   }
 
+  /** 「其他」输入框里的原文 */
+  const otherTextOf = (id: string): string => others[id] ?? ''
+
+  /** 这道题最终会提交的答案（选项 + 其他文本合一） */
+  const answerOf = (question: Question): string | string[] =>
+    resolveAnswerValue(question, values[question.id], otherTextOf(question.id))
+
   /** 这道题是否没答（选填永远算答完，不拦推进） */
   const missing = (question: Question): boolean =>
-    question.required !== false && !isAnswered(question, values[question.id])
+    question.required !== false && !isAnswered(question, answerOf(question))
 
   const canGoNext = readOnly || !missing(current)
 
@@ -185,7 +234,7 @@ export function QuestionCard({
         ...(data.toolCallId ? { toolCallId: data.toolCallId } : {}),
         answers: questions.map((question) => ({
           id: question.id,
-          value: values[question.id] ?? (question.type === 'multi' ? [] : ''),
+          value: answerOf(question),
         })),
       })
       setSubmitted(true)
@@ -198,7 +247,7 @@ export function QuestionCard({
 
   const progressOf = (question: Question, at: number): boolean => {
     if (resumed) return Boolean(recordedOf(question).trim())
-    return isAnswered(question, values[question.id]) || at < index
+    return isAnswered(question, answerOf(question)) || at < index
   }
 
   return (
@@ -273,6 +322,18 @@ export function QuestionCard({
                         </span>
                       </Label>
                     ))}
+                    <Label
+                      key="__other__"
+                      className="flex cursor-pointer items-start gap-2 rounded-md px-2 py-1.5 hover:bg-muted/60"
+                    >
+                      <RadioGroupItem value={OTHER_OPTION} className="mt-0.5" />
+                      <span className="min-w-0">
+                        <span>{OTHER_OPTION_LABEL}</span>
+                        <span className="block text-xs text-muted-foreground">
+                          模型给的选项都不合适时，自己写一段
+                        </span>
+                      </span>
+                    </Label>
                   </RadioGroup>
                 ) : null}
 
@@ -306,6 +367,35 @@ export function QuestionCard({
                         </Label>
                       )
                     })}
+                    <Label
+                      key="__other__"
+                      className="flex cursor-pointer items-start gap-2 rounded-md px-2 py-1.5 hover:bg-muted/60"
+                    >
+                      <Checkbox
+                        checked={
+                          Array.isArray(values[current.id]) &&
+                          (values[current.id] as string[]).includes(OTHER_OPTION)
+                        }
+                        onCheckedChange={(checked) => {
+                          const list = Array.isArray(values[current.id])
+                            ? (values[current.id] as string[])
+                            : []
+                          const rest = list.filter((item) => item !== OTHER_OPTION)
+                          setValue(
+                            current.id,
+                            checked === true ? [...rest, OTHER_OPTION] : rest,
+                          )
+                        }}
+                        disabled={disabled}
+                        className="mt-0.5"
+                      />
+                      <span className="min-w-0">
+                        <span>{OTHER_OPTION_LABEL}</span>
+                        <span className="block text-xs text-muted-foreground">
+                          模型给的选项都不合适时，自己写一段（可与其他项同时选）
+                        </span>
+                      </span>
+                    </Label>
                   </div>
                 ) : null}
 
@@ -315,6 +405,34 @@ export function QuestionCard({
                     placeholder={current.placeholder ?? '直接写你的回答'}
                     value={typeof values[current.id] === 'string' ? (values[current.id] as string) : ''}
                     onChange={(event) => setValue(current.id, event.target.value)}
+                    disabled={disabled}
+                  />
+                ) : null}
+
+                {/*
+                  **兜底输入框**（不论文案与题型来自哪里都有一条）：
+                  模型给的选项通常不全，用户必须能写"不在选项里的那个答案"。
+                  在这里输入等同于选中「其他」：单选覆盖选中项、多选追加在末尾、清空即取消。
+                */}
+                {current.type !== 'text' ? (
+                  <Input
+                    className="mt-2"
+                    aria-label={OTHER_OPTION_LABEL}
+                    placeholder="不在上面的选项里？直接写在这里"
+                    value={otherTextOf(current.id)}
+                    onChange={(event) => {
+                      const text = event.target.value
+                      setOthers((prev) => ({ ...prev, [current.id]: text }))
+                      if (current.type === 'single') {
+                        setValue(current.id, text ? OTHER_OPTION : '')
+                        return
+                      }
+                      const list = Array.isArray(values[current.id])
+                        ? (values[current.id] as string[])
+                        : []
+                      const rest = list.filter((item) => item !== OTHER_OPTION)
+                      setValue(current.id, text ? [...rest, OTHER_OPTION] : rest)
+                    }}
                     disabled={disabled}
                   />
                 ) : null}
