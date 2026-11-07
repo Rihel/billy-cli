@@ -327,6 +327,76 @@ class AgentCatalog {
 | 进程清理 | `dispose()` 在连接器停用 / 删除 / 进程退出时调用；`OnApplicationShutdown` 统一收口，不留孤儿进程 |
 | 健康检查 | 页面「测试连接」调 `probe()`；不自动轮询（一期），避免给外部服务加无谓流量 |
 
+### 9.1 本地 MCP 进程的状态管理（stdio 传输）
+
+stdio 连接器是**服务进程的子进程**，状态有两份，必须分清：
+
+| | 真相在哪 | 谁写 | 页面怎么用 |
+| --- | --- | --- | --- |
+| **进程状态** | 内存（`ConnectorPool` 的 `Map`） | 启动 / 退出 / 崩溃时 | 不直接展示，只映射成一个结论 |
+| **连接器状态** | `ai_connectors.status` 等列 | 状态迁移时写一次（不是每次调用） | 列表与详情的「状态」列 |
+
+关键一句：**库里的 `status` 是「上次看到的结论」，不是「现在」。** 上一代服务进程被杀之后，库里还写着 `ok`，子进程早就没了。所以启动时先对账一次：`UPDATE ai_connectors SET status='unknown' WHERE enabled`，让页面回到「未验证」，而不是继续显示一个假的绿点。
+
+#### 状态机
+
+```
+idle ──start()──► starting ──initialize + tools/list 成功──► ready ──空闲 5 分钟──► closing ──► stopped
+                    │                                          │
+                    └──spawn 失败 / 握手超时──┐                 └──子进程退出 / 调用失败──┐
+                                              ▼                                            ▼
+                                           crashed ◄────────────────────────────────────┘
+```
+
+| 状态 | 含义 | 进入条件 | 写进库里的结论 |
+| --- | --- | --- | --- |
+| `idle` | 没拉起（懒启动，或回收之后） | 刚启动 / 回收完成 / 停用 | 保持上次结论；停用用 `enabled=false` 表达 |
+| `starting` | 进程已 spawn，协议还没握手完 | `start()` | `unknown`（进行中，不覆盖已有错误） |
+| `ready` | `initialize` + `tools/list` 都成功 | 握手完成 | `ok` |
+| `closing` | 已发 SIGTERM，等在途调用收尾 | 空闲回收 / 停用 / 删除 / 进程退出 | 不动 |
+| `stopped` | 子进程正常退出（退出码 0） | 收到 exit | `unknown` |
+| `crashed` | 非正常退出：非 0 退出码、被信号杀、握手超时、重建失败 | 以上任一 | `error` + `last_error` |
+
+「忙」不单列状态：`ready` + `inflight>0` 就够（`inflight` 是并发计数，模型看到的工具清单与页面都只看状态本身）。
+
+#### 六个容易踩的地方
+
+1. **stderr 必须持续读**。没人读的话，管道缓冲区（默认 64KB）写满后子进程会阻塞，外部表现是「调用卡死、没有任何日志」。做法：常读，只留最近 50 行环形缓冲，出错时附进 `last_error`（脱敏后）。
+2. **stdout 只认协议**。本地 MCP server 常常往 stdout 打一行自己的启动信息（如 `Server started`），不能让「解析失败」直接判死：非 JSON-RPC 的行记 warn 后丢弃，连续多行无法解析才升级为 `crashed`。
+3. **杀进程要杀进程组，不是单个 pid**。`npx some-mcp` 这种还会再起一个真身进程，只杀父进程会留下孙子。POSIX 用 `spawn(..., { detached: true })` 起独立进程组、关闭时 `kill(-pid, 'SIGTERM')`；Windows 用 `taskkill /PID <pid> /T /F`。先软后硬：SIGTERM → 等 3s → SIGKILL。
+4. **孤儿要兜底，不能指望 `pnpm kill:dev`**。`node --watch` 重启（`apps/server/package.json` 的 `dev`）与被 `kill -9` 都会让子进程被 reparent 到 init：它既不是 dev 进程的子孙、也不监听端口，`scripts/kill-dev.ts` 的两条判定都命中不了。兜底：
+   - 拉起时写 `data/mcp-pids.json`（`{connectorKey, pid, startedAt, serverPid}`），正常退出时删；
+   - 启动时读它：`serverPid` 不是当前进程、且 `ps -p <pid> -o command=` 能看到该驱动的命令片段（防 pid 复用误杀，判定思路照 `kill-dev` 的保守做法）→ 先杀再继续；
+   - 容器里不需要（进程随 cgroup 一起消失），只对 dev / 宿主机部署有意义。
+5. **崩溃退避，别刷屏**。连续 3 次失败置 `error` 并停止自动重启；页面「重试」或「测试连接」才重置计数。否则一个地址配错的本地服务会 1 秒一次起进程、把日志刷满。
+6. **空闲回收**。`ready` 且 `inflight=0` 超过 5 分钟 → `closing → stopped`（本地 MCP 多半是 node 进程，几十 MB，放着不值）；下次调用重新拉起，冷启动几百毫秒，可以接受。
+
+#### 与关机流程的衔接
+
+`app.close()` 的顺序是：`beforeApplicationShutdown`（StreamHub 关 SSE）→ `httpServer.close()`（等在途请求）→ 各资源的 `onApplicationShutdown`（`apps/server/src/main.ts:96-131`）。连接器池挂在最后一个阶段：
+
+1. 先切 `closing`（不再接新调用），等在途调用最多 `min(3s, shutdownTimeoutMs)`；
+2. 再并行 dispose 全部子进程，统一 SIGTERM → 等 3s → SIGKILL；
+3. 最后删 pid 文件。
+
+这个过程没跑完就被 SIGKILL 的话，下一次启动的 pidfile 对账会收拾残局——第 4 条就是为它准备的。
+
+#### 多副本部署的一个真问题
+
+本地子进程没法跨实例共享：两个 server 副本各起一份自己的 MCP 进程，而 `ai_connectors.status` 只有一行。多副本时页面读到的「状态」其实是**最后一次写入者的视角**，可能刚好是另一台机器。
+
+一期按单实例（模板默认形态）处理，页面文案写明「状态由当前节点上报」；要做多副本，得把状态挪到按实例的表（`ai_connector_status.connector_id + instance`），页面聚合成「3 台里 2 台可用」。列入 §15 待拍板。
+
+#### 页面怎么呈现
+
+| 元素 | 取值 |
+| --- | --- |
+| 状态列 | 状态色 + 文案成对：`ok`「已连接」/ `error`「连接失败」/ `unknown`「未验证」 |
+| 最近错误 | 展开看 `last_error` 与 stderr 尾部（50 行，脱敏） |
+| 操作 | 「测试连接」（probe，不改状态）/「重启进程」（只重启本节点的进程）/「同步」 |
+
+「重启进程」只重建本节点的子进程，不动配置、不动 `ai_tools`；「同步」才会重新列工具。
+
 ---
 
 ## 10. 后台页面
@@ -426,3 +496,4 @@ class AgentCatalog {
 3. **装配重建的触发方式**：显式「应用变更」按钮（推荐） / 同步后自动重建 / 只在启动期注册（最省事，但改连接器要重启）。
 4. **按用户授权**是否进 P1。
 5. **单连接器工具数上限**默认值（20 还是 50）与超出后的处理（截断保留前 N 个 / 全列但提示）。
+6. **多副本时的状态归属**：一期按单实例做（状态写 `ai_connectors.status`，页面文案说明「当前节点上报」），还是直接上按实例的状态表（`ai_connector_status`），页面聚合成「N 台里 M 台可用」。前者省事，后者从第一天就诚实。
