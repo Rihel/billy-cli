@@ -3,9 +3,10 @@
 import { useState } from "react"
 import type { ReactNode } from "react"
 import {
+  columnVisibilityFeature,
+  coreFeatures,
   flexRender,
-  getCoreRowModel,
-  useReactTable,
+  useTable,
   type ColumnDef,
 } from "@tanstack/react-table"
 
@@ -36,8 +37,12 @@ import {
 } from "#components/ui/table"
 import { ChevronLeftIcon, ChevronRightIcon, InboxIcon } from "lucide-react"
 
+/** 只启用列可见性与 core：服务端分页，不需要前端排序 / 分页 / 过滤特性 */
+const tableFeatures = { ...coreFeatures, columnVisibilityFeature }
+type DataTableFeatures = typeof tableFeatures
+
 /** tanstack 列定义：meta.width 用于控制列宽 */
-export type DataTableColumnDef<T extends object> = ColumnDef<T, any> & {
+export type DataTableColumnDef<T extends object> = ColumnDef<DataTableFeatures, T, any> & {
   meta?: {
     width?: number
   }
@@ -98,15 +103,14 @@ export function DataTable<T extends object>({
   const totalCount = total ?? data?.length ?? 0
   const totalPages = Math.max(Math.ceil(totalCount / currentPageSize), 1)
 
-  const table = useReactTable({
+  const table = useTable<DataTableFeatures, T>({
+    features: tableFeatures,
     data: data ?? [],
     columns,
-    getCoreRowModel: getCoreRowModel(),
     getRowId:
       typeof rowKey === "function"
         ? rowKey
         : (row) => String((row as Record<string, unknown>)[rowKey]),
-    manualPagination: true,
   })
 
   const rows = table.getRowModel().rows

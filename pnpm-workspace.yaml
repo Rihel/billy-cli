@@ -54,3 +54,7 @@ overrides:
   # 统一提升到 19，与根 devDependencies 的 @types/react 对齐。
   '@types/react': ^19.3.0
   '@types/react-dom': ^19.3.0
+  # jsdom 31 的 parse5-parser-stream@8.1.0 调用了 parse5 8.1 新增的
+  # tokenizer.flushCharacters，但 pnpm 会解析到 8.0.1，jsdom 初始化直接
+  # TypeError；把 8.x 统一到 8.1.0。parse5 7.x（hast-util）不受影响。
+  'parse5@>=8.0.0 <9.0.0-0': 8.1.0

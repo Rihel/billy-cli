@@ -46,7 +46,7 @@ packages/
 | 缓存       | Redis（ioredis）           | Set / List / Hash / PubSub / 分布式锁       |
 | 异步消息   | Kafka（kafkajs）           | 生产者 `KafkaService.send` / 消费者 `@KafkaConsumer`；按 `KAFKA_BROKERS` 按需装配 |
 | 服务端推送 | SSE（StreamHub + HttpStreamClient） | 实时推送：AI 流式 / 任务进度 / 通知，Redis pub/sub 跨实例广播 |
-| AI 运行时  | Mastra + AI SDK 6          | agent 执行、工具调用、流式交给框架；工具网关、落库、恢复、审计与用量留在本工程（适配层隔离） |
+| AI 运行时  | Mastra + AI SDK 7          | agent 执行、工具调用、流式交给框架；工具网关、落库、恢复、审计与用量留在本工程（适配层隔离） |
 | 对象存储   | S3 / COS                   | 预签名 URL + 临时凭证（STS）                |
 | 构建工具   | tsdown（ui 除外）          | 快速 bundler；shared / kits / http-client / sdk 产出 dts，@repo/ui 直接用源码（exports 指向 `./src/*`，不参与构建） |
 | 容器化     | Docker multi-stage         | server + web 独立部署，compose 一键起依赖   |
@@ -55,8 +55,8 @@ packages/
 
 ### 前置条件
 
-- Node.js >= 20（推荐 24，Docker 基础镜像使用 24.14.1）
-- pnpm >= 11（`corepack enable && corepack prepare pnpm@11.15.0 --activate`）
+- Node.js >= 26（推荐 26.13.0，Docker 基础镜像使用 26.13.0）
+- pnpm >= 12（`npm install -g pnpm@12.18.0`；Node 26 不再内置 corepack）
 - PostgreSQL（可用 `docker compose up postgres` 一键启动）
 - Redis（compose 一键起在宿主 `6380`；`.env` 未配置时默认连接 `localhost:6379`。Redis 连接在应用启动（NestJS `OnApplicationBootstrap`）时建立，未启动会导致服务启动失败）
 - MinIO / S3 / COS（可选，仅存储模块需要；未配置对象存储相关环境变量时使用默认值）
@@ -1082,10 +1082,10 @@ docker compose --profile kafka up -d        # 追加 Kafka + 控制台（可选�
 ### 镜像构建
 
 ```bash
-# 先构建基础镜像（node 24.14.1 + pnpm 11.15.0 + 运维工具 bash/curl/wget/jq/tzdata）
+# 先构建基础镜像（node 26.13.0 + pnpm 12.18.0 + 运维工具 bash/curl/wget/jq/tzdata）
 ./build-base-image.sh
 # 等价于
-docker build -t node24-pnpm11:1.0 -f docker/Dockerfile.base .
+docker build -t node26-pnpm12:1.0 -f docker/Dockerfile.base .
 
 # 构建 server / web 镜像
 docker build -t billy-server:latest -f docker/Dockerfile.server .

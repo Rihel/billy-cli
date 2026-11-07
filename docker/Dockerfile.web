@@ -1,7 +1,7 @@
 # ─────────────────────────────────────────────
 # Stage 1: install & build (full monorepo)
 # ─────────────────────────────────────────────
-FROM node24-pnpm11:1.0 AS builder
+FROM node26-pnpm12:1.0 AS builder
 
 WORKDIR /app
 
@@ -31,7 +31,7 @@ RUN pnpm turbo run build --filter @app/web... --filter !@app/server
 # ─────────────────────────────────────────────
 # Stage 2: production image (standalone)
 # ─────────────────────────────────────────────
-FROM node24-pnpm11:1.0 AS runner
+FROM node26-pnpm12:1.0 AS runner
 
 WORKDIR /app
 

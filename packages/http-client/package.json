@@ -17,14 +17,13 @@
     "test:watch": "vitest"
   },
   "dependencies": {
-    "@repo/shared": "workspace:*",
-    "crypto-js": "^4.2.0"
+    "@noble/hashes": "^2.4.0",
+    "@repo/shared": "workspace:*"
   },
   "devDependencies": {
-    "@types/crypto-js": "^4.2.2",
-    "tsdown": "^0.23.0",
+    "tsdown": "^0.23.5",
     "typescript": "^7.0.2",
     "unrun": "^0.3.1",
-    "vitest": "^4.1.10"
+    "vitest": "^5.1.0"
   }
 }

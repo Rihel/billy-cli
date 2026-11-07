@@ -3,7 +3,9 @@ import type {
   AuthStrategyType,
   AuthContext,
 } from '../core/interfaces.js'
-import CryptoJs from 'crypto-js'
+import { hmac } from '@noble/hashes/hmac.js'
+import { sha256, sha384, sha512 } from '@noble/hashes/sha2.js'
+import { bytesToHex, randomBytes, utf8ToBytes, type CHash } from '@noble/hashes/utils.js'
 
 /** HMAC 凭证类型 */
 export type HmacCredentials = {
@@ -123,25 +125,25 @@ export class HmacStrategy implements AuthStrategy<HmacCredentials> {
    * 可在自定义请求管线中调用，实现全量请求签名。
    */
   sign(secretKey: string, data: string): string {
-    const fn = this.hmacFn()
-    return fn(data, secretKey).toString()
+    const fn = this.hashFn()
+    return bytesToHex(hmac(fn, utf8ToBytes(secretKey), utf8ToBytes(data)))
   }
 
-  /** 生成 16 字节随机数 */
+  /** 生成 16 字节随机数（hex 编码） */
   private generateNonce(): string {
-    return CryptoJs.lib.WordArray.random(16).toString()
+    return bytesToHex(randomBytes(16))
   }
 
-  /** 根据算法获取对应的 HMAC 函数 */
-  private hmacFn(): (data: string, key: string) => CryptoJs.lib.WordArray {
+  /** 根据算法获取对应的哈希函数 */
+  private hashFn(): CHash {
     switch (this.options.algorithm) {
       case 'SHA-384':
-        return CryptoJs.HmacSHA384
+        return sha384
       case 'SHA-512':
-        return CryptoJs.HmacSHA512
+        return sha512
       case 'SHA-256':
       default:
-        return CryptoJs.HmacSHA256
+        return sha256
     }
   }
 }

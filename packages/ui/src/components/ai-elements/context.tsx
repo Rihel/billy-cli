@@ -101,15 +101,15 @@ export const ContextTrigger = ({ children, ...props }: ContextTriggerProps) => {
 
   return (
     <HoverCardTrigger
-      render={(triggerProps) =>
-        children ? (
-          <Button {...triggerProps} type="button" variant="ghost" {...props} />
-        ) : (
-          <Button {...triggerProps} type="button" variant="ghost" {...props}>
-            <span className="font-medium text-muted-foreground">{renderedPercent}</span>
-            <ContextIcon />
-          </Button>
-        )
+      render={
+        <Button type="button" variant="ghost" {...props}>
+          {children ?? (
+            <>
+              <span className="font-medium text-muted-foreground">{renderedPercent}</span>
+              <ContextIcon />
+            </>
+          )}
+        </Button>
       }
     />
   )
@@ -275,7 +275,7 @@ export type ContextReasoningUsageProps = ComponentProps<"div">
 
 export const ContextReasoningUsage = ({ className, children, ...props }: ContextReasoningUsageProps) => {
   const { usage, modelId } = useContextValue()
-  const reasoningTokens = usage?.reasoningTokens ?? 0
+  const reasoningTokens = usage?.outputTokenDetails?.reasoningTokens ?? 0
 
   if (children) {
     return children
@@ -308,7 +308,7 @@ export type ContextCacheUsageProps = ComponentProps<"div">
 
 export const ContextCacheUsage = ({ className, children, ...props }: ContextCacheUsageProps) => {
   const { usage, modelId } = useContextValue()
-  const cacheTokens = usage?.cachedInputTokens ?? 0
+  const cacheTokens = usage?.inputTokenDetails?.cacheReadTokens ?? 0
 
   if (children) {
     return children

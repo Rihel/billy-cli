@@ -1,7 +1,7 @@
-FROM node:24.14.1-alpine 
-# 启用 corepack，固定 pnpm 版本
-RUN corepack enable && corepack prepare pnpm@11.15.0 --activate
-RUN npm config set registry https://registry.npmmirror.com
+FROM node:26.13.0-alpine 
+# Node 26 镜像不再内置 corepack，用 npm 全局安装固定 pnpm 版本
+RUN npm config set registry https://registry.npmmirror.com \
+  && npm install -g pnpm@12.18.0
 # 安装常用运维工具
 RUN apk add --no-cache \
   bash \

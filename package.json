@@ -30,18 +30,21 @@
   },
   "keywords": [],
   "author": "",
-  "packageManager": "pnpm@11.15.0",
+  "packageManager": "pnpm@12.18.0",
+  "engines": {
+    "node": ">=26"
+  },
   "license": "ISC",
   "dependencies": {
-    "tsx": "^4.23.13",
+    "tsx": "^4.23.15",
     "typescript": "^7.0.2"
   },
   "devDependencies": {
-    "@inquirer/prompts": "^8.5.2",
-    "@types/node": "^26.1.1",
+    "@inquirer/prompts": "^8.7.5",
+    "@types/node": "^26.6.6",
     "commander": "^15.0.0",
     "eta": "^4.6.0",
     "picocolors": "^1.1.1",
-    "turbo": "^2.10.5"
+    "turbo": "^2.11.10"
   }
 }

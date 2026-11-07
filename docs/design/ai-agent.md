@@ -1289,7 +1289,7 @@ AI SDK 的 `data-sub-agent` part，和主内容走同一条 SSE：
 `reject: false` 把"非零退出 / 超时 / 取消 / 输出超限 / 起不来"都落成结果字段
 （`timedOut` / `isCanceled` / `isMaxBuffer` / `exitCode`），比在 catch 里猜错误码可靠。
 手写版在 Windows 上**无解**（没有进程组信号，孙进程会残留）。
-依赖声明在 `packages/kits/package.json`（`execa@^10`，engines ≥22，与 `node:24-alpine` 基线一致）。
+依赖声明在 `packages/kits/package.json`（`execa@^10`，engines ≥22，与 `node:26-alpine` 基线一致）。
 
 **提示词的结构口径**（用户口径：角色 / 要求 / 工具 / 原则）：所有 agent 的系统提示词都按这四段组织 ——
 
