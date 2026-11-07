@@ -42,7 +42,7 @@
   "devDependencies": {
     "@inquirer/prompts": "^8.7.5",
     "@types/node": "^26.6.6",
-    "commander": "^15.0.0",
+    "commander": "^15.1.0",
     "eta": "^4.6.0",
     "picocolors": "^1.1.1",
     "turbo": "^2.11.10"
