@@ -58,7 +58,7 @@ packages/
 - Node.js >= 26（推荐 26.13.0，Docker 基础镜像使用 26.13.0）
 - pnpm >= 12（`npm install -g pnpm@12.18.0`；Node 26 不再内置 corepack）
 - PostgreSQL（可用 `docker compose up postgres` 一键启动）
-- Redis（compose 一键起在宿主 `6380`；`.env` 未配置时默认连接 `localhost:6379`。Redis 连接在应用启动（NestJS `OnApplicationBootstrap`）时建立，未启动会导致服务启动失败）
+- Redis（`.env` 模板按默认端口 6379 填写；compose 起的 Redis 映射在宿主 `6380`，需自行改端口。Redis 连接在应用启动（NestJS `OnApplicationBootstrap`）时建立，未启动会导致服务启动失败）
 - MinIO / S3 / COS（可选，仅存储模块需要；未配置对象存储相关环境变量时使用默认值）
 
 ### 安装
@@ -86,8 +86,9 @@ pnpm bootstrap --skip-seed    # 跳过管理员种子创建
 pnpm bootstrap --skip-smoke   # 跳过冒烟验证
 ```
 
-> 端口约定与 `docker-compose.yaml` 宿主端口一致：**PostgreSQL 15432 / Redis 6380 / MinIO 19000**
-> （容器内仍为 5432 / 6379 / 9000）。若本机已有 5432 / 6379 服务，改 `.env` 回默认端口即可。
+> `.env` 模板按中间件**默认端口**填写：**PostgreSQL 5432 / Redis 6379 / MinIO 9000 / Kafka 9092**
+> （Loki 3100）。用仓库的 `docker-compose` 起依赖时，宿主端口映射为 15432 / 6380 / 19000 / 29092，
+> 需要把 `.env` 里对应的端口改成映射端口；本机已有默认端口服务则直接用模板。
 
 ### 环境变量（手动）
 
@@ -103,11 +104,11 @@ cp apps/web/.env.local.example apps/web/.env.local
 
 ```env
 PORT=9989
-DB_URL=postgresql://root:pg1234@localhost:15432/billy-cli  # compose 宿主端口 15432；本机 pg 为 5432
-REDIS_URL=redis://localhost:6380/0                         # compose 宿主端口 6380；本机 redis 为 6379
-JWT_SECRET=dev-secret-change-in-production                 # 生产务必替换
-AUTH_ENABLED=true                                          # false 关闭鉴权（clone 自用）
-OBJECT_STORAGE_ENDPOINT=http://localhost:19000             # compose MinIO 宿主端口 19000
+DB_URL=postgresql://root:pg1234@localhost:5432/billy-cli   # 默认端口 5432；compose 映射 15432
+REDIS_URL=redis://localhost:6379/0                          # 默认端口 6379；compose 映射 6380
+JWT_SECRET=dev-secret-change-in-production                  # 生产务必替换
+AUTH_ENABLED=true                                           # false 关闭鉴权（clone 自用）
+OBJECT_STORAGE_ENDPOINT=http://localhost:9000               # 默认端口 9000；compose 映射 19000
 ```
 
 `apps/web/.env.local` 与 `apps/admin/.env` 使用默认值即可（不配置时代码有默认值兜底）。
