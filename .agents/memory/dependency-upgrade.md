@@ -23,11 +23,19 @@ Mastra 1.82 / memory 1.41、TanStack Table 9.3.1、Vitest 5.1.0、jsdom 31、Mot
    `outputTokenDetails.reasoningTokens` / `inputTokenDetails.cacheReadTokens`；
    `tool.description` 可能是函数。
 5. **Node 26 镜像没有 corepack**：Dockerfile.base 改为 `npm install -g pnpm@12.18.0`。
+6. **unified 双版本**：`@streamdown/cjk` 的 `CjkPlugin.remarkPlugins` 类型与 streamdown 分属
+   unified 11.0.0 / 11.0.5，`PluginConfig` 赋值报 TS2322。加
+   `'unified@>=11.0.0 <12.0.0-0': 11.0.5` override 后**必须清空 node_modules 重装**（旧符号链接
+   不会被 `pnpm install --force` 重建），admin 的 `tsconfig.tsbuildinfo` 也要删。
+7. **pnpm 12 的两个行为**：①按最小发布年龄过滤，`pnpm up --latest` 可能只升到"够老"的版本，
+   差一个 patch 的要显式 `pnpm up -r <pkg>@<ver>`；新装版本会被自动写进
+   `minimumReleaseAgeExclude`。②依赖自带的 agent skills 需要 `pnpm approve --all`，批准记录在
+   `pnpm-workspace.yaml` 的 `permissions`，技能会装进 `.agents/skills/`（由该目录 `.gitignore` 忽略）。
 
 ## 依据
 
 - `package.json` / `apps/*/package.json` / `packages/*/package.json` 的版本声明
-- `pnpm-workspace.yaml` 的 `overrides`（parse5）
+- `pnpm-workspace.yaml` 的 `overrides`（parse5 / unified）与 `permissions`
 - `docs/dev-logs/2026-11-07.md`
 
 ## 失效信号
