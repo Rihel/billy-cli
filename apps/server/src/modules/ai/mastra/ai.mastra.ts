@@ -74,11 +74,16 @@ export const createMastra = async ({
 }: CreateMastraOptions): Promise<Mastra> => {
   const built = new Map<string, ReturnType<typeof createMastraAgent>>()
   for (const definition of definitions) {
-    const tools = resolveTools(definition.tools)
-    // 问答（向用户提问并挂起）**只给主 agent**：子 agent 是临时执行体，没人能回答它。
-    // 子 agent 的工具面来自注册机（`childToolbox()`），本来就拿不到这个原生工具；
-    // 它缺信息时只能把问题交回主 agent（见 `agent-runner.ts` 的能力尾巴）。
-    if (definition.key === 'assistant') tools['ask-user-questions'] = askUserQuestionsTool as never
+    // 工具面**按请求解析**（设计 `ai-connector.md` §3.5）：
+    // 连接器产出的工具是运行期出现的，不能在建实例时烙死。
+    const buildTools = (): ReturnType<typeof resolveTools> => {
+      const tools = resolveTools(definition.tools)
+      // 问答（向用户提问并挂起）**只给主 agent**：子 agent 是临时执行体，没人能回答它。
+      // 子 agent 的工具面来自注册机（`childToolbox()`），本来就拿不到这个原生工具；
+      // 它缺信息时只能把问题交回主 agent（见 `agent-runner.ts` 的能力尾巴）。
+      if (definition.key === 'assistant') tools['ask-user-questions'] = askUserQuestionsTool as never
+      return tools
+    }
     built.set(
       definition.key,
       createMastraAgent({
@@ -103,7 +108,7 @@ export const createMastra = async ({
           (model) => resolveModel(definition, model),
           () => onMissingEnvelope?.(),
         ),
-        tools,
+        tools: () => buildTools(),
         memory: memory ?? agentMemory,
         // 技能按角色授权，交**目录路径**给 Mastra：清单注入 + 正文/参考文件按需读都由它负责
         // （`skill` / `skill_search` / `skill_read` 工具；我们只管发现与校验，见 `SkillLoader`）

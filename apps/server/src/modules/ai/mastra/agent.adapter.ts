@@ -92,7 +92,7 @@ export interface MastraAgentOptions {
   instructions: string | ((args: { requestContext: RequestContext }) => string)
   /** 模型：按调用从信封取（主 agent），或固定（临时子 agent 继承父这一轮的模型） */
   model: (args: { requestContext: RequestContext }) => { id: AgentModelId; url?: string; apiKey: string }
-  tools: ToolsInput
+  tools: ToolsInput | (() => ToolsInput)
   /** 技能目录路径（交给 Mastra 的技能加载机制，见 `toMastraSkills`） */
   skills: string[]
   durable?: boolean

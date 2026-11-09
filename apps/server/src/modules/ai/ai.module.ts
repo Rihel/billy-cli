@@ -38,6 +38,17 @@ import { SKILL_DIRS, SkillLoader } from './core/skills/index.js'
 import { toMastraSkills } from './mastra/skill.adapter.js'
 import { toMastraTools } from './mastra/tool.adapter.js'
 import { AGENT_TOOL_GROUPS } from './core/tools/tools.types.js'
+import { AiConnectorController } from './connectors/connector.controller.js'
+import { ConnectorGuardPlugin } from './connectors/connector.guard.plugin.js'
+import { CONNECTOR_STATE_SOURCE } from './connectors/connector.state.js'
+import type { ConnectorStateSource } from './connectors/connector.state.js'
+import { ConnectorRepository } from './connectors/connector.repository.js'
+import { ConnectorService } from './connectors/connector.service.js'
+import { ConnectorSyncService } from './connectors/connector.sync.service.js'
+import { CONNECTOR_DRIVERS } from './connectors/connector.types.js'
+import type { ConnectorDriver, ConnectorDriverMap } from './connectors/connector.types.js'
+import { RedisDriver } from './connectors/drivers/redis.driver.js'
+import { SqlDriver } from './connectors/drivers/sql.driver.js'
 import type { ToolEnvCaps } from './core/tools/tools.types.js'
 import type { AgentToolGroup } from './core/tools/tool.class.js'
 import { AGENT_TOOL_PLUGINS, ToolGateway } from './core/tools/tool.gateway.js'
@@ -102,7 +113,7 @@ let warnedMissingEnvelope = false
  */
 @Module({
   imports: [AuthModule, AdminModule, AiModelModule, AiUsageModule, AiMonitoringModule],
-  controllers: [AiController, AiToolController],
+  controllers: [AiController, AiToolController, AiConnectorController],
   providers: [
     {
       provide: AgentConfig,
@@ -152,15 +163,25 @@ let warnedMissingEnvelope = false
     // 网关插件链：**数组顺序 = 执行顺序**（redact → paginate → audit-end 不能换）
     {
       provide: AGENT_TOOL_PLUGINS,
-      inject: [TOOL_RATE_COUNTER, AppLogger, ToolResultStore, TOOL_ENV_CAPS, ToolCallMetaStore],
+      inject: [
+        TOOL_RATE_COUNTER,
+        AppLogger,
+        ToolResultStore,
+        TOOL_ENV_CAPS,
+        ToolCallMetaStore,
+        CONNECTOR_STATE_SOURCE,
+      ],
       useFactory: (
         counter: RedisToolRateCounter,
         logger: AppLogger,
         results: ToolResultStore,
         caps: ToolEnvCaps,
         metas: ToolCallMetaStore,
+        connectorStates: ConnectorStateSource,
       ) => [
         new EnabledPlugin(),
+        // 连接器总闸：实例停用 / 缺密钥时拒绝调用（设计 §3.9）
+        new ConnectorGuardPlugin(connectorStates),
         new ScopePlugin(),
         new RateLimitPlugin(counter, logger),
         new ValidatePlugin(),
@@ -174,6 +195,24 @@ let warnedMissingEnvelope = false
     ToolGateway,
     ToolRegistry,
     ToolSeedService,
+
+    // ───────────────────────── 连接器（外部能力来源）─────────────────────────
+    // 驱动是代码、实例是数据：驱动表在这里装配（加一种接法 = 加一个 provider + 一行）
+    SqlDriver,
+    RedisDriver,
+    {
+      provide: CONNECTOR_DRIVERS,
+      inject: [SqlDriver, RedisDriver],
+      useFactory: (sql: SqlDriver, redis: RedisDriver): ConnectorDriverMap =>
+        new Map<string, ConnectorDriver>([
+          [sql.kind, sql],
+          [redis.kind, redis],
+        ]),
+    },
+    ConnectorRepository,
+    ConnectorService,
+    { provide: CONNECTOR_STATE_SOURCE, useExisting: ConnectorService },
+    ConnectorSyncService,
 
     // ───────────────────────── 工具组（运行时能力） ─────────────────────────
     AgentRunner,
@@ -239,7 +278,8 @@ let warnedMissingEnvelope = false
             return decision.model
           },
           definitions: registry.all(),
-          resolveTools: (ids) => toMastraTools(tools.toolbox(ids), logger),
+          // `ALL_TOOLS` 在调用时展开：连接器产出的工具是运行期出现的（见设计 §3.5）
+          resolveTools: (ids) => toMastraTools(tools.toolbox(tools.expand(ids)), logger),
           resolveSkills: async (names) => toMastraSkills(await skillLoader.resolve(names)),
           storage: new AgentMastraStore(db, logger),
           durableAgents: config.durableEnabled,

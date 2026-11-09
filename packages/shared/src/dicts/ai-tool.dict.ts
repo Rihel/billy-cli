@@ -18,6 +18,8 @@ export const ToolCategory = createDict({
    * 不进注册机，网关拦不到，后台只读展示（设计 §5.10 路线 A）
    */
   Runtime: { label: '运行时自带', value: 'runtime' },
+  /** 连接器产出的工具（来源见 `ToolOrigin`；设计 `ai-connector.md` §3.2） */
+  Connector: { label: '连接器', value: 'connector' },
 })
 
 /** 工具作用域：这一次调用允不允许（授权在 agent 声明里，作用域是第二层关卡） */
@@ -45,6 +47,8 @@ export const ToolDenyReason = createDict({
   RateLimited: { label: '调用过于频繁', value: 'rate-limited' },
   Timeout: { label: '执行超时', value: 'timeout' },
   Aborted: { label: '已被停止', value: 'aborted' },
+  /** 外部服务不可用（连不上 / 超时 / 协议不对）——与 `internal`（我们自己写错了）分开 */
+  Upstream: { label: '外部服务不可用', value: 'upstream' },
   Internal: { label: '执行失败', value: 'internal' },
 })
 

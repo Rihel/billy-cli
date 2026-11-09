@@ -22,7 +22,7 @@ export type ToolKeyValue = string
 export type ToolScopeValue = 'all' | 'admin' | 'user' | 'agent'
 
 /** 工具类别 */
-export type ToolCategoryValue = 'core' | 'business'
+export type ToolCategoryValue = 'core' | 'business' | 'runtime' | 'connector'
 
 /**
  * 自定义事件的发出方式（`@repo/shared` 的 `ToolEventMode` 字典是唯一事实源，
@@ -204,6 +204,7 @@ export const isPagedToolValue = (value: unknown): value is PagedToolValue =>
 /** 统一的拒绝原因 */
 export type ToolDenyReasonValue =
   | 'unknown-tool'
+  | 'upstream'
   | 'invalid-input'
   | 'precheck-failed'
   | 'disabled'
@@ -337,6 +338,13 @@ export interface ToolSpec<C = Record<string, unknown>, I = unknown, O = unknown>
    * 于是"工具会吐什么"在代码里是封闭的、可对账的（设计 §5.17）。
    */
   readonly events: readonly ToolEventDecl[]
+  /**
+   * 连接器来源（只有连接器产出的工具才有）。
+   *
+   * 网关的 `connector-guard` 插件靠它做"实例总闸"：实例停用 / 缺密钥时拒绝调用。
+   * 不放进设置对象（`ToolSettings`）——那是可被库覆盖的值，来源是不可变的声明。
+   */
+  readonly connector?: { readonly id: string; readonly key: string }
   /** 默认作用域（库里可覆盖） */
   readonly scope: ToolScopeValue
   /** 委派类工具（创建 / 指挥子 agent）：子 agent 工具面要把它们排除 */
@@ -377,6 +385,14 @@ export type AnyToolSpec = ToolSpec<any, any, any>
  * （**一个组 1..n 个工具**；组类用 `@ToolGroup` + 方法上的 `@ToolDecl` 声明，见 `tool.decorator.ts`）。
  */
 export const AGENT_TOOL_GROUPS = Symbol.for('AgentToolGroups')
+
+/**
+ * 「这个 agent 可用此刻注册机里的全部工具」的标记（照技能侧 `ALL_SKILLS` 的写法）。
+ *
+ * 为什么需要它：连接器产出的工具是运行期出现的，agent 定义里写不出具体 key。
+ * 装配时展开成"当时注册机里的全部 key"；取值用 `*`（真实工具 key 的形状不允许 `*`）。
+ */
+export const ALL_TOOLS = '*'
 
 /** 网关包装后的工具（注册机对外只发这种；适配器把它转成 Mastra 工具） */
 export interface Tool {

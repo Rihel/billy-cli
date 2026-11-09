@@ -181,7 +181,8 @@ export class AiToolService {
 
   private toModel(spec: AnyToolSpec, settings: ToolSettings, agents: string[]): AiToolModel {
     const defaults = codeDefaults(spec) as Record<string, unknown>
-    const secretFields: AiToolSecretField[] = (spec.secretFields ?? []).map((field) => ({
+    // 连接器产出的工具：密钥归连接器实例管（在这儿展示只会让人以为要重复填一遍）
+    const secretFields: AiToolSecretField[] = (spec.connector ? [] : spec.secretFields ?? []).map((field) => ({
       name: field.name,
       label: field.label,
       required: field.required ?? false,

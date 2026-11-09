@@ -27,7 +27,25 @@ import { Column, Entity, Index } from 'typeorm'
   where: 'deleted_at IS NULL',
 })
 @Index('idx_tool_enabled', ['enabled'])
+@Index('idx_tool_connector', ['connectorId'])
 export class AiToolEntity extends AuditEntity {
+  /**
+   * **来源**：`code`（代码声明）/ `connector`（连接器产出）。
+   *
+   * 与 `source` 是两条轴：`source` 记"配置是谁改的"，`origin` 记"工具从哪来"。
+   * 种子同步只处理 `origin='code'` 的行（设计 `ai-connector.md` §3.2）。
+   */
+  @Column({ name: 'origin', type: 'varchar', length: 16, default: 'code' })
+  origin = 'code'
+
+  /** 产出它的连接器（`origin='connector'` 时必填）；**追溯只认这一列**，不解析 key */
+  @Column({ name: 'connector_id', type: 'varchar', length: 20, nullable: true })
+  connectorId: string | null = null
+
+  /** 对方的原始工具名（调用时原样回传；key 变了不影响调用） */
+  @Column({ name: 'remote_tool_name', type: 'varchar', length: 128, nullable: true })
+  remoteToolName: string | null = null
+
   /** 工具 key（`modules/ai/tools/tool-keys.ts` 是唯一事实源） */
   @Column({ name: 'tool_key', type: 'varchar', length: 64 })
   toolKey!: string

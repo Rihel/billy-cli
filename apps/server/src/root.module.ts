@@ -33,6 +33,7 @@ import {
 } from './common/index.js'
 import { AdminEntity } from './database/entities/admin-entity.js'
 import { AiModelEntity } from './database/entities/ai-model-entity.js'
+import { AiConnectorEntity } from './database/entities/ai-connector-entity.js'
 import { AiToolEntity } from './database/entities/ai-tool-entity.js'
 import { AiProviderEntity } from './database/entities/ai-provider-entity.js'
 import { AlertLogEntity } from './database/entities/alert-log-entity.js'
@@ -115,6 +116,8 @@ import { UserModule } from './modules/user/index.js'
           AiModelEntity,
           // 工具配置（配置类：开关 / 作用域 / 限额 / 配置值 / 秘钥；见 docs/design/ai-agent-tool-engine.md §5.5）
           AiToolEntity,
+          // 连接器实例（外部能力来源：地址 + 凭证 + 状态；见 docs/design/ai-connector.md §3.2）
+          AiConnectorEntity,
         ],
         // 审计订阅者：给继承 AuditEntity 的实体自动写 created_by / updated_by / deleted_by
         // （操作人由 main.ts 的 setAuditUserProvider 提供）

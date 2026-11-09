@@ -22,7 +22,8 @@ export class ToolSeedService implements OnApplicationBootstrap {
   ) {}
 
   async onApplicationBootstrap(): Promise<void> {
-    const specs = this.registry.specs()
+    // 只同步代码声明：连接器工具由 `ConnectorSyncService` 写，不能被当成"代码声明"覆盖
+    const specs = this.registry.staticSpecs()
     try {
       let created = 0
       let updated = 0

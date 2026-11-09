@@ -1,5 +1,13 @@
 import {
   AiAvailableModelListModel,
+  AiConnectorActionResult,
+  AiConnectorCatalogEntry,
+  AiConnectorCreateDto,
+  AiConnectorDetail,
+  AiConnectorIdDto,
+  AiConnectorListDto,
+  AiConnectorModel,
+  AiConnectorUpdateDto,
   AiModelCreateDto,
   AiModelIdDto,
   AiModelListDto,
@@ -553,6 +561,40 @@ export class ServerClient extends HttpClient<BearerTokenCredentials> {
 
     /** 恢复默认（清掉人工覆盖与已配秘钥，回到代码声明） */
     reset: (data: AiToolKeyDto) => this.post<AiToolModel>('/ai-tool/reset', data),
+  }
+
+  /* ========== 连接器（外部能力来源） ========== */
+
+  aiConnector = {
+    /** 型号目录（卡片与表单字段都由它渲染） */
+    catalog: () => this.post<AiConnectorCatalogEntry[]>('/ai-connector/catalog'),
+
+    /** 列表 */
+    list: (data: AiConnectorListDto) =>
+      this.post<AppPageQueryResponse<AiConnectorModel>>('/ai-connector/list', data),
+
+    /** 新建实例 */
+    create: (data: AiConnectorCreateDto) =>
+      this.post<AiConnectorModel>('/ai-connector/create', data),
+
+    /** 更新（省略的字段 = 不改；密钥给空串 = 清空） */
+    update: (data: AiConnectorUpdateDto) =>
+      this.post<AiConnectorModel>('/ai-connector/update', data),
+
+    /** 详情（含它产出的工具） */
+    detail: (data: AiConnectorIdDto) =>
+      this.post<AiConnectorDetail>('/ai-connector/detail', data),
+
+    /** 测试连接（只写状态，不动工具） */
+    test: (data: AiConnectorIdDto) =>
+      this.post<AiConnectorActionResult>('/ai-connector/test', data),
+
+    /** 同步：列能力 → 写工具 → 注册进注册机 */
+    sync: (data: AiConnectorIdDto) =>
+      this.post<AiConnectorActionResult>('/ai-connector/sync', data),
+
+    /** 删除（软删；工具行保留并停用） */
+    remove: (data: AiConnectorIdDto) => this.post<{ ok: boolean }>('/ai-connector/remove', data),
   }
 
   /* ========== 登录设备（会话） ========== */

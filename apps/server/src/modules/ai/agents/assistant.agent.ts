@@ -1,4 +1,5 @@
 import { TOOL_KEYS } from '../core/tools/tool-keys.js'
+import { ALL_TOOLS } from '../core/tools/tools.types.js'
 import { ALL_SKILLS } from '../core/skills/skills.types.js'
 import type { AgentSpec } from './types.js'
 
@@ -33,6 +34,8 @@ export const assistantAgent: AgentSpec = {
   description:
     '日常问答 + 任务清单（创建 / 重排 / 完成 / 删除）+ 联网查资料（搜索 / 抓网页 / 调接口）+ 可临时创建子助手 + 可执行本机命令（默认关闭，仅自用部署显式开启）',
   tools: [
+    // 连接器产出的工具是运行期出现的，用标记展开（见设计 `ai-connector.md` §3.5）
+    ALL_TOOLS,
     TOOL_KEYS.planCreate,
     TOOL_KEYS.planReorder,
     TOOL_KEYS.planComplete,
