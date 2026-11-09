@@ -96,8 +96,7 @@ export class RunCommandTool {
     description: dedent`
       在本机执行一条命令行命令，拿到退出码、stdout 与 stderr。
 
-      什么时候用：答案**只能靠真实执行**得到（跑脚本 / 测试、计算、取当前时间）；
-      按当前系统的 shell 语法写（Windows \`cmd.exe\` / POSIX \`/bin/sh\`）。
+      什么时候用：答案**只能靠真实执行**得到（跑脚本 / 测试、计算、取当前时间）。
 
       什么时候不用：能直接回答的、要用户拍板的、需要持续输入的。
 
@@ -105,8 +104,7 @@ export class RunCommandTool {
       **默认关闭**（未显式设 \`AGENT_COMMAND_ENABLED=true\` 时返回"已被关闭"）；
       命令以服务进程权限执行，**不是沙箱**。
 
-      约束：\`cwd\` 只能在工作根目录内（越界拒绝），但只约束起点、不约束读什么；
-      命令要**幂等**；输出用管道 \`head\` / \`grep\` 收窄。
+      约束：命令要**幂等**；输出用管道 \`head\` / \`grep\` 收窄。
     `,
   })
   async execute(

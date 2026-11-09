@@ -89,8 +89,7 @@ export const askUserQuestionsTool = createTool({
   id: 'ask-user-questions',
   description: dedent`
     向用户提一组问题并等待回答。需要补充信息、确认口径、让用户在方案之间选择时用。
-    一次最多 5 个；type=single（单选，必须给 options）、multi（多选，必须给 options）、text（问答，不给 options）。
-    调用后本轮会挂起，等用户回答再继续；**不要在调用后自己替用户回答**。
+    调用后本轮会挂起，等用户回答再继续；**不要在调用后自己替用户回答**（问题的类型与上限见参数定义）。
   `,
   inputSchema: AskUserQuestionsInputSchema,
   suspendSchema: AskUserQuestionsSuspendSchema,
