@@ -1,5 +1,0 @@
-export * from './errors.js'
-export * from './<%= it.name %>.repository.js'
-export * from './<%= it.name %>.service.js'
-export * from './<%= it.name %>.controller.js'
-export * from './<%= it.name %>.module.js'

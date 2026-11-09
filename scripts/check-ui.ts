@@ -1,10 +1,10 @@
 /**
  * 前端约定守卫（把「前端质量检查 + 组件库目录约定 + 设计系统约定」变成可执行检查）。
  *
- * 背景：后端有 `check:inject`（DI 规范）与 `check:scaffold`（模板漂移）两道守卫，
+ * 背景：后端有 `check:inject`（DI 规范）与 `check:mastra`（适配器边界）两道守卫，
  * 前端此前**一道也没有** —— 约定只写在 skill 里，靠人眼遵守。本脚本补上前端那一道。
  *
- * 五条不变量：
+ * 四条不变量：
  *
  *  A. **自有组件导出完整性**：`packages/ui/src/components/` 下的自有组件（不含走子路径的
  *     `components/ui/` 与 `components/ai-elements/` 两个子目录）每个文件都必须在
@@ -17,7 +17,7 @@
  *       走 `@repo/ui/components/ai-elements/<name>` 子路径按需引入，
  *       若进 barrel 会让任何 `import { X } from "@repo/ui"` 都把整棵 AI 组件树拉进首屏包。
  *
- *  B. **前端包质量脚本齐备**：凡是依赖 `next` 的 `apps/`（含 `pnpm cli -t client` 生成的新前端）
+ *  B. **前端包质量脚本齐备**：凡是依赖 `next` 的 `apps/`
  *     与 `packages/ui`，都必须声明 `typecheck` 脚本。失败意味着新前端包漏网 ——
  *     根 `pnpm typecheck` 管不到它，类型错误会在「门都绿了」的假象下合入。
  *
@@ -28,13 +28,12 @@
  *     历史存量按文件记入基线（只许减少、不许增加）：一次性全量迁移改动面过大，
  *     故采取「冻结存量 + 禁止新增」，让漂移不再扩散（见 docs/design/design-system.md §2）。
  *
- *  D. **工作区包样式入口可解析**：`apps/<app>/src`、`packages/ui/src` 与
- *     `scripts/cli/templates/files/` 里出现的 `@import "@repo/<pkg>/<路径>.css"`
- *     必须在 `packages/<pkg>/src/<路径>.css` 真实存在。
- *     包改名 / 导出改名后这些引用会**静默失效**（client 模板不在 `check:scaffold` 覆盖范围内，
- *     IDE 入口 `tailwind-ide.css` 也不参与构建，坏了没人发现）。
+ *  D. **工作区包样式入口可解析**：`apps/<app>/src` 与 `packages/ui/src` 里出现的
+ *     `@import "@repo/<pkg>/<路径>.css"` 必须在 `packages/<pkg>/src/<路径>.css` 真实存在。
+ *     包改名 / 导出改名后这些引用会**静默失效**（IDE 入口 `tailwind-ide.css` 不参与构建，
+ *     坏了没人发现）。
  *
- *  E. **字体规范一致**：`apps/<app>/src/app/layout.tsx` 与 client 模板的 `next/font` 变量名
+ *  E. **字体规范一致**：`apps/<app>/src/app/layout.tsx` 的 `next/font` 变量名
  *     必须与 `globals.css` 里字体回退链引用的变量一致 —— 规范**从 CSS 推导**，不维护第二份清单。
  *     （`next/font` 要求字面量，传变量直接构建失败，故 app 侧无法 import 定义，只能靠守卫兜住。）
  *
@@ -48,18 +47,16 @@ import { pathToFileURL } from 'node:url'
 const UI_ROOT = 'packages/ui'
 /** 前端应用扫描根目录（相对 cwd） */
 const APPS_ROOT = 'apps'
-/** 脚手架模板根目录（相对 cwd） */
-const TEMPLATES_ROOT = 'scripts/cli/templates/files'
 
 export interface UiViolation {
   /**
    * 'export'   = 自有组件未导出
    * 'script'   = 前端包缺 typecheck 脚本
    * 'palette'  = 新增硬编码业务调色板类（应走设计系统语义 token）
-   * 'template' = 脚手架模板的样式入口无法解析
+   * 'style'    = 工作区包样式入口无法解析
    * 'font'     = next/font 变量名与设计系统规范不一致
    */
-  kind: 'export' | 'script' | 'palette' | 'template' | 'font'
+  kind: 'export' | 'script' | 'palette' | 'style' | 'font'
   /** 涉及的包 / 文件（相对 cwd） */
   target: string
   detail: string
@@ -233,15 +230,14 @@ export function scanHardcodedPalette(cwd = process.cwd()): UiViolation[] {
   return violations
 }
 
-/** 模板中的工作区包样式入口：`@import "@repo/<pkg>/<路径>.css"` */
-const TEMPLATE_CSS_IMPORT = /@import\s+"(@repo\/[^"]+\.css)"/g
+/** 工作区包的样式入口：`@import "@repo/<pkg>/<路径>.css"` */
+const WORKSPACE_CSS_IMPORT = /@import\s+"(@repo\/[^"]+\.css)"/g
 
-/** D. 工作区包的样式入口（app / @repo/ui / CLI 模板里的 `@import "@repo/..."`）是否指向真实存在的文件 */
+/** D. 工作区包的样式入口（app / @repo/ui 里的 `@import "@repo/..."`）是否指向真实存在的文件 */
 export function scanStyleEntries(cwd = process.cwd()): UiViolation[] {
   const violations: UiViolation[] = []
 
   const roots = [
-    join(cwd, TEMPLATES_ROOT),
     ...(existsSync(join(cwd, APPS_ROOT))
       ? readdirSync(join(cwd, APPS_ROOT))
           .filter((entry) => statSync(join(cwd, APPS_ROOT, entry)).isDirectory())
@@ -250,9 +246,9 @@ export function scanStyleEntries(cwd = process.cwd()): UiViolation[] {
     join(cwd, UI_ROOT, 'src'),
   ]
 
-  for (const file of roots.flatMap((root) => collectFiles(root, /\.(css|eta)$/))) {
+  for (const file of roots.flatMap((root) => collectFiles(root, /\.css$/))) {
     const source = readFileSync(file, 'utf8')
-    for (const match of source.matchAll(TEMPLATE_CSS_IMPORT)) {
+    for (const match of source.matchAll(WORKSPACE_CSS_IMPORT)) {
       const specifier = match[1] as string
       const parsed = specifier.match(/^@repo\/([^/]+)\/(.+)$/)
       if (!parsed) continue
@@ -260,11 +256,11 @@ export function scanStyleEntries(cwd = process.cwd()): UiViolation[] {
       const resolved = join(cwd, 'packages', pkg as string, 'src', rest as string)
       if (!existsSync(resolved)) {
         violations.push({
-          kind: 'template',
+          kind: 'style',
           target: relative(cwd, file),
           detail:
             `样式入口 ${specifier} 无法解析（应存在 packages/${pkg}/src/${rest}）—— ` +
-            '工作区包的导出改名后请同步所有引用处（app / @repo/ui / 脚手架模板）',
+            '工作区包的导出改名后请同步所有引用处（app / @repo/ui）',
         })
       }
     }
@@ -295,7 +291,6 @@ export function scanFontContract(cwd = process.cwd()): UiViolation[] {
       targets.push(join(appsDir, entry, 'src/app/layout.tsx'))
     }
   }
-  targets.push(join(cwd, TEMPLATES_ROOT, 'client/layout.eta'))
 
   for (const target of targets) {
     if (!existsSync(target)) continue
@@ -333,7 +328,7 @@ function main(): void {
   const violations = scanFrontendConventions()
   if (violations.length === 0) {
     console.log(
-      '[check:ui] ✅ 组件导出完整 / 前端包质量脚本齐备 / 无新增硬编码调色板 / 模板样式入口可解析 / 字体规范一致',
+      '[check:ui] ✅ 组件导出完整 / 前端包质量脚本齐备 / 无新增硬编码调色板 / 样式入口可解析 / 字体规范一致',
     )
     return
   }
@@ -343,7 +338,7 @@ function main(): void {
   }
   console.error(
     '\n提示：组件必须从 packages/ui/src/index.ts 导出；前端包必须声明 typecheck 脚本；' +
-      '视觉取值走设计系统语义 token；改动工作区包导出后同步 scripts/cli/templates；' +
+      '视觉取值走设计系统语义 token；' +
       '字体变量名与 packages/ui/src/globals.css 的回退链保持一致（见 docs/design/design-system.md）。',
   )
   process.exitCode = 1

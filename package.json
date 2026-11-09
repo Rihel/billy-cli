@@ -4,7 +4,6 @@
   "description": "",
   "type": "module",
   "scripts": {
-    "cli": "node --import tsx/esm scripts/cli.ts",
     "bootstrap": "node --import tsx/esm scripts/setup.ts",
     "seed:admin": "pnpm --filter @app/server run seed:admin",
     "dev:pkgs": "turbo run dev --filter=./packages/*",
@@ -24,7 +23,6 @@
     "clean": "rm -rf node_modules && rm -rf packages/*/node_modules && rm -rf apps/*/node_modules && rm -rf dist && rm -rf .turbo && rm -rf .next && rm -rf .cache",
     "check:inject": "node --import tsx/esm scripts/check-inject-decorators.ts",
     "check:mastra": "node --import tsx/esm scripts/check-mastra-boundary.ts",
-    "check:scaffold": "node --import tsx/esm scripts/check-scaffold-templates.ts",
     "check:ui": "node --import tsx/esm scripts/check-ui.ts",
     "codegraph:setup": "node --import tsx/esm scripts/codegraph-setup.ts"
   },
@@ -43,7 +41,6 @@
     "@inquirer/prompts": "^8.7.5",
     "@types/node": "^26.6.6",
     "commander": "^15.1.0",
-    "eta": "^4.6.0",
     "picocolors": "^1.1.1",
     "turbo": "^2.11.10"
   }

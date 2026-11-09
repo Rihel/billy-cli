@@ -1,7 +1,0 @@
-import { Column, Entity, Index } from 'typeorm'
-import { BaseEntity } from '@repo/kits'
-
-@Entity('<%= it.tableName %>')
-@Index('idx_<%= it.tableName %>_update_at_id', ['updatedAt', 'id'])
-export class <%= it.modulePascal %>Entity extends BaseEntity {
-<%= it.columns %>}
