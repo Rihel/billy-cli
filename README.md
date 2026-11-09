@@ -1258,6 +1258,10 @@ codegraph ui           # 浏览器看图：http://127.0.0.1:4747
 - [docs/design/frontend-foundation.md](docs/design/frontend-foundation.md) — 前端基础建设（质量检查 + SSE 前端链路 + 前台业务闭环 + 实测记录）
 - [docs/design/monitor-alert.md](docs/design/monitor-alert.md) — 监控告警设计（规则 / 触发 / 通道）
 - [docs/design/auth-session.md](docs/design/auth-session.md) — 认证与会话设计（JWT + Redis 会话）
+- [docs/design/ai-agent.md](docs/design/ai-agent.md) — AI 运行时（会话 / 运行 / 流式 / 上下文 / 恢复）
+- [docs/design/ai-agent-tool-engine.md](docs/design/ai-agent-tool-engine.md) — 工具引擎（工具组 / 注册机 / 网关插件 / 配置入库）
+- [docs/design/ai-connector.md](docs/design/ai-connector.md) — 连接器（外部能力来源：数据库 / MCP / 自定义）
+- [docs/design/ai-extension-guide.md](docs/design/ai-extension-guide.md) — **加工具 / 加技能 / 加连接器**的落地步骤
 - [docs/queue.md](docs/queue.md) — 已废弃（BullMQ 队列方案，已被 Kafka 取代，仅存档）
 - [docs/billy-pitch.md](docs/billy-pitch.md) — 项目定位与竞品调研
 - [docs/dev-logs/](docs/dev-logs/) — 开发日志（按日追加，记录每轮改动的背景 / 做了什么 / 验证）

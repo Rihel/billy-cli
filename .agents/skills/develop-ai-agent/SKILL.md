@@ -20,7 +20,9 @@ description: >-
 **分工**：本 skill 讲**怎么写**（机制与配方）；**该不该做、工具面怎么切、权限与成本、安全与审计、
 怎么验收**看工程级 skill `ai-agent-engineering`。
 **权威设计文档**：`docs/design/ai-agent.md`（运行时）+ `docs/design/ai-agent-tool-engine.md`
-（工具 DSL / 注册机 / 网关插件 / 配置入库 / Mastra 适配器）—— 改 AI 前先读，改完同步。
+（工具 DSL / 注册机 / 网关插件 / 配置入库 / Mastra 适配器）+ `docs/design/ai-connector.md`（连接器）——
+改 AI 前先读，改完同步。**加工具 / 加技能 / 加连接器的落地步骤**统一看
+`docs/design/ai-extension-guide.md`。
 
 ## 0. 四条硬规则（违反即返工）
 
@@ -36,14 +38,15 @@ description: >-
 | 目录 | 放什么 | 加东西时改哪 |
 | --- | --- | --- |
 | `api/` | **接口层**：`ai.controller`（对话路由）/ `ai-tool.controller`（工具配置路由）/ `ai-tool.service`（后台工具配置服务） | 加路由：写 controller + 在 `ai.module.ts` 的 `controllers` 登记一行 |
-| `core/` | **核心引擎**（与"具体是哪件事"无关）：共享数据结构 `envelope`（运行时信封）/ `config` / `constants` / `errors` / `model-decision`；**工具引擎 `core/tools/**`**（`tools.types` DSL / `tool.decorator` + `tool.class`（工具组 DSL 与 `buildToolSpecs`）/ `tool.registry`（注册机 + 种子）/ `tool.gateway`（网关）/ `plugins/*.plugin.ts`（一个插件一个文件）/ `tool.settings`（合并纯函数）/ `tool.config.service`（缓存）/ `tool.config.repository`（`ai_tools`）/ `tool-event`（事件声明归一化 + 发射，见 §2.2）/ `paginate` + `tool-result.store`（大返回分页与回取））；`core/skills/**`（`SkillLoader` + `catalog/<name>/SKILL.md`）；`core/prompts/**`（提示词引擎 + `templates/*.eta` + `partials/` + 运行环境组装 `environment.ts`） | 加引擎能力：改 `core/tools/**`（**禁 import `@mastra`**） |
+| `core/` | **核心引擎**（与"具体是哪件事"无关）：共享数据结构 `envelope`（运行时信封）/ `config` / `constants` / `errors` / `model-decision`；**工具引擎 `core/tools/**`**（`tools.types` DSL / `tool.decorator` + `tool.class`（工具组 DSL 与 `buildToolSpecs`）/ `tool.registry`（注册机 + 种子）/ `tool.gateway`（网关）/ `plugins/*.plugin.ts`（一个插件一个文件）/ `tool.settings`（合并纯函数）/ `tool.config.service`（缓存）/ `tool.config.repository`（`ai_tools`）/ `tool-event`（事件声明归一化 + 发射，见 §2.2）/ `paginate` + `tool-result.store`（大返回分页与回取））；`core/skills/**`（`SkillLoader` + `catalog/<name>/SKILL.md`；当前仓库未建 catalog，默认加载 `~/.agents/skills`）；`core/prompts/**`（提示词引擎 + `templates/*.eta` + `partials/` + 运行环境组装 `environment.ts`） | 加引擎能力：改 `core/tools/**`（**禁 import `@mastra`**） |
 | `runtime/` | 会话 / 运行 / 时间线仓储与服务、上下文、**附件取回与多模态组装**（`chat-attachment.service`）、流记录、子 agent 执行器、崩溃恢复 + `plan.protocol`（计划协议） | 改行为先看 `runtime.md` |
 | `agents/` | **顶层** agent 声明（前端能选的就这些，一个文件一个）+ `index.ts` 唯一登记处 + `types` / `registry` / `service`（注册表与装配查询） | 加 agent：一个文件 + `AGENT_SPECS` 一行 + 一个 eta 模板 |
 | `tools/` | **具体工具**（用 `core/tools` 的引擎写，**禁 import `@mastra`**）：`command.tool` / `subagent.tool` / `read-tool-result.tool` / `planner/**`（规划工具组 `planner.tools`：组内四个 `@ToolDecl` 方法 + `planner.store` 机制 + `planner.schemas` 数据结构） | 加工具：在合适的组里加一个 `@ToolDecl` 方法（没有合适的组就新建一个 `@ToolGroup` 类）+ 在 `AGENT_TOOL_GROUPS` 登记一行 |
+| `connectors/` | **连接器**（外部能力来源：目录 / 驱动 / 同步 / 后台接口；`connector.types.ts` 是抽象，`drivers/` 是接法） | 加型号：目录 + 驱动 + `ai.module` 注册；见 `docs/design/ai-extension-guide.md` §3 |
 | `mastra/` | **适配器**（唯一可 import `@mastra`）：`ai.mastra`（Mastra 实例装配）/ `tool.adapter`（含 `toModelOutput` 分页）/ `agent.adapter` / `context.adapter`（信封 ↔ RequestContext）/ `stream.adapter` / `skill.adapter` | 升级 Mastra 先跑 `test/ai-mastra-contract.test.ts` 的数据结构，再改这里 |
 
 细节：会话运行链、上下文策略、SSE 协议与恢复 → [references/runtime.md](./references/runtime.md)；
-扩展点（加 agent / 工具 / 技能 / 子 agent）→ [references/extension.md](./references/extension.md)。
+扩展点（加 agent / 工具 / 技能 / 子 agent / 连接器）→ [references/extension.md](./references/extension.md)。
 
 ## 2. 装配方向（不许反）
 

@@ -52,10 +52,17 @@
    "可用工具"那段由 `ToolRegistry.describe(spec.tools)` 渲染 —— 提示词里的工具清单与实际挂载的**同源**，
    key 写错在启动期就报错。
 
-## 5. 加一个技能（`skills/catalog/<name>/SKILL.md`）
+## 5. 加一个技能（两种，别混）
 
-目录 + `SKILL.md`（+ 可选 `references/`），然后在 agent 声明的 `skills` 里授权；
-`SkillLoader` 会在启动期校验并解析成 Mastra 的 `InlineSkill`（未知名直接启动失败）。
+| 用途 | 放哪 | 谁读 |
+| --- | --- | --- |
+| 给**写代码的 agent** 的工程规范 | 仓库 `.agents/skills/<name>/SKILL.md` | 编码 agent（Claude Code / DSH），按 `manage-skills` 维护 |
+| 给**运行时助手**的业务技能 | `core/skills/catalog/<name>/`（随包、严格校验）或 `AGENT_SKILLS_DIRS`（默认 `~/.agents/skills`，坏一个跳过） | `SkillLoader` → 交给 Mastra |
+
+运行时技能三步：目录 + `SKILL.md`（frontmatter 的 `name` 唯一、`description` ≤1024 字符，超了会被当坏技能跳过；
+正文写步骤、长内容拆 `references/`）→ 在 agent 声明 `skills` 里授权（`ALL_SKILLS` = 全部已加载）→
+启动日志看 `ai.skills.loaded` 验证。技能**名单**启动时扫一次（增删要重启），正文由 Mastra 按需读（改了不用重启）。
+注意：`core/skills/catalog/` 目前**不存在**，默认只加载 `~/.agents/skills`。
 
 ## 6. 子 agent（动态创建，不是静态声明）
 
@@ -107,3 +114,17 @@
   按轮求值的片段走 `promptEngine.renderPartial(template, data)`（`render` 的 `PromptData` 要求
   `agentKey` / `tools` 那套字段，不放宽它，否则"工具清单忘了注入"就没人拦）；
 - **子 agent 不注入**：它的提示词由主 agent 现写，`request_snapshot` 要保持原样。
+
+## 9. 加一个连接器（外部能力来源）
+
+**别用工具组写外部集成**——连接器是数据 + 驱动的组合，工具由连接器同步产生。两条路：
+
+1. **只加实例**（不改代码）：后台「AI → 连接器」→ 选型号 → 填地址/账号 → 测试 → 同步；
+2. **加新型号/驱动**（改代码）：
+   `connectors/connector.catalog.ts` 加目录条目（必须给 `defaults`，如 `dialect` / 默认端口）→
+   `connectors/drivers/<name>.driver.ts` 实现 `describe / invoke / probe`（禁 import `@mastra`）→
+   `ai.module.ts` 的 `providers` 与 `CONNECTOR_DRIVERS` 各加一行 → `test/ai-connector.test.ts` 补断言。
+
+四条硬口径：工具 key 前缀 `c-<实例>-<工具>`、追溯只认 `connector_id`；连接器工具默认 `scope='admin'`；
+密钥在实例上（`connector-guard` 会嫁接进工具设置，precheck / 脱敏才正常）；驱动异常统一 `upstream`。
+完整步骤与验证清单见 `docs/design/ai-extension-guide.md` §3，设计与取舍见 `docs/design/ai-connector.md`。
