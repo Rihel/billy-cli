@@ -97,7 +97,10 @@ export default function MonitorRulesPage() {
     },
     {
       header: '级别',
-      accessorKey: 'config',
+      // 列 id 必须唯一：相同的 accessorKey 会让 TanStack 生成同名列 id，
+      // React 列表 key 随之重复（header 一次 + 每行 cell 一次），控制台刷屏告警
+      id: 'level',
+      accessorFn: (row) => row.config.level,
       meta: { width: 90 },
       cell: ({ row }) => {
         const meta = LEVEL_META[row.original.config.level] ?? LEVEL_META.warn
@@ -106,7 +109,8 @@ export default function MonitorRulesPage() {
     },
     {
       header: '阈值',
-      accessorKey: 'config',
+      id: 'threshold',
+      accessorFn: (row) => row.config.threshold,
       meta: { width: 120 },
       cell: ({ row }) => (
         <span className="font-mono text-xs tabular-nums text-foreground/80">

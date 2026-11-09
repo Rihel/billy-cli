@@ -65,3 +65,4 @@
 | [ai-skills-loading](ai-skills-loading.md) | 技能：我们只发现/校验/授权路径，正文与 references 由 Mastra 按需读；`~/.agents/skills` 默认加载（每轮约 +11k token） | 抽核 | 2026-10-27 |
 | [ai-runtime-observability](ai-runtime-observability.md) | 首 token / 步与工具耗时都有写入点；失败按 denied / invalid / output-error 分桶；快照在调模型前落库 | 必核 | 2026-10-29 |
 | [dependency-upgrade](dependency-upgrade.md) | 全量升级落点与坑：ioredis 6 与 TypeORM peer 冲突、jsdom 31 需 parse5 8.1、Table 9 新 API、AI SDK 7 usage 字段 | 抽核 | 2026-11-07 |
+| [ui-data-table-column-id](ui-data-table-column-id.md) | DataTable 用列 id 当 key：同一 columns 数组里两列共用 `accessorKey` 会刷屏重复 key 告警 | 抽核 | 2026-11-07 |
