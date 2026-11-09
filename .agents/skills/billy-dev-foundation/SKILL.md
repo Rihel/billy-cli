@@ -85,7 +85,7 @@ description: Billy 工程（billy-cli monorepo）开发必读 skill。任何在�
 | [references/architecture.md](./references/architecture.md) | 工程定位、技术栈、分层架构详解、数据流 | 每次任务开始（必读） |
 | [references/placement.md](./references/placement.md) | 新能力该放哪里：放哪个包 / 目录 / 文件，各位置的模式要求 | 遇到无基础能力的新需求（状态机 / 异步消息 / 心跳 / 限流等）时（必读） |
 | [references/design.md](./references/design.md) | 设计决策：评估难度决定是否出方案、方案原则、借鉴成熟方案 | 中等 / 复杂需求动手前（必读） |
-| [references/code-conventions.md](./references/code-conventions.md) | 硬性代码约定 11 条，含「不重复造轮子」查找顺序 | 写任何代码前（必读） |
+| [references/code-conventions.md](./references/code-conventions.md) | 硬性代码约定 13 条，含「不重复造轮子」查找顺序 | 写任何代码前（必读） |
 | [references/commands.md](./references/commands.md) | 常用命令 | 需要执行命令时 |
 | [references/workflow.md](./references/workflow.md) | 标准开发流程、**验证与收尾清理**（界面交用户验 / 临时脚本删除 / 进程停干净）、参考实现（user 全链路） | 任务执行过程中、收尾前（必读） |
 

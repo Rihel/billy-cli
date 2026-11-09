@@ -18,7 +18,7 @@
 1. **开箱即用的 AI 应用开发能力** —— 会话、工具、模型、用量、审计都是现成模块与后台页面。
 2. **可观测性** —— 日志、指标、告警、链路与 AI 运行审计，出问题不用登录服务器。
 3. **高颜值** —— 一套设计 token 与 60+ 组件，前台后台共用，`check:ui` 守住漂移。
-4. **高维护性** —— 数据结构只定义一份，依赖单向，六道检查在提交前拦住走样。
+4. **高维护性** —— 数据结构只定义一份，依赖单向，五道检查在提交前拦住走样。
 
 ## 2. 痛点：AI 把写代码的成本降了，也把工程一致性的成本放大了
 
@@ -93,7 +93,7 @@
 
 - **数据结构只有一份**：Zod schema 同时供入参校验、TypeORM 实体、SDK 类型、后台表单与列表，改一个字段六处生效。
 - **依赖方向不可逆**：shared 不依赖业务包，kits 不引用 `apps/*`，common 不依赖业务模块，service / repository 不碰 HTTP。
-- **检查在提交前**：`typecheck`、`test`、`check:inject`、`check:mastra`、`check:ui`、`check:scaffold` 六道，过了才算做完。
+- **检查在提交前**：`typecheck`、`test`、`check:inject`、`check:mastra`、`check:ui` 五道，过了才算做完。
 - **AI 读到的是现状**：23 个 Agent Skills 每条规则都指向仓库真实文件，代码变了 skill 要跟着改，`manage-skills` 与检查脚本降低漂移。
 
 | 对比项 | 模板 / 规则包 / AI 框架 | Billy |
@@ -151,7 +151,6 @@
 - **能力底座 `@repo/kits`**：数据库（事务、四种分页、批量写入、软删、SQL 打印）、Redis、限流、JWT、会话、密码、对象存储、SSE、Kafka、飞书、通知、遥测、调度（croner + 时间轮）。
 - **12 个业务模块**：`auth`、`user`、`admin`、`session`、`storage`、`stream`、`monitor`、`ai`、`ai-model`、`ai-usage`、`runtime-config`、`ops`。
 - **部署**：Docker multi-stage，compose 一键起依赖，附 Kubernetes 清单。
-- **CLI 生成器**：`pnpm cli` 生成 service / CRUD / 前端脚手架，`check:scaffold` 保证与仓库规范一致。
 
 ### 6.5 AI 原生开发：23 个 Agent Skill
 
@@ -225,7 +224,7 @@ Billy 的定位是 **开箱即用的 AI 应用开发基座**（AI 对话运行�
 - **「有 skill」不是壁垒**：Open SaaS（免费）、Makerkit / Gravity（收费）都已内置 AGENTS.md / skills / agent。差异不在「有没有 skill」，而在 skill 与**通用 TS monorepo 分层架构**的耦合深度，以及是否可被检查。
 - **又一个新的分水岭**：多数模板的 AI 只用于「帮人写这个模板」，没有把 AI 能力做成产品运行时。Billy 两者都有：23 个 skill 管「怎么写」，`modules/ai` 管「产品里的 AI 怎么跑」。
 - **空白**：**「通用 TypeScript 全栈 monorepo + skills 驱动 + 业务基座 + AI 运行时」这一组合，国内外无直接对标**。Open SaaS 最接近（免费 + 全栈 + AI-ready），但绑定 Wasp DSL、单体 SaaS，且没有 AI 运行时。
-- **Billy 的差异化四点**：开箱即用的 AI 应用开发能力（会话 / 工具 / 恢复 / 审计 / 用量，不是零件）；可观测性（日志 / 指标 / 告警 / 探针 / AI 审计已接好）；高颜值（一套 token 与组件库，有守卫）；高维护性（数据结构一份、依赖单向、六道检查）。
+- **Billy 的差异化四点**：开箱即用的 AI 应用开发能力（会话 / 工具 / 恢复 / 审计 / 用量，不是零件）；可观测性（日志 / 指标 / 告警 / 探针 / AI 审计已接好）；高颜值（一套 token 与组件库，有守卫）；高维护性（数据结构一份、依赖单向、五道检查）。
 
 ## 4. 竞品清单（模板 / 脚手架类）
 

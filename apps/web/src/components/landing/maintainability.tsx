@@ -15,7 +15,6 @@ const checks = [
   { cmd: 'pnpm check:inject', detail: '依赖注入写法全工程一致' },
   { cmd: 'pnpm check:mastra', detail: '适配器边界，业务不被框架渗透' },
   { cmd: 'pnpm check:ui', detail: '组件导出、设计系统、无硬编码颜色' },
-  { cmd: 'pnpm check:scaffold', detail: 'CLI 生成的模板与仓库规范一致' },
 ]
 
 const rules = [
@@ -65,7 +64,7 @@ export function Maintainability() {
 
           {/* 右：检查与依赖方向 */}
           <div>
-            <h3 className="text-base font-medium text-foreground">六道检查，过了才算做完</h3>
+            <h3 className="text-base font-medium text-foreground">五道检查，过了才算做完</h3>
             <div className="mt-4">
               {checks.map((check) => (
                 <Reveal key={check.cmd}>

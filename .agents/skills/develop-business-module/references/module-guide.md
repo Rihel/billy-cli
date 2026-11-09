@@ -3,19 +3,6 @@
 > 本文件是 `develop-business-module` skill 的组成部分，由主 SKILL.md 引用。
 > 实现模块时按各节落地，最后按主 SKILL.md 的检查清单自查。
 
-## 0. 骨架生成（可选，推荐）
-
-新模块骨架可用代码生成器一键生成（对齐 user 范例的 entity / repository /
-service / errors / controller / module / schema）：
-
-```bash
-pnpm cli -t crud -n <name>
-```
-
-生成后仍需按下列各节逐层落地：错误码与 schema 导出、`XxxModule` 在
-`apps/server/src/root.module.ts` 的 `imports` 注册 + 实体注入
-`DbModule.forRootAsync` 工厂的 `entities`、迁移、SDK、admin 页面。
-
 ## 1. ① 数据结构：错误码 + schema
 
 - `AppErrorCodes` 增加 `XxxNotFound: { label: 'Xxx 不存在', value: 3xxx, http: 404 }`

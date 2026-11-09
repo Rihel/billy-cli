@@ -19,19 +19,12 @@ pnpm seed:admin    # 创建首个管理员（admin@billy.local / admin123）
 pnpm docker:up     # Docker Compose 一键起依赖（postgres + redis + minio + server + web）
 pnpm bootstrap     # 一键初始化引导：环境检查 → 依赖服务 → 生成 .env → install → 迁移 → 种子 → 冒烟
 pnpm bootstrap -y  # 全默认非交互（--skip-docker / --skip-install / --skip-migrate / --skip-seed / --skip-smoke 可跳过指定步骤）
-pnpm cli           # 代码生成器（交互式）：package / client / service / crud 四类模板
-pnpm cli -t crud -n <name>  # 非交互生成 CRUD 业务模块（实体 / repository / service / controller / module / schema）
 pnpm check:inject  # DI 装饰器一致性守卫（构造器 @Inject / providers @Injectable），违反返回非零退出码
-pnpm check:scaffold # 脚手架模板守卫：导入名 + service 骨架整体渲染 + crud 模块整体渲染（真实 CLI 生成后类型检查），防模板与工作区包漂移
-                    #   前提：刚改过 packages 源码要先 pnpm build:pkgs（tsc 读的是 dist 声明），脚本会告警；crud 检查会临时改动 shared 的 schema/index 与错误码字典，跑完自动还原
-                    #   注意：它会临时改动 + 重建 shared，期间不要并行跑 next build / tsc / **dev server**
-                    #   （dev 会误报 Can't resolve '@repo/shared' / '@repo/shared/logger'，shared 重建完即自愈）
-                    #   范围：只覆盖 service / crud 模板；前端 client 模板由 pnpm check:ui 的第 ④ 条兜底
-pnpm check:ui       # 前端约定守卫（五条）：① packages/ui/src/components/ 自有组件必须在 src/index.ts 导出；
+pnpm check:ui       # 前端约定守卫（四条）：① packages/ui/src/components/ 自有组件必须在 src/index.ts 导出；
                     #   ② 前端包（apps/ 里依赖 next 的 + @repo/ui）必须声明 typecheck 脚本；
                     #   ③ 不得新增硬编码调色板类（存量按文件基线冻结，只许减少；视觉取值走设计系统语义 token）；
-                    #   ④ app / @repo/ui / 脚手架模板里的 @import "@repo/x/y.css" 必须在 packages/x/src/y.css 真实存在；
-                    #   ⑤ apps/*/src/app/layout.tsx 与 client 模板的 next/font 变量名与 packages/ui/src/globals.css 的字体回退链一致
+                    #   ④ app / @repo/ui 里的 @import "@repo/x/y.css" 必须在 packages/x/src/y.css 真实存在；
+                    #   （字体回退链一致性：apps/*/src/app/layout.tsx 的 next/font 变量名与 packages/ui/src/globals.css 对齐）
 ```
 
 > **不要用 `tsx` CLI 跑 server**：它同时挂 CJS 钩子，会让 CJS 依赖（pino / pg 等）`require` 到的

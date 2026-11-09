@@ -153,35 +153,6 @@ pnpm start:web
 pnpm docker:up
 ```
 
-## 代码生成器（pnpm cli）
-
-仓库内嵌脚手架生成器（`scripts/cli/`），交互式生成 workspace 模板，模板文件为
-`.eta`（eta 模板引擎，见 `scripts/cli/templates/files/`）：
-
-```bash
-pnpm cli                     # 交互式选择模板类型
-pnpm cli -t crud -n product --no-install  # 非交互生成 CRUD 业务模块（type / name / install 都给全才不追问）
-```
-
-四种模板类型：
-
-| 类型 | 说明 | 生成位置 |
-| --- | --- | --- |
-| `package` | 通用 TypeScript 包（tsdown 构建） | `packages/<name>/` |
-| `client` | Next.js 前端应用（@repo/ui 技术栈） | `apps/<name>/` |
-| `service` | NestJS 服务端应用骨架（main.ts + root.module.ts + lib/http.ts + config.ts + data-source.ts） | `apps/<name>/` |
-| `crud` | NestJS + TypeORM 业务模块（实体 / repository / service / controller / module / errors / schema） | `apps/server/src/modules/<name>/` 等 |
-
-**crud 生成后的手动步骤**（生成器会打印完整清单）：
-
-1. 在 `apps/server/src/root.module.ts` 的 `imports` 里加入 `<Xxx>Module`；
-2. 同文件 `DbModule.forRootAsync({ ... useFactory: (config) => ({ ...config.get('db'), entities: [...] }) })` 的 `entities` 里加入新实体（配置值来自 `src/app-config.ts` 的 `serverAppConfigSchema` / `mapServerEnv`）；
-3. `packages/shared/src/dicts/app-error-code.dict.ts` 3xxx 段加 `XxxNotFound` 错误码；
-4. `packages/shared/src/schema/index.ts` 导出新 schema；
-5. `pnpm db:gen Xxx` 生成迁移 + `pnpm db:migrate` 执行；
-6. `packages/sdk/src/server.client.ts` 补 `xxx` 段类型化 SDK 方法；
-7. 按 `develop-frontend-page` 规范开发 admin 页面并加入 `apps/admin/src/components/AppMenu.tsx` 菜单。
-
 ## 项目结构
 
 ```
@@ -269,7 +240,7 @@ pnpm cli -t crud -n product --no-install  # 非交互生成 CRUD 业务模块（
 ├── docker/                              # Dockerfile.base / .server / .web + init-db.sql
 ├── k8s/                                 # server 的 Kubernetes 清单（Deployment / Service / PDB / Ingress + 部署说明）
 ├── docs/                                # pagination.md（分页指南）/ sdk-refactor.md / billy-pitch.md / queue.md（已废弃存档）/ design/ / dev-logs/
-├── scripts/                             # cli.ts / cli/（生成器 + .eta 模板）、setup.ts（bootstrap）、kill-dev.ts、check-inject-decorators.ts、check-scaffold-templates.ts
+├── scripts/                             # setup.ts（bootstrap）、kill-dev.ts、check-inject-decorators.ts、check-mastra-boundary.ts、check-ui.ts、codegraph-setup.ts
 ├── turbo.json
 ├── pnpm-workspace.yaml
 └── package.json
@@ -997,43 +968,10 @@ await this.dbService.getFullSqlStatement(builder)             // 返回完整 SQ
 > `@repo/shared/logger` 现在是**前后端共用**的日志工厂：前端（`apps/admin`）直接用，
 > 后端由 kits `LoggerModule` 包装成可注入的 `AppLogger` 与 `NestLoggerAdapter`。
 
-## CLI 脚手架
-
-`scripts/cli.ts`（`pnpm cli`）是 Billy Workspace 生成器，基于 `commander` + `@inquirer/prompts` +
-`eta` 模板引擎（模板文件见 `scripts/cli/templates/files/`），可生成四类模板：
-
-- `package` — 新 workspace 包（tsdown 构建）
-- `client` — Next.js 前端应用（@repo/ui 技术栈）：布局 + 设计系统入口 + **应用装配**
-  （`lib/constants.ts` 的地址解析走 `@repo/shared`、`lib/server-client.ts` 调 `@repo/sdk` 的
-  `createAppClients`、`providers/AppProviders.tsx` 挂 `QueryProviders` + `StorageClientProvider`）
-  + **应用级兜底**（`error.tsx` / `not-found.tsx` / `loading.tsx`，版式取 `@repo/ui`）+ `typecheck` 脚本
-- `service` — NestJS 服务端应用骨架（`main.ts` + `root.module.ts` + `app-config.ts` + `config.ts` + `data-source.ts` + `lib/http.ts` + `common/` 的请求上下文 / 请求日志 / 请求指标自注册中间件）
-- `crud` — 完整 CRUD 业务模块（NestJS 实体 / repository / service / controller / module / errors / schema）
-
-```bash
-pnpm cli            # 交互式选择模板
-pnpm cli --help     # 查看参数
-```
-
-生成 CRUD 后会提示手动补全：`root.module.ts` 注册模块与实体、schema 导出、错误码注册、
-SDK 方法、admin 页面，并运行 `pnpm db:gen` 生成迁移。
-
-`service` 骨架的生产级默认与 `apps/server` 对齐：请求上下文（`X-Request-Id`）/ 请求日志 /
-请求指标三件自注册中间件（组合根 `imports` 内的顺序有先后规定，见生成物注释）、限流模块，
-以及 75s / 80s 的长连接超时默认值（前置网关场景，见「前置反向代理」一节）。
-
-模板与工作区包的一致性由 `pnpm check:scaffold` 保证，它做四件事：汇总所有模板对
-`@repo/kits` / `@repo/shared` 的具名导入、把 `service` 模板整体渲染成一套骨架做类型检查、
-把 `client` 模板整体渲染成一套前端源码（落在 `apps/web/.scaffold-check-client/`，故 `next` /
-`react` / `@repo/ui` 都能按真实相对路径解析）做类型检查、**真的调 CLI 生成一个 crud 模块**
-（并补上它提示的两个手动步骤）做类型检查。注意 tsc 读的是 packages 的 `dist` 声明，所以刚改过
-packages 源码要先 `pnpm build:pkgs`（脚本会告警）。
-
 ## 脚本
 
 | 命令                | 说明                                    |
 | ------------------- | --------------------------------------- |
-| `pnpm cli`          | 脚手架生成器                            |
 | `pnpm dev:pkgs`     | 并行 watch 构建 packages                |
 | `pnpm build:pkgs`   | 构建 packages                           |
 | `pnpm dev:server`   | 启动 NestJS 开发服务器（9989，`node --watch --import tsx/esm`） |
@@ -1051,8 +989,7 @@ packages 源码要先 `pnpm build:pkgs`（脚本会告警）。
 | `pnpm docker:up`    | `docker compose up -d --build`          |
 | `pnpm clean`        | 清理 node_modules / dist / 缓存         |
 | `pnpm check:inject` | 守卫：构造器 `@Inject` / providers `@Injectable` 一致性检查 |
-| `pnpm check:scaffold` | 守卫：脚手架模板与工作区包一致性检查（导入名 + service/client/crud 渲染类型检查） |
-| `pnpm check:ui`     | 守卫：前端约定五条（组件导出 / 前端包 `typecheck` 脚本 / 禁止新增硬编码调色板 / 脚手架模板样式入口可解析 / `next/font` 变量名与设计系统规范一致） |
+| `pnpm check:ui`     | 守卫：前端约定四条（组件导出 / 前端包 `typecheck` 脚本 / 禁止新增硬编码调色板 / `next/font` 变量名与设计系统规范一致） |
 | `pnpm codegraph:setup` | 初始化 codegraph 代码图谱（装 CLI + 建仓库根索引；可选增强，接入见「AI 使用配置」） |
 
 ## Docker

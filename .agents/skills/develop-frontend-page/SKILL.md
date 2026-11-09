@@ -129,11 +129,11 @@ app 专属的才留在 app。参考实现：
 ```bash
 pnpm typecheck   # turbo：web / admin / ui / design 四包 tsc --noEmit
 pnpm test        # turbo：七包单测（ui 用 jsdom + testing-library，design / 两个 app 用 node 环境）
-pnpm check:ui    # 守卫五条：组件导出 / 前端包 typecheck 脚本 / 禁止新增硬编码调色板 /
-                 #   脚手架模板样式入口可解析 / next/font 变量名与设计系统规范一致
+pnpm check:ui    # 守卫四条：组件导出 / 前端包 typecheck 脚本 / 禁止新增硬编码调色板 /
+                 #   app 与 @repo/ui 的样式入口可解析 / next/font 变量名与设计系统规范一致
 ```
 
-- 新增前端包（含 `pnpm cli -t client` 生成的应用）**必须声明 `typecheck` 脚本**，否则守卫拦下。
+- 新增前端包**必须声明 `typecheck` 脚本**，否则守卫拦下。
 - 纯逻辑（常量 / 格式化 / 守卫判定）写 `test/*.test.ts` 用 node 环境；hook / 组件写 jsdom 用例，
   样板见 `packages/ui/test/{tag.test.tsx,use-stream.test.ts}`。写法见 `write-tests` skill。
 - 改 `@repo/ui` 的自有组件目录时，别忘在 `packages/ui/src/index.ts` 补导出（守卫会拦）。
