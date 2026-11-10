@@ -67,11 +67,54 @@ export const REDIS_CATALOG: ConnectorCatalogDecl = {
   ],
 }
 
+/**
+ * 飞书 CLI：命令行 + 内嵌技能文档（设计 §3.14）。
+ *
+ * 和数据库类连接器的差别：它没有"工具清单"，能力面只有一个受限的 `run`；
+ * 文档由 CLI 内嵌、模型按需用 `skills list/read` 读，不走我们的技能目录。
+ * server 镜像默认预装 lark-cli，驱动不做运行时安装。
+ */
+export const LARK_CLI_CATALOG: ConnectorCatalogDecl = {
+  kind: 'lark-cli',
+  name: '飞书 CLI',
+  description: '通过官方 lark-cli 操作飞书：消息、文档、多维表格、表格、日历、邮件、任务等 20+ 业务域',
+  driver: 'lark-cli',
+  transport: 'process',
+  category: 'office',
+  phase: 'available',
+  authHint:
+    '填飞书开放平台应用的 App ID / App Secret；用户级操作需再走一次 auth login（可在对话里让助手发起）。server 镜像已预装 lark-cli。',
+  defaults: { brand: 'feishu', identity: 'auto', timeoutMs: 30_000 },
+  fields: [
+    { key: 'appId', label: 'App ID', type: 'text', secret: false, required: true, placeholder: 'cli_xxx' },
+    { key: 'appSecret', label: 'App Secret', type: 'password', secret: true, required: true },
+    {
+      key: 'brand',
+      label: '品牌',
+      type: 'text',
+      secret: false,
+      required: false,
+      placeholder: 'feishu',
+      help: '国内飞书填 feishu（默认），国际版填 lark',
+    },
+    {
+      key: 'identity',
+      label: '默认身份',
+      type: 'text',
+      secret: false,
+      required: false,
+      placeholder: 'auto',
+      help: 'auto（默认）/ user / bot；只影响业务域命令，可用 --as 覆盖',
+    },
+  ],
+}
+
 /** 全部内置型号（`/ai-connector/catalog` 返回它） */
 export const CONNECTOR_CATALOG: readonly ConnectorCatalogDecl[] = [
   POSTGRES_CATALOG,
   MYSQL_CATALOG,
   REDIS_CATALOG,
+  LARK_CLI_CATALOG,
 ]
 
 /** 按 kind 取型号 */

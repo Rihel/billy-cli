@@ -45,6 +45,7 @@ const DEFAULTS: Record<string, FieldValues> = {
   postgres: { host: '127.0.0.1', port: '5432', database: 'postgres', user: 'postgres' },
   mysql: { host: '127.0.0.1', port: '3306', database: '', user: '' },
   redis: { host: '127.0.0.1', port: '6379', db: '0', keyPrefix: '' },
+  'lark-cli': { brand: 'feishu', identity: 'auto' },
 }
 
 const entryOf = (

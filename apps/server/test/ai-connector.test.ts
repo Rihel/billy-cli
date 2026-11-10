@@ -12,6 +12,8 @@ import {
 } from '../src/modules/ai/connectors/connector.tool.factory.js'
 import type { ConnectorDriver } from '../src/modules/ai/connectors/connector.types.js'
 import { CONNECTOR_CATALOG } from '../src/modules/ai/connectors/connector.catalog.js'
+import { LarkCliDriver } from '../src/modules/ai/connectors/drivers/lark-cli.driver.js'
+import { parseLarkCliArgs } from '../src/modules/ai/connectors/drivers/lark-cli.policy.js'
 import { ConnectorGuardPlugin } from '../src/modules/ai/connectors/connector.guard.plugin.js'
 import type { ConnectorStateSource } from '../src/modules/ai/connectors/connector.state.js'
 import { PrecheckPlugin } from '../src/modules/ai/core/tools/plugins/precheck.plugin.js'
@@ -130,6 +132,8 @@ describe('能力 → 工具', () => {
     expect(spec.scope).toBe('admin')
     expect(spec.description).toContain('主库')
     expect(spec.secretFields?.[0]).toEqual({ name: 'password', label: '密码', required: true })
+    // 连接器出参统一分页（SQL / CLI / 技能文档都可能很大）
+    expect(spec.paginate).toEqual({ pageBytes: 8 * 1024 })
     // 入参 schema 真能校验
     expect(spec.params.safeParse({ sql: 'select 1' }).success).toBe(true)
     expect(spec.params.safeParse({}).success).toBe(false)
@@ -185,5 +189,78 @@ describe('连接器总闸插件', () => {
     )
     const outcome = await guard.pre(makeCtx({ secret: () => null, secretHint: () => null }))
     expect(outcome).toMatchObject({ ok: false, reason: 'precheck-failed' })
+  })
+})
+
+describe('飞书 CLI 连接器', () => {
+  const entry = CONNECTOR_CATALOG.find((item) => item.kind === 'lark-cli')
+
+  it('目录声明：process 传输、App ID / Secret 进表单、默认值齐全', () => {
+    expect(entry).toBeDefined()
+    expect(entry?.driver).toBe('lark-cli')
+    expect(entry?.transport).toBe('process')
+    expect(entry?.fields.map((field) => field.key)).toEqual(
+      expect.arrayContaining(['appId', 'appSecret']),
+    )
+    expect(entry?.defaults).toMatchObject({ brand: 'feishu', identity: 'auto' })
+  })
+
+  it('配置 parse({}) 必须成功（注册机启动期的硬口径）', () => {
+    const driver = new LarkCliDriver()
+    expect(() => driver.config.parse({})).not.toThrow()
+    expect(driver.config.parse({})).toMatchObject({
+      appId: '',
+      brand: 'feishu',
+      identity: 'auto',
+      timeoutMs: 30_000,
+    })
+  })
+
+  it('能力面只有一个受限的 run 工具', async () => {
+    const caps = await new LarkCliDriver().describe()
+    expect(caps).toHaveLength(1)
+    expect(caps[0]).toMatchObject({ kind: 'tool', name: 'run', risk: 'write' })
+    const schema = inputSchemaToZod(caps[0].kind === 'tool' ? caps[0].inputSchema : undefined)
+    expect(schema.safeParse({ args: ['im', '--help'] }).success).toBe(true)
+    expect(schema.safeParse({ args: [] }).success).toBe(false)
+    expect(schema.safeParse({}).success).toBe(false)
+  })
+
+  it('放行业务域与只读辅助命令', () => {
+    expect(parseLarkCliArgs({ args: ['im', '+messages-send', '--chat-id', 'oc_x'] })).toEqual([
+      'im',
+      '+messages-send',
+      '--chat-id',
+      'oc_x',
+    ])
+    expect(parseLarkCliArgs({ args: ['skills', 'read', 'lark-im'] })).toHaveLength(3)
+    expect(parseLarkCliArgs({ args: ['schema', 'im.messages.create'] })).toHaveLength(2)
+    expect(parseLarkCliArgs({ args: ['whoami'] })).toHaveLength(1)
+  })
+
+  it('拒绝任意命令 / 管理命令 / 换 profile / 跳过确认', () => {
+    const denied = [
+      { args: ['api', 'GET', '/open-apis/im/v1/messages'] },
+      { args: ['config', 'show'] },
+      { args: ['profile', 'use', 'other'] },
+      { args: ['update'] },
+      { args: ['apps', 'deploy'] },
+      { args: ['event', 'listen'] },
+      { args: ['im', '--profile', 'other'] },
+      { args: ['im', '+messages-send', '--yes'] },
+      { args: ['auth', 'logout'] },
+      // 不带方法名会返回 1.5MB 全量清单；不带技能名等于空读
+      { args: ['schema'] },
+      { args: ['skills', 'read'] },
+    ]
+    for (const input of denied) {
+      expect(() => parseLarkCliArgs(input), JSON.stringify(input)).toThrow(ToolDeniedError)
+    }
+  })
+
+  it('auth login 只放行非阻塞形态（--no-wait / --device-code）', () => {
+    expect(parseLarkCliArgs({ args: ['auth', 'status'] })).toEqual(['auth', 'status'])
+    expect(parseLarkCliArgs({ args: ['auth', 'login', '--no-wait', '--json'] })).toHaveLength(4)
+    expect(() => parseLarkCliArgs({ args: ['auth', 'login'] })).toThrow(ToolDeniedError)
   })
 })

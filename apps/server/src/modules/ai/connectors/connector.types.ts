@@ -59,7 +59,7 @@ export interface ConnectorRuntime {
   signal?: AbortSignal
 }
 
-/** 驱动实现（内置四种：sql / redis / mcp-http / rest） */
+/** 驱动实现（内置：sql / redis / lark-cli；mcp-http / rest 见设计） */
 export interface ConnectorDriver {
   readonly kind: string
   /** 只给页面筛选用 */

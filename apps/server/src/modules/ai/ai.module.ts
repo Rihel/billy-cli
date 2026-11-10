@@ -47,6 +47,7 @@ import { ConnectorService } from './connectors/connector.service.js'
 import { ConnectorSyncService } from './connectors/connector.sync.service.js'
 import { CONNECTOR_DRIVERS } from './connectors/connector.types.js'
 import type { ConnectorDriver, ConnectorDriverMap } from './connectors/connector.types.js'
+import { LarkCliDriver } from './connectors/drivers/lark-cli.driver.js'
 import { RedisDriver } from './connectors/drivers/redis.driver.js'
 import { SqlDriver } from './connectors/drivers/sql.driver.js'
 import type { ToolEnvCaps } from './core/tools/tools.types.js'
@@ -200,13 +201,19 @@ let warnedMissingEnvelope = false
     // 驱动是代码、实例是数据：驱动表在这里装配（加一种接法 = 加一个 provider + 一行）
     SqlDriver,
     RedisDriver,
+    LarkCliDriver,
     {
       provide: CONNECTOR_DRIVERS,
-      inject: [SqlDriver, RedisDriver],
-      useFactory: (sql: SqlDriver, redis: RedisDriver): ConnectorDriverMap =>
+      inject: [SqlDriver, RedisDriver, LarkCliDriver],
+      useFactory: (
+        sql: SqlDriver,
+        redis: RedisDriver,
+        larkCli: LarkCliDriver,
+      ): ConnectorDriverMap =>
         new Map<string, ConnectorDriver>([
           [sql.kind, sql],
           [redis.kind, redis],
+          [larkCli.kind, larkCli],
         ]),
     },
     ConnectorRepository,

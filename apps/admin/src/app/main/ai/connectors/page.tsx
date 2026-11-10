@@ -205,7 +205,7 @@ export default function ConnectorsPage() {
           setPage(nextPage)
           setPageSize(nextPageSize)
         }}
-        emptyText="还没有连接器：点「新建连接器」，先接一个 PostgreSQL / MySQL / Redis"
+        emptyText="还没有连接器：点「新建连接器」，先接一个 PostgreSQL / MySQL / Redis / 飞书 CLI"
       />
 
       <Alert>

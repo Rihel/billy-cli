@@ -2,7 +2,7 @@ import { z } from 'zod'
 import { connectorToolKey } from './connector.keys.js'
 import type { Capability, ConnectorDriver, ConnectorRuntime } from './connector.types.js'
 import { ToolDeniedError } from '../core/tools/tools.types.js'
-import type { AnyToolSpec } from '../core/tools/tools.types.js'
+import type { AnyToolSpec, ToolCallContext } from '../core/tools/tools.types.js'
 
 /**
  * **连接器能力 → 我们的工具**（设计 `docs/design/ai-connector.md` §3.5）。
@@ -66,9 +66,13 @@ export const toConnectorToolSpec = (
     // 来源交给网关的 connector-guard 做总闸（实例停用 / 缺密钥）
     connector: { id: instance.id, key: instance.key },
     scope: 'admin',
-    async exec(input: unknown) {
+    // 连接器出参（SQL 结果 / CLI stdout / 技能文档）都可能很大：统一按页给模型，全量仍入库
+    paginate: { pageBytes: 8 * 1024 },
+    async exec(input: unknown, ctx: ToolCallContext) {
+      // 用户点停止 / 这一轮结束时把信号带进驱动（CLI 这类长命令能及时被杀掉）
+      const callRuntime = ctx.signal ? { ...runtime, signal: ctx.signal } : runtime
       try {
-        return await driver.invoke(runtime, capability.name, input)
+        return await driver.invoke(callRuntime, capability.name, input)
       } catch (error) {
         // 驱动自己的拒绝（只读、越界、类型不对）原样透传；其余一律算"外部服务不可用"，
         // 不能落成 internal —— 那是"我们写错了"，会让排障与告警说两套话。
