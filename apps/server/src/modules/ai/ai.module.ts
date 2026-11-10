@@ -47,6 +47,7 @@ import { ConnectorService } from './connectors/connector.service.js'
 import { ConnectorSyncService } from './connectors/connector.sync.service.js'
 import { CONNECTOR_DRIVERS } from './connectors/connector.types.js'
 import type { ConnectorDriver, ConnectorDriverMap } from './connectors/connector.types.js'
+import { ConnectorStateStore } from './connectors/connector-state.store.js'
 import { LarkCliDriver } from './connectors/drivers/lark-cli.driver.js'
 import { RedisDriver } from './connectors/drivers/redis.driver.js'
 import { SqlDriver } from './connectors/drivers/sql.driver.js'
@@ -199,6 +200,7 @@ let warnedMissingEnvelope = false
 
     // ───────────────────────── 连接器（外部能力来源）─────────────────────────
     // 驱动是代码、实例是数据：驱动表在这里装配（加一种接法 = 加一个 provider + 一行）
+    ConnectorStateStore,
     SqlDriver,
     RedisDriver,
     LarkCliDriver,

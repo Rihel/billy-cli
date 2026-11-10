@@ -150,6 +150,17 @@ export class ConnectorService implements ConnectorStateSource {
     }
 
     await this.repository.update(entity.id, patch)
+
+    // 应用凭证 / 品牌变了，旧授权（用户 token）对新应用无效：清掉状态与 CLI HOME，
+    // 下次调用会重新 config init，授权链接也要重新生成。
+    const authChanged =
+      (input.secrets !== undefined && Object.keys(input.secrets).length > 0) ||
+      (input.config !== undefined &&
+        ('appId' in input.config || 'brand' in input.config))
+    if (authChanged && driver.auth.subject !== 'none') {
+      await driver.dispose?.(entity.id)
+    }
+
     const saved = await this.require(entity.id)
     this.stateCache.delete(entity.id)
     this.logger.log('ai.connector.updated', { id: saved.id, key: saved.key })

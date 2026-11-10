@@ -194,6 +194,16 @@ describe('连接器总闸插件', () => {
 
 describe('飞书 CLI 连接器', () => {
   const entry = CONNECTOR_CATALOG.find((item) => item.kind === 'lark-cli')
+  const fakeStates = {
+    load: async () => null,
+    save: async () => 1,
+    clear: async () => undefined,
+  }
+  const fakeLocks = {
+    lock: async () => 'lock-token',
+    unlock: async () => true,
+  }
+  const makeDriver = () => new LarkCliDriver(fakeStates as never, fakeLocks as never)
 
   it('目录声明：process 传输、App ID / Secret 进表单、默认值齐全', () => {
     expect(entry).toBeDefined()
@@ -206,7 +216,7 @@ describe('飞书 CLI 连接器', () => {
   })
 
   it('配置 parse({}) 必须成功（注册机启动期的硬口径）', () => {
-    const driver = new LarkCliDriver()
+    const driver = makeDriver()
     expect(() => driver.config.parse({})).not.toThrow()
     expect(driver.config.parse({})).toMatchObject({
       appId: '',
@@ -217,7 +227,7 @@ describe('飞书 CLI 连接器', () => {
   })
 
   it('能力面只有一个受限的 run 工具', async () => {
-    const caps = await new LarkCliDriver().describe()
+    const caps = await makeDriver().describe()
     expect(caps).toHaveLength(1)
     expect(caps[0]).toMatchObject({ kind: 'tool', name: 'run', risk: 'write' })
     const schema = inputSchemaToZod(caps[0].kind === 'tool' ? caps[0].inputSchema : undefined)

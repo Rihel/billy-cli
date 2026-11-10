@@ -1,10 +1,11 @@
-import { Injectable } from '@nestjs/common'
+import { Inject, Injectable } from '@nestjs/common'
 import { spawn } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { isAbsolute, join, relative, sep } from 'node:path'
 import { z } from 'zod'
+import { RedisLockService } from '@repo/kits'
 import { ToolDeniedError } from '../../core/tools/tools.types.js'
 import type {
   Capability,
@@ -13,6 +14,8 @@ import type {
   ConnectorRuntime,
 } from '../connector.types.js'
 import { isLarkCliDomain, parseLarkCliArgs } from './lark-cli.policy.js'
+import { ConnectorStateStore } from '../connector-state.store.js'
+import { restoreHome, sameFiles, snapshotHome } from './lark-cli.home.js'
 
 /**
  * **飞书 CLI 驱动（`lark-cli`）**（设计 `docs/design/ai-connector.md` §3.14）。
@@ -23,6 +26,8 @@ import { isLarkCliDomain, parseLarkCliArgs } from './lark-cli.policy.js'
  *   自己查用法（我们没有把二十多份 SKILL.md 塞进系统提示词，省 token）；
  * - 运维面：App ID / App Secret 来自连接器实例，**每个实例一个独立 HOME**，
  *   写进 `<HOME>/.lark-cli/config.json`，互不串号；删连接器时整目录删掉。
+ * - **无状态 pod**：HOME 是临时目录，配置 / 用户 token 存在 `ai_connectors.auth_state`；
+ *   调用前 hydrate 到 HOME、调用后 diff 写回（实例级 Redis 锁串行化）。
  *
  * 三条边界（改代码前先读）：
  * 1. 命令白名单在 `lark-cli.policy.ts`，页面改不了；
@@ -207,6 +212,15 @@ export class LarkCliDriver implements ConnectorDriver {
 
   /** 同一个实例的首次 `config init` 只跑一次（并发调用共享同一个 promise） */
   private readonly preparing = new Map<string, Promise<void>>()
+  /** 本进程内已 hydrate 到的状态版本（避免每次都解包文件） */
+  private readonly localVersion = new Map<string, number>()
+  /** 上次写回 / hydrate 的快照（调用后 diff 用） */
+  private readonly lastSnapshot = new Map<string, Record<string, string>>()
+
+  constructor(
+    @Inject(ConnectorStateStore) private readonly states: ConnectorStateStore,
+    @Inject(RedisLockService) private readonly locks: RedisLockService,
+  ) {}
 
   async describe(): Promise<Capability[]> {
     return [
@@ -228,61 +242,145 @@ export class LarkCliDriver implements ConnectorDriver {
 
     const args = parseLarkCliArgs(input)
     const config = LarkCliConfig.parse(rt.config)
-    await this.prepareOnce(rt, config)
 
-    const finalArgs = this.withIdentity(args, config)
-    const outcome = await this.exec(rt, finalArgs, config.timeoutMs)
-    return this.toToolOutput(outcome, config.timeoutMs)
+    return this.withState(rt, async () => {
+      await this.prepareOnce(rt, config)
+      const finalArgs = this.withIdentity(args, config)
+      const outcome = await this.exec(rt, finalArgs, config.timeoutMs)
+      return this.toToolOutput(outcome, config.timeoutMs)
+    })
   }
 
   async probe(rt: ConnectorRuntime): Promise<{ ok: boolean; message?: string }> {
     const config = LarkCliConfig.parse(rt.config)
     try {
-      await this.prepareOnce(rt, config)
+      return await this.withState(rt, async () => {
+        try {
+          await this.prepareOnce(rt, config)
+        } catch (error) {
+          return { ok: false, message: messageOf(error) }
+        }
+
+        const outcome = await this.exec(
+          rt,
+          ['doctor'],
+          Math.min(config.timeoutMs, PROBE_TIMEOUT_MS),
+        )
+
+        if (outcome.spawnError) {
+          return { ok: false, message: `未找到 ${BINARY}（${outcome.spawnError}）` }
+        }
+        if (outcome.aborted) return { ok: false, message: '这次检查被取消' }
+        if (outcome.timedOut) {
+          return {
+            ok: false,
+            message: `lark-cli doctor 超过 ${PROBE_TIMEOUT_MS / 1000} 秒未结束`,
+          }
+        }
+
+        const report = parseJsonLoose(outcome.stdout)
+        const checks = isRecord(report) && Array.isArray(report.checks) ? report.checks : []
+        const failed = checks.find(
+          (check) =>
+            isRecord(check) && check.status === 'fail' && typeof check.message === 'string',
+        )
+
+        if (outcome.code === 0) {
+          const ready = checks.find(
+            (check) => isRecord(check) && check.name === 'identity_ready',
+          )
+          const detail =
+            isRecord(ready) && typeof ready.message === 'string' ? ready.message : null
+          return { ok: true, message: detail ? `身份可用：${detail}` : undefined }
+        }
+
+        const envelope = errorEnvelopeOf(outcome.stderr) ?? errorEnvelopeOf(outcome.stdout)
+        if (envelope) return { ok: false, message: envelope.message }
+
+        if (isRecord(failed)) {
+          const hint = typeof failed.hint === 'string' ? `（${failed.hint}）` : ''
+          return { ok: false, message: `${String(failed.name)}: ${String(failed.message)}${hint}` }
+        }
+
+        const summary = compact(outcome.stderr || outcome.stdout)
+        return {
+          ok: false,
+          message: summary || `lark-cli doctor 退出码 ${outcome.code ?? '未知'}`,
+        }
+      })
     } catch (error) {
       return { ok: false, message: messageOf(error) }
     }
-
-    const outcome = await this.exec(rt, ['doctor'], Math.min(config.timeoutMs, PROBE_TIMEOUT_MS))
-
-    if (outcome.spawnError) {
-      return { ok: false, message: `未找到 ${BINARY}（${outcome.spawnError}）` }
-    }
-    if (outcome.aborted) return { ok: false, message: '这次检查被取消' }
-    if (outcome.timedOut) {
-      return { ok: false, message: `lark-cli doctor 超过 ${PROBE_TIMEOUT_MS / 1000} 秒未结束` }
-    }
-
-    const report = parseJsonLoose(outcome.stdout)
-    const checks = isRecord(report) && Array.isArray(report.checks) ? report.checks : []
-    const failed = checks.find(
-      (check) => isRecord(check) && check.status === 'fail' && typeof check.message === 'string',
-    )
-
-    if (outcome.code === 0) {
-      const ready = checks.find(
-        (check) => isRecord(check) && check.name === 'identity_ready',
-      )
-      const detail = isRecord(ready) && typeof ready.message === 'string' ? ready.message : null
-      return { ok: true, message: detail ? `身份可用：${detail}` : undefined }
-    }
-
-    const envelope = errorEnvelopeOf(outcome.stderr) ?? errorEnvelopeOf(outcome.stdout)
-    if (envelope) return { ok: false, message: envelope.message }
-
-    if (isRecord(failed)) {
-      const hint = typeof failed.hint === 'string' ? `（${failed.hint}）` : ''
-      return { ok: false, message: `${String(failed.name)}: ${String(failed.message)}${hint}` }
-    }
-
-    const summary = compact(outcome.stderr || outcome.stdout)
-    return { ok: false, message: summary || `lark-cli doctor 退出码 ${outcome.code ?? '未知'}` }
   }
 
   /** 删连接器时把实例 HOME（配置 / 用户 token / 下载缓存）一起删掉 */
   async dispose(instanceId: string): Promise<void> {
     this.preparing.delete(instanceId)
+    this.localVersion.delete(instanceId)
+    this.lastSnapshot.delete(instanceId)
+    // token 不在库里留：删连接器时连授权状态一起清
+    await this.states.clear(instanceId).catch(() => undefined)
     await rm(this.homeDir(instanceId), { recursive: true, force: true })
+  }
+
+  /**
+   * 在**实例级锁**里跑一次调用，并把 CLI 的 HOME 状态在「库 ↔ 磁盘」之间同步。
+   *
+   * 为什么整个调用都要持锁：token 是 CLI 在命令内部刷新的，我们没法只锁"刷新"那一下；
+   * 只能把同一连接器的调用串行化，避免两个 pod 各自刷新、互相覆盖。飞书调用量不大，代价可接受。
+   */
+  private async withState<T>(rt: ConnectorRuntime, run: () => Promise<T>): Promise<T> {
+    const lockKey = `connector:lark:${rt.instanceId}`
+    let token: string
+    try {
+      token = await this.locks.lock(lockKey, 120, 10)
+    } catch {
+      throw new ToolDeniedError(
+        'rate-limited',
+        '这个连接器正在被另一个调用占用，请稍后重试',
+        '同一连接器的飞书调用是串行的；等前一个调用结束后再试',
+        true,
+      )
+    }
+
+    let hydrated = false
+    try {
+      await this.hydrate(rt.instanceId)
+      hydrated = true
+      return await run()
+    } finally {
+      // 调用失败也要写回：token 可能已经在命令内部刷新了；
+      // 但 hydrate 失败（库不可用）时**不能**写回，否则会拿空的 HOME 覆盖库里的授权
+      if (hydrated) await this.persist(rt.instanceId).catch(() => undefined)
+      await this.locks.unlock(lockKey, token).catch(() => false)
+    }
+  }
+
+  /** 从库恢复 HOME（版本没变就跳过，避免每次调用都解包文件） */
+  private async hydrate(instanceId: string): Promise<void> {
+    const state = await this.states.load(instanceId)
+    if (!state) return
+    if (this.localVersion.get(instanceId) === state.version) return
+    await restoreHome(this.homeDir(instanceId), state.files)
+    this.localVersion.set(instanceId, state.version)
+    this.lastSnapshot.set(instanceId, state.files)
+  }
+
+  /** 把 HOME 的变化写回库（内容没变就不写；版本冲突时重读一次再写） */
+  private async persist(instanceId: string): Promise<void> {
+    const files = await snapshotHome(this.homeDir(instanceId))
+    if (sameFiles(files, this.lastSnapshot.get(instanceId) ?? null)) return
+
+    const expected = this.localVersion.get(instanceId) ?? 0
+    let version = await this.states.save(instanceId, files, expected)
+    if (version === null) {
+      // 别的实例先写了一步：以库里的最新版本为基准再写一次（授权动作罕见，后写覆盖可接受）
+      const latest = await this.states.load(instanceId)
+      version = await this.states.save(instanceId, files, latest?.version ?? 0)
+    }
+    if (version === null) return
+    this.localVersion.set(instanceId, version)
+    this.lastSnapshot.set(instanceId, files)
   }
 
   /** 首次调用前把 App 凭证写进该实例自己的 CLI 配置（幂等：指纹没变就跳过） */

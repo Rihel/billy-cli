@@ -82,4 +82,18 @@ export class AiConnectorEntity extends AuditEntity {
   /** 工具白名单（null = 全开） */
   @Column({ name: 'allowed_tools', type: 'jsonb', nullable: true })
   allowedTools: string[] | null = null
+
+  /**
+   * 驱动自己的**授权状态快照**（如 lark-cli 的 HOME：配置文件 + 用户 token）。
+   *
+   * 为什么要存库：pod 是无状态的、不挂 PVC；CLI 的 token 在磁盘上，
+   * 进程一换就丢。驱动在调用前 hydrate 到临时目录、调用后 diff 写回这里。
+   * 结构由驱动自己解释，别在上层遍历。
+   */
+  @Column({ name: 'auth_state', type: 'jsonb', nullable: true })
+  authState: Record<string, unknown> | null = null
+
+  /** 授权状态的版本号：写回用 CAS（`version` 不匹配说明别的实例先写了） */
+  @Column({ name: 'auth_state_version', type: 'int', default: 0 })
+  authStateVersion = 0
 }
