@@ -29,7 +29,7 @@ const spaceGrotesk = Space_Grotesk({
 export const metadata: Metadata = {
   title: "Billy CLI - 开箱即用的 AI 应用开发",
   description:
-    "会话、流式、工具、模型、审计都已就位，改改就是你的 AI 产品；可观测性、设计系统与分层约束一并开箱。基于 NestJS 12 与 Next.js 16 的 AI 应用开发基座。",
+    "会话、流式、工具、连接器、模型、审计都已就位，改改就是你的 AI 产品；可观测性、设计系统与分层约束一并开箱。基于 NestJS 12 与 Next.js 16 的 AI 应用开发基座。",
 }
 
 /** 前端根 layout 统一动态渲染（每次请求 SSR，不做整站静态预渲染）。 */

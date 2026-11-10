@@ -26,7 +26,7 @@ export function CtaSection({ user, authEnabled }: CtaSectionProps) {
             先跑起来，再改成你的
           </h2>
           <p className="mx-auto mt-5 max-w-md text-base leading-relaxed text-muted-foreground">
-            一条命令起本地环境，进后台看会话、模型、工具与审计，再决定从哪里开始改。
+            一条命令起本地环境，进后台看会话、模型、工具、连接器与审计，再决定从哪里开始改。
           </p>
           {user || !authEnabled ? null : (
             <div className="mt-9 flex flex-wrap items-center justify-center gap-3">

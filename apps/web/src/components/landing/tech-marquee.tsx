@@ -8,7 +8,7 @@ const techStack = [
   'Express 5',
   'Next.js 16',
   'Mastra',
-  'AI SDK 6',
+  'AI SDK 7',
   'TypeORM',
   'PostgreSQL',
   'Redis',

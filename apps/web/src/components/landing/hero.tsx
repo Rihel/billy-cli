@@ -63,7 +63,7 @@ export function Hero({ user, authEnabled }: HeroProps) {
           </h1>
 
           <p className="mt-8 max-w-xl text-lg leading-relaxed text-muted-foreground sm:text-xl">
-            会话、流式、工具、模型、审计都已就位，改改就是你的产品。
+            会话、流式、工具、连接器、模型、审计都已就位，改改就是你的产品。
           </p>
 
           {user || !authEnabled ? null : (

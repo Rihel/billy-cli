@@ -37,7 +37,7 @@ export function Maintainability() {
           </h2>
           <p className="mt-6 max-w-2xl text-base leading-relaxed text-muted-foreground">
             字段定义一次，校验、实体、接口类型、表单、列表都跟着走；依赖方向单向，检查脚本在提交前拦住走样。
-            23 个 Agent Skills 指向仓库真实文件，AI 改代码时读到的就是这套约束，不是一份过时的说明书。
+            27 个 Agent Skills 指向仓库真实文件，AI 改代码时读到的就是这套约束，不是一份过时的说明书。
           </p>
         </Reveal>
 

@@ -1,7 +1,7 @@
 # Billy · 开箱即用的 AI 应用开发
 
 > 本文档 = 脚手架介绍叙事（落地页完整文案）+ 竞品调研报告。
-> 调研日期：2026-09-02 · 2026-10-23 复核（模板清单未变；能力描述已按当前代码重写）。
+> 调研日期：2026-09-02 · 2026-10-23 复核 · 2026-11-10 同步能力口径（27 skill / AI SDK 7 / 连接器；模板清单未变）。
 > 数据以 GitHub 为准 · star 与价格会随时间变化。
 > 文中能力以仓库当前代码为准（`apps/`、`packages/`、`.agents/skills/`），不是规划。
 
@@ -69,7 +69,7 @@
 - **能力不是空壳**：10 个内建工具（计划四件套、动态子 agent、命令执行、联网三件套、大结果取页），全部过统一网关（开关 / 作用域 / 限额 / 审计 / 分页）。
 - **模型与账本开箱**：供应商与模型在后台配置即生效；每轮 tokens 与步数入库，按日 rollup，按模型、按 agent 汇总，运行详情能回看输入快照与错误原文。
 - **扩展点只有一层**：加工具 = `@ToolGroup` 类 + 方法 `@ToolDecl`；加 agent = `agents/xxx.agent.ts` + 注册表；加技能 = `.agents/skills/` 下的 SKILL.md；换模型 = 后台模型管理。
-- **接口与页面都现成**：`/agent` 前缀一套接口，前台用户与管理员共用；后台会话、模型、工具、审计四个页面；`@repo/ui` 48 个 ai-elements 可直接用。
+- **接口与页面都现成**：`/agent` 前缀一套接口，前台用户与管理员共用；后台会话、模型、工具、审计、连接器五个页面；`@repo/ui` 48 个 ai-elements 可直接用。
 
 模板只给骨架，AI 框架只给零件。Billy 给的是「能上线的最小闭环」，改提示词与工具就是你的产品。
 
@@ -94,12 +94,12 @@
 - **数据结构只有一份**：Zod schema 同时供入参校验、TypeORM 实体、SDK 类型、后台表单与列表，改一个字段六处生效。
 - **依赖方向不可逆**：shared 不依赖业务包，kits 不引用 `apps/*`，common 不依赖业务模块，service / repository 不碰 HTTP。
 - **检查在提交前**：`typecheck`、`test`、`check:inject`、`check:mastra`、`check:ui` 五道，过了才算做完。
-- **AI 读到的是现状**：23 个 Agent Skills 每条规则都指向仓库真实文件，代码变了 skill 要跟着改，`manage-skills` 与检查脚本降低漂移。
+- **AI 读到的是现状**：27 个 Agent Skills 每条规则都指向仓库真实文件，代码变了 skill 要跟着改，`manage-skills` 与检查脚本降低漂移。
 
 | 对比项 | 模板 / 规则包 / AI 框架 | Billy |
 | --- | --- | --- |
 | 骨架 | 有 | 通用基座：任意业务、双前端、双体系 |
-| 规范 | 停在项目根一份说明 | 23 个 skill，指向真实文件，能被检查脚本拒绝 |
+| 规范 | 停在项目根一份说明 | 27 个 skill，指向真实文件，能被检查脚本拒绝 |
 | AI 运行时 | 给零件，生产问题自扛 | 会话、工具、恢复、审计、用量在同一份工程里 |
 | 可观测性 | 各接一套 | 日志 / 指标 / 告警 / 探针 / AI 审计已接好 |
 | 设计 | 自带一套或没有 | 一套 token + 组件库，两个前端共用，有守卫 |
@@ -152,22 +152,23 @@
 - **12 个业务模块**：`auth`、`user`、`admin`、`session`、`storage`、`stream`、`monitor`、`ai`、`ai-model`、`ai-usage`、`runtime-config`、`ops`。
 - **部署**：Docker multi-stage，compose 一键起依赖，附 Kubernetes 清单。
 
-### 6.5 AI 原生开发：23 个 Agent Skill
+### 6.5 AI 原生开发：27 个 Agent Skills
 
 - **必读基础（1）**：`billy-dev-foundation`
 - **全链路开发（8）**：`define-data-structure`、`database`、`define-dict-enum`、`develop-business-module`、`develop-backend-api`、`develop-frontend-page`、`implement-auth`、`object-storage`
 - **基础设施（9）**：`concurrency`、`kafka`、`scheduler`、`stream`、`state-machine`、`telemetry`、`notification`、`lark`、`write-tests`
 - **AI 与维护（5）**：`develop-ai-agent`、`ai-agent-engineering`、`codegraph`、`git-workflow`、`manage-skills`
+- **框架与构建（4）**：`getting-started`、`table-state`、`migrate-v8-to-v9`（TanStack Table v9）、`tsdown`
 
 三条机制，回应「skill 是不是空话」：
 
 1. **skill 是硬约束**：`billy-dev-foundation` 写明业务逻辑只在 service / repository、controller 只做 HTTP 边界、错误继承 `AppError` 且 code 在 3xxx 段、schema / dict / entity 三者一致并注册 `index.ts`。
-2. **规范可被验证**：四个检查脚本加 typecheck 与测试，写错就红，不靠 AI 自我声明。
-3. **按需加载**：23 个 skill 不是一次性全读，AI 按任务只加载相关几个，省 token、少冲突。
+2. **规范可被验证**：三个检查脚本（`check:inject` / `check:mastra` / `check:ui`）加 typecheck 与测试，五道全过才算做完，写错就红，不靠 AI 自我声明。
+3. **按需加载**：27 个 skill 不是一次性全读，AI 按任务只加载相关几个，省 token、少冲突。
 
 ### 6.6 开箱页面
 
-- **Admin（16 页）**：控制台、监控五页、用户、管理员、个人中心、AI 会话、模型管理、工具配置、AI 审计。
+- **Admin（16 页）**：控制台、监控五页、用户、管理员、个人中心、AI 会话、模型管理、工具配置、AI 审计、连接器。
 - **Web**：落地页、竞品页、登录 / 注册 / 找回密码 / 重置密码、账户与多设备会话、Markdown 渲染示例。
 
 ## 7. 技术栈为什么这么选
@@ -179,7 +180,7 @@
 | TypeORM | Prisma | 业务经 Repository 防腐层访问数据，service 不直接依赖 ORM，可测试、可替换；装饰器实体与依赖注入契合 |
 | Next.js 16 | Vite SPA | RSC + SSR + Server Actions，前台后台同构，C 端页面可 SEO |
 | Base UI + shadcn + Tailwind 4 | 纯 Radix | Base UI 由 Radix 团队打造，无样式原语配 Tailwind 4，shadcn 补齐可定制组件；token 与主题收在 `@repo/ui` |
-| Mastra + AI SDK 6 | 自己写 agent 循环 | 流式、工具调用、多步执行、挂起恢复交给框架；边界（工具网关、审计、落库）留在自己手里，适配层隔离 |
+| Mastra + AI SDK 7 | 自己写 agent 循环 | 流式、工具调用、多步执行、挂起恢复交给框架；边界（工具网关、审计、落库）留在自己手里，适配层隔离 |
 | Redis + Kafka + croner | 各自为战 | 缓存 / 分布式锁 / 跨实例 SSE / 运行中进度由 Redis 承担，异步消息走 Kafka，定时任务用 croner，高频用时间轮 |
 
 ## 8. 快速开始
@@ -190,12 +191,12 @@ pnpm dev:pkgs & pnpm dev:server & pnpm dev:web   # 并行启动开发环境（we
 pnpm dev:admin    # 管理后台另起（9845）
 ```
 
-前置条件：Node.js ≥ 20（推荐 24）、pnpm ≥ 11、Docker（可选，仅本地依赖）。
+前置条件：Node.js ≥ 26（推荐 26.13）、pnpm ≥ 12（推荐 12.18）、Docker（可选，仅本地依赖）。
 
 ## 9. 代价与边界
 
 - **技术栈门槛**：NestJS + TypeORM + Next.js 全家桶，团队要接受这套写法；想换框架的，模板反而是束缚。
-- **skill 有维护成本**：23 个 skill 描述的是仓库现状，代码改了不同步就会误导 AI。仓库用 `manage-skills` 与检查脚本降低这个风险，但消除不了。
+- **skill 有维护成本**：27 个 skill 描述的是仓库现状，代码改了不同步就会误导 AI。仓库用 `manage-skills` 与检查脚本降低这个风险，但消除不了。
 - **AI 运行时仍在演进**：durable、压缩、多实例下的续传都有明确取舍（见 `docs/design/ai-agent.md`），不是零成本开关。
 - **免费开源不等于零成本**：省掉的是从零搭基建的时间，不是理解业务与运维的时间。
 
@@ -205,7 +206,7 @@ pnpm dev:admin    # 管理后台另起（9845）
 
 ## 1. 调研目标
 
-Billy 的定位是 **开箱即用的 AI 应用开发基座**（AI 对话运行时 + 可观测性 + 设计系统 + 23 个 Agent Skills + 12 个业务模块，TypeScript 全栈 monorepo）。本报告回答：市面同类「模板 / 脚手架」有哪些，Billy 凭什么差异化；以及另一条赛道（AI 应用框架）与 Billy 是什么关系。
+Billy 的定位是 **开箱即用的 AI 应用开发基座**（AI 对话运行时 + 可观测性 + 设计系统 + 27 个 Agent Skills + 12 个业务模块，TypeScript 全栈 monorepo）。本报告回答：市面同类「模板 / 脚手架」有哪些，Billy 凭什么差异化；以及另一条赛道（AI 应用框架）与 Billy 是什么关系。
 
 ## 2. 筛选标准
 
@@ -222,9 +223,9 @@ Billy 的定位是 **开箱即用的 AI 应用开发基座**（AI 对话运行�
 - **海外收费侧**：Makerkit / Gravity / ShipFast / Supastarter 是垂直 SaaS 模板，$199–$349 闭源买断，绑定 B2B 多租户 SaaS 场景。
 - **国内侧**：主流是 Vue + Java（RuoYi、yudao-cloud），前端模板（ant-design-pro、vue-vben-admin、vue-element-admin）为纯前端；有 AI 能力的，AI 要么是产品内 AIGC 功能、要么是纯前端 / 纯后端的局部 skills。
 - **「有 skill」不是壁垒**：Open SaaS（免费）、Makerkit / Gravity（收费）都已内置 AGENTS.md / skills / agent。差异不在「有没有 skill」，而在 skill 与**通用 TS monorepo 分层架构**的耦合深度，以及是否可被检查。
-- **又一个新的分水岭**：多数模板的 AI 只用于「帮人写这个模板」，没有把 AI 能力做成产品运行时。Billy 两者都有：23 个 skill 管「怎么写」，`modules/ai` 管「产品里的 AI 怎么跑」。
+- **又一个新的分水岭**：多数模板的 AI 只用于「帮人写这个模板」，没有把 AI 能力做成产品运行时。Billy 两者都有：27 个 skill 管「怎么写」，`modules/ai` 管「产品里的 AI 怎么跑」。
 - **空白**：**「通用 TypeScript 全栈 monorepo + skills 驱动 + 业务基座 + AI 运行时」这一组合，国内外无直接对标**。Open SaaS 最接近（免费 + 全栈 + AI-ready），但绑定 Wasp DSL、单体 SaaS，且没有 AI 运行时。
-- **Billy 的差异化四点**：开箱即用的 AI 应用开发能力（会话 / 工具 / 恢复 / 审计 / 用量，不是零件）；可观测性（日志 / 指标 / 告警 / 探针 / AI 审计已接好）；高颜值（一套 token 与组件库，有守卫）；高维护性（数据结构一份、依赖单向、五道检查）。
+- **Billy 的差异化四点**：开箱即用的 AI 应用开发能力（会话 / 工具 / 连接器 / 恢复 / 审计 / 用量，不是零件）；可观测性（日志 / 指标 / 告警 / 探针 / AI 审计已接好）；高颜值（一套 token 与组件库，有守卫）；高维护性（数据结构一份、依赖单向、五道检查）。
 
 ## 4. 竞品清单（模板 / 脚手架类）
 

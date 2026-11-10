@@ -26,4 +26,8 @@
 | [`write-tests`](../../write-tests/SKILL.md) | 编写单元测试：vitest 结构与 mock 模式、service / repository 测试套路 | 写测试、补单测、修测试时 |
 | [`git-workflow`](../../git-workflow/SKILL.md) | Git 提交与工作流：中文 commit 类型规范、提交粒度、辅助提交流程 | 提交、commit、辅助提交、提交信息时 |
 | [`codegraph`](../../codegraph/SKILL.md) | 代码图谱工具：MCP codegraph_explore + CLI（query / node / callers / callees / impact / affected）查符号、调用链、影响面，验证分层依赖方向 | 理解架构、调用关系、依赖方向、改动影响面、代码理解时 |
+| [`getting-started`](../../getting-started/SKILL.md) | TanStack Table v9 入门：react adapter、`createTableHook` 组件复用、Query / Virtual 集成 | 新建表格、写 Table v9 组件、接服务端数据 / 虚拟滚动时 |
+| [`table-state`](../../table-state/SKILL.md) | Table v9 状态读取与控制：tracked reads、订阅、受控切片、框架响应式边界 | 读 / 控表格状态、做受控筛选排序、排查重渲染时 |
+| [`migrate-v8-to-v9`](../../migrate-v8-to-v9/SKILL.md) | Table v8 → v9 迁移：框架构造、渲染、状态与业务 hooks 的改造 | 升级 @tanstack/react-table、迁移旧表格代码时 |
+| [`tsdown`](../../tsdown/SKILL.md) | 用 tsdown 打包 TS 库：dts 生成、多格式产物、从 tsup 迁移 | 改库构建配置、加包、产物格式 / 类型声明出问题时 |
 | [`manage-skills`](../../manage-skills/SKILL.md) | 新增 / 维护工程 Skill：目录与 frontmatter 规范、references 拆分、索引注册 | 添加、新建、维护、拆分 skill 时 |

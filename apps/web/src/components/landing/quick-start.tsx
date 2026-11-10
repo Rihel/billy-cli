@@ -4,12 +4,12 @@ import { Reveal } from './reveal'
 const steps = [
   { cmd: 'pnpm bootstrap', note: '一键初始化：环境检查 → 依赖服务 → .env → 安装 → 迁移 → 冒烟' },
   { cmd: 'pnpm dev:pkgs & pnpm dev:server & pnpm dev:web', note: '并行启动开发环境 · 前台 9840' },
-  { cmd: 'pnpm dev:admin', note: '管理后台 9845 · 控制台 / 监控 / AI 会话 / 模型 / 工具 / 审计' },
+  { cmd: 'pnpm dev:admin', note: '管理后台 9845 · 控制台 / 监控 / AI 会话 / 模型 / 工具 / 审计 / 连接器' },
 ]
 
 const prerequisites = [
-  'Node.js ≥ 20（推荐 24）',
-  'pnpm ≥ 11',
+  'Node.js ≥ 26（推荐 26.13）',
+  'pnpm ≥ 12（推荐 12.18）',
   'Docker（可选，仅本地依赖）',
 ]
 

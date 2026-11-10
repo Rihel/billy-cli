@@ -5,7 +5,7 @@ const trace = [
   { step: '日志', detail: 'pino 一行 JSON：谁、做了什么、多久；开发环境美化输出' },
   { step: '指标', detail: 'QPS、耗时、错误率；Counter / Gauge / Histogram，窗口快照带环比' },
   { step: '告警', detail: '规则命中后按级别分流，走文件、邮件或飞书' },
-  { step: 'AI 运行', detail: '轮次、工具调用、tokens、输入快照全落库，可回放' },
+  { step: 'AI 运行', detail: '轮次、工具与连接器调用、tokens、输入快照全落库，可回放' },
 ]
 
 const capabilities = [
@@ -31,7 +31,7 @@ const capabilities = [
   },
   {
     title: 'AI 调用可审计',
-    detail: '运行列表、运行详情、子 agent 的输入提示词、错误原文都在后台可查',
+    detail: '运行列表、运行详情、子 agent 与连接器的输入提示词、错误原文都在后台可查',
     path: 'apps/server/src/modules/ai/runtime',
   },
 ]

@@ -32,7 +32,7 @@ const navGroups: { title: string; links: FooterLink[] }[] = [
     links: [
       { href: AdminUrl, label: '管理后台', external: true },
       { href: PublicServerUrl, label: 'API 服务', external: true },
-      { href: 'https://gitee.com/Rihel/billy-cli', label: '代码仓库（Gitee）', external: true },
+      { href: 'https://github.com/Rihel/billy-cli', label: '代码仓库（GitHub）', external: true },
     ],
   },
 ]
@@ -69,7 +69,7 @@ export function Footer({ user, authEnabled }: FooterProps) {
               </span>
             </Link>
             <p className="mt-4 max-w-xs text-sm leading-relaxed text-muted-foreground">
-              开箱即用的 AI 应用开发基座：会话、工具、可观测与设计系统都在仓库里。
+              开箱即用的 AI 应用开发基座：会话、工具、连接器、可观测与设计系统都在仓库里。
             </p>
           </div>
 

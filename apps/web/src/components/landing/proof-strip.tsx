@@ -2,8 +2,8 @@ import { Reveal } from './reveal'
 
 const facts = [
   { k: '10', label: '内建 AI 工具', detail: '计划、子 agent、命令、联网、取页' },
-  { k: '12', label: '业务模块', detail: '认证、用户、存储、监控、AI、会话' },
-  { k: '23', label: 'Agent Skills', detail: '每条规范都指向仓库真实文件' },
+  { k: '4', label: '连接器型号', detail: 'PostgreSQL / MySQL / Redis / 飞书 CLI' },
+  { k: '27', label: 'Agent Skills', detail: '每条规范都指向仓库真实文件' },
   { k: '48', label: 'AI 界面组件', detail: '会话、消息、推理、工具、计划' },
 ]
 

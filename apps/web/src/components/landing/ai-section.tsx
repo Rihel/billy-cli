@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { ArrowRight, MessagesSquare, Wrench, Rocket } from 'lucide-react'
+import { ArrowRight, MessagesSquare, Wrench, Rocket, Plug } from 'lucide-react'
 import { Reveal } from './reveal'
 
 const stages = [
@@ -24,11 +24,19 @@ const stages = [
     desc: '服务重启后在跑的会话继续；上下文到模型窗口 70% 自动压缩；多用户会话隔离；tokens 与步数逐轮入库；运行详情能回看输入快照与错误原文。',
     chips: ['崩溃恢复', '上下文压缩', 'ai-usage', '审计'],
   },
+  {
+    no: '04',
+    icon: Plug,
+    title: '能连外部',
+    desc: '数据库、Redis、飞书 CLI 在后台加一条连接器，就产出一组模型能调的工具。地址、凭证、开关、限额、审计都挂在连接器上，接一个新系统不用改代码、不用发版。',
+    chips: ['postgres / mysql', 'redis', 'lark-cli', 'ai-connector'],
+  },
 ]
 
 const facts = [
   ['conversations · runs · timelines', '会话、运行、时间线三张表，全部入库'],
   ['10 个内建工具', '计划、子 agent、命令、联网、取页'],
+  ['4 类连接器', '数据库 / Redis / 飞书 CLI，一行数据接一个外部系统'],
   ['48 个 ai-elements', '会话、消息、推理、工具、计划'],
 ]
 
@@ -53,7 +61,7 @@ export function AiSection() {
                 到能上线
               </h2>
               <p className="mt-6 max-w-sm text-base leading-relaxed text-muted-foreground">
-                不是接一个模型 API、画一个聊天框就结束。会话、流式、工具、权限、恢复、用量、审计
+                不是接一个模型 API、画一个聊天框就结束。会话、流式、工具、连接器、权限、恢复、用量、审计
                 都在仓库里跑通，你要改的是提示词、工具和业务。
               </p>
 
@@ -132,6 +140,7 @@ export class OrderTools {
                 <p className="border-t border-border px-5 py-3 text-xs leading-relaxed text-muted-foreground">
                   写进 <code className="font-mono text-foreground">AGENT_TOOL_GROUPS</code> 就注册完成：
                   参数自动生成给模型的 schema，开关、限额、审计、分页由网关统一处理。
+                  不想写代码也可以走连接器：后台加一行数据，同样产出受管工具。
                 </p>
               </div>
             </Reveal>
