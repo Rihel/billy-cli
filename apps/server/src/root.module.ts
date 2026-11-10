@@ -14,11 +14,13 @@ import {
   NotificationModule,
   ObjectStorageModule,
   PasswordModule,
+  PubSubModule,
   RateLimitModule,
   RedisModule,
   SchedulerModule,
   SessionStoreModule,
   StreamHubModule,
+  EventBusModule,
   TelemetryModule,
 } from '@repo/kits'
 import {
@@ -130,7 +132,9 @@ import { UserModule } from './modules/user/index.js'
       useFactory: (config: ConfigService) => config.get('redis')!,
     }),
     RateLimitModule,
+    PubSubModule,
     StreamHubModule,
+    EventBusModule,
     JwtModule.forRootAsync({
       imports: [ConfigModule],
       inject: [ConfigService],

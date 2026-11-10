@@ -7,34 +7,25 @@ import {
 } from '@nestjs/common'
 import { AppLogger } from '../foundation/logger/app-logger.js'
 import { STREAM_SHUTDOWN_EVENT, type StreamEventModel } from '@repo/shared'
-import { Redis } from 'ioredis'
-import { RedisConfig } from '../redis/redis.config.js'
 import { IdGeneration } from '../foundation/id-generation/id-generation.js'
 import { StreamHubError } from '../foundation/errors/infrastructure-errors.js'
+import { PubSub } from '../pubsub/pubsub.js'
 import { StreamConnection, type StreamConnectionOptions } from './stream-connection.js'
 
-/** 广播消息（Redis pub/sub 载荷）：携带发布实例 id，用于自回环过滤。 */
-interface StreamBroadcastMessage {
-  /** 发布实例 id（启动时生成）；收到与自身相同则丢弃，避免双推 */
-  instanceId: string
-  /** 目标频道（原始频道名，无 stream: 前缀） */
-  channel: string
-  /** 事件负载 */
-  event: StreamEventModel
-}
+/** 广播频道前缀：`stream:{channel}`（自带命名空间，与业务 key / 事件总线隔离）。 */
+const CHANNEL_PREFIX = 'stream:'
 
-/** 广播订阅模式：pub/sub 频道统一 `stream:{channel}`（自带命名空间，与业务 key 隔离）。 */
-const BROADCAST_PATTERN = 'stream:*'
+/** 广播订阅模式：一次订阅全部业务频道 */
+const BROADCAST_PATTERN = `${CHANNEL_PREFIX}*`
 
 /**
  * SSE 服务端推流统一入口（多实例广播）。
  *
  * 职责：
  * - 连接注册表（connections）+ 频道索引（channels）；
- * - `publish(channel, event)`：本地直推 + Redis pub/sub 广播（跨实例）；
- * - 广播自回环过滤（instanceId 相同丢弃，本实例已直推）；
- * - 随应用生命周期启停 pub / sub 两条独立 ioredis 连接
- *   （ioredis 进入订阅模式后不可 publish，必须分连接）。
+ * - `publish(channel, event)`：本地直推 + 交给 `PubSub` 广播（跨实例，`stream:` 前缀）；
+ * - 广播自回环过滤由 `PubSub` 统一做（按发布实例 id 丢弃本实例的广播）；
+ * - Redis 连接 / 重连 / 重订阅都在 `PubSub`，本类不持有 ioredis 客户端。
  *
  * 广播路径：本地直推（低延迟、Redis 故障时本实例仍可达）+ Redis 广播（跨实例）。
  * 连接注册表是本实例内存态，广播只推持有本地连接的实例（设计文档 §5.3 / §8）。
@@ -45,37 +36,31 @@ export class StreamHub
 {
   private readonly connections = new Map<string, StreamConnection>()
   private readonly channels = new Map<string, Set<StreamConnection>>()
-  /** 发布 / 订阅两条独立连接（lazyConnect，onApplicationBootstrap 显式连接） */
-  private readonly pub: Redis
-  private readonly sub: Redis
-  /** 本实例 id：广播自回环过滤 */
-  private readonly instanceId: string
+  /** 取消广播模式订阅（启动时建立，关闭时释放） */
+  private offBroadcast: (() => void) | null = null
   private started = false
   /** 是否正在排空（`beforeApplicationShutdown` 置位后不再接受新长连接） */
   private draining = false
 
 
   constructor(
-    @Inject(RedisConfig) private readonly config: RedisConfig,
+    @Inject(PubSub) private readonly pubsub: PubSub,
     @Inject(IdGeneration) private readonly idGeneration: IdGeneration,
     @Inject(AppLogger) private readonly logger: AppLogger,
-  ) {
-    // 广播 key 用 `stream:` 前缀自带命名空间，pub/sub 连接不套 keyPrefix（避免订阅模式下的前缀歧义）
-    this.pub = new Redis(config.url, { lazyConnect: true })
-    this.sub = new Redis(config.url, { lazyConnect: true })
-    this.instanceId = idGeneration.next(16)
-  }
+  ) {}
 
   /** 应用启动：建立 pub/sub 连接并订阅广播频道。 */
   async onApplicationBootstrap(): Promise<void> {
     try {
-      await Promise.all([this.pub.connect(), this.sub.connect()])
-      await this.sub.psubscribe(BROADCAST_PATTERN)
-      this.sub.on('pmessage', (_pattern, channel, payload) =>
-        this.onBroadcast(channel, payload),
-      )
+      // 先登记模式订阅（PubSub 建连后会统一订阅），再等连接
+      this.offBroadcast = this.pubsub.subscribePattern(BROADCAST_PATTERN, (event, meta) => {
+        if (!this.started) return
+        this.deliverLocal(meta.channel.slice(CHANNEL_PREFIX.length), event)
+      })
+      // 显式等一次：SSE 连接可能马上 publish，别让第一条消息和建连赛跑
+      await this.pubsub.connect()
       this.started = true
-      this.logger.info('SSE Hub 已启动', { instanceId: this.instanceId })
+      this.logger.info('SSE Hub 已启动', { instanceId: this.pubsub.id })
     } catch (cause) {
       throw new StreamHubError(cause)
     }
@@ -112,12 +97,10 @@ export class StreamHub
   /** 应用停止：断开 pub/sub 连接。 */
   async onApplicationShutdown(): Promise<void> {
     this.started = false
-    try {
-      await Promise.allSettled([this.sub.quit(), this.pub.quit()])
-      this.logger.info('SSE Hub 已停止')
-    } catch (cause) {
-      throw new StreamHubError(cause)
-    }
+    // 只释放本类的模式订阅；Redis 连接归 PubSubModule（可能还有别的消费者）
+    this.offBroadcast?.()
+    this.offBroadcast = null
+    this.logger.info('SSE Hub 已停止')
   }
 
   /** 创建一条 SSE 连接（SSE 路由调用；连接关闭自动从注册表 / 频道索引注销）。 */
@@ -169,16 +152,8 @@ export class StreamHub
    */
   publish(channel: string, event: StreamEventModel): void {
     this.deliverLocal(channel, event)
-    const payload: StreamBroadcastMessage = {
-      instanceId: this.instanceId,
-      channel,
-      event,
-    }
-    void this.pub
-      .publish(`stream:${channel}`, JSON.stringify(payload))
-      .catch((error) =>
-        this.logger.error('SSE 广播失败', { channel, error }),
-      )
+    // 广播失败由 PubSub 记日志；本实例已直推，不影响调用方
+    void this.pubsub.broadcast(`${CHANNEL_PREFIX}${channel}`, event)
   }
 
   /** 推送给本实例持有该频道的全部连接。 */
@@ -190,16 +165,4 @@ export class StreamHub
     }
   }
 
-  /** 收到其他实例的广播：自回环过滤后推给本地连接。 */
-  private onBroadcast(channel: string, payload: string): void {
-    if (!this.started) return
-    let message: StreamBroadcastMessage
-    try {
-      message = JSON.parse(payload) as StreamBroadcastMessage
-    } catch {
-      return
-    }
-    if (message.instanceId === this.instanceId) return
-    this.deliverLocal(message.channel, message.event)
-  }
 }

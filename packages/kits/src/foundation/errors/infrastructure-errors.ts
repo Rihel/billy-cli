@@ -85,3 +85,17 @@ export class StreamHubError extends AppError {
     super('SSE hub operation failed')
   }
 }
+
+export class PubSubError extends AppError {
+  readonly code = AppErrorCodes.Internal
+  constructor(readonly cause: unknown) {
+    super('Pub/sub operation failed')
+  }
+}
+
+export class EventBusError extends AppError {
+  readonly code = AppErrorCodes.Internal
+  constructor(readonly cause: unknown) {
+    super('Event bus operation failed')
+  }
+}
