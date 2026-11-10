@@ -384,6 +384,9 @@ export class AgentChatService {
             run.id,
             definition,
           ),
+          // 身份要进运行时信封：admin 作用域的工具（skill-*）按它过滤工具面。
+          // 漏传的后果是模型手上根本没有这些工具，只能绕去 run-command 写盘（2026-11-11 实际踩过）。
+          isAdmin,
         },
       );
       const agent = mastra.getAgent(definition.key);
@@ -1123,6 +1126,8 @@ export class AgentChatService {
             run.id,
             definition,
           ),
+          // 同上：工具面按身份过滤，admin 的 skill-* 工具要靠这个字段才出现
+          isAdmin,
         },
       );
       const agent = mastra.getAgent(definition.key);
@@ -1531,6 +1536,7 @@ export class AgentChatService {
     userId: string,
     input: AgentChatResumeDto,
     response: StreamResponseLike,
+    isAdmin = false,
   ): Promise<void> {
     const mastra = this.requireMastra();
     const run = await this.runs.findEntity(input.runId);
@@ -1604,6 +1610,8 @@ export class AgentChatService {
         {
           abortSignal: abort.signal,
           systemPrompt: await this.resolveSystemPrompt(conversation, run.id, definition),
+          // 续跑与首轮同一身份口径：admin 的 skill-* 工具不能因为"续跑"而消失
+          isAdmin,
         },
       );
       const agent = mastra.getAgent(definition.key);

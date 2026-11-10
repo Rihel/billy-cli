@@ -6,6 +6,16 @@
 - **`reason` 每轮必填**：一句话写清目的，不如实写空话（它会展示给用户，也是审计证据）；
 - 多步任务先用 `plan-create` 拆清单；**每完成一项立刻标完成**，别攒到最后；**清单不是回答**，结论自己写。
 
+{{ if (it.tools.some(function (tool) { return tool.key === 'skill-save' })) { }}
+## 技能（必须入库）
+
+- 新建 / 修改技能用 `skill-save`；从 skills.sh / GitHub 链接安装用 `skill-import`；
+- **不要用 `run-command` 往 `~/.agents/skills` / `~/.billy/skills` 写文件**：那是绕过技能库，
+  文件不会入库，也不会出现在技能列表里；
+- 技能正文写"做什么、按什么步骤、边界在哪"；长内容拆到 `references/`，脚本放 `scripts/`；
+- 启停用 `skill-enable`；`skill-delete` 不可恢复，删除前先确认。
+
+{{ } }}
 {{ if (it.tools.some(function (tool) { return tool.key.indexOf('c-') === 0 })) { }}
 ## 业务数据（连接器工具）
 

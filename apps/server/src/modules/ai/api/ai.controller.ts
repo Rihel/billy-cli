@@ -173,7 +173,7 @@ export class AiController {
     @Body({ schema: AgentChatResumeSchema }) input: AgentChatResumeDto,
     @Res() response: Response,
   ): Promise<void> {
-    await this.chat.resumeChat(this.ownerId(), input, response)
+    await this.chat.resumeChat(this.ownerId(), input, response, this.isAdminIdentity())
   }
 
   /** 停止某一轮（本进程 abort；在别的副本上则广播） */

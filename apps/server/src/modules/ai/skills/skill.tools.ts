@@ -128,6 +128,8 @@ export class SkillTools {
       - 保存后立即生效，不需要重启服务。
 
       失败时按返回的原因改：名字不合法、description 超长、路径不在 references/ scripts/ assets/、内容过大。
+
+      **不要用 \`run-command\` 往技能目录写文件**：那不会入库，也不算"装了技能"。
     `,
   })
   async save(input: z.infer<typeof SkillSaveParams>) {

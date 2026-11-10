@@ -14,12 +14,23 @@
   `chat.service.ts` 的 `buildRuntimeContext` 传 `definition.tools` 进 `childToolbox(parentTools)`。
 - 快照里的 `toolKeys` 是**展开后的具体 key**（`this.toolRegistry.expand(...)`），不是选择器。
 
+## 坑：身份没进运行时信封 = admin 工具整组消失（2026-11-11 实测）
+
+- `buildRuntimeContext` 的 `isAdmin` 必须由 `chat` / `chatStream` / `resumeChat` **显式传入**
+  （`buildRuntimeContext` 里 `options.isAdmin ?? false`）。
+- 漏传时信封 `isAdmin=false`：`authorized()` 会把**所有 `scope='admin'` 的工具**从模型工具面过滤掉，
+  但**提示词与 `request_snapshot.toolKeys` 仍然列着它们** —— 表现是"模型说工具清单里有、实际没有"，
+  于是绕 `run-command` 写文件（实际踩过：全部 `skill-*` 被过滤，技能被写到 `~/.agents/skills`，不入库）。
+- 核对：`grep -n "buildRuntimeContext(" -A 12 apps/server/src/modules/ai/runtime/chat.service.ts`，
+  三个主路径（chat / chatStream / resumeChat）的 options 都要有 `isAdmin`。
+
 ## 依据 / 核对命令
 
 ```bash
 grep -n "expandToolSelectors\|authorized(" apps/server/src/modules/ai/core/tools/tool.registry.ts
 grep -n "resolveTools:" -A 5 apps/server/src/modules/ai/ai.module.ts
-grep -n "childToolbox(" apps/server/src/modules/ai/runtime/chat.service.ts
+grep -n "childToolbox(" -A3 apps/server/src/modules/ai/runtime/chat.service.ts
+grep -n "buildRuntimeContext(" -A12 apps/server/src/modules/ai/runtime/chat.service.ts
 grep -n "scopeAllows" apps/server/src/modules/ai/core/tools/tool.scope.ts
 pnpm --filter @app/server test test/ai-tool-selector.test.ts
 ```
