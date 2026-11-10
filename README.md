@@ -1,1204 +1,192 @@
 # Billy
 
-> 开箱即用的 AI 应用开发基座：会话 / 流式 / 工具 / 模型 / 审计的运行时已经在仓库里，
+[![Node](https://img.shields.io/badge/node-%E2%89%A526-339933?logo=node.js&logoColor=white)](https://nodejs.org)
+[![pnpm](https://img.shields.io/badge/pnpm-12-f69220?logo=pnpm&logoColor=white)](https://pnpm.io)
+[![NestJS](https://img.shields.io/badge/NestJS-12-e0234e?logo=nestjs&logoColor=white)](https://nestjs.com)
+[![Next.js](https://img.shields.io/badge/Next.js-16-000000?logo=next.js&logoColor=white)](https://nextjs.org)
+[![TypeScript](https://img.shields.io/badge/TypeScript-7-3178c6?logo=typescript&logoColor=white)](https://www.typescriptlang.org)
+[![License](https://img.shields.io/badge/license-MIT-yellow)](LICENSE)
+[![GitHub stars](https://img.shields.io/github/stars/Rihel/billy-cli?style=social)](https://github.com/Rihel/billy-cli)
+
+> **开箱即用的 AI 应用开发基座** —— 会话、流式、工具、连接器、模型、审计的运行时已经在仓库里，
 > 可观测性、设计系统与分层约束一并开箱。
 >
-> 四个卖点：**开箱即用的 AI 应用开发能力**（`modules/ai` + 后台四个页面）、
-> **可观测性**（日志 / 指标 / 告警 / 探针 / AI 审计）、
-> **高颜值**（一套设计 token 与组件库，`check:ui` 守漂移）、
-> **高维护性**（数据结构一份、依赖单向、六道检查）。
->
-> 一套基于 NestJS 12、TypeScript 与 Next.js 16 的全栈应用 Monorepo 模板。
-> 后端采用「NestJS 薄边界 + 业务模块（apps/server）+ 通用能力封装 @repo/kits（一个基础设施一个 NestJS module，
-> 各自 `XxxModule.forRoot(options)` / `forRootAsync(options)` 显式接收自己的配置，配置对象即该模块的注入 bean）」；
-> 配置由 `AppConfigFacade` 在 bootstrap 前用 Zod 统一加载校验，再经 `@nestjs/config` 的 `ConfigService` 惰性下发，
-> 前端提供两套独立入口：Web 与 Admin，统一使用 `@repo/ui`（Base UI + shadcn/ui）与 Tailwind 4。
+> 基于 **NestJS 12 + TypeScript 7 + Next.js 16** 的全栈 Monorepo（pnpm + Turbo）：
+> 后端是「NestJS 薄边界 + 业务模块」，通用能力收在 `@repo/kits`；前端 Web 与 Admin 两套独立入口，
+> 共用 `@repo/ui` 与 Tailwind 4。
+
+GitHub：[Rihel/billy-cli](https://github.com/Rihel/billy-cli)
+
+## 为什么是 Billy
+
+- **AI 能力是产品，不是演示**：会话 / 运行 / 时间线三张表落库，SSE 断线续传、服务重启恢复、
+  上下文压缩、逐轮用量与审计都已跑通，不是接一个模型 API 再画个聊天框。
+- **接外部系统不用发版**：连接器在后台加一条数据，就产出一组受管工具（PostgreSQL / MySQL / Redis / 飞书 CLI），
+  开关、限额、审计与内建工具走同一套网关。
+- **出事不用登服务器**：`requestId` 串起日志、指标、告警与 AI 运行，后台五个监控页直接看。
+- **改一处处处对得上**：数据结构一份（Zod schema）派生实体 / 接口类型 / 表单 / 列表；依赖方向单向，
+  五道检查拦住走样；27 个 Agent Skills 指向仓库真实文件，AI 改代码时读到的就是这套约束。
+
+## 能力一览
+
+| 方向 | 已具备 |
+| --- | --- |
+| **AI 应用开发** | 10 个内建工具 · 4 类连接器 · 会话 / 运行 / 时间线落库 · 流式续传 · 崩溃恢复 · 上下文压缩 · 用量与审计 · 后台 5 页 |
+| **可观测性** | 日志 · 指标（含环比）· 四类告警 · 探针 · AI 审计，后台 5 个监控页 |
+| **设计与组件** | 61 个基础组件 · 48 个 ai-elements · 一套 token 双前端共用 · 暗色主题 · `check:ui` 守漂移 |
+| **工程约束** | 数据结构一份 · 依赖单向 · 全类型 SDK · `DbService` 统一数据入口 · 五道检查 |
 
 ## 技术栈
 
-```
-apps/
-├── server   — NestJS 12 HTTP 边界 + 业务模块 + 组合根（端口 9989）
-├── web      — Next.js 16 App Router + Base UI + shadcn/ui + Tailwind 4（端口 9840）
-└── admin    — Next.js 16 App Router + @repo/ui + TanStack Query/Table/Form + Zustand（端口 9845）
-packages/
-├── shared   — Zod schemas + 错误码字典 + 响应工具 + Pino 日志 + 通用工具（前后端共享）
-├── kits     — 后端通用能力封装：Db / Redis / JWT / ObjectStorage / 消息 / 调度 / 推送 / 限流 / 分页（一个基础设施一个 module，无业务实体）
-├── http-client — 通用 HTTP + 鉴权管线客户端（HttpClient / HttpStreamClient / 策略 / 凭证管理器，业务无关）
-├── sdk      — ServerClient（全类型化业务 API 调用，构建在 @repo/http-client 之上）
-└── ui       — Base UI + shadcn 风格共享组件库（Tailwind 4），含 DataTable / ModalForm / 存储组件等管理端组件
-```
+| 层 | 选型 | 说明 |
+| --- | --- | --- |
+| 构建 | pnpm 12 + Turbo | monorepo 依赖管理 + 按拓扑任务编排 |
+| 服务端 | NestJS 12（Express 5） | 模块化 HTTP 边界，业务模块归 `apps/server`，通用能力归 `@repo/kits` |
+| 数据 | PostgreSQL + TypeORM | 装饰器实体 + Repository / QueryBuilder，实体与迁移同一份字段 |
+| 缓存 / 消息 | Redis + Kafka | 缓存 / 锁 / 会话 / 运行中进度 / SSE 跨实例广播；Kafka 按需装配 |
+| 实时 | SSE（StreamHub + HttpStreamClient） | AI 流式 / 任务进度 / 通知，Redis pub/sub 跨实例 |
+| AI 运行时 | Mastra + AI SDK 7 | agent 执行、工具调用、流式交给框架；网关 / 落库 / 恢复 / 审计留在本工程 |
+| AI 连接器 | 数据库 / Redis / 飞书 CLI | 后台加一行数据就产出工具，连接、凭证、限额、审计统一管理 |
+| 前端 | Next.js 16 App Router + React 19 | RSC + SSR + Server Actions，前台与后台同构 |
+| UI | Base UI + shadcn/ui + Tailwind 4 | 无样式原语 + 可定制组件；token 与主题收在 `@repo/ui` |
+| 后台 | @repo/ui + TanStack Query / Table / Form + Zustand | DataTable / ModalForm / DataList 开箱即用 |
+| 校验 | Zod | 共享 schema 同时派生 TypeScript 类型 |
+| 日志 / 指标 | 自建 pino logger + Telemetry | 唯一 pino 实例，开发美化、生产 JSON / Loki；指标窗口聚合 |
+| 存储 | S3 / COS | 预签名 URL + STS 临时凭证 |
+| 产物 | tsdown | shared / kits / http-client / sdk 产出 dts；`@repo/ui` 直接用源码 |
+| 部署 | Docker multi-stage + Kubernetes | server / web 独立镜像，compose 一键起依赖，附 k8s 清单 |
 
-| 层         | 选型                       | 理由                                        |
-| ---------- | -------------------------- | ------------------------------------------- |
-| 构建系统   | pnpm + Turbo               | monorepo 依赖管理 + 按拓扑任务编排 |
-| 服务端框架 | NestJS 12（Express 5）     | 模块化 HTTP 边界，业务模块归 apps/server，通用能力归 @repo/kits |
-| 依赖注入   | NestJS 内建 DI             | `@Injectable` / `@Inject`（@nestjs/common）+ 构造器注入 |
-| API 层     | POST JSON（NestJS Controller） | Zod 边界校验 + 全类型化 SDK               |
-| ORM        | TypeORM                    | 装饰器实体 + Repository + QueryBuilder      |
-| 前端框架   | Next.js 16 App Router      | RSC + SSR + Server Actions                  |
-| 后台 UI    | @repo/ui + @tanstack/react-table / react-form | DataTable（tanstack 表格）/ ModalForm 声明式表单开箱即用 |
-| 前台 UI    | Base UI + shadcn/ui        | 无样式原语 + 可定制组件，Tailwind 4 驱动    |
-| 状态管理   | Zustand + Immer（admin）   | 轻量、不可变、无 boilerplate                |
-| 服务端状态 | TanStack Query             | 查询缓存 / 失效 / 重试                      |
-| 样式       | Tailwind 4                 | 原子化 CSS，零心智负担                      |
-| 日志       | 自建 logger（createLogger） | 不用 nestjs-pino：kits 建唯一 pino 实例；`AppLogger` 供业务注入、`NestLoggerAdapter` 接管框架日志；请求日志由 app 中间件记录；开发 pino-pretty，生产 JSON 或推 Loki |
-| 缓存       | Redis（ioredis）           | Set / List / Hash / PubSub / 分布式锁       |
-| 异步消息   | Kafka（kafkajs）           | 生产者 `KafkaService.send` / 消费者 `@KafkaConsumer`；按 `KAFKA_BROKERS` 按需装配 |
-| 服务端推送 | SSE（StreamHub + HttpStreamClient） | 实时推送：AI 流式 / 任务进度 / 通知，Redis pub/sub 跨实例广播 |
-| AI 运行时  | Mastra + AI SDK 7          | agent 执行、工具调用、流式交给框架；工具网关、落库、恢复、审计与用量留在本工程（适配层隔离） |
-| 对象存储   | S3 / COS                   | 预签名 URL + 临时凭证（STS）                |
-| 构建工具   | tsdown（ui 除外）          | 快速 bundler；shared / kits / http-client / sdk 产出 dts，@repo/ui 直接用源码（exports 指向 `./src/*`，不参与构建） |
-| 容器化     | Docker multi-stage         | server + web 独立部署，compose 一键起依赖   |
+选型理由见 [docs/billy-pitch.md](docs/billy-pitch.md) 第 7 节。
 
 ## 快速开始
 
 ### 前置条件
 
-- Node.js >= 26（推荐 26.13.0，Docker 基础镜像使用 26.13.0）
-- pnpm >= 12（`npm install -g pnpm@12.18.0`；Node 26 不再内置 corepack）
-- PostgreSQL（可用 `docker compose up postgres` 一键启动）
-- Redis（`.env` 模板按默认端口 6379 填写；compose 起的 Redis 映射在宿主 `6380`，需自行改端口。Redis 连接在应用启动（NestJS `OnApplicationBootstrap`）时建立，未启动会导致服务启动失败）
-- MinIO / S3 / COS（可选，仅存储模块需要；未配置对象存储相关环境变量时使用默认值）
+| 依赖 | 要求 |
+| --- | --- |
+| Node.js | ≥ 26（推荐 26.13） |
+| pnpm | ≥ 12（推荐 12.18；Node 26 不再内置 corepack） |
+| PostgreSQL / Redis | 本机或 Docker；Redis 在启动时连接，未就绪会导致服务启动失败 |
+| MinIO / S3 / COS | 可选，仅对象存储相关功能需要 |
 
-### 安装
-
-```bash
-pnpm install
-```
-
-### 一键初始化（推荐）
+### 初始化
 
 ```bash
 pnpm bootstrap
 ```
 
-自动完成：环境检查 → Docker 依赖服务（postgres / redis / minio）→ 生成三份 `.env`
-（`apps/server/.env` / `apps/admin/.env` / `apps/web/.env.local`）→ 安装依赖 → 执行迁移
-→ 创建管理员种子 → 冒烟验证 API。交互式逐步确认，也支持非交互：
+一条命令完成：环境检查 → Docker 依赖服务 → 生成三份 `.env` → 安装依赖 → 迁移 → 管理员种子 → 冒烟验证。
+交互式逐步确认，`pnpm bootstrap -y` 全默认（适合 CI / 脚本）。
+
+不想用脚本也可以手动：`pnpm install` → 按 `.env.example` 填配置 → `pnpm db:migrate`（见 [部署文档](docs/guide/deployment.md)）。
+
+### 启动开发环境
 
 ```bash
-pnpm bootstrap -y             # 全默认（非交互，适合 CI / 脚本）
-pnpm bootstrap --skip-docker  # 跳过 Docker 依赖启动（自行保证 pg / redis 可用）
-pnpm bootstrap --skip-install # 跳过依赖安装
-pnpm bootstrap --skip-migrate # 跳过迁移与种子
-pnpm bootstrap --skip-seed    # 跳过管理员种子创建
-pnpm bootstrap --skip-smoke   # 跳过冒烟验证
-```
-
-> `.env` 模板按中间件**默认端口**填写：**PostgreSQL 5432 / Redis 6379 / MinIO 9000 / Kafka 9092**
-> （Loki 3100）。用仓库的 `docker-compose` 起依赖时，宿主端口映射为 15432 / 6380 / 19000 / 29092，
-> 需要把 `.env` 里对应的端口改成映射端口；本机已有默认端口服务则直接用模板。
-
-### 环境变量（手动）
-
-`pnpm bootstrap` 会自动从模板生成，也可手动复制：
-
-```bash
-cp apps/server/.env.example apps/server/.env
-cp apps/admin/.env.example apps/admin/.env
-cp apps/web/.env.local.example apps/web/.env.local
-```
-
-`apps/server/.env` 关键项（完整模板见 `apps/server/.env.example`）：
-
-```env
-PORT=9989
-DB_URL=postgresql://root:pg1234@localhost:5432/billy-cli   # 默认端口 5432；compose 映射 15432
-REDIS_URL=redis://localhost:6379/0                          # 默认端口 6379；compose 映射 6380
-JWT_SECRET=dev-secret-change-in-production                  # 生产务必替换
-AUTH_ENABLED=true                                           # false 关闭鉴权（clone 自用）
-OBJECT_STORAGE_ENDPOINT=http://localhost:9000               # 默认端口 9000；compose 映射 19000
-```
-
-`apps/web/.env.local` 与 `apps/admin/.env` 使用默认值即可（不配置时代码有默认值兜底）。
-
-### 数据库
-
-```bash
-# 生成迁移文件（写入 apps/server/src/database/migrations/）
-pnpm db:gen Initial
-
-# 执行迁移
-pnpm db:migrate
-```
-
-### 启动（开发）
-
-```bash
-# 终端 1：并行 watch 构建 packages（shared / kits / http-client / sdk；@repo/ui 直接用源码，无需构建）
+# 终端 1：并行 watch 构建 packages（shared / kits / http-client / sdk）
 pnpm dev:pkgs
 
-# 终端 2：启动 NestJS 服务（http://localhost:9989）
-pnpm dev:server
+# 终端 2：NestJS API
+pnpm dev:server   # http://localhost:9989
 
-# 终端 3：启动 Web 前台（http://localhost:9840）
-pnpm dev:web
+# 终端 3：Web 前台
+pnpm dev:web      # http://localhost:9840
 
-# 终端 4（可选）：启动 Admin 后台（http://localhost:9845）
-pnpm dev:admin
+# 终端 4（可选）：Admin 后台
+pnpm dev:admin    # http://localhost:9845
 ```
 
-### 构建与启动（生产）
+默认管理员：`admin@billy.local / admin123`（可用 `ADMIN_EMAIL` / `ADMIN_PASSWORD` 覆盖；也可单独执行 `pnpm seed:admin`）。
+
+### 生产构建
 
 ```bash
-# 全量构建（turbo，按依赖拓扑）
 pnpm build
-
-# 分别启动
 pnpm start:server
 pnpm start:web
-
 # 或 Docker Compose（postgres + redis + minio + server + web）
 pnpm docker:up
 ```
 
+环境变量、镜像、Kubernetes 与反向代理细节见 [部署文档](docs/guide/deployment.md)。
+
 ## 项目结构
 
-```
+```text
 ├── apps/
-│   ├── server/                          # NestJS 12 HTTP 边界（@app/server）
-│   │   ├── data-source.ts               # TypeORM CLI 迁移配置（db:generate / db:migrate）
-│   │   ├── scripts/seed-admin.ts        # 首个管理员种子脚本（createApplicationContext 启动）
-│   │   └── src/
-│   │       ├── main.ts                  # 入口：NestFactory 启动 + app.use() 中间件 + 优雅关闭
-│   │       ├── root.module.ts           # 唯一组合根：AppConfigModule + 各基础设施 forRootAsync + 业务模块
-│   │       ├── app-config.ts            # 应用配置 schema（复用 kits 各模块 schema）+ mapServerEnv + loadServerAppConfig
-│   │       ├── config.ts                # ServerConfig 类型（= ServerAppConfig['server']）+ resolveServerConfig(config)
-│   │       ├── common/                   # 横切 HTTP 构件（按关注点分包，各有 index.ts；外部统一从 common/index.ts 导入）
-│   │       │                            #   error/（错误码映射 · 边界错误 · 异常过滤器 · 告警钩子）
-│   │       │                            #   request-context/（模块：ALS 上下文 · requestId 中间件）
-│   │       │                            #   request-logger/（模块：请求日志中间件）
-│   │       │                            #   request-metrics/（模块：请求埋点中间件）
-│   │       │                            #   security/（token 与身份读取 · 限流守卫）
-│   │       │                            #   http/（Zod 校验管道 · 响应信封拦截器）
-│   │       ├── database/
-│   │       │   ├── entities/            # 业务实体：UserEntity / AdminEntity / AlertRuleEntity / AlertLogEntity
-│   │       │   └── migrations/          # TypeORM 迁移产物
-│   │       └── modules/                 # 业务模块：auth / admin / user / monitor / storage / stream / runtime-config
-│   │                                    #   每模块 module + controller + service + index（repository / errors 按需）
-│   ├── web/                             # Next.js 16 前台（@app/web，端口 9840）
-│   │   └── src/
-│   │       ├── actions/auth.actions.ts  # Server Actions（登录 / 注册）
-│   │       ├── app/                     # /、/account（个人中心，受保护）、/auth/*、/comparison、/markdown/*
-│   │       │                            #   + error.tsx / not-found.tsx / loading.tsx 应用级兜底
-│   │       ├── components/landing/       # 首页区块（header / hero / features / choice / architecture / ...）
-│   │       ├── lib/                     # constants / server-client（SDK 单例）/ auth-session（服务端会话探测）/ redirect（?next= 过滤）
-│   │       ├── proxy.ts                 # 受保护路由守卫（无 cookie → 307 到登录页，matcher 只挂 /account/*）
-│   │       └── providers/               # QueryProvider（TanStack Query + 统一错误 toast）/ WebStorageProvider（上传）
-│   └── admin/                           # Next.js 16 管理后台（@app/admin，端口 9845）
-│       └── src/
-│           ├── actions/auth.actions.ts  # Server Actions（@repo/ui defineAction）
-│           ├── app/
-│           │   ├── auth/                # login / register / forgot-password / reset-password
-│           │   └── main/                # dashboard / user-center / system/{users,admins} / monitor/{live,rules,logs}
-│           ├── components/              # AppHeader / AppMenu / AppSider
-│           ├── lib/                     # constants / server-client / logger
-│           ├── providers/AppProviders.tsx
-│           ├── stores/                  # auth.store.tsx（Zustand + Immer）/ theme.store.ts
-│           └── proxy.ts                 # 中间件路由守卫（cookie）
+│   ├── server/    NestJS 12 HTTP 边界 + 业务模块 + 组合根（9989）
+│   ├── web/       Next.js 16 前台：落地页 / 账号 / Markdown 示例（9840）
+│   └── admin/     Next.js 16 管理后台：控制台 / 监控 / 用户 / AI（9845）
 ├── packages/
-│   ├── shared/                          # @repo/shared
-│   │   └── src/
-│   │       ├── schema/                  # Zod 共享 schema（auth / admin / user / object-storage / session / stream / monitor）
-│   │       ├── dicts/                   # app-error-code / user-status 错误码与字典
-│   │       ├── app-response.ts          # AppResponse 统一响应格式 + ResponseUtils
-│   │       ├── logger.ts                # 日志工厂 createLogger（前后端共用；后端经 kits LoggerModule 包装成 AppLogger）
-│   │       ├── browser.ts               # 浏览器端子入口
-│   │       └── utils/                   # nanoid / dayjs / md5 / tree / dict / user-agent（登录设备展示用）等工具
-│   ├── kits/                            # @repo/kits — 后端通用能力封装（无业务实体）
-│   │   └── src/
-│   │       ├── foundation/              # 横切基础：command / config / errors / id-generation / logger / scheduler / time-wheel
-│   │       ├── db/                      # Db / DbService 统一入口 + DbModule：create-db / db / db.service /
-│   │       │                            #   db.config / base-entity / audit-entity / audit-subscriber /
-│   │       │                            #   pagination / batch / safe-delete / sql / database.module
-│   │       ├── redis/                   # RedisStore / RedisLockService / RedisListCache + RedisModule
-│   │       ├── rate-limit/              # RateLimiter + RateLimitModule（复用 RedisConfig）
-│   │       ├── stream/                  # StreamHub / StreamConnection + StreamHubModule（SSE）
-│   │       ├── jwt/                     # TokenSigner + JwtModule（JwtConfig）
-│   │       ├── session/                 # SessionStore + SessionStoreModule
-│   │       ├── password/                # PasswordHasher + PasswordModule（PasswordConfig）
-│   │       ├── storage/                 # ObjectStorage + ObjectStorageModule + providers/{s3,cos}
-│   │       ├── kafka/                   # KafkaService / @KafkaConsumer + KafkaModule（KafkaConfig）
-│   │       ├── lark/                    # LarkClient + LarkModule（LarkConfig）
-│   │       ├── notification/            # Notifier + file / email / lark-notify + NotificationModule
-│   │       ├── telemetry/               # Telemetry + TelemetryModule
-│   │       └── (每个目录)                # provider + <name>.config.ts（如需配置）+
-│   │                                    #   <name>.module.ts（@Global + forRoot）+ index.ts
-│   ├── http-client/                      # @repo/http-client — 通用 HTTP + 鉴权管线（业务无关）
-│   │   └── src/
-│   │       ├── core/                    # http.client / credential-resolver / auth-injector / api-error
-│   │       ├── stream/                  # HttpStreamClient + stream-parser / stream-transport（SSE 客户端）
-│   │       ├── strategies/              # BearerToken / ApiKey / OAuth2 / HMAC
-│   │       ├── managers/                # localStorage / memory / cookie / env
-│   │       └── providers/               # empty-check / expires-at
-│   ├── sdk/                             # @repo/sdk
-│   │   └── src/
-│   │       └── server.client.ts         # ServerClient（全类型化业务 API，继承 http-client 的 HttpClient）
-│   └── ui/                               # @repo/ui — shadcn 组件（src/components/ui/*）+ 自有组件（src/components/* 平铺）
-│                                         #   + 设计系统：token / 主题 / 字体规范（src/globals.css，唯一定义处）
-├── docker/                              # Dockerfile.base / .server / .web + init-db.sql
-├── k8s/                                 # server 的 Kubernetes 清单（Deployment / Service / PDB / Ingress + 部署说明）
-├── docs/                                # pagination.md（分页指南）/ sdk-refactor.md / billy-pitch.md / queue.md（已废弃存档）/ design/ / dev-logs/
-├── scripts/                             # setup.ts（bootstrap）、kill-dev.ts、check-inject-decorators.ts、check-mastra-boundary.ts、check-ui.ts、codegraph-setup.ts
-├── turbo.json
-├── pnpm-workspace.yaml
-└── package.json
+│   ├── shared/    Zod schema、错误码字典、日志工厂、通用工具（前后端共享）
+│   ├── kits/      后端通用能力：Db / Redis / JWT / 存储 / 消息 / 调度 / 推送 / 限流
+│   ├── http-client/  通用 HTTP + 鉴权管线（策略 / 凭证 / SSE 客户端）
+│   ├── sdk/       ServerClient：全类型化业务 API，构建在 http-client 之上
+│   └── ui/        Base UI + shadcn 组件、ai-elements、设计系统
+├── docker/        Dockerfile.base / .server / .web + init-db.sql
+├── k8s/           server 的 Kubernetes 清单与部署说明
+├── docs/          指南（guide/）、设计文档（design/）、开发日志（dev-logs/）
+└── scripts/       bootstrap / kill-dev / 检查脚本 / codegraph 初始化
 ```
 
-## Apps 详解
+完整目录树与分层规则见 [架构文档](docs/guide/architecture.md)。
 
-### apps/server — NestJS 12 HTTP 边界
+## 文档
 
-`apps/server` 只做四件事：接收请求、Zod 校验、调用业务 service、映射错误。业务逻辑位于
-`apps/server/src/modules/`（实体与迁移在 `src/database/`），通用能力位于 `@repo/kits`。
-
-- **配置链路**：`src/app-config.ts` 的 `serverAppConfigSchema` **直接复用 kits 各模块的配置 schema** 组成
-  命名空间（`server` / `monitor` / `db` / `redis` / `jwt` / `password` / `storage` / `logger` / `notify` /
-  `lark?` / `kafka?`），`mapServerEnv(env)` 负责环境变量 → 嵌套配置；`main.ts` 与 `seed-admin.ts` 首行
-  `await loadServerAppConfig()` 完成加载 + 校验 + 补默认值（`AppConfigFacade` 缓存）。该函数内部只声明
-  **来源**：`AppConfigFacade.initial({ schema: serverAppConfigSchema, loader: envConfigLoader({ envFileName: '.env', mapEnv: mapServerEnv }) })`
-  —— 换来源（如 Consul / Nacos）只改 `loader` 这一项，配置 shape 与各模块装配完全不变。
-  除「可选模块是否装配」的两个开关（`LARK_APP_ID` / `KAFKA_BROKERS`）外，`src/` 内不再直读 `process.env`。
-- **组合根**：`root.module.ts` 是唯一组合根，`imports` 首项为 `AppConfigModule.forRoot()`（把已加载配置接进
-  Nest：全局 `ConfigService` + `AppConfig` bean），随后是无配置的基础能力模块
-  （`IdGenerationModule` / `TelemetryModule` / `SchedulerModule`）与各基础设施模块 —— 需要配置的一律用
-  `forRootAsync({ imports: [ConfigModule], inject: [ConfigService], useFactory: (config) => config.get('<命名空间>') })`
-  **惰性**取自己的分片（`LoggerModule` / `DbModule` / `RedisModule` / `JwtModule` / `PasswordModule` /
-  `ObjectStorageModule` / `NotificationModule`），无自有配置的直接引模块（`RateLimitModule` /
-  `StreamHubModule` / `SessionStoreModule`）；可选模块 `LarkModule` / `KafkaModule` 用展开语法按 env 是否存在决定；
-  再注册各业务模块（`AuthModule` / `AdminModule` / `UserModule` / `StorageModule` /
-  `StreamModule` / `MonitorModule` / `RuntimeConfigModule`）；`providers` 里用 `APP_PIPE` / `APP_FILTER` /
-  `APP_INTERCEPTOR` 注册全局管道、过滤器与拦截器。
-- **入口**：`main.ts` 用 `NestFactory.create<NestExpressApplication>(RootModule, { bodyParser: false })`
-  启动，只做引导与全局 Express 配置（`app.enableCors()`、请求体上限 2mb）；请求级横切中间件
-  （`RequestContextModule` 的请求上下文 ALS / `RequestMetricsModule` 的请求埋点）由模块自注册。
-- **业务模块目录**：`modules/<业务>/{module,controller,service,repository,errors,index}.ts`；
-  controller 只做 HTTP 边界（Zod 校验 + 调 service + 返回数据），业务逻辑仍在 service / repository。
-  `monitor` 的 `MonitorHealthController` 提供免鉴权 `POST /monitor/health`；`ops` 的 `OpsController`
-  提供免鉴权根路径 `GET /healthz` / `GET /readyz` / `GET /info`（k8s 探针用，见「API 设计」的唯一 GET 例外）；
-  `admin` 的 `AdminAuthController` 提供免鉴权的 `login` / `logout`。
-- **校验与响应**：请求体用 `@Body({ schema: Schema })` 参数装饰器校验，控制器只返回业务数据，由
-  `ResponseEnvelopeInterceptor` 统一包成 `{ code: 0, data }`，异常统一由 `AppExceptionFilter` 处理；
-  全部**业务**路由 POST 且显式标注 `@HttpCode(200)`（Nest 对 POST 默认 201），运维探针为唯一 GET 例外。
-- **守卫**：`UserAuthGuard` / `AdminAuthGuard` / `RateLimitGuard`（配合 `@RateLimit({ scope })`
-  方法装饰器，超限抛 `BoundaryError` 并带 `Retry-After` 响应头）。
-- **SSE 推流**：`modules/stream/stream.controller.ts` 的 `StreamController` 暴露 `POST /sse/subscribe`
-  长连接（Bearer / cookie 认证，强制注册 `user:{userId}` 身份频道），业务模块经 `StreamHub.publish(channel, event)`
-  推流，多实例经 Redis pub/sub 跨实例广播（`sse.md` 设计文档，客户端为 `@repo/http-client` 的 `HttpStreamClient`）。
-- **请求上下文 / 请求日志**：`common/request-context/request-context.ts` 基于 `AsyncLocalStorage`，跨中间件与业务调用
-  传递 `userId` / `adminId`，避免参数透传；`common/request-context/request-context.middleware.ts` 生成 `requestId`
-  并写入 `X-Request-Id` 响应头。请求日志由 **`common/request-logger` 的 `RequestLoggerMiddleware` 记录**
-  （method / url / statusCode / durationMs / requestId / userId / adminId），按状态码分级
-  （<400 info / 4xx warn / 5xx error），日志 `requestId` 与响应头同值；业务侧不要自写请求日志。
-- **优雅关闭**：`program()` 监听 SIGINT / SIGTERM，`await app.close()`（Express 适配器先排空在途请求，
-  再执行 `OnApplicationShutdown` 释放 DB / Redis / Kafka 等连接）。
-
-### apps/web — Next.js 16 前台
-
-面向 C 端的前台应用，使用 **Base UI + shadcn/ui**（来自 `@repo/ui`）与 Tailwind 4；
-视觉取值（配色 / 圆角 / 字体回退链 / 组件质感规则）统一来自设计系统包 **`@repo/ui`**，
-`src/app/globals.css` 只保留设计系统入口、`@source` 与前台专属的 `@keyframes`。
-
-- 页面：`/`（首页）、`/auth/*`（登录 / 注册 / 忘记密码 / 重置密码）、`/account`（**个人中心**：账号资料）与 `/account/sessions`（**登录设备**：列表 + 单设备下线），受保护用户区、`/comparison`（竞品调研）、`/markdown/*`（Markdown 渲染示例）
-- Server Actions（`actions/auth.actions.ts`）封装登录 / 注册 / 忘记密码 / 重置密码 / 登出，token 写入 httpOnly cookie
-- `lib/server-client.ts`：调用 `@repo/sdk` 的 `createAppClients` 装配 HTTP 客户端（浏览器端单例 + 服务端无状态客户端 + 凭证读写），本文件只注入 `tokenKey` / 两端地址 / 401 善后；`lib/constants.ts` 的地址解析走 `@repo/shared` 的 `createAppUrlConfig`（环境变量读取留在 app，`NEXT_PUBLIC_*` 需构建期替换）；httpOnly cookie 在 `lib/auth-session.ts` 读取
-- `providers/QueryProvider.tsx` 注入 TanStack Query（`QueryCache` / `MutationCache` 的 `onError` 统一 toast）；`providers/WebStorageProvider.tsx` 把 `@repo/ui` 的上传组件接到 `storage.getPresignedUrl`；`providers/ThemeProvider.tsx` 应用已存储 / 系统的主题（**前台已支持暗色**，入口在落地页头部与移动端抽屉）
-- 受保护页两层守卫：`src/proxy.ts` 中间件（只查 cookie → 无 cookie 真实 307 到 `/auth/login?next=`，`matcher` 只挂 `/account/:path*`）+ `app/account/layout.tsx` 的 SSR 会话校验；`?next=` 回跳经 `lib/redirect.ts` 过滤（防开放重定向）
-- 应用级兜底：`app/error.tsx`（可重试）、`app/not-found.tsx`、`app/loading.tsx`
-- `app/layout.tsx` 标记 `force-dynamic`：前端根 layout 统一动态渲染（每次请求 SSR，不做静态预渲染）
-- `next.config.ts`：`output: 'standalone'`、React Compiler、transpile `@repo/ui`
-
-### apps/admin — Next.js 16 管理后台
-
-面向后台的管理应用，与前台同源使用 **@repo/ui**（shadcn/ui 风格）与 **`@repo/ui`**
-（设计系统，完整深色模式），表格用
-**@tanstack/react-table**（`DataTable`）、表单用 **@tanstack/react-form**
-（`ModalForm` / `DrawerForm` / `FormRenderer` 声明式 items），适合表格 / 表单 / 权限类页面。
-登录使用**后台管理员**账号（`AdminEntity`，`/admin/*` 接口），与前台用户体系隔离。
-
-- 页面：`/auth/login`（管理员登录）、`/main/dashboard`、`/main/user-center`（含**登录设备**区块）、
-  `/main/system/users`、`/main/system/admins`（管理员管理）、`/main/monitor/live`（**实时告警**，SSE）、
-  `/main/monitor/rules`（告警规则）、`/main/monitor/logs`（告警记录）
-- 实时告警页把 SSE 链路走通：`client.createStream()`（`@repo/sdk`）→ `useStream`（`@repo/ui`）
-  → 告警发送后 `StreamHub.publish('admin:all', 'alert.fired')` 实时到达；页内「触发测试告警」
-  可一键自检全链路（协议与频道权限见 `stream` skill 与 `docs/design/frontend-foundation.md`）
-- 布局：`AppHeader` + `AppSider` + `AppMenu`；根 `app/layout.tsx` 与 `main/layout.tsx` 均标记
-  `force-dynamic`（前者让前端根 layout 统一动态渲染，后者在 SSR 侧通过 cookie 调用
-  `admin.getMe()` 做鉴权，失败 `redirect()` 到登录页）
-- 路由守卫：`proxy.ts` 中间件按 `PublicPaths` + cookie 判断，未登录访问非公开页时 `redirect()` 到登录页（不对已登录用户做反向重定向）
-- Server Actions：`@repo/ui/action` 的 `defineAction` / `callAction` 统一返回
-  `{ ok, data } | { ok: false, error }` 结构，简化错误处理
-- 状态管理：Zustand + Immer（`auth.store` 保存 `adminInfo` / `theme.store` 保存主题），
-  `main/layout.tsx` SSR 预取管理员信息
-- 首个管理员：`pnpm seed:admin`（默认 `admin@billy.local / admin123`，可用
-  `ADMIN_EMAIL` / `ADMIN_PASSWORD` 覆盖），随后可在「系统设置 → 管理员管理」中维护
-
-## Packages 详解
-
-### @repo/shared — 前后端共享层
-
-Zod schema 单一事实源，同时派生 TypeScript 类型（`*.schema.ts` 导出 `XxxModel` / `XxxDto`）：
-
-- **数据结构命名（硬性）**：schema 常量一律 `XxxSchema` 结尾（值后缀）；入参类型 `XxxDto`、响应类型
-  `XxxModel`（类型后缀），两者 `z.infer` 导出在**同一文件**、紧贴其 schema；`z.enum` 值域 schema
-  （如 `AdminStatusSchema` / `AlertLevelSchema`）只导出 schema，不建类型别名；`base.schema.ts` 的
-  `BaseModelSchema` / `BasePaginateSchema` / `BaseCursorPaginateSchema` 只作 `extend` / `intersection`
-  基石，不导出类型。
-- `schema/`：auth / admin / user / stream（SSE 事件与订阅）/ monitor（告警规则、日志、健康检查）/
-  object-storage / app-config / base（模型与分页、游标基类）
-- `dicts/`：`app-error-code.dict.ts`（错误码字典：`value` + `http` + `label`，业务抛错、server 映射、
-  前端文案共用同一份定义）、`user-status.dict.ts`
-- `app-response.ts`：`AppResponse<T>` / `AppPageQueryResponse<T>` / `AppCursorQueryResponse<T>` 与
-  `ResponseUtils`（`success` / `error` / `isSuccess`）
-- `logger.ts`：日志工厂 `createLogger(name, pretty, level, { redact, transport })`，
-  开发环境 pretty 彩色、生产 JSON（**前后端共用**：后端 kits `LoggerModule` 也用它，见下文「日志」）
-- 子入口：`@repo/shared/browser`（浏览器端安全导出）、`@repo/shared/logger`（前端日志）
-- `utils/`：nanoid / dayjs / md5 / tree / dict / file / zod 等通用工具
-
-### @repo/kits — 后端通用能力封装
-
-纯能力集（**不持有任何业务实体**）。装配采用「**一个基础设施一个 NestJS module**」：
-每个模块用 `XxxModule.forRoot(options)` 显式接收自己的配置分片，该配置对象即模块自己的注入 bean
-（`DbConfig` / `RedisConfig` / `JwtConfig` / `PasswordConfig` / `StorageConfig` / `NotifyConfig` /
-`LarkConfig` / `KafkaConfig`），不再由应用聚合成一个中央 kits 模块。所有模块均 `@Global()`，
-装配进 `apps/server/src/root.module.ts` 的 `imports`：
-
-- `db/`：`create-db.ts`（PostgreSQL DataSource 工厂，实体由应用注入）、`db.ts`（`Db`：连接生命周期统一入口）、
-  `db.service.ts`（`DbService`：**注入式数据操作统一入口**——四种分页 / 批量写入与删除 / 软删 /
-  SQL 还原；只依赖 `Db`，不注入 logger，
-  自动带默认 manager 与当前操作人。纯函数是内核，本类只是把它接进容器，
-  见下文「批量写入」）、`db.config.ts`（`DbConfig`）、`database.module.ts`（`DbModule`）、
-  `pagination.ts`（四种分页策略，见下文「分页」）、
-  `batch.ts`（`batch` 分片 + 并发骨架 / `batchInsert` / `batchSave` / `batchUpsert`，
-  事务内自动串行）、`safe-delete.ts`（`safeDelete`：先写 `deletedBy` 再软删）、
-  `sql.ts`（`getFullSqlStatement`：占位符还原成完整 SQL，仅调试）、
-  `base-entity.ts`（`BaseEntity`：`id` nanoid 主键 + `createdAt` / `updatedAt` /
-  软删除 `deletedAt`）、`audit-entity.ts` + `audit-subscriber.ts`（**可选审计**：继承 `AuditEntity`
-  并把 `AuditSubscriber` 放进 `db.subscribers`，自动记录 `createdBy` / `updatedBy` / `deletedBy`；
-  操作人来源用 `setAuditUserProvider()` 挂载，`DbService.operatorId` 读同一个钩子）
-- 各基础设施一个目录（每个目录都是 `provider + <name>.config.ts + <name>.module.ts + index.ts`）：
-  - `redis/`：`redis-store.ts`（KV / TTL / JSON / 基础锁）、`redis-lock.service.ts`（自旋等待 +
-    看门狗续期）、`redis-lock.decorator.ts`（`@RedisLock`）、`redis-list-cache.ts`（Hash 列表缓存）、
-    `redis.config.ts`（`RedisConfig`）、`redis.module.ts`（`RedisModule`）
-  - `rate-limit/`：`rate-limiter.ts`（基于 rate-limiter-flexible，IP 白名单用 `ip-utils.ts`）+
-    `rate-limit.module.ts`（`RateLimitModule`，复用 `RedisConfig`）
-  - `stream/`：`stream-hub.ts` / `stream-connection.ts`（SSE 推流）+ `stream-hub.module.ts`
-  - `jwt/`：`token-signer.ts` + `jwt.config.ts`（`JwtConfig`）+ `jwt.module.ts`
-  - `session/`：`session-store.ts`（会话存储：校验 / 撤销 / 登录设备列表 / 单设备下线）+ `session.module.ts`
-  - `password/`：`password-hasher.ts` + `password.config.ts`（`PasswordConfig`）+ `password.module.ts`
-  - `storage/`：`object-storage.ts` + `storage.config.ts`（`StorageConfig`）+
-    `object-storage.module.ts` + `providers/{s3,cos}.ts`
-  - `kafka/`：`kafka.service.ts` / `kafka-consumer.decorator.ts`（`@KafkaConsumer`）/
-    `kafka-consumer-scanner.ts` + `kafka.config.ts`（`KafkaConfig`）+ `kafka.module.ts`
-  - `lark/`：`lark.client.ts`（飞书官方 SDK 封装）+ `lark.config.ts`（`LarkConfig`）+ `lark.module.ts`
-  - `notification/`：`notifier.ts`（通知编排）+ `notify.config.ts`（`NotifyConfig`）+
-    `notification.module.ts` + `file/file.client.ts` / `email/email.client.ts` /
-    `lark-notify/lark-notify.client.ts`
-  - `telemetry/`：`telemetry.ts`（Counter / Gauge / Histogram）+ `telemetry.module.ts`
-- `foundation/`：`config/`（**配置模块**：可插拔 `ConfigLoader` 抽象 + 内置 `envConfigLoader` /
-  `memoryConfigLoader` / `consulConfigLoader` + `AppConfigFacade` + `AppConfigModule`；Zod 4 默认值物化 +
-  带字段路径的校验错误）、`command/`（跨平台命令执行：`CommandRunner` + `CommandModule`，底层 `execa` ——
-  shell 按平台解析、超时按进程树杀、输出有上限、失败不抛异常）、`errors/`（AppError / InfrastructureError）、`id-generation/`（`IdGeneration` + `IdGenerationModule`）、
-  `logger/`（`app-logger.ts` + `logger.config.ts` + `logger.options.ts` + `LoggerModule`）、`scheduler/`（croner + `SchedulerModule`）、
-  `time-wheel/`（`TimeWheel` 进程内高频调度原语：秒级/毫秒级刻度 + 自适应补偿 + 落后任务防堆积。
-  **普通类（不走 DI）的封装**——需构造参数且天然多实例，用 `new TimeWheel(tickDuration, wheelsCount)`
-  自行 `start()` / `stop()`，故无 module）
-- **模块清单**（均在 `packages/kits/src` 下，全部 `@Global()`）：
-
-| Module | forRoot 选项 | 提供的 bean |
-| --- | --- | --- |
-| `AppConfigModule` | `forRoot()` 无选项（前置：bootstrap 先 `await AppConfigFacade.initial({ schema, loader })`） | AppConfig（整份已加载配置）+ 全局 `ConfigService` |
-| `IdGenerationModule` / `SchedulerModule` / `TelemetryModule` | 无 | IdGeneration / Scheduler / Telemetry |
-| `LoggerModule` | `{ prefix?, level?, pretty?, loki? }` | LoggerConfig + LOGGER_INSTANCE + AppLogger + NestLoggerAdapter |
-| `DbModule` | `{ url?, sync?, entities?, subscribers? }` | DbConfig + Db + DbService |
-| `RedisModule` | `{ url?, keyPrefix? }` | RedisConfig + RedisStore + RedisLockService |
-| `RateLimitModule` | 无（复用 RedisConfig） | RateLimiter |
-| `StreamHubModule` | 无（复用 RedisConfig + IdGeneration） | StreamHub |
-| `JwtModule` | `{ secret?, expiresIn? }` | JwtConfig + TokenSigner |
-| `SessionStoreModule` | 无（复用 JwtConfig + RedisStore） | SessionStore |
-| `PasswordModule` | `{ passwordHashRounds? }` | PasswordConfig + PasswordHasher |
-| `ObjectStorageModule` | StorageConfig 输入 | StorageConfig + ObjectStorage |
-| `LarkModule` | LarkConfig 输入 | LarkConfig + LarkClient |
-| `NotificationModule` | NotifyConfig 输入 | NotifyConfig + Notifier + FileClient + EmailClient + LarkNotifyClient |
-| `KafkaModule` | KafkaConfig 输入 | KafkaConfig + KAFKA_CONNECTION + KafkaService + KafkaConsumerScanner |
-
-  需要配置的模块都**同时提供 `forRoot(options)` 与 `forRootAsync(options)`**：同步版自己
-  `Schema.parse(options)` 校验 + 补默认值；异步版接受统一的 `InfraModuleAsyncOptions`
-  （`{ imports?, inject?, useFactory }`），由 `useFactory` 惰性返回该模块分片，模块内部再 `Schema.parse`；
-  应用侧用 `forRootAsync` + `ConfigService.get('<命名空间>')` 从已加载的应用配置取值。
-
-  **缺失某个模块就是「未装配」**，
-  用方由 Nest 解析报错（可选依赖用 `@Optional()` 降级，如未装配 `LarkModule` 时
-  `LarkNotifyClient` 的 `LarkClient` 注入为 undefined，通道自动降级为「未配置」；
-  `KafkaModule` 额外 `imports DiscoveryModule` 以支持 `@KafkaConsumer` 扫描）
-- 业务仓储 / 服务由各业务模块 `providers` 注册；实体是类引用、无法来自环境变量，
-  由应用在 `DbModule.forRootAsync` 的 `useFactory` 里补 `entities: [...]`
-- 继续 re-export `typeorm-transactional`（业务模块 `@Transactional()` 直接来自 `@repo/kits`）
-
-### apps/server 业务模块
-
-业务三层（module + controller + service + repository + errors）位于
-`apps/server/src/modules/{auth,admin,user,session,monitor,storage,stream,ai,ai-model,ai-usage,runtime-config,ops}`，
-实体 / 迁移位于 `apps/server/src/database/`（`data-source.ts` 供 `db:generate` / `db:migrate`），
-横切 HTTP 构件位于 `apps/server/src/common/`：
-
-```
-modules/                       # 业务领域（每个模块同目录：module + controller + service + repository + errors + index）
-├── auth/           # auth.service.ts（register/login/logout/forgot/reset/change-password/getMe/verifyToken）
-│                   #   + auth.controller.ts + user-auth.guard.ts + errors
-├── admin/          # admin.service.ts（后台管理员 login/logout/getMe/CRUD/resetPassword/changePassword/verifyToken）
-│                   #   + admin.repository.ts + admin.controller.ts + admin-auth.guard.ts + errors
-│                   #   token 带 type='admin'，与前台用户隔离
-├── user/           # user.service.ts + user.repository.ts + user.controller.ts + errors
-├── monitor/        # MonitorHealthController（免鉴权 /monitor/health）+ MonitorController + 告警规则 / 记录
-├── storage/        # storage.controller.ts（预签名 URL / STS 临时凭证）
-├── stream/         # stream.controller.ts + stream-auth.guard.ts + stream.options.ts（SSE_ROUTE_OPTIONS）
-├── ops/            # OpsController（根路径 GET /healthz、/readyz、/info，全工程唯一 GET 例外）+ OpsModule
-├── session/        # 多设备会话管理（登录设备列表 / 踢下线）
-├── ai/             # 会话 / 运行 / 时间线 / 工具面 / 技能 / 恢复（详见「内置 AI 对话」）
-├── ai-model/       # 供应商与模型配置（后台配置即生效，运行时只用配过的模型）
-├── ai-usage/       # 每日用量汇总 + 定时 rollup（按模型 / 按 agent）
-└── runtime-config/ # RuntimeConfigController（公开 POST /config/get）+ RuntimeConfigModule
-│                   #   目录名与类名刻意区别于 kits 的 AppConfigModule
-common/                        # 横切 HTTP 构件（不依赖业务模块；外部统一从 common/index.ts 导入）
-├── error/       # error-descriptor.ts（错误码 → HTTP/中文）+ boundary-error.ts + app-exception.filter.ts + error-alert-hook.ts
-├── request-context/   # 模块：request-context.ts（ALS：requestId/userId/adminId）+ request-context.middleware.ts + request-context.module.ts
-├── request-metrics/   # 模块：request-metrics.middleware.ts（注入 Telemetry，采 QPS/耗时）+ request-metrics.module.ts
-├── security/    # authentication.ts（token 提取 / 当前身份）+ rate-limit.guard.ts（@RateLimit + RateLimitGuard）
-└── http/        # zod-validation.ts（`@Body({ schema })` 校验管道）+ response-envelope.interceptor.ts（响应信封）
-│                #   + ops-probe.ts（探针路径判定：请求日志 / 指标据此跳过探针）
-database/
-├── entities/     # UserEntity / AdminEntity / AlertRuleEntity / AlertLogEntity（继承 @repo/kits 的 BaseEntity）
-└── migrations/   # TypeORM 迁移产物
-```
-
-**使用方式（应用组合根 `apps/server/src/root.module.ts`）：**
-
-> 下面只给骨架，省略了 `RequestContextModule` / `RequestLoggerModule` / `RequestMetricsModule`
-> （三者顺序有先后规定，见上文）与完整实体列表；实际装配以 `apps/server/src/root.module.ts` 为准。
-
-```ts
-import { Module } from '@nestjs/common'
-import { ConfigModule, ConfigService } from '@nestjs/config'
-import { APP_FILTER, APP_INTERCEPTOR, APP_PIPE } from '@nestjs/core'
-import {
-  AppConfigModule,
-  DbModule,
-  IdGenerationModule,
-  JwtModule,
-  LoggerModule,
-  NotificationModule,
-  ObjectStorageModule,
-  PasswordModule,
-  RateLimitModule,
-  RedisModule,
-  SchedulerModule,
-  SessionStoreModule,
-  StreamHubModule,
-  TelemetryModule,
-} from '@repo/kits'
-import {
-  AppExceptionFilter,
-  ResponseEnvelopeInterceptor,
-  createZodValidationPipe,
-} from './common/index.js'
-import { UserEntity } from './database/entities/user-entity.js'
-import { UserModule } from './modules/user/index.js'
-
-@Module({
-  imports: [
-    // 应用配置：bootstrap 已 await loadServerAppConfig()，这里接进 Nest（全局 ConfigService + AppConfig bean）
-    AppConfigModule.forRoot(),
-    // 基础能力（无配置）
-    IdGenerationModule,
-    TelemetryModule,
-    SchedulerModule,
-    // 基础设施：配置由 ConfigService 惰性解析（模块装饰器求值早于配置加载，不能顶层直读）
-    LoggerModule.forRootAsync({
-      imports: [ConfigModule],
-      inject: [ConfigService],
-      useFactory: (config: ConfigService) => config.get('logger')!,
-    }),
-    DbModule.forRootAsync({
-      imports: [ConfigModule],
-      inject: [ConfigService],
-      useFactory: (config: ConfigService) => ({
-        ...config.get('db'),
-        // 实体是类引用，无法来自环境变量，由组合根补上
-        entities: [UserEntity],
-      }),
-    }),
-    RedisModule.forRootAsync({
-      imports: [ConfigModule],
-      inject: [ConfigService],
-      useFactory: (config: ConfigService) => config.get('redis')!,
-    }),
-    RateLimitModule,
-    StreamHubModule,
-    JwtModule.forRootAsync({
-      imports: [ConfigModule],
-      inject: [ConfigService],
-      useFactory: (config: ConfigService) => config.get('jwt')!,
-    }),
-    SessionStoreModule,
-    PasswordModule.forRootAsync({
-      imports: [ConfigModule],
-      inject: [ConfigService],
-      useFactory: (config: ConfigService) => config.get('password')!,
-    }),
-    ObjectStorageModule.forRootAsync({
-      imports: [ConfigModule],
-      inject: [ConfigService],
-      useFactory: (config: ConfigService) => config.get('storage')!,
-    }),
-    NotificationModule.forRootAsync({
-      imports: [ConfigModule],
-      inject: [ConfigService],
-      useFactory: (config: ConfigService) => config.get('notify')!,
-    }),
-    // 业务模块在 imports 注册（模块内 providers 声明自己的 repository / service）
-    UserModule,
-  ],
-  providers: [
-    { provide: APP_PIPE, useFactory: createZodValidationPipe },
-    { provide: APP_FILTER, useClass: AppExceptionFilter },
-    { provide: APP_INTERCEPTOR, useClass: ResponseEnvelopeInterceptor },
-  ],
-})
-export class RootModule {}
-```
-
-对应 `apps/server/src/main.ts` 的启动顺序（配置必须先于 `NestFactory.create`）：
-
-```ts
-await loadServerAppConfig()   // AppConfigFacade.initial({ schema, loader: envConfigLoader({...}) })
-
-const app = await NestFactory.create<NestExpressApplication>(RootModule, {
-  bodyParser: false,
-  bufferLogs: true,
-})
-```
-
-```ts
-// modules/user/user.module.ts
-@Module({
-  imports: [AdminModule],
-  controllers: [UserController],
-  providers: [UserRepository, UserService],
-  exports: [UserRepository, UserService],
-})
-export class UserModule {}
-```
-
-**生命周期设计：**
-
-- 生命周期组件实现 `OnApplicationBootstrap` / `OnApplicationShutdown`（`@nestjs/common`），由 Nest 在装配完成后按 providers 声明顺序启动，`app.close()` 时逆序释放
-- 各组件持有独立连接、停止期互不依赖；单个组件释放失败由框架记录，不阻断其余
-- **第 6 条规定**：项目用 `tsx`（esbuild）编译，**不产出 `design:paramtypes`**，因此**每个构造器参数必须显式写 `@Inject(token)`**，不能依赖 TypeScript 类型推断；漏写会静默注入 `undefined` 而不报错（controller / service / repository / guard / filter 一律如此）
-- **开发态必须用 `node --import tsx/esm`**（`pnpm dev:server` 已内置）：`tsx` CLI 会同时挂 CJS 钩子，导致 CJS 依赖（如 `pino`、`pg`）`require('@nestjs/core')` 与 ESM `import` 拿到**两份模块实例**，`ApplicationConfig` 这类跨包 class token 对不上而启动失败；只挂 ESM 加载器即与 `node dist/main.js` 行为一致
-- 例外：kits 内部对带可选数值参数的构造器（如 `Telemetry`）用 `useFactory` 显式装配；`RateLimitGuard` 用 `Reflect.getMetadata` 直接读方法元数据而不注入 `Reflector`
-
-**设计原则：**
-
-- 通用能力（基础设施 / 横切基础 / 数据访问）归 `@repo/kits`，业务模块与实体 / 迁移归 `apps/server`
-- 统一用 `@nestjs/common` 的 `@Injectable` / `@Inject`，所有能力与业务服务都是构造器注入依赖的 class
-- 错误以 `Error` 子类抛出并携带 `code`，`AppExceptionFilter` 按 `code` 映射 HTTP 错误码与文案
-- DTO / Zod 校验与 HTTP 错误转换只存在于 apps/server 的 HTTP 边界
-- 业务模块不 import HTTP 框架（controller / 守卫等 HTTP 构件只出现在 HTTP 边界）
-- 业务错误保持原义，不包装成统一 `AppError`
-- 基础设施服务隔离数据库、Redis、JWT 与对象存储等技术细节，业务层不感知具体实现
-- 无装饰器反射之外的魔法，兼容 Node type-stripping / esbuild / tsdown
-
-### @repo/http-client — 通用 HTTP + 鉴权管线
-
-业务无关的客户端基础设施，被 `@repo/sdk` 的 `ServerClient` 继承使用（依赖方向：`sdk → http-client → shared`）。
-
-`HttpClient`（基于原生 fetch）的请求管线：
-
-```
-skipAuth 检查
-  → CredentialResolver.resolve()（凭证校验 / acquire / refresh，并发去重）
-  → AuthInjector.inject()（按 AuthStrategy 注入 headers / query / body）
-  → cancelPrevious（相同在途请求去重，latest wins）
-  → fetch() 发送请求
-  → 错误处理：401 + 可刷新 → forceRefresh 重试一次；其余统一抛 ApiError
-```
-
-- `ServerClient extends HttpClient`（`@repo/sdk`）：按业务分组的全类型化方法
-  （`config` / `auth` / `admin` / `user` / `storage` / `monitor`），请求 / 响应类型全部来自 `@repo/shared`
-- 认证策略：`BearerToken` / `ApiKey` / `OAuth2` / `HMAC`
-- 凭证管理器：`localStorage` / `memory` / `cookie` / `env`
-- 凭证供应器：`empty-check` / `expires-at`（配合 OAuth2 自动续期）
-- 错误：统一 `ApiError`（可 JSON 序列化），区分网络异常与业务异常
-
-```typescript
-import { ServerClient } from '@repo/sdk'
-import { LocalStorageCredentialsManager } from '@repo/http-client'
-import type { BearerTokenCredentials } from '@repo/http-client'
-
-const client = new ServerClient({
-  baseUrl: 'http://localhost:9989',
-  credentialsManager: new LocalStorageCredentialsManager<BearerTokenCredentials>('access-token'),
-  callbacks: {
-    onUnauthorized: () => window.location.replace('/auth/login'),
-  },
-})
-
-// 公开接口（无需 token）
-const { token, user } = await client.auth.login({ email, password })
-await client.credentialsManager.setCredentials({ token })
-
-// 需鉴权接口
-const me = await client.auth.getMe()
-const users = await client.user.pageQuery({ page: 1, size: 20 })
-```
-
-### @repo/ui 的设计系统（token / 主题 / 字体规范）
-
-`packages/ui/src/globals.css` 是 web 与 admin 共用的**视觉规范唯一定义处**：语义 token
-（颜色 / 圆角，明暗各一套）、Tailwind 4 `@theme` 映射、字体族回退链、组件质感规则
-（等宽数字对齐 / 细滚动条）。**token 没有 JS 副本** —— 具体值就是这些 CSS 变量本身，
-页面里用 Tailwind 语义类消费；内联 style / SVG 场景直接写 `var(--primary)`
-（理由见 `docs/design/design-system.md` §4.2）。
-
-- 语义色：`primary` / `secondary` / `muted` / `accent` / `destructive` / `success` /
-  `warning` / `info` / `brand`（品牌强调色，前台落地页用）/ `chart-1..5` / `sidebar-*`
-  （共 38 个颜色 token，明暗对称）；
-- 主题：三态（浅色 / 深色 / 跟随系统）能力在 ui 包 —— `createTheme({ storageKey })` 出
-  `useTheme` / `initTheme`，`createThemeBootScript()` 生成防刷新白闪的内联脚本，
-  `ThemeToggle` 是受控展示组件；**存储 key 由各 app 传**（同域部署下 front/back 互不干扰）；
-- 守卫：`packages/ui/test/tokens.test.ts` 用**零手工清单**的纯 CSS 自洽断言守着
-  「明暗对称 + `@theme` 映射自洽 + 字体回退链」；`pnpm check:ui` 拦新增硬编码调色板、
-  校验样式入口可解析与字体规范一致；
-- 设计决策、取舍依据与已知缺口见 `docs/design/design-system.md`，
-  admin 应用层约定见 `docs/design/admin-design-language.md`。
-
-### @repo/ui — 共享组件库
-
-shadcn 风格的组件实现统一在 `src/components/ui/*`（约 60 个：button / dialog / table /
-sidebar / toast / chart 等），Tailwind 4 主题变量来自同包的 `globals.css`（设计系统）。
-重型组件按需从子路径引入（`@repo/ui/components/ui/command` 等）。
-
-### @repo/ui 的管理端组件
-
-我们自己的组件与 shadcn 分开存放：shadcn 组件在 `src/components/ui/*`，
-自有组件直接平铺在 `src/components/*`（与 ui/ 平级，不混入 shadcn 目录，避免被
-`shadcn add` / registry 覆盖）。在 shadcn 基础组件之上提供管理端通用组件
-（全部基于 **@tanstack/react-table** 与 **@tanstack/react-form**）：
-
-- 表格：`DataTable`（@tanstack/react-table 列定义 + 服务端分页）/ `TableActions` /
-  `ConfirmAction`（AlertDialog 确认）/ `PageToolbar`
-- 列表：`DataList`（react-virtuoso 游标滚动加载）
-- 表单：`ModalForm` / `DrawerForm` / `FormRenderer`（@tanstack/react-form 声明式
-  items：widget + required/validate 校验）/ `EditableInput`
-- 存储：`StorageProvider` / `StorageClientProvider`（把 SDK 客户端接到上传组件上，两个前端共用）/
-  `useStorage` / `ImageUpload` / `FileUpload` / `FilePreview` / `SortableFileList`（配合 `/storage/*` 接口）
-- 应用装配：`QueryProviders`（QueryClient + 统一错误 toast，策略由 app 传）/
-  `RouteError` / `RouteNotFound`（`app/error.tsx` / `not-found.tsx` 的版式，两个前端共用）/
-  `createTheme` / `ThemeToggle`（主题，存储 key 由 app 传）
-- 展示：`DictTag` / `DisplayValue` / `DisplayRender` / `Tag` / `Icon` / `IconText` /
-  `PageLoading` / `Group` / `AutoSize` 等
-- `action.ts`：`defineAction` / `callAction` —— Server Action 的 `{ ok, data } | { ok: false, error }`
-  包装器，与 `useDisclosure` / `usePasteFiles` / `useRect` 等 hooks
-
-## 架构设计
-
-### 分层与数据流
-
-```
-浏览器 ── POST JSON ──→ Next.js（Server Actions / 客户端 SDK）── POST JSON ──→ NestJS
-                       （SSR）                                        │
-                                                                      ├─ 业务 service ──→ PostgreSQL
-                                                                      │                    (TypeORM)
-                                                                      └─ 业务 service ──→ Redis / S3 / COS
-```
-
-分层规则：`apps/server`（HTTP 适配 + 业务模块 + 实体/迁移）→ `@repo/kits`（通用能力）→ 外部资源
-（DB / Redis / S3 / COS）。前端通过 `@repo/sdk` 调用，请求 / 响应类型与后端共享 `@repo/shared`
-的 Zod schema。
-
-### 组合根与生命周期
-
-组合根收敛到唯一装配点 `apps/server/src/root.module.ts`，kits 侧由「一个基础设施一个模块」分别装配：
-
-- 每个基础设施一个 `@Global()` NestJS 模块，需要配置的都提供 `forRoot(options)` 与
-  `forRootAsync(options)` 两种装配方式：`LoggerModule` / `DbModule` / `RedisModule` / `JwtModule` /
-  `PasswordModule` / `ObjectStorageModule` / `NotificationModule` / `LarkModule` / `KafkaModule`；
-  `RateLimitModule` / `StreamHubModule` / `SessionStoreModule` 复用上游模块的配置 bean
-  （RedisConfig / JwtConfig / IdGeneration），`IdGenerationModule` / `TelemetryModule` /
-  `SchedulerModule` 无配置；模块内部 `Schema.parse(...)` 校验 + 补默认值，**配置对象本身就是该模块的
-  注入 bean**（`DbConfig` / `RedisConfig` / `JwtConfig` / `PasswordConfig` / `StorageConfig` /
-  `NotifyConfig` / `LarkConfig` / `KafkaConfig`）
-- **配置链路（惰性规则）**：`AppConfigFacade.initial({ schema, loader })` 在
-  `NestFactory.create` **之前**完成「加载 → 校验 → 补默认值 → 缓存」；
-  `schema` 是应用自定义的 shape（zod），`loader` 决定来源（内置 `env` / `memory` / `consul`，
-  或自定义实例 / `registerConfigLoader` 注册的名字）；`AppConfigModule.forRoot()` 用
-  `ConfigModule.forRoot({ isGlobal: true, load: [() => AppConfigFacade.getConfig()] })` 把它接进 Nest；
-  各模块用 `forRootAsync` 的 `useFactory` 惰性取分片。**不要在 `root.module.ts` 顶层直接读配置值** ——
-  ESM 下 `import { RootModule }` 的装饰器求值早于 `main()` 里的配置加载，顶层读会拿到空配置
-- **按需装配**：某基础设施不 import 即视为未启用（如不 import `KafkaModule` 就没有 Kafka 客户端）；
-  可选依赖用 `@Optional()` 优雅降级（未装配 `LarkModule` 时 `LarkNotifyClient` 自动「未配置」）
-- **应用级业务配置**：`apps/server/src/config.ts` 只导出 `ServerConfig` 类型（= `ServerAppConfig['server']`）
-  与 `resolveServerConfig(config)`；守卫 / service / 控制器注入全局 `ConfigService` 后调它取 `server` 分片
-  （端口 / 鉴权开关 / 限流白名单等），**无需额外的配置 bean / 模块**
-- `apps/server/src/main.ts`：只用 `NestFactory.create(RootModule, { bodyParser: false })` 启动，
-  再 `app.enableCors()` / 设置请求体上限，不承担业务注册职责；请求上下文 / 请求日志 / 请求指标
-  中间件由 `common/` 的 `RequestContextModule` / `RequestLoggerModule` / `RequestMetricsModule`
-  **自注册**（`forRoutes('*')`，均标 `@Global()`，且 `RequestContextModule` 必须排在最前）
-- 生命周期由 Nest 驱动：组件实现 `OnApplicationBootstrap` / `OnApplicationShutdown`，
-  装配完成后按 providers 声明顺序启动（Db 初始化、Redis 连接、ObjectStorage 建桶 / 客户端），
-  `app.close()` 时逆序释放资源
-- 业务模块在 `root.module.ts` 的 `imports` 注册，各自的 repository / service 在自己模块的
-  `providers` 声明；实体是类引用、无法来自环境变量，由组合根在 `DbModule.forRootAsync` 的
-  `useFactory` 里补 `entities: [...]`（其余 `db` 配置仍来自应用配置）
-
-### 认证
-
-- JWT token，通过 `Authorization: Bearer` 或 `access-token` cookie 传递；payload 带
-  `jti`（唯一 id，`TokenSigner.sign` 显式写入）—— 否则同一秒内重复登录会签出**逐字节相同**的
-  token，服务端会话按 `sha256(token)` 主键会把两台设备合并成一条
-- `UserAuthGuard`（`modules/auth/user-auth.guard.ts`）与 `AdminAuthGuard`
-  （`modules/admin/admin-auth.guard.ts`）调用业务 `verifyToken`，校验通过后把 `userId` /
-  `adminId` 写入 AsyncLocalStorage 请求上下文（管理员 token payload 带 `type: 'admin'`）
-- 两类 token 严格隔离：用户 token 只能访问用户接口，管理员 token 只能访问 `/admin/*` 接口
-- 公开接口（注册 / 登录 / 管理员登录 / 忘记密码 / 重置密码）不加 Guard
-- Admin SSR 侧：`main/layout.tsx` 用 cookie 调 `getMe()`，失败 `redirect()`；`proxy.ts`
-  中间件做首屏路由守卫
-- Web 侧：Server Actions 用 `@repo/ui/action` 的 `defineAction` 统一 `{ ok, data | error }` 结果约定（两个前端同一套）
-- Admin 客户端：token 存 localStorage，同时写 httpOnly cookie 供 SSR 守卫使用
-- **登录设备（会话管理）**：会话写入 Redis 时带 `sessionId` / `ip` / `userAgent` / 时间；
-  `POST /session/list`（标出 `current`）与 `POST /session/remove`（按 `sessionId` 幂等下线），
-  前台用户与管理员共用（`AnyAuthGuard`）。入口：web `/account/sessions`、admin 个人中心。
-  设计见 [docs/design/session-management.md](docs/design/session-management.md)
-
-### API 设计
-
-所有**业务**接口均为 `POST`（每条路由显式 `@HttpCode(200)` 固定，Nest 对 POST 默认 201，必须覆盖），
-请求体由 Zod schema 校验，响应统一包装为 `AppResponse<T>`：
-
-> **唯一例外**：运维探针 `GET /healthz`、`GET /readyz`、`GET /info` —— k8s 的 `httpGet` 探针
-> **只会发 GET**，业务路由全 POST 会让探针 404、pod 永远不就绪，故为探针开放 GET。
-> 两个周期性探针路径（`/healthz`、`/readyz`）会被请求日志与请求指标跳过
-> （`common/http/ops-probe.ts`）：否则每 3s 一条日志刷屏，并把探针自身的 503 算进
-> `request.error`，污染错误率告警。
-
-**成功响应：**
-
-```json
-{ "code": 0, "data": { ... } }
-```
-
-**业务异常响应：**
-
-```json
-{ "code": 1000, "message": "邮箱不存在" }
-```
-
-错误响应格式（`AppExceptionFilter` 统一映射，保持历史格式不变）：
-
-- 校验失败：**HTTP 200** + `{ "code": 400, "message": "中文文案" }`（历史上不使用 HTTP 400，勿改）
-- 路由未命中：HTTP 404 + `{ "code": 404, "message": "接口不存在" }`
-- 未知错误：HTTP 500 + `{ "code": 5001, "message": "系统错误" }`
-- 守卫 / 限流等边界错误：按 `BoundaryError` 携带的 HTTP 状态与响应头返回
-
-| 路由                                 | 说明             | 鉴权 |
-| ------------------------------------ | ---------------- | ---- |
-| `POST /auth/register`                | 注册             | 否   |
-| `POST /auth/login`                   | 登录             | 否   |
-| `POST /auth/logout`                  | 登出             | 否   |
-| `POST /auth/forgot-password`         | 忘记密码         | 否   |
-| `POST /auth/reset-password`          | 重置密码         | 否   |
-| `POST /auth/get-me`                  | 获取当前用户     | 是   |
-| `POST /auth/update-info`             | 更新个人信息     | 是   |
-| `POST /auth/change-password`         | 修改密码         | 是   |
-| `POST /admin/login`                  | 管理员登录       | 否   |
-| `POST /admin/logout`                 | 管理员登出       | 否   |
-| `POST /admin/get-me`                 | 获取当前管理员   | 管理员 |
-| `POST /admin/update-info`            | 更新个人信息     | 管理员 |
-| `POST /admin/change-password`        | 修改密码         | 管理员 |
-| `POST /admin/create`                 | 创建管理员       | 管理员 |
-| `POST /admin/page-query`             | 管理员分页查询   | 管理员 |
-| `POST /admin/detail`                 | 管理员详情       | 管理员 |
-| `POST /admin/update`                 | 更新管理员       | 管理员 |
-| `POST /admin/remove`                 | 删除管理员       | 管理员 |
-| `POST /admin/reset-password`         | 重置管理员密码   | 管理员 |
-| `POST /user/create`                  | 创建用户         | 管理员 |
-| `POST /user/page-query`              | 用户分页查询     | 管理员 |
-| `POST /user/detail`                  | 用户详情         | 管理员 |
-| `POST /user/update`                  | 更新用户         | 管理员 |
-| `POST /user/remove`                  | 删除用户         | 管理员 |
-| `POST /user/reset-password`          | 重置用户密码     | 管理员 |
-| `POST /storage/get-presigned-url`    | 获取上传预签名 URL（前台用户 key 被改写进 `user/{userId}/`） | 用户 / 管理员 |
-| `POST /storage/get-download-url`     | 获取下载预签名 URL（前台用户仅限自己前缀，越界 403） | 用户 / 管理员 |
-| `POST /storage/get-temporary-credentials` | 获取 STS 临时凭证（整桶权限，**仅管理员**） | 管理员 |
-| `POST /session/list`                 | 登录设备列表（含 `current` 标记） | 用户 / 管理员 |
-| `POST /session/remove`               | 下线指定设备（按 `sessionId`，幂等） | 用户 / 管理员 |
-| `POST /sse/subscribe`              | SSE 订阅（长连接推流，body `{ channels: [...] }`） | 是 |
-| `GET /healthz`                     | 存活探针（livenessProbe，**不探外部依赖**，进程活着即 200） | 否 |
-| `GET /readyz`                      | 就绪探针（readinessProbe，探 DB / Redis，不可用返回 **503** + `code: 5002` 主动摘流） | 否 |
-| `GET /info`                        | 运行信息（版本 / 运行时 / 已生效的长连接超时） | 否 |
-| `POST /monitor/health`             | 健康检查（DB / Redis 探活，容器 / 云平台探针） | 否 |
-| `POST /monitor/rule/create`        | 创建告警规则 | 管理员 |
-| `POST /monitor/rule/page-query`    | 告警规则分页查询 | 管理员 |
-| `POST /monitor/rule/detail`        | 告警规则详情 | 管理员 |
-| `POST /monitor/rule/update`        | 更新告警规则 | 管理员 |
-| `POST /monitor/rule/remove`        | 删除告警规则 | 管理员 |
-| `POST /monitor/log/page-query`     | 告警发送记录分页 | 管理员 |
-| `POST /monitor/test`               | 测试通知（手动验证通道） | 管理员 |
-| `POST /config/get`                 | 公开运行配置（返回 `authEnabled`） | 否 |
-
-> 鉴权列：**管理员** = `AdminAuthGuard`（后台管理员令牌，`/admin/*`、`/user/*`、`/monitor/*`、`/storage/*` 都是它）；
-> `UserAuthGuard`（前台用户令牌）只用在 `/auth/get-me`、`/auth/update-info`、`/auth/change-password`；两者都从 Bearer / cookie 取令牌。
-> `/sse/subscribe` 标「是」指 SSE 专用的 `StreamAuthGuard`（Bearer / cookie，强制订阅身份频道）。
-
-> SSE 事件通过 `StreamHub.publish(channel, event)` 推送：业务模块 `@Inject(StreamHub)` 后
-> `publish('task:42', { event: 'progress', data: {...} })`；身份频道 `user:{userId}` 自动强制订阅，
-> 业务频道需在 `modules/stream/stream.module.ts` 的 `SSE_ROUTE_OPTIONS`（`{ auth, allowChannel }`）
-> 注入白名单校验。
-
-**监控告警**：`monitor` 业务模块（admin「运维监控 → 告警规则 / 告警记录」管理）——
-**架构：埋点 → 聚合 → 规则评估 → 通知**。
-- **埋点**（`@repo/kits` 的 `Telemetry`，任何业务一行埋点）：Counter / Gauge / 直方图
-  （近似 P50/P95/P99）；框架自动埋（全局请求中间件：`request.count` / `request.duration` /
-  5xx → 错误率 / QPS / P95 / P99 / 进程内存），业务自定义指标（如 `inventory.available`、
-  `order.count`）业务方自行埋点。
-- **规则类型**（`alert_rules` 表 `type` 字段，`AlertRuleTypeSchema`：`tech` / `business` / `metric` / `surge`，admin 配置）：
-  技术事件规则（错误码 / 关键字 + **次数阈值**）、业务事件规则、指标规则（metric + 比较符 + 阈值，周期评估）、
-  突变规则（环比基线，QPS 飙升 / 洪峰）。
-- **触发**：技术错误（`AppExceptionFilter` + `uncaughtException`/`unhandledRejection`，后两者在
-  `main.ts` 注册）匹配事件规则；`Scheduler` 周期评估 metric / surge 规则 → 经通知模块发送 →
-  每次落 `alert_logs` 审计。
-- **通知通道**：`file`（默认文件输出 `logs/alerts.log`，零配置开箱即用）+ `lark`（飞书）+
-  `email`（SMTP），规则可选通道。
-- 规则表为空时技术告警走默认兜底（文件 + 配置通道）。
-- 告警配置 env：`ALERT_ENABLED`（总开关）/ `ALERT_EMAIL_TO` / `ALERT_SMTP_*` /
-  `LARK_APP_ID` + `LARK_APP_SECRET` + `LARK_NOTIFY_RECEIVE_ID`（飞书）。文件通道路径取
-  `NotifyConfig.file.path`（默认 `logs/alerts.log`），当前未开放 env 覆盖。设计文档：[monitor-alert.md](docs/design/monitor-alert.md)、
-  [notifier.md](docs/design/notifier.md)。
-
-**接口限流**：`/auth/login`、`/auth/register`、`/auth/forgot-password`、`/auth/reset-password`、
-`/admin/login` 按 IP 固定窗口限流（默认 20 次 / 60s，超限 429 + `Retry-After`）；白名单
-（env `RATE_LIMIT_WHITELIST`）豁免，`RATE_LIMIT_TRUST_PROXY=true` 时信任 `x-forwarded-for`。
-其他接口按需用 `@UseGuards(RateLimitGuard)` + `@RateLimit({ scope, limit, windowSeconds })`
-方法装饰器开启限流。
-
-### 分页
-
-`packages/kits/src/db/pagination.ts` 提供四种分页策略（构建在 TypeORM QueryBuilder 之上）：
-
-- **`pageWith`** — 单表 `LIMIT/OFFSET` 页码分页，返回 `total/page/size`
-- **`pageWithDeferred`** — 两阶段 Offset 分页：先主键分页，再按主键加载详情，适合复杂联表表格
-- **`cursorPageWith`** — 单表 Seek/Cursor 分页（复合键），适合无限滚动与持续新增的数据流
-- **`cursorPageWithDeferred`** — 两阶段 Cursor 分页：先定位主键与 cursor，再查询当页 JOIN 数据
-
-项目约定：后台 `DataTable` 默认普通分页，滚动 `DataList` 默认 Cursor 分页；一对多 JOIN 或重聚合
-查询优先使用对应的 Deferred 方法。完整原理、SQL、索引与选型指南见
-[分页设计指南](docs/pagination.md)。
-
-### 数据操作统一入口（DbService）
-
-业务代码里**注入 `DbService`**（`packages/kits/src/db/db.service.ts`，由 `DbModule` 装配、`@Global`），
-它把 kits 的数据能力收成统一入口，方法面与 rihel-base 的 `DBService` 对齐且是其超集：
-
-```ts
-constructor(@Inject(DbService) private readonly dbService: DbService) {}
-
-// 分页
-await this.dbService.pageWith(builder, page, size)            // 页码分页
-await this.dbService.pageWithDeferred({ selectIds, fetchIds, idCol, page, size })
-await this.dbService.cursorPageWith(builder, { cursorColumns, getCursor, size })
-await this.dbService.cursorPageWithDeferred(builder, { ... })
-
-// 批量
-await this.dbService.batchInsert(UserEntity, rows)            // 默认 manager
-await this.dbService.batchSave(rows)
-await this.dbService.batchUpsert(UserEntity, rows, ['sku'])
-await this.dbService.batchDelete(UserEntity, { selectIds })
-await this.dbService.safeDelete(UserEntity, { id })           // 操作人默认取当前身份
-await this.dbService.getFullSqlStatement(builder)             // 返回完整 SQL，要打日志自己打
-```
-
-它比裸函数少传两个到处都有的参数——**默认 manager**（`Db.dataSource.manager`）与
-**默认操作人**（`getAuditUser()`，即 `setAuditUserProvider` 挂的钩子，与 `AuditSubscriber` 同源）。
-内核仍是可单测的纯函数（`db/pagination.ts` / `db/batch.ts` / `db/safe-delete.ts` / `db/sql.ts`），
-脱离 DI 时直接用：
-
-| 纯函数 | 说明 |
+| 文档 | 内容 |
 | --- | --- |
-| `pageWith` / `pageWithDeferred` | 页码分页 / 两阶段页码分页（先主键后回表）；后者即 rihel 的 `multiplePageWith` |
-| `cursorPageWith` / `cursorPageWithDeferred` | 游标分页 / 两阶段游标分页（billy 多出的能力） |
-| `batchInsert` | 每片一条 `INSERT ... VALUES (...)`，不触发实体钩子、不级联，最快 |
-| `batchSave` | 走 `manager.save`，触发钩子与级联（每条一次 SELECT 判断增改，较慢） |
-| `batchUpsert` | `INSERT ... ON CONFLICT DO UPDATE`，需传 `conflictPaths` |
-| `batchDelete` | 先按 `selectIds` 取主键，再分片 `DELETE ... WHERE id IN (...)` |
-| `batch` | 底层骨架，自定义批量更新 / 复杂批量逻辑时直接复用 |
-| `safeDelete` | 先写 `deletedBy` 再软删（顺序颠倒会被软删的 UPDATE 覆盖） |
-| `getFullSqlStatement` | 把占位符还原成完整 SQL，仅用于调试输出 |
+| [架构与项目结构](docs/guide/architecture.md) | 完整目录、分层与数据流、组合根与生命周期、分页与 `DbService` |
+| [后端](docs/guide/backend.md) | `apps/server`、业务模块、认证、API 路由与错误格式、日志、监控告警 |
+| [前端](docs/guide/frontend.md) | Web / Admin 页面、设计系统、组件库与管理端组件 |
+| [共享包](docs/guide/packages.md) | `@repo/shared`、`@repo/kits`、`@repo/http-client`、`@repo/sdk` |
+| [AI 能力](docs/guide/ai.md) | 运行时与接口、连接器、Agent Skills、AI 使用配置（codegraph） |
+| [部署](docs/guide/deployment.md) | 环境变量、生产构建、Docker、Kubernetes、反向代理 |
+| [设计文档](docs/design/) | 每个能力的方案与取舍（AI、SSE、监控、设计系统、连接器…），按主题索引 |
+| [开发日志](docs/dev-logs/) | 按日记录每轮改动的背景 / 做了什么 / 验证 |
+| [竞品调研](docs/billy-pitch.md) | 项目定位、同类模板对比、技术选型理由 |
+| [Agent Skills](.agents/skills/README.md) | 27 个工程 skill：分层、代码约定、各功能开发规范 |
 
-两条硬约定：
+## 常用命令
 
-1. **事务内自动串行** —— `manager.queryRunner.isTransactionActive` 为真时并发度降为 1，
-   避免争用同一连接与事务快照。**事务方法内要显式传事务的 `manager`**，否则会落到根 manager 上脱离事务。
-2. **部分失败不静默** —— 任一分片失败不阻断其余分片，结束后聚合抛 `BatchOperationError`，
-   携带失败分片数与原始异常。
+| 命令 | 说明 |
+| --- | --- |
+| `pnpm bootstrap` | 一键初始化（`-y` 非交互） |
+| `pnpm dev:pkgs` / `pnpm build:pkgs` | watch 构建 / 构建 packages |
+| `pnpm dev:server` | 启动 API（9989） |
+| `pnpm dev:web` / `pnpm dev:admin` | 启动前台（9840）/ 后台（9845） |
+| `pnpm kill:dev` | 停掉全部 dev 服务（`--dry-run` 仅预览） |
+| `pnpm build` / `pnpm start:server` / `pnpm start:web` | 全量构建 / 生产启动 |
+| `pnpm typecheck` / `pnpm test` | 全量类型检查 / 单元测试 |
+| `pnpm check:inject` | 构造器 `@Inject` / providers `@Injectable` 一致性 |
+| `pnpm check:mastra` | Mastra 适配器边界（业务不被框架渗透） |
+| `pnpm check:ui` | 组件导出 / 前端包脚本 / 硬编码颜色 / 设计系统规范 |
+| `pnpm db:gen <name>` / `pnpm db:migrate` | 生成 / 执行 TypeORM 迁移 |
+| `pnpm seed:admin` | 创建首个管理员 |
+| `pnpm docker:up` | Docker Compose 起全套 |
+| `pnpm codegraph:setup` | 初始化 codegraph 代码图谱（可选，AI 开发增强） |
+| `pnpm clean` | 清理 node_modules / dist / 缓存 |
 
-### 日志
-
-后端日志是**自建 logger**（`@repo/shared` 的 `createLogger`，**不再依赖 nestjs-pino**）：
-
-- **唯一 pino 实例**：`LoggerModule` 用 `createLogger(prefix, pretty, level, { redact, transport })`
-  建一个实例并以 `LOGGER_INSTANCE` 暴露。pino 的 `transport` 会为每个实例拉起 worker 线程，
-  所以**只能建一次**；需要带 context 的日志一律 `child(context)` 派生；
-- **框架日志与业务日志同通道**：`main.ts` 用 `NestFactory.create(RootModule, { bufferLogs: true })`
-  缓冲启动期日志，随后 `app.useLogger(app.get(NestLoggerAdapter))` 接管，Nest 自身的 InstanceLoader /
-  RoutesResolver 等日志经适配器落到同一个 pino 实例；
-- **业务类构造器注入** `AppLogger`（`Scope.TRANSIENT` + `INQUIRER`，自动以宿主类名作 `context`）：
-  `logger.log('<域>.<动作>', { id })`。不要再使用 `@Logger()` 装饰器（已删除）；
-- **请求日志由 `common/request-logger` 的 `RequestLoggerMiddleware` 记录**：method / url / statusCode /
-  durationMs / requestId / userId / adminId，按状态码分级（`<400` info、`4xx` warn、`5xx` error）。
-  它在中间件注册时**捕获请求上下文 ALS 的 store 引用**（而不是在 `finish` 时现取）：普通请求恰好
-  能现取是因为 `end()` 同步发生在处理链路内，而 SSE 等长连接的响应结束发生在 socket 的异步上下文里，
-  那时作用域早已退出（曾因此让长连接日志的 requestId 全为 null）；日志 `requestId` 即响应头 `X-Request-Id`；
-- **输出目标**：开发 `pino-pretty` 彩色；生产 JSON；生产且配置 `loki` 时多目标 transport
-  （`pino/file` 落盘 + `pino-loki` 推送，带 labels 与批量间隔）。注意 `pino-loki` 依赖必须声明在
-  `@repo/shared`（创建 pino 实例的包），挪到 kits 会报 `unable to determine transport target`；
-- **默认脱敏**：`req.headers.authorization` / `req.headers.cookie` / `res.headers["set-cookie"]`。
-
-> `@repo/shared/logger` 现在是**前后端共用**的日志工厂：前端（`apps/admin`）直接用，
-> 后端由 kits `LoggerModule` 包装成可注入的 `AppLogger` 与 `NestLoggerAdapter`。
-
-## 脚本
-
-| 命令                | 说明                                    |
-| ------------------- | --------------------------------------- |
-| `pnpm dev:pkgs`     | 并行 watch 构建 packages                |
-| `pnpm build:pkgs`   | 构建 packages                           |
-| `pnpm dev:server`   | 启动 NestJS 开发服务器（9989，`node --watch --import tsx/esm`） |
-| `pnpm dev:web`      | 启动 Web 前台（9840）                   |
-| `pnpm dev:admin`    | 启动 Admin 后台（9845）                 |
-| `pnpm kill:dev`     | 一键停掉全部 dev 服务（Web / Admin / Server / packages watcher；`--dry-run` 仅预览） |
-| `pnpm build`        | 全量构建（turbo）                       |
-| `pnpm typecheck`    | 全量类型检查（turbo `typecheck`；覆盖 web / admin / ui） |
-| `pnpm test`         | 全量单测（turbo `test`；http-client / kits / server / ui / web / admin） |
-| `pnpm start:server` | 启动生产 Server                         |
-| `pnpm start:web`    | 启动生产 Web                            |
-| `pnpm db:gen <name>`| 生成 TypeORM 迁移（写入 `apps/server/src/database/migrations/`） |
-| `pnpm db:migrate`   | 执行 TypeORM 迁移                       |
-| `pnpm seed:admin`   | 初始化第一个后台管理员（`admin@billy.local / admin123`，可用环境变量覆盖） |
-| `pnpm docker:up`    | `docker compose up -d --build`          |
-| `pnpm clean`        | 清理 node_modules / dist / 缓存         |
-| `pnpm check:inject` | 守卫：构造器 `@Inject` / providers `@Injectable` 一致性检查 |
-| `pnpm check:ui`     | 守卫：前端约定四条（组件导出 / 前端包 `typecheck` 脚本 / 禁止新增硬编码调色板 / `next/font` 变量名与设计系统规范一致） |
-| `pnpm codegraph:setup` | 初始化 codegraph 代码图谱（装 CLI + 建仓库根索引；可选增强，接入见「AI 使用配置」） |
-
-## Docker
-
-### Compose 服务（依赖一键起）
+## 部署
 
 ```bash
 docker compose up -d postgres redis minio   # 仅基础设施
 pnpm docker:up                              # 全部（含 server + web）
-docker compose --profile kafka up -d        # 追加 Kafka + 控制台（可选，默认不启动）
+docker compose --profile kafka up -d        # 追加 Kafka（可选）
 ```
 
-| 服务     | 镜像 / 构建             | 端口映射                    |
-| -------- | ----------------------- | --------------------------- |
-| postgres | postgres:17-alpine      | `15432:5432`（init-db.sql 只做库级设置，建表由迁移负责）|
-| redis    | redis:7-alpine          | `6380:6379`                 |
-| minio    | minio/minio             | `19000:9000` / `19001:9001` |
-| server   | docker/Dockerfile.server| `9989:9989`                 |
-| web      | docker/Dockerfile.web   | `3001:3001`                 |
-| kafka  ¹ | confluentinc/cp-kafka:7.4.8 | `29092:29092`            |
-| kafka-ui ¹ | provectuslabs/kafka-ui | `8085:8080`               |
-| zookeeper ¹ | confluentinc/cp-zookeeper:7.4.8 | `22181:2181`      |
+- 镜像：`docker/Dockerfile.base` / `.server` / `.web`；server 镜像预装官方 `lark-cli`
+- Kubernetes：`k8s/` 清单与字段说明见 [k8s/README.md](k8s/README.md)
+- 前置网关：keep-alive 递增、SSE 关缓冲、限流信任代理，三处易踩的坑见 [部署文档](docs/guide/deployment.md)
 
-¹ 这三个服务带 `profiles: ["kafka"]`，**不指定 profile 不会启动**。启用后把服务端
-`KAFKA_BROKERS` 设为 `kafka:9092`（容器内）或 `127.0.0.1:29092`（宿主机直连）；
-不配置 `KAFKA_BROKERS` 时 `KafkaModule` 根本不装配，不影响其它功能。
+## 参与贡献
 
-### 镜像构建
+1. 先读 [AGENTS.md](AGENTS.md)（工程首要准则）与 [`billy-dev-foundation`](.agents/skills/billy-dev-foundation/SKILL.md)（分层、代码约定、标准流程）。
+2. 提交前跑完五道检查：`pnpm typecheck`、`pnpm test`、`pnpm check:inject`、`pnpm check:mastra`、`pnpm check:ui`。
+3. 提交信息使用中文类型前缀，规则见 [`git-workflow`](.agents/skills/git-workflow/SKILL.md)。
+4. 改能力时同步 README、落地页与受影响的文档 / skill。
 
-```bash
-# 先构建基础镜像（node 26.13.0 + pnpm 12.18.0 + 运维工具 bash/curl/wget/jq/tzdata）
-./build-base-image.sh
-# 等价于
-docker build -t node26-pnpm12:1.0 -f docker/Dockerfile.base .
+欢迎 Issue 与 PR。
 
-# 构建 server / web 镜像
-docker build -t billy-server:latest -f docker/Dockerfile.server .
-docker build -t billy-web:latest -f docker/Dockerfile.web .
-```
+## 许可
 
-### Kubernetes 部署
-
-`k8s/` 目录提供 **server** 的清单与部署说明（Deployment / Service / PDB / Ingress）：
-滚动策略 `maxUnavailable: 0` + preStop + 三类探针分工（`/healthz` 存活、`/readyz` 就绪）+
-`terminationGracePeriodSeconds` 覆盖优雅关闭期限，SSE 单独一份关缓冲的 Ingress。
-字段取值来由、跨文件不变量（grace vs `SHUTDOWN_TIMEOUT_MS`+preStop、后端 keep-alive vs 网关上游空闲）、
-上线验证步骤见 [k8s/README.md](k8s/README.md)。
-
-### 特性
-
-- **server**：multi-stage + `pnpm deploy --prod` 提取运行时依赖，仅携带编译产物与生产依赖，
-  非 root 用户运行；预装官方 `lark-cli`（飞书 CLI 连接器用，版本由 `LARK_CLI_VERSION` 固定）
-- **web**：Next.js `output: 'standalone'` 模式，产物不携带源码与 devDependencies
-- **基础镜像**：内置 `bash / curl / wget / jq / bind-tools / tzdata（Asia/Shanghai）` 等运维工具，
-  并切换 npmmirror 镜像源
-
-### 前置反向代理（Kong / Nginx / LB）
-
-前面挂了网关时，有三处必须核对，否则会出现「查不到原因」的间歇性故障：
-
-**1. keep-alive 复用竞态（间歇 502）**
-
-Node 的 `server.keepAliveTimeout` 默认 **5s**，而 Kong 上游连接池默认
-`upstream_keepalive_idle_timeout = 60s`，且它**不认**后端响应头里的 `Keep-Alive: timeout=N`
-提示 —— 后端 5s 就关、网关认为 60s 内还能复用，于是网关在 **[5s, 60s] 窗口**里挑中一条正在
-关闭的连接发请求 → 间歇性 `502 / upstream prematurely closed connection`。
-**后端日志里查不到**（请求没到应用），很难定位。
-
-本工程已默认 `keepAliveTimeout = 75s` / `headersTimeout = 80s`（>`KEEP_ALIVE_TIMEOUT_MS` 与
-`HEADERS_TIMEOUT_MS` 可覆盖，见 `.env.example`）。规则：**每一跳里「服务端」的空闲超时必须大于
-「客户端」的**，即从外到内递增，各留 5s 以上余量（LB 空闲 < Kong 客户端 keepalive；
-Kong 上游空闲 60s < 后端 75s）。注意 `headersTimeout` 必须大于 `keepAliveTimeout`——
-Node 对反序**不报错、静默接受**，故本项目在配置层用 `superRefine` 显式拦住（超了直接启动失败）。
-
-**2. SSE 会被网关缓冲**
-
-`POST /sse/subscribe` 是长连接流（默认 15s 心跳保活）。Kong 的 Route 属性
-`response_buffering` 默认 `true`，会把响应缓冲后统一下发 → 流式失效 / 断续。
-需在该路由（或 Service）上设 **`response_buffering = false`**；Service 的 `read_timeout`
-（默认 60s）必须大于 SSE 心跳间隔。
-
-**3. 限流与客户端 IP**
-
-走网关必须把 `RATE_LIMIT_TRUST_PROXY=true`，否则限流按网关的 IP 计数（所有客户端共用一个
-key、白名单失效）。
-
-**4. 滚动更新时的优雅关闭（避免在途请求被切断）**
-
-`SIGTERM` 后的关闭顺序：`beforeApplicationShutdown`（`StreamHub` 给每条 SSE 连接推
-`stream.shutdown` 再关闭）→ `httpServer.close()`（停止接收新连接 + 等在途请求自然结束）→
-各资源 `onApplicationShutdown`。**SSE 长连接必须先排空**：只要有一条存活，`server.close()`
-的回调就永不触发、`app.close()` 挂死，只能等 `terminationGracePeriodSeconds` 到点被 SIGKILL，
-在途请求跟着一起死（表现为滚动更新 502）。客户端收到 `stream.shutdown` 会立即重连到其他实例，
-而不是把流的正常结束当成终态。
-
-总期限由 `SHUTDOWN_TIMEOUT_MS` 控制（默认 25s），超时**强制退出并记 error 日志**——
-与其卡死到被 SIGKILL（连原因都留不下），不如自己记录后退出。
-
-k8s 侧配套：`terminationGracePeriodSeconds` 要大于 `SHUTDOWN_TIMEOUT_MS` + preStop 耗时；
-preStop 先 `sleep` 数秒等 endpoint 摘除生效；探针指向 `GET /healthz`（liveness，不探依赖）与
-`GET /readyz`（readiness，依赖不可用返 503 主动摘流），滚动策略用 `maxUnavailable: 0`。
-
-## AI 能力（内置对话）
-
-模板自带一套能上生产的 AI 对话，代码在 `apps/server/src/modules/ai`（运行时）+
-`ai-model`（供应商 / 模型配置）+ `ai-usage`（用量汇总），后台有会话、模型、工具、审计四个页面。
-它和「用 AI 写这个模板」是两件事：后者靠 Agent Skills（见下节），前者是产品里的 AI。
-
-接口在 `/agent` 前缀下（`AnyAuthGuard`：前台用户与管理员同一套）：
-
-```text
-POST /agent/chat/stream        建立流式对话（SSE）
-POST /agent/chat/resume        断线后用 offset 续传
-GET  /agent/run/stream         重连当前运行
-GET  /agent/run/:runId/stream  重连指定运行
-POST /agent/conversation/*     会话增删改查
-POST /agent/run/*              运行列表 / 详情 / 停止（审计与复盘）
-POST /agent/usage/summary      用量汇总
-```
-
-**运行时能力**
-
-- **会话与运行**：`conversations` / `runs` / `timelines` 三张表；运行中进度放 Redis，跑完落 Postgres；
-  刷新页面能接着看，服务重启后在跑的会话会恢复（durable 可配）。
-- **流式与续传**：文本、推理、工具调用、步骤、来源全细节推送，断线从上次位置继续。
-- **工具面**：一个工具一条 `@ToolDecl`（`@ToolGroup` 类 + 方法即工具），注册后统一过网关——
-  开关、作用域（主 agent / 子 agent）、限额、自定义事件、审计、大结果分页与 `read-tool-result` 回取。
-  内建 10 个：计划四件套、`run-sub-agent`、`run-command`、`read-tool-result`、`web-search`、`web-fetch`、`web-request`。
-- **运行控制**：动态子 agent（提示词由主 agent 现场写）、命令执行（开关 / 工作目录 / 时长与输出上限可配）、
-  联网预算（统一 UA、超时、字节上限、内网拦截）。
-- **多模态附件**：图片与 PDF 走对象存储，只传 key；附件 key 做归属校验，不能越权读他人文件。
-- **上下文**：达到模型窗口 70% 触发裁剪 / 压缩，原文保留可回看。
-- **模型与用量**：供应商表 + 模型表在后台配（不用改环境变量），运行时只用配过的模型；
-  每轮 tokens 与步数入库，按日 rollup，按模型 / 按 agent 汇总；`ai/audit` 页面可回放调用。
-- **前端**：`@repo/ui` 内置 48 个 ai-elements，后台会话页开箱可用。
-
-**配置位置**：模型与供应商在「AI → 模型管理」，工具开关与限额在「AI → 工具配置」，
-用量在「AI → 审计」与控制台。设计细节与取舍见 [`docs/design/ai-agent.md`](docs/design/ai-agent.md)。
-
-## Agent Skills（AI 原生开发）
-
-工程把「怎么做」写进 skill：`.agents/skills/` 下每个 skill 是一个独立目录（标准 Agent Skills 格式，
-`SKILL.md` 带 YAML frontmatter 的 `name` + `description`，大块内容拆到 `references/`），
-AI 编码 Agent 按任务**按需加载**，工具无关（Claude Code / Codex / Cursor 等均可读取）。
-
-- **最高准则**：[AGENTS.md](AGENTS.md)（8 条首要准则，先于一切 skill 与规范）；Claude Code 入口为
-  [CLAUDE.md](CLAUDE.md)
-- **必读入口**：`billy-dev-foundation`（分层架构、代码约定含「不重复造轮子」实现查找顺序、常用命令、标准流程）
-- **共 23 个 skill**：必读 1（`billy-dev-foundation`）+ 功能 21（`define-data-structure` / `define-dict-enum` /
-  `database` / `develop-business-module` / `develop-backend-api` / `develop-frontend-page` / `develop-ai-agent` /
-  `ai-agent-engineering` / `implement-auth` / `object-storage` / `concurrency` / `kafka` / `scheduler` / `stream` /
-  `telemetry` / `notification` / `lark` / `state-machine` / `write-tests` / `git-workflow` / `codegraph`）+
-  元 1（`manage-skills`）；完整索引见
-  [`.agents/skills/README.md`](.agents/skills/README.md) 与
-  [`billy-dev-foundation/references/catalog.md`](.agents/skills/billy-dev-foundation/references/catalog.md)
-- **典型全链路**（`develop-business-module`）：数据结构（schema + 实体）→ 建表迁移 → 业务（repository /
-  service）→ 接口（controller + 错误码）→ SDK → 前端页面
-- **记忆**：[`.agents/memory/`](.agents/memory/README.md) 记「查过才知道的」——坑、链路地图、实测数字、
-  定过的取舍。入口是索引表（30 条以内，每条一句话），命中主题再读卡片；卡片带「依据」「失效信号」与
-  **查证优先级**（必核 / 抽核 / 免核：行号与库里的值用前必核，机制性结论免核），前提变了改旧卡。
-  目的是同一个问题只调查一次，不必每次重新翻代码
-- **维护**：新增 / 修改 skill 走 `manage-skills`（目录与 frontmatter 规范、references 拆分、索引注册）；
-  **代码变更后须同步受影响的 skill 与文档**
-
-## AI 使用配置
-
-skill 是纯 Markdown，agent 接上就能读；下面是让 AI **真正好用**（少读文件、句句有据）需要在本机
-做的配置。都属**可选增强**：不入仓库、不进依赖树，不做也不影响项目运行。
-
-**codegraph 代码图谱**（推荐）：预索引的代码知识图谱，让 agent 一次调用就拿到相关符号的原文 +
-调用路径 + 改动影响面，替代 grep / read 逐文件爬。
-
-```bash
-pnpm codegraph:setup   # 装 CLI（已装则跳过）+ 在仓库根建索引；产物 .codegraph/（已 gitignore）
-codegraph status       # 查看索引状态与 Added / Modified 待同步项
-codegraph sync         # 手动同步（触发条件见下）
-codegraph ui           # 浏览器看图：http://127.0.0.1:4747
-```
-
-- **接 MCP 才算真正用上**：`codegraph install` 可自动配置 Claude Code / Codex / Cursor 等，但
-  **不支持 DeepSeek Harness**。DSH 需手动在 `$DSH_HOME/profiles/<profile>/cordis.patch.yml` 加一条
-  `@deepseek-ai/dsh-mcp-client` 的 `insert`，并**显式指定 `--path` 指向本仓库**（MCP 子进程继承的是
-  DSH host 进程的 cwd，未必是本仓库，不给会索引错项目）；接线后模型工具列表出现
-  `mcp__codegraph__codegraph_explore`。完整片段见
-  [`codegraph` skill 的接入说明](.agents/skills/codegraph/references/codegraph-guide.md)。
-- **索引同步有前提**：只有 MCP server（`codegraph serve --mcp`，自带文件 watcher）或 daemon 在跑时，
-  改代码才会自动进索引；否则索引会**静默过期**（实测能落后一天多），agent 据此读到旧代码——此时
-  改完代码手动 `codegraph sync`。
-- 未接 MCP 时，agent 经 bash 调 CLI（`query` / `callers` / `impact` 等）同样可用，只是每次多一次
-  工具调用。
-
-> 一句话：配了它，agent 改代码时能看见「谁调用、改它影响谁」；不配就退回 grep + 逐文件 read。
-
-## 文档
-
-- [docs/pagination.md](docs/pagination.md) — 分页设计指南（Offset / Cursor / Deferred 选型与实现）
-- [docs/sdk-refactor.md](docs/sdk-refactor.md) — SDK 职责拆分说明（HttpClient / CredentialResolver / AuthInjector）
-- [docs/design/nestjs-migration.md](docs/design/nestjs-migration.md) — 后端重构设计（删除 @repo/di、迁移 NestJS 12、kits 全面 Nest 化）
-- [docs/design/backend-kits-refactor.md](docs/design/backend-kits-refactor.md) — kits 通用能力封装设计（一个基础设施一个 module）
-- [docs/design/sse.md](docs/design/sse.md) — 服务端推送（SSE / StreamHub）设计
-- [docs/design/session-management.md](docs/design/session-management.md) — 会话管理（登录设备列表 + 单设备下线）
-- [docs/design/storage-access-policy.md](docs/design/storage-access-policy.md) — 对象存储访问策略（前台可上传 + key 命名空间约束）
-- [docs/design/frontend-foundation.md](docs/design/frontend-foundation.md) — 前端基础建设（质量检查 + SSE 前端链路 + 前台业务闭环 + 实测记录）
-- [docs/design/monitor-alert.md](docs/design/monitor-alert.md) — 监控告警设计（规则 / 触发 / 通道）
-- [docs/design/auth-session.md](docs/design/auth-session.md) — 认证与会话设计（JWT + Redis 会话）
-- [docs/design/ai-agent.md](docs/design/ai-agent.md) — AI 运行时（会话 / 运行 / 流式 / 上下文 / 恢复）
-- [docs/design/ai-agent-tool-engine.md](docs/design/ai-agent-tool-engine.md) — 工具引擎（工具组 / 注册机 / 网关插件 / 配置入库）
-- [docs/design/ai-connector.md](docs/design/ai-connector.md) — 连接器（外部能力来源：数据库 / 飞书 CLI / MCP / 自定义）
-- [docs/design/ai-extension-guide.md](docs/design/ai-extension-guide.md) — **加工具 / 加技能 / 加连接器**的落地步骤
-- [docs/queue.md](docs/queue.md) — 已废弃（BullMQ 队列方案，已被 Kafka 取代，仅存档）
-- [docs/billy-pitch.md](docs/billy-pitch.md) — 项目定位与竞品调研
-- [docs/dev-logs/](docs/dev-logs/) — 开发日志（按日追加，记录每轮改动的背景 / 做了什么 / 验证）
+MIT © 2026 Rihel，见 [LICENSE](LICENSE)。
