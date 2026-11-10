@@ -353,7 +353,8 @@ export class AgentChatService {
         model: model.modelRef,
         agentKey: definition.key,
         toolKeys: this.toolRegistry.expand(definition.tools),
-        skillKeys: [...definition.skills],
+        // 技能名现算：`skills: ['*']` 在运行期展开，在线新建的技能这一轮就能出现在快照里
+        skillKeys: (await this.skillLoader.resolve(definition.skills)).map((skill) => skill.name),
         params: { maxSteps: AGENT_MAX_STEPS },
         context: built.snapshot,
       });
@@ -1049,7 +1050,8 @@ export class AgentChatService {
         model: model.modelRef,
         agentKey: definition.key,
         toolKeys: this.toolRegistry.expand(definition.tools),
-        skillKeys: [...definition.skills],
+        // 技能名现算：`skills: ['*']` 在运行期展开，在线新建的技能这一轮就能出现在快照里
+        skillKeys: (await this.skillLoader.resolve(definition.skills)).map((skill) => skill.name),
         params: { maxSteps: AGENT_MAX_STEPS },
         context: built.snapshot,
       });

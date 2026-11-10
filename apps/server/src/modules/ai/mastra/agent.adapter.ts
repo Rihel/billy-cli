@@ -102,8 +102,15 @@ export interface MastraAgentOptions {
     | ToolsInput
     | (() => ToolsInput)
     | ((args: { requestContext: RequestContext }) => ToolsInput | Promise<ToolsInput>)
-  /** 技能目录路径（交给 Mastra 的技能加载机制，见 `toMastraSkills`） */
-  skills: string[]
+  /**
+   * 技能目录路径（交给 Mastra 的技能加载机制，见 `toMastraSkills`）。
+   *
+   * 支持**按请求求值**：主 agent 用函数形态，从运行时信封里取"这一轮实际解析出来的技能"，
+   * 于是在线新建 / 停用的技能不用重启就生效（静态数组只有装配期那一份，做不到）。
+   */
+  skills:
+    | string[]
+    | ((args: { requestContext: RequestContext }) => string[] | Promise<string[]>)
   durable?: boolean
   /** 对话记忆（durable resume 需要它把工具结果续回消息列表；不传则不启用记忆） */
   memory?: import('@mastra/core/memory').MastraMemory

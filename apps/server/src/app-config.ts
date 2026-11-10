@@ -126,6 +126,13 @@ export const serverAppConfigSchema = z.object({
      * （逗号分隔多个）换成自己的目录。目录不存在就跳过；里面的坏技能只跳过、不拦启动。
      */
     skillsDirs: z.array(z.string()).default(['~/.agents/skills']),
+    /**
+     * 技能库的落盘目录（后台在线编辑 / 从 skills.sh、GitHub 链接导入 / agent 写入的技能都落到这里）。
+     *
+     * **这个目录由我们独占**：启动时会清掉库里不存在的技能目录，所以不要指向
+     * `~/.agents/skills` 这种"还有别的东西"的目录；想加外部技能库请配 `skillsDirs`。
+     */
+    skillsLibraryDir: z.string().default('~/.billy/skills'),
     // ── 上下文策略（详见 docs/design/ai-agent.md §3.9）──
     /** 触发线：估算用量超过「模型窗口 × 本比例」就开始裁剪/压缩 */
     contextTriggerRatio: z.coerce.number().positive().max(1).default(0.7),
@@ -376,6 +383,7 @@ export const mapServerEnv = (
     apiKey: optional(env.MASTRA_API_KEY),
     baseURL: optional(env.MASTRA_BASE_URL),
     skillsDirs: parseList(env.AGENT_SKILLS_DIRS),
+    ...(env.AGENT_SKILLS_LIBRARY_DIR ? { skillsLibraryDir: env.AGENT_SKILLS_LIBRARY_DIR } : {}),
     contextTriggerRatio: optional(env.AGENT_CONTEXT_TRIGGER_RATIO),
     contextTrimTargetRatio: optional(env.AGENT_CONTEXT_TRIM_TARGET_RATIO),
     contextCompactTargetRatio: optional(env.AGENT_CONTEXT_COMPACT_TARGET_RATIO),

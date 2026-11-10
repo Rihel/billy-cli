@@ -37,6 +37,8 @@ import { AdminEntity } from './database/entities/admin-entity.js'
 import { AiModelEntity } from './database/entities/ai-model-entity.js'
 import { AiConnectorEntity } from './database/entities/ai-connector-entity.js'
 import { AiToolEntity } from './database/entities/ai-tool-entity.js'
+import { AiSkillEntity } from './database/entities/ai-skill-entity.js'
+import { AiSkillFileEntity } from './database/entities/ai-skill-file-entity.js'
 import { AiProviderEntity } from './database/entities/ai-provider-entity.js'
 import { AlertLogEntity } from './database/entities/alert-log-entity.js'
 import { AiUsageDailyEntity } from './database/entities/ai-usage-daily-entity.js'
@@ -120,6 +122,9 @@ import { UserModule } from './modules/user/index.js'
           AiToolEntity,
           // 连接器实例（外部能力来源：地址 + 凭证 + 状态；见 docs/design/ai-connector.md §3.2）
           AiConnectorEntity,
+          // 技能库（DB 是事实源，落盘给 Mastra；见 docs/design/ai-skill-library.md §2.1）
+          AiSkillEntity,
+          AiSkillFileEntity,
         ],
         // 审计订阅者：给继承 AuditEntity 的实体自动写 created_by / updated_by / deleted_by
         // （操作人由 main.ts 的 setAuditUserProvider 提供）

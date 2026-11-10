@@ -56,17 +56,26 @@
 `{ connector: 'prod-pg' }`、`{ connector: 'prod-pg', tool: 'query' }`。
 **裁剪思路与授权三层**见 [define-agent.md](./define-agent.md)。
 
-## 5. 加一个技能（两种，别混）
+## 5. 加一个技能（三种入口，别混）
 
 | 用途 | 放哪 | 谁读 |
 | --- | --- | --- |
 | 给**写代码的 agent** 的工程规范 | 仓库 `.agents/skills/<name>/SKILL.md` | 编码 agent（Claude Code / DSH），按 `manage-skills` 维护 |
-| 给**运行时助手**的业务技能 | `core/skills/catalog/<name>/`（随包、严格校验）或 `AGENT_SKILLS_DIRS`（默认 `~/.agents/skills`，坏一个跳过） | `SkillLoader` → 交给 Mastra |
+| 给**运行时助手**的业务技能（在线写 / 贴 skills.sh 或 GitHub 链接装 / agent 自己写） | **技能库**：后台 `/main/ai/skills`、`/ai-skill/*` 或 `skill-save` 工具 → DB → 落盘 `<skillsLibraryDir>/<name>/` | `SkillLoader` → 交给 Mastra |
+| 随部署打包 / 外部技能库 | `core/skills/catalog/<name>/`（严格校验）或 `AGENT_SKILLS_DIRS`（默认 `~/.agents/skills`，坏一个跳过） | `SkillLoader` → 交给 Mastra |
 
-运行时技能三步：目录 + `SKILL.md`（frontmatter 的 `name` 唯一、`description` ≤1024 字符，超了会被当坏技能跳过；
-正文写步骤、长内容拆 `references/`）→ 在 agent 声明 `skills` 里授权（`ALL_SKILLS` = 全部已加载）→
-启动日志看 `ai.skills.loaded` 验证。技能**名单**启动时扫一次（增删要重启），正文由 Mastra 按需读（改了不用重启）。
-注意：`core/skills/catalog/` 目前**不存在**，默认只加载 `~/.agents/skills`。
+**技能库（推荐，在线改不用重启）**：`SKILL.md` = frontmatter（`name` 唯一、`description` ≤1024）
++ 正文 + `references/` / `scripts/`；页面用块编辑器写正文，frontmatter 走表单。
+写链路是「校验 → 事务写库（乐观锁）→ 落盘 → `SkillLoader.reload()`」，DB 是事实源，
+落盘目录只是给 Mastra 的投影。**停用会删落盘目录**（目录才是模型的权限边界）。
+agent 声明里 `skills: ['*']` 在**每次运行**现算，所以新建 / 停用不用重启。
+**从链接装**：`/ai-skill/import/preview` → `/ai-skill/import`（或 `skill-import` 工具），
+支持 skills.sh 技能页、GitHub 仓库/目录/文件链接与 `owner/repo` 简写；下载内容进库，不是登记链接。
+解析用 `parse-github-url` + `@octokit/rest`（GitHub 树 + raw 文件），不依赖 skills.sh 的 OIDC API。
+设计见 `docs/design/ai-skill-library.md`，落点与坑见 memory `ai-skill-library`。
+
+随包 / 外部目录的技能仍是"启动时扫名单、正文 Mastra 按需读盘"；改名单要重启。
+注意：`core/skills/catalog/` 目前**不存在**。
 
 ## 6. 子 agent（动态创建，不是静态声明）
 

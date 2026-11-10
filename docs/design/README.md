@@ -9,6 +9,7 @@
 | --- | --- |
 | [ai-agent.md](ai-agent.md) | AI 运行时：会话 / 运行 / 流式 / 上下文 / 恢复 |
 | [ai-agent-tool-engine.md](ai-agent-tool-engine.md) | 工具引擎：工具组 / 注册机 / 网关插件 / 配置入库 |
+| [ai-skill-library.md](ai-skill-library.md) | 技能库：在线编辑 / 链接导入（skills.sh、GitHub）/ 启停，DB 是事实源、落盘给 Mastra |
 | [ai-connector.md](ai-connector.md) | **已归档（2026-11-10）**：连接器四层模型与各驱动的历史论证；方向见 skill `develop-ai-agent/references/connector.md` |
 | [ai-extension-guide.md](ai-extension-guide.md) | 加工具 / 加技能 / 加连接器的落地步骤 |
 | [ai-usage-stats.md](ai-usage-stats.md) | 用量统计口径：逐轮入库 / 每日 rollup / 多维汇总 |

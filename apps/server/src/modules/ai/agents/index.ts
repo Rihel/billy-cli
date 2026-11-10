@@ -1,6 +1,5 @@
 import type { PromptData, PromptEngine } from '../core/prompts/index.js'
 import type { ToolRegistry } from '../core/tools/tool.registry.js'
-import { ALL_SKILLS } from '../core/skills/skills.types.js'
 import { TOOL_KEYS } from '../core/tools/tool-keys.js'
 import type { AgentDefinition, AgentSpec } from './types.js'
 import { assistantAgent } from './assistant.agent.js'
@@ -27,17 +26,13 @@ export const DEFAULT_AGENT_KEY = assistantAgent.key
  * 「真正挂上去的工具」永远是同一份清单。工具 key 写错会在这里（bootstrap 期）直接抛错，
  * 不会拖到用户提问时才暴露。
  *
- * 技能同理：`skills: [ALL_SKILLS]` 在这里**展开成真实名字**（装配期从 `SkillLoader` 拿到的清单），
- * 于是 `/agent/list`、`runs.request_snapshot.skillKeys`、审计页看到的都是具体技能名，
- * 而不是一个看不懂的 `*`。
+ * 技能**不在这里展开** `ALL_SKILLS`：在线新建 / 停用技能不需要重启，
+ * 所以 `skills: ['*']` 原样留在定义里，由 `SkillLoader.resolve('*')` 在**每次运行组装信封时**
+ * 现算成当时的清单（`/agent/list` 展示时同样现算）。
  */
 export const createAgentDefinitions = (
   prompts: PromptEngine,
   registry: ToolRegistry,
-  options: {
-    /** 当前加载到的全部技能名（`ALL_SKILLS` 展开用；未传 = 只能声明具体名字） */
-    allSkillNames?: readonly string[]
-  } = {},
 ): AgentDefinition[] =>
   AGENT_SPECS.map((spec) => {
     // 提示词里那段"可用工具"与能力清单是**同一份展开结果**：选择器只在这里展开一次
@@ -48,15 +43,13 @@ export const createAgentDefinitions = (
       tools: toolMeta,
       ...spec.prompt.data,
     }
-    const declared = spec.skills ?? []
     return {
       key: spec.key,
       name: spec.name,
       description: spec.description,
       tools: spec.tools,
-      skills: declared.includes(ALL_SKILLS)
-        ? [...(options.allSkillNames ?? [])]
-        : [...declared],
+      // `'*'` 原样保留（运行期展开）——见上方注释
+      skills: [...(spec.skills ?? [])],
       model: spec.model,
       canSpawnSubAgents: toolMeta.some((tool) => tool.key === TOOL_KEYS.runSubAgent),
       instructions: prompts.render(spec.prompt.template, data),

@@ -10,6 +10,8 @@ import { AiModelService } from '../../ai-model/index.js'
 import { AGENT_REGISTRY } from './registry.js'
 import type { AgentRegistry } from './types.js'
 import { MASTRA } from '../mastra/ai.mastra.js'
+import { ALL_SKILLS } from '../core/skills/skills.types.js'
+import { SkillLoader } from '../core/skills/skill.loader.js'
 
 /**
  * Agent 装配查询服务：能力状态 + agent 清单 + 取用已装配的 Mastra 实例。
@@ -26,6 +28,7 @@ export class AgentService {
     @Inject(MASTRA) private readonly mastra: Mastra | null,
     @Inject(AGENT_REGISTRY) private readonly registry: AgentRegistry,
     @Inject(AiModelService) private readonly models: AiModelService,
+    @Inject(SkillLoader) private readonly skills: SkillLoader,
   ) {}
 
   /**
@@ -44,9 +47,22 @@ export class AgentService {
     }
   }
 
-  /** agent 清单：前端选择器的数据源 */
-  list(): AgentListModel {
-    return this.registry.list()
+  /**
+   * agent 清单：前端选择器的数据源。
+   *
+   * `skills: ['*']` 在这里**现算**成当时的技能名：在线新建 / 停用的技能不需要重启就能在
+   * 「这个 agent 能用哪些技能」里看到正确结果（每次请求多一次内存清单遍历，可忽略）。
+   */
+  async list(): Promise<AgentListModel> {
+    const listed = this.registry.list()
+    const names = await this.skills.names()
+    return {
+      ...listed,
+      agents: listed.agents.map((agent) => ({
+        ...agent,
+        skills: agent.skills.includes(ALL_SKILLS) ? names : agent.skills,
+      })),
+    }
   }
 
   /**

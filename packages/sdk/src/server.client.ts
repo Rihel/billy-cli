@@ -21,6 +21,20 @@ import {
   AiProviderTestDto,
   AiProviderTestResultModel,
   AiProviderUpdateDto,
+  AiSkillCreateDto,
+  AiSkillDetailModel,
+  AiSkillFileContentModel,
+  AiSkillFileReadDto,
+  AiSkillFileRemoveDto,
+  AiSkillFileSaveDto,
+  AiSkillImportDto,
+  AiSkillImportPreviewDto,
+  AiSkillImportPreviewResultModel,
+  AiSkillImportResultModel,
+  AiSkillKeyDto,
+  AiSkillListDto,
+  AiSkillModel,
+  AiSkillUpdateDto,
   AiToolKeyDto,
   AiToolListDto,
   AiToolModel,
@@ -561,6 +575,58 @@ export class ServerClient extends HttpClient<BearerTokenCredentials> {
 
     /** 恢复默认（清掉人工覆盖与已配秘钥，回到代码声明） */
     reset: (data: AiToolKeyDto) => this.post<AiToolModel>('/ai-tool/reset', data),
+  }
+
+  /* ========== 技能库（后台管理） ========== */
+
+  /**
+   * 技能库（**管理员鉴权**）：技能是 Agent Skills 标准的一个目录，
+   * 库里保存正文与参考文件，服务端落盘给运行时按需读（设计 `docs/design/ai-skill-library.md`）。
+   *
+   * 三条口径：
+   * - **DB 是事实源**：在线编辑 / 路径导入 / agent 写入都进库，再投影成磁盘目录；
+   * - **启停立即生效**：停用会删掉落盘目录，模型看不到它，不需要重启；
+   * - **乐观锁**：写内容带 `expectedVersion`，冲突返回 3417。
+   */
+  aiSkill = {
+    /** 列表：分页 + 关键字 / 启用 / 来源筛选 */
+    list: (data: AiSkillListDto) =>
+      this.post<AppPageQueryResponse<AiSkillModel>>('/ai-skill/list', data),
+
+    /** 详情：元信息 + 文件清单（不含正文） */
+    detail: (data: AiSkillKeyDto) =>
+      this.post<AiSkillDetailModel>('/ai-skill/detail', data),
+
+    /** 新建（建完默认启用，落盘后立即对模型可见） */
+    create: (data: AiSkillCreateDto) =>
+      this.post<AiSkillDetailModel>('/ai-skill/create', data),
+
+    /** 更新元信息 / 开关 */
+    update: (data: AiSkillUpdateDto) =>
+      this.post<AiSkillDetailModel>('/ai-skill/update', data),
+
+    /** 删除（软删 + 删落盘目录） */
+    remove: (data: AiSkillKeyDto) => this.post<{ ok: boolean }>('/ai-skill/remove', data),
+
+    /** 读单个文件正文 */
+    readFile: (data: AiSkillFileReadDto) =>
+      this.post<AiSkillFileContentModel>('/ai-skill/file/read', data),
+
+    /** 写单个文件（新建或覆盖） */
+    saveFile: (data: AiSkillFileSaveDto) =>
+      this.post<AiSkillDetailModel>('/ai-skill/file/save', data),
+
+    /** 删单个文件（`SKILL.md` 不允许删） */
+    removeFile: (data: AiSkillFileRemoveDto) =>
+      this.post<AiSkillDetailModel>('/ai-skill/file/remove', data),
+
+    /** 导入预览：这个链接里有哪些技能、哪些已存在 */
+    previewImport: (data: AiSkillImportPreviewDto) =>
+      this.post<AiSkillImportPreviewResultModel>('/ai-skill/import/preview', data),
+
+    /** 从链接导入（skills.sh / GitHub / 直接 Markdown 链接） */
+    import: (data: AiSkillImportDto) =>
+      this.post<AiSkillImportResultModel>('/ai-skill/import', data),
   }
 
   /* ========== 连接器（外部能力来源） ========== */

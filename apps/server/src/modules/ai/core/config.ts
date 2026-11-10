@@ -19,6 +19,14 @@ export interface AgentConfig {
    */
   skillsDirs: readonly string[]
 
+  /**
+   * **技能库的落盘目录**（后台 / agent 在线维护的技能，DB 是事实源）。
+   *
+   * 技能保存时由 `SkillMaterializer` 写成 `<本目录>/<技能名>/...`，Mastra 只认这个目录；
+   * 它由我们独占，外部技能库请配 `skillsDirs`（否则会被 `syncAll` 当成孤儿目录清掉）。
+   */
+  skillsLibraryDir: string
+
   // ── 上下文策略（schema 与默认值在 apps/server/src/app-config.ts；详见设计文档 §3.9）──
   /** 触发线：估算用量超过「模型窗口 × 本比例」就开始裁剪/压缩 */
   contextTriggerRatio: number

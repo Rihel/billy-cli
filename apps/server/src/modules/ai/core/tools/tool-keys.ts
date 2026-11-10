@@ -63,6 +63,19 @@ export const TOOL_KEYS = {
    * 而"接口返回 401 还是 500"本身就是要看的结论。
    */
   webRequest: 'web-request',
+  /**
+   * **技能库**（一组四个工具，设计 `docs/design/ai-skill-library.md`）：
+   * `skill-list`（看现有技能）/ `skill-save`（建或改，可一次带参考文件）/
+   * `skill-delete`（删）/ `skill-enable`（启停）。
+   *
+   * 与 Mastra 自带的 `skill` / `skill_read` 是两套：那三个是**读**技能，
+   * 这四个是**维护技能库**（写库 + 落盘），作用域 `admin`。
+   */
+  skillList: 'skill-list',
+  skillSave: 'skill-save',
+  skillDelete: 'skill-delete',
+  skillEnable: 'skill-enable',
+  skillImport: 'skill-import',
 } as const
 
 /**

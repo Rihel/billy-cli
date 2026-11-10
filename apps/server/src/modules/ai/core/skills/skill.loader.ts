@@ -1,9 +1,9 @@
 import { Inject, Injectable, Optional } from '@nestjs/common'
-import { validateSkillContent } from '@mastra/core/skills'
 import { AppLogger } from '@repo/kits'
 import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { isAbsolute, join, resolve as resolvePath } from 'node:path'
+import { validateSkillFileContent } from './skill.content.js'
 import { ALL_SKILLS, type AgentSkillMeta, type SkillRef } from './skills.types.js'
 
 /** 随部署打包的技能目录（与 loader 同级的 `catalog/`，dev 走 src、构建后走 dist） */
@@ -21,6 +21,14 @@ const SKILL_FILE = 'SKILL.md'
 export const SKILL_DIRS = Symbol.for('SkillDirs')
 
 /**
+ * 技能库落盘目录的注入 token（由 `ai.module` 从 `AgentConfig.skillsLibraryDir` 供给）。
+ *
+ * 这个目录由**我们**拥有（`ai_skills` + `ai_skill_files` 的投影），所以扫描优先级高于外部技能目录：
+ * 后台里启用的技能应该赢过 `~/.agents/skills` 里的同名技能。
+ */
+export const SKILL_LIBRARY_DIR = Symbol.for('SkillLibraryDir')
+
+/**
  * 技能加载器（bean）：**发现 / 校验 / 授权**。
  *
  * 它**不读正文进内存**，只把「技能目录的绝对路径」交给 Mastra：
@@ -33,10 +41,13 @@ export const SKILL_DIRS = Symbol.for('SkillDirs')
  *
  * 目录来源（按顺序，**前面的优先级高**，重名后者跳过）：
  * 1. `core/skills/catalog/` —— 随部署打包，**校验不通过直接启动失败**（我们自己的资产，坏了就是发版事故）；
- * 2. `AI_SKILLS_DIRS` 配置的目录 —— 用户自带技能库（默认 `~/.agents/skills`），
+ * 2. 技能库落盘目录（`AgentConfig.skillsLibraryDir`，后台 / agent 在线维护、DB 是事实源）：
+ *    由 `SkillMaterializer` 写入，**坏一个只跳过**（落盘是最后一步，磁盘异常不该拦启动）；
+ * 3. `AI_SKILLS_DIRS` 配置的目录 —— 用户自带技能库（默认 `~/.agents/skills`），
  *    **坏一个只跳过并记错误日志**，不拿别人的技能库绑架整个服务启动。
  *
- * 扫描结果进程内缓存：技能属于"部署物"，增删要重启（Mastra 那份内容侧仍会自刷新，不影响这份名单）。
+ * 扫描结果进程内缓存；技能库的写操作完成后由 `SkillLibraryService` 调 `reload()` 清缓存 ——
+ * 于是"在线新建一个技能"不需要重启就能被 `ALL_SKILLS` 展开到。
  */
 @Injectable()
 export class SkillLoader {
@@ -45,6 +56,7 @@ export class SkillLoader {
   private loading?: Promise<SkillRef[]>
   private readonly catalogRoot: string
   private readonly extraRoots: readonly string[]
+  private readonly libraryRoot: string | undefined
 
   constructor(
     @Inject(AppLogger) private readonly logger: AppLogger,
@@ -55,10 +67,33 @@ export class SkillLoader {
      * 不能因为跑测试那台机器上恰好有个 `~/.agents/skills` 就换一套行为。
      */
     @Optional() @Inject(SKILL_DIRS) extraDirs: readonly string[] = [],
+    /** 技能库落盘目录（见 `SKILL_LIBRARY_DIR`）；不传 = 不扫库（测试 / 纯外部目录场景） */
+    @Optional() @Inject(SKILL_LIBRARY_DIR) libraryDir?: string,
   ) {
     this.catalogRoot = defaultCatalogDir()
     this.extraRoots = normalizeDirs(extraDirs)
-    this.roots = [this.catalogRoot, ...this.extraRoots]
+    this.libraryRoot = libraryDir ? normalizeDirs([libraryDir])[0] : undefined
+    this.roots = [
+      this.catalogRoot,
+      ...(this.libraryRoot ? [this.libraryRoot] : []),
+      ...this.extraRoots,
+    ]
+  }
+
+  /** 技能库根目录（技能库服务落盘 / 后台展示用；未配置时为 undefined） */
+  get libraryPath(): string | undefined {
+    return this.libraryRoot
+  }
+
+  /**
+   * 清掉扫描缓存（技能库写操作后调用）。
+   *
+   * 只清名单；Mastra 侧的内容是它按需读盘的，目录变了它下次自动读到新内容。
+   * 返回下一次 `names()` 的 promise 只是给调用方一个"什么时候能读到新名单"的落点，不必等它。
+   */
+  reload(): void {
+    this.loading = undefined
+    this.logger.log('ai.skills.reload', { roots: this.roots })
   }
 
   /** 全部技能的画像（供接口展示与 agent 声明校验） */
@@ -110,6 +145,7 @@ export class SkillLoader {
       // 其余是用户自带技能库：坏一个跳过即可（否则别人的一个 typo 能让服务起不来）
       const strict = index === 0
       if (!existsSync(root)) {
+        // 技能库目录还没落盘（首次启动且一个技能都没有）是常态，不要刷成 warn
         this.logger.log('ai.skills.dir_missing', { dir: root, strict })
         return
       }
@@ -162,7 +198,7 @@ export class SkillLoader {
     }
 
     const content = readFileSync(skillFile, 'utf8')
-    const validation = validateSkillContent({ content, directoryName: dirName })
+    const validation = validateSkillFileContent({ content, directoryName: dirName })
     if (!validation.valid) {
       const reason = validation.errors.join('; ')
       // 外部技能库的"坏技能"很常见（比如 description 超过 1024 字符），跳过并留痕即可；

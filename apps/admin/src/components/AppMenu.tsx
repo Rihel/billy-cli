@@ -14,6 +14,7 @@ import {
   RadioTowerIcon,
   ScrollTextIcon,
   ShieldCheckIcon,
+  SparklesIcon,
   UsersIcon,
   WrenchIcon,
 } from 'lucide-react'
@@ -49,6 +50,7 @@ export const MENU_ITEMS: MenuItem[] = [
       { label: 'AI 会话', key: '/main/ai/chat', icon: BotIcon },
       { label: '模型管理', key: '/main/ai/models', icon: CpuIcon },
       { label: '工具配置', key: '/main/ai/tools', icon: WrenchIcon },
+      { label: '技能库', key: '/main/ai/skills', icon: SparklesIcon },
       { label: '连接器', key: '/main/ai/connectors', icon: PlugIcon },
       { label: '审计与复盘', key: '/main/ai/audit', icon: HistoryIcon },
     ],

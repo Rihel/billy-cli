@@ -55,3 +55,44 @@
     animation: none;
   }
 }
+
+/* 技能编辑画布：把块编辑器的排版调到"文档"的呼吸感（只作用在这张画布里） */
+.skill-canvas .bn-container,
+.skill-canvas .bn-editor,
+.skill-canvas .ProseMirror {
+  background: transparent;
+}
+.skill-canvas .bn-editor {
+  padding-inline: 0;
+  font-size: 15.5px;
+  line-height: 1.8;
+}
+.skill-canvas .bn-block-content {
+  padding-block: 3px;
+}
+.skill-canvas .bn-block-content[data-content-type='heading'][data-level='1'] {
+  font-size: 1.7em;
+}
+.skill-canvas .bn-block-content[data-content-type='heading'][data-level='2'] {
+  font-size: 1.35em;
+}
+
+/* 代码编辑器（CodeMirror）：与画布同底，只留一条细分隔线 */
+.skill-code-editor .cm-editor {
+  background: transparent;
+}
+.skill-code-editor .cm-editor.cm-focused {
+  outline: none;
+}
+.skill-code-editor .cm-scroller {
+  font-family: var(--font-geist-mono);
+  line-height: 1.7;
+}
+.skill-code-editor .cm-gutters {
+  border-right: 1px solid var(--border);
+  background: transparent;
+  color: var(--muted-foreground);
+}
+.skill-code-editor .cm-content {
+  padding: 12px 0;
+}

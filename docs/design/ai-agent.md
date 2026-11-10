@@ -87,6 +87,9 @@ ai/
 
 ### 1.4 技能：`SkillLoader` 发现 / 校验 + Mastra 加载
 
+> 2026-11-10 起多了一层**技能库**（后台在线编辑 / 从 skills.sh、GitHub 链接导入 / 启停，DB 是事实源、落盘给 Mastra，
+> `skills: ['*']` 运行期展开不用重启）：见 `docs/design/ai-skill-library.md`。
+
 技能内容用 **Agent Skills 标准格式**（`SKILL.md` 的 YAML frontmatter + Markdown 正文 + `references/`），
 与仓库根 `.agents/skills/` 同构。**加载分两段，各管一段**：
 

@@ -40,7 +40,7 @@ export const MASTRA_ALLOWLIST: Record<string, number> = {
   'apps/server/src/modules/ai/runtime/recovery.service.ts': 1,
   'apps/server/src/modules/ai/runtime/storage/agent-mastra-store.ts': 2,
   'apps/server/src/modules/ai/runtime/title.service.ts': 1,
-  'apps/server/src/modules/ai/core/skills/skill.loader.ts': 1,
+  'apps/server/src/modules/ai/core/skills/skill.content.ts': 1,
 }
 
 /** 扫描根 */

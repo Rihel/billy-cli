@@ -34,7 +34,16 @@ import {
   RunRepository,
   TimelineRepository,
 } from './runtime/index.js'
-import { SKILL_DIRS, SkillLoader } from './core/skills/index.js'
+import {
+  SKILL_DIRS,
+  SKILL_LIBRARY_DIR,
+  SkillLoader,
+  SkillMaterializer,
+} from './core/skills/index.js'
+import { SkillController } from './skills/skill.controller.js'
+import { SkillLibraryService } from './skills/skill.service.js'
+import { SkillRepository } from './skills/skill.repository.js'
+import { SkillTools } from './skills/skill.tools.js'
 import { toMastraSkills } from './mastra/skill.adapter.js'
 import { toMastraTools } from './mastra/tool.adapter.js'
 import { AGENT_TOOL_GROUPS } from './core/tools/tools.types.js'
@@ -115,7 +124,7 @@ let warnedMissingEnvelope = false
  */
 @Module({
   imports: [AuthModule, AdminModule, AiModelModule, AiUsageModule, AiMonitoringModule],
-  controllers: [AiController, AiToolController, AiConnectorController],
+  controllers: [AiController, AiToolController, AiConnectorController, SkillController],
   providers: [
     {
       provide: AgentConfig,
@@ -130,7 +139,7 @@ let warnedMissingEnvelope = false
     // 工具组实例（**唯一的工具来源**）：注册机对每个组跑 `buildToolSpecs()` 拿 1..n 个工具
     {
       provide: AGENT_TOOL_GROUPS,
-      inject: [PlannerTools, RunCommandTool, RunSubAgentTool, ReadToolResultTool, WebTools],
+      inject: [PlannerTools, RunCommandTool, RunSubAgentTool, ReadToolResultTool, WebTools, SkillTools],
       useFactory: (...groups: AgentToolGroup[]): AgentToolGroup[] => groups,
     },
     // 部署上限（env）：库里的值再大也突破不了
@@ -231,28 +240,37 @@ let warnedMissingEnvelope = false
     RunSubAgentTool,
     ReadToolResultTool,
     WebTools,
+    SkillTools,
 
-    // ───────────────────────── agent 注册表与 Mastra 实例 ─────────────────────────
+    // ───────────────────────── 技能库（DB 是事实源，落盘给 Mastra）─────────────────────────
     // 额外技能目录：配置 → loader（loader 只管扫目录，不认配置从哪来）
     {
       provide: SKILL_DIRS,
       inject: [AgentConfig],
       useFactory: (config: AgentConfigValue): readonly string[] => config.skillsDirs,
     },
+    {
+      provide: SKILL_LIBRARY_DIR,
+      inject: [AgentConfig],
+      useFactory: (config: AgentConfigValue): string => config.skillsLibraryDir,
+    },
+    {
+      provide: SkillMaterializer,
+      inject: [AppLogger, AgentConfig],
+      useFactory: (logger: AppLogger, config: AgentConfigValue): SkillMaterializer =>
+        new SkillMaterializer(logger, config.skillsLibraryDir),
+    },
+    SkillRepository,
+    SkillLibraryService,
     SkillLoader,
+
+    // ───────────────────────── agent 注册表与 Mastra 实例 ─────────────────────────
     {
       provide: AGENT_REGISTRY,
-      // 技能名清单要在装配期拿到（`skills: ['*']` 展开成真实名字），故这个 factory 是 async 的：
-      // 展开之后 `/agent/list`、`request_snapshot.skillKeys`、审计页看到的都是具体技能名
-      inject: [ToolRegistry, SkillLoader],
-      useFactory: async (
-        registry: ToolRegistry,
-        skills: SkillLoader,
-      ): Promise<AgentRegistryValue> =>
-        createAgentRegistry(
-          createAgentDefinitions(prompts, registry, { allSkillNames: await skills.names() }),
-          DEFAULT_AGENT_KEY,
-        ),
+      // 只做声明 → 定义；技能 `'*'` 原样保留，由 `SkillLoader.resolve('*')` 在运行期现算
+      inject: [ToolRegistry],
+      useFactory: (registry: ToolRegistry): AgentRegistryValue =>
+        createAgentRegistry(createAgentDefinitions(prompts, registry), DEFAULT_AGENT_KEY),
     },
     {
       provide: MASTRA,
@@ -315,6 +333,7 @@ let warnedMissingEnvelope = false
     TimelineRepository,
     AgentService,
     AiToolService,
+    SkillLibraryService,
     AgentConversationService,
     AgentTimelineService,
     AgentRunService,

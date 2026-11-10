@@ -257,6 +257,41 @@ export const AppErrorCodes = createDict({
     value: 3411,
     http: 409,
   },
+  SkillNotFound: {
+    label: '技能不存在',
+    value: 3412,
+    http: 404,
+  },
+  SkillInvalid: {
+    label: '技能内容不合法',
+    value: 3413,
+    http: 400,
+  },
+  SkillKeyConflict: {
+    label: '技能名称已被占用',
+    value: 3414,
+    http: 409,
+  },
+  SkillFileInvalid: {
+    label: '技能文件不合法',
+    value: 3415,
+    http: 400,
+  },
+  SkillImportFailed: {
+    label: '技能导入失败',
+    value: 3416,
+    http: 400,
+  },
+  SkillVersionConflict: {
+    label: '技能已被其他人修改，请刷新后重试',
+    value: 3417,
+    http: 409,
+  },
+  SkillMaterializeFailed: {
+    label: '技能已入库，但写入技能目录失败，请重试（重启会自动修复）',
+    value: 3418,
+    http: 500,
+  },
   InvalidInput: {
     label: '参数校验失败',
     value: 4001,
