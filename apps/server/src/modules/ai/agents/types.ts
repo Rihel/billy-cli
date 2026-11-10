@@ -1,4 +1,5 @@
 import type { AgentListModel } from '@repo/shared'
+import type { ToolSelector } from '../core/tools/tool-selector.js'
 
 /**
  * 单个 agent 的**应用层定义**（策略）：它是谁、能做什么、用哪套提示词。
@@ -25,7 +26,7 @@ export interface AgentDefinition {
    * 模型再怎么"想"也调不动（提示词只负责「什么时候用」）。
    * 引用不存在的工具 key 会在 bootstrap 期直接报错（见 `ai.registry.ts` 的校验）。
    */
-  tools: readonly string[]
+  tools: readonly ToolSelector[]
   /**
    * 允许使用的**技能名子集**（`core/skills/catalog/<name>/SKILL.md` 与 `AgentConfig.skillsDirs`
    * 各目录下的 `<name>/SKILL.md`）。
@@ -38,6 +39,13 @@ export interface AgentDefinition {
   instructions: string
   /** 覆盖默认模型（多模型时用；本轮留位，装配处已支持） */
   model?: string
+  /**
+   * 能不能造子 agent（装配期按**展开后的**授权清单算）。
+   *
+   * 不放到前端去判 `tools.includes('run-sub-agent')`：`'*'` 与
+   * `{ category: 'core' }` 也能把委派工具带上，前端看不出来。
+   */
+  canSpawnSubAgents?: boolean
 }
 
 /**
@@ -52,8 +60,11 @@ export interface AgentSpec {
   key: string
   name: string
   description: string
-  /** 允许调用的工具 key 子集（从 `tools/tool-keys.ts` 取，避免手写魔数） */
-  tools: readonly string[]
+  /**
+   * 允许调用的工具：具体 key（从 `tools/tool-keys.ts` 取）、`'*'`，或按类别 / 连接器批量选
+   * （见 `core/tools/tool-selector.ts`）。
+   */
+  tools: readonly ToolSelector[]
   /** 允许使用的技能名子集（`core/skills/catalog/<name>/`；未知名字装配期报错） */
   skills?: readonly string[]
   /** 提示词模板：`templates/<template>.eta` + 自定义变量 */

@@ -63,14 +63,16 @@ describe('提示词纪律句（执行命令 / 能力边界 / 宽泛任务）', (
 
   it('失败处理写在全局纪律段：读懂原因、不要原样重试', () => {
     expect(prompt).toContain('失败是结论不是意外')
-    expect(prompt).toContain('不要原样重试')
+    // 2026-11-10 措辞调整：原文"不要原样重试" → "同一次调用原样重试没有意义"（语义不变）
+    expect(prompt).toContain('同一次调用原样重试没有意义')
   })
 
 
   it('尽量用工具把事办成：一种方法不行就换第二种', () => {
     expect(prompt).toContain('尽量用工具把事办成')
     expect(prompt).toContain('换下一条')
-    expect(prompt).toContain('至少试两三种')
+    // 2026-11-10 措辞调整：原文"至少试两三种" → "换 2–3 种**不同的**路径"（语义不变）
+    expect(prompt).toContain('换 2–3 种**不同的**路径')
     // 反面也钉住：不许只列能力限制再反问用户
     expect(prompt).toContain('不要只列一份"我的能力限制清单"')
   })
@@ -97,7 +99,8 @@ describe('提示词纪律句（执行命令 / 能力边界 / 宽泛任务）', (
    * **行为层面**还要提示词说清"要如实填、不要写空话" —— 否则模型会填"为了完成任务"这种凑数的话。
    */
   it('调用理由要如实填：提示词里写明"每次调用都要先想清楚 reason"', () => {
-    expect(prompt).toContain('每次调用工具都要先想清楚 `reason` 再填')
-    expect(prompt).toContain('它是审计证据')
+    // 2026-11-10 措辞调整：`reason` 的写法从"每次调用"改成"每轮必填"，仍在"要求"段
+    expect(prompt).toContain('`reason` 每轮必填')
+    expect(prompt).toContain('也是审计证据')
   })
 })

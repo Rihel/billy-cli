@@ -352,7 +352,7 @@ export class AgentChatService {
       await this.runs.saveRequestSnapshot(run.id, {
         model: model.modelRef,
         agentKey: definition.key,
-        toolKeys: [...definition.tools],
+        toolKeys: this.toolRegistry.expand(definition.tools),
         skillKeys: [...definition.skills],
         params: { maxSteps: AGENT_MAX_STEPS },
         context: built.snapshot,
@@ -1048,7 +1048,7 @@ export class AgentChatService {
       await this.runs.saveRequestSnapshot(run.id, {
         model: model.modelRef,
         agentKey: definition.key,
-        toolKeys: [...definition.tools],
+        toolKeys: this.toolRegistry.expand(definition.tools),
         skillKeys: [...definition.skills],
         params: { maxSteps: AGENT_MAX_STEPS },
         context: built.snapshot,
@@ -2004,8 +2004,9 @@ export class AgentChatService {
       // 根 agent key：子 agent 沿用父的判定（作用域按它算）
       rootAgentKey: definition.key,
       model,
-      // 子 agent 的工具面 = 全部 − 委派类 − child:deny（于是它不能再造子 agent，深度天然为 1）
-      childToolbox: this.toolRegistry.childToolbox(),
+      // 子 agent 的工具面 = 父 agent 的授权面 ∩ 全部 − 委派类 − child:deny
+      // （"子助手有你的全部工具"里的"你的"指父 agent 被授权的那一份，不是注册机全量）
+      childToolbox: this.toolRegistry.childToolbox(definition.tools),
       skills: await this.skillLoader.resolve(definition.skills),
       ...(options.systemPrompt ? { systemPrompt: options.systemPrompt } : {}),
       ...(options.abortSignal ? { abortSignal: options.abortSignal } : {}),

@@ -285,8 +285,13 @@ let warnedMissingEnvelope = false
             return decision.model
           },
           definitions: registry.all(),
-          // `ALL_TOOLS` 在调用时展开：连接器产出的工具是运行期出现的（见设计 §3.5）
-          resolveTools: (ids) => toMastraTools(tools.toolbox(tools.expand(ids)), logger),
+          // 授权清单在这里展开（具体 key / `'*'` / `{ category }` / `{ connector }`）：
+          // 连接器产出的工具是运行期出现的，且作用域要按这一次的身份过滤 —— 没授权的工具不出现
+          resolveTools: async (ids, caller) => {
+            const keys = tools.expand(ids)
+            const allowed = caller ? await tools.authorized(keys, caller) : keys
+            return toMastraTools(tools.toolbox(allowed), logger)
+          },
           resolveSkills: async (names) => toMastraSkills(await skillLoader.resolve(names)),
           storage: new AgentMastraStore(db, logger),
           durableAgents: config.durableEnabled,

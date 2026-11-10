@@ -1,6 +1,7 @@
 import type { PromptData, PromptEngine } from '../core/prompts/index.js'
 import type { ToolRegistry } from '../core/tools/tool.registry.js'
 import { ALL_SKILLS } from '../core/skills/skills.types.js'
+import { TOOL_KEYS } from '../core/tools/tool-keys.js'
 import type { AgentDefinition, AgentSpec } from './types.js'
 import { assistantAgent } from './assistant.agent.js'
 
@@ -39,10 +40,12 @@ export const createAgentDefinitions = (
   } = {},
 ): AgentDefinition[] =>
   AGENT_SPECS.map((spec) => {
+    // 提示词里那段"可用工具"与能力清单是**同一份展开结果**：选择器只在这里展开一次
+    const toolMeta = registry.describe(spec.tools)
     const data: PromptData = {
       agentKey: spec.key,
       agentName: spec.name,
-      tools: registry.describe(spec.tools),
+      tools: toolMeta,
       ...spec.prompt.data,
     }
     const declared = spec.skills ?? []
@@ -55,6 +58,7 @@ export const createAgentDefinitions = (
         ? [...(options.allSkillNames ?? [])]
         : [...declared],
       model: spec.model,
+      canSpawnSubAgents: toolMeta.some((tool) => tool.key === TOOL_KEYS.runSubAgent),
       instructions: prompts.render(spec.prompt.template, data),
     }
   })

@@ -64,7 +64,7 @@ export const toConnectorToolSpec = (
       .map((field) => ({ name: field.key, label: field.label, required: field.required ?? false })),
     events: [],
     // 来源交给网关的 connector-guard 做总闸（实例停用 / 缺密钥）
-    connector: { id: instance.id, key: instance.key },
+    connector: { id: instance.id, key: instance.key, toolName: capability.name },
     scope: 'admin',
     // 连接器出参（SQL 结果 / CLI stdout / 技能文档）都可能很大：统一按页给模型，全量仍入库
     paginate: { pageBytes: 8 * 1024 },

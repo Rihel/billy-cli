@@ -1,9 +1,13 @@
 import { Mastra } from '@mastra/core/mastra'
 import type { ToolsInput } from '@mastra/core/agent'
 import type { MastraCompositeStore } from '@mastra/core/storage'
+import type { RequestContext } from '@mastra/core/request-context'
 import type { AgentModelId } from '../core/config.js'
 import type { RuntimeModel } from '../core/envelope.js'
+import type { ToolSelector } from '../core/tools/tool-selector.js'
+import type { ToolCallerIdentity } from '../core/tools/tools.types.js'
 import { createMastraAgent, modelFromEnvelope } from './agent.adapter.js'
+import { readEnvelope } from './context.adapter.js'
 import { agentMemory } from './agent-memory.js'
 import { askUserQuestionsTool } from './ask-user-questions.tool.js'
 import type { AgentDefinition } from '../agents/types.js'
@@ -34,8 +38,15 @@ export interface CreateMastraOptions {
    *
    * 由装配层注入（注册机 `toolbox()` + `toMastraTools`）：core 因此不依赖任何具体工具，
    * 工具池（业务能力）与 Mastra 装配（机制）解耦，各自可单独替换 / 测试。
+   *
+   * `caller` 是**这一次请求的身份**（来自运行时信封）：装配层据此把作用域不允许的工具
+   * 从工具面里去掉，而不是等调用时才拒绝。构造期没有信封，`caller` 为 undefined，
+   * 此时不过滤（构造期的工具面不参与真实调用）。
    */
-  resolveTools: (toolIds: readonly string[]) => ToolsInput
+  resolveTools: (
+    toolIds: readonly ToolSelector[],
+    caller?: ToolCallerIdentity,
+  ) => ToolsInput | Promise<ToolsInput>
   /**
    * 按授权清单取技能（**已转成 Mastra 的技能入参：技能目录路径**）。
    *
@@ -75,9 +86,14 @@ export const createMastra = async ({
   const built = new Map<string, ReturnType<typeof createMastraAgent>>()
   for (const definition of definitions) {
     // 工具面**按请求解析**（设计 `ai-connector.md` §3.5）：
-    // 连接器产出的工具是运行期出现的，不能在建实例时烙死。
-    const buildTools = (): ReturnType<typeof resolveTools> => {
-      const tools = resolveTools(definition.tools)
+    // 连接器产出的工具是运行期出现的，不能在建实例时烙死；作用域也要按这次的身份过滤
+    // （没授权的工具根本不出现，而不是出现后被拒）。
+    const buildTools = async (requestContext?: RequestContext): Promise<ToolsInput> => {
+      const envelope = readEnvelope(requestContext)
+      const caller: ToolCallerIdentity | undefined = envelope
+        ? { isAdmin: envelope.isAdmin, rootAgentKey: envelope.rootAgentKey }
+        : undefined
+      const tools = await resolveTools(definition.tools, caller)
       // 问答（向用户提问并挂起）**只给主 agent**：子 agent 是临时执行体，没人能回答它。
       // 子 agent 的工具面来自注册机（`childToolbox()`），本来就拿不到这个原生工具；
       // 它缺信息时只能把问题交回主 agent（见 `agent-runner.ts` 的能力尾巴）。
@@ -108,7 +124,8 @@ export const createMastra = async ({
           (model) => resolveModel(definition, model),
           () => onMissingEnvelope?.(),
         ),
-        tools: () => buildTools(),
+        // 动态参数：Mastra 每次调用时带着这一轮的 requestContext 求值（构造期不带，那时不过滤）
+        tools: async ({ requestContext }) => buildTools(requestContext),
         memory: memory ?? agentMemory,
         // 技能按角色授权，交**目录路径**给 Mastra：清单注入 + 正文/参考文件按需读都由它负责
         // （`skill` / `skill_search` / `skill_read` 工具；我们只管发现与校验，见 `SkillLoader`）

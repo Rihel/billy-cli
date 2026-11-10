@@ -2,9 +2,12 @@ import { Inject, Injectable } from '@nestjs/common'
 import { buildToolSpecs, type AgentToolGroup } from './tool.class.js'
 import { ToolGateway } from './tool.gateway.js'
 import { ToolConfigService } from './tool.config.service.js'
-import { AGENT_TOOL_GROUPS, ALL_TOOLS } from './tools.types.js'
+import { scopeAllows } from './tool.scope.js'
+import { expandToolSelectors, type ToolSelector, type ToolSelectorEntry } from './tool-selector.js'
+import { AGENT_TOOL_GROUPS } from './tools.types.js'
 import type {
   Tool,
+  ToolCallerIdentity,
   ToolCategoryValue,
   ToolSettings,
   ToolSpec,
@@ -135,11 +138,32 @@ export class ToolRegistry {
     return removed
   }
 
-  /** 展开 `ALL_TOOLS`（其余 key 原样返回） */
-  expand(keys: readonly string[]): string[] {
-    if (!keys.includes(ALL_TOOLS)) return [...keys]
-    const explicit = keys.filter((key) => key !== ALL_TOOLS)
-    return [...new Set([...explicit, ...this.keys()])]
+  /**
+   * 展开授权清单里的**选择器**（具体 key / `'*'` / `{ category }` / `{ connector }`），返回工具 key。
+   *
+   * 具体 key 原样返回，存在性由 `spec()` 判（装配期就会抛）；连接器选择器允许零命中
+   * （连接器是运行期同步的，启动时可能还没有）。
+   */
+  expand(selectors: readonly ToolSelector[]): string[] {
+    return expandToolSelectors(selectors, this.selectorEntries())
+  }
+
+  /**
+   * 按**这次的调用身份**过滤工具面（装配期，而不是等到调用被拒）。
+   *
+   * 只过滤 `scope`：`all` 放行；`admin` / `user` 看身份；`agent` 看 `allowedAgents`。
+   * 开关（`enabled`）仍由 `EnabledPlugin` 在调用期判——它是"临时关掉"，不是"没有授权"。
+   */
+  async authorized(
+    keys: readonly string[],
+    caller: ToolCallerIdentity,
+  ): Promise<string[]> {
+    const allowed: string[] = []
+    for (const key of keys) {
+      const settings = await this.config.settings(this.spec(key))
+      if (scopeAllows(settings.scope, settings.allowedAgents, caller)) allowed.push(key)
+    }
+    return allowed
   }
 
   /** 取工具（未知 key 返回 undefined） */
@@ -175,7 +199,7 @@ export class ToolRegistry {
   }
 
   /** 元数据（提示词渲染 + 后台列表） */
-  describe(keys?: readonly string[]): ToolMeta[] {
+  describe(keys?: readonly ToolSelector[]): ToolMeta[] {
     const target = keys ? this.expand(keys).map((key) => this.spec(key)) : this.specs()
     return target.map((spec) => ({
       key: spec.key,
@@ -190,8 +214,8 @@ export class ToolRegistry {
     return this.config.settings(this.spec(key))
   }
 
-  /** 按授权清单组装工具箱（主 agent 用；`ALL_TOOLS` 在调用前展开） */
-  toolbox(keys: readonly string[]): Toolbox {
+  /** 按授权清单组装工具箱（主 agent 用；选择器在这里展开） */
+  toolbox(keys: readonly ToolSelector[]): Toolbox {
     const tools = new Map<string, Tool>()
     for (const key of this.expand(keys)) {
       const entry = this.lookup(key)
@@ -202,18 +226,36 @@ export class ToolRegistry {
   }
 
   /**
-   * 子 agent 的工具面 = **全部 − 委派类 − `child: deny`**（设计 §5.10 的第 2 条修正）。
+   * 子 agent 的工具面 = **父 agent 的授权面 ∩ 全部 − 委派类 − `child: deny`**
+   * （设计 §5.10 的第 2 条修正）。
    *
-   * 排除法而不是白名单：新工具默认子 agent 也能用，要"只给主 agent"必须显式声明 `child: 'deny'`。
+   * 为什么用父授权当上限：`run-sub-agent` 的语义是"子助手有你的全部工具"，
+   * 不是"子助手有注册机里的全部工具"。不给上限的话，一个只被授权了查库的 agent
+   * 可以造个孩子去执行命令 —— 授权就形同虚设。
+   *
+   * 排除法（委派类 / `child: deny`）不变：新工具默认子 agent 也能用，
+   * 要"只给主 agent"必须显式声明。
    */
-  childToolbox(): Toolbox {
+  childToolbox(parentTools?: readonly ToolSelector[]): Toolbox {
+    const allowed = parentTools ? new Set(this.expand(parentTools)) : null
     const tools = new Map<string, Tool>()
     for (const [key, entry] of [...this.staticTools, ...this.dynamicTools]) {
+      if (allowed && !allowed.has(key)) continue
       if (entry.spec.delegation === true) continue
       if (entry.spec.child === 'deny') continue
       tools.set(key, entry.tool)
     }
     return tools
+  }
+
+  /** 选择器展开用的最小信息（只从声明上取，不碰库） */
+  private selectorEntries(): ToolSelectorEntry[] {
+    return this.specs().map((spec) => ({
+      key: spec.key,
+      category: spec.category,
+      ...(spec.connector?.key ? { connectorKey: spec.connector.key } : {}),
+      ...(spec.connector?.toolName ? { connectorToolName: spec.connector.toolName } : {}),
+    }))
   }
 
   /** 委派类工具的 key（诊断用） */

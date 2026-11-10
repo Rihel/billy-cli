@@ -92,7 +92,16 @@ export interface MastraAgentOptions {
   instructions: string | ((args: { requestContext: RequestContext }) => string)
   /** 模型：按调用从信封取（主 agent），或固定（临时子 agent 继承父这一轮的模型） */
   model: (args: { requestContext: RequestContext }) => { id: AgentModelId; url?: string; apiKey: string }
-  tools: ToolsInput | (() => ToolsInput)
+  /**
+   * 工具面：静态表，或**按请求求值**的函数。
+   *
+   * 函数形态要能读这一轮的 `requestContext`（信封里有调用身份）：工具面按身份过滤，
+   * 没授权的工具根本不出现；返回值可以是 Promise（读配置缓存是异步的）。
+   */
+  tools:
+    | ToolsInput
+    | (() => ToolsInput)
+    | ((args: { requestContext: RequestContext }) => ToolsInput | Promise<ToolsInput>)
   /** 技能目录路径（交给 Mastra 的技能加载机制，见 `toMastraSkills`） */
   skills: string[]
   durable?: boolean

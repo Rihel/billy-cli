@@ -1,5 +1,5 @@
-import { TOOL_KEYS } from '../core/tools/tool-keys.js'
 import { AgentNotFoundError } from '../core/errors.js'
+import { TOOL_KEYS } from '../core/tools/tool-keys.js'
 import type { AgentDefinition, AgentRegistry as AgentRegistryShape } from './types.js'
 
 /**
@@ -65,7 +65,9 @@ export const createAgentRegistry = (
         isDefault: definition.key === defaultKey,
         skills: [...definition.skills],
         // 子 agent 是运行期由工具动态创建的（不在装配期声明，故这里只有能力开关，没有名单）
-        canSpawnSubAgents: definition.tools.includes(TOOL_KEYS.runSubAgent),
+        // 手工构造的定义（测试 / 插件）可能没算这一项：回落到"授权清单里有没有委派工具"
+        canSpawnSubAgents:
+          definition.canSpawnSubAgents ?? definition.tools.includes(TOOL_KEYS.runSubAgent),
       })),
     }),
   }

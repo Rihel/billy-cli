@@ -21,8 +21,11 @@ export type ToolKeyValue = string
 /** 作用域取值（`ToolScope` 字典是唯一事实源，这里用字面量收窄，避免主体依赖字典实现） */
 export type ToolScopeValue = 'all' | 'admin' | 'user' | 'agent'
 
+/** 工具类别（`category:<值>` 选择器的可用取值；新增类别时一并加在这里） */
+export const TOOL_CATEGORY_VALUES = ['core', 'business', 'runtime', 'connector'] as const
+
 /** 工具类别 */
-export type ToolCategoryValue = 'core' | 'business' | 'runtime' | 'connector'
+export type ToolCategoryValue = (typeof TOOL_CATEGORY_VALUES)[number]
 
 /**
  * 自定义事件的发出方式（`@repo/shared` 的 `ToolEventMode` 字典是唯一事实源，
@@ -159,6 +162,16 @@ export interface ToolSettings<C = Record<string, unknown>> {
   secret(name: string): string | null
   /** 秘钥提示串（`sk-…abcd`），可以进日志与页面 */
   secretHint(name: string): string | null
+}
+
+/**
+ * 判作用域需要的**最小身份**（装配期过滤工具面与调用期兜底共用）。
+ *
+ * 不从 `ToolCaller` 上截取：装配期拿不到 conversationId / runId，只有信封里的这两项。
+ */
+export interface ToolCallerIdentity {
+  readonly isAdmin: boolean
+  readonly rootAgentKey: string
 }
 
 /** 谁在调这次工具（来自编排层注入的运行时信封） */
@@ -343,8 +356,15 @@ export interface ToolSpec<C = Record<string, unknown>, I = unknown, O = unknown>
    *
    * 网关的 `connector-guard` 插件靠它做"实例总闸"：实例停用 / 缺密钥时拒绝调用。
    * 不放进设置对象（`ToolSettings`）——那是可被库覆盖的值，来源是不可变的声明。
+   *
+   * `toolName` 是**接入方的工具原名**（不是归一化后的 key 尾巴）：`connector:<实例>/<工具>`
+   * 选择器按它精确匹配，不做 key 反解（实例 key 与工具名都含 `-`，反解必然歧义）。
    */
-  readonly connector?: { readonly id: string; readonly key: string }
+  readonly connector?: {
+    readonly id: string
+    readonly key: string
+    readonly toolName?: string
+  }
   /** 默认作用域（库里可覆盖） */
   readonly scope: ToolScopeValue
   /** 委派类工具（创建 / 指挥子 agent）：子 agent 工具面要把它们排除 */

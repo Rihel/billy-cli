@@ -6,6 +6,10 @@ import type { AgentSpec } from './types.js'
 /**
  * 默认 agent：通用助手（会写任务清单、能造子助手、能联网、能执行命令）。
  *
+ * **它是「能力上限」的示例，不是产品形态**：工具面写 `ALL_TOOLS`（全量），
+ * 所以连接器产出的工具也自动挂上。使用方定义自己的 agent 时应按职责裁剪
+ * （`docs/guide/ai.md` 的「定义自己的 agent」、skill `develop-ai-agent/references/define-agent.md`）。
+ *
  * 「能做什么」由 `tools` 决定：这里只授权**运行时能力**——规划一组四个工具
  * （`plan-create` / `plan-reorder` / `plan-complete` / `plan-delete`）、
  * `run-sub-agent`（子 agent）、`run-command`（执行命令行命令）、

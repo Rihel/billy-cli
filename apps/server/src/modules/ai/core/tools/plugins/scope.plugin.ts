@@ -1,10 +1,16 @@
 import { Injectable } from '@nestjs/common'
+import { scopeAllows } from '../tool.scope.js'
 import type { ToolCallContext, ToolOutcome, ToolPlugin } from '../tools.types.js'
 
 /**
  * 作用域：按**根 agent + 触发身份**判（子 agent 沿用父的判定，设计 §5.7）。
  *
  * 四条判据与配置表一一对应：`all` / `admin` / `user` / `agent`。
+ * 判据本身在 `tool.scope.ts` 的纯函数里 —— 装配期过滤工具面用的是同一份，
+ * 不能一边"过滤时放行"、一边"调用时拒绝"。
+ *
+ * 这一层是**兜底**：正常情况下没授权的工具在装配期就不进工具面了；
+ * 留在这里是因为工具面可能被缓存复用、或调用方绕过了 `authorized()`。
  */
 @Injectable()
 export class ScopePlugin implements ToolPlugin {
@@ -24,7 +30,8 @@ export class ScopePlugin implements ToolPlugin {
         retryable: false,
       }
     }
-    if (scope === 'admin' && !caller.isAdmin) {
+    if (scopeAllows(scope, allowedAgents, caller)) return
+    if (scope === 'admin') {
       return {
         ok: false,
         reason: 'forbidden',
@@ -33,7 +40,7 @@ export class ScopePlugin implements ToolPlugin {
         retryable: false,
       }
     }
-    if (scope === 'user' && caller.isAdmin) {
+    if (scope === 'user') {
       return {
         ok: false,
         reason: 'forbidden',
@@ -42,14 +49,12 @@ export class ScopePlugin implements ToolPlugin {
         retryable: false,
       }
     }
-    if (scope === 'agent' && !allowedAgents.includes(caller.rootAgentKey)) {
-      return {
-        ok: false,
-        reason: 'forbidden',
-        message: `这个工具未授权给 agent「${caller.rootAgentKey}」`,
-        hint: '换用其它工具，或把原因告诉用户',
-        retryable: false,
-      }
+    return {
+      ok: false,
+      reason: 'forbidden',
+      message: `这个工具未授权给 agent「${caller.rootAgentKey}」`,
+      hint: '换用其它工具，或把原因告诉用户',
+      retryable: false,
     }
   }
 }
