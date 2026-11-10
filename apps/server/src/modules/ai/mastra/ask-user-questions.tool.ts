@@ -46,6 +46,15 @@ const AskUserQuestionsSuspendSchema = z.object({
 })
 
 const AskUserQuestionsResumeSchema = z.object({
+  /**
+   * 用户取消整组回答。
+   *
+   * 为什么不是"取消本轮运行"：取消运行会让模型永远收不到这次工具结果，它就无从知道
+   * 用户是"不愿意答"还是"网络断了"。这里把取消当成一次**明确的工具出参**续跑，
+   * 模型据此继续推进（官方对 `suspend()` 的续跑方式就是 `resumeStream(resumeData)`；
+   * `declineToolCall()` 只适用于 `requireApproval` 的审批挂起）。
+   */
+  cancelled: z.boolean().optional(),
   answers: z
     .array(
       z.object({
@@ -53,12 +62,12 @@ const AskUserQuestionsResumeSchema = z.object({
         value: z.union([z.string().max(2000), z.array(z.string().max(200)).max(8)]),
       }),
     )
-    .min(1)
-    .max(5),
+    .max(5)
+    .optional(),
 })
 
 type Question = z.infer<typeof QuestionSchema>
-type Answer = z.infer<typeof AskUserQuestionsResumeSchema>['answers'][number]
+type Answer = NonNullable<z.infer<typeof AskUserQuestionsResumeSchema>['answers']>[number]
 
 /**
  * 续跑时的出参：**给模型读的那一段 + 结构化答案**。
@@ -70,9 +79,18 @@ type Answer = z.infer<typeof AskUserQuestionsResumeSchema>['answers'][number]
 export interface AskUserAnswerOutput {
   /** 模型读的那段（保留题号 / 多选聚合），同时落库 */
   text: string
-  /** 结构化答案：前端按题还原问答记录 */
+  /** 结构化答案：前端按题还原问答记录；取消时为空数组 */
   answers: Answer[]
+  /** 用户取消了整组问题（时间线据此把问题卡显示成"已取消"） */
+  cancelled?: boolean
 }
+
+/** 用户取消整组回答时给模型的结论（明确要求继续，不要换个说法再问一遍） */
+const CANCELLED_TEXT = dedent`
+  用户取消了这组问题的回答（没有回答任何一项）。
+  不要再重复提问或换个说法再问；请基于已有信息继续推进。
+  如果确实缺少关键信息，就说明缺什么、会影响什么，并给出可执行的下一步。
+`
 
 /** 把结构化答案排成模型能直接读的一段（保留题号 / 多选聚合）。 */
 function formatAnswers(questions: Question[], answers: Answer[]): string {
@@ -114,6 +132,14 @@ export const askUserQuestionsTool = createTool({
     const agentContext = (context as { agent?: Record<string, unknown> } | undefined)?.agent
     const resumeData = (agentContext?.resumeData ??
       context?.resumeData) as z.infer<typeof AskUserQuestionsResumeSchema> | undefined
+    // 取消回答：也走"工具正常出参"这条路，让模型拿到明确结论后继续干活
+    if (resumeData?.cancelled === true) {
+      return {
+        text: CANCELLED_TEXT,
+        answers: [],
+        cancelled: true,
+      } satisfies AskUserAnswerOutput
+    }
     if (resumeData?.answers?.length) {
       return {
         text: formatAnswers(questions, resumeData.answers),

@@ -42,6 +42,24 @@ describe('markSuspendedAnswered', () => {
     expect(next.parts[0]).toBe(source.parts[0])
   })
 
+  it('取消回答：写成 resumed + cancelled + 空答案，卡片显示「已取消」而不是「已回答」', () => {
+    const source = message([suspendedPart('call_1')])
+    const next = markSuspendedAnswered(source, {
+      toolCallId: 'call_1',
+      answers: [],
+      cancelled: true,
+      suspendPayload: { questions: [{ id: 'q1', type: 'text', title: '给谁看？' }] },
+    })
+
+    const part = next.parts[0] as unknown as { data: Record<string, unknown> }
+    expect(part.data.resumed).toBe(true)
+    expect(part.data.cancelled).toBe(true)
+    expect(part.data.answers).toEqual([])
+    expect(part.data.suspendPayload).toEqual({
+      questions: [{ id: 'q1', type: 'text', title: '给谁看？' }],
+    })
+  })
+
   it('不认识的 toolCallId：整条消息原样返回（不留无谓的新对象）', () => {
     const source = message([suspendedPart('call_1')])
     const next = markSuspendedAnswered(source, { toolCallId: 'call_other', answers })

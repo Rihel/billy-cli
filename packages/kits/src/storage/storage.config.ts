@@ -7,7 +7,15 @@ export const StorageConfigSchema = z.object({
   bucket: z.string().default('billy-cli'),
   accessKeyId: z.string().default('minioadmin'),
   secretAccessKey: z.string().default('minioadmin'),
-  endpoint: z.string().default('http://localhost:9000'),
+  /**
+   * S3 / MinIO 的端点。**不设默认值**：没配 = 对象存储未启用，
+   * 服务照常启动，只有真正调用存储能力时才报「未配置或不可用」。
+   *
+   * 早先默认 `http://localhost:9000` 会造成两个问题：没部署 MinIO 的环境启动即失败；
+   * 本地起服务时又悄悄连到本机 9000，把「没配」伪装成「配了但连不上」。
+   * COS 走 bucket + region，不需要这个字段。
+   */
+  endpoint: z.string().trim().min(1).optional(),
 })
 
 export type StorageConfig = z.infer<typeof StorageConfigSchema>

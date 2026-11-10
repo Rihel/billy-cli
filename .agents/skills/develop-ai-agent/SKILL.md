@@ -80,6 +80,8 @@ ai/mastra/** 适配器 ──→ Toolbox/SkillRef/信封 映射成 Mastra 的 To
 > **交互原语例外**：`ask-user-questions`（向用户提问、挂起、回答后续跑）不是业务工具，
 > 走 Mastra 原生 `suspend()` / `resumeStream()`，放 `mastra/`、只给主 agent，**不经过**
 > `@ToolGroup` 注册机与网关（网关会把异常都转成工具失败，而 suspend 是控制流）。
+> **取消整组回答**也走 `resumeStream({ cancelled: true })`（resumeData 进 `resumeSchema`）：
+> `declineToolCall()` 只对 `requireApproval` 的审批挂起有效，对 `suspend()` 不适用。
 > 设计见 `docs/design/ai-agent.md` §3.7.1；普通能力仍按下面工具组写。
 
 **先找组**：能放进已有工具组就加一个方法；没有合适的组就新建一个组类

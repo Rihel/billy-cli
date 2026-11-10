@@ -79,6 +79,22 @@ export class ObjectStorageError extends AppError {
   }
 }
 
+/**
+ * 对象存储未配置或不可用（**不是启动错误**，是使用时的能力缺失）。
+ *
+ * 口径（2026-11-11 定）：没配 `OBJECT_STORAGE_ENDPOINT`（S3）或 MinIO / S3 服务不可达时，
+ * 服务必须照常启动；上传 / 下载 / 附件读取这些**真正用到存储**的调用才报错，
+ * 且文案要告诉运维缺的是哪个配置。
+ */
+export class ObjectStorageUnavailableError extends AppError {
+  readonly code = AppErrorCodes.Internal
+  constructor(
+    readonly reason = '对象存储未配置或不可用：请检查 OBJECT_STORAGE_* 配置，并确认 MinIO / S3 服务可访问',
+  ) {
+    super(reason)
+  }
+}
+
 export class StreamHubError extends AppError {
   readonly code = AppErrorCodes.Internal
   constructor(readonly cause: unknown) {

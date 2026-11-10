@@ -29,7 +29,13 @@ OBJECT_STORAGE_SECRET_ACCESS_KEY=...
 OBJECT_STORAGE_ENDPOINT=http://localhost:9000   # MinIO 本地
 ```
 
-未配置时用默认值；`docker compose up minio` 可起本地 MinIO 联调。
+`OBJECT_STORAGE_ENDPOINT` **没有默认值**（2026-11-11 起）：
+- 不配 = 对象存储未启用，服务照常启动；上传 / 下载 / 附件等真正用到存储的调用才报
+  「对象存储未配置或不可用」；
+- 配了但 MinIO / S3 不可达：启动只记 `storage.init_failed` 警告，不拦启动；首次使用会重试初始化。
+
+`docker compose up minio` 可起本地 MinIO 联调（compose 映射宿主 19000，故本地
+`OBJECT_STORAGE_ENDPOINT=http://localhost:19000`）。
 
 ## 3. 路由（apps/server/src/modules/storage/storage.controller.ts：`@Controller('storage')` +
 `@UseGuards(AnyAuthGuard)`（前台用户或管理员），均 `@HttpCode(200)`）

@@ -1,10 +1,12 @@
+import { mkdir } from 'node:fs/promises'
 import { isAbsolute, relative, resolve } from 'node:path'
 import dedent from 'dedent'
-import { Inject, Injectable } from '@nestjs/common'
+import { Inject, Injectable, Optional, type OnApplicationBootstrap } from '@nestjs/common'
 import { z } from 'zod'
 import { AppLogger, CommandRunner, type CommandResult } from '@repo/kits'
 import { ToolDecl, ToolGroup } from '../core/tools/tool.decorator.js'
 import { TOOL_KEYS } from '../core/tools/tool-keys.js'
+import { TOOL_ENV_CAPS } from '../core/tools/tool.config.ports.js'
 import type { ToolCallContext, ToolEnvCaps } from '../core/tools/tools.types.js'
 
 /**
@@ -77,11 +79,43 @@ interface CommandEnvelopeLike {
   // 子 agent 也拿得到（它不是委派类工具）
   child: 'allow',
 })
-export class RunCommandTool {
+export class RunCommandTool implements OnApplicationBootstrap {
   constructor(
     @Inject(CommandRunner) private readonly runner: CommandRunner,
     @Inject(AppLogger) private readonly logger: AppLogger,
+    /**
+     * 部署边界（env）：只用来在启动时拿到 `AGENT_COMMAND_WORK_DIR`。
+     *
+     * `@Optional()`：单测与"不启用命令执行"的手工装配可以只传 runner / logger；
+     * 容器装配时 AiModule 会注入。
+     */
+    @Optional() @Inject(TOOL_ENV_CAPS) private readonly caps?: ToolEnvCaps,
   ) {}
+
+  /**
+   * 启动时确保 AI 的工作根目录存在（`AGENT_COMMAND_WORK_DIR`）。
+   *
+   * 它既是 `run-command` 的默认工作目录，也是 agent 新建文件 / 子目录的落点：
+   * 根目录被删掉后，新建会话里模型的第一条命令就会因为 cwd 不存在而失败。
+   * 这里按"部署能力"处理：目录建不出来只记错误，不拦整个服务启动。
+   */
+  async onApplicationBootstrap(): Promise<void> {
+    const root = this.defaultWorkDir()
+    try {
+      await mkdir(root, { recursive: true })
+      this.logger.log('ai.command.workspace_ready', { root })
+    } catch (error) {
+      this.logger.error('ai.command.workspace_unavailable', {
+        root,
+        reason: error instanceof Error ? error.message : String(error),
+      })
+    }
+  }
+
+  /** 部署配置里的工作根目录（空 = 服务进程工作目录） */
+  private defaultWorkDir(): string {
+    return resolve(this.caps?.command?.workDir?.trim() || process.cwd())
+  }
 
   /** **执行体**：只写业务动作（开关与边界已经在插件 / normalize 里判过） */
   @ToolDecl({
@@ -113,6 +147,9 @@ export class RunCommandTool {
   ): Promise<CommandResult> {
     const envelope = (ctx.envelope as CommandEnvelopeLike | null) ?? null
     const workDir = resolve(ctx.settings.config.workDir || process.cwd())
+    // 工作根目录是 AI 的 workspace：被删掉就（重新）建出来，避免每条命令都因 cwd 不存在失败。
+    // 库里的 workDir 可能覆盖 env，所以每次执行都按**这一轮生效的根**兜一次（递归建目录成本可忽略）。
+    await mkdir(workDir, { recursive: true })
     const target = resolve(workDir, input.cwd ?? '.')
     const result = await this.runner.run({
       command: input.command,

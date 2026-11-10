@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  AgentChatResumeSchema,
   AgentChatSchema,
   CHAT_ATTACHMENT_MAX_BYTES,
   CHAT_ATTACHMENT_MAX_COUNT,
@@ -76,5 +77,29 @@ describe('AgentChatSchema', () => {
       attachments: [attachment()],
     })
     expect(result.success).toBe(true)
+  })
+})
+
+
+describe('AgentChatResumeSchema（回答 / 取消挂起）', () => {
+  it('正常提交：answers 至少一条', () => {
+    const parsed = AgentChatResumeSchema.safeParse({
+      runId: 'run_1',
+      toolCallId: 'call_1',
+      answers: [{ id: 'q1', value: '长辈自己' }],
+    })
+    expect(parsed.success).toBe(true)
+  })
+
+  it('取消整组回答：cancelled=true 且不带 answers 也合法', () => {
+    const parsed = AgentChatResumeSchema.safeParse({ runId: 'run_1', cancelled: true })
+    expect(parsed.success).toBe(true)
+  })
+
+  it('既没答案也没取消 → 拒绝（空提交没有意义）', () => {
+    expect(AgentChatResumeSchema.safeParse({ runId: 'run_1' }).success).toBe(false)
+    expect(
+      AgentChatResumeSchema.safeParse({ runId: 'run_1', answers: [] }).success,
+    ).toBe(false)
   })
 })

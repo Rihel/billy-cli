@@ -9,7 +9,15 @@ import { askUserQuestionsTool } from '../../src/modules/ai/mastra/ask-user-quest
 const execute = askUserQuestionsTool.execute as unknown as (
   input: unknown,
   context: unknown,
-) => Promise<{ text: string; answers: { id: string; value: string | string[] }[] } | string | undefined>
+) => Promise<
+  | {
+      text: string
+      answers: { id: string; value: string | string[] }[]
+      cancelled?: boolean
+    }
+  | string
+  | undefined
+>
 
 const toModelOutput = askUserQuestionsTool.toModelOutput as unknown as (output: unknown) => {
   type: string
@@ -76,6 +84,17 @@ describe('ask-user-questions', () => {
       value: '用户已回答：\n1. 这份剧本给谁看？\n   长辈自己',
     })
     expect(toModelOutput('兜底文本')).toEqual({ type: 'text', value: '兜底文本' })
+  })
+
+  it('用户取消整组回答：明确告诉模型"已取消"，不伪造答案、也不再追问', async () => {
+    const output = await execute({ questions }, { resumeData: { cancelled: true } })
+    expect(typeof output).not.toBe('string')
+    const result = output as { text: string; answers: unknown[]; cancelled?: boolean }
+    expect(result.cancelled).toBe(true)
+    expect(result.answers).toEqual([])
+    expect(result.text).toContain('用户取消了这组问题')
+    expect(result.text).toContain('继续推进')
+    expect(result.text).not.toContain('用户已回答')
   })
 
   it('没有 suspend 的直调给兜底问题，不静默丢', async () => {

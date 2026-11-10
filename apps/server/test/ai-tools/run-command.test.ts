@@ -1,4 +1,6 @@
+import { mkdtemp, rm, stat } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { CommandRunner } from '@repo/kits'
 import { describe, expect, it } from 'vitest'
 import { RunCommandTool } from '../../src/modules/ai/tools/command.tool.js'
@@ -40,6 +42,46 @@ describe('run-command（执行命令行命令）', () => {
     expect(result.stdout).toContain('billy-tool-ok')
     expect(result.cwd).toBe(tmpdir())
     expect(result.exitCode).toBe(0)
+  })
+
+  it('工作根目录不存在时，执行前自动创建（AI 的 workspace 被删也能继续）', async () => {
+    const temp = await mkdtemp(join(tmpdir(), 'billy-command-workspace-'))
+    const root = join(temp, 'session-workspace')
+    try {
+      const { deps, spec } = build({ workDir: root })
+      const settings = await deps.config.settings(spec)
+      const ctx = makeToolContext({ spec, settings })
+      const result = (await spec.exec({ command: 'echo workspace-ready' }, ctx as never)) as {
+        ok: boolean
+        stdout: string
+        cwd: string
+      }
+      expect(result.ok).toBe(true)
+      expect(result.stdout).toContain('workspace-ready')
+      expect(result.cwd).toBe(root)
+      // 根目录真的被建出来了（不是只把 cwd 改成不存在的路径）
+      expect((await stat(root)).isDirectory()).toBe(true)
+    } finally {
+      await rm(temp, { recursive: true, force: true })
+    }
+  })
+
+  it('启动时按 AGENT_COMMAND_WORK_DIR 创建根目录（建不出来也不拦启动）', async () => {
+    const temp = await mkdtemp(join(tmpdir(), 'billy-command-root-'))
+    const root = join(temp, 'agent-workspace')
+    try {
+      const tool = new RunCommandTool(new CommandRunner(), silentLogger as never, {
+        ...TEST_TOOL_ENV_CAPS,
+        command: {
+          ...TEST_TOOL_ENV_CAPS.command!,
+          workDir: root,
+        },
+      })
+      await expect(tool.onApplicationBootstrap()).resolves.toBeUndefined()
+      expect((await stat(root)).isDirectory()).toBe(true)
+    } finally {
+      await rm(temp, { recursive: true, force: true })
+    }
   })
 
   it('precheck：`cwd` 越界时返回一句说明（由网关翻成 precheck-failed 结论）', async () => {

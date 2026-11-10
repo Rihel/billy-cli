@@ -413,6 +413,13 @@ ai/
 - 问题卡是**逐题**交互：一次只显示一道题，答完当前题才能「下一题」，可用
   「上一题 / 下一题」来回切换；最后一题「提交回答」，一次交整组 `answers`
   （resume 入参是整组，不是单题）；
+- **取消整组回答**（2026-11-11 补）：卡片上有「取消回答」，点击后前端提交
+  `{ cancelled: true }`（不带 answers）续跑。Mastra 的 `suspend()` 没有
+  `declineToolCall()` 那种独立拒绝入口（官方只对 `requireApproval` 提供）；官方做法就是
+  `resumeStream(resumeData)`，因此这里把取消编码进 `resumeSchema`，工具的 `execute` 返回
+  "用户取消了这组问题、请基于现有信息继续"的结论 —— **模型收到的是明确的取消语义，
+  不是运行被中断**，它不会换个说法再问一遍。时间线的 `tool-result` 记
+  `{ cancelled: true, answers: [] }`，历史重建据此把卡片标成「已取消」；
 - `resumed=true` 的挂起事件**不重复落** `tool-suspended`，只补记 toolName，避免历史出现两张卡。
 - **每道题都有"选项之外"的兜底输入**（2026-11-03 补）：单选题在选项末尾多一个「其他（自行填写）」，
   多选题是多一个可与其他项同时勾的「其他」，两类题下面都有一个自由输入框；在那里写文字等同选中「其他」
@@ -1312,7 +1319,7 @@ AI SDK 的 `data-sub-agent` part，和主内容走同一条 SSE：
 | 控制点 | 落法 |
 | --- | --- |
 | 开关 | `AGENT_COMMAND_ENABLED`（**默认 `false`**，自用 / 内网确需时显式打开）。关掉时工具**仍在**（装配期工具池必须非空），每次调用返回"已被关闭"的结论 —— 模型能理解并改口 |
-| 目录边界 | `AGENT_COMMAND_WORK_DIR`（默认服务进程工作目录）。agent 传入的 `cwd` 必须落在其内，越界**拒绝并说明边界**（不静默夹回）；判边界用 `path.relative`，天然处理 `..` 逃逸与 Windows 大小写差异。**注意：它只约束 `cwd`，不约束命令读什么** —— 命令里的 `..` / 绝对路径 / 脚本里的 `fs` 仍能读到工作目录之外；真正的隔离只能靠容器 / 低权限用户 / 只读挂载 |
+| 目录边界 | `AGENT_COMMAND_WORK_DIR`（默认服务进程工作目录）。agent 传入的 `cwd` 必须落在其内，越界**拒绝并说明边界**（不静默夹回）；判边界用 `path.relative`，天然处理 `..` 逃逸与 Windows 大小写差异。**根目录是 AI 的 workspace**：启动时与每次执行前都 `mkdir -p` 兜底（根目录被删后新建会话里的命令不会全部因 cwd 不存在而失败；建不出来只记错误，不拦启动）。**注意：它只约束 `cwd`，不约束命令读什么** —— 命令里的 `..` / 绝对路径 / 脚本里的 `fs` 仍能读到工作目录之外；真正的隔离只能靠容器 / 低权限用户 / 只读挂载 |
 | 时长上限 | `AGENT_COMMAND_TIMEOUT_MS`（默认 15s）：它**既是默认值也是硬上限** —— 模型传更小听它的，传更大一律夹到这里 |
 | 输出上限 | `AGENT_COMMAND_MAX_OUTPUT_BYTES`（默认 64KB / 每条流）：超出即截断并终止命令 |
 | 停止 | 运行时信封的 `abortSignal`（与"停止整棵树"同一口径） |
@@ -1342,7 +1349,7 @@ AI SDK 的 `data-sub-agent` part，和主内容走同一条 SSE：
 AGENT_COMMAND_ENABLED=false           # 默认关闭；自用 / 内网确需时显式改 true
 AGENT_COMMAND_TIMEOUT_MS=15000        # 单条命令的时长默认值与硬上限
 AGENT_COMMAND_MAX_OUTPUT_BYTES=65536  # 每条流（stdout / stderr）的输出上限
-AGENT_COMMAND_WORK_DIR=               # 缺省 = 服务进程工作目录
+AGENT_COMMAND_WORK_DIR=               # 缺省 = 服务进程工作目录（启动 / 执行前自动创建）
 ```
 
 #### 3.15.6 本轮改动面（自查用）

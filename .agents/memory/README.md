@@ -73,3 +73,4 @@
 | [agent-tool-authorization](agent-tool-authorization.md) | agent 授权是结构化选择器；作用域装配期过滤工具面；子 agent = 父授权 ∩ 全部 | 必核 | 2026-11-10 |
 | [event-bus](event-bus.md) | kits 分三层：PubSub（传输）→ StreamHub（SSE）/ EventBus（`events:`）；at-most-once，只做失效通知 | 抽核 | 2026-11-10 |
 | [stateless-scaling](stateless-scaling.md) | 核心业务无状态可多副本；但 AI memory 在进程内、飞书 CLI 状态在 Pod 本地、k8s 缺 `AGENT_MULTI_INSTANCE` | 抽核 | 2026-11-10 |
+| [infra-optional-degradation](infra-optional-degradation.md) | 对象存储未配置/不可达不拦启动；`AGENT_COMMAND_WORK_DIR` 在启动与执行前自愈；问答取消走 `resumeStream({cancelled:true})` | 必核 | 2026-11-11 |

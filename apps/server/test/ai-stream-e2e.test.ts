@@ -812,6 +812,45 @@ describe('流式链路端到端（mock 模型 + 真实 DB + 真实 Redis）', ()
     ])
   }, 30_000)
 
+  it('工具挂起：取消整组回答也会续跑，并把 cancelled 落进时间线', async () => {
+    const { status, text } = await postStream({ message: `先问再取消 ${MOCK_ASK_MARKER}` })
+    expect(status).toBe(200)
+    const conversationId = conversationIdOfSse(text)!
+    expect(conversationId).toBeTruthy()
+    createdConversationIds.push(conversationId)
+
+    const suspended = await runs.findActive(conversationId)
+    expect(suspended?.status).toBe(RunStatus.Suspended)
+    expect(suspended?.id).toBeTruthy()
+
+    // 取消不是 stop：带上 `{ cancelled: true }` 从同一条 run 续跑，模型继续干活
+    const resumed = await postResume({
+      runId: suspended!.id,
+      toolCallId: 'call_mock_ask',
+      cancelled: true,
+    })
+    expect(resumed.status).toBe(200)
+    expect(uiTextOfSse(resumed.text)).toContain(MOCK_FINAL_TEXT)
+    expect(resumed.text).toContain('[DONE]')
+
+    expect(await runs.findActive(conversationId)).toBeNull()
+    const rows = await db.dataSource.query<{ status: string }[]>(
+      'SELECT status FROM runs WHERE id = $1',
+      [suspended!.id],
+    )
+    expect(rows[0]?.status).toBe(RunStatus.Succeeded)
+
+    const after = await timelines.list({ conversationId, page: 1, size: 200 })
+    const cancelRow = after.items.find(
+      (item) => item.kind === TimelineKind.ToolResult && item.toolKey === MOCK_ASK_TOOL,
+    )
+    const cancelOutput = (cancelRow?.payload as
+      | { output?: { cancelled?: unknown; answers?: unknown } }
+      | undefined)?.output
+    expect(cancelOutput?.cancelled).toBe(true)
+    expect(cancelOutput?.answers).toEqual([])
+  }, 30_000)
+
   it('子 agent 并行：一步派 4 个，最多同时跑 3 个（第 4 个排队）', async () => {
     const { status, text } = await postStream({
       message: `并行跑四路子助手 ${MOCK_DELEGATE_PARALLEL_MARKER}`,

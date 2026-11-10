@@ -24,6 +24,9 @@ AUTH_ENABLED=true                                           # false 关闭鉴权
 OBJECT_STORAGE_ENDPOINT=http://localhost:9000               # 默认端口 9000；compose 映射 19000
 ```
 
+`OBJECT_STORAGE_ENDPOINT` **可以不配**：对象存储是可选能力，未配置或 MinIO / S3 不可达时服务照常启动，
+只有上传 / 下载 / 附件读取等真正用到存储的接口才报「对象存储未配置或不可用」。
+
 `apps/web/.env.local` 与 `apps/admin/.env` 使用默认值即可（不配置时代码有默认值兜底）。
 
 ## 构建与启动（生产）

@@ -771,7 +771,8 @@ export function ChatConversation({ conversationId }: { conversationId: string })
     const withAnsweredRecord = (message: UIMessage): UIMessage =>
       markSuspendedAnswered(message, {
         ...(input.toolCallId ? { toolCallId: input.toolCallId } : {}),
-        answers: input.answers,
+        answers: input.answers ?? [],
+        ...(input.cancelled ? { cancelled: true } : {}),
         ...(seedSuspended?.data?.suspendPayload
           ? { suspendPayload: seedSuspended.data.suspendPayload }
           : {}),

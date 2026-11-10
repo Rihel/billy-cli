@@ -67,7 +67,7 @@ GitHub：[Rihel/billy-cli](https://github.com/Rihel/billy-cli)
 | Node.js | ≥ 26（推荐 26.13） |
 | pnpm | ≥ 12（推荐 12.18；Node 26 不再内置 corepack） |
 | PostgreSQL / Redis | 本机或 Docker；Redis 在启动时连接，未就绪会导致服务启动失败 |
-| MinIO / S3 / COS | 可选，仅对象存储相关功能需要 |
+| MinIO / S3 / COS | 可选，仅对象存储相关功能需要；未配置或服务不可达时服务照常启动，用到存储的接口才报错 |
 
 ### 初始化
 

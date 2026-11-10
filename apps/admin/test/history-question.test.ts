@@ -72,6 +72,38 @@ describe('历史重建：问题卡', () => {
     expect(card?.data.answers).toEqual([{ id: 'q1', value: '长辈' }])
   })
 
+  it('用户取消整组回答：标成 resumed + cancelled，刷新后不再让用户回答', () => {
+    const parts = toParts([
+      call,
+      {
+        seq: 2,
+        role: TimelineRole.Assistant,
+        kind: TimelineKind.ToolSuspended,
+        toolKey: 'ask-user-questions',
+        toolCallId: 'call_1',
+        payload: {
+          runId: 'run_1',
+          suspendPayload: { questions: [{ id: 'q1', type: 'text', title: '给谁看？' }] },
+        },
+      },
+      {
+        seq: 3,
+        role: TimelineRole.Assistant,
+        kind: TimelineKind.ToolResult,
+        toolKey: 'ask-user-questions',
+        toolCallId: 'call_1',
+        payload: { output: { cancelled: true, answers: [] } },
+      },
+    ] as never)
+
+    const card = parts.find((part) => part.type === 'data-tool-call-suspended') as
+      | { data: { resumed?: boolean; cancelled?: boolean; answers?: unknown[] } }
+      | undefined
+    expect(card?.data.resumed).toBe(true)
+    expect(card?.data.cancelled).toBe(true)
+    expect(card?.data.answers).toEqual([])
+  })
+
   it('老数据的整段文本答案也能按题切回来（结构化出参之前的时间线）', () => {
     const parts = toParts([
       call,

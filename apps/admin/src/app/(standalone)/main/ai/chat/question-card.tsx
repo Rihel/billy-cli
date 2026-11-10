@@ -45,6 +45,8 @@ export interface SuspendedPartData {
   toolName?: string
   /** `false` / 缺省 = 还在等回答；`true` = 已经续跑过（历史回放时不再让用户填） */
   resumed?: boolean
+  /** 用户取消了整组回答（历史重建 / 续跑后补上）；只读回看时显示为「已取消」 */
+  cancelled?: boolean
   /** 已回答的答案（历史重建 / 续跑后补上）；只在只读回看时有意义 */
   answers?: QuestionAnswer[]
   suspendPayload?: {
@@ -58,7 +60,10 @@ export interface SuspendedPartData {
 export interface AnswerQuestionsInput {
   runId: string
   toolCallId?: string
-  answers: QuestionAnswer[]
+  /** 正常提交：至少一条答案 */
+  answers?: QuestionAnswer[]
+  /** 用户取消整组回答（不带 answers）：交给模型"继续处理"，而不是取消整轮运行 */
+  cancelled?: boolean
 }
 
 /** 把两种 payload 统一成 `Question[]`；认不出来返回空数组（未知部分仍会显示协议徽标）。 */
@@ -151,7 +156,9 @@ export function QuestionCard({
   const [values, setValues] = useState<Record<string, string | string[]>>({})
   const [index, setIndex] = useState(0)
   const [submitting, setSubmitting] = useState(false)
+  const [cancelling, setCancelling] = useState(false)
   const [submitted, setSubmitted] = useState(false)
+  const [cancelledLocally, setCancelledLocally] = useState(false)
   const [error, setError] = useState<string>()
   /** 「其他（自行填写）」的文本（按题目 id 存；与选项选中状态分开，见 `OTHER_OPTION`） */
   const [others, setOthers] = useState<Record<string, string>>({})
@@ -159,8 +166,10 @@ export function QuestionCard({
   if (questions.length === 0) return null
 
   const resumed = data.resumed === true
-  const readOnly = resumed || submitted
-  const disabled = submitting || submitted || resumed
+  const cancelled = data.cancelled === true || cancelledLocally
+  const readOnly = resumed || submitted || cancelled
+  const busy = submitting || cancelling
+  const disabled = busy || submitted || resumed
   const current = questions[Math.min(index, questions.length - 1)]!
   const answers = data.answers ?? []
   const isLast = index === questions.length - 1
@@ -245,6 +254,31 @@ export function QuestionCard({
     }
   }
 
+  /**
+   * 取消整组回答：不是"停止这一轮"，而是把 `cancelled: true` 作为 resumeData 续跑，
+   * 由 `ask-user-questions` 给模型一个明确结论（用户放弃回答），模型继续推进。
+   */
+  const cancel = async () => {
+    if (!onSubmit) return
+    if (!data.runId) {
+      setError('缺少 runId，无法续跑这一轮')
+      return
+    }
+    setCancelling(true)
+    try {
+      await onSubmit({
+        runId: data.runId,
+        ...(data.toolCallId ? { toolCallId: data.toolCallId } : {}),
+        cancelled: true,
+      })
+      setCancelledLocally(true)
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : String(cause))
+    } finally {
+      setCancelling(false)
+    }
+  }
+
   const progressOf = (question: Question, at: number): boolean => {
     if (resumed) return Boolean(recordedOf(question).trim())
     return isAnswered(question, answerOf(question)) || at < index
@@ -254,10 +288,20 @@ export function QuestionCard({
     <div className="w-full rounded-lg bg-surface-1 p-3 text-sm">
       <div className="mb-2 flex items-center gap-2">
         <Badge variant="secondary">
-          {resumed ? '已回答' : submitted ? '已回答，正在继续…' : '需要你回答'}
+          {cancelled
+            ? '已取消'
+            : resumed
+              ? '已回答'
+              : submitted
+                ? '已回答，正在继续…'
+                : '需要你回答'}
         </Badge>
         <span className="text-xs text-muted-foreground">
-          {resumed ? `共 ${questions.length} 个问题` : `共 ${questions.length} 个问题，逐题回答`}
+          {cancelled
+            ? `你取消了这 ${questions.length} 个问题，AI 会基于现有信息继续`
+            : resumed
+              ? `共 ${questions.length} 个问题`
+              : `共 ${questions.length} 个问题，逐题回答`}
         </span>
         <div className="ml-auto flex items-center gap-1" aria-hidden>
           {questions.map((question, at) => (
@@ -291,7 +335,9 @@ export function QuestionCard({
 
             {readOnly ? (
               <div className="mt-2 rounded-md bg-muted/50 px-3 py-2">
-                {valueOf(current).trim() ? (
+                {cancelled ? (
+                  <span className="text-muted-foreground">已取消回答</span>
+                ) : valueOf(current).trim() ? (
                   <span className="whitespace-pre-wrap">{valueOf(current)}</span>
                 ) : (
                   <span className="text-muted-foreground">未回答</span>
@@ -445,19 +491,36 @@ export function QuestionCard({
       {error ? <p className="mt-2 text-xs text-destructive">{error}</p> : null}
 
       <div className="mt-3 flex items-center justify-between gap-2">
-        <Button variant="ghost" size="sm" onClick={goPrev} disabled={index === 0 || submitting}>
-          上一题
-        </Button>
+        <div className="flex items-center gap-1">
+          {readOnly ? null : (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-muted-foreground"
+              onClick={() => void cancel()}
+              disabled={busy || !onSubmit}
+            >
+              {cancelling ? '取消中…' : '取消回答'}
+            </Button>
+          )}
+          <Button variant="ghost" size="sm" onClick={goPrev} disabled={index === 0 || busy}>
+            上一题
+          </Button>
+        </div>
         <span className="text-xs text-muted-foreground">
           第 {index + 1} / {questions.length} 题
         </span>
         {isLast ? (
           readOnly ? (
             <span className="text-xs text-muted-foreground">
-              {submitted && !resumed ? '已回答，正在继续…' : '已记录'}
+              {cancelled
+                ? '已取消'
+                : submitted && !resumed
+                  ? '已回答，正在继续…'
+                  : '已记录'}
             </span>
           ) : (
-            <Button size="sm" onClick={submit} disabled={submitting || !onSubmit}>
+            <Button size="sm" onClick={submit} disabled={busy || !onSubmit}>
               {submitting ? '提交中…' : '提交回答'}
             </Button>
           )
@@ -466,7 +529,7 @@ export function QuestionCard({
             variant="outline"
             size="sm"
             onClick={goNext}
-            disabled={submitting || !canGoNext}
+            disabled={busy || !canGoNext}
           >
             下一题
           </Button>

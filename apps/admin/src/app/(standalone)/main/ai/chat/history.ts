@@ -349,7 +349,9 @@ export const toParts = (events: AgentTimelineItemModel[]): UIMessage['parts'] =>
         const toolCallId = item.toolCallId ?? undefined
         const output = toolCallId ? answersByCall.get(toolCallId) : undefined
         const answered = toolCallId ? answersByCall.has(toolCallId) : false
-        const structured = asRecord(output)?.answers
+        const record = asRecord(output)
+        const cancelled = record?.cancelled === true
+        const structured = record?.answers
         const answers = Array.isArray(structured)
           ? (structured as QuestionAnswer[])
           : parseLegacyAnswers(
@@ -367,6 +369,7 @@ export const toParts = (events: AgentTimelineItemModel[]): UIMessage['parts'] =>
             toolName: item.toolKey ?? 'ask-user-questions',
             suspendPayload: item.payload?.suspendPayload,
             resumed: answered,
+            ...(cancelled ? { cancelled: true } : {}),
             ...(answers ? { answers } : {}),
           },
         } as unknown as UIMessage['parts'][number])

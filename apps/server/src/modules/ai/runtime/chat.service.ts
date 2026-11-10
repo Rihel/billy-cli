@@ -1540,6 +1540,9 @@ export class AgentChatService {
       throw new RunNotSuspendedError(run.id);
     }
 
+    /** 取消整组回答：不带答案，只把"用户取消"这个结论交回工具 */
+    const cancelled = input.cancelled === true;
+    const answers = input.answers ?? [];
     const definition = this.registry.resolve(conversation.agentKey);
     const startedAt = Date.now();
     const abort = new AbortController();
@@ -1631,7 +1634,7 @@ export class AgentChatService {
       };
       armFirstTokenTimer();
       const resumeOutput = await agent.resumeStream(
-        { answers: input.answers },
+        cancelled ? { cancelled: true } : { answers },
         {
           ...runOptions,
           ...(input.toolCallId ? { toolCallId: input.toolCallId } : {}),
@@ -1700,7 +1703,11 @@ export class AgentChatService {
             kind: TimelineKind.ToolResult,
             toolKey: 'ask-user-questions',
             toolCallId: input.toolCallId,
-            payload: { output: { answers: input.answers } },
+            payload: {
+              output: cancelled
+                ? { cancelled: true, answers: [] }
+                : { answers },
+            },
           });
         }
       }
@@ -1709,16 +1716,19 @@ export class AgentChatService {
       // 旧引擎 run 可能还占着 agent 的 active stream 槽位；先放掉，否则新 stream 不发起模型调用
       agent.abortRunStream?.(run.engineRunId)
       const { runId: _finishedEngineRunId, ...continuationOptions } = runOptions;
-      const answerText = input.answers
+      const answerText = answers
         .map(
           (answer) =>
             `- ${answer.id}: ${Array.isArray(answer.value) ? answer.value.join('、') : answer.value}`,
         )
         .join('\n');
+      const continuationMessage = cancelled
+        ? '用户取消了这组问题的回答（选择不回答）。不要再重复提问；请基于已有信息继续推进，确实缺少关键信息时说明影响并给出可执行的下一步。'
+        : `用户已回答：\n${answerText}\n\n请基于这些回答继续。`;
       const output = suspendedAgain
         ? resumeOutput
         : await agent.stream(
-            [{ role: 'user', content: `用户已回答：\n${answerText}\n\n请基于这些回答继续。` }],
+            [{ role: 'user', content: continuationMessage }],
             continuationOptions,
           );
       if (!suspendedAgain) {

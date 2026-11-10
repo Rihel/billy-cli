@@ -438,15 +438,36 @@ export const AgentQuestionAnswerSchema = z.object({
   value: z.union([z.string().max(2000), z.array(z.string().max(200)).max(8)]),
 })
 
-/** 回答挂起中的一轮（`POST /agent/chat/resume`） */
-export const AgentChatResumeSchema = z.object({
-  /** 挂起的那一轮（不是会话 id） */
-  runId: z.string().min(1).max(64),
-  /** 一次回答多个问题 */
-  answers: z.array(AgentQuestionAnswerSchema).min(1).max(8),
-  /** 同时有多个挂起工具时，指定回答哪一个（省略 = Mastra 自己选） */
-  toolCallId: z.string().min(1).max(128).optional(),
-})
+/**
+ * 回答挂起中的一轮（`POST /agent/chat/resume`）。
+ *
+ * 两种合法入参：
+ * - 正常提交：`answers` 至少一条；
+ * - **取消整组回答**：`cancelled: true`，不带 `answers`（Mastra 的 `suspend()` 没有
+ *   `declineToolCall()` 那种独立入口，官方做法就是带着"取消"这个 resumeData 续跑，
+ *   工具据此把"用户取消"转成模型可读的结论并继续）。
+ */
+export const AgentChatResumeSchema = z
+  .object({
+    /** 挂起的那一轮（不是会话 id） */
+    runId: z.string().min(1).max(64),
+    /** 一次回答多个问题；取消时可为空 */
+    answers: z.array(AgentQuestionAnswerSchema).max(8).optional(),
+    /** 用户放弃回答这一整组问题（工具收到后继续处理，不再次追问） */
+    cancelled: z.boolean().optional(),
+    /** 同时有多个挂起工具时，指定回答哪一个（省略 = Mastra 自己选） */
+    toolCallId: z.string().min(1).max(128).optional(),
+  })
+  .superRefine((value, ctx) => {
+    if (value.cancelled === true) return
+    if (!value.answers || value.answers.length === 0) {
+      ctx.addIssue({
+        code: 'custom',
+        message: '提交回答时 answers 至少一条；不回答请传 cancelled: true',
+        path: ['answers'],
+      })
+    }
+  })
 
 export type AgentQuestionAnswer = z.infer<typeof AgentQuestionAnswerSchema>
 export type AgentChatResumeDto = z.infer<typeof AgentChatResumeSchema>

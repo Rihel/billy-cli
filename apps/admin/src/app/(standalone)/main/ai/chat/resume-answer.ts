@@ -16,8 +16,10 @@ import type { QuestionAnswer, SuspendedPartData } from './question-card'
 export interface AnsweredPatch {
   /** 这次回答对应的工具调用 id（挂起块用它认自己） */
   toolCallId?: string
-  /** 用户交上来的答案（整组） */
+  /** 用户交上来的答案（整组）；取消时为空数组 */
   answers: QuestionAnswer[]
+  /** 用户取消了整组回答：卡片显示「已取消」而不是「已回答」 */
+  cancelled?: boolean
   /** 提交前那份挂起数据：续跑块不带问题原文时从这里补（可缺省） */
   suspendPayload?: SuspendedPartData['suspendPayload']
 }
@@ -47,6 +49,7 @@ export const markSuspendedAnswered = (
         resumed: true,
         suspendPayload: data?.suspendPayload ?? patch.suspendPayload,
         answers: patch.answers,
+        ...(patch.cancelled ? { cancelled: true } : {}),
       },
     } as typeof part
   })
