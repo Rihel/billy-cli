@@ -1,6 +1,10 @@
 # 连接器：让 AI 接外部服务，不用改代码
 
-> 状态：设计稿（2026-11-07 重写，未实施）
+> **状态：已归档（2026-11-10）。** 连接器的**现状与方向**以
+> [`.agents/skills/develop-ai-agent/references/connector.md`](../../.agents/skills/develop-ai-agent/references/connector.md) 为准
+> （驱动 `sql` / `redis` / `lark-cli` 已有，`http` / `mcp` 待补；MCP 即一种连接器；按 agent 授权）。
+> 本文保留作「目录 / 实例 / 远端能力 / 工具」四层模型与各驱动取舍的历史论证；
+> 未实施部分不照本文补，按 skill 的方向做。
 > 相关：`ai-agent-tool-engine.md`（工具引擎）、`ai-agent.md`（运行时与装配）
 > 写作口径：尽量说人话；所有现状描述都对着代码核过，引用处标了文件。
 

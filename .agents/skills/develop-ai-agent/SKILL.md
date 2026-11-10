@@ -47,6 +47,8 @@ description: >-
 
 细节：会话运行链、上下文策略、SSE 协议与恢复 → [references/runtime.md](./references/runtime.md)；
 扩展点（加 agent / 工具 / 技能 / 子 agent / 连接器）→ [references/extension.md](./references/extension.md)。
+**裁剪与授权**（agent 该给哪些工具、选择器、作用域三层）→ [references/define-agent.md](./references/define-agent.md)；
+**连接器**（能力供给、驱动、治理、与 agent 接线）→ [references/connector.md](./references/connector.md)。
 
 ## 2. 装配方向（不许反）
 

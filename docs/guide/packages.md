@@ -51,7 +51,11 @@ Zod schema 单一事实源，同时派生 TypeScript 类型（`*.schema.ts` 导�
     `redis.config.ts`（`RedisConfig`）、`redis.module.ts`（`RedisModule`）
   - `rate-limit/`：`rate-limiter.ts`（基于 rate-limiter-flexible，IP 白名单用 `ip-utils.ts`）+
     `rate-limit.module.ts`（`RateLimitModule`，复用 `RedisConfig`）
-  - `stream/`：`stream-hub.ts` / `stream-connection.ts`（SSE 推流）+ `stream-hub.module.ts`
+  - `pubsub/`：`pubsub.ts`（**底层 Pub/Sub 传输**：两条 ioredis 连接、懒建连、断线重订阅、
+    自回环过滤、精确频道 + 模式订阅）+ `pubsub.module.ts`；上层 `stream/` 与 `events/` 都建在它上面
+  - `stream/`：`stream-hub.ts` / `stream-connection.ts`（SSE 推流，`stream:*` 模式订阅）+ `stream-hub.module.ts`
+  - `events/`：`event-bus.ts`（**进程内事件总线**：`events:<topic>` 频道、本地同步送达、
+    处理函数隔离）+ `event-bus.module.ts`
   - `jwt/`：`token-signer.ts` + `jwt.config.ts`（`JwtConfig`）+ `jwt.module.ts`
   - `session/`：`session-store.ts`（会话存储：校验 / 撤销 / 登录设备列表 / 单设备下线）+ `session.module.ts`
   - `password/`：`password-hasher.ts` + `password.config.ts`（`PasswordConfig`）+ `password.module.ts`
@@ -82,7 +86,9 @@ Zod schema 单一事实源，同时派生 TypeScript 类型（`*.schema.ts` 导�
 | `DbModule` | `{ url?, sync?, entities?, subscribers? }` | DbConfig + Db + DbService |
 | `RedisModule` | `{ url?, keyPrefix? }` | RedisConfig + RedisStore + RedisLockService |
 | `RateLimitModule` | 无（复用 RedisConfig） | RateLimiter |
-| `StreamHubModule` | 无（复用 RedisConfig + IdGeneration） | StreamHub |
+| `PubSubModule` | 无（复用 RedisConfig + IdGeneration） | PubSub |
+| `StreamHubModule` | 无（依赖 PubSub） | StreamHub |
+| `EventBusModule` | 无（依赖 PubSub） | EventBus |
 | `JwtModule` | `{ secret?, expiresIn? }` | JwtConfig + TokenSigner |
 | `SessionStoreModule` | 无（复用 JwtConfig + RedisStore） | SessionStore |
 | `PasswordModule` | `{ passwordHashRounds? }` | PasswordConfig + PasswordHasher |

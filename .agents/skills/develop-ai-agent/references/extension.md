@@ -52,6 +52,10 @@
    "可用工具"那段由 `ToolRegistry.describe(spec.tools)` 渲染 —— 提示词里的工具清单与实际挂载的**同源**，
    key 写错在启动期就报错。
 
+`tools` 除了具体 key / `'*'`，还能写结构化选择器：`{ category: 'business' }`、
+`{ connector: 'prod-pg' }`、`{ connector: 'prod-pg', tool: 'query' }`。
+**裁剪思路与授权三层**见 [define-agent.md](./define-agent.md)。
+
 ## 5. 加一个技能（两种，别混）
 
 | 用途 | 放哪 | 谁读 |
@@ -68,7 +72,8 @@
 
 - 子 agent **不在注册表里**：主 agent 调用 `run-sub-agent` 工具，运行期现场创建（跑完即弃）；
 - 入参三件套：`name` / **`system_prompt`（主 agent 现写，必填）** / `task`；
-- 工具面 = **全部 − 委派类**（所以子 agent 不能再造子 agent，深度天然为 1）；
+- 工具面 = **父 agent 的授权面 ∩（全部 − 委派类 − `child: 'deny'`）**
+  （"子助手有你的全部工具"里的"你的"= 父 agent 被授权的那一份，不是注册机全量；于是子 agent 也不能再造子 agent）；
 - 明细全部入库：独立 `runs` 行（`parent_run_id` / `depth` / `tool_call_id`）+ 自己完整的 `timelines`，
   动态提示词与任务全量落 `request_snapshot`；
 - **父的 `usage` 汇总子的消耗**（`usage.subAgents`），但 `step_count` / `tool_call_count` 各记自己的；

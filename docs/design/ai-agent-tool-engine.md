@@ -512,12 +512,18 @@ durable 恢复会重放工具调用，页不一致会让上下文自相矛盾。
 两层，都要保留：
 
 | 层 | 在哪 | 管什么 |
-| --- | --- | --- |
-| 授权 | agent 声明 `tools: [TOOL_KEYS.x]`（`assistant.agent.ts:25`） | 这个 agent 有没有这个工具 |
+| --- | --- | --- | --- |
+| 授权 | agent 声明 `tools`（`AgentSpec`） | 这个 agent 有没有这个工具 |
 | 作用域 | `ai_tools.scope` / `allowed_agents` / `enabled` | 这一次调用允不允许 |
 
-可用 = 授权 ∩ 作用域。作用域判定需要运行时信封里有 `agentKey`，现在没有
-（`core/envelope.ts:64-90`），要补一个字段，装配处只有 `chat.service.ts` 的 `buildRuntimeContext` 一处。
+**授权清单支持选择器**（`core/tools/tool-selector.ts`）：具体 key、`'*'`、`{ category }`、
+`{ connector }`（可带 `tool` 精确到一个）。装配期展开成具体 key，写错的 key 启动就报错；
+连接器选择器允许零命中（连接器是运行期同步的）。
+
+可用 = 授权 ∩ 作用域。**作用域在装配期就过滤工具面**（`ToolRegistry.authorized()`，按信封里的
+`isAdmin` / `rootAgentKey` 判），调用期 `ScopePlugin` 只做兜底——没授权的工具根本不该出现在模型面前。
+子 agent 的工具面 = **父 agent 的授权面 ∩（全部 − 委派类 − `child: 'deny'`）**：
+"子助手有你的全部工具"里的"你的"是父授权，不是注册机全量。
 
 | scope | 判据 |
 | --- | --- |

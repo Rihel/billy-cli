@@ -10,7 +10,7 @@ description: 在 Billy 工程中使用服务端推送（SSE，命名统一为 st
 
 ## 核心要点
 
-- 能力组成：服务端 `StreamHub`（`kits/src/stream/`，Redis pub/sub 跨实例广播，由 `StreamHubModule` 装配）+
+- 能力组成：服务端 `StreamHub`（`kits/src/stream/`，跨实例广播，由 `StreamHubModule` 装配；底层 Redis pub/sub 在 `PubSubModule`）+
   订阅路由 `StreamController`（`apps/server/src/modules/stream/stream.controller.ts`，
   `POST /sse/subscribe`）+ 客户端 `HttpStreamClient`（`@repo/http-client`，浏览器 / Node 双环境）+
   客户端入口 `ServerClient.createStream()`（`@repo/sdk`）+ React 生命周期 `useStream`
@@ -35,6 +35,8 @@ description: 在 Billy 工程中使用服务端推送（SSE，命名统一为 st
 
 ## 与 AI 会话流的边界（别混用）
 
+内部事件（缓存失效 / 状态变更通知）**不走 SSE**，用 `@repo/kits` 的 `EventBus`（同一套 `PubSub` 传输，`events:` 频道）。
+
 AI 会话的流式输出**不走本 skill 的 StreamHub/HttpStreamClient**：它用的是 AI SDK v6 的
 UI Message Stream 协议（前端 `useChat` 直接消费），服务端自己写 SSE 帧、自己用
 `AgentStreamStore`（Redis）做输出记录与广播，端点是 `POST /agent/chat/stream`（建流）+
@@ -56,4 +58,4 @@ UI Message Stream 协议（前端 `useChat` 直接消费），服务端自己写
 - [ ] 前端用 `client.createStream()` + `@repo/ui` 的 `useStream`（不要手写 EventSource / 自己管 useEffect 重连）；
       非 React 场景才直接用 `HttpStreamClient`，且页面卸载必须 `close()`
 - [ ] 新增 / 修改了 SSE 路由实现时，控制器保持 `writeHead` 后 `flushHeaders()`，并确认异常过滤器在 `headersSent` 时不会二次崩溃
-- [ ] 多实例部署时广播依赖 Redis（`root.module.ts` import 了 `RedisModule` + `StreamHubModule` 即装配 `StreamHub`）
+- [ ] 多实例部署时广播依赖 Redis（`root.module.ts` import 了 `RedisModule` + `PubSubModule` + `StreamHubModule` 即装配 `StreamHub`）

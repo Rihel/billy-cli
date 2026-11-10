@@ -30,10 +30,13 @@ POST /agent/usage/summary      用量汇总
 - **工具面**：一个工具一条 `@ToolDecl`（`@ToolGroup` 类 + 方法即工具），注册后统一过网关——
   开关、作用域（主 agent / 子 agent）、限额、自定义事件、审计、大结果分页与 `read-tool-result` 回取。
   内建 10 个：计划四件套、`run-sub-agent`、`run-command`、`read-tool-result`、`web-search`、`web-fetch`、`web-request`。
+  agent 的授权清单支持选择器（`'*'`、`{ category }`、`{ connector }`），装配期按调用身份过滤作用域——
+  没授权的工具**根本不会出现在模型面前**。
 - **连接器**（`modules/ai/connectors`）：外部能力不再写死进代码。后台「AI → 连接器」加一条实例
   （地址 + 凭证），就产出一组受管工具，走的是和内建工具同一个网关（开关、限额、审计、脱敏一致）。
   内置 4 个型号：**PostgreSQL / MySQL**（查表结构与只读查询）、**Redis**（按前缀只读扫键 / 读字符串与哈希）、
-  **飞书 CLI**（受限 `run` + CLI 内嵌技能文档，覆盖消息 / 文档 / 多维表格 / 日历等 20+ 业务域）。
+  **飞书 CLI**（受限 `run` + CLI 内嵌技能文档，覆盖消息 / 文档 / 多维表格 / 日历等 20+ 业务域；
+  授权状态存 `ai_connectors.auth_state`，无状态 pod 重启 / 换实例后不用重新授权）。
   目录（有哪些型号）、实例（连的谁）、远端能力、工具四层分开；换地址 / 换密钥 / 停用整家服务只改数据，不发版。
 - **运行控制**：动态子 agent（提示词由主 agent 现场写）、命令执行（开关 / 工作目录 / 时长与输出上限可配）、
   联网预算（统一 UA、超时、字节上限、内网拦截）。
@@ -45,9 +48,56 @@ POST /agent/usage/summary      用量汇总
 
 **配置位置**：模型与供应商在「AI → 模型管理」，工具开关与限额在「AI → 工具配置」，
 外部服务在「AI → 连接器」，用量在「AI → 审计」与控制台。
-设计细节与取舍见 [`docs/design/ai-agent.md`](../design/ai-agent.md)、
-[`docs/design/ai-agent-tool-engine.md`](../design/ai-agent-tool-engine.md) 与
-[`docs/design/ai-connector.md`](../design/ai-connector.md)。
+设计细节与取舍见 [`docs/design/ai-agent.md`](../design/ai-agent.md) 与
+[`docs/design/ai-agent-tool-engine.md`](../design/ai-agent-tool-engine.md)；
+连接器的现状与方向见 skill
+[`develop-ai-agent/references/connector.md`](../../.agents/skills/develop-ai-agent/references/connector.md)。
+
+## 定义自己的 agent
+
+内置的 `assistant` 是**能力上限的示例**（工具面 `'*'`，给所有工具）；产品里的 agent 应该按职责裁剪。
+新增一个 agent = `agents/<名字>.agent.ts` 写一份 `AgentSpec` + `agents/index.ts` 登记一行 + 一个提示词模板，
+不用改 core 的任何装配代码。
+
+```ts
+// apps/server/src/modules/ai/agents/researcher.agent.ts
+import { TOOL_KEYS } from '../core/tools/tool-keys.js'
+import type { AgentSpec } from './types.js'
+
+export const researcherAgent: AgentSpec = {
+  key: 'researcher',
+  name: '资料助手',
+  description: '查资料、读网页、整理结论；不执行命令',
+  tools: [
+    TOOL_KEYS.webFetch,          // 具体 key
+    TOOL_KEYS.webSearch,
+    TOOL_KEYS.readToolResult,
+    { category: 'connector' },   // 连接器产出的工具（受作用域再过滤一层）
+  ],
+  skills: [],                    // 只挂它要用的技能；没有就不挂，别写 ALL_SKILLS
+  prompt: { template: 'researcher' },
+}
+```
+
+```ts
+// agents/index.ts
+export const AGENT_SPECS: readonly AgentSpec[] = [assistantAgent, researcherAgent]
+```
+
+四条口径：
+
+1. **工具写什么**：具体 key（从 `TOOL_KEYS` 取，写错启动期报错）、`'*'`（只给示例 agent）、
+   `{ category: 'business' | 'connector' | ... }`、`{ connector: '<实例 key>' }`（可再带 `tool` 精确到一个工具）。
+   连接器选择器允许零命中——连接器是运行期同步进来的，启动时可能还没同步。
+2. **不给的就是不给**：不在清单里的工具不会出现在模型面前；不要用提示词写「不要用某工具」，
+   那约束不住模型，授权能。子 agent 的工具面 = **父 agent 的授权面 ∩（全部 − 委派类 − `child: 'deny'`）**。
+3. **作用域是第二层**：连接器工具默认 `scope: 'admin'`；要给产品 agent 用，就在「AI → 工具配置」里
+   把作用域改成 `agent` 并填 `allowedAgents`（或 `all`）。装配期会按调用身份再过滤一遍，
+   前台用户根本看不到管理员工具。
+4. **提示词里的工具清单是渲染出来的**：模板里不要手写工具名，`registry.describe()` 会按实际授权清单生成。
+
+验证：启动不报错 → `POST /agent/list` 看这个 agent 的工具数 → 跑一轮后查审计 `request_snapshot.toolKeys`
+（应当是**展开后的具体 key**，不是选择器）→ 分别用管理员和前台用户身份各跑一次，确认作用域。
 
 ## Agent Skills（AI 原生开发）
 

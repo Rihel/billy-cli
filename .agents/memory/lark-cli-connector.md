@@ -18,10 +18,13 @@
   杀进程组（Windows 退回只杀 wrapper）。
 - 命令面别放 `api` / `config` / `profile` / `update` / `apps` / `event`；白名单见
   `connectors/drivers/lark-cli.policy.ts`。
+- **无状态 pod**：HOME 是临时的；配置与用户 token 存 `ai_connectors.auth_state`（`{相对路径:base64}`）
+  + `auth_state_version`，驱动调用前 hydrate、调用后 diff 写回（CAS），整次调用持实例级 Redis 锁
+  `connector:lark:<id>`；删连接器 `dispose` 清库 + 删 HOME。
 
 ## 依据
 
-`connectors/drivers/lark-cli.driver.ts`、`.policy.ts`、`docs/design/ai-connector.md` §8；
+`connectors/drivers/lark-cli.driver.ts`、`.policy.ts`、`lark-cli.home.ts`、`connector-state.store.ts`；
 2026-11-09 用 `@larksuite/cli@1.0.99` 实测：macOS arm64、node:24-alpine（Linux）、linux-amd64 为 static ELF。
 
 ## 失效信号
@@ -32,4 +35,4 @@
 ## 核对命令
 
 `npm view @larksuite/cli version --registry=https://registry.npmjs.org`、`lark-cli --version`、
-`lark-cli skills list | head`
+`lark-cli skills list | head`、`psql -c "select auth_state_version, auth_state is not null from ai_connectors"`
