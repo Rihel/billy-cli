@@ -88,6 +88,9 @@ services:
       OBJECT_STORAGE_ENDPOINT: http://minio:9000
       # 可选：启用 kafka profile 时设为 kafka:9092（容器内 listener）
       KAFKA_BROKERS: ${KAFKA_BROKERS:-}
+    volumes:
+      # 飞书 CLI 连接器的配置与用户授权（/home/appuser/.billy/lark-cli/<实例>）
+      - lark-cli-data:/home/appuser/.billy
     ports:
       - "9989:9989"
 
@@ -159,3 +162,4 @@ volumes:
   postgres-data:
   redis-data:
   minio-data:
+  lark-cli-data:
