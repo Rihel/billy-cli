@@ -74,7 +74,7 @@
 
 ### 3.1 只加一条实例（不改代码，最常见）
 
-后台「AI → 连接器」→ 新建 → 选型号（PostgreSQL / MySQL / Redis）→ 填地址与账号 →
+后台「AI → 连接器」→ 新建 → 选型号（PostgreSQL / MySQL / Redis / 飞书 CLI）→ 填地址与账号 →
 **测试**（只验证连通）→ **同步**（把工具登记进 `ai_tools`）→ 新开一轮对话即可用。
 
 等价接口：`/ai-connector/create` → `/ai-connector/test` → `/ai-connector/sync`。
@@ -96,6 +96,17 @@
    `[driver.kind, driver]`。
 4. **测试**：`test/ai-connector.test.ts` 补该型号的 `defaults` 断言；驱动逻辑（只读判定 / 命令白名单 /
    错误分类）优先写成**纯函数**再测，别只靠联调。
+
+**命令行型驱动的额外口径**（样板：`drivers/lark-cli.driver.ts` + `drivers/lark-cli.policy.ts`）：
+
+- 能力面只出**一个受限 `run`**（参数数组），用 `spawn` / `execFile` 直传，**不要走 shell**、不要把整条命令串交给模型；
+- 命令白名单写死在 `*.policy.ts` 的纯函数里（页面改不了），拒绝 `--profile` / `--yes` 与一切管理命令；
+- 每个实例一个独立 `HOME`（如 `~/.billy/<driver>/<实例 id>`），凭证写进该目录的 CLI 配置，
+  子进程环境变量走白名单（不带服务端密钥），`cwd` 固定在实例目录；
+- CLI 二进制由**镜像预装**（`docker/Dockerfile.server`），驱动不做运行期安装；
+  没装时返回 `precheck-failed` 并给"镜像已装 / 本地怎么装"的提示；
+- 若 CLI 自带技能文档，优先让模型用它的 `skills list/read` 读（省系统提示词），
+  不要把几十份 `SKILL.md` 一股脑塞进 `AGENTS_SKILLS_DIRS`。
 
 四条与现有实现绑定的口径：
 

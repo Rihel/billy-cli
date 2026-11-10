@@ -1041,7 +1041,7 @@ docker build -t billy-web:latest -f docker/Dockerfile.web .
 ### 特性
 
 - **server**：multi-stage + `pnpm deploy --prod` 提取运行时依赖，仅携带编译产物与生产依赖，
-  非 root 用户运行
+  非 root 用户运行；预装官方 `lark-cli`（飞书 CLI 连接器用，版本由 `LARK_CLI_VERSION` 固定）
 - **web**：Next.js `output: 'standalone'` 模式，产物不携带源码与 devDependencies
 - **基础镜像**：内置 `bash / curl / wget / jq / bind-tools / tzdata（Asia/Shanghai）` 等运维工具，
   并切换 npmmirror 镜像源
@@ -1197,7 +1197,7 @@ codegraph ui           # 浏览器看图：http://127.0.0.1:4747
 - [docs/design/auth-session.md](docs/design/auth-session.md) — 认证与会话设计（JWT + Redis 会话）
 - [docs/design/ai-agent.md](docs/design/ai-agent.md) — AI 运行时（会话 / 运行 / 流式 / 上下文 / 恢复）
 - [docs/design/ai-agent-tool-engine.md](docs/design/ai-agent-tool-engine.md) — 工具引擎（工具组 / 注册机 / 网关插件 / 配置入库）
-- [docs/design/ai-connector.md](docs/design/ai-connector.md) — 连接器（外部能力来源：数据库 / MCP / 自定义）
+- [docs/design/ai-connector.md](docs/design/ai-connector.md) — 连接器（外部能力来源：数据库 / 飞书 CLI / MCP / 自定义）
 - [docs/design/ai-extension-guide.md](docs/design/ai-extension-guide.md) — **加工具 / 加技能 / 加连接器**的落地步骤
 - [docs/queue.md](docs/queue.md) — 已废弃（BullMQ 队列方案，已被 Kafka 取代，仅存档）
 - [docs/billy-pitch.md](docs/billy-pitch.md) — 项目定位与竞品调研

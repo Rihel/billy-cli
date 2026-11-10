@@ -745,8 +745,16 @@ export class AcmeRpcDriver implements ConnectorDriver {
 | 块 | 归谁 | 现状 |
 | --- | --- | --- |
 | **技能**（怎么用：哪个命令、什么参数、什么坑） | 现有技能系统（`SkillLoader` + `skill` / `skill_read` 工具） | **已经跑通，不用改** |
-| **运维**（装 / 配 / 授权 / 状态） | 新增 `cli` 驱动 | 本期不做，见下 |
-| **执行**（真去敲命令） | 连接器产出的一个受限 `run` 工具 | 要新增 |
+| **运维**（装 / 配 / 授权 / 状态） | 新增 `cli` 驱动 | **已落地（2026-11-09）**：镜像预装 + `lark-cli` 驱动 |
+| **执行**（真去敲命令） | 连接器产出的一个受限 `run` 工具 | **已落地**：`run`（参数白名单 + `spawn`） |
+
+> **落地差异（2026-11-09）**：样板按"运维前置"实现，和下面的原方案有四处不同——
+> 1. 安装放在**镜像**里（`docker/Dockerfile.server` 固定版本装 `@larksuite/cli`），驱动不做运行期 `npm i -g`；
+> 2. 技能不落盘到 `AGENTS_SKILLS_DIRS`，而是让模型用 `lark-cli skills list/read` 读**二进制内嵌文档**（24+ 份，省系统提示词）；
+> 3. 授权也走 `run` 工具（`auth login --no-wait` / `--device-code`），没有单独的 `/connector/cli/*` 接口；
+> 4. 每个连接器实例一个独立 `HOME`（`~/.billy/lark-cli/<实例 id>`），App 凭证写进该实例自己的 CLI 配置，删连接器时整目录删掉。
+>
+> 原方案保留作对照；差异只在"装 / 文档 / 授权接口"三处，命令白名单与受限执行的思路不变。
 
 #### 三块具体怎么摆
 
@@ -797,7 +805,7 @@ interface CliDriverSpec {              // 写死在驱动里，管理员改不�
 
 - 厂商卡位（腾讯文档 / TAPD / 乐享 / QQ 邮箱）：模板替厂商托管用户凭证不现实，交给自定义 MCP；
 - 搜索做成连接器（§2.5）；
-- 把厂商 CLI（`lark-cli` 那类）放进第一批：代价见 §3.14（宿主机工具链、token 在磁盘、版本漂移），放二期只做一个样板；
+- 把厂商 CLI（`lark-cli` 那类）放进第一批：代价见 §3.14（宿主机工具链、token 在磁盘、版本漂移），放二期只做一个样板（**2026-11-09 已作为样板落地，见 §8**）；
 - 按用户建实例：我们是管理员配一次、全员可用；只有"以某人身份办事"时才按用户存**凭证**；
 - 本地 MCP 进程（stdio）：见 §3.7；
 - 主体层授权（授权链接 + SSO）：二期，见 §6.3。
@@ -1379,7 +1387,7 @@ GET  /connector/cli/status      版本、路径、授权人、过期时间
 | --- | --- | --- | --- |
 | 1 | **主体层排期** | 飞书用户授权（授权链接 + SSO + 回调 + 按用户 token）排第几批 | 二期。第一批数据库三步已经排满；主体层要新增回调路由、按用户 token 表、按用户状态与审计 |
 | 2 | **多副本状态** | 起两个 server 进程时，`ai_connectors.status` 只有一行，谁最后写算谁，页面看到的是"某台机器的情况" | 一期单实例 + 页面文案说明；要多副本再上按实例的状态表 |
-| 3 | **`lark-cli` 走哪条路** | 它是"命令行 + 一堆技能文档"，不是工具（§3.14） | 二期做一个 `cli` 驱动样板；同时用 `rest` 接飞书三个高频接口作为对照 |
+| 3 | **`lark-cli` 走哪条路** | 它是"命令行 + 一堆技能文档"，不是工具（§3.14） | **已落地样板（2026-11-09，见 §8）**；`rest` 接飞书高频接口作为对照仍可后续补 |
 
 ---
 
@@ -1424,3 +1432,27 @@ PostgreSQL 连 3306，报 `received invalid response: 4a`（PG 协议收到的�
 - ~~`redact` 插件按工具行密钥脱敏，而连接器密钥在实例上~~ —— **已修**（见上，guard 嫁接）；
 - 连接器停用后，`ai_tools` 里的行仍是 `enabled=true`，靠 `connector-guard` 在调用时拦——
   页面列表若按"工具行开关"展示会显示成"开着"，需要在详情里说明这一点。
+
+---
+
+## 8. 实施记录（lark-cli 样板，2026-11-09）
+
+按 §3.14 落地"命令行 + 内嵌技能"的连接器样板，只做一个型号 `lark-cli`：
+
+| 层 | 内容 |
+| --- | --- |
+| 目录 | `connector.catalog.ts` 加 `LARK_CLI_CATALOG`（`driver=lark-cli`、`transport=process`、`category=office`）；字段 `appId` / `appSecret` / `brand` / `identity`，`defaults` 给 `brand=feishu` / `identity=auto` |
+| 驱动 | `drivers/lark-cli.driver.ts`：`describe` 只交一个 `run` 工具；`invoke` 用 `spawn` 直传参数数组（不走 shell；`detached` 进程组，超时 / 取消按组杀，避免留下 Go 孤儿）；`probe` 跑 `doctor`；`dispose` 删实例 HOME |
+| 白名单 | `drivers/lark-cli.policy.ts`（纯函数）：业务域 20 个 + `schema` / `whoami` + `skills list|read` + `auth status|list|login|scopes|check`；禁 `api` / `config` / `profile` / `update` / `apps` / `event` / `auth logout`，禁 `--profile` / `--yes` |
+| 凭证 | App ID / Secret 来自连接器实例；每实例独立 `HOME=~/.billy/lark-cli/<id>`，首次调用跑 `config init --app-id ... --app-secret-stdin --force-init`，指纹（sha256）没变不重跑；状态文件只存指纹与 appId / brand，不存 secret |
+| 环境隔离 | 子进程只拿 `PATH` / `HOME` / locale / 代理 / CA 白名单，不带服务端密钥；`cwd` 固定在实例 HOME |
+| 镜像 | `docker/Dockerfile.server` 的 runner 阶段 `npm i -g @larksuite/cli@1.0.99`（`ARG LARK_CLI_VERSION`，默认 npmjs，可用 `NPM_REGISTRY` 覆盖）；`docker-compose.yaml` 挂 `lark-cli-data:/home/appuser/.billy` |
+| 测试 | `test/ai-connector.test.ts` 新增 6 条：目录 / 配置默认值 / 能力面 / 白名单放行 / 白名单拒绝 / `auth login` 非阻塞 |
+| 文档 | 本文件 §3.14 / §6.3 / §8；`docs/design/ai-extension-guide.md` §3；skill `develop-ai-agent` §9 |
+
+验证：server / admin 全量 `typecheck`、`check:inject` / `check:mastra` / `check:ui` 通过；连接器单测 21 条通过；
+用真实 `@larksuite/cli@1.0.99`（macOS arm64）实测 `skills list` 返回 28 份技能、`skills read lark-im` 返回 24KB Markdown、
+假凭证下 `doctor` 正确报"应用不存在"；用假 CLI 实测 `probe` / `run` / 错误信封 / 超时 / 取消 / 输出超限 / `dispose` 全链路。
+
+已知边界：用户 token 落在实例 HOME（容器不挂卷重启即丢；删连接器只删本地，不撤销飞书侧授权）；多副本不共享授权（与 §6.3 同源）；命令以**服务进程身份**执行，能读该身份可读的文件（白名单挡的是命令面，不是文件系统沙箱；要强隔离得把连接器放进独立容器 / 用户，本期不做）；
+`lark-cli` 版本升级可能改命令与技能文档，升级要同步 `LARK_CLI_VERSION` 并回归白名单。

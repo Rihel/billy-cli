@@ -101,3 +101,14 @@ SSE 专项：挂着 `POST /sse/subscribe` 长连接做一次 `rollout restart`�
 `pnpm --filter @app/server run db:migrate`，再滚动更新。要把它做成标准的
 `Job`/`initContainer`（编译出 `dist/data-source.js` + 用镜像内已有的 typeorm CLI 跑
 `migration:run`），需要另行改造 `data-source` 的构建与脚本——这是独立的一件事，尚未做。
+
+## 6. 飞书 CLI 连接器的状态落在 Pod 本地
+
+server 镜像默认预装 `lark-cli`（`docker/Dockerfile.server`）。连接器「飞书 CLI」的 App 配置与
+用户 token 在 `$HOME/.billy/lark-cli/<实例 id>`（容器里 `HOME=/home/appuser`）：
+
+- **单副本 / 本地 compose**：`docker-compose.yaml` 已挂 `lark-cli-data:/home/appuser/.billy`，重建容器不丢授权；
+- **K8s 多副本（当前 `replicas: 3`）**：每个 Pod 各一份本地状态，没有共享卷时**每个 Pod 都要单独授权**，
+  且 Pod 重建后授权丢失。要长期用，给 `/home/appuser/.billy` 挂 RWX PVC（或改成单副本 + `Recreate`），
+  否则只适合"先跑通"的验证阶段；
+- 删连接器只删本地目录，**不撤销飞书侧的授权**；需要撤销时在飞书后台处理。
