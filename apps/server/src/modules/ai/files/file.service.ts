@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto'
 import { appendFile, mkdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises'
 import { dirname, relative, resolve } from 'node:path'
-import { Inject, Injectable, Optional } from '@nestjs/common'
+import { Inject, Injectable, Optional, type OnApplicationBootstrap, type OnApplicationShutdown } from '@nestjs/common'
 import { AppLogger, ObjectStorage } from '@repo/kits'
 import {
   buildFileTree,
@@ -61,6 +61,11 @@ type WriteFileInput = z.infer<typeof WriteFileInputSchema>
 type ReplaceFileInput = z.infer<typeof ReplaceFileInputSchema>
 type AppendFileInput = z.infer<typeof AppendFileInputSchema>
 
+/** 预览临时对象的保留时间：足够一次阅读，过后由后台清扫 */
+const PREVIEW_TTL_MS = 24 * 60 * 60 * 1000
+const PREVIEW_CLEANUP_INTERVAL_MS = 6 * 60 * 60 * 1000
+const PREVIEW_PREFIX = '_preview/'
+
 const IGNORED_DIRS = new Set([
   '.git',
   'node_modules',
@@ -100,8 +105,9 @@ const relPath = (root: string, target: string): string =>
  * - 工具层只做参数 / 结果形状，业务动作都在这里，HTTP 侧复用同一套。
  */
 @Injectable()
-export class FileService {
+export class FileService implements OnApplicationBootstrap, OnApplicationShutdown {
   private readonly locks = new PathLock()
+  private cleanupTimer?: NodeJS.Timeout
 
   constructor(
     @Inject(ObjectStorage) private readonly storage: ObjectStorage,
@@ -109,6 +115,50 @@ export class FileService {
     @Inject(AppLogger) private readonly logger: AppLogger,
     @Optional() @Inject(TOOL_ENV_CAPS) private readonly caps?: ToolEnvCaps,
   ) {}
+
+  onApplicationBootstrap(): void {
+    if (!this.storage.enabled) return
+    // 启动先清一次；之后每 6 小时扫一次。失败不影响服务。
+    void this.cleanupPreviews()
+    this.cleanupTimer = setInterval(() => {
+      void this.cleanupPreviews()
+    }, PREVIEW_CLEANUP_INTERVAL_MS)
+    this.cleanupTimer.unref?.()
+  }
+
+  onApplicationShutdown(): void {
+    if (this.cleanupTimer) clearInterval(this.cleanupTimer)
+  }
+
+  /**
+   * 清理 `_preview/` 下超过 TTL 的物化对象。
+   *
+   * 这些对象是 workspace 文件为了“浏览器直连”临时写进 OSS 的，不是用户文件；
+   * 留在桶里只会越积越多。预览请求路径不删除它们（正在看的人链接会断），交给后台清扫。
+   */
+  async cleanupPreviews(now = Date.now()): Promise<number> {
+    try {
+      const objects = await this.storage.listObjects({
+        prefix: PREVIEW_PREFIX,
+        max: 1000,
+      })
+      const expired = objects.filter(
+        (object) => now - object.lastModified.getTime() > PREVIEW_TTL_MS,
+      )
+      for (const object of expired) {
+        await this.storage.removeObject({ key: object.key })
+      }
+      if (expired.length > 0) {
+        this.logger.log('ai.file.preview_cleanup', { removed: expired.length })
+      }
+      return expired.length
+    } catch (error) {
+      this.logger.warn('ai.file.preview_cleanup_failed', {
+        reason: error instanceof Error ? error.message : String(error),
+      })
+      return 0
+    }
+  }
 
   private configOf(ctx: FileContext): FileConfigValue {
     return ctx.config ?? normalizeFileConfig(DEFAULT_FILE_CONFIG, this.caps)
@@ -718,7 +768,7 @@ export class FileService {
    */
   async workspaceLink(
     ctx: FileContext,
-    input: { conversationId: string; path: string },
+    input: { conversationId: string; path: string; download?: boolean },
   ): Promise<{ url: string; mediaType: string; filename: string; bytes: number }> {
     const config = this.configOf(ctx)
     const target = await resolveWorkspacePath({
@@ -737,11 +787,15 @@ export class FileService {
     const extension = extensionOf(input.path)
     const owner = ctx.isAdmin ? 'admin' : ctx.userId ? `user/${ctx.userId}` : 'system'
     // 用内容哈希做 key：同一工作区文件重复预览不会堆出无限临时对象
-    const key = `${owner}/${input.conversationId}/_preview/${digest}${extension ? `.${extension}` : ''}`
+    const key = `${PREVIEW_PREFIX}${owner}/${input.conversationId}/${digest}${extension ? `.${extension}` : ''}`
     const mediaType = mediaTypeOf(target)
     const filename = displayName(input.path)
     await this.storage.putObject({ key, body, contentType: mediaType })
-    const { url } = await this.storage.getDownloadUrl({ key, filename })
+    // 图片 / PDF / 视频要 inline 才不会被浏览器当附件下载；只有下载入口才带 filename
+    const { url } = await this.storage.getDownloadUrl({
+      key,
+      ...(input.download ? { filename } : {}),
+    })
     return { url, mediaType, filename, bytes: body.length }
   }
 

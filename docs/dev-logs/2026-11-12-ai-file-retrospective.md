@@ -94,7 +94,7 @@
 但实际任务里，子助手需要读现有材料、写自己的交付文件，父 agent 不可能替它做所有文件操作。所以后来放开了文件工具：
 
 - 子助手可以 `file-list` / `read-file` / `file-search` / `workspace-files` / `write-file` / `replace-file` / `append-file` / `file-download` / `file-submit`；
-- 共享 workspace 没有跨 run 文件锁，父 agent 必须给不同子助手分配不同路径；
+- 共享 workspace 同一路径有进程内 `PathLock`，但跨副本没有分布式锁；父 agent 仍要给不同子助手分配不同路径；
 - 子助手崩溃后不做 durable 恢复：父 run 重放 `run-sub-agent` 时，同一个 `(parent_run_id, tool_call_id)` 复用被标 `interrupted` 的子 run 原地重启；**不是断点续跑，任务从头执行**，旧时间线保留审计，工具必须幂等。
 
 这块的边界要诚实：能重新激活，不等于能无损续跑；恢复会重跑、会花钱。
@@ -103,17 +103,17 @@
 
 还没做完或刻意没做的：
 
-- `_preview/` 临时对象需要 bucket lifecycle 清理；
+- `_preview/` 临时对象由 `FileService` 启动 + 每 6 小时清理（24h TTL）；
 - 子助手并发写同一文件没有锁，靠父 agent 分配路径；
 - 老 `.doc` / `.ppt` 只支持下载，不做浏览器渲染；
-- workspace 的图片 / PDF / 视频预览仍走 `/agent/file/workspace-content`，没有完全统一到“前端直连”；
+- workspace 的图片 / PDF / 视频也已先物化到 OSS 直连；`workspace-content` 仅保留兼容下载；
 - bucket 目前偏 public-read + CORS，key 泄露仍意味着可下载；
 - 手机端其他后台列表页、表格还没有逐页做真实设备验收；
 - 局域网访问在路由器客户端隔离下无解，需要改路由器或走 Tailscale / 隧道。
 
 ## 六、如果继续做
 
-1. **统一数据面**：workspace 的所有可预览类型都走“物化 + 直连”，把 `workspace-content` 收敛成仅下载；
+1. **统一数据面**：workspace 的所有可预览类型已走“物化 + 直连”，`workspace-content` 收敛成兼容下载；
 2. **补生命周期**：`_preview` TTL、失败清理、配额与用量告警；
 3. **补并发边界**：子助手文件写入的路径约定或租约，避免共享 workspace 互相覆盖；
 4. **把预览当产品验收**：真实手机、真实 Office 文件、真实 bucket CORS，而不是只看构建通过；

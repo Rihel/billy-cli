@@ -3,6 +3,7 @@ import {
   DeleteObjectCommand,
   GetObjectCommand,
   HeadBucketCommand,
+  ListObjectsV2Command,
   PutBucketCorsCommand,
   PutBucketPolicyCommand,
   PutObjectCommand,
@@ -128,6 +129,27 @@ export const makeS3Provider = (
         new DeleteObjectCommand({ Bucket: config.bucket, Key: key }),
       )
       return { key } satisfies ObjectRemoved
+    },
+    async listObjects({ prefix, max = 1000 }) {
+      const items: Array<{ key: string; lastModified: Date }> = []
+      let token: string | undefined
+      do {
+        const response = await s3.send(
+          new ListObjectsV2Command({
+            Bucket: config.bucket,
+            Prefix: prefix,
+            MaxKeys: Math.min(1000, max - items.length),
+            ...(token ? { ContinuationToken: token } : {}),
+          }),
+        )
+        for (const object of response.Contents ?? []) {
+          if (!object.Key || !object.LastModified) continue
+          items.push({ key: object.Key, lastModified: object.LastModified })
+          if (items.length >= max) break
+        }
+        token = items.length >= max ? undefined : response.NextContinuationToken
+      } while (token)
+      return items
     },
   }
 }

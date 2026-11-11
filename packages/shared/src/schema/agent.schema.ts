@@ -167,6 +167,8 @@ export type AgentFileAdminStatsDto = z.infer<typeof AgentFileAdminStatsSchema>
 export const AgentFileWorkspaceLinkSchema = z.object({
   conversationId: z.string().min(1).max(32),
   path: z.string().min(1).max(1024),
+  /** true = 带 attachment disposition（下载）；false / 省略 = inline（预览） */
+  download: z.boolean().optional(),
 })
 export type AgentFileWorkspaceLinkDto = z.infer<typeof AgentFileWorkspaceLinkSchema>
 

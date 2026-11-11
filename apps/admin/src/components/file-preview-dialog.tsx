@@ -9,6 +9,7 @@ import {
   DialogTitle,
   FilePreview,
 } from '@repo/ui'
+import { useEffect, useState } from 'react'
 import { ChevronDownIcon, ChevronUpIcon, DownloadIcon } from 'lucide-react'
 import { useHotkeys } from 'react-hotkeys-hook'
 import { MessageResponse } from '@repo/ui/components/ai-elements/message.tsx'
@@ -25,6 +26,8 @@ export interface PreviewDialogItem {
   bytes: number
   /** 可直接放进 FilePreview 的地址；文本类可以为 null */
   url: string | null
+  /** 需要异步换链接的类型（如工作区文件要先物化到 OSS）；只对当前项调用 */
+  loadUrl?: () => Promise<string>
   /** PPTX 渲染器需要原始字节；只有可渲染的 PPTX 才给 */
   loadBytes?: () => Promise<ArrayBuffer>
 }
@@ -96,6 +99,28 @@ export function FilePreviewDialog({
   loading: boolean
 }) {
   const current = index === null ? null : items[index]
+  const [resolvedUrl, setResolvedUrl] = useState<string | null>(null)
+  const [urlError, setUrlError] = useState<string | null>(null)
+
+  useEffect(() => {
+    setResolvedUrl(null)
+    setUrlError(null)
+    if (!current?.loadUrl) {
+      return
+    }
+    let cancelled = false
+    void current
+      .loadUrl()
+      .then((url) => {
+        if (!cancelled) setResolvedUrl(url)
+      })
+      .catch((cause: unknown) => {
+        if (!cancelled) setUrlError(cause instanceof Error ? cause.message : String(cause))
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [current?.id])
 
   // 文件切换用上下键；左右键留给 PPT 内部翻页，避免两套导航抢同一个键
   useHotkeys(
@@ -223,16 +248,20 @@ export function FilePreviewDialog({
               ) : (
                 <pre className="whitespace-pre-wrap break-words text-xs">{text ?? ''}</pre>
               )
-            ) : current.url ? (
+            ) : current.url || resolvedUrl ? (
               <FilePreview
                 file={{
-                  key: current.url,
+                  key: (current.url ?? resolvedUrl)!,
                   name: current.filename,
                   type: current.mediaType,
                   size: current.bytes,
                 }}
                 height="100%"
               />
+            ) : current.loadUrl && !urlError ? (
+              <Empty text="正在获取文件链接…" />
+            ) : urlError ? (
+              <Empty text={`获取预览链接失败：${urlError}`} />
             ) : (
               <Empty text="当前类型不支持在线预览，请下载查看。" />
             )}

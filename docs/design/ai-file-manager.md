@@ -795,7 +795,7 @@ tab 内顶部用 segmented control 分两个视图 —— 两边的生命周期�
 - 树形来自 §8.8，文件行显示相对路径 / 大小 / mtime；
 - 默认隐藏 `files/`（下载缓存）与 `uploads/`（入站副本，已在会话文件里）；
   顶部 toggle「显示缓存 / 入站副本」才显示；
-- 图片 / PDF / 视频 / 音频按 §8.4 矩阵预览（走 §8.9 的 workspace-content 流）；
+- 图片 / PDF / 视频 / 音频按 §8.4 矩阵预览（先走 `workspace-link` 物化到 OSS，再让浏览器直连；不走后端字节流）；
   文本 / Markdown / 代码 / HTML 走 §8.7 的 `source='workspace'`；Office OOXML 前端渲染；老 `.doc` / `.ppt` 只下载；
 - 行内操作：预览 / 下载；下载的是临时副本，长期保留仍要 `file-submit` 到会话文件；
 - 顶部「刷新」按钮；每轮结束 / 文件工具结果后 invalidate `['agentWorkspace', conversationId]`；
@@ -841,7 +841,7 @@ tab 内顶部用 segmented control 分两个视图 —— 两边的生命周期�
 等文件预览稳定后再删代码。
 
 以上矩阵对**会话文件**与**工作区**都适用：会话文件的图片 / 视频 / 音频 / PDF 用 `formatStorageUrl` 直链；
-工作区的二进制走 §8.9 的 workspace-content 流；HTML 两边都走文本沙箱；Office OOXML 走「对象存储直链 → 前端第三方渲染器」，不经过后端字节转发；老 `.doc` / `.ppt` 只下载。
+工作区的二进制先走 `workspace-link` 物化成临时 OSS 对象，再由浏览器直连；HTML 两边都走文本沙箱；Office OOXML 走「对象存储直链 → 前端第三方渲染器」，不经过后端字节转发；老 `.doc` / `.ppt` 只下载。
 
 会话文件的图片 / 视频 / 音频 / PDF 预览地址用 `formatStorageUrl(key)`（桶是 public-read，直链即可；
 见 §9.3 的取舍）；HTML / Markdown / 代码走 §8.7 的文本接口。
@@ -856,7 +856,7 @@ window.location.href = url
 - 预签名 URL 1 小时有效；
 - `filename` 传 `ai_files.filename`（入站原始名 / AI 的 `path` 最后一段），不要用入站 `path` 里的 md5 段；
 - 不在前端拼 key：`key` 来自会话详情 / 工具出参；
-- **工作区文件**下载走 §8.9 的 `workspace-content`（临时副本；长期保留先 `file-submit` 到会话文件）。
+- **工作区文件**下载走 `workspace-link`（`download:true`，临时副本；长期保留先 `file-submit` 到会话文件）。
 
 ### 8.6 工具卡与历史
 
@@ -878,7 +878,7 @@ window.location.href = url
 - 前端 `queryKey=['aiFilePreview', conversationId, source, path]`，同一文件重复打开不重复拉。
 
 为什么文本仍走后端：文本预览要统一做 1MB 截断、路径包含与章节安全判断；Office 二进制才是直连 OSS（会话文件用 `getDownloadUrl`，工作区先物化成临时对象拿链接）。前端不用为不同来源写两套取文本逻辑。
-图片 / PDF / 视频 / 音频不走这个接口（会话文件用直链；工作区用 §8.9 的流）。
+图片 / PDF / 视频 / 音频不走这个接口（会话文件用直链；工作区先用 `workspace-link` 物化再直连）。
 
 ### 8.8 工作区列表接口
 
@@ -919,7 +919,8 @@ window.location.href = url
 - `POST /agent/file/admin/preview`（`AdminAuthGuard`）：按 `fileId` 读任意会话的文本，
   给后台预览用（图片 / PDF / 视频 / 音频走对象存储 URL + `FilePreview`；HTML 走 `SandboxFrame`）；
 - `POST /agent/file/workspace-link`（`AnyAuthGuard`）：工作区文件先物化成 `_preview/` 下的临时 OSS 对象，
-  只返回预签名链接；前端直接 fetch 该链接，后端不转发字节（临时对象由桶生命周期清理）；
+  只返回链接；`download` 控制 inline / attachment。前端直接 fetch 该链接，后端不转发字节；
+  临时对象由 `FileService` 启动时及每 6 小时清扫一次（24h TTL）；
 - 页面主体是 DataTable：文件名 + path、所属会话（可跳回聊天）、来源、大小、创建时间、
   预览 / 下载；时间范围用 `DateRangePicker`（`Calendar` + `Popover` 封装），不用原生 date input；
 - 预览弹窗：左侧当前文件清单（后台为当前页，聊天右栏为当前视图的全部文件），
@@ -950,7 +951,7 @@ window.location.href = url
 - `read` 下载后校验 sha256；**入站 `sha256` 可空，跳过校验**；AI 产出不一致说明对象损坏；
 - `filename` 只用于展示 / `Content-Disposition`；下载前剥掉 CR/LF、引号与控制字符，防 header 注入；
 - 工作区列表 / 预览只读 `{workspace}/{conversationId}`，跳过软链；文本预览只允许文本类；
-- `workspace-content` 只 stream 普通文件；HTML / SVG 强制 `attachment`，不允许 inline；
+- `workspace-content` 只作为兼容下载接口保留；前端预览 / 下载已统一走 `workspace-link`；HTML / SVG 仍强制 `attachment`，不允许 inline；
 - 落盘权限 `0o600`，临时文件 + `rename` 原子写。
 
 ### 9.3 桶的 public-read（必须知道的取舍）

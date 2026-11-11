@@ -71,16 +71,18 @@ export function FilesPanel({
     enabled: Boolean(conversationId && current && isPreviewTextItem(current)),
   })
 
-  const previewUrl = (target: PreviewTarget): string | null => {
-    if (target.source === 'ai') {
-      return target.key ? resolveUrl(target.key) : null
-    }
-    if (!conversationId) return null
-    return client.agent.file.workspaceContentUrl({
-      conversationId,
+  /** 工作区文件先物化成临时 OSS 对象，再拿 inline / download 链接；不再让后端转发字节 */
+  const workspaceUrl = async (target: PreviewTarget, download = false): Promise<string> => {
+    const link = await client.agent.file.workspaceLink({
+      conversationId: conversationId as string,
       path: target.path,
+      download,
     })
+    return link.url
   }
+
+  const previewUrl = (target: PreviewTarget): string | null =>
+    target.source === 'ai' && target.key ? resolveUrl(target.key) : null
 
   const download = async (target: PreviewTarget): Promise<void> => {
     if (target.source === 'ai') {
@@ -92,11 +94,7 @@ export function FilesPanel({
       return
     }
     if (!conversationId) return
-    window.location.href = client.agent.file.workspaceContentUrl({
-      conversationId,
-      path: target.path,
-      download: true,
-    })
+    window.location.href = await workspaceUrl(target, true)
   }
 
   const openSession = (file: AgentFileModel) => {
@@ -122,6 +120,11 @@ export function FilesPanel({
     mediaType: target.mediaType,
     bytes: target.bytes,
     url: previewUrl(target),
+    // 工作区二进制（图片 / PDF / 视频 / 音频）先物化再直连；文本和 Office 走各自分支
+    loadUrl:
+      target.source === 'workspace' && conversationId && !isPreviewTextItem(target) && !officeKind(target)
+        ? () => workspaceUrl(target)
+        : undefined,
     loadBytes: officeKind(target)
       ? async () => {
           const link =

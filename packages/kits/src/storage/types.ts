@@ -38,6 +38,11 @@ export interface ObjectStorageConfig {
   endpoint?: string
 }
 
+export interface ObjectListItem {
+  key: string
+  lastModified: Date
+}
+
 export interface ObjectStorageProvider {
   initial(): Promise<void>
   getObject(key: GetStorageDownloadUrlDto): Promise<ObjectContent>
@@ -51,4 +56,6 @@ export interface ObjectStorageProvider {
     request: GetTemporaryCredentialsDto,
   ): Promise<StorageStsModel>
   removeObject(key: GetStorageDownloadUrlDto): Promise<ObjectRemoved>
+  /** 按前缀列出对象（预览临时对象的生命周期清理用） */
+  listObjects(input: { prefix: string; max?: number }): Promise<ObjectListItem[]>
 }

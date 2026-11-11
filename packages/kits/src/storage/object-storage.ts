@@ -21,6 +21,7 @@ import type {
   ObjectRemoved,
   ObjectStorageProvider,
   PutObjectInput,
+  ObjectListItem,
 } from './types.js'
 
 @Injectable()
@@ -148,6 +149,13 @@ export class ObjectStorage implements OnApplicationBootstrap {
     return this.guard('removeObject', async () => {
       await this.ensureInitialized()
       return this.provider.removeObject(key)
+    })
+  }
+
+  listObjects(input: { prefix: string; max?: number }): Promise<ObjectListItem[]> {
+    return this.guard('listObjects', async () => {
+      await this.ensureInitialized()
+      return this.provider.listObjects(input)
     })
   }
 }

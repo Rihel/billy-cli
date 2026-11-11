@@ -102,5 +102,27 @@ export const makeCosProvider = (
       })
       return { key } satisfies ObjectRemoved
     },
+    async listObjects({ prefix, max = 1000 }) {
+      const items: Array<{ key: string; lastModified: Date }> = []
+      let marker: string | undefined
+      for (;;) {
+        const response = await client.getBucket({
+          Bucket: config.bucket,
+          Region: config.region,
+          Prefix: prefix,
+          MaxKeys: Math.min(1000, max - items.length),
+          ...(marker ? { Marker: marker } : {}),
+        })
+        for (const object of response.Contents ?? []) {
+          if (!object.Key || !object.LastModified) continue
+          items.push({ key: object.Key, lastModified: new Date(object.LastModified) })
+          if (items.length >= max) break
+        }
+        if (items.length >= max || !response.IsTruncated) break
+        marker = response.NextMarker
+        if (!marker) break
+      }
+      return items
+    },
   }
 }
