@@ -23,6 +23,36 @@ export const conversationPath = (conversationId: string): string =>
 /** 「新会话」地址（首轮发出后服务端返回会话 id，页面会 `replace` 成真实地址） */
 export const newConversationPath = (): string => `${CHAT_ROOT}/${NEW_CONVERSATION_SLUG}`
 
+/**
+ * 会话页隔离 key 的模块级真相。
+ *
+ * 为什么不能只靠页面里的 `useRef`：动态路由切换时页面组件可能被重新挂载，ref 归零，
+ * 两个不同真实会话都得到同一个 `chat-0`，React 就会复用旧 store / useChat ——
+ * 表现就是"地址和标题换了，消息和右栏还是上一个会话"。
+ *
+ * 口径：
+ * - 真实会话默认 `chat-<conversationId>`，天然隔离；
+ * - `new` 每次进入分配一个独立的 `chat-new-<n>`；
+ * - `new → 真实 id` 时把真实 id 映射到那个 new key，保持同一次发送不重挂载。
+ */
+let newSessionCounter = 0
+let currentNewKey: string | null = null
+const adoptedKeys = new Map<string, string>()
+
+export const markAdoptedConversation = (conversationId: string): void => {
+  if (isNewConversation(conversationId)) return
+  adoptedKeys.set(conversationId, currentNewKey ?? `chat-${conversationId}`)
+  currentNewKey = null
+}
+
+export const chatSessionKey = (conversationId: string): string => {
+  if (isNewConversation(conversationId)) {
+    currentNewKey ??= `chat-new-${++newSessionCounter}`
+    return currentNewKey
+  }
+  return adoptedKeys.get(conversationId) ?? `chat-${conversationId}`
+}
+
 /** 这个路由参数是不是"还没建会话"的占位 */
 export const isNewConversation = (conversationId: string | undefined): boolean =>
   !conversationId || conversationId === NEW_CONVERSATION_SLUG

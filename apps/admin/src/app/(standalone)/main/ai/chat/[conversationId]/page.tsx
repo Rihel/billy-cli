@@ -1,9 +1,9 @@
 'use client'
 
-import { use, useMemo, useRef } from 'react'
+import { use, useRef } from 'react'
 import { ChatConversation } from '../chat-conversation'
 import { ChatSessionStore, ChatSessionStoreContext } from '../chat-session'
-import { nextChatGeneration } from '../routes'
+import { chatSessionKey } from '../routes'
 
 /**
  * 会话 store 的**归属层**：建在会话页外面，供整棵子树读 context。
@@ -30,10 +30,10 @@ function ChatSessionProvider({ children }: { children: React.ReactNode }) {
  * **这一段不能把 `key` 直接绑到 URL 参数**：`new → 真实 id` 会把整棵对话区重挂载，
  * 正在流的 `useChat` 连接和刚收到的消息都会断掉——用户看到的就是"闪一下 / SSE 断了"。
  *
- * 会话 key 的口径：
- * - `new → 真实 id`：同一次发送，沿用旧 key，组件不重挂载；
- * - `真实 A → 真实 B`：换会话，key 递增，整棵对话区隔离；
- * - `真实 A → new`：新会话，key 递增，不能复用 A 的 useChat 状态。
+ * 会话 key 由 `routes.ts` 的 `chatSessionKey` 统一给：
+ * - 真实会话按 id 隔离，页面组件重挂载也不会复用旧 store；
+ * - `new → 真实 id` 同一次发送，映射到同一个 new key，不重挂载；
+ * - 下一次 new / 换真实会话都拿到新 key。
  */
 export default function ChatConversationPage({
   params,
@@ -41,21 +41,9 @@ export default function ChatConversationPage({
   params: Promise<{ conversationId: string }>
 }) {
   const { conversationId } = use(params)
-  const previousId = useRef(conversationId)
-  const generation = useRef(0)
-
-  const sessionKey = useMemo(() => {
-    generation.current = nextChatGeneration(
-      previousId.current,
-      conversationId,
-      generation.current,
-    )
-    previousId.current = conversationId
-    return `chat-${generation.current}`
-  }, [conversationId])
 
   return (
-    <ChatSessionProvider key={sessionKey}>
+    <ChatSessionProvider key={chatSessionKey(conversationId)}>
       <ChatConversation conversationId={conversationId} />
     </ChatSessionProvider>
   )

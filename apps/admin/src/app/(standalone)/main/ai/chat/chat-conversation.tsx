@@ -56,6 +56,7 @@ import { BotIcon, CopyIcon, LayoutDashboardIcon, MessagesSquareIcon, PanelRightI
 import { Pages } from '@/lib/constants'
 import { useServerClient } from '@/lib/server-client'
 import { useChatMobileNav } from './mobile-nav-context'
+import { markAdoptedConversation } from './routes'
 import { ModelPicker } from './model-picker'
 import { ChatMessage } from './message-row'
 import {
@@ -507,6 +508,8 @@ export function ChatConversation({ conversationId }: { conversationId: string })
           if (pendingModelId) {
             window.localStorage.setItem(modelStorageKey(data.conversationId), pendingModelId)
           }
+          // new → 真实 id 是同一次发送：先标记，页面换地址时沿用同一个 store / useChat
+          markAdoptedConversation(data.conversationId)
           // 地址换掉但不滚动；正在流的这一轮由 `useChat`（按 id 存的实例）接住，不中断
           router.replace(conversationPath(data.conversationId), { scroll: false })
         }

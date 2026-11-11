@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import { isNewConversation, nextChatGeneration } from '../src/app/(standalone)/main/ai/chat/routes'
+import {
+  chatSessionKey,
+  isNewConversation,
+  markAdoptedConversation,
+  nextChatGeneration,
+} from '../src/app/(standalone)/main/ai/chat/routes'
 
 describe('会话页隔离代次', () => {
   it('new → 真实 id 不递增：首轮流不能被重挂载打断', () => {
@@ -22,5 +27,25 @@ describe('会话页隔离代次', () => {
     expect(isNewConversation('new')).toBe(true)
     expect(isNewConversation(undefined)).toBe(true)
     expect(isNewConversation('conv_a')).toBe(false)
+  })
+})
+
+describe('会话页 store key 隔离', () => {
+  it('不同真实会话必须得到不同 key，页面重挂载也不会复用旧 store', () => {
+    const a = chatSessionKey('conv_iso_a')
+    const b = chatSessionKey('conv_iso_b')
+    expect(a).toBe('chat-conv_iso_a')
+    expect(b).toBe('chat-conv_iso_b')
+    expect(a).not.toBe(b)
+    // 重复读取稳定，不能每次渲染换 key
+    expect(chatSessionKey('conv_iso_a')).toBe(a)
+  })
+
+  it('new → 真实 id 沿用同一个 key；下一次 new 换新 key', () => {
+    const newKey = chatSessionKey('new')
+    markAdoptedConversation('conv_iso_adopted')
+    expect(chatSessionKey('conv_iso_adopted')).toBe(newKey)
+    const nextNewKey = chatSessionKey('new')
+    expect(nextNewKey).not.toBe(newKey)
   })
 })
