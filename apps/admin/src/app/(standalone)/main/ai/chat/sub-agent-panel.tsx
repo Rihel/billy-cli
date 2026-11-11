@@ -56,8 +56,13 @@ export function SubAgentLiveView({ live }: { live: SubAgentLive }) {
   const streamedText = live.text
   const streamedReasoning = live.reasoning
   const text = streamedText || live.result || ''
+  const entries = live.entries ?? []
   const hasAnything =
-    Boolean(live.task) || Boolean(streamedReasoning) || Boolean(text) || live.events.length > 0
+    Boolean(live.task) ||
+    Boolean(streamedReasoning) ||
+    Boolean(text) ||
+    live.events.length > 0 ||
+    entries.length > 0
 
   return (
     <div className="flex flex-col gap-3">
@@ -87,42 +92,94 @@ export function SubAgentLiveView({ live }: { live: SubAgentLive }) {
       ) : null}
       {live.reason ? <p className="text-xs text-warning">{live.reason}</p> : null}
 
-      {streamedReasoning ? (
-        <Reasoning isStreaming={active}>
-          <ReasoningTrigger
-            getThinkingMessage={(streaming) => (
-              <span>{streaming ? '子助手思考中…' : '子助手思考过程'}</span>
-            )}
-          />
-          <ReasoningContent>{streamedReasoning}</ReasoningContent>
-        </Reasoning>
-      ) : null}
-
-      {text ? (
-        <div className="rounded-md bg-muted/40 p-2 text-sm whitespace-pre-wrap">{text}</div>
-      ) : null}
-
-      {/* 工具往返：实时状态下服务端按 id 归并状态块，所以这里通常只有**最近一次**
-          （完整序列在跑完之后从库里的子 run 时间线看，见 sub-agent-live.ts 的文件头说明） */}
-      {live.events.map((event, index) => (
-        <Tool key={`${event.toolCallId ?? index}-${event.kind}`} defaultOpen={false}>
-          <ToolHeader
-            type="dynamic-tool"
-            state={event.isError ? 'output-error' : 'output-available'}
-            toolName={event.toolKey ?? 'tool'}
-          />
-          <ToolContent>
-            {event.kind === 'tool-call' ? (
-              <ToolInput input={event.input} />
-            ) : (
-              <ToolOutput
-                output={event.output}
-                errorText={event.isError ? (event.errorText ?? JSON.stringify(event.output ?? '')) : undefined}
+      {entries.length > 0 ? (
+        entries.map((entry, index) => {
+          if (entry.kind === 'text') {
+            return (
+              <div
+                key={`text-${index}`}
+                className="rounded-md bg-muted/40 p-2 text-sm whitespace-pre-wrap"
+              >
+                {entry.text}
+              </div>
+            )
+          }
+          if (entry.kind === 'reasoning') {
+            return (
+              <Reasoning key={`reasoning-${index}`} isStreaming={active}>
+                <ReasoningTrigger
+                  getThinkingMessage={(streaming) => (
+                    <span>{streaming ? '子助手思考中…' : '子助手思考过程'}</span>
+                  )}
+                />
+                <ReasoningContent>{entry.text}</ReasoningContent>
+              </Reasoning>
+            )
+          }
+          const event = entry.event
+          return (
+            <Tool key={`${event.toolCallId ?? index}-${event.kind}`} defaultOpen={false}>
+              <ToolHeader
+                type="dynamic-tool"
+                state={event.isError ? 'output-error' : 'output-available'}
+                toolName={event.toolKey ?? 'tool'}
               />
-            )}
-          </ToolContent>
-        </Tool>
-      ))}
+              <ToolContent>
+                {event.kind === 'tool-call' ? (
+                  <ToolInput input={event.input} />
+                ) : (
+                  <ToolOutput
+                    output={event.output}
+                    errorText={
+                      event.isError
+                        ? (event.errorText ?? JSON.stringify(event.output ?? ''))
+                        : undefined
+                    }
+                  />
+                )}
+              </ToolContent>
+            </Tool>
+          )
+        })
+      ) : (
+        <>
+          {streamedReasoning ? (
+            <Reasoning isStreaming={active}>
+              <ReasoningTrigger
+                getThinkingMessage={(streaming) => (
+                  <span>{streaming ? '子助手思考中…' : '子助手思考过程'}</span>
+                )}
+              />
+              <ReasoningContent>{streamedReasoning}</ReasoningContent>
+            </Reasoning>
+          ) : null}
+
+          {text ? (
+            <div className="rounded-md bg-muted/40 p-2 text-sm whitespace-pre-wrap">{text}</div>
+          ) : null}
+
+          {/* 旧数据没有 entries：仍按旧顺序展示工具事件 */}
+          {live.events.map((event, index) => (
+            <Tool key={`${event.toolCallId ?? index}-${event.kind}`} defaultOpen={false}>
+              <ToolHeader
+                type="dynamic-tool"
+                state={event.isError ? 'output-error' : 'output-available'}
+                toolName={event.toolKey ?? 'tool'}
+              />
+              <ToolContent>
+                {event.kind === 'tool-call' ? (
+                  <ToolInput input={event.input} />
+                ) : (
+                  <ToolOutput
+                    output={event.output}
+                    errorText={event.isError ? (event.errorText ?? JSON.stringify(event.output ?? '')) : undefined}
+                  />
+                )}
+              </ToolContent>
+            </Tool>
+          ))}
+        </>
+      )}
 
       {live.error ? <p className="text-xs text-destructive">{live.error}</p> : null}
 

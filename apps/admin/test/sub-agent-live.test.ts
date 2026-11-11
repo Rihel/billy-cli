@@ -93,6 +93,22 @@ describe('collectSubAgentLives', () => {
     expect(lives[0]!.text).toBe('结论一')
   })
 
+  it('entries 按到达顺序保留正文 / 推理 / 工具，不把最终正文固定放在工具之前', () => {
+    const lives = collectSubAgentLives([
+      part({ type: 'data-sub-agent', id: 'sub1', data: { runId: 'sub1', name: '顺序线', status: 'running' } }),
+      part({ type: 'data-sub-agent-delta', data: { runId: 'sub1', kind: 'reasoning', text: '先查资料' } }),
+      part({
+        type: 'data-sub-agent',
+        id: 'sub1',
+        data: { runId: 'sub1', event: { kind: 'tool-call', toolCallId: 'c1', toolKey: 'web-search' } },
+      }),
+      part({ type: 'data-sub-agent-delta', data: { runId: 'sub1', kind: 'text', text: '最终结论' } }),
+    ])
+
+    expect(lives[0]!.entries?.map((entry) => entry.kind)).toEqual(['reasoning', 'tool', 'text'])
+    expect(lives[0]!.entries?.[2]).toEqual({ kind: 'text', text: '最终结论' })
+  })
+
   it('状态块只带 `event`（真实流的形态）时仍然认得出它在跑，工具往返也留得下', () => {
     const lives = collectSubAgentLives([
       part({ type: 'data-sub-agent', id: 'sub1', data: { runId: 'sub1', name: '中国网文线', status: 'running' } }),

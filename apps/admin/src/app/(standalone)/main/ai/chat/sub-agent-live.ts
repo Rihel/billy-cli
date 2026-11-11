@@ -29,6 +29,12 @@ export interface SubAgentEvent {
   isError?: boolean
 }
 
+/** 实时过程的**有序**片段：正文 / 推理 / 工具往返按到达顺序排，渲染时不再固定“正文在前” */
+export type SubAgentLiveEntry =
+  | { kind: 'text'; text: string }
+  | { kind: 'reasoning'; text: string }
+  | { kind: 'tool'; event: SubAgentEvent }
+
 /** 一个子助手当前能看到的全部内容（状态 + 聚合正文 / 推理 + 工具往返） */
 export interface SubAgentLive {
   runId: string
@@ -49,6 +55,14 @@ export interface SubAgentLive {
   /** 已产出的推理（同上） */
   reasoning: string
   events: SubAgentEvent[]
+  /**
+   * 按到达顺序记录正文 / 推理 / 工具事件。
+   *
+   * `text` / `reasoning` / `events` 保留给统计、正文摘要与旧数据；渲染**优先用 entries**，
+   * 否则实时视图会把聚合后的正文固定放在所有工具卡之前，看起来“子助手先写结论再查资料”。
+   * 旧历史没有这一列时回退到旧顺序。
+   */
+  entries?: SubAgentLiveEntry[]
 }
 
 /** 收集需要的 part 最小结构（`UIMessage['parts']` 与测试里的手写对象都能传） */
@@ -65,6 +79,7 @@ export const emptySubAgent = (runId: string, name = '子助手'): SubAgentLive =
   text: '',
   reasoning: '',
   events: [],
+  entries: [],
 })
 
 /** 子助手名字：run 的 `agentKey` 就是 `sub:<名字>`（服务端给子 run 的命名口径） */
@@ -104,7 +119,7 @@ export const mergeSubAgentState = (live: SubAgentLive, data: Record<string, unkn
   if (usage) live.usage = usage
   const event = asRecord(data.event)
   if (event) {
-    live.events.push({
+    const next: SubAgentEvent = {
       kind: event.kind === 'tool-result' ? 'tool-result' : 'tool-call',
       toolCallId: typeof event.toolCallId === 'string' ? event.toolCallId : null,
       toolKey: typeof event.toolKey === 'string' ? event.toolKey : null,
@@ -112,7 +127,10 @@ export const mergeSubAgentState = (live: SubAgentLive, data: Record<string, unkn
       output: event.output,
       errorText: typeof event.errorText === 'string' ? event.errorText : null,
       isError: event.isError === true,
-    })
+    }
+    live.events.push(next)
+    live.entries ??= []
+    live.entries.push({ kind: 'tool', event: next })
   }
 }
 
@@ -125,6 +143,11 @@ export const appendSubAgentDelta = (
   if (!text) return
   if (kind === 'reasoning') live.reasoning += text
   else live.text += text
+
+  live.entries ??= []
+  const last = live.entries.at(-1)
+  if (last?.kind === kind) last.text += text
+  else live.entries.push({ kind, text })
 }
 
 /**
@@ -300,5 +323,9 @@ export const mergeSubAgent = (base: SubAgentLive, patch?: SubAgentLive): SubAgen
     text: patch.text.length >= base.text.length ? patch.text : base.text,
     reasoning: patch.reasoning.length >= base.reasoning.length ? patch.reasoning : base.reasoning,
     events: patch.events.length > 0 ? patch.events : base.events,
+    entries:
+      (patch.entries?.length ?? 0) >= (base.entries?.length ?? 0)
+        ? patch.entries ?? base.entries
+        : base.entries,
   }
 }
