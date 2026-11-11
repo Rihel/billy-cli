@@ -10,11 +10,13 @@ import {
   FilePreview,
 } from '@repo/ui'
 import { useEffect, useState } from 'react'
-import { ChevronDownIcon, ChevronUpIcon, DownloadIcon } from 'lucide-react'
+import { CheckIcon, ChevronDownIcon, ChevronUpIcon, CopyIcon, DownloadIcon } from 'lucide-react'
 import { useHotkeys } from 'react-hotkeys-hook'
+import { toastError, toastSuccess } from '@repo/ui'
 import { MessageResponse } from '@repo/ui/components/ai-elements/message.tsx'
 import { SandboxFrame } from '@repo/ui/components/ai-elements/markdown-fences/sandbox-frame.tsx'
 import { OfficePreview, type OfficeKind } from '@/components/office-preview'
+import { copyText } from '@/lib/clipboard'
 
 /** 预览弹窗里一份文件的最小视图模型（不绑定会话 / 后台某一种列表） */
 export interface PreviewDialogItem {
@@ -101,10 +103,12 @@ export function FilePreviewDialog({
   const current = index === null ? null : items[index]
   const [resolvedUrl, setResolvedUrl] = useState<string | null>(null)
   const [urlError, setUrlError] = useState<string | null>(null)
+  const [copied, setCopied] = useState(false)
 
   useEffect(() => {
     setResolvedUrl(null)
     setUrlError(null)
+    setCopied(false)
     if (!current?.loadUrl) {
       return
     }
@@ -146,6 +150,17 @@ export function FilePreviewDialog({
   const isText = isPreviewTextItem(current)
   const hasPrev = index > 0
   const hasNext = index < items.length - 1
+  const canCopy = (isText || html || markdown) && !loading && text !== null
+
+  const copyCurrent = async () => {
+    try {
+      await copyText(text ?? '')
+      setCopied(true)
+      toastSuccess('已复制到剪贴板')
+    } catch (error) {
+      toastError(error instanceof Error ? error.message : String(error))
+    }
+  }
 
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
@@ -271,6 +286,12 @@ export function FilePreviewDialog({
         </div>
 
         <div className="flex shrink-0 justify-end gap-2 border-t px-4 py-3">
+          {canCopy ? (
+            <Button variant="outline" size="sm" onClick={() => void copyCurrent()}>
+              {copied ? <CheckIcon className="size-3.5" /> : <CopyIcon className="size-3.5" />}
+              {copied ? '已复制' : '复制'}
+            </Button>
+          ) : null}
           <Button variant="outline" size="sm" onClick={() => onDownload(current)}>
             <DownloadIcon className="size-3.5" />
             下载
