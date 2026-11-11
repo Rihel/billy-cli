@@ -62,7 +62,11 @@ export function OfficePreview({
         hostRef.current.innerHTML = ''
         if (kind === 'pptx') {
           const module = await import('pptx-preview')
-          previewer = module.init(hostRef.current, { width: 960, height: 540, mode: 'list' })
+          // 一次只显示一页，并尽量吃满右侧可用宽度；否则 list 模式会把多页竖排、每页显得很小
+          const available = hostRef.current.parentElement?.clientWidth ?? 960
+          const width = Math.max(640, Math.min(1400, available - 24))
+          const height = Math.round((width * 9) / 16)
+          previewer = module.init(hostRef.current, { width, height, mode: 'slide' })
           await (previewer as unknown as { preview: (data: ArrayBuffer) => Promise<unknown> }).preview(
             buffer,
           )
