@@ -43,6 +43,13 @@ export interface SandboxFrameProps {
   className?: string
   minHeight?: number
   maxHeight?: number
+  /**
+   * 去掉内层「html / 全屏 / 重跑」工具条与内层全屏弹窗。
+   *
+   * 给外层已经是全屏预览的场景用：外面已经有标题栏和关闭，里面再套一层 chrome 就是
+   * 用户看到的“还有一层”。沙箱参数不变（allow-scripts、无 same-origin、CSP 仍在内层文档）。
+   */
+  frameless?: boolean
 }
 
 const DEFAULT_MIN_HEIGHT = 160
@@ -89,6 +96,7 @@ export const SandboxFrame = ({
   className,
   minHeight = DEFAULT_MIN_HEIGHT,
   maxHeight = DEFAULT_MAX_HEIGHT,
+  frameless = false,
 }: SandboxFrameProps) => {
   const frameRef = useRef<HTMLIFrameElement | null>(null)
   const [height, setHeight] = useState(minHeight)
@@ -182,6 +190,27 @@ export const SandboxFrame = ({
           <TriangleAlertIcon size={14} />
           沙箱运行环境没准备好：{scriptError}
         </p>
+      </div>
+    )
+  }
+
+  if (frameless) {
+    return (
+      <div className={cn('h-full w-full', className)}>
+        {srcdoc ? (
+          <iframe
+            className="h-full w-full border-0 bg-transparent"
+            ref={frameRef}
+            referrerPolicy="no-referrer"
+            sandbox="allow-scripts"
+            srcDoc={srcdoc}
+            title={title}
+          />
+        ) : (
+          <div className="flex h-full w-full items-center justify-center text-muted-foreground text-xs">
+            正在准备沙箱…
+          </div>
+        )}
       </div>
     )
   }

@@ -438,7 +438,7 @@ function PreviewDialog({
         <DialogHeader className="shrink-0 border-b px-4 py-3 pr-14">
           <DialogTitle className="truncate text-sm">{target.title}</DialogTitle>
         </DialogHeader>
-        <div className="min-h-0 flex-1 overflow-auto p-4">
+        <div className={html ? 'min-h-0 flex-1 overflow-hidden' : 'min-h-0 flex-1 overflow-auto p-4'}>
           {html ? (
             loading ? (
               <Empty text="正在读取…" />
@@ -447,8 +447,8 @@ function PreviewDialog({
                 html={text ?? ''}
                 title={target.filename}
                 language="html"
-                minHeight={600}
-                maxHeight={1000}
+                frameless
+                className="h-full"
               />
             )
           ) : isText ? (
