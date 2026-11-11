@@ -60,7 +60,7 @@ export function FilePreview({
         <img
           src={url}
           alt={file.name}
-          className="max-h-full max-w-full object-contain"
+          className="h-full w-full object-contain"
         />
       </div>
     )
@@ -88,7 +88,7 @@ export function FilePreview({
         )}
         style={{ height }}
       >
-        <audio className="w-full max-w-xl" src={url} controls>
+        <audio className="w-full" src={url} controls>
           当前浏览器不支持音频预览。
         </audio>
       </div>

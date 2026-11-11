@@ -91,8 +91,11 @@ export function OfficePreview({
           const { renderAsync } = await import('docx-preview')
           await renderAsync(buffer, hostRef.current, undefined, {
             className: 'docx-preview',
-            inWrapper: true,
-            breakPages: true,
+            // 自适应宽度：忽略原页面宽高、不强制分页，内容直接铺满右侧容器
+            inWrapper: false,
+            ignoreWidth: true,
+            ignoreHeight: true,
+            breakPages: false,
           })
         }
         if (!cancelled) setStatus('ready')
@@ -127,7 +130,7 @@ export function OfficePreview({
             <span className="break-all text-[11px] opacity-70">{error}</span>
           </div>
         ) : null}
-        <div ref={hostRef} className="mx-auto w-fit" />
+        <div ref={hostRef} className={kind === 'docx' ? 'w-full' : 'mx-auto w-fit'} />
         {kind === 'xlsx' && sheets ? (
           <div className="flex flex-col gap-5 pb-6">
             {sheets.map((sheet) => (
@@ -136,7 +139,7 @@ export function OfficePreview({
                   {sheet.name}
                 </h3>
                 <div className="overflow-auto rounded border">
-                  <table className="border-collapse text-xs">
+                  <table className="w-full border-collapse text-xs">
                     <tbody>
                       {sheet.rows.map((row, rowIndex) => (
                         <tr key={rowIndex}>
