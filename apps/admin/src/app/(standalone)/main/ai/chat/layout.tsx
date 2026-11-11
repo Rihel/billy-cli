@@ -35,7 +35,6 @@ import {
 } from "@repo/ui/components/ui/resizable.tsx";
 import {
   LayoutDashboardIcon,
-  MessagesSquareIcon,
   PanelLeftCloseIcon,
   PanelLeftOpenIcon,
   PencilIcon,
@@ -46,6 +45,7 @@ import { Pages } from "@/lib/constants";
 import { useServerClient } from "@/lib/server-client";
 import { relativeTimeText } from "./format";
 import { conversationPath, newConversationPath, CHAT_ROOT } from "./routes";
+import { ChatMobileNavContext } from "./mobile-nav-context";
 
 /**
  * 会话页的**外层壳**：左侧会话列表（库里的真相），右侧对话区。
@@ -200,7 +200,8 @@ export default function ChatLayout({ children }: { children: ReactNode }) {
   };
 
   return (
-    <>
+    <ChatMobileNavContext.Provider value={{ openConversations: () => setMobileListOpen(true) }}>
+      <>
       <ResizablePanelGroup orientation="horizontal" className="h-full w-full">
         {/* 左：会话列表（拖右缘改宽度）。面板自身不滚动 —— 滚动交给列表，否则会出现第二条滚动条 */}
         {isMobile ? null : (
@@ -437,14 +438,6 @@ export default function ChatLayout({ children }: { children: ReactNode }) {
       {/* 手机端会话列表：独立布局没有管理台侧栏，必须给一个入口 */}
       {isMobile ? (
         <>
-          <Button
-            type="button"
-            className="fixed bottom-24 left-3 z-40 gap-1.5 shadow-lg"
-            onClick={() => setMobileListOpen(true)}
-          >
-            <MessagesSquareIcon className="size-4" />
-            会话
-          </Button>
           <Sheet open={mobileListOpen} onOpenChange={setMobileListOpen}>
             <SheetContent side="left" className="flex w-[86vw] max-w-sm flex-col p-0">
               <SheetHeader className="shrink-0 border-b px-4 py-3">
@@ -520,6 +513,7 @@ export default function ChatLayout({ children }: { children: ReactNode }) {
         ]}
         onCancel={renameDialog.close}
       />
-    </>
+      </>
+    </ChatMobileNavContext.Provider>
   );
 }

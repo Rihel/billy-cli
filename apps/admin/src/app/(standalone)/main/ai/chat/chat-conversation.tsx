@@ -52,9 +52,10 @@ import {
   PromptInputTextarea,
   PromptInputTools,
 } from '@repo/ui/components/ai-elements/prompt-input.tsx'
-import { BotIcon, CopyIcon, LayoutDashboardIcon, PanelRightIcon } from 'lucide-react'
+import { BotIcon, CopyIcon, LayoutDashboardIcon, MessagesSquareIcon, PanelRightIcon } from 'lucide-react'
 import { Pages } from '@/lib/constants'
 import { useServerClient } from '@/lib/server-client'
+import { useChatMobileNav } from './mobile-nav-context'
 import { ModelPicker } from './model-picker'
 import { ChatMessage } from './message-row'
 import {
@@ -230,6 +231,7 @@ export function ChatConversation({ conversationId }: { conversationId: string })
   /** 手机端右栏是全屏 Sheet，不和桌面分栏共用 panelOpen（桌面 localStorage 可能为 true） */
   const [mobilePanelOpen, setMobilePanelOpen] = useState(false)
   const isMobile = useIsMobile()
+  const mobileNav = useChatMobileNav()
 
   useEffect(() => {
     setMobilePanelOpen(false)
@@ -863,6 +865,16 @@ export function ChatConversation({ conversationId }: { conversationId: string })
           aria-label="回到管理台"
           onClick={() => router.push(Pages.dashboard)}
         />
+        {isMobile && mobileNav ? (
+          <IconText
+            icon={<MessagesSquareIcon />}
+            size="small"
+            type="primary"
+            tooltip="会话列表"
+            aria-label="会话列表"
+            onClick={mobileNav.openConversations}
+          />
+        ) : null}
         <h1 className="min-w-0 flex-1 truncate font-heading text-base font-semibold sm:text-lg">
           {isNew ? '新会话' : conversationQuery.data?.title || '会话'}
         </h1>
