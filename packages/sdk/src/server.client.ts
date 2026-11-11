@@ -103,8 +103,8 @@ import {
   AgentFileAdminStatsDto,
   AgentFileAdminStatsModel,
   AgentFileAdminPreviewDto,
-  AgentFileBinaryDto,
-  AgentFileBinaryModel,
+  AgentFileLinkModel,
+  AgentFileWorkspaceLinkDto,
   AgentFilePreviewModel,
   AgentWorkspaceListModel,
   AgentConversationRenameDto,
@@ -453,6 +453,10 @@ export class ServerClient extends HttpClient<BearerTokenCredentials> {
         source?: 'ai' | 'workspace'
       }) => this.post<AgentFilePreviewModel>('/agent/file/preview', data),
 
+      /** 工作区文件 → 临时 OSS 对象链接；前端拿 url 直接 fetch */
+      workspaceLink: (data: AgentFileWorkspaceLinkDto) =>
+        this.post<AgentFileLinkModel>('/agent/file/workspace-link', data),
+
       /** 后台独立文件页：全量列表（管理员） */
       adminList: (data: AgentFileAdminListDto) =>
         this.post<AgentFileAdminListModel>('/agent/file/admin/list', data),
@@ -465,9 +469,6 @@ export class ServerClient extends HttpClient<BearerTokenCredentials> {
       adminPreview: (data: AgentFileAdminPreviewDto) =>
         this.post<AgentFilePreviewModel>('/agent/file/admin/preview', data),
 
-      /** 文件原始字节（base64）：PPTX 前端渲染器用 */
-      binary: (data: AgentFileBinaryDto) =>
-        this.post<AgentFileBinaryModel>('/agent/file/binary', data),
 
       workspaceContentUrl: (data: {
         conversationId: string

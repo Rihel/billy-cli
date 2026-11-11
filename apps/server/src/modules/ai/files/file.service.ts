@@ -9,8 +9,6 @@ import {
   type AgentFileAdminListModel,
   type AgentFileAdminQueryDto,
   type AgentFileAdminStatsModel,
-  type AgentFileBinaryDto,
-  type AgentFileBinaryModel,
   type AgentFileModel,
   type AgentFileNode,
   type ChatAttachmentModel,
@@ -21,6 +19,7 @@ import type { ToolEnvCaps } from '../core/tools/tools.types.js'
 import {
   conversationWorkspace,
   displayName,
+  extensionOf,
   isTextFile,
   mediaTypeOf,
   normalizeFileKey,
@@ -711,67 +710,42 @@ export class FileService {
   }
 
   /**
-   * 读文件原始字节（base64）：前端 PPTX 等第三方渲染器需要 ArrayBuffer。
+   * 工作区文件 → 临时 OSS 对象 → 预签名链接。
    *
-   * 管理员可按 fileId 读任意会话；普通用户按 conversationId + path 读自己的。
-   * 工作区文件从本地盘读，会话文件从对象存储读。
+   * 前端直接 fetch 这个 URL 拿文件流，不再让后端转发字节；工作区是本地盘，
+   * 必须先物化成对象存储对象，才有「链接可给」。临时对象放在 `_preview/` 前缀，
+   * 由桶生命周期清理（不在请求路径里删，避免预览中的链接失效）。
    */
-  async binary(ctx: FileContext, input: AgentFileBinaryDto): Promise<AgentFileBinaryModel> {
+  async workspaceLink(
+    ctx: FileContext,
+    input: { conversationId: string; path: string },
+  ): Promise<{ url: string; mediaType: string; filename: string; bytes: number }> {
     const config = this.configOf(ctx)
-
-    if (input.fileId) {
-      if (!ctx.isAdmin) throw new ToolDeniedError('forbidden', '只有管理员可以按 fileId 读取文件')
-      const row = await this.files.findById(input.fileId)
-      if (!row) throw new ToolDeniedError('forbidden', '文件不存在')
-      if (row.bytes > config.maxBytes) {
-        throw new ToolDeniedError('invalid-input', '文件超过单文件上限')
-      }
-      const object = await this.storage.getObject({ key: row.key })
-      return {
-        base64: object.body.toString('base64'),
-        mediaType: row.mediaType,
-        filename: row.filename,
-        bytes: object.body.length,
-      }
-    }
-
-    if (!input.conversationId || !input.path) {
-      throw new ToolDeniedError('invalid-input', '缺少 conversationId + path')
-    }
-    if (input.source === 'workspace') {
-      const target = await resolveWorkspacePath({
-        caps: this.caps,
-        conversationId: input.conversationId,
-        path: input.path,
-      })
-      const info = await stat(target)
-      if (!info.isFile()) throw new ToolDeniedError('invalid-input', '不是普通文件')
-      if (info.size > config.maxBytes) {
-        throw new ToolDeniedError('invalid-input', '文件超过单文件上限')
-      }
-      const body = await readFile(target)
-      return {
-        base64: body.toString('base64'),
-        mediaType: mediaTypeOf(target),
-        filename: displayName(input.path),
-        bytes: body.length,
-      }
-    }
-
-    const row = await this.files.find(input.conversationId, input.path)
-    if (!row) throw new ToolDeniedError('forbidden', '本会话没有这个文件')
-    if (row.bytes > config.maxBytes) {
+    const target = await resolveWorkspacePath({
+      caps: this.caps,
+      conversationId: input.conversationId,
+      path: input.path,
+    })
+    const info = await stat(target)
+    if (!info.isFile()) throw new ToolDeniedError('invalid-input', '不是普通文件')
+    if (info.size > config.maxBytes) {
       throw new ToolDeniedError('invalid-input', '文件超过单文件上限')
     }
-    const object = await this.storage.getObject({ key: row.key })
-    return {
-      base64: object.body.toString('base64'),
-      mediaType: row.mediaType,
-      filename: row.filename,
-      bytes: object.body.length,
-    }
+
+    const body = await readFile(target)
+    const digest = sha256(body)
+    const extension = extensionOf(input.path)
+    const owner = ctx.isAdmin ? 'admin' : ctx.userId ? `user/${ctx.userId}` : 'system'
+    // 用内容哈希做 key：同一工作区文件重复预览不会堆出无限临时对象
+    const key = `${owner}/${input.conversationId}/_preview/${digest}${extension ? `.${extension}` : ''}`
+    const mediaType = mediaTypeOf(target)
+    const filename = displayName(input.path)
+    await this.storage.putObject({ key, body, contentType: mediaType })
+    const { url } = await this.storage.getDownloadUrl({ key, filename })
+    return { url, mediaType, filename, bytes: body.length }
   }
 
+  /** 管理员预览：按文件 id 读任意会话的文本（不要求会话归属） */
   /** 管理员预览：按文件 id 读任意会话的文本（不要求会话归属） */
   async adminPreview(fileId: string): Promise<{ text: string; mediaType: string; truncated: boolean }> {
     const row = await this.files.findById(fileId)

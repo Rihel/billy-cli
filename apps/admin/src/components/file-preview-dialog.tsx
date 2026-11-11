@@ -13,7 +13,7 @@ import {
 } from '@repo/ui'
 import { ChevronLeftIcon, ChevronRightIcon, DownloadIcon } from 'lucide-react'
 import { SandboxFrame } from '@repo/ui/components/ai-elements/markdown-fences/sandbox-frame.tsx'
-import { PptxPreview } from '@/components/pptx-preview'
+import { OfficePreview, type OfficeKind } from '@/components/office-preview'
 
 /** 预览弹窗里一份文件的最小视图模型（不绑定会话 / 后台某一种列表） */
 export interface PreviewDialogItem {
@@ -54,19 +54,23 @@ const isHtml = (item: PreviewDialogItem): boolean =>
 const isMarkdown = (item: PreviewDialogItem): boolean =>
   item.mediaType === 'text/markdown' || ['md', 'markdown'].includes(extOf(item.filename))
 
-const PPTX_MEDIA_TYPE =
-  'application/vnd.openxmlformats-officedocument.presentationml.presentation'
-
-export const isPptx = (item: Pick<PreviewDialogItem, 'filename' | 'mediaType'>): boolean =>
-  item.mediaType === PPTX_MEDIA_TYPE || extOf(item.filename) === 'pptx'
-
-/** base64 → ArrayBuffer（PPTX 渲染器只吃二进制） */
-export const base64ToArrayBuffer = (base64: string): ArrayBuffer => {
-  const binary = atob(base64)
-  const bytes = new Uint8Array(binary.length)
-  for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index)
-  return bytes.buffer
+const OFFICE_TYPES: Record<string, OfficeKind> = {
+  docx: 'docx',
+  xlsx: 'xlsx',
+  xls: 'xlsx',
+  pptx: 'pptx',
 }
+
+const OFFICE_MEDIA_TYPES: Record<string, OfficeKind> = {
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'docx',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': 'xlsx',
+  'application/vnd.ms-excel': 'xlsx',
+  'application/vnd.openxmlformats-officedocument.presentationml.presentation': 'pptx',
+}
+
+export const officeKind = (
+  item: Pick<PreviewDialogItem, 'filename' | 'mediaType'>,
+): OfficeKind | null => OFFICE_MEDIA_TYPES[item.mediaType] ?? OFFICE_TYPES[extOf(item.filename)] ?? null
 
 /**
  * 通用文件预览弹窗：左侧文件清单 + 顶部上一个 / 下一个 + 全屏内容。
@@ -189,8 +193,13 @@ export function FilePreviewDialog({
                 : 'min-h-0 flex-1 overflow-auto p-4'
             }
           >
-            {isPptx(current) && current.loadBytes ? (
-              <PptxPreview key={current.id} loadBytes={current.loadBytes} filename={current.filename} />
+            {officeKind(current) && current.loadBytes ? (
+              <OfficePreview
+                key={current.id}
+                kind={officeKind(current)!}
+                loadBytes={current.loadBytes}
+                filename={current.filename}
+              />
             ) : html ? (
               loading ? (
                 <Empty text="正在读取…" />

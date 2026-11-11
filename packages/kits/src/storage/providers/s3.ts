@@ -3,6 +3,7 @@ import {
   DeleteObjectCommand,
   GetObjectCommand,
   HeadBucketCommand,
+  PutBucketCorsCommand,
   PutBucketPolicyCommand,
   PutObjectCommand,
   S3Client,
@@ -48,7 +49,7 @@ export const makeS3Provider = (
       s3 = new S3Client({ ...options, forcePathStyle: true })
       sts = new STSClient(options)
       yieldUnused(logger)
-      await ensurePublicReadBucket(s3, config.bucket)
+      await ensurePublicReadBucket(s3, config.bucket, logger)
       logger.info('S3 object storage initialized')
     },
     async getObject({ key }) {
@@ -133,7 +134,7 @@ export const makeS3Provider = (
 
 const yieldUnused = (_value: unknown) => undefined
 
-const ensurePublicReadBucket = async (s3: S3Client, bucket: string) => {
+const ensurePublicReadBucket = async (s3: S3Client, bucket: string, logger: AppLogger) => {
   try {
     await s3.send(new HeadBucketCommand({ Bucket: bucket }))
   } catch (cause: unknown) {
@@ -158,6 +159,32 @@ const ensurePublicReadBucket = async (s3: S3Client, bucket: string) => {
       }),
     }),
   )
+
+  // 前端直连 OSS 拿文件流（Office / PPTX 预览）需要桶 CORS；没有它 fetch 会被浏览器拦。
+  // 只开放 GET / HEAD，且桶本身已是 public-read，这里不扩大对象权限。
+  try {
+    await s3.send(
+      new PutBucketCorsCommand({
+        Bucket: bucket,
+        CORSConfiguration: {
+          CORSRules: [
+            {
+              AllowedOrigins: ['*'],
+              AllowedMethods: ['GET', 'HEAD'],
+              AllowedHeaders: ['*'],
+              ExposeHeaders: ['ETag', 'Content-Length', 'Content-Range'],
+              MaxAgeSeconds: 86400,
+            },
+          ],
+        },
+      }),
+    )
+  } catch (error) {
+    logger.warn('S3 CORS 配置失败，前端直连 OSS 可能被浏览器拦截', {
+      bucket,
+      error: error instanceof Error ? error.message : String(error),
+    })
+  }
 }
 
 /** 下载头的文件名清洗：去掉 CR/LF / 引号 / 反斜杠，防 header 注入 */

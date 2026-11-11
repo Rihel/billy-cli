@@ -163,23 +163,22 @@ export type AgentFileAdminListDto = z.infer<typeof AgentFileAdminListSchema>
 export const AgentFileAdminStatsSchema = AgentFileAdminQuerySchema
 export type AgentFileAdminStatsDto = z.infer<typeof AgentFileAdminStatsSchema>
 
-/** 文件原始字节（PPTX 等前端渲染器需要 ArrayBuffer）：管理员按 fileId，会话按 path/source */
-export const AgentFileBinarySchema = z.object({
-  fileId: z.string().min(1).max(32).optional(),
-  conversationId: z.string().min(1).max(32).optional(),
-  path: z.string().min(1).max(1024).optional(),
-  source: z.enum(['ai', 'workspace']).optional().default('ai'),
+/** 工作区文件生成临时对象存储链接（前端直接 fetch OSS，不经过后端下载转发） */
+export const AgentFileWorkspaceLinkSchema = z.object({
+  conversationId: z.string().min(1).max(32),
+  path: z.string().min(1).max(1024),
 })
-export type AgentFileBinaryDto = z.infer<typeof AgentFileBinarySchema>
+export type AgentFileWorkspaceLinkDto = z.infer<typeof AgentFileWorkspaceLinkSchema>
 
-export const AgentFileBinaryModelSchema = z.object({
-  base64: z.string(),
+export const AgentFileLinkModelSchema = z.object({
+  url: z.string(),
   mediaType: z.string(),
   filename: z.string(),
   bytes: z.number().int().nonnegative(),
 })
-export type AgentFileBinaryModel = z.infer<typeof AgentFileBinaryModelSchema>
+export type AgentFileLinkModel = z.infer<typeof AgentFileLinkModelSchema>
 
+/** 管理员预览：按文件 id 取文本内容（任意会话） */
 /** 管理员预览：按文件 id 取文本内容（任意会话） */
 export const AgentFileAdminPreviewSchema = z.object({
   fileId: z.string().min(1).max(32),

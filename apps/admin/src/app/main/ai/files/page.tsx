@@ -27,9 +27,8 @@ import {
 import { useServerClient } from '@/lib/server-client'
 import {
   FilePreviewDialog,
-  base64ToArrayBuffer,
-  isPptx,
   isPreviewTextItem,
+  officeKind,
 } from '@/components/file-preview-dialog'
 
 /**
@@ -90,10 +89,15 @@ export default function AiFilesPage() {
         mediaType: file.mediaType,
         bytes: file.bytes,
         url: resolveUrl(file.key),
-        loadBytes: isPptx(file)
+        loadBytes: officeKind(file)
           ? async () => {
-              const result = await client.agent.file.binary({ fileId: file.id, source: 'ai' })
-              return base64ToArrayBuffer(result.base64)
+              const { url } = await client.storage.getDownloadUrl({
+                key: file.key,
+                filename: file.filename,
+              })
+              const response = await fetch(url)
+              if (!response.ok) throw new Error(`对象存储读取失败（HTTP ${response.status}）`)
+              return response.arrayBuffer()
             }
           : undefined,
       })),

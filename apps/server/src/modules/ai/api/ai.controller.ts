@@ -46,9 +46,9 @@ import {
   type AgentFileAdminListDto,
   type AgentFileAdminStatsDto,
   type AgentFileAdminPreviewDto,
-  type AgentFileBinaryDto,
+  type AgentFileWorkspaceLinkDto,
   AgentFileAdminPreviewSchema,
-  AgentFileBinarySchema,
+  AgentFileWorkspaceLinkSchema,
   AgentFileAdminListSchema,
   AgentFileAdminStatsSchema,
 } from '@repo/shared'
@@ -328,18 +328,15 @@ export class AiController {
     return this.timelines.list(this.ownerId(), input)
   }
 
-  /** 文件原始字节（base64）：PPTX 等前端渲染器需要 ArrayBuffer */
-  @Post('file/binary')
+  /** 工作区文件 → 临时 OSS 链接：前端直接 fetch，不经过后端下载转发 */
+  @Post('file/workspace-link')
   @HttpCode(200)
-  async fileBinary(@Body({ schema: AgentFileBinarySchema }) input: AgentFileBinaryDto) {
-    if (input.fileId) {
-      if (!this.isAdminIdentity()) throw new ForbiddenException('只有管理员可以按 fileId 读取文件')
-    } else {
-      if (!input.conversationId) throw new BadRequestException('缺少 conversationId')
-      await this.conversations.requireOwned(this.ownerId(), input.conversationId)
-    }
+  async fileWorkspaceLink(
+    @Body({ schema: AgentFileWorkspaceLinkSchema }) input: AgentFileWorkspaceLinkDto,
+  ) {
+    await this.conversations.requireOwned(this.ownerId(), input.conversationId)
     try {
-      return await this.files.binary(this.fileContext(input.conversationId ?? ''), input)
+      return await this.files.workspaceLink(this.fileContext(input.conversationId), input)
     } catch (error) {
       this.rethrowFileError(error)
     }

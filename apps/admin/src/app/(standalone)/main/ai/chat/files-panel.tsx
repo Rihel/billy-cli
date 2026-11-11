@@ -14,9 +14,8 @@ import {
 import type { ServerClient } from './data'
 import {
   FilePreviewDialog,
-  base64ToArrayBuffer,
-  isPptx,
   isPreviewTextItem,
+  officeKind,
 } from '@/components/file-preview-dialog'
 import { formatFileSize } from './attachment-utils'
 
@@ -123,14 +122,21 @@ export function FilesPanel({
     mediaType: target.mediaType,
     bytes: target.bytes,
     url: previewUrl(target),
-    loadBytes: isPptx(target)
+    loadBytes: officeKind(target)
       ? async () => {
-          const result = await client.agent.file.binary({
-            conversationId: conversationId as string,
-            path: target.path,
-            source: target.source,
-          })
-          return base64ToArrayBuffer(result.base64)
+          const link =
+            target.source === 'ai'
+              ? await client.storage.getDownloadUrl({
+                  key: target.key!,
+                  filename: target.filename,
+                })
+              : await client.agent.file.workspaceLink({
+                  conversationId: conversationId as string,
+                  path: target.path,
+                })
+          const response = await fetch(link.url)
+          if (!response.ok) throw new Error(`对象存储读取失败（HTTP ${response.status}）`)
+          return response.arrayBuffer()
         }
       : undefined,
   }))

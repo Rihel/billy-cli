@@ -22,6 +22,27 @@ export const makeCosProvider = (
         SecretKey: config.secretAccessKey,
       })
       logger.info('COS object storage initialized')
+      // 前端直连 OSS 拿文件流（Office / PPTX 预览）需要桶 CORS；失败只告警不拦启动
+      try {
+        await client.putBucketCors({
+          Bucket: config.bucket,
+          Region: config.region,
+          CORSRules: [
+            {
+              AllowedOrigin: ['*'],
+              AllowedMethod: ['GET', 'HEAD'],
+              AllowedHeader: ['*'],
+              ExposeHeader: ['ETag', 'Content-Length', 'Content-Range'],
+              MaxAgeSeconds: 86400,
+            },
+          ],
+        })
+      } catch (error) {
+        logger.warn('COS CORS 配置失败，前端直连 OSS 可能被浏览器拦截', {
+          bucket: config.bucket,
+          error: error instanceof Error ? error.message : String(error),
+        })
+      }
     },
     async getObject({ key }) {
       const response = await client.getObject({
