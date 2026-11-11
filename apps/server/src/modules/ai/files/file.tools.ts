@@ -28,10 +28,11 @@ import { FileService, type FileContext } from './file.service.js'
  * - 对象存储：`file-submit` / `file-download` / `file-list`；
  * - workspace：`read-file` / `file-search` / `workspace-files` / `write-file` / `replace-file` / `append-file`。
  *
- * 组级 `child: 'deny'`：子 agent 不做文件读写，父 agent 统一处理（工作区是共享的）。
+ * 子 agent 也可以使用这组工具（工作区是共享的）：父 agent 负责给每个子助手分配不同文件，
+ * 避免并发覆盖；工具本身不提供跨 run 的文件锁。
  */
 @Injectable()
-@ToolGroup({ category: 'core', scope: 'all', child: 'deny' })
+@ToolGroup({ category: 'core', scope: 'all' })
 export class FileTools {
   constructor(
     @Inject(FileService) private readonly files: FileService,

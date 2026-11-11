@@ -322,12 +322,12 @@ AGENT_COMMAND_WORK_DIR=~/.billy/workspaces        # 所有会话的根（历史�
 
 ```ts
 @Injectable()
-@ToolGroup({ category: 'core', scope: 'all', child: 'deny' })
+@ToolGroup({ category: 'core', scope: 'all' })
 export class FileTools { … }
 ```
 
 - `scope: 'all'`：用户与管理员会话都能用；
-- `child: 'deny'`：子 agent 不用这组工具（工作区是共享的，父 agent 统一读写；要放开改一个字段）；
+- 子 agent 也可以使用这组工具（工作区是共享的；父 agent 负责给不同子助手分配不同文件，工具不提供跨 run 文件锁）；
 - `file-submit` / `file-download` / `file-list` 只碰本会话的 `ai_files`；
 - `workspace-files` 只列 workspace 文件，不查 `ai_files`；
 - `read-file` / `write-file` / `replace-file` / `append-file` 只碰 **workspace 内**的路径；
@@ -600,7 +600,7 @@ const AppendFileInput = z.object({
    `当前大小 + 追加内容 <= maxBytes`；
 2. `mkdir -p` 父目录；`appendFile`；权限 `0o600`；
 3. 返回 `{ path, bytes, lines, created }`；
-4. 并发：子 agent 不用这组工具（`child: 'deny'`），同一 agent 的追加是顺序的；不保证多进程并发追加的原子性。
+4. 并发：子 agent 也可以用这组工具；同一 agent 的追加是顺序的，但不同 run 写同一个文件不保证原子性，父 agent 需要分配独立路径。
 
 **描述**
 
@@ -1091,7 +1091,7 @@ window.location.href = url
 
 - `test/ai-tools-battery.test.ts` 的 `groups` 加 `FileTools`；
 - `VALID_INPUT_TEMPLATES` 加九个 key 的合法入参（漏加会红）；
-- 说明文本 ≤380 字符、`config.parse({})` 默认值齐全、`child: 'deny'`。
+- 说明文本 ≤380 字符、`config.parse({})` 默认值齐全；子 agent 可用（没有 `child: 'deny'`）。
 
 ### 12.3 集成 / e2e
 

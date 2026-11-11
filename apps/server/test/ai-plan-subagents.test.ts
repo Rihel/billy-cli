@@ -575,6 +575,20 @@ describe('子 agent（core bean + 运行期动态创建）', () => {
     expect(childKeys).toContain(TOOL_KEYS.bash)
     // 关键：子 agent 拿不到委派工具 → 递归在**能力上**不可能，不靠提示词自律
     expect(childKeys).not.toContain(MOCK_DELEGATE_TOOL)
+    // 文件工具给子 agent：子助手可以读工作区、写自己的交付文件
+    for (const key of [
+      TOOL_KEYS.fileList,
+      TOOL_KEYS.fileDownload,
+      TOOL_KEYS.readFile,
+      TOOL_KEYS.fileSearch,
+      TOOL_KEYS.workspaceFiles,
+      TOOL_KEYS.writeFile,
+      TOOL_KEYS.replaceFile,
+      TOOL_KEYS.appendFile,
+      TOOL_KEYS.fileSubmit,
+    ]) {
+      expect(childKeys).toContain(key)
+    }
     // `child: 'deny'` 的工具同样不给（四个规划工具都只给主 agent，子助手把结论交回即可）
     for (const key of PLAN_KEYS) expect(childKeys).not.toContain(key)
   })
