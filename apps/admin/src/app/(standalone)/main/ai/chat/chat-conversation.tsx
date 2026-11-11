@@ -434,7 +434,7 @@ export function ChatConversation({ conversationId }: { conversationId: string })
    */
   const sessionStore = useChatSessionStore()
 
-  const { messages, sendMessage, status, stop, setMessages, error, clearError } = useChat({
+  const { messages, sendMessage, status, stop, setMessages, error, clearError, resumeStream } = useChat({
     // 实例 id 整个组件生命周期稳定；换会话由页面 key 重挂载来隔离
     id: chatIdRef.current,
     transport,
@@ -544,6 +544,31 @@ export function ChatConversation({ conversationId }: { conversationId: string })
 
   // 续跑也算"在跑"：它不走 `useChat` 的发送通道，`status` 不会自己变成 streaming
   const streaming = status === 'streaming' || status === 'submitted' || resuming
+
+  /**
+   * 服务端还在跑、但本地流已经断了（典型：回答挂起问题后续跑流断开 / 页面被切走又回来）
+   * 时，DB 的 `running` 才是事实。这里轮询详情，发现 running 就调一次 `resumeStream()`
+   * 接回 Redis 输出记录；成功后续跑流会把 streaming 顶起来。
+   */
+  const activeRunQuery = useQuery({
+    queryKey: ['ai', 'active-run', conversationId],
+    queryFn: () => client.agent.conversation.detail({ conversationId }),
+    enabled: !isNew && !streaming,
+    refetchInterval: (query) => (query.state.data?.running ? 2000 : false),
+  })
+  const reconnectedFor = useRef<string | null>(null)
+  useEffect(() => {
+    if (isNew || streaming || !activeRunQuery.data?.running) {
+      if (!activeRunQuery.data?.running) reconnectedFor.current = null
+      return
+    }
+    if (reconnectedFor.current === conversationId) return
+    reconnectedFor.current = conversationId
+    void resumeStream().finally(() => {
+      // 204 / 没有可补发的流：允许下一轮轮询再试；成功时 streaming 会接管
+      reconnectedFor.current = null
+    })
+  }, [activeRunQuery.data?.running, conversationId, isNew, resumeStream, streaming])
 
   /**
    * 右栏「子 agent」要用的**实时过程**：从最后一条含子助手块的消息里收（见 `sub-agent-live.ts`）。

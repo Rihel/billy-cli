@@ -1636,6 +1636,19 @@ export class AgentChatService {
 
       // 挂起期间状态是 suspended；续跑开始先回到 running（占用会话，防止同会话另一轮插进来）
       await this.runs.markRunning(run.id, run.engineRunId);
+      /**
+       * 续跑也必须登记 Redis 输出记录：否则客户端断开 / 刷新后 `/agent/run/stream`
+       * 找不到进度键，只能回 204 —— 服务端还在跑，页面却显示空闲。
+       */
+      const streamId = `${run.id}-${Date.now()}-resume`
+      await this.runs.setActiveStream(run.id, streamId)
+      await this.streamStore.startRun(run.id, {
+        status: RunStatus.Running,
+        stage: 'generating',
+        streamId,
+        offset: 0,
+        step: 0,
+      })
 
       const requestContext = await this.buildRuntimeContext(
         conversation.id,
@@ -1724,6 +1737,8 @@ export class AgentChatService {
           const outgoing = toClientToolChunk(recordedChunk);
           writeSse(response, sseFrame(outgoing));
           await recorder.consume(recordedChunk);
+          await this.streamStore.appendChunk(run.id, outgoing);
+          await this.streamStore.publishChunk(run.id, outgoing);
           if (suspendedAgain) break;
         }
       };
@@ -1800,6 +1815,8 @@ export class AgentChatService {
           durationMs: (run.durationMs ?? 0) + (Date.now() - startedAt),
         });
         await this.runs.setActiveStream(run.id, null);
+        await this.streamStore.publishChunk(run.id, { type: STREAM_END_MARKER });
+        await this.streamStore.clearRun(run.id);
         stopHeartbeat();
         writeSse(response, 'data: [DONE]\n\n');
         endSse(response);
@@ -1817,6 +1834,8 @@ export class AgentChatService {
         durationMs,
       });
       await this.runs.setActiveStream(run.id, null);
+      await this.streamStore.publishChunk(run.id, { type: STREAM_END_MARKER });
+      await this.streamStore.clearRun(run.id);
       await this.conversationRepo.accumulate(conversation.id, totalTokensOf(usage));
       stopHeartbeat();
       writeSse(response, 'data: [DONE]\n\n');
@@ -1862,6 +1881,8 @@ export class AgentChatService {
         this.logger.error('ai.stream.resume_failed', { runId: run.id, reason });
       }
       await this.runs.setActiveStream(run.id, null);
+      await this.streamStore.publishChunk(run.id, { type: STREAM_END_MARKER });
+      await this.streamStore.clearRun(run.id);
       if (!streamStarted) throw error;
       writeSse(response, 'data: [DONE]\n\n');
       endSse(response);
