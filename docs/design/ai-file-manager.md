@@ -101,7 +101,7 @@ AI 的"交付物"可能是文件、网页链接、一段文本，也可能是**�
 | 前端 | 右栏「文件」两个视图（会话文件 / 工作区）+ 工具卡 | 生命周期不同不能混树；工具卡负责"刚提交的这一份" |
 | `content` 直传文本 | **本期不做** | 工具参数保持一种形状（`filePath` + `fileKey`）；`bash` 关闭时的文本文件列为后续扩展 |
 | 版本管理 | **本期不做** | 覆盖语义已满足"最新文件"；要回滚把版本号拼进 `fileKey` |
-| Office 在线预览 | **本期不做** | docx / xlsx / pptx 只给下载；转 PDF 是另一条渲染链路 |
+| Office 在线预览 | **PPTX 已做** | `.pptx` 走 `pptx-preview` 前端渲染；docx / xlsx / 老 `.ppt` 仍只给下载 |
 | 入站附件进 `ai_files` | **做** | `source='user'` 引用已有对象；删会话只软删行、不删共享对象；配额按会话计（§1.5） |
 
 ## 3. 数据模型
@@ -796,7 +796,7 @@ tab 内顶部用 segmented control 分两个视图 —— 两边的生命周期�
 - 默认隐藏 `files/`（下载缓存）与 `uploads/`（入站副本，已在会话文件里）；
   顶部 toggle「显示缓存 / 入站副本」才显示；
 - 图片 / PDF / 视频 / 音频按 §8.4 矩阵预览（走 §8.9 的 workspace-content 流）；
-  文本 / Markdown / 代码 / HTML 走 §8.7 的 `source='workspace'`；Office 只下载；
+  文本 / Markdown / 代码 / HTML 走 §8.7 的 `source='workspace'`；PPTX 前端渲染；Word / Excel 只下载；
 - 行内操作：预览 / 下载；下载的是临时副本，长期保留仍要 `file-submit` 到会话文件；
 - 顶部「刷新」按钮；每轮结束 / 文件工具结果后 invalidate `['agentWorkspace', conversationId]`；
 - 空态：「工作区还没有文件。AI 写文件后出现。」
@@ -819,7 +819,8 @@ tab 内顶部用 segmented control 分两个视图 —— 两边的生命周期�
 | **HTML（html / htm）** | **沙箱 iframe** | 复用 `SandboxFrame`：`allow-scripts`、**不带** `allow-same-origin`、CSP `default-src 'none'`；**不能**用普通 `<iframe src>` 直出 |
 | Markdown | Markdown 组件 | 文本走 §8.7 的预览接口，避免 CORS |
 | 代码 / 纯文本 / CSV / JSON | 只读 CodeMirror 或 `<pre>` | 只读，不提供编辑；文本走 §8.7 |
-| docx / xlsx / pptx | **只下载** | 转 PDF 是后续链路 |
+| pptx | `pptx-preview` 前端渲染 | 通过 §8.10 的 binary 接口拿 ArrayBuffer；`.ppt` 老格式仍下载 |
+| docx / xlsx | **只下载** | 转 PDF 是后续链路 |
 | 其他 | 只下载 | 显示"当前类型不支持在线预览" |
 
 **HTML 预览的三个前提**：
@@ -839,7 +840,7 @@ tab 内顶部用 segmented control 分两个视图 —— 两边的生命周期�
 等文件预览稳定后再删代码。
 
 以上矩阵对**会话文件**与**工作区**都适用：会话文件的图片 / 视频 / 音频 / PDF 用 `formatStorageUrl` 直链；
-工作区的二进制走 §8.9 的 workspace-content 流；HTML 两边都走文本沙箱；Office 只下载。
+工作区的二进制走 §8.9 的 workspace-content 流；HTML 两边都走文本沙箱；PPTX 走 binary + `pptx-preview`；Word / Excel 只下载。
 
 会话文件的图片 / 视频 / 音频 / PDF 预览地址用 `formatStorageUrl(key)`（桶是 public-read，直链即可；
 见 §9.3 的取舍）；HTML / Markdown / 代码走 §8.7 的文本接口。
@@ -917,6 +918,8 @@ Markdown / 代码 / CSV 的文本预览也走它，前端就不用为不同来�
   返回总数 / 总字节 / 用户上传与 AI 生成的条数与字节 / 涉及会话数；
 - `POST /agent/file/admin/preview`（`AdminAuthGuard`）：按 `fileId` 读任意会话的文本，
   给后台预览用（图片 / PDF / 视频 / 音频走对象存储 URL + `FilePreview`；HTML 走 `SandboxFrame`）；
+- `POST /agent/file/binary`（`AnyAuthGuard`）：管理员按 `fileId`、会话按 `conversationId + path + source`
+  读原始字节（base64，≤5MB），给 `pptx-preview` 这类必须自己吃 ArrayBuffer 的前端渲染器用；
 - 页面主体是 DataTable：文件名 + path、所属会话（可跳回聊天）、来源、大小、创建时间、
   预览 / 下载；时间范围用 `DateRangePicker`（`Calendar` + `Popover` 封装），不用原生 date input；
 - 预览弹窗：左侧当前文件清单（后台为当前页，聊天右栏为当前视图的全部文件），
@@ -1134,7 +1137,7 @@ pnpm typecheck && pnpm test && pnpm check:ui && pnpm check:inject && pnpm check:
 | `content` 直传文本 | 未做 | 工具参数保持 `filePath` + `fileKey` 一种形状；`bash` 关闭时的文本文件后续再加 |
 | 版本历史 | 未做 | 同 `path` 覆盖；要回滚把版本号拼进 `fileKey` |
 | 跨会话读取 / 文件中心 | 未做 | 只在本会话；跨会话要用户显式选择，不能让模型猜 |
-| Office 在线预览 | 未做 | 只下载；转 PDF 另起链路 |
+| Office 在线预览 | 部分 | PPTX 已用 `pptx-preview`；docx / xlsx / `.ppt` 仍只下载 |
 | 删除 / 撤回工具 | 未做 | 依赖会话删除或后续单独设计 |
 | 私有桶 | 未做 | 现状 public-read；要私有得改桶策略 + 全链路预签名 |
 | 大文件流式上传 | 未做 | 本期 Buffer ≤5MB；更大走流式 / 分片 |
@@ -1191,4 +1194,4 @@ pnpm typecheck && pnpm test && pnpm check:ui && pnpm check:inject && pnpm check:
 - 提示词：`requirements.eta` 加文件纪律；`html` 围栏 prompt 已退役（组件保留给历史消息，软退役）。
 - 测试：server 555 / admin 209 全绿；typecheck / check:ui / check:inject / check:mastra 全绿。
 - 已知缺口：`workspace-content` 依赖同站 cookie（跨站 fetch blob 兜底未做）；入站对象引用计数清理未做；
-  `workspace-files` 的 `total` 是本次返回数（截断时不是全量）；版本历史 / Office 预览未做。
+  `workspace-files` 的 `total` 是本次返回数（截断时不是全量）；版本历史 / Word / Excel 预览未做。

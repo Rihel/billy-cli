@@ -13,6 +13,7 @@ import {
 } from '@repo/ui'
 import { ChevronLeftIcon, ChevronRightIcon, DownloadIcon } from 'lucide-react'
 import { SandboxFrame } from '@repo/ui/components/ai-elements/markdown-fences/sandbox-frame.tsx'
+import { PptxPreview } from '@/components/pptx-preview'
 
 /** 预览弹窗里一份文件的最小视图模型（不绑定会话 / 后台某一种列表） */
 export interface PreviewDialogItem {
@@ -24,6 +25,8 @@ export interface PreviewDialogItem {
   bytes: number
   /** 可直接放进 FilePreview 的地址；文本类可以为 null */
   url: string | null
+  /** PPTX 渲染器需要原始字节；只有可渲染的 PPTX 才给 */
+  loadBytes?: () => Promise<ArrayBuffer>
 }
 
 const TEXT_EXTENSIONS = new Set([
@@ -50,6 +53,20 @@ const isHtml = (item: PreviewDialogItem): boolean =>
 
 const isMarkdown = (item: PreviewDialogItem): boolean =>
   item.mediaType === 'text/markdown' || ['md', 'markdown'].includes(extOf(item.filename))
+
+const PPTX_MEDIA_TYPE =
+  'application/vnd.openxmlformats-officedocument.presentationml.presentation'
+
+export const isPptx = (item: Pick<PreviewDialogItem, 'filename' | 'mediaType'>): boolean =>
+  item.mediaType === PPTX_MEDIA_TYPE || extOf(item.filename) === 'pptx'
+
+/** base64 → ArrayBuffer（PPTX 渲染器只吃二进制） */
+export const base64ToArrayBuffer = (base64: string): ArrayBuffer => {
+  const binary = atob(base64)
+  const bytes = new Uint8Array(binary.length)
+  for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index)
+  return bytes.buffer
+}
 
 /**
  * 通用文件预览弹窗：左侧文件清单 + 顶部上一个 / 下一个 + 全屏内容。
@@ -172,7 +189,9 @@ export function FilePreviewDialog({
                 : 'min-h-0 flex-1 overflow-auto p-4'
             }
           >
-            {html ? (
+            {isPptx(current) && current.loadBytes ? (
+              <PptxPreview key={current.id} loadBytes={current.loadBytes} filename={current.filename} />
+            ) : html ? (
               loading ? (
                 <Empty text="正在读取…" />
               ) : (

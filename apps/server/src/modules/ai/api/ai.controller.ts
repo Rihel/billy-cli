@@ -46,7 +46,9 @@ import {
   type AgentFileAdminListDto,
   type AgentFileAdminStatsDto,
   type AgentFileAdminPreviewDto,
+  type AgentFileBinaryDto,
   AgentFileAdminPreviewSchema,
+  AgentFileBinarySchema,
   AgentFileAdminListSchema,
   AgentFileAdminStatsSchema,
 } from '@repo/shared'
@@ -324,6 +326,23 @@ export class AiController {
   @HttpCode(200)
   listTimeline(@Body({ schema: AgentTimelineListSchema }) input: AgentTimelineListDto) {
     return this.timelines.list(this.ownerId(), input)
+  }
+
+  /** 文件原始字节（base64）：PPTX 等前端渲染器需要 ArrayBuffer */
+  @Post('file/binary')
+  @HttpCode(200)
+  async fileBinary(@Body({ schema: AgentFileBinarySchema }) input: AgentFileBinaryDto) {
+    if (input.fileId) {
+      if (!this.isAdminIdentity()) throw new ForbiddenException('只有管理员可以按 fileId 读取文件')
+    } else {
+      if (!input.conversationId) throw new BadRequestException('缺少 conversationId')
+      await this.conversations.requireOwned(this.ownerId(), input.conversationId)
+    }
+    try {
+      return await this.files.binary(this.fileContext(input.conversationId ?? ''), input)
+    } catch (error) {
+      this.rethrowFileError(error)
+    }
   }
 
   /** 后台独立文件页：全量文件列表（管理员；含所属会话标题） */

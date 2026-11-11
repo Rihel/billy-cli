@@ -12,7 +12,12 @@ import {
   RefreshCwIcon,
 } from 'lucide-react'
 import type { ServerClient } from './data'
-import { FilePreviewDialog, isPreviewTextItem } from '@/components/file-preview-dialog'
+import {
+  FilePreviewDialog,
+  base64ToArrayBuffer,
+  isPptx,
+  isPreviewTextItem,
+} from '@/components/file-preview-dialog'
 import { formatFileSize } from './attachment-utils'
 
 /**
@@ -118,6 +123,16 @@ export function FilesPanel({
     mediaType: target.mediaType,
     bytes: target.bytes,
     url: previewUrl(target),
+    loadBytes: isPptx(target)
+      ? async () => {
+          const result = await client.agent.file.binary({
+            conversationId: conversationId as string,
+            path: target.path,
+            source: target.source,
+          })
+          return base64ToArrayBuffer(result.base64)
+        }
+      : undefined,
   }))
 
   return (

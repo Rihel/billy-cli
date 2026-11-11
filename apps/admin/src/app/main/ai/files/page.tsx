@@ -27,6 +27,8 @@ import {
 import { useServerClient } from '@/lib/server-client'
 import {
   FilePreviewDialog,
+  base64ToArrayBuffer,
+  isPptx,
   isPreviewTextItem,
 } from '@/components/file-preview-dialog'
 
@@ -88,6 +90,12 @@ export default function AiFilesPage() {
         mediaType: file.mediaType,
         bytes: file.bytes,
         url: resolveUrl(file.key),
+        loadBytes: isPptx(file)
+          ? async () => {
+              const result = await client.agent.file.binary({ fileId: file.id, source: 'ai' })
+              return base64ToArrayBuffer(result.base64)
+            }
+          : undefined,
       })),
     [files, resolveUrl],
   )

@@ -9,6 +9,8 @@ import {
   type AgentFileAdminListModel,
   type AgentFileAdminQueryDto,
   type AgentFileAdminStatsModel,
+  type AgentFileBinaryDto,
+  type AgentFileBinaryModel,
   type AgentFileModel,
   type AgentFileNode,
   type ChatAttachmentModel,
@@ -706,6 +708,68 @@ export class FileService {
         created: !existing,
       }
     })
+  }
+
+  /**
+   * 读文件原始字节（base64）：前端 PPTX 等第三方渲染器需要 ArrayBuffer。
+   *
+   * 管理员可按 fileId 读任意会话；普通用户按 conversationId + path 读自己的。
+   * 工作区文件从本地盘读，会话文件从对象存储读。
+   */
+  async binary(ctx: FileContext, input: AgentFileBinaryDto): Promise<AgentFileBinaryModel> {
+    const config = this.configOf(ctx)
+
+    if (input.fileId) {
+      if (!ctx.isAdmin) throw new ToolDeniedError('forbidden', '只有管理员可以按 fileId 读取文件')
+      const row = await this.files.findById(input.fileId)
+      if (!row) throw new ToolDeniedError('forbidden', '文件不存在')
+      if (row.bytes > config.maxBytes) {
+        throw new ToolDeniedError('invalid-input', '文件超过单文件上限')
+      }
+      const object = await this.storage.getObject({ key: row.key })
+      return {
+        base64: object.body.toString('base64'),
+        mediaType: row.mediaType,
+        filename: row.filename,
+        bytes: object.body.length,
+      }
+    }
+
+    if (!input.conversationId || !input.path) {
+      throw new ToolDeniedError('invalid-input', '缺少 conversationId + path')
+    }
+    if (input.source === 'workspace') {
+      const target = await resolveWorkspacePath({
+        caps: this.caps,
+        conversationId: input.conversationId,
+        path: input.path,
+      })
+      const info = await stat(target)
+      if (!info.isFile()) throw new ToolDeniedError('invalid-input', '不是普通文件')
+      if (info.size > config.maxBytes) {
+        throw new ToolDeniedError('invalid-input', '文件超过单文件上限')
+      }
+      const body = await readFile(target)
+      return {
+        base64: body.toString('base64'),
+        mediaType: mediaTypeOf(target),
+        filename: displayName(input.path),
+        bytes: body.length,
+      }
+    }
+
+    const row = await this.files.find(input.conversationId, input.path)
+    if (!row) throw new ToolDeniedError('forbidden', '本会话没有这个文件')
+    if (row.bytes > config.maxBytes) {
+      throw new ToolDeniedError('invalid-input', '文件超过单文件上限')
+    }
+    const object = await this.storage.getObject({ key: row.key })
+    return {
+      base64: object.body.toString('base64'),
+      mediaType: row.mediaType,
+      filename: row.filename,
+      bytes: object.body.length,
+    }
   }
 
   /** 管理员预览：按文件 id 读任意会话的文本（不要求会话归属） */

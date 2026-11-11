@@ -103,6 +103,8 @@ import {
   AgentFileAdminStatsDto,
   AgentFileAdminStatsModel,
   AgentFileAdminPreviewDto,
+  AgentFileBinaryDto,
+  AgentFileBinaryModel,
   AgentFilePreviewModel,
   AgentWorkspaceListModel,
   AgentConversationRenameDto,
@@ -462,6 +464,10 @@ export class ServerClient extends HttpClient<BearerTokenCredentials> {
       /** 后台独立文件页：文本预览（管理员；任意会话） */
       adminPreview: (data: AgentFileAdminPreviewDto) =>
         this.post<AgentFilePreviewModel>('/agent/file/admin/preview', data),
+
+      /** 文件原始字节（base64）：PPTX 前端渲染器用 */
+      binary: (data: AgentFileBinaryDto) =>
+        this.post<AgentFileBinaryModel>('/agent/file/binary', data),
 
       workspaceContentUrl: (data: {
         conversationId: string

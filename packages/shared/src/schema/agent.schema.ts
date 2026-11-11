@@ -163,6 +163,23 @@ export type AgentFileAdminListDto = z.infer<typeof AgentFileAdminListSchema>
 export const AgentFileAdminStatsSchema = AgentFileAdminQuerySchema
 export type AgentFileAdminStatsDto = z.infer<typeof AgentFileAdminStatsSchema>
 
+/** 文件原始字节（PPTX 等前端渲染器需要 ArrayBuffer）：管理员按 fileId，会话按 path/source */
+export const AgentFileBinarySchema = z.object({
+  fileId: z.string().min(1).max(32).optional(),
+  conversationId: z.string().min(1).max(32).optional(),
+  path: z.string().min(1).max(1024).optional(),
+  source: z.enum(['ai', 'workspace']).optional().default('ai'),
+})
+export type AgentFileBinaryDto = z.infer<typeof AgentFileBinarySchema>
+
+export const AgentFileBinaryModelSchema = z.object({
+  base64: z.string(),
+  mediaType: z.string(),
+  filename: z.string(),
+  bytes: z.number().int().nonnegative(),
+})
+export type AgentFileBinaryModel = z.infer<typeof AgentFileBinaryModelSchema>
+
 /** 管理员预览：按文件 id 取文本内容（任意会话） */
 export const AgentFileAdminPreviewSchema = z.object({
   fileId: z.string().min(1).max(32),
