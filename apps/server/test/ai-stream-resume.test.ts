@@ -81,6 +81,31 @@ describe('resumeSafeChunks：补发不能从块中间开始', () => {
     expect(types(out)).toEqual(['start', 'tool-input-start', 'tool-input-delta'])
   })
 
+  it('offset 落在 tool output：把对应的 tool-input-available 补回来', () => {
+    const all = [
+      { type: 'start', messageId: 'm-1' },
+      {
+        type: 'tool-input-available',
+        toolCallId: 'call_01',
+        toolName: 'run-sub-agent',
+        input: { name: 'x' },
+      },
+      { type: 'tool-output-available', toolCallId: 'call_01', output: { ok: true } },
+    ]
+
+    const out = resumeSafeChunks(all, 3)
+    expect(types(out)).toEqual(['start', 'tool-input-available', 'tool-output-available'])
+  })
+
+  it('offset 只有孤立的 tool output：丢弃，避免 No tool invocation found', () => {
+    const all = [
+      { type: 'start', messageId: 'm-1' },
+      { type: 'tool-output-available', toolCallId: 'call_01', output: { ok: true } },
+    ]
+
+    expect(types(resumeSafeChunks(all, 1))).toEqual(['start'])
+  })
+
   it('offset 正好等于长度、最后一块仍在流式：回退到块开头', () => {
     const all = [
       { type: 'start', messageId: 'm-1' },

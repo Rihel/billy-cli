@@ -28,6 +28,8 @@ const OPENER_OF: Record<string, string> = {
   'text-delta': 'text-start',
   'text-end': 'text-start',
   'tool-input-delta': 'tool-input-start',
+  'tool-output-available': 'tool-input-available',
+  'tool-output-error': 'tool-input-available',
 }
 
 const idOf = (chunk: ResumeChunk | undefined): string =>
@@ -98,6 +100,7 @@ function ensureStarts(chunks: ResumeChunk[]): ResumeChunk[] {
   const openReasoning = new Set<string>()
   const openText = new Set<string>()
   const openToolInput = new Set<string>()
+  const availableTools = new Set<string>()
   const out: ResumeChunk[] = []
 
   const open = (set: Set<string>, id: string): boolean => {
@@ -144,8 +147,19 @@ function ensureStarts(chunks: ResumeChunk[]): ResumeChunk[] {
         out.push(chunk)
         break
       case 'tool-input-available':
+        openToolInput.delete(id)
+        availableTools.add(id)
+        out.push(chunk)
+        break
       case 'tool-input-error':
         openToolInput.delete(id)
+        out.push(chunk)
+        break
+      case 'tool-output-available':
+      case 'tool-output-error':
+        // 没有对应的 tool-input-available 时不能发 output：AI SDK 会报
+        // `No tool invocation found for tool call ID ...`。宁可不补这条结果，也不打挂整页。
+        if (!availableTools.has(id)) break
         out.push(chunk)
         break
       default:
