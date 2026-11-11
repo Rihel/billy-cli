@@ -1,4 +1,4 @@
-import type { UIMessage } from 'ai'
+import type { UIMessage, UIMessageChunk } from 'ai'
 import type { QuestionAnswer, SuspendedPartData } from './question-card'
 
 /**
@@ -23,6 +23,32 @@ export interface AnsweredPatch {
   /** 提交前那份挂起数据：续跑块不带问题原文时从这里补（可缺省） */
   suspendPayload?: SuspendedPartData['suspendPayload']
 }
+
+/**
+ * 把续跑流的 `start.messageId` **固定回原助手消息的 id**。
+ *
+ * 为什么必须做：续跑（`/agent/chat/resume`）在服务端是从挂起点继续，会以**新的 message id**
+ * 下发 `start` 块；而 AI SDK 的 `readUIMessageStream` 在 message id 变化时会**重置整条消息的 parts**。
+ * 于是界面上"回答完之后，这一轮前面的推理 / 工具卡 / 正文全没了"，只剩续跑之后的内容。
+ *
+ * 只改 `start` 的 id、不动其它块：续跑块本身仍然是"追加到这一轮后面"，
+ * 与历史重建（按 run 聚合成一条消息）看到的是同一份内容。
+ */
+export const pinResumeMessageId = (
+  stream: ReadableStream<UIMessageChunk>,
+  messageId: string,
+): ReadableStream<UIMessageChunk> =>
+  stream.pipeThrough(
+    new TransformStream<UIMessageChunk, UIMessageChunk>({
+      transform(chunk, controller) {
+        if (chunk.type === 'start' && chunk.messageId) {
+          controller.enqueue({ ...chunk, messageId })
+          return
+        }
+        controller.enqueue(chunk)
+      },
+    }),
+  )
 
 /**
  * 把消息里**这次问答**的挂起块改成只读问答记录。

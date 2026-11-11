@@ -88,7 +88,7 @@ import {
 } from '@repo/shared'
 import { z } from 'zod'
 import { lastRunUsage, loadWholeRuns, loadWholeTimeline } from './data'
-import { markSuspendedAnswered } from './resume-answer'
+import { markSuspendedAnswered, pinResumeMessageId } from './resume-answer'
 
 /** 附件上限的展示文案（与 `AgentChatSchema` 的常量同源，改一处就够） */
 const ATTACHMENT_LIMIT_TEXT = `单个附件不超过 ${formatFileSize(CHAT_ATTACHMENT_MAX_BYTES)}`
@@ -811,7 +811,10 @@ export function ChatConversation({ conversationId }: { conversationId: string })
             },
           }),
         )
-        for await (const updated of readUIMessageStream({ message: seed, stream: chunks })) {
+        // 续跑流若带新的 message id，SDK 会重置 parts（把这一轮前面的内容清掉）——
+        // 先把 start 的 id 钉回原消息，续跑内容才会**追加**而不是覆盖
+        const pinned = pinResumeMessageId(chunks, seed.id)
+        for await (const updated of readUIMessageStream({ message: seed, stream: pinned })) {
           // 续跑是同一轮的延长：id 必须保持不变，否则界面上会多出一条助手消息
           setMessages((current) =>
             current.map((message, index) =>

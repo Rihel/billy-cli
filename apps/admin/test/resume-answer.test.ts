@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import type { UIMessage } from 'ai'
-import { markSuspendedAnswered } from '../src/app/(standalone)/main/ai/chat/resume-answer.ts'
+import { readUIMessageStream } from 'ai'
+import type { UIMessage, UIMessageChunk } from 'ai'
+import { markSuspendedAnswered, pinResumeMessageId } from '../src/app/(standalone)/main/ai/chat/resume-answer.ts'
 
 /**
  * 回答完问题时的消息改写（纯逻辑，node 环境）。
@@ -22,6 +23,57 @@ const message = (parts: unknown[]): UIMessage =>
   ({ id: 'm1', role: 'assistant', parts }) as unknown as UIMessage
 
 const answers = [{ id: 'q1', value: '一周内' }]
+
+describe('pinResumeMessageId', () => {
+  const chunkStream = (chunks: UIMessageChunk[]): ReadableStream<UIMessageChunk> =>
+    new ReadableStream<UIMessageChunk>({
+      start(controller) {
+        for (const chunk of chunks) controller.enqueue(chunk)
+        controller.close()
+      },
+    })
+
+  it('把续跑流的 start.messageId 改回原消息 id', async () => {
+    const stream = pinResumeMessageId(
+      chunkStream([{ type: 'start', messageId: 'new' }, { type: 'finish', finishReason: 'stop' }]),
+      'seed',
+    )
+    const seen: string[] = []
+    for await (const chunk of stream) {
+      if (chunk.type === 'start') seen.push(chunk.messageId ?? '')
+    }
+    expect(seen).toEqual(['seed'])
+  })
+
+  it('续跑内容追加到原消息，而不是把前面的 parts 清空（用户看到的"timeline 消失"）', async () => {
+    const seed = {
+      id: 'seed',
+      role: 'assistant',
+      parts: [{ type: 'text', text: '回答之前的内容' }],
+    } as unknown as UIMessage
+    const chunks: UIMessageChunk[] = [
+      { type: 'start', messageId: 'resumed-page' },
+      { type: 'text-start', id: 't1' },
+      { type: 'text-delta', id: 't1', delta: '续跑之后的内容' },
+      { type: 'text-end', id: 't1' },
+      { type: 'finish', finishReason: 'stop' },
+    ]
+
+    let last: UIMessage | undefined
+    for await (const next of readUIMessageStream({
+      message: seed,
+      stream: pinResumeMessageId(chunkStream(chunks), seed.id),
+    })) {
+      last = next
+    }
+
+    const texts = (last?.parts ?? [])
+      .filter((part) => part.type === 'text')
+      .map((part) => (part as { text: string }).text)
+    expect(texts[0]).toBe('回答之前的内容')
+    expect(texts.some((text) => text.includes('续跑之后的内容'))).toBe(true)
+  })
+})
 
 describe('markSuspendedAnswered', () => {
   it('命中的挂起块被改成 resumed + answers，且补回问题原文', () => {
