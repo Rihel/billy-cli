@@ -77,3 +77,14 @@ export const TimelineRole = createDict({
   User: { label: '用户', value: 'user' },
   Assistant: { label: '助手', value: 'assistant' },
 })
+
+/**
+ * 文件来源：区分「用户上传」与「AI 生成」。
+ *
+ * 两者都进 `ai_files`，但生命周期不同：用户上传的对象是内容寻址、可能跨会话共享；
+ * AI 生成的对象属于本会话。清理 / 配额 / 展示都靠这个字段分流。
+ */
+export const FileSource = createDict({
+  User: { label: '用户上传', value: 'user' },
+  Ai: { label: 'AI 生成', value: 'ai' },
+})

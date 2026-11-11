@@ -58,11 +58,12 @@
 | --- | --- | --- | --- |
 | [ai-context-compression](ai-context-compression.md) | 摘要压缩只在轮前；轮内另有工具结果预算（prepareStep + turn-budget），落库出参不动 | 必核 | 2026-10-29 |
 | [ai-agent-file-map](ai-agent-file-map.md) | AI 运行期关键链路的位置速查（上下文、时间线、记忆、技能、子 agent） | 抽核 | 2026-10-25 |
+| [ai-file-management](ai-file-management.md) | `ai_files` + 9 个文件工具 + 每会话 workspace；入站引用、`uploads/`/`files/` 约定、删会话清理 | 必核 | 2026-11-11 |
 | [dev-session-log](dev-session-log.md) | 开发会话记录在 `~/.dsh/sessions/`，zstd + JSONL，可直接统计调用与用量 | 抽核 | 2026-10-25 |
 | [token-cost-model](token-cost-model.md) | skill 只占工具输出 1%–3%，成本主项是「调用次数 × 累积上下文」 | 免核 | 2026-10-25 |
 | [ai-chat-render-state](ai-chat-render-state.md) | 会话页按 part 类型增量归约成渲染单元；逐帧增量走 transient（后端不改），渲染期不再扫 parts | 抽核 | 2026-11-03 |
 | [ai-chat-route-remount](ai-chat-route-remount.md) | 会话页 `new → 真实 id` 的 replace 会重挂载页面子树，`useState` 全丢（选择类状态要存 React 之外） | 抽核 | 2026-10-27 |
-| [ai-skills-loading](ai-skills-loading.md) | 技能：我们只发现/校验/授权路径，正文与 references 由 Mastra 按需读；`~/.agents/skills` 默认加载（每轮约 +11k token） | 抽核 | 2026-10-27 |
+| [ai-skills-loading](ai-skills-loading.md) | 技能：我们只发现/校验/授权路径，正文与 references 由 Mastra 按需读；`~/.agents/skills` 默认加载（每轮约 +11k token）；有清单 ≠ 会主动用，提示词要写“先扫再动手” | 抽核 | 2026-11-11 |
 | [ai-skill-library](ai-skill-library.md) | 技能库：DB 是事实源、落盘给 Mastra；链接导入走 GitHub API（skills.sh 需 OIDC）；`*` 运行期展开，停用删目录 | 必核 | 2026-11-11 |
 | [ai-runtime-observability](ai-runtime-observability.md) | 首 token / 步与工具耗时都有写入点；失败按 denied / invalid / output-error 分桶；快照在调模型前落库 | 必核 | 2026-10-29 |
 | [dependency-upgrade](dependency-upgrade.md) | 全量升级落点与坑：ioredis 6 与 TypeORM peer 冲突、jsdom 31 需 parse5 8.1、Table 9 新 API、AI SDK 7 usage 字段 | 抽核 | 2026-11-07 |

@@ -83,6 +83,21 @@ export interface AgentConfig {
   /** 命令的工作根目录（缺省 = 服务进程工作目录）；agent 传入的 `cwd` 只能在这个目录之内 */
   commandWorkDir?: string
 
+  // ── 文件管理（工具组 `FileTools`，设计 docs/design/ai-file-manager.md）──
+  /** 下列都是**部署硬上限**；未配置时由工具代码默认值兜底 */
+  fileMaxBytes?: number
+  fileMaxFiles?: number
+  fileMaxTotalBytes?: number
+  fileReadMaxBytes?: number
+  filePageLinesMax?: number
+  filePageCharsMax?: number
+  fileWriteMaxBytes?: number
+  fileSearchMaxFiles?: number
+  fileSearchMaxBytes?: number
+  fileSearchMaxResults?: number
+  fileWorkspaceMaxFiles?: number
+  fileWorkspaceMaxDepth?: number
+
   // ── 联网（工具组 `WebTools`：`web-fetch` / `web-request` / `web-search`）──
   /**
    * 是否允许 agent 出网。

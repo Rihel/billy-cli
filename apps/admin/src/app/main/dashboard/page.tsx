@@ -6,9 +6,13 @@ import { useServerClient } from '@/lib/server-client'
 import { useQuery } from '@tanstack/react-query'
 import { Button, cn, PageToolbar } from '@repo/ui'
 import type { AgentUsageBucketModel } from '@repo/shared'
+import { formatFileSize } from '@repo/shared/browser'
 import {
   BellRingIcon,
+  BotIcon,
   CircleCheckIcon,
+  FolderOpenIcon,
+  HardDriveIcon,
   CoinsIcon,
   MessagesSquareIcon,
   ScrollTextIcon,
@@ -89,7 +93,7 @@ function CompactStat({
   icon,
 }: {
   label: string
-  value: number | null
+  value: number | string | null
   icon?: ReactNode
 }) {
   return (
@@ -225,6 +229,11 @@ export default function DashboardPage() {
   const usage = useQuery({
     queryKey: ['dashboard', 'ai-usage', usageDays],
     queryFn: () => client.agent.usageSummary({ days: usageDays }),
+    retry: 0,
+  })
+  const files = useQuery({
+    queryKey: ['dashboard', 'file-stats'],
+    queryFn: () => client.agent.file.adminStats({}),
     retry: 0,
   })
 
@@ -428,6 +437,61 @@ export default function DashboardPage() {
               />
             </div>
           </>
+        )}
+      </section>
+
+      {/* 文件用量：对象存储占用与来源拆分 */}
+      <section className="shrink-0 rounded-2xl bg-surface-1 p-5">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2 className="font-heading text-base font-medium tracking-tight">文件用量</h2>
+            <p className="mt-1 text-xs text-muted-foreground">
+              全部会话文件的对象存储占用；会话文件与工作区临时文件分开，这里只算会话文件
+            </p>
+          </div>
+          <Link
+            href="/main/ai/files"
+            className="text-xs text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
+          >
+            查看全部文件 →
+          </Link>
+        </div>
+
+        {files.isLoading ? (
+          <p className="mt-4 text-xs text-muted-foreground">正在统计文件用量…</p>
+        ) : files.isError || !files.data ? (
+          <p className="mt-4 text-xs text-muted-foreground">文件用量暂时取不到</p>
+        ) : (
+          <div className="mt-4 grid grid-cols-2 gap-x-8 gap-y-6 sm:grid-cols-4">
+            <StatBlock
+              label="文件总数"
+              value={files.data.count}
+              hint={`涉及 ${files.data.conversationCount} 个会话`}
+              icon={<FolderOpenIcon className="size-4" />}
+            />
+            <StatBlock
+              label="总占用"
+              value={files.data.bytes}
+              format={formatFileSize}
+              hint="对象存储占用"
+              tone="info"
+              icon={<HardDriveIcon className="size-4" />}
+            />
+            <StatBlock
+              label="用户上传"
+              value={files.data.userCount}
+              hint={formatFileSize(files.data.userBytes)}
+              tone="success"
+              icon={<UsersIcon className="size-4" />}
+            />
+            <StatBlock
+              label="AI 生成"
+              value={files.data.aiCount}
+              hint={formatFileSize(files.data.aiBytes)}
+              tone="warning"
+              icon={<BotIcon className="size-4" />}
+            />
+          </div>
         )}
       </section>
 

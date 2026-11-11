@@ -21,7 +21,7 @@
 协议：MIT（`LICENSE` 与各 `package.json` 的 `license` 一致；2026-11-10 由 ISC 切换）。
 README 与落地页（`apps/web/src/components/landing/*`）必须同一口径；改能力时两处一起改。
 README 只保留入口级摘要，详细说明在 `docs/guide/`（architecture / backend / frontend / packages / ai / deployment）；
-改能力时连对应 guide 与 skill 一起同步。工具数只算「内建」的 10 个，连接器按实例动态产出的工具不计入。
+改能力时连对应 guide 与 skill 一起同步。工具数只算「内建」的 19 个（原 10 + 文件管理 9），连接器按实例动态产出的工具不计入。
 
 ## 依据
 

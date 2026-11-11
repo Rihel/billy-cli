@@ -8,6 +8,11 @@ import { ToolDecl, ToolGroup } from '../core/tools/tool.decorator.js'
 import { TOOL_KEYS } from '../core/tools/tool-keys.js'
 import { TOOL_ENV_CAPS } from '../core/tools/tool.config.ports.js'
 import type { ToolCallContext, ToolEnvCaps } from '../core/tools/tools.types.js'
+import {
+  conversationWorkspace,
+  resolveWorkspacePath,
+  workspaceRoot,
+} from '../core/tools/workspace.js'
 
 /**
  * `bash` 的**参数定义**（给模型看的数据结构）。
@@ -46,8 +51,6 @@ const BashConfig = z.object({
   timeoutMs: z.number().int().positive().default(15_000),
   /** 单条流（stdout / stderr 各自）的输出上限（字节）；超出即截断并终止命令 */
   maxOutputBytes: z.number().int().positive().default(64 * 1024),
-  /** 命令的工作根目录（空 = 服务进程工作目录）；agent 传入的 `cwd` 只能在这个目录之内 */
-  workDir: z.string().default(''),
 })
 
 type BashConfigValue = z.infer<typeof BashConfig>
@@ -100,7 +103,7 @@ export class BashTool implements OnApplicationBootstrap {
    * 这里按"部署能力"处理：目录建不出来只记错误，不拦整个服务启动。
    */
   async onApplicationBootstrap(): Promise<void> {
-    const root = this.defaultWorkDir()
+    const root = workspaceRoot(this.caps)
     try {
       await mkdir(root, { recursive: true })
       this.logger.log('ai.command.workspace_ready', { root })
@@ -110,11 +113,6 @@ export class BashTool implements OnApplicationBootstrap {
         reason: error instanceof Error ? error.message : String(error),
       })
     }
-  }
-
-  /** 部署配置里的工作根目录（空 = 服务进程工作目录） */
-  private defaultWorkDir(): string {
-    return resolve(this.caps?.command?.workDir?.trim() || process.cwd())
   }
 
   /** **执行体**：只写业务动作（开关与边界已经在插件 / normalize 里判过） */
@@ -147,11 +145,17 @@ export class BashTool implements OnApplicationBootstrap {
     ctx: ToolCallContext<BashConfigValue>,
   ): Promise<CommandResult> {
     const envelope = (ctx.envelope as CommandEnvelopeLike | null) ?? null
-    const workDir = resolve(ctx.settings.config.workDir || process.cwd())
-    // 工作根目录是 AI 的 workspace：被删掉就（重新）建出来，避免每条命令都因 cwd 不存在失败。
-    // 库里的 workDir 可能覆盖 env，所以每次执行都按**这一轮生效的根**兜一次（递归建目录成本可忽略）。
+    const conversationId = envelope?.conversationId ?? ctx.caller?.conversationId
+    // 每个会话一个 workspace：根目录被删掉就（重新）建出来，避免每条命令都因 cwd 不存在失败。
+    const workDir = conversationWorkspace(this.caps, conversationId)
     await mkdir(workDir, { recursive: true })
-    const target = resolve(workDir, input.cwd ?? '.')
+    const target = await resolveWorkspacePath({
+      caps: this.caps,
+      conversationId,
+      path: input.cwd ?? '.',
+      allowMissing: true,
+    })
+    await mkdir(target, { recursive: true })
     const result = await this.runner.run({
       command: input.command,
       cwd: target,
@@ -197,7 +201,6 @@ export class BashTool implements OnApplicationBootstrap {
         config.maxOutputBytes,
         caps.command?.maxOutputBytesMax ?? config.maxOutputBytes,
       ),
-      workDir: config.workDir.trim() || caps.command?.workDir?.trim() || '',
     }
   }
 
@@ -212,11 +215,15 @@ export class BashTool implements OnApplicationBootstrap {
     ctx: ToolCallContext<BashConfigValue>,
   ): string | null {
     if (!input.cwd) return null
-    const root = resolve(ctx.settings.config.workDir || process.cwd())
+    const envelope = (ctx.envelope as CommandEnvelopeLike | null) ?? null
+    const root = conversationWorkspace(
+      this.caps,
+      envelope?.conversationId ?? ctx.caller?.conversationId,
+    )
     const target = resolve(root, input.cwd)
     const rel = relative(root, target)
     const inside = rel === '' || (!rel.startsWith('..') && !isAbsolute(rel))
     if (inside) return null
-    return `工作目录只能在工作根目录之内（${root}），收到的是 ${input.cwd}`
+    return `工作目录只能在本会话工作区之内（${root}），收到的是 ${input.cwd}`
   }
 }

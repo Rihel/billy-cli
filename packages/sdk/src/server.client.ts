@@ -98,6 +98,13 @@ import {
   AgentConversationIdDto,
   AgentConversationListDto,
   AgentConversationModel,
+  AgentFileAdminListDto,
+  AgentFileAdminListModel,
+  AgentFileAdminStatsDto,
+  AgentFileAdminStatsModel,
+  AgentFileAdminPreviewDto,
+  AgentFilePreviewModel,
+  AgentWorkspaceListModel,
   AgentConversationRenameDto,
   AgentInstructionsDto,
   AgentInstructionsModel,
@@ -426,6 +433,48 @@ export class ServerClient extends HttpClient<BearerTokenCredentials> {
       /** 软删会话（唯一的删除入口；运行记录与时间线不提供删除） */
       remove: (data: AgentConversationIdDto) =>
         this.post<SuccessResultModel>('/agent/conversation/remove', data),
+    },
+
+    /**
+     * 会话文件 / 工作区。
+     *
+     * `workspaceContentUrl` 是给 `<img>` / `<video>` / `<iframe>` 用的完整 GET 地址：
+     * 这些标签带不上 Authorization，靠 `access-token` cookie（与 SSR 同一套）。
+     */
+    file: {
+      workspace: (data: { conversationId: string; includeCaches?: boolean }) =>
+        this.post<AgentWorkspaceListModel>('/agent/file/workspace', data),
+
+      preview: (data: {
+        conversationId: string
+        path: string
+        source?: 'ai' | 'workspace'
+      }) => this.post<AgentFilePreviewModel>('/agent/file/preview', data),
+
+      /** 后台独立文件页：全量列表（管理员） */
+      adminList: (data: AgentFileAdminListDto) =>
+        this.post<AgentFileAdminListModel>('/agent/file/admin/list', data),
+
+      /** 后台独立文件页：总量统计（管理员） */
+      adminStats: (data: AgentFileAdminStatsDto) =>
+        this.post<AgentFileAdminStatsModel>('/agent/file/admin/stats', data),
+
+      /** 后台独立文件页：文本预览（管理员；任意会话） */
+      adminPreview: (data: AgentFileAdminPreviewDto) =>
+        this.post<AgentFilePreviewModel>('/agent/file/admin/preview', data),
+
+      workspaceContentUrl: (data: {
+        conversationId: string
+        path: string
+        download?: boolean
+      }) => {
+        const query = new URLSearchParams({
+          conversationId: data.conversationId,
+          path: data.path,
+        })
+        if (data.download) query.set('download', '1')
+        return `${this.agentBaseUrl}/agent/file/workspace-content?${query.toString()}`
+      },
     },
 
     run: {

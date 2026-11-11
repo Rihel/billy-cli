@@ -1,13 +1,19 @@
+import { createReadStream } from 'node:fs'
+import { basename } from 'node:path'
 import {
+  BadRequestException,
   Body,
   Controller,
+  ForbiddenException,
   Get,
+  Headers,
   HttpCode,
   Inject,
   Param,
   Post,
   Query,
   Res,
+  ServiceUnavailableException,
   UseGuards,
 } from '@nestjs/common'
 import {
@@ -37,6 +43,12 @@ import {
   type AgentTimelineListDto,
   type AgentUsageSummaryQueryDto,
   type AgentUsageRangeDto,
+  type AgentFileAdminListDto,
+  type AgentFileAdminStatsDto,
+  type AgentFileAdminPreviewDto,
+  AgentFileAdminPreviewSchema,
+  AgentFileAdminListSchema,
+  AgentFileAdminStatsSchema,
 } from '@repo/shared'
 import type { Response } from 'express'
 import { requestContext } from '../../../common/index.js'
@@ -46,6 +58,13 @@ import { AgentService } from '../agents/service.js'
 import { AiModelService } from '../../ai-model/index.js'
 import { AgentChatService } from '../runtime/chat.service.js'
 import { AgentConversationService } from '../runtime/conversation.service.js'
+import { FileService, type FileContext } from '../files/file.service.js'
+import {
+  WorkspaceContentQuerySchema,
+  WorkspaceListSchema,
+  WorkspacePreviewSchema,
+} from '../files/file.schemas.js'
+import { ToolDeniedError } from '../core/tools/tools.types.js'
 import { AgentRunService } from '../runtime/run.service.js'
 import { AgentTimelineService } from '../runtime/timeline.service.js'
 import { AiUsageService } from '../../ai-usage/ai-usage.service.js'
@@ -72,6 +91,7 @@ export class AiController {
     @Inject(AgentRunService) private readonly runs: AgentRunService,
     @Inject(AiUsageService) private readonly aiUsage: AiUsageService,
     @Inject(AgentChatService) private readonly chat: AgentChatService,
+    @Inject(FileService) private readonly files: FileService,
   ) {}
 
   /**
@@ -304,5 +324,150 @@ export class AiController {
   @HttpCode(200)
   listTimeline(@Body({ schema: AgentTimelineListSchema }) input: AgentTimelineListDto) {
     return this.timelines.list(this.ownerId(), input)
+  }
+
+  /** 后台独立文件页：全量文件列表（管理员；含所属会话标题） */
+  @Post('file/admin/list')
+  @HttpCode(200)
+  @UseGuards(AdminAuthGuard)
+  adminFileList(@Body({ schema: AgentFileAdminListSchema }) input: AgentFileAdminListDto) {
+    return this.files.adminList(input)
+  }
+
+  /** 后台独立文件页：文本预览（管理员；任意会话） */
+  @Post('file/admin/preview')
+  @HttpCode(200)
+  @UseGuards(AdminAuthGuard)
+  async adminFilePreview(
+    @Body({ schema: AgentFileAdminPreviewSchema }) input: AgentFileAdminPreviewDto,
+  ) {
+    try {
+      return await this.files.adminPreview(input.fileId)
+    } catch (error) {
+      this.rethrowFileError(error)
+    }
+  }
+
+  /** 后台独立文件页：文件总量统计（管理员；与列表共用筛选） */
+  @Post('file/admin/stats')
+  @HttpCode(200)
+  @UseGuards(AdminAuthGuard)
+  adminFileStats(@Body({ schema: AgentFileAdminStatsSchema }) input: AgentFileAdminStatsDto) {
+    return this.files.adminStats(input)
+  }
+
+  /** 右栏「工作区」视图：扁平文件清单（不含内容） */
+  @Post('file/workspace')
+  @HttpCode(200)
+  async listWorkspace(@Body({ schema: WorkspaceListSchema }) input: { conversationId: string; includeCaches?: boolean }) {
+    await this.conversations.requireOwned(this.ownerId(), input.conversationId)
+    try {
+      return await this.files.workspaceFiles(this.fileContext(input.conversationId), {
+        includeCaches: input.includeCaches,
+      })
+    } catch (error) {
+      this.rethrowFileError(error)
+    }
+  }
+
+  /** 文本 / HTML 预览：会话文件（ai）或工作区文件（workspace） */
+  @Post('file/preview')
+  @HttpCode(200)
+  async previewFile(@Body({ schema: WorkspacePreviewSchema }) input: { conversationId: string; path: string; source?: 'ai' | 'workspace' }) {
+    await this.conversations.requireOwned(this.ownerId(), input.conversationId)
+    try {
+      return await this.files.previewText(
+        this.fileContext(input.conversationId),
+        input.path,
+        input.source ?? 'ai',
+      )
+    } catch (error) {
+      this.rethrowFileError(error)
+    }
+  }
+
+  /**
+   * 工作区内容流（图片 / PDF / 视频 / 音频 / 下载）。
+   *
+   * GET：`<img>` / `<video>` / `<iframe>` 带不上 Authorization，靠 `access-token` cookie
+   * （与 SSR 同一套）。跨站部署时前端改用 fetch blob。
+   */
+  @Get('file/workspace-content')
+  async workspaceContent(
+    @Query() query: Record<string, unknown>,
+    @Headers('range') range: string | undefined,
+    @Res() response: Response,
+  ): Promise<void> {
+    const parsed = WorkspaceContentQuerySchema.safeParse(query)
+    if (!parsed.success) {
+      response.status(400).json({ message: '参数不合法', issues: parsed.error.issues })
+      return
+    }
+    const input = parsed.data
+    try {
+      await this.conversations.requireOwned(this.ownerId(), input.conversationId)
+      const content = await this.files.workspaceContent(
+        this.fileContext(input.conversationId),
+        input.path,
+        input.download === '1',
+      )
+      response.setHeader('Content-Type', content.mediaType)
+      response.setHeader('Accept-Ranges', 'bytes')
+      response.setHeader('Cache-Control', 'no-store')
+      response.setHeader('X-Content-Type-Options', 'nosniff')
+      response.setHeader(
+        'Content-Disposition',
+        `${content.inline ? 'inline' : 'attachment'}; filename*=UTF-8''${encodeURIComponent(
+          basename(content.path).replace(/[\r\n"\\]/g, '_'),
+        )}`,
+      )
+
+      const match = range?.match(/^bytes=(\d*)-(\d*)$/)
+      if (match && content.size > 0) {
+        const start = match[1] ? Number(match[1]) : 0
+        const end = match[2] ? Number(match[2]) : content.size - 1
+        const safeEnd = Math.min(end, content.size - 1)
+        if (start <= safeEnd) {
+          response.status(206)
+          response.setHeader('Content-Range', `bytes ${start}-${safeEnd}/${content.size}`)
+          response.setHeader('Content-Length', String(safeEnd - start + 1))
+          createReadStream(content.path, { start, end: safeEnd }).pipe(response)
+          return
+        }
+      }
+
+      response.setHeader('Content-Length', String(content.size))
+      createReadStream(content.path).pipe(response)
+    } catch (error) {
+      if (error instanceof ToolDeniedError) {
+        response
+          .status(error.reason === 'forbidden' ? 403 : 400)
+          .json({ message: error.message })
+        return
+      }
+      response.status(500).json({ message: '读取工作区文件失败' })
+    }
+  }
+
+  /** HTTP 侧的文件上下文：身份从 ALS 取，run / toolCall 为空 */
+  private fileContext(conversationId: string): FileContext {
+    const userId = requestContext.get('userId') ?? null
+    const adminId = requestContext.get('adminId') ?? null
+    return {
+      conversationId,
+      userId: userId ?? adminId,
+      isAdmin: Boolean(adminId) && !userId,
+      runId: null,
+      toolCallId: null,
+    }
+  }
+
+  private rethrowFileError(error: unknown): never {
+    if (error instanceof ToolDeniedError) {
+      if (error.reason === 'forbidden') throw new ForbiddenException(error.message)
+      if (error.reason === 'upstream') throw new ServiceUnavailableException(error.message)
+      throw new BadRequestException(error.message)
+    }
+    throw error
   }
 }

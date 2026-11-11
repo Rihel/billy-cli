@@ -17,6 +17,18 @@ export interface ObjectRemoved {
   key: string
 }
 
+/** 服务端写入对象（内部使用）：AI 产出 / 交付物没有前端预签名环节 */
+export interface PutObjectInput {
+  key: string
+  body: Buffer
+  contentType?: string
+}
+
+/** 写入结果（内部使用） */
+export interface ObjectPut {
+  key: string
+}
+
 export interface ObjectStorageConfig {
   provider: 's3' | 'cos'
   region: string
@@ -29,6 +41,8 @@ export interface ObjectStorageConfig {
 export interface ObjectStorageProvider {
   initial(): Promise<void>
   getObject(key: GetStorageDownloadUrlDto): Promise<ObjectContent>
+  /** 服务端直接写对象（AI 产出的二进制走这里，不走预签名） */
+  putObject(input: PutObjectInput): Promise<ObjectPut>
   getPresignedUrl(
     data: GetStorageUploadPresignedUrlDto,
   ): Promise<StoragePresignedUrlModel>

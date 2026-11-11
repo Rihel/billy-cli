@@ -76,6 +76,21 @@ export const TOOL_KEYS = {
   skillDelete: 'skill-delete',
   skillEnable: 'skill-enable',
   skillImport: 'skill-import',
+  /**
+   * **文件管理**（一组九个工具，设计 `docs/design/ai-file-manager.md`）：
+   * - OSS：`file-submit` / `file-download` / `file-list`；
+   * - workspace：`read-file` / `file-search` / `workspace-files` /
+   *   `write-file` / `replace-file` / `append-file`。
+   */
+  fileSubmit: 'file-submit',
+  fileDownload: 'file-download',
+  fileList: 'file-list',
+  readFile: 'read-file',
+  fileSearch: 'file-search',
+  workspaceFiles: 'workspace-files',
+  writeFile: 'write-file',
+  replaceFile: 'replace-file',
+  appendFile: 'append-file',
 } as const
 
 /**

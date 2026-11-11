@@ -198,6 +198,27 @@ export const serverAppConfigSchema = z.object({
     commandMaxOutputBytes: z.coerce.number().int().positive().default(64 * 1024),
     /** 命令的工作根目录（缺省 = 服务进程工作目录）；agent 只能在这个目录之内指定 cwd */
     commandWorkDir: z.string().optional(),
+    // ── 文件管理（工具组 `FileTools`，设计 docs/design/ai-file-manager.md）──
+    /** 单文件硬上限（字节） */
+    fileMaxBytes: z.coerce.number().int().positive().optional(),
+    /** 单会话文件数硬上限 */
+    fileMaxFiles: z.coerce.number().int().positive().optional(),
+    /** 单会话总字节硬上限 */
+    fileMaxTotalBytes: z.coerce.number().int().positive().optional(),
+    /** read-file / replace 的读取上限 */
+    fileReadMaxBytes: z.coerce.number().int().positive().optional(),
+    /** 单页最多行数 / 字符数 */
+    filePageLinesMax: z.coerce.number().int().positive().optional(),
+    filePageCharsMax: z.coerce.number().int().positive().optional(),
+    /** 单次写入 / 替换 / 追加的内容上限 */
+    fileWriteMaxBytes: z.coerce.number().int().positive().optional(),
+    /** file-search 的扫描文件数 / 字节 / 结果上限 */
+    fileSearchMaxFiles: z.coerce.number().int().positive().optional(),
+    fileSearchMaxBytes: z.coerce.number().int().positive().optional(),
+    fileSearchMaxResults: z.coerce.number().int().positive().optional(),
+    /** workspace-files 的文件数 / 深度上限 */
+    fileWorkspaceMaxFiles: z.coerce.number().int().positive().optional(),
+    fileWorkspaceMaxDepth: z.coerce.number().int().positive().optional(),
     // ── 联网（工具组 `WebTools`：`web-fetch` / `web-request` / `web-search`）──
     /**
      * 是否允许 agent 出网（**默认开**）。
@@ -407,6 +428,18 @@ export const mapServerEnv = (
     commandTimeoutMs: optional(env.AGENT_COMMAND_TIMEOUT_MS),
     commandMaxOutputBytes: optional(env.AGENT_COMMAND_MAX_OUTPUT_BYTES),
     commandWorkDir: optional(env.AGENT_COMMAND_WORK_DIR),
+    fileMaxBytes: optional(env.AGENT_FILE_MAX_BYTES),
+    fileMaxFiles: optional(env.AGENT_FILE_MAX_FILES),
+    fileMaxTotalBytes: optional(env.AGENT_FILE_MAX_TOTAL_BYTES),
+    fileReadMaxBytes: optional(env.AGENT_FILE_READ_MAX_BYTES),
+    filePageLinesMax: optional(env.AGENT_FILE_PAGE_LINES_MAX),
+    filePageCharsMax: optional(env.AGENT_FILE_PAGE_CHARS_MAX),
+    fileWriteMaxBytes: optional(env.AGENT_FILE_WRITE_MAX_BYTES),
+    fileSearchMaxFiles: optional(env.AGENT_FILE_SEARCH_MAX_FILES),
+    fileSearchMaxBytes: optional(env.AGENT_FILE_SEARCH_MAX_BYTES),
+    fileSearchMaxResults: optional(env.AGENT_FILE_SEARCH_MAX_RESULTS),
+    fileWorkspaceMaxFiles: optional(env.AGENT_FILE_WORKSPACE_MAX_FILES),
+    fileWorkspaceMaxDepth: optional(env.AGENT_FILE_WORKSPACE_MAX_DEPTH),
     webEnabled: parseBoolean(env.AGENT_WEB_ENABLED),
     webTimeoutMs: optional(env.AGENT_WEB_TIMEOUT_MS),
     webMaxBytes: optional(env.AGENT_WEB_MAX_BYTES),

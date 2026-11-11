@@ -3,9 +3,11 @@ import type { StoragePresignedUrlModel } from '@repo/shared'
 import { AppLogger } from '../../foundation/logger/app-logger.js'
 import type {
   ObjectContent,
+  ObjectPut,
   ObjectRemoved,
   ObjectStorageConfig,
   ObjectStorageProvider,
+  PutObjectInput,
 } from '../types.js'
 
 export const makeCosProvider = (
@@ -29,6 +31,17 @@ export const makeCosProvider = (
       })
       return { key, body: response.Body as Buffer } satisfies ObjectContent
     },
+    async putObject(input: PutObjectInput) {
+      await client.putObject({
+        Bucket: config.bucket,
+        Region: config.region,
+        Key: input.key,
+        Body: input.body,
+        ContentLength: input.body.length,
+        ...(input.contentType ? { ContentType: input.contentType } : {}),
+      })
+      return { key: input.key } satisfies ObjectPut
+    },
     async getPresignedUrl(data) {
       return {
         key: data.key,
@@ -40,15 +53,21 @@ export const makeCosProvider = (
         }),
       } satisfies StoragePresignedUrlModel
     },
-    async getDownloadUrl({ key }) {
+    async getDownloadUrl({ key, filename }) {
+      const url = client.getObjectUrl({
+        Bucket: config.bucket,
+        Region: config.region,
+        Key: key,
+        Method: 'GET',
+      })
+      const safe = filename?.replace(/[\r\n"\\]/g, '_').trim()
+      if (!safe) return { key, url } satisfies StoragePresignedUrlModel
+      const separator = url.includes('?') ? '&' : '?'
       return {
         key,
-        url: client.getObjectUrl({
-          Bucket: config.bucket,
-          Region: config.region,
-          Key: key,
-          Method: 'GET',
-        }),
+        url: `${url}${separator}response-content-disposition=${encodeURIComponent(
+          `attachment; filename*=UTF-8''${encodeURIComponent(safe)}`,
+        )}`,
       } satisfies StoragePresignedUrlModel
     },
     async getTemporaryCredentials() {

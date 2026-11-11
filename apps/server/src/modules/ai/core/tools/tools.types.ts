@@ -111,6 +111,21 @@ export interface ToolEnvCaps {
     maxBytesMax: number
     allowPrivateNetwork: boolean
   }
+  /** 文件管理的部署边界（env）：库里的值再大也突破不了 */
+  file?: {
+    maxBytesMax?: number
+    maxFilesMax?: number
+    maxTotalBytesMax?: number
+    readMaxBytesMax?: number
+    pageLinesMax?: number
+    pageCharsMax?: number
+    writeBytesMax?: number
+    searchFilesMax?: number
+    searchBytesMax?: number
+    searchResultsMax?: number
+    workspaceFilesMax?: number
+    workspaceDepthMax?: number
+  }
 }
 
 /** 工具往"父流"里写实时明细的最小面（子 agent 靠它把过程写进父那一条流） */

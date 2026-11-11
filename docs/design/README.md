@@ -8,6 +8,7 @@
 | 文档 | 内容 |
 | --- | --- |
 | [ai-agent.md](ai-agent.md) | AI 运行时：会话 / 运行 / 流式 / 上下文 / 恢复 |
+| [ai-file-manager.md](ai-file-manager.md) | AI 文件管理：会话级文件树 / 对象存储 / 提交与回读 / 前端预览下载 |
 | [ai-agent-tool-engine.md](ai-agent-tool-engine.md) | 工具引擎：工具组 / 注册机 / 网关插件 / 配置入库 |
 | [ai-skill-library.md](ai-skill-library.md) | 技能库：在线编辑 / 链接导入（skills.sh、GitHub）/ 启停，DB 是事实源、落盘给 Mastra |
 | [ai-connector.md](ai-connector.md) | **已归档（2026-11-10）**：连接器四层模型与各驱动的历史论证；方向见 skill `develop-ai-agent/references/connector.md` |

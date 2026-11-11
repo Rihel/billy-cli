@@ -65,6 +65,8 @@ import {
 import { ConversationRepository } from './conversation.repository.js';
 import { RunRepository } from './run.repository.js';
 import { TimelineRepository } from './timeline.repository.js';
+import { FileService, type FileContext } from '../files/file.service.js';
+import { AttachmentKeyPolicy } from './attachment-key.js';
 import { AgentStreamStore } from './stream-store.service.js';
 import { StreamRecorder, toolFailureOf } from './stream-recorder.js';
 import { fitMessagesToToolBudget } from './turn-budget.js';
@@ -199,6 +201,9 @@ export class AgentChatService {
     @Inject(AppLogger) private readonly logger: AppLogger,
     @Inject(PROMPT_ENGINE) private readonly prompts: PromptEngine,
     @Inject(AgentTitleService) private readonly titles: AgentTitleService,
+    // 新增依赖放末尾：手工构造的测试/脚本按位置传参，插在中间会把后面全部错位
+    @Inject(FileService) private readonly files: FileService,
+    @Inject(AttachmentKeyPolicy) private readonly attachmentKeys: AttachmentKeyPolicy,
   ) {}
 
   /** 主 agent 的对话记忆（与 createMastra 共用同一个单例） */
@@ -298,6 +303,7 @@ export class AgentChatService {
     );
 
     const run = await this.startRun(conversation, definition.key, userId);
+    await this.registerInboundFiles(conversation, run.id, userId, isAdmin, input.attachments);
     const startedAt = Date.now();
 
     // 心跳：**非流式路径也必须续租**，理由与流式那处逐字相同（见 `chatStream` 里的长注释）——
@@ -520,6 +526,35 @@ export class AgentChatService {
    * 并发保护：同一会话已有进行中的一轮时，`uk_run_active_conversation` 会拒绝插入
    * → 转成 3306（**真相在数据库，不靠应用层"先查再写"**）。
    */
+  /**
+   * 入站附件登记 + 物化（best-effort）。
+   *
+   * 登记发生在附件归属校验之后（ChatAttachmentService 内部会再校验一次）；
+   * 失败只记日志，不阻塞这一轮 —— 附件仍会喂给模型，文件树 / file-download 可以后续补。
+   */
+  private async registerInboundFiles(
+    conversation: ConversationEntity,
+    runId: string,
+    userId: string,
+    isAdmin: boolean,
+    attachments: AgentChatDto['attachments'],
+  ): Promise<void> {
+    if (!attachments || attachments.length === 0) return
+    // 手工构造的旧测试可能没有这两个依赖；真实装配里一定在
+    if (!this.files || !this.attachmentKeys) return
+    // 先校验归属，再登记：伪造 key 不能进 ai_files（与附件读取同一道门）
+    this.attachmentKeys.assertOwned(attachments.map((attachment) => attachment.key))
+    const ctx: FileContext = {
+      conversationId: conversation.id,
+      userId,
+      isAdmin,
+      runId,
+      toolCallId: null,
+    }
+    await this.files.registerInbound(ctx, attachments)
+    await this.files.materializeInbound(ctx, attachments)
+  }
+
   private async startRun(
     conversation: ConversationEntity,
     agentKey: string,
@@ -939,6 +974,7 @@ export class AgentChatService {
     );
 
     const run = await this.startRun(conversation, definition.key, userId);
+    await this.registerInboundFiles(conversation, run.id, userId, isAdmin, input.attachments);
     const startedAt = Date.now();
 
     // 本进程内中止控制器：**在建流之前就登记**，否则"解析模型时用户点停止"找不到目标

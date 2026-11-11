@@ -50,6 +50,16 @@ export const assistantAgent: AgentSpec = {
     TOOL_KEYS.webFetch,
     TOOL_KEYS.webRequest,
     TOOL_KEYS.webSearch,
+    // 文件管理：会话文件（OSS）+ 工作区读写
+    TOOL_KEYS.fileSubmit,
+    TOOL_KEYS.fileDownload,
+    TOOL_KEYS.fileList,
+    TOOL_KEYS.readFile,
+    TOOL_KEYS.fileSearch,
+    TOOL_KEYS.workspaceFiles,
+    TOOL_KEYS.writeFile,
+    TOOL_KEYS.replaceFile,
+    TOOL_KEYS.appendFile,
   ],
   /**
    * 技能：**全部已加载技能**（`core/skills/catalog/` + `AGENT_SKILLS_DIRS` 配置的目录）。

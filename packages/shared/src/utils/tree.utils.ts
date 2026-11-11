@@ -1,3 +1,4 @@
+import type { AgentFileModel, AgentFileNode } from '../schema/agent.schema'
 import _ from 'lodash'
 import { hasContentArray } from './is.utils'
 
@@ -256,4 +257,51 @@ export const treeToMap = <
     },
   })
   return map
+}
+
+
+/**
+ * 文件清单 → 文件树（目录隐式生成）。
+ *
+ * 输入是 `ai_files` 的扁平行；`path` 用 `/` 分层。文件节点的 `name` 用 `filename`
+ * （入站是原始文件名，不是 md5 路径），目录节点用路径段。排序：目录在前、同类按名字升序。
+ */
+export const buildFileTree = <T extends { path: string; filename: string }>(
+  entries: readonly T[],
+): AgentFileNode[] => {
+  const root: AgentFileNode[] = []
+  const dirs = new Map<string, AgentFileNode>()
+
+  for (const entry of entries) {
+    const segments = entry.path.split('/').filter(Boolean)
+    if (segments.length === 0) continue
+    let list = root
+    let acc = ''
+    for (let index = 0; index < segments.length - 1; index += 1) {
+      acc = acc ? `${acc}/${segments[index]}` : segments[index]
+      let dir = dirs.get(acc)
+      if (!dir) {
+        dir = { name: segments[index], path: acc, type: 'dir', children: [] }
+        dirs.set(acc, dir)
+        list.push(dir)
+      }
+      list = dir.children!
+    }
+    list.push({
+      name: entry.filename || segments[segments.length - 1],
+      path: entry.path,
+      type: 'file',
+      file: entry as unknown as AgentFileModel,
+    })
+  }
+
+  const sort = (nodes: AgentFileNode[]): void => {
+    nodes.sort((left, right) => {
+      if (left.type !== right.type) return left.type === 'dir' ? -1 : 1
+      return left.name.localeCompare(right.name, 'zh-Hans-CN')
+    })
+    for (const node of nodes) if (node.children) sort(node.children)
+  }
+  sort(root)
+  return root
 }

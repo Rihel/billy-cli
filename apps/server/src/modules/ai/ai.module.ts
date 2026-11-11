@@ -78,6 +78,9 @@ import { systemToolClock } from './core/tools/tool.clock.js'
 import { ToolCallMetaStore } from './core/tools/tool.meta.js'
 import { ToolResultStore } from './core/tools/tool-result.store.js'
 import { ReadToolResultTool } from './tools/read-tool-result.tool.js'
+import { FileRepository } from './files/file.repository.js'
+import { FileService } from './files/file.service.js'
+import { FileTools } from './files/file.tools.js'
 import {
   AuditEndPlugin,
   AuditStartPlugin,
@@ -139,7 +142,7 @@ let warnedMissingEnvelope = false
     // 工具组实例（**唯一的工具来源**）：注册机对每个组跑 `buildToolSpecs()` 拿 1..n 个工具
     {
       provide: AGENT_TOOL_GROUPS,
-      inject: [PlannerTools, BashTool, RunSubAgentTool, ReadToolResultTool, WebTools, SkillTools],
+      inject: [PlannerTools, BashTool, RunSubAgentTool, ReadToolResultTool, WebTools, SkillTools, FileTools],
       useFactory: (...groups: AgentToolGroup[]): AgentToolGroup[] => groups,
     },
     // 部署上限（env）：库里的值再大也突破不了
@@ -160,6 +163,20 @@ let warnedMissingEnvelope = false
           timeoutMsMax: config.webTimeoutMs,
           maxBytesMax: config.webMaxBytes,
           allowPrivateNetwork: config.webAllowPrivateNetwork,
+        },
+        file: {
+          maxBytesMax: config.fileMaxBytes,
+          maxFilesMax: config.fileMaxFiles,
+          maxTotalBytesMax: config.fileMaxTotalBytes,
+          readMaxBytesMax: config.fileReadMaxBytes,
+          pageLinesMax: config.filePageLinesMax,
+          pageCharsMax: config.filePageCharsMax,
+          writeBytesMax: config.fileWriteMaxBytes,
+          searchFilesMax: config.fileSearchMaxFiles,
+          searchBytesMax: config.fileSearchMaxBytes,
+          searchResultsMax: config.fileSearchMaxResults,
+          workspaceFilesMax: config.fileWorkspaceMaxFiles,
+          workspaceDepthMax: config.fileWorkspaceMaxDepth,
         },
       }),
     },
@@ -241,6 +258,9 @@ let warnedMissingEnvelope = false
     ReadToolResultTool,
     WebTools,
     SkillTools,
+    FileRepository,
+    FileService,
+    FileTools,
 
     // ───────────────────────── 技能库（DB 是事实源，落盘给 Mastra）─────────────────────────
     // 额外技能目录：配置 → loader（loader 只管扫目录，不认配置从哪来）

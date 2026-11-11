@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useChat } from '@ai-sdk/react'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient, type InfiniteData } from '@tanstack/react-query'
 import {
   isTextUIPart,
   parseJsonEventStream,
@@ -118,8 +118,8 @@ const attachmentMetadataOf = (metadata: unknown): ChatAttachmentModel[] => {
  */
 const PANEL_OPEN_STORAGE_KEY = 'ai-chat-right-panel-open'
 
-/** 右栏宽度（数字即像素）：与侧栏同一套口径 —— 栏保持像素宽，窗口变宽由对话区吸收 */
-const PANEL_WIDTH = { default: 340, min: 260, max: '55%' } as const
+/** 右栏宽度：默认 40%，最小 260px、最大 55%；窗口变宽时按比例吸收 */
+const PANEL_WIDTH = { default: '40%', min: 260, max: '55%' } as const
 
 /**
  * 选中的模型按会话记在浏览器里（`ai-chat-model:<会话 id>`，新会话用 `new` 这一段）。
@@ -442,15 +442,19 @@ export function ChatConversation({ conversationId }: { conversationId: string })
         const data = part.data as { conversationId?: string; title?: string }
         const targetId = data.conversationId ?? activeConversationIdRef.current
         if (!targetId || !data.title) return
-        queryClient.setQueryData<AppPageQueryResponse<AgentConversationModel>>(
+        // 会话列表现在是 infinite query（多页），实时改名要把每一页都改到
+        queryClient.setQueryData<InfiniteData<AppPageQueryResponse<AgentConversationModel>>>(
           ['ai', 'conversations'],
           (current) =>
             current
               ? {
                   ...current,
-                  items: current.items.map((item) =>
-                    item.id === targetId ? { ...item, title: data.title! } : item,
-                  ),
+                  pages: current.pages.map((page) => ({
+                    ...page,
+                    items: page.items.map((item) =>
+                      item.id === targetId ? { ...item, title: data.title! } : item,
+                    ),
+                  })),
                 }
               : current,
         )
@@ -1126,7 +1130,6 @@ export function ChatConversation({ conversationId }: { conversationId: string })
               defaultSize={PANEL_WIDTH.default}
               minSize={PANEL_WIDTH.min}
               maxSize={PANEL_WIDTH.max}
-              groupResizeBehavior="preserve-pixel-size"
               className="h-full"
               // 同左栏：子助手过程是长文档，必须把它的可滚动溢出从根滚动区隔离出去
               style={{ overflow: 'hidden', contain: 'paint' }}
@@ -1140,6 +1143,7 @@ export function ChatConversation({ conversationId }: { conversationId: string })
                 messages={messages}
                 // 自动展开时直接停在「子 agent」——自动开了却停在系统提示词上等于白开
                 plan={conversationPlan}
+                files={conversationQuery.data?.aiFiles ?? []}
                 focus={panelFocus}
               />
             </ResizablePanel>

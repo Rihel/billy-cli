@@ -12,6 +12,7 @@ import {
 import { toJsonSchema } from '../src/modules/ai/core/tools/tool.schema.js'
 import { BashTool } from '../src/modules/ai/tools/bash.tool.js'
 import { WebTools } from '../src/modules/ai/tools/web.tools.js'
+import { FileTools } from '../src/modules/ai/files/file.tools.js'
 import { PlannerStore, PlannerTools } from '../src/modules/ai/tools/planner/index.js'
 import { RunSubAgentTool } from '../src/modules/ai/tools/subagent.tool.js'
 import { ReadToolResultTool } from '../src/modules/ai/tools/read-tool-result.tool.js'
@@ -47,6 +48,7 @@ const buildRegistry = () => {
     new RunSubAgentTool(runnerLike as never, silentLogger as never),
     new ReadToolResultTool(deps.results, deps.counter, deps.caps),
     new WebTools(silentLogger as never),
+    new FileTools({} as never, { enabled: true } as never),
   ]
   const registry = new ToolRegistry(groups, gateway, deps.config)
   return { deps, registry, groups }
@@ -72,6 +74,15 @@ const VALID_INPUT_TEMPLATES: Record<string, Record<string, unknown>> = {
   [TOOL_KEYS.webSearch]: { query: 'DeepSeek 搜索 API 文档' },
   [TOOL_KEYS.webFetch]: { url: 'https://example.com/docs' },
   [TOOL_KEYS.webRequest]: { url: 'https://example.com/api/list' },
+  [TOOL_KEYS.fileSubmit]: { filePath: 'notes.md', fileKey: 'reports/notes.md' },
+  [TOOL_KEYS.fileDownload]: { fileKey: 'uploads/abc.md' },
+  [TOOL_KEYS.fileList]: {},
+  [TOOL_KEYS.readFile]: { filePath: 'notes.md' },
+  [TOOL_KEYS.fileSearch]: { keywords: '计费 规则' },
+  [TOOL_KEYS.workspaceFiles]: {},
+  [TOOL_KEYS.writeFile]: { filePath: 'notes.md', content: 'hello' },
+  [TOOL_KEYS.replaceFile]: { filePath: 'notes.md', oldText: 'a', newText: 'b' },
+  [TOOL_KEYS.appendFile]: { filePath: 'notes.md', content: 'hello' },
 }
 
 /** 一次合法调用要写的理由（长度过 `minLength`） */

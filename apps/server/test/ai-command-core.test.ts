@@ -1,4 +1,5 @@
 import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { CommandRunner, type CommandResult } from '@repo/kits'
 import { describe, expect, it } from 'vitest'
 import { ToolGateway } from '../src/modules/ai/core/tools/tool.gateway.js'
@@ -24,6 +25,16 @@ import {
  * - `precheck`：目录越界拒绝并说明；
  * - `exec`：真跑命令时的时长夹紧与出参形状。
  */
+const testEnvelope = {
+  conversationId: 'conv-test',
+  parentRunId: 'run-test',
+  triggeredBy: 'user-test',
+  isAdmin: false,
+  agentKey: 'assistant',
+  rootAgentKey: 'assistant',
+  depth: 0,
+} as never
+
 const buildStack = (
   options: {
     sourceRows?: Record<string, Record<string, unknown>>
@@ -36,7 +47,11 @@ const buildStack = (
     deps.source.set(key, row as never)
   }
   const gateway = new ToolGateway(deps.config, silentLogger as never, deps.plugins, deps.clock)
-  const spec = specByKey(new BashTool(new CommandRunner(), silentLogger as never), TOOL_KEYS.bash)
+  const caps = options.caps ?? TEST_TOOL_ENV_CAPS
+  const spec = specByKey(
+    new BashTool(new CommandRunner(), silentLogger as never, caps),
+    TOOL_KEYS.bash,
+  )
   return { deps, gateway, spec }
 }
 
@@ -82,7 +97,6 @@ describe('bash 的策略（开关 / 目录边界 / 时长上限）', () => {
         enabled: true,
         timeoutMs: 15_000,
         maxOutputBytes: 64 * 1024,
-        workDir: '',
       })
     })
   })
@@ -129,7 +143,10 @@ describe('bash 的策略（开关 / 目录边界 / 时长上限）', () => {
 
   it('cwd 越界：precheck 拒绝并说明边界（不静默夹回，模型必须知道自己越界了）', async () => {
     const { deps, gateway, spec } = buildStack({
-      sourceRows: { [TOOL_KEYS.bash]: { config: { workDir: tmpdir() } } },
+      caps: {
+        ...TEST_TOOL_ENV_CAPS,
+        command: { ...TEST_TOOL_ENV_CAPS.command!, workDir: tmpdir() },
+      },
     })
     const outcome = await gateway.invoke(spec, { command: 'echo nope', cwd: '../../', reason: '验证目录越界会被拒绝' }, {
       callId: 'call-3',
@@ -139,22 +156,25 @@ describe('bash 的策略（开关 / 目录边界 / 时长上限）', () => {
     expect(outcome.ok).toBe(false)
     if (outcome.ok) throw new Error('应当被拒绝')
     expect(outcome.reason).toBe('precheck-failed')
-    expect(outcome.message).toContain('工作根目录')
+    expect(outcome.message).toContain('本会话工作区')
   })
 
   it('cwd 在工作根目录之内：正常执行，且出参回显真实工作目录', async () => {
     const { deps, gateway, spec } = buildStack({
-      sourceRows: { [TOOL_KEYS.bash]: { config: { workDir: tmpdir() } } },
+      caps: {
+        ...TEST_TOOL_ENV_CAPS,
+        command: { ...TEST_TOOL_ENV_CAPS.command!, workDir: tmpdir() },
+      },
     })
     const outcome = await gateway.invoke(spec, { command: 'echo in-workdir', reason: '验证工作目录之内可以正常执行' }, {
       callId: 'call-4',
-      envelope: null,
+      envelope: testEnvelope,
       log: silentLogger as never,
     })
     expect(outcome.ok).toBe(true)
     if (!outcome.ok) throw new Error('应当成功')
     const result = outcome.data as CommandResult
-    expect(result.cwd).toBe(tmpdir())
+    expect(result.cwd).toBe(join(tmpdir(), 'conv-test'))
     expect(result.stdout).toContain('in-workdir')
   })
 

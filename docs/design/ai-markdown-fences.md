@@ -3,6 +3,9 @@
 > 定位：AI 会话里「模型写一段带语言标识的代码块 → 前端渲染成看得见的东西」这一层的设计与取舍。
 > 现状基线：`MessageResponse`（Streamdown 2.6）已经支持 ```ts 代码高亮、```mermaid 图、`$$…$$` 块级公式；
 > 本文补齐 **xflow（流程图）、html（页面预览）、gsap（动画）** 三类，并修掉公式样式缺失。
+>
+> **2026-11-11 变更**：`html` 围栏**退役** —— 页面预览改走「`.html` 文件 + 文件管理预览」
+> （`ai-file-manager.md` §8.4）；`gsap` / `json` **保留**，它们只在输出里直接看效果，不产出文件。
 
 ## 1. 为什么走围栏，而不是新增工具
 
@@ -29,9 +32,9 @@
 | `$$ … $$` | KaTeX 块级公式 | 已有，但**没引 KaTeX 样式表**（字形错位），本次补上 |
 | `$ … $` | 行内公式 | **保持关闭**：`$5 到 $10` 这类金额会被误判成公式 |
 | ```` ```xflow ```` | JSON → React Flow 流程图 | 本次新增 |
-| ```` ```html ```` | 沙箱 iframe 里的真实页面 | 本次新增 |
-| ```` ```gsap ```` | 沙箱 iframe + 内置 gsap 的动画 | 本次新增 |
-| ```` ```json ```` | 可折叠的 JSON 树（原文 / 复制可切） | 本次新增 |
+| ```` ```html ```` | 沙箱 iframe 里的真实页面 | **已退役（2026-11-11）** → 走文件管理 |
+| ```` ```gsap ```` | 沙箱 iframe + 内置 gsap 的动画 | 保留（行内看效果） |
+| ```` ```json ```` | 可折叠的 JSON 树（原文 / 复制可切） | 保留（行内看效果） |
 
 ## 3. 三类新围栏的写法与渲染
 
@@ -73,9 +76,13 @@
   只是**撑满容器 + 可拖动画布 + 带缩放控件**（`XflowCanvas` 的 `fill` / `interactive` 两个开关）。
   用弹窗而不是浏览器 Fullscreen API：不额外申请权限、样式可控、Esc 与焦点陷阱由弹窗组件负责。
 
-### 3.2 html / gsap：沙箱 iframe
+### 3.2 gsap：沙箱 iframe（`html` 围栏已退役）
 
-模型写的 `<script>` 要真跑起来，才有"页面能跑、动画能动"这回事。但它**不能**拿到后台页面的权限。
+`html` 围栏在 2026-11-11 退役：**页面预览改走文件管理** —— AI 把页面写成 `.html` 文件，
+`file-submit` 上传，用户在文件树的预览弹窗里看；预览同样走沙箱（见 `ai-file-manager.md` §8.4）。
+`SandboxFrame` 不删：`gsap` 围栏与 HTML 文件预览共用它。
+
+模型写的 `<script>` 要真跑起来，才有"动画能动"这回事。但它**不能**拿到后台页面的权限。
 
 - `sandbox="allow-scripts"`，**不带 `allow-same-origin`** → iframe 是不透明源，拿不到父页面的 DOM、cookie、localStorage；
 - iframe 内 `Content-Security-Policy`：`default-src 'none'`，只放行内联样式/脚本、`data:`/`blob:` 图片；外链脚本、`fetch`、表单提交、嵌套框架全部禁止 —— 模型写的代码无法把页面数据带出去；
@@ -85,14 +92,15 @@
 - **全屏**与 xflow 同一套弹窗（92vh × 96vw）：里面是**另一份文档**、另一个 iframe，沙箱参数一字不改 ——
   所以脚本从头再跑一遍，正好用来重看动画；原来的 iframe 不销毁，关掉弹窗就回到它。
 
-`gsap` 与 `html` 的差别只在"多内联一个 gsap"。gsap 文件放 `apps/admin/public/vendor/gsap.min.js`（随包提交），
-`apps/admin` 用脚本 `pnpm sync:vendor` 从 node_modules 重新复制，升级版本不靠手抄。
+`gsap` 围栏保留；`html` 不再有围栏组件，但它的沙箱复用给文件预览。gsap 文件放
+`apps/admin/public/vendor/gsap.min.js`（随包提交），`apps/admin` 用脚本 `pnpm sync:vendor`
+从 node_modules 重新复制，升级版本不靠手抄。
 
 ### 3.3 流式行为：没闭合就不渲染
 
-这三类围栏在**围栏未闭合**时只显示一行"正在生成"占位，闭合后才渲染。理由有两条，都是实践结论：
+`xflow` / `gsap` 在**围栏未闭合**时只显示一行"正在生成"占位，闭合后才渲染。理由有两条，都是实践结论：
 
-- `html` / `gsap` 每来一个 token 就重建 iframe，等于把脚本反复重跑 —— 动画永远卡在第一帧，控制台反复报错；
+- `gsap` 每来一个 token 就重建 iframe，等于把脚本反复重跑 —— 动画永远卡在第一帧，控制台反复报错；
 - `xflow` 每来一个 token 就重新排版，节点会来回跳。
 
 普通代码块和 mermaid 保持逐字渲染（mermaid 自己做了防抖与错误兜底），不受此限。
@@ -126,8 +134,9 @@
 | 文件 | 职责 |
 | --- | --- |
 | `packages/ui/src/components/ai-elements/markdown-fences/fence-spec.ts` | 纯函数：xflow 解析/排版、沙箱文档与 CSP 组装、语言清单 |
-| `.../markdown-fences/sandbox-frame.tsx` | 沙箱 iframe（脚本内联、高度回报、错误兜底） |
-| `.../markdown-fences/html-fence.tsx` `gsap-fence.tsx` | 两个围栏组件，共用沙箱 |
+| `.../markdown-fences/sandbox-frame.tsx` | 沙箱 iframe（脚本内联、高度回报、错误兜底）；`gsap` 围栏与 HTML 文件预览共用 |
+| `.../markdown-fences/html-fence.tsx` | **软退役**：prompt 已移除；组件保留给历史消息，页面预览改走文件管理 |
+| `.../markdown-fences/gsap-fence.tsx` | 动画围栏，使用沙箱 |
 | `.../markdown-fences/xflow-fence.tsx` | 解析 + 外壳（含全屏弹窗）；画布按需加载 |
 | `.../markdown-fences/xflow-layout.ts` | dagre 排版（只有画布引用它，所以不进首屏包） |
 | `.../markdown-fences/xflow-canvas.tsx` | 只有这里 import `@xyflow/react` |
@@ -146,6 +155,10 @@
 `apps/server/src/modules/ai/core/prompts/templates/partials/requirements.eta`（所有 agent 共用的一段要求），
 只加"什么时候用 + 写法要点 + 不许做什么"三类信息，不展开举例，避免提示词膨胀。
 
+`html` 围栏退役后，prompt 里的 `html` bullet 改为"要页面预览就写 `.html` 文件并用 `file-submit` 提交"；
+`xflow` / `mermaid` / `gsap` / `json` / 公式的说明保留。切换顺序：先让文件树能沙箱预览 `.html`，
+再摘 prompt / renderer，避免中间态模型没有页面预览能力。
+
 ## 6. 测试点
 
 - 纯函数单测：xflow 解析（合法 / 缺字段 / 边悬空 / 非 JSON）、分层排版（列与行坐标确定、无重叠）、
@@ -154,14 +167,15 @@
   框内 `fetch('https://example.com')` 被 CSP 拦掉、高度回报到父页面；`xflow` 组件单独打包后
   渲染出 4 个节点 / 4 条连线、标签正确；
 - 渲染冒烟：`MessageResponse` 传入未闭合围栏 → 只出现占位、不出现 iframe；闭合后 → 出现 `data-fence` 容器；
-  全屏按钮开弹窗、弹窗内画布切到 `fill` + `interactive`、标题跟着进去；`html` / `gsap` 的全屏
+  全屏按钮开弹窗、弹窗内画布切到 `fill` + `interactive`、标题跟着进去；`gsap` 的全屏
   同样另起一个 `sandbox="allow-scripts"` 的 iframe（权限不放宽）；
 - 回归：普通代码块、mermaid、块级公式的现有行为不变。
 
 ## 7. 未做 / 后续
 
 - 围栏内容不允许外链资源（会被 CSP 拦下并显示为空），如果需要"引用真实图片"，走附件而不是围栏；
-- 沙箱 iframe 目前只在 AI 会话里用；若将来预览类页面也要用，把 `SandboxFrame` 提到 `components/` 并补导出；
+- **HTML 文件预览**要用沙箱：把 `SandboxFrame` 从 `ai-elements/markdown-fences/` 提到
+  `packages/ui/components/` 并补导出（`ai-file-manager.md` §8.4）；这是 `html` 围栏退役的前提；
 - `xflow` 暂不支持分组、泳道、自定义节点样式；真需要时扩 schema，而不是让模型写坐标；
 - `xflow` 节点按固定尺寸（208×84）排版，描述超过两行会被截断（`line-clamp-2`）——
   需要更长文案时用 `label` 说主句、`description` 只说补充，别把一段话塞进节点。

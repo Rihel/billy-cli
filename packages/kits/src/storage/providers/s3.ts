@@ -20,9 +20,11 @@ import { AppLogger } from '../../foundation/logger/app-logger.js'
 import type { RedisStore } from '../../redis/redis-store.js'
 import type {
   ObjectContent,
+  ObjectPut,
   ObjectRemoved,
   ObjectStorageConfig,
   ObjectStorageProvider,
+  PutObjectInput,
 } from '../types.js'
 
 export const makeS3Provider = (
@@ -58,6 +60,18 @@ export const makeS3Provider = (
         body: Buffer.from((await response.Body?.transformToByteArray()) ?? []),
       } satisfies ObjectContent
     },
+    async putObject(input: PutObjectInput) {
+      await s3.send(
+        new PutObjectCommand({
+          Bucket: config.bucket,
+          Key: input.key,
+          Body: input.body,
+          ContentLength: input.body.length,
+          ...(input.contentType ? { ContentType: input.contentType } : {}),
+        }),
+      )
+      return { key: input.key } satisfies ObjectPut
+    },
     async getPresignedUrl(data) {
       return {
         key: data.key,
@@ -68,12 +82,17 @@ export const makeS3Provider = (
         ),
       } satisfies StoragePresignedUrlModel
     },
-    async getDownloadUrl({ key }) {
+    async getDownloadUrl({ key, filename }) {
+      const disposition = attachmentDisposition(filename)
       return {
         key,
         url: await getSignedUrl(
           s3,
-          new GetObjectCommand({ Bucket: config.bucket, Key: key }),
+          new GetObjectCommand({
+            Bucket: config.bucket,
+            Key: key,
+            ...(disposition ? { ResponseContentDisposition: disposition } : {}),
+          }),
           { expiresIn: 3600 },
         ),
       } satisfies StoragePresignedUrlModel
@@ -139,4 +158,11 @@ const ensurePublicReadBucket = async (s3: S3Client, bucket: string) => {
       }),
     }),
   )
+}
+
+/** 下载头的文件名清洗：去掉 CR/LF / 引号 / 反斜杠，防 header 注入 */
+const attachmentDisposition = (filename?: string): string | undefined => {
+  const safe = filename?.replace(/[\r\n"\\]/g, '_').trim()
+  if (!safe) return undefined
+  return `attachment; filename*=UTF-8''${encodeURIComponent(safe)}`
 }

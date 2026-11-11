@@ -15,6 +15,7 @@ import { createPromptEngine } from '../src/modules/ai/core/prompts/index.js'
 import { AgentTitleService } from '../src/modules/ai/runtime/title.service.js'
 import { SkillLoader } from '../src/modules/ai/core/skills/index.js'
 import { BashTool } from '../src/modules/ai/tools/bash.tool.js'
+import { FileTools } from '../src/modules/ai/files/file.tools.js'
 import { WebTools } from '../src/modules/ai/tools/web.tools.js'
 import { RunSubAgentTool } from '../src/modules/ai/tools/subagent.tool.js'
 import { PlannerStore, PlannerTools } from '../src/modules/ai/tools/planner/index.js'
@@ -245,6 +246,7 @@ beforeAll(async () => {
       new PlannerTools(plannerStore),
       new ReadToolResultTool(deps.results, deps.counter, deps.caps),
       new WebTools(silentLogger as never),
+      new FileTools({} as never, { enabled: true } as never),
     ],
     gateway,
     deps.config,

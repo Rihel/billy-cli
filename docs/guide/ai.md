@@ -29,13 +29,16 @@ POST /agent/usage/summary      用量汇总
 - **流式与续传**：文本、推理、工具调用、步骤、来源全细节推送，断线从上次位置继续。
 - **工具面**：一个工具一条 `@ToolDecl`（`@ToolGroup` 类 + 方法即工具），注册后统一过网关——
   开关、作用域（主 agent / 子 agent）、限额、自定义事件、审计、大结果分页与 `read-tool-result` 回取。
-  内建 10 个：计划四件套、`run-sub-agent`、`bash`、`read-tool-result`、`web-search`、`web-fetch`、`web-request`。
+  内建 19 个：计划四件套、`run-sub-agent`、`bash`、`read-tool-result`、`web-search`、`web-fetch`、`web-request`，
+  以及文件管理九件套（`file-submit` / `file-download` / `file-list` / `read-file` / `file-search` /
+  `workspace-files` / `write-file` / `replace-file` / `append-file`）。
   agent 的授权清单支持选择器（`'*'`、`{ category }`、`{ connector }`），装配期按调用身份过滤作用域——
   没授权的工具**根本不会出现在模型面前**。
 - **技能库**（`modules/ai/skills`）：后台「AI → 技能库」在线写技能（类 Notion 的块编辑器写正文 +
   `references/` / `scripts/`），也能贴 skills.sh / GitHub 链接把技能**下载进库**；启停立即生效、不用重启。
   DB 是事实源，服务端落盘到 `~/.billy/skills`（`AGENT_SKILLS_LIBRARY_DIR`）供 Mastra 按需读；
   agent 也能用 `skill-save` 等工具自己建技能，写入入口只有管理员（技能内容会进入模型上下文）。
+  模型侧提示词要求**先扫技能清单**：有匹配的就先 `skill` 加载再动手；设计 / 页面 / 报告类任务先加载设计类技能再写第一版，不要等用户点名。
 - **连接器**（`modules/ai/connectors`）：外部能力不再写死进代码。后台「AI → 连接器」加一条实例
   （地址 + 凭证），就产出一组受管工具，走的是和内建工具同一个网关（开关、限额、审计、脱敏一致）。
   内置 4 个型号：**PostgreSQL / MySQL**（查表结构与只读查询）、**Redis**（按前缀只读扫键 / 读字符串与哈希）、

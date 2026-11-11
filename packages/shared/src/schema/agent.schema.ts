@@ -98,6 +98,136 @@ export type AgentStatusModel = z.infer<typeof AgentStatusSchema>
 /** 日期时间字段：接受 string 或 Date（与 base.schema 的约定一致，本文件自持一份以免导出内部常量） */
 const dateField = z.union([z.string(), z.date()]).optional()
 
+/** 文件来源：用户上传 / AI 生成（与 `FileSource` 字典的值一致） */
+export const AgentFileSourceSchema = z.enum(['user', 'ai'])
+export type AgentFileSourceValue = z.infer<typeof AgentFileSourceSchema>
+
+/** 会话文件（`ai_files` 一行的对外投影；不含字节） */
+export const AgentFileModelSchema = z.object({
+  /** 会话内逻辑路径：入站 uploads/{md5}{ext}，AI {fileKey} */
+  path: z.string(),
+  source: AgentFileSourceSchema,
+  /** 展示名：入站原始文件名，AI 取 path 最后一段 */
+  filename: z.string(),
+  /** 对象存储完整 key（前端预览 / 下载用） */
+  key: z.string(),
+  bytes: z.number().int().nonnegative(),
+  mediaType: z.string(),
+  /** AI 产出必有；入站可空（key 自带 md5） */
+  sha256: z.string().nullable(),
+  createdAt: dateField,
+  updatedAt: dateField,
+})
+export type AgentFileModel = z.infer<typeof AgentFileModelSchema>
+
+/** 文件树节点（目录隐式生成；文件节点带 `file`） */
+export interface AgentFileNode {
+  name: string
+  path: string
+  type: 'dir' | 'file'
+  children?: AgentFileNode[]
+  file?: AgentFileModel
+}
+
+export const AgentFileNodeSchema: z.ZodType<AgentFileNode> = z.lazy(() =>
+  z.object({
+    name: z.string(),
+    path: z.string(),
+    type: z.enum(['dir', 'file']),
+    children: z.array(AgentFileNodeSchema).optional(),
+    file: AgentFileModelSchema.optional(),
+  }),
+)
+
+/**
+ * AI 文件管理（后台独立页 `POST /agent/file/admin/list`）的筛选条件。
+ *
+ * 时间范围按文件 `created_at`（创建时间）过滤，from / to 都是闭区间日期。
+ */
+export const AgentFileAdminQuerySchema = z.object({
+  keyword: z.string().trim().max(100).optional(),
+  from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+})
+export type AgentFileAdminQueryDto = z.infer<typeof AgentFileAdminQuerySchema>
+
+/** 全量文件列表（管理员，含所属会话标题） */
+export const AgentFileAdminListSchema = BasePaginateSchema.extend({
+  ...AgentFileAdminQuerySchema.shape,
+  sortBy: z.enum(['size', 'createdAt', 'updatedAt']).optional().default('createdAt'),
+  sortOrder: z.enum(['asc', 'desc']).optional().default('desc'),
+})
+export type AgentFileAdminListDto = z.infer<typeof AgentFileAdminListSchema>
+
+/** 文件总量统计（管理员；与列表共用 keyword / 时间范围筛选） */
+export const AgentFileAdminStatsSchema = AgentFileAdminQuerySchema
+export type AgentFileAdminStatsDto = z.infer<typeof AgentFileAdminStatsSchema>
+
+/** 管理员预览：按文件 id 取文本内容（任意会话） */
+export const AgentFileAdminPreviewSchema = z.object({
+  fileId: z.string().min(1).max(32),
+})
+export type AgentFileAdminPreviewDto = z.infer<typeof AgentFileAdminPreviewSchema>
+
+/** 全量文件列表的一行 */
+export const AgentFileAdminItemSchema = z.object({
+  id: z.string(),
+  conversationId: z.string(),
+  conversationTitle: z.string(),
+  filename: z.string(),
+  path: z.string(),
+  key: z.string(),
+  source: AgentFileSourceSchema,
+  mediaType: z.string(),
+  bytes: z.number().int().nonnegative(),
+  createdAt: z.union([z.string(), z.date()]),
+  updatedAt: z.union([z.string(), z.date()]),
+})
+export type AgentFileAdminItem = z.infer<typeof AgentFileAdminItemSchema>
+
+export const AgentFileAdminListModelSchema = z.object({
+  items: z.array(AgentFileAdminItemSchema),
+  total: z.number().int().nonnegative(),
+  page: z.number().int().positive(),
+  size: z.number().int().positive(),
+})
+export type AgentFileAdminListModel = z.infer<typeof AgentFileAdminListModelSchema>
+
+export const AgentFileAdminStatsModelSchema = z.object({
+  count: z.number().int().nonnegative(),
+  bytes: z.number().int().nonnegative(),
+  userCount: z.number().int().nonnegative(),
+  userBytes: z.number().int().nonnegative(),
+  aiCount: z.number().int().nonnegative(),
+  aiBytes: z.number().int().nonnegative(),
+  conversationCount: z.number().int().nonnegative(),
+})
+export type AgentFileAdminStatsModel = z.infer<typeof AgentFileAdminStatsModelSchema>
+
+/** 工作区文件（`workspace-files` / HTTP 列表的一行，不含内容） */
+export const AgentWorkspaceFileSchema = z.object({
+  path: z.string(),
+  bytes: z.number().int().nonnegative(),
+  mtime: z.string(),
+})
+export type AgentWorkspaceFile = z.infer<typeof AgentWorkspaceFileSchema>
+
+/** 工作区扁平清单 */
+export const AgentWorkspaceListSchema = z.object({
+  items: z.array(AgentWorkspaceFileSchema),
+  total: z.number().int().nonnegative(),
+  truncated: z.boolean(),
+})
+export type AgentWorkspaceListModel = z.infer<typeof AgentWorkspaceListSchema>
+
+/** 文本预览结果（会话文件 / 工作区共用） */
+export const AgentFilePreviewSchema = z.object({
+  text: z.string(),
+  mediaType: z.string(),
+  truncated: z.boolean(),
+})
+export type AgentFilePreviewModel = z.infer<typeof AgentFilePreviewSchema>
+
 /** 会话（对外模型） */
 export const AgentConversationSchema = z.object({
   id: z.string(),
@@ -120,6 +250,11 @@ export const AgentConversationSchema = z.object({
   lastActiveAt: z.union([z.string(), z.date()]),
   createdAt: dateField,
   updatedAt: dateField,
+  /**
+   * 本会话的文件树（用户上传 + AI 提交）。只在 `conversation/detail` 返回；
+   * `conversation/list` 不返回，避免列表页把每棵树都拉出来。
+   */
+  aiFiles: z.array(AgentFileNodeSchema).optional(),
 })
 
 export type AgentConversationModel = z.infer<typeof AgentConversationSchema>

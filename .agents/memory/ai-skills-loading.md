@@ -30,11 +30,11 @@
 - Mastra 校验只对 name（≤64）/ description（≤1024）/ compatibility（≤500）硬拦；
   正文 5000 token / 500 行只是**警告**，不拦启动。
 - 别把外部目录的坏技能做成启动失败：第三方技能库一个 typo 能让整个服务起不来（这正是"分级严格"的原因）。
+- **有清单 ≠ 会主动用**（2026-11-11 `eb01isgg2q4h53vh9aqs`）：技能名 + 描述已注入 system message，但提示词只写"怎么建技能"，模型直接写普通 HTML；直到用户说"用给你的 skill"才调 `skill`。`requirements.eta` 必须明确"先扫、匹配就加载"，`ai-prompt-guardrails` 已钉住。
 
 ## 依据
 
-- `apps/server/src/modules/ai/core/skills/skill.loader.ts`（发现 / 校验 / `SKILL_DIRS`）
-- `apps/server/src/modules/ai/mastra/skill.adapter.ts`（`SkillRef[] → 目录路径[]`）
+- `skill.loader.ts`（发现 / 校验 / `SKILL_DIRS`）、`skill.adapter.ts`（`SkillRef[] → 目录路径[]`）
 - `apps/server/src/modules/ai/agents/index.ts`（`ALL_SKILLS` 装配期展开）、`ai.module.ts`（`SKILL_DIRS` 供给）
 - `apps/server/test/ai-skills-loader.test.ts`（含"路径交给 `resolveAgentSkills` 后能列表并读到 references"）
 - `docs/design/ai-agent.md` §1.4、`docs/dev-logs/2026-10-27.md`

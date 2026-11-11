@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import type { UIMessage } from 'ai'
-import type { AgentRunModel, AiSkillModel } from '@repo/shared'
+import type { AgentFileNode, AgentRunModel, AiSkillModel } from '@repo/shared'
 import {
   Badge,
   Button,
@@ -19,6 +19,7 @@ import {
 import {
   BotIcon,
   CopyIcon,
+  FolderIcon,
   EyeIcon,
   ListTodoIcon,
   LoaderCircleIcon,
@@ -36,12 +37,13 @@ import { copyText } from '@/lib/clipboard'
 import { durationText, tokenText } from './format'
 import { activatedSkillsOf } from './skill-activity'
 import { SkillPreviewDialog } from './skill-preview-dialog'
+import { FilesPanel } from './files-panel'
 
 /** 有子助手在跑时，`run/list` 的轮询间隔（毫秒）；为什么取 4s 见下方 `runsQuery` 的注释 */
 const SUB_AGENT_POLL_INTERVAL = 4_000
 
 /** 右栏的 tab（`focus` 与初始 tab 都用它，避免各处写裸字符串） */
-export type RightPanelTab = 'system' | 'skills' | 'plan' | 'subagents'
+export type RightPanelTab = 'system' | 'skills' | 'plan' | 'subagents' | 'files'
 
 /**
  * 会话页**右栏**：把"这一轮的旁证"集中到一处，按 tab 切换。
@@ -74,6 +76,7 @@ export function ConversationRightPanel({
   agentKey,
   messages = [],
   plan = null,
+  files = [],
   defaultTab = 'system',
   focus = null,
 }: {
@@ -85,6 +88,8 @@ export function ConversationRightPanel({
   messages?: UIMessage[]
   /** 这一会话的当前计划（会话页算好；没有任务清单时为 null） */
   plan?: ConversationPlan | null
+  /** 会话文件树（`conversation/detail` 的 aiFiles；用户上传 + AI 提交） */
+  files?: AgentFileNode[]
   /** 首次挂载停在哪个 tab（面板此后受控，由用户与 `focus` 驱动） */
   defaultTab?: RightPanelTab
   /**
@@ -150,22 +155,26 @@ export function ConversationRightPanel({
 
   return (
     <Tabs value={tab} onValueChange={(value) => setTab(value as RightPanelTab)} className="flex h-full min-h-0 flex-col gap-1.5">
-      <TabsList className="w-full">
-        <TabsTrigger value="system">
+      <TabsList className="w-full justify-start overflow-x-auto pb-0.5 [scrollbar-width:thin]">
+        <TabsTrigger value="system" className="shrink-0">
           <ScrollTextIcon className="size-3.5" />
           系统指令
         </TabsTrigger>
-        <TabsTrigger value="skills">
+        <TabsTrigger value="skills" className="shrink-0">
           <SparklesIcon className="size-3.5" />
           技能{activatedSkills.length > 0 ? `（${activatedSkills.length}）` : ''}
         </TabsTrigger>
-        <TabsTrigger value="plan">
+        <TabsTrigger value="plan" className="shrink-0">
           <ListTodoIcon className="size-3.5" />
           任务{planProgress ? `（${planProgress.done}/${planProgress.total}）` : ''}
         </TabsTrigger>
-        <TabsTrigger value="subagents">
+        <TabsTrigger value="subagents" className="shrink-0">
           <BotIcon className="size-3.5" />
           子 agent{tabs.length > 0 ? `（${tabs.length}）` : ''}
+        </TabsTrigger>
+        <TabsTrigger value="files" className="shrink-0">
+          <FolderIcon className="size-3.5" />
+          文件
         </TabsTrigger>
       </TabsList>
 
@@ -193,6 +202,10 @@ export function ConversationRightPanel({
           loading={runsQuery.isLoading && liveSubAgents.length === 0}
           error={runsQuery.isError && liveSubAgents.length === 0 ? runsQuery.error : undefined}
         />
+      </TabsContent>
+
+      <TabsContent value="files" className="flex min-h-0 flex-1 flex-col">
+        <FilesPanel client={client} conversationId={conversationId} files={files} />
       </TabsContent>
     </Tabs>
   )

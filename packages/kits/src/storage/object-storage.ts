@@ -15,7 +15,13 @@ import {
 import { RedisStore } from '../redis/redis-store.js'
 import { makeCosProvider } from './providers/cos.js'
 import { makeS3Provider } from './providers/s3.js'
-import type { ObjectContent, ObjectRemoved, ObjectStorageProvider } from './types.js'
+import type {
+  ObjectContent,
+  ObjectPut,
+  ObjectRemoved,
+  ObjectStorageProvider,
+  PutObjectInput,
+} from './types.js'
 
 @Injectable()
 export class ObjectStorage implements OnApplicationBootstrap {
@@ -123,6 +129,18 @@ export class ObjectStorage implements OnApplicationBootstrap {
     return this.guard('getObject', async () => {
       await this.ensureInitialized()
       return this.provider.getObject(key)
+    })
+  }
+
+  /**
+   * 服务端写入对象：AI 产出的文件没有"前端预签名直传"这一步。
+   *
+   * 大小上限由调用方（文件工具）在写入前判断；这里只负责把字节送进存储。
+   */
+  putObject(input: PutObjectInput): Promise<ObjectPut> {
+    return this.guard('putObject', async () => {
+      await this.ensureInitialized()
+      return this.provider.putObject(input)
     })
   }
 

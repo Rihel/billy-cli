@@ -23,6 +23,7 @@ import {
 } from './conversation.repository.js'
 import { RunRepository } from './run.repository.js'
 import { TimelineRepository } from './timeline.repository.js'
+import { FileService } from '../files/file.service.js'
 
 /**
  * 会话服务：会话的增删查 + 归属校验。
@@ -38,6 +39,7 @@ export class AgentConversationService {
     @Inject(TimelineRepository) private readonly timelines: TimelineRepository,
     @Inject(AGENT_REGISTRY) private readonly registry: AgentRegistry,
     @Inject(AppLogger) private readonly logger: AppLogger,
+    @Inject(FileService) private readonly files: FileService,
   ) {}
 
   /** 新建会话（agentKey 未知时由注册表抛 3303） */
@@ -71,10 +73,13 @@ export class AgentConversationService {
     input: AgentConversationIdDto,
   ): Promise<AgentConversationModel> {
     const conversation = await this.requireOwned(userId, input.conversationId)
-    return toConversationModel(
-      conversation,
-      await this.conversations.isRunning(conversation.id),
-    )
+    return {
+      ...toConversationModel(
+        conversation,
+        await this.conversations.isRunning(conversation.id),
+      ),
+      aiFiles: this.files ? await this.files.tree(conversation.id) : undefined,
+    }
   }
 
   /**
@@ -199,6 +204,17 @@ export class AgentConversationService {
       })
     }
     await this.conversations.softDelete(input.conversationId)
+    if (this.files) {
+      try {
+        // 删会话顺手清工作区 + 软删 ai_files + 删 AI 对象；入站对象保留（内容寻址共享）
+        await this.files.cleanupConversation(input.conversationId)
+      } catch (error) {
+        this.logger.error('ai.conversation.cleanup_failed', {
+          conversationId: input.conversationId,
+          reason: error instanceof Error ? error.message : String(error),
+        })
+      }
+    }
     this.logger.log('ai.conversation.removed', {
       conversationId: input.conversationId,
       canceledRuns: canceled,
