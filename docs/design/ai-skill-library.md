@@ -126,7 +126,7 @@
 
 ### 2.6 与 agent 的接口（工具）
 
-`skill-list` / `skill-save`（建或改 + 可带文件）/ `skill-import`（按链接装）/ `skill-delete` / `skill-enable`：
+`skill-list` / `skill-save`（建或改 + 可带文件）/ `skill-file-save`（写单个参考文件 / 脚本）/ `skill-file-append`（追加单个文件）/ `skill-import`（按链接装）/ `skill-delete` / `skill-enable`：
 
 - 一组粗粒度工具，而不是"每列一个工具"：模型一次调用就能把一个技能写完（正文 + 参考文件）；
 - 复用同一套 service 校验与落盘，**agent 写入与页面写入是同一条链路**；

@@ -23,6 +23,7 @@ const makeService = () => ({
   create: vi.fn(),
   update: vi.fn(),
   saveFile: vi.fn(),
+  readFile: vi.fn(),
   remove: vi.fn(),
   import: vi.fn(),
 })
@@ -104,6 +105,61 @@ describe('skill-save：新建 / 更新', () => {
         {} as never,
       ),
     ).rejects.toBeInstanceOf(ToolDeniedError)
+  })
+})
+
+describe('skill-file-save / skill-file-append', () => {
+  it('skill-file-save 直接写单个参考文件，不带整篇正文', async () => {
+    const service = makeService()
+    service.saveFile.mockResolvedValue(detailOf(4, ['SKILL.md', 'references/a.md']))
+    const spec = specByKey(makeGroup(service), TOOL_KEYS.skillFileSave)
+
+    const result = (await spec.exec(
+      { skillKey: 'demo-skill', path: 'references/a.md', content: 'A', expectedVersion: 3 },
+      {} as never,
+    )) as { ok: boolean; version: number; files: string[] }
+
+    expect(result).toMatchObject({ ok: true, version: 4 })
+    expect(service.saveFile).toHaveBeenCalledWith({
+      skillKey: 'demo-skill',
+      path: 'references/a.md',
+      content: 'A',
+      expectedVersion: 3,
+    })
+  })
+
+  it('skill-file-append 先读旧内容再追加，expectedVersion 用当前版本', async () => {
+    const service = makeService()
+    service.readFile.mockResolvedValue({
+      path: 'references/a.md',
+      kind: 'markdown',
+      content: 'A',
+      version: 3,
+    })
+    service.saveFile.mockResolvedValue(detailOf(4, ['SKILL.md', 'references/a.md']))
+    const spec = specByKey(makeGroup(service), TOOL_KEYS.skillFileAppend)
+
+    const result = (await spec.exec(
+      { skillKey: 'demo-skill', path: 'references/a.md', content: 'BC' },
+      {} as never,
+    )) as { bytes: number; version: number }
+
+    expect(result).toMatchObject({ bytes: 3, version: 4 })
+    expect(service.saveFile).toHaveBeenCalledWith({
+      skillKey: 'demo-skill',
+      path: 'references/a.md',
+      content: 'ABC',
+      expectedVersion: 3,
+    })
+  })
+
+  it('SKILL.md 不走文件工具，必须用 skill-save', async () => {
+    const service = makeService()
+    const spec = specByKey(makeGroup(service), TOOL_KEYS.skillFileSave)
+    await expect(
+      spec.exec({ skillKey: 'demo-skill', path: 'SKILL.md', content: 'x' }, {} as never),
+    ).rejects.toBeInstanceOf(ToolDeniedError)
+    expect(service.saveFile).not.toHaveBeenCalled()
   })
 })
 

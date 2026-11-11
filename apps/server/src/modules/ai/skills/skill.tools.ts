@@ -10,7 +10,8 @@ import { SkillLibraryService } from './skill.service.js'
 
 /**
  * **技能库工具组**（设计 `docs/design/ai-skill-library.md` §2.6）：
- * `skill-list` / `skill-save` / `skill-delete` / `skill-enable`。
+ * `skill-list` / `skill-save` / `skill-file-save` / `skill-file-append` /
+ * `skill-delete` / `skill-enable`。
  *
  * 为什么是四个粗粒度工具而不是"每个字段一个"：
  * 模型维护一个技能的真实动作是"一次写完正文 + 参考文件"，拆成 write-body / add-file / set-desc
@@ -56,6 +57,28 @@ const SkillSaveParams = z.object({
     .optional()
     .describe('要一并写入的参考文件 / 脚本（只增改，不删除已有文件）'),
   enabled: z.boolean().optional().describe('是否启用（默认 true；停用后模型看不到这个技能）'),
+})
+
+const SkillFileSaveParams = z.object({
+  skillKey: z.string().min(1).max(64).describe('技能名'),
+  path: z
+    .string()
+    .min(1)
+    .max(200)
+    .describe('相对技能目录的路径：references/xxx.md、scripts/xxx.py 或 assets/xxx；写入 SKILL.md 请用 skill-save'),
+  content: z.string().max(SKILL_FILE_MAX_CHARS).describe('文件完整内容（覆盖写）'),
+  expectedVersion: z.number().int().positive().optional().describe('乐观锁版本；并发修改时传当前版本'),
+})
+
+const SkillFileAppendParams = z.object({
+  skillKey: z.string().min(1).max(64).describe('技能名'),
+  path: z
+    .string()
+    .min(1)
+    .max(200)
+    .describe('相对技能目录的路径：references/xxx.md、scripts/xxx.py 或 assets/xxx；不能是 SKILL.md'),
+  content: z.string().max(SKILL_FILE_MAX_CHARS).describe('追加内容（不会自动补换行）'),
+  expectedVersion: z.number().int().positive().optional().describe('乐观锁版本；并发修改时传当前版本'),
 })
 
 const SkillDeleteParams = z.object({
@@ -179,6 +202,86 @@ export class SkillTools {
       }
     } catch (error) {
       throw new ToolDeniedError('invalid-input', messageOf(error), '按原因修正后重试；技能名只能用小写字母 / 数字 / 连字符')
+    }
+  }
+
+  @ToolDecl({
+    key: TOOL_KEYS.skillFileSave,
+    title: '写入技能文件',
+    params: SkillFileSaveParams,
+    config: SkillToolConfigSchema,
+    description: dedent`
+      新建或覆盖技能目录里的单个文件（references / scripts / assets）。
+
+      什么时候用：给已有技能补一份参考文档、脚本或素材；不用把 SKILL.md 正文整篇重发。
+      不能写 SKILL.md：技能正文用 \`skill-save\`。路径必须在 references/ scripts/ assets/ 下；
+      写入后立即生效，不需要重启。
+    `,
+  })
+  async saveFile(input: z.infer<typeof SkillFileSaveParams>) {
+    this.assertNotSkillBody(input.path)
+    try {
+      const detail = await this.skills.saveFile({
+        skillKey: input.skillKey,
+        path: input.path,
+        content: input.content,
+        ...(input.expectedVersion ? { expectedVersion: input.expectedVersion } : {}),
+      })
+      return {
+        ok: true,
+        skillKey: detail.skillKey,
+        version: detail.version,
+        path: input.path,
+        files: detail.files.map((file) => file.path),
+      }
+    } catch (error) {
+      throw new ToolDeniedError('invalid-input', messageOf(error), '按原因修正后重试；路径只能放在 references/ scripts/ assets/ 下')
+    }
+  }
+
+  @ToolDecl({
+    key: TOOL_KEYS.skillFileAppend,
+    title: '追加技能文件内容',
+    params: SkillFileAppendParams,
+    config: SkillToolConfigSchema,
+    description: dedent`
+      在技能目录已有文件末尾追加内容（不存在则创建）；只 Append，不整文件覆盖。
+
+      什么时候用：往 references/xxx.md 里继续补来源、往 scripts/xxx.py 里追加函数；
+      追加内容不会自动补换行。不能写 SKILL.md：技能正文用 \`skill-save\`。
+      写入后立即生效，不需要重启。
+    `,
+  })
+  async appendFile(input: z.infer<typeof SkillFileAppendParams>) {
+    this.assertNotSkillBody(input.path)
+    try {
+      const existing = await this.skills.readFile(input.skillKey, input.path).catch(() => null)
+      const content = `${existing?.content ?? ''}${input.content}`
+      const detail = await this.skills.saveFile({
+        skillKey: input.skillKey,
+        path: input.path,
+        content,
+        ...(input.expectedVersion ?? existing?.version
+          ? { expectedVersion: input.expectedVersion ?? existing!.version }
+          : {}),
+      })
+      return {
+        ok: true,
+        skillKey: detail.skillKey,
+        version: detail.version,
+        path: input.path,
+        bytes: content.length,
+        files: detail.files.map((file) => file.path),
+      }
+    } catch (error) {
+      throw new ToolDeniedError('invalid-input', messageOf(error), '先用 skill-list 确认技能存在；路径只能放在 references/ scripts/ assets/ 下')
+    }
+  }
+
+  /** 技能正文有专用工具（skill-save），避免这里第二次拼 frontmatter */
+  private assertNotSkillBody(path: string): void {
+    if (path === 'SKILL.md') {
+      throw new ToolDeniedError('invalid-input', 'SKILL.md 请用 skill-save 整体更新，不要用文件工具')
     }
   }
 

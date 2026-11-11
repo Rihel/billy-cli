@@ -64,8 +64,10 @@ export const TOOL_KEYS = {
    */
   webRequest: 'web-request',
   /**
-   * **技能库**（一组四个工具，设计 `docs/design/ai-skill-library.md`）：
+   * **技能库**（一组六个工具，设计 `docs/design/ai-skill-library.md`）：
    * `skill-list`（看现有技能）/ `skill-save`（建或改，可一次带参考文件）/
+   * `skill-file-save`（写单个 references / scripts / assets 文件）/
+   * `skill-file-append`（追加单个文件内容）/
    * `skill-delete`（删）/ `skill-enable`（启停）。
    *
    * 与 Mastra 自带的 `skill` / `skill_read` 是两套：那三个是**读**技能，
@@ -73,6 +75,8 @@ export const TOOL_KEYS = {
    */
   skillList: 'skill-list',
   skillSave: 'skill-save',
+  skillFileSave: 'skill-file-save',
+  skillFileAppend: 'skill-file-append',
   skillDelete: 'skill-delete',
   skillEnable: 'skill-enable',
   skillImport: 'skill-import',
