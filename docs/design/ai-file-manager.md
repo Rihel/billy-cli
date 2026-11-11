@@ -918,6 +918,8 @@ Markdown / 代码 / CSV 的文本预览也走它，前端就不用为不同来�
   给后台预览用（图片 / PDF / 视频 / 音频走对象存储 URL + `FilePreview`；HTML 走 `SandboxFrame`）；
 - 页面主体是 DataTable：文件名 + path、所属会话（可跳回聊天）、来源、大小、创建时间、
   预览 / 下载；时间范围用 `DateRangePicker`（`Calendar` + `Popover` 封装），不用原生 date input；
+- 预览弹窗：左侧当前文件清单（后台为当前页，聊天右栏为当前视图的全部文件），
+  顶部「上一个 / 下一个」（支持 `←` / `→`），右侧全屏内容；HTML 用 `SandboxFrame` 的无 chrome 模式；
 - 指标卡在**控制台 dashboard** 的「文件用量」区：文件总数 / 总占用 / 用户上传 / AI 生成，
   数据来自同一份 stats；文件页不再重复放指标卡；
 - 管理员列表会返回对象存储 `key` 供下载；该 key 仍只用于已鉴权页面，不写日志 / 不外发。

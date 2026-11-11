@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useQuery } from '@tanstack/react-query'
 import { formatFileSize } from '@repo/shared/browser'
@@ -10,14 +10,8 @@ import {
   Button,
   DataTable,
   DateRangePicker,
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
   DisplayValue,
-  FilePreview,
   Input,
-  Markdown,
   RefreshButton,
   useStorageAdapter,
   toastError,
@@ -30,8 +24,11 @@ import {
   EyeIcon,
   SearchIcon,
 } from 'lucide-react'
-import { SandboxFrame } from '@repo/ui/components/ai-elements/markdown-fences/sandbox-frame.tsx'
 import { useServerClient } from '@/lib/server-client'
+import {
+  FilePreviewDialog,
+  isPreviewTextItem,
+} from '@/components/file-preview-dialog'
 
 /**
  * AI 文件管理（`/main/ai/files`，管理员）。
@@ -43,31 +40,6 @@ const PAGE_SIZE = 20
 
 const formatBytes = (bytes: number): string => formatFileSize(bytes)
 
-const TEXT_EXTENSIONS = new Set([
-  'txt', 'md', 'markdown', 'csv', 'tsv', 'json', 'jsonl', 'yaml', 'yml', 'xml',
-  'html', 'htm', 'log', 'sql', 'ini', 'conf', 'toml', 'properties', 'sh', 'bash',
-  'py', 'ts', 'tsx', 'js', 'jsx', 'java', 'go', 'rs', 'rb', 'php', 'c', 'h',
-  'cpp', 'hpp', 'css', 'scss', 'less', 'vue', 'svelte', 'graphql', 'gql',
-])
-
-const extOf = (filename: string): string => {
-  const base = filename.split('/').pop() ?? filename
-  const index = base.lastIndexOf('.')
-  return index > 0 ? base.slice(index + 1).toLowerCase() : ''
-}
-
-const isTextPreview = (file: AgentFileAdminItem): boolean =>
-  file.mediaType.startsWith('text/') ||
-  ['application/json', 'application/xml', 'application/yaml', 'application/x-yaml',
-    'application/javascript', 'application/typescript', 'application/sql'].includes(file.mediaType) ||
-  TEXT_EXTENSIONS.has(extOf(file.filename))
-
-const isHtml = (file: AgentFileAdminItem): boolean =>
-  file.mediaType === 'text/html' || ['html', 'htm'].includes(extOf(file.filename))
-
-const isMarkdown = (file: AgentFileAdminItem): boolean =>
-  file.mediaType === 'text/markdown' || ['md', 'markdown'].includes(extOf(file.filename))
-
 export default function AiFilesPage() {
   const client = useServerClient()
   const { resolveUrl } = useStorageAdapter()
@@ -78,7 +50,7 @@ export default function AiFilesPage() {
   const [range, setRange] = useState<DateRangeValue>({})
   const [sortBy, setSortBy] = useState<'size' | 'createdAt'>('createdAt')
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc')
-  const [preview, setPreview] = useState<AgentFileAdminItem | null>(null)
+  const [previewId, setPreviewId] = useState<string | null>(null)
 
   const filters = {
     keyword,
@@ -104,13 +76,31 @@ export default function AiFilesPage() {
       }),
   })
 
-  const textQuery = useQuery({
-    queryKey: ['ai', 'file', 'admin', 'preview', preview?.id ?? 'none'],
-    queryFn: () => client.agent.file.adminPreview({ fileId: preview!.id }),
-    enabled: Boolean(preview && isTextPreview(preview)),
-  })
-
   const files = filesQuery.data?.items ?? []
+
+  const previewItems = useMemo(
+    () =>
+      files.map((file) => ({
+        id: file.id,
+        filename: file.filename,
+        subtitle: file.conversationTitle || undefined,
+        badge: file.source === 'user' ? '用户上传' : 'AI 生成',
+        mediaType: file.mediaType,
+        bytes: file.bytes,
+        url: resolveUrl(file.key),
+      })),
+    [files, resolveUrl],
+  )
+  const previewIndex = previewId
+    ? previewItems.findIndex((item) => item.id === previewId)
+    : -1
+  const previewItem = previewIndex >= 0 ? previewItems[previewIndex] : null
+
+  const textQuery = useQuery({
+    queryKey: ['ai', 'file', 'admin', 'preview', previewItem?.id ?? 'none'],
+    queryFn: () => client.agent.file.adminPreview({ fileId: previewItem!.id }),
+    enabled: Boolean(previewItem && isPreviewTextItem(previewItem)),
+  })
 
   const applyKeyword = () => {
     setKeyword(searchText.trim() || undefined)
@@ -212,7 +202,7 @@ export default function AiFilesPage() {
           <Button
             variant="outline"
             size="sm"
-            onClick={() => setPreview(row.original)}
+            onClick={() => setPreviewId(row.original.id)}
             title="预览文件"
           >
             <EyeIcon className="size-3.5" />
@@ -312,96 +302,19 @@ export default function AiFilesPage() {
         }
       />
 
-      <PreviewDialog
-        target={preview}
-        url={preview ? resolveUrl(preview.key) : null}
+      <FilePreviewDialog
+        items={previewItems}
+        index={previewIndex >= 0 ? previewIndex : null}
+        onIndexChange={(next) => setPreviewId(previewItems[next]?.id ?? null)}
+        onClose={() => setPreviewId(null)}
+        onDownload={(item) => {
+          const file = files.find((candidate) => candidate.id === item.id)
+          if (file) void download(file)
+        }}
         text={textQuery.data?.text ?? null}
         loading={textQuery.isLoading}
-        onClose={() => setPreview(null)}
-        onDownload={(file) => void download(file)}
       />
     </div>
   )
 }
 
-function Empty({ text }: { text: string }) {
-  return (
-    <div className="flex h-full min-h-32 items-center justify-center px-6 text-center text-xs text-muted-foreground">
-      {text}
-    </div>
-  )
-}
-
-function PreviewDialog({
-  target,
-  url,
-  text,
-  loading,
-  onClose,
-  onDownload,
-}: {
-  target: AgentFileAdminItem | null
-  url: string | null
-  text: string | null
-  loading: boolean
-  onClose: () => void
-  onDownload: (file: AgentFileAdminItem) => void
-}) {
-  if (!target) return null
-  const html = isHtml(target)
-  const markdown = isMarkdown(target)
-  const isText = isTextPreview(target)
-  return (
-    <Dialog open onOpenChange={(open) => !open && onClose()}>
-      <DialogContent
-        bodyScroll={false}
-        className="flex h-dvh max-h-dvh w-screen max-w-none flex-col gap-0 rounded-none p-0 sm:max-w-none"
-      >
-        <DialogHeader className="shrink-0 border-b px-4 py-3 pr-14">
-          <DialogTitle className="truncate text-sm">{target.filename}</DialogTitle>
-        </DialogHeader>
-        <div className={html ? 'min-h-0 flex-1 overflow-hidden' : 'min-h-0 flex-1 overflow-auto p-4'}>
-          {html ? (
-            loading ? (
-              <Empty text="正在读取…" />
-            ) : (
-              <SandboxFrame
-                html={text ?? ''}
-                title={target.filename}
-                language="html"
-                frameless
-                className="h-full"
-              />
-            )
-          ) : isText ? (
-            loading ? (
-              <Empty text="正在读取…" />
-            ) : markdown ? (
-              <Markdown content={text ?? ''} />
-            ) : (
-              <pre className="whitespace-pre-wrap break-words text-xs">{text ?? ''}</pre>
-            )
-          ) : url ? (
-            <FilePreview
-              file={{
-                key: url,
-                name: target.filename,
-                type: target.mediaType,
-                size: target.bytes,
-              }}
-              height="100%"
-            />
-          ) : (
-            <Empty text="当前类型不支持在线预览，请下载查看。" />
-          )}
-        </div>
-        <div className="flex shrink-0 justify-end gap-2 border-t px-4 py-3">
-          <Button variant="outline" size="sm" onClick={() => onDownload(target)}>
-            <DownloadIcon className="size-3.5" />
-            下载
-          </Button>
-        </div>
-      </DialogContent>
-    </Dialog>
-  )
-}

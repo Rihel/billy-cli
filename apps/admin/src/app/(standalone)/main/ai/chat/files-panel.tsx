@@ -3,17 +3,7 @@
 import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import type { AgentFileModel, AgentFileNode, AgentWorkspaceFile } from '@repo/shared'
-import {
-  Badge,
-  Button,
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  FilePreview,
-  Markdown,
-  useStorageAdapter,
-} from '@repo/ui'
+import { Badge, Button, useStorageAdapter } from '@repo/ui'
 import {
   DownloadIcon,
   EyeIcon,
@@ -21,8 +11,8 @@ import {
   FolderIcon,
   RefreshCwIcon,
 } from 'lucide-react'
-import { SandboxFrame } from '@repo/ui/components/ai-elements/markdown-fences/sandbox-frame.tsx'
 import type { ServerClient } from './data'
+import { FilePreviewDialog, isPreviewTextItem } from '@/components/file-preview-dialog'
 import { formatFileSize } from './attachment-utils'
 
 /**
@@ -45,7 +35,7 @@ export function FilesPanel({
 }) {
   const [view, setView] = useState<'session' | 'workspace'>('session')
   const [includeCaches, setIncludeCaches] = useState(false)
-  const [preview, setPreview] = useState<PreviewTarget | null>(null)
+  const [preview, setPreview] = useState<{ items: PreviewTarget[]; index: number } | null>(null)
   const { resolveUrl } = useStorageAdapter()
 
   const workspaceQuery = useQuery({
@@ -63,21 +53,18 @@ export function FilesPanel({
     [workspaceQuery.data?.items],
   )
 
+  const sessionFiles = useMemo(() => flattenSessionFiles(files), [files])
+  const current = preview ? preview.items[preview.index] : null
+
   const textQuery = useQuery({
-    queryKey: [
-      'ai',
-      'file-preview',
-      conversationId ?? 'none',
-      preview?.source ?? 'ai',
-      preview?.path ?? '',
-    ],
+    queryKey: ['ai', 'file-preview', conversationId ?? 'none', current?.id ?? 'none'],
     queryFn: () =>
       client.agent.file.preview({
         conversationId: conversationId as string,
-        path: preview!.path,
-        source: preview!.source,
+        path: current!.path,
+        source: current!.source,
       }),
-    enabled: Boolean(conversationId && preview && isTextPreview(preview)),
+    enabled: Boolean(conversationId && current && isPreviewTextItem(current)),
   })
 
   const previewUrl = (target: PreviewTarget): string | null => {
@@ -109,26 +96,29 @@ export function FilesPanel({
   }
 
   const openSession = (file: AgentFileModel) => {
+    const items = sessionFiles.map(sessionTarget)
     setPreview({
-      source: 'ai',
-      path: file.path,
-      key: file.key,
-      filename: file.filename,
-      mediaType: file.mediaType,
-      bytes: file.bytes,
-      title: file.filename,
+      items,
+      index: items.findIndex((item) => item.id === `ai:${file.path}`),
     })
   }
   const openWorkspace = (file: AgentWorkspaceFile) => {
+    const items = (workspaceQuery.data?.items ?? []).map(workspaceTarget)
     setPreview({
-      source: 'workspace',
-      path: file.path,
-      filename: file.path.split('/').pop() ?? file.path,
-      mediaType: mediaTypeOf(file.path),
-      bytes: file.bytes,
-      title: file.path,
+      items,
+      index: items.findIndex((item) => item.id === `workspace:${file.path}`),
     })
   }
+
+  const previewItems = (preview?.items ?? []).map((target) => ({
+    id: target.id,
+    filename: target.filename,
+    subtitle: target.source === 'ai' ? '会话文件' : '工作区',
+    badge: target.badge,
+    mediaType: target.mediaType,
+    bytes: target.bytes,
+    url: previewUrl(target),
+  }))
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-2">
@@ -179,17 +169,7 @@ export function FilesPanel({
                   key={node.path}
                   node={node}
                   onPreview={openSession}
-                  onDownload={(file) =>
-                    void download({
-                      source: 'ai',
-                      path: file.path,
-                      key: file.key,
-                      filename: file.filename,
-                      mediaType: file.mediaType,
-                      bytes: file.bytes,
-                      title: file.filename,
-                    })
-                  }
+                  onDownload={(file) => void download(sessionTarget(file))}
                 />
               ))}
             </div>
@@ -207,30 +187,26 @@ export function FilesPanel({
                 key={node.path}
                 node={node}
                 onPreview={openWorkspace}
-                onDownload={(file) =>
-                  void download({
-                    source: 'workspace',
-                    path: file.path,
-                    filename: file.path.split('/').pop() ?? file.path,
-                    mediaType: mediaTypeOf(file.path),
-                    bytes: file.bytes,
-                    title: file.path,
-                  })
-                }
+                onDownload={(file) => void download(workspaceTarget(file))}
               />
             ))}
           </div>
         )}
       </div>
 
-      <PreviewDialog
-        client={client}
-        target={preview}
-        url={preview ? previewUrl(preview) : null}
+      <FilePreviewDialog
+        items={previewItems}
+        index={preview?.index ?? null}
+        onIndexChange={(next) =>
+          setPreview((state) => (state ? { ...state, index: next } : state))
+        }
+        onClose={() => setPreview(null)}
+        onDownload={(item) => {
+          const target = preview?.items.find((candidate) => candidate.id === item.id)
+          if (target) void download(target)
+        }}
         text={textQuery.data?.text ?? null}
         loading={textQuery.isLoading}
-        onClose={() => setPreview(null)}
-        onDownload={download}
       />
     </div>
   )
@@ -399,6 +375,7 @@ function FileRow({
 }
 
 interface PreviewTarget {
+  id: string
   source: 'ai' | 'workspace'
   path: string
   key?: string
@@ -406,90 +383,47 @@ interface PreviewTarget {
   mediaType: string
   bytes: number
   title: string
+  badge?: string
 }
 
-function PreviewDialog({
-  target,
-  url,
-  text,
-  loading,
-  onClose,
-  onDownload,
-}: {
-  client: ServerClient
-  target: PreviewTarget | null
-  url: string | null
-  text: string | null
-  loading: boolean
-  onClose: () => void
-  onDownload: (target: PreviewTarget) => void
-}) {
-  if (!target) return null
-  const html = isHtml(target.filename, target.mediaType)
-  const markdown = isMarkdown(target.filename, target.mediaType)
-  const isText = isTextPreview(target)
-  return (
-    <Dialog open onOpenChange={(open) => !open && onClose()}>
-      {/* 预览默认全屏：点文件即看全屏，不再多点一次「放大」 */}
-      <DialogContent
-        bodyScroll={false}
-        className="flex h-dvh max-h-dvh w-screen max-w-none flex-col gap-0 rounded-none p-0 sm:max-w-none"
-      >
-        <DialogHeader className="shrink-0 border-b px-4 py-3 pr-14">
-          <DialogTitle className="truncate text-sm">{target.title}</DialogTitle>
-        </DialogHeader>
-        <div className={html ? 'min-h-0 flex-1 overflow-hidden' : 'min-h-0 flex-1 overflow-auto p-4'}>
-          {html ? (
-            loading ? (
-              <Empty text="正在读取…" />
-            ) : (
-              <SandboxFrame
-                html={text ?? ''}
-                title={target.filename}
-                language="html"
-                frameless
-                className="h-full"
-              />
-            )
-          ) : isText ? (
-            loading ? (
-              <Empty text="正在读取…" />
-            ) : markdown ? (
-              <Markdown content={text ?? ''} />
-            ) : (
-              <pre className="whitespace-pre-wrap break-words text-xs">{text ?? ''}</pre>
-            )
-          ) : url ? (
-            <FilePreview
-              file={{
-                key: url,
-                name: target.filename,
-                type: target.mediaType,
-                size: target.bytes,
-              }}
-              height="100%"
-            />
-          ) : (
-            <Empty text="当前类型不支持在线预览，请下载查看。" />
-          )}
-        </div>
-        <div className="flex shrink-0 justify-end gap-2 border-t px-4 py-3">
-          <Button variant="outline" size="sm" onClick={() => onDownload(target)}>
-            <DownloadIcon className="size-3.5" />
-            下载
-          </Button>
-        </div>
-      </DialogContent>
-    </Dialog>
-  )
+/** 会话文件树 → 当前预览队列（深度优先，与右栏顺序一致） */
+function flattenSessionFiles(nodes: readonly AgentFileNode[]): AgentFileModel[] {
+  const result: AgentFileModel[] = []
+  const walk = (list: readonly AgentFileNode[]) => {
+    for (const node of list) {
+      if (node.type === 'dir') {
+        walk(node.children ?? [])
+      } else if (node.file) {
+        result.push(node.file)
+      }
+    }
+  }
+  walk(nodes)
+  return result
 }
 
-const TEXT_EXTENSIONS = new Set([
-  'txt', 'md', 'markdown', 'csv', 'tsv', 'json', 'jsonl', 'yaml', 'yml', 'xml',
-  'html', 'htm', 'log', 'sql', 'ini', 'conf', 'toml', 'properties', 'sh', 'bash',
-  'py', 'ts', 'tsx', 'js', 'jsx', 'java', 'go', 'rs', 'rb', 'php', 'c', 'h',
-  'cpp', 'hpp', 'css', 'scss', 'less', 'vue', 'svelte', 'graphql', 'gql',
-])
+const sessionTarget = (file: AgentFileModel): PreviewTarget => ({
+  id: `ai:${file.path}`,
+  source: 'ai',
+  path: file.path,
+  key: file.key,
+  filename: file.filename,
+  mediaType: file.mediaType,
+  bytes: file.bytes,
+  title: file.filename,
+  badge: file.source === 'user' ? '用户上传' : 'AI 生成',
+})
+
+const workspaceTarget = (file: AgentWorkspaceFile): PreviewTarget => ({
+  id: `workspace:${file.path}`,
+  source: 'workspace',
+  path: file.path,
+  filename: file.path.split('/').pop() ?? file.path,
+  mediaType: mediaTypeOf(file.path),
+  bytes: file.bytes,
+  title: file.path,
+  badge: '工作区',
+})
 
 const extOf = (filename: string): string => {
   const base = filename.split('/').pop() ?? filename
@@ -519,23 +453,6 @@ const mediaTypeOf = (filename: string): string => {
   }
   return map[ext] ?? 'application/octet-stream'
 }
-
-const isHtml = (filename: string, mediaType: string): boolean =>
-  mediaType === 'text/html' || ['html', 'htm'].includes(extOf(filename))
-
-const isMarkdown = (filename: string, mediaType: string): boolean =>
-  mediaType === 'text/markdown' || ['md', 'markdown'].includes(extOf(filename))
-
-const isTextPreview = (target: PreviewTarget): boolean =>
-  target.mediaType.startsWith('text/') ||
-  target.mediaType === 'application/json' ||
-  target.mediaType === 'application/xml' ||
-  target.mediaType === 'application/yaml' ||
-  target.mediaType === 'application/x-yaml' ||
-  target.mediaType === 'application/javascript' ||
-  target.mediaType === 'application/typescript' ||
-  target.mediaType === 'application/sql' ||
-  TEXT_EXTENSIONS.has(extOf(target.filename))
 
 function buildWorkspaceTree(items: AgentWorkspaceFile[]): WorkspaceTreeNode[] {
   const root: WorkspaceTreeNode[] = []
