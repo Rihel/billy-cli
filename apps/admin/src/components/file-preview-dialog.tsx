@@ -1,6 +1,5 @@
 'use client'
 
-import { useEffect } from 'react'
 import { formatFileSize } from '@repo/shared/browser'
 import {
   Button,
@@ -11,7 +10,8 @@ import {
   FilePreview,
   Markdown,
 } from '@repo/ui'
-import { ChevronLeftIcon, ChevronRightIcon, DownloadIcon } from 'lucide-react'
+import { ChevronDownIcon, ChevronUpIcon, DownloadIcon } from 'lucide-react'
+import { useHotkeys } from 'react-hotkeys-hook'
 import { SandboxFrame } from '@repo/ui/components/ai-elements/markdown-fences/sandbox-frame.tsx'
 import { OfficePreview, type OfficeKind } from '@/components/office-preview'
 
@@ -97,20 +97,23 @@ export function FilePreviewDialog({
 }) {
   const current = index === null ? null : items[index]
 
-  useEffect(() => {
-    if (index === null) return
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'ArrowLeft' && index > 0) {
-        event.preventDefault()
-        onIndexChange(index - 1)
-      } else if (event.key === 'ArrowRight' && index < items.length - 1) {
-        event.preventDefault()
-        onIndexChange(index + 1)
-      }
-    }
-    window.addEventListener('keydown', onKeyDown)
-    return () => window.removeEventListener('keydown', onKeyDown)
-  }, [index, items.length, onIndexChange])
+  // 文件切换用上下键；左右键留给 PPT 内部翻页，避免两套导航抢同一个键
+  useHotkeys(
+    'up',
+    () => {
+      if (index !== null && index > 0) onIndexChange(index - 1)
+    },
+    { enabled: index !== null && index > 0, preventDefault: true },
+    [index, onIndexChange],
+  )
+  useHotkeys(
+    'down',
+    () => {
+      if (index !== null && index < items.length - 1) onIndexChange(index + 1)
+    },
+    { enabled: index !== null && index < items.length - 1, preventDefault: true },
+    [index, items.length, onIndexChange],
+  )
 
   if (!current || index === null) return null
   const html = isHtml(current)
@@ -137,20 +140,20 @@ export function FilePreviewDialog({
                 size="icon-sm"
                 disabled={!hasPrev}
                 onClick={() => onIndexChange(index - 1)}
-                title="上一个文件（←）"
+                title="上一个文件（↑）"
                 aria-label="上一个文件"
               >
-                <ChevronLeftIcon className="size-4" />
+                <ChevronUpIcon className="size-4" />
               </Button>
               <Button
                 variant="ghost"
                 size="icon-sm"
                 disabled={!hasNext}
                 onClick={() => onIndexChange(index + 1)}
-                title="下一个文件（→）"
+                title="下一个文件（↓）"
                 aria-label="下一个文件"
               >
-                <ChevronRightIcon className="size-4" />
+                <ChevronDownIcon className="size-4" />
               </Button>
             </div>
           </div>

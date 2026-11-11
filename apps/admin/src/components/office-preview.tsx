@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
+import { useHotkeys } from 'react-hotkeys-hook'
 import { ChevronLeftIcon, ChevronRightIcon, LoaderCircleIcon, TriangleAlertIcon } from 'lucide-react'
 import { Button } from '@repo/ui'
 
@@ -33,6 +34,32 @@ export function OfficePreview({
   const previewerRef = useRef<{ renderSingleSlide: (index: number) => void } | null>(null)
   const [slideIndex, setSlideIndex] = useState(0)
   const [slideCount, setSlideCount] = useState(0)
+
+  useHotkeys(
+    'left',
+    () => {
+      const next = Math.max(0, slideIndex - 1)
+      if (next === slideIndex) return
+      previewerRef.current?.renderSingleSlide(next)
+      setSlideIndex(next)
+    },
+    { enabled: kind === 'pptx' && slideCount > 1 && slideIndex > 0, preventDefault: true },
+    [kind, slideCount, slideIndex],
+  )
+  useHotkeys(
+    'right',
+    () => {
+      const next = Math.min(slideCount - 1, slideIndex + 1)
+      if (next === slideIndex) return
+      previewerRef.current?.renderSingleSlide(next)
+      setSlideIndex(next)
+    },
+    {
+      enabled: kind === 'pptx' && slideCount > 1 && slideIndex < slideCount - 1,
+      preventDefault: true,
+    },
+    [kind, slideCount, slideIndex],
+  )
 
   useEffect(() => {
     let cancelled = false
@@ -114,6 +141,7 @@ export function OfficePreview({
     }
   }, [kind, filename])
 
+
   return (
     <div className="flex h-full w-full flex-col">
       <div className="relative min-h-0 flex-1 overflow-auto">
@@ -169,7 +197,8 @@ export function OfficePreview({
             <Button
               variant="ghost"
               size="icon-sm"
-              aria-label="上一页"
+              aria-label="上一页（←）"
+              title="上一页（←）"
               disabled={slideIndex <= 0}
               onClick={() => {
                 const next = Math.max(0, slideIndex - 1)
@@ -185,7 +214,8 @@ export function OfficePreview({
             <Button
               variant="ghost"
               size="icon-sm"
-              aria-label="下一页"
+              aria-label="下一页（→）"
+              title="下一页（→）"
               disabled={slideIndex >= slideCount - 1}
               onClick={() => {
                 const next = Math.min(slideCount - 1, slideIndex + 1)
