@@ -15,6 +15,8 @@ import type { ToolEventPart } from '@repo/shared'
 import { durationText } from './format'
 import { useElapsedSeconds } from './use-elapsed'
 import { ToolEventsBody } from './tool-event'
+import { skillWriteOf } from './skill-tool'
+import { SkillToolSummary } from './skill-tool-summary'
 
 /**
  * 工具卡：一次工具调用画成一张卡 —— 头部七态徽标 + 入参出参 + 自定义事件。
@@ -96,6 +98,11 @@ export function ToolCard({ part, events, defaultOpen, streaming, durationMs }: T
 
   const toolName = getToolName(part)
   const reason = toolCallReason(part.input)
+  /**
+   * `skill-save` / `skill-import` 用一张"技能写入"卡代替原始入参 / 出参：
+   * 入参里常常是几千字正文，铺成 JSON 既难读又占地方；内容的细读交给右侧抽屉。
+   */
+  const skillWrite = skillWriteOf(part)
 
   return (
     <Tool
@@ -126,8 +133,12 @@ export function ToolCard({ part, events, defaultOpen, streaming, durationMs }: T
             {reason}
           </p>
         )}
-        <ToolInput input={part.input} className="space-y-1" />
-        {part.state === 'output-available' && (
+        {skillWrite ? (
+          <SkillToolSummary part={part} />
+        ) : (
+          <ToolInput input={part.input} className="space-y-1" />
+        )}
+        {part.state === 'output-available' && !skillWrite && (
           <ToolOutput output={part.output} errorText={undefined} className="space-y-1" />
         )}
         {part.state === 'output-error' && (

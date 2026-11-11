@@ -22,11 +22,18 @@ export interface CodeEditorProps {
   /** 文件相对路径（`scripts/run.py`），用于按扩展名选语言 */
   filename: string
   initialContent: string
-  /** 内容变化（标脏 + 保存时取值都由父组件处理） */
+  /** 内容变化（标脏 + 保存时取值都由父组件处理）；只读模式下不会触发 */
   onChange: (content: string) => void
+  /** 只读（预览用）：仍保留行号与语法高亮，但不能输入 */
+  readOnly?: boolean
 }
 
-export function CodeEditor({ filename, initialContent, onChange }: CodeEditorProps) {
+export function CodeEditor({
+  filename,
+  initialContent,
+  onChange,
+  readOnly = false,
+}: CodeEditorProps) {
   const { dark } = useTheme()
   const [value, setValue] = useState(initialContent)
   const [language, setLanguage] = useState<Extension | null>(null)
@@ -58,6 +65,7 @@ export function CodeEditor({ filename, initialContent, onChange }: CodeEditorPro
       height="62vh"
       theme={dark ? 'dark' : 'light'}
       extensions={language ? [language] : []}
+      editable={!readOnly}
       placeholder="在这里写脚本内容…"
       basicSetup={{
         lineNumbers: true,
@@ -71,7 +79,7 @@ export function CodeEditor({ filename, initialContent, onChange }: CodeEditorPro
       }}
       onChange={(next) => {
         setValue(next)
-        onChange(next)
+        if (!readOnly) onChange(next)
       }}
       className="skill-code-editor overflow-hidden rounded-lg border border-border/60 text-[13px]"
     />

@@ -1133,6 +1133,8 @@ export function ChatConversation({ conversationId }: { conversationId: string })
                 // 新会话还没有 id：系统指令仍可看静态定义，子 agent tab 给空态
                 conversationId={isNew ? undefined : conversationId}
                 agentKey={agentKey ?? agentsQuery.data?.defaultAgentKey}
+                // 技能 tab 从消息 parts 里取"激活过什么"：实时更新，不额外拉时间线
+                messages={messages}
                 // 自动展开时直接停在「子 agent」——自动开了却停在系统提示词上等于白开
                 plan={conversationPlan}
                 focus={panelFocus}

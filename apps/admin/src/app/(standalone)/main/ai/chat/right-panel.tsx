@@ -2,9 +2,11 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import type { AgentRunModel } from '@repo/shared'
+import type { UIMessage } from 'ai'
+import type { AgentRunModel, AiSkillModel } from '@repo/shared'
 import {
   Badge,
+  Button,
   IconText,
   Markdown,
   Tabs,
@@ -14,7 +16,15 @@ import {
   toastError,
   toastSuccess,
 } from '@repo/ui'
-import { BotIcon, CopyIcon, ListTodoIcon, LoaderCircleIcon, ScrollTextIcon } from 'lucide-react'
+import {
+  BotIcon,
+  CopyIcon,
+  EyeIcon,
+  ListTodoIcon,
+  LoaderCircleIcon,
+  ScrollTextIcon,
+  SparklesIcon,
+} from 'lucide-react'
 import { loadWholeRuns, loadWholeTimeline, type ServerClient } from './data'
 import { toUIMessages } from './history'
 import { ChatMessage } from './message-row'
@@ -24,24 +34,29 @@ import { isSubAgentActive, subAgentTabs, type SubAgentTab } from './sub-agent-li
 import { toMessageState, useLiveSubAgents } from './chat-session'
 import { copyText } from '@/lib/clipboard'
 import { durationText, tokenText } from './format'
+import { activatedSkillsOf } from './skill-activity'
+import { SkillPreviewDialog } from './skill-preview-dialog'
 
 /** 有子助手在跑时，`run/list` 的轮询间隔（毫秒）；为什么取 4s 见下方 `runsQuery` 的注释 */
 const SUB_AGENT_POLL_INTERVAL = 4_000
 
 /** 右栏的 tab（`focus` 与初始 tab 都用它，避免各处写裸字符串） */
-export type RightPanelTab = 'system' | 'subagents' | 'plan'
+export type RightPanelTab = 'system' | 'skills' | 'plan' | 'subagents'
 
 /**
  * 会话页**右栏**：把"这一轮的旁证"集中到一处，按 tab 切换。
  *
- * 三个 tab：
+ * 四个 tab：
  * 1. **系统指令** —— 本会话实际送进模型的那份提示词快照，用 Markdown 组件渲染（原来挤在页头弹窗里），
  *    可一键复制；
- * 2. **任务** —— 这一会话的**任务清单**（当前计划 + 更早版本折在「变更历史」里）。
+ * 2. **技能** —— 本会话**实际激活过**的技能（运行时 `skill` 工具的调用，按名字聚合）。
+ *    模型是按 description 自己决定调不调的，所以这里不列"可用技能"那 20 多个；
+ *    想确认"它到底读没读我那个技能"，看这个 tab；
+ * 3. **任务** —— 这一会话的**任务清单**（当前计划 + 更早版本折在「变更历史」里）。
  *    完整清单放在这里而不是消息流里：它会随每一轮变长，铺在对话里会把正文切成两半；
  *    消息里只留一张紧凑卡（目标 + 进度 + 跳过来的入口）。数据由会话页用**与消息内同一份**
  *    收集逻辑（`conversationPlanOf` → `collectMessagePlan`）算好传进来，两处不会各说各话；
- * 3. **子 agent 运行** —— 这一会话里每个子助手**各自的完整过程**（推理 / 工具往返 / 正文）。
+ * 4. **子 agent 运行** —— 这一会话里每个子助手**各自的完整过程**（推理 / 工具往返 / 正文）。
  *    内容区再分一层 tab（一个子 run 一个 tab），渲染用**主对话同一个 `ChatMessage`**：
  *    同一套映射 + 同一个组件，所以"看起来和主 agent 一样"是结构上的事实，不是照着抄的样式。
  *
@@ -57,6 +72,7 @@ export function ConversationRightPanel({
   client,
   conversationId,
   agentKey,
+  messages = [],
   plan = null,
   defaultTab = 'system',
   focus = null,
@@ -65,6 +81,8 @@ export function ConversationRightPanel({
   /** 新会话还没有 id：系统指令 tab 仍可看静态定义，子 agent tab 给空态 */
   conversationId?: string
   agentKey?: string
+  /** 会话消息（`useChat` 那份）：技能 tab 从 parts 里提取"激活过什么"，实时更新、不额外拉时间线 */
+  messages?: UIMessage[]
   /** 这一会话的当前计划（会话页算好；没有任务清单时为 null） */
   plan?: ConversationPlan | null
   /** 首次挂载停在哪个 tab（面板此后受控，由用户与 `focus` 驱动） */
@@ -127,12 +145,19 @@ export function ConversationRightPanel({
     return { done: tasks.filter((task) => task.status === 'done').length, total: tasks.length }
   }, [plan])
 
+  /** 本会话激活过的技能（消息 parts 派生；调用次数降序） */
+  const activatedSkills = useMemo(() => activatedSkillsOf(messages), [messages])
+
   return (
     <Tabs value={tab} onValueChange={(value) => setTab(value as RightPanelTab)} className="flex h-full min-h-0 flex-col gap-1.5">
       <TabsList className="w-full">
         <TabsTrigger value="system">
           <ScrollTextIcon className="size-3.5" />
           系统指令
+        </TabsTrigger>
+        <TabsTrigger value="skills">
+          <SparklesIcon className="size-3.5" />
+          技能{activatedSkills.length > 0 ? `（${activatedSkills.length}）` : ''}
         </TabsTrigger>
         <TabsTrigger value="plan">
           <ListTodoIcon className="size-3.5" />
@@ -146,6 +171,14 @@ export function ConversationRightPanel({
 
       <TabsContent value="system" className="flex min-h-0 flex-1 flex-col">
         <SystemPromptPanel client={client} conversationId={conversationId} agentKey={agentKey} />
+      </TabsContent>
+
+      <TabsContent value="skills" className="flex min-h-0 flex-1 flex-col">
+        <ActivatedSkillsPanel
+          client={client}
+          conversationId={conversationId}
+          activated={activatedSkills}
+        />
       </TabsContent>
 
       <TabsContent value="plan" className="flex min-h-0 flex-1 flex-col">
@@ -162,6 +195,112 @@ export function ConversationRightPanel({
         />
       </TabsContent>
     </Tabs>
+  )
+}
+
+/**
+ * 技能 tab：本会话**实际激活过**的技能。
+ *
+ * 数据来自消息 parts（`skill` 工具的入参），不是另外拉一遍时间线 —— 实时调用一出现，
+ * 面板就跟着更新；历史会话也由同一份消息还原出来，不会出现"刷新后列表空了"。
+ *
+ * 只列激活过的，不列"可用技能"：可用清单有 20 多个（含外部目录），铺在这里是噪音；
+ * 用户真正的问题是"它到底读没读我那个技能"。
+ *
+ * 能关联到库里就补一句 description 与「查看」入口；关联不到（外部 `~/.agents/skills` 的同名技能）
+ * 就明确标「库外」—— 不假装它也是我们管理的资产。
+ */
+function ActivatedSkillsPanel({
+  client,
+  conversationId,
+  activated,
+}: {
+  client: ServerClient
+  conversationId?: string
+  activated: readonly { name: string; calls: number }[]
+}) {
+  const [viewing, setViewing] = useState<string | null>(null)
+  const catalogQuery = useQuery({
+    queryKey: ['ai', 'skill-catalog'],
+    queryFn: () => client.aiSkill.list({ page: 1, size: 100 }),
+    // 没有激活技能就不查；面板空态不需要目录
+    enabled: activated.length > 0,
+  })
+
+  const byKey = useMemo(() => {
+    const map = new Map<string, AiSkillModel>()
+    for (const skill of catalogQuery.data?.items ?? []) map.set(skill.skillKey, skill)
+    return map
+  }, [catalogQuery.data])
+
+  if (!conversationId) {
+    return (
+      <p className="text-xs text-muted-foreground">
+        新会话还没有跑过 —— 模型激活技能后，这里会显示它读的是哪个技能。
+      </p>
+    )
+  }
+
+  if (activated.length === 0) {
+    return (
+      <div className="flex flex-col gap-2 text-xs text-muted-foreground">
+        <p>这一会话还没有激活任何技能。</p>
+        <p>
+          模型按每个技能的 description 自己决定调不调用；想指定就直接说「用
+          &lt;技能名&gt;」或「用暴躁老哥的语气」。
+        </p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-auto">
+      <p className="text-[11px] leading-4 text-muted-foreground">
+        模型按 description 命中后调用了 `skill`；下面是本会话实际激活过的技能。
+      </p>
+      {activated.map((skill) => {
+        const meta = byKey.get(skill.name)
+        return (
+          <div
+            key={skill.name}
+            className="flex flex-col gap-1 rounded-lg border border-border/60 bg-surface-1/40 px-3 py-2"
+          >
+            <div className="flex items-center gap-1.5">
+              <SparklesIcon className="size-3.5 shrink-0 text-brand" />
+              <span className="min-w-0 flex-1 truncate font-mono text-xs font-medium">
+                {skill.name}
+              </span>
+              <Badge variant="secondary">{skill.calls} 次</Badge>
+              {meta && !meta.enabled ? <Badge variant="outline">已停用</Badge> : null}
+              {!meta ? <Badge variant="outline">库外</Badge> : null}
+            </div>
+            <p className="line-clamp-2 text-[11px] leading-4 text-muted-foreground">
+              {meta?.description ?? '不在技能库中（来自外部技能目录，本页面无法管理）'}
+            </p>
+            {meta ? (
+              <Button
+                type="button"
+                variant="link"
+                size="sm"
+                className="h-auto w-fit gap-1 px-0 text-[11px]"
+                onClick={() => setViewing(skill.name)}
+              >
+                查看技能
+                <EyeIcon className="size-3" />
+              </Button>
+            ) : null}
+          </div>
+        )
+      })}
+
+      <SkillPreviewDialog
+        open={viewing !== null}
+        skillKey={viewing ?? ''}
+        onOpenChange={(next) => {
+          if (!next) setViewing(null)
+        }}
+      />
+    </div>
   )
 }
 

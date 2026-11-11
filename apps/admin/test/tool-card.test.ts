@@ -152,6 +152,64 @@ describe('入参还在流式接收（input 还没到）', () => {
   })
 })
 
+describe('技能写入卡（skill-save / skill-import）', () => {
+  it('skill-save 用摘要卡代替原始入参，正文不直接铺在消息里', () => {
+    const html = renderToStaticMarkup(
+      createElement(ToolCard, {
+        part: {
+          type: 'dynamic-tool',
+          toolName: 'skill-save',
+          toolCallId: 'call_skill',
+          state: 'output-available',
+          input: {
+            skillKey: 'demo-skill',
+            description: '什么时候用',
+            body: '# 正文内容不应直接铺出来',
+          },
+          output: { ok: true, created: true, skillKey: 'demo-skill', version: 1 },
+        } as unknown as ToolPart,
+        events: [],
+        defaultOpen: true,
+        streaming: false,
+      }),
+    )
+    expect(html).toContain('已新建技能')
+    expect(html).toContain('demo-skill')
+    // 正文进了右侧抽屉（默认关闭），摘要卡里不铺原文
+    expect(html).not.toContain('正文内容不应直接铺出来')
+  })
+
+  it('skill-import 列出导入了哪些技能与状态', () => {
+    const html = renderToStaticMarkup(
+      createElement(ToolCard, {
+        part: {
+          type: 'dynamic-tool',
+          toolName: 'skill-import',
+          toolCallId: 'call_import',
+          state: 'output-available',
+          input: { url: 'https://skills.sh/a/b/c' },
+          output: {
+            source: 'a/b/c',
+            items: [
+              { skillKey: 'c-skill', status: 'created', message: null },
+              { skillKey: 'd-skill', status: 'skipped', message: null },
+            ],
+            total: 2,
+          },
+        } as unknown as ToolPart,
+        events: [],
+        defaultOpen: true,
+        streaming: false,
+      }),
+    )
+    expect(html).toContain('已从链接导入')
+    expect(html).toContain('c-skill')
+    expect(html).toContain('新建')
+    expect(html).toContain('d-skill')
+    expect(html).toContain('已存在')
+  })
+})
+
 describe('工具条上的耗时（用户要求）', () => {
   it('给了历史耗时（服务端审计量的）→ 显示在标题行', () => {
     const html = renderToStaticMarkup(
