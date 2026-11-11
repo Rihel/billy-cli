@@ -8,10 +8,10 @@ import {
   DialogHeader,
   DialogTitle,
   FilePreview,
-  Markdown,
 } from '@repo/ui'
 import { ChevronDownIcon, ChevronUpIcon, DownloadIcon } from 'lucide-react'
 import { useHotkeys } from 'react-hotkeys-hook'
+import { MessageResponse } from '@repo/ui/components/ai-elements/message.tsx'
 import { SandboxFrame } from '@repo/ui/components/ai-elements/markdown-fences/sandbox-frame.tsx'
 import { OfficePreview, type OfficeKind } from '@/components/office-preview'
 
@@ -219,7 +219,7 @@ export function FilePreviewDialog({
               loading ? (
                 <Empty text="正在读取…" />
               ) : markdown ? (
-                <Markdown content={text ?? ''} />
+                <MessageResponse className="text-sm">{text ?? ''}</MessageResponse>
               ) : (
                 <pre className="whitespace-pre-wrap break-words text-xs">{text ?? ''}</pre>
               )
