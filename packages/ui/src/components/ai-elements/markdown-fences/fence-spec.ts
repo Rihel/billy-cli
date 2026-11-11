@@ -197,6 +197,9 @@ export const buildSandboxDocument = ({ html, scripts = [], theme }: SandboxDocum
   ].join('')
 
   const heightReporter = `(function(){var send=function(){try{parent.postMessage({__fenceHeight:document.documentElement.scrollHeight},'*')}catch(e){}};if(typeof ResizeObserver==='function'){new ResizeObserver(send).observe(document.documentElement)}else{setInterval(send,500)};addEventListener('load',send);send()})()`
+// 预览里的链接默认允许在 iframe 内部导航；相对链接会解析成父页面地址，一点就把预览替换成后台页面。
+// 只放行文档内锚点，其余链接一律拦截（不打开新窗口，避免 AI 内容借预览弹窗钓鱼）。
+const linkGuard = `(function(){document.addEventListener('click',function(event){var target=event.target;var anchor=target&&target.closest?target.closest('a[href]'):null;if(!anchor)return;var href=anchor.getAttribute('href')||'';if(href.charAt(0)==='#')return;event.preventDefault()},true)})()`
 
   const inlineScripts = scripts
     .filter((source) => source.trim().length > 0)
@@ -212,6 +215,7 @@ export const buildSandboxDocument = ({ html, scripts = [], theme }: SandboxDocum
     '<meta name="viewport" content="width=device-width, initial-scale=1">',
     `<style>${baseStyle}</style>`,
     inlineScripts,
+    `<script>${escapeScriptText(linkGuard)}</script>`,
     '</head>',
     '<body>',
     html,

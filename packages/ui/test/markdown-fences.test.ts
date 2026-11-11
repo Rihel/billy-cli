@@ -193,6 +193,13 @@ describe('buildSandboxDocument', () => {
     expect(doc).toContain('<\\/script')
   })
 
+  it('拦截预览里的外部链接，避免相对链接把 iframe 导航到后台页面', () => {
+    const doc = buildSandboxDocument({ html: '<a href="/main/ai/files">链接</a>', theme })
+    expect(doc).toContain('closest?target.closest')
+    expect(doc).toContain("href.charAt(0)==='#'")
+    expect(doc).toContain('preventDefault')
+  })
+
   it('主题底色与字色写进基础样式（深色页面里不会蹦出一块白）', () => {
     const doc = buildSandboxDocument({ html: '', theme })
     expect(doc).toContain('rgb(0, 0, 0)')
