@@ -1,7 +1,8 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { LoaderCircleIcon, TriangleAlertIcon } from 'lucide-react'
+import { ChevronLeftIcon, ChevronRightIcon, LoaderCircleIcon, TriangleAlertIcon } from 'lucide-react'
+import { Button } from '@repo/ui'
 
 export type OfficeKind = 'docx' | 'xlsx' | 'pptx'
 
@@ -29,6 +30,9 @@ export function OfficePreview({
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading')
   const [error, setError] = useState('')
   const [sheets, setSheets] = useState<SheetData[] | null>(null)
+  const previewerRef = useRef<{ renderSingleSlide: (index: number) => void } | null>(null)
+  const [slideIndex, setSlideIndex] = useState(0)
+  const [slideCount, setSlideCount] = useState(0)
 
   useEffect(() => {
     let cancelled = false
@@ -36,6 +40,9 @@ export function OfficePreview({
     setStatus('loading')
     setError('')
     setSheets(null)
+    setSlideCount(0)
+    setSlideIndex(0)
+    previewerRef.current = null
 
     const render = async () => {
       try {
@@ -62,14 +69,22 @@ export function OfficePreview({
         hostRef.current.innerHTML = ''
         if (kind === 'pptx') {
           const module = await import('pptx-preview')
-          // 一次只显示一页，并尽量吃满右侧可用宽度；否则 list 模式会把多页竖排、每页显得很小
+          // 不用 preview()：它内部在 slide 模式下会自己再渲染一遍，实测会出现两层/两页。
+          // 这里 load 后手动 renderSingleSlide，一次只保留一页，翻页由下面的按钮控制。
           const available = hostRef.current.parentElement?.clientWidth ?? 960
           const width = Math.max(640, Math.min(1400, available - 24))
           const height = Math.round((width * 9) / 16)
-          previewer = module.init(hostRef.current, { width, height, mode: 'slide' })
-          await (previewer as unknown as { preview: (data: ArrayBuffer) => Promise<unknown> }).preview(
-            buffer,
-          )
+          const instance = module.init(hostRef.current, { width, height, mode: 'slide' })
+          previewer = instance
+          previewerRef.current = instance as unknown as {
+            renderSingleSlide: (index: number) => void
+          }
+          await instance.load(buffer)
+          if (!cancelled) {
+            setSlideCount(instance.slideCount)
+            setSlideIndex(0)
+            instance.renderSingleSlide(0)
+          }
         } else {
           const { renderAsync } = await import('docx-preview')
           await renderAsync(buffer, hostRef.current, undefined, {
@@ -110,6 +125,39 @@ export function OfficePreview({
         </div>
       ) : null}
       <div ref={hostRef} className="mx-auto w-fit" />
+      {kind === 'pptx' && slideCount > 1 ? (
+        <div className="absolute bottom-3 left-1/2 z-20 flex -translate-x-1/2 items-center gap-2 rounded-full border bg-background/95 px-2 py-1 shadow-sm backdrop-blur">
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            aria-label="上一页"
+            disabled={slideIndex <= 0}
+            onClick={() => {
+              const next = Math.max(0, slideIndex - 1)
+              previewerRef.current?.renderSingleSlide(next)
+              setSlideIndex(next)
+            }}
+          >
+            <ChevronLeftIcon className="size-4" />
+          </Button>
+          <span className="min-w-14 text-center text-xs tabular-nums text-muted-foreground">
+            {slideIndex + 1} / {slideCount}
+          </span>
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            aria-label="下一页"
+            disabled={slideIndex >= slideCount - 1}
+            onClick={() => {
+              const next = Math.min(slideCount - 1, slideIndex + 1)
+              previewerRef.current?.renderSingleSlide(next)
+              setSlideIndex(next)
+            }}
+          >
+            <ChevronRightIcon className="size-4" />
+          </Button>
+        </div>
+      ) : null}
       {kind === 'xlsx' && sheets ? (
         <div className="flex flex-col gap-5 pb-6">
           {sheets.map((sheet) => (
