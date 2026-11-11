@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, type ReactNode, type UIEvent } from "react";
+import { useEffect, useMemo, useState, type ReactNode, type UIEvent } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { usePathname } from "next/navigation";
@@ -16,6 +16,10 @@ import {
   IconText,
   ModalForm,
   RefreshButton,
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
   cn,
   toastSuccess,
   useDisclosure,
@@ -31,6 +35,7 @@ import {
 } from "@repo/ui/components/ui/resizable.tsx";
 import {
   LayoutDashboardIcon,
+  MessagesSquareIcon,
   PanelLeftCloseIcon,
   PanelLeftOpenIcon,
   PencilIcon,
@@ -172,9 +177,15 @@ export default function ChatLayout({ children }: { children: ReactNode }) {
   // （`useIsMobile` 首帧与 SSR 一致返回 false，挂载后再纠正 —— 与 Sidebar 同一套口径）
   const isMobile = useIsMobile();
 
+  useEffect(() => {
+    // 手机端点会话后地址变化，抽屉自动收起
+    setMobileListOpen(false);
+  }, [pathname]);
+
   // 会话列表可收起：分栏本身留在原来的位置，宽度收到 0，右侧对话区不卸载（页面状态不丢）
   const sidebarRef = usePanelRef();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [mobileListOpen, setMobileListOpen] = useState(false);
 
   const collapseSidebar = () => {
     if (!sidebarRef.current) return;
@@ -422,6 +433,75 @@ export default function ChatLayout({ children }: { children: ReactNode }) {
           </div>
         </ResizablePanel>
       </ResizablePanelGroup>
+
+      {/* 手机端会话列表：独立布局没有管理台侧栏，必须给一个入口 */}
+      {isMobile ? (
+        <>
+          <Button
+            type="button"
+            className="fixed bottom-24 left-3 z-40 gap-1.5 shadow-lg"
+            onClick={() => setMobileListOpen(true)}
+          >
+            <MessagesSquareIcon className="size-4" />
+            会话
+          </Button>
+          <Sheet open={mobileListOpen} onOpenChange={setMobileListOpen}>
+            <SheetContent side="left" className="flex w-[86vw] max-w-sm flex-col p-0">
+              <SheetHeader className="shrink-0 border-b px-4 py-3">
+                <SheetTitle>会话列表</SheetTitle>
+              </SheetHeader>
+              <div className="flex min-h-0 flex-1 flex-col gap-2 p-3">
+                <Button
+                  size="sm"
+                  className="gap-1.5"
+                  nativeButton={false}
+                  render={
+                    <Link href={newConversationPath()} onClick={() => setMobileListOpen(false)}>
+                      <PlusIcon className="size-3.5" />
+                      新建会话
+                    </Link>
+                  }
+                />
+                <div className="min-h-0 flex-1 overflow-y-auto">
+                  {items.map((conversation) => {
+                    const active = pathname === conversationPath(conversation.id);
+                    return (
+                      <Link
+                        key={conversation.id}
+                        href={conversationPath(conversation.id)}
+                        onClick={() => setMobileListOpen(false)}
+                        className={cn(
+                          'flex flex-col gap-0.5 rounded-md px-3 py-2 text-sm',
+                          active ? 'bg-surface-4' : 'hover:bg-surface-4/60',
+                        )}
+                      >
+                        <span className="truncate font-medium">{conversation.title || '(无标题)'}</span>
+                        <span className="text-[11px] text-muted-foreground">
+                          {conversation.running ? '运行中 · ' : ''}{conversation.turnCount} 轮
+                        </span>
+                      </Link>
+                    );
+                  })}
+                  {items.length === 0 && !conversationsQuery.isLoading ? (
+                    <p className="p-3 text-xs text-muted-foreground">还没有会话</p>
+                  ) : null}
+                  {conversationsQuery.hasNextPage ? (
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="mt-2 w-full"
+                      disabled={conversationsQuery.isFetchingNextPage}
+                      onClick={() => void conversationsQuery.fetchNextPage()}
+                    >
+                      {conversationsQuery.isFetchingNextPage ? '正在加载…' : '加载更多会话'}
+                    </Button>
+                  ) : null}
+                </div>
+              </div>
+            </SheetContent>
+          </Sheet>
+        </>
+      ) : null}
 
       {/* 重命名弹窗：**不能放进 PanelGroup 里**（分栏库只认 Panel / Separator 作为直接子节点），
           挂在组外面最稳（弹窗本身是 portal，位置不影响视觉） */}

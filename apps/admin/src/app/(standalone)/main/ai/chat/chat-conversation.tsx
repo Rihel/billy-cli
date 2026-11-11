@@ -20,6 +20,10 @@ import {
   DictSelect,
   IconText,
   PromptInputAttachmentsBar,
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
   toastError,
   toastSuccess,
   useImageLightbox,
@@ -223,6 +227,13 @@ export function ChatConversation({ conversationId }: { conversationId: string })
   const [loading, setLoading] = useState(!isNew)
   /** 右栏（系统指令 / 子 agent 运行）是否显示；真实值由挂载后的 effect 从浏览器里读回来 */
   const [panelOpen, setPanelOpen] = useState(false)
+  /** 手机端右栏是全屏 Sheet，不和桌面分栏共用 panelOpen（桌面 localStorage 可能为 true） */
+  const [mobilePanelOpen, setMobilePanelOpen] = useState(false)
+  const isMobile = useIsMobile()
+
+  useEffect(() => {
+    setMobilePanelOpen(false)
+  }, [conversationId])
   /**
    * 用户是否**自己开合过**右栏（`undefined` = 还没从浏览器读回来）。
    *
@@ -249,6 +260,7 @@ export function ChatConversation({ conversationId }: { conversationId: string })
     panelFocusNonce.current += 1
     setPanelFocus({ tab, nonce: panelFocusNonce.current })
     setPanelOpen(true)
+    setMobilePanelOpen(true)
   }, [])
   /**
    * 消息行上的"查看清单"入口：必须是**稳定引用**，否则 `ChatMessage` 的 memo 每帧都会失效
@@ -335,6 +347,10 @@ export function ChatConversation({ conversationId }: { conversationId: string })
   }, [availableModels.models, conversationId, modelId])
 
   const togglePanel = () => {
+    if (isMobile) {
+      setMobilePanelOpen((current) => !current)
+      return
+    }
     const next = !panelOpen
     // 用户动过手 → 记下来：此后自动展开永远让位（与 tool-card 的 `userToggled` 同一条纪律）
     setPanelToggledByUser(true)
@@ -569,8 +585,6 @@ export function ChatConversation({ conversationId }: { conversationId: string })
    * 不足 40% 宽 —— 正文被压成一条，"自动"反倒帮了倒忙。真要看得自己点页头那个按钮。
    * `useIsMobile` 与 layout 隐藏会话列表栏是同一套口径（首帧返回 false，挂载后纠正）。
    */
-  const isMobile = useIsMobile()
-
   /**
    * **子助手正在跑**（不是"历史里有子助手"）—— 只有这种情况才值得把右栏自动推给用户。
    *
@@ -837,7 +851,7 @@ export function ChatConversation({ conversationId }: { conversationId: string })
 
   return (
     <>
-      <header className="flex items-center gap-2">
+      <header className="flex min-w-0 items-center gap-2">
         {/* 独立布局没有左菜单：这里是**唯一的退出入口**（移动端列表栏本来就隐藏，更不能没有）。
             用图标按钮而不是文字链接（页头横向空间要留给标题与模型选择），形态与右侧的
             "复制会话 id" 一致 —— 都是 `IconText`，不自己拼按钮样式 */}
@@ -849,19 +863,19 @@ export function ChatConversation({ conversationId }: { conversationId: string })
           aria-label="回到管理台"
           onClick={() => router.push(Pages.dashboard)}
         />
-        <h1 className="font-heading text-lg font-semibold">
+        <h1 className="min-w-0 flex-1 truncate font-heading text-base font-semibold sm:text-lg">
           {isNew ? '新会话' : conversationQuery.data?.title || '会话'}
         </h1>
         {activeAgent ? (
-          <Badge variant="secondary">{activeAgent.name}</Badge>
+          <Badge variant="secondary" className="hidden shrink-0 sm:inline-flex">{activeAgent.name}</Badge>
         ) : (
-          <Badge variant="outline">未配置</Badge>
+          <Badge variant="outline" className="hidden shrink-0 sm:inline-flex">未配置</Badge>
         )}
         {runId ? (
-          <span className="font-mono text-xs text-muted-foreground">run {runId}</span>
+          <span className="hidden font-mono text-xs text-muted-foreground lg:inline">run {runId}</span>
         ) : null}
         {status !== 'ready' ? (
-          <Badge variant={status === 'error' ? 'destructive' : 'outline'}>{status}</Badge>
+          <Badge variant={status === 'error' ? 'destructive' : 'outline'} className="hidden shrink-0 sm:inline-flex">{status}</Badge>
         ) : null}
         {/* 右侧：复制会话 id + 换 agent + 右栏开关 */}
         <div className="ml-auto flex items-center gap-2">
@@ -871,28 +885,31 @@ export function ChatConversation({ conversationId }: { conversationId: string })
               icon={<CopyIcon />}
               size="small"
               type="primary"
+              className="hidden sm:inline-flex"
               tooltip="复制会话 id"
               aria-label="复制会话 id"
               onClick={copyConversationId}
             />
           ) : null}
           {agents.length > 1 && (
-            <DictSelect
-              size="sm"
-              triggerClassName="h-8 w-40"
-              options={agents.map((agent) => ({ label: agent.name, value: agent.key }))}
-              value={agentKey ?? agentsQuery.data?.defaultAgentKey ?? null}
-              // 改选只对"接下来这一轮"生效（服务端每轮从入参取 agentKey）
-              onValueChange={(next) => setAgentKeyOverride(next)}
-              disabled={streaming}
-            />
+            <div className="hidden sm:block">
+              <DictSelect
+                size="sm"
+                triggerClassName="h-8 w-40"
+                options={agents.map((agent) => ({ label: agent.name, value: agent.key }))}
+                value={agentKey ?? agentsQuery.data?.defaultAgentKey ?? null}
+                // 改选只对"接下来这一轮"生效（服务端每轮从入参取 agentKey）
+                onValueChange={(next) => setAgentKeyOverride(next)}
+                disabled={streaming}
+              />
+            </div>
           )}
           <Button
-            variant={panelOpen ? 'secondary' : 'outline'}
+            variant={(isMobile ? mobilePanelOpen : panelOpen) ? 'secondary' : 'outline'}
             size="icon-sm"
-            aria-pressed={panelOpen}
-            aria-label={panelOpen ? '隐藏右栏' : '显示右栏'}
-            title={panelOpen ? '隐藏右栏（系统指令 / 子 agent 运行）' : '显示右栏（系统指令 / 子 agent 运行）'}
+            aria-pressed={isMobile ? mobilePanelOpen : panelOpen}
+            aria-label={(isMobile ? mobilePanelOpen : panelOpen) ? '隐藏右栏' : '显示右栏'}
+            title={(isMobile ? mobilePanelOpen : panelOpen) ? '隐藏右栏（系统指令 / 子 agent 运行）' : '显示右栏（系统指令 / 子 agent 运行）'}
             onClick={togglePanel}
           >
             <PanelRightIcon className="size-3.5" />
@@ -1079,7 +1096,7 @@ export function ChatConversation({ conversationId }: { conversationId: string })
                   />
                 </PromptInputBody>
                 {/* 左下角：本轮用哪个模型；右下角：本轮统计 + 发送/停止 */}
-                <PromptInputFooter className="gap-2">
+                <PromptInputFooter className="flex-wrap gap-2 sm:flex-nowrap">
                   <PromptInputTools>
                     <ModelPicker value={modelId} onChange={chooseModel} disabled={streaming} />
                     {/* 点击上传的入口：粘贴之外总得有"点一下选文件"这条路 */}
@@ -1094,12 +1111,12 @@ export function ChatConversation({ conversationId }: { conversationId: string })
                       }
                     />
                     {!attachmentsAllowed ? (
-                      <span className="text-xs text-muted-foreground">当前模型不支持附件</span>
+                      <span className="hidden text-xs text-muted-foreground sm:inline">当前模型不支持附件</span>
                     ) : inputModalities === null ? (
                       // 未声明 ≠ 不支持：国内厂商的"列模型"接口普遍不给模态，所以只提醒、不拦。
                       // 真不能收图时，服务端会明确报错（3312），比在这里瞎猜强。
                       <span
-                        className="text-xs text-muted-foreground"
+                        className="hidden text-xs text-muted-foreground sm:inline"
                         title="后台「模型管理」里可以声明该模型支持哪些输入模态"
                       >
                         该模型未声明输入模态，图片 / 文件可能读不了
@@ -1122,7 +1139,7 @@ export function ChatConversation({ conversationId }: { conversationId: string })
           </div>
         </ResizablePanel>
 
-        {panelOpen ? (
+        {panelOpen && !isMobile ? (
           <>
             {/* 分隔条：1px 发丝线（与左栏分隔条同一套交互） */}
             <ResizableHandle className="mx-2 bg-surface-3 transition-colors data-[separator=hover]:bg-primary/40 data-[separator=active]:bg-primary" />
@@ -1150,6 +1167,28 @@ export function ChatConversation({ conversationId }: { conversationId: string })
           </>
         ) : null}
       </ResizablePanelGroup>
+
+      {/* 手机端右栏：全屏 Sheet，不参与桌面分栏（否则会把对话区挤没） */}
+      {isMobile ? (
+        <Sheet open={mobilePanelOpen} onOpenChange={setMobilePanelOpen}>
+          <SheetContent side="right" className="flex w-full max-w-none flex-col p-0">
+            <SheetHeader className="sr-only">
+              <SheetTitle>会话详情</SheetTitle>
+            </SheetHeader>
+            <div className="min-h-0 flex-1 overflow-hidden p-2">
+              <ConversationRightPanel
+                client={client}
+                conversationId={isNew ? undefined : conversationId}
+                agentKey={agentKey ?? agentsQuery.data?.defaultAgentKey}
+                messages={messages}
+                plan={conversationPlan}
+                files={conversationQuery.data?.aiFiles ?? []}
+                focus={panelFocus}
+              />
+            </div>
+          </SheetContent>
+        </Sheet>
+      ) : null}
 
       {/* 附件查看器：挂在会话页最外层，全局只有一个实例 */}
       {lightbox.lightbox}

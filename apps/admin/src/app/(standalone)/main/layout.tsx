@@ -31,7 +31,7 @@ export default function StandaloneAiLayout({ children }: { children: ReactNode }
         hidden 会留下一个**可被程序滚动**的滚动容器（focus / scrollIntoView 能改 scrollTop，
         表现是"整页被顶上去一截"）；clip 根本不建立滚动容器，从结构上杜绝这种位移。
       */}
-      <div className="chat-type-scale h-screen w-screen overflow-clip bg-background">
+      <div className="chat-type-scale h-dvh w-screen overflow-clip bg-background">
         <Suspense>{children}</Suspense>
       </div>
     </AdminAuthBoundary>
