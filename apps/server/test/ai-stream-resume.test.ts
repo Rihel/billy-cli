@@ -79,6 +79,24 @@ describe('resumeSafeChunks：补发不能从块中间开始', () => {
     const out = resumeSafeChunks(all, 2)
 
     expect(types(out)).toEqual(['start', 'tool-input-start', 'tool-input-delta'])
+    expect(out[1]).toMatchObject({
+      toolCallId: 'call-1',
+      toolName: 'unknown',
+    })
+  })
+
+  it('只有 tool-input-delta 时合成的 start 也必须带 toolCallId / toolName', () => {
+    const all = [
+      { type: 'start', messageId: 'm-1' },
+      { type: 'tool-input-delta', toolCallId: 'call-2', delta: '{"q":' },
+    ]
+
+    const out = resumeSafeChunks(all, 1)
+    expect(out[1]).toMatchObject({
+      type: 'tool-input-start',
+      toolCallId: 'call-2',
+      toolName: 'unknown',
+    })
   })
 
   it('offset 落在 tool output：把对应的 tool-input-available 补回来', () => {

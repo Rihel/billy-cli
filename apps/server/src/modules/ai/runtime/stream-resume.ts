@@ -103,6 +103,22 @@ function ensureStarts(chunks: ResumeChunk[]): ResumeChunk[] {
   const availableTools = new Set<string>()
   const out: ResumeChunk[] = []
 
+  /** toolCallId → toolName：合成 tool-input-start 时 schema 要求这两个字段，不能只给 id */
+  const toolNames = new Map<string, string>()
+  for (const chunk of chunks) {
+    const id = idOf(chunk)
+    const name = typeof chunk.toolName === 'string' ? chunk.toolName : undefined
+    if (id && name && (chunk.type === 'tool-input-start' || chunk.type === 'tool-input-available')) {
+      toolNames.set(id, name)
+    }
+  }
+  const toolStart = (id: string): ResumeChunk => ({
+    type: 'tool-input-start',
+    id,
+    toolCallId: id,
+    toolName: toolNames.get(id) ?? 'unknown',
+  })
+
   const open = (set: Set<string>, id: string): boolean => {
     if (set.has(id)) return false
     set.add(id)
@@ -140,10 +156,16 @@ function ensureStarts(chunks: ResumeChunk[]): ResumeChunk[] {
         break
       case 'tool-input-start':
         open(openToolInput, id)
-        out.push(chunk)
+        // 老记录可能只有 id；补齐 schema 要求的 toolCallId / toolName
+        out.push({
+          ...chunk,
+          toolCallId: typeof chunk.toolCallId === 'string' ? chunk.toolCallId : id,
+          toolName:
+            typeof chunk.toolName === 'string' ? chunk.toolName : (toolNames.get(id) ?? 'unknown'),
+        })
         break
       case 'tool-input-delta':
-        if (open(openToolInput, id)) out.push({ type: 'tool-input-start', id })
+        if (open(openToolInput, id)) out.push(toolStart(id))
         out.push(chunk)
         break
       case 'tool-input-available':
