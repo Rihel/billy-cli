@@ -17,11 +17,32 @@ const readCookie = (
   return undefined
 }
 
-/** 从 `Authorization: Bearer <token>` 或 `access-token` cookie 提取访问令牌 */
-export const extractToken = (request: Request): string | undefined => {
+/** 身份体系：前台用户 / 后台管理员 / 不限（任一） */
+export type TokenKind = 'user' | 'admin' | 'any'
+
+/**
+ * 从 `Authorization: Bearer <token>` 或对应身份体系的 cookie 提取访问令牌。
+ *
+ * 为什么必须区分身份体系：admin 与 web 的 cookie 名不同（`admin-access-token` /
+ * `access-token`），同域部署时会同时存在。`AnyAuthGuard` 依次跑两个守卫时，
+ * 每个守卫只能读自己的 cookie；否则「有 user cookie 的 admin 请求」会被当成用户，
+ * 管理员身份永远无法通过。
+ *
+ * `any` 只给「确实不区分身份」的调用方（如登出参数、SSE 订阅）用；守卫不要用它。
+ */
+export const extractToken = (
+  request: Request,
+  kind: TokenKind = 'any',
+): string | undefined => {
   const authorization = request.headers.authorization
   if (authorization?.startsWith('Bearer ')) return authorization.slice(7)
-  return readCookie(request.headers.cookie, 'access-token')
+
+  if (kind === 'user') return readCookie(request.headers.cookie, 'access-token')
+  if (kind === 'admin') return readCookie(request.headers.cookie, 'admin-access-token')
+  return (
+    readCookie(request.headers.cookie, 'access-token') ??
+    readCookie(request.headers.cookie, 'admin-access-token')
+  )
 }
 
 /**

@@ -29,7 +29,7 @@ export class AdminAuthGuard implements CanActivate {
   async canActivate(context: ExecutionContext): Promise<boolean> {
     if (!this.server.authEnabled) return true
 
-    const token = extractToken(context.switchToHttp().getRequest<Request>())
+    const token = extractToken(context.switchToHttp().getRequest<Request>(), 'admin')
     if (!token) throw unauthorizedError()
 
     try {

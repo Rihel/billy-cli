@@ -900,8 +900,9 @@ Markdown / 代码 / CSV 的文本预览也走它，前端就不用为不同来�
   `X-Content-Type-Options: nosniff`；视频 / 音频支持 `Range`（拖动进度条）；
 - `download=1` 或 Office / 未知类型 → `Content-Disposition: attachment`；图片 / PDF / 视频 / 音频默认 `inline`；
 - **HTML / SVG 不允许 inline**：HTML 走 §8.7 的文本预览 + 沙箱；SVG 只下载（`attachment`）；
-- **鉴权**：GET 给 `<img>` / `<video>` / `<audio>` / `<iframe>` 用，依赖 `access-token` cookie
-  （与 SSR 同一套；`SameSite=Lax`，admin 与 API 需同站）。跨站部署下前端改用 fetch blob
+- **鉴权**：GET 给 `<img>` / `<video>` / `<audio>` / `<iframe>` 用，按身份读 `access-token`
+  / `admin-access-token` cookie（`extractToken` 的 user / admin 分支；与 SSR 同一套；`SameSite=Lax`，
+  admin 与 API 需同站）。跨站部署下前端改用 fetch blob
   （带 Authorization）再 `URL.createObjectURL`；
 - **多实例**：读本地盘，可能落到别的 Pod；会话文件走 OSS 直链不受影响。
 

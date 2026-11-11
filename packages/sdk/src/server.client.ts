@@ -439,7 +439,7 @@ export class ServerClient extends HttpClient<BearerTokenCredentials> {
      * 会话文件 / 工作区。
      *
      * `workspaceContentUrl` 是给 `<img>` / `<video>` / `<iframe>` 用的完整 GET 地址：
-     * 这些标签带不上 Authorization，靠 `access-token` cookie（与 SSR 同一套）。
+     * 这些标签带不上 Authorization，按身份读 `access-token` / `admin-access-token` cookie（与 SSR 同一套）。
      */
     file: {
       workspace: (data: { conversationId: string; includeCaches?: boolean }) =>

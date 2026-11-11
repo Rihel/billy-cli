@@ -389,7 +389,7 @@ export class AiController {
   /**
    * 工作区内容流（图片 / PDF / 视频 / 音频 / 下载）。
    *
-   * GET：`<img>` / `<video>` / `<iframe>` 带不上 Authorization，靠 `access-token` cookie
+   * GET：`<img>` / `<video>` / `<iframe>` 带不上 Authorization，按身份读 `access-token` / `admin-access-token` cookie
    * （与 SSR 同一套）。跨站部署时前端改用 fetch blob。
    */
   @Get('file/workspace-content')
