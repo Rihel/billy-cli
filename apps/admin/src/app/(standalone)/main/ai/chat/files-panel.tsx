@@ -3,7 +3,7 @@
 import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import type { AgentFileModel, AgentFileNode, AgentWorkspaceFile } from '@repo/shared'
-import { Badge, Button, useStorageAdapter } from '@repo/ui'
+import { Badge, Button, cn, useStorageAdapter } from '@repo/ui'
 import {
   DownloadIcon,
   EyeIcon,
@@ -123,20 +123,36 @@ export function FilesPanel({
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-2">
       <div className="flex items-center gap-1.5">
-        <Button
-          size="sm"
-          variant={view === 'session' ? 'secondary' : 'ghost'}
-          onClick={() => setView('session')}
-        >
-          会话文件
-        </Button>
-        <Button
-          size="sm"
-          variant={view === 'workspace' ? 'secondary' : 'ghost'}
-          onClick={() => setView('workspace')}
-        >
-          工作区
-        </Button>
+        <div className="inline-flex items-center gap-0.5 rounded-lg bg-surface-2 p-0.5">
+          <Button
+            size="sm"
+            variant="ghost"
+            aria-pressed={view === 'session'}
+            className={cn(
+              'h-7 rounded-md px-2.5',
+              view === 'session'
+                ? 'bg-surface-1 text-foreground shadow-sm hover:bg-surface-1'
+                : 'text-muted-foreground',
+            )}
+            onClick={() => setView('session')}
+          >
+            会话文件
+          </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            aria-pressed={view === 'workspace'}
+            className={cn(
+              'h-7 rounded-md px-2.5',
+              view === 'workspace'
+                ? 'bg-surface-1 text-foreground shadow-sm hover:bg-surface-1'
+                : 'text-muted-foreground',
+            )}
+            onClick={() => setView('workspace')}
+          >
+            工作区
+          </Button>
+        </div>
         {view === 'workspace' ? (
           <div className="ml-auto flex items-center gap-1">
             <Button
