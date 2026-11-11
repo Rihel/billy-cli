@@ -51,6 +51,14 @@ export class AgentRecoveryService implements OnApplicationBootstrap, OnApplicati
      * 启动清理据此把它们让开（只处置"启动之后没有任何人碰过"的遗留行）。
      */
     const bootedAt = new Date()
+    // 子 run 不是 durable：先标中断，父 run 的恢复重放 spawn 工具时才能识别并重启它
+    try {
+      await this.interruptOrphanChildrenOnBoot(bootedAt)
+    } catch (error) {
+      this.logger.error('ai.recovery.interrupt_children_failed', {
+        reason: error instanceof Error ? error.message : String(error),
+      })
+    }
     await this.recoverOnBoot()
     try {
       await this.interruptOrphansOnBoot(bootedAt)
@@ -117,6 +125,40 @@ export class AgentRecoveryService implements OnApplicationBootstrap, OnApplicati
     } finally {
       // 租约留着不主动释放：TTL 到期自然释放，避免"释放瞬间另一个副本又抢到并重复恢复"
     }
+  }
+
+  /**
+   * **子 run 的启动清理**：只清理 `parent_run_id IS NOT NULL` 的进行中子 run。
+   *
+   * 子 agent 是临时 Mastra 对象、没有 durable 快照；父 run 的恢复会重放 `run-sub-agent`，
+   * 那时必须看到 `interrupted` 才能走"原地重启"分支（见 `AgentRunner.runSubAgent`）。
+   * 根 run 不在这里清理，留给 `recoverOnBoot()`。
+   */
+  private async interruptOrphanChildrenOnBoot(bootedAt: Date): Promise<void> {
+    if (process.env.NODE_ENV === 'test') return
+    if (this.config.multiInstance) return
+
+    const interrupted = await this.runs.interruptActiveChildrenBefore(bootedAt)
+    if (interrupted.length === 0) return
+    for (const run of interrupted) {
+      await this.timelines.append({
+        conversationId: run.conversationId,
+        runId: run.id,
+        role: TimelineRole.System,
+        kind: TimelineKind.Status,
+        payload: {
+          status: RunStatus.Interrupted,
+          stage: RunErrorStage.Recovery,
+          reason: 'process_restarted',
+          operator: 'system',
+        },
+        finishedAt: new Date(),
+      })
+    }
+    this.logger.warn('ai.recovery.interrupted_child_orphans', {
+      count: interrupted.length,
+      runIds: interrupted.map((run) => run.id),
+    })
   }
 
   /**

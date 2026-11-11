@@ -20,6 +20,7 @@ import { AgentConfig, type AgentConfig as AgentConfigValue } from '../core/confi
 import type { AgentRuntimeEnvelope } from '../core/envelope.js'
 import { toUsageRecord, usageField } from './usage.js'
 import { RunRepository } from './run.repository.js'
+import type { RunEntity } from '../../../database/entities/run-entity.js'
 import { KeyedSemaphore } from './keyed-semaphore.js'
 import { StreamRecorder } from './stream-recorder.js'
 import { readStreamSteps, readStreamUsage } from './stream-result.js'
@@ -203,31 +204,44 @@ export class AgentRunner {
       return this.rejected(request, startedAt, '子助手不能再创建子助手（已达深度上限）')
     }
 
-    // ② 幂等：重放（崩溃恢复）时同一个 toolCallId 只会真正跑一次
+    // ② 幂等 / 中断恢复：同一个 toolCallId 只对应一个子 run
+    let interrupted: RunEntity | undefined
     if (request.toolCallId) {
       const existing = await this.runs.findChildByToolCall(
         envelope.parentRunId,
         request.toolCallId,
       )
-      if (existing && existing.status === RunStatus.Succeeded) {
-        const text = (await this.timelines.lastTextOfRun(existing.id)) ?? ''
-        this.logger.log('ai.subagent.reused', {
-          parentRunId: envelope.parentRunId,
-          subRunId: existing.id,
-          toolCallId: request.toolCallId,
-        })
-        await this.writeState(request, existing.id, { status: existing.status, result: text })
-        return {
-          subRunId: existing.id,
-          name: request.name,
-          status: 'succeeded',
-          result: text,
-          error: null,
-          stepCount: existing.stepCount,
-          toolCallCount: existing.toolCallCount,
-          usage: existing.usage,
-          durationMs: existing.durationMs ?? 0,
-          reused: true,
+      if (existing) {
+        if (existing.status === RunStatus.Succeeded) {
+          const text = (await this.timelines.lastTextOfRun(existing.id)) ?? ''
+          this.logger.log('ai.subagent.reused', {
+            parentRunId: envelope.parentRunId,
+            subRunId: existing.id,
+            toolCallId: request.toolCallId,
+          })
+          await this.writeState(request, existing.id, { status: existing.status, result: text })
+          return {
+            subRunId: existing.id,
+            name: request.name,
+            status: 'succeeded',
+            result: text,
+            error: null,
+            stepCount: existing.stepCount,
+            toolCallCount: existing.toolCallCount,
+            usage: existing.usage,
+            durationMs: existing.durationMs ?? 0,
+            reused: true,
+          }
+        }
+        // 服务重启后子 run 被标 interrupted；复用同一行原地重启，避免撞 (parent, toolCallId) 唯一键
+        if (existing.status === RunStatus.Interrupted) {
+          interrupted = existing
+        } else {
+          return this.rejected(
+            request,
+            startedAt,
+            `子助手 ${existing.id} 当前状态是 ${existing.status}，不能重复启动；如确需继续，请重新委派`,
+          )
         }
       }
     }
@@ -245,7 +259,7 @@ export class AgentRunner {
       if (envelope.abortSignal?.aborted) {
         return this.rejected(request, startedAt, '这一轮已停止，子助手不再启动')
       }
-      return await this.runAdmittedSubAgent(request, startedAt)
+      return await this.runAdmittedSubAgent(request, startedAt, interrupted)
     } finally {
       this.subAgentSlots.release(parentRunId)
     }
@@ -261,60 +275,95 @@ export class AgentRunner {
   private async runAdmittedSubAgent(
     request: SubAgentRequest,
     startedAt: number,
+    interrupted?: RunEntity,
   ): Promise<SubAgentOutcome> {
     const { envelope } = request
     const quotas = request.quotas ?? {}
     const maxPerRun = quotas.maxPerRun || this.config.subAgentMaxPerRun || DEFAULT_MAX_PER_RUN
 
-    const admitted = await this.enqueueAdmission(envelope.parentRunId, async () => {
-      const existingChildren = await this.runs.countChildren(envelope.parentRunId)
-      if (existingChildren >= maxPerRun) {
-        return { admitted: false as const, existingChildren }
+    let child: { id: string }
+    let agentKey: string
+    if (interrupted) {
+      const restarted = await this.runs.restartChild(interrupted.id)
+      if (!restarted) {
+        return this.rejected(
+          request,
+          startedAt,
+          `子助手 ${interrupted.id} 的状态已被其他执行体改动，不能重复启动`,
+        )
       }
-      // 建子 run（与父同会话；**不参与**"同一会话只允许一轮进行中"的唯一索引，见迁移）
-      const agentKey = toSubAgentKey(request.name)
-      const child = await this.runs.create({
+      child = interrupted
+      agentKey = interrupted.agentKey
+      await this.timelines.append({
         conversationId: envelope.conversationId,
-        agentKey,
-        status: RunStatus.Pending,
-        triggeredBy: envelope.triggeredBy,
+        runId: child.id,
+        role: TimelineRole.System,
+        kind: TimelineKind.Status,
+        payload: {
+          status: RunStatus.Running,
+          stage: RunErrorStage.Recovery,
+          reason: 'process_restarted',
+          operator: 'system',
+        },
+        finishedAt: new Date(),
+      })
+      this.logger.warn('ai.subagent.restarted', {
         parentRunId: envelope.parentRunId,
-        depth: envelope.depth + 1,
+        subRunId: child.id,
         toolCallId: request.toolCallId,
       })
-      return { admitted: true as const, child, agentKey }
-    })
+    } else {
+      const admitted = await this.enqueueAdmission(envelope.parentRunId, async () => {
+        const existingChildren = await this.runs.countChildren(envelope.parentRunId)
+        if (existingChildren >= maxPerRun) {
+          return { admitted: false as const, existingChildren }
+        }
+        // 建子 run（与父同会话；**不参与**"同一会话只允许一轮进行中"的唯一索引，见迁移）
+        const nextAgentKey = toSubAgentKey(request.name)
+        const created = await this.runs.create({
+          conversationId: envelope.conversationId,
+          agentKey: nextAgentKey,
+          status: RunStatus.Pending,
+          triggeredBy: envelope.triggeredBy,
+          parentRunId: envelope.parentRunId,
+          depth: envelope.depth + 1,
+          toolCallId: request.toolCallId,
+        })
+        return { admitted: true as const, child: created, agentKey: nextAgentKey }
+      })
 
-    if (!admitted.admitted) {
-      return this.rejected(
-        request,
-        startedAt,
-        `本次已创建 ${admitted.existingChildren} 个子助手，达到上限（${maxPerRun}），请自己完成剩余工作`,
-      )
+      if (!admitted.admitted) {
+        return this.rejected(
+          request,
+          startedAt,
+          `本次已创建 ${admitted.existingChildren} 个子助手，达到上限（${maxPerRun}），请自己完成剩余工作`,
+        )
+      }
+
+      child = admitted.child
+      agentKey = admitted.agentKey
+      await this.runs.markRunning(child.id)
+      // 动态提示词与任务**全量落库**（不裁剪）：这是子 agent 行为的唯一证据链
+      await this.runs.saveRequestSnapshot(child.id, {
+        kind: 'subagent',
+        name: request.name,
+        systemPrompt: request.systemPrompt,
+        task: request.task,
+        parentRunId: envelope.parentRunId,
+        depth: envelope.depth + 1,
+        toolKey: 'run-sub-agent',
+      })
+      const now = new Date()
+      await this.timelines.append({
+        conversationId: envelope.conversationId,
+        runId: child.id,
+        role: TimelineRole.User,
+        kind: TimelineKind.Text,
+        payload: { text: request.task },
+        startedAt: now,
+        finishedAt: now,
+      })
     }
-
-    const { child, agentKey } = admitted
-    await this.runs.markRunning(child.id)
-    // 动态提示词与任务**全量落库**（不裁剪）：这是子 agent 行为的唯一证据链
-    await this.runs.saveRequestSnapshot(child.id, {
-      kind: 'subagent',
-      name: request.name,
-      systemPrompt: request.systemPrompt,
-      task: request.task,
-      parentRunId: envelope.parentRunId,
-      depth: envelope.depth + 1,
-      toolKey: 'run-sub-agent',
-    })
-    const now = new Date()
-    await this.timelines.append({
-      conversationId: envelope.conversationId,
-      runId: child.id,
-      role: TimelineRole.User,
-      kind: TimelineKind.Text,
-      payload: { text: request.task },
-      startedAt: now,
-      finishedAt: now,
-    })
     await this.writeState(request, child.id, { status: RunStatus.Running, task: request.task })
 
     const recorder = new StreamRecorder(

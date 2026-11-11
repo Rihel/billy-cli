@@ -762,6 +762,32 @@ describe('子 agent（core bean + 运行期动态创建）', () => {
     expect(page.items.length).toBeGreaterThan(0)
   }, 30_000)
 
+  it('中断的子 run 在同一 toolCallId 重放时原地重启，不再撞唯一键', async () => {
+    const { chat, runs, conversations, runner } = await stack()
+    const result = await chat.chat(USER, { message: `中断恢复 ${MOCK_DELEGATE_MARKER}` })
+    const child = (await runs.listChildren(result.runId))[0]!
+    const conversation = await conversations.detail(USER, { conversationId: result.conversationId })
+
+    // 模拟服务重启后的启动清理：子 run 被标 interrupted
+    await runs.finish(child.id, {
+      status: RunStatus.Interrupted,
+      errorStage: 'recovery',
+      errorMessage: 'process restarted',
+    })
+
+    const outcome = await runner.runSubAgent({
+      name: MOCK_SUBAGENT_NAME,
+      systemPrompt: MOCK_SUBAGENT_PROMPT,
+      task: MOCK_SUBAGENT_TASK,
+      toolCallId: child.toolCallId!,
+      envelope: runtimeEnvelope(conversation.id, result.runId),
+    })
+
+    expect(outcome.subRunId).toBe(child.id)
+    expect(outcome.status).toBe('succeeded')
+    expect(await runs.countChildren(result.runId)).toBe(1)
+  }, 30_000)
+
   it('审计视角：run/list 一次拿到根与子（带父子列），且越权访问被拒', async () => {
     const { chat, runService } = await stack()
     const result = await chat.chat(USER, { message: `审计验证 ${MOCK_DELEGATE_MARKER}` })

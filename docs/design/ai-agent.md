@@ -1234,9 +1234,10 @@ AI SDK 的 `data-sub-agent` part，和主内容走同一条 SSE：
 | 场景 | 行为 |
 | --- | --- |
 | 重放时同一 `(parent_run_id, tool_call_id)` 已有**成功**的子 run | **直接复用它的结论**：不重跑、不重复扣费（工具返回上次的结果） |
-| 已有的子 run 是**失败 / 取消** | 允许**新一轮尝试**：新 run 行，父仍指向同一父；复盘能看到"同一 toolCallId 的两次尝试" |
-| 父 run 崩溃恢复 | 子 agent 不做 durable（临时对象）→ 重跑 spawn 工具 → 走上表两条规则 |
-| 进程死在子 agent 里 | 看门狗按同一套判据（心跳 / 总时长）把孤儿子 run 判 `failed`，并记 `error_stage = subagent` |
+| 已有的子 run 是**失败 / 取消** | 同一 toolCallId 重放**拒绝重启**（唯一索引 `(parent_run_id, tool_call_id)` 只允许一行）；主 agent 需用新的 toolCallId 重新委派，形成新的子 run |
+| 父 run 崩溃恢复 | 子 agent 不做 durable（临时对象）→ 重跑 spawn 工具 → 已成功的复用；**被启动清理标成 `interrupted` 的同一个子 run 原地重启**（复用同一行 / 同一 toolCallId，避免撞唯一键） |
+| 进程死在子 agent 里 | 启动先清理孤儿子 run（标 `interrupted`），父 run 恢复重放 spawn 工具时重启它；**不是从断点续跑**：任务会从头再跑，旧时间线保留作审计，工具必须幂等 |
+| 没有父 run 恢复（durable 关闭 / 恢复失败） | 子 run 保持 `interrupted`，不能原地复活；主 agent 需要重新委派（新的 toolCallId 建新子 run） |
 
 #### 3.14.7 配额（防止一个提示词把钱包烧穿）
 

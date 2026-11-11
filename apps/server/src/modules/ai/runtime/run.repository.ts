@@ -9,7 +9,7 @@ import {
   type AgentUsageDailyModel,
   type AgentUsageSummaryModel,
 } from '@repo/shared'
-import { In, IsNull, LessThan, type DeepPartial } from 'typeorm'
+import { In, IsNull, LessThan, Not, type DeepPartial } from 'typeorm'
 import { jsonbPatch } from './jsonb.js'
 import { RunEntity } from '../../../database/entities/run-entity.js'
 
@@ -417,6 +417,78 @@ export class RunRepository {
       stepCount: Number(row?.stepCount ?? 0),
       toolCallCount: Number(row?.toolCallCount ?? 0),
     }
+  }
+
+  /**
+   * 进程重启时**先清理孤儿子 run**：子 agent 不是 durable 对象，旧进程死了它不会自己结束；
+   * 父 run 的 durable 恢复若在清理前重放 `run-sub-agent`，会看到它仍是 running 而无法重启。
+   *
+   * 只清理 `parent_run_id IS NOT NULL` 的 run；根 run 留给 durable 恢复。
+   */
+  async interruptActiveChildrenBefore(
+    since: Date,
+  ): Promise<Array<{ id: string; conversationId: string }>> {
+    const repo = await this.repo()
+    const rows = await repo.find({
+      where: {
+        parentRunId: Not(IsNull()),
+        status: In([RunStatus.Pending, RunStatus.Running]),
+        updatedAt: LessThan(since),
+      },
+      select: { id: true, conversationId: true },
+    })
+
+    const interrupted: Array<{ id: string; conversationId: string }> = []
+    for (const row of rows) {
+      const result = await repo
+        .createQueryBuilder()
+        .update(RunEntity)
+        .set({
+          status: RunStatus.Interrupted,
+          errorStage: RunErrorStage.Recovery,
+          errorMessage: INTERRUPTED_RUN_MESSAGE,
+          finishedAt: new Date(),
+        })
+        .where('id = :id', { id: row.id })
+        .andWhere('parent_run_id IS NOT NULL')
+        .andWhere('status IN (:...statuses)', {
+          statuses: [RunStatus.Pending, RunStatus.Running],
+        })
+        .andWhere('updated_at < :since', { since })
+        .execute()
+      if ((result.affected ?? 0) === 1) interrupted.push(row)
+    }
+    return interrupted
+  }
+
+  /**
+   * 重启一个 **interrupted** 子 run：复用同一行，父工具调用的幂等键不变。
+   *
+   * 这不是"从断点续跑"：子 agent 是临时对象、没有 durable 快照；这里会把任务从头再跑一遍，
+   * 旧时间线保留作为审计，新输出继续追加。`recovery_count` 记失败/重启次数。
+   */
+  async restartChild(id: string): Promise<boolean> {
+    const repo = await this.repo()
+    const result = await repo
+      .createQueryBuilder()
+      .update(RunEntity)
+      .set({
+        status: RunStatus.Running,
+        startedAt: new Date(),
+        heartbeatAt: new Date(),
+        finishedAt: null,
+        activeStreamId: null,
+        engineRunId: null,
+        errorCode: null,
+        errorStage: null,
+        errorMessage: null,
+        errorDetail: null,
+        recoveryCount: () => 'recovery_count + 1',
+      })
+      .where('id = :id', { id })
+      .andWhere('status = :status', { status: RunStatus.Interrupted })
+      .execute()
+    return (result.affected ?? 0) === 1
   }
 
   /**
