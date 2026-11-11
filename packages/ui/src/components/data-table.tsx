@@ -41,11 +41,22 @@ import { ChevronLeftIcon, ChevronRightIcon, InboxIcon } from "lucide-react"
 const tableFeatures = { ...coreFeatures, columnVisibilityFeature }
 type DataTableFeatures = typeof tableFeatures
 
-/** tanstack 列定义：meta.width 用于控制列宽 */
+/** tanstack 列定义：meta.width 用于控制列宽；meta.sticky 可显式把操作列固定在右侧 */
 export type DataTableColumnDef<T extends object> = ColumnDef<DataTableFeatures, T, any> & {
   meta?: {
     width?: number
+    sticky?: 'right'
   }
+}
+
+/** 操作列识别：id=actions / 表头“操作” / 显式 meta.sticky=right */
+const isActionsColumn = (column: {
+  id: string
+  columnDef: { header?: unknown; meta?: { sticky?: 'right' } }
+}): boolean => {
+  if (column.columnDef.meta?.sticky === 'right') return true
+  if (column.id === 'actions' || column.id.endsWith('Actions')) return true
+  return typeof column.columnDef.header === 'string' && column.columnDef.header.trim() === '操作'
 }
 
 export type DataTableProps<T extends object> = {
@@ -141,7 +152,11 @@ export function DataTable<T extends object>({
                   return (
                     <TableHead
                       key={header.id}
-                      className="h-10 px-3 text-xs font-medium tracking-wide text-muted-foreground"
+                      className={cn(
+                        'h-10 px-3 text-xs font-medium tracking-wide text-muted-foreground',
+                        isActionsColumn(header.column) &&
+                          'sticky right-0 z-20 bg-surface-2 shadow-[-1px_0_0_0_var(--border)]',
+                      )}
                       style={width ? { width } : undefined}
                     >
                       {header.isPlaceholder
@@ -169,9 +184,16 @@ export function DataTable<T extends object>({
               ))
             ) : rows.length > 0 ? (
               rows.map((row) => (
-                <TableRow key={row.id}>
+                <TableRow key={row.id} className="group">
                   {row.getVisibleCells().map((cell) => (
-                    <TableCell key={cell.id} className="px-3 py-2.5 text-[13px]">
+                    <TableCell
+                      key={cell.id}
+                      className={cn(
+                        'px-3 py-2.5 text-[13px]',
+                        isActionsColumn(cell.column) &&
+                          'sticky right-0 z-10 bg-card shadow-[-1px_0_0_0_var(--border)] group-hover:bg-surface-2/70',
+                      )}
+                    >
                       {flexRender(cell.column.columnDef.cell, cell.getContext())}
                     </TableCell>
                   ))}
