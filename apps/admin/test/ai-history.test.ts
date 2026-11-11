@@ -141,28 +141,28 @@ describe('toUIMessages', () => {
         item({
           seq: 3,
           kind: 'tool-call',
-          toolKey: 'run-command',
+          toolKey: 'bash',
           toolCallId: 'call_1',
           payload: { input: { command: 'pwd && ls -la' } },
         }),
         item({
           seq: 4,
           kind: 'tool-result',
-          toolKey: 'run-command',
+          toolKey: 'bash',
           toolCallId: 'call_1',
           payload: { output: { ok: true, stdout: 'src' }, isError: false },
         }),
         item({
           seq: 5,
           kind: 'tool-call',
-          toolKey: 'run-command',
+          toolKey: 'bash',
           toolCallId: 'call_2',
           payload: { input: { command: 'uname -a' } },
         }),
         item({
           seq: 6,
           kind: 'tool-result',
-          toolKey: 'run-command',
+          toolKey: 'bash',
           toolCallId: 'call_2',
           payload: { output: { ok: true, stdout: 'Darwin' }, isError: false },
         }),
@@ -170,14 +170,14 @@ describe('toUIMessages', () => {
         item({
           seq: 8,
           kind: 'tool-call',
-          toolKey: 'run-command',
+          toolKey: 'bash',
           toolCallId: 'call_3',
           payload: { input: { command: 'ls ../' } },
         }),
         item({
           seq: 9,
           kind: 'tool-result',
-          toolKey: 'run-command',
+          toolKey: 'bash',
           toolCallId: 'call_3',
           payload: { output: { ok: true, stdout: 'billy' }, isError: false },
         }),
@@ -344,11 +344,11 @@ describe('历史里的耗时（工具条与思考块要显示真实值）', () =
   it('工具结果里的审计耗时（payload.outcome.durationMs）挂到工具卡 part 上', () => {
     const messages = toUIMessages(
       [
-        item({ seq: 1, kind: 'tool-call', toolKey: 'run-command', toolCallId: 'call_1' }),
+        item({ seq: 1, kind: 'tool-call', toolKey: 'bash', toolCallId: 'call_1' }),
         item({
           seq: 2,
           kind: 'tool-result',
-          toolKey: 'run-command',
+          toolKey: 'bash',
           toolCallId: 'call_1',
           payload: { output: { ok: true }, isError: false, outcome: { durationMs: 2345 } },
         }),

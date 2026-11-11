@@ -16,7 +16,7 @@ import { createAgentRegistry } from '../src/modules/ai/agents/registry.js'
 import { createPromptEngine } from '../src/modules/ai/core/prompts/index.js'
 import { AgentTitleService } from '../src/modules/ai/runtime/title.service.js'
 import { SkillLoader } from '../src/modules/ai/core/skills/index.js'
-import { RunCommandTool } from '../src/modules/ai/tools/command.tool.js'
+import { BashTool } from '../src/modules/ai/tools/bash.tool.js'
 import { WebTools } from '../src/modules/ai/tools/web.tools.js'
 import { RunSubAgentTool } from '../src/modules/ai/tools/subagent.tool.js'
 import { PlannerStore, PlannerTools } from '../src/modules/ai/tools/planner/index.js'
@@ -170,7 +170,7 @@ beforeAll(async () => {
   const plannerStore = new PlannerStore(timelines)
   toolRegistry = new ToolRegistry(
     [
-      new RunCommandTool(new CommandRunner(), silentLogger),
+      new BashTool(new CommandRunner(), silentLogger),
       new WebTools(silentLogger as never),
       new RunSubAgentTool(runner, silentLogger),
       new PlannerTools(plannerStore),
@@ -378,7 +378,7 @@ describe('对话链路端到端（mock 模型 + 真实数据库）', () => {
     expect(conversation.turnCount).toBe(2)
   })
 
-  it('命令执行：模型调 run-command → 真跑一条跨平台命令，入参出参完整落库', async () => {
+  it('命令执行：模型调 bash → 真跑一条跨平台命令，入参出参完整落库', async () => {
     const result = await chat.chat(USER, { message: `${MOCK_COMMAND_MARKER} 跑一下看看这台机器的环境` })
     createdConversationIds.push(result.conversationId)
 

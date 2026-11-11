@@ -14,7 +14,7 @@ import { createAgentRegistry } from '../src/modules/ai/agents/registry.js'
 import { createPromptEngine } from '../src/modules/ai/core/prompts/index.js'
 import { AgentTitleService } from '../src/modules/ai/runtime/title.service.js'
 import { SkillLoader } from '../src/modules/ai/core/skills/index.js'
-import { RunCommandTool } from '../src/modules/ai/tools/command.tool.js'
+import { BashTool } from '../src/modules/ai/tools/bash.tool.js'
 import { WebTools } from '../src/modules/ai/tools/web.tools.js'
 import { RunSubAgentTool } from '../src/modules/ai/tools/subagent.tool.js'
 import { PlannerStore, PlannerTools } from '../src/modules/ai/tools/planner/index.js'
@@ -240,7 +240,7 @@ beforeAll(async () => {
   const plannerStore = new PlannerStore(timelines)
   toolRegistry = new ToolRegistry(
     [
-      new RunCommandTool(new CommandRunner(), silentLogger),
+      new BashTool(new CommandRunner(), silentLogger),
       new RunSubAgentTool(runner, silentLogger),
       new PlannerTools(plannerStore),
       new ReadToolResultTool(deps.results, deps.counter, deps.caps),

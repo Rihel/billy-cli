@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { CommandRunner } from '@repo/kits'
 import { describe, expect, it } from 'vitest'
-import { RunCommandTool } from '../../src/modules/ai/tools/command.tool.js'
+import { BashTool } from '../../src/modules/ai/tools/bash.tool.js'
 import { TOOL_KEYS } from '../../src/modules/ai/core/tools/tool-keys.js'
 import {
   buildToolStackDeps,
@@ -14,20 +14,20 @@ import {
 } from '../helpers/ai-tool-stack.js'
 
 /**
- * `run-command` 的单测（策略的完整矩阵见 `test/ai-command-core.test.ts`；
+ * `bash` 的单测（策略的完整矩阵见 `test/ai-command-core.test.ts`；
  * 这份文件是标准测试集要求的"每个工具一个测试文件"，覆盖**工具本体**）。
  */
 const build = (config: Record<string, unknown> = {}) => {
   const deps = buildToolStackDeps()
-  deps.source.set(TOOL_KEYS.runCommand, { config })
+  deps.source.set(TOOL_KEYS.bash, { config })
   const spec = specByKey(
-    new RunCommandTool(new CommandRunner(), silentLogger as never),
-    TOOL_KEYS.runCommand,
+    new BashTool(new CommandRunner(), silentLogger as never),
+    TOOL_KEYS.bash,
   )
   return { deps, spec }
 }
 
-describe('run-command（执行命令行命令）', () => {
+describe('bash（执行命令行命令）', () => {
   it('真的执行一条跨平台命令，出参里带 exitCode / stdout / cwd', async () => {
     const { deps, spec } = build({ workDir: tmpdir() })
     const settings = await deps.config.settings(spec)
@@ -70,7 +70,7 @@ describe('run-command（执行命令行命令）', () => {
     const temp = await mkdtemp(join(tmpdir(), 'billy-command-root-'))
     const root = join(temp, 'agent-workspace')
     try {
-      const tool = new RunCommandTool(new CommandRunner(), silentLogger as never, {
+      const tool = new BashTool(new CommandRunner(), silentLogger as never, {
         ...TEST_TOOL_ENV_CAPS,
         command: {
           ...TEST_TOOL_ENV_CAPS.command!,

@@ -26,7 +26,7 @@ AGENT_CORES（core bean.asTools()）───┘        │
 ```
 
 工具池里现在有 10 个，都由工具组（core bean）提供：规划一组四个（`plan-create` / `plan-reorder` /
-`plan-complete` / `plan-delete`）、`run-sub-agent`（子 agent）、`run-command`（命令行）、
+`plan-complete` / `plan-delete`）、`run-sub-agent`（子 agent）、`bash`（命令行）、
 `read-tool-result`（大结果取页）、联网三件套 `web-search` / `web-fetch` / `web-request`。
 业务工具一个都没有，`AGENT_TOOL_GROUPS` 是留出来的扩展点。
 
@@ -35,7 +35,7 @@ AGENT_CORES（core bean.asTools()）───┘        │
 
 三个 core bean 的写法一样：构造器里手动调 `createTool({ id, description, inputSchema, execute })`，
 说明文本、入参 schema、执行体、开关判断、边界检查全写在同一个文件里。
-`run-command`（`tools/command.core.ts`，215 行）是典型：工具说明占 24 行，`execute` 里前 30 行做开关、
+`bash`（`tools/command.core.ts`，215 行）是典型：工具说明占 24 行，`execute` 里前 30 行做开关、
 目录边界、时长夹紧，剩下的才是"跑命令"这件事本身。
 
 ### 1.2 三条现状约束
@@ -57,13 +57,13 @@ AGENT_CORES（core bean.asTools()）───┘        │
 
 现在新增工具要动 4 处登记（`tool-keys.ts` 加 key、写 bean、`ai.module.ts` 注册、agent 声明授权），
 这 4 处是必要的。问题在之外的部分：`createTool` 的包装、工具说明的写法、开关与边界判断，
-每个工具都要重写一遍。`run-command` 里的目录边界用 `path.relative` 判越界，
+每个工具都要重写一遍。`bash` 里的目录边界用 `path.relative` 判越界，
 `planner` 里用 promise 链串行化同一轮的并发调用，这些经验都留在各自的文件里。
 下一个工具的作者不一定知道要写，漏掉就是缺一个保护。
 
 ### P2 开关和限额在 env 里，改一次要重启
 
-`run-command` 的四个旋钮全在环境变量（`core/config.ts:55-61`）：开关、超时、输出上限、工作目录。
+`bash` 的四个旋钮全在环境变量（`core/config.ts:55-61`）：开关、超时、输出上限、工作目录。
 `app-config.ts:160-166` 是它们的 schema 和默认值。
 
 想临时关掉命令执行，或者把超时从 15 秒放宽到 30 秒，都要改 `.env` 再重启服务。
@@ -154,7 +154,7 @@ AGENT_CORES（core bean.asTools()）───┘        │
 | 收益 | 依据（当前可核对的事实） |
 | --- | --- |
 | 策略只有一份实现 | 开关、边界、超时、输出上限现在由每个工具各写一遍；改后是插件里的固定顺序，新工具自动继承 |
-| 运维动作从"改 env 再重启"变成"后台改" | `run-command` 的 4 个配置在 env（`ai.config.ts:55-61`）；重启的代价是一次发布流程 |
+| 运维动作从"改 env 再重启"变成"后台改" | `bash` 的 4 个配置在 env（`ai.config.ts:55-61`）；重启的代价是一次发布流程 |
 | 排障入口从日志变成时间线 | 现在只有 `command.core.ts:124`、`:130` 两条 warn，工具级拒绝无审计 |
 | 大结果可回取（新增能力） | 现在只有截断，没有取回通道（`context.service.ts:342-358`） |
 | 依赖变更的影响面收敛 | 27 处、16 个文件 → 1 个适配器目录加一份一致性测试；`ai.model-decision.ts` 与 `agent-mastra-store.ts` 已经是这个定位 |
@@ -358,7 +358,7 @@ export interface ToolPlugin {
 | post | `redact` | 秘钥字段在日志、时间线、出参里替换为提示串 |
 | post | `audit-end` | 落时间线、日志、指标 |
 
-两条边界口径由插件统一执行，保留 `run-command` 现在的做法：数值上限**夹紧**
+两条边界口径由插件统一执行，保留 `bash` 现在的做法：数值上限**夹紧**
 （`command.core.ts:140-143`），语义边界**拒绝并说明**
 （`:128-132`，不静默夹回，否则模型不知道自己在边界外）。
 
@@ -635,7 +635,7 @@ Mastra 一改 execute 的形态，所有工具测试一起红。
 | --- | --- | --- | --- |
 | `run-sub-agent` | 是（工具组 `RunSubAgentTool`，组内一个方法） | `exec` 要跑一个完整 agent：模型调用、建子 run、落时间线、转发流 | 把执行体放到端口 `SubAgentExecutor` 后面：生产实现是 `AgentRunner`，测试实现返回固定结论。spec 只留入参定义与 `precheck`（深度是纯判断；配额要查库，走 bean 注入的只读端口）。`AgentRunner` 现在自己 `new Agent`（`agent-runner.ts:217`），改成注入 agent 工厂（适配器提供）。深度、幂等复用、配额三条守卫用 fake 仓储单测；端到端保留一条（mock 模型）证接线正确 |
 | 规划工具组（`tools/planner/planner.tools.ts`，组内四个 `@ToolDecl` 方法） | 是（工具组，一个方法一个工具） | 跨轮状态（per-run 内存、串行队列）、读时间线取当前计划 | 它们自己不写库（输出是纯数据），所以最好测：直接调 `exec` 加 fake 仓储。已覆盖：首建 / 追加 / id 重复 / 总量上限 / 缺信封（create），order 少·多·重复 / 未知 id / 标 in_progress（reorder），批量 + 幂等 + note（complete），批量删 / 删空（delete）；另有一条同轮串行读改写的端到端 |
-| `run-command` | 是（工具组 `RunCommandTool`，组内一个方法） | 真执行外部命令 | 机制（`CommandRunner`）在 kits，那边已有独立单测，AI 侧只测策略（`ai-command-core.test.ts:9-13` 就是这个分工）。策略上移到插件后，工具单测变成入参定义与出参形状，插件单测管开关、边界、夹紧。现有那条"真跑 30 秒命令再比 `Date.now()`"（`ai-command-core.test.ts:87-101`）改成注入可控时钟加 fake runner，断言传下去的 `timeoutMs` |
+| `bash` | 是（工具组 `BashTool`，组内一个方法） | 真执行外部命令 | 机制（`CommandRunner`）在 kits，那边已有独立单测，AI 侧只测策略（`ai-command-core.test.ts:9-13` 就是这个分工）。策略上移到插件后，工具单测变成入参定义与出参形状，插件单测管开关、边界、夹紧。现有那条"真跑 30 秒命令再比 `Date.now()`"（`ai-command-core.test.ts:87-101`）改成注入可控时钟加 fake runner，断言传下去的 `timeoutMs` |
 | `SkillLoader` | **不是工具** | 启动期读盘、校验、缓存 | 它已经为测试留了可注入目录（`skill.loader.ts:19-22`、`:48-53`）。目前没有针对它的单测，只在 e2e 里用真实目录 new 出来；补：临时目录注入、缺 `SKILL.md` 报错、校验失败报错、未知技能名报错、`references/` 读取 |
 | Mastra 的技能工具（`skill` / `skill_search` / `skill_read`）与技能目录注入 | 是工具，但不在注册机里 | 见下面「技能：现状与三条路线」 | 同上 |
 | storage adapter、model resolution | 不是工具 | — | 各自的单测（适配器行为约定、纯函数），不进工具标准测试集 |
@@ -725,7 +725,7 @@ Mastra 一改 execute 的形态，所有工具测试一起红。
 | 4 | 子 agent 的提示词由我们追加一段固定尾巴：工具清单（key + 标题）、一句"没有委派类工具"、交付要求；主 agent 写的那份保持不变放前面 | 缺口 4，做法见待拍板第 7 条（§5.10） |
 
 `run-sub-agent` 的四个旋钮（每轮个数、深度、步数、超时）按同一套做法迁进 `ai_tools.config`，
-和 `run-command` 同批。
+和 `bash` 同批。
 
 ### 5.11 后台页面（工具配置）
 
@@ -755,7 +755,7 @@ Mastra 一改 execute 的形态，所有工具测试一起红。
   因为授权写在 agent 声明里，DB 没有这份数据）、秘钥提示串（`sk-…abcd`）。
 - **可改区**：开关、作用域（`DictSelect`）、`allowed_agents`（只在校验 `scope=agent` 时出现）、
   限额、工具专属配置。
-- **工具专属配置的渲染**：一期按工具手写面板（`run-command` 的面板就是超时、输出上限、工作目录三个字段），
+- **工具专属配置的渲染**：一期按工具手写面板（`bash` 的面板就是超时、输出上限、工作目录三个字段），
   每个字段旁边显示默认值，并给一个"用默认值"的入口。二期工具多了再上通用渲染器：zod → JSON Schema → 表单；
   通用渲染器要处理联合类型、数组、条件字段，边界成本高，工具少的时候不划算（待拍板第 8 条）。
 - **秘钥**：只显示提示串。留空=不改，给空串=清空，填新值=覆盖；表单不做回显，也不进前端状态之外的任何日志。
@@ -799,7 +799,7 @@ Mastra 一改 execute 的形态，所有工具测试一起红。
 | 0 | 两个实验：durable 下 `toModelOutput` 是否生效（流里是全量、模型收到页）；恢复重放时句柄 Map 是否自洽 | 结论落进 §5.8 的降级选择 |
 | 1 | 适配器四个加一致性测试加 `check:mastra`；`ToolSpec` / `Toolbox` / `ToolOutcome` 类型；信封去掉 Mastra 词汇并加 `agentKey`；子 agent 也注入信封（`depth + 1`）；`latestPlan` 只看根 run；`test/helpers/tool-kit.ts` 与标准测试集 | 守卫绿，现有测试不回归，标准测试集能跑通一个示例工具 |
 | 2 | 注册机、网关、9 个插件；core bean 改交声明，行为保持等价；规划工具标 `child: deny`（子 agent 工具面 = 全部 − 委派类 − deny）；插件与网关的测试文件、每个工具的测试文件 | 工具行为与现在一致，边界判断只有一份；标准测试集覆盖注册机里全部工具 |
-| 3 | `ai_tools` 加迁移加种子加配置服务加 `/ai-tool/*` 加 SDK 加后台页；`run-command` 的 4 个旋钮迁入库；配置合并与种子对账的测试 | 后台改开关或超时，下一次调用生效，服务未重启；种子跑两次幂等 |
+| 3 | `ai_tools` 加迁移加种子加配置服务加 `/ai-tool/*` 加 SDK 加后台页；`bash` 的 4 个旋钮迁入库；配置合并与种子对账的测试 | 后台改开关或超时，下一次调用生效，服务未重启；种子跑两次幂等 |
 | 4 | 分页纯函数、`paginate` 插件、`toModelOutput`、跨轮入口、`read-tool-result`、句柄两级解析、越权与滥用防护；分页边界与确定性的测试 | 大结果模型只收一页并能取下一页，库里仍是全量 |
 | 二期 | 条目级分页；配额细化；动态工具面；技能收进注册机（路线 B：`skill-activate` 与 `skill-read` 加自己渲染目录段）；`skill.adapter` 收口；允许清单继续收敛 | — |
 | 三期 | 人工审批（`requireApproval` 加前端批准框）；问题工具的原生 suspend/resume 已先行（见 `ai-agent.md` §3.7.1） | — |
@@ -987,9 +987,9 @@ AI SDK v6 的 data part 语义是「**同 `id` 后者覆盖前者**」（实测�
 | 接口 | `ai-tool.list` / `detail` 返回的 `events` 与代码声明一致；`AiToolUpdateSchema` 里没有 `events`（不可编辑） |
 | 端到端 | mock 模型跑一轮真实 agent 流：SSE 里出现 `data-tool-event`（状态块同 id、流水块无 id），且时间线里**没有**事件行 |
 
-#### 第一个真实消费者：run-command 流式执行（**已于同日按用户口径移除**）
+#### 第一个真实消费者：bash 流式执行（**已于同日按用户口径移除**）
 
-**曾经的形态**：`run-command` 把命令输出按行实时发成 `stdout` / `stderr`（`stream`）事件，
+**曾经的形态**：`bash` 把命令输出按行实时发成 `stdout` / `stderr`（`stream`）事件，
 结束时发一条 `exit`（`state`）事件；机制下沉在 `CommandRunner.runStreaming()`，
 按行解码在 `command.stream.ts`；配置里加了 `streamLinesMax`（每类流最多发多少行 + env 硬上限），
 前端有专用渲染器把行画成终端并把流水合成一整块。
@@ -1013,12 +1013,12 @@ AI SDK v6 的 data part 语义是「**同 `id` 后者覆盖前者**」（实测�
 **配套口径（2026-10-01 补）**：工具说明是**每轮请求的前缀**，所以"纪律"这类**跨工具**的规则
 统一写在全局段（`partials/principles.eta` 的「纪律（所有工具通用）」），工具说明只留"是什么 /
 什么时候用不用 / 自己特有的约束"；论证性的"为什么"留在本设计文档里，不进提示词。
-实测（落库镜像）：`run-command` 的说明 913 → **349** 字符；**七个工具合计 2834 → 1673（−41%）**，
+实测（落库镜像）：`bash` 的说明 913 → **349** 字符；**七个工具合计 2834 → 1673（−41%）**，
 再扣掉全局纪律段新加的约 150 字符，**每轮前缀净少约 1000 字符**（按会话重复付的那一份）。
 标准测试集加了 `≤450 字符` 的体量护栏防止再长回去。
 
 移除同时清掉了：`CommandRunner.runStreaming` / `command.stream.ts` / 三个事件声明 / `streamLinesMax`
-配置项与 `AGENT_COMMAND_STREAM_LINES_MAX` 部署上限 / 前端 `run-command.renderer.tsx` 及其注册。
+配置项与 `AGENT_COMMAND_STREAM_LINES_MAX` 部署上限 / 前端 `bash.renderer.tsx` 及其注册。
 
 
 ### 5.18 必填的调用理由 `reason`（2026-10-02 追加）

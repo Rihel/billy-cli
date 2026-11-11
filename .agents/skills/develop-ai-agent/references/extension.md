@@ -33,7 +33,7 @@
   **运行时信封**传进来（见 §3）；
 - **能力有基础设施底座时，机制放 `packages/kits`**：一个能力一个 `foundation/<name>/` 目录 +
   `@Global()` 模块，工具组只写策略（开关 / 边界 / 上限）与结论映射 ——
-  参考 `RunCommandTool`（`tools/command.tool.ts`）+ `kits/src/foundation/command/`（跨平台命令执行，底层 execa）。
+  参考 `BashTool`（`tools/bash.tool.ts`）+ `kits/src/foundation/command/`（跨平台命令执行，底层 execa）。
 
 ## 3. 运行时信封（工具怎么知道"我在哪一轮"）
 

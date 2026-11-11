@@ -2,7 +2,7 @@ import { tmpdir } from 'node:os'
 import { CommandRunner, type CommandResult } from '@repo/kits'
 import { describe, expect, it } from 'vitest'
 import { ToolGateway } from '../src/modules/ai/core/tools/tool.gateway.js'
-import { RunCommandTool } from '../src/modules/ai/tools/command.tool.js'
+import { BashTool } from '../src/modules/ai/tools/bash.tool.js'
 import { TOOL_KEYS } from '../src/modules/ai/core/tools/tool-keys.js'
 import type { ToolCallContext, ToolEnvCaps, ToolSpec } from '../src/modules/ai/core/tools/tools.types.js'
 import {
@@ -13,7 +13,7 @@ import {
 } from './helpers/ai-tool-stack.js'
 
 /**
- * `run-command` 的**策略**（不是机制）：开关、目录边界、时长上限。
+ * `bash` 的**策略**（不是机制）：开关、目录边界、时长上限。
  *
  * 机制在 `packages/kits/src/foundation/command`（那边有独立单测），这里只钉住
  * "AI 这一侧怎么把模型给的入参收窄成安全取值"。
@@ -36,7 +36,7 @@ const buildStack = (
     deps.source.set(key, row as never)
   }
   const gateway = new ToolGateway(deps.config, silentLogger as never, deps.plugins, deps.clock)
-  const spec = specByKey(new RunCommandTool(new CommandRunner(), silentLogger as never), TOOL_KEYS.runCommand)
+  const spec = specByKey(new BashTool(new CommandRunner(), silentLogger as never), TOOL_KEYS.bash)
   return { deps, gateway, spec }
 }
 
@@ -66,10 +66,10 @@ const contextFor = async (
   input,
 })
 
-describe('run-command 的策略（开关 / 目录边界 / 时长上限）', () => {
-  it('交出的声明 key 是 run-command，且**不是**委派类（子助手也拿得到）', () => {
+describe('bash 的策略（开关 / 目录边界 / 时长上限）', () => {
+  it('交出的声明 key 是 bash，且**不是**委派类（子助手也拿得到）', () => {
     const { spec } = buildStack()
-    expect(spec.key).toBe(TOOL_KEYS.runCommand)
+    expect(spec.key).toBe(TOOL_KEYS.bash)
     expect(spec.delegation).toBeUndefined()
     // 子 agent 工具面里要有它
     expect(spec.child ?? 'allow').toBe('allow')
@@ -90,7 +90,7 @@ describe('run-command 的策略（开关 / 目录边界 / 时长上限）', () =
   it('normalize：库里的值再大也被夹到 env 上限（部署边界不可突破）', async () => {
     const { deps, spec } = buildStack({
       sourceRows: {
-        [TOOL_KEYS.runCommand]: {
+        [TOOL_KEYS.bash]: {
           config: { timeoutMs: 600_000, maxOutputBytes: 10 * 1024 * 1024 },
         },
       },
@@ -102,7 +102,7 @@ describe('run-command 的策略（开关 / 目录边界 / 时长上限）', () =
 
   it('开关关掉（配置表）：网关短路，**不执行**命令', async () => {
     const { deps, gateway, spec } = buildStack({
-      sourceRows: { [TOOL_KEYS.runCommand]: { enabled: false } },
+      sourceRows: { [TOOL_KEYS.bash]: { enabled: false } },
     })
     const outcome = await gateway.invoke(spec, { command: 'echo should-not-run', reason: '验证开关关掉时不会真的执行命令' }, {
       callId: 'call-1',
@@ -117,7 +117,7 @@ describe('run-command 的策略（开关 / 目录边界 / 时长上限）', () =
 
   it('开关关掉（能力级 config.enabled）：同样不执行', async () => {
     const { deps, gateway, spec } = buildStack({
-      sourceRows: { [TOOL_KEYS.runCommand]: { config: { enabled: false } } },
+      sourceRows: { [TOOL_KEYS.bash]: { config: { enabled: false } } },
     })
     const outcome = await gateway.invoke(spec, { command: 'echo should-not-run', reason: '验证开关关掉时不会真的执行命令' }, {
       callId: 'call-2',
@@ -129,7 +129,7 @@ describe('run-command 的策略（开关 / 目录边界 / 时长上限）', () =
 
   it('cwd 越界：precheck 拒绝并说明边界（不静默夹回，模型必须知道自己越界了）', async () => {
     const { deps, gateway, spec } = buildStack({
-      sourceRows: { [TOOL_KEYS.runCommand]: { config: { workDir: tmpdir() } } },
+      sourceRows: { [TOOL_KEYS.bash]: { config: { workDir: tmpdir() } } },
     })
     const outcome = await gateway.invoke(spec, { command: 'echo nope', cwd: '../../', reason: '验证目录越界会被拒绝' }, {
       callId: 'call-3',
@@ -144,7 +144,7 @@ describe('run-command 的策略（开关 / 目录边界 / 时长上限）', () =
 
   it('cwd 在工作根目录之内：正常执行，且出参回显真实工作目录', async () => {
     const { deps, gateway, spec } = buildStack({
-      sourceRows: { [TOOL_KEYS.runCommand]: { config: { workDir: tmpdir() } } },
+      sourceRows: { [TOOL_KEYS.bash]: { config: { workDir: tmpdir() } } },
     })
     const outcome = await gateway.invoke(spec, { command: 'echo in-workdir', reason: '验证工作目录之内可以正常执行' }, {
       callId: 'call-4',
@@ -160,7 +160,7 @@ describe('run-command 的策略（开关 / 目录边界 / 时长上限）', () =
 
   it('时长上限：模型传超长超时会被夹到配置上限（否则一条命令能挂住一整轮）', async () => {
     const { deps, gateway, spec } = buildStack({
-      sourceRows: { [TOOL_KEYS.runCommand]: { config: { timeoutMs: 300 } } },
+      sourceRows: { [TOOL_KEYS.bash]: { config: { timeoutMs: 300 } } },
     })
     const startedAt = Date.now()
     // 模型要 120 秒，配置上限 300ms：必须以 300ms 为准

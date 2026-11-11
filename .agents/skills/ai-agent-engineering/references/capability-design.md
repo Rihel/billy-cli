@@ -9,10 +9,10 @@
 | 情形 | 判断 | 为什么 | 依据 / 位置 |
 | --- | --- | --- | --- |
 | 确定性逻辑（算价、状态流转、字段映射） | **不该** | 模型只是把确定性函数重新猜一遍：慢、不可测、会漂移 | 下沉到服务端代码，提示词不参与 |
-| 需要真实外部数据（当前时间、文件、接口、库） | **该** | 模型的记忆不可信，答案只能来自执行 | `run-command`，`tools/command.tool.ts:188-211` |
+| 需要真实外部数据（当前时间、文件、接口、库） | **该** | 模型的记忆不可信，答案只能来自执行 | `bash`，`tools/bash.tool.ts:188-211` |
 | 需要多步推理与工具编排 | **该** | 单次推理收不了口，需要"边做边改计划" | `plan-*` 一组四工具，`tools/planner/planner.tools.ts` |
-| 需要用户拍板（改配置、发布、删数据） | **不该直接做** | 模型替用户做了决定，责任链断了 | 一期靠纪律：有副作用的命令先问用户（`command.tool.ts:203-206`）；审批列三期（`docs/design/ai-agent-tool-engine.md:528`） |
-| 破坏性动作（删除 / 覆盖 / 发布） | **可做，但必须带前置确认纪律** | 工具能做 ≠ 现在能做 | 纪律写进 `description` 的"纪律"段（同 `command.tool.ts:203-206`），并把动作与边界说清 |
+| 需要用户拍板（改配置、发布、删数据） | **不该直接做** | 模型替用户做了决定，责任链断了 | 一期靠纪律：有副作用的命令先问用户（`bash.tool.ts:203-206`）；审批列三期（`docs/design/ai-agent-tool-engine.md:528`） |
+| 破坏性动作（删除 / 覆盖 / 发布） | **可做，但必须带前置确认纪律** | 工具能做 ≠ 现在能做 | 纪律写进 `description` 的"纪律"段（同 `bash.tool.ts:203-206`），并把动作与边界说清 |
 
 一句话：**模型负责判断与编排，代码负责确定性与边界**。把确定性塞给模型，等于花钱买不确定性。
 
@@ -20,7 +20,7 @@
 
 | 粒度 | 判据 | 范例 | 依据 |
 | --- | --- | --- | --- |
-| **单工具**（组里一个方法） | 一个动作、参数少、语义自洽 | `run-command` | `command.tool.ts:115-137`（`@ToolGroup` + 一个 `@ToolDecl`） |
+| **单工具**（组里一个方法） | 一个动作、参数少、语义自洽 | `bash` | `bash.tool.ts:115-137`（`@ToolGroup` + 一个 `@ToolDecl`） |
 | **工具组**（一组四个） | 同一件事的**不同动作**，每个动作的入参与纪律不同 | 规划：`create` / `reorder` / `complete` / `delete` | `planner.tools.ts:20-38`（设计 §3.16，取代单工具 `todo-write`） |
 | **子 agent**（`run-sub-agent`） | 子任务**可独立完成**、独立后能一句话交代结论、需要多步探索 | 长文档撰写、批量核对、多方案并行的其中一路 | `tools/subagent.tool.ts:85-99` |
 | **取页**（`read-tool-result`） | 大结果的回取通道，不是"新能力" | 任何声明了 `paginate` 的工具 | `tools/read-tool-result.tool.ts:14-23` |
@@ -36,7 +36,7 @@
 | `key` | **稳定对外标识**，唯一事实源为 `core/tools/tool-keys.ts`；禁止裸字符串（写错是编译期错误） | `tool-keys.ts:1-12`、`core/tools/tools.types.ts:282-283` |
 | `title` | 人读标题，给模型扫读 + 后台列表 | `tools.types.ts:284-285`、`tool.registry.ts:96-104` |
 | `description` | **唯一一份说明**，四段式：是什么 / 什么时候用 / 什么时候不用 / 纪律 | `tools.types.ts:286-287`、`tool.decorator.ts:68` |
-| `params` | zod 定义，每个字段 `.describe()` 是**给模型的字段说明** | 范例 `command.tool.ts:16-37` |
+| `params` | zod 定义，每个字段 `.describe()` 是**给模型的字段说明** | 范例 `bash.tool.ts:16-37` |
 | `config` | zod 定义，**每个字段必须 `.default()`**；`config.parse({})` 失败 → 启动即失败 | `tools.types.ts:293-299`、`tool.registry.ts:49-57` |
 
 **为什么四段缺一个模型就会乱用**：
@@ -44,7 +44,7 @@
 - 缺"是什么" → 模型只能靠标题猜语义；
 - 缺"什么时候用" → 该用的时候想不起来（规划工具不写"多步任务先建清单"，模型就单步硬答）；
 - 缺"什么时候不用" → 给单问单答套流程、把闲聊塞进规划（`planner.tools.ts:56-57` 明确写了这条）；
-- 缺"纪律" → "删掉再新建来改任务""失败原样重试"这类错法没人拦（`planner.tools.ts:107-111`、`command.tool.ts:208-210`）。
+- 缺"纪律" → "删掉再新建来改任务""失败原样重试"这类错法没人拦（`planner.tools.ts:107-111`、`bash.tool.ts:208-210`）。
 
 两条硬要求：① 拒绝要说明理由并给下一步（`ToolOutcome.hint` / `precheck` 返回句，见 §4）；② 不要把业务规则写进描述冒充能力（见 §7）。
 
@@ -83,9 +83,9 @@
 | 出参上限 | 声明 `paginate: { pageBytes }`；超限只把**第一页**给模型，返回值仍全量 | `tools.types.ts:317-318`、`core/tools/plugins/paginate.plugin.ts:9-14,32-47` |
 | 取页 | `read-tool-result` + `limits.maxPagesPerTurn`（每轮次数） | `tools/read-tool-result.tool.ts:96-105` |
 | 调用次数 | `limits.maxPerTurn`（按 run 计数）/ `limits.rateLimit`（按工具 + 用户，多实例走 Redis） | `plugins/rate-limit.plugin.ts:17-58`、`tool.rate-counter.redis.ts:10-14` |
-| 事件刷屏 | 逐行事件必须有行数上限（超出**如实报数**、不静默丢），并给部署侧硬上限 | 机制见 §5.17；`run-command` 的流式事件已按用户口径移除（教训：只有出参**承载不了**的过程信息才值得发事件） |
+| 事件刷屏 | 逐行事件必须有行数上限（超出**如实报数**、不静默丢），并给部署侧硬上限 | 机制见 §5.17；`bash` 的流式事件已按用户口径移除（教训：只有出参**承载不了**的过程信息才值得发事件） |
 | 子 agent 放大 | 一次委派 = 主 agent 现写提示词（≤8000 字）+ 子工具面 + 多步推理，N 次模型调用 | `subagent.tool.ts:19-37,44-53`（配额）、`runtime/agent-runner.ts:96-98`（默认 `maxPerRun=4` / `maxDepth=1`） |
-| 部署兜底 | 库里的值一律被 env 硬上限夹紧 | `tools.types.ts:87-101`、`core/tools/tool.settings.ts:36-50`、`command.tool.ts:286-302` |
+| 部署兜底 | 库里的值一律被 env 硬上限夹紧 | `tools.types.ts:87-101`、`core/tools/tool.settings.ts:36-50`、`bash.tool.ts:286-302` |
 
 **两个必须知道的 token 事实**：
 

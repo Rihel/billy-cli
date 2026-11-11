@@ -8,7 +8,7 @@ import { RotateCcwIcon } from 'lucide-react'
  * 工具专属配置面板（**一期按工具手写**）。
  *
  * 为什么手写而不是"照 JSON Schema 自动生成表单"：配置项的语义差别很大
- * （`run-command` 的时长是"默认值 + 硬上限"、`run-sub-agent` 的 0 是"沿用部署默认"、
+ * （`bash` 的时长是"默认值 + 硬上限"、`run-sub-agent` 的 0 是"沿用部署默认"、
  * 规划那四个工具（`plan-*`）干脆没有可配项），自动表单只能生成控件、生成不了这些口径，
  * 而配错一个上限的代价是模型当场调不动工具。故一期由页面把口径写在字段旁边，
  * 未来新增的工具走底部的兜底面板（按 `defaultConfig` 的键与类型渲染）。
@@ -34,8 +34,8 @@ export type ToolConfigPanelProps = {
   onChange: (key: string, value: unknown) => void
 }
 
-/** `run-command`：命令执行能力的配置（时长 / 输出字节上限会在服务端按部署边界再夹一次） */
-const RUN_COMMAND_FIELDS: ConfigFieldSpec[] = [
+/** `bash`：命令执行能力的配置（时长 / 输出字节上限会在服务端按部署边界再夹一次） */
+const BASH_FIELDS: ConfigFieldSpec[] = [
   {
     key: 'enabled',
     label: '命令执行能力开关',
@@ -109,7 +109,7 @@ const fallbackFields = (defaults: Record<string, unknown>): ConfigFieldSpec[] =>
 
 /** 该工具用哪一组字段（规划那四个工具没有可配项，返回空数组） */
 const fieldsOf = (toolKey: string, defaults: Record<string, unknown>): ConfigFieldSpec[] => {
-  if (toolKey === 'run-command') return RUN_COMMAND_FIELDS
+  if (toolKey === 'bash') return BASH_FIELDS
   if (toolKey === 'run-sub-agent') return RUN_SUB_AGENT_FIELDS
   if (toolKey.startsWith('plan-')) return []
   return fallbackFields(defaults)

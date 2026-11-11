@@ -67,7 +67,7 @@ export interface AgentConfig {
   /** 单个子 agent 的墙钟上限（ms；0 = 沿用 `runTimeoutMs`） */
   subAgentTimeoutMs: number
 
-  // ── 命令执行（工具组 `RunCommandTool`，§3.15）──
+  // ── 命令执行（工具组 `BashTool`，§3.15）──
   /**
    * 是否允许 agent 在本机执行命令行命令。
    *

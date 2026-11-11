@@ -18,7 +18,7 @@ import { SkillLoader } from '../src/modules/ai/core/skills/index.js'
 import { ToolGateway } from '../src/modules/ai/core/tools/tool.gateway.js'
 import { ToolRegistry } from '../src/modules/ai/core/tools/tool.registry.js'
 import { TOOL_KEYS } from '../src/modules/ai/core/tools/tool-keys.js'
-import { RunCommandTool } from '../src/modules/ai/tools/command.tool.js'
+import { BashTool } from '../src/modules/ai/tools/bash.tool.js'
 import { WebTools } from '../src/modules/ai/tools/web.tools.js'
 import { RunSubAgentTool } from '../src/modules/ai/tools/subagent.tool.js'
 import { ReadToolResultTool } from '../src/modules/ai/tools/read-tool-result.tool.js'
@@ -137,7 +137,7 @@ beforeAll(async () => {
   const plannerStore = new PlannerStore(timelines)
   toolRegistry = new ToolRegistry(
     [
-      new RunCommandTool(new CommandRunner(), silentLogger),
+      new BashTool(new CommandRunner(), silentLogger),
       new WebTools(silentLogger as never),
       new RunSubAgentTool(runner, silentLogger),
       new PlannerTools(plannerStore),
@@ -162,7 +162,7 @@ beforeAll(async () => {
     TOOL_KEYS.planComplete,
     TOOL_KEYS.planDelete,
     TOOL_KEYS.runSubAgent,
-    TOOL_KEYS.runCommand,
+    TOOL_KEYS.bash,
     TOOL_KEYS.readToolResult,
     MOCK_EVENTS_TOOL,
   ]

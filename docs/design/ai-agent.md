@@ -1269,7 +1269,7 @@ AI SDK 的 `data-sub-agent` part，和主内容走同一条 SSE：
 | 数据结构 | 新增 `AgentRunStopResult*`（已有）、`AgentRunModel` 增 `parentRunId` / `depth`；`AgentTimelineItemModel` 增子 agent 归属信息 |
 | 测试 | 重写子 agent 用例（core bean 聚合 / 动态创建 / 明细入库 / 工具面继承 / 幂等去重 / 配额 / 流里的 `data-sub-agent`） |
 
-### 3.15 命令执行（`run-command`）与运行环境注入（**本轮新增，以此为准**）
+### 3.15 命令执行（`bash`）与运行环境注入（**本轮新增，以此为准**）
 
 #### 3.15.1 需求与硬约束
 
@@ -1291,8 +1291,8 @@ AI SDK 的 `data-sub-agent` part，和主内容走同一条 SSE：
 | 层 | 位置 | 职责 |
 | --- | --- | --- |
 | 机制（基础设施） | `packages/kits/src/foundation/command/`（`CommandRunner` + `command.platform.ts` + `CommandModule`） | 跨平台执行：shell 解析、超时、杀进程树、输出上限、取消、结果结构化 |
-| 策略（AI 模块） | `apps/server/src/modules/ai/tools/command.tool.ts`（工具组 `RunCommandTool`） | 开关、工作目录边界、时长 / 输出上限、审计日志 |
-| 提示词 | `prompts/templates/partials/tools.eta`（「`run-command` 怎么用」） | 什么时候用 / 不用、能力问题先验证、有副作用先问 / 只读公开请求可直接跑、失败要读懂原因 |
+| 策略（AI 模块） | `apps/server/src/modules/ai/tools/bash.tool.ts`（工具组 `BashTool`） | 开关、工作目录边界、时长 / 输出上限、审计日志 |
+| 提示词 | `prompts/templates/partials/tools.eta`（「`bash` 怎么用」） | 什么时候用 / 不用、能力问题先验证、有副作用先问 / 只读公开请求可直接跑、失败要读懂原因 |
 
 **为什么用 `execa` 而不是自己拼 `child_process`**（早先手写过一版，已弃）：三条硬约束恰好是它的内建能力 ——
 `shell` 在 Unix/Windows 各自的默认解释器、`killDescendants`（Unix 进程组 / Windows `taskkill`）、
@@ -1336,7 +1336,7 @@ AI SDK 的 `data-sub-agent` part，和主内容走同一条 SSE：
   时间用 `Intl` 出「2026年9月30日星期三 17:55:00（Asia/Shanghai，UTC+08:00）」。
 - **只在会话第一轮注入**（`conversations.turnCount === 0`）：系统提示词是整段请求的**前缀**，
   每轮塞一个新时间戳会让提供方的前缀缓存每轮失效（本工程专门统计缓存命中，不能自己打掉它）。
-  需要精确时间时模型用 `run-command` 自己取 —— 这正是两个需求互相咬合的地方。
+  需要精确时间时模型用 `bash` 自己取 —— 这正是两个需求互相咬合的地方。
 - **取环境信息不依赖平台专属命令**：`uname` / `ver` 只在部分系统存在，故一律走 `node:os`
   （`process.platform` / `os.release()` / `os.arch()`）；`resolveShell` 按平台给
   `cmd.exe`（Windows）/ `/bin/sh`（POSIX），与 `execa` 的默认行为一致。
@@ -1356,7 +1356,7 @@ AGENT_COMMAND_WORK_DIR=               # 缺省 = 服务进程工作目录（启�
 
 | 动作 | 对象 |
 | --- | --- |
-| 新增 | kits `foundation/command/{command.runner,command.platform,command.module,index}`、`ai/tools/command.tool.ts`、`ai/core/prompts/environment.ts`、`ai/core/prompts/templates/partials/environment.eta` |
+| 新增 | kits `foundation/command/{command.runner,command.platform,command.module,index}`、`ai/tools/bash.tool.ts`、`ai/core/prompts/environment.ts`、`ai/core/prompts/templates/partials/environment.eta` |
 | 改动 | `tool-keys`（`runCommand`）、`assistant.agent`（授权）、提示词片段（用法与确认纪律，现落在 `partials/tools.eta`）、`ai.mastra`（`instructions` 改动态参数：用信封里的渲染全文）、`core/envelope`（信封加 `systemPrompt`）、`chat.service`（注入 `PROMPT_ENGINE` + 渲染 + 落快照）、`ai.module`（`CommandCore` + `PROMPT_ENGINE` provider）、`app-config`（`command*`）、`root.module`（`CommandModule`）、依赖 `execa` |
 | 测试 | kits 10 项（正常 / 非零退出 / 超时 / 孙进程不拖死 / 截断 / cwd / 起不来 / 中止 / 三端画像）；server：环境片段 3 项 + 命令策略 5 项（开关 / 目录越界 / 目录内 / 时长夹紧）+ e2e 两条（真跑一条跨平台命令并完整落库；首轮注入且第二轮不再注入） |
 

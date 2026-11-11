@@ -30,10 +30,10 @@ export const TOOL_KEYS = {
   /**
    * 命令执行能力：在本机跑一条命令行命令（跨平台：Windows `cmd.exe` / POSIX `/bin/sh`）。
    *
-   * 安全边界见 `tools/command.tool.ts` 类注释：命令以**服务进程的身份与权限**执行，
+   * 安全边界见 `tools/bash.tool.ts` 类注释：命令以**服务进程的身份与权限**执行，
    * 由 `agent.command*` 配置决定开关、默认工作目录与时长 / 输出上限。
    */
-  runCommand: 'run-command',
+  bash: 'bash',
   /**
    * 取页能力：读取某个工具结果的**后续页**（大返回分页的回取通道）。
    *

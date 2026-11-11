@@ -18,7 +18,7 @@ import { buildToolStackDeps, silentLogger } from './helpers/ai-tool-stack.js'
 
 const entries: ToolSelectorEntry[] = [
   { key: 'plan-create', category: 'core' },
-  { key: 'run-command', category: 'core' },
+  { key: 'bash', category: 'core' },
   { key: 'c-local-query', category: 'connector', connectorKey: 'local', connectorToolName: 'query' },
   {
     key: 'c-local-list',

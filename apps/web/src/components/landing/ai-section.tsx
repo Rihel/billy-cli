@@ -15,7 +15,7 @@ const stages = [
     icon: Wrench,
     title: '能干活',
     desc: '计划四件套、动态子 agent、命令执行、联网三件套、大结果取页，10 个工具开箱可用。每次调用都过同一个网关，开关、作用域、限额、审计都在那里。',
-    chips: ['plan-*', 'run-sub-agent', 'run-command', 'web-search'],
+    chips: ['plan-*', 'run-sub-agent', 'bash', 'web-search'],
   },
   {
     no: '03',

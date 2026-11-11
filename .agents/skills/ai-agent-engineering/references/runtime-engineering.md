@@ -120,14 +120,14 @@ post: redact → paginate → audit-end        （拒绝也要跑 post，tool.ga
 - **多实例**：同一会话只允许一次进行中的**根**运行，由部分唯一索引挡（`run-entity.ts:25-28`
   `uk_run_active_conversation`）→ 一轮粘在一个实例上，同轮不会跨实例；限流计数在 Redis，跨实例一致。
 - 命令能力是**两层关卡**：配置里的 `config.enabled` 与部署的 `caps.command.enabled` 都开才放行
-  （`command.tool.ts:286-288`）。
+  （`bash.tool.ts:286-288`）。
 
 ## 5. 取消与超时
 
 - **`ctx.signal` 怎么来的**：`POST /agent/run/stop` → 本进程 `abort.abort()`（`chat.service.ts:682-683`），
   运行在别的副本时经 Redis 停止频道广播给持有者（`:712-718`）→ 透传给 `agent.stream({ abortSignal })`（`:742`）
   与 requestContext（`:735`）→ 适配器塞进工具调用（`tool.adapter.ts:68`）→ 网关进 `ctx.signal`（`tool.gateway.ts:71`）。
-- **命令超时**：`timeoutMs` **既是默认值也是硬上限**——模型传更小听模型的，传更大夹到配置（`command.tool.ts:229-233`），
+- **命令超时**：`timeoutMs` **既是默认值也是硬上限**——模型传更小听模型的，传更大夹到配置（`bash.tool.ts:229-233`），
   默认 15s（`:44`），`normalizeConfig` 再夹到 `caps.command.timeoutMsMax`（`:289`）。
 - **结论文案**：`ToolDenyReasonValue` 9 个值（`tools.types.ts:195-204`）：
   `unknown-tool` / `invalid-input` / `precheck-failed` / `disabled` / `forbidden` / `rate-limited` / `timeout` /
@@ -181,7 +181,7 @@ post: redact → paginate → audit-end        （拒绝也要跑 post，tool.ga
 
 - **结构化日志事件命名** `ai.<域>.<动作>`，真实例子：`ai.tool.invoked` / `ai.tool.denied`（`audit-end.plugin.ts:38`）、
   `ai.tool.paged`（`paginate.plugin.ts:48`）、`ai.tool.rate_limited`（`rate-limit.plugin.ts:23, 44`）、
-  `ai.tool.exec_failed` / `ai.tool.plugin_failed`（`tool.gateway.ts:142, 109`）、`ai.command.executed`（`command.tool.ts:259`）、
+  `ai.tool.exec_failed` / `ai.tool.plugin_failed`（`tool.gateway.ts:142, 109`）、`ai.command.executed`（`bash.tool.ts:259`）、
   `ai.context.compacted` / `ai.context.compact_failed`（`chat.service.ts:494, 502`）、
   `ai.context.window.unknown`（`context.service.ts:137`）、`ai.stream.succeeded` / `failed` / `canceled`（`chat.service.ts:877, 948, 927`）、
   `ai.watchdog.marked_timeout`（`recovery.service.ts:141`）、`ai.conversation.title_generated`（`title.service.ts:116`）。

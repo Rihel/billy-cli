@@ -10,12 +10,12 @@ import { TOOL_ENV_CAPS } from '../core/tools/tool.config.ports.js'
 import type { ToolCallContext, ToolEnvCaps } from '../core/tools/tools.types.js'
 
 /**
- * `run-command` 的**参数定义**（给模型看的数据结构）。
+ * `bash` 的**参数定义**（给模型看的数据结构）。
  *
  * 三个字段刻意保持极简：命令、在哪个目录跑、最多跑多久。
  * 上限（时长 / 输出）由**配置**再夹一次（库里可改，env 是硬上限），模型传什么都不越界。
  */
-const RunCommandParams = z.object({
+const BashParams = z.object({
   command: z
     .string()
     .min(1)
@@ -39,7 +39,7 @@ const RunCommandParams = z.object({
 })
 
 /** **配置定义**：每个字段都必须有默认值（注册机在启动期用 `config.parse({})` 校验） */
-const RunCommandConfig = z.object({
+const BashConfig = z.object({
   /** 能力级开关（配置表里还有一个治理级开关 `enabled`，两者都开才放行） */
   enabled: z.boolean().default(true),
   /** 单条命令的时长**默认值与硬上限**（ms）：模型传更小就听它的，传更大一律夹到这里 */
@@ -50,7 +50,7 @@ const RunCommandConfig = z.object({
   workDir: z.string().default(''),
 })
 
-type RunCommandConfigValue = z.infer<typeof RunCommandConfig>
+type BashConfigValue = z.infer<typeof BashConfig>
 
 /** 信封里本工具用到的那几项（避免把整个信封类型铺进本文件） */
 interface CommandEnvelopeLike {
@@ -79,7 +79,7 @@ interface CommandEnvelopeLike {
   // 子 agent 也拿得到（它不是委派类工具）
   child: 'allow',
 })
-export class RunCommandTool implements OnApplicationBootstrap {
+export class BashTool implements OnApplicationBootstrap {
   constructor(
     @Inject(CommandRunner) private readonly runner: CommandRunner,
     @Inject(AppLogger) private readonly logger: AppLogger,
@@ -95,7 +95,7 @@ export class RunCommandTool implements OnApplicationBootstrap {
   /**
    * 启动时确保 AI 的工作根目录存在（`AGENT_COMMAND_WORK_DIR`）。
    *
-   * 它既是 `run-command` 的默认工作目录，也是 agent 新建文件 / 子目录的落点：
+   * 它既是 `bash` 的默认工作目录，也是 agent 新建文件 / 子目录的落点：
    * 根目录被删掉后，新建会话里模型的第一条命令就会因为 cwd 不存在而失败。
    * 这里按"部署能力"处理：目录建不出来只记错误，不拦整个服务启动。
    */
@@ -119,16 +119,17 @@ export class RunCommandTool implements OnApplicationBootstrap {
 
   /** **执行体**：只写业务动作（开关与边界已经在插件 / normalize 里判过） */
   @ToolDecl({
-    key: TOOL_KEYS.runCommand,
-    title: '执行命令行命令',
+    key: TOOL_KEYS.bash,
+    title: '执行 bash 命令',
     // 声明会返回大结果：输出上限几十 KB，超了就给模型一页 + 取页句柄
     paginate: { pageBytes: 8 * 1024 },
-    params: RunCommandParams,
-    config: RunCommandConfig,
+    params: BashParams,
+    config: BashConfig,
     precheck: 'checkWorkDir',
     normalize: 'normalizeConfig',
     description: dedent`
-      在本机执行一条命令行命令，拿到退出码、stdout 与 stderr。
+      在本机执行一条命令行命令（当前系统的 shell：Linux / macOS 是 /bin/sh，Windows 是 cmd.exe），
+      拿到退出码、stdout 与 stderr。
 
       什么时候用：答案**只能靠真实执行**得到（跑脚本 / 测试、计算、取当前时间）。
 
@@ -142,8 +143,8 @@ export class RunCommandTool implements OnApplicationBootstrap {
     `,
   })
   async execute(
-    input: z.infer<typeof RunCommandParams>,
-    ctx: ToolCallContext<RunCommandConfigValue>,
+    input: z.infer<typeof BashParams>,
+    ctx: ToolCallContext<BashConfigValue>,
   ): Promise<CommandResult> {
     const envelope = (ctx.envelope as CommandEnvelopeLike | null) ?? null
     const workDir = resolve(ctx.settings.config.workDir || process.cwd())
@@ -188,7 +189,7 @@ export class RunCommandTool implements OnApplicationBootstrap {
    * 开关是"两边都开才放行"：`caps.command.enabled`（env）为 false 时，库里的 true 也不生效 ——
    * 于是既有部署的 `AGENT_COMMAND_ENABLED=false` 依然管用（谁也没法在页面上把它绕过去）。
    */
-  normalizeConfig(config: RunCommandConfigValue, caps: ToolEnvCaps): RunCommandConfigValue {
+  normalizeConfig(config: BashConfigValue, caps: ToolEnvCaps): BashConfigValue {
     return {
       enabled: config.enabled && (caps.command?.enabled ?? true),
       timeoutMs: Math.min(config.timeoutMs, caps.command?.timeoutMsMax ?? config.timeoutMs),
@@ -207,8 +208,8 @@ export class RunCommandTool implements OnApplicationBootstrap {
    * 也不会被 Windows 的大小写差异（`C:\Users` vs `c:\users`）误判。
    */
   checkWorkDir(
-    input: z.infer<typeof RunCommandParams>,
-    ctx: ToolCallContext<RunCommandConfigValue>,
+    input: z.infer<typeof BashParams>,
+    ctx: ToolCallContext<BashConfigValue>,
   ): string | null {
     if (!input.cwd) return null
     const root = resolve(ctx.settings.config.workDir || process.cwd())

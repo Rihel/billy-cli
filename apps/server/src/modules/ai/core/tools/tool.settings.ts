@@ -52,7 +52,7 @@ export const clampLimits = (limits: ToolLimits, caps: ToolEnvCaps): ToolLimits =
 /**
  * 合并出一次调用要用的生效配置。
  *
- * `normalize`（可选）是工具自己的夹紧钩子（如 `run-command` 把时长 / 输出夹到部署上限），
+ * `normalize`（可选）是工具自己的夹紧钩子（如 `bash` 把时长 / 输出夹到部署上限），
  * 在合并之后、落 `settings.config` 之前执行 —— 于是"工具看到的配置"永远已经是安全取值。
  */
 export const mergeToolSettings = <C>(

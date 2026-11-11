@@ -102,14 +102,14 @@ describe('collectSubAgentLives', () => {
         data: {
           runId: 'sub1',
           name: '中国网文线',
-          event: { kind: 'tool-call', toolCallId: 'c1', toolKey: 'run-command', input: { cmd: 'ls' } },
+          event: { kind: 'tool-call', toolCallId: 'c1', toolKey: 'bash', input: { cmd: 'ls' } },
         },
       }),
     ])
 
     expect(lives[0]!.status).toBe('running')
     expect(lives[0]!.events).toEqual([
-      { kind: 'tool-call', toolCallId: 'c1', toolKey: 'run-command', input: { cmd: 'ls' }, output: undefined, errorText: null, isError: false },
+      { kind: 'tool-call', toolCallId: 'c1', toolKey: 'bash', input: { cmd: 'ls' }, output: undefined, errorText: null, isError: false },
     ])
     expect(isSubAgentActive(lives[0]!)).toBe(true)
   })

@@ -33,7 +33,7 @@
   否则解析器卡在条目上。当前方案已不用 tar。
 - admin 文件查询的缓存刷新要**区分是否文件真的变了**：保存元信息时刷新文件列表会把未保存的代码草稿冲掉。
 - **agent 看不到 `skill-*` 时先查身份传递**：`chat` / `chatStream` / `resumeChat` 漏传 `isAdmin` 会让
-  `scope='admin'` 的整组工具从模型工具面消失（提示词里却还列着），模型就会绕 `run-command` 写盘。
+  `scope='admin'` 的整组工具从模型工具面消失（提示词里却还列着），模型就会绕 `bash` 写盘。
   见 memory `agent-tool-authorization` 的「身份没进运行时信封」。
 - `file/read` 返回的是**整份 SKILL.md（含 frontmatter）**，块编辑器必须先 strip frontmatter ——
   否则开头的 `---` 会被 Markdown 解析成 setext 标题，页面上会看到 `name:` / `description:` 伪内容。

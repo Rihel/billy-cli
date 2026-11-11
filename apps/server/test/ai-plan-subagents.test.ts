@@ -12,7 +12,7 @@ import type { AgentSpec } from '../src/modules/ai/agents/types.js'
 import { type AgentRuntimeEnvelope, type RuntimeModel } from '../src/modules/ai/core/envelope.js'
 import { PlannerStore, PlannerTools, type PlanOutput } from '../src/modules/ai/tools/planner/index.js'
 import { RunSubAgentTool } from '../src/modules/ai/tools/subagent.tool.js'
-import { RunCommandTool } from '../src/modules/ai/tools/command.tool.js'
+import { BashTool } from '../src/modules/ai/tools/bash.tool.js'
 import { WebTools } from '../src/modules/ai/tools/web.tools.js'
 import { createPromptEngine } from '../src/modules/ai/core/prompts/index.js'
 import { AgentTitleService } from '../src/modules/ai/runtime/title.service.js'
@@ -62,7 +62,7 @@ import {
 
 /**
  * 规划能力（任务清单）与**动态子 agent**（设计文档 §3.14）：
- * - 工具组是**唯一来源**：`PlannerTools`（组内四个 `@ToolDecl` 方法）/ `RunCommandTool` /
+ * - 工具组是**唯一来源**：`PlannerTools`（组内四个 `@ToolDecl` 方法）/ `BashTool` /
  *   `RunSubAgentTool` / `ReadToolResultTool` 各自用 `@ToolGroup` + `@ToolDecl` 声明，
  *   `ToolRegistry` 对每个组 `buildToolSpecs()` 拍平成一张表（一个组 1..n 个工具）；
  * - 规划：现在是**一组四个增量工具**（create / reorder / complete / delete）——一次只表达一件事，
@@ -564,13 +564,13 @@ describe('子 agent（core bean + 运行期动态创建）', () => {
         { runSubAgent: async () => ({ status: 'succeeded' }) } as never,
         silentLogger,
       ),
-      new RunCommandTool(new CommandRunner(), silentLogger),
+      new BashTool(new CommandRunner(), silentLogger),
       new WebTools(silentLogger as never),
     ])
     expect(registry.delegationKeys()).toEqual([MOCK_DELEGATE_TOOL])
     const childKeys = [...registry.childToolbox().keys()]
-    // 非委派类工具照给子 agent（如 run-command）
-    expect(childKeys).toContain(TOOL_KEYS.runCommand)
+    // 非委派类工具照给子 agent（如 bash）
+    expect(childKeys).toContain(TOOL_KEYS.bash)
     // 关键：子 agent 拿不到委派工具 → 递归在**能力上**不可能，不靠提示词自律
     expect(childKeys).not.toContain(MOCK_DELEGATE_TOOL)
     // `child: 'deny'` 的工具同样不给（四个规划工具都只给主 agent，子助手把结论交回即可）
@@ -597,7 +597,7 @@ describe('子 agent（core bean + 运行期动态创建）', () => {
         { runSubAgent: async () => ({ status: 'succeeded' }) } as never,
         silentLogger,
       ),
-      new RunCommandTool(new CommandRunner(), silentLogger),
+      new BashTool(new CommandRunner(), silentLogger),
       new WebTools(silentLogger as never),
     ])
     const registry = createAgentRegistry(
@@ -712,7 +712,7 @@ describe('子 agent（core bean + 运行期动态创建）', () => {
     const toolNames = (childRequest?.tools as Array<{ function?: { name?: string } }>).map(
       (tool) => tool.function?.name,
     )
-    // 工具面 = 全部 − 委派类 − child:deny：run-command 在，run-sub-agent 与四个规划工具都不在
+    // 工具面 = 全部 − 委派类 − child:deny：bash 在，run-sub-agent 与四个规划工具都不在
     // （规划工具都是 `child: 'deny'`：清单归属主 agent，子助手只把结论交回）
     expect(toolNames).toContain(MOCK_COMMAND_TOOL)
     for (const key of PLAN_KEYS) expect(toolNames).not.toContain(key)
@@ -966,8 +966,8 @@ const buildStack = async () => {
   )
   toolRegistry = new ToolRegistry(
     [
-      // 命令执行：与 `ai.module.ts` 的装配口径一致（assistant 已授权 run-command）
-      new RunCommandTool(new CommandRunner(), silentLogger),
+      // 命令执行：与 `ai.module.ts` 的装配口径一致（assistant 已授权 bash）
+      new BashTool(new CommandRunner(), silentLogger),
       new WebTools(silentLogger as never),
       new RunSubAgentTool(runner, silentLogger),
       new PlannerTools(plannerStore),

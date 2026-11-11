@@ -10,7 +10,7 @@ import type { AddressInfo } from 'node:net'
  *
  * 标记把"多步行为"确定下来（都写在**用户消息**里）：
  * - `[delegate]`：改调 `run-sub-agent`；
- * - `[command]`：改调 `run-command`（真跑一条 `echo`，验证跨平台命令执行链路）；
+ * - `[command]`：改调 `bash`（真跑一条 `echo`，验证跨平台命令执行链路）；
  * - `[no-reason]`：**先故意不发 `reason`**（验证"被拒 → 模型改正后成功"这条纪律闭环）；
  * - `[todo-overwrite]`：发**一串增量规划调用**（`plan-complete` → `plan-create` → `plan-delete`，
  *   依次表达"改状态 / 加任务 / 删任务"；每步等上一步的出参里出现对应标记再发下一个）；
@@ -222,7 +222,7 @@ export const MOCK_CHILD_TEXT = '子助手结论：共 2 条待办，其中 1 条
 /** 用户消息里带这个标记时，模型改为调用「命令执行工具」（验证跨平台跑命令这条链路） */
 export const MOCK_COMMAND_MARKER = '[command]'
 /** 命令执行工具 key（agent 用它在本机跑一条命令） */
-export const MOCK_COMMAND_TOOL = 'run-command'
+export const MOCK_COMMAND_TOOL = 'bash'
 /** 命令输出的标记串（断言 stdout 里真的有它） */
 export const MOCK_COMMAND_OUTPUT = 'billy-command-ok'
 /**

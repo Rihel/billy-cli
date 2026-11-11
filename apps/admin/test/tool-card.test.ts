@@ -33,7 +33,7 @@ describe('shouldAutoOpen', () => {
 /** 一张跑完的工具卡（`open` 决定它的正文在不在 HTML 里） */
 const toolPart = {
   type: 'dynamic-tool',
-  toolName: 'run-command',
+  toolName: 'bash',
   toolCallId: 'call_1',
   state: 'output-available',
   input: { cmd: 'ls' },
@@ -43,7 +43,7 @@ const toolPart = {
 const eventPart = {
   type: TOOL_EVENT_PART_TYPE,
   data: {
-    toolKey: 'run-command',
+    toolKey: 'bash',
     toolCallId: 'call_1',
     event: 'phase',
     eventTitle: '当前阶段',
@@ -77,7 +77,7 @@ describe('ToolCard 受控折叠', () => {
     )
     expect(opened).toContain('当前阶段')
     expect(opened).toContain('phase')
-    expect(opened).toContain('run-command')
+    expect(opened).toContain('bash')
   })
 })
 

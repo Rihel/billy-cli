@@ -29,7 +29,7 @@
 
 tool config 5s 缓存、connector state 5s 缓存、web 页缓存（ref 失效会明确提示重新抓）、
 planner / tool result 内存（有 timeline 兜底）、activeRuns 停止广播（Redis）。
-`run-command` / lark-cli 产出的文件是 Pod 本地临时物，不是业务真相。
+`bash` / lark-cli 产出的文件是 Pod 本地临时物，不是业务真相。
 
 ## 核对命令
 

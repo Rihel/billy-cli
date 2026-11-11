@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { CommandRunner } from '@repo/kits'
-import { RunCommandTool } from '../src/modules/ai/tools/command.tool.js'
+import { BashTool } from '../src/modules/ai/tools/bash.tool.js'
 import { TOOL_KEYS } from '../src/modules/ai/core/tools/tool-keys.js'
 import { specByKey } from './helpers/ai-tool-stack.js'
 import { createPromptEngine } from '../src/modules/ai/core/prompts/index.js'
@@ -29,14 +29,14 @@ const assistantPrompt = (): string => {
  * ⚠️ 纪律句的位置：**工具专属的纪律写在工具的 `description` 里**（一个工具只写一处），
  * 所以这里直接查那份说明 —— 不再从提示词模板里找（模板里已经不重复写了）。
  */
-const runCommandDescription = (): string => {
+const bashDescription = (): string => {
   // 改造后工具组交的是**声明**（装饰器元数据 → `buildToolSpecs()`），说明文本就在声明上
-  const group = new RunCommandTool(new CommandRunner(), {
+  const group = new BashTool(new CommandRunner(), {
     info: () => undefined,
     warn: () => undefined,
     error: () => undefined,
   } as never)
-  return specByKey(group, TOOL_KEYS.runCommand).description
+  return specByKey(group, TOOL_KEYS.bash).description
 }
 
 describe('提示词纪律句（执行命令 / 能力边界 / 宽泛任务）', () => {

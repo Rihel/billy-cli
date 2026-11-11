@@ -29,7 +29,7 @@ POST /agent/usage/summary      用量汇总
 - **流式与续传**：文本、推理、工具调用、步骤、来源全细节推送，断线从上次位置继续。
 - **工具面**：一个工具一条 `@ToolDecl`（`@ToolGroup` 类 + 方法即工具），注册后统一过网关——
   开关、作用域（主 agent / 子 agent）、限额、自定义事件、审计、大结果分页与 `read-tool-result` 回取。
-  内建 10 个：计划四件套、`run-sub-agent`、`run-command`、`read-tool-result`、`web-search`、`web-fetch`、`web-request`。
+  内建 10 个：计划四件套、`run-sub-agent`、`bash`、`read-tool-result`、`web-search`、`web-fetch`、`web-request`。
   agent 的授权清单支持选择器（`'*'`、`{ category }`、`{ connector }`），装配期按调用身份过滤作用域——
   没授权的工具**根本不会出现在模型面前**。
 - **技能库**（`modules/ai/skills`）：后台「AI → 技能库」在线写技能（类 Notion 的块编辑器写正文 +

@@ -12,7 +12,7 @@ import { MASTRA, createMastra } from './mastra/ai.mastra.js'
 import { AGENT_REGISTRY, createAgentRegistry } from './agents/registry.js'
 import { AgentService } from './agents/service.js'
 import type { AgentRegistry as AgentRegistryValue } from './agents/types.js'
-import { RunCommandTool } from './tools/command.tool.js'
+import { BashTool } from './tools/bash.tool.js'
 import { RunSubAgentTool } from './tools/subagent.tool.js'
 import { PlannerStore, PlannerTools } from './tools/planner/index.js'
 import { WebTools } from './tools/web.tools.js'
@@ -139,7 +139,7 @@ let warnedMissingEnvelope = false
     // 工具组实例（**唯一的工具来源**）：注册机对每个组跑 `buildToolSpecs()` 拿 1..n 个工具
     {
       provide: AGENT_TOOL_GROUPS,
-      inject: [PlannerTools, RunCommandTool, RunSubAgentTool, ReadToolResultTool, WebTools, SkillTools],
+      inject: [PlannerTools, BashTool, RunSubAgentTool, ReadToolResultTool, WebTools, SkillTools],
       useFactory: (...groups: AgentToolGroup[]): AgentToolGroup[] => groups,
     },
     // 部署上限（env）：库里的值再大也突破不了
@@ -236,7 +236,7 @@ let warnedMissingEnvelope = false
     AgentRunner,
     PlannerStore,
     PlannerTools,
-    RunCommandTool,
+    BashTool,
     RunSubAgentTool,
     ReadToolResultTool,
     WebTools,

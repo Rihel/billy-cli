@@ -20,7 +20,7 @@
   （`buildRuntimeContext` 里 `options.isAdmin ?? false`）。
 - 漏传时信封 `isAdmin=false`：`authorized()` 会把**所有 `scope='admin'` 的工具**从模型工具面过滤掉，
   但**提示词与 `request_snapshot.toolKeys` 仍然列着它们** —— 表现是"模型说工具清单里有、实际没有"，
-  于是绕 `run-command` 写文件（实际踩过：全部 `skill-*` 被过滤，技能被写到 `~/.agents/skills`，不入库）。
+  于是绕 `bash` 写文件（实际踩过：全部 `skill-*` 被过滤，技能被写到 `~/.agents/skills`，不入库）。
 - 核对：`grep -n "buildRuntimeContext(" -A 12 apps/server/src/modules/ai/runtime/chat.service.ts`，
   三个主路径（chat / chatStream / resumeChat）的 options 都要有 `isAdmin`。
 

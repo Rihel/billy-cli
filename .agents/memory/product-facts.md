@@ -26,7 +26,7 @@ README 只保留入口级摘要，详细说明在 `docs/guide/`（architecture /
 ## 依据
 
 ```bash
-grep -c "@ToolDecl" apps/server/src/modules/ai/tools/{planner/planner.tools.ts,subagent.tool.ts,command.tool.ts,read-tool-result.tool.ts,web.tools.ts}  # 4+1+1+1+3=10
+grep -c "@ToolDecl" apps/server/src/modules/ai/tools/{planner/planner.tools.ts,subagent.tool.ts,bash.tool.ts,read-tool-result.tool.ts,web.tools.ts}  # 4+1+1+1+3=10
 ls .agents/skills/*/SKILL.md | wc -l                    # 27
 ls apps/server/src/database/entities | wc -l            # 15
 ls apps/server/src/modules | wc -l                      # 12

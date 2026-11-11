@@ -152,7 +152,7 @@ describe('collectMessagePlan', () => {
   it('`tool-` 前缀但不是计划工具的照旧不认（不误吞普通工具卡）', () => {
     expect(
       collectMessagePlan([
-        part({ type: 'tool-run-command', state: 'output-available', output: { ok: true } }),
+        part({ type: 'tool-bash', state: 'output-available', output: { ok: true } }),
         part({ type: 'tool-plan-create', state: 'input-available' }),
       ]),
     ).toBeNull()

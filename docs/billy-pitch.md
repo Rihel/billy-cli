@@ -120,7 +120,7 @@
 
 - **会话与运行**：`conversations` / `runs` / `timelines` 三张表；运行中进度放 Redis，跑完落 Postgres；刷新能接着看。
 - **流式与续传**：`/agent/chat/stream`、`/agent/chat/resume`、`/agent/run/stream`、`/agent/run/:runId/stream`；文本、推理、工具、步骤、来源全细节推送。
-- **工具面**：10 个内建工具——计划四件套、`run-sub-agent`、`run-command`、`read-tool-result`、`web-search`、`web-fetch`、`web-request`；统一网关负责开关、作用域、限额、事件、审计、分页。
+- **工具面**：10 个内建工具——计划四件套、`run-sub-agent`、`bash`、`read-tool-result`、`web-search`、`web-fetch`、`web-request`；统一网关负责开关、作用域、限额、事件、审计、分页。
 - **运行控制**：动态子 agent（提示词由主 agent 现场写）、命令执行（开关 / 工作目录 / 时长与输出上限可配）、联网预算（统一 UA、超时、字节上限、内网拦截）。
 - **多模态附件**：图片与 PDF 走对象存储，只传 key；附件 key 做归属校验，不能越权读他人文件。
 - **恢复与压缩**：durable 三档可配；上下文到模型窗口 70% 触发裁剪与压缩，原文保留。

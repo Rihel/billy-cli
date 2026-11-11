@@ -10,7 +10,7 @@ import {
   withCallReason,
 } from '../src/modules/ai/core/tools/call-reason.js'
 import { toJsonSchema } from '../src/modules/ai/core/tools/tool.schema.js'
-import { RunCommandTool } from '../src/modules/ai/tools/command.tool.js'
+import { BashTool } from '../src/modules/ai/tools/bash.tool.js'
 import { WebTools } from '../src/modules/ai/tools/web.tools.js'
 import { PlannerStore, PlannerTools } from '../src/modules/ai/tools/planner/index.js'
 import { RunSubAgentTool } from '../src/modules/ai/tools/subagent.tool.js'
@@ -43,7 +43,7 @@ const buildRegistry = () => {
   const store = new PlannerStore(timelinesLike as never)
   const groups = [
     new PlannerTools(store),
-    new RunCommandTool(new CommandRunner(), silentLogger as never),
+    new BashTool(new CommandRunner(), silentLogger as never),
     new RunSubAgentTool(runnerLike as never, silentLogger as never),
     new ReadToolResultTool(deps.results, deps.counter, deps.caps),
     new WebTools(silentLogger as never),
@@ -66,7 +66,7 @@ const VALID_INPUT_TEMPLATES: Record<string, Record<string, unknown>> = {
   [TOOL_KEYS.planReorder]: { updates: [{ id: 't1', status: 'in_progress' }] },
   [TOOL_KEYS.planComplete]: { ids: ['t1'] },
   [TOOL_KEYS.planDelete]: { ids: ['t1'] },
-  [TOOL_KEYS.runCommand]: { command: 'echo hello' },
+  [TOOL_KEYS.bash]: { command: 'echo hello' },
   [TOOL_KEYS.runSubAgent]: { name: '统计', system_prompt: '你是统计助手', task: '统计待办' },
   [TOOL_KEYS.readToolResult]: { handle: 'handle-1' },
   [TOOL_KEYS.webSearch]: { query: 'DeepSeek 搜索 API 文档' },
@@ -215,7 +215,7 @@ describe('注册机标准测试集（对每个注册工具）', () => {
   it('装配期校验：重复 key 直接失败；工具池不能为空（一个 key 只能有一个提供者）', () => {
     const { deps } = buildRegistry()
     const gateway = new ToolGateway(deps.config, silentLogger as never, [], deps.clock)
-    const dup = new RunCommandTool(new CommandRunner(), silentLogger as never)
+    const dup = new BashTool(new CommandRunner(), silentLogger as never)
     expect(() => new ToolRegistry([dup, dup], gateway, deps.config)).toThrowError(/工具 key 重复/)
     // 工具池不能为空 —— 否则 agent 连"能干什么"都没有
     expect(() => new ToolRegistry([], gateway, deps.config)).toThrowError(/工具池不能为空/)
@@ -239,7 +239,7 @@ describe('注册机标准测试集（对每个注册工具）', () => {
 /**
  * **说明体量护栏**（2026-10-01 加）：工具说明是**每轮请求的前缀**，长一点就按会话重复付 token。
  *
- * 判据来自实测：改前 `run-command` 的说明 913 字符，其中 643 是"纪律"段，且大半是**跨工具**的
+ * 判据来自实测：改前 `bash` 的说明 913 字符，其中 643 是"纪律"段，且大半是**跨工具**的
  * （先验证 / 有副作用的先确认 / 失败不要原样重试）—— 那些已上移到全局段（`partials/principles.eta`
  * 的「纪律（所有工具通用）」），工具说明只该留"是什么 / 什么时候用不用 / 自己特有的约束"。
  * 参考 DSH 自己的系统提示词：规则集中写一遍，单个工具只留一句。

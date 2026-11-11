@@ -6,7 +6,7 @@ import { describePlatform, type PlatformInfo } from '@repo/kits'
  * 为什么是**会话开局注入一次**而不是每轮都注入（用户口径 + 缓存代价）：
  * 系统提示词是整段请求的**前缀**，每轮都塞一个变化的时间戳，就会让提供方的
  * 前缀缓存（DeepSeek 的自动缓存命中）每轮都失效 —— 省不出钱也省不出延迟。
- * 开局注入 + 需要精确时间时用 `run-command` 自己取，是这两件事的平衡点。
+ * 开局注入 + 需要精确时间时用 `bash` 自己取，是这两件事的平衡点。
  */
 export type EnvironmentData = {
   /** 操作系统画像，如 `macOS 24.6.0（darwin / arm64）` */

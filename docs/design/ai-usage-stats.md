@@ -86,7 +86,7 @@
 | --- | --- | --- |
 | `stat_date` | `date` | 业务日 |
 | `dimension_type` | `varchar(16)` | `model` / `agent` / `tool` |
-| `dimension_key` | `varchar(128)` | `provider/model`、`assistant`、`run-command`… |
+| `dimension_key` | `varchar(128)` | `provider/model`、`assistant`、`bash`… |
 | `conversations` / `runs` / `succeeded` / `failed` | int | 模型 / agent 维度用；工具维度为 0 |
 | `total_tokens` / `input_tokens` / `output_tokens` | bigint | 模型 / agent 维度用 |
 | `calls` / `tool_succeeded` / `tool_failed` / `tool_denied` / `tool_invalid` / `tool_unknown` / `tool_no_result` | int | 工具维度用 |
@@ -142,7 +142,7 @@
 | --- | --- |
 | `type='usage'` | 第四种规则类型：读日表，不读进程内 Telemetry |
 | `scope_type` | `total` / `model` / `agent` / `tool` |
-| `scope_key` | 维度值（如 `run-command`、`deepseek/deepseek-chat`）；`total` 为空 |
+| `scope_key` | 维度值（如 `bash`、`deepseek/deepseek-chat`）；`total` 为空 |
 | `window_days` | 统计窗口：1 / 7 / 30（滚动，含今天） |
 
 复用 `metric` / `operator` / `threshold_value` / `channels` / `throttle_seconds` / `enabled`。
@@ -178,7 +178,7 @@
 | 日失败率 | `ai.usage.failureRate` | total | 1d | ≥ 0.10 | warn |
 | 7 日失败率 | `ai.usage.failureRate` | total | 7d | ≥ 0.05 | error |
 | 工具失败率 | `ai.usage.toolFailureRate` | total | 1d | ≥ 0.20 | warn |
-| 单工具失败率 | `ai.usage.toolFailureRate` | tool `run-command` | 1d | ≥ 0.30 | warn |
+| 单工具失败率 | `ai.usage.toolFailureRate` | tool `bash` | 1d | ≥ 0.30 | warn |
 | 首字延迟 | `ai.usage.avgFirstTokenMs` | total | 1d | ≥ 8,000 | warn |
 | 日对话量 | `ai.usage.conversations` | total | 1d | ≥ 1,000 | warn |
 

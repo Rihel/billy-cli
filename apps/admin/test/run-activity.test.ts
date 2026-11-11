@@ -15,7 +15,7 @@ import { RunActivity, runActivityText } from '../src/app/(standalone)/main/ai/ch
 const message = (parts: unknown[]): UIMessage =>
   ({ id: 'm1', role: 'assistant', parts }) as unknown as UIMessage
 
-const tool = (state: string, name = 'run-command') => ({
+const tool = (state: string, name = 'bash') => ({
   type: `tool-${name}`,
   toolCallId: 'c1',
   state,
@@ -35,10 +35,10 @@ describe('runActivityText', () => {
 
   it('工具入参就绪 → 正在调用（带工具名）；入参还在流 → 正在准备调用', () => {
     expect(runActivityText([message([tool('input-available')])], 'streaming')).toBe(
-      '正在调用 run-command…',
+      '正在调用 bash…',
     )
     expect(runActivityText([message([tool('input-streaming')])], 'streaming')).toBe(
-      '正在准备调用 run-command…',
+      '正在准备调用 bash…',
     )
   })
 
@@ -109,7 +109,7 @@ describe('RunActivity', () => {
     )
 
     expect(html).toContain('animate-spin')
-    expect(html).toContain('正在调用 run-command…')
+    expect(html).toContain('正在调用 bash…')
     expect(html).toContain('role="status"')
     expect(html).toContain('h-6')
   })
