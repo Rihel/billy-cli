@@ -1171,7 +1171,11 @@ export function ChatConversation({ conversationId }: { conversationId: string })
       {/* 手机端右栏：全屏 Sheet，不参与桌面分栏（否则会把对话区挤没） */}
       {isMobile ? (
         <Sheet open={mobilePanelOpen} onOpenChange={setMobilePanelOpen}>
-          <SheetContent side="right" className="flex w-full max-w-none flex-col p-0 sm:max-w-none">
+          <SheetContent
+            side="right"
+            className="flex w-full max-w-none flex-col p-0 data-[side=right]:w-full data-[side=right]:max-w-none data-[side=right]:sm:max-w-none"
+            style={{ width: '100%', maxWidth: 'none', height: '100dvh' }}
+          >
             <SheetHeader className="sr-only">
               <SheetTitle>会话详情</SheetTitle>
             </SheetHeader>
