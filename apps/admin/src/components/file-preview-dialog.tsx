@@ -244,7 +244,9 @@ export function FilePreviewDialog({
               loading ? (
                 <Empty text="正在读取…" />
               ) : markdown ? (
-                <MessageResponse className="text-sm">{text ?? ''}</MessageResponse>
+                <div className="px-6 py-2 sm:px-10">
+                  <MessageResponse className="text-sm">{text ?? ''}</MessageResponse>
+                </div>
               ) : (
                 <pre className="whitespace-pre-wrap break-words text-xs">{text ?? ''}</pre>
               )
