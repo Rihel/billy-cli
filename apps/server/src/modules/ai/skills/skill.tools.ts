@@ -36,7 +36,7 @@ const SkillSaveParams = z.object({
     .string()
     .min(1)
     .max(SKILL_DESCRIPTION_MAX)
-    .describe('什么时候用这个技能（会写进 SKILL.md 的 frontmatter，模型据此决定是否激活）'),
+    .describe('什么时候用：用户在什么场景 / 说什么话 / 要做什么时应该加载它；这是触发条件，不是内容摘要（会写进 SKILL.md 的 frontmatter，模型据此决定是否激活）'),
   body: z
     .string()
     .max(SKILL_FILE_MAX_CHARS)

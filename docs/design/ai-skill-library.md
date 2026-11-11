@@ -128,6 +128,8 @@
 
 `skill-list` / `skill-save`（建或改 + 可带文件）/ `skill-file-save`（写单个参考文件 / 脚本）/ `skill-file-append`（追加单个文件）/ `skill-import`（按链接装）/ `skill-delete` / `skill-enable`：
 
+`description` 的语义是**触发条件**（什么时候用），不是内容摘要；模型只拿 name + description 判断是否加载正文。
+
 - 一组粗粒度工具，而不是"每列一个工具"：模型一次调用就能把一个技能写完（正文 + 参考文件）；
 - 复用同一套 service 校验与落盘，**agent 写入与页面写入是同一条链路**；
 - 作用域 `admin`、`child: allow`（子 agent 也能维护技能，但继承父的授权面）。

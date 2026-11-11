@@ -128,7 +128,8 @@ function SkillPreviewDialogBody({
             ) : null}
             {source ? <Badge variant="outline">{source}</Badge> : null}
           </div>
-          <DialogDescription className="line-clamp-2 text-xs leading-5">
+          <DialogDescription className="mt-1 max-h-28 overflow-y-auto whitespace-pre-wrap break-words text-xs leading-5">
+            <span className="font-medium text-muted-foreground">什么时候用：</span>
             {description || '（没有描述）'}
           </DialogDescription>
         </DialogHeader>
