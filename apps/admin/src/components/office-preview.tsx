@@ -73,8 +73,10 @@ export function OfficePreview({
           // 这里 load 后手动 renderSingleSlide，一次只保留一页，翻页由下面的按钮控制。
           const available = hostRef.current.parentElement?.clientWidth ?? 960
           const width = Math.max(640, Math.min(1400, available - 24))
-          const height = Math.round((width * 9) / 16)
-          const instance = module.init(hostRef.current, { width, height, mode: 'slide' })
+          // 用 list 布局手动 renderSingleSlide：slide 模式会按 viewPort.height 居中，
+          // 固定 height 会在上方/下方留出一条黑色空白；list 的 slide wrapper 是 relative，
+          // 高度跟内容走，配合手动单页就是“一页铺满”。
+          const instance = module.init(hostRef.current, { width, mode: 'list' })
           previewer = instance
           previewerRef.current = instance as unknown as {
             renderSingleSlide: (index: number) => void
@@ -110,82 +112,87 @@ export function OfficePreview({
   }, [kind, filename])
 
   return (
-    <div className="relative h-full w-full overflow-auto">
-      {status === 'loading' ? (
-        <div className="flex h-full min-h-40 items-center justify-center gap-2 text-xs text-muted-foreground">
-          <LoaderCircleIcon className="size-4 animate-spin" />
-          正在渲染 {filename}…
-        </div>
-      ) : null}
-      {status === 'error' ? (
-        <div className="flex h-full min-h-40 flex-col items-center justify-center gap-2 px-6 text-center text-xs text-muted-foreground">
-          <TriangleAlertIcon className="size-5 text-warning" />
-          <span>Office 渲染失败，请下载查看。</span>
-          <span className="break-all text-[11px] opacity-70">{error}</span>
-        </div>
-      ) : null}
-      <div ref={hostRef} className="mx-auto w-fit" />
+    <div className="flex h-full w-full flex-col">
+      <div className="relative min-h-0 flex-1 overflow-auto">
+        {status === 'loading' ? (
+          <div className="flex h-full min-h-40 items-center justify-center gap-2 text-xs text-muted-foreground">
+            <LoaderCircleIcon className="size-4 animate-spin" />
+            正在渲染 {filename}…
+          </div>
+        ) : null}
+        {status === 'error' ? (
+          <div className="flex h-full min-h-40 flex-col items-center justify-center gap-2 px-6 text-center text-xs text-muted-foreground">
+            <TriangleAlertIcon className="size-5 text-warning" />
+            <span>Office 渲染失败，请下载查看。</span>
+            <span className="break-all text-[11px] opacity-70">{error}</span>
+          </div>
+        ) : null}
+        <div ref={hostRef} className="mx-auto w-fit" />
+        {kind === 'xlsx' && sheets ? (
+          <div className="flex flex-col gap-5 pb-6">
+            {sheets.map((sheet) => (
+              <section key={sheet.name} className="flex flex-col gap-2">
+                <h3 className="sticky top-0 z-10 bg-background px-1 py-1 text-xs font-medium">
+                  {sheet.name}
+                </h3>
+                <div className="overflow-auto rounded border">
+                  <table className="border-collapse text-xs">
+                    <tbody>
+                      {sheet.rows.map((row, rowIndex) => (
+                        <tr key={rowIndex}>
+                          {row.map((cell, cellIndex) => (
+                            <td
+                              key={cellIndex}
+                              className="max-w-80 truncate border border-border px-2 py-1 align-top"
+                              title={String(cell ?? '')}
+                            >
+                              {String(cell ?? '')}
+                            </td>
+                          ))}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </section>
+            ))}
+          </div>
+        ) : null}
+      </div>
+
       {kind === 'pptx' && slideCount > 1 ? (
-        <div className="absolute bottom-3 left-1/2 z-20 flex -translate-x-1/2 items-center gap-2 rounded-full border bg-background/95 px-2 py-1 shadow-sm backdrop-blur">
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            aria-label="上一页"
-            disabled={slideIndex <= 0}
-            onClick={() => {
-              const next = Math.max(0, slideIndex - 1)
-              previewerRef.current?.renderSingleSlide(next)
-              setSlideIndex(next)
-            }}
-          >
-            <ChevronLeftIcon className="size-4" />
-          </Button>
-          <span className="min-w-14 text-center text-xs tabular-nums text-muted-foreground">
-            {slideIndex + 1} / {slideCount}
-          </span>
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            aria-label="下一页"
-            disabled={slideIndex >= slideCount - 1}
-            onClick={() => {
-              const next = Math.min(slideCount - 1, slideIndex + 1)
-              previewerRef.current?.renderSingleSlide(next)
-              setSlideIndex(next)
-            }}
-          >
-            <ChevronRightIcon className="size-4" />
-          </Button>
-        </div>
-      ) : null}
-      {kind === 'xlsx' && sheets ? (
-        <div className="flex flex-col gap-5 pb-6">
-          {sheets.map((sheet) => (
-            <section key={sheet.name} className="flex flex-col gap-2">
-              <h3 className="sticky top-0 z-10 bg-background px-1 py-1 text-xs font-medium">
-                {sheet.name}
-              </h3>
-              <div className="overflow-auto rounded border">
-                <table className="border-collapse text-xs">
-                  <tbody>
-                    {sheet.rows.map((row, rowIndex) => (
-                      <tr key={rowIndex}>
-                        {row.map((cell, cellIndex) => (
-                          <td
-                            key={cellIndex}
-                            className="max-w-80 truncate border border-border px-2 py-1 align-top"
-                            title={String(cell ?? '')}
-                          >
-                            {String(cell ?? '')}
-                          </td>
-                        ))}
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </section>
-          ))}
+        <div className="flex shrink-0 justify-center border-t bg-background/95 px-3 py-2">
+          <div className="flex items-center gap-2 rounded-full border bg-background px-2 py-1 shadow-sm">
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              aria-label="上一页"
+              disabled={slideIndex <= 0}
+              onClick={() => {
+                const next = Math.max(0, slideIndex - 1)
+                previewerRef.current?.renderSingleSlide(next)
+                setSlideIndex(next)
+              }}
+            >
+              <ChevronLeftIcon className="size-4" />
+            </Button>
+            <span className="min-w-14 text-center text-xs tabular-nums text-muted-foreground">
+              {slideIndex + 1} / {slideCount}
+            </span>
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              aria-label="下一页"
+              disabled={slideIndex >= slideCount - 1}
+              onClick={() => {
+                const next = Math.min(slideCount - 1, slideIndex + 1)
+                previewerRef.current?.renderSingleSlide(next)
+                setSlideIndex(next)
+              }}
+            >
+              <ChevronRightIcon className="size-4" />
+            </Button>
+          </div>
         </div>
       ) : null}
     </div>
