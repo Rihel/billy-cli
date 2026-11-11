@@ -173,7 +173,7 @@ export default function ChatLayout({ children }: { children: ReactNode }) {
       return;
     void conversationsQuery.fetchNextPage();
   };
-  // 窄屏（<768px）不放列表栏：分栏需要宽度，手机上两栏都挤成一条
+  // 窄屏（<1024px）不放列表栏：分栏需要宽度，手机上两栏都挤成一条
   // （`useIsMobile` 首帧与 SSR 一致返回 false，挂载后再纠正 —— 与 Sidebar 同一套口径）
   const isMobile = useIsMobile();
 

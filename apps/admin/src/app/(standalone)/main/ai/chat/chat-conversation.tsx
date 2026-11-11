@@ -867,15 +867,15 @@ export function ChatConversation({ conversationId }: { conversationId: string })
           {isNew ? '新会话' : conversationQuery.data?.title || '会话'}
         </h1>
         {activeAgent ? (
-          <Badge variant="secondary" className="hidden shrink-0 sm:inline-flex">{activeAgent.name}</Badge>
+          <Badge variant="secondary" className="hidden shrink-0 lg:inline-flex">{activeAgent.name}</Badge>
         ) : (
-          <Badge variant="outline" className="hidden shrink-0 sm:inline-flex">未配置</Badge>
+          <Badge variant="outline" className="hidden shrink-0 lg:inline-flex">未配置</Badge>
         )}
         {runId ? (
-          <span className="hidden font-mono text-xs text-muted-foreground lg:inline">run {runId}</span>
+          <span className="hidden font-mono text-xs text-muted-foreground xl:inline">run {runId}</span>
         ) : null}
         {status !== 'ready' ? (
-          <Badge variant={status === 'error' ? 'destructive' : 'outline'} className="hidden shrink-0 sm:inline-flex">{status}</Badge>
+          <Badge variant={status === 'error' ? 'destructive' : 'outline'} className="hidden shrink-0 lg:inline-flex">{status}</Badge>
         ) : null}
         {/* 右侧：复制会话 id + 换 agent + 右栏开关 */}
         <div className="ml-auto flex items-center gap-2">
@@ -885,14 +885,14 @@ export function ChatConversation({ conversationId }: { conversationId: string })
               icon={<CopyIcon />}
               size="small"
               type="primary"
-              className="hidden sm:inline-flex"
+              className="hidden lg:inline-flex"
               tooltip="复制会话 id"
               aria-label="复制会话 id"
               onClick={copyConversationId}
             />
           ) : null}
           {agents.length > 1 && (
-            <div className="hidden sm:block">
+            <div className="hidden lg:block">
               <DictSelect
                 size="sm"
                 triggerClassName="h-8 w-40"
@@ -1171,7 +1171,7 @@ export function ChatConversation({ conversationId }: { conversationId: string })
       {/* 手机端右栏：全屏 Sheet，不参与桌面分栏（否则会把对话区挤没） */}
       {isMobile ? (
         <Sheet open={mobilePanelOpen} onOpenChange={setMobilePanelOpen}>
-          <SheetContent side="right" className="flex w-full max-w-none flex-col p-0">
+          <SheetContent side="right" className="flex w-full max-w-none flex-col p-0 sm:max-w-none">
             <SheetHeader className="sr-only">
               <SheetTitle>会话详情</SheetTitle>
             </SheetHeader>

@@ -44,7 +44,7 @@ export function SubAgentCard({ agent }: { agent: SubAgentLive }) {
       <Collapsible open={open} onOpenChange={setOpen}>
         <CollapsibleTrigger
           className={cn(
-            'flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-sm transition-colors hover:bg-muted/50',
+            'flex w-full flex-wrap items-center gap-x-2 gap-y-1 px-2.5 py-1.5 text-left text-sm transition-colors hover:bg-muted/50',
           )}
           // 展开态要能读屏：把"这是可展开的子助手卡"说清楚，而不是让读屏只看到一串徽标
           aria-label={`子助手 ${agent.name} 的执行正文${open ? '（点击收起）' : '（点击展开）'}`}
@@ -57,16 +57,16 @@ export function SubAgentCard({ agent }: { agent: SubAgentLive }) {
           ) : (
             <BotIcon className="size-4 shrink-0 text-muted-foreground" aria-hidden />
           )}
-          <span className="font-medium">子助手 · {agent.name}</span>
+          <span className="min-w-0 flex-1 truncate font-medium">子助手 · {agent.name}</span>
           <Badge variant={statusVariant(status)}>{statusLabel[status] ?? status}</Badge>
-          <span className="text-xs text-muted-foreground">
+          <span className="w-full text-xs text-muted-foreground sm:w-auto">
             {agent.stepCount ?? 0} 步 / {agent.toolCallCount ?? 0} 次工具
             {/* 子助手自己的消耗（k / m 缩写，与右下角统计同一套口径）；
                 它**已计入父那一轮的合计**（`rollUpUsage`），不是额外再花一份 */}
             {typeof totalTokens === 'number' ? ` · ${tokenText(totalTokens)} token` : ''}
             {duration ? ` · ${duration}` : ''}
           </span>
-          <span className="ml-auto shrink-0 text-xs text-muted-foreground">过程见右栏</span>
+          <span className="ml-auto hidden shrink-0 text-xs text-muted-foreground sm:inline">过程见右栏</span>
           <ChevronDownIcon
             className={cn('size-4 shrink-0 text-muted-foreground transition-transform', open && 'rotate-180')}
             aria-hidden
