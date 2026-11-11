@@ -171,7 +171,11 @@ function ensureStarts(chunks: ResumeChunk[]): ResumeChunk[] {
       case 'tool-input-available':
         openToolInput.delete(id)
         availableTools.add(id)
-        out.push(chunk)
+        out.push(
+          (chunk as { input?: unknown }).input === undefined
+            ? ({ ...chunk, input: null } as ResumeChunk)
+            : chunk,
+        )
         break
       case 'tool-input-error':
         openToolInput.delete(id)

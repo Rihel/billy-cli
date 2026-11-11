@@ -2258,6 +2258,11 @@ const normalizeSuspendedChunk = <T extends UiChunkLike>(chunk: T, runId: string)
  * 它已经拿到了这份结果，只是前端与统计不该把它算成"成功"。
  */
 const toClientToolChunk = <T extends UiChunkLike>(chunk: T): T => {
+  // AI SDK 的 tool-input-available schema 要求 input 字段存在；上游在"空入参"时可能省略它，
+  // JSON.stringify 又会把 undefined 丢掉，前端就报 Type validation failed。
+  if (chunk.type === 'tool-input-available' && (chunk as { input?: unknown }).input === undefined) {
+    return { ...chunk, input: null } as T;
+  }
   if (chunk.type !== 'tool-output-available') return chunk;
   const failure = toolFailureOf((chunk as { output?: unknown }).output);
   if (!failure.failed) return chunk;

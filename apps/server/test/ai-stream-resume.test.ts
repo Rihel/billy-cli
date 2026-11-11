@@ -115,6 +115,13 @@ describe('resumeSafeChunks：补发不能从块中间开始', () => {
     expect(types(out)).toEqual(['start', 'tool-input-available', 'tool-output-available'])
   })
 
+  it('tool-input-available 缺 input 时补 null，避免 AI SDK schema 失败', () => {
+    const out = resumeSafeChunks([
+      { type: 'tool-input-available', toolCallId: 'call_3', toolName: 'skill-save' },
+    ], 0)
+    expect(out[0]).toMatchObject({ type: 'tool-input-available', input: null })
+  })
+
   it('offset 只有孤立的 tool output：丢弃，避免 No tool invocation found', () => {
     const all = [
       { type: 'start', messageId: 'm-1' },
