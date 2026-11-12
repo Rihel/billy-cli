@@ -74,12 +74,13 @@ export const makeCosProvider = (
         }),
       } satisfies StoragePresignedUrlModel
     },
-    async getDownloadUrl({ key, filename }) {
+    async getDownloadUrl({ key, filename, expiresIn }) {
       const url = client.getObjectUrl({
         Bucket: config.bucket,
         Region: config.region,
         Key: key,
         Method: 'GET',
+        Expires: expiresIn ?? 3600,
       })
       const safe = filename?.replace(/[\r\n"\\]/g, '_').trim()
       if (!safe) return { key, url } satisfies StoragePresignedUrlModel

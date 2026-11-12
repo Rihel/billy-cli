@@ -141,3 +141,35 @@ export const AiToolUpdateSchema = z.object({
   limits: AiToolLimitsSchema.optional(),
 })
 export type AiToolUpdateDto = z.infer<typeof AiToolUpdateSchema>
+
+// ─────────────────────── 执行环境（工作区运行时） ───────────────────────
+
+/** 会话可选的沙箱文件权限（只读 / 可写） */
+export const AiToolFileAccessSchema = z.enum(['read-only', 'workspace-write'])
+export type AiToolFileAccess = z.infer<typeof AiToolFileAccessSchema>
+
+/**
+ * 当前部署的执行环境能力（管理页展示 / 校验提示用）。
+ *
+ * 这是**事实**而不是配置：能不能用沙箱由服务端探测决定，页面只读。
+ */
+export const AiToolWorkspaceStatusSchema = z.object({
+  /**
+   * 部署的隔离策略：`enforce` = 命令只能在沙箱里跑（不可用就拒绝）；
+   * `off` = 不做隔离（仅自托管单租户）。
+   */
+  mode: z.enum(['enforce', 'off']),
+  /** 会话可选的文件权限；`off` 时为空（没有隔离，也就没有权限可谈） */
+  fileAccessOptions: z.array(AiToolFileAccessSchema),
+  /** 沙箱探测结果 */
+  sandbox: z.object({
+    available: z.boolean(),
+    /** 可用的实现（`available` 时） */
+    impl: z.enum(['seatbelt', 'bwrap']).optional(),
+    /** 不可用原因码 */
+    code: z.string().optional(),
+    /** 不可用原因（中文，可直接展示） */
+    message: z.string().optional(),
+  }),
+})
+export type AiToolWorkspaceStatusModel = z.infer<typeof AiToolWorkspaceStatusSchema>

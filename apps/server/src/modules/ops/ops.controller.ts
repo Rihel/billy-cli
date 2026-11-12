@@ -1,6 +1,6 @@
 import { Controller, Get, HttpCode, Inject } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
-import { Db, RedisStore } from '@repo/kits'
+import { Db, RedisStore, WorkspaceRuntimeService } from '@repo/kits'
 import { AppErrorCodes } from '@repo/shared'
 import { hostname } from 'node:os'
 import { BoundaryError } from '../../common/index.js'
@@ -56,6 +56,7 @@ export class OpsController {
     @Inject(Db) private readonly db: Db,
     @Inject(RedisStore) private readonly redis: RedisStore,
     @Inject(ConfigService) config: ConfigService,
+    @Inject(WorkspaceRuntimeService) private readonly workspace: WorkspaceRuntimeService,
   ) {
     this.server = resolveServerConfig(config)
   }
@@ -122,10 +123,14 @@ export class OpsController {
     }
   }
 
-  /** 运行信息：版本（`APP_VERSION`，默认 `dev`）+ 运行时 + 已生效的长连接超时（排查 502 竞态用） */
+  /**
+   * 运行信息：版本（`APP_VERSION`，默认 `dev`）+ 运行时 + 已生效的长连接超时（排查 502 竞态用）
+   * + **工作区执行环境的实际选型**（沙箱可用性 / 部署允许集合 / 实际会用什么）。
+   */
   @Get('info')
   @HttpCode(200)
-  info() {
+  async info() {
+    const workspace = await this.workspace.status()
     return {
       name: 'billy-server',
       version: this.server.appVersion,
@@ -136,6 +141,16 @@ export class OpsController {
       http: {
         keepAliveTimeoutMs: this.server.keepAliveTimeoutMs,
         headersTimeoutMs: this.server.headersTimeoutMs,
+      },
+      workspace: {
+        mode: workspace.mode,
+        fileAccessOptions: workspace.fileAccessOptions,
+        sandbox: {
+          available: workspace.sandbox.available,
+          impl: workspace.sandbox.impl ?? null,
+          code: workspace.sandbox.reason?.code ?? null,
+          message: workspace.sandbox.reason?.message ?? null,
+        },
       },
     }
   }

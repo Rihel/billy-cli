@@ -23,6 +23,7 @@ import {
   DownloadIcon,
   EyeIcon,
   SearchIcon,
+  Share2Icon,
 } from 'lucide-react'
 import { useServerClient } from '@/lib/server-client'
 import {
@@ -30,6 +31,7 @@ import {
   isPreviewTextItem,
   officeKind,
 } from '@/components/file-preview-dialog'
+import { ShareDialog, type ShareDialogFile } from '@/components/share-dialog'
 
 /**
  * AI 文件管理（`/main/ai/files`，管理员）。
@@ -52,6 +54,7 @@ export default function AiFilesPage() {
   const [sortBy, setSortBy] = useState<'size' | 'createdAt'>('createdAt')
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc')
   const [previewId, setPreviewId] = useState<string | null>(null)
+  const [shareFile, setShareFile] = useState<ShareDialogFile | null>(null)
 
   const filters = {
     keyword,
@@ -228,6 +231,16 @@ export default function AiFilesPage() {
           >
             <DownloadIcon className="size-3.5" />
           </Button>
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            onClick={() =>
+              setShareFile({ id: row.original.id, filename: row.original.filename })
+            }
+            title="生成免授权分享链接（任何人拿到都能看）"
+          >
+            <Share2Icon className="size-3.5" />
+          </Button>
         </div>
       ),
     },
@@ -312,6 +325,12 @@ export default function AiFilesPage() {
             <RefreshButton onClick={refresh} />
           </>
         }
+      />
+
+      <ShareDialog
+        file={shareFile}
+        open={Boolean(shareFile)}
+        onClose={() => setShareFile(null)}
       />
 
       <FilePreviewDialog

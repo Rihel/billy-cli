@@ -85,12 +85,36 @@
 模型写的 `<script>` 要真跑起来，才有"动画能动"这回事。但它**不能**拿到后台页面的权限。
 
 - `sandbox="allow-scripts"`，**不带 `allow-same-origin`** → iframe 是不透明源，拿不到父页面的 DOM、cookie、localStorage；
-- iframe 内 `Content-Security-Policy`：`default-src 'none'`，只放行内联样式/脚本、`data:`/`blob:` 图片；外链脚本、`fetch`、表单提交、嵌套框架全部禁止 —— 模型写的代码无法把页面数据带出去；
+- iframe 内 `Content-Security-Policy`：`default-src 'none'`，只放行内联样式/脚本、`data:`/`blob:` 图片，
+  以及 **CDN 白名单**（见下）上的脚本 / 样式 / 图片 / 字体；`fetch`、表单提交、嵌套框架全部禁止 ——
+  模型写的代码能把图画出来，但**发不出去**；
 - 外链库（gsap）由**父页面同源 fetch 后内联**进文档，不依赖 iframe 的网络权限；注入位置在
   **模型内容之前**（`<head>`）—— 放到后面时，模型自己的 `<script>` 先执行，实测直接 `gsap is not defined`；
 - 高度由 iframe 内 `ResizeObserver` 经 `postMessage` 回报，父页面校验 `event.source` 后夹在 120–560px 之间（超出滚动）；
 - **全屏**与 xflow 同一套弹窗（92vh × 96vw）：里面是**另一份文档**、另一个 iframe，沙箱参数一字不改 ——
   所以脚本从头再跑一遍，正好用来重看动画；原来的 iframe 不销毁，关掉弹窗就回到它。
+
+#### CDN 白名单（2026-11-12）
+
+沙箱原先"全禁网"，页面里连图表库都引不进来，模型只能手写 canvas / SVG —— 用户要的
+"写页面能用第三方库"就落不了地。现在改为**白名单放行**，清单是
+`packages/shared/src/utils/cdn.utils.ts` 的 `SANDBOX_CDN_HOSTS` —— 一份清单两个消费方：
+`fence-spec.ts` 拼 CSP，`apps/server/test/ai-prompt-guardrails.test.ts` 校验提示词与它一致。
+
+| 顺位 | 主机 | 路径 |
+| --- | --- | --- |
+| 国内 | `registry.npmmirror.com` | `/<包>/<版本>/files/<包内路径>` |
+| 海外 | `cdn.jsdelivr.net` | `/npm/<包>@<版本>/<包内路径>` |
+| 兜底 | `unpkg.com` | `/<包>@<版本>/<包内路径>` |
+
+- 三家都覆盖全部 npm 包、都能按包内路径取到同一个文件（2026-11-12 实测 `echarts@5.4.3` 均 200、
+  字节数一致）；老牌国产 CDN（staticfile / bootcdn）只收录热门库、路径规则还不一样，不作为默认；
+- **只放行四类子资源**（脚本 / 样式 / 图片 / 字体），`connect-src 'none'` / `form-action 'none'` /
+  `frame-src 'none'` 一个没松 —— 所以能"用库画图"，不能"把数据发出去"，最坏情况也只能把数据
+  发到这几家 CDN 自己的日志里；
+- 加载失败要**三级兜底**：原生 `<script>` 没法感知"加载超时再换源"，提示词因此要求
+  `window.<全局名> || document.write(...)` 逐级补 —— 写法见 `requirements.eta`，这是模型最容易写错的一处；
+- 升级 / 增删主机时三处一起改：白名单常量、`requirements.eta` 的 CDN 段、两个包的测试。
 
 `gsap` 围栏保留；`html` 不再有围栏组件，但它的沙箱复用给文件预览。gsap 文件放
 `apps/admin/public/vendor/gsap.min.js`（随包提交），`apps/admin` 用脚本 `pnpm sync:vendor`
@@ -159,6 +183,14 @@
 `xflow` / `mermaid` / `gsap` / `json` / 公式的说明保留。切换顺序：先让文件树能沙箱预览 `.html`，
 再摘 prompt / renderer，避免中间态模型没有页面预览能力。
 
+**页面写法搬进内置技能**（2026-11-12）：HTML 页面的详细做法（单文件、CDN 三级兜底、常用库入口、
+交付前自检）做成随包技能 `core/skills/catalog/html-page/SKILL.md`；prompt 只留
+「写任何 HTML 之前先加载 `html-page`」（**无条件段**：`.html` 文件、`html` / `gsap` 围栏、
+HTML / SVG 片段都算）+ 三行白名单边界。理由：这些细节只在**写页面那一轮**有用，而 prompt 是
+每轮都付的前缀 token；技能是按需加载的（渐进披露）。代价是"模型可能不加载"，所以用
+`ai-prompt-guardrails.test.ts` 钉住指针（技能名 + 白名单必须在提示词里）、`ai-builtin-skills.test.ts`
+钉住技能正文与 `SANDBOX_CDN_HOSTS` 一致。
+
 ## 6. 测试点
 
 - 纯函数单测：xflow 解析（合法 / 缺字段 / 边悬空 / 非 JSON）、分层排版（列与行坐标确定、无重叠）、
@@ -173,7 +205,8 @@
 
 ## 7. 未做 / 后续
 
-- 围栏内容不允许外链资源（会被 CSP 拦下并显示为空），如果需要"引用真实图片"，走附件而不是围栏；
+- 外链资源只认 CDN 白名单（其余地址会被 CSP 拦下并显示为空）；页面里要"引用真实图片"，仍然走附件，
+  不要塞第三方图床地址；
 - **HTML 文件预览**要用沙箱：把 `SandboxFrame` 从 `ai-elements/markdown-fences/` 提到
   `packages/ui/components/` 并补导出（`ai-file-manager.md` §8.4）；这是 `html` 围栏退役的前提；
 - `xflow` 暂不支持分组、泳道、自定义节点样式；真需要时扩 schema，而不是让模型写坐标；

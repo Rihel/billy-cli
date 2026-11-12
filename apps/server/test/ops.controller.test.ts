@@ -48,7 +48,23 @@ const makeController = (options: {
     getOrThrow: () => serverConfig,
   } as unknown as ConfigService
 
-  return { controller: new OpsController(db, redis, config), query, ping }
+  /** 工作区运行时桩：/info 要展示"沙箱可不可用"，但探针测试不关心具体实现 */
+  const workspace = {
+    status: async () => ({
+      mode: 'enforce' as const,
+      fileAccessOptions: ['workspace-write', 'read-only'] as const,
+      sandbox: {
+        available: false,
+        reason: { code: 'platform-unsupported' as const, message: '测试环境没有沙箱' },
+        probedAt: new Date().toISOString(),
+      },
+    }),
+  }
+  return {
+    controller: new OpsController(db, redis, config, workspace as never),
+    query,
+    ping,
+  }
 }
 
 describe('OpsController /healthz（存活探针）', () => {
@@ -125,10 +141,10 @@ describe('OpsController /readyz（就绪探针）', () => {
 })
 
 describe('OpsController /info（运行信息）', () => {
-  it('暴露部署版本与已生效的长连接超时（核对滚动更新是否真的换上了新构建）', () => {
+  it('暴露部署版本与已生效的长连接超时（核对滚动更新是否真的换上了新构建）', async () => {
     const { controller } = makeController()
 
-    expect(controller.info()).toMatchObject({
+    expect(await controller.info()).toMatchObject({
       name: 'billy-server',
       version: 'v9.9.9-test',
       http: { keepAliveTimeoutMs: 75_000, headersTimeoutMs: 80_000 },

@@ -51,6 +51,12 @@ export interface AgentRuntimeEnvelope {
   triggeredBy: string | null
   /** 触发身份是不是管理员（工具作用域判定用；不由模型决定） */
   isAdmin: boolean
+  /**
+   * 本会话的**沙箱文件权限**（只读 / 可写）。
+   *
+   * 只决定沙箱内能不能写工作区；**不能借此逃出沙箱**（能不能出沙箱是部署配置）。
+   */
+  fileAccess: 'read-only' | 'workspace-write'
   /** 当前深度（根 = 0；子 agent = 1） */
   depth: number
   /** 调用方 agent key（子 agent 为 `sub:<名字>`）——审计用 */

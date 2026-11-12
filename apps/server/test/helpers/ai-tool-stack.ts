@@ -1,4 +1,10 @@
-import { AppLogger } from '@repo/kits'
+import {
+  AppLogger,
+  CommandRunner,
+  WorkspaceConfigSchema,
+  WorkspaceRuntimeService,
+} from '@repo/kits'
+import { BashTool } from '../../src/modules/ai/tools/bash.tool.js'
 import {
   AuditEndPlugin,
   AuditStartPlugin,
@@ -195,3 +201,25 @@ export const specByKey = (group: object, key: string): ToolSpec => {
   if (!spec) throw new Error(`工具组 ${group.constructor.name} 没有交出工具 ${key}`)
   return spec
 }
+
+/**
+ * 测试用的 `bash` 工具：**固定不做隔离**（`mode: 'off'`）。
+ *
+ * 隔离语义（只读 / 可写 / fail-closed）在 `@repo/kits` 的 `test/workspace.test.ts` 里钉死，
+ * 这里只解决"工具组的依赖怎么拼"—— 否则每个测试文件都要重复造一遍 runtime。
+ */
+export const makeBashTool = (
+  logger: unknown,
+  caps?: import('../../src/modules/ai/core/tools/tools.types.js').ToolEnvCaps,
+): BashTool =>
+  new BashTool(
+    new WorkspaceRuntimeService(
+      // 测试固定用"不做隔离"的执行路径：隔离语义在 @repo/kits 的 workspace.test.ts 里钉死
+      WorkspaceConfigSchema.parse({ mode: 'off' }),
+      new CommandRunner(),
+      logger as never,
+      async () => ({ available: false, probedAt: new Date().toISOString() }),
+    ),
+    logger as never,
+    caps as never,
+  )

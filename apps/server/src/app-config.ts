@@ -11,6 +11,7 @@ import {
   PasswordConfigSchema,
   RedisConfigSchema,
   StorageConfigSchema,
+  WorkspaceConfigSchema,
 } from '@repo/kits'
 
 /**
@@ -101,10 +102,30 @@ export const serverAppConfigSchema = z.object({
     /** 指标样本保留天数 */
     retentionDays: z.number().int().positive().default(30),
   }),
+  /**
+   * 文件分享（`/s/{token}`，见 `docs/design/file-share.md`）。
+   *
+   * 全部可缺省：没配 `SHARE_PUBLIC_BASE_URL` 时 `create` 报「分享能力未开启」，
+   * 其余功能不受影响（与对象存储「未配置不拦启动」同一姿态）。
+   */
+  share: z.object({
+    /** 分享链接的对外基地址，如 `https://s.example.com`；空 = 分享能力未开启 */
+    publicBaseUrl: z.string().trim().default(''),
+    /** 创建时未指定有效期的默认值（秒），默认 7 天 */
+    defaultTtlSeconds: z.coerce.number().int().positive().default(7 * 24 * 60 * 60),
+    /** Next ↔ server 的内部密钥（`/share/resolve` 用它校验） */
+    internalSecret: z.string().default(''),
+  }),
+
   /** 飞书应用凭据：未配置则不装配 LarkModule */
   lark: LarkConfigSchema.optional(),
   /** Kafka：未配置 brokers 则不装配 KafkaModule */
   kafka: KafkaConfigSchema.optional(),
+  /**
+   * 工作区运行时（执行环境 = 沙箱 / 非沙箱）：只放**部署边界**，
+   * 用户选哪个在工具配置 `bash.execution` 里（见 `docs/design/workspace-runtime.md`）。
+   */
+  workspace: WorkspaceConfigSchema,
   /**
    * AI Agent 业务配置（AgentConfig 命名空间，见 modules/ai/core/config.ts）。
    *
@@ -350,6 +371,11 @@ export const mapServerEnv = (
       ? { host: env.LOKI_HOST, labels: { env: env.NODE_ENV ?? 'local' } }
       : undefined,
   },
+  share: {
+    publicBaseUrl: optional(env.SHARE_PUBLIC_BASE_URL),
+    defaultTtlSeconds: optionalNumber(env.SHARE_TTL_SECONDS),
+    internalSecret: optional(env.SHARE_INTERNAL_SECRET),
+  },
   monitor: {
     enabled: env.ALERT_ENABLED === undefined ? undefined : env.ALERT_ENABLED !== 'false',
     emailTo: optional(env.ALERT_EMAIL_TO),
@@ -399,6 +425,11 @@ export const mapServerEnv = (
         unavailableCooldownMs: optional(env.KAFKA_UNAVAILABLE_COOLDOWN_MS),
       }
     : undefined,
+  workspace: {
+    mode: optional(env.AGENT_WORKSPACE_MODE),
+    sandboxNetwork: optional(env.AGENT_WORKSPACE_SANDBOX_NETWORK),
+    probeTimeoutMs: optionalNumber(env.AGENT_WORKSPACE_PROBE_TIMEOUT_MS),
+  },
   agent: {
     model: optional(env.MASTRA_MODEL),
     apiKey: optional(env.MASTRA_API_KEY),

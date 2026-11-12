@@ -16,6 +16,13 @@ export const GetStorageDownloadUrlSchema = z.object({
    * 交付物的 key 是 md5 / 会话路径，不是给人看的文件名；下载时必须能还原原始名字。
    */
   filename: z.string().max(255).optional(),
+  /**
+   * 链接有效期（秒），缺省 3600。
+   *
+   * 分享链路里 server → Next 的预签名只用一次，会压到 300s；
+   * 既有调用方不传，行为不变。
+   */
+  expiresIn: z.number().int().positive().max(7 * 24 * 60 * 60).optional(),
 })
 export type GetStorageDownloadUrlDto = z.infer<
   typeof GetStorageDownloadUrlSchema

@@ -1,6 +1,6 @@
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { CommandRunner, type CommandResult } from '@repo/kits'
+import { CommandRunner, WorkspaceConfigSchema, WorkspaceRuntimeService, type CommandResult } from '@repo/kits'
 import { describe, expect, it } from 'vitest'
 import { ToolGateway } from '../src/modules/ai/core/tools/tool.gateway.js'
 import { BashTool } from '../src/modules/ai/tools/bash.tool.js'
@@ -48,8 +48,15 @@ const buildStack = (
   }
   const gateway = new ToolGateway(deps.config, silentLogger as never, deps.plugins, deps.clock)
   const caps = options.caps ?? TEST_TOOL_ENV_CAPS
+  // 策略测试固定用"不做隔离"的执行路径：隔离语义在 @repo/kits 的 workspace.test.ts 里
+  const runtime = new WorkspaceRuntimeService(
+    WorkspaceConfigSchema.parse({ mode: 'off' }),
+    new CommandRunner(),
+    silentLogger as never,
+    async () => ({ available: false, probedAt: new Date().toISOString() }),
+  )
   const spec = specByKey(
-    new BashTool(new CommandRunner(), silentLogger as never, caps),
+    new BashTool(runtime, silentLogger as never, caps),
     TOOL_KEYS.bash,
   )
   return { deps, gateway, spec }

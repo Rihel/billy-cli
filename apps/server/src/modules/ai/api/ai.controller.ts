@@ -22,6 +22,7 @@ import {
   AgentRunStopSchema,
   AgentConversationCreateSchema,
   AgentConversationIdSchema,
+  AgentConversationFileAccessSchema,
   AgentConversationListSchema,
   AgentConversationRenameSchema,
   AgentInstructionsSchema,
@@ -36,6 +37,7 @@ import {
   type AgentChatResumeDto,
   type AgentRunStopDto,
   type AgentConversationCreateDto,
+  type AgentConversationFileAccessDto,
   type AgentConversationIdDto,
   type AgentConversationListDto,
   type AgentConversationRenameDto,
@@ -206,14 +208,19 @@ export class AiController {
   }
 
   /**
-   * 断线重连（**不知道 runId 时用**）：按登录用户在库里找当前进行中的那一轮。
+   * 断线重连（**不知道 runId 时用**）：按登录用户 + 指定会话在库里找当前进行中的那一轮。
    *
    * 前端 `useChat({ resume: true })` 挂载时调的就是它 —— 刷新 / 换设备都能接回正在跑的流；
    * 没有进行中的运行回 204（AI SDK 据此静默结束重连，不报错、不刷红）。
+   *
+   * `conversationId` 是**串流隔离**的关键：不传时只按用户跨会话找最近一条，
+   * 切到任意已结束的会话都会接上别的会话正在跑的流；传了就只在该会话内找，
+   * 新会话页传占位段 `new` → 永不匹配任何 run → 204。
    */
   @Get('run/stream')
   async resumeCurrentRun(
     @Query('offset') offset: string,
+    @Query('conversationId') conversationId: string,
     @Res() response: Response,
   ): Promise<void> {
     const from = Number.parseInt(offset ?? '0', 10)
@@ -221,6 +228,7 @@ export class AiController {
       this.ownerId(),
       Number.isFinite(from) && from > 0 ? from : 0,
       response,
+      conversationId?.trim() || undefined,
     )
     if (!resumed) response.status(204).end()
   }
@@ -278,6 +286,20 @@ export class AiController {
     @Body({ schema: AgentConversationRenameSchema }) input: AgentConversationRenameDto,
   ) {
     return this.conversations.rename(this.ownerId(), input)
+  }
+
+  /**
+   * 切换会话的**文件权限**（只读 / 可写）。
+   *
+   * 只影响沙箱内的写权限；"要不要沙箱"是部署配置，这里改不了（web 产品的安全底线）。
+   */
+  @Post('conversation/file-access')
+  @HttpCode(200)
+  setConversationFileAccess(
+    @Body({ schema: AgentConversationFileAccessSchema })
+    input: AgentConversationFileAccessDto,
+  ) {
+    return this.conversations.setFileAccess(this.ownerId(), input)
   }
 
   /** 软删会话（**唯一的删除入口**；运行记录与时间线不提供删除） */

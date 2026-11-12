@@ -32,6 +32,17 @@ const makeRoot = (): string => {
   return root
 }
 
+/**
+ * 一个**不存在**的内置技能目录。
+ *
+ * 这批用例验的是"外部目录 / 技能库"的语义：默认的 `catalog/` 里现在有随包发布的技能，
+ * 不隔离的话每加一个内置技能，下面那些精确断言就得跟着改一遍（噪音，不是回归）。
+ */
+const NO_CATALOG = join(tmpdir(), 'billy-no-catalog')
+
+const loaderWith = (extraDirs: readonly string[], libraryDir?: string): SkillLoader =>
+  new SkillLoader(logger, extraDirs, libraryDir, NO_CATALOG)
+
 const writeSkill = (
   root: string,
   name: string,
@@ -57,7 +68,7 @@ describe('SkillLoader：从配置目录发现技能', () => {
     writeSkill(root, 'demo-skill', { references: { 'guide.md': '# 指南\n\n长清单。' } })
     writeSkill(root, 'another-skill')
 
-    const loader = new SkillLoader(logger, [root])
+    const loader = loaderWith([root])
     expect((await loader.names()).sort()).toEqual(['another-skill', 'demo-skill'])
 
     const [skill] = await loader.resolve(['demo-skill'])
@@ -69,7 +80,7 @@ describe('SkillLoader：从配置目录发现技能', () => {
   })
 
   it('目录不存在不报错（用户没装技能库的常态）', async () => {
-    const loader = new SkillLoader(logger, [join(tmpdir(), 'billy-not-exist-dir')])
+    const loader = loaderWith([join(tmpdir(), 'billy-not-exist-dir')])
     expect(await loader.list()).toEqual([])
   })
 
@@ -79,7 +90,7 @@ describe('SkillLoader：从配置目录发现技能', () => {
     writeSkill(first, 'same-name', { description: '第一个' })
     writeSkill(second, 'same-name', { description: '第二个' })
 
-    const loader = new SkillLoader(logger, [first, second])
+    const loader = loaderWith([first, second])
     const skills = await loader.list()
     expect(skills).toHaveLength(1)
     expect(skills[0]?.description).toBe('第一个')
@@ -91,12 +102,12 @@ describe('SkillLoader：从配置目录发现技能', () => {
     writeSkill(root, 'good-skill')
     writeSkill(root, 'too-long', { description: 'x'.repeat(1100) })
 
-    const loader = new SkillLoader(logger, [root])
+    const loader = loaderWith([root])
     expect(await loader.names()).toEqual(['good-skill'])
   })
 
   it('声明了不存在的技能要抛错（装配期失败，不许静默缺技能）', async () => {
-    const loader = new SkillLoader(logger, [makeRoot()])
+    const loader = loaderWith([makeRoot()])
     await expect(loader.resolve(['nope'])).rejects.toThrow(/不存在的技能/)
   })
 
@@ -105,9 +116,31 @@ describe('SkillLoader：从配置目录发现技能', () => {
     writeSkill(root, 'a')
     writeSkill(root, 'b')
 
-    const loader = new SkillLoader(logger, [root])
+    const loader = loaderWith([root])
     const resolved = await loader.resolve([ALL_SKILLS])
     expect(resolved.map((skill) => skill.name).sort()).toEqual(['a', 'b'])
+  })
+})
+
+describe('内置技能目录（catalog）：优先级最高 + 严格校验', () => {
+  it('catalog 里的同名技能赢过外部目录', async () => {
+    const catalog = makeRoot()
+    const external = makeRoot()
+    writeSkill(catalog, 'same-name', { description: '内置版本' })
+    writeSkill(external, 'same-name', { description: '外部版本' })
+
+    const loader = new SkillLoader(logger, [external], undefined, catalog)
+    const skills = await loader.list()
+    expect(skills).toHaveLength(1)
+    expect(skills[0]?.description).toBe('内置版本')
+  })
+
+  it('catalog 里的坏技能直接抛错（随包资产坏了就是发版事故）', async () => {
+    const catalog = makeRoot()
+    writeSkill(catalog, 'broken', { description: 'x'.repeat(1100) })
+
+    const loader = new SkillLoader(logger, [], undefined, catalog)
+    await expect(loader.names()).rejects.toThrow(/校验失败/)
   })
 })
 
@@ -119,7 +152,7 @@ describe('交给 Mastra 的技能路径：清单与按需读都能用', () => {
       references: { 'guide.md': '# 指南\n\n这是参考文件。' },
     })
 
-    const loader = new SkillLoader(logger, [root])
+    const loader = loaderWith([root])
     const paths = toMastraSkills(await loader.resolve([ALL_SKILLS]))
     expect(paths).toEqual([join(root, 'demo-skill')])
 

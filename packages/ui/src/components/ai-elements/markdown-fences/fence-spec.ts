@@ -1,3 +1,5 @@
+import { SANDBOX_CDN_HOSTS } from '@repo/shared/browser'
+
 /**
  * 富内容围栏的纯逻辑：xflow 的解析与排版、沙箱文档与 CSP 的组装。
  *
@@ -135,20 +137,29 @@ export const parseXflowSpec = (code: string): XflowParseResult => {
 
 // ── 沙箱文档 ─────────────────────────────────────────────────────────────────
 
+/** CSP host-source 的写法：协议 + 主机，不带路径（`https://registry.npmmirror.com`） */
+const CDN_ORIGINS = SANDBOX_CDN_HOSTS.map((host) => `https://${host}`).join(' ')
+
 /**
  * 沙箱 iframe 的内容安全策略。
  *
- * 关键在 `default-src 'none'` + 只放行内联样式与脚本：模型写的代码可以在框里跑（这是目的），
- * 但**连不出去** —— 外链脚本、fetch、表单提交、嵌套框架全禁，图片只允许 data:/blob:，
- * 所以它没法把页面数据带到外部地址。父页面本身也不给它 `allow-same-origin`，拿不到 cookie。
+ * 底是 `default-src 'none'`：模型写的代码可以在框里跑（这是目的），但**连不出去** ——
+ * `fetch` / XHR / WebSocket、表单提交、嵌套框架全禁，所以它没法把页面数据带到外部地址；
+ * 父页面本身也不给它 `allow-same-origin`，拿不到 cookie 与后台页面的 DOM。
+ *
+ * 唯一的例外是 **CDN 白名单**（`SANDBOX_CDN_HOSTS`）：页面预览要能用第三方库（图表 / 动画 /
+ * 表格 / 图标），只放行这几家的**脚本 / 样式 / 图片 / 字体 / 音视频**这几类子资源。
+ * 口子开得很窄：能"用库画图"，不能"把数据发出去" —— `connect-src` 仍是 `'none'`，
+ * 图片 / 字体也只能来自白名单主机或 `data:` / `blob:`，所以就算库代码有鬼，
+ * 能让它带出去的地方也只有这几家 CDN。
  */
 export const SANDBOX_CSP = [
   "default-src 'none'",
-  "script-src 'unsafe-inline'",
-  "style-src 'unsafe-inline'",
-  "img-src data: blob:",
-  "font-src data:",
-  "media-src data: blob:",
+  `script-src 'unsafe-inline' ${CDN_ORIGINS}`,
+  `style-src 'unsafe-inline' ${CDN_ORIGINS}`,
+  `img-src data: blob: ${CDN_ORIGINS}`,
+  `font-src data: ${CDN_ORIGINS}`,
+  `media-src data: blob: ${CDN_ORIGINS}`,
   "connect-src 'none'",
   "form-action 'none'",
   "frame-src 'none'",

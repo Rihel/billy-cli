@@ -59,7 +59,7 @@
 1. **放目录**：`apps/server/src/modules/ai/core/skills/catalog/<name>/SKILL.md`
    （随包、**严格校验**，坏一个启动失败）；或放到 `AGENT_SKILLS_DIRS` 配的目录（默认 `~/.agents/skills`，
    坏一个只跳过并记 `ai.skills.invalid`）。
-   > 当前仓库里 `core/skills/catalog/` **还不存在**（默认只加载 `~/.agents/skills`）；要随包发技能就先建这个目录。
+   > 内置技能目前有 `catalog/html-page`（写 HTML 页面：单文件 + CDN 三级兜底）；再加一个就是建一个目录 + `SKILL.md`。
 2. **写 frontmatter**：`name`（唯一，缺省用目录名）+ `description`（对象 + 什么时候用 + 触发词，
    **不要超过 1024 字符**，超了会被当成坏技能跳过）。正文写步骤、示例、坑；长内容放 `references/`。
 3. **授权**：agent 声明里 `skills: [ALL_SKILLS]`（默认，全部已加载技能）或写具名数组（写了不存在的名字启动即失败）。

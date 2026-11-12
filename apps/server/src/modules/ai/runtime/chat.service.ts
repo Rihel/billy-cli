@@ -336,6 +336,7 @@ export class AgentChatService {
           definition,
           userId,
           model,
+          { fileAccess: conversation.fileAccess },
         );
         await this.summarize(
           conversation.id,
@@ -385,6 +386,7 @@ export class AgentChatService {
         userId,
         model,
         {
+          fileAccess: conversation.fileAccess,
           systemPrompt: await this.resolveSystemPrompt(
             conversation,
             run.id,
@@ -510,10 +512,21 @@ export class AgentChatService {
     input: AgentChatDto,
   ): Promise<ConversationEntity> {
     if (input.conversationId) {
-      return this.conversations.requireOwned(userId, input.conversationId);
+      const conversation = await this.conversations.requireOwned(
+        userId,
+        input.conversationId,
+      );
+      // 会话级设置随每轮同步（多端一致性）：界面传了就以它为准
+      if (input.fileAccess && conversation.fileAccess !== input.fileAccess) {
+        await this.conversationRepo.setFileAccess(conversation.id, input.fileAccess);
+        conversation.fileAccess = input.fileAccess;
+      }
+      return conversation;
     }
     const created = await this.conversations.create(userId, {
       agentKey: input.agentKey,
+      // 只决定沙箱内的写权限；"要不要沙箱"是部署配置
+      ...(input.fileAccess ? { fileAccess: input.fileAccess } : {}),
     });
     const entity = await this.conversationRepo.findEntity(created.id);
     if (!entity) throw new AgentFailedError('会话创建后立即读取失败');
@@ -1071,6 +1084,7 @@ export class AgentChatService {
             userId,
             model,
             {
+              fileAccess: conversation.fileAccess,
               isAdmin,
             },
           ),
@@ -1156,6 +1170,7 @@ export class AgentChatService {
         model,
         // 中止信号（用户停止要停整棵树）+ 渲染后的系统指令（首轮末尾带运行环境）
         {
+          fileAccess: conversation.fileAccess,
           abortSignal: abort.signal,
           systemPrompt: await this.resolveSystemPrompt(
             conversation,
@@ -1657,6 +1672,7 @@ export class AgentChatService {
         userId,
         model,
         {
+          fileAccess: conversation.fileAccess,
           abortSignal: abort.signal,
           systemPrompt: await this.resolveSystemPrompt(conversation, run.id, definition),
           // 续跑与首轮同一身份口径：admin 的 skill-* 工具不能因为"续跑"而消失
@@ -1929,14 +1945,20 @@ export class AgentChatService {
    * 与其让前端把它存进 localStorage（换设备就丢），不如按**登录用户**在库里找"当前进行中的那一轮"
    * —— 真相在 Postgres，浏览器只是个显示器。
    *
+   * 传了 `conversationId` 就**只在该会话内**找（会话页必须传：否则切到已结束的会话时，
+   * 会把另一个会话正在跑的流接进来）；不传则回退按用户找 —— 兼容还没有会话上下文的旧调用。
+   *
    * 返回 false 表示当前没有进行中的运行 → 控制器回 204（AI SDK 的续传约定，客户端静默收尾）。
    */
   async resumeCurrentRun(
     userId: string,
     offset: number,
     response: StreamResponseLike,
+    conversationId?: string,
   ): Promise<boolean> {
-    const active = await this.runs.findActiveByUser(userId);
+    const active = conversationId
+      ? await this.runs.findActiveByConversation(userId, conversationId)
+      : await this.runs.findActiveByUser(userId);
     if (!active) return false;
     return this.resumeRun(userId, active.id, offset, response);
   }
@@ -2068,6 +2090,8 @@ export class AgentChatService {
       abortSignal?: AbortSignal;
       systemPrompt?: string;
       isAdmin?: boolean;
+      /** 会话选的沙箱文件权限（只读 / 可写）：只影响沙箱内写权限，逃不出沙箱 */
+      fileAccess?: 'read-only' | 'workspace-write';
     } = {},
   ): Promise<RequestContext> {
     const envelope: AgentRuntimeEnvelope = {
@@ -2076,6 +2100,7 @@ export class AgentChatService {
       triggeredBy: userId,
       // 身份由编排层给（控制器从鉴权上下文取）：工具作用域判定用它，**不由模型决定**
       isAdmin: options.isAdmin ?? false,
+      fileAccess: options.fileAccess ?? 'workspace-write',
       depth: 0,
       agentKey: definition.key,
       // 根 agent key：子 agent 沿用父的判定（作用域按它算）

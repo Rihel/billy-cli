@@ -1,6 +1,6 @@
 import 'dotenv/config'
 import { randomBytes } from 'node:crypto'
-import { CommandRunner, Db, setAuditUserProvider } from '@repo/kits'
+import { Db, setAuditUserProvider } from '@repo/kits'
 import { AiProviderKind, RunStatus } from '@repo/shared'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { AiModelEntity } from '../src/database/entities/ai-model-entity.js'
@@ -43,7 +43,7 @@ import {
   type MockModelServer,
   startMockModelServer,
 } from './helpers/mock-model-server.js'
-import { buildToolStackDeps } from './helpers/ai-tool-stack.js'
+import { buildToolStackDeps, makeBashTool } from './helpers/ai-tool-stack.js'
 import { stubAttachments } from './helpers/attachments.js'
 
 /**
@@ -193,7 +193,7 @@ beforeAll(async () => {
   const plannerStore = new PlannerStore(timelines)
   toolRegistry = new ToolRegistry(
     [
-      new BashTool(new CommandRunner(), silentLogger),
+      makeBashTool(silentLogger),
       new WebTools(silentLogger as never),
       new FileTools({} as never, { enabled: true } as never),
       new RunSubAgentTool(runner, silentLogger),

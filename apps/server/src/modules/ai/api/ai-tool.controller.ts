@@ -41,6 +41,17 @@ export class AiToolController {
     return this.tools.update(input)
   }
 
+  /**
+   * 执行环境能力（只读）：沙箱是否可用、部署允许哪些执行环境。
+   *
+   * 与配置分开：这是**探测出来的事实**，页面不能改，只能据此提示或切换。
+   */
+  @Post('workspace')
+  @HttpCode(200)
+  workspace() {
+    return this.tools.workspaceStatus()
+  }
+
   /** 恢复默认（清掉人工覆盖，回到代码声明） */
   @Post('reset')
   @HttpCode(200)

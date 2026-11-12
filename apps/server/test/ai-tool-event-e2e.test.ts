@@ -1,7 +1,7 @@
 import 'dotenv/config'
 import { createServer, type Server } from 'node:http'
 import type { AddressInfo } from 'node:net'
-import { CommandRunner, Db, IdGeneration, RedisStore, setAuditUserProvider } from '@repo/kits'
+import { Db, IdGeneration, RedisStore, setAuditUserProvider } from '@repo/kits'
 import { TimelineKind } from '@repo/shared'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { ConversationEntity } from '../src/database/entities/conversation-entity.js'
@@ -34,7 +34,7 @@ import { ContextService } from '../src/modules/ai/runtime/context.service.js'
 import { RunRepository } from '../src/modules/ai/runtime/run.repository.js'
 import { AgentStreamStore } from '../src/modules/ai/runtime/stream-store.service.js'
 import { TimelineRepository } from '../src/modules/ai/runtime/timeline.repository.js'
-import { buildToolStackDeps } from './helpers/ai-tool-stack.js'
+import { buildToolStackDeps, makeBashTool } from './helpers/ai-tool-stack.js'
 import { stubAttachments } from './helpers/attachments.js'
 import {
   MOCK_EVENT_LINE,
@@ -138,7 +138,7 @@ beforeAll(async () => {
   const plannerStore = new PlannerStore(timelines)
   toolRegistry = new ToolRegistry(
     [
-      new BashTool(new CommandRunner(), silentLogger),
+      makeBashTool(silentLogger),
       new WebTools(silentLogger as never),
       new FileTools({} as never, { enabled: true } as never),
       new RunSubAgentTool(runner, silentLogger),

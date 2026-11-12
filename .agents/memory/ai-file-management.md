@@ -15,6 +15,11 @@
 - HTTP：`POST /agent/file/workspace`、`POST /agent/file/preview`（source ai/workspace）、
   `GET /agent/file/workspace-content`（cookie + Range + inline/attachment）。
 - 提示词：`requirements.eta` 的文件纪律；`html` 围栏 prompt 已退役，组件软保留。
+- **HTML 预览可引 CDN 库**（2026-11-12）：沙箱 CSP 白名单 = `SANDBOX_CDN_HOSTS`（`@repo/shared`）：
+  `registry.npmmirror.com` → `cdn.jsdelivr.net` → `unpkg.com`，只放行脚本 / 样式 / 图片 / 字体，
+  `connect-src 'none'`、表单、框架仍全禁。写法在**内置技能** `catalog/html-page`，提示词只留
+  「写任何 HTML 之前先加载 `html-page`」（无条件段，`.html` 文件与 `html` / `gsap` 围栏都算）+ 白名单三行
+  （细节搬进技能是为了不让它每轮付 token）。
 
 ## 坑
 
@@ -27,8 +32,10 @@
 
 - `docs/design/ai-file-manager.md`（§3 / §6 / §8 / §15）
 - `apps/server/src/modules/ai/files/**`、`apps/server/src/modules/ai/core/tools/workspace.ts`
-- 核对：`pnpm --filter @app/server test test/ai-file-service.test.ts test/ai-tools-battery.test.ts`
+- 核对：`pnpm --filter @app/server test test/ai-file-service.test.ts test/ai-tools-battery.test.ts`；
+  CDN 白名单：`grep -rn "SANDBOX_CDN_HOSTS" packages/shared/src packages/ui/src apps/server/test`
 
 ## 失效信号
 
-- 表结构 / key 公式 / workspace 布局 / 工具 key 改动；多副本 workspace 策略改动；桶改私有。
+- 表结构 / key 公式 / workspace 布局 / 工具 key 改动；多副本 workspace 策略改动；桶改私有；
+  CDN 白名单（`SANDBOX_CDN_HOSTS`）改动时提示词与两个包的测试要跟着改。

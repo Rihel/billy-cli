@@ -1,5 +1,5 @@
 import 'dotenv/config'
-import { CommandRunner, Db, setAuditUserProvider } from '@repo/kits'
+import { Db, setAuditUserProvider } from '@repo/kits'
 import { RunStatus, TimelineKind, TimelineRole } from '@repo/shared'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { ConversationEntity } from '../src/database/entities/conversation-entity.js'
@@ -34,7 +34,7 @@ import { ConversationRepository } from '../src/modules/ai/runtime/conversation.r
 import { ContextService } from '../src/modules/ai/runtime/context.service.js'
 import { RunRepository } from '../src/modules/ai/runtime/run.repository.js'
 import { TimelineRepository } from '../src/modules/ai/runtime/timeline.repository.js'
-import { buildToolStackDeps } from './helpers/ai-tool-stack.js'
+import { buildToolStackDeps, makeBashTool } from './helpers/ai-tool-stack.js'
 import { stubAttachments } from './helpers/attachments.js'
 import {
   MOCK_CHILD_TEXT,
@@ -565,7 +565,7 @@ describe('子 agent（core bean + 运行期动态创建）', () => {
         { runSubAgent: async () => ({ status: 'succeeded' }) } as never,
         silentLogger,
       ),
-      new BashTool(new CommandRunner(), silentLogger),
+      makeBashTool(silentLogger),
       new WebTools(silentLogger as never),
       new FileTools({} as never, { enabled: true } as never),
     ])
@@ -613,7 +613,7 @@ describe('子 agent（core bean + 运行期动态创建）', () => {
         { runSubAgent: async () => ({ status: 'succeeded' }) } as never,
         silentLogger,
       ),
-      new BashTool(new CommandRunner(), silentLogger),
+      makeBashTool(silentLogger),
       new WebTools(silentLogger as never),
       new FileTools({} as never, { enabled: true } as never),
     ])
@@ -1010,7 +1010,7 @@ const buildStack = async () => {
   toolRegistry = new ToolRegistry(
     [
       // 命令执行：与 `ai.module.ts` 的装配口径一致（assistant 已授权 bash）
-      new BashTool(new CommandRunner(), silentLogger),
+      makeBashTool(silentLogger),
       new WebTools(silentLogger as never),
       new FileTools({} as never, { enabled: true } as never),
       new RunSubAgentTool(runner, silentLogger),

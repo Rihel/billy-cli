@@ -1313,9 +1313,13 @@ AI SDK 的 `data-sub-agent` part，和主内容走同一条 SSE：
 
 首轮注入的 `# 运行环境`（`partials/environment.eta`）跟在最后，也算一段。
 
-#### 3.15.3 安全边界（**如实记录，不假装这是沙箱**）
+#### 3.15.3 安全边界（**由执行环境决定，如实记录**）
 
-命令以**服务进程的身份与权限**运行 —— 能读写该身份能读写的一切。本轮的取舍是"把可控的部分做死"：
+命令在哪个环境执行由**工作区运行时**决定（见 [`workspace-runtime.md`](workspace-runtime.md)）：
+默认 `enforce` —— 命令只能在 OS 沙箱里跑（只能访问本会话工作区），**沙箱不可用就拒绝执行**，
+不会退回宿主进程；会话页只能选沙箱内的只读 / 可写。只有部署显式设 `AGENT_WORKSPACE_MODE=off`
+（自托管单租户）才以**服务进程的身份与权限**运行。实际环境随 `bash` 出参的 `runtime` / `mode` 返回。
+`local` 下的取舍仍是"把可控的部分做死"：
 
 | 控制点 | 落法 |
 | --- | --- |
@@ -1327,7 +1331,8 @@ AI SDK 的 `data-sub-agent` part，和主内容走同一条 SSE：
 | 审计 | 完整入参出参落时间线（`tool-call` / `tool-result`，不裁剪）+ 每次执行一条 `ai.command.executed` info 日志 |
 | 已知差异 | 中文 Windows 的 `cmd.exe` 输出按 UTF-8 解码可能乱码 —— **如实暴露**（乱码在 stdout 里看得见），不静默转码猜测 |
 
-要做强隔离（不可信用户 + 对外服务）得把执行放进容器 / 沙箱，那是另一件事，本模块不假装做到。
+沙箱实现见 [`workspace-runtime.md`](workspace-runtime.md)：macOS `sandbox-exec`、Linux `bubblewrap`；
+探测不到就**拒绝执行**（fail closed）。多租户 SaaS 需要容器级隔离（L2），本模块的端口已留好。
 
 #### 3.15.4 运行环境注入（操作系统 + 当前时间）
 
@@ -2195,8 +2200,10 @@ AI SDK v6 的续传是**两层 API**（不是同一方法的两个名字）：
 并且**禁止在组件 unmount / 路由 cleanup 里调 stop**（那会把正在跑的生成掐掉）。
 
 **续流为什么必须暴露成 GET（两处 GET 例外）**：AI SDK 的 `reconnectToStream` **固定发 GET**，
-所以"按 run 续流"（`GET /agent/run/:runId/stream?offset=N`）与"不知道 runId 时按登录用户续流"
-（`GET /agent/run/stream?offset=N`，服务端在库里找当前进行中的那一轮，没有就 204）都只能是 GET。
+所以"按 run 续流"（`GET /agent/run/:runId/stream?offset=N`）与"不知道 runId 时按登录用户 + 会话续流"
+（`GET /agent/run/stream?offset=N&conversationId=X`，服务端**只在该会话内**找当前进行中的那一轮，
+没有就 204）都只能是 GET。**`conversationId` 不能省**：只按用户跨会话找，会把另一个会话正在跑的
+流接进当前页面（串流）；新会话页还没有真实 id，传占位段 `new`（永不匹配任何 run → 204）。
 
 ⚠️ **踩过的坑**：`useChat({ resume: true })` 挂载时**一定会**发一次续流 GET。若 `prepareReconnectToStreamRequest`
 在拿不到 runId 时退回建流地址（`/agent/chat/stream`，POST-only），浏览器就会对建流路由发 GET → **404**。

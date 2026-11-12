@@ -47,7 +47,8 @@ description: 在 Billy 工程中开发前端页面：Admin 后台页（@repo/ui 
     `null` = 未声明（提醒但不拦）、`[]` / 只有 `text` = 明确不支持（拦下并说清）。
 
   - **富内容围栏**在 `components/ai-elements/markdown-fences/`：`xflow`（JSON → React Flow，画布按需加载）、
-    `html` / `gsap`（沙箱 iframe，`sandbox="allow-scripts"` 不带 same-origin + 文档内 CSP 禁网）；
+    `html` / `gsap`（沙箱 iframe，`sandbox="allow-scripts"` 不带 same-origin；文档内 CSP 只放行内联脚本 /
+    样式与 **CDN 白名单**（`SANDBOX_CDN_HOSTS`，`@repo/shared`），`fetch` / 表单 / 框架仍全禁）；
     注册表是 `markdownFenceRenderers`，`message.tsx` 已接进 Streamdown 的 `plugins.renderers`。
     加一种新围栏 = 写组件 + 注册 + 改 `requirements.eta`；围栏**没闭合时只渲染占位**（靠 `MessageResponse`
     的 `isAnimating`），别为了"看起来实时"改成每个 token 重渲染 —— iframe 会反复重跑脚本、图会来回跳。
@@ -59,6 +60,39 @@ description: 在 Billy 工程中开发前端页面：Admin 后台页（@repo/ui 
 
   这些组件**不读 `message.parts`** —— 状态由调用方从 part 里取出来当 props 传（映射写法见
   `apps/web/src/app/ai/chat/page.tsx`）。
+
+## Next API 层（route handler）—— 统一用 Hono
+
+两个 Next 应用（web / admin）的接口层**都走 Hono**，按
+[官方 Next.js 集成](https://hono.dev/docs/getting-started/nextjs)的方式：**一条 catch-all + `@hono/vercel`**。
+
+```
+src/app/api/[[...route]]/route.ts   # 唯一入口：export const GET = handle(app) …
+src/api/app.ts                      # new Hono().basePath('/api') + 全局中间件 + 挂载能力
+src/api/<能力>.ts                   # 能力路由：只声明自己的路径
+```
+
+```ts
+// src/api/app.ts
+export const app = new Hono().basePath('/api')
+app.use('*', secureHeaders({ referrerPolicy: 'no-referrer', removePoweredBy: true }))
+app.route('/s', shareRoutes)
+
+// src/app/api/[[...route]]/route.ts
+import { handle } from '@hono/vercel'
+export const runtime = 'nodejs'
+export const GET = handle(app)
+```
+
+- 用 **`@hono/vercel`**（官方 starter 装的包），不是随 Hono 分发的 `hono/vercel`（已 deprecated，v5 移除）；
+- **catch-all 只能放 `/api` 下**：页面若占着 `/s/[token]`，catch-all 放 `/s` 会抢同一段动态路由；
+- basePath 与安全头集中在 `api/app.ts`，能力模块不重复写；新增能力 = 加一个模块 + 一行 `app.route()`；
+- 业务留在 Hono 里，单测直接 `app.request(new Request(...))`，不用起 Next。
+
+参考实现：`apps/web/src/api/share.ts`（分享内容转发：Range 透传、内联白名单、安全头），
+完整背景见 `docs/design/file-share.md` §6.3。
+
+> 暂时没有 route handler 的应用**不要预先造空文件** —— 依赖装上，第一条接口出现时按上面结构写。
 
 ## 弹窗表单回填（硬性）—— 走 `ModalForm` 的 `values`
 
@@ -172,6 +206,7 @@ pnpm check:ui    # 守卫四条：组件导出 / 前端包 typecheck 脚本 / �
 - [ ] 表单用 `ModalForm` / `DrawerForm` 声明式 items（@tanstack/react-form），onSubmit 写在 `useForm` 里
 - [ ] 字典列用 `DictTag` / `getLabel`；时间用 `DisplayValue`；文件用 `formatStorageUrl`
 - [ ] Server Actions 统一走 `defineAction`（`@repo/ui/action`，两个前端同一套 `{ ok }` 结果约定）
+- [ ] Next 侧接口走 Hono：`app/api/[[...route]]/route.ts` 只 `handle(app)`，业务在 `src/api/*`
 - [ ] admin 新页面已登记 `AppMenu.tsx` 菜单
 - [ ] 需要登录态的前台页：已加进 `apps/web/src/proxy.ts` 的 `matcher`（真实 307）+ layout 做 SSR 会话校验 + `?next=` 经 `lib/redirect.ts` 过滤
 - [ ] 用到上传 / toast / Query：确认 `<Toaster />` 与存储 Provider（web `WebStorageProvider` / admin `AppProviders`）已装配

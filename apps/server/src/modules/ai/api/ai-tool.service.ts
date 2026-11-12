@@ -1,7 +1,12 @@
 import { Inject, Injectable } from '@nestjs/common'
-import { AppLogger, type PageQueryResult } from '@repo/kits'
+import { AppLogger, WorkspaceRuntimeService, type PageQueryResult } from '@repo/kits'
 import { ToolCategory } from '@repo/shared'
-import type { AiToolListDto, AiToolModel, AiToolUpdateDto } from '@repo/shared'
+import type {
+  AiToolListDto,
+  AiToolModel,
+  AiToolUpdateDto,
+  AiToolWorkspaceStatusModel,
+} from '@repo/shared'
 import type { AgentRegistry } from '../agents/types.js'
 import { AGENT_REGISTRY } from '../agents/registry.js'
 import { RUNTIME_TOOLS } from '../core/tools/tool-keys.js'
@@ -35,7 +40,27 @@ export class AiToolService {
     @Inject(AGENT_REGISTRY) private readonly agents: AgentRegistry,
     @Inject(AppLogger) private readonly logger: AppLogger,
     @Inject(ToolConfigService) private readonly toolConfig: ToolConfigService,
+    @Inject(WorkspaceRuntimeService) private readonly workspace: WorkspaceRuntimeService,
   ) {}
+
+  /**
+   * 当前部署的**执行环境能力**（只读）：管理页据此展示"沙箱是否可用 + 原因"，
+   * 并决定切换为非沙箱时要不要提示"命令会被拒绝"。
+   */
+  async workspaceStatus(): Promise<AiToolWorkspaceStatusModel> {
+    const status = await this.workspace.status()
+    return {
+      mode: status.mode,
+      fileAccessOptions: status.fileAccessOptions,
+      sandbox: {
+        available: status.sandbox.available,
+        ...(status.sandbox.impl ? { impl: status.sandbox.impl } : {}),
+        ...(status.sandbox.reason
+          ? { code: status.sandbox.reason.code, message: status.sandbox.reason.message }
+          : {}),
+      },
+    }
+  }
 
   /** 列表：注册工具（带配置）+ runtime 工具（只读），支持关键字 / 类别 / 开关 / 来源筛选 */
   async list(query: AiToolListDto): Promise<PageQueryResult<AiToolModel>> {

@@ -37,6 +37,9 @@ const makeRoot = (): string => {
   return root
 }
 
+/** 不存在的内置技能目录：这里验的是技能库语义，不能被随包发布的 `catalog/` 干扰 */
+const NO_CATALOG = join(tmpdir(), 'billy-no-catalog')
+
 afterAll(() => {
   for (const root of roots) rmSync(root, { recursive: true, force: true })
 })
@@ -165,7 +168,7 @@ describe('SkillLoader：技能库目录 + reload', () => {
     writeExternalSkill(external, 'demo', '外部版本')
     writeExternalSkill(library, 'demo', '库版本')
 
-    const loader = new SkillLoader(logger, [external], library)
+    const loader = new SkillLoader(logger, [external], library, NO_CATALOG)
     const skills = await loader.list()
     expect(skills).toHaveLength(1)
     // 库目录排在外部目录前面：后台里启用的技能赢

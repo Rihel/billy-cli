@@ -22,6 +22,7 @@ import {
   StreamHubModule,
   EventBusModule,
   TelemetryModule,
+  WorkspaceModule,
 } from '@repo/kits'
 import {
   AppExceptionFilter,
@@ -38,6 +39,7 @@ import { AiModelEntity } from './database/entities/ai-model-entity.js'
 import { AiConnectorEntity } from './database/entities/ai-connector-entity.js'
 import { AiToolEntity } from './database/entities/ai-tool-entity.js'
 import { AiFileEntity } from './database/entities/ai-file-entity.js'
+import { FileShareEntity } from './database/entities/file-share-entity.js'
 import { AiSkillEntity } from './database/entities/ai-skill-entity.js'
 import { AiSkillFileEntity } from './database/entities/ai-skill-file-entity.js'
 import { AiProviderEntity } from './database/entities/ai-provider-entity.js'
@@ -58,6 +60,7 @@ import { AuthModule } from './modules/auth/index.js'
 import { MonitorEngine, MonitorModule } from './modules/monitor/index.js'
 import { OpsModule } from './modules/ops/index.js'
 import { SessionModule } from './modules/session/index.js'
+import { ShareModule } from './modules/share/index.js'
 import { RuntimeConfigModule } from './modules/runtime-config/index.js'
 import { StorageModule } from './modules/storage/index.js'
 import { StreamModule } from './modules/stream/index.js'
@@ -92,6 +95,12 @@ import { UserModule } from './modules/user/index.js'
     TelemetryModule,
     SchedulerModule,
     CommandModule,
+    // ---- 工作区运行时：执行环境（沙箱 / 非沙箱）的选择与探测 ----
+    WorkspaceModule.forRootAsync({
+      imports: [ConfigModule],
+      inject: [ConfigService],
+      useFactory: (config: ConfigService) => config.get('workspace')!,
+    }),
     // ---- 基础设施：配置由 ConfigService 惰性解析 ----
     LoggerModule.forRootAsync({
       imports: [ConfigModule],
@@ -128,6 +137,8 @@ import { UserModule } from './modules/user/index.js'
           AiSkillFileEntity,
           // 会话文件（用户上传 + AI 提交；见 docs/design/ai-file-manager.md §3）
           AiFileEntity,
+          // 文件分享（只存 token 哈希 + 过期时间；见 docs/design/file-share.md §4）
+          FileShareEntity,
         ],
         // 审计订阅者：给继承 AuditEntity 的实体自动写 created_by / updated_by / deleted_by
         // （操作人由 main.ts 的 setAuditUserProvider 提供）
@@ -196,6 +207,8 @@ import { UserModule } from './modules/user/index.js'
     StorageModule,
     StreamModule,
     SessionModule,
+    // 文件分享（免授权链接：列表页生成 / 分享页访问；见 docs/design/file-share.md）
+    ShareModule,
     MonitorModule,
     RuntimeConfigModule,
   ],

@@ -9,7 +9,7 @@
 - 路径交给 `Agent({ skills: [<绝对路径>] })` 后，由 Mastra 的 `LocalSkillSource` / `WorkspaceSkills`
   负责：清单（名字 + 描述）作为 system message 注入，正文与参考文件由 `skill` / `skill_read` 工具按需读
   （渐进披露）。
-- 目录 = `core/skills/catalog/`（随部署打包，**坏技能 = 启动失败**）+ `AgentConfig.skillsDirs`
+- 目录 = `core/skills/catalog/`（随部署打包，**坏技能 = 启动失败**；现有内置 `html-page`）+ `AgentConfig.skillsDirs`
   （默认 `~/.agents/skills`，`AGENT_SKILLS_DIRS` 逗号分隔；**坏一个只跳过 + 错误日志**，重名前面赢）。
 - `skills: ['*']`（`ALL_SKILLS`）在**装配期展开成真实名字**，所以 `/agent/list` 与
   `runs.request_snapshot.skillKeys` 里是具体技能名。
@@ -30,11 +30,14 @@
 - Mastra 校验只对 name（≤64）/ description（≤1024）/ compatibility（≤500）硬拦；
   正文 5000 token / 500 行只是**警告**，不拦启动。
 - 别把外部目录的坏技能做成启动失败：第三方技能库一个 typo 能让整个服务起不来（这正是"分级严格"的原因）。
+- **加内置技能会改 `names()`**：loader 单测要传 `SKILL_CATALOG_DIR` 指向一个不存在的目录做隔离，
+  否则每加一个随包技能，那些精确断言都得跟着改（2026-11-12 加 `html-page` 时踩到）。
 - **有清单 ≠ 会主动用**（2026-11-11 `eb01isgg2q4h53vh9aqs`）：技能名 + 描述已注入 system message，但提示词只写"怎么建技能"，模型直接写普通 HTML；直到用户说"用给你的 skill"才调 `skill`。`requirements.eta` 必须明确"先扫、匹配就加载"，`ai-prompt-guardrails` 已钉住。
 
 ## 依据
 
 - `skill.loader.ts`（发现 / 校验 / `SKILL_DIRS`）、`skill.adapter.ts`（`SkillRef[] → 目录路径[]`）
 - `apps/server/src/modules/ai/agents/index.ts`（`ALL_SKILLS` 装配期展开）、`ai.module.ts`（`SKILL_DIRS` 供给）
-- `apps/server/test/ai-skills-loader.test.ts`（含"路径交给 `resolveAgentSkills` 后能列表并读到 references"）
+- `apps/server/test/ai-skills-loader.test.ts`（含"路径交给 `resolveAgentSkills` 后能列表并读到 references"）、
+  `apps/server/test/ai-builtin-skills.test.ts`（内置技能正文与 CDN 白名单一致）
 - `docs/design/ai-agent.md` §1.4、`docs/dev-logs/2026-10-27.md`

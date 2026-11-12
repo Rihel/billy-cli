@@ -75,7 +75,7 @@ agent 声明里 `skills: ['*']` 在**每次运行**现算，所以新建 / 停�
 设计见 `docs/design/ai-skill-library.md`，落点与坑见 memory `ai-skill-library`。
 
 随包 / 外部目录的技能仍是"启动时扫名单、正文 Mastra 按需读盘"；改名单要重启。
-注意：`core/skills/catalog/` 目前**不存在**。
+内置技能目前有 `catalog/html-page`（写 HTML 页面：单文件 + 三级 CDN 兜底）。
 
 ## 6. 子 agent（动态创建，不是静态声明）
 

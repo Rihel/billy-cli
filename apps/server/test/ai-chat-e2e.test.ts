@@ -1,5 +1,5 @@
 import 'dotenv/config'
-import { CommandRunner, Db, describePlatform, resolveShell, setAuditUserProvider } from '@repo/kits'
+import { Db, describePlatform, resolveShell, setAuditUserProvider } from '@repo/kits'
 import { AppErrorCodes, RunStatus, TimelineKind, TimelineRole } from '@repo/shared'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { ConversationEntity } from '../src/database/entities/conversation-entity.js'
@@ -33,7 +33,7 @@ import { toMastraTools } from '../src/modules/ai/mastra/tool.adapter.js'
 import { ReadToolResultTool } from '../src/modules/ai/tools/read-tool-result.tool.js'
 import { ToolGateway } from '../src/modules/ai/core/tools/tool.gateway.js'
 import { ToolRegistry } from '../src/modules/ai/core/tools/tool.registry.js'
-import { buildToolStackDeps } from './helpers/ai-tool-stack.js'
+import { buildToolStackDeps, makeBashTool } from './helpers/ai-tool-stack.js'
 import { STUB_IMAGE_BYTES, stubAttachments } from './helpers/attachments.js'
 import { AgentConversationService } from '../src/modules/ai/runtime/conversation.service.js'
 import { ConversationRepository } from '../src/modules/ai/runtime/conversation.repository.js'
@@ -171,7 +171,7 @@ beforeAll(async () => {
   const plannerStore = new PlannerStore(timelines)
   toolRegistry = new ToolRegistry(
     [
-      new BashTool(new CommandRunner(), silentLogger),
+      makeBashTool(silentLogger),
       new WebTools(silentLogger as never),
       new FileTools({} as never, { enabled: true } as never),
       new RunSubAgentTool(runner, silentLogger),

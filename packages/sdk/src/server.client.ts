@@ -39,6 +39,7 @@ import {
   AiToolListDto,
   AiToolModel,
   AiToolUpdateDto,
+  AiToolWorkspaceStatusModel,
   AdminAuthResultModel,
   AdminLoginDto,
   AdminModel,
@@ -49,12 +50,16 @@ import {
   AuthUserModel,
   ChangePasswordDto,
   CreateAdminDto,
+  CreateShareDto,
+  CreateShareModel,
   CreateUserDto,
   ForgotPasswordDto,
   GetAdminDetailDto,
   GetStorageDownloadUrlDto,
   GetStorageUploadPresignedUrlDto,
   GetUserDetailDto,
+  ListShareDto,
+  ListShareModel,
   LoginDto,
   PageQueryAdminDto,
   PageQueryUserDto,
@@ -65,6 +70,7 @@ import {
   ResetAdminPasswordDto,
   ResetPasswordDto,
   ResetUserPasswordDto,
+  RevokeShareDto,
   SessionListModel,
   StoragePresignedUrlModel,
   StorageStsModel,
@@ -107,6 +113,7 @@ import {
   AgentFileWorkspaceLinkDto,
   AgentFilePreviewModel,
   AgentWorkspaceListModel,
+  AgentConversationFileAccessDto,
   AgentConversationRenameDto,
   AgentInstructionsDto,
   AgentInstructionsModel,
@@ -311,6 +318,21 @@ export class ServerClient extends HttpClient<BearerTokenCredentials> {
       this.post<SuccessResultModel>('/user/reset-password', data),
   }
 
+  /* ========== 文件分享 ========== */
+
+  share = {
+    /** 生成分享链接：返回的 token / url **只此一次**（库里只存哈希） */
+    create: (data: CreateShareDto) =>
+      this.post<CreateShareModel>('/share/create', data),
+
+    /** 某个文件的历史分享（不含 token） */
+    list: (data: ListShareDto) =>
+      this.post<ListShareModel>('/share/list', data),
+
+    revoke: (data: RevokeShareDto) =>
+      this.post<SuccessResultModel>('/share/revoke', data),
+  }
+
   /* ========== 存储 ========== */
 
   storage = {
@@ -432,6 +454,10 @@ export class ServerClient extends HttpClient<BearerTokenCredentials> {
       rename: (data: AgentConversationRenameDto) =>
         this.post<AgentConversationModel>('/agent/conversation/rename', data),
 
+      /** 切换会话的文件权限（只读 / 可写）：只影响沙箱内的写权限 */
+      setFileAccess: (data: AgentConversationFileAccessDto) =>
+        this.post<AgentConversationModel>('/agent/conversation/file-access', data),
+
       /** 软删会话（唯一的删除入口；运行记录与时间线不提供删除） */
       remove: (data: AgentConversationIdDto) =>
         this.post<SuccessResultModel>('/agent/conversation/remove', data),
@@ -533,12 +559,17 @@ export class ServerClient extends HttpClient<BearerTokenCredentials> {
       `${this.agentBaseUrl}${agentResumeStreamPath(runId)}?offset=${offset}`,
 
     /**
-     * GET 续流地址（**不知道 runId 时用**）：服务端按登录用户找当前进行中的那一轮，
+     * GET 续流地址（**不知道 runId 时用**）：服务端按登录用户 + 指定会话找当前进行中的那一轮，
      * 没有就回 204。`useChat({ resume: true })` 挂载时该用它 —— 刷新 / 换设备都能接回，
      * 且不会在"没有进行中的流"时打到只收 POST 的建流路由（那会 404）。
+     *
+     * **务必传 `conversationId`**：不传则服务端只按用户跨会话找最近一条，切到已结束的会话
+     * 会接上别的会话正在跑的流（串流）。新会话页传占位段 `new`，永不匹配任何 run。
      */
-    currentRunStreamUrl: (offset = 0): string =>
-      `${this.agentBaseUrl}/agent/run/stream?offset=${offset}`,
+    currentRunStreamUrl: (offset = 0, conversationId?: string): string =>
+      `${this.agentBaseUrl}/agent/run/stream?offset=${offset}${
+        conversationId ? `&conversationId=${encodeURIComponent(conversationId)}` : ''
+      }`,
 
     /**
      * 当前凭证的鉴权头（给 AI SDK transport 用）。
@@ -631,6 +662,9 @@ export class ServerClient extends HttpClient<BearerTokenCredentials> {
 
     /** 恢复默认（清掉人工覆盖与已配秘钥，回到代码声明） */
     reset: (data: AiToolKeyDto) => this.post<AiToolModel>('/ai-tool/reset', data),
+
+    /** 执行环境能力（只读）：沙箱是否可用、部署允许哪些执行环境 */
+    workspace: () => this.post<AiToolWorkspaceStatusModel>('/ai-tool/workspace', {}),
   }
 
   /* ========== 技能库（后台管理） ========== */

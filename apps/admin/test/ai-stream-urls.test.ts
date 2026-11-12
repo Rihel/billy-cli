@@ -35,6 +35,18 @@ describe('AI 流地址', () => {
     )
   })
 
+  it('重连带 conversationId：只在当前会话内找活动 run（防串流）', () => {
+    expect(client.agent.currentRunStreamUrl(0, 'conv_1')).toBe(
+      'http://server.test/agent/run/stream?offset=0&conversationId=conv_1',
+    )
+    // 特殊字符要转义，避免拼出坏参数
+    expect(client.agent.currentRunStreamUrl(3, 'a b&c')).toBe(
+      'http://server.test/agent/run/stream?offset=3&conversationId=a%20b%26c',
+    )
+    // 不传时保持旧口径（兼容没有会话上下文的调用）
+    expect(client.agent.currentRunStreamUrl(0)).toBe('http://server.test/agent/run/stream?offset=0')
+  })
+
   it('重连（知道 runId）走 GET /agent/run/:runId/stream，offset 透传', () => {
     expect(client.agent.resumeStreamUrl('run_1', 7)).toBe(
       'http://server.test/agent/run/run_1/stream?offset=7',

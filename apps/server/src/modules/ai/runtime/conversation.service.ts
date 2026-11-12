@@ -5,6 +5,7 @@ import {
   TimelineKind,
   TimelineRole,
   type AgentConversationCreateDto,
+  type AgentConversationFileAccessDto,
   type AgentConversationIdDto,
   type AgentConversationListDto,
   type AgentConversationModel,
@@ -52,6 +53,8 @@ export class AgentConversationService {
       userId,
       agentKey: definition.key,
       title: input.title ?? '',
+      // 只决定沙箱内的写权限；"要不要沙箱"是部署配置
+      fileAccess: input.fileAccess ?? 'workspace-write',
       lastActiveAt: new Date(),
     })
     this.logger.log('ai.conversation.created', {
@@ -121,6 +124,43 @@ export class AgentConversationService {
       operator: userId,
     })
     conversation.title = input.title
+    return toConversationModel(conversation)
+  }
+
+  /**
+   * 切换会话的**文件权限**（只读 / 可写）。
+   *
+   * 与重命名同一口径：改变用户可见状态的动作都留一条时间线，审计页看得到。
+   * 它只影响沙箱内的写权限，**不能改变"要不要沙箱"** —— 那是部署配置。
+   */
+  async setFileAccess(
+    userId: string,
+    input: AgentConversationFileAccessDto,
+  ): Promise<AgentConversationModel> {
+    const conversation = await this.requireOwned(userId, input.conversationId)
+    if (conversation.fileAccess === input.fileAccess) {
+      return toConversationModel(conversation)
+    }
+    await this.conversations.setFileAccess(input.conversationId, input.fileAccess)
+    await this.timelines.append({
+      conversationId: input.conversationId,
+      role: TimelineRole.System,
+      kind: TimelineKind.Status,
+      payload: {
+        reason: 'conversation_file_access_changed',
+        from: conversation.fileAccess,
+        to: input.fileAccess,
+        operator: userId,
+      },
+      finishedAt: new Date(),
+    })
+    this.logger.log('ai.conversation.file_access_changed', {
+      conversationId: input.conversationId,
+      from: conversation.fileAccess,
+      to: input.fileAccess,
+      operator: userId,
+    })
+    conversation.fileAccess = input.fileAccess
     return toConversationModel(conversation)
   }
 

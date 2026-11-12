@@ -1,8 +1,7 @@
+import { SANDBOX_CDN_HOSTS } from '@repo/shared'
 import { describe, expect, it } from 'vitest'
-import { CommandRunner } from '@repo/kits'
-import { BashTool } from '../src/modules/ai/tools/bash.tool.js'
 import { TOOL_KEYS } from '../src/modules/ai/core/tools/tool-keys.js'
-import { specByKey } from './helpers/ai-tool-stack.js'
+import { makeBashTool, specByKey } from './helpers/ai-tool-stack.js'
 import { createPromptEngine } from '../src/modules/ai/core/prompts/index.js'
 import { DEFAULT_AGENT_KEY, createAgentDefinitions } from '../src/modules/ai/agents/index.js'
 
@@ -31,11 +30,11 @@ const assistantPrompt = (): string => {
  */
 const bashDescription = (): string => {
   // 改造后工具组交的是**声明**（装饰器元数据 → `buildToolSpecs()`），说明文本就在声明上
-  const group = new BashTool(new CommandRunner(), {
+  const group = makeBashTool({
     info: () => undefined,
     warn: () => undefined,
     error: () => undefined,
-  } as never)
+  })
   return specByKey(group, TOOL_KEYS.bash).description
 }
 
@@ -109,6 +108,41 @@ describe('提示词纪律句（执行命令 / 能力边界 / 宽泛任务）', (
 
   it('宽泛任务先动手：不要把"能查的"也推回给用户', () => {
     expect(prompt).toContain('任务宽泛 / 意图不明时**先动手**')
+  })
+
+  /**
+   * 页面预览的**第三方库**（2026-11-12）：写法搬进了内置技能 `html-page`，
+   * 提示词只留「先加载技能 + 白名单」两件事 —— 细节每轮都付 token 不划算。
+   *
+   * 这里守的是**指针不许断**：技能名写错 / 漏了白名单，模型就会在没有依据的情况下写页面，
+   * 而且页面空白时看不出是 CSP 拦的还是自己写错了。
+   */
+  it('页面预览：先加载 html-page 技能，并把 CDN 白名单写在提示词里', () => {
+    const prompt = assistantPrompt()
+    expect(prompt).toContain('`html-page`')
+    expect(prompt).toContain('先加载')
+    for (const host of SANDBOX_CDN_HOSTS) {
+      expect(prompt).toContain(host)
+    }
+    // 白名单之外的域名要明确说加载不出来，否则模型会乱引 Google Fonts / cdnjs
+    expect(prompt).toContain('一律加载不出来')
+    // 具体写法在技能里，提示词里不该再重复（重复就是每轮白付一份 token）
+    expect(prompt).not.toContain('document.write')
+  })
+
+  /**
+   * 用户口径（2026-11-12）：**只要是写 HTML 都要先看这个技能** —— 不只是 `.html` 文件预览，
+   * 聊天里的 `html` / `gsap` 围栏、页面里的 HTML / SVG 片段同样算。
+   *
+   * 所以这句话必须放在**无条件段**（「技能」段），不能塞在 `file-submit` 的 if 里：
+   * 子 agent 没有文件工具，但也可能写围栏。
+   */
+  it('写 HTML 一律先加载 html-page：没有文件工具的 agent 也看得到这句', () => {
+    const partial = createPromptEngine().renderPartial('partials/requirements', { tools: [] })
+    expect(partial).toContain('`html-page`')
+    expect(partial).toContain('写任何 HTML 之前先加载')
+    expect(partial).toContain('`html` 围栏')
+    expect(partial).toContain('`gsap` 动画围栏')
   })
 
   /**

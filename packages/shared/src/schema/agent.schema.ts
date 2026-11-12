@@ -247,6 +247,14 @@ export const AgentFilePreviewSchema = z.object({
 export type AgentFilePreviewModel = z.infer<typeof AgentFilePreviewSchema>
 
 /** 会话（对外模型） */
+/**
+ * 会话的**文件权限**：只读 / 可写（与 kits 的 `WORKSPACE_FILE_ACCESS` 同值）。
+ *
+ * 只影响沙箱内能不能写工作区；"要不要沙箱"是部署配置，用户选不到（web 产品的安全底线）。
+ */
+export const AgentFileAccessSchema = z.enum(['read-only', 'workspace-write'])
+export type AgentFileAccess = z.infer<typeof AgentFileAccessSchema>
+
 export const AgentConversationSchema = z.object({
   id: z.string(),
   /** 创建时用的 agent key（会话可换 agent，以每次运行为准） */
@@ -254,6 +262,12 @@ export const AgentConversationSchema = z.object({
   title: z.string(),
   /** 状态：见 ConversationStatus 字典 */
   status: z.string(),
+  /**
+   * 这个会话的**文件权限**：`workspace-write`（默认）/ `read-only`。
+   *
+   * 会话级设置（会话页顶部切换），随每一轮进运行时信封；**不能借此逃出沙箱**。
+   */
+  fileAccess: AgentFileAccessSchema,
   /** 轮数（一次问答算一轮） */
   turnCount: z.number().int().nonnegative(),
   /**
@@ -283,6 +297,8 @@ export const AgentConversationCreateSchema = z.object({
   agentKey: z.string().min(1).max(64).optional(),
   /** 会话标题；省略则由首条消息生成 */
   title: z.string().max(200).optional(),
+  /** 文件权限；省略用默认值（可写） */
+  fileAccess: AgentFileAccessSchema.optional(),
 })
 
 export type AgentConversationCreateDto = z.infer<typeof AgentConversationCreateSchema>
@@ -315,6 +331,15 @@ export const AgentConversationRenameSchema = AgentConversationIdSchema.extend({
 })
 
 export type AgentConversationRenameDto = z.infer<typeof AgentConversationRenameSchema>
+
+/** 切换会话文件权限（`POST /agent/conversation/file-access`） */
+export const AgentConversationFileAccessSchema = AgentConversationIdSchema.extend({
+  fileAccess: AgentFileAccessSchema,
+})
+
+export type AgentConversationFileAccessDto = z.infer<
+  typeof AgentConversationFileAccessSchema
+>
 
 /**
  * 系统指令查询入参（`POST /agent/instructions`）。
@@ -558,6 +583,13 @@ export const AgentChatSchema = z
      * 不做"静默回落" —— 用户明确选了 A 却跑了 B 是最坏的体验。
      */
     modelId: z.string().min(1).max(32).optional(),
+    /**
+     * 本会话的文件权限（`read-only` / `workspace-write`）。
+     *
+     * 新会话据此建；已有会话传了就以它为准（顺手把会话上的值同步成它）。
+     * 省略 = 沿用会话上已存的（新会话则是默认 `workspace-write`）。
+     */
+    fileAccess: AgentFileAccessSchema.optional(),
     /**
      * 本轮用户输入。
      *

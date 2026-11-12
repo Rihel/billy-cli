@@ -20,6 +20,7 @@ import {
   DictSelect,
   IconText,
   PromptInputAttachmentsBar,
+  SegmentedControl,
   Sheet,
   SheetContent,
   SheetHeader,
@@ -56,7 +57,7 @@ import { BotIcon, CopyIcon, LayoutDashboardIcon, MessagesSquareIcon, PanelRightI
 import { Pages } from '@/lib/constants'
 import { useServerClient } from '@/lib/server-client'
 import { useChatMobileNav } from './mobile-nav-context'
-import { markAdoptedConversation } from './routes'
+import { markAdoptedConversation, NEW_CONVERSATION_SLUG } from './routes'
 import { ModelPicker } from './model-picker'
 import { ChatMessage } from './message-row'
 import {
@@ -171,6 +172,14 @@ export function ChatConversation({ conversationId }: { conversationId: string })
   const isNew = isNewConversation(conversationId)
 
   const [modelId, setModelId] = useState<string>()
+  /**
+   * 本会话的**文件权限**（沙箱内的只读 / 可写）。
+   *
+   * 它决定不了"要不要沙箱"——那是部署配置；会话页只让用户在沙箱里选能不能写工作区。
+   */
+  const [fileAccess, setFileAccess] = useState<'read-only' | 'workspace-write'>(
+    'workspace-write',
+  )
   /** 选模型：写进浏览器，别只留在 state 里（见 `MODEL_STORAGE_PREFIX` 的说明） */
   const chooseModel = (next: string) => {
     setModelId(next)
@@ -302,14 +311,36 @@ export function ChatConversation({ conversationId }: { conversationId: string })
   })
   const agentKey = agentKeyOverride ?? conversationQuery.data?.agentKey
 
+  /** 打开已有会话时，文件权限以服务端为准 */
+  useEffect(() => {
+    const stored = conversationQuery.data?.fileAccess
+    if (stored) setFileAccess(stored)
+  }, [conversationQuery.data?.fileAccess])
+
+  /**
+   * 切换文件权限：已有会话立刻落库（要留审计），新会话先记在 state，随首条消息带过去。
+   */
+  const chooseFileAccess = (next: string) => {
+    const value = next === 'read-only' ? 'read-only' : 'workspace-write'
+    setFileAccess(value)
+    const target = activeConversationIdRef.current
+    if (!target) return
+    void client.agent.conversation
+      .setFileAccess({ conversationId: target, fileAccess: value })
+      .then(() => queryClient.invalidateQueries({ queryKey: ['ai', 'conversation', target] }))
+      .catch(() => toastError('切换文件权限失败，请重试'))
+  }
+
   /**
    * transport 要**稳定引用**（每次渲染新建会让 useChat 反复重建内部状态）。
    * 它只依赖 client，会话 id / agentKey 走 ref 取最新值。
    */
   const agentKeyRef = useRef<string | undefined>(undefined)
   const modelIdRef = useRef<string | undefined>(undefined)
+  const fileAccessRef = useRef<'read-only' | 'workspace-write'>('workspace-write')
   agentKeyRef.current = agentKey ?? undefined
   modelIdRef.current = modelId
+  fileAccessRef.current = fileAccess
 
   /**
    * 开关状态用 effect 读回（而不是 `useState` 的惰性初值）：SSR 时读不到 localStorage，
@@ -405,6 +436,8 @@ export function ChatConversation({ conversationId }: { conversationId: string })
               ...(agentKeyRef.current ? { agentKey: agentKeyRef.current } : {}),
               // 这一轮用哪个模型（后台配过且启用的）：服务端会校验，不可用直接报错，**不静默回落**
               ...(modelIdRef.current ? { modelId: modelIdRef.current } : {}),
+              // 会话的文件权限（沙箱内只读 / 可写）；新会话据此建，已有会话顺带同步
+              fileAccess: fileAccessRef.current,
               message,
               ...(attachments.length > 0 ? { attachments } : {}),
             },
@@ -415,11 +448,18 @@ export function ChatConversation({ conversationId }: { conversationId: string })
          *
          * AI SDK 的 `reconnectToStream` 固定发 GET，而建流端点是 POST-only ——
          * 这里如果退回建流地址，浏览器就会对 `POST /agent/chat/stream` 发一次 GET，**404**
-         * （踩过的坑）。所以用"按登录用户找当前进行中那一轮"的端点：
+         * （踩过的坑）。所以用"在当前会话里找进行中那一轮"的端点：
          * 有在跑的流就补发接回，没有就 204，SDK 静默收尾。
+         *
+         * **必须带上当前会话 id**：不带的话服务端只按登录用户跨会话找最近一条，
+         * 切到已跑完的会话 B 时会把会话 A 正在跑的那一轮接进来（串流）。
+         * 新会话页还没有真实 id，传占位段 `new` —— 永不匹配任何 run → 204，不接别人的流。
          */
         prepareReconnectToStreamRequest: () => ({
-          api: client.agent.currentRunStreamUrl(),
+          api: client.agent.currentRunStreamUrl(
+            0,
+            activeConversationIdRef.current ?? NEW_CONVERSATION_SLUG,
+          ),
         }),
       }),
     [client],
@@ -544,6 +584,29 @@ export function ChatConversation({ conversationId }: { conversationId: string })
 
   // 续跑也算"在跑"：它不走 `useChat` 的发送通道，`status` 不会自己变成 streaming
   const streaming = status === 'streaming' || status === 'submitted' || resuming
+
+  /**
+   * **开跑即刷一次会话列表**：让侧栏「运行中」呼吸灯立刻亮。
+   *
+   * 列表本身是**条件轮询**（只有缓存里已有 `item.running` 才每 5s 拉一次），而它的失效
+   * 原先只有「新会话 id 首次出现」与「一轮跑完」两处 —— **已有会话开第 2 轮时两头都不触发**：
+   * 列表不重取，条件轮询又因缓存里没有 running 的项而不会自启，`running` 一直停在 false。
+   *
+   * 触发条件是 `status === 'streaming'`（或续跑），**不含 `submitted`**：点发送时服务端可能
+   * 还没建好 run 行，抢跑会查到 `running=false`，这一轮就白刷了（ref 已去重，不会补第二次）。
+   * 每轮只失效一次；熄灭仍由下面「跑完对账」负责。
+   */
+  const startedRunning = status === 'streaming' || resuming
+  const startInvalidated = useRef(false)
+  useEffect(() => {
+    if (!startedRunning) {
+      startInvalidated.current = false
+      return
+    }
+    if (startInvalidated.current) return
+    startInvalidated.current = true
+    void queryClient.invalidateQueries({ queryKey: ['ai', 'conversations'] })
+  }, [startedRunning, queryClient])
 
   /**
    * 服务端还在跑、但本地流已经断了（典型：回答挂起问题后续跑流断开 / 页面被切走又回来）
@@ -1139,6 +1202,21 @@ export function ChatConversation({ conversationId }: { conversationId: string })
                 <PromptInputFooter className="flex-wrap gap-2 sm:flex-nowrap">
                   <PromptInputTools>
                     <ModelPicker value={modelId} onChange={chooseModel} disabled={streaming} />
+                    <span
+                      className="shrink-0"
+                      title="沙箱内的文件权限：可写 = 能改本会话工作区；只读 = 不能改（临时目录除外）。能不能出沙箱由部署决定，用户选不到"
+                    >
+                      <SegmentedControl
+                        size="sm"
+                        value={fileAccess}
+                        options={[
+                          { value: 'workspace-write', label: '可写' },
+                          { value: 'read-only', label: '只读' },
+                        ]}
+                        onValueChange={chooseFileAccess}
+                        disabled={streaming}
+                      />
+                    </span>
                     {/* 点击上传的入口：粘贴之外总得有"点一下选文件"这条路 */}
                     <PromptInputAttachmentButton
                       disabled={streaming || !attachmentsAllowed}

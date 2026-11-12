@@ -1,6 +1,5 @@
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
-import { CommandRunner } from '@repo/kits'
 import { describe, expect, it } from 'vitest'
 import {
   TOOL_CALL_REASON_DESCRIPTION,
@@ -20,7 +19,7 @@ import { ToolGateway } from '../src/modules/ai/core/tools/tool.gateway.js'
 import { ToolRegistry } from '../src/modules/ai/core/tools/tool.registry.js'
 import { TOOL_KEYS } from '../src/modules/ai/core/tools/tool-keys.js'
 import type { ToolEnvCaps, ToolSpec } from '../src/modules/ai/core/tools/tools.types.js'
-import { buildToolStackDeps, silentLogger } from './helpers/ai-tool-stack.js'
+import { buildToolStackDeps, makeBashTool, silentLogger } from './helpers/ai-tool-stack.js'
 
 /**
  * **注册机标准测试集**（设计 §5.9）：对注册机里的**每一个**工具跑同一组断言。
@@ -44,7 +43,7 @@ const buildRegistry = () => {
   const store = new PlannerStore(timelinesLike as never)
   const groups = [
     new PlannerTools(store),
-    new BashTool(new CommandRunner(), silentLogger as never),
+    makeBashTool(silentLogger as never),
     new RunSubAgentTool(runnerLike as never, silentLogger as never),
     new ReadToolResultTool(deps.results, deps.counter, deps.caps),
     new WebTools(silentLogger as never),
@@ -226,7 +225,7 @@ describe('注册机标准测试集（对每个注册工具）', () => {
   it('装配期校验：重复 key 直接失败；工具池不能为空（一个 key 只能有一个提供者）', () => {
     const { deps } = buildRegistry()
     const gateway = new ToolGateway(deps.config, silentLogger as never, [], deps.clock)
-    const dup = new BashTool(new CommandRunner(), silentLogger as never)
+    const dup = makeBashTool(silentLogger as never)
     expect(() => new ToolRegistry([dup, dup], gateway, deps.config)).toThrowError(/工具 key 重复/)
     // 工具池不能为空 —— 否则 agent 连"能干什么"都没有
     expect(() => new ToolRegistry([], gateway, deps.config)).toThrowError(/工具池不能为空/)

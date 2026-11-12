@@ -44,7 +44,7 @@ describe('沙箱围栏', () => {
     expect(container.querySelector('iframe')).toBeNull()
   })
 
-  it('闭合后进沙箱：不带 same-origin、文档里带禁网 CSP', async () => {
+  it('闭合后进沙箱：不带 same-origin、文档里带沙箱 CSP', async () => {
     const { container } = render(<HtmlFence code={'<div id="demo">你好</div>'} isIncomplete={false} language="html" />)
 
     const frame = container.querySelector('iframe')

@@ -1,7 +1,7 @@
 import { mkdtemp, rm, stat } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { CommandRunner } from '@repo/kits'
+import { CommandRunner, WorkspaceConfigSchema, WorkspaceRuntimeService } from '@repo/kits'
 import { describe, expect, it } from 'vitest'
 import { BashTool } from '../../src/modules/ai/tools/bash.tool.js'
 import { TOOL_KEYS } from '../../src/modules/ai/core/tools/tool-keys.js'
@@ -17,10 +17,22 @@ import {
  * `bash` 的单测（策略的完整矩阵见 `test/ai-command-core.test.ts`；
  * 这份文件是标准测试集要求的"每个工具一个测试文件"，覆盖**工具本体**）。
  */
+/**
+ * 测试固定用**不做隔离**的执行路径（`mode: 'off'`）：这份文件验证的是工具本体
+ * （工作区、边界、分页、审计），隔离语义在 `@repo/kits` 的 `workspace.test.ts` 里钉死。
+ */
+const buildRuntime = () =>
+  new WorkspaceRuntimeService(
+    WorkspaceConfigSchema.parse({ mode: 'off' }),
+    new CommandRunner(),
+    silentLogger as never,
+    async () => ({ available: false, probedAt: new Date().toISOString() }),
+  )
+
 const build = (caps = TEST_TOOL_ENV_CAPS) => {
   const deps = buildToolStackDeps({ caps })
   const spec = specByKey(
-    new BashTool(new CommandRunner(), silentLogger as never, caps),
+    new BashTool(buildRuntime(), silentLogger as never, caps),
     TOOL_KEYS.bash,
   )
   return { deps, spec }
@@ -74,7 +86,7 @@ describe('bash（执行命令行命令）', () => {
     const temp = await mkdtemp(join(tmpdir(), 'billy-command-root-'))
     const root = join(temp, 'agent-workspace')
     try {
-      const tool = new BashTool(new CommandRunner(), silentLogger as never, {
+      const tool = new BashTool(buildRuntime(), silentLogger as never, {
         ...TEST_TOOL_ENV_CAPS,
         command: {
           ...TEST_TOOL_ENV_CAPS.command!,
@@ -112,5 +124,115 @@ describe('bash（执行命令行命令）', () => {
     const { spec } = build()
     expect(spec.delegation).toBeUndefined()
     expect(spec.child ?? 'allow').toBe('allow')
+  })
+})
+
+/**
+ * 执行环境：**默认沙箱、会话只能选只读/可写、隔离不可用就拒绝执行**。
+ *
+ * 这里用假 runner，避免依赖 CI 机器上真的有 sandbox-exec / bwrap；
+ * 隔离语义本身在 `@repo/kits` 的 `workspace.test.ts` 里钉死，这份只验"工具把信封里的权限传对了"。
+ */
+describe('bash（执行环境）', () => {
+  const resultOf = (command: string) => ({
+    ok: true,
+    command,
+    shell: '/bin/sh',
+    cwd: '/tmp',
+    exitCode: 0,
+    stdout: 'ok',
+    stderr: '',
+    timedOut: false,
+    aborted: false,
+    truncated: false,
+    durationMs: 1,
+  })
+
+  const runtimeWith = (options: {
+    mode?: 'enforce' | 'off'
+    available?: boolean
+  }) => {
+    const commands: string[] = []
+    const runner = {
+      run: async (input: { command: string }) => {
+        commands.push(input.command)
+        return resultOf(input.command)
+      },
+    }
+    const config = WorkspaceConfigSchema.parse({
+      mode: options.mode ?? 'enforce',
+      sandboxNetwork: 'deny',
+    })
+    const runtime = new WorkspaceRuntimeService(
+      config,
+      runner as never,
+      silentLogger as never,
+      async () => ({
+        available: options.available ?? true,
+        ...(options.available === false
+          ? { reason: { code: 'platform-unsupported' as const, message: '没有沙箱' } }
+          : { impl: 'seatbelt' as const, binary: '/usr/bin/sandbox-exec' }),
+        probedAt: new Date().toISOString(),
+      }),
+    )
+    return { runtime, commands }
+  }
+
+  const exec = async (
+    runtime: WorkspaceRuntimeService,
+    fileAccess?: 'read-only' | 'workspace-write',
+  ) => {
+    const deps = buildToolStackDeps({ caps: capsWithRoot(tmpdir()) })
+    const spec = specByKey(new BashTool(runtime, silentLogger as never, capsWithRoot(tmpdir())), TOOL_KEYS.bash)
+    const settings = await deps.config.settings(spec)
+    const ctx = makeToolContext({
+      spec,
+      settings,
+      envelope: {
+        conversationId: 'conv-test',
+        parentRunId: 'run-test',
+        triggeredBy: 'user-test',
+        ...(fileAccess ? { fileAccess } : {}),
+      },
+    })
+    return (await spec.exec({ command: 'echo hi' }, ctx as never)) as {
+      ok: boolean
+      runtime: string
+      mode: string
+      reason?: string
+      command: string
+    }
+  }
+
+  it('默认走沙箱（会话没选就是可写）：命令行被包装，出参标 sandbox', async () => {
+    const { runtime, commands } = runtimeWith({})
+    const result = await exec(runtime)
+    expect(result.runtime).toBe('sandbox')
+    expect(result.mode).toBe('workspace-write')
+    expect(result.command).toBe('echo hi')
+    expect(commands[0]).toContain('sandbox-exec')
+  })
+
+  it('会话选只读：仍在沙箱里跑，模式是 read-only', async () => {
+    const { runtime } = runtimeWith({})
+    const result = await exec(runtime, 'read-only')
+    expect(result.runtime).toBe('sandbox')
+    expect(result.mode).toBe('read-only')
+  })
+
+  it('隔离不可用：**拒绝执行**（不退回宿主进程）', async () => {
+    const { runtime, commands } = runtimeWith({ available: false })
+    const result = await exec(runtime)
+    expect(result.ok).toBe(false)
+    expect(result.reason).toContain('没有沙箱')
+    expect(commands).toEqual([])
+  })
+
+  it('部署显式 mode=off：以宿主进程执行，并如实标注', async () => {
+    const { runtime, commands } = runtimeWith({ mode: 'off', available: false })
+    const result = await exec(runtime)
+    expect(result.runtime).toBe('local')
+    expect(result.mode).toBe('danger-full-access')
+    expect(commands).toEqual(['echo hi'])
   })
 })

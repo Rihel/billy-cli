@@ -62,6 +62,16 @@ export default function AiToolsPage() {
 
   const refetch = toolsQuery.refetch
 
+  /**
+   * 执行环境能力（只读）：沙箱在这台部署上到底可不可用。
+   * 只查一次（进程级事实，不会因为页面操作而变），随表单传给配置面板。
+   */
+  const workspaceQuery = useQuery({
+    queryKey: ['aiTool', 'workspace'],
+    queryFn: () => client.aiTool.workspace(),
+    staleTime: 5 * 60 * 1000,
+  })
+
   const updateMutation = useMutation({
     mutationFn: (input: AiToolUpdateDto) => client.aiTool.update(input),
   })
@@ -185,6 +195,7 @@ export default function AiToolsPage() {
 
       <ToolFormModal
         tool={editDialog.data ?? null}
+        workspaceStatus={workspaceQuery.data}
         open={editDialog.isOpen}
         saving={updateMutation.isPending || resetMutation.isPending}
         onSave={handleSave}

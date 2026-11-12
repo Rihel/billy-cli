@@ -2,7 +2,8 @@
 
 import dedent from 'dedent'
 import { Button, Input, Switch } from '@repo/ui'
-import { RotateCcwIcon } from 'lucide-react'
+import type { AiToolWorkspaceStatusModel } from '@repo/shared'
+import { RotateCcwIcon, TriangleAlertIcon } from 'lucide-react'
 
 /**
  * 工具专属配置面板（**一期按工具手写**）。
@@ -30,6 +31,11 @@ export type ToolConfigPanelProps = {
   config: Record<string, unknown>
   /** 代码默认值（`spec.config.parse({})`） */
   defaults: Record<string, unknown>
+  /**
+   * 当前部署的执行环境能力（只读，服务端探测）：
+   * 用来告诉管理员"沙箱在这台机器上到底可不可用"，而不是让他配完才发现跑不了。
+   */
+  workspaceStatus?: AiToolWorkspaceStatusModel
   /** 改一个配置项 */
   onChange: (key: string, value: unknown) => void
 }
@@ -201,11 +207,59 @@ const ConfigFieldRow = ({
   )
 }
 
+const IMPL_LABEL: Record<string, string> = {
+  seatbelt: 'macOS seatbelt',
+  bwrap: 'Linux bubblewrap',
+}
+
+/**
+ * 隔离能力提示：**只读**，来自服务端探测。
+ *
+ * Web 产品里"要不要沙箱"是部署决定，不是用户偏好 —— 这里只把事实说清楚：
+ * 沙箱可用、不可用（命令会被拒绝）、还是部署已显式关闭隔离（仅自托管）。
+ */
+const WorkspaceCapabilityNote = ({ status }: { status: AiToolWorkspaceStatusModel }) => {
+  const impl = status.sandbox.impl
+    ? (IMPL_LABEL[status.sandbox.impl] ?? status.sandbox.impl)
+    : ''
+  if (status.mode === 'off') {
+    return (
+      <div className="flex flex-col gap-1 rounded-md border border-border/60 bg-surface-2 p-3">
+        <div className="flex items-center gap-1.5 text-xs text-warning">
+          <TriangleAlertIcon className="size-3.5 shrink-0" />
+          当前部署已关闭命令隔离（仅自托管）：命令以服务进程身份执行，能读写该身份能读写的一切
+        </div>
+      </div>
+    )
+  }
+  return (
+    <div className="flex flex-col gap-1 rounded-md border border-border/60 bg-surface-2 p-3">
+      <div className="text-xs text-muted-foreground">
+        当前部署：
+        {status.sandbox.available
+          ? `沙箱可用${impl ? `（${impl}）` : ''}`
+          : `沙箱不可用${status.sandbox.message ? `：${status.sandbox.message}` : ''}`}
+      </div>
+      {status.sandbox.available ? null : (
+        <div className="flex items-center gap-1.5 text-xs text-warning">
+          <TriangleAlertIcon className="size-3.5 shrink-0" />
+          命令会被拒绝执行（不会退回宿主）；请部署方提供隔离环境，或显式设
+          AGENT_WORKSPACE_MODE=off（仅自托管）
+        </div>
+      )}
+      <div className="text-xs text-muted-foreground">
+        会话页只能选择沙箱内的「只读 / 可写」，选不到"出沙箱"
+      </div>
+    </div>
+  )
+}
+
 /** 工具专属配置面板（没有可配项时只给一句话） */
 export function ToolConfigPanel({
   toolKey,
   config,
   defaults,
+  workspaceStatus,
   onChange,
 }: ToolConfigPanelProps) {
   const fields = fieldsOf(toolKey, defaults)
@@ -218,6 +272,9 @@ export function ToolConfigPanel({
   }
   return (
     <div className="flex flex-col gap-4">
+      {toolKey === 'bash' && workspaceStatus ? (
+        <WorkspaceCapabilityNote status={workspaceStatus} />
+      ) : null}
       {fields.map((spec) => (
         <ConfigFieldRow
           key={spec.key}

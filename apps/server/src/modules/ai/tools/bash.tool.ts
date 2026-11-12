@@ -3,7 +3,11 @@ import { isAbsolute, relative, resolve } from 'node:path'
 import dedent from 'dedent'
 import { Inject, Injectable, Optional, type OnApplicationBootstrap } from '@nestjs/common'
 import { z } from 'zod'
-import { AppLogger, CommandRunner, type CommandResult } from '@repo/kits'
+import {
+  AppLogger,
+  WorkspaceRuntimeService,
+  type WorkspaceExecResult,
+} from '@repo/kits'
 import { ToolDecl, ToolGroup } from '../core/tools/tool.decorator.js'
 import { TOOL_KEYS } from '../core/tools/tool-keys.js'
 import { TOOL_ENV_CAPS } from '../core/tools/tool.config.ports.js'
@@ -60,12 +64,15 @@ interface CommandEnvelopeLike {
   conversationId?: string
   parentRunId?: string
   triggeredBy?: string | null
+  /** 会话的文件权限（只读 / 可写）；缺省按可写处理 */
+  fileAccess?: 'read-only' | 'workspace-write'
 }
 
 /**
  * **命令执行工具组**：一个组一个类，**组内一个方法一个工具**（设计 §5.2）。
  *
- * - 机制在基础设施统一入口（`@repo/kits` 的 `CommandRunner`，底层 execa），本类只写**业务动作**；
+ * - 机制在基础设施统一入口（`@repo/kits` 的 `WorkspaceRuntimeService` → `CommandRunner` / 沙箱包装），
+ *   本类只写**业务动作**；
  * - 依赖走构造器注入（`CommandRunner` / `AppLogger`）—— 与业务代码同一条 IoC 链路；
  * - 开关判断、目录边界、时长夹紧分别是声明里的 `precheck` / `normalize` 钩子（网关按声明调用），
  *   于是"同一类判断"在工程里只有一份实现，新工具不会漏写。
@@ -84,7 +91,7 @@ interface CommandEnvelopeLike {
 })
 export class BashTool implements OnApplicationBootstrap {
   constructor(
-    @Inject(CommandRunner) private readonly runner: CommandRunner,
+    @Inject(WorkspaceRuntimeService) private readonly runtime: WorkspaceRuntimeService,
     @Inject(AppLogger) private readonly logger: AppLogger,
     /**
      * 部署边界（env）：只用来在启动时拿到 `AGENT_COMMAND_WORK_DIR`。
@@ -134,8 +141,10 @@ export class BashTool implements OnApplicationBootstrap {
       什么时候不用：能直接回答的、要用户拍板的、需要持续输入的。
 
       **不要读平台源码、配置、密钥、环境变量或数据库**：不属于用户任务。
-      **默认关闭**（未显式设 \`AGENT_COMMAND_ENABLED=true\` 时返回"已被关闭"）；
-      命令以服务进程权限执行，**不是沙箱**。
+      **默认关闭**（未显式设 \`AGENT_COMMAND_ENABLED=true\` 时返回"已被关闭"）。
+
+      执行环境：命令在**沙箱**里跑，只能访问本会话工作区（会话页可切"只读 / 可写"）；
+      沙箱不可用时会**拒绝执行**，实际以出参 \`runtime\` 为准。
 
       约束：命令要**幂等**；输出用管道 \`head\` / \`grep\` 收窄。
     `,
@@ -143,7 +152,7 @@ export class BashTool implements OnApplicationBootstrap {
   async execute(
     input: z.infer<typeof BashParams>,
     ctx: ToolCallContext<BashConfigValue>,
-  ): Promise<CommandResult> {
+  ): Promise<WorkspaceExecResult> {
     const envelope = (ctx.envelope as CommandEnvelopeLike | null) ?? null
     const conversationId = envelope?.conversationId ?? ctx.caller?.conversationId
     // 每个会话一个 workspace：根目录被删掉就（重新）建出来，避免每条命令都因 cwd 不存在失败。
@@ -156,9 +165,13 @@ export class BashTool implements OnApplicationBootstrap {
       allowMissing: true,
     })
     await mkdir(target, { recursive: true })
-    const result = await this.runner.run({
+    const result = await this.runtime.exec({
       command: input.command,
       cwd: target,
+      // 沙箱允许写的是**整个会话工作区**，不是命令的 cwd（cwd 可以是它的子目录）
+      workspaceRoot: workDir,
+      // 会话页选的文件权限（只读 / 可写）；逃不出沙箱
+      fileAccess: envelope?.fileAccess ?? 'workspace-write',
       // 配置里的时长既是**默认值**也是**硬上限**（normalize 已按 env 夹过）
       timeoutMs: Math.min(
         input.timeout_ms ?? ctx.settings.config.timeoutMs,
@@ -181,6 +194,8 @@ export class BashTool implements OnApplicationBootstrap {
       aborted: result.aborted,
       truncated: result.truncated,
       durationMs: result.durationMs,
+      runtime: result.runtime,
+      mode: result.mode,
     })
 
     // 出参**原样返回**（运行时会把完整出参落时间线，不裁剪；分页只改给模型的那一份）
@@ -195,6 +210,8 @@ export class BashTool implements OnApplicationBootstrap {
    */
   normalizeConfig(config: BashConfigValue, caps: ToolEnvCaps): BashConfigValue {
     return {
+      // 其余配置项原样保留：这里是"夹紧"，不是"瘦身"
+      ...config,
       enabled: config.enabled && (caps.command?.enabled ?? true),
       timeoutMs: Math.min(config.timeoutMs, caps.command?.timeoutMsMax ?? config.timeoutMs),
       maxOutputBytes: Math.min(

@@ -7,7 +7,7 @@
 
 ### 1.1 现状
 
-- 技能只以**磁盘目录**的形式存在：随部署打包的 `core/skills/catalog/`（当前为空）+
+- 技能只以**磁盘目录**的形式存在：随部署打包的 `core/skills/catalog/`（现有内置技能 `html-page`）+
   `AgentConfig.skillsDirs`（默认 `~/.agents/skills`）。
 - `SkillLoader` 只做三件事：扫目录、启动期校验、按名字给出目录绝对路径；正文与 `references/`
   交给 Mastra 按需读盘。

@@ -85,7 +85,8 @@ const readTheme = (): SandboxTheme => {
  *
  * 三条边界：
  * 1. `sandbox="allow-scripts"`（**不带** `allow-same-origin`）—— 不透明源，读不到父页面 DOM / cookie / storage；
- * 2. 文档内 CSP `default-src 'none'` —— 连不出去（外链脚本、fetch、表单、嵌套框架全禁）；
+ * 2. 文档内 CSP `default-src 'none'` —— 连不出去（fetch、表单、嵌套框架全禁）；
+ *    唯一例外是 CDN 白名单上的脚本 / 样式 / 图片 / 字体（页面预览要能引第三方库，见 `fence-spec.ts` 的 `SANDBOX_CSP`）；
  * 3. 高度由框内 `ResizeObserver` 回报，父页面只认自己这个 iframe 发的消息。
  */
 export const SandboxFrame = ({

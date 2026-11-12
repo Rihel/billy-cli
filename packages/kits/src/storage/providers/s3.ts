@@ -84,7 +84,7 @@ export const makeS3Provider = (
         ),
       } satisfies StoragePresignedUrlModel
     },
-    async getDownloadUrl({ key, filename }) {
+    async getDownloadUrl({ key, filename, expiresIn }) {
       const disposition = attachmentDisposition(filename)
       return {
         key,
@@ -95,7 +95,7 @@ export const makeS3Provider = (
             Key: key,
             ...(disposition ? { ResponseContentDisposition: disposition } : {}),
           }),
-          { expiresIn: 3600 },
+          { expiresIn: expiresIn ?? 3600 },
         ),
       } satisfies StoragePresignedUrlModel
     },

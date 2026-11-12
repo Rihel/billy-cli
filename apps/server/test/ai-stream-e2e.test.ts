@@ -1,7 +1,7 @@
 import 'dotenv/config'
 import { createServer, type Server } from 'node:http'
 import type { AddressInfo } from 'node:net'
-import { CommandRunner, Db, IdGeneration, RedisStore, setAuditUserProvider } from '@repo/kits'
+import { Db, IdGeneration, RedisStore, setAuditUserProvider } from '@repo/kits'
 import { RunStatus, TimelineKind, TimelineRole } from '@repo/shared'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { ConversationEntity } from '../src/database/entities/conversation-entity.js'
@@ -48,7 +48,7 @@ import {
   type MockModelServer,
   startMockModelServer,
 } from './helpers/mock-model-server.js'
-import { buildToolStackDeps } from './helpers/ai-tool-stack.js'
+import { buildToolStackDeps, makeBashTool } from './helpers/ai-tool-stack.js'
 import { STUB_IMAGE_BYTES, stubAttachments } from './helpers/attachments.js'
 
 /**
@@ -241,7 +241,7 @@ beforeAll(async () => {
   const plannerStore = new PlannerStore(timelines)
   toolRegistry = new ToolRegistry(
     [
-      new BashTool(new CommandRunner(), silentLogger),
+      makeBashTool(silentLogger),
       new RunSubAgentTool(runner, silentLogger),
       new PlannerTools(plannerStore),
       new ReadToolResultTool(deps.results, deps.counter, deps.caps),
@@ -643,6 +643,74 @@ describe('流式链路端到端（mock 模型 + 真实 DB + 真实 Redis）', ()
   }, 30_000)
 
   /**
+   * 串流回归（用户反馈）：会话 A 正在跑，切到已跑完的会话 B —— B 不能接上 A 的流。
+   *
+   * 旧实现只按「登录用户」跨会话找最近一条活动 run，任意会话页挂载都会接回别的会话；
+   * 现在按 `conversationId` 收窄：B 没有活动 run → false（控制器回 204），A 仍能接回。
+   */
+  it('按会话隔离续流：A 在跑时打开 B 不串流，回到 A 仍能接回', async () => {
+    const runningConversation = await conversations.create(USER, {})
+    const idleConversation = await conversations.create(USER, {})
+    createdConversationIds.push(runningConversation.id, idleConversation.id)
+
+    const run = await runs.create({
+      conversationId: runningConversation.id,
+      agentKey: DEFAULT_AGENT_KEY,
+      status: RunStatus.Running,
+      triggeredBy: USER,
+    })
+    await streamStore.startRun(run.id, { status: RunStatus.Running, stage: 'generating' })
+    await streamStore.appendChunk(run.id, {
+      type: 'data-run',
+      data: {
+        runId: run.id,
+        conversationId: runningConversation.id,
+        agentKey: DEFAULT_AGENT_KEY,
+      },
+    })
+    await streamStore.appendChunk(run.id, { type: 'text-delta', id: 't1', delta: 'A 的正文' })
+    await streamStore.appendChunk(run.id, { type: STREAM_END_MARKER })
+
+    // 当前看的是 B：没有活动 run，一帧都不该发（AI SDK 收到 204 静默收尾）
+    const idleFrames: string[] = []
+    const none = await chat.resumeCurrentRun(
+      USER,
+      0,
+      {
+        writeHead: () => undefined,
+        write: (chunk: string) => idleFrames.push(chunk),
+        end: () => undefined,
+        writableEnded: false,
+        on: () => undefined,
+      },
+      idleConversation.id,
+    )
+    expect(none).toBe(false)
+    expect(idleFrames).toHaveLength(0)
+
+    // 回到 A：仍能接回自己那一轮
+    const frames: string[] = []
+    const resumed = await chat.resumeCurrentRun(
+      USER,
+      0,
+      {
+        writeHead: () => undefined,
+        flushHeaders: () => undefined,
+        write: (chunk: string) => frames.push(chunk),
+        end: () => undefined,
+        writableEnded: false,
+        on: () => undefined,
+      },
+      runningConversation.id,
+    )
+    expect(resumed).toBe(true)
+    expect(frames.join('')).toContain('A 的正文')
+
+    await runs.finish(run.id, { status: RunStatus.Interrupted })
+    await streamStore.clearRun(run.id)
+  }, 30_000)
+
+  /**
    * 崩溃重启后旧进程没来得及删 Redis 进度（TTL 6h），而 Postgres 里这一轮已经被
    * 启动清理标成 `interrupted`。重连必须以 **Postgres 终态**为准返回 false，
    * 否则客户端会"接回"一条永远没有新片段的死流。
@@ -714,8 +782,12 @@ describe('流式链路端到端（mock 模型 + 真实 DB + 真实 Redis）', ()
     expect(withImage.length).toBeGreaterThanOrEqual(1)
 
     // 2) 库里只落元数据：**不含 base64**（审计表不被内容撑变形）
-    const conversation = await conversations.list(USER, { page: 1, size: 1, includeDeleted: false })
-    const conversationId = conversation.items[0].id
+    //
+    // 会话 id 必须从本轮流里取，不能拿"会话列表首项"猜：列表按 `lastActiveAt DESC` 排序，
+    // 整份跑时前面的用例不断累积会话，首项可能是别人的会话 → 查不到本轮的 user 时间线行
+    // （顺序依赖，单跑能过、整份跑偶发挂）。`data-run` 块里的 id 是本轮唯一确定的句柄。
+    const conversationId = conversationIdOfSse(text)!
+    expect(conversationId).toBeTruthy()
     createdConversationIds.push(conversationId)
     const rows = await db.dataSource.query<{ payload: Record<string, unknown> }[]>(
       'SELECT payload FROM timelines WHERE conversation_id = $1 AND role = $2',

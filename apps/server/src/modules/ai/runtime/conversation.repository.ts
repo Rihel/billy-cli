@@ -19,6 +19,7 @@ export const toConversationModel = (
   agentKey: record.agentKey,
   title: record.title,
   status: record.status,
+  fileAccess: record.fileAccess === 'read-only' ? 'read-only' : 'workspace-write',
   turnCount: record.turnCount,
   totalTokens: Number(record.totalTokens),
   running,
@@ -132,5 +133,14 @@ export class ConversationRepository {
   async setTitle(id: string, title: string): Promise<void> {
     const repo = await this.repo()
     await repo.update({ id }, { title })
+  }
+
+  /** 改会话的文件权限（只读 / 可写）：只影响沙箱内的写权限 */
+  async setFileAccess(
+    id: string,
+    fileAccess: 'read-only' | 'workspace-write',
+  ): Promise<void> {
+    const repo = await this.repo()
+    await repo.update({ id }, { fileAccess })
   }
 }

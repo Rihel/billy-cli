@@ -1,4 +1,5 @@
 import { isAbsolute, join, relative, resolve } from 'node:path'
+import { isTextExtension } from '@repo/shared'
 import { homedir } from 'node:os'
 import { realpath, stat } from 'node:fs/promises'
 import { ToolDeniedError } from './tools.types.js'
@@ -126,12 +127,7 @@ export const displayName = (value: string): string => {
   return (last || '未命名文件').slice(0, 255)
 }
 
-const TEXT_EXTENSIONS = new Set([
-  'txt', 'md', 'markdown', 'csv', 'tsv', 'json', 'jsonl', 'yaml', 'yml', 'xml',
-  'html', 'htm', 'log', 'sql', 'ini', 'conf', 'toml', 'properties', 'sh', 'bash',
-  'py', 'ts', 'tsx', 'js', 'jsx', 'java', 'go', 'rs', 'rb', 'php', 'c', 'h',
-  'cpp', 'hpp', 'css', 'scss', 'less', 'vue', 'svelte', 'graphql', 'gql',
-])
+
 
 export const extensionOf = (filename: string): string => {
   const base = filename.split('/').pop() ?? filename
@@ -154,7 +150,7 @@ export const isTextFile = (filename: string, mediaType?: string | null): boolean
   ) {
     return true
   }
-  return TEXT_EXTENSIONS.has(extensionOf(filename))
+  return isTextExtension(filename)
 }
 
 const MEDIA_TYPES: Record<string, string> = {

@@ -29,6 +29,17 @@ export const SKILL_DIRS = Symbol.for('SkillDirs')
 export const SKILL_LIBRARY_DIR = Symbol.for('SkillLibraryDir')
 
 /**
+ * 随部署打包的技能目录（`core/skills/catalog/`）的注入 token。
+ *
+ * 生产**不提供**（默认取与本文件同级的 `catalog/`，dev 走 src、构建后走 dist）。
+ * 存在的理由有两个：
+ * 1. 单测要把"外部目录 / 技能库"的语义与内置技能隔离开 —— 否则每加一个内置技能，
+ *    `names()` 的精确断言就得跟着改一遍；
+ * 2. 换一套资产目录（例如裁剪过的发行版）不必改代码。
+ */
+export const SKILL_CATALOG_DIR = Symbol.for('SkillCatalogDir')
+
+/**
  * 技能加载器（bean）：**发现 / 校验 / 授权**。
  *
  * 它**不读正文进内存**，只把「技能目录的绝对路径」交给 Mastra：
@@ -69,8 +80,11 @@ export class SkillLoader {
     @Optional() @Inject(SKILL_DIRS) extraDirs: readonly string[] = [],
     /** 技能库落盘目录（见 `SKILL_LIBRARY_DIR`）；不传 = 不扫库（测试 / 纯外部目录场景） */
     @Optional() @Inject(SKILL_LIBRARY_DIR) libraryDir?: string,
+    /** 内置技能目录（见 `SKILL_CATALOG_DIR`）；不传 = 随部署打包的 `catalog/` */
+    @Optional() @Inject(SKILL_CATALOG_DIR) catalogDir?: string,
   ) {
-    this.catalogRoot = defaultCatalogDir()
+    const [normalizedCatalog] = catalogDir?.trim() ? normalizeDirs([catalogDir]) : []
+    this.catalogRoot = normalizedCatalog ?? defaultCatalogDir()
     this.extraRoots = normalizeDirs(extraDirs)
     this.libraryRoot = libraryDir ? normalizeDirs([libraryDir])[0] : undefined
     this.roots = [

@@ -1,3 +1,4 @@
+import { SANDBOX_CDN_HOSTS } from '@repo/shared/browser'
 import { describe, expect, it } from 'vitest'
 
 import {
@@ -160,15 +161,29 @@ describe('layoutXflow', () => {
 describe('buildSandboxDocument', () => {
   const theme = { background: 'rgb(0, 0, 0)', color: 'rgb(255, 255, 255)' }
 
-  it('带上禁网 CSP：只放行内联脚本与样式', () => {
+  it('沙箱 CSP：内联脚本 / 样式放行，外链只放行 CDN 白名单', () => {
     const doc = buildSandboxDocument({ html: '<p>hi</p>', theme })
     expect(doc).toContain('Content-Security-Policy')
     expect(doc).toContain(SANDBOX_CSP)
     expect(SANDBOX_CSP).toContain("default-src 'none'")
     expect(SANDBOX_CSP).toContain("script-src 'unsafe-inline'")
     expect(SANDBOX_CSP).toContain("connect-src 'none'")
-    // 不允许任何外部主机（一旦出现 http(s) 源，沙箱就等于开了口子）
-    expect(SANDBOX_CSP).not.toMatch(/https?:/)
+
+    // 出现的主机必须**恰好**是白名单：多一家等于沙箱多开一个口子
+    const hosts = [...SANDBOX_CSP.matchAll(/https:\/\/([a-z0-9.-]+)/g)].map((match) => match[1])
+    expect(new Set(hosts)).toEqual(new Set(SANDBOX_CDN_HOSTS))
+    // 子资源白名单（脚本 / 样式 / 图片 / 字体 / 音视频）都要带上，否则引库只成功一半
+    const directive = (name: string): string =>
+      SANDBOX_CSP.split('; ').find((part) => part.startsWith(`${name} `)) ?? ''
+    for (const name of ['script-src', 'style-src', 'img-src', 'font-src', 'media-src']) {
+      for (const host of SANDBOX_CDN_HOSTS) {
+        expect(directive(name)).toContain(`https://${host}`)
+      }
+    }
+    // 但**发不出去**：接口 / 表单 / 嵌套框架仍然全禁
+    expect(SANDBOX_CSP).toContain("form-action 'none'")
+    expect(SANDBOX_CSP).toContain("frame-src 'none'")
+    expect(SANDBOX_CSP).toContain("object-src 'none'")
   })
 
   it('预置脚本在模型内容之前、高度回报脚本最后', () => {

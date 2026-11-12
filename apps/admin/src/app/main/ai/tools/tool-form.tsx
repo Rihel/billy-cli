@@ -6,7 +6,7 @@ import type { ReactNode } from 'react'
 import { useForm } from '@tanstack/react-form'
 import { useStore } from '@tanstack/react-store'
 import { ToolCategory, ToolScope } from '@repo/shared'
-import type { AiToolModel, AiToolUpdateDto } from '@repo/shared'
+import type { AiToolModel, AiToolUpdateDto, AiToolWorkspaceStatusModel } from '@repo/shared'
 import {
   Alert,
   AlertDescription,
@@ -57,6 +57,8 @@ import type { ToolFormValues } from './tool-payload'
 export type ToolFormModalProps = {
   /** 正在编辑的工具（null = 没有选中） */
   tool: AiToolModel | null
+  /** 当前部署的执行环境能力（只读；工具专属配置面板据此提示） */
+  workspaceStatus?: AiToolWorkspaceStatusModel
   open: boolean
   /** 保存：宿主发 `update` + 刷新列表 + toast */
   onSave: (dto: AiToolUpdateDto) => Promise<void>
@@ -163,6 +165,7 @@ const ParamSchemaBlock = ({ schema }: { schema: Record<string, unknown> | null }
 
 export function ToolFormModal({
   tool,
+  workspaceStatus,
   open,
   onSave,
   onReset,
@@ -394,6 +397,7 @@ export function ToolFormModal({
               toolKey={tool.toolKey}
               config={values.config}
               defaults={tool.defaultConfig}
+              workspaceStatus={workspaceStatus}
               onChange={(key, value) =>
                 form.setFieldValue('config', { ...values.config, [key]: value })
               }

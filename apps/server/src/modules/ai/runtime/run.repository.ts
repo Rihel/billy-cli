@@ -148,6 +148,28 @@ export class RunRepository {
     })
   }
 
+  /**
+   * 该用户**在指定会话里**进行中的根运行。
+   *
+   * 用途：断线重连只在「当前正在看的会话」内接流。只按用户找会把**别的会话**正在跑的
+   * 那一轮接进当前页面（串流）；会话页挂载时必然知道自己看的是哪个会话，不需要跨会话猜。
+   */
+  async findActiveByConversation(
+    userId: string,
+    conversationId: string,
+  ): Promise<RunEntity | null> {
+    const repo = await this.repo()
+    return repo.findOne({
+      where: {
+        conversationId,
+        triggeredBy: userId,
+        parentRunId: IsNull(),
+        status: In([RunStatus.Pending, RunStatus.Running, RunStatus.Suspended]),
+      },
+      order: { createdAt: 'DESC' },
+    })
+  }
+
   /** 幂等查：某个父工具调用是否已经建过子 run（崩溃恢复重放时复用它，不重复扣费） */
   async findChildByToolCall(
     parentRunId: string,
