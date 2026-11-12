@@ -4,7 +4,7 @@ import {
   isAnswered,
   questionsOf,
   resolveAnswerValue,
-} from '../src/app/(standalone)/main/ai/chat/question-card'
+} from '../src/app/(app)/(standalone)/main/ai/chat/question-card'
 
 describe('isAnswered', () => {
   const base = { id: 'q1', title: '给谁看？' }

@@ -9,8 +9,8 @@ import {
   isWithinSizeLimit,
   rejectReasonOf,
   toAttachmentPayload,
-} from '../src/app/(standalone)/main/ai/chat/attachment-utils.ts'
-import { rejectedText, scanFiles } from '../src/app/(standalone)/main/ai/chat/use-attachments-upload.ts'
+} from '../src/app/(app)/(standalone)/main/ai/chat/attachment-utils.ts'
+import { rejectedText, scanFiles } from '../src/app/(app)/(standalone)/main/ai/chat/use-attachments-upload.ts'
 
 /**
  * 前端附件预检：**在提交之前**把不合格的东西说清楚。

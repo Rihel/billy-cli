@@ -4,7 +4,7 @@ import {
   isNewConversation,
   markAdoptedConversation,
   nextChatGeneration,
-} from '../src/app/(standalone)/main/ai/chat/routes'
+} from '../src/app/(app)/(standalone)/main/ai/chat/routes'
 
 describe('会话页隔离代次', () => {
   it('new → 真实 id 不递增：首轮流不能被重挂载打断', () => {

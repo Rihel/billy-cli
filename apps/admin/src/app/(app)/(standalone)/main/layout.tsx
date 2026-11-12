@@ -1,6 +1,6 @@
 import { Suspense } from 'react'
 import type { ReactNode } from 'react'
-import { AdminAuthBoundary } from '../../../components/AdminAuthBoundary'
+import { AdminAuthBoundary } from '../../../../components/AdminAuthBoundary'
 
 /**
  * **AI 会话页的独立布局**（只覆盖 `/main/ai/chat/**`）。

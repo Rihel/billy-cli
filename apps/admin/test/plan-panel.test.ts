@@ -1,7 +1,7 @@
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
-import { PlanSummaryCard } from '../src/app/(standalone)/main/ai/chat/plan-summary-card.tsx'
+import { PlanSummaryCard } from '../src/app/(app)/(standalone)/main/ai/chat/plan-summary-card.tsx'
 import {
   PlanPanel,
   collectMessagePlan,
@@ -11,7 +11,7 @@ import {
   type Plan,
   type PlanSourcePart,
   type PlanStatus,
-} from '../src/app/(standalone)/main/ai/chat/plan-panel.tsx'
+} from '../src/app/(app)/(standalone)/main/ai/chat/plan-panel.tsx'
 
 /**
  * 计划面板：出参容错 + "当前计划"的取舍规则 + 卡片渲染（node 环境 SSR 冒烟）。

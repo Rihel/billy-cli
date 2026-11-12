@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { AgentRunModel, AgentTimelineItemModel } from '@repo/shared'
-import { toUIMessages } from '../src/app/(standalone)/main/ai/chat/history.ts'
+import { toUIMessages } from '../src/app/(app)/(standalone)/main/ai/chat/history.ts'
 
 /**
  * 时间线 → UIMessage 的映射（纯逻辑，node 环境）。

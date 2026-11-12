@@ -1,6 +1,6 @@
 import { TimelineKind, TimelineRole } from '@repo/shared'
 import { describe, expect, it } from 'vitest'
-import { toParts } from '../src/app/(standalone)/main/ai/chat/history'
+import { toParts } from '../src/app/(app)/(standalone)/main/ai/chat/history'
 
 describe('历史重建：问题卡', () => {
   const call = {

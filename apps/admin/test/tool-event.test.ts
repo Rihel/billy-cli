@@ -15,7 +15,7 @@ import {
   pickToolEventRenderer,
   registerToolEventRenderer,
   resetToolEventRenderers,
-} from '../src/app/(standalone)/main/ai/chat/tool-event.tsx'
+} from '../src/app/(app)/(standalone)/main/ai/chat/tool-event.tsx'
 
 /**
  * 工具自定义事件：分桶（并进工具卡 / 无主独立成卡）+ 兜底渲染 + 渲染器优先级。

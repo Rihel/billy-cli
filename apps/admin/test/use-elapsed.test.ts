@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   elapsedSecondsOf,
   finalSecondsOf,
-} from '../src/app/(standalone)/main/ai/chat/use-elapsed.ts'
+} from '../src/app/(app)/(standalone)/main/ai/chat/use-elapsed.ts'
 
 /**
  * 计时口径：运行中**按整秒**（向下取整），结束给**向上取整**的最终秒数。

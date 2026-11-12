@@ -2,7 +2,7 @@ import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 import type { UIMessage } from 'ai'
-import { RunActivity, runActivityText } from '../src/app/(standalone)/main/ai/chat/run-activity.tsx'
+import { RunActivity, runActivityText } from '../src/app/(app)/(standalone)/main/ai/chat/run-activity.tsx'
 
 /**
  * 时间线底部的运行指示：文案判据 + SSR 冒烟。

@@ -1,7 +1,7 @@
 import type { Metadata } from 'next'
 import { Geist, Geist_Mono, Space_Grotesk } from 'next/font/google'
 
-import './globals.css'
+import '../globals.css'
 import 'react-grid-layout/css/styles.css'
 
 import { cn, createThemeBootScript } from '@repo/ui'

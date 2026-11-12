@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { skillWriteOf } from '../src/app/(standalone)/main/ai/chat/skill-tool'
+import { skillWriteOf } from '../src/app/(app)/(standalone)/main/ai/chat/skill-tool'
 
 /**
  * 工具卡把 `skill-save` / `skill-import` 识别成"技能写入"：

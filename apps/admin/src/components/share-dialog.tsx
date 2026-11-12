@@ -5,9 +5,8 @@ import { useForm } from '@tanstack/react-form'
 import { useState } from 'react'
 import dayjs from 'dayjs'
 import { CopyIcon, LinkIcon, Trash2Icon } from 'lucide-react'
-import { Button, Input, ModalForm, toastError, toastSuccess } from '@repo/ui'
-import { ShareTtl, shareTtlSeconds } from '@repo/shared'
-import type { CreateShareModel, ShareItemModel, ShareState } from '@repo/shared'
+import { Button, DateTimePicker, Input, ModalForm, toastError, toastSuccess } from '@repo/ui'
+import type { ShareItemModel, ShareState } from '@repo/shared'
 import { useServerClient } from '@/lib/server-client'
 import { copyText } from '@/lib/clipboard'
 
@@ -20,7 +19,7 @@ import { copyText } from '@/lib/clipboard'
  * - 撤销立即生效，页面会刷新历史列表。
  */
 
-type ShareForm = { ttl: string }
+type ShareForm = { expiresAt: string }
 
 const STATE_TEXT: Record<ShareState, string> = {
   active: '有效',
@@ -51,7 +50,8 @@ export function ShareDialog({
 }) {
   const client = useServerClient()
   const queryClient = useQueryClient()
-  const [created, setCreated] = useState<CreateShareModel | null>(null)
+  // 链接由**本应用的域名**拼：server 只回 token，不需要知道分享页挂在哪个域
+  const [created, setCreated] = useState<{ url: string; expiresAt: number | null } | null>(null)
 
   const listQuery = useQuery({
     queryKey: ['share-list', file?.id],
@@ -63,13 +63,16 @@ export function ShareDialog({
     queryClient.invalidateQueries({ queryKey: ['share-list', file?.id] })
 
   const createMutation = useMutation({
-    mutationFn: (ttl: string) =>
+    mutationFn: (expiresAt: number) =>
       client.share.create({
         fileId: file!.id,
-        expiresIn: shareTtlSeconds(ttl),
+        expiresAt,
       }),
     onSuccess: (data) => {
-      setCreated(data)
+      setCreated({
+        url: `${window.location.origin}/s/${data.token}`,
+        expiresAt: data.expiresAt,
+      })
       toastSuccess('分享链接已生成')
       void invalidateList()
     },
@@ -87,9 +90,9 @@ export function ShareDialog({
   })
 
   const form = useForm({
-    defaultValues: { ttl: ShareTtl.SevenDays } as ShareForm,
+    defaultValues: { expiresAt: '' } as ShareForm,
     onSubmit: async ({ value }) => {
-      await createMutation.mutateAsync(value.ttl)
+      await createMutation.mutateAsync(new Date(value.expiresAt).getTime())
     },
   })
 
@@ -115,13 +118,27 @@ export function ShareDialog({
       open={open}
       title={`分享文件${file ? `：${file.filename}` : ''}`}
       form={form}
+      // 每次打开都按「此刻 + 7 天」预填，而不是组件挂载时算死的那个值
+      values={{ expiresAt: dayjs().add(7, 'day').format('YYYY-MM-DDTHH:mm') }}
       items={[
         {
-          name: 'ttl',
-          label: '有效期',
-          widget: 'select',
-          hint: '到期后链接自动失效；「永久有效」只能靠手动撤销',
-          props: { options: ShareTtl.options },
+          name: 'expiresAt',
+          label: '过期时间',
+          required: true,
+          hint: '到点后链接自动失效；也可以随时在下方历史里手动撤销',
+          render: ({ field }) => (
+            <DateTimePicker
+              value={String(field.state.value ?? '')}
+              onChange={(next) => field.handleChange(next)}
+              min={new Date()}
+            />
+          ),
+          validate: (value) => {
+            const picked = new Date(String(value ?? '')).getTime()
+            if (!Number.isFinite(picked)) return '请选择过期时间'
+            if (picked <= Date.now()) return '过期时间必须晚于当前时间'
+            return undefined
+          },
         },
       ]}
       submitText="生成链接"

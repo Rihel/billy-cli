@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { UIMessage } from 'ai'
-import { ChatSessionStore, toMessageState } from '../src/app/(standalone)/main/ai/chat/chat-session.ts'
-import { markTransientChunks } from '../src/app/(standalone)/main/ai/chat/chat-transport.ts'
-import type { ChatUnit } from '../src/app/(standalone)/main/ai/chat/chat-session.ts'
+import { ChatSessionStore, toMessageState } from '../src/app/(app)/(standalone)/main/ai/chat/chat-session.ts'
+import { markTransientChunks } from '../src/app/(app)/(standalone)/main/ai/chat/chat-transport.ts'
+import type { ChatUnit } from '../src/app/(app)/(standalone)/main/ai/chat/chat-session.ts'
 
 /**
  * 会话渲染状态：**按 part 的 type 增量归约**。

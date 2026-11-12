@@ -41,8 +41,11 @@ export const config = {
    * **图标必须在名单里**：`/icon.svg`、`/apple-icon.png`、`/opengraph-image` 是 Next 的
    * 元数据路由，未登录时同样会被浏览器请求 —— 被拦成 307 到登录页，表现是"图标/分享卡片静默不显示"
    * （浏览器不报错，只在网络面板里有一个 307）。`api` 与静态资源本来就在名单里。
+   *
+   * `s/` 也不走守卫：`/s/{token}` 是**免授权分享页**（链接本身就是凭证），
+   * 被拦到登录页就完全失去意义。注意写 `s/` 而不是 `s`，避免误伤 `/s...` 开头的其它路径。
    */
   matcher: [
-    '/((?!_next/static|_next/image|favicon.ico|icon.svg|apple-icon.png|opengraph-image|twitter-image|api).*)',
+    '/((?!_next/static|_next/image|favicon.ico|icon.svg|apple-icon.png|opengraph-image|twitter-image|api|s/).*)',
   ],
 }

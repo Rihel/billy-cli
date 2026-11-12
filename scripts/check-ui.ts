@@ -288,7 +288,16 @@ export function scanFontContract(cwd = process.cwd()): UiViolation[] {
   if (existsSync(appsDir)) {
     for (const entry of readdirSync(appsDir)) {
       if (!statSync(join(appsDir, entry)).isDirectory()) continue
-      targets.push(join(appsDir, entry, 'src/app/layout.tsx'))
+      // 布局可能被 route group 包着（如 `src/app/(app)/layout.tsx`），按文件搜而不是钉死路径
+      const appDir = join(appsDir, entry, 'src/app')
+      if (!existsSync(appDir)) continue
+      for (const file of readdirSync(appDir, { recursive: true, encoding: 'utf8' })) {
+        if (!file.endsWith('layout.tsx')) continue
+        const full = join(appDir, file)
+        // 只查**根 layout**（渲染 <html> 的那个）：嵌套 layout 不负责字体接入
+        if (!readFileSync(full, 'utf8').includes('<html')) continue
+        targets.push(full)
+      }
     }
   }
 

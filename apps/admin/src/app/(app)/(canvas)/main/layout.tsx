@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { AdminAuthBoundary } from '../../../components/AdminAuthBoundary'
+import { AdminAuthBoundary } from '../../../../components/AdminAuthBoundary'
 
 /**
  * **全窗口画布布局**（技能编辑器用）。

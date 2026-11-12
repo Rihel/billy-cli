@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest'
 import { TOOL_EVENT_PART_TYPE } from '@repo/shared'
 import type { ToolEventPart } from '@repo/shared'
 import type { ToolPart } from '@repo/ui/components/ai-elements/tool.tsx'
-import { ToolCard, shouldAutoOpen, toolCallReason } from '../src/app/(standalone)/main/ai/chat/tool-card.tsx'
+import { ToolCard, shouldAutoOpen, toolCallReason } from '../src/app/(app)/(standalone)/main/ai/chat/tool-card.tsx'
 
 /**
  * 工具卡「要不要自动展开」的判据（纯逻辑，node 环境）+ 受控折叠的接线冒烟。

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { UIMessage } from 'ai'
-import { activatedSkillsOf } from '../src/app/(standalone)/main/ai/chat/skill-activity'
+import { activatedSkillsOf } from '../src/app/(app)/(standalone)/main/ai/chat/skill-activity'
 
 /**
  * 右栏「技能」的统计口径：只认运行时 `skill` 工具的调用，并同时兼容

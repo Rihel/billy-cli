@@ -9,7 +9,7 @@ import {
   liveSubAgentsOf,
   subAgentStatus,
   subAgentTabs,
-} from '../src/app/(standalone)/main/ai/chat/sub-agent-live.ts'
+} from '../src/app/(app)/(standalone)/main/ai/chat/sub-agent-live.ts'
 
 /**
  * 子助手实时过程的收集（纯逻辑，node 环境）。
@@ -243,7 +243,7 @@ describe('delegatedToolCallIds（把 run-sub-agent 工具卡去重掉）', () =>
 })
 
 describe('subAgentBodyText（紧凑卡展开后的正文）', () => {
-  const live = (over: Partial<import('../src/app/(standalone)/main/ai/chat/sub-agent-live.ts').SubAgentLive>) => ({
+  const live = (over: Partial<import('../src/app/(app)/(standalone)/main/ai/chat/sub-agent-live.ts').SubAgentLive>) => ({
     runId: 'run-1',
     name: '子助手',
     text: '',

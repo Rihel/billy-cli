@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { readUIMessageStream } from 'ai'
 import type { UIMessage, UIMessageChunk } from 'ai'
-import { markSuspendedAnswered, pinResumeMessageId } from '../src/app/(standalone)/main/ai/chat/resume-answer.ts'
+import { markSuspendedAnswered, pinResumeMessageId } from '../src/app/(app)/(standalone)/main/ai/chat/resume-answer.ts'
 
 /**
  * 回答完问题时的消息改写（纯逻辑，node 环境）。

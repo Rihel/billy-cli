@@ -9,7 +9,7 @@ import {
   tokenText,
   usageLineText,
   usageLineTitle,
-} from '../src/app/(standalone)/main/ai/chat/format.ts'
+} from '../src/app/(app)/(standalone)/main/ai/chat/format.ts'
 
 /**
  * 统计行的数字与文案格式化。
