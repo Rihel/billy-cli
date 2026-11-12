@@ -60,6 +60,8 @@ import {
   GetUserDetailDto,
   ListShareDto,
   ListShareModel,
+  ShareMetaModel,
+  ShareTokenDto,
   LoginDto,
   PageQueryAdminDto,
   PageQueryUserDto,
@@ -331,6 +333,10 @@ export class ServerClient extends HttpClient<BearerTokenCredentials> {
 
     revoke: (data: RevokeShareDto) =>
       this.post<SuccessResultModel>('/share/revoke', data),
+
+    /** 分享页元信息（公开接口，带 token 即可，无需登录） */
+    meta: (data: ShareTokenDto) =>
+      this.post<ShareMetaModel>('/share/meta', data, { skipAuth: true }),
   }
 
   /* ========== 存储 ========== */

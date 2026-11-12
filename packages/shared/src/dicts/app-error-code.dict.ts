@@ -297,11 +297,6 @@ export const AppErrorCodes = createDict({
     value: 3419,
     http: 404,
   },
-  ShareDisabled: {
-    label: '分享能力未开启',
-    value: 3420,
-    http: 404,
-  },
   ShareForbidden: {
     label: '无权操作该分享',
     value: 3421,
@@ -311,6 +306,11 @@ export const AppErrorCodes = createDict({
     label: '文件不存在或已删除',
     value: 3422,
     http: 404,
+  },
+  ShareExpiryInvalid: {
+    label: '过期时间必须晚于当前时间',
+    value: 3423,
+    http: 400,
   },
   InvalidInput: {
     label: '参数校验失败',

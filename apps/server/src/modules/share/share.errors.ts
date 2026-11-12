@@ -16,14 +16,6 @@ export class ShareLinkInvalidError extends AppError {
   }
 }
 
-/** 未配置 `SHARE_PUBLIC_BASE_URL`：能力未开启，不是故障 */
-export class ShareDisabledError extends AppError {
-  readonly code = AppErrorCodes.ShareDisabled
-  constructor() {
-    super('分享能力未开启（未配置分享域名）')
-  }
-}
-
 /** 越权：别人会话的文件、或归属未知的文件 */
 export class ShareForbiddenError extends AppError {
   readonly code = AppErrorCodes.ShareForbidden
@@ -37,5 +29,13 @@ export class ShareFileNotFoundError extends AppError {
   readonly code = AppErrorCodes.ShareFileNotFound
   constructor() {
     super('文件不存在或已删除')
+  }
+}
+
+/** 过期时间不合法：用户自己填的时间不能早于当前时刻 */
+export class ShareExpiryInvalidError extends AppError {
+  readonly code = AppErrorCodes.ShareExpiryInvalid
+  constructor() {
+    super('过期时间必须晚于当前时间')
   }
 }

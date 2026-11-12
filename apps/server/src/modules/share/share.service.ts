@@ -18,7 +18,7 @@ import type { ServerAppConfig } from '../../app-config.js'
 import type { AiFileEntity } from '../../database/entities/ai-file-entity.js'
 import type { FileShareEntity } from '../../database/entities/file-share-entity.js'
 import {
-  ShareDisabledError,
+  ShareExpiryInvalidError,
   ShareFileNotFoundError,
   ShareForbiddenError,
   ShareLinkInvalidError,
@@ -32,6 +32,9 @@ export type ShareIdentity = { adminId?: string; userId?: string }
 /** 预签名 URL 只给 Next 用一次，有效期压到最短 */
 const RESOLVE_URL_TTL_SECONDS = 300
 
+/** 调用方没传 `expiresAt` 时的兜底有效期（7 天）；前端正常都会传 */
+const DEFAULT_TTL_SECONDS = 7 * 24 * 60 * 60
+
 @Injectable()
 export class ShareService {
   constructor(
@@ -44,18 +47,22 @@ export class ShareService {
     return this.config.getOrThrow<ServerAppConfig['share']>('share')
   }
 
-  /** 生成分享链接（登录态） */
+  /** 生成分享 token（登录态）：完整链接由调用方用自己的域名拼 */
   async create(identity: ShareIdentity, input: CreateShareDto): Promise<CreateShareModel> {
-    const baseUrl = this.settings.publicBaseUrl.replace(/\/+$/, '')
-    if (!baseUrl) throw new ShareDisabledError()
-
     const file = await this.repo.findFile(input.fileId)
     if (!file) throw new ShareFileNotFoundError()
     this.assertCanShare(identity, file)
 
-    const ttl =
-      input.expiresIn === undefined ? this.settings.defaultTtlSeconds : input.expiresIn
-    const expiresAt = ttl === null ? null : new Date(Date.now() + ttl * 1000)
+    const expiresAt =
+      input.expiresAt === undefined
+        ? new Date(Date.now() + DEFAULT_TTL_SECONDS * 1000)
+        : input.expiresAt === null
+          ? null
+          : new Date(input.expiresAt)
+    // 用户自己填时间，服务端必须校验：过去的时间等于「生成了就失效」
+    if (expiresAt && expiresAt.getTime() <= Date.now()) {
+      throw new ShareExpiryInvalidError()
+    }
     const token = createShareToken()
 
     const row = await this.repo.create({
@@ -69,7 +76,6 @@ export class ShareService {
     return {
       id: row.id,
       token,
-      url: `${baseUrl}/s/${token}`,
       expiresAt: expiresAt?.getTime() ?? null,
     }
   }

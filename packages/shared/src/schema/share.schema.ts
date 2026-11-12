@@ -36,23 +36,26 @@ export type OfficeKind = z.infer<typeof OfficeKindSchema>
 
 export const CreateShareSchema = z.object({
   fileId: z.string().min(1),
-  /** 有效期（秒）：`null` = 永久，省略 = 用服务端默认值 */
-  expiresIn: z
-    .number()
-    .int()
-    .positive()
-    .max(365 * 24 * 60 * 60)
-    .nullable()
-    .optional(),
+  /**
+   * 过期时间（**epoch 毫秒**）：用户自己选的具体时刻。
+   *
+   * - `null` = 永久；省略 = 服务端默认（7 天）；
+   * - 用绝对时间而不是「有效期秒数」：用户填的就是「到哪天几点」，少一次换算，
+   *   也不受客户端时钟与服务端时钟的误差影响（校验仍是服务端做）。
+   */
+  expiresAt: z.number().int().positive().nullable().optional(),
 })
 export type CreateShareDto = z.infer<typeof CreateShareSchema>
 
 export const CreateShareModelSchema = z.object({
   id: z.string(),
-  /** 明文 token：**只此一次** */
+  /**
+   * 明文 token：**只此一次**。
+   *
+   * 服务端不回完整链接 —— 分享页挂在哪个域是前端自己知道的事，
+   * 由调用方用 `window.location.origin` 拼（见 admin 的 `ShareDialog`）。
+   */
   token: z.string(),
-  /** 完整分享链接 */
-  url: z.string(),
   expiresAt: z.number().int().nullable(),
 })
 export type CreateShareModel = z.infer<typeof CreateShareModelSchema>

@@ -105,15 +105,12 @@ export const serverAppConfigSchema = z.object({
   /**
    * 文件分享（`/s/{token}`，见 `docs/design/file-share.md`）。
    *
-   * 全部可缺省：没配 `SHARE_PUBLIC_BASE_URL` 时 `create` 报「分享能力未开启」，
-   * 其余功能不受影响（与对象存储「未配置不拦启动」同一姿态）。
+   * 只有一个变量：**Next ↔ server 的内部密钥**。
+   * 分享链接由前端用自己的域名拼（server 不该知道分享页挂在哪个域），
+   * 有效期由调用方传，缺省值写在 service 的常量里 —— 不需要配置。
    */
   share: z.object({
-    /** 分享链接的对外基地址，如 `https://s.example.com`；空 = 分享能力未开启 */
-    publicBaseUrl: z.string().trim().default(''),
-    /** 创建时未指定有效期的默认值（秒），默认 7 天 */
-    defaultTtlSeconds: z.coerce.number().int().positive().default(7 * 24 * 60 * 60),
-    /** Next ↔ server 的内部密钥（`/share/resolve` 用它校验） */
+    /** `/share/resolve` 的调用凭证；空 = 该接口一律 404（分享页取不到字节） */
     internalSecret: z.string().default(''),
   }),
 
@@ -372,8 +369,6 @@ export const mapServerEnv = (
       : undefined,
   },
   share: {
-    publicBaseUrl: optional(env.SHARE_PUBLIC_BASE_URL),
-    defaultTtlSeconds: optionalNumber(env.SHARE_TTL_SECONDS),
     internalSecret: optional(env.SHARE_INTERNAL_SECRET),
   },
   monitor: {

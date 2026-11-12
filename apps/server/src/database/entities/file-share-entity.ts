@@ -8,7 +8,7 @@ import { Column, Entity, Index } from 'typeorm'
  * - **只存 token 的哈希**：明文只在创建响应里出现一次，拖库拿不到可用链接；
  * - **不存状态列**：`active / expired / revoked / invalid` 由 `expires_at` / `revoked_at`
  *   与文件行派生（见 `shareState`），避免「状态说有效、其实早过期」的二义性；
- * - **`expires_at` 可空**：null = 永久；档位换算在 shared 的 `shareTtlSeconds`；
+ * - **`expires_at` 可空**：null = 永久；值由用户在弹窗里自己选（服务端只校验晚于当前）；
  * - **逻辑引用 `ai_files.id`**：无物理外键（全工程硬规则），文件被软删时链接自动失效；
  * - **`views` 只在 `meta` 命中时自增**：内容接口会因 Range 发多次请求，按它计数会虚高。
  *
