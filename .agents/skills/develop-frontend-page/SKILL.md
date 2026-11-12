@@ -89,7 +89,7 @@ export const GET = handle(app)
 - basePath 与安全头集中在 `api/app.ts`，能力模块不重复写；新增能力 = 加一个模块 + 一行 `app.route()`；
 - 业务留在 Hono 里，单测直接 `app.request(new Request(...))`，不用起 Next。
 
-参考实现：`apps/web/src/api/share.ts`（分享内容转发：Range 透传、内联白名单、安全头），
+参考实现：`apps/admin/src/api/share.ts`（分享内容转发：Range 透传、内联白名单、安全头），
 完整背景见 `docs/design/file-share.md` §6.3。
 
 > 暂时没有 route handler 的应用**不要预先造空文件** —— 依赖装上，第一条接口出现时按上面结构写。
@@ -215,3 +215,4 @@ pnpm check:ui    # 守卫四条：组件导出 / 前端包 typecheck 脚本 / �
 - [ ] 界面验证交回用户：列清「打开哪个页面、做什么操作、期望看到什么」，**不自己跑无头浏览器截图**
       （规则见 `billy-dev-foundation/references/workflow.md` 的「验证与收尾清理」）
 - [ ] 视觉取值只用语义 token（不用 `bg-blue-500` 这类调色板类）；样式调整优先用组件 className；必须写 CSS 覆盖时写在 `@layer` 之外
+- [ ] 控件先查 `@repo/ui`（日期时间用 `DateTimePicker`、区间用 `DateRangePicker`、日历用 `Calendar`），**不用原生 `<input type=date|datetime-local>` / `<select>` / `<input type=file>`**；表单里 `widget` 覆盖不到时用 `items[].render` 接线

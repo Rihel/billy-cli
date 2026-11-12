@@ -67,8 +67,8 @@
 
 | 路径 | 处理方 | 返回 |
 | --- | --- | --- |
-| `/s/{token}` | Next 页面（server component） | HTML 预览页 |
-| `/api/s/{token}/content` | Next API 层（Hono，`nodejs` runtime） | 文件字节，支持 Range |
+| `/s/{token}` | **admin** 的 Next 页面（server component） | HTML 预览页 |
+| `/api/s/{token}/content` | **admin** 的 Next API 层（Hono，`nodejs` runtime） | 文件字节，支持 Range |
 
 同一个域、同一个源。页面里所有资源地址都是 `/api/s/{token}/content`，
 **浏览器全程不会出现 server 域名和 OSS 域名**。
@@ -78,9 +78,9 @@
 ```
 管理员 ──POST /share/create { fileId, expiresIn }──► server
                                                     └─ 写 file_shares（token_hash + expires_at）
-                                                    ← { url: https://s.xxx/s/{token} }
+                                                    ← { id, token, expiresAt }（前端拼 s.xxx/s/{token}）
 
-浏览器 ──GET /s/{token}──────────────► Next 页面（服务端渲染）
+浏览器 ──GET /s/{token}──────────────► admin 分享页（服务端渲染）
                                      └─POST {SERVER_URL}/share/meta（token）
                                         ← { filename, mediaType, previewKind, bytes, expiresAt }
 
@@ -171,16 +171,18 @@ type ShareState = 'active' | 'expired' | 'revoked' | 'invalid'
 ### 5.1 `POST /share/create` —— 生成分享链接
 
 - 鉴权：`AnyAuthGuard`；管理员可分享任意文件，前台用户只能分享 `ai_files.user_id === 自己` 的行；
-- 入参：`{ fileId: string, expiresIn?: number | null }`（秒；`null` / 省略 = 永久，默认 7 天）；
+- 入参：`{ fileId: string, expiresAt?: number | null }`（**epoch 毫秒**，用户自己选的具体时刻；
+  `null` = 永久，省略 = 默认 7 天；过去的时间直接 400）；
 - 出参：
 
 ```ts
 {
   id: string            // 分享记录 id，用于撤销
   token: string         // 只此一次
-  url: string           // ${SHARE_PUBLIC_BASE_URL}/s/${token}
   expiresAt: number | null
 }
+// 不回完整链接：分享页挂在哪个域，是前端自己知道的事
+// （admin 用 `window.location.origin + '/s/' + token` 拼）
 ```
 
 - 校验：文件必须存在且未软删（`FileRepository.findById`，TypeORM 默认过滤软删行）；
@@ -233,16 +235,19 @@ type ShareState = 'active' | 'expired' | 'revoked' | 'invalid'
 
 ### 5.6 配置
 
-`apps/server/src/app-config.ts` 新增 `share` 命名空间（app 级，不进 kits）：
+只有一个环境变量：
 
 | 环境变量 | 默认 | 说明 |
 | --- | --- | --- |
-| `SHARE_PUBLIC_BASE_URL` | 无（缺省回落 `SERVER_PUBLIC_URL`） | 拼链接用，如 `https://s.example.com` |
-| `SHARE_TTL_SECONDS` | 604800（7 天） | 创建时未指定过期时间的默认值 |
-| `SHARE_INTERNAL_SECRET` | 无 | Next ↔ server 的内部密钥 |
+| `SHARE_INTERNAL_SECRET` | 无 | Next ↔ server 的内部密钥（`/share/resolve` 鉴权）；必须与 admin 的 `SHARE_INTERNAL_SECRET` 一致 |
 
-分享能力**不依赖额外密钥**（token 是随机串 + 哈希），所以「没配也能用」；
-只有 `SHARE_PUBLIC_BASE_URL` 缺失时 `create` 报「未配置分享域名」。
+**刻意不做的两个配置**：
+
+- **不配分享域名**：链接由前端用 `window.location.origin` 拼 —— 服务端不该知道（也不需要知道）
+  分享页挂在哪个域，少一处配置就少一处「域名写错/环境漂移」的故障；
+- **不配默认 TTL**：调用方永远会传 `expiresIn`（弹窗固定给档位），服务端只有常量兜底。
+
+`SHARE_INTERNAL_SECRET` 空 = `/share/resolve` 一律 404（分享页取不到字节），其余接口不受影响。
 
 ### 5.7 错误码
 
@@ -250,37 +255,38 @@ type ShareState = 'active' | 'expired' | 'revoked' | 'invalid'
 
 | code | 含义 | 对外表现 |
 | --- | --- | --- |
-| `SHARE_LINK_INVALID` | 查不到 / 已撤销 / 已过期 / 文件已删 | 中性文案，**不区分** |
-| `SHARE_DISABLED` | 未配置分享域名 | 「分享能力未开启」 |
+| `SHARE_LINK_INVALID` | 查不到 / 已撤销 / 已过期 / 文件已删 | 中性文案，**不区分**（404） |
+| `SHARE_FILE_NOT_FOUND` | 创建 / 列表时目标文件不存在 | 「文件不存在或已删除」（404） |
+| `SHARE_FORBIDDEN` | 越权：不是自己的文件 / 不是自己建的分享 | 「无权操作该分享」（403） |
+| `SHARE_EXPIRY_INVALID` | 用户填的过期时间早于当前 | 「过期时间必须晚于当前时间」（400） |
 
 ## 6. 前端
 
-### 6.1 分享页路由与 layout
+### 6.1 分享页路由与 layout（在 **admin** 里）
 
-分享页要**完全脱离主站 shell**。当前 `apps/web/src/app/layout.tsx` 挂了
-`ThemeProvider / QueryProvider / WebStorageProvider / Toaster`，其中
-`WebStorageProvider` 会经 `useServerClient()` 把 `NEXT_PUBLIC_SERVER_URL` 带进客户端 bundle
-（`apps/web/src/lib/constants.ts:40`）—— 这正是要避免的泄露。
-
-改成多 root layout，主站页挪进 `(main)`：
+分享页属于 admin 应用（文件在后台管理，链接也由后台发出）。admin 的根 layout 挂着
+`Providers`（`QueryProviders` + `StorageClientProvider` + `Toaster`），其中
+`StorageClientProvider` 会经 `useServerClient()` 把后台 API 地址带进客户端 bundle ——
+匿名访问者不该看到它。所以 admin 也拆成两个 root layout：
 
 ```
-apps/web/src/app/
+apps/admin/src/app/
   globals.css                    # 不动，两份 layout 都 import
-  (main)/
-    layout.tsx                   # 原 app/layout.tsx 原样迁入（含全站 Provider）
-    page.tsx  account/  auth/  comparison/  markdown/
-    error.tsx  loading.tsx  not-found.tsx
+  (app)/                         # 原根 layout 与全部后台页面（/main、/auth、/ 等）
+    layout.tsx                   # 原 app/layout.tsx，含 Providers
   (share)/
-    layout.tsx                   # 只留 <html><body> + 字体，不挂任何 Provider
-    s/[token]/page.tsx
-  api/[[...route]]/route.ts      # Next API 层唯一入口（Hono，见 §6.3），与分享页同源
+    layout.tsx                   # 只留 <html><body> + 字体 + 主题脚本，不挂 Provider
+    s/[token]/page.tsx           # 分享页（server component，取 meta 后交给客户端预览体）
+  api/[[...route]]/route.ts      # Hono 入口（与分享页同源）
 ```
 
-- `proxy.ts` 的 matcher 是 `/account/:path*`（`apps/web/src/proxy.ts:31`），不匹配 `/s/*`，不用改；
-- `(share)/layout.tsx` 的 `metadata` 用中性标题（如「文件预览」），
-  并设 `robots: { index: false, follow: false }`；
-- 分享页**不引**会话、导航、toast、Query。
+三条配套改动：
+
+1. `proxy.ts` 的 matcher 放行 `s/`（分享链接本身就是凭证，被拦到登录页就失去意义）；
+   注意写 `s/` 而不是 `s`，避免误伤其它以 s 开头的路径；
+2. `(share)/layout.tsx` 的中性 metadata：标题「文件预览」、`noindex`、`no-referrer`；
+3. `scripts/check-ui.ts` 找字体布局的方式从「钉死 `src/app/layout.tsx`」改成**递归搜 `layout.tsx`**，
+   否则布局被 route group 包住后，字体规范检查会静默失效。
 
 ### 6.2 类型分发：`previewKind`
 
@@ -319,9 +325,9 @@ Next 侧的接口统一用 [Hono 官方的 Next.js 集成](https://hono.dev/docs
 **一条 catch-all 路由文件 + `@hono/vercel` 的 `handle` + `basePath('/api')`**。
 
 ```
-apps/web/src/app/api/[[...route]]/route.ts   # 入口：export const GET = handle(app) …
-apps/web/src/api/app.ts                      # Hono 实例：basePath + 全局中间件 + 挂载能力
-apps/web/src/api/share.ts                    # 分享能力路由（只声明自己的路径）
+apps/admin/src/app/api/[[...route]]/route.ts # 入口：export const GET = handle(app) …
+apps/admin/src/api/app.ts                    # Hono 实例：basePath + 全局中间件 + 挂载能力
+apps/admin/src/api/share.ts                  # 分享能力路由（只声明自己的路径）
 ```
 
 ```ts
@@ -413,7 +419,7 @@ web 拿不到 admin 的代码，所以必须抽：
 ```
 点击「分享」
   └─ 打开 ShareDialog（ModalForm，弹窗不跳页）
-        ├─ 有效期：1 小时 / 1 天 / 7 天 / 30 天 / 永久     （默认 7 天）
+        ├─ 过期时间：用户自己选的日期时间（默认「一周后」，必须晚于当前）
         ├─ [生成链接]
         ├─ 生成后：只读输入框 + 复制按钮（只此一次，见 §4.3）
         └─ 历史分享列表：状态 / 有效期 / 被看次数 / 撤销
@@ -486,6 +492,11 @@ token 192 bit 随机，猜不出来；`meta` 走限流（默认 60 次/分/IP）
 
 ## 9. 改动面
 
+> **进度（2026-11-12，已全部实施）**：后端（表 + 五个接口 + 计数 / 撤销 / 过期）+ admin 端
+> （列表页「分享」→ 弹窗；`/s/{token}` 分享页 + Hono 内容接口）均已在真实库跑通；
+> 分享页在 admin 应用内（`(share)` 路由组），见 §6.1。
+
+
 > **前置（已完成）**：`next` 16.4.5 → 16.4.6（web / admin 同步升级），两个 Next 应用都加 `hono@^4.13.18`
 > 作为 API 层依赖；升级后 `typecheck` / `build` 通过。admin 目前没有 route handler，第一条接口出现时
 > 按 §6.3 同一结构写（约定已写进 skill `develop-frontend-page`）。
@@ -508,11 +519,11 @@ token 192 bit 随机，猜不出来；`meta` 走限流（默认 60 次/分/IP）
 | admin | `components/file-preview-dialog.tsx` | 改为从 `@repo/ui` 引 |
 | admin | `components/share-dialog.tsx` | 新增：有效期选择 + 生成 + 复制 + 历史 + 撤销 |
 | admin | `app/main/ai/files/page.tsx` | 操作列加「分享」 |
-| web | `src/api/app.ts` | 新增 Hono 入口（`basePath(/api)` + 安全头 + 挂载），已落地 |
-| web | `src/api/share.ts` | 新增分享路由（content 转发），已落地 |
-| web | `app/api/[[...route]]/route.ts` | 新增 catch-all 入口（`handle(app)`），已落地 |
-| web | `app/(main)/*` | 现有页面迁入路由组（机械改动） |
-| web | `app/(share)/layout.tsx`、`s/[token]/page.tsx`、`s/[token]/content/route.ts` | 新增 |
+| admin | `src/api/app.ts` | 新增 Hono 入口（`basePath(/api)` + 安全头 + 挂载），已落地 |
+| admin | `src/api/share.ts` | 新增分享路由（content 转发），已落地 |
+| admin | `app/api/[[...route]]/route.ts` | 新增 catch-all 入口（`handle(app)`），已落地 |
+| admin | `app/(app)/*` | 现有页面迁入路由组（机械改动，含测试里的路径引用） |
+| admin | `app/(share)/layout.tsx`、`s/[token]/page.tsx` | 新增（含 `share-preview.tsx`） |
 | 部署 | ingress | `s.example.com` → web 服务 |
 
 ## 10. 验证
@@ -566,7 +577,7 @@ curl -sI "https://s.example.com/s/$TOKEN/content" | grep -E "content-type|robots
 
 | # | 问题 | 影响 |
 | --- | --- | --- |
-| 1 | 有效期预设档位是否就这五档（1h / 1d / 7d / 30d / 永久）？ | 只影响弹窗，接口收秒数 |
+| 1 | 过期时间要不要保留「永久」选项？ | 接口已支持 `expiresAt: null`，只差弹窗一个开关 |
 | 2 | 「链接只显示一次」能否接受？不接受就要改存明文（§4.3） | 决定表结构与安全口径 |
 | 3 | 分享域是否使用独立注册域？ | 决定主站 cookie 要不要改 `Domain` |
 | 4 | 是否需要「分享」入口同时加到聊天右栏文件树？ | 复用同一个弹窗，成本很低 |
