@@ -17,7 +17,7 @@
  *     连坐清理；若其父进程已先退出（孤儿），会漏掉 —— 用 --dry-run 自查。
  *
  * 用法：
- *   pnpm kill:dev              停掉全部
+ *   pnpm kill:dev              停掉全部（生产 start 起的服务用 `pnpm kill:start`）
  *   pnpm kill:dev --dry-run    只列出将被停止的进程（-n 同义）
  */
 import { execFileSync } from 'node:child_process'
@@ -266,7 +266,11 @@ function scanDevPorts(): Set<number> {
     }
   }
 
-  for (const dir of [...subDirs(join(workspaceRoot, 'apps')), ...subDirs(join(workspaceRoot, 'packages')), workspaceRoot]) {
+  for (const dir of [
+    ...subDirs(join(workspaceRoot, 'apps')),
+    ...subDirs(join(workspaceRoot, 'packages')),
+    workspaceRoot,
+  ]) {
     const scripts = readJson(join(dir, 'package.json')).scripts
     if (scripts && typeof scripts === 'object') {
       for (const script of Object.values(scripts as Record<string, unknown>)) {
@@ -421,14 +425,17 @@ function collectTargets(loose: boolean): { targets: Target[]; suspects: ProcessI
         .trim()
         .toLowerCase()
 
-    const keys = [...targets.values()].map((item) => normalize(item.command)).filter((key) => key.length >= 15)
+    const keys = Array.from(targets.values(), (item) => normalize(item.command)).filter(
+      (key) => key.length >= 15,
+    )
     const reason = (process_: ProcessInfo): string =>
       DEV_COMMAND_PATTERNS.find(([, pattern]) => pattern.test(process_.command))?.[0] ?? 'dev 命令'
 
-    for (const suspect of [...suspects]) {
+    for (const suspect of suspects) {
       const key = normalize(suspect.command)
       if (key.length < 15) continue
-      if (!keys.some((other) => other === key || other.includes(key) || key.includes(other))) continue
+      if (!keys.some((other) => other === key || other.includes(key) || key.includes(other)))
+        continue
 
       targets.set(suspect.pid, {
         ...suspect,
@@ -445,7 +452,8 @@ function collectTargets(loose: boolean): { targets: Target[]; suspects: ProcessI
   if (!loose) {
     const suspectByPid = new Map(suspects.map((item) => [item.pid, item]))
 
-    for (const pid of [...targets.keys()]) {
+    // 快照初始目标：循环里会补入包装进程，不能边遍历边扩展
+    for (const pid of Array.from(targets.keys())) {
       let current = byPid.get(pid)
 
       while (current && current.ppid > 1) {
@@ -467,7 +475,10 @@ function collectTargets(loose: boolean): { targets: Target[]; suspects: ProcessI
     }
   }
 
-  return { targets: [...targets.values()], suspects: suspects.filter((item) => !targets.has(item.pid)) }
+  return {
+    targets: Array.from(targets.values()),
+    suspects: suspects.filter((item) => !targets.has(item.pid)),
+  }
 }
 
 /** 只报最外层的目标（子孙进程顺带清理，不必逐条刷屏） */
@@ -581,11 +592,7 @@ async function main(): Promise<void> {
     )
     console.log(`    ${colors.dim(prettyCommand(target.command))}`)
   }
-  console.log(
-    colors.dim(
-      `\n命中 ${targets.length} 个进程（含子孙进程），监听端口不会残留。`,
-    ),
-  )
+  console.log(colors.dim(`\n命中 ${targets.length} 个进程（含子孙进程），监听端口不会残留。`))
 
   // 归属确认不了的：宁可漏杀不可误杀，但必须让人看见漏了什么
   if (suspects.length > 0) {
@@ -595,7 +602,9 @@ async function main(): Promise<void> {
       ),
     )
     for (const suspect of suspects.slice(0, 8)) {
-      console.log(colors.dim(`  pid ${String(suspect.pid).padEnd(7)} ${prettyCommand(suspect.command)}`))
+      console.log(
+        colors.dim(`  pid ${String(suspect.pid).padEnd(7)} ${prettyCommand(suspect.command)}`),
+      )
     }
     if (suspects.length > 8) console.log(colors.dim(`  … 还有 ${suspects.length - 8} 个`))
     console.log(colors.dim('  确认它们都是本仓库的，用 pnpm kill:dev --loose 一起清理。'))
@@ -634,8 +643,9 @@ async function main(): Promise<void> {
     }
   }
 
-  const stoppedPorts = [...new Set(targets.flatMap((target) => target.ports))]
-    .map((port) => String(port))
+  const stoppedPorts = [...new Set(targets.flatMap((target) => target.ports))].map((port) =>
+    String(port),
+  )
 
   if (survivors.length === 0) {
     const occupied = stoppedPorts.filter((port) => portStillListening(port))
@@ -645,7 +655,9 @@ async function main(): Promise<void> {
       ),
     )
     if (occupied.length > 0) {
-      console.log(colors.yellow(`⚠ 端口 ${occupied.join(' / ')} 仍在监听，可能有脚本外的残留进程。`))
+      console.log(
+        colors.yellow(`⚠ 端口 ${occupied.join(' / ')} 仍在监听，可能有脚本外的残留进程。`),
+      )
       process.exitCode = 1
     }
     return

@@ -122,7 +122,8 @@ const main = (): void => {
     return
   }
   console.error(`❌ Mastra 边界检查失败（${violations.length} 处）：`)
-  for (const violation of violations) console.error(`  - [${violation.kind}] ${violation.file}：${violation.detail}`)
+  for (const violation of violations)
+    console.error(`  - [${violation.kind}] ${violation.file}：${violation.detail}`)
   process.exitCode = 1
 }
 

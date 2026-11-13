@@ -137,7 +137,6 @@ function isContainerManaged(src: string, ctorStart: number): boolean {
   return decorators.some((d) => /^@(Injectable|Controller|Catch)\b/.test(d))
 }
 
-
 /** 提取 providers 数组里的裸类名（跳过 `{ provide: ... }`、展开等表达式） */
 function extractProviderClassNames(src: string): string[] {
   const names: string[] = []
@@ -187,7 +186,9 @@ export function scanInjectDecorators(
     const rel = relative(cwd, file)
 
     // 记录类声明与其 DI 装饰器状态
-    for (const cm of src.matchAll(/(?:^|\n)((?:@[A-Za-z]+\([^)]*\)\s*)*)export\s+class\s+([A-Za-z0-9_]+)/g)) {
+    for (const cm of src.matchAll(
+      /(?:^|\n)((?:@[A-Za-z]+\([^)]*\)\s*)*)export\s+class\s+([A-Za-z0-9_]+)/g,
+    )) {
       classHasDi.set(cm[2], /@(Injectable|Controller|Catch)\(/.test(cm[1]))
     }
 

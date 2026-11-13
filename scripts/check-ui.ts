@@ -4,7 +4,7 @@
  * 背景：后端有 `check:inject`（DI 规范）与 `check:mastra`（适配器边界）两道守卫，
  * 前端此前**一道也没有** —— 约定只写在 skill 里，靠人眼遵守。本脚本补上前端那一道。
  *
- * 四条不变量：
+ * 五条不变量：
  *
  *  A. **自有组件导出完整性**：`packages/ui/src/components/` 下的自有组件（不含走子路径的
  *     `components/ui/` 与 `components/ai-elements/` 两个子目录）每个文件都必须在

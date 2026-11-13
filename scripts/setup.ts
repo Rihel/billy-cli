@@ -71,11 +71,7 @@ const stopTree = (pid: number): void => {
 }
 
 /** 探测端口是否可连接（本机） */
-const probePort = (
-  port: number,
-  host = '127.0.0.1',
-  timeoutMs = 1000,
-): Promise<boolean> =>
+const probePort = (port: number, host = '127.0.0.1', timeoutMs = 1000): Promise<boolean> =>
   new Promise((resolve) => {
     const socket = net.connect({ port, host })
     const done = (ok: boolean) => {
@@ -89,11 +85,7 @@ const probePort = (
   })
 
 /** 执行命令，返回退出码（继承 stdio） */
-const run = (
-  command: string,
-  args: string[],
-  cwd: string = workspaceRoot,
-): Promise<number> =>
+const run = (command: string, args: string[], cwd: string = workspaceRoot): Promise<number> =>
   new Promise((resolve) => {
     const child = spawn(command, args, { cwd, stdio: 'inherit' })
     child.once('error', () => resolve(1))
@@ -105,10 +97,7 @@ const ask = (message: string, fallback: boolean, yes: boolean): Promise<boolean>
   yes ? Promise.resolve(fallback) : confirm({ message, default: fallback })
 
 /** 轮询等待 HTTP 服务可响应 */
-const waitForHttp = async (
-  url: string,
-  timeoutMs: number,
-): Promise<boolean> => {
+const waitForHttp = async (url: string, timeoutMs: number): Promise<boolean> => {
   const deadline = Date.now() + timeoutMs
   while (Date.now() < deadline) {
     try {
@@ -129,9 +118,7 @@ async function checkEnvironment(): Promise<boolean> {
 
   const nodeMajor = Number(process.version.replace(/^v/, '').split('.')[0])
   if (Number.isNaN(nodeMajor) || nodeMajor < 20) {
-    console.error(
-      colors.red(`  ✗ Node.js 版本过低（当前 ${process.version}），需要 >= 20`),
-    )
+    console.error(colors.red(`  ✗ Node.js 版本过低（当前 ${process.version}），需要 >= 20`))
     return false
   }
   console.log(colors.green(`  ✓ Node.js ${process.version}`))
@@ -189,9 +176,7 @@ async function ensureDockerServices(yes: boolean, skip: boolean): Promise<void> 
 
   const code = await run('docker', ['compose', 'up', '-d', 'postgres', 'redis', 'minio'])
   if (code !== 0) {
-    console.error(
-      colors.red('  ✗ docker compose 启动失败，请检查 Docker 是否已安装并运行'),
-    )
+    console.error(colors.red('  ✗ docker compose 启动失败，请检查 Docker 是否已安装并运行'))
     process.exit(1)
   }
 
@@ -211,13 +196,9 @@ async function ensureDockerServices(yes: boolean, skip: boolean): Promise<void> 
   console.log()
 
   if (pgUp && redisUp && minioUp) {
-    console.log(
-      colors.green('  ✓ 依赖服务已就绪（PostgreSQL 15432 / Redis 6380 / MinIO 19000）'),
-    )
+    console.log(colors.green('  ✓ 依赖服务已就绪（PostgreSQL 15432 / Redis 6380 / MinIO 19000）'))
   } else {
-    console.error(
-      colors.red('  ✗ 等待超时：依赖服务未全部就绪，请检查 docker compose ps'),
-    )
+    console.error(colors.red('  ✗ 等待超时：依赖服务未全部就绪，请检查 docker compose ps'))
     process.exit(1)
   }
 }
@@ -291,13 +272,9 @@ async function migrateDatabase(yes: boolean, skip: boolean): Promise<void> {
   const seedCode = await run('pnpm', ['seed:admin'])
   if (seedCode !== 0) {
     // 幂等性说明：重复执行会因邮箱唯一报错，属于可忽略情况
-    console.log(
-      colors.yellow('  - 种子执行未成功（若已存在管理员账号，可忽略）'),
-    )
+    console.log(colors.yellow('  - 种子执行未成功（若已存在管理员账号，可忽略）'))
   } else {
-    console.log(
-      colors.green('  ✓ 管理员已创建：admin@billy.local / admin123（请尽快修改密码）'),
-    )
+    console.log(colors.green('  ✓ 管理员已创建：admin@billy.local / admin123（请尽快修改密码）'))
   }
 }
 
@@ -314,14 +291,13 @@ async function smokeTest(yes: boolean, skip: boolean): Promise<void> {
   // 直接用 node 加载 tsx（1 个进程），不走 `pnpm exec tsx`（Windows 上会叠出
   // pnpm 包装链 + tsx CLI 子进程，且冒烟结束后更难整树回收）。
   // 冒烟只需「起来 → 探活 → 停止」，不加 --watch，避免子进程常驻。
-  const child =
-    alreadyRunning
-      ? null
-      : spawn(process.execPath, ['--import', 'tsx/esm', 'src/main.ts'], {
-          cwd: join(workspaceRoot, 'apps/server'),
-          detached: !isWin,
-          stdio: 'ignore',
-        })
+  const child = alreadyRunning
+    ? null
+    : spawn(process.execPath, ['--import', 'tsx/esm', 'src/main.ts'], {
+        cwd: join(workspaceRoot, 'apps/server'),
+        detached: !isWin,
+        stdio: 'ignore',
+      })
 
   process.stdout.write('  正在启动服务并请求 /config/get')
   const ok = await waitForHttp(serverUrl, 45_000)
@@ -381,15 +357,15 @@ const main = async (): Promise<void> => {
 
   console.log(colors.bold(colors.green('\n✅ 初始化完成，启动开发环境：')))
   console.log(`  ${colors.cyan('pnpm dev:pkgs')}    # 终端 1：watch 构建 packages`)
-  console.log(`  ${colors.cyan('pnpm dev:server')}   # 终端 2：NestJS 服务（http://localhost:9989）`)
+  console.log(
+    `  ${colors.cyan('pnpm dev:server')}   # 终端 2：NestJS 服务（http://localhost:9989）`,
+  )
   console.log(`  ${colors.cyan('pnpm dev:web')}      # 终端 3：Web 前台（http://localhost:9840）`)
-  console.log(`  ${colors.cyan('pnpm dev:admin')}    # 终端 4（可选）：Admin 后台（http://localhost:9845）`)
   console.log(
-    `\n  Admin 登录：${colors.bold('admin@billy.local')} / ${colors.bold('admin123')}`,
+    `  ${colors.cyan('pnpm dev:admin')}    # 终端 4（可选）：Admin 后台（http://localhost:9845）`,
   )
-  console.log(
-    colors.yellow('  提示：-y 全默认 / --skip-* 跳过指定步骤，适合重复执行与 CI。'),
-  )
+  console.log(`\n  Admin 登录：${colors.bold('admin@billy.local')} / ${colors.bold('admin123')}`)
+  console.log(colors.yellow('  提示：-y 全默认 / --skip-* 跳过指定步骤，适合重复执行与 CI。'))
 }
 
 main().catch((error: unknown) => {
