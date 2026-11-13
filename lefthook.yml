@@ -1,0 +1,30 @@
+# Lefthook：本地 Git 钩子（Go 二进制，配置即代码）
+# 约定：run 一律单行、无引号、无块标量——Windows 上 lefthook 通过 Git for Windows 的
+# sh -c 执行，历史上引号会截断命令（https://github.com/evilmartians/lefthook/issues/953）。
+# 逃生口：LEFTHOOK=0 git commit / git commit -n / git push --no-verify。
+
+pre-commit:
+  parallel: true
+  jobs:
+    - name: format
+      glob: '*.{ts,tsx,js,mjs,cjs,json,jsonc,yaml,yml,css}'
+      run: pnpm exec oxfmt --no-error-on-unmatched-pattern {staged_files}
+      stage_fixed: true
+
+    - name: lint
+      glob: '*.{ts,tsx,js,mjs,cjs}'
+      run: pnpm exec oxlint --fix {staged_files}
+      stage_fixed: true
+
+commit-msg:
+  jobs:
+    - name: commit-message
+      run: node scripts/check-commit-msg.mjs {1}
+
+pre-push:
+  jobs:
+    - name: verify
+      run: pnpm verify
+
+    - name: typecheck
+      run: pnpm typecheck

@@ -1,0 +1,107 @@
+{
+  // Oxlint 配置（oxc 原生 Rust linter，替代 ESLint）
+  // 文档：https://oxc.rs/docs/guide/usage/linter/config-file-reference
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": [
+    "eslint",
+    "typescript",
+    "unicorn",
+    "import",
+    "react",
+    "react-hooks",
+    "jsx-a11y",
+    "nextjs",
+    "vitest",
+    "promise",
+    "node",
+    "oxc",
+  ],
+  // correctness 默认是 warn，这里升级为 error：门禁不允许带病合入
+  "categories": {
+    "correctness": "error",
+  },
+  "env": {
+    "es2026": true,
+    "node": true,
+    "browser": true,
+  },
+  "options": {
+    "reportUnusedDisableDirectives": "warn",
+  },
+  "ignorePatterns": [
+    "**/dist/**",
+    "**/.next/**",
+    "**/node_modules/**",
+    "apps/admin/public/vendor/**",
+    "apps/web/next-env.d.ts",
+  ],
+  "rules": {
+    // 分层依赖：循环依赖一律报错
+    "import/no-cycle": "error",
+    "eqeqeq": ["error", "smart"],
+    // 允许 warn/error（浏览器兜底日志、流客户端告警），禁止 log 级输出
+    "no-console": ["error", { "allow": ["warn", "error"] }],
+    "no-unused-vars": [
+      "error",
+      {
+        "argsIgnorePattern": "^_",
+        "varsIgnorePattern": "^_",
+        "caughtErrors": "none",
+        "ignoreRestSiblings": true,
+      },
+    ],
+
+    // —— 类型感知规则（仅 `pnpm lint:types` 生效）——
+    // 只放行高价值、低误报的 5 条；其余类型感知规则见下方 off 列表
+    "typescript/no-floating-promises": "error",
+    "typescript/no-misused-promises": "error",
+    "typescript/await-thenable": "error",
+    "typescript/no-misused-spread": "error",
+    "typescript/restrict-template-expressions": "error",
+
+    // —— 以下规则在存量代码里噪音大，先关掉；治理完再逐条打开 ——
+    // 要求 vi.fn<T>() 显式泛型，存量 147 处，收益低
+    "vitest/require-mock-type-parameters": "off",
+    // React Compiler 系列：聊天页状态机大量 setState-in-effect，属专项治理
+    "react/set-state-in-effect": "off",
+    "react/refs": "off",
+    "react/immutability": "off",
+    "react/purity": "off",
+    "react/static-components": "off",
+    // prefer-tag-over-role 是启发式规则：本仓的 div+role 多用于布局原语（列表容器 / 按钮组 / 上传区），
+    // 换成 ul / fieldset / button 会改变布局与嵌套约束；能换语义标签的地方已在代码里换掉。
+    "jsx-a11y/prefer-tag-over-role": "off",
+    // next/image 迁移是单独的性能专项（Markdown / OSS 直链无法直接替换）
+    "nextjs/no-img-element": "off",
+    // 类型感知高噪音项
+    "typescript/unbound-method": "off",
+    "typescript/no-base-to-string": "off",
+    "typescript/no-redundant-type-constituents": "off",
+    // packages/* 的 tsconfig 关闭了 strictNullChecks，这条只会刷「缺少 strictNullChecks」
+    "typescript/no-useless-default-assignment": "off",
+  },
+  "overrides": [
+    {
+      // 测试文件：保留 correctness，放宽测试专用写法
+      "files": ["**/*.test.ts", "**/*.test.tsx", "**/test/**"],
+      "rules": {
+        "typescript/no-non-null-assertion": "off",
+        "vitest/no-conditional-expect": "off",
+      },
+    },
+    {
+      // 数据库迁移：独立进程里没有 logger，只能用 console
+      "files": ["apps/server/src/database/migrations/**"],
+      "rules": {
+        "no-console": "off",
+      },
+    },
+    {
+      // 脚本 / 构建配置：CLI 输出就是它的职责
+      "files": ["scripts/**", "**/scripts/**", "**/*.config.ts", "**/*.config.mjs"],
+      "rules": {
+        "no-console": "off",
+      },
+    },
+  ],
+}

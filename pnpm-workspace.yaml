@@ -4,6 +4,7 @@ packages:
 allowBuilds:
   bcrypt: true
   esbuild: true
+  lefthook: true
   protobufjs: true
   sharp: true
   unrs-resolver: true
@@ -90,6 +91,13 @@ minimumReleaseAgeExclude:
   - tailwindcss@4.3.5
   - tsdown@0.23.7
   - zustand@5.1.0
+  - '@oxlint-tsgolint/darwin-arm64@7.0.2007'
+  - '@oxlint-tsgolint/darwin-x64@7.0.2007'
+  - '@oxlint-tsgolint/linux-arm64@7.0.2007'
+  - '@oxlint-tsgolint/linux-x64@7.0.2007'
+  - '@oxlint-tsgolint/win32-arm64@7.0.2007'
+  - '@oxlint-tsgolint/win32-x64@7.0.2007'
+  - oxlint-tsgolint@7.0.2007
 # rolldown 跟随 tsdown/unrun 构建链路升级到 1.2.x 最新（vite 8 仍用 ~1.1.5，不覆盖）
 overrides:
   'tsdown>rolldown': ^1.2.6

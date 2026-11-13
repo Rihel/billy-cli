@@ -7,27 +7,47 @@
     },
     "build": {
       "cache": false,
-      "dependsOn": [
-        "^build"
-      ],
-      "outputs": [
-        "dist/**"
-      ]
+      "dependsOn": ["^build"],
+      "outputs": ["dist/**"]
     },
     "build:docker": {
       "cache": false,
-      "dependsOn": [
-        "^build"
-      ],
-      "outputs": [
-        "dist/**"
-      ]
+      "dependsOn": ["^build"],
+      "outputs": ["dist/**"]
     },
     "typecheck": {
       "cache": true
     },
     "test": {
       "cache": true
+    },
+    "//#lint": {
+      "cache": true,
+      "outputs": []
+    },
+    "//#lint:types": {
+      "cache": true,
+      "outputs": []
+    },
+    "//#fmt:check": {
+      "cache": true,
+      "outputs": []
+    },
+    "//#check:inject": {
+      "cache": true,
+      "outputs": []
+    },
+    "//#check:mastra": {
+      "cache": true,
+      "outputs": []
+    },
+    "//#check:ui": {
+      "cache": true,
+      "outputs": []
+    },
+    "//#verify": {
+      "cache": true,
+      "outputs": []
     }
   }
 }

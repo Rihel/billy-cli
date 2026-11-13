@@ -7,7 +7,7 @@
   "scripts": {
     "dev": "next dev --port 9845",
     "build": "next build",
-    "start": "sh scripts/start.sh",
+    "start": "node ../../scripts/start-standalone.mjs admin 9845",
     "sync:vendor": "node scripts/sync-vendor.mjs",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",

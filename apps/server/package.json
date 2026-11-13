@@ -13,7 +13,7 @@
     "dev": "node --watch --import tsx/esm src/main.ts",
     "start:debug": "node --watch --inspect --import tsx/esm src/main.ts",
     "start:prod": "node dist/main.js",
-    "db:generate": "bash -c 'node --import tsx node_modules/typeorm/cli.js migration:generate \"src/database/migrations/$0\" -d ./data-source.ts'",
+    "db:generate": "node scripts/db-generate.mjs",
     "db:migrate": "node --import tsx node_modules/typeorm/cli.js migration:run -d ./data-source.ts",
     "seed:admin": "node --import tsx/esm scripts/seed-admin.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json",
