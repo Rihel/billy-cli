@@ -20,6 +20,10 @@
   `connect-src 'none'`、表单、框架仍全禁。写法在**内置技能** `catalog/html-page`，提示词只留
   「写任何 HTML 之前先加载 `html-page`」（无条件段，`.html` 文件与 `html` / `gsap` 围栏都算）+ 白名单三行
   （细节搬进技能是为了不让它每轮付 token）。
+- **Tailwind 在沙箱里可用**（2026-11-13 实测）：`@tailwindcss/browser@4.3.5` 由三家 CDN 的
+  `dist/index.global.js` 取同一个文件，加载后扫描 DOM 注入 `<style>`；在沙箱同款 CSP
+  （`style-src 'unsafe-inline'`）下 `bg-red-500` / `p-4` / `text-center` 均生效。它**无全局变量**，
+  三级兜底只能用 `onerror` 链。字体口径：一律无衬线（禁 `font-serif` / 宋体）。
 
 ## 坑
 

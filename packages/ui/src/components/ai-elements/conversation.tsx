@@ -13,7 +13,15 @@ export type ConversationProps = ComponentProps<typeof StickToBottom>
 export const Conversation = ({ className, ...props }: ConversationProps) => (
   <StickToBottom
     className={cn('relative flex-1 overflow-y-hidden', className)}
-    initial="smooth"
+    /**
+     * 进入会话时**不要**"从顶部滑到底部"的动画。
+     *
+     * `use-stick-to-bottom` 的规则：内容**第一次**长高用 `initial`，之后的每一次长高用 `resize`。
+     * 而历史是异步到的 —— 挂载时还是空列表，历史一到就是"第一次长高"，默认的
+     * `initial="smooth"` 会在那一刻起一段弹簧动画，看起来就是"点进会话后页面自己往下滚"。
+     * 首屏定位必须是瞬间的（一帧内到位，不让人看见过程）；流式输出仍交给 `resize="smooth"` 跟随。
+     */
+    initial="instant"
     resize="smooth"
     role="log"
     {...props}

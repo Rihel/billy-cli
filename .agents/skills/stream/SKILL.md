@@ -22,7 +22,9 @@ description: 在 Billy 工程中使用服务端推送（SSE，命名统一为 st
   （防窃听他人频道）；**广播频道**（如 `admin:all`，见 `STREAM_ADMIN_BROADCAST_CHANNEL`）
   只能由服务端通过 `SSE_ROUTE_OPTIONS.broadcastChannels` 注入，且**只放行与当前身份同域**的项；
   **业务频道默认拒绝**，需在 `modules/stream/stream.module.ts` 通过
-  `SSE_ROUTE_OPTIONS` 注入 `allowChannel` 白名单校验。
+  `SSE_ROUTE_OPTIONS` 注入 `allowChannel` 白名单校验；**派生频道**
+  （`SSE_ROUTE_OPTIONS.derivedChannels(identity)`，如 AI 的 `ai:owner:{ownerId}`）由服务端按
+  身份算出、客户端不传，因此不需要归属校验。
 - **双端可用**：`SSE_ROUTE_OPTIONS.auth` 支持 `'user' | 'admin' | 'both'`，当前工程用 `'both'`
   ——前台用户与后台管理员都能订阅；身份由守卫写入的 ALS 决定（**不要**用会抛错的
   `currentUserId()` / `currentAdminId()` 去拼频道，另一身份必然缺失）。
@@ -53,7 +55,8 @@ UI Message Stream 协议（前端 `useChat` 直接消费），服务端自己写
 
 - [ ] 复用 `StreamHub` 统一入口（构造器 `@Inject(StreamHub)`），未自写 SSE 传输 / 未引第三方 SSE 库
 - [ ] 业务频道已按 `SSE_ROUTE_OPTIONS.allowChannel` 白名单校验（默认仅身份频道，不裸放 `user:*` / `admin:*`）；
-      需要全体管理员广播时用 `broadcastChannels`（如 `STREAM_ADMIN_BROADCAST_CHANNEL`），不要在控制器里手写频道名
+      需要全体管理员广播时用 `broadcastChannels`（如 `STREAM_ADMIN_BROADCAST_CHANNEL`），
+      逐身份不同的频道用 `derivedChannels`，不要在控制器里手写频道名
 - [ ] 事件负载用共享数据结构（`event` + `data`，专用事件在 `packages/shared/src/schema/stream.schema.ts` 定 schema），频道名符合 `<域>:<id>` 约定
 - [ ] 前端用 `client.createStream()` + `@repo/ui` 的 `useStream`（不要手写 EventSource / 自己管 useEffect 重连）；
       非 React 场景才直接用 `HttpStreamClient`，且页面卸载必须 `close()`

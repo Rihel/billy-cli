@@ -32,6 +32,46 @@ Google Fonts、cdnjs、GitHub raw、自建图床 —— 写了只会得到一块
 
 推论：**数据必须内联**（把 JSON 直接写进 `<script>`，或先渲染成 HTML 节点），页面不能自己去请求接口。
 
+## 样式：Tailwind 写布局，字体一律无衬线
+
+结构 / 间距 / 排版用 **Tailwind CSS v4 浏览器版**（`@tailwindcss/browser`：加载后扫描 DOM 并注入样式），
+不要引 Bootstrap / Pico 这类第二套 CSS 框架，也不要把一堆一次性 CSS 写在 `<style>` 里。
+它走同一套三级 CDN：
+
+```html
+<script>
+  ;(function () {
+    var urls = [
+      'https://registry.npmmirror.com/@tailwindcss/browser/4.3.5/files/dist/index.global.js',
+      'https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4.3.5/dist/index.global.js',
+      'https://unpkg.com/@tailwindcss/browser@4.3.5/dist/index.global.js'
+    ]
+    var i = 0
+    ;(function next() {
+      var s = document.createElement('script')
+      s.src = urls[i]
+      s.onerror = function () {
+        i += 1
+        if (i < urls.length) next()
+      }
+      document.head.appendChild(s)
+    })()
+  })()
+</script>
+```
+
+- **它没有全局变量**（不像 `echarts` / `Chart`）：三级兜底只能挂 `onerror`，别写 `window.tailwind` 判断；
+- 版本写死 `4.3.5`；三家的包内路径都是 `dist/index.global.js`；
+- 主题覆盖用 `<style type="text/tailwindcss">@theme { --font-sans: … }</style>`；
+- **Tailwind 只是增强**：`<style>` 里仍要写最小基础样式（页面背景、文字色、字体栈、打印），
+  否则 CDN 全挂时整页是一张白纸；Tailwind 不计入「1–3 个库」的上限，但别再引第二套 CSS 框架。
+
+**字体一律无衬线，不要衬线字体。** 中文衬线（宋体 / Noto Serif）在预览里没有字体文件可依赖，
+会回退成系统宋体、在屏幕上发虚，和后台的现代观感也不一致：`font-sans` 可以用，但
+`font-serif`、`font-family: serif`、`Songti SC`、`SimSun`、`Noto Serif SC`、`Source Han Serif`、
+`Georgia`、`Times New Roman` 一律不要写。正文给无衬线系统栈：
+`-apple-system, "PingFang SC", "Microsoft YaHei", "Noto Sans SC", sans-serif`。
+
 ## 交付流程
 
 1. 先看有没有设计 / 前端类技能要加载（见系统提示词「要求」段），再动手；
@@ -87,15 +127,18 @@ Google Fonts、cdnjs、GitHub raw、自建图床 —— 写了只会得到一块
 
 - [ ] 单文件：样式 / 脚本内联，没有相对路径外链
 - [ ] 版本写死；三级兜底齐全；`<\/script>` 已转义
+- [ ] 样式用 Tailwind（`@tailwindcss/browser` 版本写死 + `onerror` 三级兜底），且 `<style>` 里有基础样式兜底
+- [ ] **没有衬线字体**（`font-serif` / `serif` / `Songti SC` / `SimSun` / `Noto Serif SC` / `Georgia`），正文是无衬线系统栈
 - [ ] 没有 `fetch` / XHR / 表单 / `<iframe>` / 白名单之外的域名
 - [ ] 数据内联；整页 ≤1MB
-- [ ] 中文正文用系统字体栈（`-apple-system, "PingFang SC", "Microsoft YaHei", sans-serif`），不引字体文件
 - [ ] 窄屏不横向溢出（宽表格套 `overflow-x:auto`）
-- [ ] 库 ≤3 个，去掉库之后正文仍然可读
+- [ ] 库 ≤3 个（Tailwind 不计入），去掉库之后正文仍然可读
 - [ ] `file-submit` 的 `fileKey` 以 `.html` 结尾
 
 ## 常见坑
 
 - 用 ```` ```html ```` 围栏把整页贴在聊天里：用户在文件树里看不到文件、也没法下载 —— 页面一律走 `.html` 文件；
 - 只写一级 CDN：目标网络恰好不可达时整页空白，而三级兜底的成本只有两行；
+- 用了 `font-serif` / 宋体：中文衬线在预览里会回退成系统宋体、屏幕发虚，统一换 `font-sans`；
+- 只引 Tailwind 不写基础样式：CDN 全挂时整页白纸（Tailwind 是增强，不是地基）；
 - 设计感要求高时先加载设计 / 前端类技能再动手，本技能只保证**能跑、能引库、能交付**。

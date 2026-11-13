@@ -86,6 +86,7 @@ import { copyText } from '@/lib/clipboard'
 import { parseChatError, usageLineText, usageLineTitle } from './format'
 import { conversationPath, isNewConversation } from './routes'
 import { ATTACHMENT_ACCEPT, formatFileSize } from './attachment-utils'
+import { createLongTextFile, LONG_TEXT_PASTE_MIN_CHARS, splitLongText } from './long-text'
 import { rejectedText, scanFiles, useAttachmentsUpload } from './use-attachments-upload'
 import { currentModelModalities, useAvailableModels } from './use-available-models'
 import type { AgentConversationModel, ChatAttachmentModel } from '@repo/shared'
@@ -93,6 +94,7 @@ import type { AppPageQueryResponse } from '@repo/shared'
 import {
   CHAT_ATTACHMENT_MAX_BYTES,
   CHAT_ATTACHMENT_MAX_COUNT,
+  CHAT_ATTACHMENT_TEXT_INLINE_LIMIT,
   ChatAttachmentSchema,
 } from '@repo/shared'
 import { z } from 'zod'
@@ -587,27 +589,13 @@ export function ChatConversation({ conversationId }: { conversationId: string })
   const streaming = status === 'streaming' || status === 'submitted' || resuming
 
   /**
-   * **开跑即刷一次会话列表**：让侧栏「运行中」呼吸灯立刻亮。
+   * 开跑不再需要手动刷会话列表：侧栏的运行态改由服务端事件驱动
+   * （`conversation.run.changed` → `layout.tsx` 的 `useStream`）。
    *
-   * 列表本身是**条件轮询**（只有缓存里已有 `item.running` 才每 5s 拉一次），而它的失效
-   * 原先只有「新会话 id 首次出现」与「一轮跑完」两处 —— **已有会话开第 2 轮时两头都不触发**：
-   * 列表不重取，条件轮询又因缓存里没有 running 的项而不会自启，`running` 一直停在 false。
-   *
-   * 触发条件是 `status === 'streaming'`（或续跑），**不含 `submitted`**：点发送时服务端可能
-   * 还没建好 run 行，抢跑会查到 `running=false`，这一轮就白刷了（ref 已去重，不会补第二次）。
-   * 每轮只失效一次；熄灭仍由下面「跑完对账」负责。
+   * 原来的「`status` 变 streaming 就失效一次 `['ai','conversations']`」只是给**条件轮询**
+   * 点火用的补丁（列表仅在缓存里已有 `running` 时才轮询，自己不启动）。轮询去掉后，
+   * 这个补丁连同「`submitted` 抢跑」的时序坑一起消失。
    */
-  const startedRunning = status === 'streaming' || resuming
-  const startInvalidated = useRef(false)
-  useEffect(() => {
-    if (!startedRunning) {
-      startInvalidated.current = false
-      return
-    }
-    if (startInvalidated.current) return
-    startInvalidated.current = true
-    void queryClient.invalidateQueries({ queryKey: ['ai', 'conversations'] })
-  }, [startedRunning, queryClient])
 
   /**
    * 服务端还在跑、但本地流已经断了（典型：回答挂起问题后续跑流断开 / 页面被切走又回来）
@@ -1070,7 +1058,18 @@ export function ChatConversation({ conversationId }: { conversationId: string })
         >
           <div className="flex h-full min-h-0 flex-col gap-2">
             {/* 消息列表不画外框：整块与页面同底，气泡 / 工具卡自己带层次，边框只会把界面切成一块块 */}
-            <Conversation className="min-h-0 flex-1">
+            <Conversation
+              className="min-h-0 flex-1"
+              /**
+               * 只有**流式输出**才用平滑跟随；其余内容长高一律瞬间到位。
+               *
+               * 为什么：`use-stick-to-bottom` 只在**第一次**长高时用 `initial`，之后都用 `resize`。
+               * 而挂载时这里已经渲染着“正在加载会话历史…”，所以历史到达算**第二次**长高 ——
+               * 默认的 `resize="smooth"` 会在那一刻起一段弹簧动画（看起来就是"进会话后自己滑到底"）。
+               * `initial="instant"` 管不到它，必须让非流式的 `resize` 也是 instant。
+               */
+              resize={streaming && !loading ? 'smooth' : 'instant'}
+            >
               {/* 覆盖 ai-elements 的 `gap-8 p-4`：管理台是**高密度工作台**，
                   消息间距收到 12px、留白收到 12px（下面每张卡自己再收一层） */}
               <ConversationContent className="gap-3 p-3">
@@ -1151,15 +1150,57 @@ export function ChatConversation({ conversationId }: { conversationId: string })
                 accept={ATTACHMENT_ACCEPT}
                 multiple
                 onSubmit={async ({ text, files }) => {
-                  const content = text.trim()
-                  if ((!content && files.length === 0) || streaming || attachmentUpload.uploading) {
+                  const raw = text.trim()
+                  if ((!raw && files.length === 0) || streaming || attachmentUpload.uploading) {
                     return
                   }
 
+                  /**
+                   * 超长文本转附件：`message` 有 8000 字符上限（`AgentChatSchema`），
+                   * 用户粘日志 / 长文时不该只看到一个 400。全文落成 .md 附件，
+                   * 正文换成一句说明；上传 / 校验 / 气泡展示都复用现有附件链路。
+                   */
+                  const { content, file: longTextFile } = splitLongText(raw)
+                  let messageFiles = files
                   // 待发附件：只认本地文件（`files` 是 PromptInput 从附件状态里整理出来的）
                   const localFiles = files
                     .map((part) => part.rawFile)
                     .filter((file): file is File => file instanceof File)
+
+                  if (longTextFile) {
+                    if (localFiles.length + 1 > CHAT_ATTACHMENT_MAX_COUNT) {
+                      toastError(
+                        `长文本会转成一个附件，但一轮最多带 ${CHAT_ATTACHMENT_MAX_COUNT} 个，请先移除一个`,
+                      )
+                      return
+                    }
+                    if (longTextFile.size > CHAT_ATTACHMENT_MAX_BYTES) {
+                      toastError(
+                        `内容超过 ${formatFileSize(CHAT_ATTACHMENT_MAX_BYTES)}，请分段发送`,
+                      )
+                      return
+                    }
+                    // 气泡里也要看得到这份附件：与 PromptInput 的附件 part 同形（url 用本地对象地址）
+                    messageFiles = [
+                      ...files,
+                      {
+                        type: 'file',
+                        mediaType: longTextFile.type,
+                        filename: longTextFile.name,
+                        url: URL.createObjectURL(longTextFile),
+                        rawFile: longTextFile,
+                      },
+                    ]
+                    localFiles.push(longTextFile)
+                    // 超过内联上限的部分服务端会截断（模型读不到），先说清楚，别让用户以为整份都喂进去了
+                    const truncated = raw.length > CHAT_ATTACHMENT_TEXT_INLINE_LIMIT
+                    toastSuccess(
+                      `内容较长，已转为附件「${longTextFile.name}」` +
+                        (truncated
+                          ? `（超过 ${CHAT_ATTACHMENT_TEXT_INLINE_LIMIT.toLocaleString()} 字的部分模型读不到）`
+                          : ''),
+                    )
+                  }
 
                   const scanned = scanFiles(localFiles, inputModalities)
                   if (scanned.rejected.length > 0) {
@@ -1202,7 +1243,7 @@ export function ChatConversation({ conversationId }: { conversationId: string })
                       // 直接把附件 part 交给 useChat：消息里因此带上 file part，气泡里就能显示附件。
                       // 真正发给服务端的不是它，而是 metadata 里那份"存储 key + 元数据"
                       // （part 里装的是预览地址，服务端要的是 key，见 prepareSendMessagesRequest）
-                      ...(files.length > 0 ? { files } : {}),
+                      ...(messageFiles.length > 0 ? { files: messageFiles } : {}),
                     },
                     { metadata: { attachments } },
                   )
@@ -1212,8 +1253,18 @@ export function ChatConversation({ conversationId }: { conversationId: string })
                 <PromptInputBody>
                   <PromptInputAttachmentsBar onPreviewImage={previewAttachments} />
                   <PromptInputTextarea
-                    placeholder={`说说你想做什么…（⌘/Ctrl + Enter 发送，Enter 换行；可粘贴图片或文件，${ATTACHMENT_LIMIT_TEXT}）`}
+                    placeholder={`说说你想做什么…（⌘/Ctrl + Enter 发送，Enter 换行；可粘贴图片 / 文件，长文本自动转附件，${ATTACHMENT_LIMIT_TEXT}）`}
                     submitOn="mod+enter"
+                    /**
+                     * 粘贴超过阈值的纯文本 → 直接变成附件，输入框留空给用户写自己的问题。
+                     * 这是主路径；`onSubmit` 里的 `splitLongText` 只是"手打超过 8000 字"的兜底。
+                     */
+                    pasteTextAsAttachment={{
+                      minChars: LONG_TEXT_PASTE_MIN_CHARS,
+                      toFile: createLongTextFile,
+                      onConverted: (file) =>
+                        toastSuccess(`长文本已转为附件「${file.name}」，输入你的问题即可发送`),
+                    }}
                   />
                 </PromptInputBody>
                 {/* 左下角：本轮用哪个模型；右下角：本轮统计 + 发送/停止 */}

@@ -1,10 +1,15 @@
 'use client'
 
-import { useEffect, useMemo, useState, type ReactNode, type UIEvent } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode, type UIEvent } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { usePathname } from 'next/navigation'
-import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import {
+  useInfiniteQuery,
+  useMutation,
+  useQueryClient,
+  type InfiniteData,
+} from '@tanstack/react-query'
 import { useForm } from '@tanstack/react-form'
 import {
   Button,
@@ -20,8 +25,14 @@ import {
   toastSuccess,
   useDisclosure,
   useIsMobile,
+  useStream,
 } from '@repo/ui'
-import type { AgentConversationModel } from '@repo/shared'
+import {
+  STREAM_CONVERSATION_RUN_CHANGED_EVENT,
+  ConversationRunChangedEventSchema,
+  type AgentConversationModel,
+  type AppPageQueryResponse,
+} from '@repo/shared'
 // 可拖动分栏：`components/ui/*` 属重型基础组件，走子路径按需引入（不进 barrel，带扩展名）
 import {
   ResizableHandle,
@@ -65,9 +76,6 @@ import { ChatMobileNavContext } from './mobile-nav-context'
 /** 会话列表栏的默认 / 最小 / 最大宽度（数字即像素） */
 const SIDEBAR_WIDTH = { default: 264, min: 180, max: 420 } as const
 
-/** 有会话在跑时的列表轮询间隔（毫秒）：只为把「跑完了」这件事捞回来，不追求实时 */
-const RUNNING_POLL_INTERVAL = 5000
-
 /** 会话列表每页条数；触底自动取下一页（会话可能几十上百条，不能只拉第一页） */
 const CONVERSATION_PAGE_SIZE = 30
 
@@ -88,14 +96,75 @@ export default function ChatLayout({ children }: { children: ReactNode }) {
     initialPageParam: 1,
     getNextPageParam: (lastPage) =>
       lastPage.page * lastPage.size < lastPage.total ? lastPage.page + 1 : undefined,
-    // 有会话在跑就轮询：运行状态是**服务端的事实**（根 run 的 pending / running），
-    // 前端没有别的地方能知道它什么时候结束 —— 一轮跑完要么标题变了、要么轮数 +1，
-    // 靠这次轮询顺手带回来；全都跑完了就停（false），不留一个一直在转的定时器。
-    refetchInterval: (query) =>
-      query.state.data?.pages.some((page) => page.items.some((item) => item.running))
-        ? RUNNING_POLL_INTERVAL
-        : false,
   })
+
+  /**
+   * 运行态**事件驱动**：服务端在根 run 的活跃状态变化时推 `conversation.run.changed`
+   * （频道 `ai:owner:{ownerId}`，由服务端按登录身份派生订阅，客户端不传频道）。
+   *
+   * 原先是「缓存里有 running 才每 5s 拉一次列表」的**条件轮询** —— 拿定时器去猜服务端状态。
+   * 而状态变化点全在服务端（开跑 / 收尾 / 挂起 / 停止 / 看门狗判超时 / 重启恢复 / 删会话），
+   * 事件本来就该负责这件事；现在空闲时零请求、跑完立刻灭灯。
+   *
+   * 收到事件只**覆盖 `running` 一个字段**，不整份重拉；但"跑完了"还要顺带刷新标题 / 轮数 /
+   * 排序（收尾时一起变），所以 `running=false` 时补一次失效 —— 一次运行结束只多一个请求。
+   */
+  const stream = useMemo(() => client.createStream(), [client])
+  const { state: streamState } = useStream(stream, {
+    [STREAM_CONVERSATION_RUN_CHANGED_EVENT]: (raw) => {
+      const parsed = ConversationRunChangedEventSchema.safeParse(raw)
+      if (!parsed.success) return
+      const { conversationId, running } = parsed.data
+      const cached = queryClient.getQueryData<
+        InfiniteData<AppPageQueryResponse<AgentConversationModel>>
+      >(['ai', 'conversations'])
+      const known =
+        cached?.pages.some((page) => page.items.some((item) => item.id === conversationId)) ?? false
+      queryClient.setQueryData<InfiniteData<AppPageQueryResponse<AgentConversationModel>>>(
+        ['ai', 'conversations'],
+        (current) =>
+          current
+            ? {
+                ...current,
+                pages: current.pages.map((page) => ({
+                  ...page,
+                  items: page.items.map((item) =>
+                    item.id === conversationId ? { ...item, running } : item,
+                  ),
+                })),
+              }
+            : current,
+      )
+      queryClient.setQueryData<AgentConversationModel>(
+        ['ai', 'conversation', conversationId],
+        (current) => (current ? { ...current, running } : current),
+      )
+      // 两种情况补一次列表：
+      // - 跑完了：标题 / 轮数 / 排序在收尾时一起变，只改 running 不够；
+      // - 这条会话不在缓存里（别的标签页新建的）：光改字段加不出一行来。
+      // 缓存还没建立时不补：初始请求本来就会把真相带回来。
+      if (!running || (cached && !known)) {
+        void queryClient.invalidateQueries({ queryKey: ['ai', 'conversations'] })
+      }
+    },
+  })
+
+  /**
+   * 重连后的**对账**：推流是 at-most-once（服务端不做回放），而页面隐藏时连接会断开
+   * （`HttpStreamClient` 默认 `openWhenHidden: false`）—— 切标签页是常态，断线期间的事件会丢。
+   * 所以每次重新 `open` 都补拉一次列表：这不是轮询，是"连上先对齐真相"。
+   *
+   * 首次 `open` 跳过：挂载时列表本来就在拉，不必多打一次。
+   */
+  const streamOpened = useRef(false)
+  useEffect(() => {
+    if (streamState !== 'open') return
+    if (!streamOpened.current) {
+      streamOpened.current = true
+      return
+    }
+    void queryClient.invalidateQueries({ queryKey: ['ai', 'conversations'] })
+  }, [streamState, queryClient])
 
   /**
    * 改名 / 删除后要刷新的两份缓存：

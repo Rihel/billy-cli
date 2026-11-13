@@ -21,6 +21,14 @@ export interface SseRouteOptions {
    */
   broadcastChannels?: string[]
   /**
+   * 按当前身份**服务端派生**的频道（客户端无法请求、也不需要知道）。
+   *
+   * 与 `broadcastChannels` 的区别：广播频道对所有同域身份一样，派生频道逐身份不同
+   * （如 AI 的 `ai:owner:{id}`）。归属校验在这里天然成立 —— 频道由鉴权身份算出，
+   * 不经过客户端参数，因此不必再走 `allowChannel` 的业务白名单。
+   */
+  derivedChannels?: (identity: { userId?: string; adminId?: string }) => string[]
+  /**
    * 业务频道白名单校验（如 task:42 / notification:all 等）。
    * 默认仅允许身份频道（user:* / admin:* 前缀由服务端强制替换为当前身份，业务频道一律拒绝）；
    * 业务方需要订阅自定义频道时在此注入校验（如数据库 / 缓存核对归属权）。

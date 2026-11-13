@@ -65,7 +65,7 @@ beforeAll(async () => {
   }
 
   conversations = new ConversationRepository(db)
-  runs = new RunRepository(db)
+  runs = new RunRepository(db, { changed: async () => {} })
   timelines = new TimelineRepository(db)
 
   registry = createAgentRegistry(

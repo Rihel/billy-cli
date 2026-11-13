@@ -53,6 +53,10 @@ describe('内置技能：html-page', () => {
     // 沙箱边界：白名单之外加载不出来；数据必须内联
     expect(body).toContain('一律加载不出来')
     expect(body).toContain('数据必须内联')
+    // 样式口径：用 Tailwind 浏览器版（版本写死、三级兜底），且**不用衬线字体**
+    expect(body).toContain('@tailwindcss/browser')
+    expect(body).toContain('font-serif')
+    expect(body).toContain('不要衬线字体')
     // 交付流程：先 write-file 落 workspace，再 file-submit 到会话文件
     expect(body).toContain('write-file')
     expect(body).toContain('file-submit')

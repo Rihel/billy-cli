@@ -157,6 +157,28 @@ apps/web | apps/admin   应用：globals.css 接入 + 字体字面量 + 页面
 /* 以下是该 app 专属规则（如 web 的首页 keyframes），跨端共享的一律上移 ui 包 */
 ```
 
+### 4.5 滚动条规范（macOS 覆盖式，两端共用）
+
+位置：`packages/ui/src/globals.css` 的「滚动条」段（`@layer` 之外，压过 utilities）+
+`packages/ui/src/components/overlay-scrollbar.tsx`。
+
+- **为什么自己画**：原生滚动条伪元素（`::-webkit-scrollbar-thumb`）**不支持 `transition`、
+  也不支持 `animation`**（2026-11-13 无头 Chrome 实测），改颜色只能硬切，做不到淡入淡出。
+- **分工**：原生滚动条只保留**交互**（8px 沟槽、拖拽 / 点轨道 / 键盘），滑块涂透明；
+  视觉是两个 `position: fixed` 的 4px 圆角 div（`OverlayScrollbar`），`opacity` 过渡 260ms、
+  停手 700ms 淡出，`pointer-events: none` 所以拖拽仍落在下面的原生滚动条上。
+- **只跟随被滚动的容器**：一条 `scroll` 捕获监听（scroll 不冒泡但走捕获阶段）记录最近滚动的
+  元素，只画它的滑块——不会"滚一个区域、整页滚动条都亮"。跳过 `[data-autoscrolling]`
+  （消息流自动跟随）与 `scrollbar-width: none`（`no-scrollbar` / `scrollbar-none`）。
+- **几何**：`thumbBox()` 纯函数（长度 = `max(24, client/scroll × 轨道)`，偏移按滚动比例夹住）；
+  文档滚动条用 `documentElement` 单独度量。两个 app 各挂一次 `OverlayScrollbar`（渲染两个 div）。
+- **为什么不用标准属性**：Chromium 一旦读到容器上的 `scrollbar-width` / `scrollbar-color`，
+  就会**整体忽略** `::-webkit-scrollbar` 定制、退回系统原生滚动条。所以 `scrollbar-thin`
+  这类类名**不要用在容器上**；标准属性只在 `@supports not selector(::-webkit-scrollbar)`
+  （Firefox）里把原生滚动条涂透明，视觉同样交给覆盖层。
+- 边界：仍占 8px 布局宽度（不是真正"浮在内容上"的覆盖式）；只支持纵向/横向两个方向的
+  最近滚动容器；JS 不可用时没有可见滚动条（应用本身也依赖 JS）。
+
 ## 5. 迁移步骤（已落地）
 
 1. `packages/ui/src/globals.css` 承接 token / base 层 / `@custom-variant dark` / 组件质感规则

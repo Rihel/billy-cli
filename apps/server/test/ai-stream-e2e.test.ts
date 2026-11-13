@@ -221,7 +221,7 @@ beforeAll(async () => {
   streamStore = new AgentStreamStore(redis, silentLogger)
 
   const conversationRepo = new ConversationRepository(db)
-  runs = new RunRepository(db)
+  runs = new RunRepository(db, { changed: async () => {} })
   timelines = new TimelineRepository(db)
 
   // 子 agent 执行器（core bean `subagent` 依赖它）：配置必须给全子 agent 字段 + mock 的 baseURL

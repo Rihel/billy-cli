@@ -162,7 +162,7 @@ beforeAll(async () => {
 
   // ③ 编排层 + Mastra（模型**每次调用**从运行时信封里取，与线上装配同一口径）
   const conversationRepo = new ConversationRepository(db)
-  const runs = new RunRepository(db)
+  const runs = new RunRepository(db, { changed: async () => {} })
   const timelines = new TimelineRepository(db)
   const config = { ...TEST_CONFIG, baseURL: mock.baseURL } as never
   // 工具引擎装配（设计 §5.9）：插件链为空（e2e 只关心行为），依赖用测试替身

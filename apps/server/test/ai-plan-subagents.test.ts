@@ -999,7 +999,7 @@ const buildStack = async () => {
   } as never
 
   const conversationRepo = new ConversationRepository(db)
-  const runs = new RunRepository(db)
+  const runs = new RunRepository(db, { changed: async () => {} })
   const timelines = new TimelineRepository(db)
   // 子 agent 用的是**默认模型**（由配置构造），所以配置里必须有 mock 的 baseURL ——
   // 少了它，子 agent 会退到 model router 解析而报 "No API URL found"

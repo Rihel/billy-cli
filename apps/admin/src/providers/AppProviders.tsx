@@ -1,7 +1,13 @@
 'use client'
 
 import { ReactNode, useEffect } from 'react'
-import { QueryProviders, StorageClientProvider, Toaster, TooltipProvider } from '@repo/ui'
+import {
+  QueryProviders,
+  OverlayScrollbar,
+  StorageClientProvider,
+  Toaster,
+  TooltipProvider,
+} from '@repo/ui'
 import { formatStorageUrl } from '@/lib/constants'
 import { useServerClient } from '@/lib/server-client'
 import { initTheme } from '@/stores/theme.store'
@@ -26,6 +32,8 @@ export const Providers = ({ children }: ProvidersProps) => {
 
   return (
     <TooltipProvider>
+      {/* 覆盖式滚动条：全局只装一次（视觉口径见 @repo/ui 的 globals.css） */}
+      <OverlayScrollbar />
       {/* QueryClient 装配（机制 + 错误统一 toast）在 @repo/ui；后台不设 staleTime（默认每次视为过期） */}
       <QueryProviders>
         <AppStorageProvider>{children}</AppStorageProvider>

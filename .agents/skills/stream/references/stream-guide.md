@@ -55,12 +55,16 @@ streamHub.publish(STREAM_ADMIN_BROADCAST_CHANNEL, {
   useValue: { auth: 'user', allowChannel: () => false },
 }
 
-// 本工程当前配置：双端（用户 + 管理员）+ 管理员广播频道
+// 本工程当前配置：双端（用户 + 管理员）+ 管理员广播频道 + AI 归属者派生频道
 {
   provide: SSE_ROUTE_OPTIONS,
   useValue: {
     auth: 'both',                                       // 'user' | 'admin' | 'both'
     broadcastChannels: [STREAM_ADMIN_BROADCAST_CHANNEL], // 管理员自动收 admin:all（服务端校验同域）
+    derivedChannels: ({ userId, adminId }) => {          // 按身份算出、客户端不传
+      const ownerId = userId ?? adminId
+      return ownerId ? [`ai:owner:${ownerId}`] : []
+    },
     allowChannel: () => false,                          // 业务频道默认全拒
   },
 }
@@ -80,6 +84,9 @@ streamHub.publish(STREAM_ADMIN_BROADCAST_CHANNEL, {
 - 客户端请求的 `user:*` / `admin:*` 前缀频道**一律忽略**（防窃听他人频道），统一替换为当前身份频道。
 - **广播频道只能由服务端注入**（客户端无处可请求），且只放行与当前身份**同域**的项 ——
   前台用户即使显式写 `channels: ['admin:all']` 也拿不到管理员广播。
+- **派生频道**（`derivedChannels(identity)`）同样由服务端按身份算出，用于"逐身份不同、客户端
+  又没法安全请求"的频道（AI 的 `ai:owner:{ownerId}`）。因为它不来自客户端参数，**不需要**
+  `allowChannel` 的归属校验；不要在控制器里手写这类频道名。
 - **`auth: 'both'` 下不要用 `currentUserId()` / `currentAdminId()` 拼频道**：它们在身份缺失时抛错
   （管理员连接没有 userId），而写响应头之后再抛错会引发 `ERR_HTTP_HEADERS_SENT` 级联、连接被硬断；
   直接读 ALS：`requestContext.get('userId')` / `requestContext.get('adminId')`。

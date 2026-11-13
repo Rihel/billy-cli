@@ -11,6 +11,7 @@
  */
 export * from './conversation.repository.js'
 export * from './run.repository.js'
+export * from './run-status.stream.js'
 export * from './timeline.repository.js'
 export * from './conversation.service.js'
 export * from './run.service.js'

@@ -930,6 +930,20 @@ export type PromptInputTextareaProps = ComponentProps<typeof InputGroupTextarea>
    *   长文本场景下"回车即发送"太容易误发，Billy 的管理台采用这一档。
    */
   submitOn?: 'enter' | 'mod+enter'
+  /**
+   * 粘贴的**纯文本**超过 `minChars` 时，不插进输入框，而是交给 `toFile` 变成一个附件。
+   *
+   * 为什么放在粘贴这一层：用户复制进来的长日志 / 长文往往只是"给你看看"，
+   * 糊满输入框会挤掉他自己要写的问题。转成附件后输入框留空，问题照写、附件照发。
+   * 不传 = 不转（与上游行为一致）。
+   */
+  pasteTextAsAttachment?: {
+    minChars: number
+    /** 把整段文本做成文件；返回 `null` 表示这次不转（退回默认的插入行为） */
+    toFile: (text: string) => File | null
+    /** 转成功后回调（用于 toast）；此时文件已加进附件列表 */
+    onConverted?: (file: File) => void
+  }
 }
 
 export const PromptInputTextarea = ({
@@ -938,6 +952,7 @@ export const PromptInputTextarea = ({
   className,
   placeholder = 'What would you like to know?',
   submitOn = 'enter',
+  pasteTextAsAttachment,
   ...props
 }: PromptInputTextareaProps) => {
   const controller = useOptionalPromptInputController()
@@ -1013,9 +1028,21 @@ export const PromptInputTextarea = ({
       if (files.length > 0) {
         event.preventDefault()
         attachments.add(files)
+        return
+      }
+
+      // 长文本：落成附件、输入框留空（用户接着写自己的问题），而不是把整段糊进输入框
+      const text = event.clipboardData?.getData('text/plain') ?? ''
+      if (pasteTextAsAttachment && text.trim().length >= pasteTextAsAttachment.minChars) {
+        const file = pasteTextAsAttachment.toFile(text)
+        if (file) {
+          event.preventDefault()
+          attachments.add([file])
+          pasteTextAsAttachment.onConverted?.(file)
+        }
       }
     },
-    [attachments],
+    [attachments, pasteTextAsAttachment],
   )
 
   const handleCompositionEnd = useCallback(() => setIsComposing(false), [])

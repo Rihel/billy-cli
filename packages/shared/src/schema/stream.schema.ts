@@ -69,6 +69,39 @@ export const AlertFiredEventSchema = z.object({
 export type AlertFiredEventModel = z.infer<typeof AlertFiredEventSchema>
 
 /**
+ * AI 归属者频道前缀：`ai:owner:{ownerId}`。
+ *
+ * 为什么不复用身份频道 `user:{id}` / `admin:{id}`：AI 会话的归属者是把两种身份**折叠**成一个
+ * `ownerId`（`userId ?? adminId`，见 `ai.controller.ts` 的 `ownerId()`），而身份频道的域
+ * 由登录凭证决定 —— 发布方拿到的只是折叠后的 id，无法反推该发 `user:` 还是 `admin:`。
+ * 独立命名空间 + 服务端按当前身份派生订阅（客户端不传），既避免猜错域，也避免跨端串号。
+ */
+export const STREAM_AI_OWNER_CHANNEL_PREFIX = 'ai:owner:'
+
+/**
+ * 会话运行态变更事件（发布到 `ai:owner:{ownerId}`）。
+ *
+ * 只带「哪个会话、现在是否在跑」—— 真相仍以 `conversation/list` 的查询结果为准：
+ * 事件负责让界面**当场**变化，查询负责在（重）连接后对账。
+ */
+export const STREAM_CONVERSATION_RUN_CHANGED_EVENT = 'conversation.run.changed'
+
+/**
+ * 会话运行态变更负载。
+ *
+ * `running` 由服务端在**发布时**按 `runs` 现算（根 run 的 pending / running），
+ * 不是从状态机推断 —— 这样即使某个分支漏判，推下去的仍然是库里的真相；
+ * 客户端按「最后一条到达的为准」覆盖，天然幂等、不依赖事件顺序。
+ */
+export const ConversationRunChangedEventSchema = z.object({
+  /** 会话 id */
+  conversationId: z.string().min(1),
+  /** 该会话是否还有进行中的一轮（根 run 为 pending / running） */
+  running: z.boolean(),
+})
+export type ConversationRunChangedEventModel = z.infer<typeof ConversationRunChangedEventSchema>
+
+/**
  * SSE 订阅请求体。
  *
  * 频道命名规范 `<域>:<id>`，如 `user:42` / `admin:all` / `task:42`。

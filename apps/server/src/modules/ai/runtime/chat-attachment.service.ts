@@ -3,6 +3,7 @@ import dedent from 'dedent'
 import { AppLogger, ObjectStorage } from '@repo/kits'
 import {
   attachmentCapabilityIssue,
+  CHAT_ATTACHMENT_TEXT_INLINE_LIMIT,
   looksLikeImage,
   looksLikePdf,
   modalitySupport,
@@ -50,7 +51,7 @@ export class ChatAttachmentService {
    * 2MB 的纯文本约 200 万字符，全量塞进上下文会直接顶爆窗口并触发压缩 ——
    * 一份附件吃掉整轮预算不划算。截断是**明示**的（消息里写清截了多少），不悄悄丢。
    */
-  private static readonly TEXT_INLINE_LIMIT = 20_000
+  private static readonly TEXT_INLINE_LIMIT = CHAT_ATTACHMENT_TEXT_INLINE_LIMIT
 
   /** 直接当图片喂给模型的媒体类型（其余图片类型也按文件通道走） */
   private static readonly IMAGE_TYPES = new Set([

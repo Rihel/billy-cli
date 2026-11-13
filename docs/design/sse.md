@@ -246,7 +246,7 @@ HTTP 生命周期驱动，无复杂流转；`request aborted` 监听统一走注
 
 ### 5.4 频道权限（安全要点）
 
-服务端按三类频道求并集（`stream.controller.ts` 的 `resolveSubscriptions`）：
+服务端按四类频道求并集（`stream.controller.ts` 的 `resolveSubscriptions`）：
 
 1. **身份频道**：按实际通过的身份强制注册 `user:{userId}` / `admin:{adminId}`；客户端请求里的
    `user:*` / `admin:*` 一律**忽略**（防窃听他人身份频道），也无法伪造；
@@ -254,7 +254,10 @@ HTTP 生命周期驱动，无复杂流转；`request aborted` 监听统一走注
    且**只放行与当前身份同域的项**（管理员只拿 `admin:` 前缀、用户只拿 `user:` 前缀），
    跨域静默忽略——否则前台用户能收到管理员广播；
 3. **业务频道**：走 `allowChannel` 白名单，**当前默认 `() => false`（全拒）**；需要时在
-   `stream.module.ts` 注入归属权校验（如数据库 / 缓存核对）。
+   `stream.module.ts` 注入归属权校验（如数据库 / 缓存核对）；
+4. **派生频道**：`SSE_ROUTE_OPTIONS.derivedChannels(identity)` 按当前身份算出（当前为 AI 的
+   `ai:owner:{ownerId}`，`ownerId = userId ?? adminId`）。频道不经过客户端参数、由身份推导，
+   因此不需要归属权校验——这是"逐身份不同、又没法让客户端请求"的频道的唯一安全入口。
 
 `auth: 'both'` 按实际通过的身份订阅；鉴权关闭（`AUTH_ENABLED=false`，无任何身份）时
 仅订阅广播频道（该模式下应用整体开放，与此姿态一致）。

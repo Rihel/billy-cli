@@ -42,7 +42,9 @@ function MessageScrollerViewport({
     <MessageScrollerPrimitive.Viewport
       data-slot="message-scroller-viewport"
       className={cn(
-        'size-full min-h-0 min-w-0 scroll-fade-b scrollbar-thin scrollbar-gutter-stable overflow-y-auto overscroll-contain contain-content data-autoscrolling:scrollbar-thumb-transparent data-autoscrolling:scrollbar-track-transparent',
+        // 不加 `scrollbar-thin`：那会写标准属性 `scrollbar-width`，Chromium 随即忽略
+        // `::-webkit-scrollbar` 定制、退回系统滚动条（滚动条口径见 packages/ui/src/globals.css）
+        'size-full min-h-0 min-w-0 scroll-fade-b scrollbar-gutter-stable overflow-y-auto overscroll-contain contain-content',
         className,
       )}
       {...props}

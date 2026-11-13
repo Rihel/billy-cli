@@ -288,20 +288,57 @@
   font-variant-numeric: tabular-nums;
 }
 
-/* 页面滚动条：细、与边框同色（避免默认粗滚动条破坏克制感） */
+/* ===== 滚动条（macOS 覆盖式，跨端一致）=====
+ *
+ * 视觉由 `OverlayScrollbar` 画：两个 fixed 的 4px 圆角 div，`opacity` 过渡做**淡入淡出**，
+ * 且只跟随**被滚动的那一个容器**。原生滚动条只保留交互（拖拽 / 点轨道 / 键盘），滑块涂透明。
+ *
+ * 为什么不能只改原生：`::-webkit-scrollbar-thumb` **不支持 transition、也不支持 animation**
+ * （2026-11-13 无头 Chrome 实测：过渡与关键帧都被忽略），改颜色只能硬切。
+ *
+ * 另一个坑：Chromium 里给容器写 `scrollbar-width` / `scrollbar-color` 会让
+ * `::-webkit-scrollbar` 定制**整体失效**、退回系统原生滚动条 —— 所以标准属性只在 Firefox
+ * 兜底，页面里不要再写 `scrollbar-thin`。 */
 ::-webkit-scrollbar {
   width: 8px;
   height: 8px;
 }
-::-webkit-scrollbar-thumb {
-  border-radius: 999px;
-  background: color-mix(in oklch, var(--border), transparent 30%);
-}
-::-webkit-scrollbar-thumb:hover {
-  background: color-mix(in oklch, var(--border), transparent 0%);
-}
 ::-webkit-scrollbar-track {
   background: transparent;
+}
+/* 原生滑块透明：只留可拖拽的热区，视觉交给 .scrollbar-overlay */
+::-webkit-scrollbar-thumb {
+  background-color: transparent;
+}
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+::-webkit-scrollbar-button {
+  display: none;
+}
+
+/* 覆盖式滑块：位置 / 尺寸由 `OverlayScrollbar` 写 inline style，显隐只切 data-visible */
+.scrollbar-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 60;
+  border-radius: 999px;
+  background-color: color-mix(in oklch, var(--foreground), transparent 78%);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 260ms ease;
+  will-change: opacity;
+}
+.scrollbar-overlay[data-visible='true'] {
+  opacity: 1;
+}
+
+/* Firefox：没有 ::-webkit-scrollbar，把原生滚动条涂透明（仍占位、仍可拖），视觉同样交给覆盖层 */
+@supports not selector(::-webkit-scrollbar) {
+  * {
+    scrollbar-color: transparent transparent;
+  }
 }
 
 /* ===== Markdown 文档渲染（组件：packages/ui/src/components/markdown.tsx）=====

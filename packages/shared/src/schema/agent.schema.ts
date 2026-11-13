@@ -24,6 +24,22 @@ export const CHAT_ATTACHMENT_MAX_BYTES = 2 * 1024 * 1024
 export const CHAT_ATTACHMENT_MAX_COUNT = 3
 
 /**
+ * 单条用户消息（`message`）的**字符上限**。
+ *
+ * 前端在发送前用它判断"要不要把长文本转成附件"，后端 zod 用同一个数做权威校验 ——
+ * 两处写死不同数字，就是"前端放过、服务端 400"的经典漂移（`message不能超过8000个字符`）。
+ */
+export const CHAT_MESSAGE_MAX_CHARS = 8000
+
+/**
+ * 文本类附件**内联给模型**的字符上限（超过截断，并在内容里写明截了多少）。
+ *
+ * 服务端用它实际截断；前端用它提示"超长内容模型读不全"—— 同一个数只写一处，
+ * 否则两边口径漂移，用户会以为整份长文都喂进去了。
+ */
+export const CHAT_ATTACHMENT_TEXT_INLINE_LIMIT = 20_000
+
+/**
  * 一轮问答的附件（已上传到对象存储的那一份）。
  *
  * 只带**存储 key 与元数据**，不带文件内容：请求体因此与文件大小无关（不会撑爆 2mb 上限），
@@ -601,7 +617,7 @@ export const AgentChatSchema = z
      * 但「文字与附件不能同时为空」由下面的 `superRefine` 兜住 —— 空轮次没有意义，
      * 让它到服务端才发现是白跑一轮。
      */
-    message: z.string().max(8000),
+    message: z.string().max(CHAT_MESSAGE_MAX_CHARS),
     /** 本轮附件（最多 {@link CHAT_ATTACHMENT_MAX_COUNT} 个，每个 ≤ {@link CHAT_ATTACHMENT_MAX_BYTES}） */
     attachments: z.array(ChatAttachmentSchema).max(CHAT_ATTACHMENT_MAX_COUNT).optional(),
   })

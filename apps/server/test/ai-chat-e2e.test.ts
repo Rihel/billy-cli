@@ -140,7 +140,7 @@ beforeAll(async () => {
   if (!db.dataSource.isInitialized) throw new Error('数据库初始化失败')
 
   conversationRepo = new ConversationRepository(db)
-  runs = new RunRepository(db)
+  runs = new RunRepository(db, { changed: async () => {} })
   timelines = new TimelineRepository(db)
 
   // 这份配置要能用"默认模型"造子 agent（跑不跑是另一回事）：baseURL 缺了会退到 model router 报错

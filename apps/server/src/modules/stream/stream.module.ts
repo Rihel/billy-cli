@@ -1,5 +1,5 @@
 import { Module } from '@nestjs/common'
-import { STREAM_ADMIN_BROADCAST_CHANNEL } from '@repo/shared'
+import { STREAM_ADMIN_BROADCAST_CHANNEL, STREAM_AI_OWNER_CHANNEL_PREFIX } from '@repo/shared'
 import { AdminModule } from '../admin/admin.module.js'
 import { AuthModule } from '../auth/auth.module.js'
 import { StreamAuthGuard } from './stream-auth.guard.js'
@@ -26,6 +26,12 @@ import { SSE_ROUTE_OPTIONS, type SseRouteOptions } from './stream.options.js'
         broadcastChannels: [STREAM_ADMIN_BROADCAST_CHANNEL],
         // 业务频道默认全拒，需要时在此注入归属权校验
         allowChannel: () => false,
+        // AI 归属者频道：身份折叠口径与 `ai.controller.ts` 的 `ownerId()` 一致（前台用户优先）。
+        // 频道由身份算出、客户端不可指定 —— 因此不需要（也不应该）走 allowChannel 校验
+        derivedChannels: ({ userId, adminId }) => {
+          const ownerId = userId ?? adminId
+          return ownerId ? [`${STREAM_AI_OWNER_CHANNEL_PREFIX}${ownerId}`] : []
+        },
       } satisfies Required<SseRouteOptions>,
     },
   ],

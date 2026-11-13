@@ -71,7 +71,7 @@ beforeAll(async () => {
   await db.onApplicationBootstrap()
 
   const conversationRepo = new ConversationRepository(db)
-  runs = new RunRepository(db)
+  runs = new RunRepository(db, { changed: async () => {} })
   timelines = new TimelineRepository(db)
   // 本测试只关心存储与看门狗：工具用最小替身（真实工具在别的用例里覆盖）
   const registry = createAgentRegistry(

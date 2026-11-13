@@ -11,6 +11,7 @@ import {
 } from '@repo/shared'
 import { In, IsNull, LessThan, Not, type DeepPartial } from 'typeorm'
 import { jsonbPatch } from './jsonb.js'
+import { RUN_STATUS_LISTENER, type RunStatusListener } from './run-status.stream.js'
 import { RunEntity } from '../../../database/entities/run-entity.js'
 
 /** SQL 聚合返回的数字列可能是 bigint 字符串（pg 驱动行为），统一用 Number 收口 */
@@ -99,15 +100,41 @@ export interface FinishRunInput {
 
 @Injectable()
 export class RunRepository {
-  constructor(@Inject(Db) private readonly db: Db) {}
+  constructor(
+    @Inject(Db) private readonly db: Db,
+    @Inject(RUN_STATUS_LISTENER) private readonly status: RunStatusListener,
+  ) {}
 
   private async repo() {
     return this.db.getRepository(RunEntity)
   }
 
+  /**
+   * 状态落库后通知"这个会话的运行态可能变了"。
+   *
+   * **所有改变根 run 活跃状态的方法都必须调用它**（create / markRunning / suspend / finish /
+   * cancelActive / markTimeout / interruptActiveBefore）—— 漏一处，前端就会永久停在错误的
+   * 呼吸灯上。因此收口在仓储这一层：这些方法是状态写入的**唯一入口**，调用方不必各自记得。
+   *
+   * 子 run 直接跳过：`running` 只看根 run（父在等子，子跑不代表这一轮没结束），
+   * 子 run 的状态变化不会改变列表上的运行态，多发只是噪声。
+   */
+  private async notifyStatus(id: string): Promise<void> {
+    const repo = await this.repo()
+    const row = await repo.findOne({
+      where: { id },
+      select: { conversationId: true, parentRunId: true },
+    })
+    if (!row || row.parentRunId) return
+    await this.status.changed(row.conversationId)
+  }
+
   async create(data: DeepPartial<RunEntity>): Promise<AgentRunModel> {
     const repo = await this.repo()
-    return toModel(await repo.save(repo.create(data)))
+    const model = toModel(await repo.save(repo.create(data)))
+    // 根 run 落库即"这一轮开始了"（pending 也算在跑）：不等 markRunning，前端立刻亮灯
+    if (!model.parentRunId) await this.status.changed(model.conversationId)
+    return model
   }
 
   /**
@@ -222,6 +249,8 @@ export class RunRepository {
         heartbeatAt: new Date(),
       },
     )
+    // 续跑（挂起 → 运行）也会走这里：呼吸灯必须重新点亮
+    await this.notifyStatus(id)
   }
 
   /**
@@ -279,6 +308,8 @@ export class RunRepository {
         durationMs: input.durationMs ?? null,
       }),
     )
+    // 挂起在列表口径里不算"在跑"（`runningIds` 只认 pending / running）：灯要灭
+    await this.notifyStatus(id)
   }
 
   /** 终态收尾（跑完 / 失败 / 取消 / 中断都走这里） */
@@ -300,6 +331,7 @@ export class RunRepository {
         finishedAt: new Date(),
       }),
     )
+    await this.notifyStatus(id)
   }
 
   /**
@@ -317,7 +349,9 @@ export class RunRepository {
       },
       { status: RunStatus.Canceled, finishedAt: new Date() },
     )
-    return result.affected ?? 0
+    const affected = result.affected ?? 0
+    if (affected > 0) await this.status.changed(conversationId)
+    return affected
   }
 
   /**
@@ -418,7 +452,10 @@ export class RunRepository {
         },
       )
       .execute()
-    return result.affected ?? 0
+    const affected = result.affected ?? 0
+    // 看门狗判超时：库里已经 failed，界面上的"运行中"必须跟着灭（否则只有等重启才恢复）
+    if (affected > 0) await this.notifyStatus(id)
+    return affected
   }
 
   /** 数一下这条 run 已经产生了多少步 / 多少次工具调用（看门狗回填进度用） */
@@ -552,6 +589,10 @@ export class RunRepository {
         .andWhere('updated_at < :since', { since })
         .execute()
       if ((result.affected ?? 0) === 1) interrupted.push(row)
+    }
+    // 重启恢复：被标记中断的那些会话，界面上不能还亮着"运行中"
+    for (const conversationId of new Set(interrupted.map((row) => row.conversationId))) {
+      await this.status.changed(conversationId)
     }
     return interrupted
   }

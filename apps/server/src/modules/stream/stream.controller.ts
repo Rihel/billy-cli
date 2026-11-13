@@ -49,7 +49,8 @@ const resolveChannels = (
  * 1. **身份频道**（`user:{userId}` / `admin:{adminId}`）：由服务端按当前身份强制注册，客户端指定无效；
  * 2. **广播频道**（`options.broadcastChannels`）：只放行与当前身份**同域**的项（管理员只拿
  *    `admin:` 前缀、用户只拿 `user:` 前缀），跨域静默忽略 —— 否则前台用户就能收到管理员广播；
- * 3. **业务频道**：走 `allowChannel` 白名单（默认全拒）。
+ * 3. **业务频道**：走 `allowChannel` 白名单（默认全拒）；
+ * 4. **派生频道**：由 `options.derivedChannels(identity)` 按当前身份算出（如 AI 的 `ai:owner:{id}`）。
  *
  * `auth: 'both'` 按实际通过的身份订阅；鉴权关闭（`AUTH_ENABLED=false`，无任何身份）时
  * 仅订阅广播频道 —— 该模式下守卫本就全放行、应用完全开放，这里与整体姿态一致。
@@ -80,6 +81,11 @@ const resolveSubscriptions = (
   }
 
   for (const channel of resolveChannels(requested, options.allowChannel)) {
+    result.add(channel)
+  }
+
+  // 4. 派发频道：由鉴权身份算出（客户端不传），因此不需要归属校验
+  for (const channel of options.derivedChannels(identity)) {
     result.add(channel)
   }
   return [...result]

@@ -2396,7 +2396,9 @@ AI SDK v6 的续传是**两层 API**（不是同一方法的两个名字）：
 即为"这一轮还在跑"（与部分唯一索引 `uk_run_active_conversation` 同一口径）。
 `conversation/list` 对本页会话**批量查一次**，`conversation/detail` 单查；
 `create` / `rename` 这类写操作一律回 `false`（前端以列表 / 详情为准，不靠写操作的返回值判断运行态）。
-前端：行内呼吸灯 + **只要还有在跑的会话就 5s 轮询列表**，全跑完立刻停（不留一个常转的定时器）。
+前端：行内呼吸灯 + **事件驱动**（服务端在根 run 活跃状态变化时推 `conversation.run.changed`
+到派生频道 `ai:owner:{ownerId}`，前端只改缓存里的 `running`；推流 at-most-once，故重连后补拉一次列表对账，
+协议见 `packages/shared/src/schema/stream.schema.ts`）。
 ⚠️ 服务端看门狗把超时的一轮判成 `failed` 之后，`running` 自然回落 —— **呼吸灯消失不等于"跑过"**，
 排障要回 `runs` 看真实状态与 `error_code`。
 

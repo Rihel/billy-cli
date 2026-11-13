@@ -107,6 +107,12 @@ export const ToolContent = ({ className, ...props }: ToolContentProps) => (
   <CollapsibleContent
     className={cn(
       'data-[state=closed]:fade-out-0 data-[state=closed]:slide-out-to-top-2 data-[state=open]:slide-in-from-top-2 space-y-4 p-4 text-popover-foreground outline-none data-[state=closed]:animate-out data-[state=open]:animate-in',
+      /**
+       * 展开后**限高 + 内部滚动**：工具出参可能是几 MB 的命令输出 / 日志，
+       * 不限高的话一张卡就能把整条时间线撑成"没有底"，用户再想往上翻要滚半天。
+       * 高度跟视口走（短屏自动更矮），超过就在卡片里滚，时间线本身仍是一条线。
+       */
+      'max-h-[min(60vh,28rem)] overflow-y-auto',
       className,
     )}
     {...props}

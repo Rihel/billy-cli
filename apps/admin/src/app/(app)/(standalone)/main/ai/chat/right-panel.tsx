@@ -161,7 +161,9 @@ export function ConversationRightPanel({
       onValueChange={(value) => setTab(value as RightPanelTab)}
       className="flex h-full min-h-0 flex-col gap-1.5"
     >
-      <TabsList className="w-full justify-start overflow-x-auto pb-0.5 [scrollbar-width:thin]">
+      {/* overflow-x-auto 会把另一轴也算成 auto：横向滚动条吃掉 8px 高度后，32px 的标签条
+          立刻纵向溢出、长出竖直滚动条。这里显式锁死纵向 + 不画滚动条（标签条不需要） */}
+      <TabsList className="w-full justify-start overflow-x-auto overflow-y-hidden scrollbar-none pb-0.5">
         <TabsTrigger value="system" className="shrink-0">
           <ScrollTextIcon className="size-3.5" />
           系统指令
@@ -485,7 +487,7 @@ function SubAgentRunsPanel({
       onValueChange={(value) => setActiveRunId(String(value))}
       className="flex min-h-0 flex-1 flex-col gap-1.5"
     >
-      <TabsList className="w-full justify-start overflow-x-auto">
+      <TabsList className="w-full justify-start overflow-x-auto overflow-y-hidden scrollbar-none">
         {tabs.map((tab) => (
           <TabsTrigger key={tab.runId} value={tab.runId} className="flex-none">
             {/* 活动态与底部运行指示同一套观感：转圈 + 主色（一眼看出哪个子助手还在跑） */}

@@ -69,6 +69,7 @@
 | [dependency-upgrade](dependency-upgrade.md) | 全量升级落点与坑：ioredis 6 与 TypeORM peer 冲突、jsdom 31 需 parse5 8.1、Table 9 新 API、AI SDK 7 usage 字段 | 抽核 | 2026-11-07 |
 | [ui-components-over-native](ui-components-over-native.md) | 控件先 `@repo/ui`：已有 `DateTimePicker` / `DateRangePicker` / `Calendar`，别上原生 `input type=date`；表单用 `items[].render` 接线 | 抽核 | 2026-11-13 |
 | [ui-data-table-column-id](ui-data-table-column-id.md) | DataTable 用列 id 当 key：同一 columns 数组里两列共用 `accessorKey` 会刷屏重复 key 告警 | 抽核 | 2026-11-07 |
+| [ui-scrollbar](ui-scrollbar.md) | 原生滚动条伪元素不支持过渡 → 视觉由 `OverlayScrollbar` 自己画（淡入淡出、只跟随被滚容器）；Chromium 写了 `scrollbar-width`/`scrollbar-color` 会关掉 `::-webkit-scrollbar` 定制 | 抽核 | 2026-11-13 |
 | [scaffold-cli-removed](scaffold-cli-removed.md) | 2026-11-09 起没有代码生成器与模板副本，新模块照现有实现手写；守卫为 check:inject / check:mastra / check:ui | 免核 | 2026-11-09 |
 | [lark-cli-connector](lark-cli-connector.md) | @larksuite/cli 是下载 Go 二进制的 launcher；skills 内嵌；config 在 HOME；whoami 不能探活、doctor 才行 | 抽核 | 2026-11-09 |
 | [product-facts](product-facts.md) | README / 落地页 / pitch 共用的能力数字口径（工具 26 / 连接器 4 / skill 28 / ai-elements 48 …） | 必核 | 2026-11-13 |
@@ -77,7 +78,8 @@
 | [stateless-scaling](stateless-scaling.md) | 核心业务无状态可多副本；但 AI memory 在进程内、飞书 CLI 状态在 Pod 本地、k8s 缺 `AGENT_MULTI_INSTANCE` | 抽核 | 2026-11-10 |
 | [workspace-runtime](workspace-runtime.md) | 执行环境三层（界面选 / 部署限 / 探测证）：默认沙箱、不可用兜底 local；出参 `runtime` 是唯一事实 | 必核 | 2026-11-12 |
 | [infra-optional-degradation](infra-optional-degradation.md) | 对象存储未配置/不可达不拦启动；`AGENT_COMMAND_WORK_DIR` 在启动与执行前自愈；问答取消走 `resumeStream({cancelled:true})` | 必核 | 2026-11-11 |
-| [ai-chat-running-state](ai-chat-running-state.md) | 续流必须带 conversationId（否则串流）；「运行中」灯靠条件轮询，开跑要在 streaming 时手动失效一次列表 | 抽核 | 2026-11-12 |
+| [ai-chat-scroll](ai-chat-scroll.md) | 进会话自己滑到底：占位让历史加载变成「第二次长高」，走的是 `resize` 不是 `initial`；非流式一律 instant | 抽核 | 2026-11-13 |
+| [ai-chat-running-state](ai-chat-running-state.md) | 续流必须带 conversationId（否则串流）；运行中灯走 `ai:owner` 事件驱动 + 重连对账（不再轮询） | 抽核 | 2026-11-13 |
 | [engineering-toolchain](engineering-toolchain.md) | oxlint + oxfmt + lefthook：0/0 门禁、oxfmt 0.x 钉版本、Windows sh 转义的坑 | 必核 | 2026-11-13 |
 | [packages-layout](packages-layout.md) | 5 个包按运行时分层且单消费者；build 0.9s / typecheck 1.2s，拆包无收益，问题是依赖卫生与入口 | 抽核 | 2026-11-13 |
 | [app-start-standalone](app-start-standalone.md) | standalone 下 `next start` 不兼容；统一走 `scripts/start-standalone.ts`，本地端口 9840/9845 | 必核 | 2026-11-13 |

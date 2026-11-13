@@ -135,7 +135,7 @@ beforeAll(async () => {
   const streamStore = new AgentStreamStore(redis, silentLogger)
 
   const conversationRepo = new ConversationRepository(db)
-  const runs = new RunRepository(db)
+  const runs = new RunRepository(db, { changed: async () => {} })
   timelines = new TimelineRepository(db)
 
   const config = { ...TEST_CONFIG, baseURL: mock.baseURL } as never

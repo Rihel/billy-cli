@@ -32,6 +32,8 @@ import {
   ContextService,
   ConversationRepository,
   RunRepository,
+  RunStatusStream,
+  RUN_STATUS_LISTENER,
   TimelineRepository,
 } from './runtime/index.js'
 import {
@@ -370,6 +372,9 @@ let warnedMissingEnvelope = false
     // ---- 会话运行时：仓储（服务都注入它们；漏了就在启动时 UnknownDependencies）----
     ConversationRepository,
     RunRepository,
+    RunStatusStream,
+    // 仓储只依赖接口（测试可传替身），实现复用同一份单例
+    { provide: RUN_STATUS_LISTENER, useExisting: RunStatusStream },
     TimelineRepository,
     AgentService,
     AiToolService,

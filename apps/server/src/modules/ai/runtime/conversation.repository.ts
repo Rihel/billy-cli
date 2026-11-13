@@ -50,6 +50,22 @@ export class ConversationRepository {
     return repo.findOne({ where: { id }, withDeleted: options.withDeleted ?? false })
   }
 
+  /**
+   * 会话归属者 id（推流频道 `ai:owner:{id}` 用）。
+   *
+   * `withDeleted: true`：删会话时也要发运行态变更（先把跑着的 run 取消，再软删），
+   * 若这里按软删过滤就会漏掉最后一次通知，侧栏的呼吸灯将一直亮着。
+   */
+  async findOwnerId(id: string): Promise<string | null> {
+    const repo = await this.repo()
+    const row = await repo.findOne({
+      where: { id },
+      select: { userId: true },
+      withDeleted: true,
+    })
+    return row?.userId ?? null
+  }
+
   /** 某用户的会话列表（默认不含已软删；按最后活动时间倒序） */
   async list(
     userId: string,

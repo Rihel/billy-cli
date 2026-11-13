@@ -197,18 +197,53 @@ export type ReasoningContentProps = ComponentProps<typeof CollapsibleContent> & 
  */
 const streamdownPlugins = { cjk, code, math, mermaid }
 
-export const ReasoningContent = memo(({ className, children, ...props }: ReasoningContentProps) => (
-  <CollapsibleContent
-    className={cn(
-      'mt-4 text-sm',
-      'data-[state=closed]:fade-out-0 data-[state=closed]:slide-out-to-top-2 data-[state=open]:slide-in-from-top-2 text-muted-foreground outline-none data-[state=closed]:animate-out data-[state=open]:animate-in',
-      className,
-    )}
-    {...props}
-  >
-    <Streamdown plugins={streamdownPlugins}>{children}</Streamdown>
-  </CollapsibleContent>
-))
+export const ReasoningContent = memo(({ className, children, ...props }: ReasoningContentProps) => {
+  const { isStreaming } = useReasoning()
+  const scrollRef = useRef<HTMLDivElement>(null)
+  /**
+   * 流式期间是否继续贴着底部。
+   *
+   * 用户往上翻去读前面的推理时**不能把他拽回来**；等他滚回底部（或内容没超出）再恢复跟随。
+   */
+  const stickRef = useRef(true)
+
+  /**
+   * 思考内容边流边长：限高之后必须自己跟着滚，否则新内容都长在可视区下面，
+   * 用户看到的永远是最早那几行（"播报"要能看到最新的）。
+   */
+  useEffect(() => {
+    const element = scrollRef.current
+    if (!element || !isStreaming || !stickRef.current) return
+    element.scrollTop = element.scrollHeight
+  }, [children, isStreaming])
+
+  const handleScroll = useCallback(() => {
+    const element = scrollRef.current
+    if (!element) return
+    stickRef.current = element.scrollHeight - element.scrollTop - element.clientHeight <= 24
+  }, [])
+
+  return (
+    <CollapsibleContent
+      className={cn(
+        'mt-4 text-sm',
+        'data-[state=closed]:fade-out-0 data-[state=closed]:slide-out-to-top-2 data-[state=open]:slide-in-from-top-2 text-muted-foreground outline-none data-[state=closed]:animate-out data-[state=open]:animate-in',
+        className,
+      )}
+      {...props}
+    >
+      {/* 思考可能很长：展开后限高、在块内滚动（流式时自动跟到底部），别把正文顶出屏幕 */}
+      <div
+        ref={scrollRef}
+        data-slot="reasoning-content-scroll"
+        onScroll={handleScroll}
+        className="max-h-[min(50vh,20rem)] overflow-y-auto"
+      >
+        <Streamdown plugins={streamdownPlugins}>{children}</Streamdown>
+      </div>
+    </CollapsibleContent>
+  )
+})
 
 Reasoning.displayName = 'Reasoning'
 ReasoningTrigger.displayName = 'ReasoningTrigger'
