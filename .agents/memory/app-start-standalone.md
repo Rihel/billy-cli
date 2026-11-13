@@ -8,7 +8,7 @@
   Next 会明确告警；启动必须 `node .next/standalone/apps/<app>/server.js`。
 - standalone 目录按 `outputFileTracingRoot`（仓库根）落盘：web 是
   `.next/standalone/apps/web`，admin 是 `.next/standalone/apps/admin`。
-- **2026-11-13 起统一走 `scripts/start-standalone.mjs`**（Node，跨平台）：
+- **2026-11-13 起统一走 `scripts/start-standalone.ts`**（Node，跨平台）：
   `pnpm --filter @app/web start` / `@app/admin start` 分别传 `web 9840` / `admin 9845`；
   脚本把 `.next/static` 与 `public` 拷进 standalone，再起 `server.js`。
   历史坑：admin 旧 `start.sh` 曾误指 `apps/web`，且 `exec PORT=9845 node ...` 在 `sh` 下无效。
@@ -18,14 +18,14 @@
 ## 依据
 
 - `apps/web/next.config.ts` / `apps/admin/next.config.ts`：`output: !isDev ? 'standalone' : undefined`
-- `scripts/start-standalone.mjs`、`apps/web/package.json`、`apps/admin/package.json`
+- `scripts/start-standalone.ts`、`apps/web/package.json`、`apps/admin/package.json`
 - `docker/Dockerfile.web`：`ENV PORT=3001`、`CMD node apps/web/server.js`
 
 核对命令：
 
 ```bash
 grep -n '"start"' apps/web/package.json apps/admin/package.json
-ls scripts/start-standalone.mjs
+ls scripts/start-standalone.ts
 grep -n "output" apps/web/next.config.ts apps/admin/next.config.ts
 ```
 

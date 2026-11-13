@@ -57,9 +57,14 @@ if (ports.length === 0) {
   ports.push(...DEFAULT_PORTS)
 }
 
-const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+type PortState = 'open' | 'closed' | 'unknown'
 
-function run(command, commandArgs) {
+const sleep = (ms: number): Promise<void> =>
+  new Promise((resolve) => {
+    setTimeout(resolve, ms)
+  })
+
+function run(command: string, commandArgs: string[]): string {
   try {
     return execFileSync(command, commandArgs, {
       encoding: 'utf8',
@@ -73,7 +78,7 @@ function run(command, commandArgs) {
 }
 
 /** 不带 sudo 的 lsof；失败（没装 / 没权限 / 无结果）一律返回空 */
-function lsofPids(portArgs) {
+function lsofPids(portArgs: string[]): number[] {
   return run('lsof', ['-nP', ...portArgs, '-t'])
     .split(/\s+/)
     .filter(Boolean)
@@ -85,7 +90,7 @@ function lsofPids(portArgs) {
  * 只找 TCP LISTEN：不加 `-i:port` 这类宽条件，避免把「连到远端 9840 的客户端」误当成服务端进程。
  * 依次尝试：lsof → sudo -n lsof（无密码时失败，不会卡终端）→ Linux ss。
  */
-function listPosixPids(port) {
+function listPosixPids(port: number): number[] {
   const listenArgs = [`-iTCP:${port}`, '-sTCP:LISTEN']
   const direct = lsofPids(listenArgs)
   if (direct.length > 0) return direct
@@ -100,7 +105,7 @@ function listPosixPids(port) {
   // Linux 上没有 lsof 时用 ss（-p 只能看到有权限看的进程）
   const ss = run('ss', ['-ltnp'])
   if (ss) {
-    const pids = new Set()
+    const pids = new Set<number>()
     const linePattern = new RegExp(`:${port}\\s`)
     for (const line of ss.split('\n')) {
       if (!linePattern.test(line)) continue
@@ -112,10 +117,10 @@ function listPosixPids(port) {
   return []
 }
 
-function listListeningPids(port) {
+function listListeningPids(port: number): number[] {
   if (IS_WIN) {
     const pattern = new RegExp(`^\\s*TCP\\s+\\S+:${port}\\s+\\S+\\s+LISTENING\\s+(\\d+)\\s*$`, 'i')
-    const pids = new Set()
+    const pids = new Set<number>()
     for (const line of run('netstat', ['-ano', '-p', 'TCP']).split('\n')) {
       const match = pattern.exec(line.trim())
       if (match) pids.add(Number(match[1]))
@@ -127,7 +132,7 @@ function listListeningPids(port) {
 }
 
 /** 独立于 lsof 的占用判断：TCP 探针能连上，就说明端口确实在监听 */
-function probePort(port, host) {
+function probePort(port: number, host: string): Promise<PortState> {
   return new Promise((resolve) => {
     const socket = net.connect({ host, port })
     const done = (state) => {
@@ -141,14 +146,14 @@ function probePort(port, host) {
   })
 }
 
-async function portState(port) {
+async function portState(port: number): Promise<PortState> {
   const states = await Promise.all([probePort(port, '127.0.0.1'), probePort(port, '::1')])
   if (states.includes('open')) return 'open'
   if (states.every((state) => state === 'closed')) return 'closed'
   return 'unknown'
 }
 
-function isOwnedByRepo(pid) {
+function isOwnedByRepo(pid: number): boolean {
   if (IS_WIN) {
     // Win32_Process 没有 cwd，只能看命令行里有没有仓库路径
     const command = run('powershell.exe', [
@@ -173,7 +178,7 @@ function isOwnedByRepo(pid) {
   }
 }
 
-function isAlive(pid) {
+function isAlive(pid: number): boolean {
   try {
     process.kill(pid, 0)
     return true
@@ -182,7 +187,7 @@ function isAlive(pid) {
   }
 }
 
-async function terminate(pid) {
+async function terminate(pid: number): Promise<void> {
   if (IS_WIN) {
     run('taskkill.exe', ['/PID', String(pid), '/T', '/F'])
     return
@@ -205,7 +210,7 @@ async function terminate(pid) {
   }
 }
 
-async function waitPortFree(port, timeoutMs = 3000) {
+async function waitPortFree(port: number, timeoutMs = 3000): Promise<boolean> {
   const deadline = Date.now() + timeoutMs
   while (Date.now() < deadline) {
     if (listListeningPids(port).length === 0 && (await portState(port)) !== 'open') return true
@@ -214,7 +219,7 @@ async function waitPortFree(port, timeoutMs = 3000) {
   return false
 }
 
-function printUnknownOwnerHint(port) {
+function printUnknownOwnerHint(port: number): void {
   console.log(
     colors.yellow(
       `! ${port} 在监听，但定位不到进程（可能属于其它用户 / 容器转发 / 系统服务，或 lsof 不可用）`,

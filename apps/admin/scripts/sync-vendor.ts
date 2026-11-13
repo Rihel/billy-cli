@@ -15,8 +15,10 @@ import { fileURLToPath } from 'node:url'
 const here = dirname(fileURLToPath(import.meta.url))
 const appRoot = join(here, '..')
 
+type VendorTarget = { name: string; packageJson: string; from: string; to: string }
+
 /** 需要同步的库：`from` 是包内真实文件，`to` 是 public 下的目标路径 */
-const TARGETS = [
+const TARGETS: VendorTarget[] = [
   {
     name: 'gsap',
     packageJson: 'node_modules/gsap/package.json',
@@ -27,11 +29,13 @@ const TARGETS = [
 
 const run = async () => {
   for (const target of TARGETS) {
-    const version = JSON.parse(await readFile(join(appRoot, target.packageJson), 'utf8')).version
+    const { version } = JSON.parse(await readFile(join(appRoot, target.packageJson), 'utf8')) as {
+      version: string
+    }
     const source = await readFile(join(appRoot, target.from), 'utf8')
     const destination = join(appRoot, target.to)
     await mkdir(dirname(destination), { recursive: true })
-    const header = `/* ${target.name} ${version} · 由 scripts/sync-vendor.mjs 生成，勿手改（改版本请重新同步） */\n`
+    const header = `/* ${target.name} ${version} · 由 scripts/sync-vendor.ts 生成，勿手改（改版本请重新同步） */\n`
     await writeFile(destination, `${header}${source}`, 'utf8')
     console.log(`[sync-vendor] ${target.name} ${version} → ${target.to}`)
   }

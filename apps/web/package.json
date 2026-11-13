@@ -7,7 +7,7 @@
   "scripts": {
     "dev": "next dev --port 9840",
     "build": "next build",
-    "start": "node ../../scripts/start-standalone.mjs web 9840",
+    "start": "node ../../scripts/start-standalone.ts web 9840",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest"

@@ -19,7 +19,7 @@ pre-commit:
 commit-msg:
   jobs:
     - name: commit-message
-      run: node scripts/check-commit-msg.mjs {1}
+      run: node scripts/check-commit-msg.ts {1}
 
 pre-push:
   jobs:

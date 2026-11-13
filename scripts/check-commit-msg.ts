@@ -2,7 +2,7 @@
 /**
  * commit-msg 钩子：校验提交信息符合「<类型>：<摘要>」中文规范。
  *
- * 用法：node scripts/check-commit-msg.mjs [消息文件路径]
+ * 用法：node scripts/check-commit-msg.ts [消息文件路径]
  * - lefthook 会传入 {1}（Git 的消息文件）；缺省时回落到 git rev-parse --git-path COMMIT_EDITMSG。
  * - 跨平台：只用 node: 内置模块，路径由 git 提供，不拼分隔符；strip BOM 与 CRLF。
  * - Merge / Revert / fixup! / squash! 放行。
@@ -10,12 +10,12 @@
 import { execFileSync } from 'node:child_process'
 import { readFileSync } from 'node:fs'
 
-const TYPES = ['新增', '重构', '修复', '变更', '文档', '测试', '配置', '样式', '杂项']
+const TYPES: string[] = ['新增', '重构', '修复', '变更', '文档', '测试', '配置', '样式', '杂项']
 const SEPARATOR = '：'
 const MAX_SUMMARY = 50
 const EXAMPLE = '配置：接入 oxlint 与 oxfmt'
 
-function resolveMessagePath() {
+function resolveMessagePath(): string {
   const arg = process.argv[2]
   if (arg) return arg.replace(/^['"]|['"]$/g, '')
   try {
@@ -27,7 +27,7 @@ function resolveMessagePath() {
   }
 }
 
-function fail(lines) {
+function fail(lines: string[]): never {
   process.stderr.write(`\n✖ 提交信息不符合规范\n\n${lines.join('\n')}\n\n  示例：${EXAMPLE}\n\n`)
   process.exit(1)
 }

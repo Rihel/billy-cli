@@ -153,7 +153,7 @@
 
 ### 3.4 提交钩子（lefthook）
 
-**文件**：`lefthook.yml`、`scripts/check-commit-msg.mjs`
+**文件**：`lefthook.yml`、`scripts/check-commit-msg.ts`
 
 ```yaml
 pre-commit:
@@ -171,7 +171,7 @@ pre-commit:
 commit-msg:
   jobs:
     - name: 提交信息规范
-      run: node scripts/check-commit-msg.mjs {1}
+      run: node scripts/check-commit-msg.ts {1}
 
 pre-push:
   jobs:
@@ -276,7 +276,7 @@ git commit -m "update"          # 被 commit-msg 拒绝
 | **P1 配置** | `.oxlintrc.jsonc`、`.oxfmtrc.json`、`.editorconfig`、`.vscode/*`、package.json 脚本、`pnpm-workspace.yaml` allowBuilds、删 `.prettierrc` | 7 个文件，**零源码改动** | `pnpm lint` 能跑出 128 条基线；`pnpm fmt:check` 报 615 个文件；macOS 实测 + Windows 按 §3.8 冒烟清单 |
 | **P2 清存量** | 按规则逐条修 128 条 lint + 60 条类型感知；有意保留处用单行 disable + 理由 | ~80 个源码文件 | `pnpm lint` 与 `pnpm lint:types` 均 0/0；`pnpm typecheck` 通过 |
 | **P3 全仓排版** | `pnpm fmt`，单独 commit；`.git-blame-ignore-revs` 记录该 commit | 615 个文件，纯格式 | `pnpm fmt:check` 干净；`git diff` 无逻辑改动；Windows 检出后 `fmt:check` 仍干净（验证 LF） |
-| **P4 钩子** | `lefthook.yml`、`scripts/check-commit-msg.mjs`、安装钩子 | 2 个文件 | 故意提交坏格式 / 坏 message 被拦；`pnpm verify` 通过；Windows 提交链路按 §3.8 跑通 |
+| **P4 钩子** | `lefthook.yml`、`scripts/check-commit-msg.ts`、安装钩子 | 2 个文件 | 故意提交坏格式 / 坏 message 被拦；`pnpm verify` 通过；Windows 提交链路按 §3.8 跑通 |
 | **P5 文档同步** | `docs/guide/engineering.md`、README 贡献段、skill 命令表、memory 卡片、dev-log | 文档 | 命令与文档一致 |
 
 **顺序理由**：P2 必须在 P3 前（语义修复与格式重排分开 review）；P1 先行是因为它零风险且能立刻看到基线。

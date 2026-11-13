@@ -80,4 +80,4 @@
 | [ai-chat-running-state](ai-chat-running-state.md) | 续流必须带 conversationId（否则串流）；「运行中」灯靠条件轮询，开跑要在 streaming 时手动失效一次列表 | 抽核 | 2026-11-12 |
 | [engineering-toolchain](engineering-toolchain.md) | oxlint + oxfmt + lefthook：0/0 门禁、oxfmt 0.x 钉版本、Windows sh 转义的坑 | 必核 | 2026-11-13 |
 | [packages-layout](packages-layout.md) | 5 个包按运行时分层且单消费者；build 0.9s / typecheck 1.2s，拆包无收益，问题是依赖卫生与入口 | 抽核 | 2026-11-13 |
-| [app-start-standalone](app-start-standalone.md) | standalone 下 `next start` 不兼容；统一走 `scripts/start-standalone.mjs`，本地端口 9840/9845 | 必核 | 2026-11-13 |
+| [app-start-standalone](app-start-standalone.md) | standalone 下 `next start` 不兼容；统一走 `scripts/start-standalone.ts`，本地端口 9840/9845 | 必核 | 2026-11-13 |

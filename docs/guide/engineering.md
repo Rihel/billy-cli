@@ -97,7 +97,7 @@ set LEFTHOOK=0 && git commit ...
 - 四个工具都有三平台原生二进制；Windows 需要 **Git for Windows**（钩子靠它自带的 `sh` 执行），不需要 WSL。
 - 行尾统一 LF：`.gitattributes` + `.editorconfig` + oxfmt `endOfLine: "lf"` 三重约束；`*.bat` / `*.cmd` 保持 CRLF。
 - 若 Windows 首次安装被 pnpm 的 supply-chain 策略拦下平台绑定，把对应 `@oxlint/binding-win32-*`、`@oxfmt/binding-win32-*`、`@oxlint-tsgolint/win32-*`、`lefthook-windows-*` 加进 `pnpm-workspace.yaml` 的 `minimumReleaseAgeExclude`。
-- 启动脚本已改为 Node（`scripts/start-standalone.mjs`），`db:gen` 与 `clean` 也不再依赖 `bash` / `rm -rf`。
+- 启动脚本已改为 Node（`scripts/start-standalone.ts`），`db:gen` 与 `clean` 也不再依赖 `bash` / `rm -rf`。
 
 ## 7. 与既有检查的关系
 

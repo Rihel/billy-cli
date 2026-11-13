@@ -7,7 +7,7 @@
  */
 import { spawnSync } from 'node:child_process'
 
-const name = process.argv[2]
+const name: string | undefined = process.argv[2]
 if (!name) {
   console.error('用法：pnpm db:gen <Name>（Name 会拼到 src/database/migrations/ 下）')
   process.exit(1)
