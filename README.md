@@ -25,16 +25,16 @@ GitHub：[Rihel/billy-cli](https://github.com/Rihel/billy-cli)
   开关、限额、审计与内建工具走同一套网关。
 - **出事不用登服务器**：`requestId` 串起日志、指标、告警与 AI 运行，后台五个监控页直接看。
 - **改一处处处对得上**：数据结构一份（Zod schema）派生实体 / 接口类型 / 表单 / 列表；依赖方向单向，
-  五道检查拦住走样；27 个 Agent Skills 指向仓库真实文件，AI 改代码时读到的就是这套约束。
+  八道检查拦住走样；28 个 Agent Skills 指向仓库真实文件，AI 改代码时读到的就是这套约束。
 
 ## 能力一览
 
 | 方向 | 已具备 |
 | --- | --- |
-| **AI 应用开发** | 10 个内建工具 · 4 类连接器 · 会话 / 运行 / 时间线落库 · 流式续传 · 崩溃恢复 · 上下文压缩 · 用量与审计 · 后台 5 页 |
+| **AI 应用开发** | 26 个内建工具（另 3 个运行时自带）· 4 类连接器 · 会话 / 运行 / 时间线落库 · 流式续传 · 崩溃恢复 · 上下文压缩 · 文件与技能库 · 逐轮用量审计 · 后台 7 个 AI 页 |
 | **可观测性** | 日志 · 指标（含环比）· 四类告警 · 探针 · AI 审计，后台 5 个监控页 |
 | **设计与组件** | 61 个基础组件 · 48 个 ai-elements · 一套 token 双前端共用 · 暗色主题 · `check:ui` 守漂移 |
-| **工程约束** | 数据结构一份 · 依赖单向 · 全类型 SDK · `DbService` 统一数据入口 · 五道检查 |
+| **工程约束** | 数据结构一份 · 依赖单向 · 全类型 SDK · `DbService` 统一数据入口 · 八道检查 |
 
 ## 技术栈
 
@@ -43,7 +43,7 @@ GitHub：[Rihel/billy-cli](https://github.com/Rihel/billy-cli)
 | 构建 | pnpm 12 + Turbo | monorepo 依赖管理 + 按拓扑任务编排 |
 | 服务端 | NestJS 12（Express 5） | 模块化 HTTP 边界，业务模块归 `apps/server`，通用能力归 `@repo/kits` |
 | 数据 | PostgreSQL + TypeORM | 装饰器实体 + Repository / QueryBuilder，实体与迁移同一份字段 |
-| 缓存 / 消息 | Redis + Kafka | 缓存 / 锁 / 会话 / 运行中进度 / SSE 跨实例广播；Kafka 按需装配 |
+| 缓存 / 消息 | Redis（PubSub / EventBus）+ Kafka | 缓存 / 锁 / 会话 / 运行中进度 / SSE 跨实例广播；Kafka 按需装配 |
 | 实时 | SSE（StreamHub + HttpStreamClient） | AI 流式 / 任务进度 / 通知，Redis pub/sub 跨实例 |
 | AI 运行时 | Mastra + AI SDK 7 | agent 执行、工具调用、流式交给框架；网关 / 落库 / 恢复 / 审计留在本工程 |
 | AI 连接器 | 数据库 / Redis / 飞书 CLI | 后台加一行数据就产出工具，连接、凭证、限额、审计统一管理 |
@@ -101,9 +101,10 @@ pnpm dev:admin    # http://localhost:9845
 ### 生产构建
 
 ```bash
-pnpm build
-pnpm start:server
-pnpm start:web
+pnpm build          # 全量（也可单独 pnpm build:web / build:admin / build:server，含依赖包）
+pnpm start:server   # 9989
+pnpm start:web      # standalone，默认 9840（与 dev 一致；Docker 内为 3001）
+pnpm start:admin    # standalone，默认 9845（可选）
 # 或 Docker Compose（postgres + redis + minio + server + web）
 pnpm docker:up
 ```
@@ -116,16 +117,16 @@ pnpm docker:up
 ├── apps/
 │   ├── server/    NestJS 12 HTTP 边界 + 业务模块 + 组合根（9989）
 │   ├── web/       Next.js 16 前台：落地页 / 账号 / Markdown 示例（9840）
-│   └── admin/     Next.js 16 管理后台：控制台 / 监控 / 用户 / AI（9845）
+│   └── admin/     Next.js 16 管理后台：控制台 / 监控 / 用户 / AI（含文件 / 技能库）/ 免授权分享页（9845）
 ├── packages/
-│   ├── shared/    Zod schema、错误码字典、日志工厂、通用工具（前后端共享）
-│   ├── kits/      后端通用能力：Db / Redis / JWT / 存储 / 消息 / 调度 / 推送 / 限流
+│   ├── shared/    Zod schema、错误码字典、日志工厂、文件类型判定、通用工具（前后端共享）
+│   ├── kits/      后端通用能力：Db / Redis / PubSub / EventBus / Stream / JWT / 会话 / 存储 / 调度 / 通知 / 限流 / 工作区
 │   ├── http-client/  通用 HTTP + 鉴权管线（策略 / 凭证 / SSE 客户端）
 │   ├── sdk/       ServerClient：全类型化业务 API，构建在 http-client 之上
 │   └── ui/        Base UI + shadcn 组件、ai-elements、设计系统
 ├── docker/        Dockerfile.base / .server / .web + init-db.sql
 ├── k8s/           server 的 Kubernetes 清单与部署说明
-├── docs/          指南（guide/）、设计文档（design/）、开发日志（dev-logs/）
+├── docs/          指南（guide/）、设计文档（design/）、开发日志（dev-logs/）、调研快照（research/）
 └── scripts/       bootstrap / kill-dev / 检查脚本 / codegraph 初始化
 ```
 
@@ -139,12 +140,13 @@ pnpm docker:up
 | [后端](docs/guide/backend.md) | `apps/server`、业务模块、认证、API 路由与错误格式、日志、监控告警 |
 | [前端](docs/guide/frontend.md) | Web / Admin 页面、设计系统、组件库与管理端组件 |
 | [共享包](docs/guide/packages.md) | `@repo/shared`、`@repo/kits`、`@repo/http-client`、`@repo/sdk` |
-| [AI 能力](docs/guide/ai.md) | 运行时与接口、连接器、Agent Skills、AI 使用配置（codegraph） |
+| [AI 能力](docs/guide/ai.md) | 运行时与接口、工具与连接器、文件管理、技能库、工作区隔离、Agent Skills、AI 使用配置（codegraph） |
 | [部署](docs/guide/deployment.md) | 环境变量、生产构建、Docker、Kubernetes、反向代理 |
 | [设计文档](docs/design/) | 每个能力的方案与取舍（AI、SSE、监控、设计系统、连接器…），按主题索引 |
 | [开发日志](docs/dev-logs/) | 按日记录每轮改动的背景 / 做了什么 / 验证 |
+| [调研快照](docs/research/) | AI SDK / AI Elements 的版本化调研报告（记录写作时的版本，不代表当前实现） |
 | [竞品调研](docs/billy-pitch.md) | 项目定位、同类模板对比、技术选型理由 |
-| [Agent Skills](.agents/skills/README.md) | 27 个工程 skill：分层、代码约定、各功能开发规范 |
+| [Agent Skills](.agents/skills/README.md) | 28 个工程 skill：分层、代码约定、各功能开发规范 |
 
 ## 常用命令
 
@@ -155,8 +157,11 @@ pnpm docker:up
 | `pnpm dev:server` | 启动 API（9989） |
 | `pnpm dev:web` / `pnpm dev:admin` | 启动前台（9840）/ 后台（9845） |
 | `pnpm kill:dev` | 停掉全部 dev 服务（`--dry-run` 仅预览） |
-| `pnpm build` / `pnpm start:server` / `pnpm start:web` | 全量构建 / 生产启动 |
+| `pnpm kill:start` / `pnpm kill:port <端口>` | 跨平台按端口停进程（默认 9840 / 9845 / 9989，`--dry-run` 预览） |
+| `pnpm build` / `pnpm build:web` / `pnpm build:admin` / `pnpm build:server` | 全量构建 / 单个应用构建（含其依赖包） |
+| `pnpm start:web` / `pnpm start:admin` / `pnpm start:server` | 生产启动（9840 / 9845 / 9989；Docker 内 web 为 3001） |
 | `pnpm typecheck` / `pnpm test` | 全量类型检查 / 单元测试 |
+| `pnpm turbo run verify typecheck test` | 走 turbo 缓存的全套检查（lint / fmt / 守卫 / 类型 / 测试） |
 | `pnpm check:inject` | 构造器 `@Inject` / providers `@Injectable` 一致性 |
 | `pnpm check:mastra` | Mastra 适配器边界（业务不被框架渗透） |
 | `pnpm check:ui` | 组件导出 / 前端包脚本 / 硬编码颜色 / 设计系统规范 |
@@ -175,15 +180,19 @@ docker compose --profile kafka up -d        # 追加 Kafka（可选）
 ```
 
 - 镜像：`docker/Dockerfile.base` / `.server` / `.web`；server 镜像预装官方 `lark-cli`
+- `Dockerfile.web` 与 compose 的 `web` 服务只构建前台；后台 `apps/admin` 同构构建、独立部署
+  （免授权分享页 `/s/{token}` 挂在 admin，生产要分享就必须部署它）
 - Kubernetes：`k8s/` 清单与字段说明见 [k8s/README.md](k8s/README.md)
 - 前置网关：keep-alive 递增、SSE 关缓冲、限流信任代理，三处易踩的坑见 [部署文档](docs/guide/deployment.md)
 
 ## 参与贡献
 
 1. 先读 [AGENTS.md](AGENTS.md)（工程首要准则）与 [`billy-dev-foundation`](.agents/skills/billy-dev-foundation/SKILL.md)（分层、代码约定、标准流程）。
-2. 提交前跑完五道检查：`pnpm typecheck`、`pnpm test`、`pnpm check:inject`、`pnpm check:mastra`、`pnpm check:ui`。
-3. 提交信息使用中文类型前缀，规则见 [`git-workflow`](.agents/skills/git-workflow/SKILL.md)。
-4. 改能力时同步 README、落地页与受影响的文档 / skill。
+2. `pnpm install` 会自动装好 Git 钩子（lefthook）：commit 时自动格式化 + lint 修复，push 前跑 `verify` + `typecheck`。
+3. 提交前跑：`pnpm verify`（lint / 类型感知 / 格式化检查 / 三道守卫）、`pnpm typecheck`、`pnpm test`。
+4. 提交信息使用中文类型前缀（`新增：…`），钩子会校验；规则见 [`git-workflow`](.agents/skills/git-workflow/SKILL.md)。
+5. 工程化细则（规则取舍、Windows、跳过钩子）见 [工程化指南](docs/guide/engineering.md)。
+6. 改能力时同步 README、落地页与受影响的文档 / skill。
 
 欢迎 Issue 与 PR。
 

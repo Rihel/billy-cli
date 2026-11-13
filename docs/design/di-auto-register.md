@@ -1,6 +1,18 @@
 # @repo/di 自动注册（autoRegister）落地方案
 
 > 已废弃（2026-09-12）：`@repo/di` 与 `autoRegister` 已随 NestJS 12 重构删除；现状见 `.agents/skills/billy-dev-foundation`。
+>
+> 2026-11-13 复核（标注仍然准确）：`packages/` 现在只有 `http-client` / `kits` / `sdk` / `shared` / `ui`
+> 五个包，**没有 `packages/di`**；全仓库不再有 `@repo/di` 依赖，也没有
+> `AppContext` / `LifeCycleHost` / `autoRegister` / `markManual` / `createServiceContext` /
+> `service-context.ts` 的任何实现或引用。DI 现由 `@nestjs/common` 承担
+> （`@Injectable` / `@Inject` / `@Optional`），装配是**显式模块**（`providers` / `exports` /
+> `imports`）；「漏登记只在运行时才报错」这个本文要解决的问题，现在由
+> 「每个构造器参数都显式 `@Inject(token)`」的硬约束 + `pnpm check:inject` 静态检查兜底
+> （见 `nestjs-migration.md` §2.3 / §3.5）。
+>
+> 以下正文是当时的方案设计记录，保留历史论证与取舍（其中 `@repo/kits/src/service-context.ts`、
+> `AppContext.markManual`、`main.ts` 里逐个 `addService` 的写法等均已不存在）。
 
 > 状态：待实现 · 日期：2026-09-06 · 影响包：`@repo/di`（核心）、`@repo/kits`（service-context）、`apps/server`（main.ts）
 

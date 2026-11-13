@@ -1,6 +1,7 @@
 # AI 文件管理：会话级文件树 + 对象存储
 
-> 状态：已实施（2026-11-11，后端 + 前端 + 提示词）。
+> 状态：已实施（2026-11-11，后端 + 前端 + 提示词）；2026-11-12/13 补后台独立文件页、
+> 工作区免字节转发（`workspace-link`）与桶 CORS 自动配置，增量事实见 §16。
 > 关联：`ai-agent.md` §3.15（workspace / bash）、§3.16（附件）、`ai-agent-tool-engine.md`（工具组 DSL）、
 > `storage-access-policy.md`（key 命名空间）。
 
@@ -129,9 +130,9 @@ AI 的"交付物"可能是文件、网页链接、一段文本，也可能是**�
 索引：
 
 ```sql
-UNIQUE (conversation_id, path)   -- 一个会话内一个路径只有一份文件
-INDEX  (conversation_id, updated_at)
-INDEX  (conversation_id, source) -- 文件树按来源过滤 / 分组
+UNIQUE (conversation_id, path)   -- 一个会话内一个路径只有一份文件（uk_ai_file_path）
+INDEX  (conversation_id, updated_at)  -- idx_ai_file_conversation
+INDEX  (conversation_id, source)      -- idx_ai_file_source（文件树按来源过滤 / 分组）
 ```
 
 口径：
@@ -147,7 +148,8 @@ INDEX  (conversation_id, source) -- 文件树按来源过滤 / 分组
 
 ### 3.2 文件树
 
-库里是**扁平行**，树由纯函数 `buildFileTree(entries)` 生成（放 `@repo/shared`，前后端共用、可单测）。
+库里是**扁平行**，树由纯函数 `buildFileTree(entries)` 生成（`packages/shared/src/utils/tree.utils.ts`，
+经 `@repo/shared` 导出，前后端共用、可单测）。
 
 ```ts
 export interface AgentFileModel {
@@ -273,7 +275,8 @@ AGENT_COMMAND_WORK_DIR=~/.billy/workspaces        # 所有会话的根（历史�
 
 ### 5.3 路径安全
 
-统一纯函数 `resolveInsideWorkspace(root, target)`：
+统一纯函数 `resolveWorkspacePath({ caps, conversationId, path, allowMissing? })`
+（`apps/server/src/modules/ai/core/tools/workspace.ts`，`bash` 与文件工具共用）：
 
 1. `resolve(root)` 与 `resolve(target)`；
 2. `relative(root, target)` 判是否在根内（天然处理 `..` 与 Windows 大小写差异）；
@@ -405,9 +408,12 @@ const SubmitInput = z.object({
     "对象已损坏"，下一次 submit 会修复；这种情况记 error 日志；
 11. 返回 `{ fileKey, key, fileId, source: 'ai', bytes, mediaType, sha256, replaced }`。
 
-**并发**：同一 `(conversationId, path)` 的提交用 Redis 锁串行（`RedisStore.acquireLock`，
-key 取路径哈希，TTL 60s），不同路径互不影响。锁只覆盖"查旧行 → 上传 → upsert"这一小段，
-不把 5MB 上传放进数据库事务。
+**并发**：同一 `(conversationId, path)` 的提交用**进程内**串行闸门 `PathLock`
+（`files/path-lock.ts`，key = `${conversationId}:${fileKey}`），不同路径互不影响；
+`write-file` / `replace-file` / `append-file` 用同一把闸门（key 用绝对路径）。
+锁只覆盖"读源文件 → 查旧行 → 上传 → upsert"这一小段，不把 5MB 上传放进数据库事务。
+跨副本**不**互斥 —— 工作区本来就是本地盘，与 §10.4 的限制同类；同一会话的并发提交在
+多副本下仍可能各写一次对象（覆盖语义下结果一致，最后写入者胜）。
 
 **描述（给模型，≤380 字符）**
 
@@ -545,10 +551,12 @@ const WriteFileInput = z.object({
 **流程**
 
 1. 解析 `filePath`；对**最近的已存在祖先** `realpath` 判包含；目标存在时拒绝软链 / 目录；
-2. `Buffer.byteLength(content, 'utf8') <= maxWriteBytes`；含 `\0` → `invalid-input`；
+2. **拒绝写 `files/`**（`file-download` 的下载缓存，会被下一次下载覆盖）：直接 `invalid-input`，
+   提示"先复制到其他工作区路径再改"；
+3. `Buffer.byteLength(content, 'utf8') <= maxWriteBytes`；含 `\0` → `invalid-input`；
    最终文件大小 `<= maxBytes`；
-3. `mkdir -p` 父目录；写临时文件 → `rename`（原子覆盖）；权限 `0o600`；
-4. 返回 `{ path, bytes, lines, created }`（`created` = 之前不存在）。
+4. `mkdir -p` 父目录；写临时文件 → `rename`（原子覆盖）；权限 `0o600`；
+5. 返回 `{ path, bytes, lines, created }`（`created` = 之前不存在）。
 
 **描述**
 
@@ -571,7 +579,8 @@ const ReplaceFileInput = z.object({
 
 **流程**
 
-1. 解析路径；文件必须存在、普通、非软链、文本类；`size <= readMaxBytes`；
+1. 解析路径；**拒绝 `files/`**（同 §6.7 的缓存保护）；文件必须存在、普通、非软链、文本类；
+   `size <= readMaxBytes`；
 2. 读出全文，统计 `oldText` 出现次数：
    - 0 → `invalid-input`（"没有找到要替换的内容"）；
    - >1 且 `all=false` → `invalid-input`（"匹配到 N 处；提供更长的上下文，或 all=true"）；
@@ -598,11 +607,12 @@ const AppendFileInput = z.object({
 
 **流程**
 
-1. 解析路径；对**最近的已存在祖先** `realpath` 判包含；存在时必须是普通、非软链、文本文件；
-   `当前大小 + 追加内容 <= maxBytes`；
+1. 解析路径；**拒绝 `files/`**（同 §6.7 的缓存保护）；对**最近的已存在祖先** `realpath` 判包含；
+   存在时必须是普通、非软链、文本文件；`当前大小 + 追加内容 <= maxBytes`；
 2. `mkdir -p` 父目录；`appendFile`；权限 `0o600`；
 3. 返回 `{ path, bytes, lines, created }`；
-4. 并发：子 agent 也可以用这组工具；同一 agent 的追加是顺序的，但不同 run 写同一个文件不保证原子性，父 agent 需要分配独立路径。
+4. 并发：子 agent 也可以用这组工具；同一实例内同一路径走 §6.3 的 `PathLock` 串行，
+   跨副本 / 不同 run 写同一个文件不保证原子性，父 agent 需要分配独立路径。
 
 **描述**
 
@@ -628,7 +638,8 @@ const AppendFileInput = z.object({
 }
 ```
 
-- 默认 50 条、上限 200（与配额同一上限）；不分页（超出用 `total` 提示）；
+- 不分页、也不额外截断：会话文件数本身被配额卡在 200 个以内，一次全给；
+  `total` 就是返回条数（没有"被截断"这种状态）；
 - 只回元数据，不回 `key`（模型不需要；前端走会话详情）；
 - `source` 区分用户上传 / AI 生成，`filename` 是展示名；入站的 `path` 是 `uploads/{md5}{ext}`，
   不是原始文件名；
@@ -681,6 +692,7 @@ const WorkspaceFilesInput = z.object({
 | `replace-file` 没找到 `oldText` | `invalid-input` | 原文必须精确匹配 |
 | `replace-file` 多处匹配且 `all=false` | `invalid-input` | 提供更长的唯一上下文，或 `all=true` |
 | `write-file` / `append-file` 超内容上限 | `invalid-input` | 单次 1MB / 文件 5MB |
+| `write-file` / `replace-file` / `append-file` 目标在 `files/` 下 | `invalid-input` | `files/` 是下载缓存，先复制到其他路径再改 |
 | 文件不存在 / 非本会话（`file-download` / `file-list`） | `forbidden` | 本会话没有这个文件（不区分不存在与越权） |
 | 对象存储读写失败 | `upstream` | 稍后重试（`retryable: true`） |
 | 未预期异常 | `internal` | 内部错误，不把堆栈带给模型 |
@@ -767,7 +779,7 @@ txt / zip / docx / xlsx / pptx。
 
 - `conversation/detail` 查 `ai_files` → `buildFileTree` → 返回；最多 200 个叶子；
 - `conversation/list` **不返回** `aiFiles`，避免列表页把每棵树都拉出来；
-- 工具提交成功后，前端 `invalidateQueries(['agentConversation', conversationId])`，
+- 工具提交成功后，前端 `invalidateQueries(['ai', 'conversation', conversationId])`，
   右栏树自动刷新；工具卡本身直接用工具出参渲染，不等详情刷新。
 
 ### 8.2 SDK
@@ -800,7 +812,7 @@ tab 内顶部用 segmented control 分两个视图 —— 两边的生命周期�
 - 图片 / PDF / 视频 / 音频按 §8.4 矩阵预览（先走 `workspace-link` 物化到 OSS，再让浏览器直连；不走后端字节流）；
   文本 / Markdown / 代码 / HTML 走 §8.7 的 `source='workspace'`；Office OOXML 前端渲染；老 `.doc` / `.ppt` 只下载；
 - 行内操作：预览 / 下载；下载的是临时副本，长期保留仍要 `file-submit` 到会话文件；
-- 顶部「刷新」按钮；每轮结束 / 文件工具结果后 invalidate `['agentWorkspace', conversationId]`；
+- 顶部「刷新」按钮；每轮结束 / 文件工具结果后 invalidate `['ai', 'workspace', conversationId]`；
 - 空态：「工作区还没有文件。AI 写文件后出现。」
 - **多实例提醒**：工作区是本地盘，请求可能落到别的 Pod 看到空目录；会话文件（OSS）才是事实源；
   单实例部署下正常。
@@ -815,7 +827,7 @@ tab 内顶部用 segmented control 分两个视图 —— 两边的生命周期�
 | 类型 | 预览方式 | 说明 |
 | --- | --- | --- |
 | 图片（png / jpg / webp / gif） | `<img>` | — |
-| SVG | **只下载** | 可执行脚本，禁止内联到 `<img>` / `<iframe>` |
+| SVG | **预览按图片 `<img>`；分享页按 `previewKind='none'` 只下载** | `<img>` 不执行脚本，所以 AI 文件预览弹窗没单列；`shared` 的 `resolvePreviewKind` 对 SVG 一律返回 `none`（分享页据此只给下载）。两者的差异见 §8.4.1 |
 | 视频 / 音频 | 原生 `<video>` / `<audio>` | — |
 | PDF | `<iframe>` | 浏览器自带阅读器 |
 | **HTML（html / htm）** | **沙箱 iframe** | 复用 `SandboxFrame`：`allow-scripts`、**不带** `allow-same-origin`、CSP `default-src 'none'`；**不能**用普通 `<iframe src>` 直出 |
@@ -830,9 +842,11 @@ tab 内顶部用 segmented control 分两个视图 —— 两边的生命周期�
 
 1. **文本从后端来**：前端要拿到 HTML 文本才能放进沙箱 `srcdoc`。走 §8.7 的预览接口；
    Office 二进制则直接 fetch 对象存储链接（S3 / COS provider 启动时会配置 GET / HEAD CORS）。
-2. **沙箱复用围栏那套**：`SandboxFrame` 从 `ai-elements/markdown-fences/` 提到
-   `packages/ui/components/` 并补导出（`ai-markdown-fences.md` §7 预留的后续项）；
-   `html` 围栏退役后，它是 **HTML 文件预览与 `gsap` 围栏共用的沙箱**。
+2. **沙箱复用围栏那套**：`SandboxFrame` **没有**被搬到 `packages/ui/components/`（当初的预案），
+   实际做法是 `apps/admin` 直接走子路径导入
+   `@repo/ui/components/ai-elements/markdown-fences/sandbox-frame.tsx`（不进 `@repo/ui` 汇总导出，
+   避免把整棵 AI 组件树拉进首屏包）；`html` 围栏退役后，它是 **HTML 文件预览、分享页 HTML 预览与
+   `gsap` 围栏共用的沙箱**。
 3. **单文件**：外链只放行 CDN 白名单的脚本 / 样式 / 图片 / 字体（见 `ai-markdown-fences.md` 的「CDN 白名单」），
    其余地址会被 CSP 拦；相对路径找不到，多文件站点预览是另一个能力，不在本期。
 4. **完整文档也要注入 CSP**：HTML 文件可能是 `<!doctype html>…` 的完整文档，`SandboxFrame` 要把
@@ -848,6 +862,21 @@ tab 内顶部用 segmented control 分两个视图 —— 两边的生命周期�
 
 会话文件的图片 / 视频 / 音频 / PDF 预览地址用 `formatStorageUrl(key)`（桶是 public-read，直链即可；
 见 §9.3 的取舍）；HTML / Markdown / 代码走 §8.7 的文本接口。
+
+### 8.4.1 预览类型判定（`previewKind`）现状
+
+判据的**唯一事实源**是 `packages/shared/src/utils/file-kind.ts`：`resolvePreviewKind({ filename, mediaType })`
+返回 `office` / `html` / `markdown` / `pdf` / `image` / `video` / `audio` / `text` / `none`（拿不准一律
+`none`），`isTextExtension` 与它共用同一张扩展名表。当前消费方：
+
+| 消费方 | 用法 |
+| --- | --- |
+| `modules/share` 的 `meta` | 服务端下发 `previewKind` + `officeKind`，分享页只 `switch`（`docs/design/file-share.md`） |
+| `modules/ai/core/tools/workspace.ts` 的 `isTextFile` | 文本扩展名判据改用 shared 的 `isTextExtension`（文件里只留自己的媒体类型映射 `MEDIA_TYPES`），`read-file` / `replace-file` / 文本预览共用 |
+| AI 文件预览弹窗（`apps/admin/src/components/file-preview-dialog.tsx`） | **仍自持一份**扩展名 / 媒体类型分流（`isPreviewTextItem` / `isHtml` / `isMarkdown` / `officeKind`），**尚未**改成调用 `resolvePreviewKind` |
+
+所以：**服务端与分享页已收敛，前端预览弹窗还没收敛**（两份表当前内容一致，但会各自漂移）。
+`FilePreview`（`@repo/ui`）负责最后的图片 / 视频 / 音频 / PDF / 其他 分支，SVG 在那里按图片处理。
 
 ### 8.5 下载
 
@@ -878,7 +907,8 @@ window.location.href = url
 - 只允许文本类（`text/*` + 常见代码 / md / csv / json 后缀）；超过 1MB 截断并明示（`truncated: true`）；
 - 返回 `{ text, mediaType, truncated }`；
 - **HTML 也走这里**：前端把 `text` 交给 `SandboxFrame` 的 `srcdoc`，不要用 `formatStorageUrl` 直链 iframe；
-- 前端 `queryKey=['aiFilePreview', conversationId, source, path]`，同一文件重复打开不重复拉。
+- 前端 `queryKey=['ai', 'file-preview', conversationId, 当前文件 id]`，切换文件才重拉（按当前预览项取，
+  不预取整棵树的文本）；
 
 为什么文本仍走后端：文本预览要统一做 1MB 截断、路径包含与章节安全判断；Office 二进制才是直连 OSS（会话文件用 `getDownloadUrl`，工作区先物化成临时对象拿链接）。前端不用为不同来源写两套取文本逻辑。
 图片 / PDF / 视频 / 音频不走这个接口（会话文件用直链；工作区先用 `workspace-link` 物化再直连）。
@@ -909,6 +939,9 @@ window.location.href = url
   admin 与 API 需同站）。跨站部署下前端改用 fetch blob
   （带 Authorization）再 `URL.createObjectURL`；
 - **多实例**：读本地盘，可能落到别的 Pod；会话文件走 OSS 直链不受影响。
+- **现状（2026-11-13）**：这是一个**兼容 / 兜底**接口，前端预览与下载已统一走 §8.10 的
+  `workspace-link`（不再让后端转发字节）；SDK 仍导出 `client.agent.file.workspaceContentUrl()`
+  但仓内已无调用方。保留原因：同站 cookie 场景下的直接下载入口，以及不依赖对象存储的自托管部署。
 
 ### 8.10 管理员「文件管理」独立页（`/main/ai/files`）
 
@@ -923,11 +956,16 @@ window.location.href = url
   给后台预览用（图片 / PDF / 视频 / 音频走对象存储 URL + `FilePreview`；HTML 走 `SandboxFrame`）；
 - `POST /agent/file/workspace-link`（`AnyAuthGuard`）：工作区文件先物化成 `_preview/` 下的临时 OSS 对象，
   只返回链接；`download` 控制 inline / attachment。前端直接 fetch 该链接，后端不转发字节；
-  临时对象由 `FileService` 启动时及每 6 小时清扫一次（24h TTL）；
+  对象 key 是 `_preview/{user/{userId}|admin|system}/{conversationId}/{内容 sha256}{ext}`
+  （内容寻址：同一工作区文件重复预览不堆临时对象）；
+  临时对象由 `FileService` 启动时及每 6 小时清扫一次（`PREVIEW_TTL_MS` = 24h，`cleanupPreviews()`），
+  预览请求路径里不删（正在看的人链接会断）；
 - 页面主体是 DataTable：文件名 + path、所属会话（可跳回聊天）、来源、大小、创建时间、
-  预览 / 下载；时间范围用 `DateRangePicker`（`Calendar` + `Popover` 封装），不用原生 date input；
+  预览 / 下载 / **分享**；时间范围用 `DateRangePicker`（`Calendar` + `Popover` 封装），不用原生 date input；
+  分享走 `ShareDialog`（`file_shares`，见 `docs/design/file-share.md`），不在本模块内实现；
 - 预览弹窗：左侧当前文件清单（后台为当前页，聊天右栏为当前视图的全部文件），
-  顶部「上一个 / 下一个」（支持 `←` / `→`），右侧全屏内容；HTML 用 `SandboxFrame` 的无 chrome 模式；
+  顶部「上一个 / 下一个」（快捷键 `↑` / `↓`；`←` / `→` 留给 PPT 内部翻页），右侧全屏内容；
+  HTML 用 `SandboxFrame` 的无 chrome 模式（`frameless`）；
 - 指标卡在**控制台 dashboard** 的「文件用量」区：文件总数 / 总占用 / 用户上传 / AI 生成，
   数据来自同一份 stats；文件页不再重复放指标卡；
 - 管理员列表会返回对象存储 `key` 供下载；该 key 仍只用于已鉴权页面，不写日志 / 不外发。
@@ -995,10 +1033,11 @@ window.location.href = url
 - **本期没有删除工具**；
 - **会话软删（`AgentConversationService.remove`）** 按顺序做四件事，全部 best-effort、不阻塞删除：
   1. 软删会话（既有行为）；
-  2. `FileService.cleanupConversation` 删工作区 `{root}/{conversationId}`（含 `uploads/` 入站副本）；
-  3. `ai_files` 行软删（保留审计，入站 / 出站都软删）；
-  4. **只删 `source='ai'` 的对象**；`source='user'` 的对象**不删**（内容寻址，可能被其他会话引用；
-     引用计数 / 用户级清理后续再做），失败记日志，靠 TTL 兜底。
+  2. `FileService.cleanupConversation` 先**只删 `source='ai'` 的对象**（入站对象不删，内容寻址、
+     可能被其他会话引用），失败记日志、靠 TTL 兜底；
+  3. `ai_files` 行软删（含 `withDeleted` 读出全部行后再软删，保留审计，入站 / 出站都软删）；
+  4. 删工作区 `{root}/{conversationId}`（含 `uploads/` 入站副本），`fs.rm({ recursive: true, force: true })`。
+  （实现顺序是"对象 → 行 → 目录"；三步互不依赖，任一失败不影响其余两步。）
 - 与正在跑的 `file-submit` 的竞态：`remove` 先 `cancelActive`，工具收到 AbortSignal 会中断；
   仍然写进来的孤儿由 TTL 清理；submit 入口也可以查一次会话未删（防御）。
 - 多副本：工作区删除只影响处理请求的 Pod，其他 Pod 的本地副本靠 TTL。
@@ -1042,7 +1081,7 @@ window.location.href = url
 | --- | --- | --- |
 | 1 | kits：`putObject` + `getDownloadUrl({ filename })`；shared：`GetStorageDownloadUrlSchema` 加 `filename` | — |
 | 2 | `ai_files` 实体 + 迁移 + 仓储 | 1 |
-| 3 | workspace 统一根 + `resolveInsideWorkspace` + `bash` 按会话根改造（退役 `BashConfig.workDir`） | — |
+| 3 | workspace 统一根 + `resolveInsideWorkspace`（实现名 `resolveWorkspacePath`，§5.3）+ `bash` 按会话根改造（退役 `BashConfig.workDir`） | — |
 | 4 | `FileService` / `FileRepository` / `FileTools` + `registerInbound` / `materializeInbound`（聊天链路登记并入物化）+ 会话删除清理钩子 + `TOOL_KEYS` + `AGENT_TOOL_GROUPS` + agent 授权 | 1–3 |
 | 5 | shared：`FileSource` 字典（用户上传 / AI 生成）+ `AgentFileNode` / `AgentFileModel`（含 `source` / `filename`）/ `aiFiles` + `buildFileTree`；`pnpm build:pkgs` | 2 |
 | 6 | 会话详情带 `aiFiles`；文本预览接口（ai / workspace）；工作区列表 + 内容流接口；`SandboxFrame` 提取 + 前端「文件」tab（会话文件 / 工作区）+ 提示词纪律 | 4–5 |
@@ -1050,7 +1089,11 @@ window.location.href = url
 
 ## 12. 测试矩阵
 
-### 12.1 工具单测（`test/ai-tools/file-*.test.ts`）
+### 12.1 工具单测（`test/ai-tools/*.test.ts`，一个工具一个文件）
+
+服务层测试在 `test/ai-file-service.test.ts`（含 `registerInbound` / `materializeInbound`）；
+`_preview/` 临时对象清扫在 `test/ai-file-preview-cleanup.test.ts`；
+附件模态 / 归属校验在 `test/ai-chat-attachment.test.ts`。
 
 | 用例 | 断言 |
 | --- | --- |
@@ -1197,6 +1240,27 @@ pnpm typecheck && pnpm test && pnpm check:ui && pnpm check:inject && pnpm check:
   工作区图片 / PDF / 视频 / 音频走内容流。
 - 提示词：`requirements.eta` 加文件纪律；`html` 围栏 prompt 已退役（组件保留给历史消息，软退役）。
 - 测试：server 555 / admin 209 全绿；typecheck / check:ui / check:inject / check:mastra 全绿。
-- 已知缺口：`workspace-content` 依赖同站 cookie（跨站 fetch blob 兜底未做）；入站对象引用计数清理未做；
-  `workspace-files` 的 `total` 是本次返回数（截断时不是全量）；版本历史 / 老 `.doc` / `.ppt` 预览未做；
-  前端直连 OSS 需要桶配置 CORS。
+- 已知缺口（2026-11-11 时点）：`workspace-content` 依赖同站 cookie（跨站 fetch blob 兜底未做）；
+  入站对象引用计数清理未做；`workspace-files` 的 `total` 是本次返回数（截断时不是全量）；
+  版本历史 / 老 `.doc` / `.ppt` 预览未做；前端直连 OSS 需要桶配置 CORS。
+
+## 16. 现状补记（2026-11-13）
+
+11-11 之后本模块的增量改动，只记事实：
+
+- **新增四条 HTTP**：`POST /agent/file/workspace-link`（工作区文件 → `_preview/` 临时对象 + 预签名链接）、
+  `POST /agent/file/admin/{list,stats,preview}`（后台独立文件页）。`GET /agent/file/workspace-content`
+  保留但**前端已不再使用**（SDK 的 `workspaceContentUrl()` 仍导出，无调用方）。
+- **前端预览数据面收口**：工作区二进制（图片 / PDF / 视频 / 音频）与 Office（docx / xlsx / pptx）
+  统一走 `workspace-link` 拿链接后前端 `fetch`，后端不再转发字节；Office 走「直连 OSS → 前端渲染器」。
+- **桶 CORS 自动配置**：`providers/s3.ts` / `providers/cos.ts` 启动时调 `PutBucketCors` /
+  `putBucketCors`（`AllowedOrigins: ['*']`、只放 `GET` / `HEAD`，暴露 `ETag` / `Content-Length` /
+  `Content-Range`，`MaxAgeSeconds: 86400`），失败只 `warn` 不拦启动。§15 里"CORS 需要人工配置"这条**已闭环**。
+- **临时对象清理落地**：`FileService.cleanupPreviews()` + `ai-file-preview-cleanup.test.ts`；
+  `_preview/` 对象 24h TTL、每 6h 扫一次、启动先扫一次。
+- **`file-list` 不分页**：会话文件数被配额卡在 200 以内，`total` 就是返回条数（§6.10 已更正）；
+  后台列表走 `BasePaginateSchema` 分页。
+- **文本判据收口**：`core/tools/workspace.ts` 的 `isTextFile` 改用 `@repo/shared` 的 `isTextExtension`；
+  `previewKind` 判据在 `packages/shared/src/utils/file-kind.ts`（详见 §8.4.1）。
+- **管理页加「分享」**：文件行操作列 → `ShareDialog`（`file_shares`，见 `docs/design/file-share.md`）。
+- **并发闸门是进程内 `PathLock`**（不是早期设计的 Redis 锁），见 §6.3。

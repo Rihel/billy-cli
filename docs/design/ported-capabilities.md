@@ -2,6 +2,16 @@
 
 > 触发背景：对比 rihel-base（旧时代 + 中后台场景）后，挑出三项**真正缺失且可直接复用**的能力。
 > 前提定位：billy-cli 只做「取」不做「齐」——借鉴具体实现，不追平其框架版本与业务域。
+>
+> 2026-11-13 核对：三项能力的位置与实现均与本文一致（`db/batch.ts` / `db/safe-delete.ts` /
+> `db/sql.ts` + `DbService`、`foundation/time-wheel/`、`docker-compose.yaml` 的 `kafka` profile）。
+> 两点补充口径：
+> ① 本文只覆盖这三项，**不是 kits 的能力清单**——kits 现在有 16 个顶层目录（另有 `index.ts`）
+> （`db / events / foundation / jwt / kafka / lark / notification / password / pubsub /
+> rate-limit / redis / session / storage / stream / telemetry / workspace`），其中
+> `pubsub`（跨实例 pub/sub）、`events`（事件总线）、`workspace`（工作区运行时）是后来新增的；
+> ② 依赖实况：批量用 `lodash`（`_.chunk`）+ `p-queue`，时间轮的 cron 分支用 `croner`（kits 既有依赖），
+> 与「不新增 cron-parser」的取舍一致。
 
 ## 1. 难度评估与范围
 
@@ -137,6 +147,10 @@ const concurrency = manager.queryRunner?.isTransactionActive ? 1 : (options.conc
 **缺的只是本地 broker** —— 因此本次只补 compose 设施与配置模板，不改代码。
 
 ## 5. 测试点
+
+> 测试文件（实况）：`packages/kits/test/db-batch.test.ts`（batch 系列）、
+> `db-service.test.ts`（`DbService` 的默认 manager / 操作人 / 分页转发）、
+> `time-wheel.test.ts`（时间轮）。
 
 - `batch`：分片数正确、并发受限、单片失败抛 `BatchOperationError` 且携带失败项、
   事务内并发降为 1（`queryRunner.isTransactionActive = true` 的替身）。

@@ -16,8 +16,8 @@
 要点：
 
 1. **上传是「改写」而不是「校验」**：前端 `useStorage` 用 `md5 + 扩展名` 生成扁平 key
-   （`apps/../use-storage.ts`），它不知道自己的 userId；而响应 `StoragePresignedUrlModel`
-   已经带 `key`，且前端**用的是响应里的 key**（`key: presigned.key`）—— 所以服务端可以安全地
+   （`packages/ui/src/components/use-storage.ts`），它不知道自己的 userId；而响应
+   `StoragePresignedUrlModel` 已经带 `key`，且前端**用的是响应里的 key**（`key: presigned.key`）—— 所以服务端可以安全地
    改写并把最终 key 回给前端落库。
 2. **下载是「校验」而不是「改写」**：下载必须命中已存在的对象，改写会指向不存在的 key，
    故只能拒绝越界的 key（403）。
@@ -27,6 +27,12 @@
 4. `AUTH_ENABLED=false`（自用 / 外部认证）时没有身份概念，行为与管理员一致（key 原样），
    与既有姿态保持一致；顺带修掉 `currentAdminId()` 在该模式下抛错导致 STS 500 的问题
    （改用可空的 `requestContext.get('adminId')`）。
+
+实现核对（2026-11-13）：三条路由都在 `apps/server/src/modules/storage/storage.controller.ts`，
+控制器级挂 `AnyAuthGuard`；STS 的判定条件是「有 `userId` 且无 `adminId` → 抛
+`StorageAdminOnlyError`」，无身份时以占位 session 名 `'anonymous'` 调
+`ObjectStorage.getTemporaryCredentials({ userId })`。错误码以 `AppErrorCodes` 为准：
+`StorageKeyInvalid`=3201（400）、`StorageKeyForbidden`=3202（403）、`StorageAdminOnly`=3203。
 
 ## 2. key 规则（纯函数）
 
@@ -61,7 +67,8 @@ assertDownloadKey({ key, userId }): void
 
 ## 4. 验证
 
-- 纯函数单测：`apps/server/test/storage-key.test.ts`（改写 / 穿越 / 空 key / 越界下载 / 管理员原样）。
+- 纯函数单测：`apps/server/test/storage-key.test.ts`（改写 / 穿越 / 空 key / 越界下载 / 管理员原样）；
+  控制器层单测：`apps/server/test/storage.controller.test.ts`（三条路由的身份矩阵）。
 - 真实链路实测：用户 token 上传 → 返回 key 带 `user/{id}/` 前缀且预签名 URL 可 PUT；
   用户 token 下载他人 key → 403；用户 token 调 STS → 403；管理员 token 三条路由行为不变。
 

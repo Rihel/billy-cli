@@ -4,11 +4,28 @@
 > 需要执行命令时查阅。
 
 ```bash
+pnpm lint          # oxlint 全仓静态检查（correctness 全 error；0 warning 0 error 门禁）
+pnpm lint:fix      # 自动修复安全项
+pnpm lint:types    # 类型感知检查（tsgolint：悬空 Promise / await 非 Promise 等 5 条）
+pnpm fmt           # oxfmt 全仓格式化（单引号 / 无分号 / 2 空格 / 100 列 / LF）
+pnpm fmt:check     # 只检查不写入（提交前与 pre-push 用）
+pnpm verify        # lint + lint:types + fmt:check + 三道 check 守卫（一条命令对齐钩子）
+pnpm turbo run lint | lint:types | fmt:check | verify   # 同上的 turbo 根任务（带缓存）
+pnpm turbo run verify typecheck test                    # 全套检查（verify + 每包 typecheck/test）
+pnpm hooks:install # 手动重装 lefthook 钩子（pnpm install 已自动装）
 pnpm dev:pkgs      # watch 构建 packages（http-client / kits / sdk / shared；ui 无 dev 脚本）
 pnpm dev:server    # 启动 NestJS 服务（9989；node --watch --import tsx/esm src/main.ts）
 pnpm dev:web       # Web 前台（9840）
 pnpm dev:admin     # Admin 后台（9845）
+pnpm build:web     # 仅构建 Web（turbo 带依赖包）
+pnpm build:admin   # 仅构建 Admin（turbo 带依赖包）
+pnpm build:server  # 仅构建 Server（turbo 带依赖包）
+pnpm start:web     # 生产启动 Web（standalone，默认 9840；Docker 内 3001）
+pnpm start:admin   # 生产启动 Admin（standalone，默认 9845）
+pnpm start:server  # 生产启动 Server（9989）
 pnpm kill:dev      # 一键停掉全部 dev 服务（Web / Admin / Server / packages watcher；--dry-run 仅预览）
+pnpm kill:start    # 跨平台按端口停 start 服务（默认 9840 / 9845 / 9989；--dry-run / --force）
+pnpm kill:port 3001  # 按指定端口停进程
 pnpm build:pkgs    # 仅构建 packages（http-client / kits / sdk / shared；ui 直接用源码，无 build 脚本）
 pnpm build         # 全量构建（turbo，按依赖拓扑）
 pnpm typecheck     # 全量类型检查（turbo typecheck；覆盖 apps/web、apps/admin、packages/ui 三包）

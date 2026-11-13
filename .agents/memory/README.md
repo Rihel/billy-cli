@@ -71,10 +71,13 @@
 | [ui-data-table-column-id](ui-data-table-column-id.md) | DataTable 用列 id 当 key：同一 columns 数组里两列共用 `accessorKey` 会刷屏重复 key 告警 | 抽核 | 2026-11-07 |
 | [scaffold-cli-removed](scaffold-cli-removed.md) | 2026-11-09 起没有代码生成器与模板副本，新模块照现有实现手写；守卫为 check:inject / check:mastra / check:ui | 免核 | 2026-11-09 |
 | [lark-cli-connector](lark-cli-connector.md) | @larksuite/cli 是下载 Go 二进制的 launcher；skills 内嵌；config 在 HOME；whoami 不能探活、doctor 才行 | 抽核 | 2026-11-09 |
-| [product-facts](product-facts.md) | README / 落地页 / pitch 共用的能力数字口径（工具 10 / 连接器 4 / skill 27 / ai-elements 48 …） | 必核 | 2026-11-10 |
+| [product-facts](product-facts.md) | README / 落地页 / pitch 共用的能力数字口径（工具 26 / 连接器 4 / skill 28 / ai-elements 48 …） | 必核 | 2026-11-13 |
 | [agent-tool-authorization](agent-tool-authorization.md) | agent 授权是结构化选择器；作用域装配期过滤工具面；子 agent = 父授权 ∩ 全部 | 必核 | 2026-11-10 |
 | [event-bus](event-bus.md) | kits 分三层：PubSub（传输）→ StreamHub（SSE）/ EventBus（`events:`）；at-most-once，只做失效通知 | 抽核 | 2026-11-10 |
 | [stateless-scaling](stateless-scaling.md) | 核心业务无状态可多副本；但 AI memory 在进程内、飞书 CLI 状态在 Pod 本地、k8s 缺 `AGENT_MULTI_INSTANCE` | 抽核 | 2026-11-10 |
 | [workspace-runtime](workspace-runtime.md) | 执行环境三层（界面选 / 部署限 / 探测证）：默认沙箱、不可用兜底 local；出参 `runtime` 是唯一事实 | 必核 | 2026-11-12 |
 | [infra-optional-degradation](infra-optional-degradation.md) | 对象存储未配置/不可达不拦启动；`AGENT_COMMAND_WORK_DIR` 在启动与执行前自愈；问答取消走 `resumeStream({cancelled:true})` | 必核 | 2026-11-11 |
 | [ai-chat-running-state](ai-chat-running-state.md) | 续流必须带 conversationId（否则串流）；「运行中」灯靠条件轮询，开跑要在 streaming 时手动失效一次列表 | 抽核 | 2026-11-12 |
+| [engineering-toolchain](engineering-toolchain.md) | oxlint + oxfmt + lefthook：0/0 门禁、oxfmt 0.x 钉版本、Windows sh 转义的坑 | 必核 | 2026-11-13 |
+| [packages-layout](packages-layout.md) | 5 个包按运行时分层且单消费者；build 0.9s / typecheck 1.2s，拆包无收益，问题是依赖卫生与入口 | 抽核 | 2026-11-13 |
+| [app-start-standalone](app-start-standalone.md) | standalone 下 `next start` 不兼容；统一走 `scripts/start-standalone.mjs`，本地端口 9840/9845 | 必核 | 2026-11-13 |

@@ -16,6 +16,14 @@
 > 即退出，普通请求只因 `end()` 同步发生在处理链路内才读得到；SSE 长连接的响应结束来自 socket 的
 > 异步上下文，那时 store 已不在 —— 长连接日志的 requestId / userId / adminId 全为 null（响应头与
 > 日志对不上）。已补回归用例：`apps/server/test/request-logger.test.ts` 在作用域外触发 finish。
+>
+> 2026-11-13 核对：方案与实现一致，补充当前事实 —— ① `packages/kits/src/foundation/logger/`
+> 现有 `logger.config.ts` / `logger.options.ts` / `logger.providers.ts`（`LOGGER_INSTANCE` token）/
+> `app-logger.ts` / `nest-logger.ts` / `logger.module.ts` / `index.ts`；② 整应用**唯一** pino 实例
+> 由 `LoggerModule` 的 `LOGGER_INSTANCE` factory 建一次，`AppLogger` 与 `NestLoggerAdapter` 都走
+> 它的 `child(context)`；③ 注入 `@Inject(AppLogger)` 的类已从当时的 19 个增长到 59 个
+> （server 45 + kits 14，`grep -rl "Inject(AppLogger)" apps/server/src packages/kits/src | wc -l`），
+> 接口未变；④ 本文 §7 两个「待确认决策」均已落定：Loki 保留、请求日志字段保持原样。
 
 ## 1. 关键认识（决定改造成本）
 
@@ -66,15 +74,19 @@ packages/kits/src/foundation/logger/
   logger.config.ts    不变（prefix / level / pretty? / loki?）
   logger.options.ts   改为 buildPinoOptions()：返回纯 pino options（redact / transport），
                       不再产出 nestjs-pino Params、不再有 pino-http 段
-  app-logger.ts       底层由 PinoLogger 改为 createLogger(...) 的返回；接口与调用签名不变
+  logger.providers.ts 新增：`LOGGER_INSTANCE` token —— 整应用唯一的 pino 实例
+                      （pino transport 每个实例起一个 worker，故只建一次）
+  app-logger.ts       底层由 PinoLogger 改为 `LOGGER_INSTANCE.child(context)`；接口与调用签名不变
   nest-logger.ts      新增：NestLoggerAdapter implements LoggerService（log/error/warn/
                       debug/verbose），把 Nest 框架日志转到同一 pino 实例
-  logger.module.ts    @Global + 纯模块：提供 LoggerConfig + AppLogger + NestLoggerAdapter
+  logger.module.ts    @Global + 纯模块：提供 LoggerConfig + LOGGER_INSTANCE + AppLogger + NestLoggerAdapter
+                      （`forRoot` / `forRootAsync` 两种装配）
   index.ts            不再转出 nestjs-pino 的 Logger / PinoLogger
 
 apps/server/src/common/request-logger/    新增（横切 HTTP 构件）
-  request-logger.middleware.ts   记录 method / url / status / duration / requestId /
-                                 userId / adminId；按状态码分级（<400 info、4xx warn、5xx error）
+  request-logger.middleware.ts   记录 method / url / status / durationMs / requestId /
+                                 userId / adminId；按状态码分级（<400 info、4xx warn、5xx error）；
+                                 运维探针路径（`/healthz`、`/readyz`）不记
   request-logger.module.ts       @Global + configure() 自注册，必须排在 RequestContextModule 之后
 apps/server/src/main.ts          去掉 `app.useLogger(app.get(Logger))`（nestjs-pino 的 Logger），
                                  改为 `app.useLogger(app.get(NestLoggerAdapter))`；
@@ -86,7 +98,8 @@ apps/server/src/main.ts          去掉 `app.useLogger(app.get(Logger))`（nestj
 - `Scope.TRANSIENT` + `@Inject(INQUIRER)` 取宿主类名 → `logger.setContext(类名)`；
 - 调用签名 `(message?, data?)`；`data` 为普通对象并入结构化字段，
   `RESERVED_KEYS`（name/msg/level/time/pid/hostname/context）收进 `data` 子对象；
-- `IAppLogger` 接口不变 → 19 处注入与 `apps/server/test/helpers/logger.ts` 全不用动。
+- `IAppLogger` 接口不变 → 业务侧注入点（当时 19 处，现 59 处）与
+  `apps/server/test/helpers/logger.ts` 全不用动。
 
 ## 4. 关键流程
 
@@ -121,7 +134,23 @@ apps/server/src/main.ts          去掉 `app.useLogger(app.get(Logger))`（nestj
 
 ## 7. 待确认决策
 
+> 2026-11-13：两条决策均已落定 —— **Loki 保留**（`pino-loki` 在 `@repo/shared`，`LOKI_HOST` 配了
+> 且非生产美化时才走多目标 transport）、**请求日志字段保持原样**（method / url / status /
+> durationMs / requestId / userId / adminId，按状态码分级）。
+
 1. **Loki 保留还是去掉？**（保留 = `pino-loki` 留在 kits、`createLogger` 增加可选 transport 参数；
    去掉 = 少一个依赖 + `logger.config.ts` 的 `loki` 分支删除，但生产失去日志聚合推送。）
 2. **请求日志字段是否要增减？**（默认保持现状：method / url / status / duration / requestId /
    userId / adminId，按状态码分级。）
+
+## 8. 现状核对（2026-11-13）
+
+| 项 | 现状 |
+| --- | --- |
+| 日志配置来源 | `apps/server/.env.example`：`LOG_LEVEL`（默认 info）、`LOKI_HOST`（不配则不打 Loki）；prefix 固定 `server`，pretty 由 `NODE_ENV` 推导 |
+| 实例数 | 整应用**一个** pino 实例（`LOGGER_INSTANCE`），其余全部 `child(context)` 派生 |
+| 框架日志 | `main.ts` 的 `app.useLogger(app.get(NestLoggerAdapter))`，`bufferLogs: true` |
+| 业务日志 | `@Inject(AppLogger)`（`Scope.TRANSIENT`，context 自动取宿主类名）；共 59 处（server 45 + kits 14） |
+| 请求日志 | `apps/server/src/common/request-logger/`；`root.module.ts` 的 imports 顺序 `RequestContextModule` → `RequestLoggerModule` → `RequestMetricsModule` |
+| 脱敏 | `REDACT_PATHS` = `req.headers.authorization` / `req.headers.cookie` / `res.headers["set-cookie"]`（`logger.options.ts`） |
+| 测试 | `apps/server/test/request-logger.test.ts`、`packages/kits/test/logger.test.ts` |

@@ -1,30 +1,51 @@
 # 分页设计指南
 
-> **历史说明**：本文以已移除的 `todo` 模块为案例，保留作为游标分页的设计参考；
-> 代码路径与接口是当时的实现，现仓库仅保留通用分页能力（`@repo/kits`）。
+> **历史说明**：本文以已移除的 `todo` 模块为案例，保留作为游标分页的设计参考。
+> **2026-11-13 核对**：通用分页能力仍在 `packages/kits/src/db/pagination.ts`（四种方法见 §1）；
+> 但方法名、入参、返回值与下文「当时实现」不同 —— 已按当前代码逐节修正。
+> 当前**没有**游标分页的业务调用方（`todo` 已移除）：`pageWith` 被 9 个 repository 使用，
+> `pageWithDeferred` / `cursorPageWith` / `cursorPageWithDeferred` 暂无调用方。
 
 本文说明项目中的普通分页（Offset Pagination）与游标分页（Cursor Pagination），以及单表查询和联表查询应如何选择。
 
 当前相关实现位于：
 
-- `apps/server/src/infra/db.service.ts`
-- `packages/shared/src/schema/base.schema.ts`
-- `packages/shared/src/schema/todo.schema.ts`
-- `apps/server/src/modules/todo/todo.service.ts`
-- `apps/web/src/app/main/todo/page.tsx`
+- `packages/kits/src/db/pagination.ts`（四种分页的纯函数实现）
+- `packages/kits/src/db/db.service.ts`（`DbService` 注入式入口，委托给上面的纯函数）
+- `packages/shared/src/schema/base.schema.ts`（`BasePaginateSchema` / `BaseCursorPaginateSchema`）
+- `packages/shared/src/app-response.ts`（`AppPageQueryResponse` / `AppCursorQueryResponse`）
+- `packages/kits/src/db/index.ts`（`export * from './pagination.js'`，`@repo/kits` 统一导出）
 
 ## 1. 四种分页能力
 
-`DbService` 提供四种分页方法：
+`DbService`（以及 `pagination.ts` 里的同名纯函数）提供四种分页方法：
 
 | 方法                     | 定位方式        | 查询阶段 | 适用场景                         |
 | ------------------------ | --------------- | -------- | -------------------------------- |
-| `paginate`               | `page + size`   | 单阶段   | 单表、管理后台页码表格           |
-| `paginateDeferred`       | `page + size`   | 两阶段   | 需要总数、跳页的复杂联表表格     |
-| `paginateCursor`         | `cursor + size` | 单阶段   | 单表时间流、无限滚动             |
-| `paginateCursorDeferred` | `cursor + size` | 两阶段   | 一对多、聚合或重 JOIN 的无限滚动 |
+| `pageWith`               | `page + size`   | 单阶段   | 单表、管理后台页码表格           |
+| `pageWithDeferred`       | `page + size`   | 两阶段   | 需要总数、跳页的复杂联表表格     |
+| `cursorPageWith`         | `cursor + size` | 单阶段   | 单表时间流、无限滚动             |
+| `cursorPageWithDeferred` | `cursor + size` | 两阶段   | 一对多、聚合或重 JOIN 的无限滚动 |
+
+方法签名（`DbService` 与纯函数同形；`pageWith` / `cursorPageWith` / `cursorPageWithDeferred` 的首参是
+已构建好的 `SelectQueryBuilder`，`pageWithDeferred` 用 `selectIds` 工厂在内部构建）：
+
+```ts
+pageWith(builder, page, size): Promise<PageResult<T>>
+pageWithDeferred({ selectIds, fetchIds, idCol, page, size }): Promise<PageResult<T>>
+cursorPageWith(builder, { cursorColumns, cursorValues, getCursor, order, size }): Promise<CursorResult<T>>
+cursorPageWithDeferred(builder, { ...cursorOptions, fetchIds, idCol }): Promise<CursorResult<T>>
+```
 
 这里的“普通分页”特指基于 `LIMIT/OFFSET` 的页码分页。
+
+> **返回类型分两层，别混**：
+> - 分页实现（`packages/kits/src/db/pagination.ts`）：`PageResult<T> = { data, total }`、
+>   `CursorResult<T> = { data, nextCursor }`；
+> - 面向 API / SDK 的形状（`packages/kits/src/db/pagination.ts` 的 `PageQueryResult` / `CursorQueryResult<T, TCursor>`，
+>   与 `@repo/shared` 的 `AppPageQueryResponse` / `AppCursorQueryResponse` 一致）：
+>   `{ items, total, page, size }` / `{ items, nextCursor }`。
+>   service / repository 负责把 `data` 映射成 `items`，并补上 `page` / `size`。
 
 ## 2. 普通分页
 
@@ -39,7 +60,7 @@
 }
 ```
 
-响应包含当前页数据和总数：
+响应（service 层整理成 API 形状后）包含当前页数据和总数：
 
 ```ts
 {
@@ -49,6 +70,8 @@
   size: 20
 }
 ```
+
+> 这是 `PageQueryResult<T>` / `AppPageQueryResponse<T>` 的形状；分页函数本身返回 `{ data, total }`（见 §1）。
 
 前端可以计算：
 
@@ -144,7 +167,7 @@ Cursor 分页不告诉数据库“跳过多少条”，而是告诉数据库“�
   size: 20,
   cursor: {
     updatedAt: '2026-07-26T10:00:00.000Z',
-    todoId: 'todo_123'
+    id: 'todo_123'
   }
 }
 ```
@@ -156,7 +179,7 @@ Cursor 分页不告诉数据库“跳过多少条”，而是告诉数据库“�
   items: [...],
   nextCursor: {
     updatedAt: '2026-07-26T09:48:00.000Z',
-    todoId: 'todo_087'
+    id: 'todo_087'
   }
 }
 ```
@@ -212,12 +235,14 @@ ORDER BY updated_at DESC, id DESC
 ```ts
 {
   updatedAt: string
-  todoId: string
+  id: string
 }
 ```
 
-数据库排序列仍为 `id`；按照项目 DTO 命名规范，传输字段使用实体语义明确的
-`todoId`。
+数据库排序列与 cursor 第二字段都是 `id`。传输字段名按项目 DTO 命名规范取实体语义明确的名称
+（示例用 `id`；若有业务前缀，用 `agentId` / `runId` 这类字段）。
+
+> 以下 SQL 以 Todo 为例（历史案例，表已不在仓库里）；写业务时把表名 / 字段换成实际实体即可。
 
 稳定排序必须满足：
 
@@ -242,7 +267,8 @@ WHERE created_at > :createdAt
 ORDER BY created_at ASC
 ```
 
-项目中的 `createCursorFilter` 会根据 `order` 自动选择 `lt` 或 `gt`。
+项目中的 `applyCursorFilter`（`pagination.ts` 内部函数，不导出）会根据 `order` 自动选择方向：
+`asc` 用 `>`、`desc` 用 `<`。
 
 ### 3.5 优点
 
@@ -275,7 +301,7 @@ ORDER BY created_at ASC
 | 常见用途       | 用户管理、订单后台 | Todo、消息、日志、Feed       |
 | 索引要求       | 过滤与排序索引     | 与 cursor 顺序一致的复合索引 |
 
-## 5. 为什么 Todo 使用 Cursor
+## 5. 为什么 Todo 使用 Cursor（历史案例）
 
 Todo 页面使用 `DataList` 无限滚动，并允许在列表头部新增任务。
 
@@ -319,25 +345,32 @@ firstPage.items.unshift(todo)
 
 ## 6. 单表 API
 
-### 6.1 `paginate`
+### 6.1 `pageWith`
 
-适合页码表格：
+适合页码表格。`pageWith` 不管 where / orderBy / join，这些都由调用方在 builder 上先拼好：
 
 ```ts
-const result = await db.paginate({
-  table: users,
-  where: keyword ? ilike(users.email, `%${keyword}%`) : undefined,
-  orderCol: users.createdAt,
-  order: 'desc',
-  page,
-  size,
-})
+import { pageWith, type PageQueryResult } from '@repo/kits'
+
+const builder = repo.createQueryBuilder('u')
+if (keyword) builder.andWhere('u.email ILIKE :keyword', { keyword: `%${keyword}%` })
+builder.orderBy('u.createdAt', 'DESC')
+
+const { data, total } = await pageWith(builder, page, size)
+return { items: data.map(toUser), total, page, size } satisfies PageQueryResult<UserModel>
 ```
 
-返回：
+也可以注入 `DbService` 走同一实现：`this.dbService.pageWith(builder, page, size)`。
+
+分页实现返回 `PageResult<T>`，service 层再补 `items / page / size` 成 API 形状：
 
 ```ts
 interface PageResult<T> {
+  data: T[]
+  total: number
+}
+
+interface PageQueryResult<T> {
   items: T[]
   total: number
   page: number
@@ -345,35 +378,33 @@ interface PageResult<T> {
 }
 ```
 
-### 6.2 `paginateCursor`
+### 6.2 `cursorPageWith`
 
-适合单表无限滚动：
+适合单表无限滚动。`cursorColumns` 是**实体属性名**（`keyof T`），不是列对象；
+`cursorValues` 是与之一一对应的值数组（`unknown[]`），首屏不传：
 
 ```ts
-const result = await db.paginateCursor({
-  table: todos,
-  cursorColumns: [todos.updatedAt, todos.id],
-  cursorValues: cursor
-    ? [new Date(cursor.updatedAt), cursor.todoId]
-    : undefined,
-  getCursor: (item) => ({
-    updatedAt: item.updatedAt.toISOString(),
-    todoId: item.id,
+import { cursorPageWith } from '@repo/kits'
+
+const builder = repo.createQueryBuilder('t')
+if (keyword) builder.andWhere('t.title ILIKE :keyword', { keyword: `%${keyword}%` })
+// orderBy 必须与 cursorColumns + order 一致
+builder.orderBy('t.updatedAt', 'DESC').addOrderBy('t.id', 'DESC')
+
+const { data, nextCursor } = await cursorPageWith(builder, {
+  cursorColumns: ['updatedAt', 'id'],
+  cursorValues: cursor ? [new Date(cursor.updatedAt), cursor.id] : undefined,
+  getCursor: (row) => ({
+    updatedAt: row.updatedAt.toISOString(),
+    id: row.id,
   }),
-  where: keyword ? ilike(todos.title, `%${keyword}%`) : undefined,
   order: 'desc',
   size,
 })
 ```
 
-`cursorColumns` 与 `cursorValues` 使用 tuple 类型关联：
-
-```ts
-cursorColumns: [timestampColumn, varcharColumn]
-cursorValues: [Date, string]
-```
-
-如果值类型或顺序不匹配，TypeScript 会报错。
+`cursorColumns` 与 `cursorValues` 的**顺序**必须一致；值类型不作编译期 tuple 校验（`cursorValues?: unknown[]`），
+由调用方保证与列类型匹配，`getCursor` 的返回值也是 `unknown`（由调用方声明业务 cursor 类型）。
 
 ## 7. 联表分页与两阶段查询
 
@@ -430,54 +461,56 @@ LEFT JOIN comments ON comments.post_id = posts.id
 WHERE posts.id IN (...当页 IDs...);
 ```
 
-### 7.3 `paginateDeferred`
+### 7.3 `pageWithDeferred`
 
 用于需要页码和 total 的联表表格：
 
 ```ts
-await db.paginateDeferred({
-  table: posts,
-  idCol: posts.id,
-  orderCol: posts.createdAt,
+await pageWithDeferred({
+  // Stage 1：只查主键（where / orderBy 都拼在这里）
+  selectIds: () => repo.createQueryBuilder('p')
+    .where('p.status = :status', { status })
+    .orderBy('p.createdAt', 'DESC')
+    .addOrderBy('p.id', 'DESC'),
+  // Stage 2：按当页主键取详情（JOIN / 聚合放这里）
+  fetchIds: (ids) => loadPostDetails(ids),
+  idCol: 'id',
   page,
   size,
-  dataFn: (ids) => loadPostDetails(ids),
 })
 ```
 
-Stage 1 会同时执行 ID 分页和 COUNT。
+`selectIds` 返回的是**已经带 where / orderBy 的 builder**，函数内部会对它 `select(idCol)` 后调用 `pageWith`，
+因此 Stage 1 同时执行 ID 分页与 COUNT。
 
-### 7.4 `paginateCursorDeferred`
+### 7.4 `cursorPageWithDeferred`
 
 用于联表无限滚动：
 
 ```ts
-await db.paginateCursorDeferred({
-  table: posts,
-  idCol: posts.id,
-  cursorColumns: [posts.createdAt, posts.id],
+await cursorPageWithDeferred(builder, {
+  cursorColumns: ['createdAt', 'id'],
   cursorValues: cursor
-    ? [new Date(cursor.createdAt), cursor.postId]
+    ? [new Date(cursor.createdAt), cursor.id]
     : undefined,
-  getCursor: ([createdAt, id]) => ({
-    createdAt: createdAt.toISOString(),
-    postId: id,
+  getCursor: (row) => ({
+    createdAt: row.createdAt.toISOString(),
+    id: row.id,
   }),
-  where,
   order: 'desc',
   size,
-  dataFn: (ids) => loadPostDetails(ids),
-  getItemId: (item) => item.postId,
+  // Stage 2：按当页主键取详情
+  fetchIds: (ids) => loadPostDetails(ids),
+  idCol: 'id',
 })
 ```
 
-该方法会：
+`builder` 必须先拼好 where / orderBy（与 `cursorColumns` + `order` 一致）。该方法会：
 
-1. 只从主表查询 ID 和 cursor 列。
+1. 只从主表查询 ID 和 cursor 列（内部 `select([idCol, ...cursorColumns])`）。
 2. 用 `size + 1` 判断是否存在下一批。
-3. 只对当页 ID 执行 `dataFn`。
-4. 根据 Stage 1 的 ID 顺序恢复结果。
-5. 保留同一主 ID 对应的多条联表结果。
+3. 只对当页 ID 调用 `fetchIds(ids)`。
+4. **不重排** `fetchIds` 的返回：结果顺序就是 `fetchIds` 的顺序（见 §8.3）。
 
 ### 7.5 是否总要使用多阶段
 
@@ -503,7 +536,7 @@ await db.paginateCursorDeferred({
 
 ### 8.1 Stage 1 的 where
 
-`paginateCursorDeferred.where` 应只引用主表字段。
+`cursorPageWithDeferred` / `pageWithDeferred` 的 Stage 1 where（即调用方 builder / `selectIds`）应只引用主表字段。
 
 如果需要按关联表过滤，应改写为 `EXISTS`：
 
@@ -537,13 +570,15 @@ WHERE EXISTS (
 
 SQL 的 `WHERE id IN (...)` 不保证按 IN 参数顺序返回。
 
-`paginateCursorDeferred` 要求提供：
+**当前实现不做重排**：`cursorPageWithDeferred` 直接把 `fetchIds(ids)` 的结果作为 `data` 返回
+（`pageWithDeferred` 同理）。所以：
 
-```ts
-getItemId: (item) => item.postId
-```
+- 需要「Stage 2 顺序 == Stage 1 顺序」时，**由调用方在 `fetchIds` 内重排**（`Map<id, row>` 或 SQL
+  `array_position` / `VALUES` join）；
+- 一对多场景下，`fetchIds` 返回的行数本来就可能多于主键数，方法不裁剪、不合并，调用方自行按 `idCol` 归组。
 
-DbService 会按 Stage 1 的 ID 顺序重新排列 Stage 2 结果。
+（早期方案写的是「DbService 按 Stage 1 的 ID 顺序恢复」，并要求传 `getItemId`；当前代码没有这两个行为，
+`getItemId` 也不在 `DeferredCursorOptions` 里。）
 
 ## 9. 索引设计
 
@@ -562,10 +597,10 @@ CREATE INDEX todos_updated_at_id_idx
 ON todos (updated_at DESC, id DESC);
 ```
 
-Drizzle 定义：
+TypeORM 定义（装饰器或迁移里写 SQL 均可）：
 
 ```ts
-index('todos_updated_at_id_idx').on(table.updatedAt.desc(), table.id.desc())
+@Index('todos_updated_at_id_idx', ['updatedAt', 'id'])
 ```
 
 注意：
@@ -578,20 +613,24 @@ index('todos_updated_at_id_idx').on(table.updatedAt.desc(), table.id.desc())
 
 ## 10. 前端 Infinite Query
 
-Cursor 接口与 TanStack Query 的 `useInfiniteQuery` 直接对应：
+Cursor 接口与 TanStack Query 的 `useInfiniteQuery` 直接对应。下面是通用写法（示意，`client.xxx.list` 换成
+业务自己的 SDK 方法；当前仓库没有游标业务接口，`useInfiniteQuery` 的实际用法都是页码参数）：
 
 ```ts
 const query = useInfiniteQuery({
-  queryKey: ['todo', 'findManyCursor', { size: 20 }],
-  initialPageParam: undefined as TodoCursor | undefined,
+  queryKey: ['resource', 'list', { size: 20 }],
+  initialPageParam: undefined as MyCursor | undefined,
   queryFn: ({ pageParam }) =>
-    trpcClient.todo.findManyCursor.query({
+    client.xxx.list({
       cursor: pageParam,
       size: 20,
     }),
   getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
 })
 ```
+
+> **2026-11-13 现状**：`useInfiniteQuery` 已在 admin 的会话列表 / 运行列表 / 时间线使用，
+> 但传的是 `page`（页码 API），不是 cursor；游标链路目前只有 kits 侧实现，没有业务调用方。
 
 列表数据：
 
@@ -639,11 +678,12 @@ cursor 分页能稳定处理头部新增，但不意味着任意修改排序字�
 ```ts
 {
   updatedAt: string
-  todoId: string
+  id: string
 }
 ```
 
-它简单、类型清晰，适合内部 tRPC API。
+它简单、类型清晰，适合内部 HTTP API（NestJS 接口 + `@repo/sdk` 全类型客户端；
+入参用 `BaseCursorPaginateSchema` 校验 `size`，cursor 由各业务 schema 自行 `extend`）。
 
 公开 API 可以将 cursor 编码为不透明字符串：
 
@@ -704,8 +744,8 @@ JOIN 是否扩行？
 项目约定：
 
 ```text
-DataTable / 后台管理表格 -> paginate / paginateDeferred
-DataList / 无限滚动       -> paginateCursor / paginateCursorDeferred
+DataTable / 后台管理表格 -> pageWith / pageWithDeferred
+DataList / 无限滚动       -> cursorPageWith / cursorPageWithDeferred
 ```
 
 ## 15. 实施检查清单

@@ -4,6 +4,19 @@
 > 状态：已实施并验证
 > 影响面：`packages/di`（删除）、`packages/kits`、`apps/server`、`scripts/cli`、前端文案、文档与 skill
 >
+> 2026-11-13 现状快照（清单级）：
+> - `packages/` 现在 5 个包：`kits` / `shared` / `sdk` / `ui` / `http-client`；**`@repo/di` 已不存在**
+>   （无包目录、无依赖、无 `AppContext` / `autoRegister` / `markManual` 引用）；
+> - `apps/server/src/modules/` 13 个业务模块：`admin` / `ai` / `ai-model` / `ai-usage` / `auth` /
+>   `monitor` / `ops` / `runtime-config` / `session` / `share` / `storage` / `stream` / `user`；
+>   实体 19 张、迁移 26 个，均在 `apps/server`；
+> - `apps/server/src/common/` 六个横切目录：`error` / `request-context` / `request-logger` /
+>   `request-metrics` / `security` / `http`（`common/index.ts` 统一导出）；
+> - `packages/kits/src/` 16 个顶层目录（另有 `index.ts`），`@Global` 模块 20 个（含后加的 `PubSubModule` /
+>   `StreamHubModule` / `EventBusModule` / `WorkspaceModule`，见 `sse.md`、`workspace-runtime.md`）；
+> - 组合根仍是 `root.module.ts` / `RootModule`；`app.module.ts` / `core.module.ts` 只在本文正文
+>   （当时记录）里出现，已不存在。
+>
 > 2026-09-13 更新：组合根文件/类已由 `app.module.ts`/`AppModule` 更名为 `root.module.ts`/`RootModule`；
 > `core.module.ts`（`CoreModule`）已删除——应用级业务配置不再单设 bean，改为各处注入全局 `ConfigService`
 > 后调 `apps/server/src/config.ts` 的 `resolveServerConfig()` 取 `server` 分片。本文正文中的旧路径/类名
@@ -123,10 +136,15 @@ apps/server/src/
 └── modules/<业务>/   module + controller + service + repository + errors
 ```
 
+> 现状（2026-11-13）：上表是当时的文件树。现在是 `root.module.ts` / `RootModule`（唯一组合根，
+> 无 `app.module.ts`、无 `core.module.ts`），`common/` 拆成 `error` / `request-context` /
+> `request-logger` / `request-metrics` / `security` / `http` 六个目录；全局管道 / 过滤器 / 拦截器
+> 由 `root.module.ts` 的 `providers` 以 `APP_PIPE` / `APP_FILTER` / `APP_INTERCEPTOR` 注入。
+
 分层规则相应更新：`modules/` 现在**含 controller**（NestJS 惯例），但 controller 只做
 HTTP 边界（守卫 + Zod 校验 + 调 service + 返回数据），业务逻辑仍在 service / repository；
 `common/` 放横切构件，且不反向依赖业务模块（技术错误告警通过 `ERROR_ALERT_HOOK` token 由
-`app.module.ts` 注入 `AlertTrigger`）。
+`root.module.ts` 注入 `MonitorEngine.ingestError`——原 `AlertTrigger` 已被监控引擎替换）。
 
 ### 3.4 数据结构映射（逐项对照）
 
@@ -138,7 +156,7 @@ HTTP 边界（守卫 + Zod 校验 + 调 service + 返回数据），业务逻辑
 | `makeRequireAuth` / `makeRequireAdminAuth` 中间件 | `UserAuthGuard` / `AdminAuthGuard`（`CanActivate`）|
 | `makeRateLimit(runtime, opts)` | `RateLimitGuard` + `@RateLimit({ scope })` 方法装饰器（超限抛 `BoundaryError` 带 `Retry-After`）|
 | `makeRequestContextMiddleware` | `requestContextMiddleware`（Express 中间件，`app.use` 注册）|
-| `requestLogger` | **pino-http 自动记录**（`request completed`，含 `req.id` / `statusCode` / `responseTime`，按状态码分级；身份经 `LoggerModule.forRoot({ customProps })` 附加）|
+| `requestLogger` | ~~**pino-http 自动记录**~~（文首 2026-09-15 更新已作废）→ 现为自建 `apps/server/src/common/request-logger/` 的 `RequestLoggerMiddleware`（`root.module.ts` 按 `RequestContextModule` → `RequestLoggerModule` 顺序装配；字段 method / url / status / durationMs / requestId / userId / adminId，按状态码分级），见 `manual-logger.md` |
 | `makeRequestMetrics` | `makeRequestMetricsMiddleware`（保持中间件语义，避免漏统计被守卫拒绝的请求）|
 | `streamSSE` + `writeSSE` | `@Res()` 直写 Express 响应，帧格式（event → data → id，多行 data，空行结束）与响应头逐字节对齐 |
 | `app.route('/x', makeXRoutes(runtime))` | `@Controller('x')` + 模块 `controllers` |
@@ -165,9 +183,12 @@ HTTP 边界（守卫 + Zod 校验 + 调 service + 返回数据），业务逻辑
 
 ## 5. 遗留与风险
 
-- `apps/server/test/*.test.ts` 存在**历史遗留**的 TS 类型错误（缺 `Telemetry` / `FileClient` /
-  `Scheduler` 等类型导入；`Scheduler` 被 DOM lib 同名类型占用）。`tsconfig.json` 的
-  `include` 只含 `src`，故不影响 `tsc`；测试运行态全部通过。本次未改动这些文件。
+- `apps/server/test/*.test.ts` 的 TS 类型检查**仍未纳入** `tsc`（`apps/server/tsconfig.json` 的
+  `include` 只含 `src`，`pnpm --filter @app/server typecheck` 不检查测试）。2026-09-12 记录过一批
+  历史类型错误（缺 `Telemetry` / `FileClient` / `Scheduler` 等类型导入；`Scheduler` 被 DOM lib
+  同名类型占用）；2026-11-13 抽查 `monitor-registry.test.ts` / `ops-probe.test.ts` 已正确从
+  `@repo/kits` 导入 `Telemetry`，测试文件数也从当时的 23 个增至 60 个，**这批错误是否已清零
+  未重新全量验证**（需人工跑一次含 test 的 tsc）。
 - NestJS 12 的 HTTP 适配器错误映射在 12 有小幅重构；本项目用自定义全局过滤器接管了错误渲染，
   不依赖框架默认响应体。
 - 多实例下 Nest 的模块级生命周期顺序不再是「依赖拓扑序」，本项目各基建组件在停止期互不依赖，

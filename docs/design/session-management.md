@@ -54,8 +54,13 @@ interface StoredSession {
 
 | 路由 | 说明 |
 | --- | --- |
-| `POST /session/list` | 列出**当前身份**（用户或管理员）的全部会话，含 `current` 标记 |
+| `POST /session/list` | 列出**当前身份**（用户或管理员）的全部会话，含 `current` 标记；出参 `{ items, currentSessionId }` |
 | `POST /session/remove` | 按 `sessionId` 下线某台设备（**幂等**：已失效也返回成功） |
+
+- 实现落点（2026-11-13 核对）：`apps/server/src/modules/session/`（`session.controller.ts` /
+  `session.service.ts` / `session.module.ts`，无 repository）、存储 `packages/kits/src/session/session-store.ts`
+  （`SessionStore`，由 `SessionStoreModule` 装配）；`SessionModule` import `AuthModule` + `AdminModule`
+  以解析 `AnyAuthGuard` 的依赖。
 
 - 鉴权：`AnyAuthGuard`（任一身份，复用上一轮为存储引入的守卫）。
 - 身份分域：`requestContext.get('adminId')` 优先，其次 `userId`；`AUTH_ENABLED=false`
@@ -80,8 +85,8 @@ interface StoredSession {
 
 | 端 | 位置 | 内容 |
 | --- | --- | --- |
-| web | `/account/sessions`（account 区新增导航：资料 / 登录设备） | 卡片列表：设备（UA 解析）· IP · 登录时间 · 最后活跃；「本机」标签；非本机可「下线」 |
-| admin | `/main/user-center` 新增「登录设备」区块 | 同数据源的 hairline 列表 + 下线按钮 |
+| web | `/account/sessions`（`apps/web/src/app/account/sessions/page.tsx`；account 区导航：资料 / 登录设备） | 卡片列表：设备（UA 解析）· IP · 登录时间 · 最后活跃；「本机」标签；非本机可「下线」 |
+| admin | `/main/user-center` 的「登录设备」区块（`apps/admin/src/app/(app)/main/user-center/sessions-panel.tsx`） | 同数据源的 hairline 列表 + 下线按钮 |
 
 - 下线后 `invalidateQueries` 刷新列表；**本机条目不给下线按钮**（要退出请用登出），
   避免用户把自己踢掉却以为是「退出登录」。

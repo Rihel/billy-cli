@@ -38,6 +38,9 @@
 | 告警记录 / 规则 / 用户 | 表格本身与主列 | 搜索与筛选 | 分页、ID、时间戳 |
 | 会话审计 | 会话列表（标题） | 搜索、已删除开关 | 会话 ID、轮数、token、时间 |
 | AI 会话 | 对话流与输入框 | 会话历史列表、右侧运行面板 | 轮数、相对时间、token |
+| 技能库 | 技能列表与启停 | 搜索、来源 / 启用筛选 | 技能 key、版本、更新时间 |
+| 文件管理 | 跨会话文件表与预览 | 大小 / 类型 / 时间筛选、统计 | 文件名、key、大小、所属会话 |
+| 分享页 `/s/{token}` | 文件预览（图片 / 文本 / PDF / Office / 音视频） | 文件名与大小 | 下载入口、失效提示 |
 
 判断标准：把页面截图缩到很小，还能第一眼读出「这里在说什么」的就是主内容；读不出来的应当下沉。
 
@@ -101,6 +104,9 @@
 - **页头**：统一用 `PageToolbar`（`title` / `description` / `extra` / 搜索区），不手写 `<h1>`。
 - **卡片**：`bg-card`、无边框、无投影、`rounded-xl`；标题 `text-sm font-medium`，描述 `text-xs muted`。
 - **表格**：白卡容器 + 灰表头（`bg-surface-2/60`）+ 行只留 hover（无斑马纹、无行分隔线）。
+  操作列**固定右侧**：`DataTable` 自动识别 `meta.sticky: 'right'` / `id === 'actions'`（或以 `Actions` 结尾）/
+  表头文案为「操作」的列，横向滚动时表头与行操作列都保持可见（`bg-surface-2` / `bg-card` + 一条左侧分隔）。
+  列多时把宽度留给主列。
 - **标签**：语义五色；极淡底 + 语义前景，不用强彩色块。
 - **头像**：统一用 `UserAvatar`（`@repo/ui`）—— 有图显示图，没图用**姓名首字符 + 品牌色底**；
   侧栏用 `shape="rounded"` 方块，表格用默认圆形。不要在页面里自己拼 `Avatar + AvatarFallback`。
@@ -119,7 +125,7 @@
   并且对超大内容有上限（原文 > 200KB 或条目 > 2000 退回原文）—— 手写 `<pre>` 既读不出层次，
   又会在一个巨型快照上把页面卡死。只在**不是结构化数据**时用 `<pre>`（命令行输出、日志片段这类纯文本）。
 
-## 9. 壳组件（`apps/admin/src/components`）
+## 9. 壳组件与布局（`apps/admin/src`）
 
 - **AppSider**：悬浮式侧栏（`variant="floating"`）—— 白面圆角胶囊，四周留 12px，靠面层差浮起、
   不叠投影；logo = 品牌靛紫方块（`bg-brand`）+ 字标 + mono 副标「admin console」；
@@ -129,20 +135,29 @@
 - **登录页**：左栏品牌叙事 + 纯面色底，右侧白面表单卡；品牌标记同 `bg-brand`，不做装饰渐变。
 - **AI 会话页**：独立布局（全窗口工作台）；左侧会话列表栏 `bg-surface-3`，
   中间对话区 `bg-background`，右侧运行面板按需展开。
+- **技能编辑器**：`(app)/(canvas)/main/layout.tsx` 全窗口画布（不套会话页 12px 字号），
+  地址仍是 `/main/ai/skills/[skillKey]`；文档编辑走 Notion 风格编辑器 + CodeMirror 文件区。
+- **分享页 `/s/{token}`**：挂在**另一棵根布局** `app/(share)/layout.tsx` —— 只有 `html/body` + 字体 + 主题脚本，
+  **不挂 `AppProviders`**（否则把后台 API 客户端带进匿名页）。页面本身是 `components/share-preview.tsx`：
+  预览用同源 `/api/s/{token}/content`，浏览器看不到 OSS 域名与签名参数；失效只有一种中性的「链接已失效」。
 
 ## 10. 主题切换
 
 - 存储键 `billy-admin-theme`（light / dark / system），默认跟随系统。
-- `layout.tsx` 内联引导脚本在水合前设置 `.dark`，避免深色模式刷新闪烁（FOUC）。
+- `layout.tsx` 内联由 `createThemeBootScript({ storageKey })` 生成的引导脚本，在水合前设置 `.dark`，
+  避免深色模式刷新闪烁（FOUC）。
 - 系统偏好变化时 system 模式自动跟随；手动选择后以手动为准。
 - 深色下不额外加彩色底：统计块等浅色平涂在深色模式退回中性面（`dark:bg-none dark:bg-surface-2`）。
 
-> 前台 `apps/web` **目前没有**主题切换 —— 只有 admin 会挂 `.dark`。
+> 前台 `apps/web` **也能**切主题（2026-09-18 起）：能力同样在 `@repo/ui`，只是 `apps/web/src/stores/theme.ts`
+> 用前台自己的存储键 `billy-theme`，与 `billy-admin-theme` 互不干扰；同域部署时也不会互相改主题。
 
 ## 11. 新增页面自查清单
 
 - [ ] 先写清这一页的主内容 / 次内容 / 辅助内容，再动手排
 - [ ] 页头用 `PageToolbar`，列表用 `DataTable` / `DataList`，弹窗用 `ModalForm` / `DrawerForm`
+- [ ] 列表有操作列时固定在右侧（`DataTable` 的 `meta.sticky: 'right'` / `id: 'actions'`），不随横向滚动移出
+- [ ] 免授权页面（`/s/{token}`）走 `(share)` 根布局，不挂后台 `Providers`
 - [ ] 选项 ≤4 的枚举用 `SegmentedControl`，不要用下拉
 - [ ] 弹窗 / 抽屉的头尾固定，只有内容区滚动
 - [ ] 视觉取值只用语义 token，不写 `bg-blue-500` 这类调色板类（`pnpm check:ui` 会拦新增）

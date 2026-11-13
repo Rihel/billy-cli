@@ -5,6 +5,18 @@
 > 多实例部署下事件跨实例广播。
 > **传输层自研**（原生 fetch + ReadableStream，跨浏览器 / Node），**数据结构与连接状态机
 > 自行设计**，认证复用 `@repo/http-client` 的凭证体系。
+>
+> 2026-11-13 核对（现状口径，与本文设计的三处偏差见下）：
+> - 跨实例广播**已抽成独立传输层** `kits/pubsub/`（`PubSub` + `PubSubModule`）：`StreamHub`
+>   与 `EventBus` 都注入它，Redis 连接 / 重连 / 重订阅 / 自回环过滤都在 `PubSub` 里，
+>   `StreamHub` 自己不再持有 ioredis。频道前缀：SSE 用 `stream:<channel>`（模式订阅
+>   `stream:*`），事件总线用 `events:<topic>`（精确订阅）；
+> - 另有 `kits/events/`（`EventBus` + `EventBusModule`）：进程内事件 / 失效通知，语义
+>   **at-most-once**（与 SSE 同一传输层、不同频道前缀）；当前只完成装配，尚无业务消费者；
+> - **AI 流式输出没有走 `/sse/subscribe`**：它是独立的可续传通道
+>   `GET /agent/run/stream` 与 `GET /agent/run/:runId/stream`（按 `offset` 从 Redis 输出记录
+>   补发，`agent:stream:*` 频道跨副本转发）。`/sse/subscribe` 当前承载的是身份频道 +
+>   管理员广播频道（告警 `alert.fired` 发到 `admin:all`）。
 
 ## 1. 背景与选型
 
@@ -27,7 +39,8 @@
     SSE 帧协议（`id/event/data/retry`）是 WHATWG 标准，解析与状态机完全自控。
   - **服务端传输层**：Nest 的 `@Sse()` 只支持 GET，故用 `@Res()` 自行写原始响应，
     帧格式 `event → data → id` 保持重构前字节一致。
-  - **跨实例广播**：复用 `RedisStore.raw`（ioredis）的 pub/sub，不引新依赖。
+  - **跨实例广播**：复用 `RedisStore.raw`（ioredis）的 pub/sub，不引新依赖
+    （实现时抽成独立 `PubSub` 传输层，见文首 2026-11-13 核对）。
   - **认证**：复用 `@repo/http-client` 的 `CredentialsManager` / `AuthStrategy` /
     `CredentialProvider` / `CredentialResolver` 及现成 managers / strategies（SSE 与
     请求客户端同一包，凭证体系一处定义）。
@@ -39,15 +52,30 @@
 
 | 项 | 决定 |
 | --- | --- |
-| 协议层（事件数据结构 / 频道约定） | `packages/shared/src/schema/stream.schema.ts`（zod），`schema/index.ts` 导出 |
-| 服务端推流统一入口 | `packages/kits/src/stream/stream-hub.ts`（`StreamHub`）+ `stream-connection.ts` + `index.ts`，`stream/index.ts` 聚合后由 `packages/kits/src/index.ts` 导出 |
-| 服务端 SSE 路由 | `apps/server/src/modules/stream/stream.controller.ts`（`StreamController`，`@Controller('sse')` + `POST subscribe`），鉴权在 `stream-auth.guard.ts`（按 `SSE_ROUTE_OPTIONS.auth` 委派用户 / 管理员守卫） |
-| SSE 客户端能力 | `packages/http-client/src/stream/`（`HttpStreamClient` + `stream-transport` + `stream-parser` + `types` + `errors`），随 `@repo/http-client` 导出（**http-stream-client 定位**：流式客户端是 http-client 的能力子模块，不拆独立包） |
-| 依赖 | `@repo/http-client`：**零第三方依赖**（认证用本包凭证体系）；广播用 kits 既有 `RedisStore.raw`，零新增 |
-| 注册 | `StreamHubModule` 装配（`@Global()`，复用 `RedisConfig` + `IdGeneration`）；生命周期 `OnApplicationBootstrap` 建 pub/sub，`OnApplicationShutdown` 清理 |
-| 错误 | `StreamHubError` 加入 `infrastructure-errors.ts`（`AppErrorCodes.Internal`） |
+| 协议层（事件数据结构 / 频道约定） | `packages/shared/src/schema/stream.schema.ts`（zod），`schema/index.ts` 导出；另有 `STREAM_SHUTDOWN_EVENT`（`stream.shutdown`）、`STREAM_ADMIN_BROADCAST_CHANNEL`（`admin:all`）、`STREAM_ALERT_FIRED_EVENT`（`alert.fired`）与 `AlertFiredEventSchema` |
+| 服务端推流统一入口 | `packages/kits/src/stream/stream-hub.ts`（`StreamHub`）+ `stream-connection.ts` + `stream-hub.module.ts` + `index.ts`，`stream/index.ts` 聚合后由 `packages/kits/src/index.ts` 导出 |
+| 跨实例传输层 | `packages/kits/src/pubsub/`（`PubSub` + `pubsub.module.ts`）：两条 ioredis 连接（pub / sub）、`broadcast` / `subscribe` / `subscribePattern`、断线重订阅、`instanceId` 自回环过滤；`StreamHub` 与 `EventBus` 共用 |
+| 事件总线（进程内广播） | `packages/kits/src/events/`（`EventBus` + `event-bus.module.ts`）：`events:<topic>` 精确订阅、先本地后远端、**at-most-once**；当前无业务消费者 |
+| 服务端 SSE 路由 | `apps/server/src/modules/stream/stream.controller.ts`（`StreamController`，`@Controller('sse')` + `POST subscribe`），鉴权在 `stream-auth.guard.ts`（按 `SSE_ROUTE_OPTIONS.auth` 委派 `UserAuthGuard` / `AdminAuthGuard` / `AnyAuthGuard`）；选项在 `stream.options.ts`（`SSE_ROUTE_OPTIONS`），模块装配在 `stream.module.ts` |
+| SSE 客户端能力 | `packages/http-client/src/stream/`（`stream-client` + `stream-transport` + `stream-parser` + `types` + `errors`），随 `@repo/http-client` 导出（**http-stream-client 定位**：流式客户端是 http-client 的能力子模块，不拆独立包） |
+| 依赖 | `@repo/http-client` 依赖 `@repo/shared` 与既有 `@noble/hashes`（凭证体系用），SSE 传输层零新增第三方依赖；广播用 ioredis（kits 既有），零新增 |
+| 注册 | `PubSubModule` + `StreamHubModule` + `EventBusModule` 三个 `@Global()` 模块（`root.module.ts` 里在 `RedisModule` 之后依次装配）；`StreamHub` 生命周期：`OnApplicationBootstrap` 建模式订阅、`BeforeApplicationShutdown` 排空连接、`OnApplicationShutdown` 释放订阅 |
+| 错误 | `StreamHubError` / `PubSubError` / `EventBusError` 在 `infrastructure-errors.ts`（`AppErrorCodes.Internal`） |
 
-放置依据：`placement.md` §6「外部资源统一入口 → `kits/src/<基础设施>/`」；HTTP 边界 → controller。
+放置依据：`placement.md`「外部资源统一入口 → `kits/src/<基础设施>/`」；HTTP 边界 → controller。
+
+**模块装配与频道一览（2026-11-13）**：
+
+```
+root.module.ts
+├── PubSubModule        @Global  PubSub（懒建连；无自有配置，复用 RedisConfig + IdGeneration + AppLogger）
+├── StreamHubModule     @Global  StreamHub（注入 PubSub + IdGeneration + AppLogger）
+└── EventBusModule      @Global  EventBus（注入 PubSub + AppLogger）
+
+频道命名
+├── stream:<channel>    SSE 广播（psubscribe stream:*），如 stream:admin:all / stream:user:42
+└── events:<topic>      事件总线（subscribe 精确频道），如 events:credential.changed
+```
 
 ## 3. 数据结构
 
@@ -72,42 +100,53 @@ type StreamEventModel = z.infer<typeof StreamEventSchema>
 ### 3.2 服务端（kits/src/stream/）
 
 ```ts
-class StreamHub {                       // @Injectable，生命周期 OnApplicationBootstrap/OnApplicationShutdown
-  connections: Map<ConnectionId, StreamConnection>   // 连接注册表
-  channels:    Map<Channel, Set<StreamConnection>>   // 频道索引
+class StreamHub {   // @Injectable，生命周期 OnApplicationBootstrap / BeforeApplicationShutdown / OnApplicationShutdown
+  private connections: Map<ConnectionId, StreamConnection>   // 连接注册表（本实例内存态）
+  private channels:    Map<Channel, Set<StreamConnection>>   // 频道索引
+  private draining: boolean                                  // beforeApplicationShutdown 后置位
   publish(channel: Channel, event: StreamEventModel): void
-    // 本地直推 + Redis PubSub 广播（见 §5.3）
-  createConnection(ctx): StreamConnection             // SSE 路由调用
+    // 本地直推 + PubSub.broadcast(`stream:${channel}`)（见 §5.3）
+  createConnection(options: StreamConnectionOptions): StreamConnection   // SSE 路由调用；id = IdGeneration.next(20)
+  subscribe(connection, channel): void       // 幂等
+  unsubscribe(connection, channel): void     // 幂等
+  removeConnection(connection): void         // 幂等：清频道索引 + 注册表
 }
 
 class StreamConnection {
-  id: ConnectionId            // nanoid，可作事件 id 前缀
+  id: string                    // IdGeneration.next(20)，可作事件 id 前缀
   channels: Set<Channel>
-  write(event: StreamEventModel): void  // 写原始响应（帧编码 event → data → id）
-  closed: Promise<void>         // request aborted → 触发注销
-  close(): void                 // 服务端主动关流
+  closed: Promise<void>         // request aborted / close() → resolve，路由据此结束响应
+  write(event: StreamEventModel): void  // 写原始响应（帧编码 event → data → id）；写失败自动 close
+  close(): void                 // 服务端主动关流（幂等）
+  // 心跳：默认 15000ms 写注释行 `: ping\n\n`（heartbeatIntervalMs 可配，0 关闭）
 }
 ```
+
+> 关闭顺序：`beforeApplicationShutdown` 先给每条连接推一条 `stream.shutdown` 再 `close()`，
+> 让客户端**重连到其他实例**而不是把正常结束当终态；不做这一步 SSE 长连接会让
+> `httpServer.close()` 永不返回（滚动更新表现为 502）。
 
 ### 3.3 客户端（packages/http-client/src/stream/）
 
 ```ts
-interface HttpStreamClientOptions {
+interface StreamClientOptions {            // 实际导出名是 StreamClientOptions（不是 HttpStreamClientOptions）
   url: string                              // 完整 URL（含 path，如 '/sse/subscribe'）
   method?: string                          // 默认 'POST'；可配 'GET' 等
   channels?: string[]                      // 订阅频道；POST 时序列化为 body { channels }
-  body?: unknown                           // 自定义 body（覆盖 channels 默认序列化）
-  headers?: Record<string, string>         // 基础 header（如 Content-Type）
+  body?: unknown                           // 自定义 body（覆盖 channels 默认序列化；null = 显式无请求体）
+  headers?: Record<string, string>         // 基础 header（带 body 时自动补 Content-Type: application/json）
   credentialsManager: CredentialsManager   // 本包凭证体系（Memory / LocalStorage / Cookie / Env）
   authStrategy: AuthStrategy               // 本包认证策略（BearerTokenStrategy 等）
   credentialProvider?: CredentialProvider  // 本包凭证提供器（可刷新场景）
   fetch?: typeof fetch                     // 透传，测试注入用（浏览器/Node 均原生）
   openWhenHidden?: boolean                 // 浏览器：页面隐藏是否继续（默认 false）
+  retryInterval?: number                   // 初始重试间隔，默认 1000ms
+  maxRetryInterval?: number                // 最大重试间隔，默认 30000ms
 }
 
 class HttpStreamClient {
   listeners: Map<EventName, Set<Handler>>  // 按事件名分发
-  state: HttpStreamClientState                    // 状态机（见 §4）
+  state: StreamClientState                 // 状态机（见 §4；枚举 StreamClientState）
   private controller: AbortController      // close() 用（传输层唯一停止途径）
   connect(): void
   close(): void
@@ -176,37 +215,55 @@ HTTP 生命周期驱动，无复杂流转；`request aborted` 监听统一走注
   现成实现直接用：`BearerTokenStrategy`、`MemoryCredentialsManager` /
   `EnvCredentialsManager`（跨环境）/ `LocalStorageCredentialsManager` /
   `CookieCredentialsManager`（仅浏览器）。
-- **服务端路由**：复用 `extractToken`（`Authorization: Bearer` 或 `access-token` cookie，
-  `common/authentication.ts`）。`StreamController` 由 `stream-auth.guard.ts` 的
-  `StreamAuthGuard` 保护，按 `SSE_ROUTE_OPTIONS.auth`（`'user' | 'admin'`）委派给
-  `UserAuthGuard` / `AdminAuthGuard`。选 fetch 流而非原生 EventSource 正是因为
-  EventSource 无法自定义 header。
+- **服务端路由**：复用 `extractToken`（`Authorization: Bearer`，或按身份体系读 cookie：
+  前台 `access-token` / 管理员 `admin-access-token`，`common/security/authentication.ts`）。
+  `StreamController` 由 `stream-auth.guard.ts` 的 `StreamAuthGuard` 保护，按
+  `SSE_ROUTE_OPTIONS.auth`（`'user' | 'admin' | 'both'`）委派给 `UserAuthGuard` /
+  `AdminAuthGuard`，`'both'` 复用 `AnyAuthGuard`（任一身份通过，并把通过的身份写进 ALS）。
+  当前 `StreamModule` 配的是 `auth: 'both'`（前台 + 后台都要收通知）。
+  选 fetch 流而非原生 EventSource 正是因为 EventSource 无法自定义 header。
 
-### 5.3 跨实例广播（Redis PubSub）
+### 5.3 跨实例广播（PubSub 传输层）
 
-- `StreamHub` 持有 **pub / sub 两个独立 ioredis 连接**（ioredis 进入订阅模式后不可
-  publish，必须分连接），经 `RedisStore.raw` 的兄弟连接创建，随生命周期启停。
-- **广播路径：本地直推 + Redis 广播**（推荐）：
-  `publish(channel, event)` → ① 直推本实例本地连接；② `redis.publish('stream:{channel}', JSON)`。
-  其他实例收到消息后推各自的本地连接。
-- **自回环过滤**：广播消息携带发布实例 `instanceId`（启动时生成），收到 `instanceId
-  === self` 的消息直接丢弃（本实例已直推，避免双推）。
+- Redis 连接归 **`PubSub`**（`kits/pubsub/`），不是 `StreamHub`：`PubSub` 持 **pub / sub 两个
+  独立 ioredis 连接**（ioredis 进入订阅模式后不可 publish，必须分连接），懒建连、断线由
+  ioredis 重连、`ready` 后自动重订阅全部频道 / 模式；应用停止时关两条连接。
+- **广播路径：本地直推 + Redis 广播**：
+  `StreamHub.publish(channel, event)` → ① `deliverLocal` 直推本实例该频道的连接；
+  ② `PubSub.broadcast('stream:' + channel, event)`。其他实例的 `StreamHub` 通过
+  `psubscribe('stream:*')` 收到后推各自的本地连接。
+- **自回环过滤在 `PubSub`**：广播载荷 `{ instanceId, channel, payload, publishedAt }`，
+  收到 `instanceId === self` 直接丢弃（本实例已直推，避免双推）；`meta.channel` 还用于
+  校验频道一致、还原业务频道名（去掉 `stream:` 前缀）。
+- **语义 at-most-once**：Redis pub/sub 不持久化，掉线期间消息会丢；广播失败只记 warning，
+  不影响本地直推与调用方业务。需要可靠投递用 Kafka。
 - 权衡：本地直推低延迟、Redis 故障时本实例事件仍可达；事件顺序在同一连接内由
   直推保证，跨实例无顺序强约束（SSE 事件互相独立，可接受）。
   （备选：全部走 Redis 单一路径、顺序一致，但本地多一次往返且 Redis 故障全断——不取。）
+- **`EventBus` 复用同一传输层**（`events:<topic>` 精确订阅，先本地同步送达再广播，
+  按 topic 首个订阅者建立远端订阅、最后一个移除时释放）；定位是缓存失效 / 领域事件广播，
+  不是可靠队列。
 
 ### 5.4 频道权限（安全要点）
 
-- 服务端强制注册身份频道：`user` 鉴权 → `user:{userId}`；`admin` → `admin:{adminId}`。
-- 客户端请求的 channels 中 `user:*` / `admin:*` 前缀一律**忽略并替换为当前身份频道**，
-  防窃听他人频道。
-- 业务频道（`task:*` 等）由业务方在路由层自行校验（第一版：`modules/stream/stream.module.ts` 的
-  `SSE_ROUTE_OPTIONS` 提供 `allowChannel` 白名单 / 校验回调注入点，默认仅允许身份频道）。
+服务端按三类频道求并集（`stream.controller.ts` 的 `resolveSubscriptions`）：
+
+1. **身份频道**：按实际通过的身份强制注册 `user:{userId}` / `admin:{adminId}`；客户端请求里的
+   `user:*` / `admin:*` 一律**忽略**（防窃听他人身份频道），也无法伪造；
+2. **广播频道**：`SSE_ROUTE_OPTIONS.broadcastChannels`（当前 `['admin:all']`）自动订阅，
+   且**只放行与当前身份同域的项**（管理员只拿 `admin:` 前缀、用户只拿 `user:` 前缀），
+   跨域静默忽略——否则前台用户能收到管理员广播；
+3. **业务频道**：走 `allowChannel` 白名单，**当前默认 `() => false`（全拒）**；需要时在
+   `stream.module.ts` 注入归属权校验（如数据库 / 缓存核对）。
+
+`auth: 'both'` 按实际通过的身份订阅；鉴权关闭（`AUTH_ENABLED=false`，无任何身份）时
+仅订阅广播频道（该模式下应用整体开放，与此姿态一致）。
 
 ### 5.5 心跳
 
-复用帧注释行 ping（周期写注释行，服务端保活）；传输层无心跳检测（网络断开由
-fetch 读流抛错自然进入 reconnecting），客户端状态机据此重连。
+`StreamConnection` 默认每 **15000ms** 写一条注释行 `: ping\n\n`（`heartbeatIntervalMs`
+可配、传 0 关闭），用于穿代理保活；传输层无心跳检测（网络断开由 fetch 读流抛错自然进入
+reconnecting），客户端状态机据此重连。
 
 ## 6. 使用示例
 
@@ -237,24 +294,36 @@ sse.close()
 
 ## 7. 测试
 
-- **HttpStreamClient**（vitest，`pnpm --filter @repo/http-client test`，Node 环境直接跑）：
+- **HttpStreamClient**（vitest，`pnpm --filter @repo/http-client test`，Node 环境直接跑；
+  测试文件 `test/stream-client.test.ts` / `stream-parser.test.ts` / `stream-transport.test.ts`）：
   传输层解析（分块返回的 SSE 帧、多行 data、注释行、`retry:` 覆盖、`id` 记录）、
   状态机转移（connect → open → reconnecting → open / close 置 closed）、method 默认
   POST 与 body 序列化、认证注入（manager/strategy 生成 header）、重连前重新取凭证、
   data 非 JSON 时原样分发原始字符串（不崩溃）、abort 停止重连。
   用注入 `fetch`（Node 原生）模拟流式响应。
-- **StreamHub**（vitest，mock Redis pub/sub）：publish 本地直推、广播消息路由到
-  本地连接、自回环 instanceId 过滤、连接注册/注销幂等、频道权限替换。
-- 错误继承 `StreamHubError`（`AppErrorCodes.Internal`）。
+- **StreamHub**（`packages/kits/test/stream-hub.test.ts`，mock PubSub）：publish 本地直推 +
+  调用 `broadcast('stream:<channel>')`、广播消息路由到本地连接、连接注册 / 注销幂等、
+  关闭时推 `stream.shutdown` 并排空。
+- **PubSub**（`packages/kits/test/pubsub.test.ts`）：自回环 instanceId 过滤、频道名非法抛错、
+  断线重订阅、`broadcast` 失败降级（返回 false + warning）。
+- **EventBus**（`packages/kits/test/event-bus.test.ts`）：先本地后远端、topic 校验、
+  处理函数异常隔离、最后一个订阅者移除时释放远端订阅。
+- 错误继承 `StreamHubError` / `PubSubError` / `EventBusError`（`AppErrorCodes.Internal`）。
 
 ## 8. 边界 / 注意事项
 
 - 连接数无上限约束：第一版不做连接上限 / 频道限流（按需再加）。
 - 进程内连接不跨实例共享：连接注册表是本实例内存态，广播只推持有本地连接的实例。
-- `Last-Event-ID` 续传（断线补发）为后续版本：需服务端事件缓冲，第一版只收不补。
+- `Last-Event-ID` 续传（断线补发）为后续版本：`/sse/subscribe` 只收不补；
+  **AI 流的续传是另一套**（`GET /agent/run/:runId/stream?offset=`，Redis 输出记录补发）。
 - 多标签页：同一浏览器多标签各自建连，客户端层不做去重（业务侧自行决定）。
-- `@repo/http-client` **零第三方依赖**；`TextDecoder` / `fetch` / `ReadableStream` 为
-  浏览器与 Node 18+ 原生，无需 polyfill。
+- `PubSub` / `EventBus` 语义是 **at-most-once**：Redis pub/sub 不持久化，掉线期间的
+  事件会丢。需要可靠投递用 Kafka（`kits/kafka/`）。
+- 滚动更新：`beforeApplicationShutdown` 推 `stream.shutdown` 后关连接，客户端收到该事件
+  必须重连（而不是当正常结束）；排空期间新到的长连接会立即关闭。
+- `@repo/http-client` 依赖 `@repo/shared` 与既有 `@noble/hashes`（凭证体系），**SSE 传输层
+  零新增第三方依赖**；`TextDecoder` / `fetch` / `ReadableStream` 为浏览器与 Node 18+ 原生，
+  无需 polyfill。
 - 国内镜像源配置保持不变；新增包在 `pnpm-workspace.yaml` 通配范围内，无需改 workspace。
 
 ## 9. 评审确认点
@@ -264,3 +333,7 @@ sse.close()
 2. Last-Event-ID 第一版只收不补——§4.1.3
 3. 广播路径：本地直推 + Redis（带 instanceId 过滤）——§5.3
 4. 重连退避：指数退避 1s→2s→4s 上限 30s，`retry:` 帧可覆盖——§4.1.4
+
+> 落地结果（2026-11-13）：1、3、4 已按上述默认值实现（重连参数为 `retryInterval` /
+> `maxRetryInterval`）；第 2 条仍成立（`/sse/subscribe` 不补发，`Last-Event-ID` 仅在客户端
+> 传输层记录并随重连带出）。

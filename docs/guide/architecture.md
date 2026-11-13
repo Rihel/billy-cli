@@ -11,8 +11,8 @@
 │   │   ├── data-source.ts               # TypeORM CLI 迁移配置（db:generate / db:migrate）
 │   │   ├── scripts/seed-admin.ts        # 首个管理员种子脚本（createApplicationContext 启动）
 │   │   └── src/
-│   │       ├── main.ts                  # 入口：NestFactory 启动 + app.use() 中间件 + 优雅关闭
-│   │       ├── root.module.ts           # 唯一组合根：AppConfigModule + 各基础设施 forRootAsync + 业务模块
+│   │       ├── main.ts                  # 入口：NestFactory 启动 + 全局 Express 配置 + 优雅关闭
+│   │       ├── root.module.ts           # 唯一组合根：配置 + 横切中间件 + 各基础设施 + 业务模块
 │   │       ├── app-config.ts            # 应用配置 schema（复用 kits 各模块 schema）+ mapServerEnv + loadServerAppConfig
 │   │       ├── config.ts                # ServerConfig 类型（= ServerAppConfig['server']）+ resolveServerConfig(config)
 │   │       ├── common/                   # 横切 HTTP 构件（按关注点分包，各有 index.ts；外部统一从 common/index.ts 导入）
@@ -21,34 +21,41 @@
 │   │       │                            #   request-logger/（模块：请求日志中间件）
 │   │       │                            #   request-metrics/（模块：请求埋点中间件）
 │   │       │                            #   security/（token 与身份读取 · 限流守卫）
-│   │       │                            #   http/（Zod 校验管道 · 响应信封拦截器）
+│   │       │                            #   http/（Zod 校验管道 · 响应信封拦截器 · 探针路径判定）
 │   │       ├── database/
-│   │       │   ├── entities/            # 15 张表：user / admin / alert-log / monitor-alert / monitor-rule /
+│   │       │   ├── entities/            # 19 张表：user / admin / alert-log / monitor-alert / monitor-rule /
 │   │       │   │                        #   monitor-metric-sample / conversation / run / timeline / ai-provider /
-│   │       │   │                        #   ai-model / ai-tool / ai-connector / ai-usage-daily / ai-usage-daily-dimension
+│   │       │   │                        #   ai-model / ai-tool / ai-connector / ai-file / ai-skill / ai-skill-file /
+│   │       │   │                        #   ai-usage-daily / ai-usage-daily-dimension / file-share
 │   │       │   └── migrations/          # TypeORM 迁移产物
-│   │       └── modules/                 # 业务模块（12 个）：auth / admin / user / session / monitor / storage / stream /
-│   │                                    #   runtime-config / ai / ai-model / ai-usage / ops
+│   │       └── modules/                 # 业务模块（13 个）：auth / admin / user / session / monitor / storage / stream /
+│   │                                    #   runtime-config / share / ai / ai-model / ai-usage / ops
 │   │                                    #   每模块 module + controller + service + index（repository / errors 按需）
 │   ├── web/                             # Next.js 16 前台（@app/web，端口 9840）
 │   │   └── src/
 │   │       ├── actions/auth.actions.ts  # Server Actions（登录 / 注册）
-│   │       ├── app/                     # /、/account（个人中心，受保护）、/auth/*、/comparison、/markdown/*
+│   │       ├── app/                     # /、/account（个人中心，受保护）、/account/sessions（登录设备）、
+│   │       │                            #   /auth/*、/comparison、/markdown/*
 │   │       │                            #   + error.tsx / not-found.tsx / loading.tsx 应用级兜底
 │   │       ├── components/landing/       # 首页区块（header / hero / proof-strip / tech-marquee / ai-section /
-│   │       │                            #   observability / design-showcase / maintainability / quick-start / cta / footer）
+│   │       │                            #   observability / design-showcase / maintainability / quick-start / cta / footer / reveal）
 │   │       ├── lib/                     # constants / server-client（SDK 单例）/ auth-session（服务端会话探测）/ redirect（?next= 过滤）
 │   │       ├── proxy.ts                 # 受保护路由守卫（无 cookie → 307 到登录页，matcher 只挂 /account/*）
-│   │       └── providers/               # QueryProvider（TanStack Query + 统一错误 toast）/ WebStorageProvider（上传）
+│   │       ├── providers/               # QueryProvider（TanStack Query + 统一错误 toast）/ WebStorageProvider（上传）/ ThemeProvider（主题）
+│   │       └── stores/                  # theme.ts（主题状态）
 │   └── admin/                           # Next.js 16 管理后台（@app/admin，端口 9845）
 │       └── src/
 │           ├── actions/auth.actions.ts  # Server Actions（@repo/ui defineAction）
 │           ├── app/
-│           │   ├── auth/                # login / register / forgot-password / reset-password
-│           │   └── main/                # dashboard / user-center / system/{users,admins}
-│           │                            #   / monitor/{status,live,metrics,logs,rules}
-│           │                            #   / ai/{chat,models,tools,audit,connectors}
-│           ├── components/              # AppHeader / AppMenu / AppSider
+│           │   ├── (app)/              # 应用壳（登录守卫）：auth/login + main/*
+│           │   ├── (share)/s/[token]/  # 免授权文件分享页（独立 root layout，不走登录守卫）
+│           │   └── api/[[...route]]/   # Hono 内容接口（转发字节，浏览器看不到 OSS 地址）
+│           │   # main/：dashboard / user-center / system/{users,admins}
+│           │   #   / monitor/{status,live,metrics,logs,rules}
+│           │   #   / ai/{chat,chat/[conversationId],audit,connectors,files,models,skills,skills/[skillKey],tools}
+│           │   #   其中 chat（(standalone)）与技能编辑器（(canvas)）用沉浸式布局
+│           ├── api/                     # app.ts / share.ts（Hono 路由，挂载到 app/api/[[...route]]）
+│           ├── components/              # AppHeader / AppMenu / AppSider + share-dialog / file-preview-dialog 等
 │           ├── lib/                     # constants / server-client / logger
 │           ├── providers/AppProviders.tsx
 │           ├── stores/                  # auth.store.tsx（Zustand + Immer）/ theme.store.ts
@@ -58,9 +65,9 @@
 │   │   └── src/
 │   │       ├── schema/                  # Zod 共享 schema（auth / admin / user / session / stream / monitor /
 │   │       │                            #   object-storage / app-config / agent / ai-model / ai-tool / ai-tool-event /
-│   │       │                            #   ai-connector / base）
+│   │       │                            #   ai-connector / ai-skill / share / base）
 │   │       ├── dicts/                   # app-error-code / user-status / ai / ai-model / ai-tool / ai-tool-event /
-│   │       │                            #   ai-connector / ai-capability / ai-modality 字典
+│   │       │                            #   ai-connector / ai-capability / ai-modality / ai-skill 字典
 │   │       ├── app-response.ts          # AppResponse 统一响应格式 + ResponseUtils
 │   │       ├── logger.ts                # 日志工厂 createLogger（前后端共用；后端经 kits LoggerModule 包装成 AppLogger）
 │   │       ├── browser.ts               # 浏览器端子入口
@@ -73,17 +80,20 @@
 │   │       │                            #   pagination / batch / safe-delete / sql / database.module
 │   │       ├── redis/                   # RedisStore / RedisLockService / RedisListCache + RedisModule
 │   │       ├── rate-limit/              # RateLimiter + RateLimitModule（复用 RedisConfig）
-│   │       ├── stream/                  # StreamHub / StreamConnection + StreamHubModule（SSE）
+│   │       ├── pubsub/                  # PubSub + PubSubModule（Redis 底层广播：懒建连 / 断线重订阅 / 自回环过滤）
+│   │       ├── stream/                  # StreamHub / StreamConnection + StreamHubModule（SSE，建在 PubSub 上）
+│   │       ├── events/                  # EventBus + EventBusModule（events:<topic> 进程内事件总线，建在 PubSub 上）
 │   │       ├── jwt/                     # TokenSigner + JwtModule（JwtConfig）
 │   │       ├── session/                 # SessionStore + SessionStoreModule
 │   │       ├── password/                # PasswordHasher + PasswordModule（PasswordConfig）
 │   │       ├── storage/                 # ObjectStorage + ObjectStorageModule + providers/{s3,cos}
+│   │       ├── workspace/               # WorkspaceRuntimeService / Sandbox 探测 + WorkspaceModule（WorkspaceConfig）
 │   │       ├── kafka/                   # KafkaService / @KafkaConsumer + KafkaModule（KafkaConfig）
 │   │       ├── lark/                    # LarkClient + LarkModule（LarkConfig）
 │   │       ├── notification/            # Notifier + file / email / lark-notify + NotificationModule
 │   │       ├── telemetry/               # Telemetry + TelemetryModule
 │   │       └── (每个目录)                # provider + <name>.config.ts（如需配置）+
-│   │                                    #   <name>.module.ts（@Global + forRoot）+ index.ts
+│   │                                    #   <name>.module.ts（@Global；需要配置的再给 forRoot / forRootAsync）+ index.ts
 │   ├── http-client/                      # @repo/http-client — 通用 HTTP + 鉴权管线（业务无关）
 │   │   └── src/
 │   │       ├── core/                    # http.client / credential-resolver / auth-injector / api-error
@@ -93,12 +103,15 @@
 │   │       └── providers/               # empty-check / expires-at
 │   ├── sdk/                             # @repo/sdk
 │   │   └── src/
-│   │       └── server.client.ts         # ServerClient（全类型化业务 API，继承 http-client 的 HttpClient）
-│   └── ui/                               # @repo/ui — shadcn 组件（src/components/ui/*）+ 自有组件（src/components/* 平铺）
+│   │       ├── server.client.ts         # ServerClient（全类型化业务 API，继承 http-client 的 HttpClient）
+│   │       └── app-clients.ts           # createAppClients：浏览器单例 / 服务端无状态客户端的装配（web、admin 共用）
+│   └── ui/                               # @repo/ui — shadcn 组件（src/components/ui/*，61 个）+ 自有组件（src/components/* 平铺）
 │                                         #   + ai-elements（48 个 AI 界面组件）+ 设计系统（src/globals.css，唯一定义处）
 ├── docker/                              # Dockerfile.base / .server / .web + init-db.sql
-├── k8s/                                 # server 的 Kubernetes 清单（Deployment / Service / PDB / Ingress + 部署说明）
-├── docs/                                # guide/（使用指南）/ design/（设计文档）/ dev-logs/（开发日志）/ pagination.md / sdk-refactor.md / billy-pitch.md
+├── k8s/                                 # server 的 Kubernetes 清单（Namespace / ConfigMap / Deployment / Service / PDB /
+│                                        #   Ingress / Ingress-SSE + 部署说明）
+├── docs/                                # guide/（使用指南）/ design/（设计文档）/ dev-logs/（开发日志）/ research/
+│                                        #   + pagination.md / queue.md / sdk-refactor.md / billy-pitch.md
 ├── scripts/                             # setup.ts（bootstrap）、kill-dev.ts、check-inject-decorators.ts、check-mastra-boundary.ts、check-ui.ts、codegraph-setup.ts
 ├── turbo.json
 ├── pnpm-workspace.yaml
@@ -125,12 +138,13 @@
 
 - 每个基础设施一个 `@Global()` NestJS 模块，需要配置的都提供 `forRoot(options)` 与
   `forRootAsync(options)` 两种装配方式：`LoggerModule` / `DbModule` / `RedisModule` / `JwtModule` /
-  `PasswordModule` / `ObjectStorageModule` / `NotificationModule` / `LarkModule` / `KafkaModule`；
-  `RateLimitModule` / `StreamHubModule` / `SessionStoreModule` 复用上游模块的配置 bean
-  （RedisConfig / JwtConfig / IdGeneration），`IdGenerationModule` / `TelemetryModule` /
-  `SchedulerModule` 无配置；模块内部 `Schema.parse(...)` 校验 + 补默认值，**配置对象本身就是该模块的
-  注入 bean**（`DbConfig` / `RedisConfig` / `JwtConfig` / `PasswordConfig` / `StorageConfig` /
-  `NotifyConfig` / `LarkConfig` / `KafkaConfig`）
+  `PasswordModule` / `ObjectStorageModule` / `NotificationModule` / `WorkspaceModule` / `LarkModule` /
+  `KafkaModule`；`RateLimitModule` / `PubSubModule` / `StreamHubModule` / `EventBusModule` /
+  `SessionStoreModule` 复用上游模块的配置 bean（RedisConfig / JwtConfig / IdGeneration），
+  `IdGenerationModule` / `TelemetryModule` / `SchedulerModule` / `CommandModule` 无配置；模块内部
+  `Schema.parse(...)` 校验 + 补默认值，**配置对象本身就是该模块的注入 bean**（`DbConfig` /
+  `RedisConfig` / `JwtConfig` / `PasswordConfig` / `StorageConfig` / `NotifyConfig` /
+  `WorkspaceConfig` / `LarkConfig` / `KafkaConfig`）
 - **配置链路（惰性规则）**：`AppConfigFacade.initial({ schema, loader })` 在
   `NestFactory.create` **之前**完成「加载 → 校验 → 补默认值 → 缓存」；
   `schema` 是应用自定义的 shape（zod），`loader` 决定来源（内置 `env` / `memory` / `consul`，
@@ -144,12 +158,13 @@
   与 `resolveServerConfig(config)`；守卫 / service / 控制器注入全局 `ConfigService` 后调它取 `server` 分片
   （端口 / 鉴权开关 / 限流白名单等），**无需额外的配置 bean / 模块**
 - `apps/server/src/main.ts`：只用 `NestFactory.create(RootModule, { bodyParser: false })` 启动，
-  再 `app.enableCors()` / 设置请求体上限，不承担业务注册职责；请求上下文 / 请求日志 / 请求指标
+  再做全局 Express 配置（`app.enableCors()` / 请求体上限 / `keepAliveTimeout` 与 `headersTimeout`），
+  不承担业务注册职责；请求上下文 / 请求日志 / 请求指标
   中间件由 `common/` 的 `RequestContextModule` / `RequestLoggerModule` / `RequestMetricsModule`
   **自注册**（`forRoutes('*')`，均标 `@Global()`，且 `RequestContextModule` 必须排在最前）
 - 生命周期由 Nest 驱动：组件实现 `OnApplicationBootstrap` / `OnApplicationShutdown`，
-  装配完成后按 providers 声明顺序启动（Db 初始化、Redis 连接、ObjectStorage 建桶 / 客户端），
-  `app.close()` 时逆序释放资源
+  装配完成后按 providers 声明顺序启动（Db 初始化、Redis 连接、ObjectStorage 建桶 / 客户端、
+  Workspace 沙箱能力探测），`app.close()` 时逆序释放资源
 - 业务模块在 `root.module.ts` 的 `imports` 注册，各自的 repository / service 在自己模块的
   `providers` 声明；实体是类引用、无法来自环境变量，由组合根在 `DbModule.forRootAsync` 的
   `useFactory` 里补 `entities: [...]`（其余 `db` 配置仍来自应用配置）
@@ -158,7 +173,8 @@
 
 `packages/kits/src/db/pagination.ts` 提供四种分页策略（构建在 TypeORM QueryBuilder 之上）：
 
-- **`pageWith`** — 单表 `LIMIT/OFFSET` 页码分页，返回 `total/page/size`
+- **`pageWith`** — 单表 `LIMIT/OFFSET` 页码分页，返回 `{ data, total }`（service 层再映射成
+  `{ items, total, page, size }`）
 - **`pageWithDeferred`** — 两阶段 Offset 分页：先主键分页，再按主键加载详情，适合复杂联表表格
 - **`cursorPageWith`** — 单表 Seek/Cursor 分页（复合键），适合无限滚动与持续新增的数据流
 - **`cursorPageWithDeferred`** — 两阶段 Cursor 分页：先定位主键与 cursor，再查询当页 JOIN 数据

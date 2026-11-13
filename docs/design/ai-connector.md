@@ -4,7 +4,9 @@
 > [`.agents/skills/develop-ai-agent/references/connector.md`](../../.agents/skills/develop-ai-agent/references/connector.md) 为准
 > （驱动 `sql` / `redis` / `lark-cli` 已有，`http` / `mcp` 待补；MCP 即一种连接器；按 agent 授权）。
 > 本文保留作「目录 / 实例 / 远端能力 / 工具」四层模型与各驱动取舍的历史论证；
-> 未实施部分不照本文补，按 skill 的方向做。
+> 未实施部分不照本文补，按 skill 的方向做。文中文件路径 / 接口 / 工具名是写作时点
+> （2026-11-08 / 11-09）的快照，之后未再逐项随代码更新——例如命令工具已从
+> `run-command` 改名 `bash`；当前实现以代码与 `docs/guide/ai.md` 为准。
 > 相关：`ai-agent-tool-engine.md`（工具引擎）、`ai-agent.md`（运行时与装配）
 > 写作口径：尽量说人话；所有现状描述都对着代码核过，引用处标了文件。
 

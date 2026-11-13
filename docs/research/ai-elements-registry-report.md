@@ -1,5 +1,8 @@
 # AI Elements Registry 源码级技术报告（conversation / message / reasoning / tool / task / sources / confirmation / context）
 
+> **状态：调研快照（写作时点）。** 外部库版本与线上文档会继续演进，本文结论不随本仓库代码更新；
+> 当前实现见 [`docs/guide/`](../guide/) 与 [`docs/design/`](../design/)。
+
 > 调研对象：`https://elements.ai-sdk.dev/api/registry/<name>.json` 的本地原文副本（`/tmp/aiv6/reg-*.json`）。
 > 调研方式：JSON 为 shadcn registry 格式，组件源码内嵌在 `files[0].content`。为便于给出**稳定行号**，已用 Python 将 `files[0].content` 原样落盘为独立 `.tsx`（与 `content` 逐字节一致，行数已校验一致），下文所有「Lxx」均指该文件行号。
 >

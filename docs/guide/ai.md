@@ -6,8 +6,8 @@
 ## 运行时与接口
 
 模板自带一套能上生产的 AI 对话，代码在 `apps/server/src/modules/ai`（运行时 + 工具 + 连接器）+
-`ai-model`（供应商 / 模型配置）+ `ai-usage`（用量汇总）。后台有五个页面：
-**会话** / 模型 / 工具 / 审计 / 连接器。它和「用 AI 写这个模板」是两件事：
+`ai-model`（供应商 / 模型配置）+ `ai-usage`（用量汇总）。后台有七个页面：
+**会话** / 模型 / 工具 / 技能库 / 文件管理 / 连接器 / 审计。它和「用 AI 写这个模板」是两件事：
 后者靠 Agent Skills（见下节），前者是产品里的 AI。
 
 接口在 `/agent` 前缀下（`AnyAuthGuard`：前台用户与管理员同一套；用量接口仅管理员）：
@@ -17,8 +17,10 @@ POST /agent/chat/stream        建立流式对话（SSE）
 POST /agent/chat/resume        断线后用 offset 续传
 GET  /agent/run/stream         重连当前运行（EventSource 只能 GET）
 GET  /agent/run/:runId/stream  重连指定运行
-POST /agent/conversation/*     会话增删改查
+POST /agent/conversation/*     会话增删改查（含 file-access 切换文件权限）
 POST /agent/run/*              运行列表 / 详情 / 停止（审计与复盘）
+POST /agent/file/*             会话工作区文件列表 / 预览 / 后台跨会话列表与统计
+GET  /agent/file/workspace-content  按 cookie 读工作区文件（Range / 下载）
 POST /agent/usage/summary      用量汇总
 ```
 
@@ -29,9 +31,11 @@ POST /agent/usage/summary      用量汇总
 - **流式与续传**：文本、推理、工具调用、步骤、来源全细节推送，断线从上次位置继续。
 - **工具面**：一个工具一条 `@ToolDecl`（`@ToolGroup` 类 + 方法即工具），注册后统一过网关——
   开关、作用域（主 agent / 子 agent）、限额、自定义事件、审计、大结果分页与 `read-tool-result` 回取。
-  内建 19 个：计划四件套、`run-sub-agent`、`bash`、`read-tool-result`、`web-search`、`web-fetch`、`web-request`，
-  以及文件管理九件套（`file-submit` / `file-download` / `file-list` / `read-file` / `file-search` /
-  `workspace-files` / `write-file` / `replace-file` / `append-file`）。
+  内建 26 个：计划四件套、`run-sub-agent`、`bash`、`read-tool-result`、`web-search` / `web-fetch` / `web-request`、
+  技能库七件套（`skill-list` / `skill-save` / `skill-file-save` / `skill-file-append` / `skill-delete` /
+  `skill-enable` / `skill-import`），以及文件管理九件套（`file-submit` / `file-download` / `file-list` /
+  `read-file` / `file-search` / `workspace-files` / `write-file` / `replace-file` / `append-file`）。
+  另有 3 个 Mastra 运行时自带、不进注册机的工具（`skill` / `skill_search` / `skill_read`），后台工具清单只读展示。
   agent 的授权清单支持选择器（`'*'`、`{ category }`、`{ connector }`），装配期按调用身份过滤作用域——
   没授权的工具**根本不会出现在模型面前**。
 - **技能库**（`modules/ai/skills`）：后台「AI → 技能库」在线写技能（类 Notion 的块编辑器写正文 +
@@ -39,14 +43,22 @@ POST /agent/usage/summary      用量汇总
   DB 是事实源，服务端落盘到 `~/.billy/skills`（`AGENT_SKILLS_LIBRARY_DIR`）供 Mastra 按需读；
   agent 也能用 `skill-save` 等工具自己建技能，写入入口只有管理员（技能内容会进入模型上下文）。
   模型侧提示词要求**先扫技能清单**：有匹配的就先 `skill` 加载再动手；设计 / 页面 / 报告类任务先加载设计类技能再写第一版，不要等用户点名。
+- **文件管理**（`modules/ai/files`）：`ai_files` 记会话文件（入站附件引用 + AI 提交，按会话级 workspace 组织），
+  九个文件工具全部过同一套网关；对话右栏按会话看文件，后台「AI → 文件管理」跨会话列表 / 预览 / 分享
+  （总量统计在控制台）；Office 前端直连对象存储，S3 / COS 需配 CORS。管理员还能给文件生成**免授权分享链接**
+  （`/s/{token}`，有效期可选、明文 token 只显示一次、可撤销，OSS 地址不进浏览器）。
 - **连接器**（`modules/ai/connectors`）：外部能力不再写死进代码。后台「AI → 连接器」加一条实例
   （地址 + 凭证），就产出一组受管工具，走的是和内建工具同一个网关（开关、限额、审计、脱敏一致）。
   内置 4 个型号：**PostgreSQL / MySQL**（查表结构与只读查询）、**Redis**（按前缀只读扫键 / 读字符串与哈希）、
   **飞书 CLI**（受限 `run` + CLI 内嵌技能文档，覆盖消息 / 文档 / 多维表格 / 日历等 20+ 业务域；
   授权状态存 `ai_connectors.auth_state`，无状态 pod 重启 / 换实例后不用重新授权）。
   目录（有哪些型号）、实例（连的谁）、远端能力、工具四层分开；换地址 / 换密钥 / 停用整家服务只改数据，不发版。
-- **运行控制**：动态子 agent（提示词由主 agent 现场写）、命令执行（开关 / 工作目录 / 时长与输出上限可配）、
-  联网预算（统一 UA、超时、字节上限、内网拦截）。
+- **运行控制**：动态子 agent（提示词由主 agent 现场写）、命令执行（开关 / 工作目录 / 时长与输出上限可配，
+  `AGENT_COMMAND_ENABLED` 默认关闭）、联网预算（统一 UA、超时、字节上限、内网拦截）。
+- **工作区运行时**：`bash` 与文件工具共用会话工作区；模式 `read-only` / `workspace-write` / `danger-full-access`，
+  部署默认 `enforce`——会话只能选沙箱内的只读 / 可写，沙箱不可用就**拒绝执行（fail closed）**，
+  只有自托管单租户显式设 `AGENT_WORKSPACE_MODE=off` 才降级为宿主进程执行；沙箱网络默认 `deny`；
+  `GET /info` 暴露部署模式与会话可选的文件权限。
 - **多模态附件**：图片与 PDF 走对象存储，只传 key；附件 key 做归属校验，不能越权读他人文件。
 - **上下文**：达到模型窗口 70% 触发裁剪 / 压缩，原文保留可回看。
 - **模型与用量**：供应商表 + 模型表在后台配（不用改环境变量），运行时只用配过的模型；
@@ -54,7 +66,8 @@ POST /agent/usage/summary      用量汇总
 - **前端**：`@repo/ui` 内置 48 个 ai-elements，后台会话页开箱可用。
 
 **配置位置**：模型与供应商在「AI → 模型管理」，工具开关与限额在「AI → 工具配置」，
-外部服务在「AI → 连接器」，用量在「AI → 审计」与控制台。
+技能在「AI → 技能库」，文件在「AI → 文件管理」，外部服务在「AI → 连接器」，
+用量与调用回放在「AI → 审计」与控制台。
 设计细节与取舍见 [`docs/design/ai-agent.md`](../design/ai-agent.md) 与
 [`docs/design/ai-agent-tool-engine.md`](../design/ai-agent-tool-engine.md)；
 连接器的现状与方向见 skill
@@ -115,11 +128,11 @@ AI 编码 Agent 按任务**按需加载**，工具无关（Claude Code / Codex /
 - **最高准则**：[AGENTS.md](../../AGENTS.md)（8 条首要准则，先于一切 skill 与规范）；Claude Code 入口为
   [CLAUDE.md](../../CLAUDE.md)
 - **必读入口**：`billy-dev-foundation`（分层架构、代码约定含「不重复造轮子」实现查找顺序、常用命令、标准流程）
-- **共 27 个 skill**：必读 1（`billy-dev-foundation`）+ 功能 25（`define-data-structure` / `define-dict-enum` /
+- **共 28 个 skill**：必读 1（`billy-dev-foundation`）+ 功能 26（`define-data-structure` / `define-dict-enum` /
   `database` / `develop-business-module` / `develop-backend-api` / `develop-frontend-page` / `develop-ai-agent` /
   `ai-agent-engineering` / `implement-auth` / `object-storage` / `concurrency` / `kafka` / `scheduler` / `stream` /
   `telemetry` / `notification` / `lark` / `state-machine` / `write-tests` / `git-workflow` / `codegraph` /
-  `getting-started` / `table-state` / `migrate-v8-to-v9` / `tsdown`）+
+  `getting-started` / `table-state` / `migrate-v8-to-v9` / `tsdown` / `code-quality`）+
   元 1（`manage-skills`）；完整索引见
   [`.agents/skills/README.md`](../../.agents/skills/README.md) 与
   [`billy-dev-foundation/references/catalog.md`](../../.agents/skills/billy-dev-foundation/references/catalog.md)

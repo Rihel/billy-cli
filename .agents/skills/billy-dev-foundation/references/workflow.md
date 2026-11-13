@@ -16,7 +16,8 @@
 3. **自底向上实现**：实体（server/database）→ 迁移 → repository / service / errors
    （server/modules）→ controller + module → 模块注册（`root.module.ts` 的 `imports`，
    实体在 `DbModule.forRootAsync` 工厂里补 `entities`）→ SDK → 前端页面。
-4. **验证**：`pnpm dev:pkgs` 确保包构建通过 → `pnpm typecheck` / `pnpm test` / `pnpm check:ui`
+4. **验证**：`pnpm dev:pkgs` 确保包构建通过 → `pnpm verify`（lint / lint:types / fmt:check / 三道守卫）
+   → `pnpm typecheck` / `pnpm test`
    → 起服务后用 `curl -X POST http://localhost:9989/...` 验接口 → 迁移正确执行。
    界面的视觉与交互**不自己跑无头浏览器验**，按下文「验证与收尾清理」第 1 条交给用户。
    **遇到问题先翻日志**：`grep` `docs/dev-logs/` 找历史坑点与解法，复用而非重推。
@@ -38,7 +39,7 @@
 agent 负责可自动化的部分，然后把**要用户看的点**列成清单一次说清（哪个页面、哪一步操作、
 期望看到什么），不要让用户自己去猜你改了什么：
 
-- `pnpm typecheck` / `pnpm test` / `pnpm check:ui`
+- `pnpm verify`（含 lint / lint:types / fmt:check）/ `pnpm typecheck` / `pnpm test`
 - 接口层：`curl` 打接口、`psql` 查落库结果
 - 数据与状态：迁移执行结果、日志、用量记录
 

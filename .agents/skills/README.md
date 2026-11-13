@@ -9,7 +9,7 @@
 
 ## 加载顺序
 
-当前共 **27 个** skill（必读 1 + 功能 25 + 元 1）；数量与清单变更时同步
+当前共 **28 个** skill（必读 1 + 功能 26 + 元 1）；数量与清单变更时同步
 `billy-dev-foundation/references/catalog.md` 与仓库根 `README.md` 的「Agent Skills」章节。
 
 | 顺序 | Skill | 用途 |
@@ -35,6 +35,7 @@
 | 功能 | [`state-machine`](./state-machine/SKILL.md) | 业务状态机（字典+转移表 / xstate、并发安全） |
 | 功能 | [`write-tests`](./write-tests/SKILL.md) | 单元测试（vitest 结构与 mock 模式） |
 | 功能 | [`git-workflow`](./git-workflow/SKILL.md) | Git 提交与工作流（中文 commit 规范、辅助提交） |
+| 功能 | [`code-quality`](./code-quality/SKILL.md) | 代码检查、格式化与提交钩子（oxlint / oxfmt / lefthook、豁免规则、Windows） |
 | 功能 | [`codegraph`](./codegraph/SKILL.md) | 代码图谱工具（codegraph_explore / CLI 查调用链、影响面、依赖方向） |
 | 功能 | [`getting-started`](./getting-started/SKILL.md) | TanStack Table v9 入门（react adapter、createTableHook、Query / Virtual 集成） |
 | 功能 | [`table-state`](./table-state/SKILL.md) | Table v9 状态读取与控制（订阅、受控切片、响应式边界） |

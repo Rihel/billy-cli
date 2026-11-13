@@ -10,8 +10,12 @@
 ## 0. 一句话
 
 文件列表页点「分享」→ 落一行 `file_shares`（存 token 哈希 + 过期时间）→ 得到
-`https://{share 域}/s/{token}`；浏览器只访问这个域，Next 页面负责渲染、Next route handler 负责把
+`https://{分享域}/s/{token}`；浏览器只访问这个域，Next 页面负责渲染、Next route handler 负责把
 字节流出去；server 只做两件很轻的事 —— **查 token、签发一次预签名 URL**。OSS 地址不进浏览器。
+
+> 落地位置（2026-11-13 核对）：分享页**在 admin 应用**（`apps/admin/src/app/(share)/s/[token]/page.tsx`，
+> 免授权 `(share)` root layout）；Hono 内容接口也在 admin（`apps/admin/src/api/share.ts`，
+> 最终地址 `/api/s/{token}/content`）。原计划放 `apps/web` 已改，见 §2 决策记录与 §6.1。
 
 ## 1. 现状与问题
 
@@ -56,7 +60,7 @@
 | 过期怎么判 | 存 `expires_at`，**状态靠派生** | 不起定时任务：`expired` 是「现在 > expires_at」，不是一列状态 |
 | 字节从哪出去 | Next route handler 流式转发 | 不压业务进程；复用 `SERVER_URL`（服务端变量，不进 bundle） |
 | 预签名 URL 谁能拿 | 只有 Next（内部密钥） | 公开接口返回 OSS 地址 = 换个地方泄露 |
-| 分享页放哪 | `apps/web`，独立 root layout | 不新增部署；用 `(main)` 路由组隔开主站 Provider |
+| 分享页放哪 | ~~`apps/web`，独立 root layout~~ → **实际落在 `apps/admin`** 的 `(share)` 路由组（原因见 §6.1：文件在后台管理，链接也由后台发出） | 不新增部署；用独立 root layout 隔开后台 Provider |
 | 类型判定在哪 | server 算好 `previewKind` 下发 | 前端不猜扩展名，判据只有一份 |
 | 分享的是快照还是当前文件 | **当前文件**（引用原 key） | 不复制对象、省存储；代价见 §8.4 |
 | Next API 层 | **Hono**（`src/api/`），route 文件只做适配 | 中间件可组合；接口可脱离 Next 单元测试 |
@@ -76,19 +80,19 @@
 ### 3.2 数据流
 
 ```
-管理员 ──POST /share/create { fileId, expiresIn }──► server
+管理员 ──POST /share/create { fileId, expiresAt? }──► server
                                                     └─ 写 file_shares（token_hash + expires_at）
-                                                    ← { id, token, expiresAt }（前端拼 s.xxx/s/{token}）
+                                                    ← { id, token, expiresAt }（admin 用 window.location.origin 拼 /s/{token}）
 
 浏览器 ──GET /s/{token}──────────────► admin 分享页（服务端渲染）
                                      └─POST {SERVER_URL}/share/meta（token）
-                                        ← { filename, mediaType, previewKind, bytes, expiresAt }
+                                        ← { filename, mediaType, previewKind, officeKind?, bytes, expiresAt }
 
-浏览器 ──GET /api/s/{token}/content──► Next API 层（Hono）
-                                     ├─POST {SERVER_URL}/share/resolve（token + 内部密钥）
-                                     │   ← { url(预签名, 300s), filename, mediaType }
-                                     ├─GET {url}（透传 Range）
-                                     └─200/206 + 流式 body
+浏览器 ──GET/HEAD /api/s/{token}/content──► admin Next API 层（Hono）
+                                     ├─POST {SERVER_URL}/share/resolve（token + x-share-internal）
+                                     │   ← { url(预签名, 300s), filename, mediaType, bytes }
+                                     ├─GET/HEAD {url}（透传 Range）
+                                     └─200/206 + 流式 body（HEAD 只回头）
 ```
 
 ### 3.3 职责边界
@@ -111,13 +115,13 @@
 | --- | --- | --- |
 | `token_hash` | varchar(64) | `sha256(token)` 十六进制；**唯一索引** |
 | `file_id` | varchar(20) | 指向 `ai_files.id` |
-| `created_by` | varchar(20) nullable | 创建人（管理员 id）；鉴权关闭时为 null |
-| `expires_at` | timestamp nullable | **null = 永久** |
-| `revoked_at` | timestamp nullable | 撤销时间；非空即失效 |
+| `created_by` | varchar(20) nullable | 创建人（管理员**或前台用户** id）；鉴权关闭时为 null |
+| `expires_at` | timestamp(3) nullable | **null = 永久** |
+| `revoked_at` | timestamp(3) nullable | 撤销时间；非空即失效 |
 | `views` | int default 0 | 被打开次数（meta 命中时自增） |
-| `last_viewed_at` | timestamp nullable | 最后一次打开 |
+| `last_viewed_at` | timestamp(3) nullable | 最后一次打开 |
 
-索引：`uk_file_share_token(token_hash)` 唯一、`idx_file_share_file(file_id)`、
+索引：`uk_file_share_token(token_hash)` 唯一、`idx_file_share_file(file_id, created_at)`、
 `idx_file_share_expires(expires_at)`（清理用，本轮不做清理任务）。
 
 **不存 `status` 列**：状态由字段派生（§4.4），避免出现「状态说有效但早已过期」的二义性。
@@ -227,7 +231,8 @@ type ShareState = 'active' | 'expired' | 'revoked' | 'invalid'
   不匹配直接 404（不返回「密钥错误」，避免暴露端点存在）；
 - 入参：`{ token }`；
 - 出参：`{ url, filename, mediaType, bytes }`；
-- 调用 `ObjectStorage.getDownloadUrl({ key, filename, expiresIn: 300 })`。
+- 调用 `ObjectStorage.getDownloadUrl({ key, expiresIn: 300 })`（**不传 filename**：分享链接
+  的内容接口自己设 `content-disposition`，不需要 OSS 侧再带附件名）。
 
 > `getDownloadUrl` 目前 S3 侧写死 3600（`s3.ts:98`），COS 侧没有显式 TTL、走 SDK 默认
 > （`cos.ts:78`）。本轮把它提成可选入参 `expiresIn`：S3 缺省仍 3600（既有调用方行为不变），
@@ -245,20 +250,36 @@ type ShareState = 'active' | 'expired' | 'revoked' | 'invalid'
 
 - **不配分享域名**：链接由前端用 `window.location.origin` 拼 —— 服务端不该知道（也不需要知道）
   分享页挂在哪个域，少一处配置就少一处「域名写错/环境漂移」的故障；
-- **不配默认 TTL**：调用方永远会传 `expiresIn`（弹窗固定给档位），服务端只有常量兜底。
+- **不配默认 TTL 的「档位」**：创建入参是 `expiresAt`（epoch 毫秒，用户在弹窗里自己选）；
+  省略时服务端用常量兜底 `DEFAULT_TTL_SECONDS = 7 天`，传 `null` 表示永久。
+  原文写的 `expiresIn` 不存在，接口以 §5.1 为准。
 
 `SHARE_INTERNAL_SECRET` 空 = `/share/resolve` 一律 404（分享页取不到字节），其余接口不受影响。
 
+### 5.6.1 接口实现核对（2026-11-13）
+
+| 项 | 现状 |
+| --- | --- |
+| 路由 | `apps/server/src/modules/share/share.controller.ts`（`@Controller('share')`）；`create` / `list` / `revoke` 挂 `AnyAuthGuard`，`meta` 公开但挂 `@RateLimit({ scope: 'share-meta', limit: 60 })`，`resolve` 只校验 `x-share-internal` |
+| 服务 | `share.service.ts`：`create` 校验文件存在 + 归属（管理员不限；前台用户只能动 `ai_files.user_id === 自己`），过期时间过去 → `ShareExpiryInvalidError`；`resolve` 用 `timingSafeEqual` 定长比较内部密钥，调 `ObjectStorage.getDownloadUrl({ key, expiresIn: 300 })`（**不传 filename**，下载名走默认） |
+| token | `share.token.ts`：`createShareToken()` / `hashShareToken()` / `shareState()`（纯函数，可单测） |
+| 错误类 | `share.errors.ts`：`ShareLinkInvalidError` / `ShareForbiddenError` / `ShareFileNotFoundError` / `ShareExpiryInvalidError` |
+| 实体 | `apps/server/src/database/entities/file-share-entity.ts`（`file_shares`） |
+| 测试 | `apps/server/test/share-token.test.ts`（token 生成 / 哈希 / 状态派生）；**没有** `share.test.ts`，服务层的越权 / 撤销幂等 / views 自增尚无自动化用例 |
+
 ### 5.7 错误码
 
-新增到 `AppErrorCodes`（3xxx 段）：
+新增到 `AppErrorCodes`（`packages/shared/src/dicts/app-error-code.dict.ts`，3xxx 段）；
+**实际 key 是驼峰**（不是全大写），对外表现由字典的 `http` 字段决定：
 
-| code | 含义 | 对外表现 |
-| --- | --- | --- |
-| `SHARE_LINK_INVALID` | 查不到 / 已撤销 / 已过期 / 文件已删 | 中性文案，**不区分**（404） |
-| `SHARE_FILE_NOT_FOUND` | 创建 / 列表时目标文件不存在 | 「文件不存在或已删除」（404） |
-| `SHARE_FORBIDDEN` | 越权：不是自己的文件 / 不是自己建的分享 | 「无权操作该分享」（403） |
-| `SHARE_EXPIRY_INVALID` | 用户填的过期时间早于当前 | 「过期时间必须晚于当前时间」（400） |
+| `AppErrorCodes` key | code | http | 含义 |
+| --- | --- | --- | --- |
+| `ShareLinkInvalid` | 3419 | 404 | 查不到 / 已撤销 / 已过期 / 文件已删；中性文案「分享链接无效或已过期」，**不区分** |
+| `ShareForbidden` | 3421 | 403 | 越权：不是自己的文件 / 不是自己建的分享（「无权分享该文件」/「无权操作该分享」） |
+| `ShareFileNotFound` | 3422 | 404 | 创建 / 列表时目标文件不存在（「文件不存在或已删除」） |
+| `ShareExpiryInvalid` | 3423 | 400 | 用户填的过期时间早于当前（「过期时间必须晚于当前时间」） |
+
+> 3420 未使用；没有 `SHARE_DISABLED` 这个错误码（本文 §9 早期写法已作废）。
 
 ## 6. 前端
 
@@ -361,6 +382,7 @@ app.use('*', secureHeaders({
   referrerPolicy: 'no-referrer',
   xContentTypeOptions: 'nosniff',
   xFrameOptions: 'SAMEORIGIN',   // PDF 走同源 iframe，DENY 会连自己的预览框一起拦掉
+  crossOriginResourcePolicy: 'same-origin',   // 实际实现还有这一条
   removePoweredBy: true,
 }))
 
@@ -368,7 +390,9 @@ app.route('/s', shareRoutes)     // src/api/share.ts
 
 // src/api/share.ts —— 只声明路径，不碰 basePath 与中间件
 shareRoutes.on(['GET', 'HEAD'], '/:token/content', async (c) => {
-  const resolved = await resolveShare(c.req.param('token'))   // 调 server /share/resolve
+  const token = c.req.param('token')
+  if (!token || token.length > 128) return new Response(null, { status: 404 })  // 长度明显不对不必回源
+  const resolved = await resolveShare(token)   // 调 server /share/resolve
   if (!resolved) return new Response(null, { status: 404 })
 
   const range = c.req.header('range')
@@ -377,6 +401,7 @@ shareRoutes.on(['GET', 'HEAD'], '/:token/content', async (c) => {
     ...(range ? { headers: { range } } : {}),
     cache: 'no-store',
   })
+  if (!upstream.ok && upstream.status !== 206) return new Response(null, { status: 404 })
   // 关键：直接透传 ReadableStream，绝不能 await arrayBuffer()
   return new Response(upstream.body, { status: upstream.status, headers: buildHeaders(resolved, upstream) })
 })
@@ -399,22 +424,24 @@ shareRoutes.on(['GET', 'HEAD'], '/:token/content', async (c) => {
 
 ### 6.4 组件抽取（复用现有的全部预览能力）
 
-「类型分发 + Office 渲染」现在在 admin 里（`file-preview-dialog.tsx:22` 的 `PreviewDialogItem`、
+「类型分发 + Office 渲染」在 admin 里（`file-preview-dialog.tsx` 的 `PreviewDialogItem`、
 `apps/admin/src/components/office-preview.tsx`），`@repo/ui` 只有最底层的 `FilePreview`。
-web 拿不到 admin 的代码，所以必须抽：
+原计划是抽到 `@repo/ui`（理由是「web 拿不到 admin 的代码」）：
 
-| 现在在哪 | 移到哪 | 说明 |
+| 原计划 | 移到哪 | 现状（2026-11-13） |
 | --- | --- | --- |
-| `OfficePreview` | `packages/ui/src/components/office-preview.tsx` | `docx-preview` / `xlsx` / `pptx-preview` 随迁到 `@repo/ui` 依赖；**保持动态 `import()`** |
-| `PreviewDialogItem` 与分发判定 | `packages/ui/src/components/preview-item.ts` | admin 改为从 `@repo/ui` 引，行为不变 |
+| `OfficePreview` | `packages/ui/src/components/office-preview.tsx` | **未迁**：仍在 `apps/admin/src/components/office-preview.tsx`，由 `apps/admin/src/components/share-preview.tsx` 直接 `import '@/components/office-preview'` |
+| `PreviewDialogItem` 与分发判定 | `packages/ui/src/components/preview-item.ts` | **未迁**：仍在 `apps/admin/src/components/file-preview-dialog.tsx`（`PreviewDialogItem` / `isPreviewTextItem` 等） |
 
+原因：分享页最终落在 admin（§6.1），与 OfficePreview 同一个应用，抽取不再必要；
+`packages/ui` 因此**没有** `office-preview.tsx` / `preview-item.ts` 这两个文件。
 分享页只需要「单文件、无列表」形态，**不**复用 `FilePreviewDialog`（带清单、上下切换），
-页面里直接 switch `previewKind`。
+`SharePreview` 里直接 switch `previewKind`。
 
 ### 6.5 列表页的「分享」操作（本轮新增的入口）
 
-位置：`apps/admin/src/app/main/ai/files/page.tsx` 的「操作」列（`columns` 第 210 行起），
-在「预览 / 下载」后面加一个「分享」按钮。
+位置：`apps/admin/src/app/(app)/main/ai/files/page.tsx` 的「操作」列，
+在「预览 / 下载」后面加一个「分享」按钮（`ShareDialog` 按 `shareFile` 状态在页面组件内渲染）。
 
 ```
 点击「分享」
@@ -429,16 +456,16 @@ web 拿不到 admin 的代码，所以必须抽：
 
 - **弹窗里就能完成**，不新增页面、不跳路由；
 - 生成成功后 `copyText` 写入剪贴板并 toast「链接已复制」（复用 `apps/admin/src/lib/clipboard.ts`）；
-- 历史列表按 `createdAt` 倒序，`expired` / `revoked` 置灰 + 标签；
-- 「撤销」二次确认，成功后刷新历史列表；
-- 分享按钮的 `title` 提示「免授权链接，任何人拿到都能看」—— 避免误发。
+- 历史列表按 `createdAt` 倒序，`expired` / `revoked` 置灰 + 不可撤销（`disabled`）；
+- 「撤销」是**单击即生效**（按钮 title「撤销该分享」），当前没有二次确认；
+- 分享按钮的 `title` 提示「生成免授权分享链接（任何人拿到都能看）」—— 避免误发。
 
 ## 7. 「不透露系统信息」验收清单
 
 | # | 泄露面 | 措施 | 怎么验 |
 | --- | --- | --- | --- |
 | 1 | 链接内容 | 192 bit 随机 token，不含任何 id | 看链接即可；`token` 与 `fileId` 无关 |
-| 2 | 域名 | 独立 share 域指向 web 部署 | 页面源码 / 打包产物里搜不到业务域 |
+| 2 | 域名 | 独立 share 域指向 **admin** 部署（分享页与 `/api/s/*` 都在 admin） | 页面源码 / 打包产物里搜不到业务域 |
 | 3 | 页面 shell | `(share)` 独立 root layout | 构建后 grep 分享页 chunk，无 `NEXT_PUBLIC_SERVER_URL` |
 | 4 | 标题 / OG | 中性 metadata，`noindex` | `curl -s /s/x \| grep title` |
 | 5 | 内部错误 | 页面只认「有效 / 无效」，不透传 code | 改坏 token，页面无数字 code |
@@ -503,41 +530,49 @@ token 192 bit 随机，猜不出来；`meta` 走限流（默认 60 次/分/IP）
 
 | 层 | 文件 | 动作 |
 | --- | --- | --- |
-| shared | `src/schema/share.schema.ts` | 新增 DTO：create / list / revoke / meta / resolve |
-| shared | `src/utils/file-kind.ts` | 新增 `resolvePreviewKind`，扩展名表从 `workspace.ts` 抽出 |
-| shared | `src/dict/error-codes` | 新增 `SHARE_LINK_INVALID` / `SHARE_DISABLED` |
-| kits | `src/storage/providers/*.ts`、`object-storage.ts` | `getDownloadUrl` 增加可选 `expiresIn` |
-| server | `src/database/entities/file-share-entity.ts` | 新增实体 + 注册进 `root.module.ts` 的 `entities` |
-| server | 迁移 | `db:gen` 生成 `file_shares` 迁移并执行 |
-| server | `modules/share/{share.module,share.controller,share.service,share.repository,share.errors}.ts` | 新增模块 |
-| server | `app-config.ts` | `share` 命名空间 + `mapServerEnv` 映射 |
-| server | `root.module.ts` | 注册 `ShareModule` |
-| server | `test/share.test.ts` | 状态派生 / 越权 / 撤销幂等 / 哈希校验 |
-| sdk | `packages/sdk/src` | `client.share.create / list / revoke` |
-| ui | `packages/ui/src/components/office-preview.tsx` | 从 admin 迁入（依赖随迁） |
-| ui | `packages/ui/src/components/preview-item.ts` | 抽 `PreviewDialogItem` + 分发判定 |
-| admin | `components/file-preview-dialog.tsx` | 改为从 `@repo/ui` 引 |
-| admin | `components/share-dialog.tsx` | 新增：有效期选择 + 生成 + 复制 + 历史 + 撤销 |
-| admin | `app/main/ai/files/page.tsx` | 操作列加「分享」 |
+| shared | `src/schema/share.schema.ts` | 新增 DTO：create / list / revoke / meta / resolve（已落地） |
+| shared | `src/utils/file-kind.ts` | 新增 `resolvePreviewKind`，扩展名表从 `workspace.ts` 抽出（已落地） |
+| shared | `src/dicts/app-error-code.dict.ts` | 新增 `ShareLinkInvalid`(3419) / `ShareForbidden`(3421) / `ShareFileNotFound`(3422) / `ShareExpiryInvalid`(3423)；**没有** `SHARE_DISABLED` |
+| kits | `src/storage/providers/*.ts`、`object-storage.ts` | `getDownloadUrl` 增加可选 `expiresIn`（已落地） |
+| server | `src/database/entities/file-share-entity.ts` | 新增实体 + 注册进 `root.module.ts` 的 `entities`（已落地） |
+| server | 迁移 | `db:gen` 生成 `file_shares` 迁移并执行（已落地） |
+| server | `modules/share/{share.module,share.controller,share.service,share.repository,share.errors,share.token}.ts` | 新增模块（已落地；另拆出纯函数 `share.token.ts`） |
+| server | `app-config.ts` | `share` 命名空间 + `mapServerEnv` 映射（已落地） |
+| server | `root.module.ts` | 注册 `ShareModule`（已落地） |
+| server | `test/share-token.test.ts` | 已落地：token 生成 / 哈希稳定 / 状态派生；服务层（越权 / 撤销幂等 / views 自增）**自动化测试仍缺**（见 §10.1） |
+| sdk | `packages/sdk/src` | `client.share.create / list / revoke`（已落地） |
+| ui | `packages/ui/src/components/office-preview.tsx` | ~~从 admin 迁入~~ **未做**（分享页留在 admin，见 §6.4） |
+| ui | `packages/ui/src/components/preview-item.ts` | ~~抽 `PreviewDialogItem`~~ **未做**；`PreviewDialogItem` 仍在 admin |
+| admin | `components/file-preview-dialog.tsx` | ~~改为从 `@repo/ui` 引~~ **未做**（未迁移） |
+| admin | `components/share-dialog.tsx` | 新增：有效期选择 + 生成 + 复制 + 历史 + 撤销（已落地）；另 `components/share-preview.tsx` |
+| admin | `app/(app)/main/ai/files/page.tsx` | 操作列加「分享」（已落地） |
 | admin | `src/api/app.ts` | 新增 Hono 入口（`basePath(/api)` + 安全头 + 挂载），已落地 |
 | admin | `src/api/share.ts` | 新增分享路由（content 转发），已落地 |
 | admin | `app/api/[[...route]]/route.ts` | 新增 catch-all 入口（`handle(app)`），已落地 |
-| admin | `app/(app)/*` | 现有页面迁入路由组（机械改动，含测试里的路径引用） |
-| admin | `app/(share)/layout.tsx`、`s/[token]/page.tsx` | 新增（含 `share-preview.tsx`） |
-| 部署 | ingress | `s.example.com` → web 服务 |
+| admin | `app/(app)/*` | 现有页面迁入路由组（机械改动，含测试里的路径引用），已落地 |
+| admin | `app/(share)/layout.tsx`、`s/[token]/page.tsx` | 新增（含 `share-preview.tsx`），已落地 |
+| 部署 | ingress | `s.example.com` → **admin** 服务（分享页与内容接口都在 admin） |
 
 ## 10. 验证
 
 ### 10.1 单测
 
-`apps/server/test/share.test.ts`：
+> 现状（2026-11-13）：只有 `apps/server/test/share-token.test.ts`（token 生成 / 哈希 /
+> 状态派生三条不变量）。下面「计划中」四项（撤销幂等、views 自增、越权 403、哈希查库）
+> **没有**自动化用例，属于待补项；实际验证只做过真实链路的 10.2。
 
-1. 状态派生：`active` / `expired`（`expires_at` 过去）/ `revoked`（`revoked_at` 非空）/
-   `invalid`（查不到、文件软删）；
-2. `revoke` 幂等：撤两次，`revoked_at` 不变；
-3. 有效期内 meta 命中 → `views + 1`；
-4. 越权：前台用户分享他人文件 → 403；
-5. token 哈希：同 token 两次查询命中同一行；改一位查不到。
+`apps/server/test/share-token.test.ts`（已验证）：
+
+1. 状态派生：`active` / `expired`（`expires_at` 过去）/ `revoked`（`revoked_at` 非空）；
+   `invalid`（查不到、文件软删）在 service 层折叠，纯函数不覆盖；
+2. token：32 字符 base64url、两次不同、哈希稳定且长度 64。
+
+计划中（未落地，原文保留）：
+
+1. `revoke` 幂等：撤两次，`revoked_at` 不变；
+2. 有效期内 meta 命中 → `views + 1`；
+3. 越权：前台用户分享他人文件 → 403；
+4. token 哈希：同 token 两次查询命中同一行；改一位查不到。
 
 `file-kind`：每种扩展名 / MIME 组合的 kind 断言；**冲突时取保守结果**。
 
@@ -574,6 +609,10 @@ curl -sI "https://s.example.com/s/$TOKEN/content" | grep -E "content-type|robots
 6. **多资源分享**：目前只支持 `ai_files`，泛化需把 `file_id` 换成 `{type, id}`。
 
 ## 12. 待定
+
+> 状态（2026-11-13）：#2 已定（只展示一次，库里只存哈希）；#3 仍是部署决策（代码侧未做 cookie
+> `Domain` 调整）；#4 未做（聊天右栏文件树没有分享入口）；#1 仍未做——接口已支持
+> `expiresAt: null`，`ShareDialog` 只给日期时间选择，没有「永久」开关。
 
 | # | 问题 | 影响 |
 | --- | --- | --- |

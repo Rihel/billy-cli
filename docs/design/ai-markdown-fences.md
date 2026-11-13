@@ -1,7 +1,8 @@
 # 富内容围栏：让模型直接表达图、页面与动画
 
 > 定位：AI 会话里「模型写一段带语言标识的代码块 → 前端渲染成看得见的东西」这一层的设计与取舍。
-> 现状基线：`MessageResponse`（Streamdown 2.6）已经支持 ```ts 代码高亮、```mermaid 图、`$$…$$` 块级公式；
+> 现状基线：`MessageResponse`（Streamdown 2.7.1，插槽 `@streamdown/cjk` / `code` / `math` / `mermaid`）
+> 已经支持 ```ts 代码高亮、```mermaid 图、`$$…$$` 块级公式；
 > 本文补齐 **xflow（流程图）、html（页面预览）、gsap（动画）** 三类，并修掉公式样式缺失。
 >
 > **2026-11-11 变更**：`html` 围栏**退役** —— 页面预览改走「`.html` 文件 + 文件管理预览」
@@ -90,7 +91,8 @@
   模型写的代码能把图画出来，但**发不出去**；
 - 外链库（gsap）由**父页面同源 fetch 后内联**进文档，不依赖 iframe 的网络权限；注入位置在
   **模型内容之前**（`<head>`）—— 放到后面时，模型自己的 `<script>` 先执行，实测直接 `gsap is not defined`；
-- 高度由 iframe 内 `ResizeObserver` 经 `postMessage` 回报，父页面校验 `event.source` 后夹在 120–560px 之间（超出滚动）；
+- 高度由 iframe 内 `ResizeObserver` 经 `postMessage` 回报，父页面校验 `event.source` 后夹在
+  **160–560px** 之间（`DEFAULT_MIN_HEIGHT` / `DEFAULT_MAX_HEIGHT`；超出滚动）；
 - **全屏**与 xflow 同一套弹窗（92vh × 96vw）：里面是**另一份文档**、另一个 iframe，沙箱参数一字不改 ——
   所以脚本从头再跑一遍，正好用来重看动画；原来的 iframe 不销毁，关掉弹窗就回到它。
 
@@ -98,8 +100,10 @@
 
 沙箱原先"全禁网"，页面里连图表库都引不进来，模型只能手写 canvas / SVG —— 用户要的
 "写页面能用第三方库"就落不了地。现在改为**白名单放行**，清单是
-`packages/shared/src/utils/cdn.utils.ts` 的 `SANDBOX_CDN_HOSTS` —— 一份清单两个消费方：
-`fence-spec.ts` 拼 CSP，`apps/server/test/ai-prompt-guardrails.test.ts` 校验提示词与它一致。
+`packages/shared/src/utils/cdn.utils.ts` 的 `SANDBOX_CDN_HOSTS` —— 一份清单、四个消费方：
+`fence-spec.ts` 拼 CSP；`apps/server/test/ai-prompt-guardrails.test.ts` 校验提示词与它一致；
+`apps/server/test/ai-builtin-skills.test.ts` 校验 `html-page` 技能正文与它一致；
+`packages/ui/test/markdown-fences.test.ts` 校验 CSP 里的 host-source。
 
 | 顺位 | 主机 | 路径 |
 | --- | --- | --- |
@@ -109,9 +113,9 @@
 
 - 三家都覆盖全部 npm 包、都能按包内路径取到同一个文件（2026-11-12 实测 `echarts@5.4.3` 均 200、
   字节数一致）；老牌国产 CDN（staticfile / bootcdn）只收录热门库、路径规则还不一样，不作为默认；
-- **只放行四类子资源**（脚本 / 样式 / 图片 / 字体），`connect-src 'none'` / `form-action 'none'` /
-  `frame-src 'none'` 一个没松 —— 所以能"用库画图"，不能"把数据发出去"，最坏情况也只能把数据
-  发到这几家 CDN 自己的日志里；
+- **只放行五类子资源**（脚本 / 样式 / 图片 / 字体 / 音视频），`connect-src 'none'` /
+  `form-action 'none'` / `frame-src 'none'` / `base-uri 'none'` / `object-src 'none'` 一个没松 ——
+  所以能"用库画图"，不能"把数据发出去"，最坏情况也只能把数据发到这几家 CDN 自己的日志里；
 - 加载失败要**三级兜底**：原生 `<script>` 没法感知"加载超时再换源"，提示词因此要求
   `window.<全局名> || document.write(...)` 逐级补 —— 写法见 `requirements.eta`，这是模型最容易写错的一处；
 - 升级 / 增删主机时三处一起改：白名单常量、`requirements.eta` 的 CDN 段、两个包的测试。
@@ -158,7 +162,8 @@
 | 文件 | 职责 |
 | --- | --- |
 | `packages/ui/src/components/ai-elements/markdown-fences/fence-spec.ts` | 纯函数：xflow 解析/排版、沙箱文档与 CSP 组装、语言清单 |
-| `.../markdown-fences/sandbox-frame.tsx` | 沙箱 iframe（脚本内联、高度回报、错误兜底）；`gsap` 围栏与 HTML 文件预览共用 |
+| `.../markdown-fences/sandbox-frame.tsx` | 沙箱 iframe（脚本内联、高度回报、错误兜底、全屏弹窗）；`gsap` 围栏、HTML 文件预览与分享页 HTML 预览共用（`apps/admin` 走子路径导入，不搬到 `packages/ui/components/`） |
+| `.../markdown-fences/fence-chrome.tsx` | 围栏外壳件：`FencePending`（未闭合占位）/ `FenceSource`（原始内容折叠） |
 | `.../markdown-fences/html-fence.tsx` | **软退役**：prompt 已移除；组件保留给历史消息，页面预览改走文件管理 |
 | `.../markdown-fences/gsap-fence.tsx` | 动画围栏，使用沙箱 |
 | `.../markdown-fences/xflow-fence.tsx` | 解析 + 外壳（含全屏弹窗）；画布按需加载 |
@@ -195,7 +200,7 @@ HTML / SVG 片段都算）+ 三行白名单边界。理由：这些细节只在*
 
 - 纯函数单测：xflow 解析（合法 / 缺字段 / 边悬空 / 非 JSON）、分层排版（列与行坐标确定、无重叠）、
   沙箱文档组装（CSP 存在、预置脚本在模型内容之前、`</script>` 转义、主题色注入）；
-- 浏览器实测（headless Chrome）：沙箱文档里内置 gsap 3.15.0 就位、tween 生效、
+- 浏览器实测（headless Chrome）：沙箱文档里内置 gsap 3.15.x 就位、tween 生效、
   框内 `fetch('https://example.com')` 被 CSP 拦掉、高度回报到父页面；`xflow` 组件单独打包后
   渲染出 4 个节点 / 4 条连线、标签正确；
 - 渲染冒烟：`MessageResponse` 传入未闭合围栏 → 只出现占位、不出现 iframe；闭合后 → 出现 `data-fence` 容器；
@@ -207,8 +212,12 @@ HTML / SVG 片段都算）+ 三行白名单边界。理由：这些细节只在*
 
 - 外链资源只认 CDN 白名单（其余地址会被 CSP 拦下并显示为空）；页面里要"引用真实图片"，仍然走附件，
   不要塞第三方图床地址；
-- **HTML 文件预览**要用沙箱：把 `SandboxFrame` 从 `ai-elements/markdown-fences/` 提到
-  `packages/ui/components/` 并补导出（`ai-file-manager.md` §8.4）；这是 `html` 围栏退役的前提；
+- ~~**HTML 文件预览**要把 `SandboxFrame` 提到 `packages/ui/components/` 并补导出~~
+  **已落地，但换了做法**：没有搬目录，`apps/admin` 直接子路径导入
+  `@repo/ui/components/ai-elements/markdown-fences/sandbox-frame.tsx`
+  （保持"不进 `@repo/ui` 汇总导出"的初衷，见 §4 末段）。文件预览见 `ai-file-manager.md` §8.4；
+- `html` 围栏**组件仍在**（软退役：prompt 已改指向文件预览，renderer 保留给历史消息），
+  真要删代码时连 `FENCE_LANGUAGES.html` 与 `renderers.tsx` 那行一起删；
 - `xflow` 暂不支持分组、泳道、自定义节点样式；真需要时扩 schema，而不是让模型写坐标；
 - `xflow` 节点按固定尺寸（208×84）排版，描述超过两行会被截断（`line-clamp-2`）——
   需要更长文案时用 `label` 说主句、`description` 只说补充，别把一段话塞进节点。

@@ -113,6 +113,8 @@ description: Billy 工程（billy-cli monorepo）开发必读 skill。任何在�
 - [ ] `pnpm dev:pkgs` 与目标 app 类型检查通过
 - [ ] 前端改动：已跑 `pnpm typecheck` / `pnpm test` / `pnpm check:ui`（新增前端包必须声明 `typecheck`
   脚本、自有组件必须在 `packages/ui/src/index.ts` 导出，否则守卫拦下）
+- [ ] 提交前已跑 `pnpm verify`（oxlint + 类型感知 + oxfmt 检查 + 三道守卫）；风格问题交给 `pnpm fmt`，
+      不手写风格、不新增 `eslint-disable` 式豁免（确需豁免用单行 `oxlint-disable-next-line` + 中文理由）
 - [ ] 界面验证已交回用户，附「看哪个页面、哪一步操作、期望看到什么」的清单；**没有自己跑无头浏览器**
 - [ ] 收尾已清理：验证用的临时脚本已删除；为测试起的进程已用 `pnpm kill:dev` 停掉、端口已释放
       （三条要求的出处见 `references/workflow.md` 的「验证与收尾清理」）

@@ -1,7 +1,12 @@
 # 调度基础设施（定时器 + Cron）落地方案
 
 > 目标：为工程提供**进程内**的定时器 / Cron 调度能力，与调度原语解耦。
-> 引入 `croner` 作为 cron 引擎，封装为 `core/foundation` 的 `Scheduler` 统一入口。
+> 引入 `croner` 作为 cron 引擎，封装为 `packages/kits/src/foundation/scheduler/` 的 `Scheduler` 统一入口。
+>
+> 2026-11-13 核对：实现与本文一致，仅两处事实更新 —— ① `croner` 现为 `^11.0.0`
+> （本文原文写的 `^10.0.1` 是当时的版本）；② 目录归属已明确为
+> `packages/kits/src/foundation/scheduler/`（`scheduler.ts` + `scheduler.module.ts` + `index.ts`），
+> 本文原文的 `core/foundation` 是 kits 化之前的路径。当前实际消费方见 §7。
 
 ## 1. 背景与能力定位
 
@@ -18,12 +23,13 @@
 | 项 | 决定 |
 | --- | --- |
 | 能力性质 | 横切基础能力（进程内调度器） |
-| 位置 | `packages/kits/src/foundation/scheduler/scheduler.ts`（`Scheduler`） |
+| 位置 | `packages/kits/src/foundation/scheduler/scheduler.ts`（`Scheduler`）、`scheduler.module.ts`（`SchedulerModule`）、`index.ts` |
 | 注册 | `SchedulerModule` 装配（`@Global()` 无配置纯模块，业务侧 `@Inject(Scheduler)`）；`foundation/index.ts` 导出 |
-| 依赖 | `croner@^10.0.1`（kits），`vitest` 仅 devDependency |
+| 依赖 | `croner@^11.0.0`（kits），`vitest` 仅 devDependency |
 | 错误 | `SchedulerError`（`AppErrorCodes.Internal`），加入 `infrastructure-errors.ts` |
 
-放置依据：`placement.md` §7「横切基础能力 → core/foundation」、§5「定时任务/调度」。
+放置依据：`placement.md` §1 第 7 条「横切基础能力 → `packages/kits/src/foundation/<能力>/`」
+与「定时任务 / 调度」条目（`kits/src/foundation/scheduler/`，croner）。
 
 ## 3. 关键设计
 
@@ -68,3 +74,13 @@ scheduler.scheduleInterval('heartbeat', 5 * 60_000, async () => {
   各自执行。需要「可靠 / 分布式」周期任务时，另案处理（多实例互斥 + 分布式锁，见 concurrency skill）。
 - 任务 handler 是纯业务回调，异常已被吞掉；如需任务失败可观测，建议 handler 内部
   自行处理并返回结果，由调度器统一记日志兜底。
+
+## 7. 当前实际消费方（2026-11-13）
+
+| 位置 | 用法 |
+| --- | --- |
+| `apps/server/src/modules/monitor/engine/monitor.timeline.ts` | 按**评估周期**注册槽位（60s → `* * * * *`、300s → `*/5 * * * *`），`protect: true` 防重入、固定 `timezone: 'Asia/Shanghai'`；停机关 `job.stop()` |
+| `apps/server/src/modules/ai-usage/ai-usage.scheduler.ts` | AI 用量日表汇总 |
+
+多实例互斥在调用方做（如监控槽位抢 `RedisStore.acquireLock('monitor:eval:<slot>')`），
+`Scheduler` 本身只保证「本进程按时触发」。

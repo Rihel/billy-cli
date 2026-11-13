@@ -2,6 +2,9 @@
 
 > 每篇回答「这个能力为什么长这样、当时取舍了什么」。使用与操作见 [../guide/](../guide/)；
 > 哪天改的见 [../dev-logs/](../dev-logs/)。
+>
+> 最近一次与代码逐篇核对：**2026-11-13**。设计稿记录的是当时的方案与取舍，其中「已归档 / 已废弃」
+> 的旧稿保留历史论证、不再代表现状；事实冲突时以代码与 guide 为准。
 
 ## AI
 
@@ -47,6 +50,12 @@
 | [frontend-foundation.md](frontend-foundation.md) | 前端基础建设：质量检查 + SSE 前端链路 + 前台业务闭环 + 实测记录 |
 | [design-system.md](design-system.md) | 设计系统：token / 主题 / 字体规范与守卫 |
 | [admin-design-language.md](admin-design-language.md) | 后台版面语言与应用层约定 |
+
+## 工程化
+
+| 文档 | 内容 |
+| --- | --- |
+| [engineering-toolchain.md](engineering-toolchain.md) | 代码检查 / 格式化 / 提交钩子：oxlint + oxfmt + tsgolint + lefthook 的选型与落地（不含 CI） |
 
 ## 存储与部署
 

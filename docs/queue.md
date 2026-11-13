@@ -6,10 +6,26 @@
 > 延迟 / 周期任务由 `foundation/scheduler`（croner）与 `foundation/time-wheel` 承担，
 > 与 BullMQ 的定位重叠。本文仅作历史存档，**不要再按本文实现**。
 >
+> **现状（2026-11-13 核对）**：仓库中没有 `packages/kits/src/queue/`，`bullmq` / `QueueManager` /
+> `QueueModule` 全仓零引用（`package.json` 也无该依赖）。当前异步与定时能力的实际归属：
+>
+> | 需求 | 现用能力 | 位置 |
+> | --- | --- | --- |
+> | 异步消息 / 事件驱动 | `KafkaService` + `@KafkaConsumer` | `packages/kits/src/kafka/` |
+> | 进程内事件总线（at-most-once） | `EventBus` / `EventBusModule`（`events:<topic>`） | `packages/kits/src/events/` |
+> | 跨实例广播 / 订阅传输 | `PubSub` / `PubSubModule` | `packages/kits/src/pubsub/` |
+> | 延迟 / 周期任务 | `Scheduler`（croner） | `packages/kits/src/foundation/scheduler/` |
+> | 高频毫秒级调度 | `TimeWheel` | `packages/kits/src/foundation/time-wheel/` |
+>
+> 因此本文是**方案稿 + 历史存档**，对应能力从未以 BullMQ 形态落地，也没有待补的实现工作。
+>
 > 目标：把 BullMQ 引入为工程**基础设施统一入口**（不是某个业务模块），
 > 让业务模块通过统一入口生产 / 消费任务，不散落 `import bullmq`。
 
 ## 1. 能力定位与位置
+
+> 以下 §1–§4 是**当时的方案设计**，其中的目录、模块、依赖与示例在当前仓库都不存在，
+> 只用于理解「为什么当时会这么设计」；现状见文首表格。
 
 | 项 | 决定 |
 | --- | --- |

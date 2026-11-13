@@ -2,6 +2,26 @@
 
 > 状态：已实现（2026-10-22，P1/P2/P3）：系统自监控、AI 用量日表与规则、指标历史、恢复通知、stream 示例均已接入。
 >
+> 2026-11-13 核对（本文与代码对齐后的口径，正文按此理解）：
+> - **接口就是 §11.1 这 13 条**（`rule/definitions|list|update|reset`、`alert/page-query|detail`、
+>   `metric/definitions|series|latest`、`engine/status`、`log/page-query`、`test`、`health`）；
+>   旧的 `rule/create|page-query|remove|detail` 已删除，SDK 同步为 `client.monitor.*`；
+> - **`MonitorEngine` 的职责只有三件**：启动对账（`seed.sync()` → `timeline.start()`）、
+>   槽位编排（`runSlot`：所有实例采集 → 抢 `monitor:eval:<slot>` 锁 → leader 采全局 + 逐规则评估
+>   + 事件扫描 + 清理）、异常入口（`ingestError`）；静默 / 告警记录 / 投递 / 清理各自是独立 service，
+>   不在引擎里；
+> - 目录结构以 §5 的现行清单为准（新增 `definitions/aggregate.ts`、`definitions/version.ts`、
+>   `engine/instance.service.ts`、`engine/monitor.registry.ts`、`engine/monitor-rule.repository.ts`、
+>   `api/monitor-health.controller.ts`、`api/monitor-test.service.ts`、`rules/system/http-error-streak.rule.ts`；
+>   本文原列的 `definitions/schema.ts`、`api/schema.ts`、`sources/metric-source.ts` 实际不存在 ——
+>   校验 schema 在 `@repo/shared` 的 `monitor.schema.ts`，`MetricSource` 接口在
+>   `definitions/metric.types.ts`）；
+> - 规则清单见 §7.7（系统 5 条 + AI 4 条），其中 `system.http.error-rate.streak` 是 stream 驱动的示例规则
+>   （默认关闭）；
+> - Redis key 见 §9.6（stream 规则状态的实际 key 是 `monitor:stream:<ruleKey>`，一个 hash）；
+> - 错误码以 `AppErrorCodes` 为准：`MonitorRuleNotFound`=3103、`MonitorRuleConfigInvalid`=3104、
+>   `MonitorMetricNotFound`=3105、`MonitorAlertNotFound`=3106。
+>
 > 目标：把脚手架自身的运行状态（HTTP、进程、AI 用量、异常）做成一套**可声明、可回看、可配置、可告警**的能力。
 >
 > 关系：`ai-usage-stats.md` 的 AI 日表设计保留；**告警接入方式以本文为准**。
@@ -96,8 +116,10 @@ flowchart LR
 - **指标层**：指标源 → 原始指标 → 衍生指标 → 样本表。负责「现在怎么样、过去怎么样」，
   也是控制台趋势的数据来源。
 - **规则层**：规则类型 + 规则实例 → 评估 → 命中 → 通知 / 审计 / SSE。负责「什么时候该告警」。
-- **引擎**：时间槽、采集编排、leader 互斥、静默、清理。它不 import 任何业务模块；
-  业务模块把指标和规则注册进来。
+- **引擎**：时间槽、采集编排、leader 互斥、异常入口。它不 import 任何业务模块；
+  业务模块把指标和规则注册进来。静默（`SilenceService`）、告警记录（`AlertLifecycleService`）、
+  投递（`AlertDeliveryService`）、清理（`CleanupService`）都是引擎调用的独立 service，
+  不写进 `MonitorEngine` 本身。
 
 ## 4. 运行模型：采集在所有实例，评估在 leader
 
@@ -132,18 +154,28 @@ flowchart LR
 
 ## 5. 目录结构
 
+> 现行清单（2026-11-13 按实际文件核对）。相对本文原稿的差异：删掉不存在的
+> `definitions/schema.ts`、`api/schema.ts`、`sources/metric-source.ts`；补上
+> `definitions/aggregate.ts`、`definitions/version.ts`、`config.ts`、`errors.ts`、
+> `engine/instance.service.ts`、`engine/monitor.registry.ts`、`engine/monitor-rule.repository.ts`、
+> `api/monitor-health.controller.ts`、`api/monitor-test.service.ts`、
+> `rules/system/http-error-streak.rule.ts`；AI 监控目录改为实际文件名。
+
 ```text
 apps/server/src/modules/monitor/
+├── config.ts                    # MonitorConfig（enabled / emailTo / instanceId / retentionDays）
+├── errors.ts                    # MonitorRuleNotFound / ConfigInvalid / MetricNotFound / AlertNotFound
 ├── definitions/
-│   ├── metric.types.ts          # MetricSource / RawMetric / DerivedMetric
-│   ├── rule.types.ts            # RuleType / RuleConfig / Hit
-│   ├── define.ts                # defineMetric / defineRule / defineThresholdRule
-│   ├── window.ts                # 窗口对齐、窗口 key 等公共纯函数
-│   └── schema.ts                # 规则配置的 Zod 校验
+│   ├── metric.types.ts          # MetricSource / RawMetric / DerivedMetric / MetricWindow / MetricPoint
+│   ├── rule.types.ts            # RuleType / MetricRuleType / EventRuleType / RuleContext / Hit / MonitorErrorEvent
+│   ├── define.ts                # defineMetric / defineRule / defineThresholdRule / compare
+│   ├── aggregate.ts             # aggregate(values, 'last' | 'sum' | 'avg' | 'max')
+│   ├── version.ts               # definitionVersion(rule)（稳定序列化 → 摘要）
+│   └── window.ts                # 窗口对齐、窗口 key、dayWindow 等公共纯函数
 ├── sources/
-│   ├── metric-source.ts         # MetricSource 接口（tick 缓存归采集服务）
 │   ├── telemetry.source.ts      # Telemetry.drainCompleted()
 │   └── process.source.ts        # process.memoryUsage()
+│   # 注：MetricSource 接口在 definitions/metric.types.ts，没有独立的 metric-source.ts
 ├── metrics/
 │   ├── system/
 │   │   ├── raw/
@@ -165,47 +197,51 @@ apps/server/src/modules/monitor/
 ├── rules/
 │   ├── system/
 │   │   ├── http-error-rate.rule.ts
+│   │   ├── http-error-streak.rule.ts   # stream 驱动示例（连续 N 窗口越线，默认关闭）
 │   │   ├── http-p99.rule.ts
 │   │   ├── process-memory.rule.ts
 │   │   ├── uncaught-exception.rule.ts
 │   │   └── index.ts
 │   └── index.ts
 ├── engine/
-│   ├── monitor.engine.ts        # 槽位编排
-│   ├── monitor.timeline.ts      # 周期槽注册
-│   ├── metric.registry.ts
-│   ├── rule.registry.ts
-│   ├── metric-collect.service.ts  # 只做「读源 → raw → 写 raw 样本」
+│   ├── monitor.engine.ts        # 启动对账 + 槽位编排 + 异常入口
+│   ├── monitor.timeline.ts      # 周期槽注册（按 interval 精确到分钟，protect 防重入）
+│   ├── monitor.registry.ts      # 业务模块注册入口（metrics / rules / sources）
+│   ├── metric.registry.ts       # 指标定义 + 指标源登记与查询（rawForInterval / source）
+│   ├── rule.registry.ts         # 规则类型登记、启动校验、intervals() / forInterval()
+│   ├── instance.service.ts      # 本实例标识（MONITOR_INSTANCE_ID 或 hostname:pid）
+│   ├── metric-collect.service.ts  # 只做「读源 → raw → 写 raw 样本」（collectInstance / collectGlobal）
 │   ├── derived-metric.service.ts  # 只做「读 raw → derived → 写 derived 样本」
 │   ├── metric-sample.repository.ts
+│   ├── monitor-rule.repository.ts # 只做 monitor_rules 读写
 │   ├── rule-evaluator.service.ts
 │   ├── silence.service.ts       # 只做静默键
-│   ├── stream-state.service.ts  # 只做 stream 状态（P2）
+│   ├── stream-state.service.ts  # 只做 stream 规则状态（Redis hash monitor:stream:<ruleKey>）
 │   ├── alert-lifecycle.service.ts # 只做告警记录：首次 / 最近 / 恢复 / 时长 / 快照
 │   ├── alert.repository.ts        # 只做 monitor_alerts 读写
-│   ├── alert-delivery.service.ts  # 只编排一次投递：静默 → 通知 → 记录 → SSE
+│   ├── alert-delivery.service.ts  # 只编排一次投递：静默 → 通知 → 发送记录 → SSE
 │   ├── alert-log.repository.ts    # 只做 alert_logs 读写
-│   ├── alert-stream.service.ts    # 只做 alert.fired SSE 推送
+│   ├── alert-stream.service.ts    # 只做 alert.fired SSE 推送（发布到 admin:all）
 │   ├── event-rule.service.ts      # 只做事件匹配与计数
-│   ├── cleanup.service.ts       # 只做样本保留期清理
-│   ├── seed.service.ts
+│   ├── cleanup.service.ts       # 只做样本保留期清理（monitor:cleanup 锁）
+│   ├── seed.service.ts          # 只做启动校验与规则对账
 │   └── stale.guard.ts
 ├── api/
-│   ├── monitor.controller.ts
+│   ├── monitor.controller.ts          # 12 条 admin 接口（rule/alert/metric/engine/log/test）
+│   ├── monitor-health.controller.ts   # POST /monitor/health（免鉴权，探 DB / Redis）
 │   ├── monitor-rule.service.ts
 │   ├── monitor-alert.service.ts
 │   ├── monitor-metric.service.ts
 │   ├── monitor-engine.service.ts
-│   └── schema.ts
+│   └── monitor-test.service.ts        # 测试通知：只验通道 + 写 alert_logs（alert_id / rule_id 为 null），不建 monitor_alerts
 ├── monitor.module.ts
 └── index.ts
 
 apps/server/src/modules/ai/monitoring/
 ├── ai-usage.source.ts
-├── metrics/raw/*.metric.ts
-├── metrics/derived/*.metric.ts
-├── rules/*.rule.ts
-├── ai-monitoring.module.ts
+├── ai-usage.metrics.ts      # AI 指标定义（不是 metrics/raw/*.metric.ts 一指标一文件）
+├── ai-usage.rules.ts        # AI 规则定义（4 条，默认关闭）
+├── ai-monitoring.module.ts  # AiMonitoringModule：onModuleInit 注册进 MonitorRegistry
 └── index.ts
 ```
 
@@ -219,18 +255,26 @@ apps/server/src/modules/ai/monitoring/
 
 | 文件 / 目录 | 只负责 |
 | --- | --- |
+| `config.ts` | `MonitorConfig`（告警总开关 / 邮件收件人 / 实例 id / 样本保留天数），token 用 `Symbol.for('MonitorConfig')` |
+| `errors.ts` | 监控模块的四个 `AppError` 子类（规则 / 配置 / 指标 / 告警记录） |
 | `definitions/*.types.ts` | 通用类型、接口；不放业务逻辑 |
-| `definitions/define.ts` / `window.ts` / `schema.ts` | 公共纯函数与校验；可被多处复用 |
+| `definitions/define.ts` / `window.ts` / `aggregate.ts` / `version.ts` | 公共纯函数（定义构造 / 窗口对齐 / 归并 / 定义版本）；可被多处复用 |
 | `sources/*.source.ts` | 一个数据源的读取；不计算指标、不判定规则 |
 | `metrics/**/*.metric.ts` | 一个指标的定义与采集；不查规则、不发通知 |
 | `rules/**/*.rule.ts` | 一条规则的定义与判定；不查库、不发通知 |
+| `engine/monitor.engine.ts` | 启动对账 + 槽位编排 + 异常入口；不判断规则、不发通知 |
 | `engine/monitor.timeline.ts` | 只注册周期槽 |
-| `engine/metric-collect.service.ts` | 只做「读源 → raw → 写 raw 样本」 |
+| `engine/monitor.registry.ts` | 业务模块注册入口（`register({ sources, metrics, rules })`） |
+| `engine/metric.registry.ts` | 指标定义 + 指标源登记、按周期 / scope 查询 |
+| `engine/rule.registry.ts` | 规则类型登记、启动校验、`intervals()` / `forInterval()` |
+| `engine/instance.service.ts` | 只提供本实例标识 |
+| `engine/metric-collect.service.ts` | 只做「读源 → raw → 写 raw 样本」（`collectInstance` / `collectGlobal`） |
 | `engine/derived-metric.service.ts` | 只做「读 raw → derived → 写 derived 样本」 |
 | `engine/metric-sample.repository.ts` | 只做样本表的数据库读写 |
+| `engine/monitor-rule.repository.ts` | 只做 `monitor_rules` 读写 |
 | `engine/rule-evaluator.service.ts` | 只取样本、调用规则、产出 hit；不发送、不写告警记录 |
 | `engine/silence.service.ts` | 只做静默键读写 |
-| `engine/stream-state.service.ts` | 只做 stream 规则状态（P2） |
+| `engine/stream-state.service.ts` | 只做 stream 规则状态（Redis hash） |
 | `engine/alert-lifecycle.service.ts` | 只做告警记录：首次命中、最近命中、恢复、时长、快照 |
 | `engine/alert.repository.ts` | 只做 `monitor_alerts` 读写 |
 | `engine/alert-delivery.service.ts` | 只编排一次投递：静默 → 通知 → 发送记录 → SSE；不判断规则 |
@@ -240,7 +284,8 @@ apps/server/src/modules/ai/monitoring/
 | `engine/cleanup.service.ts` | 只做保留期清理 |
 | `engine/seed.service.ts` | 只做启动校验与规则对账 |
 | `engine/stale.guard.ts` | 只判断样本是否陈旧 |
-| `api/monitor.controller.ts` | 只做 HTTP 边界（校验 + 调 service + 返回） |
+| `api/monitor.controller.ts` | 只做 HTTP 边界（校验 + 调 service + 返回），`AdminAuthGuard` |
+| `api/monitor-health.controller.ts` | 只做 `POST /monitor/health`（免鉴权，探 DB / Redis） |
 | `api/monitor-*.service.ts` | 只做读模型 / 用例编排，不直接发通知 |
 | `monitor.module.ts` | 只做装配 |
 
@@ -891,6 +936,7 @@ sequenceDiagram
 | rule key | kind | 指标 | 评估周期 | 统计窗口 | 默认条件 | 级别 | 默认启用 |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | `system.http.error-rate` | metric | `request.errorRate` | 60s | 60s | `> 0.05` | error | 是 |
+| `system.http.error-rate.streak` | metric（driver `stream`） | `request.errorRate` | 60s | 60s | `> 0.05` 连续 `streakWindows=3` 个窗口 | error | **否** |
 | `system.http.p99` | metric | `request.p99` | 60s | 60s | `> 1000ms` | warn | 是 |
 | `system.process.memory` | metric | `process.memoryRatio` | 60s | 60s | `> 0.85` | warn | 是 |
 | `system.error.uncaught` | event | — | 事件驱动 | 60s | `>= 1` | critical | 是 |
@@ -899,8 +945,11 @@ sequenceDiagram
 | `ai.usage.tool-failure-rate` | metric | `ai.usage.toolFailureRate` | 300s | 当天 | `>= 0.20` | warn | 否 |
 | `ai.usage.first-token` | metric | `ai.usage.avgFirstTokenMs` | 300s | 当天 | `>= 8000ms` | warn | 否 |
 
+- 清单实况（2026-11-13）：系统 5 条（`rules/system/index.ts` 的 `SYSTEM_RULES`）+ AI 4 条
+  （`ai/monitoring/ai-usage.rules.ts` 的 `AI_USAGE_RULES`）；本文原表漏了
+  `system.http.error-rate.streak`（stream 驱动示例，默认关闭、`streakWindows=3`）；
 - 默认通道 `['file']`（零配置可用），管理员再补 lark / email；
-- 默认静默期：系统规则 300 秒，AI 规则 1800 秒；默认连续 2 轮未命中判定恢复；
+- 默认静默期：系统规则 300 秒，AI 规则 1800 秒；默认连续 2 轮未命中判定恢复（`recoverAfterWindows: 2`）；
 - 默认水位只是起点，后台可改；AI 规则默认关闭，避免一上线就按不适配的阈值误报；
 - 低流量时错误率/分位波动大；P1 先按单指标阈值，P2 可加「最小请求数」条件或改用更长窗口，
   避免 1 个请求 1 个错误就告警；
@@ -914,9 +963,12 @@ sequenceDiagram
 - 用 `Scheduler.scheduleCron`，croner 保证墙钟对齐；`60s` 用 `* * * * *`，`300s` 用 `*/5 * * * *`；
 - `protect: true` 防止同一槽重叠；慢 tick 的下一轮会被跳过，下一轮再用
   `Telemetry.drainCompleted()` 把欠的窗口补采回来（评估看上一轮已结束窗口，见 §8.2）；
-- 每个槽设超时（小于评估周期），超时记日志、结束本轮，不能让慢查询把槽一直占住；
-- 不在规则配置里开放任意 cron：规则只能选 60s / 300s 两种评估周期，避免
-  `*/1 * * * *` 和 `* * * * *` 这类等价写法产生两个槽、两把锁。
+- 每个槽设超时（小于评估周期），超时记日志、结束本轮，不能让慢查询把槽一直占住
+  —— **这一条尚未实现**：`monitor.engine.ts` 里没有超时控制，只有 croner 的 `protect`；
+  慢 tick 期间该槽的后续轮次会被跳过（见 §8.4）；
+- 不在规则配置里开放任意 cron：规则只能选 60s / 300s 两种评估周期（`MonitorTimeline.cronOf`
+  只接受能整除 60 的秒数，且分钟数 1–59），避免 `*/1 * * * *` 和 `* * * * *` 这类等价写法
+  产生两个槽、两把锁。
 
 ```mermaid
 flowchart LR
@@ -925,6 +977,22 @@ flowchart LR
   E60 --> R60["系统规则"]
   E300 --> R300["AI 规则"]
 ```
+
+**`MonitorEngine` 的职责边界（2026-11-13 实况）**
+
+`MonitorEngine`（`engine/monitor.engine.ts`）只做三件事，其余全部委托给单一职责的 service：
+
+| 职责 | 实现 |
+| --- | --- |
+| 启动对账 | `onApplicationBootstrap`：先 `seed.sync()`（写 `monitor_rules`、校验定义），再 `timeline.start()` 注册槽位；seed 失败则不注册任何槽位、应用启动失败 |
+| 槽位编排 | `runSlot(intervalSeconds)`：① `collector.collectInstance()`（所有实例）→ ② `redis.acquireLock('monitor:eval:<slot>', 30)` → ③ 抢到才 `collector.collectGlobal()` + 逐规则 `evaluator.evaluate()` + （60s 槽）`events.sweep()` + `cleanup.maybeCleanup()` → ④ `finally` 释放锁；`slotStatus()` 给 `/monitor/engine/status` 读 |
+| 异常入口 | `ingestError(error, context)`：`MonitorConfig.enabled` 为 false 直接返回；否则匹配错误码 / 关键字 → Redis 计次 → 触发事件规则 |
+
+它**不负责**：静默（`SilenceService`）、告警记录生命周期（`AlertLifecycleService`）、
+逐通道投递（`AlertDeliveryService`）、样本清理细节（`CleanupService`）、规则判定
+（`RuleEvaluatorService` / 各 `*.rule.ts`）。依赖注入的是 `MonitorConfig` / `MetricCollectService` /
+`RuleRegistry` / `RuleEvaluatorService` / `EventRuleService` / `CleanupService` / `SeedService` /
+`MonitorTimeline` / `RedisStore` / `AppLogger`，**不 import 任何业务模块**。
 
 ### 8.2 tick 流程
 
@@ -959,7 +1027,8 @@ sequenceDiagram
   end
 ```
 
-伪代码：
+伪代码（与 `monitor.engine.ts` 的 `runSlot` 对齐；实际方法名：
+`redis.acquireLock` / `redis.releaseLock`、`rules.forInterval`、`events.sweep`、`cleanup.maybeCleanup`）：
 
 ```ts
 async runSlot(intervalSeconds: number): Promise<void> {
@@ -967,13 +1036,13 @@ async runSlot(intervalSeconds: number): Promise<void> {
   await this.collector.collectInstance(intervalSeconds)
 
   // 2. 评估只在一个实例执行；没有窗口也要采全局指标（例如 AI 日表）
-  const token = await this.tryLock(`monitor:eval:${intervalSeconds}`)
+  const token = await this.redis.acquireLock(`monitor:eval:${intervalSeconds}`, 30)
   if (!token) return
   try {
     await this.collector.collectGlobal(intervalSeconds)
 
     const now = new Date()
-    const rules = await this.ruleRegistry.enabled(intervalSeconds)
+    const rules = this.rules.forInterval(intervalSeconds)
     for (const rule of rules) {
       try {
         await this.evaluator.evaluate(rule, now)
@@ -982,9 +1051,11 @@ async runSlot(intervalSeconds: number): Promise<void> {
       }
     }
 
-    await this.cleanupIfDue()
+    // 60 秒槽额外扫一次事件规则的 Redis 计数窗口，再按需清理样本
+    if (intervalSeconds === 60) await this.events.sweep(now)
+    await this.cleanup.maybeCleanup(now)
   } finally {
-    await this.releaseLock(token)
+    await this.redis.releaseLock(`monitor:eval:${intervalSeconds}`, token)
   }
 }
 ```
@@ -1008,11 +1079,13 @@ async runSlot(intervalSeconds: number): Promise<void> {
 
 ### 8.3 多实例
 
-- `instanceId`：`MONITOR_INSTANCE_ID`，缺省用 `hostname:pid`，启动时生成一次，进程内不变；
+- `instanceId`：`MONITOR_INSTANCE_ID`，缺省用 `hostname:pid`（`MonitorInstanceService` 构造期生成一次，进程内不变）；
 - 实例指标的采集在每个实例执行，样本带 `instanceId`；
 - 全局指标（AI 日表）只由 leader 采；
-- 规则评估只由 leader 执行；leader 锁 `monitor:eval:<slot>`，TTL 30 秒，
-  用 `RedisLockService` 的看门狗续期，或每次评估结束主动释放；
+- 规则评估只由 leader 执行；leader 锁 `monitor:eval:<slot>`，通过
+  `RedisStore.acquireLock(key, 30)` 拿（`SET NX EX`，返回 token 即 leader），
+  评估结束后在 `finally` 里 `releaseLock(key, token)`。**没有看门狗续期**（不存在
+  `RedisLockService`）：评估耗时超 30 秒锁会自然过期，下一轮可能被另一个实例抢到；
 - 事件规则在每个实例接收，Redis 计数 + fire 键保证一个窗口只发一次；
 - 时钟：窗口按 `floor(now / interval)` 对齐，依赖 NTP；时钟偏差超过一个窗口时，
   聚合维度可能拆成两个窗口，需要监控实例时间同步（部署时保证）。
@@ -1021,13 +1094,13 @@ async runSlot(intervalSeconds: number): Promise<void> {
 
 | 情况 | 处理 |
 | --- | --- |
-| 指标源读取失败 | 记日志，跳过依赖它的指标/规则；不写半截样本 |
-| 写库失败 | 记日志，本轮不评估依赖该样本的规则；引擎状态标记失败 |
-| Redis 不可用 | 跳过评估（锁/静默不可用），采集可继续；记日志 |
+| 指标源读取失败 | `monitor.source.failed` 记日志，跳过依赖它的指标/规则；不写半截样本 |
+| 写库失败 | 记日志，本轮不评估依赖该样本的规则 |
+| Redis 不可用 | 跳过评估（锁 / 静默不可用），采集可继续；记日志（`acquireLock` 抛错会被 Scheduler 吞掉并记日志） |
 | 通知通道失败 | 逐通道记 `alert_logs`；告警仍是 `firing`，全部失败不写静默，下一轮重试 |
-| 单条规则异常 | 记 `ruleKey` + 耗时，继续下一条 |
-| 样本陈旧 | 最新样本的 `window_end` 超过 metric 的 `staleAfterSeconds` 时跳过规则，状态标记 `stale`；系统指标默认 2 × 60s，AI 日表 1200s |
-| 槽超时 | 超时时间设为评估周期的 80%，超时记日志并结束本轮 |
+| 单条规则异常 | 记 `monitor.rule.failed` + `ruleKey`，继续下一条 |
+| 样本陈旧 | 最新样本的 `window_end` 超过 metric 的 `staleAfterSeconds` 时跳过规则，状态标记 `stale`（`StaleGuard`）；系统指标默认 2 × 60s，AI 日表 1200s |
+| 槽超时 | **尚未实现**：没有超时控制；慢 tick 时下一轮由 croner 的 `protect: true` 跳过，欠的窗口靠 `drainCompleted()` 补采 |
 
 ## 9. 数据模型
 
@@ -1194,7 +1267,8 @@ erDiagram
 | `error` | 失败原因 |
 | `sent_at` | 发送时间 |
 
-索引：`(alert_id, sent_at DESC)`、`(rule_id, sent_at DESC)`。
+索引（实况）：`idx_alert_log_alert_id (alert_id, sent_at)`、`idx_alert_log_sent_at (sent_at)`、
+`idx_alert_log_rule_id (rule_id)`（`alert-log-entity.ts`）。
 
 > 所有通道失败时，`monitor_alerts` 仍是 `firing`，`alert_logs` 逐通道记 `failed`；
 > 下一轮重试，不写静默键。
@@ -1211,12 +1285,12 @@ erDiagram
 
 | key | 用途 | TTL |
 | --- | --- | --- |
-| `monitor:eval:<interval>` | 评估锁 | 30s（看门狗续期） |
+| `monitor:eval:<interval>` | 评估锁（`RedisStore.acquireLock`） | 30s，评估结束主动释放（无看门狗） |
 | `monitor:cleanup` | 样本清理锁 | 10min |
 | `monitor:silence:<ruleKey>:<subjectId>` | 静默 | `silenceSeconds` |
 | `monitor:event:<ruleKey>:<windowKey>` | 事件计数 | `2 × windowSeconds` |
 | `monitor:event:fire:<ruleKey>:<windowKey>` | 事件只发一次 | `2 × windowSeconds` |
-| `monitor:state:<ruleKey>` | stream 规则状态（P2） | `max(windowSeconds) + 余量` |
+| `monitor:stream:<ruleKey>` | stream 规则状态（Redis hash，field = subjectId，值为该主体的规则状态 JSON） | 写入时按规则给定 `ttlSeconds`（`StreamStateService.set`） |
 
 ## 10. 启动对账
 
@@ -1301,14 +1375,22 @@ sequenceDiagram
 | `POST /monitor/metric/latest` | 最新值（控制台卡片） |
 | `POST /monitor/engine/status` | 上次 tick、各指标采集时间、规则评估 / 触发时间 |
 | `POST /monitor/log/page-query` | 发送记录（沿用，按 `alert_id` 查） |
-| `POST /monitor/test` | 测试通知（沿用） |
-| `POST /monitor/health` | 健康检查（沿用） |
+| `POST /monitor/test` | 测试通知（沿用；`MonitorTestService`：逐通道发送并写 `alert_logs`（`alert_id` / `rule_id` 为 null），**不创建 `monitor_alerts`**） |
+| `POST /monitor/health` | 健康检查（沿用；独立控制器 `MonitorHealthController`，**免鉴权**，探 DB / Redis，任一失败 `degraded`） |
+
+> 现状核对（2026-11-13）：上表 13 条就是当前全部监控接口，控制器在
+> `apps/server/src/modules/monitor/api/monitor.controller.ts`（前 12 条，类级 `AdminAuthGuard`）
+> 与 `api/monitor-health.controller.ts`（`POST health`，无守卫）。SDK 在
+> `packages/sdk/src/server.client.ts` 的 `monitor` 段，一一对应。
 
 - 删除 `POST /monitor/rule/create` / `remove` / `detail`：规则由代码定义，后台不再新建；
 - 所有 POST 接口显式 `@HttpCode(200)`，管理员鉴权沿用；
-- 新增错误码（3xxx 段）：规则不存在、配置非法、指标不存在；
+- 新增错误码（3xxx 段，实际取值以 `AppErrorCodes` 为准）：
+  `MonitorRuleNotFound`=3103（规则不存在，404）、`MonitorRuleConfigInvalid`=3104（配置非法，400）、
+  `MonitorMetricNotFound`=3105（指标不存在，404）、`MonitorAlertNotFound`=3106（告警记录不存在，404）；
 - SDK 同步：`monitor.rule.definitions/list/update/reset`、`monitor.alert.page-query/detail`、
-  `monitor.metric.series/latest`、`monitor.engine.status`；删除 create/remove/detail。
+  `monitor.metric.definitions/series/latest`、`monitor.engine.status`、`monitor.log.pageQuery`、
+  `monitor.test`、`monitor.health`；删除 create/remove/detail。
 
 ### 11.2 界面
 
@@ -1316,8 +1398,10 @@ sequenceDiagram
   启用开关；只提供编辑配置 / 启停 / 恢复默认，不提供新建；
 - **指标页**：分「原始指标 / 衍生指标」两组；衍生指标显示公式和依赖；
   点进去看最近值、趋势、命中规则；
-- **引擎状态**：最近 tick、每个指标上次采集时间、规则上次评估 / 触发时间、
-  陈旧指标、leader 实例、待清理样本数；
+- **引擎状态**：`/monitor/engine/status` 返回 `{ instanceId, leader, slots[], metrics[], rules[] }` ——
+  各槽位最近 tick / 耗时 / 是否运行中、每个指标上次采集时间与是否 `stale`、每条规则上次评估与
+  上次触发时间。原稿写的「待清理样本数」**没有**进入响应模型（`MonitorEngineStatusSchema`
+  只有上述字段）。
 - **告警记录**：列表展示级别、状态、首次告警时间、最近命中、持续时长、恢复时间；
   详情抽屉展示 `first_snapshot` / `last_snapshot` 和逐通道发送记录；
   支持按级别、状态、规则、主体、时间筛选；
@@ -1354,7 +1438,8 @@ flowchart LR
 - 指标源（telemetry / process）、raw/derived 指标注册表；
 - 采集服务、样本仓储、规则评估、时间槽、leader 锁、静默、事件入口；
 - 告警生命周期：首次 / 最近命中 / 恢复 / 持续时长 / 首末快照；级别落库与展示；
-- 系统规则 4 条 + seed + API + 规则页 + 告警记录页 + 引擎状态；
+- 系统规则 4 条 + seed + API + 规则页 + 告警记录页 + 引擎状态
+  （**实况：系统规则 5 条**，多出 stream 示例 `system.http.error-rate.streak`，默认关闭）；
 - 删除现有 `AlertTrigger` 与 create/remove 接口。
 
 **P2：AI 用量**
@@ -1408,13 +1493,17 @@ flowchart LR
 - 多实例：所有实例采集、只有一个实例评估、全局指标只由 leader 采；
 - 锁：未抢到跳过、异常时释放、慢 tick 不双跑；
 - 陈旧：样本过期跳过并标记 stale；
-- 超时：慢源不会把槽一直占住。
+- 超时：慢源不会把槽一直占住（**该用例尚未落地**，见 §8.4）。
 
 **接口 / 界面**
 
 - definitions / list / update / reset 的校验；
 - 指标 series / latest 的时间范围和维度；
 - SDK 类型与控制台页面。
+
+> 现有测试文件（2026-11-13）：`apps/server/test/monitor-lifecycle.test.ts`（告警生命周期）、
+> `monitor-registry.test.ts`（指标 / 规则注册与校验）、`monitor-rule-service.test.ts`
+> （规则读模型与 update / reset）、`monitor-window.test.ts`（窗口口径纯函数）。
 
 ## 14. 待确认
 
@@ -1429,6 +1518,12 @@ flowchart LR
 8. **恢复判定**：默认连续 2 轮未命中判定恢复；确认是否要改成 1 轮（更快恢复）或 3 轮（更抗抖）。
 9. **快照范围**：`samples` 最多 `lookback` 条、消息/栈截断到 4KB；确认是否够排障。
 10. **恢复通知**：P3 再做；确认是否 P1 就要「异常恢复」提示。
+
+> 落定情况（2026-11-13）：1 已按 `drainCompleted()` 实施；2 保持 60s / 300s（`MonitorTimeline`
+  只接受能整除 60 的秒数）；3 按 §7.3 的 `instanceMode`（`per-instance` / `aggregate`）实现；
+> 4 AI 规则默认关闭；5 保留期默认 30 天（`MONITOR_SAMPLE_RETENTION_DAYS`）；6 只做未捕获异常；
+> 7 级别三档；8 默认 `recoverAfterWindows: 2`；9 快照截断已实现；10 恢复通知已实现
+> （`AlertDeliveryService.deliverRecovery`，`notifyOnRecovery` 默认 false，即默认只记录不通知）。
 
 ## 15. 术语
 

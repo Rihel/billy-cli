@@ -5,17 +5,22 @@
 > 会话 / 推理 / 消息**落库**、有短期与长期记忆、运行状态**可持久化并能在重启后恢复**，
 > 前端能流式看到 AI 跑的**每个细节**且状态实时更新。
 >
-> **状态**：本方案分两批写。**第 1～3 章已定稿**（含源码级证据）；第 4 章等另两路调研
-> （记忆与落库、AI SDK v6 全细节流式）回来后补齐。方案评审通过前**不写运行时代码**。
+> **状态**：四章均已落地。2026-11-13 按代码把「现状 / 结构 / 清单 / 字段 / 接口 / 路径」重新核对过；
+> 设计与取舍的论证保留原貌（历史背景不删），现行口径以文中标注「以此为准」的段落为准。
+> 子系统另有专文：`ai-agent-tool-engine.md`（工具引擎）、`ai-connector.md`（连接器）、
+> `ai-file-manager.md`（会话文件）、`ai-skill-library.md`（技能库）、`workspace-runtime.md`
+> （工作区运行时与命令隔离）、`ai-usage-stats.md`（用量统计）。
 
 ## 0. 需求（本轮明确，以此为准）
 
 | 编号 | 需求 | 关键含义 |
 | --- | --- | --- |
-| A | 集成 ai-elements 组件库 | **已全量落地**：上游 sitemap 的 **48 个条目 100%** 进 `@repo/ui/src/components/ai-elements/`（9334 行），子路径引入、不进 barrel；`ai` 锁 `^6.0.289` 与后端同版本 |
-| B | server 集成 Mastra agent 开发能力 | **多 agent**：一个 agent 一个文件、注册表登记；工具 bean 化；技能可加载 |
+| A | 集成 ai-elements 组件库 | **已全量落地**：上游 sitemap 的 **48 个条目 100%** 进 `@repo/ui/src/components/ai-elements/`，子路径引入、不进 barrel；`ai` 锁 `^7.0.164`，与后端同版本 |
+| B | server 集成 Mastra agent 开发能力 | **多 agent**：一个 agent 一个文件、注册表登记；工具走工具组 + 注册机 + 网关（§1.2）；技能可加载 |
 | C | 落库（**记忆本轮不做**） | 会话信息、**推理过程**、消息列表入库；长期 / 工作记忆 / 向量召回推迟，上下文自己从时间线拼 |
 | D | 运行状态机 + 重启恢复 | 运行时状态持久化；**服务重启后恢复在跑的会话** |
+| E | 前端完美流式 | AI 跑的每个细节（文本 / 推理 / 工具 / 步骤 / 来源）实时可见，状态同步更新 |
+| F | core bean + 动态子 agent | core bean 用 `asTools()` 交出能力（planner 即其一）；**子 agent 由主 agent 调用工具创建**，system prompt 由主 agent 现写，工具面 = 父授权 ∩(全部 − 委派类)，**明细全部入库**（详见 §3.14；`asTools()` 后已被工具组取代） |
 
 **术语表（本方案只用这几个词，别的都是它们的组合）**
 
@@ -29,12 +34,10 @@
 | **运行中进度** | 这一次运行「正在跑」的临时信息（第几步、当前在干什么、产出到哪、心跳），**放 Redis、跑完删** |
 | 最终结果 | 这一次运行跑完后的结论（成功/失败、消耗、耗时），**放 Postgres、长期保留** |
 | agent key / tool key | agent 和工具的稳定标识（字符串），前后端与数据库都用它 |
-| **core bean** | 跨业务的**运行时能力**单元，用 `asTools()` 把能力交给 agent（规划、子 agent 创建）；与"业务工具 bean"相对 |
-| **子 agent** | 主 agent 在跑的过程中**现场创建**的临时 agent（提示词由主 agent 写、工具面 = 全部 − 委派类），不是注册表成员（§3.14） |
+| **core bean** | 跨业务的**运行时能力**单元，用 `asTools()` 把能力交给 agent（规划、子 agent 创建）；与"业务工具 bean"相对。**2026-10-01 起已被「工具组」取代**（`@ToolGroup` + 方法级 `@ToolDecl`，见 §1.2），词条保留作历史 |
+| **子 agent** | 主 agent 在跑的过程中**现场创建**的临时 agent（提示词由主 agent 写、工具面 = 父授权 ∩(全部 − 委派类 − `child: deny`)），不是注册表成员（§3.14） |
 | 压缩 | 把早期对话交给模型写成一段摘要，后续改用摘要（原文仍保留） |
 | 裁剪 | 直接把最早的一部分对话丢掉（不生成摘要） |
-| **F** | **core bean + 动态子 agent** | core bean 用 `asTools()` 交出能力（planner 即其一）；**子 agent 由主 agent 调用工具创建**，system prompt 由主 agent 现写，工具面 = 全部 − 委派类，**明细全部入库**（详见 §3.14） |
-| E | 前端完美流式 | AI 跑的每个细节（文本 / 推理 / 工具 / 步骤 / 来源）实时可见，状态同步更新 |
 
 ## 1. 已落地的结构层（代码已在仓库、可验证）
 
@@ -42,14 +45,23 @@
 
 ```
 ai/
-  ai.module.ts        Nest 装配（配置 → 工具 bean → ToolBuilder → SkillLoader → 注册表 → Mastra）
-  ai.controller.ts    只读路由：/agent/status、/agent/list（会话路由刻意未写，见 §3）
-  core/               机制层：ai.config / ai.types / ai.registry / ai.mastra / ai.service / ai.errors
-                      + **core bean**（planner.core / subagent.core：跨业务的运行时能力，asTools()）
-  agents/             每个 agent 一个声明 + index.ts 唯一登记处（顶层 agent：assistant）
-  tools/              tool-keys 常量 + 业务工具（一个工具一个 bean）+ ToolBuilder（统一管理两个来源）
-  prompts/            提示词引擎 + templates/*.eta（含 partials）
-  skills/             SkillLoader + catalog/<name>/SKILL.md（+ references/）
+  ai.module.ts        Nest 装配（配置 → 工具组 → 网关/注册机 → 种子对账 → 提示词渲染 → Mastra 适配器）
+  ai.controller.ts    前台路由（/agent/*；清单以控制器为准，续传 / 停止见 §3.13 / §5.3）
+  api/                工具配置后台：ai-tool.controller / ai-tool.service（/ai-tool/*）
+  core/               机制层：config / constants / envelope（运行时信封）/ errors / model-decision
+                      prompts/   提示词引擎 + templates/*.eta（含 partials）+ environment.ts
+                      skills/    SkillLoader + catalog/<name>/SKILL.md + 技能库落盘（materializer）
+                      tools/     工具引擎：类型 / @ToolGroup+@ToolDecl / 注册机 / 网关 / 插件 /
+                                 配置服务 / 分页 / 选择器 / 取页存储（见 ai-agent-tool-engine.md）
+  agents/             agent 声明 + registry / service / types（顶层 agent：assistant）
+  tools/              具体工具组：planner/、bash.tool.ts、subagent.tool.ts、read-tool-result.tool.ts、
+                      web.tools.ts + web/（出网层）
+  runtime/            会话 / 运行 / 时间线 / 上下文组装 / 录制 / 续传 / 恢复 / 看门狗 / 子 run / 附件 / 标题
+  files/              会话文件（ai_files）：仓储 / 服务 / 工具组 FileTools
+  skills/             技能库：DB 事实源 + 落盘 + 控制器 + 工具组 SkillTools
+  connectors/         连接器：目录 / 驱动 / 同步 / 动态工具 / 网关总闸（见 ai-connector.md）
+  mastra/             Mastra 适配器（**唯一允许 import @mastra 的目录**）
+  monitoring/         用量汇总与监控规则（ai_usage_daily / ai_usage_daily_dimension）
 ```
 
 ### 1.2 工具：一个工具一个 bean + `ToolBuilder` 统一管理
@@ -63,6 +75,11 @@ ai/
 > `@Injectable()` 类（类上可选 `@ToolGroup`），**组内一个 `@ToolDecl` 方法就是一个工具**；
 > `AGENT_TOOL_GROUPS` 汇总的是**工具组实例**（一个组 1..n 个工具）；`AgentCore` / `asTools()` 已取消。
 > 见 `docs/design/ai-agent-tool-engine.md` §5.2。
+>
+> **再补两条现状（2026-11-13）**：①工具来源有三个 —— 代码里的工具组（planner / subagent / bash /
+> read-tool-result / web / 技能库 / 文件，共 26 个工具）、连接器运行期产出的动态工具（`origin='connector'`）、
+> 以及不进注册机的运行时自带工具（`skill` / `skill_search` / `skill_read`）；②**工具面按请求解析**
+> （`tools: async ({ requestContext }) => …`），作用域过滤在每次调用前生效，连接器新同步的工具也不必重启。
 
 - 业务工具（若接入）各自 `@Injectable()`，构造器注入对应业务 service，在构造期用 `createTool` 绑定
   `execute`；本脚手架默认不绑定业务工具，AI 模块与业务模块解耦；
@@ -101,8 +118,10 @@ ai/
 - **不把正文读进内存**：#技能可能几十个、参考文件上百个，内联（`createSkill`）等于启动全读；
   路径形态下 Mastra 按需读，技能改了也不必重启（带冷却的自刷新）。
 - 目录来源（按优先级）：① `core/skills/catalog/`（随部署打包，**校验不过 = 启动失败**）；
-  ② `AgentConfig.skillsDirs`（默认 `~/.agents/skills`，`AGENT_SKILLS_DIRS` 逗号分隔多个；
-  **坏一个只跳过并记错误日志**——别人的技能库不该绑架启动）。重名时前面的目录赢。
+  ② `AgentConfig.skillsLibraryDir`（默认 `~/.billy/skills`，后台 / agent 在线维护的技能，**DB 是事实源**、
+  由 `SkillMaterializer` 落盘，坏一个只跳过）；③ `AgentConfig.skillsDirs`（默认 `~/.agents/skills`，
+  `AGENT_SKILLS_DIRS` 逗号分隔多个；**坏一个只跳过并记错误日志**——别人的技能库不该绑架启动）。
+  重名时前面的目录赢。
 - agent 按名字授权（`skills: ['<skill-name>']`；`skills: [ALL_SKILLS]` = 全部已加载技能，
   **装配期展开成真实名字**，于是 `/agent/list` 与 `request_snapshot.skillKeys` 里是具体技能名）。未知名字装配期报错。
 - 早先不直接用 Mastra 的目录能力，理由是"无法启动期校验、也无法把清单暴露给接口"——
@@ -126,6 +145,9 @@ ai/
 
 > 证据来源：`@mastra/core@1.69.0` 本地 tarball 的 `.d.ts` / 编译产物 + mastra.ai 官方文档。
 > 这一章是 §3 设计的地基，也是**推翻若干想当然假设**的地方。
+>
+> **版本现状（2026-11-13）**：工程实际依赖是 `@mastra/core@^1.82.0` / `@mastra/ai-sdk@^1.11.3` /
+> `@mastra/memory@1.41.0` / `ai@^7.0.164`。本章结论按当时版本记录，升级后的差异以 §3、§4 的现状段为准。
 
 ### 2.1 结论摘要
 
@@ -171,6 +193,9 @@ ai/
 `@mastra/redis-streams` 的 `RedisStreamsPubSub`。1.69.0 代码里 `RedisStreamsPubSub implements LeaseProvider`
 （`SET NX PX` 原子租约），多副本恢复会被串行化；官方文档却写"不提供分布式锁"，**二者冲突，
 以代码为准但仍在方案里标注存疑**。
+
+> **实现未采用（2026-11-13）**：这两个包最终没有引入；输出记录、跨副本转发、停止与恢复租约
+> 全部由我们自己的 `RedisStore` 承担，Mastra 侧仍是进程内默认实现。理由与代价见 §3.6。
 
 ### 2.5 不用 Mastra 自带 HTTP server 时的可用性边界
 
@@ -265,15 +290,16 @@ ai/
 ### 3.2 会话模型
 
 - `thread` = 会话（一个对话窗口），`resource` = 归属主体（**用登录用户 id**，天然多租户隔离）；
-- 消息与推理：由 Mastra Memory 落库（`mastra_messages` 等表），**同时**在业务侧保留
-  会话元信息（标题、agent、最后活动时间、状态）——具体字段与两条记录的同步方式见 §4.1（待补）；
+- **消息与推理的落库（现状）**：由我们的 `StreamRecorder` 逐 part 落 `timelines`，**不经过** Mastra Memory
+  （§4.4 的决定）；Mastra Memory 只作为 durable 续跑所需的"进程内 thread"（`InMemoryStore`）。
+  会话元信息（标题 / agent / 最后活动时间 / 状态）在 `conversations` 一行上，字段见 §4.6；
 - `run` = 一次"用户发一条 → agent 跑完"的执行，业务侧存 `runId` + 状态 + 起止时间。
 
 ### 3.3 恢复策略：三档，各自明确代价（**需要你拍板**）
 
 | 档 | 场景 | 手段 | 代价 |
 | --- | --- | --- | --- |
-| ① 断线重连 | 用户刷新页面 / 网络抖动，**进程还活着** | `observe(runId, { offset, idleTimeoutMs })` 重放缓存事件 | 无重跑；需要共享 cache（Redis）才能跨实例 |
+| ① 断线重连 | 用户刷新页面 / 网络抖动，**进程还活着** | 从 Redis 输出记录 `agent:stream:{runId}` 按 offset 补发（`resumeSafeChunks` 校正起点） | 无重跑；需要 Redis 才能跨实例 |
 | ② 崩溃恢复 | 服务重启 / 进程被杀，run 未完成 | boot 时 `recoverAllDurableAgents()`；**工具必须幂等** | **重发 LLM 调用（真花钱）+ 重跑工具**；官方明文 |
 | ③ 不恢复 | 同上，但不想付 ② 的代价 | 启动时把 `running` 且进程已死的 run 标记为 `interrupted`，前端提示"该轮已中断，可重试" | 用户需手动重发；但成本可控、语义诚实 |
 
@@ -299,9 +325,23 @@ ai/
 
 ### 3.6 多实例
 
-- cache：`@mastra/redis` 的 `RedisServerCache`（事件重放要跨实例）；
-- pubsub：`@mastra/redis-streams` 的 `RedisStreamsPubSub`（跨实例事件 + abort + 恢复租约）；
-- 新增依赖要在方案里列清（`@mastra/redis`、`@mastra/redis-streams`），并确认与既有 `RedisStore` 的关系。
+**设计时的设想**是：cache 换 `@mastra/redis` 的 `RedisServerCache`（事件重放跨实例）、pubsub 换
+`@mastra/redis-streams` 的 `RedisStreamsPubSub`（跨实例事件 + abort + 恢复租约）。
+
+**实现后的现状（2026-11-13，以此为准）**：这两个包**没有引入**（`apps/server/package.json` 里没有它们），
+跨实例能力全部落在我们自己的 `RedisStore` 上（`runtime/stream-store.service.ts`）：
+
+| 能力 | 落法 |
+| --- | --- |
+| 输出记录（断线补发） | Redis List `agent:stream:{runId}`，按 offset 顺序追加 / 读取 |
+| 跨副本实时转发 | Redis pub/sub 频道 `agent:stream:{runId}:chunk` |
+| 跨副本停止 | 频道 `agent:stream:{runId}:stop`（本进程有 controller 就直接 abort） |
+| 运行中进度 | Hash `agent:run:{runId}`（TTL 6h，见 §3.12） |
+| 恢复租约 | `RedisStore.acquireLock('agent:recovery:lease', 60s)` |
+
+代价照实说：Mastra 自己的 cache / pubsub 仍是**进程内默认实现**，所以"另一副本上的 Mastra 事件重放"拿不到 ——
+我们也不需要它，补发用的是**我们自己写的**输出记录。多实例的启动自检只要求配了 `REDIS_URL`
+（`AGENT_MULTI_INSTANCE=true` 却没配 → 启动失败，见 §3.10）。
 
 ### 3.7 异常与状态处理（失败是一等状态，不能只写日志）
 
@@ -364,6 +404,10 @@ ai/
 | 3308 | 模型鉴权失败（部署配置问题） | 502 |
 | 3309 | 上游模型限流 | 429 |
 | 3310 | 运行超时 | 504 |
+| 3311 | 附件读取失败（`ChatAttachmentFailed`，见 §3.16） | 400 |
+| 3312 | 模型读不了这个附件（`ModelCapabilityMismatch`，见 §3.16.5） | 400 |
+| 3313 | 这一轮没有在等待回答（`RunNotSuspended`，见 §3.7.1） | 409 |
+| 3314 | 模型长时间没有响应（`ModelNoResponse`，首 token 超时） | 504 |
 
 **重试语义（必须与"恢复"分开）**：用户点"重试"= **新建一个 run**（旧 run 的失败记录保留）；
 崩溃恢复 = 同一 run 的 `recover()`（会重发模型调用、重跑工具，故工具必须幂等，§3.4）。
@@ -622,6 +666,7 @@ AGENT_CONTEXT_TRIM_TARGET_RATIO=0.5        # 裁剪目标
 AGENT_CONTEXT_COMPACT_TARGET_RATIO=0.4     # 压缩目标
 AGENT_CONTEXT_KEEP_RECENT_TURNS=3          # 最近几轮永不裁
 AGENT_CONTEXT_TOOL_RESULT_MAX_RATIO=0.1    # 单条工具结果的模型视图上限
+AGENT_CONTEXT_TOOL_RESULT_TOTAL_RATIO=0.3  # 一轮内所有工具结果的累计上限（§④.1）
 AGENT_CONTEXT_FALLBACK_WINDOW=32000        # 未知模型的保守窗口
 AGENT_CONTEXT_MODEL_WINDOWS={"deepseek/deepseek-chat":65536}   # 按模型覆盖（最高优先）
 ```
@@ -653,34 +698,35 @@ AGENT_CONTEXT_MODEL_WINDOWS={"deepseek/deepseek-chat":65536}   # 按模型覆盖
 
 | 状态 | 谁产生 | 放哪 | 多副本下怎么用 |
 | --- | --- | --- | --- |
-| 运行输出记录（供补发） | 正在跑的那个副本 | Redis（Mastra 的共享 cache 语义；按 `offset` 索引） | 重连落在**任意**副本都能按 offset 补发 |
-| 实时内容转发 | 同上 | Mastra 的 pub/sub（`RedisStreamsPubSub`） | 副本 B 订阅到副本 A 的新内容，转发给自己持有的连接 |
+| 运行输出记录（供补发） | 正在跑的那个副本 | Redis List `agent:stream:{runId}`（按 `offset` 索引） | 重连落在**任意**副本都能按 offset 补发 |
+| 实时内容转发 | 同上 | Redis pub/sub 频道 `agent:stream:{runId}:chunk` | 副本 B 订阅到副本 A 的新内容，转发给自己持有的连接 |
 | 业务真相（`timelines` / `runs` / `conversations`） | 同上 | Postgres（我们的表） | 任意副本可查、可续、可审计 |
 | 状态广播（多标签页 / 多设备同步） | 同上 | 既有 `StreamHub`（Redis pub/sub） | **旁路通道**，不做主通道，避免两条真相 |
 
 **客户端连接模型（不需要粘性）**
 
 - **POST 建流**（AI SDK 协议）：落在副本 A → A 跑这一轮，把流写给客户端，同时写 Redis 输出记录；
-- **GET 重连**（断线/刷新后）：可能落在副本 B → B 用 `observe(engineRunId, { offset })`
-   从共享记录**补发**已产出的内容，再继续转发实时内容（经 pub/sub）；
+- **GET 重连**（断线/刷新后）：可能落在副本 B → B 从**输出记录**里读 `offset` 之后的片段**补发**
+  （`runtime/stream-resume.ts` 把起点回退到当前块开头），再订阅 pub/sub 继续转发实时内容；
 - **不需要网关做 sticky session**（这正是把状态外置的目的）；但**网关必须放行长连接**：
   关闭响应缓冲（`x-accel-buffering: no`，§5.1 已写）、`proxy_read_timeout` ≥ 心跳间隔的数倍。
 
 **心跳（必须做，否则"长思考"期间会被网关掐断）**
 
-- `@mastra/ai-sdk` 导出了 `withSseHeartbeat`（已核实）→ 套在流上即可，间隔可配（默认 15s）；
+- `@mastra/ai-sdk` 导出了 `withSseHeartbeat`（已核实），但它收的是 Web `Response`，我们是 Node `http` 流，
+  所以心跳**由我们按同样的思路自己写 SSE 注释帧**（`chat.service.ts`）；
 - 必须**显著小于** `app-config` 里的 `keepAliveTimeout`（默认 75s）——否则前端表现是"想得久一点就断流"。
 
 **stop / abort 跨副本（否则"停止"根本不生效）**
 
-Mastra 的 abort 请求经 **pub/sub** 传递：默认 `EventEmitterPubSub` **只在本进程生效**。
-所以 stop 端点必须配 `RedisStreamsPubSub` —— 否则用户点停止时，若请求落到另一个副本，
-那一轮的生成**仍在继续**（用户以为停了，钱还在花）。
+本进程里有这一轮的 controller 就直接 `abort()`；没有（请求落到别的副本）就向
+`agent:stream:{runId}:stop` 发一条 Redis pub/sub 消息，由持有那一轮的副本收到后 abort。
+**不能只依赖 Mastra 的 pub/sub**：它默认是 `EventEmitterPubSub`，只在本进程生效。
 
 **恢复与看门狗的互斥**
 
-- 恢复：多副本同时 boot 会抢同一条；`RedisStreamsPubSub` 实现了租约（`SET NX PX`，30s TTL）
-  → 只有一个副本真正执行；仍按"单副本优先 + 租约兜底 + 上线实测"处理（§2.4 / §6.3）；
+- 恢复：多副本同时 boot 会抢同一条；抢的是 `RedisStore.acquireLock('agent:recovery:lease', 60s)`
+  → 只有一个副本真正执行 `recoverAllDurableAgents()`；仍按"单副本优先 + 租约兜底 + 上线实测"处理（§2.4 / §6.3）；
 - 看门狗**不用分布式锁，用条件更新**（天然幂等）：
 
 ```sql
@@ -693,8 +739,9 @@ WHERE id = $1 AND status = 'running' AND heartbeat_at < now() - interval '…'
 **Redis 从"可选"变成"多实例必需"**
 
 - 单副本：可以不配（退化为进程内，代价是"不能跨副本补发"）；
-- 多实例：必须配 `@mastra/redis`（cache）+ `@mastra/redis-streams`（pub/sub）；
-- **启动自检**：`AGENT_MULTI_INSTANCE=true` 却没配 Redis → **启动即失败**。
+- 多实例：必须配 `REDIS_URL`（`RedisStore`：输出记录 / 跨副本转发 / 停止 / 恢复租约都走它）；
+  Mastra 侧的 cache / pubsub 仍是进程内默认实现，不参与跨副本（见 §3.6）；
+- **启动自检**：`AGENT_MULTI_INSTANCE=true` 却没配 `REDIS_URL` → **启动即失败**。
   宁可起不来，也不要悄悄降级成"偶发断流、停止不生效"这种最难查的故障。
 
 **同一会话并发**：已由 `runs` 的部分唯一索引在 **DB 层**挡住（3306），与副本数无关（§3.7）。
@@ -704,13 +751,13 @@ WHERE id = $1 AND status = 'running' AND heartbeat_at < now() - interval '…'
 #### 3.11.1 架构图（分层与依赖方向）
 
 ```
-┌──────────────────── 前端（apps/web）─────────────────────────────────────┐
-│ /ai/chat 页：useChat（AI SDK v6 transport）+ ai-elements 组件             │
+┌────────────── 前端（apps/admin 的会话页）─────────────────────────────────┐
+│ /main/ai/chat/<conversationId>：useChat（AI SDK v6 transport）+ ai-elements│
 │   · 内容与业务状态来自**同一条** UI Message Stream（状态走持久 data part） │
-│   · 刷新/断线：GET 重连（带 runId + offset）→ 无感补发，不重跑            │
+│   · 刷新/断线：GET 重连（带 offset，可按会话）→ 无感补发，不重跑           │
 └──────────┬──────────────────────────────────────────────────────────────┘
-           │ POST /agent/chat/stream（建流） GET /agent/run/:id/stream（重连）
-           │ POST /agent/chat（非流式） POST /agent/{status,list}（装配查询）
+           │ POST /agent/chat/stream（建流） GET /agent/run/{stream,:runId/stream}（重连）
+           │ POST /agent/chat（非流式） POST /agent/{status,list,models,instructions}（装配查询）
            ▼
 ┌──────────────── HTTP 边界（apps/server/src/common）─────────────────────┐
 │ RequestContext(ALS/requestId) → RequestLogger → RequestMetrics           │
@@ -718,12 +765,12 @@ WHERE id = $1 AND status = 'running' AND heartbeat_at < now() - interval '…'
 └──────────┬──────────────────────────────────────────────────────────────┘
            ▼
 ┌──────────────── AI 模块（apps/server/src/modules/ai）───────────────────┐
-│ core/     配置 · agent 注册表 · Mastra 装配 · 编排服务 · 错误             │
-│ agents/   一个 agent 一个声明（key / 名称 / 工具子集 / 技能 / 提示词模板） │
-│ tools/    一个工具一个 bean + ToolBuilder（按 key 索引、装配期校验）      │
-│ prompts/  eta 模板引擎（{{ }}），提示词唯一出口                           │
-│ skills/   SkillLoader（SKILL.md 加载 + 校验 + references）                │
-│ 会话运行时 会话/运行服务 · 上下文组装（裁剪+压缩）· 时间线落库 · 看门狗   │
+│ core/     配置 · 信封 · 提示词引擎 · 工具引擎（注册机/网关/插件）· 技能加载 │
+│ agents/   一个 agent 一个声明（key / 名称 / 工具选择器 / 技能 / 提示词模板）│
+│ tools/    具体工具组（@ToolGroup + 方法级 @ToolDecl）                      │
+│ runtime/  会话 / 运行 / 时间线 / 上下文组装（裁剪+压缩）/ 录制 / 续传 / 恢复 │
+│ files/ skills/ connectors/  会话文件 · 技能库 · 连接器（各有专文）          │
+│ mastra/   Mastra 适配器（唯一可 import @mastra 的目录）                    │
 └───────┬──────────────────────────────┬──────────────────────────────────┘
         │                              │ 落库（保真、不裁剪）
         ▼                              ▼
@@ -732,12 +779,12 @@ WHERE id = $1 AND status = 'running' AND heartbeat_at < now() - interval '…'
 │  stream · observe · recover   │  │ runs           运行 / 消耗 / 快照   │
 │ 存储适配层（**我们写**）        │─►│ timelines      消息·推理·工具·摘要  │
 │  只实现 workflows domain(9)    │  │（TypeORM 实体 + 迁移；只追加）      │
-│ model provider（OpenAI 兼容）  │  └────────────────────────────────────┘
+│ model provider（官方/兼容）    │  └────────────────────────────────────┘
 └───────┬───────────────────────┘
         ▼
 ┌── Redis（单副本可选 · **多实例必需**）──────────────────────────────────┐
-│ Mastra cache（输出记录，按 offset 补发）                                 │
-│ Mastra pubsub（跨副本转发 / abort / 恢复租约）                            │
+│ 输出记录 agent:stream:{runId}（按 offset 补发）                          │
+│ pub/sub：跨副本转发 chunk / 停止 stop / 恢复租约 agent:recovery:lease     │
 │ 既有 StreamHub（状态旁路广播）· RateLimit · 分布式锁                      │
 └─────────────────────────────────────────────────────────────────────────┘
 ```
@@ -751,7 +798,7 @@ WHERE id = $1 AND status = 'running' AND heartbeat_at < now() - interval '…'
 ```
 用户输入
   │
-  ├─(1) POST /agent/chat/stream { agentKey, messages }
+  ├─(1) POST /agent/chat/stream { agentKey, message, attachments?, modelId?, fileAccess? }
   │
   ▼ 边界：UserAuthGuard → RateLimitGuard → Zod 校验
   │
@@ -780,9 +827,9 @@ WHERE id = $1 AND status = 'running' AND heartbeat_at < now() - interval '…'
   ▼ 副本 B
   ├─ 归属校验（该会话属于当前用户）→ 否则 3304
   ├─ 无进行中的流 → 204（AI SDK 约定，前端据此结束重连）
-  └─ observe(engineRunId, { offset: N, idleTimeoutMs, isAlive })
-       ├─ 命中 Redis 输出记录 → 补发 N 之后的内容（**不重跑、不重复扣费**）
-       └─ 订阅 pub/sub → 副本 A 的新内容实时续上
+  └─ 读 Redis 输出记录 agent:stream:{runId}（不是 Mastra 的 observe）
+       ├─ 取 offset 之后的片段 → 经 resumeSafeChunks 校正起点 → 补发（**不重跑、不重复扣费**）
+       └─ 订阅 agent:stream:{runId}:chunk → 副本 A 的新内容实时续上
 ```
 
 > **offset 落在块中间时不能直接补发**：AI SDK 的 UI 状态机要求
@@ -796,14 +843,18 @@ WHERE id = $1 AND status = 'running' AND heartbeat_at < now() - interval '…'
 进程被杀 / 重启 / 运行卡死
   │
   ├─ boot（OnApplicationBootstrap）
-  │   ├─ 启动自检：AGENT_MULTI_INSTANCE=true 却缺 Redis → **启动失败**
-  │   ├─ 取恢复租约（RedisStreamsPubSub：SET NX PX，30s TTL）→ 只有一个副本执行
+  │   ├─ 启动自检：AGENT_MULTI_INSTANCE=true 却缺 REDIS_URL → **启动失败**
+  │   ├─ 取恢复租约（RedisStore.acquireLock：agent:recovery:lease，60s TTL）→ 只有一个副本执行
   │   └─ recoverAllDurableAgents()
   │        ├─ 读快照（runs.snapshot，经我们的存储适配层）
   │        ├─ 重跑：重发 LLM 调用 + 重跑工具   ← 官方明文，**真花钱**
   │        │    └─ 工具幂等：唯一键 = engineRunId + toolCallId
   │        │       （timelines 部分唯一索引 → upsert，attempt + 1，不产生重复条目）
   │        └─ 失败 / 超次数（recovery_count 上限 1）→ interrupted（用户可手动重试 = 新建 run）
+  │
+  │   （紧接着的启动清理：单副本下把上一进程遗留的进行中 run 立即标 interrupted，
+  │     多副本不做 —— 别的副本可能还在跑，交给心跳超时判定；孤儿**子 run** 先标中断，
+  │     父 run 恢复重放 spawn 工具时才能识别并原地重启）
   │
   └─ 看门狗（各副本并行运行，用**条件 UPDATE 抢执行权**）
        UPDATE runs SET status='failed', error_stage='timeout'
@@ -973,11 +1024,12 @@ key: agent:run:{runId}          TTL: 6h
 
 ```
 ① 发现
-   副本定期检查：runs.status = running 且 heartbeat_at 已过期（阈值可配，默认 30s）
-   → 或者启动时扫一遍（boot 阶段）
+   副本定期检查：runs.status = running 且 heartbeat_at 已过期（`AGENT_HEARTBEAT_TIMEOUT_MS`，
+   默认 60s）；或总时长超过 `AGENT_RUN_TIMEOUT_MS`（默认 10 分钟）
+   → 或者启动时扫一遍（boot 阶段，单副本才做清理，见 §3.11.4）
 
 ② 决定谁来干（避免多个副本同时恢复同一条）
-   去 Redis 抢恢复租约（SET NX PX，30s TTL，RedisStreamsPubSub 自带）
+   去 Redis 抢恢复租约（RedisStore.acquireLock：agent:recovery:lease，60s TTL）
    抢到的副本执行，没抢到的什么都不做
 
 ③ 恢复执行
@@ -1010,21 +1062,22 @@ key: agent:run:{runId}          TTL: 6h
 #### 3.13.2 前端刷新页面怎么重连
 
 ```
-① 刷新后先问"这一轮还在跑吗"
-   POST /agent/run/status { runId }  →  { status, offset, agentKey, conversationId }
-   （offset = 已经从 Redis 输出记录里发出去的位置）
+① 不需要"先问状态"的接口：直接带 offset 重连
+   服务端没有 `POST /agent/run/status` 这类"查这一轮到哪了"的端点（曾设想，未实现）。
+   前端手上的 offset 来自上一次流（`useChat` 内部维护），够用；服务端自己按 run 的
+   `status` + Redis 进度键判断"这一轮还在不在"（PG 终态优先于 Redis，见 §3.12）。
 
-② 还在跑（status = pending / running）→ 重连 SSE
-   GET /agent/run/{runId}/stream?offset={offset}
+② 重连 SSE（两条 GET，都是 AI SDK `reconnectToStream` 的约定）
+   GET /agent/run/stream?offset={offset}&conversationId={id}   ← 不知道 runId 时（刷新 / 换设备）
+   GET /agent/run/{runId}/stream?offset={offset}               ← 知道 runId 时
    · 校验会话归属（不是自己的 → 3304）
-   · observe(engineRunId, { offset }) → 先把 offset 之后的内容补发（不重跑）
-     → 再订阅 pub/sub，把后续实时内容续上（可能来自另一个副本）
-   · 没有进行中的流 → 204（前端据此停止重连）
+   · 从 Redis 输出记录读 offset 之后的内容补发（不重跑），再订阅 pub/sub 续上实时内容
+   · run 已到终态、或 Redis 里没有进度 → 204（前端据此停止重连）
    前端写法：useChat({ resume: true })（挂载时自动重连）；
    **不要**自己在 useEffect 里调 resumeStream()（§5.6 第 5 条）
 
 ③ 已结束（succeeded / failed / interrupted / canceled）→ 不重连流
-   POST /agent/timeline { conversationId, runId? } → 拿 timelines 重建
+   POST /agent/timeline/list { conversationId, runId? } → 拿 timelines 重建
    → 消息、推理、工具调用与结果、摘要都在里面，渲染成完整历史
    ⚠️ 这是**分页接口**（`BasePaginateSchema`：`size ≤ 100`），而历史重建要的是**完整**时间线：
    前端必须**翻页取全**（`page` 递增到 `items.length >= total`），不能写一个大 `size`
@@ -1133,10 +1186,11 @@ core bean **不注入 `ToolBuilder`**。子 agent 需要的工具面由**编排�
 
 | 面 | 规则 | 理由 |
 | --- | --- | --- |
-| 工具面 | **全部工具 − 委派类工具**（`AgentTool.delegation === true`） | 你的要求原文；同时**天然杜绝无限递归**（子 agent 没有创建子 agent 的工具） |
+| 工具面 | **父 agent 的授权面 ∩（全部 − 委派类 − `child: 'deny'`）** | 你的要求原文 + 一条收紧：不给上限的话，只被授权查库的 agent 可以造个孩子去执行命令，授权就形同虚设；排除法**天然杜绝无限递归**（子 agent 没有创建子 agent 的工具） |
 | 技能面 | 与父 agent 相同（`SkillLoader` 的解析结果） | 工具既然全给，技能没有单独收紧的道理 |
-| 模型 | 默认沿用默认模型；`subAgent.model` 可覆盖（留位） | 子任务通常该用便宜模型，但不预设 |
+| 模型 | **继承父这一轮的模型**（同一个信封里的 `model`） | 避免"父子俩用了两个模型"；将来的"子任务用便宜模型"留作配置位 |
 | durable | **不开**（子 agent 是临时对象，恢复由父 run 重跑 spawn 工具承担） | 见 §3.14.6 |
+| 提示词 | 主 agent 写的那份 + 我们追加的**能力尾巴**（工具清单、`child: deny` 的四个 plan 工具、交付要求） | 子 agent 看不到我们的《工具》模板段，否则不知道自己有什么、也不知道"不能再造子助手" |
 
 > 问答能力（`ask-user-questions`，向用户提问并挂起）**只挂在主 agent 上**，不在子 agent 的工具面里。
 > 子 agent 是临时执行体，没人能回答它 —— 缺信息或要拍板时，它必须把问题和已知前提写进结论交回主 agent。
@@ -1179,18 +1233,29 @@ core bean **不注入 `ToolBuilder`**。子 agent 需要的工具面由**编排�
 
 **并发保护要跟着改**：`uk_run_active_conversation`（同一会话只允许一轮进行中）必须加
 `AND parent_run_id IS NULL` —— 子 run 与父 run **同时 running 是正常的**，不加这一条子 agent 一跑就撞唯一键。
+（现行的完整条件是 `parent_run_id IS NULL AND status IN ('pending','running','suspended')`：
+挂起中的一轮也占着会话，见 §4.6。）
 
 #### 3.14.4 运行时信封：工具怎么知道"我在哪一轮"
 
 工具不能自己猜上下文。编排层（`AgentChatService`）在发起这一轮时，把信封塞进 Mastra 的 `requestContext`：
 
 ```ts
-requestContext.set('agentRuntime', {
+// ai/core/envelope.ts 的 AgentRuntimeEnvelope（编排层塞进 requestContext，键名 'billy.agentRuntime'）
+requestContext.set('billy.agentRuntime', {
   conversationId,
-  parentRunId,      // 当前这一轮（子 agent 拿它当父亲）
-  depth,            // 当前深度（根为 0）
-  childTools,       // 算好的子 agent 工具面（全部 − 委派类）
-  childSkills,      // 子 agent 的技能面
+  parentRunId,          // 当前这一轮（子 agent 拿它当父亲）
+  triggeredBy,          // 发起人（子 run 继承）
+  isAdmin,              // 触发身份是不是管理员（作用域判定用）
+  fileAccess,           // 本会话的沙箱写权限：read-only / workspace-write
+  depth,                // 当前深度（根为 0）
+  agentKey,             // 调用方 agent key（子 agent 为 sub:<name>）
+  rootAgentKey,         // 根 agent key（作用域按它判）
+  model,                // 本轮实际使用的模型（RuntimeModel，子 agent 继承）
+  childToolbox,         // 算好的子 agent 工具面（父授权 ∩(全部 − 委派类 − child:deny)）
+  skills,               // 子 agent 的技能面
+  systemPrompt,         // 本轮真正送进模型的系统指令全文（已渲染）
+  abortSignal,          // 用户停止时往下传（停整棵树）
 })
 ```
 
@@ -1198,9 +1263,9 @@ requestContext.set('agentRuntime', {
 
 | 来源 | 用途 |
 | --- | --- |
-| `requestContext` | 运行时信封（会话 / 父 run / 深度 / 子工具面） |
+| `requestContext` | 运行时信封（会话 / 父 run / 深度 / 身份 / 子工具面 / 模型 / 文件权限） |
 | `context.agent.toolCallId` | **幂等键**（重放时同一个 id 只生效一次） |
-| `context.writer`（`ToolStream`） | 把子 agent 的实时明细写进**父的同一条流**（§3.14.5） |
+| `context.writer`（`ToolStream`） | 把子 agent 的实时明细写进**父的同一条流**（§3.14.5）；工具自定义事件也走它 |
 | `context.abortSignal` | 用户停止时往下传到子 agent（停止要停整棵树） |
 
 #### 3.14.5 子 agent 的实时明细怎么到前端（与 §5 同一条流）
@@ -1262,6 +1327,9 @@ AI SDK 的 `data-sub-agent` part，和主内容走同一条 SSE：
 
 #### 3.14.8 本轮改动面（自查用）
 
+> **历史记录**：下表写的是那一轮的改动面；其中的 `ToolBuilder` / `buildDelegable()` / `AgentCore` / `AGENT_CORES`
+> 已被「工具组 + 注册机 + 网关」取代（见 §1.2 与 `ai-agent-tool-engine.md` §5.3）。
+
 | 动作 | 对象 |
 | --- | --- |
 | 新增 | `ai/core/envelope.ts`（`AgentCore`）、`ai/tools/planner/planner.core.ts`、`ai/tools/subagent.core.ts`、`ai/runtime/agent-runner.ts`（子 run 执行器） |
@@ -1291,9 +1359,9 @@ AI SDK 的 `data-sub-agent` part，和主内容走同一条 SSE：
 
 | 层 | 位置 | 职责 |
 | --- | --- | --- |
-| 机制（基础设施） | `packages/kits/src/foundation/command/`（`CommandRunner` + `command.platform.ts` + `CommandModule`） | 跨平台执行：shell 解析、超时、杀进程树、输出上限、取消、结果结构化 |
-| 策略（AI 模块） | `apps/server/src/modules/ai/tools/bash.tool.ts`（工具组 `BashTool`） | 开关、工作目录边界、时长 / 输出上限、审计日志 |
-| 提示词 | `prompts/templates/partials/tools.eta`（「`bash` 怎么用」） | 什么时候用 / 不用、能力问题先验证、有副作用先问 / 只读公开请求可直接跑、失败要读懂原因 |
+| 机制（基础设施） | `packages/kits/src/foundation/command/`（`CommandRunner` + `command.platform.ts` + `command.module.ts`）+ `packages/kits/src/workspace/`（`WorkspaceRuntimeService` / `workspace.sandbox.ts` / `workspace.module.ts`） | 跨平台执行：shell 解析、超时、杀进程树、输出上限、取消、结果结构化；以及**在哪执行**（沙箱 / 宿主）与目录布局 |
+| 策略（AI 模块） | `apps/server/src/modules/ai/tools/bash.tool.ts`（工具组 `BashTool`） | 开关、会话工作区边界、时长 / 输出上限、审计日志 |
+| 提示词 | `core/prompts/templates/partials/tools.eta`（「`bash` 怎么用」） | 什么时候用 / 不用、能力问题先验证、有副作用先问 / 只读公开请求可直接跑、失败要读懂原因 |
 
 **为什么用 `execa` 而不是自己拼 `child_process`**（早先手写过一版，已弃）：三条硬约束恰好是它的内建能力 ——
 `shell` 在 Unix/Windows 各自的默认解释器、`killDescendants`（Unix 进程组 / Windows `taskkill`）、
@@ -1317,14 +1385,16 @@ AI SDK 的 `data-sub-agent` part，和主内容走同一条 SSE：
 
 命令在哪个环境执行由**工作区运行时**决定（见 [`workspace-runtime.md`](workspace-runtime.md)）：
 默认 `enforce` —— 命令只能在 OS 沙箱里跑（只能访问本会话工作区），**沙箱不可用就拒绝执行**，
-不会退回宿主进程；会话页只能选沙箱内的只读 / 可写。只有部署显式设 `AGENT_WORKSPACE_MODE=off`
-（自托管单租户）才以**服务进程的身份与权限**运行。实际环境随 `bash` 出参的 `runtime` / `mode` 返回。
-`local` 下的取舍仍是"把可控的部分做死"：
+不会退回宿主进程；会话页只能选沙箱内的只读 / 可写（`conversations.file_access`）。只有部署显式设
+`AGENT_WORKSPACE_MODE=off`（自托管单租户）才以**服务进程的身份与权限**运行（`danger-full-access`）。
+实际环境随 `bash` 出参的 `runtime` / `mode` 返回；管理页的「执行环境」面板（`POST /ai-tool/workspace`）
+展示"这台部署的沙箱是否可用 + 为什么"。
+`danger-full-access` 下的取舍仍是"把可控的部分做死"：
 
 | 控制点 | 落法 |
 | --- | --- |
 | 开关 | `AGENT_COMMAND_ENABLED`（**默认 `false`**，自用 / 内网确需时显式打开）。关掉时工具**仍在**（装配期工具池必须非空），每次调用返回"已被关闭"的结论 —— 模型能理解并改口 |
-| 目录边界 | `AGENT_COMMAND_WORK_DIR`（默认服务进程工作目录）。agent 传入的 `cwd` 必须落在其内，越界**拒绝并说明边界**（不静默夹回）；判边界用 `path.relative`，天然处理 `..` 逃逸与 Windows 大小写差异。**根目录是 AI 的 workspace**：启动时与每次执行前都 `mkdir -p` 兜底（根目录被删后新建会话里的命令不会全部因 cwd 不存在而失败；建不出来只记错误，不拦启动）。**注意：它只约束 `cwd`，不约束命令读什么** —— 命令里的 `..` / 绝对路径 / 脚本里的 `fs` 仍能读到工作目录之外；真正的隔离只能靠容器 / 低权限用户 / 只读挂载 |
+| 目录边界 | 默认根 `~/.billy/workspaces`（可用 `AGENT_COMMAND_WORK_DIR` 覆盖），每个会话一个子目录 `{root}/{conversationId}/`；`bash` 与文件工具**共用**这个工作区。agent 传入的 `cwd` 必须落在会话工作区内，越界**拒绝并说明边界**（不静默夹回）；判边界用 `path.relative` + `realpath`（软链逃逸也拦），天然处理 `..` 与 Windows 大小写差异。启动时与每次执行前都 `mkdir -p` 兜底（根目录被删后新建会话里的命令不会全部因 cwd 不存在而失败；建不出来只记错误，不拦启动）。**注意：路径约束只约束访问入口，不约束命令里能读什么** —— 命令里的 `..` / 绝对路径 / 脚本里的 `fs` 仍能读到工作区之外；真正的隔离只能靠沙箱（`enforce` 下默认）或容器 / 低权限用户 |
 | 时长上限 | `AGENT_COMMAND_TIMEOUT_MS`（默认 15s）：它**既是默认值也是硬上限** —— 模型传更小听它的，传更大一律夹到这里 |
 | 输出上限 | `AGENT_COMMAND_MAX_OUTPUT_BYTES`（默认 64KB / 每条流）：超出即截断并终止命令 |
 | 停止 | 运行时信封的 `abortSignal`（与"停止整棵树"同一口径） |
@@ -1337,8 +1407,8 @@ AI SDK 的 `data-sub-agent` part，和主内容走同一条 SSE：
 #### 3.15.4 运行环境注入（操作系统 + 当前时间）
 
 - **注入位置**：系统提示词的末尾（"系统指令告知"的字面落实）。渲染走模板
-  `prompts/templates/partials/environment.eta`（提示词文本只走引擎的硬约定不破），
-  数据由 `prompts/environment.ts` 组装：平台画像来自 kits 的 `describePlatform`，
+  `core/prompts/templates/partials/environment.eta`（提示词文本只走引擎的硬约定不破），
+  数据由 `core/prompts/environment.ts` 组装：平台画像来自 kits 的 `describePlatform`，
   时间用 `Intl` 出「2026年9月30日星期三 17:55:00（Asia/Shanghai，UTC+08:00）」。
 - **只在会话第一轮注入**（`conversations.turnCount === 0`）：系统提示词是整段请求的**前缀**，
   每轮塞一个新时间戳会让提供方的前缀缓存每轮失效（本工程专门统计缓存命中，不能自己打掉它）。
@@ -1355,7 +1425,15 @@ AI SDK 的 `data-sub-agent` part，和主内容走同一条 SSE：
 AGENT_COMMAND_ENABLED=false           # 默认关闭；自用 / 内网确需时显式改 true
 AGENT_COMMAND_TIMEOUT_MS=15000        # 单条命令的时长默认值与硬上限
 AGENT_COMMAND_MAX_OUTPUT_BYTES=65536  # 每条流（stdout / stderr）的输出上限
-AGENT_COMMAND_WORK_DIR=               # 缺省 = 服务进程工作目录（启动 / 执行前自动创建）
+AGENT_COMMAND_WORK_DIR=               # 缺省 = ~/.billy/workspaces（启动 / 执行前自动创建）
+```
+
+执行环境是**另一个命名空间**（`workspace`，部署边界，终端用户改不到）：
+
+```bash
+AGENT_WORKSPACE_MODE=enforce                   # enforce（默认）/ off（自托管单租户）
+AGENT_WORKSPACE_SANDBOX_NETWORK=deny           # 沙箱内网络默认 deny
+AGENT_WORKSPACE_PROBE_TIMEOUT_MS=2000          # 探测沙箱可用性的超时
 ```
 
 #### 3.15.6 本轮改动面（自查用）
@@ -1363,7 +1441,7 @@ AGENT_COMMAND_WORK_DIR=               # 缺省 = 服务进程工作目录（启�
 | 动作 | 对象 |
 | --- | --- |
 | 新增 | kits `foundation/command/{command.runner,command.platform,command.module,index}`、`ai/tools/bash.tool.ts`、`ai/core/prompts/environment.ts`、`ai/core/prompts/templates/partials/environment.eta` |
-| 改动 | `tool-keys`（`runCommand`）、`assistant.agent`（授权）、提示词片段（用法与确认纪律，现落在 `partials/tools.eta`）、`ai.mastra`（`instructions` 改动态参数：用信封里的渲染全文）、`core/envelope`（信封加 `systemPrompt`）、`chat.service`（注入 `PROMPT_ENGINE` + 渲染 + 落快照）、`ai.module`（`CommandCore` + `PROMPT_ENGINE` provider）、`app-config`（`command*`）、`root.module`（`CommandModule`）、依赖 `execa` |
+| 改动 | `tool-keys`（当时叫 `runCommand`，**2026-11 已改名为 `bash`**）、`assistant.agent`（授权）、提示词片段（用法与确认纪律，现落在 `partials/tools.eta`）、`ai.mastra`（`instructions` 改动态参数：用信封里的渲染全文）、`core/envelope`（信封加 `systemPrompt`）、`chat.service`（注入 `PROMPT_ENGINE` + 渲染 + 落快照）、`ai.module`（`CommandCore` + `PROMPT_ENGINE` provider；`CommandCore` 现已并入 `BashTool` 工具组）、`app-config`（`command*`）、`root.module`（`CommandModule`）、依赖 `execa` |
 | 测试 | kits 10 项（正常 / 非零退出 / 超时 / 孙进程不拖死 / 截断 / cwd / 起不来 / 中止 / 三端画像）；server：环境片段 3 项 + 命令策略 5 项（开关 / 目录越界 / 目录内 / 时长夹紧）+ e2e 两条（真跑一条跨平台命令并完整落库；首轮注入且第二轮不再注入） |
 
 ### 3.16 附件（多模态输入）：只传存储 key，按类型分别喂给模型（**本轮新增，以此为准**）
@@ -1387,6 +1465,7 @@ AGENT_COMMAND_WORK_DIR=               # 缺省 = 服务进程工作目录（启�
 | **对象存储**（`ObjectStorage`） | **文件本体**：前端经预签名 URL 直传（`use-attachments-upload.ts` 的 md5 key + `PUT`） | 只有它适合放二进制；放请求体必然撞 2mb 上限 |
 | **请求体**（`AgentChatSchema.attachments`） | 只传 `{key, filename, mediaType, bytes}` | 与文件大小无关（2MB 图 base64 后 +33% 必然 413） |
 | **`timelines.payload`** | 同样的 `{key, filename, mediaType, bytes}`（`userMessagePayload`） | **绝不落 base64**：`runs` / `timelines` 是审计表，"一律不裁剪"的口径下塞几 MB 图片会把表撑变形、把时间线分页拖慢；要展示再按 key 解析 |
+| **`ai_files`**（会话文件表） | 入站附件登记一行（`source='user'`、`path='uploads/{md5}{ext}'`、`key` / 媒体类型 / 字节数 / `run_id`），再把内容**物化**到会话工作区，供 `read-file` / `file-search` 等工具使用（best-effort：登记失败只记日志，不阻塞这一轮） | 入站对象是内容寻址、可跨会话共享，所以删会话只软删行、不删对象；模型要"读用户上传的文件"时走文件工具而不是附件链路（见 `ai-file-manager.md`） |
 | 模型输入 | 图片 → `image` part 的 data URL；文本类 → 内联文本；**PDF → 本地抽出文字层后内联成文本** | 不依赖"供应商能不能访问我们的对象存储"（预签名地址对内网不可达、会过期）；PDF 也不依赖供应商的文件通道（见下） |
 
 **键的命名空间**：前台用户上传时服务端把 key 改写成 `user/<自己的 id>/<basename>`
@@ -1581,6 +1660,10 @@ await agent.stream(messages, { memory: { thread: conversationId, resource: userI
 
 ### 4.2 落库真相（实测 DDL，需求 C 的答案）
 
+> **本节是调研实测（Mastra 自己建表时长什么样），最终没有采用**：§4.3 / §4.4 拍板"记忆不做、
+> 表全部由我们自己设计"，消息与推理由 `StreamRecorder` 逐 part 落 `timelines`，不经过 Mastra Memory。
+> 下面这张表保留作**为什么不用官方表**的证据与备查。
+
 | 表 | 内容 |
 | --- | --- |
 | `mastra_messages` | `content` 是 `JSON.stringify` 后的 `MastraMessageContentV2`：**parts 结构完整落库**，`reasoning`（`{type:'reasoning', text, providerMetadata}`）、`tool-invocation`、`step-start`、`source-*`、`error`、`data-*` 都在里面 |
@@ -1663,17 +1746,20 @@ return toAISdkMessages(messages, { version: 'v6' }) // 从 '@mastra/ai-sdk/ui' �
 
 - 软删语义：会话从列表与业务接口消失（再访问 → 3304），**数据仍在库里**；
   admin 审计查询带 `includeDeleted` 开关（默认不显示），复盘不受影响；
-- **软删前先结束在跑的运行**（有 `pending` / `running` 的 run → 先 `canceled`），
+- **软删前先结束在跑的运行**（有 `pending` / `running` / `suspended` 的 run → 先 `canceled`），
   否则"用户看不到了、模型还在跑、钱还在烧"；
+- **删会话顺手清文件**（best-effort）：软删 `ai_files` 行、删本会话的 AI 产出对象、清会话工作区目录；
+  入站对象是内容寻址、可能跨会话共享，**保留不删**（`ai-file-manager.md`）；
 - 会话 id 是 nanoid、不复用，因此软删后重开新会话不会与旧数据混淆；
 - 保留期：默认**永久**（§3.8 第 8 项）；若将来要清理，清理动作本身要留痕。
 
 
-- `resource: userId` + `thread: conversationId`，服务端从鉴权上下文取 userId，**不接受前端传 owner**；
-- `recall({ threadId, resourceId })` 内部会校验归属，不匹配直接抛
-  `Thread with id X is for resource with id Y but resource Z was queried.`；
-- ⚠️ 但官方明文：**Memory 不做访问控制**，所以「这个会话是不是当前用户的」必须我们在
-  边界先校验（`getThreadById({ threadId, resourceId })` 或走自有会话表），不能只靠 recall 抛错兜底。
+- **归属校验走我们自己的表**：`userId` 只从鉴权上下文取，**不接受前端传 owner**；
+  每个会话级接口都先 `conversationRepo.requireOwned(userId, conversationId)`（不匹配 → 3304）；
+- Mastra 的 `resource`（= userId）/ `thread`（= conversationId）现在只用于 durable 续跑所需的记忆
+  （`InMemoryStore`），官方明文"Memory 不做访问控制"，所以权限从不指望它；
+- 早先设计的 `recall({ threadId, resourceId })` 归属校验**不是我们的路径**（我们不用 Mastra Memory 存历史），
+  保留这句是为了说明"为什么权限必须自己做"。
 
 ### 4.6 数据模型：三张表（拍板：`conversations` / `timelines` / `runs`）
 
@@ -1690,6 +1776,7 @@ return toAISdkMessages(messages, { version: 'v6' }) // 从 '@mastra/ai-sdk/ui' �
 | `user_id` | varchar(20) | 归属用户（= Mastra 的 `resource`；服务端从鉴权上下文取，不接受前端传） |
 | `agent_key` | varchar(64) | 用哪个 agent（默认 `assistant`） |
 | `title` | text | 会话标题（首条消息摘要 / 模型生成 / 用户改） |
+| `file_access` | varchar(16) | 本会话的**沙箱写权限**：`workspace-write`（默认）/ `read-only`。只决定"沙箱内能不能写工作区"，能不能出沙箱是部署配置（`AGENT_WORKSPACE_MODE`，见 `workspace-runtime.md`） |
 | `status` | varchar(20) | 字典 `ConversationStatus`：`active` / `archived` |
 | `last_active_at` | timestamp(3) | 最后活动时间（列表排序依据，避免按 `updated_at` 排序被标题修改污染） |
 | `turn_count` | int (default 0) | **轮数**：该会话已完成的问答轮数（列表页直接读，不必聚合 `runs`） |
@@ -1708,8 +1795,8 @@ return toAISdkMessages(messages, { version: 'v6' }) // 从 '@mastra/ai-sdk/ui' �
 | `depth` | int (default 0) | 深度：根 0、子 agent 1（当前工具面已保证不超过 1，配置位留给将来） |
 | `tool_call_id` | varchar(64) null | 子 run 专用：**父那次工具调用的 id**（幂等键的一半，见 §3.14.6） |
 | `agent_key` | varchar(64) | 本次用哪个 agent（会话可换 agent，以 run 为准）；子 agent 记 `sub:<name>`（不在注册表，这是有意的） |
-| `status` | varchar(20) | 字典 `RunStatus`：`pending` / `running` / `succeeded` / `failed` / `interrupted` / `canceled` |
-| `engine_run_id` | varchar(64) null | **Mastra durable agent 的 runId**（`observe` / `recover` 用；唯一索引） |
+| `status` | varchar(20) | 字典 `RunStatus`：`pending` / `running` / `suspended` / `succeeded` / `failed` / `interrupted` / `canceled` |
+| `engine_run_id` | varchar(64) null | **Mastra durable agent 的 runId**（起跑时回写、同时交给 Mastra；快照落库按它匹配，唯一索引） |
 | `triggered_by` | varchar(20) null | 发起人（= 登录用户 id；审计用） |
 | `request_id` | varchar(64) null | 发起该轮的 HTTP `X-Request-Id`（把审计记录与日志 / 告警串起来） |
 | `request_snapshot` | jsonb null | **送给模型的输入快照**（模型 / 参数 / agentRevision / 工具与技能清单 / 上下文裁剪与压缩记录，见 §3.9）—— 复盘的输入侧证据 |
@@ -1728,9 +1815,11 @@ return toAISdkMessages(messages, { version: 'v6' }) // 从 '@mastra/ai-sdk/ui' �
 
 索引：`idx_run_conversation_created (conversation_id, created_at)`、`idx_run_status (status)`、
 唯一索引 `uk_run_engine_run_id (engine_run_id)`；
-**并发控制用部分唯一索引**：`uk_run_active_conversation (conversation_id) WHERE parent_run_id IS NULL AND status IN ('pending','running')`
+**并发控制用部分唯一索引**：`uk_run_active_conversation (conversation_id) WHERE parent_run_id IS NULL AND status IN ('pending','running','suspended')`
 —— 同一会话同时只允许**一次进行中的根运行**，第二个请求直接被数据库挡住（转成 3306，见 §3.7），
 不靠应用层"先查再写"的竞态判断。
+**`suspended` 也算"占着会话"**：等用户回答期间不能再开新的一轮，否则同一会话会出现两条同时活着的根 run
+（一条挂起、一条新跑），上下文与取消都会分叉（§3.7.1）。
 **`parent_run_id IS NULL` 这一条是子 agent 的硬前提**：子 run 与父 run 同时 running 是正常状态，
 不加它子 agent 一跑就撞唯一键（§3.14.3）。
 另：`idx_run_parent (parent_run_id)`（按父查子）、`uk_run_tool_call (parent_run_id, tool_call_id)`（幂等去重，部分索引：`WHERE tool_call_id IS NOT NULL`）。
@@ -1750,7 +1839,7 @@ return toAISdkMessages(messages, { version: 'v6' }) // 从 '@mastra/ai-sdk/ui' �
 | `seq` | int | 会话内单调递增的序号（**渲染顺序的权威依据**，不依赖时间戳） |
 | `attempt` | int (default 1) | 第几次尝试（崩溃恢复重跑时 +1；配合 `(run_id, tool_call_id)` 唯一约束做 upsert，避免时间线出现重复条目） |
 | `role` | varchar(20) | `user` / `assistant` / `system` |
-| `kind` | varchar(32) | 字典 `TimelineKind`：`text` / `reasoning` / `tool-call` / `tool-result` / `step` / `source` / `status` / `error` / **`summary`**（上下文压缩产物，见 §3.9）/ `system`（系统提示词快照） |
+| `kind` | varchar(32) | 字典 `TimelineKind`：`text` / `reasoning` / `tool-call` / `tool-result` / `tool-suspended`（工具挂起等回答，见 §3.7.1）/ `step` / `source` / `status` / `error` / **`summary`**（上下文压缩产物，见 §3.9）/ `system`（系统提示词快照）/ `plan`（规划工具产出的清单） |
 | `state` | varchar(20) null | 对齐 AI SDK part 的 state（`streaming` / `done` / `error`；工具另有七态） |
 | `tool_key` | varchar(64) null | 工具行专用：工具 key（提为列而不是埋在 payload 里，便于直接查「哪个工具最慢 / 最常失败」） |
 | `tool_call_id` | varchar(64) null | 工具行专用：本次工具调用的 id（把 `tool-call` 与 `tool-result` 两行配对；也是**幂等键**的一半，见 §3.4） |
@@ -1762,6 +1851,8 @@ return toAISdkMessages(messages, { version: 'v6' }) // 从 '@mastra/ai-sdk/ui' �
 
 索引：`idx_timeline_conversation_seq (conversation_id, seq)`、`idx_timeline_run_seq (run_id, seq)`、
 `idx_timeline_message (message_id)`、`idx_timeline_tool (tool_key)`、
+`idx_timeline_conversation_tool_call (conversation_id, tool_call_id) WHERE tool_call_id IS NOT NULL`
+（工具结果分页的**回取**路径：跨轮 / 跨实例按 `(会话, toolCallId)` 找原文，见 §5.6）、
 `idx_timeline_summary (conversation_id, seq) WHERE kind = 'summary'`（组装上下文时快速定位「最新一条摘要」）；
 **工具调用去重**：部分唯一索引 `uk_timeline_tool_call (run_id, tool_call_id, kind) WHERE tool_call_id IS NOT NULL`
 （**必须带 `kind`**：同一次调用落两行 —— `tool-call` 与 `tool-result` —— 二者共用同一个 `tool_call_id`）
@@ -1817,6 +1908,25 @@ return toAISdkMessages(messages, { version: 'v6' }) // 从 '@mastra/ai-sdk/ui' �
 若审计时发现，即视为数据缺陷（而不是靠数据库兜底）。
 原方案的「第 4 张表（工作记忆位置）」**随"记忆先不做"取消**，本轮不再需要。
 Mastra 存储接口里 `memory` domain 也不再实现（见 §4.4）。
+
+**其余 AI 相关表（2026-11-13 现状，全库 19 张实体）**
+
+三张业务表之外，AI 侧还有 9 张表，各有专文；这里只列"是什么 / 关键约束"，字段明细见对应设计：
+
+| 表 | 一行是什么 | 关键约束（实际） | 详见 |
+| --- | --- | --- | --- |
+| `ai_providers` | 一个模型供应商接入 | `uk_provider_name` / `uk_provider_slug`（都带 `deleted_at IS NULL`）、`idx_provider_enabled`；密钥列是 `api_key`（**明文**） | §4.8 / `ai-model` 模块 |
+| `ai_models` | 该供应商下的一个模型 | `uk_model_provider_key (provider_id, model_key)` 软删感知、`idx_model_provider`、`idx_model_enabled`；含 `mode` / `input_modalities` / `output_modalities` | §4.8 / §3.16.5 |
+| `ai_tools` | 一个注册工具的可变配置 | `uk_tool_key`（软删感知）、`idx_tool_enabled`、`idx_tool_connector`；`origin` 区分 `code` / `connector` | `ai-agent-tool-engine.md` §5.5 |
+| `ai_connectors` | 一个外部能力来源（库 / Redis / 飞书 CLI） | `uk_connector_key`（软删感知）、`idx_connector_enabled`；`secrets` 明文 | `ai-connector.md` §3.2 |
+| `ai_files` | 一个会话内文件（入站附件 / AI 产出） | `uk_ai_file_path (conversation_id, path)`、`idx_ai_file_conversation`、`idx_ai_file_source`；软删 | `ai-file-manager.md` §3 |
+| `ai_skills` | 一个 Agent Skills 技能（DB 是事实源） | `uk_skill_key`（软删感知）、`idx_skill_enabled`、`idx_skill_source`；`version` 做乐观锁 | `ai-skill-library.md` |
+| `ai_skill_files` | 技能目录里的一个文本文件 | `uk_skill_file (skill_id, path)`、`idx_skill_file_skill`；**硬删** | `ai-skill-library.md` |
+| `ai_usage_daily` | 每日用量主表（一天一行） | `uk_ai_usage_daily_date (stat_date)` | `ai-usage-stats.md` |
+| `ai_usage_daily_dimension` | 按 model / agent / tool 分桶的每日用量 | `uk_ai_usage_dimension (stat_date, dimension_type, dimension_key)` | `ai-usage-stats.md` |
+
+**外键规则同样适用**：上面所有 AI 表之间（`provider_id` / `conversation_id` / `run_id` / `connector_id` /
+`skill_id`）都是**逻辑引用，无物理外键**。
 
 ### 4.7 消耗、轮数与步数：统计口径与位置（对齐你的问题）
 
@@ -1877,14 +1987,21 @@ const toolCalls = await output.toolCalls
 **每一步/每个工具的耗时与用量直接读 `timelines` 对应行**（时间线视图天然带这些列，不用额外聚合）；
 用量与上下文占比交给 ai-elements 的 `context` 组件（`usedTokens` / `maxTokens` + `usage`）。
 
+**跨会话的日级汇总另有落点（现状，2026-11-13）**：`ai_usage_daily`（一天一行）与
+`ai_usage_daily_dimension`（按 model / agent / tool 分桶）由 `modules/ai/monitoring` 的汇总逻辑写入，
+对外是 `POST /agent/usage/summary` 与 `POST /agent/usage/rollup`。它回答"今天整体怎么样 / 谁用的 /
+哪个工具拖后腿"，**不替代**上面的单轮口径（`runs.usage` 仍是"这一轮花了多少"的唯一事实源），
+设计见 `ai-usage-stats.md`。
+
 ### 4.8 AI 模型模块：供应商表 + 模型表（配置类数据，与 agent 运行时解耦）
 
 > **⚠️ 密钥存储口径已变更（2026-10-01）**：`ai_providers` 的密钥从 AES-GCM 密文改为**明文**
 > （列 `api_key`），提示串 `hintOf` 在读取时派生；接口仍不回明文。理由与代价见
 > `ai-agent-tool-engine.md` 的「实施记录」第 11 条。
 
-> **落地状态（本轮）**：**只落地数据表**（`ai_providers` / `ai_models`，实体 + 迁移 + 对外模型数据结构，
-> 迁移已应用）。CRUD / 同步接口 / 管理页按 §4.8.4 后续实现；错误码（§4.8.6）随模块一起加。
+> **落地状态（2026-11-13，以此为准）**：表、CRUD、同步、测试、模型页、种子（`AiModelSeedService`）
+> 与运行时解析（§4.9）**全部落地**。环境变量只作为首次种子（`AGENT_SEED_FROM_ENV` 可关），
+> 运行时**永远只从库里解析模型**。
 
 **要解决的问题**：模型与密钥目前只能靠环境变量（`MASTRA_MODEL` / `MASTRA_API_KEY` / `MASTRA_BASE_URL`）配置，
 改一次要动部署；而且"这家供应商现在到底有哪些模型、窗口多大、支持不支持工具调用"只能靠人去查文档。
@@ -1894,16 +2011,16 @@ const toolCalls = await output.toolCalls
 
 | 表 | 一行是什么 | 关键列 |
 | --- | --- | --- |
-| `ai_providers` | 一个模型供应商接入（哪家、什么地址、什么密钥、启用没） | `name`（唯一）/ `kind` / `base_url` / `api_key_cipher` + `api_key_hint` / `enabled` / `last_synced_at` / `last_sync_error` |
-| `ai_models` | 该供应商的一个模型 | `provider_id` / `model_key` / `display_name` / `context_window` / `max_output_tokens` / `capabilities` / `source` / `enabled` / `last_seen_at` / `raw` |
+| `ai_providers` | 一个模型供应商接入（哪家、什么地址、什么密钥、启用没） | `name`（唯一）/ `slug`（唯一，`<slug>/<modelKey>` 的前半段）/ `kind` / `base_url` / `api_key`（**明文**）/ `enabled` / `last_synced_at` / `last_sync_error` / `metadata` |
+| `ai_models` | 该供应商的一个模型 | `provider_id` / `model_key` / `display_name` / `context_window` / `max_output_tokens` / `mode` / `input_modalities` / `output_modalities` / `capabilities` / `source` / `enabled` / `last_seen_at` / `synced_at` / `raw` |
 
 三条口径要先说清（都是刻意的）：
 
-1. **密钥加密存**：`api_key_cipher` = AES-256-GCM（口令取 `AI_MODEL_ENCRYPTION_KEY`，缺省回落 `JWT_SECRET`；
-   两者都没配 → 明确报错，**不静默存明文**）。接口**永不回传明文**，只回 `apiKeyHint`（`sk-…abcd`）与 `hasApiKey`；
+1. **密钥明文入库**（2026-10-01 定，列 `api_key`）：接口**永不回传明文**，只回 `hintOf` 派生的提示串
+   （`sk-…abcd`）与 `hasApiKey`；代价与理由见 `ai-agent-tool-engine.md`「实施记录」第 11 条；
 2. **`raw` 全量留存**：供应商原始 JSON 原样落库（不裁剪）——"模型什么时候消失 / 参数什么时候变了"可复盘；
-3. **唯一键 = 同步锚点**：`uk_provider_name (name)`、`uk_model_provider_key (provider_id, model_key)`。
-   同步按后者 upsert，所以**重复执行结果一致（幂等）**。
+3. **唯一键 = 同步锚点**：`uk_provider_name (name)` / `uk_provider_slug (slug)` / `uk_model_provider_key (provider_id, model_key)`
+   （三者都带 `deleted_at IS NULL`，软删后同名可重建）。同步按后者 upsert，所以**重复执行结果一致（幂等）**。
 
 #### 4.8.2 拉模型明细：只收国内厂商，统一走 OpenAI 兼容 adapter
 
@@ -1921,9 +2038,11 @@ OpenAI 形态的"列模型"接口，所以**只有一个通用 adapter**，厂�
 「请手工新增模型」，**不发必然失败的请求**；`openai-compatible` 保留为**协议形态兜底**
 （自建网关 / One-API / vLLM），没有官方默认地址，必须显式配 `baseUrl`。
 
-解析结果统一成：`{ modelKey, displayName?, contextWindow?, maxOutputTokens?, capabilities?, raw }` ——
+解析结果统一成：`{ modelKey, displayName?, contextWindow?, maxOutputTokens?, capabilities?, mode, inputModalities, outputModalities, raw }`
+（`mode` / 模态的解析规则见 §3.16.5：认不出就是 `unknown` / `null`，**绝不编造**）——
 adapter 是**纯函数 + 一次 fetch**，可以脱离数据库单测（有 mock 服务就够）。
-OpenAI 兼容形态通常一页返回全部，翻页只保留"最多 10 页 + `has_more` / `last_id`"的死循环兜底。
+OpenAI 兼容形态通常一页返回全部，翻页只保留"最多 10 页 + `has_more` / `last_id`"的死循环兜底；
+非 2xx 时错误信息只带响应体的前 300 字符（`ERROR_BODY_MAX`），默认超时 15s。
 
 #### 4.8.3 同步的语义（哪些会自动改、哪些绝不自动改）
 
@@ -1937,22 +2056,26 @@ OpenAI 兼容形态通常一页返回全部，翻页只保留"最多 10 页 + `h
 
 #### 4.8.4 接口（`/ai-model/*`，AdminAuthGuard，全部 POST）
 
-`provider/list | create | detail | update | remove | sync | test`、`model/list | update | remove`。
+`provider/list | create | detail | update | remove | sync | test`、`model/list | create | update | remove`。
 `provider/remove` 与其下模型**软删**（配置类数据保留历史，便于排查"当时用的是哪个模型"）；
-`provider/test` 只测连通性不落库（配错了当场知道）。
+`provider/test` 只测连通性不落库（配错了当场知道）；`model/create` 用于供应商列不出模型时手工补一条
+（`source='manual'`，同步不覆盖它）。
 
-#### 4.8.5 与 agent 运行时的关系（**本轮不接管**）
+#### 4.8.5 与 agent 运行时的关系（**已接管**）
 
-本轮 agent 仍按环境变量解析模型（`MASTRA_MODEL` 等），本模块只做"配置与明细的真相源 + 管理页"。
-下一步（已设计、未实现）的模型解析顺序：**本轮显式指定的模型 → 库中启用的默认模型 → 环境变量兜底**，
-并把 `context_window` 接进 §3.9 的窗口解析（优先库里的实测值，tokenlens 兜底）。
-**不一起做的理由**：运行时那套已经端到端验证过，换模型来源属于行为变更，单独一轮做+单独验证更稳。
+本模块既是"配置与明细的真相源 + 管理页"，也是**运行时模型的唯一来源**：agent 每轮从库里解析模型
+（顺序与硬口径见 §4.9）。`context_window` 也接进了 §3.9 的窗口解析（优先库里的实测值，tokenlens 兜底，
+`ContextWindowResolution.source = 'provider'`）。环境变量 `MASTRA_*` 只在库里还没有供应商时做一次种子
+（`AiModelSeedService`，`AGENT_SEED_FROM_ENV=false` 可关）。
 
-#### 4.8.6 错误码（34xx 段，**随模块实现时再加**）
+#### 4.8.6 错误码（34xx 段，已落地）
 
 `3401` 供应商不存在 / `3402` 模型不存在 / `3403` 拉取模型明细失败 / `3404` 供应商已禁用 /
-`3405` 未配置密钥加密口令（`AI_MODEL_ENCRYPTION_KEY` 与 `JWT_SECRET` 都缺）。
-（已撤回未使用的错误码 —— 不留死代码；实现模块那一步一起加。）
+`3405` **供应商未配置密钥** / `3406` 还没有可用的模型（§4.9.2）。
+
+后续模块继续往这一段续号：`3407` 工具未注册 / `3408` 工具配置不合法（工具配置，§5.5）、
+`3409`–`3411` 连接器（不存在 / 配置不合法 / 同步失败）、`3412`–`3418` 技能库、`3419`–`3423` 文件分享。
+（`3405` 原来是"未配置密钥加密口令"，密钥改明文后这个含义已废弃，**现在指供应商缺密钥**。）
 
 ### 4.9 运行时只用"配过的模型"（选模型怎么落到 agent 上）
 
@@ -2193,6 +2316,8 @@ AI SDK v6 的续传是**两层 API**（不是同一方法的两个名字）：
 全部要自建**（SDK 只提供 `resume` 选项与 `consumeSseStream` 钩子）。更麻烦的是：
 官方示例依赖 Next.js 专有的 `after()` / `waitUntil`，**我们不是 Next.js，官方没有等价替代示例** →
 需要我们自己实现"响应结束后继续收尾"的机制（见 §7 待拍板项）。
+**现状**：收尾就在请求处理函数里、流管道写完之后同步做（`chatStream` 内：`recorder.finish` →
+首轮命名 → `runs.finish` → 累加会话 → 推 `data-run-usage`）；没有引入 scheduler 或 `waitUntil` 的替身。
 
 ⚠️ **最容易踩的语义坑**：在 `resume: true` 下，`chat.stop()` **只是断开连接，并不取消生成**
 （官方原文 + 专门的 troubleshooting 页）。要真正停止必须自建 stop 端点：
@@ -2225,8 +2350,11 @@ AI SDK v6 的续传是**两层 API**（不是同一方法的两个名字）：
 | --- | --- | --- | --- |
 | `data-run` | 不带 | 编排层（`chatStream` 开头第一个片段） | **本轮身份**：`runId` / `conversationId` / `agentKey` —— 前端据此记住 runId（停止与重连只认它），新建会话时也靠它拿到 conversationId |
 | `data-run-usage` | 不带 | 编排层（**收尾落库之后、`[DONE]` 之前**） | **本轮用量**：`usage`（输入 / 输出 / 缓存读 / 推理 token，缺失一律 `null`）+ `stepCount` / `toolCallCount` / `durationMs`。为什么走流而不是让前端再查一次：用量只有收尾时才知道，而这个位置是唯一能保证"客户端看到用量时库里也一定有了"的地方；同时进 Redis 输出记录与广播，所以断线补发也拿得到。前端渲染在**输入框右下角**（k / m 缩写 + 悬停精确值，见 §4.9.3）；历史回看时 `history.ts` 从 `runs.usage` 重建同一块 |
+| `data-run-suspended` | 不带 | 编排层（工具挂起收尾时，见 §3.7.1） | 这一轮停在"等用户回答"：`runId` / `conversationId` —— 前端据此切到问答卡、不再等 `[DONE]` |
+| `data-conversation-title` | 不带 | 编排层（收尾命名之后） | 首轮自动命名的新标题（`runId` / `conversationId` / `title`）：前端就地改列表项与页头，不用重拉（§4.10.1） |
 | `data-sub-agent` | **带**（= 子 run id） | `run-sub-agent` 工具（经工具上下文的 `writer`） | 子助手状态快照：status / 结论 / 步数与工具次数 / usage（§3.14.5） |
 | `data-sub-agent-delta` | 不带 | 同上 | 子助手的流式增量（text / reasoning），一块一个。**前端在传输层把它标成 `transient`**（`chat-transport.ts`），只走 `onData`、不落 part —— 否则一块一个 part 会把页面拖死，见 `ai-chat-state.md` |
+| `data-tool-event` | `state` 带 / `stream` 不带 | 工具自己（`ctx.emit`，按 `@ToolDecl({ events })` 的声明，§5.17 of 工具引擎文档） | 工具执行**过程中**的自定义事件；`state` 管最新快照、`stream` 管逐条追加。**不落库**（过程不是结论） |
 
 ⚠️ `data-run` 与业务片段走**同一条记录 + 广播通道**（进 Redis 输出记录），所以断线补发时也一定先拿到它
 —— 前端不需要额外接口去问"我刚才那一轮的 runId 是多少"。
@@ -2324,14 +2452,14 @@ AI SDK v6 的续传是**两层 API**（不是同一方法的两个名字）：
 
 ## 6. 依赖、代价与风险（先说清代价，再谈做不做）
 
-### 6.1 新增依赖（版本已核实）
+### 6.1 新增依赖（版本已核实，2026-11-13 的 package.json）
 
 | 包 | 版本 | 用途 | 许可 |
 | --- | --- | --- | --- |
-| ~~`@mastra/memory`~~ | — | **本轮不需要**（记忆先不做，见 §4.3/§4.4） | — |
-| `tokenlens` | 1.3.1 | **模型上下文窗口**（解析 §3.9 的 W）+ 价目；前端 ai-elements 的 `context` 组件同款，前后端共用一套模型元数据 | MIT |
-| `@mastra/redis` | 1.4.6 | `RedisServerCache`（事件重放跨实例） | 多实例才需要 |
-| `@mastra/redis-streams` | 0.5.0 | `RedisStreamsPubSub`（跨实例事件 + abort + 恢复租约） | 多实例才需要 |
+| `@mastra/memory` | 1.41.0 | **需要**（与当初"记忆不做"的决定不同）：durable 的 `resumeStream` 要靠 memory thread 把工具结果续回消息列表，否则续跑停在 `tool-call-resumed`（§3.7.1）。现在用 `InMemoryStore`，**重启会丢 thread**，这是已知缺口 | Apache-2.0 |
+| `tokenlens` | ^1.3.1 | **模型上下文窗口**（解析 §3.9 的 W）+ 价目；前端 ai-elements 的 `context` 组件同款，前后端共用一套模型元数据 | MIT |
+| ~~`@mastra/redis`~~ | — | **未引入**：跨实例能力由我们自己的 `RedisStore` 承担（§3.6） | — |
+| ~~`@mastra/redis-streams`~~ | — | **未引入**，理由同上 | — |
 
 > `@mastra/pg` **本轮不需要**：存储适配器由我们自己实现（§4.4），表走 TypeORM 迁移；
 > 连带省掉了自动建表、`exportSchemas`、运行时 DDL 权限这一串问题。
@@ -2342,21 +2470,22 @@ AI SDK v6 的续传是**两层 API**（不是同一方法的两个名字）：
 1. **崩溃恢复要真花钱**：`recover()` 重发 LLM 调用并重跑工具（官方明文）—— 恢复一条长会话
    可能等于再付一次模型费用；
 2. **工具必须幂等**：否则恢复一次就多一条脏数据（业务写工具现在就会）；
-3. **自建 storage adapter 有维护成本**：要跟着 Mastra 的 storage 接口演进（目前 memory 10 + workflows 9 个方法），
-   Mastra 升级时要回归一次。换来的是表结构完全自主、无运行时 DDL 权限需求、也没有双写不一致问题；
+3. **自建 storage adapter 有维护成本**：要跟着 Mastra 的 storage 接口演进（**只实现 `workflows` 一个域、
+   9 个方法**；`memory` 域不实现，见 §4.4），Mastra 升级时要回归一次。换来的是表结构完全自主、
+   无运行时 DDL 权限需求、也没有双写不一致问题；
 4. **向量检索还有额外成本**：embedder 按 token 计费 + 向量存储与索引维护。
 
 ### 6.3 风险
 
 | 风险 | 具体 | 处置 |
 | --- | --- | --- |
-| **zod 双份** | `@mastra/memory@1.31.0` 依赖 `zod ^4.6.4`，本仓锁 `^4.4.3`（lock 里实际 4.4.3）→ pnpm 会为它单独装一份 zod 4.6.x | 倾向**把全仓 zod 升到 `^4.6.5`**（同大版本，改动面是 4 个 package.json + lock + 跑测试）；不升则要实测 Schema 互操作（`createTool` 走 Standard Schema，理论上互通，但没验证过） |
+| **zod 双份** | ~~`@mastra/memory@1.31.0` 依赖 `zod ^4.6.4`，本仓锁 `^4.4.3`~~ → **已执行**：全仓 zod 升到 4.x（lock 里只剩一个版本） | 关闭；升级 Mastra 时再看一次 peer 依赖 |
 | 自建 adapter 与版本耦合 | Mastra 升级若调整 storage 接口（增删方法），我们的 adapter 可能编译不过或行为漂移 | 适配层集中在一个目录、注释标注"对齐哪个版本"；升级清单里把"跑 adapter 回归"列为必做 |
 | ~~Mastra 表与业务表同库~~ | 已由"自建 adapter"决策消除 —— 不存在官方表 | — |
-| 多副本恢复租约 | 官方文档说"无分布式锁"，1.69.0 代码里却有 `#acquireRecoveryLease` + `RedisStreamsPubSub implements LeaseProvider` | 上线前**实测**：两个副本同时 boot，看是否只有一个执行恢复 |
+| 多副本恢复租约 | ~~官方文档说"无分布式锁"，1.69.0 代码里却有 `#acquireRecoveryLease` + `RedisStreamsPubSub implements LeaseProvider`~~ → **已落地**：租约改由我们自己的 `RedisStore.acquireLock` 提供（60s TTL），不依赖 Mastra 的 pubsub | 上线前**实测**：两个副本同时 boot，看是否只有一个执行恢复 |
 | 恢复语义与用户预期 | "重启后接着跑"在崩溃场景会**重放已完成的部分**（重复文本/重复工具调用） | 业务状态机里显式区分 `running` / `recovered` / `interrupted`，前端如实标注"本轮已恢复重跑" |
 | **`stop()` 语义陷阱** | `resume: true` 下 `chat.stop()` 只断线、**不取消生成**（官方原文） | 必须自建 stop 端点（落 partial → 取消 producer → 条件清空 activeStreamId）；禁止在 unmount 里 stop |
-| **`after`/`waitUntil` 无等价物** | 官方续传示例依赖 Next.js 专有钩子，非 Next 环境**官方没有替代示例** | 自己实现"响应结束后继续收尾"（见 §7 第 6 项），并为此写验收用例 |
+| **`after`/`waitUntil` 无等价物** | 官方续传示例依赖 Next.js 专有钩子，非 Next 环境**官方没有替代示例** | 自己实现"响应结束后继续收尾"（见 §7 待拍板第 2 项），并为此写验收用例 |
 | 前端两条信息来源 | AI 内容流（parts）与业务状态（data part）若各自实现，容易出现状态与内容错位 | 状态**走同一条流的持久 `data-*` part**（§5.4），不另开第二条通道 |
 
 ## 7. 决策记录
@@ -2368,13 +2497,13 @@ AI SDK v6 的续传是**两层 API**（不是同一方法的两个名字）：
 | 崩溃恢复 | **必须做**（默认开启，带配置开关 + "恢复失败→标记中断"兜底） |
 | zod | **全仓升 `^4.6.5`**（已执行并验证：typecheck 4 包 + test 7 包全绿） |
 | 数据表 | **不用官方表，自己设计** → 自己实现 storage adapter（§4.4） |
-| 记忆 | **先不做**：不引入 `@mastra/memory`、不建记忆表；上下文自己从 `timelines` 取最近 N 条（§4.3） |
+| 记忆 | **长期记忆先不做**：不建记忆表、不用向量召回；上下文自己从 `timelines` 取最近 N 条（§4.3）。**补充（2026-11-13）**：`@mastra/memory` 后来还是引入了 —— 但只为 durable 续跑要有一条 memory thread（`InMemoryStore`，进程内、重启即丢）；它不是产品意义上的"记忆"，落地的是 §3.7.1 的缺口 |
 | 消耗统计 | 口径与位置见 §4.7：**轮** = `runs` 行、**步** = `steps.length`、token = `totalUsage`；**金额不落库** |
 | 删除口径 | **只能删会话、只能软删**；`runs` / `timelines` 无删除入口（审计证据）；软删前先结束在跑的运行（§4.5） |
 | 防篡改 | **先不做 hash 链**，改为：应用层只追加 + 部署只授 INSERT/SELECT + 删除只做软删标记（§3.8 A） |
 | **子 agent 的创建方式** | **运行期由工具动态创建**（`SubAgentCore.asTools()` 的 `run-sub-agent`），**删除**装配期静态 `subAgents` 声明与 Mastra 的 `agents:{}` 委派（§3.14） |
 | **子 agent 的提示词** | **由主 agent 现场撰写**（工具的 `system_prompt` 入参，必填）；不再有 `analyst.eta` 这类静态子 agent 提示词 |
-| **子 agent 的工具面** | **全部工具 − 委派类工具**（`delegation` 标记）→ 天然深度 1，不会无限递归 |
+| **子 agent 的工具面** | **父 agent 的授权面 ∩（全部 − 委派类工具 − `child: 'deny'`）**（`delegation` 标记）→ 天然深度 1，不会无限递归；四个 `plan-*` 标 `child: 'deny'` |
 | **子 agent 的落库** | 独立 `runs` 行（`parent_run_id` / `depth` / `tool_call_id`）+ 自己完整的 `timelines`；动态 prompt 全量落 `request_snapshot`；消耗汇总进父 run，**轮数只数根 run** |
 | **对话附件** | **只传存储 key、不传文件内容**（请求体与文件大小无关）；图片走 `image` part 的 data URL、文本类内联、**PDF 本地抽文字内联**；时间线只落元数据（§3.16） |
 | **多模态能力的建模** | **模型实体的独立字段**（`mode` + `input_modalities` + `output_modalities`），不塞进 `capabilities` jsonb。模态数组对齐 **OpenRouter** 的 `architecture.input_modalities`，类型字段对齐 **LiteLLM** 的 `mode`（§3.16.5） |
@@ -2385,12 +2514,15 @@ AI SDK v6 的续传是**两层 API**（不是同一方法的两个名字）：
 1. **长期记忆形态** → 推荐**本轮不开 `semanticRecall`**，用工作记忆（resource 级）+ 观察式记忆承载；
    理由：① 向量会在这条"自建表"路线上留一张**官方表**（`PgVector` 自建 `memory_messages`），
    ② 还要 embedder 成本与运行时 DDL 权限，③ 配不全时 Memory **构造直接失败**（不是降级）；
+   **现状**：仍未开 `semanticRecall`（`createAgentMemory` 里写死 `semanticRecall: false`、`workingMemory: false`）。
 2. **续传 / 停止怎么落地**（§5.3）→ 推荐**用既有 `RedisStore` 自建**
    （流缓存 + activeStreamId + POST 建流 / GET 续流 + 204 语义 + 独立 stop 端点），
    不引 `resumable-stream`；`after`/`waitUntil` 的等价物挂在既有 **scheduler** 上做收尾；
+   **现状**：已按这个方向落地（`runtime/stream-store.service.ts` + `stream-resume.ts`），
+   但收尾没有用 scheduler —— 它就在请求处理函数里、流管道写完之后同步做（见 §4.7 的收尾时机与缺口）。
 3. **ai-elements 全量 48 文件** → 推荐**照原计划**进 `@repo/ui` 子路径、不进 barrel（§1 已按此落地）。
 
-## 8. 落地顺序（方案定稿后）
+## 8. 落地顺序（方案定稿后；**以下 1–9 步均已落地**，实现落点见 §3 各节）
 
 1. **数据模型与表**：设计并迁移三张表 —— `conversations`（会话）/ `runs`（运行 + 消耗）/ `timelines`（消息与推理事件）；
 2. **storage adapter**：`MastraCompositeStore` 子类 + **只剩 `workflows` domain（9 个方法）**，跑通「durable agent 快照落我们的表」；

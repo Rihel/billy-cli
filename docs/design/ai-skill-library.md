@@ -1,6 +1,6 @@
 # AI 技能库（在线编辑 + 链接导入 + 启停治理）
 
-> 状态：已落地（2026-11-10，2026-11-11 改为链接导入 + 沉浸式编辑器）
+> 状态：已落地（2026-11-10，2026-11-11 改为链接导入 + 沉浸式编辑器；2026-11-13 现状补记见 §6）
 > 关联：`docs/design/ai-agent.md` §1.4（技能发现 / 校验 / 授权）、`ai-agent-tool-engine.md` §5.5（配置类数据的口径）
 
 ## 1. 问题与现状
@@ -35,8 +35,17 @@
 
 | 表 | 一行是什么 | 关键列 |
 | --- | --- | --- |
-| `ai_skills` | 一个技能 | `skill_key`（= 目录名，唯一）、`title`、`description`（frontmatter 的 description）、`frontmatter`（其余 YAML 键）、`enabled`、`source`、`origin_url`、`version`、`file_count`、`content_hash`、`last_materialized_at` |
+| `ai_skills` | 一个技能 | `skill_key`（= 目录名，唯一）、`title`、`description`（frontmatter 的 description）、`frontmatter`（其余 YAML 键）、`enabled`、`source`、`origin_url`、`version`、`file_count`、`content_hash`、`last_materialized_at`、`last_validated_at`、`warnings` |
 | `ai_skill_files` | 技能里的一个文件 | `skill_id`、`path`（相对技能目录）、`content`、`size`、`sha256` |
+
+实体：`apps/server/src/database/entities/ai-skill-entity.ts` / `ai-skill-file-entity.ts`。
+
+索引 / 唯一键（以实体为准）：
+
+- `ai_skills`：`uk_skill_key`（`skill_key`，**软删感知**：`WHERE deleted_at IS NULL`，删掉后可重建同名）、
+  `idx_skill_enabled`、`idx_skill_source`；
+- `ai_skill_files`：`uk_skill_file`（`skill_id, path`，普通唯一，**硬删**——文件没有独立审计价值，
+  软删反而让"删掉再建同名文件"撞唯一键）、`idx_skill_file_skill`。
 
 口径：
 
@@ -83,9 +92,9 @@
 | `list` | 分页 + 关键字 / 启用 / 来源筛选 |
 | `detail` | 元信息 + 文件清单（**不含正文**，避免详情接口被大文件拖慢） |
 | `create` | 建技能（**只要求名称**；description 省略时落占位，见 §2.7） |
-| `update` | 改元信息与开关（带 `expectedVersion`） |
+| `update` | 改元信息与开关（带 `expectedVersion`）；只有 description / frontmatter 这类**内容字段**变了才重拼 `SKILL.md` 并推进版本，纯开关 / 标题改动不推进 |
 | `remove` | 软删技能 + 删落盘目录 |
-| `file/read` | 读单个文件正文 |
+| `file/read` | 读单个文件正文（`SKILL.md` 返回的是**含 frontmatter 的整份文件**，前端块编辑器自己 strip，见 §2.7） |
 | `file/save` | 写单个文件（新建或覆盖；带 `expectedVersion`） |
 | `file/remove` | 删单个文件（`SKILL.md` 不允许删） |
 | `import/preview` | 解析链接：列出里面有哪些技能、哪些已存在 |
@@ -94,6 +103,10 @@
 **校验**：保存 `SKILL.md` 前用 Mastra 的 `validateSkillContent` 校验（名字 / description 长度 /
 正文警告），并把 frontmatter 拼回后整体校验；不合法直接 3413，不写库、不落盘。
 
+错误码（`Skill*` 系列，`@repo/shared` 的 `app-error-code` 字典）：
+3412 技能不存在 / 3413 内容不合法 / 3414 名称已被占用 / 3415 技能文件不合法 /
+3416 导入失败 / 3417 版本冲突（保存时 `expectedVersion` 不匹配）/ 3418 落盘失败（库已提交）。
+
 ### 2.5 链接导入（skills.sh / GitHub）
 
 用户给的是**技能页面链接**，不是本地目录。服务端负责"下载 → 校验 → 入库 → 落盘"：
@@ -101,6 +114,8 @@
 | 链接形态 | 处理 |
 | --- | --- |
 | `https://skills.sh/<owner>/<repo>/<slug>` | 解析成 GitHub `owner/repo` + slug，按仓库找目录 |
+| `https://skills.sh/<owner>/<repo>`（无 slug） | 按整仓导入（逐个技能报告） |
+| `https://skills.sh/p/...`（Pack 链接） | **明确报错**：请打开单个技能页面再复制链接 |
 | `https://github.com/<owner>/<repo>[/tree/<ref>/<path>]` | 仓库 / 目录；整仓导入时逐个技能报告 |
 | `https://github.com/<owner>/<repo>/blob/<ref>/.../SKILL.md` | 定位到该技能目录 |
 | `https://raw.githubusercontent.com/...` | 同上（按 ref + 路径） |
@@ -117,7 +132,7 @@
 - **为什么不用整仓 tarball**：大仓库（如 `anthropics/skills`）压缩包几 MB，实测这台机器 90s 都下不完；
   而文件树只有 ~170KB、秒级返回，按需再取文件更快也更省。
 - **skills.sh 的公开 API 要 Vercel OIDC**（实测 401），所以不依赖它；第三方 well-known 来源
-  （`/site/<domain>/...`）无 GitHub 仓库可折，明确报"暂不支持"。
+  （`/site/<domain>/...`）无 GitHub 仓库可折，明确报"暂不支持"；skills.sh 的 **Pack** 链接同样不支持。
 - 未认证 GitHub API 限额 60 次/时/IP：管理员低频操作可接受；可配 `GITHUB_TOKEN` 提高上限。
 - **限额与白名单**：只收 `SKILL.md` + `references/` `scripts/` `assets/` 下的文本文件（扩展名白名单 +
   无 NUL 字节），跳符号链接 / 二进制；单文件 200k 字符、单技能 800k 字符、100 个文件；一次最多 25 个技能。
@@ -132,7 +147,13 @@
 
 - 一组粗粒度工具，而不是"每列一个工具"：模型一次调用就能把一个技能写完（正文 + 参考文件）；
 - 复用同一套 service 校验与落盘，**agent 写入与页面写入是同一条链路**；
+- `skill-file-save` / `skill-file-append` **不能写 `SKILL.md`**（走 `skill-save` 整体更新，
+  避免这里第二次拼 frontmatter），`skill-file-append` 的路径不能是 `SKILL.md`；
 - 作用域 `admin`、`child: allow`（子 agent 也能维护技能，但继承父的授权面）。
+- 工具实现在 `modules/ai/skills/skill.tools.ts`（`SkillTools`，组级
+  `@ToolGroup({ category: 'core', scope: 'admin', child: 'allow' })`），共 **7 个** key：
+  `skill-list` / `skill-save` / `skill-file-save` / `skill-file-append` / `skill-import` /
+  `skill-delete` / `skill-enable`。
 
 ### 2.7 前端（admin）
 
@@ -195,6 +216,18 @@ AiModule bootstrap
 - 链接解析：skills.sh / GitHub tree / blob / raw / 简写 / 直接 Markdown / well-known 报错；
 - 接口：创建 → 保存 → 停用 → 列表 → 预览 → 导入（curl）；迁移执行（`psql`）。
 
+对应的测试文件（2026-11-13）：
+
+| 测试 | 覆盖 |
+| --- | --- |
+| `apps/server/test/ai-skill-library.test.ts` | 路径归一、落盘、草稿往返、loader 优先级、service 写链路 |
+| `apps/server/test/ai-skill-source.test.ts` | 链接解析（skills.sh / GitHub / raw / 简写 / well-known） |
+| `apps/server/test/ai-skills-loader.test.ts` | 扫描顺序、坏技能跳过、`reload()`、`*` 现算 |
+| `apps/server/test/ai-tools/skill-tools.test.ts` | 7 个 `skill-*` 工具的入参与结果 |
+| `apps/admin/test/skill-markdown.test.ts`、`skill-activity.test.ts`、`skill-tool.test.ts` | 前端 strip frontmatter / 技能 tab / 工具卡 |
+
+命令：`pnpm --filter @app/server exec vitest run test/ai-skill-library.test.ts test/ai-skill-source.test.ts test/ai-skills-loader.test.ts`。
+
 ## 5. 取舍记录
 
 | 选择 | 为什么 | 代价 |
@@ -207,3 +240,20 @@ AiModule bootstrap
 | 技能 key 不可改名 | 历史运行 / 时间线按名字引用 | 改名 = 新建 + 删除 |
 | agent 工具作用域 admin | 技能是指令，用户可写 = 持久提示词注入 | 普通用户只能看，不能建 |
 | 新建只填名称 + 占位描述 | 一步进入写作，不被表单拦 | 列表里会先看到"待补充"的占位 |
+
+## 6. 现状补记（2026-11-13）
+
+- **来源字典是三个值**（`SkillSource`，`packages/shared/src/dicts/ai-skill.dict.ts`）：
+  `online`（后台新建）/ `import`（链接导入）/ `agent`（agent 用 `skill-save` 写入）。
+  §2.1 表里的 `source` 列取这三个值之一，列表页的「来源」按它显示。
+- **`skill_key` 有形状约束**：`SKILL_KEY_PATTERN = /^[a-z0-9][a-z0-9-]{0,63}$/`（小写字母 / 数字 / 连字符，
+  以字母或数字开头，≤64），因为它同时是落盘目录名；不合规在 `create` 阶段就 3413（`SkillInvalid`），
+  不会等到落盘。
+- **技能库目录是我们独占的**：`syncAll` 会删掉根目录下"库里不存在"的一级目录
+  （跳过 `.` 开头的临时 / 约定目录）。所以**不要**把别人的技能目录放进 `~/.billy/skills`。
+- **落盘与版本**：`version` 只在内容字段（description / frontmatter / 文件）变化时 +1；
+  纯 `enabled` / `title` 改动不推进版本，避免把编辑器里的并发冲突判成"内容变了"。
+- **知识库之外的加载面没变**：`catalog/`（严格，坏一个启动失败）→ 技能库目录（坏一个跳过）→
+  `AGENT_SKILLS_DIRS`（默认 `~/.agents/skills`）。2026-11-13 时 `catalog/` 下**只有** `html-page` 一个内置技能。
+- **技能 tab**：会话右栏的「技能」tab 列的是**本会话实际激活过**的技能（从消息 parts 派生），
+  不是"可用技能清单"；关联不到库里的（外部目录同名技能）标「库外」。

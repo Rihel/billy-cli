@@ -68,14 +68,22 @@ apps/web | apps/admin   应用：globals.css 接入 + 字体字面量 + 页面
 
 ## 4. 设计系统构成
 
-### 4.1 token 清单（51 个 CSS 变量，明暗各一套）
+### 4.1 token 清单（55 个 CSS 变量，明暗各一套）
 
 | 分组 | 数量 | 说明 |
 | --- | --- | --- |
-| 颜色语义 token | 38 | `background` / `foreground` / `card` / `popover` / `primary` / `secondary` / `muted` / `accent` / `destructive` / **`success`** / **`warning`** / **`info`**（各含 `-foreground`）/ **`brand`** / `border` / `input` / `ring` / `chart-1..5` / `sidebar-*` |
+| 颜色语义 token | 42 | `background` / `foreground` / `card` / `popover` / `primary` / `secondary` / `muted` / `accent` / `destructive` / **`success`** / **`warning`** / **`info`**（各含 `-foreground`）/ **`brand`** / `border` / `input` / `ring` / **`surface-1..4`**（2026-10-22 新增）/ `chart-1..5` / `sidebar-*` |
 | markdown 高亮 | 11 | `--md-hl-*`（hljs token 色，CSS 规则直接消费，不生成工具类） |
 | 圆角 | 1 | `--radius`（派生 `rounded-sm…4xl` 整套尺度） |
 | 字体 | 1 | `--font-display` 回退链（`--font-sans` / `--font-mono` 在 `@theme` 内联） |
+
+> 2026-11-13 核对：`packages/ui/src/globals.css` 的 `:root` 共 55 个变量（`.dark` 53 个，缺 `--radius`
+> 与 `--font-display` 这两个根层专属项）。此前写的「51 个 / 颜色 38 个」是 10-22 新增
+> `--surface-1..4` 之前的数，已过期。
+>
+> 字体实际是三个：**Geist**（`--font-sans`）/ **Geist Mono**（`--font-mono`）/
+> **Space Grotesk**（`--font-display` → `--font-heading`），由两个 app 的根 `layout.tsx`
+> 用 `next/font` 注入 `--font-geist` / `--font-geist-mono` / `--font-space-grotesk`。
 
 新增的三个语义色取值与依据：
 
@@ -95,7 +103,7 @@ apps/web | apps/admin   应用：globals.css 接入 + 字体字面量 + 页面
 
 | 层 | 包含 | 形态 |
 | --- | --- | --- |
-| ① 原始层 | `background` / `card` / `foreground` / `primary` / `secondary` / `accent` / `border` / `ring` / 四个语义色 / `radius` | 字面量（真正独立的决策） |
+| ① 原始层 | `background` / `card` / `foreground` / `primary` / `secondary` / `accent` / `border` / `ring` / 四个语义色 / `surface-1..4` / `radius` | 字面量（真正独立的决策） |
 | ② 派生层 | `card-foreground` / `popover` / 各 `*-foreground` / `input` / `chart-1..5` / **整套 `sidebar-*`** | `var(--某个原始 token)` 引用 |
 
 例：`--sidebar-primary: var(--primary)`、`--sidebar-ring: var(--ring)`、`--chart-1: var(--ring)`、`--popover: var(--card)`。
@@ -157,7 +165,7 @@ apps/web | apps/admin   应用：globals.css 接入 + 字体字面量 + 页面
 3. admin 覆盖层里**真正生效**的规则（等宽数字 / 滚动条）上移 ui 包，两端共用；
    死规则不迁移（见 §8.2 ①）。
 4. 两个 `layout.tsx` 的字体接线按 §7.1 的实测结论落地（字面量 + 守卫）。
-5. 同步 `scripts/cli/templates/files/client/{globals-css,layout}.eta`。
+5. ~~同步 `scripts/cli/templates/files/client/{globals-css,layout}.eta`。~~（模板已随 CLI 代码生成器于 2026-11-09 移除）
 6. 加守卫（§6）、补文档、同步 skill。
 
 **回滚成本**：全部改动等价搬迁，`git revert` 单个提交即可；不涉及数据与接口。
@@ -166,10 +174,10 @@ apps/web | apps/admin   应用：globals.css 接入 + 字体字面量 + 页面
 
 | 守卫 | 拦截什么 | 反向验证 |
 | --- | --- | --- |
-| `packages/ui/test/tokens.test.ts`（5 项，**纯 CSS 自洽、零手工清单**） | ① 明暗不对称（浅色与深色的键集合必须完全一致）② `@theme` 映射不自洽（`--color-X: var(--Y)` 指向别的变量 → 工具类取值落空）③ 映射来源变量缺定义 ④ 颜色 token 漏映射 ⑤ 根层专属 token 缺失 ⑥ 字体回退链未引用 app 注入的变量 | 删深色 `--success`（2 项红）/ 摘 `@theme` 映射 / 把映射指向不存在的变量 / 新增 token 只写浅色 → **各自红灯** |
-| `pnpm check:ui` ③ 禁止新增硬编码调色板 | 在 `packages/ui/src` 与 `apps/<app>/src` **新增**调色板类（`bg-blue-500` 等） | 基线按「文件 → 上限」冻结（2026-09-18 收敛后：`apps/web` 只剩 6 处 `to-violet-600`，其余文件上限已降到 0 / 实测值），超限即违例；只许减少不许增加 |
-| `pnpm check:ui` ④ 样式入口可解析 | `apps/*/src`、`packages/ui/src`、`scripts/cli/templates` 里 `@import "@repo/x/y.css"` 指向不存在的文件 | 包改名 / 导出改名后引用静默失效（实测抓到过 IDE 入口 `tailwind-ide.css` 的残留引用） |
-| `pnpm check:ui` ⑤ 字体规范一致 | `apps/<app>/src/app/layout.tsx` 与 client 模板的 `next/font` 变量名与 `globals.css` 字体回退链不一致（规范**从 CSS 推导**，不维护第二份清单） | 改一个字体字面量即违例 |
+| `packages/ui/test/tokens.test.ts`（6 项，**纯 CSS 自洽、零手工清单**） | ① 明暗不对称（浅色与深色的键集合必须完全一致）② `@theme` 映射不自洽（`--color-X: var(--Y)` 指向别的变量 → 工具类取值落空）③ 映射来源变量缺定义 ④ 颜色 token 漏映射 ⑤ 根层专属 token 缺失 ⑥ 字体回退链未引用 app 注入的变量 | 删深色 `--success`（2 项红）/ 摘 `@theme` 映射 / 把映射指向不存在的变量 / 新增 token 只写浅色 → **各自红灯** |
+| `pnpm check:ui` ③ 禁止新增硬编码调色板 | 在 `packages/ui/src` 与 `apps/<app>/src` **新增**调色板类（`bg-blue-500` 等） | 基线按「文件 → 上限」冻结，超限即违例；只许减少不许增加。**2026-11-13 实测**全仓命中 7 文件 / 7 处：`apps/web` 6 处 `to-violet-600` + `packages/ui/src/components/display.tsx` 1 处；基线表里仍留有一些历史条目（旧 admin 路径、`tag.tsx` 30），是未回收的松量 |
+| `pnpm check:ui` ④ 样式入口可解析 | `apps/*/src` 与 `packages/ui/src` 里 `@import "@repo/x/y.css"` 指向不存在的文件 | 包改名 / 导出改名后引用静默失效（实测抓到过 IDE 入口 `tailwind-ide.css` 的残留引用） |
+| `pnpm check:ui` ⑤ 字体规范一致 | `apps/<app>/src/app/layout.tsx` 的 `next/font` 变量名与 `globals.css` 字体回退链不一致（规范**从 CSS 推导**，不维护第二份清单） | 改一个字体字面量即违例 |
 | `pnpm check:ui` ①②（既有） | 自有组件未导出 / 前端包缺 `typecheck` 脚本 | — |
 
 > `tokens.test.ts` 顶部有 `// @vitest-environment node`：ui 包默认是 jsdom 环境，
@@ -231,10 +239,10 @@ ui 包不参与类名扫描的声明（它自己不经 Tailwind 构建）。
 | 项 | 文件 |
 | --- | --- |
 | 设计系统 | `packages/ui/src/globals.css`（**唯一定义处**：token / `@theme` / base / 质感规则） |
-| 守卫 | `packages/ui/test/tokens.test.ts`（5 项纯 CSS 自洽断言）、`scripts/check-ui.ts`（新增 ③④⑤ 三条不变量） |
+| 守卫 | `packages/ui/test/tokens.test.ts`（当时 5 项；2026-11-13 为 6 项）、`scripts/check-ui.ts`（新增 ③④⑤ 三条不变量） |
 | 接入方 | `apps/{web,admin}/src/app/{globals.css,layout.tsx}`（app 只留接入 + 字面量 + 专属规则） |
 | 组件消费者 | `packages/ui/src/components/tag.tsx` 的语义四色改走 token（`success` / `error` / `warning` / `processing`），antd 装饰色名保留待后续 |
-| 脚手架模板 | `scripts/cli/templates/files/client/{globals-css,layout}.eta` |
+| 脚手架模板 | ~~`scripts/cli/templates/files/client/{globals-css,layout}.eta`~~（2026-11-09 随 CLI 代码生成器移除） |
 | 文档 | 新增本文；`admin-design-language.md` 重写为「应用层」并修正失真；`README.md`、`commands.md`、`develop-frontend-page` skill 同步 |
 
 ### 8.2 落地过程中修掉的真问题（方案阶段未预见，靠实测暴露）
@@ -263,8 +271,8 @@ ui 包不参与类名扫描的声明（它自己不经 Tailwind 构建）。
 | `pnpm test` | 6 包全绿；`packages/ui` 32 项（含设计系统守卫 6 项 + tag 5 项） |
 | token 分层重构 | 76 个快照 token 解析 `var()` 链后与改造前字面量**逐一相同**（零视觉变化）；改 `--primary` → `sidebar-primary` / `accent-foreground` / `secondary-foreground` 全部跟随（联动生效） |
 | 守卫反向验证 | 删深色 token（2 项红）/ 摘 `@theme` 映射 / 映射指向不存在的变量 / 新增 token 只写浅色 / 改字体字面量 → **全部红灯**，恢复即绿 |
-| `pnpm check:ui` | ✅ 五条不变量全过（465 处存量基线） |
-| `pnpm check:scaffold` | ✅ 导入名 + service / crud 模板类型检查通过 |
+| `pnpm check:ui` | ✅ 五条不变量全过（当日为 465 处存量基线；现基线见 §6） |
+| `pnpm check:scaffold` | ✅ 导入名 + service / crud 模板类型检查通过（脚本已于 2026-11-09 移除） |
 | 生产构建 | `apps/admin` ✅（12 路由）、`apps/web` ✅（14 路由） |
 | **dev（关键）** | `apps/web` 9840 / `apps/admin` 9845 均 **HTTP 200**，CSS 产物 279 KB / 259 KB（修复前为 138 字节空壳） |
 
@@ -278,12 +286,16 @@ ui 包不参与类名扫描的声明（它自己不经 Tailwind 构建）。
 3. **admin 主按钮质感规则缺失**（原规则从未生效，见 §8.2 ①）：待决定「按 `variant="default"`
    修好并两端共享」还是「永久删除」—— 属视觉决策，未擅自替用户决定。
 4. **非颜色 token（间距 / 动效 / 层级）**：依据见 §2，等出现真实不一致证据再加。
+5. **调色板基线的松量未回收**（2026-11-13 核对）：`scripts/check-ui.ts` 的 `PALETTE_BASELINE` 里仍留着
+   旧 admin 路由路径（`apps/admin/src/app/auth/...`、`apps/admin/src/app/main/...`，路由组改造后已不匹配任何文件）
+   与 `tag.tsx: 30` 等历史上限；实际命中是 7 文件 / 7 处。基线只会拦「超限」，不会拦「上限虚高」，
+   属于守卫的已知松量，待下一轮清理。
 
 ## 10. 2026-09-18 更新：`--brand` token + web 全量收敛 + 主题能力上移
 
 §1 / §9 记的「web 绕过 token、465 处硬编码」已解决；本节是落地记录与新增依据。
 
-### 10.1 新增 `--brand`（第 38 个颜色 token）
+### 10.1 新增 `--brand`（当时第 38 个颜色 token；现共 42 个）
 
 落地页用的强调色（图标底 / 徽标 / 渐变起点 / 发光 / 分节线）原本是硬编码 `indigo-*`，而
 `--primary` 是**刻意近黑**（避开 antd 蓝实心按钮指纹）、`--ring` 只叫「焦点环」—— 拿它当文字色
@@ -291,9 +303,12 @@ ui 包不参与类名扫描的声明（它自己不经 Tailwind 构建）。
 
 | 位置 | 浅色 | 深色 |
 | --- | --- | --- |
-| `--brand` | `oklch(0.585 0.233 277.117)`（= 原 `--ring`） | `oklch(0.673 0.182 276.935)`（= 原深色 `--ring`） |
+| `--brand`（2026-09-18 加入时） | `oklch(0.585 0.233 277.117)`（= 原 `--ring`） | `oklch(0.673 0.182 276.935)`（= 原深色 `--ring`） |
+| `--brand`（2026-11-13 现值） | `oklch(0.55 0.21 280)` | `oklch(0.673 0.182 277)` |
 | `--ring` | `var(--brand)`（派生） | 同 |
-| `--chart-1` | `var(--ring)`（不变） | 同 |
+| `--chart-1` | `var(--brand)` | 同 |
+
+> 现值由 2026-10-22「品牌色回到界面主体」一轮调整（§11）；上表保留加入时的取值，便于追溯。
 
 **浅色零视觉变化**（取值就是原来的 `--ring`），深色下 brand 作文字色取 400 档满足对比度 ——
 与既有 `--destructive` / `--success` 的档位模式一致。新增 token 后 `tokens.test.ts` 六项守卫全绿
@@ -333,7 +348,8 @@ ui 包不参与类名扫描的声明（它自己不经 Tailwind 构建）。
 
 ### 10.4 本轮验证
 
-`typecheck`（8 包）/ `test`（7 包；ui 52 项含新增主题 13 项）/ `check:ui` / `check:scaffold` 全绿；
+`typecheck`（8 包）/ `test`（7 包；ui 52 项含新增主题 13 项）/ `check:ui` / `check:scaffold` 全绿
+（`check:scaffold` 已于 2026-11-09 随 CLI 代码生成器移除，此为当日记录）；
 运行中 dev：web 首页 200（236 KB，CSS 291 KB）、`bg-brand`/`text-brand`/`bg-muted`/`bg-card` 等
 新工具类**确实进了产物 CSS**、`.dark` 块存在、防闪烁脚本带 `billy-theme`；admin 登录页 200 且脚本为
 `billy-admin-theme`；web `/nope` 404、`/auth/login` 200。
@@ -425,3 +441,15 @@ ring / border / shadow。表单控件保留自身描边（输入框的边界是�
 
 `pnpm typecheck`（5 包）/ `pnpm check:ui` / `pnpm --filter @repo/ui test`（71 项，含 token 守卫）
 通过；admin 与 monitor 页在明暗两套主题下逐页截图对比（无头 Chrome + CDP 注入登录态）。
+
+## 12. 2026-11-13 现状快照
+
+- **token**：`packages/ui/src/globals.css` 的 `:root` 共 **55 个变量**（颜色 42 / md 高亮 11 / 圆角 1 / 字体 1），
+  明暗两套；`--brand` 现值 `oklch(0.55 0.21 280)`（深色 `oklch(0.673 0.182 277)`）。
+- **字体**：Geist / Geist Mono / Space Grotesk，`next/font` 在两个 app 的根 layout 注入 `--font-geist*` /
+  `--font-space-grotesk`，`globals.css` 拼 `--font-sans` / `--font-mono` / `--font-display`（`--font-heading` 派生）。
+- **组件库**：`components/ui` **61** 个、`components/ai-elements` **48** 个、平铺自有组件 **35** 个、hooks **6** 个；
+  `@repo/ui` 测试 **17 文件 / 118 项**（含 token 守卫 6 项）—— 文中此前的「ui 32 / 52 / 71 项」都是历史值。
+- **主题**：admin 与 web 都具备三态切换（key 分别是 `billy-admin-theme` / `billy-theme`）；
+  web 的 `dark:` 类为 0，说明暗色完全由 token 承担 —— 与 §10.3 的目标一致。
+- **check:ui**：五条不变量全过；`tokens.test.ts` 六项全过（2026-11-13 实跑）。

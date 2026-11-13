@@ -1,5 +1,19 @@
 # 后端 kits 化改造设计方案（backend-kits-refactor）
 
+> 2026-11-13 现状快照（清单级，供对照；正文均为方案原文，不代表现状）：
+> - `packages/` 共 5 个包：`kits` / `shared` / `sdk` / `ui` / `http-client`（`core`、`db`、`di` 均已删除）；
+> - `packages/kits/src/` 共 16 个顶层目录（另有 `index.ts`）：`db` / `events` / `foundation` / `jwt` / `kafka` /
+>   `lark` / `notification` / `password` / `pubsub` / `rate-limit` / `redis` / `session` /
+>   `storage` / `stream` / `telemetry` / `workspace`（`foundation/` 下为 `command` / `config` /
+>   `errors` / `id-generation` / `logger` / `scheduler` / `time-wheel`）；`queue/` 已删；
+> - kits 提供的 `@Global` 模块（20）：`AppConfig` / `IdGeneration` / `Scheduler` / `Telemetry` /
+>   `Command` / `Logger` / `Db` / `Redis` / `RateLimit` / `PubSub` / `StreamHub` / `EventBus` /
+>   `Jwt` / `SessionStore` / `Password` / `ObjectStorage` / `Workspace` / `Lark` / `Notification` / `Kafka`；
+> - `apps/server/src/modules/` 共 13 个业务模块：`admin` / `ai` / `ai-model` / `ai-usage` /
+>   `auth` / `monitor` / `ops` / `runtime-config` / `session` / `share` / `storage` / `stream` /
+>   `user`（正文里的 `todo` 已不存在）；实体 19 张、迁移 26 个，均在 `apps/server`；
+> - 权威现状以 `.agents/skills/billy-dev-foundation/references/architecture.md` 为准。
+
 > 2026-09-12 更新：组合根已由 `createServiceContext` 改为 NestJS 动态模块 `KitsModule.forRoot`。
 >
 > 2026-09-12 二次更新：`KitsModule.forRoot` 聚合模块已拆除，改为一个基础设施一个 module、

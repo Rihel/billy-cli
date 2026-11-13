@@ -135,15 +135,28 @@ warn，含理由码）。
 
 | 位置 | 内容 |
 | --- | --- |
-| `packages/kits/src/workspace/` | 模式 / 探测 / 沙箱包装（seatbelt + bwrap）/ 运行时服务 / 模块 |
+| `packages/kits/src/workspace/` | `workspace.types.ts`（模式 / 能力 / 理由码）/ `workspace.config.ts`（`WorkspaceConfigSchema` + token）/ `workspace.sandbox.ts`（探测 + 包装，seatbelt + bwrap）/ `workspace.runtime.ts`（`WorkspaceRuntimeService`）/ `workspace.module.ts` / `index.ts` |
 | `packages/kits/test/workspace.test.ts` | E1–E5 + 探测判据 + 策略构造 |
 | `apps/server/src/app-config.ts` | `workspace` 命名空间（`AGENT_WORKSPACE_*`） |
-| `apps/server/src/database/entities/conversation-entity.ts` | `file_access` |
-| `apps/server/src/modules/ai/tools/bash.tool.ts` | 会话权限 → 运行时；出参 `runtime` / `mode` |
+| `apps/server/src/database/entities/conversation-entity.ts` | `file_access`（varchar(16)，默认 `workspace-write`） |
+| `apps/server/src/modules/ai/tools/bash.tool.ts` | 会话权限 → 运行时（`runtime.exec({ ..., fileAccess })`）；出参 `runtime` / `mode` |
 | `apps/server/src/modules/ai/api/ai.controller.ts` | `POST /agent/conversation/file-access` |
-| `apps/admin/.../ai/chat/chat-conversation.tsx` | 会话页「只读 / 可写」 |
-| `apps/admin/.../ai/tools/config-panels.tsx` | 只读隔离能力提示 |
+| `apps/admin/src/app/(app)/(standalone)/main/ai/chat/chat-conversation.tsx` | 会话页「只读 / 可写」（`SegmentedControl`） |
+| `apps/admin/src/app/(app)/main/ai/tools/config-panels.tsx` | 只读隔离能力提示 |
 | `apps/server/src/modules/ops/ops.controller.ts` | `/info` 的 `workspace` 段 |
+
+补充（2026-11-13 核对）：
+
+- `WorkspaceRuntimeService.exec()` **永不抛异常**：策略拒绝、沙箱不可用、沙箱构造失败都落成
+  `ok=false` 的结论（`blocked()`），命令一条都不跑；
+- `status()` 的 `fileAccessOptions` 在 `enforce` 下固定为 `['workspace-write', 'read-only']`，
+  `off` 下为空数组 `[]`（没有隔离就没有「文件权限」可谈）；
+- `modeOf()`：`off` 一律 `danger-full-access`；`enforce` 下只认 `read-only`，**其余任何值
+  （含伪造的 `danger-full-access`）都落到 `workspace-write`**；
+- `/info` 的 `workspace.sandbox` 是**扁平化**后的四个字段（`available` / `impl` / `code` /
+  `message`），不是 `SandboxCapability` 原样（原始还有 `binary` / `reason` / `probedAt`）；
+- 探测超时配置键是 `probeTimeoutMs`（env `AGENT_WORKSPACE_PROBE_TIMEOUT_MS`，默认 2000），
+  联网策略是 `sandboxNetwork`（env `AGENT_WORKSPACE_SANDBOX_NETWORK`，默认 `deny`）。
 
 ## 12. 决策记录
 

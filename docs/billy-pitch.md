@@ -1,8 +1,9 @@
 # Billy · 开箱即用的 AI 应用开发
 
 > 本文档 = 脚手架介绍叙事（落地页完整文案）+ 竞品调研报告。
-> 调研日期：2026-09-02 · 2026-10-23 复核 · 2026-11-10 同步能力口径（27 skill / AI SDK 7 / 连接器；模板清单未变）。
-> 数据以 GitHub 为准 · star 与价格会随时间变化。
+> 调研日期：2026-09-02 · 2026-10-23 复核 · 2026-11-13 按代码同步能力口径（26 内建工具 / 4 连接器 / 27 skill /
+> 61 基础组件 / 48 ai-elements / 19 张表 / 13 个模块；模板清单未变）。
+> 竞品的 star / 价格仍是 2026-10-23 的调研值，未在 11-13 重新抓取；数据以 GitHub 与各家官网为准。
 > 文中能力以仓库当前代码为准（`apps/`、`packages/`、`.agents/skills/`），不是规划。
 
 ---
@@ -17,7 +18,7 @@
 
 1. **开箱即用的 AI 应用开发能力** —— 会话、工具、模型、用量、审计都是现成模块与后台页面。
 2. **可观测性** —— 日志、指标、告警、链路与 AI 运行审计，出问题不用登录服务器。
-3. **高颜值** —— 一套设计 token 与 60+ 组件，前台后台共用，`check:ui` 守住漂移。
+3. **高颜值** —— 一套设计 token 与 61 个基础组件，前台后台共用，`check:ui` 守住漂移。
 4. **高维护性** —— 数据结构只定义一份，依赖单向，五道检查在提交前拦住走样。
 
 ## 2. 痛点：AI 把写代码的成本降了，也把工程一致性的成本放大了
@@ -66,10 +67,10 @@
 ### ① 开箱即用的 AI 应用开发能力
 
 - **运行时已经跑通**：`conversations` / `runs` / `timelines` 三张表；SSE 流式（`/agent/chat/stream`）与断线续传（`/agent/chat/resume`、`/agent/run/stream`）；服务重启后在跑的会话恢复；上下文到模型窗口 70% 自动压缩。
-- **能力不是空壳**：10 个内建工具（计划四件套、动态子 agent、命令执行、联网三件套、大结果取页），全部过统一网关（开关 / 作用域 / 限额 / 审计 / 分页）。
+- **能力不是空壳**：26 个内建工具（计划四件套、动态子 agent、命令执行、联网三件套、大结果取页、技能库七件、文件九件），全部过统一网关（开关 / 作用域 / 限额 / 审计 / 分页）；另有 3 个 Mastra 运行时自带的技能读取工具（`skill` / `skill_search` / `skill_read`，不进注册机）。
 - **模型与账本开箱**：供应商与模型在后台配置即生效；每轮 tokens 与步数入库，按日 rollup，按模型、按 agent 汇总，运行详情能回看输入快照与错误原文。
 - **扩展点只有一层**：加工具 = `@ToolGroup` 类 + 方法 `@ToolDecl`；加 agent = `agents/xxx.agent.ts` + 注册表；加技能 = `.agents/skills/` 下的 SKILL.md；换模型 = 后台模型管理。
-- **接口与页面都现成**：`/agent` 前缀一套接口，前台用户与管理员共用；后台会话、模型、工具、审计、连接器五个页面；`@repo/ui` 48 个 ai-elements 可直接用。
+- **接口与页面都现成**：`/agent` 前缀一套接口，前台用户与管理员共用；后台 AI 七个页面（会话、模型、工具、技能库、文件、连接器、审计）；4 类连接器（PostgreSQL / MySQL / Redis / 飞书 CLI）；`@repo/ui` 48 个 ai-elements 可直接用。
 
 模板只给骨架，AI 框架只给零件。Billy 给的是「能上线的最小闭环」，改提示词与工具就是你的产品。
 
@@ -85,7 +86,7 @@
 ### ③ 高颜值
 
 - **token 只有一份**：颜色、字体、圆角、面层定义在 `packages/ui/src/globals.css`，前台与后台共用；换品牌色只改 `--brand`。
-- **组件成体系**：60+ 基础组件 + 48 个 ai-elements（会话、消息、推理、工具、计划、引用、附件），DataTable / ModalForm / DrawerForm / Markdown / 存储组件开箱。
+- **组件成体系**：61 个基础组件 + 48 个 ai-elements（会话、消息、推理、工具、计划、引用、附件），DataTable / ModalForm / DrawerForm / Markdown / 存储组件开箱。
 - **有设计语言，不是随手拼**：主次表达、微色阶面层、单一强调色、状态色 + 文案成对、克制动效；admin 的设计语言文档写到组件与自查清单。
 - **有守卫**：`check:ui` 检查组件导出、硬编码颜色、字体接线，页面不会各写各的。
 
@@ -94,12 +95,12 @@
 - **数据结构只有一份**：Zod schema 同时供入参校验、TypeORM 实体、SDK 类型、后台表单与列表，改一个字段六处生效。
 - **依赖方向不可逆**：shared 不依赖业务包，kits 不引用 `apps/*`，common 不依赖业务模块，service / repository 不碰 HTTP。
 - **检查在提交前**：`typecheck`、`test`、`check:inject`、`check:mastra`、`check:ui` 五道，过了才算做完。
-- **AI 读到的是现状**：27 个 Agent Skills 每条规则都指向仓库真实文件，代码变了 skill 要跟着改，`manage-skills` 与检查脚本降低漂移。
+- **AI 读到的是现状**：28 个 Agent Skills 每条规则都指向仓库真实文件，代码变了 skill 要跟着改，`manage-skills` 与检查脚本降低漂移。
 
 | 对比项 | 模板 / 规则包 / AI 框架 | Billy |
 | --- | --- | --- |
 | 骨架 | 有 | 通用基座：任意业务、双前端、双体系 |
-| 规范 | 停在项目根一份说明 | 27 个 skill，指向真实文件，能被检查脚本拒绝 |
+| 规范 | 停在项目根一份说明 | 28 个 skill，指向真实文件，能被检查脚本拒绝 |
 | AI 运行时 | 给零件，生产问题自扛 | 会话、工具、恢复、审计、用量在同一份工程里 |
 | 可观测性 | 各接一套 | 日志 / 指标 / 告警 / 探针 / AI 审计已接好 |
 | 设计 | 自带一套或没有 | 一套 token + 组件库，两个前端共用，有守卫 |
@@ -120,7 +121,7 @@
 
 - **会话与运行**：`conversations` / `runs` / `timelines` 三张表；运行中进度放 Redis，跑完落 Postgres；刷新能接着看。
 - **流式与续传**：`/agent/chat/stream`、`/agent/chat/resume`、`/agent/run/stream`、`/agent/run/:runId/stream`；文本、推理、工具、步骤、来源全细节推送。
-- **工具面**：10 个内建工具——计划四件套、`run-sub-agent`、`bash`、`read-tool-result`、`web-search`、`web-fetch`、`web-request`；统一网关负责开关、作用域、限额、事件、审计、分页。
+- **工具面**：26 个内建工具——计划四件套（`plan-create/reorder/complete/delete`）、`run-sub-agent`、`bash`、`read-tool-result`、联网三件套（`web-search` / `web-fetch` / `web-request`）、技能库七件（`skill-list` / `skill-save` / `skill-file-save` / `skill-file-append` / `skill-delete` / `skill-enable` / `skill-import`）、文件九件（`file-submit` / `file-download` / `file-list` / `read-file` / `file-search` / `workspace-files` / `write-file` / `replace-file` / `append-file`）；另有 Mastra 运行时自带的 `skill` / `skill_search` / `skill_read` 三个（不进注册机，后台只读展示）。统一网关负责开关、作用域、限额、事件、审计、分页。
 - **运行控制**：动态子 agent（提示词由主 agent 现场写）、命令执行（开关 / 工作目录 / 时长与输出上限可配）、联网预算（统一 UA、超时、字节上限、内网拦截）。
 - **多模态附件**：图片与 PDF 走对象存储，只传 key；附件 key 做归属校验，不能越权读他人文件。
 - **恢复与压缩**：durable 三档可配；上下文到模型窗口 70% 触发裁剪与压缩，原文保留。
@@ -139,7 +140,7 @@
 ### 6.3 设计系统
 
 - **token**：颜色、字体回退链、半径、面层收在 `@repo/ui` 的 `globals.css`，`check:ui` 与 token 测试共同守漂移。
-- **组件**：60+ 基础组件、48 个 ai-elements、DataTable / ModalForm / DrawerForm / Markdown / 上传与预览。
+- **组件**：61 个基础组件、48 个 ai-elements、DataTable / ModalForm / DrawerForm / Markdown / 上传与预览。
 - **主题**：亮色优先，完整深色模式；两个前端各自的主题 key，互不干扰。
 - **规范**：`docs/design/design-system.md` 与 `admin-design-language.md` 写清取舍与自查清单。
 
@@ -148,11 +149,11 @@
 - **分层架构，依赖方向不可逆**：controller 只做校验与转发，业务逻辑与数据访问下沉 service / repository，能力复用 `@repo/kits`。
 - **双前端开箱**：Web 前台（Base UI + shadcn + Tailwind 4，Server Actions）、Admin 后台（DataTable / ModalForm / TanStack），共用一套 token。
 - **全类型 SDK**：`@repo/http-client` 之上封装全类型 ServerClient。
-- **能力底座 `@repo/kits`**：数据库（事务、四种分页、批量写入、软删、SQL 打印）、Redis、限流、JWT、会话、密码、对象存储、SSE、Kafka、飞书、通知、遥测、调度（croner + 时间轮）。
-- **12 个业务模块**：`auth`、`user`、`admin`、`session`、`storage`、`stream`、`monitor`、`ai`、`ai-model`、`ai-usage`、`runtime-config`、`ops`。
+- **能力底座 `@repo/kits`**：数据库（事务、四种分页、批量写入、软删、SQL 打印）、Redis、限流、JWT、会话、密码、对象存储、SSE、Kafka、事件总线 / PubSub、飞书、通知、遥测、调度（croner + 时间轮）、沙箱工作区。
+- **13 个业务模块 / 19 张表**：`auth`、`user`、`admin`、`session`、`storage`、`stream`、`share`、`monitor`、`ai`、`ai-model`、`ai-usage`、`runtime-config`、`ops`；实体 19 个、迁移 26 个。
 - **部署**：Docker multi-stage，compose 一键起依赖，附 Kubernetes 清单。
 
-### 6.5 AI 原生开发：27 个 Agent Skills
+### 6.5 AI 原生开发：28 个 Agent Skills
 
 - **必读基础（1）**：`billy-dev-foundation`
 - **全链路开发（8）**：`define-data-structure`、`database`、`define-dict-enum`、`develop-business-module`、`develop-backend-api`、`develop-frontend-page`、`implement-auth`、`object-storage`
@@ -164,14 +165,18 @@
 
 1. **skill 是硬约束**：`billy-dev-foundation` 写明业务逻辑只在 service / repository、controller 只做 HTTP 边界、错误继承 `AppError` 且 code 在 3xxx 段、schema / dict / entity 三者一致并注册 `index.ts`。
 2. **规范可被验证**：三个检查脚本（`check:inject` / `check:mastra` / `check:ui`）加 typecheck 与测试，五道全过才算做完，写错就红，不靠 AI 自我声明。
-3. **按需加载**：27 个 skill 不是一次性全读，AI 按任务只加载相关几个，省 token、少冲突。
+3. **按需加载**：28 个 skill 不是一次性全读，AI 按任务只加载相关几个，省 token、少冲突。
 
 ### 6.6 开箱页面
 
-- **Admin（16 页）**：控制台、监控五页、用户、管理员、个人中心、AI 会话、模型管理、工具配置、AI 审计、连接器。
+- **Admin（16 个业务页）**：控制台、监控五页、用户、管理员、个人中心、AI 会话、模型管理、工具配置、技能库、文件管理、连接器、AI 审计（另有登录页、会话详情、技能编辑器与 `/s/{token}` 分享页）。
 - **Web**：落地页、竞品页、登录 / 注册 / 找回密码 / 重置密码、账户与多设备会话、Markdown 渲染示例。
 
 ## 7. 技术栈为什么这么选
+
+> 版本口径（2026-11-13，取自各 `package.json`）：NestJS **12.4** / Next.js **16.4.6** /
+> TypeScript **7.0.2** / Mastra **1.82**（`@mastra/memory` 1.41）/ AI SDK **7.0.164** /
+> React **19.3.1** / Tailwind **4.3** / TypeORM **1.1** / TanStack Table **9.3** / Query **5.107**。
 
 | 选了 | 而不是 | 理由 |
 | --- | --- | --- |
@@ -196,7 +201,7 @@ pnpm dev:admin    # 管理后台另起（9845）
 ## 9. 代价与边界
 
 - **技术栈门槛**：NestJS + TypeORM + Next.js 全家桶，团队要接受这套写法；想换框架的，模板反而是束缚。
-- **skill 有维护成本**：27 个 skill 描述的是仓库现状，代码改了不同步就会误导 AI。仓库用 `manage-skills` 与检查脚本降低这个风险，但消除不了。
+- **skill 有维护成本**：28 个 skill 描述的是仓库现状，代码改了不同步就会误导 AI。仓库用 `manage-skills` 与检查脚本降低这个风险，但消除不了。
 - **AI 运行时仍在演进**：durable、压缩、多实例下的续传都有明确取舍（见 `docs/design/ai-agent.md`），不是零成本开关。
 - **免费开源不等于零成本**：省掉的是从零搭基建的时间，不是理解业务与运维的时间。
 
@@ -206,7 +211,7 @@ pnpm dev:admin    # 管理后台另起（9845）
 
 ## 1. 调研目标
 
-Billy 的定位是 **开箱即用的 AI 应用开发基座**（AI 对话运行时 + 可观测性 + 设计系统 + 27 个 Agent Skills + 12 个业务模块，TypeScript 全栈 monorepo）。本报告回答：市面同类「模板 / 脚手架」有哪些，Billy 凭什么差异化；以及另一条赛道（AI 应用框架）与 Billy 是什么关系。
+Billy 的定位是 **开箱即用的 AI 应用开发基座**（AI 对话运行时 + 可观测性 + 设计系统 + 28 个 Agent Skills + 13 个业务模块，TypeScript 全栈 monorepo）。本报告回答：市面同类「模板 / 脚手架」有哪些，Billy 凭什么差异化；以及另一条赛道（AI 应用框架）与 Billy 是什么关系。
 
 ## 2. 筛选标准
 
@@ -223,7 +228,7 @@ Billy 的定位是 **开箱即用的 AI 应用开发基座**（AI 对话运行�
 - **海外收费侧**：Makerkit / Gravity / ShipFast / Supastarter 是垂直 SaaS 模板，$199–$349 闭源买断，绑定 B2B 多租户 SaaS 场景。
 - **国内侧**：主流是 Vue + Java（RuoYi、yudao-cloud），前端模板（ant-design-pro、vue-vben-admin、vue-element-admin）为纯前端；有 AI 能力的，AI 要么是产品内 AIGC 功能、要么是纯前端 / 纯后端的局部 skills。
 - **「有 skill」不是壁垒**：Open SaaS（免费）、Makerkit / Gravity（收费）都已内置 AGENTS.md / skills / agent。差异不在「有没有 skill」，而在 skill 与**通用 TS monorepo 分层架构**的耦合深度，以及是否可被检查。
-- **又一个新的分水岭**：多数模板的 AI 只用于「帮人写这个模板」，没有把 AI 能力做成产品运行时。Billy 两者都有：27 个 skill 管「怎么写」，`modules/ai` 管「产品里的 AI 怎么跑」。
+- **又一个新的分水岭**：多数模板的 AI 只用于「帮人写这个模板」，没有把 AI 能力做成产品运行时。Billy 两者都有：28 个 skill 管「怎么写」，`modules/ai` 管「产品里的 AI 怎么跑」。
 - **空白**：**「通用 TypeScript 全栈 monorepo + skills 驱动 + 业务基座 + AI 运行时」这一组合，国内外无直接对标**。Open SaaS 最接近（免费 + 全栈 + AI-ready），但绑定 Wasp DSL、单体 SaaS，且没有 AI 运行时。
 - **Billy 的差异化四点**：开箱即用的 AI 应用开发能力（会话 / 工具 / 连接器 / 恢复 / 审计 / 用量，不是零件）；可观测性（日志 / 指标 / 告警 / 探针 / AI 审计已接好）；高颜值（一套 token 与组件库，有守卫）；高维护性（数据结构一份、依赖单向、五道检查）。
 

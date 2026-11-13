@@ -18,6 +18,10 @@
 ## 1. 加一个工具
 
 **位置**：`apps/server/src/modules/ai/tools/**`（具体工具）+ `core/tools/tool-keys.ts`（key 登记）。
+现有工具组（一个组 = 一个类，组内一个 `@ToolDecl` 方法一个工具）：`tools/planner/planner.tools.ts`
+（4 个计划工具）、`tools/bash.tool.ts`、`tools/subagent.tool.ts`、`tools/read-tool-result.tool.ts`、
+`tools/web.tools.ts`（联网三件套，底层在 `tools/web/`：抓取 / 分页 / 搜索）、
+`skills/skill.tools.ts`（7 个技能工具）、`files/file.tools.ts`（9 个文件工具）。
 
 五步：
 
@@ -27,8 +31,11 @@
 3. **写方法 + `@ToolDecl`**：一个方法 = 一个工具；
    `params` / `config` 用**同文件模块级 zod 常量**（装饰器在类定义期求值），`config` 每个字段 `.default()`；
    `description` 只写"是什么 / 什么时候用 / 什么时候不用"，**参数机制写进 `.describe()`**；
-4. **装配**：新组要在 `ai.module.ts` 的 `AGENT_TOOL_GROUPS` 工厂与 `providers` 各加一行；
-   要授权给 agent 就在 `agents/assistant.agent.ts` 的 `tools` 里加 key（`ALL_TOOLS` 已覆盖连接器工具）；
+4. **装配**：新组要在 `ai.module.ts` 的 `AGENT_TOOL_GROUPS` 工厂（`inject` + `useFactory` 参数）
+   与 `providers` 里各加一行；目前登记了 **7 个组**：`PlannerTools` / `BashTool` / `RunSubAgentTool` /
+   `ReadToolResultTool` / `WebTools` / `SkillTools` / `FileTools`。
+   授权写 `agents/assistant.agent.ts` 的 `tools`，四种选择器可用：具体 key、`ALL_TOOLS`（`'*'`，
+   展开成注册机里全部工具）、`{ category }`、`{ connector, tool? }`（见 `core/tools/tool-selector.ts`）；
 5. **测试**：`test/ai-tools/<key>.test.ts`，用 `specByKey(...)` 或 `buildToolSpecs(group)` 直接调 `exec`；
    跑 `pnpm --filter @app/server test test/ai-tools-battery.test.ts`（会检查说明长度 60–380 字符等）。
 
@@ -47,7 +54,7 @@
 | 用途 | 放哪 | 谁读 |
 | --- | --- | --- |
 | 给**写代码的 agent** 看的工程规范 | 仓库 `.agents/skills/<name>/SKILL.md` | Claude Code / DSH 等编码 agent |
-| 给**运行时助手**用的业务技能 | `core/skills/catalog/<name>/`（随包）或 `AGENT_SKILLS_DIRS` 指向的目录 | `SkillLoader` → Mastra → 助手 |
+| 给**运行时助手**用的业务技能 | `core/skills/catalog/<name>/`（随包）、`AGENT_SKILLS_DIRS` 指向的目录，或**后台技能库**（`ai_skills` + `ai_skill_files`，落盘到 `AGENT_SKILLS_LIBRARY_DIR`，默认 `~/.billy/skills`） | `SkillLoader` → Mastra → 助手 |
 
 ### 2.1 仓库开发技能（工程规范）
 
@@ -64,9 +71,14 @@
    **不要超过 1024 字符**，超了会被当成坏技能跳过）。正文写步骤、示例、坑；长内容放 `references/`。
 3. **授权**：agent 声明里 `skills: [ALL_SKILLS]`（默认，全部已加载技能）或写具名数组（写了不存在的名字启动即失败）。
 4. **验证**：启动日志 `ai.skills.loaded` 看数量和名字；重名会记 `ai.skills.duplicate`（**先扫到的赢**，
-   catalog 优先于用户目录）；对话里说"你有哪些技能"应能列出。
+   catalog 优先于技能库、技能库优先于外部目录）；对话里说"你有哪些技能"应能列出。
 
-注意：技能清单在启动时扫一次并缓存（增删要重启）；技能的**正文**由 Mastra 按需读盘（改了不用重启）。
+注意（2026-11-13 现状）：
+
+- 扫描顺序是 `catalog/` → **技能库落盘目录** → `AGENT_SKILLS_DIRS`，结果进程内缓存；
+- **通过后台 / `skill-*` 工具增删技能不用重启**（写链路末尾会 `SkillLoader.reload()`）；
+  **手工往外部目录里加目录要重启**（或等有写操作触发 reload）；
+- 技能的**正文**由 Mastra 按需读盘（改了不用重启）。
 
 ---
 
@@ -80,6 +92,11 @@
 等价接口：`/ai-connector/create` → `/ai-connector/test` → `/ai-connector/sync`。
 
 ### 3.2 加一种新型号 / 新驱动（要改代码）
+
+现有驱动只有三个（一个驱动可以服务多个 catalog 型号）：
+`drivers/sql.driver.ts`（`kind='sql'`，服务 PostgreSQL / MySQL 两个型号）、
+`drivers/redis.driver.ts`（`kind='redis'`）、
+`drivers/lark-cli.driver.ts`（`kind='lark-cli'`，命令型，含 `lark-cli.policy.ts` / `lark-cli.home.ts`）。
 
 以"再加一个数据库类型"为例，四处：
 
@@ -101,8 +118,12 @@
 
 - 能力面只出**一个受限 `run`**（参数数组），用 `spawn` / `execFile` 直传，**不要走 shell**、不要把整条命令串交给模型；
 - 命令白名单写死在 `*.policy.ts` 的纯函数里（页面改不了），拒绝 `--profile` / `--yes` 与一切管理命令；
-- 每个实例一个独立 `HOME`（如 `~/.billy/<driver>/<实例 id>`），凭证写进该目录的 CLI 配置，
-  子进程环境变量走白名单（不带服务端密钥），`cwd` 固定在实例目录；
+- 每个实例一个独立 `HOME`（`~/.billy/lark-cli/<实例 id>`，容器里是 `/home/appuser/.billy/lark-cli/<id>`），
+  凭证写进该目录的 CLI 配置，子进程环境变量走白名单（不带服务端密钥），`cwd` 固定在实例目录；
+- **pod 无状态**（2026-11-13 现状）：HOME 只是临时目录，配置 / 用户 token 在调用前从
+  `ai_connectors.auth_state` 恢复、调用后在**实例级 Redis 锁**里 diff 写回
+  （`lark-cli.home.ts` 的 `snapshotHome` / `restoreHome`，单文件 ≤256KB、总量 ≤2MB，
+  跳过 `cache` / `tmp` / `logs`）；hydrate 失败时**不写回**，免得拿空 HOME 覆盖库里的授权；
 - CLI 二进制由**镜像预装**（`docker/Dockerfile.server`），驱动不做运行期安装；
   没装时返回 `precheck-failed` 并给"镜像已装 / 本地怎么装"的提示；
 - 若 CLI 自带技能文档，优先让模型用它的 `skills list/read` 读（省系统提示词），
@@ -132,10 +153,35 @@
 
 | 主题 | 文件 |
 | --- | --- |
-| 工具 DSL / 注册机 / 网关 / 配置 | `core/tools/**`、`tools/**`、`docs/design/ai-agent-tool-engine.md` |
+| 工具 key 登记 | `core/tools/tool-keys.ts`（`TOOL_KEYS` + 运行期自带 `RUNTIME_TOOLS`） |
+| 工具 DSL / 注册机 / 网关 / 选择器 | `core/tools/**`（`tool.decorator.ts` / `tool.registry.ts` / `tool.gateway.ts` / `tool-selector.ts`）、`docs/design/ai-agent-tool-engine.md` |
+| 具体工具 | `tools/**`（`bash` / `web` / `planner` / `subagent` / `read-tool-result`）、`skills/skill.tools.ts`、`files/file.tools.ts` |
+| 工具装配 | `ai.module.ts` 的 `AGENT_TOOL_GROUPS` 与 `providers` |
 | 提示词模板 | `core/prompts/templates/**`（`assistant.eta` + `partials/`） |
 | 技能加载 | `core/skills/skill.loader.ts`、`core/skills/skills.types.ts` |
-| 连接器 | `connectors/**`、`docs/design/ai-connector.md`、后台 `/main/ai/connectors` |
+| 技能库（DB + 落盘） | `core/skills/skill.materializer.ts`、`skills/skill.service.ts`、后台 `/main/ai/skills` |
+| 连接器 | `connectors/**`（`connector.catalog.ts` / `drivers/`）、`docs/design/ai-connector.md`、后台 `/main/ai/connectors` |
 | agent 声明 | `agents/*.agent.ts`、`agents/index.ts` |
 | skill 开发规范 | `.agents/skills/develop-ai-agent/references/extension.md` |
 | skill 创建/维护 | `.agents/skills/manage-skills/` |
+
+### 4.1 验收命令
+
+```bash
+# 工具：注册机标准测试集（说明长度 60–380、默认值齐全、模板齐全）
+pnpm --filter @app/server test test/ai-tools-battery.test.ts
+
+# 技能：库 / 链接解析 / 加载器
+pnpm --filter @app/server exec vitest run test/ai-skill-library.test.ts test/ai-skill-source.test.ts test/ai-skills-loader.test.ts
+
+# 连接器：catalog 默认值与驱动纯函数
+pnpm --filter @app/server test test/ai-connector.test.ts
+
+# 结构与边界
+pnpm typecheck && pnpm check:ui && pnpm check:inject && pnpm check:mastra
+```
+
+注意：`check:mastra` 的两条边界是 `core/tools/**` 与 `tools/**`（禁止 import `@mastra/*`），
+`mastra/**` 豁免；其余文件靠**只减不增**的允许清单（`scripts/check-mastra-boundary.ts` 的
+`MASTRA_ALLOWLIST`，值是 import 条数）兜住。技能校验的 Mastra 引用统一走 `core/skills/skill.content.ts`
+（它在清单里占用一条）。

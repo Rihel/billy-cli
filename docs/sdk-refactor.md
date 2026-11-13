@@ -1,5 +1,36 @@
 # SDK 架构改造指令
 
+> **定稿状态：已落地（方案写于早期，2026-11-13 对照代码核对）。**
+> 本文保留当时的决策与论证，作为历史设计记录；`@repo/http-client` 的
+> `HttpClient` / `CredentialResolver` / `AuthInjector` 拆分、fetch 传输、refresh 并发去重、
+> 401 单次重试、cancel-previous 语义都已按文中方案实现。
+>
+> **当前 SDK 结构**（核对日期 2026-11-13）见下面的「当前结构」一节；
+> 与正文表述不一致时，以该节与代码为准。
+
+## 当前结构（2026-11-13）
+
+```
+packages/http-client/src/
+  core/{interfaces,http.client,credential-resolver,auth-injector,api-error}.ts
+  strategies/{bearer-token,api-key,oauth2,hmac}.strategy.ts
+  providers/{empty-check,expires-at}.provider.ts
+  managers/{local-storage,memory,cookie,env}-credentials.manager.ts
+  stream/（HttpStreamClient：SSE 连接状态机 / 心跳 / 退避重连 / Last-Event-ID）
+  index.ts
+
+packages/sdk/src/
+  server.client.ts   ServerClient（全类型业务客户端）
+  app-clients.ts     createAppClients（浏览器单例 / 服务端无状态客户端 / 凭证读写 / 401 善后注入）
+  index.ts           ServerClient、CreateStreamOptions、createAppClients 的导出
+```
+
+`ServerClient extends HttpClient<BearerTokenCredentials>`，业务方法按分组挂成属性
+（`config` / `auth` / `admin` / `user` / `share` / `storage` / `monitor` / `agent` /
+`aiModel` / `aiTool` / `aiSkill` / `aiConnector` / `session`，共 **13 组**），另有
+`createStream()`（SSE）与 `agent` 下的流地址 / `authHeaders()`（给 AI SDK transport 的旁路）。
+注意：AI 对话分组的属性名是 **`agent`**（不是 `ai`）。
+
 请不要将 HttpClient 改造成 middleware pipeline 架构。目前 SDK 规模和复杂度不需要引入完整 middleware 抽象，避免过度设计。
 
 目标是对现有 HttpClient 做职责拆分，而不是重构成 AWS SDK 风格。
@@ -126,7 +157,11 @@ CredentialProvider：credential 获取/刷新（已有，不变）
 
 AuthStrategy：认证方式（已有，职责收紧）
 
-Axios：HTTP 请求执行（已有，不变）
+fetch：HTTP 请求执行（原生 fetch，无 axios / 无 transport 抽象；见 §5）
 ```
+
+> 注：原文最后一行写的是「Axios：HTTP 请求执行（已有，不变）」，与 §5「使用 fetch 作为唯一传输层」
+> 自相矛盾；2026-11-13 核对代码，`packages/http-client` 内没有任何 axios 依赖，实际就是原生 `fetch`，
+> 故此处按代码改正（§5 也是最终决定）。
 
 不要引入 middleware pipeline，保持轻量 SDK 架构。

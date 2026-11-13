@@ -26,6 +26,8 @@ description: Billy 工程的 Git 提交与工作流规范：中文 commit messag
 
 不要用无信息量的提交（如 `update` / `fix` / `wip`）；摘要要能独立看懂改了什么、为什么。
 
+> 提交信息由 commit-msg 钩子自动校验（见 §4）；格式不对会被直接拒绝。
+
 ## 2. 提交粒度
 
 - **一个逻辑变更一个提交**：新功能、重构、修复、文档各归各的，不要混在一个提交里。
@@ -45,16 +47,28 @@ description: Billy 工程的 Git 提交与工作流规范：中文 commit messag
 **不擅自执行**：`push` / `pull --rebase` / `force` 等影响远端或他人工作的操作，
 除非用户明确要求；需要时先说明再执行。
 
-## 4. 工作流习惯
+## 4. 提交钩子（lefthook）
+
+本仓 `pnpm install` 会自动安装钩子（规则见 `.oxlintrc.jsonc` / `lefthook.yml`，用法见 skill `code-quality`）：
+
+- **pre-commit**：对 staged 文件跑 `oxfmt` + `oxlint --fix`，改完自动重新 `git add`；不要手工再格式化。
+- **commit-msg**：校验 `<类型>：<摘要>`，类型不在词表或摘要超过 50 字会被拒。
+- **pre-push**：跑 `pnpm verify` + `pnpm typecheck`（本仓没有 CI，这是最后一道）。
+- **跳过**（自担风险）：`LEFTHOOK=0 git commit` / `git commit -n` / `git push --no-verify`。
+- **部分暂存**：`git add -p` 时钩子格式化的是磁盘整文件，`stage_fixed` 会把未暂存部分一起 stage；
+  大改动用 `git commit -n` 分步提交。
+
+## 5. 工作流习惯
 
 - 开始新任务前先 `git status` 确认工作区干净（有未提交改动先询问是否提交）。
 - 中途不要随意 amend 已推送的提交；本地未推送的提交 amend 需说明理由。
 - 提交信息风格与历史保持一致（中文、类型前缀），存量历史（如纯英文 `update`）
   不强制回改，新提交从规范开始。
 
-## 5. 完成检查清单
+## 6. 完成检查清单
 
 - [ ] message 符合 `<类型>：<摘要>` 中文格式，类型用第 1 节词表
 - [ ] 一个提交只含一个逻辑变更，无调试残留 / 无关文件
 - [ ] 已用 `git diff` 审查暂存内容后再提交
+- [ ] 提交信息通过 commit-msg 校验（`<类型>：<摘要>`，摘要 ≤50 字）
 - [ ] 未擅自 push / 变基 / 强推；远端操作用户确认后执行

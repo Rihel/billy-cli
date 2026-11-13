@@ -1,5 +1,8 @@
 # AI SDK v6 + AI Elements 全量流式呈现调研报告
 
+> **状态：调研快照（写作时点）。** 外部库版本与线上文档会继续演进，本文结论不随本仓库代码更新；
+> 当前实现见 [`docs/guide/`](../guide/) 与 [`docs/design/`](../design/)。
+
 调研对象：`ai@6.0.289`、`@ai-sdk/react@3.0.292`（`npm pack` 后读包内 `.d.ts` / `src/` / 内置 `docs/`）、AI Elements registry（`curl https://elements.ai-sdk.dev/api/registry/<name>.json`）。
 
 **引用代号**：`ai/dist:L{n}`=`ai@6.0.289/dist/index.d.ts` 第 n 行；`react/dist:L{n}` 同理；`ai/src:{path}:L{n}`=包内源码；`docs:{file}:L{n}`=包内**官方文档**（`.mdx`，与线上 `ai-sdk.dev/docs` 同版本，行号可复现）；`reg:{name}:L{n}`=registry JSON 内嵌源码行号。

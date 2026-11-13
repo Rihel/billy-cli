@@ -3,6 +3,9 @@
 > 目标：把前端从「底座基本齐、但无验证手段且已有能力没接上线」补到与后端对等的基建完备度。
 > 范围四项：**A 质量检查**（typecheck / test / check:ui）、**B SSE 前端链路**（数据结构 → sdk → hook → 页面）、
 > **C web 前台业务闭环**（受保护用户区 + 应用级兜底 + 启用 TanStack Query）、**D 本文档**。
+>
+> **阅读提示**：§1–§8 是 2026-09-17 的方案与落地记录，保留原样作历史；其中「现状」「缺什么」已不代表今天。
+> **2026-11-13 的当前结构（Hono API 层、两个 root layout、分享页、五道检查、组件数量）见 §9。**
 
 ## 1. 现状与缺口（审计结论，均为 2026-09-17 实测）
 
@@ -49,9 +52,12 @@ apps/web | apps/admin（页面、Server Actions、providers、stores）
 | SSE 事件数据结构（事件名 / 负载 schema） | `packages/shared/src/schema/stream.schema.ts` | 共享数据结构归 `shared/schema`（placement 第 2 条） |
 | SSE 连接创建 | `packages/sdk/src/server.client.ts` 的 `createStream()` | 全类型客户端归 `sdk`（placement 第 9 条） |
 | SSE 订阅的 React 生命周期 | `packages/ui/src/hooks/use-stream.ts` | 通用前端能力归 `@repo/ui` 自有目录（`components/*` / `hooks/*`） |
-| 告警广播发布 | `apps/server/src/modules/monitor/alert-trigger.ts` | 业务推流在业务模块（stream skill §2） |
-| 实时告警页 | `apps/admin/src/app/main/monitor/live/page.tsx` | 前端页面归 app（placement 第 9 条） |
+| 告警广播发布 | `apps/server/src/modules/monitor/engine/alert-stream.service.ts`（`AlertStreamService.publish`，由 `alert-delivery.service.ts` 在发送 / 落库后调用） | 业务推流在业务模块（stream skill §2） |
+| 实时告警页 | `apps/admin/src/app/(app)/main/monitor/live/page.tsx` | 前端页面归 app（placement 第 9 条） |
 | 前台受保护用户区 | `apps/web/src/app/account/*` | 同上 |
+| admin 内容接口（Hono） | `apps/admin/src/app/api/[[...route]]/route.ts` + `apps/admin/src/api/{app,share}.ts` | Next API 层按 Hono 官方集成方式；能力模块只声明自己的路径 |
+| admin 两棵根布局 | `apps/admin/src/app/(app)/layout.tsx`（后台）/ `apps/admin/src/app/(share)/layout.tsx`（分享页） | 分享页不能挂后台 `Providers`（否则把后台 API 客户端带进匿名页） |
+| 免授权分享页 | `apps/admin/src/app/(share)/s/[token]/page.tsx` + `apps/admin/src/components/share-preview.tsx` | 分享页在 admin，不在 web；`/api/s/{token}/content` 只做字节转发 |
 
 **应用装配的机制 / 策略分界**（2026-09-18 收口，此前两个 app 各抄一份）：机制归共享层，取值与善后策略留在 app。
 
@@ -79,18 +85,19 @@ apps/web | apps/admin（页面、Server Actions、providers、stores）
 | `typecheck` | `apps/web` / `apps/admin`：`tsc --noEmit`；`packages/ui`：`tsc --noEmit -p tsconfig.json`（include 扩到 `test`，测试文件同样受检） |
 | `test` | 三者各加 `vitest run`；`@repo/ui` 用 **jsdom + @testing-library/react**（hook / 组件级测试需要 DOM），两个 app 用默认 node 环境（纯逻辑） |
 | turbo | 新增 `typecheck` / `test` 两个 task；根 `pnpm typecheck` / `pnpm test` 一键全量 |
-| `check:ui` | 新增守卫 `scripts/check-ui.ts`，把两条既有硬约定变成可执行检查（见下） |
+| `check:ui` | 新增守卫 `scripts/check-ui.ts`，把前端硬约定变成可执行检查（见下） |
 
-`check:ui` 的两条不变量：
+`check:ui` 的两条**初始**不变量（后续 ③④⑤ 由设计系统一轮追加，当前共五条，见 `design-system.md` §6）：
 
-1. **自有组件导出完整性**：`packages/ui/src/components/*.tsx`（不含 shadcn 管理的 `ui/` 子目录）
-   每个文件都必须在 `packages/ui/src/index.ts` 的「自有组件」区段导出 —— 防「写了组件没导出，
-   下一个人又造一个」。`components/ui/*` 不检查（重型组件刻意按子路径按需引入）。
-2. **前端包质量脚本齐备**：凡是依赖 `next` 的 `apps/*`（含 `pnpm cli -t client` 生成的新前端）
-   与 `packages/ui`，都必须声明 `typecheck` 脚本 —— 防新前端包漏网，让 `pnpm typecheck` 变成假绿。
+1. **自有组件导出完整性**：`packages/ui/src/components/*.tsx`（不含 shadcn 管理的 `ui/` 子目录，
+   也不含走子路径的 `ai-elements/`）每个文件都必须在 `packages/ui/src/index.ts` 的「自有组件」区段导出 ——
+   防「写了组件没导出，下一个人又造一个」。`components/ui/*` 不检查（重型组件刻意按子路径按需引入）。
+2. **前端包质量脚本齐备**：凡是依赖 `next` 的 `apps/*` 与 `packages/ui`，都必须声明 `typecheck` 脚本
+   —— 防新前端包漏网，让 `pnpm typecheck` 变成假绿。
 
-不变量 2 属于「公开约定的下游副本」，故同步更新 `scripts/cli/templates/client.ts` 的脚手架模板
-（code-conventions 第 12 条）。
+> **2026-11-13 现状**：② 里提到的 `pnpm cli -t client` 脚手架已随 CLI 代码生成器于 2026-11-09 移除，
+> `scripts/cli/templates/**` 与 `check:scaffold` 不再存在；`check:ui` 扩到五条（导出 / typecheck /
+> 硬编码调色板 / 样式入口 / 字体规范），门为 `typecheck` + `test` + `check:ui` + `check:inject` + `check:mastra`。
 
 ## 4. B · SSE 前端链路
 
@@ -99,9 +106,11 @@ apps/web | apps/admin（页面、Server Actions、providers、stores）
 审计发现 `streamHub.publish` 全仓**零调用** —— SSE 只有骨架、没有内容。本轮把**告警**
 接上（真实业务事件，不是假数据）：
 
-- `AlertTrigger.deliver()` 是测试告警与规则告警的**唯一发送出口**，在「发送 + 落库」之后
+- `AlertDeliveryService.deliver()` / `deliverRecovery()` 是测试告警与规则告警的**唯一发送出口**，
+  在「发送 + 落库」之后调用 `AlertStreamService.publish(payload)`；后者
   `publish('admin:all', { event: 'alert.fired', data })`，数据用共享数据结构 `AlertFiredEventSchema`
   显式构造（**不直接推实体**：实体时间戳的生成时机依赖 ORM，数据结构要稳定）。
+  （2026-09-17 时这段逻辑在 `monitor/alert-trigger.ts`；现已拆成 delivery / stream 两个 service。）
 - 事件名与负载 schema 落 `@repo/shared`（`STREAM_ALERT_FIRED_EVENT` / `AlertFiredEventSchema`），
   与 `STREAM_SHUTDOWN_EVENT` 同处 `stream.schema.ts`。
 
@@ -121,7 +130,7 @@ apps/web | apps/admin（页面、Server Actions、providers、stores）
 ### 4.3 客户端：sdk 创建 + ui 订阅
 
 ```ts
-// apps/admin/src/app/main/monitor/live/page.tsx（节选）
+// apps/admin/src/app/(app)/main/monitor/live/page.tsx（节选）
 const sdk = useServerClient()
 const stream = useMemo(() => sdk.createStream(), [sdk])   // 稳定引用：用 useMemo
 const { state, connected } = useStream(stream, {
@@ -154,7 +163,8 @@ SSE → 页面即时出现新事件，形成**端到端自证**（不需要额�
 
 ## 6. 验证方式
 
-- 门：`pnpm typecheck`、`pnpm test`、`pnpm check:ui`、`pnpm check:inject`、`pnpm check:scaffold`、`pnpm build:pkgs`。
+- 门：`pnpm typecheck`、`pnpm test`、`pnpm check:ui`、`pnpm check:inject`、`pnpm check:mastra`、`pnpm build:pkgs`。
+  （`pnpm check:scaffold` 已于 2026-11-09 随 CLI 代码生成器移除，不再是门。）
 - 守卫有牙齿：`check:ui` 需**反向验证**（故意新增未导出的自有组件 / 摘掉某包 `typecheck` 脚本，
   必须非零退出）。
 - SSE 端到端：真实启动 server + 管理员 token 建 SSE 长连接，触发 `monitor.test`，
@@ -178,9 +188,9 @@ SSE → 页面即时出现新事件，形成**端到端自证**（不需要额�
 | 前端质量检查 | 三包 `typecheck` / `test` 脚本、`turbo.json`（`typecheck` / `test` task）、根 `pnpm typecheck` / `pnpm test` / `pnpm check:ui`、`packages/ui/vitest.config.ts`（jsdom）、`scripts/check-ui.ts` |
 | 样板测试 | `packages/ui/test/{utils,action,use-stream,tag}.test.*`（26 项）、`apps/web/test/{constants,redirect}.test.ts`（9 项）、`apps/admin/test/theme.store.test.ts`（4 项） |
 | SSE 数据结构 | `packages/shared/src/schema/stream.schema.ts`：`STREAM_ADMIN_BROADCAST_CHANNEL` / `STREAM_ALERT_FIRED_EVENT` / `AlertFiredEventSchema` |
-| SSE 服务端 | `modules/stream/{options,stream-auth.guard,stream.controller,stream.module}.ts`（`auth: 'both'`、`broadcastChannels`、同域校验、`flushHeaders`）、`modules/monitor/alert-trigger.ts`（发送后 publish） |
+| SSE 服务端 | `modules/stream/{options,stream-auth.guard,stream.controller,stream.module}.ts`（`auth: 'both'`、`broadcastChannels`、同域校验、`flushHeaders`）；发送 / 落库在 `modules/monitor/engine/alert-delivery.service.ts`，推送在 `modules/monitor/engine/alert-stream.service.ts` |
 | SSE 客户端 | `packages/sdk/src/server.client.ts`（`createStream`）、`packages/ui/src/hooks/use-stream.ts`（`useStream`）、`packages/http-client`（`StreamClientOptions` 凭证泛型化） |
-| SSE 页面 | `apps/admin/src/app/main/monitor/live/page.tsx` + `AppMenu` 菜单 |
+| SSE 页面 | `apps/admin/src/app/(app)/main/monitor/live/page.tsx` + `AppMenu` 菜单 |
 | web 闭环 | `apps/web/src/app/account/{layout,page}.tsx`、`app/{error,not-found,loading}.tsx`、`src/proxy.ts`、`providers/{QueryProvider,WebStorageProvider}.tsx`、`lib/redirect.ts`、登录/注册 `?next=`、Header 个人中心入口 |
 
 ### 8.2 落地过程中修掉的三个真问题（方案阶段未预见，靠实测暴露）
@@ -211,7 +221,7 @@ SSE → 页面即时出现新事件，形成**端到端自证**（不需要额�
 | `pnpm typecheck` | 3/3 通过（web / admin / ui） |
 | `pnpm test` | 6 包全绿：ui 26 · web 9 · admin 4 · http-client 96 · kits 129 · server 50 |
 | `pnpm check:ui` | ✅；**反向验证有牙齿**：临时新增未导出的自有组件 + 摘掉 `apps/web` 的 `typecheck` → 退出码 1 并准确指出两处违例 |
-| `pnpm check:inject` / `pnpm check:scaffold` | ✅（脚手架探针 14 模板 + crud 整体渲染） |
+| `pnpm check:inject` / `pnpm check:scaffold` | ✅（脚手架探针 14 模板 + crud 整体渲染）。`check:scaffold` 已于 2026-11-09 随 CLI 代码生成器移除，此行是当日记录 |
 | 生产构建 | `next build` web ✅（12 路由，含 `/account`）、admin ✅（含 `/main/monitor/live`） |
 | SSE 端到端（真实 server + SDK 探针） | 6/6：管理员建连即 `open` → `monitor.test` → 收到 `alert.fired` 且负载通过 `AlertFiredEventSchema` → `close()` 终态 → 前台用户以 `auth: 'both'` 建连 → 前台用户**收不到**管理员广播（显式请求 `admin:all` 也被忽略） |
 | 页面路由（真实 dev 服务） | 未登录 `/account` → **307** 至 `/auth/login?next=%2Faccount`；带会话 → 200 且渲染出「账号资料 / 修改密码」；`/nope` → 404 兜底；admin 未登录受保护页 → 307；带管理员 cookie 的 `/main/monitor/live` → 200 |
@@ -235,3 +245,51 @@ SSE → 页面即时出现新事件，形成**端到端自证**（不需要额�
 - **前台用户身份频道暂无发布方**：`user:{id}` 会被服务端强制订阅，但目前没有业务往用户频道
   publish（待有用户侧实时需求的模块接入，如任务进度）。
 
+
+## 9. 2026-11-13 现状核对（与 §1–§8 的差异）
+
+§1–§8 保留 2026-09-17 的方案与落地记录；下面只记今天**仍然成立**的结构与已经变化的部分。
+
+### 9.1 质量门（当前五道）
+
+| 门 | 脚本 | 说明 |
+| --- | --- | --- |
+| `pnpm typecheck` | turbo → 各包 `tsc --noEmit` | turbo 范围 8 个 workspace 包，实际 5 个 `typecheck` task（admin / server / web / ui / shared） |
+| `pnpm test` | turbo → 各包 `vitest run` | — |
+| `pnpm check:ui` | `scripts/check-ui.ts` | 五条不变量：组件导出 / typecheck 脚本 / 硬编码调色板基线 / 样式入口可解析 / 字体规范一致 |
+| `pnpm check:inject` | `scripts/check-inject-decorators.ts` | 构造器 `@Inject` 与 `providers` `@Injectable` 一致 |
+| `pnpm check:mastra` | `scripts/check-mastra-boundary.ts` | `@mastra/*` 只允许出现在适配器目录与允许清单 |
+
+`check:scaffold` 与 CLI 代码生成器（`scripts/cli/**`、`pnpm cli`）已于 2026-11-09 整体移除：
+前端包不再由本仓生成，「模板同步」这项职责随之消失。
+
+### 9.2 两个前端的当前结构
+
+| 项 | 现状 |
+| --- | --- |
+| web（9840） | 13 个 `page.tsx`：落地页 / 竞品页 / 4 个 auth 页 / `/account` 与 `/account/sessions` / 5 个 markdown 示例；主题能力已接入（`ThemeProvider` + `createThemeBootScript`，key `billy-theme`） |
+| admin（9845） | 21 个 `page.tsx`（含 `/` 重定向；其余为登录、控制台、用户 / 管理员、个人中心、监控 5 页、AI 7 页（会话 / 模型 / 工具 / 技能库 / 文件 / 连接器 / 审计）、会话详情、技能编辑器、`/s/[token]` 分享页） |
+| admin 根布局 | **两棵**：`app/(app)/layout.tsx`（html/body + 字体 + 主题脚本 + `Providers`）与 `app/(share)/layout.tsx`（html/body + 字体 + 主题脚本，**不挂 `Providers`**） |
+| admin 嵌套布局 | `(app)/(standalone)/main/layout.tsx`（AI 会话，全窗口工作台）、`(app)/(canvas)/main/layout.tsx`（技能编辑器，全窗口画布，不套会话字号） |
+| admin API 层 | Hono：`app/api/[[...route]]/route.ts`（`export const runtime = 'nodejs'`，`GET/HEAD/POST/PUT/PATCH/DELETE = handle(app)`）+ `src/api/app.ts`（`basePath('/api')`、`secureHeaders`）+ `src/api/share.ts`（`/api/s/:token/content` 字节转发，支持 Range/HEAD） |
+| 分享页归属 | 在 **admin**（`(share)/s/[token]`），不在 web；web 无 `/s` 路由；admin `proxy.ts` 的 matcher 显式排除 `s/` 与 `api` |
+| 组件库 | `components/ui` 61 个、`components/ai-elements` 48 个、平铺自有组件 35 个、hooks 6 个；`@repo/ui` 测试 17 文件 / 118 项 |
+
+### 9.3 SSE 链路（当前文件）
+
+- 数据结构：`packages/shared/src/schema/stream.schema.ts` —— 未变。
+- 服务端：`modules/stream/*`（`auth: 'both'` + `broadcastChannels: ['admin:all']` + 同域校验 + `flushHeaders`）；
+  发布方是 `monitor/engine/alert-delivery.service.ts` → `monitor/engine/alert-stream.service.ts`。
+- 客户端：`packages/sdk/src/server.client.ts` 的 `createStream()` + `packages/ui/src/hooks/use-stream.ts`。
+- 页面：`apps/admin/src/app/(app)/main/monitor/live/page.tsx`。
+- 唯一发布事件仍是 `alert.fired`；`user:{id}` 频道仍无发布方（§8.6 的缺口未变）。
+
+### 9.4 仍然成立 / 已经过期的旧结论
+
+| §1–§8 的结论 | 今天 |
+| --- | --- |
+| `@repo/sdk` 的 `ServerClient` 覆盖 auth / admin / user / storage / monitor / config | 已扩到 13 个分组（见 `docs/sdk-refactor.md` §「当前 SDK 结构」） |
+| web 前台无受保护业务页 / 无 fallback | 已补 `/account`、`/account/sessions`、`error / not-found / loading` |
+| web 无暗色能力 | 已有（2026-09-18 上移主题能力，两端各用各的 key） |
+| 前端测试为零 | 已有：ui 17 文件 / 118 项，web / admin 各有纯逻辑测试 |
+| 自有组件 24 个、hook 4 个 | 当前自有组件 35 个、hook 6 个 |

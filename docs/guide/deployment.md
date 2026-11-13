@@ -22,26 +22,51 @@ REDIS_URL=redis://localhost:6379/0                          # 默认端口 6379�
 JWT_SECRET=dev-secret-change-in-production                  # 生产务必替换
 AUTH_ENABLED=true                                           # false 关闭鉴权（clone 自用）
 OBJECT_STORAGE_ENDPOINT=http://localhost:9000               # 默认端口 9000；compose 映射 19000
+AGENT_COMMAND_ENABLED=false                                 # 命令执行，默认关闭
+AGENT_WORKSPACE_MODE=enforce                                # 命令隔离：沙箱不可用即拒绝执行（fail closed）
+SHARE_INTERNAL_SECRET=                                      # 文件分享；空 = 分享内容一律 404
 ```
 
-`OBJECT_STORAGE_ENDPOINT` **可以不配**：对象存储是可选能力，未配置或 MinIO / S3 不可达时服务照常启动，
+`OBJECT_STORAGE_ENDPOINT` **可以不配**：对象存储是可选能力（`s3` 下不配 endpoint 即未启用，
+`cos` 由 `OBJECT_STORAGE_PROVIDER` 决定），未配置或 MinIO / S3 不可达时服务照常启动，
 只有上传 / 下载 / 附件读取等真正用到存储的接口才报「对象存储未配置或不可用」。
 
-`apps/web/.env.local` 与 `apps/admin/.env` 使用默认值即可（不配置时代码有默认值兜底）。
+`SHARE_INTERNAL_SECRET` 是文件分享的内部密钥：server 的 `/share/resolve` 与 admin 的
+`/api/s/:token/content` 必须一致；不配只关闭字节下发（分享页取不到内容，`/api/s/*` 返回 404），
+其余功能不受影响。admin 侧读的是**运行时**环境变量（`apps/admin/.env` / 容器环境），不随构建内联。
+
+AI 命令执行的执行环境另由 `AGENT_WORKSPACE_MODE`（默认 `enforce`）、
+`AGENT_WORKSPACE_SANDBOX_NETWORK`（默认 `deny`）、`AGENT_WORKSPACE_PROBE_TIMEOUT_MS` 控制；
+`AGENT_COMMAND_WORK_DIR` 同时是命令与文件工具的工作区根。完整 `AGENT_*` 见 `apps/server/.env.example`。
+
+`apps/web/.env.local` 与 `apps/admin/.env` 使用默认值即可（不配置时代码有默认值兜底；分享功能需另配
+`SHARE_INTERNAL_SECRET`，见上）。
+
+分享密钥 `SHARE_INTERNAL_SECRET` 只在 **admin 与 server** 两端配置（两边的 `.env.example` 都已列出），
+取值必须一致；web 模板不含它（web 没有分享页）。不配置只关闭分享字节下发，不影响其它功能。
 
 ## 构建与启动（生产）
 
 ```bash
-# 全量构建（turbo，按依赖拓扑）
+# 全量构建（turbo，按依赖拓扑）；也可单独构建某个应用（会自动构建其依赖包）
 pnpm build
+# pnpm build:web / pnpm build:admin / pnpm build:server
 
 # 分别启动
-pnpm start:server
-pnpm start:web
+pnpm start:server   # 9989
+pnpm start:web      # standalone，默认 9840（与 dev 一致；Docker 内由 ENV PORT=3001 覆盖）
+pnpm start:admin    # standalone，默认 9845（PORT 可覆盖）
 
 # 或 Docker Compose（postgres + redis + minio + server + web）
 pnpm docker:up
+
+# 停止本地 start 起的进程（跨平台，默认 9840 / 9845 / 9989）
+pnpm kill:start
 ```
+
+> `lsof` 在某些情况下查不到监听进程（进程属于其它用户、容器端口转发、或没装 lsof）。
+> `kill:start` 会用 TCP 连接探针独立判断端口是否真的在监听：查不到进程时明确报
+> 「在监听但定位不到进程」并给出 `sudo lsof` / `netstat` / `docker ps` 排查命令，不会误报端口空闲。
 
 ## Docker
 
@@ -67,6 +92,15 @@ docker compose --profile kafka up -d        # 追加 Kafka + 控制台（可选�
 ¹ 这三个服务带 `profiles: ["kafka"]`，**不指定 profile 不会启动**。启用后把服务端
 `KAFKA_BROKERS` 设为 `kafka:9092`（容器内）或 `127.0.0.1:29092`（宿主机直连）；
 不配置 `KAFKA_BROKERS` 时 `KafkaModule` 根本不装配，不影响其它功能。
+
+MinIO 在 compose 里**默认随 `docker compose up` 启动**，但对象存储本身是可选能力：
+不用上传 / 附件 / 分享时可以不启它（`docker compose up -d postgres redis server web`），
+服务照常运行，只是存储相关接口报「未配置或不可用」。
+
+> **admin 不在 compose 里**：`docker-compose.yaml` 只提供 postgres / redis / minio / server / web，
+> `docker/` 也只有 server / web 的 Dockerfile，`k8s/` 只覆盖 server。admin 需单独构建部署：
+> 开发端口 9845，生产走 `output: 'standalone'`，由 `apps/admin/scripts/start.sh` 以 `PORT=9845` 启动；
+> `NEXT_PUBLIC_*` 在构建期内联，`SERVER_URL` 与 `SHARE_INTERNAL_SECRET` 在运行时读取。
 
 ### 镜像构建
 
@@ -99,7 +133,7 @@ docker build -t billy-web:latest -f docker/Dockerfile.web .
 
 ### 前置反向代理（Kong / Nginx / LB）
 
-前面挂了网关时，有三处必须核对，否则会出现「查不到原因」的间歇性故障：
+前面挂了网关时，有四处必须核对，否则会出现「查不到原因」的间歇性故障：
 
 **1. keep-alive 复用竞态（间歇 502）**
 

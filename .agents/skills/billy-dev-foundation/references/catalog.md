@@ -25,6 +25,7 @@
 | [`state-machine`](../../state-machine/SKILL.md) | 业务状态机：状态字典 + 转移表纯函数（或 xstate 封装）、并发安全 | 订单状态、审批流、状态流转时 |
 | [`write-tests`](../../write-tests/SKILL.md) | 编写单元测试：vitest 结构与 mock 模式、service / repository 测试套路 | 写测试、补单测、修测试时 |
 | [`git-workflow`](../../git-workflow/SKILL.md) | Git 提交与工作流：中文 commit 类型规范、提交粒度、辅助提交流程 | 提交、commit、辅助提交、提交信息时 |
+| [`code-quality`](../../code-quality/SKILL.md) | 代码检查 / 格式化 / 提交钩子：oxlint + tsgolint + oxfmt + lefthook 的命令、规则取舍、单行豁免、钩子行为与 Windows 兼容 | 写代码 / 改代码后跑检查、格式化、处理 lint 告警、排查钩子、调整规则时 |
 | [`codegraph`](../../codegraph/SKILL.md) | 代码图谱工具：MCP codegraph_explore + CLI（query / node / callers / callees / impact / affected）查符号、调用链、影响面，验证分层依赖方向 | 理解架构、调用关系、依赖方向、改动影响面、代码理解时 |
 | [`getting-started`](../../getting-started/SKILL.md) | TanStack Table v9 入门：react adapter、`createTableHook` 组件复用、Query / Virtual 集成 | 新建表格、写 Table v9 组件、接服务端数据 / 虚拟滚动时 |
 | [`table-state`](../../table-state/SKILL.md) | Table v9 状态读取与控制：tracked reads、订阅、受控切片、框架响应式边界 | 读 / 控表格状态、做受控筛选排序、排查重渲染时 |

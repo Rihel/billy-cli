@@ -148,7 +148,7 @@ pnpm --filter @app/server test test/ai-tools-battery.test.ts     # 标准测试�
 pnpm --filter @app/server test test/ai-mastra-contract.test.ts   # 适配器行为约定（升级 Mastra 先跑）
 pnpm --filter @app/server test                                   # 含真实 Redis 的 e2e（串行）
 pnpm build:pkgs                                                  # 改了 @repo/shared / @repo/sdk 后必跑
-pnpm typecheck && pnpm test && pnpm check:ui && pnpm check:inject && pnpm check:mastra
+pnpm verify && pnpm typecheck && pnpm test
 ```
 
 | 门 | 命令 | 守什么 |
