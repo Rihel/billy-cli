@@ -74,9 +74,7 @@ export const mergeUsage = (
   for (const field of fields) {
     const known = present.filter((record) => typeof record[field] === 'number')
     merged[field] =
-      known.length === 0
-        ? null
-        : known.reduce((sum, record) => sum + (record[field] as number), 0)
+      known.length === 0 ? null : known.reduce((sum, record) => sum + (record[field] as number), 0)
   }
   return merged
 }

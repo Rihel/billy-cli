@@ -10,9 +10,12 @@ import { createMastra } from '../src/modules/ai/mastra/ai.mastra.js'
 import { createAgentRegistry } from '../src/modules/ai/agents/registry.js'
 import type { AgentSpec } from '../src/modules/ai/agents/types.js'
 import { type AgentRuntimeEnvelope, type RuntimeModel } from '../src/modules/ai/core/envelope.js'
-import { PlannerStore, PlannerTools, type PlanOutput } from '../src/modules/ai/tools/planner/index.js'
+import {
+  PlannerStore,
+  PlannerTools,
+  type PlanOutput,
+} from '../src/modules/ai/tools/planner/index.js'
 import { RunSubAgentTool } from '../src/modules/ai/tools/subagent.tool.js'
-import { BashTool } from '../src/modules/ai/tools/bash.tool.js'
 import { FileTools } from '../src/modules/ai/files/file.tools.js'
 import { WebTools } from '../src/modules/ai/tools/web.tools.js'
 import { createPromptEngine } from '../src/modules/ai/core/prompts/index.js'
@@ -221,7 +224,9 @@ describe('规划能力（规划工具组 + plan 事件）', () => {
 
     const plans = await planEvents(first.conversationId)
     // 每一步都落一条 plan 事件（首建 + 第二轮三步），revision 每成功变更 +1
-    expect(plans.map((item) => (item.payload as { revision: number }).revision)).toEqual([1, 2, 3, 4])
+    expect(plans.map((item) => (item.payload as { revision: number }).revision)).toEqual([
+      1, 2, 3, 4,
+    ])
     // 中间那一步（create 追加）的出参是**完整快照**：t1 已完成、t2 还在、t3 刚加进来
     expect(plans[2].payload).toMatchObject({
       revision: 3,
@@ -243,15 +248,17 @@ describe('规划能力（规划工具组 + plan 事件）', () => {
       MOCK_PLAN_CREATE_TOOL,
       MOCK_PLAN_DELETE_TOOL,
     ])
-    expect((results[0].payload?.output as PlanOutput).summary).toContain('t1 in_progress→completed')
-    expect((results[1].payload?.output as PlanOutput).summary).toContain('新增 t3')
-    expect((results[2].payload?.output as PlanOutput).summary).toContain('删除 t2')
+    expect((results[0].payload!.output as PlanOutput).summary).toContain('t1 in_progress→completed')
+    expect((results[1].payload!.output as PlanOutput).summary).toContain('新增 t3')
+    expect((results[2].payload!.output as PlanOutput).summary).toContain('删除 t2')
   }, 30_000)
 
   it('③ 同一轮内串行读改写：第二次调用读到第一次新增的 r2（revision=1 → 2）', async () => {
     const { chat } = await stack()
     // 全新会话：这一轮本身就是首次创建 —— 第一次是 revision=1，第二次必须是 2
-    const result = await chat.chat(USER, { message: `一口气把清单写两版 ${MOCK_PLAN_REACT_MARKER}` })
+    const result = await chat.chat(USER, {
+      message: `一口气把清单写两版 ${MOCK_PLAN_REACT_MARKER}`,
+    })
     expect(result.status).toBe(RunStatus.Succeeded)
     // 一轮里真的调了两次规划工具（plan-create → plan-complete）
     expect(result.toolCallCount).toBe(2)
@@ -444,11 +451,7 @@ describe('规划能力（规划工具组 + plan 事件）', () => {
       envelope,
     )
     expect(output.revision).toBe(2)
-    expect(output.tasks.map((task) => task.status)).toEqual([
-      'completed',
-      'completed',
-      'pending',
-    ])
+    expect(output.tasks.map((task) => task.status)).toEqual(['completed', 'completed', 'pending'])
     expect(output.tasks[0].note).toBe('结论：已核对')
     expect(output.tasks[2].note).toBeUndefined()
 
@@ -495,7 +498,12 @@ describe('规划能力（规划工具组 + plan 事件）', () => {
     })
     const envelope = runtimeEnvelope(conversation.id, `${run.id}_delete`)
 
-    const output = await executePlanTool(toolRegistry, TOOL_KEYS.planDelete, { ids: ['d2'] }, envelope)
+    const output = await executePlanTool(
+      toolRegistry,
+      TOOL_KEYS.planDelete,
+      { ids: ['d2'] },
+      envelope,
+    )
     expect(output.revision).toBe(2)
     expect(output.tasks.map((task) => task.id)).toEqual(['d1', 'd3'])
     expect(output.summary).toContain('删除 d2')
@@ -687,7 +695,9 @@ describe('子 agent（core bean + 运行期动态创建）', () => {
 
     // ④ 子 run 自己的明细：任务、工具调用、结论文本都在它名下（同一会话，可整棵树拉出来）
     const childRows = page.items.filter((item) => item.runId === outcome.subRunId)
-    expect(childRows.some((item) => item.kind === TimelineKind.Text && item.role === 'user')).toBe(true)
+    expect(childRows.some((item) => item.kind === TimelineKind.Text && item.role === 'user')).toBe(
+      true,
+    )
     expect(childRows.some((item) => item.kind === TimelineKind.ToolCall)).toBe(true)
     expect(
       childRows.some(
@@ -726,7 +736,7 @@ describe('子 agent（core bean + 运行期动态创建）', () => {
       return typeof system?.content === 'string' && system.content.includes(MOCK_SUBAGENT_PROMPT)
     })
     expect(childRequest).toBeDefined()
-    const toolNames = (childRequest?.tools as Array<{ function?: { name?: string } }>).map(
+    const toolNames = (childRequest!.tools as Array<{ function?: { name?: string } }>).map(
       (tool) => tool.function?.name,
     )
     // 工具面 = 全部 − 委派类 − child:deny：bash 在，run-sub-agent 与四个规划工具都不在
@@ -822,11 +832,15 @@ describe('子 agent（core bean + 运行期动态创建）', () => {
 
     // 全程不删（审计证据）：只能软删会话，运行记录没有删除入口
     await expect(
-      runService.list('user_别的用户', { conversationId: result.conversationId, page: 1, size: 50 }),
+      runService.list('user_别的用户', {
+        conversationId: result.conversationId,
+        page: 1,
+        size: 50,
+      }),
     ).rejects.toMatchObject({ code: expect.any(Number) })
-    await expect(
-      runService.detail('user_别的用户', { runId: child!.id }),
-    ).rejects.toMatchObject({ code: expect.any(Number) })
+    await expect(runService.detail('user_别的用户', { runId: child!.id })).rejects.toMatchObject({
+      code: expect.any(Number),
+    })
   }, 30_000)
 
   it('配额与深度：不抛异常炸整轮，而是把原因作为工具结论交回模型', async () => {
@@ -852,9 +866,7 @@ describe('子 agent（core bean + 运行期动态创建）', () => {
 
     // 配额：这次问答里已经造过 1 个，上限设成 1 就再也造不出来
     expect(await runs.countChildren(result.runId)).toBe(1)
-    const quota = await runner.runSubAgent(
-      { ...base, envelope: { ...base.envelope, depth: 0 } },
-    )
+    const quota = await runner.runSubAgent({ ...base, envelope: { ...base.envelope, depth: 0 } })
     expect(quota.status).toBe('rejected')
     expect(quota.reason).toMatch(/上限/)
   }, 30_000)
@@ -999,14 +1011,7 @@ const buildStack = async () => {
   // `AgentRunner` 通过 ModuleRef **惰性**取注册机（构造期不依赖它，否则成环死锁）：
   // 测试给一个只实现 `get` 的替身，语义与生产一致
   const moduleRefPort = { get: () => toolRegistry } as never
-  const runner = new AgentRunner(
-    runs,
-    timelines,
-    config,
-    silentLogger,
-    deps.metas,
-    moduleRefPort,
-  )
+  const runner = new AgentRunner(runs, timelines, config, silentLogger, deps.metas, moduleRefPort)
   toolRegistry = new ToolRegistry(
     [
       // 命令执行：与 `ai.module.ts` 的装配口径一致（assistant 已授权 bash）

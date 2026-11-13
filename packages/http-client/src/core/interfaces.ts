@@ -1,10 +1,5 @@
 /** 支持的认证策略类型 */
-export type AuthStrategyType =
-  | 'apiKey'
-  | 'oauth2'
-  | 'bearerToken'
-  | 'hmac'
-  | string
+export type AuthStrategyType = 'apiKey' | 'oauth2' | 'bearerToken' | 'hmac' | string
 
 /**
  * HTTP 请求配置。
@@ -64,10 +59,7 @@ export interface AuthStrategy<Credentials = Record<string, any>> {
   /** 策略类型标识 */
   type: AuthStrategyType
   /** 将凭证转换为请求注入上下文 */
-  getAuthContext(
-    credentials: Credentials,
-    context: AuthContext,
-  ): Promise<AuthContext>
+  getAuthContext(credentials: Credentials, context: AuthContext): Promise<AuthContext>
   /** 判断凭证是否有效 */
   isAuthorization(credentials?: Credentials): Promise<boolean>
 }

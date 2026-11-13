@@ -49,7 +49,12 @@ describe('网关：ctx.emit 的接线', () => {
   it('执行体可以 emit；part 里带上调用方 agentKey 与 toolCallId', async () => {
     const stack = deps()
     const writer = capturingWriter()
-    const outcome = await new ToolGateway(stack.config, silentLogger as never, [], stack.clock).invoke(
+    const outcome = await new ToolGateway(
+      stack.config,
+      silentLogger as never,
+      [],
+      stack.clock,
+    ).invoke(
       specOf({
         exec: async (_input: unknown, ctx: unknown) => {
           const emit = ctx as { emit: (name: string, payload?: unknown) => void }

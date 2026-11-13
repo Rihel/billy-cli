@@ -79,7 +79,9 @@ export const toMastraModelInstance = async (
 }
 
 /** `RuntimeModel` → Mastra 的模型描述（`url` 留空即走官方端点） */
-export const toMastraModel = (model: RuntimeModel): { id: AgentModelId; url?: string; apiKey: string } => ({
+export const toMastraModel = (
+  model: RuntimeModel,
+): { id: AgentModelId; url?: string; apiKey: string } => ({
   id: toAgentModelId(model.modelRef),
   ...(model.baseURL ? { url: model.baseURL } : {}),
   apiKey: model.apiKey,
@@ -91,7 +93,11 @@ export interface MastraAgentOptions {
   /** 系统指令：可以是固定文本，也可以按调用求值（主 agent 用后者：拿信封里的渲染全文） */
   instructions: string | ((args: { requestContext: RequestContext }) => string)
   /** 模型：按调用从信封取（主 agent），或固定（临时子 agent 继承父这一轮的模型） */
-  model: (args: { requestContext: RequestContext }) => { id: AgentModelId; url?: string; apiKey: string }
+  model: (args: { requestContext: RequestContext }) => {
+    id: AgentModelId
+    url?: string
+    apiKey: string
+  }
   /**
    * 工具面：静态表，或**按请求求值**的函数。
    *
@@ -108,9 +114,7 @@ export interface MastraAgentOptions {
    * 支持**按请求求值**：主 agent 用函数形态，从运行时信封里取"这一轮实际解析出来的技能"，
    * 于是在线新建 / 停用的技能不用重启就生效（静态数组只有装配期那一份，做不到）。
    */
-  skills:
-    | string[]
-    | ((args: { requestContext: RequestContext }) => string[] | Promise<string[]>)
+  skills: string[] | ((args: { requestContext: RequestContext }) => string[] | Promise<string[]>)
   durable?: boolean
   /** 对话记忆（durable resume 需要它把工具结果续回消息列表；不传则不启用记忆） */
   memory?: import('@mastra/core/memory').MastraMemory

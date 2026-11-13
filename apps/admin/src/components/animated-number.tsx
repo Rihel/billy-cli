@@ -25,7 +25,10 @@ export function AnimatedNumber({
 
   useEffect(() => {
     if (value == null) return
-    if (typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    if (
+      typeof window !== 'undefined' &&
+      window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    ) {
       setDisplay(target)
       fromRef.current = target
       return
@@ -49,8 +52,6 @@ export function AnimatedNumber({
   }, [durationMs, target, value])
 
   return (
-    <span className={cn('tabular-nums', className)}>
-      {value == null ? '-' : format(display)}
-    </span>
+    <span className={cn('tabular-nums', className)}>{value == null ? '-' : format(display)}</span>
   )
 }

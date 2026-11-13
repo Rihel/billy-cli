@@ -1,10 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { TimelineEntity } from '../src/database/entities/timeline-entity.js'
 import type { AgentConfig as AgentConfigValue } from '../src/modules/ai/core/config.js'
-import {
-  ContextService,
-  estimateTokens,
-} from '../src/modules/ai/runtime/context.service.js'
+import { ContextService, estimateTokens } from '../src/modules/ai/runtime/context.service.js'
 import type { TimelineRepository } from '../src/modules/ai/runtime/timeline.repository.js'
 
 /**
@@ -74,7 +71,10 @@ describe('窗口解析（三级）', () => {
   it('配置覆盖优先', () => {
     const service = buildService([])
     const withOverride = new ContextService(
-      { latestSummary: async () => null, listSince: async () => [] } as unknown as TimelineRepository,
+      {
+        latestSummary: async () => null,
+        listSince: async () => [],
+      } as unknown as TimelineRepository,
       { ...config, contextModelWindows: { 'deepseek/deepseek-chat': 65_536 } },
       logger,
     )
@@ -226,7 +226,9 @@ describe('两条硬规则', () => {
 
   it('单条工具结果超阈值 → 给模型的是截断视图，但快照记下裁剪事实', async () => {
     seq = 0
-    const huge = { items: new Array(2000).fill({ title: '很长很长的待办标题'.repeat(5) }) }
+    const huge = {
+      items: Array.from({ length: 2000 }, () => ({ title: '很长很长的待办标题'.repeat(5) })),
+    }
     const events: TimelineEntity[] = [
       event({ role: 'user', kind: 'text', payload: { text: '查一下' } }),
       event({

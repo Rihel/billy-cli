@@ -4,11 +4,7 @@ import dynamic from 'next/dynamic'
 import { useRouter } from 'next/navigation'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import {
-  SKILL_DESCRIPTION_PLACEHOLDER,
-  SKILL_FILE_PATH_PATTERN,
-  SkillSource,
-} from '@repo/shared'
+import { SKILL_DESCRIPTION_PLACEHOLDER, SKILL_FILE_PATH_PATTERN, SkillSource } from '@repo/shared'
 import type { AiSkillDetailModel, AiSkillFileModel } from '@repo/shared'
 import {
   Alert,
@@ -25,7 +21,6 @@ import {
   Input,
   Label,
   Switch,
-  Textarea,
   toastError,
   toastSuccess,
 } from '@repo/ui'
@@ -375,7 +370,12 @@ export function SkillEditor({ skillKey }: { skillKey: string }) {
           >
             <Settings2Icon />
           </Button>
-          <Button type="button" size="sm" disabled={!dirty || saving} onClick={() => void saveAll()}>
+          <Button
+            type="button"
+            size="sm"
+            disabled={!dirty || saving}
+            onClick={() => void saveAll()}
+          >
             保存
           </Button>
         </div>
@@ -385,7 +385,9 @@ export function SkillEditor({ skillKey }: { skillKey: string }) {
         {/* 文件窄栏：不抢正文注意力 */}
         <aside className="hidden w-[210px] shrink-0 flex-col border-r border-border/50 bg-surface-1/50 md:flex">
           <div className="flex items-center justify-between px-3 pb-1 pt-4">
-            <span className="text-[11px] font-medium tracking-wide text-muted-foreground">文件</span>
+            <span className="text-[11px] font-medium tracking-wide text-muted-foreground">
+              文件
+            </span>
             <AddFileButton disabled={saving} onAdd={addFile} />
           </div>
           <div className="min-h-0 flex-1 overflow-auto px-2 pb-4">
@@ -737,7 +739,9 @@ function SkillSettingsDialog({
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>技能设置</DialogTitle>
-          <DialogDescription>来源、版本与删除；frontmatter 的其他字段在正文上方编辑。</DialogDescription>
+          <DialogDescription>
+            来源、版本与删除；frontmatter 的其他字段在正文上方编辑。
+          </DialogDescription>
         </DialogHeader>
         <div className="flex flex-col gap-3 text-xs">
           <div className="flex justify-between gap-3">

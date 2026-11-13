@@ -1,9 +1,9 @@
-"use client"
+'use client'
 
-import type { ReactNode } from "react"
+import type { ReactNode } from 'react'
 
-import { cn } from "#lib/utils"
-import { useRect } from "#hooks/use-rect"
+import { cn } from '#lib/utils'
+import { useRect } from '#hooks/use-rect'
 
 export type PageToolbarProps = {
   title?: ReactNode
@@ -15,41 +15,29 @@ export type PageToolbarProps = {
 }
 
 /** 页面工具条：标题 + 说明 + 右侧操作区 + 下方搜索/筛选区（窄屏自动纵向排列） */
-export function PageToolbar({
-  title,
-  description,
-  extra,
-  children,
-  className,
-}: PageToolbarProps) {
+export function PageToolbar({ title, description, extra, children, className }: PageToolbarProps) {
   const { ref, rect } = useRect()
   const compact = rect.width > 0 && rect.width < 640
 
   return (
     // 工具条默认铺满容器（放在 flex-col / grid 里都按整行算）；
     // 要收窄由调用方传 className 覆盖，不要在组件里写死宽度
-    <div ref={ref} className={cn("w-full", className)}>
+    <div ref={ref} className={cn('w-full', className)}>
       <div
         className={cn(
-          "flex gap-4",
-          compact ? "flex-col items-stretch" : "items-center justify-between",
+          'flex gap-4',
+          compact ? 'flex-col items-stretch' : 'items-center justify-between',
         )}
       >
         <div className="min-w-0">
           {title ? (
-            <div className="font-heading text-lg font-medium tracking-tight">
-              {title}
-            </div>
+            <div className="font-heading text-lg font-medium tracking-tight">{title}</div>
           ) : null}
           {description ? (
-            <div className="mt-0.5 text-[13px] text-muted-foreground">
-              {description}
-            </div>
+            <div className="mt-0.5 text-[13px] text-muted-foreground">{description}</div>
           ) : null}
         </div>
-        {extra ? (
-          <div className="flex flex-wrap items-center gap-2">{extra}</div>
-        ) : null}
+        {extra ? <div className="flex flex-wrap items-center gap-2">{extra}</div> : null}
       </div>
       {children ? <div className="mt-3">{children}</div> : null}
     </div>

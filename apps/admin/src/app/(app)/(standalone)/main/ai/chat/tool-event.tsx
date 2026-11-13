@@ -152,8 +152,7 @@ export const groupToolEventsByToolCall = (
 }
 
 /** 事件标题：服务端为兜底渲染**自带** `eventTitle`；缺失时退回事件名（宁可看英文名也别空着） */
-export const eventTitleOf = (part: ToolEventPart): string =>
-  part.data.eventTitle || part.data.event
+export const eventTitleOf = (part: ToolEventPart): string => part.data.eventTitle || part.data.event
 
 /**
  * 渲染分组：**一条流水线**（连续的 `stream` 块），或**一个时间点**（单个 `state` 块）。
@@ -289,7 +288,9 @@ const FallbackEventBody = ({ part }: { part: ToolEventPart }) => {
           ))}
         </ul>
       ) : (
-        <p className="text-sm break-words whitespace-pre-wrap">{payloadSummary(part.data.payload)}</p>
+        <p className="text-sm break-words whitespace-pre-wrap">
+          {payloadSummary(part.data.payload)}
+        </p>
       )}
       <EventJson payload={part.data.payload} />
     </div>
@@ -300,7 +301,11 @@ const FallbackEventBody = ({ part }: { part: ToolEventPart }) => {
 const EventBody = ({ toolKey, part }: { toolKey: string; part: ToolEventPart }) => {
   const Renderer = pickToolEventRenderer(part.data.toolKey || toolKey, part.data.event)
   // 以组件（而非函数调用）挂载：自定义渲染器里可以用 hooks
-  return Renderer ? <Renderer part={part} payload={part.data.payload} /> : <FallbackEventBody part={part} />
+  return Renderer ? (
+    <Renderer part={part} payload={part.data.payload} />
+  ) : (
+    <FallbackEventBody part={part} />
+  )
 }
 
 /**
@@ -368,10 +373,7 @@ export function ToolEventsBody({
       <h4 className="font-medium text-muted-foreground text-xs tracking-wide">事件</h4>
       <div className="flex flex-col gap-1">
         {groups.map((group) => (
-          <div
-            key={group.key}
-            className="flex flex-col gap-1 rounded-md bg-muted/40 px-2 py-1.5"
-          >
+          <div key={group.key} className="flex flex-col gap-1 rounded-md bg-muted/40 px-2 py-1.5">
             <ToolEventHeading
               part={group.parts[0]}
               events={group.events}

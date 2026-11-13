@@ -6,10 +6,7 @@ type OptionConfig<Data extends Record<string, any>> = {
   labelKey: keyof Data
   valueKey: keyof Data
 }
-type MakeOption<
-  Data extends Record<string, any>,
-  Config extends OptionConfig<Data>,
-> = {
+type MakeOption<Data extends Record<string, any>, Config extends OptionConfig<Data>> = {
   label: Data[Config['labelKey']]
   value: Data[Config['valueKey']]
   i18n?: Record<string, any>
@@ -17,10 +14,7 @@ type MakeOption<
 
 export type Dict = ReturnType<typeof createDict>
 
-export function createDict<
-  T extends Record<string, any>,
-  DataSource extends Record<string, T>,
->(
+export function createDict<T extends Record<string, any>, DataSource extends Record<string, T>>(
   dataSource: DataSource,
   optionConfig: OptionConfig<T> = { labelKey: 'label', valueKey: 'value' },
 ) {
@@ -32,25 +26,17 @@ export function createDict<
     options: Option[]
     values: Option['value'][]
     labels: Option['label'][]
-    filterOptions(
-      filterFn: (option: Option, index: number) => boolean,
-      language?: string,
-    ): Option[]
+    filterOptions(filterFn: (option: Option, index: number) => boolean, language?: string): Option[]
     getOption(value: Option['value']): Option | undefined
     getOptions(language?: string): Option[]
-    getField(
-      value: Option['value'],
-      field: keyof Option,
-    ): Option[keyof Option] | undefined
+    getField(value: Option['value'], field: keyof Option): Option[keyof Option] | undefined
     getLabel(value: Option['value'], language?: string): string | undefined
     pickOptions: (values: Option['value'][], language?: string) => Option[]
     omitOptions: (values: Option['value'][], language?: string) => Option[]
   } & {
     [Key in keyof DataSource]: Option['value']
   } & {
-    [Key in keyof DataSource as `is${Capitalize<Key & string>}`]: (
-      data: Option['value'],
-    ) => boolean
+    [Key in keyof DataSource as `is${Capitalize<Key & string>}`]: (data: Option['value']) => boolean
   }
 
   const res: any = {
@@ -87,10 +73,7 @@ export function createDict<
     })
   }
 
-  function filterOptions(
-    filterFn: (option: Option, index: number) => boolean,
-    language?: string,
-  ) {
+  function filterOptions(filterFn: (option: Option, index: number) => boolean, language?: string) {
     return getOptions(language).filter(filterFn)
   }
 
@@ -153,10 +136,7 @@ export function createOptionByArray(arr: Array<string | number> = []) {
   })
 }
 
-export function withAllOption<T extends Dict>(
-  dict: T,
-  i18n?: Record<string, any>,
-) {
+export function withAllOption<T extends Dict>(dict: T, i18n?: Record<string, any>) {
   const dataSource = {
     All: {
       label: '全部',
@@ -200,10 +180,7 @@ export function createDictByDataSource<T extends Record<string, any>>(
     }
   })
 
-  const map = listToMapWith(internalDataSource, 'value') as unknown as Record<
-    string,
-    T
-  >
+  const map = listToMapWith(internalDataSource, 'value') as unknown as Record<string, T>
 
   //@ts-ignore
   const res = createDict(map)

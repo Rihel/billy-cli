@@ -1,9 +1,9 @@
-"use client"
+'use client'
 
-import type { CustomRendererProps } from "streamdown"
+import type { CustomRendererProps } from 'streamdown'
 
-import { FencePending, FenceSource } from "./fence-chrome.tsx"
-import { SandboxFrame } from "./sandbox-frame.tsx"
+import { FencePending, FenceSource } from './fence-chrome.tsx'
+import { SandboxFrame } from './sandbox-frame.tsx'
 
 /**
  * ```` ```html ```` 围栏：把模型写的页面直接跑在沙箱 iframe 里。

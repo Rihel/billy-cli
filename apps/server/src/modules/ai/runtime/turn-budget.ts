@@ -14,25 +14,25 @@
  */
 
 /** 单条被截断结果保留的预览长度（字符） */
-const PREVIEW_CHARS = 400;
+const PREVIEW_CHARS = 400
 
 export interface ToolBudgetOptions {
   /** 本轮工具结果允许占用的总字符数（由窗口换算而来） */
-  budgetChars: number;
+  budgetChars: number
   /** 最近几条工具结果不动（默认 4） */
-  keepRecent?: number;
+  keepRecent?: number
 }
 
 export interface ToolBudgetResult {
   /** 需要替换时是**新数组**（原数组与原始消息对象不被修改）；无需改动时就是入参本身 */
-  messages: unknown[];
-  trimmedCount: number;
-  beforeChars: number;
-  afterChars: number;
+  messages: unknown[]
+  trimmedCount: number
+  beforeChars: number
+  afterChars: number
 }
 
 /** 截断标记：让模型知道"这里被压过"，而不是以为工具只返回了这么点 */
-const TRUNCATED_NOTE = '…[轮内上下文预算已截断；完整内容已入库，需要细节可重新调用工具或取回原文]';
+const TRUNCATED_NOTE = '…[轮内上下文预算已截断；完整内容已入库，需要细节可重新调用工具或取回原文]'
 
 const safeStringify = (value: unknown): string => {
   try {
@@ -155,7 +155,10 @@ export const fitMessagesToToolBudget = (
       clonePart.output = shrinkValue(part.output, PREVIEW_CHARS)
     }
     const cloneMessage = Array.isArray(message.content)
-      ? { ...message, content: replaceAt(message.content as unknown[], candidate.partIndex, clonePart) }
+      ? {
+          ...message,
+          content: replaceAt(message.content as unknown[], candidate.partIndex, clonePart),
+        }
       : {
           ...message,
           content: {

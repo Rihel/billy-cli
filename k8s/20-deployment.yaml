@@ -70,7 +70,7 @@ spec:
                 # k8s 摘除 endpoint 与发送 SIGTERM 是**并发**的（kube-proxy / Ingress 更新规则有延迟）。
                 # SIGTERM 在 preStop 执行完之后才发，所以这里先 sleep 8s 覆盖摘流延迟；
                 # 不这么做的话，窗口内仍被转发的请求会打到正在关闭的进程 → connection refused → 502。
-                command: ["/bin/sh", "-c", "sleep 8"]
+                command: ['/bin/sh', '-c', 'sleep 8']
           # ── 探针：存活与就绪语义必须分开（app 侧对应 GET /healthz 与 GET /readyz）──
           startupProbe:
             # 进程活着即可：**不探外部依赖**。用 /readyz 会让依赖故障时的 Pod 永远起不来
@@ -102,12 +102,12 @@ spec:
               cpu: 100m
               memory: 256Mi
             limits:
-              cpu: "1"
+              cpu: '1'
               memory: 512Mi
           securityContext:
             allowPrivilegeEscalation: false
             capabilities:
-              drop: ["ALL"]
+              drop: ['ALL']
       securityContext:
         # Dockerfile 已 `USER appuser`（非 root），这里再做一次显式声明兜底
         runAsNonRoot: true

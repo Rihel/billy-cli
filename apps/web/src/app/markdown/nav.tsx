@@ -24,10 +24,7 @@ export function MarkdownNav() {
         >
           <span aria-hidden="true">← </span>返回首页
         </Link>
-        <nav
-          className="flex items-center overflow-x-auto"
-          aria-label="Markdown 演示导航"
-        >
+        <nav className="flex items-center overflow-x-auto" aria-label="Markdown 演示导航">
           {items.map((item) => (
             <Link
               key={item.href}

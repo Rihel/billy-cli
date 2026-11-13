@@ -1,6 +1,6 @@
-"use client"
+'use client'
 
-import { createContext, type ReactNode, useContext } from "react"
+import { createContext, type ReactNode, useContext } from 'react'
 
 export type PresignedUpload = {
   key: string
@@ -34,7 +34,7 @@ export function StorageProvider({
 export const useStorageAdapter = () => {
   const adapter = useContext(StorageContext)
   if (!adapter) {
-    throw new Error("Storage components must be used within StorageProvider")
+    throw new Error('Storage components must be used within StorageProvider')
   }
   return adapter
 }

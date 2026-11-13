@@ -15,10 +15,7 @@ import { AlertLifecycleService } from '../engine/alert-lifecycle.service.js'
 import { AlertRepository } from '../engine/alert.repository.js'
 import { MonitorRuleRepository } from '../engine/monitor-rule.repository.js'
 import { RuleRegistry } from '../engine/rule.registry.js'
-import {
-  MonitorRuleConfigInvalidError,
-  MonitorRuleNotFoundError,
-} from '../errors.js'
+import { MonitorRuleConfigInvalidError, MonitorRuleNotFoundError } from '../errors.js'
 
 const BASE_CONFIG_KEYS = new Set([
   'enabled',
@@ -97,7 +94,7 @@ export class MonitorRuleService {
     const enabled = input.enabled ?? row.enabled
     const parsed = MonitorRuleConfigSchema.safeParse({
       ...current,
-      ...(input.config ?? {}),
+      ...input.config,
       enabled,
     })
     if (!parsed.success) {
@@ -158,10 +155,7 @@ export class MonitorRuleService {
     }
   }
 
-  private readConfig(
-    defaults: MonitorRuleConfig,
-    row: MonitorRuleEntity,
-  ): MonitorRuleConfig {
+  private readConfig(defaults: MonitorRuleConfig, row: MonitorRuleEntity): MonitorRuleConfig {
     const parsed = MonitorRuleConfigSchema.safeParse({ ...defaults, ...row.config })
     if (!parsed.success) {
       this.logger.warn('monitor.rule.config_invalid', {

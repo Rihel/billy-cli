@@ -9,7 +9,8 @@ import { CHAT_ATTACHMENT_MAX_BYTES, type ChatAttachmentModel } from '@repo/share
  */
 
 /** 允许随消息提交的文件类型：图片 + 常见文档（与用户口径一致） */
-export const ATTACHMENT_ACCEPT = 'image/png,image/jpeg,image/webp,image/gif,application/pdf,text/plain,text/markdown,text/csv'
+export const ATTACHMENT_ACCEPT =
+  'image/png,image/jpeg,image/webp,image/gif,application/pdf,text/plain,text/markdown,text/csv'
 
 /** 图片类型（能出缩略图的那些；与服务端"按 image part 喂给模型"的集合一致） */
 const IMAGE_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/gif'])

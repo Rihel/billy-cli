@@ -20,11 +20,7 @@ export const metadata: Metadata = {
  * - 用户体系关闭（`AUTH_ENABLED=false`）：本页无意义（没有账号概念），回首页；
  * - 未登录 / 会话失效：去登录页并带 `?next=`，登录后回跳本页。
  */
-export default async function AccountLayout({
-  children,
-}: {
-  children: React.ReactNode
-}) {
+export default async function AccountLayout({ children }: { children: React.ReactNode }) {
   const { authEnabled, user } = await getWebAuthState()
 
   if (!authEnabled) redirect(Pages.home)

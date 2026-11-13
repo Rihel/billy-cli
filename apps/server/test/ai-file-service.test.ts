@@ -46,7 +46,8 @@ class FakeRepo {
   }
 
   async softDeleteByConversation(conversationId: string) {
-    for (const [key, row] of this.rows) if (row.conversationId === conversationId) this.rows.delete(key)
+    for (const [key, row] of this.rows)
+      if (row.conversationId === conversationId) this.rows.delete(key)
   }
 
   toModel(record: AiFileEntity): AgentFileModel {
@@ -125,7 +126,10 @@ describe('FileService（文件管理主体）', () => {
 
   it('file-search 走多关键词 AND + 行号', async () => {
     const { service, ctx } = env
-    await service.writeFile(ctx, { filePath: 'notes/a.md', content: '计费规则\n其他\n按量计费规则' })
+    await service.writeFile(ctx, {
+      filePath: 'notes/a.md',
+      content: '计费规则\n其他\n按量计费规则',
+    })
     const result = await service.search(ctx, { keywords: '计费 规则' })
     expect(result.items.map((item) => item.line)).toEqual([1, 3])
     expect(result.totalMatches).toBe(2)

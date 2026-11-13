@@ -1,8 +1,8 @@
-import { describe, expect, it } from 'vitest';
-import { resumeSafeChunks } from '../src/modules/ai/runtime/stream-resume.js';
+import { describe, expect, it } from 'vitest'
+import { resumeSafeChunks } from '../src/modules/ai/runtime/stream-resume.js'
 
 const types = (chunks: Array<{ type?: string }>): Array<string | undefined> =>
-  chunks.map((chunk) => chunk.type);
+  chunks.map((chunk) => chunk.type)
 
 /**
  * 断线重连的 offset 可能落在块中间。AI SDK 的 UI 状态机会在
@@ -20,12 +20,7 @@ describe('resumeSafeChunks：补发不能从块中间开始', () => {
 
     const out = resumeSafeChunks(all, 2)
 
-    expect(types(out)).toEqual([
-      'start',
-      'reasoning-start',
-      'reasoning-delta',
-      'reasoning-delta',
-    ])
+    expect(types(out)).toEqual(['start', 'reasoning-start', 'reasoning-delta', 'reasoning-delta'])
     expect(out.filter((chunk) => chunk.type === 'reasoning-start')).toHaveLength(1)
   })
 
@@ -116,9 +111,10 @@ describe('resumeSafeChunks：补发不能从块中间开始', () => {
   })
 
   it('tool-input-available 缺 input 时补 null，避免 AI SDK schema 失败', () => {
-    const out = resumeSafeChunks([
-      { type: 'tool-input-available', toolCallId: 'call_3', toolName: 'skill-save' },
-    ], 0)
+    const out = resumeSafeChunks(
+      [{ type: 'tool-input-available', toolCallId: 'call_3', toolName: 'skill-save' }],
+      0,
+    )
     expect(out[0]).toMatchObject({ type: 'tool-input-available', input: null })
   })
 
@@ -157,4 +153,4 @@ describe('resumeSafeChunks：补发不能从块中间开始', () => {
   it('offset 超出已有片段：返回空，等实时流', () => {
     expect(resumeSafeChunks([{ type: 'start' }], 9)).toEqual([])
   })
-});
+})

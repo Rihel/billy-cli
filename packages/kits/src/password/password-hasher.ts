@@ -3,7 +3,6 @@ import { Inject, Injectable } from '@nestjs/common'
 import { PasswordConfig } from './password.config.js'
 import { PasswordHashingError } from '../foundation/errors/infrastructure-errors.js'
 
-
 @Injectable()
 export class PasswordHasher {
   constructor(@Inject(PasswordConfig) private readonly config: PasswordConfig) {}

@@ -136,10 +136,7 @@ export class ConversationRepository {
   }
 
   /** 改会话的文件权限（只读 / 可写）：只影响沙箱内的写权限 */
-  async setFileAccess(
-    id: string,
-    fileAccess: 'read-only' | 'workspace-write',
-  ): Promise<void> {
+  async setFileAccess(id: string, fileAccess: 'read-only' | 'workspace-write'): Promise<void> {
     const repo = await this.repo()
     await repo.update({ id }, { fileAccess })
   }

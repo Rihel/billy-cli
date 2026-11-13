@@ -60,12 +60,7 @@ function StatBlock({
           : 'bg-brand/[0.06]'
 
   return (
-    <div
-      className={cn(
-        'rounded-xl px-4 py-3.5 transition-colors dark:bg-surface-2',
-        washClass,
-      )}
-    >
+    <div className={cn('rounded-xl px-4 py-3.5 transition-colors dark:bg-surface-2', washClass)}>
       <div className="flex items-center gap-2">
         {icon ? (
           <span className={cn('grid size-6 shrink-0 place-items-center rounded-md', toneClass)}>
@@ -149,27 +144,27 @@ function UsageBreakdown({
             />
           </div>
           <div className="space-y-2">
-          {items.map((item) => {
-            const ratio = totalTokens > 0 ? (item.totalTokens / totalTokens) * 100 : 0
-            return (
-              <div key={item.key} className="space-y-1">
-                <div className="flex items-baseline justify-between gap-3 text-xs">
-                  <span className="truncate font-mono text-foreground/80" title={item.key}>
-                    {item.key}
-                  </span>
-                  <span className="shrink-0 tabular-nums text-muted-foreground">
-                    {compactNumber(item.totalTokens)} / {item.runs}
-                  </span>
+            {items.map((item) => {
+              const ratio = totalTokens > 0 ? (item.totalTokens / totalTokens) * 100 : 0
+              return (
+                <div key={item.key} className="space-y-1">
+                  <div className="flex items-baseline justify-between gap-3 text-xs">
+                    <span className="truncate font-mono text-foreground/80" title={item.key}>
+                      {item.key}
+                    </span>
+                    <span className="shrink-0 tabular-nums text-muted-foreground">
+                      {compactNumber(item.totalTokens)} / {item.runs}
+                    </span>
+                  </div>
+                  <div className="h-1 overflow-hidden rounded-full bg-muted">
+                    <div
+                      className="h-full rounded-full bg-brand/70"
+                      style={{ width: `${Math.max(1, Math.min(100, ratio))}%` }}
+                    />
+                  </div>
                 </div>
-                <div className="h-1 overflow-hidden rounded-full bg-muted">
-                  <div
-                    className="h-full rounded-full bg-brand/70"
-                    style={{ width: `${Math.max(1, Math.min(100, ratio))}%` }}
-                  />
-                </div>
-              </div>
-            )
-          })}
+              )
+            })}
           </div>
         </div>
       )}
@@ -245,10 +240,7 @@ export default function DashboardPage() {
 
   return (
     <div className="flex h-full flex-col gap-5 overflow-auto p-4 sm:py-6">
-      <PageToolbar
-        title="控制台"
-        description="Billy Cli 管理后台，系统运行总览"
-      />
+      <PageToolbar title="控制台" description="Billy Cli 管理后台，系统运行总览" />
 
       {/* 主内容：系统现在怎么样（健康 + 未恢复告警） */}
       <section className="shrink-0 rounded-2xl bg-surface-1 p-5">
@@ -355,10 +347,7 @@ export default function DashboardPage() {
                   key={days}
                   size="xs"
                   variant={usageDays === days ? 'default' : 'ghost'}
-                  className={cn(
-                    'rounded px-2.5',
-                    usageDays !== days && 'text-muted-foreground',
-                  )}
+                  className={cn('rounded px-2.5', usageDays !== days && 'text-muted-foreground')}
                   onClick={() => setUsageDays(days)}
                 >
                   {days} 天

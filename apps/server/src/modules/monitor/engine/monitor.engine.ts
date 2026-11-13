@@ -114,7 +114,10 @@ export class MonitorEngine implements OnApplicationBootstrap, OnApplicationShutd
   }
 
   /** 异常入口：错误码 / 关键字匹配，Redis 计次后触发事件规则 */
-  async ingestError(error: unknown, context?: { path?: string; requestId?: string }): Promise<void> {
+  async ingestError(
+    error: unknown,
+    context?: { path?: string; requestId?: string },
+  ): Promise<void> {
     if (!this.config.enabled) return
     const event: MonitorErrorEvent = {
       code: errorCodeOf(error),

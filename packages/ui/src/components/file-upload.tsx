@@ -1,23 +1,17 @@
-"use client"
+'use client'
 
-import { useRef, useState } from "react"
-import type { DragEvent, ReactNode } from "react"
+import { useRef, useState } from 'react'
+import type { DragEvent, ReactNode } from 'react'
 
-import { cn } from "#lib/utils"
-import { Button } from "#components/ui/button"
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "#components/ui/dialog"
-import { FilePreview } from "#components/file-preview"
-import type { StorageFileValue } from "#components/file-preview"
-import { SortableFileList } from "#components/sortable-file-list"
-import { toastError, toastWarning } from "#components/toast"
-import { useStorage } from "#components/use-storage"
-import { usePasteFiles } from "#hooks/use-paste-files"
-import { UploadCloudIcon } from "lucide-react"
+import { cn } from '#lib/utils'
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '#components/ui/dialog'
+import { FilePreview } from '#components/file-preview'
+import type { StorageFileValue } from '#components/file-preview'
+import { SortableFileList } from '#components/sortable-file-list'
+import { toastError, toastWarning } from '#components/toast'
+import { useStorage } from '#components/use-storage'
+import { usePasteFiles } from '#hooks/use-paste-files'
+import { UploadCloudIcon } from 'lucide-react'
 
 export type FileUploadProps = {
   value?: StorageFileValue[]
@@ -39,11 +33,10 @@ const matchesAccept = (file: File, accept?: string) => {
   const fileName = file.name.toLowerCase()
   const fileType = file.type.toLowerCase()
 
-  return accept.split(",").some((rule) => {
+  return accept.split(',').some((rule) => {
     const normalizedRule = rule.trim().toLowerCase()
-    if (normalizedRule.startsWith(".")) return fileName.endsWith(normalizedRule)
-    if (normalizedRule.endsWith("/*"))
-      return fileType.startsWith(normalizedRule.slice(0, -1))
+    if (normalizedRule.startsWith('.')) return fileName.endsWith(normalizedRule)
+    if (normalizedRule.endsWith('/*')) return fileType.startsWith(normalizedRule.slice(0, -1))
     return fileType === normalizedRule
   })
 }
@@ -87,8 +80,7 @@ export function FileUpload({
       }))
       const nextFiles = multiple
         ? [...valueRef.current, ...uploadedFiles].filter(
-            (file, index, files) =>
-              files.findIndex((item) => item.key === file.key) === index,
+            (file, index, files) => files.findIndex((item) => item.key === file.key) === index,
           )
         : uploadedFiles.slice(-1)
       await commit(maxCount ? nextFiles.slice(0, maxCount) : nextFiles)
@@ -100,10 +92,7 @@ export function FileUpload({
       toastError(`不支持文件 ${file.name} 的格式`)
       return false
     }
-    if (
-      maxCount !== undefined &&
-      valueRef.current.length + pendingCountRef.current >= maxCount
-    ) {
+    if (maxCount !== undefined && valueRef.current.length + pendingCountRef.current >= maxCount) {
       toastWarning(`最多上传 ${maxCount} 个文件`)
       return false
     }
@@ -112,15 +101,13 @@ export function FileUpload({
 
   const handleFiles = async (files: File[]) => {
     if (disabled) return
-    const capacity = maxCount
-      ? Math.max(0, maxCount - valueRef.current.length)
-      : files.length
+    const capacity = maxCount ? Math.max(0, maxCount - valueRef.current.length) : files.length
     const acceptedFiles = files
       .filter((file) => matchesAccept(file, accept))
       .slice(0, multiple ? capacity : 1)
 
     if (!acceptedFiles.length) {
-      toastWarning(accept ? "没有支持的文件" : "已达到文件数量上限")
+      toastWarning(accept ? '没有支持的文件' : '已达到文件数量上限')
       return
     }
 
@@ -141,19 +128,15 @@ export function FileUpload({
     void handleFiles(Array.from(event.dataTransfer.files))
   }
 
-  usePasteFiles(
-    async (files) => {
-      if (!paste || disabled) return
-      void handleFiles(files)
-    },
-    paste && !disabled,
-  )
+  usePasteFiles(async (files) => {
+    if (!paste || disabled) return
+    void handleFiles(files)
+  }, paste && !disabled)
 
-  const canUpload =
-    !disabled && (maxCount === undefined || value.length < maxCount)
+  const canUpload = !disabled && (maxCount === undefined || value.length < maxCount)
 
   return (
-    <div className={cn("space-y-3", className)}>
+    <div className={cn('space-y-3', className)}>
       {value.length ? (
         <SortableFileList
           files={value}
@@ -161,11 +144,7 @@ export function FileUpload({
           disabled={disabled}
           onChange={(files) => void commit(files)}
           onPreview={preview ? setPreviewFile : undefined}
-          onRemove={(file) =>
-            void commit(
-              valueRef.current.filter((item) => item.key !== file.key),
-            )
-          }
+          onRemove={(file) => void commit(valueRef.current.filter((item) => item.key !== file.key))}
         />
       ) : null}
 
@@ -180,15 +159,16 @@ export function FileUpload({
             disabled={disabled}
             onChange={(event) => {
               void handleFiles(Array.from(event.target.files ?? []))
-              if (inputRef.current) inputRef.current.value = ""
+              if (inputRef.current) inputRef.current.value = ''
             }}
           />
+          {/* 拖拽上传区含块级说明文字，button 不能嵌套 div；已补键盘事件 */}
           <div
             role="button"
             tabIndex={0}
             onClick={() => inputRef.current?.click()}
             onKeyDown={(event) => {
-              if (event.key === "Enter" || event.key === " ") {
+              if (event.key === 'Enter' || event.key === ' ') {
                 event.preventDefault()
                 inputRef.current?.click()
               }
@@ -200,9 +180,9 @@ export function FileUpload({
             onDragLeave={() => setDragging(false)}
             onDrop={handleDrop}
             className={cn(
-              "flex cursor-pointer flex-col items-center justify-center gap-1 rounded-lg bg-surface-1 px-4 py-6 text-center transition-colors hover:bg-muted",
-              dragging && "bg-surface-3",
-              disabled && "cursor-not-allowed opacity-50",
+              'flex cursor-pointer flex-col items-center justify-center gap-1 rounded-lg bg-surface-1 px-4 py-6 text-center transition-colors hover:bg-muted',
+              dragging && 'bg-surface-3',
+              disabled && 'cursor-not-allowed opacity-50',
             )}
           >
             <UploadCloudIcon className="size-8 text-muted-foreground" />
@@ -210,8 +190,8 @@ export function FileUpload({
             <div className="text-xs text-muted-foreground">
               {tip ?? (
                 <>
-                  {paste ? "支持粘贴上传" : null}
-                  {paste && sizeLimit ? "，" : null}
+                  {paste ? '支持粘贴上传' : null}
+                  {paste && sizeLimit ? '，' : null}
                   {sizeLimit ? `单个文件不超过 ${sizeLimit} MB` : null}
                 </>
               )}

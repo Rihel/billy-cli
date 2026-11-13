@@ -67,10 +67,7 @@ export type AdminUpdateInfoDto = z.infer<typeof AdminUpdateInfoSchema>
 export const PageQueryAdminSchema = BasePaginateSchema.extend({
   keyword: z.string().optional(),
   status: AdminStatusSchema.optional(),
-  orderBy: z
-    .enum(['createdAt', 'updatedAt', 'email'])
-    .optional()
-    .default('createdAt'),
+  orderBy: z.enum(['createdAt', 'updatedAt', 'email']).optional().default('createdAt'),
   order: z.enum(['asc', 'desc']).optional().default('desc'),
 })
 export type PageQueryAdminDto = z.infer<typeof PageQueryAdminSchema>

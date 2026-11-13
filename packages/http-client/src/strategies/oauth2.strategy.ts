@@ -85,9 +85,7 @@ export class OAuth2Strategy implements AuthStrategy<OAuth2Credentials> {
     manager: CredentialsManager<OAuth2Credentials>,
   ): Promise<OAuth2Credentials> {
     if (!this.options?.onRefresh) {
-      throw new Error(
-        'OAuth2Strategy：需要配置 onRefresh 回调才能刷新令牌。',
-      )
+      throw new Error('OAuth2Strategy：需要配置 onRefresh 回调才能刷新令牌。')
     }
     const next = await this.options.onRefresh(credentials, manager)
     return next

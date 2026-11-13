@@ -2,12 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { parseUserAgent } from '@repo/shared'
-import {
-  ConfirmAction,
-  Skeleton,
-  Tag,
-  toastSuccess,
-} from '@repo/ui'
+import { ConfirmAction, Skeleton, Tag, toastSuccess } from '@repo/ui'
 import { useServerClient } from '@/lib/server-client'
 
 const SESSIONS_QUERY_KEY = ['session', 'list'] as const
@@ -73,7 +68,9 @@ export function SessionsPanel() {
               >
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
-                    <span className="text-sm">{agent.device} · {agent.browser}</span>
+                    <span className="text-sm">
+                      {agent.device} · {agent.browser}
+                    </span>
                     {session.current ? <Tag color="processing">本机</Tag> : null}
                   </div>
                   <div className="mt-0.5 font-mono text-xs text-muted-foreground">

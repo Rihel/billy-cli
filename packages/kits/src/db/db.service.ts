@@ -142,10 +142,7 @@ export class DbService {
   ): Promise<void> {
     await runBatch(items, handler, {
       ...options,
-      concurrency: resolveBatchConcurrency(
-        this.resolveManager(manager),
-        options.concurrency,
-      ),
+      concurrency: resolveBatchConcurrency(this.resolveManager(manager), options.concurrency),
     })
   }
 
@@ -176,13 +173,7 @@ export class DbService {
     options: BatchOptions = {},
     manager?: EntityManager,
   ): Promise<void> {
-    await runBatchUpsert(
-      this.resolveManager(manager),
-      entityType,
-      data,
-      conflictPaths,
-      options,
-    )
+    await runBatchUpsert(this.resolveManager(manager), entityType, data, conflictPaths, options)
   }
 
   /** 分片批量删除：先按 `selectIds` 取出目标主键，再分片 `DELETE ... WHERE id IN (...)`。 */
@@ -216,9 +207,7 @@ export class DbService {
    * 要打日志由调用方自己决定级别与上下文：
    * `this.logger.debug(this.dbService.getFullSqlStatement(builder))`。
    */
-  getFullSqlStatement<T extends ObjectLiteral>(
-    builder: SelectQueryBuilder<T>,
-  ): string {
+  getFullSqlStatement<T extends ObjectLiteral>(builder: SelectQueryBuilder<T>): string {
     return buildFullSql(builder)
   }
 }

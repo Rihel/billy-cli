@@ -23,17 +23,16 @@ import type { ToolCallContext, ToolEnvCaps } from '../core/tools/tools.types.js'
  */
 const ReadToolResultInputSchema = z.object({
   handle: z.string().min(1).max(128).describe('上一页给出的取页句柄（`page.handle`，原样传回）'),
-  page: z
-    .number()
-    .int()
-    .positive()
-    .optional()
-    .describe('要取的页码（从 1 开始）；省略即取第 1 页'),
+  page: z.number().int().positive().optional().describe('要取的页码（从 1 开始）；省略即取第 1 页'),
 })
 
 const ReadToolResultConfigSchema = z.object({
   /** 单页字节数（工具级覆盖；另有每轮取页上限在 `limits` 里） */
-  pageBytes: z.number().int().positive().default(8 * 1024),
+  pageBytes: z
+    .number()
+    .int()
+    .positive()
+    .default(8 * 1024),
 })
 
 const ReadToolResultOutputSchema = z.object({

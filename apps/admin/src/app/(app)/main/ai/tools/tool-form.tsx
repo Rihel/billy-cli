@@ -11,13 +11,11 @@ import {
   Alert,
   AlertDescription,
   AlertTitle,
-  Button,
   Checkbox,
   Collapsible,
   CollapsibleContent,
   CollapsibleTrigger,
   ConfirmAction,
-  DictSelect,
   DictTag,
   Input,
   ModalForm,
@@ -31,12 +29,7 @@ import {
   Label,
   JsonView,
 } from '@repo/ui'
-import {
-  ChevronDownIcon,
-  KeyRoundIcon,
-  RotateCcwIcon,
-  TriangleAlertIcon,
-} from 'lucide-react'
+import { ChevronDownIcon, KeyRoundIcon, RotateCcwIcon, TriangleAlertIcon } from 'lucide-react'
 import { ToolConfigPanel } from './config-panels'
 import { ToolEventsPanel } from './tool-events'
 import { buildToolUpdatePayload, toFormValues } from './tool-payload'
@@ -92,9 +85,7 @@ const FormSection = ({
   <section className="flex flex-col gap-3 rounded-lg bg-surface-1 p-4">
     <div className="flex flex-col gap-0.5">
       <h3 className="text-sm font-semibold">{title}</h3>
-      {description ? (
-        <p className="text-xs text-muted-foreground">{description}</p>
-      ) : null}
+      {description ? <p className="text-xs text-muted-foreground">{description}</p> : null}
     </div>
     {children}
   </section>
@@ -246,10 +237,7 @@ export function ToolFormModal({
             </Alert>
           ) : null}
 
-          <FormSection
-            title="工具信息（只读）"
-            description="来自代码声明与运行期快照，后台改不了"
-          >
+          <FormSection title="工具信息（只读）" description="来自代码声明与运行期快照，后台改不了">
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <ReadonlyItem label="工具 key">
                 <span className="font-mono text-xs">{tool.toolKey}</span>
@@ -281,8 +269,7 @@ export function ToolFormModal({
                     {tool.secretFields.map((field) => (
                       <span key={field.name} className="flex items-center gap-1 text-xs">
                         <KeyRoundIcon className="size-3.5 text-muted-foreground" />
-                        {field.label}：
-                        <span className="font-mono">{field.hint ?? '未配置'}</span>
+                        {field.label}：<span className="font-mono">{field.hint ?? '未配置'}</span>
                         {field.required ? <Tag color="warning">必填</Tag> : null}
                       </span>
                     ))}
@@ -302,10 +289,7 @@ export function ToolFormModal({
             <ToolEventsPanel events={tool.events} />
           </FormSection>
 
-          <FormSection
-            title="治理"
-            description="开关与作用域都在这里改，改完下一次工具调用生效"
-          >
+          <FormSection title="治理" description="开关与作用域都在这里改，改完下一次工具调用生效">
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div className="flex flex-col gap-1.5">
                 <span className="text-sm font-medium">启用</span>
@@ -351,10 +335,7 @@ export function ToolFormModal({
             </div>
           </FormSection>
 
-          <FormSection
-            title="限额"
-            description="留空 = 不限制；上限还会被部署侧的硬上限再夹一次"
-          >
+          <FormSection title="限额" description="留空 = 不限制；上限还会被部署侧的硬上限再夹一次">
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <NumberField
                 label="每轮最多调用次数"

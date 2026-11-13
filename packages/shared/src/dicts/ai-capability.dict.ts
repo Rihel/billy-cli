@@ -35,7 +35,8 @@ const extensionOf = (filename: string): string =>
 
 /** 看着像图片（媒体类型或后缀命中） */
 export const looksLikeImage = (hint: AttachmentTypeHint): boolean =>
-  hint.mediaType.toLowerCase().startsWith('image/') || IMAGE_EXTENSIONS.has(extensionOf(hint.filename))
+  hint.mediaType.toLowerCase().startsWith('image/') ||
+  IMAGE_EXTENSIONS.has(extensionOf(hint.filename))
 
 /**
  * 看着像 PDF。

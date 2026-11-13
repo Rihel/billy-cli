@@ -8,7 +8,12 @@ import {
 } from '@repo/shared'
 import type { UIMessage } from 'ai'
 import { z } from 'zod'
-import { questionsOf, type Question, type QuestionAnswer, type SuspendedPartData } from './question-card'
+import {
+  questionsOf,
+  type Question,
+  type QuestionAnswer,
+  type SuspendedPartData,
+} from './question-card'
 
 /**
  * 时间线（数据库里的真相）→ UI 消息（AI SDK 的 `UIMessage`）。
@@ -60,7 +65,6 @@ const toFileParts = (attachments: readonly ChatAttachmentModel[]): UIMessage['pa
     attachmentBytes: attachment.bytes,
   })) as unknown as UIMessage['parts']
 
-
 const asRecord = (value: unknown): Record<string, unknown> | null =>
   value && typeof value === 'object' ? (value as Record<string, unknown>) : null
 
@@ -70,9 +74,7 @@ const asRecord = (value: unknown): Record<string, unknown> | null =>
  * 先把答案按 `toolCallId` 配好，挂起行才能**一次画出完整的问答**，
  * 而且卡片仍留在它自己的位置 —— 不能被挪到结果行去（那会打乱时间线顺序）。
  */
-const answersByCallOf = (
-  events: readonly AgentTimelineItemModel[],
-): Map<string, unknown> => {
+const answersByCallOf = (events: readonly AgentTimelineItemModel[]): Map<string, unknown> => {
   const map = new Map<string, unknown>()
   for (const item of events) {
     if (item.kind !== TimelineKind.ToolResult || item.toolKey !== 'ask-user-questions') continue
@@ -153,7 +155,8 @@ export const toUIMessages = (
      * 而且历史一覆盖、流接着推，内容还会"缩水重来"（用户看到的"刷新后像没重连"）。
      */
     const userMessageId =
-      sorted.find((item) => item.role === TimelineRole.User && item.messageId)?.messageId ?? undefined
+      sorted.find((item) => item.role === TimelineRole.User && item.messageId)?.messageId ??
+      undefined
     const assistantMessageId =
       sorted.find((item) => item.role === TimelineRole.Assistant && item.messageId)?.messageId ??
       undefined
@@ -161,10 +164,7 @@ export const toUIMessages = (
     const userItems = sorted.filter(
       (item) => item.kind === TimelineKind.Text && item.role === TimelineRole.User,
     )
-    const userText = userItems
-      .map(textOf)
-      .filter(Boolean)
-      .join('\n')
+    const userText = userItems.map(textOf).filter(Boolean).join('\n')
     const attachments = userItems.flatMap(attachmentsOf)
     /**
      * 用户消息的重建条件：**有文字或有附件**。
@@ -354,12 +354,12 @@ export const toParts = (events: AgentTimelineItemModel[]): UIMessage['parts'] =>
         const structured = record?.answers
         const answers = Array.isArray(structured)
           ? (structured as QuestionAnswer[])
-          : parseLegacyAnswers(
+          : (parseLegacyAnswers(
               output,
               questionsOf({
                 suspendPayload: item.payload?.suspendPayload,
               } as SuspendedPartData),
-            ) ?? undefined
+            ) ?? undefined)
         parts.push({
           type: 'data-tool-call-suspended',
           id: toolCallId ?? `suspended-${item.seq}`,

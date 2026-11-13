@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import { readUIMessageStream } from 'ai'
 import type { UIMessage, UIMessageChunk } from 'ai'
-import { markSuspendedAnswered, pinResumeMessageId } from '../src/app/(app)/(standalone)/main/ai/chat/resume-answer.ts'
+import {
+  markSuspendedAnswered,
+  pinResumeMessageId,
+} from '../src/app/(app)/(standalone)/main/ai/chat/resume-answer.ts'
 
 /**
  * 回答完问题时的消息改写（纯逻辑，node 环境）。
@@ -35,7 +38,10 @@ describe('pinResumeMessageId', () => {
 
   it('把续跑流的 start.messageId 改回原消息 id', async () => {
     const stream = pinResumeMessageId(
-      chunkStream([{ type: 'start', messageId: 'new' }, { type: 'finish', finishReason: 'stop' }]),
+      chunkStream([
+        { type: 'start', messageId: 'new' },
+        { type: 'finish', finishReason: 'stop' },
+      ]),
       'seed',
     )
     const seen: string[] = []

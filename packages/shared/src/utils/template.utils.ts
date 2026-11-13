@@ -3,15 +3,10 @@ import { hasContentArray } from './is.utils'
 
 export type TemplateEngine = ReturnType<typeof createTemplateEngine>
 export type TemplateEngineOptions = Parameters<typeof createTemplateEngine>['0']
-export function createTemplateEngine(options?: {
-  start: string
-  end: string
-  keepEnd?: boolean
-}) {
+export function createTemplateEngine(options?: { start: string; end: string; keepEnd?: boolean }) {
   const start = options?.start || '{{'
   const end = options?.end || '}}'
-  const escapeRegExp = (str: string) =>
-    str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  const escapeRegExp = (str: string) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
   const regStartStr = escapeRegExp(start)
   const regEndStr = end === '\b' ? '\\b' : escapeRegExp(end)
   const matchRegexpStr = `${regStartStr}(.*?)${regEndStr}`
@@ -99,14 +94,10 @@ export function createTemplateEngine(options?: {
   }
 }
 
-export function resolveTemplateMetadata(options?: {
-  start: string
-  end: string
-}) {
+export function resolveTemplateMetadata(options?: { start: string; end: string }) {
   const start = options?.start || '{{'
   const end = options?.end || '}}'
-  const escapeRegExp = (str: string) =>
-    str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  const escapeRegExp = (str: string) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
   const regStartStr = escapeRegExp(start)
   const regEndStr = escapeRegExp(end)
   const regStr = `${regStartStr}([^${regStartStr}${regEndStr}]+)${regEndStr}`
@@ -120,10 +111,7 @@ export function resolveTemplateMetadata(options?: {
   }
 }
 
-export function parseTemplateVariables(
-  source = '',
-  options?: { start: string; end: string },
-) {
+export function parseTemplateVariables(source = '', options?: { start: string; end: string }) {
   const { match } = resolveTemplateMetadata(options)
   const matches = source.match(new RegExp(match, 'g'))
   if (matches) {

@@ -1,4 +1,4 @@
-import { Inject, Injectable } from '@nestjs/common'
+import { Injectable } from '@nestjs/common'
 import { SYSTEM_RULES } from '../rules/index.js'
 import type { MetricRegistry } from './metric.registry.js'
 import type { RuleType } from '../definitions/rule.types.js'
@@ -33,9 +33,7 @@ export class RuleRegistry {
   }
 
   forInterval(intervalSeconds: number): RuleType[] {
-    return this.all().filter(
-      (rule) => rule.evaluationIntervalSeconds === intervalSeconds,
-    )
+    return this.all().filter((rule) => rule.evaluationIntervalSeconds === intervalSeconds)
   }
 
   intervals(): number[] {
@@ -55,9 +53,7 @@ export class RuleRegistry {
           throw new Error(`规则 ${rule.key} 引用了不存在的指标：${rule.metricKey}`)
         }
         if (metric.evaluationIntervalSeconds !== rule.evaluationIntervalSeconds) {
-          throw new Error(
-            `规则 ${rule.key} 的评估周期与指标 ${metric.key} 不一致`,
-          )
+          throw new Error(`规则 ${rule.key} 的评估周期与指标 ${metric.key} 不一致`)
         }
         if (metric.windowSeconds !== rule.windowSeconds) {
           throw new Error(`规则 ${rule.key} 的统计窗口与指标 ${metric.key} 不一致`)

@@ -101,20 +101,14 @@ export const program = async (): Promise<void> => {
     // 若在途请求迟迟不结束，这里强制退出：否则进程会卡到 terminationGracePeriodSeconds
     // 被 SIGKILL——那样连「为什么没关掉」都留不下日志。
     const forceExit = setTimeout(() => {
-      logger.error(
-        `关闭超时（${timeoutMs}ms），强制退出；未完成的在途请求会被中断`,
-        'bootstrap',
-      )
+      logger.error(`关闭超时（${timeoutMs}ms），强制退出；未完成的在途请求会被中断`, 'bootstrap')
       process.exit(1)
     }, timeoutMs)
 
     try {
       await app.close()
       clearTimeout(forceExit)
-      logger.log(
-        `服务已关闭（耗时 ${Date.now() - startedAtMs}ms）`,
-        'bootstrap',
-      )
+      logger.log(`服务已关闭（耗时 ${Date.now() - startedAtMs}ms）`, 'bootstrap')
     } catch (error) {
       clearTimeout(forceExit)
       logger.error(error, '关闭资源失败', 'bootstrap')

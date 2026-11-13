@@ -37,9 +37,7 @@ export class LocalStorageCredentialsManager<
   private logger?: Pick<Console, 'warn' | 'error'>
 
   constructor(storageKey: string, options?: StorageCredentialsManagerOptions) {
-    this.storageKey = options?.prefix
-      ? `${options.prefix}:${storageKey}`
-      : storageKey
+    this.storageKey = options?.prefix ? `${options.prefix}:${storageKey}` : storageKey
     this.logger = options?.logger
   }
 

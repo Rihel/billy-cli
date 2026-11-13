@@ -1,34 +1,25 @@
-"use client"
+'use client'
 
-import type { ReactNode } from "react"
-import type { ReactFormExtendedApi } from "@tanstack/react-form"
-import { useStore } from "@tanstack/react-store"
+import type { ReactNode } from 'react'
+import type { ReactFormExtendedApi } from '@tanstack/react-form'
+import { useStore } from '@tanstack/react-store'
 
-import { cn } from "#lib/utils"
-import { Checkbox } from "#components/ui/checkbox"
-import {
-  Field,
-  FieldContent,
-  FieldDescription,
-  FieldError,
-  FieldLabel,
-} from "#components/ui/field"
-import { Input } from "#components/ui/input"
-import { Label } from "#components/ui/label"
-import {
-  RadioGroup,
-  RadioGroupItem,
-} from "#components/ui/radio-group"
+import { cn } from '#lib/utils'
+import { Checkbox } from '#components/ui/checkbox'
+import { Field, FieldContent, FieldDescription, FieldError, FieldLabel } from '#components/ui/field'
+import { Input } from '#components/ui/input'
+import { Label } from '#components/ui/label'
+import { RadioGroup, RadioGroupItem } from '#components/ui/radio-group'
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "#components/ui/select"
-import { SegmentedControl } from "#components/ui/segmented-control"
-import { Switch } from "#components/ui/switch"
-import { Textarea } from "#components/ui/textarea"
+} from '#components/ui/select'
+import { SegmentedControl } from '#components/ui/segmented-control'
+import { Switch } from '#components/ui/switch'
+import { Textarea } from '#components/ui/textarea'
 
 /** @tanstack/react-form 的 useForm 返回实例（组件 props 用） */
 export type AnyFormApi<Values extends object> = ReactFormExtendedApi<
@@ -47,15 +38,15 @@ export type AnyFormApi<Values extends object> = ReactFormExtendedApi<
 >
 
 export type FormWidget =
-  | "input"
-  | "password"
-  | "textarea"
-  | "number"
-  | "select"
-  | "radio"
-  | "checkbox"
-  | "switch"
-  | "date"
+  | 'input'
+  | 'password'
+  | 'textarea'
+  | 'number'
+  | 'select'
+  | 'radio'
+  | 'checkbox'
+  | 'switch'
+  | 'date'
 
 export type SelectOption = {
   label: ReactNode
@@ -88,10 +79,7 @@ export type FormFieldSchema<Values extends object = Record<string, unknown>> = {
   /** 必填：true 使用默认文案「该项为必填项」，或传入自定义错误文案 */
   required?: boolean | string
   /** 自定义校验：返回错误文案（undefined 表示通过） */
-  validate?: (
-    value: unknown,
-    values: Values,
-  ) => string | undefined | Promise<string | undefined>
+  validate?: (value: unknown, values: Values) => string | undefined | Promise<string | undefined>
   /** 字段默认值 */
   defaultValue?: unknown
   /** 自定义渲染（优先于 widget） */
@@ -105,7 +93,7 @@ export type FormFieldRow<Values extends object> =
 
 /** 字段分组：标题 + 说明 + 组内字段（组内自动两列网格布局） */
 export type FormFieldGroup<Values extends object> = {
-  type?: "group"
+  type?: 'group'
   /** 分组标题 */
   title?: ReactNode
   /** 分组说明（标题下方小字） */
@@ -113,9 +101,7 @@ export type FormFieldGroup<Values extends object> = {
   fields: Array<FormFieldRow<Values>>
 }
 
-export type FormItem<Values extends object> =
-  | FormFieldRow<Values>
-  | FormFieldGroup<Values>
+export type FormItem<Values extends object> = FormFieldRow<Values> | FormFieldGroup<Values>
 
 export type FormFieldsProps<Values extends object> = {
   form: AnyFormApi<Values>
@@ -124,7 +110,7 @@ export type FormFieldsProps<Values extends object> = {
 
 const isEmptyValue = (value: unknown): boolean => {
   if (value === undefined || value === null) return true
-  if (typeof value === "string") return value.trim() === ""
+  if (typeof value === 'string') return value.trim() === ''
   if (Array.isArray(value)) return value.length === 0
   return false
 }
@@ -150,57 +136,54 @@ const renderWidget = (
   const value = valueFromStore === undefined ? field.state.value : valueFromStore
 
   switch (item.widget) {
-    case "password":
+    case 'password':
       return (
         <Input
           type="password"
-          value={(value as string) ?? ""}
+          value={(value as string) ?? ''}
           disabled={disabled}
           onChange={(event) => field.handleChange(event.target.value)}
           onBlur={field.handleBlur}
           {...props}
         />
       )
-    case "textarea":
+    case 'textarea':
       return (
         <Textarea
-          value={(value as string) ?? ""}
+          value={(value as string) ?? ''}
           disabled={disabled}
           onChange={(event) => field.handleChange(event.target.value)}
           onBlur={field.handleBlur}
           {...props}
         />
       )
-    case "number":
+    case 'number':
       return (
         <Input
           type="number"
-          value={value === undefined || value === null ? "" : String(value)}
+          value={value === undefined || value === null ? '' : String(value)}
           disabled={disabled}
           onChange={(event) =>
-            field.handleChange(
-              event.target.value === "" ? undefined : Number(event.target.value),
-            )
+            field.handleChange(event.target.value === '' ? undefined : Number(event.target.value))
           }
           onBlur={field.handleBlur}
           {...props}
         />
       )
-    case "date":
+    case 'date':
       return (
         <Input
           type="date"
-          value={(value as string) ?? ""}
+          value={(value as string) ?? ''}
           disabled={disabled}
           onChange={(event) => field.handleChange(event.target.value)}
           onBlur={field.handleBlur}
           {...props}
         />
       )
-    case "select": {
+    case 'select': {
       const options = (props.options as SelectOption[] | undefined) ?? []
-      const multiple =
-        props.multiple === true || (props.mode as string) === "multiple"
+      const multiple = props.multiple === true || (props.mode as string) === 'multiple'
       // 选项很少的枚举直接铺开成分段选择：一眼看全，少一次展开
       if (!multiple && options.length > 0 && options.length <= 4) {
         return (
@@ -216,37 +199,29 @@ const renderWidget = (
         )
       }
       const resolveLabel = (item: unknown): ReactNode => {
-        const match = options.find(
-          (option) => String(option.value) === String(item),
-        )
+        const match = options.find((option) => String(option.value) === String(item))
         return match ? match.label : String(item)
       }
       return (
         <Select
           multiple={multiple}
-          value={
-            multiple
-              ? ((value as unknown[]) ?? [])
-              : ((value as string | number) ?? null)
-          }
+          value={multiple ? ((value as unknown[]) ?? []) : ((value as string | number) ?? null)}
           onValueChange={(next) => field.handleChange(next)}
           disabled={disabled}
         >
           <SelectTrigger className="w-full">
             {/* 自定义 children 渲染 label：不依赖 base-ui items 注册（Popup 关闭时解析不到） */}
-            <SelectValue
-              placeholder={(props.placeholder as string) ?? "请选择"}
-            >
+            <SelectValue placeholder={(props.placeholder as string) ?? '请选择'}>
               {(selected) => {
                 if (
                   selected == null ||
-                  selected === "" ||
+                  selected === '' ||
                   (Array.isArray(selected) && selected.length === 0)
                 ) {
-                  return (props.placeholder as string) ?? "请选择"
+                  return (props.placeholder as string) ?? '请选择'
                 }
                 const list = Array.isArray(selected) ? selected : [selected]
-                return list.map(resolveLabel).join("、")
+                return list.map(resolveLabel).join('、')
               }}
             </SelectValue>
           </SelectTrigger>
@@ -260,7 +235,7 @@ const renderWidget = (
         </Select>
       )
     }
-    case "radio": {
+    case 'radio': {
       const options = (props.options as SelectOption[] | undefined) ?? []
       return (
         <RadioGroup
@@ -270,19 +245,14 @@ const renderWidget = (
         >
           {options.map((option) => (
             <div key={String(option.value)} className="flex items-center gap-2">
-              <RadioGroupItem
-                id={`radio-${String(option.value)}`}
-                value={String(option.value)}
-              />
-              <Label htmlFor={`radio-${String(option.value)}`}>
-                {option.label}
-              </Label>
+              <RadioGroupItem id={`radio-${String(option.value)}`} value={String(option.value)} />
+              <Label htmlFor={`radio-${String(option.value)}`}>{option.label}</Label>
             </div>
           ))}
         </RadioGroup>
       )
     }
-    case "checkbox":
+    case 'checkbox':
       return (
         <div className="flex items-center gap-2">
           <Checkbox
@@ -291,14 +261,12 @@ const renderWidget = (
             onCheckedChange={(checked) => field.handleChange(checked === true)}
             {...props}
           />
-          {(props.children as ReactNode) ?? item.label ? (
-            <Label>
-              {((props.children as ReactNode) ?? item.label) as ReactNode}
-            </Label>
+          {((props.children as ReactNode) ?? item.label) ? (
+            <Label>{((props.children as ReactNode) ?? item.label) as ReactNode}</Label>
           ) : null}
         </div>
       )
-    case "switch":
+    case 'switch':
       return (
         <Switch
           checked={value === true}
@@ -310,7 +278,7 @@ const renderWidget = (
     default:
       return (
         <Input
-          value={(value as string) ?? ""}
+          value={(value as string) ?? ''}
           disabled={disabled}
           onChange={(event) => field.handleChange(event.target.value)}
           onBlur={field.handleBlur}
@@ -329,8 +297,7 @@ const FormField = <Values extends object>({
 }) => {
   const values = useStore(form.store, (state) => state.values)
   if (item.hidden?.(values)) return null
-  const disabled =
-    typeof item.disabled === "function" ? item.disabled(values) : item.disabled
+  const disabled = typeof item.disabled === 'function' ? item.disabled(values) : item.disabled
 
   return (
     <form.Field
@@ -339,9 +306,7 @@ const FormField = <Values extends object>({
       validators={{
         onSubmit: ({ value }: { value: unknown }) => {
           if (item.required && isEmptyValue(value)) {
-            return typeof item.required === "string"
-              ? item.required
-              : "该项为必填项"
+            return typeof item.required === 'string' ? item.required : '该项为必填项'
           }
           return item.validate ? item.validate(value, values) : undefined
         },
@@ -354,12 +319,9 @@ const FormField = <Values extends object>({
         return (
           <Field
             data-invalid={errors.length > 0 || undefined}
-            className={cn(
-              "min-w-0 flex-1",
-              item.span === 2 && "sm:col-span-2",
-            )}
+            className={cn('min-w-0 flex-1', item.span === 2 && 'sm:col-span-2')}
           >
-            {item.label && item.widget !== "checkbox" ? (
+            {item.label && item.widget !== 'checkbox' ? (
               <FieldLabel>{item.label}</FieldLabel>
             ) : null}
             <FieldContent>
@@ -376,9 +338,7 @@ const FormField = <Values extends object>({
                     disabled ?? false,
                     (values as Record<string, unknown>)[item.name],
                   )}
-              {item.hint ? (
-                <FieldDescription>{item.hint}</FieldDescription>
-              ) : null}
+              {item.hint ? <FieldDescription>{item.hint}</FieldDescription> : null}
               <FieldError errors={errors} />
             </FieldContent>
           </Field>
@@ -388,12 +348,10 @@ const FormField = <Values extends object>({
   )
 }
 
-const isGroup = <Values extends object>(
-  entry: FormItem<Values>,
-): entry is FormFieldGroup<Values> =>
-  typeof entry === "object" &&
+const isGroup = <Values extends object>(entry: FormItem<Values>): entry is FormFieldGroup<Values> =>
+  typeof entry === 'object' &&
   entry !== null &&
-  "fields" in entry &&
+  'fields' in entry &&
   Array.isArray((entry as FormFieldGroup<Values>).fields)
 
 /** 单字段（顶层未分组时的一行容器） */
@@ -411,22 +369,12 @@ const FieldRowWrap = <Values extends object>({
     return (
       <div key={index} className="flex flex-wrap gap-4">
         {row.map((item, itemIndex) => (
-          <FormField
-            key={`${String(item.name)}-${itemIndex}`}
-            form={form}
-            item={item}
-          />
+          <FormField key={`${String(item.name)}-${itemIndex}`} form={form} item={item} />
         ))}
       </div>
     )
   }
-  return (
-    <FormField
-      key={index}
-      form={form}
-      item={row as FormFieldSchema<Values>}
-    />
-  )
+  return <FormField key={index} form={form} item={row as FormFieldSchema<Values>} />
 }
 
 /**
@@ -435,10 +383,7 @@ const FieldRowWrap = <Values extends object>({
  * - 分组内自动 `grid sm:grid-cols-2`：单字段占一列（span=2 占整行），
  *   字段数组占整行做内部均分（保持「同排」语义）。
  */
-export function FormFields<Values extends object>({
-  form,
-  items,
-}: FormFieldsProps<Values>) {
+export function FormFields<Values extends object>({ form, items }: FormFieldsProps<Values>) {
   return (
     <>
       {items.map((entry, index) => {
@@ -452,9 +397,7 @@ export function FormFields<Values extends object>({
                     {entry.title}
                   </div>
                   {entry.description ? (
-                    <div className="text-xs text-muted-foreground/80">
-                      {entry.description}
-                    </div>
+                    <div className="text-xs text-muted-foreground/80">{entry.description}</div>
                   ) : null}
                 </div>
               ) : null}
@@ -462,10 +405,7 @@ export function FormFields<Values extends object>({
                 {rows.map((row, rowIndex) => {
                   if (Array.isArray(row)) {
                     return (
-                      <div
-                        key={rowIndex}
-                        className="flex flex-wrap gap-4 sm:col-span-2"
-                      >
+                      <div key={rowIndex} className="flex flex-wrap gap-4 sm:col-span-2">
                         {row.map((item, itemIndex) => (
                           <FormField
                             key={`${String(item.name)}-${itemIndex}`}
@@ -477,11 +417,7 @@ export function FormFields<Values extends object>({
                     )
                   }
                   return (
-                    <FormField
-                      key={rowIndex}
-                      form={form}
-                      item={row as FormFieldSchema<Values>}
-                    />
+                    <FormField key={rowIndex} form={form} item={row as FormFieldSchema<Values>} />
                   )
                 })}
               </div>
@@ -512,7 +448,7 @@ export function FormRenderer<Values extends object>({
 }: FormRendererProps<Values>) {
   return (
     <form
-      className={cn("flex flex-col gap-5", className)}
+      className={cn('flex flex-col gap-5', className)}
       onSubmit={(event) => {
         event.preventDefault()
         void form.handleSubmit()

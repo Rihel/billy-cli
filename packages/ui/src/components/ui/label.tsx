@@ -6,6 +6,8 @@ import { cn } from '#lib/utils'
 
 function Label({ className, ...props }: React.ComponentProps<'label'>) {
   return (
+    // 关联由使用方通过 htmlFor 或包裹控件提供，这里只是样式原语
+    // oxlint-disable-next-line jsx-a11y/label-has-associated-control
     <label
       data-slot="label"
       className={cn(

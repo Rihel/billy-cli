@@ -20,9 +20,7 @@ import type { CredentialProvider } from '../core/interfaces.js'
  * })
  * ```
  */
-export class EmptyCheckProvider<C extends Record<string, any>>
-  implements CredentialProvider<C>
-{
+export class EmptyCheckProvider<C extends Record<string, any>> implements CredentialProvider<C> {
   constructor(private fn: () => Promise<C>) {}
 
   acquire(): Promise<C> {

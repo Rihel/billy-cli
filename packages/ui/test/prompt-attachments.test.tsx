@@ -40,9 +40,7 @@ describe('PromptAttachmentChip', () => {
   })
 
   it('没有预览地址的图片直接出文件图标（不发无意义的请求）', () => {
-    const { container } = render(
-      <PromptAttachmentChip item={{ ...item, previewUrl: undefined }} />,
-    )
+    const { container } = render(<PromptAttachmentChip item={{ ...item, previewUrl: undefined }} />)
     expect(container.querySelector('img')).toBeNull()
     expect(screen.getByText('image.png')).toBeDefined()
   })

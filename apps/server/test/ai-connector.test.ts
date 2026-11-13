@@ -5,7 +5,11 @@ import {
   isValidConnectorKey,
   normalizeKeyPart,
 } from '../src/modules/ai/connectors/connector.keys.js'
-import { assertReadOnlySql, sqlLeadKeyword, stripSqlNoise } from '../src/modules/ai/connectors/sql.policy.js'
+import {
+  assertReadOnlySql,
+  sqlLeadKeyword,
+  stripSqlNoise,
+} from '../src/modules/ai/connectors/sql.policy.js'
 import {
   inputSchemaToZod,
   toConnectorToolSpec,
@@ -163,7 +167,12 @@ describe('连接器总闸插件', () => {
 
   it('把实例密钥嫁接进设置：precheck 不再误报「缺少密码」', async () => {
     const guard = new ConnectorGuardPlugin(
-      source({ enabled: true, missingSecret: false, name: '本地 mysql', secrets: { password: 'p@ss' } }),
+      source({
+        enabled: true,
+        missingSecret: false,
+        name: '本地 mysql',
+        secrets: { password: 'p@ss' },
+      }),
     )
     const settings = { secret: () => null, secretHint: () => null }
     const ctx = makeCtx(settings)
@@ -264,7 +273,7 @@ describe('飞书 CLI 连接器', () => {
       { args: ['skills', 'read'] },
     ]
     for (const input of denied) {
-      expect(() => parseLarkCliArgs(input), JSON.stringify(input)).toThrow(ToolDeniedError)
+      expect(() => parseLarkCliArgs(input)).toThrow(ToolDeniedError)
     }
   })
 

@@ -1,7 +1,12 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import type { MonitorRuleConfigField, MonitorRuleDefinitionModel, MonitorRuleModel, UpdateMonitorRuleDto } from '@repo/shared'
+import type {
+  MonitorRuleConfigField,
+  MonitorRuleDefinitionModel,
+  MonitorRuleModel,
+  UpdateMonitorRuleDto,
+} from '@repo/shared'
 import {
   Button,
   Checkbox,

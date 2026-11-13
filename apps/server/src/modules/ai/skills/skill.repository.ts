@@ -46,7 +46,8 @@ export class SkillRepository {
         keyword: `%${query.keyword}%`,
       })
     }
-    if (query.enabled !== undefined) builder.andWhere('s.enabled = :enabled', { enabled: query.enabled })
+    if (query.enabled !== undefined)
+      builder.andWhere('s.enabled = :enabled', { enabled: query.enabled })
     if (query.source !== undefined) builder.andWhere('s.source = :source', { source: query.source })
     const { data, total } = await pageWith(builder, query.page, query.size)
     return { items: data, total, page: query.page, size: query.size }

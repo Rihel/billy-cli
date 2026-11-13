@@ -128,7 +128,9 @@ export default function ComparisonPage() {
         <div className="mt-8 rounded-xl border border-border bg-card p-6">
           <p className="text-sm font-medium text-foreground">为什么是这些竞品</p>
           <ul className="mt-3 grid gap-2 text-sm leading-relaxed text-muted-foreground md:grid-cols-2">
-            <li>① 只收「模板 / 脚手架」：clone 即用的前后端骨架，剔除框架、创建器、工作流、技能包。</li>
+            <li>
+              ① 只收「模板 / 脚手架」：clone 即用的前后端骨架，剔除框架、创建器、工作流、技能包。
+            </li>
             <li>② AI 能力：是否内置 AGENTS.md / skills / agent，这是 Billy 的核心卖点。</li>
             <li>③ star 过千：有真实社区验证，排除 0 star 的新仓库。</li>
             <li>④ 案例 + 维护 + issues：是否有真实使用、是否还在维护、问题是否有人处理。</li>
@@ -139,8 +141,12 @@ export default function ComparisonPage() {
         <div className="mt-12">
           <Tabs defaultValue="overseas">
             <TabsList variant="line">
-              <TabsTrigger value="overseas">海外（{overseasFree.length + overseasPaid.length}）</TabsTrigger>
-              <TabsTrigger value="domestic">国内（{domesticFullstack.length + domesticFrontend.length}）</TabsTrigger>
+              <TabsTrigger value="overseas">
+                海外（{overseasFree.length + overseasPaid.length}）
+              </TabsTrigger>
+              <TabsTrigger value="domestic">
+                国内（{domesticFullstack.length + domesticFrontend.length}）
+              </TabsTrigger>
             </TabsList>
 
             <TabsContent value="overseas" className="mt-6">
@@ -161,7 +167,9 @@ export default function ComparisonPage() {
             <TabsContent value="domestic" className="mt-6">
               <Tabs defaultValue="fullstack">
                 <TabsList variant="line">
-                  <TabsTrigger value="fullstack">全栈脚手架（{domesticFullstack.length}）</TabsTrigger>
+                  <TabsTrigger value="fullstack">
+                    全栈脚手架（{domesticFullstack.length}）
+                  </TabsTrigger>
                   <TabsTrigger value="frontend">前端模板（{domesticFrontend.length}）</TabsTrigger>
                 </TabsList>
                 <TabsContent value="fullstack" className="mt-4">

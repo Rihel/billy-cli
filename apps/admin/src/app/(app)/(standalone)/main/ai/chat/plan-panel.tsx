@@ -1,14 +1,7 @@
 'use client'
 
 import { useState, type ComponentType } from 'react'
-import {
-  Badge,
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-  Progress,
-  cn,
-} from '@repo/ui'
+import { Badge, Collapsible, CollapsibleContent, CollapsibleTrigger, Progress, cn } from '@repo/ui'
 // ai-elements 组件**走子路径且带扩展名**（不进 barrel：体积大、按需引入，见 docs/design/ai-agent.md §1）
 import {
   Plan as PlanCard,
@@ -152,7 +145,9 @@ const toTask = (value: unknown, index: number): PlanTask | null => {
 
 const toTasks = (value: unknown): PlanTask[] =>
   Array.isArray(value)
-    ? value.map((task, index) => toTask(task, index)).filter((task): task is PlanTask => task !== null)
+    ? value
+        .map((task, index) => toTask(task, index))
+        .filter((task): task is PlanTask => task !== null)
     : []
 
 /** 裸计划对象 → Plan（`tasks` 是新协议；`steps` 是旧 `write-plan` 的形态） */
@@ -162,7 +157,8 @@ const toPlan = (value: unknown): Plan | null => {
   const goal = asText(record.goal) ?? ''
   const tasks = toTasks(record.tasks ?? record.steps)
   if (!goal && tasks.length === 0) return null
-  const revision = typeof record.revision === 'number' && Number.isFinite(record.revision) ? record.revision : 0
+  const revision =
+    typeof record.revision === 'number' && Number.isFinite(record.revision) ? record.revision : 0
   return { goal, revision, tasks }
 }
 
@@ -233,7 +229,9 @@ const changeStatusOf = (change: PlanChange): string | undefined => {
   if (typeof raw !== 'string' || !raw.trim()) return undefined
   const status = normalizeStatus(raw)
   // 认识的状态给中文；不认识的原样展示，别把没见过的值吞掉
-  return STATUS_ALIASES[raw.trim().toLowerCase().replace(/[\s-]/g, '_')] ? STATUS_LABEL[status] : raw
+  return STATUS_ALIASES[raw.trim().toLowerCase().replace(/[\s-]/g, '_')]
+    ? STATUS_LABEL[status]
+    : raw
 }
 
 /** 未知 `op` 时把可读的标量字段挑出来（最多 3 个），避免变更摘要变成空话 */
@@ -262,7 +260,9 @@ export const describeChange = (change?: PlanChange, plan?: Plan): string | undef
   if (!op) return undefined
 
   const taskId = taskIdOf(change)
-  const title = asText(change.title) ?? (taskId ? plan?.tasks.find((task) => task.id === taskId)?.title : undefined)
+  const title =
+    asText(change.title) ??
+    (taskId ? plan?.tasks.find((task) => task.id === taskId)?.title : undefined)
   const status = changeStatusOf(change)
   const target = taskId ?? (title ? `「${title}」` : '任务')
   const total = plan?.tasks.length ?? 0
@@ -348,7 +348,9 @@ export const collectMessagePlan = (parts: readonly PlanSourcePart[]): MessagePla
 
   return {
     current: deduped[currentIndex].snapshot,
-    history: deduped.filter((_, index) => index !== currentIndex).map((candidate) => candidate.snapshot),
+    history: deduped
+      .filter((_, index) => index !== currentIndex)
+      .map((candidate) => candidate.snapshot),
     // 吸收的是**所有认出来的来源 part**（不是 deduped 里剩下那几条）：
     // 同一版可能同时以 `tool-plan-*` 与 `data-plan` 出现，两条都留着就会重复渲染原始工具卡
     consumed: candidates.map((candidate) => candidate.index),
@@ -358,7 +360,12 @@ export const collectMessagePlan = (parts: readonly PlanSourcePart[]): MessagePla
 /** 状态 → 图标 + 语义色（一处分发，卡片与"变更历史"共用同一套语义） */
 const STATUS_STYLE: Record<
   PlanStatus,
-  { label: string; Icon: ComponentType<{ className?: string }>; iconClass: string; badgeClass: string }
+  {
+    label: string
+    Icon: ComponentType<{ className?: string }>
+    iconClass: string
+    badgeClass: string
+  }
 > = {
   pending: {
     label: '待办',
@@ -399,7 +406,9 @@ function PlanTaskRow({ task }: { task: PlanTask }) {
     >
       <Icon className={cn('mt-0.5 size-4 shrink-0', iconClass)} />
       <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-        <span className={cn('text-sm', isDone && 'text-muted-foreground line-through')}>{task.title}</span>
+        <span className={cn('text-sm', isDone && 'text-muted-foreground line-through')}>
+          {task.title}
+        </span>
         {task.note ? <span className="text-xs text-muted-foreground">{task.note}</span> : null}
       </div>
       <Badge variant="outline" className={cn('shrink-0', badgeClass)}>
@@ -469,7 +478,9 @@ export function PlanPanel({ plan, change, history = [] }: PlanPanelProps) {
             <CollapsibleTrigger className="flex w-full cursor-pointer items-center gap-1 text-xs text-muted-foreground transition-colors hover:text-foreground">
               <HistoryIcon className="size-3" />
               变更历史（{history.length}）
-              <ChevronDownIcon className={cn('ml-auto size-3 transition-transform', historyOpen && 'rotate-180')} />
+              <ChevronDownIcon
+                className={cn('ml-auto size-3 transition-transform', historyOpen && 'rotate-180')}
+              />
             </CollapsibleTrigger>
             <CollapsibleContent>
               <ul className="mt-1 flex flex-col gap-1">

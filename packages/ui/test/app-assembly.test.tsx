@@ -38,9 +38,10 @@ describe('StorageClientProvider', () => {
       ),
     })
 
-    await expect(result.current.getPresignedUpload('avatar/a.png')).resolves.toEqual(
-      { key: 'avatar/a.png', url: 'https://cdn.test/avatar/a.png' },
-    )
+    await expect(result.current.getPresignedUpload('avatar/a.png')).resolves.toEqual({
+      key: 'avatar/a.png',
+      url: 'https://cdn.test/avatar/a.png',
+    })
     expect(getPresignedUrl).toHaveBeenCalledWith({ key: 'avatar/a.png' })
   })
 
@@ -100,14 +101,27 @@ describe('路由兜底版式', () => {
   })
 
   it('RouteError 不传 reset 时不渲染重试按钮（后台主区用附加动作代替）', () => {
-    render(<RouteError title="页面加载失败" action={<a href="/">回到首页</a>} />)
+    render(
+      <RouteError
+        title="页面加载失败"
+        // 测试里的占位动作，不经过 Next 路由，用原生 a 即可
+        // oxlint-disable-next-line nextjs/no-html-link-for-pages
+        action={<a href="/">回到首页</a>}
+      />,
+    )
 
     expect(screen.queryByRole('button', { name: /重试/ })).toBeNull()
     expect(screen.getByRole('link', { name: '回到首页' })).toBeTruthy()
   })
 
   it('RouteNotFound 用 404 版式，动作区由 app 传入（组件库不依赖 Next）', () => {
-    render(<RouteNotFound action={<a href="/">回到首页</a>} />)
+    render(
+      <RouteNotFound
+        // 测试里的占位动作，不经过 Next 路由，用原生 a 即可
+        // oxlint-disable-next-line nextjs/no-html-link-for-pages
+        action={<a href="/">回到首页</a>}
+      />,
+    )
 
     expect(screen.getByText('404')).toBeTruthy()
     expect(screen.getByRole('link', { name: '回到首页' })).toBeTruthy()

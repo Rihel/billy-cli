@@ -35,7 +35,6 @@ export const ADMIN_TOKEN_TYPE = 'admin' as const
 
 @Injectable()
 export class AdminService {
-
   constructor(
     @Inject(AdminRepository) private readonly adminRepository: AdminRepository,
     @Inject(PasswordHasher) private readonly passwordHasher: PasswordHasher,
@@ -46,10 +45,7 @@ export class AdminService {
 
   async login(input: AdminLoginDto): Promise<AdminAuthResultModel> {
     const record = await this.adminRepository.findByEmail(input.email)
-    if (
-      !record ||
-      !(await this.passwordHasher.verify(input.password, record.password))
-    ) {
+    if (!record || !(await this.passwordHasher.verify(input.password, record.password))) {
       throw new InvalidAdminCredentialsError()
     }
     if (record.status !== UserStatus.Enabled) {
@@ -102,9 +98,7 @@ export class AdminService {
     const existing = await this.adminRepository.findByEmail(input.email)
     if (existing) throw new AdminEmailTakenError(input.email)
     const hashed = await this.passwordHasher.hash(input.password)
-    const admin = toAdmin(
-      await this.adminRepository.create({ ...input, password: hashed }),
-    )
+    const admin = toAdmin(await this.adminRepository.create({ ...input, password: hashed }))
     this.logger.log('admin.created', { id: admin.id })
     return admin
   }
@@ -133,9 +127,7 @@ export class AdminService {
   }
 
   @Transactional()
-  async updateInfo(
-    input: AdminUpdateInfoDto & { adminId: string },
-  ): Promise<AdminModel> {
+  async updateInfo(input: AdminUpdateInfoDto & { adminId: string }): Promise<AdminModel> {
     const { adminId, ...changes } = input
     const admin = await this.adminRepository.update(adminId, changes)
     if (!admin) throw new AdminNotFoundError(adminId)
@@ -160,9 +152,7 @@ export class AdminService {
   }
 
   @Transactional()
-  async remove(
-    input: RemoveAdminDto & { operatorId: string },
-  ): Promise<SuccessResultModel> {
+  async remove(input: RemoveAdminDto & { operatorId: string }): Promise<SuccessResultModel> {
     const { adminId, operatorId } = input
     if (adminId === operatorId) throw new CannotRemoveSelfError()
     const admin = await this.adminRepository.remove(adminId)
@@ -174,9 +164,7 @@ export class AdminService {
   }
 
   @Transactional()
-  async resetPassword(
-    input: ResetAdminPasswordDto,
-  ): Promise<SuccessResultModel> {
+  async resetPassword(input: ResetAdminPasswordDto): Promise<SuccessResultModel> {
     const hashed = await this.passwordHasher.hash(input.password)
     const admin = await this.adminRepository.update(input.adminId, {
       password: hashed,

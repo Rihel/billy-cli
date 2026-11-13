@@ -10,10 +10,10 @@ metadata:
     app.kubernetes.io/name: billy-server
   annotations:
     # 请求体上限与 app 侧一致（app.useBodyParser limit 2mb）
-    nginx.ingress.kubernetes.io/proxy-body-size: "2m"
+    nginx.ingress.kubernetes.io/proxy-body-size: '2m'
     # 读/写超时默认 60s，这里放大以容纳长连接与慢接口
-    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
-    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: '3600'
+    nginx.ingress.kubernetes.io/proxy-send-timeout: '3600'
     # 探测接口与业务同域，不必额外暴露；探针由 kubelet 直连 Pod，不经 Ingress
     #
     # ⚠️ 不要默认开启「重试非幂等请求」：本工程接口几乎全是 POST。

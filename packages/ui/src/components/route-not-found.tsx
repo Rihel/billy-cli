@@ -1,6 +1,6 @@
-"use client"
+'use client'
 
-import type { ReactNode } from "react"
+import type { ReactNode } from 'react'
 
 export type RouteNotFoundProps = {
   /**
@@ -16,8 +16,8 @@ export type RouteNotFoundProps = {
 /** 路由级 404 兜底的版式（`app/not-found.tsx` 用它，文件本身只留一行壳） */
 export function RouteNotFound({
   action,
-  title = "404",
-  description = "抱歉，你访问的页面不存在。",
+  title = '404',
+  description = '抱歉，你访问的页面不存在。',
 }: RouteNotFoundProps) {
   return (
     <div className="flex min-h-screen items-center justify-center bg-background px-4">

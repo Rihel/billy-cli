@@ -13,9 +13,7 @@ import { scanInjectDecorators } from '../../scripts/check-inject-decorators'
 describe('DI 装饰器一致性', () => {
   it('容器装配的类：构造器参数全部显式 @Inject；providers 里的类都有 @Injectable', () => {
     const violations = scanInjectDecorators()
-    const readable = violations.map(
-      (v) => `${v.file}:${v.line} [${v.kind}] ${v.detail}`,
-    )
+    const readable = violations.map((v) => `${v.file}:${v.line} [${v.kind}] ${v.detail}`)
 
     expect(readable).toEqual([])
   })

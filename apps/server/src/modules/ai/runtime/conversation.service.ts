@@ -18,10 +18,7 @@ import type { ConversationEntity } from '../../../database/entities/conversation
 import { ConversationNotFoundError } from '../core/errors.js'
 import { AGENT_REGISTRY } from '../agents/registry.js'
 import type { AgentRegistry } from '../agents/types.js'
-import {
-  ConversationRepository,
-  toConversationModel,
-} from './conversation.repository.js'
+import { ConversationRepository, toConversationModel } from './conversation.repository.js'
 import { RunRepository } from './run.repository.js'
 import { TimelineRepository } from './timeline.repository.js'
 import { FileService } from '../files/file.service.js'
@@ -44,10 +41,7 @@ export class AgentConversationService {
   ) {}
 
   /** 新建会话（agentKey 未知时由注册表抛 3303） */
-  async create(
-    userId: string,
-    input: AgentConversationCreateDto,
-  ): Promise<AgentConversationModel> {
+  async create(userId: string, input: AgentConversationCreateDto): Promise<AgentConversationModel> {
     const definition = this.registry.resolve(input.agentKey)
     const conversation = await this.conversations.create({
       userId,
@@ -71,16 +65,10 @@ export class AgentConversationService {
     return this.conversations.list(userId, input)
   }
 
-  async detail(
-    userId: string,
-    input: AgentConversationIdDto,
-  ): Promise<AgentConversationModel> {
+  async detail(userId: string, input: AgentConversationIdDto): Promise<AgentConversationModel> {
     const conversation = await this.requireOwned(userId, input.conversationId)
     return {
-      ...toConversationModel(
-        conversation,
-        await this.conversations.isRunning(conversation.id),
-      ),
+      ...toConversationModel(conversation, await this.conversations.isRunning(conversation.id)),
       aiFiles: this.files ? await this.files.tree(conversation.id) : undefined,
     }
   }
@@ -95,10 +83,7 @@ export class AgentConversationService {
    * 改名本身**记一条时间线事件**（谁在什么时候把标题从什么改成了什么）——
    * 与删除会话同一口径：会改变用户可见状态的动作都要留痕，审计页看得到。
    */
-  async rename(
-    userId: string,
-    input: AgentConversationRenameDto,
-  ): Promise<AgentConversationModel> {
+  async rename(userId: string, input: AgentConversationRenameDto): Promise<AgentConversationModel> {
     const conversation = await this.requireOwned(userId, input.conversationId)
     const from = conversation.title
     // 名字没变就不写库、不记事件（避免"点开又确认"刷出一条无意义的审计）
@@ -187,19 +172,14 @@ export class AgentConversationService {
    *   **不编造**一份"看起来像快照"的东西。
    * 归属校验与其它读接口同一道门（不存在 / 不是自己的 → 3304）。
    */
-  async instructions(
-    userId: string,
-    input: AgentInstructionsDto,
-  ): Promise<AgentInstructionsModel> {
+  async instructions(userId: string, input: AgentInstructionsDto): Promise<AgentInstructionsModel> {
     const conversation = await this.requireOwned(userId, input.conversationId ?? '')
     const definition = this.registry.resolve(input.agentKey ?? conversation.agentKey)
     const snapshot = await this.timelines.latestSystemPrompt(conversation.id)
 
     if (snapshot) {
       // 快照里的 agentKey 才是"当时用的是谁"；注册表里还认得出来就带上展示名与描述
-      const snapshotAgent = snapshot.agentKey
-        ? this.registry.get(snapshot.agentKey)
-        : undefined
+      const snapshotAgent = snapshot.agentKey ? this.registry.get(snapshot.agentKey) : undefined
       return {
         agentKey: snapshot.agentKey ?? definition.key,
         name: snapshotAgent?.name ?? definition.name,

@@ -53,10 +53,7 @@ export type ResetUserPasswordDto = z.infer<typeof ResetUserPasswordSchema>
 export const PageQueryUserSchema = BasePaginateSchema.extend({
   keyword: z.string().optional(),
   status: UserStatusSchema.optional(),
-  orderBy: z
-    .enum(['createdAt', 'updatedAt', 'email'])
-    .optional()
-    .default('createdAt'),
+  orderBy: z.enum(['createdAt', 'updatedAt', 'email']).optional().default('createdAt'),
   order: z.enum(['asc', 'desc']).optional().default('desc'),
 })
 export type PageQueryUserDto = z.infer<typeof PageQueryUserSchema>

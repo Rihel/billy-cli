@@ -11,8 +11,7 @@ export const TimeWheelType = {
   Cron: 'cron',
 } as const
 
-export type TimeWheelTypeValue =
-  (typeof TimeWheelType)[keyof typeof TimeWheelType]
+export type TimeWheelTypeValue = (typeof TimeWheelType)[keyof typeof TimeWheelType]
 
 /** 登记到时间轮上的任务定义 */
 export type TimeWheelJob = {
@@ -48,9 +47,7 @@ export type TimeWheelTask = {
 export type Wheels = Array<TimeWheelTask[]>
 
 const nextTick =
-  typeof setImmediate === 'function'
-    ? setImmediate
-    : (fn: () => void) => setTimeout(fn, 0)
+  typeof setImmediate === 'function' ? setImmediate : (fn: () => void) => setTimeout(fn, 0)
 
 /** 调度时间基准：优先单调时钟，避免系统时间调整造成漂移 */
 const nowTime = () =>
@@ -109,7 +106,7 @@ export class TimeWheel {
   reset(): void {
     this.jobs = {}
     this.currentTick = 0
-    this.wheels = new Array(this.wheelsCount).fill(null).map(() => [])
+    this.wheels = Array.from({ length: this.wheelsCount }, () => [])
     this.jobLastScheduleTime = {}
     this.nextJobTaskSlotIndex = {}
     this.nextTickTime = 0
@@ -186,11 +183,7 @@ export class TimeWheel {
   }
 
   /** 任务失败出口：把异常交给 onError，并保证它绝不冒泡（否则会中断 tick 循环） */
-  private failJob(
-    error: unknown,
-    task: TimeWheelTask,
-    job: TimeWheelJob,
-  ): void {
+  private failJob(error: unknown, task: TimeWheelTask, job: TimeWheelJob): void {
     try {
       job.onError?.(error, task, job)
     } catch {
@@ -258,9 +251,7 @@ export class TimeWheel {
     delete this.jobLastScheduleTime[jobId]
     const slotIndex = this.nextJobTaskSlotIndex[jobId]
     if (slotIndex !== undefined) {
-      this.wheels[slotIndex] = this.wheels[slotIndex].filter(
-        (task) => task.jobId !== jobId,
-      )
+      this.wheels[slotIndex] = this.wheels[slotIndex].filter((task) => task.jobId !== jobId)
     }
     delete this.nextJobTaskSlotIndex[jobId]
   }
@@ -270,13 +261,8 @@ export class TimeWheel {
     if (this.jobs[job.id]) {
       throw new Error(`job ${job.id} already exists`)
     }
-    if (
-      job.type === TimeWheelType.Interval &&
-      (job.interval ?? 0) < this.tickDuration
-    ) {
-      throw new Error(
-        `job ${job.id} interval must be >= tickDuration ${this.tickDuration}ms`,
-      )
+    if (job.type === TimeWheelType.Interval && (job.interval ?? 0) < this.tickDuration) {
+      throw new Error(`job ${job.id} interval must be >= tickDuration ${this.tickDuration}ms`)
     }
     if (job.type === TimeWheelType.Cron && !job.cron) {
       throw new Error(`job ${job.id} requires cron expression`)

@@ -57,14 +57,10 @@ export const SkillFilePathField = z
   )
 
 /** 来源取值（字典是唯一事实源） */
-export const SkillSourceField = z.enum(
-  SkillSource.values as unknown as [string, ...string[]],
-)
+export const SkillSourceField = z.enum(SkillSource.values as unknown as [string, ...string[]])
 
 /** 文件类型的取值 */
-export const SkillFileKindField = z.enum(
-  SkillFileKind.values as unknown as [string, ...string[]],
-)
+export const SkillFileKindField = z.enum(SkillFileKind.values as unknown as [string, ...string[]])
 
 /** frontmatter 里除 name / description 之外的键（license / compatibility / metadata / allowed-tools …） */
 export const SkillFrontmatterSchema = z.record(z.string(), z.unknown()).default({})

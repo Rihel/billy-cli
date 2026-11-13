@@ -71,9 +71,7 @@ export default function AccountPage() {
       router.replace(Pages.login)
     },
     onError: (error: unknown) =>
-      setPasswordError(
-        error instanceof Error ? error.message : '修改失败，请稍后重试',
-      ),
+      setPasswordError(error instanceof Error ? error.message : '修改失败，请稍后重试'),
   })
 
   const submitPassword = (event: FormEvent<HTMLFormElement>) => {
@@ -100,12 +98,8 @@ export default function AccountPage() {
     <div className="space-y-10">
       <section className="space-y-6 border-b border-border pb-10">
         <div>
-          <h1 className="font-heading text-xl font-semibold tracking-tight">
-            账号资料
-          </h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            头像与昵称会展示在你的账号信息中
-          </p>
+          <h1 className="font-heading text-xl font-semibold tracking-tight">账号资料</h1>
+          <p className="mt-1 text-sm text-muted-foreground">头像与昵称会展示在你的账号信息中</p>
         </div>
 
         {meQuery.isPending ? (
@@ -154,9 +148,7 @@ export default function AccountPage() {
 
       <section className="space-y-6">
         <div>
-          <h2 className="font-heading text-lg font-semibold tracking-tight">
-            修改密码
-          </h2>
+          <h2 className="font-heading text-lg font-semibold tracking-tight">修改密码</h2>
           <p className="mt-1 text-sm text-muted-foreground">
             修改成功后当前会话会失效，需要用新密码重新登录
           </p>
@@ -215,9 +207,7 @@ export default function AccountPage() {
               />
             </Field>
 
-            {passwordError ? (
-              <FieldError errors={[{ message: passwordError }]} />
-            ) : null}
+            {passwordError ? <FieldError errors={[{ message: passwordError }]} /> : null}
 
             <Button
               type="submit"

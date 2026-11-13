@@ -1,8 +1,8 @@
-"use client"
+'use client'
 
-import { useCallback, useEffect, useRef, useState } from "react"
-import type { RefCallback } from "react"
-import { useImmer } from "use-immer"
+import { useCallback, useEffect, useRef, useState } from 'react'
+import type { RefCallback } from 'react'
+import { useImmer } from 'use-immer'
 
 export type ElementRect = {
   width: number
@@ -31,7 +31,7 @@ export type ElementRect = {
   atScrollEndY: boolean
 }
 
-export type RectChangeReason = "measure" | "resize" | "scroll"
+export type RectChangeReason = 'measure' | 'resize' | 'scroll'
 
 export type UseRectOptions = {
   observeResize?: boolean
@@ -71,10 +71,7 @@ const emptyRect: ElementRect = {
 export const measureElement = (element: HTMLElement): ElementRect => {
   const bounds = element.getBoundingClientRect()
   const scrollSizeWidth = Math.max(element.scrollWidth - element.clientWidth, 0)
-  const scrollSizeHeight = Math.max(
-    element.scrollHeight - element.clientHeight,
-    0,
-  )
+  const scrollSizeHeight = Math.max(element.scrollHeight - element.clientHeight, 0)
   const restScrollWidth = Math.max(scrollSizeWidth - element.scrollLeft, 0)
   const restScrollHeight = Math.max(scrollSizeHeight - element.scrollTop, 0)
 
@@ -107,16 +104,14 @@ export const measureElement = (element: HTMLElement): ElementRect => {
 }
 
 const rectEquals = (left: ElementRect, right: ElementRect) => {
-  return (Object.keys(left) as (keyof ElementRect)[]).every(
-    (key) => left[key] === right[key],
-  )
+  return (Object.keys(left) as (keyof ElementRect)[]).every((key) => left[key] === right[key])
 }
 
 export const useRect = <ElementType extends HTMLElement = HTMLDivElement>({
   observeResize = true,
   observeScroll = true,
   observeWindow = true,
-  box = "border-box",
+  box = 'border-box',
   onChange,
 }: UseRectOptions = {}) => {
   const [element, setElement] = useState<ElementType | null>(null)
@@ -124,7 +119,7 @@ export const useRect = <ElementType extends HTMLElement = HTMLDivElement>({
   const rectRef = useRef(rect)
   const onChangeRef = useRef(onChange)
   const frameRef = useRef<number | null>(null)
-  const reasonRef = useRef<RectChangeReason>("measure")
+  const reasonRef = useRef<RectChangeReason>('measure')
   onChangeRef.current = onChange
 
   const ref: RefCallback<ElementType> = useCallback((node) => {
@@ -132,7 +127,7 @@ export const useRect = <ElementType extends HTMLElement = HTMLDivElement>({
   }, [])
 
   const measure = useCallback(
-    (reason: RectChangeReason = "measure") => {
+    (reason: RectChangeReason = 'measure') => {
       if (!element) return null
       const nextRect = measureElement(element)
       if (!rectEquals(rectRef.current, nextRect)) {
@@ -142,7 +137,7 @@ export const useRect = <ElementType extends HTMLElement = HTMLDivElement>({
       }
       return nextRect
     },
-    [element],
+    [element, setRect],
   )
 
   const scheduleMeasure = useCallback(
@@ -162,38 +157,30 @@ export const useRect = <ElementType extends HTMLElement = HTMLDivElement>({
     measure()
 
     const resizeObserver = observeResize
-      ? new ResizeObserver(() => scheduleMeasure("resize"))
+      ? new ResizeObserver(() => scheduleMeasure('resize'))
       : null
     resizeObserver?.observe(element, { box })
 
-    const handleScroll = () => scheduleMeasure("scroll")
-    const handleWindowResize = () => scheduleMeasure("resize")
+    const handleScroll = () => scheduleMeasure('scroll')
+    const handleWindowResize = () => scheduleMeasure('resize')
 
     if (observeScroll) {
-      window.addEventListener("scroll", handleScroll, true)
+      window.addEventListener('scroll', handleScroll, true)
     }
     if (observeWindow) {
-      window.addEventListener("resize", handleWindowResize)
+      window.addEventListener('resize', handleWindowResize)
     }
 
     return () => {
       resizeObserver?.disconnect()
-      window.removeEventListener("scroll", handleScroll, true)
-      window.removeEventListener("resize", handleWindowResize)
+      window.removeEventListener('scroll', handleScroll, true)
+      window.removeEventListener('resize', handleWindowResize)
       if (frameRef.current !== null) {
         window.cancelAnimationFrame(frameRef.current)
         frameRef.current = null
       }
     }
-  }, [
-    box,
-    element,
-    measure,
-    observeResize,
-    observeScroll,
-    observeWindow,
-    scheduleMeasure,
-  ])
+  }, [box, element, measure, observeResize, observeScroll, observeWindow, scheduleMeasure])
 
   return { ref, element, rect, measure }
 }

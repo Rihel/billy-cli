@@ -154,10 +154,7 @@ export class ToolRegistry {
    * 只过滤 `scope`：`all` 放行；`admin` / `user` 看身份；`agent` 看 `allowedAgents`。
    * 开关（`enabled`）仍由 `EnabledPlugin` 在调用期判——它是"临时关掉"，不是"没有授权"。
    */
-  async authorized(
-    keys: readonly string[],
-    caller: ToolCallerIdentity,
-  ): Promise<string[]> {
+  async authorized(keys: readonly string[], caller: ToolCallerIdentity): Promise<string[]> {
     const allowed: string[] = []
     for (const key of keys) {
       const settings = await this.config.settings(this.spec(key))

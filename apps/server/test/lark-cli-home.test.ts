@@ -3,7 +3,11 @@ import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { mkdir } from 'node:fs/promises'
-import { restoreHome, sameFiles, snapshotHome } from '../src/modules/ai/connectors/drivers/lark-cli.home.js'
+import {
+  restoreHome,
+  sameFiles,
+  snapshotHome,
+} from '../src/modules/ai/connectors/drivers/lark-cli.home.js'
 
 /**
  * lark-cli HOME 的搬运（纯文件层，不跑 CLI）。
@@ -37,9 +41,9 @@ describe('lark-cli HOME 快照', () => {
       await withTempDir(async (target) => {
         await restoreHome(target, files)
         expect(await readFile(join(target, '.lark-cli', 'config.json'), 'utf8')).toBe('{"apps":[]}')
-        expect(await readFile(join(target, '.local', 'share', 'lark-cli', 'master.key'), 'utf8')).toBe(
-          'secret',
-        )
+        expect(
+          await readFile(join(target, '.local', 'share', 'lark-cli', 'master.key'), 'utf8'),
+        ).toBe('secret')
       })
     })
   })
@@ -64,7 +68,7 @@ describe('lark-cli HOME 快照', () => {
         'ok.txt': Buffer.from('ok').toString('base64'),
       })
       await expect(readFile(join(dir, 'ok.txt'), 'utf8')).resolves.toBe('ok')
-      await expect(readFile(join(dir, '..', 'evil.txt'), 'utf8')).rejects.toThrow()
+      await expect(readFile(join(dir, '..', 'evil.txt'), 'utf8')).rejects.toThrow(/ENOENT/)
     })
   })
 })

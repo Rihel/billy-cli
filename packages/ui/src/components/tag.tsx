@@ -1,9 +1,9 @@
-"use client"
+'use client'
 
-import type { CSSProperties, ReactNode } from "react"
+import type { CSSProperties, ReactNode } from 'react'
 
-import { cn } from "#lib/utils"
-import { Badge } from "#components/ui/badge"
+import { cn } from '#lib/utils'
+import { Badge } from '#components/ui/badge'
 
 /**
  * 预设色名 → 样式类映射。
@@ -17,22 +17,22 @@ import { Badge } from "#components/ui/badge"
  * 新代码请直接用语义色名。
  */
 const PRESET_COLORS: Record<string, string> = {
-  default: "bg-muted/40 text-muted-foreground",
-  success: "bg-success/10 text-success",
-  error: "bg-destructive/10 text-destructive",
-  warning: "bg-warning/10 text-warning",
-  processing: "bg-info/10 text-info",
+  default: 'bg-muted/40 text-muted-foreground',
+  success: 'bg-success/10 text-success',
+  error: 'bg-destructive/10 text-destructive',
+  warning: 'bg-warning/10 text-warning',
+  processing: 'bg-info/10 text-info',
   // ---- 历史色名别名：收敛到语义色 / 品牌色 ----
-  blue: "bg-info/10 text-info",
-  cyan: "bg-info/10 text-info",
-  green: "bg-success/10 text-success",
-  red: "bg-destructive/10 text-destructive",
-  gold: "bg-warning/10 text-warning",
-  orange: "bg-warning/10 text-warning",
-  volcano: "bg-warning/10 text-warning",
-  purple: "bg-brand/10 text-brand",
-  magenta: "bg-brand/10 text-brand",
-  geekblue: "bg-brand/10 text-brand",
+  blue: 'bg-info/10 text-info',
+  cyan: 'bg-info/10 text-info',
+  green: 'bg-success/10 text-success',
+  red: 'bg-destructive/10 text-destructive',
+  gold: 'bg-warning/10 text-warning',
+  orange: 'bg-warning/10 text-warning',
+  volcano: 'bg-warning/10 text-warning',
+  purple: 'bg-brand/10 text-brand',
+  magenta: 'bg-brand/10 text-brand',
+  geekblue: 'bg-brand/10 text-brand',
 }
 
 export type TagProps = {
@@ -44,13 +44,13 @@ export type TagProps = {
 }
 
 /** 标签（Badge 封装，支持预设色名或任意 CSS 颜色） */
-export function Tag({ color = "default", children, className, style }: TagProps) {
+export function Tag({ color = 'default', children, className, style }: TagProps) {
   const preset = PRESET_COLORS[color]
-  const hex = color.startsWith("#")
+  const hex = color.startsWith('#')
   return (
     <Badge
-      className={cn(hex ? undefined : preset ?? PRESET_COLORS.default, className)}
-      style={hex ? { backgroundColor: color, color: "#fff", ...style } : style}
+      className={cn(hex ? undefined : (preset ?? PRESET_COLORS.default), className)}
+      style={hex ? { backgroundColor: color, color: '#fff', ...style } : style}
     >
       {children}
     </Badge>

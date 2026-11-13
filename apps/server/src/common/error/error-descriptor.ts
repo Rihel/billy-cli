@@ -56,8 +56,7 @@ const hasAppErrorCode = (error: unknown): error is { code: number } =>
 const expressStatusOf = (error: unknown): number | undefined => {
   if (!error || typeof error !== 'object') return undefined
   const candidate =
-    (error as { status?: unknown }).status ??
-    (error as { statusCode?: unknown }).statusCode
+    (error as { status?: unknown }).status ?? (error as { statusCode?: unknown }).statusCode
   return typeof candidate === 'number' && candidate >= 400 && candidate < 600
     ? candidate
     : undefined

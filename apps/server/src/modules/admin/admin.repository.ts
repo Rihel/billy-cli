@@ -9,12 +9,7 @@ export type AdminRecord = AdminEntity
 
 /** 数据库记录 → 对外模型：剔除敏感字段，并将 status 收敛为枚举字面量 */
 export const toAdmin = (record: AdminEntity): AdminModel => {
-  const {
-    password: _password,
-    deletedAt: _deletedAt,
-    status,
-    ...admin
-  } = record
+  const { password: _password, deletedAt: _deletedAt, status, ...admin } = record
   return {
     ...admin,
     status: status as AdminModel['status'],
@@ -44,10 +39,7 @@ export class AdminRepository {
     return repo.save(repo.create(data))
   }
 
-  async update(
-    id: string,
-    data: DeepPartial<AdminEntity>,
-  ): Promise<AdminEntity | null> {
+  async update(id: string, data: DeepPartial<AdminEntity>): Promise<AdminEntity | null> {
     const repo = await this.repo()
     const existing = await repo.findOneBy({ id })
     if (!existing) return null

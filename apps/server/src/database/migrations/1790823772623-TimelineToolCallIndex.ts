@@ -1,4 +1,4 @@
-import type { MigrationInterface, QueryRunner } from "typeorm"
+import type { MigrationInterface, QueryRunner } from 'typeorm'
 
 /**
  * 工具结果分页的**回取**路径：按 `(conversation_id, tool_call_id)` 找工具原文（设计 §5.6）。

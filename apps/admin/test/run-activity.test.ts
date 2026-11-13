@@ -2,7 +2,10 @@ import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 import type { UIMessage } from 'ai'
-import { RunActivity, runActivityText } from '../src/app/(app)/(standalone)/main/ai/chat/run-activity.tsx'
+import {
+  RunActivity,
+  runActivityText,
+} from '../src/app/(app)/(standalone)/main/ai/chat/run-activity.tsx'
 
 /**
  * 时间线底部的运行指示：文案判据 + SSR 冒烟。
@@ -55,9 +58,9 @@ describe('runActivityText', () => {
   })
 
   it('子助手在跑 → 报子助手的名字（主 agent 此刻在等它）', () => {
-    expect(
-      runActivityText([message([subAgent({ status: 'running' })])], 'streaming'),
-    ).toBe('子助手「北美欧洲线」正在干活…')
+    expect(runActivityText([message([subAgent({ status: 'running' })])], 'streaming')).toBe(
+      '子助手「北美欧洲线」正在干活…',
+    )
     // 状态块被工具事件覆盖（真实流形态）时同样算在跑
     expect(
       runActivityText([message([subAgent({ event: { kind: 'tool-call' } })])], 'streaming'),
@@ -116,7 +119,9 @@ describe('RunActivity', () => {
 
   it('子助手活动结束后（status=ready）**不渲染任何东西**；子助手跑完但主 agent 还在跑时只报通用状态', () => {
     const finished = [message([subAgent({ status: 'succeeded', result: 'ok' })])]
-    expect(renderToStaticMarkup(createElement(RunActivity, { messages: finished, status: 'ready' }))).toBe('')
+    expect(
+      renderToStaticMarkup(createElement(RunActivity, { messages: finished, status: 'ready' })),
+    ).toBe('')
 
     const stillWorking = renderToStaticMarkup(
       createElement(RunActivity, { messages: finished, status: 'streaming' }),

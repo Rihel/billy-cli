@@ -1,8 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common'
-import {
-  RateLimiterRedis,
-  RateLimiterRes,
-} from 'rate-limiter-flexible'
+import { RateLimiterRedis, RateLimiterRes } from 'rate-limiter-flexible'
 import { RedisStore } from '../redis/redis-store.js'
 
 /** 限流判定结果。 */
@@ -30,9 +27,7 @@ export interface RateLimitDecision {
 export class RateLimiter {
   private readonly limiters = new Map<string, RateLimiterRedis>()
 
-  constructor(
-    @Inject(RedisStore) private readonly redis: RedisStore,
-  ) {}
+  constructor(@Inject(RedisStore) private readonly redis: RedisStore) {}
 
   private limiterFor(limit: number, windowSeconds: number): RateLimiterRedis {
     const cacheKey = `${limit}:${windowSeconds}`
@@ -50,11 +45,7 @@ export class RateLimiter {
   }
 
   /** 计数并判定：命中返回配额信息，超限返回 retryAfterSeconds。 */
-  async check(
-    key: string,
-    limit: number,
-    windowSeconds: number,
-  ): Promise<RateLimitDecision> {
+  async check(key: string, limit: number, windowSeconds: number): Promise<RateLimitDecision> {
     try {
       const result = await this.limiterFor(limit, windowSeconds).consume(key)
       return {
@@ -65,10 +56,7 @@ export class RateLimiter {
     } catch (error) {
       // rate-limiter-flexible 11.x：超限时 consume reject 的是 RateLimiterRes 实例
       // （非 Error），以 consumedPoints > limit 判定；其余（Redis 故障等）原样上抛
-      if (
-        error instanceof RateLimiterRes &&
-        error.consumedPoints > limit
-      ) {
+      if (error instanceof RateLimiterRes && error.consumedPoints > limit) {
         return {
           allowed: false,
           remaining: 0,

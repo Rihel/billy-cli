@@ -1,4 +1,4 @@
-import type { MigrationInterface, QueryRunner } from "typeorm"
+import type { MigrationInterface, QueryRunner } from 'typeorm'
 
 /**
  * `ai_tools.category`：类别冗余列（`core` / `business`），由种子同步从代码声明写过来。
@@ -8,14 +8,15 @@ import type { MigrationInterface, QueryRunner } from "typeorm"
  */
 
 export class AiToolCategory1790823982451 implements MigrationInterface {
-    name = 'AiToolCategory1790823982451'
+  name = 'AiToolCategory1790823982451'
 
-    public async up(queryRunner: QueryRunner): Promise<void> {
-        await queryRunner.query(`ALTER TABLE "ai_tools" ADD "category" character varying(16) NOT NULL DEFAULT 'core'`);
-    }
+  public async up(queryRunner: QueryRunner): Promise<void> {
+    await queryRunner.query(
+      `ALTER TABLE "ai_tools" ADD "category" character varying(16) NOT NULL DEFAULT 'core'`,
+    )
+  }
 
-    public async down(queryRunner: QueryRunner): Promise<void> {
-        await queryRunner.query(`ALTER TABLE "ai_tools" DROP COLUMN "category"`);
-    }
-
+  public async down(queryRunner: QueryRunner): Promise<void> {
+    await queryRunner.query(`ALTER TABLE "ai_tools" DROP COLUMN "category"`)
+  }
 }

@@ -11,7 +11,6 @@ import type { AgentRegistry } from '../agents/types.js'
 import { AGENT_REGISTRY } from '../agents/registry.js'
 import { RUNTIME_TOOLS } from '../core/tools/tool-keys.js'
 import { ToolConfigRepository } from '../core/tools/tool.config.repository.js'
-import { TOOL_ENV_CAPS } from '../core/tools/tool.config.ports.js'
 import { ToolConfigInvalidError, ToolNotRegisteredError } from '../core/tools/tool.errors.js'
 import { toAiToolEventModels } from '../core/tools/tool-event.js'
 import { toJsonSchema } from '../core/tools/tool.schema.js'
@@ -207,12 +206,14 @@ export class AiToolService {
   private toModel(spec: AnyToolSpec, settings: ToolSettings, agents: string[]): AiToolModel {
     const defaults = codeDefaults(spec) as Record<string, unknown>
     // 连接器产出的工具：密钥归连接器实例管（在这儿展示只会让人以为要重复填一遍）
-    const secretFields: AiToolSecretField[] = (spec.connector ? [] : spec.secretFields ?? []).map((field) => ({
-      name: field.name,
-      label: field.label,
-      required: field.required ?? false,
-      hint: settings.secretHint(field.name),
-    }))
+    const secretFields: AiToolSecretField[] = (spec.connector ? [] : (spec.secretFields ?? [])).map(
+      (field) => ({
+        name: field.name,
+        label: field.label,
+        required: field.required ?? false,
+        hint: settings.secretHint(field.name),
+      }),
+    )
     return {
       toolKey: spec.key,
       // 基础信息直接给库里的值（启动期由种子从代码声明全量写入的镜像）

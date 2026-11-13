@@ -1,7 +1,7 @@
-"use client"
+'use client'
 
-import { useState } from "react"
-import type { ReactNode } from "react"
+import { useState } from 'react'
+import type { ReactNode } from 'react'
 
 import {
   AlertDialog,
@@ -12,8 +12,8 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-} from "#components/ui/alert-dialog"
-import { IconText } from "#components/icon"
+} from '#components/ui/alert-dialog'
+import { IconText } from '#components/icon'
 
 /** 表格行内操作容器 */
 export const TableActions = ({ children }: { children: ReactNode }) => {
@@ -38,8 +38,8 @@ export function ConfirmAction({
   children,
   danger,
   disabled,
-  okText = "确认",
-  cancelText = "取消",
+  okText = '确认',
+  cancelText = '取消',
   onConfirm,
 }: ConfirmActionProps) {
   const [open, setOpen] = useState(false)
@@ -48,7 +48,7 @@ export function ConfirmAction({
   return (
     <AlertDialog open={open} onOpenChange={(next) => setOpen(next)}>
       <IconText
-        type={danger ? "danger" : "default"}
+        type={danger ? 'danger' : 'default'}
         danger={danger}
         disabled={disabled}
         onClick={() => {
@@ -57,27 +57,28 @@ export function ConfirmAction({
       >
         {children}
       </IconText>
-      <AlertDialogContent size={danger ? "sm" : "default"}>
+      <AlertDialogContent size={danger ? 'sm' : 'default'}>
         <AlertDialogHeader>
           <AlertDialogTitle>{title}</AlertDialogTitle>
-          {description ? (
-            <AlertDialogDescription>{description}</AlertDialogDescription>
-          ) : null}
+          {description ? <AlertDialogDescription>{description}</AlertDialogDescription> : null}
         </AlertDialogHeader>
         <AlertDialogFooter>
           <AlertDialogCancel disabled={submitting}>{cancelText}</AlertDialogCancel>
           <AlertDialogAction
-            variant={danger ? "destructive" : "default"}
+            variant={danger ? 'destructive' : 'default'}
             disabled={submitting}
-            onClick={async (event) => {
+            onClick={(event) => {
               event.preventDefault()
               setSubmitting(true)
-              try {
-                await onConfirm()
-                setOpen(false)
-              } finally {
-                setSubmitting(false)
-              }
+              // 确认回调可能是异步的；用同步包装保持 onClick 的 void 契约
+              void (async () => {
+                try {
+                  await onConfirm()
+                  setOpen(false)
+                } finally {
+                  setSubmitting(false)
+                }
+              })()
             }}
           >
             {okText}

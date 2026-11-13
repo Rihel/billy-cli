@@ -1,11 +1,20 @@
-"use client"
+'use client'
 
-import { cn } from "#lib/utils.ts"
-import { AlertCircle } from "lucide-react"
-import type { ComponentProps, ReactNode } from "react"
-import { createContext, memo, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react"
-import type { TProps as JsxParserProps } from "react-jsx-parser"
-import JsxParser from "react-jsx-parser"
+import { cn } from '#lib/utils.ts'
+import { AlertCircle } from 'lucide-react'
+import type { ComponentProps, ReactNode } from 'react'
+import {
+  createContext,
+  memo,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
+import type { TProps as JsxParserProps } from 'react-jsx-parser'
+import JsxParser from 'react-jsx-parser'
 
 interface JSXPreviewContextValue {
   jsx: string
@@ -14,8 +23,8 @@ interface JSXPreviewContextValue {
   error: Error | null
   setError: (error: Error | null) => void
   setLastGoodJsx: (jsx: string) => void
-  components: JsxParserProps["components"]
-  bindings: JsxParserProps["bindings"]
+  components: JsxParserProps['components']
+  bindings: JsxParserProps['bindings']
   onErrorProp?: (error: Error) => void
 }
 
@@ -26,13 +35,13 @@ const TAG_REGEX = /<\/?([a-zA-Z][a-zA-Z0-9]*)\s*([^>]*?)(\/)?>/
 export const useJSXPreview = () => {
   const context = useContext(JSXPreviewContext)
   if (!context) {
-    throw new Error("JSXPreview components must be used within JSXPreview")
+    throw new Error('JSXPreview components must be used within JSXPreview')
   }
   return context
 }
 
 const matchJsxTag = (code: string) => {
-  if (code.trim() === "") {
+  if (code.trim() === '') {
     return null
   }
 
@@ -44,13 +53,13 @@ const matchJsxTag = (code: string) => {
 
   const [fullMatch, tagName, attributes, selfClosing] = match
 
-  let type: "self-closing" | "closing" | "opening"
+  let type: 'self-closing' | 'closing' | 'opening'
   if (selfClosing) {
-    type = "self-closing"
-  } else if (fullMatch.startsWith("</")) {
-    type = "closing"
+    type = 'self-closing'
+  } else if (fullMatch.startsWith('</')) {
+    type = 'closing'
   } else {
-    type = "opening"
+    type = 'opening'
   }
 
   return {
@@ -65,14 +74,14 @@ const matchJsxTag = (code: string) => {
 
 const stripIncompleteTag = (text: string) => {
   // Find the last '<' that isn't part of a complete tag
-  const lastOpen = text.lastIndexOf("<")
+  const lastOpen = text.lastIndexOf('<')
   if (lastOpen === -1) {
     return text
   }
 
   const afterOpen = text.slice(lastOpen)
   // If there's no closing '>' after the last '<', it's an incomplete tag
-  if (!afterOpen.includes(">")) {
+  if (!afterOpen.includes('>')) {
     return text.slice(0, lastOpen)
   }
 
@@ -81,7 +90,7 @@ const stripIncompleteTag = (text: string) => {
 
 const completeJsxTag = (code: string) => {
   const stack: string[] = []
-  let result = ""
+  let result = ''
   let currentPosition = 0
 
   while (currentPosition < code.length) {
@@ -96,9 +105,9 @@ const completeJsxTag = (code: string) => {
     // Include any text content before this tag
     result += code.slice(currentPosition, currentPosition + endIndex)
 
-    if (type === "opening") {
+    if (type === 'opening') {
       stack.push(tagName)
-    } else if (type === "closing") {
+    } else if (type === 'closing') {
       stack.pop()
     }
 
@@ -110,23 +119,32 @@ const completeJsxTag = (code: string) => {
     stack
       .toReversed()
       .map((tag) => `</${tag}>`)
-      .join("")
+      .join('')
   )
 }
 
-export type JSXPreviewProps = ComponentProps<"div"> & {
+export type JSXPreviewProps = ComponentProps<'div'> & {
   jsx: string
   isStreaming?: boolean
-  components?: JsxParserProps["components"]
-  bindings?: JsxParserProps["bindings"]
+  components?: JsxParserProps['components']
+  bindings?: JsxParserProps['bindings']
   onError?: (error: Error) => void
 }
 
 export const JSXPreview = memo(
-  ({ jsx, isStreaming = false, components, bindings, onError, className, children, ...props }: JSXPreviewProps) => {
+  ({
+    jsx,
+    isStreaming = false,
+    components,
+    bindings,
+    onError,
+    className,
+    children,
+    ...props
+  }: JSXPreviewProps) => {
     const [prevJsx, setPrevJsx] = useState(jsx)
     const [error, setError] = useState<Error | null>(null)
-    const [_lastGoodJsx, setLastGoodJsx] = useState("")
+    const [_lastGoodJsx, setLastGoodJsx] = useState('')
 
     // Clear error when jsx changes (derived state pattern)
     if (jsx !== prevJsx) {
@@ -134,7 +152,10 @@ export const JSXPreview = memo(
       setError(null)
     }
 
-    const processedJsx = useMemo(() => (isStreaming ? completeJsxTag(jsx) : jsx), [jsx, isStreaming])
+    const processedJsx = useMemo(
+      () => (isStreaming ? completeJsxTag(jsx) : jsx),
+      [jsx, isStreaming],
+    )
 
     const contextValue = useMemo(
       () => ({
@@ -153,7 +174,7 @@ export const JSXPreview = memo(
 
     return (
       <JSXPreviewContext.Provider value={contextValue}>
-        <div className={cn("relative", className)} {...props}>
+        <div className={cn('relative', className)} {...props}>
           {children}
         </div>
       </JSXPreviewContext.Provider>
@@ -161,14 +182,15 @@ export const JSXPreview = memo(
   },
 )
 
-JSXPreview.displayName = "JSXPreview"
+JSXPreview.displayName = 'JSXPreview'
 
-export type JSXPreviewContentProps = Omit<ComponentProps<"div">, "children">
+export type JSXPreviewContentProps = Omit<ComponentProps<'div'>, 'children'>
 
 export const JSXPreviewContent = memo(({ className, ...props }: JSXPreviewContentProps) => {
-  const { processedJsx, isStreaming, components, bindings, setError, setLastGoodJsx, onErrorProp } = useJSXPreview()
+  const { processedJsx, isStreaming, components, bindings, setError, setLastGoodJsx, onErrorProp } =
+    useJSXPreview()
   const errorReportedRef = useRef<string | null>(null)
-  const lastGoodJsxRef = useRef("")
+  const lastGoodJsxRef = useRef('')
   const [hadError, setHadError] = useState(false)
 
   // Reset error tracking when jsx changes
@@ -209,20 +231,29 @@ export const JSXPreviewContent = memo(({ className, ...props }: JSXPreviewConten
   const displayJsx = isStreaming && hadError ? lastGoodJsxRef.current : processedJsx
 
   return (
-    <div className={cn("jsx-preview-content", className)} {...props}>
-      <JsxParser bindings={bindings} components={components} jsx={displayJsx} onError={handleError} renderInWrapper={false} />
+    <div className={cn('jsx-preview-content', className)} {...props}>
+      <JsxParser
+        bindings={bindings}
+        components={components}
+        jsx={displayJsx}
+        onError={handleError}
+        renderInWrapper={false}
+      />
     </div>
   )
 })
 
-JSXPreviewContent.displayName = "JSXPreviewContent"
+JSXPreviewContent.displayName = 'JSXPreviewContent'
 
-export type JSXPreviewErrorProps = ComponentProps<"div"> & {
+export type JSXPreviewErrorProps = ComponentProps<'div'> & {
   children?: ReactNode | ((error: Error) => ReactNode)
 }
 
-const renderChildren = (children: ReactNode | ((error: Error) => ReactNode), error: Error): ReactNode => {
-  if (typeof children === "function") {
+const renderChildren = (
+  children: ReactNode | ((error: Error) => ReactNode),
+  error: Error,
+): ReactNode => {
+  if (typeof children === 'function') {
     return children(error)
   }
   return children
@@ -238,7 +269,7 @@ export const JSXPreviewError = memo(({ className, children, ...props }: JSXPrevi
   return (
     <div
       className={cn(
-        "flex items-center gap-2 rounded-md border border-destructive/50 bg-destructive/10 p-3 text-destructive text-sm",
+        'flex items-center gap-2 rounded-md border border-destructive/50 bg-destructive/10 p-3 text-destructive text-sm',
         className,
       )}
       {...props}
@@ -255,4 +286,4 @@ export const JSXPreviewError = memo(({ className, children, ...props }: JSXPrevi
   )
 })
 
-JSXPreviewError.displayName = "JSXPreviewError"
+JSXPreviewError.displayName = 'JSXPreviewError'

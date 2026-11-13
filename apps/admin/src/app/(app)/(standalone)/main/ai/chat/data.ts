@@ -87,9 +87,7 @@ export const lastRunUsage = (messages: UIMessage[]): Record<string, unknown> | n
     const message = messages[index]
     if (!message || message.role !== 'assistant') continue
     // 断言成"数据 part"：`UIMessagePart` 联合里 data-* 是模板字面量类型，与具体字面量比较不收窄
-    const part = [...message.parts]
-      .reverse()
-      .find((item) => item.type === 'data-run-usage') as
+    const part = [...message.parts].reverse().find((item) => item.type === 'data-run-usage') as
       | { data?: Record<string, unknown> }
       | undefined
     if (!part?.data) continue

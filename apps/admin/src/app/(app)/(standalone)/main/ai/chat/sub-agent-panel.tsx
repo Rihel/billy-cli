@@ -39,7 +39,9 @@ export const statusLabel: Record<string, string> = {
   rejected: '未执行',
 }
 
-export const statusVariant = (status?: string): 'default' | 'secondary' | 'destructive' | 'outline' => {
+export const statusVariant = (
+  status?: string,
+): 'default' | 'secondary' | 'destructive' | 'outline' => {
   if (status === 'succeeded') return 'default'
   if (status === 'failed') return 'destructive'
   if (status === 'running') return 'secondary'
@@ -68,7 +70,10 @@ export function SubAgentLiveView({ live }: { live: SubAgentLive }) {
     <div className="flex flex-col gap-3">
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
         {active ? (
-          <LoaderCircleIcon className="size-3.5 animate-spin text-primary motion-reduce:animate-none" aria-hidden />
+          <LoaderCircleIcon
+            className="size-3.5 animate-spin text-primary motion-reduce:animate-none"
+            aria-hidden
+          />
         ) : (
           <BotIcon className="size-3.5" aria-hidden />
         )}
@@ -172,7 +177,11 @@ export function SubAgentLiveView({ live }: { live: SubAgentLive }) {
                 ) : (
                   <ToolOutput
                     output={event.output}
-                    errorText={event.isError ? (event.errorText ?? JSON.stringify(event.output ?? '')) : undefined}
+                    errorText={
+                      event.isError
+                        ? (event.errorText ?? JSON.stringify(event.output ?? ''))
+                        : undefined
+                    }
                   />
                 )}
               </ToolContent>
@@ -185,7 +194,9 @@ export function SubAgentLiveView({ live }: { live: SubAgentLive }) {
 
       {!hasAnything ? (
         <p className="text-xs text-muted-foreground">
-          {active ? '子助手正在准备…（推理与工具往返会在这里逐帧出现）' : '这个子助手没有留下可显示的过程记录。'}
+          {active
+            ? '子助手正在准备…（推理与工具往返会在这里逐帧出现）'
+            : '这个子助手没有留下可显示的过程记录。'}
         </p>
       ) : null}
     </div>

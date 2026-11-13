@@ -50,11 +50,7 @@ const runLogger = (path: string) => {
   const next = vi.fn()
 
   requestContext.run({ requestId: 'rid-test', userId: null, adminId: null }, () => {
-    middleware.use(
-      { method: 'GET', path, originalUrl: path } as never,
-      res as never,
-      next,
-    )
+    middleware.use({ method: 'GET', path, originalUrl: path } as never, res as never, next)
     res.emit('finish')
   })
 
@@ -96,11 +92,7 @@ describe('运维探针不进请求指标', () => {
     const middleware = new RequestMetricsMiddleware(telemetry)
     const res = makeResponse(500)
 
-    middleware.use(
-      { method: 'POST', path: '/user/create' } as never,
-      res as never,
-      vi.fn(),
-    )
+    middleware.use({ method: 'POST', path: '/user/create' } as never, res as never, vi.fn())
     res.emit('finish')
 
     expect(incr).toHaveBeenCalledWith('request.count')

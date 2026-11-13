@@ -13,11 +13,7 @@ import { SharePreview } from '@/components/share-preview'
  */
 export const dynamic = 'force-dynamic'
 
-export default async function SharePage({
-  params,
-}: {
-  params: Promise<{ token: string }>
-}) {
+export default async function SharePage({ params }: { params: Promise<{ token: string }> }) {
   const { token } = await params
 
   let meta: ShareMetaModel | null = null
@@ -37,9 +33,7 @@ function Invalid() {
     <div className="flex h-dvh flex-col items-center justify-center gap-3 px-6 text-center">
       <div className="text-4xl font-semibold text-muted-foreground">—</div>
       <h1 className="text-base font-medium">链接已失效</h1>
-      <p className="text-sm text-muted-foreground">
-        该分享可能已过期、已被撤销，或文件已被删除。
-      </p>
+      <p className="text-sm text-muted-foreground">该分享可能已过期、已被撤销，或文件已被删除。</p>
     </div>
   )
 }

@@ -1,7 +1,7 @@
-@import "tailwindcss";
-@import "@repo/ui/globals.css";
-@import "tw-animate-css";
-@import "shadcn/tailwind.css";
+@import 'tailwindcss';
+@import '@repo/ui/globals.css';
+@import 'tw-animate-css';
+@import 'shadcn/tailwind.css';
 
 /* Tailwind 还需扫描组件库源码 —— 组件库不经 Tailwind 构建，类名都写在 @repo/ui 里 */
 @source "../../../../packages/ui/src/**/*.{ts,tsx}";

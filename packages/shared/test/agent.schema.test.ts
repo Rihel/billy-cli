@@ -80,7 +80,6 @@ describe('AgentChatSchema', () => {
   })
 })
 
-
 describe('AgentChatResumeSchema（回答 / 取消挂起）', () => {
   it('正常提交：answers 至少一条', () => {
     const parsed = AgentChatResumeSchema.safeParse({
@@ -98,8 +97,6 @@ describe('AgentChatResumeSchema（回答 / 取消挂起）', () => {
 
   it('既没答案也没取消 → 拒绝（空提交没有意义）', () => {
     expect(AgentChatResumeSchema.safeParse({ runId: 'run_1' }).success).toBe(false)
-    expect(
-      AgentChatResumeSchema.safeParse({ runId: 'run_1', answers: [] }).success,
-    ).toBe(false)
+    expect(AgentChatResumeSchema.safeParse({ runId: 'run_1', answers: [] }).success).toBe(false)
   })
 })

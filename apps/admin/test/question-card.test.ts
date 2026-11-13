@@ -84,7 +84,9 @@ describe('resolveAnswerValue（选项之外的兜底输入）', () => {
   })
 
   it('问答：文本原样返回（它本身就是输入框）', () => {
-    expect(resolveAnswerValue({ id: 'q3', title: '详细说', type: 'text' }, '随便写', '')).toBe('随便写')
+    expect(resolveAnswerValue({ id: 'q3', title: '详细说', type: 'text' }, '随便写', '')).toBe(
+      '随便写',
+    )
     expect(resolveAnswerValue({ id: 'q3', title: '详细说', type: 'text' }, undefined, '')).toBe('')
   })
 })

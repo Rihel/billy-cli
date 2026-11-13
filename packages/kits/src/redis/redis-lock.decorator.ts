@@ -55,11 +55,8 @@ export const RedisLock = (
         )
       }
 
-      return lockService.withLock(
-        `${group}:${resolvedKey}`,
-        ttlSeconds,
-        timeoutSeconds,
-        () => original.apply(this, args),
+      return lockService.withLock(`${group}:${resolvedKey}`, ttlSeconds, timeoutSeconds, () =>
+        original.apply(this, args),
       )
     }
 

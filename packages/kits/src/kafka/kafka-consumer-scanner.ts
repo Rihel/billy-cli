@@ -6,17 +6,10 @@ import pLimit from 'p-limit'
 import pRetry from 'p-retry'
 import { coalesceAsync } from 'promise-coalesce'
 import { KafkaConfig, type KafkaConfig as KafkaConfigType } from './kafka.config.js'
-import {
-  KAFKA_CONSUMER_METADATA,
-  type KafkaConsumerMetadata,
-} from './kafka.providers.js'
+import { KAFKA_CONSUMER_METADATA, type KafkaConsumerMetadata } from './kafka.providers.js'
 import { KafkaService } from './kafka.service.js'
 
-type ConsumerCallback = (
-  payload: unknown,
-  topic: string,
-  partition: number,
-) => Promise<void> | void
+type ConsumerCallback = (payload: unknown, topic: string, partition: number) => Promise<void> | void
 
 interface ConsumerGroup {
   metadata: KafkaConsumerMetadata
@@ -50,7 +43,6 @@ const EXCLUDED_METHODS = new Set([
  */
 @Injectable()
 export class KafkaConsumerScanner implements OnApplicationBootstrap {
-
   /** cacheKey（topic 或 topic:groupId）→ 消费者分组 */
   private readonly groups = new Map<string, ConsumerGroup>()
 
@@ -81,24 +73,19 @@ export class KafkaConsumerScanner implements OnApplicationBootstrap {
         if (EXCLUDED_METHODS.has(methodName)) continue
 
         const method = (prototype as Record<string, unknown>)[methodName]
-        const metadata = Reflect.getMetadata(
-          KAFKA_CONSUMER_METADATA,
-          method as object,
-        ) as KafkaConsumerMetadata | undefined
+        const metadata = Reflect.getMetadata(KAFKA_CONSUMER_METADATA, method as object) as
+          | KafkaConsumerMetadata
+          | undefined
         if (!metadata) continue
 
-        const cacheKey = metadata.groupId
-          ? `${metadata.topic}:${metadata.groupId}`
-          : metadata.topic
+        const cacheKey = metadata.groupId ? `${metadata.topic}:${metadata.groupId}` : metadata.topic
 
         let group = this.groups.get(cacheKey)
         if (!group) {
           group = { metadata, callbacks: new Set() }
           this.groups.set(cacheKey, group)
         }
-        group.callbacks.add(
-          (method as ConsumerCallback).bind(instance) as ConsumerCallback,
-        )
+        group.callbacks.add((method as ConsumerCallback).bind(instance) as ConsumerCallback)
       }
     }
 
@@ -116,10 +103,10 @@ export class KafkaConsumerScanner implements OnApplicationBootstrap {
           coalesceAsync(`kafka-start:${cacheKey}`, () =>
             pRetry(
               async () => {
-                const consumer = await this.kafkaService.getConsumer(
-                  group.metadata.topic,
-                  { usePrefix: true, suffix: group.metadata.groupId },
-                )
+                const consumer = await this.kafkaService.getConsumer(group.metadata.topic, {
+                  usePrefix: true,
+                  suffix: group.metadata.groupId,
+                })
                 await consumer.run({
                   eachMessage: async ({ topic, partition, message }) => {
                     const raw = message.value?.toString()

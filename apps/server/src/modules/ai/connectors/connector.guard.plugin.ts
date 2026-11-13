@@ -56,8 +56,7 @@ export class ConnectorGuardPlugin implements ToolPlugin {
     if (Object.keys(secrets).length > 0) {
       const originalSecret = ctx.settings.secret.bind(ctx.settings)
       const originalHint = ctx.settings.secretHint.bind(ctx.settings)
-      ctx.settings.secret = (name: string): string | null =>
-        secrets[name] ?? originalSecret(name)
+      ctx.settings.secret = (name: string): string | null => secrets[name] ?? originalSecret(name)
       ctx.settings.secretHint = (name: string): string | null => {
         const value = secrets[name]
         return value ? hintOf(value) : originalHint(name)

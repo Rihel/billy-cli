@@ -37,9 +37,7 @@ export class KafkaModule {
   }
 
   /** 异步装配：配置由注入的 provider（如 ConfigService）惰性解析 */
-  static forRootAsync(
-    options: InfraModuleAsyncOptions<KafkaModuleOptions>,
-  ): DynamicModule {
+  static forRootAsync(options: InfraModuleAsyncOptions<KafkaModuleOptions>): DynamicModule {
     return {
       module: KafkaModule,
       imports: [DiscoveryModule, ...(options.imports ?? [])],
@@ -56,5 +54,4 @@ export class KafkaModule {
       exports: [KafkaConfig, KAFKA_CONNECTION, KafkaService],
     }
   }
-
 }

@@ -1,12 +1,12 @@
-"use client"
+'use client'
 
-import type { CustomRenderer } from "streamdown"
+import type { CustomRenderer } from 'streamdown'
 
-import { FENCE_LANGUAGES } from "./fence-spec.ts"
-import { GsapFence } from "./gsap-fence.tsx"
-import { HtmlFence } from "./html-fence.tsx"
-import { JsonFence } from "./json-fence.tsx"
-import { XflowFence } from "./xflow-fence.tsx"
+import { FENCE_LANGUAGES } from './fence-spec.ts'
+import { GsapFence } from './gsap-fence.tsx'
+import { HtmlFence } from './html-fence.tsx'
+import { JsonFence } from './json-fence.tsx'
+import { XflowFence } from './xflow-fence.tsx'
 
 /**
  * 富内容围栏的注册表：`language → 组件`，直接交给 Streamdown 的 `plugins.renderers`。
@@ -22,6 +22,6 @@ export const markdownFenceRenderers: CustomRenderer[] = [
 ]
 
 /** 由前端渲染（而不是当普通代码块）的语言标识 */
-export const RENDERED_FENCE_LANGUAGES: readonly string[] = markdownFenceRenderers.flatMap((renderer) =>
-  Array.isArray(renderer.language) ? renderer.language : [renderer.language],
+export const RENDERED_FENCE_LANGUAGES: readonly string[] = markdownFenceRenderers.flatMap(
+  (renderer) => (Array.isArray(renderer.language) ? renderer.language : [renderer.language]),
 )

@@ -1,12 +1,6 @@
 import { Body, Controller, HttpCode, Inject, Post, UseGuards } from '@nestjs/common'
-import {
-  GetStorageDownloadUrlSchema,
-  GetStorageUploadPresignedUrlSchema,
-} from '@repo/shared'
-import type {
-  GetStorageDownloadUrlDto,
-  GetStorageUploadPresignedUrlDto,
-} from '@repo/shared'
+import { GetStorageDownloadUrlSchema, GetStorageUploadPresignedUrlSchema } from '@repo/shared'
+import type { GetStorageDownloadUrlDto, GetStorageUploadPresignedUrlDto } from '@repo/shared'
 import { ObjectStorage } from '@repo/kits'
 import { requestContext } from '../../common/index.js'
 import { AnyAuthGuard } from '../auth/any-auth.guard.js'
@@ -55,9 +49,7 @@ export class StorageController {
 
   @Post('get-download-url')
   @HttpCode(200)
-  getDownloadUrl(
-    @Body({ schema: GetStorageDownloadUrlSchema }) input: GetStorageDownloadUrlDto,
-  ) {
+  getDownloadUrl(@Body({ schema: GetStorageDownloadUrlSchema }) input: GetStorageDownloadUrlDto) {
     assertDownloadKey({ key: input.key, userId: this.identity().userId })
     return this.storage.getDownloadUrl(input)
   }

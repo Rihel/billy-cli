@@ -85,7 +85,10 @@ export const splitPages = (
 
 /** 缓存句柄：`sha1(请求特征)` 前 12 位。同一份请求 → 同一个 ref → 命中缓存，不重复发请求 */
 export const makeRef = (...parts: ReadonlyArray<string | number | null | undefined>): string =>
-  createHash('sha1').update(parts.filter((p) => p !== null && p !== undefined).join('|')).digest('hex').slice(0, 12)
+  createHash('sha1')
+    .update(parts.filter((p) => p !== null && p !== undefined).join('|'))
+    .digest('hex')
+    .slice(0, 12)
 
 /**
  * 进程内 LRU + TTL 缓存。
@@ -121,7 +124,10 @@ export class WebCache {
     this.entries.set(doc.ref, doc)
     let chars = 0
     for (const entry of this.entries.values()) chars += entry.chars
-    while (this.entries.size > this.maxEntries || (chars > this.maxChars && this.entries.size > 1)) {
+    while (
+      this.entries.size > this.maxEntries ||
+      (chars > this.maxChars && this.entries.size > 1)
+    ) {
       const oldest = this.entries.keys().next()
       if (oldest.done) break
       const victim = this.entries.get(oldest.value)
@@ -166,7 +172,9 @@ export const pageOf = (doc: CachedDoc, page: number): PageView => {
     isLast: remaining <= 0,
     content,
     ...(wanted !== current
-      ? { notice: `你请求的是第 ${wanted} 页，但这份内容一共只有 ${doc.pages} 页，已给第 ${current} 页` }
+      ? {
+          notice: `你请求的是第 ${wanted} 页，但这份内容一共只有 ${doc.pages} 页，已给第 ${current} 页`,
+        }
       : {}),
   }
 }

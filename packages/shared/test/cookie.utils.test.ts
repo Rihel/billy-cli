@@ -23,9 +23,8 @@ describe('authCookieOptions', () => {
   })
 
   it('sameSite 可显式覆盖', () => {
-    expect(
-      authCookieOptions({ maxAge: 60, secure: true, sameSite: 'strict' })
-        .sameSite,
-    ).toBe('strict')
+    expect(authCookieOptions({ maxAge: 60, secure: true, sameSite: 'strict' }).sameSite).toBe(
+      'strict',
+    )
   })
 })

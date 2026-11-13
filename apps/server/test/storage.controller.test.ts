@@ -32,7 +32,12 @@ const makeController = () => {
     getTemporaryCredentials,
   } as unknown as ObjectStorage
 
-  return { controller: new StorageController(storage), getPresignedUrl, getDownloadUrl, getTemporaryCredentials }
+  return {
+    controller: new StorageController(storage),
+    getPresignedUrl,
+    getDownloadUrl,
+    getTemporaryCredentials,
+  }
 }
 
 const asUser = <T>(userId: string, fn: () => T): T =>
@@ -57,12 +62,13 @@ describe('StorageController（双身份 + key 命名空间约束）', () => {
   it('前台用户上传：统一入口收到带前缀的 key，且响应 key 已改写（前端据此落库）', async () => {
     const { controller, getPresignedUrl } = makeController()
 
-    const result = await asUser('u-1', () =>
-      controller.getPresignedUrl({ key: '9f8e7d.png' }),
-    )
+    const result = await asUser('u-1', () => controller.getPresignedUrl({ key: '9f8e7d.png' }))
 
     expect(getPresignedUrl).toHaveBeenCalledWith({ key: 'user/u-1/9f8e7d.png' })
-    expect(result).toEqual({ key: 'user/u-1/9f8e7d.png', url: 'https://s3.local/user/u-1/9f8e7d.png' })
+    expect(result).toEqual({
+      key: 'user/u-1/9f8e7d.png',
+      url: 'https://s3.local/user/u-1/9f8e7d.png',
+    })
   })
 
   it('管理员上传：key 原样（历史对象路径不变）', async () => {

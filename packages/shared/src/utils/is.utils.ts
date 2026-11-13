@@ -8,7 +8,7 @@ export function hasContentArray(data: any): data is Array<any> {
   return _.isArray(data) && !_.isEmpty(data)
 }
 
-export function isComplexData(data: any): data is Object | Array<any> {
+export function isComplexData(data: any): data is object {
   return _.isArray(data) || _.isObject(data)
 }
 
@@ -19,10 +19,7 @@ export type CheckItem = RegExp | string
  * @param {string} str 检查的字符串
  * @returns {boolean} 检查结果
  */
-export function checkIs<T extends CheckItem>(
-  checkList: T[] = [],
-  str: string = '',
-): boolean {
+export function checkIs<T extends CheckItem>(checkList: T[] = [], str: string = ''): boolean {
   return checkList.some((item) => {
     if (typeof item === 'string') {
       return item === str

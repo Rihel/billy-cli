@@ -36,7 +36,7 @@ export function TechMarquee() {
           两侧用 CSS mask 渐隐，而不是盖两块「背景色 → 透明」的遮罩：
           遮罩必须知道背后是什么颜色，底色一变就露出色块；mask 直接让文字渐隐，背景永远透出页面本身。
         */}
-<Marquee
+        <Marquee
           speed={45}
           autoFill
           pauseOnHover

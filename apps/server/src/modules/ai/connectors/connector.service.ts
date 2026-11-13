@@ -19,10 +19,7 @@ import type { ConnectorState, ConnectorStateSource } from './connector.state.js'
 import type { ConnectorDriver, ConnectorDriverMap, ConnectorRuntime } from './connector.types.js'
 import { CONNECTOR_CATALOG, catalogEntryOf } from './connector.catalog.js'
 import { ConnectorRepository } from './connector.repository.js'
-import {
-  ConnectorConfigInvalidError,
-  ConnectorNotFoundError,
-} from './connector.errors.js'
+import { ConnectorConfigInvalidError, ConnectorNotFoundError } from './connector.errors.js'
 import type { AiConnectorEntity } from '../../../database/entities/ai-connector-entity.js'
 
 /**
@@ -92,14 +89,19 @@ export class ConnectorService implements ConnectorStateSource {
     const entry = catalogEntryOf(input.catalogKind)
     if (!entry) throw new ConnectorConfigInvalidError(`未知的型号: ${input.catalogKind}`)
     if (entry.driver !== input.driver) {
-      throw new ConnectorConfigInvalidError(`型号 ${entry.kind} 的驱动是 ${entry.driver}，不是 ${input.driver}`)
+      throw new ConnectorConfigInvalidError(
+        `型号 ${entry.kind} 的驱动是 ${entry.driver}，不是 ${input.driver}`,
+      )
     }
     const driver = this.driverOf(entry.driver)
     if (await this.repository.findByKey(input.key)) {
       throw new ConnectorConfigInvalidError(`key 已被占用: ${input.key}`)
     }
     // 型号默认值先合并（dialect / 默认端口这类"用户不用填但决定连谁"的字段）
-    const config = driver.config.parse({ ...(entry.defaults ?? {}), ...input.config }) as Record<string, unknown>
+    const config = driver.config.parse({ ...entry.defaults, ...input.config }) as Record<
+      string,
+      unknown
+    >
     this.assertRequiredSecrets(driver, input.secrets)
 
     const entity = await this.repository.create({
@@ -109,10 +111,14 @@ export class ConnectorService implements ConnectorStateSource {
       driver: entry.driver,
       kind: ConnectorKind._source.Custom.value,
       transport: driver.transport,
-      authBase: driver.auth.base === 'none' ? ConnectorAuthBase._source.None.value : ConnectorAuthBase._source.Secret.value,
-      authSubject: (driver.auth.subject ?? 'none') === 'oauth'
-        ? ConnectorAuthSubject._source.OAuth.value
-        : ConnectorAuthSubject._source.None.value,
+      authBase:
+        driver.auth.base === 'none'
+          ? ConnectorAuthBase._source.None.value
+          : ConnectorAuthBase._source.Secret.value,
+      authSubject:
+        (driver.auth.subject ?? 'none') === 'oauth'
+          ? ConnectorAuthSubject._source.OAuth.value
+          : ConnectorAuthSubject._source.None.value,
       config,
       secrets: input.secrets,
       enabled: input.enabled,
@@ -120,7 +126,11 @@ export class ConnectorService implements ConnectorStateSource {
     })
 
     this.stateCache.delete(entity.id)
-    this.logger.log('ai.connector.created', { id: entity.id, key: entity.key, driver: entity.driver })
+    this.logger.log('ai.connector.created', {
+      id: entity.id,
+      key: entity.key,
+      driver: entity.driver,
+    })
     return this.toModel(entity)
   }
 
@@ -134,13 +144,13 @@ export class ConnectorService implements ConnectorStateSource {
     if (input.config !== undefined) {
       const entry = catalogEntryOf(entity.catalogKind)
       patch.config = driver.config.parse({
-        ...(entry?.defaults ?? {}),
+        ...entry?.defaults,
         ...input.config,
       }) as Record<string, unknown>
     }
     if (input.secrets !== undefined) {
       // 空串 = 清掉该密钥；其余字段按"给了才改"合并
-      const next: Record<string, string> = { ...(entity.secrets ?? {}) }
+      const next: Record<string, string> = { ...entity.secrets }
       for (const [key, value] of Object.entries(input.secrets)) {
         if (value === '') delete next[key]
         else next[key] = value
@@ -155,8 +165,7 @@ export class ConnectorService implements ConnectorStateSource {
     // 下次调用会重新 config init，授权链接也要重新生成。
     const authChanged =
       (input.secrets !== undefined && Object.keys(input.secrets).length > 0) ||
-      (input.config !== undefined &&
-        ('appId' in input.config || 'brand' in input.config))
+      (input.config !== undefined && ('appId' in input.config || 'brand' in input.config))
     if (authChanged && driver.auth.subject !== 'none') {
       await driver.dispose?.(entity.id)
     }

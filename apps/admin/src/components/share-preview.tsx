@@ -36,9 +36,7 @@ export function SharePreview({ token, meta }: { token: string; meta: ShareMetaMo
   const [failed, setFailed] = useState(false)
 
   const needsText =
-    meta.previewKind === 'text' ||
-    meta.previewKind === 'markdown' ||
-    meta.previewKind === 'html'
+    meta.previewKind === 'text' || meta.previewKind === 'markdown' || meta.previewKind === 'html'
 
   useEffect(() => {
     if (!needsText) return
@@ -66,14 +64,14 @@ export function SharePreview({ token, meta }: { token: string; meta: ShareMetaMo
         <div className="flex min-w-0 items-center gap-2">
           <FileIcon className="size-4 shrink-0 text-muted-foreground" />
           <span className="truncate text-sm font-medium">{meta.filename}</span>
-          <span className="shrink-0 text-xs text-muted-foreground">
-            {formatBytes(meta.bytes)}
-          </span>
+          <span className="shrink-0 text-xs text-muted-foreground">{formatBytes(meta.bytes)}</span>
         </div>
         <Button
           variant="outline"
           size="sm"
-          render={<a href={contentUrl} download={meta.filename} />}
+          render={
+            <a href={contentUrl} download={meta.filename} aria-label={`下载 ${meta.filename}`} />
+          }
         >
           <DownloadIcon className="size-3.5" />
           下载
@@ -81,12 +79,7 @@ export function SharePreview({ token, meta }: { token: string; meta: ShareMetaMo
       </header>
 
       <main className="min-h-0 flex-1 overflow-auto">
-        <Body
-          meta={meta}
-          contentUrl={contentUrl}
-          text={text}
-          failed={failed}
-        />
+        <Body meta={meta} contentUrl={contentUrl} text={text} failed={failed} />
       </main>
     </div>
   )
@@ -119,6 +112,8 @@ function Body({
   if (meta.previewKind === 'video') {
     return (
       <div className="flex h-full items-center justify-center bg-black">
+        {/* 分享的是用户任意媒体文件，没有字幕源可挂 <track> */}
+        {/* oxlint-disable-next-line jsx-a11y/media-has-caption */}
         <video src={contentUrl} controls className="max-h-full w-full" />
       </div>
     )
@@ -127,19 +122,15 @@ function Body({
   if (meta.previewKind === 'audio') {
     return (
       <div className="flex h-full items-center justify-center px-6">
+        {/* 分享的是用户任意媒体文件，没有字幕源可挂 <track> */}
+        {/* oxlint-disable-next-line jsx-a11y/media-has-caption */}
         <audio src={contentUrl} controls className="w-full max-w-xl" />
       </div>
     )
   }
 
   if (meta.previewKind === 'pdf') {
-    return (
-      <iframe
-        src={contentUrl}
-        title={meta.filename}
-        className="h-full w-full border-0"
-      />
-    )
+    return <iframe src={contentUrl} title={meta.filename} className="h-full w-full border-0" />
   }
 
   if (meta.previewKind === 'office' && meta.officeKind) {

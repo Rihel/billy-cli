@@ -30,15 +30,10 @@ export const requestContext = {
   getStore(): RequestContextData | undefined {
     return storage.getStore()
   },
-  get<Key extends keyof RequestContextData>(
-    key: Key,
-  ): RequestContextData[Key] | undefined {
+  get<Key extends keyof RequestContextData>(key: Key): RequestContextData[Key] | undefined {
     return storage.getStore()?.[key]
   },
-  set<Key extends keyof RequestContextData>(
-    key: Key,
-    value: RequestContextData[Key],
-  ): void {
+  set<Key extends keyof RequestContextData>(key: Key, value: RequestContextData[Key]): void {
     const store = storage.getStore()
     if (store) store[key] = value
   },

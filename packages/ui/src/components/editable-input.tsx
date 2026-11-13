@@ -1,13 +1,14 @@
-"use client"
+'use client'
 
-import { useState } from "react"
-import type { ReactNode } from "react"
-import { useImmer } from "use-immer"
+/* oxlint-disable jsx-a11y/no-autofocus -- 弹窗打开 / 进入编辑即聚焦首个输入框，键盘用户可直接输入 */
 
-import { cn } from "#lib/utils"
-import { Input } from "#components/ui/input"
-import { IconText } from "#components/icon"
-import { CheckIcon, PencilIcon, XIcon } from "lucide-react"
+import type { ReactNode } from 'react'
+import { useImmer } from 'use-immer'
+
+import { cn } from '#lib/utils'
+import { Input } from '#components/ui/input'
+import { IconText } from '#components/icon'
+import { CheckIcon, PencilIcon, XIcon } from 'lucide-react'
 
 export type EditableInputProps = {
   value?: string | null
@@ -16,7 +17,7 @@ export type EditableInputProps = {
   placeholder?: string
   emptyText?: ReactNode
   className?: string
-  inputProps?: Omit<React.ComponentProps<typeof Input>, "value" | "onChange" | "disabled">
+  inputProps?: Omit<React.ComponentProps<typeof Input>, 'value' | 'onChange' | 'disabled'>
   onChange?: (value: string) => void | Promise<void>
   onError?: (error: unknown) => void
 }
@@ -27,7 +28,7 @@ export function EditableInput({
   children,
   disabled,
   placeholder,
-  emptyText = "-",
+  emptyText = '-',
   className,
   inputProps,
   onChange,
@@ -35,7 +36,7 @@ export function EditableInput({
 }: EditableInputProps) {
   const [state, updateState] = useImmer({
     editing: false,
-    draft: "",
+    draft: '',
     saving: false,
   })
   const { editing, draft, saving } = state
@@ -43,7 +44,7 @@ export function EditableInput({
   const cancel = () => {
     updateState((draftState) => {
       draftState.editing = false
-      draftState.draft = ""
+      draftState.draft = ''
     })
   }
 
@@ -64,11 +65,12 @@ export function EditableInput({
   }
 
   return (
-    <div className={cn("flex items-center gap-2", className)}>
+    <div className={cn('flex items-center gap-2', className)}>
       {editing ? (
+        // 进入编辑态即聚焦输入框，属有意的交互
         <Input
-          {...inputProps}
           autoFocus
+          {...inputProps}
           disabled={saving}
           placeholder={placeholder}
           value={draft}
@@ -79,8 +81,8 @@ export function EditableInput({
           }
           onKeyDown={(event) => {
             inputProps?.onKeyDown?.(event)
-            if (event.key === "Enter") void save()
-            if (event.key === "Escape") cancel()
+            if (event.key === 'Enter') void save()
+            if (event.key === 'Escape') cancel()
           }}
         />
       ) : (
@@ -113,7 +115,7 @@ export function EditableInput({
             icon={<PencilIcon />}
             onClick={() => {
               updateState((draftState) => {
-                draftState.draft = value ?? ""
+                draftState.draft = value ?? ''
                 draftState.editing = true
               })
             }}

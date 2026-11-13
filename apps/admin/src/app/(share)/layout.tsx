@@ -34,10 +34,7 @@ const themeBootScript = createThemeBootScript({ storageKey: ThemeKey })
 
 export default function ShareLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html
-      lang="zh-CN"
-      className={cn(geist.variable, geistMono.variable, spaceGrotesk.variable)}
-    >
+    <html lang="zh-CN" className={cn(geist.variable, geistMono.variable, spaceGrotesk.variable)}>
       <body className="bg-background font-sans antialiased">
         <script dangerouslySetInnerHTML={{ __html: themeBootScript }} />
         {children}

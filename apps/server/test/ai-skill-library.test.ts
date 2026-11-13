@@ -63,7 +63,7 @@ describe('技能文件路径：白名单 + 越界防御', () => {
       'README.md',
       '',
     ]) {
-      expect(() => normalizeSkillFilePath(path)).toThrow()
+      expect(() => normalizeSkillFilePath(path)).toThrow(/技能文件路径/)
     }
   })
 
@@ -73,7 +73,9 @@ describe('技能文件路径：白名单 + 越界防御', () => {
       join(root, 'demo', 'references', 'a.md'),
     )
     // 绕过 normalize 直接传穿越路径也必须被挡住
-    expect(() => resolveSkillFilePath(root, 'demo', 'references/../../../etc/passwd')).toThrow()
+    expect(() => resolveSkillFilePath(root, 'demo', 'references/../../../etc/passwd')).toThrow(
+      /技能文件路径/,
+    )
     expect(skillDirOf(root, 'demo')).toBe(join(root, 'demo'))
   })
 })

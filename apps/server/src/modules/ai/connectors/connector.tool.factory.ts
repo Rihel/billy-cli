@@ -17,9 +17,8 @@ export type ToolCapability = Extract<Capability, { kind: 'tool' }>
 export const inputSchemaToZod = (schema?: Record<string, unknown> | null): z.ZodType => {
   if (!schema || Object.keys(schema).length === 0) return z.record(z.string(), z.unknown())
   try {
-    const fromJsonSchema = (
-      z as unknown as { fromJSONSchema: (raw: unknown) => z.ZodType }
-    ).fromJSONSchema
+    const fromJsonSchema = (z as unknown as { fromJSONSchema: (raw: unknown) => z.ZodType })
+      .fromJSONSchema
     return fromJsonSchema(schema)
   } catch {
     return z.record(z.string(), z.unknown())
@@ -48,7 +47,10 @@ export const toConnectorToolSpec = (
   capability: ToolCapability,
   runtime: ConnectorRuntime,
 ): AnyToolSpec => {
-  const description = `【连接器：${instance.name}】${capability.description}`.slice(0, MAX_DESCRIPTION)
+  const description = `【连接器：${instance.name}】${capability.description}`.slice(
+    0,
+    MAX_DESCRIPTION,
+  )
 
   return {
     key: toolKeyOf(instance.key, capability.name),

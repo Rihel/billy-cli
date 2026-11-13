@@ -22,10 +22,7 @@ export default function MainError({
       title="页面加载失败"
       description="加载数据时遇到问题，请重试或返回首页。"
       action={
-        <Button
-          variant="outline"
-          onClick={() => router.replace(Pages.dashboard)}
-        >
+        <Button variant="outline" onClick={() => router.replace(Pages.dashboard)}>
           <HomeIcon />
           回到首页
         </Button>

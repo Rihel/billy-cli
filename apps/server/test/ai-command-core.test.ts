@@ -1,11 +1,20 @@
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { CommandRunner, WorkspaceConfigSchema, WorkspaceRuntimeService, type CommandResult } from '@repo/kits'
+import {
+  CommandRunner,
+  WorkspaceConfigSchema,
+  WorkspaceRuntimeService,
+  type CommandResult,
+} from '@repo/kits'
 import { describe, expect, it } from 'vitest'
 import { ToolGateway } from '../src/modules/ai/core/tools/tool.gateway.js'
 import { BashTool } from '../src/modules/ai/tools/bash.tool.js'
 import { TOOL_KEYS } from '../src/modules/ai/core/tools/tool-keys.js'
-import type { ToolCallContext, ToolEnvCaps, ToolSpec } from '../src/modules/ai/core/tools/tools.types.js'
+import type {
+  ToolCallContext,
+  ToolEnvCaps,
+  ToolSpec,
+} from '../src/modules/ai/core/tools/tools.types.js'
 import {
   buildToolStackDeps,
   silentLogger,
@@ -55,10 +64,7 @@ const buildStack = (
     silentLogger as never,
     async () => ({ available: false, probedAt: new Date().toISOString() }),
   )
-  const spec = specByKey(
-    new BashTool(runtime, silentLogger as never, caps),
-    TOOL_KEYS.bash,
-  )
+  const spec = specByKey(new BashTool(runtime, silentLogger as never, caps), TOOL_KEYS.bash)
   return { deps, gateway, spec }
 }
 
@@ -125,11 +131,15 @@ describe('bash 的策略（开关 / 目录边界 / 时长上限）', () => {
     const { deps, gateway, spec } = buildStack({
       sourceRows: { [TOOL_KEYS.bash]: { enabled: false } },
     })
-    const outcome = await gateway.invoke(spec, { command: 'echo should-not-run', reason: '验证开关关掉时不会真的执行命令' }, {
-      callId: 'call-1',
-      envelope: null,
-      log: silentLogger as never,
-    })
+    const outcome = await gateway.invoke(
+      spec,
+      { command: 'echo should-not-run', reason: '验证开关关掉时不会真的执行命令' },
+      {
+        callId: 'call-1',
+        envelope: null,
+        log: silentLogger as never,
+      },
+    )
     expect(outcome.ok).toBe(false)
     if (outcome.ok) throw new Error('应当被拒绝')
     expect(outcome.reason).toBe('disabled')
@@ -137,29 +147,37 @@ describe('bash 的策略（开关 / 目录边界 / 时长上限）', () => {
   })
 
   it('开关关掉（能力级 config.enabled）：同样不执行', async () => {
-    const { deps, gateway, spec } = buildStack({
+    const { gateway, spec } = buildStack({
       sourceRows: { [TOOL_KEYS.bash]: { config: { enabled: false } } },
     })
-    const outcome = await gateway.invoke(spec, { command: 'echo should-not-run', reason: '验证开关关掉时不会真的执行命令' }, {
-      callId: 'call-2',
-      envelope: null,
-      log: silentLogger as never,
-    })
+    const outcome = await gateway.invoke(
+      spec,
+      { command: 'echo should-not-run', reason: '验证开关关掉时不会真的执行命令' },
+      {
+        callId: 'call-2',
+        envelope: null,
+        log: silentLogger as never,
+      },
+    )
     expect(outcome.ok).toBe(false)
   })
 
   it('cwd 越界：precheck 拒绝并说明边界（不静默夹回，模型必须知道自己越界了）', async () => {
-    const { deps, gateway, spec } = buildStack({
+    const { gateway, spec } = buildStack({
       caps: {
         ...TEST_TOOL_ENV_CAPS,
         command: { ...TEST_TOOL_ENV_CAPS.command!, workDir: tmpdir() },
       },
     })
-    const outcome = await gateway.invoke(spec, { command: 'echo nope', cwd: '../../', reason: '验证目录越界会被拒绝' }, {
-      callId: 'call-3',
-      envelope: null,
-      log: silentLogger as never,
-    })
+    const outcome = await gateway.invoke(
+      spec,
+      { command: 'echo nope', cwd: '../../', reason: '验证目录越界会被拒绝' },
+      {
+        callId: 'call-3',
+        envelope: null,
+        log: silentLogger as never,
+      },
+    )
     expect(outcome.ok).toBe(false)
     if (outcome.ok) throw new Error('应当被拒绝')
     expect(outcome.reason).toBe('precheck-failed')
@@ -167,17 +185,21 @@ describe('bash 的策略（开关 / 目录边界 / 时长上限）', () => {
   })
 
   it('cwd 在工作根目录之内：正常执行，且出参回显真实工作目录', async () => {
-    const { deps, gateway, spec } = buildStack({
+    const { gateway, spec } = buildStack({
       caps: {
         ...TEST_TOOL_ENV_CAPS,
         command: { ...TEST_TOOL_ENV_CAPS.command!, workDir: tmpdir() },
       },
     })
-    const outcome = await gateway.invoke(spec, { command: 'echo in-workdir', reason: '验证工作目录之内可以正常执行' }, {
-      callId: 'call-4',
-      envelope: testEnvelope,
-      log: silentLogger as never,
-    })
+    const outcome = await gateway.invoke(
+      spec,
+      { command: 'echo in-workdir', reason: '验证工作目录之内可以正常执行' },
+      {
+        callId: 'call-4',
+        envelope: testEnvelope,
+        log: silentLogger as never,
+      },
+    )
     expect(outcome.ok).toBe(true)
     if (!outcome.ok) throw new Error('应当成功')
     const result = outcome.data as CommandResult
@@ -193,7 +215,11 @@ describe('bash 的策略（开关 / 目录边界 / 时长上限）', () => {
     // 模型要 120 秒，配置上限 300ms：必须以 300ms 为准
     const outcome = await gateway.invoke(
       spec,
-      { command: 'node -e "setTimeout(function () {}, 30000)"', timeout_ms: 120_000, reason: '验证超长超时会被夹到配置上限' },
+      {
+        command: 'node -e "setTimeout(function () {}, 30000)"',
+        timeout_ms: 120_000,
+        reason: '验证超长超时会被夹到配置上限',
+      },
       { callId: 'call-5', envelope: null, log: silentLogger as never },
     )
     expect(outcome.ok).toBe(true)

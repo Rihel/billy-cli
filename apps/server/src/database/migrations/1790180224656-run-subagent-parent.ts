@@ -1,4 +1,4 @@
-import type { MigrationInterface, QueryRunner } from "typeorm";
+import type { MigrationInterface, QueryRunner } from 'typeorm'
 
 /**
  * 子 agent（动态创建）所需的父子列与索引调整。
@@ -16,29 +16,29 @@ export class RunSubagentParent1790180224656 implements MigrationInterface {
   name = 'RunSubagentParent1790180224656'
 
   public async up(queryRunner: QueryRunner): Promise<void> {
-    await queryRunner.query(`ALTER TABLE "runs" ADD "parent_run_id" character varying(20)`);
-    await queryRunner.query(`ALTER TABLE "runs" ADD "depth" integer NOT NULL DEFAULT '0'`);
-    await queryRunner.query(`ALTER TABLE "runs" ADD "tool_call_id" character varying(64)`);
+    await queryRunner.query(`ALTER TABLE "runs" ADD "parent_run_id" character varying(20)`)
+    await queryRunner.query(`ALTER TABLE "runs" ADD "depth" integer NOT NULL DEFAULT '0'`)
+    await queryRunner.query(`ALTER TABLE "runs" ADD "tool_call_id" character varying(64)`)
     // 并发保护的判据变了：只有**根运行**才独占会话
-    await queryRunner.query(`DROP INDEX "public"."uk_run_active_conversation"`);
+    await queryRunner.query(`DROP INDEX "public"."uk_run_active_conversation"`)
     await queryRunner.query(
       `CREATE UNIQUE INDEX "uk_run_active_conversation" ON "runs" ("conversation_id") WHERE parent_run_id IS NULL AND status IN ('pending','running')`,
-    );
+    )
     await queryRunner.query(
       `CREATE UNIQUE INDEX "uk_run_tool_call" ON "runs" ("parent_run_id", "tool_call_id") WHERE tool_call_id IS NOT NULL`,
-    );
-    await queryRunner.query(`CREATE INDEX "idx_run_parent" ON "runs" ("parent_run_id")`);
+    )
+    await queryRunner.query(`CREATE INDEX "idx_run_parent" ON "runs" ("parent_run_id")`)
   }
 
   public async down(queryRunner: QueryRunner): Promise<void> {
-    await queryRunner.query(`DROP INDEX "public"."idx_run_parent"`);
-    await queryRunner.query(`DROP INDEX "public"."uk_run_tool_call"`);
-    await queryRunner.query(`DROP INDEX "public"."uk_run_active_conversation"`);
+    await queryRunner.query(`DROP INDEX "public"."idx_run_parent"`)
+    await queryRunner.query(`DROP INDEX "public"."uk_run_tool_call"`)
+    await queryRunner.query(`DROP INDEX "public"."uk_run_active_conversation"`)
     await queryRunner.query(
       `CREATE UNIQUE INDEX "uk_run_active_conversation" ON "runs" ("conversation_id") WHERE status IN ('pending','running')`,
-    );
-    await queryRunner.query(`ALTER TABLE "runs" DROP COLUMN "tool_call_id"`);
-    await queryRunner.query(`ALTER TABLE "runs" DROP COLUMN "depth"`);
-    await queryRunner.query(`ALTER TABLE "runs" DROP COLUMN "parent_run_id"`);
+    )
+    await queryRunner.query(`ALTER TABLE "runs" DROP COLUMN "tool_call_id"`)
+    await queryRunner.query(`ALTER TABLE "runs" DROP COLUMN "depth"`)
+    await queryRunner.query(`ALTER TABLE "runs" DROP COLUMN "parent_run_id"`)
   }
 }

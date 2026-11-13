@@ -23,6 +23,7 @@ import {
   EventBusModule,
   TelemetryModule,
   WorkspaceModule,
+  type DbModuleOptions,
 } from '@repo/kits'
 import {
   AppExceptionFilter,
@@ -111,7 +112,8 @@ import { UserModule } from './modules/user/index.js'
       imports: [ConfigModule],
       inject: [ConfigService],
       useFactory: (config: ConfigService) => ({
-        ...config.get('db'),
+        // 显式给出分片类型，避免 ConfigService.get 的联合返回类型被当成 Promise 展开
+        ...config.get<DbModuleOptions>('db'),
         // 实体是类引用，无法来自环境变量，由组合根注入
         entities: [
           UserEntity,
@@ -216,8 +218,10 @@ import { UserModule } from './modules/user/index.js'
     // 技术错误告警钩子：把 MonitorEngine 适配为 common 层 token（避免 HTTP 边界层反向依赖业务模块）
     {
       provide: ERROR_ALERT_HOOK,
-      useFactory: (engine: MonitorEngine): ErrorAlertHook =>
-        (error, context) => engine.ingestError(error, context),
+      useFactory:
+        (engine: MonitorEngine): ErrorAlertHook =>
+        (error, context) =>
+          engine.ingestError(error, context),
       inject: [MonitorEngine],
     },
     // 全局 Zod 校验：读取路由参数上的 `@Body({ schema })` 元数据（NestJS 12 原生 Standard Schema）

@@ -1,16 +1,16 @@
-"use client"
+'use client'
 
-import type { ReactNode } from "react"
+import type { ReactNode } from 'react'
 
-import { cn } from "#lib/utils"
+import { cn } from '#lib/utils'
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "#components/ui/select"
-import type { DictLike } from "#components/display"
+} from '#components/ui/select'
+import type { DictLike } from '#components/display'
 
 export type DictSelectOption = {
   label: ReactNode
@@ -34,7 +34,7 @@ export type DictSelectProps = {
   allowClear?: boolean
   /** 未选中时的占位文案（默认「请选择」） */
   placeholder?: ReactNode
-  size?: "sm" | "default"
+  size?: 'sm' | 'default'
   /** SelectContent 容器类 */
   className?: string
   /** SelectTrigger 类 */
@@ -42,7 +42,7 @@ export type DictSelectProps = {
   disabled?: boolean
 }
 
-const isAll = (v: unknown) => v === "all"
+const isAll = (v: unknown) => v === 'all'
 
 /**
  * 字典下拉（Select 封装）。
@@ -56,33 +56,29 @@ export function DictSelect({
   value,
   onValueChange,
   allowClear = false,
-  placeholder = "请选择",
+  placeholder = '请选择',
   size,
   className,
   triggerClassName,
   disabled,
 }: DictSelectProps) {
-  const items: DictSelectOption[] =
-    dict?.options ??
-    options ??
-    []
+  const items: DictSelectOption[] = dict?.options ?? options ?? []
 
   const resolveLabel = (selected: unknown): ReactNode => {
-    if (selected == null || selected === "") {
+    if (selected == null || selected === '') {
       return placeholder
     }
     if (isAll(selected)) {
-      return "全部"
+      return '全部'
     }
     if (dict) {
       const label = dict.getLabel(selected)
-      if (label !== undefined && label !== null && label !== "") {
+      if (label !== undefined && label !== null && label !== '') {
         return label
       }
     }
     return (
-      items.find((option) => String(option.value) === String(selected))?.label ??
-      String(selected)
+      items.find((option) => String(option.value) === String(selected))?.label ?? String(selected)
     )
   }
 
@@ -98,15 +94,15 @@ export function DictSelect({
         onValueChange?.(next ?? null)
       }}
     >
-      <SelectTrigger size={size} className={cn("w-fit", triggerClassName)}>
+      <SelectTrigger size={size} className={cn('w-fit', triggerClassName)}>
         <SelectValue>
           {(selected) => (
             <span
               className={cn(
-                "truncate",
-                selected == null || selected === "" || isAll(selected)
-                  ? "text-muted-foreground"
-                  : "text-foreground",
+                'truncate',
+                selected == null || selected === '' || isAll(selected)
+                  ? 'text-muted-foreground'
+                  : 'text-foreground',
               )}
             >
               {resolveLabel(selected)}

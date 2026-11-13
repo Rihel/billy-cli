@@ -18,9 +18,7 @@ import { ToolEventMode } from '../dicts/ai-tool-event.dict'
  */
 
 /** 事件发出方式的取值（字典是唯一事实源） */
-export const ToolEventModeField = z.enum(
-  ToolEventMode.values as unknown as [string, ...string[]],
-)
+export const ToolEventModeField = z.enum(ToolEventMode.values as unknown as [string, ...string[]])
 
 /**
  * 事件声明（DSL → `ai_tools.events` 镜像）。

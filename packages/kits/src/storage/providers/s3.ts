@@ -12,8 +12,6 @@ import {
 import { AssumeRoleCommand, STSClient } from '@aws-sdk/client-sts'
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
 import type {
-  GetStorageDownloadUrlDto,
-  GetStorageUploadPresignedUrlDto,
   GetTemporaryCredentialsDto,
   StoragePresignedUrlModel,
   StorageStsModel,
@@ -54,9 +52,7 @@ export const makeS3Provider = (
       logger.info('S3 object storage initialized')
     },
     async getObject({ key }) {
-      const response = await s3.send(
-        new GetObjectCommand({ Bucket: config.bucket, Key: key }),
-      )
+      const response = await s3.send(new GetObjectCommand({ Bucket: config.bucket, Key: key }))
       return {
         key,
         body: Buffer.from((await response.Body?.transformToByteArray()) ?? []),
@@ -125,9 +121,7 @@ export const makeS3Provider = (
       return result
     },
     async removeObject({ key }) {
-      await s3.send(
-        new DeleteObjectCommand({ Bucket: config.bucket, Key: key }),
-      )
+      await s3.send(new DeleteObjectCommand({ Bucket: config.bucket, Key: key }))
       return { key } satisfies ObjectRemoved
     },
     async listObjects({ prefix, max = 1000 }) {
@@ -160,8 +154,7 @@ const ensurePublicReadBucket = async (s3: S3Client, bucket: string, logger: AppL
   try {
     await s3.send(new HeadBucketCommand({ Bucket: bucket }))
   } catch (cause: unknown) {
-    const status = (cause as { $metadata?: { httpStatusCode?: number } })
-      .$metadata?.httpStatusCode
+    const status = (cause as { $metadata?: { httpStatusCode?: number } }).$metadata?.httpStatusCode
     if (status !== 404) throw cause
     await s3.send(new CreateBucketCommand({ Bucket: bucket }))
   }

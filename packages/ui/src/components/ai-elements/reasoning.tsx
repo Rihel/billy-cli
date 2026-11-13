@@ -1,18 +1,27 @@
-"use client"
+'use client'
 
-import { useControllableState } from "#hooks/use-controllable-state.ts"
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "#components/ui/collapsible.tsx"
-import { cn } from "#lib/utils.ts"
-import { cjk } from "@streamdown/cjk"
-import { code } from "@streamdown/code"
-import { math } from "@streamdown/math"
-import { mermaid } from "@streamdown/mermaid"
-import { BrainIcon, ChevronDownIcon } from "lucide-react"
-import type { ComponentProps, ReactNode } from "react"
-import { createContext, memo, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react"
-import { Streamdown } from "streamdown"
+import { useControllableState } from '#hooks/use-controllable-state.ts'
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '#components/ui/collapsible.tsx'
+import { cn } from '#lib/utils.ts'
+import { cjk } from '@streamdown/cjk'
+import { code } from '@streamdown/code'
+import { math } from '@streamdown/math'
+import { mermaid } from '@streamdown/mermaid'
+import { BrainIcon, ChevronDownIcon } from 'lucide-react'
+import type { ComponentProps, ReactNode } from 'react'
+import {
+  createContext,
+  memo,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
+import { Streamdown } from 'streamdown'
 
-import { Shimmer } from "./shimmer"
+import { Shimmer } from './shimmer'
 
 interface ReasoningContextValue {
   isStreaming: boolean
@@ -26,7 +35,7 @@ const ReasoningContext = createContext<ReasoningContextValue | null>(null)
 export const useReasoning = () => {
   const context = useContext(ReasoningContext)
   if (!context) {
-    throw new Error("Reasoning components must be used within Reasoning")
+    throw new Error('Reasoning components must be used within Reasoning')
   }
   return context
 }
@@ -43,7 +52,16 @@ const AUTO_CLOSE_DELAY = 1000
 const MS_IN_S = 1000
 
 export const Reasoning = memo(
-  ({ className, isStreaming = false, open, defaultOpen, onOpenChange, duration: durationProp, children, ...props }: ReasoningProps) => {
+  ({
+    className,
+    isStreaming = false,
+    open,
+    defaultOpen,
+    onOpenChange,
+    duration: durationProp,
+    children,
+    ...props
+  }: ReasoningProps) => {
     const resolvedDefaultOpen = defaultOpen ?? isStreaming
     // Track if defaultOpen was explicitly set to false (to prevent auto-open)
     const isExplicitlyClosed = defaultOpen === false
@@ -101,11 +119,19 @@ export const Reasoning = memo(
       [setIsOpen],
     )
 
-    const contextValue = useMemo(() => ({ duration, isOpen, isStreaming, setIsOpen }), [duration, isOpen, isStreaming, setIsOpen])
+    const contextValue = useMemo(
+      () => ({ duration, isOpen, isStreaming, setIsOpen }),
+      [duration, isOpen, isStreaming, setIsOpen],
+    )
 
     return (
       <ReasoningContext.Provider value={contextValue}>
-        <Collapsible className={cn("not-prose mb-4", className)} onOpenChange={handleOpenChange} open={isOpen} {...props}>
+        <Collapsible
+          className={cn('not-prose mb-4', className)}
+          onOpenChange={handleOpenChange}
+          open={isOpen}
+          {...props}
+        >
           {children}
         </Collapsible>
       </ReasoningContext.Provider>
@@ -126,27 +152,33 @@ const defaultGetThinkingMessage = (isStreaming: boolean, duration?: number) => {
     // 历史回放 / 只有结果没有过程时本来就没有秒数可算，如实说"思考完成"
     return <p>思考完成</p>
   }
-  return (
-    <p>
-      思考了 {duration} 秒
-    </p>
-  )
+  return <p>思考了 {duration} 秒</p>
 }
 
 export const ReasoningTrigger = memo(
-  ({ className, children, getThinkingMessage = defaultGetThinkingMessage, ...props }: ReasoningTriggerProps) => {
+  ({
+    className,
+    children,
+    getThinkingMessage = defaultGetThinkingMessage,
+    ...props
+  }: ReasoningTriggerProps) => {
     const { isStreaming, isOpen, duration } = useReasoning()
 
     return (
       <CollapsibleTrigger
-        className={cn("flex w-full items-center gap-2 text-muted-foreground text-sm transition-colors hover:text-foreground", className)}
+        className={cn(
+          'flex w-full items-center gap-2 text-muted-foreground text-sm transition-colors hover:text-foreground',
+          className,
+        )}
         {...props}
       >
         {children ?? (
           <>
             <BrainIcon className="size-4" />
             {getThinkingMessage(isStreaming, duration)}
-            <ChevronDownIcon className={cn("size-4 transition-transform", isOpen ? "rotate-180" : "rotate-0")} />
+            <ChevronDownIcon
+              className={cn('size-4 transition-transform', isOpen ? 'rotate-180' : 'rotate-0')}
+            />
           </>
         )}
       </CollapsibleTrigger>
@@ -168,8 +200,8 @@ const streamdownPlugins = { cjk, code, math, mermaid }
 export const ReasoningContent = memo(({ className, children, ...props }: ReasoningContentProps) => (
   <CollapsibleContent
     className={cn(
-      "mt-4 text-sm",
-      "data-[state=closed]:fade-out-0 data-[state=closed]:slide-out-to-top-2 data-[state=open]:slide-in-from-top-2 text-muted-foreground outline-none data-[state=closed]:animate-out data-[state=open]:animate-in",
+      'mt-4 text-sm',
+      'data-[state=closed]:fade-out-0 data-[state=closed]:slide-out-to-top-2 data-[state=open]:slide-in-from-top-2 text-muted-foreground outline-none data-[state=closed]:animate-out data-[state=open]:animate-in',
       className,
     )}
     {...props}
@@ -178,6 +210,6 @@ export const ReasoningContent = memo(({ className, children, ...props }: Reasoni
   </CollapsibleContent>
 ))
 
-Reasoning.displayName = "Reasoning"
-ReasoningTrigger.displayName = "ReasoningTrigger"
-ReasoningContent.displayName = "ReasoningContent"
+Reasoning.displayName = 'Reasoning'
+ReasoningTrigger.displayName = 'ReasoningTrigger'
+ReasoningContent.displayName = 'ReasoningContent'

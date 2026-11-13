@@ -49,7 +49,10 @@ describe('toPlanSnapshot', () => {
   it('兼容旧 write-plan 的 `{ goal, steps }`（steps 当任务，缺状态按待办）', () => {
     const legacy = toPlanSnapshot({
       goal: '旧计划',
-      steps: [{ id: 's1', title: '第一步' }, { id: 's2', title: '第二步', status: 'completed' }],
+      steps: [
+        { id: 's1', title: '第一步' },
+        { id: 's2', title: '第二步', status: 'completed' },
+      ],
     })
     expect(legacy?.plan.goal).toBe('旧计划')
     expect(legacy?.plan.revision).toBe(0)
@@ -121,7 +124,12 @@ describe('collectMessagePlan', () => {
     expect(
       collectMessagePlan([
         part({ type: 'dynamic-tool', toolName: 'plan-create', state: 'input-available' }),
-        part({ type: 'dynamic-tool', toolName: 'list-todos', state: 'output-available', output: { total: 2 } }),
+        part({
+          type: 'dynamic-tool',
+          toolName: 'list-todos',
+          state: 'output-available',
+          output: { total: 2 },
+        }),
       ]),
     ).toBeNull()
   })
@@ -137,14 +145,22 @@ describe('collectMessagePlan', () => {
       part({
         type: 'tool-plan-complete',
         state: 'output-available',
-        output: { goal: '整理待办周报', revision: 5, tasks: [{ id: 't1', title: '取数', status: 'done' }] },
+        output: {
+          goal: '整理待办周报',
+          revision: 5,
+          tasks: [{ id: 't1', title: '取数', status: 'done' }],
+        },
       }),
     ])
 
     expect(messagePlan).not.toBeNull()
     expect(messagePlan?.current.plan.revision).toBe(5)
     expect(messagePlan?.current.plan.tasks).toHaveLength(1)
-    expect(messagePlan?.current.plan.tasks[0]).toMatchObject({ id: 't1', title: '取数', status: 'done' })
+    expect(messagePlan?.current.plan.tasks[0]).toMatchObject({
+      id: 't1',
+      title: '取数',
+      status: 'done',
+    })
     expect(messagePlan?.history).toHaveLength(0)
     expect(messagePlan?.consumed).toEqual([1])
   })
@@ -193,7 +209,9 @@ describe('describeChange', () => {
   })
 
   it('未知 op 兜底展示 op 与可读字段，不吞信息', () => {
-    expect(describeChange({ op: 'reorder', taskId: 't2', index: 1 }, plan)).toBe('reorder（taskId=t2，index=1）')
+    expect(describeChange({ op: 'reorder', taskId: 't2', index: 1 }, plan)).toBe(
+      'reorder（taskId=t2，index=1）',
+    )
   })
 })
 
@@ -211,7 +229,9 @@ describe('PlanPanel', () => {
           ],
         },
         change: { op: 'update-task', taskId: 't2', status: 'in_progress' },
-        history: [{ plan: { goal: '整理待办周报', revision: 1, tasks: [] }, change: { op: 'create' } }],
+        history: [
+          { plan: { goal: '整理待办周报', revision: 1, tasks: [] }, change: { op: 'create' } },
+        ],
       }),
     )
 
@@ -262,7 +282,11 @@ describe('conversationPlanOf（右栏「任务」tab 的数据来源）', () => 
     const conversation = conversationPlanOf([
       message(
         part({ type: 'data-plan', id: 'plan-5', data: snapshot(5, ['done']) }),
-        part({ type: 'tool-plan-reorder', state: 'output-available', output: snapshot(5, ['done']) }),
+        part({
+          type: 'tool-plan-reorder',
+          state: 'output-available',
+          output: snapshot(5, ['done']),
+        }),
       ),
       message(part({ type: 'data-plan', id: 'plan-6', data: snapshot(5, ['done']) })),
     ])

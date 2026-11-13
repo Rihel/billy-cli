@@ -41,7 +41,6 @@ export const TOOL_GROUP_KEY = Symbol.for('billy.tool.group')
 export const TOOL_DECLS_KEY = Symbol.for('billy.tool.decls')
 
 /** zod 定义的宽类型（装饰器只做登记，不在类型层做推导） */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AnySchema = z.ZodType<any>
 
 /**
@@ -60,7 +59,7 @@ export interface ToolGroupMeta {
 }
 
 /** 单个工具的声明：这个方法**是什么工具** */
-export interface ToolDeclMeta<C = unknown, I = unknown, O = unknown> {
+export interface ToolDeclMeta {
   /** 名称：稳定对外标识（取自 `tool-keys.ts`，禁止裸字符串） */
   key: string
   /** 人读标题（提示词列举 + 后台列表） */
@@ -125,7 +124,7 @@ export const ToolGroup =
  * 时钟 / 取消信号。只写业务动作：开关、边界、分页、审计都在网关插件里（设计 §5.4）。
  */
 export const ToolDecl =
-  <C = unknown, I = unknown, O = unknown>(meta: ToolDeclMeta<C, I, O>) =>
+  (meta: ToolDeclMeta) =>
   (target: object, propertyKey: string | symbol): void => {
     const existing = (Reflect.getMetadata(TOOL_DECLS_KEY, target.constructor) ?? {}) as Record<
       string,

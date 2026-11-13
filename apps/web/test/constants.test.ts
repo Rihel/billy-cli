@@ -11,12 +11,8 @@ describe('formatStorageUrl', () => {
   })
 
   it('已是完整 URL 时原样返回（外部图床 / CDN 地址）', () => {
-    expect(formatStorageUrl('https://cdn.example.com/a.png')).toBe(
-      'https://cdn.example.com/a.png',
-    )
-    expect(formatStorageUrl('http://cdn.example.com/a.png')).toBe(
-      'http://cdn.example.com/a.png',
-    )
+    expect(formatStorageUrl('https://cdn.example.com/a.png')).toBe('https://cdn.example.com/a.png')
+    expect(formatStorageUrl('http://cdn.example.com/a.png')).toBe('http://cdn.example.com/a.png')
   })
 
   it('对象存储 key 拼接为完整 URL', () => {

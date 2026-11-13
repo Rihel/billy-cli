@@ -44,7 +44,7 @@ export class AlertRepository {
         lastSnapshot: input.snapshot,
         missCount: 0,
       } as QueryDeepPartialEntity<MonitorAlertEntity>)
-      return (await repo.findOneByOrFail({ id: existing.id }))
+      return await repo.findOneByOrFail({ id: existing.id })
     }
     return repo.save(
       repo.create({
@@ -111,7 +111,6 @@ export class AlertRepository {
   }
 
   async resolveByRule(ruleKey: string, now: Date): Promise<number> {
-    const repo = await this.repo()
     const rows = await this.findOpenByRule(ruleKey)
     for (const row of rows) await this.resolve(row, now)
     return rows.length
@@ -123,7 +122,8 @@ export class AlertRepository {
     if (query.ruleKey) builder.andWhere('a.ruleKey = :ruleKey', { ruleKey: query.ruleKey })
     if (query.level) builder.andWhere('a.level = :level', { level: query.level })
     if (query.status) builder.andWhere('a.status = :status', { status: query.status })
-    if (query.subjectId) builder.andWhere('a.subjectId = :subjectId', { subjectId: query.subjectId })
+    if (query.subjectId)
+      builder.andWhere('a.subjectId = :subjectId', { subjectId: query.subjectId })
     if (query.from) builder.andWhere('a.firstFiredAt >= :from', { from: new Date(query.from) })
     if (query.to) builder.andWhere('a.firstFiredAt <= :to', { to: new Date(query.to) })
     builder.orderBy(`a.${query.orderBy}`, query.order === 'asc' ? 'ASC' : 'DESC')

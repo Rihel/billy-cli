@@ -33,7 +33,9 @@ const specOf = (group: object, key: string): AnyToolSpec => {
 }
 
 const rowOf = async (toolKey: string) =>
-  db.dataSource.query<{ events: unknown }[]>('SELECT events FROM ai_tools WHERE tool_key = $1', [toolKey])
+  db.dataSource.query<{ events: unknown }[]>('SELECT events FROM ai_tools WHERE tool_key = $1', [
+    toolKey,
+  ])
 
 beforeAll(async () => {
   db = new Db(
@@ -76,9 +78,10 @@ describe('事件声明入库镜像（真实库）', () => {
   })
 
   it('代码声明改了：下次同步**全量覆盖**（库里那份是只读镜像，人工改不了）', async () => {
-    await db.dataSource.query(`UPDATE ai_tools SET events = '[{"name":"旧的"}]'::jsonb WHERE tool_key = $1`, [
-      'test-event-decl',
-    ])
+    await db.dataSource.query(
+      `UPDATE ai_tools SET events = '[{"name":"旧的"}]'::jsonb WHERE tool_key = $1`,
+      ['test-event-decl'],
+    )
     await repository.upsertSeed(specOf(new EventDeclTool(), 'test-event-decl'))
     const events = (await rowOf('test-event-decl'))[0].events as Array<Record<string, unknown>>
     expect(events.map((event) => event.name)).toEqual(['progress', 'log-line', 'stage'])

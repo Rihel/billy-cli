@@ -99,14 +99,10 @@ describe('Kafka 启动不被阻塞', () => {
 describe('Kafka broker 不可用时的快失败', () => {
   it('send 有界失败（不会拖到 kafkajs 默认的十几秒），随后进入冷却期立即失败', async () => {
     const config = deadBrokerConfig()
-    const service = new KafkaService(
-      createKafkaConnection(config),
-      config,
-      makeFakeLogger(),
-    )
+    const service = new KafkaService(createKafkaConnection(config), config, makeFakeLogger())
 
     const firstStartedAt = Date.now()
-    await expect(service.send('probe.topic', { hello: 'world' })).rejects.toThrow()
+    await expect(service.send('probe.topic', { hello: 'world' })).rejects.toThrow(/Kafka 不可用/)
     const firstMs = Date.now() - firstStartedAt
     expect(firstMs).toBeLessThan(5_000)
     expect(service.getAvailability().available).toBe(false)

@@ -1,12 +1,12 @@
-"use client"
+'use client'
 
-import { Button } from "#components/ui/button.tsx"
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "#components/ui/dialog.tsx"
-import { cn } from "#lib/utils.ts"
-import { Maximize2Icon, RefreshCwIcon, TriangleAlertIcon } from "lucide-react"
-import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { Button } from '#components/ui/button.tsx'
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '#components/ui/dialog.tsx'
+import { cn } from '#lib/utils.ts'
+import { Maximize2Icon, RefreshCwIcon, TriangleAlertIcon } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
-import { buildSandboxDocument, type SandboxTheme } from "./fence-spec.ts"
+import { buildSandboxDocument, type SandboxTheme } from './fence-spec.ts'
 
 /**
  * 同源脚本的取回缓存。
@@ -130,6 +130,7 @@ export const SandboxFrame = ({
       cancelled = true
     }
     // scriptKey 已经把这些地址拼成稳定依赖，避免每次渲染都重新取
+    // oxlint-disable-next-line react-hooks/exhaustive-deps
   }, [scriptKey, scripts.length])
 
   useEffect(() => {
@@ -230,7 +231,10 @@ export const SandboxFrame = ({
           title={title}
         />
       ) : (
-        <div className="flex w-full items-center justify-center text-muted-foreground text-xs" style={{ height }}>
+        <div
+          className="flex w-full items-center justify-center text-muted-foreground text-xs"
+          style={{ height }}
+        >
           正在准备沙箱…
         </div>
       )}

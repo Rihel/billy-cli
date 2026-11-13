@@ -82,8 +82,7 @@ export interface SearchWebResult {
 }
 
 /** 接口地址：`baseUrl` 只到域名，路径固定拼在后面（与 DeepSeek 文档一致） */
-const searchEndpoint = (baseUrl: string): string =>
-  `${baseUrl.replace(/\/+$/, '')}/v1/tools/search`
+const searchEndpoint = (baseUrl: string): string => `${baseUrl.replace(/\/+$/, '')}/v1/tools/search`
 
 /** 一次搜索：发请求 → 按状态码翻结论 → 解析成稳定形状 */
 export const searchWeb = async (options: SearchWebOptions): Promise<SearchWebResult> => {

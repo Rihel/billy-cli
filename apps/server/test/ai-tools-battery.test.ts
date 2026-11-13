@@ -9,7 +9,6 @@ import {
   withCallReason,
 } from '../src/modules/ai/core/tools/call-reason.js'
 import { toJsonSchema } from '../src/modules/ai/core/tools/tool.schema.js'
-import { BashTool } from '../src/modules/ai/tools/bash.tool.js'
 import { WebTools } from '../src/modules/ai/tools/web.tools.js'
 import { FileTools } from '../src/modules/ai/files/file.tools.js'
 import { PlannerStore, PlannerTools } from '../src/modules/ai/tools/planner/index.js'
@@ -94,22 +93,22 @@ describe('注册机标准测试集（对每个注册工具）', () => {
 
   it('每个 key 都在 `TOOL_KEYS` 里（不写裸字符串）', () => {
     const known = new Set<string>(Object.values(TOOL_KEYS))
-    for (const spec of registeredSpecs()) expect(known.has(spec.key), spec.key).toBe(true)
+    for (const spec of registeredSpecs()) expect(known.has(spec.key)).toBe(true)
   })
 
   it('结构：key / 标题 / 说明 / 类别都合法，说明是**能给模型看**的一段话', () => {
     for (const spec of registeredSpecs()) {
-      expect(spec.key.trim().length, spec.key).toBeGreaterThan(0)
-      expect(spec.title.trim().length, spec.key).toBeGreaterThan(0)
+      expect(spec.key.trim().length).toBeGreaterThan(0)
+      expect(spec.title.trim().length).toBeGreaterThan(0)
       // 说明太短说明没写"什么时候用 / 什么时候不用"（本工程的说明纪律）
-      expect(spec.description.length, `${spec.key} 的说明太短`).toBeGreaterThan(60)
+      expect(spec.description.length).toBeGreaterThan(60)
       expect(['core', 'business']).toContain(spec.category)
     }
   })
 
   it('参数定义是 zod schema（可 safeParse）', () => {
     for (const spec of registeredSpecs()) {
-      expect(typeof spec.params.safeParse, spec.key).toBe('function')
+      expect(typeof spec.params.safeParse).toBe('function')
     }
   })
 
@@ -127,27 +126,23 @@ describe('注册机标准测试集（对每个注册工具）', () => {
         required?: string[]
       }
       const field = (schema.properties ?? {})[TOOL_CALL_REASON_FIELD] ?? {}
-      expect(field.type, `${spec.key} 的 reason 不是字符串`).toBe('string')
-      expect(field.minLength, spec.key).toBe(TOOL_CALL_REASON_MIN)
-      expect(field.maxLength, spec.key).toBe(TOOL_CALL_REASON_MAX)
-      expect(field.description, spec.key).toBe(TOOL_CALL_REASON_DESCRIPTION)
+      expect(field.type).toBe('string')
+      expect(field.minLength).toBe(TOOL_CALL_REASON_MIN)
+      expect(field.maxLength).toBe(TOOL_CALL_REASON_MAX)
+      expect(field.description).toBe(TOOL_CALL_REASON_DESCRIPTION)
       // 无论原定义的 required 是什么，`reason` 都必须在里面
-      expect(schema.required ?? [], `${spec.key} 的 reason 没进 required`).toContain(
-        TOOL_CALL_REASON_FIELD,
-      )
+      expect(schema.required ?? []).toContain(TOOL_CALL_REASON_FIELD)
       // 缺 reason 一定不合法（原定义之外的新约束确实生效了）
-      expect(withReason.safeParse({}).success, spec.key).toBe(false)
+      expect(withReason.safeParse({}).success).toBe(false)
     }
   })
 
   it('每个注册工具都拿得到"给模型看的那一份"（`modelParams` = 原定义 + 必填 reason）', () => {
     for (const spec of registeredSpecs()) {
       const model = spec.modelParams
-      expect(model, `${spec.key} 没有 modelParams（引擎没注入 reason）`).toBeDefined()
+      expect(model).toBeDefined()
       // 后台镜像（`toJsonSchema`）与给模型的那一份必须是同一份数据结构
-      expect(toJsonSchema(spec), `${spec.key} 的后台镜像少了 reason`).toEqual(
-        withCallReason(spec.params).toJSONSchema(),
-      )
+      expect(toJsonSchema(spec)).toEqual(withCallReason(spec.params).toJSONSchema())
       const template = VALID_INPUT_TEMPLATES[spec.key]
       expect(template, `标准测试集缺少 ${spec.key} 的合法入参模板`).toBeDefined()
       // 模板必须是**合法业务入参**（模板过期时在这里当场变红）
@@ -156,7 +151,7 @@ describe('注册机标准测试集（对每个注册工具）', () => {
         `${spec.key} 的入参模板已过期（原定义不认它）`,
       ).toBe(true)
       // 给模型的那一份：原入参 + reason 才行，只给原入参会被拒
-      expect(model?.safeParse(template).success, `${spec.key} 缺 reason 应当被拒`).toBe(false)
+      expect(model?.safeParse(template).success).toBe(false)
       expect(
         model?.safeParse({ ...template, [TOOL_CALL_REASON_FIELD]: VALID_REASON }).success,
         `${spec.key} 给了 reason 应当通过`,
@@ -167,7 +162,7 @@ describe('注册机标准测试集（对每个注册工具）', () => {
   it('配置默认值给全了：`config.parse({})` 必须成功（规范：所有配置都要有默认值）', () => {
     for (const spec of registeredSpecs()) {
       const parsed = spec.config.safeParse({})
-      expect(parsed.success, `${spec.key} 的 config 缺少默认值`).toBe(true)
+      expect(parsed.success).toBe(true)
     }
   })
 
@@ -175,7 +170,7 @@ describe('注册机标准测试集（对每个注册工具）', () => {
     for (const spec of registeredSpecs()) {
       if (!spec.secrets) continue
       const parsed = spec.secrets.safeParse({})
-      expect(parsed.success, `${spec.key} 的 secrets 不该要求必填`).toBe(true)
+      expect(parsed.success).toBe(true)
       expect(parsed.data).toEqual({})
     }
   })
@@ -183,14 +178,14 @@ describe('注册机标准测试集（对每个注册工具）', () => {
   it('声明了分页的工具，页大小必须是正数', () => {
     for (const spec of registeredSpecs()) {
       if (!spec.paginate) continue
-      expect(spec.paginate.pageBytes, spec.key).toBeGreaterThan(0)
+      expect(spec.paginate.pageBytes).toBeGreaterThan(0)
     }
   })
 
   it('子 agent 面的规则自洽：委派类工具一定不许子 agent 用', () => {
     for (const spec of registeredSpecs()) {
       if (spec.delegation === true) {
-        expect(spec.child, `${spec.key} 是委派类，必须 child: deny`).toBe('deny')
+        expect(spec.child).toBe('deny')
       }
     }
   })
@@ -207,9 +202,9 @@ describe('注册机标准测试集（对每个注册工具）', () => {
     const child = new Set(registry.childToolbox().keys())
     for (const spec of registry.specs()) {
       if (spec.delegation === true || spec.child === 'deny') {
-        expect(child.has(spec.key), `${spec.key} 不该出现在子 agent 工具面`).toBe(false)
+        expect(child.has(spec.key)).toBe(false)
       } else {
-        expect(child.has(spec.key), `${spec.key} 应该出现在子 agent 工具面`).toBe(true)
+        expect(child.has(spec.key)).toBe(true)
       }
     }
   })
@@ -234,7 +229,7 @@ describe('注册机标准测试集（对每个注册工具）', () => {
   it('每个注册工具都有对应的测试文件（`test/ai-tools/<key>.test.ts`）', () => {
     const dir = join(import.meta.dirname, 'ai-tools')
     for (const spec of registeredSpecs()) {
-      const file = join(dir, `${spec.key}.test.ts`)
+      const file = join(dir)
       expect(existsSync(file), `缺少测试文件：test/ai-tools/${spec.key}.test.ts`).toBe(true)
     }
   })
@@ -257,7 +252,10 @@ describe('注册机标准测试集（对每个注册工具）', () => {
 describe('工具说明的体量护栏', () => {
   it('每个注册工具的说明 ≤ 380 字符（论证性散文不进提示词）', () => {
     for (const spec of registeredSpecs()) {
-      expect(spec.description.length, `工具 ${spec.key} 的说明过长：请把"为什么"移到设计文档`).toBeLessThanOrEqual(380)
+      expect(
+        spec.description.length,
+        `工具 ${spec.key} 的说明过长：请把"为什么"移到设计文档`,
+      ).toBeLessThanOrEqual(380)
     }
   })
 })

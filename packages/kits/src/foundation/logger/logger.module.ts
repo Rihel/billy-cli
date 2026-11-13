@@ -18,12 +18,7 @@ export type LoggerModuleOptions = z.input<typeof LoggerConfigSchema>
 
 /** 用应用配置建出**唯一**的基础日志统一入口（含 transport，只建一次） */
 const createLoggerInstance = (config: LoggerConfig) =>
-  createLogger(
-    config.prefix,
-    resolvePretty(config),
-    config.level,
-    buildPinoOptions(config),
-  )
+  createLogger(config.prefix, resolvePretty(config), config.level, buildPinoOptions(config))
 
 /**
  * 日志模块（自建，不依赖 nestjs-pino）：
@@ -57,9 +52,7 @@ export class LoggerModule {
   }
 
   /** 异步装配：配置由注入的 provider（如 ConfigService）惰性解析 */
-  static forRootAsync(
-    options: InfraModuleAsyncOptions<LoggerModuleOptions>,
-  ): DynamicModule {
+  static forRootAsync(options: InfraModuleAsyncOptions<LoggerModuleOptions>): DynamicModule {
     return {
       module: LoggerModule,
       imports: options.imports ?? [],

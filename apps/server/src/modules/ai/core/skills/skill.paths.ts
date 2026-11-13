@@ -25,7 +25,9 @@ export const isValidSkillKey = (key: string): boolean => SKILL_KEY_PATTERN.test(
 export const normalizeSkillKey = (key: string): string => {
   const trimmed = key.trim()
   if (!isValidSkillKey(trimmed)) {
-    throw new Error(`技能名不合法：${JSON.stringify(key)}（只能用 a-z / 0-9 / -，≤64，且以字母或数字开头）`)
+    throw new Error(
+      `技能名不合法：${JSON.stringify(key)}（只能用 a-z / 0-9 / -，≤64，且以字母或数字开头）`,
+    )
   }
   return trimmed
 }
@@ -65,7 +67,11 @@ export const skillDirOf = (root: string, skillKey: string): string =>
  * 归一化在入参层已经做过一遍；这里再算一次是因为落盘是"最后一道门"——
  * 即便将来有人绕过 schema 直接调 service，也不会把文件写到目录之外。
  */
-export const resolveSkillFilePath = (root: string, skillKey: string, relativePath: string): string => {
+export const resolveSkillFilePath = (
+  root: string,
+  skillKey: string,
+  relativePath: string,
+): string => {
   const dir = skillDirOf(root, skillKey)
   const target = resolve(dir, ...normalizeSkillFilePath(relativePath).split('/'))
   const prefix = dir.endsWith(sep) ? dir : dir + sep

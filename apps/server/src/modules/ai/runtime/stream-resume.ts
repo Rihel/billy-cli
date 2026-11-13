@@ -33,7 +33,11 @@ const OPENER_OF: Record<string, string> = {
 }
 
 const idOf = (chunk: ResumeChunk | undefined): string =>
-  typeof chunk?.id === 'string' ? chunk.id : typeof chunk?.toolCallId === 'string' ? chunk.toolCallId : ''
+  typeof chunk?.id === 'string'
+    ? chunk.id
+    : typeof chunk?.toolCallId === 'string'
+      ? chunk.toolCallId
+      : ''
 
 /**
  * 从 `offset` 开始，返回一段可以安全补发的片段。
@@ -108,7 +112,11 @@ function ensureStarts(chunks: ResumeChunk[]): ResumeChunk[] {
   for (const chunk of chunks) {
     const id = idOf(chunk)
     const name = typeof chunk.toolName === 'string' ? chunk.toolName : undefined
-    if (id && name && (chunk.type === 'tool-input-start' || chunk.type === 'tool-input-available')) {
+    if (
+      id &&
+      name &&
+      (chunk.type === 'tool-input-start' || chunk.type === 'tool-input-available')
+    ) {
       toolNames.set(id, name)
     }
   }

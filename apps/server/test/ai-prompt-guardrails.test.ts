@@ -1,7 +1,5 @@
 import { SANDBOX_CDN_HOSTS } from '@repo/shared'
 import { describe, expect, it } from 'vitest'
-import { TOOL_KEYS } from '../src/modules/ai/core/tools/tool-keys.js'
-import { makeBashTool, specByKey } from './helpers/ai-tool-stack.js'
 import { createPromptEngine } from '../src/modules/ai/core/prompts/index.js'
 import { DEFAULT_AGENT_KEY, createAgentDefinitions } from '../src/modules/ai/agents/index.js'
 
@@ -20,22 +18,6 @@ const assistantPrompt = (): string => {
   const assistant = definitions.find((definition) => definition.key === DEFAULT_AGENT_KEY)
   if (!assistant) throw new Error('没有找到默认 agent 的定义')
   return assistant.instructions
-}
-
-/**
- * 工具自己的说明（= 系统提示词「工具」段渲染的那份，也是模型选工具时看到的定义）。
- *
- * ⚠️ 纪律句的位置：**工具专属的纪律写在工具的 `description` 里**（一个工具只写一处），
- * 所以这里直接查那份说明 —— 不再从提示词模板里找（模板里已经不重复写了）。
- */
-const bashDescription = (): string => {
-  // 改造后工具组交的是**声明**（装饰器元数据 → `buildToolSpecs()`），说明文本就在声明上
-  const group = makeBashTool({
-    info: () => undefined,
-    warn: () => undefined,
-    error: () => undefined,
-  })
-  return specByKey(group, TOOL_KEYS.bash).description
 }
 
 describe('提示词纪律句（执行命令 / 能力边界 / 宽泛任务）', () => {
@@ -65,7 +47,6 @@ describe('提示词纪律句（执行命令 / 能力边界 / 宽泛任务）', (
     // 2026-11-10 措辞调整：原文"不要原样重试" → "同一次调用原样重试没有意义"（语义不变）
     expect(prompt).toContain('同一次调用原样重试没有意义')
   })
-
 
   it('尽量用工具把事办成：一种方法不行就换第二种', () => {
     expect(prompt).toContain('尽量用工具把事办成')

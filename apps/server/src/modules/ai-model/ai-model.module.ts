@@ -6,7 +6,6 @@ import { AdminModule } from '../admin/admin.module.js'
 import { AiModelController } from './ai-model.controller.js'
 import { AiModelRepository, AiProviderRepository } from './ai-model.repository.js'
 import { AI_MODEL_CONFIG, AiModelService, type AiModelConfig } from './ai-model.service.js'
-import { hintOf } from './secret-hint.js'
 
 /** 环境变量种子初始化时创建的供应商展示名（固定值，便于人辨认"这是自动建的"） */
 const SEED_PROVIDER_NAME = '环境变量默认'
@@ -148,7 +147,6 @@ export class AiModelSeedService implements OnApplicationBootstrap {
       provide: AI_MODEL_CONFIG,
       inject: [ConfigService],
       useFactory: (config: ConfigService): AiModelConfig => ({
-
         seedFromEnv: config.get<boolean>('aiModel.seedFromEnv') ?? true,
       }),
     },

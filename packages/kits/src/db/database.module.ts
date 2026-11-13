@@ -22,11 +22,7 @@ export class DbModule {
   static forRoot(options: DbModuleOptions): DynamicModule {
     return {
       module: DbModule,
-      providers: [
-        { provide: DbConfig, useValue: DbConfigSchema.parse(options) },
-        Db,
-        DbService,
-      ],
+      providers: [{ provide: DbConfig, useValue: DbConfigSchema.parse(options) }, Db, DbService],
       exports: [DbConfig, Db, DbService],
     }
   }
@@ -35,9 +31,7 @@ export class DbModule {
    * 异步装配：配置由注入的 provider（如 ConfigService）惰性解析 ——
    * 避免在模块装饰器求值时读取尚未加载的配置。
    */
-  static forRootAsync(
-    options: InfraModuleAsyncOptions<DbModuleOptions>,
-  ): DynamicModule {
+  static forRootAsync(options: InfraModuleAsyncOptions<DbModuleOptions>): DynamicModule {
     return {
       module: DbModule,
       imports: options.imports ?? [],
@@ -46,9 +40,7 @@ export class DbModule {
         Db,
         DbService,
       ],
-      exports: [DbConfig,
-        Db,
-        DbService,],
+      exports: [DbConfig, Db, DbService],
     }
   }
 }

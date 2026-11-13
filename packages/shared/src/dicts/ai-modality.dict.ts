@@ -87,7 +87,10 @@ export const normalizeModalities = (value: unknown): AiModalityValue[] | null =>
   if (!Array.isArray(value)) return null
   const hit = new Set<string>()
   for (const item of value) {
-    if (typeof item === 'string' && (AI_MODALITIES as readonly string[]).includes(item.toLowerCase())) {
+    if (
+      typeof item === 'string' &&
+      (AI_MODALITIES as readonly string[]).includes(item.toLowerCase())
+    ) {
       hit.add(item.toLowerCase())
     }
   }
@@ -104,7 +107,9 @@ export const normalizeModalities = (value: unknown): AiModalityValue[] | null =>
 export const normalizeModelMode = (value: unknown): AiModelModeValue => {
   if (typeof value !== 'string') return 'unknown'
   const lower = value.trim().toLowerCase()
-  return (AI_MODEL_MODES as readonly string[]).includes(lower) ? (lower as AiModelModeValue) : 'unknown'
+  return (AI_MODEL_MODES as readonly string[]).includes(lower)
+    ? (lower as AiModelModeValue)
+    : 'unknown'
 }
 
 /**

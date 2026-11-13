@@ -31,9 +31,7 @@ export class AppConfigModule {
           load: [() => AppConfigFacade.getConfig()],
         }),
       ],
-      providers: [
-        { provide: AppConfig, useFactory: () => AppConfigFacade.getConfig() },
-      ],
+      providers: [{ provide: AppConfig, useFactory: () => AppConfigFacade.getConfig() }],
       // ConfigService 由全局 ConfigModule 提供（isGlobal: true），无需在此导出
       exports: [AppConfig],
     }

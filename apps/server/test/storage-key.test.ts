@@ -1,9 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { AppErrorCodes } from '@repo/shared'
-import {
-  StorageKeyForbiddenError,
-  StorageKeyInvalidError,
-} from '../src/modules/storage/errors.js'
+import { StorageKeyForbiddenError, StorageKeyInvalidError } from '../src/modules/storage/errors.js'
 import { assertDownloadKey, resolveUploadKey } from '../src/modules/storage/storage-key.js'
 
 const catchCode = (fn: () => unknown): number => {
@@ -26,9 +23,7 @@ describe('resolveUploadKey（上传 key 策略）', () => {
   })
 
   it('前台用户：目录穿越被压平成最后一段', () => {
-    expect(resolveUploadKey({ key: '../../etc/passwd', userId: 'u-1' })).toBe(
-      'user/u-1/passwd',
-    )
+    expect(resolveUploadKey({ key: '../../etc/passwd', userId: 'u-1' })).toBe('user/u-1/passwd')
   })
 
   it('前台用户：伪造他人前缀无效（压平后落到自己名下）', () => {
@@ -48,9 +43,7 @@ describe('resolveUploadKey（上传 key 策略）', () => {
 
   it('空 key / 过滤后为空 → 3201', () => {
     expect(catchCode(() => resolveUploadKey({ key: '' }))).toBe(AppErrorCodes.StorageKeyInvalid)
-    expect(catchCode(() => resolveUploadKey({ key: '   ' }))).toBe(
-      AppErrorCodes.StorageKeyInvalid,
-    )
+    expect(catchCode(() => resolveUploadKey({ key: '   ' }))).toBe(AppErrorCodes.StorageKeyInvalid)
     expect(catchCode(() => resolveUploadKey({ key: 'a/', userId: 'u-1' }))).toBe(
       AppErrorCodes.StorageKeyInvalid,
     )

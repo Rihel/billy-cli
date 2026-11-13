@@ -14,8 +14,7 @@ vi.mock('nodemailer', () => ({
 
 const createTransportMock = vi.mocked(nodemailer.createTransport)
 
-const createClient = (config: NotifyConfig): EmailClient =>
-  new EmailClient(config, testLogger())
+const createClient = (config: NotifyConfig): EmailClient => new EmailClient(config, testLogger())
 
 describe('EmailClient（nodemailer SMTP）', () => {
   afterEach(() => {
@@ -33,7 +32,14 @@ describe('EmailClient（nodemailer SMTP）', () => {
 
   it('配置 email 段：创建 transport（含 auth），sendMail 携带 from/to/subject/text', async () => {
     const client = createClient({
-      email: { host: 'smtp.corp.com', port: 465, secure: true, user: 'u', pass: 'p', from: 'noreply@corp.com' },
+      email: {
+        host: 'smtp.corp.com',
+        port: 465,
+        secure: true,
+        user: 'u',
+        pass: 'p',
+        from: 'noreply@corp.com',
+      },
     })
     expect(client.configured).toBe(true)
 
@@ -45,7 +51,12 @@ describe('EmailClient（nodemailer SMTP）', () => {
 
     expect(result).toEqual({ ok: true })
     expect(createTransportMock).toHaveBeenCalledWith(
-      expect.objectContaining({ host: 'smtp.corp.com', port: 465, secure: true, auth: { user: 'u', pass: 'p' } }),
+      expect.objectContaining({
+        host: 'smtp.corp.com',
+        port: 465,
+        secure: true,
+        auth: { user: 'u', pass: 'p' },
+      }),
     )
     const sendMail = createTransportMock.mock.results[0].value.sendMail as ReturnType<typeof vi.fn>
     expect(sendMail).toHaveBeenCalledWith({
@@ -68,14 +79,18 @@ describe('EmailClient（nodemailer SMTP）', () => {
       throw new Error('SMTP 530 auth failed')
     })
     createTransportMock.mockReturnValueOnce({ sendMail } as never)
-    const client = createClient({ email: { host: 'smtp.corp.com', port: 465, secure: true, from: 'a@b.com' } })
+    const client = createClient({
+      email: { host: 'smtp.corp.com', port: 465, secure: true, from: 'a@b.com' },
+    })
 
     const result = await client.send({ to: 'b@c.com', subject: 's', text: 't' })
     expect(result).toEqual({ ok: false, error: 'SMTP 530 auth failed' })
   })
 
   it('payload 非邮件形状（content）：返回不支持', async () => {
-    const client = createClient({ email: { host: 'smtp.corp.com', port: 465, secure: true, from: 'a@b.com' } })
+    const client = createClient({
+      email: { host: 'smtp.corp.com', port: 465, secure: true, from: 'a@b.com' },
+    })
     const result = await client.send({ content: 'hi' })
     expect(result.ok).toBe(false)
     expect(result.error).toContain('仅支持 to / subject / text')

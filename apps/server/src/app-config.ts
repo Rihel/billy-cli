@@ -179,7 +179,11 @@ export const serverAppConfigSchema = z.object({
     /** 心跳超时（ms）：超过就认为这一轮已经没人管了（崩溃或卡死） */
     heartbeatTimeoutMs: z.coerce.number().int().positive().default(60_000),
     /** 单轮总时长上限（ms）：超过即判超时（防"进程活着但模型 hang 住"永远挂着） */
-    runTimeoutMs: z.coerce.number().int().positive().default(10 * 60_000),
+    runTimeoutMs: z.coerce
+      .number()
+      .int()
+      .positive()
+      .default(10 * 60_000),
     /**
      * 首 token 超时（ms）：从发起模型调用到**第一段输出**之间没有任何动静就判失败。
      *
@@ -213,7 +217,11 @@ export const serverAppConfigSchema = z.object({
     /** 单条命令的时长默认值与硬上限（ms） */
     commandTimeoutMs: z.coerce.number().int().positive().default(15_000),
     /** 单条流的输出上限（字节）；超出即截断并终止命令 */
-    commandMaxOutputBytes: z.coerce.number().int().positive().default(64 * 1024),
+    commandMaxOutputBytes: z.coerce
+      .number()
+      .int()
+      .positive()
+      .default(64 * 1024),
     /** 命令的工作根目录（缺省 = 服务进程工作目录）；agent 只能在这个目录之内指定 cwd */
     commandWorkDir: z.string().optional(),
     // ── 文件管理（工具组 `FileTools`，设计 docs/design/ai-file-manager.md）──
@@ -248,7 +256,11 @@ export const serverAppConfigSchema = z.object({
     /** 单次请求的总时长默认值与硬上限（ms）：整条重定向链共用这一个预算 */
     webTimeoutMs: z.coerce.number().int().positive().default(20_000),
     /** 单次请求最多读多少字节（超出即截断，工具出参里给 `truncated`） */
-    webMaxBytes: z.coerce.number().int().positive().default(2 * 1024 * 1024),
+    webMaxBytes: z.coerce
+      .number()
+      .int()
+      .positive()
+      .default(2 * 1024 * 1024),
     /**
      * 是否允许访问内网 / 回环地址（**默认关**）。
      *
@@ -262,7 +274,11 @@ export const serverAppConfigSchema = z.object({
      *
      * 工具的分页阈值可以在后台按工具改，但改不出这个上限 —— DB 被改坏也突破不了部署边界。
      */
-    toolPageBytesMax: z.coerce.number().int().positive().default(8 * 1024),
+    toolPageBytesMax: z.coerce
+      .number()
+      .int()
+      .positive()
+      .default(8 * 1024),
     /** 每轮取页次数**硬上限**（防模型反复取页烧 token） */
     toolMaxPagesPerTurnMax: z.coerce.number().int().positive().default(5),
   }),
@@ -282,8 +298,7 @@ export const serverAppConfigSchema = z.object({
 export type ServerAppConfig = z.infer<typeof serverAppConfigSchema>
 
 /** 空串视为未配置（env 常见写法 `KEY=`） */
-const optional = (value: string | undefined): string | undefined =>
-  value ? value : undefined
+const optional = (value: string | undefined): string | undefined => (value ? value : undefined)
 
 const optionalNumber = (value: string | undefined): number | undefined => {
   if (!value) return undefined
@@ -295,9 +310,7 @@ const parseBoolean = (value: string | undefined): boolean | undefined =>
   value === undefined ? undefined : value === 'true'
 
 /** 解析 `key=number,key=number`（用于按模型覆盖上下文窗口） */
-const parseKeyValueNumbers = (
-  value: string | undefined,
-): Record<string, number> | undefined => {
+const parseKeyValueNumbers = (value: string | undefined): Record<string, number> | undefined => {
   if (!value) return undefined
   const result: Record<string, number> = {}
   for (const pair of value.split(',')) {
@@ -321,13 +334,10 @@ const parseList = (value: string | undefined): string[] | undefined =>
 /**
  * 环境变量 → 嵌套配置。未设置的键留 `undefined`，由 schema 默认值兜底。
  */
-export const mapServerEnv = (
-  env: NodeJS.ProcessEnv,
-): Record<string, unknown> => ({
+export const mapServerEnv = (env: NodeJS.ProcessEnv): Record<string, unknown> => ({
   server: {
     port: optional(env.PORT),
-    authEnabled:
-      env.AUTH_ENABLED === undefined ? undefined : env.AUTH_ENABLED !== 'false',
+    authEnabled: env.AUTH_ENABLED === undefined ? undefined : env.AUTH_ENABLED !== 'false',
     resetPasswordTokenTtlMinutes: optional(env.RESET_PASSWORD_TOKEN_TTL_MINUTES),
     rateLimitWhitelist: parseList(env.RATE_LIMIT_WHITELIST),
     rateLimitTrustProxy: parseBoolean(env.RATE_LIMIT_TRUST_PROXY),
@@ -362,8 +372,7 @@ export const mapServerEnv = (
   logger: {
     prefix: 'server',
     level: optional(env.LOG_LEVEL),
-    pretty:
-      env.NODE_ENV === undefined ? undefined : env.NODE_ENV !== 'production',
+    pretty: env.NODE_ENV === undefined ? undefined : env.NODE_ENV !== 'production',
     loki: env.LOKI_HOST
       ? { host: env.LOKI_HOST, labels: { env: env.NODE_ENV ?? 'local' } }
       : undefined,
@@ -389,9 +398,7 @@ export const mapServerEnv = (
           host: env.ALERT_SMTP_HOST,
           port: optional(env.ALERT_SMTP_PORT),
           secure:
-            env.ALERT_SMTP_SECURE === undefined
-              ? undefined
-              : env.ALERT_SMTP_SECURE !== 'false',
+            env.ALERT_SMTP_SECURE === undefined ? undefined : env.ALERT_SMTP_SECURE !== 'false',
           user: optional(env.ALERT_SMTP_USER),
           pass: optional(env.ALERT_SMTP_PASS),
           from: env.ALERT_SMTP_FROM ?? '',

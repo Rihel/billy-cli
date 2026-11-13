@@ -7,7 +7,10 @@ import {
   parseXflowSpec,
   SANDBOX_CSP,
 } from '../src/components/ai-elements/markdown-fences/fence-spec.ts'
-import { layoutXflow, XFLOW_NODE_SIZE } from '../src/components/ai-elements/markdown-fences/xflow-layout.ts'
+import {
+  layoutXflow,
+  XFLOW_NODE_SIZE,
+} from '../src/components/ai-elements/markdown-fences/xflow-layout.ts'
 import { RENDERED_FENCE_LANGUAGES } from '../src/components/ai-elements/markdown-fences/renderers.tsx'
 
 /**
@@ -61,7 +64,13 @@ describe('parseXflowSpec', () => {
     expect(missing.ok).toBe(false)
 
     const duplicated = parseXflowSpec(
-      JSON.stringify({ nodes: [{ id: 'a', label: 'A' }, { id: 'a', label: 'B' }], edges: [] }),
+      JSON.stringify({
+        nodes: [
+          { id: 'a', label: 'A' },
+          { id: 'a', label: 'B' },
+        ],
+        edges: [],
+      }),
     )
     expect(duplicated.ok).toBe(false)
     if (!duplicated.ok) expect(duplicated.error).toContain('重复')
@@ -74,7 +83,10 @@ describe('parseXflowSpec', () => {
   })
 
   it('节点超过上限时拒绝，避免画出看不出结构的图', () => {
-    const nodes = Array.from({ length: 61 }, (_, index) => ({ id: `n${index}`, label: `N${index}` }))
+    const nodes = Array.from({ length: 61 }, (_, index) => ({
+      id: `n${index}`,
+      label: `N${index}`,
+    }))
     const result = parseXflowSpec(JSON.stringify({ nodes, edges: [] }))
     expect(result.ok).toBe(false)
     if (!result.ok) expect(result.error).toContain('上限')
@@ -226,7 +238,12 @@ describe('buildSandboxDocument', () => {
 describe('围栏注册表', () => {
   it('四类新围栏都注册了，语言标识与常量一致', () => {
     expect(new Set(RENDERED_FENCE_LANGUAGES)).toEqual(
-      new Set([FENCE_LANGUAGES.xflow, FENCE_LANGUAGES.html, FENCE_LANGUAGES.gsap, FENCE_LANGUAGES.json]),
+      new Set([
+        FENCE_LANGUAGES.xflow,
+        FENCE_LANGUAGES.html,
+        FENCE_LANGUAGES.gsap,
+        FENCE_LANGUAGES.json,
+      ]),
     )
   })
 })

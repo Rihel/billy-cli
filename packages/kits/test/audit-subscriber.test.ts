@@ -1,9 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest'
-import {
-  AuditSubscriber,
-  getAuditUser,
-  setAuditUserProvider,
-} from '../src/db/audit-subscriber.js'
+import { AuditSubscriber, getAuditUser, setAuditUserProvider } from '../src/db/audit-subscriber.js'
 import type { AuditEntity } from '../src/db/audit-entity.js'
 
 const makeEntity = (): AuditEntity =>

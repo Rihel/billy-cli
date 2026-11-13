@@ -1,4 +1,4 @@
-"use client"
+'use client'
 
 import {
   DndContext,
@@ -7,34 +7,24 @@ import {
   closestCenter,
   useSensor,
   useSensors,
-} from "@dnd-kit/core"
-import type { DragEndEvent } from "@dnd-kit/core"
+} from '@dnd-kit/core'
+import type { DragEndEvent } from '@dnd-kit/core'
 import {
   SortableContext,
   arrayMove,
   sortableKeyboardCoordinates,
   useSortable,
   verticalListSortingStrategy,
-} from "@dnd-kit/sortable"
-import { CSS } from "@dnd-kit/utilities"
-import { formatFileSize } from "@repo/shared/browser"
+} from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
+import { formatFileSize } from '@repo/shared/browser'
 
-import { cn } from "#lib/utils"
-import { Button } from "#components/ui/button"
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "#components/ui/tooltip"
-import {
-  DownloadIcon,
-  EyeIcon,
-  FileIcon,
-  GripVerticalIcon,
-  Trash2Icon,
-} from "lucide-react"
-import type { StorageFileValue } from "#components/file-preview"
-import { useStorageAdapter } from "#components/storage-provider"
+import { cn } from '#lib/utils'
+import { Button } from '#components/ui/button'
+import { Tooltip, TooltipContent, TooltipTrigger } from '#components/ui/tooltip'
+import { DownloadIcon, EyeIcon, FileIcon, GripVerticalIcon, Trash2Icon } from 'lucide-react'
+import type { StorageFileValue } from '#components/file-preview'
+import { useStorageAdapter } from '#components/storage-provider'
 
 export type SortableFileListProps = {
   files: StorageFileValue[]
@@ -76,8 +66,8 @@ const SortableFileItem = ({
     <div
       ref={setNodeRef}
       className={cn(
-        "flex min-h-14 items-center gap-3 rounded-md px-3 py-2 even:bg-surface-1",
-        isDragging && "relative z-10 bg-popover shadow-md",
+        'flex min-h-14 items-center gap-3 rounded-md px-3 py-2 even:bg-surface-1',
+        isDragging && 'relative z-10 bg-popover shadow-md',
       )}
       style={{
         transform: CSS.Transform.toString(transform),
@@ -90,8 +80,8 @@ const SortableFileItem = ({
           ref={setActivatorNodeRef}
           type="button"
           className={cn(
-            "flex size-7 shrink-0 cursor-grab items-center justify-center border-0 bg-transparent text-muted-foreground",
-            disabled && "cursor-not-allowed opacity-40",
+            'flex size-7 shrink-0 cursor-grab items-center justify-center border-0 bg-transparent text-muted-foreground',
+            disabled && 'cursor-not-allowed opacity-40',
           )}
           disabled={disabled}
           aria-label={`拖动排序 ${file.name}`}
@@ -109,9 +99,7 @@ const SortableFileItem = ({
           {file.name}
         </div>
         {file.size !== undefined ? (
-          <div className="mt-0.5 text-xs text-muted-foreground">
-            {formatFileSize(file.size)}
-          </div>
+          <div className="mt-0.5 text-xs text-muted-foreground">{formatFileSize(file.size)}</div>
         ) : null}
       </div>
 
@@ -147,6 +135,7 @@ const SortableFileItem = ({
                     href={resolveUrl(file.key)}
                     target="_blank"
                     download={file.name}
+                    aria-label={`下载 ${file.name}`}
                   />
                 }
               />
@@ -206,16 +195,9 @@ export function SortableFileList({
   }
 
   return (
-    <DndContext
-      sensors={sensors}
-      collisionDetection={closestCenter}
-      onDragEnd={handleDragEnd}
-    >
-      <SortableContext
-        items={files.map((file) => file.key)}
-        strategy={verticalListSortingStrategy}
-      >
-        <div className={cn("rounded-lg bg-surface-1", className)}>
+    <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+      <SortableContext items={files.map((file) => file.key)} strategy={verticalListSortingStrategy}>
+        <div className={cn('rounded-lg bg-surface-1', className)}>
           {files.map((file) => (
             <SortableFileItem
               key={file.key}

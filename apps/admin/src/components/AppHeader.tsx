@@ -17,8 +17,7 @@ const EXTRA_TITLES: Record<string, string> = {
  * 详情页（`/main/xxx/<id>` / `/main/tools/<id>/edit`）没有独立标题，按路径逐段回退到最近父级，
  * 免得页头空着、让人不知道自己在哪一层。
  */
-const titleOf = (pathname: string): string =>
-  EXTRA_TITLES[pathname] ?? menuTitleOf(pathname)
+const titleOf = (pathname: string): string => EXTRA_TITLES[pathname] ?? menuTitleOf(pathname)
 
 export type AppHeaderProps = Partial<{} & ComponentProps<'div'>>
 

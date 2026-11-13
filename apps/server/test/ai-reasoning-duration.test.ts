@@ -16,11 +16,7 @@ const collect = () => {
       return data
     },
   } as unknown as TimelineRepository
-  const recorder = new StreamRecorder(
-    timelines,
-    { conversationId: 'c1', runId: 'r1' } as never,
-    {},
-  )
+  const recorder = new StreamRecorder(timelines, { conversationId: 'c1', runId: 'r1' } as never, {})
   return { rows, recorder }
 }
 

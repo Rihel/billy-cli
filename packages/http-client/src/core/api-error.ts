@@ -11,11 +11,7 @@ export class ApiError extends Error {
   /** 附加错误信息（可选） */
   readonly details?: any
 
-  constructor(
-    code: string,
-    message: string,
-    options?: { status?: number; details?: any },
-  ) {
+  constructor(code: string, message: string, options?: { status?: number; details?: any }) {
     super(message)
     this.name = 'ApiError'
     this.code = code
@@ -60,7 +56,8 @@ export function mapAppErrorValue(value: number): string {
   if (value === 1007) return ApiErrorCodes.Forbidden
   if (value === 1000 || value === 2001 || value === 3001) return ApiErrorCodes.NotFound
   if (value === 1001) return ApiErrorCodes.Conflict
-  if (value === 1003 || value === 1004 || value === 1008 || value === 1009) return ApiErrorCodes.ValidationError
+  if (value === 1003 || value === 1004 || value === 1008 || value === 1009)
+    return ApiErrorCodes.ValidationError
   if (value === 5001) return ApiErrorCodes.InternalError
   return ApiErrorCodes.InternalError
 }

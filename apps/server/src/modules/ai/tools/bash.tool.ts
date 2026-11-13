@@ -3,11 +3,7 @@ import { isAbsolute, relative, resolve } from 'node:path'
 import dedent from 'dedent'
 import { Inject, Injectable, Optional, type OnApplicationBootstrap } from '@nestjs/common'
 import { z } from 'zod'
-import {
-  AppLogger,
-  WorkspaceRuntimeService,
-  type WorkspaceExecResult,
-} from '@repo/kits'
+import { AppLogger, WorkspaceRuntimeService, type WorkspaceExecResult } from '@repo/kits'
 import { ToolDecl, ToolGroup } from '../core/tools/tool.decorator.js'
 import { TOOL_KEYS } from '../core/tools/tool-keys.js'
 import { TOOL_ENV_CAPS } from '../core/tools/tool.config.ports.js'
@@ -37,7 +33,9 @@ const BashParams = z.object({
     .min(1)
     .max(512)
     .optional()
-    .describe('工作目录（相对默认工作目录，或它的子目录的绝对路径）；省略即用默认工作目录。**不允许跑到工作目录之外**'),
+    .describe(
+      '工作目录（相对默认工作目录，或它的子目录的绝对路径）；省略即用默认工作目录。**不允许跑到工作目录之外**',
+    ),
   timeout_ms: z
     .number()
     .int()
@@ -54,7 +52,11 @@ const BashConfig = z.object({
   /** 单条命令的时长**默认值与硬上限**（ms）：模型传更小就听它的，传更大一律夹到这里 */
   timeoutMs: z.number().int().positive().default(15_000),
   /** 单条流（stdout / stderr 各自）的输出上限（字节）；超出即截断并终止命令 */
-  maxOutputBytes: z.number().int().positive().default(64 * 1024),
+  maxOutputBytes: z
+    .number()
+    .int()
+    .positive()
+    .default(64 * 1024),
 })
 
 type BashConfigValue = z.infer<typeof BashConfig>

@@ -6,7 +6,7 @@ import { activatedSkillsOf } from '../src/app/(app)/(standalone)/main/ai/chat/sk
  * 右栏「技能」的统计口径：只认运行时 `skill` 工具的调用，并同时兼容
  * 历史消息（`dynamic-tool` + `toolName`）与实时消息（`tool-skill`）两种 parts。
  */
-const message = (parts: unknown[]): UIMessage => ({ id: 'm', role: 'assistant', parts } as never)
+const message = (parts: unknown[]): UIMessage => ({ id: 'm', role: 'assistant', parts }) as never
 
 describe('activatedSkillsOf', () => {
   it('历史形状（dynamic-tool）与实时形状（tool-skill）都能识别', () => {

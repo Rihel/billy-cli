@@ -1,11 +1,7 @@
 import type { CredentialsManager } from '../core/interfaces.js'
 
 /** Cookie 读取函数类型 */
-export type CookieGetter = () =>
-  | string
-  | undefined
-  | null
-  | Promise<string | undefined | null>
+export type CookieGetter = () => string | undefined | null | Promise<string | undefined | null>
 
 /** Cookie 写入函数类型 */
 export type CookieSetter = (value: string) => void | Promise<void>
@@ -79,9 +75,7 @@ export class CookieCredentialsManager implements CredentialsManager<{
     this.cookieOptions = [
       'path=/',
       'max-age=' + 7 * 24 * 60 * 60, // 7 天过期
-      ...(typeof window !== 'undefined' && window.location.protocol === 'https:'
-        ? ['Secure']
-        : []),
+      ...(typeof window !== 'undefined' && window.location.protocol === 'https:' ? ['Secure'] : []),
     ].join('; ')
   }
 
@@ -126,9 +120,7 @@ export class CookieCredentialsManager implements CredentialsManager<{
   /** 默认 Cookie 读取：解析 document.cookie */
   private defaultGetter(): string | null {
     if (typeof document === 'undefined') return null
-    const match = document.cookie.match(
-      new RegExp(`(?:^|;\\\\s*)${this.cookieName}=([^;]*)`),
-    )
+    const match = document.cookie.match(new RegExp(`(?:^|;\\\\s*)${this.cookieName}=([^;]*)`))
     return match ? decodeURIComponent(match[1]) : null
   }
 

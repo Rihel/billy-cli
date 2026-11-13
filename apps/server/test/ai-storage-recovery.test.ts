@@ -81,7 +81,13 @@ beforeAll(async () => {
     } as never),
     DEFAULT_AGENT_KEY,
   )
-  conversations = new AgentConversationService(conversationRepo, runs, timelines, registry, silentLogger)
+  conversations = new AgentConversationService(
+    conversationRepo,
+    runs,
+    timelines,
+    registry,
+    silentLogger,
+  )
 
   store = new AgentMastraStore(db, silentLogger)
   // 看门狗不碰 Redis（只有启动恢复用租约）：这里给个替身即可
@@ -109,7 +115,10 @@ const newRun = async (status: string, heartbeatMsAgo = 0) => {
     engineRunId: `engine_${Math.random().toString(36).slice(2, 12)}`,
   })
   const engineRunId = `engine_${run.id}`
-  await db.dataSource.query('UPDATE runs SET engine_run_id = $2 WHERE id = $1', [run.id, engineRunId])
+  await db.dataSource.query('UPDATE runs SET engine_run_id = $2 WHERE id = $1', [
+    run.id,
+    engineRunId,
+  ])
   if (heartbeatMsAgo > 0) {
     await db.dataSource.query('UPDATE runs SET heartbeat_at = $2, started_at = $2 WHERE id = $1', [
       run.id,
@@ -234,7 +243,7 @@ describe('看门狗（条件 UPDATE 抢执行权）', () => {
     const { run } = await newRun(RunStatus.Running)
     // 心跳很新，但开始时间很久以前
     await db.dataSource.query(
-      "UPDATE runs SET started_at = $2, heartbeat_at = now() WHERE id = $1",
+      'UPDATE runs SET started_at = $2, heartbeat_at = now() WHERE id = $1',
       [run.id, new Date(Date.now() - 10 * 60_000)],
     )
     await recovery.sweepStaleRuns()

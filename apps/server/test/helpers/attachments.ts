@@ -14,9 +14,7 @@ import { ChatAttachmentService } from '../../src/modules/ai/runtime/chat-attachm
  * 这样"图片真的到了模型"与"PDF 抽出的文字真的到了模型"两条链路都能在 e2e 里跑通，
  * 而不必为每种类型各配一个替身。
  */
-export const STUB_IMAGE_BYTES = Buffer.from([
-  0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
-])
+export const STUB_IMAGE_BYTES = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
 
 export const stubAttachments = (logger: AppLogger): ChatAttachmentService =>
   new ChatAttachmentService(

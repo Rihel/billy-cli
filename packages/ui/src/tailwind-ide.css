@@ -13,7 +13,7 @@
  *
  * 类名的实际编译扫描由各 app globals.css 的 @source 完成，与此文件无关。
  */
-@import "tailwindcss";
-@import "./globals.css";
+@import 'tailwindcss';
+@import './globals.css';
 
 @source "./**/*.{ts,tsx}";

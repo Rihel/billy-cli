@@ -15,11 +15,7 @@ import { EventDeclTool, NoEventTool } from '../src/modules/ai/tools/tool-event-t
 const serviceOf = () => {
   const deps = buildToolStackDeps()
   const gateway = new ToolGateway(deps.config, silentLogger as never, [], deps.clock)
-  const registry = new ToolRegistry(
-    [new EventDeclTool(), new NoEventTool()],
-    gateway,
-    deps.config,
-  )
+  const registry = new ToolRegistry([new EventDeclTool(), new NoEventTool()], gateway, deps.config)
   // agent 授权清单只用于 `agents` 字段，这两条断言用不到 → 给空注册表
   const agents = { all: () => [] } as never
   return new AiToolService(registry, {} as never, agents, silentLogger as never, deps.config)
@@ -46,7 +42,10 @@ describe('管理台接口：events 与代码声明一致', () => {
   })
 
   it('events 不可编辑：更新入参定义里根本没有这个字段（前端也传不进来）', () => {
-    const parsed = AiToolUpdateSchema.safeParse({ toolKey: 'test-event-decl', events: [{ name: '偷偷加的' }] })
+    const parsed = AiToolUpdateSchema.safeParse({
+      toolKey: 'test-event-decl',
+      events: [{ name: '偷偷加的' }],
+    })
     expect(parsed.success).toBe(true)
     // 未知字段被剥掉，写库那条路上永远拿不到 events
     expect(parsed.success && 'events' in parsed.data).toBe(false)

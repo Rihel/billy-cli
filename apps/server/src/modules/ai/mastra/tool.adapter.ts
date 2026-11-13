@@ -32,7 +32,9 @@ interface ToolExecutionContextLike {
 
 /** 给模型的默认视图（与 AI SDK 的 `createToolModelOutput` 同形：字符串走 text，其余走 json） */
 const defaultModelOutput = (output: unknown): unknown =>
-  typeof output === 'string' ? { type: 'text', value: output } : { type: 'json', value: output ?? null }
+  typeof output === 'string'
+    ? { type: 'text', value: output }
+    : { type: 'json', value: output ?? null }
 
 /** 分页后给模型的第一页视图（用同一个纯函数重算，保证与执行时那一次逐字节一致） */
 const pagedModelOutput = (data: unknown, pageSize: number, handle: string): unknown => {

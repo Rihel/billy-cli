@@ -1,9 +1,9 @@
-"use client"
+'use client'
 
-import { JsonView } from "#components/json-view.tsx"
-import type { CustomRendererProps } from "streamdown"
+import { JsonView } from '#components/json-view.tsx'
+import type { CustomRendererProps } from 'streamdown'
 
-import { FencePending } from "./fence-chrome.tsx"
+import { FencePending } from './fence-chrome.tsx'
 
 /**
  * ```` ```json ```` 围栏：渲染成可折叠的树，而不是一大块高亮代码。

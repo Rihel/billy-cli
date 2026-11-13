@@ -1,11 +1,5 @@
-import {
-  LocalStorageCredentialsManager,
-  MemoryCredentialsManager,
-} from '@repo/http-client'
-import type {
-  BearerTokenCredentials,
-  CredentialsManager,
-} from '@repo/http-client'
+import { LocalStorageCredentialsManager, MemoryCredentialsManager } from '@repo/http-client'
+import type { BearerTokenCredentials, CredentialsManager } from '@repo/http-client'
 import { ServerClient } from './server.client.js'
 
 /**

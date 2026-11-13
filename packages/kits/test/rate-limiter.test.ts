@@ -1,9 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { RateLimiter } from '../src/rate-limit/rate-limiter.js'
-import {
-  isIpWhitelisted,
-  normalizeIp,
-} from '../src/rate-limit/ip-utils.js'
+import { isIpWhitelisted, normalizeIp } from '../src/rate-limit/ip-utils.js'
 import type { RedisStore } from '../src/redis/redis-store.js'
 
 /** mock rate-limiter-flexible：记录实例，consume 由用例控制。 */
@@ -39,8 +36,7 @@ vi.mock('rate-limiter-flexible', () => {
   }
 })
 
-const createLimiter = (): RateLimiter =>
-  new RateLimiter({ raw: {} } as RedisStore)
+const createLimiter = (): RateLimiter => new RateLimiter({ raw: {} } as RedisStore)
 
 describe('RateLimiter（rate-limiter-flexible 统一入口）', () => {
   beforeEach(() => {
@@ -109,9 +105,7 @@ describe('isIpWhitelisted（ipaddr.js 白名单匹配）', () => {
   })
 
   it('IPv4 / IPv6 CIDR 网段匹配', () => {
-    expect(
-      isIpWhitelisted('192.168.1.55', ['10.0.0.0/8', '192.168.1.0/24']),
-    ).toBe(true)
+    expect(isIpWhitelisted('192.168.1.55', ['10.0.0.0/8', '192.168.1.0/24'])).toBe(true)
     expect(isIpWhitelisted('192.168.2.1', ['192.168.1.0/24'])).toBe(false)
     expect(isIpWhitelisted('10.1.2.3', ['10.0.0.0/8'])).toBe(true)
     expect(isIpWhitelisted('2001:db8::1', ['2001:db8::/32'])).toBe(true)

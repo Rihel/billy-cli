@@ -1,6 +1,6 @@
-"use client"
+'use client'
 
-import { useCallback, useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from 'react'
 
 /** `useControllableState` 的入参（对齐 Radix 同名 hook 的 API 形状） */
 export interface UseControllableStateParams<T> {
@@ -26,7 +26,11 @@ type SetStateFn<T> = (prevState?: T) => T
  * 典型场景：组件既允许调用方传入 `open` / `onOpenChange` 受控使用，
  * 又允许不传任何 prop 直接自管理（ai-elements 系列组件大量使用该模式）。
  */
-export function useControllableState<T>({ prop, defaultProp, onChange }: UseControllableStateParams<T>) {
+export function useControllableState<T>({
+  prop,
+  defaultProp,
+  onChange,
+}: UseControllableStateParams<T>) {
   const [uncontrolledProp, setUncontrolledProp] = useState<T | undefined>(defaultProp)
   const isControlled = prop !== undefined
   const value = isControlled ? prop : uncontrolledProp
@@ -39,7 +43,8 @@ export function useControllableState<T>({ prop, defaultProp, onChange }: UseCont
 
   const setValue = useCallback(
     (next: T | SetStateFn<T>) => {
-      const resolve = (prev: T | undefined) => (typeof next === "function" ? (next as SetStateFn<T>)(prev) : next)
+      const resolve = (prev: T | undefined) =>
+        typeof next === 'function' ? (next as SetStateFn<T>)(prev) : next
 
       if (isControlled) {
         const nextValue = resolve(prop)

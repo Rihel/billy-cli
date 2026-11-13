@@ -64,11 +64,7 @@ export const toTimeRange = (from: ConfigType, to: ConfigType) => {
   return [standardTime(from).startOf('D'), standardTime(to).endOf('D')]
 }
 
-export function calcDuration(
-  start: ConfigType,
-  end: ConfigType,
-  unit?: QUnitType | OpUnitType,
-) {
+export function calcDuration(start: ConfigType, end: ConfigType, unit?: QUnitType | OpUnitType) {
   const startTime = standardTime(start)
   const endTime = standardTime(end)
   let res = endTime.diff(startTime, unit, true)

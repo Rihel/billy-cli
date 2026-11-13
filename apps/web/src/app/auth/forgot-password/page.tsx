@@ -62,9 +62,7 @@ export default function ForgotPasswordPage() {
 
   useEffect(() => {
     if (state.token) {
-      router.replace(
-        `${Pages.resetPassword}?token=${encodeURIComponent(state.token)}`,
-      )
+      router.replace(`${Pages.resetPassword}?token=${encodeURIComponent(state.token)}`)
     }
   }, [state.token, router])
 
@@ -82,9 +80,7 @@ export default function ForgotPasswordPage() {
 
       <div className="space-y-2">
         <h1 className="font-heading text-2xl font-semibold tracking-tight">找回密码</h1>
-        <p className="text-sm text-muted-foreground">
-          输入注册邮箱，我们将为你生成重置链接
-        </p>
+        <p className="text-sm text-muted-foreground">输入注册邮箱，我们将为你生成重置链接</p>
       </div>
 
       <form action={formAction} className="space-y-5">
@@ -102,9 +98,7 @@ export default function ForgotPasswordPage() {
             />
           </Field>
 
-          {state.error && (
-            <FieldError errors={[{ message: state.error }]} />
-          )}
+          {state.error && <FieldError errors={[{ message: state.error }]} />}
 
           <Button
             type="submit"

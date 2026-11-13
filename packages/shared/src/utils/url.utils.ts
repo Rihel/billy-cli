@@ -48,13 +48,9 @@ export interface AppUrlConfig {
  * urls.formatStorageUrl('avatar/a.png') // http://localhost:9000/billy-cli/avatar/a.png
  * ```
  */
-export function createAppUrlConfig(
-  options: AppUrlConfigOptions = {},
-): AppUrlConfig {
-  const publicServerUrl =
-    options.publicServerUrl || options.fallbackServerUrl || DEV_SERVER_URL
-  const storageUrl =
-    options.storageUrl || options.fallbackStorageUrl || DEV_STORAGE_URL
+export function createAppUrlConfig(options: AppUrlConfigOptions = {}): AppUrlConfig {
+  const publicServerUrl = options.publicServerUrl || options.fallbackServerUrl || DEV_SERVER_URL
+  const storageUrl = options.storageUrl || options.fallbackStorageUrl || DEV_STORAGE_URL
 
   return {
     publicServerUrl,

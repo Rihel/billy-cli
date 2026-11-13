@@ -25,7 +25,7 @@ export class ConnectorStateStore {
 
   /** 读状态；没配过 / 没授权时返回 null */
   async load(connectorId: string): Promise<ConnectorAuthState | null> {
-    const repo = await this.db.getRepository(AiConnectorEntity)
+    const repo = this.db.getRepository(AiConnectorEntity)
     const row = await repo.findOne({
       where: { id: connectorId },
       select: { id: true, authState: true, authStateVersion: true },
@@ -44,7 +44,7 @@ export class ConnectorStateStore {
     files: Record<string, string>,
     expectedVersion: number,
   ): Promise<number | null> {
-    const repo = await this.db.getRepository(AiConnectorEntity)
+    const repo = this.db.getRepository(AiConnectorEntity)
     const result = await repo
       .createQueryBuilder()
       .update()
@@ -63,7 +63,7 @@ export class ConnectorStateStore {
 
   /** 删除连接器时清掉授权状态（token 不在库里留） */
   async clear(connectorId: string): Promise<void> {
-    const repo = await this.db.getRepository(AiConnectorEntity)
+    const repo = this.db.getRepository(AiConnectorEntity)
     await repo
       .createQueryBuilder()
       .update()

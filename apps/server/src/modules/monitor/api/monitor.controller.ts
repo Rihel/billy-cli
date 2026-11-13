@@ -90,7 +90,9 @@ export class MonitorController {
 
   @Post('metric/latest')
   @HttpCode(200)
-  metricLatest(@Body({ schema: MonitorMetricLatestQuerySchema }) input: MonitorMetricLatestQueryDto) {
+  metricLatest(
+    @Body({ schema: MonitorMetricLatestQuerySchema }) input: MonitorMetricLatestQueryDto,
+  ) {
     return this.metrics.latest(input)
   }
 

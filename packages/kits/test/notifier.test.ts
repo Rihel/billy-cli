@@ -5,7 +5,7 @@ import type { NotifyClient, SendResult } from '../src/notification/notifier.js'
 const mockClient = (channel: 'lark' | 'email'): NotifyClient => ({
   channel,
   configured: true,
-  send: vi.fn(async () => ({ ok: true } satisfies SendResult)),
+  send: vi.fn(async () => ({ ok: true }) satisfies SendResult),
 })
 
 describe('Notifier（注入客户端编排路由）', () => {

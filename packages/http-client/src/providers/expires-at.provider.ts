@@ -18,9 +18,7 @@ import type { CredentialProvider } from '../core/interfaces.js'
  * })
  * ```
  */
-export class ExpiresAtProvider<C extends { expiresAt?: number }>
-  implements CredentialProvider<C>
-{
+export class ExpiresAtProvider<C extends { expiresAt?: number }> implements CredentialProvider<C> {
   constructor(
     private options: {
       acquire: () => Promise<C>

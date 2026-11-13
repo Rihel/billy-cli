@@ -75,7 +75,9 @@ describe('类型判断与摘要', () => {
 
 describe('JsonView 渲染', () => {
   it('默认按树显示，嵌套两层默认展开', () => {
-    const { container } = render(<JsonView text={'{"name":"billy","meta":{"version":2,"stable":true}}'} />)
+    const { container } = render(
+      <JsonView text={'{"name":"billy","meta":{"version":2,"stable":true}}'} />,
+    )
     expect(container.querySelector('[data-json-view="tree"]')).not.toBeNull()
     expect(container.textContent ?? '').toContain('name')
     // 第二层默认展开

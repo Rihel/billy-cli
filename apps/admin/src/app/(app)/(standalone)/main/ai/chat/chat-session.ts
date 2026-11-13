@@ -63,7 +63,14 @@ export interface ChatToolPartLike {
 /** 一个**渲染单元** = 界面上一个可见块 */
 export type ChatUnit =
   | { kind: 'text'; key: string; index: number; text: string; streaming: boolean }
-  | { kind: 'reasoning'; key: string; index: number; text: string; streaming: boolean; durationMs?: number }
+  | {
+      kind: 'reasoning'
+      key: string
+      index: number
+      text: string
+      streaming: boolean
+      durationMs?: number
+    }
   | {
       kind: 'tool'
       key: string
@@ -203,7 +210,12 @@ const applyPart = (
       streaming: part.state === 'streaming',
     }
     const existing = findUnit(state.units, key)
-    if (existing && existing.kind === 'text' && existing.text === next.text && existing.streaming === next.streaming) {
+    if (
+      existing &&
+      existing.kind === 'text' &&
+      existing.text === next.text &&
+      existing.streaming === next.streaming
+    ) {
       return null
     }
     return { units: replaceUnit(state.units, key, next) }
@@ -264,11 +276,11 @@ const applyPart = (
       const toolCallId = typeof data.toolCallId === 'string' ? data.toolCallId : undefined
       const key = `sub-agent-${runId}`
       const existing = findUnit(state.units, key)
-      const snapshot = existing && existing.kind === 'sub-agent'
-        ? { ...existing.snapshot }
-        : emptySubAgent(runId)
+      const snapshot =
+        existing && existing.kind === 'sub-agent' ? { ...existing.snapshot } : emptySubAgent(runId)
       mergeSubAgentState(snapshot, data)
-      const lastDeltaIndex = existing && existing.kind === 'sub-agent' ? existing.lastDeltaIndex : -1
+      const lastDeltaIndex =
+        existing && existing.kind === 'sub-agent' ? existing.lastDeltaIndex : -1
       let units = replaceUnit(state.units, key, {
         kind: 'sub-agent',
         key,
@@ -296,9 +308,10 @@ const applyPart = (
       const existing = findUnit(state.units, key)
       // 幂等：同一 part 下标被重放时不重复追加
       if (existing && existing.kind === 'sub-agent' && existing.lastDeltaIndex >= index) return null
-      const snapshot = existing && existing.kind === 'sub-agent'
-        ? { ...existing.snapshot }
-        : emptySubAgent(runId, typeof data.name === 'string' ? data.name : undefined)
+      const snapshot =
+        existing && existing.kind === 'sub-agent'
+          ? { ...existing.snapshot }
+          : emptySubAgent(runId, typeof data.name === 'string' ? data.name : undefined)
       appendSubAgentDelta(
         snapshot,
         data.kind === 'reasoning' ? 'reasoning' : 'text',
@@ -334,7 +347,14 @@ const applyPart = (
       const event = parseToolEventPart(part)
       if (!event) {
         const key = `unknown-${index}`
-        return { units: replaceUnit(state.units, key, { kind: 'unknown', key, index, partType: TOOL_EVENT_PART_TYPE }) }
+        return {
+          units: replaceUnit(state.units, key, {
+            kind: 'unknown',
+            key,
+            index,
+            partType: TOOL_EVENT_PART_TYPE,
+          }),
+        }
       }
       const toolCallId = event.data.toolCallId
       // 有主的（能对上工具卡）进归组表；无主的独立成卡
@@ -345,7 +365,10 @@ const applyPart = (
         const toolKey = `tool-${toolCallId}`
         const tool = findUnit(state.units, toolKey)
         if (tool && tool.kind === 'tool') {
-          return { eventsByCall, units: replaceUnit(state.units, toolKey, { ...tool, events: [...bucket, event] }) }
+          return {
+            eventsByCall,
+            units: replaceUnit(state.units, toolKey, { ...tool, events: [...bucket, event] }),
+          }
         }
         // 消息里还没有对应工具卡（子 agent 内部工具发的 / 非流式调用）：先独立成卡；
         // 若之后真的出现了同 id 的工具卡，渲染层按"已被认领"跳过，避免出现两张卡。
@@ -530,7 +553,7 @@ export class ChatSessionStore {
     // 已不在列表里的消息要清掉（删除会话消息 / 换会话残留）
     if (this.states.size > order.length) {
       const alive = new Set(order)
-      for (const id of [...this.states.keys()]) {
+      for (const id of this.states.keys()) {
         if (!alive.has(id)) {
           this.states.delete(id)
           this.syncedParts.delete(id)
@@ -659,11 +682,19 @@ export function useLiveSubAgent(runId?: string | null): SubAgentLive | undefined
 /** 是否还有子助手在跑（布尔量：只在翻转时重渲染） */
 export function useHasActiveSubAgent(): boolean {
   const store = useChatSessionStore()
-  return useSyncExternalStore(store.subscribe, () => store.hasActiveSubAgent(), () => false)
+  return useSyncExternalStore(
+    store.subscribe,
+    () => store.hasActiveSubAgent(),
+    () => false,
+  )
 }
 
 /** 正在跑的那个子助手的名字（运行指示用） */
 export function useActiveSubAgentName(): string | null {
   const store = useChatSessionStore()
-  return useSyncExternalStore(store.subscribe, () => store.activeSubAgentName(), () => null)
+  return useSyncExternalStore(
+    store.subscribe,
+    () => store.activeSubAgentName(),
+    () => null,
+  )
 }

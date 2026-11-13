@@ -26,9 +26,12 @@ kubectl -n billy create secret generic billy-server \
   --from-literal=REDIS_URL='redis://:***@redis.billy.svc.cluster.local:6379/0' \
   --from-literal=JWT_SECRET="$(openssl rand -hex 32)" \
   --from-literal=OBJECT_STORAGE_ACCESS_KEY_ID='***' \
-  --from-literal=OBJECT_STORAGE_SECRET_ACCESS_KEY='***'
+  --from-literal=OBJECT_STORAGE_SECRET_ACCESS_KEY='***' \
+  --from-literal=SHARE_INTERNAL_SECRET="$(openssl rand -hex 32)"
 #    需要的键：DB_URL / REDIS_URL / JWT_SECRET / OBJECT_STORAGE_ACCESS_KEY_ID /
-#    OBJECT_STORAGE_SECRET_ACCESS_KEY（可选：ALERT_SMTP_* / LARK_APP_ID / LARK_APP_SECRET）
+#    OBJECT_STORAGE_SECRET_ACCESS_KEY；启用文件分享再加 SHARE_INTERNAL_SECRET
+#    （必须与 admin 侧同名变量一致，否则 /share/resolve 一律 404）
+#    可选：ALERT_SMTP_* / LARK_APP_ID / LARK_APP_SECRET
 #    生产建议用 SealedSecret / External Secrets / SOPS，别落盘明文。
 
 # ③ 改占位符后应用其余清单

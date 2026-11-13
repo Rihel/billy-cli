@@ -1,7 +1,7 @@
-"use client"
+'use client'
 
-import { cn } from "#lib/utils.ts"
-import { Avatar, AvatarFallback, AvatarImage } from "#components/ui/avatar.tsx"
+import { cn } from '#lib/utils.ts'
+import { Avatar, AvatarFallback, AvatarImage } from '#components/ui/avatar.tsx'
 
 export type UserAvatarProps = {
   /** 头像地址（调用方先拼成可访问 URL）；为空或加载失败时用首字符兜底 */
@@ -10,9 +10,9 @@ export type UserAvatarProps = {
   name?: string | null
   /** 无障碍描述，缺省用 name */
   alt?: string
-  size?: "sm" | "default" | "lg"
+  size?: 'sm' | 'default' | 'lg'
   /** 形状：列表/侧栏用 rounded 方块，默认圆形 */
-  shape?: "circle" | "rounded"
+  shape?: 'circle' | 'rounded'
   className?: string
 }
 
@@ -23,9 +23,9 @@ export type UserAvatarProps = {
  * 英文统一大写，中文原样。
  */
 function initialOf(name?: string | null): string {
-  const trimmed = (name ?? "").trim()
-  if (!trimmed) return "?"
-  const first = Array.from(trimmed)[0] ?? "?"
+  const trimmed = (name ?? '').trim()
+  if (!trimmed) return '?'
+  const first = Array.from(trimmed)[0] ?? '?'
   return /[a-z]/i.test(first) ? first.toUpperCase() : first
 }
 
@@ -40,22 +40,16 @@ export function UserAvatar({
   src,
   name,
   alt,
-  size = "default",
-  shape = "circle",
+  size = 'default',
+  shape = 'circle',
   className,
 }: UserAvatarProps) {
-  const rounded = shape === "rounded"
+  const rounded = shape === 'rounded'
   return (
-    <Avatar
-      size={size}
-      className={cn(rounded && "rounded-lg after:rounded-lg", className)}
-    >
-      {src ? <AvatarImage src={src} alt={alt ?? name ?? ""} /> : null}
+    <Avatar size={size} className={cn(rounded && 'rounded-lg after:rounded-lg', className)}>
+      {src ? <AvatarImage src={src} alt={alt ?? name ?? ''} /> : null}
       <AvatarFallback
-        className={cn(
-          "bg-brand font-medium text-white select-none",
-          rounded && "rounded-lg",
-        )}
+        className={cn('bg-brand font-medium text-white select-none', rounded && 'rounded-lg')}
         aria-hidden={!name}
       >
         {initialOf(name)}

@@ -93,13 +93,7 @@ export async function batchInsert<T extends ObjectLiteral>(
 ): Promise<void> {
   await runChunks(
     data,
-    (chunk) =>
-      manager
-        .createQueryBuilder()
-        .insert()
-        .into(entityType)
-        .values(chunk)
-        .execute(),
+    (chunk) => manager.createQueryBuilder().insert().into(entityType).values(chunk).execute(),
     options.chunkSize ?? defaultChunkSize,
     resolveBatchConcurrency(manager, options.concurrency),
   )
@@ -181,15 +175,8 @@ export async function batchDelete<T extends ObjectLiteral>(
 
   await runChunks(
     rows.map((row) => row[idCol]),
-    (chunk) =>
-      manager
-        .createQueryBuilder()
-        .delete()
-        .from(entityType)
-        .whereInIds(chunk)
-        .execute(),
+    (chunk) => manager.createQueryBuilder().delete().from(entityType).whereInIds(chunk).execute(),
     chunkSize,
     resolveBatchConcurrency(manager, options.concurrency),
   )
 }
-

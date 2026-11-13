@@ -68,10 +68,12 @@ const unavailable: SandboxCapability = {
   probedAt: new Date().toISOString(),
 }
 
-const build = (options: {
-  mode?: 'enforce' | 'off'
-  sandbox?: SandboxCapability
-} = {}) => {
+const build = (
+  options: {
+    mode?: 'enforce' | 'off'
+    sandbox?: SandboxCapability
+  } = {},
+) => {
   const { runner, commands } = fakeRunner()
   const service = new WorkspaceRuntimeService(
     WorkspaceConfigSchema.parse({

@@ -13,7 +13,7 @@ describe('useControllableState', () => {
   it('非受控：内部持有真值，setter 先更新内部状态再回调 onChange', () => {
     const onChange = vi.fn()
     const { result } = renderHook(() =>
-      useControllableState<boolean>({ defaultProp: false, onChange })
+      useControllableState<boolean>({ defaultProp: false, onChange }),
     )
 
     expect(result.current[0]).toBe(false)
@@ -28,7 +28,7 @@ describe('useControllableState', () => {
     const { result, rerender } = renderHook(
       ({ open }: { open: boolean }) =>
         useControllableState<boolean>({ prop: open, defaultProp: false, onChange }),
-      { initialProps: { open: false } }
+      { initialProps: { open: false } },
     )
 
     act(() => result.current[1](true))
@@ -42,9 +42,7 @@ describe('useControllableState', () => {
 
   it('setter 支持函数式更新（等价 useState 的 prev => next）', () => {
     const onChange = vi.fn()
-    const { result } = renderHook(() =>
-      useControllableState<number>({ defaultProp: 1, onChange })
-    )
+    const { result } = renderHook(() => useControllableState<number>({ defaultProp: 1, onChange }))
 
     act(() => result.current[1]((prev) => (prev ?? 0) + 1))
     expect(result.current[0]).toBe(2)
@@ -54,7 +52,7 @@ describe('useControllableState', () => {
   it('值未变化时不触发 onChange（对齐 Radix 的浅比较）', () => {
     const onChange = vi.fn()
     const { result } = renderHook(() =>
-      useControllableState<boolean>({ defaultProp: false, onChange })
+      useControllableState<boolean>({ defaultProp: false, onChange }),
     )
 
     act(() => result.current[1](false))

@@ -49,9 +49,7 @@ describe('createThemeBootScript', () => {
   })
 
   it('默认模式可指定（无存储值时用它判定）', () => {
-    expect(
-      createThemeBootScript({ storageKey: 'k', defaultMode: 'light' }),
-    ).toContain('"light"')
+    expect(createThemeBootScript({ storageKey: 'k', defaultMode: 'light' })).toContain('"light"')
     expect(createThemeBootScript({ storageKey: 'k' })).toContain('"system"')
   })
 })

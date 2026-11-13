@@ -1,5 +1,5 @@
 import { AuditEntity } from '@repo/kits'
-import { TimelineKind, TimelineRole } from '@repo/shared'
+import { TimelineRole } from '@repo/shared'
 import { Column, Entity, Index } from 'typeorm'
 
 /**

@@ -38,7 +38,9 @@ export const useAvailableModels = (selectedModelId?: string): AvailableModelsSta
   const models = useMemo(() => query.data?.models ?? [], [query.data])
   const defaultModelId = query.data?.defaultModelId ?? null
   const current = useMemo(
-    () => models.find((item) => item.id === selectedModelId) ?? models.find((item) => item.id === defaultModelId),
+    () =>
+      models.find((item) => item.id === selectedModelId) ??
+      models.find((item) => item.id === defaultModelId),
     [defaultModelId, models, selectedModelId],
   )
 

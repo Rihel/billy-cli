@@ -126,12 +126,8 @@ function ResetPasswordInner() {
             />
           </Field>
 
-          {mismatch && (
-            <FieldError errors={[{ message: '两次输入的密码不一致' }]} />
-          )}
-          {state.error && !mismatch && (
-            <FieldError errors={[{ message: state.error }]} />
-          )}
+          {mismatch && <FieldError errors={[{ message: '两次输入的密码不一致' }]} />}
+          {state.error && !mismatch && <FieldError errors={[{ message: state.error }]} />}
 
           <Button
             type="submit"

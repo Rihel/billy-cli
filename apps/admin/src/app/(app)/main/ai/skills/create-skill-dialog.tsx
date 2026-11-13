@@ -1,5 +1,7 @@
 'use client'
 
+/* oxlint-disable jsx-a11y/no-autofocus -- 弹窗打开 / 进入编辑即聚焦首个输入框，键盘用户可直接输入 */
+
 import { useEffect, useState } from 'react'
 import { SKILL_KEY_PATTERN } from '@repo/shared'
 import type { AiSkillCreateDto } from '@repo/shared'
@@ -58,9 +60,10 @@ export function CreateSkillDialog({ open, saving, onClose, onCreate }: CreateSki
           <Label htmlFor="new-skill-key" className="text-xs">
             技能名
           </Label>
+          {/* 打开弹窗即聚焦主输入框：键盘优先，属有意的交互 */}
           <Input
-            id="new-skill-key"
             autoFocus
+            id="new-skill-key"
             value={skillKey}
             placeholder="例如 code-review"
             className="h-11 text-base"

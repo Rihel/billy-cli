@@ -3,10 +3,7 @@ import { AppLogger } from '../foundation/logger/app-logger.js'
 import { PubSub } from '../pubsub/pubsub.js'
 
 /** 订阅回调：`payload` 是发布方给的对象，`meta` 只用于排障 */
-export type EventHandler<T = unknown> = (
-  payload: T,
-  meta: EventMeta,
-) => void | Promise<void>
+export type EventHandler<T = unknown> = (payload: T, meta: EventMeta) => void | Promise<void>
 
 /** 这次事件的元信息（不参与业务判断） */
 export interface EventMeta {
@@ -123,7 +120,8 @@ export class EventBus {
     const set = this.handlers.get(topic)
     if (!set || set.size === 0) return
     const meta: EventMeta = { topic, instanceId, publishedAt }
-    for (const handler of [...set]) {
+    // 快照本轮订阅者：分发期间退订不应让本轮漏调
+    for (const handler of Array.from(set)) {
       try {
         const result = handler(payload, meta)
         if (result instanceof Promise) {

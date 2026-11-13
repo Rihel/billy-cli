@@ -410,7 +410,9 @@ const parseModalities = (
    * 给它们标上"输出文本"是**编造**；而"未声明"在界面上是诚实的（也让"这行数据不完整"看得见）。
    */
   return {
-    input: sawInputEvidence ? (AI_MODALITIES.filter((m) => input.has(m)) as AiModalityValue[]) : null,
+    input: sawInputEvidence
+      ? (AI_MODALITIES.filter((m) => input.has(m)) as AiModalityValue[])
+      : null,
     output: sawOutputEvidence
       ? (AI_MODALITIES.filter((m) => output.has(m)) as AiModalityValue[])
       : null,
@@ -425,7 +427,12 @@ const parseModalities = (
  * 那是**证据**，不是猜测。
  */
 const parseMode = (record: Record<string, unknown>, modelKey: string): AiModelModeValue => {
-  for (const raw of [record.mode, record.model_type, record.type, asRecord(record.architecture)?.modality]) {
+  for (const raw of [
+    record.mode,
+    record.model_type,
+    record.type,
+    asRecord(record.architecture)?.modality,
+  ]) {
     if (typeof raw !== 'string') continue
     const lower = raw.trim().toLowerCase()
     // 按分隔符与 `->` 拆开：OpenRouter 的 `"text+image->text+image"` 描述的是"输入→输出"
@@ -552,7 +559,7 @@ const parseCapabilities = (
   const base = asRecord(raw) ?? (Array.isArray(raw) ? { list: raw } : undefined)
   const effort = record.effort
   if (base === undefined && effort === undefined) return undefined
-  return { ...(base ?? {}), ...(effort !== undefined ? { effort } : {}) }
+  return { ...base, ...(effort !== undefined ? { effort } : {}) }
 }
 
 // ─────────────────────────── 通用 OpenAI 兼容形态（全部国内厂商共用） ───────────────────────────

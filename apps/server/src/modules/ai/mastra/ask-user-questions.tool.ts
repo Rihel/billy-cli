@@ -122,7 +122,9 @@ export const askUserQuestionsTool = createTool({
       : {
           type: 'text',
           value:
-            output && typeof output === 'object' && typeof (output as { text?: unknown }).text === 'string'
+            output &&
+            typeof output === 'object' &&
+            typeof (output as { text?: unknown }).text === 'string'
               ? (output as { text: string }).text
               : '',
         },
@@ -130,8 +132,9 @@ export const askUserQuestionsTool = createTool({
     // 续跑：Mastra 把上一轮的 suspendPayload 与本轮 resumeData 一起带回来。
     // 兼容两种挂载点：新版本在 context 顶层，内置 ask_user 走 context.agent（实测以 agent 为准）。
     const agentContext = (context as { agent?: Record<string, unknown> } | undefined)?.agent
-    const resumeData = (agentContext?.resumeData ??
-      context?.resumeData) as z.infer<typeof AskUserQuestionsResumeSchema> | undefined
+    const resumeData = (agentContext?.resumeData ?? context?.resumeData) as
+      | z.infer<typeof AskUserQuestionsResumeSchema>
+      | undefined
     // 取消回答：也走"工具正常出参"这条路，让模型拿到明确结论后继续干活
     if (resumeData?.cancelled === true) {
       return {

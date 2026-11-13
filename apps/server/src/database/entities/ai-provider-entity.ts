@@ -66,7 +66,6 @@ export class AiProviderEntity extends AuditEntity {
   @Column({ name: 'api_key', type: 'text', nullable: true })
   apiKey: string | null = null
 
-
   /** 是否启用（禁用后不允许被选中，也不允许同步） */
   @Column({ name: 'enabled', type: 'boolean', default: true })
   enabled = true

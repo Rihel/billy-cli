@@ -1,9 +1,4 @@
-import type {
-  EntitySubscriberInterface,
-  InsertEvent,
-  SoftRemoveEvent,
-  UpdateEvent,
-} from 'typeorm'
+import type { EntitySubscriberInterface, InsertEvent, SoftRemoveEvent, UpdateEvent } from 'typeorm'
 import { AuditEntity } from './audit-entity.js'
 import { nanoid } from '@repo/shared'
 

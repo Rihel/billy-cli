@@ -21,7 +21,6 @@ export class LarkNotifyClient implements NotifyClient {
   private readonly receiveId: string | undefined
   private readonly receiveIdType: LarkReceiveIdType
 
-
   constructor(
     @Inject(NotifyConfig) config: NotifyConfig,
     @Inject(AppLogger) private readonly logger: AppLogger,

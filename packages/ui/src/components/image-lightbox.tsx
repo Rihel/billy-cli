@@ -1,12 +1,12 @@
-"use client"
+'use client'
 
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react"
-import { ChevronLeftIcon, ChevronRightIcon, XIcon, ZoomInIcon, ZoomOutIcon } from "lucide-react"
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
+import { ChevronLeftIcon, ChevronRightIcon, XIcon, ZoomInIcon, ZoomOutIcon } from 'lucide-react'
 
-import { FilePreview } from "#components/file-preview.tsx"
-import { Dialog, DialogContent, DialogTitle } from "#components/ui/dialog.tsx"
-import { toastError } from "#components/toast.ts"
-import { cn } from "#lib/utils.ts"
+import { FilePreview } from '#components/file-preview.tsx'
+import { Dialog, DialogContent, DialogTitle } from '#components/ui/dialog.tsx'
+import { toastError } from '#components/toast.ts'
+import { cn } from '#lib/utils.ts'
 
 /**
  * 附件大图查看（lightbox）：**图片可缩放拖动，其它文件按类型预览**。
@@ -65,12 +65,14 @@ const STEP = 1.25
  * 判据与附件上传那边一致：先看媒体类型，再按后缀兜底
  * （浏览器常把图片报成 `application/octet-stream`，只信媒体类型会误判成文件）。
  */
-export const isImageItem = (item: Pick<ImageLightboxItem, "mediaType" | "filename" | "src">): boolean => {
-  const mediaType = item.mediaType?.toLowerCase() ?? ""
-  if (mediaType.startsWith("image/")) return true
+export const isImageItem = (
+  item: Pick<ImageLightboxItem, 'mediaType' | 'filename' | 'src'>,
+): boolean => {
+  const mediaType = item.mediaType?.toLowerCase() ?? ''
+  if (mediaType.startsWith('image/')) return true
   const name = item.filename ?? item.src
-  const extension = name.includes(".") ? (name.split(".").pop() ?? "").toLowerCase() : ""
-  return ["png", "jpg", "jpeg", "webp", "gif", "avif", "bmp", "svg"].includes(extension)
+  const extension = name.includes('.') ? (name.split('.').pop() ?? '').toLowerCase() : ''
+  return ['png', 'jpg', 'jpeg', 'webp', 'gif', 'avif', 'bmp', 'svg'].includes(extension)
 }
 
 /**
@@ -155,8 +157,8 @@ const ZoomableImage = ({ src, alt }: { src: string; alt: string }) => {
         return clamped
       })
     }
-    node.addEventListener("wheel", onWheel, { passive: false })
-    return () => node.removeEventListener("wheel", onWheel)
+    node.addEventListener('wheel', onWheel, { passive: false })
+    return () => node.removeEventListener('wheel', onWheel)
   }, [])
 
   return (
@@ -164,8 +166,8 @@ const ZoomableImage = ({ src, alt }: { src: string; alt: string }) => {
       <div
         ref={containerRef}
         className={cn(
-          "relative flex min-h-[50vh] flex-1 items-center justify-center overflow-hidden rounded bg-muted/30",
-          scale > 1 ? (dragging ? "cursor-grabbing" : "cursor-grab") : "cursor-zoom-in",
+          'relative flex min-h-[50vh] flex-1 items-center justify-center overflow-hidden rounded bg-muted/30',
+          scale > 1 ? (dragging ? 'cursor-grabbing' : 'cursor-grab') : 'cursor-zoom-in',
         )}
         onDoubleClick={() => (scale > 1 ? reset() : zoomAt(2))}
         onPointerDown={(event) => {
@@ -194,7 +196,6 @@ const ZoomableImage = ({ src, alt }: { src: string; alt: string }) => {
         }}
       >
         {/* 原生 `<img>`：地址可能是 blob 或对象存储直链，都不走 Next 的图片优化 */}
-        {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           alt={alt}
           className="max-h-[calc(100dvh-12rem)] max-w-full select-none object-contain"
@@ -203,7 +204,7 @@ const ZoomableImage = ({ src, alt }: { src: string; alt: string }) => {
           style={{
             transform: `translate(${offset.x}px, ${offset.y}px) scale(${scale})`,
             // 拖动时不要过渡（跟手），松手 / 缩放时给一点点，避免跳变
-            transition: dragging ? "none" : "transform 120ms ease-out",
+            transition: dragging ? 'none' : 'transform 120ms ease-out',
           }}
         />
       </div>
@@ -275,17 +276,17 @@ export const ImageLightbox = ({ items, index, onIndexChange, onClose }: ImageLig
        */
       const target = event.target as HTMLElement | null
       const tag = target?.tagName?.toLowerCase()
-      if (tag === "input" || tag === "textarea" || target?.isContentEditable) return
-      if (event.key === "ArrowLeft" && hasMany) {
+      if (tag === 'input' || tag === 'textarea' || target?.isContentEditable) return
+      if (event.key === 'ArrowLeft' && hasMany) {
         event.preventDefault()
         step(-1)
-      } else if (event.key === "ArrowRight" && hasMany) {
+      } else if (event.key === 'ArrowRight' && hasMany) {
         event.preventDefault()
         step(1)
       }
     }
-    window.addEventListener("keydown", onKeyDown)
-    return () => window.removeEventListener("keydown", onKeyDown)
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
   }, [open, hasMany, step])
 
   return (
@@ -303,7 +304,7 @@ export const ImageLightbox = ({ items, index, onIndexChange, onClose }: ImageLig
         <div className="flex shrink-0 items-center justify-between gap-4">
           <div className="flex min-w-0 items-center gap-2">
             <DialogTitle className="truncate text-sm font-medium">
-              {current?.alt || current?.caption || "图片预览"}
+              {current?.alt || current?.caption || '图片预览'}
             </DialogTitle>
             {current?.caption && current.caption !== current.alt ? (
               <span className="shrink-0 text-xs text-muted-foreground">{current.caption}</span>
@@ -319,22 +320,25 @@ export const ImageLightbox = ({ items, index, onIndexChange, onClose }: ImageLig
               <button
                 className="rounded px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-50"
                 disabled={resolvingOriginal}
-                onClick={async () => {
+                onClick={() => {
                   setResolvingOriginal(true)
-                  try {
-                    const url = await current.onResolveOriginal?.()
-                    if (url) window.open(url, "_blank", "noopener,noreferrer")
-                    else toastError("这个附件没能取到下载地址")
-                  } catch (error) {
-                    toastError(error instanceof Error ? error.message : String(error))
-                  } finally {
-                    setResolvingOriginal(false)
-                  }
+                  // 解析原图地址是异步动作；用同步包装保持 onClick 的 void 契约
+                  void (async () => {
+                    try {
+                      const url = await current.onResolveOriginal?.()
+                      if (url) window.open(url, '_blank', 'noopener,noreferrer')
+                      else toastError('这个附件没能取到下载地址')
+                    } catch (error) {
+                      toastError(error instanceof Error ? error.message : String(error))
+                    } finally {
+                      setResolvingOriginal(false)
+                    }
+                  })()
                 }}
                 title="用有时效的下载地址打开原图（存储桶私有时的可靠路径）"
                 type="button"
               >
-                {resolvingOriginal ? "正在获取…" : "查看原图"}
+                {resolvingOriginal ? '正在获取…' : '查看原图'}
               </button>
             ) : null}
             <button
@@ -363,7 +367,7 @@ export const ImageLightbox = ({ items, index, onIndexChange, onClose }: ImageLig
             </button>
           ) : null}
           {current && isImageItem(current) ? (
-            <ZoomableImage alt={current.alt ?? ""} src={current.src} />
+            <ZoomableImage alt={current.alt ?? ''} src={current.src} />
           ) : null}
           {current && !isImageItem(current) ? (
             /**
@@ -374,7 +378,7 @@ export const ImageLightbox = ({ items, index, onIndexChange, onClose }: ImageLig
               className="min-w-[70vw] rounded bg-background"
               file={{
                 key: current.src,
-                name: current.filename ?? current.alt ?? "附件",
+                name: current.filename ?? current.alt ?? '附件',
                 ...(current.mediaType ? { type: current.mediaType } : {}),
                 ...(current.bytes === undefined ? {} : { size: current.bytes }),
               }}
@@ -402,15 +406,14 @@ export const ImageLightbox = ({ items, index, onIndexChange, onClose }: ImageLig
                 key={item.id}
                 aria-label={`查看第 ${itemIndex + 1} 张`}
                 className={cn(
-                  "size-10 overflow-hidden rounded bg-surface-2 transition-all",
-                  itemIndex === index
-                    ? "ring-1 ring-primary"
-                    : "opacity-70 hover:opacity-100",
+                  'size-10 overflow-hidden rounded bg-surface-2 transition-all',
+                  itemIndex === index ? 'ring-1 ring-primary' : 'opacity-70 hover:opacity-100',
                 )}
-                onClick={() => onIndexChange(items.findIndex((candidate) => candidate.id === item.id))}
+                onClick={() =>
+                  onIndexChange(items.findIndex((candidate) => candidate.id === item.id))
+                }
                 type="button"
               >
-                {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img alt="" className="size-full object-cover" src={item.src} />
               </button>
             ))}

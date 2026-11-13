@@ -5,7 +5,6 @@ import { SKILL_DESCRIPTION_MAX, SKILL_FILE_MAX_CHARS, SKILL_MAX_FILES } from '@r
 import { ToolDecl, ToolGroup } from '../core/tools/tool.decorator.js'
 import { TOOL_KEYS } from '../core/tools/tool-keys.js'
 import { ToolDeniedError } from '../core/tools/tools.types.js'
-import type { ToolCallContext } from '../core/tools/tools.types.js'
 import { SkillLibraryService } from './skill.service.js'
 
 /**
@@ -36,11 +35,15 @@ const SkillSaveParams = z.object({
     .string()
     .min(1)
     .max(SKILL_DESCRIPTION_MAX)
-    .describe('什么时候用：用户在什么场景 / 说什么话 / 要做什么时应该加载它；这是触发条件，不是内容摘要（会写进 SKILL.md 的 frontmatter，模型据此决定是否激活）'),
+    .describe(
+      '什么时候用：用户在什么场景 / 说什么话 / 要做什么时应该加载它；这是触发条件，不是内容摘要（会写进 SKILL.md 的 frontmatter，模型据此决定是否激活）',
+    ),
   body: z
     .string()
     .max(SKILL_FILE_MAX_CHARS)
-    .describe('SKILL.md 的 Markdown 正文（不含 frontmatter；frontmatter 由工具按 skillKey / description 生成）'),
+    .describe(
+      'SKILL.md 的 Markdown 正文（不含 frontmatter；frontmatter 由工具按 skillKey / description 生成）',
+    ),
   title: z.string().max(128).optional().describe('人读标题（省略 = 用 skillKey）'),
   files: z
     .array(
@@ -65,9 +68,16 @@ const SkillFileSaveParams = z.object({
     .string()
     .min(1)
     .max(200)
-    .describe('相对技能目录的路径：references/xxx.md、scripts/xxx.py 或 assets/xxx；写入 SKILL.md 请用 skill-save'),
+    .describe(
+      '相对技能目录的路径：references/xxx.md、scripts/xxx.py 或 assets/xxx；写入 SKILL.md 请用 skill-save',
+    ),
   content: z.string().max(SKILL_FILE_MAX_CHARS).describe('文件完整内容（覆盖写）'),
-  expectedVersion: z.number().int().positive().optional().describe('乐观锁版本；并发修改时传当前版本'),
+  expectedVersion: z
+    .number()
+    .int()
+    .positive()
+    .optional()
+    .describe('乐观锁版本；并发修改时传当前版本'),
 })
 
 const SkillFileAppendParams = z.object({
@@ -76,9 +86,16 @@ const SkillFileAppendParams = z.object({
     .string()
     .min(1)
     .max(200)
-    .describe('相对技能目录的路径：references/xxx.md、scripts/xxx.py 或 assets/xxx；不能是 SKILL.md'),
+    .describe(
+      '相对技能目录的路径：references/xxx.md、scripts/xxx.py 或 assets/xxx；不能是 SKILL.md',
+    ),
   content: z.string().max(SKILL_FILE_MAX_CHARS).describe('追加内容（不会自动补换行）'),
-  expectedVersion: z.number().int().positive().optional().describe('乐观锁版本；并发修改时传当前版本'),
+  expectedVersion: z
+    .number()
+    .int()
+    .positive()
+    .optional()
+    .describe('乐观锁版本；并发修改时传当前版本'),
 })
 
 const SkillDeleteParams = z.object({
@@ -201,7 +218,11 @@ export class SkillTools {
         files: detail.files.map((file) => file.path),
       }
     } catch (error) {
-      throw new ToolDeniedError('invalid-input', messageOf(error), '按原因修正后重试；技能名只能用小写字母 / 数字 / 连字符')
+      throw new ToolDeniedError(
+        'invalid-input',
+        messageOf(error),
+        '按原因修正后重试；技能名只能用小写字母 / 数字 / 连字符',
+      )
     }
   }
 
@@ -235,7 +256,11 @@ export class SkillTools {
         files: detail.files.map((file) => file.path),
       }
     } catch (error) {
-      throw new ToolDeniedError('invalid-input', messageOf(error), '按原因修正后重试；路径只能放在 references/ scripts/ assets/ 下')
+      throw new ToolDeniedError(
+        'invalid-input',
+        messageOf(error),
+        '按原因修正后重试；路径只能放在 references/ scripts/ assets/ 下',
+      )
     }
   }
 
@@ -261,7 +286,7 @@ export class SkillTools {
         skillKey: input.skillKey,
         path: input.path,
         content,
-        ...(input.expectedVersion ?? existing?.version
+        ...((input.expectedVersion ?? existing?.version)
           ? { expectedVersion: input.expectedVersion ?? existing!.version }
           : {}),
       })
@@ -274,14 +299,21 @@ export class SkillTools {
         files: detail.files.map((file) => file.path),
       }
     } catch (error) {
-      throw new ToolDeniedError('invalid-input', messageOf(error), '先用 skill-list 确认技能存在；路径只能放在 references/ scripts/ assets/ 下')
+      throw new ToolDeniedError(
+        'invalid-input',
+        messageOf(error),
+        '先用 skill-list 确认技能存在；路径只能放在 references/ scripts/ assets/ 下',
+      )
     }
   }
 
   /** 技能正文有专用工具（skill-save），避免这里第二次拼 frontmatter */
   private assertNotSkillBody(path: string): void {
     if (path === 'SKILL.md') {
-      throw new ToolDeniedError('invalid-input', 'SKILL.md 请用 skill-save 整体更新，不要用文件工具')
+      throw new ToolDeniedError(
+        'invalid-input',
+        'SKILL.md 请用 skill-save 整体更新，不要用文件工具',
+      )
     }
   }
 
@@ -354,4 +386,5 @@ export class SkillTools {
   }
 }
 
-const messageOf = (error: unknown): string => (error instanceof Error ? error.message : String(error))
+const messageOf = (error: unknown): string =>
+  error instanceof Error ? error.message : String(error)

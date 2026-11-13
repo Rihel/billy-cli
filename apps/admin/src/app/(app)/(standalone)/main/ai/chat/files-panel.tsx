@@ -4,19 +4,9 @@ import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import type { AgentFileModel, AgentFileNode, AgentWorkspaceFile } from '@repo/shared'
 import { Badge, Button, cn, useStorageAdapter } from '@repo/ui'
-import {
-  DownloadIcon,
-  EyeIcon,
-  FileIcon,
-  FolderIcon,
-  RefreshCwIcon,
-} from 'lucide-react'
+import { DownloadIcon, EyeIcon, FileIcon, FolderIcon, RefreshCwIcon } from 'lucide-react'
 import type { ServerClient } from './data'
-import {
-  FilePreviewDialog,
-  isPreviewTextItem,
-  officeKind,
-} from '@/components/file-preview-dialog'
+import { FilePreviewDialog, isPreviewTextItem, officeKind } from '@/components/file-preview-dialog'
 import { formatFileSize } from './attachment-utils'
 
 /**
@@ -122,7 +112,10 @@ export function FilesPanel({
     url: previewUrl(target),
     // 工作区二进制（图片 / PDF / 视频 / 音频）先物化再直连；文本和 Office 走各自分支
     loadUrl:
-      target.source === 'workspace' && conversationId && !isPreviewTextItem(target) && !officeKind(target)
+      target.source === 'workspace' &&
+      conversationId &&
+      !isPreviewTextItem(target) &&
+      !officeKind(target)
         ? () => workspaceUrl(target)
         : undefined,
     loadBytes: officeKind(target)
@@ -179,11 +172,7 @@ export function FilesPanel({
         </div>
         {view === 'workspace' ? (
           <div className="ml-auto flex items-center gap-1">
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={() => setIncludeCaches((value) => !value)}
-            >
+            <Button size="sm" variant="ghost" onClick={() => setIncludeCaches((value) => !value)}>
               {includeCaches ? '隐藏缓存' : '显示缓存'}
             </Button>
             <Button
@@ -237,9 +226,7 @@ export function FilesPanel({
       <FilePreviewDialog
         items={previewItems}
         index={preview?.index ?? null}
-        onIndexChange={(next) =>
-          setPreview((state) => (state ? { ...state, index: next } : state))
-        }
+        onIndexChange={(next) => setPreview((state) => (state ? { ...state, index: next } : state))}
         onClose={() => setPreview(null)}
         onDownload={(item) => {
           const target = preview?.items.find((candidate) => candidate.id === item.id)
@@ -365,6 +352,7 @@ function FileRow({
   onDownload: () => void
 }) {
   return (
+    // 行内含「下载」按钮，不能嵌套 <button>；整行可点按并已补键盘事件，保留 role=button
     <div
       role="button"
       tabIndex={0}

@@ -6,9 +6,7 @@
     "esModuleInterop": true,
     "isolatedModules": true,
     "declaration": false,
-    "types": [
-      "node"
-    ],
+    "types": ["node"],
     "verbatimModuleSyntax": true,
     "target": "ES2023",
     "sourceMap": true,
@@ -22,7 +20,5 @@
     "emitDecoratorMetadata": true,
     "useDefineForClassFields": false
   },
-  "include": [
-    "src"
-  ]
+  "include": ["src"]
 }

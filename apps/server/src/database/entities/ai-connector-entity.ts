@@ -1,5 +1,11 @@
 import { AuditEntity } from '@repo/kits'
-import { ConnectorAuthBase, ConnectorAuthSubject, ConnectorKind, ConnectorStatus, ConnectorTransport } from '@repo/shared'
+import {
+  ConnectorAuthBase,
+  ConnectorAuthSubject,
+  ConnectorKind,
+  ConnectorStatus,
+  ConnectorTransport,
+} from '@repo/shared'
 import { Column, Entity, Index } from 'typeorm'
 
 /**
@@ -36,19 +42,39 @@ export class AiConnectorEntity extends AuditEntity {
   driver!: string
 
   /** 来源：内置目录 / 管理员自建 */
-  @Column({ name: 'kind', type: 'varchar', length: 16, default: ConnectorKind._source.Builtin.value })
+  @Column({
+    name: 'kind',
+    type: 'varchar',
+    length: 16,
+    default: ConnectorKind._source.Builtin.value,
+  })
   kind: string = ConnectorKind._source.Builtin.value
 
   /** 传输形态（冗余列，只给页面筛选） */
-  @Column({ name: 'transport', type: 'varchar', length: 16, default: ConnectorTransport._source.None.value })
+  @Column({
+    name: 'transport',
+    type: 'varchar',
+    length: 16,
+    default: ConnectorTransport._source.None.value,
+  })
   transport: string = ConnectorTransport._source.None.value
 
   /** 基础层授权（一期只有 none / secret） */
-  @Column({ name: 'auth_base', type: 'varchar', length: 16, default: ConnectorAuthBase._source.None.value })
+  @Column({
+    name: 'auth_base',
+    type: 'varchar',
+    length: 16,
+    default: ConnectorAuthBase._source.None.value,
+  })
   authBase: string = ConnectorAuthBase._source.None.value
 
   /** 主体层授权（一期恒 none；二期做用户授权） */
-  @Column({ name: 'auth_subject', type: 'varchar', length: 16, default: ConnectorAuthSubject._source.None.value })
+  @Column({
+    name: 'auth_subject',
+    type: 'varchar',
+    length: 16,
+    default: ConnectorAuthSubject._source.None.value,
+  })
   authSubject: string = ConnectorAuthSubject._source.None.value
 
   /** 非密钥配置（地址 / 库名 / 超时）；空 = 用驱动默认值 */
@@ -64,7 +90,12 @@ export class AiConnectorEntity extends AuditEntity {
   enabled = true
 
   /** 上次测试的结论 */
-  @Column({ name: 'status', type: 'varchar', length: 16, default: ConnectorStatus._source.Unknown.value })
+  @Column({
+    name: 'status',
+    type: 'varchar',
+    length: 16,
+    default: ConnectorStatus._source.Unknown.value,
+  })
   status: string = ConnectorStatus._source.Unknown.value
 
   /** 最近一次失败的原文（脱敏后） */

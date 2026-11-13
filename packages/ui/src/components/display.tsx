@@ -1,20 +1,16 @@
-"use client"
+'use client'
 
-import { useEffect, useState } from "react"
-import type { CSSProperties, ReactNode } from "react"
-import { formatTime, formatTimeInTimezone, isAvailableData } from "@repo/shared"
-import type { ConfigType } from "@repo/shared"
-import { copy } from "@repo/shared/browser"
+import { useEffect, useState } from 'react'
+import type { CSSProperties, ReactNode } from 'react'
+import { formatTime, formatTimeInTimezone, isAvailableData } from '@repo/shared'
+import type { ConfigType } from '@repo/shared'
+import { copy } from '@repo/shared/browser'
 
-import { cn } from "#lib/utils"
-import { Button } from "#components/ui/button"
-import { Tag } from "#components/tag"
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "#components/ui/tooltip"
-import { CheckIcon, CopyIcon } from "lucide-react"
+import { cn } from '#lib/utils'
+import { Button } from '#components/ui/button'
+import { Tag } from '#components/tag'
+import { Tooltip, TooltipContent, TooltipTrigger } from '#components/ui/tooltip'
+import { CheckIcon, CopyIcon } from 'lucide-react'
 
 export type DictOption = Record<string, unknown> & {
   color?: string
@@ -61,14 +57,8 @@ export type EmptyValueProps = {
 }
 
 /** 空值占位：value 为空时渲染 emptyText（默认 -） */
-export function EmptyValue({
-  value,
-  children,
-  emptyText = "-",
-}: EmptyValueProps) {
-  return value === null || value === undefined || value === ""
-    ? emptyText
-    : children
+export function EmptyValue({ value, children, emptyText = '-' }: EmptyValueProps) {
+  return value === null || value === undefined || value === '' ? emptyText : children
 }
 
 export type DateValueProps = {
@@ -80,10 +70,10 @@ export type DateValueProps = {
 /** 日期展示（@repo/shared formatTime） */
 export function DateValue({
   value,
-  format = "YYYY-MM-DD HH:mm:ss",
-  emptyText = "-",
+  format = 'YYYY-MM-DD HH:mm:ss',
+  emptyText = '-',
 }: DateValueProps) {
-  if (value === null || value === undefined || value === "") return emptyText
+  if (value === null || value === undefined || value === '') return emptyText
   return formatTime(value, format) as ReactNode
 }
 
@@ -103,15 +93,15 @@ export function EllipsisText({
 }: EllipsisTextProps) {
   const content = (
     <span
-      className={cn("overflow-hidden text-ellipsis", className)}
+      className={cn('overflow-hidden text-ellipsis', className)}
       style={
         lines > 1
           ? ({
-              display: "-webkit-box",
+              display: '-webkit-box',
               WebkitLineClamp: lines,
-              WebkitBoxOrient: "vertical",
+              WebkitBoxOrient: 'vertical',
             } as CSSProperties)
-          : { display: "block", whiteSpace: "nowrap" }
+          : { display: 'block', whiteSpace: 'nowrap' }
       }
     >
       {children}
@@ -134,11 +124,7 @@ export type CopyableTextProps = {
 }
 
 /** 可复制文本：hover 出现复制按钮，复制后短暂显示「已复制」 */
-export function CopyableText({
-  value,
-  children,
-  className,
-}: CopyableTextProps) {
+export function CopyableText({ value, children, className }: CopyableTextProps) {
   const [copied, setCopied] = useState(false)
 
   useEffect(() => {
@@ -148,7 +134,7 @@ export function CopyableText({
   }, [copied])
 
   return (
-    <span className={cn("inline-flex items-center gap-1", className)}>
+    <span className={cn('inline-flex items-center gap-1', className)}>
       {children ?? value}
       <Tooltip>
         <TooltipTrigger
@@ -157,16 +143,15 @@ export function CopyableText({
               variant="ghost"
               size="icon-xs"
               aria-label="复制"
-              onClick={async () => {
-                await copy(String(value))
-                setCopied(true)
+              onClick={() => {
+                void copy(String(value)).then(() => setCopied(true))
               }}
             />
           }
         >
           {copied ? <CheckIcon className="text-emerald-600" /> : <CopyIcon />}
         </TooltipTrigger>
-        <TooltipContent>{copied ? "已复制" : "复制"}</TooltipContent>
+        <TooltipContent>{copied ? '已复制' : '复制'}</TooltipContent>
       </Tooltip>
     </span>
   )
@@ -174,7 +159,7 @@ export function CopyableText({
 
 export type DisplayValueProps = {
   value?: unknown
-  type?: "text" | "date" | "dict" | "link" | "image"
+  type?: 'text' | 'date' | 'dict' | 'link' | 'image'
   emptyText?: ReactNode
   format?: string
   timezone?: string
@@ -187,7 +172,7 @@ export type DisplayValueProps = {
   tooltip?: boolean
   copyable?: boolean
   linkText?: ReactNode
-  linkTarget?: "_blank" | "_self"
+  linkTarget?: '_blank' | '_self'
   imageAlt?: string
   className?: string
   style?: CSSProperties
@@ -196,9 +181,9 @@ export type DisplayValueProps = {
 /** 通用值展示：text / date / dict / link / image，支持省略、复制、tooltip */
 export function DisplayValue({
   value,
-  type = "text",
-  emptyText = "-",
-  format = "YYYY-MM-DD HH:mm:ss",
+  type = 'text',
+  emptyText = '-',
+  format = 'YYYY-MM-DD HH:mm:ss',
   timezone,
   dict,
   language,
@@ -209,14 +194,14 @@ export function DisplayValue({
   tooltip = false,
   copyable = false,
   linkText,
-  linkTarget = "_self",
-  imageAlt = "",
+  linkTarget = '_self',
+  imageAlt = '',
   className,
   style,
 }: DisplayValueProps): ReactNode {
   if (!isAvailableData(value)) return emptyText
 
-  if (type === "dict" && dict) {
+  if (type === 'dict' && dict) {
     return tag ? (
       <DictTag
         dict={dict}
@@ -227,44 +212,39 @@ export function DisplayValue({
         emptyText={emptyText}
       />
     ) : (
-      (((labelField
-        ? dict.getOption(value)?.[labelField]
-        : dict.getLabel(value, language)) ?? emptyText) as ReactNode)
+      (((labelField ? dict.getOption(value)?.[labelField] : dict.getLabel(value, language)) ??
+        emptyText) as ReactNode)
     )
   }
 
-  if (type === "link") {
+  if (type === 'link') {
     const link = (
       <a
-        className={cn("text-primary hover:underline", className)}
+        className={cn('text-primary hover:underline', className)}
         style={style}
         href={String(value)}
         target={linkTarget}
-        rel={linkTarget === "_blank" ? "noreferrer" : undefined}
+        rel={linkTarget === '_blank' ? 'noreferrer' : undefined}
       >
         {linkText ?? String(value)}
       </a>
     )
-    return copyable ? (
-      <CopyableText value={String(value)}>{link}</CopyableText>
-    ) : (
-      link
-    )
+    return copyable ? <CopyableText value={String(value)}>{link}</CopyableText> : link
   }
 
-  if (type === "image") {
+  if (type === 'image') {
     return (
       <img
         src={String(value)}
         alt={imageAlt}
-        className={cn("object-cover", className)}
+        className={cn('object-cover', className)}
         style={style}
       />
     )
   }
 
   const actualValue =
-    type === "date"
+    type === 'date'
       ? timezone
         ? formatTimeInTimezone(value as ConfigType, timezone, format)
         : formatTime(value as ConfigType, format)
@@ -290,9 +270,5 @@ export function DisplayValue({
     </span>
   )
 
-  return copyable ? (
-    <CopyableText value={String(value)}>{content}</CopyableText>
-  ) : (
-    content
-  )
+  return copyable ? <CopyableText value={String(value)}>{content}</CopyableText> : content
 }

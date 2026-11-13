@@ -1,11 +1,8 @@
-"use client"
+'use client'
 
-import type { ReactNode } from "react"
+import type { ReactNode } from 'react'
 
-import {
-  StorageProvider,
-  type PresignedUpload,
-} from "#components/storage-provider"
+import { StorageProvider, type PresignedUpload } from '#components/storage-provider'
 
 /**
  * 结构化接口：只要求「客户端有个 `storage.getPresignedUrl`」，**不 import `@repo/sdk`** ——

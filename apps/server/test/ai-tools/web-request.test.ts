@@ -21,13 +21,14 @@ import {
  * 4. 分页 / 缓存与 `web-fetch` 同一套（`ref` + `page`）。
  */
 
-const seen: { method: string; contentType: string; body: string; url: string; userAgent: string } = {
-  method: '',
-  contentType: '',
-  body: '',
-  url: '',
-  userAgent: '',
-}
+const seen: { method: string; contentType: string; body: string; url: string; userAgent: string } =
+  {
+    method: '',
+    contentType: '',
+    body: '',
+    url: '',
+    userAgent: '',
+  }
 
 let server: Server
 let base = ''
@@ -135,10 +136,7 @@ describe('web-request（发 HTTP 请求）', () => {
     const first = (await spec.exec({ url: `${base}/api/long` }, ctx as never)) as WebPageOutput
     expect(first.page.total).toBeGreaterThan(1)
     expect(first.footer).toContain('还剩')
-    const second = (await spec.exec(
-      { ref: first.ref, page: 2 },
-      ctx as never,
-    )) as WebPageOutput
+    const second = (await spec.exec({ ref: first.ref, page: 2 }, ctx as never)) as WebPageOutput
     expect(before).toBe(0)
     expect(second.cached).toBe(true)
     expect(second.page.current).toBe(2)
@@ -146,9 +144,9 @@ describe('web-request（发 HTTP 请求）', () => {
 
   it('GET 带 body：拒绝并说明怎么改', async () => {
     const { spec, ctx } = await build()
-    await expect(
-      spec.exec({ url: `${base}/api/echo`, body: 'x' }, ctx as never),
-    ).rejects.toThrow(/不能带 body/)
+    await expect(spec.exec({ url: `${base}/api/echo`, body: 'x' }, ctx as never)).rejects.toThrow(
+      /不能带 body/,
+    )
   })
 
   it('自定义头会覆盖默认项（UA 可换身份，其余浏览器头照旧）', async () => {

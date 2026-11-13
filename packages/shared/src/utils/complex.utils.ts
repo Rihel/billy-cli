@@ -1,26 +1,23 @@
-import { isAvailableData, isComplexData } from "./is.utils";
+import { isAvailableData, isComplexData } from './is.utils'
 
-import _ from "lodash";
-import { getDataType } from "./base.utils";
+import _ from 'lodash'
+import { getDataType } from './base.utils'
 
 export function pickAvailableData<T extends Record<string, any | null | undefined>>(data: T) {
   return _.pickBy(data, (value) => isAvailableData(value))
 }
 
-
-
-
 /**
  * 转换数组，通过fieldsMap 配置，提取元素的字段，映射成新的字段  
- * @param {Array<Record<string,any>>} array 
- * @param {Array<[OldFieldName, newFieldName]>} fieldsMap 
- * @returns 
+ * @param {Array<Record<string,any>>} array
+ * @param {Array<[OldFieldName, newFieldName]>} fieldsMap
+ * @returns
  */
 export function pickDataByArray<
   T extends Record<string, any>,
   K extends keyof T,
   MappedKeys extends string,
-  FieldMap extends [K, MappedKeys]
+  FieldMap extends [K, MappedKeys],
 >(array: T[], fieldsMap: FieldMap[]) {
   return array.map((item) => {
     const newItem: Record<MappedKeys, any> = {} as Record<MappedKeys, any>
@@ -34,9 +31,20 @@ export function pickDataByArray<
   })
 }
 
-export function listToMapWith<T extends Record<string, any>>(list: T[], key: keyof T): { [key: string]: T };
-export function listToMapWith<T extends Record<string, any>>(list: T[], key: keyof T, valueKey: keyof T): { [key: string]: T[keyof T] };
-export function listToMapWith<T extends Record<string, any>, F extends (data: T) => any>(list: T[], key: keyof T, valueKey: F): { [key: string]: ReturnType<F> };
+export function listToMapWith<T extends Record<string, any>>(
+  list: T[],
+  key: keyof T,
+): { [key: string]: T }
+export function listToMapWith<T extends Record<string, any>>(
+  list: T[],
+  key: keyof T,
+  valueKey: keyof T,
+): { [key: string]: T[keyof T] }
+export function listToMapWith<T extends Record<string, any>, F extends (data: T) => any>(
+  list: T[],
+  key: keyof T,
+  valueKey: F,
+): { [key: string]: ReturnType<F> }
 export function listToMapWith(list: any = [], key: any, valueKey?: any) {
   return list.reduce((acc: any, item: { [x: string]: any }) => {
     const keyName = item[key]
@@ -55,24 +63,25 @@ export function listToMapWith(list: any = [], key: any, valueKey?: any) {
   }, {})
 }
 
-
-
 type CbParams = {
-  key: string,
+  key: string
   value: any
-  dataType: string,
-  dataPath: string[],
+  dataType: string
+  dataPath: string[]
   parent: any
   depth: number
 }
 /**
  * 递归遍历复杂数据
- * @param json 
- * @param fn 
- * @returns 
+ * @param json
+ * @param fn
+ * @returns
  */
-export function eachComplexData<T extends Record<string, any>, Cb extends (data: CbParams) => void>(json: T, fn: Cb) {
-  const walk = (data: T, { deep, path }: { deep: number, path?: string[] }) => {
+export function eachComplexData<T extends Record<string, any>, Cb extends (data: CbParams) => void>(
+  json: T,
+  fn: Cb,
+) {
+  const walk = (data: T, { deep, path }: { deep: number; path?: string[] }) => {
     for (const key in data) {
       const dataPath = path ? [...path, key] : [key]
       if (Object.hasOwnProperty.call(data, key)) {
@@ -84,7 +93,7 @@ export function eachComplexData<T extends Record<string, any>, Cb extends (data:
             dataType: getDataType(element) as string,
             dataPath,
             parent: data,
-            depth: deep
+            depth: deep,
           })
           walk(element, {
             deep: deep + 1,
@@ -97,7 +106,7 @@ export function eachComplexData<T extends Record<string, any>, Cb extends (data:
             dataType: getDataType(element) as string,
             dataPath,
             parent: data,
-            depth: deep
+            depth: deep,
           })
         }
       }

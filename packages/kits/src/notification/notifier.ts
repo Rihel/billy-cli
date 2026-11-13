@@ -53,17 +53,11 @@ export class Notifier {
   async send(channel: NotifyChannel, payload: NotifyPayload): Promise<SendResult> {
     switch (channel) {
       case 'file':
-        return this.file
-          ? this.file.send(payload)
-          : { ok: false, error: '通道未配置：file' }
+        return this.file ? this.file.send(payload) : { ok: false, error: '通道未配置：file' }
       case 'lark':
-        return this.lark
-          ? this.lark.send(payload)
-          : { ok: false, error: '通道未配置：lark' }
+        return this.lark ? this.lark.send(payload) : { ok: false, error: '通道未配置：lark' }
       case 'email':
-        return this.email
-          ? this.email.send(payload)
-          : { ok: false, error: '通道未配置：email' }
+        return this.email ? this.email.send(payload) : { ok: false, error: '通道未配置：email' }
     }
   }
 }

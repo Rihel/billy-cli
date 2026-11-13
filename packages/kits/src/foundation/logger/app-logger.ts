@@ -32,15 +32,7 @@ const isPlainObject = (value: unknown): value is Record<string, unknown> =>
  * pino 保留字段：业务 data 里若同名（如 `{ name }`）会覆盖 pino 的 logger name / context，
  * 这类键改为原样收进 `data` 子对象，避免污染日志骨架字段。
  */
-const RESERVED_KEYS = new Set([
-  'name',
-  'msg',
-  'level',
-  'time',
-  'pid',
-  'hostname',
-  'context',
-])
+const RESERVED_KEYS = new Set(['name', 'msg', 'level', 'time', 'pid', 'hostname', 'context'])
 
 @Injectable({ scope: Scope.TRANSIENT })
 export class AppLogger implements IAppLogger {

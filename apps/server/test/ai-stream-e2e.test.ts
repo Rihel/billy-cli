@@ -14,7 +14,6 @@ import { createAgentRegistry } from '../src/modules/ai/agents/registry.js'
 import { createPromptEngine } from '../src/modules/ai/core/prompts/index.js'
 import { AgentTitleService } from '../src/modules/ai/runtime/title.service.js'
 import { SkillLoader } from '../src/modules/ai/core/skills/index.js'
-import { BashTool } from '../src/modules/ai/tools/bash.tool.js'
 import { FileTools } from '../src/modules/ai/files/file.tools.js'
 import { WebTools } from '../src/modules/ai/tools/web.tools.js'
 import { RunSubAgentTool } from '../src/modules/ai/tools/subagent.tool.js'
@@ -37,7 +36,6 @@ import {
   MOCK_ASK_MARKER,
   MOCK_ASK_TOOL,
   MOCK_CHILD_TEXT,
-  MOCK_COMMAND_MARKER,
   MOCK_DELEGATE_MARKER,
   MOCK_DELEGATE_PARALLEL_MARKER,
   MOCK_FINAL_TEXT,
@@ -127,7 +125,9 @@ const waitFor = async (check: () => Promise<boolean>, timeoutMs = 3_000): Promis
 }
 
 /** 发一次流式请求，收集 SSE 原文 */
-const postStream = async (body: Record<string, unknown>): Promise<{ status: number; headers: Headers; text: string }> => {
+const postStream = async (
+  body: Record<string, unknown>,
+): Promise<{ status: number; headers: Headers; text: string }> => {
   const response = await fetch(`${httpBase}/chat/stream`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
@@ -171,7 +171,9 @@ const uiTextOfSse = (sse: string): string =>
     .join('')
 
 /** 回答挂起的一轮（同样是 SSE，收完再断言） */
-const postResume = async (body: Record<string, unknown>): Promise<{ status: number; text: string }> => {
+const postResume = async (
+  body: Record<string, unknown>,
+): Promise<{ status: number; text: string }> => {
   const response = await fetch(`${httpBase}/chat/resume`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
@@ -210,8 +212,11 @@ beforeAll(async () => {
     },
   } as never
 
-
-  redis = new RedisStore({ url: REDIS_URL, keyPrefix: 'aitest:' } as never, new IdGeneration(), silentLogger)
+  redis = new RedisStore(
+    { url: REDIS_URL, keyPrefix: 'aitest:' } as never,
+    new IdGeneration(),
+    silentLogger,
+  )
   await redis.onApplicationBootstrap()
   streamStore = new AgentStreamStore(redis, silentLogger)
 
@@ -229,14 +234,7 @@ beforeAll(async () => {
   // `AgentRunner` 通过 ModuleRef **惰性**取注册机（构造期不依赖它，否则成环死锁）：
   // 测试给一个只实现 `get` 的替身，语义与生产一致
   const moduleRefPort = { get: () => toolRegistry } as never
-  const runner = new AgentRunner(
-    runs,
-    timelines,
-    config,
-    silentLogger,
-    deps.metas,
-    moduleRefPort,
-  )
+  const runner = new AgentRunner(runs, timelines, config, silentLogger, deps.metas, moduleRefPort)
   // 工具组实例（唯一的工具来源）：与 `ai.module.ts` 的装配口径一致
   const plannerStore = new PlannerStore(timelines)
   toolRegistry = new ToolRegistry(
@@ -266,7 +264,13 @@ beforeAll(async () => {
     storage: new AgentMastraStore(db, silentLogger),
   })
 
-  conversations = new AgentConversationService(conversationRepo, runs, timelines, registry, silentLogger)
+  conversations = new AgentConversationService(
+    conversationRepo,
+    runs,
+    timelines,
+    registry,
+    silentLogger,
+  )
   const context = new ContextService(timelines, config, silentLogger)
   // 附件替身：e2e 不带附件，但构造器是位置参数，少一个会让后面整体错位
   const chatAttachments = stubAttachments(silentLogger)
@@ -296,7 +300,10 @@ beforeAll(async () => {
     const chunks: Buffer[] = []
     req.on('data', (chunk) => chunks.push(chunk as Buffer))
     req.on('end', () => {
-      const body = JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}') as Record<string, unknown>
+      const body = JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}') as Record<
+        string,
+        unknown
+      >
       const run =
         req.url === '/chat/resume'
           ? chat.resumeChat(USER, body as never, res)
@@ -444,9 +451,7 @@ describe('流式链路端到端（mock 模型 + 真实 DB + 真实 Redis）', ()
     // 工具耗时要靠网关的审计旁证（这个 e2e 刻意不装插件，见装配处的 `new ToolGateway(..., [])`），
     // 因此"耗时落列 + 拒绝分桶"由 `ai-stream-recorder-observability.test.ts` 用 meta 替身钉住
     expect(
-      page.items
-        .filter((item) => item.kind === TimelineKind.ToolResult)
-        .map((item) => item.state),
+      page.items.filter((item) => item.kind === TimelineKind.ToolResult).map((item) => item.state),
     ).toContain('output-available')
   })
 
@@ -530,7 +535,10 @@ describe('流式链路端到端（mock 模型 + 真实 DB + 真实 Redis）', ()
     createdConversationIds.push(conversation.id)
 
     // 慢速流：留出可打断的窗口
-    const pending = postStream({ conversationId: conversation.id, message: `慢一点 ${MOCK_SLOW_MARKER}` })
+    const pending = postStream({
+      conversationId: conversation.id,
+      message: `慢一点 ${MOCK_SLOW_MARKER}`,
+    })
     await new Promise((resolve) => setTimeout(resolve, 200))
 
     const active = await runs.findActive(conversation.id)
@@ -773,7 +781,10 @@ describe('流式链路端到端（mock 模型 + 真实 DB + 真实 Redis）', ()
     const expectedDataUrl = `data:image/png;base64,${STUB_IMAGE_BYTES.toString('base64')}`
 
     mock.requests.length = 0
-    const { status, text } = await postStream({ message: '这张图里有什么？', attachments: [attachment] })
+    const { status, text } = await postStream({
+      message: '这张图里有什么？',
+      attachments: [attachment],
+    })
     expect(status).toBe(200)
     expect(text).toContain('[DONE]')
 
@@ -875,9 +886,9 @@ describe('流式链路端到端（mock 模型 + 真实 DB + 真实 Redis）', ()
     const answerRow = after.items.find(
       (item) => item.kind === TimelineKind.ToolResult && item.toolKey === MOCK_ASK_TOOL,
     )
-    const answerOutput = (answerRow?.payload as
-      | { output?: { text?: unknown; answers?: unknown } }
-      | undefined)?.output
+    const answerOutput = (
+      answerRow?.payload as { output?: { text?: unknown; answers?: unknown } } | undefined
+    )?.output
     // 出参是结构化对象：`text` 给模型读、`answers` 给前端还原；模型那份由 toModelOutput 只取 text
     expect(answerOutput?.text).toContain('用户已回答')
     expect(answerOutput?.answers).toEqual([
@@ -918,9 +929,9 @@ describe('流式链路端到端（mock 模型 + 真实 DB + 真实 Redis）', ()
     const cancelRow = after.items.find(
       (item) => item.kind === TimelineKind.ToolResult && item.toolKey === MOCK_ASK_TOOL,
     )
-    const cancelOutput = (cancelRow?.payload as
-      | { output?: { cancelled?: unknown; answers?: unknown } }
-      | undefined)?.output
+    const cancelOutput = (
+      cancelRow?.payload as { output?: { cancelled?: unknown; answers?: unknown } } | undefined
+    )?.output
     expect(cancelOutput?.cancelled).toBe(true)
     expect(cancelOutput?.answers).toEqual([])
   }, 30_000)
@@ -996,7 +1007,10 @@ describe('流式链路端到端（mock 模型 + 真实 DB + 真实 Redis）', ()
 
     failModelResolution = true
     try {
-      const failed = await postStream({ conversationId: conversation.id, message: '这一轮应该失败' })
+      const failed = await postStream({
+        conversationId: conversation.id,
+        message: '这一轮应该失败',
+      })
       expect(failed.status).not.toBe(200)
     } finally {
       failModelResolution = false

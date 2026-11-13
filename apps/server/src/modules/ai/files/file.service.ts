@@ -1,7 +1,13 @@
 import { createHash } from 'node:crypto'
 import { appendFile, mkdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises'
 import { dirname, relative, resolve } from 'node:path'
-import { Inject, Injectable, Optional, type OnApplicationBootstrap, type OnApplicationShutdown } from '@nestjs/common'
+import {
+  Inject,
+  Injectable,
+  Optional,
+  type OnApplicationBootstrap,
+  type OnApplicationShutdown,
+} from '@nestjs/common'
 import { AppLogger, ObjectStorage } from '@repo/kits'
 import {
   buildFileTree,
@@ -375,7 +381,12 @@ export class FileService implements OnApplicationBootstrap, OnApplicationShutdow
 
     const object = await this.storage.getObject({ key: row.key })
     if (row.sha256 && sha256(object.body) !== row.sha256) {
-      throw new ToolDeniedError('upstream', '对象已损坏（sha256 不匹配），请重新提交', undefined, true)
+      throw new ToolDeniedError(
+        'upstream',
+        '对象已损坏（sha256 不匹配），请重新提交',
+        undefined,
+        true,
+      )
     }
     await mkdir(dirname(target), { recursive: true })
     await this.atomicWrite(target, object.body)
@@ -425,7 +436,16 @@ export class FileService implements OnApplicationBootstrap, OnApplicationShutdow
     const offset = Math.max(1, input.offset ?? 1)
     const limit = Math.min(input.limit ?? config.pageLines, 500)
     if (offset > totalLines) {
-      return { path: target, totalLines, offset, limit, text: '', hasMore: false, nextOffset: offset, truncated: false }
+      return {
+        path: target,
+        totalLines,
+        offset,
+        limit,
+        text: '',
+        hasMore: false,
+        nextOffset: offset,
+        truncated: false,
+      }
     }
 
     const page: string[] = []
@@ -484,7 +504,10 @@ export class FileService implements OnApplicationBootstrap, OnApplicationShutdow
       throw new ToolDeniedError('invalid-input', '每个关键词最多 50 字符')
     }
     const needle = keywords.map((word) => (input.caseSensitive ? word : word.toLowerCase()))
-    const maxResults = Math.min(input.maxResults ?? config.searchMaxResults, config.searchMaxResults)
+    const maxResults = Math.min(
+      input.maxResults ?? config.searchMaxResults,
+      config.searchMaxResults,
+    )
     const root = this.workspaceOf(ctx)
     const start = input.pathPrefix
       ? await resolveWorkspacePath({
@@ -554,7 +577,8 @@ export class FileService implements OnApplicationBootstrap, OnApplicationShutdow
 
     const startInfo = await stat(start).catch(() => null)
     if (!startInfo) {
-      if (!input.pathPrefix) return { items: [], totalMatches: 0, truncated: false, scannedFiles: 0 }
+      if (!input.pathPrefix)
+        return { items: [], totalMatches: 0, truncated: false, scannedFiles: 0 }
       throw new ToolDeniedError('invalid-input', `目录不存在：${input.pathPrefix}`)
     }
     if (startInfo.isDirectory()) await walk(start, 0)
@@ -601,7 +625,11 @@ export class FileService implements OnApplicationBootstrap, OnApplicationShutdow
         const full = resolve(dir, entry.name)
         if (entry.isDirectory()) {
           if (IGNORED_DIRS.has(entry.name)) continue
-          if (!includeCaches && depth === 0 && (entry.name === 'files' || entry.name === 'uploads')) {
+          if (
+            !includeCaches &&
+            depth === 0 &&
+            (entry.name === 'files' || entry.name === 'uploads')
+          ) {
             continue
           }
           await walk(full, depth + 1)
@@ -702,12 +730,16 @@ export class FileService implements OnApplicationBootstrap, OnApplicationShutdow
           `oldText 匹配到 ${occurrences} 处；提供更长的唯一上下文，或 all=true`,
         )
       }
-      const after = input.all === true
-        ? before.split(input.oldText).join(input.newText)
-        : before.replace(input.oldText, () => input.newText)
+      const after =
+        input.all === true
+          ? before.split(input.oldText).join(input.newText)
+          : before.replace(input.oldText, () => input.newText)
       const body = Buffer.from(after, 'utf8')
       if (body.length > config.maxWriteBytes) {
-        throw new ToolDeniedError('invalid-input', `替换后超过单次写入上限 ${config.maxWriteBytes} 字节`)
+        throw new ToolDeniedError(
+          'invalid-input',
+          `替换后超过单次写入上限 ${config.maxWriteBytes} 字节`,
+        )
       }
       if (body.length > config.maxBytes) {
         throw new ToolDeniedError('invalid-input', `替换后超过单文件上限 ${config.maxBytes} 字节`)
@@ -801,7 +833,9 @@ export class FileService implements OnApplicationBootstrap, OnApplicationShutdow
 
   /** 管理员预览：按文件 id 读任意会话的文本（不要求会话归属） */
   /** 管理员预览：按文件 id 读任意会话的文本（不要求会话归属） */
-  async adminPreview(fileId: string): Promise<{ text: string; mediaType: string; truncated: boolean }> {
+  async adminPreview(
+    fileId: string,
+  ): Promise<{ text: string; mediaType: string; truncated: boolean }> {
     const row = await this.files.findById(fileId)
     if (!row) throw new ToolDeniedError('forbidden', '文件不存在')
     if (!isTextFile(row.filename, row.mediaType)) {
@@ -985,11 +1019,7 @@ export class FileService implements OnApplicationBootstrap, OnApplicationShutdow
 
   /** 服务端对象 key：用户 / 管理员 / 无身份三种前缀 */
   private objectKey(ctx: FileContext, fileKey: string): string {
-    const owner = ctx.isAdmin
-      ? 'admin'
-      : ctx.userId
-        ? `user/${ctx.userId}`
-        : 'system'
+    const owner = ctx.isAdmin ? 'admin' : ctx.userId ? `user/${ctx.userId}` : 'system'
     return `${owner}/${ctx.conversationId}/${fileKey}`
   }
 

@@ -32,12 +32,9 @@ describe('share token', () => {
 
     expect(shareState({ ...base, revokedAt: new Date(now - 5000) }, now)).toBe('revoked')
     // 撤销优先：既撤销又过期，仍然报 revoked
-    expect(
-      shareState(
-        { expiresAt: new Date(now - 1), revokedAt: new Date(now - 5000) },
-        now,
-      ),
-    ).toBe('revoked')
+    expect(shareState({ expiresAt: new Date(now - 1), revokedAt: new Date(now - 5000) }, now)).toBe(
+      'revoked',
+    )
   })
 
   it('过期边界：等于当前时刻即视为过期', () => {

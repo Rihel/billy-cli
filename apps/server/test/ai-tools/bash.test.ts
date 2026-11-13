@@ -31,10 +31,7 @@ const buildRuntime = () =>
 
 const build = (caps = TEST_TOOL_ENV_CAPS) => {
   const deps = buildToolStackDeps({ caps })
-  const spec = specByKey(
-    new BashTool(buildRuntime(), silentLogger as never, caps),
-    TOOL_KEYS.bash,
-  )
+  const spec = specByKey(new BashTool(buildRuntime(), silentLogger as never, caps), TOOL_KEYS.bash)
   return { deps, spec }
 }
 
@@ -148,10 +145,7 @@ describe('bash（执行环境）', () => {
     durationMs: 1,
   })
 
-  const runtimeWith = (options: {
-    mode?: 'enforce' | 'off'
-    available?: boolean
-  }) => {
+  const runtimeWith = (options: { mode?: 'enforce' | 'off'; available?: boolean }) => {
     const commands: string[] = []
     const runner = {
       run: async (input: { command: string }) => {
@@ -183,7 +177,10 @@ describe('bash（执行环境）', () => {
     fileAccess?: 'read-only' | 'workspace-write',
   ) => {
     const deps = buildToolStackDeps({ caps: capsWithRoot(tmpdir()) })
-    const spec = specByKey(new BashTool(runtime, silentLogger as never, capsWithRoot(tmpdir())), TOOL_KEYS.bash)
+    const spec = specByKey(
+      new BashTool(runtime, silentLogger as never, capsWithRoot(tmpdir())),
+      TOOL_KEYS.bash,
+    )
     const settings = await deps.config.settings(spec)
     const ctx = makeToolContext({
       spec,

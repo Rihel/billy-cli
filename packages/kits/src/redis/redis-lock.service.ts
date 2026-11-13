@@ -39,7 +39,6 @@ const RETRY_INTERVAL_MS = 100
  */
 @Injectable()
 export class RedisLockService {
-
   /** 当前持有的锁：锁 key → { 持有者 token, 看门狗定时器 } */
   private readonly lockers = new Map<
     string,
@@ -62,16 +61,9 @@ export class RedisLockService {
    * @param timeoutSeconds 获取锁的最长等待时间（秒），超时抛 RedisLockError
    * @returns 持锁 token（传给 unlock 校验持有者）
    */
-  async lock(
-    key: string,
-    ttlSeconds: number,
-    timeoutSeconds: number,
-  ): Promise<string> {
+  async lock(key: string, ttlSeconds: number, timeoutSeconds: number): Promise<string> {
     const value = this.idGeneration.next(20)
-    const maxAttempts = Math.max(
-      1,
-      Math.round((timeoutSeconds * 1000) / RETRY_INTERVAL_MS),
-    )
+    const maxAttempts = Math.max(1, Math.round((timeoutSeconds * 1000) / RETRY_INTERVAL_MS))
 
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
       const result = await this.redis.raw.set(key, value, 'EX', ttlSeconds, 'NX')
@@ -137,13 +129,7 @@ export class RedisLockService {
       void (async () => {
         try {
           const { renew } = await this.ensureScripts()
-          const result = (await this.redis.raw.evalsha(
-            renew,
-            1,
-            key,
-            value,
-            ttlSeconds,
-          )) as number
+          const result = (await this.redis.raw.evalsha(renew, 1, key, value, ttlSeconds)) as number
           if (result !== 1) {
             this.logger.warn('Redis 续锁失败：锁已丢失', { key })
             this.stopWatchDog(key)

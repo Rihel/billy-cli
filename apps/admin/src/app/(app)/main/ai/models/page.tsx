@@ -186,7 +186,9 @@ function ModalityPicker({
       </div>
       <div className="flex items-center gap-2">
         <span className="text-xs text-muted-foreground">
-          {isUndeclared ? '当前：未声明（附件不会被拦下，只在会话页提醒）' : `当前：${selected.length ? selected.join(' / ') : '明确声明不支持任何输入'}`}
+          {isUndeclared
+            ? '当前：未声明（附件不会被拦下，只在会话页提醒）'
+            : `当前：${selected.length ? selected.join(' / ') : '明确声明不支持任何输入'}`}
         </span>
         {!isUndeclared ? (
           <Button onClick={() => onChange(undefined)} size="sm" type="button" variant="ghost">
@@ -291,30 +293,24 @@ export default function AiModelsPage() {
   // 「本次未返回」的判断要用最新的 lastSyncedAt，不能拿旧对象比
   useEffect(() => {
     if (!selectedProvider) return
-    const latest = providersQuery.data?.items.find(
-      (item) => item.id === selectedProvider.id,
-    )
+    const latest = providersQuery.data?.items.find((item) => item.id === selectedProvider.id)
     if (latest && latest !== selectedProvider) setSelectedProvider(latest)
   }, [providersQuery.data, selectedProvider])
 
   const createProviderMutation = useMutation({
-    mutationFn: (input: AiProviderCreateDto) =>
-      client.aiModel.provider.create(input),
+    mutationFn: (input: AiProviderCreateDto) => client.aiModel.provider.create(input),
   })
 
   const updateProviderMutation = useMutation({
-    mutationFn: (input: AiProviderUpdateDto) =>
-      client.aiModel.provider.update(input),
+    mutationFn: (input: AiProviderUpdateDto) => client.aiModel.provider.update(input),
   })
 
   const removeProviderMutation = useMutation({
-    mutationFn: (input: { providerId: string }) =>
-      client.aiModel.provider.remove(input),
+    mutationFn: (input: { providerId: string }) => client.aiModel.provider.remove(input),
   })
 
   const syncMutation = useMutation({
-    mutationFn: (input: { providerId: string }) =>
-      client.aiModel.provider.sync(input),
+    mutationFn: (input: { providerId: string }) => client.aiModel.provider.sync(input),
   })
 
   const testMutation = useMutation({
@@ -409,9 +405,7 @@ export default function AiModelsPage() {
     const apiKey = values.clearApiKey ? '' : values.apiKey.trim()
     const baseUrl = values.baseUrl.trim()
     const providerId =
-      editProviderDialog.isOpen && editProviderDialog.data
-        ? editProviderDialog.data.id
-        : undefined
+      editProviderDialog.isOpen && editProviderDialog.data ? editProviderDialog.data.id : undefined
     setTestResult(undefined)
     testMutation.mutate({
       kind: values.kind || AiProviderKind.OpenaiCompatible,
@@ -750,9 +744,7 @@ export default function AiModelsPage() {
       cell: ({ row }) => (
         <div className="flex flex-col gap-0.5">
           <span className="font-medium">{row.original.name}</span>
-          <span className="font-mono text-xs text-muted-foreground">
-            {row.original.id}
-          </span>
+          <span className="font-mono text-xs text-muted-foreground">{row.original.id}</span>
         </div>
       ),
     },
@@ -760,17 +752,13 @@ export default function AiModelsPage() {
       header: 'slug',
       accessorKey: 'slug',
       meta: { width: 140 },
-      cell: ({ row }) => (
-        <span className="font-mono text-xs">{row.original.slug}</span>
-      ),
+      cell: ({ row }) => <span className="font-mono text-xs">{row.original.slug}</span>,
     },
     {
       header: '类型',
       accessorKey: 'kind',
       meta: { width: 130 },
-      cell: ({ row }) => (
-        <DictTag dict={AiProviderKind} value={row.original.kind} />
-      ),
+      cell: ({ row }) => <DictTag dict={AiProviderKind} value={row.original.kind} />,
     },
     {
       header: '接口地址',
@@ -779,9 +767,7 @@ export default function AiModelsPage() {
       cell: ({ row }) => (
         <EmptyValue
           value={row.original.baseUrl}
-          emptyText={
-            <span className="text-muted-foreground">官方默认地址</span>
-          }
+          emptyText={<span className="text-muted-foreground">官方默认地址</span>}
         >
           <EllipsisText className="max-w-[210px] font-mono text-xs">
             {row.original.baseUrl}
@@ -795,9 +781,7 @@ export default function AiModelsPage() {
       meta: { width: 130 },
       cell: ({ row }) =>
         row.original.hasApiKey ? (
-          <span className="font-mono text-xs">
-            {row.original.apiKeyHint ?? '已配置'}
-          </span>
+          <span className="font-mono text-xs">{row.original.apiKeyHint ?? '已配置'}</span>
         ) : (
           <Tag color="warning">未配置</Tag>
         ),
@@ -927,9 +911,7 @@ export default function AiModelsPage() {
       header: '模型标识',
       accessorKey: 'modelKey',
       meta: { width: 200 },
-      cell: ({ row }) => (
-        <span className="font-mono text-xs">{row.original.modelKey}</span>
-      ),
+      cell: ({ row }) => <span className="font-mono text-xs">{row.original.modelKey}</span>,
     },
     {
       header: '展示名',
@@ -1003,9 +985,7 @@ export default function AiModelsPage() {
       header: '来源',
       accessorKey: 'source',
       meta: { width: 90 },
-      cell: ({ row }) => (
-        <DictTag dict={AiModelSource} value={row.original.source} />
-      ),
+      cell: ({ row }) => <DictTag dict={AiModelSource} value={row.original.source} />,
     },
     {
       header: '启用',
@@ -1039,13 +1019,9 @@ export default function AiModelsPage() {
           <DisplayValue
             type="date"
             value={row.original.lastSeenAt}
-            emptyText={
-              <span className="text-muted-foreground">未在供应商列表出现</span>
-            }
+            emptyText={<span className="text-muted-foreground">未在供应商列表出现</span>}
           />
-          {isMissingInLastSync(row.original) ? (
-            <Tag color="warning">本次未返回</Tag>
-          ) : null}
+          {isMissingInLastSync(row.original) ? <Tag color="warning">本次未返回</Tag> : null}
         </div>
       ),
     },
@@ -1180,10 +1156,10 @@ export default function AiModelsPage() {
           <AlertTitle>最近一次同步结果</AlertTitle>
           <AlertDescription>
             供应商本次返回 {syncResult.total} 个模型：新增 {syncResult.created} / 更新{' '}
-            {syncResult.updated} / 未变 {syncResult.unchanged} / 本次未返回{' '}
-            {syncResult.missing}
+            {syncResult.updated} / 未变 {syncResult.unchanged} / 本次未返回 {syncResult.missing}
             <br />
-            同步时间：<DisplayValue type="date" value={syncResult.syncedAt} />
+            同步时间：
+            <DisplayValue type="date" value={syncResult.syncedAt} />
             {syncResult.missing > 0
               ? '（「本次未返回」只提示，可能是下线或限流，不会自动禁用）'
               : ''}

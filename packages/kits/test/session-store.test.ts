@@ -46,7 +46,9 @@ class FakeRedisStore {
     this.put(
       key,
       JSON.stringify({ ...payload, ...patch }),
-      ttl === null || ttl === undefined ? undefined : Math.max(1, Math.ceil((ttl - Date.now()) / 1000)),
+      ttl === null || ttl === undefined
+        ? undefined
+        : Math.max(1, Math.ceil((ttl - Date.now()) / 1000)),
     )
   }
 
@@ -215,7 +217,9 @@ describe('SessionStore（会话存储：元数据 + 列表 + 单设备下线）'
     // 刚活跃过（< 60s）：节流，不写回
     await store.verify(TOKEN)
     await flushMicrotasks()
-    const throttled = JSON.parse(redis.rawValue(sessionKey(TOKEN)) ?? '{}') as { lastSeenAt: number }
+    const throttled = JSON.parse(redis.rawValue(sessionKey(TOKEN)) ?? '{}') as {
+      lastSeenAt: number
+    }
     expect(throttled.lastSeenAt).toBe(before.lastSeenAt)
 
     // 上一次活跃在 61s 前，且会话只剩 120s 寿命
@@ -297,9 +301,7 @@ describe('SessionStore（会话存储：元数据 + 列表 + 单设备下线）'
     await store.create(TOKEN, { sub: 'u-1', type: 'user' })
     await store.create(OTHER_TOKEN, { sub: 'u-1', type: 'user' })
     const listed = await store.list('user', 'u-1', TOKEN)
-    const other = listed.entries.find(
-      (entry) => entry.sessionId !== listed.currentSessionId,
-    )!
+    const other = listed.entries.find((entry) => entry.sessionId !== listed.currentSessionId)!
 
     await expect(store.revokeById('user', 'u-1', other.sessionId)).resolves.toBe(true)
     await expect(store.revokeById('user', 'u-1', other.sessionId)).resolves.toBe(false)

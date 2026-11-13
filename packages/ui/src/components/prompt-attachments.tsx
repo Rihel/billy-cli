@@ -1,10 +1,10 @@
-"use client"
+'use client'
 
-import { useState } from "react"
-import { FileTextIcon, XIcon } from "lucide-react"
+import { useState } from 'react'
+import { FileTextIcon, XIcon } from 'lucide-react'
 
-import { usePromptInputAttachments } from "#components/ai-elements/prompt-input.tsx"
-import { cn } from "#lib/utils.ts"
+import { usePromptInputAttachments } from '#components/ai-elements/prompt-input.tsx'
+import { cn } from '#lib/utils.ts'
 
 /** 一条附件的展示画像（表现层只认这几个字段，不认识业务模型） */
 export interface PromptAttachmentItem {
@@ -29,9 +29,9 @@ export const formatBytes = (bytes: number): string => {
 
 /** 按文件名 / 媒体类型判断能不能出缩略图 */
 export const isImageMedia = (filename: string, mediaType: string): boolean => {
-  if (mediaType.toLowerCase().startsWith("image/")) return true
-  const extension = filename.includes(".") ? (filename.split(".").pop() ?? "").toLowerCase() : ""
-  return ["png", "jpg", "jpeg", "webp", "gif", "avif", "bmp"].includes(extension)
+  if (mediaType.toLowerCase().startsWith('image/')) return true
+  const extension = filename.includes('.') ? (filename.split('.').pop() ?? '').toLowerCase() : ''
+  return ['png', 'jpg', 'jpeg', 'webp', 'gif', 'avif', 'bmp'].includes(extension)
 }
 
 export type PromptAttachmentChipProps = {
@@ -58,7 +58,7 @@ export const PromptAttachmentChip = ({
 }: PromptAttachmentChipProps) => {
   const image = isImageMedia(item.filename, item.mediaType)
   const clickable = Boolean(onClick)
-  const Wrapper = clickable ? "button" : "div"
+  const Wrapper = clickable ? 'button' : 'div'
   /**
    * 预览地址加载失败时退回文件图标。
    *
@@ -70,11 +70,11 @@ export const PromptAttachmentChip = ({
 
   return (
     <Wrapper
-      {...(clickable ? { onClick: () => onClick?.(item.key), type: "button" as const } : {})}
+      {...(clickable ? { onClick: () => onClick?.(item.key), type: 'button' as const } : {})}
       className={cn(
-        "relative flex items-center gap-2 rounded-md bg-surface-2 p-1.5",
-        clickable && "text-left hover:bg-surface-3",
-        onRemove && "pr-7",
+        'relative flex items-center gap-2 rounded-md bg-surface-2 p-1.5',
+        clickable && 'text-left hover:bg-surface-3',
+        onRemove && 'pr-7',
         className,
       )}
       title={item.filename}
@@ -82,7 +82,6 @@ export const PromptAttachmentChip = ({
       {showImage ? (
         // 用原生 `<img>`：预览地址可能是 blob（本地未上传）或对象存储直链，
         // 都不该进 Next 的图片优化管线（前者根本走不通）
-        // eslint-disable-next-line @next/next/no-img-element
         <img
           alt={item.filename}
           className="size-10 rounded object-cover"
@@ -101,7 +100,7 @@ export const PromptAttachmentChip = ({
         <span className="text-[10px] text-muted-foreground">
           {[item.behavior, item.bytes === undefined ? undefined : formatBytes(item.bytes)]
             .filter(Boolean)
-            .join(" · ")}
+            .join(' · ')}
         </span>
       </span>
       {onRemove ? (
@@ -153,11 +152,13 @@ export const PromptAttachments = ({
    * 夹一个 pdf 进来，翻页时跳到它没意义。
    */
   const previewable = onPreviewImage
-    ? items.filter((item) => Boolean(item.previewUrl) && isImageMedia(item.filename, item.mediaType))
+    ? items.filter(
+        (item) => Boolean(item.previewUrl) && isImageMedia(item.filename, item.mediaType),
+      )
     : []
 
   return (
-    <div className={cn("flex w-full flex-wrap items-center justify-start gap-2", className)}>
+    <div className={cn('flex w-full flex-wrap items-center justify-start gap-2', className)}>
       {items.map((item) => {
         const previewIndex = previewable.findIndex((candidate) => candidate.key === item.key)
         /**
@@ -197,11 +198,11 @@ export const PromptInputAttachmentsBar = ({
 
   return (
     <PromptAttachments
-      className={cn("px-1", className)}
+      className={cn('px-1', className)}
       items={attachments.files.map((file) => ({
         key: file.id,
-        filename: file.filename ?? "未命名文件",
-        mediaType: file.mediaType ?? "",
+        filename: file.filename ?? '未命名文件',
+        mediaType: file.mediaType ?? '',
         ...(file.url ? { previewUrl: file.url } : {}),
       }))}
       onRemove={(id) => attachments.remove(id)}

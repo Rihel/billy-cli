@@ -7,11 +7,7 @@ export const metadata: Metadata = {
   title: `登录注册 - ${AppName}`,
 }
 
-export default function AuthLayout({
-  children,
-}: {
-  children: React.ReactNode
-}) {
+export default function AuthLayout({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex min-h-screen">
       {/* Left: branding panel（亮色系：浅蓝氛围 + 品牌蓝 accent） */}
@@ -31,7 +27,9 @@ export default function AuthLayout({
         </div>
         <div className="relative z-10 space-y-4">
           <p className="text-3xl font-semibold leading-tight tracking-tight text-foreground">
-            全栈开发<br />从这里开始
+            全栈开发
+            <br />
+            从这里开始
           </p>
           <p className="text-sm leading-relaxed text-muted-foreground">
             NestJS 后端 · Next.js 前端 · PostgreSQL + Redis

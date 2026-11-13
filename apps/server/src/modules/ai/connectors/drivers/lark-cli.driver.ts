@@ -55,9 +55,19 @@ const LarkCliConfig = z.object({
   /** 飞书应用的 App ID（不是密钥，可以明文展示） */
   appId: z.string().trim().default(''),
   /** 国内飞书=`feishu`，国际版=`lark` */
-  brand: z.string().trim().toLowerCase().pipe(z.enum(['feishu', 'lark'])).default('feishu'),
+  brand: z
+    .string()
+    .trim()
+    .toLowerCase()
+    .pipe(z.enum(['feishu', 'lark']))
+    .default('feishu'),
   /** 默认身份：auto（有用户授权就用户，否则应用）/ user / bot */
-  identity: z.string().trim().toLowerCase().pipe(z.enum(['auto', 'user', 'bot'])).default('auto'),
+  identity: z
+    .string()
+    .trim()
+    .toLowerCase()
+    .pipe(z.enum(['auto', 'user', 'bot']))
+    .default('auto'),
   /** 单次命令的超时（毫秒） */
   timeoutMs: z.number().int().positive().max(120_000).default(30_000),
 })
@@ -286,11 +296,8 @@ export class LarkCliDriver implements ConnectorDriver {
         )
 
         if (outcome.code === 0) {
-          const ready = checks.find(
-            (check) => isRecord(check) && check.name === 'identity_ready',
-          )
-          const detail =
-            isRecord(ready) && typeof ready.message === 'string' ? ready.message : null
+          const ready = checks.find((check) => isRecord(check) && check.name === 'identity_ready')
+          const detail = isRecord(ready) && typeof ready.message === 'string' ? ready.message : null
           return { ok: true, message: detail ? `身份可用：${detail}` : undefined }
         }
 
@@ -456,13 +463,19 @@ export class LarkCliDriver implements ConnectorDriver {
       )
     }
     if (outcome.timedOut) {
-      throw new ToolDeniedError('timeout', `lark-cli config init 超过 ${INIT_TIMEOUT_MS / 1000} 秒未完成`, '检查服务器到飞书开放平台的网络')
+      throw new ToolDeniedError(
+        'timeout',
+        `lark-cli config init 超过 ${INIT_TIMEOUT_MS / 1000} 秒未完成`,
+        '检查服务器到飞书开放平台的网络',
+      )
     }
     if (outcome.code !== 0) {
       const envelope = errorEnvelopeOf(outcome.stderr) ?? errorEnvelopeOf(outcome.stdout)
       throw new ToolDeniedError(
         'precheck-failed',
-        envelope ? `飞书应用凭证校验失败：${envelope.message}` : `lark-cli config init 失败：${compact(outcome.stderr || outcome.stdout)}`,
+        envelope
+          ? `飞书应用凭证校验失败：${envelope.message}`
+          : `lark-cli config init 失败：${compact(outcome.stderr || outcome.stdout)}`,
         envelope?.hint ?? '检查 App ID / App Secret 是否属于同一个飞书应用',
       )
     }
@@ -628,11 +641,7 @@ export class LarkCliDriver implements ConnectorDriver {
     const json = parseJsonStrict(outcome.stdout)
     if (isRecord(json) && json.ok === false) {
       const failed = errorEnvelopeOf(outcome.stdout)
-      throw new ToolDeniedError(
-        'upstream',
-        failed?.message ?? 'lark-cli 返回失败',
-        failed?.hint,
-      )
+      throw new ToolDeniedError('upstream', failed?.message ?? 'lark-cli 返回失败', failed?.hint)
     }
     if (json !== undefined) return json
 
@@ -657,7 +666,9 @@ export class LarkCliDriver implements ConnectorDriver {
   /** 读 lark-cli 自己的配置文件里的 appId（只用来判断 init 有没有落盘，不读 secret） */
   private async readCliAppId(dir: string): Promise<string | null> {
     try {
-      const raw = JSON.parse(await readFile(join(dir, '.lark-cli', 'config.json'), 'utf8')) as unknown
+      const raw = JSON.parse(
+        await readFile(join(dir, '.lark-cli', 'config.json'), 'utf8'),
+      ) as unknown
       if (!isRecord(raw)) return null
       // 真实结构是 `{ apps: [{ appId, ... }] }`；旧版本可能是扁平的 `{ appId }`
       const apps = Array.isArray(raw.apps) ? raw.apps.filter(isRecord) : []

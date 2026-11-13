@@ -12,7 +12,6 @@ import { DEFAULT_AGENT_KEY, createAgentDefinitions } from '../src/modules/ai/age
 import { createMastra } from '../src/modules/ai/mastra/ai.mastra.js'
 import { createAgentRegistry } from '../src/modules/ai/agents/registry.js'
 import { decideModelForMastra } from '../src/modules/ai/core/model-decision.js'
-import { BashTool } from '../src/modules/ai/tools/bash.tool.js'
 import { FileTools } from '../src/modules/ai/files/file.tools.js'
 import { WebTools } from '../src/modules/ai/tools/web.tools.js'
 import { RunSubAgentTool } from '../src/modules/ai/tools/subagent.tool.js'
@@ -61,7 +60,6 @@ import { stubAttachments } from './helpers/attachments.js'
  */
 
 const TEST_USER = 'user_ai_model_select'
-const TEST_SECRET = `test-secret-${randomBytes(8).toString('hex')}`
 const TEST_API_KEY = 'sk-test-abcdefgh-abcd'
 
 /** 被选中的那个模型（mock 的 `/models` 列表里就有它，语义上"这家真有这个模型"） */
@@ -122,13 +120,7 @@ beforeAll(async () => {
     {
       url: process.env.DB_URL!,
       sync: false,
-      entities: [
-        AiProviderEntity,
-        AiModelEntity,
-        ConversationEntity,
-        RunEntity,
-        TimelineEntity,
-      ],
+      entities: [AiProviderEntity, AiModelEntity, ConversationEntity, RunEntity, TimelineEntity],
     } as never,
     silentLogger,
   )
@@ -181,14 +173,7 @@ beforeAll(async () => {
   // `AgentRunner` 通过 ModuleRef **惰性**取注册机（构造期不依赖它，否则成环死锁）：
   // 测试给一个只实现 `get` 的替身，语义与生产一致
   const moduleRefPort = { get: () => toolRegistry } as never
-  const runner = new AgentRunner(
-    runs,
-    timelines,
-    config,
-    silentLogger,
-    deps.metas,
-    moduleRefPort,
-  )
+  const runner = new AgentRunner(runs, timelines, config, silentLogger, deps.metas, moduleRefPort)
   // 工具组实例（唯一的工具来源）：与 `ai.module.ts` 的装配口径一致
   const plannerStore = new PlannerStore(timelines)
   toolRegistry = new ToolRegistry(
@@ -292,9 +277,7 @@ describe('模型选择端到端（选的模型真的被用）', () => {
     const sent = chatRequests().slice(before)
     expect(sent.length).toBeGreaterThan(0)
     // 每一跳（规划工具往返会多跳）都必须是选中的那个模型
-    expect(sent.map((request) => request.model)).toEqual(
-      sent.map(() => SELECTED_MODEL_KEY),
-    )
+    expect(sent.map((request) => request.model)).toEqual(sent.map(() => SELECTED_MODEL_KEY))
 
     // 运行快照记下的是"这一轮用的是哪个模型"（复盘要看得到）
     const runs = await db.dataSource.query<{ request_snapshot: { model?: string } }[]>(

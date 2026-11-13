@@ -23,12 +23,10 @@ export class MonitorTimeline implements OnApplicationShutdown {
         throw new Error(`监控不支持的评估周期：${interval}s（需要能整除 60）`)
       }
       this.jobs.push(
-        this.scheduler.scheduleCron(
-          `monitor:slot:${interval}`,
-          expr,
-          () => run(interval),
-          { protect: true, timezone: 'Asia/Shanghai' },
-        ),
+        this.scheduler.scheduleCron(`monitor:slot:${interval}`, expr, () => run(interval), {
+          protect: true,
+          timezone: 'Asia/Shanghai',
+        }),
       )
       this.logger.info('已注册监控时间槽', { intervalSeconds: interval, cron: expr })
     }

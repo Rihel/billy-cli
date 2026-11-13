@@ -53,9 +53,7 @@ export class AuthService {
     const existing = await this.userRepository.findByEmail(input.email)
     if (existing) throw new EmailTakenError(input.email)
     const hashed = await this.passwordHasher.hash(input.password)
-    const user = toUser(
-      await this.userRepository.create({ ...input, password: hashed }),
-    )
+    const user = toUser(await this.userRepository.create({ ...input, password: hashed }))
     const token = await this.tokenSigner.sign({ sub: user.id })
     await this.sessionStore.create(token, { sub: user.id, type: 'user' }, currentSessionMeta())
     this.logger.log('auth.registered', { id: user.id })
@@ -99,10 +97,7 @@ export class AuthService {
   async resetPassword(input: ResetPasswordDto): Promise<SuccessResultModel> {
     const user = await this.userRepository.findByResetToken(input.token)
     if (!user) throw new InvalidResetTokenError()
-    if (
-      !user.resetPasswordTokenExpiry ||
-      dayjs().isAfter(user.resetPasswordTokenExpiry)
-    ) {
+    if (!user.resetPasswordTokenExpiry || dayjs().isAfter(user.resetPasswordTokenExpiry)) {
       throw new ExpiredResetTokenError()
     }
     const hashed = await this.passwordHasher.hash(input.password)
@@ -121,9 +116,7 @@ export class AuthService {
   }
 
   @Transactional()
-  async updateInfo(
-    input: UpdateInfoDto & { userId: string },
-  ): Promise<AuthUserModel> {
+  async updateInfo(input: UpdateInfoDto & { userId: string }): Promise<AuthUserModel> {
     const { userId, ...changes } = input
     const user = await this.userRepository.update(userId, changes)
     if (!user) throw new UserNotFoundError(userId)
@@ -132,9 +125,7 @@ export class AuthService {
   }
 
   @Transactional()
-  async changePassword(
-    input: ChangePasswordDto & { userId: string },
-  ): Promise<SuccessResultModel> {
+  async changePassword(input: ChangePasswordDto & { userId: string }): Promise<SuccessResultModel> {
     const { userId, oldPassword, newPassword } = input
     const user = await this.userRepository.findById(userId)
     if (!user) throw new UserNotFoundError(userId)

@@ -46,17 +46,10 @@ export async function batchExecute<T>(
     }
   }
 
-  await Promise.all(
-    Array.from({ length: Math.min(concurrency, chunks.length) }, () =>
-      worker(),
-    ),
-  )
+  await Promise.all(Array.from({ length: Math.min(concurrency, chunks.length) }, () => worker()))
 
   if (errors.length > 0) {
-    throw new AggregateError(
-      errors,
-      `batchExecute 有 ${errors.length} 片执行失败`,
-    )
+    throw new AggregateError(errors, `batchExecute 有 ${errors.length} 片执行失败`)
   }
 }
 
@@ -114,10 +107,7 @@ export function createRetryFun<T extends (...args: any) => any>(
 // 以16ms为间隔无限递归执行一次回调，直到超时为止
 // 执行一个事情，但这事情依赖某个东西，这个东西是异步的，不确定啥时候拿的到
 // 那么就给他个超时时间，超时或者拿到了就跳出无限递归
-export const waitFor = async (
-  timeout: number,
-  cb?: () => boolean | Promise<boolean>,
-) => {
+export const waitFor = async (timeout: number, cb?: () => boolean | Promise<boolean>) => {
   let seed = 0
   while (true) {
     seed += 16

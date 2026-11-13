@@ -39,9 +39,7 @@ export interface DateTimePickerProps {
 
 const pad = (value: number): string => String(value).padStart(2, '0')
 
-const parse = (
-  value?: string,
-): { day: Date | undefined; hour: number; minute: number } => {
+const parse = (value?: string): { day: Date | undefined; hour: number; minute: number } => {
   const [datePart, timePart] = (value ?? '').split('T')
   const [year, month, date] = (datePart ?? '').split('-').map(Number)
   const [hour, minute] = (timePart ?? '').split(':').map(Number)

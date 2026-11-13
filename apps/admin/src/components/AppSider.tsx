@@ -25,7 +25,7 @@ import { AppMenu } from './AppMenu'
 
 export type AppSiderProps = Partial<{}>
 
-export const AppSider = ({}: AppSiderProps) => {
+export const AppSider = (_props: AppSiderProps) => {
   const { adminInfo, authEnabled, clear } = useAuthStore()
   const router = useRouter()
 
@@ -83,22 +83,13 @@ export const AppSider = ({}: AppSiderProps) => {
                     </SidebarMenuButton>
                   }
                 />
-                <DropdownMenuContent
-                  align="end"
-                  side="right"
-                  className="w-44"
-                >
-                  <DropdownMenuItem
-                    onClick={() => router.push('/main/user-center')}
-                  >
+                <DropdownMenuContent align="end" side="right" className="w-44">
+                  <DropdownMenuItem onClick={() => router.push('/main/user-center')}>
                     <UserRoundIcon />
                     个人中心
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
-                  <DropdownMenuItem
-                    variant="destructive"
-                    onClick={() => void exit()}
-                  >
+                  <DropdownMenuItem variant="destructive" onClick={() => void exit()}>
                     <LogOutIcon />
                     退出登录
                   </DropdownMenuItem>

@@ -4,10 +4,7 @@ import { TimelineKind, TimelineRole, estimateContentTokens } from '@repo/shared'
 import type { ModelMessage } from 'ai'
 import { getContextWindow } from 'tokenlens'
 import type { TimelineEntity } from '../../../database/entities/timeline-entity.js'
-import {
-  AgentConfig,
-  type AgentConfig as AgentConfigValue,
-} from '../core/config.js'
+import { AgentConfig, type AgentConfig as AgentConfigValue } from '../core/config.js'
 import { ContextTooLongError } from '../core/errors.js'
 import { paginate, serializeToolValue, toModelPage } from '../core/tools/paginate.js'
 import { isPagedToolValue } from '../core/tools/tools.types.js'
@@ -169,9 +166,7 @@ export class ContextService {
       ? { windowTokens: input.windowTokens, source: 'provider' as const }
       : this.resolveWindow(input.modelId)
     const triggerTokens = Math.floor(window.windowTokens * this.config.contextTriggerRatio)
-    const trimTargetTokens = Math.floor(
-      window.windowTokens * this.config.contextTrimTargetRatio,
-    )
+    const trimTargetTokens = Math.floor(window.windowTokens * this.config.contextTrimTargetRatio)
     // 兜底目标用压缩目标；真正"硬上限"是模型窗口本身
     const toolResultCharLimit = Math.max(
       256,
@@ -204,8 +199,7 @@ export class ContextService {
     // 基础消息：系统提示词 + （若有）摘要
     const systemMessages: ModelMessage[] = [{ role: 'system', content: input.systemPrompt }]
     if (summary) {
-      const summaryText =
-        typeof summary.payload?.text === 'string' ? summary.payload.text : ''
+      const summaryText = typeof summary.payload?.text === 'string' ? summary.payload.text : ''
       systemMessages.push({
         role: 'system',
         content: `以下是早前对话的摘要（原文仍保留在系统里，必要时可要求回看）：\n${summaryText}`,
@@ -218,10 +212,7 @@ export class ContextService {
 
     // 保护：最近 N 轮的起始轮号（轮号越小越旧）
     const lastTurnIndex = segments.length > 0 ? segments[segments.length - 1].turnIndex : 0
-    const protectedFromTurn = Math.max(
-      0,
-      lastTurnIndex - (this.config.contextKeepRecentTurns - 1),
-    )
+    const protectedFromTurn = Math.max(0, lastTurnIndex - (this.config.contextKeepRecentTurns - 1))
 
     const flush = (
       strategy: ContextSnapshot['strategy'],
@@ -377,12 +368,7 @@ export class ContextService {
          * 重算，保证前后逐字节一致（否则模型会看到"同一结果的两个不同开头"）。
          */
         if (isPagedToolValue(raw)) {
-          const page = paginate(
-            serializeToolValue(raw.data),
-            raw.page.pageSize,
-            1,
-            raw.page.handle,
-          )
+          const page = paginate(serializeToolValue(raw.data), raw.page.pageSize, 1, raw.page.handle)
           const view = JSON.stringify(toModelPage(page))
           const index = toolCallSegments.get(toolCallId)
           const part = {

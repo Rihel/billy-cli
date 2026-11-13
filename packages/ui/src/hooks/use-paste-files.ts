@@ -1,6 +1,6 @@
-"use client"
+'use client'
 
-import { useEffect } from "react"
+import { useEffect } from 'react'
 
 /**
  * 监听全局粘贴事件，提取剪贴板文件（用于拖拽上传区的粘贴上传）。
@@ -18,7 +18,7 @@ export const usePasteFiles = (
       if (files.length > 0) void onPaste(files, event)
     }
 
-    window.addEventListener("paste", handlePaste)
-    return () => window.removeEventListener("paste", handlePaste)
+    window.addEventListener('paste', handlePaste)
+    return () => window.removeEventListener('paste', handlePaste)
   }, [enabled, onPaste])
 }

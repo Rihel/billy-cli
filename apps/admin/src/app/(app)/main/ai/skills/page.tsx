@@ -76,8 +76,7 @@ export default function SkillsPage() {
     mutationFn: (dto: AiSkillCreateDto) => client.aiSkill.create(dto),
   })
   const updateMutation = useMutation({
-    mutationFn: (input: { skillKey: string; enabled: boolean }) =>
-      client.aiSkill.update(input),
+    mutationFn: (input: { skillKey: string; enabled: boolean }) => client.aiSkill.update(input),
   })
   const removeMutation = useMutation({
     mutationFn: (skillKey: string) => client.aiSkill.remove({ skillKey }),
@@ -94,7 +93,10 @@ export default function SkillsPage() {
   const handleCreate = async (dto: AiSkillCreateDto): Promise<void> => {
     try {
       await createMutation.mutateAsync(dto)
-      toastSuccess(`已创建技能「${dto.skillKey}」`, '正在打开编辑器；补上"何时用"、写完正文保存即可')
+      toastSuccess(
+        `已创建技能「${dto.skillKey}」`,
+        '正在打开编辑器；补上"何时用"、写完正文保存即可',
+      )
       setCreateOpen(false)
       void refetch()
       router.push(`/main/ai/skills/${encodeURIComponent(dto.skillKey)}`)
@@ -269,7 +271,8 @@ export default function SkillsPage() {
             <InfoIcon />
             <AlertTitle>库是事实源，目录是投影</AlertTitle>
             <AlertDescription>
-              保存时先写库，再把技能落盘成一个目录（Mastra 只认目录）。落盘失败会报错，重启服务会自动修复。
+              保存时先写库，再把技能落盘成一个目录（Mastra
+              只认目录）。落盘失败会报错，重启服务会自动修复。
               导入也一样：**下载内容进库**，不是登记一个链接。
             </AlertDescription>
           </Alert>
@@ -285,8 +288,8 @@ export default function SkillsPage() {
             <InfoIcon />
             <AlertTitle>技能内容会进入模型上下文</AlertTitle>
             <AlertDescription>
-              技能正文是指令，所以写入入口只对管理员开放；agent 的 <code>skill-save</code> 工具作用域也是
-              admin，普通前台用户不能借对话写库。
+              技能正文是指令，所以写入入口只对管理员开放；agent 的 <code>skill-save</code>{' '}
+              工具作用域也是 admin，普通前台用户不能借对话写库。
             </AlertDescription>
           </Alert>
         </div>

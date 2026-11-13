@@ -2,7 +2,6 @@ import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 import { Pages, PublicPaths, TokenKey } from './lib/constants'
 import { createServerClient } from './lib/server-client'
-import { logger } from './lib/logger'
 
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl

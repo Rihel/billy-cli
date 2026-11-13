@@ -18,11 +18,13 @@ const serverConfig: ServerConfig = {
 }
 
 /** 依赖探活的桩：默认健康，可指定某一项失败 / 永久挂起（模拟依赖假死） */
-const makeController = (options: {
-  db?: 'ok' | 'failed' | 'hang'
-  redis?: 'ok' | 'failed' | 'hang'
-  query?: ReturnType<typeof vi.fn>
-} = {}) => {
+const makeController = (
+  options: {
+    db?: 'ok' | 'failed' | 'hang'
+    redis?: 'ok' | 'failed' | 'hang'
+    query?: ReturnType<typeof vi.fn>
+  } = {},
+) => {
   const dbBehavior = options.db ?? 'ok'
   const redisBehavior = options.redis ?? 'ok'
 
@@ -127,13 +129,16 @@ describe('OpsController /readyz（就绪探针）', () => {
     vi.useFakeTimers()
     try {
       const { controller } = makeController({ db: 'hang' })
-      const assertion = expect(controller.readyz()).rejects.toMatchObject({
+      // 先发起请求让超时计时器挂上；再加一个兜底 handler，
+      // 避免假时钟推进时 rejection 先变成 unhandled，真正断言在下面
+      const request = controller.readyz()
+      void request.catch(() => undefined)
+
+      await vi.advanceTimersByTimeAsync(2_500)
+      await expect(request).rejects.toMatchObject({
         value: AppErrorCodes.NotReady,
         http: 503,
       })
-
-      await vi.advanceTimersByTimeAsync(2_500)
-      await assertion
     } finally {
       vi.useRealTimers()
     }

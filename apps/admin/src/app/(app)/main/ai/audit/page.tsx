@@ -21,16 +21,8 @@ import {
   JsonView,
 } from '@repo/ui'
 import type { DataTableColumnDef } from '@repo/ui'
-import {
-  ConversationStatus,
-  RunStatus,
-  TimelineKind,
-  TimelineRole,
-} from '@repo/shared'
-import type {
-  AgentConversationModel,
-  AgentTimelineItemModel,
-} from '@repo/shared'
+import { ConversationStatus, RunStatus, TimelineKind, TimelineRole } from '@repo/shared'
+import type { AgentConversationModel, AgentTimelineItemModel } from '@repo/shared'
 import { useServerClient } from '@/lib/server-client'
 
 /**
@@ -66,7 +58,7 @@ const tokenSummary = (usage: Record<string, unknown> | null): string => {
   const input = usage.inputTokens
   const output = usage.outputTokens
   if (total === null && input === null && output === null) return '—'
-  return `${total ?? '-'}（入 ${input ?? '-'} / 出 ${output ?? '-'}）`
+  return `${String(total ?? '-')}（入 ${String(input ?? '-')} / 出 ${String(output ?? '-')}）`
 }
 
 /** 分页游标：后端返回 `page / size / total`，还有下一页就再要一页 */
@@ -83,8 +75,7 @@ export default function AiAuditPage() {
 
   const conversationsQuery = useQuery({
     queryKey: ['ai', 'conversation', 'list', { page, includeDeleted }],
-    queryFn: () =>
-      client.agent.conversation.list({ page, size: PAGE_SIZE, includeDeleted }),
+    queryFn: () => client.agent.conversation.list({ page, size: PAGE_SIZE, includeDeleted }),
   })
 
   // 运行列表：一次 100 条（含子 agent），前端据此拼父子树；不够再加载
@@ -198,9 +189,7 @@ export default function AiAuditPage() {
       cell: ({ row }) => (
         <Button
           size="sm"
-          variant={
-            drawerOpen && conversation?.id === row.original.id ? 'default' : 'outline'
-          }
+          variant={drawerOpen && conversation?.id === row.original.id ? 'default' : 'outline'}
           onClick={() => openRuns(row.original)}
         >
           查看运行

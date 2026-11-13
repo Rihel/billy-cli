@@ -13,12 +13,6 @@
     "strictPropertyInitialization": false,
     "verbatimModuleSyntax": false
   },
-  "include": [
-    "src",
-    "tsdown.config.ts"
-  ],
-  "exclude": [
-    "node_modules",
-    "dist"
-  ]
+  "include": ["src", "tsdown.config.ts"],
+  "exclude": ["node_modules", "dist"]
 }

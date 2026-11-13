@@ -1,6 +1,5 @@
 'use client'
 
-import dedent from 'dedent'
 import { Button, Input, Switch } from '@repo/ui'
 import type { AiToolWorkspaceStatusModel } from '@repo/shared'
 import { RotateCcwIcon, TriangleAlertIcon } from 'lucide-react'
@@ -159,10 +158,7 @@ const ConfigFieldRow = ({
             value={value === undefined || value === null ? '' : String(value)}
             placeholder="留空 = 用默认值"
             onChange={(event) =>
-              onChange(
-                spec.key,
-                event.target.value === '' ? undefined : Number(event.target.value),
-              )
+              onChange(spec.key, event.target.value === '' ? undefined : Number(event.target.value))
             }
           />
         )
@@ -219,9 +215,7 @@ const IMPL_LABEL: Record<string, string> = {
  * 沙箱可用、不可用（命令会被拒绝）、还是部署已显式关闭隔离（仅自托管）。
  */
 const WorkspaceCapabilityNote = ({ status }: { status: AiToolWorkspaceStatusModel }) => {
-  const impl = status.sandbox.impl
-    ? (IMPL_LABEL[status.sandbox.impl] ?? status.sandbox.impl)
-    : ''
+  const impl = status.sandbox.impl ? (IMPL_LABEL[status.sandbox.impl] ?? status.sandbox.impl) : ''
   if (status.mode === 'off') {
     return (
       <div className="flex flex-col gap-1 rounded-md border border-border/60 bg-surface-2 p-3">

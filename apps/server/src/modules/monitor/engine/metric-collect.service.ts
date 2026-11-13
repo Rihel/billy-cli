@@ -61,10 +61,7 @@ export class MetricCollectService {
 
       for (let index = 0; index < windows.length; index++) {
         const window = windows[index]
-        const windowData =
-          sourceKey === 'telemetry'
-            ? (data as TelemetryWindow[])[index]
-            : data
+        const windowData = sourceKey === 'telemetry' ? (data as TelemetryWindow[])[index] : data
         await this.collectRaw(metrics, window, windowData, cache)
         await this.derived.compute(intervalSeconds, window, this.instance.id)
       }
@@ -101,7 +98,9 @@ export class MetricCollectService {
     }
   }
 
-  private groupBySource(metrics: readonly RawMetricDefinition[]): Map<string, RawMetricDefinition[]> {
+  private groupBySource(
+    metrics: readonly RawMetricDefinition[],
+  ): Map<string, RawMetricDefinition[]> {
     const bySource = new Map<string, RawMetricDefinition[]>()
     for (const metric of metrics) {
       const bucket = bySource.get(metric.source) ?? []

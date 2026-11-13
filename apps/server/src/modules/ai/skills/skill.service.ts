@@ -278,11 +278,7 @@ export class SkillLibraryService implements OnApplicationBootstrap {
       const version = await this.repository.bumpVersion(entity.id, input.expectedVersion, manager)
       if (version === null) throw new SkillVersionConflictError(entity.skillKey)
       await this.repository.saveFile(manager, entity.id, { path, content })
-      await this.repository.update(
-        entity.id,
-        { warnings, lastValidatedAt: new Date() },
-        manager,
-      )
+      await this.repository.update(entity.id, { warnings, lastValidatedAt: new Date() }, manager)
     })
 
     this.logger.log('ai.skill.file_saved', { skillKey: entity.skillKey, path })
@@ -377,7 +373,8 @@ export class SkillLibraryService implements OnApplicationBootstrap {
     overwrite: boolean,
   ): Promise<AiSkillImportItemModel> {
     const entry = source.files.find((file) => file.path === SKILL_FILE)
-    if (!entry) return { skillKey: source.skillKey, status: 'failed', message: `缺少 ${SKILL_FILE}` }
+    if (!entry)
+      return { skillKey: source.skillKey, status: 'failed', message: `缺少 ${SKILL_FILE}` }
 
     const parsed = parseSkillMarkdown(entry.content, source.skillKey)
     if (!parsed.parsed) {
@@ -492,14 +489,17 @@ export class SkillLibraryService implements OnApplicationBootstrap {
     }
     const total = files.reduce((sum, file) => sum + file.content.length, 0)
     if (total > SKILL_TOTAL_MAX_CHARS) {
-      throw new SkillFileInvalidError(`全部文件合计 ${total} 字符，超过上限 ${SKILL_TOTAL_MAX_CHARS}`)
+      throw new SkillFileInvalidError(
+        `全部文件合计 ${total} 字符，超过上限 ${SKILL_TOTAL_MAX_CHARS}`,
+      )
     }
   }
 }
 
 // ─────────────────────────── 工具函数 ───────────────────────────
 
-const messageOf = (error: unknown): string => (error instanceof Error ? error.message : String(error))
+const messageOf = (error: unknown): string =>
+  error instanceof Error ? error.message : String(error)
 
 /** 名字归一化：不合法时翻译成业务错误（HTTP 层已过 schema，这里是绕过 HTTP 调 service 的兜底） */
 const normalizeSkillOrThrow = (skillKey: string): string => {
@@ -520,9 +520,7 @@ const normalizeFilePathOrThrow = (path: string): string => {
 }
 
 const fileKind = (path: string): AiSkillFileModel['kind'] =>
-  isMarkdownFile(path)
-    ? SkillFileKind._source.Markdown.value
-    : SkillFileKind._source.Code.value
+  isMarkdownFile(path) ? SkillFileKind._source.Markdown.value : SkillFileKind._source.Code.value
 
 /** 以技能 id 分组文件 */
 const groupBySkill = (files: readonly AiSkillFileEntity[]): Map<string, AiSkillFileEntity[]> => {

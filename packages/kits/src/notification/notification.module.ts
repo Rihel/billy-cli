@@ -1,10 +1,7 @@
 import type { InfraModuleAsyncOptions } from '../foundation/infra-module.js'
 import { Global, Module, type DynamicModule } from '@nestjs/common'
 import type { z } from 'zod'
-import {
-  NotifyConfig,
-  NotifyConfigSchema,
-} from './notify.config.js'
+import { NotifyConfig, NotifyConfigSchema } from './notify.config.js'
 import { EmailClient } from './email/email.client.js'
 import { FileClient } from './file/file.client.js'
 import { LarkNotifyClient } from './lark-notify/lark-notify.client.js'
@@ -41,9 +38,7 @@ export class NotificationModule {
    * 异步装配：配置由注入的 provider（如 ConfigService）惰性解析 ——
    * 避免在模块装饰器求值时读取尚未加载的配置。
    */
-  static forRootAsync(
-    options: InfraModuleAsyncOptions<NotificationModuleOptions>,
-  ): DynamicModule {
+  static forRootAsync(options: InfraModuleAsyncOptions<NotificationModuleOptions>): DynamicModule {
     return {
       module: NotificationModule,
       imports: options.imports ?? [],
@@ -54,11 +49,7 @@ export class NotificationModule {
         EmailClient,
         LarkNotifyClient,
       ],
-      exports: [NotifyConfig,
-        Notifier,
-        FileClient,
-        EmailClient,
-        LarkNotifyClient,],
+      exports: [NotifyConfig, Notifier, FileClient, EmailClient, LarkNotifyClient],
     }
   }
 }

@@ -44,9 +44,7 @@ describe('模型决策：官方适配 vs 通用 OpenAI 兼容', () => {
   })
 
   it('官方适配：即使配了 baseURL 也不传 url（否则思考字段会被通用层丢掉）', () => {
-    const decision = decideModelForMastra(
-      runtimeModel({ baseURL: 'https://api.deepseek.com' }),
-    )
+    const decision = decideModelForMastra(runtimeModel({ baseURL: 'https://api.deepseek.com' }))
     expect(decision.officialAdapter).toBe(true)
     expect(decision.model.id).toBe('env-default/deepseek-flash')
     expect(decision.model.url).toBeUndefined()
@@ -89,8 +87,8 @@ describe('模型决策：官方适配 vs 通用 OpenAI 兼容', () => {
   })
 
   it('模型标识必须是 provider/model 形态（漏了斜杠在装配期就报错，不拖到第一次对话）', () => {
-    expect(() =>
-      decideModelForMastra(runtimeModel({ modelRef: 'deepseek-flash' })),
-    ).toThrow(/provider\/model/)
+    expect(() => decideModelForMastra(runtimeModel({ modelRef: 'deepseek-flash' }))).toThrow(
+      /provider\/model/,
+    )
   })
 })

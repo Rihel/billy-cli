@@ -7,11 +7,7 @@ export const metadata: Metadata = {
     '基于 @repo/ui Markdown 组件的多页面渲染测试：基础语法、GFM 扩展、代码高亮与完整文档场景。',
 }
 
-export default function MarkdownLayout({
-  children,
-}: {
-  children: React.ReactNode
-}) {
+export default function MarkdownLayout({ children }: { children: React.ReactNode }) {
   return (
     <div className="min-h-screen bg-background text-foreground selection:bg-brand/30">
       <MarkdownNav />

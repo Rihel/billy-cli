@@ -1,4 +1,4 @@
-import { Inject, Injectable } from '@nestjs/common'
+import { Injectable } from '@nestjs/common'
 import { AppError } from '@repo/kits'
 import { AppErrorCodes } from '@repo/shared'
 import { requestContext } from '../../../common/index.js'

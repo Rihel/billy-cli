@@ -15,11 +15,7 @@ export function alignedWindow(intervalSeconds: number, now: Date): MetricWindow 
 /** 按天窗口（Asia/Shanghai），key 用 YYYY-MM-DD */
 export function dayWindow(now: Date): MetricWindow {
   const shifted = new Date(now.getTime() + SHANGHAI_OFFSET_MS)
-  const startUtc = Date.UTC(
-    shifted.getUTCFullYear(),
-    shifted.getUTCMonth(),
-    shifted.getUTCDate(),
-  )
+  const startUtc = Date.UTC(shifted.getUTCFullYear(), shifted.getUTCMonth(), shifted.getUTCDate())
   const start = new Date(startUtc - SHANGHAI_OFFSET_MS)
   return {
     key: shifted.toISOString().slice(0, 10),
@@ -36,7 +32,5 @@ export function windowFromTelemetry(windowStartAt: number, windowEndAt: number):
 
 /** 毫秒数转成窗口 key（按天用日期，其它用起点 ISO） */
 export function windowKeyOf(start: Date, intervalSeconds: number): string {
-  return intervalSeconds >= 86_400
-    ? start.toISOString().slice(0, 10)
-    : start.toISOString()
+  return intervalSeconds >= 86_400 ? start.toISOString().slice(0, 10) : start.toISOString()
 }

@@ -29,9 +29,8 @@ const PLATFORM_LABELS: Record<string, string> = {
  * 显式解析而不是不传（不传也能跑）：命令执行的**审计日志与出参**里要写清"这条命令是被谁解释的"，
  * 出问题时才能解释"为什么 `dir` 在 Linux 上失败"。
  */
-export const resolveShell = (
-  platform: NodeJS.Platform = process.platform,
-): string => (platform === 'win32' ? (process.env.ComSpec ?? 'cmd.exe') : '/bin/sh')
+export const resolveShell = (platform: NodeJS.Platform = process.platform): string =>
+  platform === 'win32' ? (process.env.ComSpec ?? 'cmd.exe') : '/bin/sh'
 
 /** 平台画像（注入提示词 / 写审计日志用） */
 export interface PlatformInfo {

@@ -1,6 +1,12 @@
 import { AppLogger } from '../foundation/logger/app-logger.js'
 import { Inject, Injectable, type OnApplicationShutdown } from '@nestjs/common'
-import { Kafka, logLevel, type Consumer, type KafkaConfig as KafkaJsConfig, type Producer } from 'kafkajs'
+import {
+  Kafka,
+  logLevel,
+  type Consumer,
+  type KafkaConfig as KafkaJsConfig,
+  type Producer,
+} from 'kafkajs'
 import pRetry from 'p-retry'
 import { coalesceAsync } from 'promise-coalesce'
 import { KafkaConfig, type KafkaConfig as KafkaConfigType } from './kafka.config.js'
@@ -56,7 +62,6 @@ export interface KafkaAvailability {
  */
 @Injectable()
 export class KafkaService implements OnApplicationShutdown {
-
   private readonly producers = new Map<string, Producer>()
   private readonly consumers = new Map<string, Consumer>()
 
@@ -81,7 +86,7 @@ export class KafkaService implements OnApplicationShutdown {
   }
 
   /** 冷却期内直接抛错：宁可快失败，也不让请求去等一次注定超时的建连 */
-  private assertAvailable(topic: string): void {
+  private assertAvailable(_topic: string): void {
     const { available, retryAfterMs, lastError } = this.getAvailability()
     if (available) return
     throw new KafkaUnavailableError(

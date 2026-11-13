@@ -116,10 +116,9 @@ describe('useStream', () => {
   it('订阅的事件名集合变化会重建订阅（重连一次）', () => {
     const client = new FakeStreamClient()
 
-    const { rerender } = renderHook(
-      ({ events }) => useStream(client, events),
-      { initialProps: { events: { a: () => {} } as Record<string, () => void> } },
-    )
+    const { rerender } = renderHook(({ events }) => useStream(client, events), {
+      initialProps: { events: { a: () => {} } as Record<string, () => void> },
+    })
 
     rerender({ events: { a: () => {}, b: () => {} } })
 
@@ -131,10 +130,9 @@ describe('useStream', () => {
     const first = new FakeStreamClient()
     const second = new FakeStreamClient()
 
-    const { rerender } = renderHook(
-      ({ client }) => useStream(client),
-      { initialProps: { client: first as FakeStreamClient } },
-    )
+    const { rerender } = renderHook(({ client }) => useStream(client), {
+      initialProps: { client: first as FakeStreamClient },
+    })
 
     rerender({ client: second })
 

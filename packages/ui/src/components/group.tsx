@@ -1,10 +1,10 @@
-"use client"
+'use client'
 
-import type { CSSProperties, HTMLAttributes, ReactNode } from "react"
+import type { CSSProperties, HTMLAttributes, ReactNode } from 'react'
 
-import { cn } from "#lib/utils"
+import { cn } from '#lib/utils'
 
-export type GroupProps = Omit<HTMLAttributes<HTMLDivElement>, "title"> & {
+export type GroupProps = Omit<HTMLAttributes<HTMLDivElement>, 'title'> & {
   title?: ReactNode
   headerExtra?: ReactNode
   mark?: boolean
@@ -30,34 +30,17 @@ export function Group({
   ...props
 }: GroupProps) {
   return (
-    <section
-      {...props}
-      className={cn(
-        "w-full",
-        bordered && "bg-surface-1 p-4",
-        className,
-      )}
-    >
+    <section {...props} className={cn('w-full', bordered && 'bg-surface-1 p-4', className)}>
       {title || headerExtra ? (
         <header
-          className={cn(
-            "mb-4 flex min-h-8 items-center justify-between gap-4",
-            headerClassName,
-          )}
+          className={cn('mb-4 flex min-h-8 items-center justify-between gap-4', headerClassName)}
           style={headerStyle}
         >
-          <div
-            className={cn(
-              "text-base font-medium",
-              mark && "bg-primary/5 px-3 leading-5",
-            )}
-          >
+          <div className={cn('text-base font-medium', mark && 'bg-primary/5 px-3 leading-5')}>
             {title}
           </div>
           {headerExtra ? (
-            <div className={cn("flex items-center gap-2", headerExtraClassName)}>
-              {headerExtra}
-            </div>
+            <div className={cn('flex items-center gap-2', headerExtraClassName)}>{headerExtra}</div>
           ) : null}
         </header>
       ) : null}

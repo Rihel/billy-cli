@@ -1,12 +1,12 @@
-"use client"
+'use client'
 
-import { useId, useState } from "react"
-import type { KeyboardEvent } from "react"
+import { useId, useState } from 'react'
+import type { KeyboardEvent } from 'react'
 
-import { cn } from "#lib/utils"
-import { Badge } from "#components/ui/badge"
-import { Input } from "#components/ui/input"
-import { XIcon } from "lucide-react"
+import { cn } from '#lib/utils'
+import { Badge } from '#components/ui/badge'
+import { Input } from '#components/ui/input'
+import { XIcon } from 'lucide-react'
 
 export type TagInputOption = {
   label: string
@@ -36,7 +36,7 @@ export function TagsInput({
   className,
 }: TagsInputProps) {
   const listId = useId()
-  const [draft, setDraft] = useState("")
+  const [draft, setDraft] = useState('')
   const reachLimit = maxCount !== undefined && value.length >= maxCount
 
   const add = (raw: string) => {
@@ -45,17 +45,16 @@ export function TagsInput({
     if (maxCount !== undefined && value.length >= maxCount) return
     if (value.includes(next)) return
     onChange([...value, next])
-    setDraft("")
+    setDraft('')
   }
 
-  const remove = (target: string) =>
-    onChange(value.filter((item) => item !== target))
+  const remove = (target: string) => onChange(value.filter((item) => item !== target))
 
   const handleKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
-    if (event.key === "Enter" || event.key === ",") {
+    if (event.key === 'Enter' || event.key === ',') {
       event.preventDefault()
       add(draft)
-    } else if (event.key === "Backspace" && !draft && value.length > 0) {
+    } else if (event.key === 'Backspace' && !draft && value.length > 0) {
       remove(value[value.length - 1])
     }
   }
@@ -63,8 +62,8 @@ export function TagsInput({
   return (
     <div
       className={cn(
-        "flex min-h-8 w-full flex-wrap items-center gap-1.5 rounded-lg border border-input bg-transparent px-2 py-1 text-sm transition-colors outline-none focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/50 disabled:pointer-events-none disabled:opacity-50",
-        disabled && "pointer-events-none opacity-50",
+        'flex min-h-8 w-full flex-wrap items-center gap-1.5 rounded-lg border border-input bg-transparent px-2 py-1 text-sm transition-colors outline-none focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/50 disabled:pointer-events-none disabled:opacity-50',
+        disabled && 'pointer-events-none opacity-50',
         className,
       )}
     >
@@ -89,9 +88,7 @@ export function TagsInput({
             list={options.length ? listId : undefined}
             value={draft}
             disabled={disabled}
-            placeholder={
-              placeholder ?? (value.length === 0 ? "输入后回车添加" : "")
-            }
+            placeholder={placeholder ?? (value.length === 0 ? '输入后回车添加' : '')}
             onChange={(event) => setDraft(event.target.value)}
             onKeyDown={handleKeyDown}
             onBlur={() => {

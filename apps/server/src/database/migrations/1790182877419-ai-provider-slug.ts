@@ -1,4 +1,4 @@
-import type { MigrationInterface, QueryRunner } from "typeorm"
+import type { MigrationInterface, QueryRunner } from 'typeorm'
 
 /**
  * `ai_providers.slug`：模型对外标识的前半段（`<slug>/<modelKey>`，也是 Mastra 认识的

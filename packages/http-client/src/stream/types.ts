@@ -1,8 +1,4 @@
-import type {
-  AuthStrategy,
-  CredentialProvider,
-  CredentialsManager,
-} from '../core/interfaces.js'
+import type { AuthStrategy, CredentialProvider, CredentialsManager } from '../core/interfaces.js'
 
 /** SSE 传输消息（帧解析结果，data 为原始字符串）。 */
 export interface StreamMessage {

@@ -1,23 +1,23 @@
-"use client"
+'use client'
 
-import { isAvailableData, maybeFun } from "@repo/shared"
-import type { MaybeFunction } from "@repo/shared"
-import get from "lodash/get"
-import type { ReactNode } from "react"
+import { isAvailableData, maybeFun } from '@repo/shared'
+import type { MaybeFunction } from '@repo/shared'
+import get from 'lodash/get'
+import type { ReactNode } from 'react'
 
-import { cn } from "#lib/utils"
-import { Empty } from "#components/ui/empty"
-import { Group } from "#components/group"
-import type { GroupProps } from "#components/group"
-import { DisplayValue } from "#components/display"
-import type { DisplayValueProps } from "#components/display"
+import { cn } from '#lib/utils'
+import { Empty } from '#components/ui/empty'
+import { Group } from '#components/group'
+import type { GroupProps } from '#components/group'
+import { DisplayValue } from '#components/display'
+import type { DisplayValueProps } from '#components/display'
 
 export type DisplayItem<Data extends Record<string, any>> = {
   name?: string
   label?: ReactNode
   visible?: MaybeFunction<boolean, [Data]>
   render?: (value: unknown, data: Data) => ReactNode
-  displayProps?: Omit<DisplayValueProps, "value">
+  displayProps?: Omit<DisplayValueProps, 'value'>
   useFieldItem?: boolean
   group?: boolean
   groupName?: ReactNode
@@ -30,7 +30,7 @@ export type DisplayRenderProps<Data extends Record<string, any>> = {
   items?: Array<DisplayItem<Data> | DisplayItem<Data>[]>
   columnGap?: number
   rowGap?: number
-  layout?: "row" | "column"
+  layout?: 'row' | 'column'
   emptyText?: ReactNode
   className?: string
   itemClassName?: string
@@ -44,8 +44,8 @@ export function DisplayRender<Data extends Record<string, any>>({
   items = [],
   columnGap = 20,
   rowGap = 16,
-  layout = "column",
-  emptyText = "没有数据",
+  layout = 'column',
+  emptyText = '没有数据',
   className,
   labelClassName,
   itemClassName,
@@ -53,18 +53,13 @@ export function DisplayRender<Data extends Record<string, any>>({
 }: DisplayRenderProps<Data>) {
   if (!data) return <Empty>{emptyText}</Empty>
 
-  const isVisible = (item: DisplayItem<Data>) =>
-    maybeFun(item.visible, data) ?? true
+  const isVisible = (item: DisplayItem<Data>) => maybeFun(item.visible, data) ?? true
 
   const renderItem = (item: DisplayItem<Data>, key: string): ReactNode => {
     if (!isVisible(item)) return null
     if (item.group) {
       return (
-        <Group
-          {...item.groupProps}
-          key={key}
-          title={item.groupProps?.title ?? item.groupName}
-        >
+        <Group {...item.groupProps} key={key} title={item.groupProps?.title ?? item.groupName}>
           {renderRows(item.groupItems ?? [], `${key}-group`)}
         </Group>
       )
@@ -74,10 +69,7 @@ export function DisplayRender<Data extends Record<string, any>>({
     const content = item.render ? (
       item.render(value, data)
     ) : (
-      <DisplayValue
-        {...item.displayProps}
-        value={isAvailableData(value) ? value : undefined}
-      />
+      <DisplayValue {...item.displayProps} value={isAvailableData(value) ? value : undefined} />
     )
 
     return (
@@ -87,34 +79,23 @@ export function DisplayRender<Data extends Record<string, any>>({
         ) : (
           <div
             className={cn(
-              layout === "row"
-                ? "flex items-start gap-3"
-                : "flex flex-col gap-1",
+              layout === 'row' ? 'flex items-start gap-3' : 'flex flex-col gap-1',
               itemClassName,
             )}
           >
             {item.label ? (
-              <div
-                className={cn("shrink-0 text-sm text-muted-foreground", labelClassName)}
-              >
+              <div className={cn('shrink-0 text-sm text-muted-foreground', labelClassName)}>
                 {item.label}
               </div>
             ) : null}
-            <div
-              className={cn("min-w-0 text-sm text-foreground", contentClassName)}
-            >
-              {content}
-            </div>
+            <div className={cn('min-w-0 text-sm text-foreground', contentClassName)}>{content}</div>
           </div>
         )}
       </div>
     )
   }
 
-  function renderRows(
-    rows: Array<DisplayItem<Data> | DisplayItem<Data>[]>,
-    keyPrefix: string,
-  ) {
+  function renderRows(rows: Array<DisplayItem<Data> | DisplayItem<Data>[]>, keyPrefix: string) {
     return rows.map((entry, index) => {
       const row = Array.isArray(entry) ? entry : [entry]
       return (
@@ -131,5 +112,5 @@ export function DisplayRender<Data extends Record<string, any>>({
     })
   }
 
-  return <div className={className}>{renderRows(items, "display")}</div>
+  return <div className={className}>{renderRows(items, 'display')}</div>
 }

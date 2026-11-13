@@ -40,7 +40,12 @@ export class EventDeclTool {
     events: [
       { name: 'progress', title: '进度', description: '阶段性进度快照', payload: ProgressPayload },
       { name: 'log-line', title: '日志行', description: '一行流水', mode: 'stream' },
-      { name: 'stage', title: '阶段', description: '当前阶段（省略 mode 应为 state）', mode: 'state' },
+      {
+        name: 'stage',
+        title: '阶段',
+        description: '当前阶段（省略 mode 应为 state）',
+        mode: 'state',
+      },
     ],
   })
   async run(): Promise<Record<string, never>> {

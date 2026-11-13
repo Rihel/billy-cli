@@ -18,9 +18,7 @@ export interface ConfigLoader {
 }
 
 /** loader 工厂：名字引用形式 `{ loader: 'env', loaderOptions: {...} }` 使用 */
-export type ConfigLoaderFactory<Options = unknown> = (
-  options?: Options,
-) => ConfigLoader
+export type ConfigLoaderFactory<Options = unknown> = (options?: Options) => ConfigLoader
 
 /** 自定义 loader 注册表（内置三个 loader 不走这里，见 loaders/index.ts） */
 const customLoaders = new Map<string, ConfigLoaderFactory>()
@@ -34,20 +32,14 @@ const customLoaders = new Map<string, ConfigLoaderFactory>()
  *   load: () => fetchFromNacos(options as NacosOptions),
  * }))
  */
-export const registerConfigLoader = (
-  name: string,
-  factory: ConfigLoaderFactory,
-): void => {
+export const registerConfigLoader = (name: string, factory: ConfigLoaderFactory): void => {
   customLoaders.set(name, factory)
 }
 
-export const getRegisteredConfigLoader = (
-  name: string,
-): ConfigLoaderFactory | undefined => customLoaders.get(name)
+export const getRegisteredConfigLoader = (name: string): ConfigLoaderFactory | undefined =>
+  customLoaders.get(name)
 
-export const listRegisteredConfigLoaders = (): string[] => [
-  ...customLoaders.keys(),
-]
+export const listRegisteredConfigLoaders = (): string[] => [...customLoaders.keys()]
 
 /** 配置加载失败（来源不可用），或 loader 名字未注册 */
 export class ConfigLoadError extends Error {

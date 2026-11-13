@@ -73,7 +73,7 @@ export class AiToolEntity extends AuditEntity {
   events: AiToolEventModel[] = []
 
   /**
-   * 类别（`core` / `business`）：**冗余列**，由种子同步从声明写过来。
+   * 类别（`core` / `business` / `runtime` / `connector`，见 `ToolCategory` 字典）：**冗余列**，由种子同步从声明写过来。
    *
    * 为什么冗余：后台页要按类别筛选与展示，而类别只存在于代码声明里 —— 不落列就没法在 SQL 里筛，
    * 只能先分页再过滤（分页就假了）。它永远是"声明说了算"，人工改不了。

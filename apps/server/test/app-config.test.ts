@@ -4,8 +4,7 @@ import { mapServerEnv, serverAppConfigSchema } from '../src/app-config.js'
 /** 只取 server 分片做校验（其余命名空间 kits schema 自己已有单测） */
 const parseServer = (raw: Record<string, unknown>) => {
   const full = serverAppConfigSchema.parse(mapServerEnv({} as NodeJS.ProcessEnv))
-  return serverAppConfigSchema.parse({ ...full, server: { ...full.server, ...raw } })
-    .server
+  return serverAppConfigSchema.parse({ ...full, server: { ...full.server, ...raw } }).server
 }
 
 describe('server 分片：HTTP 长连接超时', () => {
@@ -18,9 +17,9 @@ describe('server 分片：HTTP 长连接超时', () => {
   })
 
   it('headersTimeoutMs 必须大于 keepAliveTimeoutMs（Node 自己不会校验，实测静默接受）', () => {
-    expect(() =>
-      parseServer({ keepAliveTimeoutMs: 80_000, headersTimeoutMs: 75_000 }),
-    ).toThrow(/必须大于/)
+    expect(() => parseServer({ keepAliveTimeoutMs: 80_000, headersTimeoutMs: 75_000 })).toThrow(
+      /必须大于/,
+    )
 
     expect(() =>
       // 相等也不行：定时器不同步时仍有竞态
@@ -68,4 +67,3 @@ describe('server 分片：优雅关闭', () => {
     expect(serverAppConfigSchema.parse(mapped).server.shutdownTimeoutMs).toBe(40_000)
   })
 })
-

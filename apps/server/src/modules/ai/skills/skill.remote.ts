@@ -185,7 +185,9 @@ const collectSkillDirs = (
   const dirs = entries
     .filter((entry) => entry.type === 'blob')
     .filter((entry) => entry.path === SKILL_FILE || entry.path.endsWith(`/${SKILL_FILE}`))
-    .map((entry) => (entry.path === SKILL_FILE ? '' : entry.path.slice(0, -`/${SKILL_FILE}`.length)))
+    .map((entry) =>
+      entry.path === SKILL_FILE ? '' : entry.path.slice(0, -`/${SKILL_FILE}`.length),
+    )
     .filter((dir) => !isIgnoredPath(dir))
 
   let filtered = dirs
@@ -249,13 +251,16 @@ const buildSkillSource = async (
       continue
     }
     if (content.length > SKILL_FILE_MAX_CHARS) {
-      throw new Error(`${relative} 内容 ${content.length} 字符，超过单文件上限 ${SKILL_FILE_MAX_CHARS}`)
+      throw new Error(
+        `${relative} 内容 ${content.length} 字符，超过单文件上限 ${SKILL_FILE_MAX_CHARS}`,
+      )
     }
     totalChars += content.length
     files.push({ path: relative, content })
   }
 
-  if (files.length > SKILL_MAX_FILES) throw new Error(`文件数 ${files.length} 超过上限 ${SKILL_MAX_FILES}`)
+  if (files.length > SKILL_MAX_FILES)
+    throw new Error(`文件数 ${files.length} 超过上限 ${SKILL_MAX_FILES}`)
   if (totalChars > SKILL_TOTAL_MAX_CHARS) {
     throw new Error(`全部文件合计 ${totalChars} 字符，超过上限 ${SKILL_TOTAL_MAX_CHARS}`)
   }
@@ -289,9 +294,10 @@ const readRepoFile = async (
   path: string,
 ): Promise<string> => {
   const encodedPath = path.split('/').map(encodeURIComponent).join('/')
-  const raw = await fetchText(`${RAW_BASE}/${owner}/${repo}/${ref}/${encodedPath}`, MAX_READ_BYTES).catch(
-    () => null,
-  )
+  const raw = await fetchText(
+    `${RAW_BASE}/${owner}/${repo}/${ref}/${encodedPath}`,
+    MAX_READ_BYTES,
+  ).catch(() => null)
   if (raw && raw.status === 200) return raw.text
 
   try {
@@ -299,9 +305,10 @@ const readRepoFile = async (
     if (Array.isArray(data) || !('content' in data) || typeof data.content !== 'string') {
       throw new Error(`读不到文件：${path}`)
     }
-    return Buffer.from(data.content, (data.encoding as BufferEncoding | undefined) ?? 'base64').toString(
-      'utf8',
-    )
+    return Buffer.from(
+      data.content,
+      (data.encoding as BufferEncoding | undefined) ?? 'base64',
+    ).toString('utf8')
   } catch (error) {
     throw new Error(describeGitHubError(error, `${owner}/${repo}/${path}`))
   }
@@ -389,4 +396,5 @@ const isIgnoredPath = (path: string): boolean =>
         segment === 'coverage',
     )
 
-const messageOf = (error: unknown): string => (error instanceof Error ? error.message : String(error))
+const messageOf = (error: unknown): string =>
+  error instanceof Error ? error.message : String(error)

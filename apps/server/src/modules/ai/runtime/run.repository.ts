@@ -13,7 +13,6 @@ import { In, IsNull, LessThan, Not, type DeepPartial } from 'typeorm'
 import { jsonbPatch } from './jsonb.js'
 import { RunEntity } from '../../../database/entities/run-entity.js'
 
-
 /** SQL 聚合返回的数字列可能是 bigint 字符串（pg 驱动行为），统一用 Number 收口 */
 type Numeric = number | string
 
@@ -171,10 +170,7 @@ export class RunRepository {
   }
 
   /** 幂等查：某个父工具调用是否已经建过子 run（崩溃恢复重放时复用它，不重复扣费） */
-  async findChildByToolCall(
-    parentRunId: string,
-    toolCallId: string,
-  ): Promise<RunEntity | null> {
+  async findChildByToolCall(parentRunId: string, toolCallId: string): Promise<RunEntity | null> {
     const repo = await this.repo()
     return repo.findOne({ where: { parentRunId, toolCallId } })
   }
@@ -254,10 +250,7 @@ export class RunRepository {
   /** 写输入快照（送给模型的输入侧证据：模型 / 参数 / 上下文取舍） */
   async saveRequestSnapshot(id: string, snapshot: Record<string, unknown>): Promise<void> {
     const repo = await this.repo()
-    await repo.update(
-      { id },
-      jsonbPatch<RunEntity>({ requestSnapshot: snapshot }),
-    )
+    await repo.update({ id }, jsonbPatch<RunEntity>({ requestSnapshot: snapshot }))
   }
 
   /**
@@ -268,7 +261,12 @@ export class RunRepository {
    */
   async suspend(
     id: string,
-    input: { usage?: Record<string, unknown> | null; stepCount?: number; toolCallCount?: number; durationMs?: number },
+    input: {
+      usage?: Record<string, unknown> | null
+      stepCount?: number
+      toolCallCount?: number
+      durationMs?: number
+    },
   ): Promise<void> {
     const repo = await this.repo()
     await repo.update(
@@ -526,9 +524,7 @@ export class RunRepository {
    *
    * 条件 UPDATE + 影响行数判定：多进程并发启动时也只有抢到的那一个会写（天然幂等）。
    */
-  async interruptActiveBefore(
-    since: Date,
-  ): Promise<Array<{ id: string; conversationId: string }>> {
+  async interruptActiveBefore(since: Date): Promise<Array<{ id: string; conversationId: string }>> {
     const repo = await this.repo()
     const rows = await repo.find({
       where: {

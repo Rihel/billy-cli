@@ -84,9 +84,7 @@ export default function LoginPage() {
 
       <div className="space-y-2">
         <h1 className="font-heading text-2xl font-semibold tracking-tight">欢迎回来</h1>
-        <p className="text-sm text-muted-foreground">
-          请输入你的邮箱和密码登录账号
-        </p>
+        <p className="text-sm text-muted-foreground">请输入你的邮箱和密码登录账号</p>
       </div>
 
       <form action={formAction} className="space-y-5">
@@ -126,9 +124,7 @@ export default function LoginPage() {
             />
           </Field>
 
-          {state.error && (
-            <FieldError errors={[{ message: state.error }]} />
-          )}
+          {state.error && <FieldError errors={[{ message: state.error }]} />}
 
           <Button
             type="submit"

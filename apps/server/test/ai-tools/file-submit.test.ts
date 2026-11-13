@@ -8,6 +8,8 @@ describe('file-submit（文件管理）', () => {
     const spec = specByKey(buildFileTools(), TOOL_KEYS.fileSubmit)
     expect(spec.key).toBe('file-submit')
     expect(spec.description.length).toBeGreaterThan(0)
-    expect(spec.params.safeParse({ filePath: 'notes.md', fileKey: 'reports/notes.md' }).success).toBe(true)
+    expect(
+      spec.params.safeParse({ filePath: 'notes.md', fileKey: 'reports/notes.md' }).success,
+    ).toBe(true)
   })
 })

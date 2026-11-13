@@ -21,9 +21,7 @@ const collect = (meta?: Record<string, unknown>) => {
       return data
     },
   } as unknown as TimelineRepository
-  const metas = meta
-    ? ({ take: () => meta } as unknown as ToolCallMetaStore)
-    : undefined
+  const metas = meta ? ({ take: () => meta } as unknown as ToolCallMetaStore) : undefined
   const recorder = new StreamRecorder(
     timelines,
     { conversationId: 'c1', runId: 'r1' } as never,
@@ -92,17 +90,38 @@ describe('StreamRecorder：观测字段', () => {
   it('拒绝按原因分桶：限流 / 关闭 / 无权限 / 前置条件不满足 → denied', async () => {
     for (const reason of ['rate-limited', 'disabled', 'forbidden', 'precheck-failed']) {
       const { rows, recorder } = collect({ ok: false, reason, configVersion: 'v1', durationMs: 3 })
-      await recorder.consume({ type: 'tool-input-available', toolCallId: 'c', toolName: 'demo' } as never)
-      await recorder.consume({ type: 'tool-output-error', toolCallId: 'c', errorText: '被拒' } as never)
+      await recorder.consume({
+        type: 'tool-input-available',
+        toolCallId: 'c',
+        toolName: 'demo',
+      } as never)
+      await recorder.consume({
+        type: 'tool-output-error',
+        toolCallId: 'c',
+        errorText: '被拒',
+      } as never)
       const result = rows.find((row) => row.kind === 'tool-result')
       expect(result?.state).toBe('denied')
     }
   })
 
   it('入参不合法 → invalid；未知工具 → unknown-tool', async () => {
-    const invalid = collect({ ok: false, reason: 'invalid-input', configVersion: 'v1', durationMs: 1 })
-    await invalid.recorder.consume({ type: 'tool-input-available', toolCallId: 'c', toolName: 'demo' } as never)
-    await invalid.recorder.consume({ type: 'tool-output-error', toolCallId: 'c', errorText: '入参错' } as never)
+    const invalid = collect({
+      ok: false,
+      reason: 'invalid-input',
+      configVersion: 'v1',
+      durationMs: 1,
+    })
+    await invalid.recorder.consume({
+      type: 'tool-input-available',
+      toolCallId: 'c',
+      toolName: 'demo',
+    } as never)
+    await invalid.recorder.consume({
+      type: 'tool-output-error',
+      toolCallId: 'c',
+      errorText: '入参错',
+    } as never)
     expect(invalid.rows.find((row) => row.kind === 'tool-result')?.state).toBe('invalid')
 
     const unknown: string[] = []
@@ -112,16 +131,28 @@ describe('StreamRecorder：观测字段', () => {
         return data
       },
     } as unknown as TimelineRepository
-    const recorder = new StreamRecorder(timelines, { conversationId: 'c1', runId: 'r1' }, {
-      isKnownTool: () => false,
-    })
-    await recorder.consume({ type: 'tool-output-error', toolCallId: 'c', toolName: 'made-up' } as never)
+    const recorder = new StreamRecorder(
+      timelines,
+      { conversationId: 'c1', runId: 'r1' },
+      {
+        isKnownTool: () => false,
+      },
+    )
+    await recorder.consume({
+      type: 'tool-output-error',
+      toolCallId: 'c',
+      toolName: 'made-up',
+    } as never)
     expect(unknown).toEqual(['unknown-tool'])
   })
 
   it('工具把失败当结果返回（ok:false）：落 output-error + isError，并保留完整出参', async () => {
     const { rows, recorder } = collect()
-    await recorder.consume({ type: 'tool-input-available', toolCallId: 'c', toolName: 'scene-save' } as never)
+    await recorder.consume({
+      type: 'tool-input-available',
+      toolCallId: 'c',
+      toolName: 'scene-save',
+    } as never)
     await recorder.consume({
       type: 'tool-output-available',
       toolCallId: 'c',
@@ -132,12 +163,16 @@ describe('StreamRecorder：观测字段', () => {
     expect(result?.state).toBe('output-error')
     expect(result?.payload).toMatchObject({ isError: true, dataFailure: '没有第 3 章' })
     // 出参全量入库（模型确实收到了这份数据，审计要能对上）
-    expect((result?.payload as { output: { detail: string } }).output.detail).toHaveLength(200)
+    expect((result!.payload as { output: { detail: string } }).output.detail).toHaveLength(200)
   })
 
   it('正常结果（ok:true 或没有 ok 字段）仍是 output-available', async () => {
     const { rows, recorder } = collect()
-    await recorder.consume({ type: 'tool-input-available', toolCallId: 'c', toolName: 'demo' } as never)
+    await recorder.consume({
+      type: 'tool-input-available',
+      toolCallId: 'c',
+      toolName: 'demo',
+    } as never)
     await recorder.consume({
       type: 'tool-output-available',
       toolCallId: 'c',

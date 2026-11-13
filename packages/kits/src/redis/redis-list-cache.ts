@@ -74,11 +74,7 @@ export class RedisListCache<T extends Record<string, unknown>, PK extends keyof 
     try {
       const pipeline = this.redis.raw.pipeline()
       for (const item of data) {
-        pipeline.hset(
-          this.key,
-          String(item[this.primaryKey]),
-          JSON.stringify(item),
-        )
+        pipeline.hset(this.key, String(item[this.primaryKey]), JSON.stringify(item))
       }
       await pipeline.exec()
     } catch (cause) {

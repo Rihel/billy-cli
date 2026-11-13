@@ -48,9 +48,7 @@ export class AppExceptionFilter implements ExceptionFilter {
       for (const [name, value] of Object.entries(exception.headers)) {
         response.setHeader(name, value)
       }
-      response
-        .status(exception.http)
-        .json(ResponseUtils.error(exception.value, exception.label))
+      response.status(exception.http).json(ResponseUtils.error(exception.value, exception.label))
       return
     }
     // 框架层 HttpException（路由未命中 404 / 请求体解析失败 400）：边界预期结果，
@@ -84,8 +82,6 @@ export class AppExceptionFilter implements ExceptionFilter {
       return
     }
 
-    response
-      .status(descriptor.http)
-      .json(ResponseUtils.error(descriptor.value, descriptor.label))
+    response.status(descriptor.http).json(ResponseUtils.error(descriptor.value, descriptor.label))
   }
 }

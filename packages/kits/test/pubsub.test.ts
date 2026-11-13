@@ -135,9 +135,7 @@ describe('PubSub：广播', () => {
     const pubsub = makePubSub()
     const circular: Record<string, unknown> = {}
     circular.self = circular
-    await expect(pubsub.broadcast('events:x', circular)).rejects.toThrowError(
-      /无法序列化为 JSON/,
-    )
+    await expect(pubsub.broadcast('events:x', circular)).rejects.toThrowError(/无法序列化为 JSON/)
   })
 })
 
@@ -145,9 +143,7 @@ describe('PubSub：订阅与投递', () => {
   it('精确频道：收到其他实例的消息，meta 带频道与来源', async () => {
     const pubsub = makePubSub()
     const seen: Array<{ payload: unknown; meta: unknown }> = []
-    pubsub.subscribe('events:user.changed', (payload, meta) =>
-      void seen.push({ payload, meta }),
-    )
+    pubsub.subscribe('events:user.changed', (payload, meta) => void seen.push({ payload, meta }))
     await pubsub.connect()
     const { sub } = clients()
 
@@ -297,8 +293,6 @@ describe('PubSub：订阅生命周期', () => {
     const pubsub = makePubSub()
     expect(() => pubsub.subscribe('', () => undefined)).toThrowError(/非法的 Pub\/Sub 频道/)
     expect(() => pubsub.subscribe('a b', () => undefined)).toThrowError(/非法的 Pub\/Sub 频道/)
-    await expect(pubsub.broadcast('x'.repeat(300), {})).rejects.toThrowError(
-      /非法的 Pub\/Sub 频道/,
-    )
+    await expect(pubsub.broadcast('x'.repeat(300), {})).rejects.toThrowError(/非法的 Pub\/Sub 频道/)
   })
 })

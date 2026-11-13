@@ -18,8 +18,8 @@ export class EmailClient implements NotifyClient {
   private readonly transport: Transporter | null = null
   private readonly from: string | undefined
 
-
-  constructor(@Inject(NotifyConfig) config: NotifyConfig,
+  constructor(
+    @Inject(NotifyConfig) config: NotifyConfig,
     @Inject(AppLogger) private readonly logger: AppLogger,
   ) {
     const email = config.email
@@ -29,9 +29,7 @@ export class EmailClient implements NotifyClient {
         host: email.host,
         port: email.port,
         secure: email.secure,
-        ...(email.user && email.pass
-          ? { auth: { user: email.user, pass: email.pass } }
-          : {}),
+        ...(email.user && email.pass ? { auth: { user: email.user, pass: email.pass } } : {}),
       })
     }
   }

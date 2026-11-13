@@ -54,10 +54,7 @@ export const LARK_CLI_MAX_ARGS = 32
 export const LARK_CLI_MAX_ARG_LENGTH = 2_048
 
 const ArgsSchema = z.object({
-  args: z
-    .array(z.string().min(1).max(LARK_CLI_MAX_ARG_LENGTH))
-    .min(1)
-    .max(LARK_CLI_MAX_ARGS),
+  args: z.array(z.string().min(1).max(LARK_CLI_MAX_ARG_LENGTH)).min(1).max(LARK_CLI_MAX_ARGS),
 })
 
 /** 允许告诉模型/页面的命令面（错误提示里用，别让模型瞎猜） */
@@ -94,6 +91,8 @@ export const parseLarkCliArgs = (input: unknown): string[] => {
   const args = parsed.data.args
 
   for (const arg of args) {
+    // 校验目的就是拦截控制字符（终端注入 / 日志污染），这里的匹配范围是该规则的唯一正确写法
+    // oxlint-disable-next-line eslint/no-control-regex
     if (/[\u0000-\u001f\u007f]/.test(arg)) {
       deny('参数里不允许控制字符')
     }
@@ -152,10 +151,7 @@ export const parseLarkCliArgs = (input: unknown): string[] => {
     return args
   }
 
-  return deny(
-    `不允许的命令：${command}`,
-    `只允许：${LARK_CLI_ALLOWED_SUMMARY}`,
-  )
+  return deny(`不允许的命令：${command}`, `只允许：${LARK_CLI_ALLOWED_SUMMARY}`)
 }
 
 /** 是否是业务域（默认身份只对业务命令追加 `--as`） */

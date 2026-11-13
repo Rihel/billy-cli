@@ -93,9 +93,7 @@ describe('groupToolEventsByToolCall', () => {
   })
 
   it('事件 part 自带的 toolCallId 不会被当成"工具卡真的存在"', () => {
-    const grouping = groupToolEventsByToolCall([
-      rawEvent({ event: 'self', toolCallId: 'call_9' }),
-    ])
+    const grouping = groupToolEventsByToolCall([rawEvent({ event: 'self', toolCallId: 'call_9' })])
 
     expect(grouping.byToolCallId.size).toBe(0)
   })
@@ -145,9 +143,7 @@ describe('groupToolEventParts（视觉分组：stream = 一条流水线，state 
       eventPart({ event: 'stdout', mode: 'stream', seq: 2 }),
     ]
 
-    expect(shape(parts)).toEqual([
-      { events: ['stdout', 'stderr'], mode: 'stream', count: 3 },
-    ])
+    expect(shape(parts)).toEqual([{ events: ['stdout', 'stderr'], mode: 'stream', count: 3 }])
   })
 
   it('events 按首次出现顺序去重：stdout,stderr,stdout,stderr 仍只有两个事件名', () => {
@@ -289,7 +285,9 @@ describe('内置兜底渲染（一个渲染器都没注册）', () => {
     expect(html).toContain('第一步')
     expect(html).toContain('第二步')
     expect(html.indexOf('第一步')).toBeLessThan(html.indexOf('第二步'))
-    expect(renderToStaticMarkup(createElement(ToolEventsBody, { toolKey: 'x', parts: [] }))).toBe('')
+    expect(renderToStaticMarkup(createElement(ToolEventsBody, { toolKey: 'x', parts: [] }))).toBe(
+      '',
+    )
   })
 })
 
@@ -323,7 +321,13 @@ describe('ToolEventsBody 按视觉块渲染（连续流水合成一块容器）'
         toolKey: 'list-todos',
         parts: [
           streamPart('alpha', 0),
-          eventPart({ event: 'warn', eventTitle: '警示行', mode: 'stream', seq: 1, payload: { line: 'beta' } }),
+          eventPart({
+            event: 'warn',
+            eventTitle: '警示行',
+            mode: 'stream',
+            seq: 1,
+            payload: { line: 'beta' },
+          }),
         ],
       }),
     )
@@ -344,7 +348,13 @@ describe('ToolEventsBody 按视觉块渲染（连续流水合成一块容器）'
         toolKey: 'list-todos',
         parts: [
           streamPart('alpha', 0),
-          eventPart({ event: 'exit', eventTitle: '结论', mode: 'state', seq: 1, payload: { done: 1 } }),
+          eventPart({
+            event: 'exit',
+            eventTitle: '结论',
+            mode: 'state',
+            seq: 1,
+            payload: { done: 1 },
+          }),
         ],
       }),
     )
@@ -395,7 +405,9 @@ describe('注册的自定义渲染器', () => {
   })
 
   it('事件自带的 toolKey 优先于卡片传入的 toolKey（渲染器按发事件的工具匹配）', () => {
-    registerToolEventRenderer('list-todos', 'progress', () => createElement('span', null, '按事件的工具匹配'))
+    registerToolEventRenderer('list-todos', 'progress', () =>
+      createElement('span', null, '按事件的工具匹配'),
+    )
 
     const html = renderToStaticMarkup(
       createElement(ToolEventsBody, {

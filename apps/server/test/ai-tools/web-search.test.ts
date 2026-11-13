@@ -1,10 +1,7 @@
 import { createServer, type Server } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import {
-  WebTools,
-  type WebSearchOutput,
-} from '../../src/modules/ai/tools/web.tools.js'
+import { WebTools, type WebSearchOutput } from '../../src/modules/ai/tools/web.tools.js'
 import { TOOL_KEYS } from '../../src/modules/ai/core/tools/tool-keys.js'
 import { ToolDeniedError } from '../../src/modules/ai/core/tools/tools.types.js'
 import {
@@ -299,13 +296,27 @@ describe('web-search（搜索来源）', () => {
     const caps = {
       pageBytesMax: 8 * 1024,
       maxPagesPerTurnMax: 5,
-      web: { enabled: false, timeoutMsMax: 5_000, maxBytesMax: 1024 * 1024, allowPrivateNetwork: false },
+      web: {
+        enabled: false,
+        timeoutMsMax: 5_000,
+        maxBytesMax: 1024 * 1024,
+        allowPrivateNetwork: false,
+      },
     }
     const normalized = spec.normalize?.(
-      { enabled: true, baseUrl: 'https://api.deepseek.com', timeoutMs: 60_000, allowPrivateNetwork: true },
+      {
+        enabled: true,
+        baseUrl: 'https://api.deepseek.com',
+        timeoutMs: 60_000,
+        allowPrivateNetwork: true,
+      },
       caps as never,
     )
 
-    expect(normalized).toMatchObject({ enabled: false, timeoutMs: 5_000, allowPrivateNetwork: false })
+    expect(normalized).toMatchObject({
+      enabled: false,
+      timeoutMs: 5_000,
+      allowPrivateNetwork: false,
+    })
   })
 })

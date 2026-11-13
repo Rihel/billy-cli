@@ -1,18 +1,12 @@
-"use client"
+'use client'
 
-import { createContext, isValidElement, useContext } from "react"
-import type {
-  ComponentType,
-  CSSProperties,
-  HTMLAttributes,
-  ReactElement,
-  ReactNode,
-} from "react"
-import { useState } from "react"
-import { forwardRef } from "react"
-import type { MouseEvent } from "react"
+import { createContext, isValidElement, useContext } from 'react'
+import type { ComponentType, CSSProperties, HTMLAttributes, ReactElement, ReactNode } from 'react'
+import { useState } from 'react'
+import { forwardRef } from 'react'
+import type { MouseEvent } from 'react'
 
-import { cn } from "#lib/utils"
+import { cn } from '#lib/utils'
 
 export type IconComponent = ComponentType<{
   spin?: boolean
@@ -31,20 +25,15 @@ export type IconProviderProps = {
 
 /** 图标注册表 Provider（可按 name 引用注册表中的图标） */
 export function IconProvider({ registry, children }: IconProviderProps) {
-  return (
-    <IconRegistryContext value={registry}>{children}</IconRegistryContext>
-  )
+  return <IconRegistryContext value={registry}>{children}</IconRegistryContext>
 }
 
-export type IconProps = Omit<
-  HTMLAttributes<HTMLSpanElement>,
-  "children" | "color"
-> & {
+export type IconProps = Omit<HTMLAttributes<HTMLSpanElement>, 'children' | 'color'> & {
   icon?: IconSource
   name?: string
   registry?: IconRegistry
   size?: number | string
-  color?: CSSProperties["color"]
+  color?: CSSProperties['color']
   spin?: boolean
   fallback?: ReactNode
 }
@@ -63,8 +52,7 @@ export function Icon({
   ...spanProps
 }: IconProps) {
   const contextRegistry = useContext(IconRegistryContext)
-  const source =
-    icon ?? (name ? (registry?.[name] ?? contextRegistry[name]) : null)
+  const source = icon ?? (name ? (registry?.[name] ?? contextRegistry[name]) : null)
 
   if (!source) return fallback
 
@@ -90,7 +78,7 @@ export function Icon({
   )
 }
 
-export type IconTextType = "default" | "primary" | "danger"
+export type IconTextType = 'default' | 'primary' | 'danger'
 
 export type IconTextProps = {
   children?: ReactNode
@@ -98,19 +86,19 @@ export type IconTextProps = {
   icon?: IconSource
   iconName?: string
   iconRegistry?: IconRegistry
-  iconPosition?: "left" | "right"
+  iconPosition?: 'left' | 'right'
   iconClassName?: string
   loading?: boolean
   disabled?: boolean
   danger?: boolean
-  type?: IconTextType | "link" | "text"
+  type?: IconTextType | 'link' | 'text'
   block?: boolean
-  size?: "small" | "middle" | "large"
+  size?: 'small' | 'middle' | 'large'
   tooltip?: ReactNode
   onClick?: (event: MouseEvent<HTMLSpanElement>) => void | Promise<void>
   onError?: (error: unknown) => void
   className?: string
-  "aria-label"?: string
+  'aria-label'?: string
 }
 
 /** 带图标的文字操作（表格行内操作按钮常用），点击支持 loading 防重 */
@@ -122,7 +110,7 @@ export const IconText = forwardRef<HTMLSpanElement, IconTextProps>(
       icon,
       iconName,
       iconRegistry,
-      iconPosition = "left",
+      iconPosition = 'left',
       iconClassName,
       loading: loadingProp,
       disabled,
@@ -166,61 +154,61 @@ export const IconText = forwardRef<HTMLSpanElement, IconTextProps>(
       ) : null
 
     const semanticColor =
-      type === "primary"
-        ? "text-primary hover:text-primary/80"
-        : danger || type === "danger"
-          ? "text-destructive hover:text-destructive/80"
-          : "text-inherit hover:text-primary/80"
+      type === 'primary'
+        ? 'text-primary hover:text-primary/80'
+        : danger || type === 'danger'
+          ? 'text-destructive hover:text-destructive/80'
+          : 'text-inherit hover:text-primary/80'
 
     const sizeClass =
-      size === "small"
-        ? "text-sm gap-0.5"
-        : size === "large"
-          ? "text-lg gap-1.5"
-          : "gap-1"
+      size === 'small' ? 'text-sm gap-0.5' : size === 'large' ? 'text-lg gap-1.5' : 'gap-1'
 
     const button = (
+      // role 随 onClick 动态取值：无 onClick 时不挂事件处理器，不需要交互角色
+      // oxlint-disable-next-line jsx-a11y/no-static-element-interactions
       <span
         ref={ref}
-        role={onClick ? "button" : undefined}
+        role={onClick ? 'button' : undefined}
         tabIndex={onClick && !disabled ? 0 : undefined}
         aria-disabled={disabled || isLoading || undefined}
         className={cn(
-          "inline-flex items-center cursor-pointer border-none bg-transparent p-0 leading-none",
-          "aria-disabled:cursor-not-allowed aria-disabled:opacity-40",
-          "transition-colors duration-150",
+          'inline-flex items-center cursor-pointer border-none bg-transparent p-0 leading-none',
+          'aria-disabled:cursor-not-allowed aria-disabled:opacity-40',
+          'transition-colors duration-150',
           semanticColor,
           sizeClass,
-          block && "w-full justify-center",
+          block && 'w-full justify-center',
           className,
         )}
-        onClick={handleClick}
+        onClick={
+          onClick
+            ? (event) => {
+                void handleClick(event)
+              }
+            : undefined
+        }
         onKeyDown={
           onClick
             ? (e) => {
-                if (e.key === "Enter" || e.key === " ") {
+                if (e.key === 'Enter' || e.key === ' ') {
                   e.preventDefault()
-                  handleClick(e as unknown as MouseEvent<HTMLSpanElement>)
+                  void handleClick(e as unknown as MouseEvent<HTMLSpanElement>)
                 }
               }
             : undefined
         }
         {...rest}
       >
-        {iconPosition === "left" && iconNode}
+        {iconPosition === 'left' && iconNode}
         {children ?? text}
-        {iconPosition === "right" && iconNode}
+        {iconPosition === 'right' && iconNode}
       </span>
     )
 
     if (tooltip) {
-      return (
-        <span title={typeof tooltip === "string" ? tooltip : undefined}>
-          {button}
-        </span>
-      )
+      return <span title={typeof tooltip === 'string' ? tooltip : undefined}>{button}</span>
     }
     return button
   },
 )
-IconText.displayName = "IconText"
+IconText.displayName = 'IconText'

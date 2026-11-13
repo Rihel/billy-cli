@@ -10,10 +10,47 @@ import type { OfficeKind, PreviewKind } from '../schema/share.schema'
 
 /** 文本类扩展名（含代码 / 配置；`html` 也在这里，但会被更早的 html 分支拦下） */
 export const TEXT_EXTENSIONS = new Set([
-  'txt', 'md', 'markdown', 'csv', 'tsv', 'json', 'jsonl', 'yaml', 'yml', 'xml',
-  'html', 'htm', 'log', 'sql', 'ini', 'conf', 'toml', 'properties', 'sh', 'bash',
-  'py', 'ts', 'tsx', 'js', 'jsx', 'java', 'go', 'rs', 'rb', 'php', 'c', 'h',
-  'cpp', 'hpp', 'css', 'scss', 'less', 'vue', 'svelte', 'graphql', 'gql',
+  'txt',
+  'md',
+  'markdown',
+  'csv',
+  'tsv',
+  'json',
+  'jsonl',
+  'yaml',
+  'yml',
+  'xml',
+  'html',
+  'htm',
+  'log',
+  'sql',
+  'ini',
+  'conf',
+  'toml',
+  'properties',
+  'sh',
+  'bash',
+  'py',
+  'ts',
+  'tsx',
+  'js',
+  'jsx',
+  'java',
+  'go',
+  'rs',
+  'rb',
+  'php',
+  'c',
+  'h',
+  'cpp',
+  'hpp',
+  'css',
+  'scss',
+  'less',
+  'vue',
+  'svelte',
+  'graphql',
+  'gql',
 ])
 
 export const extensionOf = (filename: string): string => {
@@ -66,8 +103,7 @@ export const resolvePreviewKind = (input: {
   const mediaType = (input.mediaType ?? '').toLowerCase()
   const extension = extensionOf(input.filename)
 
-  const officeKind =
-    OFFICE_MEDIA_TYPES[mediaType] ?? OFFICE_EXTENSIONS[extension] ?? null
+  const officeKind = OFFICE_MEDIA_TYPES[mediaType] ?? OFFICE_EXTENSIONS[extension] ?? null
   if (officeKind) return { kind: 'office', officeKind }
 
   if (mediaType === 'text/html' || extension === 'html' || extension === 'htm') {
@@ -79,7 +115,10 @@ export const resolvePreviewKind = (input: {
   if (mediaType === 'application/pdf' || extension === 'pdf') {
     return { kind: 'pdf', officeKind: null }
   }
-  if (mediaType.startsWith('image/') || ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'avif'].includes(extension)) {
+  if (
+    mediaType.startsWith('image/') ||
+    ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'avif'].includes(extension)
+  ) {
     // svg 能带脚本，一律不内联
     if (mediaType === 'image/svg+xml' || extension === 'svg') {
       return { kind: 'none', officeKind: null }

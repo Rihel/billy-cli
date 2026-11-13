@@ -1,4 +1,9 @@
-import { Inject, Injectable, type OnApplicationBootstrap, type OnApplicationShutdown } from '@nestjs/common'
+import {
+  Inject,
+  Injectable,
+  type OnApplicationBootstrap,
+  type OnApplicationShutdown,
+} from '@nestjs/common'
 import { AppLogger, RedisStore } from '@repo/kits'
 import { AppErrorCodes, RunErrorStage, RunStatus, TimelineKind, TimelineRole } from '@repo/shared'
 import type { Mastra } from '@mastra/core/mastra'
@@ -91,7 +96,9 @@ export class AgentRecoveryService implements OnApplicationBootstrap, OnApplicati
       return
     }
     if (!this.config.durableEnabled) {
-      this.logger.log('ai.recovery.skipped', { reason: '未开启可恢复执行（AGENT_DURABLE_ENABLED=false）' })
+      this.logger.log('ai.recovery.skipped', {
+        reason: '未开启可恢复执行（AGENT_DURABLE_ENABLED=false）',
+      })
       return
     }
 

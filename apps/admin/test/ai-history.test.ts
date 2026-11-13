@@ -94,7 +94,12 @@ describe('toUIMessages', () => {
           kind: 'tool-result',
           toolKey: 'list-todos',
           toolCallId: 'call_a',
-          payload: { toolCallId: 'call_a', toolName: 'list-todos', output: { total: 2 }, isError: false },
+          payload: {
+            toolCallId: 'call_a',
+            toolName: 'list-todos',
+            output: { total: 2 },
+            isError: false,
+          },
         }),
       ],
       [run(ROOT_RUN, null)],
@@ -207,7 +212,11 @@ describe('toUIMessages', () => {
           kind: 'tool-call',
           toolKey: 'run-sub-agent',
           toolCallId: 'call_sub',
-          payload: { toolCallId: 'call_sub', toolName: 'run-sub-agent', input: { name: '待办统计' } },
+          payload: {
+            toolCallId: 'call_sub',
+            toolName: 'run-sub-agent',
+            input: { name: '待办统计' },
+          },
         }),
         item({
           seq: 3,
@@ -247,10 +256,17 @@ describe('toUIMessages', () => {
     expect(subAgent).toMatchObject({
       type: 'data-sub-agent',
       id: CHILD_RUN,
-      data: { runId: CHILD_RUN, name: '待办统计', status: 'succeeded', result: '共 2 条，1 条已完成' },
+      data: {
+        runId: CHILD_RUN,
+        name: '待办统计',
+        status: 'succeeded',
+        result: '共 2 条，1 条已完成',
+      },
     })
     // 子 run 的文本没有变成主对话里的 text part
-    expect(parts.some((part) => part.type === 'text' && part.text.includes('子助手结论'))).toBe(false)
+    expect(parts.some((part) => part.type === 'text' && part.text.includes('子助手结论'))).toBe(
+      false,
+    )
   })
 
   it('一轮的用量合成成 data-run-usage part（否则回看历史时统计全空）', () => {
@@ -291,7 +307,8 @@ describe('toUIMessages', () => {
     expect(messages[1].parts.some((part) => part.type === 'data-run-usage')).toBe(false)
   })
 
-  it('计划事件合成成 data-plan part（payload 原样带上，供计划面板渲染）', () => {    // 新协议：plan 工具的出参 = { plan: Plan, change: { op, ... } }
+  it('计划事件合成成 data-plan part（payload 原样带上，供计划面板渲染）', () => {
+    // 新协议：plan 工具的出参 = { plan: Plan, change: { op, ... } }
     const planPayload = {
       plan: {
         goal: '整理待办周报',
@@ -312,7 +329,11 @@ describe('toUIMessages', () => {
           kind: 'tool-call',
           toolKey: 'plan-update-task',
           toolCallId: 'call_plan',
-          payload: { toolCallId: 'call_plan', toolName: 'plan-update-task', input: { taskId: 't2' } },
+          payload: {
+            toolCallId: 'call_plan',
+            toolName: 'plan-update-task',
+            input: { taskId: 't2' },
+          },
         }),
         item({
           seq: 3,
@@ -382,9 +403,7 @@ describe('历史里的耗时（工具条与思考块要显示真实值）', () =
           role: 'user',
           payload: {
             text: '看看这张图',
-            attachments: [
-              { key: 'k1', filename: 'shot.png', mediaType: 'image/png', bytes: 2048 },
-            ],
+            attachments: [{ key: 'k1', filename: 'shot.png', mediaType: 'image/png', bytes: 2048 }],
           },
         }),
         item({ seq: 2, kind: 'text', payload: { text: '这是一张截图。' } }),

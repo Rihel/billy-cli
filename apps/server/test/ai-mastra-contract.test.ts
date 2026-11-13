@@ -1,7 +1,7 @@
 import { Agent } from '@mastra/core/agent'
 import { createTool } from '@mastra/core/tools'
 import { toAISdkStream } from '@mastra/ai-sdk'
-import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
+import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { z } from 'zod'
 import { createMastraAgent, toMastraModelInstance } from '../src/modules/ai/mastra/agent.adapter.js'
 import { ToolOutcomeError } from '../src/modules/ai/mastra/tool.adapter.js'
@@ -171,7 +171,10 @@ describe('适配器行为约定：Mastra 行为（升级前先跑这份）', () 
     const tool = createTool({
       id: 'plan-create',
       description: '一致性测试：短路用',
-      inputSchema: z.object({ goal: z.string().optional(), tasks: z.array(z.unknown()).optional() }),
+      inputSchema: z.object({
+        goal: z.string().optional(),
+        tasks: z.array(z.unknown()).optional(),
+      }),
       execute: async () => {
         executed += 1
         return { marker: FULL_MARKER }
@@ -231,7 +234,10 @@ describe('适配器行为约定：Mastra 行为（升级前先跑这份）', () 
     const failingTool = createTool({
       id: 'plan-create',
       description: '一致性测试：每次都失败',
-      inputSchema: z.object({ goal: z.string().optional(), tasks: z.array(z.unknown()).optional() }),
+      inputSchema: z.object({
+        goal: z.string().optional(),
+        tasks: z.array(z.unknown()).optional(),
+      }),
       execute: async () => {
         throw new ToolOutcomeError('invalid-input', message, hint)
       },
@@ -243,9 +249,12 @@ describe('适配器行为约定：Mastra 行为（升级前先跑这份）', () 
         tools: { 'plan-create': failingTool },
         durable,
       })
-      const output = await agent.stream([{ role: 'user', content: '跑一次 [用例-失败]' }] as never, {
-        maxSteps: 4,
-      })
+      const output = await agent.stream(
+        [{ role: 'user', content: '跑一次 [用例-失败]' }] as never,
+        {
+          maxSteps: 4,
+        },
+      )
       const chunks = await collectUi(toUiStream(output))
       const errorChunk = chunks.find((chunk) => chunk.type === 'tool-output-error')
       expect(errorChunk, `durable=${durable} 应该有工具错误片段`).toBeDefined()
@@ -299,91 +308,94 @@ describe('toMastraModelInstance（多模态回归防线）', () => {
     expect(typeof instance).toBe('object')
   })
 
-describe('durable 下的多模态（图片必须真的发到供应商）', () => {
-  /**
-   * ## 为什么单独立这一条（2026-10-07 的真实事故）
-   *
-   * 症状：发图后模型回答"我没收到图片"，看着像"模型不支持读图"。
-   * 实测根因**不在我们的适配代码**：`@mastra/core@1.69.0` 在 **`durable: true`**
-   * （崩溃恢复，线上默认开启）时会把多模态消息的 `content` 数组**压平成纯字符串** ——
-   * 出站请求 156 字节、`content: "看图"`，图片被静默丢掉。
-   * 升级到 `1.78.0` 后同样输入变成含 `image_url` 的 1.7KB+ 请求。
-   *
-   * 这条测试挡的是**回归**：一旦退化，它立刻红，而不是等用户发现"模型读不到图"。
-   * 注意它必须走 `durable: true` 这条路 —— 不传 durable 时这个 bug 根本不出现
-   * （早先的 e2e 用 mock 且走非 durable，所以完全看不见它）。
-   */
-  it('durable agent：出站请求里带 image_url（图片没被压平）', async () => {
-    const pngBytes = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
-    const dataUrl = `data:image/png;base64,${pngBytes.toString('base64')}`
-
-    const bodies: string[] = []
-    const originalFetch = globalThis.fetch
-    globalThis.fetch = (async (input: unknown, init?: { body?: unknown }) => {
-      const url = String(
-        typeof input === 'string' ? input : ((input as { url?: string })?.url ?? input),
-      )
-      if (url.includes('deepseek.com')) {
-        bodies.push(typeof init?.body === 'string' ? init.body : '')
-        return new Response(
-          JSON.stringify({
-            id: 'x',
-            object: 'chat.completion',
-            created: 1,
-            model: 'deepseek-flash',
-            choices: [{ index: 0, message: { role: 'assistant', content: 'ok' }, finish_reason: 'stop' }],
-            usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
-          }),
-          { status: 200, headers: { 'content-type': 'application/json' } },
-        )
-      }
-      return originalFetch(input as never, init as never)
-    }) as typeof fetch
-
-    try {
-      const agent = createMastraAgent({
-        id: 'contract-durable-multimodal',
-        name: '契约',
-        instructions: 'x',
-        // 与生产一致：Agent 上挂动态 model（函数），调用时再显式传实例
-        model: (() => ({ id: 'deepseek/deepseek-flash' as never, apiKey: 'sk-test' })) as never,
-        tools: {} as never,
-        skills: [] as never,
-        durable: true,
-      })
-      const deepseek = createDeepSeek({ apiKey: 'sk-test', baseURL: 'https://api.deepseek.com' })
-      const stream = await agent.stream(
-        [
-          {
-            role: 'user',
-            content: [
-              { type: 'text', text: '看图' },
-              { type: 'image', image: dataUrl, mediaType: 'image/png' },
-            ],
-          },
-        ] as never,
-        { model: deepseek('deepseek-flash') as never } as never,
-      )
-      for await (const _chunk of ((stream as { fullStream?: AsyncIterable<unknown> }).fullStream ?? [])) {
-        void _chunk
-      }
-    } finally {
-      globalThis.fetch = originalFetch
-    }
-
-    expect(bodies.length).toBeGreaterThanOrEqual(1)
-    const body = JSON.parse(bodies[0] ?? '{}') as {
-      messages?: Array<{ role: string; content: unknown }>
-    }
+  describe('durable 下的多模态（图片必须真的发到供应商）', () => {
     /**
-     * 断言**结构**而不是字节数：压平时 user 的 `content` 会变成纯字符串
-     * （`"看图"` 三个字，请求体 100~200 字节），带图时必须是 part 数组。
-     * 用结构判据即便换成很小的测试图也分得清。
+     * ## 为什么单独立这一条（2026-10-07 的真实事故）
+     *
+     * 症状：发图后模型回答"我没收到图片"，看着像"模型不支持读图"。
+     * 实测根因**不在我们的适配代码**：`@mastra/core@1.69.0` 在 **`durable: true`**
+     * （崩溃恢复，线上默认开启）时会把多模态消息的 `content` 数组**压平成纯字符串** ——
+     * 出站请求 156 字节、`content: "看图"`，图片被静默丢掉。
+     * 升级到 `1.78.0` 后同样输入变成含 `image_url` 的 1.7KB+ 请求。
+     *
+     * 这条测试挡的是**回归**：一旦退化，它立刻红，而不是等用户发现"模型读不到图"。
+     * 注意它必须走 `durable: true` 这条路 —— 不传 durable 时这个 bug 根本不出现
+     * （早先的 e2e 用 mock 且走非 durable，所以完全看不见它）。
      */
-    const userMessage = body.messages?.find((message) => message.role === 'user')
-    expect(Array.isArray(userMessage?.content)).toBe(true)
-    expect(JSON.stringify(userMessage?.content)).toContain('image_url')
-    expect(bodies[0]).toContain(dataUrl)
+    it('durable agent：出站请求里带 image_url（图片没被压平）', async () => {
+      const pngBytes = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
+      const dataUrl = `data:image/png;base64,${pngBytes.toString('base64')}`
+
+      const bodies: string[] = []
+      const originalFetch = globalThis.fetch
+      globalThis.fetch = (async (input: unknown, init?: { body?: unknown }) => {
+        const url = String(
+          typeof input === 'string' ? input : ((input as { url?: string })?.url ?? input),
+        )
+        if (url.includes('deepseek.com')) {
+          bodies.push(typeof init?.body === 'string' ? init.body : '')
+          return new Response(
+            JSON.stringify({
+              id: 'x',
+              object: 'chat.completion',
+              created: 1,
+              model: 'deepseek-flash',
+              choices: [
+                { index: 0, message: { role: 'assistant', content: 'ok' }, finish_reason: 'stop' },
+              ],
+              usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
+            }),
+            { status: 200, headers: { 'content-type': 'application/json' } },
+          )
+        }
+        return originalFetch(input as never, init as never)
+      }) as typeof fetch
+
+      try {
+        const agent = createMastraAgent({
+          id: 'contract-durable-multimodal',
+          name: '契约',
+          instructions: 'x',
+          // 与生产一致：Agent 上挂动态 model（函数），调用时再显式传实例
+          model: (() => ({ id: 'deepseek/deepseek-flash' as never, apiKey: 'sk-test' })) as never,
+          tools: {} as never,
+          skills: [] as never,
+          durable: true,
+        })
+        const deepseek = createDeepSeek({ apiKey: 'sk-test', baseURL: 'https://api.deepseek.com' })
+        const stream = await agent.stream(
+          [
+            {
+              role: 'user',
+              content: [
+                { type: 'text', text: '看图' },
+                { type: 'image', image: dataUrl, mediaType: 'image/png' },
+              ],
+            },
+          ] as never,
+          { model: deepseek('deepseek-flash') as never } as never,
+        )
+        for await (const _chunk of (stream as { fullStream?: AsyncIterable<unknown> }).fullStream ??
+          []) {
+          void _chunk
+        }
+      } finally {
+        globalThis.fetch = originalFetch
+      }
+
+      expect(bodies.length).toBeGreaterThanOrEqual(1)
+      const body = JSON.parse(bodies[0] ?? '{}') as {
+        messages?: Array<{ role: string; content: unknown }>
+      }
+      /**
+       * 断言**结构**而不是字节数：压平时 user 的 `content` 会变成纯字符串
+       * （`"看图"` 三个字，请求体 100~200 字节），带图时必须是 part 数组。
+       * 用结构判据即便换成很小的测试图也分得清。
+       */
+      const userMessage = body.messages?.find((message) => message.role === 'user')
+      expect(Array.isArray(userMessage?.content)).toBe(true)
+      expect(JSON.stringify(userMessage?.content)).toContain('image_url')
+      expect(bodies[0]).toContain(dataUrl)
+    })
   })
-})
 })

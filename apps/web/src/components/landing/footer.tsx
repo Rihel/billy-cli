@@ -75,9 +75,7 @@ export function Footer({ user, authEnabled }: FooterProps) {
 
           {groups.map((group) => (
             <nav key={group.title} aria-label={group.title}>
-              <h3 className="font-heading text-sm font-semibold text-foreground">
-                {group.title}
-              </h3>
+              <h3 className="font-heading text-sm font-semibold text-foreground">{group.title}</h3>
               <ul className="mt-4 space-y-2.5">
                 {group.links.map((link) => (
                   <li key={link.label}>
@@ -110,7 +108,9 @@ export function Footer({ user, authEnabled }: FooterProps) {
           <p className="text-xs text-muted-foreground">
             © {new Date().getFullYear()} {AppName}。保留所有权利。
           </p>
-          <p className="font-mono text-xs text-muted-foreground">Made with TypeScript · NestJS · Next.js</p>
+          <p className="font-mono text-xs text-muted-foreground">
+            Made with TypeScript · NestJS · Next.js
+          </p>
         </div>
       </div>
     </footer>

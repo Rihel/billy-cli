@@ -51,8 +51,6 @@ describe('ObjectStorage 启动降级', () => {
     await expect(storage.onApplicationBootstrap()).resolves.toBeUndefined()
     expect(warn).toHaveBeenCalledWith('storage.init_failed', expect.anything())
 
-    await expect(storage.getObject({ key: 'x.png' })).rejects.toBeInstanceOf(
-      ObjectStorageError,
-    )
+    await expect(storage.getObject({ key: 'x.png' })).rejects.toBeInstanceOf(ObjectStorageError)
   })
 })

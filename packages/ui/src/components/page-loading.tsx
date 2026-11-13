@@ -1,9 +1,9 @@
-"use client"
+'use client'
 
-import type { ReactNode } from "react"
+import type { ReactNode } from 'react'
 
-import { cn } from "#lib/utils"
-import { Spinner } from "#components/ui/spinner"
+import { cn } from '#lib/utils'
+import { Spinner } from '#components/ui/spinner'
 
 export type PageLoadingProps = {
   tip?: ReactNode
@@ -12,16 +12,12 @@ export type PageLoadingProps = {
 }
 
 /** 页面加载占位：居中 spinner + 可选提示文案 */
-export function PageLoading({
-  tip,
-  fullscreen = false,
-  className,
-}: PageLoadingProps) {
+export function PageLoading({ tip, fullscreen = false, className }: PageLoadingProps) {
   return (
     <div
       className={cn(
-        "flex flex-col items-center justify-center gap-2",
-        fullscreen ? "min-h-screen" : "min-h-64",
+        'flex flex-col items-center justify-center gap-2',
+        fullscreen ? 'min-h-screen' : 'min-h-64',
         className,
       )}
     >

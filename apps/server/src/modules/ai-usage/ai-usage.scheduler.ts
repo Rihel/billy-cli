@@ -13,12 +13,10 @@ export class AiUsageScheduler implements OnApplicationBootstrap {
   ) {}
 
   async onApplicationBootstrap(): Promise<void> {
-    this.scheduler.scheduleCron(
-      'ai-usage-rollup',
-      '*/10 * * * *',
-      () => this.run(),
-      { protect: true, timezone: 'Asia/Shanghai' },
-    )
+    this.scheduler.scheduleCron('ai-usage-rollup', '*/10 * * * *', () => this.run(), {
+      protect: true,
+      timezone: 'Asia/Shanghai',
+    })
     // 首次启动补一次，避免控制台等 10 分钟
     await this.run()
   }

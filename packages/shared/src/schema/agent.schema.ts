@@ -146,8 +146,14 @@ export const AgentFileNodeSchema: z.ZodType<AgentFileNode> = z.lazy(() =>
  */
 export const AgentFileAdminQuerySchema = z.object({
   keyword: z.string().trim().max(100).optional(),
-  from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
-  to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  from: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/)
+    .optional(),
+  to: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/)
+    .optional(),
 })
 export type AgentFileAdminQueryDto = z.infer<typeof AgentFileAdminQuerySchema>
 
@@ -337,9 +343,7 @@ export const AgentConversationFileAccessSchema = AgentConversationIdSchema.exten
   fileAccess: AgentFileAccessSchema,
 })
 
-export type AgentConversationFileAccessDto = z.infer<
-  typeof AgentConversationFileAccessSchema
->
+export type AgentConversationFileAccessDto = z.infer<typeof AgentConversationFileAccessSchema>
 
 /**
  * 系统指令查询入参（`POST /agent/instructions`）。

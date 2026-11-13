@@ -3,7 +3,15 @@
 import { useState } from 'react'
 import { ToolEventMode } from '@repo/shared'
 import type { AiToolEventModel } from '@repo/shared'
-import { Badge, Collapsible, CollapsibleContent, CollapsibleTrigger, DictTag, JsonView, cn } from '@repo/ui'
+import {
+  Badge,
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+  DictTag,
+  JsonView,
+  cn,
+} from '@repo/ui'
 import { ChevronDownIcon } from 'lucide-react'
 
 /**
@@ -20,7 +28,11 @@ import { ChevronDownIcon } from 'lucide-react'
 const PayloadSchemaBlock = ({ schema }: { schema: Record<string, unknown> | null }) => {
   const [open, setOpen] = useState(false)
   if (!schema) {
-    return <span className="text-xs text-muted-foreground">没有声明 payload 定义（发什么由代码决定）</span>
+    return (
+      <span className="text-xs text-muted-foreground">
+        没有声明 payload 定义（发什么由代码决定）
+      </span>
+    )
   }
   return (
     <Collapsible open={open} onOpenChange={setOpen}>

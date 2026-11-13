@@ -69,7 +69,9 @@ export function Observability() {
                       className="absolute -left-[3px] top-1.5 size-[5px] rounded-full bg-brand"
                     />
                     <p className="text-sm font-medium text-foreground">{item.step}</p>
-                    <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{item.detail}</p>
+                    <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                      {item.detail}
+                    </p>
                   </li>
                 </Reveal>
               ))}
@@ -94,7 +96,9 @@ export function Observability() {
                     <h3 className="text-base font-medium text-foreground">{cap.title}</h3>
                     <code className="font-mono text-[11px] text-muted-foreground">{cap.path}</code>
                   </div>
-                  <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground">{cap.detail}</p>
+                  <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground">
+                    {cap.detail}
+                  </p>
                 </div>
               </Reveal>
             ))}

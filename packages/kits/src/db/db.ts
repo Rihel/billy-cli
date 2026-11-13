@@ -1,14 +1,14 @@
 import { createDb } from './create-db.js'
 import { deleteDataSourceByName } from 'typeorm-transactional'
-import type {
-  EntityManager,
-  EntityTarget,
-  ObjectLiteral,
-  Repository,
-} from 'typeorm'
+import type { EntityTarget, ObjectLiteral, Repository } from 'typeorm'
 import type { DataSource, DataSourceOptions } from 'typeorm'
 import { AppLogger } from '../foundation/logger/app-logger.js'
-import { Inject, Injectable, type OnApplicationBootstrap, type OnApplicationShutdown } from '@nestjs/common'
+import {
+  Inject,
+  Injectable,
+  type OnApplicationBootstrap,
+  type OnApplicationShutdown,
+} from '@nestjs/common'
 import { DbConfig } from './db.config.js'
 import { coalesceAsync } from 'promise-coalesce'
 export type { DataSource } from 'typeorm'
@@ -17,8 +17,8 @@ export type { DataSource } from 'typeorm'
 export class Db implements OnApplicationBootstrap, OnApplicationShutdown {
   readonly dataSource: DataSource
 
-
-  constructor(@Inject(DbConfig) private config: DbConfig,
+  constructor(
+    @Inject(DbConfig) private config: DbConfig,
     @Inject(AppLogger) private readonly logger: AppLogger,
   ) {
     this.dataSource = createDb({
@@ -43,9 +43,7 @@ export class Db implements OnApplicationBootstrap, OnApplicationShutdown {
     })
   }
 
-  getRepository<T extends ObjectLiteral>(
-    target: EntityTarget<T>,
-  ): Repository<T> {
+  getRepository<T extends ObjectLiteral>(target: EntityTarget<T>): Repository<T> {
     return this.dataSource.getRepository(target)
   }
 

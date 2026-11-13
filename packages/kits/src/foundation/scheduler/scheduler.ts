@@ -45,7 +45,6 @@ type TimerHandle = ReturnType<typeof setTimeout>
 export class Scheduler implements OnApplicationShutdown {
   constructor(@Inject(AppLogger) private readonly logger: AppLogger) {}
 
-
   private readonly jobs = new Map<string, JobRegistration>()
 
   /** 注册一个 cron 周期任务。 */

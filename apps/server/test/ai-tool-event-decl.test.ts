@@ -74,7 +74,9 @@ describe('事件声明：normalizeToolEventDecls', () => {
 
   it('缺少事件名 → 启动失败（文案指到第几条声明）', () => {
     const bad = [{ title: 'A', description: 'x' }] as unknown as ToolEventDeclMeta[]
-    expect(() => normalizeToolEventDecls(bad, '工具 T')).toThrowError(/第 1 个事件声明 缺少事件名 name/)
+    expect(() => normalizeToolEventDecls(bad, '工具 T')).toThrowError(
+      /第 1 个事件声明 缺少事件名 name/,
+    )
   })
 
   it('事件名超过 64 字符 → 启动失败', () => {
@@ -84,7 +86,9 @@ describe('事件声明：normalizeToolEventDecls', () => {
   })
 
   it('mode 不合法 → 启动失败', () => {
-    const bad = [{ name: 'a', title: 'A', description: 'x', mode: 'delta' }] as unknown as ToolEventDeclMeta[]
+    const bad = [
+      { name: 'a', title: 'A', description: 'x', mode: 'delta' },
+    ] as unknown as ToolEventDeclMeta[]
     expect(() => normalizeToolEventDecls(bad, '工具 T')).toThrowError(/mode 不合法：delta/)
   })
 })
@@ -106,6 +110,8 @@ describe('事件声明：经 buildToolSpecs 落到 ToolSpec', () => {
   })
 
   it('事件声明违规 = 工具组构建失败（启动期报错，不是运行时静默失效）', () => {
-    expect(() => buildToolSpecs(new DuplicateEventTool())).toThrowError(/test-bad-event.*事件名重复：dup/)
+    expect(() => buildToolSpecs(new DuplicateEventTool())).toThrowError(
+      /test-bad-event.*事件名重复：dup/,
+    )
   })
 })

@@ -116,6 +116,8 @@ export function ConversationRightPanel({
   /** 响应切 tab 请求：只有 `nonce` 变化才动手（同一个请求不会反复抢用户的 tab） */
   useEffect(() => {
     if (focus) setTab(focus.tab)
+    // focus 每次渲染都是新对象；只在 nonce 变化时应用一次切 tab 请求，避免反复抢用户手动切换
+    // oxlint-disable-next-line react-hooks/exhaustive-deps
   }, [focus?.nonce])
   /**
    * 运行列表在**面板这一层**取：tab 标签上要显示子助手数量，内容区也要用同一份数据 ——
@@ -154,7 +156,11 @@ export function ConversationRightPanel({
   const activatedSkills = useMemo(() => activatedSkillsOf(messages), [messages])
 
   return (
-    <Tabs value={tab} onValueChange={(value) => setTab(value as RightPanelTab)} className="flex h-full min-h-0 flex-col gap-1.5">
+    <Tabs
+      value={tab}
+      onValueChange={(value) => setTab(value as RightPanelTab)}
+      className="flex h-full min-h-0 flex-col gap-1.5"
+    >
       <TabsList className="w-full justify-start overflow-x-auto pb-0.5 [scrollbar-width:thin]">
         <TabsTrigger value="system" className="shrink-0">
           <ScrollTextIcon className="size-3.5" />
@@ -384,7 +390,9 @@ function SystemPromptPanel({
         <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
           {query.data
             ? `${query.data.name} · ${
-                query.data.source === 'conversation' ? '本会话快照（渲染后）' : '静态定义（本会话暂无快照）'
+                query.data.source === 'conversation'
+                  ? '本会话快照（渲染后）'
+                  : '静态定义（本会话暂无快照）'
               }`
             : '正在加载…'}
         </span>
@@ -547,17 +555,13 @@ function SubRunView({
   return (
     <div className="flex flex-col gap-3">
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
-        <Badge variant={statusVariant(run.status)}>
-          {statusLabel[run.status] ?? run.status}
-        </Badge>
+        <Badge variant={statusVariant(run.status)}>{statusLabel[run.status] ?? run.status}</Badge>
         <span>
           {run.stepCount} 步 / {run.toolCallCount} 次工具 · {durationText(run.durationMs)}
           {typeof totalTokens === 'number' ? ` · ${tokenText(totalTokens)} token` : ''}
         </span>
       </div>
-      {run.errorMessage ? (
-        <p className="text-xs text-destructive">{run.errorMessage}</p>
-      ) : null}
+      {run.errorMessage ? <p className="text-xs text-destructive">{run.errorMessage}</p> : null}
       {query.isLoading ? (
         <p className="text-xs text-muted-foreground">正在加载子助手过程…</p>
       ) : query.isError ? (

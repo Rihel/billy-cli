@@ -2,12 +2,7 @@ import { Inject, Injectable } from '@nestjs/common'
 import { ModuleRef } from '@nestjs/core'
 import dedent from 'dedent'
 import { AppLogger } from '@repo/kits'
-import {
-  RunErrorStage,
-  RunStatus,
-  TimelineKind,
-  TimelineRole,
-} from '@repo/shared'
+import { RunErrorStage, RunStatus, TimelineKind, TimelineRole } from '@repo/shared'
 import { AGENT_MAX_STEPS, SUB_AGENT_MAX_CONCURRENT } from '../core/constants.js'
 import { createMastraAgent, toMastraModel, toMastraModelInstance } from '../mastra/agent.adapter.js'
 import { toMastraSkills } from '../mastra/skill.adapter.js'
@@ -106,10 +101,7 @@ const DEFAULT_MAX_DEPTH = 1
  * （它的提示词由主 agent 现写），于是它不知道自己手上有什么、也不知道"不能再造子助手"这条边界。
  * 这段尾巴不覆盖主 agent 的原话，只补三件事：工具清单、边界、交付要求。
  */
-const withCapabilityTail = (
-  writtenByParent: string,
-  envelope: AgentRuntimeEnvelope,
-): string => {
+const withCapabilityTail = (writtenByParent: string, envelope: AgentRuntimeEnvelope): string => {
   const tools = [...envelope.childToolbox.keys()]
   const toolList = tools.length > 0 ? tools.map((key) => `\`${key}\``).join('、') : '（无）'
   return dedent`
@@ -207,10 +199,7 @@ export class AgentRunner {
     // ② 幂等 / 中断恢复：同一个 toolCallId 只对应一个子 run
     let interrupted: RunEntity | undefined
     if (request.toolCallId) {
-      const existing = await this.runs.findChildByToolCall(
-        envelope.parentRunId,
-        request.toolCallId,
-      )
+      const existing = await this.runs.findChildByToolCall(envelope.parentRunId, request.toolCallId)
       if (existing) {
         if (existing.status === RunStatus.Succeeded) {
           const text = (await this.timelines.lastTextOfRun(existing.id)) ?? ''
@@ -378,7 +367,10 @@ export class AgentRunner {
     )
     // 子 agent 的墙钟上限（0 = 沿用单轮上限）；心跳照跳，看门狗不会误杀长跑的子 agent
     const timeoutMs =
-      quotas.timeoutMs || this.config.subAgentTimeoutMs || this.config.runTimeoutMs || DEFAULT_RUN_TIMEOUT_MS
+      quotas.timeoutMs ||
+      this.config.subAgentTimeoutMs ||
+      this.config.runTimeoutMs ||
+      DEFAULT_RUN_TIMEOUT_MS
     const timeoutController = new AbortController()
     const timeoutTimer = setTimeout(() => timeoutController.abort(), timeoutMs)
     const signals = [timeoutController.signal]
@@ -512,9 +504,7 @@ export class AgentRunner {
     // **必须走 stream-result 的读取口径**：durable 下 `agent.stream()` 返回的是包装对象
     // （`{ output, fullStream, … }`），直接读 `output.steps` 拿到 undefined（踩过，见 stream-result.ts）
     const steps = output ? ((await readStreamSteps(output)) as unknown as never[]) : []
-    const usage = output
-      ? toUsageRecord(await readStreamUsage(output))
-      : null
+    const usage = output ? toUsageRecord(await readStreamUsage(output)) : null
     const persisted = await recorder.finish(steps)
     const durationMs = Date.now() - startedAt
     await this.runs.finish(subRunId, {

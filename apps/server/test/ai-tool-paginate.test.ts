@@ -36,7 +36,9 @@ describe('工具出参分页（纯函数）', () => {
   })
 
   it('多页：每页内容拼起来等于原文（逐字节无损）', () => {
-    const text = Array.from({ length: 250 }, (_, index) => String.fromCharCode(97 + (index % 26))).join('')
+    const text = Array.from({ length: 250 }, (_, index) =>
+      String.fromCharCode(97 + (index % 26)),
+    ).join('')
     const pageBytes = 32
     const total = paginate(text, pageBytes, 1, 'h').meta.totalPages
     let joined = ''

@@ -92,10 +92,7 @@ export class OpsController {
     const failed: string[] = []
 
     try {
-      await withTimeout(
-        this.db.dataSource.query('SELECT 1'),
-        READINESS_CHECK_TIMEOUT_MS,
-      )
+      await withTimeout(this.db.dataSource.query('SELECT 1'), READINESS_CHECK_TIMEOUT_MS)
     } catch {
       checks.db = 'failed'
       failed.push('数据库')

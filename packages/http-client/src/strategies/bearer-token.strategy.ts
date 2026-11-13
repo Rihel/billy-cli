@@ -26,9 +26,7 @@ export class BearerTokenStrategy implements AuthStrategy<BearerTokenCredentials>
     return !!credentials?.token
   }
 
-  async getAuthContext(
-    credentials: BearerTokenCredentials,
-  ): Promise<AuthContext> {
+  async getAuthContext(credentials: BearerTokenCredentials): Promise<AuthContext> {
     return {
       headers: {
         Authorization: `Bearer ${credentials.token}`,

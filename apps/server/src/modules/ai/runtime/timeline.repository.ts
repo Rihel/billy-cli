@@ -60,7 +60,10 @@ export class TimelineRepository {
     const repo = await this.repo()
     const conversationId = data.conversationId!
     const seq = data.seq ?? (await this.nextSeq(conversationId))
-    return toTimelineModel(await repo.save(repo.create({ ...data, seq, conversationId })))
+    // 用 create() + Object.assign 保留实体原型（直接展开普通对象会丢掉类实例的方法）
+    const entity = repo.create()
+    Object.assign(entity, data, { seq, conversationId })
+    return toTimelineModel(await repo.save(entity))
   }
 
   /** 追加一批事件（一次分配 seq；TypeORM 的 save 数组自带事务） */
@@ -69,16 +72,15 @@ export class TimelineRepository {
     const conversationId = items[0].conversationId!
     const base = await this.nextSeq(conversationId)
     const repo = await this.repo()
-    const rows = items.map((item, index) =>
-      repo.create({ ...item, conversationId, seq: base + index }),
-    )
+    const rows = items.map((item, index) => {
+      const entity = repo.create()
+      return Object.assign(entity, item, { conversationId, seq: base + index })
+    })
     return (await repo.save(rows)).map(toTimelineModel)
   }
 
   /** 按会话（或某一轮）分页查时间线，按 seq 升序（渲染顺序的权威依据） */
-  async list(
-    query: AgentTimelineListDto,
-  ): Promise<PageQueryResult<AgentTimelineItemModel>> {
+  async list(query: AgentTimelineListDto): Promise<PageQueryResult<AgentTimelineItemModel>> {
     const { conversationId, runId, page, size } = query
     const repo = await this.repo()
     const builder = repo
@@ -235,9 +237,7 @@ export class TimelineRepository {
  * 用 `NOT EXISTS` 而不是 `run_id IN (SELECT ...)`：后者会先把全表根 run 拉出来，
  * 事件一多就变成大集合扫描。这里每行只做一次主键命中。
  */
-const excludeSubAgentEvents = (builder: {
-  andWhere: (sql: string) => unknown
-}): void => {
+const excludeSubAgentEvents = (builder: { andWhere: (sql: string) => unknown }): void => {
   builder.andWhere(
     'NOT EXISTS (SELECT 1 FROM runs r WHERE r.id = t.run_id AND r.parent_run_id IS NOT NULL)',
   )

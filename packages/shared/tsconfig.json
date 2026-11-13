@@ -11,14 +11,8 @@
     "noImplicitAny": false,
     "strictNullChecks": false,
     "strictPropertyInitialization": false,
-    "verbatimModuleSyntax": false,
+    "verbatimModuleSyntax": false
   },
-  "include": [
-    "src",
-    "test",
-    "tsdown.config.ts"
-  ],
-  "exclude": [
-    "node_modules"
-  ]
+  "include": ["src", "test", "tsdown.config.ts"],
+  "exclude": ["node_modules"]
 }

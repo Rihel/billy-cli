@@ -50,7 +50,12 @@ export class AiUsageDailyEntity extends BaseEntity {
   @Column({ name: 'cache_read_tokens', type: 'bigint', default: 0, transformer: bigintTransformer })
   cacheReadTokens = 0
 
-  @Column({ name: 'cache_write_tokens', type: 'bigint', default: 0, transformer: bigintTransformer })
+  @Column({
+    name: 'cache_write_tokens',
+    type: 'bigint',
+    default: 0,
+    transformer: bigintTransformer,
+  })
   cacheWriteTokens = 0
 
   @Column({ name: 'reasoning_tokens', type: 'bigint', default: 0, transformer: bigintTransformer })
@@ -83,7 +88,12 @@ export class AiUsageDailyEntity extends BaseEntity {
   @Column({ name: 'run_duration_ms', type: 'bigint', default: 0, transformer: bigintTransformer })
   runDurationMs = 0
 
-  @Column({ name: 'first_token_ms_sum', type: 'bigint', default: 0, transformer: bigintTransformer })
+  @Column({
+    name: 'first_token_ms_sum',
+    type: 'bigint',
+    default: 0,
+    transformer: bigintTransformer,
+  })
   firstTokenMsSum = 0
 
   @Column({ name: 'first_token_runs', type: 'int', default: 0 })

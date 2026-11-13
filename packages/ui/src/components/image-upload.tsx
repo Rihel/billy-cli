@@ -1,13 +1,13 @@
-"use client"
+'use client'
 
-import { useRef } from "react"
+import { useRef } from 'react'
 
-import { cn } from "#lib/utils"
-import { Button } from "#components/ui/button"
-import { ImagePlusIcon } from "lucide-react"
-import { useStorageAdapter } from "#components/storage-provider"
-import { useStorage } from "#components/use-storage"
-import type { StorageFileItem } from "#components/use-storage"
+import { cn } from '#lib/utils'
+import { Button } from '#components/ui/button'
+import { ImagePlusIcon } from 'lucide-react'
+import { useStorageAdapter } from '#components/storage-provider'
+import { useStorage } from '#components/use-storage'
+import type { StorageFileItem } from '#components/use-storage'
 
 export type ImageUploadProps = {
   value?: string | null
@@ -18,13 +18,7 @@ export type ImageUploadProps = {
 }
 
 /** 单图上传：预览 + 重新选择（原生 file input + 预签名直传） */
-export function ImageUpload({
-  value,
-  sizeLimit,
-  disabled,
-  className,
-  onChange,
-}: ImageUploadProps) {
+export function ImageUpload({ value, sizeLimit, disabled, className, onChange }: ImageUploadProps) {
   const { resolveUrl } = useStorageAdapter()
   const inputRef = useRef<HTMLInputElement>(null)
   const { uploadFile } = useStorage({
@@ -41,10 +35,10 @@ export function ImageUpload({
   const handleFile = async (file?: File) => {
     if (!file || disabled) return
     await uploadFile(file)
-    if (inputRef.current) inputRef.current.value = ""
+    if (inputRef.current) inputRef.current.value = ''
   }
 
-  const rootClassName = cn("size-40", className)
+  const rootClassName = cn('size-40', className)
 
   return (
     <div className="flex w-fit flex-col items-center justify-center gap-2">
@@ -61,10 +55,7 @@ export function ImageUpload({
           <img
             src={resolveUrl(value)}
             alt="预览图"
-            className={cn(
-              rootClassName,
-              "rounded-lg bg-surface-1 object-cover",
-            )}
+            className={cn(rootClassName, 'rounded-lg bg-surface-1 object-cover')}
           />
           <Button
             variant="link"
@@ -82,8 +73,8 @@ export function ImageUpload({
           onClick={() => inputRef.current?.click()}
           className={cn(
             rootClassName,
-            "flex cursor-pointer flex-col items-center justify-center gap-1 rounded-lg bg-surface-1 text-muted-foreground transition-colors hover:bg-muted",
-            disabled && "cursor-not-allowed opacity-50",
+            'flex cursor-pointer flex-col items-center justify-center gap-1 rounded-lg bg-surface-1 text-muted-foreground transition-colors hover:bg-muted',
+            disabled && 'cursor-not-allowed opacity-50',
           )}
         >
           <ImagePlusIcon className="size-8" />

@@ -41,7 +41,8 @@ export class AgentService {
     const available = await this.models.listAvailable()
     return {
       available: available.models.length > 0,
-      model: available.models.find((item) => item.id === available.defaultModelId)?.modelRef ?? null,
+      model:
+        available.models.find((item) => item.id === available.defaultModelId)?.modelRef ?? null,
       modelCount: available.models.length,
       agentCount: this.registry.all().length,
     }

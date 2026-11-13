@@ -121,10 +121,7 @@ export default function AiToolsPage() {
         description="开关、作用域、限额与专属配置；这份清单与模型看到的工具面一致"
         toolbar={
           <>
-            <RefreshButton
-              loading={toolsQuery.isFetching}
-              onClick={() => void refetch()}
-            />
+            <RefreshButton loading={toolsQuery.isFetching} onClick={() => void refetch()} />
             <div className="flex items-center gap-1 rounded-lg bg-surface-2 px-2 transition-colors focus-within:ring-2 focus-within:ring-ring/40">
               <SearchIcon className="ml-0.5 size-3.5 text-muted-foreground" />
               <Input
@@ -209,7 +206,7 @@ export default function AiToolsPage() {
           配置口径说明（3 条）
         </summary>
         <div className="mt-3 flex flex-col gap-2">
-                    <Alert>
+          <Alert>
             <InfoIcon />
             <AlertTitle>改完不需要重启</AlertTitle>
             <AlertDescription>
@@ -234,7 +231,6 @@ export default function AiToolsPage() {
               `}
             </AlertDescription>
           </Alert>
-      
         </div>
       </details>
     </div>

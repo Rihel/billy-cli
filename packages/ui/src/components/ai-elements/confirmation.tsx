@@ -1,11 +1,11 @@
-"use client"
+'use client'
 
-import { Alert, AlertDescription } from "#components/ui/alert.tsx"
-import { Button } from "#components/ui/button.tsx"
-import { cn } from "#lib/utils.ts"
-import type { ToolUIPart } from "ai"
-import type { ComponentProps, ReactNode } from "react"
-import { createContext, useContext, useMemo } from "react"
+import { Alert, AlertDescription } from '#components/ui/alert.tsx'
+import { Button } from '#components/ui/button.tsx'
+import { cn } from '#lib/utils.ts'
+import type { ToolUIPart } from 'ai'
+import type { ComponentProps, ReactNode } from 'react'
+import { createContext, useContext, useMemo } from 'react'
 
 type ToolUIPartApproval =
   | {
@@ -37,7 +37,7 @@ type ToolUIPartApproval =
 
 interface ConfirmationContextValue {
   approval: ToolUIPartApproval
-  state: ToolUIPart["state"]
+  state: ToolUIPart['state']
 }
 
 const ConfirmationContext = createContext<ConfirmationContextValue | null>(null)
@@ -46,7 +46,7 @@ const useConfirmation = () => {
   const context = useContext(ConfirmationContext)
 
   if (!context) {
-    throw new Error("Confirmation components must be used within Confirmation")
+    throw new Error('Confirmation components must be used within Confirmation')
   }
 
   return context
@@ -54,19 +54,19 @@ const useConfirmation = () => {
 
 export type ConfirmationProps = ComponentProps<typeof Alert> & {
   approval?: ToolUIPartApproval
-  state: ToolUIPart["state"]
+  state: ToolUIPart['state']
 }
 
 export const Confirmation = ({ className, approval, state, ...props }: ConfirmationProps) => {
   const contextValue = useMemo(() => ({ approval, state }), [approval, state])
 
-  if (!approval || state === "input-streaming" || state === "input-available") {
+  if (!approval || state === 'input-streaming' || state === 'input-available') {
     return null
   }
 
   return (
     <ConfirmationContext.Provider value={contextValue}>
-      <Alert className={cn("flex flex-col gap-2", className)} {...props} />
+      <Alert className={cn('flex flex-col gap-2', className)} {...props} />
     </ConfirmationContext.Provider>
   )
 }
@@ -74,7 +74,7 @@ export const Confirmation = ({ className, approval, state, ...props }: Confirmat
 export type ConfirmationTitleProps = ComponentProps<typeof AlertDescription>
 
 export const ConfirmationTitle = ({ className, ...props }: ConfirmationTitleProps) => (
-  <AlertDescription className={cn("inline", className)} {...props} />
+  <AlertDescription className={cn('inline', className)} {...props} />
 )
 
 export interface ConfirmationRequestProps {
@@ -85,7 +85,7 @@ export const ConfirmationRequest = ({ children }: ConfirmationRequestProps) => {
   const { state } = useConfirmation()
 
   // Only show when approval is requested
-  if (state !== "approval-requested") {
+  if (state !== 'approval-requested') {
     return null
   }
 
@@ -100,7 +100,10 @@ export const ConfirmationAccepted = ({ children }: ConfirmationAcceptedProps) =>
   const { approval, state } = useConfirmation()
 
   // Only show when approved and in response states
-  if (!approval?.approved || (state !== "approval-responded" && state !== "output-denied" && state !== "output-available")) {
+  if (
+    !approval?.approved ||
+    (state !== 'approval-responded' && state !== 'output-denied' && state !== 'output-available')
+  ) {
     return null
   }
 
@@ -115,26 +118,33 @@ export const ConfirmationRejected = ({ children }: ConfirmationRejectedProps) =>
   const { approval, state } = useConfirmation()
 
   // Only show when rejected and in response states
-  if (approval?.approved !== false || (state !== "approval-responded" && state !== "output-denied" && state !== "output-available")) {
+  if (
+    approval?.approved !== false ||
+    (state !== 'approval-responded' && state !== 'output-denied' && state !== 'output-available')
+  ) {
     return null
   }
 
   return children
 }
 
-export type ConfirmationActionsProps = ComponentProps<"div">
+export type ConfirmationActionsProps = ComponentProps<'div'>
 
 export const ConfirmationActions = ({ className, ...props }: ConfirmationActionsProps) => {
   const { state } = useConfirmation()
 
   // Only show when approval is requested
-  if (state !== "approval-requested") {
+  if (state !== 'approval-requested') {
     return null
   }
 
-  return <div className={cn("flex items-center justify-end gap-2 self-end", className)} {...props} />
+  return (
+    <div className={cn('flex items-center justify-end gap-2 self-end', className)} {...props} />
+  )
 }
 
 export type ConfirmationActionProps = ComponentProps<typeof Button>
 
-export const ConfirmationAction = (props: ConfirmationActionProps) => <Button className="h-8 px-3 text-sm" type="button" {...props} />
+export const ConfirmationAction = (props: ConfirmationActionProps) => (
+  <Button className="h-8 px-3 text-sm" type="button" {...props} />
+)

@@ -175,8 +175,8 @@ describe('TimeWheel', () => {
 
   it('cron 任务缺少表达式时抛错', () => {
     wheel = createWheel()
-    expect(() =>
-      wheel!.addJob({ id: 'no-cron', type: TimeWheelType.Cron, exec: vi.fn() }),
-    ).toThrow(/cron/)
+    expect(() => wheel!.addJob({ id: 'no-cron', type: TimeWheelType.Cron, exec: vi.fn() })).toThrow(
+      /cron/,
+    )
   })
 })

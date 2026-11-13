@@ -1,5 +1,4 @@
 import 'dotenv/config'
-import { randomBytes } from 'node:crypto'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { Db, setAuditUserProvider, type AppLogger } from '@repo/kits'
 import { AiProviderKind } from '@repo/shared'
@@ -31,8 +30,6 @@ import {
  * 前置：`apps/server/.env` 的 DB_URL 指向可用库，且已执行迁移（含 `slug` 列）。
  */
 
-/** 测试用加密口令（不进环境变量，避免污染开发库的历史密文口径） */
-const TEST_SECRET = `test-secret-${randomBytes(8).toString('hex')}`
 /** 供应商密钥（断言提示 `sk-…abcd`） */
 const TEST_API_KEY = 'sk-test-abcdefgh-abcd'
 const TEST_USER = 'admin_ai_model_test'
@@ -354,9 +351,7 @@ describe('AI 模型模块（真实数据库 + mock 供应商）', () => {
     // 未指定 modelId → 默认取"第一个启用"的（供应商创建时间 + modelKey 排序）
     const resolved = await service.resolveForRuntime()
     expect(resolved.modelKey).toBe('mock-chat')
-    expect(resolved.modelRef).toBe(
-      `${(await providers.findById(providerId))!.slug}/mock-chat`,
-    )
+    expect(resolved.modelRef).toBe(`${(await providers.findById(providerId))!.slug}/mock-chat`)
     expect(resolved.apiKey).toBe(TEST_API_KEY)
     expect(resolved.baseURL).toBe(mock.baseURL)
     expect(resolved.contextWindow).toBeNull()
@@ -490,9 +485,9 @@ describe('AI 模型模块（真实数据库 + mock 供应商）', () => {
   })
 
   it('⑬ 未知 kind / 没有默认地址：发请求前就拦住并明确报错', async () => {
-    await expect(
-      listProviderModels({ kind: 'not-a-vendor', apiKey: 'sk-test' }),
-    ).rejects.toThrow(/不支持的供应商类型/)
+    await expect(listProviderModels({ kind: 'not-a-vendor', apiKey: 'sk-test' })).rejects.toThrow(
+      /不支持的供应商类型/,
+    )
 
     // openai-compatible 是"协议形态兜底"，没有官方默认地址：baseUrl 留空必须手填
     await expect(

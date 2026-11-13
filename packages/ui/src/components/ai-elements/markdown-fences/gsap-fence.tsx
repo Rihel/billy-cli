@@ -1,9 +1,9 @@
-"use client"
+'use client'
 
-import type { CustomRendererProps } from "streamdown"
+import type { CustomRendererProps } from 'streamdown'
 
-import { FencePending, FenceSource } from "./fence-chrome.tsx"
-import { SandboxFrame } from "./sandbox-frame.tsx"
+import { FencePending, FenceSource } from './fence-chrome.tsx'
+import { SandboxFrame } from './sandbox-frame.tsx'
 
 /**
  * 内置动画库的静态路径。
@@ -12,7 +12,7 @@ import { SandboxFrame } from "./sandbox-frame.tsx"
  * `apps/admin/public/vendor/`，随仓库提交 —— 沙箱 iframe 自己连不出去，
  * 所以脚本只能是"父页面同源取回、内联进文档"这一条路。
  */
-const GSAP_SCRIPT = "/vendor/gsap.min.js"
+const GSAP_SCRIPT = '/vendor/gsap.min.js'
 
 /**
  * ```` ```gsap ```` 围栏：沙箱 iframe + 内置 gsap。

@@ -83,8 +83,7 @@ export const emptySubAgent = (runId: string, name = '子助手'): SubAgentLive =
 })
 
 /** 子助手名字：run 的 `agentKey` 就是 `sub:<名字>`（服务端给子 run 的命名口径） */
-export const subRunName = (agentKey: string): string =>
-  agentKey.replace(/^sub:/, '') || '子助手'
+export const subRunName = (agentKey: string): string => agentKey.replace(/^sub:/, '') || '子助手'
 
 const asRecord = (value: unknown): Record<string, unknown> | null =>
   value && typeof value === 'object' ? (value as Record<string, unknown>) : null
@@ -158,9 +157,7 @@ export const appendSubAgentDelta = (
  *
  * 历史链路专用于此：时间线重建出来的只有 `data-sub-agent`（无增量），正文由 `result` 承担。
  */
-export const collectSubAgentLives = (
-  parts: readonly SubAgentSourcePart[],
-): SubAgentLive[] => {
+export const collectSubAgentLives = (parts: readonly SubAgentSourcePart[]): SubAgentLive[] => {
   const lives = new Map<string, SubAgentLive>()
 
   const ensure = (runId: string, name?: string): SubAgentLive => {
@@ -285,9 +282,7 @@ export const subAgentTabs = (
  * 服务端为每次委派同时产生"一次工具调用"与"一个子 run 的状态块"，各自画卡就是同一件事出现两次。
  * 子助手卡信息更全，所以留它、把原始工具卡吃掉 —— 与计划工具"同一件事只画一张卡"同一条纪律。
  */
-export const delegatedToolCallIds = (
-  lives: readonly SubAgentLive[],
-): ReadonlySet<string> =>
+export const delegatedToolCallIds = (lives: readonly SubAgentLive[]): ReadonlySet<string> =>
   new Set(
     lives
       .map((live) => live.toolCallId)
@@ -325,7 +320,7 @@ export const mergeSubAgent = (base: SubAgentLive, patch?: SubAgentLive): SubAgen
     events: patch.events.length > 0 ? patch.events : base.events,
     entries:
       (patch.entries?.length ?? 0) >= (base.entries?.length ?? 0)
-        ? patch.entries ?? base.entries
+        ? (patch.entries ?? base.entries)
         : base.entries,
   }
 }

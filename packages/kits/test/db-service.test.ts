@@ -7,8 +7,7 @@ import { setAuditUserProvider } from '../src/db/audit-subscriber.js'
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
 /** 只用到 dataSource.manager 的 Db 替身 */
-const fakeDb = (manager: EntityManager) =>
-  ({ dataSource: { manager } }) as unknown as Db
+const fakeDb = (manager: EntityManager) => ({ dataSource: { manager } }) as unknown as Db
 
 /** 记录副作用、事务状态可控的 manager 替身 */
 const recordingManager = (isTransactionActive = false) => {
@@ -135,9 +134,13 @@ describe('DbService', () => {
     setAuditUserProvider(() => 'user-9')
 
     await service.safeDelete(class Foo {} as never, { id: '1' })
-    await service.safeDelete(class Foo {} as never, { id: '2' }, {
-      operatorId: 'admin-1',
-    })
+    await service.safeDelete(
+      class Foo {} as never,
+      { id: '2' },
+      {
+        operatorId: 'admin-1',
+      },
+    )
 
     expect(updates[0].patch).toEqual({ deletedBy: 'user-9', updatedBy: 'user-9' })
     expect(updates[1].patch).toEqual({
@@ -185,8 +188,7 @@ describe('DbService', () => {
   it('batchDelete 转发到底层分片删除', async () => {
     const deletedChunks: unknown[][] = []
     const { manager } = recordingManager()
-    const managerWithDelete = {
-      ...manager,
+    const managerWithDelete = Object.assign({}, manager, {
       queryRunner: { isTransactionActive: false },
       createQueryBuilder: () => ({
         delete: () => ({
@@ -199,7 +201,7 @@ describe('DbService', () => {
           }),
         }),
       }),
-    } as unknown as EntityManager
+    }) as unknown as EntityManager
     const service = new DbService(fakeDb(managerWithDelete))
 
     await service.batchDelete(class Foo {} as never, {

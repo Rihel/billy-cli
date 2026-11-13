@@ -93,12 +93,9 @@ export class RateLimitGuard implements CanActivate {
     )
     if (!decision.allowed) {
       const descriptor = describeErrorCode(AppErrorCodes.RateLimited)
-      throw new BoundaryError(
-        descriptor.value,
-        descriptor.label,
-        descriptor.http,
-        { 'Retry-After': String(decision.retryAfterSeconds) },
-      )
+      throw new BoundaryError(descriptor.value, descriptor.label, descriptor.http, {
+        'Retry-After': String(decision.retryAfterSeconds),
+      })
     }
     return true
   }

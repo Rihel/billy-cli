@@ -124,12 +124,9 @@ describe('RequestLoggerMiddleware（替代 pino-http 的请求日志）', () => 
     const res = makeResponse(200)
 
     // 注册监听与 next() 在作用域内（与真实链路一致）
-    requestContext.run(
-      { requestId: 'rid-sse', userId: null, adminId: null },
-      () => {
-        middleware.use(request as never, res as never, vi.fn())
-      },
-    )
+    requestContext.run({ requestId: 'rid-sse', userId: null, adminId: null }, () => {
+      middleware.use(request as never, res as never, vi.fn())
+    })
 
     // 关键：finish 在作用域**之外**触发 —— SSE 的响应结束来自 socket 的 close 回调，
     // 那时 AsyncLocalStorage 里已经没有本次请求的 store（`run()` 在 next() 返回时就退出了）。
@@ -151,7 +148,11 @@ describe('RequestLoggerMiddleware（替代 pino-http 的请求日志）', () => 
     const { logger, calls } = makeLogger()
     const middleware = new RequestLoggerMiddleware(logger)
     const res = makeResponse(200)
-    const store = { requestId: 'rid-live', userId: null as string | null, adminId: null as string | null }
+    const store = {
+      requestId: 'rid-live',
+      userId: null as string | null,
+      adminId: null as string | null,
+    }
 
     requestContext.run(store, () => {
       middleware.use(request as never, res as never, vi.fn())

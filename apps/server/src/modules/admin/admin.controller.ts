@@ -1,11 +1,4 @@
-import {
-  Body,
-  Controller,
-  HttpCode,
-  Inject,
-  Post,
-  UseGuards,
-} from '@nestjs/common'
+import { Body, Controller, HttpCode, Inject, Post, UseGuards } from '@nestjs/common'
 import {
   AdminLoginSchema,
   ChangePasswordSchema,
@@ -52,9 +45,7 @@ export class AdminAuthController {
   @Post('logout')
   @HttpCode(200)
   logout(@AccessToken() token?: string) {
-    return token
-      ? this.adminService.logout({ token })
-      : Promise.resolve({ success: true })
+    return token ? this.adminService.logout({ token }) : Promise.resolve({ success: true })
   }
 }
 

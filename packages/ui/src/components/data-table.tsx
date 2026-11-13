@@ -1,41 +1,29 @@
-"use client"
+'use client'
 
-import { useState } from "react"
-import type { ReactNode } from "react"
+import { useState } from 'react'
+import type { ReactNode } from 'react'
 import {
   columnVisibilityFeature,
   coreFeatures,
   flexRender,
   useTable,
   type ColumnDef,
-} from "@tanstack/react-table"
+} from '@tanstack/react-table'
 
-import { cn } from "#lib/utils"
-import { Button } from "#components/ui/button"
-import {
-  Empty,
-  EmptyDescription,
-  EmptyMedia,
-  EmptyTitle,
-} from "#components/ui/empty"
-import { PageToolbar } from "#components/page-toolbar"
+import { cn } from '#lib/utils'
+import { Button } from '#components/ui/button'
+import { Empty, EmptyDescription, EmptyMedia, EmptyTitle } from '#components/ui/empty'
+import { PageToolbar } from '#components/page-toolbar'
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "#components/ui/select"
-import { Skeleton } from "#components/ui/skeleton"
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "#components/ui/table"
-import { ChevronLeftIcon, ChevronRightIcon, InboxIcon } from "lucide-react"
+} from '#components/ui/select'
+import { Skeleton } from '#components/ui/skeleton'
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '#components/ui/table'
+import { ChevronLeftIcon, ChevronRightIcon, InboxIcon } from 'lucide-react'
 
 /** 只启用列可见性与 core：服务端分页，不需要前端排序 / 分页 / 过滤特性 */
 const tableFeatures = { ...coreFeatures, columnVisibilityFeature }
@@ -104,7 +92,7 @@ export function DataTable<T extends object>({
   description,
   toolbar,
   search,
-  emptyText = "暂无数据",
+  emptyText = '暂无数据',
   className,
   tableClassName,
 }: DataTableProps<T>) {
@@ -119,7 +107,7 @@ export function DataTable<T extends object>({
     data: data ?? [],
     columns,
     getRowId:
-      typeof rowKey === "function"
+      typeof rowKey === 'function'
         ? rowKey
         : (row) => String((row as Record<string, unknown>)[rowKey]),
   })
@@ -130,25 +118,21 @@ export function DataTable<T extends object>({
   const renderPagination = page !== undefined || total !== undefined
 
   return (
-    <section className={cn("flex flex-col gap-4", className)}>
+    <section className={cn('flex flex-col gap-4', className)}>
       {title || description || toolbar || search ? (
         <PageToolbar title={title} description={description} extra={toolbar}>
           {search}
         </PageToolbar>
       ) : null}
 
-      <div
-        className={cn(
-          "flex flex-col overflow-hidden rounded-xl bg-card",
-          tableClassName,
-        )}
-      >
+      <div className={cn('flex flex-col overflow-hidden rounded-xl bg-card', tableClassName)}>
         <Table>
           <TableHeader className="bg-surface-2/60">
             {headerGroups.map((headerGroup) => (
               <TableRow key={headerGroup.id} className="hover:bg-transparent">
                 {headerGroup.headers.map((header) => {
-                  const width = (header.column.columnDef.meta as { width?: number } | undefined)?.width
+                  const width = (header.column.columnDef.meta as { width?: number } | undefined)
+                    ?.width
                   return (
                     <TableHead
                       key={header.id}
@@ -161,10 +145,7 @@ export function DataTable<T extends object>({
                     >
                       {header.isPlaceholder
                         ? null
-                        : flexRender(
-                            header.column.columnDef.header,
-                            header.getContext(),
-                          )}
+                        : flexRender(header.column.columnDef.header, header.getContext())}
                     </TableHead>
                   )
                 })}
@@ -201,10 +182,7 @@ export function DataTable<T extends object>({
               ))
             ) : (
               <TableRow>
-                <TableCell
-                  colSpan={columns.length}
-                  className="h-40 p-3 text-center"
-                >
+                <TableCell colSpan={columns.length} className="h-40 p-3 text-center">
                   <Empty className="border-0">
                     <EmptyMedia variant="icon">
                       <InboxIcon />
@@ -223,9 +201,7 @@ export function DataTable<T extends object>({
         {renderPagination ? (
           <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-surface-1 px-3 py-2.5 text-xs text-muted-foreground">
             <div className="flex items-center gap-3">
-              <span className="font-mono tabular-nums text-foreground/80">
-                共 {totalCount} 条
-              </span>
+              <span className="font-mono tabular-nums text-foreground/80">共 {totalCount} 条</span>
               <Select
                 value={String(currentPageSize)}
                 onValueChange={(value) => {
@@ -234,7 +210,10 @@ export function DataTable<T extends object>({
                   onPageChange?.(1, nextSize)
                 }}
               >
-                <SelectTrigger size="sm" className="h-7 w-auto gap-1 border-0 bg-transparent px-0 text-muted-foreground shadow-none hover:text-foreground">
+                <SelectTrigger
+                  size="sm"
+                  className="h-7 w-auto gap-1 border-0 bg-transparent px-0 text-muted-foreground shadow-none hover:text-foreground"
+                >
                   <SelectValue />
                   <span className="font-mono">/页</span>
                 </SelectTrigger>

@@ -2,7 +2,12 @@ import { Injectable } from '@nestjs/common'
 import { Redis } from 'ioredis'
 import { z } from 'zod'
 import { ToolDeniedError } from '../../core/tools/tools.types.js'
-import type { Capability, ConnectorDriver, ConnectorFieldDecl, ConnectorRuntime } from '../connector.types.js'
+import type {
+  Capability,
+  ConnectorDriver,
+  ConnectorFieldDecl,
+  ConnectorRuntime,
+} from '../connector.types.js'
 
 /**
  * **Redis 驱动**（设计 `docs/design/ai-connector.md` §3.11）。
@@ -108,7 +113,9 @@ export class RedisDriver implements ConnectorDriver {
   ): Promise<unknown> {
     switch (tool) {
       case 'scan_keys': {
-        const { pattern } = z.object({ pattern: z.string().max(256).default('*') }).parse(input ?? {})
+        const { pattern } = z
+          .object({ pattern: z.string().max(256).default('*') })
+          .parse(input ?? {})
         const full = `${config.keyPrefix}${pattern}`
         const keys: string[] = []
         let cursor = '0'
@@ -146,7 +153,10 @@ export class RedisDriver implements ConnectorDriver {
     try {
       const client = await this.clientOf(rt, RedisConfig.parse(rt.config))
       const pong = await client.ping()
-      return { ok: pong === 'PONG', message: pong === 'PONG' ? undefined : `PING 返回 ${pong}` }
+      return {
+        ok: pong === 'PONG',
+        message: pong === 'PONG' ? undefined : `PING 返回 ${String(pong)}`,
+      }
     } catch (error) {
       return { ok: false, message: error instanceof Error ? error.message : String(error) }
     }
@@ -186,7 +196,10 @@ export class RedisDriver implements ConnectorDriver {
     } catch (error) {
       this.clients.delete(rt.instanceId)
       client.disconnect()
-      throw new ToolDeniedError('upstream', `连不上 Redis：${error instanceof Error ? error.message : String(error)}`)
+      throw new ToolDeniedError(
+        'upstream',
+        `连不上 Redis：${error instanceof Error ? error.message : String(error)}`,
+      )
     }
     return client
   }

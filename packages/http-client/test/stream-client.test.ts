@@ -36,10 +36,7 @@ const streamOpenResponse = () =>
     headers: { 'content-type': 'text/event-stream' },
   })
 
-const makeClient = (
-  overrides: Partial<StreamClientOptions> = {},
-  token = 'test-token',
-) => {
+const makeClient = (overrides: Partial<StreamClientOptions> = {}, token = 'test-token') => {
   const options: StreamClientOptions = {
     url: '/sse/subscribe',
     credentialsManager: new MemoryCredentialsManager({ token }),
@@ -79,7 +76,7 @@ describe('HttpStreamClient 连接状态机', () => {
     const sse = makeClient({ fetch: fetchMock as unknown as typeof fetch })
     sse.connect()
     await vi.waitFor(() => expect(sse.currentState).toBe(StreamClientState.Open))
-    expect(() => sse.connect()).toThrow()
+    expect(() => sse.connect()).toThrow(/不能发起连接/)
   })
 
   it('服务端正常关闭流 → closed 终态（不自动重连）', async () => {
@@ -109,9 +106,7 @@ describe('HttpStreamClient 连接状态机', () => {
     const fetchMock = vi
       .fn()
       .mockImplementationOnce(async () =>
-        streamResponse([
-          'event: stream.shutdown\ndata: {"reason":"server-shutdown"}\n\n',
-        ]),
+        streamResponse(['event: stream.shutdown\ndata: {"reason":"server-shutdown"}\n\n']),
       )
       .mockImplementation(async () => streamOpenResponse())
     const sse = makeClient({ fetch: fetchMock as unknown as typeof fetch })
@@ -144,9 +139,7 @@ describe('HttpStreamClient 事件分发', () => {
   })
 
   it('非 JSON data 原样分发原始字符串', async () => {
-    const fetchMock = vi.fn(async () =>
-      streamResponse(['event: raw\ndata: plain-text\n\n']),
-    )
+    const fetchMock = vi.fn(async () => streamResponse(['event: raw\ndata: plain-text\n\n']))
     const sse = makeClient({ fetch: fetchMock as unknown as typeof fetch })
     const received: unknown[] = []
     sse.on('raw', (data) => received.push(data))
@@ -372,9 +365,7 @@ describe('HttpStreamClient 页面隐藏 / 恢复（openWhenHidden）', () => {
             'abort',
             () => {
               try {
-                controller.error(
-                  new DOMException('The operation was aborted.', 'AbortError'),
-                )
+                controller.error(new DOMException('The operation was aborted.', 'AbortError'))
               } catch {
                 /* 已终止 */
               }

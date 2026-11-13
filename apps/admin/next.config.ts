@@ -25,13 +25,7 @@ const nextConfig: NextConfig = {
   allowedDevOrigins: ['127.0.0.1', 'localhost', '192.168.3.10', '192.168.3.*'],
 
   transpilePackages: ['@repo/ui'],
-  serverExternalPackages: [
-    '@repo/shared',
-    'pino',
-    'pino-pretty',
-    'pg',
-    'typeorm',
-  ],
+  serverExternalPackages: ['@repo/shared', 'pino', 'pino-pretty', 'pg', 'typeorm'],
 }
 
 export default nextConfig

@@ -14,7 +14,7 @@ const stages = [
     no: '02',
     icon: Wrench,
     title: '能干活',
-    desc: '计划四件套、动态子 agent、命令执行、联网三件套、大结果取页，10 个工具开箱可用。每次调用都过同一个网关，开关、作用域、限额、审计都在那里。',
+    desc: '计划四件套、动态子 agent、命令执行、联网三件套、大结果取页、技能库与文件工具，26 个工具开箱可用。每次调用都过同一个网关，开关、作用域、限额、审计都在那里。',
     chips: ['plan-*', 'run-sub-agent', 'bash', 'web-search'],
   },
   {
@@ -35,7 +35,7 @@ const stages = [
 
 const facts = [
   ['conversations · runs · timelines', '会话、运行、时间线三张表，全部入库'],
-  ['10 个内建工具', '计划、子 agent、命令、联网、取页'],
+  ['26 个内建工具', '计划、子 agent、命令、联网、取页、技能库、文件'],
   ['4 类连接器', '数据库 / Redis / 飞书 CLI，一行数据接一个外部系统'],
   ['48 个 ai-elements', '会话、消息、推理、工具、计划'],
 ]
@@ -61,7 +61,8 @@ export function AiSection() {
                 到能上线
               </h2>
               <p className="mt-6 max-w-sm text-base leading-relaxed text-muted-foreground">
-                不是接一个模型 API、画一个聊天框就结束。会话、流式、工具、连接器、权限、恢复、用量、审计
+                不是接一个模型
+                API、画一个聊天框就结束。会话、流式、工具、连接器、权限、恢复、用量、审计
                 都在仓库里跑通，你要改的是提示词、工具和业务。
               </p>
 
@@ -120,7 +121,9 @@ export function AiSection() {
               <div className="mt-8 overflow-hidden rounded-xl border border-border bg-card">
                 <div className="flex items-center justify-between border-b border-border px-5 py-3">
                   <p className="text-xs font-medium text-foreground">加一个工具，只要一个方法</p>
-                  <span className="font-mono text-[11px] text-muted-foreground">apps/server/src/modules/ai/tools</span>
+                  <span className="font-mono text-[11px] text-muted-foreground">
+                    apps/server/src/modules/ai/tools
+                  </span>
                 </div>
                 <pre className="overflow-x-auto px-5 py-5 font-mono text-[12.5px] leading-6 text-muted-foreground">
                   <code>{`@ToolGroup({ category: 'business' })
@@ -138,8 +141,8 @@ export class OrderTools {
 }`}</code>
                 </pre>
                 <p className="border-t border-border px-5 py-3 text-xs leading-relaxed text-muted-foreground">
-                  写进 <code className="font-mono text-foreground">AGENT_TOOL_GROUPS</code> 就注册完成：
-                  参数自动生成给模型的 schema，开关、限额、审计、分页由网关统一处理。
+                  写进 <code className="font-mono text-foreground">AGENT_TOOL_GROUPS</code>{' '}
+                  就注册完成： 参数自动生成给模型的 schema，开关、限额、审计、分页由网关统一处理。
                   不想写代码也可以走连接器：后台加一行数据，同样产出受管工具。
                 </p>
               </div>

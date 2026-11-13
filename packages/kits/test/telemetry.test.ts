@@ -3,8 +3,7 @@ import { Telemetry } from '../src/telemetry/telemetry.js'
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
-const createTelemetry = (windowSeconds: number): Telemetry =>
-  new Telemetry(windowSeconds)
+const createTelemetry = (windowSeconds: number): Telemetry => new Telemetry(windowSeconds)
 
 describe('Telemetry（埋点 + 窗口聚合）', () => {
   it('Counter：incr 累计，snapshot 返回窗口计数', () => {

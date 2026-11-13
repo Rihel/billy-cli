@@ -1,14 +1,7 @@
 'use client'
 
 import { formatFileSize } from '@repo/shared/browser'
-import {
-  Button,
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  FilePreview,
-} from '@repo/ui'
+import { Button, Dialog, DialogContent, DialogHeader, DialogTitle, FilePreview } from '@repo/ui'
 import { useEffect, useState } from 'react'
 import { CheckIcon, ChevronDownIcon, ChevronUpIcon, CopyIcon, DownloadIcon } from 'lucide-react'
 import { useHotkeys } from 'react-hotkeys-hook'
@@ -35,10 +28,47 @@ export interface PreviewDialogItem {
 }
 
 const TEXT_EXTENSIONS = new Set([
-  'txt', 'md', 'markdown', 'csv', 'tsv', 'json', 'jsonl', 'yaml', 'yml', 'xml',
-  'html', 'htm', 'log', 'sql', 'ini', 'conf', 'toml', 'properties', 'sh', 'bash',
-  'py', 'ts', 'tsx', 'js', 'jsx', 'java', 'go', 'rs', 'rb', 'php', 'c', 'h',
-  'cpp', 'hpp', 'css', 'scss', 'less', 'vue', 'svelte', 'graphql', 'gql',
+  'txt',
+  'md',
+  'markdown',
+  'csv',
+  'tsv',
+  'json',
+  'jsonl',
+  'yaml',
+  'yml',
+  'xml',
+  'html',
+  'htm',
+  'log',
+  'sql',
+  'ini',
+  'conf',
+  'toml',
+  'properties',
+  'sh',
+  'bash',
+  'py',
+  'ts',
+  'tsx',
+  'js',
+  'jsx',
+  'java',
+  'go',
+  'rs',
+  'rb',
+  'php',
+  'c',
+  'h',
+  'cpp',
+  'hpp',
+  'css',
+  'scss',
+  'less',
+  'vue',
+  'svelte',
+  'graphql',
+  'gql',
 ])
 
 const extOf = (filename: string): string => {
@@ -47,10 +77,19 @@ const extOf = (filename: string): string => {
   return index > 0 ? base.slice(index + 1).toLowerCase() : ''
 }
 
-export const isPreviewTextItem = (item: Pick<PreviewDialogItem, 'filename' | 'mediaType'>): boolean =>
+export const isPreviewTextItem = (
+  item: Pick<PreviewDialogItem, 'filename' | 'mediaType'>,
+): boolean =>
   item.mediaType.startsWith('text/') ||
-  ['application/json', 'application/xml', 'application/yaml', 'application/x-yaml',
-    'application/javascript', 'application/typescript', 'application/sql'].includes(item.mediaType) ||
+  [
+    'application/json',
+    'application/xml',
+    'application/yaml',
+    'application/x-yaml',
+    'application/javascript',
+    'application/typescript',
+    'application/sql',
+  ].includes(item.mediaType) ||
   TEXT_EXTENSIONS.has(extOf(item.filename))
 
 const isHtml = (item: PreviewDialogItem): boolean =>
@@ -75,7 +114,8 @@ const OFFICE_MEDIA_TYPES: Record<string, OfficeKind> = {
 
 export const officeKind = (
   item: Pick<PreviewDialogItem, 'filename' | 'mediaType'>,
-): OfficeKind | null => OFFICE_MEDIA_TYPES[item.mediaType] ?? OFFICE_TYPES[extOf(item.filename)] ?? null
+): OfficeKind | null =>
+  OFFICE_MEDIA_TYPES[item.mediaType] ?? OFFICE_TYPES[extOf(item.filename)] ?? null
 
 /**
  * 通用文件预览弹窗：左侧文件清单 + 顶部上一个 / 下一个 + 全屏内容。
@@ -124,6 +164,8 @@ export function FilePreviewDialog({
     return () => {
       cancelled = true
     }
+    // 以 id 为触发键；loadUrl 是父组件每次渲染新建的函数，依赖它会导致重复请求
+    // oxlint-disable-next-line react-hooks/exhaustive-deps
   }, [current?.id])
 
   // 文件切换用上下键；左右键留给 PPT 内部翻页，避免两套导航抢同一个键
@@ -230,11 +272,7 @@ export function FilePreviewDialog({
           </aside>
 
           <div
-            className={
-              html
-                ? 'min-h-0 flex-1 overflow-hidden'
-                : 'min-h-0 flex-1 overflow-auto p-4'
-            }
+            className={html ? 'min-h-0 flex-1 overflow-hidden' : 'min-h-0 flex-1 overflow-auto p-4'}
           >
             {officeKind(current) && current.loadBytes ? (
               <OfficePreview

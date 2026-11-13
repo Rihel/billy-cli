@@ -1,12 +1,6 @@
 'use client'
 
-import {
-  getToolName,
-  isReasoningUIPart,
-  isTextUIPart,
-  isToolUIPart,
-  type UIMessage,
-} from 'ai'
+import { getToolName, isReasoningUIPart, isTextUIPart, isToolUIPart, type UIMessage } from 'ai'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -47,7 +41,14 @@ type CopyBlock =
       output?: unknown
       errorText?: string
     }
-  | { kind: 'subagent'; name: string; task?: string; status?: string; result?: string; error?: string }
+  | {
+      kind: 'subagent'
+      name: string
+      task?: string
+      status?: string
+      result?: string
+      error?: string
+    }
 
 /** 工具状态的人话（导出里也要看得懂"这次调用到底成了没"） */
 const TOOL_STATE_LABEL: Record<string, string> = {
@@ -189,12 +190,16 @@ export const messageToMarkdown = (message: UIMessage): string => {
     }
     if (block.kind === 'plan') {
       const lines = block.tasks.map((task) =>
-        task.status === 'done' ? `- [x] ${task.title}` : `- [ ] ${task.title}（${PLAN_LABEL[task.status]}）`,
+        task.status === 'done'
+          ? `- [x] ${task.title}`
+          : `- [ ] ${task.title}（${PLAN_LABEL[task.status]}）`,
       )
       sections.push(`**当前计划**\n\n${lines.join('\n')}`)
       continue
     }
-    const lines = [`**工具调用 · \`${block.toolName}\`**（${TOOL_STATE_LABEL[block.state] ?? block.state}）`]
+    const lines = [
+      `**工具调用 · \`${block.toolName}\`**（${TOOL_STATE_LABEL[block.state] ?? block.state}）`,
+    ]
     const input = toReadable(block.input)
     if (input) lines.push(`\n入参：\n\n\`\`\`json\n${input}\n\`\`\``)
     const output = toReadable(block.output)
@@ -226,7 +231,9 @@ export const messageToPlainText = (message: UIMessage): string => {
       continue
     }
     if (block.kind === 'plan') {
-      const lines = block.tasks.map((task) => `- [${task.status === 'done' ? 'x' : ' '}] ${task.title}`)
+      const lines = block.tasks.map(
+        (task) => `- [${task.status === 'done' ? 'x' : ' '}] ${task.title}`,
+      )
       sections.push(`【当前计划】\n${lines.join('\n')}`)
       continue
     }

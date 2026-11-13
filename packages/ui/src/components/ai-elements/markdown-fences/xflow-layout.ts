@@ -9,9 +9,9 @@
  * 独立成文件是为了**按需加载**：dagre 有百来 KB，不该因为聊天页注册了 xflow 就进首屏包 ——
  * 只有真的出现一张流程图时才由 `xflow-canvas` 把它拉进来。
  */
-import dagre from "@dagrejs/dagre"
+import dagre from '@dagrejs/dagre'
 
-import type { XflowModel, XflowNode } from "./fence-spec.ts"
+import type { XflowModel, XflowNode } from './fence-spec.ts'
 
 /** 节点卡片的尺寸：与 `xflow-canvas` 里的样式同一套数字（改一处要一起改） */
 export const XFLOW_NODE_SIZE = { width: 208, height: 84 } as const
@@ -42,7 +42,7 @@ export interface XflowLayout {
 export const layoutXflow = (model: XflowModel): XflowLayout => {
   const graph = new dagre.graphlib.Graph()
   graph.setGraph({
-    rankdir: model.direction === "TB" ? "TB" : "LR",
+    rankdir: model.direction === 'TB' ? 'TB' : 'LR',
     nodesep: NODE_SEP,
     ranksep: RANK_SEP,
     marginx: 0,

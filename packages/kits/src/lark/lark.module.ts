@@ -17,10 +17,7 @@ export class LarkModule {
   static forRoot(options: LarkModuleOptions): DynamicModule {
     return {
       module: LarkModule,
-      providers: [
-        { provide: LarkConfig, useValue: LarkConfigSchema.parse(options) },
-        LarkClient,
-      ],
+      providers: [{ provide: LarkConfig, useValue: LarkConfigSchema.parse(options) }, LarkClient],
       exports: [LarkConfig, LarkClient],
     }
   }
@@ -29,9 +26,7 @@ export class LarkModule {
    * 异步装配：配置由注入的 provider（如 ConfigService）惰性解析 ——
    * 避免在模块装饰器求值时读取尚未加载的配置。
    */
-  static forRootAsync(
-    options: InfraModuleAsyncOptions<LarkModuleOptions>,
-  ): DynamicModule {
+  static forRootAsync(options: InfraModuleAsyncOptions<LarkModuleOptions>): DynamicModule {
     return {
       module: LarkModule,
       imports: options.imports ?? [],
@@ -39,8 +34,7 @@ export class LarkModule {
         { provide: LarkConfig, useFactory: options.useFactory, inject: options.inject ?? [] },
         LarkClient,
       ],
-      exports: [LarkConfig,
-        LarkClient,],
+      exports: [LarkConfig, LarkClient],
     }
   }
 }

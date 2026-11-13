@@ -1,5 +1,10 @@
 import { AppLogger } from '../foundation/logger/app-logger.js'
-import { Inject, Injectable, type OnApplicationBootstrap, type OnApplicationShutdown } from '@nestjs/common'
+import {
+  Inject,
+  Injectable,
+  type OnApplicationBootstrap,
+  type OnApplicationShutdown,
+} from '@nestjs/common'
 import { Redis as RedisClient } from 'ioredis'
 import { RedisConfig } from './redis.config.js'
 import { IdGeneration } from '../foundation/id-generation/id-generation.js'
@@ -12,11 +17,9 @@ end
 return 0
 `
 
-
 @Injectable()
 export class RedisStore implements OnApplicationBootstrap, OnApplicationShutdown {
   readonly raw: RedisClient
-
 
   private readonly idGeneration: IdGeneration
 

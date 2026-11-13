@@ -14,8 +14,6 @@ export class ResponseEnvelopeInterceptor implements NestInterceptor {
   intercept(_context: ExecutionContext, next: CallHandler): Observable<unknown> {
     return next
       .handle()
-      .pipe(
-        map((data) => (data === undefined ? undefined : ResponseUtils.success(data))),
-      )
+      .pipe(map((data) => (data === undefined ? undefined : ResponseUtils.success(data))))
   }
 }

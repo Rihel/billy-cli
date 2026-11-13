@@ -7,7 +7,7 @@ describe('cn', () => {
   })
 
   it('忽略假值（false / undefined / null / 空串）', () => {
-    expect(cn('px-2', false && 'hidden', undefined, null, '')).toBe('px-2')
+    expect(cn('px-2', false, undefined, null, '')).toBe('px-2')
   })
 
   it('条件对象语法按真值合并', () => {

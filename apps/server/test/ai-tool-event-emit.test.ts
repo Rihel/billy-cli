@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import { z } from 'zod'
 import type { ToolEventPartData } from '@repo/shared'
-import { normalizeToolEventDecls, createToolEventEmitter } from '../src/modules/ai/core/tools/tool-event.js'
+import {
+  normalizeToolEventDecls,
+  createToolEventEmitter,
+} from '../src/modules/ai/core/tools/tool-event.js'
 import type { ToolEventDecl } from '../src/modules/ai/core/tools/tools.types.js'
 import { capturingWriter, waitFor, warningLog } from './helpers/tool-events.js'
 

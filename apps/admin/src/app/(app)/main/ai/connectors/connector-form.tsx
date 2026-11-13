@@ -1,7 +1,12 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import type { AiConnectorCatalogEntry, AiConnectorCreateDto, AiConnectorModel, AiConnectorUpdateDto } from '@repo/shared'
+import type {
+  AiConnectorCatalogEntry,
+  AiConnectorCreateDto,
+  AiConnectorModel,
+  AiConnectorUpdateDto,
+} from '@repo/shared'
 import {
   Button,
   Dialog,
@@ -91,13 +96,13 @@ export function ConnectorFormModal({
     setName('')
     setKey('')
     setEnabled(true)
-    setValues(first ? { ...(DEFAULTS[first.kind] ?? {}) } : {})
+    setValues(first ? { ...DEFAULTS[first.kind] } : {})
     setClearSecrets(false)
   }, [open, editing, catalog])
 
   const switchKind = (nextKind: string): void => {
     setKind(nextKind)
-    setValues({ ...(DEFAULTS[nextKind] ?? {}) })
+    setValues({ ...DEFAULTS[nextKind] })
   }
 
   const submit = async (): Promise<void> => {
@@ -216,13 +221,17 @@ export function ConnectorFormModal({
                 type={field.secret ? 'password' : field.type === 'number' ? 'number' : 'text'}
                 value={values[field.key] ?? ''}
                 placeholder={
-                  field.secret ? secretHint(field.key) || field.placeholder || '' : field.placeholder || ''
+                  field.secret
+                    ? secretHint(field.key) || field.placeholder || ''
+                    : field.placeholder || ''
                 }
                 onChange={(event) =>
                   setValues((prev) => ({ ...prev, [field.key]: event.target.value }))
                 }
               />
-              {field.help ? <span className="text-xs text-muted-foreground">{field.help}</span> : null}
+              {field.help ? (
+                <span className="text-xs text-muted-foreground">{field.help}</span>
+              ) : null}
               {field.secret && editing ? (
                 <span className="text-xs text-muted-foreground">
                   留空 = 不修改；当前：{secretHint(field.key) || '未配置'}
@@ -253,7 +262,11 @@ export function ConnectorFormModal({
           <Button type="button" variant="outline" onClick={onClose} disabled={saving}>
             取消
           </Button>
-          <Button type="button" onClick={() => void submit()} disabled={saving || !entry || !name || !key}>
+          <Button
+            type="button"
+            onClick={() => void submit()}
+            disabled={saving || !entry || !name || !key}
+          >
             {saving ? '保存中…' : '保存'}
           </Button>
         </DialogFooter>
@@ -265,6 +278,11 @@ export function ConnectorFormModal({
 /** 详情里展示的只读配置（避免把密钥带出来） */
 export function ConfigPreview({ config }: { config: Record<string, unknown> }) {
   return (
-    <Textarea readOnly rows={4} value={JSON.stringify(config, null, 2)} className="font-mono text-xs" />
+    <Textarea
+      readOnly
+      rows={4}
+      value={JSON.stringify(config, null, 2)}
+      className="font-mono text-xs"
+    />
   )
 }

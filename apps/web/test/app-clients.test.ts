@@ -53,12 +53,8 @@ describe('createAppClients', () => {
     await build('access-token').saveToken('user-token')
     await build('admin-access-token').saveToken('admin-token')
 
-    expect(storage.getItem('access-token')).toBe(
-      JSON.stringify({ token: 'user-token' }),
-    )
-    expect(storage.getItem('admin-access-token')).toBe(
-      JSON.stringify({ token: 'admin-token' }),
-    )
+    expect(storage.getItem('access-token')).toBe(JSON.stringify({ token: 'user-token' }))
+    expect(storage.getItem('admin-access-token')).toBe(JSON.stringify({ token: 'admin-token' }))
   })
 
   it('浏览器端是单例：useServerClient 与 getServerClient 返回同一实例', () => {
@@ -70,8 +66,6 @@ describe('createAppClients', () => {
   it('服务端客户端每次都新建（无状态，不共享凭证）', () => {
     const clients = build()
 
-    expect(clients.createServerClient('t-1')).not.toBe(
-      clients.createServerClient('t-2'),
-    )
+    expect(clients.createServerClient('t-1')).not.toBe(clients.createServerClient('t-2'))
   })
 })

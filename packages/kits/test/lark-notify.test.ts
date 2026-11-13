@@ -15,11 +15,11 @@ const createClient = (config: NotifyConfig): LarkNotifyClient => {
     },
   } as unknown as LarkClient
   // 构造器顺序：配置在前、可选 LarkClient 在后（@Optional 注入语义）
-  return { client: new LarkNotifyClient(config, testLogger(), mockLark), mockCreate: mockLark.raw.im.message.create }
+  return {
+    client: new LarkNotifyClient(config, testLogger(), mockLark),
+    mockCreate: mockLark.raw.im.message.create,
+  }
 }
-
-type Returned = ReturnType<typeof createClient>
-
 describe('LarkNotifyClient（基于 LarkClient 的通知 bean）', () => {
   afterEach(() => {
     vi.restoreAllMocks()

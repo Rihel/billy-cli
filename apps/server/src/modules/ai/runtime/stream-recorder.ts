@@ -69,7 +69,6 @@ const stateOfToolFailure = (reason: string | undefined, unknownTool: boolean): s
   return ToolResultState._source.Error.value
 }
 
-
 /**
  * 流式录制器：把 UI Message Stream 的片段累积成时间线事件。
  *
@@ -278,7 +277,9 @@ export class StreamRecorder {
         // 模型编了个不存在的工具：上游把它落成工具错误结果（整轮不失败）。这里**单独标一个 state**，
         // 让它在时间线上可查、可计数 —— 这是"提示词与工具面不一致"的信号（设计 §5.4）
         const unknownTool =
-          Boolean(toolName) && this.options.isKnownTool ? !this.options.isKnownTool(toolName!) : false
+          Boolean(toolName) && this.options.isKnownTool
+            ? !this.options.isKnownTool(toolName!)
+            : false
         const meta = this.takeMeta(chunk.toolCallId)
         // 拒绝原因 → state（关掉 / 无权限 / 限流 / 前置条件不满足 单独成桶，不再一律算"执行出错"）
         const state = stateOfToolFailure(meta?.reason, unknownTool)
@@ -342,8 +343,8 @@ export class StreamRecorder {
    * （否则"我看过的那半句"在历史里查不到，复盘也对不上）。
    */
   async flushPending(): Promise<void> {
-    for (const id of [...this.texts.keys()]) await this.flushText(id)
-    for (const id of [...this.reasonings.keys()]) await this.flushReasoning(id)
+    for (const id of this.texts.keys()) await this.flushText(id)
+    for (const id of this.reasonings.keys()) await this.flushReasoning(id)
   }
 
   /**
@@ -389,7 +390,8 @@ export class StreamRecorder {
     return name ? name : null
   }
 
-  private async flushText(id: string): Promise<void> {    const text = (this.texts.get(id) ?? '').trim()
+  private async flushText(id: string): Promise<void> {
+    const text = (this.texts.get(id) ?? '').trim()
     this.texts.delete(id)
     if (!text) return
     await this.append({
@@ -412,7 +414,11 @@ export class StreamRecorder {
       payload: { text },
       // 真实时长（前端据此显示"思考了 N 秒"；拿不到就不写，界面显示"思考完成"而不是假数字）
       ...(startedAt !== undefined
-        ? { startedAt: new Date(startedAt), finishedAt: new Date(finishedAt), durationMs: Math.max(0, finishedAt - startedAt) }
+        ? {
+            startedAt: new Date(startedAt),
+            finishedAt: new Date(finishedAt),
+            durationMs: Math.max(0, finishedAt - startedAt),
+          }
         : {}),
     })
   }

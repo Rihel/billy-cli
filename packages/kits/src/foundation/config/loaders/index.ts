@@ -24,9 +24,7 @@ export interface EnvConfigLoaderOptions {
  *
  * 未提供 `mapEnv` 时原样给出扁平 env；提供则由应用把它映射成嵌套 shape。
  */
-export const envConfigLoader = (
-  options: EnvConfigLoaderOptions = {},
-): ConfigLoader => ({
+export const envConfigLoader = (options: EnvConfigLoaderOptions = {}): ConfigLoader => ({
   name: 'env',
   load: (): Record<string, unknown> => {
     if (options.envFileName) {
@@ -35,9 +33,7 @@ export const envConfigLoader = (
         loadDotenv({ path: envFilePath, override: true })
       }
     }
-    return options.mapEnv
-      ? options.mapEnv(process.env)
-      : { ...process.env }
+    return options.mapEnv ? options.mapEnv(process.env) : { ...process.env }
   },
 })
 
@@ -69,9 +65,7 @@ export interface ConsulConfigLoaderOptions {
  * consul loader：读取 Consul KV（raw）并按 yaml / json 解析。
  * 后续换 Nacos / Apollo 等配置中心，照此实现 `ConfigLoader` 即可，应用 shape 不变。
  */
-export const consulConfigLoader = (
-  options: ConsulConfigLoaderOptions,
-): ConfigLoader => ({
+export const consulConfigLoader = (options: ConsulConfigLoaderOptions): ConfigLoader => ({
   name: 'consul',
   load: async (): Promise<Record<string, unknown>> => {
     const { baseURL, key, token, timeoutMs = 5000, format = 'yaml' } = options
@@ -109,10 +103,7 @@ const builtInLoaders: Record<string, (options?: any) => ConfigLoader> = {
  * 按名字解析 loader：先查内置（env / memory / consul），再查应用注册的自定义 loader。
  * 未注册时抛出 `ConfigLoadError` 并列出可用名字。
  */
-export const resolveConfigLoader = (
-  name: string,
-  options?: unknown,
-): ConfigLoader => {
+export const resolveConfigLoader = (name: string, options?: unknown): ConfigLoader => {
   const factory = builtInLoaders[name] ?? getRegisteredConfigLoader(name)
   if (!factory) {
     throw new ConfigLoadError(

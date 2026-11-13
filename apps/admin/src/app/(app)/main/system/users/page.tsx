@@ -82,7 +82,7 @@ export default function UsersPage() {
   const removeMutation = useMutation({
     mutationFn: (input: { userId: string }) => client.user.remove(input),
     onSuccess() {
-      refetch()
+      void refetch()
       toastSuccess('删除成功')
     },
   })
@@ -91,7 +91,7 @@ export default function UsersPage() {
     mutationFn: (input: { userId: string; status: 'enabled' | 'disabled' }) =>
       client.user.update(input),
     onSuccess() {
-      refetch()
+      void refetch()
     },
   })
 
@@ -105,7 +105,7 @@ export default function UsersPage() {
     onSubmit: async ({ value }) => {
       await client.user.create(value)
       toastSuccess('创建成功')
-      refetch()
+      await refetch()
       createDialog.close()
     },
   })
@@ -126,7 +126,7 @@ export default function UsersPage() {
         status: value.status,
       })
       toastSuccess('更新成功')
-      refetch()
+      await refetch()
       editDialog.close()
     },
   })
@@ -246,10 +246,7 @@ export default function UsersPage() {
         description="前台用户体系管理，支持关键词搜索与状态筛选"
         toolbar={
           <>
-            <RefreshButton
-              loading={isFetching}
-              onClick={() => void refetch()}
-            />
+            <RefreshButton loading={isFetching} onClick={() => void refetch()} />
             <div className="flex items-center gap-1 rounded-lg bg-surface-2 px-2 transition-colors focus-within:ring-2 focus-within:ring-ring/40">
               <SearchIcon className="ml-0.5 size-3.5 text-muted-foreground" />
               <Input
@@ -278,11 +275,7 @@ export default function UsersPage() {
               placeholder="全部"
               triggerClassName="w-24"
               onValueChange={(value) => {
-                setStatus(
-                  value === 'enabled' || value === 'disabled'
-                    ? value
-                    : undefined,
-                )
+                setStatus(value === 'enabled' || value === 'disabled' ? value : undefined)
                 setPage(1)
               }}
             />
@@ -317,11 +310,7 @@ export default function UsersPage() {
             hint: '登录用的邮箱地址，创建后不可修改',
             required: true,
             validate: (value) => {
-              if (
-                typeof value === 'string' &&
-                value &&
-                !EMAIL_PATTERN.test(value)
-              ) {
+              if (typeof value === 'string' && value && !EMAIL_PATTERN.test(value)) {
                 return '请输入有效邮箱'
               }
               return undefined
@@ -338,9 +327,7 @@ export default function UsersPage() {
             hint: '支持常见图片格式，大小不超过 5MB',
             render: ({ values, field }) => (
               <ImageUpload
-                value={
-                  (values.avatar as string | null | undefined) ?? undefined
-                }
+                value={(values.avatar as string | null | undefined) ?? undefined}
                 sizeLimit={5}
                 className="size-28"
                 onChange={(key) => field.handleChange(key)}
@@ -387,9 +374,7 @@ export default function UsersPage() {
             hint: '支持常见图片格式，大小不超过 5MB',
             render: ({ values, field }) => (
               <ImageUpload
-                value={
-                  (values.avatar as string | null | undefined) ?? undefined
-                }
+                value={(values.avatar as string | null | undefined) ?? undefined}
                 sizeLimit={5}
                 className="size-28"
                 onChange={(key) => field.handleChange(key)}
@@ -431,8 +416,7 @@ export default function UsersPage() {
             widget: 'password',
             hint: '再次输入新密码，两次需一致',
             required: true,
-            validate: (value, values) =>
-              value !== values.password ? '两次密码不一致' : undefined,
+            validate: (value, values) => (value !== values.password ? '两次密码不一致' : undefined),
           },
         ]}
         onCancel={resetPasswordDialog.close}

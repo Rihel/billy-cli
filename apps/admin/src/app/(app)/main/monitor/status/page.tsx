@@ -3,10 +3,7 @@
 import { useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Responsive, useContainerWidth } from 'react-grid-layout'
-import type {
-  MonitorMetricDefinitionModel,
-  MonitorMetricLatestModel,
-} from '@repo/shared'
+import type { MonitorMetricDefinitionModel, MonitorMetricLatestModel } from '@repo/shared'
 import {
   Card,
   CardContent,
@@ -47,9 +44,7 @@ export default function MonitorStatusPage() {
     queryKey: ['monitor', 'status', 'series'],
     queryFn: async () => {
       const results = await Promise.all(
-        SERIES_KEYS.map((key) =>
-          client.monitor.metric.series({ metricKey: key, limit: 40 }),
-        ),
+        SERIES_KEYS.map((key) => client.monitor.metric.series({ metricKey: key, limit: 40 })),
       )
       return Object.fromEntries(results.map((result) => [result.metricKey, result.points]))
     },
@@ -72,7 +67,8 @@ export default function MonitorStatusPage() {
     refetchInterval: 30_000,
   })
 
-  const definitions = definitionsQuery.data ?? []
+  // 稳定引用：查询未返回时不能每次渲染都造一个新数组，否则 memo 会反复重算
+  const definitions = useMemo(() => definitionsQuery.data ?? [], [definitionsQuery.data])
   const definitionMap = useMemo(
     () => new Map(definitions.map((item) => [item.key, item])),
     [definitions],
@@ -371,7 +367,10 @@ export default function MonitorStatusPage() {
                 <CardHeader className="cursor-move drag-handle pb-2">
                   <div className="flex items-center justify-between gap-2">
                     <CardTitle className="text-sm">采集异常</CardTitle>
-                    <Tag className="border-0" color={staleMetrics.length > 0 ? 'warning' : 'success'}>
+                    <Tag
+                      className="border-0"
+                      color={staleMetrics.length > 0 ? 'warning' : 'success'}
+                    >
                       {staleMetrics.length > 0 ? `${staleMetrics.length} 项` : '正常'}
                     </Tag>
                   </div>
@@ -393,9 +392,15 @@ export default function MonitorStatusPage() {
                             {labelOf(metric.metricKey)}
                           </span>
                           <span className="text-muted-foreground">
-                            <DisplayValue type="date" value={metric.lastSampleAt} emptyText="无样本" />
+                            <DisplayValue
+                              type="date"
+                              value={metric.lastSampleAt}
+                              emptyText="无样本"
+                            />
                           </span>
-                          <Tag className="border-0" color="warning">陈旧</Tag>
+                          <Tag className="border-0" color="warning">
+                            陈旧
+                          </Tag>
                         </div>
                       ))}
                     </div>
@@ -427,10 +432,16 @@ export default function MonitorStatusPage() {
                           {ruleNames.get(rule.ruleKey) ?? rule.ruleKey}
                         </span>
                         <span className="hidden text-muted-foreground sm:inline">
-                          评估 <DisplayValue type="date" value={rule.lastEvaluatedAt} emptyText="未评估" />
+                          评估{' '}
+                          <DisplayValue
+                            type="date"
+                            value={rule.lastEvaluatedAt}
+                            emptyText="未评估"
+                          />
                         </span>
                         <span className="text-muted-foreground">
-                          触发 <DisplayValue type="date" value={rule.lastFiredAt} emptyText="从未" />
+                          触发{' '}
+                          <DisplayValue type="date" value={rule.lastFiredAt} emptyText="从未" />
                         </span>
                       </div>
                     ))}
@@ -568,7 +579,8 @@ function MetricTile({
 
 const formatMetricValue = (value: number, unit: string): string => {
   if (unit === 'ratio') return `${(value * 100).toFixed(1)}%`
-  if (unit === 'ms') return value >= 1000 ? `${(value / 1000).toFixed(1)}s` : `${value.toFixed(0)}ms`
+  if (unit === 'ms')
+    return value >= 1000 ? `${(value / 1000).toFixed(1)}s` : `${value.toFixed(0)}ms`
   if (unit === 'bytes') return `${(value / 1024 / 1024).toFixed(1)}MB`
   if (unit === 'tokens') return compact(value)
   return compact(value)

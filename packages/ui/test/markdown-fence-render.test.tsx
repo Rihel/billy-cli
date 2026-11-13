@@ -45,7 +45,9 @@ describe('沙箱围栏', () => {
   })
 
   it('闭合后进沙箱：不带 same-origin、文档里带沙箱 CSP', async () => {
-    const { container } = render(<HtmlFence code={'<div id="demo">你好</div>'} isIncomplete={false} language="html" />)
+    const { container } = render(
+      <HtmlFence code={'<div id="demo">你好</div>'} isIncomplete={false} language="html" />,
+    )
 
     const frame = container.querySelector('iframe')
     expect(frame).not.toBeNull()
@@ -82,7 +84,9 @@ describe('沙箱围栏', () => {
   })
 
   it('gsap 围栏会去取内置脚本（取不到时报错而不是空白）', async () => {
-    const { container } = render(<GsapFence code={'<div id="stage"></div>'} isIncomplete={false} language="gsap" />)
+    const { container } = render(
+      <GsapFence code={'<div id="stage"></div>'} isIncomplete={false} language="gsap" />,
+    )
     await waitFor(() => {
       expect(container.textContent ?? '').toContain('沙箱运行环境没准备好')
     })
@@ -183,16 +187,18 @@ describe('流程图全屏', () => {
 
 describe('JSON 围栏', () => {
   it('生成中只出占位（半截 JSON 解析不了）', () => {
-    const { container } = render(
-      <JsonFence code={'{"name": "bil'} isIncomplete language="json" />,
-    )
+    const { container } = render(<JsonFence code={'{"name": "bil'} isIncomplete language="json" />)
     expect(container.querySelector('[data-fence-pending="json"]')).not.toBeNull()
     expect(container.querySelector('[data-json-view]')).toBeNull()
   })
 
   it('闭合后按树渲染，键与嵌套值都在', () => {
     const { container } = render(
-      <JsonFence code={'{"name":"billy","meta":{"version":2}}'} isIncomplete={false} language="json" />,
+      <JsonFence
+        code={'{"name":"billy","meta":{"version":2}}'}
+        isIncomplete={false}
+        language="json"
+      />,
     )
     expect(container.querySelector('[data-json-view="tree"]')).not.toBeNull()
     expect(container.textContent ?? '').toContain('name')

@@ -39,9 +39,7 @@ export interface AuthCookieOptions {
  * }))
  * ```
  */
-export function authCookieOptions(
-  input: AuthCookieOptionsInput,
-): AuthCookieOptions {
+export function authCookieOptions(input: AuthCookieOptionsInput): AuthCookieOptions {
   return {
     httpOnly: true,
     sameSite: input.sameSite ?? 'lax',

@@ -48,10 +48,7 @@ export default function RootLayout({
   children: React.ReactNode
 }>) {
   return (
-    <html
-      lang="zh-CN"
-      className={cn(geist.variable, geistMono.variable, spaceGrotesk.variable)}
-    >
+    <html lang="zh-CN" className={cn(geist.variable, geistMono.variable, spaceGrotesk.variable)}>
       <body className={cn('bg-background font-sans antialiased', geist.variable)}>
         <script dangerouslySetInnerHTML={{ __html: themeBootScript }} />
         <Providers>

@@ -74,7 +74,6 @@ function ChatUnitView({
   showTrailingCards,
   ownedToolCalls,
   isUser,
-  onPreviewImage,
   onAnswerQuestions,
 }: {
   unit: ChatUnit
@@ -83,14 +82,15 @@ function ChatUnitView({
   /** 这一条消息里已有工具卡的 toolCallId：事件已被认领，不再单独成卡 */
   ownedToolCalls: ReadonlySet<string>
   isUser: boolean
-  onPreviewImage?: (items: readonly PromptAttachmentItem[], index: number) => void
   onAnswerQuestions?: (input: AnswerQuestionsInput) => Promise<void>
 }) {
   /**
    * 思考运行中按**整秒**跳动（与工具卡同一套计时口径：秒边界翻字，不每帧抖）。
    * 传给 `ReasoningTrigger` 的只有"运行中"这一种情况；结束时交回默认文案（"思考了 N 秒"）。
    */
-  const thinkingSeconds = useElapsedSeconds(unit.kind === 'reasoning' && unit.streaming && streaming)
+  const thinkingSeconds = useElapsedSeconds(
+    unit.kind === 'reasoning' && unit.streaming && streaming,
+  )
 
   switch (unit.kind) {
     case 'text':
@@ -219,10 +219,7 @@ export const ChatMessage = memo(function ChatMessage({
         )}
       >
         {message.files.length > 0 ? (
-          <PromptAttachments
-            items={attachments}
-            {...(onPreviewImage ? { onPreviewImage } : {})}
-          />
+          <PromptAttachments items={attachments} {...(onPreviewImage ? { onPreviewImage } : {})} />
         ) : null}
         {message.units.map((unit) => (
           <ChatUnitView
@@ -232,7 +229,6 @@ export const ChatMessage = memo(function ChatMessage({
             showTrailingCards={showTrailingCards}
             ownedToolCalls={ownedToolCalls}
             isUser={isUser}
-            {...(onPreviewImage ? { onPreviewImage } : {})}
             {...(onAnswerQuestions ? { onAnswerQuestions } : {})}
           />
         ))}

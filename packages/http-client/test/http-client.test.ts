@@ -125,10 +125,7 @@ describe('OAuth2Strategy', () => {
     const s = new OAuth2Strategy({
       onRefresh: async () => ({ accessToken: 'refreshed' }),
     })
-    const next = await s.refresh(
-      { accessToken: 'old' },
-      new MemoryCredentialsManager(),
-    )
+    const next = await s.refresh({ accessToken: 'old' }, new MemoryCredentialsManager())
     expect(next.accessToken).toBe('refreshed')
   })
 })
@@ -198,18 +195,24 @@ describe('EmptyCheckProvider', () => {
 
 describe('ExpiresAtProvider', () => {
   it('无 expiresAt 时需刷新', () => {
-    const p = new ExpiresAtProvider<{ accessToken: string; expiresAt?: number }>({ acquire: async () => ({ accessToken: '' }) })
+    const p = new ExpiresAtProvider<{ accessToken: string; expiresAt?: number }>({
+      acquire: async () => ({ accessToken: '' }),
+    })
     expect(p.needsRefresh({ accessToken: 't' })).toBe(true)
   })
 
   it('未过期的不用刷新', () => {
-    const p = new ExpiresAtProvider<{ accessToken: string; expiresAt?: number }>({ acquire: async () => ({ accessToken: '' }) })
+    const p = new ExpiresAtProvider<{ accessToken: string; expiresAt?: number }>({
+      acquire: async () => ({ accessToken: '' }),
+    })
     const far = { accessToken: 't', expiresAt: Date.now() + 3600_000 }
     expect(p.needsRefresh(far)).toBe(false)
   })
 
   it('即将过期时需要刷新', () => {
-    const p = new ExpiresAtProvider<{ accessToken: string; expiresAt?: number }>({ acquire: async () => ({ accessToken: '' }) })
+    const p = new ExpiresAtProvider<{ accessToken: string; expiresAt?: number }>({
+      acquire: async () => ({ accessToken: '' }),
+    })
     const soon = { accessToken: 't', expiresAt: Date.now() + 30_000 }
     expect(p.needsRefresh(soon)).toBe(true)
   })
@@ -256,20 +259,14 @@ describe('HttpClient 请求流程', () => {
   function mockFetch(
     handler?: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>,
   ) {
-    const fn = vi.fn(
-      handler ??
-        (async () => jsonResponse({ code: 0, data: { ok: true } })),
-    )
+    const fn = vi.fn(handler ?? (async () => jsonResponse({ code: 0, data: { ok: true } })))
     vi.stubGlobal('fetch', fn)
     return fn
   }
 
   function createClient(
     options: Partial<HttpClientOptions<any>> = {},
-    fetchHandler?: (
-      input: RequestInfo | URL,
-      init?: RequestInit,
-    ) => Promise<Response>,
+    fetchHandler?: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>,
   ) {
     // 默认不真的发请求；可传入自定义 handler
     mockFetch(fetchHandler)
@@ -377,10 +374,7 @@ describe('HttpClient 请求流程', () => {
         },
       },
     })
-    await (client as any).request(
-      { method: 'POST', url: '/test' },
-      { skipAuth: true },
-    )
+    await (client as any).request({ method: 'POST', url: '/test' }, { skipAuth: true })
     expect(acquireCalled).toBe(false)
   })
 
@@ -420,9 +414,7 @@ describe('HttpClient 请求流程', () => {
       },
       async () => jsonResponse({ message: '未授权' }, 401),
     )
-    await expect(
-      (client as any).request({ method: 'POST', url: '/test' }),
-    ).rejects.toMatchObject({
+    await expect((client as any).request({ method: 'POST', url: '/test' })).rejects.toMatchObject({
       code: ApiErrorCodes.Unauthorized,
       status: 401,
     })
@@ -437,9 +429,7 @@ describe('HttpClient 请求流程', () => {
         throw new TypeError('fetch failed')
       },
     )
-    await expect(
-      (client as any).request({ method: 'POST', url: '/test' }),
-    ).rejects.toMatchObject({
+    await expect((client as any).request({ method: 'POST', url: '/test' })).rejects.toMatchObject({
       code: ApiErrorCodes.NetworkError,
     })
   })
@@ -451,9 +441,7 @@ describe('HttpClient 请求流程', () => {
       },
       async () => jsonResponse({ message: '服务器开小差了' }, 500),
     )
-    await expect(
-      (client as any).request({ method: 'POST', url: '/test' }),
-    ).rejects.toMatchObject({
+    await expect((client as any).request({ method: 'POST', url: '/test' })).rejects.toMatchObject({
       code: ApiErrorCodes.InternalError,
       status: 500,
     })
@@ -481,42 +469,37 @@ describe('HttpClient 请求流程', () => {
     baseUrl: string,
     config: { url: string; params?: Record<string, any> },
   ): Promise<string> {
-    const { client, fetchFn } = createClientWithFetch(
-      baseUrl,
-      async () => jsonResponse({ code: 0, data: { ok: true } }),
+    const { client, fetchFn } = createClientWithFetch(baseUrl, async () =>
+      jsonResponse({ code: 0, data: { ok: true } }),
     )
     await (client as any).request({ method: 'GET', ...config })
     return String(fetchFn.mock.calls[0][0])
   }
 
   it('baseUrl 尾斜杠不会产生双斜杠', async () => {
-    expect(await getUrl('https://api.test/', { url: '/test' })).toBe(
-      'https://api.test/test',
-    )
+    expect(await getUrl('https://api.test/', { url: '/test' })).toBe('https://api.test/test')
   })
 
   it('baseUrl 带 path 时请求路径拼接在其后', async () => {
-    expect(
-      await getUrl('https://api.test/api/v1', { url: '/users' }),
-    ).toBe('https://api.test/api/v1/users')
+    expect(await getUrl('https://api.test/api/v1', { url: '/users' })).toBe(
+      'https://api.test/api/v1/users',
+    )
   })
 
   it('baseUrl 带 path 且尾斜杠时不产生双斜杠', async () => {
-    expect(
-      await getUrl('https://api.test/api/v1/', { url: '/users' }),
-    ).toBe('https://api.test/api/v1/users')
+    expect(await getUrl('https://api.test/api/v1/', { url: '/users' })).toBe(
+      'https://api.test/api/v1/users',
+    )
   })
 
   it('baseUrl 带 path 时 path 无前导斜杠同样拼接', async () => {
-    expect(
-      await getUrl('https://api.test/api/v1', { url: 'users' }),
-    ).toBe('https://api.test/api/v1/users')
+    expect(await getUrl('https://api.test/api/v1', { url: 'users' })).toBe(
+      'https://api.test/api/v1/users',
+    )
   })
 
   it('path 无前导斜杠时按根路径解析', async () => {
-    expect(await getUrl('https://api.test', { url: 'test' })).toBe(
-      'https://api.test/test',
-    )
+    expect(await getUrl('https://api.test', { url: 'test' })).toBe('https://api.test/test')
   })
 
   it('path 自带查询串时与 params 以 & 合并', async () => {
@@ -565,9 +548,7 @@ describe('HttpClient 请求流程', () => {
   })
 
   it('无 params 时不带查询串', async () => {
-    expect(await getUrl('https://api.test', { url: '/test' })).toBe(
-      'https://api.test/test',
-    )
+    expect(await getUrl('https://api.test', { url: '/test' })).toBe('https://api.test/test')
   })
 
   // ── 便捷方法 get / post / put / delete ─────────────────

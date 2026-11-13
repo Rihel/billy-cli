@@ -14,29 +14,15 @@ export { HttpClient } from './core/http.client.js'
 export type { HttpClientOptions, RequestOptions } from './core/http.client.js'
 export { CredentialResolver } from './core/credential-resolver.js'
 export { AuthInjector } from './core/auth-injector.js'
-export {
-  ApiError,
-  ApiErrorCodes,
-  mapAppErrorValue,
-  mapHttpStatus,
-} from './core/api-error.js'
+export { ApiError, ApiErrorCodes, mapAppErrorValue, mapHttpStatus } from './core/api-error.js'
 
 // 认证策略
 export { BearerTokenStrategy } from './strategies/bearer-token.strategy.js'
 export type { BearerTokenCredentials } from './strategies/bearer-token.strategy.js'
 export { ApiKeyStrategy } from './strategies/api-key.strategy.js'
-export type {
-  ApiKeyCredentials,
-  ApiKeyLocation,
-} from './strategies/api-key.strategy.js'
-export {
-  OAuth2Strategy,
-  OAuth2NeedsRefreshError,
-} from './strategies/oauth2.strategy.js'
-export type {
-  OAuth2Credentials,
-  OAuth2StrategyOptions,
-} from './strategies/oauth2.strategy.js'
+export type { ApiKeyCredentials, ApiKeyLocation } from './strategies/api-key.strategy.js'
+export { OAuth2Strategy, OAuth2NeedsRefreshError } from './strategies/oauth2.strategy.js'
+export type { OAuth2Credentials, OAuth2StrategyOptions } from './strategies/oauth2.strategy.js'
 export { HmacStrategy } from './strategies/hmac.strategy.js'
 export type {
   HmacCredentials,
@@ -65,10 +51,7 @@ export { EnvCredentialsManager } from './managers/env-credentials.manager.js'
 export { HttpStreamClient } from './stream/stream-client.js'
 export type { StreamClientOptions } from './stream/types.js'
 export { StreamClientState } from './stream/types.js'
-export type {
-  StreamMessage,
-  StreamEventHandler,
-} from './stream/types.js'
+export type { StreamMessage, StreamEventHandler } from './stream/types.js'
 export { StreamClientError, StreamTransportError } from './stream/errors.js'
 export { StreamParser } from './stream/stream-parser.js'
 export type { StreamParseCallbacks } from './stream/stream-parser.js'

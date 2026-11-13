@@ -1,7 +1,12 @@
 import { mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { dirname, join, relative } from 'node:path'
 import type { AppLogger } from '@repo/kits'
-import { normalizeSkillKey, normalizeSkillsRoot, resolveSkillFilePath, skillDirOf } from './skill.paths.js'
+import {
+  normalizeSkillKey,
+  normalizeSkillsRoot,
+  resolveSkillFilePath,
+  skillDirOf,
+} from './skill.paths.js'
 
 /**
  * 技能落盘器：把库里的技能写成 Mastra 能读的目录（设计 `docs/design/ai-skill-library.md` §2.2）。
@@ -91,7 +96,11 @@ export class SkillMaterializer {
   }
 
   /** 删掉目录里不在集合中的文件，并清理空目录 */
-  private async pruneStale(dir: string, base: string, expected: ReadonlySet<string>): Promise<void> {
+  private async pruneStale(
+    dir: string,
+    base: string,
+    expected: ReadonlySet<string>,
+  ): Promise<void> {
     const entries = await readdir(dir, { withFileTypes: true }).catch(() => [])
     for (const entry of entries) {
       const absolute = join(dir, entry.name)

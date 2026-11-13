@@ -20,7 +20,9 @@ export function ProofStrip() {
                   {fact.k}
                 </div>
                 <div className="mt-2 text-sm text-foreground">{fact.label}</div>
-                <div className="mt-1 text-xs leading-relaxed text-muted-foreground">{fact.detail}</div>
+                <div className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                  {fact.detail}
+                </div>
               </div>
             </Reveal>
           ))}

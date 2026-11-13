@@ -35,9 +35,7 @@ export class RedisModule {
    * 异步装配：配置由注入的 provider（如 ConfigService）惰性解析 ——
    * 避免在模块装饰器求值时读取尚未加载的配置。
    */
-  static forRootAsync(
-    options: InfraModuleAsyncOptions<RedisModuleOptions>,
-  ): DynamicModule {
+  static forRootAsync(options: InfraModuleAsyncOptions<RedisModuleOptions>): DynamicModule {
     return {
       module: RedisModule,
       imports: options.imports ?? [],
@@ -46,9 +44,7 @@ export class RedisModule {
         RedisStore,
         RedisLockService,
       ],
-      exports: [RedisConfig,
-        RedisStore,
-        RedisLockService,],
+      exports: [RedisConfig, RedisStore, RedisLockService],
     }
   }
 }

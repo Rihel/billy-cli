@@ -1,12 +1,6 @@
 'use client'
 
-import {
-  getToolName,
-  isReasoningUIPart,
-  isTextUIPart,
-  isToolUIPart,
-  type UIMessage,
-} from 'ai'
+import { getToolName, isReasoningUIPart, isTextUIPart, isToolUIPart, type UIMessage } from 'ai'
 import { LoaderCircleIcon } from 'lucide-react'
 import { isSubAgentActive, liveSubAgentsOf } from './sub-agent-live'
 
@@ -91,12 +85,16 @@ export function RunActivity({
   if (!text) return null
 
   return (
+    // 既有单测按 role="status" 断言；<output> 无法显式承担该属性（no-redundant-roles），保留原结构
     <div
       role="status"
       aria-live="polite"
       className="flex h-6 items-center gap-2 px-1 text-xs text-muted-foreground"
     >
-      <LoaderCircleIcon className="size-3.5 animate-spin text-primary motion-reduce:animate-none" aria-hidden />
+      <LoaderCircleIcon
+        className="size-3.5 animate-spin text-primary motion-reduce:animate-none"
+        aria-hidden
+      />
       <span>{text}</span>
     </div>
   )

@@ -4,10 +4,7 @@ import type { JwtConfig } from '../src/jwt/jwt.config.js'
 import { TokenSigner } from '../src/jwt/token-signer.js'
 
 const makeSigner = () =>
-  new TokenSigner(
-    { secret: 'test-secret', expiresIn: '1h' } as JwtConfig,
-    new IdGeneration(),
-  )
+  new TokenSigner({ secret: 'test-secret', expiresIn: '1h' } as JwtConfig, new IdGeneration())
 
 describe('TokenSigner（签发与校验）', () => {
   it('往返：verify 能取到原始声明', async () => {
@@ -37,6 +34,6 @@ describe('TokenSigner（签发与校验）', () => {
     const signer = makeSigner()
     const token = await signer.sign({ sub: 'u-1' })
 
-    await expect(signer.verify(`${token}x`)).rejects.toThrowError()
+    await expect(signer.verify(`${token}x`)).rejects.toThrowError(/Token signing failed/)
   })
 })

@@ -130,7 +130,7 @@ export function menuTitleOf(pathname: string): string {
 
 export type AppMenuProps = Partial<{}>
 
-export const AppMenu = ({}: AppMenuProps) => {
+export const AppMenu = (_props: AppMenuProps) => {
   const router = useRouter()
   const pathname = usePathname()
   const authEnabled = useAuthStore((s) => s.authEnabled)

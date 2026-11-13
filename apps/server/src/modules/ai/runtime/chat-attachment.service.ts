@@ -37,7 +37,7 @@ import { extractPdfText } from './pdf-text.js'
  * | --- | --- | --- |
  * | 图片（png/jpeg/webp/gif） | `image` part，内容用 **data URL** | 不依赖"供应商能不能访问我们的存储" —— 预签名地址对内网对象存储不可达，且会过期 |
  * | 文本类（txt/md/csv 等） | 取回后**内联成文本** part，带文件名标注 | 模型看的是文字，没必要走文件通道；超长截断并明确告知 |
- * | PDF 等二进制 | `file` part（data URL） | 交给模型 / 供应商自己解析；供应商不支持时由上游报错（错误经既有链路回到界面） |
+ * | PDF（先抽文字） | 先本地抽出文字、内联成文本 part；抽不出（扫描件 / 加密）才退回 `file` part（data URL） | 文本型 PDF 不依赖供应商的文件输入能力；退回时供应商不支持会由上游报错 |
  *
  * 读不回来的附件（对象不存在 / 存储不可用）**直接抛错终止这一轮**：静默丢掉用户发的东西，
  * 等于让模型对着一份看不见的附件胡说，比报错更坏。
@@ -194,9 +194,7 @@ export class ChatAttachmentService {
     })
     throw new ModelCapabilityMismatchError(
       issue.filename,
-      issue.code === 'vision'
-        ? '当前模型不支持图片输入'
-        : '当前模型不支持文件输入（PDF 等）',
+      issue.code === 'vision' ? '当前模型不支持图片输入' : '当前模型不支持文件输入（PDF 等）',
     )
   }
 
@@ -404,7 +402,10 @@ export class ChatAttachmentService {
    * （会破坏 Markdown 代码块边界）。
    */
   private escapeName(filename: string): string {
-    return filename.replace(/[\r\n]+/g, ' ').replaceAll('`', "'").slice(0, 255)
+    return filename
+      .replace(/[\r\n]+/g, ' ')
+      .replaceAll('`', "'")
+      .slice(0, 255)
   }
 }
 
@@ -418,10 +419,7 @@ export class ChatAttachmentService {
  * 用户以为发出去了、模型却看不见，只会得到一段对看不见的附件胡说的回复，
  * 比当场报错坏得多（这类隐式依赖要靠断言钉住，不能靠"今天正好成立"）。
  */
-export const withUserContent = (
-  messages: ModelMessage[],
-  content: UserContent,
-): ModelMessage[] => {
+export const withUserContent = (messages: ModelMessage[], content: UserContent): ModelMessage[] => {
   const last = messages.at(-1)
   if (!last || last.role !== 'user') {
     throw new UserContentNotAppendableError(messages.length)

@@ -48,13 +48,9 @@ export interface ObjectStorageProvider {
   getObject(key: GetStorageDownloadUrlDto): Promise<ObjectContent>
   /** 服务端直接写对象（AI 产出的二进制走这里，不走预签名） */
   putObject(input: PutObjectInput): Promise<ObjectPut>
-  getPresignedUrl(
-    data: GetStorageUploadPresignedUrlDto,
-  ): Promise<StoragePresignedUrlModel>
+  getPresignedUrl(data: GetStorageUploadPresignedUrlDto): Promise<StoragePresignedUrlModel>
   getDownloadUrl(key: GetStorageDownloadUrlDto): Promise<StoragePresignedUrlModel>
-  getTemporaryCredentials(
-    request: GetTemporaryCredentialsDto,
-  ): Promise<StorageStsModel>
+  getTemporaryCredentials(request: GetTemporaryCredentialsDto): Promise<StorageStsModel>
   removeObject(key: GetStorageDownloadUrlDto): Promise<ObjectRemoved>
   /** 按前缀列出对象（预览临时对象的生命周期清理用） */
   listObjects(input: { prefix: string; max?: number }): Promise<ObjectListItem[]>

@@ -67,9 +67,7 @@ export class ProviderDisabledError extends AppError {
 export class ProviderKeyUnavailableError extends AppError {
   readonly code = AppErrorCodes.ProviderKeyUnavailable
 
-  constructor(
-    message = '模型供应商未配置密钥，请先在后台「模型管理」补上',
-  ) {
+  constructor(message = '模型供应商未配置密钥，请先在后台「模型管理」补上') {
     super(message)
   }
 }
@@ -78,9 +76,7 @@ export class ProviderKeyUnavailableError extends AppError {
 export class ModelNotConfiguredError extends AppError {
   readonly code = AppErrorCodes.ModelNotConfigured
 
-  constructor(
-    message = '还没有配置可用的模型，请先在后台「模型管理」添加供应商与模型',
-  ) {
+  constructor(message = '还没有配置可用的模型，请先在后台「模型管理」添加供应商与模型') {
     super(message)
   }
 }

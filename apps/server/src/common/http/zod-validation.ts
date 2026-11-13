@@ -34,7 +34,5 @@ export class ZodValidationFailedError extends Error {
 export const createZodValidationPipe = (): StandardSchemaValidationPipe =>
   new StandardSchemaValidationPipe({
     exceptionFactory: (issues) =>
-      new ZodValidationFailedError(
-        parseZodIssues(issues as unknown as ZodIssue[]),
-      ),
+      new ZodValidationFailedError(parseZodIssues(issues as unknown as ZodIssue[])),
   })

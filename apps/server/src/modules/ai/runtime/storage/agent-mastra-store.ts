@@ -139,7 +139,7 @@ export class AgentWorkflowsStorage extends WorkflowsStorage {
     createdAt?: Date
     updatedAt?: Date
   }): Promise<void> {
-    const repo = await this.db.getRepository(RunEntity)
+    const repo = this.db.getRepository(RunEntity)
     const status = toRunStatus(input.snapshot?.status as string | undefined)
     const existing = await repo.findOne({ where: { engineRunId: input.runId } })
     const map = snapshotMapOf(existing?.snapshot)
@@ -182,7 +182,7 @@ export class AgentWorkflowsStorage extends WorkflowsStorage {
     workflowName: string
     runId: string
   }): Promise<WorkflowRunState | null> {
-    const repo = await this.db.getRepository(RunEntity)
+    const repo = this.db.getRepository(RunEntity)
     const row = await repo.findOne({ where: { engineRunId: input.runId } })
     if (!row?.snapshot) return null
     return pickSnapshot(snapshotMapOf(row.snapshot), input.workflowName) ?? null
@@ -190,7 +190,7 @@ export class AgentWorkflowsStorage extends WorkflowsStorage {
 
   /** 列出运行（恢复流程据此找"在跑的"） */
   async listWorkflowRuns(args: StorageListWorkflowRunsInput = {}): Promise<WorkflowRuns> {
-    const repo = await this.db.getRepository(RunEntity)
+    const repo = this.db.getRepository(RunEntity)
     const builder = repo
       .createQueryBuilder('r')
       .where('r.engineRunId IS NOT NULL')
@@ -226,7 +226,7 @@ export class AgentWorkflowsStorage extends WorkflowsStorage {
     runId: string
     workflowName?: string
   }): Promise<WorkflowRun | null> {
-    const repo = await this.db.getRepository(RunEntity)
+    const repo = this.db.getRepository(RunEntity)
     const row = await repo.findOne({ where: { engineRunId: input.runId } })
     return row ? this.toWorkflowRun(row, input.workflowName) : null
   }
@@ -235,10 +235,7 @@ export class AgentWorkflowsStorage extends WorkflowsStorage {
    * **刻意不实现删除**：运行记录与时间线是复盘/审计证据，不提供删除入口（设计文档 §4.5）。
    * Mastra 在清理生命周期里可能调用它 —— 我们只记一条日志，不动数据。
    */
-  async deleteWorkflowRunById(input: {
-    runId: string
-    workflowName: string
-  }): Promise<void> {
+  async deleteWorkflowRunById(input: { runId: string; workflowName: string }): Promise<void> {
     this.appLogger.warn('ai.storage.delete_ignored', {
       runId: input.runId,
       workflowName: input.workflowName,
@@ -247,9 +244,7 @@ export class AgentWorkflowsStorage extends WorkflowsStorage {
   }
 
   /** 更新某个步骤的结果（并进快照的 context，供恢复时续跑） */
-  async updateWorkflowResults(
-    input: UpdateResultsInput,
-  ): Promise<UpdateResultsOutput> {
+  async updateWorkflowResults(input: UpdateResultsInput): Promise<UpdateResultsOutput> {
     const snapshot = (await this.loadWorkflowSnapshot(input)) ?? ({} as WorkflowRunState)
     const context = { ...((snapshot.context ?? {}) as Record<string, unknown>) }
     context[input.stepId] = input.result

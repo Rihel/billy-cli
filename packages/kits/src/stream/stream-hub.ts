@@ -42,7 +42,6 @@ export class StreamHub
   /** 是否正在排空（`beforeApplicationShutdown` 置位后不再接受新长连接） */
   private draining = false
 
-
   constructor(
     @Inject(PubSub) private readonly pubsub: PubSub,
     @Inject(IdGeneration) private readonly idGeneration: IdGeneration,
@@ -105,10 +104,8 @@ export class StreamHub
 
   /** 创建一条 SSE 连接（SSE 路由调用；连接关闭自动从注册表 / 频道索引注销）。 */
   createConnection(options: StreamConnectionOptions): StreamConnection {
-    const connection = new StreamConnection(
-      this.idGeneration.next(20),
-      options,
-      (closed) => this.removeConnection(closed),
+    const connection = new StreamConnection(this.idGeneration.next(20), options, (closed) =>
+      this.removeConnection(closed),
     )
     this.connections.set(connection.id, connection)
     // 排空中到达的新长连接立即关闭：否则它会重新挂住 httpServer.close()，让排空白做
@@ -140,7 +137,7 @@ export class StreamHub
 
   /** 注销连接（幂等）：清频道索引 + 移除注册表。 */
   removeConnection(connection: StreamConnection): void {
-    for (const channel of [...connection.channels]) {
+    for (const channel of connection.channels) {
       this.unsubscribe(connection, channel)
     }
     this.connections.delete(connection.id)
@@ -164,5 +161,4 @@ export class StreamHub
       void connection.write(event)
     }
   }
-
 }

@@ -93,9 +93,7 @@ export default function RegisterPage() {
 
       <div className="space-y-2">
         <h1 className="font-heading text-2xl font-semibold tracking-tight">创建账号</h1>
-        <p className="text-sm text-muted-foreground">
-          填写以下信息注册新账号
-        </p>
+        <p className="text-sm text-muted-foreground">填写以下信息注册新账号</p>
       </div>
 
       <form action={formAction} className="space-y-5">
@@ -152,12 +150,8 @@ export default function RegisterPage() {
             />
           </Field>
 
-          {mismatch && (
-            <FieldError errors={[{ message: '两次输入的密码不一致' }]} />
-          )}
-          {state.error && !mismatch && (
-            <FieldError errors={[{ message: state.error }]} />
-          )}
+          {mismatch && <FieldError errors={[{ message: '两次输入的密码不一致' }]} />}
+          {state.error && !mismatch && <FieldError errors={[{ message: state.error }]} />}
 
           <Button
             type="submit"

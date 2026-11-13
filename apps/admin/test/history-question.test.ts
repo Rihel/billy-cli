@@ -130,7 +130,8 @@ describe('历史重建：问题卡', () => {
         toolKey: 'ask-user-questions',
         toolCallId: 'call_1',
         payload: {
-          output: '用户已回答：\n1. 先深挖哪条路线？\n   先不选，我要看完整底稿\n2. 你手上更硬的资源是哪类？\n   还在看机会，没团队',
+          output:
+            '用户已回答：\n1. 先深挖哪条路线？\n   先不选，我要看完整底稿\n2. 你手上更硬的资源是哪类？\n   还在看机会，没团队',
         },
       },
     ] as never)

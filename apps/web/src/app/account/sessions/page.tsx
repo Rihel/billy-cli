@@ -3,13 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { parseUserAgent } from '@repo/shared'
 import type { SessionEntryModel } from '@repo/shared'
-import {
-  ConfirmAction,
-  Skeleton,
-  Tag,
-  cn,
-  toastSuccess,
-} from '@repo/ui'
+import { ConfirmAction, Skeleton, Tag, cn, toastSuccess } from '@repo/ui'
 import { MonitorSmartphoneIcon, SmartphoneIcon } from 'lucide-react'
 import { useServerClient } from '@/lib/server-client'
 
@@ -97,7 +91,8 @@ function SessionCard({
   onRevoke: () => void
 }) {
   const agent = parseUserAgent(session.userAgent)
-  const Icon = agent.device === '移动' || agent.device === '平板' ? SmartphoneIcon : MonitorSmartphoneIcon
+  const Icon =
+    agent.device === '移动' || agent.device === '平板' ? SmartphoneIcon : MonitorSmartphoneIcon
 
   return (
     <li

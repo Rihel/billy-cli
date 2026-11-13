@@ -1,8 +1,4 @@
-import {
-  Inject,
-  Injectable,
-  type OnApplicationShutdown,
-} from '@nestjs/common'
+import { Inject, Injectable, type OnApplicationShutdown } from '@nestjs/common'
 import { Redis } from 'ioredis'
 import { AppLogger } from '../foundation/logger/app-logger.js'
 import { IdGeneration } from '../foundation/id-generation/id-generation.js'
@@ -10,10 +6,7 @@ import { PubSubError } from '../foundation/errors/infrastructure-errors.js'
 import { RedisConfig } from '../redis/redis.config.js'
 
 /** 订阅回调：`payload` 是发布方给的对象，`meta` 用于排障（哪个频道、哪个实例、什么时候发的） */
-export type PubSubHandler = (
-  payload: unknown,
-  meta: PubSubMessageMeta,
-) => void | Promise<void>
+export type PubSubHandler = (payload: unknown, meta: PubSubMessageMeta) => void | Promise<void>
 
 /** 这次消息的元信息（不参与业务判断） */
 export interface PubSubMessageMeta {
@@ -110,7 +103,8 @@ export class PubSub implements OnApplicationShutdown {
    */
   async connect(): Promise<void> {
     if (this.closed) throw new PubSubError('Pub/Sub 已关闭')
-    if (!this.connecting) {
+    // 用显式 null 比较：packages 关闭 strictNullChecks 后真值判断会被误判成 Promise 条件
+    if (this.connecting === null) {
       this.connecting = (async () => {
         await Promise.all([this.pub.connect(), this.sub.connect()])
         await this.resubscribeAll()
@@ -167,9 +161,7 @@ export class PubSub implements OnApplicationShutdown {
     set.add(handler)
     void this.connect()
       .then(() => this.subscribeChannel(channel))
-      .catch((error: unknown) =>
-        this.logger.warn('Pub/Sub 订阅失败', { channel, error }),
-      )
+      .catch((error: unknown) => this.logger.warn('Pub/Sub 订阅失败', { channel, error }))
     return () => this.unsubscribe('exact', channel, handler)
   }
 
@@ -180,9 +172,7 @@ export class PubSub implements OnApplicationShutdown {
     set.add(handler)
     void this.connect()
       .then(() => this.ensurePatternSubscribed(pattern))
-      .catch((error: unknown) =>
-        this.logger.warn('Pub/Sub 模式订阅失败', { pattern, error }),
-      )
+      .catch((error: unknown) => this.logger.warn('Pub/Sub 模式订阅失败', { pattern, error }))
     return () => this.unsubscribe('pattern', pattern, handler)
   }
 
@@ -234,11 +224,7 @@ export class PubSub implements OnApplicationShutdown {
   }
 
   /** 收到消息：解析 + 自回环过滤后交给对应处理函数 */
-  private dispatch(
-    handlers: Set<PubSubHandler> | undefined,
-    channel: string,
-    raw: string,
-  ): void {
+  private dispatch(handlers: Set<PubSubHandler> | undefined, channel: string, raw: string): void {
     if (!handlers || handlers.size === 0) return
     let envelope: PubSubEnvelope
     try {
@@ -255,7 +241,8 @@ export class PubSub implements OnApplicationShutdown {
       instanceId: envelope.instanceId,
       publishedAt: envelope.publishedAt,
     }
-    for (const handler of [...handlers]) {
+    // 快照本轮订阅者：分发期间退订不应让本轮漏调
+    for (const handler of Array.from(handlers)) {
       try {
         const result = handler(envelope.payload, meta)
         if (result instanceof Promise) {
@@ -270,10 +257,7 @@ export class PubSub implements OnApplicationShutdown {
   }
 
   /** 取（或创建）某个频道 / 模式的处理函数集合 */
-  private handlersOf(
-    map: Map<string, Set<PubSubHandler>>,
-    key: string,
-  ): Set<PubSubHandler> {
+  private handlersOf(map: Map<string, Set<PubSubHandler>>, key: string): Set<PubSubHandler> {
     let set = map.get(key)
     if (!set) {
       set = new Set()
@@ -283,11 +267,7 @@ export class PubSub implements OnApplicationShutdown {
   }
 
   /** 取消订阅（幂等）；最后一个处理函数移除时退订频道 / 模式 */
-  private unsubscribe(
-    kind: 'exact' | 'pattern',
-    key: string,
-    handler: PubSubHandler,
-  ): void {
+  private unsubscribe(kind: 'exact' | 'pattern', key: string, handler: PubSubHandler): void {
     const map = kind === 'exact' ? this.exact : this.patterns
     const set = map.get(key)
     if (!set || !set.delete(handler)) return
@@ -297,17 +277,13 @@ export class PubSub implements OnApplicationShutdown {
       if (!this.subscribedChannels.delete(key)) return
       void this.sub
         .unsubscribe(key)
-        .catch((error: unknown) =>
-          this.logger.warn('Pub/Sub 退订失败', { channel: key, error }),
-        )
+        .catch((error: unknown) => this.logger.warn('Pub/Sub 退订失败', { channel: key, error }))
       return
     }
     if (!this.subscribedPatterns.delete(key)) return
     void this.sub
       .punsubscribe(key)
-      .catch((error: unknown) =>
-        this.logger.warn('Pub/Sub 模式退订失败', { pattern: key, error }),
-      )
+      .catch((error: unknown) => this.logger.warn('Pub/Sub 模式退订失败', { pattern: key, error }))
   }
 }
 

@@ -8,6 +8,8 @@ describe('replace-file（文件管理）', () => {
     const spec = specByKey(buildFileTools(), TOOL_KEYS.replaceFile)
     expect(spec.key).toBe('replace-file')
     expect(spec.description.length).toBeGreaterThan(0)
-    expect(spec.params.safeParse({ filePath: 'notes.md', oldText: 'a', newText: 'b' }).success).toBe(true)
+    expect(
+      spec.params.safeParse({ filePath: 'notes.md', oldText: 'a', newText: 'b' }).success,
+    ).toBe(true)
   })
 })

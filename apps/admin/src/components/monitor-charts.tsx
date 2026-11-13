@@ -138,7 +138,7 @@ export function DistributionPie({
           innerRadius="58%"
           outerRadius="82%"
           paddingAngle={gap}
-          stroke={gap ? "var(--background)" : "none"}
+          stroke={gap ? 'var(--background)' : 'none'}
           strokeWidth={2}
           isAnimationActive={false}
         >

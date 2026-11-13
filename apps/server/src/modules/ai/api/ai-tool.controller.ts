@@ -1,9 +1,5 @@
 import { Body, Controller, HttpCode, Inject, Post, UseGuards } from '@nestjs/common'
-import {
-  AiToolKeySchema,
-  AiToolListSchema,
-  AiToolUpdateSchema,
-} from '@repo/shared'
+import { AiToolKeySchema, AiToolListSchema, AiToolUpdateSchema } from '@repo/shared'
 import type { AiToolKeyDto, AiToolListDto, AiToolUpdateDto } from '@repo/shared'
 import { AdminAuthGuard } from '../../admin/admin-auth.guard.js'
 import { AiToolService } from './ai-tool.service.js'

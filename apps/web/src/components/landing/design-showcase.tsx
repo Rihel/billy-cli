@@ -30,7 +30,10 @@ export function DesignShowcase() {
             是定出来的
           </h2>
           <p className="mt-6 max-w-2xl text-base leading-relaxed text-muted-foreground">
-            颜色、字体、圆角、面层全在 <code className="font-mono text-foreground">@repo/ui</code> 里定义一次，
+            颜色、字体、圆角、面层全在 <code className="font-mono text-foreground">
+              @repo/ui
+            </code>{' '}
+            里定义一次，
             前台与后台共用；换品牌色只改一个变量。下面这些不是截图，是组件库在页面里的真实渲染。
           </p>
         </Reveal>
@@ -89,7 +92,9 @@ export function DesignShowcase() {
               <div className="mt-6 flex flex-wrap gap-2">
                 <Badge className="border-success/20 bg-success/10 text-success">运行中</Badge>
                 <Badge className="border-warning/20 bg-warning/10 text-warning">排队</Badge>
-                <Badge className="border-destructive/20 bg-destructive/10 text-destructive">失败</Badge>
+                <Badge className="border-destructive/20 bg-destructive/10 text-destructive">
+                  失败
+                </Badge>
                 <Badge variant="outline">草稿</Badge>
               </div>
 
@@ -128,8 +133,12 @@ export function DesignShowcase() {
                   </p>
                 </div>
                 <div>
-                  <p className="text-base text-foreground">正文用系统无衬线，中文回退链路已接好。</p>
-                  <p className="mt-1 font-mono text-[11px] text-muted-foreground">text-base / leading-relaxed</p>
+                  <p className="text-base text-foreground">
+                    正文用系统无衬线，中文回退链路已接好。
+                  </p>
+                  <p className="mt-1 font-mono text-[11px] text-muted-foreground">
+                    text-base / leading-relaxed
+                  </p>
                 </div>
                 <div>
                   <p className="font-mono text-sm text-foreground">pnpm check:ui</p>

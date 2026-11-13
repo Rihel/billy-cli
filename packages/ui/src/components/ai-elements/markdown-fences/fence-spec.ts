@@ -43,9 +43,7 @@ export interface XflowModel {
   edges: XflowEdge[]
 }
 
-export type XflowParseResult =
-  | { ok: true; model: XflowModel }
-  | { ok: false; error: string }
+export type XflowParseResult = { ok: true; model: XflowModel } | { ok: false; error: string }
 
 /** 节点上限：超过这个数，画布上已经看不出结构了，让调用方改成分组表达 */
 const MAX_NODES = 60
@@ -96,9 +94,10 @@ export const parseXflowSpec = (code: string): XflowParseResult => {
     seen.add(id)
 
     const kindText = asText(item.kind)
-    const kind = kindText && (NODE_KINDS as readonly string[]).includes(kindText)
-      ? (kindText as XflowNodeKind)
-      : 'process'
+    const kind =
+      kindText && (NODE_KINDS as readonly string[]).includes(kindText)
+        ? (kindText as XflowNodeKind)
+        : 'process'
 
     nodes.push({
       id,
@@ -198,7 +197,11 @@ const escapeScriptText = (source: string): string => source.replaceAll('</script
  * 模型脚本写 `gsap.to(...)` 时 DOM 还不完整，要动元素就等 `DOMContentLoaded` 或用
  * `gsap.set` 之外的方式，围栏里我们只在提示词层提醒"先确认元素存在"。
  */
-export const buildSandboxDocument = ({ html, scripts = [], theme }: SandboxDocumentInput): string => {
+export const buildSandboxDocument = ({
+  html,
+  scripts = [],
+  theme,
+}: SandboxDocumentInput): string => {
   const baseStyle = [
     'html,body{margin:0;padding:0}',
     `body{padding:16px;background:${theme.background};color:${theme.color};`,
@@ -208,9 +211,9 @@ export const buildSandboxDocument = ({ html, scripts = [], theme }: SandboxDocum
   ].join('')
 
   const heightReporter = `(function(){var send=function(){try{parent.postMessage({__fenceHeight:document.documentElement.scrollHeight},'*')}catch(e){}};if(typeof ResizeObserver==='function'){new ResizeObserver(send).observe(document.documentElement)}else{setInterval(send,500)};addEventListener('load',send);send()})()`
-// 预览里的链接默认允许在 iframe 内部导航；相对链接会解析成父页面地址，一点就把预览替换成后台页面。
-// 只放行文档内锚点，其余链接一律拦截（不打开新窗口，避免 AI 内容借预览弹窗钓鱼）。
-const linkGuard = `(function(){document.addEventListener('click',function(event){var target=event.target;var anchor=target&&target.closest?target.closest('a[href]'):null;if(!anchor)return;var href=anchor.getAttribute('href')||'';event.preventDefault();if(href.charAt(0)!=='#')return;try{var id=decodeURIComponent(href.slice(1));var el=id?document.getElementById(id):document.body;if(el&&el.scrollIntoView)el.scrollIntoView({behavior:'smooth',block:'start'})}catch(e){}},true)})()`
+  // 预览里的链接默认允许在 iframe 内部导航；相对链接会解析成父页面地址，一点就把预览替换成后台页面。
+  // 只放行文档内锚点，其余链接一律拦截（不打开新窗口，避免 AI 内容借预览弹窗钓鱼）。
+  const linkGuard = `(function(){document.addEventListener('click',function(event){var target=event.target;var anchor=target&&target.closest?target.closest('a[href]'):null;if(!anchor)return;var href=anchor.getAttribute('href')||'';event.preventDefault();if(href.charAt(0)!=='#')return;try{var id=decodeURIComponent(href.slice(1));var el=id?document.getElementById(id):document.body;if(el&&el.scrollIntoView)el.scrollIntoView({behavior:'smooth',block:'start'})}catch(e){}},true)})()`
 
   const inlineScripts = scripts
     .filter((source) => source.trim().length > 0)

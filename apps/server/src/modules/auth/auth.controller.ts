@@ -1,11 +1,4 @@
-import {
-  Body,
-  Controller,
-  HttpCode,
-  Inject,
-  Post,
-  UseGuards,
-} from '@nestjs/common'
+import { Body, Controller, HttpCode, Inject, Post, UseGuards } from '@nestjs/common'
 import {
   ChangePasswordSchema,
   ForgotPasswordSchema,
@@ -22,12 +15,7 @@ import type {
   ResetPasswordDto,
   UpdateInfoDto,
 } from '@repo/shared'
-import {
-  AccessToken,
-  RateLimit,
-  RateLimitGuard,
-  currentUserId,
-} from '../../common/index.js'
+import { AccessToken, RateLimit, RateLimitGuard, currentUserId } from '../../common/index.js'
 import { AuthService } from './auth.service.js'
 import { UserAuthGuard } from './user-auth.guard.js'
 
@@ -59,9 +47,7 @@ export class AuthController {
   @Post('logout')
   @HttpCode(200)
   logout(@AccessToken() token?: string) {
-    return token
-      ? this.authService.logout({ token })
-      : Promise.resolve({ success: true })
+    return token ? this.authService.logout({ token }) : Promise.resolve({ success: true })
   }
 
   @Post('forgot-password')

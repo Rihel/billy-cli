@@ -1,25 +1,28 @@
-"use client"
+'use client'
 
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "#components/ui/collapsible.tsx"
-import { cn } from "#lib/utils.ts"
-import { ChevronDownIcon, SearchIcon } from "lucide-react"
-import type { ComponentProps } from "react"
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '#components/ui/collapsible.tsx'
+import { cn } from '#lib/utils.ts'
+import { ChevronDownIcon, SearchIcon } from 'lucide-react'
+import type { ComponentProps } from 'react'
 
-export type TaskItemFileProps = ComponentProps<"div">
+export type TaskItemFileProps = ComponentProps<'div'>
 
 export const TaskItemFile = ({ children, className, ...props }: TaskItemFileProps) => (
   <div
-    className={cn("inline-flex items-center gap-1 rounded-md border bg-secondary px-1.5 py-0.5 text-foreground text-xs", className)}
+    className={cn(
+      'inline-flex items-center gap-1 rounded-md border bg-secondary px-1.5 py-0.5 text-foreground text-xs',
+      className,
+    )}
     {...props}
   >
     {children}
   </div>
 )
 
-export type TaskItemProps = ComponentProps<"div">
+export type TaskItemProps = ComponentProps<'div'>
 
 export const TaskItem = ({ children, className, ...props }: TaskItemProps) => (
-  <div className={cn("text-muted-foreground text-sm", className)} {...props}>
+  <div className={cn('text-muted-foreground text-sm', className)} {...props}>
     {children}
   </div>
 )
@@ -44,11 +47,15 @@ const TaskTriggerDefaultContent = ({ title }: { title: string }) => (
 
 export const TaskTrigger = ({ children, className, title, ...props }: TaskTriggerProps) =>
   children ? (
-    <CollapsibleTrigger className={cn("group", className)} {...props}>
+    <CollapsibleTrigger className={cn('group', className)} {...props}>
       {children}
     </CollapsibleTrigger>
   ) : (
-    <CollapsibleTrigger className={cn("group", className)} {...props} render={(triggerProps) => <div {...triggerProps} />}>
+    <CollapsibleTrigger
+      className={cn('group', className)}
+      {...props}
+      render={(triggerProps) => <div {...triggerProps} />}
+    >
       <TaskTriggerDefaultContent title={title} />
     </CollapsibleTrigger>
   )
@@ -58,7 +65,7 @@ export type TaskContentProps = ComponentProps<typeof CollapsibleContent>
 export const TaskContent = ({ children, className, ...props }: TaskContentProps) => (
   <CollapsibleContent
     className={cn(
-      "data-[state=closed]:fade-out-0 data-[state=closed]:slide-out-to-top-2 data-[state=open]:slide-in-from-top-2 text-popover-foreground outline-none data-[state=closed]:animate-out data-[state=open]:animate-in",
+      'data-[state=closed]:fade-out-0 data-[state=closed]:slide-out-to-top-2 data-[state=open]:slide-in-from-top-2 text-popover-foreground outline-none data-[state=closed]:animate-out data-[state=open]:animate-in',
       className,
     )}
     {...props}

@@ -62,7 +62,14 @@ export const REDIS_CATALOG: ConnectorCatalogDecl = {
     { key: 'host', label: '主机', type: 'text', secret: false, required: true },
     { key: 'port', label: '端口', type: 'number', secret: false, required: true },
     { key: 'db', label: '库编号', type: 'number', secret: false, required: false },
-    { key: 'keyPrefix', label: '键前缀', type: 'text', secret: false, required: false, help: '留空 = 不限；建议填业务前缀' },
+    {
+      key: 'keyPrefix',
+      label: '键前缀',
+      type: 'text',
+      secret: false,
+      required: false,
+      help: '留空 = 不限；建议填业务前缀',
+    },
     { key: 'password', label: '密码', type: 'password', secret: true, required: false },
   ],
 }
@@ -77,7 +84,8 @@ export const REDIS_CATALOG: ConnectorCatalogDecl = {
 export const LARK_CLI_CATALOG: ConnectorCatalogDecl = {
   kind: 'lark-cli',
   name: '飞书 CLI',
-  description: '通过官方 lark-cli 操作飞书：消息、文档、多维表格、表格、日历、邮件、任务等 20+ 业务域',
+  description:
+    '通过官方 lark-cli 操作飞书：消息、文档、多维表格、表格、日历、邮件、任务等 20+ 业务域',
   driver: 'lark-cli',
   transport: 'process',
   category: 'office',
@@ -86,7 +94,14 @@ export const LARK_CLI_CATALOG: ConnectorCatalogDecl = {
     '填飞书开放平台应用的 App ID / App Secret；用户级操作需再走一次 auth login（可在对话里让助手发起）。server 镜像已预装 lark-cli。',
   defaults: { brand: 'feishu', identity: 'auto', timeoutMs: 30_000 },
   fields: [
-    { key: 'appId', label: 'App ID', type: 'text', secret: false, required: true, placeholder: 'cli_xxx' },
+    {
+      key: 'appId',
+      label: 'App ID',
+      type: 'text',
+      secret: false,
+      required: true,
+      placeholder: 'cli_xxx',
+    },
     { key: 'appSecret', label: 'App Secret', type: 'password', secret: true, required: true },
     {
       key: 'brand',

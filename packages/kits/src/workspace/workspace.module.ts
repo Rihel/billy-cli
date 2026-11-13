@@ -34,9 +34,7 @@ export class WorkspaceModule {
   }
 
   /** 异步装配：配置由 `ConfigService` 惰性解析，避免模块装饰器求值早于配置加载 */
-  static forRootAsync(
-    options: InfraModuleAsyncOptions<WorkspaceModuleOptions>,
-  ): DynamicModule {
+  static forRootAsync(options: InfraModuleAsyncOptions<WorkspaceModuleOptions>): DynamicModule {
     return {
       module: WorkspaceModule,
       imports: options.imports ?? [],

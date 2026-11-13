@@ -1,4 +1,4 @@
-import { Column, Entity, PrimaryColumn, Unique } from 'typeorm'
+import { Column, Entity, Unique } from 'typeorm'
 import { BaseEntity } from '@repo/kits'
 import { UserStatus } from '@repo/shared'
 

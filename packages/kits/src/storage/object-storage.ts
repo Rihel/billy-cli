@@ -36,8 +36,7 @@ export class ObjectStorage implements OnApplicationBootstrap {
     @Inject(RedisStore) redis: RedisStore,
     @Inject(AppLogger) private readonly logger: AppLogger,
   ) {
-    this.configured =
-      config.provider === 'cos' || Boolean(config.endpoint?.trim())
+    this.configured = config.provider === 'cos' || Boolean(config.endpoint?.trim())
     this.provider =
       config.provider === 'cos'
         ? makeCosProvider(config, this.logger)
@@ -58,8 +57,7 @@ export class ObjectStorage implements OnApplicationBootstrap {
   async onApplicationBootstrap(): Promise<void> {
     if (!this.configured) {
       this.logger.warn('storage.disabled', {
-        reason:
-          '未配置 OBJECT_STORAGE_ENDPOINT，对象存储相关能力不可用（服务继续启动）',
+        reason: '未配置 OBJECT_STORAGE_ENDPOINT，对象存储相关能力不可用（服务继续启动）',
       })
       return
     }
@@ -82,7 +80,8 @@ export class ObjectStorage implements OnApplicationBootstrap {
     if (!this.configured) {
       return Promise.reject(new ObjectStorageUnavailableError())
     }
-    if (!this.initPromise) {
+    // 用显式 null 比较：packages 关闭 strictNullChecks 后真值判断会被误判成 Promise 条件
+    if (this.initPromise === null) {
       this.initPromise = this.provider.initial().catch((cause: unknown) => {
         this.initPromise = null
         throw cause
@@ -101,9 +100,7 @@ export class ObjectStorage implements OnApplicationBootstrap {
     }
   }
 
-  getPresignedUrl(
-    data: GetStorageUploadPresignedUrlDto,
-  ): Promise<StoragePresignedUrlModel> {
+  getPresignedUrl(data: GetStorageUploadPresignedUrlDto): Promise<StoragePresignedUrlModel> {
     return this.guard('getPresignedUrl', async () => {
       await this.ensureInitialized()
       return this.provider.getPresignedUrl(data)
@@ -117,9 +114,7 @@ export class ObjectStorage implements OnApplicationBootstrap {
     })
   }
 
-  getTemporaryCredentials(
-    request: GetTemporaryCredentialsDto,
-  ): Promise<StorageStsModel> {
+  getTemporaryCredentials(request: GetTemporaryCredentialsDto): Promise<StorageStsModel> {
     return this.guard('getTemporaryCredentials', async () => {
       await this.ensureInitialized()
       return this.provider.getTemporaryCredentials(request)

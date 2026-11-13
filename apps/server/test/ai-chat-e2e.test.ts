@@ -5,18 +5,13 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { ConversationEntity } from '../src/database/entities/conversation-entity.js'
 import { RunEntity } from '../src/database/entities/run-entity.js'
 import { TimelineEntity } from '../src/database/entities/timeline-entity.js'
-import {
-  AGENT_SPECS,
-  DEFAULT_AGENT_KEY,
-  createAgentDefinitions,
-} from '../src/modules/ai/agents/index.js'
+import { DEFAULT_AGENT_KEY, createAgentDefinitions } from '../src/modules/ai/agents/index.js'
 import { AGENT_MAX_STEPS } from '../src/modules/ai/core/constants.js'
 import { createMastra } from '../src/modules/ai/mastra/ai.mastra.js'
 import { createAgentRegistry } from '../src/modules/ai/agents/registry.js'
 import { createPromptEngine } from '../src/modules/ai/core/prompts/index.js'
 import { AgentTitleService } from '../src/modules/ai/runtime/title.service.js'
 import { SkillLoader } from '../src/modules/ai/core/skills/index.js'
-import { BashTool } from '../src/modules/ai/tools/bash.tool.js'
 import { FileTools } from '../src/modules/ai/files/file.tools.js'
 import { WebTools } from '../src/modules/ai/tools/web.tools.js'
 import { RunSubAgentTool } from '../src/modules/ai/tools/subagent.tool.js'
@@ -159,14 +154,7 @@ beforeAll(async () => {
   // `AgentRunner` 通过 ModuleRef **惰性**取注册机（构造期不依赖它，否则成环死锁）：
   // 测试给一个只实现 `get` 的替身，语义与生产一致
   const moduleRefPort = { get: () => toolRegistry } as never
-  const runner = new AgentRunner(
-    runs,
-    timelines,
-    config,
-    silentLogger,
-    deps.metas,
-    moduleRefPort,
-  )
+  const runner = new AgentRunner(runs, timelines, config, silentLogger, deps.metas, moduleRefPort)
   // 工具组实例（唯一的工具来源）：与 `ai.module.ts` 的装配口径一致
   const plannerStore = new PlannerStore(timelines)
   toolRegistry = new ToolRegistry(
@@ -305,7 +293,7 @@ describe('对话链路端到端（mock 模型 + 真实数据库）', () => {
       revision: 1,
       tasks: MOCK_PLAN_INITIAL.tasks,
     })
-    expect((toolResult?.payload?.output as { summary?: string }).summary).toContain('共 2 项')
+    expect((toolResult!.payload!.output as { summary?: string }).summary).toContain('共 2 项')
     expect(toolResult?.state).toBe('output-available')
 
     // 4) 计划落成 `plan` 事件（当前计划 = 最后一条 plan 事件）
@@ -366,7 +354,10 @@ describe('对话链路端到端（mock 模型 + 真实数据库）', () => {
      * 而是工具的参数定义里就有这个必填字段。
      */
     const toolDefinitions = lastRequest.tools as Array<{
-      function: { name: string; parameters: { properties: Record<string, unknown>; required: string[] } }
+      function: {
+        name: string
+        parameters: { properties: Record<string, unknown>; required: string[] }
+      }
     }>
     const planTool = toolDefinitions.find((tool) => tool.function.name === MOCK_PLAN_CREATE_TOOL)
     expect(planTool?.function.parameters.required).toContain(TOOL_CALL_REASON_FIELD)
@@ -381,7 +372,9 @@ describe('对话链路端到端（mock 模型 + 真实数据库）', () => {
   })
 
   it('命令执行：模型调 bash → 真跑一条跨平台命令，入参出参完整落库', async () => {
-    const result = await chat.chat(USER, { message: `${MOCK_COMMAND_MARKER} 跑一下看看这台机器的环境` })
+    const result = await chat.chat(USER, {
+      message: `${MOCK_COMMAND_MARKER} 跑一下看看这台机器的环境`,
+    })
     createdConversationIds.push(result.conversationId)
 
     expect(result.status).toBe(RunStatus.Succeeded)
@@ -445,7 +438,8 @@ describe('对话链路端到端（mock 模型 + 真实数据库）', () => {
     // 3) 落库的入参里带着模型改正后写的理由（引用同一份常量，改文案不会假红）
     const calls = page.items.filter((item) => item.kind === TimelineKind.ToolCall)
     const retried = calls.find(
-      (item) => (item.payload?.input as { reason?: string } | undefined)?.reason === MOCK_NO_REASON_FIXED,
+      (item) =>
+        (item.payload?.input as { reason?: string } | undefined)?.reason === MOCK_NO_REASON_FIXED,
     )
     expect(retried, '改正后的那次调用应当带着 reason 落库').toBeDefined()
   })
@@ -577,16 +571,16 @@ describe('对话链路端到端（mock 模型 + 真实数据库）', () => {
      * 于是"Mastra 会把多模态 content 压平成纯字符串、图片被静默丢掉"这个 bug
      * 在 373 个测试全绿的情况下依然存在。现在真实链路（`toMastraModelInstance`）被覆盖到了。
      */
-    const withImage = mock.requests.filter((body) =>
-      JSON.stringify(body).includes(expectedDataUrl),
-    )
+    const withImage = mock.requests.filter((body) => JSON.stringify(body).includes(expectedDataUrl))
     // 至少一次；带工具的一轮里，后续那次模型调用也会把整段对话（含图）重发一遍
     expect(withImage.length).toBeGreaterThanOrEqual(1)
     // 而且**不是**那条"会话命名"请求：命名只看文本转录（图不该进命名提示词）
     const titleRequests = mock.requests.filter((body) =>
       JSON.stringify(body).includes('会话命名助手'),
     )
-    expect(titleRequests.every((body) => !JSON.stringify(body).includes(expectedDataUrl))).toBe(true)
+    expect(titleRequests.every((body) => !JSON.stringify(body).includes(expectedDataUrl))).toBe(
+      true,
+    )
 
     // 3) 落库的那一行同样不含 base64（审计表不被内容撑变形）
     const rows = await db.dataSource.query<{ payload: Record<string, unknown> }[]>(

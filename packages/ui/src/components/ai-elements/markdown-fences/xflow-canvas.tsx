@@ -1,13 +1,13 @@
-"use client"
+'use client'
 
-import { cn } from "#lib/utils.ts"
-import { Handle, MarkerType, Position, type Edge, type Node, type NodeProps } from "@xyflow/react"
-import { useEffect, useMemo, useRef } from "react"
+import { cn } from '#lib/utils.ts'
+import { Handle, MarkerType, Position, type Edge, type Node, type NodeProps } from '@xyflow/react'
+import { useEffect, useMemo, useRef } from 'react'
 
-import { Canvas } from "../canvas.tsx"
-import { Controls } from "../controls.tsx"
-import { layoutXflow, XFLOW_NODE_SIZE } from "./xflow-layout.ts"
-import type { XflowEdge, XflowNode, XflowNodeKind } from "./fence-spec.ts"
+import { Canvas } from '../canvas.tsx'
+import { Controls } from '../controls.tsx'
+import { layoutXflow, XFLOW_NODE_SIZE } from './xflow-layout.ts'
+import type { XflowEdge, XflowNode, XflowNodeKind } from './fence-spec.ts'
 
 /**
  * 流程图画布（只有这个文件碰 `@xyflow/react`）。
@@ -26,7 +26,7 @@ export interface XflowCanvasProps {
   /** 未排版的节点：位置在这里算（dagre 与本组件一起按需加载，不进首屏包） */
   nodes: XflowNode[]
   edges: XflowEdge[]
-  direction: "LR" | "TB"
+  direction: 'LR' | 'TB'
   /** 定高模式的高度（由上层按内容尺寸算好，夹在合理区间里）；`fill` 为真时忽略 */
   height?: number
   /** 撑满父容器（全屏查看用）—— 父容器必须自己有高度 */
@@ -48,30 +48,32 @@ export interface XflowCanvasProps {
  * 没有复用 `ai-elements/node`：那个组件把 Handle 固定成左右两侧，
  * 而 `TB` 方向的图连线要从上下进出，硬用会让线绕一大圈。
  */
-const createFlowNode = (direction: "LR" | "TB") => {
-  const targetPosition = direction === "LR" ? Position.Left : Position.Top
-  const sourcePosition = direction === "LR" ? Position.Right : Position.Bottom
+const createFlowNode = (direction: 'LR' | 'TB') => {
+  const targetPosition = direction === 'LR' ? Position.Left : Position.Top
+  const sourcePosition = direction === 'LR' ? Position.Right : Position.Bottom
 
   const FlowNode = ({ data }: NodeProps) => {
     const { label, description, kind } = data as FlowNodeData
     return (
       <div
         className={cn(
-          "flex flex-col justify-center rounded-lg border px-3 py-2",
-          kind === "start" || kind === "end" ? "border-border bg-muted" : "border-border bg-card",
-          kind === "decision" && "border-primary/50",
+          'flex flex-col justify-center rounded-lg border px-3 py-2',
+          kind === 'start' || kind === 'end' ? 'border-border bg-muted' : 'border-border bg-card',
+          kind === 'decision' && 'border-primary/50',
         )}
         style={{ width: XFLOW_NODE_SIZE.width, minHeight: XFLOW_NODE_SIZE.height }}
       >
         <Handle className="size-1.5 border-0 bg-border" position={targetPosition} type="target" />
         <p className="truncate font-medium text-[13px] text-foreground">{label}</p>
-        {description ? <p className="mt-0.5 line-clamp-2 text-[11px] text-muted-foreground">{description}</p> : null}
+        {description ? (
+          <p className="mt-0.5 line-clamp-2 text-[11px] text-muted-foreground">{description}</p>
+        ) : null}
         <Handle className="size-1.5 border-0 bg-border" position={sourcePosition} type="source" />
       </div>
     )
   }
 
-  FlowNode.displayName = "XflowNodeCard"
+  FlowNode.displayName = 'XflowNodeCard'
   return FlowNode
 }
 
@@ -100,7 +102,7 @@ export const XflowCanvas = ({
     () =>
       placed.map((node) => ({
         id: node.id,
-        type: "flow",
+        type: 'flow',
         position: { x: node.x, y: node.y },
         data: { label: node.label, description: node.description, kind: node.kind },
         draggable: false,
@@ -116,19 +118,22 @@ export const XflowCanvas = ({
         id: `e${index}-${edge.from}-${edge.to}`,
         source: edge.from,
         target: edge.to,
-        type: "smoothstep",
+        type: 'smoothstep',
         label: edge.label,
         markerEnd: { type: MarkerType.ArrowClosed, width: 12, height: 12 },
-        style: { stroke: "var(--border)" },
-        labelStyle: { fill: "var(--muted-foreground)", fontSize: 11 },
-        labelBgStyle: { fill: "var(--sidebar)" },
+        style: { stroke: 'var(--border)' },
+        labelStyle: { fill: 'var(--muted-foreground)', fontSize: 11 },
+        labelBgStyle: { fill: 'var(--sidebar)' },
       })),
     [edges],
   )
 
   return (
     <div
-      className={cn("w-full overflow-hidden rounded-lg border border-border bg-sidebar", fill && "h-full")}
+      className={cn(
+        'w-full overflow-hidden rounded-lg border border-border bg-sidebar',
+        fill && 'h-full',
+      )}
       style={fill ? undefined : { height }}
     >
       <Canvas

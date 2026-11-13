@@ -31,9 +31,6 @@ export function menusBuilder(menus: LikeMenu[] = []) {
     return res
   }
 }
-export function resolveMenus(
-  menus: LikeMenu[] = [],
-  data: Record<string, any> = {},
-) {
+export function resolveMenus(menus: LikeMenu[] = [], data: Record<string, any> = {}) {
   return menusBuilder(menus)(data)
 }

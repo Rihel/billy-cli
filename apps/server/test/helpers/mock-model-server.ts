@@ -403,7 +403,10 @@ interface MockServerState {
  * 只用请求里的消息判定（不靠进程级全局）：第一次没有任何工具结果 → 发坏的那条；
  * 有工具结果（那次拒绝会以 `tool` 角色的错误结果回到模型）→ 发改正后的那条。
  */
-const decideNoReasonCall = (body: Record<string, unknown>, state: MockServerState): MockToolCall | null => {
+const decideNoReasonCall = (
+  body: Record<string, unknown>,
+  state: MockServerState,
+): MockToolCall | null => {
   if (!hasToolResult(body) && state.noReasonCalls === 0) {
     state.noReasonCalls += 1
     return COMMAND_NO_REASON_CALL
@@ -469,10 +472,7 @@ const decideToolCall = (
  * 只有 `[delegate-parallel]` 会一次发多条（验证子 agent 并行）；其余仍走单条决策，
  * 避免两条链路的行为分叉。
  */
-const decideToolCalls = (
-  body: Record<string, unknown>,
-  state: MockServerState,
-): MockToolCall[] => {
+const decideToolCalls = (body: Record<string, unknown>, state: MockServerState): MockToolCall[] => {
   if (wanted(body, MOCK_DELEGATE_PARALLEL_MARKER)) {
     return hasToolResult(body) ? [] : DELEGATE_PARALLEL_CALLS
   }
@@ -592,14 +592,20 @@ const respondStream = (
     })
     sse(res, { ...base, choices: [{ index: 0, delta: {}, finish_reason: 'tool_calls' }] })
   } else {
-    sse(res, { ...base, choices: [{ index: 0, delta: { role: 'assistant' }, finish_reason: null }] })
+    sse(res, {
+      ...base,
+      choices: [{ index: 0, delta: { role: 'assistant' }, finish_reason: null }],
+    })
     const slow = isSlow(body)
     const text = finalText(body)
     const deltas = slow
       ? sseSlow(res, base, text)
       : (() => {
-          for (const char of [...text]) {
-            sse(res, { ...base, choices: [{ index: 0, delta: { content: char }, finish_reason: null }] })
+          for (const char of text) {
+            sse(res, {
+              ...base,
+              choices: [{ index: 0, delta: { content: char }, finish_reason: null }],
+            })
           }
           return Promise.resolve()
         })()
@@ -623,7 +629,7 @@ const sseSlow = async (
   base: Record<string, unknown>,
   text: string,
 ): Promise<void> => {
-  for (const char of [...text]) {
+  for (const char of text) {
     if (res.writableEnded) return
     sse(res, { ...base, choices: [{ index: 0, delta: { content: char }, finish_reason: null }] })
     await sleep(40)

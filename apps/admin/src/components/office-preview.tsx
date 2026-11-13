@@ -2,7 +2,12 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { useHotkeys } from 'react-hotkeys-hook'
-import { ChevronLeftIcon, ChevronRightIcon, LoaderCircleIcon, TriangleAlertIcon } from 'lucide-react'
+import {
+  ChevronLeftIcon,
+  ChevronRightIcon,
+  LoaderCircleIcon,
+  TriangleAlertIcon,
+} from 'lucide-react'
 import { Button } from '@repo/ui'
 
 export type OfficeKind = 'docx' | 'xlsx' | 'pptx'
@@ -62,6 +67,8 @@ export function OfficePreview({
   )
 
   useEffect(() => {
+    // 在 effect 入口捕获容器：cleanup 里不再直接读 ref.current（此时可能已卸载 / 指向新节点）
+    const host = hostRef.current
     let cancelled = false
     let previewer: { destroy: () => void } | null = null
     setStatus('loading')
@@ -92,18 +99,18 @@ export function OfficePreview({
           return
         }
 
-        if (!hostRef.current) return
-        hostRef.current.innerHTML = ''
+        if (!host) return
+        host.innerHTML = ''
         if (kind === 'pptx') {
-          const module = await import('pptx-preview')
+          const pptxPreview = await import('pptx-preview')
           // 不用 preview()：它内部在 slide 模式下会自己再渲染一遍，实测会出现两层/两页。
           // 这里 load 后手动 renderSingleSlide，一次只保留一页，翻页由下面的按钮控制。
-          const available = hostRef.current.parentElement?.clientWidth ?? 960
+          const available = host.parentElement?.clientWidth ?? 960
           const width = Math.max(640, Math.min(1400, available - 24))
           // 用 list 布局手动 renderSingleSlide：slide 模式会按 viewPort.height 居中，
           // 固定 height 会在上方/下方留出一条黑色空白；list 的 slide wrapper 是 relative，
           // 高度跟内容走，配合手动单页就是“一页铺满”。
-          const instance = module.init(hostRef.current, { width, mode: 'list' })
+          const instance = pptxPreview.init(host, { width, mode: 'list' })
           previewer = instance
           previewerRef.current = instance as unknown as {
             renderSingleSlide: (index: number) => void
@@ -116,7 +123,7 @@ export function OfficePreview({
           }
         } else {
           const { renderAsync } = await import('docx-preview')
-          await renderAsync(buffer, hostRef.current, undefined, {
+          await renderAsync(buffer, host, undefined, {
             className: 'docx-preview',
             // 自适应宽度：忽略原页面宽高、不强制分页，内容直接铺满右侧容器
             inWrapper: false,
@@ -137,10 +144,9 @@ export function OfficePreview({
     return () => {
       cancelled = true
       previewer?.destroy()
-      if (hostRef.current) hostRef.current.innerHTML = ''
+      if (host) host.innerHTML = ''
     }
   }, [kind, filename])
-
 
   return (
     <div className="flex h-full w-full flex-col">

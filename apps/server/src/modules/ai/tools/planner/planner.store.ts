@@ -149,7 +149,9 @@ const present = (plan: Plan, previous: Plan | null, changes: string[]): PlanOutp
     output.warnings = [
       `清单里有 ${running.length} 个 in_progress（${running
         .map((task) => task.id)
-        .join('、')}）：同时只应有一个进行中，请用 plan-reorder 把其余的改回 pending 或标成 completed`,
+        .join(
+          '、',
+        )}）：同时只应有一个进行中，请用 plan-reorder 把其余的改回 pending 或标成 completed`,
     ]
   }
   return output

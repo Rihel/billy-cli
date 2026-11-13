@@ -16,7 +16,15 @@ const envelope = {
   depth: 0,
   agentKey: 'assistant',
   rootAgentKey: 'assistant',
-  model: { id: 'm', modelRef: 'mock/mock', modelKey: 'mock', displayName: 'mock', providerKind: 'openai-compatible', apiKey: 'k', contextWindow: null },
+  model: {
+    id: 'm',
+    modelRef: 'mock/mock',
+    modelKey: 'mock',
+    displayName: 'mock',
+    providerKind: 'openai-compatible',
+    apiKey: 'k',
+    contextWindow: null,
+  },
   childToolbox: new Map(),
   skills: [],
 }
@@ -31,13 +39,16 @@ const build = (runnerResult: unknown = { status: 'succeeded', result: 'done' }) 
     },
   }
   const spec = specByKey(
-    new RunSubAgentTool(runner as never, {
-      info: () => undefined,
-      warn: () => undefined,
-      error: () => undefined,
-      log: () => undefined,
-      debug: () => undefined,
-    } as never),
+    new RunSubAgentTool(
+      runner as never,
+      {
+        info: () => undefined,
+        warn: () => undefined,
+        error: () => undefined,
+        log: () => undefined,
+        debug: () => undefined,
+      } as never,
+    ),
     TOOL_KEYS.runSubAgent,
   )
   return { deps, spec, calls, runner }
@@ -46,7 +57,9 @@ const build = (runnerResult: unknown = { status: 'succeeded', result: 'done' }) 
 describe('run-sub-agent（创建子助手）', () => {
   it('把提示词 / 任务 / 调用 id / 信封与**四个旋钮**一起交给执行器', async () => {
     const { deps, spec, calls } = build()
-    deps.source.set(TOOL_KEYS.runSubAgent, { config: { maxPerRun: 2, maxDepth: 1, maxSteps: 8, timeoutMs: 30_000 } })
+    deps.source.set(TOOL_KEYS.runSubAgent, {
+      config: { maxPerRun: 2, maxDepth: 1, maxSteps: 8, timeoutMs: 30_000 },
+    })
     const settings = await deps.config.settings(spec)
     const ctx = makeToolContext({ spec, settings, envelope, toolCallId: 'call-9' })
     await spec.exec({ name: '统计', system_prompt: '你是统计助手', task: '统计一下' }, ctx as never)

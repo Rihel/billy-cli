@@ -59,8 +59,7 @@ export function ShareDialog({
     enabled: open && Boolean(file?.id),
   })
 
-  const invalidateList = () =>
-    queryClient.invalidateQueries({ queryKey: ['share-list', file?.id] })
+  const invalidateList = () => queryClient.invalidateQueries({ queryKey: ['share-list', file?.id] })
 
   const createMutation = useMutation({
     mutationFn: (expiresAt: number) =>
@@ -167,7 +166,9 @@ export function ShareDialog({
                   复制
                 </Button>
               </div>
-              <div className="text-[11px]">有效期：{created.expiresAt ? formatTime(created.expiresAt) : '永久'}</div>
+              <div className="text-[11px]">
+                有效期：{created.expiresAt ? formatTime(created.expiresAt) : '永久'}
+              </div>
             </div>
           ) : null}
 

@@ -66,8 +66,7 @@ export class WorkspaceRuntimeService implements OnApplicationBootstrap {
     return {
       mode: this.config.mode,
       // `off` 时没有隔离，也就没有"文件权限"可谈
-      fileAccessOptions:
-        this.config.mode === 'off' ? [] : ['workspace-write', 'read-only'],
+      fileAccessOptions: this.config.mode === 'off' ? [] : ['workspace-write', 'read-only'],
       sandbox,
     }
   }
@@ -84,10 +83,14 @@ export class WorkspaceRuntimeService implements OnApplicationBootstrap {
 
     const sandbox = await this.capabilities()
     if (!sandbox.available) {
-      return this.blocked(request, mode, sandbox.reason ?? {
-        code: 'sandbox-unavailable',
-        message: '本部署未提供可用的命令隔离环境',
-      })
+      return this.blocked(
+        request,
+        mode,
+        sandbox.reason ?? {
+          code: 'sandbox-unavailable',
+          message: '本部署未提供可用的命令隔离环境',
+        },
+      )
     }
     return this.runSandbox(request, mode, sandbox)
   }

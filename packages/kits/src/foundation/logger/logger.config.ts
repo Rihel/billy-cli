@@ -7,12 +7,7 @@ export type LoggerLevel = 'trace' | 'debug' | 'info' | 'warn' | 'error' | 'fatal
 export const LokiConfigSchema = z.object({
   host: z.string().describe('Loki 地址，如 http://localhost:31000'),
   labels: z.record(z.string(), z.string()).default({}).describe('附加标签'),
-  batchInterval: z
-    .number()
-    .int()
-    .positive()
-    .default(5000)
-    .describe('批量推送间隔（毫秒）'),
+  batchInterval: z.number().int().positive().default(5000).describe('批量推送间隔（毫秒）'),
 })
 
 export type LokiConfig = z.infer<typeof LokiConfigSchema>
@@ -26,9 +21,7 @@ export type LokiConfig = z.infer<typeof LokiConfigSchema>
  */
 export const LoggerConfigSchema = z.object({
   prefix: z.string().default('app'),
-  level: z
-    .enum(['trace', 'debug', 'info', 'warn', 'error', 'fatal'])
-    .default('info'),
+  level: z.enum(['trace', 'debug', 'info', 'warn', 'error', 'fatal']).default('info'),
   pretty: z.boolean().optional(),
   loki: LokiConfigSchema.optional(),
 })

@@ -10,12 +10,7 @@ import { useEffect, useRef, useState } from 'react'
  * 类型重复一份的代价，换来 `@repo/ui` 不依赖任何网络层（依赖方向见
  * `packages/ui` → 无）。
  */
-export type StreamState =
-  | 'idle'
-  | 'connecting'
-  | 'open'
-  | 'reconnecting'
-  | 'closed'
+export type StreamState = 'idle' | 'connecting' | 'open' | 'reconnecting' | 'closed'
 
 /**
  * `useStream` 需要的最小客户端数据结构（结构化接口）。
@@ -87,9 +82,7 @@ export function useStream(
 
     const unsubscribeList: Array<() => void> = []
     for (const event of eventKey ? eventKey.split('|') : []) {
-      unsubscribeList.push(
-        client.on(event, (data) => handlersRef.current[event]?.(data)),
-      )
+      unsubscribeList.push(client.on(event, (data) => handlersRef.current[event]?.(data)))
     }
     for (const event of STATE_EVENTS) {
       // 客户端在分发状态事件前已更新 currentState，故这里读到的是新状态

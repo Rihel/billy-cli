@@ -39,7 +39,10 @@ const isName = (value: string | null | undefined): value is string =>
  * 把用户输入解析成来源。不合法时抛错（错误信息要能直接展示给人看）。
  */
 export const parseSkillSource = (input: string): ParsedSkillSource => {
-  const trimmed = input.trim().replace(/[?#].*$/, '').replace(/\/+$/, '')
+  const trimmed = input
+    .trim()
+    .replace(/[?#].*$/, '')
+    .replace(/\/+$/, '')
   if (!trimmed) throw new Error('请填写技能来源链接')
 
   // 简写：owner/repo 或 owner/repo/slug（parse-github-url 会把第三段丢掉，单独处理）
@@ -71,9 +74,12 @@ export const parseSkillSource = (input: string): ParsedSkillSource => {
 
   if (url.hostname === 'skills.sh' || url.hostname === 'www.skills.sh') {
     const segments = url.pathname.split('/').filter(Boolean).map(decodeURIComponent)
-    if (segments[0] === 'p') throw new Error('skills.sh 的 Pack 链接暂不支持，请打开单个技能页面再复制链接')
+    if (segments[0] === 'p')
+      throw new Error('skills.sh 的 Pack 链接暂不支持，请打开单个技能页面再复制链接')
     if (segments[0] === 'site') {
-      throw new Error('skills.sh 上的第三方站点来源暂不支持（它不托管在 GitHub），请改用 GitHub 链接')
+      throw new Error(
+        'skills.sh 上的第三方站点来源暂不支持（它不托管在 GitHub），请改用 GitHub 链接',
+      )
     }
     const [owner, repo, slug] = segments
     if (!isName(owner) || !isName(repo)) throw new Error(`skills.sh 链接格式不对：${url.pathname}`)
@@ -93,7 +99,7 @@ export const parseSkillSource = (input: string): ParsedSkillSource => {
     if (!isName(parsed.owner) || !isName(parsed.name)) {
       throw new Error(`GitHub 链接格式不对：${url.pathname}`)
     }
-    const ref = hasRefSegment(url.pathname) ? parsed.branch ?? undefined : undefined
+    const ref = hasRefSegment(url.pathname) ? (parsed.branch ?? undefined) : undefined
     let subpath: string | undefined
     if (url.pathname.includes('/tree/')) {
       // tree 链接的子路径 parse-github-url 不返回，按 "/<owner>/<repo>/tree/<branch>/" 前缀切

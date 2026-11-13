@@ -14,10 +14,7 @@ export class JwtModule {
   static forRoot(options: JwtModuleOptions): DynamicModule {
     return {
       module: JwtModule,
-      providers: [
-        { provide: JwtConfig, useValue: JwtConfigSchema.parse(options) },
-        TokenSigner,
-      ],
+      providers: [{ provide: JwtConfig, useValue: JwtConfigSchema.parse(options) }, TokenSigner],
       exports: [JwtConfig, TokenSigner],
     }
   }
@@ -26,9 +23,7 @@ export class JwtModule {
    * 异步装配：配置由注入的 provider（如 ConfigService）惰性解析 ——
    * 避免在模块装饰器求值时读取尚未加载的配置。
    */
-  static forRootAsync(
-    options: InfraModuleAsyncOptions<JwtModuleOptions>,
-  ): DynamicModule {
+  static forRootAsync(options: InfraModuleAsyncOptions<JwtModuleOptions>): DynamicModule {
     return {
       module: JwtModule,
       imports: options.imports ?? [],
@@ -36,8 +31,7 @@ export class JwtModule {
         { provide: JwtConfig, useFactory: options.useFactory, inject: options.inject ?? [] },
         TokenSigner,
       ],
-      exports: [JwtConfig,
-        TokenSigner,],
+      exports: [JwtConfig, TokenSigner],
     }
   }
 }

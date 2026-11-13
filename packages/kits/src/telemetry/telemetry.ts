@@ -1,7 +1,5 @@
 /** 对数桶直方图的桶上边界（ms / 计数单位）：指数分布，覆盖告警场景量级 */
-const BUCKET_EDGES = [
-  1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096, 8192, 16384, 32768,
-]
+const BUCKET_EDGES = [1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096, 8192, 16384, 32768]
 
 /** 已结束窗口最多保留多少个；引擎长时间不取时丢弃最旧的，避免内存无限增长 */
 const MAX_COMPLETED_WINDOWS = 10
@@ -76,9 +74,7 @@ export class Telemetry {
   /** 已结束窗口队列（旧 → 新）；超过上限丢最旧的 */
   private readonly completed: TelemetryWindow[] = []
 
-  constructor(
-    private readonly windowSeconds = 60,
-  ) {
+  constructor(private readonly windowSeconds = 60) {
     if (!Number.isFinite(windowSeconds) || windowSeconds <= 0) {
       throw new Error(`Telemetry 窗口必须是正数，收到: ${windowSeconds}`)
     }
@@ -138,7 +134,7 @@ export class Telemetry {
   private stateOf(name: string): MetricState {
     let state = this.states.get(name)
     if (!state) {
-      state = { counter: 0, gauge: 0, histCounts: new Array(BUCKET_EDGES.length).fill(0), histSum: 0 }
+      state = { counter: 0, gauge: 0, histCounts: BUCKET_EDGES.map(() => 0), histSum: 0 }
       this.states.set(name, state)
     }
     return state

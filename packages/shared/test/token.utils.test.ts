@@ -26,9 +26,7 @@ describe('estimateContentTokens', () => {
   })
 
   it('图片 part 按固定成本计，**与 data URL 长度无关**', () => {
-    const small = estimateContentTokens([
-      { type: 'image' },
-    ])
+    const small = estimateContentTokens([{ type: 'image' }])
     const huge = estimateContentTokens([
       // 模拟一张 2MB 图片转成的 data URL：几百万字符（`EstimablePart` 只认 type，长度不影响结果）
       { type: 'image', dataUrl: `data:image/png;base64,${'A'.repeat(2_000_000)}` },

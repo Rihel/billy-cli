@@ -1,7 +1,16 @@
 import { describe, expect, it } from 'vitest'
-import { PlannerStore, PlannerTools, type PlanOutput } from '../../src/modules/ai/tools/planner/index.js'
+import {
+  PlannerStore,
+  PlannerTools,
+  type PlanOutput,
+} from '../../src/modules/ai/tools/planner/index.js'
 import { TOOL_KEYS } from '../../src/modules/ai/core/tools/tool-keys.js'
-import { buildToolStackDeps, makeToolContext, silentLogger, specByKey } from '../helpers/ai-tool-stack.js'
+import {
+  buildToolStackDeps,
+  makeToolContext,
+  silentLogger,
+  specByKey,
+} from '../helpers/ai-tool-stack.js'
 
 /**
  * `plan-reorder`（规划工具集之一）的单测：**改顺序**（`order` 必须是全部 id 的一个排列）
@@ -21,7 +30,10 @@ const SEED = {
 const build = (latestPlan: unknown = SEED) => {
   const deps = buildToolStackDeps()
   const timelines = { latestPlan: async () => latestPlan, findToolOutput: async () => null }
-  const spec = specByKey(new PlannerTools(new PlannerStore(timelines as never)), TOOL_KEYS.planReorder)
+  const spec = specByKey(
+    new PlannerTools(new PlannerStore(timelines as never)),
+    TOOL_KEYS.planReorder,
+  )
   const envelope = {
     conversationId: 'conv-1',
     parentRunId: 'run-1',
@@ -53,7 +65,9 @@ describe('plan-reorder（重排任务清单：顺序 + 就地修改）', () => {
     // 少了 b
     await expect(spec.exec({ order: ['a'] }, ctx as never)).rejects.toThrowError(/一一对应/)
     // 多了 c
-    await expect(spec.exec({ order: ['a', 'b', 'c'] }, ctx as never)).rejects.toThrowError(/一一对应/)
+    await expect(spec.exec({ order: ['a', 'b', 'c'] }, ctx as never)).rejects.toThrowError(
+      /一一对应/,
+    )
     // 有重复
     await expect(spec.exec({ order: ['a', 'a'] }, ctx as never)).rejects.toThrowError(/一一对应/)
     // 失败不改内存：随后的合法调用仍能读到干净状态
@@ -117,7 +131,9 @@ describe('plan-reorder（重排任务清单：顺序 + 就地修改）', () => {
     expect(spec.child).toBe('deny')
     expect(spec.params.safeParse({}).success).toBe(false)
     expect(spec.params.safeParse({ order: ['a', 'b'] }).success).toBe(true)
-    expect(spec.params.safeParse({ updates: [{ id: 'a', status: 'in_progress' }] }).success).toBe(true)
+    expect(spec.params.safeParse({ updates: [{ id: 'a', status: 'in_progress' }] }).success).toBe(
+      true,
+    )
     expect(typeof silentLogger.info).toBe('function')
   })
 })

@@ -54,7 +54,7 @@ export const browserHeaders = (
   'sec-ch-ua-mobile': '?0',
   'sec-ch-ua-platform': '"Windows"',
   // 调用方给的头**覆盖**默认值：要自定义 Referer / Cookie / Authorization 就靠这一层
-  ...(extra ?? {}),
+  ...extra,
 })
 
 /** 一次出网的预算（全部由工具配置夹好，这里只消费） */
@@ -148,7 +148,7 @@ const BLOCKED_V4: ReadonlyArray<readonly [string, number]> = [
 const inV4Range = (ip: number, base: string, bits: number): boolean => {
   const baseInt = ipv4ToInt(base) ?? 0
   const mask = bits === 0 ? 0 : (0xffffffff << (32 - bits)) >>> 0
-  return ((ip & mask) >>> 0) === ((baseInt & mask) >>> 0)
+  return (ip & mask) >>> 0 === (baseInt & mask) >>> 0
 }
 
 /** 是不是内网 / 回环 / 保留地址（认不出来的按不可访问处理：宁可拒绝，不要打穿） */
@@ -296,7 +296,11 @@ const pickHeaders = (headers: Headers): Record<string, string> => {
 /** 把 fetch 抛出的东西翻成"能读懂、可纠正"的结论（超时 / 连接失败 / 被中止） */
 const wrapFetchError = (error: unknown, url: string, timeoutMs: number): ToolDeniedError => {
   if (error instanceof ToolDeniedError) return error
-  const err = error as { name?: string; message?: string; cause?: { code?: string; message?: string } }
+  const err = error as {
+    name?: string
+    message?: string
+    cause?: { code?: string; message?: string }
+  }
   if (err?.name === 'AbortError' || err?.name === 'TimeoutError') {
     return denied(
       `请求 ${url} 超时（${timeoutMs}ms 内没有拿到完整响应）`,

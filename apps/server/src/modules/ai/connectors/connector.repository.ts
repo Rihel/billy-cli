@@ -116,32 +116,27 @@ export class ConnectorRepository {
       throw new Error(`工具 key 已被另一条连接器占用：${input.toolKey}`)
     }
 
-    await repo.update(
-      { id: existing.id },
-      {
-        remoteToolName: input.remoteToolName,
-        title: input.title,
-        description: input.description,
-        paramSchema: input.paramSchema,
-        lastSeenAt: new Date(),
-      } as never,
-    )
+    await repo.update({ id: existing.id }, {
+      remoteToolName: input.remoteToolName,
+      title: input.title,
+      description: input.description,
+      paramSchema: input.paramSchema,
+      lastSeenAt: new Date(),
+    } as never)
   }
 
   /** 对方已经不再提供的工具：停用但保留行（历史对话可追溯） */
   async disableMissing(connectorId: string, keepKeys: readonly string[]): Promise<number> {
     const repo = await this.toolRepo()
     const where =
-      keepKeys.length > 0
-        ? { connectorId, toolKey: In(keepKeys) }
-        : { connectorId: IsNull() }
-    const keep = new Set(
-      (await repo.find({ where })).map((row) => row.toolKey),
-    )
+      keepKeys.length > 0 ? { connectorId, toolKey: In(keepKeys) } : { connectorId: IsNull() }
+    const keep = new Set((await repo.find({ where })).map((row) => row.toolKey))
     const all = await repo.find({ where: { connectorId } })
     const missing = all.filter((row) => !keep.has(row.toolKey))
     if (missing.length === 0) return 0
-    await repo.update({ connectorId, toolKey: In(missing.map((row) => row.toolKey)) }, { enabled: false } as never)
+    await repo.update({ connectorId, toolKey: In(missing.map((row) => row.toolKey)) }, {
+      enabled: false,
+    } as never)
     return missing.length
   }
 

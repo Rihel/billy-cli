@@ -65,7 +65,8 @@ interface BaikeCard {
 
 const baike: SiteFallback = {
   name: '百度百科公开摘要接口',
-  match: (url) => /(^|\.)baike\.baidu\.com$/.test(url.hostname) && /^\/item\//.test(url.pathname),
+  match: (url) =>
+    /(^|\.)baike\.baidu\.com$/.test(url.hostname) && url.pathname.startsWith('/item/'),
   fetch: async (url, options) => {
     // `/item/HTTP/243074` → `HTTP`（后面那段是 lemmaId，接口只认词条名）
     const lemma = decodeURIComponent(url.pathname.replace(/^\/item\//, '').split('/')[0] ?? '')

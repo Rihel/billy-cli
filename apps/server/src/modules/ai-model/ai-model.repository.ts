@@ -1,8 +1,4 @@
-import {
-  Db,
-  pageWith,
-  type PageQueryResult,
-} from '@repo/kits'
+import { Db, pageWith, type PageQueryResult } from '@repo/kits'
 import { AiModelSource } from '@repo/shared'
 import type { AiModelListDto, AiProviderListDto } from '@repo/shared'
 import { Inject, Injectable } from '@nestjs/common'
@@ -71,7 +67,7 @@ export class AiProviderRepository {
   /** 分页（按创建时间倒序；`id` 兜底保证顺序稳定） */
   async page(input: AiProviderListDto): Promise<PageQueryResult<AiProviderEntity>> {
     const { page, size } = input
-    const repo = await this.repo()
+    const repo = this.repo()
     const builder = repo
       .createQueryBuilder('p')
       .orderBy('p.created_at', 'DESC')
@@ -81,19 +77,19 @@ export class AiProviderRepository {
   }
 
   async findById(id: string): Promise<AiProviderEntity | null> {
-    const repo = await this.repo()
+    const repo = this.repo()
     return repo.findOneBy({ id })
   }
 
   /** 按展示名查找（唯一性校验用；软删行不参与） */
   async findByName(name: string): Promise<AiProviderEntity | null> {
-    const repo = await this.repo()
+    const repo = this.repo()
     return repo.findOneBy({ name })
   }
 
   /** 按 slug 查找（slug 生成 / 唯一性校验用） */
   async findBySlug(slug: string): Promise<AiProviderEntity | null> {
-    const repo = await this.repo()
+    const repo = this.repo()
     return repo.findOneBy({ slug })
   }
 
@@ -104,17 +100,17 @@ export class AiProviderRepository {
    * 时执行，否则人主动删掉全部供应商后，一次重启就会把它们原样种回来。
    */
   async countIncludingDeleted(): Promise<number> {
-    const repo = await this.repo()
+    const repo = this.repo()
     return repo.count({ withDeleted: true })
   }
 
   async create(data: DeepPartial<AiProviderEntity>): Promise<AiProviderEntity> {
-    const repo = await this.repo()
+    const repo = this.repo()
     return repo.save(repo.create(data))
   }
 
   async update(id: string, data: DeepPartial<AiProviderEntity>): Promise<AiProviderEntity | null> {
-    const repo = await this.repo()
+    const repo = this.repo()
     const existing = await repo.findOneBy({ id })
     if (!existing) return null
     Object.assign(existing, data)
@@ -128,7 +124,7 @@ export class AiProviderRepository {
    * 才会把 `deleted_by` 写上（本工程审计列的既定做法）。
    */
   async softDelete(id: string): Promise<void> {
-    const repo = await this.repo()
+    const repo = this.repo()
     const existing = await repo.findOneBy({ id })
     if (!existing) return
     await repo.softRemove(existing)
@@ -150,7 +146,7 @@ export class AiModelRepository {
   /** 分页（按 `modelKey` 正序；`keyword` 走 ILIKE 过滤 `model_key`） */
   async page(input: AiModelListDto): Promise<PageQueryResult<AiModelEntity>> {
     const { page, size, providerId, keyword } = input
-    const repo = await this.repo()
+    const repo = this.repo()
     const builder = repo
       .createQueryBuilder('m')
       .where('m.provider_id = :providerId', { providerId })
@@ -163,25 +159,25 @@ export class AiModelRepository {
   }
 
   async findById(id: string): Promise<AiModelEntity | null> {
-    const repo = await this.repo()
+    const repo = this.repo()
     return repo.findOneBy({ id })
   }
 
   /** 同步锚点：`(provider_id, model_key)` 查一行（软删行不参与） */
   async findByProviderAndKey(providerId: string, modelKey: string): Promise<AiModelEntity | null> {
-    const repo = await this.repo()
+    const repo = this.repo()
     return repo.findOneBy({ providerId, modelKey })
   }
 
   /** 某供应商下的全部模型（软删行不计）。同步流程用它一次性取回，避免逐个查询 */
   async listByProvider(providerId: string): Promise<AiModelEntity[]> {
-    const repo = await this.repo()
+    const repo = this.repo()
     return repo.find({ where: { providerId }, order: { modelKey: 'ASC' } })
   }
 
   /** 某供应商下的模型数（软删行不计） */
   async countModels(providerId: string): Promise<number> {
-    const repo = await this.repo()
+    const repo = this.repo()
     return repo.count({ where: { providerId } })
   }
 
@@ -191,7 +187,7 @@ export class AiModelRepository {
    * **一次 group by 查完**，不要在供应商列表上逐个 `countModels` —— 那是标准的 N+1。
    */
   async countModelsByProvider(): Promise<Map<string, number>> {
-    const repo = await this.repo()
+    const repo = this.repo()
     const rows = await repo
       .createQueryBuilder('m')
       .select('m.provider_id', 'providerId')
@@ -202,12 +198,12 @@ export class AiModelRepository {
   }
 
   async create(data: DeepPartial<AiModelEntity>): Promise<AiModelEntity> {
-    const repo = await this.repo()
+    const repo = this.repo()
     return repo.save(repo.create(data))
   }
 
   async update(id: string, data: DeepPartial<AiModelEntity>): Promise<AiModelEntity | null> {
-    const repo = await this.repo()
+    const repo = this.repo()
     const existing = await repo.findOneBy({ id })
     if (!existing) return null
     Object.assign(existing, data)
@@ -228,7 +224,7 @@ export class AiModelRepository {
    *   返回 `unchanged`。
    */
   async upsertSyncedModel(input: UpsertSyncedModelInput): Promise<UpsertSyncedModelResult> {
-    const repo = await this.repo()
+    const repo = this.repo()
     const existing = await repo.findOneBy({
       providerId: input.providerId,
       modelKey: input.modelKey,
@@ -304,7 +300,7 @@ export class AiModelRepository {
    * 计入只会让这个数字永远非零、失去信号意义。
    */
   async modelsNotSeenSince(providerId: string, syncedAt: Date): Promise<number> {
-    const repo = await this.repo()
+    const repo = this.repo()
     return repo
       .createQueryBuilder('m')
       .where('m.provider_id = :providerId', { providerId })
@@ -315,7 +311,7 @@ export class AiModelRepository {
 
   /** 软删某供应商下的全部模型（`provider/remove` 用；审计列由 AuditSubscriber 写） */
   async softDeleteByProviderId(providerId: string): Promise<void> {
-    const repo = await this.repo()
+    const repo = this.repo()
     const rows = await repo.findBy({ providerId })
     if (rows.length === 0) return
     await repo.softRemove(rows)
@@ -323,7 +319,7 @@ export class AiModelRepository {
 
   /** 软删单个模型 */
   async softDelete(id: string): Promise<void> {
-    const repo = await this.repo()
+    const repo = this.repo()
     const existing = await repo.findOneBy({ id })
     if (!existing) return
     await repo.softRemove(existing)
@@ -338,7 +334,7 @@ export class AiModelRepository {
    * 也不为此引入虚拟 relation），所以 join 条件只用于筛选、供应商行单独一次 `In(...)` 取回。
    */
   async listEnabledWithProvider(): Promise<EnabledModelWithProvider[]> {
-    const repo = await this.repo()
+    const repo = this.repo()
     const models = await repo
       .createQueryBuilder('m')
       .innerJoin(AiProviderEntity, 'p', 'p.id = m.provider_id AND p.deleted_at IS NULL')

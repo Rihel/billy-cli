@@ -1,7 +1,7 @@
-"use client"
+'use client'
 
-import { cn } from "#lib/utils.ts"
-import { Loader2Icon, TriangleAlertIcon } from "lucide-react"
+import { cn } from '#lib/utils.ts'
+import { Loader2Icon, TriangleAlertIcon } from 'lucide-react'
 
 /**
  * 围栏共用的三块外壳：生成中占位、错误卡、源码折叠。
@@ -23,7 +23,7 @@ export interface FencePendingProps {
 export const FencePending = ({ language, className }: FencePendingProps) => (
   <div
     className={cn(
-      "my-4 flex items-center gap-2 rounded-xl border border-border border-dashed bg-sidebar px-3 py-4 text-muted-foreground text-xs",
+      'my-4 flex items-center gap-2 rounded-xl border border-border border-dashed bg-sidebar px-3 py-4 text-muted-foreground text-xs',
       className,
     )}
     data-fence-pending={language}
@@ -43,7 +43,7 @@ export interface FenceErrorProps {
 /** 渲染失败：把原因说清楚，并把原文交给调用方一起展示（不静默丢内容） */
 export const FenceError = ({ language, message, className }: FenceErrorProps) => (
   <div
-    className={cn("my-4 rounded-xl border border-border bg-sidebar p-3", className)}
+    className={cn('my-4 rounded-xl border border-border bg-sidebar p-3', className)}
     data-fence-error={language}
   >
     <p className="flex items-center gap-2 text-sm text-destructive">
@@ -59,7 +59,7 @@ export interface FenceSourceProps {
 }
 
 /** 折叠的源码：围栏渲染成功时也留一条"看它到底写了什么"的路 */
-export const FenceSource = ({ code, label = "源码" }: FenceSourceProps) => (
+export const FenceSource = ({ code, label = '源码' }: FenceSourceProps) => (
   <details className="mt-2">
     <summary className="cursor-pointer select-none text-muted-foreground text-xs hover:text-foreground">
       {label}

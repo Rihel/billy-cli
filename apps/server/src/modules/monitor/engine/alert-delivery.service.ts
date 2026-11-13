@@ -1,10 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common'
-import {
-  AppLogger,
-  Notifier,
-  type NotifyChannel,
-  type NotifyPayload,
-} from '@repo/kits'
+import { AppLogger, Notifier, type NotifyChannel, type NotifyPayload } from '@repo/kits'
 import type { MonitorRuleConfig } from '@repo/shared'
 import type { MonitorAlertEntity } from '../../../database/entities/monitor-alert-entity.js'
 import type { MonitorRuleEntity } from '../../../database/entities/monitor-rule-entity.js'
@@ -161,7 +156,9 @@ export class AlertDeliveryService {
       `窗口：${window.start.toISOString()} ~ ${window.end.toISOString()}`,
     ]
     if (config.operator && config.threshold !== undefined) {
-      lines.push(`当前值：${hit.value}（阈值 ${operatorLabel(config.operator)} ${config.threshold}）`)
+      lines.push(
+        `当前值：${hit.value}（阈值 ${operatorLabel(config.operator)} ${config.threshold}）`,
+      )
     } else {
       lines.push(`当前值：${hit.value}`)
     }

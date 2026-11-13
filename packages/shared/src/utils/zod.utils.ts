@@ -24,9 +24,7 @@ const fieldLabels: Record<string, string> = {
 
 function fieldName(path: (string | number)[]): string {
   const last = path[path.length - 1]
-  return typeof last === 'string' && fieldLabels[last]
-    ? fieldLabels[last]
-    : String(last)
+  return typeof last === 'string' && fieldLabels[last] ? fieldLabels[last] : String(last)
 }
 
 /**

@@ -95,7 +95,7 @@ export function ModelPicker({
       <Button
         variant="destructive"
         size="xs"
-        onClick={() => void refetch()}
+        onClick={refetch}
         title={error instanceof Error ? error.message : String(error)}
       >
         模型清单加载失败，点击重试
@@ -103,7 +103,11 @@ export function ModelPicker({
     )
   }
   if (isFetching && models.length === 0) {
-    return <Badge variant="outline" className="text-muted-foreground">正在加载模型…</Badge>
+    return (
+      <Badge variant="outline" className="text-muted-foreground">
+        正在加载模型…
+      </Badge>
+    )
   }
   if (models.length === 0) {
     return (

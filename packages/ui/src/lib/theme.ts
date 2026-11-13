@@ -34,10 +34,7 @@ export function applyThemeClass(dark: boolean): void {
 }
 
 /** 读取已存储的模式；无值 / 值非法 / 存储不可用（隐私模式）时回落 `defaultMode` */
-export function readStoredMode(
-  storageKey: string,
-  defaultMode: ThemeMode,
-): ThemeMode {
+export function readStoredMode(storageKey: string, defaultMode: ThemeMode): ThemeMode {
   try {
     const stored = localStorage.getItem(storageKey)
     if (stored === 'light' || stored === 'dark' || stored === 'system') {

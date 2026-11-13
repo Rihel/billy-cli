@@ -22,10 +22,7 @@ import { describe, expect, it } from 'vitest'
  * 注：ui 包默认是 jsdom 环境，而 `import.meta.url` 在 jsdom 下不是 `file://`，
  * `fileURLToPath` 会抛 `The URL must be of scheme file` —— 故标 node 环境。
  */
-const css = readFileSync(
-  fileURLToPath(new URL('../src/globals.css', import.meta.url)),
-  'utf8',
-)
+const css = readFileSync(fileURLToPath(new URL('../src/globals.css', import.meta.url)), 'utf8')
 
 /** 取出某个顶层选择器块的内容（块内无嵌套大括号，故非贪婪匹配到行首右括号即可） */
 function blockOf(selector: string): string {

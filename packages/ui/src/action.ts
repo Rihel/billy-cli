@@ -10,9 +10,7 @@ export type ActionFailure = {
 
 export type ActionResponse<TData> = ActionSuccess<TData> | ActionFailure
 
-export type Action<TInput, TData> = (
-  input: TInput,
-) => Promise<ActionResponse<TData>>
+export type Action<TInput, TData> = (input: TInput) => Promise<ActionResponse<TData>>
 
 export type ActionHandler<TInput, TData> = (input: TInput) => Promise<TData>
 
@@ -42,9 +40,7 @@ export function defineAction<TInput, TData>(
       await options.onError?.(error)
       return {
         ok: false,
-        error:
-          options.getError?.(error) ??
-          getErrorMessage(error, options.fallbackError),
+        error: options.getError?.(error) ?? getErrorMessage(error, options.fallbackError),
       }
     }
   }

@@ -22,8 +22,10 @@ import { ToolResultStore } from '../../src/modules/ai/core/tools/tool-result.sto
 import { systemToolClock } from '../../src/modules/ai/core/tools/tool.clock.js'
 import { MemoryToolRateCounter } from './tool-kit-ports.js'
 import { ToolConfigService } from '../../src/modules/ai/core/tools/tool.config.service.js'
-import type { ToolConfigRow, ToolConfigSource } from '../../src/modules/ai/core/tools/tool.config.ports.js'
-import { TOOL_CONFIG_SOURCE, TOOL_ENV_CAPS } from '../../src/modules/ai/core/tools/tool.config.ports.js'
+import type {
+  ToolConfigRow,
+  ToolConfigSource,
+} from '../../src/modules/ai/core/tools/tool.config.ports.js'
 import type { ToolEnvCaps, ToolSpec } from '../../src/modules/ai/core/tools/tools.types.js'
 
 /**
@@ -97,7 +99,9 @@ export interface ToolStackOptions {
   /** 配置来源（默认内存：全部走代码默认值） */
   source?: ToolConfigSource
   /** 时间线（`ToolResultStore` 的兜底） */
-  timelines?: { findToolOutput: (conversationId: string, toolCallId: string) => Promise<string | null> }
+  timelines?: {
+    findToolOutput: (conversationId: string, toolCallId: string) => Promise<string | null>
+  }
   /** 插件（默认不装插件：单测工具本体时不想被开关 / 限流挡） */
   plugins?: readonly import('../../src/modules/ai/core/tools/tools.types.js').ToolPlugin[]
 }
@@ -111,9 +115,7 @@ export interface ToolStackOptions {
 export const buildToolStackDeps = (options: ToolStackOptions = {}) => {
   const source = options.source ?? new MemoryToolConfigSource()
   const caps = options.caps ?? TEST_TOOL_ENV_CAPS
-  const results = new ToolResultStore(
-    (options.timelines ?? fakeTimelineRepository()) as never,
-  )
+  const results = new ToolResultStore((options.timelines ?? fakeTimelineRepository()) as never)
   const metas = new ToolCallMetaStore()
   const counter = new MemoryToolRateCounter()
   const config = new ToolConfigService(silentLogger as never, source, caps)
@@ -121,19 +123,17 @@ export const buildToolStackDeps = (options: ToolStackOptions = {}) => {
    * **与生产同序的插件链**（设计 §5.4）：测试要验的就是这条链，
    * 所以默认装齐 9 个（想验"没有插件时工具本体如何"再显式传 `plugins: []`）。
    */
-  const plugins =
-    options.plugins ??
-    [
-      new EnabledPlugin(),
-      new ScopePlugin(),
-      new RateLimitPlugin(counter, silentLogger as never),
-      new ValidatePlugin(),
-      new PrecheckPlugin(),
-      new AuditStartPlugin(),
-      new RedactPlugin(silentLogger as never),
-      new PaginatePlugin(results, caps, silentLogger as never),
-      new AuditEndPlugin(metas, silentLogger as never),
-    ]
+  const plugins = options.plugins ?? [
+    new EnabledPlugin(),
+    new ScopePlugin(),
+    new RateLimitPlugin(counter, silentLogger as never),
+    new ValidatePlugin(),
+    new PrecheckPlugin(),
+    new AuditStartPlugin(),
+    new RedactPlugin(silentLogger as never),
+    new PaginatePlugin(results, caps, silentLogger as never),
+    new AuditEndPlugin(metas, silentLogger as never),
+  ]
   return { source, caps, results, metas, counter, config, clock: systemToolClock, plugins }
 }
 

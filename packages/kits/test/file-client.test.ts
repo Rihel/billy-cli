@@ -6,8 +6,7 @@ import { FileClient } from '../src/notification/file/file.client.js'
 import type { NotifyConfig } from '../src/notification/notify.config.js'
 import { testLogger } from './helpers/logger.js'
 
-const createClient = (config: NotifyConfig): FileClient =>
-  new FileClient(config, testLogger())
+const createClient = (config: NotifyConfig): FileClient => new FileClient(config, testLogger())
 
 describe('FileClient（文件输出，默认兜底通道）', () => {
   let tempDir: string

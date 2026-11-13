@@ -4,9 +4,7 @@ export const GetStorageUploadPresignedUrlSchema = z.object({
   key: z.string(),
   access: z.string().optional(),
 })
-export type GetStorageUploadPresignedUrlDto = z.infer<
-  typeof GetStorageUploadPresignedUrlSchema
->
+export type GetStorageUploadPresignedUrlDto = z.infer<typeof GetStorageUploadPresignedUrlSchema>
 
 export const GetStorageDownloadUrlSchema = z.object({
   key: z.string(),
@@ -22,18 +20,19 @@ export const GetStorageDownloadUrlSchema = z.object({
    * 分享链路里 server → Next 的预签名只用一次，会压到 300s；
    * 既有调用方不传，行为不变。
    */
-  expiresIn: z.number().int().positive().max(7 * 24 * 60 * 60).optional(),
+  expiresIn: z
+    .number()
+    .int()
+    .positive()
+    .max(7 * 24 * 60 * 60)
+    .optional(),
 })
-export type GetStorageDownloadUrlDto = z.infer<
-  typeof GetStorageDownloadUrlSchema
->
+export type GetStorageDownloadUrlDto = z.infer<typeof GetStorageDownloadUrlSchema>
 
 export const GetTemporaryCredentialsSchema = z.object({
   userId: z.string(),
 })
-export type GetTemporaryCredentialsDto = z.infer<
-  typeof GetTemporaryCredentialsSchema
->
+export type GetTemporaryCredentialsDto = z.infer<typeof GetTemporaryCredentialsSchema>
 
 export const StoragePresignedUrlSchema = z.object({
   key: z.string(),

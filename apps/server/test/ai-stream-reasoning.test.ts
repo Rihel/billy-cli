@@ -1,8 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import {
-  reasoningSafeTransform,
-  type UiChunk,
-} from '../src/modules/ai/mastra/stream.adapter.js'
+import { reasoningSafeTransform, type UiChunk } from '../src/modules/ai/mastra/stream.adapter.js'
 
 /**
  * 前端 500 的根因：AI SDK 的 UI Message Stream 收到 `reasoning-delta` 时，

@@ -53,7 +53,10 @@ export default function MarkdownOverviewPage() {
           >
             <h2 className="font-heading text-base font-semibold tracking-tight text-foreground group-hover:text-brand">
               {demo.title}
-              <span aria-hidden="true" className="ml-1 text-muted-foreground transition-transform group-hover:translate-x-0.5">
+              <span
+                aria-hidden="true"
+                className="ml-1 text-muted-foreground transition-transform group-hover:translate-x-0.5"
+              >
                 →
               </span>
             </h2>

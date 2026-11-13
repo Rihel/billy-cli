@@ -261,7 +261,9 @@ export class AiModelService {
     const { endpoint } = listing
 
     // 去重（供应商偶尔返回重复 id）：计数与 upsert 都以唯一 modelKey 为准
-    const uniqueModels = [...new Map(listing.models.map((model) => [model.modelKey, model])).values()]
+    const uniqueModels = [
+      ...new Map(listing.models.map((model) => [model.modelKey, model])).values(),
+    ]
     let created = 0
     let updated = 0
     let unchanged = 0
@@ -407,10 +409,14 @@ export class AiModelService {
      */
     if (input.mode !== undefined) changes.mode = input.mode
     if (input.inputModalities !== undefined) {
-      changes.inputModalities = input.inputModalities ? [...input.inputModalities] : input.inputModalities
+      changes.inputModalities = input.inputModalities
+        ? [...input.inputModalities]
+        : input.inputModalities
     }
     if (input.outputModalities !== undefined) {
-      changes.outputModalities = input.outputModalities ? [...input.outputModalities] : input.outputModalities
+      changes.outputModalities = input.outputModalities
+        ? [...input.outputModalities]
+        : input.outputModalities
     }
 
     const record = await this.models.update(existing.id, changes)
@@ -539,7 +545,10 @@ export class AiModelService {
     }
   }
 
-  private toAvailableModel(model: AiModelEntity, provider: AiProviderEntity): AiAvailableModelModel {
+  private toAvailableModel(
+    model: AiModelEntity,
+    provider: AiProviderEntity,
+  ): AiAvailableModelModel {
     return {
       id: model.id,
       modelRef: `${provider.slug}/${model.modelKey}`,

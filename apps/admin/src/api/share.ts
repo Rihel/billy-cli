@@ -21,15 +21,11 @@ type ResolvedShare = {
 }
 
 /** 允许浏览器内联渲染的类型；其余一律当附件下载（HTML / SVG 同域内联 = 存储型 XSS） */
-const INLINE_SAFE: ((mediaType: string) => boolean) = (mediaType) => {
+const INLINE_SAFE: (mediaType: string) => boolean = (mediaType) => {
   if (mediaType.startsWith('image/')) return mediaType !== 'image/svg+xml'
   if (mediaType.startsWith('video/')) return true
   if (mediaType.startsWith('audio/')) return true
-  return (
-    mediaType === 'application/pdf' ||
-    mediaType === 'text/plain' ||
-    mediaType === 'text/csv'
-  )
+  return mediaType === 'application/pdf' || mediaType === 'text/plain' || mediaType === 'text/csv'
 }
 
 const contentDisposition = (mediaType: string, filename: string): string => {

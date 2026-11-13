@@ -1,9 +1,9 @@
-"use client"
+'use client'
 
-import { Button } from "#components/ui/button.tsx"
-import { cn } from "#lib/utils.ts"
-import { CheckIcon, ChevronRightIcon, CopyIcon } from "lucide-react"
-import { memo, useCallback, useMemo, useState } from "react"
+import { Button } from '#components/ui/button.tsx'
+import { cn } from '#lib/utils.ts'
+import { CheckIcon, ChevronRightIcon, CopyIcon } from 'lucide-react'
+import { memo, useCallback, useMemo, useState } from 'react'
 
 /**
  * JSON 查看器：把一段 JSON 渲染成可折叠的树，而不是一大块高亮代码。
@@ -26,11 +26,9 @@ const MAX_TREE_ENTRIES = 2_000
 /** 单行字符串的默认截断长度，点一下可以展开 */
 const STRING_PREVIEW_LENGTH = 120
 
-export type JsonValueKind = "string" | "number" | "boolean" | "null" | "array" | "object"
+export type JsonValueKind = 'string' | 'number' | 'boolean' | 'null' | 'array' | 'object'
 
-export type JsonParseResult =
-  | { ok: true; value: unknown }
-  | { ok: false; error: string }
+export type JsonParseResult = { ok: true; value: unknown } | { ok: false; error: string }
 
 /** 解析 JSON 文本：失败时给出可读原因（带上位置），不抛错 */
 export const parseJsonText = (text: string): JsonParseResult => {
@@ -44,40 +42,40 @@ export const parseJsonText = (text: string): JsonParseResult => {
 
 /** 值的类型标签（树里决定怎么画、摘要怎么拼） */
 export const jsonValueKind = (value: unknown): JsonValueKind => {
-  if (value === null) return "null"
-  if (Array.isArray(value)) return "array"
+  if (value === null) return 'null'
+  if (Array.isArray(value)) return 'array'
   switch (typeof value) {
-    case "string":
-      return "string"
-    case "number":
-      return "number"
-    case "boolean":
-      return "boolean"
-    case "object":
-      return "object"
+    case 'string':
+      return 'string'
+    case 'number':
+      return 'number'
+    case 'boolean':
+      return 'boolean'
+    case 'object':
+      return 'object'
     default:
       // undefined / function / symbol 不是合法 JSON，兜底按 null 处理
-      return "null"
+      return 'null'
   }
 }
 
 /** 是不是容器（对象或数组）：只有容器才有折叠 */
 export const isJsonContainer = (value: unknown): value is Record<string, unknown> | unknown[] => {
   const kind = jsonValueKind(value)
-  return kind === "object" || kind === "array"
+  return kind === 'object' || kind === 'array'
 }
 
 /** 容器/字符串的一行摘要，例如 `{4 个字段}`、`[3 项]`、`"https://…"` */
 export const summarizeJsonValue = (value: unknown, limit = STRING_PREVIEW_LENGTH): string => {
   const kind = jsonValueKind(value)
-  if (kind === "array") return `[${(value as unknown[]).length} 项]`
-  if (kind === "object") return `{${Object.keys(value as Record<string, unknown>).length} 个字段}`
-  if (kind === "string") {
+  if (kind === 'array') return `[${(value as unknown[]).length} 项]`
+  if (kind === 'object') return `{${Object.keys(value as Record<string, unknown>).length} 个字段}`
+  if (kind === 'string') {
     const text = value as string
-    const single = text.replace(/\s+/g, " ").trim()
+    const single = text.replace(/\s+/g, ' ').trim()
     return single.length > limit ? `${single.slice(0, limit)}…` : single
   }
-  if (kind === "null") return "null"
+  if (kind === 'null') return 'null'
   return String(value)
 }
 
@@ -113,7 +111,7 @@ const PrimitiveText = ({ value }: { value: unknown }) => {
   const kind = jsonValueKind(value)
   const [expanded, setExpanded] = useState(false)
 
-  if (kind === "string") {
+  if (kind === 'string') {
     const text = value as string
     const tooLong = text.length > STRING_PREVIEW_LENGTH
     const shown = tooLong && !expanded ? `${text.slice(0, STRING_PREVIEW_LENGTH)}…` : text
@@ -126,16 +124,18 @@ const PrimitiveText = ({ value }: { value: unknown }) => {
             onClick={() => setExpanded((previous) => !previous)}
             type="button"
           >
-            {expanded ? "收起" : `展开（${text.length} 字）`}
+            {expanded ? '收起' : `展开（${text.length} 字）`}
           </button>
         ) : null}
       </span>
     )
   }
 
-  if (kind === "null") return <span className="text-muted-foreground italic">null</span>
-  if (kind === "number") return <span className="tabular-nums text-foreground">{String(value)}</span>
-  if (kind === "boolean") return <span className="font-medium text-foreground">{String(value)}</span>
+  if (kind === 'null') return <span className="text-muted-foreground italic">null</span>
+  if (kind === 'number')
+    return <span className="tabular-nums text-foreground">{String(value)}</span>
+  if (kind === 'boolean')
+    return <span className="font-medium text-foreground">{String(value)}</span>
   return <span className="text-foreground">{String(value)}</span>
 }
 
@@ -166,20 +166,21 @@ const JsonNode = memo(function JsonNode({ name, value, depth, defaultExpandDepth
         {container ? (
           <button
             aria-expanded={open}
-            aria-label={open ? "收起" : "展开"}
+            aria-label={open ? '收起' : '展开'}
             className="mt-0.5 flex size-4 shrink-0 items-center justify-center text-muted-foreground hover:text-foreground"
             onClick={() => setOpen((previous) => !previous)}
             type="button"
           >
-            <ChevronRightIcon className={cn("transition-transform", open && "rotate-90")} size={12} />
+            <ChevronRightIcon
+              className={cn('transition-transform', open && 'rotate-90')}
+              size={12}
+            />
           </button>
         ) : (
           <span className="w-4 shrink-0" />
         )}
 
-        {name === null ? null : (
-          <span className="shrink-0 text-muted-foreground">{name}:</span>
-        )}
+        {name === null ? null : <span className="shrink-0 text-muted-foreground">{name}:</span>}
 
         {container ? (
           <button
@@ -188,7 +189,7 @@ const JsonNode = memo(function JsonNode({ name, value, depth, defaultExpandDepth
             type="button"
           >
             {summarizeJsonValue(value)}
-            {open ? null : " …"}
+            {open ? null : ' …'}
           </button>
         ) : (
           <PrimitiveText value={value} />
@@ -236,20 +237,20 @@ export const JsonView = ({
 }: JsonViewProps) => {
   const parsed = useMemo(() => {
     if (value !== undefined) return { ok: true as const, value }
-    return parseJsonText(text ?? "")
+    return parseJsonText(text ?? '')
   }, [text, value])
 
-  const [view, setView] = useState<"tree" | "raw">("tree")
+  const [view, setView] = useState<'tree' | 'raw'>('tree')
   /**
    * 展开/收起全部靠整棵树重挂载，避免每个节点各记一份状态：
    * `default` 用传入的层数、`all` 铺到底、`none` 只留根节点一行。
    */
-  const [treeMode, setTreeMode] = useState<"default" | "all" | "none">("default")
+  const [treeMode, setTreeMode] = useState<'default' | 'all' | 'none'>('default')
   const [treeKey, setTreeKey] = useState(0)
   const [copied, setCopied] = useState(false)
 
   const formatted = useMemo(
-    () => (parsed.ok ? formatJsonValue(parsed.value) : (text ?? "")),
+    () => (parsed.ok ? formatJsonValue(parsed.value) : (text ?? '')),
     [parsed, text],
   )
 
@@ -264,7 +265,10 @@ export const JsonView = ({
 
   if (!parsed.ok) {
     return (
-      <div className={cn("rounded-xl border border-border bg-sidebar p-3", className)} data-json-view="error">
+      <div
+        className={cn('rounded-xl border border-border bg-sidebar p-3', className)}
+        data-json-view="error"
+      >
         <p className="text-sm text-destructive">这段 JSON 解析不了：{parsed.error}</p>
         <pre className="mt-2 max-h-60 overflow-auto whitespace-pre-wrap break-all font-mono text-[0.75rem] leading-relaxed">
           {text}
@@ -277,12 +281,12 @@ export const JsonView = ({
     formatted.length > MAX_TREE_TEXT_LENGTH ||
     // 计数到上限就停，所以这里用 `>=`：正好等于上限也按"过大"处理
     countJsonEntries(parsed.value, MAX_TREE_ENTRIES) >= MAX_TREE_ENTRIES
-  const showTree = view === "tree" && !tooBig
+  const showTree = view === 'tree' && !tooBig
 
   return (
     <div
-      className={cn("overflow-hidden rounded-xl border border-border bg-sidebar", className)}
-      data-json-view={showTree ? "tree" : "raw"}
+      className={cn('overflow-hidden rounded-xl border border-border bg-sidebar', className)}
+      data-json-view={showTree ? 'tree' : 'raw'}
     >
       <div className="flex flex-wrap items-center gap-1 border-border border-b px-2 py-1">
         <span className="font-mono text-muted-foreground text-xs lowercase">json</span>
@@ -291,7 +295,7 @@ export const JsonView = ({
             <>
               <Button
                 onClick={() => {
-                  setTreeMode("all")
+                  setTreeMode('all')
                   setTreeKey((key) => key + 1)
                 }}
                 size="sm"
@@ -301,7 +305,7 @@ export const JsonView = ({
               </Button>
               <Button
                 onClick={() => {
-                  setTreeMode("none")
+                  setTreeMode('none')
                   setTreeKey((key) => key + 1)
                 }}
                 size="sm"
@@ -314,24 +318,28 @@ export const JsonView = ({
           {tooBig ? (
             <span className="px-1 text-muted-foreground text-xs">内容过大，按原文显示</span>
           ) : (
-            <Button onClick={() => setView(showTree ? "raw" : "tree")} size="sm" variant="ghost">
-              {showTree ? "原文" : "树形"}
+            <Button onClick={() => setView(showTree ? 'raw' : 'tree')} size="sm" variant="ghost">
+              {showTree ? '原文' : '树形'}
             </Button>
           )}
           <Button aria-label="复制 JSON" onClick={copy} size="sm" variant="ghost">
             {copied ? <CheckIcon /> : <CopyIcon />}
-            {copied ? "已复制" : "复制"}
+            {copied ? '已复制' : '复制'}
           </Button>
         </div>
       </div>
 
       {showTree ? (
-        <div className="overflow-auto p-2 font-mono text-[0.75rem] leading-relaxed" style={{ maxHeight }} key={treeKey}>
+        <div
+          className="overflow-auto p-2 font-mono text-[0.75rem] leading-relaxed"
+          style={{ maxHeight }}
+          key={treeKey}
+        >
           <JsonNode
             defaultExpandDepth={
-              treeMode === "all"
+              treeMode === 'all'
                 ? Number.POSITIVE_INFINITY
-                : treeMode === "none"
+                : treeMode === 'none'
                   ? 0
                   : defaultExpandDepth
             }

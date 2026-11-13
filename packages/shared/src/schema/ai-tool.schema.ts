@@ -19,9 +19,7 @@ import { BasePaginateSchema } from './base.schema'
 const dateField = z.union([z.string(), z.date()]).optional()
 
 /** 类别取值（字典是唯一事实源） */
-export const ToolCategoryField = z.enum(
-  ToolCategory.values as unknown as [string, ...string[]],
-)
+export const ToolCategoryField = z.enum(ToolCategory.values as unknown as [string, ...string[]])
 /** 作用域取值 */
 export const ToolScopeField = z.enum(ToolScope.values as unknown as [string, ...string[]])
 /** 来源取值 */

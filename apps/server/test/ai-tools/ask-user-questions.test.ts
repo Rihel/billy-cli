@@ -115,6 +115,8 @@ describe('ask-user-questions', () => {
     )
     expect(text).toBeUndefined()
     expect(calls).toHaveLength(1)
-    expect(calls[0]).toMatchObject({ questions: expect.arrayContaining([expect.objectContaining({ id: 'goal' })]) })
+    expect(calls[0]).toMatchObject({
+      questions: expect.arrayContaining([expect.objectContaining({ id: 'goal' })]),
+    })
   })
 })

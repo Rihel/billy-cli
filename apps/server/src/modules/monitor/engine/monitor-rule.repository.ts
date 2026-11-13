@@ -44,7 +44,10 @@ export class MonitorRuleRepository {
     })
   }
 
-  async createFromDefinition(definition: RuleType, definitionVersion: string): Promise<MonitorRuleEntity> {
+  async createFromDefinition(
+    definition: RuleType,
+    definitionVersion: string,
+  ): Promise<MonitorRuleEntity> {
     const repo = await this.repo()
     return repo.save(
       repo.create({
@@ -91,7 +94,9 @@ export class MonitorRuleRepository {
     enabled?: boolean,
   ): Promise<MonitorRuleEntity | null> {
     const repo = await this.repo()
-    const patch: Partial<MonitorRuleEntity> = { config: config as unknown as Record<string, unknown> }
+    const patch: Partial<MonitorRuleEntity> = {
+      config: config as unknown as Record<string, unknown>,
+    }
     if (enabled !== undefined) patch.enabled = enabled
     await repo.update({ ruleKey }, patch as QueryDeepPartialEntity<MonitorRuleEntity>)
     return this.findByKey(ruleKey)
@@ -102,7 +107,10 @@ export class MonitorRuleRepository {
     const all = await repo.find({ where: { source: 'code' } })
     const missing = all.filter((row) => !keys.includes(row.ruleKey))
     if (missing.length === 0) return []
-    await repo.update({ id: In(missing.map((row) => row.id)) }, { deprecated: true, enabled: false })
+    await repo.update(
+      { id: In(missing.map((row) => row.id)) },
+      { deprecated: true, enabled: false },
+    )
     return missing
   }
 

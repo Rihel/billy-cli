@@ -81,8 +81,7 @@ const reasonRequiredMessage = (detail: string): string =>
 const describeIssues = (issues: readonly z.core.$ZodIssue[]): string =>
   issues
     .map(
-      (issue) =>
-        `${issue.path.map((part) => String(part)).join('.') || '(根)'}: ${issue.message}`,
+      (issue) => `${issue.path.map((part) => String(part)).join('.') || '(根)'}: ${issue.message}`,
     )
     .join('；')
 
@@ -104,10 +103,15 @@ export const checkToolCall = (
         ? (rawInput as Record<string, unknown>)
         : {}
     const value = payload[TOOL_CALL_REASON_FIELD]
-    if (typeof value !== 'string') return { ok: false, message: reasonRequiredMessage('reason 缺失或不是字符串') }
-    if (value.trim().length === 0) return { ok: false, message: reasonRequiredMessage('reason 不能是空白') }
+    if (typeof value !== 'string')
+      return { ok: false, message: reasonRequiredMessage('reason 缺失或不是字符串') }
+    if (value.trim().length === 0)
+      return { ok: false, message: reasonRequiredMessage('reason 不能是空白') }
     if (value.trim().length < TOOL_CALL_REASON_MIN) {
-      return { ok: false, message: reasonRequiredMessage(`只说清了 ${value.trim().length} 个字，太空泛`) }
+      return {
+        ok: false,
+        message: reasonRequiredMessage(`只说清了 ${value.trim().length} 个字，太空泛`),
+      }
     }
     return { ok: false, message: `入参不合法（${describeIssues(parsed.error.issues)}）` }
   }

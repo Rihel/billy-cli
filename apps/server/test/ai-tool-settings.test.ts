@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import { z } from 'zod'
-import { clampLimits, codeDefaults, mergeToolSettings } from '../src/modules/ai/core/tools/tool.settings.js'
+import {
+  clampLimits,
+  codeDefaults,
+  mergeToolSettings,
+} from '../src/modules/ai/core/tools/tool.settings.js'
 import type { ToolConfigRow } from '../src/modules/ai/core/tools/tool.config.ports.js'
 import type { ToolEnvCaps, ToolSpec } from '../src/modules/ai/core/tools/tools.types.js'
 

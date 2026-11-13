@@ -43,18 +43,14 @@ class FakePubSub {
   /** 模拟其他实例的广播（频道是带前缀的完整频道） */
   remote(channel: string, payload: unknown): void {
     for (const handler of this.patternHandlers.get('stream:*') ?? []) {
-      handler(payload, { channel, instanceId: 'other', publishedAt: 1 })
+      void handler(payload, { channel, instanceId: 'other', publishedAt: 1 })
     }
   }
 }
 
 const createHub = (): { hub: StreamHub; pubsub: FakePubSub } => {
   const pubsub = new FakePubSub()
-  const hub = new StreamHub(
-    pubsub as unknown as PubSub,
-    new IdGeneration(),
-    testLogger(),
-  )
+  const hub = new StreamHub(pubsub as unknown as PubSub, new IdGeneration(), testLogger())
   return { hub, pubsub }
 }
 
@@ -188,12 +184,8 @@ describe('StreamHub', () => {
       const { hub } = createHub()
       await hub.onApplicationBootstrap()
       const writers = [vi.fn(async () => {}), vi.fn(async () => {})]
-      const connections = writers.map((writer) =>
-        hub.createConnection({ writer }),
-      )
-      connections.forEach((connection, index) =>
-        hub.subscribe(connection, `task:${index}`),
-      )
+      const connections = writers.map((writer) => hub.createConnection({ writer }))
+      connections.forEach((connection, index) => hub.subscribe(connection, `task:${index}`))
 
       await hub.beforeApplicationShutdown()
 
@@ -207,8 +199,7 @@ describe('StreamHub', () => {
         })
       }
       // 注册表已清空
-      const registry = (hub as unknown as { connections: Map<string, unknown> })
-        .connections
+      const registry = (hub as unknown as { connections: Map<string, unknown> }).connections
       expect(registry.size).toBe(0)
 
       await hub.onApplicationShutdown()

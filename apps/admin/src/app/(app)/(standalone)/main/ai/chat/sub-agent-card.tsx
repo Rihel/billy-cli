@@ -66,9 +66,14 @@ export function SubAgentCard({ agent }: { agent: SubAgentLive }) {
             {typeof totalTokens === 'number' ? ` · ${tokenText(totalTokens)} token` : ''}
             {duration ? ` · ${duration}` : ''}
           </span>
-          <span className="ml-auto hidden shrink-0 text-xs text-muted-foreground sm:inline">过程见右栏</span>
+          <span className="ml-auto hidden shrink-0 text-xs text-muted-foreground sm:inline">
+            过程见右栏
+          </span>
           <ChevronDownIcon
-            className={cn('size-4 shrink-0 text-muted-foreground transition-transform', open && 'rotate-180')}
+            className={cn(
+              'size-4 shrink-0 text-muted-foreground transition-transform',
+              open && 'rotate-180',
+            )}
             aria-hidden
           />
         </CollapsibleTrigger>
@@ -85,7 +90,9 @@ export function SubAgentCard({ agent }: { agent: SubAgentLive }) {
             </div>
           ) : (
             <p className="bg-surface-1 px-3 py-2 text-xs text-muted-foreground">
-              {active ? '正在干活，还没有产出正文 —— 过程（推理与工具往返）在右栏。' : '这个子助手没有留下正文 —— 过程在右栏。'}
+              {active
+                ? '正在干活，还没有产出正文 —— 过程（推理与工具往返）在右栏。'
+                : '这个子助手没有留下正文 —— 过程在右栏。'}
             </p>
           )}
           {agent.error ? (

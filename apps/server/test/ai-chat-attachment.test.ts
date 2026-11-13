@@ -160,8 +160,8 @@ describe('withUserContent', () => {
 
   it('末条不是用户消息 → 抛错（而不是把附件悄悄丢掉）', () => {
     const messages: ModelMessage[] = [{ role: 'assistant', content: '只有助手' }]
-    expect(() => withUserContent(messages, 'x')).toThrow()
-    expect(() => withUserContent([], 'x')).toThrow()
+    expect(() => withUserContent(messages, 'x')).toThrow(/附件无法注入/)
+    expect(() => withUserContent([], 'x')).toThrow(/附件无法注入/)
   })
 })
 
@@ -173,25 +173,29 @@ const TEXT_ONLY = ['text']
 describe('模型模态校验（明确声明收不了就当场拒绝，不留给上游静默忽略）', () => {
   it('明确只收文本 + 图片附件 → 抛错并说清是哪个文件', async () => {
     const service = serviceOf({ k1: pngBytes })
-    await expect(
-      service.buildUserContent('看看', [attachment()], TEXT_ONLY),
-    ).rejects.toThrow(/不支持图片输入/)
+    await expect(service.buildUserContent('看看', [attachment()], TEXT_ONLY)).rejects.toThrow(
+      /不支持图片输入/,
+    )
   })
 
   it('明确只收文本 + PDF → 抛错', async () => {
     const service = serviceOf({ k1: Buffer.from('%PDF-1.4') })
     await expect(
-      service.buildUserContent('看看', [
-        attachment({ filename: 'a.pdf', mediaType: 'application/pdf' }),
-      ], TEXT_ONLY),
+      service.buildUserContent(
+        '看看',
+        [attachment({ filename: 'a.pdf', mediaType: 'application/pdf' })],
+        TEXT_ONLY,
+      ),
     ).rejects.toThrow(/不支持文件输入/)
   })
 
   it('文本类附件**任何模型都放行**（我们自己读出来，不依赖模型能力）', async () => {
     const service = serviceOf({ k1: Buffer.from('一行文字') })
-    const content = await service.buildUserContent('看看', [
-      attachment({ filename: 'note.md', mediaType: 'text/markdown' }),
-    ], TEXT_ONLY)
+    const content = await service.buildUserContent(
+      '看看',
+      [attachment({ filename: 'note.md', mediaType: 'text/markdown' })],
+      TEXT_ONLY,
+    )
     expect(content?.[0]).toMatchObject({ type: 'text' })
   })
 
@@ -207,9 +211,11 @@ describe('模型模态校验（明确声明收不了就当场拒绝，不留给�
 
   it('认不出类型的二进制：**先当文本试**，读得出来就内联（任何模型都能用）', async () => {
     const service = serviceOf({ k1: Buffer.from('2026-10-07 11:00 INFO 服务已启动') })
-    const content = await service.buildUserContent('看看日志', [
-      attachment({ filename: 'app.log', mediaType: 'application/octet-stream' }),
-    ], TEXT_ONLY)
+    const content = await service.buildUserContent(
+      '看看日志',
+      [attachment({ filename: 'app.log', mediaType: 'application/octet-stream' })],
+      TEXT_ONLY,
+    )
     expect(content?.[0]).toMatchObject({ type: 'text' })
   })
 
@@ -217,10 +223,12 @@ describe('模型模态校验（明确声明收不了就当场拒绝，不留给�
     const binary = Buffer.from([0x00, 0x01, 0x02, 0xff, 0x00, 0xfe])
     const service = serviceOf({ k1: binary })
     await expect(
-      service.buildUserContent('看看', [
-        attachment({ filename: 'blob.bin', mediaType: 'application/octet-stream' }),
-      ], VISION_AND_FILE),
-    ).rejects.toThrow()
+      service.buildUserContent(
+        '看看',
+        [attachment({ filename: 'blob.bin', mediaType: 'application/octet-stream' })],
+        VISION_AND_FILE,
+      ),
+    ).rejects.toThrow(/既不是文本也不是图片/)
   })
 })
 
@@ -242,18 +250,16 @@ describe('looksLikeTextContent', () => {
 
 describe('附件 key 归属校验（**读对象之前**，防越权）', () => {
   /** 以指定身份跑一段逻辑（策略读的是请求上下文里的登录身份） */
-  const asUser = <T,>(userId: string, run: () => T): T =>
+  const asUser = <T>(userId: string, run: () => T): T =>
     requestContext.run({ requestId: 't', userId, adminId: null }, run)
-  const asAdmin = <T,>(run: () => T): T =>
+  const asAdmin = <T>(run: () => T): T =>
     requestContext.run({ requestId: 't', userId: null, adminId: 'admin_1' }, run)
-  const anonymous = <T,>(run: () => T): T =>
+  const anonymous = <T>(run: () => T): T =>
     requestContext.run({ requestId: 't', userId: null, adminId: null }, run)
 
   it('前台用户读**别人**的文件 → 拒绝', () => {
     const policy = keyPolicyOf()
-    expect(() => asUser('u1', () => policy.assertOwned(['user/u2/secret.png']))).toThrow(
-      /无权访问/,
-    )
+    expect(() => asUser('u1', () => policy.assertOwned(['user/u2/secret.png']))).toThrow(/无权访问/)
   })
 
   it('前台用户读自己的文件 → 通过', () => {
@@ -265,12 +271,14 @@ describe('附件 key 归属校验（**读对象之前**，防越权）', () => {
     const policy = keyPolicyOf()
     expect(() => asUser('u1', () => policy.assertOwned(['user/u1/u2/secret.png']))).not.toThrow()
     // 但指向别人前缀的一律拒绝
-    expect(() => asUser('u1', () => policy.assertOwned(['/user/u2/secret.png']))).toThrow()
+    expect(() => asUser('u1', () => policy.assertOwned(['/user/u2/secret.png']))).toThrow(
+      /无权访问/,
+    )
   })
 
   it('空 key → 拒绝（不静默跳过）', () => {
     const policy = keyPolicyOf()
-    expect(() => asUser('u1', () => policy.assertOwned(['   ']))).toThrow()
+    expect(() => asUser('u1', () => policy.assertOwned(['   ']))).toThrow(/无权访问/)
   })
 
   it('管理员与鉴权关闭按现状放行（管理员后台上传不加前缀）', () => {
@@ -285,9 +293,9 @@ describe('附件 key 归属校验（**读对象之前**，防越权）', () => {
     const service = new ChatAttachmentService(storage, keyPolicyOf(), logger)
 
     await expect(
-      asUser('u1', () => service.buildUserContent('看看', [
-        attachment({ key: 'user/u2/secret.png' }),
-      ])),
+      asUser('u1', () =>
+        service.buildUserContent('看看', [attachment({ key: 'user/u2/secret.png' })]),
+      ),
     ).rejects.toThrow(/无权访问/)
 
     expect(getObject).not.toHaveBeenCalled()
@@ -337,7 +345,11 @@ describe('PDF 附件的分发（抽到文字走文本，抽不到才退回文件
     // 一份"看起来是 PDF 但解析不出文字"的字节（缺 xref 与内容流）
     const broken = Buffer.from('%PDF-1.4\n% 没有 xref / 没有内容流\n%%EOF\n')
     const service = serviceOf({ k1: broken })
-    const content = await service.buildUserContent('这是啥', [attachment(pdfAttachment)], VISION_AND_FILE)
+    const content = await service.buildUserContent(
+      '这是啥',
+      [attachment(pdfAttachment)],
+      VISION_AND_FILE,
+    )
 
     const parts = (content ?? []) as Array<{ type: string }>
     expect(parts.map((part) => part.type)).toEqual(['text', 'file'])

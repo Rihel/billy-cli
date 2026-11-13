@@ -9,7 +9,6 @@ import { useRouter } from 'next/navigation'
 import {
   DisplayRender,
   EditableInput,
-  Group,
   IconText,
   ImageUpload,
   ModalForm,
@@ -48,7 +47,7 @@ export default function UserCenter() {
       await changePasswordMutation.mutateAsync(input)
       toastSuccess('密码修改成功，请重新登录')
       clear()
-      removeToken()
+      void removeToken()
       await logoutAction()
       router.replace('/auth/login')
     },

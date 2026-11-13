@@ -10,11 +10,5 @@ export default function GlobalError({
   error: Error & { digest?: string }
   reset: () => void
 }) {
-  return (
-    <RouteError
-      error={error}
-      reset={reset}
-      description="服务器发生了一些问题，请稍后重试。"
-    />
-  )
+  return <RouteError error={error} reset={reset} description="服务器发生了一些问题，请稍后重试。" />
 }

@@ -23,7 +23,9 @@ export const capturingWriter = (options: { failFirst?: boolean } = {}) => {
 }
 
 /** 记录 warn 的假日志（结构兼容 `AppLogger`，其余级别静默） */
-export const warningLog = (): ToolLogger & { warnings: Array<{ message: string; data?: unknown }> } => {
+export const warningLog = (): ToolLogger & {
+  warnings: Array<{ message: string; data?: unknown }>
+} => {
   const warnings: Array<{ message: string; data?: unknown }> = []
   return {
     warnings,

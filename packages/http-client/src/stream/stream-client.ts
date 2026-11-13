@@ -3,11 +3,7 @@ import { CredentialResolver } from '../core/credential-resolver.js'
 import { streamConnectOnce } from './stream-transport.js'
 import type { StreamConnection } from './stream-transport.js'
 import { StreamClientState } from './types.js'
-import type {
-  StreamClientOptions,
-  StreamEventHandler,
-  StreamMessage,
-} from './types.js'
+import type { StreamClientOptions, StreamEventHandler, StreamMessage } from './types.js'
 import { StreamClientError } from './errors.js'
 
 /** 状态事件（通过 on() 分发，与业务事件共用同一管道）。 */
@@ -79,10 +75,7 @@ export class HttpStreamClient<Credentials = Record<string, any>> {
 
   /** 发起连接。仅 idle / closed 状态可调用。 */
   connect(): void {
-    if (
-      this.state !== StreamClientState.Idle &&
-      this.state !== StreamClientState.Closed
-    ) {
+    if (this.state !== StreamClientState.Idle && this.state !== StreamClientState.Closed) {
       throw new StreamClientError(`当前状态 ${this.state} 不能发起连接`)
     }
     this.stopped = false
@@ -99,10 +92,7 @@ export class HttpStreamClient<Credentials = Record<string, any>> {
 
   /** 关闭连接（幂等）：中断传输、进入终态、清理订阅。 */
   close(): void {
-    if (
-      this.state === StreamClientState.Idle ||
-      this.state === StreamClientState.Closed
-    ) {
+    if (this.state === StreamClientState.Idle || this.state === StreamClientState.Closed) {
       return
     }
     this.stopped = true
@@ -138,7 +128,7 @@ export class HttpStreamClient<Credentials = Record<string, any>> {
         const body = this.buildBody()
         const headers: Record<string, string> = {
           ...this.options.headers,
-          ...(ctx.headers || {}),
+          ...ctx.headers,
         }
         // 有 body 才补 Content-Type：服务端 body parser 只解析 application/json，
         // 不补的话订阅 body 会被静默忽略（channels 落成默认 []）。body 为 null 时**不带**，

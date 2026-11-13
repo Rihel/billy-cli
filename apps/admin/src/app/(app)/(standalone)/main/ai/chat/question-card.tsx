@@ -1,7 +1,16 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import { Badge, Button, Checkbox, Input, Label, RadioGroup, RadioGroupItem, Textarea } from '@repo/ui'
+import {
+  Badge,
+  Button,
+  Checkbox,
+  Input,
+  Label,
+  RadioGroup,
+  RadioGroupItem,
+  Textarea,
+} from '@repo/ui'
 
 /**
  * 工具挂起后的一张问题卡（`data-tool-call-suspended`）。
@@ -94,10 +103,7 @@ export function questionsOf(data: SuspendedPartData | undefined): Question[] {
  *
  * 抽成纯函数：题卡的单向推进依赖它，会话里的判定也该只有这一处。
  */
-export function isAnswered(
-  question: Question,
-  value: string | string[] | undefined,
-): boolean {
+export function isAnswered(question: Question, value: string | string[] | undefined): boolean {
   return Array.isArray(value) ? value.length > 0 : Boolean(String(value ?? '').trim())
 }
 
@@ -348,7 +354,9 @@ export function QuestionCard({
                 {current.type === 'single' && current.options?.length ? (
                   <RadioGroup
                     className="mt-2 gap-1.5"
-                    value={typeof values[current.id] === 'string' ? (values[current.id] as string) : ''}
+                    value={
+                      typeof values[current.id] === 'string' ? (values[current.id] as string) : ''
+                    }
                     onValueChange={(value) => setValue(current.id, value)}
                     disabled={disabled}
                   >
@@ -427,10 +435,7 @@ export function QuestionCard({
                             ? (values[current.id] as string[])
                             : []
                           const rest = list.filter((item) => item !== OTHER_OPTION)
-                          setValue(
-                            current.id,
-                            checked === true ? [...rest, OTHER_OPTION] : rest,
-                          )
+                          setValue(current.id, checked === true ? [...rest, OTHER_OPTION] : rest)
                         }}
                         disabled={disabled}
                         className="mt-0.5"
@@ -449,7 +454,9 @@ export function QuestionCard({
                   <Textarea
                     className="mt-2 min-h-20"
                     placeholder={current.placeholder ?? '直接写你的回答'}
-                    value={typeof values[current.id] === 'string' ? (values[current.id] as string) : ''}
+                    value={
+                      typeof values[current.id] === 'string' ? (values[current.id] as string) : ''
+                    }
                     onChange={(event) => setValue(current.id, event.target.value)}
                     disabled={disabled}
                   />
@@ -513,24 +520,15 @@ export function QuestionCard({
         {isLast ? (
           readOnly ? (
             <span className="text-xs text-muted-foreground">
-              {cancelled
-                ? '已取消'
-                : submitted && !resumed
-                  ? '已回答，正在继续…'
-                  : '已记录'}
+              {cancelled ? '已取消' : submitted && !resumed ? '已回答，正在继续…' : '已记录'}
             </span>
           ) : (
-            <Button size="sm" onClick={submit} disabled={busy || !onSubmit}>
+            <Button size="sm" onClick={() => void submit()} disabled={busy || !onSubmit}>
               {submitting ? '提交中…' : '提交回答'}
             </Button>
           )
         ) : (
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={goNext}
-            disabled={busy || !canGoNext}
-          >
+          <Button variant="outline" size="sm" onClick={goNext} disabled={busy || !canGoNext}>
             下一题
           </Button>
         )}

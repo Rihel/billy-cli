@@ -2,12 +2,17 @@
 
 import { useState } from 'react'
 import { useMutation, useQuery } from '@tanstack/react-query'
-import type {
-  AiConnectorCreateDto,
-  AiConnectorModel,
-  AiConnectorUpdateDto,
-} from '@repo/shared'
-import { Alert, AlertDescription, AlertTitle, DataTable, Input, RefreshButton, toastError, toastSuccess } from '@repo/ui'
+import type { AiConnectorCreateDto, AiConnectorModel, AiConnectorUpdateDto } from '@repo/shared'
+import {
+  Alert,
+  AlertDescription,
+  AlertTitle,
+  DataTable,
+  Input,
+  RefreshButton,
+  toastError,
+  toastSuccess,
+} from '@repo/ui'
 import { InfoIcon, PlusIcon, SearchIcon } from 'lucide-react'
 import { Button } from '@repo/ui'
 import { useServerClient } from '@/lib/server-client'
@@ -212,8 +217,8 @@ export default function ConnectorsPage() {
         <InfoIcon />
         <AlertTitle>三个动作的区别</AlertTitle>
         <AlertDescription>
-          测试 = 只验证连不连得上（会写「上次测试」的状态）；同步 = 把对方的能力登记成工具（这一步之后模型才看得到）；
-          停用 = 立刻不可调，工具行保留。
+          测试 = 只验证连不连得上（会写「上次测试」的状态）；同步 =
+          把对方的能力登记成工具（这一步之后模型才看得到）； 停用 = 立刻不可调，工具行保留。
         </AlertDescription>
       </Alert>
 

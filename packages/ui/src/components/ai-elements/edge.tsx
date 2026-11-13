@@ -1,7 +1,21 @@
-import type { EdgeProps, InternalNode, Node } from "@xyflow/react"
-import { BaseEdge, getBezierPath, getSimpleBezierPath, Position, useInternalNode } from "@xyflow/react"
+import type { EdgeProps, InternalNode, Node } from '@xyflow/react'
+import {
+  BaseEdge,
+  getBezierPath,
+  getSimpleBezierPath,
+  Position,
+  useInternalNode,
+} from '@xyflow/react'
 
-const Temporary = ({ id, sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition }: EdgeProps) => {
+const Temporary = ({
+  id,
+  sourceX,
+  sourceY,
+  targetX,
+  targetY,
+  sourcePosition,
+  targetPosition,
+}: EdgeProps) => {
   const [edgePath] = getSimpleBezierPath({
     sourcePosition,
     sourceX,
@@ -17,7 +31,7 @@ const Temporary = ({ id, sourceX, sourceY, targetX, targetY, sourcePosition, tar
       id={id}
       path={edgePath}
       style={{
-        strokeDasharray: "5, 5",
+        strokeDasharray: '5, 5',
       }}
     />
   )
@@ -25,9 +39,11 @@ const Temporary = ({ id, sourceX, sourceY, targetX, targetY, sourcePosition, tar
 
 const getHandleCoordsByPosition = (node: InternalNode<Node>, handlePosition: Position) => {
   // Choose the handle type based on position - Left is for target, Right is for source
-  const handleType = handlePosition === Position.Left ? "target" : "source"
+  const handleType = handlePosition === Position.Left ? 'target' : 'source'
 
-  const handle = node.internals.handleBounds?.[handleType]?.find((h) => h.position === handlePosition)
+  const handle = node.internals.handleBounds?.[handleType]?.find(
+    (h) => h.position === handlePosition,
+  )
 
   if (!handle) {
     return [0, 0] as const
@@ -57,7 +73,7 @@ const getHandleCoordsByPosition = (node: InternalNode<Node>, handlePosition: Pos
       break
     }
     default: {
-      throw new Error(`Invalid handle position: ${handlePosition}`)
+      throw new Error(`Invalid handle position: ${String(handlePosition)}`)
     }
   }
 

@@ -86,7 +86,7 @@ export const parseSkillMarkdown = (
   const result = validateSkillFileContent({ content, directoryName })
   if (!result.valid) return { parsed: null, errors: result.errors }
 
-  const metadata = { ...(result.metadata ?? {}) }
+  const metadata = { ...result.metadata }
   const skillKey = typeof metadata.name === 'string' ? metadata.name : directoryName
   const description = typeof metadata.description === 'string' ? metadata.description : ''
   const frontmatter: Record<string, unknown> = {}

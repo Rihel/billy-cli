@@ -58,6 +58,7 @@ export default function LiveAlertsPage() {
   const stream = useMemo(
     () => client.createStream(),
     // generation 是「手动重连」的显式意图：变化即重建引用，useStream 据此关旧连新
+    // oxlint-disable-next-line react-hooks/exhaustive-deps
     [client, generation],
   )
 
@@ -94,11 +95,7 @@ export default function LiveAlertsPage() {
         description="管理员广播频道 admin:all 的实时事件流（SSE）"
         extra={
           <>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setGeneration((value) => value + 1)}
-            >
+            <Button variant="outline" size="sm" onClick={() => setGeneration((value) => value + 1)}>
               <RefreshCwIcon />
               重连
             </Button>

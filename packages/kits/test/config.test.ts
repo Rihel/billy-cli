@@ -21,8 +21,7 @@ const schema = z.object({
   name: z.string().min(2),
 })
 
-const load = (loader: unknown) =>
-  AppConfigFacade.initial({ schema, loader: loader as never })
+const load = (loader: unknown) => AppConfigFacade.initial({ schema, loader: loader as never })
 
 afterEach(() => {
   AppConfigFacade.reset()
@@ -32,9 +31,7 @@ describe('配置 loader（可插拔来源）', () => {
   it('内置 loader：env / memory / consul', () => {
     expect(listBuiltInConfigLoaders().sort()).toEqual(['consul', 'env', 'memory'])
     expect(resolveConfigLoader('env').name).toBe('env')
-    expect(
-      resolveConfigLoader('consul', { baseURL: 'http://c', key: 'k' }).name,
-    ).toBe('consul')
+    expect(resolveConfigLoader('consul', { baseURL: 'http://c', key: 'k' }).name).toBe('consul')
   })
 
   it('未注册的 loader 名字：报错并列出可用项', () => {
@@ -62,9 +59,7 @@ describe('AppConfigFacade（shape 由应用自定义）', () => {
   })
 
   it('env loader：经 mapEnv 映射为应用的嵌套 shape', async () => {
-    const config = await load(
-      envConfigLoader({ mapEnv: () => ({ name: 'from-env', port: 1234 }) }),
-    )
+    const config = await load(envConfigLoader({ mapEnv: () => ({ name: 'from-env', port: 1234 }) }))
     expect(config.name).toBe('from-env')
     expect(config.port).toBe(1234)
   })
@@ -94,9 +89,7 @@ describe('AppConfigFacade（shape 由应用自定义）', () => {
   })
 
   it('来源不可用：抛 ConfigLoadError（含 loader 名）', async () => {
-    const error = await load(
-      consulConfigLoader({ baseURL: '', key: '' }),
-    ).catch((e) => e)
+    const error = await load(consulConfigLoader({ baseURL: '', key: '' })).catch((e) => e)
     expect(error).toBeInstanceOf(ConfigLoadError)
     expect((error as Error).message).toContain('consul')
   })

@@ -1,6 +1,11 @@
 import { TOOL_EVENT_PART_TYPE } from '@repo/shared'
 import type { AiToolEventModel } from '@repo/shared'
-import type { ToolEventDecl, ToolEventDeclMeta, ToolEventModeValue, ToolLogger } from './tools.types.js'
+import type {
+  ToolEventDecl,
+  ToolEventDeclMeta,
+  ToolEventModeValue,
+  ToolLogger,
+} from './tools.types.js'
 
 /**
  * **工具自定义事件**（设计 §5.17）：声明归一化 + 运行时发射。
@@ -42,7 +47,11 @@ const toPayloadJsonSchema = (payload: unknown): Record<string, unknown> | null =
 }
 
 /** 校验：名字、标题、说明、mode（文案带上工具 key 与事件名，启动日志里能直接定位） */
-const validateEvent = (decl: ToolEventDeclMeta, label: string, index: number): ToolEventModeValue => {
+const validateEvent = (
+  decl: ToolEventDeclMeta,
+  label: string,
+  index: number,
+): ToolEventModeValue => {
   const at = `${label} 的第 ${index + 1} 个事件声明`
   const name = decl?.name
   if (typeof name !== 'string' || !name.trim()) {
@@ -56,7 +65,9 @@ const validateEvent = (decl: ToolEventDeclMeta, label: string, index: number): T
     throw new Error(`${label} 的事件 ${trimmed} 缺少标题 title（管理页与前端兜底渲染都要它）`)
   }
   if (typeof decl.description !== 'string' || !decl.description.trim()) {
-    throw new Error(`${label} 的事件 ${trimmed} 缺少说明 description（写清什么时候发、payload 各字段什么意思）`)
+    throw new Error(
+      `${label} 的事件 ${trimmed} 缺少说明 description（写清什么时候发、payload 各字段什么意思）`,
+    )
   }
   const mode = decl.mode ?? 'state'
   if (mode !== 'state' && mode !== 'stream') {
@@ -170,7 +181,9 @@ export const createToolEventEmitter = (
         warn('ai.tool.event_payload_invalid', {
           toolKey,
           event: name,
-          issues: parsed.error.issues.map((issue) => `${issue.path.join('.') || '(根)'}: ${issue.message}`),
+          issues: parsed.error.issues.map(
+            (issue) => `${issue.path.join('.') || '(根)'}: ${issue.message}`,
+          ),
         })
         return
       }

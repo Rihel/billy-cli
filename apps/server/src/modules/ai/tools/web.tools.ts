@@ -117,12 +117,7 @@ const WebRequestParams = z.object({
     .max(64)
     .optional()
     .describe('上一次请求返回的缓存句柄。**读后续页时传它**，服务端从缓存切片不再请求'),
-  page: z
-    .number()
-    .int()
-    .positive()
-    .default(1)
-    .describe('要第几页（从 1 开始，1 页 = 1000 行）'),
+  page: z.number().int().positive().default(1).describe('要第几页（从 1 开始，1 页 = 1000 行）'),
 })
 
 /** 搜索的入参：只给"找来源"需要的东西，正文交给 `web-fetch` */
@@ -171,11 +166,19 @@ const WebConfig = z.object({
   /** 单次请求的总时长上限（ms）：整条重定向链共用这一个预算 */
   timeoutMs: z.number().int().positive().default(20_000),
   /** 最多读多少字节（超出即截断，出参里 `truncated: true`） */
-  maxBytes: z.number().int().positive().default(2 * 1024 * 1024),
+  maxBytes: z
+    .number()
+    .int()
+    .positive()
+    .default(2 * 1024 * 1024),
   /** 一页多少行：分页口径（1000 行大致是 3~5 万字符，够一个完整章节） */
   pageLines: z.number().int().positive().default(1000),
   /** 缓存多久（ms）：期内翻页不发请求；过期后 ref 失效，需要重新抓 */
-  cacheTtlMs: z.number().int().positive().default(10 * 60_000),
+  cacheTtlMs: z
+    .number()
+    .int()
+    .positive()
+    .default(10 * 60_000),
   /** 统一 UA（所有出网请求共用；换身份只改这一处） */
   userAgent: z.string().min(16).default(BROWSER_UA),
   /**
@@ -417,9 +420,9 @@ export class WebTools {
     const configured = ctx.settings.secret('apiKey')
     if (configured) return configured
     const model = (
-      ctx.envelope as
-        | { model?: { providerKind?: unknown; baseURL?: unknown; apiKey?: unknown } }
-        | null
+      ctx.envelope as {
+        model?: { providerKind?: unknown; baseURL?: unknown; apiKey?: unknown }
+      } | null
     )?.model
     return model?.providerKind === 'deepseek' &&
       !model.baseURL &&
@@ -430,20 +433,14 @@ export class WebTools {
   }
 
   /** **只读前置条件**：有搜索词、有可用密钥（否则模型改 query 也永远搜不成） */
-  checkSearch(
-    input: { query: string },
-    ctx: ToolCallContext<WebSearchConfigValue>,
-  ): string | null {
+  checkSearch(input: { query: string }, ctx: ToolCallContext<WebSearchConfigValue>): string | null {
     if (!input.query?.trim()) return '搜索词不能为空；给一个具体的说法或一组关键词'
     if (this.searchApiKey(ctx)) return null
     return '没有可用的 DeepSeek 密钥（当前会话模型不是 DeepSeek 官方，后台也没给 web-search 配置 API Key）；换搜索词没有用，先用 web-fetch 读已知来源'
   }
 
   /** **搜索配置归一化**：与抓取共用同一套部署边界（env 关了就真关、超时夹到上限） */
-  normalizeSearchConfig(
-    config: WebSearchConfigValue,
-    caps: ToolEnvCaps,
-  ): WebSearchConfigValue {
+  normalizeSearchConfig(config: WebSearchConfigValue, caps: ToolEnvCaps): WebSearchConfigValue {
     const web = caps.web
     return {
       ...config,
@@ -614,7 +611,7 @@ export class WebTools {
 
     // body：字符串原样发；对象 / 数组自动转 JSON 并补 content-type（模型最容易漏的就是这个）
     let requestBody: string | undefined
-    const extraHeaders: Record<string, string> = { ...(input.headers ?? {}) }
+    const extraHeaders: Record<string, string> = { ...input.headers }
     if (input.body !== undefined) {
       if (method === 'GET' || method === 'HEAD') {
         throw new ToolDeniedError(
@@ -674,9 +671,13 @@ export class WebTools {
       pages: doc.pages,
       durationMs: Date.now() - started,
     })
-    return present(doc, input.page, false, TOOL_KEYS.webRequest, {
-      ...(html?.note ? { note: html.note } : {}),
-    })
+    return present(
+      doc,
+      input.page,
+      false,
+      TOOL_KEYS.webRequest,
+      html?.note ? { note: html.note } : {},
+    )
   }
 
   /** **只读前置条件**：url 与 ref 至少给一个（两个都给也合法：ref 失效时退回重抓） */
@@ -732,9 +733,7 @@ const toSearchItem = (item: SearchItem, needContent: boolean): WebSearchItem => 
   const truncated = item.content.length > SEARCH_MAX_CONTENT_CHARS
   return {
     ...base,
-    content: truncated
-      ? `${item.content.slice(0, SEARCH_MAX_CONTENT_CHARS)}…`
-      : item.content,
+    content: truncated ? `${item.content.slice(0, SEARCH_MAX_CONTENT_CHARS)}…` : item.content,
     contentTruncated: truncated,
   }
 }

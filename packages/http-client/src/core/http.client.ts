@@ -5,12 +5,7 @@ import type {
   CredentialsManager,
   HttpRequestConfig,
 } from './interfaces.js'
-import {
-  ApiError,
-  ApiErrorCodes,
-  mapHttpStatus,
-  mapAppErrorValue,
-} from './api-error.js'
+import { ApiError, ApiErrorCodes, mapHttpStatus, mapAppErrorValue } from './api-error.js'
 import { CredentialResolver } from './credential-resolver.js'
 import { AuthInjector } from './auth-injector.js'
 
@@ -165,7 +160,7 @@ export class HttpClient<Credentials = Record<string, any>> {
         return await this.executeFetch<Res>(retryConfig)
       }
 
-      this.options?.callbacks?.onError?.(error)
+      void this.options?.callbacks?.onError?.(error)
       throw this.normalizeError(error)
     } finally {
       if (cancelPrevious && finalConfig.signal) {
@@ -261,14 +256,10 @@ export class HttpClient<Credentials = Record<string, any>> {
    */
   private unwrap<Res>(response: AppResponse<Res>): Res {
     if (ResponseUtils.isError(response)) {
-      throw new ApiError(
-        mapAppErrorValue(response.code),
-        response.message || '请求失败',
-        {
-          status: response.code,
-          details: { response },
-        },
-      )
+      throw new ApiError(mapAppErrorValue(response.code), response.message || '请求失败', {
+        status: response.code,
+        details: { response },
+      })
     }
     return response.data as Res
   }
@@ -279,9 +270,7 @@ export class HttpClient<Credentials = Record<string, any>> {
    * - HTTP 非 2xx → 抛对应状态码映射的 ApiError
    * - HTTP 2xx → 解析 JSON 返回 AppResponse
    */
-  private async executeFetch<Res>(
-    config: HttpRequestConfig,
-  ): Promise<AppResponse<Res>> {
+  private async executeFetch<Res>(config: HttpRequestConfig): Promise<AppResponse<Res>> {
     const { url, method = 'GET', params, data, signal, timeout } = config
     const fullUrl = this.buildUrl(url, params)
 
@@ -340,14 +329,10 @@ export class HttpClient<Credentials = Record<string, any>> {
     try {
       return JSON.parse(text) as AppResponse<Res>
     } catch {
-      throw new ApiError(
-        ApiErrorCodes.InternalError,
-        '响应解析失败：服务器返回了非 JSON 内容',
-        {
-          status: response.status,
-          details: { url: fullUrl, method },
-        },
-      )
+      throw new ApiError(ApiErrorCodes.InternalError, '响应解析失败：服务器返回了非 JSON 内容', {
+        status: response.status,
+        details: { url: fullUrl, method },
+      })
     }
   }
 
@@ -375,10 +360,7 @@ export class HttpClient<Credentials = Record<string, any>> {
     const basePath = url.pathname.replace(/\/+$/, '')
     // 补前导斜杠后按根相对解析，拆分 path 自带的查询串 / hash，
     // 避免被 pathname 转义，也避免依赖 baseUrl 是否带尾斜杠的相对解析差异
-    const parsed = new URL(
-      path.startsWith('/') ? path : `/${path}`,
-      this.options.baseUrl,
-    )
+    const parsed = new URL(path.startsWith('/') ? path : `/${path}`, this.options.baseUrl)
     url.pathname = `${basePath}${parsed.pathname}`
     if (parsed.search) url.search = parsed.search
     if (parsed.hash) url.hash = parsed.hash
@@ -460,8 +442,7 @@ export class HttpClient<Credentials = Record<string, any>> {
   ): ApiError {
     if (error?.name === 'AbortError') {
       const reason = signal?.reason
-      const reasonText =
-        typeof reason === 'string' && reason ? reason : 'ABORTED'
+      const reasonText = typeof reason === 'string' && reason ? reason : 'ABORTED'
       return new ApiError(
         ApiErrorCodes.NetworkError,
         reasonText === '请求超时' ? '请求超时' : '请求已取消',
@@ -470,27 +451,21 @@ export class HttpClient<Credentials = Record<string, any>> {
         },
       )
     }
-    return new ApiError(
-      ApiErrorCodes.NetworkError,
-      '网络异常，无法连接到服务器',
-      {
-        details: {
-          url,
-          method,
-          cause: error?.message || 'UNKNOWN',
-        },
+    return new ApiError(ApiErrorCodes.NetworkError, '网络异常，无法连接到服务器', {
+      details: {
+        url,
+        method,
+        cause: error?.message || 'UNKNOWN',
       },
-    )
+    })
   }
 
   /** 将任意错误转为 ApiError，保证统一异常结构 */
   private normalizeError(error: any): ApiError {
     if (error instanceof ApiError) return error
-    return new ApiError(
-      ApiErrorCodes.InternalError,
-      error?.message || '未知错误',
-      { details: error },
-    )
+    return new ApiError(ApiErrorCodes.InternalError, error?.message || '未知错误', {
+      details: error,
+    })
   }
 
   /** 基于 url + method + params + data 生成请求指纹 */

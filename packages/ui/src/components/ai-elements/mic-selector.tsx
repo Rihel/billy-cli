@@ -1,13 +1,19 @@
-"use client"
+'use client'
 
-import { useControllableState } from "#hooks/use-controllable-state.ts"
-import { Button } from "#components/ui/button.tsx"
-import { Command, CommandEmpty, CommandInput, CommandItem, CommandList } from "#components/ui/command.tsx"
-import { Popover, PopoverContent, PopoverTrigger } from "#components/ui/popover.tsx"
-import { cn } from "#lib/utils.ts"
-import { ChevronsUpDownIcon } from "lucide-react"
-import type { ComponentProps, ReactNode } from "react"
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react"
+import { useControllableState } from '#hooks/use-controllable-state.ts'
+import { Button } from '#components/ui/button.tsx'
+import {
+  Command,
+  CommandEmpty,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from '#components/ui/command.tsx'
+import { Popover, PopoverContent, PopoverTrigger } from '#components/ui/popover.tsx'
+import { cn } from '#lib/utils.ts'
+import { ChevronsUpDownIcon } from 'lucide-react'
+import type { ComponentProps, ReactNode } from 'react'
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
 
 const deviceIdRegex = /\(([\da-fA-F]{4}:[\da-fA-F]{4})\)$/
 
@@ -43,14 +49,15 @@ export const useAudioDevices = () => {
       setError(null)
 
       const deviceList = await navigator.mediaDevices.enumerateDevices()
-      const audioInputs = deviceList.filter((device) => device.kind === "audioinput")
+      const audioInputs = deviceList.filter((device) => device.kind === 'audioinput')
 
       setDevices(audioInputs)
     } catch (caughtError) {
-      const message = caughtError instanceof Error ? caughtError.message : "Failed to get audio devices"
+      const message =
+        caughtError instanceof Error ? caughtError.message : 'Failed to get audio devices'
 
       setError(message)
-      console.error("Error getting audio devices:", message)
+      console.error('Error getting audio devices:', message)
     } finally {
       setLoading(false)
     }
@@ -74,37 +81,38 @@ export const useAudioDevices = () => {
       }
 
       const deviceList = await navigator.mediaDevices.enumerateDevices()
-      const audioInputs = deviceList.filter((device) => device.kind === "audioinput")
+      const audioInputs = deviceList.filter((device) => device.kind === 'audioinput')
 
       setDevices(audioInputs)
       setHasPermission(true)
     } catch (caughtError) {
-      const message = caughtError instanceof Error ? caughtError.message : "Failed to get audio devices"
+      const message =
+        caughtError instanceof Error ? caughtError.message : 'Failed to get audio devices'
 
       setError(message)
-      console.error("Error getting audio devices:", message)
+      console.error('Error getting audio devices:', message)
     } finally {
       setLoading(false)
     }
   }, [loading])
 
   useEffect(() => {
-    loadDevicesWithoutPermission()
+    void loadDevicesWithoutPermission()
   }, [loadDevicesWithoutPermission])
 
   useEffect(() => {
     const handleDeviceChange = () => {
       if (hasPermission) {
-        loadDevicesWithPermission()
+        void loadDevicesWithPermission()
       } else {
-        loadDevicesWithoutPermission()
+        void loadDevicesWithoutPermission()
       }
     }
 
-    navigator.mediaDevices.addEventListener("devicechange", handleDeviceChange)
+    navigator.mediaDevices.addEventListener('devicechange', handleDeviceChange)
 
     return () => {
-      navigator.mediaDevices.removeEventListener("devicechange", handleDeviceChange)
+      navigator.mediaDevices.removeEventListener('devicechange', handleDeviceChange)
     }
   }, [hasPermission, loadDevicesWithPermission, loadDevicesWithoutPermission])
 
@@ -149,7 +157,7 @@ export const MicSelector = ({
 
   useEffect(() => {
     if (open && !hasPermission && !loading) {
-      loadDevices()
+      void loadDevices()
     }
   }, [open, hasPermission, loading, loadDevices])
 
@@ -212,11 +220,15 @@ export type MicSelectorContentProps = ComponentProps<typeof Command> & {
   popoverOptions?: ComponentProps<typeof PopoverContent>
 }
 
-export const MicSelectorContent = ({ className, popoverOptions, ...props }: MicSelectorContentProps) => {
+export const MicSelectorContent = ({
+  className,
+  popoverOptions,
+  ...props
+}: MicSelectorContentProps) => {
   const { width, onValueChange, value } = useContext(MicSelectorContext)
 
   return (
-    <PopoverContent className={cn("p-0", className)} style={{ width }} {...popoverOptions}>
+    <PopoverContent className={cn('p-0', className)} style={{ width }} {...popoverOptions}>
       <Command onValueChange={onValueChange} value={value} {...props} />
     </PopoverContent>
   )
@@ -228,9 +240,11 @@ export type MicSelectorInputProps = ComponentProps<typeof CommandInput> & {
   onValueChange?: (value: string) => void
 }
 
-export const MicSelectorInput = ({ ...props }: MicSelectorInputProps) => <CommandInput placeholder="Search microphones..." {...props} />
+export const MicSelectorInput = ({ ...props }: MicSelectorInputProps) => (
+  <CommandInput placeholder="Search microphones..." {...props} />
+)
 
-export type MicSelectorListProps = Omit<ComponentProps<typeof CommandList>, "children"> & {
+export type MicSelectorListProps = Omit<ComponentProps<typeof CommandList>, 'children'> & {
   children: (devices: MediaDeviceInfo[]) => ReactNode
 }
 
@@ -242,9 +256,10 @@ export const MicSelectorList = ({ children, ...props }: MicSelectorListProps) =>
 
 export type MicSelectorEmptyProps = ComponentProps<typeof CommandEmpty>
 
-export const MicSelectorEmpty = ({ children = "No microphone found.", ...props }: MicSelectorEmptyProps) => (
-  <CommandEmpty {...props}>{children}</CommandEmpty>
-)
+export const MicSelectorEmpty = ({
+  children = 'No microphone found.',
+  ...props
+}: MicSelectorEmptyProps) => <CommandEmpty {...props}>{children}</CommandEmpty>
 
 export type MicSelectorItemProps = ComponentProps<typeof CommandItem>
 
@@ -262,7 +277,7 @@ export const MicSelectorItem = (props: MicSelectorItemProps) => {
   return <CommandItem onSelect={handleSelect} {...props} />
 }
 
-export type MicSelectorLabelProps = ComponentProps<"span"> & {
+export type MicSelectorLabelProps = ComponentProps<'span'> & {
   device: MediaDeviceInfo
 }
 
@@ -278,7 +293,7 @@ export const MicSelectorLabel = ({ device, className, ...props }: MicSelectorLab
   }
 
   const [, deviceId] = matches
-  const name = device.label.replace(deviceIdRegex, "")
+  const name = device.label.replace(deviceIdRegex, '')
 
   return (
     <span className={className} {...props}>
@@ -288,7 +303,7 @@ export const MicSelectorLabel = ({ device, className, ...props }: MicSelectorLab
   )
 }
 
-export type MicSelectorValueProps = ComponentProps<"span">
+export type MicSelectorValueProps = ComponentProps<'span'>
 
 export const MicSelectorValue = ({ className, ...props }: MicSelectorValueProps) => {
   const { data, value } = useContext(MicSelectorContext)
@@ -296,11 +311,17 @@ export const MicSelectorValue = ({ className, ...props }: MicSelectorValueProps)
 
   if (!currentDevice) {
     return (
-      <span className={cn("flex-1 text-left", className)} {...props}>
+      <span className={cn('flex-1 text-left', className)} {...props}>
         Select microphone...
       </span>
     )
   }
 
-  return <MicSelectorLabel className={cn("flex-1 text-left", className)} device={currentDevice} {...props} />
+  return (
+    <MicSelectorLabel
+      className={cn('flex-1 text-left', className)}
+      device={currentDevice}
+      {...props}
+    />
+  )
 }

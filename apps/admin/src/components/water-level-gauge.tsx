@@ -63,7 +63,7 @@ export function WaterLevelGauge({
                   <path
                     d="M0 6 Q 12.5 0 25 6 T 50 6 T 75 6 T 100 6 T 125 6 T 150 6 T 175 6 T 200 6 V 18 H0 Z"
                     fill={color}
-              fillOpacity="0.38"
+                    fillOpacity="0.38"
                   />
                 </g>
               </g>
@@ -92,7 +92,8 @@ export function WaterLevelGauge({
           {label}
         </div>
         <div className="mt-0.5 text-[10px] tabular-nums text-muted-foreground/70">
-          阈值 {format(threshold)}{unit ?? ''}
+          阈值 {format(threshold)}
+          {unit ?? ''}
         </div>
       </div>
     </div>

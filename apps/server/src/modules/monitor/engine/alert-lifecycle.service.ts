@@ -119,11 +119,18 @@ export class AlertLifecycleService {
     const thresholdMs = rule.windowSeconds * config.recoverAfterWindows * 1000
     for (const alert of open) {
       if (now.getTime() - alert.lastFiredAt.getTime() >= thresholdMs) {
-        await this.resolveWithNotify(alert, rule, row, config, {
-          key: alert.windowKey ?? '',
-          start: alert.firstFiredAt,
-          end: now,
-        }, now)
+        await this.resolveWithNotify(
+          alert,
+          rule,
+          row,
+          config,
+          {
+            key: alert.windowKey ?? '',
+            start: alert.firstFiredAt,
+            end: now,
+          },
+          now,
+        )
       }
     }
   }
@@ -145,7 +152,8 @@ export class AlertLifecycleService {
     if (!config.notifyOnRecovery) return
     try {
       await this.delivery.deliverRecovery({
-        alert: { ...alert, recoveredAt: now } as MonitorAlertEntity,
+        // 只做浅拷贝字段，不改变告警实体原型；recoveredAt 是本次恢复的临时视图值
+        alert: Object.assign({}, alert, { recoveredAt: now }) as MonitorAlertEntity,
         rule,
         row,
         config,

@@ -1,26 +1,29 @@
-"use client"
+'use client'
 
-import { Button } from "#components/ui/button.tsx"
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "#components/ui/dialog.tsx"
-import { cn } from "#lib/utils.ts"
-import { Maximize2Icon } from "lucide-react"
-import { lazy, Suspense, useMemo, useState } from "react"
-import type { CustomRendererProps } from "streamdown"
+import { Button } from '#components/ui/button.tsx'
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '#components/ui/dialog.tsx'
+import { cn } from '#lib/utils.ts'
+import { Maximize2Icon } from 'lucide-react'
+import { lazy, Suspense, useMemo, useState } from 'react'
+import type { CustomRendererProps } from 'streamdown'
 
-import { FenceError, FencePending, FenceSource } from "./fence-chrome.tsx"
-import { parseXflowSpec } from "./fence-spec.ts"
+import { FenceError, FencePending, FenceSource } from './fence-chrome.tsx'
+import { parseXflowSpec } from './fence-spec.ts'
 
 /** 会话里的画布高度区间：太矮看不清结构，太高占满一屏 */
 const CANVAS_MIN_HEIGHT = 220
 const CANVAS_MAX_HEIGHT = 420
 
 const XflowCanvas = lazy(() =>
-  import("./xflow-canvas.tsx").then((module) => ({ default: module.XflowCanvas })),
+  import('./xflow-canvas.tsx').then((module) => ({ default: module.XflowCanvas })),
 )
 
 const CanvasSkeleton = ({ className, height }: { className?: string; height?: number }) => (
   <div
-    className={cn("flex w-full items-center justify-center rounded-lg border border-border bg-sidebar", className)}
+    className={cn(
+      'flex w-full items-center justify-center rounded-lg border border-border bg-sidebar',
+      className,
+    )}
     style={height === undefined ? undefined : { height }}
   >
     <span className="text-muted-foreground text-xs">正在加载画布…</span>
@@ -60,13 +63,15 @@ export const XflowFence = ({ code, isIncomplete, language }: CustomRendererProps
     CANVAS_MAX_HEIGHT,
     Math.max(CANVAS_MIN_HEIGHT, (contentHeight ?? 240) + 48),
   )
-  const title = model.title ?? "流程图"
+  const title = model.title ?? '流程图'
 
   return (
     <div className="my-4" data-fence="xflow">
       <div className="mb-2 flex items-center gap-2">
         {model.title ? (
-          <p className="min-w-0 flex-1 truncate font-medium text-sm text-foreground">{model.title}</p>
+          <p className="min-w-0 flex-1 truncate font-medium text-sm text-foreground">
+            {model.title}
+          </p>
         ) : (
           <span className="flex-1" />
         )}

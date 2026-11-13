@@ -5,13 +5,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { LogOutIcon, Menu, X, ArrowRight, TerminalSquare } from 'lucide-react'
 import { Button } from '@repo/ui'
-import {
-  AppName,
-  Pages,
-  LandingAnchors,
-  AdminUrl,
-  formatStorageUrl,
-} from '@/lib/constants'
+import { AppName, Pages, LandingAnchors, AdminUrl, formatStorageUrl } from '@/lib/constants'
 import { removeToken } from '@/lib/server-client'
 import { logoutAction } from '@/actions/auth.actions'
 import { ThemeToggle } from '@/components/ThemeToggle'
@@ -179,9 +173,7 @@ export function Header({ user, authEnabled }: HeaderProps) {
                     {initial}
                   </span>
                 )}
-                <span className="truncate text-sm text-muted-foreground">
-                  {displayName}
-                </span>
+                <span className="truncate text-sm text-muted-foreground">{displayName}</span>
               </div>
               <Button
                 variant="ghost"

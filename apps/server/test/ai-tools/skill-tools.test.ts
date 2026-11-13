@@ -28,8 +28,7 @@ const makeService = () => ({
   import: vi.fn(),
 })
 
-const makeGroup = (service: ReturnType<typeof makeService>) =>
-  new SkillTools(service as never)
+const makeGroup = (service: ReturnType<typeof makeService>) => new SkillTools(service as never)
 
 describe('skill-save：新建 / 更新', () => {
   it('不存在 → 一次 create（正文 + 参考文件一起写）', async () => {
@@ -81,7 +80,11 @@ describe('skill-save：新建 / 更新', () => {
 
     expect(result).toMatchObject({ created: false, version: 5 })
     expect(service.update).toHaveBeenCalledWith(
-      expect.objectContaining({ skillKey: 'demo-skill', description: '新的时机', expectedVersion: 2 }),
+      expect.objectContaining({
+        skillKey: 'demo-skill',
+        description: '新的时机',
+        expectedVersion: 2,
+      }),
     )
     expect(service.saveFile).toHaveBeenNthCalledWith(
       1,
@@ -100,10 +103,7 @@ describe('skill-save：新建 / 更新', () => {
     const spec = specByKey(makeGroup(service), TOOL_KEYS.skillSave)
 
     await expect(
-      spec.exec(
-        { skillKey: 'demo-skill', description: 'x', body: '' },
-        {} as never,
-      ),
+      spec.exec({ skillKey: 'demo-skill', description: 'x', body: '' }, {} as never),
     ).rejects.toBeInstanceOf(ToolDeniedError)
   })
 })
@@ -167,7 +167,9 @@ describe('skill-list / skill-delete / skill-enable', () => {
   it('skill-list 只回模型需要的摘要字段', async () => {
     const service = makeService()
     service.list.mockResolvedValue({
-      items: [{ ...detailOf(3), title: 'Demo', description: '时机', source: 'online', fileCount: 2 }],
+      items: [
+        { ...detailOf(3), title: 'Demo', description: '时机', source: 'online', fileCount: 2 },
+      ],
       total: 1,
       page: 1,
       size: 100,
@@ -222,8 +224,8 @@ describe('skill-list / skill-delete / skill-enable', () => {
     const service = makeService()
     service.remove.mockResolvedValue({ ok: true })
     const spec = specByKey(makeGroup(service), TOOL_KEYS.skillDelete)
-    await expect(
-      spec.exec({ skillKey: 'demo-skill' }, {} as never),
-    ).resolves.toMatchObject({ ok: true })
+    await expect(spec.exec({ skillKey: 'demo-skill' }, {} as never)).resolves.toMatchObject({
+      ok: true,
+    })
   })
 })

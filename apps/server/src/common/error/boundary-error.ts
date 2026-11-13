@@ -27,9 +27,7 @@ export const boundaryErrorOf = (code: number): BoundaryError => {
 }
 
 /** 未认证（缺 token）：401 */
-export const unauthorizedError = (): BoundaryError =>
-  boundaryErrorOf(AppErrorCodes.Unauthorized)
+export const unauthorizedError = (): BoundaryError => boundaryErrorOf(AppErrorCodes.Unauthorized)
 
 /** token 无效 / 过期：401 */
-export const tokenInvalidError = (): BoundaryError =>
-  boundaryErrorOf(AppErrorCodes.TokenInvalid)
+export const tokenInvalidError = (): BoundaryError => boundaryErrorOf(AppErrorCodes.TokenInvalid)

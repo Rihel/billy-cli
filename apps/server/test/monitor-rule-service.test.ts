@@ -40,11 +40,11 @@ describe('MonitorRuleService（配置合并与校验）', () => {
     const current = row()
     const repo = {
       findByKey: vi.fn().mockResolvedValue(current),
-      updateConfig: vi.fn().mockImplementation(async (_key, config, enabled) => ({
-        ...current,
-        config,
-        enabled: enabled ?? current.enabled,
-      })),
+      updateConfig: vi
+        .fn()
+        .mockImplementation(async (_key, config, enabled) =>
+          Object.assign({}, current, { config, enabled: enabled ?? current.enabled }),
+        ),
     }
     const service = new MonitorRuleService(
       new RuleRegistry(),

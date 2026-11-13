@@ -1,10 +1,7 @@
 import type { InfraModuleAsyncOptions } from '../foundation/infra-module.js'
 import { Global, Module, type DynamicModule } from '@nestjs/common'
 import type { z } from 'zod'
-import {
-  StorageConfig,
-  StorageConfigSchema,
-} from './storage.config.js'
+import { StorageConfig, StorageConfigSchema } from './storage.config.js'
 import { ObjectStorage } from './object-storage.js'
 
 /** ObjectStorageModule.forRoot 入参 = StorageConfigSchema 的输入类型 */
@@ -32,9 +29,7 @@ export class ObjectStorageModule {
    * 异步装配：配置由注入的 provider（如 ConfigService）惰性解析 ——
    * 避免在模块装饰器求值时读取尚未加载的配置。
    */
-  static forRootAsync(
-    options: InfraModuleAsyncOptions<ObjectStorageModuleOptions>,
-  ): DynamicModule {
+  static forRootAsync(options: InfraModuleAsyncOptions<ObjectStorageModuleOptions>): DynamicModule {
     return {
       module: ObjectStorageModule,
       imports: options.imports ?? [],
@@ -42,8 +37,7 @@ export class ObjectStorageModule {
         { provide: StorageConfig, useFactory: options.useFactory, inject: options.inject ?? [] },
         ObjectStorage,
       ],
-      exports: [StorageConfig,
-        ObjectStorage,],
+      exports: [StorageConfig, ObjectStorage],
     }
   }
 }

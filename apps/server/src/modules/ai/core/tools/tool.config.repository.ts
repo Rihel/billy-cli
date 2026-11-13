@@ -71,8 +71,10 @@ export class ToolConfigRepository implements ToolConfigSource {
         keyword: `%${query.keyword}%`,
       })
     }
-    if (query.category !== undefined) builder.andWhere('t.category = :category', { category: query.category })
-    if (query.enabled !== undefined) builder.andWhere('t.enabled = :enabled', { enabled: query.enabled })
+    if (query.category !== undefined)
+      builder.andWhere('t.category = :category', { category: query.category })
+    if (query.enabled !== undefined)
+      builder.andWhere('t.enabled = :enabled', { enabled: query.enabled })
     if (query.source !== undefined) builder.andWhere('t.source = :source', { source: query.source })
     const { data, total } = await pageWith(builder, query.page, query.size)
     return { items: data, total, page: query.page, size: query.size }
@@ -123,15 +125,12 @@ export class ToolConfigRepository implements ToolConfigSource {
       await repo.update({ id: existing.id }, { ...base, lastSeenAt: now } as never)
       return 'seen'
     }
-    await repo.update(
-      { id: existing.id },
-      {
-        ...base,
-        // 缺的键用当前默认值补齐；已存的值优先（人改过的值在 source=manual，走不到这里）
-        config: { ...defaults, ...(existing.config ?? {}) },
-        lastSeenAt: now,
-      } as never,
-    )
+    await repo.update({ id: existing.id }, {
+      ...base,
+      // 缺的键用当前默认值补齐；已存的值优先（人改过的值在 source=manual，走不到这里）
+      config: { ...defaults, ...existing.config },
+      lastSeenAt: now,
+    } as never)
     return 'updated'
   }
 
@@ -157,7 +156,7 @@ export class ToolConfigRepository implements ToolConfigSource {
     if (changes.config !== undefined) patch.config = changes.config
     if (changes.limits !== undefined) patch.limits = changes.limits
     // 秘钥：省略 = 不改；空串 = 清空；给值 = 覆盖（**明文入库**）
-    const secrets = { ...(existing.secrets ?? {}) }
+    const secrets = { ...existing.secrets }
     let secretChanged = false
     for (const [name, value] of Object.entries(changes.secrets ?? {})) {
       secretChanged = true
@@ -181,22 +180,18 @@ export class ToolConfigRepository implements ToolConfigSource {
     const repo = await this.repo()
     const existing = await this.findByKey(spec.key)
     if (!existing) throw new Error(`工具配置不存在：${spec.key}`)
-    await repo.update(
-      { id: existing.id },
-      {
-        enabled: true,
-        scope: spec.scope,
-        allowedAgents: null,
-        config: codeDefaults(spec) as Record<string, unknown>,
-        limits: null,
-        secrets: null,
-        source: ToolSource._source.Seed.value,
-        lastSeenAt: new Date(),
-      } as never,
-    )
+    await repo.update({ id: existing.id }, {
+      enabled: true,
+      scope: spec.scope,
+      allowedAgents: null,
+      config: codeDefaults(spec) as Record<string, unknown>,
+      limits: null,
+      secrets: null,
+      source: ToolSource._source.Seed.value,
+      lastSeenAt: new Date(),
+    } as never)
     const updated = await this.findByKey(spec.key)
     if (!updated) throw new Error(`工具配置重置后读回失败：${spec.key}`)
     return updated
   }
-
 }

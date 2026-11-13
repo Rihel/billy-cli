@@ -1,12 +1,12 @@
-"use client"
+'use client'
 
-import { useControllableState } from "#hooks/use-controllable-state.ts"
-import { cn } from "#lib/utils.ts"
-import type { Experimental_TranscriptionResult as TranscriptionResult } from "ai"
-import type { ComponentProps, ReactNode } from "react"
-import { createContext, useCallback, useContext, useMemo } from "react"
+import { useControllableState } from '#hooks/use-controllable-state.ts'
+import { cn } from '#lib/utils.ts'
+import type { Experimental_TranscriptionResult as TranscriptionResult } from 'ai'
+import type { ComponentProps, ReactNode } from 'react'
+import { createContext, useCallback, useContext, useMemo } from 'react'
 
-type TranscriptionSegment = TranscriptionResult["segments"][number]
+type TranscriptionSegment = TranscriptionResult['segments'][number]
 
 interface TranscriptionContextValue {
   segments: TranscriptionSegment[]
@@ -20,12 +20,12 @@ const TranscriptionContext = createContext<TranscriptionContextValue | null>(nul
 const useTranscription = () => {
   const context = useContext(TranscriptionContext)
   if (!context) {
-    throw new Error("Transcription components must be used within Transcription")
+    throw new Error('Transcription components must be used within Transcription')
   }
   return context
 }
 
-export type TranscriptionProps = Omit<ComponentProps<"div">, "children"> & {
+export type TranscriptionProps = Omit<ComponentProps<'div'>, 'children'> & {
   segments: TranscriptionSegment[]
   currentTime?: number
   onSeek?: (time: number) => void
@@ -53,19 +53,31 @@ export const Transcription = ({
 
   return (
     <TranscriptionContext.Provider value={contextValue}>
-      <div className={cn("flex flex-wrap gap-1 text-sm leading-relaxed", className)} data-slot="transcription" {...props}>
-        {segments.filter((segment) => segment.text.trim()).map((segment, index) => children(segment, index))}
+      <div
+        className={cn('flex flex-wrap gap-1 text-sm leading-relaxed', className)}
+        data-slot="transcription"
+        {...props}
+      >
+        {segments
+          .filter((segment) => segment.text.trim())
+          .map((segment, index) => children(segment, index))}
       </div>
     </TranscriptionContext.Provider>
   )
 }
 
-export type TranscriptionSegmentProps = ComponentProps<"button"> & {
+export type TranscriptionSegmentProps = ComponentProps<'button'> & {
   segment: TranscriptionSegment
   index: number
 }
 
-export const TranscriptionSegment = ({ segment, index, className, onClick, ...props }: TranscriptionSegmentProps) => {
+export const TranscriptionSegment = ({
+  segment,
+  index,
+  className,
+  onClick,
+  ...props
+}: TranscriptionSegmentProps) => {
   const { currentTime, onSeek } = useTranscription()
 
   const isActive = currentTime >= segment.startSecond && currentTime < segment.endSecond
@@ -84,12 +96,12 @@ export const TranscriptionSegment = ({ segment, index, className, onClick, ...pr
   return (
     <button
       className={cn(
-        "inline text-left",
-        isActive && "text-primary",
-        isPast && "text-muted-foreground",
-        !(isActive || isPast) && "text-muted-foreground/60",
-        onSeek && "cursor-pointer hover:text-foreground",
-        !onSeek && "cursor-default",
+        'inline text-left',
+        isActive && 'text-primary',
+        isPast && 'text-muted-foreground',
+        !(isActive || isPast) && 'text-muted-foreground/60',
+        onSeek && 'cursor-pointer hover:text-foreground',
+        !onSeek && 'cursor-default',
         className,
       )}
       data-active={isActive}

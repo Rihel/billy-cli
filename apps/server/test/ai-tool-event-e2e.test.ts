@@ -18,7 +18,6 @@ import { SkillLoader } from '../src/modules/ai/core/skills/index.js'
 import { ToolGateway } from '../src/modules/ai/core/tools/tool.gateway.js'
 import { ToolRegistry } from '../src/modules/ai/core/tools/tool.registry.js'
 import { TOOL_KEYS } from '../src/modules/ai/core/tools/tool-keys.js'
-import { BashTool } from '../src/modules/ai/tools/bash.tool.js'
 import { FileTools } from '../src/modules/ai/files/file.tools.js'
 import { WebTools } from '../src/modules/ai/tools/web.tools.js'
 import { RunSubAgentTool } from '../src/modules/ai/tools/subagent.tool.js'
@@ -105,7 +104,10 @@ let httpBase: string
 const createdConversationIds: string[] = []
 
 /** SSE 原文里按 part 类型取出来（宽容解析：只认 JSON 得动的 `data:` 帧） */
-const partsOfType = (text: string, type: string): Array<{ id?: string; data: Record<string, unknown> }> =>
+const partsOfType = (
+  text: string,
+  type: string,
+): Array<{ id?: string; data: Record<string, unknown> }> =>
   text
     .split('\n\n')
     .filter((frame) => frame.startsWith('data: ') && frame.includes(`"${type}"`))
@@ -115,12 +117,20 @@ beforeAll(async () => {
   mock = await startMockModelServer()
 
   db = new Db(
-    { url: process.env.DB_URL!, sync: false, entities: [ConversationEntity, RunEntity, TimelineEntity] } as never,
+    {
+      url: process.env.DB_URL!,
+      sync: false,
+      entities: [ConversationEntity, RunEntity, TimelineEntity],
+    } as never,
     silentLogger,
   )
   await db.onApplicationBootstrap()
 
-  redis = new RedisStore({ url: REDIS_URL, keyPrefix: 'aitevent:' } as never, new IdGeneration(), silentLogger)
+  redis = new RedisStore(
+    { url: REDIS_URL, keyPrefix: 'aitevent:' } as never,
+    new IdGeneration(),
+    silentLogger,
+  )
   await redis.onApplicationBootstrap()
   const streamStore = new AgentStreamStore(redis, silentLogger)
 
@@ -203,7 +213,13 @@ beforeAll(async () => {
     }),
   } as never
 
-  conversations = new AgentConversationService(conversationRepo, runs, timelines, registry, silentLogger)
+  conversations = new AgentConversationService(
+    conversationRepo,
+    runs,
+    timelines,
+    registry,
+    silentLogger,
+  )
   const context = new ContextService(timelines, config, silentLogger)
   // 附件替身：e2e 不带附件，但构造器是位置参数，少一个会让后面整体错位
   const chatAttachments = stubAttachments(silentLogger)
@@ -232,8 +248,11 @@ beforeAll(async () => {
     const chunks: Buffer[] = []
     req.on('data', (chunk) => chunks.push(chunk as Buffer))
     req.on('end', () => {
-      const body = JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}') as Record<string, unknown>
-      void chat.chatStream(USER, body as never, res).catch((error: unknown) => {
+      const body = JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}') as Record<
+        string,
+        unknown
+      >
+      void chat.chatStream(USER, body as never, res).catch((_error: unknown) => {
         if (!res.writableEnded) res.statusCode = 500
         res.end()
       })
@@ -317,5 +336,4 @@ describe('工具自定义事件端到端（mock 模型 + 真实 DB + 真实 Redi
     expect(assistantText).toContain(MOCK_FINAL_TEXT)
     expect(conversationId).toBeTruthy()
   }, 30_000)
-
 })

@@ -51,7 +51,10 @@ const writeSkill = (
   const dir = join(root, name)
   mkdirSync(dir, { recursive: true })
   const description = options.description ?? `什么时候用 ${name}`
-  writeFileSync(join(dir, 'SKILL.md'), `---\nname: ${name}\ndescription: ${description}\n---\n\n${options.body ?? `# ${name}\n\n正文。`}\n`)
+  writeFileSync(
+    join(dir, 'SKILL.md'),
+    `---\nname: ${name}\ndescription: ${description}\n---\n\n${options.body ?? `# ${name}\n\n正文。`}\n`,
+  )
   for (const [file, content] of Object.entries(options.references ?? {})) {
     mkdirSync(join(dir, 'references'), { recursive: true })
     writeFileSync(join(dir, 'references', file), content)

@@ -173,9 +173,7 @@ export class SessionStore {
 
       const currentSha = currentToken ? this.sha(currentToken) : null
       const payloads = await Promise.all(
-        shas.map((sha) =>
-          this.redis.getJson<StoredSession>(sessionKey(sha)).catch(() => null),
-        ),
+        shas.map((sha) => this.redis.getJson<StoredSession>(sessionKey(sha)).catch(() => null)),
       )
 
       const entries: SessionEntry[] = []
@@ -231,9 +229,7 @@ export class SessionStore {
       const shas = await this.redis.raw.smembers(index)
       if (shas.length > 0) {
         const payloads = await Promise.all(
-          shas.map((sha) =>
-            this.redis.getJson<StoredSession>(sessionKey(sha)).catch(() => null),
-          ),
+          shas.map((sha) => this.redis.getJson<StoredSession>(sessionKey(sha)).catch(() => null)),
         )
         // 反查 key 也要一起删：否则它会独自残留到 TTL 到期
         const sidKeys = payloads
@@ -274,11 +270,7 @@ export class SessionStore {
 
   /** 旧会话（升级前登记，无 sessionId / 时间字段）就地补写，保证列表可展示、可下线 */
   private async ensureSession(sha: string, payload: StoredSession): Promise<ResolvedSession> {
-    if (
-      payload.sessionId &&
-      payload.createdAt !== undefined &&
-      payload.lastSeenAt !== undefined
-    ) {
+    if (payload.sessionId && payload.createdAt !== undefined && payload.lastSeenAt !== undefined) {
       return {
         ...payload,
         sessionId: payload.sessionId,

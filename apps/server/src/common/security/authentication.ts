@@ -3,10 +3,7 @@ import type { Request } from 'express'
 import { requestContext } from '../request-context/request-context.js'
 
 /** 读取 cookie（无 cookie-parser 依赖的最小实现，仅取首个同名项并 URL 解码） */
-const readCookie = (
-  header: string | undefined,
-  name: string,
-): string | undefined => {
+const readCookie = (header: string | undefined, name: string): string | undefined => {
   if (!header) return undefined
   for (const segment of header.split(';')) {
     const separator = segment.indexOf('=')
@@ -30,10 +27,7 @@ export type TokenKind = 'user' | 'admin' | 'any'
  *
  * `any` 只给「确实不区分身份」的调用方（如登出参数、SSE 订阅）用；守卫不要用它。
  */
-export const extractToken = (
-  request: Request,
-  kind: TokenKind = 'any',
-): string | undefined => {
+export const extractToken = (request: Request, kind: TokenKind = 'any'): string | undefined => {
   const authorization = request.headers.authorization
   if (authorization?.startsWith('Bearer ')) return authorization.slice(7)
 

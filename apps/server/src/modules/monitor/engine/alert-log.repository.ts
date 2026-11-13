@@ -26,9 +26,7 @@ export class AlertLogRepository {
     return rows.map((row) => this.toModel(row))
   }
 
-  async page(
-    query: PageQueryMonitorLogDto,
-  ): Promise<PageQueryResult<MonitorAlertDeliveryModel>> {
+  async page(query: PageQueryMonitorLogDto): Promise<PageQueryResult<MonitorAlertDeliveryModel>> {
     const { page, size, alertId, ruleId, channel, status, from, to } = query
     const repo = await this.repo()
     const builder = repo.createQueryBuilder('l')

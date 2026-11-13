@@ -78,7 +78,10 @@ export const resolveCommandRun = (options: CommandRunOptions): ResolvedCommandRu
  * 抛出去会变成"这一轮失败"。分类顺序是刻意的：中止 → 超时 → 截断 → 非零退出 → 没跑起来，
  * 于是 `aborted` / `timedOut` / `truncated` 三种终止原因不会互相冒充。
  */
-export const toCommandResult = (run: ResolvedCommandRun, result: ExecaResultLike): CommandResult => {
+export const toCommandResult = (
+  run: ResolvedCommandRun,
+  result: ExecaResultLike,
+): CommandResult => {
   const base: CommandResult = {
     ok: !result.failed,
     command: run.command,

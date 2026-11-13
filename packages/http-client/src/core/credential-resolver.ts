@@ -65,10 +65,7 @@ export class CredentialResolver<Credentials = Record<string, any>> {
    */
   async forceRefresh(): Promise<Credentials> {
     if (!this.provider?.refresh) {
-      throw new ApiError(
-        ApiErrorCodes.NoRefreshAvailable,
-        '未配置 refresh，无法强制刷新。',
-      )
+      throw new ApiError(ApiErrorCodes.NoRefreshAvailable, '未配置 refresh，无法强制刷新。')
     }
     const credentials = await this.manager.getCredentials()
     const fresh = await this.deduplicatedRefresh(credentials)
@@ -77,21 +74,21 @@ export class CredentialResolver<Credentials = Record<string, any>> {
   }
 
   private async deduplicatedAcquire(): Promise<Credentials> {
-    if (!this.acquirePromise) {
-      this.acquirePromise = this.provider!
-        .acquire()
-        .finally(() => { this.acquirePromise = null })
+    // 用显式 null 比较：packages 关闭 strictNullChecks 后真值判断会被误判成 Promise 条件
+    if (this.acquirePromise === null) {
+      this.acquirePromise = this.provider!.acquire().finally(() => {
+        this.acquirePromise = null
+      })
     }
     return this.acquirePromise
   }
 
-  private async deduplicatedRefresh(
-    credentials: Credentials,
-  ): Promise<Credentials> {
-    if (!this.refreshPromise) {
-      this.refreshPromise = this.provider!
-        .refresh!(credentials)
-        .finally(() => { this.refreshPromise = null })
+  private async deduplicatedRefresh(credentials: Credentials): Promise<Credentials> {
+    // 用显式 null 比较：packages 关闭 strictNullChecks 后真值判断会被误判成 Promise 条件
+    if (this.refreshPromise === null) {
+      this.refreshPromise = this.provider!.refresh!(credentials).finally(() => {
+        this.refreshPromise = null
+      })
     }
     return this.refreshPromise
   }

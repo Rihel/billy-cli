@@ -15,10 +15,7 @@ export async function copy(text: string) {
 }
 
 const cache = new Map<string, string>()
-export function generateLetterAvatar(
-  name: string,
-  bgColor: string = '#1677ff',
-) {
+export function generateLetterAvatar(name: string, bgColor: string = '#1677ff') {
   const letter = name?.slice(0, 1)?.toLocaleUpperCase() || 'U'
   const cacheKey = `${name}\u0000${bgColor}`
   if (cache.has(cacheKey)) {

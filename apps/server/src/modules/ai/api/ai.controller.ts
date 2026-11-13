@@ -273,9 +273,7 @@ export class AiController {
 
   @Post('conversation/detail')
   @HttpCode(200)
-  detailConversation(
-    @Body({ schema: AgentConversationIdSchema }) input: AgentConversationIdDto,
-  ) {
+  detailConversation(@Body({ schema: AgentConversationIdSchema }) input: AgentConversationIdDto) {
     return this.conversations.detail(this.ownerId(), input)
   }
 
@@ -397,7 +395,12 @@ export class AiController {
   /** 右栏「工作区」视图：扁平文件清单（不含内容） */
   @Post('file/workspace')
   @HttpCode(200)
-  async listWorkspace(@Body({ schema: WorkspaceListSchema }) input: { conversationId: string; includeCaches?: boolean }) {
+  async listWorkspace(
+    @Body({ schema: WorkspaceListSchema }) input: {
+      conversationId: string
+      includeCaches?: boolean
+    },
+  ) {
     await this.conversations.requireOwned(this.ownerId(), input.conversationId)
     try {
       return await this.files.workspaceFiles(this.fileContext(input.conversationId), {
@@ -411,7 +414,13 @@ export class AiController {
   /** 文本 / HTML 预览：会话文件（ai）或工作区文件（workspace） */
   @Post('file/preview')
   @HttpCode(200)
-  async previewFile(@Body({ schema: WorkspacePreviewSchema }) input: { conversationId: string; path: string; source?: 'ai' | 'workspace' }) {
+  async previewFile(
+    @Body({ schema: WorkspacePreviewSchema }) input: {
+      conversationId: string
+      path: string
+      source?: 'ai' | 'workspace'
+    },
+  ) {
     await this.conversations.requireOwned(this.ownerId(), input.conversationId)
     try {
       return await this.files.previewText(
@@ -478,9 +487,7 @@ export class AiController {
       createReadStream(content.path).pipe(response)
     } catch (error) {
       if (error instanceof ToolDeniedError) {
-        response
-          .status(error.reason === 'forbidden' ? 403 : 400)
-          .json({ message: error.message })
+        response.status(error.reason === 'forbidden' ? 403 : 400).json({ message: error.message })
         return
       }
       response.status(500).json({ message: '读取工作区文件失败' })

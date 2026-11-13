@@ -5,7 +5,7 @@ import { DEFAULT_AGENT_KEY, createAgentDefinitions } from './agents/index.js'
 import { AiController } from './api/ai.controller.js'
 import { AiToolController } from './api/ai-tool.controller.js'
 import { AiToolService } from './api/ai-tool.service.js'
-import { AgentConfig, toAgentModelId, type AgentConfig as AgentConfigValue } from './core/config.js'
+import { AgentConfig, type AgentConfig as AgentConfigValue } from './core/config.js'
 import { decideModelForMastra } from './core/model-decision.js'
 import { AiModelModule, AiModelService } from '../ai-model/index.js'
 import { MASTRA, createMastra } from './mastra/ai.mastra.js'
@@ -142,7 +142,15 @@ let warnedMissingEnvelope = false
     // 工具组实例（**唯一的工具来源**）：注册机对每个组跑 `buildToolSpecs()` 拿 1..n 个工具
     {
       provide: AGENT_TOOL_GROUPS,
-      inject: [PlannerTools, BashTool, RunSubAgentTool, ReadToolResultTool, WebTools, SkillTools, FileTools],
+      inject: [
+        PlannerTools,
+        BashTool,
+        RunSubAgentTool,
+        ReadToolResultTool,
+        WebTools,
+        SkillTools,
+        FileTools,
+      ],
       useFactory: (...groups: AgentToolGroup[]): AgentToolGroup[] => groups,
     },
     // 部署上限（env）：库里的值再大也突破不了
@@ -185,7 +193,11 @@ let warnedMissingEnvelope = false
     ToolConfigRepository,
     { provide: TOOL_CONFIG_SOURCE, useExisting: ToolConfigRepository },
     { provide: TIMELINE_REPOSITORY, useExisting: TimelineRepository },
-    { provide: TOOL_RATE_COUNTER, inject: [RedisStore], useFactory: (redis: RedisStore) => new RedisToolRateCounter(redis) },
+    {
+      provide: TOOL_RATE_COUNTER,
+      inject: [RedisStore],
+      useFactory: (redis: RedisStore) => new RedisToolRateCounter(redis),
+    },
     ToolResultStore,
     ToolConfigService,
     // 网关插件链：**数组顺序 = 执行顺序**（redact → paginate → audit-end 不能换）
@@ -294,7 +306,15 @@ let warnedMissingEnvelope = false
     },
     {
       provide: MASTRA,
-      inject: [AgentConfig, AGENT_REGISTRY, ToolRegistry, SkillLoader, Db, AppLogger, AiModelService],
+      inject: [
+        AgentConfig,
+        AGENT_REGISTRY,
+        ToolRegistry,
+        SkillLoader,
+        Db,
+        AppLogger,
+        AiModelService,
+      ],
       useFactory: async (
         config: AgentConfigValue,
         registry: AgentRegistryValue,
@@ -302,7 +322,7 @@ let warnedMissingEnvelope = false
         skillLoader: SkillLoader,
         db: Db,
         logger: AppLogger,
-        models: AiModelService,
+        _models: AiModelService,
       ) => {
         return createMastra({
           /**

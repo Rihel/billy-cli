@@ -14,7 +14,9 @@ describe('parseSkillSource', () => {
       repo: 'skills',
       slug: 'find-skills',
     })
-    expect(parseSkillSource('https://www.skills.sh/anthropics/skills/frontend-design')).toMatchObject({
+    expect(
+      parseSkillSource('https://www.skills.sh/anthropics/skills/frontend-design'),
+    ).toMatchObject({
       owner: 'anthropics',
       repo: 'skills',
       slug: 'frontend-design',
@@ -43,7 +45,9 @@ describe('parseSkillSource', () => {
 
   it('GitHub 文件链接 → 技能目录', () => {
     expect(
-      parseSkillSource('https://github.com/vercel-labs/skills/blob/main/skills/find-skills/SKILL.md'),
+      parseSkillSource(
+        'https://github.com/vercel-labs/skills/blob/main/skills/find-skills/SKILL.md',
+      ),
     ).toEqual({
       kind: 'github',
       owner: 'vercel-labs',
@@ -85,7 +89,9 @@ describe('parseSkillSource', () => {
       url: 'https://example.com/path/my-skill.md',
     })
     // 查询串 / hash 不影响解析
-    expect(parseSkillSource('https://example.com/my.md?raw=1#x')).toMatchObject({ kind: 'markdown' })
+    expect(parseSkillSource('https://example.com/my.md?raw=1#x')).toMatchObject({
+      kind: 'markdown',
+    })
   })
 
   it('不支持的来源给出可执行的提示', () => {

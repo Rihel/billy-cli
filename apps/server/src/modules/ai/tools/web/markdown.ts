@@ -22,10 +22,7 @@ let service: TurndownService | null = null
 
 /** 单元格文本：压掉换行、转义竖线（否则会把表格切坏） */
 const cellText = (cell: Element): string =>
-  (cell.textContent ?? '')
-    .replace(/\s+/g, ' ')
-    .replace(/\|/g, '\\|')
-    .trim()
+  (cell.textContent ?? '').replace(/\s+/g, ' ').replace(/\|/g, '\\|').trim()
 
 /**
  * 表格 → GFM 表格。
@@ -61,7 +58,17 @@ const getService = (): TurndownService => {
   })
   // 噪声节点：内容留着只是占行（页是按行切的，导航条与侧栏直接等于浪费页数）
   // 只删 `nav` / `aside`，**不删 `header`** —— 文章标题常常就在 `<article><header><h1>` 里
-  svc.remove(['script', 'style', 'noscript', 'template', 'canvas', 'iframe', 'form', 'nav', 'aside'])
+  svc.remove([
+    'script',
+    'style',
+    'noscript',
+    'template',
+    'canvas',
+    'iframe',
+    'form',
+    'nav',
+    'aside',
+  ])
   // 语义化标签之外，还有一批用 role 表达的同类区块
   svc.addRule('drop-noise-role', {
     filter: (node) =>
@@ -175,9 +182,15 @@ export const looksLikeHtml = (contentType: string, text: string): boolean => {
 const BOT_MARKERS: ReadonlyArray<readonly [RegExp, string]> = [
   [/百度安全验证/, '百度安全验证'],
   [/安全验证|人机验证|请完成验证|请输入验证码|滑动验证/, '人机验证页'],
-  [/Just a moment|cf-browser-verification|Enable JavaScript and cookies to continue/i, 'Cloudflare 验证'],
+  [
+    /Just a moment|cf-browser-verification|Enable JavaScript and cookies to continue/i,
+    'Cloudflare 验证',
+  ],
   [/Attention Required|Access Denied|Access denied/, '访问被拒绝'],
-  [/请开启JavaScript|请启用 ?JavaScript|enable JavaScript|Please enable JavaScript/i, '要求执行 JavaScript'],
+  [
+    /请开启JavaScript|请启用 ?JavaScript|enable JavaScript|Please enable JavaScript/i,
+    '要求执行 JavaScript',
+  ],
   [/verify (you are )?(a )?human|are you a robot|bot detection|anti.?bot/i, '人机验证页'],
 ]
 

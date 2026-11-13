@@ -8,7 +8,7 @@
  * 用 `.mjs` 而不是 TS：构建脚本要能在**没有 tsx 的 runner 阶段**、且 devDeps 齐全的 builder
  * 阶段都稳定运行，纯 Node ESM 最省事。
  */
-import { cpSync, existsSync, mkdirSync, readdirSync, statSync } from 'node:fs'
+import { cpSync, existsSync, mkdirSync, readdirSync } from 'node:fs'
 import { dirname, join, relative } from 'node:path'
 
 /** 需要随构建拷贝的资产扩展名（提示词模板 `.eta` 与技能文件 `.md`；新增其它资产时加到这里） */

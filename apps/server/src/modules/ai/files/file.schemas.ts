@@ -9,15 +9,39 @@ import type { ToolEnvCaps } from '../core/tools/tools.types.js'
  */
 export const FileConfigSchema = z.object({
   enabled: z.boolean().default(true),
-  maxBytes: z.number().int().positive().default(5 * 1024 * 1024),
+  maxBytes: z
+    .number()
+    .int()
+    .positive()
+    .default(5 * 1024 * 1024),
   maxFilesPerConversation: z.number().int().positive().default(200),
-  maxTotalBytesPerConversation: z.number().int().positive().default(100 * 1024 * 1024),
-  readMaxBytes: z.number().int().positive().default(5 * 1024 * 1024),
+  maxTotalBytesPerConversation: z
+    .number()
+    .int()
+    .positive()
+    .default(100 * 1024 * 1024),
+  readMaxBytes: z
+    .number()
+    .int()
+    .positive()
+    .default(5 * 1024 * 1024),
   pageLines: z.number().int().positive().default(200),
-  maxPageChars: z.number().int().positive().default(16 * 1024),
-  maxWriteBytes: z.number().int().positive().default(1024 * 1024),
+  maxPageChars: z
+    .number()
+    .int()
+    .positive()
+    .default(16 * 1024),
+  maxWriteBytes: z
+    .number()
+    .int()
+    .positive()
+    .default(1024 * 1024),
   searchMaxFiles: z.number().int().positive().default(500),
-  searchMaxBytes: z.number().int().positive().default(20 * 1024 * 1024),
+  searchMaxBytes: z
+    .number()
+    .int()
+    .positive()
+    .default(20 * 1024 * 1024),
   searchMaxResults: z.number().int().positive().default(50),
   searchMaxLineChars: z.number().int().positive().default(500),
   searchMaxKeywords: z.number().int().positive().default(10),
@@ -49,17 +73,14 @@ export const normalizeFileConfig = (
   config: FileConfigValue,
   caps?: ToolEnvCaps,
 ): FileConfigValue => {
-  const file = (caps as ToolEnvCaps & { file?: FileEnvCaps } | undefined)?.file
+  const file = (caps as (ToolEnvCaps & { file?: FileEnvCaps }) | undefined)?.file
   const min = (value: number, max?: number): number =>
     max === undefined ? value : Math.min(value, max)
   return {
     ...config,
     maxBytes: min(config.maxBytes, file?.maxBytesMax),
     maxFilesPerConversation: min(config.maxFilesPerConversation, file?.maxFilesMax),
-    maxTotalBytesPerConversation: min(
-      config.maxTotalBytesPerConversation,
-      file?.maxTotalBytesMax,
-    ),
+    maxTotalBytesPerConversation: min(config.maxTotalBytesPerConversation, file?.maxTotalBytesMax),
     readMaxBytes: min(config.readMaxBytes, file?.readMaxBytesMax),
     pageLines: min(config.pageLines, file?.pageLinesMax),
     maxPageChars: min(config.maxPageChars, file?.pageCharsMax),
@@ -74,12 +95,18 @@ export const normalizeFileConfig = (
 
 /** `file-submit`：工作区文件 → 对象存储 */
 export const SubmitInputSchema = z.object({
-  filePath: z.string().min(1).max(1024).describe('workspace 里要提交的文件路径（绝对或相对会话工作区）'),
+  filePath: z
+    .string()
+    .min(1)
+    .max(1024)
+    .describe('workspace 里要提交的文件路径（绝对或相对会话工作区）'),
   fileKey: z
     .string()
     .min(1)
     .max(255)
-    .describe('会话内逻辑路径，如 reports/2026/q1.pdf；不得以 uploads/ 开头；工具自动拼 userId 与会话 id'),
+    .describe(
+      '会话内逻辑路径，如 reports/2026/q1.pdf；不得以 uploads/ 开头；工具自动拼 userId 与会话 id',
+    ),
 })
 
 /** `file-download`：对象存储 → 工作区 */

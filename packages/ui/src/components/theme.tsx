@@ -1,15 +1,15 @@
-"use client"
+'use client'
 
-import { CheckIcon, MonitorIcon, MoonIcon, SunIcon } from "lucide-react"
-import { useSyncExternalStore } from "react"
+import { CheckIcon, MonitorIcon, MoonIcon, SunIcon } from 'lucide-react'
+import { useSyncExternalStore } from 'react'
 
-import { Button } from "#components/ui/button"
+import { Button } from '#components/ui/button'
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-} from "#components/ui/dropdown-menu"
+} from '#components/ui/dropdown-menu'
 import {
   applyThemeClass,
   PREFERS_DARK_MEDIA_QUERY,
@@ -18,7 +18,7 @@ import {
   THEME_MODES,
   writeStoredMode,
   type ThemeMode,
-} from "#lib/theme"
+} from '#lib/theme'
 
 export type ThemeState = {
   mode: ThemeMode
@@ -57,7 +57,7 @@ export function createTheme(options: {
   storageKey: string
   defaultMode?: ThemeMode
 }): ThemeController {
-  const { storageKey, defaultMode = "system" } = options
+  const { storageKey, defaultMode = 'system' } = options
 
   let state: ThemeState = { mode: defaultMode, dark: false }
   const listeners = new Set<() => void>()
@@ -80,18 +80,16 @@ export function createTheme(options: {
     applyThemeClass(dark)
     commit(mode, dark)
 
-    if (typeof window === "undefined" || typeof window.matchMedia !== "function") {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
       return
     }
     // 只有 system 模式跟随系统变化；重复调用 initTheme 无副作用（幂等）
-    window
-      .matchMedia(PREFERS_DARK_MEDIA_QUERY)
-      .addEventListener("change", () => {
-        if (state.mode !== "system") return
-        const nextDark = resolveDark("system")
-        applyThemeClass(nextDark)
-        commit("system", nextDark)
-      })
+    window.matchMedia(PREFERS_DARK_MEDIA_QUERY).addEventListener('change', () => {
+      if (state.mode !== 'system') return
+      const nextDark = resolveDark('system')
+      applyThemeClass(nextDark)
+      commit('system', nextDark)
+    })
   }
 
   const subscribe = (listener: () => void) => {
@@ -126,9 +124,9 @@ export function createTheme(options: {
 }
 
 const OPTIONS: { mode: ThemeMode; label: string; icon: typeof SunIcon }[] = [
-  { mode: "light", label: "浅色", icon: SunIcon },
-  { mode: "dark", label: "深色", icon: MoonIcon },
-  { mode: "system", label: "跟随系统", icon: MonitorIcon },
+  { mode: 'light', label: '浅色', icon: SunIcon },
+  { mode: 'dark', label: '深色', icon: MoonIcon },
+  { mode: 'system', label: '跟随系统', icon: MonitorIcon },
 ]
 
 export type ThemeToggleProps = {
@@ -145,8 +143,7 @@ export type ThemeToggleProps = {
  * —— 这样同一个组件能被不同存储 key 的前端复用。
  */
 export function ThemeToggle({ mode, onSelect }: ThemeToggleProps) {
-  const CurrentIcon =
-    OPTIONS.find((option) => option.mode === mode)?.icon ?? MonitorIcon
+  const CurrentIcon = OPTIONS.find((option) => option.mode === mode)?.icon ?? MonitorIcon
 
   return (
     <DropdownMenu>
@@ -156,7 +153,7 @@ export function ThemeToggle({ mode, onSelect }: ThemeToggleProps) {
             variant="ghost"
             size="icon-sm"
             aria-label={`切换主题，当前：${
-              OPTIONS.find((option) => option.mode === mode)?.label ?? "跟随系统"
+              OPTIONS.find((option) => option.mode === mode)?.label ?? '跟随系统'
             }`}
           >
             <CurrentIcon />
@@ -168,9 +165,7 @@ export function ThemeToggle({ mode, onSelect }: ThemeToggleProps) {
           <DropdownMenuItem key={optionMode} onClick={() => onSelect(optionMode)}>
             <Icon />
             {label}
-            {optionMode === mode ? (
-              <CheckIcon className="ml-auto text-primary" />
-            ) : null}
+            {optionMode === mode ? <CheckIcon className="ml-auto text-primary" /> : null}
           </DropdownMenuItem>
         ))}
       </DropdownMenuContent>

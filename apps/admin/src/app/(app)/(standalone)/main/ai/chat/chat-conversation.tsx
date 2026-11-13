@@ -53,7 +53,13 @@ import {
   PromptInputTextarea,
   PromptInputTools,
 } from '@repo/ui/components/ai-elements/prompt-input.tsx'
-import { BotIcon, CopyIcon, LayoutDashboardIcon, MessagesSquareIcon, PanelRightIcon } from 'lucide-react'
+import {
+  BotIcon,
+  CopyIcon,
+  LayoutDashboardIcon,
+  MessagesSquareIcon,
+  PanelRightIcon,
+} from 'lucide-react'
 import { Pages } from '@/lib/constants'
 import { useServerClient } from '@/lib/server-client'
 import { useChatMobileNav } from './mobile-nav-context'
@@ -72,11 +78,7 @@ import { conversationPlanOfPlans } from './plan-panel'
 import { ConversationRightPanel, type RightPanelTab } from './right-panel'
 import { RunActivity } from './run-activity'
 import { PlanSummaryCard } from './plan-summary-card'
-import {
-  QuestionCard,
-  type AnswerQuestionsInput,
-  type SuspendedPartData,
-} from './question-card'
+import { QuestionCard, type AnswerQuestionsInput, type SuspendedPartData } from './question-card'
 // 自动展开的判据与工具卡共用同一份（`shouldAutoOpen`：有东西可看 + 用户没动过手）——
 // 同一套纪律只写一次，避免两处各有一套"用户手动优先"的实现漂移
 import { shouldAutoOpen } from './tool-card'
@@ -177,9 +179,7 @@ export function ChatConversation({ conversationId }: { conversationId: string })
    *
    * 它决定不了"要不要沙箱"——那是部署配置；会话页只让用户在沙箱里选能不能写工作区。
    */
-  const [fileAccess, setFileAccess] = useState<'read-only' | 'workspace-write'>(
-    'workspace-write',
-  )
+  const [fileAccess, setFileAccess] = useState<'read-only' | 'workspace-write'>('workspace-write')
   /** 选模型：写进浏览器，别只留在 state 里（见 `MODEL_STORAGE_PREFIX` 的说明） */
   const chooseModel = (next: string) => {
     setModelId(next)
@@ -474,103 +474,104 @@ export function ChatConversation({ conversationId }: { conversationId: string })
    */
   const sessionStore = useChatSessionStore()
 
-  const { messages, sendMessage, status, stop, setMessages, error, clearError, resumeStream } = useChat({
-    // 实例 id 整个组件生命周期稳定；换会话由页面 key 重挂载来隔离
-    id: chatIdRef.current,
-    transport,
-    // 挂载即尝试重连（React 19 StrictMode 下有并发去重，别自己在 useEffect 里调 resumeStream）
-    resume: true,
-    experimental_throttle: 60,
-    onData: (part) => {
-      /**
-       * 实时过程进 store：子助手的状态 / 增量在这里合并成"当前值"。
-       *
-       * 为什么不在渲染期从 parts 收集：逐帧增量以前会一块一个 part，数万条把页面拖死；
-       * 现在增量块在传输层被标成 transient（不落 part），只走这里 —— 数据照样逐块到达，
-       * 但一次追加是 O(1)，并且由 store 按 100ms 合并通知，不让每个增量都进 React。
-       */
-      sessionStore.applyChunk(part as { type: string; id?: string; data?: unknown })
-      /**
-       * 首轮结束时的**自动命名**：服务端在收尾阶段把新标题推下来（`data-conversation-title`）。
-       *
-       * 为什么要推：命名发生在服务端收尾，前端那份"会话列表 / 会话详情"缓存不会自己知道 ——
-       * 就地改缓存（而不是整份重拉）才能让侧栏与页头**当场**换名字，且不多一次请求。
-       * 服务端没推（没改名 / 起名失败）时什么都不做：前端本来就显示着兜底标题。
-       */
-      if (part.type === 'data-conversation-title') {
-        const data = part.data as { conversationId?: string; title?: string }
-        const targetId = data.conversationId ?? activeConversationIdRef.current
-        if (!targetId || !data.title) return
-        // 会话列表现在是 infinite query（多页），实时改名要把每一页都改到
-        queryClient.setQueryData<InfiniteData<AppPageQueryResponse<AgentConversationModel>>>(
-          ['ai', 'conversations'],
-          (current) =>
-            current
-              ? {
-                  ...current,
-                  pages: current.pages.map((page) => ({
-                    ...page,
-                    items: page.items.map((item) =>
-                      item.id === targetId ? { ...item, title: data.title! } : item,
-                    ),
-                  })),
-                }
-              : current,
-        )
-        queryClient.setQueryData<AgentConversationModel>(
-          ['ai', 'conversation', targetId],
-          (current) => (current ? { ...current, title: data.title! } : current),
-        )
-        return
-      }
-
-      // 本轮身份：记住 runId 与（新建会话时的）真实会话 id
-      if (part.type !== 'data-run') return
-      const data = part.data as { runId?: string; conversationId?: string }
-      if (data.runId) {
-        runIdRef.current = data.runId
-        setRunId(data.runId)
-      }
-      if (data.conversationId && data.conversationId !== activeConversationIdRef.current) {
-        activeConversationIdRef.current = data.conversationId
-        // 侧栏列表要立刻出现这条新会话（同一个 QueryClient，不用 prop 传递）
-        void queryClient.invalidateQueries({ queryKey: ['ai', 'conversations'] })
-        if (startedAsNewRef.current) {
-          // 先记住"这个 id 是本轮流出来的"：历史 effect 不能把它当成"打开了一个已有会话"
-          // 去开 loading / 覆盖消息
-          adoptedConversationRef.current = data.conversationId
-          /**
-           * 模型选择要跟着会话搬家：地址换掉之后对话区会重挂载（见 `MODEL_STORAGE_PREFIX`），
-           * 新组件按**真实 id** 读回选择 —— 这里先把 `new` 那一份落到真实 id 上，
-           * 否则重挂载后读不到，选择又回到默认。
-           */
-          const pendingModelId = window.localStorage.getItem(modelStorageKey(conversationId))
-          if (pendingModelId) {
-            window.localStorage.setItem(modelStorageKey(data.conversationId), pendingModelId)
-          }
-          // new → 真实 id 是同一次发送：先标记，页面换地址时沿用同一个 store / useChat
-          markAdoptedConversation(data.conversationId)
-          // 地址换掉但不滚动；正在流的这一轮由 `useChat`（按 id 存的实例）接住，不中断
-          router.replace(conversationPath(data.conversationId), { scroll: false })
+  const { messages, sendMessage, status, stop, setMessages, error, clearError, resumeStream } =
+    useChat({
+      // 实例 id 整个组件生命周期稳定；换会话由页面 key 重挂载来隔离
+      id: chatIdRef.current,
+      transport,
+      // 挂载即尝试重连（React 19 StrictMode 下有并发去重，别自己在 useEffect 里调 resumeStream）
+      resume: true,
+      experimental_throttle: 60,
+      onData: (part) => {
+        /**
+         * 实时过程进 store：子助手的状态 / 增量在这里合并成"当前值"。
+         *
+         * 为什么不在渲染期从 parts 收集：逐帧增量以前会一块一个 part，数万条把页面拖死；
+         * 现在增量块在传输层被标成 transient（不落 part），只走这里 —— 数据照样逐块到达，
+         * 但一次追加是 O(1)，并且由 store 按 100ms 合并通知，不让每个增量都进 React。
+         */
+        sessionStore.applyChunk(part as { type: string; id?: string; data?: unknown })
+        /**
+         * 首轮结束时的**自动命名**：服务端在收尾阶段把新标题推下来（`data-conversation-title`）。
+         *
+         * 为什么要推：命名发生在服务端收尾，前端那份"会话列表 / 会话详情"缓存不会自己知道 ——
+         * 就地改缓存（而不是整份重拉）才能让侧栏与页头**当场**换名字，且不多一次请求。
+         * 服务端没推（没改名 / 起名失败）时什么都不做：前端本来就显示着兜底标题。
+         */
+        if (part.type === 'data-conversation-title') {
+          const data = part.data as { conversationId?: string; title?: string }
+          const targetId = data.conversationId ?? activeConversationIdRef.current
+          if (!targetId || !data.title) return
+          // 会话列表现在是 infinite query（多页），实时改名要把每一页都改到
+          queryClient.setQueryData<InfiniteData<AppPageQueryResponse<AgentConversationModel>>>(
+            ['ai', 'conversations'],
+            (current) =>
+              current
+                ? {
+                    ...current,
+                    pages: current.pages.map((page) => ({
+                      ...page,
+                      items: page.items.map((item) =>
+                        item.id === targetId ? { ...item, title: data.title! } : item,
+                      ),
+                    })),
+                  }
+                : current,
+          )
+          queryClient.setQueryData<AgentConversationModel>(
+            ['ai', 'conversation', targetId],
+            (current) => (current ? { ...current, title: data.title! } : current),
+          )
+          return
         }
-      }
-    },
-    /**
-     * 错误显示**只取信封里的 `message`**，不把整段 JSON 甩给用户（截图里那串大括号就是它）。
-     *
-     * 3306（会话忙）额外说明一句：它通常不是"新消息出错"，而是**上一轮还在服务端跑**
-     * （页面连接断过 / 刚重启过，前端以为空闲了）—— 告诉用户"等它结束或刷新接回"，
-     * 比只显示"请稍候"更能解释他看到的异常。
-     */
-    onError: (chatError) => {
-      const info = parseChatError(chatError)
-      setErrorText(
-        info.code === 3306
-          ? `${info.message}（上一轮可能还在服务端生成：等它结束，或刷新页面接回进度）`
-          : info.message,
-      )
-    },
-  })
+
+        // 本轮身份：记住 runId 与（新建会话时的）真实会话 id
+        if (part.type !== 'data-run') return
+        const data = part.data as { runId?: string; conversationId?: string }
+        if (data.runId) {
+          runIdRef.current = data.runId
+          setRunId(data.runId)
+        }
+        if (data.conversationId && data.conversationId !== activeConversationIdRef.current) {
+          activeConversationIdRef.current = data.conversationId
+          // 侧栏列表要立刻出现这条新会话（同一个 QueryClient，不用 prop 传递）
+          void queryClient.invalidateQueries({ queryKey: ['ai', 'conversations'] })
+          if (startedAsNewRef.current) {
+            // 先记住"这个 id 是本轮流出来的"：历史 effect 不能把它当成"打开了一个已有会话"
+            // 去开 loading / 覆盖消息
+            adoptedConversationRef.current = data.conversationId
+            /**
+             * 模型选择要跟着会话搬家：地址换掉之后对话区会重挂载（见 `MODEL_STORAGE_PREFIX`），
+             * 新组件按**真实 id** 读回选择 —— 这里先把 `new` 那一份落到真实 id 上，
+             * 否则重挂载后读不到，选择又回到默认。
+             */
+            const pendingModelId = window.localStorage.getItem(modelStorageKey(conversationId))
+            if (pendingModelId) {
+              window.localStorage.setItem(modelStorageKey(data.conversationId), pendingModelId)
+            }
+            // new → 真实 id 是同一次发送：先标记，页面换地址时沿用同一个 store / useChat
+            markAdoptedConversation(data.conversationId)
+            // 地址换掉但不滚动；正在流的这一轮由 `useChat`（按 id 存的实例）接住，不中断
+            router.replace(conversationPath(data.conversationId), { scroll: false })
+          }
+        }
+      },
+      /**
+       * 错误显示**只取信封里的 `message`**，不把整段 JSON 甩给用户（截图里那串大括号就是它）。
+       *
+       * 3306（会话忙）额外说明一句：它通常不是"新消息出错"，而是**上一轮还在服务端跑**
+       * （页面连接断过 / 刚重启过，前端以为空闲了）—— 告诉用户"等它结束或刷新接回"，
+       * 比只显示"请稍候"更能解释他看到的异常。
+       */
+      onError: (chatError) => {
+        const info = parseChatError(chatError)
+        setErrorText(
+          info.code === 3306
+            ? `${info.message}（上一轮可能还在服务端生成：等它结束，或刷新页面接回进度）`
+            : info.message,
+        )
+      },
+    })
 
   /**
    * useChat 的 messages → 会话渲染状态（增量归约）。
@@ -712,7 +713,7 @@ export function ChatConversation({ conversationId }: { conversationId: string })
     if (!shouldAutoOpen(hasActiveSubAgent, panelToggledByUser)) return
     // 自动展开 = 一次"请切到子 agent"的请求（不写 localStorage：没动过手 ≠ 动过手）
     focusRightPanel('subagents')
-  }, [isMobile, hasActiveSubAgent, panelToggledByUser])
+  }, [isMobile, hasActiveSubAgent, panelToggledByUser, focusRightPanel])
 
   /**
    * 一轮**结束后对账**：把侧栏列表与该会话详情失效重取。
@@ -817,7 +818,7 @@ export function ChatConversation({ conversationId }: { conversationId: string })
    */
   const stopRun = async () => {
     const target = runIdRef.current
-    stop()
+    void stop()
     if (!target) return
     try {
       await client.agent.stopRun({ runId: target })
@@ -897,7 +898,9 @@ export function ChatConversation({ conversationId }: { conversationId: string })
      * 标成 answered 之后：dock 立刻收起，这组问答以只读形态留在时间线里。
      */
     setMessages((current) =>
-      current.map((message, index) => (index === seedIndex ? withAnsweredRecord(message) : message)),
+      current.map((message, index) =>
+        index === seedIndex ? withAnsweredRecord(message) : message,
+      ),
     )
     setResuming(true)
 
@@ -970,15 +973,26 @@ export function ChatConversation({ conversationId }: { conversationId: string })
           {isNew ? '新会话' : conversationQuery.data?.title || '会话'}
         </h1>
         {activeAgent ? (
-          <Badge variant="secondary" className="hidden shrink-0 lg:inline-flex">{activeAgent.name}</Badge>
+          <Badge variant="secondary" className="hidden shrink-0 lg:inline-flex">
+            {activeAgent.name}
+          </Badge>
         ) : (
-          <Badge variant="outline" className="hidden shrink-0 lg:inline-flex">未配置</Badge>
+          <Badge variant="outline" className="hidden shrink-0 lg:inline-flex">
+            未配置
+          </Badge>
         )}
         {runId ? (
-          <span className="hidden font-mono text-xs text-muted-foreground xl:inline">run {runId}</span>
+          <span className="hidden font-mono text-xs text-muted-foreground xl:inline">
+            run {runId}
+          </span>
         ) : null}
         {status !== 'ready' ? (
-          <Badge variant={status === 'error' ? 'destructive' : 'outline'} className="hidden shrink-0 lg:inline-flex">{status}</Badge>
+          <Badge
+            variant={status === 'error' ? 'destructive' : 'outline'}
+            className="hidden shrink-0 lg:inline-flex"
+          >
+            {status}
+          </Badge>
         ) : null}
         {/* 右侧：复制会话 id + 换 agent + 右栏开关 */}
         <div className="ml-auto flex items-center gap-2">
@@ -1012,7 +1026,11 @@ export function ChatConversation({ conversationId }: { conversationId: string })
             size="icon-sm"
             aria-pressed={isMobile ? mobilePanelOpen : panelOpen}
             aria-label={(isMobile ? mobilePanelOpen : panelOpen) ? '隐藏右栏' : '显示右栏'}
-            title={(isMobile ? mobilePanelOpen : panelOpen) ? '隐藏右栏（系统指令 / 子 agent 运行）' : '显示右栏（系统指令 / 子 agent 运行）'}
+            title={
+              (isMobile ? mobilePanelOpen : panelOpen)
+                ? '隐藏右栏（系统指令 / 子 agent 运行）'
+                : '显示右栏（系统指令 / 子 agent 运行）'
+            }
             onClick={togglePanel}
           >
             <PanelRightIcon className="size-3.5" />
@@ -1229,7 +1247,9 @@ export function ChatConversation({ conversationId }: { conversationId: string })
                       }
                     />
                     {!attachmentsAllowed ? (
-                      <span className="hidden text-xs text-muted-foreground sm:inline">当前模型不支持附件</span>
+                      <span className="hidden text-xs text-muted-foreground sm:inline">
+                        当前模型不支持附件
+                      </span>
                     ) : inputModalities === null ? (
                       // 未声明 ≠ 不支持：国内厂商的"列模型"接口普遍不给模态，所以只提醒、不拦。
                       // 真不能收图时，服务端会明确报错（3312），比在这里瞎猜强。
@@ -1242,14 +1262,18 @@ export function ChatConversation({ conversationId }: { conversationId: string })
                     ) : null}
                     {attachmentUpload.uploading ? (
                       <span className="text-xs text-muted-foreground">
-                        正在上传附件 {attachmentUpload.progress.done}/{attachmentUpload.progress.total}…
+                        正在上传附件 {attachmentUpload.progress.done}/
+                        {attachmentUpload.progress.total}…
                       </span>
                     ) : null}
                   </PromptInputTools>
                   <div className="flex min-w-0 items-center gap-2">
                     <RunUsageInline usage={usage} turn={turn} />
                     {/* 流式中这个按钮就是"停止"（内部按 status 换成方块图标），onStop 里做真正的取消 */}
-                    <PromptInputSubmit status={resuming ? 'streaming' : status} onStop={() => void stopRun()} />
+                    <PromptInputSubmit
+                      status={resuming ? 'streaming' : status}
+                      onStop={() => void stopRun()}
+                    />
                   </div>
                 </PromptInputFooter>
               </PromptInput>
@@ -1325,13 +1349,7 @@ export function ChatConversation({ conversationId }: { conversationId: string })
  * 行内短（一眼看量级）、悬停全（精确值对账）。
  * 轮 / 步的口径：轮 = 该会话第几轮（页面算好传进来），步 = 这一轮里模型被调了几次。
  */
-function RunUsageInline({
-  usage,
-  turn,
-}: {
-  usage: Record<string, unknown> | null
-  turn: number
-}) {
+function RunUsageInline({ usage, turn }: { usage: Record<string, unknown> | null; turn: number }) {
   const text = usageLineText(usage, turn)
   if (!text) return null
   return (

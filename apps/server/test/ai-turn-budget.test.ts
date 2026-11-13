@@ -40,9 +40,7 @@ describe('轮内工具结果预算', () => {
   })
 
   it('超预算：从最旧开始压，最近 4 条不动', () => {
-    const messages = Array.from({ length: 6 }, (_, index) =>
-      mastraMessage(`t${index}`, big(5_000)),
-    )
+    const messages = Array.from({ length: 6 }, (_, index) => mastraMessage(`t${index}`, big(5_000)))
     const result = fitMessagesToToolBudget(messages, { budgetChars: 8_000, keepRecent: 4 })
 
     expect(result.trimmedCount).toBeGreaterThan(0)
@@ -74,10 +72,10 @@ describe('轮内工具结果预算', () => {
   it('不改原对象：入参消息保持完整（只产出新数组）', () => {
     const original = mastraMessage('a', big(5_000))
     const snapshot = JSON.stringify(original)
-    const result = fitMessagesToToolBudget(
-      [original, mastraMessage('b', big(100))],
-      { budgetChars: 1_000, keepRecent: 0 },
-    )
+    const result = fitMessagesToToolBudget([original, mastraMessage('b', big(100))], {
+      budgetChars: 1_000,
+      keepRecent: 0,
+    })
     expect(result.trimmedCount).toBe(2)
     expect(JSON.stringify(original)).toBe(snapshot)
   })

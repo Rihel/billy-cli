@@ -38,7 +38,8 @@ const OS_RULES: Array<[RegExp, string]> = [
 ]
 
 /** 爬虫 / 脚本类客户端：设备类型单列，便于用户识别「这不是我的浏览器」 */
-const BOT_RULE = /bot|crawler|spider|slurp|curl|wget|python-requests|node-fetch|undici|okhttp|go-http-client|headless/i
+const BOT_RULE =
+  /bot|crawler|spider|slurp|curl|wget|python-requests|node-fetch|undici|okhttp|go-http-client|headless/i
 
 const UNKNOWN: UserAgentInfo = {
   browser: '未知浏览器',

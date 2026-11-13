@@ -1,5 +1,7 @@
 'use client'
 
+/* oxlint-disable jsx-a11y/no-autofocus -- 弹窗打开 / 进入编辑即聚焦首个输入框，键盘用户可直接输入 */
+
 import { useEffect, useMemo, useState } from 'react'
 import type {
   AiSkillImportDto,
@@ -73,7 +75,9 @@ export function ImportSkillDialog({
   // 预览回来：默认勾选"库里还没有"的技能；已存在的要显式开覆盖才能勾
   useEffect(() => {
     if (!preview) return
-    setSelected(new Set(preview.skills.filter((skill) => !skill.exists).map((skill) => skill.skillKey)))
+    setSelected(
+      new Set(preview.skills.filter((skill) => !skill.exists).map((skill) => skill.skillKey)),
+    )
   }, [preview])
 
   // 关掉覆盖时，把已存在的从选择里摘掉（避免"看着没勾覆盖却把别人覆盖了"）
@@ -111,9 +115,7 @@ export function ImportSkillDialog({
     if (!preview) return
     setSelected(
       new Set(
-        preview.skills
-          .filter((skill) => !skill.exists || overwrite)
-          .map((skill) => skill.skillKey),
+        preview.skills.filter((skill) => !skill.exists || overwrite).map((skill) => skill.skillKey),
       ),
     )
   }
@@ -138,6 +140,7 @@ export function ImportSkillDialog({
           <div className="flex items-center gap-2">
             <div className="relative flex-1">
               <LinkIcon className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+              {/* 打开弹窗即聚焦 URL 输入框：键盘优先，属有意的交互 */}
               <Input
                 autoFocus
                 value={url}
@@ -228,8 +231,9 @@ export function ImportSkillDialog({
           {result ? (
             <div className="flex max-h-56 flex-col gap-1 overflow-auto rounded-lg border bg-surface-1 p-2">
               <p className="px-1 text-[11px] font-medium text-muted-foreground">
-                导入结果 · {result.source}（{result.items.filter((item) => item.status !== 'failed').length}{' '}
-                / {result.total} 成功）
+                导入结果 · {result.source}（
+                {result.items.filter((item) => item.status !== 'failed').length} / {result.total}{' '}
+                成功）
               </p>
               {result.items.map((item) => (
                 <div key={item.skillKey} className="flex items-start gap-2 px-1 text-xs">

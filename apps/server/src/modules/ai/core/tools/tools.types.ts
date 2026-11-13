@@ -393,10 +393,7 @@ export interface ToolSpec<C = Record<string, unknown>, I = unknown, O = unknown>
    *
    * 需要查库也可以（依赖由 bean 注入），但必须是只读的：它失败时不该留下任何副作用。
    */
-  readonly precheck?: (
-    input: I,
-    ctx: ToolCallContext<C>,
-  ) => Promise<string | null> | string | null
+  readonly precheck?: (input: I, ctx: ToolCallContext<C>) => Promise<string | null> | string | null
   /** 配置归一化（夹紧到部署上限等）；纯函数，标准测试集覆盖 */
   readonly normalize?: (config: C, caps: ToolEnvCaps) => C
   /** 执行体：只写业务动作（开关 / 边界 / 分页 / 审计全在插件里） */
@@ -409,7 +406,6 @@ export interface ToolSpec<C = Record<string, unknown>, I = unknown, O = unknown>
  * 为什么用 `any`：`ToolSpec<C>` 在 `C` 上是不变的（`config: z.ZodType<C>` 双向使用），
  * 写成 `ToolSpec<unknown>` 会让所有具体声明都赋不进去 —— 与 TypeORM 的 `DeepPartial` 同一类问题。
  */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type AnyToolSpec = ToolSpec<any, any, any>
 
 /**

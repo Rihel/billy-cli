@@ -2,11 +2,7 @@ import { Inject, Injectable } from '@nestjs/common'
 import { AppLogger } from '@repo/kits'
 import { MonitorRuleConfigSchema, type MonitorRuleConfig } from '@repo/shared'
 import type { MetricDefinition, MetricSample, MetricWindow } from '../definitions/metric.types.js'
-import type {
-  MetricRuleType,
-  RuleSubject,
-  RuleType,
-} from '../definitions/rule.types.js'
+import type { MetricRuleType, RuleSubject, RuleType } from '../definitions/rule.types.js'
 import { aggregate } from '../definitions/aggregate.js'
 import { AlertDeliveryService } from './alert-delivery.service.js'
 import { AlertLifecycleService } from './alert-lifecycle.service.js'
@@ -111,11 +107,7 @@ export class RuleEvaluatorService {
         windowEnd: window.end,
       }))
     if (rule.driver === 'stream') {
-      await this.streamState.set(
-        rule.key,
-        nextState,
-        Math.max(rule.windowSeconds * 10, 60),
-      )
+      await this.streamState.set(rule.key, nextState, Math.max(rule.windowSeconds * 10, 60))
     }
 
     const items = await this.lifecycle.reconcileMetric(
@@ -160,7 +152,10 @@ export class RuleEvaluatorService {
         return {
           subjectId: `instance:${instanceId}`,
           samples: recent,
-          value: aggregate(recent.map((row) => row.value), rule.aggregation),
+          value: aggregate(
+            recent.map((row) => row.value),
+            rule.aggregation,
+          ),
         }
       })
     }
@@ -184,10 +179,7 @@ export class RuleEvaluatorService {
         bucket.push(row)
         byWindow.set(row.windowKey, bucket)
       }
-      const windowKeys = [...new Set(ordered.map((row) => row.windowKey))].slice(
-        0,
-        rule.lookback,
-      )
+      const windowKeys = [...new Set(ordered.map((row) => row.windowKey))].slice(0, rule.lookback)
       const values = windowKeys.map((key) =>
         aggregate(
           (byWindow.get(key) ?? []).map((row) => row.value),

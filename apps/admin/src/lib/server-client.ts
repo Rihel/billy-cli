@@ -1,5 +1,4 @@
 import { createAppClients } from '@repo/sdk'
-import { logoutAction } from '@/actions/auth.actions'
 import { Pages, PublicServerUrl, ServerUrl, TokenKey } from './constants'
 
 /**
@@ -10,19 +9,17 @@ import { Pages, PublicServerUrl, ServerUrl, TokenKey } from './constants'
  * 后台额外撤销服务端会话（清掉 httpOnly cookie，避免与登录页会话探测互相弹回形成死循环）
  * 并带 `reason=expired`，前台则直接回登录页。
  */
-export const {
-  getServerClient,
-  useServerClient,
-  createServerClient,
-  saveToken,
-  removeToken,
-} = createAppClients({
-  tokenKey: TokenKey,
-  publicBaseUrl: PublicServerUrl,
-  serverBaseUrl: ServerUrl,
-  onUnauthorized: async () => {
-    if (typeof window === 'undefined') return
-    await logoutAction()
-    window.location.replace(`${Pages.login}?reason=expired`)
-  },
-})
+export const { getServerClient, useServerClient, createServerClient, saveToken, removeToken } =
+  createAppClients({
+    tokenKey: TokenKey,
+    publicBaseUrl: PublicServerUrl,
+    serverBaseUrl: ServerUrl,
+    onUnauthorized: async () => {
+      if (typeof window === 'undefined') return
+      // 动态导入打破 server-client ↔ auth.actions 的静态循环：本文件装配客户端，
+      // 而 auth.actions 又需要 createServerClient；这里只在 401 时按需取 logoutAction。
+      const { logoutAction } = await import('@/actions/auth.actions')
+      await logoutAction()
+      window.location.replace(`${Pages.login}?reason=expired`)
+    },
+  })

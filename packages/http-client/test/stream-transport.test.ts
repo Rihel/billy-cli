@@ -83,11 +83,12 @@ describe('streamConnectOnce 单次连接', () => {
   })
 
   it('非 SSE content-type 抛 StreamTransportError', async () => {
-    const fetchMock = vi.fn(async () =>
-      new Response('oops', {
-        status: 200,
-        headers: { 'content-type': 'application/json' },
-      }),
+    const fetchMock = vi.fn(
+      async () =>
+        new Response('oops', {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        }),
     )
     const controller = new AbortController()
     const conn = streamConnectOnce(
@@ -102,9 +103,7 @@ describe('streamConnectOnce 单次连接', () => {
   })
 
   it('HTTP 非 2xx 抛错并携带 status', async () => {
-    const fetchMock = vi.fn(async () =>
-      new Response('no', { status: 401 }),
-    )
+    const fetchMock = vi.fn(async () => new Response('no', { status: 401 }))
     const controller = new AbortController()
     const conn = streamConnectOnce(
       {
@@ -136,11 +135,12 @@ describe('streamConnectOnce 单次连接', () => {
   })
 
   it('abort 后静默结束（不 reject）', async () => {
-    const fetchMock = vi.fn(async () =>
-      new Response(openStream(), {
-        status: 200,
-        headers: { 'content-type': 'text/event-stream' },
-      }),
+    const fetchMock = vi.fn(
+      async () =>
+        new Response(openStream(), {
+          status: 200,
+          headers: { 'content-type': 'text/event-stream' },
+        }),
     )
     const controller = new AbortController()
     const closedEvents: string[] = []

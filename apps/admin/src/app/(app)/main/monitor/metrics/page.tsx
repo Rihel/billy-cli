@@ -21,7 +21,8 @@ import { useServerClient } from '@/lib/server-client'
 /** 数值格式化：按指标单位走百分比 / 毫秒 / MB / 缩写 */
 function formatValue(value: number, unit: string): string {
   if (unit === 'ratio') return `${(value * 100).toFixed(1)}%`
-  if (unit === 'ms') return value >= 1000 ? `${(value / 1000).toFixed(2)}s` : `${Math.round(value)}ms`
+  if (unit === 'ms')
+    return value >= 1000 ? `${(value / 1000).toFixed(2)}s` : `${Math.round(value)}ms`
   if (unit === 'bytes') return `${(value / 1024 / 1024).toFixed(1)}MB`
   return compact(value)
 }
@@ -51,7 +52,8 @@ export default function MonitorMetricsPage() {
     queryKey: ['monitor', 'metric', 'definitions'],
     queryFn: () => client.monitor.metric.definitions(),
   })
-  const definitions = definitionsQuery.data ?? []
+  // 稳定引用：查询未返回时不能每次渲染都造一个新数组，否则 effect / memo 会反复触发
+  const definitions = useMemo(() => definitionsQuery.data ?? [], [definitionsQuery.data])
 
   useEffect(() => {
     if (!metricKey && definitions.length > 0) setMetricKey(definitions[0].key)

@@ -106,9 +106,7 @@ export async function getFileBuffer(file: File | Blob) {
 export function getFileExtName(filename: string) {
   const basename = filename.split(/[\\/]/).at(-1) ?? ''
   const dotIndex = basename.lastIndexOf('.')
-  return dotIndex > 0 && dotIndex < basename.length - 1
-    ? basename.slice(dotIndex)
-    : null
+  return dotIndex > 0 && dotIndex < basename.length - 1 ? basename.slice(dotIndex) : null
 }
 
 export type FileInfo = {
@@ -190,11 +188,9 @@ export function isVideoLink(value: string) {
 export function base64ToBlob(base64: string, mimeType: string) {
   // 去掉Base64头部信息，如果有的话
   const byteCharacters = atob(base64.split(',')[1] || base64)
-  const byteNumbers = new Array(byteCharacters.length)
-
-  for (let i = 0; i < byteCharacters.length; i++) {
-    byteNumbers[i] = byteCharacters.charCodeAt(i)
-  }
+  const byteNumbers = Array.from({ length: byteCharacters.length }, (_, index) =>
+    byteCharacters.charCodeAt(index),
+  )
 
   const byteArray = new Uint8Array(byteNumbers)
   return new Blob([byteArray], { type: mimeType })

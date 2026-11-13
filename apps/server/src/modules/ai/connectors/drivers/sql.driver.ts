@@ -3,7 +3,12 @@ import { DataSource } from 'typeorm'
 import { z } from 'zod'
 import { ToolDeniedError } from '../../core/tools/tools.types.js'
 import { assertReadOnlySql } from '../sql.policy.js'
-import type { Capability, ConnectorDriver, ConnectorFieldDecl, ConnectorRuntime } from '../connector.types.js'
+import type {
+  Capability,
+  ConnectorDriver,
+  ConnectorFieldDecl,
+  ConnectorRuntime,
+} from '../connector.types.js'
 
 /**
  * **数据库驱动（PostgreSQL / MySQL）**（设计 `docs/design/ai-connector.md` §3.11）。
@@ -154,7 +159,11 @@ export class SqlDriver implements ConnectorDriver {
       return await creating
     } catch (error) {
       this.pools.delete(rt.instanceId)
-      throw new ToolDeniedError('upstream', `连不上数据库：${messageOf(error)}`, '检查地址、库名与账号密码')
+      throw new ToolDeniedError(
+        'upstream',
+        `连不上数据库：${messageOf(error)}`,
+        '检查地址、库名与账号密码',
+      )
     }
   }
 

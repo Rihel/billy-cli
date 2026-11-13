@@ -22,7 +22,9 @@ describe('isImageItem', () => {
   })
 
   it('**媒体类型不可信时按后缀兜底**（浏览器常报 octet-stream）', () => {
-    expect(isImageItem({ mediaType: 'application/octet-stream', filename: 'a.png', src: 'x' })).toBe(true)
+    expect(
+      isImageItem({ mediaType: 'application/octet-stream', filename: 'a.png', src: 'x' }),
+    ).toBe(true)
     expect(isImageItem({ filename: '照片.JPEG', src: 'x' })).toBe(true)
   })
 
@@ -34,7 +36,7 @@ describe('isImageItem', () => {
 
   it('后缀在 src 里也算（历史附件只带地址时）', () => {
     expect(isImageItem({ src: 'blob:http://x/abc.png' })).toBe(true)
-    expect(isImageItem({ src: 'https://cdn/x/a.webp' })).toBe(false || true)
+    expect(isImageItem({ src: 'https://cdn/x/a.webp' })).toBe(true)
   })
 
   it('认不出就是 false（交给文件预览器，它有"打开 / 下载"兜底）', () => {

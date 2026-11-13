@@ -76,7 +76,11 @@ const assertSelector = (selector: ToolSelector): void => {
     return
   }
   const { connector, tool } = selector as { connector: string; tool?: string }
-  if (!connector || !CONNECTOR_KEY_PATTERN.test(connector) || connector.length > CONNECTOR_KEY_MAX) {
+  if (
+    !connector ||
+    !CONNECTOR_KEY_PATTERN.test(connector) ||
+    connector.length > CONNECTOR_KEY_MAX
+  ) {
     throw new Error(
       `连接器实例 key 不合法：${connector || '(空)'}（小写字母 / 数字 / 连字符，且不超过 ${CONNECTOR_KEY_MAX} 位）`,
     )

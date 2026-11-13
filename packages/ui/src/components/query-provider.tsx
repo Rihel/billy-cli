@@ -1,14 +1,9 @@
-"use client"
+'use client'
 
-import {
-  MutationCache,
-  QueryCache,
-  QueryClient,
-  QueryClientProvider,
-} from "@tanstack/react-query"
-import { useState, type ReactNode } from "react"
+import { MutationCache, QueryCache, QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { useState, type ReactNode } from 'react'
 
-import { toastError } from "#components/toast"
+import { toastError } from '#components/toast'
 
 /**
  * TanStack Query 的装配（机制 + 策略透传）。
@@ -35,11 +30,10 @@ export function createQueryClient(options: QueryClientOptions = {}) {
   const {
     staleTime,
     refetchOnWindowFocus = false,
-    fallbackError = "操作失败，请稍后重试",
+    fallbackError = '操作失败，请稍后重试',
   } = options
 
-  const onError = (error: unknown) =>
-    void toastError(errorMessage(error, fallbackError))
+  const onError = (error: unknown) => toastError(errorMessage(error, fallbackError))
 
   return new QueryClient({
     queryCache: new QueryCache({ onError }),

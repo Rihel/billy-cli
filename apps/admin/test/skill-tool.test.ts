@@ -49,23 +49,21 @@ describe('skillWriteOf', () => {
   })
 
   it('skill-import：从结果 items 里取技能名与状态', () => {
-    const info = skillWriteOf(
-      {
-        type: 'dynamic-tool',
-        toolName: 'skill-import',
-        toolCallId: 'c2',
-        state: 'output-available',
-        input: { url: 'https://skills.sh/a/b/c' },
-        output: {
-          source: 'a/b/c',
-          items: [
-            { skillKey: 'c', status: 'created', message: null },
-            { skillKey: 'd', status: 'failed', message: 'x' },
-          ],
-          total: 2,
-        },
-      } as never,
-    )
+    const info = skillWriteOf({
+      type: 'dynamic-tool',
+      toolName: 'skill-import',
+      toolCallId: 'c2',
+      state: 'output-available',
+      input: { url: 'https://skills.sh/a/b/c' },
+      output: {
+        source: 'a/b/c',
+        items: [
+          { skillKey: 'c', status: 'created', message: null },
+          { skillKey: 'd', status: 'failed', message: 'x' },
+        ],
+        total: 2,
+      },
+    } as never)
     expect(info).toMatchObject({
       tool: 'skill-import',
       source: 'a/b/c',
@@ -77,7 +75,9 @@ describe('skillWriteOf', () => {
   })
 
   it('非技能写入工具 / 缺技能名 → null', () => {
-    expect(skillWriteOf({ type: 'dynamic-tool', toolName: 'skill-list', input: {} } as never)).toBeNull()
+    expect(
+      skillWriteOf({ type: 'dynamic-tool', toolName: 'skill-list', input: {} } as never),
+    ).toBeNull()
     expect(skillWriteOf(part({ body: 'x' }))).toBeNull()
   })
 })

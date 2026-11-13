@@ -128,9 +128,9 @@ describe('会话运行时（真实数据库）', () => {
   })
 
   it('未知 agentKey → 3303（装配期就该拦住的那种）', async () => {
-    await expect(
-      conversationService.create(USER, { agentKey: 'nope' }),
-    ).rejects.toMatchObject({ code: AppErrorCodes.AgentNotFound })
+    await expect(conversationService.create(USER, { agentKey: 'nope' })).rejects.toMatchObject({
+      code: AppErrorCodes.AgentNotFound,
+    })
   })
 
   it('列表只返回自己的会话', async () => {
@@ -159,7 +159,12 @@ describe('会话运行时（真实数据库）', () => {
 
     await timelines.appendMany([
       { conversationId: conversation.id, role: 'user', kind: 'text', payload: { text: '第一句' } },
-      { conversationId: conversation.id, role: 'assistant', kind: 'text', payload: { text: '第二句' } },
+      {
+        conversationId: conversation.id,
+        role: 'assistant',
+        kind: 'text',
+        payload: { text: '第二句' },
+      },
       {
         conversationId: conversation.id,
         role: 'assistant',
@@ -241,11 +246,10 @@ describe('会话重命名（用户手动改名）', () => {
     ).toBe('缓存穿透排查')
 
     // 改名会改变用户可见状态 → 必须留痕（与删除会话同一口径）
-    const rows = await db.dataSource.query<
-      { payload: Record<string, unknown> }[]
-    >("SELECT payload FROM timelines WHERE conversation_id = $1 AND kind = 'status'", [
-      conversation.id,
-    ])
+    const rows = await db.dataSource.query<{ payload: Record<string, unknown> }[]>(
+      "SELECT payload FROM timelines WHERE conversation_id = $1 AND kind = 'status'",
+      [conversation.id],
+    )
     expect(rows[0]?.payload).toMatchObject({
       reason: 'conversation_renamed',
       from: '',

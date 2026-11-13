@@ -28,7 +28,9 @@ ${'<p>这一段是用来把正文撑长的占位内容，保证它不会被当�
 
 describe('反爬 / 人机验证识别', () => {
   it('403 + 百度安全验证 → 认出是百度的人机验证', () => {
-    expect(detectAntiBot({ status: 403, title: '百度安全验证', html: BAIDU_BLOCK })).toBe('百度安全验证')
+    expect(detectAntiBot({ status: 403, title: '百度安全验证', html: BAIDU_BLOCK })).toBe(
+      '百度安全验证',
+    )
   })
 
   it('403 + Cloudflare 验证页 → 认出是 Cloudflare', () => {

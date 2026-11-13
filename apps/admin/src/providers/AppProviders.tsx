@@ -1,12 +1,7 @@
 'use client'
 
 import { ReactNode, useEffect } from 'react'
-import {
-  QueryProviders,
-  StorageClientProvider,
-  Toaster,
-  TooltipProvider,
-} from '@repo/ui'
+import { QueryProviders, StorageClientProvider, Toaster, TooltipProvider } from '@repo/ui'
 import { formatStorageUrl } from '@/lib/constants'
 import { useServerClient } from '@/lib/server-client'
 import { initTheme } from '@/stores/theme.store'

@@ -1,5 +1,3 @@
-import type { CreateLoggerResult } from '@repo/shared/logger'
-
 /**
  * DI token：应用级基础日志统一入口。
  *

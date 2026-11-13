@@ -1,9 +1,9 @@
-"use client"
+'use client'
 
-import { RefreshCwIcon } from "lucide-react"
-import type { ReactNode } from "react"
+import { RefreshCwIcon } from 'lucide-react'
+import type { ReactNode } from 'react'
 
-import { Button } from "#components/ui/button"
+import { Button } from '#components/ui/button'
 
 export type RouteErrorProps = {
   /** Next 注入的路由级错误（`app/error.tsx` 的入参） */
@@ -28,22 +28,18 @@ export type RouteErrorProps = {
 export function RouteError({
   error,
   reset,
-  title = "出错了",
-  description = "页面加载失败，请稍后重试。",
+  title = '出错了',
+  description = '页面加载失败，请稍后重试。',
   action,
   showDigest = false,
 }: RouteErrorProps) {
   return (
     <div className="flex min-h-screen items-center justify-center bg-background px-4">
       <div className="flex flex-col items-center gap-4 text-center">
-        <div className="text-5xl font-semibold tracking-tight text-foreground">
-          {title}
-        </div>
+        <div className="text-5xl font-semibold tracking-tight text-foreground">{title}</div>
         <p className="text-sm text-muted-foreground">{description}</p>
         {showDigest && error?.digest ? (
-          <p className="font-mono text-xs text-muted-foreground">
-            digest: {error.digest}
-          </p>
+          <p className="font-mono text-xs text-muted-foreground">digest: {error.digest}</p>
         ) : null}
         {reset || action ? (
           <div className="flex gap-2">

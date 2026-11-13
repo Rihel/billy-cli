@@ -1,4 +1,4 @@
-import type { MigrationInterface, QueryRunner } from "typeorm"
+import type { MigrationInterface, QueryRunner } from 'typeorm'
 
 /**
  * `ai_connectors.catalog_kind`：记住这条实例对应目录里的哪个型号（`postgres` / `mysql` / `redis`）。
@@ -7,13 +7,15 @@ import type { MigrationInterface, QueryRunner } from "typeorm"
  * 而页面要按**型号**渲染表单字段（同是 `sql` 驱动，PG 与 MySQL 的默认端口就不同）。
  */
 export class AiConnectorCatalogKind1794000000001 implements MigrationInterface {
-    name = 'AiConnectorCatalogKind1794000000001'
+  name = 'AiConnectorCatalogKind1794000000001'
 
-    public async up(queryRunner: QueryRunner): Promise<void> {
-        await queryRunner.query(`ALTER TABLE "ai_connectors" ADD "catalog_kind" character varying(32) NOT NULL DEFAULT ''`)
-    }
+  public async up(queryRunner: QueryRunner): Promise<void> {
+    await queryRunner.query(
+      `ALTER TABLE "ai_connectors" ADD "catalog_kind" character varying(32) NOT NULL DEFAULT ''`,
+    )
+  }
 
-    public async down(queryRunner: QueryRunner): Promise<void> {
-        await queryRunner.query(`ALTER TABLE "ai_connectors" DROP COLUMN "catalog_kind"`)
-    }
+  public async down(queryRunner: QueryRunner): Promise<void> {
+    await queryRunner.query(`ALTER TABLE "ai_connectors" DROP COLUMN "catalog_kind"`)
+  }
 }

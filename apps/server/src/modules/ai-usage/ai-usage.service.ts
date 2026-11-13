@@ -166,6 +166,5 @@ const enumerateDates = (from: string, to: string): string[] => {
   return dates
 }
 
-
 const toDateKey = (value: string | Date): string =>
   value instanceof Date ? value.toISOString().slice(0, 10) : String(value).slice(0, 10)

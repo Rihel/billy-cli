@@ -14,9 +14,9 @@ services:
       - postgres-data:/var/lib/postgresql/data
       - ./docker/init-db.sql:/docker-entrypoint-initdb.d/init.sql:ro
     ports:
-      - "15432:5432"
+      - '15432:5432'
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U root -d billy-cli"]
+      test: ['CMD-SHELL', 'pg_isready -U root -d billy-cli']
       interval: 5s
       timeout: 5s
       retries: 10
@@ -32,9 +32,9 @@ services:
     volumes:
       - redis-data:/data
     ports:
-      - "6380:6379"
+      - '6380:6379'
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ['CMD', 'redis-cli', 'ping']
       interval: 5s
       timeout: 3s
       retries: 10
@@ -53,10 +53,10 @@ services:
     volumes:
       - minio-data:/data
     ports:
-      - "19000:9000"
-      - "19001:9001"
+      - '19000:9000'
+      - '19001:9001'
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      test: ['CMD', 'curl', '-f', 'http://localhost:9000/minio/health/live']
       interval: 5s
       timeout: 3s
       retries: 10
@@ -92,7 +92,7 @@ services:
       # 飞书 CLI 连接器的配置与用户授权（/home/appuser/.billy/lark-cli/<实例>）
       - lark-cli-data:/home/appuser/.billy
     ports:
-      - "9989:9989"
+      - '9989:9989'
 
   # ──────────────────────────────────────────
   # Web (Next.js)
@@ -108,7 +108,7 @@ services:
     environment:
       SERVER_URL: http://server:9989
     ports:
-      - "3001:3001"
+      - '3001:3001'
 
   # ──────────────────────────────────────────
   # Kafka + 控制台（可选，默认不启动）
@@ -119,7 +119,7 @@ services:
     image: confluentinc/cp-kafka:7.4.8
     container_name: billy-kafka
     restart: unless-stopped
-    profiles: ["kafka"]
+    profiles: ['kafka']
     depends_on:
       - zookeeper
     environment:
@@ -131,13 +131,13 @@ services:
       KAFKA_INTER_BROKER_LISTENER_NAME: LISTENER_DOCKER_INTERNAL
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
     ports:
-      - "29092:29092"
+      - '29092:29092'
 
   kafka-ui:
     image: provectuslabs/kafka-ui:latest
     container_name: billy-kafka-ui
     restart: unless-stopped
-    profiles: ["kafka"]
+    profiles: ['kafka']
     depends_on:
       - kafka
     environment:
@@ -145,18 +145,18 @@ services:
       KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:9092
       DYNAMIC_CONFIG_ENABLED: 'true'
     ports:
-      - "8085:8080"
+      - '8085:8080'
 
   zookeeper:
     image: confluentinc/cp-zookeeper:7.4.8
     container_name: billy-zookeeper
     restart: unless-stopped
-    profiles: ["kafka"]
+    profiles: ['kafka']
     environment:
       ZOOKEEPER_CLIENT_PORT: 2181
       ZOOKEEPER_TICK_TIME: 2000
     ports:
-      - "22181:2181"
+      - '22181:2181'
 
 volumes:
   postgres-data:

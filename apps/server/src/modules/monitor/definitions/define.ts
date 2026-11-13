@@ -66,10 +66,7 @@ export function defineMetricRule(input: MetricRuleInput): MetricRuleType {
   }
 }
 
-type EventRuleInput = Omit<
-  EventRuleType,
-  'kind' | 'driver' | 'paramsSchema' | 'matchEvent'
-> & {
+type EventRuleInput = Omit<EventRuleType, 'kind' | 'driver' | 'paramsSchema' | 'matchEvent'> & {
   driver?: EventRuleType['driver']
   paramsSchema?: ZodType<MonitorRuleConfig>
   matchEvent?: (event: MonitorErrorEvent, config: MonitorRuleConfig) => boolean
@@ -87,10 +84,7 @@ export function defineEventRule(input: EventRuleInput): EventRuleType {
 }
 
 /** 默认事件匹配：错误码 / 关键字为空表示不限 */
-export function matchByCodeOrKeyword(
-  event: MonitorErrorEvent,
-  config: MonitorRuleConfig,
-): boolean {
+export function matchByCodeOrKeyword(event: MonitorErrorEvent, config: MonitorRuleConfig): boolean {
   const codes = config.matchCodes ?? []
   const keywords = config.keywords ?? []
   if (codes.length > 0 && (event.code === undefined || !codes.includes(event.code))) {
@@ -101,7 +95,6 @@ export function matchByCodeOrKeyword(
   }
   return true
 }
-
 
 /** 原始指标定义辅助（保留类型推断） */
 export const defineRawMetric = <T extends RawMetricDefinition>(def: T): T => def

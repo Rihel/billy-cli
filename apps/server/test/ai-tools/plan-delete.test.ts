@@ -1,7 +1,16 @@
 import { describe, expect, it } from 'vitest'
-import { PlannerStore, PlannerTools, type PlanOutput } from '../../src/modules/ai/tools/planner/index.js'
+import {
+  PlannerStore,
+  PlannerTools,
+  type PlanOutput,
+} from '../../src/modules/ai/tools/planner/index.js'
 import { TOOL_KEYS } from '../../src/modules/ai/core/tools/tool-keys.js'
-import { buildToolStackDeps, makeToolContext, silentLogger, specByKey } from '../helpers/ai-tool-stack.js'
+import {
+  buildToolStackDeps,
+  makeToolContext,
+  silentLogger,
+  specByKey,
+} from '../helpers/ai-tool-stack.js'
 
 /**
  * `plan-delete`（规划工具集之一）的单测：把**一个或多个**任务从清单里去掉
@@ -22,7 +31,10 @@ const SEED = {
 const build = (latestPlan: unknown = SEED) => {
   const deps = buildToolStackDeps()
   const timelines = { latestPlan: async () => latestPlan, findToolOutput: async () => null }
-  const spec = specByKey(new PlannerTools(new PlannerStore(timelines as never)), TOOL_KEYS.planDelete)
+  const spec = specByKey(
+    new PlannerTools(new PlannerStore(timelines as never)),
+    TOOL_KEYS.planDelete,
+  )
   const envelope = {
     conversationId: 'conv-1',
     parentRunId: 'run-1',
@@ -83,9 +95,9 @@ describe('plan-delete（删除任务，支持一次删除多个）', () => {
     expect(spec.key).toBe(TOOL_KEYS.planDelete)
     expect(spec.child).toBe('deny')
     expect(spec.params.safeParse({ ids: [] }).success).toBe(false)
-    expect(spec.params.safeParse({ ids: Array.from({ length: 51 }, (_, i) => `d${i}`) }).success).toBe(
-      false,
-    )
+    expect(
+      spec.params.safeParse({ ids: Array.from({ length: 51 }, (_, i) => `d${i}`) }).success,
+    ).toBe(false)
     expect(spec.params.safeParse({ ids: ['d1'] }).success).toBe(true)
     expect(typeof silentLogger.info).toBe('function')
   })

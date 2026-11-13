@@ -40,7 +40,7 @@ class FakePubSub {
   /** 模拟其他实例发来一条消息 */
   remote(channel: string, payload: unknown): void {
     for (const handler of this.handlers.get(channel) ?? []) {
-      handler(payload, { channel, instanceId: 'other', publishedAt: 1 })
+      void handler(payload, { channel, instanceId: 'other', publishedAt: 1 })
     }
   }
 }

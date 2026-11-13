@@ -42,7 +42,8 @@ export const competitors: Competitor[] = [
     maintenance: '活跃',
     issues: 'open 103',
     cases: 'Wasp 官方 SaaS starter',
-    summary: 'Wasp 官方免费 SaaS 起步套件，AI-ready 且功能全，但绑定 Wasp 声明式 DSL、单体 SaaS 形态。',
+    summary:
+      'Wasp 官方免费 SaaS 起步套件，AI-ready 且功能全，但绑定 Wasp 声明式 DSL、单体 SaaS 形态。',
   },
   {
     name: 'Ixartz SaaS-Boilerplate',

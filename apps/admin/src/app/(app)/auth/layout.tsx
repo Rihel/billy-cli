@@ -1,8 +1,4 @@
-export default function AuthLayout({
-  children,
-}: {
-  children: React.ReactNode
-}) {
+export default function AuthLayout({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex min-h-dvh flex-col bg-background lg:flex-row">
       {/* 左：品牌叙事栏（lg 以上显示，浅色编辑感 / dark 深蓝氛围） */}
@@ -11,9 +7,7 @@ export default function AuthLayout({
           <span className="grid size-8 place-items-center rounded-md bg-brand text-white">
             <span className="font-mono text-sm font-bold">›</span>
           </span>
-          <span className="font-heading text-lg font-semibold tracking-tight">
-            Billy Cli
-          </span>
+          <span className="font-heading text-lg font-semibold tracking-tight">Billy Cli</span>
         </div>
         <div className="relative z-10 max-w-sm">
           <p className="text-xs font-medium tracking-[0.2em] text-muted-foreground uppercase">
@@ -44,9 +38,7 @@ export default function AuthLayout({
             <span className="grid size-8 place-items-center rounded-md bg-brand text-white">
               <span className="font-mono text-sm font-bold">›</span>
             </span>
-            <span className="font-heading text-lg font-semibold tracking-tight">
-              Billy Cli
-            </span>
+            <span className="font-heading text-lg font-semibold tracking-tight">Billy Cli</span>
           </div>
           {children}
         </div>

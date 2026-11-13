@@ -35,9 +35,7 @@ export class ApiKeyStrategy implements AuthStrategy<ApiKeyCredentials> {
     return !!credentials?.apiKey
   }
 
-  async getAuthContext(
-    credentials: ApiKeyCredentials,
-  ): Promise<AuthContext> {
+  async getAuthContext(credentials: ApiKeyCredentials): Promise<AuthContext> {
     const keyName = credentials.keyName ?? 'X-API-Key'
     const location = credentials.location ?? 'header'
 

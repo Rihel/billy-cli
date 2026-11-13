@@ -56,10 +56,7 @@ export const pinResumeMessageId = (
  * 只改这一块：其它 part 原样返回（引用不变），于是归约层与行级 memo 不会因这次改写作废。
  * 认块的口径与续跑流一致：优先 `data.toolCallId`，退化用 part 自己的 `id`。
  */
-export const markSuspendedAnswered = (
-  message: UIMessage,
-  patch: AnsweredPatch,
-): UIMessage => {
+export const markSuspendedAnswered = (message: UIMessage, patch: AnsweredPatch): UIMessage => {
   let changed = false
   const parts = message.parts.map((part) => {
     if (part.type !== 'data-tool-call-suspended') return part

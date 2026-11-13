@@ -19,14 +19,10 @@ import { BasePaginateSchema } from './base.schema'
 const dateField = z.union([z.string(), z.date()]).optional()
 
 /** 供应商类型（取值来自字典：单一事实源，加一家供应商只改字典） */
-export const AiProviderKindField = z.enum(
-  AiProviderKind.values as unknown as [string, ...string[]],
-)
+export const AiProviderKindField = z.enum(AiProviderKind.values as unknown as [string, ...string[]])
 
 /** 模型来源（取值来自字典） */
-export const AiModelSourceField = z.enum(
-  AiModelSource.values as unknown as [string, ...string[]],
-)
+export const AiModelSourceField = z.enum(AiModelSource.values as unknown as [string, ...string[]])
 
 /** 供应商（对外模型）—— **不含密钥明文** */
 export const AiProviderSchema = z.object({
@@ -128,7 +124,11 @@ export const AiProviderUpdateSchema = z.object({
   providerId: z.string().min(1).max(32),
   name: z.string().min(1).max(64).optional(),
   kind: AiProviderKindField.optional(),
-  slug: z.string().regex(/^[a-z0-9][a-z0-9-]*$/).max(32).optional(),
+  slug: z
+    .string()
+    .regex(/^[a-z0-9][a-z0-9-]*$/)
+    .max(32)
+    .optional(),
   baseUrl: z.string().url().max(255).nullable().optional(),
   apiKey: z.string().max(512).optional(),
   enabled: z.boolean().optional(),

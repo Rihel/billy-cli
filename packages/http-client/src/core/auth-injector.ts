@@ -1,8 +1,4 @@
-import type {
-  AuthContext,
-  AuthStrategy,
-  HttpRequestConfig,
-} from './interfaces.js'
+import type { AuthContext, AuthStrategy, HttpRequestConfig } from './interfaces.js'
 
 /**
  * 认证注入器 —— 负责将 credential 转换为请求认证信息。
@@ -37,15 +33,13 @@ export class AuthInjector<Credentials = Record<string, any>> {
       ...config,
       headers: {
         ...config.headers,
-        ...(ctx.headers || {}),
+        ...ctx.headers,
       },
       params: {
         ...config.params,
-        ...(ctx.query || {}),
+        ...ctx.query,
       },
-      data: ctx.body
-        ? ({ ...config.data, ...ctx.body } as Body)
-        : config.data,
+      data: ctx.body ? ({ ...config.data, ...ctx.body } as Body) : config.data,
     }
   }
 }

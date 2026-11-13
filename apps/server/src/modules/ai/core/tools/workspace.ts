@@ -121,13 +121,15 @@ export const normalizeFileKey = (raw: string): string => {
   return segments.join('/')
 }
 
+/** 展示名要剔除控制字符，避免换行 / 终端转义污染日志与列表 */
+// oxlint-disable-next-line eslint/no-control-regex -- 目的就是匹配控制字符
+const CONTROL_CHARS = /[\u0000-\u001f\u007f]/g
+
 /** 展示名：取最后一段，去掉控制字符，截到 255 */
 export const displayName = (value: string): string => {
-  const last = value.split('/').pop()?.replace(/[\u0000-\u001f\u007f]/g, '').trim() ?? ''
+  const last = value.split('/').pop()?.replace(CONTROL_CHARS, '').trim() ?? ''
   return (last || '未命名文件').slice(0, 255)
 }
-
-
 
 export const extensionOf = (filename: string): string => {
   const base = filename.split('/').pop() ?? filename

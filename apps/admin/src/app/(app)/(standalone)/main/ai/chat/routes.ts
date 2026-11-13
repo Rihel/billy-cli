@@ -17,8 +17,7 @@ export const CHAT_ROOT = '/main/ai/chat'
 export const NEW_CONVERSATION_SLUG = 'new'
 
 /** 某个会话的地址 */
-export const conversationPath = (conversationId: string): string =>
-  `${CHAT_ROOT}/${conversationId}`
+export const conversationPath = (conversationId: string): string => `${CHAT_ROOT}/${conversationId}`
 
 /** 「新会话」地址（首轮发出后服务端返回会话 id，页面会 `replace` 成真实地址） */
 export const newConversationPath = (): string => `${CHAT_ROOT}/${NEW_CONVERSATION_SLUG}`

@@ -85,18 +85,16 @@ export class AppConfigFacade {
     try {
       // 先把 schema 声明的嵌套对象默认值物化出来，再交给 Zod 校验/补全
       // （父键整体缺失时 Zod 不会补全嵌套对象，见 schema-defaults.ts）
-      const config = options.schema.parse(
-        mergeSchemaDefaults(raw, options.schema),
-      ) as Record<string, unknown>
+      const config = options.schema.parse(mergeSchemaDefaults(raw, options.schema)) as Record<
+        string,
+        unknown
+      >
       AppConfigFacade.config = config
       return config
     } catch (error) {
       if (error instanceof ZodError) {
         const detail = error.issues
-          .map(
-            (issue) =>
-              `- ${issue.path.join('.') || '(root)'} : ${issue.message}`,
-          )
+          .map((issue) => `- ${issue.path.join('.') || '(root)'} : ${issue.message}`)
           .join('\n')
         throw new ConfigValidationError(`配置校验失败：\n${detail}`, error)
       }

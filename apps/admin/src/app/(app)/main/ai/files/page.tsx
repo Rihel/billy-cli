@@ -26,11 +26,7 @@ import {
   Share2Icon,
 } from 'lucide-react'
 import { useServerClient } from '@/lib/server-client'
-import {
-  FilePreviewDialog,
-  isPreviewTextItem,
-  officeKind,
-} from '@/components/file-preview-dialog'
+import { FilePreviewDialog, isPreviewTextItem, officeKind } from '@/components/file-preview-dialog'
 import { ShareDialog, type ShareDialogFile } from '@/components/share-dialog'
 
 /**
@@ -80,7 +76,8 @@ export default function AiFilesPage() {
       }),
   })
 
-  const files = filesQuery.data?.items ?? []
+  // 稳定引用：查询未返回时不能每次渲染都造一个新数组，否则 previewItems 每帧重算
+  const files = useMemo(() => filesQuery.data?.items ?? [], [filesQuery.data?.items])
 
   const previewItems = useMemo(
     () =>
@@ -104,11 +101,9 @@ export default function AiFilesPage() {
             }
           : undefined,
       })),
-    [files, resolveUrl],
+    [files, resolveUrl, client],
   )
-  const previewIndex = previewId
-    ? previewItems.findIndex((item) => item.id === previewId)
-    : -1
+  const previewIndex = previewId ? previewItems.findIndex((item) => item.id === previewId) : -1
   const previewItem = previewIndex >= 0 ? previewItems[previewIndex] : null
 
   const textQuery = useQuery({
@@ -183,9 +178,7 @@ export default function AiFilesPage() {
       accessorKey: 'source',
       meta: { width: 100 },
       cell: ({ row }) => (
-        <Badge variant="outline">
-          {row.original.source === 'user' ? '用户上传' : 'AI 生成'}
-        </Badge>
+        <Badge variant="outline">{row.original.source === 'user' ? '用户上传' : 'AI 生成'}</Badge>
       ),
     },
     {
@@ -234,9 +227,7 @@ export default function AiFilesPage() {
           <Button
             variant="ghost"
             size="icon-sm"
-            onClick={() =>
-              setShareFile({ id: row.original.id, filename: row.original.filename })
-            }
+            onClick={() => setShareFile({ id: row.original.id, filename: row.original.filename })}
             title="生成免授权分享链接（任何人拿到都能看）"
           >
             <Share2Icon className="size-3.5" />
@@ -327,11 +318,7 @@ export default function AiFilesPage() {
         }
       />
 
-      <ShareDialog
-        file={shareFile}
-        open={Boolean(shareFile)}
-        onClose={() => setShareFile(null)}
-      />
+      <ShareDialog file={shareFile} open={Boolean(shareFile)} onClose={() => setShareFile(null)} />
 
       <FilePreviewDialog
         items={previewItems}
@@ -348,4 +335,3 @@ export default function AiFilesPage() {
     </div>
   )
 }
-

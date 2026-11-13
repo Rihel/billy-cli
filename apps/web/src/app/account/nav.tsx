@@ -15,7 +15,10 @@ export function AccountNav() {
   const pathname = usePathname()
 
   return (
-    <nav className="border-b border-border bg-background/80 backdrop-blur" aria-label="个人中心导航">
+    <nav
+      className="border-b border-border bg-background/80 backdrop-blur"
+      aria-label="个人中心导航"
+    >
       <div className="mx-auto flex max-w-3xl gap-1 overflow-x-auto px-4 sm:px-6">
         {items.map((item) => {
           const active = pathname === item.href

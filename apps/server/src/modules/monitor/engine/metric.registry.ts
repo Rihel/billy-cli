@@ -58,9 +58,7 @@ export class MetricRegistry {
   }
 
   forInterval(intervalSeconds: number): MetricDefinition[] {
-    return this.all().filter(
-      (metric) => metric.evaluationIntervalSeconds === intervalSeconds,
-    )
+    return this.all().filter((metric) => metric.evaluationIntervalSeconds === intervalSeconds)
   }
 
   rawForInterval(intervalSeconds: number, scope?: 'instance' | 'global'): RawMetricDefinition[] {

@@ -134,10 +134,7 @@ import {
   AgentUsageRangeDto,
 } from '@repo/shared'
 import { HttpClient, HttpStreamClient, type HttpClientOptions } from '@repo/http-client'
-import type {
-  BearerTokenCredentials,
-  CredentialsManager,
-} from '@repo/http-client'
+import type { BearerTokenCredentials, CredentialsManager } from '@repo/http-client'
 import { BearerTokenStrategy } from '@repo/http-client'
 
 /** SSE 长连接创建选项 */
@@ -170,9 +167,7 @@ export class ServerClient extends HttpClient<BearerTokenCredentials> {
   /** 规范化后的 baseUrl（无尾斜杠）：给 AI SDK transport 拼完整 URL 用 */
   private readonly agentBaseUrl: string
 
-  constructor(
-    options: Omit<HttpClientOptions<BearerTokenCredentials>, 'authStrategy'>,
-  ) {
+  constructor(options: Omit<HttpClientOptions<BearerTokenCredentials>, 'authStrategy'>) {
     super({
       ...options,
       authStrategy: new BearerTokenStrategy(),
@@ -216,8 +211,7 @@ export class ServerClient extends HttpClient<BearerTokenCredentials> {
       this.post<AuthResultModel>('/auth/register', data, { skipAuth: true }),
 
     /** 无需 token */
-    login: (data: LoginDto) =>
-      this.post<AuthResultModel>('/auth/login', data, { skipAuth: true }),
+    login: (data: LoginDto) => this.post<AuthResultModel>('/auth/login', data, { skipAuth: true }),
 
     /** 登出（幂等：撤销服务端会话，不要求登录态） */
     logout: () =>
@@ -241,8 +235,7 @@ export class ServerClient extends HttpClient<BearerTokenCredentials> {
     getMe: () => this.post<AuthUserModel>('/auth/get-me'),
 
     /** 需要 token */
-    updateInfo: (data: UpdateInfoDto) =>
-      this.post<AuthUserModel>('/auth/update-info', data),
+    updateInfo: (data: UpdateInfoDto) => this.post<AuthUserModel>('/auth/update-info', data),
 
     /** 需要 token */
     changePassword: (data: ChangePasswordDto) =>
@@ -268,32 +261,27 @@ export class ServerClient extends HttpClient<BearerTokenCredentials> {
     getMe: () => this.post<AdminModel>('/admin/get-me'),
 
     /** 需要管理员 token：更新个人信息 */
-    updateInfo: (data: AdminUpdateInfoDto) =>
-      this.post<AdminModel>('/admin/update-info', data),
+    updateInfo: (data: AdminUpdateInfoDto) => this.post<AdminModel>('/admin/update-info', data),
 
     /** 需要管理员 token：修改自己的密码 */
     changePassword: (data: ChangePasswordDto) =>
       this.post<SuccessResultModel>('/admin/change-password', data),
 
     /** 需要管理员 token：创建管理员 */
-    create: (data: CreateAdminDto) =>
-      this.post<AdminModel>('/admin/create', data),
+    create: (data: CreateAdminDto) => this.post<AdminModel>('/admin/create', data),
 
     /** 需要管理员 token：管理员分页查询 */
     pageQuery: (data: PageQueryAdminDto) =>
       this.post<AppPageQueryResponse<AdminModel>>('/admin/page-query', data),
 
     /** 需要管理员 token：管理员详情 */
-    detail: (data: GetAdminDetailDto) =>
-      this.post<AdminModel>('/admin/detail', data),
+    detail: (data: GetAdminDetailDto) => this.post<AdminModel>('/admin/detail', data),
 
     /** 需要管理员 token：更新管理员 */
-    update: (data: UpdateAdminDto) =>
-      this.post<AdminModel>('/admin/update', data),
+    update: (data: UpdateAdminDto) => this.post<AdminModel>('/admin/update', data),
 
     /** 需要管理员 token：删除管理员（不能删除自己） */
-    remove: (data: RemoveAdminDto) =>
-      this.post<SuccessResultModel>('/admin/remove', data),
+    remove: (data: RemoveAdminDto) => this.post<SuccessResultModel>('/admin/remove', data),
 
     /** 需要管理员 token：重置管理员密码 */
     resetPassword: (data: ResetAdminPasswordDto) =>
@@ -308,13 +296,11 @@ export class ServerClient extends HttpClient<BearerTokenCredentials> {
     pageQuery: (data: PageQueryUserDto) =>
       this.post<AppPageQueryResponse<UserModel>>('/user/page-query', data),
 
-    detail: (data: GetUserDetailDto) =>
-      this.post<UserModel>('/user/detail', data),
+    detail: (data: GetUserDetailDto) => this.post<UserModel>('/user/detail', data),
 
     update: (data: UpdateUserDto) => this.post<UserModel>('/user/update', data),
 
-    remove: (data: RemoveUserDto) =>
-      this.post<SuccessResultModel>('/user/remove', data),
+    remove: (data: RemoveUserDto) => this.post<SuccessResultModel>('/user/remove', data),
 
     resetPassword: (data: ResetUserPasswordDto) =>
       this.post<SuccessResultModel>('/user/reset-password', data),
@@ -324,15 +310,12 @@ export class ServerClient extends HttpClient<BearerTokenCredentials> {
 
   share = {
     /** 生成分享链接：返回的 token / url **只此一次**（库里只存哈希） */
-    create: (data: CreateShareDto) =>
-      this.post<CreateShareModel>('/share/create', data),
+    create: (data: CreateShareDto) => this.post<CreateShareModel>('/share/create', data),
 
     /** 某个文件的历史分享（不含 token） */
-    list: (data: ListShareDto) =>
-      this.post<ListShareModel>('/share/list', data),
+    list: (data: ListShareDto) => this.post<ListShareModel>('/share/list', data),
 
-    revoke: (data: RevokeShareDto) =>
-      this.post<SuccessResultModel>('/share/revoke', data),
+    revoke: (data: RevokeShareDto) => this.post<SuccessResultModel>('/share/revoke', data),
 
     /** 分享页元信息（公开接口，带 token 即可，无需登录） */
     meta: (data: ShareTokenDto) =>
@@ -348,19 +331,16 @@ export class ServerClient extends HttpClient<BearerTokenCredentials> {
     getDownloadUrl: (data: GetStorageDownloadUrlDto) =>
       this.post<StoragePresignedUrlModel>('/storage/get-download-url', data),
 
-    getTemporaryCredentials: () =>
-      this.post<StorageStsModel>('/storage/get-temporary-credentials'),
+    getTemporaryCredentials: () => this.post<StorageStsModel>('/storage/get-temporary-credentials'),
   }
 
   /* ========== 监控告警 ========== */
 
   monitor = {
     rule: {
-      definitions: () =>
-        this.post<MonitorRuleDefinitionModel[]>('/monitor/rule/definitions', {}),
+      definitions: () => this.post<MonitorRuleDefinitionModel[]>('/monitor/rule/definitions', {}),
 
-      list: (data: ListMonitorRuleDto) =>
-        this.post<MonitorRuleModel[]>('/monitor/rule/list', data),
+      list: (data: ListMonitorRuleDto) => this.post<MonitorRuleModel[]>('/monitor/rule/list', data),
 
       update: (data: UpdateMonitorRuleDto) =>
         this.post<MonitorRuleModel>('/monitor/rule/update', data),
@@ -371,10 +351,7 @@ export class ServerClient extends HttpClient<BearerTokenCredentials> {
 
     alert: {
       pageQuery: (data: PageQueryMonitorAlertDto) =>
-        this.post<AppPageQueryResponse<MonitorAlertModel>>(
-          '/monitor/alert/page-query',
-          data,
-        ),
+        this.post<AppPageQueryResponse<MonitorAlertModel>>('/monitor/alert/page-query', data),
 
       detail: (data: GetMonitorAlertDetailDto) =>
         this.post<MonitorAlertDetailModel>('/monitor/alert/detail', data),
@@ -392,23 +369,17 @@ export class ServerClient extends HttpClient<BearerTokenCredentials> {
     },
 
     engine: {
-      status: () =>
-        this.post<MonitorEngineStatusModel>('/monitor/engine/status', {}),
+      status: () => this.post<MonitorEngineStatusModel>('/monitor/engine/status', {}),
     },
 
     log: {
       pageQuery: (data: PageQueryMonitorLogDto) =>
-        this.post<AppPageQueryResponse<MonitorAlertDeliveryModel>>(
-          '/monitor/log/page-query',
-          data,
-        ),
+        this.post<AppPageQueryResponse<MonitorAlertDeliveryModel>>('/monitor/log/page-query', data),
     },
 
-    test: (data: TestAlertDto) =>
-      this.post<SuccessResultModel>('/monitor/test', data),
+    test: (data: TestAlertDto) => this.post<SuccessResultModel>('/monitor/test', data),
 
-    health: () =>
-      this.post<MonitorHealthModel>('/monitor/health', undefined, { skipAuth: true }),
+    health: () => this.post<MonitorHealthModel>('/monitor/health', undefined, { skipAuth: true }),
   }
 
   /* ========== AI 对话 ========== */
@@ -434,12 +405,10 @@ export class ServerClient extends HttpClient<BearerTokenCredentials> {
       this.post<AgentInstructionsModel>('/agent/instructions', data),
 
     /** 一轮问答（非流式）：跑完才返回，期间无任何输出 */
-    chat: (data: AgentChatDto) =>
-      this.post<AgentChatResultModel>('/agent/chat', data),
+    chat: (data: AgentChatDto) => this.post<AgentChatResultModel>('/agent/chat', data),
 
     /** 停止某一轮（幂等；跨副本时服务端内部广播，前端无需关心） */
-    stopRun: (data: AgentRunStopDto) =>
-      this.post<AgentRunStopResultModel>('/agent/run/stop', data),
+    stopRun: (data: AgentRunStopDto) => this.post<AgentRunStopResultModel>('/agent/run/stop', data),
 
     conversation: {
       /** 新建会话（省略 agentKey 用默认 agent） */
@@ -448,10 +417,7 @@ export class ServerClient extends HttpClient<BearerTokenCredentials> {
 
       /** 会话分页（按最近活跃排序） */
       list: (data: AgentConversationListDto) =>
-        this.post<AppPageQueryResponse<AgentConversationModel>>(
-          '/agent/conversation/list',
-          data,
-        ),
+        this.post<AppPageQueryResponse<AgentConversationModel>>('/agent/conversation/list', data),
 
       detail: (data: AgentConversationIdDto) =>
         this.post<AgentConversationModel>('/agent/conversation/detail', data),
@@ -479,11 +445,8 @@ export class ServerClient extends HttpClient<BearerTokenCredentials> {
       workspace: (data: { conversationId: string; includeCaches?: boolean }) =>
         this.post<AgentWorkspaceListModel>('/agent/file/workspace', data),
 
-      preview: (data: {
-        conversationId: string
-        path: string
-        source?: 'ai' | 'workspace'
-      }) => this.post<AgentFilePreviewModel>('/agent/file/preview', data),
+      preview: (data: { conversationId: string; path: string; source?: 'ai' | 'workspace' }) =>
+        this.post<AgentFilePreviewModel>('/agent/file/preview', data),
 
       /** 工作区文件 → 临时 OSS 对象链接；前端拿 url 直接 fetch */
       workspaceLink: (data: AgentFileWorkspaceLinkDto) =>
@@ -501,12 +464,7 @@ export class ServerClient extends HttpClient<BearerTokenCredentials> {
       adminPreview: (data: AgentFileAdminPreviewDto) =>
         this.post<AgentFilePreviewModel>('/agent/file/admin/preview', data),
 
-
-      workspaceContentUrl: (data: {
-        conversationId: string
-        path: string
-        download?: boolean
-      }) => {
+      workspaceContentUrl: (data: { conversationId: string; path: string; download?: boolean }) => {
         const query = new URLSearchParams({
           conversationId: data.conversationId,
           path: data.path,
@@ -525,8 +483,7 @@ export class ServerClient extends HttpClient<BearerTokenCredentials> {
         this.post<AppPageQueryResponse<AgentRunModel>>('/agent/run/list', data),
 
       /** 运行详情：**输入快照**（送给模型的输入、子 agent 的提示词与任务）+ 错误原文 + 子 run */
-      detail: (data: AgentRunIdDto) =>
-        this.post<AgentRunDetailModel>('/agent/run/detail', data),
+      detail: (data: AgentRunIdDto) => this.post<AgentRunDetailModel>('/agent/run/detail', data),
     },
 
     /**
@@ -540,10 +497,7 @@ export class ServerClient extends HttpClient<BearerTokenCredentials> {
     timeline: {
       /** 时间线分页（消息 / 推理 / 工具调用与结果 / 步骤 / 计划 / 摘要…） */
       list: (data: AgentTimelineListDto) =>
-        this.post<AppPageQueryResponse<AgentTimelineItemModel>>(
-          '/agent/timeline/list',
-          data,
-        ),
+        this.post<AppPageQueryResponse<AgentTimelineItemModel>>('/agent/timeline/list', data),
     },
 
     /** 控制台「AI 用量」汇总（管理员）：近 N 天 token / 轮数 / 成功率 / 分模型与 agent */
@@ -634,14 +588,11 @@ export class ServerClient extends HttpClient<BearerTokenCredentials> {
         this.post<AppPageQueryResponse<AiModelModel>>('/ai-model/model/list', data),
 
       /** 手工新增（自建网关拉不全 / 想手填窗口时用） */
-      create: (data: AiModelCreateDto) =>
-        this.post<AiModelModel>('/ai-model/model/create', data),
+      create: (data: AiModelCreateDto) => this.post<AiModelModel>('/ai-model/model/create', data),
 
-      update: (data: AiModelUpdateDto) =>
-        this.post<AiModelModel>('/ai-model/model/update', data),
+      update: (data: AiModelUpdateDto) => this.post<AiModelModel>('/ai-model/model/update', data),
 
-      remove: (data: AiModelIdDto) =>
-        this.post<SuccessResultModel>('/ai-model/model/remove', data),
+      remove: (data: AiModelIdDto) => this.post<SuccessResultModel>('/ai-model/model/remove', data),
     },
   }
 
@@ -690,16 +641,13 @@ export class ServerClient extends HttpClient<BearerTokenCredentials> {
       this.post<AppPageQueryResponse<AiSkillModel>>('/ai-skill/list', data),
 
     /** 详情：元信息 + 文件清单（不含正文） */
-    detail: (data: AiSkillKeyDto) =>
-      this.post<AiSkillDetailModel>('/ai-skill/detail', data),
+    detail: (data: AiSkillKeyDto) => this.post<AiSkillDetailModel>('/ai-skill/detail', data),
 
     /** 新建（建完默认启用，落盘后立即对模型可见） */
-    create: (data: AiSkillCreateDto) =>
-      this.post<AiSkillDetailModel>('/ai-skill/create', data),
+    create: (data: AiSkillCreateDto) => this.post<AiSkillDetailModel>('/ai-skill/create', data),
 
     /** 更新元信息 / 开关 */
-    update: (data: AiSkillUpdateDto) =>
-      this.post<AiSkillDetailModel>('/ai-skill/update', data),
+    update: (data: AiSkillUpdateDto) => this.post<AiSkillDetailModel>('/ai-skill/update', data),
 
     /** 删除（软删 + 删落盘目录） */
     remove: (data: AiSkillKeyDto) => this.post<{ ok: boolean }>('/ai-skill/remove', data),
@@ -744,8 +692,7 @@ export class ServerClient extends HttpClient<BearerTokenCredentials> {
       this.post<AiConnectorModel>('/ai-connector/update', data),
 
     /** 详情（含它产出的工具） */
-    detail: (data: AiConnectorIdDto) =>
-      this.post<AiConnectorDetail>('/ai-connector/detail', data),
+    detail: (data: AiConnectorIdDto) => this.post<AiConnectorDetail>('/ai-connector/detail', data),
 
     /** 测试连接（只写状态，不动工具） */
     test: (data: AiConnectorIdDto) =>
@@ -766,7 +713,6 @@ export class ServerClient extends HttpClient<BearerTokenCredentials> {
     list: () => this.post<SessionListModel>('/session/list'),
 
     /** 需要登录态：按会话 id 下线某台设备（幂等：已失效也返回成功） */
-    remove: (data: RemoveSessionDto) =>
-      this.post<SuccessResultModel>('/session/remove', data),
+    remove: (data: RemoveSessionDto) => this.post<SuccessResultModel>('/session/remove', data),
   }
 }

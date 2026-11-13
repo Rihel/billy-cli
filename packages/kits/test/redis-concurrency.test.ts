@@ -113,13 +113,7 @@ const createFakeLockStore = () => {
   let seq = 0
 
   const raw = {
-    set: async (
-      key: string,
-      value: string,
-      _ex?: string,
-      _ttl?: number,
-      nx?: string,
-    ) => {
+    set: async (key: string, value: string, _ex?: string, _ttl?: number, nx?: string) => {
       if (nx && locks.has(key)) return null
       locks.set(key, value)
       return 'OK'
@@ -131,8 +125,7 @@ const createFakeLockStore = () => {
     },
     /** unlock 脚本删 key 返回 1；renew 脚本仅当持有者匹配返回 1 */
     evalsha: async (sha: string, _numKeys: number, key: string, value: string) => {
-      const isUnlock = [...scriptShas.entries()].find(([, s]) => s === sha)?.[0]
-        ?.includes('del')
+      const isUnlock = [...scriptShas.entries()].find(([, s]) => s === sha)?.[0]?.includes('del')
       if (locks.get(key) !== value) return 0
       if (isUnlock) {
         locks.delete(key)

@@ -42,7 +42,11 @@ export async function pageWith<T extends ObjectLiteral>(
   size: number,
 ): Promise<PageResult<T>> {
   const [data, total] = await Promise.all([
-    builder.clone().skip((page - 1) * size).take(size).getMany(),
+    builder
+      .clone()
+      .skip((page - 1) * size)
+      .take(size)
+      .getMany(),
     builder.clone().getCount(),
   ])
   return { data, total }
@@ -119,10 +123,7 @@ export async function cursorPageWithDeferred<T extends ObjectLiteral>(
 ): Promise<CursorResult<T>> {
   const { fetchIds, idCol, ...pageOptions } = options
   const page = await cursorPageWith(
-    builder.select([
-      String(idCol),
-      ...pageOptions.cursorColumns.map(String),
-    ]),
+    builder.select([String(idCol), ...pageOptions.cursorColumns.map(String)]),
     pageOptions,
   )
   if (page.data.length === 0) return page
@@ -152,10 +153,9 @@ function applyCursorFilter<T extends ObjectLiteral>(
                 [`cursor${i}`]: values[i],
               })
             }
-            inner.andWhere(
-              `${alias}.${String(column)} ${dir} :cursor${index}`,
-              { [`cursor${index}`]: values[index] },
-            )
+            inner.andWhere(`${alias}.${String(column)} ${dir} :cursor${index}`, {
+              [`cursor${index}`]: values[index],
+            })
           }),
         )
       })

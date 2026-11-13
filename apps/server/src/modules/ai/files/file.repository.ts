@@ -193,8 +193,10 @@ export class FileRepository {
       source: row.source === 'user' ? 'user' : 'ai',
       mediaType: String(row.mediaType),
       bytes: Number(row.bytes ?? 0),
-      createdAt: row.createdAt instanceof Date ? row.createdAt.toISOString() : String(row.createdAt),
-      updatedAt: row.updatedAt instanceof Date ? row.updatedAt.toISOString() : String(row.updatedAt),
+      createdAt:
+        row.createdAt instanceof Date ? row.createdAt.toISOString() : String(row.createdAt),
+      updatedAt:
+        row.updatedAt instanceof Date ? row.updatedAt.toISOString() : String(row.updatedAt),
     }))
     return { items, total, page: input.page, size: input.size }
   }
@@ -205,10 +207,10 @@ export class FileRepository {
       .select([
         'COUNT(*) AS count',
         'COALESCE(SUM(f.bytes), 0) AS bytes',
-        "COALESCE(SUM(CASE WHEN f.source = 'user' THEN 1 ELSE 0 END), 0) AS \"userCount\"",
-        "COALESCE(SUM(CASE WHEN f.source = 'user' THEN f.bytes ELSE 0 END), 0) AS \"userBytes\"",
-        "COALESCE(SUM(CASE WHEN f.source = 'ai' THEN 1 ELSE 0 END), 0) AS \"aiCount\"",
-        "COALESCE(SUM(CASE WHEN f.source = 'ai' THEN f.bytes ELSE 0 END), 0) AS \"aiBytes\"",
+        'COALESCE(SUM(CASE WHEN f.source = \'user\' THEN 1 ELSE 0 END), 0) AS "userCount"',
+        'COALESCE(SUM(CASE WHEN f.source = \'user\' THEN f.bytes ELSE 0 END), 0) AS "userBytes"',
+        'COALESCE(SUM(CASE WHEN f.source = \'ai\' THEN 1 ELSE 0 END), 0) AS "aiCount"',
+        'COALESCE(SUM(CASE WHEN f.source = \'ai\' THEN f.bytes ELSE 0 END), 0) AS "aiBytes"',
         'COUNT(DISTINCT f.conversation_id) AS "conversationCount"',
       ])
       .getRawOne<Record<string, unknown>>()

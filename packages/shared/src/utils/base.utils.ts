@@ -1,22 +1,14 @@
 import _ from 'lodash'
 
-export function mapValue<T extends Record<string, any>>(
-  map: T,
-  defaultValue?: any,
-) {
+export function mapValue<T extends Record<string, any>>(map: T, defaultValue?: any) {
   return (key: keyof T | string): T[keyof T] => {
     const value = map[key]
     return _.isNil(value) ? defaultValue : value
   }
 }
 
-export function mapFun<T extends Record<string, (...args: any) => any>>(
-  map: T,
-) {
-  return (
-    key: keyof T,
-    ...args: Parameters<T[keyof T]>
-  ): ReturnType<T[keyof T]> => {
+export function mapFun<T extends Record<string, (...args: any) => any>>(map: T) {
+  return (key: keyof T, ...args: Parameters<T[keyof T]>): ReturnType<T[keyof T]> => {
     return map[key]?.(...args)
   }
 }
@@ -25,9 +17,7 @@ export function funWrap(data: any) {
   return () => data
 }
 
-export type MaybeFunction<Value, Args extends unknown[] = []> =
-  | Value
-  | ((...args: Args) => Value)
+export type MaybeFunction<Value, Args extends unknown[] = []> = Value | ((...args: Args) => Value)
 
 export function maybeFun<Value, Args extends unknown[]>(
   data: MaybeFunction<Value, Args>,
@@ -57,6 +47,8 @@ export function getDataByPriority(arr: any[] = [], log = false) {
     value = arr.shift()
 
     if (log) {
+      // 调试开关：调用方显式传 log=true 才输出，属该函数的职责
+      // oxlint-disable-next-line eslint/no-console
       console.log(i, value)
     }
     i++
@@ -103,17 +95,14 @@ export function mergeWith<
   K extends keyof T = keyof T,
   Rule extends MergeRule<T, K> = MergeRule<T, K>,
 >(source: T, target: Partial<T>, mergeRules: Record<K, Rule>): Partial<T> {
-  return Object.entries(mergeRules).reduce<Partial<T>>(
-    (acc, [field, mergeRule]) => {
-      const sourceValue = source[field] as T[K]
-      const targetValue = target[field] as T[K]
-      let value = (mergeRule as Rule)(sourceValue, targetValue)
+  return Object.entries(mergeRules).reduce<Partial<T>>((acc, [field, mergeRule]) => {
+    const sourceValue = source[field] as T[K]
+    const targetValue = target[field] as T[K]
+    let value = (mergeRule as Rule)(sourceValue, targetValue)
 
-      acc[field as K] = value
-      return acc
-    },
-    {} as Partial<T>,
-  )
+    acc[field as K] = value
+    return acc
+  }, {} as Partial<T>)
 }
 
 export function parseJson<T>(
@@ -146,5 +135,4 @@ export const normalizeArray = <T>(arr: T | T[]) => {
   return [arr] as T[]
 }
 
-export const maybePromise = async <T>(data: T | PromiseLike<T>): Promise<T> =>
-  await data
+export const maybePromise = async <T>(data: T | PromiseLike<T>): Promise<T> => await data

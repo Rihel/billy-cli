@@ -1,9 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import {
-  createAppUrlConfig,
-  DEV_SERVER_URL,
-  DEV_STORAGE_URL,
-} from '../src/utils/url.utils'
+import { createAppUrlConfig, DEV_SERVER_URL, DEV_STORAGE_URL } from '../src/utils/url.utils'
 
 /**
  * 地址解析的机制：回落顺序与 key → URL 拼接。

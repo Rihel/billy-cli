@@ -15,7 +15,7 @@ import {
   toastSuccess,
 } from '@repo/ui'
 import type { DataTableColumnDef } from '@repo/ui'
-import { CopyIcon, PencilIcon, RotateCcwIcon } from 'lucide-react'
+import { CopyIcon, PencilIcon } from 'lucide-react'
 import { copyText } from '@/lib/clipboard'
 
 /**
@@ -47,9 +47,7 @@ const copyToolKey = async (toolKey: string): Promise<void> => {
 /** 作用域单元格：`agent` 时把授权数量带上（"授权给哪些 agent"才是当下要看的） */
 const ScopeCell = ({ tool }: { tool: AiToolModel }) => {
   if (tool.scope === ToolScope.Agent) {
-    return (
-      <Tag color="processing">{`指定 agent（${tool.allowedAgents.length}）`}</Tag>
-    )
+    return <Tag color="processing">{`指定 agent（${tool.allowedAgents.length}）`}</Tag>
   }
   return <DictTag dict={ToolScope} value={tool.scope} emptyText={tool.scope} />
 }

@@ -1,6 +1,9 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { UIMessage } from 'ai'
-import { ChatSessionStore, toMessageState } from '../src/app/(app)/(standalone)/main/ai/chat/chat-session.ts'
+import {
+  ChatSessionStore,
+  toMessageState,
+} from '../src/app/(app)/(standalone)/main/ai/chat/chat-session.ts'
 import { markTransientChunks } from '../src/app/(app)/(standalone)/main/ai/chat/chat-transport.ts'
 import type { ChatUnit } from '../src/app/(app)/(standalone)/main/ai/chat/chat-session.ts'
 
@@ -39,10 +42,17 @@ describe('ChatSessionStore：按 type 归约', () => {
   it('子助手增量折叠进聚合正文：一万块增量仍然只有一个单元', () => {
     const store = new ChatSessionStore()
     const parts: unknown[] = [
-      { type: 'data-sub-agent', id: 'sub1', data: { runId: 'sub1', name: '调研', status: 'running' } },
+      {
+        type: 'data-sub-agent',
+        id: 'sub1',
+        data: { runId: 'sub1', name: '调研', status: 'running' },
+      },
     ]
     for (let index = 0; index < 500; index += 1) {
-      parts.push({ type: 'data-sub-agent-delta', data: { runId: 'sub1', kind: 'text', text: '字' } })
+      parts.push({
+        type: 'data-sub-agent-delta',
+        data: { runId: 'sub1', kind: 'text', text: '字' },
+      })
     }
     store.sync([message(parts)])
 
@@ -78,7 +88,11 @@ describe('ChatSessionStore：按 type 归约', () => {
           state: 'output-available',
           input: { task: '调研' },
         },
-        { type: 'data-sub-agent', id: 'sub1', data: { runId: 'sub1', toolCallId: 'call_1', name: '调研' } },
+        {
+          type: 'data-sub-agent',
+          id: 'sub1',
+          data: { runId: 'sub1', toolCallId: 'call_1', name: '调研' },
+        },
       ]),
     ])
 
@@ -91,7 +105,12 @@ describe('ChatSessionStore：按 type 归约', () => {
     const store = new ChatSessionStore()
     store.sync([
       message([
-        { type: 'dynamic-tool', toolName: 'ask-user-questions', toolCallId: 'q1', state: 'input-available' },
+        {
+          type: 'dynamic-tool',
+          toolName: 'ask-user-questions',
+          toolCallId: 'q1',
+          state: 'input-available',
+        },
       ]),
     ])
     expect(unitsOf(store).find((unit) => unit.kind === 'tool')).toMatchObject({ hidden: true })
@@ -115,9 +134,38 @@ describe('ChatSessionStore：按 type 归约', () => {
     const store = new ChatSessionStore()
     store.sync([
       message([
-        { type: 'dynamic-tool', toolName: 'web-search', toolCallId: 'c1', state: 'input-available' },
-                { type: 'data-tool-event', data: { toolKey: 'web-search', toolCallId: 'c1', event: 'progress', eventTitle: '进度', mode: 'stream', seq: 0, payload: { step: 0 }, agentKey: null } },
-                { type: 'data-tool-event', data: { toolKey: 'web-search', toolCallId: 'c-missing', event: 'progress', eventTitle: '进度', mode: 'stream', seq: 1, payload: { step: 1 }, agentKey: null } },
+        {
+          type: 'dynamic-tool',
+          toolName: 'web-search',
+          toolCallId: 'c1',
+          state: 'input-available',
+        },
+        {
+          type: 'data-tool-event',
+          data: {
+            toolKey: 'web-search',
+            toolCallId: 'c1',
+            event: 'progress',
+            eventTitle: '进度',
+            mode: 'stream',
+            seq: 0,
+            payload: { step: 0 },
+            agentKey: null,
+          },
+        },
+        {
+          type: 'data-tool-event',
+          data: {
+            toolKey: 'web-search',
+            toolCallId: 'c-missing',
+            event: 'progress',
+            eventTitle: '进度',
+            mode: 'stream',
+            seq: 1,
+            payload: { step: 1 },
+            agentKey: null,
+          },
+        },
       ]),
     ])
 
@@ -135,7 +183,11 @@ describe('ChatSessionStore：按 type 归约', () => {
       message([
         {
           type: 'data-tool-call-suspended',
-          data: { toolCallId: 'q1', toolName: 'ask-user-questions', suspendPayload: { questions: [] } },
+          data: {
+            toolCallId: 'q1',
+            toolName: 'ask-user-questions',
+            suspendPayload: { questions: [] },
+          },
         },
         { type: 'data-run-usage', data: { runId: 'r1', usage: { inputTokens: 1 }, stepCount: 2 } },
       ]),
@@ -147,7 +199,12 @@ describe('ChatSessionStore：按 type 归约', () => {
 
   it('续传重放（parts 变短）时整条重建，不残留旧内容', () => {
     const store = new ChatSessionStore()
-    store.sync([message([{ type: 'text', text: '旧内容' }, { type: 'text', text: '旧尾' }])])
+    store.sync([
+      message([
+        { type: 'text', text: '旧内容' },
+        { type: 'text', text: '旧尾' },
+      ]),
+    ])
     store.sync([message([{ type: 'text', text: '重放的第一段' }])])
 
     expect(textOf(store)).toBe('重放的第一段')
@@ -174,13 +231,28 @@ describe('ChatSessionStore：实时数据（onData）', () => {
   it('状态块与增量块聚合成一份当前值；新一轮开始时清空', () => {
     vi.useFakeTimers()
     const store = new ChatSessionStore()
-    store.applyChunk({ type: 'data-sub-agent', data: { runId: 's1', name: '调研线', status: 'running' } })
-    store.applyChunk({ type: 'data-sub-agent-delta', data: { runId: 's1', kind: 'reasoning', text: '想' } })
-    store.applyChunk({ type: 'data-sub-agent-delta', data: { runId: 's1', kind: 'text', text: '正文' } })
+    store.applyChunk({
+      type: 'data-sub-agent',
+      data: { runId: 's1', name: '调研线', status: 'running' },
+    })
+    store.applyChunk({
+      type: 'data-sub-agent-delta',
+      data: { runId: 's1', kind: 'reasoning', text: '想' },
+    })
+    store.applyChunk({
+      type: 'data-sub-agent-delta',
+      data: { runId: 's1', kind: 'text', text: '正文' },
+    })
     vi.advanceTimersByTime(150)
 
     const live = store.getSnapshot().live[0]!
-    expect(live).toMatchObject({ runId: 's1', name: '调研线', status: 'running', text: '正文', reasoning: '想' })
+    expect(live).toMatchObject({
+      runId: 's1',
+      name: '调研线',
+      status: 'running',
+      text: '正文',
+      reasoning: '想',
+    })
     expect(store.hasActiveSubAgent()).toBe(true)
 
     store.applyChunk({ type: 'data-run', data: { runId: 'r2' } })
@@ -216,7 +288,10 @@ describe('消息中间的 part 被改写（答案提交 / 问题卡转只读）'
     store.sync([
       message([
         { type: 'text', text: '先问几个问题' },
-        { ...suspended, data: { ...suspended.data, resumed: true, answers: [{ id: 'q1', value: '一周内' }] } },
+        {
+          ...suspended,
+          data: { ...suspended.data, resumed: true, answers: [{ id: 'q1', value: '一周内' }] },
+        },
         { type: 'text', text: '然后继续' },
       ]),
     ])

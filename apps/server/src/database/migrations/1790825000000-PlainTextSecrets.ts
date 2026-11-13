@@ -1,4 +1,4 @@
-import type { MigrationInterface, QueryRunner } from "typeorm"
+import type { MigrationInterface, QueryRunner } from 'typeorm'
 
 /**
  * **密钥改明文存储**（2026-10-01 用户决定），并给 `ai_tools` 加"参数定义镜像"列。
@@ -78,14 +78,14 @@ export class PlainTextSecrets1790825000000 implements MigrationInterface {
  */
 const decryptLegacySecret = (payload: string, secret: string): string => {
   const scryptSync = (password: string, salt: string, keylen: number) =>
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
     (require('node:crypto') as typeof import('node:crypto')).scryptSync(password, salt, keylen)
   const { createDecipheriv } = require('node:crypto') as typeof import('node:crypto')
   const KDF_SALT = 'billy.ai-model.secret.v1'
   const IV_BYTES = 12
   const TAG_BYTES = 16
   const raw = Buffer.from(payload, 'base64')
-  if (raw.length <= IV_BYTES + TAG_BYTES) throw new Error('密文长度不足，缺少 iv / tag / ciphertext')
+  if (raw.length <= IV_BYTES + TAG_BYTES)
+    throw new Error('密文长度不足，缺少 iv / tag / ciphertext')
   const iv = raw.subarray(0, IV_BYTES)
   const tag = raw.subarray(IV_BYTES, IV_BYTES + TAG_BYTES)
   const ciphertext = raw.subarray(IV_BYTES + TAG_BYTES)

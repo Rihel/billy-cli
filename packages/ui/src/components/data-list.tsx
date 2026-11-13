@@ -1,16 +1,16 @@
-"use client"
+'use client'
 
-import { forwardRef, useImperativeHandle, useRef } from "react"
-import type { CSSProperties, ReactNode, Ref } from "react"
-import { Virtuoso } from "react-virtuoso"
-import type { VirtuosoHandle } from "react-virtuoso"
+import { forwardRef, useImperativeHandle, useRef } from 'react'
+import type { CSSProperties, ReactNode, Ref } from 'react'
+import { Virtuoso } from 'react-virtuoso'
+import type { VirtuosoHandle } from 'react-virtuoso'
 
-import { cn } from "#lib/utils"
-import { Empty, EmptyDescription } from "#components/ui/empty"
-import { Spinner } from "#components/ui/spinner"
+import { cn } from '#lib/utils'
+import { Empty, EmptyDescription } from '#components/ui/empty'
+import { Spinner } from '#components/ui/spinner'
 
 export type DataListApi = {
-  scrollToIndex(index: number, align?: "start" | "center" | "end"): void
+  scrollToIndex(index: number, align?: 'start' | 'center' | 'end'): void
   scrollToTop(): void
   scrollToEnd(): void
 }
@@ -27,7 +27,7 @@ export type DataListProps<Item> = {
   renderItem: (item: Item, index: number) => ReactNode
   onLoadMore?: () => void | Promise<void>
   rowKey?: keyof Item | ((item: Item) => React.Key)
-  height?: CSSProperties["height"]
+  height?: CSSProperties['height']
   overscan?: number
   className?: string
   listClassName?: string
@@ -41,8 +41,8 @@ const DataListInner = <Item,>(
     loading,
     hasMore = false,
     loadingMore = false,
-    emptyText = "暂无数据",
-    loadingText = "加载中...",
+    emptyText = '暂无数据',
+    loadingText = '加载中...',
     header,
     footer,
     renderItem,
@@ -60,22 +60,20 @@ const DataListInner = <Item,>(
   const items = dataSource ?? []
 
   useImperativeHandle(ref, () => ({
-    scrollToIndex(index, align = "start") {
+    scrollToIndex(index, align = 'start') {
       virtuosoRef.current?.scrollToIndex({ index, align })
     },
     scrollToTop() {
-      virtuosoRef.current?.scrollToIndex({ index: 0, align: "start" })
+      virtuosoRef.current?.scrollToIndex({ index: 0, align: 'start' })
     },
     scrollToEnd() {
-      virtuosoRef.current?.scrollToIndex({ index: "LAST", align: "end" })
+      virtuosoRef.current?.scrollToIndex({ index: 'LAST', align: 'end' })
     },
   }))
 
   const computeItemKey = rowKey
     ? (_index: number, item: Item) =>
-        typeof rowKey === "function"
-          ? rowKey(item)
-          : (item[rowKey] as React.Key)
+        typeof rowKey === 'function' ? rowKey(item) : (item[rowKey] as React.Key)
     : undefined
 
   return (
@@ -83,7 +81,7 @@ const DataListInner = <Item,>(
       {header ? <div className="mb-4">{header}</div> : null}
       <Virtuoso<Item>
         ref={virtuosoRef}
-        className={cn("w-full", listClassName)}
+        className={cn('w-full', listClassName)}
         style={{ height }}
         data={items}
         overscan={overscan}

@@ -22,7 +22,9 @@ export const TaskInputSchema = z.object({
   status: z
     .enum(PLAN_TASK_STATUSES)
     .optional()
-    .describe('pending 未开始 / in_progress 进行中（同时只允许一个）/ completed 已完成；省略视为 pending'),
+    .describe(
+      'pending 未开始 / in_progress 进行中（同时只允许一个）/ completed 已完成；省略视为 pending',
+    ),
   note: z
     .string()
     .max(1000)
@@ -39,7 +41,9 @@ export const PlanCreateInputSchema = z.object({
     .min(1)
     .max(500)
     .optional()
-    .describe('这批任务要做成什么（一句话目标）。**第一次创建清单必须给**；已有清单时可以省略（沿用当前目标）'),
+    .describe(
+      '这批任务要做成什么（一句话目标）。**第一次创建清单必须给**；已有清单时可以省略（沿用当前目标）',
+    ),
   tasks: z.array(TaskInputSchema).min(1).max(30).describe('要创建的任务（一次可以建多个）'),
 })
 
@@ -74,17 +78,21 @@ export const PlanReorderInputSchema = z
 
 /** `plan-complete`：完成任务（支持一次完成多个） */
 export const PlanCompleteInputSchema = z.object({
-  ids: z.array(z.string().min(1).max(32)).min(1).max(50).describe('已做完的任务 id（一次可以给多个）'),
-  note: z
-    .string()
-    .max(1000)
-    .optional()
-    .describe('完成口径 / 结论（可选，会写进这些任务的备注）'),
+  ids: z
+    .array(z.string().min(1).max(32))
+    .min(1)
+    .max(50)
+    .describe('已做完的任务 id（一次可以给多个）'),
+  note: z.string().max(1000).optional().describe('完成口径 / 结论（可选，会写进这些任务的备注）'),
 })
 
 /** `plan-delete`：删除任务（支持一次删除多个） */
 export const PlanDeleteInputSchema = z.object({
-  ids: z.array(z.string().min(1).max(32)).min(1).max(50).describe('要删除的任务 id（一次可以给多个）'),
+  ids: z
+    .array(z.string().min(1).max(32))
+    .min(1)
+    .max(50)
+    .describe('要删除的任务 id（一次可以给多个）'),
 })
 
 /** 四个规划工具的配置：目前没有可配项（开关 / 作用域 / 限额都在配置表里） */

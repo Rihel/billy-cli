@@ -99,9 +99,7 @@ export const buildSeatbeltProfile = (input: {
     lines.push(`(deny file-read* ${sbplSubpaths(input.denyPaths)})`)
   }
   const writable =
-    input.mode === 'read-only'
-      ? input.writableDirs
-      : [input.workspaceRoot, ...input.writableDirs]
+    input.mode === 'read-only' ? input.writableDirs : [input.workspaceRoot, ...input.writableDirs]
   lines.push(`(allow file-write* ${sbplSubpaths(writable)})`)
   lines.push(
     '(allow file-write* (literal "/dev/null") (literal "/dev/stdout") (literal "/dev/stderr") (literal "/dev/tty"))',
@@ -210,10 +208,7 @@ export const buildSandboxInvocation = async (input: {
   }
 }
 
-const unavailable = (
-  code: WorkspaceReason['code'],
-  message: string,
-): SandboxCapability => ({
+const unavailable = (code: WorkspaceReason['code'], message: string): SandboxCapability => ({
   available: false,
   reason: { code, message },
   probedAt: new Date().toISOString(),
@@ -230,9 +225,7 @@ const looksLikeUsernsDenied = (text: string): boolean =>
  * 只看二进制是否存在会误判：容器里 `bwrap` 装着、unprivileged userns 被禁，一样起不来。
  * 探测同时验证了 profile 语法 —— profile 写错也会在这里暴露，而不是在执行时炸。
  */
-export const probeSandbox = async (
-  input: SandboxProbeInput,
-): Promise<SandboxCapability> => {
+export const probeSandbox = async (input: SandboxProbeInput): Promise<SandboxCapability> => {
   if (input.platform === 'win32') {
     return unavailable(
       'platform-unsupported',
@@ -240,10 +233,7 @@ export const probeSandbox = async (
     )
   }
   if (input.platform !== 'darwin' && input.platform !== 'linux') {
-    return unavailable(
-      'platform-unsupported',
-      `当前系统（${input.platform}）没有实现 OS 沙箱`,
-    )
+    return unavailable('platform-unsupported', `当前系统（${input.platform}）没有实现 OS 沙箱`)
   }
 
   const impl: SandboxImpl = input.platform === 'darwin' ? 'seatbelt' : 'bwrap'
@@ -253,9 +243,7 @@ export const probeSandbox = async (
     return unavailable('binary-missing', `未找到 ${binaryName}，无法启用沙箱`)
   }
 
-  const probeDir = await mkdtemp(join(tmpdir(), 'billy-sandbox-probe-')).catch(
-    () => null,
-  )
+  const probeDir = await mkdtemp(join(tmpdir(), 'billy-sandbox-probe-')).catch(() => null)
   if (!probeDir) {
     return unavailable('sandbox-unavailable', '无法创建探测目录')
   }

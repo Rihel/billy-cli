@@ -1,7 +1,16 @@
 import { describe, expect, it } from 'vitest'
-import { PlannerStore, PlannerTools, type PlanOutput } from '../../src/modules/ai/tools/planner/index.js'
+import {
+  PlannerStore,
+  PlannerTools,
+  type PlanOutput,
+} from '../../src/modules/ai/tools/planner/index.js'
 import { TOOL_KEYS } from '../../src/modules/ai/core/tools/tool-keys.js'
-import { buildToolStackDeps, makeToolContext, silentLogger, specByKey } from '../helpers/ai-tool-stack.js'
+import {
+  buildToolStackDeps,
+  makeToolContext,
+  silentLogger,
+  specByKey,
+} from '../helpers/ai-tool-stack.js'
 
 /**
  * `plan-complete`（规划工具集之一）的单测：把**一个或多个**做完的任务标成 `completed`
@@ -22,7 +31,10 @@ const SEED = {
 const build = (latestPlan: unknown = SEED) => {
   const deps = buildToolStackDeps()
   const timelines = { latestPlan: async () => latestPlan, findToolOutput: async () => null }
-  const spec = specByKey(new PlannerTools(new PlannerStore(timelines as never)), TOOL_KEYS.planComplete)
+  const spec = specByKey(
+    new PlannerTools(new PlannerStore(timelines as never)),
+    TOOL_KEYS.planComplete,
+  )
   const envelope = {
     conversationId: 'conv-1',
     parentRunId: 'run-1',
@@ -95,9 +107,9 @@ describe('plan-complete（完成任务，支持一次完成多个）', () => {
     expect(spec.key).toBe(TOOL_KEYS.planComplete)
     expect(spec.child).toBe('deny')
     expect(spec.params.safeParse({ ids: [] }).success).toBe(false)
-    expect(spec.params.safeParse({ ids: Array.from({ length: 51 }, (_, i) => `c${i}`) }).success).toBe(
-      false,
-    )
+    expect(
+      spec.params.safeParse({ ids: Array.from({ length: 51 }, (_, i) => `c${i}`) }).success,
+    ).toBe(false)
     expect(spec.params.safeParse({ ids: ['c1'], note: '结论' }).success).toBe(true)
     expect(typeof silentLogger.info).toBe('function')
   })

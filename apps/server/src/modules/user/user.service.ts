@@ -18,7 +18,6 @@ import { EmailTakenError, UserNotFoundError } from './errors.js'
 
 @Injectable()
 export class UserService {
-
   constructor(
     @Inject(UserRepository) private readonly userRepository: UserRepository,
     @Inject(PasswordHasher) private readonly passwordHasher: PasswordHasher,
@@ -31,9 +30,7 @@ export class UserService {
     const existing = await this.userRepository.findByEmail(input.email)
     if (existing) throw new EmailTakenError(input.email)
     const hashed = await this.passwordHasher.hash(input.password)
-    const user = toUser(
-      await this.userRepository.create({ ...input, password: hashed }),
-    )
+    const user = toUser(await this.userRepository.create({ ...input, password: hashed }))
     this.logger.log('user.created', { id: user.id })
     return user
   }
@@ -72,9 +69,7 @@ export class UserService {
   }
 
   @Transactional()
-  async resetPassword(
-    input: ResetUserPasswordDto,
-  ): Promise<RemoveUserResultModel> {
+  async resetPassword(input: ResetUserPasswordDto): Promise<RemoveUserResultModel> {
     const hashed = await this.passwordHasher.hash(input.password)
     const user = await this.userRepository.update(input.userId, {
       password: hashed,

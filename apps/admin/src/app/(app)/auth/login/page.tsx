@@ -1,11 +1,7 @@
 'use client'
 
 import { getServerClient, removeToken, saveToken } from '@/lib/server-client'
-import {
-  checkSessionAction,
-  loginAction,
-  logoutAction,
-} from '@/actions/auth.actions'
+import { checkSessionAction, loginAction, logoutAction } from '@/actions/auth.actions'
 import {
   Alert,
   AlertDescription,
@@ -91,7 +87,7 @@ function LoginFormComponent() {
           toastError(error)
         },
         onSuccess: (token) => {
-          saveToken(token)
+          void saveToken(token)
           toastSuccess('登录成功')
           router.replace(Pages.dashboard)
         },
@@ -110,12 +106,8 @@ function LoginFormComponent() {
   return (
     <>
       <div className="mb-8 flex flex-col gap-1.5">
-        <h1 className="font-heading text-2xl font-semibold tracking-tight">
-          登录控制台
-        </h1>
-        <p className="text-sm text-muted-foreground">
-          输入你的管理员凭据继续
-        </p>
+        <h1 className="font-heading text-2xl font-semibold tracking-tight">登录控制台</h1>
+        <p className="text-sm text-muted-foreground">输入你的管理员凭据继续</p>
       </div>
       {expired ? (
         <Alert className="mb-4">

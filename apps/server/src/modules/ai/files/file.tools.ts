@@ -4,7 +4,11 @@ import { z } from 'zod'
 import { ObjectStorage } from '@repo/kits'
 import { ToolDecl, ToolGroup } from '../core/tools/tool.decorator.js'
 import { TOOL_KEYS } from '../core/tools/tool-keys.js'
-import { ToolDeniedError, type ToolCallContext, type ToolEnvCaps } from '../core/tools/tools.types.js'
+import {
+  ToolDeniedError,
+  type ToolCallContext,
+  type ToolEnvCaps,
+} from '../core/tools/tools.types.js'
 import {
   AppendFileInputSchema,
   DownloadInputSchema,
@@ -94,7 +98,10 @@ export class FileTools {
       大文件下载后用 read-file 分页读；编辑用 write-file / replace-file / append-file，不要直接改 files/ 缓存。
     `,
   })
-  async download(input: z.infer<typeof DownloadInputSchema>, ctx: ToolCallContext<FileConfigValue>) {
+  async download(
+    input: z.infer<typeof DownloadInputSchema>,
+    ctx: ToolCallContext<FileConfigValue>,
+  ) {
     return this.files.download(this.context(ctx), input)
   }
 
@@ -143,7 +150,10 @@ export class FileTools {
       跳过二进制 / 软链 / 依赖目录；结果有上限。
     `,
   })
-  async search(input: z.infer<typeof FileSearchInputSchema>, ctx: ToolCallContext<FileConfigValue>) {
+  async search(
+    input: z.infer<typeof FileSearchInputSchema>,
+    ctx: ToolCallContext<FileConfigValue>,
+  ) {
     return this.files.search(this.context(ctx), input)
   }
 
@@ -194,7 +204,10 @@ export class FileTools {
       只改文本；单次内容上限 1MB；路径必须在本会话 workspace 内。
     `,
   })
-  async replace(input: z.infer<typeof ReplaceFileInputSchema>, ctx: ToolCallContext<FileConfigValue>) {
+  async replace(
+    input: z.infer<typeof ReplaceFileInputSchema>,
+    ctx: ToolCallContext<FileConfigValue>,
+  ) {
     return this.files.replaceFile(this.context(ctx), input)
   }
 
@@ -210,7 +223,10 @@ export class FileTools {
       只写文本；追加后不能超过单文件上限；路径必须在本会话 workspace 内。
     `,
   })
-  async append(input: z.infer<typeof AppendFileInputSchema>, ctx: ToolCallContext<FileConfigValue>) {
+  async append(
+    input: z.infer<typeof AppendFileInputSchema>,
+    ctx: ToolCallContext<FileConfigValue>,
+  ) {
     return this.files.appendFile(this.context(ctx), input)
   }
 }

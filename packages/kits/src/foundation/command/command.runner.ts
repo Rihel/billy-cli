@@ -119,5 +119,4 @@ export class CommandRunner {
     )) as unknown as ExecaResultLike
     return toCommandResult(run, result)
   }
-
 }

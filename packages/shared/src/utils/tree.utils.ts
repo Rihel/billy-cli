@@ -4,13 +4,7 @@ import { hasContentArray } from './is.utils'
 
 type RecursionTreeOptions<T extends Record<string, any>> = {
   childrenKey?: keyof T
-  visit?: (
-    item: T,
-    parent: T | null,
-    index: number,
-    path: T[],
-    depth?: number,
-  ) => void
+  visit?: (item: T, parent: T | null, index: number, path: T[], depth?: number) => void
   stop?: (item: T) => boolean
 }
 export function recursionTree<T extends Record<string, any>>(
@@ -27,12 +21,7 @@ export function recursionTree<T extends Record<string, any>>(
     options,
   )
 
-  const walk = (
-    list: T[],
-    parent: T | null,
-    path: T[] = [],
-    depth: number = 0,
-  ) => {
+  const walk = (list: T[], parent: T | null, path: T[] = [], depth: number = 0) => {
     for (let i = 0; i < list.length; i++) {
       const item = list[i]
       const newPath = [...path, item]
@@ -63,10 +52,7 @@ export function treeToArray<T extends Record<string, any>>(treeData: T[]) {
   return res
 }
 
-type ArrayToTreeOptions<
-  T extends Record<PropertyKey, any>,
-  CK extends PropertyKey,
-> = {
+type ArrayToTreeOptions<T extends Record<PropertyKey, any>, CK extends PropertyKey> = {
   parentKey: keyof T
   readonly childrenKey: CK
   primaryKey: keyof T
@@ -75,17 +61,11 @@ type ArrayToTreeOptions<
     order: 'asc' | 'desc'
   }
 }
-type TreeResult<
-  T extends Record<PropertyKey, any>,
-  CK extends PropertyKey,
-> = T & {
+type TreeResult<T extends Record<PropertyKey, any>, CK extends PropertyKey> = T & {
   [K in CK]?: TreeResult<T, CK>[]
 }
 
-export const arrayToTree = <
-  T extends Record<PropertyKey, any>,
-  CK extends PropertyKey,
->(
+export const arrayToTree = <T extends Record<PropertyKey, any>, CK extends PropertyKey>(
   list: T[] = [],
   options?: ArrayToTreeOptions<T, CK>,
 ): TreeResult<T, CK>[] => {
@@ -146,18 +126,11 @@ export const arrayToTree = <
   return tree
 }
 
-type ITreeNode<
-  T extends Record<string, any>,
-  CK extends keyof T | PropertyKey,
-> = T & {
+type ITreeNode<T extends Record<string, any>, CK extends keyof T | PropertyKey> = T & {
   [K in CK]?: ITreeNode<T, CK>[]
 }
 
-type TreeUtilCallback<
-  T extends Record<string, any>,
-  CK extends keyof T,
-  Res extends any,
-> = (
+type TreeUtilCallback<T extends Record<string, any>, CK extends keyof T, Res extends any> = (
   item: ITreeNode<T, CK>,
   index: number,
   parent?: ITreeNode<T, CK> | null,
@@ -172,7 +145,7 @@ export const findTree = <T extends Record<string, any>, CK extends keyof T>(
   const res: ITreeNode<T, CK>[] = []
   recursionTree(tree, {
     childrenKey,
-    visit: (item, parent, index, path) => {
+    visit: (item, parent, index, _path) => {
       const match = fn(item, index, parent)
       if (match) {
         res.push(item)
@@ -187,15 +160,9 @@ export const filterTree = <T extends Record<string, any>, CK extends keyof T>(
   fn: TreeUtilCallback<T, CK, boolean>,
   options?: { childrenKey?: CK; keepWithTrue?: boolean },
 ) => {
-  const { childrenKey } = _.merge(
-    { childrenKey: 'children', keepWithTrue: true },
-    options,
-  )
+  const { childrenKey } = _.merge({ childrenKey: 'children', keepWithTrue: true }, options)
 
-  const walk = (
-    list: ITreeNode<T, CK>[],
-    parent?: ITreeNode<T, CK> | null,
-  ): ITreeNode<T, CK>[] => {
+  const walk = (list: ITreeNode<T, CK>[], parent?: ITreeNode<T, CK> | null): ITreeNode<T, CK>[] => {
     return list.filter((item, index) => {
       const res = fn(item, index, parent)
       if (res) {
@@ -235,11 +202,7 @@ export const mapTree = <
   return walk(tree)
 }
 
-export const treeToMap = <
-  T extends Record<string, any>,
-  CK extends keyof T,
-  PK extends keyof T,
->(
+export const treeToMap = <T extends Record<string, any>, CK extends keyof T, PK extends keyof T>(
   tree: ITreeNode<T, CK>[],
   options?: { childrenKey: CK; primaryKey: PK },
 ) => {
@@ -258,7 +221,6 @@ export const treeToMap = <
   })
   return map
 }
-
 
 /**
  * 文件清单 → 文件树（目录隐式生成）。

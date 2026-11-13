@@ -1,8 +1,4 @@
-import type {
-  AuthStrategy,
-  AuthStrategyType,
-  AuthContext,
-} from '../core/interfaces.js'
+import type { AuthStrategy, AuthStrategyType, AuthContext } from '../core/interfaces.js'
 import { hmac } from '@noble/hashes/hmac.js'
 import { sha256, sha384, sha512 } from '@noble/hashes/sha2.js'
 import { bytesToHex, randomBytes, utf8ToBytes, type CHash } from '@noble/hashes/utils.js'
@@ -86,8 +82,7 @@ export class HmacStrategy implements AuthStrategy<HmacCredentials> {
       headerPrefix: options?.headerPrefix ?? 'X-Hmac',
       autoSign: options?.autoSign ?? true,
       buildCanonicalString:
-        options?.buildCanonicalString ??
-        (({ timestamp, nonce }) => [timestamp, nonce].join('\n')),
+        options?.buildCanonicalString ?? (({ timestamp, nonce }) => [timestamp, nonce].join('\n')),
     }
   }
 

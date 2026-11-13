@@ -17,8 +17,8 @@ export class FileClient implements NotifyClient {
 
   private readonly filePath: string
 
-
-  constructor(@Inject(NotifyConfig) config: NotifyConfig,
+  constructor(
+    @Inject(NotifyConfig) config: NotifyConfig,
     @Inject(AppLogger) private readonly logger: AppLogger,
   ) {
     this.filePath = config.file?.path ?? 'logs/alerts.log'

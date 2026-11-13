@@ -95,14 +95,27 @@ describe('collectSubAgentLives', () => {
 
   it('entries 按到达顺序保留正文 / 推理 / 工具，不把最终正文固定放在工具之前', () => {
     const lives = collectSubAgentLives([
-      part({ type: 'data-sub-agent', id: 'sub1', data: { runId: 'sub1', name: '顺序线', status: 'running' } }),
-      part({ type: 'data-sub-agent-delta', data: { runId: 'sub1', kind: 'reasoning', text: '先查资料' } }),
       part({
         type: 'data-sub-agent',
         id: 'sub1',
-        data: { runId: 'sub1', event: { kind: 'tool-call', toolCallId: 'c1', toolKey: 'web-search' } },
+        data: { runId: 'sub1', name: '顺序线', status: 'running' },
       }),
-      part({ type: 'data-sub-agent-delta', data: { runId: 'sub1', kind: 'text', text: '最终结论' } }),
+      part({
+        type: 'data-sub-agent-delta',
+        data: { runId: 'sub1', kind: 'reasoning', text: '先查资料' },
+      }),
+      part({
+        type: 'data-sub-agent',
+        id: 'sub1',
+        data: {
+          runId: 'sub1',
+          event: { kind: 'tool-call', toolCallId: 'c1', toolKey: 'web-search' },
+        },
+      }),
+      part({
+        type: 'data-sub-agent-delta',
+        data: { runId: 'sub1', kind: 'text', text: '最终结论' },
+      }),
     ])
 
     expect(lives[0]!.entries?.map((entry) => entry.kind)).toEqual(['reasoning', 'tool', 'text'])
@@ -111,7 +124,11 @@ describe('collectSubAgentLives', () => {
 
   it('状态块只带 `event`（真实流的形态）时仍然认得出它在跑，工具往返也留得下', () => {
     const lives = collectSubAgentLives([
-      part({ type: 'data-sub-agent', id: 'sub1', data: { runId: 'sub1', name: '中国网文线', status: 'running' } }),
+      part({
+        type: 'data-sub-agent',
+        id: 'sub1',
+        data: { runId: 'sub1', name: '中国网文线', status: 'running' },
+      }),
       part({
         type: 'data-sub-agent',
         id: 'sub1',
@@ -125,7 +142,15 @@ describe('collectSubAgentLives', () => {
 
     expect(lives[0]!.status).toBe('running')
     expect(lives[0]!.events).toEqual([
-      { kind: 'tool-call', toolCallId: 'c1', toolKey: 'bash', input: { cmd: 'ls' }, output: undefined, errorText: null, isError: false },
+      {
+        kind: 'tool-call',
+        toolCallId: 'c1',
+        toolKey: 'bash',
+        input: { cmd: 'ls' },
+        output: undefined,
+        errorText: null,
+        isError: false,
+      },
     ])
     expect(isSubAgentActive(lives[0]!)).toBe(true)
   })
@@ -133,7 +158,10 @@ describe('collectSubAgentLives', () => {
   it('状态块连 id 都没有时退到 `data.runId`；只有增量块也能成卡（名字从增量里取）', () => {
     const lives = collectSubAgentLives([
       part({ type: 'data-sub-agent', data: { runId: 'sub2', name: '技术线', status: 'running' } }),
-      part({ type: 'data-sub-agent-delta', data: { runId: 'sub3', name: '市场线', kind: 'text', text: '开始' } }),
+      part({
+        type: 'data-sub-agent-delta',
+        data: { runId: 'sub3', name: '市场线', kind: 'text', text: '开始' },
+      }),
       part({ type: 'data-sub-agent', data: { name: '没有 id' } }),
     ])
 
@@ -143,10 +171,18 @@ describe('collectSubAgentLives', () => {
 
   it('没有最终状态的按"进行中"算；已经收尾的按库里那份展示', () => {
     const running = collectSubAgentLives([
-      part({ type: 'data-sub-agent', id: 'sub1', data: { runId: 'sub1', name: 'A', event: { kind: 'tool-call' } } }),
+      part({
+        type: 'data-sub-agent',
+        id: 'sub1',
+        data: { runId: 'sub1', name: 'A', event: { kind: 'tool-call' } },
+      }),
     ])[0]!
     const done = collectSubAgentLives([
-      part({ type: 'data-sub-agent', id: 'sub2', data: { runId: 'sub2', name: 'B', status: 'failed' } }),
+      part({
+        type: 'data-sub-agent',
+        id: 'sub2',
+        data: { runId: 'sub2', name: 'B', status: 'failed' },
+      }),
     ])[0]!
 
     expect(subAgentStatus(running)).toBe('running')
@@ -159,7 +195,11 @@ describe('collectSubAgentLives', () => {
 describe('liveSubAgentsOf', () => {
   it('取**最后一条含子助手块**的消息（流刚收尾、末条已翻页时也拿得到）', () => {
     const withSubAgents = liveMessage([
-      part({ type: 'data-sub-agent', id: 'sub1', data: { runId: 'sub1', name: '北美欧洲线', status: 'succeeded' } }),
+      part({
+        type: 'data-sub-agent',
+        id: 'sub1',
+        data: { runId: 'sub1', name: '北美欧洲线', status: 'succeeded' },
+      }),
     ])
     const later = liveMessage([{ type: 'text', text: '汇总完成' }])
 
@@ -171,9 +211,19 @@ describe('liveSubAgentsOf', () => {
 describe('subAgentTabs', () => {
   it('库里的 run 与实时数据合流：顺序稳定、不重不漏、活动态取"两边有一个在跑"', () => {
     const tabs = subAgentTabs(
-      [run({ id: 'run_1', status: 'succeeded' }), run({ id: 'run_2', status: 'running', agentKey: 'sub:中国网文线' })],
       [
-        { runId: 'run_2', name: '中国网文线', status: 'succeeded', text: '', reasoning: '', events: [] },
+        run({ id: 'run_1', status: 'succeeded' }),
+        run({ id: 'run_2', status: 'running', agentKey: 'sub:中国网文线' }),
+      ],
+      [
+        {
+          runId: 'run_2',
+          name: '中国网文线',
+          status: 'succeeded',
+          text: '',
+          reasoning: '',
+          events: [],
+        },
         { runId: 'run_3', name: '新起的子助手', text: '', reasoning: '', events: [] },
       ],
     )
@@ -193,9 +243,9 @@ describe('subAgentTabs', () => {
   })
 
   it('**没有任何子助手活动**时：没有实时数据、也没有 tab（主 agent 自己干完了）', () => {
-    expect(
-      liveSubAgentsOf([liveMessage([{ type: 'text', text: '主 agent 自己答完了' }])]),
-    ).toEqual([])
+    expect(liveSubAgentsOf([liveMessage([{ type: 'text', text: '主 agent 自己答完了' }])])).toEqual(
+      [],
+    )
     expect(subAgentTabs([], [])).toEqual([])
   })
 
@@ -243,7 +293,11 @@ describe('delegatedToolCallIds（把 run-sub-agent 工具卡去重掉）', () =>
 })
 
 describe('subAgentBodyText（紧凑卡展开后的正文）', () => {
-  const live = (over: Partial<import('../src/app/(app)/(standalone)/main/ai/chat/sub-agent-live.ts').SubAgentLive>) => ({
+  const live = (
+    over: Partial<
+      import('../src/app/(app)/(standalone)/main/ai/chat/sub-agent-live.ts').SubAgentLive
+    >,
+  ) => ({
     runId: 'run-1',
     name: '子助手',
     text: '',
@@ -253,17 +307,15 @@ describe('subAgentBodyText（紧凑卡展开后的正文）', () => {
   })
 
   it('跑完优先给最终结论（result）', () => {
-    expect(
-      subAgentBodyText(live({ result: '两榜都抓到了。', text: '中间的碎碎念' })),
-    ).toBe('两榜都抓到了。')
+    expect(subAgentBodyText(live({ result: '两榜都抓到了。', text: '中间的碎碎念' }))).toBe(
+      '两榜都抓到了。',
+    )
   })
 
   it('运行中还没有结论时，给已经产出的正文（所以展开是"边跑边长"）', () => {
-    expect(
-      subAgentBodyText(
-        live({ reasoning: '想一下', text: '先取时间戳。再抓榜单。' }),
-      ),
-    ).toBe('先取时间戳。再抓榜单。')
+    expect(subAgentBodyText(live({ reasoning: '想一下', text: '先取时间戳。再抓榜单。' }))).toBe(
+      '先取时间戳。再抓榜单。',
+    )
   })
 
   it('啥都没有 → null（卡片给诚实提示，不显示空白）', () => {

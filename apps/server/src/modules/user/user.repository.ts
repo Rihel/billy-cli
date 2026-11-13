@@ -50,10 +50,7 @@ export class UserRepository {
     return repo.save(repo.create(data))
   }
 
-  async update(
-    id: string,
-    data: DeepPartial<UserEntity>,
-  ): Promise<UserEntity | null> {
+  async update(id: string, data: DeepPartial<UserEntity>): Promise<UserEntity | null> {
     const repo = await this.repo()
     const existing = await repo.findOneBy({ id })
     if (!existing) return null

@@ -11,7 +11,6 @@ import { TimelineEntity } from '../src/database/entities/timeline-entity.js'
 import { DEFAULT_AGENT_KEY, createAgentDefinitions } from '../src/modules/ai/agents/index.js'
 import { createMastra } from '../src/modules/ai/mastra/ai.mastra.js'
 import { createAgentRegistry } from '../src/modules/ai/agents/registry.js'
-import { BashTool } from '../src/modules/ai/tools/bash.tool.js'
 import { FileTools } from '../src/modules/ai/files/file.tools.js'
 import { WebTools } from '../src/modules/ai/tools/web.tools.js'
 import { RunSubAgentTool } from '../src/modules/ai/tools/subagent.tool.js'
@@ -165,14 +164,7 @@ beforeAll(async () => {
   // `AgentRunner` 通过 ModuleRef **惰性**取注册机（构造期不依赖它，否则成环死锁）：
   // 测试给一个只实现 `get` 的替身，语义与生产一致
   const moduleRefPort = { get: () => toolRegistry } as never
-  const runner = new AgentRunner(
-    runs,
-    timelines,
-    config,
-    silentLogger,
-    deps.metas,
-    moduleRefPort,
-  )
+  const runner = new AgentRunner(runs, timelines, config, silentLogger, deps.metas, moduleRefPort)
   // 工具组实例（唯一的工具来源）：与 `ai.module.ts` 的装配口径一致
   const plannerStore = new PlannerStore(timelines)
   toolRegistry = new ToolRegistry(
