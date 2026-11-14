@@ -37,7 +37,7 @@ token 里带类型标识，`verifyToken` 分别校验，混用必然失败。
   （Set，供批量踢人）+ 反查 `auth:sid:{type}:{sub}:{sessionId}`（单设备下线的 O(1) 定位）。
   **每次请求校验 JWT 后必须查 Redis 会话存在**，登出 / 禁用 / 删除会撤销会话，
   使已签发 token 立即失效（见 `AuthService.verifyToken` / `AdminService.verifyToken`）。
-  登录时通过 `currentSessionMeta()`（`common/request-context`）把 IP / UA 从 ALS 写进会话。
+  登录时通过 `currentSessionMeta()`（`@repo/kits` 的 `http/request-context`）把 IP / UA 从 ALS 写进会话。
 - **登录设备（会话管理）**：`modules/session` 提供 `POST /session/list`（含 `current` 标记）与
   `POST /session/remove`（按 `sessionId` 下线，**幂等**）；鉴权用 `AnyAuthGuard`（任一身份），
   作用域锁定当前身份（`type` + `sub`），换别人的 `sessionId` 命中不了。
@@ -49,7 +49,7 @@ token 里带类型标识，`verifyToken` 分别校验，混用必然失败。
   `Authorization: Bearer <token>` 或 `access-token` cookie。守卫校验失败时抛边界错误
   `AppErrorCodes.Unauthorized`（无 token）或 `TokenInvalid`（校验失败），
   由全局 `AppExceptionFilter` 统一映射。
-- **注入上下文**：校验通过后守卫把身份写入 `apps/main/src/common/request-context/request-context.ts` 的
+- **注入上下文**：校验通过后守卫把身份写入 `packages/kits/src/http/request-context/request-context.ts` 的
   AsyncLocalStorage（`requestContext.set('userId' | 'adminId', id)`），
   业务层从 `requestContext` 取当前身份，不做参数透传。
 

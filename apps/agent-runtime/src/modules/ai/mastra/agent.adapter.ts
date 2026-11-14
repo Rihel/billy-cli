@@ -1,4 +1,5 @@
 import { createDeepSeek } from '@ai-sdk/deepseek'
+import { createOpenAICompatible } from '@ai-sdk/openai-compatible'
 import { Agent } from '@mastra/core/agent'
 import { resolveModelConfig } from '@mastra/core/llm'
 import type { ToolsInput } from '@mastra/core/agent'
@@ -59,6 +60,34 @@ export const toMastraModelInstance = async (
   /** 传给 `new Agent({ model })` 的描述（占位或按调用求值都用它） */
   config: { id: AgentModelId; url?: string; apiKey: string }
 }> => {
+  /**
+   * 网关模式（生产唯一路径）：模型实例直接指向网关。
+   *
+   * - `baseURL` 路径里带 `modelId`，网关不需要解析请求体就能路由；
+   * - `apiKey` 是内部令牌（不是供应商 key），真实 key 只在网关；
+   * - 仍用 AI SDK 的 openai-compatible（Mastra 内部对多数供应商也是这么做的），
+   *   `includeUsage` 让流尾带 usage（网关计量要用）。
+   */
+  if (model.gateway) {
+    const baseURL = gatewayBaseUrl(model.gateway)
+    const provider = createOpenAICompatible({
+      name: 'billy-gateway',
+      baseURL,
+      apiKey: model.gateway.token,
+      // 网关只用 x-internal-token 鉴权（Authorization 是各家供应商的形态，不共用）
+      headers: { ...model.gateway.headers, 'x-internal-token': model.gateway.token },
+      includeUsage: true,
+    })
+    return {
+      instance: provider.chatModel(model.modelKey as never),
+      config: {
+        id: toAgentModelId(model.modelRef),
+        url: baseURL,
+        apiKey: model.gateway.token,
+      },
+    }
+  }
+
   const decision = decideModelForMastra(model)
   /**
    * 官方适配：必须用 provider 自己的工厂，**不能**传 `url`（见 `decideModelForMastra` 的注释）。
@@ -81,11 +110,24 @@ export const toMastraModelInstance = async (
 /** `RuntimeModel` → Mastra 的模型描述（`url` 留空即走官方端点） */
 export const toMastraModel = (
   model: RuntimeModel,
-): { id: AgentModelId; url?: string; apiKey: string } => ({
-  id: toAgentModelId(model.modelRef),
-  ...(model.baseURL ? { url: model.baseURL } : {}),
-  apiKey: model.apiKey,
-})
+): { id: AgentModelId; url?: string; apiKey: string } => {
+  if (model.gateway) {
+    return {
+      id: toAgentModelId(model.modelRef),
+      url: gatewayBaseUrl(model.gateway),
+      apiKey: model.gateway.token,
+    }
+  }
+  return {
+    id: toAgentModelId(model.modelRef),
+    ...(model.baseURL ? { url: model.baseURL } : {}),
+    apiKey: model.apiKey,
+  }
+}
+
+/** 网关模式下的 baseURL：路径里带 modelId（AI SDK 会自动拼 `/chat/completions`） */
+const gatewayBaseUrl = (gateway: NonNullable<RuntimeModel['gateway']>): string =>
+  `${gateway.url.replace(/\/+$/, '')}/v1/models/${gateway.modelId}`
 
 export interface MastraAgentOptions {
   id: string

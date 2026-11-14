@@ -80,6 +80,14 @@ export const AiModelSchema = z.object({
   source: z.string(),
   /** 是否允许被选用（用户的启停是人的决定，不被同步覆盖） */
   enabled: z.boolean(),
+  /** 价格（currency / 1M tokens；null = 未配置，网关不估算成本） */
+  inputPricePer1m: z.number().nonnegative().nullable(),
+  outputPricePer1m: z.number().nonnegative().nullable(),
+  cacheReadPricePer1m: z.number().nonnegative().nullable(),
+  cacheWritePricePer1m: z.number().nonnegative().nullable(),
+  pricePerImage: z.number().nonnegative().nullable(),
+  pricePerSecond: z.number().nonnegative().nullable(),
+  currency: z.string().length(3),
   /** 最后一次在供应商列表里出现的时间（判断"本次未返回"就看它） */
   lastSeenAt: dateField,
   /** 最近一次被同步更新到的时间 */
@@ -191,6 +199,14 @@ export const AiModelCreateSchema = z.object({
   inputModalities: z.array(z.enum(AI_MODALITIES)).nullable().optional(),
   /** 输出模态（省略 = 未声明） */
   outputModalities: z.array(z.enum(AI_MODALITIES)).nullable().optional(),
+  /** 价格（currency / 1M tokens；省略 = 未配置） */
+  inputPricePer1m: z.number().nonnegative().nullable().optional(),
+  outputPricePer1m: z.number().nonnegative().nullable().optional(),
+  cacheReadPricePer1m: z.number().nonnegative().nullable().optional(),
+  cacheWritePricePer1m: z.number().nonnegative().nullable().optional(),
+  pricePerImage: z.number().nonnegative().nullable().optional(),
+  pricePerSecond: z.number().nonnegative().nullable().optional(),
+  currency: z.string().length(3).optional(),
 })
 export type AiModelCreateDto = z.infer<typeof AiModelCreateSchema>
 
@@ -198,6 +214,13 @@ export type AiModelCreateDto = z.infer<typeof AiModelCreateSchema>
 export const AiModelUpdateSchema = z.object({
   modelId: z.string().min(1).max(32),
   displayName: z.string().min(1).max(128).optional(),
+  inputPricePer1m: z.number().nonnegative().nullable().optional(),
+  outputPricePer1m: z.number().nonnegative().nullable().optional(),
+  cacheReadPricePer1m: z.number().nonnegative().nullable().optional(),
+  cacheWritePricePer1m: z.number().nonnegative().nullable().optional(),
+  pricePerImage: z.number().nonnegative().nullable().optional(),
+  pricePerSecond: z.number().nonnegative().nullable().optional(),
+  currency: z.string().length(3).optional(),
   contextWindow: z.number().int().positive().nullable().optional(),
   maxOutputTokens: z.number().int().positive().nullable().optional(),
   enabled: z.boolean().optional(),
@@ -256,3 +279,59 @@ export const AiAvailableModelListSchema = z.object({
 })
 
 export type AiAvailableModelListModel = z.infer<typeof AiAvailableModelListSchema>
+
+// ─────────────────────────── 供应商 key 池（网关用） ───────────────────────────
+
+/** 一把上游 key（**只回 hasSecret，不回明文**） */
+export const AiProviderKeySchema = z.object({
+  id: z.string(),
+  providerId: z.string(),
+  label: z.string(),
+  status: z.enum(['active', 'disabled']),
+  weight: z.number().int().positive(),
+  rpm: z.number().int().positive().nullable(),
+  tpm: z.number().int().positive().nullable(),
+  dailyTokens: z.number().int().positive().nullable(),
+  dailyCostMicros: z.number().int().positive().nullable(),
+  hasSecret: z.boolean(),
+  failureCount: z.number().int().nonnegative(),
+  lastUsedAt: dateField,
+  createdAt: z.union([z.string(), z.date()]).optional(),
+  updatedAt: z.union([z.string(), z.date()]).optional(),
+})
+export type AiProviderKeyModel = z.infer<typeof AiProviderKeySchema>
+
+export const AiProviderKeyListSchema = z.object({
+  providerId: z.string().min(1).max(32),
+})
+export type AiProviderKeyListDto = z.infer<typeof AiProviderKeyListSchema>
+
+export const AiProviderKeyCreateSchema = z.object({
+  providerId: z.string().min(1).max(32),
+  label: z.string().min(1).max(64),
+  secret: z.string().min(1).max(512),
+  status: z.enum(['active', 'disabled']).optional(),
+  weight: z.number().int().positive().max(1000).optional(),
+  rpm: z.number().int().positive().nullable().optional(),
+  tpm: z.number().int().positive().nullable().optional(),
+  dailyTokens: z.number().int().positive().nullable().optional(),
+  dailyCostMicros: z.number().int().positive().nullable().optional(),
+})
+export type AiProviderKeyCreateDto = z.infer<typeof AiProviderKeyCreateSchema>
+
+export const AiProviderKeyUpdateSchema = z.object({
+  keyId: z.string().min(1).max(32),
+  label: z.string().min(1).max(64).optional(),
+  /** 给值即轮换密钥；省略不动 */
+  secret: z.string().min(1).max(512).optional(),
+  status: z.enum(['active', 'disabled']).optional(),
+  weight: z.number().int().positive().max(1000).optional(),
+  rpm: z.number().int().positive().nullable().optional(),
+  tpm: z.number().int().positive().nullable().optional(),
+  dailyTokens: z.number().int().positive().nullable().optional(),
+  dailyCostMicros: z.number().int().positive().nullable().optional(),
+})
+export type AiProviderKeyUpdateDto = z.infer<typeof AiProviderKeyUpdateSchema>
+
+export const AiProviderKeyIdSchema = z.object({ keyId: z.string().min(1).max(32) })
+export type AiProviderKeyIdDto = z.infer<typeof AiProviderKeyIdSchema>

@@ -16,7 +16,7 @@ billy-cli 是一套**全栈应用 Monorepo 模板**：pnpm + Turbo 构建，Type
 | 构建 | pnpm + Turbo（`turbo.json` 按依赖拓扑编排） |
 | 服务端 HTTP | NestJS 12（`@nestjs/core` + `@nestjs/common` + `@nestjs/platform-express`，底层 Express 5）；**两个进程**：`apps/main`（`@app/main`，公网 BFF，9989）+ `apps/agent-runtime`（`@app/agent-runtime`，只跑 agent loop，9990，不对外） |
 | 服务端推流 | `@repo/kits` 的 `StreamHub`（`POST /sse/subscribe` 长连接 + Redis pub/sub 跨实例广播）+ `@repo/http-client` 的 `HttpStreamClient`（浏览器 / Node 双环境，默认 POST + Bearer 认证）；**AI 流式另走 Kafka**：runtime 把模型输出发 `agent.run.events`，main 的 `AgentSseBridge` 消费后写回前端 SSE |
-| 服务端日志 | 自建 logger（`@repo/shared/logger` 的 `createLogger`，**不用 nestjs-pino**）：kits `LoggerModule` 建唯一 pino 实例（pino-pretty 开发美化；生产可多目标 transport 推送 pino-loki；redact 脱敏），`AppLogger` 供业务注入、`NestLoggerAdapter` 接管 Nest 框架日志；请求日志由 `common/request-logger` 的中间件自记录 |
+| 服务端日志 | 自建 logger（`@repo/shared/logger` 的 `createLogger`，**不用 nestjs-pino**）：kits `LoggerModule` 建唯一 pino 实例（pino-pretty 开发美化；生产可多目标 transport 推送 pino-loki；redact 脱敏），`AppLogger` 供业务注入、`NestLoggerAdapter` 接管 Nest 框架日志；请求日志由 `@repo/kits` 的 `RequestLoggerMiddleware` 自记录 |
 | 业务位置 | 控制面业务全归 main：`apps/main/src/modules/<业务>/{module, controller, service, repository, errors, index}`（auth / user / admin / session / storage / share / monitor / stream / config + 全部 AI CRUD） |
 | agent 运行面 | 只在 `apps/agent-runtime/src/modules/ai/**`（agents / runtime / core / tools / files / memory / skills / connectors / mastra / monitoring）；**Mastra 只在这里出现**，`pnpm check:mastra` 守边界 |
 | 通用能力 | `@repo/kits`（一个基础设施一个目录 = `provider + <name>.config.ts + <name>.module.ts + index.ts`，均 `@Global()` + `XxxModule.forRoot(options)` / `forRootAsync(options)`，配置对象即模块自身 bean，无业务实体） |
@@ -32,23 +32,24 @@ billy-cli 是一套**全栈应用 Monorepo 模板**：pnpm + Turbo 构建，Type
 
 ```
 apps/main       公网 BFF：NestJS HTTP 边界 + 控制面业务模块 + 配置 + 唯一组合根（9989，对外）
-               · common/       横切 HTTP 构件（各包有 index.ts，外部从 common/index.ts 导入）：
-                               error/（错误码映射 · 边界错误 · 全局异常过滤器 · 告警钩子）、
-                               request-context/（模块 @Global：ALS 上下文 + 自注册中间件）、
-                               request-metrics/（模块 @Global：自注册埋点中间件）、
-                               security/（token 与身份读取 · 限流守卫）、
-                               http/（Zod 校验管道 · 响应信封拦截器）
+               · common/security/  仅剩 main 专属的访问控制（token 与身份读取 · 限流守卫 ·
+                                   「任一身份」守卫编排）；它依赖应用级 ServerConfig，故不进 kits
+               · 横切 HTTP 构件（错误 / 请求上下文 / 请求日志 / 请求指标 / Zod 校验 / 响应信封）
+                 已在 `@repo/kits` 的 `packages/kits/src/http/`，两个 app 共用一份
                · modules/<业务>/  module / controller / service / repository / errors / index
                                （auth / admin / user / session / storage / share / monitor / ops /
                                  runtime-config / ai-model / ai-usage / ai-admin/*）
                · agent/         /agent 的转发与 Kafka→SSE 中继（AgentSseBridge）
                · app-config.ts  serverAppConfigSchema + mapServerEnv + loadServerAppConfig
                · root.module.ts 组合根：AppConfigModule + 各基础设施 forRootAsync + 业务模块 imports
+apps/model-gateway  模型网关：canonical OpenAI 接口（/v1/models/{id}/chat/completions）+ 模型目录
+               · 4 套协议适配（openai-compatible / deepseek / anthropic / ollama），持有供应商 key
+               · 只读 ai_providers / ai_models；不碰会话 / 时间线 / ai_files（9992，不对外）
 apps/agent-runtime  agent 运行面：只跑 agent loop，只暴露 /internal/agent/* 与运维探针（9990，不对外）
                · modules/ai/    api/（AgentInternalController，唯一业务 controller）+ agents / runtime /
                                core / tools / files / memory / skills / connectors / mastra / monitoring
-               · modules/       ai-model（只读模型配置）/ ai-usage / monitor / ops
-               · 与 main 同构的 common/ / app-config.ts / root.module.ts / main.ts
+               · modules/       ai-usage / ops（模型目录与调用走 model-gateway）
+               · 与 main 同构的 app-config.ts / config.ts / root.module.ts / main.ts
    ↓ 两者都只依赖
 @repo/kits    后端通用能力封装：一个基础设施一个目录（provider + <name>.config.ts +
               <name>.module.ts + index.ts，均 @Global + XxxModule.forRoot(options)）
@@ -74,12 +75,20 @@ apps/agent-runtime  agent 运行面：只跑 agent loop，只暴露 /internal/ag
                               + AppConfigFacade + AppConfigModule：把已加载配置接进 @nestjs/config
                               的全局 ConfigService）/ command（跨平台命令执行：CommandRunner +
                               CommandModule，底层 execa）/ errors / id-generation / logger / scheduler
+              · http/         横切 HTTP 构件：error（错误码映射 · 边界错误 · 全局异常过滤器 ·
+                              告警钩子）/ request-context（@Global：ALS 上下文 + 自注册中间件）/
+                              request-logger / request-metrics（@Global：自注册埋点中间件）/
+                              Zod 校验管道 / 响应信封拦截器 / 运维探针路径
               · 配置对象即模块自身注入 bean；未 import 即未装配；实体由 `@repo/db` 的
                 `DB_ENTITIES` 在 app 的 `DbModule.forRootAsync` 工厂里注入（类引用无法来自环境变量）
 @repo/db      TypeORM 实体 + 迁移的唯一来源：`packages/db/src/entities` / `packages/db/src/migrations`，
-              导出 `DB_ENTITIES` / `DB_MIGRATIONS`，两个 app 的组合根与迁移 CLI 的 DataSource 直接复用
-              （app 内 `src/database/entities/*` 只是 re-export shim，新实体一律加到 `packages/db`）
+              导出 `DB_ENTITIES` / `DB_MIGRATIONS`，两个 app 的组合根与迁移 CLI 的 DataSource 直接复用；
+              app 内不再有 `src/database/entities/*` 薄壳，模块直接用 `@repo/db`
    ↑ 依赖 kits（BaseEntity），被 main / agent-runtime 依赖
+@repo/monitor 监控引擎（指标采集 / 规则评估 / 告警 / 通知）+ `MonitorModule.forRootAsync`：
+              main 与 agent-runtime 各装配一份（各自监控自己）；HTTP API 只在 main 的
+              `modules/monitor/api`
+   ↑ 依赖 kits / shared / db，被 main / agent-runtime 依赖
 @repo/shared  Zod schema（数据结构）+ dicts（错误码 / 字典）+ AppResponse（响应格式）
    ↑ 被 kits / main / agent-runtime / sdk / 前端共同依赖 —— 数据结构先行
 @repo/sdk     ServerClient：全类型化业务 API 调用（前端 / 脚本使用）
@@ -90,10 +99,11 @@ apps/web      前台（Base UI + shadcn，`@repo/ui`）
 apps/admin    后台（`@repo/ui` + @tanstack/react-table + @tanstack/react-form）
 ```
 
-**依赖方向不可逆**：`shared` 不依赖任何业务包；`kits` 不 import `apps/*`；`apps/main` 与
-`apps/agent-runtime` 按依赖方向自底向上落代码。`apps/main` 的 `common/` 只放横切 HTTP 构件，
-且不依赖具体业务模块（技术错误告警通过 `ERROR_ALERT_HOOK` token 由 `root.module.ts` 注入
-`MonitorEngine` 适配器）；controller 只做 HTTP 边界，业务逻辑在 service / repository。
+**依赖方向不可逆**：`shared` 不依赖任何业务包；`kits` / `monitor` 不 import `apps/*`；`apps/main` 与
+`apps/agent-runtime` 按依赖方向自底向上落代码。横切 HTTP 构件在 `@repo/kits`、不依赖具体业务模块
+（技术错误告警通过 `ERROR_ALERT_HOOK` token 由 `root.module.ts` 注入 `MonitorEngine` 适配器）；
+`apps/main/src/common/security/` 是 main 专属访问控制（依赖应用级配置）；controller 只做 HTTP 边界，
+业务逻辑在 service / repository。
 
 **两个应用的三条硬边界**（`apps/main` / `apps/agent-runtime` 拆分之后）：
 
@@ -107,15 +117,15 @@ apps/admin    后台（`@repo/ui` + @tanstack/react-table + @tanstack/react-form
 ## 4. 一次请求的数据流
 
 1. 前端调用 `ServerClient.xxx.create(payload)`（`@repo/sdk`）。
-2. 请求进入自注册的 Express 中间件（按 `imports` 顺序）：`common/request-context` 的
+2. 请求进入自注册的 Express 中间件（按 `imports` 顺序，均来自 `@repo/kits` 的 `http/`）：
    `RequestContextModule`（AsyncLocalStorage，生成 `requestId` 并写响应头 `X-Request-Id`）→
-   `common/request-logger` 的 `RequestLoggerMiddleware`（响应结束时记录 method / url / status /
-   耗时 / requestId / userId / adminId）→ `common/request-metrics` 的埋点中间件。
+   `RequestLoggerMiddleware`（响应结束时记录 method / url / status / 耗时 / requestId /
+   userId / adminId）→ 请求指标埋点中间件。
 3. 守卫（`UserAuthGuard` / `AdminAuthGuard` / `RateLimitGuard`）在进入控制器前校验身份与限流，
    把 `userId` / `adminId` 写入请求上下文。4. `apps/main/src/modules/<业务>/<业务>.controller.ts` 用
    `@Body({ schema: Schema })` 做 **Zod 边界校验**，再调注入的 service。
 5. service（可 `@Transactional()`）调 repository 读写 TypeORM。
-6. 业务错误抛 `AppError` 子类（自带数字 `code`），由 `common/error/app-exception.filter.ts` 的
+6. 业务错误抛 `AppError` 子类（自带数字 `code`），由 `@repo/kits` 的
    `AppExceptionFilter` 经 `AppErrorCodes` 字典映射为 HTTP 状态码 + 中文文案；
    校验失败走 HTTP 200 + `{ code: 400 }`，未知错误一律 5001 / 500。
 7. 成功由 `ResponseEnvelopeInterceptor` 统一包为 `{ code: 0, data }`（HTTP 200）。

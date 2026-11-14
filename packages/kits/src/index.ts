@@ -1,6 +1,7 @@
 import 'reflect-metadata'
 
 export * from './foundation/index.js'
+export * from './http/index.js'
 export * from './db/index.js'
 export * from './redis/index.js'
 export * from './rate-limit/index.js'

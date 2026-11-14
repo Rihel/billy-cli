@@ -1,7 +1,6 @@
 import { Injectable } from '@nestjs/common'
-import { AppError } from '@repo/kits'
+import { AppError, requestContext } from '@repo/kits'
 import { AppErrorCodes } from '@repo/shared'
-import { requestContext } from '../../../common/index.js'
 
 /**
  * 对话附件的**存储 key 归属校验**。

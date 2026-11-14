@@ -15,7 +15,7 @@ import type { Toolbox } from './tools/tools.types.js'
 /**
  * **这一轮实际使用的模型**（由编排层从库里解析出来，放进信封）。
  *
- * 与 `ai-model` 模块的 `ResolvedRuntimeModel` **结构一致**（不 import 它是为了不把 core 绑到那个模块）：
+ * 运行时模型的结构（网关目录解析结果 + 直连 mock 测试共用）：
  * 编排层解析完直接塞进来，Mastra 的模型函数与子 agent 都从这里取 ——
  * **运行时不存在"没配也能用"的路径**（解析不出来就是 3406）。
  */
@@ -33,6 +33,21 @@ export interface RuntimeModel {
   /** 解密后的密钥（**只在内存里流转**） */
   apiKey: string
   contextWindow: number | null
+  /**
+   * 经 model-gateway 调用时才有：网关地址 + 内部令牌 + 模型 id。
+   *
+   * 有它时 `apiKey` 为空、`toMastraModelInstance` 改走 openai-compatible 指向网关；
+   * 没有时就是旧的直连供应商路径（回退）。
+   */
+  gateway?: {
+    /** 网关根地址（不带路径） */
+    url: string
+    token: string
+    /** `ai_models.id`（网关用它路由） */
+    modelId: string
+    /** 归因头（run / conversation / 身份），网关写 usage 用 */
+    headers?: Record<string, string>
+  }
   /**
    * 这个模型的**输入模态**（`["text","image","file"]`；`null` = 未声明）。
    *

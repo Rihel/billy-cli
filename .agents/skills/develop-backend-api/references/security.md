@@ -10,7 +10,7 @@
   双体系 / token / 守卫细节见 `implement-auth`）。
 - 越权防护：
   - 水平越权：操作他人资源（改 / 删某 user 的数据）时，用
-    `requestContext.get('userId' | 'adminId')`（`apps/main/src/common/request-context/request-context.ts`，
+    `requestContext.get('userId' | 'adminId')`（`packages/kits/src/http/request-context/request-context.ts`，
     AsyncLocalStorage）与资源归属比对，或只允许操作自己的 id；
   - 垂直越权：管理员接口必须 `@UseGuards(AdminAuthGuard)`，不能只靠前端隐藏入口。
 - 输入安全：Zod 数据结构即白名单，不做「前端传什么存什么」；SQL 一律参数化；

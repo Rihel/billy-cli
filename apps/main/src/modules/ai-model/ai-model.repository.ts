@@ -4,8 +4,7 @@ import type { AiModelListDto, AiProviderListDto } from '@repo/shared'
 import { Inject, Injectable } from '@nestjs/common'
 import { In, type DeepPartial } from 'typeorm'
 import { isDeepStrictEqual } from 'node:util'
-import { AiModelEntity } from '../../database/entities/ai-model-entity.js'
-import { AiProviderEntity } from '../../database/entities/ai-provider-entity.js'
+import { AiModelEntity, AiProviderEntity } from '@repo/db'
 
 /**
  * AI 模型模块的数据访问层（供应商 + 模型两张表）。

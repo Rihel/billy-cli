@@ -77,6 +77,9 @@
 | [agent-tool-authorization](agent-tool-authorization.md) | agent 授权是结构化选择器；作用域装配期过滤工具面；子 agent = 父授权 ∩ 全部 − 委派 − deny，并按 caller 过滤 | 必核 | 2026-11-14 |
 | [security-remediation-2026-11](security-remediation-2026-11.md) | 找回密码（hash + 邮件）/ 桶私有 + 预签名 / STS 收紧 / 邮箱部分唯一 / 锁看门狗 / 工具面 caller 过滤 的落点与核对命令 | 抽核 | 2026-11-14 |
 | [event-bus](event-bus.md) | kits 分三层：PubSub（传输）→ StreamHub（SSE）/ EventBus（`events:`）；at-most-once，只做失效通知 | 抽核 | 2026-11-10 |
+| [model-gateway](model-gateway.md) | 内部模型网关（9992）：canonical `/v1/models/{id}/chat/completions`、协议适配器、runtime 开关与 Ollama 验证 | 抽核 | 2026-11-15 |
+| [http-client-layers](http-client-layers.md) | http-client 三层（Transport / HttpClient / StreamClient）与内部 JSON 信封边界 | 抽核 | 2026-11-15 |
+| [main-runtime-dedup](main-runtime-dedup.md) | main / runtime 的共享边界：横切 HTTP 在 kits、监控引擎在 @repo/monitor、静态声明只在 runtime、实体直接进 @repo/db | 抽核 | 2026-11-14 |
 | [stateless-scaling](stateless-scaling.md) | 核心业务无状态可多副本；AI memory 已落 Redis，飞书 CLI 状态在 Pod 本地，工作区仍在 Pod 本地盘 | 抽核 | 2026-11-14 |
 | [db-package](db-package.md) | `@repo/db` 统一实体/迁移；main / runtime 用 `DB_ENTITIES`，gateway 只注册审计实体；迁移 CLI 仍挂在 agent-runtime | 必核 | 2026-11-14 |
 | [tool-metadata-authority](tool-metadata-authority.md) | 定义唯一来源 `@repo/tool-catalog`；gateway 运行时目录；worker 只报能力；`ai_tools` 只存配置 | 必核 | 2026-11-14 |

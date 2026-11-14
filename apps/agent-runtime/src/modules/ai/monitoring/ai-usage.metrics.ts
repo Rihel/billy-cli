@@ -1,8 +1,7 @@
-import type { AiUsageDailyEntity } from '../../../database/entities/ai-usage-daily-entity.js'
-import type { AiUsageDailyDimensionEntity } from '../../../database/entities/ai-usage-daily-dimension-entity.js'
+import type { AiUsageDailyEntity, AiUsageDailyDimensionEntity } from '@repo/db'
 import type { AiUsageDayData } from '../../ai-usage/ai-usage.service.js'
-import { defineDerivedMetric, defineRawMetric } from '../../monitor/definitions/define.js'
-import type { MetricDefinition, MetricPoint } from '../../monitor/definitions/metric.types.js'
+import { defineDerivedMetric, defineRawMetric } from '@repo/monitor'
+import type { MetricDefinition, MetricPoint } from '@repo/monitor'
 
 const BASE = {
   category: 'business' as const,

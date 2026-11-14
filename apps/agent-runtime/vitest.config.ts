@@ -10,6 +10,8 @@ export default defineConfig({
     // 共库集成测试（AI 会话/流式那几份）都会写同一批表与 Redis：
     // 文件之间**串行**执行，避免互相清数据造成的偶发失败
     fileParallelism: false,
+    // 组合根冒烟会起完整 Nest 应用（DB/Redis/Kafka）；机器忙时 close 可能超过默认 10s
+    hookTimeout: 30_000,
     deps: {
       inline: ['@repo/kits', '@repo/shared'],
     },

@@ -1,10 +1,10 @@
 import { describe, expect, it, vi } from 'vitest'
-import type { MonitorRuleEntity } from '../src/database/entities/monitor-rule-entity.js'
+import type { MonitorRuleEntity } from '@repo/db'
 import { MonitorRuleService } from '../src/modules/monitor/api/monitor-rule.service.js'
-import type { AlertLifecycleService } from '../src/modules/monitor/engine/alert-lifecycle.service.js'
-import type { AlertRepository } from '../src/modules/monitor/engine/alert.repository.js'
-import type { MonitorRuleRepository } from '../src/modules/monitor/engine/monitor-rule.repository.js'
-import { RuleRegistry } from '../src/modules/monitor/engine/rule.registry.js'
+import type { AlertLifecycleService } from '@repo/monitor'
+import type { AlertRepository } from '@repo/monitor'
+import type { MonitorRuleRepository } from '@repo/monitor'
+import { RuleRegistry } from '@repo/monitor'
 import { MonitorRuleConfigInvalidError } from '../src/modules/monitor/errors.js'
 
 const row = (): MonitorRuleEntity =>

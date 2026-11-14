@@ -38,7 +38,8 @@
 | agent 执行侧 | `apps/agent-runtime/src/modules/ai/<子域>/`（agents / runtime / core / tools / files / memory / skills / connectors / mastra / monitoring） | 只跑 agent loop；Mastra 只在这层出现（`pnpm check:mastra` 守）；不要在这里加控制面 CRUD |
 | HTTP 边界（公网） | `apps/main/src/modules/<业务>/<业务>.controller.ts` | `@Controller` + `@Post` + `@HttpCode(200)` + `@Body({ schema: Schema })`，加入本模块 `controllers` |
 | HTTP 边界（内部） | `apps/agent-runtime/src/modules/ai/api/agent-internal.controller.ts` | `/internal/agent/*` + `x-internal-token` 校验；只给 main 调，不做用户鉴权 |
-| 横切 HTTP 构件 | `apps/main/src/common/{error,request-context,request-logger,request-metrics,security,http}/<name>.ts`（外部从 `common/index.ts` 导入） | 不依赖具体业务模块（跨模块协作走 token 由 `root.module.ts` 注入） |
+| 横切 HTTP 构件 | `packages/kits/src/http/{error,request-context,request-logger,request-metrics}/` + 根目录的 Zod 校验 / 响应信封 / 探针路径（外部从 `@repo/kits` 导入） | 不依赖具体业务模块（技术告警经 `ERROR_ALERT_HOOK` token 由 `root.module.ts` 注入）；main 专属访问控制（`extractToken` / 限流守卫）放 `apps/main/src/common/security/`，因为它依赖应用级 ServerConfig |
+| 进程级共用引擎（监控 / 采集等） | `packages/<能力>/`（如 `packages/monitor`：引擎 + `XxxModule.forRootAsync`） | 两个 app 各装配一份；HTTP API 留在 main；不 import `apps/*` |
 
 ## 3. 每个位置的模式要求（新增能力必守）
 

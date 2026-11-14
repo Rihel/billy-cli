@@ -111,6 +111,7 @@ docker compose --profile kafka up -d        # 可选：追加 Kafka + 控制台
 | minio    | minio/minio             | `19000:9000` / `19001:9001` |
 | main     | docker/Dockerfile.main  | `9989:9989`（公网入口）      |
 | agent-runtime | docker/Dockerfile.agent-runtime | 仅 `expose 9990`，**不映射宿主端口**；只由 main 通过 `AGENT_RUNTIME_URL=http://agent-runtime:9990` 调用 |
+| model-gateway | docker/Dockerfile.model-gateway | 仅 `expose 9992`；runtime 通过 `MODEL_GATEWAY_URL=http://model-gateway:9992` 调用（4 套协议适配、持有供应商 key） |
 | migrate  | docker/Dockerfile.agent-runtime | 一次性 Job，执行 `@repo/db` 迁移 |
 | tool-worker | docker/Dockerfile.tool-worker | 仅 `expose 9994` |
 | tool-gateway | docker/Dockerfile.tool-gateway | 仅 `expose 9993` |
@@ -131,7 +132,8 @@ MinIO 在 compose 里**默认随 `docker compose up` 启动**，但对象存储�
 > **compose 已按拆分后的形态编排**：`x-app-env` 锚点保证 main 与 agent-runtime 拿到完全一致的
 > DB / Redis / JWT / 对象存储配置和同一个 `AGENT_INTERNAL_TOKEN`（不一致时 `/internal/agent/*` 401）；
 > main 依赖 runtime 健康后才启动；runtime 只在容器网络内用 9990，不映射宿主端口。
-> compose 已包含 `tool-gateway` / `tool-worker` 与一次性 `migrate`；gateway 依赖 worker 健康，runtime 依赖 gateway。
+> compose 已包含 `model-gateway` / `tool-gateway` / `tool-worker` 与一次性 `migrate`；runtime 依赖 model-gateway 与 tool-gateway 健康，tool-gateway 依赖 worker 健康。
+> `MODEL_INTERNAL_TOKEN`（runtime ↔ model-gateway）由 `x-app-env` 统一注入，默认 `${MODEL_INTERNAL_TOKEN:-local-dev-model-token}`；生产务必覆盖。
 > compose 里的 `AGENT_INTERNAL_TOKEN` 默认取 `${AGENT_INTERNAL_TOKEN:-local-dev-internal-token}`，
 > 与本地 `.env` 的 `dev-agent-internal` 不同；容器内以 compose 环境为准，两端共用锚点所以不会不一致。
 

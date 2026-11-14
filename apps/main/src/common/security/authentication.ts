@@ -1,6 +1,6 @@
 import { createParamDecorator, type ExecutionContext } from '@nestjs/common'
 import type { Request } from 'express'
-import { requestContext } from '../request-context/request-context.js'
+import { requestContext } from '@repo/kits'
 
 /** 读取 cookie（无 cookie-parser 依赖的最小实现，仅取首个同名项并 URL 解码） */
 const readCookie = (header: string | undefined, name: string): string | undefined => {

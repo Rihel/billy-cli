@@ -15,15 +15,8 @@
 │   │   │   ├── config.ts                # ServerConfig 类型（= ServerAppConfig['server']）+ resolveServerConfig(config)
 │   │   │   ├── agent/                   # /agent 流式入口与控制接口（chat/stream、run/stop、chat/resume、run/stream）
 │   │   │   │                            #   + agent-sse.bridge.ts（Kafka 消费者 → 按 clientId 写 SSE）
-│   │   │   ├── common/                  # 横切 HTTP 构件（按关注点分包，各有 index.ts；外部统一从 common/index.ts 导入）
-│   │   │   │                            #   error/（错误码映射 · 边界错误 · 异常过滤器 · 告警钩子）
-│   │   │   │                            #   request-context/（模块：ALS 上下文 · requestId 中间件）
-│   │   │   │                            #   request-logger/（模块：请求日志中间件）
-│   │   │   │                            #   request-metrics/（模块：请求埋点中间件）
-│   │   │   │                            #   security/（token 与身份读取 · 限流守卫）
-│   │   │   │                            #   http/（Zod 校验管道 · 响应信封拦截器 · 探针路径判定）
-│   │   │   ├── database/
-│   │   │   │   └── entities/            # re-export @repo/db（唯一来源在 packages/db，不要在这里加字段）
+│   │   │   ├── common/security/         # 仅 main 专属访问控制：token / 身份读取 + 限流守卫 + 「任一身份」编排
+│   │   │   │                            #   （横切 HTTP 构件在 @repo/kits 的 src/http/，两个 app 共用）
 │   │   │   └── modules/                 # 业务模块（13 个）：auth / admin / user / session / monitor / storage / stream /
 │   │   │                                #   runtime-config / share / ai-admin（conversation / file / tool / skill / connector / memory）/
 │   │   │                                #   ai-model / ai-usage / ops
@@ -32,13 +25,14 @@
 │   │   ├── data-source.ts                # TypeORM CLI 迁移配置（根脚本 db:gen / db:migrate 当前指向它）
 │   │   ├── scripts/seed-admin.ts         # 首个管理员种子脚本（迁移入口的临时归属，见「已知缺口」）
 │   │   └── src/
-│   │       ├── main.ts / root.module.ts / app-config.ts / config.ts / common/   # 与 main 同构的装配骨架
+│   │       ├── main.ts / root.module.ts / app-config.ts / config.ts   # 与 main 同构的装配骨架
 │   │       └── modules/
 │   │           ├── ai/                   # agent loop 主体：api（/internal/agent/*）/ agents / runtime / core /
 │   │           │                         #   tools / files / memory / skills / connectors / mastra / monitoring
 │   │           ├── ai-model/             # 读供应商 / 模型配置（不写库）
-│   │           ├── ai-usage/ monitor/ ops/   # 用量、告警、探针
+│   │           ├── ai-usage/ ops/            # 用量、探针（监控引擎来自 @repo/monitor）
 │   │           └── （没有 auth / user / storage / share 等控制面模块）
+│   ├── model-gateway/                    # 模型网关：canonical OpenAI + openai/deepseek/ollama 协议适配 + 目录（9992）
 │   ├── tool-gateway/                     # 工具目录 / 策略 / worker 路由 / 审计（@app/tool-gateway，9993）
 │   ├── tool-worker/                      # 工具执行 + 能力自注册（@app/tool-worker，9994）
 │   ├── web/                             # Next.js 16 前台（@app/web，端口 9840）

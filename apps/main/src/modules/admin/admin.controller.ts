@@ -21,7 +21,12 @@ import type {
   UpdateAdminDto,
   UpdateInfoDto,
 } from '@repo/shared'
-import { AccessToken, RateLimit, RateLimitGuard, currentAdminId } from '../../common/index.js'
+import {
+  AccessToken,
+  RateLimit,
+  RateLimitGuard,
+  currentAdminId,
+} from '../../common/security/index.js'
 import { AdminAuthGuard } from './admin-auth.guard.js'
 import { AdminService } from './admin.service.js'
 

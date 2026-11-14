@@ -3,6 +3,7 @@ export { AiConnectorEntity } from './ai-connector-entity.js'
 export { AiFileEntity } from './ai-file-entity.js'
 export { AiMemoryEntity } from './ai-memory-entity.js'
 export { AiModelEntity } from './ai-model-entity.js'
+export { AiProviderKeyEntity } from './ai-provider-key-entity.js'
 export { AiProviderEntity } from './ai-provider-entity.js'
 export { AiSkillEntity } from './ai-skill-entity.js'
 export { AiSkillFileEntity } from './ai-skill-file-entity.js'
@@ -15,6 +16,7 @@ export { ConversationEntity } from './conversation-entity.js'
 export { FileShareEntity } from './file-share-entity.js'
 export { MonitorAlertEntity } from './monitor-alert-entity.js'
 export { MonitorMetricSampleEntity } from './monitor-metric-sample-entity.js'
+export { ModelGatewayUsageEntity } from './model-gateway-usage-entity.js'
 export { MonitorRuleEntity } from './monitor-rule-entity.js'
 export { RunEntity } from './run-entity.js'
 export { TimelineEntity } from './timeline-entity.js'
@@ -25,6 +27,7 @@ import { AiConnectorEntity } from './ai-connector-entity.js'
 import { AiFileEntity } from './ai-file-entity.js'
 import { AiMemoryEntity } from './ai-memory-entity.js'
 import { AiModelEntity } from './ai-model-entity.js'
+import { AiProviderKeyEntity } from './ai-provider-key-entity.js'
 import { AiProviderEntity } from './ai-provider-entity.js'
 import { AiSkillEntity } from './ai-skill-entity.js'
 import { AiSkillFileEntity } from './ai-skill-file-entity.js'
@@ -37,6 +40,7 @@ import { ConversationEntity } from './conversation-entity.js'
 import { FileShareEntity } from './file-share-entity.js'
 import { MonitorAlertEntity } from './monitor-alert-entity.js'
 import { MonitorMetricSampleEntity } from './monitor-metric-sample-entity.js'
+import { ModelGatewayUsageEntity } from './model-gateway-usage-entity.js'
 import { MonitorRuleEntity } from './monitor-rule-entity.js'
 import { RunEntity } from './run-entity.js'
 import { TimelineEntity } from './timeline-entity.js'
@@ -49,6 +53,7 @@ export const DB_ENTITIES = [
   AiFileEntity,
   AiMemoryEntity,
   AiModelEntity,
+  AiProviderKeyEntity,
   AiProviderEntity,
   AiSkillEntity,
   AiSkillFileEntity,
@@ -61,6 +66,7 @@ export const DB_ENTITIES = [
   FileShareEntity,
   MonitorAlertEntity,
   MonitorMetricSampleEntity,
+  ModelGatewayUsageEntity,
   MonitorRuleEntity,
   RunEntity,
   TimelineEntity,

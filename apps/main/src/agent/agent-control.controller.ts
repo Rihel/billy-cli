@@ -14,7 +14,7 @@ import {
 import { randomUUID } from 'node:crypto'
 import type { Response } from 'express'
 import { AnyAuthGuard } from '../modules/auth/index.js'
-import { requestContext } from '../common/index.js'
+import { requestContext } from '@repo/kits'
 import { AgentSseBridge } from './agent-sse.bridge.js'
 
 const SSE_HEADERS = {

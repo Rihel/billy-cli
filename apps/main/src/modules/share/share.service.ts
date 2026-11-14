@@ -15,8 +15,7 @@ import {
 } from '@repo/shared'
 import { ObjectStorage } from '@repo/kits'
 import type { ServerAppConfig } from '../../app-config.js'
-import type { AiFileEntity } from '../../database/entities/ai-file-entity.js'
-import type { FileShareEntity } from '../../database/entities/file-share-entity.js'
+import type { AiFileEntity, FileShareEntity } from '@repo/db'
 import {
   ShareExpiryInvalidError,
   ShareFileNotFoundError,

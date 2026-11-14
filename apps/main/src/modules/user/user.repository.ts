@@ -1,9 +1,8 @@
-import { pageWith, type PageQueryResult } from '@repo/kits'
-import { UserEntity } from '../../database/entities/user-entity.js'
+import { pageWith, type PageQueryResult, Db } from '@repo/kits'
+import { UserEntity } from '@repo/db'
 import type { PageQueryUserDto, UserModel } from '@repo/shared'
 import { Brackets, type DeepPartial } from 'typeorm'
 import { Inject, Injectable } from '@nestjs/common'
-import { Db } from '@repo/kits'
 
 export type UserRecord = UserEntity
 

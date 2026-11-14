@@ -13,14 +13,14 @@ import type {
   AiConnectorModel,
   AiConnectorUpdateDto,
 } from '@repo/shared'
-import { hintOf } from '../../ai-model/secret-hint.js'
+import { hintOf } from '../core/secret-hint.js'
 import { CONNECTOR_DRIVERS } from './connector.types.js'
 import type { ConnectorState, ConnectorStateSource } from './connector.state.js'
 import type { ConnectorDriver, ConnectorDriverMap, ConnectorRuntime } from './connector.types.js'
 import { CONNECTOR_CATALOG, catalogEntryOf } from './connector.catalog.js'
 import { ConnectorRepository } from './connector.repository.js'
 import { ConnectorConfigInvalidError, ConnectorNotFoundError } from './connector.errors.js'
-import type { AiConnectorEntity } from '../../../database/entities/ai-connector-entity.js'
+import type { AiConnectorEntity } from '@repo/db'
 
 /**
  * 连接器服务（`/ai-connector/*`，后台管理员）—— 设计 `docs/design/ai-connector.md` §3.2 / §3.10。

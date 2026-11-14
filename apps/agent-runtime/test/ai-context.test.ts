@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import type { TimelineEntity } from '../src/database/entities/timeline-entity.js'
+import type { TimelineEntity } from '@repo/db'
 import type { AgentConfig as AgentConfigValue } from '../src/modules/ai/core/config.js'
 import { ContextService, estimateTokens } from '../src/modules/ai/runtime/context.service.js'
 import type { TimelineRepository } from '../src/modules/ai/runtime/timeline.repository.js'

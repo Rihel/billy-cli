@@ -2,6 +2,12 @@ import { AuditEntity } from '@repo/kits'
 import { AiModelSource } from '@repo/shared'
 import { Column, Entity, Index } from 'typeorm'
 
+/** numeric → number（价格用 numeric(12,4)，避免浮点误差；null = 未配置） */
+const priceTransformer = {
+  to: (value: number | null): number | null => value,
+  from: (value: string | null): number | null => (value === null ? null : Number(value)),
+}
+
 /**
  * **AI 模型**（配置类数据）。
  *
@@ -100,4 +106,70 @@ export class AiModelEntity extends AuditEntity {
   /** 供应商返回的原始字段（**全量留存、不裁剪**） */
   @Column({ name: 'raw', type: 'jsonb', nullable: true })
   raw: Record<string, unknown> | null = null
+
+  // ── 价格（模型网关算成本用；单位：currency / 1M tokens 或 / 张、/ 秒） ──
+  // null = 未配置，成本记 null（不估算）；改价只影响之后的请求（网关按请求时快照算）。
+  @Column({
+    name: 'input_price_per_1m',
+    type: 'numeric',
+    precision: 12,
+    scale: 4,
+    nullable: true,
+    transformer: priceTransformer,
+  })
+  inputPricePer1m: number | null = null
+
+  @Column({
+    name: 'output_price_per_1m',
+    type: 'numeric',
+    precision: 12,
+    scale: 4,
+    nullable: true,
+    transformer: priceTransformer,
+  })
+  outputPricePer1m: number | null = null
+
+  @Column({
+    name: 'cache_read_price_per_1m',
+    type: 'numeric',
+    precision: 12,
+    scale: 4,
+    nullable: true,
+    transformer: priceTransformer,
+  })
+  cacheReadPricePer1m: number | null = null
+
+  @Column({
+    name: 'cache_write_price_per_1m',
+    type: 'numeric',
+    precision: 12,
+    scale: 4,
+    nullable: true,
+    transformer: priceTransformer,
+  })
+  cacheWritePricePer1m: number | null = null
+
+  @Column({
+    name: 'price_per_image',
+    type: 'numeric',
+    precision: 12,
+    scale: 4,
+    nullable: true,
+    transformer: priceTransformer,
+  })
+  pricePerImage: number | null = null
+
+  @Column({
+    name: 'price_per_second',
+    type: 'numeric',
+    precision: 12,
+    scale: 4,
+    nullable: true,
+    transformer: priceTransformer,
+  })
+  pricePerSecond: number | null = null
+
+  /** 币种（ISO 4217；当前只在页面展示，不换算） */
+  @Column({ name: 'currency', type: 'varchar', length: 3, default: 'CNY' })
+  currency = 'CNY'
 }

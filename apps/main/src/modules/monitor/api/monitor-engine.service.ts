@@ -1,14 +1,16 @@
 import { Inject, Injectable } from '@nestjs/common'
 import type { MonitorEngineStatusModel } from '@repo/shared'
-import { AlertRepository } from '../engine/alert.repository.js'
-import { MetricRegistry } from '../engine/metric.registry.js'
-import { MetricSampleRepository } from '../engine/metric-sample.repository.js'
-import { MonitorEngine } from '../engine/monitor.engine.js'
-import { MonitorInstanceService } from '../engine/instance.service.js'
-import { MonitorRuleRepository } from '../engine/monitor-rule.repository.js'
-import { RuleEvaluatorService } from '../engine/rule-evaluator.service.js'
-import { RuleRegistry } from '../engine/rule.registry.js'
-import { StaleGuard } from '../engine/stale.guard.js'
+import {
+  AlertRepository,
+  MetricRegistry,
+  MetricSampleRepository,
+  MonitorEngine,
+  MonitorInstanceService,
+  MonitorRuleRepository,
+  RuleEvaluatorService,
+  RuleRegistry,
+  StaleGuard,
+} from '@repo/monitor'
 
 /** 引擎状态读模型 */
 @Injectable()

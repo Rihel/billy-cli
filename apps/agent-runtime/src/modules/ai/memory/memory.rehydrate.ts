@@ -1,5 +1,5 @@
 import { TimelineKind, TimelineRole } from '@repo/shared'
-import type { TimelineEntity } from '../../../database/entities/timeline-entity.js'
+import type { TimelineEntity } from '@repo/db'
 
 /** 回灌的最大消息数（与 thread 的预算无关，只是"够接上话"的保守值） */
 export const REHYDRATE_MAX_MESSAGES = 20

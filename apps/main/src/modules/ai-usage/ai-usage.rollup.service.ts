@@ -1,8 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common'
 import { AppLogger, Db } from '@repo/kits'
 import { nanoid } from '@repo/shared'
-import { AiUsageDailyEntity } from '../../database/entities/ai-usage-daily-entity.js'
-import { AiUsageDailyDimensionEntity } from '../../database/entities/ai-usage-daily-dimension-entity.js'
+import { AiUsageDailyEntity, AiUsageDailyDimensionEntity } from '@repo/db'
 
 const SHANGHAI_OFFSET_MS = 8 * 60 * 60 * 1000
 

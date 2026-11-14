@@ -24,8 +24,6 @@ import {
   TelemetryModule,
   WorkspaceModule,
   type DbModuleOptions,
-} from '@repo/kits'
-import {
   AppExceptionFilter,
   ERROR_ALERT_HOOK,
   type ErrorAlertHook,
@@ -34,7 +32,7 @@ import {
   RequestMetricsModule,
   ResponseEnvelopeInterceptor,
   createZodValidationPipe,
-} from './common/index.js'
+} from '@repo/kits'
 import { DB_ENTITIES } from '@repo/db'
 import { AdminModule } from './modules/admin/index.js'
 import { AiModelModule } from './modules/ai-model/index.js'
@@ -49,7 +47,8 @@ import { AgentControlController } from './agent/agent-control.controller.js'
 import { AgentSseController } from './agent/agent-sse.controller.js'
 import { MemoryController } from './modules/ai-admin/memory.controller.js'
 import { MemoryRepository, MemoryService } from '@repo/ai-data'
-import { MonitorEngine, MonitorModule } from './modules/monitor/index.js'
+import { MonitorEngine } from '@repo/monitor'
+import { MonitorModule } from './modules/monitor/index.js'
 import { OpsModule } from './modules/ops/index.js'
 import { SessionModule } from './modules/session/index.js'
 import { ShareModule } from './modules/share/index.js'

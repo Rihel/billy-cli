@@ -1,4 +1,5 @@
-import { AppResponse, createMd5, ResponseUtils } from '@repo/shared'
+import { createMd5, ResponseUtils } from '@repo/shared'
+import type { AppResponse } from '@repo/shared'
 import type {
   AuthStrategy,
   CredentialProvider,
@@ -8,6 +9,7 @@ import type {
 import { ApiError, ApiErrorCodes, mapHttpStatus, mapAppErrorValue } from './api-error.js'
 import { CredentialResolver } from './credential-resolver.js'
 import { AuthInjector } from './auth-injector.js'
+import { buildRequestUrl } from './url.js'
 
 /** HttpClient 构造参数 */
 export interface HttpClientOptions<Credentials = Record<string, any>> {
@@ -26,6 +28,8 @@ export interface HttpClientOptions<Credentials = Record<string, any>> {
    * 或自用工具不需要用户体系的场景。
    */
   authEnabled?: boolean
+  /** 自定义 fetch（测试注入 / 定制），默认全局 fetch */
+  fetchImpl?: typeof fetch
   /** fetch 默认选项（如 credentials: 'include'），合并到每次请求 */
   fetchOptions?: RequestInit
   /** 回调钩子 */
@@ -290,8 +294,9 @@ export class HttpClient<Credentials = Record<string, any>> {
     }
 
     let response: Response
+    const fetchImpl = this.options.fetchImpl ?? fetch
     try {
-      response = await fetch(fullUrl, {
+      response = await fetchImpl(fullUrl, {
         ...this.options.fetchOptions,
         method,
         headers: requestHeaders,
@@ -345,48 +350,7 @@ export class HttpClient<Credentials = Record<string, any>> {
    *   - url 为完整 URL 时直接使用，不再拼 baseUrl
    */
   private buildUrl(path: string, params?: Record<string, any>): string {
-    const url = this.resolveUrl(path)
-    this.appendSearchParams(url, params)
-    return url.toString()
-  }
-
-  /** 解析请求 URL：完整 URL 直接使用；相对路径拼接在 baseUrl 的 path 之后 */
-  private resolveUrl(path: string): URL {
-    // 完整 URL（含 scheme）或协议相对 URL（//）直接解析
-    if (/^[a-zA-Z][a-zA-Z\d+\-.]*:/.test(path) || path.startsWith('//')) {
-      return new URL(path, this.options.baseUrl)
-    }
-    const url = new URL(this.options.baseUrl)
-    const basePath = url.pathname.replace(/\/+$/, '')
-    // 补前导斜杠后按根相对解析，拆分 path 自带的查询串 / hash，
-    // 避免被 pathname 转义，也避免依赖 baseUrl 是否带尾斜杠的相对解析差异
-    const parsed = new URL(path.startsWith('/') ? path : `/${path}`, this.options.baseUrl)
-    url.pathname = `${basePath}${parsed.pathname}`
-    if (parsed.search) url.search = parsed.search
-    if (parsed.hash) url.hash = parsed.hash
-    return url
-  }
-
-  /** 将查询参数写入 URL：过滤 undefined/null、数组展开为重复键、对象 JSON 序列化 */
-  private appendSearchParams(url: URL, params?: Record<string, any>): void {
-    if (!params) return
-    for (const [key, value] of Object.entries(params)) {
-      if (value === undefined || value === null) continue
-      if (Array.isArray(value)) {
-        for (const item of value) {
-          if (item === undefined || item === null) continue
-          url.searchParams.append(key, this.serializeParam(item))
-        }
-        continue
-      }
-      url.searchParams.append(key, this.serializeParam(value))
-    }
-  }
-
-  /** 查询参数值序列化：对象 JSON 编码，其余转字符串 */
-  private serializeParam(value: unknown): string {
-    if (typeof value === 'object') return JSON.stringify(value)
-    return String(value)
+    return buildRequestUrl(this.options.baseUrl, path, params)
   }
 
   /** 序列化请求体；普通对象自动 JSON 序列化并补 Content-Type */

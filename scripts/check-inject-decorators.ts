@@ -20,7 +20,12 @@ import { join, relative } from 'node:path'
 import { pathToFileURL } from 'node:url'
 
 /** 默认扫描范围（仓库根为基准） */
-export const DEFAULT_ROOTS = ['packages/kits/src', 'apps/agent-runtime/src']
+export const DEFAULT_ROOTS = [
+  'packages/kits/src',
+  'packages/monitor/src',
+  'apps/agent-runtime/src',
+  'apps/model-gateway/src',
+]
 
 export interface InjectViolation {
   file: string

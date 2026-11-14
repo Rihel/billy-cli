@@ -1,8 +1,7 @@
 import type { ConfigService } from '@nestjs/config'
-import type { Db, RedisStore } from '@repo/kits'
+import { BoundaryError, Db, RedisStore } from '@repo/kits'
 import { AppErrorCodes } from '@repo/shared'
 import { describe, expect, it, vi } from 'vitest'
-import { BoundaryError } from '../src/common/error/boundary-error.js'
 import type { ServerConfig } from '../src/config.js'
 import { OpsController } from '../src/modules/ops/index.js'
 

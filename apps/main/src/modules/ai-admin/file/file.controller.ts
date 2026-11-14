@@ -36,7 +36,7 @@ import {
 import type { Response } from 'express'
 import { AdminAuthGuard } from '../../admin/admin-auth.guard.js'
 import { AnyAuthGuard } from '../../auth/index.js'
-import { requestContext } from '../../../common/index.js'
+import { requestContext } from '@repo/kits'
 import { AiAdminConversationService } from '../conversation/conversation.service.js'
 
 /** 会话页右栏「文件」tab：工作区、文本预览、admin 文件页 */

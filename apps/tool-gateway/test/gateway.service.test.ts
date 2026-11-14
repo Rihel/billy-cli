@@ -83,11 +83,14 @@ describe('ToolGatewayService', () => {
         res.writeHead(200, { 'content-type': 'application/json' })
         res.end(
           JSON.stringify({
-            version: TOOL_CONTRACT_VERSION,
-            requestId: parsed.requestId,
-            workerId: 'w-1',
-            durationMs: 2,
-            outcome: { ok: true, data: { stdout: 'hi' } },
+            code: 0,
+            data: {
+              version: TOOL_CONTRACT_VERSION,
+              requestId: parsed.requestId,
+              workerId: 'w-1',
+              durationMs: 2,
+              outcome: { ok: true, data: { stdout: 'hi' } },
+            },
           }),
         )
       })

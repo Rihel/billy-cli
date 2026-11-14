@@ -33,6 +33,8 @@ const okResponse = {
   outcome: { ok: true, data: { stdout: 'hi' } },
 }
 
+const envelope = (data: unknown) => ({ code: 0, data })
+
 const jsonResponse = (body: unknown, status = 200): Response =>
   new Response(JSON.stringify(body), {
     status,
@@ -41,7 +43,7 @@ const jsonResponse = (body: unknown, status = 200): Response =>
 
 describe('ToolGatewayClient', () => {
   it('带令牌调用 /v1/tools/invoke，并校验响应', async () => {
-    const fetchImpl = vi.fn(async () => jsonResponse(okResponse))
+    const fetchImpl = vi.fn(async () => jsonResponse(envelope(okResponse)))
     const client = new ToolGatewayClient({
       baseUrl: 'http://gateway:9993/',
       token: 'token',
@@ -53,7 +55,7 @@ describe('ToolGatewayClient', () => {
     expect(fetchImpl).toHaveBeenCalledTimes(1)
     const [url, init] = fetchImpl.mock.calls[0] as unknown as [string, RequestInit]
     expect(url).toBe('http://gateway:9993/v1/tools/invoke')
-    expect((init.headers as Record<string, string>)['x-internal-token']).toBe('token')
+    expect(new Headers(init.headers).get('x-internal-token')).toBe('token')
     expect(JSON.parse(String(init.body))).toMatchObject({ toolKey: 'bash' })
   })
 
@@ -68,7 +70,7 @@ describe('ToolGatewayClient', () => {
     const protocolClient = new ToolGatewayClient({
       baseUrl: 'http://gateway:9993',
       token: 'token',
-      fetchImpl: (async () => jsonResponse({ nope: true })) as unknown as typeof fetch,
+      fetchImpl: (async () => jsonResponse(envelope({ nope: true }))) as unknown as typeof fetch,
     })
     await expect(protocolClient.invokeTool(request)).rejects.toBeInstanceOf(InternalProtocolError)
   })
@@ -89,21 +91,23 @@ describe('ToolGatewayClient', () => {
       baseUrl: 'http://gateway:9993',
       token: 'token',
       fetchImpl: (async () =>
-        jsonResponse({
-          version: TOOL_CONTRACT_VERSION,
-          tools: [
-            {
-              key: 'bash',
-              title: '执行命令',
-              description: '在沙箱里执行命令',
-              category: 'core',
-              scope: 'all',
-              executor: 'worker',
-              params: { type: 'object' },
-              version: 1,
-            },
-          ],
-        })) as unknown as typeof fetch,
+        jsonResponse(
+          envelope({
+            version: TOOL_CONTRACT_VERSION,
+            tools: [
+              {
+                key: 'bash',
+                title: '执行命令',
+                description: '在沙箱里执行命令',
+                category: 'core',
+                scope: 'all',
+                executor: 'worker',
+                params: { type: 'object' },
+                version: 1,
+              },
+            ],
+          }),
+        )) as unknown as typeof fetch,
     })
     const result = await client.listTools({
       version: TOOL_CONTRACT_VERSION,
@@ -119,23 +123,25 @@ describe('ToolGatewayClient', () => {
       baseUrl: 'http://gateway:9993',
       token: 'token',
       fetchImpl: (async () =>
-        jsonResponse({
-          workers: [
-            {
-              workerId: 'w-1',
-              endpoint: 'http://worker:9994',
-              version: '0.1.0',
-              zone: 'local',
-              executors: ['bash'],
-              tools: ['bash'],
-              sandboxMode: 'enforce',
-              maxConcurrency: 4,
-              active: 1,
-              draining: false,
-              startedAt: new Date().toISOString(),
-            },
-          ],
-        })) as unknown as typeof fetch,
+        jsonResponse(
+          envelope({
+            workers: [
+              {
+                workerId: 'w-1',
+                endpoint: 'http://worker:9994',
+                version: '0.1.0',
+                zone: 'local',
+                executors: ['bash'],
+                tools: ['bash'],
+                sandboxMode: 'enforce',
+                maxConcurrency: 4,
+                active: 1,
+                draining: false,
+                startedAt: new Date().toISOString(),
+              },
+            ],
+          }),
+        )) as unknown as typeof fetch,
     })
     await expect(client.listWorkers()).resolves.toHaveLength(1)
   })
@@ -143,7 +149,7 @@ describe('ToolGatewayClient', () => {
 
 describe('ToolWorkerClient', () => {
   it('调用 /v1/exec 并复用同一套错误映射', async () => {
-    const fetchImpl = vi.fn(async () => jsonResponse(okResponse))
+    const fetchImpl = vi.fn(async () => jsonResponse(envelope(okResponse)))
     const client = new ToolWorkerClient({
       baseUrl: 'http://worker:9994',
       token: 'token',
@@ -153,6 +159,6 @@ describe('ToolWorkerClient', () => {
     expect(result.outcome.ok).toBe(true)
     const [url, init] = fetchImpl.mock.calls[0] as unknown as [string, RequestInit]
     expect(url).toBe('http://worker:9994/v1/exec')
-    expect((init.headers as Record<string, string>)['x-internal-token']).toBe('token')
+    expect(new Headers(init.headers).get('x-internal-token')).toBe('token')
   })
 })

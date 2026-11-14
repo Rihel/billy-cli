@@ -1,12 +1,8 @@
 import { Inject, Injectable, type CanActivate, type ExecutionContext } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import type { Request } from 'express'
-import {
-  extractToken,
-  requestContext,
-  tokenInvalidError,
-  unauthorizedError,
-} from '../../common/index.js'
+import { requestContext, tokenInvalidError, unauthorizedError } from '@repo/kits'
+import { extractToken } from '../../common/security/index.js'
 import { resolveServerConfig, type ServerConfig } from '../../config.js'
 import { AdminService } from './admin.service.js'
 

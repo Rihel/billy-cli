@@ -7,8 +7,7 @@ import type {
   MonitorMetricSeriesDto,
   MonitorMetricSeriesModel,
 } from '@repo/shared'
-import { MetricRegistry } from '../engine/metric.registry.js'
-import { MetricSampleRepository } from '../engine/metric-sample.repository.js'
+import { MetricRegistry, MetricSampleRepository } from '@repo/monitor'
 import { MonitorMetricNotFoundError } from '../errors.js'
 
 /** 指标读模型：历史 / 最新值 */

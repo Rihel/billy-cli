@@ -1,9 +1,13 @@
 import { Inject, Injectable, Module, type OnApplicationBootstrap } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
+import { ModelGatewayClient } from '@repo/internal-sdk'
 import { AiProviderKind, AiModelSource } from '@repo/shared'
 import { AppLogger } from '@repo/kits'
 import { AdminModule } from '../admin/admin.module.js'
 import { AiModelController } from './ai-model.controller.js'
+import { AiProviderKeyController } from './ai-provider-key.controller.js'
+import { AiProviderKeyRepository } from './ai-provider-key.repository.js'
+import { AiProviderKeyService } from './ai-provider-key.service.js'
 import { AiModelRepository, AiProviderRepository } from './ai-model.repository.js'
 import { AI_MODEL_CONFIG, AiModelService, type AiModelConfig } from './ai-model.service.js'
 
@@ -139,16 +143,29 @@ export class AiModelSeedService implements OnApplicationBootstrap {
  */
 @Module({
   imports: [AdminModule],
-  controllers: [AiModelController],
+  controllers: [AiModelController, AiProviderKeyController],
   providers: [
     AiProviderRepository,
     AiModelRepository,
+    AiProviderKeyRepository,
+    AiProviderKeyService,
     {
       provide: AI_MODEL_CONFIG,
       inject: [ConfigService],
       useFactory: (config: ConfigService): AiModelConfig => ({
         seedFromEnv: config.get<boolean>('aiModel.seedFromEnv') ?? true,
       }),
+    },
+    {
+      // 供应商探测（列模型 / 连通性测试）只在网关执行；main 只调这个 client
+      provide: ModelGatewayClient,
+      inject: [ConfigService],
+      useFactory: (config: ConfigService) =>
+        new ModelGatewayClient({
+          baseUrl: config.getOrThrow<string>('modelGateway.url'),
+          token: config.getOrThrow<string>('modelGateway.token'),
+          timeoutMs: config.getOrThrow<number>('modelGateway.timeoutMs'),
+        }),
     },
     AiModelService,
     AiModelSeedService,

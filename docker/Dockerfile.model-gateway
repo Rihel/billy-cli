@@ -1,0 +1,55 @@
+# ─────────────────────────────────────────────
+# model-gateway 镜像（@app/model-gateway）：内部模型网关（9992）。
+#
+# 不装 lark-cli / 不装 Mastra；只读模型配置表，负责 4 套协议适配与后续计量。
+# ─────────────────────────────────────────────
+FROM node26-pnpm12:1.0 AS builder
+
+WORKDIR /app
+
+COPY package.json pnpm-lock.yaml turbo.json pnpm-workspace.yaml ./
+# 必须复制**全部** workspace 成员清单（增删成员时所有 Dockerfile 都要同步）
+COPY apps/admin/package.json             ./apps/admin/
+COPY apps/agent-runtime/package.json     ./apps/agent-runtime/
+COPY apps/main/package.json              ./apps/main/
+COPY apps/model-gateway/package.json     ./apps/model-gateway/
+COPY apps/tool-gateway/package.json      ./apps/tool-gateway/
+COPY apps/tool-worker/package.json       ./apps/tool-worker/
+COPY apps/web/package.json               ./apps/web/
+COPY packages/ai-data/package.json       ./packages/ai-data/
+COPY packages/contracts/package.json     ./packages/contracts/
+COPY packages/db/package.json            ./packages/db/
+COPY packages/http-client/package.json   ./packages/http-client/
+COPY packages/internal-sdk/package.json  ./packages/internal-sdk/
+COPY packages/kits/package.json          ./packages/kits/
+COPY packages/sdk/package.json           ./packages/sdk/
+COPY packages/shared/package.json        ./packages/shared/
+COPY packages/tool-catalog/package.json  ./packages/tool-catalog/
+COPY packages/ui/package.json            ./packages/ui/
+COPY packages/web-runtime/package.json   ./packages/web-runtime/
+
+COPY scripts/ ./scripts/
+RUN pnpm install --frozen-lockfile
+
+COPY . .
+RUN pnpm turbo run build --filter @app/model-gateway...
+RUN pnpm deploy --filter @app/model-gateway --prod --legacy /deploy/model-gateway
+
+RUN rm -rf /deploy/model-gateway/dist \
+  && cp -r apps/model-gateway/dist /deploy/model-gateway/dist \
+  && chmod -R a+rX /deploy/model-gateway
+
+FROM node26-pnpm12:1.0 AS runner
+
+WORKDIR /app
+COPY --from=builder /deploy/model-gateway .
+
+RUN addgroup -S appgroup \
+  && adduser -S appuser -G appgroup \
+  && mkdir -p /home/appuser/.billy \
+  && chown -R appuser:appgroup /home/appuser
+ENV HOME=/home/appuser
+USER appuser
+
+EXPOSE 9992
+CMD ["node", "dist/main.js"]

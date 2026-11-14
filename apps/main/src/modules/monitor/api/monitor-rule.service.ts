@@ -9,12 +9,14 @@ import {
   type ResetMonitorRuleDto,
   type UpdateMonitorRuleDto,
 } from '@repo/shared'
-import type { MonitorRuleEntity } from '../../../database/entities/monitor-rule-entity.js'
-import { definitionVersion } from '../definitions/version.js'
-import { AlertLifecycleService } from '../engine/alert-lifecycle.service.js'
-import { AlertRepository } from '../engine/alert.repository.js'
-import { MonitorRuleRepository } from '../engine/monitor-rule.repository.js'
-import { RuleRegistry } from '../engine/rule.registry.js'
+import type { MonitorRuleEntity } from '@repo/db'
+import {
+  definitionVersion,
+  AlertLifecycleService,
+  AlertRepository,
+  MonitorRuleRepository,
+  RuleRegistry,
+} from '@repo/monitor'
 import { MonitorRuleConfigInvalidError, MonitorRuleNotFoundError } from '../errors.js'
 
 const BASE_CONFIG_KEYS = new Set([

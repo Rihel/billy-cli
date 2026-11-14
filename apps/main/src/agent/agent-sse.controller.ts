@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto'
 import type { Response } from 'express'
 import { AgentSseBridge } from './agent-sse.bridge.js'
 import { AnyAuthGuard } from '../modules/auth/index.js'
-import { requestContext } from '../common/index.js'
+import { requestContext } from '@repo/kits'
 
 const SSE_HEADERS = {
   'content-type': 'text/event-stream',

@@ -61,3 +61,13 @@ export type {
   StreamConnectRequest,
   StreamConnectionCallbacks,
 } from './stream/stream-transport.js'
+
+// ========== 低层传输（原始响应 / SSE 透传 / NDJSON） ==========
+export { HttpTransport } from './transport/http-transport.js'
+export type {
+  HttpTransportOptions,
+  RawStream,
+  RequestRawOptions,
+  StreamRawOptions,
+  TransportRequest,
+} from './transport/types.js'

@@ -32,7 +32,12 @@ description: >-
 3. **工具入参出参、子 agent 的动态提示词与任务、摘要正文一律全量入库**，不裁剪
    （分页只改"给模型的那一份"，靠 `toModelOutput`，返回值仍是全量）；
 4. **术语固定**：轮（turn）= 一次问答 = 一个**根 run**；步（step）= 一次模型调用；
-   「回合」已弃用；对外标识统一叫 **agent key / tool key**（不叫 agentId）。
+   「回合」已弃用；对外标识统一叫 **agent key / tool key**（不叫 agentId）；
+5. **静态声明只在 runtime 有一份**：agent 规格（`agents/*.agent.ts`）、提示词（`core/prompts/**`）、
+   工具选择器（`core/tools/tool-selector.ts`）、技能类型（`core/skills/skills.types.ts`）
+   **禁止复制到 main**。main 要清单 / 状态 / 系统指令，走 `@repo/internal-sdk` 的
+   `AgentRuntimeClient`（`apps/main/src/agent/agent-catalog.service.ts`，清单缓存 30s）；
+   main 只保留「会话快照」这一段（读 `timelines` + 归属校验）。
 
 ## 1. 模块地图
 

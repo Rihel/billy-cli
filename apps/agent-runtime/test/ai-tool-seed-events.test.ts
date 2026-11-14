@@ -1,7 +1,7 @@
 import 'dotenv/config'
 import { Db } from '@repo/kits'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { AiToolEntity } from '../src/database/entities/ai-tool-entity.js'
+import { AiToolEntity } from '@repo/db'
 import { ToolConfigRepository } from '../src/modules/ai/core/tools/tool.config.repository.js'
 import { buildToolSpecs } from '../src/modules/ai/core/tools/tool.class.js'
 import type { AnyToolSpec } from '../src/modules/ai/core/tools/tools.types.js'

@@ -19,6 +19,7 @@ COPY package.json pnpm-lock.yaml turbo.json pnpm-workspace.yaml ./
 COPY apps/admin/package.json             ./apps/admin/
 COPY apps/agent-runtime/package.json     ./apps/agent-runtime/
 COPY apps/main/package.json              ./apps/main/
+COPY apps/model-gateway/package.json       ./apps/model-gateway/
 COPY apps/tool-gateway/package.json      ./apps/tool-gateway/
 COPY apps/tool-worker/package.json       ./apps/tool-worker/
 COPY apps/web/package.json               ./apps/web/

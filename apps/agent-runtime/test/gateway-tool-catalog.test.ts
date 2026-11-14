@@ -19,29 +19,32 @@ describe('GatewayToolCatalog', () => {
       async () =>
         new Response(
           JSON.stringify({
-            version: 1,
-            tools: [
-              {
-                key: 'bash',
-                title: 'bash',
-                description: 'bash',
-                category: 'core',
-                scope: 'all',
-                executor: 'worker',
-                params: { type: 'object' },
-                version: 1,
-              },
-              {
-                key: 'file-list',
-                title: 'file-list',
-                description: 'file-list',
-                category: 'core',
-                scope: 'all',
-                executor: 'worker',
-                params: { type: 'object' },
-                version: 1,
-              },
-            ],
+            code: 0,
+            data: {
+              version: 1,
+              tools: [
+                {
+                  key: 'bash',
+                  title: 'bash',
+                  description: 'bash',
+                  category: 'core',
+                  scope: 'all',
+                  executor: 'worker',
+                  params: { type: 'object' },
+                  version: 1,
+                },
+                {
+                  key: 'file-list',
+                  title: 'file-list',
+                  description: 'file-list',
+                  category: 'core',
+                  scope: 'all',
+                  executor: 'worker',
+                  params: { type: 'object' },
+                  version: 1,
+                },
+              ],
+            },
           }),
           { status: 200, headers: { 'content-type': 'application/json' } },
         ),

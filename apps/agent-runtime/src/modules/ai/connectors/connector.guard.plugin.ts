@@ -1,7 +1,7 @@
 import type { ToolOutcome } from '../core/tools/tools.types.js'
 import type { ToolCallContext, ToolPlugin } from '../core/tools/tools.types.js'
 import type { ConnectorStateSource } from './connector.state.js'
-import { hintOf } from '../../ai-model/secret-hint.js'
+import { hintOf } from '../core/secret-hint.js'
 
 /**
  * **连接器总闸插件**（设计 `docs/design/ai-connector.md` §3.9）。

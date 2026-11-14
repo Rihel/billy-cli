@@ -30,6 +30,8 @@ export { ConversationListByCreated1794629391251 } from './1794629391251-Conversa
 export { PartialEmailUnique1794630000000 } from './1794630000000-PartialEmailUnique.js'
 export { ConversationSubagent1794700000000 } from './1794700000000-ConversationSubagent.js'
 export { AiToolAudit1794800000000 } from './1794800000000-AiToolAudit.js'
+export { ModelGatewayBilling1794676773109 } from './1794676773109-ModelGatewayBilling.js'
+export { ModelGatewayUsageTotalTokens1794676931674 } from './1794676931674-ModelGatewayUsageTotalTokens.js'
 
 import { Initial1786897309083 } from './1786897309083-initial.js'
 import { AddAdmins1787000000000 } from './1787000000000-add-admins.js'
@@ -63,6 +65,8 @@ import { ConversationListByCreated1794629391251 } from './1794629391251-Conversa
 import { PartialEmailUnique1794630000000 } from './1794630000000-PartialEmailUnique.js'
 import { ConversationSubagent1794700000000 } from './1794700000000-ConversationSubagent.js'
 import { AiToolAudit1794800000000 } from './1794800000000-AiToolAudit.js'
+import { ModelGatewayBilling1794676773109 } from './1794676773109-ModelGatewayBilling.js'
+import { ModelGatewayUsageTotalTokens1794676931674 } from './1794676931674-ModelGatewayUsageTotalTokens.js'
 
 /** 迁移按时间戳升序；TypeORM 会再排序，但这里保持可读 */
 export const DB_MIGRATIONS = [
@@ -98,4 +102,6 @@ export const DB_MIGRATIONS = [
   PartialEmailUnique1794630000000,
   ConversationSubagent1794700000000,
   AiToolAudit1794800000000,
+  ModelGatewayBilling1794676773109,
+  ModelGatewayUsageTotalTokens1794676931674,
 ]

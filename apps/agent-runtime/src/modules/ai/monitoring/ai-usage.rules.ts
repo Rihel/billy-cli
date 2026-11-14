@@ -1,6 +1,6 @@
 import type { MonitorRuleConfigField } from '@repo/shared'
-import { defineMetricRule } from '../../monitor/definitions/define.js'
-import type { MetricRuleType } from '../../monitor/definitions/rule.types.js'
+import { defineMetricRule } from '@repo/monitor'
+import type { MetricRuleType } from '@repo/monitor'
 
 const fields: MonitorRuleConfigField[] = [
   { key: 'threshold', label: '阈值', type: 'number', min: 0 },

@@ -78,6 +78,10 @@ export class RedisStore implements OnApplicationBootstrap, OnApplicationShutdown
     return this.fromPromise(() => this.raw.incr(key))
   }
 
+  incrBy(key: string, amount: number): Promise<number> {
+    return this.fromPromise(() => this.raw.incrby(key, amount))
+  }
+
   /** 探活（readiness 用） */
   ping(): Promise<string> {
     return this.fromPromise(() => this.raw.ping())

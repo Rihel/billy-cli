@@ -1,4 +1,10 @@
-import { Transactional, type PageQueryResult } from '@repo/kits'
+import {
+  Transactional,
+  type PageQueryResult,
+  AppLogger,
+  PasswordHasher,
+  SessionStore,
+} from '@repo/kits'
 import type {
   CreateUserDto,
   GetUserDetailDto,
@@ -10,9 +16,6 @@ import type {
   UserModel,
 } from '@repo/shared'
 import { Inject, Injectable } from '@nestjs/common'
-import { AppLogger } from '@repo/kits'
-import { PasswordHasher } from '@repo/kits'
-import { SessionStore } from '@repo/kits'
 import { toUser, UserRepository } from './user.repository.js'
 import { EmailTakenError, UserNotFoundError } from './errors.js'
 

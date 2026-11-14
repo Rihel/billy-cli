@@ -9,7 +9,12 @@ import {
   type ToolListResponse,
   type WorkerRegistration,
 } from '@repo/contracts'
-import { requestJson, type InternalClientOptions, type InvokeOptions } from './http.js'
+import {
+  requestEnvelope,
+  requestJson,
+  type InternalClientOptions,
+  type InvokeOptions,
+} from './http.js'
 
 const WorkersResponseSchema = z.object({
   workers: z.array(WorkerRegistrationSchema),
@@ -26,7 +31,7 @@ export class ToolGatewayClient {
   constructor(private readonly options: InternalClientOptions) {}
 
   invokeTool(request: ToolInvokeRequest, options: InvokeOptions = {}): Promise<ToolInvokeResponse> {
-    return requestJson(this.options, '/v1/tools/invoke', ToolInvokeResponseSchema, {
+    return requestEnvelope(this.options, '/v1/tools/invoke', ToolInvokeResponseSchema, {
       method: 'POST',
       body: request,
       ...options,
@@ -35,7 +40,7 @@ export class ToolGatewayClient {
 
   /** 工具面：facade / 模型从这里拿可用工具清单 */
   listTools(request: ToolListRequest, options: InvokeOptions = {}): Promise<ToolListResponse> {
-    return requestJson(this.options, '/v1/tools/list', ToolListResponseSchema, {
+    return requestEnvelope(this.options, '/v1/tools/list', ToolListResponseSchema, {
       method: 'POST',
       body: request,
       ...options,
@@ -43,7 +48,12 @@ export class ToolGatewayClient {
   }
 
   async listWorkers(options: InvokeOptions = {}): Promise<WorkerRegistration[]> {
-    const response = await requestJson(this.options, '/v1/workers', WorkersResponseSchema, options)
+    const response = await requestEnvelope(
+      this.options,
+      '/v1/workers',
+      WorkersResponseSchema,
+      options,
+    )
     return response.workers
   }
 

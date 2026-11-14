@@ -5,8 +5,7 @@ import type {
   AgentUsageDailyModel,
   AgentUsageSummaryModel,
 } from '@repo/shared'
-import { AiUsageDailyEntity } from '../../database/entities/ai-usage-daily-entity.js'
-import { AiUsageDailyDimensionEntity } from '../../database/entities/ai-usage-daily-dimension-entity.js'
+import { AiUsageDailyEntity, AiUsageDailyDimensionEntity } from '@repo/db'
 import {
   AiUsageRollupService,
   recentShanghaiDates,

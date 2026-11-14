@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AgentFileModel, ChatAttachmentModel } from '@repo/shared'
 import { FileService, type FileContext } from '../src/modules/ai/files/file.service.js'
-import type { AiFileEntity } from '../src/database/entities/ai-file-entity.js'
+import type { AiFileEntity } from '@repo/db'
 import { TEST_TOOL_ENV_CAPS, silentLogger } from './helpers/ai-tool-stack.js'
 
 /** 只实现 FileService 用到的那几个方法；DB 细节不在这个测试里 */

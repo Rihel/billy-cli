@@ -1,7 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
-import type { ObjectStorage } from '@repo/kits'
+import { requestContext, ObjectStorage } from '@repo/kits'
 import { AppErrorCodes } from '@repo/shared'
-import { requestContext } from '../src/common/index.js'
 import { StorageController } from '../src/modules/storage/index.js'
 
 /**

@@ -3,12 +3,11 @@ import 'dotenv/config'
 import { ConfigService } from '@nestjs/config'
 import { NestFactory } from '@nestjs/core'
 import type { NestExpressApplication } from '@nestjs/platform-express'
-import { NestLoggerAdapter, setAuditUserProvider } from '@repo/kits'
+import { NestLoggerAdapter, setAuditUserProvider, requestContext } from '@repo/kits'
 import { RootModule } from './root.module.js'
 import { loadServerAppConfig } from './app-config.js'
 import { resolveServerConfig } from './config.js'
-import { requestContext } from './common/index.js'
-import { MonitorEngine } from './modules/monitor/index.js'
+import { MonitorEngine } from '@repo/monitor'
 
 /**
  * 应用入口（NestJS 12 + Express）。

@@ -21,7 +21,7 @@ import { parseLarkCliArgs } from '../src/modules/ai/connectors/drivers/lark-cli.
 import { ConnectorGuardPlugin } from '../src/modules/ai/connectors/connector.guard.plugin.js'
 import type { ConnectorStateSource } from '../src/modules/ai/connectors/connector.state.js'
 import { PrecheckPlugin } from '../src/modules/ai/core/tools/plugins/precheck.plugin.js'
-import { hintOf } from '../src/modules/ai-model/secret-hint.js'
+import { hintOf } from '../src/modules/ai/core/secret-hint.js'
 import { ToolDeniedError } from '../src/modules/ai/core/tools/tools.types.js'
 
 /**

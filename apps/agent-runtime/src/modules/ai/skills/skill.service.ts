@@ -22,8 +22,7 @@ import {
   type AiSkillModel,
   type AiSkillUpdateDto,
 } from '@repo/shared'
-import type { AiSkillEntity } from '../../../database/entities/ai-skill-entity.js'
-import type { AiSkillFileEntity } from '../../../database/entities/ai-skill-file-entity.js'
+import type { AiSkillEntity, AiSkillFileEntity } from '@repo/db'
 import {
   hashSkillFiles,
   parseSkillMarkdown,

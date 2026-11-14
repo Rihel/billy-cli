@@ -5,11 +5,10 @@ import {
   looksLikeTextContent,
   withUserContent,
 } from '../src/modules/ai/runtime/chat-attachment.service.js'
-import type { ObjectStorage } from '@repo/kits'
+import { requestContext, ObjectStorage } from '@repo/kits'
 import { AttachmentKeyPolicy } from '../src/modules/ai/runtime/attachment-key.js'
 import { extractPdfText } from '../src/modules/ai/runtime/pdf-text.js'
 import { minimalPdf } from './helpers/pdf.js'
-import { requestContext } from '../src/common/request-context/request-context.js'
 import type { ModelMessage } from 'ai'
 
 /**

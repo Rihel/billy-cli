@@ -2,8 +2,7 @@ import { Inject, Injectable } from '@nestjs/common'
 import { Db, type PageQueryResult } from '@repo/kits'
 import type { AiConnectorListDto } from '@repo/shared'
 import { In, IsNull, Like } from 'typeorm'
-import { AiConnectorEntity } from '../../../database/entities/ai-connector-entity.js'
-import { AiToolEntity } from '../../../database/entities/ai-tool-entity.js'
+import { AiConnectorEntity, AiToolEntity } from '@repo/db'
 
 /**
  * 连接器的数据访问层（设计 `docs/design/ai-connector.md` §3.2 / §3.6）。

@@ -21,6 +21,10 @@ x-app-env: &app-env
   AGENT_INTERNAL_TOKEN: ${AGENT_INTERNAL_TOKEN:-local-dev-internal-token}
   # 会话工作区：main 文件页、runtime bash、worker 文件工具共用同一个卷
   AGENT_COMMAND_WORK_DIR: /home/appuser/.billy-cli
+  # runtime 调模型网关（内部 9992）；runtime 已不再读模型配置表 / 不持供应商 key
+  MODEL_GATEWAY_URL: http://model-gateway:9992
+  MODEL_INTERNAL_TOKEN: ${MODEL_INTERNAL_TOKEN:-local-dev-model-token}
+  MODEL_GATEWAY_TOKEN: ${MODEL_GATEWAY_TOKEN:-local-dev-model-token}
   # runtime / worker 调工具网关
   TOOL_GATEWAY_URL: http://tool-gateway:9993
   TOOL_INTERNAL_TOKEN: ${TOOL_INTERNAL_TOKEN:-local-dev-tool-token}
@@ -154,6 +158,8 @@ services:
         condition: service_healthy
       tool-gateway:
         condition: service_healthy
+      model-gateway:
+        condition: service_healthy
     env_file:
       - apps/agent-runtime/.env
     environment:
@@ -199,6 +205,34 @@ services:
         '-d',
         'node_modules/@repo/db/data-source.mjs',
       ]
+
+  # ──────────────────────────────────────────
+  # model-gateway（NestJS）：内部模型网关，canonical OpenAI + 4 套协议适配
+  # 只读 ai_providers / ai_models；不暴露宿主端口
+  # ──────────────────────────────────────────
+  model-gateway:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.model-gateway
+    container_name: billy-model-gateway
+    restart: unless-stopped
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+    environment:
+      <<: *app-env
+      PORT: '9992'
+      MODEL_GATEWAY_PORT: '9992'
+    expose:
+      - '9992'
+    healthcheck:
+      test: ['CMD', 'curl', '-fsS', 'http://127.0.0.1:9992/healthz']
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 30s
 
   # ──────────────────────────────────────────
   # Tool gateway / worker（内部工具面，无公网端口）

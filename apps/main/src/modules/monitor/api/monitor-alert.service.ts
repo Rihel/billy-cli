@@ -7,8 +7,7 @@ import type {
   PageQueryMonitorLogDto,
 } from '@repo/shared'
 import type { PageQueryResult } from '@repo/kits'
-import { AlertRepository } from '../engine/alert.repository.js'
-import { AlertLogRepository } from '../engine/alert-log.repository.js'
+import { AlertRepository, AlertLogRepository } from '@repo/monitor'
 import { MonitorAlertNotFoundError } from '../errors.js'
 
 /** 告警记录读模型 */

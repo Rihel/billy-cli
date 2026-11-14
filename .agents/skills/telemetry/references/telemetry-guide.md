@@ -28,7 +28,7 @@
 
 ## 4. 框架内置埋点（勿重复）
 
-`common/request-metrics/request-metrics.middleware.ts` 在响应 finish 时自动埋：
+`packages/kits/src/http/request-metrics/request-metrics.middleware.ts` 在响应 finish 时自动埋：
 `request.count`（+1）、`request.duration`（直方图，耗时 ms）、`request.error`（status ≥ 500 时 +1）。
 运维探针路径（`isOpsProbePath`）跳过埋点。派生指标（错误率 / QPS / 平均耗时 / P95 / P99 / 内存）由
 `AlertTrigger.buildMetricValues` 从 snapshot 计算，业务不用自算。

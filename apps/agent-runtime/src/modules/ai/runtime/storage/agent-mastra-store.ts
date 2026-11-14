@@ -9,7 +9,7 @@ import {
 import type { WorkflowRunState } from '@mastra/core/workflows'
 import { Db, type AppLogger } from '@repo/kits'
 import { RunStatus } from '@repo/shared'
-import { RunEntity } from '../../../../database/entities/run-entity.js'
+import { RunEntity } from '@repo/db'
 import { jsonbPatch } from '../jsonb.js'
 
 /**

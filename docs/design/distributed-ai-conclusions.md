@@ -10,6 +10,7 @@
 | 结论 / 设计项 | 实际 |
 | --- | --- |
 | 五服务 | 已落地 4 个：`apps/main`（9989，公网 BFF）/ `apps/agent-runtime`（9990，只跑 agent loop）/ `apps/tool-gateway`（9993）/ `apps/tool-worker`（9994）；**model-gateway 未建** |
+| model-gateway | **未建**；细化设计（接口 / 流 / 产物 / 计量 / key 池）见 [model-gateway.md](model-gateway.md)（评审稿） |
 | 客户端契约 | 前端只连 main；`/agent/*` 路径不变。**非流式 `POST /agent/chat` 没有服务端路由**（SDK 方法还在），调用 404 |
 | runtime → main 输出 | **Kafka `agent.run.events`**（实际 `app.agent.run.events`，3 分区，key=runId）：runtime 每段 chunk 发 topic，main `AgentSseBridge` 按 `clientId` 写 SSE，final → `[DONE]`。设计稿里的内部 SSE 中继未采用 |
 | 停止 / 续答 / 重连 | 已补：main `/agent/run/stop`、`/agent/chat/resume`、`GET /agent/run/stream`、`GET /agent/run/:runId/stream` 全部转发 runtime 内部接口；重连从 runtime 的 Redis 进度补发（**不是 Kafka 回放**） |

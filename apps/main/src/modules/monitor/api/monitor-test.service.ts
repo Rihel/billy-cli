@@ -1,8 +1,11 @@
 import { Inject, Injectable } from '@nestjs/common'
 import { AppLogger, Notifier, type NotifyChannel, type NotifyPayload } from '@repo/kits'
 import type { SuccessResultModel, TestAlertDto } from '@repo/shared'
-import { MonitorConfig, type MonitorConfig as MonitorConfigType } from '../config.js'
-import { AlertLogRepository } from '../engine/alert-log.repository.js'
+import {
+  MonitorConfig,
+  type MonitorConfig as MonitorConfigType,
+  AlertLogRepository,
+} from '@repo/monitor'
 
 /** 测试通知：只验证通道是否可用，不进入告警生命周期 */
 @Injectable()

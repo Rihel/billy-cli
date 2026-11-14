@@ -51,6 +51,18 @@ Zod schema 单一事实源，同时派生 TypeScript 类型（`*.schema.ts` 导�
 - DB `ai_tools` 只存 enabled / limits / config / secrets，不存 schema。
 - worker 只注册 executor key + 版本，不报 schema。
 
+## @repo/monitor — 监控引擎
+
+指标采集 / 规则评估 / 告警生命周期 / 通知，两个进程共用的**引擎**（不含 HTTP API）：
+
+- `engine/`：采集、指标注册、规则评估、告警生命周期与投递、清理、多实例 leader、种子；
+- `definitions/`：指标 / 规则声明与版本哈希；`metrics/` / `rules/`：系统指标与系统规则；
+  `sources/`：telemetry / process 数据源；
+- `MonitorModule.forRoot(options)` / `forRootAsync(options)`（全局模块）：配置 schema 唯一来源是
+  `MonitorConfigSchema`，app-config 的 `monitor` 命名空间直接复用它；
+- main 只保留 `modules/monitor/api`（管理员查询 / 配置 + 免鉴权 `/monitor/health`），
+  runtime 只装配引擎；两边各监控自己的进程。
+
 ## @repo/kits — 后端通用能力封装
 
 纯能力集（**不持有任何业务实体**）。装配采用「**一个基础设施一个 NestJS module**」：
@@ -101,6 +113,10 @@ Zod schema 单一事实源，同时派生 TypeScript 类型（`*.schema.ts` 导�
     `notification.module.ts` + `file/file.client.ts` / `email/email.client.ts` /
     `lark-notify/lark-notify.client.ts`
   - `telemetry/`：`telemetry.ts`（Counter / Gauge / Histogram）+ `telemetry.module.ts`
+- `http/`：横切 HTTP 构件 —— `error/`（错误码映射 / `BoundaryError` / `AppExceptionFilter` /
+  `ERROR_ALERT_HOOK`）、`request-context/`（@Global 模块：ALS + 自注册中间件）、`request-logger/`、
+  `request-metrics/`（@Global 模块：自注册埋点中间件）、`zod-validation.ts`、`response-envelope.interceptor.ts`、
+  `ops-probe.ts`；两个 app 共用一份（以前各存一份 `src/common/`）
 - `foundation/`：`config/`（**配置模块**：可插拔 `ConfigLoader` 抽象 + 内置 `envConfigLoader` /
   `memoryConfigLoader` / `consulConfigLoader` + `AppConfigFacade` + `AppConfigModule`；Zod 4 默认值物化 +
   带字段路径的校验错误）、`command/`（跨平台命令执行：`CommandRunner` + `CommandModule`，底层 `execa` ——
@@ -130,6 +146,7 @@ Zod schema 单一事实源，同时派生 TypeScript 类型（`*.schema.ts` 导�
 | `LarkModule` | LarkConfig 输入 | LarkConfig + LarkClient |
 | `NotificationModule` | NotifyConfig 输入 | NotifyConfig + Notifier + FileClient + EmailClient + LarkNotifyClient |
 | `KafkaModule` | KafkaConfig 输入 | KafkaConfig + KAFKA_CONNECTION + KafkaService + KafkaConsumerScanner |
+| `RequestContextModule` / `RequestLoggerModule` / `RequestMetricsModule` | 无（`@Global` 纯模块，自注册中间件） | 请求上下文 ALS / 请求日志 / 请求指标（装配顺序：context 必须在 logger / metrics 之前） |
 
   需要配置的模块都**同时提供 `forRoot(options)` 与 `forRootAsync(options)`**：同步版自己
   `Schema.parse(options)` 校验 + 补默认值；异步版接受统一的 `InfraModuleAsyncOptions`

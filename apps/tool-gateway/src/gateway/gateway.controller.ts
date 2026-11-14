@@ -6,9 +6,10 @@ import {
   Inject,
   Post,
   UseGuards,
+  UseFilters,
   UseInterceptors,
 } from '@nestjs/common'
-import { RedisStore } from '@repo/kits'
+import { AppExceptionFilter, RedisStore, ResponseEnvelopeInterceptor } from '@repo/kits'
 import {
   TOOL_CONTRACT_VERSION,
   ToolInvokeRequestSchema,
@@ -37,6 +38,7 @@ import { ToolGatewayService } from './gateway.service.js'
  * - Controller：只做转发，策略在 `ToolPolicyService`（域管道，需要按工具短路）。
  */
 @Controller()
+@UseFilters(AppExceptionFilter)
 export class ToolGatewayController {
   constructor(
     @Inject(ToolGatewayService) private readonly service: ToolGatewayService,
@@ -49,7 +51,7 @@ export class ToolGatewayController {
   @Post('v1/tools/invoke')
   @HttpCode(200)
   @UseGuards(InternalTokenGuard)
-  @UseInterceptors(ToolCallInterceptor)
+  @UseInterceptors(ToolCallInterceptor, ResponseEnvelopeInterceptor)
   async invoke(
     @Body(new ZodBodyPipe(ToolInvokeRequestSchema)) request: ToolInvokeRequest,
   ): Promise<ToolInvokeResponse> {
@@ -60,6 +62,7 @@ export class ToolGatewayController {
   @Post('v1/tools/list')
   @HttpCode(200)
   @UseGuards(InternalTokenGuard)
+  @UseInterceptors(ResponseEnvelopeInterceptor)
   async listTools(
     @Body(new ZodBodyPipe(ToolListRequestSchema)) input: ToolListRequest,
   ): Promise<ToolListResponse> {
@@ -73,6 +76,7 @@ export class ToolGatewayController {
   @Get('v1/workers')
   @HttpCode(200)
   @UseGuards(InternalTokenGuard)
+  @UseInterceptors(ResponseEnvelopeInterceptor)
   async workers(): Promise<{ workers: WorkerRegistration[] }> {
     return { workers: await this.directory.list() }
   }

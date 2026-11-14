@@ -5,7 +5,6 @@ import { DEFAULT_AGENT_KEY, createAgentDefinitions } from './agents/index.js'
 import { AgentInternalController } from './api/agent-internal.controller.js'
 import { AgentConfig, type AgentConfig as AgentConfigValue } from './core/config.js'
 import { decideModelForMastra } from './core/model-decision.js'
-import { AiModelModule, AiModelService } from '../ai-model/index.js'
 import { MASTRA, createMastra } from './mastra/ai.mastra.js'
 import {
   AGENT_MEMORY,
@@ -20,6 +19,8 @@ import { RunSubAgentTool } from './tools/subagent.tool.js'
 import { PlannerStore, PlannerTools } from './tools/planner/index.js'
 import { WebTools } from './tools/web.tools.js'
 import { createPromptEngine, PROMPT_ENGINE } from './core/prompts/index.js'
+import { ModelGatewayCatalogService } from './runtime/model-gateway.catalog.js'
+import { RUNTIME_MODEL_RESOLVER } from './runtime/model-resolver.js'
 import {
   AgentChatService,
   AgentConversationService,
@@ -139,7 +140,7 @@ let warnedMissingEnvelope = false
  * + 在 `AGENT_TOOL_GROUPS` 登记一行。
  */
 @Module({
-  imports: [AiModelModule, AiUsageModule, AiMonitoringModule],
+  imports: [AiUsageModule, AiMonitoringModule],
   controllers: [AgentInternalController],
   providers: [
     {
@@ -150,6 +151,9 @@ let warnedMissingEnvelope = false
     },
     // 提示词引擎：装配期（渲染 agent 定义）与运行期（渲染开局环境片段）共用同一个实例
     { provide: PROMPT_ENGINE, useValue: prompts },
+    // 模型网关目录（进程内只读缓存）；同时作为运行时的模型解析端口
+    ModelGatewayCatalogService,
+    { provide: RUNTIME_MODEL_RESOLVER, useExisting: ModelGatewayCatalogService },
 
     // ───────────────────────── 工具引擎（主体） ─────────────────────────
     // 工具组实例（**唯一的工具来源**）：注册机对每个组跑 `buildToolSpecs()` 拿 1..n 个工具
@@ -355,7 +359,6 @@ let warnedMissingEnvelope = false
         SkillLoader,
         Db,
         AppLogger,
-        AiModelService,
         AGENT_MEMORY,
         GatewayToolCatalog,
       ],
@@ -366,7 +369,6 @@ let warnedMissingEnvelope = false
         skillLoader: SkillLoader,
         db: Db,
         logger: AppLogger,
-        _models: AiModelService,
         memory: ReturnType<typeof createAgentMemory>,
         catalog: GatewayToolCatalog,
       ) => {

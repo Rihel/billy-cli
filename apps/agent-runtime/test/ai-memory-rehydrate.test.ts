@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { TimelineEntity } from '../src/database/entities/timeline-entity.js'
+import type { TimelineEntity } from '@repo/db'
 import {
   REHYDRATE_MAX_MESSAGES,
   toRehydrateMessages,

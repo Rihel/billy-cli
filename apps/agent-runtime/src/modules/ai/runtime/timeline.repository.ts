@@ -7,7 +7,7 @@ import {
   type AgentTimelineListDto,
 } from '@repo/shared'
 import type { DeepPartial } from 'typeorm'
-import { TimelineEntity } from '../../../database/entities/timeline-entity.js'
+import { TimelineEntity } from '@repo/db'
 import { toPlan, type Plan } from './plan.protocol.js'
 
 /** 实体 → 对外模型 */

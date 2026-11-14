@@ -7,8 +7,8 @@
 仓库落地：
 
 - 请求链路已全局处理，**不要自写请求日志**：`requestContextMiddleware`
-  （`apps/main/src/common/request-context/request-context.middleware.ts`）生成 `requestId` 并写响应头
-  `X-Request-Id`；**请求日志由 `common/request-logger` 的 `RequestLoggerMiddleware` 记录**
+  （`packages/kits/src/http/request-context/request-context.middleware.ts`）生成 `requestId` 并写响应头
+  `X-Request-Id`；**请求日志由 `@repo/kits` 的 `RequestLoggerMiddleware` 记录**
   （method / url / statusCode / durationMs / requestId / userId / adminId，按状态分级
   <400 info / 4xx warn / 5xx error）。日志里的 `requestId` 与响应头 `X-Request-Id` 同值，
   排障时用它关联一次请求。
@@ -16,10 +16,10 @@
   `context` 自动取宿主类名），关键写动作记 `logger.log('<域>.<动作>', { ... })`（参考 user：
   `user.created` / `user.updated` / `user.removed`）——事件名语义化、上下文放对象里便于检索。
 - 错误兜底：抛错统一走全局异常过滤器 `AppExceptionFilter`
-  （`apps/main/src/common/error/app-exception.filter.ts`，注册为 `APP_FILTER`；映射 code/http +
+  （`packages/kits/src/http/error/app-exception.filter.ts`，注册为 `APP_FILTER`；映射 code/http +
   异步告警走 `ERROR_ALERT_HOOK` token，由组合根把 `MonitorEngine.ingestError` 适配进去），
   业务侧**不要**自己 console.error 后吞掉；需要特殊告警 / 重试的失败在 handler 内按需处理。
-- 指标：`RequestMetricsMiddleware`（`apps/main/src/common/request-metrics/request-metrics.middleware.ts`）
-  已全局埋点（`common/request-metrics` 的 `RequestMetricsModule` 自注册中间件），无需每个接口自建。
+- 指标：`RequestMetricsMiddleware`（`packages/kits/src/http/request-metrics/request-metrics.middleware.ts`）
+  已全局埋点（`@repo/kits` 的 `RequestMetricsModule` 自注册中间件），无需每个接口自建。
 
 检查项：关键动作有业务事件日志；异常能被日志 + 告警覆盖；日志无敏感信息（token / 密码 / 密钥）。

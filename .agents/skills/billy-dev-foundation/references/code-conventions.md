@@ -4,7 +4,7 @@
 > **写任何代码前先阅读并遵守以下约定。**
 
 1. **包内相对导入后缀**：`@repo/kits`、`apps/main`、`apps/agent-runtime` 内相对导入带 `.js` 后缀
-   （如 `'./errors.js'`、`'../../common/http/zod-validation.js'`）；`@repo/shared` 及前端 app 不带后缀。
+   （如 `'./errors.js'`、`'./engine/monitor.engine.js'`）；`@repo/shared` 及前端 app 不带后缀。
    **新代码跟随所在包的既有风格，不混用**。跨包一律 `@repo/*`（如 `@repo/kits`、
    `@repo/shared`、`@repo/shared/logger` 子路径，后者是**前后端共用**的日志工厂）。
 2. **错误体系**：业务 / 基础设施错误必须继承 `AppError`
@@ -60,8 +60,8 @@
    - 为什么不学 rihel-base 那样省掉 `@Inject`：rihel 用 `nest start` / `nest build`（底层 tsc），
      会产出 `design:paramtypes`，所以它应用层 0 处 `@Inject`；billy 开发态走 esbuild，元数据缺席，
      显式 token 是唯一来源（且让 dev / prod 走同一条注入路径）。这是加载器差异，不是风格差异。
-6. **实体**（`packages/db/src/entities/`，唯一来源；app 内 `src/database/entities/*` 只是 re-export
-   shim，**不要往那里加新实体**）：继承 `BaseEntity`（来自 `@repo/kits`，
+6. **实体**（`packages/db/src/entities/`，唯一来源；app 内**不再有任何实体副本或 re-export shim**，
+   模块直接 `import { XxxEntity } from '@repo/db'`）：继承 `BaseEntity`（来自 `@repo/kits`，
    自动 id = nanoid(20)、
    created_at / updated_at / deleted_at 均为 timestamp(3)）；表名复数；列名 snake_case、
    字段名 camelCase；索引 / 唯一约束显式命名（`idx_*` / `uk_*`）。软删除 + 唯一约束

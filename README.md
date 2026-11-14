@@ -150,14 +150,16 @@ pnpm docker:up
 │   │                   + 全部 AI CRUD + /agent 的 Kafka→SSE 中继（9989）
 │   ├── agent-runtime/  只跑 agent loop（Mastra / 工具面 / 记忆 / 技能 / 子 agent / 恢复），
 │   │                   只暴露 /internal/agent/* 与探针（9990，不对外）
+│   ├── model-gateway/  内部模型网关：canonical OpenAI 接口 + openai/deepseek/ollama 协议适配 + 模型目录（9992，不对外）
 │   ├── tool-gateway/   工具目录 / 策略 / worker 路由 / 审计（9993，不执行工具）
 │   ├── tool-worker/    工具执行 + 能力自注册（9994）
 │   ├── web/            Next.js 16 前台：落地页 / 账号 / Markdown 示例（9840）
 │   └── admin/          Next.js 16 管理后台：控制台 / 监控 / 用户 / AI / 免授权分享页（9845）
 ├── packages/
 │   ├── shared/    Zod schema、错误码字典、日志工厂、文件类型判定、通用工具（前后端共享）
-│   ├── kits/      后端通用能力：Db / Redis / PubSub / EventBus / Stream / JWT / 会话 / 存储 / 调度 / 通知 / 限流 / 工作区 / Kafka
+│   ├── kits/      后端通用能力：Db / Redis / PubSub / EventBus / Stream / JWT / 会话 / 存储 / 调度 / 通知 / 限流 / 工作区 / Kafka / 横切 HTTP 构件
 │   ├── db/        TypeORM 实体 + 迁移（唯一来源，两个 Nest 应用共用）
+│   ├── monitor/   监控引擎：指标采集 / 规则评估 / 告警 / 通知（main 与 runtime 各装配一份）
 │   ├── ai-data/   AI 数据能力（FileService / MemoryService 等，main 与 worker 共用）
 │   ├── tool-catalog/  工具定义唯一来源（参数 / 描述 / scope）
 │   ├── contracts/     内部服务契约（Zod schema，跨 app 共用）
@@ -197,7 +199,7 @@ pnpm docker:up
 | `pnpm bootstrap` | 一键初始化（`-y` 非交互） |
 | `pnpm dev:pkgs` / `pnpm build:pkgs` | watch 构建 / 构建 packages |
 | `pnpm dev:stack` | 一条命令起 main（9989）+ runtime（9990）+ gateway（9993）+ worker（9994） |
-| `pnpm dev:main` / `pnpm dev:runtime` | 单独起公网 BFF（9989）/ agent loop（9990） |
+| `pnpm dev:main` / `pnpm dev:runtime` / `pnpm dev:model-gateway` | 单独起公网 BFF（9989）/ agent loop（9990）/ 模型网关（9992） |
 | `pnpm dev:tools` / `pnpm dev:tool-gateway` / `pnpm dev:tool-worker` | 起工具侧（两个 / 单个） |
 | `pnpm dev:web` / `pnpm dev:admin` | 启动前台（9840）/ 后台（9845） |
 | `pnpm kill:dev` | 停掉全部 dev 服务（`--dry-run` 仅预览） |

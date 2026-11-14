@@ -13,6 +13,7 @@ import {
   StorageConfigSchema,
   WorkspaceConfigSchema,
 } from '@repo/kits'
+import { MonitorConfigSchema } from '@repo/monitor'
 
 /**
  * 服务端应用配置 schema。
@@ -98,17 +99,8 @@ export const serverAppConfigSchema = z.object({
   storage: StorageConfigSchema,
   logger: LoggerConfigSchema,
   notify: NotifyConfigSchema,
-  /** 告警业务配置（MonitorConfig 命名空间） */
-  monitor: z.object({
-    /** 告警总开关：false 时 notifyError 直接跳过 */
-    enabled: z.boolean().default(true),
-    /** 邮件告警默认接收人（email 通道的 to） */
-    emailTo: z.string().optional(),
-    /** 实例标识；缺省用 hostname:pid */
-    instanceId: z.string().optional(),
-    /** 指标样本保留天数 */
-    retentionDays: z.number().int().positive().default(30),
-  }),
+  /** 告警业务配置（MonitorConfig 命名空间；schema 唯一来源在 @repo/monitor） */
+  monitor: MonitorConfigSchema,
   /**
    * 文件分享（`/s/{token}`，见 `docs/design/file-share.md`）。
    *
@@ -299,6 +291,17 @@ export const serverAppConfigSchema = z.object({
     /** 密钥加密口令（AES-256-GCM）；缺省回落 `jwt.secret`，两者都缺 → 服务层抛 3405 */
     /** 首次启动时是否允许用 `MASTRA_*` 环境变量种子初始化供应商与模型（库里有供应商就什么都不做） */
     seedFromEnv: z.boolean().default(true),
+  }),
+  /**
+   * model-gateway（模型网关）连接配置。
+   *
+   * runtime 只向网关要目录、只把模型实例指向网关，**不再读任何供应商 key / 配置表**。
+   */
+  modelGateway: z.object({
+    url: z.string().min(1).default('http://127.0.0.1:9992'),
+    /** runtime ↔ 网关的内部令牌（`MODEL_INTERNAL_TOKEN`） */
+    token: z.string().default(''),
+    timeoutMs: z.coerce.number().int().positive().default(60_000),
   }),
 })
 
@@ -491,6 +494,11 @@ export const mapServerEnv = (env: NodeJS.ProcessEnv): Record<string, unknown> =>
   aiModel: {
     // 未设置时留 undefined，由 schema 默认值（true）兜底
     seedFromEnv: parseBoolean(env.AGENT_SEED_FROM_ENV),
+  },
+  modelGateway: {
+    url: optional(env.MODEL_GATEWAY_URL),
+    token: optional(env.MODEL_GATEWAY_TOKEN),
+    timeoutMs: optional(env.MODEL_GATEWAY_TIMEOUT_MS),
   },
 })
 

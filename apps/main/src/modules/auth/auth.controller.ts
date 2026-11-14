@@ -15,7 +15,12 @@ import type {
   ResetPasswordDto,
   UpdateInfoDto,
 } from '@repo/shared'
-import { AccessToken, RateLimit, RateLimitGuard, currentUserId } from '../../common/index.js'
+import {
+  AccessToken,
+  RateLimit,
+  RateLimitGuard,
+  currentUserId,
+} from '../../common/security/index.js'
 import { AuthService } from './auth.service.js'
 import { UserAuthGuard } from './user-auth.guard.js'
 

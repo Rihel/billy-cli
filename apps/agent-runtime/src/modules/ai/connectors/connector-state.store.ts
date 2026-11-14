@@ -1,6 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common'
 import { Db } from '@repo/kits'
-import { AiConnectorEntity } from '../../../database/entities/ai-connector-entity.js'
+import { AiConnectorEntity } from '@repo/db'
 
 /** 驱动自己解释的授权状态快照（当前只有 lark-cli 用） */
 export interface ConnectorAuthState {

@@ -36,8 +36,7 @@ import {
   memoryHistoryOptions,
 } from '../mastra/agent-memory.js'
 import { type AgentRuntimeEnvelope, type RuntimeModel } from '../core/envelope.js'
-import { AiModelService } from '../../ai-model/index.js'
-import type { ResolvedRuntimeModel } from '../../ai-model/index.js'
+import { RUNTIME_MODEL_RESOLVER, type RuntimeModelResolver } from './model-resolver.js'
 import type { AgentDefinition, AgentRegistry } from '../agents/types.js'
 import { buildEnvironmentData } from '../core/prompts/environment.js'
 import { PROMPT_ENGINE, type PromptEngine } from '../core/prompts/prompt.engine.js'
@@ -46,8 +45,7 @@ import { ToolRegistry } from '../core/tools/tool.registry.js'
 import { ToolCallMetaStore } from '../core/tools/tool.meta.js'
 import { toMastraModelInstance } from '../mastra/agent.adapter.js'
 import { toRequestContext } from '../mastra/context.adapter.js'
-import type { ConversationEntity } from '../../../database/entities/conversation-entity.js'
-import type { TimelineEntity } from '../../../database/entities/timeline-entity.js'
+import type { ConversationEntity, TimelineEntity } from '@repo/db'
 import { AgentConversationService } from './conversation.service.js'
 import { AgentTitleService, type FirstTurnTitle } from './title.service.js'
 import { ContextService } from './context.service.js'
@@ -194,7 +192,7 @@ export class AgentChatService {
     @Inject(ToolRegistry) private readonly toolRegistry: ToolRegistry,
     @Inject(ToolCallMetaStore) private readonly toolMetas: ToolCallMetaStore,
     @Inject(SkillLoader) private readonly skillLoader: SkillLoader,
-    @Inject(AiModelService) private readonly models: AiModelService,
+    @Inject(RUNTIME_MODEL_RESOLVER) private readonly models: RuntimeModelResolver,
     @Inject(AppLogger) private readonly logger: AppLogger,
     @Inject(PROMPT_ENGINE) private readonly prompts: PromptEngine,
     @Inject(AgentTitleService) private readonly titles: AgentTitleService,
@@ -350,7 +348,12 @@ export class AgentChatService {
 
     try {
       // ① 解析本轮模型（**只能来自库里的配置**；解析不出来直接 3406/3402，不建流不烧钱）
-      const model = await this.resolveRuntimeModel(definition, input.modelId)
+      const model = await this.resolveRuntimeModel(definition, input.modelId, {
+        runId: run.id,
+        conversationId: conversation.id,
+        identityType: isAdmin ? 'admin' : 'user',
+        identityId: userId,
+      })
       const modelInstance = await this.resolveModelInstance(model)
 
       // ② 组装上下文（窗口优先用库里配的实测值；超限则先压缩一次再重新组装，只压一次）
@@ -725,8 +728,14 @@ export class AgentChatService {
   private async resolveRuntimeModel(
     definition: AgentDefinition,
     modelId?: string,
+    attribution?: {
+      runId: string
+      conversationId: string
+      identityType: 'user' | 'admin'
+      identityId: string
+    },
   ): Promise<RuntimeModel> {
-    return this.toRuntimeModel(await this.models.resolveForRuntime(modelId ?? definition.model))
+    return this.models.resolveForRuntime(modelId ?? definition.model, attribution)
   }
 
   /**
@@ -738,23 +747,6 @@ export class AgentChatService {
    */
   private async resolveModelInstance(model: RuntimeModel): Promise<unknown> {
     return (await toMastraModelInstance(model)).instance
-  }
-
-  /** 解析结果 → 我们的运行时模型（含输入模态，供附件校验用） */
-  private toRuntimeModel(resolved: ResolvedRuntimeModel): RuntimeModel {
-    return {
-      id: resolved.id,
-      modelRef: resolved.modelRef,
-      modelKey: resolved.modelKey,
-      displayName: resolved.displayName,
-      // 供应商类型：Mastra 的模型函数靠它决定走官方 SDK 还是通用 OpenAI 兼容（思考字段的成败在这）
-      providerKind: resolved.providerKind,
-      ...(resolved.baseURL ? { baseURL: resolved.baseURL } : {}),
-      apiKey: resolved.apiKey,
-      contextWindow: resolved.contextWindow,
-      // 这个模型的输入模态：附件校验与"喂得进去吗"都看它（null = 未声明 → 不拦，只提示）
-      inputModalities: resolved.inputModalities,
-    }
   }
 
   /** 把一段旧对话压缩成摘要事件（原文保留，摘要只作"给模型看的新起点"） */
@@ -1091,7 +1083,12 @@ export class AgentChatService {
 
     try {
       // ① 解析本轮模型（**只能来自库里的配置**；解析不出来直接 3406/3402，不建流不烧钱）
-      const model = await this.resolveRuntimeModel(definition, input.modelId)
+      const model = await this.resolveRuntimeModel(definition, input.modelId, {
+        runId: run.id,
+        conversationId: conversation.id,
+        identityType: isAdmin ? 'admin' : 'user',
+        identityId: userId,
+      })
       const modelInstance = await this.resolveModelInstance(model)
 
       // ② 组装上下文（窗口优先用库里配的实测值；超限则先压缩一次再重新组装，只压一次）
@@ -1682,7 +1679,12 @@ export class AgentChatService {
     }
 
     try {
-      const model = await this.resolveRuntimeModel(definition, undefined)
+      const model = await this.resolveRuntimeModel(definition, undefined, {
+        runId: run.id,
+        conversationId: conversation.id,
+        identityType: isAdmin ? 'admin' : 'user',
+        identityId: userId,
+      })
       const modelInstance = await this.resolveModelInstance(model)
 
       // 挂起期间状态是 suspended；续跑开始先回到 running（占用会话，防止同会话另一轮插进来）

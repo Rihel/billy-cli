@@ -12,7 +12,7 @@ import {
 import { In, IsNull, LessThan, Not, type DeepPartial } from 'typeorm'
 import { jsonbPatch } from './jsonb.js'
 import { RUN_STATUS_LISTENER, type RunStatusListener } from './run-status.stream.js'
-import { RunEntity } from '../../../database/entities/run-entity.js'
+import { RunEntity } from '@repo/db'
 
 /** SQL 聚合返回的数字列可能是 bigint 字符串（pg 驱动行为），统一用 Number 收口 */
 type Numeric = number | string

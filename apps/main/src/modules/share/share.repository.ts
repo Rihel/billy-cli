@@ -1,7 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common'
 import { Db } from '@repo/kits'
-import { AiFileEntity } from '../../database/entities/ai-file-entity.js'
-import { FileShareEntity } from '../../database/entities/file-share-entity.js'
+import { AiFileEntity, FileShareEntity } from '@repo/db'
 
 /**
  * `file_shares` 仓储（设计 `docs/design/file-share.md` §4）。

@@ -1,5 +1,13 @@
 import { createHash } from 'node:crypto'
-import { Transactional } from '@repo/kits'
+import {
+  Transactional,
+  AppLogger,
+  Notifier,
+  PasswordHasher,
+  SessionStore,
+  TokenSigner,
+  currentSessionMeta,
+} from '@repo/kits'
 import { dayjs, nanoid, UserStatus } from '@repo/shared'
 import type {
   AuthResultModel,
@@ -13,12 +21,7 @@ import type {
   UpdateInfoDto,
 } from '@repo/shared'
 import { Inject, Injectable } from '@nestjs/common'
-import { AppLogger, Notifier } from '@repo/kits'
-import { PasswordHasher } from '@repo/kits'
-import { SessionStore } from '@repo/kits'
-import { TokenSigner } from '@repo/kits'
 import { ConfigService } from '@nestjs/config'
-import { currentSessionMeta } from '../../common/index.js'
 import { resolveServerConfig, type ServerConfig } from '../../config.js'
 import { toUser, UserRepository } from '../user/user.repository.js'
 import { EmailTakenError, UserNotFoundError } from '../user/errors.js'

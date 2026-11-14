@@ -1,6 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common'
 import type { ConversationEntity } from '@repo/db'
-import { AppLogger } from '@repo/kits'
+import { AppLogger, requestContext, type PageQueryResult } from '@repo/kits'
 import { RunStatus } from '@repo/shared'
 import type {
   AgentConversationCreateDto,
@@ -23,21 +23,12 @@ import type {
   AgentUsageSummaryModel,
   AgentUsageSummaryQueryDto,
 } from '@repo/shared'
-import type { PageQueryResult } from '@repo/kits'
-import { requestContext } from '../../../common/index.js'
 import { AiModelService } from '../../ai-model/index.js'
 import { AiUsageService } from '../../ai-usage/index.js'
-import {
-  agentCount as staticAgentCount,
-  findAgentSpec,
-  listAgents as buildAgentList,
-  resolveAgentSpec,
-  staticInstructions,
-} from './agent-catalog.js'
+import { AgentCatalogService } from '../../../agent/agent-catalog.service.js'
 import { AiConversationRepository, toConversationModel } from './conversation.repository.js'
 import { ConversationNotFoundError, RunNotFoundError } from './errors.js'
 import { AiRunQueryRepository, toRunModel } from './run-query.repository.js'
-import { AiSkillQueryRepository } from './skill-query.repository.js'
 import { AiTimelineQueryRepository } from './timeline-query.repository.js'
 
 /**
@@ -57,7 +48,7 @@ export class AiAdminConversationService {
     @Inject(AiConversationRepository) private readonly conversations: AiConversationRepository,
     @Inject(AiRunQueryRepository) private readonly runs: AiRunQueryRepository,
     @Inject(AiTimelineQueryRepository) private readonly timelines: AiTimelineQueryRepository,
-    @Inject(AiSkillQueryRepository) private readonly skills: AiSkillQueryRepository,
+    @Inject(AgentCatalogService) private readonly agents: AgentCatalogService,
     @Inject(AiUsageService) private readonly usage: AiUsageService,
     @Inject(AiModelService) private readonly models: AiModelService,
     @Inject(AppLogger) private readonly logger: AppLogger,
@@ -83,13 +74,13 @@ export class AiAdminConversationService {
     return !requestContext.get('userId') && Boolean(requestContext.get('adminId'))
   }
 
-  /** 新建会话（agentKey 未知时由静态目录抛 3303） */
+  /** 新建会话（agentKey 未知时由执行面目录解析出 3303） */
   async create(input: AgentConversationCreateDto): Promise<AgentConversationModel> {
     const ownerId = this.ownerId()
-    const spec = resolveAgentSpec(input.agentKey)
+    const agentKey = await this.agents.resolveAgentKey(input.agentKey)
     const conversation = await this.conversations.create({
       userId: ownerId,
-      agentKey: spec.key,
+      agentKey,
       title: input.title ?? '',
       // 只决定沙箱内的写权限；"要不要沙箱"是部署配置
       fileAccess: input.fileAccess ?? 'workspace-write',
@@ -97,7 +88,7 @@ export class AiAdminConversationService {
     })
     this.logger.log('ai.conversation.created', {
       conversationId: conversation.id,
-      agentKey: spec.key,
+      agentKey,
       isAdmin: this.isAdminIdentity(),
     })
     return conversation
@@ -249,42 +240,40 @@ export class AiAdminConversationService {
     return { days: await this.usage.backfill(input.from, input.to) }
   }
 
-  /** 能力状态：可用性只看"供应商启用 + 模型启用"的模型；agent 数取静态声明 */
-  async status(): Promise<AgentStatusModel> {
-    const available = await this.models.listAvailable()
-    const defaultModel = available.models.find((model) => model.id === available.defaultModelId)
-    return {
-      available: available.models.length > 0,
-      model: defaultModel?.modelRef ?? null,
-      modelCount: available.models.length,
-      agentCount: staticAgentCount(),
-    }
+  /**
+   * 能力状态：可用性只看"供应商启用 + 模型启用"的模型，agent 数取执行面注册表。
+   *
+   * 静态声明只在 runtime 有一份，所以状态直接问执行面（执行面不可用时对话本身也不可用）。
+   */
+  status(): Promise<AgentStatusModel> {
+    return this.agents.status()
   }
 
-  /** agent 清单（`skills: ['*']` 用库里启用中的技能名现算） */
-  async listAgents(): Promise<AgentListModel> {
-    return buildAgentList(await this.skills.enabledNames())
+  /** agent 清单（`skills: ['*']` 由执行面按库里启用中的技能名现算） */
+  listAgents(): Promise<AgentListModel> {
+    return this.agents.list()
   }
 
   /**
-   * 系统指令原文：有会话快照回快照（真正送进模型的那份），否则回静态定义。
+   * 系统指令原文：有会话快照回快照（真正送进模型的那份），否则回执行面的静态定义。
    *
-   * 静态定义由本模块按「agent 规格 + 提示词模板 + 工具 manifest」渲染，
-   * 不依赖 agent loop；快照归属校验与其它读接口同一道门。
+   * 静态定义的渲染（agent 规格 + 提示词模板 + 工具 manifest）只在 agent-runtime，
+   * 控制面不复制提示词；快照归属校验与其它读接口同一道门。
    */
   async instructions(input: AgentInstructionsDto): Promise<AgentInstructionsModel> {
-    if (!input.conversationId) return staticInstructions(resolveAgentSpec(input.agentKey))
+    if (!input.conversationId) return this.agents.instructions(input)
 
     const conversation = await this.requireOwned(input.conversationId)
-    const spec = resolveAgentSpec(input.agentKey ?? conversation.agentKey)
+    const agentKey = await this.agents.resolveAgentKey(input.agentKey ?? conversation.agentKey)
+    const definition = await this.agents.instructions({ agentKey })
     const snapshot = await this.timelines.latestSystemPrompt(conversation.id)
-    if (!snapshot) return staticInstructions(spec)
+    if (!snapshot) return definition
 
-    const snapshotAgent = findAgentSpec(snapshot.agentKey)
+    const snapshotAgent = await this.agents.findAgent(snapshot.agentKey)
     return {
-      agentKey: snapshot.agentKey ?? spec.key,
-      name: snapshotAgent?.name ?? spec.name,
-      description: snapshotAgent?.description ?? spec.description,
+      agentKey: snapshot.agentKey ?? definition.agentKey,
+      name: snapshotAgent?.name ?? definition.name,
+      description: snapshotAgent?.description ?? definition.description,
       instructions: snapshot.text,
       source: 'conversation',
       recordedAt: snapshot.createdAt,

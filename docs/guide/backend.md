@@ -1,7 +1,9 @@
 # 后端（NestJS）
 
-> 两个 NestJS 12 应用：**`apps/main`** 是公网 BFF（9989），**`apps/agent-runtime`** 只跑 agent loop（9990）。
-> 本文写它们的边界、模块、鉴权、API、Kafka / SSE 链路、日志与监控。
+> 本文主线是 **`apps/main`**（公网 BFF，9989）与 **`apps/agent-runtime`**（agent loop，9990）。
+> 另有内部 **`apps/model-gateway`**（9992，模型网关）与 **`apps/tool-gateway` / `apps/tool-worker`**
+> （9993 / 9994，工具面），它们只在内网、只接受内部令牌。
+> 本文写 main / runtime 的边界、模块、鉴权、API、Kafka / SSE 链路、日志与监控。
 > 通用能力封装见 [packages.md](./packages.md)，部署见 [deployment.md](./deployment.md)。
 
 ## 两个应用的分工
@@ -11,10 +13,11 @@
 | 定位 | 公网 BFF + 业务控制面 | agent 运行面（agent loop） |
 | 对外 | 前端 / SDK / 分享页 / 探针都连它 | **不对外**，只接受 main 带内部令牌的调用 |
 | 鉴权 | `UserAuthGuard` / `AdminAuthGuard` / `AnyAuthGuard` / `RateLimitGuard` | 没有用户鉴权，只有 `x-internal-token`（`AGENT_INTERNAL_TOKEN`）+ `x-user-id` / `x-admin-id` 身份头 |
-| HTTP | auth / admin / user / session / storage / share / monitor / ops / config + 全部 AI CRUD（模型 / 工具 / 技能 / 连接器 / 记忆 / 会话 / 运行 / 时间线 / 用量）+ `/agent/chat/stream` 中继 | 只有 `/internal/agent/{chat/stream, chat/resume, run/stop, run/stream, run/:runId/stream}` 与 `/healthz`、`/readyz`、`/info` |
-| 业务模块 | `auth` / `admin` / `user` / `session` / `storage` / `stream` / `share` / `monitor` / `ops` / `runtime-config` / `ai-model` / `ai-usage` / `ai-admin`（conversation / file / tool / skill / connector / memory） | `ai`（agents / runtime / core / files / memory / skills / connectors / mastra / monitoring / tools）+ `ai-model`（只读模型配置）+ `ai-usage` + `monitor` + `ops` |
+| HTTP | auth / admin / user / session / storage / share / monitor / ops / config + 全部 AI CRUD（模型 / 工具 / 技能 / 连接器 / 记忆 / 会话 / 运行 / 时间线 / 用量）+ `/agent/chat/stream` 中继 + `/agent/{status,list,instructions}` 代理 | 只有 `/internal/agent/{chat/stream, chat/resume, run/stop, run/stream, run/:runId/stream, status, list, instructions}` 与 `/healthz`、`/readyz`、`/info` |
+| 业务模块 | `auth` / `admin` / `user` / `session` / `storage` / `stream` / `share` / `monitor` / `ops` / `runtime-config` / `ai-model` / `ai-usage` / `ai-admin`（conversation / file / tool / skill / connector / memory） | `ai`（agents / runtime / core / files / memory / skills / connectors / mastra / monitoring / tools）+ `ai-usage` + `monitor` + `ops`（模型目录与调用走 `model-gateway`） |
 | 状态写入 | 配置表、`conversations` / `ai_files` 的 CRUD、用量汇总 | `runs` / `timelines` / `ai_memories` 执行期写入 |
 | 前端可见 | 是（前端只连 9989） | 否（输出经 Kafka `agent.run.events` 回到 main 的 SSE） |
+| 模型调用 | 不直连供应商（只做配置 CRUD / 同步 / 测试） | 只调 `model-gateway`（9992）拿目录 + 对话；**不读模型配置表、不持供应商 key** |
 
 三条硬边界：
 
@@ -80,17 +83,17 @@
   这一层**不做 Zod 校验**（body 原样转发），真正的 `AgentChatSchema` / `AgentChatResumeSchema` /
   `AgentRunStopSchema` 校验在 runtime 的 `AgentInternalController`。
 - **守卫**：`UserAuthGuard` / `AdminAuthGuard` / `AnyAuthGuard`（任一身份通过，基于
-  `common/security/any-of-guards.ts`）/ `RateLimitGuard`（配合 `@RateLimit({ scope })`
+  `common/security/any-of-guards.ts`（main 专属））/ `RateLimitGuard`（配合 `@RateLimit({ scope })`
   方法装饰器，超限抛 `BoundaryError` 并带 `Retry-After` 响应头）。
 - **SSE 推流**：`modules/stream/stream.controller.ts` 的 `StreamController` 暴露 `POST /sse/subscribe`
   长连接（Bearer / cookie 认证），`SSE_ROUTE_OPTIONS` 当前配 `auth: 'both'`（前台用户订阅 `user:{userId}`、
   管理员订阅 `admin:{adminId}` 并自动叠加 `admin:all` 广播频道），业务模块经 `StreamHub.publish(channel, event)`
   推流，多实例经 kits 的 `PubSub`（Redis pub/sub）跨实例广播（[sse.md](../design/sse.md) 设计文档，
   客户端为 `@repo/http-client` 的 `HttpStreamClient`）。
-- **请求上下文 / 请求日志**：`common/request-context/request-context.ts` 基于 `AsyncLocalStorage`，跨中间件与业务调用
+- **请求上下文 / 请求日志**：`@repo/kits` 的 `http/request-context/request-context.ts` 基于 `AsyncLocalStorage`，跨中间件与业务调用
   传递 `userId` / `adminId`（登录时另把 `ip` / `userAgent` 写进会话元数据，供登录设备列表展示），避免参数透传；
-  `common/request-context/request-context.middleware.ts` 生成 `requestId` 并写入 `X-Request-Id` 响应头。
-  请求日志由 **`common/request-logger` 的 `RequestLoggerMiddleware` 记录**
+  `http/request-context` 的中间件生成 `requestId` 并写入 `X-Request-Id` 响应头。
+  请求日志由 **`@repo/kits` 的 `RequestLoggerMiddleware` 记录**
   （method / url / statusCode / durationMs / requestId / userId / adminId），按状态码分级
   （<400 info / 4xx warn / 5xx error），日志 `requestId` 与响应头同值；业务侧不要自写请求日志。
 - **优雅关闭**：`program()` 监听 SIGINT / SIGTERM，`await app.close()`（`StreamHub` 先推 `stream.shutdown`
@@ -100,9 +103,9 @@
 
 ## agent-runtime — agent loop
 
-`apps/agent-runtime/src/` 与 main 同构（`app-config.ts` / `config.ts` / `common/` / `root.module.ts` /
-`main.ts`），但模块集合只有执行侧：`AiModule`（业务主体）+ `AiModelModule`（读供应商 / 模型配置）
-+ `AiUsageModule` + `MonitorModule` + `OpsModule`。`root.module.ts` 里没有 `AuthModule` / `UserModule` /
+`apps/agent-runtime/src/` 与 main 同构（`app-config.ts` / `config.ts` / `root.module.ts` / `main.ts`），
+但模块集合只有执行侧：`AiModule`（业务主体）+ `AiModelModule`（读供应商 / 模型配置）
++ `AiUsageModule` + `@repo/monitor` 的 `MonitorModule.forRootAsync(...)` + `OpsModule`。`root.module.ts` 里没有 `AuthModule` / `UserModule` /
 `StorageModule` / `ShareModule` 等控制面模块，也**没有任何业务 controller**——唯一控制器是
 `modules/ai/api/agent-internal.controller.ts`，加根路径探针 `OpsController`。
 
@@ -132,10 +135,20 @@ apps/agent-runtime/src/modules/ai/
 | `POST /internal/agent/run/stop` | 停止某一轮（`AgentRunStopSchema`） |
 | `GET /internal/agent/run/stream` | 重连当前运行（从 Redis 补发 offset 之后片段） |
 | `GET /internal/agent/run/:runId/stream` | 重连指定运行 |
+| `POST /internal/agent/status` | 能力状态（可用模型 + agent 数）；main 的 `/agent/status` 代理它 |
+| `POST /internal/agent/list` | agent 清单（`skills: ['*']` 按当前技能库现算）；main 的 `/agent/list` 代理它 |
+| `POST /internal/agent/instructions` | 静态系统指令原文；main 只在会话没有快照时用它 |
 | `GET /healthz` / `GET /readyz` / `GET /info` | 与 main 同一套 `OpsModule` 探针实现（`/readyz` 探 DB + Redis） |
 
-- **身份**：`requireOwner` 校验 `x-internal-token === AGENT_INTERNAL_TOKEN`，并从 `x-user-id` / `x-admin-id`
-  取调用者；缺失即 401。runtime 不签发 token，也不查会话（会话/鉴权都在 main）。
+- **响应格式**：内部业务 JSON 统一 `{ code: 0, data }`（runtime 全局 `ResponseEnvelopeInterceptor`；
+  tool-gateway / tool-worker / model-gateway 的业务路由同约定）。`/healthz`、`/readyz`、`/info` 探针与
+  `/v1/**` 模型协议、SSE/NDJSON 流式响应保持裸格式。
+- **身份**：`requireToken` 校验 `x-internal-token === AGENT_INTERNAL_TOKEN`（目录类查询到此为止）；
+  会话类接口再经 `requireOwner` 从 `x-user-id` / `x-admin-id` 取调用者，缺失即 401。
+  runtime 不签发 token，也不查会话归属（会话/鉴权都在 main）。
+- **静态声明只在 runtime**：agent 规格 / 提示词模板 / 工具选择器 / 技能类型不复制到 main；
+  main 的 `/agent/{status,list,instructions}` 经 `@repo/internal-sdk` 的 `AgentRuntimeClient` 代理，
+  清单在 main 侧缓存 30s（`apps/main/src/agent/agent-catalog.service.ts`）。
 - **run 生命周期**：`chat.service.ts` 负责读写 `runs` / `timelines` / Redis 进度与 durable 恢复；
   进程崩溃由启动清理与看门狗兜底（详见 [distributed-ai-architecture.md](../design/distributed-ai-architecture.md) 第 5–6 节）。
 - **配置感知**：技能库 / 连接器由 main 写库并发事件（见下节），runtime 订阅后落盘 / 同步；
@@ -191,10 +204,9 @@ modules/                       # 业务领域（每个模块同目录：module +
 │                   #   + admin.repository.ts + admin.controller.ts + admin-auth.guard.ts + errors
 │                   #   token 带 type='admin'，与前台用户隔离
 ├── user/           # user.service.ts + user.repository.ts + user.controller.ts + errors
-├── monitor/        # api/ MonitorController + MonitorHealthController（免鉴权 /monitor/health）
-│                   #   + definitions/（代码里的指标 / 规则定义与版本哈希）
-│                   #   + engine/（采集 · 规则评估 · 告警生命周期 · 投递 · 清理 · 多实例 leader）
-│                   #   + metrics/ · rules/（系统指标与系统规则）+ sources/（telemetry / process）+ config.ts
+├── monitor/        # 只剩控制面 HTTP：api/ MonitorController + MonitorHealthController（免鉴权 /monitor/health）
+│                   #   引擎（definitions / engine / metrics / rules / sources）在 @repo/monitor，
+│                   #   main 与 agent-runtime 各装配一份 forRootAsync
 ├── storage/        # storage.controller.ts（预签名 URL / STS 临时凭证）+ storage-key.ts（key 前缀策略）
 ├── stream/         # stream.controller.ts + stream-auth.guard.ts + stream.options.ts（SSE_ROUTE_OPTIONS）
 ├── share/          # 文件免授权分享（create/list/revoke + 公开 meta + 内部 resolve）+ share.token.ts
@@ -207,12 +219,10 @@ modules/                       # 业务领域（每个模块同目录：module +
 ├── ai-usage/       # 每日用量汇总 + 定时 rollup（按模型 / 按 agent；由 ai-admin/conversation 模块引入）
 └── runtime-config/ # RuntimeConfigController（公开 POST /config/get）+ RuntimeConfigModule
 │                   #   目录名与类名刻意区别于 kits 的 AppConfigModule
-common/                        # 横切 HTTP 构件（不依赖业务模块；外部统一从 common/index.ts 导入）
-├── error/       # error-descriptor.ts（错误码 → HTTP/中文）+ boundary-error.ts + app-exception.filter.ts + error-alert-hook.ts
-├── request-context/   # 模块：request-context.ts（ALS：requestId/userId/adminId）+ request-context.middleware.ts + request-context.module.ts
-├── request-logger/    # 模块：request-logger.middleware.ts（请求日志：状态码分级 + 身份）+ request-logger.module.ts
-├── request-metrics/   # 模块：request-metrics.middleware.ts（注入 Telemetry，采 QPS/耗时）+ request-metrics.module.ts
-├── security/    # authentication.ts（token 提取 / 当前身份）+ rate-limit.guard.ts（@RateLimit + RateLimitGuard）
+common/security/               # main 专属访问控制（横切 HTTP 构件已并入 @repo/kits 的 http/）
+├── authentication.ts   # token 提取 / 当前身份读取（AccessToken · currentUserId · currentAdminId）
+├── any-of-guards.ts    # 「任一身份通过即可」守卫编排
+└── rate-limit.guard.ts # @RateLimit + RateLimitGuard（依赖应用级 ServerConfig，故不进 kits）
 │                #   + any-of-guards.ts（AnyAuthGuard 的「任一身份通过」编排）
 └── http/        # zod-validation.ts（`@Body({ schema })` 校验管道）+ response-envelope.interceptor.ts（响应信封）
 │                #   + ops-probe.ts（探针路径判定：请求日志 / 指标据此跳过探针）
@@ -259,7 +269,7 @@ import {
   AppExceptionFilter,
   ResponseEnvelopeInterceptor,
   createZodValidationPipe,
-} from './common/index.js'
+} from '@repo/kits'
 import { UserModule } from './modules/user/index.js'
 
 @Module({
@@ -386,7 +396,7 @@ export class UserModule {}
 - `UserAuthGuard`（`modules/auth/user-auth.guard.ts`）与 `AdminAuthGuard`
   （`modules/admin/admin-auth.guard.ts`）调用业务 `verifyToken`，校验通过后把 `userId` /
   `adminId` 写入 AsyncLocalStorage 请求上下文（管理员 token payload 带 `type: 'admin'`）；
-  `AnyAuthGuard`（`modules/auth/any-auth.guard.ts`，编排在 `common/security/any-of-guards.ts`）
+  `AnyAuthGuard`（`modules/auth/any-auth.guard.ts`，编排在 `common/security/any-of-guards.ts`（main 专属））
   依次尝试两个守卫，任一通过即放行，用于「双端都要开放」的能力
 - 两类 token 的**身份体系**严格隔离（用户 token 不会获得管理员身份、反之亦然），但接口鉴权分四类：
   仅管理员（`/admin/*` 的受保护路由、`/user/*`、`/monitor/*`、`/ai-model/*`、`/ai-tool/*`、
@@ -421,7 +431,7 @@ export class UserModule {}
 > 3. `GET /agent/file/workspace-content` —— 浏览器直取工作区文件流：`<img>` / `<video>` / `<iframe>`
 >    带不上 `Authorization`，改按身份读 cookie；实现 Range 分段（206）与 `Content-Disposition`。
 > 两个周期性探针路径（`/healthz`、`/readyz`）会被请求日志与请求指标跳过
-> （`common/http/ops-probe.ts`）：否则每 3s 一条日志刷屏，并把探针自身的 503 算进
+> （`@repo/kits` 的 `http/ops-probe.ts`）：否则每 3s 一条日志刷屏，并把探针自身的 503 算进
 > `request.error`，污染错误率告警。
 
 **成功响应：**
@@ -612,7 +622,7 @@ runtime 各建一个实例、共用同一套实现：
   RoutesResolver 等日志经适配器落到同一个 pino 实例；
 - **业务类构造器注入** `AppLogger`（`Scope.TRANSIENT` + `INQUIRER`，自动以宿主类名作 `context`）：
   `logger.log('<域>.<动作>', { id })`。不要再使用 `@Logger()` 装饰器（已删除）；
-- **请求日志由 `common/request-logger` 的 `RequestLoggerMiddleware` 记录**：method / url / statusCode /
+- **请求日志由 `@repo/kits` 的 `RequestLoggerMiddleware` 记录**：method / url / statusCode /
   durationMs / requestId / userId / adminId，按状态码分级（`<400` info、`4xx` warn、`5xx` error）。
   它在请求进入时（`use()` 里）**捕获请求上下文 ALS 的 store 引用**（而不是在 `finish` 时现取）：普通请求恰好
   能现取是因为 `end()` 同步发生在处理链路内，而 SSE 等长连接的响应结束发生在 socket 的异步上下文里，

@@ -17,6 +17,9 @@
 | 工具注册与网关 | `core/tools/tool.registry.ts`、`core/tools/tool.gateway.ts`，插件在 `core/tools/plugins/` |
 | 子 agent 并发闸门 | `runtime/agent-runner.ts` + `core/constants.ts:30`（`SUB_AGENT_MAX_CONCURRENT = 3`） |
 | 用量统计 | `runtime/usage.ts`，汇总在 `modules/ai-usage`（表 `ai_usage_daily`） |
+| agent 规格 / 提示词 / 工具选择器 / 技能类型 | **只在 runtime**：`agents/*.agent.ts`、`core/prompts/**`、`core/tools/tool-selector.ts`、`core/skills/skills.types.ts` |
+| main 要 agent 清单 / 状态 / 静态指令 | 经 `@repo/internal-sdk` 的 `AgentRuntimeClient` 调 `/internal/agent/{status,list,instructions}`（`apps/main/src/agent/agent-catalog.service.ts`，缓存 30s） |
+| 监控引擎（采集 / 规则 / 告警） | `@repo/monitor`（`packages/monitor/src`）；HTTP 在 `apps/main/src/modules/monitor/api` |
 
 短期记忆的现状：生产 `@mastra/redis`（单测仍用 `InMemoryStore`）、`lastMessages: 20`、
 `semanticRecall: false`、`workingMemory: false`；只服务 durable 续跑，真相在 `timelines`。

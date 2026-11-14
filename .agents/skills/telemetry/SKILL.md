@@ -15,7 +15,7 @@ description: 在 Billy 工程中使用遥测埋点：Telemetry 统一入口（Co
 - **指标命名 `<域>.<名称>`（kebab）**，如 `request.count` / `order.count` / `inventory.available`。
 - 固定滚动窗口（默认 60s）：`snapshot()` 返回当前窗口 + 前一窗口（`previousCounters`，surge 环比基线）；
   rate = `counters[name] / windowSeconds`。
-- **框架自动埋点**（`common/request-metrics` 中间件）：`request.count` / `request.error`（≥500）/
+- **框架自动埋点**（`@repo/kits` 的 `request-metrics` 中间件）：`request.count` / `request.error`（≥500）/
   `request.duration` 直方图；运维探针（healthz/readyz/info）不埋点，避免虚高 QPS / 错误率。
 - **业务手动埋点**：构造器 `@Inject(Telemetry)`，在关键路径 `incr` / `gauge` / `histogram`。
 - 消费参考：monitor 模块 `AlertTrigger` 用 `snapshot()` + `Scheduler` 周期评估 metric / surge 规则。

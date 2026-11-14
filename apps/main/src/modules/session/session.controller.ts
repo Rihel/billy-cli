@@ -2,7 +2,8 @@ import { Body, Controller, HttpCode, Inject, Post, Req, UseGuards } from '@nestj
 import { RemoveSessionSchema } from '@repo/shared'
 import type { RemoveSessionDto } from '@repo/shared'
 import type { Request } from 'express'
-import { extractToken, requestContext } from '../../common/index.js'
+import { requestContext } from '@repo/kits'
+import { extractToken } from '../../common/security/index.js'
 import { AnyAuthGuard } from '../auth/any-auth.guard.js'
 import { SessionService, type SessionIdentity } from './session.service.js'
 

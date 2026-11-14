@@ -9,8 +9,15 @@ import {
   Inject,
   Post,
   ServiceUnavailableException,
+  UseFilters,
+  UseInterceptors,
 } from '@nestjs/common'
-import { RedisStore, WorkspaceRuntimeService } from '@repo/kits'
+import {
+  AppExceptionFilter,
+  RedisStore,
+  ResponseEnvelopeInterceptor,
+  WorkspaceRuntimeService,
+} from '@repo/kits'
 import {
   TOOL_CONTRACT_VERSION,
   ToolInvokeRequestSchema,
@@ -27,6 +34,7 @@ import { WorkerRegistry } from './worker.registry.js'
  * 行为上限 / 授权 / 限流不在这里做 —— worker 只负责「把这次执行做完」。
  */
 @Controller()
+@UseFilters(AppExceptionFilter)
 export class ToolWorkerController {
   constructor(
     @Inject(ToolWorkerService) private readonly service: ToolWorkerService,
@@ -38,6 +46,7 @@ export class ToolWorkerController {
 
   @Post('v1/exec')
   @HttpCode(200)
+  @UseInterceptors(ResponseEnvelopeInterceptor)
   async exec(
     @Headers('x-internal-token') token: string | undefined,
     @Body() body: unknown,

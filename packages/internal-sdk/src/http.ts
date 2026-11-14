@@ -1,4 +1,5 @@
-import type { ZodType } from 'zod'
+import { z, type ZodType } from 'zod'
+import { ApiError, HttpTransport } from '@repo/http-client'
 import {
   InternalAbortError,
   InternalApiError,
@@ -24,7 +25,7 @@ export interface InvokeOptions {
   timeoutMs?: number
 }
 
-interface RequestOptions extends InvokeOptions {
+export interface RequestOptions extends InvokeOptions {
   method?: 'GET' | 'POST'
   body?: unknown
 }
@@ -42,26 +43,31 @@ export const requestJson = async <T>(
   init: RequestOptions = {},
 ): Promise<T> => {
   const timeoutMs = init.timeoutMs ?? options.timeoutMs ?? 30_000
-  const timeoutSignal = AbortSignal.timeout(timeoutMs)
-  const signal = init.signal ? AbortSignal.any([timeoutSignal, init.signal]) : timeoutSignal
-  const url = `${options.baseUrl.replace(/\/+$/, '')}${path}`
+  const transport = new HttpTransport({
+    baseUrl: options.baseUrl,
+    timeoutMs,
+    fetchImpl: options.fetchImpl,
+    headers: { 'x-internal-token': options.token },
+  })
   const hasBody = init.body !== undefined
 
   let response: Response
   try {
-    response = await (options.fetchImpl ?? fetch)(url, {
-      method: init.method ?? 'GET',
-      headers: {
-        'x-internal-token': options.token,
-        ...(hasBody ? { 'content-type': 'application/json' } : {}),
+    response = await transport.requestRaw(
+      {
+        url: path,
+        method: init.method ?? 'GET',
+        headers: hasBody ? { 'content-type': 'application/json' } : undefined,
+        data: hasBody ? init.body : undefined,
+        signal: init.signal,
       },
-      ...(hasBody ? { body: JSON.stringify(init.body) } : {}),
-      signal,
-    })
+      { timeoutMs },
+    )
   } catch (error) {
     if (init.signal?.aborted) throw new InternalAbortError()
-    if (error instanceof Error && error.name === 'TimeoutError') {
-      throw new InternalTimeoutError(timeoutMs)
+    if (error instanceof ApiError) {
+      if (error.message === '请求超时') throw new InternalTimeoutError(timeoutMs)
+      if (error.message === '请求已取消') throw new InternalAbortError()
     }
     throw new InternalTransportError(error instanceof Error ? error.message : String(error), error)
   }
@@ -76,3 +82,26 @@ export const requestJson = async <T>(
   if (!parsed.success) throw new InternalProtocolError(parsed.error.issues)
   return parsed.data
 }
+
+/**
+ * 读响应信封里的 `data`（Nest 侧的 `ResponseEnvelopeInterceptor` 统一包 `{ code, data }`）。
+ *
+ * 内部服务的业务接口都套了这层信封（`/internal/**`、tool-gateway / tool-worker 的业务路由）；
+ * 只有 healthz / readyz 探针保持裸 JSON（`requestJson`）。两种约定分开写，避免调用方自己再脱壳。
+ */
+export const requestEnvelope = async <T>(
+  options: InternalClientOptions,
+  path: string,
+  schema: ZodType<T>,
+  init: RequestOptions = {},
+): Promise<T> => {
+  const payload = await requestJson(options, path, envelopeSchema(schema), init)
+  return payload.data
+}
+
+/** 由业务 schema 拼出 `{ code, data }` 信封 schema（`code` 只校验形状，成功路径固定 0） */
+const envelopeSchema = <T>(schema: ZodType<T>) =>
+  z.object({
+    code: z.number(),
+    data: schema,
+  })

@@ -1,9 +1,8 @@
-import { pageWith, type PageQueryResult } from '@repo/kits'
-import { AdminEntity } from '../../database/entities/admin-entity.js'
+import { pageWith, type PageQueryResult, Db } from '@repo/kits'
+import { AdminEntity } from '@repo/db'
 import type { AdminModel, PageQueryAdminDto } from '@repo/shared'
 import { Brackets, type DeepPartial } from 'typeorm'
 import { Inject, Injectable } from '@nestjs/common'
-import { Db } from '@repo/kits'
 
 export type AdminRecord = AdminEntity
 

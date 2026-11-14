@@ -1,5 +1,5 @@
 import { Inject, Injectable, type CanActivate, type ExecutionContext } from '@nestjs/common'
-import { anyOfGuards } from '../../common/index.js'
+import { anyOfGuards } from '../../common/security/index.js'
 import { AdminAuthGuard } from '../admin/admin-auth.guard.js'
 import { UserAuthGuard } from './user-auth.guard.js'
 

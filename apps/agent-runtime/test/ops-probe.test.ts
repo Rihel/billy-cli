@@ -1,10 +1,12 @@
 import { EventEmitter } from 'node:events'
-import { Telemetry } from '@repo/kits'
+import {
+  Telemetry,
+  isOpsProbePath,
+  RequestLoggerMiddleware,
+  RequestMetricsMiddleware,
+  requestContext,
+} from '@repo/kits'
 import { describe, expect, it, vi } from 'vitest'
-import { isOpsProbePath } from '../src/common/http/ops-probe.js'
-import { RequestLoggerMiddleware } from '../src/common/request-logger/request-logger.middleware.js'
-import { RequestMetricsMiddleware } from '../src/common/request-metrics/request-metrics.middleware.js'
-import { requestContext } from '../src/common/request-context/index.js'
 
 describe('isOpsProbePath', () => {
   it('命中探针路径（含查询串与结尾斜杠的等价写法）', () => {

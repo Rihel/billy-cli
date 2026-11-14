@@ -1,8 +1,6 @@
 import { EventEmitter } from 'node:events'
 import { describe, expect, it, vi } from 'vitest'
-import type { AppLogger } from '@repo/kits'
-import { requestContext } from '../src/common/request-context/index.js'
-import { RequestLoggerMiddleware } from '../src/common/request-logger/request-logger.middleware.js'
+import { requestContext, RequestLoggerMiddleware, AppLogger } from '@repo/kits'
 
 interface Call {
   level: string

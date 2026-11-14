@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { AiProviderKind } from '@repo/shared'
 import { decideModelForMastra } from '../src/modules/ai/core/model-decision.js'
-import { OFFICIAL_ADAPTER_KINDS, usesOfficialAdapter } from '../src/modules/ai-model/index.js'
+import { OFFICIAL_ADAPTER_KINDS, usesOfficialAdapter } from '../src/modules/ai/core/model-kind.js'
 import type { RuntimeModel } from '../src/modules/ai/core/envelope.js'
 
 /**

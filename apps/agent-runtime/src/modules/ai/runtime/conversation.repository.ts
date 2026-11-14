@@ -2,8 +2,7 @@ import { Inject, Injectable } from '@nestjs/common'
 import { Db, getAuditUser, pageWith, safeDelete, type PageQueryResult } from '@repo/kits'
 import { RunStatus, type AgentConversationListDto, type AgentConversationModel } from '@repo/shared'
 import { In, IsNull, type DeepPartial } from 'typeorm'
-import { ConversationEntity } from '../../../database/entities/conversation-entity.js'
-import { RunEntity } from '../../../database/entities/run-entity.js'
+import { ConversationEntity, RunEntity } from '@repo/db'
 
 /**
  * 实体 → 对外模型（bigint 在 TypeORM 里是字符串，这里转成 number 给前端）。

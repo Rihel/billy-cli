@@ -1,5 +1,11 @@
-import { AppLogger, Transactional, type PageQueryResult } from '@repo/kits'
-import { AiModelSource, CHAT_CAPABLE_MODES, DEFAULT_MODEL_MODE } from '@repo/shared'
+import { AppLogger, EventBus, Transactional, type PageQueryResult } from '@repo/kits'
+import { ModelGatewayClient } from '@repo/internal-sdk'
+import {
+  AI_MODEL_CHANGED_TOPIC,
+  AiModelSource,
+  CHAT_CAPABLE_MODES,
+  DEFAULT_MODEL_MODE,
+} from '@repo/shared'
 import type {
   AiAvailableModelListModel,
   AiAvailableModelModel,
@@ -17,10 +23,9 @@ import type {
   AiProviderTestResultModel,
   AiProviderUpdateDto,
 } from '@repo/shared'
-import { Inject, Injectable } from '@nestjs/common'
+import { Inject, Injectable, Optional } from '@nestjs/common'
 import type { DeepPartial } from 'typeorm'
-import { AiModelEntity } from '../../database/entities/ai-model-entity.js'
-import { AiProviderEntity } from '../../database/entities/ai-provider-entity.js'
+import { AiModelEntity, AiProviderEntity } from '@repo/db'
 import { AiModelRepository, AiProviderRepository } from './ai-model.repository.js'
 import {
   ModelKeyTakenError,
@@ -34,7 +39,6 @@ import {
   ProviderSlugInvalidError,
 } from './errors.js'
 import { hintOf } from './secret-hint.js'
-import { listProviderModels, type ListProviderModelsResult } from './provider-adapters.js'
 
 /**
  * 本模块的配置分片（由 `AI_MODEL_CONFIG` 注入）。
@@ -130,7 +134,16 @@ export class AiModelService {
     @Inject(AiModelRepository) private readonly models: AiModelRepository,
     @Inject(AI_MODEL_CONFIG) private readonly config: AiModelConfig,
     @Inject(AppLogger) private readonly logger: AppLogger,
+    // 配置变更通知网关失效缓存（测试 / 脚本不传也照常工作）
+    @Optional() @Inject(EventBus) private readonly events?: EventBus,
+    // 供应商探测（列模型 / 连通性测试）在网关；测试可注入替身
+    @Optional() @Inject(ModelGatewayClient) private readonly gateway?: ModelGatewayClient,
   ) {}
+
+  /** main 写完配置后发事件（at-most-once；网关订阅它清目录 / key 缓存） */
+  private notifyChanged(): void {
+    void this.events?.publish(AI_MODEL_CHANGED_TOPIC, { at: Date.now() })
+  }
 
   // ─────────────────────────────── 供应商 ───────────────────────────────
 
@@ -164,6 +177,7 @@ export class AiModelService {
       slug: record.slug,
       hasApiKey: Boolean(record.apiKey),
     })
+    this.notifyChanged()
     return this.toProviderModel(record, 0)
   }
 
@@ -213,6 +227,7 @@ export class AiModelService {
       slug: record.slug,
       apiKeyChanged: input.apiKey !== undefined,
     })
+    this.notifyChanged()
     return this.toProviderModel(record, await this.models.countModels(record.id))
   }
 
@@ -223,6 +238,7 @@ export class AiModelService {
     await this.models.softDeleteByProviderId(existing.id)
     await this.providers.softDelete(existing.id)
     this.logger.log('ai-model.provider.removed', { id: existing.id, slug: existing.slug })
+    this.notifyChanged()
   }
 
   /**
@@ -234,28 +250,19 @@ export class AiModelService {
   async syncProvider(input: AiProviderIdDto): Promise<AiProviderSyncResultModel> {
     const provider = await this.requireProvider(input.providerId)
     if (!provider.enabled) throw new ProviderDisabledError(provider.id)
-    // 同步路径的"没配密钥"给 3403（与"拉取失败"同一类：都是同步做不成），文案指向"去填密钥"
-    const apiKey = provider.apiKey?.trim()
-    if (!apiKey) {
-      throw new ModelSyncFailedError(
-        `供应商「${provider.name}」未配置密钥，无法拉取模型明细；请先在「编辑供应商」里填入 API Key`,
-      )
+    if (!this.gateway) {
+      throw new ModelSyncFailedError('模型网关未配置，无法同步供应商模型明细')
     }
 
     const syncedAt = new Date()
-    let listing: ListProviderModelsResult
+    let listing: Awaited<ReturnType<ModelGatewayClient['listProviderModels']>>
     try {
-      listing = await listProviderModels({
-        kind: provider.kind,
-        baseUrl: provider.baseUrl,
-        apiKey,
-      })
+      listing = await this.gateway.listProviderModels({ providerId: provider.id })
     } catch (error) {
       const reason = messageOf(error)
-      const endpoint = error instanceof ModelSyncFailedError ? error.endpoint : ''
       // 供应商原文落库：成功前它一直是"最近一次失败原因"（页面直接展示）
       await this.providers.update(provider.id, { lastSyncError: reason })
-      this.logger.error('ai-model.provider.sync.failed', { id: provider.id, endpoint, error })
+      this.logger.error('ai-model.provider.sync.failed', { id: provider.id, error })
       throw new ModelSyncFailedError(`同步供应商「${provider.name}」模型明细失败：${reason}`)
     }
     const { endpoint } = listing
@@ -300,6 +307,7 @@ export class AiModelService {
       syncedAt,
     }
     this.logger.log('ai-model.provider.synced', { ...result, endpoint })
+    this.notifyChanged()
     return result
   }
 
@@ -310,51 +318,22 @@ export class AiModelService {
    * 失败不抛异常，而是回 `{ ok: false, error, endpoint }` —— 它就是给用户看结果的接口。
    */
   async testProvider(input: AiProviderTestDto): Promise<AiProviderTestResultModel> {
-    const startedAt = Date.now()
-    const done = (result: Omit<AiProviderTestResultModel, 'durationMs'>) => ({
-      ...result,
-      durationMs: Date.now() - startedAt,
-    })
-
-    let kind = input.kind
-    let baseUrl = input.baseUrl
-    let apiKey = input.apiKey?.trim() || undefined
-
-    if (input.providerId) {
-      const provider = await this.requireProvider(input.providerId)
-      kind = input.kind ?? provider.kind
-      if (baseUrl === undefined) baseUrl = provider.baseUrl ?? undefined
-      if (!apiKey && provider.apiKey) apiKey = provider.apiKey
-    }
-
-    if (!apiKey) {
-      return done({
+    if (!this.gateway) {
+      return {
         ok: false,
         modelCount: 0,
-        error: '未提供 API Key：请填写后测试，或先保存供应商再点测试',
+        error: '模型网关未配置，无法测试供应商连通性',
         endpoint: '',
-      })
+        durationMs: 0,
+      }
     }
-
-    try {
-      const listing = await listProviderModels({ kind, baseUrl, apiKey })
-      return done({
-        ok: true,
-        modelCount: listing.models.length,
-        error: null,
-        endpoint: listing.endpoint,
-      })
-    } catch (error) {
-      return done({
-        ok: false,
-        modelCount: 0,
-        error: messageOf(error),
-        endpoint: error instanceof ModelSyncFailedError ? error.endpoint : '',
-      })
-    }
+    return this.gateway.testProvider({
+      kind: input.kind,
+      ...(input.providerId ? { providerId: input.providerId } : {}),
+      ...(input.baseUrl !== undefined ? { baseUrl: input.baseUrl } : {}),
+      ...(input.apiKey !== undefined ? { apiKey: input.apiKey } : {}),
+    })
   }
-
-  // ─────────────────────────────── 模型 ───────────────────────────────
 
   /** 某供应商下的模型分页（`keyword` 过滤 `modelKey`） */
   async listModels(input: AiModelListDto): Promise<PageQueryResult<AiModelModel>> {
@@ -377,6 +356,13 @@ export class AiModelService {
       maxOutputTokens: input.maxOutputTokens ?? null,
       source: AiModelSource.Manual,
       enabled: input.enabled ?? true,
+      inputPricePer1m: input.inputPricePer1m ?? null,
+      outputPricePer1m: input.outputPricePer1m ?? null,
+      cacheReadPricePer1m: input.cacheReadPricePer1m ?? null,
+      cacheWritePricePer1m: input.cacheWritePricePer1m ?? null,
+      pricePerImage: input.pricePerImage ?? null,
+      pricePerSecond: input.pricePerSecond ?? null,
+      currency: input.currency ?? 'CNY',
       mode: input.mode ?? DEFAULT_MODEL_MODE,
       // 输入：**不预设**（未声明 —— 供应商给不给模态信息我们并不知道，编造会让附件校验走错分支）
       inputModalities: input.inputModalities ?? null,
@@ -391,6 +377,7 @@ export class AiModelService {
       providerId: record.providerId,
       modelKey: record.modelKey,
     })
+    this.notifyChanged()
     return this.toModelModel(record)
   }
 
@@ -403,6 +390,17 @@ export class AiModelService {
     if (input.contextWindow !== undefined) changes.contextWindow = input.contextWindow
     if (input.maxOutputTokens !== undefined) changes.maxOutputTokens = input.maxOutputTokens
     if (input.enabled !== undefined) changes.enabled = input.enabled
+    if (input.inputPricePer1m !== undefined) changes.inputPricePer1m = input.inputPricePer1m
+    if (input.outputPricePer1m !== undefined) changes.outputPricePer1m = input.outputPricePer1m
+    if (input.cacheReadPricePer1m !== undefined) {
+      changes.cacheReadPricePer1m = input.cacheReadPricePer1m
+    }
+    if (input.cacheWritePricePer1m !== undefined) {
+      changes.cacheWritePricePer1m = input.cacheWritePricePer1m
+    }
+    if (input.pricePerImage !== undefined) changes.pricePerImage = input.pricePerImage
+    if (input.pricePerSecond !== undefined) changes.pricePerSecond = input.pricePerSecond
+    if (input.currency !== undefined) changes.currency = input.currency
     /**
      * 类型与模态都是**独立字段**，直接改（不再往 `capabilities` 里塞约定键）。
      * 三态：`undefined` = 不动，`null` = 撤成"未声明"，数组 = 明确声明。
@@ -437,6 +435,7 @@ export class AiModelService {
     const existing = await this.requireModel(input.modelId)
     await this.models.softDelete(existing.id)
     this.logger.log('ai-model.model.removed', { id: existing.id, modelKey: existing.modelKey })
+    this.notifyChanged()
   }
 
   // ─────────────────────────── 运行时选模型（§4.9） ───────────────────────────
@@ -537,6 +536,13 @@ export class AiModelService {
       capabilities: record.capabilities,
       source: record.source,
       enabled: record.enabled,
+      inputPricePer1m: record.inputPricePer1m,
+      outputPricePer1m: record.outputPricePer1m,
+      cacheReadPricePer1m: record.cacheReadPricePer1m,
+      cacheWritePricePer1m: record.cacheWritePricePer1m,
+      pricePerImage: record.pricePerImage,
+      pricePerSecond: record.pricePerSecond,
+      currency: record.currency,
       lastSeenAt: record.lastSeenAt ?? undefined,
       syncedAt: record.syncedAt ?? undefined,
       raw: record.raw,

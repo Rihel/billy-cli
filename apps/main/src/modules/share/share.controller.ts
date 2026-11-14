@@ -7,7 +7,8 @@ import {
 } from '@repo/shared'
 import type { CreateShareDto, ListShareDto, RevokeShareDto, ShareTokenDto } from '@repo/shared'
 import { AnyAuthGuard } from '../auth/any-auth.guard.js'
-import { RateLimit, RateLimitGuard, requestContext } from '../../common/index.js'
+import { requestContext } from '@repo/kits'
+import { RateLimit, RateLimitGuard } from '../../common/security/index.js'
 import { ShareService, type ShareIdentity } from './share.service.js'
 
 /**

@@ -33,8 +33,10 @@ description: Billy 工程（billy-cli monorepo）开发必读 skill。任何在�
 
 依赖方向不可逆：`shared` 不依赖业务包；`kits` 不 import `apps/*`；后端是**两个 app**：
 `apps/main`（公网 BFF，9989）是控制面业务与组合根的归属，`apps/agent-runtime`（9990，不对外）
-只跑 agent loop（Mastra 只在这里出现）。两者各有自己的 `root.module.ts`（唯一组合根）与
-`common/`（横切 HTTP 构件，不依赖具体业务模块），controller 只做 HTTP 边界；kits 侧是
+只跑 agent loop（Mastra 只在这里出现）。两者各有自己的 `root.module.ts`（唯一组合根）；
+横切 HTTP 构件（错误 / 请求上下文 / 请求日志 / 请求指标 / 校验 / 信封）统一在 `@repo/kits` 的
+`src/http/`，`apps/main/src/common/` 只保留 main 专属的 `security/`（限流守卫依赖应用配置），
+controller 只做 HTTP 边界；kits 侧是
 「**一个基础设施一个 `@Global()` 模块，`XxxModule.forRoot(options)` /
 `forRootAsync(options)` 自带配置 bean**」（配置即模块自身注入 bean，未 import 即未装配），按依赖方向
 自底向上落代码（架构见 [references/architecture.md](./references/architecture.md)）。

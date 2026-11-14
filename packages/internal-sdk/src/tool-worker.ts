@@ -4,7 +4,12 @@ import {
   type ToolInvokeRequest,
   type ToolInvokeResponse,
 } from '@repo/contracts'
-import { requestJson, type InternalClientOptions, type InvokeOptions } from './http.js'
+import {
+  requestEnvelope,
+  requestJson,
+  type InternalClientOptions,
+  type InvokeOptions,
+} from './http.js'
 
 const HealthResponseSchema = z.object({
   status: z.string(),
@@ -20,7 +25,7 @@ export class ToolWorkerClient {
   constructor(private readonly options: InternalClientOptions) {}
 
   exec(request: ToolInvokeRequest, options: InvokeOptions = {}): Promise<ToolInvokeResponse> {
-    return requestJson(this.options, '/v1/exec', ToolInvokeResponseSchema, {
+    return requestEnvelope(this.options, '/v1/exec', ToolInvokeResponseSchema, {
       method: 'POST',
       body: request,
       ...options,

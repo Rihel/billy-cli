@@ -1,13 +1,12 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { ConversationEntity } from '@repo/db'
-import type { AppLogger } from '@repo/kits'
+import { requestContext, AppLogger } from '@repo/kits'
 import type { AgentConversationListDto, AgentConversationModel } from '@repo/shared'
-import { requestContext } from '../src/common/index.js'
 import { AiConversationRepository } from '../src/modules/ai-admin/conversation/conversation.repository.js'
 import { AiAdminConversationService } from '../src/modules/ai-admin/conversation/conversation.service.js'
 import { ConversationNotFoundError } from '../src/modules/ai-admin/conversation/errors.js'
 import { AiRunQueryRepository } from '../src/modules/ai-admin/conversation/run-query.repository.js'
-import { AiSkillQueryRepository } from '../src/modules/ai-admin/conversation/skill-query.repository.js'
+import type { AgentCatalogService } from '../src/agent/agent-catalog.service.js'
 import { AiTimelineQueryRepository } from '../src/modules/ai-admin/conversation/timeline-query.repository.js'
 import type { AiModelService } from '../src/modules/ai-model/index.js'
 import type { AiUsageService } from '../src/modules/ai-usage/index.js'
@@ -43,7 +42,7 @@ const createService = (
     { list, findEntity } as unknown as AiConversationRepository,
     {} as AiRunQueryRepository,
     {} as AiTimelineQueryRepository,
-    {} as AiSkillQueryRepository,
+    {} as AgentCatalogService,
     {} as AiUsageService,
     {} as AiModelService,
     logger as unknown as AppLogger,

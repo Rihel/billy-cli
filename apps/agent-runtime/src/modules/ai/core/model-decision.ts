@@ -1,4 +1,4 @@
-import { usesOfficialAdapter } from '../../ai-model/provider-adapters.js'
+import { usesOfficialAdapter } from './model-kind.js'
 import { toAgentModelId, type AgentModelId } from './config.js'
 import type { RuntimeModel } from './envelope.js'
 

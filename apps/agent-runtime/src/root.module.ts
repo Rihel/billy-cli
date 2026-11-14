@@ -21,8 +21,6 @@ import {
   TelemetryModule,
   WorkspaceModule,
   type DbModuleOptions,
-} from '@repo/kits'
-import {
   AppExceptionFilter,
   ERROR_ALERT_HOOK,
   type ErrorAlertHook,
@@ -31,11 +29,10 @@ import {
   RequestMetricsModule,
   ResponseEnvelopeInterceptor,
   createZodValidationPipe,
-} from './common/index.js'
+} from '@repo/kits'
 import { DB_ENTITIES } from '@repo/db'
-import { AiModelModule } from './modules/ai-model/index.js'
 import { AiModule } from './modules/ai/index.js'
-import { MonitorEngine, MonitorModule } from './modules/monitor/index.js'
+import { MonitorEngine, MonitorModule, type MonitorModuleOptions } from '@repo/monitor'
 import { OpsModule } from './modules/ops/index.js'
 
 /**
@@ -133,12 +130,14 @@ import { OpsModule } from './modules/ops/index.js'
     // ---- 运维探针（根路径 GET，全工程唯一的 GET 例外：k8s 探针只会发 GET）----
     OpsModule,
     // ---- 业务模块 ----
-    // AI 模型配置（供应商 / 模型两张表 + 明细同步 + 运行时模型解析；AiModule 依赖它的 AiModelService）
-    AiModelModule,
     // AI Agent（Mastra）：模型未配置时模块照常装配，仅 /agent/* 返回 3301
     AiModule,
     // 文件分享（免授权链接：列表页生成 / 分享页访问；见 docs/design/file-share.md）
-    MonitorModule,
+    MonitorModule.forRootAsync({
+      imports: [ConfigModule],
+      inject: [ConfigService],
+      useFactory: (config: ConfigService) => config.get<MonitorModuleOptions>('monitor')!,
+    }),
   ],
   providers: [
     // 技术错误告警钩子：把 MonitorEngine 适配为 common 层 token（避免 HTTP 边界层反向依赖业务模块）

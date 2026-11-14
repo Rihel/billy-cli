@@ -1,9 +1,8 @@
 import { Body, Controller, HttpCode, Inject, Post, Req, Res, UseGuards } from '@nestjs/common'
-import { StreamHub, type StreamFrame } from '@repo/kits'
+import { StreamHub, type StreamFrame, requestContext } from '@repo/kits'
 import { StreamSubscribeSchema } from '@repo/shared'
 import type { StreamSubscribeDto } from '@repo/shared'
 import type { Request, Response } from 'express'
-import { requestContext } from '../../common/index.js'
 import { StreamAuthGuard } from './stream-auth.guard.js'
 import { SSE_ROUTE_OPTIONS, type SseRouteOptions } from './stream.options.js'
 

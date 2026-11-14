@@ -1,9 +1,8 @@
 import { Controller, Get, HttpCode, Inject } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
-import { Db, RedisStore, WorkspaceRuntimeService } from '@repo/kits'
+import { Db, RedisStore, WorkspaceRuntimeService, BoundaryError } from '@repo/kits'
 import { AppErrorCodes } from '@repo/shared'
 import { hostname } from 'node:os'
-import { BoundaryError } from '../../common/index.js'
 import { resolveServerConfig, type ServerConfig } from '../../config.js'
 
 /**

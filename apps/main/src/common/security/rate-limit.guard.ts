@@ -6,12 +6,16 @@ import {
   type ExecutionContext,
 } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
-import { RateLimiter, isIpWhitelisted, normalizeIp } from '@repo/kits'
+import {
+  BoundaryError,
+  RateLimiter,
+  describeErrorCode,
+  isIpWhitelisted,
+  normalizeIp,
+} from '@repo/kits'
 import { AppErrorCodes } from '@repo/shared'
 import type { Request } from 'express'
 import { resolveServerConfig, type ServerConfig } from '../../config.js'
-import { BoundaryError } from '../error/boundary-error.js'
-import { describeErrorCode } from '../error/error-descriptor.js'
 
 export interface RateLimitOptions {
   /** 限流标识（key 前缀），如 'login' / 'admin-login' / 'forgot-password' */
