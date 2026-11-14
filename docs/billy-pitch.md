@@ -67,10 +67,10 @@
 ### ① 开箱即用的 AI 应用开发能力
 
 - **运行时已经跑通**：`conversations` / `runs` / `timelines` 三张表；SSE 流式（`/agent/chat/stream`）与断线续传（`/agent/chat/resume`、`/agent/run/stream`）；服务重启后在跑的会话恢复；上下文到模型窗口 70% 自动压缩。
-- **能力不是空壳**：26 个内建工具（计划四件套、动态子 agent、命令执行、联网三件套、大结果取页、技能库七件、文件九件），全部过统一网关（开关 / 作用域 / 限额 / 审计 / 分页）；另有 3 个 Mastra 运行时自带的技能读取工具（`skill` / `skill_search` / `skill_read`，不进注册机）。
+- **能力不是空壳**：29 个内建工具（计划四件套、动态子 agent、命令执行、联网三件套、大结果取页、记忆三件、技能库七件、文件九件），全部过统一网关（开关 / 作用域 / 限额 / 审计 / 分页）；另有 3 个 Mastra 运行时自带的技能读取工具（`skill` / `skill_search` / `skill_read`，不进注册机）。
 - **模型与账本开箱**：供应商与模型在后台配置即生效；每轮 tokens 与步数入库，按日 rollup，按模型、按 agent 汇总，运行详情能回看输入快照与错误原文。
 - **扩展点只有一层**：加工具 = `@ToolGroup` 类 + 方法 `@ToolDecl`；加 agent = `agents/xxx.agent.ts` + 注册表；加技能 = `.agents/skills/` 下的 SKILL.md；换模型 = 后台模型管理。
-- **接口与页面都现成**：`/agent` 前缀一套接口，前台用户与管理员共用；后台 AI 七个页面（会话、模型、工具、技能库、文件、连接器、审计）；4 类连接器（PostgreSQL / MySQL / Redis / 飞书 CLI）；`@repo/ui` 48 个 ai-elements 可直接用。
+- **接口与页面都现成**：`/agent` 前缀一套接口，前台用户与管理员共用；后台 AI 八个页面（会话、模型、工具、技能库、记忆、文件、连接器、审计）；4 类连接器（PostgreSQL / MySQL / Redis / 飞书 CLI）；`@repo/ui` 48 个 ai-elements 可直接用。
 
 模板只给骨架，AI 框架只给零件。Billy 给的是「能上线的最小闭环」，改提示词与工具就是你的产品。
 
@@ -121,7 +121,7 @@
 
 - **会话与运行**：`conversations` / `runs` / `timelines` 三张表；运行中进度放 Redis，跑完落 Postgres；刷新能接着看。
 - **流式与续传**：`/agent/chat/stream`、`/agent/chat/resume`、`/agent/run/stream`、`/agent/run/:runId/stream`；文本、推理、工具、步骤、来源全细节推送。
-- **工具面**：26 个内建工具——计划四件套（`plan-create/reorder/complete/delete`）、`run-sub-agent`、`bash`、`read-tool-result`、联网三件套（`web-search` / `web-fetch` / `web-request`）、技能库七件（`skill-list` / `skill-save` / `skill-file-save` / `skill-file-append` / `skill-delete` / `skill-enable` / `skill-import`）、文件九件（`file-submit` / `file-download` / `file-list` / `read-file` / `file-search` / `workspace-files` / `write-file` / `replace-file` / `append-file`）；另有 Mastra 运行时自带的 `skill` / `skill_search` / `skill_read` 三个（不进注册机，后台只读展示）。统一网关负责开关、作用域、限额、事件、审计、分页。
+- **工具面**：29 个内建工具——计划四件套（`plan-create/reorder/complete/delete`）、`run-sub-agent`、`bash`、`read-tool-result`、联网三件套（`web-search` / `web-fetch` / `web-request`）、记忆三件（`memory-save` / `memory-search` / `memory-forget`）、技能库七件（`skill-list` / `skill-save` / `skill-file-save` / `skill-file-append` / `skill-delete` / `skill-enable` / `skill-import`）、文件九件（`file-submit` / `file-download` / `file-list` / `read-file` / `file-search` / `workspace-files` / `write-file` / `replace-file` / `append-file`）；另有 Mastra 运行时自带的 `skill` / `skill_search` / `skill_read` 三个（不进注册机，后台只读展示）。统一网关负责开关、作用域、限额、事件、审计、分页。
 - **运行控制**：动态子 agent（提示词由主 agent 现场写）、命令执行（开关 / 工作目录 / 时长与输出上限可配）、联网预算（统一 UA、超时、字节上限、内网拦截）。
 - **多模态附件**：图片与 PDF 走对象存储，只传 key；附件 key 做归属校验，不能越权读他人文件。
 - **恢复与压缩**：durable 三档可配；上下文到模型窗口 70% 触发裁剪与压缩，原文保留。
@@ -150,7 +150,7 @@
 - **双前端开箱**：Web 前台（Base UI + shadcn + Tailwind 4，Server Actions）、Admin 后台（DataTable / ModalForm / TanStack），共用一套 token。
 - **全类型 SDK**：`@repo/http-client` 之上封装全类型 ServerClient。
 - **能力底座 `@repo/kits`**：数据库（事务、四种分页、批量写入、软删、SQL 打印）、Redis、限流、JWT、会话、密码、对象存储、SSE、Kafka、事件总线 / PubSub、飞书、通知、遥测、调度（croner + 时间轮）、沙箱工作区。
-- **13 个业务模块 / 19 张表**：`auth`、`user`、`admin`、`session`、`storage`、`stream`、`share`、`monitor`、`ai`、`ai-model`、`ai-usage`、`runtime-config`、`ops`；实体 19 个、迁移 26 个。
+- **13 个业务模块 / 20 张表**：`auth`、`user`、`admin`、`session`、`storage`、`stream`、`share`、`monitor`、`ai`、`ai-model`、`ai-usage`、`runtime-config`、`ops`；实体 20 个、迁移 27 个。
 - **部署**：Docker multi-stage，compose 一键起依赖，附 Kubernetes 清单。
 
 ### 6.5 AI 原生开发：28 个 Agent Skills

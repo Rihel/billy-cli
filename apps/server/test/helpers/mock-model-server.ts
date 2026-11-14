@@ -540,6 +540,14 @@ const sse = (res: ServerResponse, payload: unknown): void => {
 const isChildTurn = (body: Record<string, unknown>): boolean =>
   JSON.stringify(body.messages ?? []).includes(MOCK_CHILD_MARKER)
 
+/** 记忆抽取那一轮的指纹：隔离 agent 的指令里有这个短语（与命名一样不带工具） */
+const MEMORY_EXTRACT_MARKER = '长期记忆抽取器'
+export const MOCK_MEMORY_EXTRACT_TEXT =
+  '[{"kind":"preference","content":"偏好简短回答","key":"reply-style"}]'
+
+const isMemoryExtractTurn = (body: Record<string, unknown>): boolean =>
+  JSON.stringify(body.messages ?? []).includes(MEMORY_EXTRACT_MARKER)
+
 /**
  * 这一轮请求是不是"会话命名那一轮"：**唯一不带工具**的请求。
  *
@@ -551,6 +559,7 @@ const isTitleTurn = (body: Record<string, unknown>): boolean =>
 
 /** 这一轮的最终文本（命名 / 子 agent / 主 agent 各用不同文本，便于断言"文本确实来自那一轮"） */
 const finalText = (body: Record<string, unknown>): string => {
+  if (isMemoryExtractTurn(body)) return MOCK_MEMORY_EXTRACT_TEXT
   if (isTitleTurn(body)) return MOCK_TITLE_TEXT
   return isChildTurn(body) ? MOCK_CHILD_TEXT : MOCK_FINAL_TEXT
 }

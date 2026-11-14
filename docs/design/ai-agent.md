@@ -650,6 +650,11 @@ ai/
   时间线只追加，不允许原地覆盖，否则复盘时"当时用的是哪份摘要"就说不清了；
 - 降级：摘要生成失败 → **退回纯裁剪**（丢掉那一段最旧的），并记一条 `status` 事件
   （`reason='compact_failed_fallback_trim'`），让复盘能看出"这里本来该有摘要但没有"。
+- **压缩的可见性与隔离（2026-11-14）**：压缩前写 `status='compacting'`，成功后写 `status='compacted'`
+  （带 `summarySeq`），模型返回空写 `compact_empty`，失败写 `compact_failed_fallback_trim` ——
+  审计页能完整看到这一段发生了什么。会话页把 `kind='summary'` 渲染成「已压缩早期对话」折叠卡片。
+  压缩调用改为**隔离的临时 agent**（无工具 / 技能 / 记忆）：原实现复用会话 agent，模型在压缩步
+  调了工具时 `result.text` 为空，摘要会静默丢失。
 
 **⑥ 估算与校准（不装精确）**
 
@@ -1687,6 +1692,10 @@ return toAISdkMessages(messages, { version: 'v6' }) // 从 '@mastra/ai-sdk/ui' �
 
 ### 4.3 记忆：本轮不做（决定），下表留作备查
 
+> **2026-11-14 起改为实施**：短期 thread 落 Redis、长期记忆建 `ai_memories`（`@mastra/memory`
+> 仍只服务 durable 续跑，不启用 working memory / semantic recall）。新方案见
+> [ai-memory.md](ai-memory.md)；本节保留当时的取舍论证。
+
 **决定：记忆先不做** —— 不引入 `@mastra/memory`、不建记忆表、不配 working memory / semantic recall。
 
 - 这**连带砍掉一半工作量**：storage adapter 不再需要 `memory` domain（原 10 个方法），
@@ -2499,7 +2508,7 @@ AI SDK v6 的续传是**两层 API**（不是同一方法的两个名字）：
 | 崩溃恢复 | **必须做**（默认开启，带配置开关 + "恢复失败→标记中断"兜底） |
 | zod | **全仓升 `^4.6.5`**（已执行并验证：typecheck 4 包 + test 7 包全绿） |
 | 数据表 | **不用官方表，自己设计** → 自己实现 storage adapter（§4.4） |
-| 记忆 | **长期记忆先不做**：不建记忆表、不用向量召回；上下文自己从 `timelines` 取最近 N 条（§4.3）。**补充（2026-11-13）**：`@mastra/memory` 后来还是引入了 —— 但只为 durable 续跑要有一条 memory thread（`InMemoryStore`，进程内、重启即丢）；它不是产品意义上的"记忆"，落地的是 §3.7.1 的缺口 |
+| 记忆 | **长期记忆先不做**：不建记忆表、不用向量召回；上下文自己从 `timelines` 取最近 N 条（§4.3）。**补充（2026-11-13）**：`@mastra/memory` 后来还是引入了 —— 但只为 durable 续跑要有一条 memory thread（`InMemoryStore`，进程内、重启即丢）；它不是产品意义上的"记忆"，落地的是 §3.7.1 的缺口。**再补（2026-11-14）**：记忆模块已实施 —— thread 换 Redis（`@mastra/redis`），长期记忆建 `ai_memories` 表，见 [ai-memory.md](ai-memory.md) |
 | 消耗统计 | 口径与位置见 §4.7：**轮** = `runs` 行、**步** = `steps.length`、token = `totalUsage`；**金额不落库** |
 | 删除口径 | **只能删会话、只能软删**；`runs` / `timelines` 无删除入口（审计证据）；软删前先结束在跑的运行（§4.5） |
 | 防篡改 | **先不做 hash 链**，改为：应用层只追加 + 部署只授 INSERT/SELECT + 删除只做软删标记（§3.8 A） |

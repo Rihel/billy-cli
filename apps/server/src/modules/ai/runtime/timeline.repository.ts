@@ -220,6 +220,17 @@ export class TimelineRepository {
    * 用途：崩溃恢复时复用已成功的子 agent 结论（幂等，不重跑）——
    * 结论只存在于时间线里（没有第二份副本，这是有意的）。
    */
+  /** 这一轮有没有调用过某个工具（记忆抽取据此判断"模型是不是已经自己记过了"） */
+  async hasToolCall(runId: string, toolKey: string): Promise<boolean> {
+    const row = await (
+      await this.repo()
+    ).findOne({
+      where: { runId, kind: TimelineKind.ToolCall, toolKey },
+      select: { id: true },
+    })
+    return row !== null
+  }
+
   async lastTextOfRun(runId: string): Promise<string | null> {
     const repo = await this.repo()
     const row = await repo.findOne({

@@ -202,6 +202,22 @@ export const AppErrorCodes = createDict({
     value: 3314,
     http: 504,
   },
+  MemoryNotFound: {
+    // 与 3304 同口径：不区分「不存在」与「不是你的」，避免被用来探测他人记忆
+    label: '记忆不存在或无权访问',
+    value: 3315,
+    http: 404,
+  },
+  MemoryLimitExceeded: {
+    label: '记忆条数已达上限，请先在后台清理',
+    value: 3316,
+    http: 400,
+  },
+  MemoryContentInvalid: {
+    label: '记忆内容不合法',
+    value: 3317,
+    http: 400,
+  },
   ProviderNotFound: {
     label: '模型供应商不存在',
     value: 3401,

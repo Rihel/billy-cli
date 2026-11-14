@@ -6,8 +6,8 @@
 ## 运行时与接口
 
 模板自带一套能上生产的 AI 对话，代码在 `apps/server/src/modules/ai`（运行时 + 工具 + 连接器）+
-`ai-model`（供应商 / 模型配置）+ `ai-usage`（用量汇总）。后台有七个页面：
-**会话** / 模型 / 工具 / 技能库 / 文件管理 / 连接器 / 审计。它和「用 AI 写这个模板」是两件事：
+`ai-model`（供应商 / 模型配置）+ `ai-usage`（用量汇总）。后台有八个页面：
+**会话** / 模型 / 工具 / 技能库 / 记忆 / 文件管理 / 连接器 / 审计。它和「用 AI 写这个模板」是两件事：
 后者靠 Agent Skills（见下节），前者是产品里的 AI。
 
 接口在 `/agent` 前缀下（`AnyAuthGuard`：前台用户与管理员同一套；用量接口仅管理员）：
@@ -31,7 +31,8 @@ POST /agent/usage/summary      用量汇总
 - **流式与续传**：文本、推理、工具调用、步骤、来源全细节推送，断线从上次位置继续。
 - **工具面**：一个工具一条 `@ToolDecl`（`@ToolGroup` 类 + 方法即工具），注册后统一过网关——
   开关、作用域（主 agent / 子 agent）、限额、自定义事件、审计、大结果分页与 `read-tool-result` 回取。
-  内建 26 个：计划四件套、`run-sub-agent`、`bash`、`read-tool-result`、`web-search` / `web-fetch` / `web-request`、
+  内建 29 个：计划四件套、`run-sub-agent`、`bash`、`read-tool-result`、`web-search` / `web-fetch` / `web-request`、
+  长期记忆三件套（`memory-save` / `memory-search` / `memory-forget`）、
   技能库七件套（`skill-list` / `skill-save` / `skill-file-save` / `skill-file-append` / `skill-delete` /
   `skill-enable` / `skill-import`），以及文件管理九件套（`file-submit` / `file-download` / `file-list` /
   `read-file` / `file-search` / `workspace-files` / `write-file` / `replace-file` / `append-file`）。
@@ -43,6 +44,10 @@ POST /agent/usage/summary      用量汇总
   DB 是事实源，服务端落盘到 `~/.billy/skills`（`AGENT_SKILLS_LIBRARY_DIR`）供 Mastra 按需读；
   agent 也能用 `skill-save` 等工具自己建技能，写入入口只有管理员（技能内容会进入模型上下文）。
   模型侧提示词要求**先扫技能清单**：有匹配的就先 `skill` 加载再动手；设计 / 页面 / 报告类任务先加载设计类技能再写第一版，不要等用户点名。
+- **长期记忆**（`modules/ai/memory`）：`ai_memories` 按用户存画像 / 偏好 / 事实 / 约束；
+  agent 用 `memory-save` / `memory-search` / `memory-forget` 读写（身份取运行时信封，子 agent 不可用），
+  后台「AI → 记忆」可查看 / 编辑 / 停用 / 删除。每轮按置顶 + 最近使用注入 system 消息
+  （≤20 条、≤800 token），注入了哪些 id 写进 `request_snapshot`；短期 thread 落 Redis，重启 / 多副本不丢。
 - **文件管理**（`modules/ai/files`）：`ai_files` 记会话文件（入站附件引用 + AI 提交，按会话级 workspace 组织），
   九个文件工具全部过同一套网关；对话右栏按会话看文件，后台「AI → 文件管理」跨会话列表 / 预览 / 分享
   （总量统计在控制台）；Office 前端直连对象存储，S3 / COS 需配 CORS。管理员还能给文件生成**免授权分享链接**
@@ -66,7 +71,7 @@ POST /agent/usage/summary      用量汇总
 - **前端**：`@repo/ui` 内置 48 个 ai-elements，后台会话页开箱可用。
 
 **配置位置**：模型与供应商在「AI → 模型管理」，工具开关与限额在「AI → 工具配置」，
-技能在「AI → 技能库」，文件在「AI → 文件管理」，外部服务在「AI → 连接器」，
+技能在「AI → 技能库」，长期记忆在「AI → 记忆」，文件在「AI → 文件管理」，外部服务在「AI → 连接器」，
 用量与调用回放在「AI → 审计」与控制台。
 设计细节与取舍见 [`docs/design/ai-agent.md`](../design/ai-agent.md) 与
 [`docs/design/ai-agent-tool-engine.md`](../design/ai-agent-tool-engine.md)；

@@ -9,6 +9,11 @@ import { AgentConfig, type AgentConfig as AgentConfigValue } from './core/config
 import { decideModelForMastra } from './core/model-decision.js'
 import { AiModelModule, AiModelService } from '../ai-model/index.js'
 import { MASTRA, createMastra } from './mastra/ai.mastra.js'
+import {
+  AGENT_MEMORY,
+  createAgentMemory,
+  createInMemoryAgentMemory,
+} from './mastra/agent-memory.js'
 import { AGENT_REGISTRY, createAgentRegistry } from './agents/registry.js'
 import { AgentService } from './agents/service.js'
 import type { AgentRegistry as AgentRegistryValue } from './agents/types.js'
@@ -46,6 +51,14 @@ import { SkillController } from './skills/skill.controller.js'
 import { SkillLibraryService } from './skills/skill.service.js'
 import { SkillRepository } from './skills/skill.repository.js'
 import { SkillTools } from './skills/skill.tools.js'
+import {
+  MemoryController,
+  MemoryExtractorService,
+  MemoryRepository,
+  MemoryService,
+  MemoryThreadCleanupService,
+  MemoryTools,
+} from './memory/index.js'
 import { toMastraSkills } from './mastra/skill.adapter.js'
 import { toMastraTools } from './mastra/tool.adapter.js'
 import { AGENT_TOOL_GROUPS } from './core/tools/tools.types.js'
@@ -129,7 +142,13 @@ let warnedMissingEnvelope = false
  */
 @Module({
   imports: [AuthModule, AdminModule, AiModelModule, AiUsageModule, AiMonitoringModule],
-  controllers: [AiController, AiToolController, AiConnectorController, SkillController],
+  controllers: [
+    AiController,
+    AiToolController,
+    AiConnectorController,
+    SkillController,
+    MemoryController,
+  ],
   providers: [
     {
       provide: AgentConfig,
@@ -152,6 +171,7 @@ let warnedMissingEnvelope = false
         WebTools,
         SkillTools,
         FileTools,
+        MemoryTools,
       ],
       useFactory: (...groups: AgentToolGroup[]): AgentToolGroup[] => groups,
     },
@@ -276,6 +296,13 @@ let warnedMissingEnvelope = false
     FileService,
     FileTools,
 
+    // ───────────────────────── 长期记忆（用户级事实）─────────────────────────
+    MemoryRepository,
+    MemoryService,
+    MemoryExtractorService,
+    MemoryTools,
+    MemoryThreadCleanupService,
+
     // ───────────────────────── 技能库（DB 是事实源，落盘给 Mastra）─────────────────────────
     // 额外技能目录：配置 → loader（loader 只管扫目录，不认配置从哪来）
     {
@@ -306,6 +333,19 @@ let warnedMissingEnvelope = false
       useFactory: (registry: ToolRegistry): AgentRegistryValue =>
         createAgentRegistry(createAgentDefinitions(prompts, registry), DEFAULT_AGENT_KEY),
     },
+    // 短期记忆：生产落 Redis（重启 / 多副本不丢），缺配置时退回进程内
+    {
+      provide: AGENT_MEMORY,
+      inject: [ConfigService, AppLogger],
+      useFactory: (config: ConfigService, logger: AppLogger) => {
+        const redis = config.get<{ url?: string }>('redis')
+        if (!redis?.url) {
+          logger.warn('ai.memory.redis_url_missing', { fallback: 'in-memory' })
+          return createInMemoryAgentMemory()
+        }
+        return createAgentMemory(redis.url)
+      },
+    },
     {
       provide: MASTRA,
       inject: [
@@ -316,6 +356,7 @@ let warnedMissingEnvelope = false
         Db,
         AppLogger,
         AiModelService,
+        AGENT_MEMORY,
       ],
       useFactory: async (
         config: AgentConfigValue,
@@ -325,6 +366,7 @@ let warnedMissingEnvelope = false
         db: Db,
         logger: AppLogger,
         _models: AiModelService,
+        memory: ReturnType<typeof createAgentMemory>,
       ) => {
         return createMastra({
           /**
@@ -356,6 +398,8 @@ let warnedMissingEnvelope = false
           },
           resolveSkills: async (names) => toMastraSkills(await skillLoader.resolve(names)),
           storage: new AgentMastraStore(db, logger),
+          // 短期记忆：生产注入 Redis 实现（缺配置时 provider 已退回进程内）
+          memory,
           durableAgents: config.durableEnabled,
           onMissingEnvelope: () => {
             if (warnedMissingEnvelope) return

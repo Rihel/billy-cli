@@ -11,6 +11,7 @@ import {
 import { toJsonSchema } from '../src/modules/ai/core/tools/tool.schema.js'
 import { WebTools } from '../src/modules/ai/tools/web.tools.js'
 import { FileTools } from '../src/modules/ai/files/file.tools.js'
+import { MemoryTools } from '../src/modules/ai/memory/memory.tools.js'
 import { PlannerStore, PlannerTools } from '../src/modules/ai/tools/planner/index.js'
 import { RunSubAgentTool } from '../src/modules/ai/tools/subagent.tool.js'
 import { ReadToolResultTool } from '../src/modules/ai/tools/read-tool-result.tool.js'
@@ -47,6 +48,7 @@ const buildRegistry = () => {
     new ReadToolResultTool(deps.results, deps.counter, deps.caps),
     new WebTools(silentLogger as never),
     new FileTools({} as never, { enabled: true } as never),
+    new MemoryTools({} as never),
   ]
   const registry = new ToolRegistry(groups, gateway, deps.config)
   return { deps, registry, groups }
@@ -81,6 +83,9 @@ const VALID_INPUT_TEMPLATES: Record<string, Record<string, unknown>> = {
   [TOOL_KEYS.writeFile]: { filePath: 'notes.md', content: 'hello' },
   [TOOL_KEYS.replaceFile]: { filePath: 'notes.md', oldText: 'a', newText: 'b' },
   [TOOL_KEYS.appendFile]: { filePath: 'notes.md', content: 'hello' },
+  [TOOL_KEYS.memorySave]: { content: '偏好简短回答', kind: 'preference' },
+  [TOOL_KEYS.memorySearch]: { query: '偏好' },
+  [TOOL_KEYS.memoryForget]: { id: 'mem-1' },
 }
 
 /** 一次合法调用要写的理由（长度过 `minLength`） */

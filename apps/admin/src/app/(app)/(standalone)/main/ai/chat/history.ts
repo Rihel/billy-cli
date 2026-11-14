@@ -40,6 +40,16 @@ const textOf = (item: AgentTimelineItemModel): string => {
   return typeof text === 'string' ? text : ''
 }
 
+/** 摘要覆盖的 seq 区间（`[[1, 12]]` → `1–12`；多段用顿号连接） */
+const coversOf = (item: AgentTimelineItemModel): string => {
+  const ranges = item.payload?.coversSeqs
+  if (!Array.isArray(ranges)) return ''
+  return ranges
+    .filter((range): range is [number, number] => Array.isArray(range) && range.length === 2)
+    .map(([from, to]) => `${from}–${to}`)
+    .join('、')
+}
+
 /**
  * 从用户消息事件里取出**附件元数据**（`payload.attachments`，见 `AgentUserMessagePayloadSchema`）。
  *
@@ -392,6 +402,18 @@ export const toParts = (events: AgentTimelineItemModel[]): UIMessage['parts'] =>
         if (subAgent) parts.push(subAgent)
         break
       }
+      case TimelineKind.Summary: {
+        // 压缩产物：会话里显示成一张可折叠的「已压缩早期对话」卡片（正文在审计页也能看）
+        const text = textOf(item)
+        if (text) {
+          parts.push({
+            type: 'data-summary',
+            id: `summary-${item.seq}`,
+            data: { text, covers: coversOf(item) },
+          } as UIMessage['parts'][number])
+        }
+        break
+      }
       case TimelineKind.Plan: {
         // 计划事件 → `data-plan` part：**payload 原样带上**（计划卡片自己容错解析），
         // 于是历史里的计划与实时流"取最后一次 plan 出参"看到的是同一种结构
@@ -399,7 +421,7 @@ export const toParts = (events: AgentTimelineItemModel[]): UIMessage['parts'] =>
         break
       }
       default:
-        // 步骤 / 状态 / 摘要 / 错误：审计用，不进对话正文（在审计页看）
+        // 步骤 / 状态 / 错误：审计用，不进对话正文（在审计页看）；摘要有自己的卡片，见上
         break
     }
   }

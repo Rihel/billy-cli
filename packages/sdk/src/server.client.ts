@@ -34,6 +34,10 @@ import {
   AiSkillKeyDto,
   AiSkillListDto,
   AiSkillModel,
+  AiMemoryListDto,
+  AiMemoryModel,
+  AiMemoryRemoveDto,
+  AiMemoryUpdateDto,
   AiSkillUpdateDto,
   AiToolKeyDto,
   AiToolListDto,
@@ -671,6 +675,20 @@ export class ServerClient extends HttpClient<BearerTokenCredentials> {
     /** 从链接导入（skills.sh / GitHub / 直接 Markdown 链接） */
     import: (data: AiSkillImportDto) =>
       this.post<AiSkillImportResultModel>('/ai-skill/import', data),
+  }
+
+  /* ========== 长期记忆 ========== */
+
+  aiMemory = {
+    /** 列表：分页 + 用户 / 类型 / 来源 / 启停 / 关键字筛选 */
+    list: (data: AiMemoryListDto) =>
+      this.post<AppPageQueryResponse<AiMemoryModel>>('/ai-memory/list', data),
+
+    /** 更新（内容 / 类型 / 置顶 / 启停；归属与 key 不可改） */
+    update: (data: AiMemoryUpdateDto) => this.post<AiMemoryModel>('/ai-memory/update', data),
+
+    /** 软删 */
+    remove: (data: AiMemoryRemoveDto) => this.post<{ removed: boolean }>('/ai-memory/remove', data),
   }
 
   /* ========== 连接器（外部能力来源） ========== */

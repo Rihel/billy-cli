@@ -25,6 +25,7 @@
     "@mastra/ai-sdk": "^1.11.3",
     "@mastra/core": "^1.82.0",
     "@mastra/memory": "1.41.0",
+    "@mastra/redis": "1.4.13",
     "@nestjs/common": "^12.4.0",
     "@nestjs/config": "^12.1.1",
     "@nestjs/core": "^12.4.0",

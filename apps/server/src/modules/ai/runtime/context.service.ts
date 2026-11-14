@@ -43,6 +43,13 @@ export interface ContextSnapshot {
   summarySeq: number | null
   toolResultTrim: { trimmedCount: number; policy: string }
   keepRecentTurns: number
+  /**
+   * 本轮注入的长期记忆（`null` = 没有可注入的）。
+   *
+   * 记的是**实际注入了哪些 id**，不是"库里有多少条"——事后复盘要能回答
+   * "这一轮模型到底看到了哪几条记忆"。
+   */
+  memory: { count: number; ids: string[]; tokens: number } | null
 }
 
 export interface BuiltContext {
@@ -71,6 +78,13 @@ export interface BuildContextInput {
   systemPrompt: string
   /** 本轮用户输入（参与估算） */
   userMessage: string
+  /**
+   * 本轮要注入的长期记忆块（可选）。
+   *
+   * 由调用方按 `userId` 查好传进来（与附件成本同一口径：context 不碰存储），
+   * 这里只负责排版进 system 消息、计入预算、写进快照。
+   */
+  memory?: { text: string; ids: string[]; tokens: number }
   /**
    * 本轮**附件的 token 成本**（没有附件就是 0）。
    *
@@ -196,7 +210,7 @@ export class ContextService {
       totalChars: toolResultTotalCharLimit,
     })
 
-    // 基础消息：系统提示词 + （若有）摘要
+    // 基础消息：系统提示词 + （若有）摘要 + （若有）长期记忆
     const systemMessages: ModelMessage[] = [{ role: 'system', content: input.systemPrompt }]
     if (summary) {
       const summaryText = typeof summary.payload?.text === 'string' ? summary.payload.text : ''
@@ -204,6 +218,10 @@ export class ContextService {
         role: 'system',
         content: `以下是早前对话的摘要（原文仍保留在系统里，必要时可要求回看）：\n${summaryText}`,
       })
+    }
+    // 长期记忆：调用方已按用户查好并算过 token；这里只拼进系统消息（文档口径：系统消息不被裁）
+    if (input.memory?.text) {
+      systemMessages.push({ role: 'system', content: input.memory.text })
     }
     const baseTokens = this.messagesTokens(systemMessages)
     // 本轮输入 = 用户文字 + 附件成本（附件成本由调用方按真实内容算好；没有附件就是 0）
@@ -241,6 +259,13 @@ export class ContextService {
           policy: `maxCharsPerToolResult=${toolResultCharLimit};maxCharsPerTurnTotal=${toolResultTotalCharLimit}`,
         },
         keepRecentTurns: this.config.contextKeepRecentTurns,
+        memory: input.memory
+          ? {
+              count: input.memory.ids.length,
+              ids: input.memory.ids,
+              tokens: input.memory.tokens,
+            }
+          : null,
       }
       return {
         messages,

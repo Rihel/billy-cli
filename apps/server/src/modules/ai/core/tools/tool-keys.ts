@@ -86,6 +86,15 @@ export const TOOL_KEYS = {
    * - workspace：`read-file` / `file-search` / `workspace-files` /
    *   `write-file` / `replace-file` / `append-file`。
    */
+  /**
+   * **长期记忆**（一组三个工具，设计 `docs/design/ai-memory.md` §5.2）：
+   * `memory-save`（记一条，同 key 更新）/ `memory-search`（查全量）/ `memory-forget`（删一条）。
+   *
+   * 只给主 agent（`child: 'deny'`）：记忆归属发起这一轮的用户，子助手不替父做长期决定。
+   */
+  memorySave: 'memory-save',
+  memorySearch: 'memory-search',
+  memoryForget: 'memory-forget',
   fileSubmit: 'file-submit',
   fileDownload: 'file-download',
   fileList: 'file-list',

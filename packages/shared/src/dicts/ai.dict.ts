@@ -62,6 +62,8 @@ export const TimelineKind = createDict({
   Error: { label: '错误', value: 'error' },
   /** 上下文压缩产物（摘要正文与覆盖范围都在 payload 里） */
   Summary: { label: '上下文摘要', value: 'summary' },
+  /** 长期记忆写入（轮后自动抽取的产物；payload 里有记了什么、写成功几条） */
+  Memory: { label: '长期记忆', value: 'memory' },
   /**
    * 计划（agent 规划能力的产物）。
    *

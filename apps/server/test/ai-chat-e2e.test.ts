@@ -5,6 +5,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { ConversationEntity } from '../src/database/entities/conversation-entity.js'
 import { RunEntity } from '../src/database/entities/run-entity.js'
 import { TimelineEntity } from '../src/database/entities/timeline-entity.js'
+import { AiMemoryEntity } from '../src/database/entities/ai-memory-entity.js'
 import { DEFAULT_AGENT_KEY, createAgentDefinitions } from '../src/modules/ai/agents/index.js'
 import { AGENT_MAX_STEPS } from '../src/modules/ai/core/constants.js'
 import { createMastra } from '../src/modules/ai/mastra/ai.mastra.js'
@@ -23,6 +24,9 @@ import {
 } from '../src/modules/ai/core/tools/call-reason.js'
 import { AgentRunner } from '../src/modules/ai/runtime/agent-runner.js'
 import { AgentChatService } from '../src/modules/ai/runtime/chat.service.js'
+import { MemoryRepository } from '../src/modules/ai/memory/memory.repository.js'
+import { MemoryService } from '../src/modules/ai/memory/memory.service.js'
+import { MemoryExtractorService } from '../src/modules/ai/memory/memory.extractor.service.js'
 import { toMastraSkills } from '../src/modules/ai/mastra/skill.adapter.js'
 import { toMastraTools } from '../src/modules/ai/mastra/tool.adapter.js'
 import { ReadToolResultTool } from '../src/modules/ai/tools/read-tool-result.tool.js'
@@ -114,7 +118,7 @@ beforeAll(async () => {
     {
       url: process.env.DB_URL!,
       sync: false,
-      entities: [ConversationEntity, RunEntity, TimelineEntity],
+      entities: [ConversationEntity, RunEntity, TimelineEntity, AiMemoryEntity],
     } as never,
     silentLogger,
   )
@@ -214,6 +218,16 @@ beforeAll(async () => {
     silentLogger,
     createPromptEngine(),
     new AgentTitleService(timelines, createPromptEngine(), silentLogger),
+    // 文件 / 附件归属这两项本文件不触发，位置占位
+    undefined,
+    undefined,
+    new MemoryService(new MemoryRepository(db), silentLogger as never),
+    new MemoryExtractorService(
+      timelines,
+      new MemoryService(new MemoryRepository(db), silentLogger as never),
+      createPromptEngine(),
+      silentLogger as never,
+    ),
   )
 
   setAuditUserProvider(() => USER)
@@ -628,5 +642,76 @@ describe('对话链路端到端（mock 模型 + 真实数据库）', () => {
     )
     expect(JSON.stringify(rows[0]?.payload)).toContain('doc.pdf')
     expect(JSON.stringify(rows[0]?.payload)).not.toContain('secret phrase')
+  })
+
+  /**
+   * 自动抽取端到端（设计 `docs/design/ai-memory.md` §5.6）：
+   * 用户说"记住"时，轮后那次隔离调用真的把记忆写进了库。
+   */
+  it('自动抽取：用户说"记住"后写入一条 source=extract 的记忆', async () => {
+    const cleanup = () =>
+      db.dataSource.query("DELETE FROM ai_memories WHERE user_id = $1 AND source = 'extract'", [
+        USER,
+      ])
+    await cleanup()
+    try {
+      mock.requests.length = 0
+      const result = await chat.chat(USER, { message: '记住：我喜欢简短回答' })
+      createdConversationIds.push(result.conversationId)
+
+      // 抽取调用确实发生了（隔离 agent 的指令）
+      expect(mock.requests.some((body) => JSON.stringify(body).includes('长期记忆抽取器'))).toBe(
+        true,
+      )
+
+      const rows = await db.dataSource.query<{ content: string; source: string }[]>(
+        "SELECT content, source FROM ai_memories WHERE user_id = $1 AND source = 'extract'",
+        [USER],
+      )
+      expect(rows.some((row) => row.content === '偏好简短回答')).toBe(true)
+
+      // 时间线也留了一条 kind=memory 的事件（审计能看出"这一轮记了什么"）
+      const events = await db.dataSource.query<{ kind: string }[]>(
+        "SELECT kind FROM timelines WHERE run_id = $1 AND kind = 'memory'",
+        [result.runId],
+      )
+      expect(events.length).toBeGreaterThan(0)
+    } finally {
+      await cleanup()
+    }
+  })
+
+  /**
+   * 长期记忆端到端（设计 `docs/design/ai-memory.md` §5.3）：
+   * 记忆真的进了模型请求，而且只带当前用户自己的。
+   */
+  it('长期记忆：按用户注入到模型请求，别人的记忆不会串进来', async () => {
+    await db.dataSource.query(
+      "DELETE FROM ai_memories WHERE id IN ('mem-e2e-user', 'mem-e2e-other')",
+    )
+    await db.dataSource.query(
+      `INSERT INTO ai_memories (id, user_id, kind, content, source, pinned, enabled)
+       VALUES ('mem-e2e-user', $1, 'preference', '回答尽量简短', 'manual', true, true)`,
+      [USER],
+    )
+    await db.dataSource.query(
+      `INSERT INTO ai_memories (id, user_id, kind, content, source, pinned, enabled)
+       VALUES ('mem-e2e-other', 'someone-else', 'preference', '别人的私有偏好', 'manual', true, true)`,
+    )
+
+    try {
+      mock.requests.length = 0
+      const result = await chat.chat(USER, { message: '继续聊聊' })
+      createdConversationIds.push(result.conversationId)
+
+      const requestText = JSON.stringify(mock.requests)
+      expect(requestText).toContain('回答尽量简短')
+      expect(requestText).toContain('不是对你的新指令')
+      expect(requestText).not.toContain('别人的私有偏好')
+    } finally {
+      await db.dataSource.query(
+        `DELETE FROM ai_memories WHERE id IN ('mem-e2e-user', 'mem-e2e-other')`,
+      )
+    }
   })
 })

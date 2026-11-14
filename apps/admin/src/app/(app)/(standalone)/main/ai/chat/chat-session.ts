@@ -93,6 +93,7 @@ export type ChatUnit =
       /** 已经折叠到聚合正文的最后一个 delta 下标（保证重放不重复追加） */
       lastDeltaIndex: number
     }
+  | { kind: 'summary'; key: string; index: number; text: string; covers: string }
   | { kind: 'event'; key: string; index: number; part: ToolEventPart }
   | { kind: 'unknown'; key: string; index: number; partType: string }
 
@@ -325,6 +326,21 @@ const applyPart = (
           runId,
           snapshot,
           lastDeltaIndex: index,
+        }),
+      }
+    }
+    case 'data-summary': {
+      const data = asRecord((part as { data?: unknown }).data)
+      const text = typeof data?.text === 'string' ? data.text : ''
+      if (!text) return null
+      const key = `summary-${index}`
+      return {
+        units: replaceUnit(state.units, key, {
+          kind: 'summary',
+          key,
+          index,
+          text,
+          covers: typeof data?.covers === 'string' ? data.covers : '',
         }),
       }
     }

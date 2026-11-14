@@ -43,6 +43,7 @@ import { AiFileEntity } from './database/entities/ai-file-entity.js'
 import { FileShareEntity } from './database/entities/file-share-entity.js'
 import { AiSkillEntity } from './database/entities/ai-skill-entity.js'
 import { AiSkillFileEntity } from './database/entities/ai-skill-file-entity.js'
+import { AiMemoryEntity } from './database/entities/ai-memory-entity.js'
 import { AiProviderEntity } from './database/entities/ai-provider-entity.js'
 import { AlertLogEntity } from './database/entities/alert-log-entity.js'
 import { AiUsageDailyEntity } from './database/entities/ai-usage-daily-entity.js'
@@ -137,6 +138,8 @@ import { UserModule } from './modules/user/index.js'
           // 技能库（DB 是事实源，落盘给 Mastra；见 docs/design/ai-skill-library.md §2.1）
           AiSkillEntity,
           AiSkillFileEntity,
+          // 长期记忆（用户级事实；见 docs/design/ai-memory.md §5）
+          AiMemoryEntity,
           // 会话文件（用户上传 + AI 提交；见 docs/design/ai-file-manager.md §3）
           AiFileEntity,
           // 文件分享（只存 token 哈希 + 过期时间；见 docs/design/file-share.md §4）

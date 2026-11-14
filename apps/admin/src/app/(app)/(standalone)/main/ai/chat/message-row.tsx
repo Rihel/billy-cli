@@ -20,6 +20,7 @@ import { ToolEventCard, ToolEventsBody } from './tool-event'
 import { QuestionCard, type AnswerQuestionsInput } from './question-card'
 import { MessageCopyMenu } from './message-copy'
 import { PlanSummaryCard } from './plan-summary-card'
+import { ContextSummaryCard } from './context-summary-card'
 import { SubAgentCard } from './sub-agent-card'
 import { mergeSubAgent } from './sub-agent-live'
 import type { ChatMessageState, ChatUnit } from './chat-session'
@@ -123,6 +124,8 @@ function ChatUnitView({
           <ReasoningContent>{unit.text}</ReasoningContent>
         </Reasoning>
       )
+    case 'summary':
+      return <ContextSummaryCard text={unit.text} covers={unit.covers} />
     case 'tool':
       // 委派 / 计划 / 问答工具由对应的卡片代表；它们发出的事件仍要看得见
       if (unit.delegated || unit.hidden) {

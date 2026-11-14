@@ -30,12 +30,13 @@
   `/main/system/users`、`/main/system/admins`（管理员管理）；
   运维监控五页：`/main/monitor/status`（状态）、`/main/monitor/live`（**实时告警**，SSE）、
   `/main/monitor/metrics`（指标）、`/main/monitor/logs`（告警记录）、`/main/monitor/rules`（告警规则）；
-  AI 七页：`/main/ai/chat`（会话，含运行详情；具体会话为 `/main/ai/chat/[conversationId]`）、
+  AI 八页：`/main/ai/chat`（会话，含运行详情；具体会话为 `/main/ai/chat/[conversationId]`）、
   `/main/ai/models`（供应商 / 模型）、
   `/main/ai/tools`（工具开关与限额）、`/main/ai/audit`（调用审计 / 用量）、
   `/main/ai/connectors`（连接器：数据库 / Redis / 飞书 CLI 实例）、
   `/main/ai/files`（AI 文件管理：跨会话列表 / 预览 / 分享；总量统计在控制台）、
-  `/main/ai/skills`（AI 技能库；`/main/ai/skills/[skillKey]` 是沉浸式技能编辑器）
+  `/main/ai/skills`（AI 技能库；`/main/ai/skills/[skillKey]` 是沉浸式技能编辑器）、
+  `/main/ai/memories`（长期记忆：按用户查看 / 编辑 / 停用 / 删除）
 - 免授权分享页：`/s/[token]` 走独立 root layout（`(share)` 路由组），不挂 `Providers`、带
   `noindex` / `no-referrer`；`/main/ai/files` 文件列表页的 `ShareDialog` 生成链接（明文 token 只显示一次，
   库里只存哈希，有效期由 `DateTimePicker` 选，可撤销）。分享页只在 admin，web 没有

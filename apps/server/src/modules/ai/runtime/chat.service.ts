@@ -1,4 +1,4 @@
-import { Inject, Injectable } from '@nestjs/common'
+import { Inject, Injectable, Optional } from '@nestjs/common'
 import dedent from 'dedent'
 import { AppError, AppLogger } from '@repo/kits'
 import {
@@ -30,7 +30,11 @@ import {
 } from '../core/errors.js'
 import { AGENT_REGISTRY } from '../agents/registry.js'
 import { MASTRA } from '../mastra/ai.mastra.js'
-import { agentMemory as sharedAgentMemory } from '../mastra/agent-memory.js'
+import {
+  AGENT_MEMORY,
+  agentMemory as sharedAgentMemory,
+  memoryHistoryOptions,
+} from '../mastra/agent-memory.js'
 import { type AgentRuntimeEnvelope, type RuntimeModel } from '../core/envelope.js'
 import { AiModelService } from '../../ai-model/index.js'
 import type { ResolvedRuntimeModel } from '../../ai-model/index.js'
@@ -54,6 +58,10 @@ import { RunRepository } from './run.repository.js'
 import { TimelineRepository } from './timeline.repository.js'
 import { FileService, type FileContext } from '../files/file.service.js'
 import { AttachmentKeyPolicy } from './attachment-key.js'
+import { MemoryService } from '../memory/memory.service.js'
+import { MemoryExtractorService } from '../memory/memory.extractor.service.js'
+import { runContextCompression } from '../mastra/summarizer.js'
+import { toRehydrateMessages } from '../memory/memory.rehydrate.js'
 import { AgentStreamStore } from './stream-store.service.js'
 import { StreamRecorder, toolFailureOf } from './stream-recorder.js'
 import { fitMessagesToToolBudget } from './turn-budget.js'
@@ -84,6 +92,8 @@ const SUMMARY_INSTRUCTION = dedent`
 
 /** 摘要正文之外，摘要事件还要记住它覆盖了哪一段 */
 const SUMMARY_MAX_CHARS = 2_000
+/** 摘要调用的输出上限（500 字的摘要给 800 token 足够，防止模型长篇发挥） */
+const SUMMARY_MAX_OUTPUT_TOKENS = 800
 
 /** 兜底会话名：首条消息里没有可用文字时用它，**不拿 URL 当名字** */
 const DEFAULT_CONVERSATION_TITLE = '新对话'
@@ -191,10 +201,20 @@ export class AgentChatService {
     // 新增依赖放末尾：手工构造的测试/脚本按位置传参，插在中间会把后面全部错位
     @Inject(FileService) private readonly files: FileService,
     @Inject(AttachmentKeyPolicy) private readonly attachmentKeys: AttachmentKeyPolicy,
+    // 手工构造（测试 / 脚本）不传时跳过长期记忆注入；生产由 `ai.module` 提供
+    @Optional() @Inject(MemoryService) private readonly memory?: MemoryService,
+    // 轮后抽取（同样只在生产注入；手工构造的测试 / 脚本不传就跳过）
+    @Optional()
+    @Inject(MemoryExtractorService)
+    private readonly memoryExtractor?: MemoryExtractorService,
+    // 生产由 `ai.module` 注入 Redis 实现；测试 / 脚本手构时缺省，回落到进程内单例
+    @Optional() @Inject(AGENT_MEMORY) private readonly injectedMemory?: typeof sharedAgentMemory,
   ) {}
 
-  /** 主 agent 的对话记忆（与 createMastra 共用同一个单例） */
-  private readonly agentMemory = sharedAgentMemory
+  /** 主 agent 的对话记忆（与 createMastra 共用同一个实例） */
+  private get agentMemory(): typeof sharedAgentMemory {
+    return this.injectedMemory ?? sharedAgentMemory
+  }
 
   private async ensureAgentThread(
     conversationId: string,
@@ -209,6 +229,38 @@ export class AgentChatService {
       })
     }
     return { thread: conversationId, resource: userId }
+  }
+
+  /**
+   * 续跑前补齐 thread（设计 `docs/design/ai-memory.md` §4.4）。
+   *
+   * 为什么需要：thread 落 Redis 后，重启/换副本通常不丢；但 Redis 清空、过期清理、
+   * 或者旧版本留下的空 thread 都会让 `resumeStream` 只剩工具状态、发不起下一次模型调用。
+   * 这里用 `timelines` 里最近的**文本消息**回灌一份"对话骨架"——工具调用/结果由 durable
+   * 快照负责，不回灌（回灌反而可能与快照打架）。
+   *
+   * 只在 thread 没有任何消息时执行；已有内容说明续跑所需的上下文还在。
+   */
+  private async rehydrateThreadIfEmpty(conversationId: string, userId: string): Promise<number> {
+    const recalled = await this.agentMemory.recall({ threadId: conversationId, perPage: 1 })
+    if (recalled.messages.length > 0) return 0
+
+    const thread = await this.agentMemory.getThreadById({ threadId: conversationId })
+    if (!thread) {
+      await this.agentMemory.createThread({
+        threadId: conversationId,
+        resourceId: userId,
+        title: conversationId,
+      })
+    }
+
+    const events = await this.timelines.listSince(conversationId, 0, 200, { rootOnly: true })
+    const messages = toRehydrateMessages(events, conversationId, userId)
+    if (messages.length === 0) return 0
+
+    await this.agentMemory.saveMessages({ messages: messages as never })
+    this.logger.warn('ai.memory.thread_rehydrated', { conversationId, count: messages.length })
+    return messages.length
   }
 
   /**
@@ -304,29 +356,17 @@ export class AgentChatService {
       // ② 组装上下文（窗口优先用库里配的实测值；超限则先压缩一次再重新组装，只压一次）
       let built = await this.buildContext(
         conversation.id,
+        conversation.userId,
         definition,
         input.message,
         model,
         input.attachments,
       )
       if (built.needsCompaction && built.compactionRange) {
-        const requestContextForSummary = await this.buildRuntimeContext(
-          conversation.id,
-          run.id,
-          definition,
-          userId,
-          model,
-          { fileAccess: conversation.fileAccess },
-        )
-        await this.summarize(
-          conversation.id,
-          run.id,
-          definition,
-          built.compactionRange,
-          requestContextForSummary,
-        )
+        await this.summarize(conversation.id, run.id, built.compactionRange, model)
         built = await this.buildContext(
           conversation.id,
+          conversation.userId,
           definition,
           input.message,
           model,
@@ -380,6 +420,11 @@ export class AgentChatService {
         // （子 agent 的并行由此打开；同时跑几个由 AgentRunner 的闸门管，见 constants.ts）
         toolCallConcurrency: AGENT_TOOL_CONCURRENCY,
         requestContext,
+        // 与流式同一口径：历史来自同一个 thread，预算按这一轮的窗口算
+        memory: {
+          ...(await this.ensureAgentThread(conversation.id, userId)),
+          options: memoryHistoryOptions(built.snapshot.windowTokens),
+        },
         // 显式传模型实例：不依赖 Agent 上的动态 model（Mastra 自解析配置那一层曾丢过多模态，见 resolveModelInstance）
         model: modelInstance as never,
         // 与流式同一口径：引擎 runId 由我们定、并回写到 `runs.engine_run_id`（durable 快照靠它认亲）
@@ -393,7 +438,21 @@ export class AgentChatService {
       const persisted = await this.persistSteps(conversation.id, run.id, steps)
 
       // ⑤ 首轮命名：把这一轮的记录交给模型起个短名（与 agent 上下文完全隔离的一次小调用）
-      const title = await this.generateFirstTurnTitle(conversation, run.id, input.message, model)
+      // 命名与记忆抽取都是"与 agent 隔离的一次小调用"，并行跑，失败都不影响这一轮
+      const [title, extracted] = await Promise.all([
+        this.generateFirstTurnTitle(conversation, run.id, input.message, model),
+        this.memoryExtractor
+          ? this.memoryExtractor.maybeExtract({
+              conversationId: conversation.id,
+              runId: run.id,
+              userId,
+              agentKey: definition.key,
+              userMessage: input.message,
+              turnCount: conversation.turnCount,
+              model,
+            })
+          : Promise.resolve(null),
+      ])
 
       // ⑤ 收尾：终态 + 消耗（含子 agent 汇总与这次命名）+ 统计 + 会话累计 + 标题
       const usageBase = await this.rollUpUsage(
@@ -402,9 +461,11 @@ export class AgentChatService {
       )
       // 并账要**保留 usageBase 里的非 token 字段**（如 `subAgents`）：
       // `mergeUsage` 只逐字段加 token，直接把它的结果当 usage 会把那些字段抹掉（踩过：子 agent 明细消失）
-      const usage = title?.usage
-        ? { ...usageBase, ...mergeUsage(usageBase, title.usage) }
-        : usageBase
+      // 并账：命名 + 记忆抽取的用量都要进这一轮的账（mergeUsage 只加 token，非 token 字段要保留）
+      let usage = usageBase
+      for (const extra of [title?.usage, extracted?.usage]) {
+        if (extra) usage = { ...usage, ...mergeUsage(usage, extra) }
+      }
       const durationMs = Date.now() - startedAt
       await this.runs.finish(run.id, {
         status: RunStatus.Succeeded,
@@ -608,6 +669,7 @@ export class AgentChatService {
    */
   private async buildContext(
     conversationId: string,
+    userId: string,
     definition: AgentDefinition,
     userMessage: string,
     model: RuntimeModel,
@@ -624,6 +686,9 @@ export class AgentChatService {
       ? await this.attachments.buildUserContent(userMessage, attachments, model.inputModalities)
       : null
 
+    // 长期记忆：按用户查好注入块（条数与 token 上限由 MemoryService 夹紧，context 只排版）
+    const memoryBlock = this.memory ? await this.memory.collect(userId, definition.key) : null
+
     const built = await this.context.buildInput({
       conversationId,
       // 标识用 `<providerSlug>/<modelKey>`（ContextService 据此查窗口，查不到用兜底值）
@@ -633,6 +698,7 @@ export class AgentChatService {
       // 库里配过窗口就用它（实测值优先于 tokenlens 的估算）
       ...(model.contextWindow ? { windowTokens: model.contextWindow } : {}),
       ...(userContent ? { extraInputTokens: estimateContentTokens(userContent) } : {}),
+      ...(memoryBlock ? { memory: memoryBlock } : {}),
     })
 
     if (!userContent) {
@@ -694,11 +760,9 @@ export class AgentChatService {
   private async summarize(
     conversationId: string,
     runId: string,
-    definition: AgentDefinition,
     range: { fromSeq: number; toSeq: number },
-    requestContext: RequestContext,
+    model: RuntimeModel,
   ): Promise<void> {
-    const mastra = this.requireMastra()
     const events = await this.timelines.listRange(conversationId, range.fromSeq, range.toSeq, {
       rootOnly: true,
     })
@@ -719,43 +783,70 @@ export class AgentChatService {
     }
     if (lines.length === 0) return
 
+    const coversSeqs = [[range.fromSeq, range.toSeq]]
     const startedAt = new Date()
-    const agent = mastra.getAgent(definition.key)
+    // 开始压缩：先落一条状态事件。压缩发生在建流之前（客户端还没连上），所以看不到实时帧，
+    // 但审计 / 复盘能看出"这一段在做什么"，失败时也能与 compact_failed 对上。
+    await this.timelines.append({
+      conversationId,
+      runId,
+      role: TimelineRole.System,
+      kind: TimelineKind.Status,
+      payload: { status: 'compacting', coversSeqs, sourceEventCount: events.length },
+      startedAt,
+    })
+
     try {
-      const result = await agent.generate(
-        [
-          {
-            role: 'user',
-            content: `以下是需要压缩的历史对话：\n\n${lines.join('\n')}`,
-          },
-          { role: 'user', content: SUMMARY_INSTRUCTION },
-        ] as never,
-        // 动态模型要信封（否则模型函数不知道这一轮用哪个模型）
-        { maxSteps: 1, requestContext },
-      )
+      // 隔离调用：不带工具 / 技能 / 记忆，避免模型在这一步调工具导致摘要为空
+      const result = await runContextCompression({
+        model,
+        instructions: SUMMARY_INSTRUCTION,
+        transcript: lines.join('\n'),
+        maxOutputTokens: SUMMARY_MAX_OUTPUT_TOKENS,
+      })
       const text = ((result.text as string) ?? '').slice(0, SUMMARY_MAX_CHARS)
-      if (!text) return
-      await this.timelines.append({
+      if (!text) {
+        // 模型返回空：不静默吞掉，留一条状态让复盘能看出"这里本该有摘要"
+        await this.timelines.append({
+          conversationId,
+          runId,
+          role: TimelineRole.System,
+          kind: TimelineKind.Status,
+          payload: { status: 'compact_empty', coversSeqs },
+          finishedAt: new Date(),
+        })
+        return
+      }
+      const summary = await this.timelines.append({
         conversationId,
         runId,
         role: TimelineRole.System,
         kind: TimelineKind.Summary,
         payload: {
           text,
-          coversSeqs: [[range.fromSeq, range.toSeq]],
-          model: this.config.model ?? null,
+          coversSeqs,
+          model: model.modelRef,
           sourceEventCount: events.length,
         },
-        usage: toUsageRecord(result.totalUsage ?? result.usage ?? null),
+        usage: toUsageRecord(result.usage as never),
         startedAt,
         finishedAt: new Date(),
         durationMs: Date.now() - startedAt.getTime(),
+      })
+      await this.timelines.append({
+        conversationId,
+        runId,
+        role: TimelineRole.System,
+        kind: TimelineKind.Status,
+        payload: { status: 'compacted', coversSeqs, summarySeq: summary.seq },
+        finishedAt: new Date(),
       })
       this.logger.log('ai.context.compacted', {
         conversationId,
         runId,
         coversSeqs: [range.fromSeq, range.toSeq],
         sourceEventCount: events.length,
+        summarySeq: summary.seq,
       })
     } catch (error) {
       // 压缩失败不阻断这一轮：降级为纯裁剪，并记一条状态事件（复盘能看出"这里本该有摘要"）
@@ -1003,6 +1094,7 @@ export class AgentChatService {
       // ② 组装上下文（窗口优先用库里配的实测值；超限则先压缩一次再重新组装，只压一次）
       let built = await this.buildContext(
         conversation.id,
+        conversation.userId,
         definition,
         input.message,
         model,
@@ -1011,18 +1103,10 @@ export class AgentChatService {
       if (built.needsCompaction && built.compactionRange) {
         // 注意：压缩发生在建流之前（尚未 writeHead），它的模型调用不单独接 abortSignal ——
         // 失败会降级为纯裁剪（见 summarize），不会阻断这一轮
-        await this.summarize(
-          conversation.id,
-          run.id,
-          definition,
-          built.compactionRange,
-          await this.buildRuntimeContext(conversation.id, run.id, definition, userId, model, {
-            fileAccess: conversation.fileAccess,
-            isAdmin,
-          }),
-        )
+        await this.summarize(conversation.id, run.id, built.compactionRange, model)
         built = await this.buildContext(
           conversation.id,
+          conversation.userId,
           definition,
           input.message,
           model,
@@ -1121,7 +1205,11 @@ export class AgentChatService {
         toolCallConcurrency: AGENT_TOOL_CONCURRENCY,
         abortSignal: abort.signal,
         requestContext,
-        memory: memoryThread,
+        // 历史按**这一轮的窗口**给 token 预算（条数不是容量的代理，Mastra 文档同口径）
+        memory: {
+          ...memoryThread,
+          options: memoryHistoryOptions(built.snapshot.windowTokens),
+        },
         savePerStep: true,
         // 显式传模型实例：不依赖 Agent 上的动态 model（Mastra 自解析配置那一层曾丢过多模态，见 resolveModelInstance）
         model: modelInstance as never,
@@ -1282,13 +1370,29 @@ export class AgentChatService {
       const steps = (await readStreamSteps(output)) as unknown as StepLike[]
       const persisted = await recorder.finish(steps)
       // 首轮命名：与 agent 上下文完全隔离的一次小调用（失败不影响这一轮，见 title.service.ts）
-      const title = await this.generateFirstTurnTitle(conversation, run.id, input.message, model)
+      // 命名与记忆抽取都是"与 agent 隔离的一次小调用"，并行跑，失败都不影响这一轮
+      const [title, extracted] = await Promise.all([
+        this.generateFirstTurnTitle(conversation, run.id, input.message, model),
+        this.memoryExtractor
+          ? this.memoryExtractor.maybeExtract({
+              conversationId: conversation.id,
+              runId: run.id,
+              userId,
+              agentKey: definition.key,
+              userMessage: input.message,
+              turnCount: conversation.turnCount,
+              model,
+            })
+          : Promise.resolve(null),
+      ])
       const usageBase = await this.rollUpUsage(run.id, toUsageRecord(await readStreamUsage(output)))
       // 并账要**保留 usageBase 里的非 token 字段**（如 `subAgents`）：
       // `mergeUsage` 只逐字段加 token，直接把它的结果当 usage 会把那些字段抹掉（踩过：子 agent 明细消失）
-      const usage = title?.usage
-        ? { ...usageBase, ...mergeUsage(usageBase, title.usage) }
-        : usageBase
+      // 并账：命名 + 记忆抽取的用量都要进这一轮的账（mergeUsage 只加 token，非 token 字段要保留）
+      let usage = usageBase
+      for (const extra of [title?.usage, extracted?.usage]) {
+        if (extra) usage = { ...usage, ...mergeUsage(usage, extra) }
+      }
       const durationMs = Date.now() - startedAt
       await this.runs.finish(run.id, {
         status: RunStatus.Succeeded,
@@ -1601,6 +1705,7 @@ export class AgentChatService {
       )
       const agent = mastra.getAgent(definition.key)
       const memoryThread = await this.ensureAgentThread(conversation.id, userId)
+      await this.rehydrateThreadIfEmpty(conversation.id, userId)
       /**
        * 轮内预算按**这一轮的窗口**算：优先用首轮落库的上下文快照（同一份判定），
        * 快照没有（旧数据）就现场解析一次。续跑的步数通常不多，但"套用首轮口径"
@@ -1620,7 +1725,7 @@ export class AgentChatService {
         requestContext,
         model: modelInstance as never,
         abortSignal: abort.signal,
-        memory: memoryThread,
+        memory: { ...memoryThread, options: memoryHistoryOptions(windowTokens) },
         savePerStep: true,
         // 轮内预算：与首轮同一口径
         prepareStep: this.buildPrepareStep(windowTokens),
