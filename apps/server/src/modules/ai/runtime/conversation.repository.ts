@@ -66,7 +66,13 @@ export class ConversationRepository {
     return row?.userId ?? null
   }
 
-  /** 某用户的会话列表（默认不含已软删；按最后活动时间倒序） */
+  /**
+   * 某用户的会话列表（默认不含已软删；**按创建时间倒序**）。
+   *
+   * 为什么按创建时间：列表是"我什么时候开的会话"的索引，用户要求顺序稳定（新开的在最前，
+   * 旧会话不会因为刚聊过就被顶上去）；`created_at` 不会变，分页也不会错位。
+   * `last_active_at` 仍然记录，但不再参与排序。
+   */
   async list(
     userId: string,
     query: AgentConversationListDto,
@@ -76,7 +82,7 @@ export class ConversationRepository {
     const builder = repo
       .createQueryBuilder('c')
       .where('c.userId = :userId', { userId })
-      .orderBy('c.lastActiveAt', 'DESC')
+      .orderBy('c.createdAt', 'DESC')
       .addOrderBy('c.id', 'DESC')
     if (includeDeleted) builder.withDeleted()
     const { data, total } = await pageWith(builder, page, size)

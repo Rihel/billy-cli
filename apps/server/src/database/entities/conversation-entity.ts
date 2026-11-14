@@ -9,7 +9,7 @@ import { Column, Entity, Index } from 'typeorm'
  * 冗余 `turn_count` / `total_tokens` 是为了会话列表不需要聚合 `runs`。
  */
 @Entity('conversations')
-@Index('idx_conversation_user_active', ['userId', 'lastActiveAt'])
+@Index('idx_conversation_user_created', ['userId', 'createdAt'])
 export class ConversationEntity extends AuditEntity {
   /** 归属用户（服务端从鉴权上下文取，绝不接受前端传） */
   @Column({ name: 'user_id', type: 'varchar', length: 20 })
@@ -36,7 +36,12 @@ export class ConversationEntity extends AuditEntity {
   @Column({ name: 'status', type: 'varchar', length: 20, default: ConversationStatus.Active })
   status: string = ConversationStatus.Active
 
-  /** 最后活动时间（列表排序用它，不用 updated_at —— 改标题不该把它顶到最前面） */
+  /**
+   * 最后活动时间（**只是记录**，不参与列表排序）。
+   *
+   * 列表按 `created_at` 排序（用户口径：会话列表要稳定地按创建先后排，不能因为"谁刚用过"
+   * 就跳来跳去；分页也不会因为活动时间变化而错位）。这一列保留给统计 / 运维排查用。
+   */
   @Column({ name: 'last_active_at', type: 'timestamp', precision: 3 })
   lastActiveAt!: Date
 

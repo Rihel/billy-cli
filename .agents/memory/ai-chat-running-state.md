@@ -9,7 +9,8 @@
 
 - 侧栏「运行中」呼吸灯**不再轮询**：服务端在根 run 活跃状态变化时推 `conversation.run.changed`
   （频道 `ai:owner:{ownerId}`，服务端按登录身份派生订阅，客户端不传频道）；前端 `useStream`
-  收到后只覆盖缓存里的 `running` 字段，`running=false` 时补一次列表失效（刷标题 / 轮数 / 排序）。
+  收到后只覆盖缓存里的 `running` 字段，`running=false` 时补一次列表失效（刷标题 / 轮数；
+  列表顺序按 `created_at DESC`，运行态变化不该再动顺序，2026-11-14 改）。
 - 发布收口在 `RunRepository`：`create` / `markRunning` / `suspend` / `finish` / `cancelActive` /
   `markTimeout` / `interruptActiveBefore` 各调一次 `notifyStatus`；子 run 跳过。
   `running` 由 `ConversationRepository.isRunning` **发布时现算**，不从状态机推断。

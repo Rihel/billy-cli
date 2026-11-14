@@ -144,6 +144,40 @@ describe('会话运行时（真实数据库）', () => {
     expect(others.total).toBe(0)
   })
 
+  /**
+   * 列表按**创建时间**倒序（2026-11-14 用户口径）。
+   *
+   * 造三条会话并把 `created_at` 拉开，再把**最旧那条**的 `last_active_at` 顶到最前 ——
+   * 排序若退回 `last_active_at`（或 `updated_at`），最旧那条会跑到首位，这条断言就会挂。
+   * 用"只比较这三条之间的相对顺序"而不是整页前三位：同一用户下还有别的用例建的会话。
+   */
+  it('列表按创建时间倒序：最后活动过的旧会话不会跑到最前', async () => {
+    const oldest = await conversationService.create(USER, {})
+    const middle = await conversationService.create(USER, {})
+    const newest = await conversationService.create(USER, {})
+    createdConversationIds.push(oldest.id, middle.id, newest.id)
+    await db.dataSource.query(
+      `UPDATE conversations SET created_at = now() - interval '3 minutes', last_active_at = now() WHERE id = $1`,
+      [oldest.id],
+    )
+    await db.dataSource.query(
+      `UPDATE conversations SET created_at = now() - interval '2 minutes' WHERE id = $1`,
+      [middle.id],
+    )
+    await db.dataSource.query(
+      `UPDATE conversations SET created_at = now() - interval '1 minutes' WHERE id = $1`,
+      [newest.id],
+    )
+
+    const page = await conversationService.list(USER, { page: 1, size: 20, includeDeleted: false })
+    const mine = new Set([oldest.id, middle.id, newest.id])
+    expect(page.items.map((item) => item.id).filter((id) => mine.has(id))).toEqual([
+      newest.id,
+      middle.id,
+      oldest.id,
+    ])
+  })
+
   it('别人的会话：detail 返回 3304（不区分"不存在"与"不是你的"）', async () => {
     const conversation = await conversationService.create(USER, {})
     createdConversationIds.push(conversation.id)
