@@ -3,7 +3,8 @@ services:
   # PostgreSQL
   # ──────────────────────────────────────────
   postgres:
-    image: postgres:17-alpine
+    # 带 pgvector 的 PG17（标准镜像没有 vector 扩展；pg_trgm 两个镜像都自带）
+    image: pgvector/pgvector:pg17
     container_name: billy-postgres
     restart: unless-stopped
     environment:
@@ -28,7 +29,8 @@ services:
     image: redis:7-alpine
     container_name: billy-redis
     restart: unless-stopped
-    command: redis-server --save 60 1 --loglevel warning
+    # AOF：短期记忆 thread 落这里，崩溃最多丢 1 秒；noeviction：内存满时报错而不是静默淘汰记忆
+    command: redis-server --save 60 1 --appendonly yes --appendfsync everysec --maxmemory-policy noeviction --loglevel warning
     volumes:
       - redis-data:/data
     ports:

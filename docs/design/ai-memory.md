@@ -68,8 +68,8 @@
 
 **Redis 运行要求（必须写进部署文档）**
 
-1. 持久化：开 `appendonly yes`，或明确接受"崩溃最多丢 60 秒"（当前 compose 只有 RDB 60s）；
-2. 驱逐：`maxmemory-policy` 不能是 `allkeys-lru`；建议 `noeviction` 或给 memory 单独 db / 实例；
+1. 持久化：开 `appendonly yes`；本仓 compose 已改为 `--appendonly yes --appendfsync everysec`；
+2. 驱逐：`maxmemory-policy` 不能是 `allkeys-lru`；本仓 compose 已设 `noeviction`，生产建议单独 db / 实例；
 3. 不支持 Redis Cluster（官方明确），只支持 standalone / Sentinel。
 
 ### 4.2 历史策略（已实现）
@@ -259,6 +259,8 @@
 
 1. 生成迁移：建 `ai_memories` 与索引（无外键）；不建 Redis 结构（适配器自管）。
 2. Redis：确认 AOF / `noeviction`；先在一台副本切换，验证重启与多副本。
+3. PG 扩展：compose 已换 `pgvector/pgvector:pg17`，`docker/init-db.sql` 建 `vector` + `pg_trgm`；
+   **已有数据卷不会重跑初始化脚本**，需要手工执行一次 `CREATE EXTENSION IF NOT EXISTS ...`。
 3. 灰度：先在测试环境跑通跨会话回忆与重启续跑，再切生产。
 4. 回滚：`agent-memory.ts` 回退到 `InMemoryStore` 只需一行；记忆表保留不影响运行。
 
