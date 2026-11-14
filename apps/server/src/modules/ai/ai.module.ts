@@ -393,7 +393,10 @@ let warnedMissingEnvelope = false
           // 连接器产出的工具是运行期出现的，且作用域要按这一次的身份过滤 —— 没授权的工具不出现
           resolveTools: async (ids, caller) => {
             const keys = tools.expand(ids)
-            const allowed = caller ? await tools.authorized(keys, caller) : keys
+            // 没有运行时身份（构造期 / 装配期）：只放行 scope='all'，绝不"没身份就全给"
+            const allowed = caller
+              ? await tools.authorized(keys, caller)
+              : await tools.publicKeys(keys)
             return toMastraTools(tools.toolbox(allowed), logger)
           },
           resolveSkills: async (names) => toMastraSkills(await skillLoader.resolve(names)),

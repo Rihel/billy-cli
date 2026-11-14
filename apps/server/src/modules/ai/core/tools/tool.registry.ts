@@ -163,6 +163,21 @@ export class ToolRegistry {
     return allowed
   }
 
+  /**
+   * **没有运行时身份**（构造期 / 装配期，拿不到信封）时能放行的工具面：只有 `scope='all'`。
+   *
+   * 不能因为"没有 caller"就返回全部 —— 那会让 admin / agent 作用域的工具出现在
+   * 匿名或错配的调用面上（2026-11-14 评审：P1-3）。
+   */
+  async publicKeys(keys: readonly string[]): Promise<string[]> {
+    const allowed: string[] = []
+    for (const key of keys) {
+      const settings = await this.config.settings(this.spec(key))
+      if (settings.scope === 'all') allowed.push(key)
+    }
+    return allowed
+  }
+
   /** 取工具（未知 key 返回 undefined） */
   get(key: string): Tool | undefined {
     return this.lookup(key)?.tool
@@ -241,6 +256,28 @@ export class ToolRegistry {
       if (entry.spec.delegation === true) continue
       if (entry.spec.child === 'deny') continue
       tools.set(key, entry.tool)
+    }
+    return tools
+  }
+
+  /**
+   * 子 agent 工具面（**运行时身份版**）：在 {@link childToolbox} 的"父授权 ∩ 排除法"之上，
+   * 再按这次 caller 的作用域过滤一遍。
+   *
+   * 为什么需要：`childToolbox` 只按父 agent 的**声明**收口；若父 agent 的声明里含
+   * `scope=admin` 的工具、而这次触发者不是管理员，子 agent 仍会"看见"这些工具描述
+   * （执行期才会被 `ScopePlugin` 拒绝）—— 白白浪费上下文，也给了提示词层面的操作空间。
+   * 运行期应让模型**根本看不到**不该用的工具（2026-11-14 评审：P1-4）。
+   */
+  async authorizedChildToolbox(
+    parentTools: readonly ToolSelector[] | undefined,
+    caller: ToolCallerIdentity,
+  ): Promise<Toolbox> {
+    const child = this.childToolbox(parentTools)
+    const allowed = new Set(await this.authorized([...child.keys()], caller))
+    const tools = new Map<string, Tool>()
+    for (const [key, tool] of child) {
+      if (allowed.has(key)) tools.set(key, tool)
     }
     return tools
   }

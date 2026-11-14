@@ -10,8 +10,11 @@
   连接器选择器**允许零命中**（连接器运行期才同步）。
 - 作用域**装配期就过滤工具面**：`ai.module.ts` 的 `resolveTools(ids, caller)` →
   `ToolRegistry.authorized(keys, caller)`；`ScopePlugin` 只兜调用期。判据纯函数在 `tool.scope.ts`。
-- 子 agent 工具面 = **父授权 ∩（全部 − 委派类 − `child: deny`）**：
-  `chat.service.ts` 的 `buildRuntimeContext` 传 `definition.tools` 进 `childToolbox(parentTools)`。
+- **没有 caller 时只放行 `scope='all'`**（`ToolRegistry.publicKeys`，2026-11-14 起）：
+  构造期拿不到信封也不会把 admin / agent 工具全给出去。
+- 子 agent 工具面 = **父授权 ∩（全部 − 委派类 − `child: deny`），再按本次 caller 过滤作用域**：
+  `chat.service.ts` 的 `buildRuntimeContext` 先构造 caller（`isAdmin` + `rootAgentKey`）再调
+  `authorizedChildToolbox(definition.tools, caller)`（不再用同步的 `childToolbox` 裸版）。
 - 快照里的 `toolKeys` 是**展开后的具体 key**（`this.toolRegistry.expand(...)`），不是选择器。
 
 ## 坑：身份没进运行时信封 = admin 工具整组消失（2026-11-11 实测）
@@ -29,9 +32,8 @@
 ```bash
 grep -n "expandToolSelectors\|authorized(" apps/server/src/modules/ai/core/tools/tool.registry.ts
 grep -n "resolveTools:" -A 5 apps/server/src/modules/ai/ai.module.ts
-grep -n "childToolbox(" -A3 apps/server/src/modules/ai/runtime/chat.service.ts
-grep -n "buildRuntimeContext(" -A12 apps/server/src/modules/ai/runtime/chat.service.ts
-grep -n "scopeAllows" apps/server/src/modules/ai/core/tools/tool.scope.ts
+grep -n "authorizedChildToolbox(" apps/server/src/modules/ai/runtime/chat.service.ts
+grep -n "publicKeys\|scopeAllows" apps/server/src/modules/ai/core/tools/tool.registry.ts apps/server/src/modules/ai/core/tools/tool.scope.ts
 pnpm --filter @app/server test test/ai-tool-selector.test.ts
 ```
 

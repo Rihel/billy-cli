@@ -2135,6 +2135,11 @@ export class AgentChatService {
       fileAccess?: 'read-only' | 'workspace-write'
     } = {},
   ): Promise<RequestContext> {
+    // 子 agent 工具面 = 父 agent 授权面 ∩ 全部 − 委派类 − child:deny，**再按本次身份过滤作用域**
+    // （admin 工具不因父 agent 声明了就对普通用户触发的那一轮可见）
+    const caller = { isAdmin: options.isAdmin ?? false, rootAgentKey: definition.key }
+    const childToolbox = await this.toolRegistry.authorizedChildToolbox(definition.tools, caller)
+
     const envelope: AgentRuntimeEnvelope = {
       conversationId,
       parentRunId,
@@ -2149,7 +2154,7 @@ export class AgentChatService {
       model,
       // 子 agent 的工具面 = 父 agent 的授权面 ∩ 全部 − 委派类 − child:deny
       // （"子助手有你的全部工具"里的"你的"指父 agent 被授权的那一份，不是注册机全量）
-      childToolbox: this.toolRegistry.childToolbox(definition.tools),
+      childToolbox,
       skills: await this.skillLoader.resolve(definition.skills),
       ...(options.systemPrompt ? { systemPrompt: options.systemPrompt } : {}),
       ...(options.abortSignal ? { abortSignal: options.abortSignal } : {}),
