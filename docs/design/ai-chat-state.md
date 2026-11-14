@@ -73,7 +73,8 @@
 | `data-tool-event` | 能对上工具卡的并进卡里；对不上的独立成卡（之后若出现同 id 工具卡，渲染时按"已认领"跳过） |
 | `data-tool-call-suspended` | 问答卡单元 |
 | `data-plan` | 重算消息级计划（`collectMessagePlan`），不占单元 |
-| `data-run-usage` | 记到消息的 `usage` |
+| `data-run-usage` | 记到消息的 `usage`（收尾一次，权威值） |
+| `data-step-usage` | 同上（每步一次，实时累计值；2026-11-14 加，与收尾块同形、不占单元） |
 | `data-run` / `data-run-suspended` / `step-start` / `data-conversation-title` | 不进正文（`data-run` 同时清实时数据；标题块由 `onData` 另行处理，不进归约） |
 | 其它未知 part | 记一个 `unknown` 单元（不静默丢内容，便于发现新协议块没接上） |
 

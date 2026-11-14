@@ -28,7 +28,8 @@
 | part | 谁发 | 带 id？ | 落库？ | 前端渲染 |
 | --- | --- | --- | --- | --- |
 | `data-run` | `chat.service.ts:792-798`（本轮身份，**第一个块**） | 否 | 否 | `message-row.tsx:185-187` 返回 null；`chat-conversation.tsx:242-256` 记 runId + 新会话换地址 |
-| `data-run-usage` | `chat.service.ts:894-906`（终态落库之后、`[DONE]` 之前） | 否 | 否 | `message-row.tsx:188-191` null；由 `data.ts:85-92` 消费 → `chat-conversation.tsx:482` |
+| `data-run-usage` | `chat.service.ts` 的 `chatStream` / `resumeStream` 收尾（终态落库之后、`[DONE]` 之前） | 否 | 否 | 由 `data.ts` 的 `sessionUsageOf` 逐条相加（行内是**会话累计**，本轮明细进悬停） |
+| `data-step-usage` | `runtime/live-usage.ts`：**每步模型调用结束**在原始流上取（v6 适配层会丢 step usage） | 否 | 否 | 同上；与 `data-run-usage` **同形**，值是「这一轮到目前为止」的累计，收尾块覆盖它 |
 | `data-conversation-title` | `chat.service.ts:863-875`（只在真改过名时发） | 否 | 否 | `message-row.tsx:192-196` null；`onData` `chat-conversation.tsx:218-239` 就地改缓存 |
 | `data-tool-event` | `core/tools/tool-event.ts:184-197` | `state` 带 `<toolCallId>:<事件名>`；`stream` 不带（由 `mode` 决定） | 否 | `message-row.tsx:151-161`：并进对应工具卡，无主的独立成卡 |
 | `data-sub-agent` | `agent-runner.ts:561-565`（子助手状态快照） | **是**，`id = subRunId`（同 id 覆盖） | 否 | `message-row.tsx:162-174` → `SubAgentPanel` |

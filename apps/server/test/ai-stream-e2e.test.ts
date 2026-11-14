@@ -154,6 +154,13 @@ const conversationIdOfSse = (sse: string): string | undefined => {
   return undefined
 }
 
+/** 从 SSE 原文里解析出所有 JSON 片段（忽略注释帧与 `[DONE]`） */
+const chunksOfSse = (sse: string): Array<{ type?: string; data?: Record<string, unknown> }> =>
+  sse
+    .split('\n')
+    .filter((line) => line.startsWith('data: {'))
+    .map((line) => JSON.parse(line.slice(6)) as { type?: string; data?: Record<string, unknown> })
+
 /** 从 UI Message Stream 的 SSE 原文里拼出正文（delta 是逐字的，不能直接对原文 toContain） */
 const uiTextOfSse = (sse: string): string =>
   sse
@@ -359,6 +366,30 @@ describe('流式链路端到端（mock 模型 + 真实 DB + 真实 Redis）', ()
     expect(headers.get('x-vercel-ai-ui-message-stream')).toBe('v1')
     expect(text).toContain('data: ')
     expect(text).toContain('[DONE]')
+
+    /**
+     * **轮内实时用量**（2026-11-14）：每步模型调用结束就发一条 `data-step-usage`，
+     * 前端右下角的"步 / 输入 / 输出 / 缓存命中"因此能边跑边涨，而不是等这一轮收尾（用户的反馈）。
+     *
+     * 这条断言顺带守住实时值的地基：Mastra 原始 `step-finish` 确实带这一步的 `output.usage`，
+     * 而 v6 适配层会把它丢掉（见 `runtime/live-usage.ts` 的注释）—— 所以只能自己在原始流上取；
+     * 收尾的 `data-run-usage` 仍然最后到、且是权威值（含命名调用的并账）。
+     */
+    const chunks = chunksOfSse(text)
+    const liveUsages = chunks.filter((chunk) => chunk.type === 'data-step-usage')
+    // 这个用例是两步（先 plan-create 再回答）：一步一条
+    expect(liveUsages.length).toBeGreaterThanOrEqual(2)
+    const lastLive = liveUsages.at(-1)?.data as
+      | { stepCount?: number; usage?: Record<string, unknown> }
+      | undefined
+    expect(lastLive?.stepCount).toBe(2)
+    // 与收尾口径同一套字段（token 在 `data.usage` 里），两步各命中 64 → 实时累计 128
+    expect(lastLive?.usage).toMatchObject({
+      inputTokens: expect.any(Number),
+      outputTokens: expect.any(Number),
+      cacheReadTokens: 128,
+    })
+    expect(text.lastIndexOf('"data-step-usage"')).toBeLessThan(text.indexOf('"data-run-usage"'))
 
     // 会话与运行（从库里反查）
     const conversation = await conversations.list(USER, { page: 1, size: 1, includeDeleted: false })
@@ -794,8 +825,8 @@ describe('流式链路端到端（mock 模型 + 真实 DB + 真实 Redis）', ()
 
     // 2) 库里只落元数据：**不含 base64**（审计表不被内容撑变形）
     //
-    // 会话 id 必须从本轮流里取，不能拿"会话列表首项"猜：列表按 `lastActiveAt DESC` 排序，
-    // 整份跑时前面的用例不断累积会话，首项可能是别人的会话 → 查不到本轮的 user 时间线行
+    // 会话 id 必须从本轮流里取，不能拿"会话列表首项"猜：列表按 `createdAt DESC` 排序，
+    // 整份跑时前面的用例不断累积会话（并行用例也会新建），首项不一定是本次那条 → 查不到本轮的 user 时间线行
     // （顺序依赖，单跑能过、整份跑偶发挂）。`data-run` 块里的 id 是本轮唯一确定的句柄。
     const conversationId = conversationIdOfSse(text)!
     expect(conversationId).toBeTruthy()

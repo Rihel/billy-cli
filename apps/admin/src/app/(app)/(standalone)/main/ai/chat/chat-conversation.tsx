@@ -83,7 +83,8 @@ import { QuestionCard, type AnswerQuestionsInput, type SuspendedPartData } from 
 // 同一套纪律只写一次，避免两处各有一套"用户手动优先"的实现漂移
 import { shouldAutoOpen } from './tool-card'
 import { copyText } from '@/lib/clipboard'
-import { parseChatError, usageLineText, usageLineTitle } from './format'
+import { parseChatError } from './format'
+import { UsageLine } from './usage-line'
 import { conversationPath, isNewConversation } from './routes'
 import { ATTACHMENT_ACCEPT, formatFileSize } from './attachment-utils'
 import { createLongTextFile, LONG_TEXT_PASTE_MIN_CHARS, splitLongText } from './long-text'
@@ -98,7 +99,7 @@ import {
   ChatAttachmentSchema,
 } from '@repo/shared'
 import { z } from 'zod'
-import { lastRunUsage, loadWholeRuns, loadWholeTimeline } from './data'
+import { currentTurnUsage, loadWholeRuns, loadWholeTimeline, sessionUsageOf } from './data'
 import { markSuspendedAnswered, pinResumeMessageId } from './resume-answer'
 
 /** 附件上限的展示文案（与 `AgentChatSchema` 的常量同源，改一处就够） */
@@ -787,16 +788,19 @@ export function ChatConversation({ conversationId }: { conversationId: string })
   const activeAgent = agents.find(
     (agent) => agent.key === (agentKey ?? agentsQuery.data?.defaultAgentKey),
   )
-  const usage = lastRunUsage(messages)
   /**
-   * 这是该会话的第几轮 = 助手消息条数（至少 1）。
+   * 右下角统计：**整个会话的累计**（用户口径，2026-11-14 明确：步与 token 都是所有轮次之和）。
    *
-   * 口径依据：`toUIMessages` 是**一个根 run = 一条 user + 一条 assistant**，
-   * 而 `useChat` 的 `messages` 里**已经包含正在流的那条助手消息** ——
-   * 所以"+1"会多算一轮（踩过：第一轮答完就显示"2 轮"）。用 max(1, n) 兜住"还没开始/刚发出"的瞬间。
-   * 若将来一轮产出多条 assistant 消息，这里要改成按 `data-run` 的 runId 去重计数。
+   * 口径依据：`toUIMessages` 是**一个根 run = 一条 user + 一条 assistant**，历史每一轮的
+   * `data-run-usage` 都挂回对应的助手消息，实时这一轮挂 `data-step-usage` —— 消息列表本身就是账本，
+   * 相加即可，不用额外接口。轮数 = 助手消息条数（含正在流的这条；"+1"会多算一轮，踩过）。
+   * 若将来一轮产出多条 assistant 消息，要改成按 `data-run` 的 runId 去重计数。
    */
-  const turn = Math.max(1, messages.filter((message) => message.role === 'assistant').length)
+  const sessionUsage = sessionUsageOf(messages)
+  const usage = sessionUsage?.usage ?? null
+  const turn = sessionUsage?.turns ?? 1
+  /** 本轮用量：只进悬停（累计行看不出"这一轮花了多少"） */
+  const currentUsage = currentTurnUsage(messages)
 
   /**
    * 用户主动停止。
@@ -1319,7 +1323,7 @@ export function ChatConversation({ conversationId }: { conversationId: string })
                     ) : null}
                   </PromptInputTools>
                   <div className="flex min-w-0 items-center gap-2">
-                    <RunUsageInline usage={usage} turn={turn} />
+                    <UsageLine usage={usage} turn={turn} current={currentUsage} />
                     {/* 流式中这个按钮就是"停止"（内部按 status 换成方块图标），onStop 里做真正的取消 */}
                     <PromptInputSubmit
                       status={resuming ? 'streaming' : status}
@@ -1390,22 +1394,5 @@ export function ChatConversation({ conversationId }: { conversationId: string })
       {/* 附件查看器：挂在会话页最外层，全局只有一个实例 */}
       {lightbox.lightbox}
     </>
-  )
-}
-
-/**
- * 输入框**右下角**的一轮统计：`N 轮 M 步，输入 X，输出 Y，缓存命中 Z`。
- *
- * 文案拼装在 `format.ts` 的 `usageLineText`（纯函数、有单测）；这里只管排版：
- * 行内短（一眼看量级）、悬停全（精确值对账）。
- * 轮 / 步的口径：轮 = 该会话第几轮（页面算好传进来），步 = 这一轮里模型被调了几次。
- */
-function RunUsageInline({ usage, turn }: { usage: Record<string, unknown> | null; turn: number }) {
-  const text = usageLineText(usage, turn)
-  if (!text) return null
-  return (
-    <span className="truncate text-xs text-muted-foreground" title={usageLineTitle(usage, turn)}>
-      {text}
-    </span>
   )
 }

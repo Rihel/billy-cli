@@ -31,7 +31,11 @@
   上限 `10` 字（`title.service.ts:12`）、`10s` 墙钟（`:15`）、`32` 输出 token（`:18`）、transcript `2000` 字符（`:21`）。
 - **下发**：`data-run-usage`（`chat.service.ts:894-906`，不带 id）在**终态落库之后、`[DONE]` 之前**发出，
   于是"客户端看到用量"就代表"库里已经有了"；同时进 Redis 记录 + 广播，断线补发也拿得到（`:886-892`）。
-  前端消费在 `data.ts:85-92` → `chat-conversation.tsx:482`（`onData` 里**没有**这个分支，别去那里找）。
+  前端消费走 `data.ts` 的 `sessionUsageOf`（每条助手消息的最新用量块相加 = **会话累计**；`onData` 里**没有**这个分支，别去那里找）。
+- **轮内实时值**：AI SDK **v6** UI 流**不带 usage**（`@mastra/ai-sdk` 的 v6 映射把 `step-finish` 拍成裸
+  `finish-step`），所以 `runtime/live-usage.ts` 在 Mastra 原始 `fullStream` 上 tee，每步末补发
+  `data-step-usage`（与收尾块同形、累计值）。它是**下界**：子 agent / 命名 / 记忆抽取收尾才并账，
+  轮末会跳一下；对账永远以 `data-run-usage` 为准。
 - **为什么用量必须能解释**：账上的每个数要么指到 provider 的上报，要么是 `null`；出现"界面有数、库里没有"
   或"库里 0、实际上报缺失"就是 bug（后者用 `null` 语义根治）。
 

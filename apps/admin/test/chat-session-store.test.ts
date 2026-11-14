@@ -190,11 +190,15 @@ describe('ChatSessionStore：按 type 归约', () => {
           },
         },
         { type: 'data-run-usage', data: { runId: 'r1', usage: { inputTokens: 1 }, stepCount: 2 } },
+        // 轮内实时块（每步一条）：与收尾块同一个形状，只更新用量，**不能**多出"未识别片段"单元
+        { type: 'data-step-usage', data: { runId: 'r1', usage: { inputTokens: 5 }, stepCount: 3 } },
       ]),
     ])
 
     expect(unitsOf(store).find((unit) => unit.kind === 'question')).toBeTruthy()
-    expect(store.getSnapshot().messages[0]?.usage).toMatchObject({ inputTokens: 1 })
+    // 只有问题卡一个单元（用量块不占位）
+    expect(unitsOf(store)).toHaveLength(1)
+    expect(store.getSnapshot().messages[0]?.usage).toMatchObject({ inputTokens: 5 })
   })
 
   it('续传重放（parts 变短）时整条重建，不残留旧内容', () => {

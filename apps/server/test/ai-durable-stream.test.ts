@@ -288,6 +288,14 @@ describe('可恢复执行（durable）下的流式收尾', () => {
     const usageData = (JSON.parse(usageFrame[0].slice(6)) as { data: { usage: unknown } }).data
     expect(usageData.usage).toBeTruthy()
     expect(text.indexOf('data-run-usage')).toBeLessThan(text.indexOf('[DONE]'))
+    // 轮内实时用量（`data-step-usage`）在 durable 下同样要发：`agent.stream()` 这时返回的是包装对象
+    // （`{ output, fullStream, … }`），`live-usage.ts` 认的正是 `fullStream`；缺了它页签开着的人
+    // 只有轮末才看到数字（用户反馈的"用量不实时"）
+    const liveFrames = text
+      .split('\n')
+      .filter((line) => line.startsWith('data: ') && line.includes('"data-step-usage"'))
+    expect(liveFrames.length).toBeGreaterThanOrEqual(1)
+    expect(text.lastIndexOf('"data-step-usage"')).toBeLessThan(text.indexOf('"data-run-usage"'))
 
     const list = await conversations.list(USER, { page: 1, size: 1, includeDeleted: false })
     const conversationId = list.items[0].id

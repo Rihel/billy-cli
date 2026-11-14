@@ -13,7 +13,8 @@
 - `data-sub-agent`：该 runId 的子助手单元（状态合并）；
 - `data-sub-agent-delta`：**折叠进聚合正文**，不产生单元；
 - `data-tool-event`：有主并进工具卡，无主独立成卡（之后出现同 id 工具卡时渲染跳过）；
-- `data-plan` / `data-run-usage`：记到消息的 plan / usage，不占单元。
+- `data-plan` / `data-run-usage`：记到消息的 plan / usage，不占单元；
+- `data-step-usage`（每步一条，实时用量，与 `data-run-usage` 同形）：同上，不占单元。
 
 实时数据：`onData` → `applyChunk`（100ms 合并通知），`data-run` 表示新一轮开始 → 清空上一轮。
 视图：`ChatMessage`（`message-row.tsx`）接单元并 `memo`；子助手卡各自订阅 `useLiveSubAgent(runId)`。
@@ -62,6 +63,16 @@
 - 计时别再"500ms 采样 + 0.1s 精度"混着用：数字会按 0.5 一跳（0ms→500ms→1s→1.5s）。
   统一用 `use-elapsed.ts`：250ms 采样、状态存**整秒**（值不变 React 直接 bail out → 每秒只重渲染一次），
   结束向上取整冻结；历史耗时（审计 `durationMs`）保持一位小数显示。
+
+- **用量实时值只能自己从原始流里取**（2026-11-14）：AI SDK **v6** UI 流不带 usage ——
+  `@mastra/ai-sdk` 的 v6 映射把 `step-finish` 拍成裸 `{ type: 'finish-step' }`（v5 分支才带），
+  而 Mastra 原始片段的 `payload.output.usage` 就是这一步的账。做法：`runtime/live-usage.ts`
+  在 `fullStream` 上 tee，每步末补发 `data-step-usage`（累计值）；收尾的 `data-run-usage` 仍权威
+  （子 agent / 命名 / 记忆抽取收尾才并账，实时值是下界，轮末会跳一下）。
+  前端显示的是**会话累计**（用户口径，2026-11-14）：`data.ts` 的 `sessionUsageOf` 把每条助手消息上
+  最新的用量块相加（历史的收尾块由 `history.ts` 重建、实时块每步一条）—— 消息列表本身就是账本，
+  不需要新接口；本轮明细只进悬停（`usageTooltip`）。"6 轮 1 步"那种"轮是序号、步是本轮次数"的读法
+  会被当成"步数没累加"（被用户指出过）。
 
 ## 依据
 

@@ -152,6 +152,8 @@ pending 行两个时间列为 NULL，直接比较会永远为 false。
   由 `runtime/stream-resume.ts` 回退到当前块开头并补回消息 `start`；找不到开头时补 start，
   孤立 end 丢弃。改续流逻辑时别绕过它；
 - **`data-*` 块**（前端渲染的细节都在这）：`data-run`（本轮身份，**第一个块**，不带 id）/
+  `data-run-usage`（收尾权威用量，不带 id）/ `data-step-usage`（每步实时用量，与前者同形；由
+  `runtime/live-usage.ts` 在原始流上取，因为 v6 适配层把 step 的 usage 丢了）/
   `data-sub-agent`（子助手状态快照，**带 id = 子 run id，同 id 覆盖**）/
   `data-sub-agent-delta`（子助手增量，**不带 id，一块一个**；前端在 `chat-transport.ts` 把它标成
   `transient: true`，只走 `onData` 不落 part —— 落成 part 会一块一个、把页面拖死，见 `docs/design/ai-chat-state.md`）。

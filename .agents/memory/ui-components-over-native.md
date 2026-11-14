@@ -18,6 +18,7 @@
 | 弹层 | `Popover` | `components/ui/popover.tsx` |
 | 下拉 | `Select` / `DictSelect` | barrel |
 | 表单字段 | `ModalForm` / `DrawerForm` 的 `items`（`widget` 或 `render`） | `components/form.tsx` |
+| 数字滚动（计数动画） | **`AnimatedNumber`** | `apps/admin/src/components/animated-number.tsx`（尊重 reduced motion；目标中途变化要从**当前显示值**续滚，否则数字往回跳） |
 
 表单里遇到 `widget` 覆盖不到的类型（日期时间、自定义控件），用 `items[].render`
 拿 `field.state.value` / `field.handleChange` 自己接线 —— **不要**为了图快给

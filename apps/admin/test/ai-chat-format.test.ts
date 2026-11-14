@@ -1,14 +1,17 @@
 import { describe, expect, it } from 'vitest'
 import {
   cacheHitPercentText,
+  cacheHitPercentValue,
   parseChatError,
   relativeTimeText,
   compactNumber,
   durationText,
   exactNumberText,
   tokenText,
+  usageLineSegments,
   usageLineText,
   usageLineTitle,
+  usageTooltip,
 } from '../src/app/(app)/(standalone)/main/ai/chat/format.ts'
 
 /**
@@ -138,6 +141,71 @@ describe('usageLineText（右下角那一行）', () => {
 
   it('没有用量（还没跑过）→ null（整行不渲染）', () => {
     expect(usageLineText(null, 1)).toBeNull()
+  })
+})
+
+describe('usageLineSegments（分段渲染：数字要做滚动动画）', () => {
+  /** 把分段拼回整串（渲染层就是按段渲染的） */
+  const join = (segments: ReturnType<typeof usageLineSegments>): string =>
+    (segments ?? [])
+      .map((segment) => (segment.kind === 'text' ? segment.text : segment.format(segment.value)))
+      .join('')
+
+  /** 取数字段的值（文本段跳过） */
+  const valuesOf = (segments: ReturnType<typeof usageLineSegments>): number[] =>
+    (segments ?? []).flatMap((segment) => (segment.kind === 'number' ? [segment.value] : []))
+
+  it('分段拼回来必须与 `usageLineText` 一模一样（一处口径，两种用法不漂移）', () => {
+    expect(join(usageLineSegments(USAGE, 3))).toBe(usageLineText(USAGE, 3))
+    const { cacheReadTokens: _drop, ...noCache } = USAGE
+    expect(join(usageLineSegments(noCache, 1))).toBe(usageLineText(noCache, 1))
+    expect(join(usageLineSegments({ stepCount: 1 }, 1))).toBe('1 轮 1 步，输入 —，输出 —')
+  })
+
+  it('步数 / 输入 / 输出 / 命中率都是数字段（这些才滚动）', () => {
+    const values = valuesOf(usageLineSegments(USAGE, 3))
+    expect(values.slice(0, 3)).toEqual([2, 4464, 218])
+    expect(values[3]).toBeCloseTo((2816 / 4464) * 100, 5)
+  })
+
+  it('缓存命中缺失 → 少一个数字段（整段不出现）；token 缺失 → 文本 `—` 不滚动', () => {
+    const { cacheReadTokens: _drop, ...noCache } = USAGE
+    expect(valuesOf(usageLineSegments(noCache, 1))).toHaveLength(3)
+
+    const missing = usageLineSegments({ stepCount: 1 }, 1) ?? []
+    // 只剩步数一个数字段；输入 / 输出各自退化成文本 `—`
+    expect(valuesOf(missing)).toHaveLength(1)
+    expect(
+      missing.filter((segment) => segment.kind === 'text' && segment.text.includes('—')),
+    ).toHaveLength(2)
+  })
+
+  it('命中率给的是未取整的比例（动画从小数滚到小数），显示才取整', () => {
+    expect(cacheHitPercentValue(USAGE)).toBeCloseTo((2816 / 4464) * 100, 5)
+    expect(cacheHitPercentText(USAGE)).toBe('63%')
+  })
+
+  it('没有用量 → null（整行不渲染，没有动画可做）', () => {
+    expect(usageLineSegments(null, 1)).toBeNull()
+  })
+})
+
+describe('usageTooltip（悬停：累计 + 本轮）', () => {
+  it('两段：累计带轮/步，本轮只给明细（不重复"几轮几步"）', () => {
+    const current = {
+      inputTokens: 100,
+      outputTokens: 5,
+      totalTokens: 105,
+      stepCount: 1,
+      durationMs: 500,
+    }
+    const [cumulative, currentLine] = usageTooltip(USAGE, 3, current).split('\n')
+    expect(cumulative).toBe(`累计：${usageLineTitle(USAGE, 3)}`)
+    expect(currentLine).toBe('本轮：输入 100 · 输出 5 · 合计 105 · 耗时 500ms')
+  })
+
+  it('拿不到本轮（这一轮第一步还没跑完）→ 只给累计那一段，不编造', () => {
+    expect(usageTooltip(USAGE, 3, null)).toBe(usageLineTitle(USAGE, 3))
   })
 })
 

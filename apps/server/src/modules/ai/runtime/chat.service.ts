@@ -44,7 +44,6 @@ import { PROMPT_ENGINE, type PromptEngine } from '../core/prompts/prompt.engine.
 import { SkillLoader } from '../core/skills/index.js'
 import { ToolRegistry } from '../core/tools/tool.registry.js'
 import { ToolCallMetaStore } from '../core/tools/tool.meta.js'
-import { toUiStream } from '../mastra/stream.adapter.js'
 import { toMastraModelInstance } from '../mastra/agent.adapter.js'
 import { toRequestContext } from '../mastra/context.adapter.js'
 import type { ConversationEntity } from '../../../database/entities/conversation-entity.js'
@@ -66,6 +65,7 @@ import { AgentStreamStore } from './stream-store.service.js'
 import { StreamRecorder, toolFailureOf } from './stream-recorder.js'
 import { fitMessagesToToolBudget } from './turn-budget.js'
 import { readStreamSteps, readStreamUsage } from './stream-result.js'
+import { createLiveUsage } from './live-usage.js'
 import { resumeSafeChunks } from './stream-resume.js'
 import { toPlanPayload } from './plan.protocol.js'
 import { mergeUsage, toUsageRecord, totalTokensOf } from './usage.js'
@@ -1224,7 +1224,10 @@ export class AgentChatService {
       })
       // 子 agent 的实时明细**不走** Mastra 的静态子 agent 通道（我们没有静态子 agent）：
       // 由 `run-sub-agent` 工具经 `context.writer` 写成 `data-sub-agent*` 块进这条流，见 §3.14.5
-      const uiStream = toUiStream(output)
+      //
+      // **轮内实时用量**（`data-step-usage`）：v6 UI 流本身不带 usage（适配器在 `finish-step` 处丢掉了），
+      // 所以在这里挂一层原始流的 tee，每步结束补发一份累计值；收尾的 `data-run-usage` 仍是权威值。
+      const uiStream = createLiveUsage({ runId: run.id, startedAt }).wrap(output)
 
       const recorded = (uiStream as unknown as ReadableStream<UiChunkLike>).pipeThrough(
         new TransformStream<UiChunkLike, UiChunkLike>({
@@ -1749,10 +1752,23 @@ export class AgentChatService {
         },
       )
 
+      /**
+       * 续跑也要**实时用量**：接上挂起前已经记下的用量 / 步数 / 耗时，
+       * 于是恢复后的第一份 `data-step-usage` 是"这一轮到目前为止"的累计，而不是从 0 重数。
+       * 两段流（恢复工具 + 继续 loop 的新引擎 run）共用同一个计数器。
+       */
+      const liveUsage = createLiveUsage({
+        runId: run.id,
+        startedAt,
+        baseUsage: (run.usage ?? null) as Record<string, unknown> | null,
+        baseSteps: run.stepCount ?? 0,
+        baseDurationMs: run.durationMs ?? 0,
+      })
+
       let suspendedAgain = false
       const consume = async (stream: unknown): Promise<void> => {
         const reader = (
-          toUiStream(stream as never) as unknown as ReadableStream<UiChunkLike>
+          liveUsage.wrap(stream) as unknown as ReadableStream<UiChunkLike>
         ).getReader()
         for (;;) {
           const next = await reader.read()
@@ -1869,6 +1885,22 @@ export class AgentChatService {
       await this.streamStore.publishChunk(run.id, { type: STREAM_END_MARKER })
       await this.streamStore.clearRun(run.id)
       await this.conversationRepo.accumulate(conversation.id, totalTokensOf(usage))
+
+      /**
+       * 续跑收尾同样下发**本轮用量**（与首轮同一条 `data-run-usage`）。
+       *
+       * 早先这条路只发 `[DONE]`：回答完挂起的问题后，前端右下角停在最后一条实时值
+       * （`data-step-usage`）或干脆是上一轮的旧值 —— 子 agent / 命名 / 记忆抽取的并账永远到不了界面。
+       * 位置同首轮：终态已落库之后、`[DONE]` 之前；也进输出记录与广播，断线补发拿得到。
+       */
+      const usageChunk = {
+        type: 'data-run-usage',
+        data: { runId: run.id, usage, stepCount, toolCallCount, durationMs },
+      }
+      writeSse(response, sseFrame(usageChunk))
+      await this.streamStore.appendChunk(run.id, usageChunk)
+      await this.streamStore.publishChunk(run.id, usageChunk)
+
       stopHeartbeat()
       writeSse(response, 'data: [DONE]\n\n')
       endSse(response)

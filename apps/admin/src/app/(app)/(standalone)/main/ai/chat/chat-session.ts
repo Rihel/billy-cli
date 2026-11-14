@@ -347,7 +347,10 @@ const applyPart = (
     case 'data-plan':
       // 计划由 `collectMessagePlan` 统一算（工具出参与计划事件两处来源），这里只标记需要重算
       return { plan: collectMessagePlan(message.parts) }
-    case 'data-run-usage': {
+    // 轮内实时（`data-step-usage`，每步一条）与收尾（`data-run-usage`，一次）**同一个形状**：
+    // 只更新消息上的用量，不产生渲染单元（认成未知 part 会多出一张"未识别片段"卡）
+    case 'data-run-usage':
+    case 'data-step-usage': {
       const data = asRecord((part as { data?: unknown }).data)
       return data ? { usage: data.usage ? asRecord(data.usage) : state.usage } : null
     }
