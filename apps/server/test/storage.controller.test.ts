@@ -115,14 +115,15 @@ describe('StorageController（双身份 + key 命名空间约束）', () => {
     expect(getTemporaryCredentials).toHaveBeenCalledWith({ userId: 'a-1' })
   })
 
-  it('鉴权关闭（无身份）：key 原样放行，STS 不再抛错（回归：原实现用 currentAdminId() 会 500）', async () => {
+  it('鉴权关闭（无身份）：预签名上传 key 原样放行，但 STS 拒绝（防匿名拿桶级凭证）', async () => {
     const { controller, getPresignedUrl, getTemporaryCredentials } = makeController()
 
     await anonymous(() => controller.getPresignedUrl({ key: 'flat/key.png' }))
-    await anonymous(() => controller.getTemporaryCredentials())
+    const code = catchCode(() => anonymous(() => controller.getTemporaryCredentials()))
 
     expect(getPresignedUrl).toHaveBeenCalledWith({ key: 'flat/key.png' })
-    expect(getTemporaryCredentials).toHaveBeenCalledWith({ userId: 'anonymous' })
+    expect(code).toBe(AppErrorCodes.StorageAdminOnly)
+    expect(getTemporaryCredentials).not.toHaveBeenCalled()
   })
 
   it('空 key：400（3201）', () => {

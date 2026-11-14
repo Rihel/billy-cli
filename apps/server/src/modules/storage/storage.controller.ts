@@ -57,10 +57,11 @@ export class StorageController {
   @Post('get-temporary-credentials')
   @HttpCode(200)
   getTemporaryCredentials() {
-    const { userId, adminId } = this.identity()
-    // 前台身份（有 userId 无 adminId）一律拒绝；管理员与鉴权关闭（无身份）放行
-    if (userId && !adminId) throw new StorageAdminOnlyError()
+    const { adminId } = this.identity()
+    // 整桶权限的临时凭证只发给管理员：前台用户拒绝；鉴权关闭（无身份）也不再放行 ——
+    // 否则「AUTH_ENABLED=false 且服务对公网可达」时，任何人都能拿到桶级凭证。
+    if (!adminId) throw new StorageAdminOnlyError()
 
-    return this.storage.getTemporaryCredentials({ userId: adminId ?? 'anonymous' })
+    return this.storage.getTemporaryCredentials({ userId: adminId })
   }
 }
