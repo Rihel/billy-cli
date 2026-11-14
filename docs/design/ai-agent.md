@@ -1787,12 +1787,13 @@ return toAISdkMessages(messages, { version: 'v6' }) // 从 '@mastra/ai-sdk/ui' �
 | `title` | text | 会话标题（首条消息摘要 / 模型生成 / 用户改） |
 | `file_access` | varchar(16) | 本会话的**沙箱写权限**：`workspace-write`（默认）/ `read-only`。只决定"沙箱内能不能写工作区"，能不能出沙箱是部署配置（`AGENT_WORKSPACE_MODE`，见 `workspace-runtime.md`） |
 | `status` | varchar(20) | 字典 `ConversationStatus`：`active` / `archived` |
-| `last_active_at` | timestamp(3) | 最后活动时间（列表排序依据，避免按 `updated_at` 排序被标题修改污染） |
+| `last_active_at` | timestamp(3) | 最后活动时间（**只记录**，不参与排序：列表按 `created_at` 排，用户要的是「会话什么时候开的」这个稳定顺序，改标题 / 刚聊过都不会把它顶上去） |
 | `turn_count` | int (default 0) | **轮数**：该会话已完成的问答轮数（列表页直接读，不必聚合 `runs`） |
 | `total_tokens` | bigint (default 0) | 该会话累计 token（同上，冗余以省聚合） |
 | `metadata` | jsonb | 扩展位；Mastra `thread.metadata` 原样保留在此 |
 
-索引：`idx_conversation_user_active (user_id, last_active_at)`。
+索引：`idx_conversation_user_created (user_id, created_at)`（列表查询：按用户过滤 + 按创建时间倒序）。
+旧索引 `idx_conversation_user_active (user_id, last_active_at)` 在排序切换后已无查询使用，由迁移删除。
 无唯一约束（标题可重复）。
 
 **② `runs`（一次运行 = 一次"用户发言 → agent 跑完"）**
@@ -2134,21 +2135,31 @@ new Agent({
   `<slug>/<modelKey>` 与窗口、当前项打勾；选中的 `modelId` 随每轮请求发给服务端。
   数据源是 `POST /agent/models`（**只回"供应商启用 + 模型启用"的**）：选择器里能看到的每个模型都是确定能用的；
   **库空时不给可点入口**，直接提示"请到模型管理添加供应商并启用模型" —— 这是"只能使用配的模型"的界面表达。
-- **右下角：本轮统计** —— 行内 `N 轮 M 步，输入 X，输出 Y，缓存命中 Z`（`chat/format.ts` 的
-  `usageLineText`），悬停给精确值与合计 / 推理 / 耗时（`usageLineTitle`）。数据来自 `data-run-usage`
-  （见 §5.4 的 data 块表），历史回看时由 `history.ts` 从 `runs.usage` 重建同一块。
+- **右下角：会话累计统计** —— 行内 `N 轮 M 步，输入 X，输出 Y，缓存命中 Z`（`chat/format.ts` 的
+  `usageLineText`），悬停给两段精确值：**累计**（轮 / 步 / 输入 / 输出 / 合计 / 缓存 / 推理 / 耗时）
+  与**本轮**（`usageTooltip`）。数据来自两个同形的块（见 §5.4 的 data 块表）：**轮内每步**的
+  `data-step-usage`（实时，边跑边涨）与**收尾**的 `data-run-usage`（权威，含子 agent / 命名 /
+  记忆抽取的并账）；历史回看时由 `history.ts` 从 `runs.usage` 重建收尾块。
+  **口径是"整个会话累计"**（2026-11-14 用户定）：轮 = 助手消息条数（含正在跑的那条），步与 token
+  都把每一轮的用量相加 —— 早先"轮是序号、步是本轮次数"的读法（`6 轮 1 步`）会被当成"步数没累加"。
+  实现不需要新接口：历史每一轮的收尾块都挂在对应助手消息上、实时这轮挂实时块，**消息列表本身就是账本**
+  （`data.ts` 的 `sessionUsageOf`）。
+  **数字是滚动的**（`chat/usage-line.tsx` + `components/animated-number.tsx`）：实时值每步跳一次，
+  直接换数字太生硬，且收尾值往往紧跟最后一步到达（<1s），滚动能让两次变化看起来是一次"在涨"；
+  悬停是精确值、不做动画；`prefers-reduced-motion` 下直接显示终值。
   四条口径：
   1. **数字用 k / m 缩写**（`compactNumber`：`3179` → `3.2k`、`1_250_000` → `1.3m`，一位小数、
      去掉多余的 `.0`、进位后不出现 `1000k`），悬停看精确值（千分位）；
-  2. **轮 / 步**：轮 = 该会话第几轮（前端按"已有助手回复数 + 1"算），步 = 这一轮模型被调了几次（`stepCount`）；
+  2. **轮 / 步**：轮 = 该会话已有几轮（助手消息条数，含正在流的那条；"+1"会多算一轮，踩过），
+     步 = **所有轮次**模型调用次数之和（实时块每步 +1，跑动中就能看到步数在涨）；
   3. **缺失的项整项不显示**（provider 没上报不是 0，编造 0 会让人误判）——
      没有缓存命中时连"缓存命中"四个字都不出现；
-  4. 只在这一处显示本轮消耗（见下）。
+  4. 行内只放**累计**；本轮明细放悬停第二行（见下）。
 
-**消耗只在这一个地方显示本轮值**：侧栏会话列表**不放 token**（只显示"几轮"）。
-`conversations.total_tokens` 是**跨轮累计**，和右下角的"本轮消耗"是两个不同的数 ——
-同一个词（token）在同一个界面里指两件事，必然让人对不上账。
-累计值仍留在库里（§4.7 记的口径），将来要展示就放到会话详情里，不塞列表行。
+**token 只在右下角显示，口径是会话累计**：侧栏会话列表**不放 token**（只显示"几轮"）；
+行内合计与 `conversations.total_tokens` 是同一个口径（跨轮累计），排查时可以直接对账。
+本轮消耗不单独占一行（放悬停）—— 行内只有一个位置，用户要看的是"这个会话一共花掉多少"；
+排查"某一轮为什么贵"（比如调了 18 次工具）时看悬停那行。
 子助手面板里的那份是**子助手自己的消耗**（已计入父那一轮的合计，`rollUpUsage`），
 属于"明细"，与右下角的"合计"并存是刻意的（谁花的钱要查得到）。
 
@@ -2358,7 +2369,8 @@ AI SDK v6 的续传是**两层 API**（不是同一方法的两个名字）：
 | 块 | id | 谁写 | 用途 |
 | --- | --- | --- | --- |
 | `data-run` | 不带 | 编排层（`chatStream` 开头第一个片段） | **本轮身份**：`runId` / `conversationId` / `agentKey` —— 前端据此记住 runId（停止与重连只认它），新建会话时也靠它拿到 conversationId |
-| `data-run-usage` | 不带 | 编排层（**收尾落库之后、`[DONE]` 之前**） | **本轮用量**：`usage`（输入 / 输出 / 缓存读 / 推理 token，缺失一律 `null`）+ `stepCount` / `toolCallCount` / `durationMs`。为什么走流而不是让前端再查一次：用量只有收尾时才知道，而这个位置是唯一能保证"客户端看到用量时库里也一定有了"的地方；同时进 Redis 输出记录与广播，所以断线补发也拿得到。前端渲染在**输入框右下角**（k / m 缩写 + 悬停精确值，见 §4.9.3）；历史回看时 `history.ts` 从 `runs.usage` 重建同一块 |
+| `data-step-usage` | 不带 | 编排层（**每步模型调用结束时**，由 `runtime/live-usage.ts` 在原始流上取） | **轮内实时用量**（2026-11-14）：`usage` / `stepCount` / `durationMs`，字段与 `data-run-usage` **完全同形**，值是"这一轮到目前为止"的累计。为什么必须自己在原始流上取：发给浏览器的 AI SDK **v6** UI 流里**不带 usage** —— `@mastra/ai-sdk` 的 v6 映射把 `step-finish` 拍成裸 `{ type: 'finish-step' }`（只有 v5 分支带），而 Mastra 原始片段里 `payload.output.usage` 就是这一步的账。**实时值是下界**（子 agent、命名、记忆抽取都要收尾才并账），轮末会跳一下 |
+| `data-run-usage` | 不带 | 编排层（**收尾落库之后、`[DONE]` 之前**；续跑收尾同样发） | **本轮用量**：`usage`（输入 / 输出 / 缓存读 / 推理 token，缺失一律 `null`）+ `stepCount` / `toolCallCount` / `durationMs`。为什么走流而不是让前端再查一次：用量只有收尾时才知道，而这个位置是唯一能保证"客户端看到用量时库里也一定有了"的地方；同时进 Redis 输出记录与广播，所以断线补发也拿得到。前端渲染在**输入框右下角**（k / m 缩写 + 悬停精确值，见 §4.9.3）；历史回看时 `history.ts` 从 `runs.usage` 重建同一块。**权威值**：与实时块同形，追加在最后，前端从后往前扫，先命中的就是最新的 |
 | `data-run-suspended` | 不带 | 编排层（工具挂起收尾时，见 §3.7.1） | 这一轮停在"等用户回答"：`runId` / `conversationId` —— 前端据此切到问答卡、不再等 `[DONE]` |
 | `data-conversation-title` | 不带 | 编排层（收尾命名之后） | 首轮自动命名的新标题（`runId` / `conversationId` / `title`）：前端就地改列表项与页头，不用重拉（§4.10.1） |
 | `data-sub-agent` | **带**（= 子 run id） | `run-sub-agent` 工具（经工具上下文的 `writer`） | 子助手状态快照：status / 结论 / 步数与工具次数 / usage（§3.14.5） |
@@ -2415,7 +2427,7 @@ AI SDK v6 的续传是**两层 API**（不是同一方法的两个名字）：
 每条消息可复制为 **Markdown**（保留结构：思考用引用块、工具与代码用围栏）或 **纯文本**
 （剥掉 Markdown 标记）。两条硬口径：
 - **顺序即所见**：按 `message.parts` 原始顺序导出，工具卡就地铺开（不是攒到结尾）；
-- **协议管道不进导出**：`step-start` / `data-run` / `data-run-usage` / `data-conversation-title` /
+- **协议管道不进导出**：`step-start` / `data-run` / `data-run-usage` / `data-step-usage` / `data-conversation-title` /
   子助手增量块都不导；被计划卡片吸收的计划类工具调用也不重复导（与 `MessageRow` 渲染口径一致）。
 
 `markdownToPlainText` 是**够用就好的剥离器**（先把围栏代码块整体摘出，再处理行内与块级标记），
