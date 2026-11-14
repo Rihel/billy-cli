@@ -78,6 +78,21 @@ export class RedisLockService {
     throw new RedisLockError(key)
   }
 
+  /**
+   * 尝试加锁（**只试一次，不排队**）：拿到返回 token，未拿到返回 null。
+   *
+   * 适合「抢 leader / 定时任务互斥」这类"抢不到就跳过"的场景；持锁期间同样由看门狗续期。
+   * 与 {@link lock} 的区别：不把"没抢到"当异常。
+   */
+  async tryLock(key: string, ttlSeconds: number): Promise<string | null> {
+    const value = this.idGeneration.next(20)
+    const result = await this.redis.raw.set(key, value, 'EX', ttlSeconds, 'NX')
+    if (result !== 'OK') return null
+    this.lockers.set(key, { value })
+    this.startWatchDog(key, value, ttlSeconds)
+    return value
+  }
+
   /** 解锁：仅当持有者匹配才删除锁，并停止看门狗；返回是否真的释放成功 */
   async unlock(key: string, value: string): Promise<boolean> {
     const { unlock } = await this.ensureScripts()
@@ -88,8 +103,16 @@ export class RedisLockService {
       }
       return result === 1
     } finally {
-      this.stopWatchDog(key)
-      this.lockers.delete(key)
+      /**
+       * 只清理**自己这一把**的本地记录：token 不匹配时说明锁已换手（例如 Redis 重启后
+       * 锁过期、同进程另一个任务重新拿到了同一把锁），此时不能停掉新持有者的看门狗 ——
+       * 否则它的临界区会在 TTL 到期后失去续租，被第三个进程插进来。
+       */
+      const locker = this.lockers.get(key)
+      if (locker?.value === value) {
+        this.stopWatchDog(key)
+        this.lockers.delete(key)
+      }
     }
   }
 
