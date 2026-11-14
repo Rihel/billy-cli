@@ -4,7 +4,7 @@ import {
   type OnApplicationBootstrap,
   type OnApplicationShutdown,
 } from '@nestjs/common'
-import { AppLogger, RedisStore } from '@repo/kits'
+import { AppLogger, RedisLockService } from '@repo/kits'
 import { MonitorConfig, type MonitorConfig as MonitorConfigType } from '../config.js'
 import type { MonitorErrorEvent } from '../definitions/rule.types.js'
 import { CleanupService } from './cleanup.service.js'
@@ -37,7 +37,7 @@ export class MonitorEngine implements OnApplicationBootstrap, OnApplicationShutd
     @Inject(CleanupService) private readonly cleanup: CleanupService,
     @Inject(SeedService) private readonly seed: SeedService,
     @Inject(MonitorTimeline) private readonly timeline: MonitorTimeline,
-    @Inject(RedisStore) private readonly redis: RedisStore,
+    @Inject(RedisLockService) private readonly locks: RedisLockService,
     @Inject(AppLogger) private readonly logger: AppLogger,
   ) {}
 
@@ -78,7 +78,8 @@ export class MonitorEngine implements OnApplicationBootstrap, OnApplicationShutd
       }
 
       const lockKey = `monitor:eval:${intervalSeconds}`
-      const token = await this.redis.acquireLock(lockKey, 30)
+      // 30s TTL + 看门狗续期：规则评估 / 清理跑得久也不会中途丢锁被别的实例重复执行
+      const token = await this.locks.tryLock(lockKey, 30)
       this.lastLeader = token !== null
       if (!token) return
 
@@ -101,7 +102,7 @@ export class MonitorEngine implements OnApplicationBootstrap, OnApplicationShutd
         }
         await this.cleanup.maybeCleanup(now)
       } finally {
-        await this.redis.releaseLock(lockKey, token)
+        await this.locks.unlock(lockKey, token)
       }
     } finally {
       this.slotRuns.set(intervalSeconds, {
