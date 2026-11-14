@@ -57,5 +57,16 @@ export class MonitorEngine1792595910578 implements MigrationInterface {
     await queryRunner.query(`DROP INDEX "public"."idx_monitor_alert_list"`)
     await queryRunner.query(`DROP INDEX "public"."idx_monitor_alert_rule"`)
     await queryRunner.query(`DROP TABLE "monitor_alerts"`)
+    /**
+     * 复原 `up` 删掉的旧 `alert_rules`（形状 = 建表时的列 + `AlertRuleMetricFields` 追加的 6 列）。
+     *
+     * 为什么必须恢复：回滚是按倒序逐条执行的 —— 不恢复这张表，更早的
+     * `AlertRuleMetricFields.down` 会对着不存在的表 `ALTER`，回滚链断在这里。
+     * 数据在 `up` 里已经丢掉（当时确认无引用、无数据），这里只恢复结构。
+     */
+    await queryRunner.query(
+      `CREATE TABLE "alert_rules" ("id" character varying(20) NOT NULL, "created_at" TIMESTAMP(3) NOT NULL DEFAULT now(), "updated_at" TIMESTAMP(3) NOT NULL DEFAULT now(), "deleted_at" TIMESTAMP(3), "name" character varying(50) NOT NULL, "type" character varying(20) NOT NULL, "match_codes" jsonb NOT NULL, "keywords" text NOT NULL, "level" character varying(10) NOT NULL DEFAULT 'error', "channels" text NOT NULL, "throttle_seconds" integer NOT NULL DEFAULT '60', "enabled" boolean NOT NULL DEFAULT true, "threshold" integer NOT NULL DEFAULT '1', "threshold_window_seconds" integer NOT NULL DEFAULT '60', "metric" character varying(100), "operator" character varying(10), "threshold_value" double precision, "period_seconds" integer NOT NULL DEFAULT '60', CONSTRAINT "uk_alert_rule_name" UNIQUE ("name", "deleted_at"), CONSTRAINT "PK_ae580564f087ffab9d229225aec" PRIMARY KEY ("id"))`,
+    )
+    await queryRunner.query(`CREATE INDEX "idx_alert_rule_type" ON "alert_rules" ("type")`)
   }
 }

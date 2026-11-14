@@ -150,7 +150,7 @@
 - **双前端开箱**：Web 前台（Base UI + shadcn + Tailwind 4，Server Actions）、Admin 后台（DataTable / ModalForm / TanStack），共用一套 token。
 - **全类型 SDK**：`@repo/http-client` 之上封装全类型 ServerClient。
 - **能力底座 `@repo/kits`**：数据库（事务、四种分页、批量写入、软删、SQL 打印）、Redis、限流、JWT、会话、密码、对象存储、SSE、Kafka、事件总线 / PubSub、飞书、通知、遥测、调度（croner + 时间轮）、沙箱工作区。
-- **13 个业务模块 / 20 张表**：`auth`、`user`、`admin`、`session`、`storage`、`stream`、`share`、`monitor`、`ai`、`ai-model`、`ai-usage`、`runtime-config`、`ops`；实体 20 个、迁移 27 个。
+- **13 个业务模块 / 20 张表**：`auth`、`user`、`admin`、`session`、`storage`、`stream`、`share`、`monitor`、`ai`、`ai-model`、`ai-usage`、`runtime-config`、`ops`；实体 20 个、迁移 28 个。
 - **部署**：Docker multi-stage，compose 一键起依赖，附 Kubernetes 清单。
 
 ### 6.5 AI 原生开发：28 个 Agent Skills
