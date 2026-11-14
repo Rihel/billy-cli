@@ -25,22 +25,43 @@ export interface ToolResultTimelinePort {
  */
 const MAX_ENTRIES = 200
 
+/**
+ * 单进程内存上限（字节）。条数限制挡不住"每条都很大"：
+ * 工具出参可以有 MB 级，200 条全文就可能吃掉数百 MB。字节预算才是主约束，条数兜底。
+ */
+const MAX_BYTES = 32 * 1024 * 1024
+
 @Injectable()
 export class ToolResultStore {
   /** `conversationId:toolCallId` → 序列化后的完整出参 */
   private readonly memory = new Map<string, string>()
+  /** 当前内存里保存的序列化字节总数（UTF-8），用于字节预算淘汰 */
+  private totalBytes = 0
 
   constructor(@Inject(TIMELINE_REPOSITORY) private readonly timelines: ToolResultTimelinePort) {}
 
   /** 记下这次调用的完整出参（网关的 `paginate` 插件调用） */
   remember(conversationId: string, toolCallId: string, serialized: string): void {
     const key = this.key(conversationId, toolCallId)
-    this.memory.delete(key)
-    this.memory.set(key, serialized)
-    if (this.memory.size > MAX_ENTRIES) {
-      const oldest = this.memory.keys().next().value
-      if (oldest !== undefined) this.memory.delete(oldest)
+    const bytes = Buffer.byteLength(serialized, 'utf8')
+
+    const previous = this.memory.get(key)
+    if (previous !== undefined) {
+      this.memory.delete(key)
+      this.totalBytes -= Buffer.byteLength(previous, 'utf8')
     }
+    this.memory.set(key, serialized)
+    this.totalBytes += bytes
+
+    // 先进先出淘汰：条数或字节任一超限就继续删最旧的（Map 保序）
+    while (this.memory.size > MAX_ENTRIES || this.totalBytes > MAX_BYTES) {
+      const oldest = this.memory.keys().next().value
+      if (oldest === undefined) break
+      const removed = this.memory.get(oldest)
+      this.memory.delete(oldest)
+      if (removed !== undefined) this.totalBytes -= Buffer.byteLength(removed, 'utf8')
+    }
+    if (this.totalBytes < 0) this.totalBytes = 0
   }
 
   /** 取回全文：先内存（同轮），再时间线（跨轮 / 跨实例 / 内存淘汰后） */
