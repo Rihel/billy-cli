@@ -1,5 +1,5 @@
 import { execFileSync, spawn } from 'node:child_process'
-import { copyFileSync, existsSync } from 'node:fs'
+import { copyFileSync, existsSync, readFileSync, writeFileSync } from 'node:fs'
 import net from 'node:net'
 import { join } from 'node:path'
 import process from 'node:process'
@@ -116,30 +116,34 @@ const waitForHttp = async (url: string, timeoutMs: number): Promise<boolean> => 
 async function checkEnvironment(): Promise<boolean> {
   console.log(colors.cyan('\n[1/6] 环境检查'))
 
+  // 与 package.json 的 engines 保持一致（README 写的是 >= 26）；低于它的人会在这里被拦下，
+  // 而不是在 build / dev 阶段收到一堆语法或依赖错误
   const nodeMajor = Number(process.version.replace(/^v/, '').split('.')[0])
-  if (Number.isNaN(nodeMajor) || nodeMajor < 20) {
-    console.error(colors.red(`  ✗ Node.js 版本过低（当前 ${process.version}），需要 >= 20`))
+  if (Number.isNaN(nodeMajor) || nodeMajor < 26) {
+    console.error(colors.red(`  ✗ Node.js 版本过低（当前 ${process.version}），需要 >= 26`))
     return false
   }
   console.log(colors.green(`  ✓ Node.js ${process.version}`))
 
-  const pnpmCheck = spawn('pnpm', ['--version'], {
-    cwd: workspaceRoot,
-    stdio: 'ignore',
-  })
-  const pnpmOk = await new Promise<boolean>((resolve) => {
-    pnpmCheck.once('error', () => resolve(false))
-    pnpmCheck.once('exit', (code) => resolve(code === 0))
-  })
-  if (!pnpmOk) {
+  const installHint = 'corepack enable && corepack prepare pnpm@12.18.0 --activate'
+  let pnpmVersion = ''
+  try {
+    pnpmVersion = execFileSync('pnpm', ['--version'], {
+      cwd: workspaceRoot,
+      encoding: 'utf8',
+    }).trim()
+  } catch {
+    console.error(colors.red(`  ✗ 未找到 pnpm，请先安装：${installHint}`))
+    return false
+  }
+  const pnpmMajor = Number(pnpmVersion.split('.')[0])
+  if (!Number.isFinite(pnpmMajor) || pnpmMajor < 12) {
     console.error(
-      colors.red(
-        '  ✗ 未找到 pnpm，请先安装：corepack enable && corepack prepare pnpm@11.15.0 --activate',
-      ),
+      colors.red(`  ✗ pnpm 版本过低（当前 ${pnpmVersion}），需要 >= 12（packageManager）`),
     )
     return false
   }
-  console.log(colors.green('  ✓ pnpm 可用'))
+  console.log(colors.green(`  ✓ pnpm ${pnpmVersion}`))
 
   return true
 }
@@ -203,9 +207,17 @@ async function ensureDockerServices(yes: boolean, skip: boolean): Promise<void> 
   }
 }
 
+const replaceInFile = (relativePath: string, pairs: readonly [string, string][]): void => {
+  const full = `${workspaceRoot}/${relativePath}`
+  let text = readFileSync(full, 'utf8')
+  for (const [from, to] of pairs) text = text.split(from).join(to)
+  writeFileSync(full, text)
+}
+
 async function ensureEnvFiles(yes: boolean): Promise<void> {
   console.log(colors.cyan('\n[3/6] 环境变量文件（.env）'))
 
+  const created: string[] = []
   for (const file of envFiles) {
     const target = `${workspaceRoot}/${file.path}`
     if (existsSync(target)) {
@@ -213,7 +225,54 @@ async function ensureEnvFiles(yes: boolean): Promise<void> {
       continue
     }
     copyFileSync(`${workspaceRoot}/${file.example}`, target)
+    created.push(file.path)
     console.log(colors.green(`  ✓ 已生成 ${file.path}（从 ${file.example}）`))
+  }
+
+  /**
+   * 端口对齐：模板按「本机服务」写（5432 / 6379 / 9000），docker compose 映射的是
+   * 15432 / 6380 / 19000 —— 不对齐的话，bootstrap 刚刚用 compose 拉起依赖，
+   * 下一步 `pnpm db:migrate` 却连本机 5432，全新机器上会直接失败。
+   * 只改**刚刚生成**的文件；已有 .env 是用户配置，不碰。
+   */
+  if (created.length > 0) {
+    const composePg = (await probePort(15432)) && !(await probePort(5432))
+    const composeRedis = (await probePort(6380)) && !(await probePort(6379))
+    const composeMinio = (await probePort(19000)) && !(await probePort(9000))
+
+    if (created.includes('apps/server/.env')) {
+      const pairs: Array<[string, string]> = []
+      if (composePg) {
+        pairs.push([
+          'postgresql://root:pg1234@localhost:5432/billy-cli',
+          'postgresql://root:pg1234@localhost:15432/billy-cli',
+        ])
+      }
+      if (composeRedis) pairs.push(['redis://localhost:6379/0', 'redis://localhost:6380/0'])
+      if (composeMinio) {
+        pairs.push(
+          ['http://localhost:9000/billy-cli', 'http://localhost:19000/billy-cli'],
+          ['http://localhost:9000', 'http://localhost:19000'],
+        )
+      }
+      if (pairs.length > 0) {
+        replaceInFile('apps/server/.env', pairs)
+        console.log(colors.green('  ✓ 服务端 .env 已对齐到 docker compose 映射端口'))
+      }
+    }
+
+    if (composeMinio) {
+      for (const file of ['apps/admin/.env', 'apps/web/.env.local']) {
+        if (created.includes(file)) {
+          replaceInFile(file, [
+            ['http://localhost:9000/billy-cli', 'http://localhost:19000/billy-cli'],
+          ])
+        }
+      }
+      if (created.some((file) => file !== 'apps/server/.env')) {
+        console.log(colors.green('  ✓ 前端 .env 的对象存储地址已对齐到 19000'))
+      }
+    }
   }
 
   if (!(await ask('检查并确认以上 .env 配置（数据库地址等）？', true, yes))) {
@@ -244,7 +303,7 @@ async function ensureDeps(yes: boolean, skip: boolean): Promise<void> {
   console.log(colors.green('  ✓ 依赖安装完成'))
 }
 
-async function migrateDatabase(yes: boolean, skip: boolean): Promise<void> {
+async function migrateDatabase(yes: boolean, skip: boolean, skipSeed: boolean): Promise<void> {
   console.log(colors.cyan('\n[5/6] 数据库迁移与种子数据'))
 
   if (skip) {
@@ -266,6 +325,10 @@ async function migrateDatabase(yes: boolean, skip: boolean): Promise<void> {
   }
   console.log(colors.green('  ✓ 迁移完成'))
 
+  if (skipSeed) {
+    console.log(colors.yellow('  - 已跳过管理员种子（--skip-seed）'))
+    return
+  }
   if (!(await ask('创建首个管理员（admin@billy.local / admin123）？', true, yes))) {
     return
   }
@@ -352,7 +415,7 @@ const main = async (): Promise<void> => {
   await ensureDockerServices(options.yes, options.skipDocker)
   await ensureEnvFiles(options.yes)
   await ensureDeps(options.yes, options.skipInstall)
-  await migrateDatabase(options.yes, options.skipMigrate)
+  await migrateDatabase(options.yes, options.skipMigrate, options.skipSeed)
   await smokeTest(options.yes, options.skipSmoke)
 
   console.log(colors.bold(colors.green('\n✅ 初始化完成，启动开发环境：')))

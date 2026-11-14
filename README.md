@@ -117,7 +117,7 @@ pnpm docker:up
 ├── apps/
 │   ├── server/    NestJS 12 HTTP 边界 + 业务模块 + 组合根（9989）
 │   ├── web/       Next.js 16 前台：落地页 / 账号 / Markdown 示例（9840）
-│   └── admin/     Next.js 16 管理后台：控制台 / 监控 / 用户 / AI（含文件 / 技能库）/ 免授权分享页（9845）
+│   └── admin/     Next.js 16 管理后台：控制台 / 监控 / 用户 / AI（含文件 / 技能库 / 记忆）/ 免授权分享页（9845）
 ├── packages/
 │   ├── shared/    Zod schema、错误码字典、日志工厂、文件类型判定、通用工具（前后端共享）
 │   ├── kits/      后端通用能力：Db / Redis / PubSub / EventBus / Stream / JWT / 会话 / 存储 / 调度 / 通知 / 限流 / 工作区
@@ -140,7 +140,7 @@ pnpm docker:up
 | [后端](docs/guide/backend.md) | `apps/server`、业务模块、认证、API 路由与错误格式、日志、监控告警 |
 | [前端](docs/guide/frontend.md) | Web / Admin 页面、设计系统、组件库与管理端组件 |
 | [共享包](docs/guide/packages.md) | `@repo/shared`、`@repo/kits`、`@repo/http-client`、`@repo/sdk` |
-| [AI 能力](docs/guide/ai.md) | 运行时与接口、工具与连接器、文件管理、技能库、工作区隔离、Agent Skills、AI 使用配置（codegraph） |
+| [AI 能力](docs/guide/ai.md) | 运行时与接口、工具与连接器、文件管理、技能库、记忆、工作区隔离、Agent Skills、AI 使用配置（codegraph） |
 | [部署](docs/guide/deployment.md) | 环境变量、生产构建、Docker、Kubernetes、反向代理 |
 | [设计文档](docs/design/) | 每个能力的方案与取舍（AI、SSE、监控、设计系统、连接器…），按主题索引 |
 | [开发日志](docs/dev-logs/) | 按日记录每轮改动的背景 / 做了什么 / 验证 |
@@ -161,7 +161,7 @@ pnpm docker:up
 | `pnpm build` / `pnpm build:web` / `pnpm build:admin` / `pnpm build:server` | 全量构建 / 单个应用构建（含其依赖包） |
 | `pnpm start:web` / `pnpm start:admin` / `pnpm start:server` | 生产启动（9840 / 9845 / 9989；Docker 内 web 为 3001） |
 | `pnpm typecheck` / `pnpm test` | 全量类型检查 / 单元测试 |
-| `pnpm turbo run verify typecheck test` | 走 turbo 缓存的全套检查（lint / fmt / 守卫 / 类型 / 测试） |
+| `pnpm verify && pnpm turbo run typecheck test` | 全套检查（lint / fmt / 守卫 + 类型 + 测试）；turbo 只缓存后两项 |
 | `pnpm check:inject` | 构造器 `@Inject` / providers `@Injectable` 一致性 |
 | `pnpm check:mastra` | Mastra 适配器边界（业务不被框架渗透） |
 | `pnpm check:ui` | 组件导出 / 前端包脚本 / 硬编码颜色 / 设计系统规范 |

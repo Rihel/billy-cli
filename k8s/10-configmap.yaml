@@ -6,7 +6,7 @@ metadata:
   labels:
     app.kubernetes.io/name: billy-server
 data:
-  # 非敏感运行配置。敏感项（DB_URL / REDIS_URL / JWT_SECRET / 对象存储密钥）见 secret.example.yaml
+  # 非敏感运行配置。敏感项（DB_URL / REDIS_URL / JWT_SECRET / 对象存储密钥）见 README.md §1 的建 Secret 命令
   NODE_ENV: production
   PORT: '9989'
   # 部署版本标识：**必须与 Deployment 的镜像 tag 同步**，`GET /info` 可核对线上实际构建
@@ -16,6 +16,8 @@ data:
   PASSWORD_HASH_ROUNDS: '10'
   # 部署在 Ingress 之后必须置 true：否则限流按网关 IP 计数（所有客户端共用一个 key、白名单失效）
   RATE_LIMIT_TRUST_PROXY: 'true'
+  # 多副本：恢复 / 停止 / 断线补发依赖 Redis 租约；漏配时滚动更新会让新 Pod 误伤其它副本在跑的 run
+  AGENT_MULTI_INSTANCE: 'true'
   # 长连接超时：必须**大于**网关的上游空闲超时，否则网关会往正在关闭的 socket 发请求 → 间歇 502
   # ingress-nginx 的 upstream-keepalive-timeout 默认 60s，故这里 75s / 80s（后端比网关长）
   KEEP_ALIVE_TIMEOUT_MS: '75000'
