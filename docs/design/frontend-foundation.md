@@ -52,7 +52,7 @@ apps/web | apps/admin（页面、Server Actions、providers、stores）
 | SSE 事件数据结构（事件名 / 负载 schema） | `packages/shared/src/schema/stream.schema.ts` | 共享数据结构归 `shared/schema`（placement 第 2 条） |
 | SSE 连接创建 | `packages/sdk/src/server.client.ts` 的 `createStream()` | 全类型客户端归 `sdk`（placement 第 9 条） |
 | SSE 订阅的 React 生命周期 | `packages/ui/src/hooks/use-stream.ts` | 通用前端能力归 `@repo/ui` 自有目录（`components/*` / `hooks/*`） |
-| 告警广播发布 | `apps/server/src/modules/monitor/engine/alert-stream.service.ts`（`AlertStreamService.publish`，由 `alert-delivery.service.ts` 在发送 / 落库后调用） | 业务推流在业务模块（stream skill §2） |
+| 告警广播发布 | `apps/main/src/modules/monitor/engine/alert-stream.service.ts`（`AlertStreamService.publish`，由 `alert-delivery.service.ts` 在发送 / 落库后调用） | 业务推流在业务模块（stream skill §2） |
 | 实时告警页 | `apps/admin/src/app/(app)/main/monitor/live/page.tsx` | 前端页面归 app（placement 第 9 条） |
 | 前台受保护用户区 | `apps/web/src/app/account/*` | 同上 |
 | admin 内容接口（Hono） | `apps/admin/src/app/api/[[...route]]/route.ts` + `apps/admin/src/api/{app,share}.ts` | Next API 层按 Hono 官方集成方式；能力模块只声明自己的路径 |

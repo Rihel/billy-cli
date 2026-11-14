@@ -12,7 +12,7 @@
  * 反过来也统一：**不经过容器装配的类**（手工 `new`、`useFactory: () => new X()`、
  * 由第三方实例化）刻意**不写** DI 装饰器——写了是死代码且误导（如 `RedisListCache` / `Telemetry`）。
  *
- * 用法：`pnpm check:inject`（同时被 `apps/server` 的单测覆盖，见 test/di-inject-convention.test.ts）。
+ * 用法：`pnpm check:inject`（同时被 `apps/agent-runtime` 的单测覆盖，见 test/di-inject-convention.test.ts）。
  */
 import { readFileSync } from 'node:fs'
 import { readdirSync, statSync } from 'node:fs'
@@ -20,7 +20,7 @@ import { join, relative } from 'node:path'
 import { pathToFileURL } from 'node:url'
 
 /** 默认扫描范围（仓库根为基准） */
-export const DEFAULT_ROOTS = ['packages/kits/src', 'apps/server/src']
+export const DEFAULT_ROOTS = ['packages/kits/src', 'apps/agent-runtime/src']
 
 export interface InjectViolation {
   file: string

@@ -10,8 +10,8 @@
 | --- | --- | --- |
 | 内建 AI 工具 | 29（另 3 个运行时自带） | `TOOL_KEYS`：计划 4 + 子 agent + `bash` + 取页 + 联网 3 + 记忆 3 + 技能库 7 + 文件 9 |
 | 连接器型号 | 4 | `CONNECTOR_CATALOG`：PostgreSQL / MySQL / Redis / 飞书 CLI |
-| 业务模块 | 13 | `apps/server/src/modules/`（含 `share`） |
-| 数据表 | 20 | `apps/server/src/database/entities/` |
+| 业务模块 | 13 | `apps/main/src/modules/`（含 `share`） |
+| 数据表 | 20 | `apps/main/src/database/entities/` |
 | ai-elements | 48 | `packages/ui/src/components/ai-elements/*.tsx` |
 | 基础组件（shadcn） | 61 | `packages/ui/src/components/ui/*` |
 | Agent Skills | 28 | `.agents/skills/*/SKILL.md`（必读 1 + 功能 26 + 元 1） |
@@ -26,10 +26,10 @@ README、落地页（`apps/web/src/components/landing/*`）、`docs/guide/`、`d
 ## 依据
 
 ```bash
-node --import tsx -e "import('./apps/server/src/modules/ai/core/tools/tool-keys.ts').then(m=>console.log(Object.keys(m.TOOL_KEYS).length))"  # 29
+node --import tsx -e "import('./apps/agent-runtime/src/modules/ai/core/tools/tool-keys.ts').then(m=>console.log(Object.keys(m.TOOL_KEYS).length))"  # 29
 ls .agents/skills/*/SKILL.md | wc -l                    # 28
-ls apps/server/src/database/entities | wc -l            # 20
-ls apps/server/src/modules | wc -l                      # 13
+ls apps/main/src/database/entities | wc -l            # 20
+ls apps/main/src/modules | wc -l                      # 13
 ls packages/ui/src/components/ai-elements/*.tsx | wc -l # 48
 ls packages/ui/src/components/ui | wc -l                # 61
 find apps/admin/src/app -path '*main/ai/*' -name page.tsx | grep -v '\[.*\]' | wc -l  # 8 个菜单页

@@ -9,16 +9,16 @@
 
 | 轨道 | 位置 | 职责 |
 | --- | --- | --- |
-| 实体（数据库表） | `apps/server/src/database/entities/<name>-entity.ts` | TypeORM 表结构、索引、唯一约束 |
+| 实体（数据库表） | `packages/db/src/entities/<name>-entity.ts` | TypeORM 表结构、索引、唯一约束（唯一来源，两个 app 共用） |
 | 数据结构（Zod schema） | `packages/shared/src/schema/<name>.schema.ts` | 请求 / 响应校验与类型（前后端共享） |
 
-动笔前先按「实现查找顺序」确认现成能力：`apps/server/src/database/entities/` 与
+动笔前先按「实现查找顺序」确认现成能力：`packages/db/src/entities/` 与
 `packages/shared/src/schema/` 下同类结构（base / user / admin）就是参考模板，
 `@repo/kits` 已提供分页等能力，字段类型与命名直接沿用既有写法，**不要自创风格**。
 
 ## 2. 实体规范（TypeORM）
 
-参考：`apps/server/src/database/entities/{user-entity,admin-entity}.ts`
+参考：`packages/db/src/entities/{user-entity,admin-entity}.ts`
 （`BaseEntity` 在 `packages/kits/src/db/base-entity.ts`）。
 
 > 下面用 `Article` 作示意，真实模块按业务命名；字段与索引按实际需求调整。
@@ -145,18 +145,19 @@ export const PageQueryXxxSchema = BasePaginateSchema.extend({
 
 ## 4. 注册与迁移
 
-1. **注入实体**：实体文件放入 `apps/server/src/database/entities/` 后，在
-   `apps/server/src/root.module.ts` 的 `DbModule.forRootAsync` 工厂（`{ ...config.get('db'), entities: [...] }`）
-   里把实体类加入 `entities` 数组（kits 不持有实体，由应用注入）。
+1. **登记实体**：实体文件放入 `packages/db/src/entities/` 后，在 `packages/db/src/entities/index.ts`
+   导出它，并加进同文件的 `DB_ENTITIES` 数组（kits 不持有实体，由应用注入；两个 app 的
+   `DbModule.forRootAsync` 都直接复用 `DB_ENTITIES`，不要各自维护实体清单）。
 2. **注册 schema**：`packages/shared/src/schema/index.ts` 追加
    `export * from './<name>.schema'`。
 3. **生成迁移**（依据实体与数据库的差异自动生成，**不手写 SQL**）：
    ```bash
    pnpm db:gen <Name>    # 例如 pnpm db:gen AddProduct
    ```
-   生成后**必须人工检查** `apps/server/src/database/migrations/<timestamp>-<name>.ts` 的 SQL
-   是否符合预期（列名、类型、索引、唯一约束）。迁移 CLI 使用 `apps/server/data-source.ts`
-   （glob 扫 `src/database/entities` 与 `src/database/migrations`）。
+   生成后**必须人工检查** `packages/db/src/migrations/<timestamp>-<name>.ts` 的 SQL
+   是否符合预期（列名、类型、索引、唯一约束）。迁移 CLI 用 `packages/db/data-source.ts`
+   （`entities: [...DB_ENTITIES]` / `migrations: [...DB_MIGRATIONS]`，事实源在 `@repo/db`；
+   根命令 `db:gen` / `db:migrate` 由 `@repo/db` 执行）。
 4. **执行迁移**：
    ```bash
    pnpm db:migrate

@@ -11,13 +11,17 @@
 1. 是**纯函数 / 无状态工具**（无 IO、无生命周期）？ → `packages/shared/src/utils/`
 2. 是**跨层共享的数据结构 / 类型**（DTO、模型）？ → `packages/shared/src/schema/`
 3. 是**字典 / 枚举 / 错误码**？ → `packages/shared/src/dicts/`
-4. 是**数据库表结构**？ → `apps/server/src/database/entities/`
+4. 是**数据库表结构**？ → `packages/db/src/entities/`（唯一来源，两个 app 共用）
 5. 是**通用数据访问能力**（分页、批量、游标等，不绑定具体业务）？ → `packages/kits/src/db/`
 6. 是**外部资源统一入口**（DB / Redis / MQ / S3 / 消息推送…）？ → `packages/kits/src/<基础设施>/`
    （如 `redis/` / `rate-limit/` / `stream/` / `storage/` / `kafka/` / `lark/` / `notification/`）
 7. 是**横切基础能力**（多源配置 / 日志 / ID 生成 / 错误 / 调度器…）？ → `packages/kits/src/foundation/<能力>/`
-8. 是**业务逻辑**（有状态、有 service + repository + errors 三层）？ → `apps/server/src/modules/<业务>/`
-9. 是 **HTTP 边界 / 全类型客户端 / 前端页面**？ → `apps/server/src/modules/<业务>/<业务>.controller.ts` + `packages/sdk/` + `apps/web|admin/`
+8. 是**业务逻辑**（有状态、有 service + repository + errors 三层）？ → 控制面业务放
+   `apps/main/src/modules/<业务>/`；**agent 执行侧**（agent loop / Mastra / 工具 / 技能 / 记忆 /
+   连接器 / 提示词 / run 状态机）放 `apps/agent-runtime/src/modules/ai/` 对应子目录
+9. 是 **HTTP 边界 / 全类型客户端 / 前端页面**？ → 公网接口在
+   `apps/main/src/modules/<业务>/<业务>.controller.ts` + `packages/sdk/` + `apps/web|admin/`；
+   runtime 只开 `/internal/agent/*`（`apps/agent-runtime/src/modules/ai/api/agent-internal.controller.ts`）
 
 ## 2. 放置位置表（能力 → 位置 + 必须遵循的模式）
 
@@ -26,13 +30,15 @@
 | 纯函数工具 | `packages/shared/src/utils/<name>.utils.ts` | 纯函数、无 IO、在 `utils/index.ts` 导出 |
 | 共享数据结构 | `packages/shared/src/schema/<name>.schema.ts` | Zod，`z.infer` 出类型，`schema/index.ts` 导出 |
 | 字典 / 枚举 / 错误码 | `packages/shared/src/dicts/<name>.dict.ts` | `createDict`，`dicts/index.ts` 导出 |
-| 数据库表 | `apps/server/src/database/entities/<name>-entity.ts` | 继承 `BaseEntity`（`@repo/kits`），在 `root.module.ts` 的 `DbModule.forRootAsync` 工厂里补进 `entities` |
+| 数据库表 | `packages/db/src/entities/<name>-entity.ts` | 继承 `BaseEntity`（`@repo/kits`），在 `entities/index.ts` 导出并登记进 `DB_ENTITIES`；两个 app 的组合根都直接复用 `DB_ENTITIES`，不各自抄实体列表 |
 | 通用数据访问 | `packages/kits/src/db/<name>.ts`（如 pagination.ts） | 与 `db/` 同目录，`db/index.ts` 导出 |
 | 外部资源统一入口 | `packages/kits/src/<name>/`（provider + `<name>.config.ts` + `<name>.module.ts` + `index.ts`） | 见下方「基础设施模块」模式 |
 | 横切基础能力 | `packages/kits/src/foundation/<name>/`（同上四件套） | `@Injectable()` + 放进对应 `<name>.module.ts` 的 `providers` / `exports` |
-| 业务逻辑 | `apps/server/src/modules/<业务>/{errors, <业务>.repository, <业务>.service, <业务>.module, index}.ts` | 三层 + module `providers` 声明，再把模块加入 `root.module.ts` 的 `imports`；实体在 `DbModule.forRootAsync` 工厂里注入 |
-| HTTP 边界 | `apps/server/src/modules/<业务>/<业务>.controller.ts` | `@Controller` + `@Post` + `@HttpCode(200)` + `@Body({ schema: Schema })`，加入本模块 `controllers` |
-| 横切 HTTP 构件 | `apps/server/src/common/{error,request-context,request-logger,request-metrics,security,http}/<name>.ts`（外部从 `common/index.ts` 导入） | 不依赖具体业务模块（跨模块协作走 token 由 `root.module.ts` 注入） |
+| 业务逻辑（控制面） | `apps/main/src/modules/<业务>/{errors, <业务>.repository, <业务>.service, <业务>.module, index}.ts` | 三层 + module `providers` 声明，再把模块加入 `apps/main/src/root.module.ts` 的 `imports`；实体由 `DB_ENTITIES` 注入 |
+| agent 执行侧 | `apps/agent-runtime/src/modules/ai/<子域>/`（agents / runtime / core / tools / files / memory / skills / connectors / mastra / monitoring） | 只跑 agent loop；Mastra 只在这层出现（`pnpm check:mastra` 守）；不要在这里加控制面 CRUD |
+| HTTP 边界（公网） | `apps/main/src/modules/<业务>/<业务>.controller.ts` | `@Controller` + `@Post` + `@HttpCode(200)` + `@Body({ schema: Schema })`，加入本模块 `controllers` |
+| HTTP 边界（内部） | `apps/agent-runtime/src/modules/ai/api/agent-internal.controller.ts` | `/internal/agent/*` + `x-internal-token` 校验；只给 main 调，不做用户鉴权 |
+| 横切 HTTP 构件 | `apps/main/src/common/{error,request-context,request-logger,request-metrics,security,http}/<name>.ts`（外部从 `common/index.ts` 导入） | 不依赖具体业务模块（跨模块协作走 token 由 `root.module.ts` 注入） |
 
 ## 3. 每个位置的模式要求（新增能力必守）
 
@@ -47,13 +53,14 @@
 | `<name>.module.ts` | `@Global()` + `static forRoot(options)`（同步：`Schema.parse(options)`）与 `static forRootAsync(options: InfraModuleAsyncOptions<...>)`（异步：`useFactory` 惰性返回分片，模块内仍 `Schema.parse`）；提供「配置 bean + 统一入口实例」并 `exports` |
 | `index.ts` | 聚合导出，供 `packages/kits/src/index.ts` 转出 |
 
-- 把该模块加入 `apps/server/src/root.module.ts` 的 `imports` 即完成装配；**不 import 即视为未启用**。
+- 把该模块加入目标 app 的 `root.module.ts` 的 `imports` 即完成装配（`apps/main/src/root.module.ts`
+  或 `apps/agent-runtime/src/root.module.ts`）；**不 import 即视为未启用**。
 - **需要配置的模块应用 `forRootAsync` + `ConfigService` 惰性取**（见 `SKILL.md` 第 7 条规定）：
   `forRootAsync({ imports: [ConfigModule], inject: [ConfigService], useFactory: (config) => config.get('<命名空间>') })`；
   同步 `forRoot(options)` 仅用于配置不在应用配置里的场景（如 CLI 生成的独立服务）。
-- 应用侧配置定义在 `apps/server/src/app-config.ts`：`serverAppConfigSchema` **复用 kits 各模块的
-  `*.config.ts` schema** 组成命名空间，`mapServerEnv` 负责环境变量映射；新增需要配置的基础设施时，
-  在这里加一个命名空间 + `ConfigService.get('<命名空间>')` 即可。
+- 应用侧配置定义在 `apps/main/src/app-config.ts`（`apps/agent-runtime/src/app-config.ts` 是同源副本）：
+  `serverAppConfigSchema` **复用 kits 各模块的 `*.config.ts` schema** 组成命名空间，`mapServerEnv`
+  负责环境变量映射；新增需要配置的基础设施时，**两份 app-config 都要加**命名空间 + `ConfigService.get('<命名空间>')`。
 - 无自有配置、复用上游配置 bean 的模块写成纯模块（如 `RateLimitModule` /
   `StreamHubModule` / `SessionStoreModule`）。
 - 连接串 / 密钥从配置来，禁止硬编码；实现 `OnApplicationBootstrap` / `OnApplicationShutdown`
@@ -77,16 +84,18 @@
 - 需要日志时**构造器注入** `@Inject(AppLogger)`（不要用已删除的 `@Logger()` 装饰器）；
   新增日志后端 / 输出目标时改 `logger.options.ts` 的 `buildLoggerParams`，不要在业务里直连 pino。
 
-### server/modules —— 业务逻辑
+### main/modules —— 业务逻辑（控制面）
 
 - 固定三层：`errors.ts`（AppError 子类）+ `<业务>.repository.ts`（数据访问）+
   `<业务>.service.ts`（业务 + `@Transactional` 写操作；日志用构造器注入 `AppLogger`）；同目录再放
   `<业务>.controller.ts`（HTTP 边界）与 `<业务>.module.ts`。
 - 注册：模块 `index.ts` 聚合导出 + `<业务>.module.ts` 的 `controllers` / `providers` 声明，
-  再把该模块加入 `apps/server/src/root.module.ts` 的 `imports`（无副作用导入与自动注册）。
+  再把该模块加入 `apps/main/src/root.module.ts` 的 `imports`（无副作用导入与自动注册）。
   实现 `OnApplicationBootstrap` / `OnApplicationShutdown` 钩子的类由 Nest 按生命周期调度。
-  （实体另在 `root.module.ts` 的 `DbModule.forRootAsync` 工厂里注入。）
-- 参考：`apps/server/src/modules/user/`。
+  （实体由 `@repo/db` 的 `DB_ENTITIES` 在 `DbModule.forRootAsync` 工厂里统一注入，模块内不用再列。）
+- **AI 的执行侧不在这里**：agent loop / Mastra / 工具 / 技能 / 记忆 / 连接器 / 提示词写
+  `apps/agent-runtime/src/modules/ai/`（见 `develop-ai-agent`），main 只做这些能力的配置 CRUD。
+- 参考：`apps/main/src/modules/user/`。
 
 ### shared/utils —— 纯工具
 

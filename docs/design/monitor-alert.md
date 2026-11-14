@@ -50,8 +50,8 @@
 | 文件输出通道 | `packages/kits/src/notification/file/`：`FileClient`（通知写文件，默认 `logs/alerts.log`，始终 configured） |
 | 通知统一入口 | `notifier.ts` 增加 `file` 通道（默认：无真实通道配置时兜底文件输出） |
 | 规则实体 | ~~`alert_rules` 扩展~~ → **现为 `monitor_rules`**（`rule_key` / `kind` / `driver` / `config` jsonb / `enabled` / `deprecated`），本表结构见 `monitor-engine.md` §9.1；告警记录 `monitor_alerts`、发送记录 `alert_logs` |
-| 评估引擎 | ~~`apps/server/src/modules/monitor/alert-trigger.ts`（`AlertTrigger`）~~ → 现为 `apps/server/src/modules/monitor/engine/monitor.engine.ts`（`MonitorEngine`：启动对账 + 槽位编排 + 异常入口）+ `rule-evaluator.service.ts` / `event-rule.service.ts` / `alert-lifecycle.service.ts` / `alert-delivery.service.ts` |
-| 框架埋点 | `apps/server/src/common/request-metrics/request-metrics.middleware.ts`（`RequestMetricsMiddleware`，由 `RequestMetricsModule` 自注册）+ 指标定义在 `apps/server/src/modules/monitor/metrics/system/{raw,derived}/`：全局请求埋点（耗时直方图 / 请求数 / 5xx）+ 内存采样 |
+| 评估引擎 | ~~`apps/main/src/modules/monitor/alert-trigger.ts`（`AlertTrigger`）~~ → 现为 `apps/main/src/modules/monitor/engine/monitor.engine.ts`（`MonitorEngine`：启动对账 + 槽位编排 + 异常入口）+ `rule-evaluator.service.ts` / `event-rule.service.ts` / `alert-lifecycle.service.ts` / `alert-delivery.service.ts` |
+| 框架埋点 | `apps/main/src/common/request-metrics/request-metrics.middleware.ts`（`RequestMetricsMiddleware`，由 `RequestMetricsModule` 自注册）+ 指标定义在 `apps/main/src/modules/monitor/metrics/system/{raw,derived}/`：全局请求埋点（耗时直方图 / 请求数 / 5xx）+ 内存采样 |
 | 路由 / SDK / admin | `/monitor/*` 接口清单见 `monitor-engine.md` §11.1（rule/definitions、rule/list、rule/update、rule/reset、alert/page-query、alert/detail、metric/definitions、metric/series、metric/latest、engine/status、log/page-query、test、health）；SDK `client.monitor.*`；admin 页面 `apps/admin/src/app/(app)/main/monitor/{status,live,metrics,logs,rules}` |
 | 依赖 | 零新增（文件输出用 node fs；分位 / 窗口自研） |
 

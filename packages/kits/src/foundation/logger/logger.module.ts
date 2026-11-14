@@ -27,7 +27,7 @@ const createLoggerInstance = (config: LoggerConfig) =>
  *   `buildPinoOptions` 决定），并以 `LOGGER_INSTANCE` 暴露；
  * - 提供可注入的 `AppLogger`（TRANSIENT + INQUIRER，context 取宿主类名）与
  *   `NestLoggerAdapter`（Nest `LoggerService` 适配，供 `app.useLogger` 接管框架日志）；
- * - **不再提供 pino-http 请求日志**：请求日志改由 `apps/server` 的
+ * - **不再提供 pino-http 请求日志**：请求日志改由 `apps/main` 的
  *   `RequestLoggerMiddleware` 自己记录（它能直接读请求上下文 ALS，见该中间件注释）。
  *
  * 应用侧用法：

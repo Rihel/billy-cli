@@ -4,10 +4,10 @@
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: billy-server
+  name: billy-main
   namespace: billy
   labels:
-    app.kubernetes.io/name: billy-server
+    app.kubernetes.io/name: billy-main
   annotations:
     # 请求体上限与 app 侧一致（app.useBodyParser limit 2mb）
     nginx.ingress.kubernetes.io/proxy-body-size: '2m'
@@ -31,6 +31,6 @@ spec:
             pathType: Prefix
             backend:
               service:
-                name: billy-server
+                name: billy-main
                 port:
                   name: http

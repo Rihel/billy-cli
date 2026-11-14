@@ -18,7 +18,7 @@ bucket, accessKeyId, secretAccessKey, endpoint })` 装配；运行时另注入 `
 `RedisStore` 做预签名缓存——两者都是 `@Global()` 模块，一并 import 进 `root.module.ts` 即可，
 DI 解析不依赖 `imports` 的先后顺序）。
 
-## 2. 配置（apps/server/.env）
+## 2. 配置（`apps/main/.env`；`apps/agent-runtime/.env` 有同源副本，文件工具用同一套存储配置）
 
 ```env
 OBJECT_STORAGE_PROVIDER=s3        # 或 cos
@@ -37,7 +37,7 @@ OBJECT_STORAGE_ENDPOINT=http://localhost:9000   # MinIO 本地
 `docker compose up minio` 可起本地 MinIO 联调（compose 映射宿主 19000，故本地
 `OBJECT_STORAGE_ENDPOINT=http://localhost:19000`）。
 
-## 3. 路由（apps/server/src/modules/storage/storage.controller.ts：`@Controller('storage')` +
+## 3. 路由（`apps/main/src/modules/storage/storage.controller.ts`：`@Controller('storage')` +
 `@UseGuards(AnyAuthGuard)`（前台用户或管理员），均 `@HttpCode(200)`）
 
 | 端点 | 入参 schema | 前台用户 | 管理员 |

@@ -2,15 +2,16 @@
 
 > 日期：2026-09-12
 > 状态：已实施并验证
-> 影响面：`packages/di`（删除）、`packages/kits`、`apps/server`、`scripts/cli`、前端文案、文档与 skill
+> 影响面：`packages/di`（删除）、`packages/kits`、`apps/main`、`scripts/cli`、前端文案、文档与 skill
 >
 > 2026-11-13 现状快照（清单级）：
 > - `packages/` 现在 5 个包：`kits` / `shared` / `sdk` / `ui` / `http-client`；**`@repo/di` 已不存在**
 >   （无包目录、无依赖、无 `AppContext` / `autoRegister` / `markManual` 引用）；
-> - `apps/server/src/modules/` 13 个业务模块：`admin` / `ai` / `ai-model` / `ai-usage` / `auth` /
+> - `apps/main/src/modules/` 13 个业务模块（另见 `apps/agent-runtime/src/modules/` 的执行面模块）：`admin` / `ai` / `ai-model` / `ai-usage` / `auth` /
 >   `monitor` / `ops` / `runtime-config` / `session` / `share` / `storage` / `stream` / `user`；
->   实体 19 张、迁移 26 个，均在 `apps/server`；
-> - `apps/server/src/common/` 六个横切目录：`error` / `request-context` / `request-logger` /
+>   实体在 `@repo/db`（`packages/db/src/entities`）；2026-11-14 起迁移也收进 `packages/db/src/migrations`，
+>   实体 re-export 层在 `apps/main/src/database/entities` 与 `apps/agent-runtime/src/database/entities`；
+> - `apps/main/src/common/` 六个横切目录：`error` / `request-context` / `request-logger` /
 >   `request-metrics` / `security` / `http`（`common/index.ts` 统一导出）；
 > - `packages/kits/src/` 16 个顶层目录（另有 `index.ts`），`@Global` 模块 20 个（含后加的 `PubSubModule` /
 >   `StreamHubModule` / `EventBusModule` / `WorkspaceModule`，见 `sse.md`、`workspace-runtime.md`）；
@@ -19,7 +20,7 @@
 >
 > 2026-09-13 更新：组合根文件/类已由 `app.module.ts`/`AppModule` 更名为 `root.module.ts`/`RootModule`；
 > `core.module.ts`（`CoreModule`）已删除——应用级业务配置不再单设 bean，改为各处注入全局 `ConfigService`
-> 后调 `apps/server/src/config.ts` 的 `resolveServerConfig()` 取 `server` 分片。本文正文中的旧路径/类名
+> 后调 `apps/main/src/config.ts` 的 `resolveServerConfig()` 取 `server` 分片。本文正文中的旧路径/类名
 > 均为当时记录，不代表现状。
 >
 > 2026-09-12 二次更新：本文 §3.2 的 `KitsModule.forRoot` 聚合模块**已拆除**，改为
@@ -30,13 +31,13 @@
 > 2026-09-15 三次更新（**推翻本文的日志结论**）：本文正文写的「改用 nestjs-pino、请求日志由
 > pino-http 自动记录」**已作废**。现为自建 logger：kits `LoggerModule` 用
 > `@repo/shared/logger` 的 `createLogger` 建唯一 pino 实例，业务注入 `AppLogger`、
-> Nest 框架日志经 `NestLoggerAdapter`，请求日志由 `apps/server/src/common/request-logger/`
+> Nest 框架日志经 `NestLoggerAdapter`，请求日志由 `apps/main/src/common/request-logger/`
 > 的中间件记录。详见 [manual-logger.md](./manual-logger.md)。
 >
 > 2026-09-12 四次更新：配置链路改为 **AppConfigFacade + `@nestjs/config` + `forRootAsync`**（对齐
 > rihel-base）。kits 新增 `foundation/app-config/`（`AppConfigFacade` 在 bootstrap 前加载 + Zod 校验 + 缓存，
 > `AppConfigModule.forRoot()` 把它接进全局 `ConfigService`）；需要配置的基础设施模块都新增
-> `forRootAsync(options: InfraModuleAsyncOptions<...>)`（与 `forRoot` 并存）。`apps/server` 新增
+> `forRootAsync(options: InfraModuleAsyncOptions<...>)`（与 `forRoot` 并存）。`apps/main` 新增
 > `src/app-config.ts`（`serverAppConfigSchema` 复用 kits 各模块 schema 组合成命名空间 + `mapServerEnv`），
 > `main.ts` / `scripts/seed-admin.ts` 首行 `await loadServerAppConfig()`，`app.module.ts` 各基础设施改用
 > `forRootAsync` + `ConfigService.get('<命名空间>')` 惰性取配置；业务模块 `modules/app-config/` 改名
@@ -53,7 +54,7 @@
 > 旧写法 `loadConfig({ schema, source })` 与 `ConfigSourceError` 已不存在。
 
 > 2026-09-12 三次更新：日志实现改为 **nestjs-pino**（对齐 rihel-base）。自研的
-> `apps/server/src/common/request-logger.middleware.ts` 已删除，请求日志由 pino-http 自动记录；
+> `common/request-logger.middleware.ts` 已删除（这条更新后来被推翻，见上），请求日志由 pino-http 自动记录；
 > `packages/kits/src/foundation/logger/` 改为 `app-logger.ts` + `logger.config.ts` +
 > `logger.options.ts` + `LoggerModule`（`@Logger()` 装饰器与 `configureLogger()` 已删除，业务类改为
 > 构造器注入 `@Inject(AppLogger)`）。下表 §3.4 的 `requestLogger` 一行按新实现理解。
@@ -91,7 +92,7 @@
 
 ### 2.3 决定性风险与实测
 
-`dev:server` 用 `tsx`（esbuild），而 **esbuild 不支持 `emitDecoratorMetadata`**，
+`dev:main` 用 `tsx`（esbuild），而 **esbuild 不支持 `emitDecoratorMetadata`**，
 NestJS 的隐式按类型注入会失效。实测（tsx + `NestFactory.createApplicationContext`）：
 
 - `@Inject(Token)`：正常解析；
@@ -125,10 +126,10 @@ NestJS 的隐式按类型注入会失效。实测（tsx + `NestFactory.createApp
 - 生命周期：`OnApplicationBootstrap`（启动）与 `OnApplicationShutdown`（释放连接），
   按 `providers` 声明顺序执行；各组件持有独立连接，停止期互不依赖。
 
-### 3.3 apps/server 结构与职责
+### 3.3 apps/main 结构与职责
 
 ```
-apps/server/src/
+apps/main/src/
 ├── main.ts          NestFactory 引导 + app.use 三个横切中间件 + app.close 优雅关闭
 ├── app.module.ts    唯一组合根（CoreModule + 各基础设施 XxxModule.forRoot + 业务模块 + APP_PIPE/APP_FILTER/APP_INTERCEPTOR）
 ├── core.module.ts   @Global：应用级配置 bean（ServerConfig）
@@ -156,7 +157,7 @@ HTTP 边界（守卫 + Zod 校验 + 调 service + 返回数据），业务逻辑
 | `makeRequireAuth` / `makeRequireAdminAuth` 中间件 | `UserAuthGuard` / `AdminAuthGuard`（`CanActivate`）|
 | `makeRateLimit(runtime, opts)` | `RateLimitGuard` + `@RateLimit({ scope })` 方法装饰器（超限抛 `BoundaryError` 带 `Retry-After`）|
 | `makeRequestContextMiddleware` | `requestContextMiddleware`（Express 中间件，`app.use` 注册）|
-| `requestLogger` | ~~**pino-http 自动记录**~~（文首 2026-09-15 更新已作废）→ 现为自建 `apps/server/src/common/request-logger/` 的 `RequestLoggerMiddleware`（`root.module.ts` 按 `RequestContextModule` → `RequestLoggerModule` 顺序装配；字段 method / url / status / durationMs / requestId / userId / adminId，按状态码分级），见 `manual-logger.md` |
+| `requestLogger` | ~~**pino-http 自动记录**~~（文首 2026-09-15 更新已作废）→ 现为自建 `apps/main/src/common/request-logger/` 的 `RequestLoggerMiddleware`（`root.module.ts` 按 `RequestContextModule` → `RequestLoggerModule` 顺序装配；字段 method / url / status / durationMs / requestId / userId / adminId，按状态码分级），见 `manual-logger.md` |
 | `makeRequestMetrics` | `makeRequestMetricsMiddleware`（保持中间件语义，避免漏统计被守卫拒绝的请求）|
 | `streamSSE` + `writeSSE` | `@Res()` 直写 Express 响应，帧格式（event → data → id，多行 data，空行结束）与响应头逐字节对齐 |
 | `app.route('/x', makeXRoutes(runtime))` | `@Controller('x')` + 模块 `controllers` |
@@ -170,7 +171,7 @@ HTTP 边界（守卫 + Zod 校验 + 调 service + 返回数据），业务逻辑
 
 ## 4. 验证
 
-- `packages/kits` / `apps/server` 单测：49 + 23 通过；`@repo/http-client` 90 通过。
+- `packages/kits` / `apps/main` 单测：49 + 23 通过；`@repo/http-client` 90 通过。
 - `tsc` 零错误（kits、server `src` + `scripts`）；`pnpm build` 7/7 任务成功。
 - 开发态（`tsx src/main.ts`）与编译态（`node dist/main.js`）双态启动，47 条路由映射正确。
 - 接口冒烟：成功 200 信封、未认证 401 / `1006`、无效 token 401 / `1005`、
@@ -183,8 +184,8 @@ HTTP 边界（守卫 + Zod 校验 + 调 service + 返回数据），业务逻辑
 
 ## 5. 遗留与风险
 
-- `apps/server/test/*.test.ts` 的 TS 类型检查**仍未纳入** `tsc`（`apps/server/tsconfig.json` 的
-  `include` 只含 `src`，`pnpm --filter @app/server typecheck` 不检查测试）。2026-09-12 记录过一批
+- `apps/main/test/*.test.ts` 的 TS 类型检查**仍未纳入** `tsc`（`apps/main/tsconfig.json` 的
+  `include` 只含 `src`，`pnpm --filter @app/main typecheck` 不检查测试）。2026-09-12 记录过一批
   历史类型错误（缺 `Telemetry` / `FileClient` / `Scheduler` 等类型导入；`Scheduler` 被 DOM lib
   同名类型占用）；2026-11-13 抽查 `monitor-registry.test.ts` / `ops-probe.test.ts` 已正确从
   `@repo/kits` 导入 `Telemetry`，测试文件数也从当时的 23 个增至 60 个，**这批错误是否已清零

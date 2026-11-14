@@ -1,0 +1,33 @@
+{
+  "name": "@repo/db",
+  "version": "0.1.0",
+  "private": true,
+  "license": "MIT",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "import": "./dist/index.mjs"
+    }
+  },
+  "scripts": {
+    "build": "tsdown --config-loader unrun",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run",
+    "db:generate": "pnpm --filter @repo/db build && node scripts/db-generate.ts",
+    "db:migrate": "pnpm --filter @repo/db build && node --import tsx node_modules/typeorm/cli.js migration:run -d ./data-source.ts"
+  },
+  "dependencies": {
+    "@repo/kits": "workspace:*",
+    "@repo/shared": "workspace:*",
+    "pg": "^8.23.1",
+    "typeorm": "^1.1.2",
+    "dotenv": "^18.0.9"
+  },
+  "devDependencies": {
+    "tsdown": "^0.23.7",
+    "typescript": "^7.0.2",
+    "unrun": "^0.3.1",
+    "vitest": "^5.1.0"
+  }
+}

@@ -162,7 +162,7 @@ flowchart LR
 > `rules/system/http-error-streak.rule.ts`；AI 监控目录改为实际文件名。
 
 ```text
-apps/server/src/modules/monitor/
+apps/main/src/modules/monitor/
 ├── config.ts                    # MonitorConfig（enabled / emailTo / instanceId / retentionDays）
 ├── errors.ts                    # MonitorRuleNotFound / ConfigInvalid / MetricNotFound / AlertNotFound
 ├── definitions/
@@ -237,7 +237,7 @@ apps/server/src/modules/monitor/
 ├── monitor.module.ts
 └── index.ts
 
-apps/server/src/modules/ai/monitoring/
+apps/agent-runtime/src/modules/ai/monitoring/
 ├── ai-usage.source.ts
 ├── ai-usage.metrics.ts      # AI 指标定义（不是 metrics/raw/*.metric.ts 一指标一文件）
 ├── ai-usage.rules.ts        # AI 规则定义（4 条，默认关闭）
@@ -1379,7 +1379,7 @@ sequenceDiagram
 | `POST /monitor/health` | 健康检查（沿用；独立控制器 `MonitorHealthController`，**免鉴权**，探 DB / Redis，任一失败 `degraded`） |
 
 > 现状核对（2026-11-13）：上表 13 条就是当前全部监控接口，控制器在
-> `apps/server/src/modules/monitor/api/monitor.controller.ts`（前 12 条，类级 `AdminAuthGuard`）
+> `apps/main/src/modules/monitor/api/monitor.controller.ts`（前 12 条，类级 `AdminAuthGuard`）
 > 与 `api/monitor-health.controller.ts`（`POST health`，无守卫）。SDK 在
 > `packages/sdk/src/server.client.ts` 的 `monitor` 段，一一对应。
 
@@ -1501,7 +1501,7 @@ flowchart LR
 - 指标 series / latest 的时间范围和维度；
 - SDK 类型与控制台页面。
 
-> 现有测试文件（2026-11-13）：`apps/server/test/monitor-lifecycle.test.ts`（告警生命周期）、
+> 现有测试文件（2026-11-13）：`apps/agent-runtime/test/monitor-lifecycle.test.ts`（告警生命周期）、
 > `monitor-registry.test.ts`（指标 / 规则注册与校验）、`monitor-rule-service.test.ts`
 > （规则读模型与 update / reset）、`monitor-window.test.ts`（窗口口径纯函数）。
 

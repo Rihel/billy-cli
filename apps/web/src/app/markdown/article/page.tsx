@@ -38,13 +38,13 @@ pnpm dev:server
 | \`@repo/kits\` | 后端通用能力封装 | shared |
 | \`@repo/ui\` | 前端组件库 | shared |
 | \`@repo/sdk\` | 全类型化 API 客户端 | http-client |
-| \`apps/server\` | NestJS 控制器与业务模块 | kits / shared |
+| \`apps/main\` + \`apps/agent-runtime\` | NestJS 控制器与业务模块 | kits / shared |
 
 ### 依赖方向
 
 - \`shared\` 不依赖任何业务包
 - \`kits\` 不 import \`apps/*\`
-- 业务模块与路由在 \`apps/server\` 内物理分层
+- 业务模块/路由在 \`apps/main\`，AI runtime 在 \`apps/agent-runtime\`
 
 ## 开发清单
 

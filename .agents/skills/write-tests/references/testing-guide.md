@@ -7,7 +7,9 @@
 ## 1. 工程测试现状与接入
 
 - 框架：**vitest**（由各测试包自行声明：`@repo/http-client`、`@repo/kits`、`@repo/shared`、
-  `@app/server`、`@repo/ui`、`@app/web`、`@app/admin`；根 `package.json` 不含 vitest）。
+  `@app/main`、`@app/agent-runtime`、`@repo/ui`、`@app/web`、`@app/admin`；根 `package.json` 不含 vitest）。
+  AI 执行侧的测试（ai-* 那一批）在 `apps/agent-runtime/test/`，控制面（CRUD / SSE 中继）在
+  `apps/main/test/`。
 - 现有示例：`packages/http-client/test/`（http-client.test.ts 覆盖策略 / 管理器 / provider /
   请求流程；stream-parser / stream-transport / stream-client 覆盖 SSE 解析与状态机）；
   `packages/kits/test/stream-hub.test.ts`（mock ioredis 的 pub/sub，覆盖本地直推、跨实例广播、

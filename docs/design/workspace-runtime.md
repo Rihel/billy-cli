@@ -137,13 +137,13 @@ warn，含理由码）。
 | --- | --- |
 | `packages/kits/src/workspace/` | `workspace.types.ts`（模式 / 能力 / 理由码）/ `workspace.config.ts`（`WorkspaceConfigSchema` + token）/ `workspace.sandbox.ts`（探测 + 包装，seatbelt + bwrap）/ `workspace.runtime.ts`（`WorkspaceRuntimeService`）/ `workspace.module.ts` / `index.ts` |
 | `packages/kits/test/workspace.test.ts` | E1–E5 + 探测判据 + 策略构造 |
-| `apps/server/src/app-config.ts` | `workspace` 命名空间（`AGENT_WORKSPACE_*`） |
-| `apps/server/src/database/entities/conversation-entity.ts` | `file_access`（varchar(16)，默认 `workspace-write`） |
-| `apps/server/src/modules/ai/tools/bash.tool.ts` | 会话权限 → 运行时（`runtime.exec({ ..., fileAccess })`）；出参 `runtime` / `mode` |
-| `apps/server/src/modules/ai/api/ai.controller.ts` | `POST /agent/conversation/file-access` |
+| `apps/main/src/app-config.ts` | `workspace` 命名空间（`AGENT_WORKSPACE_*`） |
+| `apps/main/src/database/entities/conversation-entity.ts` | `file_access`（varchar(16)，默认 `workspace-write`） |
+| `apps/agent-runtime/src/modules/ai/tools/bash.tool.ts` | 会话权限 → 运行时（`runtime.exec({ ..., fileAccess })`）；出参 `runtime` / `mode` |
+| `apps/main/src/modules/ai-admin/conversation/conversation.controller.ts` | `POST /agent/conversation/file-access` |
 | `apps/admin/src/app/(app)/(standalone)/main/ai/chat/chat-conversation.tsx` | 会话页「只读 / 可写」（`SegmentedControl`） |
 | `apps/admin/src/app/(app)/main/ai/tools/config-panels.tsx` | 只读隔离能力提示 |
-| `apps/server/src/modules/ops/ops.controller.ts` | `/info` 的 `workspace` 段 |
+| `apps/main/src/modules/ops/ops.controller.ts` | `/info` 的 `workspace` 段 |
 
 补充（2026-11-13 核对）：
 

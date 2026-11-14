@@ -45,18 +45,18 @@ token 里带类型标识，`verifyToken` 分别校验，混用必然失败。
   设计（key 设计、旧会话兼容、索引修剪）见 `docs/design/session-management.md`。
 - **登出**：`/auth/logout`、`/admin/logout` **幂等**（不挂鉴权守卫，token 有效则
   撤销会话、无效也返回成功）——前端 `onUnauthorized` 调用不会形成 401 循环。
-- **校验**：`apps/server/src/common/security/authentication.ts` 的 `extractToken` 支持两种携带方式：
+- **校验**：`apps/main/src/common/security/authentication.ts` 的 `extractToken` 支持两种携带方式：
   `Authorization: Bearer <token>` 或 `access-token` cookie。守卫校验失败时抛边界错误
   `AppErrorCodes.Unauthorized`（无 token）或 `TokenInvalid`（校验失败），
   由全局 `AppExceptionFilter` 统一映射。
-- **注入上下文**：校验通过后守卫把身份写入 `apps/server/src/common/request-context/request-context.ts` 的
+- **注入上下文**：校验通过后守卫把身份写入 `apps/main/src/common/request-context/request-context.ts` 的
   AsyncLocalStorage（`requestContext.set('userId' | 'adminId', id)`），
   业务层从 `requestContext` 取当前身份，不做参数透传。
 
 ## 3. 服务端守卫使用（新模块 controller 选型）
 
 ```ts
-// apps/server/src/modules/xxx/xxx.controller.ts（参考 modules/user/user.controller.ts）
+// apps/main/src/modules/xxx/xxx.controller.ts（参考 modules/user/user.controller.ts）
 @Controller('xxx')
 @UseGuards(UserAuthGuard)          // 前台用户
 // @UseGuards(AdminAuthGuard)      // 后台管理员（参考 modules/admin/admin.controller.ts）

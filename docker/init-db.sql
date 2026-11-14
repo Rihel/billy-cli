@@ -1,7 +1,7 @@
 -- 数据库初始化脚本（由 PostgreSQL 容器首次启动时自动执行，仅对**全新数据卷**生效）。
 --
 -- ⚠️ 本文件**不建任何业务表**。
---   schema 的唯一来源是 TypeORM 迁移：apps/server/src/database/migrations/，
+--   schema 的唯一来源是 TypeORM 迁移：packages/db/src/migrations/，
 --   由 `pnpm db:migrate` 执行（`pnpm bootstrap` 已包含该步骤）。
 --
 -- 为什么曾经是错的（别改回去）：本文件早期照 drizzle 时代的迁移建过 todos / users / admins，

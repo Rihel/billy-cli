@@ -6,8 +6,8 @@
 
 - **找回密码**：`forgotPassword` 生成明文令牌后只落 `sha256(token)`，经 `Notifier` 邮件通道
   投递重置链接（`WEB_URL` 拼绝对地址）；API 响应仅 `{ success: true }`，用户不存在时同样返回成功。
-  `resetPassword` 先哈希再查用户、成功后 `revokeAll('user', id)` 踢掉全部会话；单测见
-  `test/auth-reset-password.test.ts`。
+  `resetPassword` 先哈希再查用户、成功后 `revokeAll('user', id)` 踢掉全部会话；
+  原单测 `auth-reset-password` **拆分后未迁入 `apps/main/test`**（该目录现只有 5 个用例），属缺失。
 - **对象存储默认私有**：`providers/s3.ts` 的 `ensurePrivateBucket`（`initial()` 调用）建桶 +
   主动删除历史公开读桶策略 + CORS 放行 GET/HEAD/PUT；下载统一走 `getDownloadUrl` 预签名。
   前端 key → URL 用 `useStorageUrl` / `StorageClientProvider.getViewUrl`（异步），
@@ -27,12 +27,12 @@
 ## 核对
 
 ```bash
-grep -n "hashResetToken\|revokeAll('user'" apps/server/src/modules/auth/auth.service.ts
+grep -n "hashResetToken\|revokeAll('user'" apps/main/src/modules/auth/auth.service.ts
 grep -n "ensurePrivateBucket\|DeleteBucketPolicy" packages/kits/src/storage/providers/s3.ts
-grep -n "uk_user_email" apps/server/src/database/entities/user-entity.ts
+grep -n "uk_user_email" apps/main/src/database/entities/user-entity.ts
 grep -n "tryLock\|locker?.value === value" packages/kits/src/redis/redis-lock.service.ts
-grep -n "publicKeys\|authorizedChildToolbox" apps/server/src/modules/ai/core/tools/tool.registry.ts apps/server/src/modules/ai/ai.module.ts
-pnpm --filter @app/server test test/auth-reset-password.test.ts test/storage.controller.test.ts
+grep -n "publicKeys\|authorizedChildToolbox" apps/agent-runtime/src/modules/ai/core/tools/tool.registry.ts apps/agent-runtime/src/modules/ai/ai.module.ts
+pnpm --filter @app/main test   # 拆分后只剩 5 个用例：auth-reset-password / storage.controller 单测未迁入（缺失，非通过）
 ```
 
 ## 失效信号

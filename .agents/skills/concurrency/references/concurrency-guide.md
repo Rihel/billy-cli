@@ -34,7 +34,7 @@ if (data === null) {
 ## 3. 限流模式
 
 **HTTP 接口限流**（首选：`RateLimitGuard` 守卫 + `@RateLimit({ scope })` 方法装饰器，
-实现在 `apps/server/src/common/security/rate-limit.guard.ts`）：
+实现在 `apps/main/src/common/security/rate-limit.guard.ts`；runtime 没有用户鉴权与限流）：
 
 ```ts
 @Post('login')
@@ -50,7 +50,7 @@ login(@Body({ schema: LoginSchema }) input: LoginDto) { ... }
 - 守卫按 **IP** 计数（统一入口 key `scope:ip`，底层由 `RateLimiter` 统一加 `ratelimit:` 前缀），
   超限抛边界错误返回 429 + `Retry-After`；
   白名单豁免（**ipaddr.js** 匹配：精确 IP / IPv4·IPv6 CIDR，env `RATE_LIMIT_WHITELIST`，命中跳过计数）。
-- **IP 来源**：`apps/server/src/common/security/rate-limit.guard.ts` 的 `clientIp()` 统一提取，
+- **IP 来源**：`apps/main/src/common/security/rate-limit.guard.ts` 的 `clientIp()` 统一提取，
   默认直连 socket 地址，防伪造 XFF 绕过；
   部署在可信反代后置 `RATE_LIMIT_TRUST_PROXY=true` 才取 `x-forwarded-for` 首值。
 - IPv6 双栈下 socket 地址为 `::ffff:<v4>`，已统一规范化（`normalizeIp`）。

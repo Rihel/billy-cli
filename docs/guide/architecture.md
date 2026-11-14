@@ -7,30 +7,40 @@
 
 ```
 ├── apps/
-│   ├── server/                          # NestJS 12 HTTP 边界（@app/server）
-│   │   ├── data-source.ts               # TypeORM CLI 迁移配置（db:generate / db:migrate）
-│   │   ├── scripts/seed-admin.ts        # 首个管理员种子脚本（createApplicationContext 启动）
+│   ├── main/                            # 公网 BFF（@app/main，9989）
+│   │   ├── src/
+│   │   │   ├── main.ts                  # 入口：NestFactory 启动 + 全局 Express 配置 + 优雅关闭
+│   │   │   ├── root.module.ts           # 唯一组合根：配置 + 横切中间件 + 各基础设施 + 业务模块
+│   │   │   ├── app-config.ts            # 应用配置 schema（复用 kits 各模块 schema）+ mapServerEnv + loadServerAppConfig
+│   │   │   ├── config.ts                # ServerConfig 类型（= ServerAppConfig['server']）+ resolveServerConfig(config)
+│   │   │   ├── agent/                   # /agent 流式入口与控制接口（chat/stream、run/stop、chat/resume、run/stream）
+│   │   │   │                            #   + agent-sse.bridge.ts（Kafka 消费者 → 按 clientId 写 SSE）
+│   │   │   ├── common/                  # 横切 HTTP 构件（按关注点分包，各有 index.ts；外部统一从 common/index.ts 导入）
+│   │   │   │                            #   error/（错误码映射 · 边界错误 · 异常过滤器 · 告警钩子）
+│   │   │   │                            #   request-context/（模块：ALS 上下文 · requestId 中间件）
+│   │   │   │                            #   request-logger/（模块：请求日志中间件）
+│   │   │   │                            #   request-metrics/（模块：请求埋点中间件）
+│   │   │   │                            #   security/（token 与身份读取 · 限流守卫）
+│   │   │   │                            #   http/（Zod 校验管道 · 响应信封拦截器 · 探针路径判定）
+│   │   │   ├── database/
+│   │   │   │   └── entities/            # re-export @repo/db（唯一来源在 packages/db，不要在这里加字段）
+│   │   │   └── modules/                 # 业务模块（13 个）：auth / admin / user / session / monitor / storage / stream /
+│   │   │                                #   runtime-config / share / ai-admin（conversation / file / tool / skill / connector / memory）/
+│   │   │                                #   ai-model / ai-usage / ops
+│   │   │                                #   每模块 module + controller + service + index（repository / errors 按需）
+│   ├── agent-runtime/                    # agent loop（@app/agent-runtime，9990，只给 main 调）
+│   │   ├── data-source.ts                # TypeORM CLI 迁移配置（根脚本 db:gen / db:migrate 当前指向它）
+│   │   ├── scripts/seed-admin.ts         # 首个管理员种子脚本（迁移入口的临时归属，见「已知缺口」）
 │   │   └── src/
-│   │       ├── main.ts                  # 入口：NestFactory 启动 + 全局 Express 配置 + 优雅关闭
-│   │       ├── root.module.ts           # 唯一组合根：配置 + 横切中间件 + 各基础设施 + 业务模块
-│   │       ├── app-config.ts            # 应用配置 schema（复用 kits 各模块 schema）+ mapServerEnv + loadServerAppConfig
-│   │       ├── config.ts                # ServerConfig 类型（= ServerAppConfig['server']）+ resolveServerConfig(config)
-│   │       ├── common/                   # 横切 HTTP 构件（按关注点分包，各有 index.ts；外部统一从 common/index.ts 导入）
-│   │       │                            #   error/（错误码映射 · 边界错误 · 异常过滤器 · 告警钩子）
-│   │       │                            #   request-context/（模块：ALS 上下文 · requestId 中间件）
-│   │       │                            #   request-logger/（模块：请求日志中间件）
-│   │       │                            #   request-metrics/（模块：请求埋点中间件）
-│   │       │                            #   security/（token 与身份读取 · 限流守卫）
-│   │       │                            #   http/（Zod 校验管道 · 响应信封拦截器 · 探针路径判定）
-│   │       ├── database/
-│   │       │   ├── entities/            # 19 张表：user / admin / alert-log / monitor-alert / monitor-rule /
-│   │       │   │                        #   monitor-metric-sample / conversation / run / timeline / ai-provider /
-│   │       │   │                        #   ai-model / ai-tool / ai-connector / ai-file / ai-skill / ai-skill-file /
-│   │       │   │                        #   ai-usage-daily / ai-usage-daily-dimension / file-share
-│   │       │   └── migrations/          # TypeORM 迁移产物
-│   │       └── modules/                 # 业务模块（13 个）：auth / admin / user / session / monitor / storage / stream /
-│   │                                    #   runtime-config / share / ai / ai-model / ai-usage / ops
-│   │                                    #   每模块 module + controller + service + index（repository / errors 按需）
+│   │       ├── main.ts / root.module.ts / app-config.ts / config.ts / common/   # 与 main 同构的装配骨架
+│   │       └── modules/
+│   │           ├── ai/                   # agent loop 主体：api（/internal/agent/*）/ agents / runtime / core /
+│   │           │                         #   tools / files / memory / skills / connectors / mastra / monitoring
+│   │           ├── ai-model/             # 读供应商 / 模型配置（不写库）
+│   │           ├── ai-usage/ monitor/ ops/   # 用量、告警、探针
+│   │           └── （没有 auth / user / storage / share 等控制面模块）
+│   ├── tool-gateway/                     # 工具目录 / 策略 / worker 路由 / 审计（@app/tool-gateway，9993）
+│   ├── tool-worker/                      # 工具执行 + 能力自注册（@app/tool-worker，9994）
 │   ├── web/                             # Next.js 16 前台（@app/web，端口 9840）
 │   │   └── src/
 │   │       ├── actions/auth.actions.ts  # Server Actions（登录 / 注册）
@@ -94,6 +104,12 @@
 │   │       ├── telemetry/               # Telemetry + TelemetryModule
 │   │       └── (每个目录)                # provider + <name>.config.ts（如需配置）+
 │   │                                    #   <name>.module.ts（@Global；需要配置的再给 forRoot / forRootAsync）+ index.ts
+│   ├── db/                               # @repo/db — TypeORM 实体 + 迁移 + DB_ENTITIES / DB_MIGRATIONS（唯一来源）
+│   ├── ai-data/                          # @repo/ai-data — FileService / MemoryService / workspace（main 与 worker 共用）
+│   ├── tool-catalog/                     # @repo/tool-catalog — 工具定义唯一来源（参数 / 描述 / scope）
+│   ├── contracts/                        # @repo/contracts — 内部服务契约（Zod schema）
+│   ├── internal-sdk/                     # @repo/internal-sdk — 内部服务 typed client（gateway / worker / runtime）
+│   ├── web-runtime/                      # @repo/web-runtime — bash / web / 文件工具的共享执行实现
 │   ├── http-client/                      # @repo/http-client — 通用 HTTP + 鉴权管线（业务无关）
 │   │   └── src/
 │   │       ├── core/                    # http.client / credential-resolver / auth-injector / api-error
@@ -107,12 +123,12 @@
 │   │       └── app-clients.ts           # createAppClients：浏览器单例 / 服务端无状态客户端的装配（web、admin 共用）
 │   └── ui/                               # @repo/ui — shadcn 组件（src/components/ui/*，61 个）+ 自有组件（src/components/* 平铺）
 │                                         #   + ai-elements（48 个 AI 界面组件）+ 设计系统（src/globals.css，唯一定义处）
-├── docker/                              # Dockerfile.base / .server / .web + init-db.sql
-├── k8s/                                 # server 的 Kubernetes 清单（Namespace / ConfigMap / Deployment / Service / PDB /
-│                                        #   Ingress / Ingress-SSE + 部署说明）
+├── docker/                              # Dockerfile.base / .main / .agent-runtime / .web + init-db.sql
+├── k8s/                                 # main + agent-runtime 的 Kubernetes 清单（Namespace / ConfigMap / Deployment /
+│                                        #   Service / PDB / Ingress / Ingress-SSE + 部署说明；runtime 不接公网 Ingress）
 ├── docs/                                # guide/（使用指南）/ design/（设计文档）/ dev-logs/（开发日志）/ research/
 │                                        #   + pagination.md / queue.md / sdk-refactor.md / billy-pitch.md
-├── scripts/                             # setup.ts（bootstrap）、kill-dev.ts、check-inject-decorators.ts、check-mastra-boundary.ts、check-ui.ts、codegraph-setup.ts
+├── scripts/                             # setup.ts（bootstrap）、kill-dev.ts、check-*.ts 守卫、kafka-create-topics.sh、codegraph-setup.ts
 ├── turbo.json
 ├── pnpm-workspace.yaml
 └── package.json
@@ -121,20 +137,29 @@
 ## 分层与数据流
 
 ```
-浏览器 ── POST JSON ──→ Next.js（Server Actions / 客户端 SDK）── POST JSON ──→ NestJS
-                       （SSR）                                        │
-                                                                      ├─ 业务 service ──→ PostgreSQL
-                                                                      │                    (TypeORM)
-                                                                      └─ 业务 service ──→ Redis / S3 / COS
+浏览器 ── POST JSON ──→ Next.js（Server Actions / 客户端 SDK）── POST JSON ──→ main（9989）
+                       （SSR）                                                 │
+                                                                               ├─ 业务 service ──→ PostgreSQL（TypeORM）
+                                                                               ├─ 业务 service ──→ Redis / S3 / COS
+                                                                               └─ /agent/chat/stream
+                                                                                     │ 内部 HTTP（token + 身份头）
+                                                                                     ▼
+                                                                             agent-runtime（9990）
+                                                                               ├─ agent loop（Mastra）
+                                                                               ├─ 工具面 ──→ tool-gateway（9993）──→ tool-worker（9994）
+                                                                               └─ Kafka agent.run.events ──→ main 的 SSE ──→ 浏览器
 ```
 
-分层规则：`apps/server`（HTTP 适配 + 业务模块 + 实体/迁移）→ `@repo/kits`（通用能力）→ 外部资源
-（DB / Redis / S3 / COS）。前端通过 `@repo/sdk` 调用，请求 / 响应类型与后端共享 `@repo/shared`
-的 Zod schema。
+分层规则：`apps/main`（公网 HTTP 适配 + 控制面业务模块）与 `apps/agent-runtime`（agent 执行面）
+→ `@repo/kits`（通用能力）/ `@repo/ai-data`（AI 数据能力）→ 外部资源（DB / Redis / S3 / COS）。
+实体与迁移在 `@repo/db`；前端通过 `@repo/sdk` 调用 main，请求 / 响应类型与后端共享 `@repo/shared`
+的 Zod schema；app 间调用走 `@repo/internal-sdk`（不裸拼内部地址）。
 
 ## 组合根与生命周期
 
-组合根收敛到唯一装配点 `apps/server/src/root.module.ts`，kits 侧由「一个基础设施一个模块」分别装配：
+两个 Nest 应用各有一个组合根：`apps/main/src/root.module.ts` 与 `apps/agent-runtime/src/root.module.ts`，
+装配骨架相同（配置 → 横切中间件 → 基础设施 → 业务模块），差异只在业务模块集合。
+kits 侧由「一个基础设施一个模块」分别装配：
 
 - 每个基础设施一个 `@Global()` NestJS 模块，需要配置的都提供 `forRoot(options)` 与
   `forRootAsync(options)` 两种装配方式：`LoggerModule` / `DbModule` / `RedisModule` / `JwtModule` /
@@ -154,10 +179,10 @@
   ESM 下 `import { RootModule }` 的装饰器求值早于 `main()` 里的配置加载，顶层读会拿到空配置
 - **按需装配**：某基础设施不 import 即视为未启用（如不 import `KafkaModule` 就没有 Kafka 客户端）；
   可选依赖用 `@Optional()` 优雅降级（未装配 `LarkModule` 时 `LarkNotifyClient` 自动「未配置」）
-- **应用级业务配置**：`apps/server/src/config.ts` 只导出 `ServerConfig` 类型（= `ServerAppConfig['server']`）
+- **应用级业务配置**：两个 app 的 `src/config.ts` 各自只导出 `ServerConfig` 类型（= `ServerAppConfig['server']`）
   与 `resolveServerConfig(config)`；守卫 / service / 控制器注入全局 `ConfigService` 后调它取 `server` 分片
   （端口 / 鉴权开关 / 限流白名单等），**无需额外的配置 bean / 模块**
-- `apps/server/src/main.ts`：只用 `NestFactory.create(RootModule, { bodyParser: false })` 启动，
+- 两个 app 的 `src/main.ts`：只用 `NestFactory.create(RootModule, { bodyParser: false })` 启动，
   再做全局 Express 配置（`app.enableCors()` / 请求体上限 / `keepAliveTimeout` 与 `headersTimeout`），
   不承担业务注册职责；请求上下文 / 请求日志 / 请求指标
   中间件由 `common/` 的 `RequestContextModule` / `RequestLoggerModule` / `RequestMetricsModule`

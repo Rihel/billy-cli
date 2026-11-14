@@ -79,8 +79,8 @@ scheduler.scheduleInterval('heartbeat', 5 * 60_000, async () => {
 
 | 位置 | 用法 |
 | --- | --- |
-| `apps/server/src/modules/monitor/engine/monitor.timeline.ts` | 按**评估周期**注册槽位（60s → `* * * * *`、300s → `*/5 * * * *`），`protect: true` 防重入、固定 `timezone: 'Asia/Shanghai'`；停机关 `job.stop()` |
-| `apps/server/src/modules/ai-usage/ai-usage.scheduler.ts` | AI 用量日表汇总 |
+| `apps/main/src/modules/monitor/engine/monitor.timeline.ts` | 按**评估周期**注册槽位（60s → `* * * * *`、300s → `*/5 * * * *`），`protect: true` 防重入、固定 `timezone: 'Asia/Shanghai'`；停机关 `job.stop()` |
+| `apps/main/src/modules/ai-usage/ai-usage.scheduler.ts` | AI 用量日表汇总 |
 
 多实例互斥在调用方做（如监控槽位抢 `RedisStore.acquireLock('monitor:eval:<slot>')`），
 `Scheduler` 本身只保证「本进程按时触发」。

@@ -13,7 +13,7 @@
 | 项 | 现状 | 证据 |
 | --- | --- | --- |
 | Lint | 无配置、无依赖 | 根目录与各包均无 `eslint*` / `oxlint*` 配置 |
-| Format | 无配置、无依赖 | 仅剩 `apps/server/.prettierrc` 一个历史残留（无 prettier 依赖，纯误导） |
+| Format | 无配置、无依赖 | 当时 app 下剩一个 `.prettierrc` 历史残留（无 prettier 依赖）；2026-11-14 核对：两个 app 下均已无该文件 |
 | 提交钩子 | 无 | `.git/hooks` 只有 `*.sample` |
 | 质量检查 | 五道，但都是**自研守卫** | `check:inject` / `check:mastra` / `check:ui` + `typecheck` / `test` |
 | CI | 无 | 仓库无 `.github/` |
@@ -87,7 +87,7 @@
     { "files": ["**/*.test.ts", "**/*.test.tsx", "**/test/**"],
       "rules": { "typescript/no-non-null-assertion": "off",
                  "vitest/no-conditional-expect": "off" } },
-    { "files": ["apps/server/src/database/migrations/**"], "rules": { "no-console": "off" } },
+    { "files": ["packages/db/src/migrations/**"], "rules": { "no-console": "off" } },
     { "files": ["scripts/**", "**/scripts/**", "**/*.config.*"], "rules": { "no-console": "off" } }
   ]
 }
@@ -145,7 +145,7 @@
 | `semi` | `false` | 全仓仅 ~20 个文件带行尾分号 |
 | `singleQuote` | `true` | 684 个 ts 文件单引号 vs 29 个双引号 |
 | `printWidth` | `100` | 全仓 87% 的行 ≤100，最大值集中在长字符串 |
-| `trailingComma` | `all` | 与 `apps/server/.prettierrc` 历史约定一致 |
+| `trailingComma` | `all` | 与当时 `.prettierrc` 的历史约定一致 |
 
 **范围**：js / ts / tsx / json / jsonc / yaml / css；**先排除 `**/*.md`**（178 个手写文档，重排只产生噪音），后续可单独开。
 **一次性动作**：全仓 615 个文件需重排（ts 365 / tsx 228 / json 10 / yaml 5 / css 4 / mjs 2 / jsonc 1），单独一个 commit，并把该 commit 写入 `.git-blame-ignore-revs`。
@@ -215,7 +215,7 @@ pre-push:
 - `.vscode/extensions.json` 推荐 `oxc.oxc-vscode`（lint + format 同一个扩展）。
 - `.vscode/settings.json`：`editor.defaultFormatter: "oxc.oxc-vscode"`、`formatOnSave: true`、`source.fixAll.oxc`；markdown 不格式化（与 oxfmt 排除范围一致）。
 - `.editorconfig`：LF、2 空格、100 列、md 不 trim、`*.bat` 保持 CRLF（与 `.gitattributes` 对齐）。
-- 删除 `apps/server/.prettierrc`。
+- 删除当时的 `.prettierrc` 残留（2026-11-14 核对：两个 app 下均已无该文件）。
 
 ### 3.7 与既有五道检查的关系
 
@@ -264,7 +264,7 @@ git commit -m "update"          # 被 commit-msg 拒绝
 | import 排序 / Tailwind 类名排序 | 与现有分组约定冲突，单独专项 |
 | `strictNullChecks` 统一 | 会影响全仓类型，属独立工程 |
 | React Compiler 规则治理 | 聊天页状态机专项 |
-| knip（未使用依赖） | 可选后续，先清掉已知的 `apps/server` 无用 `typescript-eslint` |
+| knip（未使用依赖） | 可选后续，先清掉已知的 `apps/main` 无用 `typescript-eslint` |
 | 发布流水线 / changesets / publint | 本仓不是发布库 |
 
 ## 4. 落地顺序

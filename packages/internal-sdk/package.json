@@ -1,0 +1,29 @@
+{
+  "name": "@repo/internal-sdk",
+  "version": "0.1.0",
+  "private": true,
+  "license": "MIT",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "import": "./dist/index.mjs"
+    }
+  },
+  "scripts": {
+    "dev": "tsdown --watch --config-loader unrun",
+    "build": "tsdown --config-loader unrun",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@repo/contracts": "workspace:*",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "tsdown": "^0.23.7",
+    "typescript": "^7.0.2",
+    "unrun": "^0.3.1",
+    "vitest": "^5.1.0"
+  }
+}

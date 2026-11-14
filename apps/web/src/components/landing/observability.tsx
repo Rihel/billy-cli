@@ -17,7 +17,7 @@ const capabilities = [
   {
     title: '探针分两种',
     detail: '/healthz 只看进程，/readyz 探依赖；滚动更新先摘流再退出',
-    path: 'apps/server/src/modules/ops',
+    path: 'apps/main/src/modules/ops',
   },
   {
     title: '日志有上下文',
@@ -32,7 +32,7 @@ const capabilities = [
   {
     title: 'AI 调用可审计',
     detail: '运行列表、运行详情、子 agent 与连接器的输入提示词、错误原文都在后台可查',
-    path: 'apps/server/src/modules/ai/runtime',
+    path: 'apps/agent-runtime/src/modules/ai/runtime',
   },
 ]
 

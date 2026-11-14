@@ -23,10 +23,10 @@
 ## 依据
 
 - `docs/design/workspace-runtime.md`（决策矩阵 E1–E9）
-- `packages/kits/src/workspace/**`、`apps/server/src/modules/ai/tools/bash.tool.ts`、
-  `apps/server/src/modules/ai/api/ai-tool.service.ts`
+- `packages/kits/src/workspace/**`、`apps/agent-runtime/src/modules/ai/tools/bash.tool.ts`、
+  `apps/main/src/modules/ai-admin/tool/tool-admin.service.ts`
 - 核对：`pnpm --filter @repo/kits exec vitest run test/workspace.test.ts`、
-  `pnpm --filter @app/server exec vitest run test/ai-tools/bash.test.ts`
+  `pnpm --filter @app/agent-runtime exec vitest run test/ai-tools/bash.test.ts`
 
 ## 失效信号
 

@@ -7,7 +7,7 @@
   → `code: 0`；`ResponseUtils.error(code, message)`（定义在 `packages/shared/src/app-response.ts`）。
 - controller 直接返回数据（业务路由统一显式 `@HttpCode(200)`），由全局
   `ResponseEnvelopeInterceptor` 包成 `{ code: 0, data }`；
-  入参校验 `@Body({ schema: Schema })`（`apps/server/src/common/http/zod-validation.ts`）失败返回 body
+  入参校验 `@Body({ schema: Schema })`（`apps/main/src/common/http/zod-validation.ts`；runtime 有同源副本）失败返回 body
   `code: 400` + `parseZodIssues` 详情（HTTP 200）。
 - 业务错误：service / repository 抛 `AppError` 子类（`code` 必须是 `AppErrorCodes` 已注册值）；
   全局 `AppExceptionFilter`（注册为 `APP_FILTER`）→ `mapError` 按错误码映射**真实 HTTP 状态**

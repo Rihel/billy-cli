@@ -14,7 +14,7 @@ const derivation = [
   {
     label: '数据库实体',
     detail: 'TypeORM 实体与迁移由同一份字段生成',
-    path: 'apps/server/src/database',
+    path: 'packages/db/src',
   },
   { label: '接口类型', detail: '全类型 SDK，前端调用有提示、改名即报错', path: 'packages/sdk' },
   {

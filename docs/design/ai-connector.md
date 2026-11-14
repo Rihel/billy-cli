@@ -19,7 +19,7 @@
 Billy 里的工具只有一个来源：代码里的工具组。
 
 ```
-写一个 @ToolGroup 类            apps/server/src/modules/ai/tools/*.tool.ts
+写一个 @ToolGroup 类            apps/agent-runtime/src/modules/ai/tools/*.tool.ts
   → 每个 @ToolDecl 方法一个工具
   → 在 AGENT_TOOL_GROUPS 登记     core/tools/tools.types.ts:379
   → 注册机拍平成 key → 工具表     core/tools/tool.registry.ts:63
@@ -755,7 +755,7 @@ export class AcmeRpcDriver implements ConnectorDriver {
 | **执行**（真去敲命令） | 连接器产出的一个受限 `run` 工具 | **已落地**：`run`（参数白名单 + `spawn`） |
 
 > **落地差异（2026-11-09）**：样板按"运维前置"实现，和下面的原方案有四处不同——
-> 1. 安装放在**镜像**里（`docker/Dockerfile.server` 固定版本装 `@larksuite/cli`），驱动不做运行期 `npm i -g`；
+> 1. 安装放在**镜像**里（`docker/Dockerfile.agent-runtime` 固定版本装 `@larksuite/cli`），驱动不做运行期 `npm i -g`；
 > 2. 技能不落盘到 `AGENTS_SKILLS_DIRS`，而是让模型用 `lark-cli skills list/read` 读**二进制内嵌文档**（24+ 份，省系统提示词）；
 > 3. 授权也走 `run` 工具（`auth login --no-wait` / `--device-code`），没有单独的 `/connector/cli/*` 接口；
 > 4. 每个连接器实例一个独立 `HOME`（`~/.billy/lark-cli/<实例 id>`），App 凭证写进该实例自己的 CLI 配置，删连接器时整目录删掉。
@@ -876,7 +876,7 @@ interface CliDriverSpec {              // 写死在驱动里，管理员改不�
 ### 5.1 目录与字段声明
 
 ```ts
-// apps/server/src/modules/ai/connectors/catalog/wecom-bot.ts
+// apps/agent-runtime/src/modules/ai/connectors/drivers/
 export const wecomBot: ConnectorCatalogEntry = {
   kind: 'wecom-bot',
   name: { zh: '群机器人', en: 'Group Bot' },
@@ -1452,7 +1452,7 @@ PostgreSQL 连 3306，报 `received invalid response: 4a`（PG 协议收到的�
 | 白名单 | `drivers/lark-cli.policy.ts`（纯函数）：业务域 20 个 + `schema` / `whoami` + `skills list|read` + `auth status|list|login|scopes|check`；禁 `api` / `config` / `profile` / `update` / `apps` / `event` / `auth logout`，禁 `--profile` / `--yes` |
 | 凭证 | App ID / Secret 来自连接器实例；每实例独立 `HOME=~/.billy/lark-cli/<id>`，首次调用跑 `config init --app-id ... --app-secret-stdin --force-init`，指纹（sha256）没变不重跑；状态文件只存指纹与 appId / brand，不存 secret |
 | 环境隔离 | 子进程只拿 `PATH` / `HOME` / locale / 代理 / CA 白名单，不带服务端密钥；`cwd` 固定在实例 HOME |
-| 镜像 | `docker/Dockerfile.server` 的 runner 阶段 `npm i -g @larksuite/cli@1.0.99`（`ARG LARK_CLI_VERSION`，默认 npmjs，可用 `NPM_REGISTRY` 覆盖）；`docker-compose.yaml` 挂 `lark-cli-data:/home/appuser/.billy` |
+| 镜像 | `docker/Dockerfile.agent-runtime` 的 runner 阶段 `npm i -g @larksuite/cli@1.0.99`（`ARG LARK_CLI_VERSION`，默认 npmjs，可用 `NPM_REGISTRY` 覆盖）；`docker-compose.yaml` 只给 agent-runtime 挂 `lark-cli-data:/home/appuser/.billy` |
 | 测试 | `test/ai-connector.test.ts` 新增 6 条：目录 / 配置默认值 / 能力面 / 白名单放行 / 白名单拒绝 / `auth login` 非阻塞 |
 | 文档 | 本文件 §3.14 / §6.3 / §8；`docs/design/ai-extension-guide.md` §3；skill `develop-ai-agent` §9 |
 

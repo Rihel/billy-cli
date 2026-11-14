@@ -17,24 +17,24 @@
 
 ## 核对命令
 
-连接串从 `apps/server/.env` 的 `DB_URL` 取，直接在仓库根跑：
+连接串从 `apps/main/.env` 的 `DB_URL` 取，直接在仓库根跑：
 
 ```bash
 # 1) 压缩是否仍只在轮前判定一次（应看到 buildContext 调用点与 needsCompaction 分支）
-grep -n "needsCompaction\|compactionRange" apps/server/src/modules/ai/runtime/chat.service.ts
+grep -n "needsCompaction\|compactionRange" apps/agent-runtime/src/modules/ai/runtime/chat.service.ts
 # 1b) 轮内预算是否还在（prepareStep + turn-budget）
-grep -n "buildPrepareStep\|fitMessagesToToolBudget" apps/server/src/modules/ai/runtime/chat.service.ts
+grep -n "buildPrepareStep\|fitMessagesToToolBudget" apps/agent-runtime/src/modules/ai/runtime/chat.service.ts
 
 # 2) 压缩有没有真的产出过摘要（结论 3，应为 0）
-psql "$(sed -n 's/^DB_URL=//p' apps/server/.env)" -c "select count(*) from timelines where kind='summary'"
+psql "$(sed -n 's/^DB_URL=//p' apps/main/.env)" -c "select count(*) from timelines where kind='summary'"
 
 # 3) 模型窗口有没有空值 / 重复行（结论 4）
-psql "$(sed -n 's/^DB_URL=//p' apps/server/.env)" -c "select model_key, context_window, source from ai_models"
+psql "$(sed -n 's/^DB_URL=//p' apps/main/.env)" -c "select model_key, context_window, source from ai_models"
 ```
 
 ## 依据
 
-- `apps/server/src/modules/ai/runtime/context.service.ts:176` 读 `latestSummary`，`:148` 用 `fallbackWindow`
+- `apps/agent-runtime/src/modules/ai/runtime/context.service.ts:176` 读 `latestSummary`，`:148` 用 `fallbackWindow`
 - `psql "$DB_URL" -c "select count(*) from timelines where kind='summary'"` → 0（2026-10-25）
 - `psql "$DB_URL" -c "select model_key, context_window, source from ai_models"` → 两行 `deepseek-flash`（2026-10-25）
 

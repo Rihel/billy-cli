@@ -1,15 +1,20 @@
-# SSE 专用入口：只为 /sse 覆盖流式所需注解（ingress-nginx 按最长路径优先合并，本份胜出）。
+# SSE 专用入口：为所有流式路径覆盖所需注解（ingress-nginx 按最长路径优先合并，本份胜出）。
+#
+# 覆盖的流式路径（都在 main 上）：
+# - /sse/subscribe：通用 SSE 订阅；
+# - /agent/chat/stream：agent 对话（main 转发 runtime，事件经 Kafka 回到 main 再写 SSE）；
+# - /agent/run：断线重连 / 恢复运行的事件流。
 #
 # 为什么必须单独一份：`proxy-buffering` 默认 on，网关会把响应缓冲后统一下发，
 # 流式输出变成「攒一批再吐」甚至断续；而关缓冲不该影响普通接口，故按路径拆开。
-# console 同目录 ingress.yaml 里的 proxy-body-size 等注解不会继承，需要的一并写上。
+# 同目录 50-ingress.yaml 里的 proxy-body-size 等注解不会继承，需要的一并写上。
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: billy-server-sse
+  name: billy-main-sse
   namespace: billy
   labels:
-    app.kubernetes.io/name: billy-server
+    app.kubernetes.io/name: billy-main
   annotations:
     # 流式响应必须关缓冲
     nginx.ingress.kubernetes.io/proxy-buffering: 'off'
@@ -26,10 +31,24 @@ spec:
     - host: api.example.com # ← 与 ingress.yaml 保持一致
       http:
         paths:
+          - path: /agent/chat/stream
+            pathType: Prefix
+            backend:
+              service:
+                name: billy-main
+                port:
+                  name: http
+          - path: /agent/run
+            pathType: Prefix
+            backend:
+              service:
+                name: billy-main
+                port:
+                  name: http
           - path: /sse
             pathType: Prefix
             backend:
               service:
-                name: billy-server
+                name: billy-main
                 port:
                   name: http

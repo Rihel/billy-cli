@@ -2,7 +2,7 @@
 
 **查证优先级：抽核**（`runtime/run.repository.ts`、`modules/stream/`、`chat/layout.tsx` 有改动时复核）
 核对命令：`grep -n "STREAM_CONVERSATION_RUN_CHANGED_EVENT" "apps/admin/src/app/(app)/(standalone)/main/ai/chat/layout.tsx"`、
-`grep -n "notifyStatus" apps/server/src/modules/ai/runtime/run.repository.ts`、
+`grep -n "notifyStatus" apps/agent-runtime/src/modules/ai/runtime/run.repository.ts`、
 `grep -n "refetchInterval" "apps/admin/src/app/(app)/(standalone)/main/ai/chat/layout.tsx"`（应无输出）
 
 ## 结论

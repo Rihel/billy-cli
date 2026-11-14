@@ -21,9 +21,24 @@ const workspaceRoot = fileURLToPath(new URL('..', import.meta.url))
 
 const envFiles: Array<{ path: string; example: string; label: string }> = [
   {
-    path: 'apps/server/.env',
-    example: 'apps/server/.env.example',
-    label: '服务端',
+    path: 'apps/main/.env',
+    example: 'apps/main/.env.example',
+    label: 'main（公网 BFF）',
+  },
+  {
+    path: 'apps/agent-runtime/.env',
+    example: 'apps/agent-runtime/.env.example',
+    label: 'agent-runtime（会话运行时）',
+  },
+  {
+    path: 'apps/tool-gateway/.env',
+    example: 'apps/tool-gateway/.env.example',
+    label: 'tool-gateway（工具网关）',
+  },
+  {
+    path: 'apps/tool-worker/.env',
+    example: 'apps/tool-worker/.env.example',
+    label: 'tool-worker（工具执行）',
   },
   {
     path: 'apps/admin/.env',
@@ -240,7 +255,13 @@ async function ensureEnvFiles(yes: boolean): Promise<void> {
     const composeRedis = (await probePort(6380)) && !(await probePort(6379))
     const composeMinio = (await probePort(19000)) && !(await probePort(9000))
 
-    if (created.includes('apps/server/.env')) {
+    const envTargets = [
+      'apps/main/.env',
+      'apps/agent-runtime/.env',
+      'apps/tool-gateway/.env',
+      'apps/tool-worker/.env',
+    ].filter((file) => created.includes(file))
+    if (envTargets.length > 0) {
       const pairs: Array<[string, string]> = []
       if (composePg) {
         pairs.push([
@@ -256,8 +277,12 @@ async function ensureEnvFiles(yes: boolean): Promise<void> {
         )
       }
       if (pairs.length > 0) {
-        replaceInFile('apps/server/.env', pairs)
-        console.log(colors.green('  ✓ 服务端 .env 已对齐到 docker compose 映射端口'))
+        for (const file of envTargets) replaceInFile(file, pairs)
+        console.log(
+          colors.green(
+            '  ✓ main / agent-runtime / tool-gateway / tool-worker .env 已对齐到 compose 端口',
+          ),
+        )
       }
     }
 
@@ -269,7 +294,7 @@ async function ensureEnvFiles(yes: boolean): Promise<void> {
           ])
         }
       }
-      if (created.some((file) => file !== 'apps/server/.env')) {
+      if (created.some((file) => file !== 'apps/agent-runtime/.env')) {
         console.log(colors.green('  ✓ 前端 .env 的对象存储地址已对齐到 19000'))
       }
     }
@@ -319,7 +344,7 @@ async function migrateDatabase(yes: boolean, skip: boolean, skipSeed: boolean): 
   const code = await run('pnpm', ['db:migrate'])
   if (code !== 0) {
     console.error(
-      colors.red('  ✗ 迁移失败：请确认 PostgreSQL 已启动且 apps/server/.env 的 DB_URL 正确'),
+      colors.red('  ✗ 迁移失败：请确认 PostgreSQL 已启动且 apps/agent-runtime/.env 的 DB_URL 正确'),
     )
     process.exit(1)
   }
@@ -350,30 +375,48 @@ async function smokeTest(yes: boolean, skip: boolean): Promise<void> {
   }
 
   const serverUrl = 'http://localhost:9989/config/get'
-  const alreadyRunning = await probePort(9989)
-  // 直接用 node 加载 tsx（1 个进程），不走 `pnpm exec tsx`（Windows 上会叠出
-  // pnpm 包装链 + tsx CLI 子进程，且冒烟结束后更难整树回收）。
-  // 冒烟只需「起来 → 探活 → 停止」，不加 --watch，避免子进程常驻。
-  const child = alreadyRunning
-    ? null
-    : spawn(process.execPath, ['--import', 'tsx/esm', 'src/main.ts'], {
-        cwd: join(workspaceRoot, 'apps/server'),
+  const mainRunning = await probePort(9989)
+  // 冒烟只做「起两个进程 → 探活 → 停止」，不加 --watch，避免子进程常驻。
+  const children: Array<ReturnType<typeof spawn>> = []
+  const startIfNeeded = async (port: number, app: string): Promise<void> => {
+    if (await probePort(port)) return
+    children.push(
+      spawn(process.execPath, ['--import', 'tsx/esm', 'src/main.ts'], {
+        cwd: join(workspaceRoot, `apps/${app}`),
         detached: !isWin,
         stdio: 'ignore',
-      })
+      }),
+    )
+    await sleep(700)
+  }
+  await startIfNeeded(9994, 'tool-worker')
+  await startIfNeeded(9993, 'tool-gateway')
+  await startIfNeeded(9990, 'agent-runtime')
+  await sleep(700)
+  if (!mainRunning) {
+    children.push(
+      spawn(process.execPath, ['--import', 'tsx/esm', 'src/main.ts'], {
+        cwd: join(workspaceRoot, 'apps/main'),
+        detached: !isWin,
+        stdio: 'ignore',
+      }),
+    )
+  }
 
-  process.stdout.write('  正在启动服务并请求 /config/get')
+  process.stdout.write('  正在启动 main + runtime 并请求 /config/get')
   const ok = await waitForHttp(serverUrl, 45_000)
   console.log()
 
-  if (child && child.pid) stopTree(child.pid)
+  for (const child of children) {
+    if (child.pid) stopTree(child.pid)
+  }
 
   if (ok) {
     console.log(colors.green('  ✓ 服务启动成功，API 可正常响应（冒烟通过）'))
   } else {
     console.error(
       colors.red(
-        '  ✗ 冒烟失败：服务未在 45 秒内响应。请检查 apps/server/.env（DB_URL / REDIS_URL）与依赖服务状态',
+        '  ✗ 冒烟失败：main 未在 45 秒内响应。请检查 apps/main/.env 与 apps/agent-runtime/.env（DB_URL / REDIS_URL）',
       ),
     )
     process.exit(1)
@@ -421,7 +464,7 @@ const main = async (): Promise<void> => {
   console.log(colors.bold(colors.green('\n✅ 初始化完成，启动开发环境：')))
   console.log(`  ${colors.cyan('pnpm dev:pkgs')}    # 终端 1：watch 构建 packages`)
   console.log(
-    `  ${colors.cyan('pnpm dev:server')}   # 终端 2：NestJS 服务（http://localhost:9989）`,
+    `  ${colors.cyan('pnpm dev:stack')}   # 终端 2：main(9989) + agent-runtime(9990) + tools`,
   )
   console.log(`  ${colors.cyan('pnpm dev:web')}      # 终端 3：Web 前台（http://localhost:9840）`)
   console.log(

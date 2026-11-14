@@ -82,8 +82,8 @@
 
 索引：`uk_ai_usage_daily_date (stat_date)`，按日期查询直接命中。
 
-实体 / 迁移：`apps/server/src/database/entities/ai-usage-daily-entity.ts`、
-`apps/server/src/database/migrations/1792600317837-AiUsageDaily.ts`。bigint 列在实体上挂了
+实体 / 迁移：`apps/main/src/database/entities/ai-usage-daily-entity.ts`、
+`packages/db/src/migrations/1792600317837-AiUsageDaily.ts`。bigint 列在实体上挂了
 transformer（读出转 `number`），避免 JSON 序列化成字符串。
 
 ### 3.2 维度表 `ai_usage_daily_dimension`（按模型 / agent / 工具分桶）
@@ -260,9 +260,9 @@ SDK 侧是**平铺**的 `client.agent.usageSummary()` / `client.agent.usageRollu
 
 ## 11. 现状补记（2026-11-13）
 
-- 代码位置：`apps/server/src/modules/ai-usage/`（`ai-usage.service.ts` 查询、`ai-usage.rollup.service.ts`
+- 代码位置：`apps/main/src/modules/ai-usage/`（runtime 也有一份同名模块，供执行期写用量）（`ai-usage.service.ts` 查询、`ai-usage.rollup.service.ts`
   SQL、`ai-usage.scheduler.ts` 定时）；实体 `ai-usage-daily-entity.ts` /
-  `ai-usage-daily-dimension-entity.ts`；指标与规则 `apps/server/src/modules/ai/monitoring/`。
+  `ai-usage-daily-dimension-entity.ts`；指标与规则 `apps/agent-runtime/src/modules/ai/monitoring/`。
 - 原始事件（逐轮）仍落在 `runs`（`usage` / `step_count` / `duration_ms` / `first_token_ms` /
   `error_stage`）与 `timelines`（`kind='tool-call'` / `tool-result`）；日表是**派生**，
   任何时候都能 `POST /agent/usage/rollup` 重算。

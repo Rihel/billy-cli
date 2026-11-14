@@ -31,11 +31,15 @@ description: Billy 工程（billy-cli monorepo）开发必读 skill。任何在�
 
 ## 分层规则
 
-依赖方向不可逆：`shared` 不依赖业务包；`kits` 不 import `apps/*`；`apps/server` 是业务
-与组合根的归属，`root.module.ts` 是唯一组合根（`common/` 放横切 HTTP 构件且不依赖具体业务
-模块，controller 只做 HTTP 边界）；kits 侧是「**一个基础设施一个 `@Global()` 模块，`XxxModule.forRoot(options)` /
+依赖方向不可逆：`shared` 不依赖业务包；`kits` 不 import `apps/*`；后端是**两个 app**：
+`apps/main`（公网 BFF，9989）是控制面业务与组合根的归属，`apps/agent-runtime`（9990，不对外）
+只跑 agent loop（Mastra 只在这里出现）。两者各有自己的 `root.module.ts`（唯一组合根）与
+`common/`（横切 HTTP 构件，不依赖具体业务模块），controller 只做 HTTP 边界；kits 侧是
+「**一个基础设施一个 `@Global()` 模块，`XxxModule.forRoot(options)` /
 `forRootAsync(options)` 自带配置 bean**」（配置即模块自身注入 bean，未 import 即未装配），按依赖方向
 自底向上落代码（架构见 [references/architecture.md](./references/architecture.md)）。
+数据库实体与迁移的唯一来源是 `@repo/db`（`packages/db/src/entities` / `migrations`）：两个 app 的
+组合根都复用 `DB_ENTITIES`，迁移 `DB_MIGRATIONS` 由 `packages/db/data-source.ts` 的 CLI 使用。
 **应用配置**由 `AppConfigFacade.initial({ schema, loader })` 在 bootstrap 前统一加载校验
 （`schema` 是应用自定义 shape，`loader` 决定来源：内置 env / memory / consul，或自定义 loader），经
 `AppConfigModule.forRoot()` 接进 Nest 的全局 `ConfigService`，各模块用 `forRootAsync` 惰性取分片。
@@ -51,18 +55,19 @@ description: Billy 工程（billy-cli monorepo）开发必读 skill。任何在�
 **刻意不写** `@Injectable()` / `@Inject()` —— 写了是死代码且误导（实例：`RedisListCache` /
 `Telemetry` / `TimeWheel`）；`providers:` 里的裸类名则必须标 `@Injectable()`。
 
-**用守卫保证，不靠人眼**：`pnpm check:inject`（同时被 `apps/server` 单测覆盖），违反返回非零
-退出码。判据、守卫实现与「为什么不像 rihel-base 那样省掉 `@Inject`」见
+**用守卫保证，不靠人眼**：`pnpm check:inject`（同时被 `apps/agent-runtime/test/di-inject-convention.test.ts`
+覆盖），违反返回非零退出码。判据、守卫实现与「为什么不像 rihel-base 那样省掉 `@Inject`」见
 [references/code-conventions.md](./references/code-conventions.md) 第 5 条。
 
 ## 第 7 条规定：配置必须「惰性取」
 
 应用配置链路（对齐 rihel-base）：
 
-1. `apps/server/src/app-config.ts` 定义 `serverAppConfigSchema`（**复用 kits 各模块的 config schema** 组合成
-   命名空间：`server` / `monitor` / `db` / `redis` / `jwt` / `password` / `storage` / `logger` / `notify` /
-   `lark?` / `kafka?`）+ `mapServerEnv` 定义「环境变量 → 嵌套配置」；
-2. `main.ts` 与 `apps/server/scripts/seed-admin.ts` 的**首行** `await loadServerAppConfig()` 完成加载 + 校验 + 补默认值
+1. `apps/main/src/app-config.ts` 定义 `serverAppConfigSchema`（**复用 kits 各模块的 config schema** 组合成
+   命名空间：`server` / `agent` / `aiModel` / `monitor` / `share` / `workspace` / `db` / `redis` / `jwt` /
+   `password` / `storage` / `logger` / `notify` / `lark?` / `kafka?`）+ `mapServerEnv` 定义「环境变量 → 嵌套配置」；
+   `apps/agent-runtime/src/app-config.ts` 是**同源副本**（runtime 复用同一份 schema，改一处要同步另一处）；
+2. `main.ts` 与 `apps/agent-runtime/scripts/seed-admin.ts` 的**首行** `await loadServerAppConfig()` 完成加载 + 校验 + 补默认值
    （`AppConfigFacade` 缓存，幂等）；其内部只声明来源：
    `AppConfigFacade.initial({ schema: serverAppConfigSchema, loader: envConfigLoader({ envFileName: '.env', mapEnv: mapServerEnv }) })`
    —— `schema` 是应用 shape、`loader` 决定来源（内置 env / memory / consul，或自定义实例 /
@@ -92,10 +97,12 @@ description: Billy 工程（billy-cli monorepo）开发必读 skill。任何在�
 ## 完成检查清单
 
 - [ ] schema / dict / entity 三者字段一致，且都已在对应 `index.ts` 导出
-- [ ] 新实体已放入 `apps/server/src/database/entities/`，并在 `apps/server/src/root.module.ts` 的
-  `DbModule.forRootAsync` 工厂里补进 `entities: [...]`，且已生成 + 执行迁移
-- [ ] 新业务模块已在 `apps/server/src/root.module.ts` 的 `imports` 注册，模块内
-  `controllers` / `providers` 已声明，并在 `apps/server/src/modules/<业务>/index.ts` 导出
+- [ ] 新实体已放入 `packages/db/src/entities/` 并在 `entities/index.ts` 导出、登记进 `DB_ENTITIES`
+  （两个 app 的组合根都复用 `DB_ENTITIES`，不需要各自补 `entities: [...]`），已生成 + 执行迁移
+  （`pnpm db:gen` / `pnpm db:migrate`，产物写 `packages/db/src/migrations/`，命令由 `@repo/db` 执行）
+- [ ] 新业务模块已在 `apps/main/src/root.module.ts` 的 `imports` 注册（AI 执行侧模块在
+  `apps/agent-runtime/src/root.module.ts`），模块内 `controllers` / `providers` 已声明，
+  并在 `apps/main/src/modules/<业务>/index.ts` 导出
 - [ ] **每个构造器参数都显式写了 `@Inject(token)`**（tsx 不产出 `design:paramtypes`，漏写静默注入 undefined）
 - [ ] controller 只做 HTTP 边界（`@Body({ schema: Schema })` 校验 + 调 service + 返回数据），业务逻辑在 service / repository
 - [ ] 所有业务路由为 `POST` 且显式标注 `@HttpCode(200)`（Nest 对 POST 默认 201）；唯一例外是
@@ -113,7 +120,8 @@ description: Billy 工程（billy-cli monorepo）开发必读 skill。任何在�
 - [ ] `pnpm dev:pkgs` 与目标 app 类型检查通过
 - [ ] 前端改动：已跑 `pnpm typecheck` / `pnpm test` / `pnpm check:ui`（新增前端包必须声明 `typecheck`
   脚本、自有组件必须在 `packages/ui/src/index.ts` 导出，否则守卫拦下）
-- [ ] 提交前已跑 `pnpm verify`（oxlint + 类型感知 + oxfmt 检查 + 三道守卫）；风格问题交给 `pnpm fmt`，
+- [ ] 提交前已跑 `pnpm verify`（oxlint + 类型感知 + oxfmt 检查 + 四道守卫：inject / mastra / redis-raw / ui）；
+      风格问题交给 `pnpm fmt`，
       不手写风格、不新增 `eslint-disable` 式豁免（确需豁免用单行 `oxlint-disable-next-line` + 中文理由）
 - [ ] 界面验证已交回用户，附「看哪个页面、哪一步操作、期望看到什么」的清单；**没有自己跑无头浏览器**
 - [ ] 收尾已清理：验证用的临时脚本已删除；为测试起的进程已用 `pnpm kill:dev` 停掉、端口已释放

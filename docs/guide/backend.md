@@ -1,12 +1,35 @@
 # 后端（NestJS）
 
-> `apps/server` 的 HTTP 边界、业务模块、认证、API、日志与监控。
+> 两个 NestJS 12 应用：**`apps/main`** 是公网 BFF（9989），**`apps/agent-runtime`** 只跑 agent loop（9990）。
+> 本文写它们的边界、模块、鉴权、API、Kafka / SSE 链路、日志与监控。
 > 通用能力封装见 [packages.md](./packages.md)，部署见 [deployment.md](./deployment.md)。
 
-## apps/server — NestJS 12 HTTP 边界
+## 两个应用的分工
 
-`apps/server` 只做四件事：接收请求、Zod 校验、调用业务 service、映射错误。业务逻辑位于
-`apps/server/src/modules/`（实体与迁移在 `src/database/`），通用能力位于 `@repo/kits`。
+| | `apps/main`（`@app/main`，9989） | `apps/agent-runtime`（`@app/agent-runtime`，9990） |
+| --- | --- | --- |
+| 定位 | 公网 BFF + 业务控制面 | agent 运行面（agent loop） |
+| 对外 | 前端 / SDK / 分享页 / 探针都连它 | **不对外**，只接受 main 带内部令牌的调用 |
+| 鉴权 | `UserAuthGuard` / `AdminAuthGuard` / `AnyAuthGuard` / `RateLimitGuard` | 没有用户鉴权，只有 `x-internal-token`（`AGENT_INTERNAL_TOKEN`）+ `x-user-id` / `x-admin-id` 身份头 |
+| HTTP | auth / admin / user / session / storage / share / monitor / ops / config + 全部 AI CRUD（模型 / 工具 / 技能 / 连接器 / 记忆 / 会话 / 运行 / 时间线 / 用量）+ `/agent/chat/stream` 中继 | 只有 `/internal/agent/{chat/stream, chat/resume, run/stop, run/stream, run/:runId/stream}` 与 `/healthz`、`/readyz`、`/info` |
+| 业务模块 | `auth` / `admin` / `user` / `session` / `storage` / `stream` / `share` / `monitor` / `ops` / `runtime-config` / `ai-model` / `ai-usage` / `ai-admin`（conversation / file / tool / skill / connector / memory） | `ai`（agents / runtime / core / files / memory / skills / connectors / mastra / monitoring / tools）+ `ai-model`（只读模型配置）+ `ai-usage` + `monitor` + `ops` |
+| 状态写入 | 配置表、`conversations` / `ai_files` 的 CRUD、用量汇总 | `runs` / `timelines` / `ai_memories` 执行期写入 |
+| 前端可见 | 是（前端只连 9989） | 否（输出经 Kafka `agent.run.events` 回到 main 的 SSE） |
+
+三条硬边界：
+
+1. **前端只连 main**；runtime 没有 public controller，也不发 CORS。main 校验身份后把
+   `x-user-id` / `x-admin-id` / `x-main-client-id` / `x-internal-token` 传给 runtime。
+2. **main 不做 agent 执行**：不 import Mastra 的业务编排、不跑工具循环；它只做请求转发、
+   Kafka→SSE 中继与所有 CRUD。
+3. **runtime 不做控制面 CRUD**：技能库、连接器、工具配置由 main 写库，runtime 通过
+   事件（`ai.skill.changed` / `ai.connector.sync`）或启动时全量同步感知。
+
+## main — NestJS 12 HTTP 边界
+
+`apps/main` 只做四件事：接收请求、Zod 校验、调用业务 service、映射错误。业务逻辑位于
+`apps/main/src/modules/`（实体与迁移见 `@repo/db`，`src/database/entities/*` 只是 re-export），
+通用能力位于 `@repo/kits`。
 
 - **配置链路**：`src/app-config.ts` 的 `serverAppConfigSchema` **直接复用 kits 各模块的配置 schema** 组成
   命名空间（`server` / `agent` / `aiModel` / `monitor` / `share` / `workspace` / `db` / `redis` / `jwt` /
@@ -16,8 +39,11 @@
   **来源**：`AppConfigFacade.initial({ schema: serverAppConfigSchema, loader: envConfigLoader({ envFileName: '.env', mapEnv: mapServerEnv }) })`
   —— 换来源（如 Consul / Nacos）只改 `loader` 这一项，配置 shape 与各模块装配完全不变。
   除「可选模块是否装配」的两个开关（`LARK_APP_ID` / `KAFKA_BROKERS`）与少量运行时判断
-  （如 `NODE_ENV`、从链接导入技能用的 `GITHUB_TOKEN`）外，配置统一走这份 schema，不在各处散读 `process.env`。
-- **组合根**：`root.module.ts` 是唯一组合根，`imports` 首项为 `AppConfigModule.forRoot()`（把已加载配置接进
+  （如 `NODE_ENV`、从链接导入技能用的 `GITHUB_TOKEN`、`AGENT_RUNTIME_URL` / `AGENT_INTERNAL_TOKEN`）外，
+  配置统一走这份 schema，不在各处散读 `process.env`。
+  **runtime 复用同一份 schema**（`apps/agent-runtime/src/app-config.ts`），env 模板是同源副本；
+  端口各自落在自己的 `.env`（9989 / 9990），模板差异见「已知缺口」。
+- **组合根**：`root.module.ts` 是 main 的唯一组合根，`imports` 首项为 `AppConfigModule.forRoot()`（把已加载配置接进
   Nest：全局 `ConfigService` + `AppConfig` bean），随后是请求级横切中间件模块
   （`RequestContextModule` / `RequestLoggerModule` / `RequestMetricsModule`，顺序有硬性要求）与无配置的
   基础能力模块（`IdGenerationModule` / `TelemetryModule` / `SchedulerModule` / `CommandModule`），再到各基础设施
@@ -27,11 +53,14 @@
   `ObjectStorageModule` / `NotificationModule` / `WorkspaceModule`），无自有配置的直接引模块
   （`RateLimitModule` / `PubSubModule` / `StreamHubModule` / `EventBusModule` / `SessionStoreModule`）；
   可选模块 `LarkModule` / `KafkaModule` 用展开语法按 env 是否存在决定；
-  再注册各业务模块（`AuthModule` / `AdminModule` / `UserModule` / `SessionModule` / `StorageModule` /
-  `StreamModule` / `ShareModule` / `MonitorModule` / `RuntimeConfigModule` / `AiModule` / `AiModelModule` /
-  `AiUsageModule` / `OpsModule`）；`providers` 里用 `APP_PIPE` / `APP_FILTER` / `APP_INTERCEPTOR` 注册
-  全局管道、过滤器与拦截器，另有一个 `ERROR_ALERT_HOOK` 工厂把 `MonitorEngine` 适配成 common 层的
-  告警钩子 token（避免 HTTP 边界层反向依赖业务模块）。
+  再注册各业务模块（`AuthModule` / `AdminModule` / `UserModule` / `AiModelModule` / `AiSkillAdminModule` /
+  `AiConnectorAdminModule` / `AiToolAdminModule` / `AiAdminConversationModule` / `AiFileAdminModule` /
+  `StorageModule` / `StreamModule` / `SessionModule` / `ShareModule` / `MonitorModule` / `RuntimeConfigModule`）；
+  `providers` 里用 `APP_PIPE` / `APP_FILTER` / `APP_INTERCEPTOR` 注册全局管道、过滤器与拦截器，
+  另有一个 `ERROR_ALERT_HOOK` 工厂把 `MonitorEngine` 适配成 common 层的告警钩子 token
+  （避免 HTTP 边界层反向依赖业务模块）。
+  `/agent` 的三个控制器（`AgentSseController` / `AgentControlController` / `MemoryController`）直接写在
+  组合根的 `controllers` 里，`AgentSseBridge` 也在 `providers` 中注册（Kafka 消费者）。
 - **入口**：`main.ts` 用 `NestFactory.create<NestExpressApplication>(RootModule, { bodyParser: false })`
   启动，只做引导与全局 Express 配置（`app.enableCors()`、关闭 `x-powered-by`、请求体上限 2mb、
   `keepAliveTimeout` / `headersTimeout` 取 `server` 配置分片）；请求级横切中间件
@@ -47,6 +76,9 @@
   全部**业务**路由 POST 且显式标注 `@HttpCode(200)`（Nest 对 POST 默认 201）；GET 只留给运维探针、
   浏览器 `EventSource` 的 AI 运行重连（`/agent/run/stream`、`/agent/run/:runId/stream`）与
   `GET /agent/file/workspace-content`（见「API 设计」）。
+  唯一例外是 `/agent` 的流式入口：`POST /agent/chat/stream` / `chat/resume` / `run/stop` 在 main
+  这一层**不做 Zod 校验**（body 原样转发），真正的 `AgentChatSchema` / `AgentChatResumeSchema` /
+  `AgentRunStopSchema` 校验在 runtime 的 `AgentInternalController`。
 - **守卫**：`UserAuthGuard` / `AdminAuthGuard` / `AnyAuthGuard`（任一身份通过，基于
   `common/security/any-of-guards.ts`）/ `RateLimitGuard`（配合 `@RateLimit({ scope })`
   方法装饰器，超限抛 `BoundaryError` 并带 `Retry-After` 响应头）。
@@ -66,12 +98,90 @@
   Kafka 等连接）；超过 `server.shutdownTimeoutMs`（默认 25s）强制退出，避免进程挂到
   `terminationGracePeriodSeconds` 被 SIGKILL 而留不下日志。
 
-## apps/server 业务模块
+## agent-runtime — agent loop
+
+`apps/agent-runtime/src/` 与 main 同构（`app-config.ts` / `config.ts` / `common/` / `root.module.ts` /
+`main.ts`），但模块集合只有执行侧：`AiModule`（业务主体）+ `AiModelModule`（读供应商 / 模型配置）
++ `AiUsageModule` + `MonitorModule` + `OpsModule`。`root.module.ts` 里没有 `AuthModule` / `UserModule` /
+`StorageModule` / `ShareModule` 等控制面模块，也**没有任何业务 controller**——唯一控制器是
+`modules/ai/api/agent-internal.controller.ts`，加根路径探针 `OpsController`。
+
+```
+apps/agent-runtime/src/modules/ai/
+├── api/            # AgentInternalController：/internal/agent/*（唯一的对外 HTTP）
+├── agents/         # AgentSpec 声明与登记（工具面选择器、提示词模板）
+├── runtime/        # 会话编排：chat / context / run / timeline / recovery / usage / stream-store /
+│                   #   stream-resume / agent-runner（子 agent）/ remote-tool.client
+├── core/           # 工具引擎：tool.registry / tool.gateway / plugins / tool-keys / constants /
+│                   #   skills（loader / materializer / paths）/ prompts（eta 模板）
+├── tools/          # 内建工具组（bash / web / file / memory / skill / planner / run-sub-agent / read-tool-result）
+├── files/          # 文件工具的执行侧（FileRepository / FileService / workspace / path-lock）
+├── memory/         # 长期记忆（ai_memories）与短期 thread 维护
+├── skills/         # 技能库落盘 + ai.skill.changed 订阅者（SkillLibraryService）
+├── connectors/     # 连接器运行期同步 + ai.connector.sync 订阅者
+├── mastra/         # Mastra 适配器（agent / tools / skills / memory），Mastra 只在这里出现
+└── monitoring/     # AI 运行指标与规则
+```
+
+**内部接口（只给 main 调）**：
+
+| 路由 | 说明 |
+| --- | --- |
+| `POST /internal/agent/chat/stream` | 起一轮对话；body 走 `AgentChatSchema`；把输出经 Kafka 发回 main |
+| `POST /internal/agent/chat/resume` | 回答挂起中的一轮（`ask-user-questions` 后续跑） |
+| `POST /internal/agent/run/stop` | 停止某一轮（`AgentRunStopSchema`） |
+| `GET /internal/agent/run/stream` | 重连当前运行（从 Redis 补发 offset 之后片段） |
+| `GET /internal/agent/run/:runId/stream` | 重连指定运行 |
+| `GET /healthz` / `GET /readyz` / `GET /info` | 与 main 同一套 `OpsModule` 探针实现（`/readyz` 探 DB + Redis） |
+
+- **身份**：`requireOwner` 校验 `x-internal-token === AGENT_INTERNAL_TOKEN`，并从 `x-user-id` / `x-admin-id`
+  取调用者；缺失即 401。runtime 不签发 token，也不查会话（会话/鉴权都在 main）。
+- **run 生命周期**：`chat.service.ts` 负责读写 `runs` / `timelines` / Redis 进度与 durable 恢复；
+  进程崩溃由启动清理与看门狗兜底（详见 [distributed-ai-architecture.md](../design/distributed-ai-architecture.md) 第 5–6 节）。
+- **配置感知**：技能库 / 连接器由 main 写库并发事件（见下节），runtime 订阅后落盘 / 同步；
+  模型与工具配置直接读库。
+
+## Kafka 与 SSE 链路
+
+```
+前端 ──POST /agent/chat/stream──> main（AnyAuthGuard，生成 clientId）
+                                   │  带 x-internal-token + x-user-id/x-admin-id + x-main-client-id
+                                   └──> runtime POST /internal/agent/chat/stream
+                                          │  跑 agent loop，逐段 publishChunk：
+                                          ├─ Redis 广播（旧 SSE 路径 / 断线补发）
+                                          └─ Kafka topic agent.run.events（key = runId）
+main（AgentSseBridge，@KafkaConsumer('agent.run.events','main-sse-<pod>')）
+  └─ 按事件里的 clientId 找到前端连接，原样写 data: 帧；final 写 data: [DONE]
+```
+
+- **topic**：逻辑名 `agent.run.events`（`@repo/shared` 的 `AGENT_RUN_EVENT_TOPIC`），实际名带
+  `KAFKA_TOPIC_PREFIX` 前缀，默认 **`app.agent.run.events`**；3 分区、key = runId（同一 run 内有序）。
+  本地建 topic：`scripts/kafka-create-topics.sh`。
+- **事件结构**：`AgentRunEventSchema`（`clientId` / `runId` / `conversationId` / `chunk` / `final` 等），
+  main 不解析模型内容，只做传输。
+- **背压与容错**：main 会持续读掉 runtime 的 SSE 响应体（只用于维持运行与快速失败），内容以 Kafka 为准；
+  Kafka 未配置时 runtime 不发事件（`KafkaService` 可选），main 的 SSE 会空等——**拆分模式下流式对话依赖 Kafka**。
+- **断线重连**不是 Kafka 回放：`GET /agent/run/stream` / `GET /agent/run/:runId/stream` 由 main 代理到
+  runtime，runtime 从 Redis 进度记录补发 `offset` 之后的片段（不重跑、不重复扣费）。
+- **停止 / 续答**：`POST /agent/run/stop`、`POST /agent/chat/resume` 由 main 转发到 runtime；
+  停止请求带 `x-user-id` / `x-admin-id`，runtime 只允许本人的 run。
+
+## 配置变更事件（main → runtime）
+
+main 是配置的唯一写方，runtime 需要感知两类变化：
+
+| 事件 | 传输 | 生产方 | 消费方 | 语义 |
+| --- | --- | --- | --- | --- |
+| `ai.skill.changed` | Redis Pub/Sub（kits `EventBus`，频道 `events:ai.skill.changed`） | main `modules/ai-admin/skill`（`SKILL_CHANGE_TOPIC`） | runtime `skills/skill-change.subscriber.ts` | at-most-once；runtime 收到后从 DB 读全量文件并落盘 / 刷新 loader；漏事件由启动 `syncAll` 自愈 |
+| `ai.connector.sync` | Redis Pub/Sub（`events:ai.connector.sync`）+ Kafka（topic `ai.connector.sync`，可选） | main `modules/ai-admin/connector`（`ConnectorSyncNotifier`） | runtime `connectors/connector-sync.subscriber.ts`（Redis 订阅 + `@KafkaConsumer('ai.connector.sync','runtime')`） | 两条腿都发，任一成功即送达；消费方按 `connectorId + requestedAt` 幂等 |
+
+事件体都是**只读契约**（字段只增不改）；skill 事件带 `action`（`upsert` / `remove`）/ `version`，
+连接器事件带 `action`（`sync` / `remove` / `refresh`）/ `version` / `requestedAt`。
+
+## main 业务模块
 
 业务三层（module + controller + service + repository + errors）位于
-`apps/server/src/modules/{auth,admin,user,session,monitor,storage,stream,share,ai,ai-model,ai-usage,runtime-config,ops}`（13 个），
-实体 / 迁移位于 `apps/server/src/database/`（`data-source.ts` 供 `db:generate` / `db:migrate`），
-横切 HTTP 构件位于 `apps/server/src/common/`：
+`apps/main/src/modules/`（13 个）：
 
 ```
 modules/                       # 业务领域（每个模块同目录：module + controller + service + repository + errors + index）
@@ -90,13 +200,11 @@ modules/                       # 业务领域（每个模块同目录：module +
 ├── share/          # 文件免授权分享（create/list/revoke + 公开 meta + 内部 resolve）+ share.token.ts
 ├── ops/            # OpsController（根路径 GET /healthz、/readyz、/info，运维探针的 GET 例外）+ OpsModule
 ├── session/        # 多设备会话管理（登录设备列表 / 踢下线）
-├── ai/             # 会话 / 运行 / 时间线 / 工具面 / 技能 / 文件 / 恢复 / 连接器
-│                   #   api/ HTTP 边界（/agent/*、/ai-tool/*）；runtime/ 上下文 · 流式 · 恢复 · 用量；
-│                   #   core/tools 注册机与网关；core/skills 与 skills/ 技能库；files/ 会话工作区文件；
-│                   #   tools/ 内建工具组；connectors/ 连接器目录与驱动（sql / redis / lark-cli）；
-│                   #   agents/ · mastra/ 适配 · monitoring/ 观测
-├── ai-model/       # 供应商与模型配置（后台配置即生效，运行时只用配过的模型）
-├── ai-usage/       # 每日用量汇总 + 定时 rollup（按模型 / 按 agent）
+├── ai-admin/       # AI 控制面 HTTP：conversation（会话 / 运行 / 时间线 / 用量）· file（/agent/file/*）·
+│                   #   tool（/ai-tool/*）· skill（/ai-skill/*）· connector（/ai-connector/*）·
+│                   #   memory.controller.ts（/ai-memory/*，MemoryService 来自 @repo/ai-data）
+├── ai-model/       # 供应商与模型配置（后台配置即生效；runtime 读同一份表）
+├── ai-usage/       # 每日用量汇总 + 定时 rollup（按模型 / 按 agent；由 ai-admin/conversation 模块引入）
 └── runtime-config/ # RuntimeConfigController（公开 POST /config/get）+ RuntimeConfigModule
 │                   #   目录名与类名刻意区别于 kits 的 AppConfigModule
 common/                        # 横切 HTTP 构件（不依赖业务模块；外部统一从 common/index.ts 导入）
@@ -108,20 +216,20 @@ common/                        # 横切 HTTP 构件（不依赖业务模块；�
 │                #   + any-of-guards.ts（AnyAuthGuard 的「任一身份通过」编排）
 └── http/        # zod-validation.ts（`@Body({ schema })` 校验管道）+ response-envelope.interceptor.ts（响应信封）
 │                #   + ops-probe.ts（探针路径判定：请求日志 / 指标据此跳过探针）
+agent/                         # /agent 的流式入口与控制接口
+├── agent-sse.controller.ts    # POST /agent/chat/stream（main 起流，转发 runtime）
+├── agent-control.controller.ts# POST /agent/run/stop、/agent/chat/resume、GET /agent/run/stream、/agent/run/:runId/stream
+└── agent-sse.bridge.ts        # Kafka 消费者 → 按 clientId 写 SSE（final → [DONE]）
 database/
-├── entities/     # 19 张表，全部继承 @repo/kits 的 BaseEntity / AuditEntity：
-│                 #   用户与后台（user / admin）、监控（monitor-rule / monitor-alert / monitor-metric-sample / alert-log）、
-│                 #   AI（conversation / run / timeline / ai-provider / ai-model / ai-tool / ai-connector /
-│                 #   ai-file / ai-skill / ai-skill-file / ai-usage-daily / ai-usage-daily-dimension）、
-│                 #   分享（file-share）
-└── migrations/   # TypeORM 迁移产物
+└── entities/     # re-export @repo/db（唯一来源在 packages/db；不要在这里加字段；
+                  # 没有 src/database/migrations —— 迁移产物在 packages/db/src/migrations/）
 ```
 
-**使用方式（应用组合根 `apps/server/src/root.module.ts`）：**
+**使用方式（应用组合根 `apps/main/src/root.module.ts`）：**
 
 > 下面只给骨架，省略了 `RequestContextModule` / `RequestLoggerModule` / `RequestMetricsModule`
 > （三者顺序有先后规定，见 [架构文档](./architecture.md) 的「组合根与生命周期」）与完整实体列表；
-> 实际装配以 `apps/server/src/root.module.ts` 为准。
+> 实际装配以 `apps/main/src/root.module.ts` 为准。
 
 ```ts
 import { Module } from '@nestjs/common'
@@ -152,7 +260,6 @@ import {
   ResponseEnvelopeInterceptor,
   createZodValidationPipe,
 } from './common/index.js'
-import { UserEntity } from './database/entities/user-entity.js'
 import { UserModule } from './modules/user/index.js'
 
 @Module({
@@ -182,7 +289,7 @@ import { UserModule } from './modules/user/index.js'
       useFactory: (config: ConfigService) => ({
         ...config.get('db'),
         // 实体是类引用，无法来自环境变量，由组合根补上
-        entities: [UserEntity],
+        entities: [...DB_ENTITIES],
       }),
     }),
     RedisModule.forRootAsync({
@@ -227,7 +334,7 @@ import { UserModule } from './modules/user/index.js'
 export class RootModule {}
 ```
 
-对应 `apps/server/src/main.ts` 的启动顺序（配置必须先于 `NestFactory.create`）：
+对应 `apps/main/src/main.ts` 的启动顺序（配置必须先于 `NestFactory.create`）：
 
 ```ts
 await loadServerAppConfig()   // AppConfigFacade.initial({ schema, loader: envConfigLoader({...}) })
@@ -254,21 +361,23 @@ export class UserModule {}
 - 生命周期组件实现 `OnApplicationBootstrap` / `OnApplicationShutdown`（`@nestjs/common`），由 Nest 在装配完成后按 providers 声明顺序启动，`app.close()` 时逆序释放
 - 各组件持有独立连接、停止期互不依赖；单个组件释放失败由框架记录，不阻断其余
 - **第 6 条规定**：项目用 `tsx`（esbuild）编译，**不产出 `design:paramtypes`**，因此**每个构造器参数必须显式写 `@Inject(token)`**，不能依赖 TypeScript 类型推断；漏写会静默注入 `undefined` 而不报错（controller / service / repository / guard / filter 一律如此）
-- **开发态必须用 `node --import tsx/esm`**（`pnpm dev:server` 已内置）：`tsx` CLI 会同时挂 CJS 钩子，导致 CJS 依赖（如 `pino`、`pg`）`require('@nestjs/core')` 与 ESM `import` 拿到**两份模块实例**，`ApplicationConfig` 这类跨包 class token 对不上而启动失败；只挂 ESM 加载器即与 `node dist/main.js` 行为一致
+- **开发态必须用 `node --import tsx/esm`**（`pnpm dev:main` / `pnpm dev:runtime` 已内置）：`tsx` CLI 会同时挂 CJS 钩子，导致 CJS 依赖（如 `pino`、`pg`）`require('@nestjs/core')` 与 ESM `import` 拿到**两份模块实例**，`ApplicationConfig` 这类跨包 class token 对不上而启动失败；只挂 ESM 加载器即与 `node dist/main.js` 行为一致
 - 例外：kits 内部对带可选数值参数的构造器（如 `Telemetry`）用 `useFactory` 显式装配；`RateLimitGuard` 用 `Reflect.getMetadata` 直接读方法元数据而不注入 `Reflector`
 
 **设计原则：**
 
-- 通用能力（基础设施 / 横切基础 / 数据访问）归 `@repo/kits`，业务模块与实体 / 迁移归 `apps/server`
+- 通用能力（基础设施 / 横切基础 / 数据访问）归 `@repo/kits`，业务模块归 `apps/main`（控制面）与 `apps/agent-runtime`（运行面），实体 / 迁移归 `@repo/db`
 - 统一用 `@nestjs/common` 的 `@Injectable` / `@Inject`，所有能力与业务服务都是构造器注入依赖的 class
 - 错误以 `Error` 子类抛出并携带 `code`，`AppExceptionFilter` 按 `code` 映射 HTTP 错误码与文案
-- DTO / Zod 校验与 HTTP 错误转换只存在于 apps/server 的 HTTP 边界
+- DTO / Zod 校验与 HTTP 错误转换只存在于 main 的 HTTP 边界（`/internal/agent/*` 的内部契约校验在 runtime）
 - 业务模块不 import HTTP 框架（controller / 守卫等 HTTP 构件只出现在 HTTP 边界）
 - 业务错误保持原义，不包装成统一 `AppError`
 - 基础设施服务隔离数据库、Redis、JWT 与对象存储等技术细节，业务层不感知具体实现
 - 无装饰器反射之外的魔法，兼容 Node type-stripping / esbuild / tsdown
 
 ## 认证
+
+鉴权**只在 main**（runtime 没有 guard，只认内部令牌）。
 
 - JWT token，通过 `Authorization: Bearer` 或身份对应的 cookie 传递（前台 `access-token` / 后台
   `admin-access-token`，两者名不同以免同域部署时互相覆盖）；payload 带
@@ -288,6 +397,8 @@ export class UserModule {}
   `SHARE_INTERNAL_SECRET`，而不是用户 token）
 - 公开接口（注册 / 登录 / 登出 / 忘记密码 / 重置密码 / 管理员登录与登出 / `POST /config/get` /
   `POST /monitor/health` / `POST /share/meta`）不加 Guard
+- `/agent/*` 通过 main 的 Guard 后，身份以 `x-user-id` / `x-admin-id` 头传给 runtime；
+  runtime 侧只校验 `x-internal-token`，并据此认定调用者（不重新验 JWT）
 - Admin SSR 侧：`components/AdminAuthBoundary.tsx`（`main` 与 `(standalone)` 两棵布局共用）用 cookie
   调 `getMe()`，失败 `redirect()`；`proxy.ts` 中间件做首屏路由守卫（`api` 与分享页 `s/` 在 matcher 排除名单里）
 - Web 侧：Server Actions 用 `@repo/ui/action` 的 `defineAction` 统一 `{ ok, data | error }` 结果约定（两个前端同一套）
@@ -299,12 +410,12 @@ export class UserModule {}
 
 ## API 设计
 
-所有**业务**接口均为 `POST`（每条路由显式 `@HttpCode(200)` 固定，Nest 对 POST 默认 201，必须覆盖），
+所有**业务**接口均为 `POST`（每条路由显式 `@HttpCode(200)` 固定，Nest 对 POST 默认 201），
 请求体由 Zod schema 校验，响应统一包装为 `AppResponse<T>`：
 
 > **GET 例外只有三类**：
 > 1. 运维探针 `GET /healthz`、`GET /readyz`、`GET /info` —— k8s 的 `httpGet` 探针**只会发 GET**，
->    业务路由全 POST 会让探针 404、pod 永远不就绪，故为探针开放 GET；
+>    业务路由全 POST 会让探针 404、pod 永远不就绪，故为探针开放 GET（main 与 runtime 各有一套）；
 > 2. AI 运行重连 `GET /agent/run/stream`、`GET /agent/run/:runId/stream` —— 浏览器 `EventSource`
 >    只能发 GET（首次对话仍走 `POST /agent/chat/stream`）；
 > 3. `GET /agent/file/workspace-content` —— 浏览器直取工作区文件流：`<img>` / `<video>` / `<iframe>`
@@ -331,6 +442,8 @@ export class UserModule {}
 - 路由未命中：HTTP 404 + `{ "code": 404, "message": "接口不存在" }`
 - 未知错误：HTTP 500 + `{ "code": 5001, "message": "系统错误" }`
 - 守卫 / 限流等边界错误：按 `BoundaryError` 携带的 HTTP 状态与响应头返回
+
+**main 的路由表**：
 
 | 路由                                 | 说明             | 鉴权 |
 | ------------------------------------ | ---------------- | ---- |
@@ -391,11 +504,10 @@ export class UserModule {}
 | `POST /agent/list`                 | agent 清单 | 用户 / 管理员 |
 | `POST /agent/instructions`         | 系统指令原文（带 `conversationId` 取会话快照，否则取静态定义） | 用户 / 管理员 |
 | `POST /agent/models`               | 本轮可选模型（只回供应商 + 模型都启用的） | 用户 / 管理员 |
-| `POST /agent/chat`                 | 一轮问答（非流式，落库后返回） | 用户 / 管理员 |
-| `POST /agent/chat/stream`          | 发起一轮对话（SSE 流式，唯一不套信封的对话接口） | 用户 / 管理员 |
-| `POST /agent/chat/resume`          | 回答挂起中的一轮（`ask-user-questions` 后续跑，SSE） | 用户 / 管理员 |
-| `POST /agent/run/stop`             | 停止某一轮（本进程 abort，否则广播） | 用户 / 管理员 |
-| `GET /agent/run/stream`            | 重连当前运行（SSE，`EventSource` 只能 GET） | 用户 / 管理员 |
+| `POST /agent/chat/stream`          | 发起一轮对话（SSE 流式，唯一不套信封的对话接口；转发 runtime，输出经 Kafka 回写） | 用户 / 管理员 |
+| `POST /agent/chat/resume`          | 回答挂起中的一轮（`ask-user-questions` 后续跑，SSE；转发 runtime） | 用户 / 管理员 |
+| `POST /agent/run/stop`             | 停止某一轮（转发 runtime，由 runtime abort） | 用户 / 管理员 |
+| `GET /agent/run/stream`            | 重连当前运行（SSE，`EventSource` 只能 GET；转发 runtime 的 Redis 补发） | 用户 / 管理员 |
 | `GET /agent/run/:runId/stream`     | 重连指定运行（SSE） | 用户 / 管理员 |
 | `POST /agent/conversation/create`  | 新建会话 | 用户 / 管理员 |
 | `POST /agent/conversation/list`    | 会话列表 | 用户 / 管理员 |
@@ -420,13 +532,10 @@ export class UserModule {}
 | `POST /ai-tool/{list,detail,update,reset}` | 工具配置（开关 / 作用域 / 限额 / 配置值 / 密钥） | 管理员 |
 | `POST /ai-tool/workspace`          | 执行环境能力（只读探测：沙箱是否可用 / 允许哪些文件权限） | 管理员 |
 | `POST /ai-connector/{catalog,list,create,update,detail,test,sync,remove}` | 连接器实例 | 管理员 |
-| `POST /ai-skill/{list,detail,create,update,remove}` | 技能库增删改查（DB 为事实源，落盘给 Mastra） | 管理员 |
+| `POST /ai-skill/{list,detail,create,update,remove}` | 技能库增删改查（DB 为事实源，落盘给 runtime） | 管理员 |
 | `POST /ai-skill/file/{read,save,remove}` | 技能文件读写删（`SKILL.md` 不允许删） | 管理员 |
 | `POST /ai-skill/import/preview`    | 导入预览（链接里有哪些技能、哪些已存在） | 管理员 |
 | `POST /ai-skill/import`            | 从链接导入技能（skills.sh / GitHub / Markdown） | 管理员 |
-
-> 表中带 `{...}` 的行是同一前缀下的一组路由，成员已逐一列出；展开后 **115 条**，与 16 个
-> controller 的 `@Post` / `@Get` 一一对应。
 
 > 鉴权列：**管理员** = `AdminAuthGuard`（后台管理员令牌；`/admin/*` 的受保护路由、`/user/*`、
 > `/monitor/*`、`/ai-model/*`、`/ai-tool/*`、`/ai-connector/*`、`/ai-skill/*`、`/agent/usage/*`、
@@ -437,6 +546,8 @@ export class UserModule {}
 > 前三种身份都从 Bearer / 对应 cookie 取令牌。
 > `/sse/subscribe` 标「是」指 SSE 专用的 `StreamAuthGuard`（Bearer / cookie，按通过的身份订阅
 > `user:{id}` / `admin:{id}` 并叠加 `admin:all` 广播频道）。
+
+> runtime 的内部路由**不在这张表里**（不对外）：见上文「agent-runtime — agent loop」的内部接口表。
 
 > SSE 事件通过 `StreamHub.publish(channel, event)` 推送：业务模块 `@Inject(StreamHub)` 后
 > `publish('task:42', { event: 'progress', data: {...} })`；身份频道 `user:{userId}` / `admin:{adminId}`
@@ -471,6 +582,7 @@ export class UserModule {}
   `unhandledRejection` 汇入 `MonitorEngine.ingestError`，直接驱动事件规则；指标规则按槽位周期评估。
   命中即开 `monitor_alerts`（同规则同主体同时只允许一条 `firing`），投递前查静默期，连续
   `recoverAfterWindows` 个窗口未命中则置 `resolved`（`notifyOnRecovery` 决定是否再发一条恢复通知）。
+  main 与 runtime 各自装配 `MonitorModule`，两个进程的技术错误都进同一套告警表 / 通道。
 - **通知通道**：`file`（默认写入 `logs/alerts.log`，零配置开箱即用）+ `lark`（飞书）+ `email`（SMTP），
   规则的 `channels` 选择；每次通道发送（成功或失败）都落 `alert_logs` 审计，同时把告警事件推到 SSE 的
   `admin:all` 频道。设计文档：[monitor-engine.md](../design/monitor-engine.md)、
@@ -485,11 +597,12 @@ export class UserModule {}
 `/share/meta` 另配 60 次 / 60s（分享页匿名可调）。白名单
 （env `RATE_LIMIT_WHITELIST`）豁免，`RATE_LIMIT_TRUST_PROXY=true` 时信任 `x-forwarded-for`。
 其他接口按需用 `@UseGuards(RateLimitGuard)` + `@RateLimit({ scope, limit, windowSeconds })`
-方法装饰器开启限流。
+方法装饰器开启限流。AI 对话接口当前**没有**限流 / 准入（runtime 侧也不限），属于已知缺口。
 
 ## 日志
 
-后端日志是**自建 logger**（`@repo/shared` 的 `createLogger`，**不再依赖 nestjs-pino**）：
+后端日志是**自建 logger**（`@repo/shared` 的 `createLogger`，**不再依赖 nestjs-pino**），main 与
+runtime 各建一个实例、共用同一套实现：
 
 - **唯一 pino 实例**：`LoggerModule` 用 `createLogger(prefix, pretty, level, { redact, transport })`
   建一个实例并以 `LOGGER_INSTANCE` 暴露。pino 的 `transport` 会为每个实例拉起 worker 线程，
@@ -511,3 +624,19 @@ export class UserModule {}
 
 > `@repo/shared/logger` 现在是**前后端共用**的日志工厂：前端（`apps/admin`）直接用，
 > 后端由 kits `LoggerModule` 包装成可注入的 `AppLogger` 与 `NestLoggerAdapter`。
+
+## 已知缺口（main / runtime 拆分后）
+
+以下是**已核对代码**、文档必须如实写出的现状，不是设计目标：
+
+1. **迁移入口仍在 runtime**：根脚本 `db:gen` / `db:migrate` / `seed:admin` 都指向
+   `@repo/db`，DataSource 在 `packages/db/data-source.ts`；迁移产物在 `packages/db/src/migrations/`。
+   合理归属应是 main（或独立迁移 job），当前属于待搬。
+2. **非流式 `/agent/chat` 只剩 SDK 方法与 schema**：`@repo/sdk` 的 `chat()` 仍请求 `/agent/chat`，
+   但 main / runtime 都没有该路由（runtime 有 `AgentChatService.chat()` 方法，未暴露）。调用它会 404。
+3. **流式对话强依赖 Kafka**：未配置 `KAFKA_BROKERS`（或没建 topic）时，main 的 SSE 会建立连接但收不到内容，
+   没有进程内降级路径。
+4. **断线重连仍是 Redis 补发**：`/agent/run/stream` 走 runtime 的 Redis 进度记录，不是 Kafka 回放；
+   runtime 重启 / Redis 丢键时正在跑的流不可续。
+5. **AI 对话无限流 / 无准入**：main 与 runtime 都没有针对 `/agent/chat/stream` 的 `RateLimitGuard`
+   或并发上限；容量风险见 `.agents/memory/ai-scale-bottlenecks.md`。

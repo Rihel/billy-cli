@@ -8,19 +8,18 @@
 业务真相在 PG，附件在对象存储；定时任务（monitor / ai-usage / cleanup）都有 Redis 锁；
 同会话并发由 `runs` 的部分唯一索引在 DB 层挡住。Service 不需要 sticky。
 
-**但不是「完全无状态」**：一处 k8s 配置缺失（lark-cli 的授权已在 2026-11-10 入池；AI 对话 thread 已于 2026-11-14 落 Redis）：
+**但不是「完全无状态」**，两处仍在 Pod 本地：
 
-1. **AI 对话 memory thread 已落 Redis**（2026-11-14，`ai/mastra/agent-memory.ts`，官方 `@mastra/redis`）：
-   重启 / 换副本不再丢；Redis 本身丢了也能从 `timelines` 重建（空 thread 会灌入完整输入）。
-   前提是 Redis 开了 AOF 且不是 `allkeys-lru`（compose 目前只有 RDB，见 `docker-compose.yaml`）。
-2. **飞书 CLI 连接器**：配置 / 用户 token 已存 `ai_connectors.auth_state`
-   （2026-11-10），调用前 hydrate 到 Pod 本地临时 HOME、调用后 diff 写回，实例级 Redis 锁串行化；
+1. **AI 会话工作区在 Pod 本地盘**：`{AGENT_COMMAND_WORK_DIR:-~/.billy/workspaces}/<conversationId>`
+   （`core/tools/workspace.ts:16`、`:25`），k8s Deployment **没有挂卷**。重启 / 换副本后
+   `bash` 与文件工具看到的工作区是空的 —— 这是「本地 agent 体验」在多副本下的缺口。
+2. **飞书 CLI 连接器**：配置 / 用户 token 已存 `ai_connectors.auth_state`（2026-11-10），
+   调用前 hydrate 到 Pod 本地临时 HOME、调用后 diff 写回，实例级 Redis 锁串行化；
    Pod 本地只剩临时文件，重启 / 换副本不丢授权。
-3. **k8s 少配多实例开关**：`20-deployment.yaml` replicas=3，但 `10-configmap.yaml` 没设
-   `AGENT_MULTI_INSTANCE=true`。`AgentRecoveryService.interruptOrphansOnBoot` 在 false 时
-   把 `updated_at < 本 Pod 启动时间` 的 pending/running run 标 interrupted
-   （`recovery.service.ts:140-147`、`run.repository.ts:435`）——滚动更新时新 Pod 会误伤
-   其它副本正在跑的 AI 轮次。
+
+已修复：k8s `10-configmap.yaml:20` 已打开 `AGENT_MULTI_INSTANCE: 'true'`（2026-11-14 核实），
+滚动更新不再误伤其它副本在跑的 run；AI 对话 memory thread 已于 2026-11-14 落 Redis
+（`ai/mastra/agent-memory.ts`，官方 `@mastra/redis`），重启 / 换副本不丢。
 
 ## 可接受的内存态（不影响正确性）
 
@@ -31,13 +30,14 @@ planner / tool result 内存（有 timeline 兜底）、activeRuns 停止广播�
 ## 核对命令
 
 ```bash
-grep -n "AGENT_MULTI_INSTANCE" k8s/10-configmap.yaml apps/server/.env.example
-grep -n "RedisStore\|createInMemoryAgentMemory" apps/server/src/modules/ai/mastra/agent-memory.ts
-grep -n "interruptOrphansOnBoot\|multiInstance" apps/server/src/modules/ai/runtime/recovery.service.ts
+grep -n "AGENT_MULTI_INSTANCE" k8s/10-configmap.yaml
+grep -n "DEFAULT_WORKSPACE_ROOT\|conversationWorkspace =" apps/agent-runtime/src/modules/ai/core/tools/workspace.ts
+grep -n "volumeMounts\|volumes" k8s/20-deployment.yaml || echo "无卷"
+grep -n "RedisStore\|createInMemoryAgentMemory" apps/agent-runtime/src/modules/ai/mastra/agent-memory.ts
+grep -n "interruptOrphansOnBoot\|multiInstance" apps/agent-runtime/src/modules/ai/runtime/recovery.service.ts
 grep -n "replicas" k8s/20-deployment.yaml
 ```
 
 ## 失效信号
 
-memory 换成 DB 存储域、lark 授权改为 per-user、k8s 补上 `AGENT_MULTI_INSTANCE`。
-（memory 已从进程内换到 Redis，2026-11-14；Redis 自身的持久化配置仍需部署侧确认。）
+工作区改共享存储 / 每会话沙箱；k8s 补工作区卷；memory 换存储；`AGENT_MULTI_INSTANCE` 被改回 false。

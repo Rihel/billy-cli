@@ -4,7 +4,8 @@
 
 ## 1. 装配与配置
 
-`KafkaModule` 是 `@Global()`，但**只有被 import 才装配**。`apps/server/src/root.module.ts` 依
+`KafkaModule` 是 `@Global()`，但**只有被 import 才装配**。两个 app 的组合根
+（`apps/main/src/root.module.ts` 与 `apps/agent-runtime/src/root.module.ts`）都依
 `KAFKA_BROKERS` 是否存在决定是否 import：
 
 ```ts
@@ -31,12 +32,13 @@
 
 ```bash
 docker compose --profile kafka up -d     # kafka + kafka-ui(8085) + zookeeper
-# apps/server/.env
+# apps/main/.env 与 apps/agent-runtime/.env 都要填（同一 broker，流式对话两端靠它对接）
 KAFKA_BROKERS=127.0.0.1:29092
 ```
 
 > 消费者并发上限 `consumerConcurrency`（默认 3）目前**没有映射环境变量**，需要调整时在
-> `apps/server/src/app-config.ts` 的 `kafka` 命名空间里加映射（或改 schema 默认值）。
+> `apps/main/src/app-config.ts`（runtime 侧 `apps/agent-runtime/src/app-config.ts` 是同源副本，
+> 两份都要改）的 `kafka` 命名空间里加映射（或改 schema 默认值）。
 
 ## 2. 生产者
 

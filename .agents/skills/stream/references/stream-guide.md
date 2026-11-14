@@ -9,7 +9,7 @@
 | --- | --- |
 | 协议约定（事件 / 订阅体 / 广播频道 / 专用事件） | `packages/shared/src/schema/stream.schema.ts`（`StreamEventSchema` / `StreamSubscribeSchema` / `STREAM_ADMIN_BROADCAST_CHANNEL` / `STREAM_ALERT_FIRED_EVENT` / `AlertFiredEventSchema`） |
 | 服务端推流统一入口 | `packages/kits/src/stream/stream-hub.ts`（`StreamHub`）+ `stream-connection.ts`（`StreamConnection`） |
-| 订阅路由 | `apps/server/src/modules/stream/stream.controller.ts`（`StreamController`，`POST /sse/subscribe`）+ `stream-auth.guard.ts` / `stream.options.ts` |
+| 订阅路由 | `apps/main/src/modules/stream/stream.controller.ts`（`StreamController`，`POST /sse/subscribe`）+ `stream-auth.guard.ts` / `stream.options.ts`（SSE 入口只在 main） |
 | 客户端（通用） | `packages/http-client/src/stream/`（`HttpStreamClient`，浏览器 / Node 双环境） |
 | 客户端（应用层入口） | `packages/sdk/src/server.client.ts` 的 `ServerClient.createStream()` —— 复用同一份 baseUrl / 凭证 / Bearer 策略 |
 | React 生命周期 | `packages/ui/src/hooks/use-stream.ts` 的 `useStream(client, handlers)` |
@@ -44,11 +44,11 @@ streamHub.publish(STREAM_ADMIN_BROADCAST_CHANNEL, {
 
 ## 3. 服务端：订阅路由与频道权限（安全要点）
 
-`apps/server/src/modules/stream/stream.controller.ts` 的 `StreamController`
+`apps/main/src/modules/stream/stream.controller.ts` 的 `StreamController`
 （业务频道白名单等选项在 `modules/stream/stream.module.ts` 以 `SSE_ROUTE_OPTIONS` 注入）：
 
 ```ts
-// apps/server/src/modules/stream/stream.module.ts
+// apps/main/src/modules/stream/stream.module.ts
 // 仅身份频道（业务频道按需放开）
 {
   provide: SSE_ROUTE_OPTIONS,
@@ -180,5 +180,6 @@ sse.close()
 - `packages/http-client/test/stream-client.test.ts`：客户端状态机、退避重连、页面隐藏恢复、排空重连。
 - `packages/ui/test/use-stream.test.ts`：hook 生命周期（建连 / 卸载 close / handler 身份变化不重连 /
   事件名集合变化重连 / client 引用变化关旧连新），用手写替身客户端（正好证明 hook 不依赖传输包）。
-- `apps/server/test/alert-trigger.test.ts`：告警发送后 publish 到 `admin:all`，且负载通过
-  `AlertFiredEventSchema` 解析（数据结构一致性由测试锁住）。
+- 告警实时推送：`apps/main/src/modules/monitor/engine/alert-stream.service.ts` 的 `AlertStreamService.publish`
+  把 `AlertFiredEventModel` 发到 `STREAM_ADMIN_BROADCAST_CHANNEL`（`admin:all`）。
+  **当前没有对应测试**（拆分前的 `alert-trigger.test.ts` 已移除，属于待补缺口）。

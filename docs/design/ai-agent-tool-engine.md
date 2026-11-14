@@ -70,7 +70,7 @@ AGENT_TOOL_GROUPS（工具组：@Injectable 类 + 方法级 @ToolDecl）┐
 | 约束 | 依据 | 后果 |
 | --- | --- | --- |
 | ~~工具清单在 `new Agent()` 时一次性交给 Mastra~~ **已不成立（2026-11-13）**：`tools` / `skills` / `instructions` / `model` 都是**按请求求值**的动态参数（`tools: async ({ requestContext }) => …`，`mastra/ai.mastra.ts`） | 当前代码 | 可以按这一次的身份 / 作用域**过滤工具面**（`ToolRegistry.authorized()`），连接器新同步的工具也不用重启；调用期仍由 `EnabledPlugin` 拦总开关 |
-| durable（崩溃恢复）默认开启 | `apps/server/src/app-config.ts` 的 `agent.durableEnabled`（默认 `true`） | 引擎必须走 durable 也成立的路径 |
+| durable（崩溃恢复）默认开启 | `apps/main/src/app-config.ts` 的 `agent.durableEnabled`（默认 `true`） | 引擎必须走 durable 也成立的路径 |
 | durable 路径直接调 `tool.execute`；**agent 级 `beforeToolCall` 仍然生效且能短路**（钩子在 Agent 层包装工具实例，不走 durable 文件） | `create-durable-agent-*.js` 直接调 `execute`；**实测**（`test/ai-mastra-contract.test.ts` 用例 ②）：钩子被调用，`{proceed:false, output}` 能短路且结论交给模型 | 钩子是可用选项；我们仍选择包 `execute`，让网关与插件不必认识 Mastra 的钩子 API（主体框架无关） |
 
 另有一条落库规则要一起考虑：工具入参出参全量入时间线（`stream-recorder.ts` 不裁剪），
@@ -467,7 +467,7 @@ DeepSeek Harness 就用它做底座（本机有源码，vendor 成 `@deepseek-ai
 ### 5.5 配置入库
 
 表 `ai_tools`（`database/entities/ai-tool-entity.ts`，在 `root.module.ts` 的 `entities` 里登记，
-迁移用 `pnpm --filter @app/server db:generate <名字>`）：
+迁移用 `pnpm --filter @app/agent-runtime db:generate <名字>`）：
 
 | 列 | 类型 | 说明 |
 | --- | --- | --- |
@@ -616,7 +616,7 @@ durable 恢复会重放工具调用，页不一致会让上下文自相矛盾。
 `triggeredBy` / `isAdmin` / `fileAccess` / `depth` / `agentKey` / `rootAgentKey` / `model` /
 `childToolbox: Toolbox` / `skills: readonly SkillRef[]` / `systemPrompt` / `abortSignal`。
 
-适配器要背的 Mastra 行为，写成 `apps/server/test/ai-mastra-contract.test.ts`：
+适配器要背的 Mastra 行为，写成 `apps/agent-runtime/test/ai-mastra-contract.test.ts`：
 
 | # | 假设 | 它保护什么 |
 | --- | --- | --- |
@@ -625,7 +625,7 @@ durable 恢复会重放工具调用，页不一致会让上下文自相矛盾。
 | 3 | durable 以 `toModelOutput(result)` 单参调用，模型侧确实收到映射结果 | 分页的位置 |
 | 4 | 未知工具与非法入参落成工具错误结果，整轮不失败 | P5 的处理方式 |
 
-（文件路径：实施时落在扁平目录 `apps/server/test/ai-mastra-contract.test.ts`，不是设计稿里的
+（文件路径：实施时落在扁平目录 `apps/agent-runtime/test/ai-mastra-contract.test.ts`，不是设计稿里的
 `test/ai-mastra/contracts.test.ts`，见「实施记录」第 9 条。）
 
 升级 Mastra 的流程：先跑这组一致性测试，再看适配器要改什么。主体不受影响。
@@ -1230,7 +1230,7 @@ AI SDK v6 的 data part 语义是「**同 `id` 后者覆盖前者**」（实测�
 | 6 | 技能路线 A/B/C 待拍板 | **一期走 A**：三个技能工具登记为 runtime 工具（后台只读一组 + 提示词措辞改准） | B 要重做技能激活与目录渲染，收益（开关 / 分页）与代价不匹配；与"动态工具面"一起放二期 |
 | 7 | 内存限流实现"测试实现放 helper" | 落实：`src/` 只留接口与 token，Redis 版一个文件、测试用的内存版在 `test/helpers/` | 单一职责规范：`src/` 不该出现第二套计数实现 |
 | 8 | 遥测指标（Telemetry 计数 / P95） | 一期只做**结构化日志 + 时间线**；指标列二期 | 先把审计证据落全（日志字段已经带耗时 / 字节数 / 页数 / 拒绝原因），指标是消费侧的事 |
-| 9 | 工具标准的"一致性测试"文件路径 `test/ai-mastra/contracts.test.ts` | 落在 `test/ai-mastra-contract.test.ts` | 与 `apps/server/test/` 既有的扁平命名一致（该目录无子目录惯例） |
+| 9 | 工具标准的"一致性测试"文件路径 `test/ai-mastra/contracts.test.ts` | 落在 `test/ai-mastra-contract.test.ts` | 与 `apps/agent-runtime/test/` 既有的扁平命名一致（该目录无子目录惯例） |
 
 实施中新增的两条工程规范（已写进 `billy-dev-foundation/references/code-conventions.md`）：
 

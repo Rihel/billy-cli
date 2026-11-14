@@ -42,7 +42,9 @@
 ## 2. 上下文组装与压缩
 
 四种策略在 `ContextService.buildInput` 内同一条链上判；阈值是 `AgentConfig` 的比例（默认值
-`apps/server/src/app-config.ts:119-129`：触发 `0.7` / 裁到 `0.5` / 最近 `3` 轮不裁 / 单条工具视图 `0.1` / 兜底窗口 `32000`）：
+`apps/agent-runtime/src/app-config.ts` 的 `agent` 分片 `contextTriggerRatio` / `contextTrimTargetRatio` /
+`contextKeepRecentTurns` / `contextToolResultMaxRatio` / `contextFallbackWindow`：触发 `0.7` / 裁到 `0.5` /
+最近 `3` 轮不裁 / 单条工具视图 `0.1` / 兜底窗口 `32000`；main 侧 `apps/main/src/app-config.ts` 是同源副本）：
 
 | 触发条件 | `strategy` | 产出 | 位置 |
 | --- | --- | --- | --- |
@@ -197,7 +199,7 @@ post: redact → paginate → audit-end        （拒绝也要跑 post，tool.ga
   `request_snapshot` 记 model / agentKey / toolKeys / skillKeys / params / context（`chat.service.ts:844-851`）。
 - **配置变更留痕**：行上的 `created_by` / `updated_by`（`packages/kits/src/db/audit-entity.ts:15-19`，由
   `AuditSubscriber` 自动填） + 一条 `ai.tool.config_updated` 日志；`ai_tools` **没有独立的审计表（缺口）**。
-- **现状缺口：AI 模块未接 `telemetry` 统一入口** —— `grep -rn telemetry apps/server/src/modules/ai/` 无命中；
+- **现状缺口：AI 模块未接 `telemetry` 统一入口** —— `grep -rn telemetry apps/agent-runtime/src/modules/ai/` 无命中；
   现在只有结构化日志事件 + 用量落库（`runs.usage` / `timelines` 的 step 行），**没有 Counter / Histogram / 告警**。
   要看 QPS、错误率、P95、token 环比与 `surge` 告警，按 `telemetry` skill 埋点，并把指标口径写进设计文档。
 

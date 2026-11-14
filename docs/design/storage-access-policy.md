@@ -32,14 +32,14 @@
    （`getDownloadUrl`，默认 1 小时），前端组件通过 `useStorageUrl` / `StorageClientProvider.getViewUrl`
    现签地址；`formatStorageUrl` 只保留给绝对 URL（外链 / 已签名地址）兼容。
 
-实现核对（2026-11-14）：三条路由都在 `apps/server/src/modules/storage/storage.controller.ts`，
+实现核对（2026-11-14）：三条路由都在 `apps/main/src/modules/storage/storage.controller.ts`，
 控制器级挂 `AnyAuthGuard`；STS 的判定条件是「没有 `adminId` → 抛 `StorageAdminOnlyError`」
 （前台用户与无身份一并拒绝）。错误码以 `AppErrorCodes` 为准：
 `StorageKeyInvalid`=3201（400）、`StorageKeyForbidden`=3202（403）、`StorageAdminOnly`=3203。
 
 ## 2. key 规则（纯函数）
 
-位置：`apps/server/src/modules/storage/storage-key.ts`（纯函数，无 IO，可单测）。
+位置：`apps/main/src/modules/storage/storage-key.ts`（纯函数，无 IO，可单测）。
 
 ```ts
 /** 前台用户的 key 命名空间前缀 */
@@ -70,8 +70,9 @@ assertDownloadKey({ key, userId }): void
 
 ## 4. 验证
 
-- 纯函数单测：`apps/server/test/storage-key.test.ts`（改写 / 穿越 / 空 key / 越界下载 / 管理员原样）；
-  控制器层单测：`apps/server/test/storage.controller.test.ts`（三条路由的身份矩阵）。
+- 纯函数单测（改写 / 穿越 / 空 key / 越界下载 / 管理员原样）与控制器层单测（三条路由的身份矩阵）：
+  **拆分后未随 main 迁入**（`apps/main/test` 现有 5 个用例里没有 storage），需补回；
+  当前只能靠下面的真实链路实测覆盖。
 - 真实链路实测：用户 token 上传 → 返回 key 带 `user/{id}/` 前缀且预签名 URL 可 PUT；
   用户 token 下载他人 key → 403；用户 token 调 STS → 403；管理员 token 三条路由行为不变。
 

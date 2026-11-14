@@ -1,5 +1,8 @@
 # 后端 kits 化改造设计方案（backend-kits-refactor）
 
+> **2026-11-14 更新**：实体与迁移已从 `server/src/database/` 收回 `packages/db`（`@repo/db`）；
+> 下面的路径表保留当时的迁移记录，当前事实源见 [packages/db/README.md](../../packages/db/README.md)。
+
 > 2026-11-13 现状快照（清单级，供对照；正文均为方案原文，不代表现状）：
 > - `packages/` 共 5 个包：`kits` / `shared` / `sdk` / `ui` / `http-client`（`core`、`db`、`di` 均已删除）；
 > - `packages/kits/src/` 共 16 个顶层目录（另有 `index.ts`）：`db` / `events` / `foundation` / `jwt` / `kafka` /
@@ -9,9 +12,9 @@
 > - kits 提供的 `@Global` 模块（20）：`AppConfig` / `IdGeneration` / `Scheduler` / `Telemetry` /
 >   `Command` / `Logger` / `Db` / `Redis` / `RateLimit` / `PubSub` / `StreamHub` / `EventBus` /
 >   `Jwt` / `SessionStore` / `Password` / `ObjectStorage` / `Workspace` / `Lark` / `Notification` / `Kafka`；
-> - `apps/server/src/modules/` 共 13 个业务模块：`admin` / `ai` / `ai-model` / `ai-usage` /
+> - `apps/main/src/modules/` 共 13 个业务模块：`admin` / `ai` / `ai-model` / `ai-usage` /
 >   `auth` / `monitor` / `ops` / `runtime-config` / `session` / `share` / `storage` / `stream` /
->   `user`（正文里的 `todo` 已不存在）；实体 19 张、迁移 26 个，均在 `apps/server`；
+>   `user`（正文里的 `todo` 已不存在）；实体 19 张、迁移 26 个，均在 `apps/main`；
 > - 权威现状以 `.agents/skills/billy-dev-foundation/references/architecture.md` 为准。
 
 > 2026-09-12 更新：组合根已由 `createServiceContext` 改为 NestJS 动态模块 `KitsModule.forRoot`。
@@ -28,7 +31,7 @@
 > `src/foundation/<能力>/`），配置 bean 并入各自目录（如 `src/redis/redis.config.ts`）。
 > **正文中的 `kits/src/infrastructure/...` 与 `foundation/config/...` 路径均为当时布局，不代表现状。**
 >
-> 2026-09-13 更新：`apps/server` 的组合根已由 `app.module.ts`/`AppModule` 更名为 `root.module.ts`/`RootModule`，
+> 2026-09-13 更新：`apps/main` 的组合根已由 `app.module.ts`/`AppModule` 更名为 `root.module.ts`/`RootModule`，
 > `CoreModule`（应用级配置 bean）已删除，改为各处经全局 `ConfigService` + `resolveServerConfig()` 取用。
 
 > 2026-09-15 更新：队列方案已整体移除 —— `kits/src/queue/`（BullMQ 的 `QueueManager`）删除，
@@ -36,7 +39,7 @@
 > 正文中出现的 `src/queue/`、`QueueManager`、依赖里的 `bullmq` 均为方案原文，不代表现状。
 
 > 2026-09-12 四次更新：配置链路改为 `AppConfigFacade` + `@nestjs/config` + 各模块 `forRootAsync`
-> （kits 新增配置模块，应用侧 `apps/server/src/app-config.ts` 组合命名空间配置，
+> （kits 新增配置模块，应用侧 `apps/main/src/app-config.ts` 组合命名空间配置，
 > `main.ts` 先 `await loadServerAppConfig()`）。正文中「配置由 `forRoot(options)` 直接传入」的描述
 > 已不代表现状。
 >
@@ -72,14 +75,14 @@ packages/kits        后端通用能力封装（无任何业务实体，纯能�
 DI 容器            @nestjs/common 原生容器（原 @repo/di InversifyJS 容器已删除）
 packages/shared      不动（跨端数据结构 / DICT / 工具）
 packages/sdk         不动（前端全类型客户端）
-apps/server          database/(实体 + data-source + migrations)
+apps/main          database/(实体 + data-source + migrations)
                      modules/(业务：auth/user/todo/admin，module/controller/service/repository 同目录)
                      common/(横切 HTTP 构件) + main(NestFactory 启动) + scripts/(seed-admin)
 scripts/cli          不动（脚手架生成器，已确认不依赖 core/db）
 ```
 
 - `packages/core`、`packages/db` 两个包**删除**；
-- 业务模块物理移入 `apps/server`，但**业务逻辑与 HTTP 边界分离**（分层规则不破：controller 只做校验与转发，业务逻辑在 service / repository）。
+- 业务模块物理移入 `apps/main`，但**业务逻辑与 HTTP 边界分离**（分层规则不破：controller 只做校验与转发，业务逻辑在 service / repository）。
 
 ## 2. 位置映射（文件级）
 
@@ -96,7 +99,7 @@ scripts/cli          不动（脚手架生成器，已确认不依赖 core/db）
 
 依赖：`@nestjs/common`、`@repo/shared`、`typeorm`、`typeorm-transactional`、`pg`、`ioredis`、`bullmq`、`croner`、S3/COS SDK 等（即现 core + db 的依赖合集，去掉业务相关项）。
 
-### 2.2 `apps/server` 新增（来源：core + db 的业务部分）
+### 2.2 `apps/main` 新增（来源：core + db 的业务部分）
 
 | 迁入 server | 说明 |
 | --- | --- |
@@ -112,7 +115,7 @@ scripts/cli          不动（脚手架生成器，已确认不依赖 core/db）
 - `core/src/runtime.ts` 拆分：
   - `kits` 提供 `KitsModule.forRoot({ db: { entities, ... } })` —— 装配 AppConfig + 全部基建 + 基础能力；
   - `server/src/main.ts` 在其上装配 `app.module.ts`（业务模块 + 全局过滤器 / 拦截器），形成应用组合根；
-- `apps/server` 原 features/lib：改为 `common/`（横切 HTTP 构件）与 `modules/<业务>/`（含 controller），import 改内部相对路径或 `from '@repo/kits'`；
+- `apps/main` 原 features/lib：改为 `common/`（横切 HTTP 构件）与 `modules/<业务>/`（含 controller），import 改内部相对路径或 `from '@repo/kits'`；
 - 根 `package.json`：移除 `@repo/core`/`@repo/db` 依赖；`db:gen`/`db:migrate`/`seed:admin` 改指 server；
 - `apps/web` landing 文案（`features.tsx` / `architecture.tsx` 中 `@repo/core` 展示项）同步改；
 - `pnpm-workspace.yaml` / `turbo.json` 无需变（apps/* 与 packages/* 均在 workspace）。
@@ -133,13 +136,13 @@ scripts/cli          不动（脚手架生成器，已确认不依赖 core/db）
 | --- | --- | --- |
 | 0 | 本设计文档评审通过 | —— |
 | 1 | 新建 `packages/kits`：迁入 infrastructure + foundation + db 通用能力（createDb 改实体注入）；kits 自身测试跑通 | `pnpm --filter kits run test` |
-| 2 | `packages/core` 依赖 kits 并 re-export（**apps/server、scripts 零改动**） | `pnpm dev:pkgs`、server 启动回归 |
+| 2 | `packages/core` 依赖 kits 并 re-export（**apps/main、scripts 零改动**） | `pnpm dev:pkgs`、server 启动回归 |
 | 3 | server 建 `database/`：实体 + data-source + migrations 迁入，挂迁移脚本 | `db:generate` 生成 + `db:migrate` 执行成功 |
 | 4 | 业务 modules 迁入 server；原 features/lib 改 `common/` + `modules/`（含 controller）；main 改用 KitsModule.forRoot + 业务模块注册 | 全部接口回归（auth/todo/user/admin/storage） |
 | 5 | seed-admin 迁入 server；scripts/cli 确认无 core/db 依赖 | `seed:admin` 执行成功 |
 | 6 | 删除 `packages/core`、`packages/db`；改根 package.json 脚本与依赖；改 apps/web 文案 | `pnpm build` 全量通过 |
 | 7 | 同步文档与 skill（见 §5）；README 架构章节更新 | 文档检索无残留旧路径 |
-| 8 | 全量验证：dev:pkgs + 三 app 类型检查 + dev:server + docker 构建 | 见 §7 |
+| 8 | 全量验证：dev:pkgs + 三 app 类型检查 + dev:main + docker 构建 | 见 §7 |
 
 ## 5. 影响面清单（同步对象）
 
@@ -167,15 +170,15 @@ scripts/cli          不动（脚手架生成器，已确认不依赖 core/db）
 1. **typeorm-transactional 初始化顺序**：`initializeTransactionalContext()` 必须先于 `addTransactionalDataSource`——现有 createDb 已处理，保持不破坏；
 2. **data-source glob 路径**：迁入 server 后必须改指 server 目录，否则 CLI 扫不到实体/迁移；
 3. **`@Transactional` re-export**：现从 `@repo/db` 导出（core 依赖链），kits 必须继续 re-export typeorm-transactional，否则业务模块 `@Transactional()` 断链；
-4. **docker 构建**：`Dockerfile.server` 走 `tsc -p tsconfig.build.json`，server 的 tsconfig/依赖更新后需验证镜像构建；
+4. **docker 构建**：镜像（现 `docker/Dockerfile.main` / `.agent-runtime`）走 `tsc -p tsconfig.build.json`，app 的 tsconfig/依赖更新后需验证镜像构建；
 5. **迁移历史连续性**：`db/migrations/` 已执行的迁移文件原样迁入 server（不重命名时间戳），避免已应用迁移与文件不一致；
-6. **根脚本**：`seed:admin`、`db:gen`、`db:migrate` 从根包直调改为 `pnpm --filter @app/server`，命令文档同步。
+6. **根脚本**：`seed:admin`、`db:gen`、`db:migrate` 从根包直调改为 `pnpm --filter @app/main`，命令文档同步。
 
 ## 7. 测试点
 
 - kits：createDb 工厂（实体注入 + 事务装配）、pagination 单测（现有测试迁移）;
 - server：业务模块单元测试（从 core 迁移，结构不变）;
-- 集成：迁移 generate → 人工检查 SQL → migrate 执行；dev:server 启动 + 全接口回归; seed-admin 幂等执行;
+- 集成：迁移 generate → 人工检查 SQL → migrate 执行；dev:main 启动 + 全接口回归; seed-admin 幂等执行;
 - 回归：`pnpm dev:pkgs`、三 app 类型检查、`pnpm build`、docker 构建。
 
 ## 8. 回滚
@@ -185,7 +188,7 @@ scripts/cli          不动（脚手架生成器，已确认不依赖 core/db）
 ## 9. 已确认项（评审结论）
 
 - [x] 包名：`@repo/kits`（后端通用能力封装：数据库 / 缓存 / JWT / hash / 队列 / 广播 / 存储 / 调度，无实体）
-- [x] `packages/db` 全并 kits（能力部分），实体与迁移归 `apps/server`（单服务场景）
+- [x] `packages/db` 全并 kits（能力部分），实体与迁移归 `apps/main`（单服务场景）
 - [x] 共享实体（微服务共享库）由上层自行沉淀独立包，kits 不持有（见 §3-7 演进路径）
 - [x] 实体迁移历史原样迁入 server，不重命名时间戳
 - [x] `docs/pagination.md`、`docs/queue.md` 中 db/core 引用一并修订

@@ -9,14 +9,24 @@ WORKDIR /app
 COPY package.json turbo.json pnpm-lock.yaml pnpm-workspace.yaml ./
 # 必须复制**全部** workspace 成员的清单：pnpm install --frozen-lockfile 需要完整的 workspace 图，
 # 少一个成员就会 ERR_PNPM_WORKSPACE_PKG_NOT_FOUND（apps/web 依赖 @repo/http-client）。
-COPY apps/admin/package.json           ./apps/admin/
-COPY apps/server/package.json          ./apps/server/
-COPY apps/web/package.json             ./apps/web/
-COPY packages/http-client/package.json ./packages/http-client/
-COPY packages/kits/package.json        ./packages/kits/
-COPY packages/sdk/package.json         ./packages/sdk/
-COPY packages/shared/package.json      ./packages/shared/
-COPY packages/ui/package.json          ./packages/ui/
+# 新增 / 删除 workspace 成员（apps/* 或 packages/*）时，三份 Dockerfile 都要同步这份清单。
+COPY apps/admin/package.json             ./apps/admin/
+COPY apps/agent-runtime/package.json     ./apps/agent-runtime/
+COPY apps/main/package.json              ./apps/main/
+COPY apps/tool-gateway/package.json      ./apps/tool-gateway/
+COPY apps/tool-worker/package.json       ./apps/tool-worker/
+COPY apps/web/package.json               ./apps/web/
+COPY packages/ai-data/package.json       ./packages/ai-data/
+COPY packages/contracts/package.json     ./packages/contracts/
+COPY packages/db/package.json            ./packages/db/
+COPY packages/http-client/package.json   ./packages/http-client/
+COPY packages/internal-sdk/package.json  ./packages/internal-sdk/
+COPY packages/kits/package.json          ./packages/kits/
+COPY packages/sdk/package.json           ./packages/sdk/
+COPY packages/shared/package.json        ./packages/shared/
+COPY packages/tool-catalog/package.json  ./packages/tool-catalog/
+COPY packages/ui/package.json            ./packages/ui/
+COPY packages/web-runtime/package.json   ./packages/web-runtime/
 
 # 安装全部依赖（含 devDependencies，build 需要）
 COPY scripts/ ./scripts/
@@ -25,8 +35,9 @@ RUN pnpm install --frozen-lockfile
 # 复制源码
 COPY . .
 
-# 用 turbo 构建（自动处理依赖拓扑顺序）
-RUN pnpm turbo run build --filter @app/web... --filter !@app/server
+# 用 turbo 构建（自动处理依赖拓扑顺序）。
+# 前端只依赖 main 的 HTTP 接口，不依赖 agent-runtime；排除它避免把 runtime 拖进 web 构建。
+RUN pnpm turbo run build --filter @app/web... --filter !@app/agent-runtime
 
 # ─────────────────────────────────────────────
 # Stage 2: production image (standalone)

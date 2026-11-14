@@ -24,8 +24,8 @@
 `email`（`host` / `port` / `secure` / `user` / `pass` / `from`）。
 
 **未配置的段 → 对应客户端 `configured=false`，`send` 返回 `{ ok:false, error:'通道未配置' }`**。
-环境变量映射见 `apps/server/src/app-config.ts` 的 `notify` 段（`LARK_NOTIFY_RECEIVE_ID` /
-`LARK_NOTIFY_RECEIVE_ID_TYPE` / `ALERT_SMTP_*`）。
+环境变量映射见 `apps/main/src/app-config.ts` 的 `notify` 段（`LARK_NOTIFY_RECEIVE_ID` /
+`LARK_NOTIFY_RECEIVE_ID_TYPE` / `ALERT_SMTP_*`；`apps/agent-runtime/src/app-config.ts` 是同源副本）。
 
 ## 4. 发送
 
@@ -44,6 +44,8 @@ await notifier.send('email', { to, subject, text }) // email 用 to / subject / 
 
 ## 6. 参考实现
 
-`apps/server/src/modules/monitor/alert-trigger.ts`：
-- `defaultChannels()` 用各客户端 `configured` 判定默认技术规则通道；
-- `deliver()` 按通道组装 payload → `notifier.send` → 逐通道落 `AlertLog`（发送 / 落库失败均不抛错）。
+`apps/main/src/modules/monitor/engine/alert-delivery.service.ts`（`AlertDeliveryService`）：
+- 通道取**规则配置**的 `config.channels`（`MonitorRuleConfigSchema`，默认 `['file']`；旧的全局
+  `defaultChannels()` 已移除）；
+- `deliver()` 逐通道 `notifier.send` → 落 `AlertLog` → 经 `AlertStreamService` 推 SSE；全通道失败
+  不写静默，下一轮重试（发送 / 落库失败均不抛错）。

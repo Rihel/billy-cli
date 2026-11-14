@@ -5,11 +5,12 @@
 
 - 鉴权三选（controller / 路由级，**显式决定、不默认裸奔**）：公开不加守卫；
   登录用户 `@UseGuards(UserAuthGuard)`；管理员 `@UseGuards(AdminAuthGuard)`
-  （`apps/server/src/modules/auth/user-auth.guard.ts` / `apps/server/src/modules/admin/admin-auth.guard.ts`；
+  （`apps/main/src/modules/auth/user-auth.guard.ts` / `apps/main/src/modules/admin/admin-auth.guard.ts`；
+  **用户鉴权只在 main**：runtime 没有用户鉴权，只认 `x-internal-token`；
   双体系 / token / 守卫细节见 `implement-auth`）。
 - 越权防护：
   - 水平越权：操作他人资源（改 / 删某 user 的数据）时，用
-    `requestContext.get('userId' | 'adminId')`（`apps/server/src/common/request-context/request-context.ts`，
+    `requestContext.get('userId' | 'adminId')`（`apps/main/src/common/request-context/request-context.ts`，
     AsyncLocalStorage）与资源归属比对，或只允许操作自己的 id；
   - 垂直越权：管理员接口必须 `@UseGuards(AdminAuthGuard)`，不能只靠前端隐藏入口。
 - 输入安全：Zod 数据结构即白名单，不做「前端传什么存什么」；SQL 一律参数化；
@@ -18,6 +19,6 @@
 - 敏感数据：响应模型经 `toXxx()` 剥离内部字段（`deletedAt` 等）；日志不记 token / 密码 /
   密钥 / 完整授权头；错误文案不带内部堆栈。
 - 限流：登录 / 短信 / 上传等敏感端点加 `@UseGuards(RateLimitGuard)` + `@RateLimit({ scope })`
-  （`apps/server/src/common/security/rate-limit.guard.ts`，参考 `apps/server/src/modules/auth/auth.controller.ts`），防爆破与滥用。
+  （`apps/main/src/common/security/rate-limit.guard.ts`，参考 `apps/main/src/modules/auth/auth.controller.ts`），防爆破与滥用。
 
 检查项：换别的用户 token 访问他人资源被拒？普通用户 token 打 admin 接口被拒？敏感字段没漏出？

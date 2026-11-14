@@ -37,7 +37,7 @@
 ## 依据
 
 - `skill.loader.ts`（发现 / 校验 / `SKILL_DIRS`）、`skill.adapter.ts`（`SkillRef[] → 目录路径[]`）
-- `apps/server/src/modules/ai/agents/index.ts`（`ALL_SKILLS` 装配期展开）、`ai.module.ts`（`SKILL_DIRS` 供给）
-- `apps/server/test/ai-skills-loader.test.ts`（含"路径交给 `resolveAgentSkills` 后能列表并读到 references"）、
-  `apps/server/test/ai-builtin-skills.test.ts`（内置技能正文与 CDN 白名单一致）
+- `apps/agent-runtime/src/modules/ai/agents/index.ts`（`ALL_SKILLS` 装配期展开）、`ai.module.ts`（`SKILL_DIRS` 供给）
+- `apps/agent-runtime/test/ai-skills-loader.test.ts`（含"路径交给 `resolveAgentSkills` 后能列表并读到 references"）、
+  `apps/agent-runtime/test/ai-builtin-skills.test.ts`（内置技能正文与 CDN 白名单一致）
 - `docs/design/ai-agent.md` §1.4、`docs/dev-logs/2026-10-27.md`

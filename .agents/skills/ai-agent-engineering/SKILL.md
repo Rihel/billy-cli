@@ -1,7 +1,8 @@
 ---
 name: ai-agent-engineering
 description: >-
-  Billy 工程 AI 能力的**工程级**规范（`apps/server/src/modules/ai` + 前后端闭环）：能力怎么设计
+  Billy 工程 AI 能力的**工程级**规范（执行侧 `apps/agent-runtime/src/modules/ai` + 控制面
+  `apps/main/src/modules/ai-admin`、`ai-model` + 前后端闭环）：能力怎么设计
   （工具面切分 / 粒度 / 权限 / 成本预算）、运行时怎么扛（token 与上下文压缩 / 并发限流 / 取消与恢复 /
   可观测）、边界怎么守（越权 / 秘钥 / 命令执行 / 提示词与工具输出注入 / 脱敏）、数据与审计怎么落
   （全量入库 / 无外键 / 配置版本可解释）、数据结构与质量怎么验收（schema → SDK → 前端闭环 / 标准测试集 /

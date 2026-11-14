@@ -86,7 +86,7 @@ async updateStatus(input: { orderId: string; event: string }): Promise<OrderMode
 | --- | --- |
 | 状态字典 | `shared/dicts/<domain>-status.dict.ts` |
 | 转移表 + 转移函数（纯） | `shared/utils/<domain>-state.utils.ts` |
-| 状态字段 | 实体 string 列（`apps/server/src/database/entities`） |
+| 状态字段 | 实体 string 列（`packages/db/src/entities`） |
 | 状态校验 | schema `z.enum` |
 | 状态机库封装（如引 xstate） | `kits/foundation` |
-| 业务编排 / 持久化 | `apps/server/src/modules/<domain>/*.service.ts` |
+| 业务编排 / 持久化 | `apps/main/src/modules/<domain>/*.service.ts`（agent 执行侧的 run 状态机在 `apps/agent-runtime/src/modules/ai/runtime/`） |

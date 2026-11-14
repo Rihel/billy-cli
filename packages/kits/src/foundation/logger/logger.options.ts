@@ -17,7 +17,7 @@ export const REDACT_PATHS = [
  *
  * 注意：`redact` 与 `transport` 都只能在 pino 构造时指定，故必须由这里透传；
  * kits 不再依赖 nestjs-pino / pino-http —— 那两者只负责 Nest 适配与请求日志，
- * 现在分别由 `NestLoggerAdapter` 与 `apps/server` 的 `RequestLoggerMiddleware` 承担。
+ * 现在分别由 `NestLoggerAdapter` 与 `apps/main` 的 `RequestLoggerMiddleware` 承担。
  *
  * ⚠️ `pino-loki` 依赖必须声明在 **`@repo/shared`**（创建 pino 实例的包），不能挪回 kits：
  * pino 的 transport worker 按创建实例的包解析 target，声明错位置会直接

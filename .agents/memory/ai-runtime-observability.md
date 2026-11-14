@@ -22,18 +22,18 @@
 
 ```bash
 # 1) 写入点还在不在
-grep -n "firstOutputAtMs\|durationMs: meta" apps/server/src/modules/ai/runtime/stream-recorder.ts
-grep -n "prepareStep: this.buildPrepareStep" apps/server/src/modules/ai/runtime/chat.service.ts
-grep -n "countProgress\|TimeoutReason" apps/server/src/modules/ai/runtime/run.repository.ts
+grep -n "firstOutputAtMs\|durationMs: meta" apps/agent-runtime/src/modules/ai/runtime/stream-recorder.ts
+grep -n "prepareStep: this.buildPrepareStep" apps/agent-runtime/src/modules/ai/runtime/chat.service.ts
+grep -n "countProgress\|TimeoutReason" apps/agent-runtime/src/modules/ai/runtime/run.repository.ts
 
 # 2) 列上有没有数（跑过一轮真实对话后）
-psql "$(sed -n 's/^DB_URL=//p' apps/server/.env)" -c \
+psql "$(sed -n 's/^DB_URL=//p' apps/main/.env)" -c \
   "select count(*) total, count(first_token_ms) first, count(duration_ms) dur, count(request_snapshot) snap from runs"
-psql "$(sed -n 's/^DB_URL=//p' apps/server/.env)" -c \
+psql "$(sed -n 's/^DB_URL=//p' apps/main/.env)" -c \
   "select kind, count(*) total, count(duration_ms) has_dur from timelines group by 1 order by 2 desc"
 
 # 3) 失败口径（denied / invalid 应开始出现）
-psql "$(sed -n 's/^DB_URL=//p' apps/server/.env)" -c \
+psql "$(sed -n 's/^DB_URL=//p' apps/main/.env)" -c \
   "select state, count(*) from timelines where kind='tool-result' group by 1"
 ```
 

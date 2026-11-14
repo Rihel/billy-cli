@@ -27,6 +27,10 @@
   `dist/index.global.js` 取同一个文件，加载后扫描 DOM 注入 `<style>`；在沙箱同款 CSP
   （`style-src 'unsafe-inline'`）下 `bg-red-500` / `p-4` / `text-center` 均生效。它**无全局变量**，
   三级兜底只能用 `onerror` 链。字体口径：一律无衬线（禁 `font-serif` / 宋体）。
+  **样式口径（2026-11-14）**：主体样式**必须**用 Tailwind 工具类写（布局 / 间距 / 排版 / 配色，
+  每个页面都要引 `@tailwindcss/browser`）；`<style>` **不禁用**，用来补 Tailwind 覆盖不到的
+  （动画 / 伪元素 / 打印 / 库覆盖 / `@theme`），但不得整页绕开工具类或引第二套框架；
+  由 `catalog/html-page` 与 `test/ai-builtin-skills.test.ts` 的断言共同钉住。
 
 ## 坑
 
@@ -38,9 +42,9 @@
 ## 依据
 
 - `docs/design/ai-file-manager.md`（§3 / §6 / §8 / §15）
-- `apps/server/src/modules/ai/files/**`、`apps/server/src/modules/ai/core/tools/workspace.ts`
-- 核对：`pnpm --filter @app/server test test/ai-file-service.test.ts test/ai-tools-battery.test.ts`；
-  CDN 白名单：`grep -rn "SANDBOX_CDN_HOSTS" packages/shared/src packages/ui/src apps/server/test`
+- `apps/agent-runtime/src/modules/ai/files/**`、`apps/agent-runtime/src/modules/ai/core/tools/workspace.ts`
+- 核对：`pnpm --filter @app/agent-runtime test test/ai-file-service.test.ts test/ai-tools-battery.test.ts`；
+  CDN 白名单：`grep -rn "SANDBOX_CDN_HOSTS" packages/shared/src packages/ui/src apps/agent-runtime/test`
 
 ## 失效信号
 

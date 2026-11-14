@@ -25,5 +25,5 @@ node -e "console.log(require('./package.json').scripts)"   # 无 cli、check:sca
 
 ## 备注
 
-`eta` 仍是 `apps/server` 的运行时依赖（`modules/ai/core/prompts/prompt.engine.ts` 渲染提示词），
-删的是根上的 devDependency，不影响 server。
+`eta` 仍是 `apps/agent-runtime` 的运行时依赖（`modules/ai/core/prompts/prompt.engine.ts` 渲染提示词），
+删的是根上的 devDependency，不影响 main / runtime 两个 app。

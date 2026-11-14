@@ -5,11 +5,12 @@
 ## 结论
 
 - 5 个包按「运行时 + 依赖方向」分层：`shared`（纯 TS 契约与工具）→ `kits`（Node + Nest 基础设施）→
-  `apps/server`；`ui`（React 组件）单独给两个 Next app；`http-client` → `sdk` 给前端调后端。
+  `apps/main` / `apps/agent-runtime` / `tool-gateway` / `tool-worker`；`ui`（React 组件）单独给两个 Next app；
+  `http-client` → `sdk` 给前端调后端。
   **不是按功能域分的**，所以「包不够细」不是问题。
 - 拆包买不到东西的三个原因（2026-11-13 实测）：
-  1. **单消费者 / 无外部发布**：`kits` 只被 `apps/server` 用，`ui` 只被 web + admin 用，全部
-     `workspace:*`（`Dockerfile.server` 用 `pnpm deploy --filter @app/server` 出镜像）。
+  1. **单消费者 / 无外部发布**：`kits` 只被 4 个 Nest app 用，`ui` 只被 web + admin 用，全部
+     `workspace:*`（`Dockerfile.main` / `.agent-runtime` 分别用 `pnpm deploy` 出镜像；compose 已按两服务编排）。
      独立版本、独立发布这两个拆包主收益不存在；
   2. **构建与类型检查不是瓶颈**：`pnpm build:pkgs` 910ms（kits 374ms / sdk 130ms），
      全仓 `pnpm typecheck` 1.2s（TS 7 原生 tsgo，5 个工程）；
@@ -42,5 +43,5 @@ grep -rl "mysql2\|node-cache" packages/kits/src        # 无输出 = 死依赖�
 grep -c "export \*" packages/ui/src/index.ts
 ```
 
-依据：`docker/Dockerfile.server`（pnpm deploy）、`packages/ui/components.json`、
+依据：`docker/Dockerfile.main` / `docker/Dockerfile.agent-runtime`（pnpm deploy）、`packages/ui/components.json`、
 `docs/dev-logs/2026-09-17.md`（design 拆包回退）、`packages/kits/src/db/create-db.ts:29`。

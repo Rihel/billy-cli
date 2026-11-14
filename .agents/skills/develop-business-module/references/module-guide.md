@@ -17,7 +17,8 @@
 
 ## 3. ③ 业务（server/modules，核心工作量）
 
-目录 `apps/server/src/modules/xxx/`（**包内相对导入带 `.js` 后缀**）。
+目录 `apps/main/src/modules/xxx/`（**包内相对导入带 `.js` 后缀**；控制面业务都在 main，
+agent 执行侧才放 `apps/agent-runtime/src/modules/ai/`）。
 
 ### errors.ts
 
@@ -86,7 +87,7 @@ export class XxxService {
 
 1. 模块 `index.ts`：`export * from './errors.js'`、`./xxx.repository.js`、`./xxx.service.js`、
    `./xxx.controller.js`、`./xxx.module.js`（模块内部聚合导出，无自动注册语义）。
-2. 在 `apps/server/src/modules/xxx/xxx.module.ts` 声明 provider 与 controller：
+2. 在 `apps/main/src/modules/xxx/xxx.module.ts` 声明 provider 与 controller：
 
    ```ts
    @Module({
@@ -97,15 +98,15 @@ export class XxxService {
    export class XxxModule {}
    ```
 
-3. 在 `apps/server/src/root.module.ts` 的 `imports` 里加 `<Xxx>Module`：没有副作用入口，
+3. 在 `apps/main/src/root.module.ts` 的 `imports` 里加 `<Xxx>Module`：没有副作用入口，
    也没有自动注册，**漏了这一步 Nest 不会加载该模块，路由直接 404**。
-   实体另在 `root.module.ts` 的 `DbModule.forRootAsync` 工厂里补进 `entities: [...]`
-   （其余 `db` 配置来自 `config.get('db')`），见 `define-data-structure`。
+   实体不用在这里列 —— 在 `packages/db/src/entities/index.ts` 导出并登记进 `DB_ENTITIES` 即可
+   （两个 app 的 `DbModule.forRootAsync` 都复用这份清单），见 `define-data-structure`。
 
 ## 4. ④ Controller（HTTP 边界）
 
 ```ts
-// apps/server/src/modules/xxx/xxx.controller.ts（参考 modules/user/user.controller.ts）
+// apps/main/src/modules/xxx/xxx.controller.ts（参考 modules/user/user.controller.ts）
 @Controller('xxx')
 @UseGuards(AdminAuthGuard)
 export class XxxController {
@@ -174,7 +175,7 @@ xxx = {
 ## 7. 验证
 
 1. `pnpm dev:pkgs` 确认 packages 构建通过（改包的代码必须重新构建，前端 / 服务端才能拿到）。
-2. `pnpm dev:server` 起服务；自测接口：
+2. `pnpm dev:main` 起服务（9989）；自测接口：
    ```bash
    curl -X POST http://localhost:9989/xxx/create \
      -H 'Content-Type: application/json' \

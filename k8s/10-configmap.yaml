@@ -1,23 +1,57 @@
+# main / agent-runtime 的非敏感运行配置。
+#
+# 拆分原则：
+# - `billy-shared`：两个服务都需要的公共配置（NODE_ENV / 对象存储 / 日志 / Kafka）；
+# - `billy-main`：公网入口专属（端口 9989、认证与限流、runtime 地址、网关相关超时）；
+# - `billy-agent-runtime`：内部运行时专属（端口 9990、多实例恢复、agent 模型配置）。
+#
+# 敏感项（DB_URL / REDIS_URL / JWT_SECRET / 对象存储密钥 / AGENT_INTERNAL_TOKEN）统一放在
+# Secret `billy-app`，两个 Deployment 共享同一份；建 Secret 的命令见 README.md §1。
+# Deployment 的 envFrom 顺序是 billy-shared → 各自 ConfigMap → billy-app（键不重复，避免覆盖歧义）。
+---
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: billy-server
+  name: billy-shared
   namespace: billy
   labels:
-    app.kubernetes.io/name: billy-server
+    app.kubernetes.io/part-of: billy-cli
 data:
-  # 非敏感运行配置。敏感项（DB_URL / REDIS_URL / JWT_SECRET / 对象存储密钥）见 README.md §1 的建 Secret 命令
   NODE_ENV: production
+  OBJECT_STORAGE_PROVIDER: s3
+  OBJECT_STORAGE_REGION: us-east-1
+  OBJECT_STORAGE_BUCKET: billy-cli
+  OBJECT_STORAGE_ENDPOINT: http://minio.billy.svc.cluster.local:9000
+  LOG_LEVEL: info
+  # ── agent 对话的 SSE 通路依赖 Kafka ──
+  # runtime 把输出发到 agent.run.events，main 消费后转成前端 SSE；不配时普通 CRUD 正常，
+  # 但 /agent/chat/stream 收不到内容。生产启用 agent 时必须填写。
+  # KAFKA_BROKERS: kafka.billy.svc.cluster.local:9092
+  # KAFKA_CLIENT_ID: app
+  # KAFKA_TOPIC_PREFIX: app
+  # KAFKA_GROUP_ID_PREFIX: app
+  # LOKI_HOST: http://loki.monitoring.svc.cluster.local:3100
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: billy-main
+  namespace: billy
+  labels:
+    app.kubernetes.io/name: billy-main
+    app.kubernetes.io/component: main
+data:
+  # 公网入口端口；Service 的 targetPort 与 Ingress 都按它转发
   PORT: '9989'
-  # 部署版本标识：**必须与 Deployment 的镜像 tag 同步**，`GET /info` 可核对线上实际构建
+  # 部署版本标识：**必须与 billy-main Deployment 的镜像 tag 同步**，`GET /info` 可核对线上实际构建
   APP_VERSION: v0.0.0
   AUTH_ENABLED: 'true'
   RESET_PASSWORD_TOKEN_TTL_MINUTES: '30'
   PASSWORD_HASH_ROUNDS: '10'
   # 部署在 Ingress 之后必须置 true：否则限流按网关 IP 计数（所有客户端共用一个 key、白名单失效）
   RATE_LIMIT_TRUST_PROXY: 'true'
-  # 多副本：恢复 / 停止 / 断线补发依赖 Redis 租约；漏配时滚动更新会让新 Pod 误伤其它副本在跑的 run
-  AGENT_MULTI_INSTANCE: 'true'
+  # 内部调用地址：runtime 的 ClusterIP Service（见 31-service-agent-runtime.yaml）
+  AGENT_RUNTIME_URL: http://billy-agent-runtime.billy.svc.cluster.local:9990
   # 长连接超时：必须**大于**网关的上游空闲超时，否则网关会往正在关闭的 socket 发请求 → 间歇 502
   # ingress-nginx 的 upstream-keepalive-timeout 默认 60s，故这里 75s / 80s（后端比网关长）
   KEEP_ALIVE_TIMEOUT_MS: '75000'
@@ -25,17 +59,27 @@ data:
   HEADERS_TIMEOUT_MS: '80000'
   # 优雅关闭期限：必须小于 terminationGracePeriodSeconds - preStop（本目录取 60 - 8 = 52s）
   SHUTDOWN_TIMEOUT_MS: '25000'
-  OBJECT_STORAGE_PROVIDER: s3
-  OBJECT_STORAGE_REGION: us-east-1
-  OBJECT_STORAGE_BUCKET: billy-cli
-  OBJECT_STORAGE_ENDPOINT: http://minio.billy.svc.cluster.local:9000
-  LOG_LEVEL: info
-  # ── 按需开启 ──
-  # ALERT_ENABLED: "true"
-  # ALERT_EMAIL_TO: ops@example.com
-  # LARK_NOTIFY_RECEIVE_ID: ""
-  # KAFKA_BROKERS: kafka.billy.svc.cluster.local:9092
-  # KAFKA_CLIENT_ID: app
-  # KAFKA_TOPIC_PREFIX: app
-  # KAFKA_GROUP_ID_PREFIX: app
-  # LOKI_HOST: http://loki.monitoring.svc.cluster.local:3100
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: billy-agent-runtime
+  namespace: billy
+  labels:
+    app.kubernetes.io/name: billy-agent-runtime
+    app.kubernetes.io/component: agent-runtime
+data:
+  # 内部端口；只在 ClusterIP Service 上暴露，不接公网 Ingress
+  PORT: '9990'
+  # 必须与 billy-agent-runtime Deployment 的镜像 tag 同步（与 main 的 tag 可以不同）
+  APP_VERSION: v0.0.0
+  # 多副本：恢复 / 停止 / 断线补发依赖 Redis 租约；漏配时滚动更新会让新 Pod 误伤其它副本在跑的 run
+  AGENT_MULTI_INSTANCE: 'true'
+  # 与 main 取同一组超时；runtime 也可能被 SSE / 长任务占用，优雅关闭必须留足排空时间
+  KEEP_ALIVE_TIMEOUT_MS: '75000'
+  HEADERS_TIMEOUT_MS: '80000'
+  SHUTDOWN_TIMEOUT_MS: '25000'
+  # ── agent 模型配置（非敏感）──
+  # MASTRA_MODEL: deepseek/deepseek-chat
+  # MASTRA_BASE_URL: https://api.deepseek.com
+  # AGENT_WORKSPACE_MODE: sandbox

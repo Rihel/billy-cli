@@ -281,6 +281,14 @@ export const AgentConversationSchema = z.object({
   id: z.string(),
   /** 创建时用的 agent key（会话可换 agent，以每次运行为准） */
   agentKey: z.string(),
+  /** 父会话（子 agent 的子会话有值；根会话为空） */
+  parentConversationId: z.string().nullable().optional(),
+  /** 工作区/文件归属的根会话 */
+  rootConversationId: z.string().nullable().optional(),
+  /** 根会话 / 子会话 */
+  kind: z.enum(['root', 'subagent']).optional(),
+  /** 子会话深度（根 0，子 1） */
+  depth: z.number().int().nonnegative().optional(),
   title: z.string(),
   /** 状态：见 ConversationStatus 字典 */
   status: z.string(),

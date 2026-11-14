@@ -3,8 +3,17 @@
 > 每篇回答「这个能力为什么长这样、当时取舍了什么」。使用与操作见 [../guide/](../guide/)；
 > 哪天改的见 [../dev-logs/](../dev-logs/)。
 >
-> 最近一次与代码逐篇核对：**2026-11-13**。设计稿记录的是当时的方案与取舍，其中「已归档 / 已废弃」
-> 的旧稿保留历史论证、不再代表现状；事实冲突时以代码与 guide 为准。
+> 最近一次与代码逐篇核对：**2026-11-14**（main / agent-runtime 拆分落地）。设计稿记录的是当时的方案与取舍，
+> 其中「已归档 / 已废弃」的旧稿保留历史论证、不再代表现状；事实冲突时以代码与 guide 为准。
+> 拆分前的设计稿里，`server` / `facade` 现在分别对应 `apps/main` / `apps/agent-runtime`；
+> 实际链路与差异见 [distributed-ai-architecture.md](distributed-ai-architecture.md) 的「0.1 落地现状」。
+
+## 架构
+
+| 文档 | 内容 |
+| --- | --- |
+| [distributed-ai-architecture.md](distributed-ai-architecture.md) | AI 分布式架构升级（评审稿）：**0.1 落地现状（main/runtime/Kafka）** → 背景/目标 → 瓶颈 → 方案 → 决策 D1–D10（含 Mastra 边界、内部 SDK、子会话）→ 运行状态机 → 组件保活与心跳 → 流程 → 可观测与告警 → 容量 → 运行形态（本地/非 k8s/k8s）与服务发现→ 分期 → 待决 |
+| [distributed-ai-conclusions.md](distributed-ai-conclusions.md) | 讨论结论一页版：已定 / 建议 / 待拍板，含工具边界、连接器、planner/ask/memory、子会话、迁移顺序与当前进度 |
 
 ## AI
 

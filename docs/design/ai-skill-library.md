@@ -2,6 +2,9 @@
 
 > 状态：已落地（2026-11-10，2026-11-11 改为链接导入 + 沉浸式编辑器；2026-11-13 现状补记见 §6）
 > 关联：`docs/design/ai-agent.md` §1.4（技能发现 / 校验 / 授权）、`ai-agent-tool-engine.md` §5.5（配置类数据的口径）
+> **2026-11-14 拆分后**：后台 CRUD / 文件编辑在 `apps/main/src/modules/ai-admin/skill`（写库 + 发
+> `ai.skill.changed`）；落盘、`SkillLoader` 与 `skill-*` 工具执行在 `apps/agent-runtime/src/modules/ai/skills`
+> 与 `core/skills`。DB 仍是唯一事实源。
 
 ## 1. 问题与现状
 
@@ -31,14 +34,14 @@
 
 ### 2.1 数据模型（DB 是事实源）
 
-两张表（`apps/server/src/database/entities/`）：
+两张表（`apps/main/src/database/entities/`）：
 
 | 表 | 一行是什么 | 关键列 |
 | --- | --- | --- |
 | `ai_skills` | 一个技能 | `skill_key`（= 目录名，唯一）、`title`、`description`（frontmatter 的 description）、`frontmatter`（其余 YAML 键）、`enabled`、`source`、`origin_url`、`version`、`file_count`、`content_hash`、`last_materialized_at`、`last_validated_at`、`warnings` |
 | `ai_skill_files` | 技能里的一个文件 | `skill_id`、`path`（相对技能目录）、`content`、`size`、`sha256` |
 
-实体：`apps/server/src/database/entities/ai-skill-entity.ts` / `ai-skill-file-entity.ts`。
+实体：`apps/main/src/database/entities/ai-skill-entity.ts` / `ai-skill-file-entity.ts`。
 
 索引 / 唯一键（以实体为准）：
 
@@ -220,13 +223,13 @@ AiModule bootstrap
 
 | 测试 | 覆盖 |
 | --- | --- |
-| `apps/server/test/ai-skill-library.test.ts` | 路径归一、落盘、草稿往返、loader 优先级、service 写链路 |
-| `apps/server/test/ai-skill-source.test.ts` | 链接解析（skills.sh / GitHub / raw / 简写 / well-known） |
-| `apps/server/test/ai-skills-loader.test.ts` | 扫描顺序、坏技能跳过、`reload()`、`*` 现算 |
-| `apps/server/test/ai-tools/skill-tools.test.ts` | 7 个 `skill-*` 工具的入参与结果 |
+| `apps/agent-runtime/test/ai-skill-library.test.ts` | 路径归一、落盘、草稿往返、loader 优先级、service 写链路 |
+| `apps/agent-runtime/test/ai-skill-source.test.ts` | 链接解析（skills.sh / GitHub / raw / 简写 / well-known） |
+| `apps/agent-runtime/test/ai-skills-loader.test.ts` | 扫描顺序、坏技能跳过、`reload()`、`*` 现算 |
+| `apps/agent-runtime/test/ai-tools/skill-tools.test.ts` | 7 个 `skill-*` 工具的入参与结果 |
 | `apps/admin/test/skill-markdown.test.ts`、`skill-activity.test.ts`、`skill-tool.test.ts` | 前端 strip frontmatter / 技能 tab / 工具卡 |
 
-命令：`pnpm --filter @app/server exec vitest run test/ai-skill-library.test.ts test/ai-skill-source.test.ts test/ai-skills-loader.test.ts`。
+命令：`pnpm --filter @app/agent-runtime exec vitest run test/ai-skill-library.test.ts test/ai-skill-source.test.ts test/ai-skills-loader.test.ts`。
 
 ## 5. 取舍记录
 

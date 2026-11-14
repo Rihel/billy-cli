@@ -48,10 +48,10 @@ export const AppErrorCodes = createDict({
 - value 为**数字分段**：`1xxx` 认证 / `2xxx` 用户、管理员 / `3xxx` 业务模块
   （每个新业务模块从这里起一段）/ `4xxx` 输入 / `5xxx` 系统。
 - 必须带 `http` 字段（仅 400 / 401 / 403 / 404 / 409 / 429 / 500），
-  `apps/server/src/common/error/error-descriptor.ts` 的 `describeErrorCode`（边界经
+  `apps/main/src/common/error/error-descriptor.ts` 的 `describeErrorCode`（边界经
   `common/error/boundary-error.ts` 映射）会自动映射为 HTTP 状态码与中文文案，**无需任何额外代码**。
 - 业务层错误类引用它：`readonly code = AppErrorCodes.UserNotFound`
-  （见 `apps/server/src/modules/user/errors.ts`）。
+  （见 `apps/main/src/modules/user/errors.ts`）。
 
 ## 3. createDict 产物 API（前后端通用）
 
@@ -88,7 +88,7 @@ export const AppErrorCodes = createDict({
 ## 5. 实体与 schema 中如何使用字典值
 
 ```ts
-// 实体（apps/server/src/database/entities/user-entity.ts 参考）
+// 实体（packages/db/src/entities/user-entity.ts 参考）
 import { UserStatus } from '@repo/shared'
 
 @Column({ name: 'status', default: UserStatus.Enabled, length: 20, comment: '用户状态' })

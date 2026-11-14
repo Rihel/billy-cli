@@ -5,44 +5,69 @@
 
 ## 环境变量（手动）
 
-`pnpm bootstrap` 会自动从模板生成，也可手动复制：
+`pnpm bootstrap` 会自动从模板生成，也可手动复制（拆成 main / runtime 后是**两份后端 .env**）：
 
 ```bash
-cp apps/server/.env.example apps/server/.env
+cp apps/main/.env.example apps/main/.env
+cp apps/agent-runtime/.env.example apps/agent-runtime/.env
 cp apps/admin/.env.example apps/admin/.env
 cp apps/web/.env.local.example apps/web/.env.local
 ```
 
-`apps/server/.env` 关键项（完整模板见 `apps/server/.env.example`）：
+`apps/main/.env` 关键项（完整模板见 `apps/main/.env.example`）：
 
 ```env
-PORT=9989
+PORT=9989                                                # main 端口（前端 / SDK 都连它）
 DB_URL=postgresql://root:pg1234@localhost:5432/billy-cli   # 默认端口 5432；compose 映射 15432
 REDIS_URL=redis://localhost:6379/0                          # 默认端口 6379；compose 映射 6380
 JWT_SECRET=dev-secret-change-in-production                  # 生产务必替换
 AUTH_ENABLED=true                                           # false 关闭鉴权（clone 自用）
 OBJECT_STORAGE_ENDPOINT=http://localhost:9000               # 默认端口 9000；compose 映射 19000
+SHARE_INTERNAL_SECRET=                                      # 文件分享；空 = 分享内容一律 404
+# main → runtime 的内部调用（缺一不可）
+AGENT_RUNTIME_URL=http://127.0.0.1:9990
+AGENT_INTERNAL_TOKEN=dev-agent-internal
+# 流式对话必需：runtime 的输出经 Kafka 回 main 的 SSE
+# （模板默认 localhost:9092；用仓库 compose 时映射到 29092）
+KAFKA_BROKERS=127.0.0.1:29092
+```
+
+`apps/agent-runtime/.env` 关键项（与 main **共用 DB / Redis**，另有自己的端口与内部令牌）：
+
+```env
+PORT=9990                                                   # runtime 端口（只给 main 调，不对公网）
+DB_URL=postgresql://root:pg1234@localhost:5432/billy-cli
+REDIS_URL=redis://localhost:6379/0
+AGENT_INTERNAL_TOKEN=dev-agent-internal                     # 必须与 main 的值一致
+KAFKA_BROKERS=127.0.0.1:29092                               # 输出事件必需（模板默认 9092，compose 映射 29092）
 AGENT_COMMAND_ENABLED=false                                 # 命令执行，默认关闭
 AGENT_WORKSPACE_MODE=enforce                                # 命令隔离：沙箱不可用即拒绝执行（fail closed）
-SHARE_INTERNAL_SECRET=                                      # 文件分享；空 = 分享内容一律 404
 ```
+
+> 两份 `.env.example` 都已带 `AGENT_INTERNAL_TOKEN=dev-agent-internal`，`pnpm bootstrap` 直接生成；
+> 两端取值必须一致，否则 `/internal/agent/*` 全部 401。
+
+**Kafka（流式对话必需）**：`docker compose --profile kafka up -d` 起 Kafka 与 kafka-ui，再执行
+`scripts/kafka-create-topics.sh` 建 `app.agent.run.events`（3 分区、key = runId）。
+没配 `KAFKA_BROKERS` / 没建 topic 时，runtime 不发事件，main 的 SSE 会建立连接但收不到内容；
+会话 / 文件 / 配置等非流式接口不受影响。
 
 `OBJECT_STORAGE_ENDPOINT` **可以不配**：对象存储是可选能力（`s3` 下不配 endpoint 即未启用，
 `cos` 由 `OBJECT_STORAGE_PROVIDER` 决定），未配置或 MinIO / S3 不可达时服务照常启动，
 只有上传 / 下载 / 附件读取等真正用到存储的接口才报「对象存储未配置或不可用」。
 
-`SHARE_INTERNAL_SECRET` 是文件分享的内部密钥：server 的 `/share/resolve` 与 admin 的
+`SHARE_INTERNAL_SECRET` 是文件分享的内部密钥：main 的 `/share/resolve` 与 admin 的
 `/api/s/:token/content` 必须一致；不配只关闭字节下发（分享页取不到内容，`/api/s/*` 返回 404），
 其余功能不受影响。admin 侧读的是**运行时**环境变量（`apps/admin/.env` / 容器环境），不随构建内联。
 
 AI 命令执行的执行环境另由 `AGENT_WORKSPACE_MODE`（默认 `enforce`）、
 `AGENT_WORKSPACE_SANDBOX_NETWORK`（默认 `deny`）、`AGENT_WORKSPACE_PROBE_TIMEOUT_MS` 控制；
-`AGENT_COMMAND_WORK_DIR` 同时是命令与文件工具的工作区根。完整 `AGENT_*` 见 `apps/server/.env.example`。
+`AGENT_COMMAND_WORK_DIR` 同时是命令与文件工具的工作区根。完整 `AGENT_*` 见 `apps/main/.env.example`（runtime 用同一份模板）。
 
 `apps/web/.env.local` 与 `apps/admin/.env` 使用默认值即可（不配置时代码有默认值兜底；分享功能需另配
 `SHARE_INTERNAL_SECRET`，见上）。
 
-分享密钥 `SHARE_INTERNAL_SECRET` 只在 **admin 与 server** 两端配置（两边的 `.env.example` 都已列出），
+分享密钥 `SHARE_INTERNAL_SECRET` 只在 **admin 与 main** 两端配置（两边的 `.env.example` 都已列出），
 取值必须一致；web 模板不含它（web 没有分享页）。不配置只关闭分享字节下发，不影响其它功能。
 
 ## 构建与启动（生产）
@@ -50,17 +75,18 @@ AI 命令执行的执行环境另由 `AGENT_WORKSPACE_MODE`（默认 `enforce`�
 ```bash
 # 全量构建（turbo，按依赖拓扑）；也可单独构建某个应用（会自动构建其依赖包）
 pnpm build
-# pnpm build:web / pnpm build:admin / pnpm build:server
+# pnpm build:web / pnpm build:admin / pnpm build:main / pnpm build:runtime
 
-# 分别启动
-pnpm start:server   # 9989
-pnpm start:web      # standalone，默认 9840（与 dev 一致；Docker 内由 ENV PORT=3001 覆盖）
-pnpm start:admin    # standalone，默认 9845（PORT 可覆盖）
+# 分别启动（main 依赖 runtime 在 9990；流式对话还依赖 Kafka）
+pnpm start:main      # 公网 BFF：9989
+pnpm start:runtime   # agent loop：9990（只给 main 调，不要暴露到公网）
+pnpm start:web       # standalone，默认 9840（与 dev 一致；Docker 内由 ENV PORT=3001 覆盖）
+pnpm start:admin     # standalone，默认 9845（PORT 可覆盖）
 
-# 或 Docker Compose（postgres + redis + minio + server + web）
+# 或 Docker Compose（postgres + redis + minio + main + agent-runtime + web）
 pnpm docker:up
 
-# 停止本地 start 起的进程（跨平台，默认 9840 / 9845 / 9989）
+# 停止本地 start 起的进程（跨平台，默认 9840 / 9845 / 9989 / 9990 / 9993 / 9994）
 pnpm kill:start
 ```
 
@@ -74,31 +100,44 @@ pnpm kill:start
 
 ```bash
 docker compose up -d postgres redis minio   # 仅基础设施
-pnpm docker:up                              # 全部（含 server + web）
-docker compose --profile kafka up -d        # 追加 Kafka + 控制台（可选，默认不启动）
+docker compose up -d --build                # 全部（migrate + main + runtime + gateway + worker + web + 依赖）
+docker compose --profile kafka up -d        # 可选：追加 Kafka + 控制台
 ```
 
 | 服务     | 镜像 / 构建             | 端口映射                    |
 | -------- | ----------------------- | --------------------------- |
-| postgres | postgres:17-alpine      | `15432:5432`（init-db.sql 只做库级设置，建表由迁移负责）|
+| postgres | pgvector/pgvector:pg17  | `15432:5432`（init-db.sql 只做库级设置，建表由迁移负责）|
 | redis    | redis:7-alpine          | `6380:6379`                 |
 | minio    | minio/minio             | `19000:9000` / `19001:9001` |
-| server   | docker/Dockerfile.server| `9989:9989`                 |
+| main     | docker/Dockerfile.main  | `9989:9989`（公网入口）      |
+| agent-runtime | docker/Dockerfile.agent-runtime | 仅 `expose 9990`，**不映射宿主端口**；只由 main 通过 `AGENT_RUNTIME_URL=http://agent-runtime:9990` 调用 |
+| migrate  | docker/Dockerfile.agent-runtime | 一次性 Job，执行 `@repo/db` 迁移 |
+| tool-worker | docker/Dockerfile.tool-worker | 仅 `expose 9994` |
+| tool-gateway | docker/Dockerfile.tool-gateway | 仅 `expose 9993` |
 | web      | docker/Dockerfile.web   | `3001:3001`                 |
+| admin    | docker/Dockerfile.admin | `9846:9845`（避开本机 dev 9845） |
 | kafka  ¹ | confluentinc/cp-kafka:7.4.8 | `29092:29092`            |
 | kafka-ui ¹ | provectuslabs/kafka-ui | `8085:8080`               |
 | zookeeper ¹ | confluentinc/cp-zookeeper:7.4.8 | `22181:2181`      |
 
-¹ 这三个服务带 `profiles: ["kafka"]`，**不指定 profile 不会启动**。启用后把服务端
-`KAFKA_BROKERS` 设为 `kafka:9092`（容器内）或 `127.0.0.1:29092`（宿主机直连）；
-不配置 `KAFKA_BROKERS` 时 `KafkaModule` 根本不装配，不影响其它功能。
+¹ 这三个服务带 `profiles: ["kafka"]`，**不指定 profile 不会启动**。启用后把 main 与
+runtime 的 `KAFKA_BROKERS` 都设为 `kafka:9092`（容器内）或 `127.0.0.1:29092`（宿主机直连）；
+不配置 `KAFKA_BROKERS` 时 main 会降级为直接转发 runtime SSE（单机可用）；生产仍建议启用 Kafka。
 
 MinIO 在 compose 里**默认随 `docker compose up` 启动**，但对象存储本身是可选能力：
-不用上传 / 附件 / 分享时可以不启它（`docker compose up -d postgres redis server web`），
+不用上传 / 附件 / 分享时可以不启它（`docker compose up -d postgres redis main agent-runtime web`），
 服务照常运行，只是存储相关接口报「未配置或不可用」。
 
-> **admin 不在 compose 里**：`docker-compose.yaml` 只提供 postgres / redis / minio / server / web，
-> `docker/` 也只有 server / web 的 Dockerfile，`k8s/` 只覆盖 server。admin 需单独构建部署：
+> **compose 已按拆分后的形态编排**：`x-app-env` 锚点保证 main 与 agent-runtime 拿到完全一致的
+> DB / Redis / JWT / 对象存储配置和同一个 `AGENT_INTERNAL_TOKEN`（不一致时 `/internal/agent/*` 401）；
+> main 依赖 runtime 健康后才启动；runtime 只在容器网络内用 9990，不映射宿主端口。
+> compose 已包含 `tool-gateway` / `tool-worker` 与一次性 `migrate`；gateway 依赖 worker 健康，runtime 依赖 gateway。
+> compose 里的 `AGENT_INTERNAL_TOKEN` 默认取 `${AGENT_INTERNAL_TOKEN:-local-dev-internal-token}`，
+> 与本地 `.env` 的 `dev-agent-internal` 不同；容器内以 compose 环境为准，两端共用锚点所以不会不一致。
+
+> **admin 已加入 compose**：`docker-compose.yaml` 提供 postgres / redis / minio / migrate / main /
+> agent-runtime / tool-gateway / tool-worker / web / admin；admin 容器内 9845，宿主映射 9846 避开本地 dev。
+> 也可单独构建部署：
 > 开发端口 9845，生产走 `output: 'standalone'`，由 `apps/admin/scripts/start.sh` 以 `PORT=9845` 启动；
 > `NEXT_PUBLIC_*` 在构建期内联，`SERVER_URL` 与 `SHARE_INTERNAL_SECRET` 在运行时读取。
 
@@ -110,14 +149,16 @@ MinIO 在 compose 里**默认随 `docker compose up` 启动**，但对象存储�
 # 等价于
 docker build -t node26-pnpm12:1.0 -f docker/Dockerfile.base .
 
-# 构建 server / web 镜像
-docker build -t billy-server:latest -f docker/Dockerfile.server .
+# 构建 main / agent-runtime / web 镜像
+docker build -t billy-main:latest -f docker/Dockerfile.main .
+docker build -t billy-agent-runtime:latest -f docker/Dockerfile.agent-runtime .
 docker build -t billy-web:latest -f docker/Dockerfile.web .
 ```
 
 ### Kubernetes 部署
 
-`k8s/` 目录提供 **server** 的清单与部署说明（Deployment / Service / PDB / Ingress）：
+`k8s/` 目录提供 **main + agent-runtime** 的清单与部署说明（Deployment / Service / PDB / Ingress；
+runtime 只有 Deployment + ClusterIP Service，不接公网 Ingress）：
 滚动策略 `maxUnavailable: 0` + preStop + 三类探针分工（`/healthz` 存活、`/readyz` 就绪）+
 `terminationGracePeriodSeconds` 覆盖优雅关闭期限，SSE 单独一份关缓冲的 Ingress。
 字段取值来由、跨文件不变量（grace vs `SHUTDOWN_TIMEOUT_MS`+preStop、后端 keep-alive vs 网关上游空闲）、
@@ -125,8 +166,9 @@ docker build -t billy-web:latest -f docker/Dockerfile.web .
 
 ### 特性
 
-- **server**：multi-stage + `pnpm deploy --prod` 提取运行时依赖，仅携带编译产物与生产依赖，
-  非 root 用户运行；预装官方 `lark-cli`（飞书 CLI 连接器用，版本由 `LARK_CLI_VERSION` 固定）
+- **main / agent-runtime**：两个独立镜像，multi-stage + `pnpm deploy --prod` 提取运行时依赖，
+  仅携带编译产物与生产依赖，非 root 用户运行；`lark-cli` 只装在 agent-runtime（飞书 CLI 连接器的
+  执行方，版本由 `LARK_CLI_VERSION` 固定），main 镜像不装
 - **web**：Next.js `output: 'standalone'` 模式，产物不携带源码与 devDependencies
 - **基础镜像**：内置 `bash / curl / wget / jq / bind-tools / tzdata（Asia/Shanghai）` 等运维工具，
   并切换 npmmirror 镜像源
@@ -151,7 +193,8 @@ Node 对反序**不报错、静默接受**，故本项目在配置层用 `superR
 
 **2. SSE 会被网关缓冲**
 
-`POST /sse/subscribe` 是长连接流（默认 15s 心跳保活）。Kong 的 Route 属性
+`POST /sse/subscribe` 是长连接流（默认 15s 心跳保活）；AI 对话的 `POST /agent/chat/stream`
+（main 起流、runtime 经 Kafka 回写）与 `GET /agent/run/stream` 同样是长连接，网关规则一致。Kong 的 Route 属性
 `response_buffering` 默认 `true`，会把响应缓冲后统一下发 → 流式失效 / 断续。
 需在该路由（或 Service）上设 **`response_buffering = false`**；Service 的 `read_timeout`
 （默认 60s）必须大于 SSE 心跳间隔。

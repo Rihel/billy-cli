@@ -1,0 +1,78 @@
+# ─────────────────────────────────────────────
+# tool-worker 镜像（@app/tool-worker）：内部工具面服务。
+#
+# 不装 lark-cli；只包含本 app 及其运行时依赖。构建时用 turbo 的 filter 只构建本 app 的依赖闭包。
+# ─────────────────────────────────────────────
+# Stage 1: install & build (full monorepo)
+# ─────────────────────────────────────────────
+FROM node26-pnpm12:1.0 AS builder
+
+WORKDIR /app
+
+# 先只复制清单文件，充分利用 layer 缓存。
+COPY package.json pnpm-lock.yaml turbo.json pnpm-workspace.yaml ./
+# 必须复制**全部** workspace 成员的清单：pnpm install --frozen-lockfile 需要完整的 workspace 图，
+# 少一个成员就会 ERR_PNPM_WORKSPACE_PKG_NOT_FOUND。
+# 新增 / 删除 workspace 成员（apps/* 或 packages/*）时，三份 Dockerfile 都要同步这份清单。
+COPY apps/admin/package.json             ./apps/admin/
+COPY apps/agent-runtime/package.json     ./apps/agent-runtime/
+COPY apps/main/package.json              ./apps/main/
+COPY apps/tool-gateway/package.json      ./apps/tool-gateway/
+COPY apps/tool-worker/package.json       ./apps/tool-worker/
+COPY apps/web/package.json               ./apps/web/
+COPY packages/ai-data/package.json       ./packages/ai-data/
+COPY packages/contracts/package.json     ./packages/contracts/
+COPY packages/db/package.json            ./packages/db/
+COPY packages/http-client/package.json   ./packages/http-client/
+COPY packages/internal-sdk/package.json  ./packages/internal-sdk/
+COPY packages/kits/package.json          ./packages/kits/
+COPY packages/sdk/package.json           ./packages/sdk/
+COPY packages/shared/package.json        ./packages/shared/
+COPY packages/tool-catalog/package.json  ./packages/tool-catalog/
+COPY packages/ui/package.json            ./packages/ui/
+COPY packages/web-runtime/package.json   ./packages/web-runtime/
+
+# 安装全部依赖（含 devDependencies，build 需要）
+COPY scripts/ ./scripts/
+RUN pnpm install --frozen-lockfile
+
+# 复制源码
+COPY . .
+
+# 用 turbo 构建 main 及其依赖闭包（packages 先于 app 构建）
+RUN pnpm turbo run build --filter @app/tool-worker...
+
+# 用 pnpm deploy 提取 main 及其运行时依赖到独立目录
+RUN pnpm deploy --filter @app/tool-worker --prod --legacy /deploy/tool-worker
+
+# pnpm deploy 会带上包目录（含已构建的 dist），但仍显式同步一次，避免 deploy 行为随版本变化。
+# 先删再加：`cp -r src dst` 在 dst 已存在时会变成 dst/src（产生 dist/dist 嵌套）。
+# copy-assets 拷贝的资产（*.eta / *.md）会原样保留源文件权限，工作区里这些文件常是 600；
+# 容器以 appuser 运行，600 的 root 文件读不到 → 运行时报「模板渲染失败 / 技能缺失」。
+# 在 builder 里统一放宽为「可读 + 目录可进入」，避免在最终镜像多一层全量拷贝。
+RUN rm -rf /deploy/tool-worker/dist \
+  && cp -r apps/tool-worker/dist /deploy/tool-worker/dist \
+  && chmod -R a+rX /deploy/tool-worker
+
+# ─────────────────────────────────────────────
+# Stage 2: production image
+# ─────────────────────────────────────────────
+FROM node26-pnpm12:1.0 AS runner
+
+WORKDIR /app
+
+# 拷贝 deploy 阶段的产物（不含 devDependencies；包目录文件随 deploy 一并带入）
+COPY --from=builder /deploy/tool-worker .
+
+# 非 root 用户运行；`.billy` 存工作区 / 技能库等本地状态
+RUN addgroup -S appgroup \
+  && adduser -S appuser -G appgroup \
+  && mkdir -p /home/appuser/.billy /home/appuser/.billy-cli \
+  && chown -R appuser:appgroup /home/appuser
+# 明确 HOME：切换 USER 不会自动改 HOME，`~/.billy` 都按它定位
+ENV HOME=/home/appuser
+USER appuser
+
+EXPOSE 9994
+
+CMD ["node", "dist/main.js"]

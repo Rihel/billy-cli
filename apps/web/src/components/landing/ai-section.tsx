@@ -122,7 +122,7 @@ export function AiSection() {
                 <div className="flex items-center justify-between border-b border-border px-5 py-3">
                   <p className="text-xs font-medium text-foreground">加一个工具，只要一个方法</p>
                   <span className="font-mono text-[11px] text-muted-foreground">
-                    apps/server/src/modules/ai/tools
+                    apps/agent-runtime/src/modules/ai/tools
                   </span>
                 </div>
                 <pre className="overflow-x-auto px-5 py-5 font-mono text-[12.5px] leading-6 text-muted-foreground">

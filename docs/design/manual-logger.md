@@ -2,7 +2,7 @@
 
 > 需求（用户）：把 nestjs-pino 去掉，手动建 logger，复用 `@repo/shared` 的 `createLogger`。
 > 状态：**已实施并实测通过**（2026-09-15）· 影响面：`packages/kits`、`packages/shared`、
-> `apps/server`、依赖、文档与 skill
+> `apps/main`、依赖、文档与 skill
 >
 > 实施结果与本文差异：Loki **保留**（决策 1 选保留）；请求日志字段保持原样（决策 2）。
 > 实施中另有两个发现：
@@ -15,14 +15,14 @@
 > `requestContext.get(...)`）。`requestContext.run(store, () => next())` 的作用域在 `next()` 返回时
 > 即退出，普通请求只因 `end()` 同步发生在处理链路内才读得到；SSE 长连接的响应结束来自 socket 的
 > 异步上下文，那时 store 已不在 —— 长连接日志的 requestId / userId / adminId 全为 null（响应头与
-> 日志对不上）。已补回归用例：`apps/server/test/request-logger.test.ts` 在作用域外触发 finish。
+> 日志对不上）。已补回归用例：`apps/agent-runtime/test/request-logger.test.ts` 在作用域外触发 finish。
 >
 > 2026-11-13 核对：方案与实现一致，补充当前事实 —— ① `packages/kits/src/foundation/logger/`
 > 现有 `logger.config.ts` / `logger.options.ts` / `logger.providers.ts`（`LOGGER_INSTANCE` token）/
 > `app-logger.ts` / `nest-logger.ts` / `logger.module.ts` / `index.ts`；② 整应用**唯一** pino 实例
 > 由 `LoggerModule` 的 `LOGGER_INSTANCE` factory 建一次，`AppLogger` 与 `NestLoggerAdapter` 都走
 > 它的 `child(context)`；③ 注入 `@Inject(AppLogger)` 的类已从当时的 19 个增长到 59 个
-> （server 45 + kits 14，`grep -rl "Inject(AppLogger)" apps/server/src packages/kits/src | wc -l`），
+> （server 45 + kits 14，`grep -rl "Inject(AppLogger)" apps/main/src packages/kits/src | wc -l`），
 > 接口未变；④ 本文 §7 两个「待确认决策」均已落定：Loki 保留、请求日志字段保持原样。
 
 ## 1. 关键认识（决定改造成本）
@@ -83,12 +83,12 @@ packages/kits/src/foundation/logger/
                       （`forRoot` / `forRootAsync` 两种装配）
   index.ts            不再转出 nestjs-pino 的 Logger / PinoLogger
 
-apps/server/src/common/request-logger/    新增（横切 HTTP 构件）
+apps/main/src/common/request-logger/    新增（横切 HTTP 构件）
   request-logger.middleware.ts   记录 method / url / status / durationMs / requestId /
                                  userId / adminId；按状态码分级（<400 info、4xx warn、5xx error）；
                                  运维探针路径（`/healthz`、`/readyz`）不记
   request-logger.module.ts       @Global + configure() 自注册，必须排在 RequestContextModule 之后
-apps/server/src/main.ts          去掉 `app.useLogger(app.get(Logger))`（nestjs-pino 的 Logger），
+apps/main/src/main.ts          去掉 `app.useLogger(app.get(Logger))`（nestjs-pino 的 Logger），
                                  改为 `app.useLogger(app.get(NestLoggerAdapter))`；
                                  `bufferLogs: true` 保留（Nest 会缓冲到 useLogger 生效）
 ```
@@ -99,7 +99,7 @@ apps/server/src/main.ts          去掉 `app.useLogger(app.get(Logger))`（nestj
 - 调用签名 `(message?, data?)`；`data` 为普通对象并入结构化字段，
   `RESERVED_KEYS`（name/msg/level/time/pid/hostname/context）收进 `data` 子对象；
 - `IAppLogger` 接口不变 → 业务侧注入点（当时 19 处，现 59 处）与
-  `apps/server/test/helpers/logger.ts` 全不用动。
+  `apps/agent-runtime/test/helpers/logger.ts` 全不用动。
 
 ## 4. 关键流程
 
@@ -117,7 +117,7 @@ apps/server/src/main.ts          去掉 `app.useLogger(app.get(Logger))`（nestj
 
 - 依赖：`packages/kits` 去掉 `nestjs-pino`、`pino-http`；**保留 `pino-loki`**（transport 用）；
   `pino` / `pino-pretty` 留在 `@repo/shared`（`createLogger` 用）。
-- 代码：上表 8 个文件；`apps/server/src/main.ts`；`root.module.ts` 的 imports 注释与顺序；
+- 代码：上表 8 个文件；`apps/main/src/main.ts`；`root.module.ts` 的 imports 注释与顺序；
   `common/request-context/*` 里 3 处「pino-http」注释。
 - 文档 / skill：README（后端日志整节）、`architecture.md`（日志行 + 中间件顺序规定 + 数据流第 2 步）、
   `billy-dev-foundation/SKILL.md`（若提到 nestjs-pino）、`develop-backend-api`（可观测性）、
@@ -130,7 +130,7 @@ apps/server/src/main.ts          去掉 `app.useLogger(app.get(Logger))`（nestj
 - `NestLoggerAdapter`：Nest 的 `log(msg, context)` 两个位置参数落到 pino 的 msg + context。
 - `createLogger` 新参数：redact 生效、transport 透传、不传时行为与现在完全一致（shared 单测，若有）。
 - 请求日志中间件：状态码分级、duration 有值、从 ALS 取 requestId/userId、abort（未 finish）不丢日志。
-- 冒烟：`pnpm dev:server` 启动日志（缓冲后输出）、一次 curl 的请求日志字段、`pnpm check:inject`。
+- 冒烟：`pnpm dev:main` 启动日志（缓冲后输出）、一次 curl 的请求日志字段、`pnpm check:inject`。
 
 ## 7. 待确认决策
 
@@ -147,10 +147,10 @@ apps/server/src/main.ts          去掉 `app.useLogger(app.get(Logger))`（nestj
 
 | 项 | 现状 |
 | --- | --- |
-| 日志配置来源 | `apps/server/.env.example`：`LOG_LEVEL`（默认 info）、`LOKI_HOST`（不配则不打 Loki）；prefix 固定 `server`，pretty 由 `NODE_ENV` 推导 |
+| 日志配置来源 | `apps/main/.env.example`：`LOG_LEVEL`（默认 info）、`LOKI_HOST`（不配则不打 Loki）；prefix 固定 `server`，pretty 由 `NODE_ENV` 推导 |
 | 实例数 | 整应用**一个** pino 实例（`LOGGER_INSTANCE`），其余全部 `child(context)` 派生 |
 | 框架日志 | `main.ts` 的 `app.useLogger(app.get(NestLoggerAdapter))`，`bufferLogs: true` |
 | 业务日志 | `@Inject(AppLogger)`（`Scope.TRANSIENT`，context 自动取宿主类名）；共 59 处（server 45 + kits 14） |
-| 请求日志 | `apps/server/src/common/request-logger/`；`root.module.ts` 的 imports 顺序 `RequestContextModule` → `RequestLoggerModule` → `RequestMetricsModule` |
+| 请求日志 | `apps/main/src/common/request-logger/`；`root.module.ts` 的 imports 顺序 `RequestContextModule` → `RequestLoggerModule` → `RequestMetricsModule` |
 | 脱敏 | `REDACT_PATHS` = `req.headers.authorization` / `req.headers.cookie` / `res.headers["set-cookie"]`（`logger.options.ts`） |
-| 测试 | `apps/server/test/request-logger.test.ts`、`packages/kits/test/logger.test.ts` |
+| 测试 | `apps/agent-runtime/test/request-logger.test.ts`、`packages/kits/test/logger.test.ts` |

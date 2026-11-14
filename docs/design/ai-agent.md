@@ -41,7 +41,7 @@
 
 ## 1. 已落地的结构层（代码已在仓库、可验证）
 
-### 1.1 目录与职责（`apps/server/src/modules/ai/`）
+### 1.1 目录与职责（`apps/agent-runtime/src/modules/ai/`）
 
 ```
 ai/
@@ -136,7 +136,7 @@ ai/
 
 ### 1.5 已跑通的验证（实测）
 
-- `pnpm --filter @app/server exec tsc --noEmit` 通过；`pnpm check:inject` 通过；
+- `pnpm --filter @app/agent-runtime exec tsc --noEmit` 通过；`pnpm check:inject` 通过；
 - 实跑（tsx 直跑，不依赖数据库与模型密钥）：两个 agent 的提示词渲染正确（工具清单由授权生成、
   技能授权正确、缩进保留）；`SkillLoader` 加载出技能正文（含 `references/` 下的参考文件），
   未知技能名按预期抛错。
@@ -328,7 +328,7 @@ ai/
 **设计时的设想**是：cache 换 `@mastra/redis` 的 `RedisServerCache`（事件重放跨实例）、pubsub 换
 `@mastra/redis-streams` 的 `RedisStreamsPubSub`（跨实例事件 + abort + 恢复租约）。
 
-**实现后的现状（2026-11-13，以此为准）**：这两个包**没有引入**（`apps/server/package.json` 里没有它们），
+**实现后的现状（2026-11-13，以此为准）**：这两个包**没有引入**（`apps/agent-runtime/package.json` 里没有它们），
 跨实例能力全部落在我们自己的 `RedisStore` 上（`runtime/stream-store.service.ts`）：
 
 | 能力 | 落法 |
@@ -764,12 +764,12 @@ WHERE id = $1 AND status = 'running' AND heartbeat_at < now() - interval '…'
            │ POST /agent/chat/stream（建流） GET /agent/run/{stream,:runId/stream}（重连）
            │ POST /agent/chat（非流式） POST /agent/{status,list,models,instructions}（装配查询）
            ▼
-┌──────────────── HTTP 边界（apps/server/src/common）─────────────────────┐
+┌──────────────── HTTP 边界（apps/main/src/common）─────────────────────┐
 │ RequestContext(ALS/requestId) → RequestLogger → RequestMetrics           │
 │ UserAuthGuard → RateLimitGuard → Zod 校验 → ResponseEnvelope             │
 └──────────┬──────────────────────────────────────────────────────────────┘
            ▼
-┌──────────────── AI 模块（apps/server/src/modules/ai）───────────────────┐
+┌──────────────── AI 模块（apps/agent-runtime/src/modules/ai）───────────────────┐
 │ core/     配置 · 信封 · 提示词引擎 · 工具引擎（注册机/网关/插件）· 技能加载 │
 │ agents/   一个 agent 一个声明（key / 名称 / 工具选择器 / 技能 / 提示词模板）│
 │ tools/    具体工具组（@ToolGroup + 方法级 @ToolDecl）                      │
@@ -1365,7 +1365,7 @@ AI SDK 的 `data-sub-agent` part，和主内容走同一条 SSE：
 | 层 | 位置 | 职责 |
 | --- | --- | --- |
 | 机制（基础设施） | `packages/kits/src/foundation/command/`（`CommandRunner` + `command.platform.ts` + `command.module.ts`）+ `packages/kits/src/workspace/`（`WorkspaceRuntimeService` / `workspace.sandbox.ts` / `workspace.module.ts`） | 跨平台执行：shell 解析、超时、杀进程树、输出上限、取消、结果结构化；以及**在哪执行**（沙箱 / 宿主）与目录布局 |
-| 策略（AI 模块） | `apps/server/src/modules/ai/tools/bash.tool.ts`（工具组 `BashTool`） | 开关、会话工作区边界、时长 / 输出上限、审计日志 |
+| 策略（AI 模块） | `apps/agent-runtime/src/modules/ai/tools/bash.tool.ts`（工具组 `BashTool`） | 开关、会话工作区边界、时长 / 输出上限、审计日志 |
 | 提示词 | `core/prompts/templates/partials/tools.eta`（「`bash` 怎么用」） | 什么时候用 / 不用、能力问题先验证、有副作用先问 / 只读公开请求可直接跑、失败要读懂原因 |
 
 **为什么用 `execa` 而不是自己拼 `child_process`**（早先手写过一版，已弃）：三条硬约束恰好是它的内建能力 ——
@@ -1453,7 +1453,7 @@ AGENT_WORKSPACE_PROBE_TIMEOUT_MS=2000          # 探测沙箱可用性的超时
 
 #### 3.16.1 主要矛盾：2MB 的附件进不了 2mb 的请求体
 
-服务端请求体上限 **2mb**（`apps/server/src/main.ts` 的 `useBodyParser`），而附件上限也是 2MB ——
+服务端请求体上限 **2mb**（`apps/main/src/main.ts` 的 `useBodyParser`），而附件上限也是 2MB ——
 一旦把文件内联进请求体，光是 base64 膨胀（+33%）就必然 413。所以链路定成：
 
 ```
@@ -2041,7 +2041,7 @@ OpenAI 形态的"列模型"接口，所以**只有一个通用 adapter**，厂�
 | --- | --- | --- |
 | `GET {base}/models` | `Authorization: Bearer <key>` | `data[]`：`id` 是同步锚点；`created` / `owned_by` 等原样进 `raw` |
 
-`kind → 默认 baseURL / 是否支持列模型 / 备注` 登记在 `apps/server/src/modules/ai-model/provider-adapters.ts`
+`kind → 默认 baseURL / 是否支持列模型 / 备注` 登记在 `apps/main/src/modules/ai-model/provider-adapters.ts`
 的 `PROVIDER_ENDPOINTS`：DeepSeek、阿里云百炼（`/compatible-mode/v1`）、智谱（`/api/paas/v4`）、
 月之暗面、火山方舟（`/api/v3`，列表可能只返回部分）、硅基流动、MiniMax、百度千帆、腾讯混元、阶跃星辰。
 讯飞星火官方只提供 chat/completions、没有列模型接口，标 `supportsModelList: false` → 同步直接提示

@@ -61,16 +61,16 @@ pnpm kill:dev --dry-run   # 先看会停哪些，确认没误伤别的项目
 pnpm kill:dev             # 停掉本仓库的 dev 进程与 watcher
 ```
 
-不要留下占着 9989 / 9840 / 9845 的孤儿进程让下一个人排查。
+不要留下占着 9989 / 9990 / 9840 / 9845 的孤儿进程让下一个人排查。
 
 ## 参考实现
 
 - **完整 CRUD 最小链路**：user 模块——schema
   `packages/shared/src/schema/user.schema.ts` → 实体
-  `apps/server/src/database/entities/user-entity.ts` → 业务
-  `apps/server/src/modules/user/*`（repository / service / errors）→ HTTP 边界
-  `apps/server/src/modules/user/user.controller.ts` + 模块
-  `apps/server/src/modules/user/user.module.ts` → SDK
+  `packages/db/src/entities/user-entity.ts` → 业务
+  `apps/main/src/modules/user/*`（repository / service / errors）→ HTTP 边界
+  `apps/main/src/modules/user/user.controller.ts` + 模块
+  `apps/main/src/modules/user/user.module.ts` → SDK
   `packages/sdk/src/server.client.ts` 的 `user` 段 → admin 页
   `apps/admin/src/app/main/system/users/page.tsx`。
 - **架构决策与历史**：`README.md`、`docs/sdk-refactor.md`（API 客户端职责划分）。

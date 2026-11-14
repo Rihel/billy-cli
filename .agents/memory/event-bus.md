@@ -18,7 +18,7 @@
 
 ```bash
 grep -n "class PubSub\|class EventBus\|class StreamHub" packages/kits/src/**/*.ts
-grep -n "PubSubModule\|EventBusModule\|StreamHubModule" apps/server/src/root.module.ts
+grep -n "PubSubModule\|EventBusModule\|StreamHubModule" apps/main/src/root.module.ts
 pnpm --filter @repo/kits test test/pubsub.test.ts test/event-bus.test.ts test/stream-hub.test.ts
 ```
 

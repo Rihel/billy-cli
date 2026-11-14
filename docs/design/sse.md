@@ -56,7 +56,7 @@
 | 服务端推流统一入口 | `packages/kits/src/stream/stream-hub.ts`（`StreamHub`）+ `stream-connection.ts` + `stream-hub.module.ts` + `index.ts`，`stream/index.ts` 聚合后由 `packages/kits/src/index.ts` 导出 |
 | 跨实例传输层 | `packages/kits/src/pubsub/`（`PubSub` + `pubsub.module.ts`）：两条 ioredis 连接（pub / sub）、`broadcast` / `subscribe` / `subscribePattern`、断线重订阅、`instanceId` 自回环过滤；`StreamHub` 与 `EventBus` 共用 |
 | 事件总线（进程内广播） | `packages/kits/src/events/`（`EventBus` + `event-bus.module.ts`）：`events:<topic>` 精确订阅、先本地后远端、**at-most-once**；当前无业务消费者 |
-| 服务端 SSE 路由 | `apps/server/src/modules/stream/stream.controller.ts`（`StreamController`，`@Controller('sse')` + `POST subscribe`），鉴权在 `stream-auth.guard.ts`（按 `SSE_ROUTE_OPTIONS.auth` 委派 `UserAuthGuard` / `AdminAuthGuard` / `AnyAuthGuard`）；选项在 `stream.options.ts`（`SSE_ROUTE_OPTIONS`），模块装配在 `stream.module.ts` |
+| 服务端 SSE 路由 | `apps/main/src/modules/stream/stream.controller.ts`（`StreamController`，`@Controller('sse')` + `POST subscribe`），鉴权在 `stream-auth.guard.ts`（按 `SSE_ROUTE_OPTIONS.auth` 委派 `UserAuthGuard` / `AdminAuthGuard` / `AnyAuthGuard`）；选项在 `stream.options.ts`（`SSE_ROUTE_OPTIONS`），模块装配在 `stream.module.ts` |
 | SSE 客户端能力 | `packages/http-client/src/stream/`（`stream-client` + `stream-transport` + `stream-parser` + `types` + `errors`），随 `@repo/http-client` 导出（**http-stream-client 定位**：流式客户端是 http-client 的能力子模块，不拆独立包） |
 | 依赖 | `@repo/http-client` 依赖 `@repo/shared` 与既有 `@noble/hashes`（凭证体系用），SSE 传输层零新增第三方依赖；广播用 ioredis（kits 既有），零新增 |
 | 注册 | `PubSubModule` + `StreamHubModule` + `EventBusModule` 三个 `@Global()` 模块（`root.module.ts` 里在 `RedisModule` 之后依次装配）；`StreamHub` 生命周期：`OnApplicationBootstrap` 建模式订阅、`BeforeApplicationShutdown` 排空连接、`OnApplicationShutdown` 释放订阅 |

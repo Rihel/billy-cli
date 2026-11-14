@@ -40,7 +40,7 @@
 
 **明文入库是明确取舍，不是疏漏**（2026-10-01 决定，含 `ai_providers.api_key`）：
 
-- `ai_tools.secrets` 直接存明文（`database/entities/ai-tool-entity.ts:87-95`）；提示串在**读取时**由 `hintOf` 从明文派生（`apps/server/src/modules/ai-model/secret-hint.ts`、`core/tools/tool.settings.ts:87-92`）；
+- `ai_tools.secrets` 直接存明文（`packages/db/src/entities/ai-tool-entity.ts:87-95`）；提示串在**读取时**由 `hintOf` 从明文派生（`apps/agent-runtime/src/modules/ai-model/secret-hint.ts`，main 侧有同源副本 `apps/main/src/modules/ai-model/secret-hint.ts`；另有 `core/tools/tool.settings.ts:87-92`）；
 - **代价**：库被读走 = 密钥泄露（备份、只读账号、日志转储同理）；补偿只有两条 —— 接口不回明文，日志与出参靠 `redact` 脱敏（设计 §5.5，`ai-agent-tool-engine.md:441-445`）。
 
 **取用纪律**：

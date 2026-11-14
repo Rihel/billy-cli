@@ -192,7 +192,7 @@
 
 ```bash
 pnpm bootstrap    # 一键初始化：环境检查 → 依赖服务 → .env → 安装 → 迁移 → 冒烟
-pnpm dev:pkgs & pnpm dev:server & pnpm dev:web   # 并行启动开发环境（web 9840）
+pnpm dev:pkgs & pnpm dev:stack & pnpm dev:web   # 并行启动：main 9989 + runtime 9990 + 工具侧 + web 9840
 pnpm dev:admin    # 管理后台另起（9845）
 ```
 

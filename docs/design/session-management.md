@@ -57,7 +57,7 @@ interface StoredSession {
 | `POST /session/list` | 列出**当前身份**（用户或管理员）的全部会话，含 `current` 标记；出参 `{ items, currentSessionId }` |
 | `POST /session/remove` | 按 `sessionId` 下线某台设备（**幂等**：已失效也返回成功） |
 
-- 实现落点（2026-11-13 核对）：`apps/server/src/modules/session/`（`session.controller.ts` /
+- 实现落点（2026-11-13 核对）：`apps/main/src/modules/session/`（`session.controller.ts` /
   `session.service.ts` / `session.module.ts`，无 repository）、存储 `packages/kits/src/session/session-store.ts`
   （`SessionStore`，由 `SessionStoreModule` 装配）；`SessionModule` import `AuthModule` + `AdminModule`
   以解析 `AnyAuthGuard` 的依赖。

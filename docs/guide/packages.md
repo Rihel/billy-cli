@@ -1,6 +1,6 @@
-# 共享包（shared / kits / http-client / sdk）
+# 共享包（shared / kits / db / web-runtime / tool-catalog / http-client / sdk）
 
-> 本篇讲 `@repo/shared`、`@repo/kits`、`@repo/http-client` 与 `@repo/sdk`；组件库 `@repo/ui` 见 [frontend.md](./frontend.md)。
+> 本篇讲 `@repo/shared`、`@repo/kits`、`@repo/db`、`@repo/web-runtime`、`@repo/tool-catalog`、`@repo/http-client` 与 `@repo/sdk`；组件库 `@repo/ui` 见 [frontend.md](./frontend.md)。
 
 ## @repo/shared — 前后端共享层
 
@@ -25,13 +25,40 @@ Zod schema 单一事实源，同时派生 TypeScript 类型（`*.schema.ts` 导�
 - `utils/`：nanoid / dayjs / md5 / tree / dict / file / zod 等通用工具；`file-kind.ts` 是**文件类型判定的唯一一份**
   （文本 / 图片 / 音视频 / PDF / Office 与 `previewKind`、`OfficeKind`），服务端据此下发、前端只 switch
 
+## @repo/db — 数据库事实源
+
+- **全部 TypeORM 实体 + 迁移**：`src/entities` / `src/migrations`，导出 `DB_ENTITIES` /
+  `DB_MIGRATIONS` 与具名实体；所有 app 共用同一份表结构。
+- server 组合根用 `entities: [...DB_ENTITIES]` 装配；gateway 只注册自己写的
+  `AiToolAuditEntity`，不整包注册。
+- `apps/main/src/database/entities/*` 与 `apps/agent-runtime/src/database/entities/*` 都只是兼容 re-export，
+  **新增字段一律去 `@repo/db` 改**。
+- 迁移 CLI 当前挂在 runtime 上（根脚本 `db:*` 指向 `@app/agent-runtime`）：
+  `pnpm --filter @repo/db db:migrate`（脚本先构建 `@repo/db`）；
+  `pnpm db:gen <Name>` 输出到 `packages/db/src/migrations/`。归属待搬到 main，见后端文档「已知缺口」。
+
+## @repo/web-runtime — 联网工具运行时
+
+- 出网 / SSRF 校验 / HTML→Markdown / 按行分页 / 反爬识别，runtime 与 tool-worker 共用。
+- 错误用 `WebToolError`（`reason` / `hint` / `retryable`），不依赖 Nest / DB；调用方翻成 `ToolOutcome`。
+- 出网只走 `http.ts`；业务工具不要自己 `fetch`。
+
+## @repo/tool-catalog — 工具定义唯一来源
+
+- `TOOL_DEFINITIONS` / `getToolDefinition` / `toToolManifest`：key / 标题 / 描述 / 参数 Zod / scope / executor。
+- runtime 的 `@ToolDecl`（经 `@repo/tool-catalog` 转成定义）与 gateway 的 `/v1/tools/list` 共用；
+  **不要再手写 manifest**。
+- DB `ai_tools` 只存 enabled / limits / config / secrets，不存 schema。
+- worker 只注册 executor key + 版本，不报 schema。
+
 ## @repo/kits — 后端通用能力封装
 
 纯能力集（**不持有任何业务实体**）。装配采用「**一个基础设施一个 NestJS module**」：
 每个模块用 `XxxModule.forRoot(options)` 显式接收自己的配置分片，该配置对象即模块自己的注入 bean
 （`DbConfig` / `RedisConfig` / `JwtConfig` / `PasswordConfig` / `StorageConfig` / `NotifyConfig` /
 `LarkConfig` / `KafkaConfig` / `WorkspaceConfig`），不再由应用聚合成一个中央 kits 模块。所有模块均 `@Global()`，
-装配进 `apps/server/src/root.module.ts` 的 `imports`（`src` 下 16 个能力目录 + `index.ts`）：
+装配进 `apps/main/src/root.module.ts` 与 `apps/agent-runtime/src/root.module.ts` 的 `imports`
+（`src` 下 16 个能力目录 + `index.ts`）：
 
 - `db/`：`create-db.ts`（PostgreSQL DataSource 工厂，实体由应用注入）、`db.ts`（`Db`：连接生命周期统一入口）、
   `db.service.ts`（`DbService`：**注入式数据操作统一入口**——四种分页 / 批量写入与删除 / 软删 /

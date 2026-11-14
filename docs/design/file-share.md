@@ -108,7 +108,7 @@
 
 ### 4.1 `file_shares` 表
 
-`apps/server/src/database/entities/file-share-entity.ts`，继承 `BaseEntity`（`id` / 时间戳 / `deleted_at`）。
+`apps/main/src/database/entities/file-share-entity.ts`，继承 `BaseEntity`（`id` / 时间戳 / `deleted_at`）。
 逻辑引用 `ai_files.id`，**不建物理外键**（全工程硬规则）。
 
 | 列 | 类型 | 说明 |
@@ -169,7 +169,7 @@ type ShareState = 'active' | 'expired' | 'revoked' | 'invalid'
 
 ## 5. 服务端接口
 
-新增模块 `apps/server/src/modules/share/`，路由前缀 `/share`。
+新增模块 `apps/main/src/modules/share/`，路由前缀 `/share`。
 全部 POST + `@HttpCode(200)`（本工程业务路由约定）。
 
 ### 5.1 `POST /share/create` —— 生成分享链接
@@ -260,12 +260,12 @@ type ShareState = 'active' | 'expired' | 'revoked' | 'invalid'
 
 | 项 | 现状 |
 | --- | --- |
-| 路由 | `apps/server/src/modules/share/share.controller.ts`（`@Controller('share')`）；`create` / `list` / `revoke` 挂 `AnyAuthGuard`，`meta` 公开但挂 `@RateLimit({ scope: 'share-meta', limit: 60 })`，`resolve` 只校验 `x-share-internal` |
+| 路由 | `apps/main/src/modules/share/share.controller.ts`（`@Controller('share')`）；`create` / `list` / `revoke` 挂 `AnyAuthGuard`，`meta` 公开但挂 `@RateLimit({ scope: 'share-meta', limit: 60 })`，`resolve` 只校验 `x-share-internal` |
 | 服务 | `share.service.ts`：`create` 校验文件存在 + 归属（管理员不限；前台用户只能动 `ai_files.user_id === 自己`），过期时间过去 → `ShareExpiryInvalidError`；`resolve` 用 `timingSafeEqual` 定长比较内部密钥，调 `ObjectStorage.getDownloadUrl({ key, expiresIn: 300 })`（**不传 filename**，下载名走默认） |
 | token | `share.token.ts`：`createShareToken()` / `hashShareToken()` / `shareState()`（纯函数，可单测） |
 | 错误类 | `share.errors.ts`：`ShareLinkInvalidError` / `ShareForbiddenError` / `ShareFileNotFoundError` / `ShareExpiryInvalidError` |
-| 实体 | `apps/server/src/database/entities/file-share-entity.ts`（`file_shares`） |
-| 测试 | `apps/server/test/share-token.test.ts`（token 生成 / 哈希 / 状态派生）；**没有** `share.test.ts`，服务层的越权 / 撤销幂等 / views 自增尚无自动化用例 |
+| 实体 | `apps/main/src/database/entities/file-share-entity.ts`（`file_shares`） |
+| 测试 | **当前缺失**：原 `share-token` 单测未随 2026-11-14 拆分迁进 `apps/main/test`（该目录现只有 5 个用例）；服务层的越权 / 撤销幂等 / views 自增仍无用例 |
 
 ### 5.7 错误码
 
@@ -312,7 +312,7 @@ apps/admin/src/app/
 ### 6.2 类型分发：`previewKind`
 
 判据纯函数放 `packages/shared/src/utils/file-kind.ts`，
-扩展名表从 `apps/server/src/modules/ai/core/tools/workspace.ts:129` 的 `TEXT_EXTENSIONS` 抽出来共用：
+扩展名表从 `apps/agent-runtime/src/modules/ai/core/tools/workspace.ts:129` 的 `TEXT_EXTENSIONS` 抽出来共用：
 
 ```ts
 export type PreviewKind =
@@ -539,7 +539,7 @@ token 192 bit 随机，猜不出来；`meta` 走限流（默认 60 次/分/IP）
 | server | `modules/share/{share.module,share.controller,share.service,share.repository,share.errors,share.token}.ts` | 新增模块（已落地；另拆出纯函数 `share.token.ts`） |
 | server | `app-config.ts` | `share` 命名空间 + `mapServerEnv` 映射（已落地） |
 | server | `root.module.ts` | 注册 `ShareModule`（已落地） |
-| server | `test/share-token.test.ts` | 已落地：token 生成 / 哈希稳定 / 状态派生；服务层（越权 / 撤销幂等 / views 自增）**自动化测试仍缺**（见 §10.1） |
+| main | 原 `test/share-token.test.ts` | 拆分前已落地（token 生成 / 哈希稳定 / 状态派生），**拆分后未迁入 main**；服务层（越权 / 撤销幂等 / views 自增）**自动化测试仍缺**（见 §10.1） |
 | sdk | `packages/sdk/src` | `client.share.create / list / revoke`（已落地） |
 | ui | `packages/ui/src/components/office-preview.tsx` | ~~从 admin 迁入~~ **未做**（分享页留在 admin，见 §6.4） |
 | ui | `packages/ui/src/components/preview-item.ts` | ~~抽 `PreviewDialogItem`~~ **未做**；`PreviewDialogItem` 仍在 admin |
@@ -557,11 +557,11 @@ token 192 bit 随机，猜不出来；`meta` 走限流（默认 60 次/分/IP）
 
 ### 10.1 单测
 
-> 现状（2026-11-13）：只有 `apps/server/test/share-token.test.ts`（token 生成 / 哈希 /
+> 现状（2026-11-14 核对）：原 share-token 单测**未随拆分迁入** `apps/main/test`（该目录现只有 5 个用例，见后端文档「已知缺口」）。拆分前它在（token 生成 / 哈希 /
 > 状态派生三条不变量）。下面「计划中」四项（撤销幂等、views 自增、越权 403、哈希查库）
 > **没有**自动化用例，属于待补项；实际验证只做过真实链路的 10.2。
 
-`apps/server/test/share-token.test.ts`（已验证）：
+拆分前验证过的 share-token 用例（现已不在仓库）：
 
 1. 状态派生：`active` / `expired`（`expires_at` 过去）/ `revoked`（`revoked_at` 非空）；
    `invalid`（查不到、文件软删）在 service 层折叠，纯函数不覆盖；

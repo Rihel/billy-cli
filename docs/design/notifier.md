@@ -22,7 +22,7 @@
 > - `Notifier` 构造器注入的是 **`FileClient` + `LarkNotifyClient` + `EmailClient` 三个客户端**
 >   （均为 `@Optional()`，未装配的通道返回 `{ ok:false, error: '通道未配置：<channel>' }`），
 >   源码里没有 dingtalk / wecom 目录；
-> - 配置来源是应用配置的 `notify` 命名空间（`apps/server/src/app-config.ts` 的 `mapServerEnv`），
+> - 配置来源是应用配置的 `notify` 命名空间（`apps/main/src/app-config.ts` 的 `mapServerEnv`），
 >   `NotificationModule.forRootAsync` 注入；环境变量对照见 §9。
 
 ## 1. 背景与选型
@@ -209,7 +209,7 @@ await lark.raw.im.message.create({ ... })
 | `ALERT_ENABLED` / `ALERT_EMAIL_TO` / `MONITOR_INSTANCE_ID` / `MONITOR_SAMPLE_RETENTION_DAYS` | `MonitorConfig`（`monitor` 命名空间） | 告警总开关与邮件默认收件人；**不属于** NotifyConfig |
 | （无环境变量） | `NotifyConfig.file` | 文件通道路径固定默认 `logs/alerts.log`，未暴露 env |
 
-- 说明：`NotifyConfig` 由 `apps/server/src/app-config.ts` 的 `notify` 命名空间组装
+- 说明：`NotifyConfig` 由 `apps/main/src/app-config.ts` 的 `notify` 命名空间组装
   （只映射 lark / email 两段），`root.module.ts` 用 `NotificationModule.forRootAsync` 注入；
 - 发送结果的落库（`alert_logs`）与静默 / 重试**不在 Notifier**：由监控模块的
   `AlertDeliveryService` 负责，见 `monitor-engine.md` §7.5 / §9.4。

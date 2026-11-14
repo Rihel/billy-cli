@@ -9,7 +9,7 @@
 - 先有业务对象与数据结构（`packages/shared/src/schema/`），再落实体——schema 是前后端数据结构，
   实体是落库形状，两者字段必须一致（双轨，见 `define-data-structure`）。
 - 表名复数（`users` / `admins` / `alert_logs`），实体类 `XxxEntity`，文件
-  `apps/server/src/database/entities/<name>-entity.ts`。
+  `packages/db/src/entities/<name>-entity.ts`（唯一来源；两个 app 的 `src/database/entities/*` 只是 re-export shim）。
 - 参考实现（照抄风格即可，不要自创）：`user-entity.ts`（唯一约束含软删）、`admin-entity.ts`。
 
 ## 2. 继承 BaseEntity，别重复造轮子

@@ -101,8 +101,8 @@
 沙箱原先"全禁网"，页面里连图表库都引不进来，模型只能手写 canvas / SVG —— 用户要的
 "写页面能用第三方库"就落不了地。现在改为**白名单放行**，清单是
 `packages/shared/src/utils/cdn.utils.ts` 的 `SANDBOX_CDN_HOSTS` —— 一份清单、四个消费方：
-`fence-spec.ts` 拼 CSP；`apps/server/test/ai-prompt-guardrails.test.ts` 校验提示词与它一致；
-`apps/server/test/ai-builtin-skills.test.ts` 校验 `html-page` 技能正文与它一致；
+`fence-spec.ts` 拼 CSP；`apps/agent-runtime/test/ai-prompt-guardrails.test.ts` 校验提示词与它一致；
+`apps/agent-runtime/test/ai-builtin-skills.test.ts` 校验 `html-page` 技能正文与它一致；
 `packages/ui/test/markdown-fences.test.ts` 校验 CSP 里的 host-source。
 
 | 顺位 | 主机 | 路径 |
@@ -181,7 +181,7 @@
 ## 5. 提示词侧
 
 围栏是"前端会渲染"的前提，模型得先知道有这些东西、以及每种的确切写法。写在
-`apps/server/src/modules/ai/core/prompts/templates/partials/requirements.eta`（所有 agent 共用的一段要求），
+`apps/agent-runtime/src/modules/ai/core/prompts/templates/partials/requirements.eta`（所有 agent 共用的一段要求），
 只加"什么时候用 + 写法要点 + 不许做什么"三类信息，不展开举例，避免提示词膨胀。
 
 `html` 围栏退役后，prompt 里的 `html` bullet 改为"要页面预览就写 `.html` 文件并用 `file-submit` 提交"；

@@ -5,23 +5,35 @@
 
 ## 运行时与接口
 
-模板自带一套能上生产的 AI 对话，代码在 `apps/server/src/modules/ai`（运行时 + 工具 + 连接器）+
-`ai-model`（供应商 / 模型配置）+ `ai-usage`（用量汇总）。后台有八个页面：
-**会话** / 模型 / 工具 / 技能库 / 记忆 / 文件管理 / 连接器 / 审计。它和「用 AI 写这个模板」是两件事：
-后者靠 Agent Skills（见下节），前者是产品里的 AI。
+模板自带一套能上生产的 AI 对话。2026-11-14 起按运行面 / 控制面拆成两个 app：
 
-接口在 `/agent` 前缀下（`AnyAuthGuard`：前台用户与管理员同一套；用量接口仅管理员）：
+- **agent loop 在 `apps/agent-runtime/src/modules/ai`**：agents / runtime（上下文、流式、恢复、
+  子 agent、用量采集）/ core（工具注册机与网关、插件、技能加载、提示词）/ tools（内建工具组）/
+  files / memory / skills / connectors / mastra（唯一能 import `@mastra/*` 的地方）/ monitoring；
+  另有 `ai-model`（只读模型配置）与 `ai-usage`。
+- **控制面与全部 CRUD 在 `apps/main/src/modules/ai-admin`**：conversation（会话 / 运行 / 时间线 / 用量）·
+  file（`/agent/file/*`）· tool（`/ai-tool/*`）· skill（`/ai-skill/*`）· connector（`/ai-connector/*`）·
+  memory（`/ai-memory/*`）；`ai-model`（供应商 / 模型配置）、`ai-usage`（用量汇总）也在 main。
+
+后台有八个页面：**会话** / 模型 / 工具 / 技能库 / 记忆 / 文件管理 / 连接器 / 审计。它和「用 AI 写这个模板」
+是两件事：后者靠 Agent Skills（见下节），前者是产品里的 AI。
+
+前端只连 main；接口在 `/agent` 前缀下（`AnyAuthGuard`：前台用户与管理员同一套；用量接口仅管理员）。
+main 校验身份后把请求转发给 runtime 的内部接口（`/internal/agent/*`，带内部令牌），
+runtime 的模型输出经 Kafka `agent.run.events` 回到 main 的 SSE：
 
 ```text
-POST /agent/chat/stream        建立流式对话（SSE）
-POST /agent/chat/resume        断线后用 offset 续传
-GET  /agent/run/stream         重连当前运行（EventSource 只能 GET）
+POST /agent/chat/stream        建立流式对话（SSE；main 转发 runtime，输出经 Kafka 回写）
+POST /agent/chat/resume        回答挂起中的一轮（ask-user-questions 之后续跑；不是断线续传）
+GET  /agent/run/stream         重连当前运行（EventSource 只能 GET；runtime 从 Redis 补发 offset）
 GET  /agent/run/:runId/stream  重连指定运行
-POST /agent/conversation/*     会话增删改查（含 file-access 切换文件权限）
-POST /agent/run/*              运行列表 / 详情 / 停止（审计与复盘）
-POST /agent/file/*             会话工作区文件列表 / 预览 / 后台跨会话列表与统计
-GET  /agent/file/workspace-content  按 cookie 读工作区文件（Range / 下载）
-POST /agent/usage/summary      用量汇总
+POST /agent/run/stop           停止某一轮（main 转发 runtime，由 runtime abort）
+POST /agent/conversation/*     会话增删改查（含 file-access 切换文件权限；main 直接读写库）
+POST /agent/run/list|detail    运行列表 / 详情（审计与复盘；main 读库）
+POST /agent/timeline/list      会话时间线（main 读库）
+POST /agent/file/*             会话工作区文件列表 / 预览 / 后台跨会话列表与统计（main）
+GET  /agent/file/workspace-content  按 cookie 读工作区文件（Range / 下载；main）
+POST /agent/usage/summary      用量汇总（main）
 ```
 
 **运行时能力**
@@ -39,20 +51,20 @@ POST /agent/usage/summary      用量汇总
   另有 3 个 Mastra 运行时自带、不进注册机的工具（`skill` / `skill_search` / `skill_read`），后台工具清单只读展示。
   agent 的授权清单支持选择器（`'*'`、`{ category }`、`{ connector }`），装配期按调用身份过滤作用域——
   没授权的工具**根本不会出现在模型面前**。
-- **技能库**（`modules/ai/skills`）：后台「AI → 技能库」在线写技能（类 Notion 的块编辑器写正文 +
+- **技能库**（库 / 落盘分裂在两个 app：`apps/main/src/modules/ai-admin/skill` 写库，`apps/agent-runtime/src/modules/ai/skills` 落盘并加载）：后台「AI → 技能库」在线写技能（类 Notion 的块编辑器写正文 +
   `references/` / `scripts/`），也能贴 skills.sh / GitHub 链接把技能**下载进库**；启停立即生效、不用重启。
   DB 是事实源，服务端落盘到 `~/.billy/skills`（`AGENT_SKILLS_LIBRARY_DIR`）供 Mastra 按需读；
   agent 也能用 `skill-save` 等工具自己建技能，写入入口只有管理员（技能内容会进入模型上下文）。
   模型侧提示词要求**先扫技能清单**：有匹配的就先 `skill` 加载再动手；设计 / 页面 / 报告类任务先加载设计类技能再写第一版，不要等用户点名。
-- **长期记忆**（`modules/ai/memory`）：`ai_memories` 按用户存画像 / 偏好 / 事实 / 约束；
+- **长期记忆**（`apps/agent-runtime/src/modules/ai/memory` 管读写与注入，`apps/main/src/modules/ai-admin/memory.controller.ts` 提供后台 `/ai-memory/*` 接口）：`ai_memories` 按用户存画像 / 偏好 / 事实 / 约束；
   agent 用 `memory-save` / `memory-search` / `memory-forget` 读写（身份取运行时信封，子 agent 不可用），
   后台「AI → 记忆」可查看 / 编辑 / 停用 / 删除。每轮按置顶 + 最近使用注入 system 消息
   （≤20 条、≤800 token），注入了哪些 id 写进 `request_snapshot`；短期 thread 落 Redis，重启 / 多副本不丢。
-- **文件管理**（`modules/ai/files`）：`ai_files` 记会话文件（入站附件引用 + AI 提交，按会话级 workspace 组织），
+- **文件管理**（HTTP 在 `apps/main/src/modules/ai-admin/file`，文件工具执行侧在 `apps/agent-runtime/src/modules/ai/files`）：`ai_files` 记会话文件（入站附件引用 + AI 提交，按会话级 workspace 组织），
   九个文件工具全部过同一套网关；对话右栏按会话看文件，后台「AI → 文件管理」跨会话列表 / 预览 / 分享
   （总量统计在控制台）；Office 前端直连对象存储，S3 / COS 需配 CORS。管理员还能给文件生成**免授权分享链接**
   （`/s/{token}`，有效期可选、明文 token 只显示一次、可撤销，OSS 地址不进浏览器）。
-- **连接器**（`modules/ai/connectors`）：外部能力不再写死进代码。后台「AI → 连接器」加一条实例
+- **连接器**（控制面在 `apps/main/src/modules/ai-admin/connector`，运行期同步与驱动在 `apps/agent-runtime/src/modules/ai/connectors`）：外部能力不再写死进代码。后台「AI → 连接器」加一条实例
   （地址 + 凭证），就产出一组受管工具，走的是和内建工具同一个网关（开关、限额、审计、脱敏一致）。
   内置 4 个型号：**PostgreSQL / MySQL**（查表结构与只读查询）、**Redis**（按前缀只读扫键 / 读字符串与哈希）、
   **飞书 CLI**（受限 `run` + CLI 内嵌技能文档，覆盖消息 / 文档 / 多维表格 / 日历等 20+ 业务域；
@@ -85,7 +97,7 @@ POST /agent/usage/summary      用量汇总
 不用改 core 的任何装配代码。
 
 ```ts
-// apps/server/src/modules/ai/agents/researcher.agent.ts
+// apps/agent-runtime/src/modules/ai/agents/researcher.agent.ts
 import { TOOL_KEYS } from '../core/tools/tool-keys.js'
 import type { AgentSpec } from './types.js'
 

@@ -11,7 +11,7 @@ description: 在 Billy 工程中使用服务端推送（SSE，命名统一为 st
 ## 核心要点
 
 - 能力组成：服务端 `StreamHub`（`kits/src/stream/`，跨实例广播，由 `StreamHubModule` 装配；底层 Redis pub/sub 在 `PubSubModule`）+
-  订阅路由 `StreamController`（`apps/server/src/modules/stream/stream.controller.ts`，
+  订阅路由 `StreamController`（`apps/main/src/modules/stream/stream.controller.ts`，
   `POST /sse/subscribe`）+ 客户端 `HttpStreamClient`（`@repo/http-client`，浏览器 / Node 双环境）+
   客户端入口 `ServerClient.createStream()`（`@repo/sdk`）+ React 生命周期 `useStream`
   （`@repo/ui`）+ 协议约定 `StreamEventSchema` / `StreamSubscribeSchema`（`@repo/shared`）。
@@ -21,7 +21,7 @@ description: 在 Billy 工程中使用服务端推送（SSE，命名统一为 st
   `admin:{adminId}` 由路由**强制注册**，客户端请求里的 `user:*` / `admin:*` 前缀一律忽略
   （防窃听他人频道）；**广播频道**（如 `admin:all`，见 `STREAM_ADMIN_BROADCAST_CHANNEL`）
   只能由服务端通过 `SSE_ROUTE_OPTIONS.broadcastChannels` 注入，且**只放行与当前身份同域**的项；
-  **业务频道默认拒绝**，需在 `modules/stream/stream.module.ts` 通过
+  **业务频道默认拒绝**，需在 `apps/main/src/modules/stream/stream.module.ts` 通过
   `SSE_ROUTE_OPTIONS` 注入 `allowChannel` 白名单校验；**派生频道**
   （`SSE_ROUTE_OPTIONS.derivedChannels(identity)`，如 AI 的 `ai:owner:{ownerId}`）由服务端按
   身份算出、客户端不传，因此不需要归属校验。

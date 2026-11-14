@@ -42,10 +42,10 @@
 ## 依据
 
 - `docs/design/ai-skill-library.md`（完整方案）
-- `apps/server/src/modules/ai/core/skills/{skill.loader,skill.materializer,skill.draft,skill.paths,skill.content}.ts`
-- `apps/server/src/modules/ai/skills/{skill.service,skill.repository,skill.source,skill.remote,skill.tools}.ts`
-- `apps/server/test/ai-skill-library.test.ts`、`apps/server/test/ai-skill-source.test.ts`
-- 核对命令：`pnpm --filter @app/server exec vitest run test/ai-skill-library.test.ts test/ai-skill-source.test.ts`；
+- `apps/agent-runtime/src/modules/ai/core/skills/{skill.loader,skill.materializer,skill.draft,skill.paths,skill.content}.ts`
+- `apps/agent-runtime/src/modules/ai/skills/{skill.service,skill.repository,skill.source,skill.remote,skill.tools}.ts`
+- `apps/agent-runtime/test/ai-skill-library.test.ts`、`apps/agent-runtime/test/ai-skill-source.test.ts`
+- 核对命令：`pnpm --filter @app/agent-runtime exec vitest run test/ai-skill-library.test.ts test/ai-skill-source.test.ts`；
   `PGPASSWORD=pg1234 psql -h localhost -U root -d billy-cli -c '\d ai_skills'`（本机口径）
 
 ## 失效信号

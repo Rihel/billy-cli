@@ -4,6 +4,8 @@
 > 关联：[ai-agent.md](ai-agent.md) §3.9（上下文策略）、§4.3/§4.4（当年的"记忆先不做"）、
 > `.agents/memory/stateless-scaling.md`（重启丢 thread 的已知缺口）。
 > 前置事实：本机 PG 已装 `vector 0.8.7` 与 `pg_trgm 1.6`（2026-11-14 实测）。
+> **2026-11-14 拆分后**：后台 `/ai-memory/*` 在 `apps/main/src/modules/ai-admin/memory.controller.ts`，
+> 读写与注入在 `apps/agent-runtime/src/modules/ai/memory`；表 `ai_memories` 在 `@repo/db`。
 
 ## 1. 结论先行
 

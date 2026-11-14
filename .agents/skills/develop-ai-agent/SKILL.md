@@ -1,7 +1,8 @@
 ---
 name: develop-ai-agent
 description: >-
-  在 Billy 工程（billy-cli）中开发 / 扩展 AI 能力（`apps/server/src/modules/ai`）：新增 agent、
+  在 Billy 工程（billy-cli）中开发 / 扩展 AI 能力（执行侧 `apps/agent-runtime/src/modules/ai`，
+  配置 CRUD 在 main 的 `apps/main/src/modules/ai-admin`）：新增 agent、
   新增工具（**工具组 + 方法即工具**：`@ToolGroup` + 方法级 `@ToolDecl` + 注册机 + 网关插件；规划 /
   子 agent / 取页）、工具配置入库与后台配置页、Mastra 适配器边界、
   新增技能（SkillLoader catalog）、写提示词（eta 模板）、改会话 / 运行 / 时间线落库与 SSE 流式协议、
@@ -189,10 +190,10 @@ async first(input: z.infer<typeof GreetInput>, ctx: ToolCallContext<z.infer<type
 ## 3. 验证与质量检查
 
 ```bash
-pnpm --filter @app/server test test/ai-plan-subagents.test.ts   # 规划 / 子 agent / 审计
-pnpm --filter @app/server test test/ai-tools-battery.test.ts    # 注册机标准测试集（每个工具）
-pnpm --filter @app/server test test/ai-mastra-contract.test.ts  # 适配器行为约定（升级 Mastra 先跑）
-pnpm --filter @app/server test                                  # 含真实 Redis 的流式 e2e
+pnpm --filter @app/agent-runtime test test/ai-plan-subagents.test.ts   # 规划 / 子 agent / 审计
+pnpm --filter @app/agent-runtime test test/ai-tools-battery.test.ts    # 注册机标准测试集（每个工具）
+pnpm --filter @app/agent-runtime test test/ai-mastra-contract.test.ts  # 适配器行为约定（升级 Mastra 先跑）
+pnpm --filter @app/agent-runtime test                                  # 含真实 Redis 的流式 e2e
 pnpm typecheck && pnpm test && pnpm check:ui && pnpm check:inject && pnpm check:mastra   # 全仓检查
 ```
 
@@ -232,5 +233,5 @@ pnpm typecheck && pnpm test && pnpm check:ui && pnpm check:inject && pnpm check:
   `[delegate]` / `[command]` / `[slow]` 标记），
   不需要任何外部密钥；新增能力优先给它加一个标记 + 一条端到端断言；
 - 改数据结构（`@repo/shared`）后**必须** `pnpm build:pkgs`，否则 `@repo/*` 仍解析 dist；
-- 迁移：`pnpm --filter @app/server db:generate <名字>` → 迁移文件首行改 `import type`，
+- 迁移：`pnpm db:gen <名字>`（根命令，由 `@repo/db` 执行）→ 迁移文件首行改 `import type`，
   并**人工检查部分索引（partial unique）的条件变化**（TypeORM 检测不到）。

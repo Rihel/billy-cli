@@ -91,7 +91,7 @@
     },
     {
       // 数据库迁移：独立进程里没有 logger，只能用 console
-      "files": ["apps/server/src/database/migrations/**"],
+      "files": ["packages/db/src/migrations/**"],
       "rules": {
         "no-console": "off",
       },

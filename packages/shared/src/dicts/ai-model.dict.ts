@@ -11,7 +11,7 @@ import { createDict } from '../utils'
  * 供应商类型 —— **决定用哪个"列模型"接口去拉明细**（见设计文档 §4.8.2）。
  *
  * 收录范围：**国内厂商**（名单与默认地址、是否支持 `GET {base}/models` 见
- * `apps/server/src/modules/ai-model/provider-adapters.ts` 的 `PROVIDER_ENDPOINTS` 表）。
+ * `apps/agent-runtime/src/modules/ai-model/provider-adapters.ts` 的 `PROVIDER_ENDPOINTS` 表）。
  * 刻意**不含 OpenAI / Anthropic / Google** 三家海外厂商。
  *
  * `openai-compatible` 不是某一家厂商，而是**协议形态兜底**：自建网关 / One-API / vLLM 等

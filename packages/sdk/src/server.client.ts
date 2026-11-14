@@ -153,7 +153,7 @@ export interface CreateStreamOptions {
   openWhenHidden?: boolean
 }
 
-/** SSE 订阅路由（与 apps/server 的 StreamController 对应） */
+/** SSE 订阅路由（与 apps/main 的 StreamController 对应） */
 const STREAM_SUBSCRIBE_PATH = '/sse/subscribe'
 
 /** 建流路由：响应体是 AI SDK v6 的 UI Message Stream（**不套业务信封**） */

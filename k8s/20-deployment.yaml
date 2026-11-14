@@ -1,11 +1,11 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: billy-server
+  name: billy-main
   namespace: billy
   labels:
-    app.kubernetes.io/name: billy-server
-    app.kubernetes.io/component: server
+    app.kubernetes.io/name: billy-main
+    app.kubernetes.io/component: main
 spec:
   # 至少 2 副本才有滚动更新可言；3 副本时任何时刻都能容忍 1 个实例不可用
   replicas: 3
@@ -23,12 +23,12 @@ spec:
   revisionHistoryLimit: 5
   selector:
     matchLabels:
-      app.kubernetes.io/name: billy-server
+      app.kubernetes.io/name: billy-main
   template:
     metadata:
       labels:
-        app.kubernetes.io/name: billy-server
-        app.kubernetes.io/component: server
+        app.kubernetes.io/name: billy-main
+        app.kubernetes.io/component: main
     spec:
       # 必须 > SHUTDOWN_TIMEOUT_MS(25s) + preStop(8s) = 33s，否则排空没走完就被 SIGKILL，
       # 在途请求照样被切断（只是从「立刻断」变成「33s 后断」）
@@ -42,21 +42,24 @@ spec:
                 topologyKey: kubernetes.io/hostname
                 labelSelector:
                   matchLabels:
-                    app.kubernetes.io/name: billy-server
+                    app.kubernetes.io/name: billy-main
       containers:
-        - name: server
-          # ← 替换为你的镜像地址与 tag；tag 变了 ConfigMap 的 APP_VERSION 也要同步
-          image: registry.example.com/billy-cli/server:v0.0.0
+        - name: main
+          # ← 替换为你的镜像地址与 tag；tag 变了 ConfigMap 的 billy-main.APP_VERSION 也要同步
+          image: registry.example.com/billy-cli/main:v0.0.0
           imagePullPolicy: IfNotPresent
           ports:
             - name: http
               containerPort: 9989
               protocol: TCP
           envFrom:
+            # 共享配置 → main 专属配置 → 共享 Secret；三份键不重复，顺序仅作语义表达
             - configMapRef:
-                name: billy-server
+                name: billy-shared
+            - configMapRef:
+                name: billy-main
             - secretRef:
-                name: billy-server
+                name: billy-app
           env:
             # 便于日志与排障关联到具体 Pod（GET /info 也会返回 hostname）
             - name: POD_NAME

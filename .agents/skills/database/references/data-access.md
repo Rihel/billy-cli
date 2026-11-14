@@ -2,7 +2,7 @@
 
 > 本文件是 `database` skill 的组成部分，由主 SKILL.md 引用。
 > 写 repository / 处理事务、软删、并发写入时必读。代码以
-> `apps/server/src/modules/{user,admin,monitor}/*repository.ts` 为参考。
+> `apps/main/src/modules/{user,admin,monitor}/*repository.ts` 为参考。
 
 ## 1. 分层职责（别越界）
 

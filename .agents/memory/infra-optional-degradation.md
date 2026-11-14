@@ -26,12 +26,12 @@
 
 - `packages/kits/src/storage/storage.config.ts`、`object-storage.ts`、
   `foundation/errors/infrastructure-errors.ts`（`ObjectStorageUnavailableError`）
-- `apps/server/src/modules/ai/tools/bash.tool.ts`
-- `apps/server/src/modules/ai/mastra/ask-user-questions.tool.ts`、`runtime/chat.service.ts`
+- `apps/agent-runtime/src/modules/ai/tools/bash.tool.ts`
+- `apps/agent-runtime/src/modules/ai/mastra/ask-user-questions.tool.ts`、`runtime/chat.service.ts`
 - 核对命令：
   - `grep -n "endpoint" packages/kits/src/storage/storage.config.ts`
-  - `grep -n "onApplicationBootstrap\|mkdir" packages/kits/src/storage/object-storage.ts apps/server/src/modules/ai/tools/bash.tool.ts`
-  - `pnpm --filter @repo/kits exec vitest run test/object-storage.test.ts && pnpm --filter @app/server exec vitest run test/ai-tools/bash.test.ts test/ai-tools/ask-user-questions.test.ts`
+  - `grep -n "onApplicationBootstrap\|mkdir" packages/kits/src/storage/object-storage.ts apps/agent-runtime/src/modules/ai/tools/bash.tool.ts`
+  - `pnpm --filter @repo/kits exec vitest run test/object-storage.test.ts && pnpm --filter @app/agent-runtime exec vitest run test/ai-tools/bash.test.ts test/ai-tools/ask-user-questions.test.ts`
 
 ## 失效信号
 

@@ -58,7 +58,7 @@
 | --- | --- | --- | --- |
 | [ai-context-compression](ai-context-compression.md) | 摘要压缩只在轮前；轮内另有工具结果预算（prepareStep + turn-budget），落库出参不动 | 必核 | 2026-10-29 |
 | [ai-agent-file-map](ai-agent-file-map.md) | AI 运行期关键链路的位置速查（上下文、时间线、记忆、技能、子 agent） | 抽核 | 2026-10-25 |
-| [ai-file-management](ai-file-management.md) | `ai_files` + 9 个文件工具 + 每会话 workspace；入站引用、`uploads/`/`files/` 约定、删会话清理；HTML 预览的 CDN 白名单 | 必核 | 2026-11-14 |
+| [ai-file-management](ai-file-management.md) | `ai_files` + 9 个文件工具 + 每会话 workspace；入站引用、`uploads/`/`files/` 约定、删会话清理；HTML 预览的 CDN 白名单与「必须用 Tailwind、`<style>` 补位」口径 | 必核 | 2026-11-14 |
 | [dev-session-log](dev-session-log.md) | 开发会话记录在 `~/.dsh/sessions/`，zstd + JSONL，可直接统计调用与用量 | 抽核 | 2026-10-25 |
 | [token-cost-model](token-cost-model.md) | skill 只占工具输出 1%–3%，成本主项是「调用次数 × 累积上下文」 | 免核 | 2026-10-25 |
 | [ai-chat-render-state](ai-chat-render-state.md) | 会话页按 part 类型增量归约成渲染单元；逐帧增量走 transient（后端不改），渲染期不再扫 parts | 抽核 | 2026-11-03 |
@@ -77,7 +77,17 @@
 | [agent-tool-authorization](agent-tool-authorization.md) | agent 授权是结构化选择器；作用域装配期过滤工具面；子 agent = 父授权 ∩ 全部 − 委派 − deny，并按 caller 过滤 | 必核 | 2026-11-14 |
 | [security-remediation-2026-11](security-remediation-2026-11.md) | 找回密码（hash + 邮件）/ 桶私有 + 预签名 / STS 收紧 / 邮箱部分唯一 / 锁看门狗 / 工具面 caller 过滤 的落点与核对命令 | 抽核 | 2026-11-14 |
 | [event-bus](event-bus.md) | kits 分三层：PubSub（传输）→ StreamHub（SSE）/ EventBus（`events:`）；at-most-once，只做失效通知 | 抽核 | 2026-11-10 |
-| [stateless-scaling](stateless-scaling.md) | 核心业务无状态可多副本；AI memory 已落 Redis（2026-11-14），飞书 CLI 状态在 Pod 本地、k8s 缺 `AGENT_MULTI_INSTANCE` | 抽核 | 2026-11-14 |
+| [stateless-scaling](stateless-scaling.md) | 核心业务无状态可多副本；AI memory 已落 Redis，飞书 CLI 状态在 Pod 本地，工作区仍在 Pod 本地盘 | 抽核 | 2026-11-14 |
+| [db-package](db-package.md) | `@repo/db` 统一实体/迁移；main / runtime 用 `DB_ENTITIES`，gateway 只注册审计实体；迁移 CLI 仍挂在 agent-runtime | 必核 | 2026-11-14 |
+| [tool-metadata-authority](tool-metadata-authority.md) | 定义唯一来源 `@repo/tool-catalog`；gateway 运行时目录；worker 只报能力；`ai_tools` 只存配置 | 必核 | 2026-11-14 |
+| [ai-tool-result-internal-api](ai-tool-result-internal-api.md) | read-tool-result 改 worker 直连 Redis/PG，旧取页 API 已删 | 必核 | 2026-11-14 |
+| [ai-file-internal-api](ai-file-internal-api.md) | file 已改 worker 直连 PG/OSS，旧 worker→控制面 API 已删除 | 必核 | 2026-11-14 |
+| [ai-skill-internal-api](ai-skill-internal-api.md) | skill-* 留在 agent-runtime 本地执行，worker→控制面旧 API 已删 | 必核 | 2026-11-14 |
+| [ai-memory-internal-api](ai-memory-internal-api.md) | memory 已改 worker 直连 DB；旧 worker→控制面内部 API 已删除 | 必核 | 2026-11-14 |
+| [tool-worker-executors](tool-worker-executors.md) | worker 执行器契约 + registry；已接 bash/web-fetch；web ref 经 Redis 亲和回同一 worker | 必核 | 2026-11-14 |
+| [ai-tool-gateway-control-plane](ai-tool-gateway-control-plane.md) | gateway 已闭环 bash：静态目录 / scope+validate+rate-limit / `ai_tool_audit`；runtime 远程在插件链前短路 | 必核 | 2026-11-14 |
+| [ai-subagent-subconversation](ai-subagent-subconversation.md) | 子 agent 建子会话：run/timeline 挂子会话，工作区/文件归根会话；列表只出根、删父级联；用量仍只算子 run 的父 | 必核 | 2026-11-14 |
+| [ai-scale-bottlenecks](ai-scale-bottlenecks.md) | 扛流量的六个卡点：512Mi 限额、无准入、工作区本地盘、Redis 缓冲无字节上限、DB 池 10/实例、时间线无分区 | 必核 | 2026-11-14 |
 | [workspace-runtime](workspace-runtime.md) | 执行环境三层（界面选 / 部署限 / 探测证）：默认沙箱、不可用兜底 local；出参 `runtime` 是唯一事实 | 必核 | 2026-11-12 |
 | [infra-optional-degradation](infra-optional-degradation.md) | 对象存储未配置/不可达不拦启动；`AGENT_COMMAND_WORK_DIR` 在启动与执行前自愈；问答取消走 `resumeStream({cancelled:true})` | 必核 | 2026-11-11 |
 | [ai-chat-scroll](ai-chat-scroll.md) | 进会话自己滑到底：占位让历史加载变成「第二次长高」，走的是 `resize` 不是 `initial`；非流式一律 instant | 抽核 | 2026-11-13 |
@@ -85,3 +95,5 @@
 | [engineering-toolchain](engineering-toolchain.md) | oxlint + oxfmt + lefthook：0/0 门禁、oxfmt 0.x 钉版本、Windows sh 转义的坑 | 必核 | 2026-11-13 |
 | [packages-layout](packages-layout.md) | 5 个包按运行时分层且单消费者；build 0.9s / typecheck 1.2s，拆包无收益，问题是依赖卫生与入口 | 抽核 | 2026-11-13 |
 | [app-start-standalone](app-start-standalone.md) | standalone 下 `next start` 不兼容；统一走 `scripts/start-standalone.ts`，本地端口 9840/9845 | 必核 | 2026-11-13 |
+| [kafka-agent-sse](kafka-agent-sse.md) | AI 会话输出经 Kafka 到 main SSE：topic / clientId / 事件结构 | 抽核 | 2026-11-14 |
+| [main-runtime-split](main-runtime-split.md) | 拆分后的边界：main 9989 控制面 + runtime 9990 执行面、内部接口、Kafka 回传、配置事件；6 条已知缺口 | 必核 | 2026-11-14 |

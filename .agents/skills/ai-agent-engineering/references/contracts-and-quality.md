@@ -10,7 +10,7 @@
 | 轨 | 文件 | 谁读它 |
 | --- | --- | --- |
 | 数据结构 | `packages/shared/src/schema/ai-tool.schema.ts`（对外模型 `:64-106`、入参 `:132-142`、限额 `:31-48`、秘钥字段 `:53-60`）；`ai-tool-event.schema.ts`（声明 `:31-42`、流 part `:81-85`、`TOOL_EVENT_PART_TYPE` `:47`） | 服务端与前端**共用同一份 zod** |
-| 服务端 | `api/ai-tool.controller.ts` + `api/ai-tool.service.ts` + `core/tools/tool.config.repository.ts`（`ai_tools` 表）+ `core/tools/tool.seed.service.ts`（启动期镜像） | 落库与读库 |
+| 服务端 | 配置 CRUD 在 main：`apps/main/src/modules/ai-admin/tool/{tool-admin.controller,tool-admin.service}.ts`；执行侧读库 / 启动期镜像在 runtime：`apps/agent-runtime/src/modules/ai/core/tools/{tool.config.repository,tool.seed.service}.ts` | 落库与读库 |
 | SDK | `packages/sdk/src/server.client.ts`：`aiTool.list/detail/update/reset`（`:532-541`）、`chatStreamUrl` / `resumeStreamUrl`（`:437-449`）、`stop`（`:380`） | admin 只经 SDK 调接口 |
 | 页面 | `apps/admin/src/app/main/ai/tools/**`（`page` / `tool-form` / `tool-columns` / `config-panels` / `tool-events` / `tool-payload`） | 管理员 |
 
@@ -104,7 +104,7 @@
 | --- | --- | --- |
 | 纯函数单测 | `test/ai-context` / `ai-usage` / `ai-title` / `ai-tool-paginate` / `ai-tool-settings` / `ai-prompt-guardrails` | 判定与归一化逻辑，不需要 DB / Redis / 模型 |
 | 规范工具单测 | `test/ai-tools/<key>.test.ts`（当前 7 个，与 `TOOL_KEYS` 一一对应） | 单个工具的入参 / 出参 / 拒绝路径 |
-| 标准测试集 | `pnpm --filter @app/server test test/ai-tools-battery.test.ts` | 结构不变量（`:48-130`、`:140-144`）+ **文件存在性**（`:132-138`） |
+| 标准测试集 | `pnpm --filter @app/agent-runtime test test/ai-tools-battery.test.ts` | 结构不变量（`:48-130`、`:140-144`）+ **文件存在性**（`:132-138`） |
 | 适配器行为约定 | `... test/ai-mastra-contract.test.ts` | 用例 ①durable 下 `toModelOutput` 生效（`:119-140`）/ ①-b 对照（`:141-150`）/ ②`beforeToolCall` 可短路（`:151-183`）/ ③未知工具不炸整轮（`:184-201`），全程 `durable: true`（`:104`） |
 | e2e | 4 份 `test/ai-*-e2e.test.ts` + `test/ai-durable-stream.test.ts` | 真实 DB + 真实 Redis + 离线 mock 模型的端到端链路 |
 | 前端渲染 | `apps/admin/test/*.test.ts`（9 份） | `renderToStaticMarkup` SSR 冒烟 + 纯函数（`tool-card.test.ts:2`）；**不装 jsdom / happy-dom**，不许为测试加 DOM 依赖 |
@@ -121,7 +121,7 @@
   `[todo-overwrite]`（`:70`）、`[todo-react]`（`:109`）、`[child]`（`:149`）、`[slow]`（`:188`，验证停止与补发）、
   `[events]`（`:192`，验证 `data-tool-event`）；无标记默认发 `plan-create`（`:333`），命名轮靠"请求里没有 tools"识别（`:398-399`）。
   mock 监听 `127.0.0.1` **随机端口**（`:505`），**不依赖任何外部密钥**（`:5`）；库相关 e2e 需要真实 `DB_URL` 与 Redis，
-  且 `apps/server/vitest.config.ts:12` 设了 `fileParallelism: false`（**串行**，别指望加并行提速）。
+  且 `apps/agent-runtime/vitest.config.ts:12` 设了 `fileParallelism: false`（**串行**，别指望加并行提速）。
 - **新增 AI 能力优先给 mock 加一个标记 + 一条 e2e** —— 这是"能力真的能从 UI 走到底"的唯一证据。
 
 ## 7. 可测性硬要求
@@ -137,7 +137,7 @@
   `specByKey`（`:185-189`）、`MemoryToolConfigSource`（`:34-60`）、`TEST_TOOL_ENV_CAPS`（`:71-80`）。
   要断言 `ctx.emit` 的事件**必须走 `gateway.invoke` + 假 writer**——`makeToolContext` 给的 `emit` 是 no-op（`:163-168`）。
 - **带装饰器的夹具只能放 `src/**`**：`test/**` 不做 TS 装饰器转换（`SyntaxError`）→ 放
-  `src/modules/ai/tools/*testkit*.ts`、**不进 `AGENT_TOOL_GROUPS`**，并靠 `apps/server/tsconfig.build.json:3`
+  `src/modules/ai/tools/*testkit*.ts`、**不进 `AGENT_TOOL_GROUPS`**，并靠 `apps/agent-runtime/tsconfig.build.json:3`
   的 `**/*testkit*.ts` 排除出构建产物（生产误引则构建失败，是刻意的哨兵）。
 - 时间与计数走端口（`ToolClock`，`tools.types.ts:81-84`；`TOOL_RATE_COUNTER`，`tool.ports.ts`），
   测试换内存实现即可，不必 sleep、不必连 Redis。
@@ -145,9 +145,9 @@
 ## 8. 质量检查与验收
 
 ```bash
-pnpm --filter @app/server test test/ai-tools-battery.test.ts     # 标准测试集（每个工具）
-pnpm --filter @app/server test test/ai-mastra-contract.test.ts   # 适配器行为约定（升级 Mastra 先跑）
-pnpm --filter @app/server test                                   # 含真实 Redis 的 e2e（串行）
+pnpm --filter @app/agent-runtime test test/ai-tools-battery.test.ts     # 标准测试集（每个工具）
+pnpm --filter @app/agent-runtime test test/ai-mastra-contract.test.ts   # 适配器行为约定（升级 Mastra 先跑）
+pnpm --filter @app/agent-runtime test                                   # 含真实 Redis 的 e2e（串行）
 pnpm build:pkgs                                                  # 改了 @repo/shared / @repo/sdk 后必跑
 pnpm verify && pnpm typecheck && pnpm test
 ```

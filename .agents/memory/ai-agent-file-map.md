@@ -1,8 +1,8 @@
 # AI 运行期关键链路地图
 
 > **查证优先级：抽核** —— 主体是路径与归属，结构调整不频繁。
-> 若 `apps/server/src/modules/ai` 近期有改动，先看一眼再采用：
-> `git log --oneline -5 -- apps/server/src/modules/ai`。
+> 若 `apps/agent-runtime/src/modules/ai` 近期有改动，先看一眼再采用：
+> `git log --oneline -5 -- apps/agent-runtime/src/modules/ai`。
 
 ## 结论
 

@@ -17,7 +17,7 @@
 
 ## 1. 加一个工具
 
-**位置**：`apps/server/src/modules/ai/tools/**`（具体工具）+ `core/tools/tool-keys.ts`（key 登记）。
+**位置**：`apps/agent-runtime/src/modules/ai/tools/**`（具体工具）+ `core/tools/tool-keys.ts`（key 登记）。
 现有工具组（一个组 = 一个类，组内一个 `@ToolDecl` 方法一个工具）：`tools/planner/planner.tools.ts`
 （4 个计划工具）、`tools/bash.tool.ts`、`tools/subagent.tool.ts`、`tools/read-tool-result.tool.ts`、
 `tools/web.tools.ts`（联网三件套，底层在 `tools/web/`：抓取 / 分页 / 搜索）、
@@ -37,7 +37,7 @@
    授权写 `agents/assistant.agent.ts` 的 `tools`，四种选择器可用：具体 key、`ALL_TOOLS`（`'*'`，
    展开成注册机里全部工具）、`{ category }`、`{ connector, tool? }`（见 `core/tools/tool-selector.ts`）；
 5. **测试**：`test/ai-tools/<key>.test.ts`，用 `specByKey(...)` 或 `buildToolSpecs(group)` 直接调 `exec`；
-   跑 `pnpm --filter @app/server test test/ai-tools-battery.test.ts`（会检查说明长度 60–380 字符等）。
+   跑 `pnpm --filter @app/agent-runtime test test/ai-tools-battery.test.ts`（会检查说明长度 60–380 字符等）。
 
 三条容易忘的：
 
@@ -63,7 +63,7 @@
 
 ### 2.2 运行时助手技能（教模型怎么做事）
 
-1. **放目录**：`apps/server/src/modules/ai/core/skills/catalog/<name>/SKILL.md`
+1. **放目录**：`apps/agent-runtime/src/modules/ai/core/skills/catalog/<name>/SKILL.md`
    （随包、**严格校验**，坏一个启动失败）；或放到 `AGENT_SKILLS_DIRS` 配的目录（默认 `~/.agents/skills`，
    坏一个只跳过并记 `ai.skills.invalid`）。
    > 内置技能目前有 `catalog/html-page`（写 HTML 页面：单文件 + CDN 三级兜底）；再加一个就是建一个目录 + `SKILL.md`。
@@ -124,7 +124,7 @@
   `ai_connectors.auth_state` 恢复、调用后在**实例级 Redis 锁**里 diff 写回
   （`lark-cli.home.ts` 的 `snapshotHome` / `restoreHome`，单文件 ≤256KB、总量 ≤2MB，
   跳过 `cache` / `tmp` / `logs`）；hydrate 失败时**不写回**，免得拿空 HOME 覆盖库里的授权；
-- CLI 二进制由**镜像预装**（`docker/Dockerfile.server`），驱动不做运行期安装；
+- CLI 二进制由**镜像预装**（`docker/Dockerfile.agent-runtime`），驱动不做运行期安装；
   没装时返回 `precheck-failed` 并给"镜像已装 / 本地怎么装"的提示；
 - 若 CLI 自带技能文档，优先让模型用它的 `skills list/read` 读（省系统提示词），
   不要把几十份 `SKILL.md` 一股脑塞进 `AGENTS_SKILLS_DIRS`。
@@ -169,13 +169,13 @@
 
 ```bash
 # 工具：注册机标准测试集（说明长度 60–380、默认值齐全、模板齐全）
-pnpm --filter @app/server test test/ai-tools-battery.test.ts
+pnpm --filter @app/agent-runtime test test/ai-tools-battery.test.ts
 
 # 技能：库 / 链接解析 / 加载器
-pnpm --filter @app/server exec vitest run test/ai-skill-library.test.ts test/ai-skill-source.test.ts test/ai-skills-loader.test.ts
+pnpm --filter @app/agent-runtime exec vitest run test/ai-skill-library.test.ts test/ai-skill-source.test.ts test/ai-skills-loader.test.ts
 
 # 连接器：catalog 默认值与驱动纯函数
-pnpm --filter @app/server test test/ai-connector.test.ts
+pnpm --filter @app/agent-runtime test test/ai-connector.test.ts
 
 # 结构与边界
 pnpm typecheck && pnpm check:ui && pnpm check:inject && pnpm check:mastra

@@ -4,6 +4,8 @@
 > 工作区免字节转发（`workspace-link`）与桶 CORS 自动配置，增量事实见 §16。
 > 关联：`ai-agent.md` §3.15（workspace / bash）、§3.16（附件）、`ai-agent-tool-engine.md`（工具组 DSL）、
 > `storage-access-policy.md`（key 命名空间）。
+> **2026-11-14 拆分后**：`/agent/file/*` 的 HTTP 接口在 `apps/main/src/modules/ai-admin/file`；
+> 文件工具执行侧在 `apps/agent-runtime/src/modules/ai/files`；共享的 `FileService` 在 `@repo/ai-data`。
 
 ## 0. 一句话
 
@@ -109,7 +111,7 @@ AI 的"交付物"可能是文件、网页链接、一段文本，也可能是**�
 
 ### 3.1 `ai_files` 表
 
-`apps/server/src/database/entities/ai-file-entity.ts`（新增，登记进 `root.module.ts` 的 `entities`）。
+`apps/main/src/database/entities/ai-file-entity.ts`（新增，登记进 `root.module.ts` 的 `entities`）。
 
 | 列 | 类型 | 说明 |
 | --- | --- | --- |
@@ -276,7 +278,7 @@ AGENT_COMMAND_WORK_DIR=~/.billy/workspaces        # 所有会话的根（历史�
 ### 5.3 路径安全
 
 统一纯函数 `resolveWorkspacePath({ caps, conversationId, path, allowMissing? })`
-（`apps/server/src/modules/ai/core/tools/workspace.ts`，`bash` 与文件工具共用）：
+（`apps/agent-runtime/src/modules/ai/core/tools/workspace.ts`，`bash` 与文件工具共用）：
 
 1. `resolve(root)` 与 `resolve(target)`；
 2. `relative(root, target)` 判是否在根内（天然处理 `..` 与 Windows 大小写差异）；
@@ -702,7 +704,7 @@ const WorkspaceFilesInput = z.object({
 
 ### 6.13 提示词纪律：文件操作只用文件工具
 
-写在 `apps/server/src/modules/ai/core/prompts/templates/partials/requirements.eta`（所有 agent 共用，
+写在 `apps/agent-runtime/src/modules/ai/core/prompts/templates/partials/requirements.eta`（所有 agent 共用，
 按 `read-file` 是否存在条件渲染）：
 
 ```eta
@@ -1070,7 +1072,7 @@ window.location.href = url
 ### 11.1 迁移
 
 1. 新建实体 `AiFileEntity`（`ai_files`），登记进 `root.module.ts` 的 `entities`；
-2. `pnpm --filter @app/server db:generate AiFiles`；
+2. `pnpm --filter @app/agent-runtime db:generate AiFiles`；
 3. 迁移文件首行改 `import type { MigrationInterface, QueryRunner }`（ESM 下 value import 跑不起来）；
 4. 检查部分索引条件（本期没有 partial unique，只有普通唯一键）；
 5. 执行迁移，`\d ai_files` 核对列 / 唯一键 / 索引。

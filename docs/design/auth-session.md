@@ -14,7 +14,7 @@
 > - 存储实现 `packages/kits/src/session/session-store.ts`（`SessionStore`），由
 >   `SessionStoreModule` 装配；依赖 `JwtConfig` + `RedisStore` + `IdGeneration`
 >   （`jti` 与 `sessionId` 都由它生成）；
-> - token 提取在 `apps/server/src/common/security/authentication.ts` 的 `extractToken`，
+> - token 提取在 `apps/main/src/common/security/authentication.ts` 的 `extractToken`，
 >   按身份体系分别读 `admin-access-token`（管理员）/ `access-token`（前台）两种 cookie，
 >   或 `Authorization: Bearer`；
 > - 三把 key 与「登录设备」接口见 `session-management.md`；双身份入口用 `AnyAuthGuard`

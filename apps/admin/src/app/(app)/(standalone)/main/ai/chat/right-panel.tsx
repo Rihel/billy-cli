@@ -536,7 +536,6 @@ function SubAgentTabContent({
 /** 一个子 run 的完整过程（元信息 + 与主对话同一套渲染） */
 function SubRunView({
   client,
-  conversationId,
   run,
 }: {
   client: ServerClient
@@ -544,9 +543,10 @@ function SubRunView({
   run: AgentRunModel
 }) {
   const query = useQuery({
-    queryKey: ['ai', 'timeline', conversationId, 'run', run.id],
+    queryKey: ['ai', 'timeline', run.conversationId, 'run', run.id],
     queryFn: async () => {
-      const items = await loadWholeTimeline(client, conversationId, run.id)
+      // 子 run 现在挂在子会话上：时间线要按 run 自己的 conversationId 拉
+      const items = await loadWholeTimeline(client, run.conversationId, run.id)
       // 只映射这一个子 run：主 run 的消息不该出现在子助手的 tab 里
       return toUIMessages(items, [run], { onlyRunIds: [run.id] })
     },

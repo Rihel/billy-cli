@@ -14,14 +14,14 @@
 > 以下正文是当时的方案设计记录，保留历史论证与取舍（其中 `@repo/kits/src/service-context.ts`、
 > `AppContext.markManual`、`main.ts` 里逐个 `addService` 的写法等均已不存在）。
 
-> 状态：待实现 · 日期：2026-09-06 · 影响包：`@repo/di`（核心）、`@repo/kits`（service-context）、`apps/server`（main.ts）
+> 状态：待实现 · 日期：2026-09-06 · 影响包：`@repo/di`（核心）、`@repo/kits`（service-context）、`apps/main`（main.ts）
 
 ## 1. 目标与问题
 
 现状痛点：新增一个业务 service/repository 需要**两处手动登记**：
 
 1. 业务类写 `@Injectable()` + 构造器 `@Inject(...)`（定义处）；
-2. `apps/server/src/main.ts` 手动 `import` 该类并 `.addService(X)` / `.addLifeCycleService(X)`（组合根处）。
+2. `apps/main/src/main.ts` 手动 `import` 该类并 `.addService(X)` / `.addLifeCycleService(X)`（组合根处）。
 
 漏登记只在运行时（依赖解析）报错，无编译期兜底，且随着模块增多 main.ts 膨胀。
 
@@ -34,7 +34,7 @@
 ### 2.1 装饰器只在 import 时执行（JS 语言硬约束）
 
 「自动识别」的前提是类被 import 过（装饰器执行时才登记）。幸运的是组合根
-`apps/server/src/main.ts` **已经 import 了全部业务类**（为了 addService 引用），
+`apps/main/src/main.ts` **已经 import 了全部业务类**（为了 addService 引用），
 因此登记表在 `ensureBeansAppended`（惰性首次 get/start）执行前必然完整——
 ESM import 静态提升保证。改造后这些 import 保留即可（甚至可收敛为模块级副作用入口）。
 
@@ -54,7 +54,7 @@ ESM import 静态提升保证。改造后这些 import 保留即可（甚至可�
 
 ### 2.3 分层边界：自动注册只服务业务层
 
-- 业务模块（`apps/server/src/modules/*`）：11 个 repository/service **100% 带 @Injectable**，
+- 业务模块（`apps/main/src/modules/*`）：11 个 repository/service **100% 带 @Injectable**，
   无条件装配、无 @Optional —— 适合自动注册；
 - kits 基建（16 个 @Injectable 类）：条件装配 + @Optional —— 显式注册（现状不变）；
 - `createServiceContext` 内部仍逐类 addService / addLifeCycleService（一处配置分片集中点，改动小）。
@@ -126,9 +126,9 @@ ctx.markManual(
 return ctx
 ```
 
-### 3.3 `apps/server` 改动（main.ts）
+### 3.3 `apps/main` 改动（main.ts）
 
-- 业务类 import 收敛为**模块级副作用入口**：新建 `apps/server/src/modules/index.ts`，
+- 业务类 import 收敛为**模块级副作用入口**：新建 `apps/main/src/modules/index.ts`，
   `export * from './xxx/index.js'` 聚合（同时触发各模块类装饰器登记）；
 - main.ts 改为 `import './modules/index.js'`（副作用，触发登记），删除 12 行逐个
   `addService`，在 `createServiceContext(...)` 链上追加 `.autoRegister()`；

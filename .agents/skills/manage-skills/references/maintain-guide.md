@@ -30,7 +30,7 @@ skill**，否则 agent 会按过时规范写代码。触发场景：
    迁到 references/。
 4. **校验**：重新 grep 确认无过时引用；frontmatter 不变则无需重新注册。
 
-> 历史实例：曾把 `apps/server/src/app.ts` 合并进 `main.ts`，当时同步更新了 foundation
+> 历史实例：曾把后端入口的 `src/app.ts` 合并进 `main.ts`（拆分前那个 app），当时同步更新了 foundation
 > 检查清单、develop-business-module 的路由挂载步骤与 README 结构图——「改代码 + 改 skill」
 > 必须一起完成，不要只改一半。
 

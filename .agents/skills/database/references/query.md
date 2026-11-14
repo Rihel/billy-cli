@@ -1,7 +1,7 @@
 # 查询：怎么写（database 引用文件）
 
 > 本文件是 `database` skill 的组成部分，由主 SKILL.md 引用。
-> 实现读接口 / 列表 / 详情 / 搜索时必读。代码以 `apps/server/src/modules/user/user.repository.ts`
+> 实现读接口 / 列表 / 详情 / 搜索时必读。代码以 `apps/main/src/modules/user/user.repository.ts`
 > 为参考实现（user / admin / monitor 的 repository 同构）。
 
 ## 1. 取 repository
@@ -69,7 +69,7 @@ if (keyword) {
 
 导入 / 同步 / 批处理别在循环里逐条写库。当前业务 repository 的写法是注入 `Db` + 调纯函数
 （`batchInsert` / `batchSave` / `batchUpsert` / `safeDelete` 等，见
-`apps/server/src/modules/user/user.repository.ts`）；kits 另提供 `DbService` 注入式统一入口
+`apps/main/src/modules/user/user.repository.ts`）；kits 另提供 `DbService` 注入式统一入口
 （与纯函数同名同参，自动带默认 manager 与操作人），需要时 `@Inject(DbService)` 直接用：
 
 ```ts

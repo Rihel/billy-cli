@@ -1,7 +1,7 @@
 # AI 记忆模块：短期 Redis + 长期 ai_memories
 
 > **查证优先级：抽核** —— 记的是路径与配置形状；改 `modules/ai/memory` 或
-> `mastra/agent-memory.ts` 后重核：`git log --oneline -5 -- apps/server/src/modules/ai/memory`。
+> `mastra/agent-memory.ts` 后重核：`git log --oneline -5 -- apps/agent-runtime/src/modules/ai/memory`。
 
 ## 结论
 
@@ -29,10 +29,10 @@
 ## 核对命令
 
 ```bash
-grep -n "memorySave\|memorySearch\|memoryForget" apps/server/src/modules/ai/core/tools/tool-keys.ts
-psql "$(sed -n 's/^DB_URL=//p' apps/server/.env)" -c "\d ai_memories"
-grep -n "RedisStore\|createInMemoryAgentMemory\|memoryHistoryOptions" apps/server/src/modules/ai/mastra/agent-memory.ts
-grep -n "04:17\|isThreadExpired" apps/server/src/modules/ai/memory/memory-thread-cleanup.service.ts
+grep -n "memorySave\|memorySearch\|memoryForget" apps/agent-runtime/src/modules/ai/core/tools/tool-keys.ts
+psql "$(sed -n 's/^DB_URL=//p' apps/main/.env)" -c "\d ai_memories"
+grep -n "RedisStore\|createInMemoryAgentMemory\|memoryHistoryOptions" apps/agent-runtime/src/modules/ai/mastra/agent-memory.ts
+grep -n "04:17\|isThreadExpired" apps/agent-runtime/src/modules/ai/memory/memory-thread-cleanup.service.ts
 ```
 
 ## 失效信号

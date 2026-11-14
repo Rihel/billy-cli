@@ -1,0 +1,23 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: billy-agent-runtime
+  namespace: billy
+  labels:
+    app.kubernetes.io/name: billy-agent-runtime
+    app.kubernetes.io/component: agent-runtime
+spec:
+  # 内部服务：只给 billy-main 通过 AGENT_RUNTIME_URL 调用，不接公网 Ingress。
+  # 没有 Ingress / NodePort；集群内地址为
+  #   http://billy-agent-runtime.billy.svc.cluster.local:9990
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: billy-agent-runtime
+  ports:
+    - name: http
+      port: 9990
+      targetPort: http # 对应容器端口名 http(9990)
+      protocol: TCP
+      appProtocol: http
+  # 内部调用无需会话保持；跨实例的 run 恢复由 Redis 租约保证
+  sessionAffinity: None
