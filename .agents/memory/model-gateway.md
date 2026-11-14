@@ -27,13 +27,12 @@
 
 ## 未做（别再误以为已有）
 
-- `model_gateway_usage` 流水 / 成本 / key 池 / 配额（P4.3）；
-- `anthropic` 适配器（P4.3）；
-- main 的「同步 / 连通性测试」仍在 main 直连供应商（P4.2b 迁网关）；
-- k8s 清单（目前只有 Dockerfile + compose）；
-- admin 页面的 key / 价格输入 / 用量成本 UI（key CRUD 与价格字段 API 已有）；
+- admin 页面：key 池 CRUD、模型价格输入、网关用量/成本页；
+- `model_gateway_usage` 的读取 API 与 SDK（目前只有表 + 写入）；
+- provider key 的 SDK 方法（main 的 CRUD API 已有）；
 - key 加密（仍明文入库）；
-- 生图（P4.4）与 k8s 清单。
+- 生图（P4.4：images/jobs/产物落 OSS + ai_files）；
+- k8s 清单（目前只有 Dockerfile + compose）。
 
 ## 失效信号
 
