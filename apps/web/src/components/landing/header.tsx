@@ -5,7 +5,8 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { LogOutIcon, Menu, X, ArrowRight, TerminalSquare } from 'lucide-react'
 import { Button } from '@repo/ui'
-import { AppName, Pages, LandingAnchors, AdminUrl, formatStorageUrl } from '@/lib/constants'
+import { useStorageUrl } from '@repo/ui'
+import { AppName, Pages, LandingAnchors, AdminUrl } from '@/lib/constants'
 import { removeToken } from '@/lib/server-client'
 import { logoutAction } from '@/actions/auth.actions'
 import { ThemeToggle } from '@/components/ThemeToggle'
@@ -35,6 +36,8 @@ export function Header({ user, authEnabled }: HeaderProps) {
 
   const displayName = user?.realName || user?.email || ''
   const initial = displayName.charAt(0).toUpperCase() || 'U'
+  // 桶私有：头像 key 走短时预签名
+  const avatarUrl = useStorageUrl(user?.avatar)
 
   const logout = async () => {
     await logoutAction()
@@ -84,12 +87,8 @@ export function Header({ user, authEnabled }: HeaderProps) {
                 className="flex items-center gap-2 rounded-md px-2 py-1 transition-colors hover:bg-muted"
                 title={`进入个人中心（${displayName}）`}
               >
-                {user.avatar ? (
-                  <img
-                    src={formatStorageUrl(user.avatar)}
-                    alt=""
-                    className="size-8 rounded-full object-cover"
-                  />
+                {avatarUrl ? (
+                  <img src={avatarUrl} alt="" className="size-8 rounded-full object-cover" />
                 ) : (
                   <span className="grid size-8 place-items-center rounded-full bg-brand/10 text-sm font-medium text-brand">
                     {initial}
@@ -162,9 +161,9 @@ export function Header({ user, authEnabled }: HeaderProps) {
           {user ? (
             <div className="mt-3 flex items-center gap-2 border-t border-border/80 pt-3">
               <div className="flex min-w-0 flex-1 items-center gap-2">
-                {user.avatar ? (
+                {avatarUrl ? (
                   <img
-                    src={formatStorageUrl(user.avatar)}
+                    src={avatarUrl}
                     alt=""
                     className="size-8 shrink-0 rounded-full object-cover"
                   />

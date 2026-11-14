@@ -5,7 +5,7 @@ import type { CSSProperties } from 'react'
 import { cn } from '#lib/utils'
 import { Button } from '#components/ui/button'
 import { DownloadIcon, FileIcon, LinkIcon } from 'lucide-react'
-import { useStorageAdapter } from '#components/storage-provider'
+import { useStorageUrl } from '#components/use-storage-url'
 
 export type StorageFileValue = {
   key: string
@@ -24,8 +24,8 @@ const getExtension = (file: StorageFileValue) => file.name.split('.').at(-1)?.to
 
 /** 文件预览：图片 / 视频 / 音频 / 文档内嵌预览，其余类型提供打开与下载 */
 export function FilePreview({ file, height = 560, className }: FilePreviewProps) {
-  const { resolveUrl } = useStorageAdapter()
-  const url = resolveUrl(file.key)
+  // 桶私有：key 要换成短时预签名 URL（绝对地址则原样使用）
+  const url = useStorageUrl(file.key)
   const extension = getExtension(file)
   const isImage =
     file.type?.startsWith('image/') ||
@@ -39,6 +39,17 @@ export function FilePreview({ file, height = 560, className }: FilePreviewProps)
     file.type === 'application/pdf' ||
     file.type?.startsWith('text/') ||
     ['csv', 'json', 'md', 'pdf', 'txt'].includes(extension)
+
+  if (!url) {
+    return (
+      <div
+        className={cn('flex items-center justify-center text-xs text-muted-foreground', className)}
+        style={{ minHeight: height }}
+      >
+        正在加载预览…
+      </div>
+    )
+  }
 
   if (isImage) {
     return (

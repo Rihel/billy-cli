@@ -44,12 +44,17 @@ OBJECT_STORAGE_ENDPOINT=http://localhost:9000   # MinIO 本地
 | --- | --- | --- | --- |
 | `/storage/get-presigned-url` | `GetStorageUploadPresignedUrlSchema` | key 被**改写**为 `user/{userId}/{basename}` | key 原样 |
 | `/storage/get-download-url` | `GetStorageDownloadUrlSchema` | 仅限 `user/{userId}/` 前缀，越界 **403** | key 原样 |
-| `/storage/get-temporary-credentials` | 无入参 | **拒绝（403）**，仅管理员 | `AssumeRole` 临时凭证 |
+| `/storage/get-temporary-credentials` | 无入参 | **拒绝（403）**，仅管理员 | `AssumeRole` 临时凭证；无身份（`AUTH_ENABLED=false`）也拒绝 |
 
 key 收敛是纯函数（`modules/storage/storage-key.ts`，可单测）：只取最后一段 + 白名单字符，
 杜绝目录穿越与伪造他人前缀；身份从 `requestContext` 读（双身份下必有一个缺失，
 **不要**用会抛错的 `currentUserId()` / `currentAdminId()`）。设计说明见
 `docs/design/storage-access-policy.md`。
+
+**桶默认私有（2026-11-14 起）**：`providers/s3.ts` 启动时不再打公开读策略，并主动删除历史遗留的
+公开读策略；预览 / 下载必须用 `getDownloadUrl` 拿**短时预签名 URL**（默认 1 小时）。
+`formatStorageUrl` 只能用于绝对 URL（外链 / 已签名地址）兼容，**不要再拿它拼对象 key**；
+组件侧用 `useStorageUrl`（`@repo/ui`）或 `StorageClientProvider` 注入的 `getViewUrl`。
 
 ## 4. SDK
 

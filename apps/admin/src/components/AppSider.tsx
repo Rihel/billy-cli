@@ -1,7 +1,7 @@
 'use client'
 
 import { useRouter } from 'next/navigation'
-import { AppName, formatStorageUrl } from '@/lib/constants'
+import { AppName } from '@/lib/constants'
 import { useAuthStore } from '@/stores/auth.store'
 import { logoutAction } from '@/actions/auth.actions'
 import { removeToken } from '@/lib/server-client'
@@ -19,6 +19,7 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
   UserAvatar,
+  useStorageUrl,
 } from '@repo/ui'
 import { LogOutIcon, TerminalSquareIcon, UserRoundIcon } from 'lucide-react'
 import { AppMenu } from './AppMenu'
@@ -28,6 +29,8 @@ export type AppSiderProps = Partial<{}>
 export const AppSider = (_props: AppSiderProps) => {
   const { adminInfo, authEnabled, clear } = useAuthStore()
   const router = useRouter()
+  // 桶私有：头像 key 走短时预签名
+  const avatarUrl = useStorageUrl(adminInfo?.avatar)
 
   const exit = async () => {
     // 先清本地状态，避免残留渲染
@@ -74,7 +77,7 @@ export const AppSider = (_props: AppSiderProps) => {
                   render={
                     <SidebarMenuButton size="lg" className="py-2">
                       <UserAvatar
-                        src={adminInfo?.avatar ? formatStorageUrl(adminInfo.avatar) : null}
+                        src={avatarUrl ?? null}
                         name={displayName}
                         shape="rounded"
                         className="shrink-0"

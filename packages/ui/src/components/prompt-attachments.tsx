@@ -1,9 +1,10 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { FileTextIcon, XIcon } from 'lucide-react'
 
 import { usePromptInputAttachments } from '#components/ai-elements/prompt-input.tsx'
+import { useOptionalStorageAdapter } from '#components/storage-provider.tsx'
 import { cn } from '#lib/utils.ts'
 
 /** 一条附件的展示画像（表现层只认这几个字段，不认识业务模型） */
@@ -16,8 +17,13 @@ export interface PromptAttachmentItem {
   bytes?: number
   /** "内容会读给模型" / "按文件传给模型" —— 两类行为不同，界面上别让用户猜 */
   behavior?: string
-  /** 可选的预览地址（图片缩略图用） */
+  /** 可选的预览地址（已发送附件由页面预先签好；本地未上传的用 blob） */
   previewUrl?: string
+  /**
+   * 对象存储 key（已发送附件）：没有 `previewUrl` 时，缩略图按它向服务端要**短时预签名**地址
+   * （桶私有后公开直链已不可用）。
+   */
+  storageKey?: string
 }
 
 /** 人类可读的文件大小（1024 进制，保留一位小数） */
@@ -56,6 +62,8 @@ export const PromptAttachmentChip = ({
   onClick,
   className,
 }: PromptAttachmentChipProps) => {
+  // 没有 StorageProvider 也能渲染（单测 / 嵌入场景）；有才按 storageKey 现签预览地址
+  const adapter = useOptionalStorageAdapter()
   const image = isImageMedia(item.filename, item.mediaType)
   const clickable = Boolean(onClick)
   const Wrapper = clickable ? 'button' : 'div'
@@ -66,7 +74,29 @@ export const PromptAttachmentChip = ({
    * 用布尔会把新地址也永久判死。地址变了就重新试一次。
    */
   const [failedUrl, setFailedUrl] = useState<string | null>(null)
-  const showImage = image && Boolean(item.previewUrl) && failedUrl !== item.previewUrl
+  /** `storageKey` 换来的短时预签名地址（桶私有后已发送附件没有公开直链） */
+  const [resolvedUrl, setResolvedUrl] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (item.previewUrl || !item.storageKey || !adapter?.getViewUrl) return
+    let cancelled = false
+    void adapter
+      .getViewUrl(item.storageKey)
+      .then((url) => {
+        if (!cancelled) setResolvedUrl(url)
+      })
+      .catch(() => {
+        // 签不到地址就退回文件图标（文件名 / 大小仍然可见）
+      })
+    return () => {
+      cancelled = true
+    }
+    // 只按标识触发：回调函数每次渲染都是新的，放进来会无限重签
+    // oxlint-disable-next-line react-hooks/exhaustive-deps
+  }, [item.key, item.storageKey])
+
+  const previewSrc = item.previewUrl ?? resolvedUrl
+  const showImage = image && Boolean(previewSrc) && failedUrl !== previewSrc
 
   return (
     <Wrapper
@@ -85,10 +115,10 @@ export const PromptAttachmentChip = ({
         <img
           alt={item.filename}
           className="size-10 rounded object-cover"
-          src={item.previewUrl}
+          src={previewSrc ?? undefined}
           // 地址失效（桶配错 / 预签名过期 / 对象被删）时退回文件卡，
           // 而不是给用户一个破图 —— 文件名与大小仍然看得见
-          onError={() => setFailedUrl(item.previewUrl ?? null)}
+          onError={() => setFailedUrl(previewSrc ?? null)}
         />
       ) : (
         <span className="flex size-10 items-center justify-center rounded bg-background">
@@ -153,7 +183,9 @@ export const PromptAttachments = ({
    */
   const previewable = onPreviewImage
     ? items.filter(
-        (item) => Boolean(item.previewUrl) && isImageMedia(item.filename, item.mediaType),
+        (item) =>
+          Boolean(item.previewUrl || item.storageKey) &&
+          isImageMedia(item.filename, item.mediaType),
       )
     : []
 

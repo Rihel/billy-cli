@@ -5,7 +5,7 @@ import { useRef } from 'react'
 import { cn } from '#lib/utils'
 import { Button } from '#components/ui/button'
 import { ImagePlusIcon } from 'lucide-react'
-import { useStorageAdapter } from '#components/storage-provider'
+import { useStorageUrl } from '#components/use-storage-url'
 import { useStorage } from '#components/use-storage'
 import type { StorageFileItem } from '#components/use-storage'
 
@@ -19,7 +19,8 @@ export type ImageUploadProps = {
 
 /** 单图上传：预览 + 重新选择（原生 file input + 预签名直传） */
 export function ImageUpload({ value, sizeLimit, disabled, className, onChange }: ImageUploadProps) {
-  const { resolveUrl } = useStorageAdapter()
+  // 桶私有：预览图走短时预签名（绝对地址则原样使用）
+  const previewUrl = useStorageUrl(value)
   const inputRef = useRef<HTMLInputElement>(null)
   const { uploadFile } = useStorage({
     singleFile: true,
@@ -52,11 +53,22 @@ export function ImageUpload({ value, sizeLimit, disabled, className, onChange }:
       />
       {value ? (
         <>
-          <img
-            src={resolveUrl(value)}
-            alt="预览图"
-            className={cn(rootClassName, 'rounded-lg bg-surface-1 object-cover')}
-          />
+          {previewUrl ? (
+            <img
+              src={previewUrl}
+              alt="预览图"
+              className={cn(rootClassName, 'rounded-lg bg-surface-1 object-cover')}
+            />
+          ) : (
+            <div
+              className={cn(
+                rootClassName,
+                'flex items-center justify-center rounded-lg bg-surface-1 text-xs text-muted-foreground',
+              )}
+            >
+              加载中…
+            </div>
+          )}
           <Button
             variant="link"
             size="sm"

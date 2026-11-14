@@ -1,6 +1,6 @@
 'use client'
 
-import { formatStorageUrl } from '@/lib/constants'
+import { StorageAvatar } from '@/components/storage-avatar'
 import { useServerClient } from '@/lib/server-client'
 import { useForm } from '@tanstack/react-form'
 import { useMutation, useQuery } from '@tanstack/react-query'
@@ -22,7 +22,6 @@ import {
   Tag,
   toastError,
   toastSuccess,
-  UserAvatar,
   useDisclosure,
 } from '@repo/ui'
 import type { DataTableColumnDef } from '@repo/ui'
@@ -150,8 +149,8 @@ export default function UsersPage() {
       accessorKey: 'avatar',
       meta: { width: 72 },
       cell: ({ row }) => (
-        <UserAvatar
-          src={row.original.avatar ? formatStorageUrl(row.original.avatar) : null}
+        <StorageAvatar
+          src={row.original.avatar}
           name={row.original.realName || row.original.email}
         />
       ),

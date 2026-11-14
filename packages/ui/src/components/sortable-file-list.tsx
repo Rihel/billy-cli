@@ -24,7 +24,7 @@ import { Button } from '#components/ui/button'
 import { Tooltip, TooltipContent, TooltipTrigger } from '#components/ui/tooltip'
 import { DownloadIcon, EyeIcon, FileIcon, GripVerticalIcon, Trash2Icon } from 'lucide-react'
 import type { StorageFileValue } from '#components/file-preview'
-import { useStorageAdapter } from '#components/storage-provider'
+import { useStorageUrl } from '#components/use-storage-url'
 
 export type SortableFileListProps = {
   files: StorageFileValue[]
@@ -51,7 +51,7 @@ const SortableFileItem = ({
   onPreview,
   onRemove,
 }: SortableFileItemProps) => {
-  const { resolveUrl } = useStorageAdapter()
+  const viewUrl = useStorageUrl(file.key)
   const {
     attributes,
     listeners,
@@ -132,7 +132,7 @@ const SortableFileItem = ({
                 aria-label={`下载 ${file.name}`}
                 render={
                   <a
-                    href={resolveUrl(file.key)}
+                    href={viewUrl}
                     target="_blank"
                     download={file.name}
                     aria-label={`下载 ${file.name}`}

@@ -13,7 +13,6 @@ import {
   DisplayValue,
   Input,
   RefreshButton,
-  useStorageAdapter,
   toastError,
 } from '@repo/ui'
 import type { DataTableColumnDef, DateRangeValue } from '@repo/ui'
@@ -41,7 +40,6 @@ const formatBytes = (bytes: number): string => formatFileSize(bytes)
 
 export default function AiFilesPage() {
   const client = useServerClient()
-  const { resolveUrl } = useStorageAdapter()
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(PAGE_SIZE)
   const [keyword, setKeyword] = useState<string | undefined>()
@@ -88,7 +86,18 @@ export default function AiFilesPage() {
         badge: file.source === 'user' ? '用户上传' : 'AI 生成',
         mediaType: file.mediaType,
         bytes: file.bytes,
-        url: resolveUrl(file.key),
+        // 桶私有：预览地址按需签短时预签名（文本走 textQuery，Office 走 loadBytes）
+        url: null,
+        loadUrl:
+          isPreviewTextItem(file) || officeKind(file)
+            ? undefined
+            : async () => {
+                const { url } = await client.storage.getDownloadUrl({
+                  key: file.key,
+                  filename: file.filename,
+                })
+                return url
+              },
         loadBytes: officeKind(file)
           ? async () => {
               const { url } = await client.storage.getDownloadUrl({
@@ -101,7 +110,7 @@ export default function AiFilesPage() {
             }
           : undefined,
       })),
-    [files, resolveUrl, client],
+    [files, client],
   )
   const previewIndex = previewId ? previewItems.findIndex((item) => item.id === previewId) : -1
   const previewItem = previewIndex >= 0 ? previewItems[previewIndex] : null

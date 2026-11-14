@@ -11,7 +11,7 @@
 | --- | --- | --- | --- |
 | `POST /storage/get-presigned-url` | key 原样 | **改写**为 `user/{userId}/{basename}` | key 原样 |
 | `POST /storage/get-download-url` | key 原样 | **必须**在 `user/{userId}/` 前缀下，否则 403 | key 原样 |
-| `POST /storage/get-temporary-credentials` | 允许 | **拒绝**（仍管理员专用） | 允许（用占位 session 名） |
+| `POST /storage/get-temporary-credentials` | 允许 | **拒绝**（管理员专用） | **拒绝**（2026-11-14 整改） |
 
 要点：
 
@@ -19,19 +19,22 @@
    （`packages/ui/src/components/use-storage.ts`），它不知道自己的 userId；而响应
    `StoragePresignedUrlModel` 已经带 `key`，且前端**用的是响应里的 key**（`key: presigned.key`）—— 所以服务端可以安全地
    改写并把最终 key 回给前端落库。
-2. **下载是「校验」而不是「改写」**：下载必须命中已存在的对象，改写会指向不存在的 key，
+2. **下载是「校验」而不是「改写」**：下载必须命中已存在的 key，改写会指向不存在的对象，
    故只能拒绝越界的 key（403）。
 3. **STS 不放开**：`getTemporaryCredentials` 走的是 `AssumeRole`（`providers/s3.ts`），
    返回的是**整桶权限**的临时凭证，与「前缀约束」不是一回事；发给 C 端用户等于把整个桶交出去。
    要放开必须先在 provider 侧支持按前缀限定 policy —— 本轮不做（列入演进）。
-4. `AUTH_ENABLED=false`（自用 / 外部认证）时没有身份概念，行为与管理员一致（key 原样），
-   与既有姿态保持一致；顺带修掉 `currentAdminId()` 在该模式下抛错导致 STS 500 的问题
-   （改用可空的 `requestContext.get('adminId')`）。
+4. `AUTH_ENABLED=false`（自用 / 外部认证）时没有身份概念：上传 / 下载的 key 仍按「无前缀约束」处理，
+   但 **STS 不再放行**（2026-11-14 评审 P1-6）—— 否则空鉴权部署一旦对公网可达，
+   任何人都能拿到桶级临时凭证。需要直传大文件的场景请配置 `AUTH_ENABLED=true` 并用管理员身份调用。
+5. **桶默认私有（2026-11-14 评审 P0-2）**：`providers/s3.ts` 启动时不再打 `Principal:*` 公开读策略，
+   并会主动删掉历史遗留的公开读策略。预览 / 下载统一走**短时预签名 URL**
+   （`getDownloadUrl`，默认 1 小时），前端组件通过 `useStorageUrl` / `StorageClientProvider.getViewUrl`
+   现签地址；`formatStorageUrl` 只保留给绝对 URL（外链 / 已签名地址）兼容。
 
-实现核对（2026-11-13）：三条路由都在 `apps/server/src/modules/storage/storage.controller.ts`，
-控制器级挂 `AnyAuthGuard`；STS 的判定条件是「有 `userId` 且无 `adminId` → 抛
-`StorageAdminOnlyError`」，无身份时以占位 session 名 `'anonymous'` 调
-`ObjectStorage.getTemporaryCredentials({ userId })`。错误码以 `AppErrorCodes` 为准：
+实现核对（2026-11-14）：三条路由都在 `apps/server/src/modules/storage/storage.controller.ts`，
+控制器级挂 `AnyAuthGuard`；STS 的判定条件是「没有 `adminId` → 抛 `StorageAdminOnlyError`」
+（前台用户与无身份一并拒绝）。错误码以 `AppErrorCodes` 为准：
 `StorageKeyInvalid`=3201（400）、`StorageKeyForbidden`=3202（403）、`StorageAdminOnly`=3203。
 
 ## 2. key 规则（纯函数）

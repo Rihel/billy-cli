@@ -3,7 +3,7 @@
 import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import type { AgentFileModel, AgentFileNode, AgentWorkspaceFile } from '@repo/shared'
-import { Badge, Button, cn, useStorageAdapter } from '@repo/ui'
+import { Badge, Button, cn } from '@repo/ui'
 import { DownloadIcon, EyeIcon, FileIcon, FolderIcon, RefreshCwIcon } from 'lucide-react'
 import type { ServerClient } from './data'
 import { FilePreviewDialog, isPreviewTextItem, officeKind } from '@/components/file-preview-dialog'
@@ -30,7 +30,6 @@ export function FilesPanel({
   const [view, setView] = useState<'session' | 'workspace'>('session')
   const [includeCaches, setIncludeCaches] = useState(false)
   const [preview, setPreview] = useState<{ items: PreviewTarget[]; index: number } | null>(null)
-  const { resolveUrl } = useStorageAdapter()
 
   const workspaceQuery = useQuery({
     queryKey: ['ai', 'workspace', conversationId ?? 'none', includeCaches],
@@ -71,9 +70,6 @@ export function FilesPanel({
     return link.url
   }
 
-  const previewUrl = (target: PreviewTarget): string | null =>
-    target.source === 'ai' && target.key ? resolveUrl(target.key) : null
-
   const download = async (target: PreviewTarget): Promise<void> => {
     if (target.source === 'ai') {
       const { url } = await client.storage.getDownloadUrl({
@@ -109,15 +105,21 @@ export function FilesPanel({
     badge: target.badge,
     mediaType: target.mediaType,
     bytes: target.bytes,
-    url: previewUrl(target),
-    // 工作区二进制（图片 / PDF / 视频 / 音频）先物化再直连；文本和 Office 走各自分支
+    // 桶私有：二进制一律按需签短时地址；文本走 preview 接口，Office 走 loadBytes
+    url: null,
+    // 会话文件（OSS）签预签名 GET；工作区二进制先物化再直连；文本和 Office 走各自分支
     loadUrl:
-      target.source === 'workspace' &&
-      conversationId &&
-      !isPreviewTextItem(target) &&
-      !officeKind(target)
-        ? () => workspaceUrl(target)
-        : undefined,
+      target.source === 'ai' && target.key && !isPreviewTextItem(target) && !officeKind(target)
+        ? () =>
+            client.storage
+              .getDownloadUrl({ key: target.key!, filename: target.filename })
+              .then((link) => link.url)
+        : target.source === 'workspace' &&
+            conversationId &&
+            !isPreviewTextItem(target) &&
+            !officeKind(target)
+          ? () => workspaceUrl(target)
+          : undefined,
     loadBytes: officeKind(target)
       ? async () => {
           const link =

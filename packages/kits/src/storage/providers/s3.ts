@@ -1,11 +1,11 @@
 import {
   CreateBucketCommand,
+  DeleteBucketPolicyCommand,
   DeleteObjectCommand,
   GetObjectCommand,
   HeadBucketCommand,
   ListObjectsV2Command,
   PutBucketCorsCommand,
-  PutBucketPolicyCommand,
   PutObjectCommand,
   S3Client,
 } from '@aws-sdk/client-s3'
@@ -48,7 +48,7 @@ export const makeS3Provider = (
       s3 = new S3Client({ ...options, forcePathStyle: true })
       sts = new STSClient(options)
       yieldUnused(logger)
-      await ensurePublicReadBucket(s3, config.bucket, logger)
+      await ensurePrivateBucket(s3, config.bucket, logger)
       logger.info('S3 object storage initialized')
     },
     async getObject({ key }) {
@@ -150,7 +150,18 @@ export const makeS3Provider = (
 
 const yieldUnused = (_value: unknown) => undefined
 
-const ensurePublicReadBucket = async (s3: S3Client, bucket: string, logger: AppLogger) => {
+/**
+ * 桶默认**私有**（2026-11-14 评审整改）：
+ *
+ * 1. 保证桶存在（404 才创建）；
+ * 2. **清掉任何历史遗留的公开读桶策略**（早期版本为 Office 预览直连自动打过
+ *    `Principal:* + s3:GetObject`，等于「知道 key 就能下载」）；没有策略时忽略；
+ * 3. 配 CORS（浏览器用**预签名 URL**直传 / 直读需要跨域）—— CORS 只描述"允许哪个源
+ *    发起跨域请求"，不授予对象权限，桶私有后它仍然是安全的。
+ *
+ * 下载统一走服务端短期预签名 URL（`getDownloadUrl`），不再依赖桶的公开读。
+ */
+const ensurePrivateBucket = async (s3: S3Client, bucket: string, logger: AppLogger) => {
   try {
     await s3.send(new HeadBucketCommand({ Bucket: bucket }))
   } catch (cause: unknown) {
@@ -158,25 +169,23 @@ const ensurePublicReadBucket = async (s3: S3Client, bucket: string, logger: AppL
     if (status !== 404) throw cause
     await s3.send(new CreateBucketCommand({ Bucket: bucket }))
   }
-  await s3.send(
-    new PutBucketPolicyCommand({
-      Bucket: bucket,
-      Policy: JSON.stringify({
-        Version: '2012-10-17',
-        Statement: [
-          {
-            Effect: 'Allow',
-            Principal: '*',
-            Action: ['s3:GetObject'],
-            Resource: [`arn:aws:s3:::${bucket}/*`],
-          },
-        ],
-      }),
-    }),
-  )
 
-  // 前端直连 OSS 拿文件流（Office / PPTX 预览）需要桶 CORS；没有它 fetch 会被浏览器拦。
-  // 只开放 GET / HEAD，且桶本身已是 public-read，这里不扩大对象权限。
+  // 主动收紧：历史部署可能已被打过公开读策略，升级后要自愈成私有
+  try {
+    await s3.send(new DeleteBucketPolicyCommand({ Bucket: bucket }))
+  } catch (error) {
+    // 没有桶策略 = 本来就是私有（S3 / MinIO 返回 NoSuchBucketPolicy），不是故障
+    const code = (error as { name?: string })?.name
+    if (code !== 'NoSuchBucketPolicy' && code !== 'NoSuchBucket') {
+      logger.warn('S3 清理公开读桶策略失败，请检查桶权限', {
+        bucket,
+        error: error instanceof Error ? error.message : String(error),
+      })
+    }
+  }
+
+  // 前端直连 OSS 用预签名 URL（PUT 上传 / GET 预览），跨域必须放行这三个方法。
+  // CORS 不授予对象权限：桶私有后，未带签名的 GET 依然会被拒。
   try {
     await s3.send(
       new PutBucketCorsCommand({
@@ -185,7 +194,7 @@ const ensurePublicReadBucket = async (s3: S3Client, bucket: string, logger: AppL
           CORSRules: [
             {
               AllowedOrigins: ['*'],
-              AllowedMethods: ['GET', 'HEAD'],
+              AllowedMethods: ['GET', 'HEAD', 'PUT'],
               AllowedHeaders: ['*'],
               ExposeHeaders: ['ETag', 'Content-Length', 'Content-Range'],
               MaxAgeSeconds: 86400,

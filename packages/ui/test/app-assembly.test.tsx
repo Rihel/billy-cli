@@ -27,7 +27,7 @@ describe('StorageClientProvider', () => {
       url: `https://cdn.test/${key}`,
     }))
     const client: PresignedUploadClientLike = {
-      storage: { getPresignedUrl },
+      storage: { getPresignedUrl, getDownloadUrl: vi.fn(async () => ({ url: 'x' })) },
     }
 
     const { result } = renderHook(() => useStorageAdapter(), {
@@ -47,7 +47,7 @@ describe('StorageClientProvider', () => {
 
   it('resolveUrl 原样透传（key → URL 的规则由应用决定）', () => {
     const client: PresignedUploadClientLike = {
-      storage: { getPresignedUrl: vi.fn() },
+      storage: { getPresignedUrl: vi.fn(), getDownloadUrl: vi.fn() },
     }
 
     const { result } = renderHook(() => useStorageAdapter(), {
@@ -59,6 +59,26 @@ describe('StorageClientProvider', () => {
     })
 
     expect(result.current.resolveUrl('a.png')).toBe('u:a.png')
+  })
+
+  it('getViewUrl 走短时预签名（桶私有后预览 / 下载地址由服务端签）', async () => {
+    const getDownloadUrl = vi.fn(async () => ({ url: 'https://signed.test/a.png' }))
+    const client: PresignedUploadClientLike = {
+      storage: { getPresignedUrl: vi.fn(), getDownloadUrl },
+    }
+
+    const { result } = renderHook(() => useStorageAdapter(), {
+      wrapper: ({ children }) => (
+        <StorageClientProvider client={client} resolveUrl={(key) => `u:${key}`}>
+          {children}
+        </StorageClientProvider>
+      ),
+    })
+
+    await expect(result.current.getViewUrl?.('user/u-1/a.png')).resolves.toBe(
+      'https://signed.test/a.png',
+    )
+    expect(getDownloadUrl).toHaveBeenCalledWith({ key: 'user/u-1/a.png' })
   })
 })
 

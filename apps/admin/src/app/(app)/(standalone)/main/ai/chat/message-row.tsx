@@ -1,7 +1,7 @@
 'use client'
 
 import { memo, useMemo } from 'react'
-import { PromptAttachments, cn, useStorageAdapter } from '@repo/ui'
+import { PromptAttachments, cn } from '@repo/ui'
 import type { PromptAttachmentItem } from '@repo/ui'
 import {
   Message,
@@ -39,21 +39,21 @@ import { useElapsedSeconds } from './use-elapsed'
  * 所以实时增量不会让整行（更不会让整个列表）重渲染。
  */
 
-/** 附件信息 → `PromptAttachments` 需要的形状（地址在渲染时才拼） */
+/** 附件信息 → `PromptAttachments` 需要的形状（地址由组件按 `storageKey` 现签） */
 const toAttachmentItems = (
   files: ChatMessageState['files'],
-  resolveUrl: (key: string) => string,
   messageId: string,
 ): PromptAttachmentItem[] =>
   files.map((file, index) => {
-    const previewUrl = file.url || (file.key ? resolveUrl(file.key) : '')
-    return {
+    const item: PromptAttachmentItem = {
       key: file.key ?? `${messageId}-file-${index}`,
       filename: file.filename ?? '未命名文件',
       mediaType: file.mediaType ?? '',
-      ...(file.bytes !== undefined ? { bytes: file.bytes } : {}),
-      ...(previewUrl ? { previewUrl } : {}),
-    } as PromptAttachmentItem
+    }
+    if (file.bytes !== undefined) item.bytes = file.bytes
+    if (file.url) item.previewUrl = file.url
+    else if (file.key) item.storageKey = file.key
+    return item
   })
 
 /** 子助手单元：快照（来自 part）打底，实时数据覆盖（实时更全、更新） */
@@ -202,8 +202,7 @@ export const ChatMessage = memo(function ChatMessage({
   showTrailingCards = true,
 }: ChatMessageProps) {
   const isUser = message.role === 'user'
-  const { resolveUrl } = useStorageAdapter()
-  const attachments = toAttachmentItems(message.files, resolveUrl, message.id)
+  const attachments = toAttachmentItems(message.files, message.id)
   const ownedToolCalls = useMemo(() => {
     const owned = new Set<string>()
     for (const unit of message.units) {
