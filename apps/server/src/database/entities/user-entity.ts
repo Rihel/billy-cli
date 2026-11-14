@@ -1,9 +1,19 @@
-import { Column, Entity, Unique } from 'typeorm'
+import { Column, Entity, Index } from 'typeorm'
 import { BaseEntity } from '@repo/kits'
 import { UserStatus } from '@repo/shared'
 
+/**
+ * 邮箱在**活动用户**内唯一（部分唯一索引）。
+ *
+ * 为什么不是 `UNIQUE(email, deleted_at)`：PostgreSQL 里 NULL 互不相等，软删行 `deleted_at`
+ * 非空能约束到，但**活动行（deleted_at IS NULL）之间不冲突** —— 同一邮箱可以注册多个活用户。
+ * 部分唯一索引只把「未删除」的行纳入唯一性判断，语义才是想要的。
+ */
 @Entity('users')
-@Unique('uk_user_email', ['email', 'deletedAt'])
+@Index('uk_user_email', ['email'], {
+  unique: true,
+  where: 'deleted_at IS NULL',
+})
 export class UserEntity extends BaseEntity {
   @Column({ name: 'email', type: 'text' })
   email!: string
