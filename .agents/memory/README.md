@@ -58,7 +58,7 @@
 | --- | --- | --- | --- |
 | [ai-context-compression](ai-context-compression.md) | 摘要压缩只在轮前；轮内另有工具结果预算（prepareStep + turn-budget），落库出参不动 | 必核 | 2026-10-29 |
 | [ai-agent-file-map](ai-agent-file-map.md) | AI 运行期关键链路的位置速查（上下文、时间线、记忆、技能、子 agent） | 抽核 | 2026-10-25 |
-| [ai-file-management](ai-file-management.md) | `ai_files` + 9 个文件工具 + 每会话 workspace；入站引用、`uploads/`/`files/` 约定、删会话清理；HTML 预览的 CDN 白名单 | 必核 | 2026-11-12 |
+| [ai-file-management](ai-file-management.md) | `ai_files` + 9 个文件工具 + 每会话 workspace；入站引用、`uploads/`/`files/` 约定、删会话清理；HTML 预览的 CDN 白名单 | 必核 | 2026-11-14 |
 | [dev-session-log](dev-session-log.md) | 开发会话记录在 `~/.dsh/sessions/`，zstd + JSONL，可直接统计调用与用量 | 抽核 | 2026-10-25 |
 | [token-cost-model](token-cost-model.md) | skill 只占工具输出 1%–3%，成本主项是「调用次数 × 累积上下文」 | 免核 | 2026-10-25 |
 | [ai-chat-render-state](ai-chat-render-state.md) | 会话页按 part 类型增量归约成渲染单元；逐帧增量走 transient（后端不改），渲染期不再扫 parts | 抽核 | 2026-11-03 |
@@ -74,7 +74,8 @@
 | [scaffold-cli-removed](scaffold-cli-removed.md) | 2026-11-09 起没有代码生成器与模板副本，新模块照现有实现手写；守卫为 check:inject / check:mastra / check:ui | 免核 | 2026-11-09 |
 | [lark-cli-connector](lark-cli-connector.md) | @larksuite/cli 是下载 Go 二进制的 launcher；skills 内嵌；config 在 HOME；whoami 不能探活、doctor 才行 | 抽核 | 2026-11-09 |
 | [product-facts](product-facts.md) | README / 落地页 / pitch 共用的能力数字口径（工具 26 / 连接器 4 / skill 28 / ai-elements 48 …） | 必核 | 2026-11-13 |
-| [agent-tool-authorization](agent-tool-authorization.md) | agent 授权是结构化选择器；作用域装配期过滤工具面；子 agent = 父授权 ∩ 全部 | 必核 | 2026-11-10 |
+| [agent-tool-authorization](agent-tool-authorization.md) | agent 授权是结构化选择器；作用域装配期过滤工具面；子 agent = 父授权 ∩ 全部 − 委派 − deny，并按 caller 过滤 | 必核 | 2026-11-14 |
+| [security-remediation-2026-11](security-remediation-2026-11.md) | 找回密码（hash + 邮件）/ 桶私有 + 预签名 / STS 收紧 / 邮箱部分唯一 / 锁看门狗 / 工具面 caller 过滤 的落点与核对命令 | 抽核 | 2026-11-14 |
 | [event-bus](event-bus.md) | kits 分三层：PubSub（传输）→ StreamHub（SSE）/ EventBus（`events:`）；at-most-once，只做失效通知 | 抽核 | 2026-11-10 |
 | [stateless-scaling](stateless-scaling.md) | 核心业务无状态可多副本；AI memory 已落 Redis（2026-11-14），飞书 CLI 状态在 Pod 本地、k8s 缺 `AGENT_MULTI_INSTANCE` | 抽核 | 2026-11-14 |
 | [workspace-runtime](workspace-runtime.md) | 执行环境三层（界面选 / 部署限 / 探测证）：默认沙箱、不可用兜底 local；出参 `runtime` 是唯一事实 | 必核 | 2026-11-12 |
