@@ -129,11 +129,14 @@ token 采用**双存储**，各有分工：
 仓库已实现完整流程（用户侧 `AuthService`，管理员侧 `AdminService`），新增类似能力前先
 「实现查找顺序」复用：
 
-- **忘记密码**：`ForgotPasswordDto` → 生成 `resetPasswordToken` + 过期时间（存实体
-  `reset_password_token` / `reset_password_token_expiry`）→ 发送重置链接。
-  web 前台页面：`apps/web/src/app/auth/forgot-password`（成功自动跳到
-  `/auth/reset-password?token=xxx`）、`apps/web/src/app/auth/reset-password`。
-- **重置密码**：`ResetPasswordDto`（token + 新密码）→ 校验令牌 → 改密码。
+- **忘记密码**：`ForgotPasswordDto` → 生成明文令牌 → **库里只存 `sha256(token)`** + 过期时间
+  （实体 `reset_password_token` / `reset_password_token_expiry`）→ 经 `Notifier` 邮件通道
+  把重置链接发到用户邮箱（`WEB_URL` 配置拼绝对地址）。**API 响应不含令牌**；用户不存在时
+  与成功响应一致（不泄露账号是否存在）。邮件未配置时本地开发会把链接写 warn 日志，生产不写。
+  web 前台页面：`apps/web/src/app/auth/forgot-password`（提交后只显示"已受理"）。
+- **重置密码**：`ResetPasswordDto`（token + 新密码）→ 先 `sha256(token)` 再查用户 → 校验过期 →
+  改密码 → **撤销该用户全部会话**（`SessionStore.revokeAll('user', id)`，旧 token 立即失效）。
+  web 前台页面：`apps/web/src/app/auth/reset-password`。
 - **修改密码**：`ChangePasswordDto`（旧密码 + 新密码）→ 校验旧密码 → 改密码。
 - **登录禁用校验**：用户/管理员登录时校验 `status`，禁用（`disabled`）账号登录被拒：
   用户抛 `UserDisabledError`（2007），管理员抛 `AdminDisabledError`（2004）。

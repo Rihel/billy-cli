@@ -40,9 +40,13 @@ export class UserRepository {
     return repo.findOneBy({ email })
   }
 
-  async findByResetToken(token: string): Promise<UserEntity | null> {
+  /**
+   * 按重置令牌**哈希**查用户（库里只存 sha256，不存明文）。
+   * 调用方负责先对用户带回的明文令牌做同样的哈希。
+   */
+  async findByResetTokenHash(tokenHash: string): Promise<UserEntity | null> {
     const repo = await this.repo()
-    return repo.findOneBy({ resetPasswordToken: token })
+    return repo.findOneBy({ resetPasswordToken: tokenHash })
   }
 
   async create(data: DeepPartial<UserEntity>): Promise<UserEntity> {

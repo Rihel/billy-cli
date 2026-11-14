@@ -133,6 +133,7 @@ JWT 验签 → 体系校验（用户拒 type=admin / 管理员要求 type=admin�
 - **token 版本号**：实体加 `tokenVersion` 列，签发时写入 JWT，verify 时比对——免 Redis 读、
   支持主动失效，代价是实体 + 迁移；会话方案已满足当前需求，此作为高并发优化备选。
 - **密码重置 token 哈希存储**：`resetPasswordToken` 应存哈希（如 sha256），杜绝 DB 泄露即用；
-  forgot 响应返回 token 仅限开发环境，生产应邮件投递。
+  forgot 响应返回 token 仅限开发环境，生产应邮件投递。**（2026-11-14 已实现：库里存 sha256、
+  API 响应不再回传令牌、经 `Notifier` 邮件投递、重置成功撤销全部会话。）**
 - **RBAC**：当前「用户 / 管理员」二元足够；引入角色需先定义权限点与中间件，再扩 `SessionStore`
   会话内容（如 `roles` 字段）——会话方案已为此预留（value 是 JSON，可扩展）。

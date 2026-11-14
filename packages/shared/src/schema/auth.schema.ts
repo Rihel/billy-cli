@@ -52,9 +52,13 @@ export const AuthResultSchema = z.object({
 })
 export type AuthResultModel = z.infer<typeof AuthResultSchema>
 
-/** 通用成功响应模型 */
+/**
+ * 通用成功响应模型。
+ *
+ * **刻意不带任何令牌字段**：找回密码的重置令牌只经邮件 / 可信渠道投递，
+ * 绝不出现在 API 响应里（否则任何调用者都能重置任意邮箱的密码）。
+ */
 export const SuccessResultSchema = z.object({
   success: z.literal(true),
-  token: z.string().optional(),
 })
 export type SuccessResultModel = z.infer<typeof SuccessResultSchema>

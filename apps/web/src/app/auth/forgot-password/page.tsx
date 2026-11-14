@@ -19,7 +19,7 @@ import { useActionState, useEffect } from 'react'
 
 type ForgotPasswordState = {
   error?: string
-  token?: string
+  sent?: boolean
 }
 
 export default function ForgotPasswordPage() {
@@ -54,17 +54,11 @@ export default function ForgotPasswordPage() {
       if (!result.ok) {
         return { error: result.error }
       }
-      // 后端响应直接带回重置令牌；演示环境据此引导到重置页，生产应改为邮件投递
-      return { token: result.data.token }
+      // 令牌只经邮件投递，响应体不含任何凭据；这里只确认「请求已受理」
+      return { sent: true }
     },
     {} as ForgotPasswordState,
   )
-
-  useEffect(() => {
-    if (state.token) {
-      router.replace(`${Pages.resetPassword}?token=${encodeURIComponent(state.token)}`)
-    }
-  }, [state.token, router])
 
   return (
     <div className="space-y-8">
@@ -80,36 +74,46 @@ export default function ForgotPasswordPage() {
 
       <div className="space-y-2">
         <h1 className="font-heading text-2xl font-semibold tracking-tight">找回密码</h1>
-        <p className="text-sm text-muted-foreground">输入注册邮箱，我们将为你生成重置链接</p>
+        <p className="text-sm text-muted-foreground">输入注册邮箱，我们会把重置链接发到你的邮箱</p>
       </div>
 
-      <form action={formAction} className="space-y-5">
-        <FieldGroup>
-          <Field data-invalid={!!state.error || undefined}>
-            <FieldLabel htmlFor="email">邮箱</FieldLabel>
-            <Input
-              id="email"
-              name="email"
-              type="email"
-              placeholder="name@example.com"
-              autoComplete="email"
-              required
-              aria-invalid={!!state.error || undefined}
-            />
-          </Field>
+      {state.sent ? (
+        <div className="space-y-3 rounded-lg border bg-surface-1 p-4 text-sm">
+          <p className="font-medium">请求已受理</p>
+          <p className="text-muted-foreground">
+            如果该邮箱已注册，重置链接已发送到邮箱，请在有效期内完成重置。没收到请检查垃圾邮件，
+            或稍后重试。
+          </p>
+        </div>
+      ) : (
+        <form action={formAction} className="space-y-5">
+          <FieldGroup>
+            <Field data-invalid={!!state.error || undefined}>
+              <FieldLabel htmlFor="email">邮箱</FieldLabel>
+              <Input
+                id="email"
+                name="email"
+                type="email"
+                placeholder="name@example.com"
+                autoComplete="email"
+                required
+                aria-invalid={!!state.error || undefined}
+              />
+            </Field>
 
-          {state.error && <FieldError errors={[{ message: state.error }]} />}
+            {state.error && <FieldError errors={[{ message: state.error }]} />}
 
-          <Button
-            type="submit"
-            className="w-full h-10 text-sm font-medium tracking-wide"
-            disabled={isPending}
-          >
-            {isPending && <Spinner data-icon="inline-start" />}
-            发送重置链接
-          </Button>
-        </FieldGroup>
-      </form>
+            <Button
+              type="submit"
+              className="w-full h-10 text-sm font-medium tracking-wide"
+              disabled={isPending}
+            >
+              {isPending && <Spinner data-icon="inline-start" />}
+              发送重置链接
+            </Button>
+          </FieldGroup>
+        </form>
+      )}
 
       <div className="flex items-center gap-3">
         <Separator className="flex-1" />

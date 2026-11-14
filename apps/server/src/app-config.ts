@@ -31,6 +31,13 @@ export const serverAppConfigSchema = z.object({
       authEnabled: z.boolean().default(true),
       /** 找回密码 token 有效期（分钟） */
       resetPasswordTokenTtlMinutes: z.coerce.number().int().positive().default(30),
+      /**
+       * 前台站点地址（web），用于拼找回密码的重置链接。
+       *
+       * 邮件里的链接必须能点开，所以这里要绝对地址；本地开发默认 web 的 dev 端口 `9840`
+       * （见 `apps/web/package.json` 的 dev / start 脚本）。
+       */
+      appUrl: z.string().default('http://localhost:9840'),
       /** 限流豁免白名单（精确 IP / IPv4 CIDR） */
       rateLimitWhitelist: z.array(z.string()).default([]),
       /** 是否信任代理转发头（x-forwarded-for） */
@@ -339,6 +346,7 @@ export const mapServerEnv = (env: NodeJS.ProcessEnv): Record<string, unknown> =>
     port: optional(env.PORT),
     authEnabled: env.AUTH_ENABLED === undefined ? undefined : env.AUTH_ENABLED !== 'false',
     resetPasswordTokenTtlMinutes: optional(env.RESET_PASSWORD_TOKEN_TTL_MINUTES),
+    appUrl: optional(env.WEB_URL),
     rateLimitWhitelist: parseList(env.RATE_LIMIT_WHITELIST),
     rateLimitTrustProxy: parseBoolean(env.RATE_LIMIT_TRUST_PROXY),
     keepAliveTimeoutMs: optional(env.KEEP_ALIVE_TIMEOUT_MS),
