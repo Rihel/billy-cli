@@ -99,17 +99,21 @@ export class TimelineRepository {
    * （而不是把计划塞进运行时信封的快照里 —— 同一轮内多次工具调用会读到过期版本）。
    * 形状不认识（历史遗留 / 半真半假）时返回 null，调用方当作"还没有计划"处理。
    */
-  async latestPlan(conversationId: string): Promise<Plan | null> {
+  async latestPlan(
+    conversationId: string,
+    options: { rootOnly?: boolean } = {},
+  ): Promise<Plan | null> {
     const repo = await this.repo()
-    // **只看根 run**：子 agent 的清单不该顶掉父的当前计划（信封补上以后子 agent 也有 plan 的可能性，
-    // 见设计 §5.10「子 agent」缺口 3）。相关子查询走 `runs` 主键，与 `excludeSubAgentEvents` 同一手法。
     const builder = repo
       .createQueryBuilder('t')
       .where('t.conversationId = :conversationId', { conversationId })
       .andWhere('t.kind = :kind', { kind: TimelineKind.Plan })
       .orderBy('t.seq', 'DESC')
       .limit(1)
-    excludeSubAgentEvents(builder)
+    // 默认只看根 run：同一个会话里若混有子 run 的事件，子 agent 的清单不该顶掉父的当前计划。
+    // 规划工具按**本会话**读自己的清单时传 `{ rootOnly: false }` —— 子会话里的事件全挂在子 run 上，
+    // 排除反而会让子助手永远读不到自己刚写的清单（`PlannerStore` 的调用口径）。
+    if (options.rootOnly !== false) excludeSubAgentEvents(builder)
     const row = await builder.getOne()
     return toPlan(row?.payload)
   }

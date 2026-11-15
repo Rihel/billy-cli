@@ -19,22 +19,27 @@ export interface PlanMutation {
  * 规划工具集的**共享机制**（四个工具都走它，所以单独一个文件）。
  *
  * 三件事：
- * 1. **读当前清单**：本轮内存 → 会话时间线的最后一条 `plan` 事件（`latestPlan` 内部只看根 run）；
+ * 1. **读当前清单**：本轮内存 → **本会话**时间线的最后一条 `plan` 事件；
  * 2. **同一轮串行**（promise 链）：读改写并发会丢更新；队列尾跑完即摘除；
  * 3. **失败不改内存**：变更函数抛错时直接向上冒（网关翻成可执行结论），内存与时间线都没被动过。
+ *
+ * **作用域 = 会话（`envelope.conversationId`）**，不是 run：
+ * 父 run、它的唤醒 run 共用父会话的清单；子 agent 的 run 挂在子会话上，于是天然拿到自己那一份。
+ * 曾用 `envelope.parentRunId` 作键 —— 主 run 的 `parentRunId` 就是它自己、子 agent 也是同一个父 run id，
+ * 父子撞进同一份内存清单，四个子助手互相覆盖任务 id（2026-11-15 实测 t1 重复 / a1-a6 与 t1-t5 混台）。
  *
  * 工具实现（`plan-*.tool.ts`）只写自己的校验与"变成什么样"，不碰存储细节。
  */
 @Injectable()
 export class PlannerStore {
-  /** runId → 本轮演进中的清单（本轮第一次调用时从时间线读入） */
+  /** 会话 id → 本会话演进中的清单（本会话第一次调用时从时间线读入） */
   private readonly livePlans = new Map<string, Plan>()
-  /** runId → 串行队列尾 */
+  /** 会话 id → 串行队列尾 */
   private readonly queues = new Map<string, Promise<unknown>>()
 
   constructor(@Inject(TimelineRepository) private readonly timelines: TimelineRepository) {}
 
-  /** 一次变更的完整流程：信封 → 同轮串行 → 读当前清单 → 变更并提交 → 返回完整清单 */
+  /** 一次变更的完整流程：信封 → 同会话串行 → 读当前清单 → 变更并提交 → 返回完整清单 */
   async mutate(
     ctx: ToolCallContext,
     mutate: (current: Plan | null) => PlanMutation,
@@ -47,49 +52,50 @@ export class PlannerStore {
         '把结果交回主 agent，不要自己另开一份清单',
       )
     }
-    const runId = envelope.parentRunId
-    const conversationId = envelope.conversationId
-    return this.enqueue(runId, async () => {
-      const current = await this.currentPlan(runId, conversationId)
+    const scopeKey = envelope.conversationId
+    return this.enqueue(scopeKey, async () => {
+      const current = await this.currentPlan(scopeKey)
       const result = mutate(current)
       const plan: Plan = {
         goal: result.plan.goal,
         revision: (current?.revision ?? 0) + 1,
         tasks: result.plan.tasks,
       }
-      this.remember(runId, plan)
+      this.remember(scopeKey, plan)
       return present(plan, current, result.changes)
     })
   }
 
-  /** 当前清单：本轮内存优先，否则读时间线最后一条 `plan` 事件 */
-  private async currentPlan(runId: string, conversationId: string): Promise<Plan | null> {
-    const live = this.livePlans.get(runId)
+  /** 当前清单：本会话内存优先，否则读**本会话**时间线最后一条 `plan` 事件 */
+  private async currentPlan(scopeKey: string): Promise<Plan | null> {
+    const live = this.livePlans.get(scopeKey)
     if (live) return live
-    const plan = await this.timelines.latestPlan(conversationId)
-    if (plan) this.remember(runId, plan)
+    // `rootOnly: false`：conversationId 已经把作用域限定到单个会话；
+    // 子会话里的 plan 事件全挂在子 run 上，默认的「排除子 agent 事件」会让子助手永远读不到自己的清单。
+    const plan = await this.timelines.latestPlan(scopeKey, { rootOnly: false })
+    if (plan) this.remember(scopeKey, plan)
     return plan
   }
 
-  private remember(runId: string, plan: Plan): void {
-    this.livePlans.delete(runId)
-    this.livePlans.set(runId, plan)
+  private remember(scopeKey: string, plan: Plan): void {
+    this.livePlans.delete(scopeKey)
+    this.livePlans.set(scopeKey, plan)
     if (this.livePlans.size > LIVE_PLAN_MAX) {
       const oldest = this.livePlans.keys().next().value
-      if (oldest !== undefined && oldest !== runId) this.livePlans.delete(oldest)
+      if (oldest !== undefined && oldest !== scopeKey) this.livePlans.delete(oldest)
     }
   }
 
-  private enqueue<T>(runId: string, task: () => Promise<T>): Promise<T> {
-    const previous = this.queues.get(runId) ?? Promise.resolve()
+  private enqueue<T>(scopeKey: string, task: () => Promise<T>): Promise<T> {
+    const previous = this.queues.get(scopeKey) ?? Promise.resolve()
     const run = previous.then(task, task)
     const tail = run.then(
       () => undefined,
       () => undefined,
     )
-    this.queues.set(runId, tail)
+    this.queues.set(scopeKey, tail)
     void tail.then(() => {
-      if (this.queues.get(runId) === tail) this.queues.delete(runId)
+      if (this.queues.get(scopeKey) === tail) this.queues.delete(scopeKey)
     })
     return run
   }
