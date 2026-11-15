@@ -17,6 +17,8 @@
 - **每完成一个子助手就唤醒一次**（不做批次聚合，2026-11-15 定）：父模型拿第一个结果就能推进；
   唤醒通知带同批进度 `{ total, completed, pending[] }`，并明确「还有谁在跑 / 全齐了才做最终汇总」；
   提示词 `assistant.eta` 的「编排子助手」段承载使用口径；
+- **list/wait 的作用域是会话**（`listSessionChildren` 按子会话反查），不是父 run：第二轮与唤醒 run
+  都能看到此前派出的子；`batchRunId` 标批次。list 只回状态 + 元数据，wait 不传 id = 本会话未完成子；
 - **子助手结论落工作区** `subagents/<名字>-<subRunId>.md`（`runtime/subagent-result.ts` 约定路径）；
   `wait` / `list` 只回 `path + 行数 + 字节数`（不返回摘要），正文用 `read-file` 读 —— 不再整段进父上下文；
 - **完成卡由消费者写**：dispatcher 消费 queue 项时写；`wait-sub-agent` 抢先消费时由工具补写

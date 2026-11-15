@@ -234,8 +234,14 @@ output: { canceled: boolean, status }
   `wait-sub-agent` / `sub-agent-list` 只返回 `path + 行数 + 字节数`（**不返回摘要**：摘要也是重复 token），
   父模型需要正文用 `read-file` 读 path（按行分页、可续读），用户也能在文件树里看到。
   为什么不再整段返回：三份报告几万字全量灌进父上下文，既撑窗口又贵（实测单会话 331 万 token）；
-- `wait-sub-agent` **不带 `sub_agent_ids` = 当前父 run 下全部子助手**（含已完成的），
-  返回摘要 + path + 仍未完成的 `pending`；曾只收「未完成」的，全跑完后返回空数组，父模型白等 88 秒；
+- **`sub-agent-list` / `wait-sub-agent` 的作用域是会话，不是父 run**：按「子会话的父会话 = 根会话」
+  反查（`RunRepository.listSessionChildren`），所以第二轮能看到第一轮派出的子、唤醒 run 里也能看到
+  唤起它的那批；`batchRunId` 标出是哪一轮派的。曾按 `parent_run_id` 查 —— 第二轮与唤醒 run 全查不到
+  （实测唤醒 run 作为 parent 的子 run 数为 0）；
+- `sub-agent-list` 只回状态与运行元数据（步数 / 工具次数 / 耗时 / token / 起止时间），**不回结论**；
+- `wait-sub-agent` **不传 `sub_agent_ids` = 本会话所有未完成的子**（跨轮可见）；传 id 才返回指定子
+  （含已完成的）的 `path + 行数 + 字节数`。曾只收「未完成」且每轮重算，全跑完后返回空数组，
+  父模型白等 88 秒；
 - `sub-agent-list` 的 `resultSummary` 上限 2000 字，超出会标 `summaryTruncated` 并提示
   「完整结论用 wait-sub-agent 传 sub_agent_ids」—— 摘要不能当完整结论用；
 - 这一轮**不在时间线写用户消息**（只写系统卡），但发给模型的收尾消息是 `user` 角色 ——

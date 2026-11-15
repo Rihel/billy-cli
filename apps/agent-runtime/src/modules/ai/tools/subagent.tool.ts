@@ -68,7 +68,7 @@ const WaitSubAgentsInputSchema = z.object({
   sub_agent_ids: z
     .array(z.string())
     .optional()
-    .describe('要等的子 agent（subAgentId）；省略 = 当前父 run 下所有未完成子 agent'),
+    .describe('要等的子 agent（subAgentId）；省略 = 本会话所有未完成的子助手（跨轮可见）'),
   timeout_ms: z
     .number()
     .int()
@@ -178,7 +178,8 @@ export class RunSubAgentTool {
     description: dedent`
       查看当前这一轮派出的子 agent 状态（运行中 / 成功 / 失败 / 取消）。
       非阻塞，不等待、不消费结果；要看完整结论用 wait-sub-agent（传 sub_agent_ids），要取消用 cancel-sub-agent。
-      已完成的子助手带 path + 行数 + 字节数；**正文用 read-file 读 path**（不返回摘要）。
+      返回状态与运行元数据（步数 / 工具次数 / 耗时 / token / 起止时间）与 batchRunId（哪一轮派的），
+      **不返回结论**；本会话跨轮可见（第二轮能看到第一轮派出的子助手）。
       什么时候用：想知道子助手跑到哪了、有没有失败；不要用它代替等待。
     `,
   })
@@ -187,24 +188,33 @@ export class RunSubAgentTool {
     ctx: ToolCallContext,
   ): Promise<{ agents: Array<Record<string, unknown>> }> {
     const envelope = ctx.envelope as AgentRuntimeEnvelope
-    const children = await this.runs.listChildren(envelope.parentRunId)
+    const workspaceId = envelope.workspaceConversationId ?? envelope.conversationId
+    /**
+     * **会话级**：跨轮 / 跨批次都能看到，唤醒 run 里也有效。
+     * 按 `parentRunId` 查会漏 —— 第二轮、唤醒 run 的 run id 与子的 `parent_run_id` 对不上。
+     * `batchRunId` 标出是哪一轮派的，模型自己按批区分。
+     */
+    const children = await this.runs.listSessionChildren(workspaceId)
     const latest = new Map<string, (typeof children)[number]>()
     for (const child of children) latest.set(child.conversationId, child)
     const agents: Array<Record<string, unknown>> = []
     for (const child of latest.values()) {
       if (input.status && child.status !== input.status) continue
-      const name = child.agentKey.replace(/^sub:/, '')
+      const usage = child.usage as Record<string, unknown> | null
       agents.push({
         subAgentId: child.conversationId,
         currentRunId: child.id,
-        name,
+        batchRunId: child.parentRunId,
+        name: child.agentKey.replace(/^sub:/, ''),
         status: child.status,
-        // 只给文件元信息（路径 / 行数 / 字节数）：正文让模型自己 read-file 读，
-        // 摘要复制一份同样烧 token（2026-11-15 定）
-        ...(child.status === RunStatus.Succeeded
-          ? await this.resultMeta(envelope, name, child.id)
-          : {}),
-        error: null,
+        // 只给运行状态与元数据：结论由 wait-sub-agent / 唤醒通知给 path
+        stepCount: child.stepCount,
+        toolCallCount: child.toolCallCount,
+        durationMs: child.durationMs ?? 0,
+        tokens: typeof usage?.totalTokens === 'number' ? usage.totalTokens : 0,
+        startedAt: child.startedAt ?? null,
+        finishedAt: child.finishedAt ?? null,
+        error: child.errorMessage ?? null,
       })
     }
     return { agents }
@@ -218,7 +228,7 @@ export class RunSubAgentTool {
     config: NoConfigSchema,
     description: dedent`
       等指定的子 agent（或当前父 run 下所有子助手）完成。
-      不传 sub_agent_ids = 等全部子助手；已经完成的也会一起返回（不会返回空数组）。
+      不传 sub_agent_ids = 等本会话所有未完成的子助手（跨轮可见）；传了就等指定的（已完成的也返回）。
       返回每个子助手的 path + 行数 + 字节数（不返回摘要）；**正文用 read-file 读 path**（按行分页、可续读）。
       最多等 timeout_ms；到点返回 pending，子 agent 会继续跑，父可以继续做别的。
       已经拿到的结果会消费掉，避免父结束后重复唤醒；没有 pending 时不要反复空等。
@@ -229,6 +239,7 @@ export class RunSubAgentTool {
     ctx: ToolCallContext,
   ): Promise<{ agents: Array<Record<string, unknown>>; pending: string[]; timedOut: boolean }> {
     const envelope = ctx.envelope as AgentRuntimeEnvelope
+    const workspaceId = envelope.workspaceConversationId ?? envelope.conversationId
     const deadline = Date.now() + input.timeout_ms
     const terminal = new Set([
       RunStatus.Succeeded,
@@ -236,20 +247,29 @@ export class RunSubAgentTool {
       RunStatus.Canceled,
       RunStatus.Interrupted,
     ])
+    /**
+     * 首轮锁定要等的子助手集合：
+     * - 传了 `sub_agent_ids` → 就等这些（已完成的也会返回结果引用）；
+     * - 没传 → 等**本会话当前所有未完成**的子助手（跨轮 / 跨批次；唤醒 run 里同样有效）。
+     *
+     * 必须锁定而不是每轮重算：不传 id 时「未完成集合」跑完就空了，重算会让 `done` 永远是空数组
+     * （2026-11-15 实测：session t9ums0…，白等 88 秒后拿到 `{agents:[], pending:[]}`）。
+     */
+    let targetIds: string[] | null = null
     for (;;) {
-      const children = await this.runs.listChildren(envelope.parentRunId)
+      const children = await this.runs.listSessionChildren(workspaceId)
       const latest = new Map<string, (typeof children)[number]>()
       for (const child of children) latest.set(child.conversationId, child)
-      /**
-       * 不指定 `sub_agent_ids` = **当前父 run 下所有子助手**（含已完成的）。
-       *
-       * 曾经这里只收「未完成」的：等它们全部跑完后 `done` 集合为空，
-       * 于是返回 `{ agents: [], pending: [] }` —— 父模型以为结果被消费了，只能再调一次并传 id
-       * （2026-11-15 实测：session t9ums0…，白等 88 秒后拿到空数组）。
-       */
-      const targets = [...latest.values()].filter((child) =>
-        input.sub_agent_ids?.length ? input.sub_agent_ids.includes(child.conversationId) : true,
-      )
+      if (targetIds === null) {
+        targetIds = input.sub_agent_ids?.length
+          ? [...input.sub_agent_ids]
+          : [...latest.values()]
+              .filter((child) => !terminal.has(child.status))
+              .map((child) => child.conversationId)
+      }
+      const targets = targetIds
+        .map((id) => latest.get(id))
+        .filter((child): child is (typeof children)[number] => Boolean(child))
       const done = targets.filter((child) => terminal.has(child.status))
       const pending = targets.filter((child) => !terminal.has(child.status))
       if (pending.length === 0 || Date.now() >= deadline) {

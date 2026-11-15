@@ -12,7 +12,7 @@ import {
 import { In, IsNull, LessThan, Not, type DeepPartial } from 'typeorm'
 import { jsonbPatch } from './jsonb.js'
 import { RUN_STATUS_LISTENER, type RunStatusListener } from './run-status.stream.js'
-import { RunEntity } from '@repo/db'
+import { ConversationEntity, RunEntity } from '@repo/db'
 
 /** SQL 聚合返回的数字列可能是 bigint 字符串（pg 驱动行为），统一用 Number 收口 */
 type Numeric = number | string
@@ -230,6 +230,28 @@ export class RunRepository {
       where: { parentRunId },
       order: { createdAt: 'ASC' },
     })
+    return rows.map(toModel)
+  }
+
+  /**
+   * **本会话下的全部子助手 run**（跨轮 / 跨批次），按创建时间升序。
+   *
+   * 为什么不复用 `listChildren(parentRunId)`：子 run 的 `parent_run_id` 是「发起它的那一轮」，
+   * 于是
+   * - 第二轮（新 run）看不到第一轮派出的子；
+   * - 唤醒 run（`origin=subagent` 的新 root run）更看不到 —— 它的 run id 与子的 `parent_run_id` 对不上。
+   * 结果就是父 agent 被唤醒后 `sub-agent-list` / `wait-sub-agent` 全是空。
+   *
+   * 这里按「子会话的父会话 = 根会话」反查，天然跨轮；`parentRunId` 仍留在返回里当批次标识。
+   */
+  async listSessionChildren(rootConversationId: string): Promise<AgentRunModel[]> {
+    const repo = await this.repo()
+    const rows = await repo
+      .createQueryBuilder('r')
+      .innerJoin(ConversationEntity, 'c', 'c.id = r.conversationId')
+      .where('c.parentConversationId = :rootConversationId', { rootConversationId })
+      .orderBy('r.createdAt', 'ASC')
+      .getMany()
     return rows.map(toModel)
   }
 

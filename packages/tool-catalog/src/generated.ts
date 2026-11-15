@@ -1097,7 +1097,7 @@ export const ALL_TOOL_MANIFESTS: readonly ToolManifest[] = [
   {
     "key": "sub-agent-list",
     "title": "查看子助手状态",
-    "description": "查看当前这一轮派出的子 agent 状态（运行中 / 成功 / 失败 / 取消）。\n非阻塞，不等待、不消费结果；要看完整结论用 wait-sub-agent（传 sub_agent_ids），要取消用 cancel-sub-agent。\n已完成的子助手带 path + 行数 + 字节数；**正文用 read-file 读 path**（不返回摘要）。\n什么时候用：想知道子助手跑到哪了、有没有失败；不要用它代替等待。",
+    "description": "查看当前这一轮派出的子 agent 状态（运行中 / 成功 / 失败 / 取消）。\n非阻塞，不等待、不消费结果；要看完整结论用 wait-sub-agent（传 sub_agent_ids），要取消用 cancel-sub-agent。\n返回状态与运行元数据（步数 / 工具次数 / 耗时 / token / 起止时间）与 batchRunId（哪一轮派的），\n**不返回结论**；本会话跨轮可见（第二轮能看到第一轮派出的子助手）。\n什么时候用：想知道子助手跑到哪了、有没有失败；不要用它代替等待。",
     "category": "core",
     "scope": "all",
     "executor": "server",
@@ -1125,7 +1125,7 @@ export const ALL_TOOL_MANIFESTS: readonly ToolManifest[] = [
   {
     "key": "wait-sub-agent",
     "title": "等待子助手",
-    "description": "等指定的子 agent（或当前父 run 下所有子助手）完成。\n不传 sub_agent_ids = 等全部子助手；已经完成的也会一起返回（不会返回空数组）。\n返回每个子助手的 path + 行数 + 字节数（不返回摘要）；**正文用 read-file 读 path**（按行分页、可续读）。\n最多等 timeout_ms；到点返回 pending，子 agent 会继续跑，父可以继续做别的。\n已经拿到的结果会消费掉，避免父结束后重复唤醒；没有 pending 时不要反复空等。",
+    "description": "等指定的子 agent（或当前父 run 下所有子助手）完成。\n不传 sub_agent_ids = 等本会话所有未完成的子助手（跨轮可见）；传了就等指定的（已完成的也返回）。\n返回每个子助手的 path + 行数 + 字节数（不返回摘要）；**正文用 read-file 读 path**（按行分页、可续读）。\n最多等 timeout_ms；到点返回 pending，子 agent 会继续跑，父可以继续做别的。\n已经拿到的结果会消费掉，避免父结束后重复唤醒；没有 pending 时不要反复空等。",
     "category": "core",
     "scope": "all",
     "executor": "server",
@@ -1134,7 +1134,7 @@ export const ALL_TOOL_MANIFESTS: readonly ToolManifest[] = [
       "type": "object",
       "properties": {
         "sub_agent_ids": {
-          "description": "要等的子 agent（subAgentId）；省略 = 当前父 run 下所有未完成子 agent",
+          "description": "要等的子 agent（subAgentId）；省略 = 本会话所有未完成的子助手（跨轮可见）",
           "type": "array",
           "items": {
             "type": "string"
