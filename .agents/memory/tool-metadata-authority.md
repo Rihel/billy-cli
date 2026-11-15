@@ -6,7 +6,7 @@
 
 - **定义源**：server 的 `@ToolDecl`（Zod / 描述 / scope）是执行期事实源；
   `pnpm gen:tool-catalog` 把它生成到 `packages/tool-catalog/src/generated.ts` 的
-  `ALL_TOOL_MANIFESTS`（29 个工具，含 facade / server / worker 三种 executor；
+  `ALL_TOOL_MANIFESTS`（32 个工具，含 facade / server / worker 三种 executor；
   含 file / skill / memory / planner / subagent）。
 - **已迁 worker 的 bash / web-fetch / web-search**：catalog 手写定义，
   server 声明与 gateway 共用；其余工具仍以 server 声明为准，由生成脚本镜像。
@@ -25,6 +25,10 @@
 
 - server 的 Mastra `resolveTools` 已消费 `GatewayToolCatalog.allowedKeys()`（`/v1/tools/list`）：
   本地注册机负责执行，gateway 目录负责运行时 enabled / scope；未配置或抖动 fail-open。
+- **授权按执行分流（2026-11-15 修正）**：只有 `remote.supports(key)`（走网关的 17 个 worker 工具）
+  才受网关目录约束；facade / server 的 15 个本地工具以本地注册机 + `ai_tools` 为准。
+  纯函数 `filterToolFace`（`runtime/gateway-tool-catalog.ts`）实现，dispatch 与授权同一口径。
+  曾全量过滤 → `generated.ts` 滞后时 `wait-sub-agent`（本地工具）也被削掉。
 - web-search / web-request / file / skill / memory / read-tool-result 均已进 catalog + worker 执行器。
 - 仅剩 connector 动态工具（不在本目标）。
 

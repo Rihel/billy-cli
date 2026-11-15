@@ -41,7 +41,7 @@ import {
   TimelineRepository,
 } from './runtime/index.js'
 import { createRemoteToolInvoker } from './runtime/remote-tool.client.js'
-import { GatewayToolCatalog } from './runtime/gateway-tool-catalog.js'
+import { GatewayToolCatalog, filterToolFace } from './runtime/gateway-tool-catalog.js'
 import { ConversationRunQueue } from './runtime/run-queue.service.js'
 import { ConversationRunQueueDispatcher } from './runtime/run-queue.dispatcher.js'
 import {
@@ -89,7 +89,12 @@ import {
   TOOL_ENV_CAPS,
 } from './core/tools/tool.config.ports.js'
 import { ToolConfigService } from './core/tools/tool.config.service.js'
-import { REMOTE_TOOL_INVOKER, TOOL_CLOCK, TOOL_RATE_COUNTER } from './core/tools/tool.ports.js'
+import {
+  REMOTE_TOOL_INVOKER,
+  TOOL_CLOCK,
+  TOOL_RATE_COUNTER,
+  type RemoteToolInvoker,
+} from './core/tools/tool.ports.js'
 import { RedisToolRateCounter } from './core/tools/tool.rate-counter.redis.js'
 import { systemToolClock } from './core/tools/tool.clock.js'
 import { ToolCallMetaStore } from './core/tools/tool.meta.js'
@@ -362,6 +367,7 @@ let warnedMissingEnvelope = false
         AppLogger,
         AGENT_MEMORY,
         GatewayToolCatalog,
+        REMOTE_TOOL_INVOKER,
       ],
       useFactory: async (
         config: AgentConfigValue,
@@ -372,6 +378,7 @@ let warnedMissingEnvelope = false
         logger: AppLogger,
         memory: ReturnType<typeof createAgentMemory>,
         catalog: GatewayToolCatalog,
+        remote: RemoteToolInvoker | null,
       ) => {
         return createMastra({
           /**
@@ -402,9 +409,17 @@ let warnedMissingEnvelope = false
             const local = caller
               ? await tools.authorized(keys, caller)
               : await tools.publicKeys(keys)
-            // gateway 是运行时目录 / 开关的权威；未配置或抖动时 fail-open 回本地
+            /**
+             * 目录只约束**走网关**的工具（与执行分流同一口径）：
+             * 本地执行的工具（规划 / 子助手管理 / 技能库）以本地注册机 + `ai_tools` 为准，
+             * 不能被 `generated.ts` 的滞后连坐。未配置或抖动时 fail-open 回本地。
+             */
             const catalogKeys = caller ? await catalog.allowedKeys(caller) : null
-            const allowed = catalogKeys ? local.filter((key) => catalogKeys.has(key)) : local
+            const allowed = filterToolFace(
+              local,
+              catalogKeys,
+              (key) => remote?.supports(key) ?? false,
+            )
             return toMastraTools(tools.toolbox(allowed), logger)
           },
           resolveSkills: async (names) => toMastraSkills(await skillLoader.resolve(names)),

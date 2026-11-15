@@ -69,7 +69,7 @@ AGENT_TOOL_GROUPS（工具组：@Injectable 类 + 方法级 @ToolDecl）┐
 
 | 约束 | 依据 | 后果 |
 | --- | --- | --- |
-| ~~工具清单在 `new Agent()` 时一次性交给 Mastra~~ **已不成立（2026-11-13）**：`tools` / `skills` / `instructions` / `model` 都是**按请求求值**的动态参数（`tools: async ({ requestContext }) => …`，`mastra/ai.mastra.ts`） | 当前代码 | 可以按这一次的身份 / 作用域**过滤工具面**（`ToolRegistry.authorized()`），连接器新同步的工具也不用重启；调用期仍由 `EnabledPlugin` 拦总开关 |
+| ~~工具清单在 `new Agent()` 时一次性交给 Mastra~~ **已不成立（2026-11-13）**：`tools` / `skills` / `instructions` / `model` 都是**按请求求值**的动态参数（`tools: async ({ requestContext }) => …`，`mastra/ai.mastra.ts`） | 当前代码 | 可以按这一次的身份 / 作用域**过滤工具面**（`ToolRegistry.authorized()`），连接器新同步的工具也不用重启；调用期仍由 `EnabledPlugin` 拦总开关；**网关目录只约束走网关的 worker 工具**，本地工具（facade / server）以本地注册机 + `ai_tools` 为准（2026-11-15） |
 | durable（崩溃恢复）默认开启 | `apps/main/src/app-config.ts` 的 `agent.durableEnabled`（默认 `true`） | 引擎必须走 durable 也成立的路径 |
 | durable 路径直接调 `tool.execute`；**agent 级 `beforeToolCall` 仍然生效且能短路**（钩子在 Agent 层包装工具实例，不走 durable 文件） | `create-durable-agent-*.js` 直接调 `execute`；**实测**（`test/ai-mastra-contract.test.ts` 用例 ②）：钩子被调用，`{proceed:false, output}` 能短路且结论交给模型 | 钩子是可用选项；我们仍选择包 `execute`，让网关与插件不必认识 Mastra 的钩子 API（主体框架无关） |
 

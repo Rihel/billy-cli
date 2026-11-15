@@ -59,3 +59,24 @@ export class GatewayToolCatalog {
     }
   }
 }
+
+/**
+ * 工具面合并：**与执行分流保持一致**。
+ *
+ * 只有「真的走网关」的工具（`supports(key) === true`）才由网关目录决定是否出现；
+ * 本地执行的工具（规划 / 子助手管理 / 技能库等）以本地注册机 + `ai_tools` 为准。
+ *
+ * 为什么必须分流：曾经这里是全量过滤（`local.filter(key => catalogKeys.has(key))`），
+ * 于是 `generated.ts` 一滞后，`wait-sub-agent` 这种**根本不经过网关**的本地工具也会被
+ * 远端目录削掉 —— 表现为「后台在册、模型调不到」（2026-11-15 实测）。
+ *
+ * `catalogKeys = null`（未配网关 / 网关抖动）时 fail-open：整份本地工具面原样放行。
+ */
+export const filterToolFace = (
+  local: readonly string[],
+  catalogKeys: ReadonlySet<string> | null,
+  supports: (key: string) => boolean,
+): string[] => {
+  if (!catalogKeys) return [...local]
+  return local.filter((key) => !supports(key) || catalogKeys.has(key))
+}
