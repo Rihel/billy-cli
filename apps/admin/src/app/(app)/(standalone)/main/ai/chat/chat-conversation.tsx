@@ -252,7 +252,8 @@ export function ChatConversation({ conversationId }: { conversationId: string })
    * 主区当前选中的 tab：`MAIN_SESSION_TAB` = 主会话，其余是某个子 agent 的 run id。
    *
    * 选中态放在**会话页**而不是 tab 条自己身上：主时间线的子助手卡片要按 run id 切过去，
-   * 两边必须共用同一份状态（见 `openSubAgentTab`）。
+   * 两边必须共用同一份状态（见 `openSubAgentTab`）；右栏也读它来切作用域
+   * （切到子 agent → 系统指令 / 任务 / 技能都换成这个子助手的）。
    * **子助手开跑不自动切** —— 用户可能正在读主时间线，抢视图比"看不到过程"更烦；
    * 正在跑的子 agent 在它自己的 tab 上转圈，看得见但不打扰。
    */
@@ -1518,6 +1519,8 @@ export function ChatConversation({ conversationId }: { conversationId: string })
                   // 当前计划：任务 tab 与消息里的紧凑卡同源（会话页算好传进来）
                   plan={conversationPlan}
                   files={conversationQuery.data?.aiFiles ?? []}
+                  // 主区切到哪个子助手，右栏就换成它的旁证（系统指令 / 任务目标 + 清单 / 技能）
+                  activeRunId={activeSessionTab === MAIN_SESSION_TAB ? null : activeSessionTab}
                   focus={panelFocus}
                 />
               </ResizablePanel>
@@ -1545,6 +1548,7 @@ export function ChatConversation({ conversationId }: { conversationId: string })
                 messages={messages}
                 plan={conversationPlan}
                 files={conversationQuery.data?.aiFiles ?? []}
+                activeRunId={activeSessionTab === MAIN_SESSION_TAB ? null : activeSessionTab}
                 focus={panelFocus}
               />
             </div>

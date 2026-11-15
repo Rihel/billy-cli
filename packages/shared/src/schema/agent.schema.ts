@@ -400,9 +400,12 @@ export const AgentInstructionsModelSchema = z.object({
   /**
    * 这份指令的来源：
    * - `conversation`：会话时间线里的**渲染后快照**（真正送进模型的那份，可能含首轮运行环境）；
-   * - `definition`：装配期的**静态定义**（该会话还没跑过任何一轮，或历史会话早于"落快照"这一步）。
+   * - `definition`：装配期的**静态定义**（该会话还没跑过任何一轮，或历史会话早于"落快照"这一步）；
+   * - `unrecorded`：**子助手**跑在"子会话落系统指令快照"之前（2026-11-15 以前）——
+   *   它的提示词由主 agent 现写、没有静态定义可退，所以 `instructions` 是空串，
+   *   面板应如实说明"这次运行没有留下系统指令"，不要拿父 agent 的定义顶替。
    */
-  source: z.enum(['conversation', 'definition']),
+  source: z.enum(['conversation', 'definition', 'unrecorded']),
   /** 快照的落库时间（`source='definition'` 时为 null） */
   recordedAt: z.union([z.string(), z.date()]).nullable(),
 })

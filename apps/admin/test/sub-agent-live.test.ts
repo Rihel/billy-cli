@@ -7,9 +7,11 @@ import {
   subAgentBodyText,
   isSubAgentActive,
   liveSubAgentsOf,
+  liveToolCallCount,
   subAgentStatus,
   subAgentTabLabels,
   subAgentTabs,
+  withRunState,
 } from '../src/app/(app)/(standalone)/main/ai/chat/sub-agent-live.ts'
 
 /**
@@ -344,5 +346,94 @@ describe('subAgentBodyText（紧凑卡展开后的正文）', () => {
   it('啥都没有 → null（卡片给诚实提示，不显示空白）', () => {
     expect(subAgentBodyText(live({ reasoning: '只有推理' }))).toBeNull()
     expect(subAgentBodyText(live({ result: '   ' }))).toBeNull()
+  })
+})
+
+describe('运行中的工具次数（从实时事件数，而不是收尾才写的 toolCallCount）', () => {
+  const baseLive = (entries: unknown[]) =>
+    ({
+      runId: 'run-1',
+      name: '子助手',
+      text: '',
+      reasoning: '',
+      events: [],
+      entries,
+    }) as never
+
+  it('只数 tool-call：tool-result 是同一次调用的另一半，数了会翻倍', () => {
+    const agent = baseLive([
+      { kind: 'tool', event: { kind: 'tool-call', toolCallId: 'c1', toolKey: 'web-search' } },
+      { kind: 'tool', event: { kind: 'tool-result', toolCallId: 'c1', toolKey: 'web-search' } },
+      { kind: 'text', text: '先看搜索结果。' },
+      { kind: 'tool', event: { kind: 'tool-call', toolCallId: 'c2', toolKey: 'web-fetch' } },
+    ])
+    expect(liveToolCallCount(agent)).toBe(2)
+  })
+
+  it('没有事件时是 0（卡片显示"已调用 0 次工具"，不谎报步数）', () => {
+    expect(liveToolCallCount(baseLive([]))).toBe(0)
+  })
+})
+
+describe('withRunState：库里的子 run 覆盖终态字段', () => {
+  const liveOf = () =>
+    ({
+      runId: 'run-1',
+      name: '商业化',
+      text: '边跑边长',
+      reasoning: '',
+      events: [],
+      entries: [],
+      status: 'running',
+      stepCount: 3,
+      toolCallCount: 2,
+      durationMs: 0,
+    }) as never
+
+  const runOf = (overrides: Record<string, unknown> = {}) =>
+    ({
+      id: 'run-1',
+      conversationId: 'sub-conv',
+      parentRunId: 'root-run',
+      depth: 1,
+      toolCallId: 'call-1',
+      agentKey: 'sub:商业化',
+      triggeredBy: null,
+      requestId: null,
+      status: 'succeeded',
+      recoveryCount: 0,
+      errorCode: null,
+      errorStage: null,
+      errorMessage: null,
+      durationMs: 84_800,
+      firstTokenMs: 100,
+      stepCount: 6,
+      toolCallCount: 4,
+      usage: { totalTokens: 1234 },
+      ...overrides,
+    }) as never
+
+  it('终态：状态 / 步数 / 工具次数 / token / 耗时全部以库里为准，正文保留', () => {
+    const merged = withRunState(liveOf(), runOf())
+    expect(merged).toMatchObject({
+      status: 'succeeded',
+      stepCount: 6,
+      toolCallCount: 4,
+      durationMs: 84_800,
+      usage: { totalTokens: 1234 },
+      text: '边跑边长',
+    })
+  })
+
+  it('运行中：不动计数（库里的 stepCount 收尾才落，覆盖会让 3 步倒退成 0），只补子会话 id', () => {
+    const merged = withRunState(liveOf(), runOf({ status: 'running', stepCount: 0 }))
+    expect(merged).toMatchObject({ status: 'running', stepCount: 3, toolCallCount: 2 })
+    expect(merged).toMatchObject({ conversationId: 'sub-conv' })
+  })
+
+  it('不改入参（纯函数：store 每次 publish 都要能重算出同一份）', () => {
+    const live = liveOf()
+    withRunState(live, runOf())
+    expect(live).toMatchObject({ status: 'running', stepCount: 3 })
   })
 })

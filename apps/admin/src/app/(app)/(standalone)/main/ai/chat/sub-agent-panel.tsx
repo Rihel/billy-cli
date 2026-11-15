@@ -32,9 +32,12 @@ import { isSubAgentActive, type SubAgentLive } from './sub-agent-live'
 
 /** 运行状态 → 人话（卡片、tab 与运行记录都用这一份，口径不分叉） */
 export const statusLabel: Record<string, string> = {
+  pending: '排队中',
   running: '进行中',
+  suspended: '等待回答',
   succeeded: '已完成',
   failed: '失败',
+  interrupted: '已中断',
   canceled: '已停止',
   rejected: '未执行',
 }

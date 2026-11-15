@@ -255,8 +255,17 @@ export class AiAdminConversationService {
   }
 
   /**
-   * 系统指令原文：有会话快照回快照（真正送进模型的那份），否则回执行面的静态定义。
+   * 这个会话**实际送进模型**的系统指令（`POST /agent/instructions`）。
    *
+   * 取数优先级（2026-11-15 调整）：
+   * 1. **时间线快照优先**：主会话与子会话都落了 `kind=system` 快照，谁有就回谁 —— 这才是
+   *    "模型当时看到的那份"；子 agent 的提示词由主 agent 现写 + 运行时追加能力边界，
+   *    快照里的就是两者拼好的最终文本；
+   * 2. 快照缺失：主会话退回该 agent 的**静态定义**（会话还没跑过 / 早于落快照）；
+   *    子会话回 `unrecorded` 空文本 —— `sub:<名字>` 不在 agent 目录里，硬查会抛 3303，
+   *    拿父 agent 的定义冒充更糟（面板上会显示成"父会话的指令"）。
+   *
+   * 顺序必须"先快照、后目录"：先 `resolveAgentKey` 的话，子会话永远走不到快照那一步。
    * 静态定义的渲染（agent 规格 + 提示词模板 + 工具 manifest）只在 agent-runtime，
    * 控制面不复制提示词；快照归属校验与其它读接口同一道门。
    */
@@ -264,20 +273,48 @@ export class AiAdminConversationService {
     if (!input.conversationId) return this.agents.instructions(input)
 
     const conversation = await this.requireOwned(input.conversationId)
-    const agentKey = await this.agents.resolveAgentKey(input.agentKey ?? conversation.agentKey)
-    const definition = await this.agents.instructions({ agentKey })
+    const isSubagent = conversation.kind === 'subagent'
     const snapshot = await this.timelines.latestSystemPrompt(conversation.id)
-    if (!snapshot) return definition
 
-    const snapshotAgent = await this.agents.findAgent(snapshot.agentKey)
-    return {
-      agentKey: snapshot.agentKey ?? definition.agentKey,
-      name: snapshotAgent?.name ?? definition.name,
-      description: snapshotAgent?.description ?? definition.description,
-      instructions: snapshot.text,
-      source: 'conversation',
-      recordedAt: snapshot.createdAt,
+    if (snapshot) {
+      const agentKey = snapshot.agentKey ?? input.agentKey ?? conversation.agentKey
+      const catalogAgent =
+        (await this.agents.findAgent(agentKey)) ??
+        (isSubagent ? undefined : await this.agents.findAgent(conversation.agentKey))
+      return {
+        agentKey,
+        // 子助手的 `sub:<名字>` 在目录里查不到：名字取子会话标题（建会话时是「子助手：<名字>」），
+        // 不要回落成父 agent 的展示名
+        name: catalogAgent?.name ?? (isSubagent ? this.subagentNameOf(conversation) : agentKey),
+        description: catalogAgent?.description ?? '',
+        instructions: snapshot.text,
+        source: 'conversation',
+        recordedAt: snapshot.createdAt,
+      }
     }
+
+    if (isSubagent) {
+      return {
+        agentKey: conversation.agentKey,
+        name: this.subagentNameOf(conversation),
+        description: '',
+        instructions: '',
+        source: 'unrecorded',
+        recordedAt: null,
+      }
+    }
+
+    const agentKey = await this.agents.resolveAgentKey(input.agentKey ?? conversation.agentKey)
+    return this.agents.instructions({ agentKey })
+  }
+
+  /** 子助手的展示名：优先子会话标题，其次 `sub:<名字>` 的后半段 */
+  private subagentNameOf(conversation: ConversationEntity): string {
+    const title = conversation.title.trim()
+    if (title) return title
+    return conversation.agentKey.startsWith('sub:')
+      ? conversation.agentKey.slice('sub:'.length) || '子助手'
+      : conversation.agentKey
   }
 
   /** 本轮可选的模型（会话页选择器的数据源） */

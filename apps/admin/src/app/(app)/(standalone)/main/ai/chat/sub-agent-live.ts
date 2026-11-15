@@ -230,6 +230,41 @@ export const isSubAgentActive = (live: SubAgentLive): boolean =>
 /** 展示用状态：拿不到最终状态时按"进行中"算（口径同一处，卡片与子 agent tab 不分叉） */
 export const subAgentStatus = (live: SubAgentLive): string => live.status ?? 'running'
 
+/** 子 run 是否还在跑（排队 / 运行中 / 等回答）：tab 转圈、轮询与"是否还在跑"共用一份判据 */
+export const isActiveRunStatus = (status: string): boolean =>
+  status === 'pending' || status === 'running' || status === 'suspended'
+
+/** 子 run 的**终态**（库里的 `runs.status`）。
+ *
+ * 为什么要有这份：实时块只有在父这一轮的流还开着时才收得到；父流一关、或新一轮（含子助手完成后的
+ * **唤醒轮**）开始清空实时数据，卡片就只能退回"起跑那一刻"的历史 part —— 那里是
+ * `status: 'running'` + 计数全 0。库里的子 run 才是"这次子助手到底怎么样"的权威，
+ * 终态字段一律以它为准（2026-11-15 用户报障：都跑完了卡片还是"进行中 0 步 / 0 次工具"）。
+ */
+const TERMINAL_RUN_STATUSES = new Set(['succeeded', 'failed', 'canceled', 'interrupted'])
+
+/**
+ * 用库里的子 run 覆盖实时快照的**终态字段**（纯函数，不改入参）。
+ *
+ * 非终态只补 `conversationId`，**不动计数**：实时那份更新，而库里的 `stepCount` 可能还没写
+ * （子 run 的步数在收尾时才落一次），拿它覆盖会让"3 步"掉回"0 步"。
+ * `usage` / `durationMs` / `error` 同样只在终态时覆盖，且不覆盖已有的更具体信息。
+ */
+export const withRunState = (live: SubAgentLive, run: AgentRunModel): SubAgentLive => {
+  const merged: SubAgentLive = {
+    ...live,
+    ...(live.conversationId ? {} : { conversationId: run.conversationId }),
+  }
+  if (!TERMINAL_RUN_STATUSES.has(run.status)) return merged
+  merged.status = run.status
+  merged.stepCount = run.stepCount
+  merged.toolCallCount = run.toolCallCount
+  if (typeof run.durationMs === 'number') merged.durationMs = run.durationMs
+  if (run.usage) merged.usage = run.usage
+  if (!merged.error && run.errorMessage) merged.error = run.errorMessage
+  return merged
+}
+
 /** 主区顶部的一个子 agent tab（库里的 run 与实时数据合流后的结果） */
 export interface SubAgentTab {
   runId: string
@@ -264,7 +299,11 @@ export const subAgentTabs = (
       name: subRunName(run.agentKey),
       run,
       ...(live ? { live } : {}),
-      active: run.status === 'running' || (live ? isSubAgentActive(live) : false),
+      /**
+       * 有库里的 run 就**以它为准**：实时快照可能停在"起跑那一刻"（父流关闭 / 唤醒轮清空），
+       * 那时候 `isSubAgentActive(live)` 会把已经结束的子助手判成运行中（tab 一直转圈）。
+       */
+      active: isActiveRunStatus(run.status),
     })
     seen.add(run.id)
   }
@@ -322,6 +361,20 @@ export const subAgentBodyText = (live: SubAgentLive): string | null => {
   const streamed = live.text.trim()
   return streamed || null
 }
+
+/**
+ * 运行中**已经发生的工具调用次数**（从实时事件流数出来）。
+ *
+ * 为什么不用 `live.toolCallCount`：服务端只在**收尾**时写这个数（`finish` → `writeState`），
+ * 运行中一直是 0 —— 用户看到的就是"进行中 0 步 / 0 次工具"，以为没动。
+ *
+ * 只数 `tool-call`（`tool-result` 是同一次调用的另一半，数了会翻倍）。
+ * 边界：历史重建的 part 里只保留**最后一条**事件（服务端按 `id` 覆盖），所以这个数只对实时来源可信 ——
+ * 调用方只在"运行中"用它，终态一律用库里的 `toolCallCount`。
+ */
+export const liveToolCallCount = (live: SubAgentLive): number =>
+  (live.entries ?? []).filter((entry) => entry.kind === 'tool' && entry.event.kind === 'tool-call')
+    .length
 
 /**
  * 两个来源的同一个子助手合成一个可渲染对象（实时优先，缺的字段用另一方补）。

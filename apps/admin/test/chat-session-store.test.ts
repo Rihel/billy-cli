@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { UIMessage } from 'ai'
+import type { AgentRunModel } from '@repo/shared'
 import {
   ChatSessionStore,
   toMessageState,
@@ -380,6 +381,92 @@ describe('markTransientChunks（逐帧增量不落 part）', () => {
       kind: 'notice',
       key: 'notice-sub_run_1',
       data: { name: '待办统计', childStatus: 'succeeded' },
+    })
+  })
+})
+
+describe('ChatSessionStore：子 run 的库内终态', () => {
+  const runOf = (partial: Record<string, unknown>): AgentRunModel =>
+    ({
+      id: 's1',
+      conversationId: 'sub_conv',
+      parentRunId: 'r1',
+      depth: 1,
+      toolCallId: 'call_1',
+      agentKey: 'sub:商业化',
+      triggeredBy: 'user_1',
+      requestId: null,
+      status: 'succeeded',
+      recoveryCount: 0,
+      errorCode: null,
+      errorStage: null,
+      errorMessage: null,
+      durationMs: 84_800,
+      firstTokenMs: 100,
+      stepCount: 6,
+      toolCallCount: 4,
+      usage: { totalTokens: 1234 },
+      ...partial,
+    }) as unknown as AgentRunModel
+
+  /**
+   * 用户报障（2026-11-15）：子助手都跑完了，卡片还是「进行中 0 步 / 0 次工具」。
+   * 终态以库里的子 run 为准，且**跨轮成立**（唤醒轮清空实时数据后不能退回起跑快照）。
+   */
+  it('实时清空（新一轮）后仍按库内终态显示，且不再算"在跑"', () => {
+    vi.useFakeTimers()
+    const store = new ChatSessionStore()
+    store.applyChunk({
+      type: 'data-sub-agent',
+      data: { runId: 's1', name: '商业化', status: 'running' },
+    })
+    vi.advanceTimersByTime(150)
+    expect(store.getSnapshot().liveById.get('s1')?.status).toBe('running')
+
+    store.applyRunStates([runOf({})])
+    expect(store.getSnapshot().liveById.get('s1')).toMatchObject({
+      name: '商业化',
+      status: 'succeeded',
+      stepCount: 6,
+      toolCallCount: 4,
+      durationMs: 84_800,
+    })
+
+    // 子助手完成触发唤醒轮：新一轮清空实时数据，但终态是跨轮成立的事实
+    store.applyChunk({ type: 'data-run', data: { runId: 'r2' } })
+    vi.advanceTimersByTime(150)
+    expect(store.getSnapshot().liveById.get('s1')).toMatchObject({
+      status: 'succeeded',
+      stepCount: 6,
+    })
+    expect(store.hasActiveSubAgent()).toBe(false)
+    vi.useRealTimers()
+  })
+
+  it('运行中的 run 不覆盖实时步数（库里的 stepCount 收尾才落，覆盖会倒退成 0）', () => {
+    vi.useFakeTimers()
+    const store = new ChatSessionStore()
+    store.applyChunk({
+      type: 'data-sub-agent',
+      data: { runId: 's1', name: '商业化', status: 'running', stepCount: 3, toolCallCount: 2 },
+    })
+    vi.advanceTimersByTime(150)
+
+    store.applyRunStates([runOf({ status: 'running', stepCount: 0, toolCallCount: 0 })])
+
+    expect(store.getSnapshot().liveById.get('s1')).toMatchObject({ stepCount: 3, toolCallCount: 2 })
+    vi.useRealTimers()
+  })
+
+  it('刷新首屏（没有任何实时块）也能从子 run 合成视图，不再是"进行中 0 步"', () => {
+    const store = new ChatSessionStore()
+    store.applyRunStates([runOf({ id: 's2', agentKey: 'sub:技术现状', status: 'succeeded' })])
+
+    expect(store.getSnapshot().liveById.get('s2')).toMatchObject({
+      runId: 's2',
+      name: '技术现状',
+      status: 'succeeded',
+      stepCount: 6,
     })
   })
 })

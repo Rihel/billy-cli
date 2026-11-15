@@ -269,6 +269,78 @@ describe('toUIMessages', () => {
     )
   })
 
+  /**
+   * 用户报障（2026-11-15）：子助手都跑完了，卡片还是「进行中 0 步 / 0 次工具」。
+   *
+   * 根因：`run-sub-agent` 的工具出参是**起跑那一刻**（status=running、计数全 0），
+   * 而历史重建只看它。终态在库里的子 run 行，`toUIMessages` 已经拿到了 runs，就地覆盖。
+   */
+  it('子助手卡：起跑快照（running / 0 步）被库里的子 run 终态覆盖', () => {
+    const messages = toUIMessages(
+      [
+        item({ seq: 1, kind: 'text', role: 'user', payload: { text: '统计一下' } }),
+        item({
+          seq: 2,
+          kind: 'tool-call',
+          toolKey: 'run-sub-agent',
+          toolCallId: 'call_sub',
+          payload: {
+            toolCallId: 'call_sub',
+            toolName: 'run-sub-agent',
+            input: { name: '待办统计' },
+          },
+        }),
+        item({
+          seq: 3,
+          kind: 'tool-result',
+          toolKey: 'run-sub-agent',
+          toolCallId: 'call_sub',
+          payload: {
+            toolCallId: 'call_sub',
+            toolName: 'run-sub-agent',
+            output: {
+              subAgentId: CHILD_RUN,
+              subRunId: CHILD_RUN,
+              conversationId: CHILD_RUN,
+              name: '待办统计',
+              status: 'running',
+              result: '',
+              error: null,
+              stepCount: 0,
+              toolCallCount: 0,
+              usage: null,
+              durationMs: 0,
+            },
+            isError: false,
+          },
+        }),
+      ],
+      [
+        run(ROOT_RUN, null),
+        {
+          ...run(CHILD_RUN, ROOT_RUN),
+          status: 'succeeded',
+          stepCount: 5,
+          toolCallCount: 3,
+          durationMs: 42_000,
+          usage: { totalTokens: 900 },
+        } as AgentRunModel,
+      ],
+    )
+
+    const subAgent = messages[1].parts.find((part) => part.type === 'data-sub-agent')
+    expect(subAgent).toMatchObject({
+      type: 'data-sub-agent',
+      data: {
+        status: 'succeeded',
+        stepCount: 5,
+        toolCallCount: 3,
+        durationMs: 42_000,
+        usage: { totalTokens: 900 },
+      },
+    })
+  })
+
   it('一轮的用量合成成 data-run-usage part（否则回看历史时统计全空）', () => {
     const messages = toUIMessages(
       [item({ seq: 1, kind: 'text', role: 'user', payload: { text: '跑一轮' } })],

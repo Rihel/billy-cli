@@ -22,6 +22,7 @@ import { conversationPath } from './routes'
 import { statusLabel, statusVariant } from './sub-agent-panel'
 import {
   isSubAgentActive,
+  liveToolCallCount,
   subAgentBodyText,
   subAgentStatus,
   type SubAgentLive,
@@ -60,8 +61,19 @@ export function SubAgentCard({
   const active = isSubAgentActive(agent)
   const status = subAgentStatus(agent)
   const totalTokens = agent.usage?.totalTokens
-  // 耗时：服务端在子 run 的状态块里给了 `durationMs`（跑完那一条），与工具卡同一套显示口径
-  const duration = typeof agent.durationMs === 'number' ? durationText(agent.durationMs) : null
+  // 耗时：服务端在子 run 的状态块里给了 `durationMs`（跑完那一条），与工具卡同一套显示口径。
+  // 起跑快照里是 `0`（不是耗时），0 不显示 —— 否则运行中的卡片会挂一个"0ms"。
+  const duration =
+    typeof agent.durationMs === 'number' && agent.durationMs > 0
+      ? durationText(agent.durationMs)
+      : null
+  /**
+   * 工具次数：终态用库里的 `toolCallCount`（权威）；运行中它还是 0，改数实时事件里的调用次数。
+   * 步数只有收尾才落库，所以**运行中不显示"N 步"**（显示 0 会谎报"一步没走"）。
+   */
+  const toolCalls = Math.max(agent.toolCallCount ?? 0, liveToolCallCount(agent))
+  const stepCount = agent.stepCount ?? 0
+  const progress = active ? `已调用 ${toolCalls} 次工具` : `${stepCount} 步 / ${toolCalls} 次工具`
   const body = subAgentBodyText(agent)
 
   /**
@@ -109,7 +121,7 @@ export function SubAgentCard({
             <span className="min-w-0 flex-1 truncate font-medium">子助手 · {agent.name}</span>
             <Badge variant={statusVariant(status)}>{statusLabel[status] ?? status}</Badge>
             <span className="w-full text-xs text-muted-foreground sm:w-auto">
-              {agent.stepCount ?? 0} 步 / {agent.toolCallCount ?? 0} 次工具
+              {progress}
               {/* 子助手自己的消耗（k / m 缩写，与右下角统计同一套口径）；
                   它**已计入父那一轮的合计**（`rollUpUsage`），不是额外再花一份 */}
               {typeof totalTokens === 'number' ? ` · ${tokenText(totalTokens)} token` : ''}

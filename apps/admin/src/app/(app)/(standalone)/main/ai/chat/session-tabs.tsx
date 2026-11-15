@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, type ReactNode } from 'react'
+import { useEffect, useMemo, type ReactNode } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import type { AgentRunModel } from '@repo/shared'
 import { Badge, Tabs, TabsContent, TabsList, TabsTrigger, cn } from '@repo/ui'
@@ -10,12 +10,13 @@ import { toUIMessages } from './history'
 import { ChatMessage } from './message-row'
 import { SubAgentLiveView, statusLabel, statusVariant } from './sub-agent-panel'
 import {
+  isActiveRunStatus,
   isSubAgentActive,
   subAgentTabLabels,
   subAgentTabs,
   type SubAgentTab,
 } from './sub-agent-live'
-import { toMessageState, useLiveSubAgents } from './chat-session'
+import { toMessageState, useChatSessionStore, useLiveSubAgents } from './chat-session'
 import { durationText, tokenText } from './format'
 
 /** 主会话 tab 的取值；子 agent tab 与它同处一个 `Tabs`，值取子 run 的 id */
@@ -85,6 +86,11 @@ export function SessionTabs({
    * 主会话（`children`）不受影响 —— 否则每一帧都会带着整条时间线重渲染。
    */
   const liveSubAgents = useLiveSubAgents()
+  /**
+   * 子 run 的库内状态也要喂给会话 store：卡片按「历史 part ← 实时块 ← 库内终态」渲染，
+   * 实时块收不到（父流关闭 / 唤醒轮清空）时，靠这份终态把"进行中 0 步"纠正成真实结果。
+   */
+  const sessionStore = useChatSessionStore()
 
   /**
    * 运行列表在这一层取：tab 条要它才知道"有哪些子 agent"，内容区也要用同一份数据。
@@ -96,18 +102,35 @@ export function SessionTabs({
    * **为什么是 4 秒**：子 run 的起止间隔通常是秒级到分钟级，4s 足够在用户刚看到子助手卡片之后
    * 就把库里的 run 记录对齐（切到完整时间线的前提）；而 `run/list` 只是一页 100 条的索引查询、
    * 且只在有子助手在跑的那段时间发 —— 有感知、又不会在后台空转打库。
+   *
+   * 轮询条件**同时看库里的 run 状态**：实时块可能停在"起跑那一刻"（父流关闭 / 唤醒轮清空），
+   * 只按实时判断会提前停止轮询，终态就永远到不了前端（卡片卡在"进行中 0 步"）。
    */
   const runsQuery = useQuery({
     queryKey: runsQueryKey(conversationId ?? 'none'),
     queryFn: () => loadWholeRuns(client, conversationId as string),
     enabled: Boolean(conversationId),
-    refetchInterval: liveSubAgents.some(isSubAgentActive) ? SUB_AGENT_POLL_INTERVAL : false,
+    refetchInterval: (query) => {
+      const runs = query.state.data ?? []
+      return liveSubAgents.some(isSubAgentActive) ||
+        runs.some((run) => isActiveRunStatus(run.status))
+        ? SUB_AGENT_POLL_INTERVAL
+        : false
+    },
   })
   /** 只要子 run：根 run 是主会话本身，已经在第一个 tab 里了 */
   const subRuns = useMemo(
     () => (runsQuery.data ?? []).filter((run) => run.parentRunId !== null),
     [runsQuery.data],
   )
+
+  /**
+   * 子 run 的库内状态同步给 store：子助手卡片的终态（状态 / 步数 / token / 耗时）以库里为准。
+   * 见 `ChatSessionStore.applyRunStates` 与 `withRunState`。
+   */
+  useEffect(() => {
+    sessionStore.applyRunStates(subRuns)
+  }, [sessionStore, subRuns])
   /** 库里的子 run 与实时数据合流成 tab（谁先有就先用谁的，见 `subAgentTabs`） */
   const tabs = useMemo(() => subAgentTabs(subRuns, liveSubAgents), [subRuns, liveSubAgents])
   const labels = useMemo(() => subAgentTabLabels(tabs), [tabs])
@@ -121,6 +144,16 @@ export function SessionTabs({
     activeTab === MAIN_SESSION_TAB || tabs.some((tab) => tab.runId === activeTab)
       ? activeTab
       : MAIN_SESSION_TAB
+
+  /**
+   * 兜底回落时**把选中态也纠正回去**（不只是本地显示成主会话）。
+   *
+   * 右栏现在按「主区选中的子 run」取数：选中态若停在"不存在的子 run / 嵌套委派的孙 run"上，
+   * 主区显示主会话、右栏却在查那个 run —— 两处又变成两套主语。纠正一次即可，不会来回跳。
+   */
+  useEffect(() => {
+    if (current !== activeTab) onTabChange(current)
+  }, [current, activeTab, onTabChange])
 
   return (
     <Tabs

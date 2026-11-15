@@ -9,7 +9,7 @@ import {
   type UIMessage,
 } from 'ai'
 import { TOOL_EVENT_PART_TYPE, parseToolEventPart } from '@repo/shared'
-import type { ToolEventPart } from '@repo/shared'
+import type { AgentRunModel, ToolEventPart } from '@repo/shared'
 import { createContext, useContext, useSyncExternalStore } from 'react'
 import type { MessagePlan } from './plan-panel'
 import { collectMessagePlan, isPlanToolName } from './plan-panel'
@@ -19,6 +19,8 @@ import {
   emptySubAgent,
   isSubAgentActive,
   mergeSubAgentState,
+  subRunName,
+  withRunState,
   type SubAgentLive,
 } from './sub-agent-live'
 
@@ -532,6 +534,13 @@ export class ChatSessionStore {
   private syncedParts = new Map<string, readonly unknown[]>()
   private order: string[] = []
   private live = new Map<string, SubAgentLive>()
+  /**
+   * 子 run 的**库内状态**（会话页 `run/list` 喂进来；只收子 run）。
+   *
+   * 为什么不并进 `live`：`live` 会被新一轮的 `beginRun` 清空（防止重放时正文翻倍），
+   * 而"这个子助手早就跑完了"是**跨轮成立**的事实 —— 清掉就会退回起跑快照（进行中 0 步）。
+   */
+  private runStates = new Map<string, AgentRunModel>()
   private listeners = new Set<() => void>()
   private snapshot: ChatSessionSnapshot = {
     version: 0,
@@ -660,16 +669,46 @@ export class ChatSessionStore {
     this.scheduleFlush()
   }
 
+  /**
+   * 同步子 run 的库内状态（`run/list` 到达时调用）。
+   *
+   * 存在的理由：实时块只在父这一轮的流还开着、且本轮还没被 `beginRun` 清空时才收得到。
+   * 父流一关（子助手常常比父晚结束）或子助手完成触发唤醒轮，卡片就只能靠历史 part 的
+   * "起跑快照"（status=running、计数 0）。库里的子 run 行是终态权威，存下来给视图合并。
+   *
+   * 只收子 run（`parentRunId !== null`）：根 run 是主会话自己，不归子助手卡管。
+   * 状态没变就不 publish（`run/list` 4s 一轮，避免无意义重渲染）。
+   */
+  applyRunStates(runs: readonly AgentRunModel[]): void {
+    let changed = false
+    for (const run of runs) {
+      if (run.parentRunId === null) continue
+      const previous = this.runStates.get(run.id)
+      if (
+        previous &&
+        previous.status === run.status &&
+        previous.stepCount === run.stepCount &&
+        previous.toolCallCount === run.toolCallCount &&
+        previous.durationMs === run.durationMs
+      ) {
+        continue
+      }
+      this.runStates.set(run.id, run)
+      changed = true
+    }
+    if (changed) this.publish()
+  }
+
   /** 当前这一轮的子助手是否还有在跑的（运行指示与用例用；tab 条按单个 run 判活跃态） */
   hasActiveSubAgent(): boolean {
-    for (const live of this.live.values()) {
+    for (const live of this.views().values()) {
       if (isSubAgentActive(live)) return true
     }
     return false
   }
 
   activeSubAgentName(): string | null {
-    for (const live of this.live.values()) {
+    for (const live of this.views().values()) {
       if (isSubAgentActive(live)) return live.name
     }
     return null
@@ -692,13 +731,35 @@ export class ChatSessionStore {
     const messages = this.order
       .map((id) => this.states.get(id))
       .filter((state): state is ChatMessageState => Boolean(state))
+    const liveById = this.views()
     this.snapshot = {
       version: this.snapshot.version + 1,
       messages,
-      live: [...this.live.values()],
-      liveById: new Map(this.live),
+      live: [...liveById.values()],
+      liveById,
     }
     for (const listener of this.listeners) listener()
+  }
+
+  /**
+   * 子助手视图 = 「实时快照 ← 库内 run 终态」。
+   *
+   * 两类条目都要有：
+   * - 实时里有、库里还没到（刚起跑）→ 直接给实时那份；
+   * - 库里有、实时里已经没有（刷新首屏 / 唤醒轮清空之后）→ 用 run 合成一份，
+   *   否则卡片会退回历史 part 的"进行中 0 步"。
+   */
+  private views(): Map<string, SubAgentLive> {
+    const views = new Map<string, SubAgentLive>()
+    for (const [runId, live] of this.live) {
+      const run = this.runStates.get(runId)
+      views.set(runId, run ? withRunState(live, run) : live)
+    }
+    for (const [runId, run] of this.runStates) {
+      if (views.has(runId)) continue
+      views.set(runId, withRunState(emptySubAgent(runId, subRunName(run.agentKey)), run))
+    }
+    return views
   }
 }
 

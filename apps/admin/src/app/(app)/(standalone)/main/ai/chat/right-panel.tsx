@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import type { UIMessage } from 'ai'
-import type { AgentFileNode, AiSkillModel } from '@repo/shared'
+import type { AgentFileNode, AgentRunDetailModel, AiSkillModel } from '@repo/shared'
 import {
   Badge,
   Button,
@@ -25,11 +25,15 @@ import {
   SparklesIcon,
 } from 'lucide-react'
 import type { ServerClient } from './data'
-import { PlanPanel, type ConversationPlan } from './plan-panel'
+import { loadWholeTimeline } from './data'
+import { conversationPlanOf, PlanPanel, type ConversationPlan } from './plan-panel'
 import { copyText } from '@/lib/clipboard'
 import { activatedSkillsOf } from './skill-activity'
 import { SkillPreviewDialog } from './skill-preview-dialog'
 import { FilesPanel } from './files-panel'
+import { toUIMessages } from './history'
+import { subRunName } from './sub-agent-live'
+import { statusLabel } from './sub-agent-panel'
 
 /** 右栏的 tab（`focus` 与初始 tab 都用它，避免各处写裸字符串） */
 export type RightPanelTab = 'system' | 'skills' | 'plan' | 'files'
@@ -52,6 +56,21 @@ export type RightPanelTab = 'system' | 'skills' | 'plan' | 'files'
  *
  * 为什么是"右栏"而不是又一个弹窗：这些内容要跟主对话**对着看**
  * （一边看清单 / 提示词，一边看它怎么答），弹窗一挡就看不成了。
+ *
+ * ## 作用域：跟着主区顶部的 tab 走（2026-11-15 起）
+ *
+ * 主区切到某个子 agent 的 tab（`activeRunId`）时，右栏**整体换成这个子助手的事实** ——
+ * 否则会变成"页头/主区是子助手、面板还在说父会话"的两套主语：
+ * - 系统指令：它**被要求**的那份提示词（主 agent 现写 + 运行时追加的能力边界，见
+ *   `agent-runner.ts` 落的子会话快照）。**注意**：这是"我们交给运行时的完整指令"，
+ *   不是模型最终收到的 system —— Mastra 在请求侧还会追加 `<available_skills>` 技能目录段
+ *   （2026-11-15 实测，主会话同样如此），那一段不进快照；
+ * - 技能：它这一轮**实际激活过**的技能（从它自己的时间线派生）；
+ * - 任务：主 agent 交给它的**任务目标**（`request_snapshot.task`）+ 它自己的清单
+ *   （plan 工具对子 agent 开放、清单按会话隔离，落在子 run 的时间线里）；
+ * - 文件：仍是**共享工作区**（子助手写的就是父会话的文件树），不跟着切，面板上注明这一点。
+ *
+ * 切回主会话即恢复父会话的信息；两边的取数逻辑是同一套，只是数据源不同。
  */
 export function ConversationRightPanel({
   client,
@@ -60,6 +79,7 @@ export function ConversationRightPanel({
   messages = [],
   plan = null,
   files = [],
+  activeRunId = null,
   defaultTab = 'system',
   focus = null,
 }: {
@@ -73,6 +93,13 @@ export function ConversationRightPanel({
   plan?: ConversationPlan | null
   /** 会话文件树（`conversation/detail` 的 aiFiles；用户上传 + AI 提交） */
   files?: AgentFileNode[]
+  /**
+   * 主区当前选中的**子 run id**（`null` = 主会话）：给了就把右栏切到这个子助手的旁证。
+   *
+   * 只传 id 不传对象：右栏自己按 id 查 `run/detail`（React Query 缓存，切来切回不重复打接口），
+   * 免得把运行列表 / 实时块接到这一层（那会让右栏跟着每一帧增量重渲染）。
+   */
+  activeRunId?: string | null
   /** 首次挂载停在哪个 tab（面板此后受控，由用户与 `focus` 驱动） */
   defaultTab?: RightPanelTab
   /**
@@ -95,15 +122,24 @@ export function ConversationRightPanel({
     // oxlint-disable-next-line react-hooks/exhaustive-deps
   }, [focus?.nonce])
 
+  /** 子助手作用域：主区切到子 tab 时，右栏的取数全部换成这个子 run（null = 主会话） */
+  const scope = useSubAgentScope(client, activeRunId)
+  const scoped = activeRunId !== null
+
+  /** 当前作用域的消息：技能 tab 从它派生（子助手用它自己的时间线，主会话用 `useChat` 那份） */
+  const scopedMessages = scoped ? scope.messages : messages
+  /** 当前作用域的计划：子 tab 用它自己的清单，主会话用会话页算好的那份 */
+  const scopedPlan = scoped ? scope.plan : plan
+
   /** tab 标签上的进度（`3/5`）：与卡片正文同一份数据算出来，不会出现"标签说 3、内容说 4" */
   const planProgress = useMemo(() => {
-    if (!plan) return null
-    const tasks = plan.current.plan.tasks
+    if (!scopedPlan) return null
+    const tasks = scopedPlan.current.plan.tasks
     return { done: tasks.filter((task) => task.status === 'done').length, total: tasks.length }
-  }, [plan])
+  }, [scopedPlan])
 
-  /** 本会话激活过的技能（消息 parts 派生；调用次数降序） */
-  const activatedSkills = useMemo(() => activatedSkillsOf(messages), [messages])
+  /** 当前作用域激活过的技能（消息 parts 派生；调用次数降序） */
+  const activatedSkills = useMemo(() => activatedSkillsOf(scopedMessages), [scopedMessages])
 
   return (
     <Tabs
@@ -113,6 +149,16 @@ export function ConversationRightPanel({
       // 内容不再贴着面板边缘，tab 条的胶囊也有呼吸空间
       className="flex h-full min-h-0 flex-col gap-1.5 bg-card p-3"
     >
+      {/* 作用域提示：不写清楚，用户会以为右栏还是"这个会话"的信息 */}
+      {scoped ? (
+        <p className="shrink-0 rounded-md bg-surface-2 px-2 py-1.5 text-[11px] leading-4 text-muted-foreground">
+          以下信息属于子助手{' '}
+          <span className="font-medium text-foreground">{scope.name || '…'}</span>
+          {scope.status && statusLabel[scope.status] ? `（${statusLabel[scope.status]}）` : ''} ·
+          切回「主会话」看本会话的信息
+        </p>
+      ) : null}
+
       {/* overflow-x-auto 会把另一轴也算成 auto：横向滚动条吃掉 8px 高度后，32px 的标签条
           立刻纵向溢出、长出竖直滚动条。这里显式锁死纵向 + 不画滚动条（标签条不需要） */}
       <TabsList className="w-full justify-start overflow-x-auto overflow-y-hidden scrollbar-none pb-0.5">
@@ -135,25 +181,194 @@ export function ConversationRightPanel({
       </TabsList>
 
       <TabsContent value="system" className="flex min-h-0 flex-1 flex-col">
-        <SystemPromptPanel client={client} conversationId={conversationId} agentKey={agentKey} />
+        {scoped ? (
+          <SubAgentSystemPrompt client={client} scope={scope} />
+        ) : (
+          <SystemPromptPanel client={client} conversationId={conversationId} agentKey={agentKey} />
+        )}
       </TabsContent>
 
       <TabsContent value="skills" className="flex min-h-0 flex-1 flex-col">
-        <ActivatedSkillsPanel
-          client={client}
-          conversationId={conversationId}
-          activated={activatedSkills}
-        />
+        {scoped && scope.loading ? (
+          <ScopeLoading />
+        ) : scoped && scope.error ? (
+          <ScopeError error={scope.error} />
+        ) : (
+          <ActivatedSkillsPanel
+            client={client}
+            conversationId={scoped ? (scope.conversationId ?? undefined) : conversationId}
+            activated={activatedSkills}
+          />
+        )}
       </TabsContent>
 
       <TabsContent value="plan" className="flex min-h-0 flex-1 flex-col">
-        <PlanRunsPanel plan={plan} />
+        {scoped ? <SubAgentPlanPanel scope={scope} /> : <PlanRunsPanel plan={plan} />}
       </TabsContent>
 
       <TabsContent value="files" className="flex min-h-0 flex-1 flex-col">
         <FilesPanel client={client} conversationId={conversationId} files={files} />
+        {/* 文件不跟着作用域切：子助手写的就是父会话的工作区（`conversation/detail` 也按根会话取树） */}
+        {scoped ? (
+          <p className="shrink-0 pt-2 text-[11px] leading-4 text-muted-foreground">
+            子助手与你共用同一个工作区，这里列的是本会话的文件树。
+          </p>
+        ) : null}
       </TabsContent>
     </Tabs>
+  )
+}
+
+/** 子助手作用域的一整包数据（右栏四个 tab 都从它取，避免各查一遍） */
+interface SubAgentScope {
+  /** `run/detail` 还在路上（还没拿到 run，或 run 到了但时间线还没到） */
+  loading: boolean
+  /** 子会话 id：系统指令 / 技能 tab 按它取数 */
+  conversationId: string | null
+  /** 子助手名字（`sub:<名字>` 的后半段） */
+  name: string
+  status: string | null
+  /** 主 agent 交给它的任务目标（`request_snapshot.task`） */
+  task: string | null
+  /** 子 run 的消息（与主区 `SubRunView` **同一个缓存键**，不重复请求） */
+  messages: UIMessage[]
+  plan: ConversationPlan | null
+  /** 旧子 run 的"主 agent 原稿"（不含运行时追加的能力边界段），只在没有快照时用 */
+  promptDraft: string | null
+  error: string | null
+}
+
+/**
+ * 按子 run id 取右栏要用的那一份数据。
+ *
+ * 两跳查询（都不新增接口）：
+ * 1. `run/detail`：拿 `conversationId` / `agentKey` / 任务目标 / 原稿；
+ * 2. 子 run 的时间线：与主区 `SubRunView` **完全同一个 queryKey 与 queryFn**，
+ *    所以切 tab 时两边共享同一份缓存 —— 列表只打一次、渲染两份（一份过程、一份清单）。
+ *
+ * **运行中轮询时间线**（3s）：清单是 `plan` 事件（每次 `plan-*` 工具调用一条），
+ * 它落在**子会话**的时间线里，不经过父会话那条流 —— 不轮询就看不到"边做边变"的进度。
+ * 一个子 run 的时间线只有它自己的事件（服务端已按 runId 过滤），代价可控；跑完即停。
+ */
+function useSubAgentScope(client: ServerClient, activeRunId: string | null): SubAgentScope {
+  const runQuery = useQuery({
+    queryKey: ['ai', 'run', activeRunId ?? 'none'],
+    queryFn: () => client.agent.run.detail({ runId: activeRunId as string }),
+    enabled: Boolean(activeRunId),
+    // 跑着就每 4s 刷新一次状态（与「运行列表」同一节奏）：终态后停，且时间线轮询随之停
+    refetchInterval: (query) => {
+      const status = query.state.data?.status
+      return status && ['pending', 'running', 'suspended'].includes(String(status)) ? 4_000 : false
+    },
+  })
+  const run = runQuery.data
+  /** 子 run 还在跑：清单 / 用量都可能变（终态后停止轮询） */
+  const runActive =
+    run !== undefined && ['pending', 'running', 'suspended'].includes(String(run.status))
+
+  const timelineQuery = useQuery({
+    queryKey: ['ai', 'timeline', run?.conversationId ?? 'none', 'run', run?.id ?? 'none'],
+    queryFn: async () => {
+      const items = await loadWholeTimeline(client, run!.conversationId, run!.id)
+      return toUIMessages(items, [run as AgentRunDetailModel], { onlyRunIds: [run!.id] })
+    },
+    enabled: Boolean(run),
+    refetchInterval: runActive ? 3_000 : false,
+  })
+
+  const messages = useMemo(() => timelineQuery.data ?? [], [timelineQuery.data])
+  const plan = useMemo(() => conversationPlanOf(messages), [messages])
+
+  return useMemo(() => {
+    const snapshot = run?.requestSnapshot as Record<string, unknown> | null | undefined
+    const task = typeof snapshot?.task === 'string' ? snapshot.task : null
+    const promptDraft = typeof snapshot?.systemPrompt === 'string' ? snapshot.systemPrompt : null
+    return {
+      loading:
+        Boolean(activeRunId) && (runQuery.isLoading || (Boolean(run) && timelineQuery.isLoading)),
+      conversationId: run?.conversationId ?? null,
+      name: run ? subRunName(run.agentKey) : '',
+      status: run?.status ?? null,
+      task,
+      messages,
+      plan,
+      promptDraft,
+      error:
+        runQuery.error instanceof Error
+          ? runQuery.error.message
+          : timelineQuery.error instanceof Error
+            ? timelineQuery.error.message
+            : null,
+    }
+  }, [
+    run,
+    messages,
+    plan,
+    runQuery.isLoading,
+    runQuery.error,
+    timelineQuery.isLoading,
+    timelineQuery.error,
+    activeRunId,
+  ])
+}
+
+/** 子助手数据还在路上时的统一占位（别让面板显示成"这个会话没有…"） */
+function ScopeLoading() {
+  return <p className="text-xs text-muted-foreground">正在准备子助手信息…</p>
+}
+
+/** 子助手数据取不到时如实报错（不要静默退化成空态：空态会被读成"它没有这些信息"） */
+function ScopeError({ error }: { error: string }) {
+  return <p className="text-xs text-destructive">加载失败：{error}</p>
+}
+
+/**
+ * 子助手的**系统指令** tab：主 agent 现写 + 运行时追加的能力边界（最终文本）。
+ *
+ * 数据仍走 `POST /agent/instructions`（传**子会话 id**）：主会话与子会话的快照存在同一张时间线表里，
+ * 服务端已经按"先快照、后目录"的次序取数 —— 前端不需要知道子助手的 `sub:<名字>` 不在 agent 目录里。
+ */
+function SubAgentSystemPrompt({ client, scope }: { client: ServerClient; scope: SubAgentScope }) {
+  if (scope.loading) return <ScopeLoading />
+  if (scope.error) return <ScopeError error={scope.error} />
+  return (
+    <SystemPromptPanel
+      client={client}
+      conversationId={scope.conversationId ?? undefined}
+      draft={scope.promptDraft}
+    />
+  )
+}
+
+/**
+ * 子助手的**任务** tab：任务目标 + 它自己的清单。
+ *
+ * 「任务目标」放这里而不是塞进技能/文件：它就是"这一轮要它做什么"，和清单是同一件事的两种粒度
+ * （目标一句话、清单是它的拆解）。运行中清单可能还没建，先说清"它还没建清单"。
+ */
+function SubAgentPlanPanel({ scope }: { scope: SubAgentScope }) {
+  if (scope.loading) return <ScopeLoading />
+  if (scope.error) return <ScopeError error={scope.error} />
+  return (
+    <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-auto">
+      <section className="shrink-0 rounded-lg border border-border/60 bg-surface-2 px-2.5 py-2">
+        <h4 className="text-[11px] font-medium text-muted-foreground">任务目标</h4>
+        <p className="mt-1 whitespace-pre-wrap text-xs leading-5">
+          {scope.task ?? '（没有记录任务目标）'}
+        </p>
+      </section>
+      {scope.plan ? (
+        <PlanPanel
+          plan={scope.plan.current.plan}
+          change={scope.plan.current.change}
+          history={scope.plan.history}
+        />
+      ) : (
+        <p className="text-xs text-muted-foreground">
+          这个子助手还没有建任务清单 —— 它在过程中调 `plan-create` 后，这里会显示它自己的进度。
+        </p>
+      )}
+    </div>
   )
 }
 
@@ -295,15 +510,21 @@ function PlanRunsPanel({ plan }: { plan: ConversationPlan | null }) {
  * 数据源与页头的说明完全同源（`POST /agent/instructions`）：
  * 有快照就显示快照（会话真正用过的那份），没有就显示当前 agent 的静态定义，并如实标注来源 ——
  * 不把"定义"冒充成"这个会话当时用的那份"。
+ *
+ * `draft`（子助手专用）：`source='unrecorded'` 时服务端**没有**快照可回 —— 那说明这次子 run
+ * 跑在"子会话落快照"之前。此时把 `request_snapshot.systemPrompt`（主 agent 原稿）摆出来并注明
+ * **不含运行时追加的能力边界**，比只显示一句"没有记录"有用，也不冒充最终那份。
  */
 function SystemPromptPanel({
   client,
   conversationId,
   agentKey,
+  draft = null,
 }: {
   client: ServerClient
   conversationId?: string
   agentKey?: string
+  draft?: string | null
 }) {
   const query = useQuery({
     queryKey: ['ai', 'instructions', conversationId ?? 'none', agentKey ?? 'default'],
@@ -313,7 +534,8 @@ function SystemPromptPanel({
         ...(agentKey ? { agentKey } : {}),
       }),
   })
-  const instructions = query.data?.instructions ?? ''
+  const unrecorded = query.data?.source === 'unrecorded'
+  const instructions = unrecorded ? (draft ?? '') : (query.data?.instructions ?? '')
 
   const copy = async () => {
     try {
@@ -332,7 +554,9 @@ function SystemPromptPanel({
             ? `${query.data.name} · ${
                 query.data.source === 'conversation'
                   ? '本会话快照（渲染后）'
-                  : '静态定义（本会话暂无快照）'
+                  : query.data.source === 'unrecorded'
+                    ? '未记录快照 · 主 agent 原稿'
+                    : '静态定义（本会话暂无快照）'
               }`
             : '正在加载…'}
         </span>
@@ -354,8 +578,20 @@ function SystemPromptPanel({
           <p className="text-xs text-destructive">
             加载失败：{query.error instanceof Error ? query.error.message : String(query.error)}
           </p>
+        ) : unrecorded && !draft ? (
+          <p className="text-xs text-muted-foreground">
+            这次运行没有留下系统指令快照（早于 2026-11-15 的子助手），主 agent 原稿也没有入库。
+          </p>
         ) : (
-          <Markdown content={instructions} />
+          <>
+            {unrecorded ? (
+              <p className="mb-2 rounded-md border border-border/60 px-2 py-1.5 text-[11px] leading-4 text-muted-foreground">
+                下面是主 agent 当初写的<b>原稿</b>，不含运行时追加的「能力与边界」段 ——
+                它是那次交给子助手的指令的前半部分。
+              </p>
+            ) : null}
+            <Markdown content={instructions} />
+          </>
         )}
       </div>
     </div>

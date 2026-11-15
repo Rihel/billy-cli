@@ -17,9 +17,14 @@
 - **子 agent 过程在主区顶部 tab 条**（2026-11-15 起）：`session-tabs.tsx` 的第一个 tab 是「主会话」，
   其余每个子 run 一个；主会话 `keepMounted`（切走再回来，草稿 / 滚动位置都在），子 tab 只挂当前那个。
   右栏已没有「子 agent」tab（只剩系统指令 / 技能 / 任务 / 文件），"开跑自动展开右栏"的 effect 已删。
+  右栏的**取数作用域**跟这条 tab 条走（切到子 agent → 系统指令 / 技能 / 任务都换成它的），
+  见 [ai-chat-right-panel](ai-chat-right-panel.md)。
   子助手**两张卡**（运行卡 + 「已完成」通知卡）在父会话都走「查看过程」切 tab；完成卡早先是 Link
   跳子会话路由 —— 跳过去那条子会话的 tab 条只剩「主会话」（看起来像 tab 变少），2026-11-15 改掉。
 - `data-step-usage`（每步一条，实时用量，与 `data-run-usage` 同形）：同上，不占单元。
+
+**子助手卡的状态**以库里的子 run 为终态权威（实时块会停在起跑快照），见
+[ai-subagent-card-state](ai-subagent-card-state.md)。
 
 实时数据：`onData` → `applyChunk`（100ms 合并通知），`data-run` 表示新一轮开始 → 清空上一轮。
 视图：`ChatMessage`（`message-row.tsx`）接单元并 `memo`；子助手卡各自订阅 `useLiveSubAgent(runId)`。

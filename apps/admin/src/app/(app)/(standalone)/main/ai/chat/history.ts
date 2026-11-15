@@ -35,6 +35,40 @@ import {
  *    由面板按需拉取（同一套只读接口，见 §3.14.3）。
  */
 
+/**
+ * 子 agent 卡片在历史里的**状态补正**：用库里的子 run 覆盖"起跑快照"。
+ *
+ * 为什么必须补：`run-sub-agent` 的工具出参是**起跑那一刻**（`status: 'running'`、
+ * `stepCount: 0`、`toolCallCount: 0`、`durationMs: 0`），历史重建只看它的话，子助手早就跑完了，
+ * 卡片也会一直显示"进行中 0 步 / 0 次工具"（2026-11-15 用户报障）。
+ * 子 run 行在库里是终态权威（`run/list` 一并取回），这里就地覆盖。
+ *
+ * 只覆盖**终态**：运行中的 run 交给实时块（那边步数更新，而且库里的 stepCount 要收尾才落）。
+ */
+const TERMINAL_RUN_STATUSES = new Set(['succeeded', 'failed', 'canceled', 'interrupted'])
+
+const applyChildRunStates = (parts: UIMessage['parts'], runs: readonly AgentRunModel[]): void => {
+  const byId = new Map(runs.map((run) => [run.id, run]))
+  for (const part of parts) {
+    if (part.type !== 'data-sub-agent') continue
+    const record = part as unknown as { data?: unknown }
+    const data = asRecord(record.data)
+    const runId = typeof data?.runId === 'string' ? data.runId : undefined
+    const run = runId ? byId.get(runId) : undefined
+    if (!run || run.parentRunId === null || !TERMINAL_RUN_STATUSES.has(run.status)) continue
+    record.data = {
+      ...data,
+      status: run.status,
+      stepCount: run.stepCount,
+      toolCallCount: run.toolCallCount,
+      ...(run.usage ? { usage: run.usage } : {}),
+      ...(typeof run.durationMs === 'number' ? { durationMs: run.durationMs } : {}),
+      ...(data?.conversationId ? {} : { conversationId: run.conversationId }),
+      ...(data?.error || !run.errorMessage ? {} : { error: run.errorMessage }),
+    }
+  }
+}
+
 const textOf = (item: AgentTimelineItemModel): string => {
   const text = item.payload?.text
   return typeof text === 'string' ? text : ''
@@ -195,6 +229,8 @@ export const toUIMessages = (
     }
 
     const parts = toParts(sorted)
+    // 子助手卡：工具出参只是"起跑快照"，终态以库里的子 run 为准（否则永远是"进行中 0 步"）
+    applyChildRunStates(parts, runs)
     // 用量：实时是收尾下发的 `data-run-usage`，历史（刷新 / 切会话）只能从 runs 重建 ——
     // 缺了它，回看历史时就只剩正文、统计全空（用户看到的"统计只在当场那一轮有"）。
     // 追加在最后，与实时流的位置一致。
