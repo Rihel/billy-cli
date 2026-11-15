@@ -96,4 +96,4 @@ runtime 已有 `AgentService.status()/list()/instructions()`（registry 装配�
 - **缓存**：catalog 缓存 30s，发版后最迟 30s 生效；不缓存 instructions（一次性查询，量小）。
 - **循环依赖**：`@repo/monitor` 只依赖 kits / shared / db；kits 不反向依赖 monitor。
   `ERROR_ALERT_HOOK` 的 token 在 kits，实现在 app 组合根，方向仍是 app → kits。
-- **保留的复制**：`app-config.ts` / `config.ts` / `root.module.ts` 属部署差异；`ai-usage` 的调度只在 main，runtime 只保留只读指标源。
+- **保留的复制**：`app-config.ts` / `config.ts` / `root.module.ts` 属部署差异；`ai-usage` 的查询/汇总在 `@repo/ai-data`，调度与 AI 用量监控定义只在 main（runtime 不装配）。

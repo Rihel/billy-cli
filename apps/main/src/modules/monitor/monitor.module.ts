@@ -9,6 +9,7 @@ import { MonitorHealthController } from './api/monitor-health.controller.js'
 import { MonitorMetricService } from './api/monitor-metric.service.js'
 import { MonitorRuleService } from './api/monitor-rule.service.js'
 import { MonitorTestService } from './api/monitor-test.service.js'
+import { AiMonitoringModule } from './ai-usage/ai-monitoring.module.js'
 
 /**
  * 监控模块（main 侧）：引擎来自 `@repo/monitor`，这里只保留**控制面 HTTP**。
@@ -24,6 +25,7 @@ import { MonitorTestService } from './api/monitor-test.service.js'
       useFactory: (config: ConfigService) => config.get<MonitorModuleOptions>('monitor')!,
     }),
     AdminModule,
+    AiMonitoringModule,
   ],
   controllers: [MonitorHealthController, MonitorController],
   providers: [

@@ -15,7 +15,8 @@
 | main 的 agent 查询 | `AgentCatalogService` → runtime 内部接口（缓存 30s） | 控制面只查不算；`status/list/instructions` 三个端点由 main 代理 |
 | `app-config.ts` / `config.ts` / `root.module.ts` | 两个 app 各一份 | 组合根与配置 shape 属部署差异，共用反而耦合 |
 | `ai-model` 数据访问 | **只剩 main 一份**；runtime 走 `model-gateway` 目录，不读配置表 | 2026-11-15 删除 runtime `modules/ai-model/**` |
-| `ai-usage` 数据访问 | `@repo/ai-data`（`src/usage/`） | 查询 / 汇总共用；调度只在 main（runtime 只读指标源） |
+| `ai-usage` 数据访问 | `@repo/ai-data`（`src/usage/`） | 查询 / 汇总共用；调度与监控定义只在 main，runtime 不再装配 |
+| AI 用量监控（指标 / 规则 / 数据源） | main 的 `modules/monitor/ai-usage/` | 统计是全局业务口径，不属于 runtime 进程；runtime 只保留自身进程监控 |
 
 **反向约束**：`@repo/monitor` / `@repo/kits` 不得 import `apps/*`；main 不再依赖 `@mastra/*` / `eta`。
 

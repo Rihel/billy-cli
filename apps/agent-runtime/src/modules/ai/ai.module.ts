@@ -108,8 +108,6 @@ import {
   ScopePlugin,
   ValidatePlugin,
 } from './core/tools/plugins/index.js'
-import { AiUsageModule } from '../ai-usage/ai-usage.module.js'
-import { AiMonitoringModule } from './monitoring/ai-monitoring.module.js'
 
 /**
  * 提示词引擎（单例）。
@@ -140,7 +138,7 @@ let warnedMissingEnvelope = false
  * + 在 `AGENT_TOOL_GROUPS` 登记一行。
  */
 @Module({
-  imports: [AiUsageModule, AiMonitoringModule],
+  imports: [],
   controllers: [AgentInternalController],
   providers: [
     {
