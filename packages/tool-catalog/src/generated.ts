@@ -1097,7 +1097,7 @@ export const ALL_TOOL_MANIFESTS: readonly ToolManifest[] = [
   {
     "key": "sub-agent-list",
     "title": "查看子助手状态",
-    "description": "查看当前这一轮派出的子 agent 状态（运行中 / 成功 / 失败 / 取消）。\n非阻塞，不等待、不消费结果；要看完整结论用 wait-sub-agent（传 sub_agent_ids），要取消用 cancel-sub-agent。\n已完成的子助手带摘要（最多 2000 字，超出会标 summaryTruncated）与工作区 path；\n别把摘要当完整结论 —— 要全文用 read-file 读 path。\n什么时候用：想知道子助手跑到哪了、有没有失败；不要用它代替等待。",
+    "description": "查看当前这一轮派出的子 agent 状态（运行中 / 成功 / 失败 / 取消）。\n非阻塞，不等待、不消费结果；要看完整结论用 wait-sub-agent（传 sub_agent_ids），要取消用 cancel-sub-agent。\n已完成的子助手带 path + 行数 + 字节数；**正文用 read-file 读 path**（不返回摘要）。\n什么时候用：想知道子助手跑到哪了、有没有失败；不要用它代替等待。",
     "category": "core",
     "scope": "all",
     "executor": "server",
@@ -1125,7 +1125,7 @@ export const ALL_TOOL_MANIFESTS: readonly ToolManifest[] = [
   {
     "key": "wait-sub-agent",
     "title": "等待子助手",
-    "description": "等指定的子 agent（或当前父 run 下所有子助手）完成。\n不传 sub_agent_ids = 等全部子助手；已经完成的也会一起返回（不会返回空数组）。\n返回每个子助手的 summary（前 2000 字）+ path；**完整结论用 read-file 读 path**（按行分页、可续读）。\n最多等 timeout_ms；到点返回 pending，子 agent 会继续跑，父可以继续做别的。\n已经拿到的结果会消费掉，避免父结束后重复唤醒；没有 pending 时不要反复空等。",
+    "description": "等指定的子 agent（或当前父 run 下所有子助手）完成。\n不传 sub_agent_ids = 等全部子助手；已经完成的也会一起返回（不会返回空数组）。\n返回每个子助手的 path + 行数 + 字节数（不返回摘要）；**正文用 read-file 读 path**（按行分页、可续读）。\n最多等 timeout_ms；到点返回 pending，子 agent 会继续跑，父可以继续做别的。\n已经拿到的结果会消费掉，避免父结束后重复唤醒；没有 pending 时不要反复空等。",
     "category": "core",
     "scope": "all",
     "executor": "server",

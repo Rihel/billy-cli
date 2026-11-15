@@ -322,6 +322,9 @@ const seedWakeItem = async (
     name?: string
     result?: string
     progress?: { total: number; completed: number; pending: string[] }
+    resultPath?: string
+    resultBytes?: number
+    resultLines?: number
   } = {},
 ) => {
   const subRunId = overrides.subRunId ?? `subrun_${randomUUID().replace(/-/g, '').slice(0, 12)}`
@@ -338,6 +341,9 @@ const seedWakeItem = async (
       result: overrides.result ?? '共 3 条待办：A、B、C',
       error: null,
       isAdmin: false,
+      resultPath: overrides.resultPath ?? 'subagents/待办统计-x.md',
+      resultBytes: overrides.resultBytes ?? 2048,
+      resultLines: overrides.resultLines ?? 42,
       ...(overrides.progress ? { progress: overrides.progress } : {}),
     },
   })
@@ -399,7 +405,11 @@ describe('异步子 agent 唤醒 dispatcher（真实 DB + 假模型）', () => {
     const messages = (request?.messages ?? []) as Array<{ role?: string; content?: unknown }>
     const notice = JSON.stringify(messages)
     expect(notice).toContain('子 agent「待办统计」已完成')
-    expect(notice).toContain('共 3 条待办')
+    // 通知不再贴全文，只给文件引用 + 大小 / 行数（正文让模型自己 read-file 读）
+    expect(notice).toContain('subagents/待办统计-x.md')
+    expect(notice).toContain('42 行')
+    expect(notice).toContain('2 KB')
+    expect(notice).not.toContain('共 3 条待办')
     expect(notice).toContain('内部系统通知')
     // 同批进度：还有 1 个在跑（背景口碑），并明确「全部到齐后再汇总」
     expect(notice).toContain('还有 1 个在跑（背景口碑）')

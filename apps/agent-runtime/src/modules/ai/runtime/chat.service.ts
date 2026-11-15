@@ -167,6 +167,10 @@ interface SubAgentWakePayload {
   status: string
   result: string | null
   error: string | null
+  /** 结论落在工作区的文件（`subagents/...md`）；有它时通知只给路径与大小，不贴全文 */
+  resultPath: string | null
+  resultBytes: number | null
+  resultLines: number | null
   /** 同批进度（同一父 run 下还有谁在跑） */
   progress?: SubAgentWakeProgress
 }
@@ -208,6 +212,9 @@ const toSubAgentWake = (payload: Record<string, unknown>): SubAgentWakePayload |
     status: asText(payload.status) ?? 'succeeded',
     result: asText(payload.result),
     error: asText(payload.error),
+    resultPath: asText(payload.resultPath),
+    resultBytes: typeof payload.resultBytes === 'number' ? payload.resultBytes : null,
+    resultLines: typeof payload.resultLines === 'number' ? payload.resultLines : null,
     ...(progress ? { progress } : {}),
   }
 }
@@ -236,15 +243,25 @@ const toSubAgentWakeProgress = (value: unknown): SubAgentWakeProgress | null => 
  * 「不是用户说的」这层语义由**首尾两处加粗文案**承担，不靠角色区分。
  * 时间线仍不写用户消息 —— 只写一张系统卡。
  */
+/** 字节数 → 人话（通知里只给"有多大"，不给正文） */
+const formatBytes = (bytes: number | null): string => {
+  if (bytes === null) return '大小未知'
+  return bytes >= 1024 ? `${Math.round(bytes / 1024)} KB` : `${bytes} B`
+}
+
 const wakeNoticeText = (wake: SubAgentWakePayload): string => {
   const succeeded = wake.status === 'succeeded'
   const head = succeeded
     ? `子 agent「${wake.name}」已完成（subRunId=${wake.subRunId}）。`
     : `子 agent「${wake.name}」执行失败（状态：${wake.status}，subRunId=${wake.subRunId}）。`
   const body = succeeded
-    ? wake.result && wake.result.trim()
-      ? `它的结论：\n${wake.result.trim()}`
-      : '它没有返回文本结论。'
+    ? wake.resultPath
+      ? `它的结论已写入工作区：${wake.resultPath}（${formatBytes(wake.resultBytes)}${
+          wake.resultLines !== null ? ` / ${wake.resultLines} 行` : ''
+        }）。需要内容用 read-file 读这个路径（按行分页、可续读）。`
+      : wake.result && wake.result.trim()
+        ? '它没有把结论写成文件；完整内容请查看它的子会话。'
+        : '它没有返回文本结论。'
     : wake.error
       ? `失败原因：${wake.error}`
       : '没有拿到失败原因。'

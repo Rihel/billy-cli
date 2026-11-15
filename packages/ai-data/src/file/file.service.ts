@@ -668,6 +668,34 @@ export class FileService implements OnApplicationBootstrap, OnApplicationShutdow
     return { items, total: items.length, truncated }
   }
 
+  /**
+   * 文件元信息（行数 / 字节数），**不返回内容**。
+   *
+   * 给"要不要读、读多少"做判断用：子助手结论落盘后，父模型只需要知道这份报告有多大，
+   * 需要正文再用 `read-file` 分页读 —— 摘要本身也占 token，不该再复制一份。
+   */
+  async statFile(
+    ctx: FileContext,
+    filePath: string,
+  ): Promise<{ path: string; bytes: number; lines: number } | null> {
+    const target = await resolveWorkspacePath({
+      caps: this.caps,
+      conversationId: ctx.conversationId,
+      path: filePath,
+      allowMissing: true,
+    }).catch(() => null)
+    if (!target) return null
+    const info = await stat(target).catch(() => null)
+    if (!info?.isFile()) return null
+    const body = await readFile(target).catch(() => null)
+    if (!body) return null
+    let lines = 0
+    for (const byte of body) if (byte === 0x0a) lines += 1
+    // 末尾没有换行时最后一截也算一行
+    if (body.length > 0 && body[body.length - 1] !== 0x0a) lines += 1
+    return { path: filePath, bytes: info.size, lines }
+  }
+
   /** `write-file`：整文件写入 / 覆盖（原子） */
   async writeFile(
     ctx: FileContext,

@@ -690,12 +690,12 @@ export class AgentRunner {
     request: SubAgentRequest,
     subRunId: string,
     text: string,
-  ): Promise<string | null> {
+  ): Promise<{ path: string; bytes: number; lines: number } | null> {
     const files = this.files
     if (!files || !text.trim()) return null
     const filePath = subAgentResultPath(request.name, subRunId)
     try {
-      await files.writeFile(
+      const written = await files.writeFile(
         {
           // 子会话共享父会话工作区：落到根会话，父模型与用户都能看见
           conversationId:
@@ -707,7 +707,7 @@ export class AgentRunner {
         },
         { filePath, content: text },
       )
-      return filePath
+      return { path: filePath, bytes: written.bytes, lines: written.lines }
     } catch (error) {
       this.logger.warn('ai.subagent.result_persist_failed', { subRunId, filePath, error })
       return null
@@ -729,6 +729,8 @@ export class AgentRunner {
     text: string
     error: string | null
     resultPath: string | null
+    resultBytes: number | null
+    resultLines: number | null
   }): Promise<void> {
     const runQueue = this.runQueue
     if (!runQueue) return
@@ -760,7 +762,13 @@ export class AgentRunner {
         status: input.status,
         result: input.text,
         error: input.error,
-        ...(input.resultPath ? { resultPath: input.resultPath } : {}),
+        ...(input.resultPath
+          ? {
+              resultPath: input.resultPath,
+              ...(input.resultBytes !== null ? { resultBytes: input.resultBytes } : {}),
+              ...(input.resultLines !== null ? { resultLines: input.resultLines } : {}),
+            }
+          : {}),
         // 唤醒 run 的身份口径随父：admin 的 skill-* 工具在唤醒那一轮不能凭空消失
         isAdmin: input.request.envelope.isAdmin,
         ...(progress ? { progress } : {}),
@@ -818,7 +826,7 @@ export class AgentRunner {
      * 需要全文用 `read-file` 按行分页读（用户也能在文件树里直接看）。
      * 写失败只 warn：唤醒通知会退回「摘要 + 子会话」，主链路不受影响。
      */
-    const resultPath = await this.persistResultFile(request, subRunId, text)
+    const resultFile = await this.persistResultFile(request, subRunId, text)
 
     /**
      * 子 run 的用量补记（父 run 收尾汇总之外的兜底，见 `ConversationRepository.addTokens`）。
@@ -889,7 +897,9 @@ export class AgentRunner {
         status: outcome.status,
         text,
         error,
-        resultPath,
+        resultPath: resultFile?.path ?? null,
+        resultBytes: resultFile?.bytes ?? null,
+        resultLines: resultFile?.lines ?? null,
       }).catch((error: unknown) => {
         this.logger.error('ai.subagent.enqueue_failed', { subRunId, error })
       })

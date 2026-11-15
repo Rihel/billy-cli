@@ -90,9 +90,9 @@ describe('wait-sub-agent（取子助手结论）', () => {
     }
 
     expect(out.agents).toHaveLength(1)
-    expect(out.agents[0]!.summary).toContain('A'.repeat(100))
-    // 全文落工作区文件：返回约定路径，模型用 read-file 读
+    // 只回路径（无 files 注入时没有 bytes/lines）：正文让模型自己 read-file 读
     expect(out.agents[0]!.path).toBe('subagents/剧情主线-sub-run-1.md')
+    expect(out.agents[0]!.summary).toBeUndefined()
     expect(out.pending).toEqual([])
     expect(out.timedOut).toBe(false)
   })
@@ -132,18 +132,11 @@ describe('sub-agent-list（看状态）', () => {
     const settings = await deps.config.settings(spec)
     const ctx = makeToolContext({ spec, settings, envelope })
     const out = (await spec.exec({}, ctx as never)) as {
-      agents: Array<{
-        resultSummary?: string
-        summaryTruncated?: boolean
-        summaryHint?: string
-        path?: string
-      }>
+      agents: Array<{ resultSummary?: string; path?: string }>
     }
 
-    expect(out.agents[0]!.resultSummary).toHaveLength(2_000)
-    expect(out.agents[0]!.summaryTruncated).toBe(true)
-    expect(out.agents[0]!.summaryHint).toContain('read-file')
     expect(out.agents[0]!.path).toBe('subagents/剧情主线-sub-run-1.md')
+    expect(out.agents[0]!.resultSummary).toBeUndefined()
   })
 
   it('摘要未超限时不带截断标记', async () => {
@@ -155,7 +148,6 @@ describe('sub-agent-list（看状态）', () => {
       agents: Array<{ resultSummary?: string; summaryTruncated?: boolean }>
     }
 
-    expect(out.agents[0]!.resultSummary).toBe('短结论')
-    expect(out.agents[0]!.summaryTruncated).toBeUndefined()
+    expect(out.agents[0]!.path).toBe('subagents/剧情主线-sub-run-1.md')
   })
 })

@@ -1,4 +1,4 @@
-import { Inject, Injectable } from '@nestjs/common'
+import { Inject, Injectable, Optional } from '@nestjs/common'
 import dedent from 'dedent'
 import { z } from 'zod'
 import { AppLogger } from '@repo/kits'
@@ -10,6 +10,7 @@ import { AgentRunner, type SubAgentOutcome } from '../runtime/agent-runner.js'
 import { RunRepository } from '../runtime/run.repository.js'
 import { TimelineRepository } from '../runtime/timeline.repository.js'
 import { ConversationRunQueue } from '../runtime/run-queue.service.js'
+import { FileService } from '../files/file.service.js'
 import { subAgentResultPath } from '../runtime/subagent-result.js'
 import { RunStatus, TimelineKind, TimelineRole } from '@repo/shared'
 import type { AgentRuntimeEnvelope } from '../core/envelope.js'
@@ -83,9 +84,6 @@ const CancelSubAgentInputSchema = z.object({
 
 const NoConfigSchema = z.object({})
 
-/** `sub-agent-list` 里每个已完成的子助手最多带多少字摘要（完整结论用 wait-sub-agent 取） */
-const LIST_SUMMARY_CHARS = 2_000
-
 /**
  * **子 agent 工具**（`run-sub-agent`）：主 agent 用它**在运行期创建**子 agent。
  *
@@ -107,6 +105,10 @@ export class RunSubAgentTool {
     @Inject(RunRepository) private readonly runs: RunRepository,
     @Inject(TimelineRepository) private readonly timelines: TimelineRepository,
     @Inject(ConversationRunQueue) private readonly runQueue: ConversationRunQueue,
+    /** 子助手结论文件的元信息（行数 / 大小）；测试栈不装时只回 path */
+    @Optional()
+    @Inject(FileService)
+    private readonly files?: FileService,
   ) {}
 
   // 工具说明 = **这个工具的唯一一份说明**（系统提示词里的「工具」段直接渲染它）
@@ -176,8 +178,7 @@ export class RunSubAgentTool {
     description: dedent`
       查看当前这一轮派出的子 agent 状态（运行中 / 成功 / 失败 / 取消）。
       非阻塞，不等待、不消费结果；要看完整结论用 wait-sub-agent（传 sub_agent_ids），要取消用 cancel-sub-agent。
-      已完成的子助手带摘要（最多 2000 字，超出会标 summaryTruncated）与工作区 path；
-      别把摘要当完整结论 —— 要全文用 read-file 读 path。
+      已完成的子助手带 path + 行数 + 字节数；**正文用 read-file 读 path**（不返回摘要）。
       什么时候用：想知道子助手跑到哪了、有没有失败；不要用它代替等待。
     `,
   })
@@ -192,29 +193,16 @@ export class RunSubAgentTool {
     const agents: Array<Record<string, unknown>> = []
     for (const child of latest.values()) {
       if (input.status && child.status !== input.status) continue
-      const full =
-        child.status === RunStatus.Succeeded
-          ? ((await this.timelines.lastTextOfRun(child.id)) ?? '')
-          : ''
       const name = child.agentKey.replace(/^sub:/, '')
-      const summary =
-        child.status === RunStatus.Succeeded ? full.slice(0, LIST_SUMMARY_CHARS) : null
       agents.push({
         subAgentId: child.conversationId,
         currentRunId: child.id,
         name,
         status: child.status,
-        resultSummary: summary,
-        // 完整结论落在这个工作区文件里（子助手收尾时写的），用 read-file 按行分页读
+        // 只给文件元信息（路径 / 行数 / 字节数）：正文让模型自己 read-file 读，
+        // 摘要复制一份同样烧 token（2026-11-15 定）
         ...(child.status === RunStatus.Succeeded
-          ? { path: subAgentResultPath(name, child.id) }
-          : {}),
-        // 明确标注截断：否则模型会把摘要当成完整结论，直接拿它写汇总（实测踩过）
-        ...(full.length > LIST_SUMMARY_CHARS
-          ? {
-              summaryTruncated: true,
-              summaryHint: '摘要已截断；完整结论用 read-file 读 path',
-            }
+          ? await this.resultMeta(envelope, name, child.id)
           : {}),
         error: null,
       })
@@ -231,7 +219,7 @@ export class RunSubAgentTool {
     description: dedent`
       等指定的子 agent（或当前父 run 下所有子助手）完成。
       不传 sub_agent_ids = 等全部子助手；已经完成的也会一起返回（不会返回空数组）。
-      返回每个子助手的 summary（前 2000 字）+ path；**完整结论用 read-file 读 path**（按行分页、可续读）。
+      返回每个子助手的 path + 行数 + 字节数（不返回摘要）；**正文用 read-file 读 path**（按行分页、可续读）。
       最多等 timeout_ms；到点返回 pending，子 agent 会继续跑，父可以继续做别的。
       已经拿到的结果会消费掉，避免父结束后重复唤醒；没有 pending 时不要反复空等。
     `,
@@ -304,16 +292,9 @@ export class RunSubAgentTool {
             currentRunId: child.id,
             name,
             status: child.status,
-            // 全文落工作区文件（子助手收尾时写的）：需要细节用 read-file 按行分页读
+            // 只给文件元信息（路径 / 行数 / 字节数）：正文让模型自己 read-file 读
             ...(child.status === RunStatus.Succeeded
-              ? { path: subAgentResultPath(name, child.id) }
-              : {}),
-            summary: result.slice(0, LIST_SUMMARY_CHARS),
-            ...(result.length > LIST_SUMMARY_CHARS
-              ? {
-                  summaryTruncated: true,
-                  summaryHint: '完整结论用 read-file 读 path',
-                }
+              ? await this.resultMeta(envelope, name, child.id)
               : {}),
           })
         }
@@ -325,6 +306,35 @@ export class RunSubAgentTool {
       }
       await new Promise((resolve) => setTimeout(resolve, 250))
     }
+  }
+
+  /**
+   * 子助手结论文件的元信息（路径 / 行数 / 字节数）。
+   *
+   * 只给"有多大"，不给内容：父模型需要正文时自己 `read-file` 读 —— 摘要、全文
+   * 复制进上下文都是重复 token（2026-11-15 定）。
+   */
+  private async resultMeta(
+    envelope: AgentRuntimeEnvelope,
+    name: string,
+    subRunId: string,
+  ): Promise<{ path: string; bytes?: number; lines?: number }> {
+    const path = subAgentResultPath(name, subRunId)
+    const files = this.files
+    if (!files) return { path }
+    const meta = await files
+      .statFile(
+        {
+          conversationId: envelope.workspaceConversationId ?? envelope.conversationId,
+          userId: envelope.triggeredBy,
+          isAdmin: envelope.isAdmin,
+          runId: envelope.parentRunId,
+          toolCallId: null,
+        },
+        path,
+      )
+      .catch(() => null)
+    return meta ? { path, bytes: meta.bytes, lines: meta.lines } : { path }
   }
 
   /** 取消某个子 agent（子会话）当前正在跑的 run */

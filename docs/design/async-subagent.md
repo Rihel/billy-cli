@@ -231,8 +231,8 @@ output: { canceled: boolean, status }
   里抢先消费时由工具补写（`consumeByDedupe` 只对 `queued` 生效并返回是否命中，两条路径天然不重复）。
   否则 wait 一消费，卡就永远缺失（2026-11-15 实测：父会话里一张完成卡都没有）；
 - **子助手结论落工作区文件**（`subagents/<名字>-<subRunId>.md`）：子 run 收尾时写，
-  `wait-sub-agent` / `sub-agent-list` 只返回 `path + summary`（前 2000 字，超出标 `summaryTruncated`），
-  父模型需要全文用 `read-file` 读 path（按行分页、可续读），用户也能在文件树里看到。
+  `wait-sub-agent` / `sub-agent-list` 只返回 `path + 行数 + 字节数`（**不返回摘要**：摘要也是重复 token），
+  父模型需要正文用 `read-file` 读 path（按行分页、可续读），用户也能在文件树里看到。
   为什么不再整段返回：三份报告几万字全量灌进父上下文，既撑窗口又贵（实测单会话 331 万 token）；
 - `wait-sub-agent` **不带 `sub_agent_ids` = 当前父 run 下全部子助手**（含已完成的），
   返回摘要 + path + 仍未完成的 `pending`；曾只收「未完成」的，全跑完后返回空数组，父模型白等 88 秒；
