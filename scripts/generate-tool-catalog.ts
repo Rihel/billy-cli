@@ -10,7 +10,7 @@
  */
 import 'reflect-metadata'
 import { writeFile } from 'node:fs/promises'
-import { fileURLToPath } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 import { dirname, resolve } from 'node:path'
 import type { z } from 'zod'
 import type { ToolManifest } from '@repo/contracts'
@@ -94,34 +94,53 @@ const classes = [
   ReadToolResultTool,
 ]
 
-const manifests: ToolManifest[] = []
-for (const klass of classes) {
-  const group = (Reflect.getMetadata(TOOL_GROUP_KEY, klass) as ToolGroupMeta | undefined) ?? {}
-  const decls =
-    (Reflect.getMetadata(TOOL_DECLS_KEY, klass) as Record<string, ToolDeclMeta> | undefined) ?? {}
-  for (const decl of Object.values(decls)) {
-    const params = (decl.params as z.ZodType).toJSONSchema() as Record<string, unknown>
-    manifests.push({
-      key: decl.key,
-      title: decl.title,
-      description: decl.description,
-      category: decl.category ?? group.category ?? 'core',
-      scope: decl.scope ?? group.scope ?? 'all',
-      executor: executorOf(decl.key),
-      params: withReason(params),
-      version: 1,
-    })
+/** 生成物的落点（check 脚本按同一路径比对） */
+export const TOOL_CATALOG_PATH = resolve(__dirname, '../packages/tool-catalog/src/generated.ts')
+
+/**
+ * 按当前 `@ToolDecl` 声明渲染生成物**文本**（不写盘）。
+ *
+ * 抽成纯函数是为了让 `check:tool-catalog` 能在内存里渲染再与仓库文件比对 ——
+ * 生成与校验必须走同一条代码路径，否则守卫自己也会漂移。
+ */
+export const renderToolCatalog = (): { text: string; count: number } => {
+  const manifests: ToolManifest[] = []
+  for (const klass of classes) {
+    const group = (Reflect.getMetadata(TOOL_GROUP_KEY, klass) as ToolGroupMeta | undefined) ?? {}
+    const decls =
+      (Reflect.getMetadata(TOOL_DECLS_KEY, klass) as Record<string, ToolDeclMeta> | undefined) ?? {}
+    for (const decl of Object.values(decls)) {
+      const params = (decl.params as z.ZodType).toJSONSchema() as Record<string, unknown>
+      manifests.push({
+        key: decl.key,
+        title: decl.title,
+        description: decl.description,
+        category: decl.category ?? group.category ?? 'core',
+        scope: decl.scope ?? group.scope ?? 'all',
+        executor: executorOf(decl.key),
+        params: withReason(params),
+        version: 1,
+      })
+    }
   }
-}
 
-manifests.sort((left, right) => left.key.localeCompare(right.key))
+  manifests.sort((left, right) => left.key.localeCompare(right.key))
 
-const output = `// 由 scripts/generate-tool-catalog.ts 生成，勿手改；改工具声明后跑 pnpm gen:tool-catalog
+  const text = `// 由 scripts/generate-tool-catalog.ts 生成，勿手改；改工具声明后跑 pnpm gen:tool-catalog
 import type { ToolManifest } from '@repo/contracts'
 
 /** 全量工具 manifest（含 facade / server / worker 三种执行方） */
 export const ALL_TOOL_MANIFESTS: readonly ToolManifest[] = ${JSON.stringify(manifests, null, 2)} as const
 `
+  return { text, count: manifests.length }
+}
 
-await writeFile(resolve(__dirname, '../packages/tool-catalog/src/generated.ts'), output, 'utf8')
-console.log(`[gen:tool-catalog] 写入 ${manifests.length} 个工具定义`)
+/** 只有被直接执行时才写盘；被 check 脚本 import 时保持只读 */
+const isMain =
+  process.argv[1] !== undefined && pathToFileURL(resolve(process.argv[1])).href === import.meta.url
+
+if (isMain) {
+  const { text, count } = renderToolCatalog()
+  await writeFile(TOOL_CATALOG_PATH, text, 'utf8')
+  console.log(`[gen:tool-catalog] 写入 ${count} 个工具定义`)
+}

@@ -34,4 +34,9 @@ import {
 2. 加进 `TOOL_DEFINITIONS`；
 3. server 的 `@ToolDecl` 引 `params/title/description`；
 4. worker 写 `ToolExecutor` 并注册；
-5. gateway 不用改 —— 跑 `pnpm gen:tool-catalog` 后自动出现在 `/v1/tools/list`。
+5. gateway 不用改 —— 跑 `pnpm gen:tool-catalog` 后自动出现在 `/v1/tools/list`；
+6. **生成物必须和声明一起提交**：`pnpm check:tool-catalog`（已接进 `pnpm verify` 与 pre-push）
+   会在两者不一致时直接失败。这正是 2026-11-15 `wait-sub-agent` 三个工具「后台在册、模型调不到」
+   的原因 —— 声明加了，`generated.ts` 没重生成。
+7. 本包被 gateway 以 `dist/index.mjs` 消费：改完 `generated.ts` 后跑
+   `pnpm --filter @repo/tool-catalog build`（或 `pnpm dev:pkgs` 常驻构建），再重启 gateway 才生效。

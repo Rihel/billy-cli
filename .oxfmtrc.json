@@ -22,6 +22,7 @@
     "apps/admin/public/vendor/**",
     "**/*.min.js",
     "**/dist/**",
-    "**/.next/**"
+    "**/.next/**",
+    "packages/tool-catalog/src/generated.ts"
   ]
 }

@@ -38,7 +38,7 @@
     "lint:types": "oxlint --type-aware",
     "fmt": "oxfmt",
     "fmt:check": "oxfmt --check",
-    "verify": "pnpm lint && pnpm lint:types && pnpm fmt:check && pnpm check:inject && pnpm check:mastra && pnpm check:redis-raw && pnpm check:ui",
+    "verify": "pnpm lint && pnpm lint:types && pnpm fmt:check && pnpm check:inject && pnpm check:mastra && pnpm check:tool-catalog && pnpm check:redis-raw && pnpm check:ui",
     "hooks:install": "lefthook install",
     "docker:up": "docker compose up -d --build",
     "start:web": "pnpm --filter @app/web run start",
@@ -56,7 +56,8 @@
     "codegraph:setup": "node --import tsx/esm scripts/codegraph-setup.ts",
     "dev:model-gateway": "pnpm --filter @app/model-gateway run dev",
     "start:model-gateway": "pnpm --filter @app/model-gateway run start",
-    "build:model-gateway": "turbo run build --filter=@app/model-gateway..."
+    "build:model-gateway": "turbo run build --filter=@app/model-gateway...",
+    "check:tool-catalog": "tsx --tsconfig apps/agent-runtime/tsconfig.json scripts/check-tool-catalog.ts"
   },
   "keywords": [],
   "author": "",
