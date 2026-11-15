@@ -41,6 +41,18 @@ grep -n "parentConversationId IS NULL" apps/agent-runtime/src/modules/ai/runtime
 grep -n "parent_run_id IS NULL" apps/main/src/modules/ai-usage/ai-usage.rollup.service.ts
 ```
 
+## 异步边界与用量口径（2026-11-15 实测修正）
+
+- **并发闸门 ≠ 总数**：`SUB_AGENT_MAX_CONCURRENT = 3`（同时跑，超出的**排队**）、
+  `DEFAULT_MAX_PER_RUN = 4`（一轮总数，超出的**拒绝**）。第 4 个子助手排队 85 秒是正常现象；
+- **创建超时不是失败**：`spawnSubAgent` 等 90 秒，到点先按 `(parent_run_id, tool_call_id)` 回查，
+  已建则正常返回；直接 reject 会出现「报超时、实际建好并跑完」（旧 30s 硬编码实测踩过）；
+- **父 run 终态后不再建子 agent、不再写其时间线**：异步拒绝回调可能在父 run 收尾后才到，
+  写进去就是孤儿事件；中断恢复路径（`interrupted`）例外，仍允许在父收尾后重启；
+- **用量补记**：父 run 收尾只汇总「那时已完成」的子 run；异步下子 run 后完成是常态，
+  所以子 run 收尾时若父 run 已终态，用 `conversation.addTokens` 把用量补到**根会话**
+  （`workspaceConversationId`），同时总会记到子会话自己那份。不补会漏（实测漏 218 万 / 约 40%）。
+
 ## 失效信号
 
 子会话支持独立 resume / 分享、子会话自己的 memory thread、历史子 run 回填、工作区改为隔离；
