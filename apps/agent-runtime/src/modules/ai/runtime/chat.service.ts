@@ -144,6 +144,21 @@ interface QueuedUserPayload {
   isAdmin: boolean
 }
 
+/**
+ * 同一批子助手的进度（`agent-runner` 入队时算好）。
+ *
+ * 为什么由引擎算：父 agent 每收到一个完成通知都要判断「还有没有在跑」，
+ * 自己数就得来回查库 / 调工具；把名字直接写进通知，它只需要决定「继续做别的」还是「可以汇总了」。
+ */
+interface SubAgentWakeProgress {
+  /** 本批子助手总数（按 run 计） */
+  total: number
+  /** 已进入终态的数量（含刚完成的这个） */
+  completed: number
+  /** 仍在跑的子助手名字；为空数组 = 这一批全完了 */
+  pending: string[]
+}
+
 /** 子 agent 完成唤醒的 payload（口径见 `docs/design/async-subagent.md` §3.1 / §6.1） */
 interface SubAgentWakePayload {
   subAgentId: string
@@ -152,6 +167,8 @@ interface SubAgentWakePayload {
   status: string
   result: string | null
   error: string | null
+  /** 同批进度（同一父 run 下还有谁在跑） */
+  progress?: SubAgentWakeProgress
 }
 
 const asRecord = (value: unknown): Record<string, unknown> | null =>
@@ -183,6 +200,7 @@ const toSubAgentWake = (payload: Record<string, unknown>): SubAgentWakePayload |
   const subRunId = asText(payload.subRunId)
   const name = asText(payload.name)
   if (!subAgentId || !subRunId || !name) return null
+  const progress = toSubAgentWakeProgress(payload.progress)
   return {
     subAgentId,
     subRunId,
@@ -190,14 +208,33 @@ const toSubAgentWake = (payload: Record<string, unknown>): SubAgentWakePayload |
     status: asText(payload.status) ?? 'succeeded',
     result: asText(payload.result),
     error: asText(payload.error),
+    ...(progress ? { progress } : {}),
+  }
+}
+
+/** 进度 → 结构（字段不认识就丢，不让一条脏 payload 炸掉整轮唤醒） */
+const toSubAgentWakeProgress = (value: unknown): SubAgentWakeProgress | null => {
+  const record = asRecord(value)
+  if (!record) return null
+  const total = typeof record.total === 'number' ? record.total : 0
+  if (total <= 0) return null
+  return {
+    total,
+    completed: typeof record.completed === 'number' ? record.completed : 0,
+    pending: Array.isArray(record.pending)
+      ? record.pending.filter((item): item is string => typeof item === 'string')
+      : [],
   }
 }
 
 /**
- * 给父模型的**内部系统通知**（不冒充用户消息）。
+ * 给父模型的**内部系统通知**（内容不是用户说的，但**角色走 user**）。
  *
- * 设计口径（§6.2）：父模型要"知道子完成了"，但这句不是用户说的，所以走 system，
- * 且时间线不写用户消息 —— 只写一张系统卡。
+ * 为什么角色是 user：模型只把「最后一条 user」当成这一轮要回应的任务；走 system 时它会
+ * 回退到最近的 user 消息（会话开头那条原问题），误判成「用户重复提问」并重复作答
+ * （2026-11-15 实测：一次会话被误判 4 次，多烧约 220 万 token）。
+ * 「不是用户说的」这层语义由**首尾两处加粗文案**承担，不靠角色区分。
+ * 时间线仍不写用户消息 —— 只写一张系统卡。
  */
 const wakeNoticeText = (wake: SubAgentWakePayload): string => {
   const succeeded = wake.status === 'succeeded'
@@ -211,11 +248,19 @@ const wakeNoticeText = (wake: SubAgentWakePayload): string => {
     : wake.error
       ? `失败原因：${wake.error}`
       : '没有拿到失败原因。'
+  const progress = wake.progress
+    ? wake.progress.pending.length > 0
+      ? `本批共 ${wake.progress.total} 个子助手：已完成 ${wake.progress.completed} 个，还有 ${wake.progress.pending.length} 个在跑（${wake.progress.pending.join('、')}）。先做别的，等它们完成；全部到齐后再做最终汇总。`
+      : `本批共 ${wake.progress.total} 个子助手已全部结束，现在可以做最终汇总。`
+    : ''
   return dedent`
-    ${head}
+    **［subagent-completion · 内部系统通知，不是用户的新消息］** ${head}
     ${body}
 
-    这是一条**内部系统通知**（不是用户发的）：请基于这个结论继续推进——需要细节可以查看子会话；失败时判断是重试、换方案，还是向用户说明并给出下一步。
+    ${progress}
+    用户**没有**再发新消息：不要把这当成「用户重复提问」，也不要重答已经答过的内容。
+    请基于上面的结论继续推进 —— 把子助手的结论合进已交付的答案 / 文件，需要细节可查看子会话；
+    失败时判断是重试、换方案，还是向用户说明并给出下一步。
   `
 }
 
@@ -226,9 +271,13 @@ const wakeCard = (wake: SubAgentWakePayload): Record<string, unknown> => ({
   subRunId: wake.subRunId,
   name: wake.name,
   childStatus: wake.status,
-  summary: wake.result ? wake.result.slice(0, 500) : null,
+  // 取**尾部**：`result` 是子 agent 全部文本的拼接，开头是「我会先…」的过程叙述，
+  // 结论在最后。取头部只会让卡片显示开场白（2026-11-15 实测卡片里看不到结论）。
+  summary: wake.result ? wake.result.slice(-500) : null,
   error: wake.error,
   childConversationId: wake.subAgentId,
+  // 同批进度（前端可忽略；有它就是「还有谁在跑」）
+  ...(wake.progress ? { progress: wake.progress } : {}),
 })
 
 /**
@@ -1148,10 +1197,10 @@ export class AgentChatService {
     // 本进程内中止控制器：**在建流之前就登记**，否则"解析模型时用户点停止"找不到目标
     const abort = new AbortController()
     this.activeRuns.set(run.id, abort)
-    if (clientId) this.streamStore.bindClient(run.id, clientId, conversation.id, userId)
+    if (clientId) await this.streamStore.bindClient(run.id, clientId)
 
     let heartbeat: NodeJS.Timeout | undefined
-    let unsubscribeStop: (() => Promise<void>) | null = null
+    let unsubscribeStop: (() => void) | null = null
     /** 响应头是否已经发出（决定失败时是「抛回 HTTP」还是「按 SSE 收尾」） */
     let streamStarted = false
     /**
@@ -1272,7 +1321,7 @@ export class AgentChatService {
       const streamId = `${run.id}-${Date.now()}`
       await this.runs.setActiveStream(run.id, streamId)
       if (clientId) {
-        this.streamStore.bindClient(run.id, clientId, conversation.id, userId)
+        await this.streamStore.bindClient(run.id, clientId)
       }
       await this.streamStore.startRun(run.id, {
         status: RunStatus.Running,
@@ -1300,11 +1349,7 @@ export class AgentChatService {
 
       // 跨副本停止：订阅本 run 的停止频道（请求落在别的副本时也停得掉）
       try {
-        unsubscribeStop = await this.streamStore.subscribeRun(
-          run.id,
-          () => undefined,
-          () => abort.abort(),
-        )
+        unsubscribeStop = await this.streamStore.subscribeStop(run.id, () => abort.abort())
       } catch (error) {
         this.logger.warn('ai.stream.stop_subscribe_failed', {
           runId: run.id,
@@ -1712,7 +1757,7 @@ export class AgentChatService {
       stopHeartbeat()
       stopFirstTokenTimer()
       try {
-        if (unsubscribeStop) await unsubscribeStop()
+        if (unsubscribeStop) unsubscribeStop()
       } catch (error) {
         // 取消订阅失败无碍：那条订阅连接会随进程 / Redis 自然回收
         this.logger.warn('ai.stream.unsubscribe_failed', {
@@ -1764,7 +1809,7 @@ export class AgentChatService {
     if (run.status !== RunStatus.Suspended || !run.engineRunId) {
       throw new RunNotSuspendedError(run.id)
     }
-    if (clientId) this.streamStore.bindClient(run.id, clientId, conversation.id, userId)
+    if (clientId) await this.streamStore.bindClient(run.id, clientId)
 
     /** 取消整组回答：不带答案，只把"用户取消"这个结论交回工具 */
     const cancelled = input.cancelled === true
@@ -2165,8 +2210,8 @@ export class AgentChatService {
    * 断线重连（`GET /agent/run/:runId/stream?offset=N`）：
    * 先从 Redis 输出记录**补发** `offset` 之后的片段（不重跑、不重复扣费），再接实时片段。
    *
-   * 实时片段的来源按传输模式分：**Kafka 模式**补发完即结束响应体（实时片段由 Kafka → main
-   * 的 SSE 桥写给前端）；**直连模式**挂住 Redis 订阅，边收边写 HTTP 响应。
+   * 实时片段的来源：补发帧与实时帧走同一条定向频道（`agent:stream:client:<clientId>`），
+   * main 的 SSE 桥收到后写给前端；补发完本请求即结束，**不在这里挂订阅**。
    *
    * 返回 false 表示"没有进行中的流" → 控制器回 204（AI SDK 的续传约定）。
    */
@@ -2179,8 +2224,9 @@ export class AgentChatService {
   ): Promise<boolean> {
     const run = await this.runs.findEntity(runId)
     if (!run) throw new RunNotFoundError(runId)
-    const conversation = await this.conversations.requireOwned(userId, run.conversationId)
-    if (clientId) this.streamStore.bindClient(run.id, clientId, conversation.id, userId)
+    // 归属校验（失败抛错）；补发本身不读会话内容
+    await this.conversations.requireOwned(userId, run.conversationId)
+    if (clientId) await this.streamStore.bindClient(run.id, clientId)
 
     /**
      * **Postgres 终态优先于 Redis 进度**：进程崩溃时旧进程没来得及删进度键
@@ -2227,70 +2273,22 @@ export class AgentChatService {
         ? [backlog[startIndex], ...backlog.slice(0, startIndex), ...backlog.slice(startIndex + 1)]
         : backlog
 
-    let ended = false
     for (const chunk of ordered) {
       if (chunk?.type === STREAM_END_MARKER) {
-        ended = true
-        // 补发到结束帧：Kafka 模式下让 main 收尾（`final`）；直连模式由下面的 endSse 收尾
-        await this.streamStore.forwardChunk(runId, { type: STREAM_END_MARKER })
+        // 补发到结束帧：`publishChunk` 会带 `final`，main 写完 `[DONE]` 就收尾
+        await this.streamStore.publishChunk(runId, { type: STREAM_END_MARKER })
         break
       }
       /**
-       * 补发**只走 Kafka**（装了的话），不再回发 Redis 频道。
+       * 补发帧与实时帧走**同一条定向频道**（`agent:stream:client:<clientId>`）。
        *
-       * `chunkChannel` 是「生产者 → 订阅者」的单向广播，订阅方往同一个频道回发会自激成
-       * 无限回环：一次重连就能以每秒上万条的速度往 Kafka 灌消息，把 kafkajs 的请求队列
-       * 堆到 GB 级、最终把进程打 OOM（2026-11-15 实测）。补发帧只需写给前端 / main。
+       * 注意别再退化成「订阅自己发的频道、在回调里再转发」：2026-11-15 的自激风暴就是这条回环
+       * （一次重连每秒上万条，把生产队列堆到 GB 级、进程 OOM）。这里只发、不订阅。
        */
-      await this.streamStore.forwardChunk(runId, chunk)
-      writeSse(response, sseFrame(chunk))
+      await this.streamStore.publishChunk(runId, chunk)
     }
-    if (ended) {
-      endSse(response)
-      return true
-    }
-
-    /**
-     * Kafka 模式：补发完就结束响应体，**不挂订阅**。
-     *
-     * 实时片段由「跑 run 的那一侧」继续发 Kafka（重连时 `bindClient` 已把 clientId 换成新的），
-     * main 的 SSE 桥负责写给前端。这里若像直连模式那样订阅 Redis 频道，订阅到的正是生产者
-     * 发的同一条频道，回调里再转发就会把上面的回环放大成持续风暴。
-     *
-     * 前提：重连请求与生产该 run 的是**同一个副本**（`kafkaMeta` 是进程内 Map）。多副本部署时
-     * 要把这份绑定外置（Redis），否则实时片段仍会发给旧 clientId。
-     */
-    if (this.streamStore.kafkaEnabled) {
-      endSse(response)
-      return true
-    }
-
-    // 直连模式（未装配 Kafka）：挂住连接，把后续片段写进 HTTP 响应直到客户端断开或本轮结束
-    await new Promise<void>((resolve) => {
-      let unsubscribe: (() => Promise<void>) | null = null
-      const finish = (): void => {
-        void unsubscribe?.()
-        resolve()
-      }
-      response.on('close', finish)
-      void this.streamStore
-        .subscribeRun(
-          runId,
-          (chunk) => {
-            const typed = chunk as UiChunkLike
-            if (typed?.type === STREAM_END_MARKER) {
-              finish()
-              return
-            }
-            writeSse(response, sseFrame(chunk))
-          },
-          () => undefined,
-        )
-        .then((fn) => {
-          unsubscribe = fn
-        })
-        .catch(() => finish())
-    })
+    // 实时片段继续由「跑 run 的那一侧」发给**新**绑定的 clientId：重连时 `bindClient` 已经把
+    // 地址改成新的（存在 Redis 的进度 Hash 里，跨副本也读得到），所以补发完就能收尾。
     endSse(response)
     return true
   }
@@ -2386,7 +2384,7 @@ export class AgentChatService {
     this.activeRuns.set(run.id, abort)
 
     let heartbeat: NodeJS.Timeout | undefined
-    let unsubscribeStop: (() => Promise<void>) | null = null
+    let unsubscribeStop: (() => void) | null = null
     let firstTokenTimer: NodeJS.Timeout | undefined
     let firstTokenTimedOut = false
     let firstTokenSeen = false
@@ -2532,11 +2530,7 @@ export class AgentChatService {
       ensureHeartbeat()
 
       try {
-        unsubscribeStop = await this.streamStore.subscribeRun(
-          run.id,
-          () => undefined,
-          () => abort.abort(),
-        )
+        unsubscribeStop = await this.streamStore.subscribeStop(run.id, () => abort.abort())
       } catch (error) {
         this.logger.warn('ai.stream.stop_subscribe_failed', {
           runId: run.id,
@@ -2823,7 +2817,7 @@ export class AgentChatService {
       stopHeartbeat()
       stopFirstTokenTimer()
       try {
-        if (unsubscribeStop) await unsubscribeStop()
+        if (unsubscribeStop) unsubscribeStop()
       } catch {
         // 取消订阅失败无碍：那条订阅连接会随进程 / Redis 自然回收
       }
@@ -2886,12 +2880,12 @@ export class AgentChatService {
     writeSse(response, 'data: [DONE]\n\n')
     endSse(response)
     /**
-     * Kafka 模式下 main 不转发 HTTP 响应体，只转发 Kafka 事件：这条应答必须再走一次
-     * `publishControl`，否则前端收不到 `data-queue`、原始 POST 连接会一直挂着等收尾。
+     * main 不转发 HTTP 响应体、只转发 pub/sub 帧：这条应答必须再走一次 `publishControl`，
+     * 否则前端收不到 `data-queue`、原始 POST 连接会一直挂着等收尾。
      */
     if (clientId) {
       void this.streamStore
-        .publishControl({ clientId, runId: item.id, conversationId, ownerId: userId }, chunk, true)
+        .publishControl({ clientId, runId: item.id }, chunk)
         .catch((error: unknown) => {
           this.logger.warn('ai.run_queue.ack_publish_failed', {
             conversationId,

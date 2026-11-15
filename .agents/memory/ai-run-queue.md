@@ -10,8 +10,15 @@
   `source=user`（priority 0）优先于 `source=subagent`（priority 1），同优先级 FIFO；
 - 子 agent 完成入队，`dedupe_key = subRunId`；`wait-sub-agent` 消费队列项后不再唤醒；
 - 唤醒 run 是 `parent_run_id IS NULL` 的 root run，`runs.origin='subagent'`；时间线先写
-  `status=subagent_completed` 系统卡，给模型的收尾消息是 **system 内部通知**（不冒充用户）；
-- 子 agent 可以使用 planner，父子 plan 按 run 独立；
+  `status=subagent_completed` 系统卡，给模型的收尾消息是**内部系统通知**；
+  **角色是 `user` 不是 `system`**（2026-11-15 修正：system 收尾时模型找不到触发源，会回退到会话开头
+  那条 user 消息，把「子助手完成」误判成「用户重复提问」，实测一次会话连判 4 次、多烧约 220 万 token）；
+  「不是用户说的」由文案首尾标注承担（`［内部系统通知 · 不是用户的新消息］`）；
+- **每完成一个子助手就唤醒一次**（不做批次聚合，2026-11-15 定）：父模型拿第一个结果就能推进；
+  唤醒通知带同批进度 `{ total, completed, pending[] }`，并明确「还有谁在跑 / 全齐了才做最终汇总」；
+  提示词 `assistant.eta` 的「编排子助手」段承载使用口径；
+- 子 agent 可以使用 planner，**父子 plan 按会话独立**（`envelope.conversationId`，2026-11-15 修正；
+  曾用 `parentRunId` 作键，父子撞同一份内存清单，四个子助手互相覆盖任务 id）；
 - 队列项 done/canceled 保留 7 天后可清理（`runs`/`timelines` 仍不删）。
 
 已落地（2026-11-15）：表 / `runs.origin` 迁移、`ConversationRunQueue`、`ConversationRunQueueDispatcher`

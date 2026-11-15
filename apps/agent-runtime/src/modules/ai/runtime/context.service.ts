@@ -79,11 +79,13 @@ export interface BuildContextInput {
   /** 本轮用户输入（参与估算） */
   userMessage: string
   /**
-   * 内部系统通知（**不冒充用户消息**）：子 agent 完成唤醒这一轮使用。
+   * 内部系统通知（**不是用户说的话**）：子 agent 完成唤醒这一轮使用。
    *
-   * 给了它，最终那条消息就是 `role: 'system'`（而不是 `role: 'user'`）；
-   * `userMessage` 仍用于命名 / 记忆抽取等旁路，不参与上下文排版。
-   * 时间线里也不会写用户消息 —— 唤醒不是用户说的。
+   * 给了它，本轮收尾消息的内容就是它（`userMessage` 仍用于命名 / 记忆抽取等旁路）。
+   * **角色必须是 `user`**：模型的对话范式只把「最后一条 user」当成这一轮要回应的任务；
+   * 用 `system` 收尾时它会回退到最近的 user 消息（会话开头那条原问题），
+   * 把「子助手完成」误判成「用户又把原问题问了一遍」（2026-11-15 实测连续误判 4 次）。
+   * 「不是用户说的」这层语义由**文案**承担（通知正文首尾都写明），不靠角色区分。
    */
   internalNotice?: string
   /**
@@ -249,10 +251,9 @@ export class ContextService {
       const messages: ModelMessage[] = [
         ...systemMessages,
         ...kept.flatMap((segment) => segment.messages),
-        // 唤醒 run 用内部系统通知收尾；普通用户消息保持 `role:'user'`（同一条路径，不分叉）
-        input.internalNotice
-          ? { role: 'system', content: input.internalNotice }
-          : { role: 'user', content: input.userMessage },
+        // 唤醒 run 与普通消息**同一条路径**（都收尾成 user）：区别只在文案，
+        // 不靠角色区分 —— 角色一变，模型就找不到"这一轮是谁让我说话的"，见 `internalNotice` 注释。
+        { role: 'user', content: input.internalNotice ?? input.userMessage },
       ]
       const estimated = this.messagesTokens(messages) + extraInputTokens
       const snapshot: ContextSnapshot = {
