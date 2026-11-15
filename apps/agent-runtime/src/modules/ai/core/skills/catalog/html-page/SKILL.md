@@ -87,7 +87,8 @@ Google Fonts、cdnjs、GitHub raw、自建图床 —— 写了只会得到一块
 3. 用 `file-submit` 提交：`filePath` 是 workspace 路径，`fileKey` 是会话内路径（如 `reports/q3.html`）；
 4. 回答里说清文件名与怎么看（点文件树里的 `.html` 预览）。
 
-子 agent 一般**没有**文件工具（`write-file` / `file-submit` 都是主 agent 才有的）：那就把整页 HTML
+先看自己的工具清单：有 `write-file` / `file-submit` 就自己写、自己提交（子助手默认也有这组工具，
+工作区与父共享；每个子助手用不同文件名，避免并发覆盖）。确实没有这两件工具时，才把整页 HTML
 作为结果交回，由主 agent 落盘提交 —— 不要声称"已提交"。
 
 **单文件**：Tailwind / 库的引导脚本、`<style>`、业务 `<script>` 全部内联，不要 `./style.css` / `./app.js` ——
@@ -116,12 +117,50 @@ Google Fonts、cdnjs、GitHub raw、自建图床 —— 写了只会得到一块
 | --- | --- | --- | --- |
 | 图表（功能全） | `echarts@5.4.3` | `dist/echarts.min.js` | `echarts` |
 | 图表（轻） | `chart.js@4.5.0` | `dist/chart.umd.min.js` | `Chart` |
+| 2D 绘制（矢量 / SVG） | `@svgdotjs/svg.js@3.2.8` | `dist/svg.min.js` | `SVG` |
+| 2D 绘制（Canvas / 交互） | `konva@10.9.1` | `konva.min.js` | `Konva` |
+| 动画 | `gsap@3.15.1` | `dist/gsap.min.js` | `gsap` |
+| 公式 | `katex@0.19.1` | `dist/katex.min.js` | `katex` |
 | 日期 | `dayjs@1.11.13` | `dayjs.min.js` | `dayjs` |
 | 图标 | `lucide@0.469.0` | `dist/umd/lucide.min.js` | `lucide` |
 | 流程图（重，2.5MB） | `mermaid@11.4.1` | `dist/mermaid.min.js` | `mermaid` |
 
 表里没有的库：先确认包里有 UMD 构建（`dist/*.umd*.js` / `*.min.js`），再用同一套模板；
 路径不确定时不要猜 `index.js` —— 404 之后是静默空白。
+
+### 2D 绘制 / 动画 / 公式：先选形态，再抄片段
+
+- **2D 绘制先分两种，选错白费**：要矢量（放大不糊、文字可选中、能打印）→ `SVG.js`，
+  `var draw = SVG().addTo('#drawing').size(600, 400)` 起手，之后 `draw.circle(...)` / `draw.path(...)` / `draw.text(...)`；
+  要拖拽 / 命中检测 / 大量对象 / 导出位图 → `Konva`（Canvas 渲染，文字不可选中、导出是位图），
+  `new Konva.Stage({ container: 'drawing', width: 600, height: 400 })` 起手。
+  两者都**不是图表库**（图表用 echarts / Chart.js）；原生 SVG 能画清楚的就别引库。
+- **`.html` 页面里没有内置 gsap**：内置 gsap 只给 `gsap` 围栏用，`.html` 里要动画得自己按三级兜底引；
+  CSS `transition` / `@keyframes` 够用就别引，要时间线 / 错峰 / 滚动触发再上 gsap
+  （插件同包：`dist/ScrollTrigger.min.js`，引法相同）。
+- **公式用 `katex`：JS 和 CSS 都要引**，字体写在 CSS 的相对路径里、跟着 CSS 那家 CDN 走；
+  KaTeX **默认不扫描页面**，所以把 LaTeX 放 `data-tex` 属性再 `katex.render`（或另引
+  `dist/contrib/auto-render.min.js` 后调 `renderMathInElement`）。只引 JS 不引 CSS，公式会退化成裸文本。
+
+```html
+<!-- 公式：JS / CSS 都三级兜底（字体跟着 CSS 走） -->
+<link rel="stylesheet" href="https://registry.npmmirror.com/katex/0.19.1/files/dist/katex.min.css"
+      onerror="this.onerror=function(){this.href='https://unpkg.com/katex@0.19.1/dist/katex.min.css'};this.href='https://cdn.jsdelivr.net/npm/katex@0.19.1/dist/katex.min.css'">
+<script src="https://registry.npmmirror.com/katex/0.19.1/files/dist/katex.min.js"></script>
+<script>window.katex||document.write('<script src="https://cdn.jsdelivr.net/npm/katex@0.19.1/dist/katex.min.js"><\/script>')</script>
+<script>window.katex||document.write('<script src="https://unpkg.com/katex@0.19.1/dist/katex.min.js"><\/script>')</script>
+
+<p class="text-center text-lg" data-tex="\int_0^1 x^2\,\mathrm{d}x = \tfrac{1}{3}"></p>
+<script>
+  document.querySelectorAll('[data-tex]').forEach(function (el) {
+    var tex = el.getAttribute('data-tex')
+    if (!window.katex) { el.textContent = tex; return }
+    try { katex.render(tex, el, { throwOnError: false }) } catch (e) { el.textContent = tex }
+  })
+</script>
+```
+
+LaTeX 写在 `data-tex` 里、不写进 JS 字符串，省掉反斜杠二次转义；容器里先放一句纯文本，库没来也读得懂。
 
 ## 库没加载出来时也要看得见
 
@@ -135,6 +174,7 @@ Google Fonts、cdnjs、GitHub raw、自建图床 —— 写了只会得到一块
 
 - [ ] 单文件：样式 / 脚本内联，没有相对路径外链
 - [ ] 版本写死；三级兜底齐全；`<\/script>` 已转义
+- [ ] 引了 `katex` 时 CSS 也引了；`.html` 里的 gsap / 2D 库都自己引了（页面没有内置 gsap）
 - [ ] 必须引 Tailwind 并用工具类写主体样式；`<style>` 只补 Tailwind 覆盖不到的（动画 / 伪元素 / 打印 / 库覆盖），
       没有另起一套布局体系
 - [ ] **没有衬线字体**（`font-serif` / `serif` / `Songti SC` / `SimSun` / `Noto Serif SC` / `Georgia`），正文是无衬线系统栈
@@ -151,4 +191,7 @@ Google Fonts、cdnjs、GitHub raw、自建图床 —— 写了只会得到一块
 - 用了 `font-serif` / 宋体：中文衬线在预览里会回退成系统宋体、屏幕发虚，统一换 `font-sans`；
 - 整页不引 Tailwind、只用 `<style>` 写：不符合「必须用 Tailwind」，`<style>` 是补位不是替代；
 - 只引 Tailwind 不写降级基础样式：CDN 全挂时整页白纸（基础样式只保底，不替代 Tailwind）；
+- `.html` 里直接写 `gsap.to(...)`：页面没有内置 gsap（那是 `gsap` 围栏的特权），会报 `gsap is not defined`
+  —— 自己按三级兜底引，或改用 CSS 动画；
+- 引了 `katex.min.js` 忘了 `katex.min.css`：公式退化成一串裸 LaTeX 文本，看着像"库没生效"；
 - 设计感要求高时先加载设计 / 前端类技能再动手，本技能只保证**能跑、能引库、能交付**。

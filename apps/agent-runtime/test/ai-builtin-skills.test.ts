@@ -65,4 +65,17 @@ describe('内置技能：html-page', () => {
     expect(body).toContain('write-file')
     expect(body).toContain('file-submit')
   })
+
+  it('2D 绘制 / 动画 / 公式入口写死版本，并说清页面里没有内置 gsap', async () => {
+    const body = await readBuiltinSkill('html-page')
+
+    // 三类库的入口：包名 + 版本写死，模型照抄即可；升版本时这三处要一起改
+    for (const entry of ['@svgdotjs/svg.js@3.2.8', 'konva@10.9.1', 'gsap@3.15.1', 'katex@0.19.1']) {
+      expect(body).toContain(entry)
+    }
+    // 内置 gsap 只给 `gsap` 围栏，`.html` 页面预览不注入脚本 —— 漏了这句模型会直接 gsap.to 报 not defined
+    expect(body).toContain('没有内置 gsap')
+    // KaTeX 只引 JS 不引 CSS 会退化成裸文本，所以 CSS 入口必须写出来
+    expect(body).toContain('katex.min.css')
+  })
 })

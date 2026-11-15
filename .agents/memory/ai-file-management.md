@@ -31,6 +31,14 @@
   每个页面都要引 `@tailwindcss/browser`）；`<style>` **不禁用**，用来补 Tailwind 覆盖不到的
   （动画 / 伪元素 / 打印 / 库覆盖 / `@theme`），但不得整页绕开工具类或引第二套框架；
   由 `catalog/html-page` 与 `test/ai-builtin-skills.test.ts` 的断言共同钉住。
+- **html-page 补三类库**（2026-11-15 三家 CDN 实测）：常用库表加 `@svgdotjs/svg.js@3.2.8`
+  （`dist/svg.min.js`，`SVG`）、`konva@10.9.1`（`konva.min.js`，`Konva`）、`gsap@3.15.1`
+  （`dist/gsap.min.js`）、`katex@0.19.1`（`dist/katex.min.js` + `dist/katex.min.css`，字体随 CSS 相对路径）。
+  **内置 gsap 只对 `gsap` 围栏生效**：`.html` 预览（`SandboxFrame language="html"`）不注入任何脚本，
+  页面里要动画必须自己引。`two.js` / `paper` 不在 cnpm 的 unpkg 白名单（npmmirror 返回 403），
+  只能走 jsDelivr / unpkg，不要当国内第一跳。
+  核对：`curl -s -o /dev/null -w '%{http_code}\n' https://registry.npmmirror.com/konva/10.9.1/files/konva.min.js`
+  （逐个换包名 / 版本 / 路径，三家都 200 才算进表）。
 
 ## 坑
 
