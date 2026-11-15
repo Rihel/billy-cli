@@ -340,6 +340,10 @@ export const resolvePreviewKind = (input: {
 **判定规则**：登记的 `mediaType` 与扩展名冲突时取**更保守**的一边，拿不准一律 `none`。
 宁可给下载，也不能把 HTML 塞进 iframe。
 
+**全屏**：顶栏（文件名 / 大小 / 全屏 / 下载）整条收掉，正文铺满，右上角悬浮「退出全屏」还原；
+进入用按钮或 `f`，退出再加 `Esc`。与后台文件预览弹窗共用 `apps/admin/src/components/preview-fullscreen.tsx`
+的按钮与快捷键，差异只在 `Esc` 的归属：弹窗里先退全屏、不关窗，分享页没有弹窗，直接退全屏。
+
 ### 6.3 Next API 层：Hono，按官方 Next.js 集成方式
 
 Next 侧的接口统一用 [Hono 官方的 Next.js 集成](https://hono.dev/docs/getting-started/nextjs)：

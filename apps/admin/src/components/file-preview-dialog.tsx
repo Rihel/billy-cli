@@ -1,7 +1,7 @@
 'use client'
 
 import { formatFileSize } from '@repo/shared/browser'
-import { Button, Dialog, DialogContent, DialogHeader, DialogTitle, FilePreview } from '@repo/ui'
+import { Button, cn, Dialog, DialogContent, DialogHeader, DialogTitle, FilePreview } from '@repo/ui'
 import { useEffect, useState } from 'react'
 import { CheckIcon, ChevronDownIcon, ChevronUpIcon, CopyIcon, DownloadIcon } from 'lucide-react'
 import { useHotkeys } from 'react-hotkeys-hook'
@@ -9,6 +9,11 @@ import { toastError, toastSuccess } from '@repo/ui'
 import { MessageResponse } from '@repo/ui/components/ai-elements/message.tsx'
 import { SandboxFrame } from '@repo/ui/components/ai-elements/markdown-fences/sandbox-frame.tsx'
 import { OfficePreview, type OfficeKind } from '@/components/office-preview'
+import {
+  FullscreenButton,
+  FullscreenExitButton,
+  usePreviewFullscreen,
+} from '@/components/preview-fullscreen'
 import { copyText } from '@/lib/clipboard'
 
 /** 预览弹窗里一份文件的最小视图模型（不绑定会话 / 后台某一种列表） */
@@ -122,6 +127,9 @@ export const officeKind = (
  *
  * 后台文件页（当前页）与聊天右栏文件树共用这一份：
  * 列表数据由调用方给，文本内容由调用方按当前 item 取（二进制走 url 直接预览）。
+ *
+ * 「全屏」是弹窗自己的状态：收掉侧栏 / 顶栏 / 底栏只留内容，右上角悬浮按钮还原；
+ * 状态不外抛，关窗即复位，调用方的 props 不受影响。
  */
 export function FilePreviewDialog({
   items,
@@ -144,6 +152,11 @@ export function FilePreviewDialog({
   const [resolvedUrl, setResolvedUrl] = useState<string | null>(null)
   const [urlError, setUrlError] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
+  const {
+    fullscreen,
+    toggle: toggleFullscreen,
+    exit: exitFullscreen,
+  } = usePreviewFullscreen(index !== null)
 
   useEffect(() => {
     setResolvedUrl(null)
@@ -205,71 +218,97 @@ export function FilePreviewDialog({
   }
 
   return (
-    <Dialog open onOpenChange={(open) => !open && onClose()}>
+    <Dialog
+      open
+      onOpenChange={(open, details) => {
+        if (open) return
+        // 全屏态按 Esc 只收 chrome：先退全屏，再按一次才关窗
+        if (fullscreen && details.reason === 'escape-key') {
+          details.cancel()
+          exitFullscreen()
+          return
+        }
+        exitFullscreen()
+        onClose()
+      }}
+    >
       <DialogContent
         bodyScroll={false}
-        className="flex h-dvh max-h-dvh w-screen max-w-none flex-col gap-0 rounded-none p-0 sm:max-w-none"
+        className={cn(
+          'flex h-dvh max-h-dvh w-screen max-w-none flex-col gap-0 rounded-none p-0 sm:max-w-none',
+          // 全屏时内置关闭键浮在任意内容上（黑色视频 / 白底文档都得看得见）：给同一层半透明底
+          fullscreen &&
+            '[&>[data-slot=dialog-close]]:rounded-full [&>[data-slot=dialog-close]]:bg-background/90 [&>[data-slot=dialog-close]]:shadow-sm [&>[data-slot=dialog-close]]:backdrop-blur',
+        )}
       >
-        <DialogHeader className="shrink-0 border-b px-4 py-3 pr-14">
-          <div className="flex min-w-0 items-center gap-2">
-            <DialogTitle className="truncate text-sm">{current.filename}</DialogTitle>
-            <span className="shrink-0 text-xs text-muted-foreground">
-              {index + 1} / {items.length}
-            </span>
-            <div className="ml-auto flex shrink-0 items-center gap-1 pr-2">
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                disabled={!hasPrev}
-                onClick={() => onIndexChange(index - 1)}
-                title="上一个文件（↑）"
-                aria-label="上一个文件"
-              >
-                <ChevronUpIcon className="size-4" />
-              </Button>
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                disabled={!hasNext}
-                onClick={() => onIndexChange(index + 1)}
-                title="下一个文件（↓）"
-                aria-label="下一个文件"
-              >
-                <ChevronDownIcon className="size-4" />
-              </Button>
+        {fullscreen ? (
+          // 顶栏收掉后标题只剩读屏可见：Dialog 的 aria-labelledby 要有一个节点可指
+          <DialogTitle className="sr-only">{current.filename}</DialogTitle>
+        ) : (
+          <DialogHeader className="shrink-0 border-b px-4 py-3 pr-14">
+            <div className="flex min-w-0 items-center gap-2">
+              <DialogTitle className="truncate text-sm">{current.filename}</DialogTitle>
+              <span className="shrink-0 text-xs text-muted-foreground">
+                {index + 1} / {items.length}
+              </span>
+              <div className="ml-auto flex shrink-0 items-center gap-1 pr-2">
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  disabled={!hasPrev}
+                  onClick={() => onIndexChange(index - 1)}
+                  title="上一个文件（↑）"
+                  aria-label="上一个文件"
+                >
+                  <ChevronUpIcon className="size-4" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  disabled={!hasNext}
+                  onClick={() => onIndexChange(index + 1)}
+                  title="下一个文件（↓）"
+                  aria-label="下一个文件"
+                >
+                  <ChevronDownIcon className="size-4" />
+                </Button>
+                <FullscreenButton onClick={toggleFullscreen} />
+              </div>
             </div>
-          </div>
-        </DialogHeader>
+          </DialogHeader>
+        )}
 
-        <div className="flex min-h-0 flex-1">
-          {/* 左侧文件清单：大屏常驻，小屏收起（顶部上一个 / 下一个仍可用） */}
-          <aside
-            aria-label="文件列表"
-            className="hidden w-64 shrink-0 overflow-y-auto border-r bg-surface-1 p-2 sm:block"
-          >
-            <div className="px-2 pb-1.5 text-[11px] font-medium tracking-wide text-muted-foreground uppercase">
-              文件列表（{items.length}）
-            </div>
-            {items.map((item, itemIndex) => (
-              <button
-                key={item.id}
-                type="button"
-                onClick={() => onIndexChange(itemIndex)}
-                className={
-                  itemIndex === index
-                    ? 'flex w-full flex-col gap-0.5 rounded-md bg-muted px-2 py-1.5 text-left'
-                    : 'flex w-full flex-col gap-0.5 rounded-md px-2 py-1.5 text-left hover:bg-muted/60'
-                }
-              >
-                <span className="truncate text-xs font-medium">{item.filename}</span>
-                <span className="flex items-center gap-2 text-[10px] text-muted-foreground">
-                  {item.badge ? <span>{item.badge}</span> : null}
-                  {item.subtitle ? <span className="truncate">{item.subtitle}</span> : null}
-                  <span className="ml-auto shrink-0">{formatFileSize(item.bytes)}</span>
-                </span>
-              </button>
-            ))}
-          </aside>
+        <div className="relative flex min-h-0 flex-1">
+          {/* 左侧文件清单：大屏常驻，小屏收起（顶部上一个 / 下一个仍可用）；全屏时收掉 */}
+          {fullscreen ? null : (
+            <aside
+              aria-label="文件列表"
+              className="hidden w-64 shrink-0 overflow-y-auto border-r bg-surface-1 p-2 sm:block"
+            >
+              <div className="px-2 pb-1.5 text-[11px] font-medium tracking-wide text-muted-foreground uppercase">
+                文件列表（{items.length}）
+              </div>
+              {items.map((item, itemIndex) => (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => onIndexChange(itemIndex)}
+                  className={
+                    itemIndex === index
+                      ? 'flex w-full flex-col gap-0.5 rounded-md bg-muted px-2 py-1.5 text-left'
+                      : 'flex w-full flex-col gap-0.5 rounded-md px-2 py-1.5 text-left hover:bg-muted/60'
+                  }
+                >
+                  <span className="truncate text-xs font-medium">{item.filename}</span>
+                  <span className="flex items-center gap-2 text-[10px] text-muted-foreground">
+                    {item.badge ? <span>{item.badge}</span> : null}
+                    {item.subtitle ? <span className="truncate">{item.subtitle}</span> : null}
+                    <span className="ml-auto shrink-0">{formatFileSize(item.bytes)}</span>
+                  </span>
+                </button>
+              ))}
+            </aside>
+          )}
 
           <div
             className={html ? 'min-h-0 flex-1 overflow-hidden' : 'min-h-0 flex-1 overflow-auto p-4'}
@@ -321,20 +360,30 @@ export function FilePreviewDialog({
               <Empty text="当前类型不支持在线预览，请下载查看。" />
             )}
           </div>
+
+          {/* 全屏态唯一的外露控件：让开内置关闭键（right-2 + 28px），和它并排 */}
+          {fullscreen ? (
+            <FullscreenExitButton
+              onClick={exitFullscreen}
+              className="absolute top-2 right-10 z-30"
+            />
+          ) : null}
         </div>
 
-        <div className="flex shrink-0 justify-end gap-2 border-t px-4 py-3">
-          {canCopy ? (
-            <Button variant="outline" size="sm" onClick={() => void copyCurrent()}>
-              {copied ? <CheckIcon className="size-3.5" /> : <CopyIcon className="size-3.5" />}
-              {copied ? '已复制' : '复制'}
+        {fullscreen ? null : (
+          <div className="flex shrink-0 justify-end gap-2 border-t px-4 py-3">
+            {canCopy ? (
+              <Button variant="outline" size="sm" onClick={() => void copyCurrent()}>
+                {copied ? <CheckIcon className="size-3.5" /> : <CopyIcon className="size-3.5" />}
+                {copied ? '已复制' : '复制'}
+              </Button>
+            ) : null}
+            <Button variant="outline" size="sm" onClick={() => onDownload(current)}>
+              <DownloadIcon className="size-3.5" />
+              下载
             </Button>
-          ) : null}
-          <Button variant="outline" size="sm" onClick={() => onDownload(current)}>
-            <DownloadIcon className="size-3.5" />
-            下载
-          </Button>
-        </div>
+          </div>
+        )}
       </DialogContent>
     </Dialog>
   )

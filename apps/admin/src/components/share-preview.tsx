@@ -2,11 +2,17 @@
 
 import { useEffect, useState } from 'react'
 import { DownloadIcon, FileIcon } from 'lucide-react'
+import { useHotkeys } from 'react-hotkeys-hook'
 import { Button } from '@repo/ui'
 import { Markdown } from '@repo/ui/components/markdown.tsx'
 import { SandboxFrame } from '@repo/ui/components/ai-elements/markdown-fences/sandbox-frame.tsx'
 import type { ShareMetaModel } from '@repo/shared'
 import { OfficePreview } from '@/components/office-preview'
+import {
+  FullscreenButton,
+  FullscreenExitButton,
+  usePreviewFullscreen,
+} from '@/components/preview-fullscreen'
 
 /**
  * 分享页的预览体（设计 `docs/design/file-share.md` §6.2）。
@@ -19,6 +25,9 @@ import { OfficePreview } from '@/components/office-preview'
  *
  * 这里是**唯一**知道文件地址的地方 —— 地址是同源 `/api/s/{token}/content`，
  * 里面不会有 OSS 域名与签名参数。
+ *
+ * 全屏（`f` / 头部按钮）只收走顶栏，正文铺满；退出走右上角悬浮按钮（分享页没有弹窗，
+ * `Esc` 由这里自己监听，弹窗那套在 `FilePreviewDialog`）。
  */
 
 /** 文本类一次性读取的上限（与主站预览同一口径） */
@@ -34,6 +43,10 @@ export function SharePreview({ token, meta }: { token: string; meta: ShareMetaMo
   const contentUrl = `/api/s/${token}/content`
   const [text, setText] = useState<string | null>(null)
   const [failed, setFailed] = useState(false)
+  const { fullscreen, toggle: toggleFullscreen, exit: exitFullscreen } = usePreviewFullscreen()
+
+  // 没有弹窗可关：全屏态下 Esc 就是退全屏；不在全屏时什么都不做（不抢浏览器/读屏的 Esc）
+  useHotkeys('escape', exitFullscreen, { enabled: fullscreen, preventDefault: true })
 
   const needsText =
     meta.previewKind === 'text' || meta.previewKind === 'markdown' || meta.previewKind === 'html'
@@ -59,28 +72,44 @@ export function SharePreview({ token, meta }: { token: string; meta: ShareMetaMo
   }, [contentUrl, needsText])
 
   return (
-    <div className="flex h-dvh flex-col bg-background">
-      <header className="flex shrink-0 items-center justify-between gap-3 border-b border-border px-4 py-3">
-        <div className="flex min-w-0 items-center gap-2">
-          <FileIcon className="size-4 shrink-0 text-muted-foreground" />
-          <span className="truncate text-sm font-medium">{meta.filename}</span>
-          <span className="shrink-0 text-xs text-muted-foreground">{formatBytes(meta.bytes)}</span>
-        </div>
-        <Button
-          variant="outline"
-          size="sm"
-          render={
-            <a href={contentUrl} download={meta.filename} aria-label={`下载 ${meta.filename}`} />
-          }
-        >
-          <DownloadIcon className="size-3.5" />
-          下载
-        </Button>
-      </header>
+    <div className="relative flex h-dvh flex-col bg-background">
+      {fullscreen ? null : (
+        <header className="flex shrink-0 items-center justify-between gap-3 border-b border-border px-4 py-3">
+          <div className="flex min-w-0 items-center gap-2">
+            <FileIcon className="size-4 shrink-0 text-muted-foreground" />
+            <span className="truncate text-sm font-medium">{meta.filename}</span>
+            <span className="shrink-0 text-xs text-muted-foreground">
+              {formatBytes(meta.bytes)}
+            </span>
+          </div>
+          <div className="flex shrink-0 items-center gap-2">
+            <FullscreenButton onClick={toggleFullscreen} />
+            <Button
+              variant="outline"
+              size="sm"
+              render={
+                <a
+                  href={contentUrl}
+                  download={meta.filename}
+                  aria-label={`下载 ${meta.filename}`}
+                />
+              }
+            >
+              <DownloadIcon className="size-3.5" />
+              下载
+            </Button>
+          </div>
+        </header>
+      )}
 
       <main className="min-h-0 flex-1 overflow-auto">
         <Body meta={meta} contentUrl={contentUrl} text={text} failed={failed} />
       </main>
+
+      {/* 悬浮在滚动区之外，内容再长也不会把按钮滚走 */}
+      {fullscreen ? (
+        <FullscreenExitButton onClick={exitFullscreen} className="absolute top-3 right-3 z-30" />
+      ) : null}
     </div>
   )
 }
