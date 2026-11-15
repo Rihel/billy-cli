@@ -20,6 +20,7 @@ import {
   CopyIcon,
   EyeIcon,
   FolderIcon,
+  FolderTreeIcon,
   ListTodoIcon,
   ScrollTextIcon,
   SparklesIcon,
@@ -36,12 +37,12 @@ import { subRunName } from './sub-agent-live'
 import { statusLabel } from './sub-agent-panel'
 
 /** 右栏的 tab（`focus` 与初始 tab 都用它，避免各处写裸字符串） */
-export type RightPanelTab = 'system' | 'skills' | 'plan' | 'files'
+export type RightPanelTab = 'system' | 'skills' | 'plan' | 'files' | 'workspace'
 
 /**
  * 会话页**右栏**：把"这一轮的旁证"集中到一处，按 tab 切换。
  *
- * 四个 tab（子 agent 的完整过程**不在这里**：它跟主会话是**平级**的两条会话，
+ * 五个 tab（子 agent 的完整过程**不在这里**：它跟主会话是**平级**的两条会话，
  * 现在放在主区顶部的 tab 条里，见 `session-tabs.tsx`）：
  * 1. **系统指令** —— 本会话实际送进模型的那份提示词快照，用 Markdown 组件渲染（原来挤在页头弹窗里），
  *    可一键复制；
@@ -52,7 +53,12 @@ export type RightPanelTab = 'system' | 'skills' | 'plan' | 'files'
  *    完整清单放在这里而不是消息流里：它会随每一轮变长，铺在对话里会把正文切成两半；
  *    消息里只留一张紧凑卡（目标 + 进度 + 跳过来的入口）。数据由会话页用**与消息内同一份**
  *    收集逻辑（`conversationPlanOf` → `collectMessagePlan`）算好传进来，两处不会各说各话；
- * 4. **文件** —— 会话文件树（用户上传 + AI 提交）与工作区两个视图。
+ * 4. **文件** —— 会话文件（用户上传 + AI 提交，OSS 持久）；
+ * 5. **工作区** —— 会话工作区里的实际文件（本地盘，AI 写文件的地方，换 Pod 可能没了）。
+ *
+ * 为什么「文件」与「工作区」是**两个平级 tab** 而不是一个 tab 里分段切换：它们是两个不同的东西
+ * （来源、持久性、清理时机都不同），分段切换读起来像"一个东西的两种看法"，平级则像"两个入口"。
+ * 两者的内容都**一次拿全量**、前端自己拼树（见 `files-panel.tsx`）。
  *
  * 为什么是"右栏"而不是又一个弹窗：这些内容要跟主对话**对着看**
  * （一边看清单 / 提示词，一边看它怎么答），弹窗一挡就看不成了。
@@ -178,6 +184,10 @@ export function ConversationRightPanel({
           <FolderIcon className="size-3.5" />
           文件
         </TabsTrigger>
+        <TabsTrigger value="workspace" className="shrink-0">
+          <FolderTreeIcon className="size-3.5" />
+          工作区
+        </TabsTrigger>
       </TabsList>
 
       <TabsContent value="system" className="flex min-h-0 flex-1 flex-col">
@@ -207,15 +217,29 @@ export function ConversationRightPanel({
       </TabsContent>
 
       <TabsContent value="files" className="flex min-h-0 flex-1 flex-col">
-        <FilesPanel client={client} conversationId={conversationId} files={files} />
-        {/* 文件不跟着作用域切：子助手写的就是父会话的工作区（`conversation/detail` 也按根会话取树） */}
-        {scoped ? (
-          <p className="shrink-0 pt-2 text-[11px] leading-4 text-muted-foreground">
-            子助手与你共用同一个工作区，这里列的是本会话的文件树。
-          </p>
-        ) : null}
+        <FilesPanel client={client} conversationId={conversationId} files={files} view="session" />
+        {scoped ? <SharedWorkspaceNote /> : null}
+      </TabsContent>
+
+      <TabsContent value="workspace" className="flex min-h-0 flex-1 flex-col">
+        <FilesPanel
+          client={client}
+          conversationId={conversationId}
+          files={files}
+          view="workspace"
+        />
+        {scoped ? <SharedWorkspaceNote /> : null}
       </TabsContent>
     </Tabs>
+  )
+}
+
+/** 子助手 tab 下两个文件 tab 共用的一句说明（写清楚主语：列的是本会话的文件树） */
+function SharedWorkspaceNote() {
+  return (
+    <p className="shrink-0 pt-2 text-[11px] leading-4 text-muted-foreground">
+      子助手与你共用同一个工作区，这里列的是本会话的文件树。
+    </p>
   )
 }
 
