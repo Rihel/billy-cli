@@ -1,7 +1,7 @@
 # 会话页渲染状态：按 part 类型增量归约
 
-**查证优先级：抽核**（目录 `apps/admin/src/app/(standalone)/main/ai/chat/` 有改动时重核）
-核对命令：`ls apps/admin/src/app/\(standalone\)/main/ai/chat/chat-session.ts apps/admin/src/app/\(standalone\)/main/ai/chat/chat-transport.ts`
+**查证优先级：抽核**（目录 `apps/admin/src/app/(app)/(standalone)/main/ai/chat/` 有改动时重核）
+核对命令：`ls 'apps/admin/src/app/(app)/(standalone)/main/ai/chat/chat-session.ts' 'apps/admin/src/app/(app)/(standalone)/main/ai/chat/session-tabs.tsx'`
 
 ## 结论
 
@@ -14,6 +14,9 @@
 - `data-sub-agent-delta`：**折叠进聚合正文**，不产生单元；
 - `data-tool-event`：有主并进工具卡，无主独立成卡（之后出现同 id 工具卡时渲染跳过）；
 - `data-plan` / `data-run-usage`：记到消息的 plan / usage，不占单元；
+- **子 agent 过程在主区顶部 tab 条**（2026-11-15 起）：`session-tabs.tsx` 的第一个 tab 是「主会话」，
+  其余每个子 run 一个；主会话 `keepMounted`（切走再回来，草稿 / 滚动位置都在），子 tab 只挂当前那个。
+  右栏已没有「子 agent」tab（只剩系统指令 / 技能 / 任务 / 文件），"开跑自动展开右栏"的 effect 已删。
 - `data-step-usage`（每步一条，实时用量，与 `data-run-usage` 同形）：同上，不占单元。
 
 实时数据：`onData` → `applyChunk`（100ms 合并通知），`data-run` 表示新一轮开始 → 清空上一轮。
@@ -37,7 +40,8 @@
   正确位置：store 建在**页面层**（`[conversationId]/page.tsx` 的 `ChatSessionProvider`，key 跟会话代次），
   会话页与子树统一用 `useChatSessionStore()` 那条 context hook。
 
-- **右栏长内容会把整页的滚动区撑大**（实测 2026-11-03）：子助手过程能长到 8000px，虽然被面板内部
+- **长内容会把整页的滚动区撑大**（实测 2026-11-03，当时子助手过程在右栏；2026-11-15 起它在主栏 tab 里，
+  主栏 `ResizablePanel` 同样必须带 `contain: paint`）：子助手过程能长到 8000px，虽然被面板内部
   `overflow: auto` / 面板 `overflow: hidden` 裁住，它的**可滚动溢出仍然计入
   `document.scrollingElement.scrollHeight`**（900 → 8149，整页多出滚动条、切 tab 时被顶动）。
   只加 `overflow: hidden` / `clip` 压不住；给面板内层加 **`contain: paint`** 才回到 900
@@ -76,7 +80,8 @@
 
 ## 依据
 
-- `chat-session.ts`（归约 + store + 订阅）、`chat-transport.ts`（transient）、`message-row.tsx`（单元渲染）
+- `chat-session.ts`（归约 + store + 订阅）、`chat-transport.ts`（transient）、`message-row.tsx`（单元渲染）、
+  `session-tabs.tsx`（主区 tab 条：主会话 + 子 agent，右栏已不管子 agent）
 - 单测：`apps/admin/test/chat-session-store.test.ts`（一万 delta 仍一个单元 / 重放幂等 / 中间 part 改写 / 去重规则）、
   `apps/admin/test/resume-answer.test.ts`（回答后立刻转只读问答记录）
 - 方案：`docs/design/ai-chat-state.md`

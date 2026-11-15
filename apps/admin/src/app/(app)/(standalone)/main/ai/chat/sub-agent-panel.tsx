@@ -18,11 +18,11 @@ import { BotIcon, LoaderCircleIcon } from 'lucide-react'
 import { isSubAgentActive, type SubAgentLive } from './sub-agent-live'
 
 /**
- * 子助手的**过程视图**（右栏「子 agent」tab 的内容）。
+ * 子助手的**过程视图**（主区顶部子 agent tab 在"运行中"时显示的内容）。
  *
  * 数据来自实时流（`sub-agent-live.ts` 收集的 `data-sub-agent*` 块）——
  * 会话页在**同一次渲染**里把最后一条消息的 parts 收好传进来，所以运行中也能逐帧看到推理与正文；
- * 跑完之后右栏改用库里那份完整时间线（见 `right-panel.tsx` 的 `SubRunView`），
+ * 跑完之后改用库里那份完整时间线（见 `session-tabs.tsx` 的 `SubRunView`），
  * 这份视图只在"还在跑 / 库里暂时没有该 run"时出场。
  *
  * 正文用 `whitespace-pre-wrap` 而不是 Markdown 渲染：这一段是**每个增量 tick 都在变**的长文本，
@@ -30,7 +30,7 @@ import { isSubAgentActive, type SubAgentLive } from './sub-agent-live'
  * 渲染成正式的样子。
  */
 
-/** 运行状态 → 人话（右栏的「子 agent 运行」也用这一份，口径不分叉） */
+/** 运行状态 → 人话（卡片、tab 与运行记录都用这一份，口径不分叉） */
 export const statusLabel: Record<string, string> = {
   running: '进行中',
   succeeded: '已完成',

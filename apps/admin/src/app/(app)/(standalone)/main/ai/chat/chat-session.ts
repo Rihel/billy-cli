@@ -500,7 +500,7 @@ const reduceMessage = (
 /**
  * 一条消息 → 渲染状态（纯函数）。
  *
- * 右栏的"子助手完整过程"用的就是这一份：历史消息（`UIMessage`）进来，归约成与主对话
+ * 子 agent tab 的"完整过程"用的就是这一份：历史消息（`UIMessage`）进来，归约成与主对话
  * 完全相同的单元结构，再用同一个 `ChatMessage` 渲染 —— 两处不会各写一套映射。
  */
 export const toMessageState = (message: UIMessage): ChatMessageState =>
@@ -660,7 +660,7 @@ export class ChatSessionStore {
     this.scheduleFlush()
   }
 
-  /** 当前这一轮的子助手是否还有在跑的（右栏自动展开、运行指示用） */
+  /** 当前这一轮的子助手是否还有在跑的（运行指示与用例用；tab 条按单个 run 判活跃态） */
   hasActiveSubAgent(): boolean {
     for (const live of this.live.values()) {
       if (isSubAgentActive(live)) return true
@@ -730,16 +730,6 @@ export function useLiveSubAgent(runId?: string | null): SubAgentLive | undefined
     store.subscribe,
     () => (runId ? store.getSnapshot().liveById.get(runId) : undefined),
     () => undefined,
-  )
-}
-
-/** 是否还有子助手在跑（布尔量：只在翻转时重渲染） */
-export function useHasActiveSubAgent(): boolean {
-  const store = useChatSessionStore()
-  return useSyncExternalStore(
-    store.subscribe,
-    () => store.hasActiveSubAgent(),
-    () => false,
   )
 }
 

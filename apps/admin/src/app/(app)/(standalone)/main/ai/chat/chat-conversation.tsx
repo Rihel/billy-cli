@@ -57,28 +57,29 @@ import {
   PromptInputProvider,
   usePromptInputController,
 } from '@repo/ui/components/ai-elements/prompt-input.tsx'
-import { BotIcon, CopyIcon, MessagesSquareIcon, PanelRightIcon, Trash2Icon } from 'lucide-react'
+import {
+  BotIcon,
+  CopyIcon,
+  MessagesSquareIcon,
+  PanelRightIcon,
+  TerminalSquareIcon,
+  Trash2Icon,
+} from 'lucide-react'
 import { useServerClient } from '@/lib/server-client'
+import { AppName } from '@/lib/constants'
 import { useChatMobileNav } from './mobile-nav-context'
 import { markAdoptedConversation, NEW_CONVERSATION_SLUG } from './routes'
 import { ModelPicker } from './model-picker'
 import { ChatMessage } from './message-row'
-import {
-  useActiveSubAgentName,
-  useChatMessages,
-  useChatSessionStore,
-  useHasActiveSubAgent,
-} from './chat-session'
+import { useActiveSubAgentName, useChatMessages, useChatSessionStore } from './chat-session'
 import { ChatTransport } from './chat-transport'
 import { toUIMessages } from './history'
 import { conversationPlanOfPlans } from './plan-panel'
 import { ConversationRightPanel, type RightPanelTab } from './right-panel'
+import { MAIN_SESSION_TAB, SessionTabs, runsQueryKey } from './session-tabs'
 import { RunActivity } from './run-activity'
 import { PlanSummaryCard } from './plan-summary-card'
 import { QuestionCard, type AnswerQuestionsInput, type SuspendedPartData } from './question-card'
-// 自动展开的判据与工具卡共用同一份（`shouldAutoOpen`：有东西可看 + 用户没动过手）——
-// 同一套纪律只写一次，避免两处各有一套"用户手动优先"的实现漂移
-import { shouldAutoOpen } from './tool-card'
 import { copyText } from '@/lib/clipboard'
 import { parseChatError } from './format'
 import { UsageLine } from './usage-line'
@@ -125,7 +126,7 @@ const attachmentMetadataOf = (metadata: unknown): ChatAttachmentModel[] => {
 /**
  * 右栏开关的持久化 key：换会话 / 刷新都记住上次的选择。
  *
- * 为什么存在浏览器而不是每个会话一份：右栏是"看记录 / 看提示词"的工具，
+ * 为什么存在浏览器而不是每个会话一份：右栏是"看提示词 / 清单 / 文件"的工具，
  * 打开了就该一直开着；而且新会话首轮发出后地址会 `replace`（组件重挂载），
  * 状态放内存里会被这一次重挂载清掉。
  */
@@ -243,10 +244,21 @@ export function ChatConversation({ conversationId }: { conversationId: string })
   const [queueNotice, setQueueNotice] = useState<string>()
   const [editingQueue, setEditingQueue] = useState<AgentRunQueueItemModel | null>(null)
   const [loading, setLoading] = useState(!isNew)
-  /** 右栏（系统指令 / 子 agent 运行）是否显示；真实值由挂载后的 effect 从浏览器里读回来 */
+  /** 右栏（系统指令 / 技能 / 任务 / 文件）是否显示；真实值由挂载后的 effect 从浏览器里读回来 */
   const [panelOpen, setPanelOpen] = useState(false)
   /** 手机端右栏是全屏 Sheet，不和桌面分栏共用 panelOpen（桌面 localStorage 可能为 true） */
   const [mobilePanelOpen, setMobilePanelOpen] = useState(false)
+  /**
+   * 主区当前选中的 tab：`MAIN_SESSION_TAB` = 主会话，其余是某个子 agent 的 run id。
+   *
+   * 选中态放在**会话页**而不是 tab 条自己身上：主时间线的子助手卡片要按 run id 切过去，
+   * 两边必须共用同一份状态（见 `openSubAgentTab`）。
+   * **子助手开跑不自动切** —— 用户可能正在读主时间线，抢视图比"看不到过程"更烦；
+   * 正在跑的子 agent 在它自己的 tab 上转圈，看得见但不打扰。
+   */
+  const [activeSessionTab, setActiveSessionTab] = useState<string>(MAIN_SESSION_TAB)
+  /** 子助手卡的「查看过程」入口：切到它自己的 tab（稳定引用，`ChatMessage` 的 memo 才不会失效） */
+  const openSubAgentTab = useCallback((runId: string) => setActiveSessionTab(runId), [])
   const isMobile = useIsMobile()
   const mobileNav = useChatMobileNav()
 
@@ -254,27 +266,17 @@ export function ChatConversation({ conversationId }: { conversationId: string })
     setMobilePanelOpen(false)
   }, [conversationId])
   /**
-   * 用户是否**自己开合过**右栏（`undefined` = 还没从浏览器读回来）。
-   *
-   * 只用于"要不要自动展开"这一件事：动过一次手，此后一律听用户的（见下面的自动展开 effect）。
-   * 判据来自持久化的那个 key —— **key 存在 = 用户动过手**（自动展开不写 key，所以"没动过"不会被误判成"动过"）。
-   * `undefined` 这一档是为了**不等读回就下判断**：自动展开与"读回用户意图"是同一个挂载周期里的
-   * 两个 effect，先读后判才不会在"用户早就关过"的会话上又弹一次。
-   */
-  const [panelToggledByUser, setPanelToggledByUser] = useState<boolean | undefined>(undefined)
-  /**
    * **切右栏 tab 的请求**（`null` = 没有请求）。
    *
    * 为什么是"请求 + nonce"而不是"当前 tab"：tab 的最终归属在用户手里，会话页只该**发一次请求**。
    * `nonce` 每次自增，面板只在它变化时响应 —— 于是"同一个请求"不会反复把用户切走的 tab 抢回来。
    *
-   * 两个发起方：① 子助手开始跑时的自动展开（落到「子 agent」）；② 消息里紧凑计划卡的「查看清单」
-   * （落到「任务」）。两者都只**请求**，用户随后的手动切换不受影响。
+   * 发起方是消息里紧凑计划卡的「查看清单」（落到「任务」）。它只**请求**，用户随后的手动切换不受影响。
    */
   const [panelFocus, setPanelFocus] = useState<{ tab: RightPanelTab; nonce: number } | null>(null)
   const panelFocusNonce = useRef(0)
 
-  /** 打开右栏并请求切到某个 tab（用户手动开合过之后，"自动展开"不再走这里，见下） */
+  /** 打开右栏并请求切到某个 tab（用户的 tab 选择不会被抢：只有 `nonce` 变化才应用一次） */
   const focusRightPanel = useCallback((tab: RightPanelTab) => {
     panelFocusNonce.current += 1
     setPanelFocus({ tab, nonce: panelFocusNonce.current })
@@ -375,9 +377,8 @@ export function ChatConversation({ conversationId }: { conversationId: string })
    */
   useEffect(() => {
     const stored = window.localStorage.getItem(PANEL_OPEN_STORAGE_KEY)
-    // key 存在 → 用户以前自己开合过：把"用户意图优先"这件事也一并读回来
+    // key 存在 = 用户以前自己开合过，按他上次的选择恢复
     if (stored !== null) {
-      setPanelToggledByUser(true)
       setPanelOpen(stored === '1')
     }
   }, [])
@@ -413,8 +414,6 @@ export function ChatConversation({ conversationId }: { conversationId: string })
       return
     }
     const next = !panelOpen
-    // 用户动过手 → 记下来：此后自动展开永远让位（与 tool-card 的 `userToggled` 同一条纪律）
-    setPanelToggledByUser(true)
     // 手动开的时候按原口径落在「系统指令」：清掉上一次的切换请求，别让焦点粘住
     setPanelFocus(null)
     setPanelOpen(next)
@@ -662,13 +661,11 @@ export function ChatConversation({ conversationId }: { conversationId: string })
   }, [activeRunQuery.data?.running, conversationId, isNew, resumeStream, streaming])
 
   /**
-   * 右栏「子 agent」要用的**实时过程**：从最后一条含子助手块的消息里收（见 `sub-agent-live.ts`）。
+   * 渲染用的消息列表（归约后的单元）：组件只吃这一份，不再回头扫 parts。
    *
-   * 为什么在会话页收、往下传：面板与消息在**同一次渲染**里，直接把这份数据递给面板即可
-   * —— 不必为"运行中"另开后端接口，也不必让面板自己去猜哪条消息里有增量。
-   * 跑完之后右栏改用库里的完整时间线，所以这份数据是"实时的那一份"，不是唯一来源。
+   * 主区顶部的子 agent tab 条（`SessionTabs`）**不从这里拿数据**：它自己订阅
+   * `useLiveSubAgents()`，实时增量只让那个子树更新，主时间线不跟着重渲染。
    */
-  /** 渲染用的消息列表（归约后的单元）：组件只吃这一份，不再回头扫 parts */
   const messageStates = useChatMessages()
 
   /**
@@ -699,48 +696,26 @@ export function ChatConversation({ conversationId }: { conversationId: string })
     return null
   }, [messageStates])
 
-  /**
-   * 窄屏（<768px）不放右栏的**自动展开**。
-   *
-   * 右栏不是覆盖层而是**分栏挤压**（`ResizablePanelGroup` 里的一栏），窄屏上一开就把对话区挤到
-   * 不足 40% 宽 —— 正文被压成一条，"自动"反倒帮了倒忙。真要看得自己点页头那个按钮。
-   * `useIsMobile` 与 layout 隐藏会话列表栏是同一套口径（首帧返回 false，挂载后纠正）。
-   */
-  /**
-   * **子助手正在跑**（不是"历史里有子助手"）—— 只有这种情况才值得把右栏自动推给用户。
-   *
-   * 为什么区分这两件事：翻看**旧会话**时历史里往往躺着一堆已结束的子助手，
-   * 那时自动弹开右栏是**打扰**（用户在看结论，不需要过程）；而运行中弹开是**帮忙**
-   * （过程在流里长出来，不弹开就只能看到一句"过程见右栏"）。已结束的那些，
-   * 紧凑卡上的入口与页头按钮都在，想看随时点。
-   */
-  const hasActiveSubAgent = useHasActiveSubAgent()
-  /** 正在跑的子助手名字（运行指示用；只在这一项变化时重渲染） */
-  const activeSubAgentName = useActiveSubAgentName()
+  /** 是否有待回答的问题（布尔量：只在有 / 无之间翻转，下面的 effect 不跟着消息重跑） */
+  const hasActiveQuestion = activeQuestion !== null
 
   /**
-   * **有子助手正在跑就自动展开一次右栏**。
+   * **有待回答的问题就切回主会话**。
    *
-   * 为什么需要：子助手在主时间线只有一张紧凑卡（结论 + "过程见右栏"），过程全在右栏 ——
-   * 面板默认关着的话，那句话就是空话（用户报的"子助手的输出没在右侧面板显示"就有这一层）。
+   * 问题卡固定在输入框上方，而输入框与 dock 都在「主会话」tab 里 —— 用户如果在看某个子 agent
+   * 的过程，agent 在等回答、界面上却什么都看不到。这是**阻塞操作**，和"子助手开跑"那种非阻塞活动
+   * 不是一回事：后者不抢视图（只在自己 tab 上转圈），前者必须把人叫回来。
    *
-   * 五条约束：
-   * - **只在运行中自动开**：判据是 `hasActiveSubAgent`，翻旧会话不会被弹开（见上）；
-   * - **用户手动优先**：判据直接复用 `tool-card.tsx` 的 `shouldAutoOpen`（"有东西可看"+"用户没动过手"），
-   *   不另造一套；`panelToggledByUser` 为真之后永远不再自动开；
-   * - **窄屏不自动开**：见 `isMobile`（分栏挤压，不是覆盖层，但仍会把正文挤没）；
-   * - **活动期不反复触发**：判据吃的是布尔量，同一段活动里 effect 不会重复跑；
-   * - **自动展开要落在「子 agent」tab 上**：面板默认停在「系统指令」，自动开了却停在系统提示词上
-   *   等于白开 —— 请求里的 tab 才是「子 agent」（用户自己开/自己切都不受影响）。
+   * 只在"变成有待回答"那一次切；之后用户自己点回子 tab 不会被反复拽回来
+   * （依赖的是布尔量，不是每次消息变化）。
    */
   useEffect(() => {
-    if (isMobile) return
-    // 用户意图还没读回来（同一挂载周期里先读后判）→ 这次先不动，读回后 effect 会重跑
-    if (panelToggledByUser === undefined) return
-    if (!shouldAutoOpen(hasActiveSubAgent, panelToggledByUser)) return
-    // 自动展开 = 一次"请切到子 agent"的请求（不写 localStorage：没动过手 ≠ 动过手）
-    focusRightPanel('subagents')
-  }, [isMobile, hasActiveSubAgent, panelToggledByUser, focusRightPanel])
+    if (!hasActiveQuestion) return
+    setActiveSessionTab(MAIN_SESSION_TAB)
+  }, [hasActiveQuestion])
+
+  /** 正在跑的子助手名字（运行指示用；只在这一项变化时重渲染） */
+  const activeSubAgentName = useActiveSubAgentName()
 
   /**
    * 一轮**结束后对账**：把侧栏列表与该会话详情失效重取。
@@ -764,6 +739,9 @@ export function ChatConversation({ conversationId }: { conversationId: string })
     const detailId = activeConversationIdRef.current ?? (isNew ? undefined : conversationId)
     if (detailId) {
       void queryClient.invalidateQueries({ queryKey: ['ai', 'conversation', detailId] })
+      // 子 agent 的 tab 条吃的是运行列表（`SessionTabs` 的 `run/list`）：这一轮里子 run 的起止
+      // 都发生在轮内，轮结束对一次账，刚跑完的子助手才会出现在 tab 上（以及能切到库里的完整时间线）
+      void queryClient.invalidateQueries({ queryKey: runsQueryKey(detailId) })
     }
   }, [streaming, isNew, conversationId, queryClient])
 
@@ -794,7 +772,12 @@ export function ChatConversation({ conversationId }: { conversationId: string })
       try {
         const [items, runs] = await Promise.all([
           loadWholeTimeline(client, conversationId),
-          loadWholeRuns(client, conversationId),
+          // 与主区 tab 条的 `run/list` 共用一份缓存（同键的并发请求由 Query 合并）：
+          // tab 条每次挂载都要这份数据，这里再单发一次就是同一页白打两次
+          queryClient.fetchQuery({
+            queryKey: runsQueryKey(conversationId),
+            queryFn: () => loadWholeRuns(client, conversationId),
+          }),
         ])
         if (cancelled) return
         /**
@@ -820,7 +803,7 @@ export function ChatConversation({ conversationId }: { conversationId: string })
     return () => {
       cancelled = true
     }
-  }, [client, conversationId, isNew, setMessages])
+  }, [client, conversationId, isNew, queryClient, setMessages])
 
   const agents = agentsQuery.data?.agents ?? []
   const activeAgent = agents.find(
@@ -975,469 +958,562 @@ export function ChatConversation({ conversationId }: { conversationId: string })
     })()
   }
 
-  return (
-    <>
-      <header className="flex min-w-0 items-center gap-2">
-        {/* 顶层「会话 / 管理」切换在全局顶栏里，这里不再放「回到管理台」图标 ——
-            页头横向空间全部留给标题与模型选择；移动端仍留一个"会话列表"入口（抽屉） */}
-        {isMobile && mobileNav ? (
-          <IconText
-            icon={<MessagesSquareIcon />}
-            size="small"
-            type="primary"
-            tooltip="会话列表"
-            aria-label="会话列表"
-            onClick={mobileNav.openConversations}
+  /**
+   * **新会话空态**：还没发出第一条消息（也还没在流）时，整页换成居中的品牌 + 输入框。
+   *
+   * 判据用 `messages.length === 0` 而不是只看路由是不是 `new`：发出第一条后消息立刻进 store，
+   * 页面当帧就切回「页头 + tab 条 + timeline」的常规布局（与 DSH 一致）。`streaming` 也排除 ——
+   * 排队续跑 / 服务端自己起跑时消息可能还没进本地 store，那时不该退回空态。
+   */
+  const isLanding = isNew && messages.length === 0 && !streaming
+
+  /**
+   * 这一轮用哪个 agent。多 agent 时是下拉；页头与新会话居中态**共用同一份**，避免两处各造一套
+   * （值、禁用态、改选口径要一致）。只有一个 agent 时不出下拉，由调用方显示名字。
+   */
+  const agentSelect =
+    agents.length > 1 ? (
+      <DictSelect
+        size="sm"
+        triggerClassName="h-8 w-40"
+        options={agents.map((agent) => ({ label: agent.name, value: agent.key }))}
+        value={agentKey ?? agentsQuery.data?.defaultAgentKey ?? null}
+        // 改选只对"接下来这一轮"生效（服务端每轮从入参取 agentKey）
+        onValueChange={(next) => setAgentKeyOverride(next)}
+        disabled={streaming}
+      />
+    ) : null
+
+  /**
+   * 输入框（含排队消息）：**新会话居中态与常规对话底部共用同一份**。
+   *
+   * 为什么不各写一遍：附件预检 / 长文本转附件 / 模型与文件权限 / 提交逻辑都在里面，
+   * 复制一份必然漂移（改了一处忘了另一处，新会话能发的表和会话里能发的不一样）。
+   */
+  const composer = (
+    <PromptInputProvider
+      key={editingQueue ? `queue-${editingQueue.id}` : 'composer'}
+      initialInput={editingQueue?.message ?? ''}
+    >
+      <QueuedRuns
+        items={queueQuery.data ?? []}
+        editingId={editingQueue?.id ?? null}
+        onEdit={setEditingQueue}
+        onRemove={removeQueueItem}
+      />
+      <PromptInput
+        /**
+         * 附件的大小 / 类型校验**刻意不交给 `PromptInput` 的 `maxFileSize` / `accept`**，
+         * 而是放在下面的提交预检（`scanFiles`）里做。两条原因：
+         *
+         * 1. `accept` 只是文件选择框的提示，**粘贴进来的文件根本不过它**，拦不住；
+         * 2. `maxFileSize` 是"整批里有一个超限就把**这一批全丢掉**"的粗粒度行为 ——
+         *    用户粘三张图、其中一张大了点，结果三张全没了，且提示只有一句"都超限"。
+         *
+         * 提交预检给的是逐文件的原因（哪个、为什么、多大），且**有不合格的就不发这一轮** ——
+         * 静默丢掉用户粘进来的东西，比让他重来一次更糟。
+         */
+        accept={ATTACHMENT_ACCEPT}
+        multiple
+        onSubmit={async ({ text, files }) => {
+          const raw = text.trim()
+          if ((!raw && files.length === 0) || streaming || attachmentUpload.uploading) {
+            return
+          }
+          if (editingQueue) {
+            if (!raw) return
+            try {
+              await client.agent.queue.update({
+                conversationId,
+                queueId: editingQueue.id,
+                message: raw,
+              })
+              setEditingQueue(null)
+              toastSuccess('已更新排队消息')
+              await queueQuery.refetch()
+            } catch (error) {
+              toastError(error instanceof Error ? error.message : '更新排队消息失败')
+            }
+            return
+          }
+
+          /**
+           * 超长文本转附件：`message` 有 8000 字符上限（`AgentChatSchema`），
+           * 用户粘日志 / 长文时不该只看到一个 400。全文落成 .md 附件，
+           * 正文换成一句说明；上传 / 校验 / 气泡展示都复用现有附件链路。
+           */
+          const { content, file: longTextFile } = splitLongText(raw)
+          let messageFiles = files
+          // 待发附件：只认本地文件（`files` 是 PromptInput 从附件状态里整理出来的）
+          const localFiles = files
+            .map((part) => part.rawFile)
+            .filter((file): file is File => file instanceof File)
+
+          if (longTextFile) {
+            if (localFiles.length + 1 > CHAT_ATTACHMENT_MAX_COUNT) {
+              toastError(
+                `长文本会转成一个附件，但一轮最多带 ${CHAT_ATTACHMENT_MAX_COUNT} 个，请先移除一个`,
+              )
+              return
+            }
+            if (longTextFile.size > CHAT_ATTACHMENT_MAX_BYTES) {
+              toastError(`内容超过 ${formatFileSize(CHAT_ATTACHMENT_MAX_BYTES)}，请分段发送`)
+              return
+            }
+            // 气泡里也要看得到这份附件：与 PromptInput 的附件 part 同形（url 用本地对象地址）
+            messageFiles = [
+              ...files,
+              {
+                type: 'file',
+                mediaType: longTextFile.type,
+                filename: longTextFile.name,
+                url: URL.createObjectURL(longTextFile),
+                rawFile: longTextFile,
+              },
+            ]
+            localFiles.push(longTextFile)
+            // 超过内联上限的部分服务端会截断（模型读不到），先说清楚，别让用户以为整份都喂进去了
+            const truncated = raw.length > CHAT_ATTACHMENT_TEXT_INLINE_LIMIT
+            toastSuccess(
+              `内容较长，已转为附件「${longTextFile.name}」` +
+                (truncated
+                  ? `（超过 ${CHAT_ATTACHMENT_TEXT_INLINE_LIMIT.toLocaleString()} 字的部分模型读不到）`
+                  : ''),
+            )
+          }
+
+          const scanned = scanFiles(localFiles, inputModalities)
+          if (scanned.rejected.length > 0) {
+            // 有不合格的**整轮不发**：静默丢掉用户粘进来的东西，比让他重来一次更糟
+            toastError(rejectedText(scanned.rejected))
+            throw new Error('附件不符合要求，已取消本次发送')
+          }
+          /**
+           * 数量也整轮不发（与 `AgentChatSchema.attachments` 的 `.max()` 同一个常量）。
+           *
+           * 为什么不"自动只带前 N 个"：那等于**背着用户丢掉**他明确选中的文件，
+           * 而他以为都发出去了。宁可挡住这一轮、让他自己决定去掉哪几个。
+           */
+          if (scanned.accepted.length > CHAT_ATTACHMENT_MAX_COUNT) {
+            toastError(
+              `一轮最多带 ${CHAT_ATTACHMENT_MAX_COUNT} 个附件，当前有 ${scanned.accepted.length} 个，请先移除多余的`,
+            )
+            throw new Error('附件数量超出上限，已取消本次发送')
+          }
+
+          setErrorText(undefined)
+          clearError()
+
+          let attachments: ChatAttachmentModel[] = []
+          if (scanned.accepted.length > 0) {
+            try {
+              attachments = await attachmentUpload.upload(scanned.accepted)
+            } catch (uploadError) {
+              const reason =
+                uploadError instanceof Error ? uploadError.message : String(uploadError)
+              toastError(`附件上传失败：${reason}`)
+              // 抛出去让 `PromptInput` 知道"这一轮没发成"，输入框里的附件与文字都留着
+              throw uploadError
+            }
+          }
+
+          await sendMessage(
+            {
+              text: content,
+              // 直接把附件 part 交给 useChat：消息里因此带上 file part，气泡里就能显示附件。
+              // 真正发给服务端的不是它，而是 metadata 里那份"存储 key + 元数据"
+              // （part 里装的是预览地址，服务端要的是 key，见 prepareSendMessagesRequest）
+              ...(messageFiles.length > 0 ? { files: messageFiles } : {}),
+            },
+            { metadata: { attachments } },
+          )
+        }}
+      >
+        {/* 待发附件条：粘完、发之前就能看清带了什么（图给缩略图，别的给文件名与大小） */}
+        <PromptInputBody>
+          <PromptInputAttachmentsBar onPreviewImage={previewAttachments} />
+          <PromptInputTextarea
+            placeholder={`说说你想做什么…（⌘/Ctrl + Enter 发送，Enter 换行；可粘贴图片 / 文件，长文本自动转附件，${ATTACHMENT_LIMIT_TEXT}）`}
+            submitOn="mod+enter"
+            /**
+             * 粘贴超过阈值的纯文本 → 直接变成附件，输入框留空给用户写自己的问题。
+             * 这是主路径；`onSubmit` 里的 `splitLongText` 只是"手打超过 8000 字"的兜底。
+             */
+            pasteTextAsAttachment={{
+              minChars: LONG_TEXT_PASTE_MIN_CHARS,
+              toFile: createLongTextFile,
+              onConverted: (file) =>
+                toastSuccess(`长文本已转为附件「${file.name}」，输入你的问题即可发送`),
+            }}
           />
-        ) : null}
-        <h1 className="min-w-0 flex-1 truncate font-heading text-base font-semibold sm:text-lg">
-          {isNew ? '新会话' : conversationQuery.data?.title || '会话'}
-        </h1>
-        {activeAgent ? (
-          <Badge variant="secondary" className="hidden shrink-0 lg:inline-flex">
-            {activeAgent.name}
-          </Badge>
-        ) : (
-          <Badge variant="outline" className="hidden shrink-0 lg:inline-flex">
-            未配置
-          </Badge>
-        )}
-        {runId ? (
-          <span className="hidden font-mono text-xs text-muted-foreground xl:inline">
-            run {runId}
-          </span>
-        ) : null}
-        {status !== 'ready' ? (
-          <Badge
-            variant={status === 'error' ? 'destructive' : 'outline'}
-            className="hidden shrink-0 lg:inline-flex"
-          >
-            {status}
-          </Badge>
-        ) : null}
-        {/* 右侧：复制会话 id + 换 agent + 右栏开关 */}
-        <div className="ml-auto flex items-center gap-2">
-          {/* 新会话还没有 id（首轮发出后地址会换成真实 id，那时这个按钮才出现） */}
-          {!isNew ? (
-            <IconText
-              icon={<CopyIcon />}
-              size="small"
-              type="primary"
-              className="hidden lg:inline-flex"
-              tooltip="复制会话 id"
-              aria-label="复制会话 id"
-              onClick={copyConversationId}
-            />
-          ) : null}
-          {agents.length > 1 && (
-            <div className="hidden lg:block">
-              <DictSelect
+        </PromptInputBody>
+        {/* 左下角：本轮用哪个模型；右下角：本轮统计 + 发送/停止 */}
+        <PromptInputFooter className="flex-wrap gap-2 sm:flex-nowrap">
+          <PromptInputTools>
+            <ModelPicker value={modelId} onChange={chooseModel} disabled={streaming} />
+            <span
+              className="shrink-0"
+              title="沙箱内的文件权限：可写 = 能改本会话工作区；只读 = 不能改（临时目录除外）。能不能出沙箱由部署决定，用户选不到"
+            >
+              <SegmentedControl
                 size="sm"
-                triggerClassName="h-8 w-40"
-                options={agents.map((agent) => ({ label: agent.name, value: agent.key }))}
-                value={agentKey ?? agentsQuery.data?.defaultAgentKey ?? null}
-                // 改选只对"接下来这一轮"生效（服务端每轮从入参取 agentKey）
-                onValueChange={(next) => setAgentKeyOverride(next)}
+                value={fileAccess}
+                options={[
+                  { value: 'workspace-write', label: '可写' },
+                  { value: 'read-only', label: '只读' },
+                ]}
+                onValueChange={chooseFileAccess}
                 disabled={streaming}
               />
-            </div>
-          )}
-          <Button
-            variant={(isMobile ? mobilePanelOpen : panelOpen) ? 'secondary' : 'outline'}
-            size="icon-sm"
-            aria-pressed={isMobile ? mobilePanelOpen : panelOpen}
-            aria-label={(isMobile ? mobilePanelOpen : panelOpen) ? '隐藏右栏' : '显示右栏'}
-            title={
-              (isMobile ? mobilePanelOpen : panelOpen)
-                ? '隐藏右栏（系统指令 / 子 agent 运行）'
-                : '显示右栏（系统指令 / 子 agent 运行）'
-            }
-            onClick={togglePanel}
-          >
-            <PanelRightIcon className="size-3.5" />
-          </Button>
-        </div>
-      </header>
+            </span>
+            {/* 点击上传的入口：粘贴之外总得有"点一下选文件"这条路 */}
+            <PromptInputAttachmentButton
+              disabled={streaming || !attachmentsAllowed}
+              tooltip={
+                streaming
+                  ? '正在回复中，回复结束后再上传'
+                  : attachmentsAllowed
+                    ? '上传图片或文件（也可直接粘贴）'
+                    : '当前模型不支持图片 / 文件输入：可在后台「模型管理」声明，或换一个模型'
+              }
+            />
+            {!attachmentsAllowed ? (
+              <span className="hidden text-xs text-muted-foreground sm:inline">
+                当前模型不支持附件
+              </span>
+            ) : inputModalities === null ? (
+              // 未声明 ≠ 不支持：国内厂商的"列模型"接口普遍不给模态，所以只提醒、不拦。
+              // 真不能收图时，服务端会明确报错（3312），比在这里瞎猜强。
+              <span
+                className="hidden text-xs text-muted-foreground sm:inline"
+                title="后台「模型管理」里可以声明该模型支持哪些输入模态"
+              >
+                该模型未声明输入模态，图片 / 文件可能读不了
+              </span>
+            ) : null}
+            {attachmentUpload.uploading ? (
+              <span className="text-xs text-muted-foreground">
+                正在上传附件 {attachmentUpload.progress.done}/{attachmentUpload.progress.total}…
+              </span>
+            ) : null}
+          </PromptInputTools>
+          <div className="flex min-w-0 items-center gap-2">
+            <UsageLine usage={usage} turn={turn} current={currentUsage} />
+            {/* 流式中这个按钮就是"停止"（内部按 status 换成方块图标），onStop 里做真正的取消 */}
+            <PromptInputSubmit
+              status={resuming ? 'streaming' : status}
+              onStop={() => void stopRun()}
+            />
+          </div>
+        </PromptInputFooter>
+      </PromptInput>
+    </PromptInputProvider>
+  )
 
-      {errorText || error ? (
-        <Alert variant="destructive">
-          <AlertDescription>{errorText ?? error?.message}</AlertDescription>
-        </Alert>
-      ) : null}
-      {queueNotice ? (
-        <Alert>
-          <AlertDescription>{queueNotice}</AlertDescription>
-        </Alert>
-      ) : null}
-
-      {/* 对话区 + 右栏：可拖动分栏。右栏可关（页头那个图标），关掉时对话区独占整宽 */}
+  return (
+    <>
+      {/*
+        常规会话（非新会话）：对话区 + 右栏，可拖动分栏（右栏可关，开关在页头）。
+        右栏**顶到最上面**：页头（标题 / agent / 复制 id / 右栏开关）归属**左栏**，
+        分栏组独占整个 section —— 右栏因此不再被页头压下一行，两栏顶部齐平；
+        "页头右边那一排控件"也因此落在 timeline 页头右侧（它跟着页头进了左栏）。
+      */}
       {/*
         分栏组的高度**必须由 flex 决定**，不能吃库的内联 `height: 100%`：
-        本页是「页头 + 分栏组」的竖排 flex，`100%` 按的是整个 section 的高度，
-        会多出一个页头的高度（实测溢出 ~57px）。这层溢出被父级 `overflow-hidden` 裁掉后，
-        最外层仍留下可被程序滚动的余量 —— 切右栏 tab 时焦点一动，整页就被顶上去一截。
-        传 `height: auto` 覆盖掉内联值，交给 `flex-1` 分配"剩余空间"。
+        本页是「分栏组独占 section」的竖排 flex，`100%` 按的是整个 section 的高度。
+        这层溢出被父级 `overflow-hidden` 裁掉后，最外层仍留下可被程序滚动的余量 ——
+        切右栏 tab 时焦点一动，整页就被顶上去一截。传 `height: auto` 覆盖掉内联值，
+        交给 `flex-1` 分配"剩余空间"。
       */}
-      <ResizablePanelGroup
-        orientation="horizontal"
-        className="min-h-0 flex-1"
-        style={{ height: 'auto' }}
-      >
-        {/*
-          `contain: paint` 是**必需**的，不是保险（实测）：右栏子助手记录能长到 8000px，
-          即使被面板内部滚动区裁住，它的可滚动溢出仍会被算进 `document.scrollingElement.scrollHeight`
-          （900 → 8149）——于是整页多出一条滚动条、切换 tab 时整屏被顶动。
-          只加 `overflow: hidden` / `clip` 都压不住，`contain: paint` 才能把它从根滚动区隔离。
-        */}
-        <ResizablePanel
-          minSize={320}
-          className="h-full"
-          style={{ overflow: 'hidden', contain: 'paint' }}
-        >
-          <div className="flex h-full min-h-0 flex-col gap-2">
-            {/* 消息列表不画外框：整块与页面同底，气泡 / 工具卡自己带层次，边框只会把界面切成一块块 */}
-            <Conversation
-              className="min-h-0 flex-1"
-              /**
-               * 只有**流式输出**才用平滑跟随；其余内容长高一律瞬间到位。
-               *
-               * 为什么：`use-stick-to-bottom` 只在**第一次**长高时用 `initial`，之后都用 `resize`。
-               * 而挂载时这里已经渲染着“正在加载会话历史…”，所以历史到达算**第二次**长高 ——
-               * 默认的 `resize="smooth"` 会在那一刻起一段弹簧动画（看起来就是"进会话后自己滑到底"）。
-               * `initial="instant"` 管不到它，必须让非流式的 `resize` 也是 instant。
-               */
-              resize={streaming && !loading ? 'smooth' : 'instant'}
-            >
-              {/* 覆盖 ai-elements 的 `gap-8 p-4`：管理台是**高密度工作台**，
-                  消息间距收到 12px、留白收到 12px（下面每张卡自己再收一层） */}
-              <ConversationContent className="gap-3 p-3">
-                {loading ? (
-                  <p className="p-3 text-xs text-muted-foreground">正在加载会话历史…</p>
-                ) : messageStates.length === 0 && messages.length > 0 ? (
-                  <p className="p-3 text-xs text-muted-foreground">正在整理会话…</p>
-                ) : messageStates.length === 0 ? (
-                  <ConversationEmptyState className="gap-4">
-                    <span className="grid size-11 place-items-center rounded-xl bg-surface-2 text-muted-foreground">
-                      <BotIcon className="size-5" />
-                    </span>
-                    <div className="space-y-1.5">
-                      <h3 className="font-heading text-base font-medium tracking-tight">
-                        {isNew ? '问点什么' : '这个会话还没有内容'}
-                      </h3>
-                      <p className="max-w-md text-xs leading-relaxed text-muted-foreground">
-                        试着问「最近有哪些待办」，或让它「分步整理一份待办周报」——它会自己规划、必要时造一个子助手
-                      </p>
-                    </div>
-                  </ConversationEmptyState>
-                ) : (
-                  messageStates.map((message) => {
-                    // 只给"真的用得上"的行挂回调：其余行拿到稳定的 undefined，memo 才不会每帧失效
-                    const needsPlan = message.plan !== null
-                    const needsPreview = message.files.length > 0
-                    const needsQuestion = message.units.some((unit) => unit.kind === 'question')
-                    return (
-                      <ChatMessage
-                        key={message.id}
-                        message={message}
-                        streaming={streaming}
-                        {...(needsPlan ? { onOpenPlan: openPlanPanel } : {})}
-                        {...(needsPreview ? { onPreviewImage: previewAttachments } : {})}
-                        {...(needsQuestion ? { onAnswerQuestions: answerQuestions } : {})}
-                        // 计划卡 / 问题卡固定在输入框上方，消息流里不再重复
-                        showTrailingCards={false}
-                      />
-                    )
-                  })
-                )}
-              </ConversationContent>
-              <ConversationScrollButton />
-            </Conversation>
-
-            {/* 输入框上方的常驻 dock：运行状态 / 当前任务进度 / 待回答的问题。
-                放在 Conversation 外面，所以不会被消息列表滚走；问题卡永远贴着输入框。 */}
-            <div className="flex max-h-[55vh] shrink-0 flex-col gap-2 overflow-y-auto px-3">
-              {isSubConversation ? (
-                <div className="rounded-lg border border-border bg-surface-2 px-3 py-2 text-xs text-muted-foreground">
-                  这是子助手产生的子会话，只读展示；要让它继续工作，请回到父会话重新委派。
-                  {rootConversationId ? (
-                    <Link
-                      href={conversationPath(rootConversationId)}
-                      className="ml-1 text-primary hover:underline"
-                    >
-                      返回父会话
-                    </Link>
-                  ) : null}
-                </div>
-              ) : null}
-              <RunActivity
-                messages={messages}
-                status={resuming ? 'streaming' : status}
-                activeSubAgentName={activeSubAgentName}
-              />
-              {conversationPlan ? (
-                <PlanSummaryCard
-                  plan={conversationPlan.current.plan}
-                  onOpen={() => focusRightPanel('plan')}
-                />
-              ) : null}
-              {activeQuestion ? (
-                <QuestionCard data={activeQuestion} onSubmit={answerQuestions} />
-              ) : null}
+      {isLanding ? (
+        /*
+          新会话：没有页头、没有 tab 条，也不显示右栏 —— 只有居中一块品牌与输入框。
+          移动端唯一要留的是「会话列表」入口（它平时的位置在页头里）。
+        */
+        <div className="relative flex h-full min-h-0 flex-col overflow-y-auto px-6 py-10">
+          {isMobile && mobileNav ? (
+            <IconText
+              icon={<MessagesSquareIcon />}
+              size="small"
+              type="primary"
+              tooltip="会话列表"
+              aria-label="会话列表"
+              className="absolute top-3 left-3"
+              onClick={mobileNav.openConversations}
+            />
+          ) : null}
+          {/* `m-auto` 而不是 `justify-center`：内容比视口高时（窄屏 + 展开的附件条）
+              居中会把顶部裁掉，auto 边距在没空间时会自己收成 0 */}
+          <div className="m-auto flex w-full max-w-3xl flex-col items-center gap-6">
+            <div className="flex flex-col items-center gap-2.5 text-center">
+              <span className="grid size-12 place-items-center rounded-2xl bg-brand text-white shadow-sm">
+                <TerminalSquareIcon className="size-6" strokeWidth={2.2} />
+              </span>
+              <h1 className="font-heading text-2xl font-semibold tracking-tight">{AppName}</h1>
+              <p className="text-sm text-muted-foreground">
+                说说你想做什么 —— 它会自己规划、调用工具，必要时派子 agent 分头干
+              </p>
             </div>
-
-            <div className={isSubConversation ? 'hidden' : 'px-3 pb-3'}>
-              <PromptInputProvider
-                key={editingQueue ? `queue-${editingQueue.id}` : 'composer'}
-                initialInput={editingQueue?.message ?? ''}
-              >
-                <QueuedRuns
-                  items={queueQuery.data ?? []}
-                  editingId={editingQueue?.id ?? null}
-                  onEdit={setEditingQueue}
-                  onRemove={removeQueueItem}
-                />
-                <PromptInput
-                  /**
-                   * 附件的大小 / 类型校验**刻意不交给 `PromptInput` 的 `maxFileSize` / `accept`**，
-                   * 而是放在下面的提交预检（`scanFiles`）里做。两条原因：
-                   *
-                   * 1. `accept` 只是文件选择框的提示，**粘贴进来的文件根本不过它**，拦不住；
-                   * 2. `maxFileSize` 是"整批里有一个超限就把**这一批全丢掉**"的粗粒度行为 ——
-                   *    用户粘三张图、其中一张大了点，结果三张全没了，且提示只有一句"都超限"。
-                   *
-                   * 提交预检给的是逐文件的原因（哪个、为什么、多大），且**有不合格的就不发这一轮** ——
-                   * 静默丢掉用户粘进来的东西，比让他重来一次更糟。
-                   */
-                  accept={ATTACHMENT_ACCEPT}
-                  multiple
-                  onSubmit={async ({ text, files }) => {
-                    const raw = text.trim()
-                    if ((!raw && files.length === 0) || streaming || attachmentUpload.uploading) {
-                      return
-                    }
-                    if (editingQueue) {
-                      if (!raw) return
-                      try {
-                        await client.agent.queue.update({
-                          conversationId,
-                          queueId: editingQueue.id,
-                          message: raw,
-                        })
-                        setEditingQueue(null)
-                        toastSuccess('已更新排队消息')
-                        await queueQuery.refetch()
-                      } catch (error) {
-                        toastError(error instanceof Error ? error.message : '更新排队消息失败')
-                      }
-                      return
-                    }
-
-                    /**
-                     * 超长文本转附件：`message` 有 8000 字符上限（`AgentChatSchema`），
-                     * 用户粘日志 / 长文时不该只看到一个 400。全文落成 .md 附件，
-                     * 正文换成一句说明；上传 / 校验 / 气泡展示都复用现有附件链路。
-                     */
-                    const { content, file: longTextFile } = splitLongText(raw)
-                    let messageFiles = files
-                    // 待发附件：只认本地文件（`files` 是 PromptInput 从附件状态里整理出来的）
-                    const localFiles = files
-                      .map((part) => part.rawFile)
-                      .filter((file): file is File => file instanceof File)
-
-                    if (longTextFile) {
-                      if (localFiles.length + 1 > CHAT_ATTACHMENT_MAX_COUNT) {
-                        toastError(
-                          `长文本会转成一个附件，但一轮最多带 ${CHAT_ATTACHMENT_MAX_COUNT} 个，请先移除一个`,
-                        )
-                        return
-                      }
-                      if (longTextFile.size > CHAT_ATTACHMENT_MAX_BYTES) {
-                        toastError(
-                          `内容超过 ${formatFileSize(CHAT_ATTACHMENT_MAX_BYTES)}，请分段发送`,
-                        )
-                        return
-                      }
-                      // 气泡里也要看得到这份附件：与 PromptInput 的附件 part 同形（url 用本地对象地址）
-                      messageFiles = [
-                        ...files,
-                        {
-                          type: 'file',
-                          mediaType: longTextFile.type,
-                          filename: longTextFile.name,
-                          url: URL.createObjectURL(longTextFile),
-                          rawFile: longTextFile,
-                        },
-                      ]
-                      localFiles.push(longTextFile)
-                      // 超过内联上限的部分服务端会截断（模型读不到），先说清楚，别让用户以为整份都喂进去了
-                      const truncated = raw.length > CHAT_ATTACHMENT_TEXT_INLINE_LIMIT
-                      toastSuccess(
-                        `内容较长，已转为附件「${longTextFile.name}」` +
-                          (truncated
-                            ? `（超过 ${CHAT_ATTACHMENT_TEXT_INLINE_LIMIT.toLocaleString()} 字的部分模型读不到）`
-                            : ''),
-                      )
-                    }
-
-                    const scanned = scanFiles(localFiles, inputModalities)
-                    if (scanned.rejected.length > 0) {
-                      // 有不合格的**整轮不发**：静默丢掉用户粘进来的东西，比让他重来一次更糟
-                      toastError(rejectedText(scanned.rejected))
-                      throw new Error('附件不符合要求，已取消本次发送')
-                    }
-                    /**
-                     * 数量也整轮不发（与 `AgentChatSchema.attachments` 的 `.max()` 同一个常量）。
-                     *
-                     * 为什么不"自动只带前 N 个"：那等于**背着用户丢掉**他明确选中的文件，
-                     * 而他以为都发出去了。宁可挡住这一轮、让他自己决定去掉哪几个。
-                     */
-                    if (scanned.accepted.length > CHAT_ATTACHMENT_MAX_COUNT) {
-                      toastError(
-                        `一轮最多带 ${CHAT_ATTACHMENT_MAX_COUNT} 个附件，当前有 ${scanned.accepted.length} 个，请先移除多余的`,
-                      )
-                      throw new Error('附件数量超出上限，已取消本次发送')
-                    }
-
-                    setErrorText(undefined)
-                    clearError()
-
-                    let attachments: ChatAttachmentModel[] = []
-                    if (scanned.accepted.length > 0) {
-                      try {
-                        attachments = await attachmentUpload.upload(scanned.accepted)
-                      } catch (uploadError) {
-                        const reason =
-                          uploadError instanceof Error ? uploadError.message : String(uploadError)
-                        toastError(`附件上传失败：${reason}`)
-                        // 抛出去让 `PromptInput` 知道"这一轮没发成"，输入框里的附件与文字都留着
-                        throw uploadError
-                      }
-                    }
-
-                    await sendMessage(
-                      {
-                        text: content,
-                        // 直接把附件 part 交给 useChat：消息里因此带上 file part，气泡里就能显示附件。
-                        // 真正发给服务端的不是它，而是 metadata 里那份"存储 key + 元数据"
-                        // （part 里装的是预览地址，服务端要的是 key，见 prepareSendMessagesRequest）
-                        ...(messageFiles.length > 0 ? { files: messageFiles } : {}),
-                      },
-                      { metadata: { attachments } },
-                    )
-                  }}
-                >
-                  {/* 待发附件条：粘完、发之前就能看清带了什么（图给缩略图，别的给文件名与大小） */}
-                  <PromptInputBody>
-                    <PromptInputAttachmentsBar onPreviewImage={previewAttachments} />
-                    <PromptInputTextarea
-                      placeholder={`说说你想做什么…（⌘/Ctrl + Enter 发送，Enter 换行；可粘贴图片 / 文件，长文本自动转附件，${ATTACHMENT_LIMIT_TEXT}）`}
-                      submitOn="mod+enter"
-                      /**
-                       * 粘贴超过阈值的纯文本 → 直接变成附件，输入框留空给用户写自己的问题。
-                       * 这是主路径；`onSubmit` 里的 `splitLongText` 只是"手打超过 8000 字"的兜底。
-                       */
-                      pasteTextAsAttachment={{
-                        minChars: LONG_TEXT_PASTE_MIN_CHARS,
-                        toFile: createLongTextFile,
-                        onConverted: (file) =>
-                          toastSuccess(`长文本已转为附件「${file.name}」，输入你的问题即可发送`),
-                      }}
-                    />
-                  </PromptInputBody>
-                  {/* 左下角：本轮用哪个模型；右下角：本轮统计 + 发送/停止 */}
-                  <PromptInputFooter className="flex-wrap gap-2 sm:flex-nowrap">
-                    <PromptInputTools>
-                      <ModelPicker value={modelId} onChange={chooseModel} disabled={streaming} />
-                      <span
-                        className="shrink-0"
-                        title="沙箱内的文件权限：可写 = 能改本会话工作区；只读 = 不能改（临时目录除外）。能不能出沙箱由部署决定，用户选不到"
-                      >
-                        <SegmentedControl
-                          size="sm"
-                          value={fileAccess}
-                          options={[
-                            { value: 'workspace-write', label: '可写' },
-                            { value: 'read-only', label: '只读' },
-                          ]}
-                          onValueChange={chooseFileAccess}
-                          disabled={streaming}
-                        />
-                      </span>
-                      {/* 点击上传的入口：粘贴之外总得有"点一下选文件"这条路 */}
-                      <PromptInputAttachmentButton
-                        disabled={streaming || !attachmentsAllowed}
-                        tooltip={
-                          streaming
-                            ? '正在回复中，回复结束后再上传'
-                            : attachmentsAllowed
-                              ? '上传图片或文件（也可直接粘贴）'
-                              : '当前模型不支持图片 / 文件输入：可在后台「模型管理」声明，或换一个模型'
-                        }
-                      />
-                      {!attachmentsAllowed ? (
-                        <span className="hidden text-xs text-muted-foreground sm:inline">
-                          当前模型不支持附件
-                        </span>
-                      ) : inputModalities === null ? (
-                        // 未声明 ≠ 不支持：国内厂商的"列模型"接口普遍不给模态，所以只提醒、不拦。
-                        // 真不能收图时，服务端会明确报错（3312），比在这里瞎猜强。
-                        <span
-                          className="hidden text-xs text-muted-foreground sm:inline"
-                          title="后台「模型管理」里可以声明该模型支持哪些输入模态"
-                        >
-                          该模型未声明输入模态，图片 / 文件可能读不了
-                        </span>
-                      ) : null}
-                      {attachmentUpload.uploading ? (
-                        <span className="text-xs text-muted-foreground">
-                          正在上传附件 {attachmentUpload.progress.done}/
-                          {attachmentUpload.progress.total}…
-                        </span>
-                      ) : null}
-                    </PromptInputTools>
-                    <div className="flex min-w-0 items-center gap-2">
-                      <UsageLine usage={usage} turn={turn} current={currentUsage} />
-                      {/* 流式中这个按钮就是"停止"（内部按 status 换成方块图标），onStop 里做真正的取消 */}
-                      <PromptInputSubmit
-                        status={resuming ? 'streaming' : status}
-                        onStop={() => void stopRun()}
-                      />
-                    </div>
-                  </PromptInputFooter>
-                </PromptInput>
-              </PromptInputProvider>
+            <div className="flex w-full flex-col gap-2">
+              {/* 输入框上方一行：这一轮用哪个助手（多 agent 时可直接换） */}
+              <div className="flex min-w-0 items-center gap-1.5 px-1 text-xs text-muted-foreground">
+                <BotIcon className="size-3.5 shrink-0" />
+                {agentSelect ?? (
+                  <span className="truncate">{activeAgent?.name ?? '未配置助手'}</span>
+                )}
+              </div>
+              {composer}
             </div>
           </div>
-        </ResizablePanel>
+        </div>
+      ) : (
+        <ResizablePanelGroup
+          orientation="horizontal"
+          className="min-h-0 flex-1"
+          style={{ height: 'auto' }}
+        >
+          {/*
+          `contain: paint` 是**必需**的，不是保险（实测）：栏里能塞很长的内容（子助手过程曾经到过
+          8000px，系统指令快照与文件树也不短），即使被面板内部滚动区裁住，它的可滚动溢出仍会被算进
+          `document.scrollingElement.scrollHeight`（900 → 8149）——于是整页多出一条滚动条、切换 tab 时
+          整屏被顶动。只加 `overflow: hidden` / `clip` 都压不住，`contain: paint` 才能把它从根滚动区隔离。
+        */}
+          <ResizablePanel
+            minSize={320}
+            className="h-full"
+            style={{ overflow: 'hidden', contain: 'paint' }}
+          >
+            {/* 左栏自带内边距（外层 section 已不再加）：右栏才能通顶贴边 */}
+            <div className="flex h-full min-h-0 flex-col gap-2 p-4">
+              <header className="flex min-w-0 items-center gap-2">
+                {/* 顶层「会话 / 管理」切换在全局顶栏里，这里不再放「回到管理台」图标 ——
+                  页头横向空间全部留给标题与模型选择；移动端仍留一个"会话列表"入口（抽屉） */}
+                {isMobile && mobileNav ? (
+                  <IconText
+                    icon={<MessagesSquareIcon />}
+                    size="small"
+                    type="primary"
+                    tooltip="会话列表"
+                    aria-label="会话列表"
+                    onClick={mobileNav.openConversations}
+                  />
+                ) : null}
+                <h1 className="min-w-0 flex-1 truncate font-heading text-base font-semibold sm:text-lg">
+                  {isNew ? '新会话' : conversationQuery.data?.title || '会话'}
+                </h1>
+                {activeAgent ? (
+                  <Badge variant="secondary" className="hidden shrink-0 lg:inline-flex">
+                    {activeAgent.name}
+                  </Badge>
+                ) : (
+                  <Badge variant="outline" className="hidden shrink-0 lg:inline-flex">
+                    未配置
+                  </Badge>
+                )}
+                {runId ? (
+                  <span className="hidden font-mono text-xs text-muted-foreground xl:inline">
+                    run {runId}
+                  </span>
+                ) : null}
+                {status !== 'ready' ? (
+                  <Badge
+                    variant={status === 'error' ? 'destructive' : 'outline'}
+                    className="hidden shrink-0 lg:inline-flex"
+                  >
+                    {status}
+                  </Badge>
+                ) : null}
+                {/* 右侧：复制会话 id + 换 agent + 右栏开关（页头在左栏里，这一排就落在 timeline 页头右侧） */}
+                <div className="ml-auto flex items-center gap-2">
+                  {/* 新会话还没有 id（首轮发出后地址会换成真实 id，那时这个按钮才出现） */}
+                  {!isNew ? (
+                    <IconText
+                      icon={<CopyIcon />}
+                      size="small"
+                      type="primary"
+                      className="hidden lg:inline-flex"
+                      tooltip="复制会话 id"
+                      aria-label="复制会话 id"
+                      onClick={copyConversationId}
+                    />
+                  ) : null}
+                  {agentSelect ? <div className="hidden lg:block">{agentSelect}</div> : null}
+                  <Button
+                    variant={(isMobile ? mobilePanelOpen : panelOpen) ? 'secondary' : 'outline'}
+                    size="icon-sm"
+                    aria-pressed={isMobile ? mobilePanelOpen : panelOpen}
+                    aria-label={(isMobile ? mobilePanelOpen : panelOpen) ? '隐藏右栏' : '显示右栏'}
+                    title={
+                      (isMobile ? mobilePanelOpen : panelOpen)
+                        ? '隐藏右栏（系统指令 / 技能 / 任务 / 文件）'
+                        : '显示右栏（系统指令 / 技能 / 任务 / 文件）'
+                    }
+                    onClick={togglePanel}
+                  >
+                    <PanelRightIcon className="size-3.5" />
+                  </Button>
+                </div>
+              </header>
 
-        {panelOpen && !isMobile ? (
-          <>
-            {/* 分隔条：1px 发丝线（与左栏分隔条同一套交互） */}
-            <ResizableHandle className="mx-2 bg-surface-3 transition-colors data-[separator=hover]:bg-primary/40 data-[separator=active]:bg-primary" />
-            <ResizablePanel
-              defaultSize={PANEL_WIDTH.default}
-              minSize={PANEL_WIDTH.min}
-              maxSize={PANEL_WIDTH.max}
-              className="h-full"
-              // 同左栏：子助手过程是长文档，必须把它的可滚动溢出从根滚动区隔离出去
-              style={{ overflow: 'hidden', contain: 'paint' }}
-            >
-              <ConversationRightPanel
+              {errorText || error ? (
+                <Alert variant="destructive">
+                  <AlertDescription>{errorText ?? error?.message}</AlertDescription>
+                </Alert>
+              ) : null}
+              {queueNotice ? (
+                <Alert>
+                  <AlertDescription>{queueNotice}</AlertDescription>
+                </Alert>
+              ) : null}
+
+              {/*
+              主区顶部是 tab 条：第一个「主会话」，其余每个子 agent 一个（`session-tabs.tsx`）。
+              主会话内容作为 children 常驻挂载 —— 切到子 agent 再切回来，输入框草稿与滚动位置都还在。
+            */}
+              <SessionTabs
                 client={client}
-                // 新会话还没有 id：系统指令仍可看静态定义，子 agent tab 给空态
+                // 新会话还没有 id：既没有子 run，也没有可查的运行记录
                 conversationId={isNew ? undefined : conversationId}
-                agentKey={agentKey ?? agentsQuery.data?.defaultAgentKey}
-                // 技能 tab 从消息 parts 里取"激活过什么"：实时更新，不额外拉时间线
-                messages={messages}
-                // 自动展开时直接停在「子 agent」——自动开了却停在系统提示词上等于白开
-                plan={conversationPlan}
-                files={conversationQuery.data?.aiFiles ?? []}
-                focus={panelFocus}
-              />
-            </ResizablePanel>
-          </>
-        ) : null}
-      </ResizablePanelGroup>
+                activeTab={activeSessionTab}
+                onTabChange={setActiveSessionTab}
+              >
+                <div className="flex min-h-0 flex-1 flex-col gap-2">
+                  {/* 消息列表不画外框：整块与页面同底，气泡 / 工具卡自己带层次，边框只会把界面切成一块块 */}
+                  <Conversation
+                    className="min-h-0 flex-1"
+                    /**
+                     * 只有**流式输出**才用平滑跟随；其余内容长高一律瞬间到位。
+                     *
+                     * 为什么：`use-stick-to-bottom` 只在**第一次**长高时用 `initial`，之后都用 `resize`。
+                     * 而挂载时这里已经渲染着“正在加载会话历史…”，所以历史到达算**第二次**长高 ——
+                     * 默认的 `resize="smooth"` 会在那一刻起一段弹簧动画（看起来就是"进会话后自己滑到底"）。
+                     * `initial="instant"` 管不到它，必须让非流式的 `resize` 也是 instant。
+                     */
+                    resize={streaming && !loading ? 'smooth' : 'instant'}
+                  >
+                    {/* 覆盖 ai-elements 的 `gap-8 p-4`：管理台是**高密度工作台**，
+                      消息间距收到 12px、留白收到 12px（下面每张卡自己再收一层） */}
+                    <ConversationContent className="gap-3 p-3">
+                      {loading ? (
+                        <p className="p-3 text-xs text-muted-foreground">正在加载会话历史…</p>
+                      ) : messageStates.length === 0 && messages.length > 0 ? (
+                        <p className="p-3 text-xs text-muted-foreground">正在整理会话…</p>
+                      ) : messageStates.length === 0 ? (
+                        <ConversationEmptyState className="gap-4">
+                          <span className="grid size-11 place-items-center rounded-xl bg-surface-2 text-muted-foreground">
+                            <BotIcon className="size-5" />
+                          </span>
+                          <div className="space-y-1.5">
+                            <h3 className="font-heading text-base font-medium tracking-tight">
+                              {isNew ? '问点什么' : '这个会话还没有内容'}
+                            </h3>
+                            <p className="max-w-md text-xs leading-relaxed text-muted-foreground">
+                              试着问「最近有哪些待办」，或让它「分步整理一份待办周报」——它会自己规划、必要时造一个子助手
+                            </p>
+                          </div>
+                        </ConversationEmptyState>
+                      ) : (
+                        messageStates.map((message) => {
+                          // 只给"真的用得上"的行挂回调：其余行拿到稳定的 undefined，memo 才不会每帧失效
+                          const needsPlan = message.plan !== null
+                          const needsPreview = message.files.length > 0
+                          const needsQuestion = message.units.some(
+                            (unit) => unit.kind === 'question',
+                          )
+                          const needsSubAgent = message.units.some(
+                            (unit) => unit.kind === 'sub-agent',
+                          )
+                          return (
+                            <ChatMessage
+                              key={message.id}
+                              message={message}
+                              streaming={streaming}
+                              {...(needsPlan ? { onOpenPlan: openPlanPanel } : {})}
+                              {...(needsPreview ? { onPreviewImage: previewAttachments } : {})}
+                              {...(needsQuestion ? { onAnswerQuestions: answerQuestions } : {})}
+                              // 子助手卡的「查看过程」= 切到它在主区顶部的 tab（不再跳子会话路由）
+                              {...(needsSubAgent ? { onOpenSubAgent: openSubAgentTab } : {})}
+                              // 计划卡 / 问题卡固定在输入框上方，消息流里不再重复
+                              showTrailingCards={false}
+                            />
+                          )
+                        })
+                      )}
+                    </ConversationContent>
+                    <ConversationScrollButton />
+                  </Conversation>
+
+                  {/* 输入框上方的常驻 dock：运行状态 / 当前任务进度 / 待回答的问题。
+                放在 Conversation 外面，所以不会被消息列表滚走；问题卡永远贴着输入框。 */}
+                  <div className="flex max-h-[55vh] shrink-0 flex-col gap-2 overflow-y-auto px-3">
+                    {isSubConversation ? (
+                      <div className="rounded-lg border border-border bg-surface-2 px-3 py-2 text-xs text-muted-foreground">
+                        这是子助手产生的子会话，只读展示；要让它继续工作，请回到父会话重新委派。
+                        {rootConversationId ? (
+                          <Link
+                            href={conversationPath(rootConversationId)}
+                            className="ml-1 text-primary hover:underline"
+                          >
+                            返回父会话
+                          </Link>
+                        ) : null}
+                      </div>
+                    ) : null}
+                    <RunActivity
+                      messages={messages}
+                      status={resuming ? 'streaming' : status}
+                      activeSubAgentName={activeSubAgentName}
+                    />
+                    {conversationPlan ? (
+                      <PlanSummaryCard
+                        plan={conversationPlan.current.plan}
+                        onOpen={() => focusRightPanel('plan')}
+                      />
+                    ) : null}
+                    {activeQuestion ? (
+                      <QuestionCard data={activeQuestion} onSubmit={answerQuestions} />
+                    ) : null}
+                  </div>
+
+                  <div className={isSubConversation ? 'hidden' : 'px-3 pb-3'}>{composer}</div>
+                </div>
+              </SessionTabs>
+            </div>
+          </ResizablePanel>
+
+          {panelOpen && !isMobile ? (
+            <>
+              {/*
+              分隔条：**平时不画线** —— 右栏自己是一列白底，白与页面中灰的差已经说明边界，
+              再压一条 2px 的线就成了"多画了一道"。只剩 1px 的可拖拽热区（`after` 那条 4px 命中带
+              仍在），悬停 / 拖动时才亮主色，告诉用户"这里能拖"。
+            */}
+              <ResizableHandle className="bg-transparent transition-colors data-[separator=hover]:bg-primary/60 data-[separator=active]:bg-primary" />
+              <ResizablePanel
+                defaultSize={PANEL_WIDTH.default}
+                minSize={PANEL_WIDTH.min}
+                maxSize={PANEL_WIDTH.max}
+                className="h-full"
+                // 同左栏：系统指令快照 / 文件树都可能很长，必须把可滚动溢出从根滚动区隔离出去
+                style={{ overflow: 'hidden', contain: 'paint' }}
+              >
+                <ConversationRightPanel
+                  client={client}
+                  // 新会话还没有 id：系统指令仍可看静态定义，技能 / 任务 / 文件给空态
+                  conversationId={isNew ? undefined : conversationId}
+                  agentKey={agentKey ?? agentsQuery.data?.defaultAgentKey}
+                  // 技能 tab 从消息 parts 里取"激活过什么"：实时更新，不额外拉时间线
+                  messages={messages}
+                  // 当前计划：任务 tab 与消息里的紧凑卡同源（会话页算好传进来）
+                  plan={conversationPlan}
+                  files={conversationQuery.data?.aiFiles ?? []}
+                  focus={panelFocus}
+                />
+              </ResizablePanel>
+            </>
+          ) : null}
+        </ResizablePanelGroup>
+      )}
 
       {/* 手机端右栏：全屏 Sheet，不参与桌面分栏（否则会把对话区挤没） */}
       {isMobile ? (

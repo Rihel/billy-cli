@@ -128,7 +128,7 @@ const parseLegacyAnswers = (
  * @param items 该会话的时间线（**含子 agent 的事件**，函数内部按 `runs` 过滤）
  * @param runs  该会话的运行列表（用来区分根 run 与子 run）
  * @param options.onlyRunIds 只重建这些 run（默认重建全部**根 run**）。
- *   右栏「子 agent 运行」用它把**某一个子 run** 单独渲染成一段对话 ——
+ *   子 agent tab 用它把**某一个子 run** 单独渲染成一段对话 ——
  *   与主对话完全同一套映射、同一个渲染组件，所以子助手的过程"看起来和主 agent 一样"。
  */
 export const toUIMessages = (

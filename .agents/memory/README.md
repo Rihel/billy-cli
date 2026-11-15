@@ -61,7 +61,7 @@
 | [ai-file-management](ai-file-management.md) | `ai_files` + 9 个文件工具 + 每会话 workspace；入站引用、`uploads/`/`files/` 约定、删会话清理；HTML 预览的 CDN 白名单与「必须用 Tailwind、`<style>` 补位」口径 | 必核 | 2026-11-14 |
 | [dev-session-log](dev-session-log.md) | 开发会话记录在 `~/.dsh/sessions/`，zstd + JSONL，可直接统计调用与用量 | 抽核 | 2026-10-25 |
 | [token-cost-model](token-cost-model.md) | skill 只占工具输出 1%–3%，成本主项是「调用次数 × 累积上下文」 | 免核 | 2026-10-25 |
-| [ai-chat-render-state](ai-chat-render-state.md) | 会话页按 part 类型增量归约成渲染单元；逐帧增量走 transient（后端不改），渲染期不再扫 parts | 抽核 | 2026-11-03 |
+| [ai-chat-render-state](ai-chat-render-state.md) | 会话页按 part 类型增量归约成渲染单元；逐帧增量走 transient（后端不改），渲染期不再扫 parts；子 agent 过程在主区 tab 条（右栏已无该 tab） | 抽核 | 2026-11-15 |
 | [ai-chat-route-remount](ai-chat-route-remount.md) | 会话页 `new → 真实 id` 的 replace 会重挂载页面子树，`useState` 全丢（选择类状态要存 React 之外） | 抽核 | 2026-10-27 |
 | [ai-memory-module](ai-memory-module.md) | 短期 thread 落 Redis（按 token 预算、定时清理、续跑回灌）、长期 `ai_memories`；注入走 system 消息 + 快照记 ids | 抽核 | 2026-11-14 |
 | [ai-skills-loading](ai-skills-loading.md) | 技能：我们只发现/校验/授权路径，正文与 references 由 Mastra 按需读；`catalog/` 现有内置 `html-page`、另加载 `~/.agents/skills`（每轮约 +11k token）；有清单 ≠ 会主动用 | 抽核 | 2026-11-12 |

@@ -471,7 +471,7 @@ export function PlanPanel({ plan, change, history = [] }: PlanPanelProps) {
 
         {history.length > 0 ? (
           <Collapsible
-            className="mt-2 rounded-md bg-surface-1 px-2 py-2"
+            className="mt-2 rounded-md bg-surface-2 px-2 py-2"
             open={historyOpen}
             onOpenChange={setHistoryOpen}
           >

@@ -61,12 +61,15 @@ const toAttachmentItems = (
 function SubAgentUnit({
   runId,
   snapshot,
+  onOpen,
 }: {
   runId: string
   snapshot: Parameters<typeof mergeSubAgent>[0]
+  /** 切到该子 agent 的 tab（主区顶部 tab 条）：从会话页一路透下来，缺省时卡片退回跳子会话路由 */
+  onOpen?: (runId: string) => void
 }) {
   const live = useLiveSubAgent(runId)
-  return <SubAgentCard agent={mergeSubAgent(snapshot, live)} />
+  return <SubAgentCard agent={mergeSubAgent(snapshot, live)} {...(onOpen ? { onOpen } : {})} />
 }
 
 /** 一个渲染单元 → 一个可见块 */
@@ -77,6 +80,7 @@ function ChatUnitView({
   ownedToolCalls,
   isUser,
   onAnswerQuestions,
+  onOpenSubAgent,
 }: {
   unit: ChatUnit
   streaming: boolean
@@ -85,6 +89,7 @@ function ChatUnitView({
   ownedToolCalls: ReadonlySet<string>
   isUser: boolean
   onAnswerQuestions?: (input: AnswerQuestionsInput) => Promise<void>
+  onOpenSubAgent?: (runId: string) => void
 }) {
   /**
    * 思考运行中按**整秒**跳动（与工具卡同一套计时口径：秒边界翻字，不每帧抖）。
@@ -163,7 +168,13 @@ function ChatUnitView({
         />
       )
     case 'sub-agent':
-      return <SubAgentUnit runId={unit.runId} snapshot={unit.snapshot} />
+      return (
+        <SubAgentUnit
+          runId={unit.runId}
+          snapshot={unit.snapshot}
+          {...(onOpenSubAgent ? { onOpen: onOpenSubAgent } : {})}
+        />
+      )
     case 'notice':
       return <SubAgentCompletedCard data={unit.data} />
     case 'event': {
@@ -190,8 +201,13 @@ export interface ChatMessageProps {
   onPreviewImage?: (items: readonly PromptAttachmentItem[], index: number) => void
   onAnswerQuestions?: (input: AnswerQuestionsInput) => Promise<void>
   /**
+   * 子助手卡的「查看过程」：切到主区顶部对应的子 agent tab。
+   * 不传（比如子 agent tab 自己的内容里再嵌套委派）时，卡片退回跳子会话路由。
+   */
+  onOpenSubAgent?: (runId: string) => void
+  /**
    * 是否渲染"计划卡 / 问题卡"这类悬浮卡：会话主区关掉（固定在输入框上方），
-   * 右栏的历史预览保留默认的 true。
+   * 子 agent tab 的完整过程保留默认的 true。
    */
   showTrailingCards?: boolean
 }
@@ -202,6 +218,7 @@ export const ChatMessage = memo(function ChatMessage({
   onOpenPlan,
   onPreviewImage,
   onAnswerQuestions,
+  onOpenSubAgent,
   showTrailingCards = true,
 }: ChatMessageProps) {
   const isUser = message.role === 'user'
@@ -235,6 +252,7 @@ export const ChatMessage = memo(function ChatMessage({
             ownedToolCalls={ownedToolCalls}
             isUser={isUser}
             {...(onAnswerQuestions ? { onAnswerQuestions } : {})}
+            {...(onOpenSubAgent ? { onOpenSubAgent } : {})}
           />
         ))}
         {message.plan && showTrailingCards ? (

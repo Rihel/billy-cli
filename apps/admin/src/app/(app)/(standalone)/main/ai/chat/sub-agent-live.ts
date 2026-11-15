@@ -15,7 +15,7 @@ import type { AgentRunModel } from '@repo/shared'
  *
  * 一条必须如实交代的边界（服务端语义）：`data-sub-agent` 带 `id = subRunId`，按 id 归并意味着
  * **后者覆盖前者** —— 跑起来之后工具事件块会覆盖"running"那块，所以实时 part 里只剩最近一次
- * 工具往返；完整序列要等 run 结束从子 run 时间线拉（见右栏 `SubRunView`）。
+ * 工具往返；完整序列要等 run 结束从子 run 时间线拉（见 `session-tabs.tsx` 的 `SubRunView`）。
  */
 
 /** 子助手的工具往返（`data-sub-agent` 状态块里的 `event` 字段） */
@@ -227,10 +227,10 @@ export const liveSubAgentsOf = (messages: readonly UIMessage[]): SubAgentLive[] 
 export const isSubAgentActive = (live: SubAgentLive): boolean =>
   live.status === undefined || live.status === 'running'
 
-/** 展示用状态：拿不到最终状态时按"进行中"算（口径同一处，卡片与右栏不分叉） */
+/** 展示用状态：拿不到最终状态时按"进行中"算（口径同一处，卡片与子 agent tab 不分叉） */
 export const subAgentStatus = (live: SubAgentLive): string => live.status ?? 'running'
 
-/** 右栏的一个 tab（库里的 run 与实时数据合流后的结果） */
+/** 主区顶部的一个子 agent tab（库里的 run 与实时数据合流后的结果） */
 export interface SubAgentTab {
   runId: string
   name: string
@@ -243,10 +243,10 @@ export interface SubAgentTab {
 }
 
 /**
- * 库里的子 run 与实时数据 → 右栏的 tab 列表。
+ * 库里的子 run 与实时数据 → 主区顶部的子 agent tab 列表。
  *
  * 为什么要合流：`runs` 是一次查询（刚起步的子 run 可能还没进这份数据），而实时块**立刻**就有；
- * 只认其中一边就会出现"明明在跑，右栏却是空的"或"跑完了 tab 反而少了"。
+ * 只认其中一边就会出现"明明在跑，tab 条上却没有"或"跑完了 tab 反而少了"。
  * 顺序以库里的 run 为准（稳定），实时独有的追加在后面（新起的那个自然排到最后）。
  */
 export const subAgentTabs = (
@@ -278,6 +278,23 @@ export const subAgentTabs = (
     })
   }
   return tabs
+}
+
+/**
+ * tab 标签：同名子助手出现多次时补 `#序号`
+ * （同一个名字跑了两遍，标签一模一样就分不清哪个是哪个）。
+ */
+export const subAgentTabLabels = (tabs: readonly SubAgentTab[]): ReadonlyMap<string, string> => {
+  const total = new Map<string, number>()
+  for (const tab of tabs) total.set(tab.name, (total.get(tab.name) ?? 0) + 1)
+  const seen = new Map<string, number>()
+  const labels = new Map<string, string>()
+  for (const tab of tabs) {
+    const index = (seen.get(tab.name) ?? 0) + 1
+    seen.set(tab.name, index)
+    labels.set(tab.runId, (total.get(tab.name) ?? 0) > 1 ? `${tab.name} #${index}` : tab.name)
+  }
+  return labels
 }
 
 /**

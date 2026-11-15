@@ -333,56 +333,59 @@ export default function ChatLayout({ children }: { children: ReactNode }) {
                     >
                       {items.map((conversation) => {
                         const active = pathname === conversationPath(conversation.id)
+                        // 相对时间（用户口径）：列表扫的是"新旧"，不是具体时刻 ——
+                        // 超过一周自动回落成日期（见 `relativeTimeText`）
+                        const time = relativeTimeText(
+                          conversation.updatedAt ?? conversation.createdAt,
+                        )
                         return (
                           // 行操作（改名 / 删除）是 `<Link>` 的**兄弟节点**、不是子节点：
                           // 嵌在 Link 里的话，点操作会连带触发跳转 —— `ConfirmAction` 的触发自带 onClick，
                           // 没有留给调用方 `preventDefault` 的口子
                           <div key={conversation.id} className="group relative">
+                            {/*
+                              一行式（对齐 DSH）：标题在左、时间在右，悬停时**同一位置**换成操作 icon。
+                              为什么不再显示「N 轮」：一行只有一份右对齐的信息，时间才是用户扫列表的判据；
+                              轮数是过程指标，要看就进会话看。token 累计同理，属于会话详情，不塞列表行。
+                            */}
                             <Link
                               href={conversationPath(conversation.id)}
                               aria-current={active ? 'page' : undefined}
                               className={cn(
-                                // 右边留出操作区的位置：悬停时按钮浮上来，标题不会被压住
-                                'flex w-full flex-col gap-1 rounded-md py-2 pr-14 pl-3 text-left text-sm',
+                                'flex w-full items-center gap-2 rounded-md py-2 pr-2 pl-3 text-left text-sm',
                                 'transition-colors hover:bg-surface-4/60',
                                 active && 'bg-surface-4',
                               )}
                             >
-                              <span className="truncate font-medium">
+                              {/* 运行中：一行放不下「运行中」三个字，只留一个呼吸点（语义用 sr-only 补） */}
+                              {conversation.running ? (
+                                <span className="relative flex size-1.5 shrink-0" title="运行中">
+                                  <span
+                                    className="absolute inline-flex size-full animate-ping rounded-full bg-success opacity-75"
+                                    aria-hidden
+                                  />
+                                  <span
+                                    className="relative inline-flex size-1.5 rounded-full bg-success"
+                                    aria-hidden
+                                  />
+                                  <span className="sr-only">运行中</span>
+                                </span>
+                              ) : null}
+                              <span className="min-w-0 flex-1 truncate font-medium">
                                 {conversation.title || '(无标题)'}
                               </span>
-                              {/* 只显示"几轮"：**不在这里显示 token** ——
-                              消耗数字统一在对话框右下角（本轮 `data-run-usage`），
-                              列表里再放一个"跨轮累计"会让同一个词（token）指两个不同的东西。
-                              累计值在库里（`conversations.total_tokens`），将来要展示就放会话详情，不塞列表行。 */}
-                              <span className="flex items-center gap-2 text-xs text-muted-foreground">
-                                {/* 正在跑的呼吸灯：外圈扩散 + 内点常亮（纯装饰，语义在文字「运行中」上，
-                                读屏才不会被一个空 span 打扰） */}
-                                {conversation.running ? (
-                                  <span className="flex items-center gap-1.5 text-success">
-                                    <span className="relative flex size-1.5" aria-hidden>
-                                      <span className="absolute inline-flex size-full animate-ping rounded-full bg-success opacity-75" />
-                                      <span className="relative inline-flex size-1.5 rounded-full bg-success" />
-                                    </span>
-                                    运行中
-                                  </span>
-                                ) : null}
-                                <span>{conversation.turnCount} 轮</span>
-                                {/* 相对时间（用户口径）：列表扫的是"新旧"，不是具体时刻 ——
-                                超过一周自动回落成日期，见 `relativeTimeText` */}
-                                {relativeTimeText(
-                                  conversation.updatedAt ?? conversation.createdAt,
-                                ) ? (
-                                  <span>
-                                    {relativeTimeText(
-                                      conversation.updatedAt ?? conversation.createdAt,
-                                    )}
-                                  </span>
-                                ) : null}
-                              </span>
+                              {time ? (
+                                <span className="shrink-0 text-xs text-muted-foreground group-hover:invisible">
+                                  {time}
+                                </span>
+                              ) : null}
                             </Link>
-                            {/* 操作：悬停 / 键盘聚焦时出现（与任务列表同一手感） */}
-                            <div className="absolute top-1.5 right-1 flex items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
+                            {/*
+                              操作：悬停 / 键盘聚焦时**盖在时间的位置上**出现。
+                              自带一层 `bg-surface-4` 底色：遇到"刚刚"这种很短的文案，操作区会比时间宽，
+                              没底色就会直接压到标题上（看起来像标题少了一截）。
+                            */}
+                            <div className="pointer-events-none absolute inset-y-1 right-1 flex items-center gap-0.5 rounded-md bg-surface-4 px-0.5 opacity-0 transition-opacity group-hover:pointer-events-auto group-hover:opacity-100 focus-within:pointer-events-auto focus-within:opacity-100">
                               <IconText
                                 icon={<PencilIcon />}
                                 size="small"
@@ -461,9 +464,15 @@ export default function ChatLayout({ children }: { children: ReactNode }) {
                   <PanelLeftOpenIcon className="size-3.5" />
                 </Button>
               ) : null}
+              {/*
+                **这一层不再加内边距**：右栏改成一列通顶白底（`p-4` 会在它上下右都留一圈灰边，
+                实测截图就是那圈"间距"）。内边距下沉到会话页的左栏自己身上（见 `chat-conversation`），
+                于是右栏可以贴到窗口的上 / 右 / 下边缘。
+                `pl-11` 只在会话列表收起时生效：那 44px 是给浮出来的「展开列表」按钮让位的。
+              */}
               <section
                 className={cn(
-                  'flex h-full min-w-0 flex-col gap-3 p-4',
+                  'flex h-full min-w-0 flex-col',
                   !isMobile && sidebarCollapsed && 'pl-11',
                 )}
               >

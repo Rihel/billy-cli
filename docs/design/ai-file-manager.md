@@ -791,7 +791,7 @@ txt / zip / docx / xlsx / pptx。
 
 ### 8.3 右栏「文件」tab：会话文件 + 工作区
 
-`RightPanelTab` 加 `'files'`，与 `system` / `skills` / `plan` / `subagents` 同级。
+`RightPanelTab` 加 `'files'`，与 `system` / `skills` / `plan` 同级（`subagents` 后来移出右栏，改为主区顶部 tab 条）。
 tab 内顶部用 segmented control 分两个视图 —— 两边的生命周期与动作不同，不能混成一棵树：
 
 | 视图 | 数据源 | 是什么 | 能做什么 |

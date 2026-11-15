@@ -88,21 +88,53 @@
   （SSR 报"会话 store 缺失"，整页退化成纯客户端渲染）。
 - 子助手卡自己订阅 `useLiveSubAgent(runId)`：实时增量只重渲染那一张卡，
   不会带着整行 / 整个列表一起重渲染（实时数据 100ms 合并通知一次）。
-- 右栏「子 agent」用 `useLiveSubAgents()`；右栏的"子助手完整过程"用 `toMessageState(history消息)`
-  走同一套归约 + 同一个 `ChatMessage`，历史与实时形状一致。
+- 主区顶部的子 agent tab 条（`session-tabs.tsx`）用 `useLiveSubAgents()` 把库里的子 run 与实时数据
+  合流成 tab；"子助手完整过程"用 `toMessageState(history消息)` 走同一套归约 + 同一个 `ChatMessage`，
+  历史与实时形状一致。订阅放在 tab 条这一层，主会话内容以 `children` 传入（引用稳定 → 不跟着重渲染）。
 - 运行指示 `RunActivity` 拿 `activeSubAgentName`（布尔 / 单值订阅，只在翻转时重渲染）。
 
-### 2.3.1 右栏 tab（现状）
+### 2.3.1 右栏 tab 与主区 tab 条（现状）
 
-`RightPanelTab = 'system' | 'skills' | 'plan' | 'subagents' | 'files'`：
+**主区顶部**（`session-tabs.tsx`，会话页 timeline 上方）：第一个 tab 是「主会话」，其余每个子 agent
+一个 tab（值取子 run id）。三条口径：
+
+- **主会话常驻挂载**（`keepMounted`）：切到子 agent 再切回来，输入框草稿与滚动位置都在；
+  子 tab 只挂当前那一个（切走就卸载），多个子 run 一起查时间线是白花的请求；
+- **不因"子助手开跑"自动切 tab**：它只在自己的 tab 上转圈，不抢用户正在读的主时间线
+  （原先"自动展开右栏并停在子 agent tab"已删除）；唯一例外是**出现待回答的问题**
+  （阻塞操作，问题卡在主会话 tab 内，界面必须切回去，见 `hasActiveQuestion` effect）；
+- **标签条视觉**：每个 tab 按内容宽度（`flex-none` + `w-max`）、超宽横向滚（滚动容器在外层，
+  `overflow-y-hidden`），整条下面一条 `border-b` 与 timeline 分开。
+- **分栏骨架**：layout 的 section **不再加内边距**（`p-4` 会在右栏上下右留一圈灰边），内边距下沉到
+  会话页左栏；右栏因此是一列**通顶、贴右、贴底**的白底（`bg-card` + `p-3`），与左栏之间**不画分隔线**
+  （白 vs 页面中灰已是边界），只留 1px 可拖拽热区、悬停/拖动才亮主色。白底上的内容块用 `bg-surface-2`
+  （`surface-1` 在纯白上看不出层次）。页头（标题 / agent / 复制 id / 右栏开关）归属左栏。
+- **入口**：主时间线子助手卡的「查看过程」切到对应 tab；嵌套委派（孙 run 不在本层列表里）
+  退回跳子会话路由。
+
+`RightPanelTab = 'system' | 'skills' | 'plan' | 'files'`（子 agent 已移出右栏）：
 
 | tab | 数据源 | 备注 |
 | --- | --- | --- |
 | 系统指令 | `/agent/instructions` | — |
 | 技能 | **当前消息的 parts**（派生） | 只列**本会话实际激活过**的技能（从 `skill` 工具入参算），不是"可用技能清单"；关联不到库里的标「库外」 |
 | 任务 | 消息级计划（`data-plan` / `collectMessagePlan`） | tab 上的进度 `3/5` 与卡片正文同源 |
-| 子 agent | 库里的子 run + `useLiveSubAgents()` 合流成 tab | 完整过程用 `toMessageState` + 同一个 `ChatMessage` 渲染 |
 | 文件 | 会话详情 `aiFiles` + `/agent/file/workspace` | 两个视图（会话文件 / 工作区），见 `ai-file-manager.md` §8.3 |
+
+### 2.3.2 新会话空态（居中落地页）
+
+还没发出第一条消息时（`isNew && messages.length === 0 && !streaming`）整页换成**居中一屏**：
+品牌 + 一句说明 + 输入框，不渲染页头、tab 条与右栏；发出第一条后消息立刻进 store，
+当帧切回常规布局（与 DSH 一致）。两条口径：
+
+- **输入框与常规对话共用同一份 `composer`**（页面里的一个常量）：附件预检 / 长文本转附件 /
+  模型与文件权限 / 提交逻辑都在里面，复制一份必然两处漂移；
+- 新会话页没有页头，**agent 选择器**随输入框一起出现在上方一行（多 agent 时才出下拉），
+  移动端的「会话列表」入口单独浮在左上角。
+
+会话列表（`layout.tsx`）每行是**一行式**：标题在左、相对时间在右；鼠标移入时**时间位置**
+换成「重命名 / 删除」两个 icon（自带底色，短文案如"刚刚"也不会压到标题）。
+「N 轮」与累计 token 不再进列表行 —— 轮数是过程指标、累计 token 属于会话详情。
 
 ### 2.4 会话隔离：`chatSessionKey` 与"隔离代次"
 

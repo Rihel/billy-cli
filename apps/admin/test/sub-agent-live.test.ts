@@ -8,13 +8,14 @@ import {
   isSubAgentActive,
   liveSubAgentsOf,
   subAgentStatus,
+  subAgentTabLabels,
   subAgentTabs,
 } from '../src/app/(app)/(standalone)/main/ai/chat/sub-agent-live.ts'
 
 /**
  * 子助手实时过程的收集（纯逻辑，node 环境）。
  *
- * 要钉住的是**运行中也能在右栏看到东西**这条口径 + 与库里 run 的合流规则：
+ * 要钉住的是**运行中也能在 tab 条上看到东西**这条口径 + 与库里 run 的合流规则：
  * 1. 状态块按 `id` 归并（后者覆盖）与增量块逐帧累积都要还原出来；
  * 2. 状态块把 `status: running` 覆盖成工具事件之后（真实流的形态），**仍然算"在跑"**
  *    —— 否则界面上会显示成"未知"，用户以为它挂了；
@@ -260,6 +261,28 @@ describe('subAgentTabs', () => {
     const tabs = subAgentTabs([run({ id: 'sub1', status: 'succeeded' })], finished)
 
     expect(tabs.map((tab) => tab.active)).toEqual([false])
+  })
+})
+
+describe('subAgentTabLabels（tab 标签）', () => {
+  it('同名子助手跑了两遍时补 #序号，否则就是名字本身', () => {
+    const tabs = subAgentTabs(
+      [
+        run({ id: 'run_1' }),
+        run({ id: 'run_2', agentKey: 'sub:中国网文线' }),
+        run({ id: 'run_3' }),
+      ],
+      [],
+    )
+    const labels = subAgentTabLabels(tabs)
+
+    expect(labels.get('run_1')).toBe('北美欧洲线 #1')
+    expect(labels.get('run_3')).toBe('北美欧洲线 #2')
+    expect(labels.get('run_2')).toBe('中国网文线')
+  })
+
+  it('没有子助手时给空表（tab 条只剩「主会话」）', () => {
+    expect(subAgentTabLabels([]).size).toBe(0)
   })
 })
 
