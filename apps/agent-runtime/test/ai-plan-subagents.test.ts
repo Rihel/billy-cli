@@ -769,7 +769,9 @@ describe('子 agent（core bean + 运行期动态创建）', () => {
     const { chat, runs, conversations, runner, timelines } = await stack()
     const result = await chat.chat(USER, { message: `幂等验证 ${MOCK_DELEGATE_MARKER}` })
     const page = await timelines.list({ conversationId: result.conversationId, page: 1, size: 200 })
-    const child = (await runs.listChildren(result.runId))[0]
+    const child = (await runs.listChildren(result.runId))[0]!
+    // 异步子 agent：先等它跑完再重放，否则会撞上 running 分支（全量并发时偶发）
+    await waitChildTerminal(runs, child.id)
     const conversation = await conversations.detail(USER, { conversationId: result.conversationId })
 
     const requestsBefore = mock.requests.length
@@ -795,6 +797,7 @@ describe('子 agent（core bean + 运行期动态创建）', () => {
     const { chat, runs, conversations, runner } = await stack()
     const result = await chat.chat(USER, { message: `中断恢复 ${MOCK_DELEGATE_MARKER}` })
     const child = (await runs.listChildren(result.runId))[0]!
+    await waitChildTerminal(runs, child.id)
     const conversation = await conversations.detail(USER, { conversationId: result.conversationId })
 
     // 模拟服务重启后的启动清理：子 run 被标 interrupted
@@ -960,6 +963,30 @@ const runtimeEnvelope = (conversationId: string, parentRunId: string): AgentRunt
  * 网关把失败折成统一结论（`ok: false` + message），这里把 message 抛出来 —— 与
  * `rejects.toThrow(/必须给 goal/)` 这类断言语义一致，同时顺带覆盖了"拒绝是结论不是崩溃"这条链路。
  */
+/**
+ * 等子 run 进入终态。
+ *
+ * 异步子 agent：`chat.chat()` 返回时子 run 可能还在跑（幂等 / 恢复用例需要它先跑完）。
+ * 单文件跑时 mock 快、通常已终态；全量并发时会偶发 running —— 不能靠时机断言。
+ */
+const waitChildTerminal = async (
+  runs: { findEntity(id: string): Promise<RunEntity | null> },
+  id: string,
+): Promise<RunEntity> => {
+  const terminal = new Set<string>([
+    RunStatus.Succeeded,
+    RunStatus.Failed,
+    RunStatus.Canceled,
+    RunStatus.Interrupted,
+  ])
+  for (let index = 0; index < 100; index += 1) {
+    const entity = await runs.findEntity(id)
+    if (entity && terminal.has(entity.status)) return entity
+    await new Promise((resolve) => setTimeout(resolve, 50))
+  }
+  throw new Error(`子 run ${id} 未在 5 秒内进入终态`)
+}
+
 const executePlanTool = async (
   toolRegistry: ToolRegistry,
   key: string,

@@ -19,7 +19,7 @@ import { ToolRegistry } from '../core/tools/tool.registry.js'
 import { ToolCallMetaStore } from '../core/tools/tool.meta.js'
 import { AgentConfig, type AgentConfig as AgentConfigValue } from '../core/config.js'
 import type { AgentRuntimeEnvelope } from '../core/envelope.js'
-import { toUsageRecord, usageField } from './usage.js'
+import { toUsageRecord, totalTokensOf, usageField } from './usage.js'
 import { ConversationRepository } from './conversation.repository.js'
 import { MemoryExtractorService } from '../memory/memory.extractor.service.js'
 import { ConversationRunQueue } from './run-queue.service.js'
@@ -108,6 +108,29 @@ interface ChunkLike {
 const DEFAULT_RUN_TIMEOUT_MS = 10 * 60_000
 const DEFAULT_MAX_PER_RUN = 4
 const DEFAULT_MAX_DEPTH = 1
+/**
+ * 等「子会话 + 子 run 建好」的上限（**不是子 agent 的寿命**）。
+ *
+ * 创建路径里有并发闸门（`SUB_AGENT_MAX_CONCURRENT`），第 N 个要排队等前面跑完 ——
+ * 排队时间随子任务时长变化，30 秒必然误报（2026-11-15 实测排了 85 秒）。
+ * 到点**先回查再判失败**，见 `spawnSubAgent`。
+ */
+const DEFAULT_SUB_AGENT_SPAWN_TIMEOUT_MS = 90_000
+
+/** 父 run 还活着的状态集合：父已终态时，异步回调不该再往它的时间线上写事件 */
+const ACTIVE_RUN_STATUSES = new Set<string>([
+  RunStatus.Pending,
+  RunStatus.Running,
+  RunStatus.Suspended,
+])
+
+/** 子 run 的终态集合：用来算「同一批还有谁在跑」（唤醒通知里的进度） */
+const TERMINAL_RUN_STATUSES = new Set<string>([
+  RunStatus.Succeeded,
+  RunStatus.Failed,
+  RunStatus.Canceled,
+  RunStatus.Interrupted,
+])
 
 /**
  * 给子 agent 的提示词**追加一段固定的能力段**（设计 §5.10 第 4 条，待拍板项按"追加"实现）。
@@ -278,6 +301,19 @@ export class AgentRunner {
       if (envelope.abortSignal?.aborted) {
         return this.rejected(request, startedAt, '这一轮已停止，子助手不再启动')
       }
+      /**
+       * 排队期间父 run 可能**已经结束**（异步子 agent + 并发闸门的正常结果）。
+       * 这时再建子会话只会留下一个没人收结果的孤儿，父时间线也已经封板 —— 直接不启动。
+       *
+       * 只对**异步创建路径**（`spawnSubAgent`）生效：中断恢复（`interrupted`）与
+       * 崩溃重放的直接调用本来就要在父 run 收尾后继续，不能拦。
+       */
+      if (request.async === true && !interrupted) {
+        const parentRun = await this.runs.findEntity(parentRunId)
+        if (!parentRun || !ACTIVE_RUN_STATUSES.has(parentRun.status)) {
+          return this.rejected(request, startedAt, '父这一轮已结束，子助手不再启动')
+        }
+      }
       return await this.runAdmittedSubAgent(request, startedAt, interrupted)
     } finally {
       this.subAgentSlots.release(parentRunId)
@@ -290,8 +326,37 @@ export class AgentRunner {
    * 这是工具层切换到异步的唯一入口；创建失败/配额不足通过 reject 交给工具。
    */
   async spawnSubAgent(request: SubAgentRequest): Promise<{ subAgentId: string; subRunId: string }> {
+    /**
+     * 「等建好」的 Promise：到点**先回查**，查不到才判失败。
+     *
+     * 为什么不能直接 reject：`runSubAgent` 是异步启动的，超时只让这个 Promise 失败，
+     * **不会取消底层创建**。直接报失败会出现「工具说超时、子会话其实已建好并跑完」的分裂状态，
+     * 父模型据此重做一遍（2026-11-15 实测：第 4 个子助手报超时，85 秒后照样建好跑完）。
+     */
+    const waitMs = DEFAULT_SUB_AGENT_SPAWN_TIMEOUT_MS
     return await new Promise((resolve, reject) => {
-      const timer = setTimeout(() => reject(new Error('创建子 agent 超时')), 30_000)
+      const timer = setTimeout(() => {
+        void this.recoverSpawnedChild(request)
+          .then((existing) => {
+            if (!existing) {
+              reject(
+                new Error(
+                  '创建子 agent 超时（可能仍在并发排队；**不要重复创建**，稍后用 sub-agent-list 查看状态）',
+                ),
+              )
+              return
+            }
+            this.logger.warn('ai.subagent.spawn_timeout_recovered', {
+              parentRunId: request.envelope.parentRunId,
+              subRunId: existing.id,
+              toolCallId: request.toolCallId,
+            })
+            resolve({ subAgentId: existing.conversationId, subRunId: existing.id })
+          })
+          .catch((error: unknown) => {
+            reject(error instanceof Error ? error : new Error(String(error)))
+          })
+      }, waitMs)
       void this.runSubAgent({
         ...request,
         async: true,
@@ -305,6 +370,16 @@ export class AgentRunner {
         reject(error instanceof Error ? error : new Error(String(error)))
       })
     })
+  }
+
+  /**
+   * 创建超时后的回查：同一个 `toolCallId` 是否已经建出子 run。
+   *
+   * 幂等键就是 `runs (parent_run_id, tool_call_id)` 唯一索引 —— 与 `runSubAgent` 的复用判定同一口径。
+   */
+  private async recoverSpawnedChild(request: SubAgentRequest): Promise<RunEntity | null> {
+    if (!request.toolCallId) return null
+    return await this.runs.findChildByToolCall(request.envelope.parentRunId, request.toolCallId)
   }
 
   /**
@@ -597,6 +672,58 @@ export class AgentRunner {
   }
 
   /** 收尾：终态 + 消耗 + 统计 + 实时状态，并把结论交给主 agent */
+  /**
+   * 子助手**每完成一个就唤醒父一次**（增量推进），通知里带同一批的进度。
+   *
+   * 为什么不做批次聚合：父 agent 拿到第一个结果就能开始推进，不必等最慢的那个；
+   * 而「还有谁在跑」由引擎算好写进通知 —— 父 agent 不需要自己数，也不会误以为「都完了」。
+   * 识别语义由通知文案承担（`chat.service` 的 `wakeNoticeText`），不靠模型猜。
+   */
+  private async enqueueSubAgentWake(input: {
+    request: SubAgentRequest
+    subRunId: string
+    conversationId: string
+    status: string
+    text: string
+    error: string | null
+  }): Promise<void> {
+    const runQueue = this.runQueue
+    if (!runQueue) return
+    const parentRunId = input.request.envelope.parentRunId
+    // 同批进度：total / 已完成 / 仍在跑的名字（刚 finish 的这个已进入终态，算「已完成」）
+    let progress: { total: number; completed: number; pending: string[] } | undefined
+    try {
+      const siblings = await this.runs.listChildren(parentRunId)
+      progress = {
+        total: siblings.length,
+        completed: siblings.filter((sibling) => TERMINAL_RUN_STATUSES.has(sibling.status)).length,
+        pending: siblings
+          .filter((sibling) => !TERMINAL_RUN_STATUSES.has(sibling.status))
+          .map((sibling) => sibling.agentKey.replace(/^sub:/, '')),
+      }
+    } catch (error) {
+      // 进度只是「让父 agent 少猜」的锦上添花：查不到就不带，唤醒本身不能因此失败
+      this.logger.warn('ai.subagent.progress_unavailable', { subRunId: input.subRunId, error })
+    }
+
+    await runQueue.enqueue({
+      conversationId: input.request.envelope.conversationId,
+      source: 'subagent',
+      dedupeKey: input.subRunId,
+      payload: {
+        subAgentId: input.conversationId,
+        subRunId: input.subRunId,
+        name: input.request.name,
+        status: input.status,
+        result: input.text,
+        error: input.error,
+        // 唤醒 run 的身份口径随父：admin 的 skill-* 工具在唤醒那一轮不能凭空消失
+        isAdmin: input.request.envelope.isAdmin,
+        ...(progress ? { progress } : {}),
+      },
+    })
+  }
+
   private async finish(
     request: SubAgentRequest,
     subRunId: string,
@@ -640,6 +767,33 @@ export class AgentRunner {
         finishedAt: new Date(),
       })
     }
+    /**
+     * 子 run 的用量补记（父 run 收尾汇总之外的兜底，见 `ConversationRepository.addTokens`）。
+     *
+     * - 子会话：总是记自己那一份（子会话详情要能看消耗）；
+     * - 根会话：**只在父 run 已终态时**补记 —— 父还在跑时由父收尾汇总 `usage.subAgents`，
+     *   两边都记会双计。异步子 agent 下「父先收尾、子后完成」是常态，不补这一笔会话总量就会漏。
+     */
+    if (usage) {
+      const tokens = totalTokensOf(usage)
+      if (tokens > 0) {
+        await this.conversations.addTokens(conversationId, tokens)
+        const parentRun = await this.runs.findEntity(request.envelope.parentRunId)
+        if (!parentRun || !ACTIVE_RUN_STATUSES.has(parentRun.status)) {
+          const rootConversationId =
+            request.envelope.workspaceConversationId ?? parentRun?.conversationId
+          if (rootConversationId && rootConversationId !== conversationId) {
+            await this.conversations.addTokens(rootConversationId, tokens)
+            this.logger.log('ai.usage.subagent_late_rollup', {
+              parentRunId: request.envelope.parentRunId,
+              subRunId,
+              conversationId: rootConversationId,
+              tokens,
+            })
+          }
+        }
+      }
+    }
     const outcome: SubAgentOutcome = {
       subRunId,
       conversationId,
@@ -675,25 +829,16 @@ export class AgentRunner {
       tokenTotal: usage ? usageField(usage, 'totalTokens') : null,
     })
     if (request.async && this.runQueue && status !== RunStatus.Canceled) {
-      void this.runQueue
-        .enqueue({
-          conversationId: request.envelope.conversationId,
-          source: 'subagent',
-          dedupeKey: subRunId,
-          payload: {
-            subAgentId: conversationId,
-            subRunId,
-            name: request.name,
-            status: outcome.status,
-            result: text,
-            error,
-            // 唤醒 run 的身份口径随父：admin 的 skill-* 工具在唤醒那一轮不能凭空消失
-            isAdmin: request.envelope.isAdmin,
-          },
-        })
-        .catch((error: unknown) => {
-          this.logger.error('ai.subagent.enqueue_failed', { subRunId, error })
-        })
+      void this.enqueueSubAgentWake({
+        request,
+        subRunId,
+        conversationId,
+        status: outcome.status,
+        text,
+        error,
+      }).catch((error: unknown) => {
+        this.logger.error('ai.subagent.enqueue_failed', { subRunId, error })
+      })
     }
     if (status === RunStatus.Succeeded && this.memoryExtractor && request.envelope.triggeredBy) {
       // 子会话也有自己的记忆抽取（不阻塞工具结论；失败静默，与主会话同一口径）
@@ -730,14 +875,28 @@ export class AgentRunner {
       name: request.name,
       reason,
     })
-    await this.timelines.append({
-      conversationId: request.envelope.conversationId,
-      runId: request.envelope.parentRunId,
-      role: TimelineRole.System,
-      kind: TimelineKind.Status,
-      payload: { status: 'subagent_rejected', name: request.name, reason },
-      finishedAt: new Date(),
-    })
+    /**
+     * 父 run 已终态时**不再写时间线**：异步拒绝回调可能在父 run 收尾之后才到，
+     * 写进去就是一条"已结束的 run 又冒出新事件"的孤儿（2026-11-15 实测：父 run 17:23:37 结束，
+     * 17:23:50 还被写入一条 subagent_rejected）。拒绝结论本身仍通过返回值交给调用方。
+     */
+    const parentRun = await this.runs.findEntity(request.envelope.parentRunId)
+    if (parentRun && ACTIVE_RUN_STATUSES.has(parentRun.status)) {
+      await this.timelines.append({
+        conversationId: request.envelope.conversationId,
+        runId: request.envelope.parentRunId,
+        role: TimelineRole.System,
+        kind: TimelineKind.Status,
+        payload: { status: 'subagent_rejected', name: request.name, reason },
+        finishedAt: new Date(),
+      })
+    } else {
+      this.logger.warn('ai.subagent.rejected_parent_closed', {
+        parentRunId: request.envelope.parentRunId,
+        name: request.name,
+        reason,
+      })
+    }
     return {
       subRunId: null,
       conversationId: null,

@@ -215,6 +215,27 @@ export class ConversationRepository {
       .execute()
   }
 
+  /**
+   * 只累加 token（**不动轮数**）。
+   *
+   * 子 run 的消耗要走这里补记：它的用量本来由父 run 收尾时汇总，但异步子 agent 下
+   * 「父收尾时子还没跑完」是常态，只靠父汇总会漏记（2026-11-15 实测漏 218 万 / 约 40%）。
+   * 轮数口径不变 —— 一轮问答算一轮，子助手不额外计轮。
+   */
+  async addTokens(id: string, tokens: number): Promise<void> {
+    const repo = await this.repo()
+    await repo
+      .createQueryBuilder()
+      .update(ConversationEntity)
+      .set({
+        totalTokens: () => 'total_tokens + :tokens',
+        lastActiveAt: () => 'now()',
+      })
+      .where('id = :id', { id })
+      .setParameter('tokens', tokens)
+      .execute()
+  }
+
   /** 设置标题（首条消息生成，或用户改名） */
   async setTitle(id: string, title: string): Promise<void> {
     const repo = await this.repo()

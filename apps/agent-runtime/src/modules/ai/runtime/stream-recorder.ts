@@ -114,6 +114,14 @@ export class StreamRecorder {
   private stepStartedAt: number | null = null
   /** 每步耗时（按 `finish-step` 出现顺序；缺的步就是没有值，不编造） */
   private readonly stepDurations: number[] = []
+  /**
+   * 每步的**真实开始时间**（毫秒；按 `start-step` 出现顺序）。
+   *
+   * 步行的 `started_at` 必须用它，不能用落库那一刻：步行是在 `finish()` 里统一补的，
+   * 若按落库时间写，一轮的所有步会挤在同一个毫秒上，步级时间分布就查不出来了
+   * （2026-11-15 实测：主 run 的 10 条 step 全在 17:23:37.64x）。
+   */
+  private readonly stepStartedAts: number[] = []
 
   constructor(
     private readonly timelines: TimelineRepository,
@@ -144,6 +152,7 @@ export class StreamRecorder {
         return
       case 'start-step':
         this.stepStartedAt = Date.now()
+        this.stepStartedAts.push(this.stepStartedAt)
         return
       case 'finish-step': {
         // 步耗时只有这里知道（步行在 finish() 里统一落，见下方注释）
@@ -366,6 +375,10 @@ export class StreamRecorder {
         // 步耗时按 `start-step` / `finish-step` 的时间差记；拿不到就不写（不编 0）
         ...(this.stepDurations[index] !== undefined
           ? { durationMs: this.stepDurations[index] }
+          : {}),
+        // 真实开始时间（不是落库时刻）：步行统一在收尾时补，用 now 会把整轮压成一个时间点
+        ...(this.stepStartedAts[index] !== undefined
+          ? { startedAt: new Date(this.stepStartedAts[index]!) }
           : {}),
       })
     }
