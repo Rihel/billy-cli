@@ -135,3 +135,72 @@ describe('KafkaConfig 快失败默认值', () => {
     expect(config.brokers).toEqual(['a:9092', 'b:9092'])
   })
 })
+
+/** 可控的 kafkajs 连接替身：只实现 `producer()`（warmup / send 用得到的那部分） */
+const makeFakeConnection = (options: { connect?: () => Promise<void> } = {}) => {
+  const connect = vi.fn(options.connect ?? (async () => undefined))
+  const send = vi.fn(async () => [] as never[])
+  const disconnect = vi.fn(async () => undefined)
+  const producer = vi.fn(() => ({ connect, send, disconnect }))
+  return { connection: { producer } as never, connect, send, disconnect, producer }
+}
+
+/** 能断言日志级别的 logger（`makeFakeLogger` 的 calls 是隐藏的，这里单独给一个） */
+const makeTrackingLogger = (): { logger: AppLogger; calls: string[] } => {
+  const calls: string[] = []
+  const logger = {
+    info: () => calls.push('info'),
+    warn: () => calls.push('warn'),
+    error: () => calls.push('error'),
+    debug: () => calls.push('debug'),
+  }
+  return { logger: logger as unknown as AppLogger, calls }
+}
+
+describe('KafkaService.warmup（启动预热生产者）', () => {
+  const config = KafkaConfigSchema.parse({ brokers: '127.0.0.1:29092' })
+
+  it('同步返回、不等建连；预热后 send 复用同一条连接', async () => {
+    let releaseConnect: (() => void) | undefined
+    const pending = new Promise<void>((resolve) => {
+      releaseConnect = resolve
+    })
+    const fake = makeFakeConnection({ connect: () => pending })
+    const { logger, calls } = makeTrackingLogger()
+    const service = new KafkaService(fake.connection, config, logger)
+
+    const startedAt = Date.now()
+    expect(service.warmup(['ai.run.events'])).toBeUndefined()
+    expect(Date.now() - startedAt).toBeLessThan(50)
+
+    // 建连确实在后台发起了（不是被吞掉）
+    await vi.waitFor(() => expect(fake.connect).toHaveBeenCalledTimes(1))
+    releaseConnect?.()
+    await vi.waitFor(() => expect(calls).toContain('info'))
+
+    await service.send('ai.run.events', { hello: 'world' })
+    expect(fake.producer).toHaveBeenCalledTimes(1)
+    expect(fake.connect).toHaveBeenCalledTimes(1)
+    expect(fake.send).toHaveBeenCalledTimes(1)
+    await service.onApplicationShutdown()
+  })
+
+  it('预热失败只记 warn、不抛错，并进入冷却期（send 立即失败）', async () => {
+    const fake = makeFakeConnection({
+      connect: async () => {
+        throw new Error('broker 不可达')
+      },
+    })
+    const { logger, calls } = makeTrackingLogger()
+    const service = new KafkaService(fake.connection, config, logger)
+
+    expect(() => service.warmup(['ai.run.events'])).not.toThrow()
+    await vi.waitFor(() => expect(calls).toContain('warn'))
+    expect(service.getAvailability().available).toBe(false)
+
+    const startedAt = Date.now()
+    await expect(service.send('ai.run.events', {})).rejects.toThrow(KafkaUnavailableError)
+    expect(Date.now() - startedAt).toBeLessThan(150)
+    await service.onApplicationShutdown()
+  })
+})

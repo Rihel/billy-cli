@@ -35,7 +35,8 @@ description: 在 Billy 工程中使用 Kafka 做异步消息与事件驱动：ki
 1. **不阻塞启动**：连接是**惰性**的 —— DI / 构造只建 kafkajs 客户端对象、不发网络请求；
    消费者扫描在 `onApplicationBootstrap` 里**同步返回**、建连走后台浮动 Promise
    （`KafkaConsumerScanner` 因此**不能改成 async**）。实测 broker 黑洞时服务 725ms 可用，
-   不配 Kafka 是 682ms。
+   不配 Kafka 是 682ms。需要「启动即连」的场景（如 runtime 的 AI 输出 topic）用
+   `KafkaService.warmup(topics)`：同样**同步返回**、后台建连，失败只记 warn 并进冷却。
 2. **不拖住请求（快失败）**：建连超时 / kafkajs 重试次数都用本模块的快失败默认值，
    一次失败后进入冷却期，期间 `send` **立即**抛 `KafkaUnavailableError`（带 `retryAfterMs`）。
    调用方据此快速降级（落表 / 进重试 topic / 返回业务成功但记待补），**不要**把 Kafka 故障

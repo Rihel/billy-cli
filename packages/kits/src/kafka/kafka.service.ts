@@ -152,6 +152,28 @@ export class KafkaService implements OnApplicationShutdown {
     })
   }
 
+  /**
+   * 预热生产者：启动时先把连接建起来（同步返回，**绝不 await**）。
+   *
+   * 为什么单独开一个方法、而不是让 `getProducer` 在构造期自动跑：
+   * - DI 构造期发网络请求会拖慢启动，broker 不可达时还会把整个 HTTP 服务一起拖住
+   *   （见类注释的「不阻塞启动」规则）；
+   * - 预热是**尽力而为**：失败只记日志并进冷却，真正 `send` 时再走快失败重试。
+   *
+   * 调用方在 `onApplicationBootstrap` 里直接调即可（Nest 不 await 它的返回值）。
+   * 缓存键与 `send` / `getProducer` 一致，是**逻辑 topic**（真实 topic 名在 `send` 时才拼前缀）。
+   */
+  warmup(topics: readonly string[]): void {
+    for (const topic of topics) {
+      void this.getProducer(topic).catch((error: unknown) => {
+        this.logger.warn('Kafka 生产者预热失败', {
+          topic: this.formatTopicName(topic),
+          reason: error instanceof Error ? error.message : String(error),
+        })
+      })
+    }
+  }
+
   /** 取（并按需创建、订阅）指定 topic 的消费者；同名 + 同后缀复用 */
   getConsumer(topic: string, options: KafkaNameOptions = defaultNameOptions): Promise<Consumer> {
     const topicName = this.formatTopicName(topic, options.usePrefix ?? true)
