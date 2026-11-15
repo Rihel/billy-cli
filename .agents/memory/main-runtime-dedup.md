@@ -1,6 +1,6 @@
 # main / agent-runtime 的共享边界（去重后）
 
-> **查证优先级：抽核** —— 记的是「谁有、谁没有」，2026-11-14 去重后成立；
+> **查证优先级：抽核** —— 记的是「谁有、谁没有」，2026-11-15 更新；
 > 再拆分 / 抽包时先看这张卡再动。
 
 ## 结论
@@ -15,7 +15,7 @@
 | main 的 agent 查询 | `AgentCatalogService` → runtime 内部接口（缓存 30s） | 控制面只查不算；`status/list/instructions` 三个端点由 main 代理 |
 | `app-config.ts` / `config.ts` / `root.module.ts` | 两个 app 各一份 | 组合根与配置 shape 属部署差异，共用反而耦合 |
 | `ai-model` 数据访问 | **只剩 main 一份**；runtime 走 `model-gateway` 目录，不读配置表 | 2026-11-15 删除 runtime `modules/ai-model/**` |
-| `ai-usage` 数据访问 | 仍各一份（**未去重**） | 下一步候选；改动时两边都要同步 |
+| `ai-usage` 数据访问 | `@repo/ai-data`（`src/usage/`） | 查询 / 汇总共用；调度只在 main（runtime 只读指标源） |
 
 **反向约束**：`@repo/monitor` / `@repo/kits` 不得 import `apps/*`；main 不再依赖 `@mastra/*` / `eta`。
 

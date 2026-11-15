@@ -1,3 +1,3 @@
 export * from './ai-usage.module.js'
-export * from './ai-usage.service.js'
-export * from './ai-usage.rollup.service.js'
+export * from './ai-usage.scheduler.js'
+export { AiUsageRollupService, AiUsageService } from '@repo/ai-data'

@@ -1,6 +1,6 @@
 import { Inject, Injectable, type OnApplicationBootstrap } from '@nestjs/common'
 import { AppLogger, RedisStore, Scheduler } from '@repo/kits'
-import { AiUsageService } from './ai-usage.service.js'
+import { AiUsageService } from '@repo/ai-data'
 
 /** AI 用量汇总：每 10 分钟重算今天 + 昨天，Redis 锁保证多实例只跑一个 */
 @Injectable()

@@ -1,6 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common'
 import type { MetricSource, SourceContext } from '@repo/monitor'
-import { AiUsageService, type AiUsageDayData } from '../../ai-usage/ai-usage.service.js'
+import { AiUsageService, type AiUsageDayData } from '@repo/ai-data'
 
 /** AI 用量日表源：按窗口日期读 ai_usage_daily + 维度表 */
 @Injectable()

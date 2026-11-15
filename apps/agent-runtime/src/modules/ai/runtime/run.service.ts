@@ -11,7 +11,7 @@ import type {
 } from '@repo/shared'
 import { AgentConversationService } from './conversation.service.js'
 import { RunRepository } from './run.repository.js'
-import { AiUsageService } from '../../ai-usage/ai-usage.service.js'
+import { AiUsageService } from '@repo/ai-data'
 
 /**
  * 运行查询服务（**只读**）：审计 / 复盘页的数据源。

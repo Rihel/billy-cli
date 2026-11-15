@@ -1,5 +1,5 @@
 import type { AiUsageDailyEntity, AiUsageDailyDimensionEntity } from '@repo/db'
-import type { AiUsageDayData } from '../../ai-usage/ai-usage.service.js'
+import type { AiUsageDayData } from '@repo/ai-data'
 import { defineDerivedMetric, defineRawMetric } from '@repo/monitor'
 import type { MetricDefinition, MetricPoint } from '@repo/monitor'
 

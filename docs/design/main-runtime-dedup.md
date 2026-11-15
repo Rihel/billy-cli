@@ -20,7 +20,8 @@
 | 3 | common 并入 kits | `packages/kits/src/http/{error,request-context,request-logger,request-metrics,http}` | 两个 app 的 `src/common/**` 删除；`security/` 留在 main（依赖 `resolveServerConfig`） |
 | 4 | entities 薄壳直接删 | 模块内直接 `import … from '@repo/db'` | 两个 app 各删 20 个一行 re-export 文件 |
 
-**没有纳入本次**：`ai-model` / `ai-usage` / `app-config.ts` 的整份复制（下一步再评估）、
+**后续已处理**：`ai-model` 的 runtime 副本已删除（改走 model-gateway）、`ai-usage` 已收进 `@repo/ai-data`；
+**仍未纳入**：`app-config.ts` 的整份复制（部署差异，保留）、
 `main.ts` / `root.module.ts` / `config.ts`（每个进程各自的组合根，属合理重复）。
 
 ## 2. 落点细节
@@ -95,4 +96,4 @@ runtime 已有 `AgentService.status()/list()/instructions()`（registry 装配�
 - **缓存**：catalog 缓存 30s，发版后最迟 30s 生效；不缓存 instructions（一次性查询，量小）。
 - **循环依赖**：`@repo/monitor` 只依赖 kits / shared / db；kits 不反向依赖 monitor。
   `ERROR_ALERT_HOOK` 的 token 在 kits，实现在 app 组合根，方向仍是 app → kits。
-- **不动的复制**：`ai-model`、`ai-usage`、`app-config.ts` 仍在两边各一份，本次只记录为下一步。
+- **保留的复制**：`app-config.ts` / `config.ts` / `root.module.ts` 属部署差异；`ai-usage` 的调度只在 main，runtime 只保留只读指标源。
