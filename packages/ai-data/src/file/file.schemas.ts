@@ -45,8 +45,10 @@ export const FileConfigSchema = z.object({
   searchMaxResults: z.number().int().positive().default(50),
   searchMaxLineChars: z.number().int().positive().default(500),
   searchMaxKeywords: z.number().int().positive().default(10),
+  /** `workspace-files` 的**单页条数**（分页靠 offset 翻，不是总量上限） */
   workspaceMaxFiles: z.number().int().positive().default(500),
-  workspaceMaxDepth: z.number().int().positive().default(8),
+  /** 遍历目录的深度上限（噪音目录已单独排除；真正的深层内容靠它兜底防递归异常） */
+  workspaceMaxDepth: z.number().int().positive().default(16),
 })
 
 export type FileConfigValue = z.infer<typeof FileConfigSchema>

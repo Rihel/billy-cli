@@ -72,15 +72,54 @@ const PREVIEW_TTL_MS = 24 * 60 * 60 * 1000
 const PREVIEW_CLEANUP_INTERVAL_MS = 6 * 60 * 60 * 1000
 const PREVIEW_PREFIX = '_preview/'
 
-const IGNORED_DIRS = new Set([
+/**
+ * **噪音目录**：依赖 / 构建 / 缓存 / 编辑器产物。
+ *
+ * 不是安全边界（`bash` 照样能进去读写），只是为了「文件树 / 搜索 / 模型清单」可读：
+ * 一个 `node_modules` 就能把工作区从 20 条撑到两万条，用户和模型都看不出真正的工作内容。
+ *
+ * 判断只按目录名（任何层级），所以 `vendor/` 放在哪儿都会被跳过 —— 需要看它们时用 `bash` 或
+ * `pathPrefix` 直接指到具体位置以外的地方；真要列噪音目录，改这里而不是改面板。
+ */
+const NOISE_DIRS = new Set([
+  // 版本控制 / 依赖
   '.git',
+  '.hg',
+  '.svn',
   'node_modules',
+  'bower_components',
+  'vendor',
+  '.pnpm-store',
+  '.yarn',
+  // 构建 / 产物
   'dist',
   'build',
+  'out',
+  'target',
+  'coverage',
   '.next',
+  '.nuxt',
+  '.svelte-kit',
+  '.output',
+  '.turbo',
+  '.parcel-cache',
+  // 语言 / 工具缓存
   '__pycache__',
+  '.mypy_cache',
+  '.pytest_cache',
   '.venv',
+  'venv',
+  '.cache',
+  '.gradle',
+  '.idea',
+  'Pods',
 ])
+
+/** 噪音文件（纯系统产物，列出来只会干扰阅读） */
+const NOISE_FILES = new Set(['.DS_Store', 'Thumbs.db', 'desktop.ini'])
+
+const isNoiseFile = (name: string): boolean =>
+  NOISE_FILES.has(name) || name.endsWith('.pyc') || name.endsWith('.swp')
 
 const sha256 = (body: Buffer): string => createHash('sha256').update(body).digest('hex')
 
@@ -567,9 +606,10 @@ export class FileService implements OnApplicationBootstrap, OnApplicationShutdow
         if (entry.isSymbolicLink()) continue
         const full = resolve(dir, entry.name)
         if (entry.isDirectory()) {
-          if (IGNORED_DIRS.has(entry.name)) continue
+          if (NOISE_DIRS.has(entry.name)) continue
           await walk(full, depth + 1)
         } else if (entry.isFile()) {
+          if (isNoiseFile(entry.name)) continue
           await scanFile(full)
         }
       }
@@ -587,16 +627,32 @@ export class FileService implements OnApplicationBootstrap, OnApplicationShutdow
     return { items, totalMatches, truncated, scannedFiles }
   }
 
-  /** `workspace-files`：工作区扁平清单 */
+  /**
+   * `workspace-files`：工作区扁平清单（**一维数组**，树由调用方自己拼）。
+   *
+   * 两种取法：
+   * - 默认按页取（一页 = `workspaceMaxFiles`），`hasMore=true` 时带 `offset` 继续翻 ——
+   *   **模型工具走这条**：一次几千条会白烧 token，让它自己决定要不要翻页；
+   * - `all=true` 一次返回全部 —— **右栏文件树走这条**：树要「一次成型」，半加载的树
+   *   会让用户以为文件少了，翻页控件放在树下面也很难用；面板本来就要全量才能建树。
+   *
+   * 顺序必须**确定**：目录项按名字排好再深度优先，否则两次调用的边界会错位（同一文件
+   * 可能翻到两遍、也可能一次都翻不到）。这里不用 `localeCompare`（结果依赖 ICU / 语言环境），
+   * 直接用码位比较，任何机器上顺序都一样。
+   */
   async workspaceFiles(
     ctx: FileContext,
-    input: WorkspaceFilesInput,
+    input: WorkspaceFilesInput & { all?: boolean },
   ): Promise<{
     items: Array<{ path: string; bytes: number; mtime: string }>
     total: number
-    truncated: boolean
+    hasMore: boolean
+    depthLimited: boolean
   }> {
     const config = this.configOf(ctx)
+    const pageSize =
+      input.all === true ? Number.MAX_SAFE_INTEGER : Math.max(1, config.workspaceMaxFiles)
+    const offset = Math.max(0, input.offset ?? 0)
     const root = this.workspaceOf(ctx)
     const start = input.pathPrefix
       ? await resolveWorkspacePath({
@@ -611,20 +667,26 @@ export class FileService implements OnApplicationBootstrap, OnApplicationShutdow
       (input.pathPrefix?.startsWith('uploads/') ?? false)
 
     const items: Array<{ path: string; bytes: number; mtime: string }> = []
-    let truncated = false
+    /** 已经路过的文件数（用于跳过 offset 之前的页） */
+    let cursor = 0
+    let hasMore = false
+    /** 深度上限截掉了更深的目录：与「还有下一页」是两件事，分开报 */
+    let depthLimited = false
 
     const walk = async (dir: string, depth: number): Promise<void> => {
-      if (truncated || depth > config.workspaceMaxDepth) {
-        truncated = truncated || depth > config.workspaceMaxDepth
+      if (hasMore) return
+      if (depth > config.workspaceMaxDepth) {
+        depthLimited = true
         return
       }
       const entries = await readdirSafe(dir)
+      entries.sort((left, right) => (left.name < right.name ? -1 : left.name > right.name ? 1 : 0))
       for (const entry of entries) {
-        if (truncated) return
+        if (hasMore) return
         if (entry.isSymbolicLink()) continue
         const full = resolve(dir, entry.name)
         if (entry.isDirectory()) {
-          if (IGNORED_DIRS.has(entry.name)) continue
+          if (NOISE_DIRS.has(entry.name)) continue
           if (
             !includeCaches &&
             depth === 0 &&
@@ -634,12 +696,19 @@ export class FileService implements OnApplicationBootstrap, OnApplicationShutdow
           }
           await walk(full, depth + 1)
         } else if (entry.isFile()) {
+          // 噪音文件不算进页码：否则 offset 会把「文件真的少了」和「被过滤了」混在一起
+          if (isNoiseFile(entry.name)) continue
           const info = await stat(full).catch(() => null)
           if (!info) continue
-          if (items.length >= config.workspaceMaxFiles) {
-            truncated = true
+          if (cursor < offset) {
+            cursor += 1
+            continue
+          }
+          if (items.length >= pageSize) {
+            hasMore = true
             return
           }
+          cursor += 1
           items.push({
             path: relPath(root, full),
             bytes: info.size,
@@ -651,11 +720,11 @@ export class FileService implements OnApplicationBootstrap, OnApplicationShutdow
 
     const startInfo = await stat(start).catch(() => null)
     if (!startInfo) {
-      if (!input.pathPrefix) return { items: [], total: 0, truncated: false }
+      if (!input.pathPrefix) return { items: [], total: 0, hasMore: false, depthLimited: false }
       throw new FileDeniedError('invalid-input', `目录不存在：${input.pathPrefix}`)
     }
     if (startInfo.isDirectory()) await walk(start, 0)
-    else {
+    else if (offset === 0 && !isNoiseFile(displayName(start))) {
       const info = await stat(start)
       items.push({
         path: relPath(root, start),
@@ -664,8 +733,7 @@ export class FileService implements OnApplicationBootstrap, OnApplicationShutdow
       })
     }
 
-    items.sort((left, right) => left.path.localeCompare(right.path, 'zh-Hans-CN'))
-    return { items, total: items.length, truncated }
+    return { items, total: items.length, hasMore, depthLimited }
   }
 
   /**

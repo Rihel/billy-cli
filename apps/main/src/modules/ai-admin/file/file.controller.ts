@@ -60,6 +60,8 @@ export class AiFileController {
     try {
       return await this.files.workspaceFiles(this.context(input.conversationId), {
         includeCaches: input.includeCaches,
+        // 右栏文件树要**一次成型**：分页的半棵树会让用户以为文件少了（模型工具另走分页）
+        all: true,
       })
     } catch (error) {
       this.rethrow(error)

@@ -252,11 +252,19 @@ export const AgentWorkspaceFileSchema = z.object({
 })
 export type AgentWorkspaceFile = z.infer<typeof AgentWorkspaceFileSchema>
 
-/** 工作区扁平清单 */
+/**
+ * 工作区扁平清单（**一次返回全部**，树由前端自己拼）。
+ *
+ * - `total`：本次返回的条数（噪音目录 / 噪音文件已被服务端排除，这里不是磁盘文件总数）；
+ * - `depthLimited`：遍历被深度上限截断了，真正的文件在更深的目录里（页面要如实说明一句）。
+ *
+ * 没有分页字段：右栏是一次成型的树，半加载的树会让用户以为文件少了；
+ * 模型工具 `workspace-files` 才按页取（省 token），那条链用工具出参里的 `hasMore`。
+ */
 export const AgentWorkspaceListSchema = z.object({
   items: z.array(AgentWorkspaceFileSchema),
   total: z.number().int().nonnegative(),
-  truncated: z.boolean(),
+  depthLimited: z.boolean(),
 })
 export type AgentWorkspaceListModel = z.infer<typeof AgentWorkspaceListSchema>
 

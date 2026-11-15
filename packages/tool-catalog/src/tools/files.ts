@@ -63,6 +63,12 @@ export const WorkspaceFilesInputSchema = z.object({
     .boolean()
     .optional()
     .describe('默认 false，隐藏 files/ 下载缓存与 uploads/ 入站副本'),
+  offset: z
+    .number()
+    .int()
+    .min(0)
+    .optional()
+    .describe('分页起点（默认 0）；返回 hasMore=true 时，用「offset + 本页条数」继续翻下一页'),
 })
 
 export const WriteFileInputSchema = z.object({
@@ -153,7 +159,8 @@ export const WORKSPACE_FILES_TOOL = {
   description: dedent`
     列出 workspace 里的文件，**扁平列表**（不是树）；默认不显示 files/ 下载缓存与 uploads/ 入站副本。
     返回相对路径 / 大小 / mtime，可直接给 read-file / replace-file；要搜索内容用 file-search。
-    只看会话文件（OSS）用 file-list。
+    只看会话文件（OSS）用 file-list。一页 500 条：hasMore=true 时带 offset 翻下一页，不要以为只有这些。
+    自动跳过 node_modules / .git 等依赖与构建目录。
   `,
 } as const
 

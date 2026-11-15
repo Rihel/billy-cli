@@ -3,7 +3,11 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AgentFileModel, ChatAttachmentModel } from '@repo/shared'
-import { FileService, type FileContext } from '../src/modules/ai/files/file.service.js'
+import {
+  DEFAULT_FILE_CONFIG,
+  FileService,
+  type FileContext,
+} from '../src/modules/ai/files/file.service.js'
 import type { AiFileEntity } from '@repo/db'
 import { TEST_TOOL_ENV_CAPS, silentLogger } from './helpers/ai-tool-stack.js'
 
@@ -143,6 +147,66 @@ describe('FileService（文件管理主体）', () => {
     expect(hidden.items.map((item) => item.path)).toEqual(['notes/a.md'])
     const all = await service.workspaceFiles(ctx, { includeCaches: true })
     expect(all.items.map((item) => item.path)).toContain('uploads/x.md')
+  })
+
+  it('workspace-files 跳过依赖 / 构建目录与系统噪音文件', async () => {
+    const { service, ctx } = env
+    await service.writeFile(ctx, { filePath: 'notes/a.md', content: 'x' })
+    await service.writeFile(ctx, { filePath: 'node_modules/pkg/index.js', content: 'x' })
+    await service.writeFile(ctx, { filePath: '.git/HEAD', content: 'x' })
+    await service.writeFile(ctx, { filePath: 'dist/app.js', content: 'x' })
+    await service.writeFile(ctx, { filePath: 'notes/.DS_Store', content: 'x' })
+
+    const result = await service.workspaceFiles(ctx, { includeCaches: true })
+    expect(result.items.map((item) => item.path)).toEqual(['notes/a.md'])
+    expect(result.hasMore).toBe(false)
+    expect(result.depthLimited).toBe(false)
+  })
+
+  it('workspace-files 分页：offset 不重不漏，最后一页 hasMore=false', async () => {
+    const { service, ctx } = env
+    const pageCtx: FileContext = {
+      ...ctx,
+      // 把每页压到 2 条，用 5 个文件验证「翻到底」
+      config: { ...DEFAULT_FILE_CONFIG, workspaceMaxFiles: 2 },
+    }
+    for (const name of ['a.md', 'b.md', 'c.md', 'd.md', 'e.md']) {
+      await service.writeFile(pageCtx, { filePath: `notes/${name}`, content: 'x' })
+    }
+
+    const collected: string[] = []
+    let offset = 0
+    for (let page = 0; page < 10; page += 1) {
+      const result = await service.workspaceFiles(pageCtx, { offset })
+      expect(result.total).toBe(result.items.length)
+      collected.push(...result.items.map((item) => item.path))
+      if (!result.hasMore) break
+      offset += result.items.length
+    }
+
+    // 顺序由目录名 / 文件名决定，且三页拼起来正好是全部 5 个文件（不重不漏）
+    expect(collected).toEqual([
+      'notes/a.md',
+      'notes/b.md',
+      'notes/c.md',
+      'notes/d.md',
+      'notes/e.md',
+    ])
+  })
+
+  it('workspace-files all=true 一次返回全部（右栏文件树走这条）', async () => {
+    const { service, ctx } = env
+    const treeCtx: FileContext = {
+      ...ctx,
+      config: { ...DEFAULT_FILE_CONFIG, workspaceMaxFiles: 2 },
+    }
+    for (const name of ['a.md', 'b.md', 'c.md']) {
+      await service.writeFile(treeCtx, { filePath: `notes/${name}`, content: 'x' })
+    }
+
+    const full = await service.workspaceFiles(treeCtx, { all: true })
+    expect(full.items.map((item) => item.path)).toEqual(['notes/a.md', 'notes/b.md', 'notes/c.md'])
+    expect(full.hasMore).toBe(false)
   })
 
   it('submit 写 OSS 并登记；download 读回工作区', async () => {

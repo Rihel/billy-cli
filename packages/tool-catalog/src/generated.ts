@@ -1355,7 +1355,7 @@ export const ALL_TOOL_MANIFESTS: readonly ToolManifest[] = [
   {
     "key": "workspace-files",
     "title": "列出工作区文件",
-    "description": "列出 workspace 里的文件，**扁平列表**（不是树）；默认不显示 files/ 下载缓存与 uploads/ 入站副本。\n返回相对路径 / 大小 / mtime，可直接给 read-file / replace-file；要搜索内容用 file-search。\n只看会话文件（OSS）用 file-list。",
+    "description": "列出 workspace 里的文件，**扁平列表**（不是树）；默认不显示 files/ 下载缓存与 uploads/ 入站副本。\n返回相对路径 / 大小 / mtime，可直接给 read-file / replace-file；要搜索内容用 file-search。\n只看会话文件（OSS）用 file-list。一页 500 条：hasMore=true 时带 offset 翻下一页，不要以为只有这些。\n自动跳过 node_modules / .git 等依赖与构建目录。",
     "category": "core",
     "scope": "all",
     "executor": "worker",
@@ -1371,6 +1371,12 @@ export const ALL_TOOL_MANIFESTS: readonly ToolManifest[] = [
         "includeCaches": {
           "description": "默认 false，隐藏 files/ 下载缓存与 uploads/ 入站副本",
           "type": "boolean"
+        },
+        "offset": {
+          "description": "分页起点（默认 0）；返回 hasMore=true 时，用「offset + 本页条数」继续翻下一页",
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
         },
         "reason": {
           "type": "string",
