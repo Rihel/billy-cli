@@ -17,6 +17,9 @@
 - **每完成一个子助手就唤醒一次**（不做批次聚合，2026-11-15 定）：父模型拿第一个结果就能推进；
   唤醒通知带同批进度 `{ total, completed, pending[] }`，并明确「还有谁在跑 / 全齐了才做最终汇总」；
   提示词 `assistant.eta` 的「编排子助手」段承载使用口径；
+- **完成卡由消费者写**：dispatcher 消费 queue 项时写；`wait-sub-agent` 抢先消费时由工具补写
+  （`consumeByDedupe` 返回是否命中，天然去重）。wait 不带 `sub_agent_ids` = 等全部子助手（含已完成），
+  返回完整结论；曾只收未完成的 → 全跑完返回空数组（2026-11-15 实测白等 88 秒）；
 - 子 agent 可以使用 planner，**父子 plan 按会话独立**（`envelope.conversationId`，2026-11-15 修正；
   曾用 `parentRunId` 作键，父子撞同一份内存清单，四个子助手互相覆盖任务 id）；
 - 队列项 done/canceled 保留 7 天后可清理（`runs`/`timelines` 仍不删）。

@@ -10,7 +10,7 @@ import { AgentRunner, type SubAgentOutcome } from '../runtime/agent-runner.js'
 import { RunRepository } from '../runtime/run.repository.js'
 import { TimelineRepository } from '../runtime/timeline.repository.js'
 import { ConversationRunQueue } from '../runtime/run-queue.service.js'
-import { RunStatus } from '@repo/shared'
+import { RunStatus, TimelineKind, TimelineRole } from '@repo/shared'
 import type { AgentRuntimeEnvelope } from '../core/envelope.js'
 
 /**
@@ -81,6 +81,9 @@ const CancelSubAgentInputSchema = z.object({
 })
 
 const NoConfigSchema = z.object({})
+
+/** `sub-agent-list` 里每个已完成的子助手最多带多少字摘要（完整结论用 wait-sub-agent 取） */
+const LIST_SUMMARY_CHARS = 2_000
 
 /**
  * **子 agent 工具**（`run-sub-agent`）：主 agent 用它**在运行期创建**子 agent。
@@ -171,7 +174,8 @@ export class RunSubAgentTool {
     config: NoConfigSchema,
     description: dedent`
       查看当前这一轮派出的子 agent 状态（运行中 / 成功 / 失败 / 取消）。
-      非阻塞，不等待、不消费结果；要看完整结论用 wait-sub-agent，要取消用 cancel-sub-agent。
+      非阻塞，不等待、不消费结果；要看完整结论用 wait-sub-agent（传 sub_agent_ids），要取消用 cancel-sub-agent。
+      已完成的子助手只带摘要（最多 2000 字，超出会标 summaryTruncated）—— 别把摘要当完整结论。
       什么时候用：想知道子助手跑到哪了、有没有失败；不要用它代替等待。
     `,
   })
@@ -186,16 +190,25 @@ export class RunSubAgentTool {
     const agents: Array<Record<string, unknown>> = []
     for (const child of latest.values()) {
       if (input.status && child.status !== input.status) continue
-      const summary =
+      const full =
         child.status === RunStatus.Succeeded
-          ? ((await this.timelines.lastTextOfRun(child.id)) ?? '').slice(0, 500)
-          : null
+          ? ((await this.timelines.lastTextOfRun(child.id)) ?? '')
+          : ''
+      const summary =
+        child.status === RunStatus.Succeeded ? full.slice(0, LIST_SUMMARY_CHARS) : null
       agents.push({
         subAgentId: child.conversationId,
         currentRunId: child.id,
         name: child.agentKey.replace(/^sub:/, ''),
         status: child.status,
         resultSummary: summary,
+        // 明确标注截断：否则模型会把摘要当成完整结论，直接拿它写汇总（实测踩过）
+        ...(full.length > LIST_SUMMARY_CHARS
+          ? {
+              summaryTruncated: true,
+              summaryHint: '摘要已截断；完整结论用 wait-sub-agent 传 sub_agent_ids 获取',
+            }
+          : {}),
         error: null,
       })
     }
@@ -209,7 +222,8 @@ export class RunSubAgentTool {
     params: WaitSubAgentsInputSchema,
     config: NoConfigSchema,
     description: dedent`
-      等指定的子 agent（或当前父 run 下所有未完成子 agent）完成，返回结论。
+      等指定的子 agent（或当前父 run 下所有子助手）完成，返回完整结论。
+      不传 sub_agent_ids = 等全部子助手；已经完成的也会一起返回（不会返回空数组）。
       最多等 timeout_ms；到点返回 pending，子 agent 会继续跑，父可以继续做别的。
       已经拿到的结果会消费掉，避免父结束后重复唤醒；没有 pending 时不要反复空等。
     `,
@@ -230,25 +244,56 @@ export class RunSubAgentTool {
       const children = await this.runs.listChildren(envelope.parentRunId)
       const latest = new Map<string, (typeof children)[number]>()
       for (const child of children) latest.set(child.conversationId, child)
+      /**
+       * 不指定 `sub_agent_ids` = **当前父 run 下所有子助手**（含已完成的）。
+       *
+       * 曾经这里只收「未完成」的：等它们全部跑完后 `done` 集合为空，
+       * 于是返回 `{ agents: [], pending: [] }` —— 父模型以为结果被消费了，只能再调一次并传 id
+       * （2026-11-15 实测：session t9ums0…，白等 88 秒后拿到空数组）。
+       */
       const targets = [...latest.values()].filter((child) =>
-        input.sub_agent_ids?.length
-          ? input.sub_agent_ids.includes(child.conversationId)
-          : !terminal.has(child.status),
+        input.sub_agent_ids?.length ? input.sub_agent_ids.includes(child.conversationId) : true,
       )
       const done = targets.filter((child) => terminal.has(child.status))
       const pending = targets.filter((child) => !terminal.has(child.status))
       if (pending.length === 0 || Date.now() >= deadline) {
         const agents: Array<Record<string, unknown>> = []
         for (const child of done) {
-          await this.runQueue.consumeByDedupe(child.id)
+          const result =
+            child.status === RunStatus.Succeeded
+              ? ((await this.timelines.lastTextOfRun(child.id)) ?? '')
+              : ''
+          /**
+           * 消费队列项 = 这一次不会再起唤醒 run。**卡由消费者写**：
+           * - 不 wait 的正常路径由 dispatcher 消费并写卡（`wakeCard`）；
+           * - wait 抢先消费时 dispatcher 拿不到这一项，卡就会永远缺失（实测：父会话里一张完成卡都没有）。
+           * `consumeByDedupe` 只对 `queued` 生效且返回是否命中，所以两条路径天然不重复。
+           */
+          const consumed = await this.runQueue.consumeByDedupe(child.id)
+          if (consumed) {
+            await this.timelines.append({
+              conversationId: envelope.conversationId,
+              runId: envelope.parentRunId,
+              role: TimelineRole.System,
+              kind: TimelineKind.Status,
+              payload: {
+                status: 'subagent_completed',
+                subAgentId: child.conversationId,
+                subRunId: child.id,
+                name: child.agentKey.replace(/^sub:/, ''),
+                childStatus: child.status,
+                summary: result ? result.slice(-500) : null,
+                error: child.errorMessage ?? null,
+                childConversationId: child.conversationId,
+              },
+              finishedAt: new Date(),
+            })
+          }
           agents.push({
             subAgentId: child.conversationId,
             currentRunId: child.id,
             status: child.status,
-            result:
-              child.status === RunStatus.Succeeded
-                ? ((await this.timelines.lastTextOfRun(child.id)) ?? '')
-                : null,
+            result: child.status === RunStatus.Succeeded ? result : null,
           })
         }
         return {

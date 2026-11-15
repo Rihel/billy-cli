@@ -227,6 +227,13 @@ output: { canceled: boolean, status }
   不必等最慢的那个；「还有谁在跑」由通知里的进度给出，它不用自己数（数错就会提前写汇总）；
 - 提示词（`assistant.eta` 的「编排子助手」段）明确教了这条语义：一次派出去、派完继续做、
   每个完成都会通知、还有在跑就别提前汇总、要主动等用 `wait-sub-agent`；
+- **完成卡由「消费队列项的一方」写**：正常路径是 dispatcher 消费并写；父模型在 `wait-sub-agent`
+  里抢先消费时由工具补写（`consumeByDedupe` 只对 `queued` 生效并返回是否命中，两条路径天然不重复）。
+  否则 wait 一消费，卡就永远缺失（2026-11-15 实测：父会话里一张完成卡都没有）；
+- `wait-sub-agent` **不带 `sub_agent_ids` = 当前父 run 下全部子助手**（含已完成的），
+  返回完整结论 + 仍未完成的 `pending`；曾只收「未完成」的，全跑完后返回空数组，父模型白等 88 秒；
+- `sub-agent-list` 的 `resultSummary` 上限 2000 字，超出会标 `summaryTruncated` 并提示
+  「完整结论用 wait-sub-agent 传 sub_agent_ids」—— 摘要不能当完整结论用；
 - 这一轮**不在时间线写用户消息**（只写系统卡），但发给模型的收尾消息是 `user` 角色 ——
   「时间线证据」与「模型输入」是两件事，不要混为一谈；
 - 如果父模型在 `wait-sub-agent` 里已经拿过同一结果，队列项已消费，不会再建 run。
