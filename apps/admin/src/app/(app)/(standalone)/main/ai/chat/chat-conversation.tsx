@@ -1117,7 +1117,15 @@ export function ChatConversation({ conversationId }: { conversationId: string })
             }
           }
 
-          await sendMessage(
+          /**
+           * **不 await**：AI SDK 的 `sendMessage` 要等整轮流结束才 resolve，而 `PromptInput`
+           * 是「onSubmit resolve 后才清空输入框」—— await 它会让用户在整个回复期间
+           * 看到旧内容还留在输入框里（表现为「发完消息没清空」）。
+           *
+           * 这里只等「提交完成」：失败仍会通过 useChat 的 error 状态 + 下面的 catch 提示；
+           * 附件上传失败那种**提交前**的错误依旧 throw（PromptInput 会保留输入让用户重试）。
+           */
+          void sendMessage(
             {
               text: content,
               // 直接把附件 part 交给 useChat：消息里因此带上 file part，气泡里就能显示附件。
@@ -1126,7 +1134,9 @@ export function ChatConversation({ conversationId }: { conversationId: string })
               ...(messageFiles.length > 0 ? { files: messageFiles } : {}),
             },
             { metadata: { attachments } },
-          )
+          ).catch((sendError: unknown) => {
+            toastError(sendError instanceof Error ? sendError.message : '发送失败，请重试')
+          })
         }}
       >
         {/* 待发附件条：粘完、发之前就能看清带了什么（图给缩略图，别的给文件名与大小） */}
