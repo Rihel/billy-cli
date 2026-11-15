@@ -64,12 +64,6 @@ export const ALL_TOOL_MANIFESTS: readonly ToolManifest[] = [
           "minLength": 1,
           "maxLength": 512
         },
-        "timeout_ms": {
-          "description": "这次命令最多等多久（毫秒）；省略用服务端默认值（超过服务端上限会被夹到上限）",
-          "type": "integer",
-          "exclusiveMinimum": 0,
-          "maximum": 120000
-        },
         "reason": {
           "type": "string",
           "minLength": 1,
@@ -690,7 +684,7 @@ export const ALL_TOOL_MANIFESTS: readonly ToolManifest[] = [
   {
     "key": "replace-file",
     "title": "替换工作区文件内容",
-    "description": "在 workspace 文本文件里做**精确字符串替换**（不是正则）；默认要求 oldText 唯一匹配。\n大文件先用 file-search 定位，再拿更长的唯一片段替换。\n只改文本；单次内容上限 1MB；路径必须在本会话 workspace 内。",
+    "description": "在 workspace 文本文件里做**精确字符串替换**（不是正则）；默认要求 oldText 唯一匹配。\n大文件先用 file-search 定位，再拿更长的唯一片段替换。\n只改文本；单次内容上限 10MB；路径必须在本会话 workspace 内。",
     "category": "core",
     "scope": "all",
     "executor": "worker",
@@ -1125,7 +1119,7 @@ export const ALL_TOOL_MANIFESTS: readonly ToolManifest[] = [
   {
     "key": "wait-sub-agent",
     "title": "等待子助手",
-    "description": "等指定的子 agent（或当前父 run 下所有子助手）完成。\n不传 sub_agent_ids = 等本会话所有未完成的子助手（跨轮可见）；传了就等指定的（已完成的也返回）。\n返回每个子助手的 path + 行数 + 字节数（不返回摘要）；**正文用 read-file 读 path**（按行分页、可续读）。\n最多等 timeout_ms；到点返回 pending，子 agent 会继续跑，父可以继续做别的。\n已经拿到的结果会消费掉，避免父结束后重复唤醒；没有 pending 时不要反复空等。",
+    "description": "等指定的子 agent（或当前父 run 下所有子助手）完成。\n不传 sub_agent_ids = 等本会话所有未完成的子助手，**外加已完成但通知还没被收口的子**（跨轮可见）；\n传了就等指定的（已完成的也返回）。\n返回每个子助手的 path + 行数 + 字节数（不返回摘要）；**正文用 read-file 读 path**（按行分页、可续读）。\n最多等 timeout_ms；到点返回 pending，子 agent 会继续跑，父可以继续做别的。\n拿到的结果会被消费掉（之后不会再为它唤醒你）；没有 pending 时不要反复空等。",
     "category": "core",
     "scope": "all",
     "executor": "server",
@@ -1394,7 +1388,7 @@ export const ALL_TOOL_MANIFESTS: readonly ToolManifest[] = [
   {
     "key": "write-file",
     "title": "写入工作区文件",
-    "description": "把完整内容写入 workspace 文件（整文件覆盖）；父目录自动创建。\n局部改用 replace-file，末尾追加用 append-file。只写文本；单次内容上限 1MB。\n路径必须在本会话 workspace 内；不要写 files/ 缓存（会被重新下载覆盖）。",
+    "description": "把完整内容写入 workspace 文件（整文件覆盖）；父目录自动创建。\n局部改用 replace-file，末尾追加用 append-file。只写文本；单次内容上限 10MB（超大内容分段写 / 追加）。\n路径必须在本会话 workspace 内；不要写 files/ 缓存（会被重新下载覆盖）。",
     "category": "core",
     "scope": "all",
     "executor": "worker",
