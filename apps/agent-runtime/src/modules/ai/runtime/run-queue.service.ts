@@ -25,6 +25,18 @@ const MAX_QUEUED_PER_CONVERSATION = 50
 const lockKey = (conversationId: string): string => `ai:run-queue:dispatch:${conversationId}`
 
 /**
+ * 「这个子 run 的结果已经交付给父 agent」的标记键（`dedupeKey` = 子 run id）。
+ *
+ * 为什么除了队列行还要一个标记：队列行只在**入队之后**才存在，而子 run 翻终态在入队之前
+ * （落结论文件、回写用量都在中间），父的 `wait-sub-agent` 可能先拿到结果、那时还没有队列行。
+ * 标记把「已交付」这个事实与行的存在解耦，入队端与调度端都查它。
+ */
+const consumedKey = (dedupeKey: string): string => `ai:subagent:delivered:${dedupeKey}`
+
+/** 标记保留 7 天：足够覆盖「父 run 迟迟不收尾 / 进程重启」的窗口，又不无限涨 */
+const CONSUMED_TTL_SECONDS = 7 * 24 * 3600
+
+/**
  * 父会话的 root run 队列（异步子 agent 的基础设施）。
  *
  * 只做**调度意图**：入队、取队首、标记状态、取消、回收卡死的 dispatching。
@@ -208,6 +220,37 @@ export class ConversationRunQueue {
       .where('dedupeKey = :dedupeKey AND status = :status', { dedupeKey, status: 'queued' })
       .execute()
     return (result.affected ?? 0) > 0
+  }
+
+  /**
+   * 标记「这个子 run 的结果已经交付父 agent」，之后不再为它唤醒。
+   *
+   * 与 {@link consumeByDedupe} 的区别：那个改的是**已经存在的队列行**，这个记的是**事实**，
+   * 所以入队晚到（队列行还没建）时也能挡住 —— 两者配合才没有时序窗口。
+   */
+  async markConsumed(dedupeKey: string): Promise<void> {
+    await this.redis.set(consumedKey(dedupeKey), '1', CONSUMED_TTL_SECONDS)
+  }
+
+  /** 该子 run 的结果是否已交付父 agent */
+  async isConsumed(dedupeKey: string): Promise<boolean> {
+    return (await this.redis.exists(consumedKey(dedupeKey))) > 0
+  }
+
+  /**
+   * 本会话里**还排着队、没被消费**的子 agent 完成项（返回 `dedupeKey` = 子 run id）。
+   *
+   * `wait-sub-agent` 用它把「已经完成、但唤醒还没被谁消费」的子也收进这次收口：
+   * 否则它们会在父 run 结束后补一轮唤醒（2026-11-15 实测：父已经读过结论，仍被唤醒一次）。
+   */
+  async listQueuedSubAgentKeys(conversationId: string): Promise<string[]> {
+    const rows = await this.db.getRepository(ConversationRunQueueEntity).find({
+      where: { conversationId, source: 'subagent', status: 'queued' },
+      select: { dedupeKey: true },
+    })
+    return rows
+      .map((row) => row.dedupeKey)
+      .filter((key): key is string => typeof key === 'string' && key.length > 0)
   }
 
   async pendingCount(conversationId: string): Promise<number> {

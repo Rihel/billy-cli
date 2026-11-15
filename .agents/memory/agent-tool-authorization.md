@@ -16,6 +16,9 @@
   `chat.service.ts` 的 `buildRuntimeContext` 先构造 caller（`isAdmin` + `rootAgentKey`）再调
   `authorizedChildToolbox(definition.tools, caller)`（不再用同步的 `childToolbox` 裸版）。
 - 快照里的 `toolKeys` 是**展开后的具体 key**（`this.toolRegistry.expand(...)`），不是选择器。
+- **`child` 默认 `'allow'`**：`@ToolGroup` / `@ToolDecl` 不写 `child` 就是子 agent 可用；
+  `FileTools` 没有显式 `deny`，所以子助手能读写工作区（2026-11-15 实测：子 run 快照含 `write-file` / `file-submit`）。
+  要「只给主 agent」必须显式 `child: 'deny'` —— 文案与工具面不要互相假定。
 
 ## 坑：身份没进运行时信封 = admin 工具整组消失（2026-11-11 实测）
 

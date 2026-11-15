@@ -16,6 +16,7 @@ import { toUiStream } from '../mastra/stream.adapter.js'
 import { toRequestContext } from '../mastra/context.adapter.js'
 import { toMastraTools } from '../mastra/tool.adapter.js'
 import { ToolRegistry } from '../core/tools/tool.registry.js'
+import type { Toolbox } from '../core/tools/tools.types.js'
 import { ToolCallMetaStore } from '../core/tools/tool.meta.js'
 import { AgentConfig, type AgentConfig as AgentConfigValue } from '../core/config.js'
 import type { AgentRuntimeEnvelope } from '../core/envelope.js'
@@ -141,8 +142,8 @@ const TERMINAL_RUN_STATUSES = new Set<string>([
  * （它的提示词由主 agent 现写），于是它不知道自己手上有什么、也不知道"不能再造子助手"这条边界。
  * 这段尾巴不覆盖主 agent 的原话，只补三件事：工具清单、边界、交付要求。
  */
-const withCapabilityTail = (writtenByParent: string, envelope: AgentRuntimeEnvelope): string => {
-  const tools = [...envelope.childToolbox.keys()]
+const withCapabilityTail = (writtenByParent: string, toolbox: Toolbox): string => {
+  const tools = [...toolbox.keys()]
   const toolList = tools.length > 0 ? tools.map((key) => `\`${key}\``).join('、') : '（无）'
   return dedent`
     ${writtenByParent.trim()}
@@ -412,6 +413,17 @@ export class AgentRunner {
       return this.rejected(request, startedAt, '父会话不存在，无法创建子会话')
     }
 
+    /**
+     * 子 agent **最终**的系统指令 = 主 agent 现写的那份 + 能力边界尾巴。
+     *
+     * 只依赖信封（工具面），所以子会话一建好就能落库；同一份字符串既写进子会话的系统指令快照，
+     * 又交给 `createMastraAgent` —— 「面板/审计看到的那份」与「我们交给运行时的那份」是同一个值，
+     * 不靠两处各拼一遍（那正是漂移的来源）。
+     * **不是**模型最终收到的 system：Mastra 在请求侧还会追加 `<available_skills>` 技能目录段
+     * （2026-11-15 实测，主会话同样如此），那一段不在快照里。
+     */
+    const childInstructions = withCapabilityTail(request.systemPrompt, envelope.childToolbox)
+
     let child: { id: string }
     let agentKey: string
     let childConversationId = envelope.conversationId
@@ -512,6 +524,34 @@ export class AgentRunner {
         toolKey: 'run-sub-agent',
       })
       const now = new Date()
+      /**
+       * 子会话的**系统指令快照**（与主会话同一套机制：时间线 `kind=system` 一行，后到者为准）。
+       *
+       * 为什么必须落这一行：右栏「系统指令」与审计页都按"这个会话实际送进模型的那份"取数
+       * （`latestSystemPrompt`）。子 agent 的提示词是主 agent 现写的，原先只在
+       * `runs.request_snapshot` 里存了**原稿**（不含上面那段能力边界），于是面板既看不到它、
+       * 子会话页还会拿 `sub:<名字>` 去查 agent 目录报 3303。
+       *
+       * 顺序刻意放在任务行**之前**：审计页按 seq 看时间线时，先"它被要求怎么写"、再"交给它什么"。
+       *
+       * 只在新创建时写：中断重启用的是同一份 `system_prompt`（快照已在首跑落过），
+       * 重写只会多一条同文本的行。真漏了（崩溃发生在落快照与建 run 之间）也只是退化成
+       * "没有快照、回主 agent 原稿"，不会说错话。
+       */
+      await this.timelines.append({
+        conversationId: childConversationId,
+        runId: child.id,
+        role: TimelineRole.System,
+        kind: TimelineKind.System,
+        payload: {
+          text: childInstructions,
+          agentKey,
+          // 子 agent 没有"首轮运行环境"这一段；标 false 以免被当成主会话的形态
+          environmentInjected: false,
+          subagent: true,
+        },
+        finishedAt: now,
+      })
       await this.timelines.append({
         conversationId: childConversationId,
         runId: child.id,
@@ -586,7 +626,7 @@ export class AgentRunner {
         id: `${agentKey}#${child.id}`,
         name: request.name,
         // **完全用主 agent 写的提示词** + 我们追加的一段能力尾巴（工具清单 / 边界 / 交付要求）
-        instructions: withCapabilityTail(request.systemPrompt, childEnvelope),
+        instructions: childInstructions,
         model: () => toMastraModel(model),
         tools: toMastraTools(envelope.childToolbox, this.logger),
         skills: toMastraSkills(envelope.skills),
@@ -620,7 +660,13 @@ export class AgentRunner {
         await recorder.consume(chunk)
         const delta = this.toDelta(chunk)
         if (delta) {
-          text += delta.text
+          /**
+           * **结论正文只收 `text`**：推理是过程，时间线与实时流各自存一份，
+           * 不能拼进 `text` —— 它同时是落盘结论、唤醒 payload 与卡片摘要的来源。
+           * 踩过（2026-11-15）：子助手结论文件前 101 行全是 CoT，父 agent `read-file`
+           * 读结论时把整段思考读进自己的上下文，白烧 token 还干扰判断。
+           */
+          if (delta.kind === 'text') text += delta.text
           await this.writeDelta(request, child.id, delta.kind, delta.text)
         }
         const event = this.toEvent(chunk)
@@ -734,6 +780,21 @@ export class AgentRunner {
   }): Promise<void> {
     const runQueue = this.runQueue
     if (!runQueue) return
+    /**
+     * 结果已经被父 agent 拿走（`wait-sub-agent` 消费过）→ **不再唤醒**。
+     *
+     * 为什么入队端也要查：`runs.finish` 把状态翻成终态在前，落结论文件、回写用量、入队在后，
+     * 中间那段空档里父的 `wait-sub-agent` 已经能看到"已完成"并把结果拿走 ——
+     * 只靠 `consumeByDedupe`（只对已有的 `queued` 行生效）会漏掉这一笔，
+     * 于是父 run 结束后又起一轮"延迟到达"的唤醒（2026-11-15 实测：一次多烧 9.2 万 token）。
+     */
+    if (await runQueue.isConsumed(input.subRunId)) {
+      this.logger.log('ai.subagent.wake_skipped_consumed', {
+        parentRunId: input.request.envelope.parentRunId,
+        subRunId: input.subRunId,
+      })
+      return
+    }
     const parentRunId = input.request.envelope.parentRunId
     // 同批进度：total / 已完成 / 仍在跑的名字（刚 finish 的这个已进入终态，算「已完成」）
     let progress: { total: number; completed: number; pending: string[] } | undefined

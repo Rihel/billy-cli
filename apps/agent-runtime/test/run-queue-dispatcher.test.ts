@@ -35,7 +35,11 @@ import { AgentTitleService } from '../src/modules/ai/runtime/title.service.js'
 import { buildToolStackDeps, makeBashTool } from './helpers/ai-tool-stack.js'
 import { stubAttachments } from './helpers/attachments.js'
 import {
+  MOCK_CHILD_MARKER,
+  MOCK_CHILD_TEXT,
   MOCK_FINAL_TEXT,
+  MOCK_REASONING_MARKER,
+  MOCK_REASONING_TEXT,
   startMockModelServer,
   type MockModelServer,
 } from './helpers/mock-model-server.js'
@@ -499,6 +503,20 @@ describe('异步子 agent 唤醒 dispatcher（真实 DB + 假模型）', () => {
     expect(await dispatcher.dispatch(conversationId)).toBe(false)
   })
 
+  it('结果已被父 wait 收口（已交付标记）→ 迟到的队列项直接收尾，不起唤醒 run', async () => {
+    const conversationId = await createConversation()
+    const { subRunId } = await seedWakeItem(conversationId)
+    // 父的 `wait-sub-agent` 抢先拿到结果并打了「已交付」标记（子 run 先翻终态、后入队的那条路径）
+    await queue.markConsumed(subRunId)
+
+    expect(await dispatcher.dispatch(conversationId)).toBe(false)
+    expect((await queue.findByDedupe(subRunId))?.status).toBe('done')
+    const wakeRuns = (await db.getRepository(RunEntity).find({ where: { conversationId } })).filter(
+      (run) => run.origin === 'subagent',
+    )
+    expect(wakeRuns).toHaveLength(0)
+  })
+
   it('chatStream 会话忙时入队（不再 3306），调度后正常落用户消息与回复', async () => {
     const conversationId = await createConversation()
     const activeRunId = await seedActiveRun(conversationId)
@@ -612,6 +630,66 @@ describe('异步子 agent 唤醒 dispatcher（真实 DB + 假模型）', () => {
     )
     expect(wakeRun).toBeTruthy()
     expect(wakeRun?.parentRunId).toBeNull()
+  })
+
+  it('子助手的思考不进结论正文（推理单独落时间线，唤醒 payload 只有正文）', async () => {
+    const conversationId = await createConversation()
+    const parentRunId = await seedActiveRun(conversationId)
+    const model = {
+      id: 'model_mock',
+      modelRef: 'mock/mock-model',
+      modelKey: 'mock-model',
+      displayName: 'Mock 模型',
+      providerKind: 'openai-compatible',
+      baseURL: mock.baseURL,
+      apiKey: 'test-key',
+      contextWindow: null,
+      inputModalities: null,
+    }
+    const envelope = {
+      conversationId,
+      workspaceConversationId: conversationId,
+      parentRunId,
+      triggeredBy: USER,
+      isAdmin: false,
+      fileAccess: 'workspace-write',
+      depth: 0,
+      agentKey: DEFAULT_AGENT_KEY,
+      rootAgentKey: DEFAULT_AGENT_KEY,
+      model,
+      childToolbox: new Map(),
+      skills: [],
+    } as never
+
+    const spawned = await runner.spawnSubAgent({
+      name: '带思考的核对',
+      systemPrompt: `你是核对助手 ${MOCK_CHILD_MARKER}，只输出一句话核对结论。`,
+      task: `${MOCK_REASONING_MARKER} 核对 1+1=2，给一句话结论。`,
+      toolCallId: `call_${randomUUID().replace(/-/g, '').slice(0, 12)}`,
+      envelope,
+    })
+
+    await waitFor(async () => {
+      const child = await runs.findEntity(spawned.subRunId)
+      if (child?.status !== RunStatus.Succeeded) return false
+      return (await queue.findByDedupe(spawned.subRunId)) !== null
+    })
+
+    // 前提：思考确实流过这一轮（否则这条断言就变成了空转）
+    const page = await timelines.list({ conversationId: spawned.subAgentId, page: 1, size: 100 })
+    const reasoning = page.items.filter((row) => row.kind === TimelineKind.Reasoning)
+    expect(reasoning.some((row) => String(row.payload?.text ?? '').includes('THINKING-ONLY'))).toBe(
+      true,
+    )
+
+    // 回归：结论正文（= 唤醒 payload 的 result，也是落盘文件的内容）只该有正文
+    const queued = await queue.findByDedupe(spawned.subRunId)
+    const result = String((queued?.payload as Record<string, unknown> | null)?.result ?? '')
+    expect(result).toContain(MOCK_CHILD_TEXT)
+    expect(result).not.toContain('THINKING-ONLY')
+    expect(result).not.toContain(MOCK_REASONING_TEXT)
+
+    await runs.finish(parentRunId, { status: RunStatus.Succeeded })
   })
 
   it('stop：级联取消子 run 与待唤醒队列项（用户消息不动）', async () => {

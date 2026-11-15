@@ -520,6 +520,13 @@ describe('对话链路端到端（mock 模型 + 真实数据库）', () => {
     expect(firstSystem).toContain('运行环境（本会话开始时）')
     expect(firstSystem).toContain(describePlatform().label)
     expect(firstSystem).toContain(String(new Date().getFullYear()))
+    /**
+     * 模型请求里的 system = **我们落库的那份快照 + Mastra 追加的技能目录**（`<available_skills>`）。
+     * 追加段不在快照里 —— 快照记的是"我们定义并交给运行时的指令"，不是框架拼完的最终 system。
+     * 右栏「系统指令」据此如实标注来源（2026-11-15 实测；子 agent 侧同一条口径，见
+     * `ai-plan-subagents.test.ts`）。
+     */
+    expect(firstSystem).toContain('<available_skills>')
 
     const beforeSecond = mock.requests.length
     await chat.chat(USER, { conversationId: first.conversationId, message: '那现在呢？' })

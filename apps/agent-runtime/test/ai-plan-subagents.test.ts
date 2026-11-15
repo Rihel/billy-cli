@@ -129,8 +129,8 @@ describe('规划能力（规划工具组 + plan 事件）', () => {
       MOCK_PLAN_DELETE_TOOL,
     ])
     for (const item of specs) {
-      // 规划不是委派类工具（`delegation` 未标记）；但都是 `child: 'deny'`：
-      // 清单归属发起这一轮的主 agent（也顺手堵住"子 agent 的清单顶掉父的当前计划"）
+      // 规划不是委派类工具（`delegation` 未标记）；且 `child: 'allow'` —— 子 agent 也能维护**自己
+      // 那一份**清单（按会话隔离，堵住"子 agent 的清单顶掉父的当前计划"靠的是作用域，不是禁用）
       expect(item.delegation).toBeUndefined()
       expect(item.child).toBe('allow')
       // 说明是"能给模型看"的一段话（什么时候用 / 什么时候不用 / 纪律）
@@ -731,6 +731,25 @@ describe('子 agent（core bean + 运行期动态创建）', () => {
       ),
     ).toBe(true)
 
+    /**
+     * ④-2 子会话的**系统指令快照**：主 agent 原稿 + 运行时追加的「能力与边界」。
+     *
+     * 右栏「系统指令」与审计页都按 `latestSystemPrompt` 取数，子 agent 的提示词是现写的，
+     * 不快照下来就只剩 `request_snapshot.systemPrompt`（**没有**尾巴），面板还会拿
+     * `sub:<名字>` 去查 agent 目录报 3303（2026-11-15 修）。
+     */
+    const systemRow = childRows.find((item) => item.kind === TimelineKind.System)
+    expect(systemRow).toBeDefined()
+    const systemText = String(systemRow?.payload?.text ?? '')
+    expect(systemText).toContain(MOCK_SUBAGENT_PROMPT)
+    expect(systemText).toContain('你的能力与边界')
+    expect(systemRow?.payload?.agentKey).toBe(`sub:${MOCK_SUBAGENT_NAME}`)
+    // 顺序：先"它被要求怎么写"，再"交给它什么"（审计页按 seq 看）
+    const taskRow = childRows.find(
+      (item) => item.kind === TimelineKind.Text && item.role === TimelineRole.User,
+    )
+    expect(systemRow!.seq).toBeLessThan(taskRow!.seq)
+
     // ⑤ 消耗：异步子 run 的用量在自己的 run 里（父 run 已先结束）
     const childUsage = child?.usage as { totalTokens: number }
     expect(childUsage.totalTokens).toBeGreaterThan(0)
@@ -741,7 +760,7 @@ describe('子 agent（core bean + 运行期动态创建）', () => {
   }, 30_000)
 
   it('子 agent 那一轮真的拿到了工具（模型请求里的 tools 不含委派工具）', async () => {
-    const { chat } = await stack()
+    const { chat, runs, timelines } = await stack()
     const before = mock.requests.length
     const result = await chat.chat(USER, { message: `再来一次统计 ${MOCK_DELEGATE_MARKER}` })
     expect(result.status).toBe(RunStatus.Succeeded)
@@ -755,11 +774,39 @@ describe('子 agent（core bean + 运行期动态创建）', () => {
       return typeof system?.content === 'string' && system.content.includes(MOCK_SUBAGENT_PROMPT)
     })
     expect(childRequest).toBeDefined()
+
+    /**
+     * **快照 = 我们交出去的那份完整指令**（主 agent 原稿 + 能力边界尾巴），且与模型请求的 system
+     * **开头逐字一致**。
+     *
+     * 实测口径（2026-11-15）：Mastra 会在 system 末尾追加 `<available_skills>`（技能目录 +
+     * "技能不是工具"的使用说明），所以模型最终收到的 system = 我们的快照 + 框架追加段。
+     * 该追加段不在我们的快照里（主会话的"渲染后快照"同样不含，属于全局既有口径）——
+     * 这条断言把"我们负责的那部分完整"钉住；若哪天 Mastra 不再追加 / 换了标记，这里会失败，
+     * 那时右栏的标签口径也该重新确认。
+     */
+    const child = (await runs.listChildren(result.runId))[0]!
+    const childTimeline = await timelines.list({
+      conversationId: child.conversationId,
+      page: 1,
+      size: 200,
+    })
+    const systemRow = childTimeline.items.find((item) => item.kind === TimelineKind.System)
+    const snapshotText = String(systemRow?.payload?.text ?? '')
+    const childSystem = String(
+      ((childRequest!.messages ?? []) as Array<{ role?: string; content?: unknown }>).find(
+        (message) => message.role === 'system',
+      )?.content ?? '',
+    )
+    expect(snapshotText).toContain(MOCK_SUBAGENT_PROMPT)
+    expect(childSystem.startsWith(snapshotText)).toBe(true)
+    expect(childSystem).toContain('<available_skills>')
+
     const toolNames = (childRequest!.tools as Array<{ function?: { name?: string } }>).map(
       (tool) => tool.function?.name,
     )
-    // 工具面 = 全部 − 委派类 − child:deny：bash 在，run-sub-agent 与四个规划工具都不在
-    // （规划工具都是 `child: 'deny'`：清单归属主 agent，子助手只把结论交回）
+    // 工具面 = 全部 − 委派类 − child:deny：bash 与四个规划工具都在（清单按会话隔离、子助手有自己那份），
+    // 只有 run-sub-agent 这类委派工具被排除（深度天然封顶）
     expect(toolNames).toContain(MOCK_COMMAND_TOOL)
     for (const key of PLAN_KEYS) expect(toolNames).toContain(key)
     expect(toolNames).not.toContain(MOCK_DELEGATE_TOOL)

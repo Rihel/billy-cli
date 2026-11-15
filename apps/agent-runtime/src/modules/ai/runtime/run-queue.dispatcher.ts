@@ -110,6 +110,26 @@ export class ConversationRunQueueDispatcher implements OnModuleInit, OnModuleDes
     const item = await this.queue.claimNext(conversationId)
     if (!item) return false
 
+    /**
+     * 结果已经被父 agent 拿走（`wait-sub-agent` 消费）→ 这一条只是"迟到的唤醒"，直接收尾不起 run。
+     *
+     * 查询点必须在**取到之后、起 run 之前**：`claimNext` 与父的 `wait-sub-agent` 是两条并发路径，
+     * 谁先谁后不确定，只有在这里兜一次才不会起一轮"结论早就用过"的空转（2026-11-15 实测）。
+     */
+    if (
+      item.source === 'subagent' &&
+      item.dedupeKey &&
+      (await this.queue.isConsumed(item.dedupeKey))
+    ) {
+      await this.queue.markDone(item.id)
+      this.logger.log('ai.run_queue.skipped_consumed', {
+        conversationId,
+        queueId: item.id,
+        dedupeKey: item.dedupeKey,
+      })
+      return false
+    }
+
     try {
       const handle = await this.chat.startQueuedTurn(item)
       // run 已创建：立刻落 run_id（进程在"建了 run、还没标 started"之间被杀也能对账）

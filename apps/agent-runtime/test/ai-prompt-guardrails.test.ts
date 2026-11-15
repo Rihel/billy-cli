@@ -116,7 +116,7 @@ describe('提示词纪律句（执行命令 / 能力边界 / 宽泛任务）', (
    * 聊天里的 `html` / `gsap` 围栏、页面里的 HTML / SVG 片段同样算。
    *
    * 所以这句话必须放在**无条件段**（「技能」段），不能塞在 `file-submit` 的 if 里：
-   * 子 agent 没有文件工具，但也可能写围栏。
+   * 子 agent 也可能没有文件工具（父授权裁剪 / 自定义 agent），但也可能写围栏。
    */
   it('写 HTML 一律先加载 html-page：没有文件工具的 agent 也看得到这句', () => {
     const partial = createPromptEngine().renderPartial('partials/requirements', { tools: [] })
@@ -134,5 +134,18 @@ describe('提示词纪律句（执行命令 / 能力边界 / 宽泛任务）', (
     // 2026-11-10 措辞调整：`reason` 的写法从"每次调用"改成"每轮必填"，仍在"要求"段
     expect(prompt).toContain('`reason` 每轮必填')
     expect(prompt).toContain('也是审计证据')
+  })
+
+  /**
+   * `subagents/` 是**引擎的落点**（`subAgentResultPath` 约定 `<名字>-<子runId>.md`）。
+   *
+   * 踩过（2026-11-15，会话 `p4cmqhspjjyuhnfp4dsi`）：主 agent 把「完整报告」指到了
+   * `subagents/<名字>.md`，与引擎的结论文件并存 —— 一个子助手两个文件，不带 run id 的那份
+   * 重跑时还会覆盖；父 agent 最终只读了引擎那份浓缩版，30 KB 全文没人读。
+   */
+  it('子助手落点纪律：`subagents/` 只让引擎写，长文走最终回复或 `reports/`', () => {
+    expect(prompt).toContain('不要让子助手往 `subagents/` 里写文件')
+    expect(prompt).toContain('由引擎自动落盘')
+    expect(prompt).toContain('把全文放在最终回复里')
   })
 })

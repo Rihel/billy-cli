@@ -228,10 +228,11 @@ export class RunSubAgentTool {
     config: NoConfigSchema,
     description: dedent`
       等指定的子 agent（或当前父 run 下所有子助手）完成。
-      不传 sub_agent_ids = 等本会话所有未完成的子助手（跨轮可见）；传了就等指定的（已完成的也返回）。
+      不传 sub_agent_ids = 等本会话所有未完成的子助手，**外加已完成但通知还没被收口的子**（跨轮可见）；
+      传了就等指定的（已完成的也返回）。
       返回每个子助手的 path + 行数 + 字节数（不返回摘要）；**正文用 read-file 读 path**（按行分页、可续读）。
       最多等 timeout_ms；到点返回 pending，子 agent 会继续跑，父可以继续做别的。
-      已经拿到的结果会消费掉，避免父结束后重复唤醒；没有 pending 时不要反复空等。
+      拿到的结果会被消费掉（之后不会再为它唤醒你）；没有 pending 时不要反复空等。
     `,
   })
   async wait(
@@ -250,10 +251,16 @@ export class RunSubAgentTool {
     /**
      * 首轮锁定要等的子助手集合：
      * - 传了 `sub_agent_ids` → 就等这些（已完成的也会返回结果引用）；
-     * - 没传 → 等**本会话当前所有未完成**的子助手（跨轮 / 跨批次；唤醒 run 里同样有效）。
+     * - 没传 → 等**本会话当前所有未完成**的子助手 + **已完成但唤醒还没被消费**的子助手
+     *   （跨轮 / 跨批次；唤醒 run 里同样有效）。
      *
      * 必须锁定而不是每轮重算：不传 id 时「未完成集合」跑完就空了，重算会让 `done` 永远是空数组
      * （2026-11-15 实测：session t9ums0…，白等 88 秒后拿到 `{agents:[], pending:[]}`）。
+     *
+     * 为什么要把「已完成但还没被消费」的也收进来：它们早已跑完、只是父这一轮还在忙，
+     * 完成通知还在队列里排着。父这次收口如果不接，父 run 结束后就会补一轮**延迟唤醒**
+     * （2026-11-15 实测：父已经 `sub-agent-list` + `read-file` 读过那份结论，仍被唤醒、
+     * 回了一句"这条通知是延迟到达的…"，多烧 9.2 万 token）。
      */
     let targetIds: string[] | null = null
     for (;;) {
@@ -261,10 +268,11 @@ export class RunSubAgentTool {
       const latest = new Map<string, (typeof children)[number]>()
       for (const child of children) latest.set(child.conversationId, child)
       if (targetIds === null) {
+        const queuedKeys = new Set(await this.runQueue.listQueuedSubAgentKeys(workspaceId))
         targetIds = input.sub_agent_ids?.length
           ? [...input.sub_agent_ids]
           : [...latest.values()]
-              .filter((child) => !terminal.has(child.status))
+              .filter((child) => !terminal.has(child.status) || queuedKeys.has(child.id))
               .map((child) => child.conversationId)
       }
       const targets = targetIds
@@ -284,9 +292,23 @@ export class RunSubAgentTool {
            * - 不 wait 的正常路径由 dispatcher 消费并写卡（`wakeCard`）；
            * - wait 抢先消费时 dispatcher 拿不到这一项，卡就会永远缺失（实测：父会话里一张完成卡都没有）。
            * `consumeByDedupe` 只对 `queued` 生效且返回是否命中，所以两条路径天然不重复。
+           *
+           * 先打「已交付」标记再消费行：标记管的是**事实**（结果已在父手里），
+           * 入队端与调度端都查它 —— 于是即使这一笔的队列行还没建出来（子 run 先翻终态、
+           * 后入队），晚到的唤醒也会被挡住。
            */
+          await this.runQueue.markConsumed(child.id)
           const consumed = await this.runQueue.consumeByDedupe(child.id)
-          if (consumed) {
+          /**
+           * **卡必须有人写**，否则时间线上就没有"子助手完成"这条证据（用户也看不到那张卡）。
+           * 三种情形：
+           * - `consumed` = true：我们抢到了队列行 → 由我们写（dispatcher 不会再有这一项）；
+           * - 行还在（`dispatching/started/done…`）：已被 dispatcher 取走，它在起 run 时写卡 → 不重复写；
+           * - **行根本不存在**：子 run 先翻终态、队列行还没建，而「已交付」标记会把晚到的入队挡掉
+           *   → dispatcher 永远不会跑，没有第二个人会写 —— 只能由这里补。
+           */
+          const noQueueRow = !consumed && (await this.runQueue.findByDedupe(child.id)) === null
+          if (consumed || noQueueRow) {
             await this.timelines.append({
               conversationId: envelope.conversationId,
               runId: envelope.parentRunId,

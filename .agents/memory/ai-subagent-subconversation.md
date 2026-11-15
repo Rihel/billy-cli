@@ -15,6 +15,9 @@
   （2026-11-15，`session-tabs.tsx`）；嵌套委派（孙 run 不在本层 tab 列表）退回「打开子会话」跳子会话路由，
   子会话**只读**（隐藏输入框、可返回父会话）。
 - 子会话有**自己的 memory thread**（`AgentRunner` 用 childConversationId 建 thread），轮后也走 `MemoryExtractorService`（可选、失败静默）。
+- **系统指令**：子 run 起跑时把「主 agent 原稿 + 能力边界尾巴」写一条 `kind=system` 时间线到子会话；
+  `runs.request_snapshot.systemPrompt` 只有原稿。`instructions` 对子会话**不查 agent 目录**
+  （`sub:<名字>` 会 3303），没快照回 `unrecorded` —— 见 [ai-chat-right-panel](ai-chat-right-panel.md)。
 - **仍未做**：子会话单独 resume、分享（分享目前只支持文件）。
 - 历史子 run 回填：`pnpm db:backfill-subconversations`（默认预览，`-- --apply` 执行；按 `(parent_run_id, tool_call_id)` 建子会话并迁 runs/timelines）。
 - 迁移 `1794700000000-ConversationSubagent`：六个字段 + `uk_conversation_origin`

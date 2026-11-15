@@ -58,10 +58,11 @@ const silentLogger = {
 
 const build = (
   children: Array<Record<string, unknown>>,
-  options: { text?: string; consumed?: boolean } = {},
+  options: { text?: string; consumed?: boolean; queuedKeys?: string[]; rowExists?: boolean } = {},
 ) => {
   const appended: Array<Record<string, unknown>> = []
   const consumed: string[] = []
+  const markedConsumed: string[] = []
   const deps = buildToolStackDeps()
   const tool = new RunSubAgentTool(
     {} as never,
@@ -78,9 +79,19 @@ const build = (
         consumed.push(id)
         return options.consumed ?? true
       },
+      // 队列里到底有没有这一行：默认「有」（已被 dispatcher 取走 / 已被消费）
+      findByDedupe: async (id: string) =>
+        (options.rowExists ?? true) ? { id: `q-${id}`, dedupeKey: id, status: 'started' } : null,
+      // 本会话里还排着队、没被消费的完成项（不传 id 时收口要把它们也接进来）
+      listQueuedSubAgentKeys: async () => options.queuedKeys ?? [],
+      // 「结果已交付父」的事实标记：入队端 / 调度端据此不再唤醒
+      markConsumed: async (id: string) => {
+        markedConsumed.push(id)
+      },
+      isConsumed: async (id: string) => markedConsumed.includes(id),
     } as never,
   )
-  return { deps, tool, appended, consumed }
+  return { deps, tool, appended, consumed, markedConsumed }
 }
 
 describe('sub-agent-list（看状态）', () => {
@@ -173,6 +184,29 @@ describe('wait-sub-agent（等结果）', () => {
     expect(out.timedOut).toBe(false)
   })
 
+  it('不传 id：已完成但通知还没被收口的子也归本次收口（并标记已交付）', async () => {
+    const { deps, tool, consumed, markedConsumed, appended } = build([child()], {
+      queuedKeys: ['sub-run-1'],
+    })
+    const spec = specByKey(tool, TOOL_KEYS.waitSubAgent)
+    const settings = await deps.config.settings(spec)
+    const ctx = makeToolContext({ spec, settings, envelope })
+    const out = (await spec.exec({ timeout_ms: 1 }, ctx as never)) as {
+      agents: Array<Record<string, unknown>>
+      pending: string[]
+      timedOut: boolean
+    }
+
+    // 回归：父收口时如果不接这一笔，父 run 结束后会补一轮「延迟唤醒」
+    expect(out.agents).toHaveLength(1)
+    expect(out.agents[0]!.path).toBe('subagents/剧情主线-sub-run-1.md')
+    expect(out.pending).toEqual([])
+    // 消费队列行 + 打「已交付」事实标记（晚到入队也能挡住）
+    expect(consumed).toEqual(['sub-run-1'])
+    expect(markedConsumed).toEqual(['sub-run-1'])
+    expect(appended).toHaveLength(1)
+  })
+
   it('不传 id：等还在跑的那批，超时返回 pending', async () => {
     const { deps, tool } = build([
       child(),
@@ -217,13 +251,40 @@ describe('wait-sub-agent（等结果）', () => {
     })
   })
 
-  it('队列项已被 dispatcher 消费时不再重复写卡', async () => {
-    const { deps, tool, appended } = build([child()], { consumed: false })
+  it('队列项已被 dispatcher 消费时不再重复写卡（但照样打「已交付」标记）', async () => {
+    const { deps, tool, appended, markedConsumed } = build([child()], { consumed: false })
     const spec = specByKey(tool, TOOL_KEYS.waitSubAgent)
     const settings = await deps.config.settings(spec)
     const ctx = makeToolContext({ spec, settings, envelope })
     await spec.exec({ sub_agent_ids: ['sub-conv-1'], timeout_ms: 1_000 }, ctx as never)
 
     expect(appended).toHaveLength(0)
+    // 队列行被抢走时标记更重要：它挡的是「稍后才入队」的那一笔
+    expect(markedConsumed).toEqual(['sub-run-1'])
+  })
+
+  it('队列行还没建出来（子 run 先翻终态、后入队）时，卡由 wait 补写', async () => {
+    // 这一笔只有 wait 一个消费者：标记挡住晚到的入队 → dispatcher 不会跑 → 没有第二个人写卡
+    const { deps, tool, appended, consumed, markedConsumed } = build([child()], {
+      consumed: false,
+      rowExists: false,
+    })
+    const spec = specByKey(tool, TOOL_KEYS.waitSubAgent)
+    const settings = await deps.config.settings(spec)
+    const ctx = makeToolContext({ spec, settings, envelope })
+    const out = (await spec.exec(
+      { sub_agent_ids: ['sub-conv-1'], timeout_ms: 1_000 },
+      ctx as never,
+    )) as { agents: Array<Record<string, unknown>> }
+
+    expect(out.agents).toHaveLength(1)
+    expect(consumed).toEqual(['sub-run-1']) // 尝试消费了（没命中：行还不存在）
+    expect(markedConsumed).toEqual(['sub-run-1'])
+    // 回归：卡不能丢 —— 时间线上它才是"这个子助手跑完了"的可见证据
+    expect(appended).toHaveLength(1)
+    expect(appended[0]).toMatchObject({
+      kind: TimelineKind.Status,
+      payload: { status: 'subagent_completed', subRunId: 'sub-run-1' },
+    })
   })
 })

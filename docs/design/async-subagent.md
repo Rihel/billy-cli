@@ -177,7 +177,13 @@ output: { agents: SubAgentResult[], pending: string[], timedOut: boolean }
 
 - 父还在跑、想主动收口时用；
 - 默认 `mode='all'`；`timeoutMs` 到点返回 pending，不算失败；
+- **不传 id 时的目标集** = 本会话「未完成」∪「已完成但唤醒还没被消费」（`conversation_run_queue`
+  里还排着 `queued` 的子 run）。后者不接就会在父 run 结束后补一轮延迟唤醒
+  （2026-11-15 实测：父已 `sub-agent-list` + `read-file` 读过结论，仍被唤醒一次、多烧 9.2 万 token）；
 - **消费队列项**：如果该 childRunId 已有 `subagent` 队列项，原子标记 `done`，避免父 run 结束后再唤醒一次；
+- **打「已交付」事实标记**（Redis `ai:subagent:delivered:<subRunId>`，7 天）：队列行只在入队之后才存在，
+  而子 run 翻终态在入队之前 —— 只有标记能挡住「父先拿到结果、队列行后到」这一笔。
+  入队端（`enqueueSubAgentWake`）与调度端（`dispatcher.dispatch`）都查它；
 - 已经在父 run 结束时消费过的结果不再重复。
 
 ### 5.4 `cancel-sub-agent`
@@ -230,10 +236,21 @@ output: { canceled: boolean, status }
 - **完成卡由「消费队列项的一方」写**：正常路径是 dispatcher 消费并写；父模型在 `wait-sub-agent`
   里抢先消费时由工具补写（`consumeByDedupe` 只对 `queued` 生效并返回是否命中，两条路径天然不重复）。
   否则 wait 一消费，卡就永远缺失（2026-11-15 实测：父会话里一张完成卡都没有）；
+- **还有第三种情形也必须补卡**：子 run 先翻终态、队列行还没建时父的 wait 就拿到了结果 ——
+  「已交付」标记会把晚到的入队挡掉，dispatcher 永远不会跑。此时 `wait` 发现「没有队列行」
+  （`findByDedupe` 为 null）就要自己写卡，否则时间线上没有任何"子助手完成"的证据；
 - **子助手结论落工作区文件**（`subagents/<名字>-<subRunId>.md`）：子 run 收尾时写，
+  正文**只收 `text` 增量**（推理是过程，只进时间线与实时流）：踩过 —— 2026-11-15 的结论文件
+  前 101 行全是 CoT，父 agent `read-file` 读结论时把整段思考读进自己的上下文。
   `wait-sub-agent` / `sub-agent-list` 只返回 `path + 行数 + 字节数`（**不返回摘要**：摘要也是重复 token），
   父模型需要正文用 `read-file` 读 path（按行分页、可续读），用户也能在文件树里看到。
   为什么不再整段返回：三份报告几万字全量灌进父上下文，既撑窗口又贵（实测单会话 331 万 token）；
+- **`subagents/` 是引擎的落点，模型不要往里写**：主 agent 只要让子助手「把全文放进最终回复」
+  （引擎负责落盘）或写到 `reports/` 这类业务目录。踩过（2026-11-15 会话 `p4cmqhspjjyuhnfp4dsi`）：
+  主 agent 在子助手的 task 里写了「完整报告落盘到 `subagents/<名字>.md`」→ 一个子助手两个文件
+  （它自己写的 30 KB 全文 + 引擎的 3.4 KB 浓缩版），不带 run id 的那份重跑还会覆盖；
+  父 agent 最终只读了浓缩版，全文没人读。纪律句钉在 `assistant.eta` 的「编排子助手」段，
+  `ai-prompt-guardrails` 看着；
 - **`sub-agent-list` / `wait-sub-agent` 的作用域是会话，不是父 run**：按「子会话的父会话 = 根会话」
   反查（`RunRepository.listSessionChildren`），所以第二轮能看到第一轮派出的子、唤醒 run 里也能看到
   唤起它的那批；`batchRunId` 标出是哪一轮派的。曾按 `parent_run_id` 查 —— 第二轮与唤醒 run 全查不到

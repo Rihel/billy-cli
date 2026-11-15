@@ -19,7 +19,8 @@ export const TOOL_KEYS = {
    * - `plan-delete`：删除任务（支持一次删除多个）
    *
    * 四个工具都返回**完整清单**，于是「当前计划」仍然等于最后一条 `plan` 事件（协议不变）；
-   * 它们都**只给主 agent**（`child: 'deny'`）—— 清单归属发起这一轮的主 agent。
+   * 子 agent 也**可用**（`child: 'allow'`）：清单按**会话**隔离，子会话里是它自己那一份，
+   * 于是"子助手自己的任务清单"可以独立于父会话演进。
    */
   planCreate: 'plan-create',
   planReorder: 'plan-reorder',

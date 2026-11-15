@@ -13,9 +13,16 @@ const logger = {
   debug: () => undefined,
 } as unknown as AppLogger
 
+/** 测试用的内存版 Redis：只实现队列服务用到的那几个命令（锁 + 交付标记） */
+const redisValues = new Map<string, string>()
 const redis = {
   acquireLock: async () => 'lock-token',
   releaseLock: async () => true,
+  set: async (key: string, value: string) => {
+    redisValues.set(key, value)
+    return 'OK'
+  },
+  exists: async (key: string) => (redisValues.has(key) ? 1 : 0),
 } as unknown as RedisStore
 
 const CONV = 'test-run-queue-conv'
@@ -97,5 +104,29 @@ describe('ConversationRunQueue', () => {
     expect(await queue.cancelConversation(CONV, 'subagent')).toBeGreaterThan(0)
     const pending = await queue.pendingCount(CONV)
     expect(pending).toBeGreaterThanOrEqual(1) // 用户项不被 source=subagent 取消
+  })
+
+  it('「已交付」标记：先标记、后入队也能挡住（子 run 翻终态早于入队的那个窗口）', async () => {
+    const subRunId = `${CONV}-late-wake`
+    // 父的 wait 先拿到结果：此时队列行还不存在，只能打事实标记
+    expect(await queue.isConsumed(subRunId)).toBe(false)
+    await queue.markConsumed(subRunId)
+    expect(await queue.isConsumed(subRunId)).toBe(true)
+    expect(await queue.listQueuedSubAgentKeys(CONV)).not.toContain(subRunId)
+  })
+
+  it('listQueuedSubAgentKeys 只回本会话排着队的子 agent 完成项', async () => {
+    // 清掉前面用例留下的 queued 行，本用例只看自己这两条
+    await queue.cancelConversation(CONV)
+    await queue.enqueue({
+      conversationId: CONV,
+      source: 'subagent',
+      payload: {},
+      dedupeKey: `${CONV}-pending-sub`,
+    })
+    await queue.enqueue({ conversationId: CONV, source: 'user', payload: {} })
+    const keys = await queue.listQueuedSubAgentKeys(CONV)
+    // 用户项不是子 agent 完成，不该出现在这个集合里
+    expect(keys).toEqual([`${CONV}-pending-sub`])
   })
 })

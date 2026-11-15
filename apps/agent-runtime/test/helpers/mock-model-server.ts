@@ -218,6 +218,16 @@ export const MOCK_SUBAGENT_TASK = '统计当前待办的完成情况，给出总
 /** 子 agent 那一轮的固定结论文本（父拿到的工具出参里应含它） */
 export const MOCK_CHILD_TEXT = '子助手结论：共 2 条待办，其中 1 条已完成。'
 
+/**
+ * 请求里带这个标记时，先发一段 `reasoning_content` 再发正文（模拟 DeepSeek 形态的思考流）。
+ *
+ * 用途：钉住「**思考不能混进结论正文**」—— 子助手落盘文件 / 唤醒 payload 只该有正文
+ * （2026-11-15 踩过：结论文件前 101 行全是 CoT）。
+ */
+export const MOCK_REASONING_MARKER = '[reasoning]'
+/** 思考片段（刻意做成可辨识的标记串，方便断言"它没出现在结论里"） */
+export const MOCK_REASONING_TEXT = 'THINKING-ONLY：这段是思考过程，不该出现在结论里。'
+
 // ── 命令执行 ───────────────────────────────────────────────────────────────
 /** 用户消息里带这个标记时，模型改为调用「命令执行工具」（验证跨平台跑命令这条链路） */
 export const MOCK_COMMAND_MARKER = '[command]'
@@ -560,8 +570,14 @@ const isTitleTurn = (body: Record<string, unknown>): boolean =>
 /** 这一轮的最终文本（命名 / 子 agent / 主 agent 各用不同文本，便于断言"文本确实来自那一轮"） */
 const finalText = (body: Record<string, unknown>): string => {
   if (isMemoryExtractTurn(body)) return MOCK_MEMORY_EXTRACT_TEXT
+  /**
+   * 子 agent 的判定放在「命名那一轮」之前：子助手**也可能没有工具**
+   * （信封里 `childToolbox` 为空），那时它同样满足 `isTitleTurn` 的指纹，
+   * 先判命名会把子助手的结论文本换成标题文本（测试里断言"结论正文"时就对不上了）。
+   */
+  if (isChildTurn(body)) return MOCK_CHILD_TEXT
   if (isTitleTurn(body)) return MOCK_TITLE_TEXT
-  return isChildTurn(body) ? MOCK_CHILD_TEXT : MOCK_FINAL_TEXT
+  return MOCK_FINAL_TEXT
 }
 
 const isSlow = (body: Record<string, unknown>): boolean =>
@@ -606,6 +622,15 @@ const respondStream = (
       choices: [{ index: 0, delta: { role: 'assistant' }, finish_reason: null }],
     })
     const slow = isSlow(body)
+    // 思考流先于正文（`reasoning_content` 是 DeepSeek 形态的字段名）：只发一次，正文照常逐字
+    if (wanted(body, MOCK_REASONING_MARKER)) {
+      sse(res, {
+        ...base,
+        choices: [
+          { index: 0, delta: { reasoning_content: MOCK_REASONING_TEXT }, finish_reason: null },
+        ],
+      })
+    }
     const text = finalText(body)
     const deltas = slow
       ? sseSlow(res, base, text)
