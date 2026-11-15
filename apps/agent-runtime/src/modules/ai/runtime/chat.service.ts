@@ -2163,7 +2163,10 @@ export class AgentChatService {
 
   /**
    * 断线重连（`GET /agent/run/:runId/stream?offset=N`）：
-   * 先从 Redis 输出记录**补发** `offset` 之后的片段（不重跑、不重复扣费），再接实时广播。
+   * 先从 Redis 输出记录**补发** `offset` 之后的片段（不重跑、不重复扣费），再接实时片段。
+   *
+   * 实时片段的来源按传输模式分：**Kafka 模式**补发完即结束响应体（实时片段由 Kafka → main
+   * 的 SSE 桥写给前端）；**直连模式**挂住 Redis 订阅，边收边写 HTTP 响应。
    *
    * 返回 false 表示"没有进行中的流" → 控制器回 204（AI SDK 的续传约定）。
    */
@@ -2228,10 +2231,18 @@ export class AgentChatService {
     for (const chunk of ordered) {
       if (chunk?.type === STREAM_END_MARKER) {
         ended = true
-        await this.streamStore.publishChunk(runId, { type: STREAM_END_MARKER })
+        // 补发到结束帧：Kafka 模式下让 main 收尾（`final`）；直连模式由下面的 endSse 收尾
+        await this.streamStore.forwardChunk(runId, { type: STREAM_END_MARKER })
         break
       }
-      await this.streamStore.publishChunk(runId, chunk)
+      /**
+       * 补发**只走 Kafka**（装了的话），不再回发 Redis 频道。
+       *
+       * `chunkChannel` 是「生产者 → 订阅者」的单向广播，订阅方往同一个频道回发会自激成
+       * 无限回环：一次重连就能以每秒上万条的速度往 Kafka 灌消息，把 kafkajs 的请求队列
+       * 堆到 GB 级、最终把进程打 OOM（2026-11-15 实测）。补发帧只需写给前端 / main。
+       */
+      await this.streamStore.forwardChunk(runId, chunk)
       writeSse(response, sseFrame(chunk))
     }
     if (ended) {
@@ -2239,7 +2250,22 @@ export class AgentChatService {
       return true
     }
 
-    // 挂住连接，转发实时片段直到客户端断开或本轮结束
+    /**
+     * Kafka 模式：补发完就结束响应体，**不挂订阅**。
+     *
+     * 实时片段由「跑 run 的那一侧」继续发 Kafka（重连时 `bindClient` 已把 clientId 换成新的），
+     * main 的 SSE 桥负责写给前端。这里若像直连模式那样订阅 Redis 频道，订阅到的正是生产者
+     * 发的同一条频道，回调里再转发就会把上面的回环放大成持续风暴。
+     *
+     * 前提：重连请求与生产该 run 的是**同一个副本**（`kafkaMeta` 是进程内 Map）。多副本部署时
+     * 要把这份绑定外置（Redis），否则实时片段仍会发给旧 clientId。
+     */
+    if (this.streamStore.kafkaEnabled) {
+      endSse(response)
+      return true
+    }
+
+    // 直连模式（未装配 Kafka）：挂住连接，把后续片段写进 HTTP 响应直到客户端断开或本轮结束
     await new Promise<void>((resolve) => {
       let unsubscribe: (() => Promise<void>) | null = null
       const finish = (): void => {
@@ -2253,11 +2279,9 @@ export class AgentChatService {
           (chunk) => {
             const typed = chunk as UiChunkLike
             if (typed?.type === STREAM_END_MARKER) {
-              void this.streamStore.publishChunk(runId, { type: STREAM_END_MARKER })
               finish()
               return
             }
-            void this.streamStore.publishChunk(runId, chunk)
             writeSse(response, sseFrame(chunk))
           },
           () => undefined,

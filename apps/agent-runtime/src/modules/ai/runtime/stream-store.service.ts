@@ -1,4 +1,4 @@
-import { Inject, Injectable, Optional } from '@nestjs/common'
+import { Inject, Injectable, Optional, type OnApplicationBootstrap } from '@nestjs/common'
 import { AppLogger, KafkaService, RedisStore } from '@repo/kits'
 import {
   AGENT_RUN_EVENT_TOPIC,
@@ -56,7 +56,7 @@ const CHUNKS_MAX_BYTES = 32 * 1024 * 1024
  * 只会让"实时进度 / 断线补发"降级 —— 所以不需要双写一致性协议。
  */
 @Injectable()
-export class AgentStreamStore {
+export class AgentStreamStore implements OnApplicationBootstrap {
   /** 运行归属：publishChunk 发 Kafka 时带上，main 只推给对应连接 */
   private readonly kafkaMeta = new Map<
     string,
@@ -69,9 +69,30 @@ export class AgentStreamStore {
     @Optional() @Inject(KafkaService) private readonly kafka?: KafkaService,
   ) {}
 
+  /**
+   * 启动时预热 Kafka 生产者：**不 await**（broker 不可达不能拖住启动，见 kits 的
+   * 「不阻塞启动」规则），失败只记日志并进冷却。
+   *
+   * 收益：Kafka 配错/挂掉在启动日志里就能看见（而不是等第一条消息），第一条输出也不用再等建连。
+   * 预热只是把「第一次 send 才建连」提到启动期，连接仍然是进程内按 topic 复用的一条。
+   */
+  onApplicationBootstrap(): void {
+    this.kafka?.warmup([AGENT_RUN_EVENT_TOPIC])
+  }
+
   /** 绑定一次前端连接；没有绑定就不发 Kafka（兼容旧 SSE 路径与单测） */
   bindClient(runId: string, clientId: string, conversationId: string, ownerId: string): void {
     this.kafkaMeta.set(runId, { clientId, conversationId, ownerId })
+  }
+
+  /**
+   * Kafka 是否已装配。
+   *
+   * 两种传输是互斥的（见 `publishChunk`）：装了 Kafka 就只走 Kafka；没装才用 Redis 频道。
+   * 调用方（断线重连）据此决定「补发完要不要挂住订阅」。
+   */
+  get kafkaEnabled(): boolean {
+    return Boolean(this.kafka)
   }
 
   // ── 运行中进度 ────────────────────────────────────────────────
@@ -176,10 +197,39 @@ export class AgentStreamStore {
 
   // ── 跨副本转发 ────────────────────────────────────────────────
 
-  /** 广播一条片段（Redis 给旧 SSE 路径；Kafka 给 main BFF 的 SSE 桥） */
+  /**
+   * 广播一条片段。**两种传输互斥，按是否装配 Kafka 分流**：
+   *
+   * - **Kafka 已装配**：只发 Kafka。main 消费后按 `clientId` 写给前端连接，runtime 不直接服务
+   *   浏览器 —— 此时 Redis 频道没有任何订阅者，publish 是白费；
+   * - **未装配 Kafka（直连模式）**：走 Redis pub/sub。补发是另一个 HTTP 请求，生产者不在
+   *   那个请求里，实时片段只能靠这条频道传过去。
+   *
+   * 注意：`chunkChannel` 是「生产者 → 订阅者」的**单向**广播。订阅方（如断线重连）调它会把
+   * 消息再送回同一频道，自激成无限回环 —— 补发请用 `forwardChunk`。
+   */
   async publishChunk(runId: string, chunk: unknown): Promise<void> {
+    if (this.kafka) {
+      this.emitToKafka(runId, chunk)
+      return
+    }
     await this.redis.publish(chunkChannel(runId), JSON.stringify(chunk))
+  }
 
+  /**
+   * 只发 Kafka、**绝不碰 Redis 频道**：给断线重连的补发用。
+   *
+   * 补发内容本来就在 Redis 列表里（`readChunks`），重发到频道只会让同频道上的其它在线连接
+   * 收到重复帧；而 Kafka 模式下 main 是 drain 掉 runtime 响应体的，补发只能经 Kafka 到前端。
+   * 未装配 Kafka（直连模式）时不用发 —— 调用方直接把补发帧写进 HTTP 响应。
+   */
+  async forwardChunk(runId: string, chunk: unknown): Promise<void> {
+    if (!this.kafka) return
+    this.emitToKafka(runId, chunk)
+  }
+
+  /** 发一条 Kafka 事件（fire-and-forget：Kafka 故障不能拖住模型流） */
+  private emitToKafka(runId: string, chunk: unknown): void {
     const meta = this.kafkaMeta.get(runId)
     if (!meta || !this.kafka) return
     const final = (chunk as { type?: unknown })?.type === '__run_end__'
@@ -191,7 +241,6 @@ export class AgentStreamStore {
       final,
       createdAt: new Date().toISOString(),
     }
-    // Kafka 故障不能拖住模型流：快失败 + 只记日志（Redis 仍是旧路径的兜底）
     void this.kafka.send(AGENT_RUN_EVENT_TOPIC, event, runId).catch((error: unknown) => {
       this.logger.warn('ai.kafka.publish_failed', {
         runId,
