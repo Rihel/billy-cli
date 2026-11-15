@@ -1,10 +1,16 @@
-import { Inject, Injectable } from '@nestjs/common'
+import { Inject, Injectable, Optional } from '@nestjs/common'
 import { ModuleRef } from '@nestjs/core'
 import dedent from 'dedent'
 import { AppLogger } from '@repo/kits'
 import { RunErrorStage, RunStatus, TimelineKind, TimelineRole } from '@repo/shared'
 import { AGENT_MAX_STEPS, SUB_AGENT_MAX_CONCURRENT } from '../core/constants.js'
 import { createMastraAgent, toMastraModel, toMastraModelInstance } from '../mastra/agent.adapter.js'
+import {
+  AGENT_MEMORY,
+  agentMemory as sharedAgentMemory,
+  memoryHistoryOptions,
+  type AgentMemory,
+} from '../mastra/agent-memory.js'
 import { toMastraSkills } from '../mastra/skill.adapter.js'
 import { toUiStream } from '../mastra/stream.adapter.js'
 import { toRequestContext } from '../mastra/context.adapter.js'
@@ -15,6 +21,8 @@ import { AgentConfig, type AgentConfig as AgentConfigValue } from '../core/confi
 import type { AgentRuntimeEnvelope } from '../core/envelope.js'
 import { toUsageRecord, usageField } from './usage.js'
 import { ConversationRepository } from './conversation.repository.js'
+import { MemoryExtractorService } from '../memory/memory.extractor.service.js'
+import { ConversationRunQueue } from './run-queue.service.js'
 import { RunRepository } from './run.repository.js'
 import type { RunEntity } from '@repo/db'
 import { KeyedSemaphore } from './keyed-semaphore.js'
@@ -68,6 +76,10 @@ export interface SubAgentRequest {
   writer?: SubAgentWriter
   /** 四个旋钮（来自工具配置；缺省走部署默认） */
   quotas?: SubAgentQuotas
+  /** 异步模式：创建成功即回调，子 agent 在后台继续跑 */
+  async?: boolean
+  /** 创建成功 / 被拒绝时的回调（异步工具用它返回 task 信息） */
+  onSpawned?: (info: { subAgentId: string; subRunId: string } | null, error?: string) => void
 }
 
 /** Mastra 的工具输出流（`ToolStream` 的最小面；只用到 `write`） */
@@ -153,6 +165,16 @@ export class AgentRunner {
      */
     @Inject(ModuleRef) private readonly moduleRef: ModuleRef,
     @Inject(ConversationRepository) private readonly conversations: ConversationRepository,
+    /** 子会话自己的 memory thread（测试/无 Redis 场景不传，回落进程内实现） */
+    @Optional() @Inject(AGENT_MEMORY) private readonly memory?: AgentMemory,
+    /** 子会话轮后抽取（可选；失败只记日志，不影响工具结论） */
+    @Optional()
+    @Inject(MemoryExtractorService)
+    private readonly memoryExtractor?: MemoryExtractorService,
+    /** 异步子 agent 完成 → 父会话唤醒队列（测试 / 未装配时跳过） */
+    @Optional()
+    @Inject(ConversationRunQueue)
+    private readonly runQueue?: ConversationRunQueue,
   ) {}
 
   /** 子 agent 并发闸门（按父 run 计）：同一轮最多同时跑 `SUB_AGENT_MAX_CONCURRENT` 个 */
@@ -215,6 +237,7 @@ export class AgentRunner {
             toolCallId: request.toolCallId,
           })
           await this.writeState(request, existing.id, { status: existing.status, result: text })
+          request.onSpawned?.({ subAgentId: existing.conversationId, subRunId: existing.id })
           return {
             subRunId: existing.id,
             conversationId: existing.conversationId,
@@ -259,6 +282,29 @@ export class AgentRunner {
     } finally {
       this.subAgentSlots.release(parentRunId)
     }
+  }
+
+  /**
+   * 异步创建子 agent：等到子会话/子 run 建好就返回，执行在后台继续。
+   *
+   * 这是工具层切换到异步的唯一入口；创建失败/配额不足通过 reject 交给工具。
+   */
+  async spawnSubAgent(request: SubAgentRequest): Promise<{ subAgentId: string; subRunId: string }> {
+    return await new Promise((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error('创建子 agent 超时')), 30_000)
+      void this.runSubAgent({
+        ...request,
+        async: true,
+        onSpawned: (info, error) => {
+          clearTimeout(timer)
+          if (info) resolve(info)
+          else reject(new Error(error ?? '子 agent 创建失败'))
+        },
+      }).catch((error: unknown) => {
+        clearTimeout(timer)
+        reject(error instanceof Error ? error : new Error(String(error)))
+      })
+    })
   }
 
   /**
@@ -392,6 +438,7 @@ export class AgentRunner {
         finishedAt: now,
       })
     }
+    request.onSpawned?.({ subAgentId: childConversationId, subRunId: child.id })
     await this.writeState(request, child.id, { status: RunStatus.Running, task: request.task })
 
     const recorder = new StreamRecorder(
@@ -440,6 +487,16 @@ export class AgentRunner {
         // 子 agent 的工具面 / 技能面：与父同一个口径（编排层在装配信封时算好）
         childToolbox: envelope.childToolbox,
       }
+      // 子会话 = 独立会话：自己的短期 thread（不继承父会话的消息），resource 仍归父用户。
+      // 子 agent 之前不带 memory，`resume` / 重试时只剩本次任务；补上 thread 才能续上它自己的前文。
+      const memory = this.memory ?? sharedAgentMemory
+      if (!(await memory.getThreadById({ threadId: childConversationId }))) {
+        await memory.createThread({
+          threadId: childConversationId,
+          resourceId: parent.userId,
+          title: `${request.name}（子会话）`,
+        })
+      }
       const agent = createMastraAgent({
         // 临时实例：跑完即弃，**不注册进 Mastra**（否则会污染 agent 清单、且同名会冲突）
         id: `${agentKey}#${child.id}`,
@@ -449,6 +506,7 @@ export class AgentRunner {
         model: () => toMastraModel(model),
         tools: toMastraTools(envelope.childToolbox, this.logger),
         skills: toMastraSkills(envelope.skills),
+        memory,
       })
 
       const output = await agent.stream([{ role: 'user', content: request.task }] as never, {
@@ -462,6 +520,11 @@ export class AgentRunner {
         model: (await toMastraModelInstance(model)).instance as never,
         // 信封传下去：子 agent 那一轮的工具调用因此也能过网关的权限与审计
         requestContext: toRequestContext(childEnvelope),
+        memory: {
+          thread: childConversationId,
+          resource: parent.userId,
+          options: memoryHistoryOptions(model.contextWindow ?? 32_000),
+        },
       })
       const uiStream = toUiStream(output)
 
@@ -611,6 +674,47 @@ export class AgentRunner {
       durationMs,
       tokenTotal: usage ? usageField(usage, 'totalTokens') : null,
     })
+    if (request.async && this.runQueue && status !== RunStatus.Canceled) {
+      void this.runQueue
+        .enqueue({
+          conversationId: request.envelope.conversationId,
+          source: 'subagent',
+          dedupeKey: subRunId,
+          payload: {
+            subAgentId: conversationId,
+            subRunId,
+            name: request.name,
+            status: outcome.status,
+            result: text,
+            error,
+            // 唤醒 run 的身份口径随父：admin 的 skill-* 工具在唤醒那一轮不能凭空消失
+            isAdmin: request.envelope.isAdmin,
+          },
+        })
+        .catch((error: unknown) => {
+          this.logger.error('ai.subagent.enqueue_failed', { subRunId, error })
+        })
+    }
+    if (status === RunStatus.Succeeded && this.memoryExtractor && request.envelope.triggeredBy) {
+      // 子会话也有自己的记忆抽取（不阻塞工具结论；失败静默，与主会话同一口径）
+      void this.memoryExtractor
+        .maybeExtract({
+          conversationId,
+          runId: subRunId,
+          userId: request.envelope.triggeredBy,
+          agentKey: request.envelope.agentKey,
+          userMessage: request.task,
+          turnCount: 1,
+          model: request.envelope.model,
+        })
+        .catch((error: unknown) => {
+          this.logger.warn('ai.memory.subagent_extract_failed', {
+            conversationId,
+            runId: subRunId,
+            reason: error instanceof Error ? error.message : String(error),
+          })
+        })
+    }
     return outcome
   }
 
@@ -620,6 +724,7 @@ export class AgentRunner {
     startedAt: number,
     reason: string,
   ): Promise<SubAgentOutcome> {
+    request.onSpawned?.(null, reason)
     this.logger.warn('ai.subagent.rejected', {
       parentRunId: request.envelope.parentRunId,
       name: request.name,

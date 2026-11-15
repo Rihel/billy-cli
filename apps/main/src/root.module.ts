@@ -44,6 +44,8 @@ import { AiConnectorAdminModule } from './modules/ai-admin/connector/index.js'
 import { AiSkillAdminModule } from './modules/ai-admin/skill/index.js'
 import { AgentSseBridge } from './agent/agent-sse.bridge.js'
 import { AgentControlController } from './agent/agent-control.controller.js'
+import { AgentRunQueueController } from './agent/agent-run-queue.controller.js'
+import { AgentRunQueueService } from './agent/agent-run-queue.service.js'
 import { AgentSseController } from './agent/agent-sse.controller.js'
 import { MemoryController } from './modules/ai-admin/memory.controller.js'
 import { MemoryRepository, MemoryService } from '@repo/ai-data'
@@ -71,7 +73,12 @@ import { UserModule } from './modules/user/index.js'
  * 但其配置值同样经过应用配置校验。
  */
 @Module({
-  controllers: [AgentSseController, AgentControlController, MemoryController],
+  controllers: [
+    AgentSseController,
+    AgentControlController,
+    AgentRunQueueController,
+    MemoryController,
+  ],
   imports: [
     // ---- 应用配置（全局 ConfigService + AppConfig bean）----
     AppConfigModule.forRoot(),
@@ -183,6 +190,7 @@ import { UserModule } from './modules/user/index.js'
     RuntimeConfigModule,
   ],
   providers: [
+    AgentRunQueueService,
     AgentSseBridge,
     MemoryRepository,
     MemoryService,

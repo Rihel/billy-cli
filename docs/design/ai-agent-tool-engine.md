@@ -775,7 +775,7 @@ Mastra 一改 execute 的形态，所有工具测试一起红。
 | # | 当初的问题 | 现在 |
 | --- | --- | --- |
 | 1 | 没有信封，网关判不了身份 / 作用域 / 限额，审计缺 `conversationId` / `triggeredBy` | 信封已传下去（`depth + 1`、`agentKey = sub:<name>`） |
-| 2 | 规划工具（`plan-*`）在子 agent 工具面里但必然报错 | `ToolSpec.child: 'allow' \| 'deny'` 落地，四个 `plan-*`（组级）标 `child: 'deny'`，子 agent 根本看不到它们 |
+| 2 | 规划工具（`plan-*`）在子 agent 工具面里但必然报错 | `ToolSpec.child: 'allow' \| 'deny'` 落地；四个 `plan-*` 标 `child: 'allow'`，父子各自按 run 维护独立清单 |
 | 3 | `latestPlan` 不带 run 过滤，子 agent 的清单会顶掉父的"当前计划" | `latestPlan` 加了"只看根 run"（`excludeSubAgentEvents`），子 run 的 `plan` 事件不参与 |
 | 4 | 子 agent 提示词里没有工具清单，也没人说"你不能再造子助手" | 主 agent 写的那份之后追加固定能力尾巴（工具清单 / 边界 / 交付要求），不覆盖原话 |
 
@@ -1267,7 +1267,7 @@ AI SDK v6 的 data part 语义是「**同 `id` 后者覆盖前者**」（实测�
 1. **工具是增量的，协议仍是全量快照**：四个工具的出参**永远是完整清单**（`{goal, revision, tasks, summary, warnings?}`），
    于是「当前计划」仍然 = 该会话最后一条 `plan` 事件（`runtime/plan.protocol.ts` 的协议不变，前端与复盘不用改形状）。
    增量工具让模型一次只表达一件事（这几项完成 / 这几项删掉），清单长的时候省 token、也少一类"漏抄一项"的错；
-2. **四个工具都 `child: 'deny'`**：清单归属发起这一轮的主 agent（子助手把结论交回父），
+2. **四个工具都 `child: 'allow'`**：父子 agent 各自按 run 维护独立清单，互不覆盖；
    顺带堵住"子 agent 的清单顶掉父的当前计划"；
 3. **共同的内部机制**（`PlannerCore`）：读当前清单（本轮内存 → 时间线最后一条 `plan`，只看根 run）、
    同一轮串行（读改写不能并发）、**失败不改内存**（校验不过抛 `ToolDeniedError`，由网关翻成可纠正的结论）；

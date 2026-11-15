@@ -125,10 +125,10 @@ describe('plan-reorder（重排任务清单：顺序 + 就地修改）', () => {
     expect(result.summary).toContain('a 备注已更新')
   })
 
-  it('它是"只给主 agent"的工具，且 order / updates 至少要给一个', () => {
+  it('它是"父子 agent 都可用"的工具，且 order / updates 至少要给一个', () => {
     const { spec } = build()
     expect(spec.key).toBe(TOOL_KEYS.planReorder)
-    expect(spec.child).toBe('deny')
+    expect(spec.child).toBe('allow')
     expect(spec.params.safeParse({}).success).toBe(false)
     expect(spec.params.safeParse({ order: ['a', 'b'] }).success).toBe(true)
     expect(spec.params.safeParse({ updates: [{ id: 'a', status: 'in_progress' }] }).success).toBe(

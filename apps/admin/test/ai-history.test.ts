@@ -467,4 +467,49 @@ describe('历史里的耗时（工具条与思考块要显示真实值）', () =
     expect(messages[1].parts).toHaveLength(1)
     expect(messages[1].parts[0]).toMatchObject({ type: 'text', text: '怪数据' })
   })
+
+  it('子 agent 完成唤醒：status 行 → data-subagent-completed 系统卡，且没有伪造用户消息', () => {
+    const messages = toUIMessages(
+      [
+        item({
+          seq: 1,
+          kind: 'status',
+          role: 'system',
+          payload: {
+            status: 'subagent_completed',
+            subAgentId: 'sub_conv_1',
+            subRunId: 'sub_run_1',
+            name: '待办统计',
+            childStatus: 'succeeded',
+            summary: '共 3 条待办',
+            error: null,
+            childConversationId: 'sub_conv_1',
+          },
+        }),
+        item({ seq: 2, kind: 'text', payload: { text: '好的，我接着整理。' } }),
+      ],
+      [run(ROOT_RUN, null)],
+    )
+
+    // 唤醒 run 没有用户消息：只有一条助手消息
+    expect(messages).toHaveLength(1)
+    expect(messages[0].parts[0]).toMatchObject({
+      type: 'data-subagent-completed',
+      id: 'sub_run_1',
+      data: { status: 'subagent_completed', name: '待办统计', summary: '共 3 条待办' },
+    })
+    expect(messages[0].parts[1]).toMatchObject({ type: 'text', text: '好的，我接着整理。' })
+  })
+
+  it('普通 status 行（取消 / 超时）不进对话正文', () => {
+    const messages = toUIMessages(
+      [
+        item({ seq: 1, kind: 'status', role: 'system', payload: { status: 'canceled' } }),
+        item({ seq: 2, kind: 'text', payload: { text: '还是回答一句' } }),
+      ],
+      [run(ROOT_RUN, null)],
+    )
+    expect(messages[0].parts).toHaveLength(1)
+    expect(messages[0].parts[0]).toMatchObject({ type: 'text', text: '还是回答一句' })
+  })
 })

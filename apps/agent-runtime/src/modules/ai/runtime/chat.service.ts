@@ -45,13 +45,15 @@ import { ToolRegistry } from '../core/tools/tool.registry.js'
 import { ToolCallMetaStore } from '../core/tools/tool.meta.js'
 import { toMastraModelInstance } from '../mastra/agent.adapter.js'
 import { toRequestContext } from '../mastra/context.adapter.js'
-import type { ConversationEntity, TimelineEntity } from '@repo/db'
+import type { ConversationEntity, ConversationRunQueueEntity, TimelineEntity } from '@repo/db'
 import { AgentConversationService } from './conversation.service.js'
 import { AgentTitleService, type FirstTurnTitle } from './title.service.js'
 import { ContextService } from './context.service.js'
 import { ChatAttachmentService, withUserContent } from './chat-attachment.service.js'
 import { ConversationRepository } from './conversation.repository.js'
 import { RunRepository } from './run.repository.js'
+import { ConversationRunQueue } from './run-queue.service.js'
+import { RunStatusStream } from './run-status.stream.js'
 import { TimelineRepository } from './timeline.repository.js'
 import { FileService, type FileContext } from '../files/file.service.js'
 import { AttachmentKeyPolicy } from './attachment-key.js'
@@ -134,6 +136,101 @@ const userMessagePayload = (input: AgentChatDto): Record<string, unknown> =>
     ? { text: input.message, attachments: input.attachments }
     : { text: input.message }
 
+/** 队列 payload 的最小结构（jsonb 里存的是 unknown，读回来必须自己收口） */
+interface QueuedUserPayload {
+  message: string
+  modelId?: string
+  attachments?: ChatAttachmentModel[]
+  isAdmin: boolean
+}
+
+/** 子 agent 完成唤醒的 payload（口径见 `docs/design/async-subagent.md` §3.1 / §6.1） */
+interface SubAgentWakePayload {
+  subAgentId: string
+  subRunId: string
+  name: string
+  status: string
+  result: string | null
+  error: string | null
+}
+
+const asRecord = (value: unknown): Record<string, unknown> | null =>
+  value && typeof value === 'object' && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null
+
+const asText = (value: unknown): string | null =>
+  typeof value === 'string' && value.length > 0 ? value : null
+
+/** 用户排队消息 payload → 结构；缺 message 返回 null（调用方按"无法调度"失败） */
+const toQueuedUser = (payload: Record<string, unknown>): QueuedUserPayload | null => {
+  const message = asText(payload.message)
+  if (message === null) return null
+  const attachments = Array.isArray(payload.attachments)
+    ? (payload.attachments as ChatAttachmentModel[])
+    : undefined
+  return {
+    message,
+    isAdmin: payload.isAdmin === true,
+    ...(asText(payload.modelId) ? { modelId: asText(payload.modelId) as string } : {}),
+    ...(attachments && attachments.length > 0 ? { attachments } : {}),
+  }
+}
+
+/** 子 agent 完成 payload → 结构；缺身份三件套返回 null */
+const toSubAgentWake = (payload: Record<string, unknown>): SubAgentWakePayload | null => {
+  const subAgentId = asText(payload.subAgentId)
+  const subRunId = asText(payload.subRunId)
+  const name = asText(payload.name)
+  if (!subAgentId || !subRunId || !name) return null
+  return {
+    subAgentId,
+    subRunId,
+    name,
+    status: asText(payload.status) ?? 'succeeded',
+    result: asText(payload.result),
+    error: asText(payload.error),
+  }
+}
+
+/**
+ * 给父模型的**内部系统通知**（不冒充用户消息）。
+ *
+ * 设计口径（§6.2）：父模型要"知道子完成了"，但这句不是用户说的，所以走 system，
+ * 且时间线不写用户消息 —— 只写一张系统卡。
+ */
+const wakeNoticeText = (wake: SubAgentWakePayload): string => {
+  const succeeded = wake.status === 'succeeded'
+  const head = succeeded
+    ? `子 agent「${wake.name}」已完成（subRunId=${wake.subRunId}）。`
+    : `子 agent「${wake.name}」执行失败（状态：${wake.status}，subRunId=${wake.subRunId}）。`
+  const body = succeeded
+    ? wake.result && wake.result.trim()
+      ? `它的结论：\n${wake.result.trim()}`
+      : '它没有返回文本结论。'
+    : wake.error
+      ? `失败原因：${wake.error}`
+      : '没有拿到失败原因。'
+  return dedent`
+    ${head}
+    ${body}
+
+    这是一条**内部系统通知**（不是用户发的）：请基于这个结论继续推进——需要细节可以查看子会话；失败时判断是重试、换方案，还是向用户说明并给出下一步。
+  `
+}
+
+/** 系统卡 payload：写时间线 + 作为 `data-subagent-completed` 实时块（前端同一形状） */
+const wakeCard = (wake: SubAgentWakePayload): Record<string, unknown> => ({
+  status: 'subagent_completed',
+  subAgentId: wake.subAgentId,
+  subRunId: wake.subRunId,
+  name: wake.name,
+  childStatus: wake.status,
+  summary: wake.result ? wake.result.slice(0, 500) : null,
+  error: wake.error,
+  childConversationId: wake.subAgentId,
+})
+
 /**
  * 上游错误分类：鉴权失败 / 限流 单独成码，其余归通用失败。
  *
@@ -207,6 +304,10 @@ export class AgentChatService {
     private readonly memoryExtractor?: MemoryExtractorService,
     // 生产由 `ai.module` 注入 Redis 实现；测试 / 脚本手构时缺省，回落到进程内单例
     @Optional() @Inject(AGENT_MEMORY) private readonly injectedMemory?: typeof sharedAgentMemory,
+    // 会话 run 队列（异步子 agent 唤醒 / 用户消息排队）：测试 / 脚本不传时退化为"没有队列"
+    @Optional() @Inject(ConversationRunQueue) private readonly runQueue?: ConversationRunQueue,
+    // 运行态事件（`conversation.run.started`，前端据此自动续流）：不传时跳过推流
+    @Optional() @Inject(RunStatusStream) private readonly runEvents?: RunStatusStream,
   ) {}
 
   /** 主 agent 的对话记忆（与 createMastra 共用同一个实例） */
@@ -334,6 +435,7 @@ export class AgentChatService {
 
     const run = await this.startRun(conversation, definition.key, userId)
     await this.registerInboundFiles(conversation, run.id, userId, isAdmin, input.attachments)
+    await this.notifyRunStarted(conversation.id, run.id, 'user')
     const startedAt = Date.now()
 
     // 心跳：**非流式路径也必须续租**，理由与流式那处逐字相同（见 `chatStream` 里的长注释）——
@@ -530,6 +632,8 @@ export class AgentChatService {
         reason: message,
         durationMs,
       })
+      // 父 run 失败 → 级联取消子 agent 与待唤醒项（与流式路径同一口径）
+      await this.cascadeStop(run.id, conversation.id)
       // 失败的一轮也要有会话名（否则首轮失败就留一条空白会话）
       await this.ensureFallbackTitle(conversation, input.message)
       clearInterval(heartbeat)
@@ -596,13 +700,19 @@ export class AgentChatService {
     await this.files.materializeInbound(ctx, attachments)
   }
 
-  private async startRun(conversation: ConversationEntity, agentKey: string, userId: string) {
+  private async startRun(
+    conversation: ConversationEntity,
+    agentKey: string,
+    userId: string,
+    origin: 'user' | 'subagent' = 'user',
+  ) {
     try {
       const run = await this.runs.create({
         conversationId: conversation.id,
         agentKey,
         status: RunStatus.Pending,
         triggeredBy: userId,
+        origin,
       })
       /**
        * **把引擎 runId 定死成我们这一行的 id**，起跑时就回写。
@@ -684,6 +794,8 @@ export class AgentChatService {
      * （它读的是请求上下文里的登录身份），这里不重复判。
      */
     attachments?: readonly ChatAttachmentModel[],
+    /** 唤醒 run 的内部系统通知（给了就不写用户消息，模型输入的最后一跳是 system） */
+    internalNotice?: string,
   ) {
     const hasAttachments = Boolean(attachments && attachments.length > 0)
     const userContent = hasAttachments
@@ -703,6 +815,7 @@ export class AgentChatService {
       ...(model.contextWindow ? { windowTokens: model.contextWindow } : {}),
       ...(userContent ? { extraInputTokens: estimateContentTokens(userContent) } : {}),
       ...(memoryBlock ? { memory: memoryBlock } : {}),
+      ...(internalNotice ? { internalNotice } : {}),
     })
 
     if (!userContent) {
@@ -1010,8 +1123,26 @@ export class AgentChatService {
     const conversation = await this.resolveConversation(userId, input)
     const definition = this.registry.resolve(input.agentKey ?? conversation.agentKey)
 
-    const run = await this.startRun(conversation, definition.key, userId)
+    /**
+     * 会话忙（同一会话只允许一轮）时**入队**，不再用 3306 把用户挡回去。
+     *
+     * 这条 HTTP 连接只回一帧 `data-queue` 就结束（不挂在这里等上一轮跑完：
+     * 连接一断消息就丢了）。真正起跑由 dispatcher 按优先级调度；新 run 启动时
+     * `conversation.run.started` 会通知前端自动续流（`/agent/run/stream`）。
+     */
+    let run: { id: string; engineRunId: string }
+    try {
+      run = await this.startRun(conversation, definition.key, userId)
+    } catch (error) {
+      if (error instanceof ConversationBusyError && this.runQueue) {
+        const queued = await this.enqueueUserMessage(conversation, input, isAdmin)
+        this.writeQueuedAck(response, conversation.id, queued, userId, clientId)
+        return
+      }
+      throw error
+    }
     await this.registerInboundFiles(conversation, run.id, userId, isAdmin, input.attachments)
+    await this.notifyRunStarted(conversation.id, run.id, 'user')
     const startedAt = Date.now()
 
     // 本进程内中止控制器：**在建流之前就登记**，否则"解析模型时用户点停止"找不到目标
@@ -1507,6 +1638,8 @@ export class AgentChatService {
           timeoutMs: this.config.firstTokenTimeoutMs,
           durationMs,
         })
+        // 父 run 失败 → 级联取消它派出去、还在跑的子 agent，以及待唤醒的队列项
+        await this.cascadeStop(run.id, conversation.id)
         // 失败的一轮也要有会话名（否则侧栏是一条空白）
         await this.ensureFallbackTitle(conversation, input.message)
       } else if (abort.signal.aborted) {
@@ -1527,6 +1660,8 @@ export class AgentChatService {
           },
           finishedAt: new Date(),
         })
+        // 用户 stop：子 agent 与待唤醒项一起取消（设计 §7）
+        await this.cascadeStop(run.id, conversation.id)
         this.logger.log('ai.stream.canceled', { runId: run.id, durationMs })
       } else {
         mapped = classifyModelError(error)
@@ -1548,6 +1683,7 @@ export class AgentChatService {
           payload: { message: mapped.message, stage: RunErrorStage.Model },
           finishedAt: new Date(),
         })
+        await this.cascadeStop(run.id, conversation.id)
         this.logger.error('ai.stream.failed', {
           runId: run.id,
           reason,
@@ -1983,15 +2119,19 @@ export class AgentChatService {
         status: RunStatus.Canceled,
         ...(run.durationMs != null ? { durationMs: run.durationMs } : {}),
       })
+      await this.cascadeStop(run.id, run.conversationId)
       return { stopped: true, injected: 'local' }
     }
 
     const controller = this.activeRuns.get(runId)
     if (controller) {
       controller.abort()
+      // abort 后的收尾也会再级联一次（幂等）；这里先取消，避免"停止接口返回了、子还在跑"
+      await this.cascadeStop(run.id, run.conversationId)
       return { stopped: true, injected: 'local' }
     }
     await this.streamStore.publishStop(runId)
+    await this.cascadeStop(run.id, run.conversationId)
     return { stopped: true, injected: 'broadcast' }
   }
 
@@ -2129,6 +2269,660 @@ export class AgentChatService {
     })
     endSse(response)
     return true
+  }
+
+  /**
+   * 队列项 → 真正的一轮（`dispatcher` 的唯一入口）。
+   *
+   * 两种来源：
+   * - `user`：会话忙时排队的用户消息（时间线照常先写用户消息）；
+   * - `subagent`：子 agent 完成唤醒（**不写用户消息**；先写系统卡，模型输入收尾是内部 system 通知）。
+   *
+   * 创建 run 是同步的（调用方要立刻拿到 runId 落 `queue.run_id`），之后的无头执行在后台跑，
+   * 结果通过 `done` 返回：`succeeded/failed/canceled`。执行内部**不抛业务错**，失败已落 `runs`。
+   */
+  async startQueuedTurn(item: ConversationRunQueueEntity): Promise<{
+    runId: string
+    done: Promise<'succeeded' | 'failed' | 'canceled'>
+  }> {
+    const conversation = await this.conversationRepo.findEntity(item.conversationId)
+    if (!conversation) throw new Error('会话不存在或已删除，队列项不再执行')
+    const payload = asRecord(item.payload)
+    if (!payload) throw new Error('队列项 payload 不是对象，无法调度')
+    // 与 `chatStream` 同一口径：排队消息带 agentKey 时以它为准，否则用会话上的 agent
+    const definition = this.registry.resolve(
+      item.source === 'user'
+        ? (asText(payload.agentKey) ?? conversation.agentKey)
+        : conversation.agentKey,
+    )
+    const queue = { id: item.id, source: item.source, dedupeKey: item.dedupeKey }
+
+    if (item.source === 'subagent') {
+      const wake = toSubAgentWake(payload)
+      if (!wake) throw new Error('子 agent 唤醒 payload 缺少 subAgentId / subRunId / name')
+      const run = await this.startRun(conversation, definition.key, conversation.userId, 'subagent')
+      const done = this.executeQueuedTurn({
+        run,
+        conversation,
+        definition,
+        userId: conversation.userId,
+        isAdmin: payload.isAdmin === true,
+        origin: 'subagent',
+        message: wakeNoticeText(wake),
+        internalNotice: wakeNoticeText(wake),
+        card: wakeCard(wake),
+        queue,
+      })
+      return { runId: run.id, done }
+    }
+
+    const user = toQueuedUser(payload)
+    if (!user) throw new Error('用户排队消息 payload 缺少 message')
+    const run = await this.startRun(conversation, definition.key, conversation.userId, 'user')
+    const done = this.executeQueuedTurn({
+      run,
+      conversation,
+      definition,
+      userId: conversation.userId,
+      isAdmin: user.isAdmin,
+      origin: 'user',
+      message: user.message,
+      ...(user.modelId ? { modelId: user.modelId } : {}),
+      ...(user.attachments ? { attachments: user.attachments } : {}),
+      card: null,
+      queue,
+    })
+    return { runId: run.id, done }
+  }
+
+  /**
+   * 无头执行一轮（没有 HTTP 响应）：所有内容只进**时间线 + Redis 输出记录 + 广播**。
+   *
+   * 与 {@link chatStream} 共用同一套模型解析 / 上下文组装 / 录制器 / 收尾与用量口径，
+   * 区别只在"写给谁"：这里没有 `response`，前端靠 `conversation.run.started` 自动续流，
+   * 断线重连走 `GET /agent/run/stream` 从输出记录补发。
+   */
+  private async executeQueuedTurn(input: {
+    run: { id: string; engineRunId: string }
+    conversation: ConversationEntity
+    definition: AgentDefinition
+    userId: string
+    isAdmin: boolean
+    origin: 'user' | 'subagent'
+    message: string
+    internalNotice?: string
+    attachments?: readonly ChatAttachmentModel[]
+    modelId?: string
+    card: Record<string, unknown> | null
+    queue: { id: string; source: string; dedupeKey: string | null }
+  }): Promise<'succeeded' | 'failed' | 'canceled'> {
+    const { run, conversation, definition, userId, origin } = input
+    const startedAt = Date.now()
+    const abort = new AbortController()
+    this.activeRuns.set(run.id, abort)
+
+    let heartbeat: NodeJS.Timeout | undefined
+    let unsubscribeStop: (() => Promise<void>) | null = null
+    let firstTokenTimer: NodeJS.Timeout | undefined
+    let firstTokenTimedOut = false
+    let firstTokenSeen = false
+    let suspended = false
+
+    const stopHeartbeat = (): void => {
+      if (!heartbeat) return
+      clearInterval(heartbeat)
+      heartbeat = undefined
+    }
+    const ensureHeartbeat = (): void => {
+      if (heartbeat) return
+      heartbeat = setInterval(() => {
+        void this.runs.touchHeartbeat(run.id).catch(() => undefined)
+        void this.streamStore
+          .patchRun(run.id, { heartbeatAt: new Date().toISOString() })
+          .catch(() => undefined)
+      }, STREAM_HEARTBEAT_MS)
+      heartbeat.unref?.()
+    }
+    const stopFirstTokenTimer = (): void => {
+      if (!firstTokenTimer) return
+      clearTimeout(firstTokenTimer)
+      firstTokenTimer = undefined
+    }
+    const armFirstTokenTimer = (): void => {
+      const timeoutMs = this.config.firstTokenTimeoutMs
+      if (!timeoutMs || firstTokenTimer) return
+      firstTokenTimer = setTimeout(() => {
+        firstTokenTimedOut = true
+        abort.abort()
+      }, timeoutMs)
+      firstTokenTimer.unref?.()
+    }
+
+    /** 一个片段 → 输出记录 + 广播（断线重连按 offset 从这里补发） */
+    const emit = async (chunk: unknown): Promise<number> => {
+      const offset = await this.streamStore.appendChunk(run.id, chunk)
+      await this.streamStore.publishChunk(run.id, chunk)
+      return offset
+    }
+
+    let offset = 0
+    try {
+      // 排队过一段时间的用户消息也要登记 / 物化附件（与 `chatStream` 同一入口；失败不阻塞）
+      if (origin === 'user' && input.attachments && input.attachments.length > 0) {
+        await this.registerInboundFiles(conversation, run.id, userId, input.isAdmin, [
+          ...input.attachments,
+        ])
+      }
+      const model = await this.resolveRuntimeModel(definition, input.modelId, {
+        runId: run.id,
+        conversationId: conversation.id,
+        identityType: input.isAdmin ? 'admin' : 'user',
+        identityId: userId,
+      })
+      const modelInstance = await this.resolveModelInstance(model)
+
+      let built = await this.buildContext(
+        conversation.id,
+        userId,
+        definition,
+        input.message,
+        model,
+        input.attachments,
+        input.internalNotice,
+      )
+      if (built.needsCompaction && built.compactionRange) {
+        await this.summarize(conversation.id, run.id, built.compactionRange, model)
+        built = await this.buildContext(
+          conversation.id,
+          userId,
+          definition,
+          input.message,
+          model,
+          input.attachments,
+          input.internalNotice,
+        )
+      }
+
+      await this.runs.saveRequestSnapshot(run.id, {
+        model: model.modelRef,
+        agentKey: definition.key,
+        toolKeys: this.toolRegistry.expand(definition.tools),
+        skillKeys: (await this.skillLoader.resolve(definition.skills)).map((skill) => skill.name),
+        params: { maxSteps: AGENT_MAX_STEPS },
+        context: built.snapshot,
+        // 唤醒 / 排队这一轮的来源：谁触发的、由哪条队列项调度（审计要能串起来）
+        origin,
+        queue: input.queue,
+        ...(input.card ? { subAgent: input.card } : {}),
+      })
+
+      const now = new Date()
+      if (origin === 'user') {
+        await this.timelines.append({
+          conversationId: conversation.id,
+          runId: run.id,
+          role: TimelineRole.User,
+          kind: TimelineKind.Text,
+          payload: userMessagePayload({
+            message: input.message,
+            ...(input.attachments && input.attachments.length > 0
+              ? { attachments: [...input.attachments] }
+              : {}),
+          } as AgentChatDto),
+          startedAt: now,
+          finishedAt: now,
+        })
+      } else if (input.card) {
+        // 时间线**先写系统卡**：刷新 / 回看时"父为什么突然继续了"有据可查
+        await this.timelines.append({
+          conversationId: conversation.id,
+          runId: run.id,
+          role: TimelineRole.System,
+          kind: TimelineKind.Status,
+          payload: input.card,
+          startedAt: now,
+          finishedAt: now,
+        })
+      }
+
+      const streamId = `${run.id}-${Date.now()}-queue`
+      await this.runs.setActiveStream(run.id, streamId)
+      await this.streamStore.startRun(run.id, {
+        status: RunStatus.Running,
+        stage: 'generating',
+        streamId,
+        offset: 0,
+        step: 0,
+      })
+
+      const recorder = new StreamRecorder(
+        this.timelines,
+        { conversationId: conversation.id, runId: run.id },
+        {
+          metas: this.toolMetas,
+          isKnownTool: (toolKey) => Boolean(this.toolRegistry.get(toolKey)),
+        },
+      )
+      let stepCount = 0
+      let lastProgressAt = 0
+      ensureHeartbeat()
+
+      try {
+        unsubscribeStop = await this.streamStore.subscribeRun(
+          run.id,
+          () => undefined,
+          () => abort.abort(),
+        )
+      } catch (error) {
+        this.logger.warn('ai.stream.stop_subscribe_failed', {
+          runId: run.id,
+          reason: error instanceof Error ? error.message : String(error),
+        })
+      }
+
+      // 先把"这一轮的身份"写进输出记录：续流连接的第一块就能拿到 runId（含来源）
+      offset = await emit({
+        type: 'data-run',
+        data: {
+          runId: run.id,
+          conversationId: conversation.id,
+          agentKey: definition.key,
+          origin,
+        },
+      })
+      if (input.card) {
+        offset = await emit({
+          type: 'data-subagent-completed',
+          id: String(input.card.subRunId ?? run.id),
+          data: input.card,
+        })
+      }
+      // 输出记录与进度已就绪 → 再通知"新的一轮开始了"：前端收到后立刻接流不会 204
+      await this.notifyRunStarted(conversation.id, run.id, origin)
+
+      const requestContext = await this.buildRuntimeContext(
+        conversation.id,
+        run.id,
+        definition,
+        userId,
+        model,
+        {
+          fileAccess: conversation.fileAccess,
+          workspaceConversationId: conversation.rootConversationId ?? conversation.id,
+          abortSignal: abort.signal,
+          systemPrompt: await this.resolveSystemPrompt(conversation, run.id, definition),
+          isAdmin: input.isAdmin,
+        },
+      )
+      const agent = this.requireMastra().getAgent(definition.key)
+      const memoryThread = await this.ensureAgentThread(conversation.id, userId)
+      // 排队 / 唤醒可能发生在进程重启之后：thread 被清空时先用时间线回灌一份对话骨架
+      await this.rehydrateThreadIfEmpty(conversation.id, userId)
+
+      armFirstTokenTimer()
+      const output = await agent.stream(built.messages as never, {
+        maxSteps: AGENT_MAX_STEPS,
+        toolCallConcurrency: AGENT_TOOL_CONCURRENCY,
+        abortSignal: abort.signal,
+        requestContext,
+        memory: {
+          ...memoryThread,
+          options: memoryHistoryOptions(built.snapshot.windowTokens),
+        },
+        savePerStep: true,
+        model: modelInstance as never,
+        runId: run.engineRunId,
+        closeOnSuspend: true,
+        prepareStep: this.buildPrepareStep(built.snapshot.windowTokens),
+      })
+      const uiStream = createLiveUsage({ runId: run.id, startedAt }).wrap(output)
+      const reader = (uiStream as unknown as ReadableStream<UiChunkLike>).getReader()
+      for (;;) {
+        const next = await reader.read()
+        if (next.done) break
+        const chunk = next.value
+        if (
+          chunk.type === 'text-delta' ||
+          chunk.type === 'reasoning-delta' ||
+          chunk.type === 'tool-input-available'
+        ) {
+          if (!firstTokenSeen) {
+            firstTokenSeen = true
+            stopFirstTokenTimer()
+          }
+        }
+        if (chunk.type === 'data-tool-call-suspended') suspended = true
+        const recordedChunk = normalizeSuspendedChunk(chunk, run.id)
+        const outgoing = toClientToolChunk(recordedChunk)
+        try {
+          await recorder.consume(recordedChunk)
+          offset = await emit(outgoing)
+          if (chunk.type === 'start-step') stepCount += 1
+          const nowMs = Date.now()
+          if (nowMs - lastProgressAt >= STREAM_PROGRESS_THROTTLE_MS) {
+            lastProgressAt = nowMs
+            await this.streamStore.patchRun(run.id, {
+              stage:
+                chunk.type === 'tool-input-available'
+                  ? `tool:${chunk.toolName ?? ''}`
+                  : 'generating',
+              offset,
+              step: stepCount,
+              heartbeatAt: new Date().toISOString(),
+            })
+            await this.runs.touchHeartbeat(run.id)
+          }
+        } catch (error) {
+          this.logger.warn('ai.stream.record_failed', {
+            runId: run.id,
+            reason: error instanceof Error ? error.message : String(error),
+          })
+        }
+        // 挂起后 Mastra 的流不会自己结束（它在等 resume）：主动收流，按 suspended 收尾
+        if (suspended) break
+      }
+
+      if (abort.signal.aborted) {
+        await recorder.flushPending()
+        throw new Error(firstTokenTimedOut ? 'first_token_timeout' : 'stream_aborted_by_user')
+      }
+      await recorder.flushPending()
+
+      if (suspended) {
+        const suspendSteps = (await readStreamSteps(output)) as unknown as StepLike[]
+        const persistedSuspend = await recorder.finish(suspendSteps)
+        const suspendUsage = await this.rollUpUsage(
+          run.id,
+          toUsageRecord(await readStreamUsage(output)),
+        )
+        await this.runs.suspend(run.id, {
+          usage: suspendUsage,
+          stepCount: suspendSteps.length,
+          toolCallCount: persistedSuspend.toolCallCount,
+          durationMs: Date.now() - startedAt,
+        })
+        await this.runs.setActiveStream(run.id, null)
+        stopHeartbeat()
+        await emit({
+          type: 'data-run-suspended',
+          data: { runId: run.id, conversationId: conversation.id },
+        })
+        this.logger.log('ai.stream.suspended', {
+          conversationId: conversation.id,
+          runId: run.id,
+          origin,
+          stepCount: suspendSteps.length,
+        })
+        return 'succeeded'
+      }
+
+      const steps = (await readStreamSteps(output)) as unknown as StepLike[]
+      const persisted = await recorder.finish(steps)
+      // 命名 / 记忆抽取只属于用户消息：子 agent 唤醒不是用户说的，不参与首轮命名
+      const [title, extracted] =
+        origin === 'user'
+          ? await Promise.all([
+              this.generateFirstTurnTitle(conversation, run.id, input.message, model),
+              this.memoryExtractor
+                ? this.memoryExtractor.maybeExtract({
+                    conversationId: conversation.id,
+                    runId: run.id,
+                    userId,
+                    agentKey: definition.key,
+                    userMessage: input.message,
+                    turnCount: conversation.turnCount,
+                    model,
+                  })
+                : Promise.resolve(null),
+            ])
+          : [null, null]
+      const usageBase = await this.rollUpUsage(run.id, toUsageRecord(await readStreamUsage(output)))
+      let usage = usageBase
+      for (const extra of [title?.usage, extracted?.usage]) {
+        if (extra) usage = { ...usage, ...mergeUsage(usage, extra) }
+      }
+      const durationMs = Date.now() - startedAt
+      await this.runs.finish(run.id, {
+        status: RunStatus.Succeeded,
+        usage,
+        stepCount: steps.length,
+        toolCallCount: persisted.toolCallCount,
+        durationMs,
+        firstTokenMs:
+          recorder.firstOutputAtMs === null ? null : recorder.firstOutputAtMs - startedAt,
+      })
+      await this.runs.setActiveStream(run.id, null)
+      await this.conversationRepo.accumulate(conversation.id, totalTokensOf(usage))
+      if (origin === 'user') await this.applyTitle(conversation, input.message, title)
+
+      if (title?.title) {
+        offset = await emit({
+          type: 'data-conversation-title',
+          data: { runId: run.id, conversationId: conversation.id, title: title.title },
+        })
+      }
+      await emit({
+        type: 'data-run-usage',
+        data: {
+          runId: run.id,
+          usage,
+          stepCount: steps.length,
+          toolCallCount: persisted.toolCallCount,
+          durationMs,
+        },
+      })
+      this.logger.log('ai.stream.queued_turn_succeeded', {
+        conversationId: conversation.id,
+        runId: run.id,
+        origin,
+        stepCount: steps.length,
+        toolCallCount: persisted.toolCallCount,
+        durationMs,
+      })
+      return 'succeeded'
+    } catch (error) {
+      const durationMs = Date.now() - startedAt
+      const reason = error instanceof Error ? error.message : String(error)
+      if (firstTokenTimedOut) {
+        const mapped = new ModelNoResponseError(this.config.firstTokenTimeoutMs)
+        await this.runs.finish(run.id, {
+          status: RunStatus.Failed,
+          usage: await this.rollUpUsage(run.id, null),
+          errorCode: String(AppErrorCodes.ModelNoResponse),
+          errorStage: RunErrorStage.Model,
+          errorMessage: mapped.message,
+          errorDetail: { raw: reason, timeoutMs: this.config.firstTokenTimeoutMs },
+          durationMs,
+        })
+        await this.timelines.append({
+          conversationId: conversation.id,
+          runId: run.id,
+          role: TimelineRole.System,
+          kind: TimelineKind.Error,
+          payload: {
+            message: mapped.message,
+            stage: RunErrorStage.Model,
+            reason: 'first_token_timeout',
+          },
+          finishedAt: new Date(),
+        })
+        await this.cascadeStop(run.id, conversation.id)
+        if (origin === 'user') await this.ensureFallbackTitle(conversation, input.message)
+        this.logger.error('ai.stream.queued_turn_first_token_timeout', {
+          runId: run.id,
+          timeoutMs: this.config.firstTokenTimeoutMs,
+        })
+        return 'failed'
+      }
+      if (abort.signal.aborted) {
+        await this.runs.finish(run.id, { status: RunStatus.Canceled, durationMs })
+        await this.timelines.append({
+          conversationId: conversation.id,
+          runId: run.id,
+          role: TimelineRole.System,
+          kind: TimelineKind.Status,
+          payload: {
+            status: RunStatus.Canceled,
+            reason: 'user_stopped',
+            operator: userId,
+            origin,
+          },
+          finishedAt: new Date(),
+        })
+        await this.cascadeStop(run.id, conversation.id)
+        this.logger.log('ai.stream.queued_turn_canceled', { runId: run.id, origin, durationMs })
+        return 'canceled'
+      }
+      const mapped = classifyModelError(error)
+      await this.runs.finish(run.id, {
+        status: RunStatus.Failed,
+        usage: await this.rollUpUsage(run.id, null),
+        errorCode: String((mapped as { code?: number }).code ?? AppErrorCodes.AgentFailed),
+        errorStage: RunErrorStage.Model,
+        errorMessage: mapped.message,
+        errorDetail: { raw: reason },
+        durationMs,
+      })
+      await this.timelines.append({
+        conversationId: conversation.id,
+        runId: run.id,
+        role: TimelineRole.System,
+        kind: TimelineKind.Error,
+        payload: { message: mapped.message, stage: RunErrorStage.Model, origin },
+        finishedAt: new Date(),
+      })
+      await this.cascadeStop(run.id, conversation.id)
+      if (origin === 'user') await this.ensureFallbackTitle(conversation, input.message)
+      this.logger.error('ai.stream.queued_turn_failed', { runId: run.id, origin, reason })
+      return 'failed'
+    } finally {
+      stopHeartbeat()
+      stopFirstTokenTimer()
+      try {
+        if (unsubscribeStop) await unsubscribeStop()
+      } catch {
+        // 取消订阅失败无碍：那条订阅连接会随进程 / Redis 自然回收
+      }
+      this.activeRuns.delete(run.id)
+      try {
+        await this.streamStore.publishChunk(run.id, { type: STREAM_END_MARKER })
+      } catch {
+        // 广播失败无碍：补发连接会被客户端的 idle 处理或下一次刷新收敛
+      }
+      try {
+        await this.streamStore.clearRun(run.id)
+      } catch {
+        // Redis 短暂不可用不改变终态：看门狗以 Postgres 的心跳为准
+      }
+    }
+  }
+
+  /** 会话忙：把用户消息排进 `conversation_run_queue`（`source=user`，priority 0） */
+  private async enqueueUserMessage(
+    conversation: ConversationEntity,
+    input: AgentChatDto,
+    isAdmin: boolean,
+  ): Promise<ConversationRunQueueEntity> {
+    if (!this.runQueue) throw new ConversationBusyError(conversation.id)
+    return this.runQueue.enqueue({
+      conversationId: conversation.id,
+      source: 'user',
+      payload: {
+        message: input.message,
+        isAdmin,
+        ...(input.modelId ? { modelId: input.modelId } : {}),
+        ...(input.agentKey ? { agentKey: input.agentKey } : {}),
+        ...(input.fileAccess ? { fileAccess: input.fileAccess } : {}),
+        ...(input.attachments ? { attachments: input.attachments } : {}),
+      },
+    })
+  }
+
+  /** 排队应答：一帧 `data-queue` + 正常收尾（前端据此提示"已排队"，并等 `conversation.run.started`） */
+  private writeQueuedAck(
+    response: StreamResponseLike,
+    conversationId: string,
+    item: ConversationRunQueueEntity,
+    userId: string,
+    clientId?: string,
+  ): void {
+    const chunk = {
+      type: 'data-queue',
+      data: {
+        conversationId,
+        queueId: item.id,
+        queued: true,
+        message: '上一轮还在跑，这条消息已排队；轮到时页面会自动继续',
+      },
+    }
+    response.writeHead(200, UI_STREAM_HEADERS)
+    response.flushHeaders?.()
+    response.on?.('error', () => undefined)
+    writeSse(response, sseFrame(chunk))
+    writeSse(response, 'data: [DONE]\n\n')
+    endSse(response)
+    /**
+     * Kafka 模式下 main 不转发 HTTP 响应体，只转发 Kafka 事件：这条应答必须再走一次
+     * `publishControl`，否则前端收不到 `data-queue`、原始 POST 连接会一直挂着等收尾。
+     */
+    if (clientId) {
+      void this.streamStore
+        .publishControl({ clientId, runId: item.id, conversationId, ownerId: userId }, chunk, true)
+        .catch((error: unknown) => {
+          this.logger.warn('ai.run_queue.ack_publish_failed', {
+            conversationId,
+            queueId: item.id,
+            reason: error instanceof Error ? error.message : String(error),
+          })
+        })
+    }
+    this.logger.log('ai.chat.queued', {
+      conversationId,
+      queueId: item.id,
+      source: 'user',
+    })
+  }
+
+  /** 新 run 启动 → 推 `conversation.run.started`（排队 / 唤醒没有前端连接，靠它自动续流） */
+  private async notifyRunStarted(
+    conversationId: string,
+    runId: string,
+    origin: 'user' | 'subagent',
+  ): Promise<void> {
+    if (!this.runEvents) return
+    try {
+      await this.runEvents.started(conversationId, runId, origin)
+    } catch (error) {
+      this.logger.warn('ai.run_status.started_failed', {
+        conversationId,
+        runId,
+        reason: error instanceof Error ? error.message : String(error),
+      })
+    }
+  }
+
+  /**
+   * 父 run 结束（stop / 失败）→ 级联取消：
+   * - 它派出的子 run（子会话里还在跑的）；
+   * - 该会话所有 `subagent` 队列项（待唤醒的不再唤醒；用户消息不动）。
+   *
+   * 幂等：重复调用只是再查一遍。
+   */
+  private async cascadeStop(runId: string, conversationId: string): Promise<void> {
+    try {
+      const children = await this.runs.listChildren(runId)
+      for (const child of children) {
+        await this.runs.cancelActive(child.conversationId)
+        await this.runQueue?.cancelByDedupe(child.id)
+      }
+      await this.runQueue?.cancelConversation(conversationId, 'subagent')
+    } catch (error) {
+      this.logger.warn('ai.run.cascade_cancel_failed', {
+        runId,
+        conversationId,
+        reason: error instanceof Error ? error.message : String(error),
+      })
+    }
   }
 
   /**

@@ -22,6 +22,7 @@ import { MessageCopyMenu } from './message-copy'
 import { PlanSummaryCard } from './plan-summary-card'
 import { ContextSummaryCard } from './context-summary-card'
 import { SubAgentCard } from './sub-agent-card'
+import { SubAgentCompletedCard } from './sub-agent-completed-card'
 import { mergeSubAgent } from './sub-agent-live'
 import type { ChatMessageState, ChatUnit } from './chat-session'
 import { useLiveSubAgent } from './chat-session'
@@ -163,6 +164,8 @@ function ChatUnitView({
       )
     case 'sub-agent':
       return <SubAgentUnit runId={unit.runId} snapshot={unit.snapshot} />
+    case 'notice':
+      return <SubAgentCompletedCard data={unit.data} />
     case 'event': {
       const owner = unit.part.data.toolCallId
       if (owner && ownedToolCalls.has(owner)) return null

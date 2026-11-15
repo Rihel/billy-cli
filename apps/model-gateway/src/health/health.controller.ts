@@ -1,4 +1,5 @@
-import { Controller, Get, Inject } from '@nestjs/common'
+import { Controller, Get, Inject, Res } from '@nestjs/common'
+import type { Response } from 'express'
 import { Db } from '@repo/kits'
 import { ModelCatalogService } from '../catalog/model.catalog.service.js'
 
@@ -21,12 +22,17 @@ export class HealthController {
   }
 
   @Get('readyz')
-  async readyz(): Promise<{ status: string; db: boolean; models: number }> {
+  async readyz(
+    @Res({ passthrough: true }) response: Response,
+  ): Promise<{ status: string; db: boolean; models: number }> {
     const db = await this.db.dataSource
       .query('SELECT 1')
       .then(() => true)
       .catch(() => false)
-    const models = db ? await this.catalog.count().catch(() => 0) : 0
-    return { status: db ? 'ok' : 'degraded', db, models }
+    const models = db ? await this.catalog.count().catch(() => null) : null
+    // readiness 必须按依赖摘流：DB 或模型目录不可读时 503，而不是 200 + degraded
+    const ready = db && models !== null
+    if (!ready) response.status(503)
+    return { status: ready ? 'ok' : 'degraded', db, models: models ?? 0 }
   }
 }

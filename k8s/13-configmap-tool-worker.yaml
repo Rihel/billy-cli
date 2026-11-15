@@ -1,0 +1,36 @@
+# tool-worker 的非敏感运行配置（内部服务，容器端口 9994）。
+#
+# 敏感项全在 Secret `billy-app`：DB_URL / REDIS_URL / TOOL_INTERNAL_TOKEN / 对象存储密钥；
+# 对象存储的 provider / region / bucket / endpoint 在 `billy-shared`。
+# Deployment 的 envFrom 顺序：billy-shared → billy-tool-worker → billy-app（键不重复）。
+#
+# 注意：本 Deployment 还用 downward API 注入 POD_NAME / POD_IP，并在容器的 env 里派生出
+# TOOL_WORKER_ID / TOOL_WORKER_ENDPOINT（每个 Pod 注册自己的 Pod IP，不走 Service 轮询）。
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: billy-tool-worker
+  namespace: billy
+  labels:
+    app.kubernetes.io/name: billy-tool-worker
+    app.kubernetes.io/component: tool-worker
+data:
+  # 容器监听端口；Service 的 targetPort 按它
+  PORT: '9994'
+  # 部署版本（注册表里用于按版本灰度选路）：**必须与镜像 tag 同步**
+  TOOL_WORKER_VERSION: v0.0.0
+  # 本 worker 的会话工作区根（会话 id 作为子目录）。镜像已建好 /home/appuser/.billy-cli 并 chown；
+  # 这是**本 Pod 的本地盘**，可丢弃的前提是文件真相在对象存储里。
+  TOOL_WORKER_WORKSPACE_ROOT: /home/appuser/.billy-cli
+  # 单 Pod 同时执行上限：与内存 limit 一起看，别让 8 条重命令把一个 1Gi 的 Pod 打 OOM
+  TOOL_WORKER_MAX_CONCURRENCY: '8'
+  # 心跳 10s / 30s 过期；与 tool-gateway 的 TOOL_WORKER_STALE_MS 对齐
+  TOOL_WORKER_HEARTBEAT_MS: '10000'
+  TOOL_WORKER_STALE_MS: '30000'
+  # ── 沙箱策略：这里必须是 off ──
+  # 默认 enforce 要求容器内装有 bubblewrap（Linux）/ sandbox-exec（macOS），且节点放开
+  # unprivileged userns；`docker/Dockerfile.tool-worker` 的 runner 是纯 node:alpine，没装 bwrap。
+  # 保持默认值时 /readyz 永远 503、worker 永远起不来，所以这里显式 off（命令以 appuser 身份直接执行）。
+  # ⚠️ off 不做隔离，只适合自托管 / 单租户；多租户上线前必须在镜像里装 bwrap、放开 userns，
+  #    再把这里改回 enforce（或直接删掉这一行使用默认值）。
+  AGENT_WORKSPACE_MODE: 'off'

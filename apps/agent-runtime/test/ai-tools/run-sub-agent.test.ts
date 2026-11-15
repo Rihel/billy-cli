@@ -29,11 +29,11 @@ const envelope = {
   skills: [],
 }
 
-const build = (runnerResult: unknown = { status: 'succeeded', result: 'done' }) => {
+const build = (runnerResult: unknown = { subAgentId: 'sub-conv', subRunId: 'sub-run' }) => {
   const deps = buildToolStackDeps()
   const calls: unknown[] = []
   const runner = {
-    runSubAgent: async (request: unknown) => {
+    spawnSubAgent: async (request: unknown) => {
       calls.push(request)
       return runnerResult
     },
@@ -95,11 +95,16 @@ describe('run-sub-agent（创建子助手）', () => {
     expect(settings.config).toEqual({ maxPerRun: 0, maxDepth: 0, maxSteps: 0, timeoutMs: 0 })
   })
 
-  it('执行器的结论原样交回主 agent（工具不加工结论）', async () => {
-    const { deps, spec } = build({ status: 'rejected', result: '', reason: '配额已满' })
+  it('异步派发：返回 subAgentId / subRunId，状态 running', async () => {
+    const { deps, spec, calls } = build({ subAgentId: 'sub-conv', subRunId: 'sub-run' })
     const settings = await deps.config.settings(spec)
     const ctx = makeToolContext({ spec, settings, envelope })
     const outcome = await spec.exec({ name: 'x', system_prompt: 'y', task: 'z' }, ctx as never)
-    expect(outcome).toMatchObject({ status: 'rejected', reason: '配额已满' })
+    expect(outcome).toMatchObject({
+      subAgentId: 'sub-conv',
+      subRunId: 'sub-run',
+      status: 'running',
+    })
+    expect(calls[0]).toMatchObject({ name: 'x', task: 'z' })
   })
 })

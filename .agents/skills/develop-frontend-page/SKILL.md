@@ -182,12 +182,17 @@ pnpm check:ui    # 守卫四条：组件导出 / 前端包 typecheck 脚本 / �
 
 ## 菜单与路由
 
-- admin：新页面放 `apps/admin/src/app/main/xxx/page.tsx`，并在 `AppMenu.tsx` 的 items 加菜单项。
-  **例外（全窗口工作台类页面）**：需要脱离管理台外壳（无左侧菜单 / 无页头）、又不想改 URL 时，
-  放到路由组下并自带 layout —— 见 `apps/admin/src/app/(standalone)/main/layout.tsx`（AI 会话页就是这么做的：
+- admin 的**顶层只有两个分区**：会话（`/main/ai/chat/**`）与管理（其余 `/main/**`）。判据是纯函数
+  `apps/admin/src/lib/sections.ts`（`sectionOf` / `isChatPath`），由全局顶栏
+  `components/AppTopBar.tsx` 消费 —— **新页面一律落在「管理」里**，不需要动顶层菜单；
+  真要新增顶层分区，改 `APP_SECTIONS` + `lib/sections.ts`，并同步 `test/app-sections.test.ts`。
+- admin：新页面放 `apps/admin/src/app/(app)/main/xxx/page.tsx`，并在 `AppMenu.tsx` 的 items 加菜单项。
+  **例外（全窗口工作台类页面）**：需要脱离管理台外壳（无左侧菜单 / 无分区页头）、又不想改 URL 时，
+  放到路由组下并自带 layout —— 见 `apps/admin/src/app/(app)/(standalone)/main/layout.tsx`（AI 会话页就是这么做的：
   路由组不产生 URL 段，地址仍是 `/main/ai/chat/...`）；**鉴权必须复用 `components/AdminAuthBoundary.tsx`**，
-  并自己导出 `dynamic = 'force-dynamic'`，别忘了给页面一个「回管理台」入口（外壳导航没了）
-  （`key` 为路由路径，如 `/main/xxx`）。
+  并自己导出 `dynamic = 'force-dynamic'`。这类布局**必须挂共享顶栏 `AppTopBar`**
+  （否则走进去就再也切不出去），并自己给一个"回列表"的入口。
+- 三条壳的区别（顶栏 / 侧栏 / 页头谁有谁没有）见 `docs/design/admin-design-language.md` §9。
 - **两个前端的根 layout 统一动态渲染**：`apps/web/src/app/layout.tsx` 与 `apps/admin/src/app/layout.tsx`
   都标了 `export const dynamic = 'force-dynamic'`（每次请求 SSR，不做整站静态预渲染）——新页面不要依赖
   构建期静态数据 / 预渲染缓存。

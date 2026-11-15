@@ -2526,7 +2526,7 @@ AI SDK v6 的续传是**两层 API**（不是同一方法的两个名字）：
 | 防篡改 | **先不做 hash 链**，改为：应用层只追加 + 部署只授 INSERT/SELECT + 删除只做软删标记（§3.8 A） |
 | **子 agent 的创建方式** | **运行期由工具动态创建**（`SubAgentCore.asTools()` 的 `run-sub-agent`），**删除**装配期静态 `subAgents` 声明与 Mastra 的 `agents:{}` 委派（§3.14） |
 | **子 agent 的提示词** | **由主 agent 现场撰写**（工具的 `system_prompt` 入参，必填）；不再有 `analyst.eta` 这类静态子 agent 提示词 |
-| **子 agent 的工具面** | **父 agent 的授权面 ∩（全部 − 委派类工具 − `child: 'deny'`）**（`delegation` 标记）→ 天然深度 1，不会无限递归；四个 `plan-*` 标 `child: 'deny'` |
+| **子 agent 的工具面** | **父 agent 的授权面 ∩（全部 − 委派类工具 − `child: 'deny'`）**（`delegation` 标记）→ 天然深度 1，不会无限递归；四个 `plan-*` 标 `child: 'allow'`（父子各一份 plan，按 run 隔离） |
 | **子 agent 的落库** | 独立 `runs` 行（`parent_run_id` / `depth` / `tool_call_id`）+ 自己完整的 `timelines`；动态 prompt 全量落 `request_snapshot`；消耗汇总进父 run，**轮数只数根 run** |
 | **对话附件** | **只传存储 key、不传文件内容**（请求体与文件大小无关）；图片走 `image` part 的 data URL、文本类内联、**PDF 本地抽文字内联**；时间线只落元数据（§3.16） |
 | **多模态能力的建模** | **模型实体的独立字段**（`mode` + `input_modalities` + `output_modalities`），不塞进 `capabilities` jsonb。模态数组对齐 **OpenRouter** 的 `architecture.input_modalities`，类型字段对齐 **LiteLLM** 的 `mode`（§3.16.5） |

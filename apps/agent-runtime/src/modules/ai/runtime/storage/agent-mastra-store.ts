@@ -10,7 +10,6 @@ import type { WorkflowRunState } from '@mastra/core/workflows'
 import { Db, type AppLogger } from '@repo/kits'
 import { RunStatus } from '@repo/shared'
 import { RunEntity } from '@repo/db'
-import { jsonbPatch } from '../jsonb.js'
 
 /**
  * 存储适配层：**把 Mastra 的运行快照落进我们自己的表**（设计文档 §4.4）。
@@ -139,24 +138,32 @@ export class AgentWorkflowsStorage extends WorkflowsStorage {
     createdAt?: Date
     updatedAt?: Date
   }): Promise<void> {
-    const repo = this.db.getRepository(RunEntity)
     const status = toRunStatus(input.snapshot?.status as string | undefined)
-    const existing = await repo.findOne({ where: { engineRunId: input.runId } })
-    const map = snapshotMapOf(existing?.snapshot)
-    map[input.workflowName] = input.snapshot
-    const affected = await repo
-      .createQueryBuilder()
-      .update(RunEntity)
-      .set(
-        jsonbPatch<RunEntity>({
-          snapshot: map as unknown as Record<string, unknown>,
-          ...(status ? { status } : {}),
-        }),
-      )
-      .where('engine_run_id = :runId', { runId: input.runId })
-      .execute()
-
-    if ((affected.affected ?? 0) > 0) return
+    // 只 set 当前 workflow 的 key：用 jsonb_set 避免「读整份快照 → 内存合并 → 回写整份 JSONB」。
+    // 两个 workflow 交替 checkpoint 时，这能省掉一次读和另一份快照的重复传输。
+    const rows = await this.db.dataSource.query<Array<{ id: string }>>(
+      `
+      UPDATE runs
+         SET snapshot = jsonb_set(
+               CASE
+                 WHEN snapshot IS NULL THEN '{}'::jsonb
+                 WHEN snapshot ? 'context' OR snapshot ? 'status'
+                   THEN jsonb_build_object('durable-agentic-loop', snapshot)
+                 ELSE snapshot
+               END,
+               ARRAY[$2]::text[],
+               $3::jsonb,
+               true
+             ),
+             status = CASE WHEN $4::text IS NULL THEN status ELSE $4 END,
+             updated_at = now()
+       WHERE engine_run_id = $1
+       RETURNING id
+      `,
+      [input.runId, input.workflowName, JSON.stringify(input.snapshot), status ?? null],
+    )
+    const affected = rows.length
+    if (affected > 0) return
 
     /**
      * 没有对应的运行记录 → **只记日志，绝不插一行**（踩过的坑）。

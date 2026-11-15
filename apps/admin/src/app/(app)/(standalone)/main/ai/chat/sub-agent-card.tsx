@@ -1,14 +1,16 @@
 'use client'
 
 import { useState } from 'react'
+import Link from 'next/link'
 import { Badge, Card, Collapsible, CollapsibleContent, CollapsibleTrigger, cn } from '@repo/ui'
-import { BotIcon, ChevronDownIcon, LoaderCircleIcon } from 'lucide-react'
+import { ArrowUpRightIcon, BotIcon, ChevronDownIcon, LoaderCircleIcon } from 'lucide-react'
 import {
   Message,
   MessageContent,
   MessageResponse,
 } from '@repo/ui/components/ai-elements/message.tsx'
 import { durationText, tokenText } from './format'
+import { conversationPath } from './routes'
 import { statusLabel, statusVariant } from './sub-agent-panel'
 import {
   isSubAgentActive,
@@ -66,9 +68,20 @@ export function SubAgentCard({ agent }: { agent: SubAgentLive }) {
             {typeof totalTokens === 'number' ? ` · ${tokenText(totalTokens)} token` : ''}
             {duration ? ` · ${duration}` : ''}
           </span>
-          <span className="ml-auto hidden shrink-0 text-xs text-muted-foreground sm:inline">
-            过程见右栏
-          </span>
+          {agent.conversationId ? (
+            <Link
+              href={conversationPath(agent.conversationId)}
+              className="ml-auto shrink-0 text-xs text-primary hover:underline"
+              onClick={(event) => event.stopPropagation()}
+            >
+              打开子会话
+              <ArrowUpRightIcon className="ml-0.5 inline size-3" aria-hidden />
+            </Link>
+          ) : (
+            <span className="ml-auto hidden shrink-0 text-xs text-muted-foreground sm:inline">
+              过程见右栏
+            </span>
+          )}
           <ChevronDownIcon
             className={cn(
               'size-4 shrink-0 text-muted-foreground transition-transform',

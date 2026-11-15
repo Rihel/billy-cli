@@ -1,107 +1,31 @@
 'use client'
 
-import { useRouter } from 'next/navigation'
-import { AppName } from '@/lib/constants'
-import { useAuthStore } from '@/stores/auth.store'
-import { logoutAction } from '@/actions/auth.actions'
-import { removeToken } from '@/lib/server-client'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-  Sidebar,
-  SidebarContent,
-  SidebarFooter,
-  SidebarHeader,
-  SidebarMenu,
-  SidebarMenuButton,
-  SidebarMenuItem,
-  UserAvatar,
-  useStorageUrl,
-} from '@repo/ui'
-import { LogOutIcon, TerminalSquareIcon, UserRoundIcon } from 'lucide-react'
+import { Sidebar, SidebarContent } from '@repo/ui'
 import { AppMenu } from './AppMenu'
+import { TOP_BAR_HEIGHT } from './AppTopBar'
 
 export type AppSiderProps = Partial<{}>
 
-export const AppSider = (_props: AppSiderProps) => {
-  const { adminInfo, authEnabled, clear } = useAuthStore()
-  const router = useRouter()
-  // 桶私有：头像 key 走短时预签名
-  const avatarUrl = useStorageUrl(adminInfo?.avatar)
-
-  const exit = async () => {
-    // 先清本地状态，避免残留渲染
-    clear()
-    // 并行清理：localStorage token + 服务端会话撤销 + httpOnly cookie（任一失败不阻塞退出）
-    await Promise.allSettled([removeToken(), logoutAction()])
-    // 全量导航到登录页：新请求必然携带已删除的 cookie，绕开客户端路由缓存导致的旧 cookie 弹回
-    window.location.href = '/auth/login'
-  }
-
-  const displayName = adminInfo?.realName || adminInfo?.email || '个人中心'
-
-  return (
-    <Sidebar collapsible="icon" variant="floating" className="p-3">
-      <SidebarHeader>
-        {/* 品牌区：与前台一致的亮蓝渐变 TerminalSquare 方块 + 字标 + mono 副标 */}
-        <div className="flex items-center gap-2.5 px-1 py-0.5">
-          <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-brand text-white">
-            <TerminalSquareIcon className="size-4" strokeWidth={2.2} />
-          </span>
-          <div className="flex min-w-0 flex-col leading-tight">
-            <span className="font-heading truncate text-[15px] font-semibold tracking-tight">
-              {AppName}
-            </span>
-            <span className="truncate font-mono text-[10px] tracking-wider text-muted-foreground">
-              admin console
-            </span>
-          </div>
-        </div>
-      </SidebarHeader>
-      <SidebarContent>
-        <AppMenu />
-      </SidebarContent>
-
-      {authEnabled ? (
-        <SidebarFooter className="gap-2.5 pb-4">
-          <SidebarMenu>
-            <SidebarMenuItem>
-              {/* 用户信息：鼠标悬停弹出菜单（个人中心 / 退出登录） */}
-              <DropdownMenu>
-                <DropdownMenuTrigger
-                  openOnHover
-                  delay={0}
-                  render={
-                    <SidebarMenuButton size="lg" className="py-2">
-                      <UserAvatar
-                        src={avatarUrl ?? null}
-                        name={displayName}
-                        shape="rounded"
-                        className="shrink-0"
-                      />
-                      <span className="truncate">{displayName}</span>
-                    </SidebarMenuButton>
-                  }
-                />
-                <DropdownMenuContent align="end" side="right" className="w-44">
-                  <DropdownMenuItem onClick={() => router.push('/main/user-center')}>
-                    <UserRoundIcon />
-                    个人中心
-                  </DropdownMenuItem>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem variant="destructive" onClick={() => void exit()}>
-                    <LogOutIcon />
-                    退出登录
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            </SidebarMenuItem>
-          </SidebarMenu>
-        </SidebarFooter>
-      ) : null}
-    </Sidebar>
-  )
-}
+/**
+ * **管理台侧栏**：只放模块菜单（品牌、账号都在全局顶栏 `AppTopBar` 里）。
+ *
+ * 为什么品牌与账号上移：顶栏是会话 / 管理**共用**的一条，品牌与账号只在那一处出现，
+ * 免得"会话页没有侧栏、于是没有账号入口"这类分叉（那正是原来会话页要单独放一个
+ * 「返回管理台」按钮的原因）。
+ *
+ * `style` 是给**共享 `Sidebar` 的 fixed 容器**用的：它默认 `inset-y-0 h-svh` 按视口铺满，
+ * 顶栏横贯窗口最上方之后必须整体下移一个顶栏高度（行内样式比 `top-*` 类可靠 ——
+ * 容器自带的 `inset-y-0` 与 `top-*` 是两个工具类，谁覆盖谁取决于产物里的声明顺序）。
+ */
+export const AppSider = (_props: AppSiderProps) => (
+  <Sidebar
+    collapsible="icon"
+    variant="floating"
+    className="p-3"
+    style={{ top: TOP_BAR_HEIGHT, height: `calc(100svh - ${TOP_BAR_HEIGHT})` }}
+  >
+    <SidebarContent>
+      <AppMenu />
+    </SidebarContent>
+  </Sidebar>
+)

@@ -11,6 +11,8 @@ export const DbConfigSchema = z.object({
   entities: z.array(z.unknown()).optional(),
   /** TypeORM 实体订阅者类数组（可选；如审计用 AuditSubscriber） */
   subscribers: z.array(z.unknown()).optional(),
+  /** 连接池大小（每实例）；默认 10，生产按 DB 配额调整 */
+  poolSize: z.coerce.number().int().positive().max(100).default(10),
 })
 
 export type DbConfig = z.infer<typeof DbConfigSchema>

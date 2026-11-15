@@ -338,15 +338,48 @@ describe('markTransientChunks（逐帧增量不落 part）', () => {
     return result
   }
 
-  it('只给子助手增量块打 transient，其余块原样通过', async () => {
+  it('只给逐帧增量 / 排队应答打 transient，其余块原样通过', async () => {
     const out = await collect([
       { type: 'data-sub-agent-delta', data: { runId: 's1', text: '字' } },
       { type: 'data-sub-agent', id: 's1', data: { runId: 's1' } },
+      { type: 'data-queue', data: { queued: true } },
       { type: 'text-delta', id: 't1', delta: '正文' },
     ])
 
     expect(out[0]).toMatchObject({ type: 'data-sub-agent-delta', transient: true })
     expect((out[1] as { transient?: boolean }).transient).toBeUndefined()
-    expect((out[2] as { transient?: boolean }).transient).toBeUndefined()
+    // 排队应答必须 transient：否则会多出一条"（空消息）"气泡
+    expect(out[2]).toMatchObject({ type: 'data-queue', transient: true })
+    expect((out[3] as { transient?: boolean }).transient).toBeUndefined()
+  })
+
+  it('子 agent 完成系统卡按 subRunId 归并成一个单元；排队应答不产生未知片段', () => {
+    const store = new ChatSessionStore()
+    store.sync([
+      message([
+        {
+          type: 'data-subagent-completed',
+          id: 'sub_run_1',
+          data: {
+            status: 'subagent_completed',
+            subAgentId: 'sub_conv_1',
+            subRunId: 'sub_run_1',
+            name: '待办统计',
+            childStatus: 'succeeded',
+            summary: '共 3 条待办',
+            error: null,
+          },
+        },
+        { type: 'data-queue', data: { queued: true, message: '已排队' } },
+      ]),
+    ])
+
+    const units = unitsOf(store)
+    expect(units).toHaveLength(1)
+    expect(units[0]).toMatchObject({
+      kind: 'notice',
+      key: 'notice-sub_run_1',
+      data: { name: '待办统计', childStatus: 'succeeded' },
+    })
   })
 })

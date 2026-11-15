@@ -6,8 +6,7 @@
 > 同批落地：`model_gateway_usage` 逐请求流水（价格快照 / 成本 / 归因头）、`ai_provider_keys` key 池
 > + Redis 冷却/额度、main 的 key CRUD API、`ai.model.changed` 缓存失效。
 > 同批落地：main 的「同步 / 连通性测试」已改为经网关 `/internal/providers/*`（供应商交互与明文 key 只在网关）。
-> **未做**：生图（P4.4）、k8s、admin 页面（key / 价格输入 / 用量成本 UI）、
-> `model_gateway_usage` 读取 API/SDK、key 加密。
+> **未做**：生图（P4.4）、key 加密（本轮明确不做）。
 > **runtime 的 `modules/ai-model/**` 已删除**（生产唯一模型来源是网关目录）。
 >
 > 状态：**草案，待评审**（2026-11-15）。本文是 [distributed-ai-architecture.md](distributed-ai-architecture.md)

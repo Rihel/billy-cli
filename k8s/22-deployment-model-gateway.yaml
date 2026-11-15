@@ -1,0 +1,110 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: billy-model-gateway
+  namespace: billy
+  labels:
+    app.kubernetes.io/name: billy-model-gateway
+    app.kubernetes.io/component: model-gateway
+spec:
+  # 内部模型网关：被 agent-runtime 调用，副本数由 HPA（60-hpa.yaml）接管。
+  # HPA 生效后这里的 replicas 只是「创建时初值」，后续以 HPA 为准。
+  replicas: 2
+  # 与 main / runtime 同一套滚动策略：先起新 Pod 并等就绪，再杀旧 Pod。
+  # 网关在滚动期间断流会让 runtime 的模型调用失败，因此绝不允许 maxUnavailable > 0。
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  minReadySeconds: 5
+  progressDeadlineSeconds: 600
+  revisionHistoryLimit: 5
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: billy-model-gateway
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: billy-model-gateway
+        app.kubernetes.io/component: model-gateway
+    spec:
+      # 模型流式响应可能持续数分钟；preStop(8s) + 进程收尾都要留在这 60s 内
+      terminationGracePeriodSeconds: 60
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                topologyKey: kubernetes.io/hostname
+                labelSelector:
+                  matchLabels:
+                    app.kubernetes.io/name: billy-model-gateway
+      containers:
+        - name: model-gateway
+          # ← 替换为你的镜像地址与 tag；model-gateway 没有 /info，也不读 APP_VERSION，换 tag 只改这里
+          image: registry.example.com/billy-cli/model-gateway:v0.0.0
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 9992
+              protocol: TCP
+          envFrom:
+            # 共享配置（NODE_ENV / 日志等）→ 网关专属配置 → 共享 Secret（DB / Redis / MODEL_INTERNAL_TOKEN）
+            # billy-shared 是整份引用（含对象存储键）；网关实际只用 NODE_ENV / LOG_LEVEL
+            - configMapRef:
+                name: billy-shared
+            - configMapRef:
+                name: billy-model-gateway
+            - secretRef:
+                name: billy-app
+          env:
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+          # 与 main / runtime 相同：先等 endpoint 摘流，再接收 SIGTERM
+          lifecycle:
+            preStop:
+              exec:
+                command: ['/bin/sh', '-c', 'sleep 8']
+          # ── 探针：语义与 main / runtime 一致 ──
+          startupProbe:
+            # 只探进程：/readyz 会查 PG + 模型目录，依赖故障时会让 Pod 永远起不来
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 2
+            timeoutSeconds: 2
+            failureThreshold: 30 # 最长容忍 60s 启动（含 DB 连接建立）
+          readinessProbe:
+            # /readyz 探 PG + 模型目录可读；DB 不可用时 HTTP 503，readiness 会真正摘流。
+            httpGet:
+              path: /readyz
+              port: http
+            periodSeconds: 3
+            timeoutSeconds: 2
+            failureThreshold: 2
+          livenessProbe:
+            # 绝不探外部依赖：依赖抖动时重启整个网关只会放大故障
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 2
+            failureThreshold: 3
+          resources:
+            # HPA 的 CPU 利用率按 requests 算（70% × 200m ≈ 140m 触发扩容）
+            requests:
+              cpu: 200m
+              memory: 256Mi
+            limits:
+              cpu: '1'
+              memory: 1Gi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ['ALL']
+      securityContext:
+        # Dockerfile 已 `USER appuser`（非 root），这里再做一次显式声明兜底
+        runAsNonRoot: true

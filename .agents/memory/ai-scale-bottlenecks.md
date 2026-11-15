@@ -4,18 +4,19 @@
 
 ## 结论（按对「扛流量」的影响排序）
 
-1. **k8s 资源限额过小**：`k8s/20-deployment.yaml` requests 100m/256Mi、limits 1 CPU/512Mi。
-   AI 进程里仅 `ToolResultStore` 单实例就允许 32MB，加上每个活跃 run 的上下文 / Mastra 对象，
-   512Mi 会在几十个并发轮次内 OOM。**没有 HPA**（`k8s/` 只有 Deployment / PDB）。
+1. **资源限额仍偏紧 / 没有压测**：main requests 100m/256Mi、limits 1 CPU/512Mi；runtime
+   requests 250m/512Mi、limits 1 CPU/1Gi。`k8s/60-hpa.yaml` 已加 CPU HPA（需 metrics-server），
+   但 AI 并发下的真实内存水位尚未压测；`ToolResultStore` 单实例仍允许 32MB。
 2. **没有准入控制**：`/agent/chat/stream` 在 main 只有 `AnyAuthGuard`（runtime 侧不限）；`RateLimitGuard` 只用在
    auth / share 等接口。同会话并发有 `runs` 唯一索引挡住，但一个用户可开多个会话并发跑；
    没有每用户 / 每租户 / 全局并发与排队上限。
-3. **工作区是 Pod 本地盘**：`core/tools/workspace.ts:16` 默认 `~/.billy/workspaces/<conversationId>`，
-   k8s 无卷；重启 / 换副本后工作区丢失。
-4. **Redis 流缓冲无字节上限**：`stream-store.service.ts:36` 每 run 最多 20,000 条、TTL 1h，
-   只按条数裁剪、不按字节；并发长回复时 Redis 内存按「run 数 × 缓冲」增长。
-5. **DB 连接池固定 10/实例**：`packages/kits/src/db/db.ts:28`；没有 PgBouncer / 池配置项。
-6. **写入放大没有保留策略**：`timelines` 每步写多行；durable 快照存 `runs.snapshot` JSONB
+3. **工作区持久化依赖 RWX**：`15-pvc-agent-runtime-workspaces.yaml` 已挂
+   `~/.billy/workspaces/<conversationId>`，但 PVC 要求 ReadWriteMany；RWO 集群不能开 runtime HPA 多副本。
+4. **Redis 流缓冲有双重上限**：`stream-store.service.ts` 每 run 20,000 条 + 32MB（UTF-8 字节），
+   TTL 1h；并发长回复仍按「run 数 × 32MB」增长，需要按实际并发核算 Redis 容量。
+5. **DB 连接池可配但默认 10/实例**：`DB_POOL_SIZE`（kits `DbConfig`），没有 PgBouncer；
+   按副本数 × 池大小核对 PG `max_connections`。
+6. **快照写入已改为 `jsonb_set`**（只 set 当前 workflow key，不再读整份 + 回写整份）；但每次 checkpoint 仍整行更新，且 **`runs`/`timelines` 的保留/归档仍未做**（硬规则禁止删除，需分区/归档方案）：`timelines` 每步写多行；durable 快照存 `runs.snapshot` JSONB
    且每步更新（`agent-mastra-store.ts:19`）；迁移里没有分区 / 归档 / 过期删除。
 
 ## 另一面：不是瓶颈的地方

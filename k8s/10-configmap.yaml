@@ -1,12 +1,15 @@
-# main / agent-runtime 的非敏感运行配置。
+# main / agent-runtime 的非敏感运行配置（model-gateway / tool-gateway / tool-worker 见 11/12/13 号文件）。
 #
 # 拆分原则：
-# - `billy-shared`：两个服务都需要的公共配置（NODE_ENV / 对象存储 / 日志 / Kafka）；
+# - `billy-shared`：五个服务都可能用到的公共配置（NODE_ENV / 对象存储 / 日志 / Kafka）；
 # - `billy-main`：公网入口专属（端口 9989、认证与限流、runtime 地址、网关相关超时）；
-# - `billy-agent-runtime`：内部运行时专属（端口 9990、多实例恢复、agent 模型配置）。
+# - `billy-agent-runtime`：内部运行时专属（端口 9990、多实例恢复、agent 模型配置、模型网关地址）。
+# 新增的 model-gateway / tool-gateway / tool-worker 各有自己的 ConfigMap（11/12/13 号文件），
+# 也都用同一份 `billy-shared`。
 #
-# 敏感项（DB_URL / REDIS_URL / JWT_SECRET / 对象存储密钥 / AGENT_INTERNAL_TOKEN）统一放在
-# Secret `billy-app`，两个 Deployment 共享同一份；建 Secret 的命令见 README.md §1。
+# 敏感项（DB_URL / REDIS_URL / JWT_SECRET / 对象存储密钥 / AGENT_INTERNAL_TOKEN /
+# MODEL_INTERNAL_TOKEN / MODEL_GATEWAY_TOKEN / TOOL_INTERNAL_TOKEN）统一放在 Secret `billy-app`，
+# 所有 Deployment 共享同一份；建 Secret 的命令与全部键说明见 README.md §1。
 # Deployment 的 envFrom 顺序是 billy-shared → 各自 ConfigMap → billy-app（键不重复，避免覆盖歧义）。
 ---
 apiVersion: v1
@@ -79,6 +82,15 @@ data:
   KEEP_ALIVE_TIMEOUT_MS: '75000'
   HEADERS_TIMEOUT_MS: '80000'
   SHUTDOWN_TIMEOUT_MS: '25000'
+  # ── 模型网关（内部 9992）──
+  # runtime 只向网关要模型目录、把模型实例指向网关，自己不再读供应商 key / 配置表。
+  # 地址必须与 32-service-model-gateway.yaml 的 Service DNS + 端口一致。
+  # 配套令牌在 Secret `billy-app`：runtime 读 MODEL_GATEWAY_TOKEN，网关读 MODEL_INTERNAL_TOKEN，
+  # 两个键必须同值（见 README §3）。
+  MODEL_GATEWAY_URL: http://billy-model-gateway.billy.svc.cluster.local:9992
+  # 会话工作区根：必须与工作区 PVC 的挂载路径一致（默认值也是它，显式写出防止 HOME 变更后错位）。
+  # 该目录由 15-pvc-agent-runtime-workspaces.yaml 挂载；RWO 存储类下不能多副本。
+  AGENT_COMMAND_WORK_DIR: /home/appuser/.billy/workspaces
   # ── agent 模型配置（非敏感）──
   # MASTRA_MODEL: deepseek/deepseek-chat
   # MASTRA_BASE_URL: https://api.deepseek.com

@@ -1,5 +1,7 @@
 'use client'
 
+import Link from 'next/link'
+
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useChat } from '@ai-sdk/react'
@@ -52,15 +54,10 @@ import {
   PromptInputSubmit,
   PromptInputTextarea,
   PromptInputTools,
+  PromptInputProvider,
+  usePromptInputController,
 } from '@repo/ui/components/ai-elements/prompt-input.tsx'
-import {
-  BotIcon,
-  CopyIcon,
-  LayoutDashboardIcon,
-  MessagesSquareIcon,
-  PanelRightIcon,
-} from 'lucide-react'
-import { Pages } from '@/lib/constants'
+import { BotIcon, CopyIcon, MessagesSquareIcon, PanelRightIcon, Trash2Icon } from 'lucide-react'
 import { useServerClient } from '@/lib/server-client'
 import { useChatMobileNav } from './mobile-nav-context'
 import { markAdoptedConversation, NEW_CONVERSATION_SLUG } from './routes'
@@ -90,7 +87,11 @@ import { ATTACHMENT_ACCEPT, formatFileSize } from './attachment-utils'
 import { createLongTextFile, LONG_TEXT_PASTE_MIN_CHARS, splitLongText } from './long-text'
 import { rejectedText, scanFiles, useAttachmentsUpload } from './use-attachments-upload'
 import { currentModelModalities, useAvailableModels } from './use-available-models'
-import type { AgentConversationModel, ChatAttachmentModel } from '@repo/shared'
+import type {
+  AgentConversationModel,
+  AgentRunQueueItemModel,
+  ChatAttachmentModel,
+} from '@repo/shared'
 import type { AppPageQueryResponse } from '@repo/shared'
 import {
   CHAT_ATTACHMENT_MAX_BYTES,
@@ -238,6 +239,9 @@ export function ChatConversation({ conversationId }: { conversationId: string })
    */
   const [resuming, setResuming] = useState(false)
   const [errorText, setErrorText] = useState<string>()
+  /** 会话忙时这条消息被排队（服务端回一帧 `data-queue`）：提示用户"轮到时会自动继续" */
+  const [queueNotice, setQueueNotice] = useState<string>()
+  const [editingQueue, setEditingQueue] = useState<AgentRunQueueItemModel | null>(null)
   const [loading, setLoading] = useState(!isNew)
   /** 右栏（系统指令 / 子 agent 运行）是否显示；真实值由挂载后的 effect 从浏览器里读回来 */
   const [panelOpen, setPanelOpen] = useState(false)
@@ -312,7 +316,27 @@ export function ChatConversation({ conversationId }: { conversationId: string })
     queryFn: () => client.agent.conversation.detail({ conversationId }),
     enabled: !isNew,
   })
+  const queueQuery = useQuery({
+    queryKey: ['ai', 'run-queue', conversationId],
+    queryFn: () => client.agent.queue.list({ conversationId }),
+    enabled: !isNew && conversationQuery.data?.kind !== 'subagent',
+    refetchInterval: 3_000,
+  })
+
+  const removeQueueItem = async (item: AgentRunQueueItemModel): Promise<void> => {
+    try {
+      await client.agent.queue.remove({ conversationId, queueId: item.id })
+      if (editingQueue?.id === item.id) setEditingQueue(null)
+      await queueQuery.refetch()
+    } catch (error) {
+      toastError(error instanceof Error ? error.message : '删除队列项失败')
+    }
+  }
+
   const agentKey = agentKeyOverride ?? conversationQuery.data?.agentKey
+  /** 子会话（子 agent = 子会话）：只读展示，不在这里继续对话 */
+  const isSubConversation = conversationQuery.data?.kind === 'subagent'
+  const rootConversationId = conversationQuery.data?.rootConversationId
 
   /** 打开已有会话时，文件权限以服务端为准 */
   useEffect(() => {
@@ -495,6 +519,15 @@ export function ChatConversation({ conversationId }: { conversationId: string })
          */
         sessionStore.applyChunk(part as { type: string; id?: string; data?: unknown })
         /**
+         * 会话忙时服务端把这条消息**排队**（不再回 3306）：这一帧只用于提示。
+         * 真正起跑后服务端会推 `conversation.run.started`，布局层让会话页去接流。
+         */
+        if (part.type === 'data-queue') {
+          const data = part.data as { message?: string }
+          setQueueNotice(data.message ?? '上一轮还在跑，这条消息已排队，轮到时会自动继续')
+          return
+        }
+        /**
          * 首轮结束时的**自动命名**：服务端在收尾阶段把新标题推下来（`data-conversation-title`）。
          *
          * 为什么要推：命名发生在服务端收尾，前端那份"会话列表 / 会话详情"缓存不会自己知道 ——
@@ -588,6 +621,11 @@ export function ChatConversation({ conversationId }: { conversationId: string })
 
   // 续跑也算"在跑"：它不走 `useChat` 的发送通道，`status` 不会自己变成 streaming
   const streaming = status === 'streaming' || status === 'submitted' || resuming
+
+  // 接回流（排队消息 / 唤醒 run 起跑）：一旦重新进入流式，排队提示就该消失
+  useEffect(() => {
+    if (streaming) setQueueNotice(undefined)
+  }, [streaming])
 
   /**
    * 开跑不再需要手动刷会话列表：侧栏的运行态改由服务端事件驱动
@@ -940,17 +978,8 @@ export function ChatConversation({ conversationId }: { conversationId: string })
   return (
     <>
       <header className="flex min-w-0 items-center gap-2">
-        {/* 独立布局没有左菜单：这里是**唯一的退出入口**（移动端列表栏本来就隐藏，更不能没有）。
-            用图标按钮而不是文字链接（页头横向空间要留给标题与模型选择），形态与右侧的
-            "复制会话 id" 一致 —— 都是 `IconText`，不自己拼按钮样式 */}
-        <IconText
-          icon={<LayoutDashboardIcon />}
-          size="small"
-          type="primary"
-          tooltip="回到管理台"
-          aria-label="回到管理台"
-          onClick={() => router.push(Pages.dashboard)}
-        />
+        {/* 顶层「会话 / 管理」切换在全局顶栏里，这里不再放「回到管理台」图标 ——
+            页头横向空间全部留给标题与模型选择；移动端仍留一个"会话列表"入口（抽屉） */}
         {isMobile && mobileNav ? (
           <IconText
             icon={<MessagesSquareIcon />}
@@ -1033,6 +1062,11 @@ export function ChatConversation({ conversationId }: { conversationId: string })
       {errorText || error ? (
         <Alert variant="destructive">
           <AlertDescription>{errorText ?? error?.message}</AlertDescription>
+        </Alert>
+      ) : null}
+      {queueNotice ? (
+        <Alert>
+          <AlertDescription>{queueNotice}</AlertDescription>
         </Alert>
       ) : null}
 
@@ -1122,6 +1156,19 @@ export function ChatConversation({ conversationId }: { conversationId: string })
             {/* 输入框上方的常驻 dock：运行状态 / 当前任务进度 / 待回答的问题。
                 放在 Conversation 外面，所以不会被消息列表滚走；问题卡永远贴着输入框。 */}
             <div className="flex max-h-[55vh] shrink-0 flex-col gap-2 overflow-y-auto px-3">
+              {isSubConversation ? (
+                <div className="rounded-lg border border-border bg-surface-2 px-3 py-2 text-xs text-muted-foreground">
+                  这是子助手产生的子会话，只读展示；要让它继续工作，请回到父会话重新委派。
+                  {rootConversationId ? (
+                    <Link
+                      href={conversationPath(rootConversationId)}
+                      className="ml-1 text-primary hover:underline"
+                    >
+                      返回父会话
+                    </Link>
+                  ) : null}
+                </div>
+              ) : null}
               <RunActivity
                 messages={messages}
                 status={resuming ? 'streaming' : status}
@@ -1138,200 +1185,227 @@ export function ChatConversation({ conversationId }: { conversationId: string })
               ) : null}
             </div>
 
-            <div className="px-3 pb-3">
-              <PromptInput
-                /**
-                 * 附件的大小 / 类型校验**刻意不交给 `PromptInput` 的 `maxFileSize` / `accept`**，
-                 * 而是放在下面的提交预检（`scanFiles`）里做。两条原因：
-                 *
-                 * 1. `accept` 只是文件选择框的提示，**粘贴进来的文件根本不过它**，拦不住；
-                 * 2. `maxFileSize` 是"整批里有一个超限就把**这一批全丢掉**"的粗粒度行为 ——
-                 *    用户粘三张图、其中一张大了点，结果三张全没了，且提示只有一句"都超限"。
-                 *
-                 * 提交预检给的是逐文件的原因（哪个、为什么、多大），且**有不合格的就不发这一轮** ——
-                 * 静默丢掉用户粘进来的东西，比让他重来一次更糟。
-                 */
-                accept={ATTACHMENT_ACCEPT}
-                multiple
-                onSubmit={async ({ text, files }) => {
-                  const raw = text.trim()
-                  if ((!raw && files.length === 0) || streaming || attachmentUpload.uploading) {
-                    return
-                  }
-
-                  /**
-                   * 超长文本转附件：`message` 有 8000 字符上限（`AgentChatSchema`），
-                   * 用户粘日志 / 长文时不该只看到一个 400。全文落成 .md 附件，
-                   * 正文换成一句说明；上传 / 校验 / 气泡展示都复用现有附件链路。
-                   */
-                  const { content, file: longTextFile } = splitLongText(raw)
-                  let messageFiles = files
-                  // 待发附件：只认本地文件（`files` 是 PromptInput 从附件状态里整理出来的）
-                  const localFiles = files
-                    .map((part) => part.rawFile)
-                    .filter((file): file is File => file instanceof File)
-
-                  if (longTextFile) {
-                    if (localFiles.length + 1 > CHAT_ATTACHMENT_MAX_COUNT) {
-                      toastError(
-                        `长文本会转成一个附件，但一轮最多带 ${CHAT_ATTACHMENT_MAX_COUNT} 个，请先移除一个`,
-                      )
-                      return
-                    }
-                    if (longTextFile.size > CHAT_ATTACHMENT_MAX_BYTES) {
-                      toastError(
-                        `内容超过 ${formatFileSize(CHAT_ATTACHMENT_MAX_BYTES)}，请分段发送`,
-                      )
-                      return
-                    }
-                    // 气泡里也要看得到这份附件：与 PromptInput 的附件 part 同形（url 用本地对象地址）
-                    messageFiles = [
-                      ...files,
-                      {
-                        type: 'file',
-                        mediaType: longTextFile.type,
-                        filename: longTextFile.name,
-                        url: URL.createObjectURL(longTextFile),
-                        rawFile: longTextFile,
-                      },
-                    ]
-                    localFiles.push(longTextFile)
-                    // 超过内联上限的部分服务端会截断（模型读不到），先说清楚，别让用户以为整份都喂进去了
-                    const truncated = raw.length > CHAT_ATTACHMENT_TEXT_INLINE_LIMIT
-                    toastSuccess(
-                      `内容较长，已转为附件「${longTextFile.name}」` +
-                        (truncated
-                          ? `（超过 ${CHAT_ATTACHMENT_TEXT_INLINE_LIMIT.toLocaleString()} 字的部分模型读不到）`
-                          : ''),
-                    )
-                  }
-
-                  const scanned = scanFiles(localFiles, inputModalities)
-                  if (scanned.rejected.length > 0) {
-                    // 有不合格的**整轮不发**：静默丢掉用户粘进来的东西，比让他重来一次更糟
-                    toastError(rejectedText(scanned.rejected))
-                    throw new Error('附件不符合要求，已取消本次发送')
-                  }
-                  /**
-                   * 数量也整轮不发（与 `AgentChatSchema.attachments` 的 `.max()` 同一个常量）。
-                   *
-                   * 为什么不"自动只带前 N 个"：那等于**背着用户丢掉**他明确选中的文件，
-                   * 而他以为都发出去了。宁可挡住这一轮、让他自己决定去掉哪几个。
-                   */
-                  if (scanned.accepted.length > CHAT_ATTACHMENT_MAX_COUNT) {
-                    toastError(
-                      `一轮最多带 ${CHAT_ATTACHMENT_MAX_COUNT} 个附件，当前有 ${scanned.accepted.length} 个，请先移除多余的`,
-                    )
-                    throw new Error('附件数量超出上限，已取消本次发送')
-                  }
-
-                  setErrorText(undefined)
-                  clearError()
-
-                  let attachments: ChatAttachmentModel[] = []
-                  if (scanned.accepted.length > 0) {
-                    try {
-                      attachments = await attachmentUpload.upload(scanned.accepted)
-                    } catch (uploadError) {
-                      const reason =
-                        uploadError instanceof Error ? uploadError.message : String(uploadError)
-                      toastError(`附件上传失败：${reason}`)
-                      // 抛出去让 `PromptInput` 知道"这一轮没发成"，输入框里的附件与文字都留着
-                      throw uploadError
-                    }
-                  }
-
-                  await sendMessage(
-                    {
-                      text: content,
-                      // 直接把附件 part 交给 useChat：消息里因此带上 file part，气泡里就能显示附件。
-                      // 真正发给服务端的不是它，而是 metadata 里那份"存储 key + 元数据"
-                      // （part 里装的是预览地址，服务端要的是 key，见 prepareSendMessagesRequest）
-                      ...(messageFiles.length > 0 ? { files: messageFiles } : {}),
-                    },
-                    { metadata: { attachments } },
-                  )
-                }}
+            <div className={isSubConversation ? 'hidden' : 'px-3 pb-3'}>
+              <PromptInputProvider
+                key={editingQueue ? `queue-${editingQueue.id}` : 'composer'}
+                initialInput={editingQueue?.message ?? ''}
               >
-                {/* 待发附件条：粘完、发之前就能看清带了什么（图给缩略图，别的给文件名与大小） */}
-                <PromptInputBody>
-                  <PromptInputAttachmentsBar onPreviewImage={previewAttachments} />
-                  <PromptInputTextarea
-                    placeholder={`说说你想做什么…（⌘/Ctrl + Enter 发送，Enter 换行；可粘贴图片 / 文件，长文本自动转附件，${ATTACHMENT_LIMIT_TEXT}）`}
-                    submitOn="mod+enter"
-                    /**
-                     * 粘贴超过阈值的纯文本 → 直接变成附件，输入框留空给用户写自己的问题。
-                     * 这是主路径；`onSubmit` 里的 `splitLongText` 只是"手打超过 8000 字"的兜底。
-                     */
-                    pasteTextAsAttachment={{
-                      minChars: LONG_TEXT_PASTE_MIN_CHARS,
-                      toFile: createLongTextFile,
-                      onConverted: (file) =>
-                        toastSuccess(`长文本已转为附件「${file.name}」，输入你的问题即可发送`),
-                    }}
-                  />
-                </PromptInputBody>
-                {/* 左下角：本轮用哪个模型；右下角：本轮统计 + 发送/停止 */}
-                <PromptInputFooter className="flex-wrap gap-2 sm:flex-nowrap">
-                  <PromptInputTools>
-                    <ModelPicker value={modelId} onChange={chooseModel} disabled={streaming} />
-                    <span
-                      className="shrink-0"
-                      title="沙箱内的文件权限：可写 = 能改本会话工作区；只读 = 不能改（临时目录除外）。能不能出沙箱由部署决定，用户选不到"
-                    >
-                      <SegmentedControl
-                        size="sm"
-                        value={fileAccess}
-                        options={[
-                          { value: 'workspace-write', label: '可写' },
-                          { value: 'read-only', label: '只读' },
-                        ]}
-                        onValueChange={chooseFileAccess}
-                        disabled={streaming}
-                      />
-                    </span>
-                    {/* 点击上传的入口：粘贴之外总得有"点一下选文件"这条路 */}
-                    <PromptInputAttachmentButton
-                      disabled={streaming || !attachmentsAllowed}
-                      tooltip={
-                        streaming
-                          ? '正在回复中，回复结束后再上传'
-                          : attachmentsAllowed
-                            ? '上传图片或文件（也可直接粘贴）'
-                            : '当前模型不支持图片 / 文件输入：可在后台「模型管理」声明，或换一个模型'
+                <QueuedRuns
+                  items={queueQuery.data ?? []}
+                  editingId={editingQueue?.id ?? null}
+                  onEdit={setEditingQueue}
+                  onRemove={removeQueueItem}
+                />
+                <PromptInput
+                  /**
+                   * 附件的大小 / 类型校验**刻意不交给 `PromptInput` 的 `maxFileSize` / `accept`**，
+                   * 而是放在下面的提交预检（`scanFiles`）里做。两条原因：
+                   *
+                   * 1. `accept` 只是文件选择框的提示，**粘贴进来的文件根本不过它**，拦不住；
+                   * 2. `maxFileSize` 是"整批里有一个超限就把**这一批全丢掉**"的粗粒度行为 ——
+                   *    用户粘三张图、其中一张大了点，结果三张全没了，且提示只有一句"都超限"。
+                   *
+                   * 提交预检给的是逐文件的原因（哪个、为什么、多大），且**有不合格的就不发这一轮** ——
+                   * 静默丢掉用户粘进来的东西，比让他重来一次更糟。
+                   */
+                  accept={ATTACHMENT_ACCEPT}
+                  multiple
+                  onSubmit={async ({ text, files }) => {
+                    const raw = text.trim()
+                    if ((!raw && files.length === 0) || streaming || attachmentUpload.uploading) {
+                      return
+                    }
+                    if (editingQueue) {
+                      if (!raw) return
+                      try {
+                        await client.agent.queue.update({
+                          conversationId,
+                          queueId: editingQueue.id,
+                          message: raw,
+                        })
+                        setEditingQueue(null)
+                        toastSuccess('已更新排队消息')
+                        await queueQuery.refetch()
+                      } catch (error) {
+                        toastError(error instanceof Error ? error.message : '更新排队消息失败')
                       }
+                      return
+                    }
+
+                    /**
+                     * 超长文本转附件：`message` 有 8000 字符上限（`AgentChatSchema`），
+                     * 用户粘日志 / 长文时不该只看到一个 400。全文落成 .md 附件，
+                     * 正文换成一句说明；上传 / 校验 / 气泡展示都复用现有附件链路。
+                     */
+                    const { content, file: longTextFile } = splitLongText(raw)
+                    let messageFiles = files
+                    // 待发附件：只认本地文件（`files` 是 PromptInput 从附件状态里整理出来的）
+                    const localFiles = files
+                      .map((part) => part.rawFile)
+                      .filter((file): file is File => file instanceof File)
+
+                    if (longTextFile) {
+                      if (localFiles.length + 1 > CHAT_ATTACHMENT_MAX_COUNT) {
+                        toastError(
+                          `长文本会转成一个附件，但一轮最多带 ${CHAT_ATTACHMENT_MAX_COUNT} 个，请先移除一个`,
+                        )
+                        return
+                      }
+                      if (longTextFile.size > CHAT_ATTACHMENT_MAX_BYTES) {
+                        toastError(
+                          `内容超过 ${formatFileSize(CHAT_ATTACHMENT_MAX_BYTES)}，请分段发送`,
+                        )
+                        return
+                      }
+                      // 气泡里也要看得到这份附件：与 PromptInput 的附件 part 同形（url 用本地对象地址）
+                      messageFiles = [
+                        ...files,
+                        {
+                          type: 'file',
+                          mediaType: longTextFile.type,
+                          filename: longTextFile.name,
+                          url: URL.createObjectURL(longTextFile),
+                          rawFile: longTextFile,
+                        },
+                      ]
+                      localFiles.push(longTextFile)
+                      // 超过内联上限的部分服务端会截断（模型读不到），先说清楚，别让用户以为整份都喂进去了
+                      const truncated = raw.length > CHAT_ATTACHMENT_TEXT_INLINE_LIMIT
+                      toastSuccess(
+                        `内容较长，已转为附件「${longTextFile.name}」` +
+                          (truncated
+                            ? `（超过 ${CHAT_ATTACHMENT_TEXT_INLINE_LIMIT.toLocaleString()} 字的部分模型读不到）`
+                            : ''),
+                      )
+                    }
+
+                    const scanned = scanFiles(localFiles, inputModalities)
+                    if (scanned.rejected.length > 0) {
+                      // 有不合格的**整轮不发**：静默丢掉用户粘进来的东西，比让他重来一次更糟
+                      toastError(rejectedText(scanned.rejected))
+                      throw new Error('附件不符合要求，已取消本次发送')
+                    }
+                    /**
+                     * 数量也整轮不发（与 `AgentChatSchema.attachments` 的 `.max()` 同一个常量）。
+                     *
+                     * 为什么不"自动只带前 N 个"：那等于**背着用户丢掉**他明确选中的文件，
+                     * 而他以为都发出去了。宁可挡住这一轮、让他自己决定去掉哪几个。
+                     */
+                    if (scanned.accepted.length > CHAT_ATTACHMENT_MAX_COUNT) {
+                      toastError(
+                        `一轮最多带 ${CHAT_ATTACHMENT_MAX_COUNT} 个附件，当前有 ${scanned.accepted.length} 个，请先移除多余的`,
+                      )
+                      throw new Error('附件数量超出上限，已取消本次发送')
+                    }
+
+                    setErrorText(undefined)
+                    clearError()
+
+                    let attachments: ChatAttachmentModel[] = []
+                    if (scanned.accepted.length > 0) {
+                      try {
+                        attachments = await attachmentUpload.upload(scanned.accepted)
+                      } catch (uploadError) {
+                        const reason =
+                          uploadError instanceof Error ? uploadError.message : String(uploadError)
+                        toastError(`附件上传失败：${reason}`)
+                        // 抛出去让 `PromptInput` 知道"这一轮没发成"，输入框里的附件与文字都留着
+                        throw uploadError
+                      }
+                    }
+
+                    await sendMessage(
+                      {
+                        text: content,
+                        // 直接把附件 part 交给 useChat：消息里因此带上 file part，气泡里就能显示附件。
+                        // 真正发给服务端的不是它，而是 metadata 里那份"存储 key + 元数据"
+                        // （part 里装的是预览地址，服务端要的是 key，见 prepareSendMessagesRequest）
+                        ...(messageFiles.length > 0 ? { files: messageFiles } : {}),
+                      },
+                      { metadata: { attachments } },
+                    )
+                  }}
+                >
+                  {/* 待发附件条：粘完、发之前就能看清带了什么（图给缩略图，别的给文件名与大小） */}
+                  <PromptInputBody>
+                    <PromptInputAttachmentsBar onPreviewImage={previewAttachments} />
+                    <PromptInputTextarea
+                      placeholder={`说说你想做什么…（⌘/Ctrl + Enter 发送，Enter 换行；可粘贴图片 / 文件，长文本自动转附件，${ATTACHMENT_LIMIT_TEXT}）`}
+                      submitOn="mod+enter"
+                      /**
+                       * 粘贴超过阈值的纯文本 → 直接变成附件，输入框留空给用户写自己的问题。
+                       * 这是主路径；`onSubmit` 里的 `splitLongText` 只是"手打超过 8000 字"的兜底。
+                       */
+                      pasteTextAsAttachment={{
+                        minChars: LONG_TEXT_PASTE_MIN_CHARS,
+                        toFile: createLongTextFile,
+                        onConverted: (file) =>
+                          toastSuccess(`长文本已转为附件「${file.name}」，输入你的问题即可发送`),
+                      }}
                     />
-                    {!attachmentsAllowed ? (
-                      <span className="hidden text-xs text-muted-foreground sm:inline">
-                        当前模型不支持附件
-                      </span>
-                    ) : inputModalities === null ? (
-                      // 未声明 ≠ 不支持：国内厂商的"列模型"接口普遍不给模态，所以只提醒、不拦。
-                      // 真不能收图时，服务端会明确报错（3312），比在这里瞎猜强。
+                  </PromptInputBody>
+                  {/* 左下角：本轮用哪个模型；右下角：本轮统计 + 发送/停止 */}
+                  <PromptInputFooter className="flex-wrap gap-2 sm:flex-nowrap">
+                    <PromptInputTools>
+                      <ModelPicker value={modelId} onChange={chooseModel} disabled={streaming} />
                       <span
-                        className="hidden text-xs text-muted-foreground sm:inline"
-                        title="后台「模型管理」里可以声明该模型支持哪些输入模态"
+                        className="shrink-0"
+                        title="沙箱内的文件权限：可写 = 能改本会话工作区；只读 = 不能改（临时目录除外）。能不能出沙箱由部署决定，用户选不到"
                       >
-                        该模型未声明输入模态，图片 / 文件可能读不了
+                        <SegmentedControl
+                          size="sm"
+                          value={fileAccess}
+                          options={[
+                            { value: 'workspace-write', label: '可写' },
+                            { value: 'read-only', label: '只读' },
+                          ]}
+                          onValueChange={chooseFileAccess}
+                          disabled={streaming}
+                        />
                       </span>
-                    ) : null}
-                    {attachmentUpload.uploading ? (
-                      <span className="text-xs text-muted-foreground">
-                        正在上传附件 {attachmentUpload.progress.done}/
-                        {attachmentUpload.progress.total}…
-                      </span>
-                    ) : null}
-                  </PromptInputTools>
-                  <div className="flex min-w-0 items-center gap-2">
-                    <UsageLine usage={usage} turn={turn} current={currentUsage} />
-                    {/* 流式中这个按钮就是"停止"（内部按 status 换成方块图标），onStop 里做真正的取消 */}
-                    <PromptInputSubmit
-                      status={resuming ? 'streaming' : status}
-                      onStop={() => void stopRun()}
-                    />
-                  </div>
-                </PromptInputFooter>
-              </PromptInput>
+                      {/* 点击上传的入口：粘贴之外总得有"点一下选文件"这条路 */}
+                      <PromptInputAttachmentButton
+                        disabled={streaming || !attachmentsAllowed}
+                        tooltip={
+                          streaming
+                            ? '正在回复中，回复结束后再上传'
+                            : attachmentsAllowed
+                              ? '上传图片或文件（也可直接粘贴）'
+                              : '当前模型不支持图片 / 文件输入：可在后台「模型管理」声明，或换一个模型'
+                        }
+                      />
+                      {!attachmentsAllowed ? (
+                        <span className="hidden text-xs text-muted-foreground sm:inline">
+                          当前模型不支持附件
+                        </span>
+                      ) : inputModalities === null ? (
+                        // 未声明 ≠ 不支持：国内厂商的"列模型"接口普遍不给模态，所以只提醒、不拦。
+                        // 真不能收图时，服务端会明确报错（3312），比在这里瞎猜强。
+                        <span
+                          className="hidden text-xs text-muted-foreground sm:inline"
+                          title="后台「模型管理」里可以声明该模型支持哪些输入模态"
+                        >
+                          该模型未声明输入模态，图片 / 文件可能读不了
+                        </span>
+                      ) : null}
+                      {attachmentUpload.uploading ? (
+                        <span className="text-xs text-muted-foreground">
+                          正在上传附件 {attachmentUpload.progress.done}/
+                          {attachmentUpload.progress.total}…
+                        </span>
+                      ) : null}
+                    </PromptInputTools>
+                    <div className="flex min-w-0 items-center gap-2">
+                      <UsageLine usage={usage} turn={turn} current={currentUsage} />
+                      {/* 流式中这个按钮就是"停止"（内部按 status 换成方块图标），onStop 里做真正的取消 */}
+                      <PromptInputSubmit
+                        status={resuming ? 'streaming' : status}
+                        onStop={() => void stopRun()}
+                      />
+                    </div>
+                  </PromptInputFooter>
+                </PromptInput>
+              </PromptInputProvider>
             </div>
           </div>
         </ResizablePanel>
@@ -1394,5 +1468,61 @@ export function ChatConversation({ conversationId }: { conversationId: string })
       {/* 附件查看器：挂在会话页最外层，全局只有一个实例 */}
       {lightbox.lightbox}
     </>
+  )
+}
+
+const QueuedRuns = ({
+  items,
+  editingId,
+  onEdit,
+  onRemove,
+}: {
+  items: AgentRunQueueItemModel[]
+  editingId: string | null
+  onEdit: (item: AgentRunQueueItemModel) => void
+  onRemove: (item: AgentRunQueueItemModel) => void | Promise<void>
+}): React.JSX.Element | null => {
+  const controller = usePromptInputController()
+  if (items.length === 0) return null
+  return (
+    <div className="mb-2 space-y-1 rounded-lg border border-border bg-surface-2 px-2 py-1.5">
+      <div className="text-xs font-medium text-muted-foreground">待执行队列</div>
+      {items.map((item, index) => (
+        <div key={item.id} className="flex items-center gap-2 text-xs">
+          <span className="w-4 text-muted-foreground">{index + 1}</span>
+          {item.source === 'user' ? (
+            <button
+              type="button"
+              className={`min-w-0 flex-1 truncate text-left hover:underline ${
+                editingId === item.id ? 'text-primary' : ''
+              }`}
+              onClick={() => {
+                onEdit(item)
+                controller.textInput.setInput(item.message ?? '')
+              }}
+            >
+              {item.message}
+            </button>
+          ) : (
+            <span className="min-w-0 flex-1 truncate text-muted-foreground">
+              子 agent「{item.subAgentName ?? '未知'}」完成，等待处理
+            </span>
+          )}
+          {item.source === 'user' ? (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="size-6 shrink-0"
+              aria-label="删除排队消息"
+              onClick={() => {
+                void onRemove(item)
+              }}
+            >
+              <Trash2Icon className="size-3.5" />
+            </Button>
+          ) : null}
+        </div>
+      ))}
+    </div>
   )
 }

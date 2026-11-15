@@ -38,6 +38,9 @@ export const memoryHistoryOptions = (windowTokens: number) => ({
   },
 })
 
+/** 对上层暴露的 Memory 类型别名（避免 app 代码直接 import @mastra/memory） */
+export type AgentMemory = Memory
+
 /** 生产实现：thread 落 Redis（连接由调用方按应用配置给） */
 export const createAgentMemory = (redisUrl: string): Memory =>
   new Memory({

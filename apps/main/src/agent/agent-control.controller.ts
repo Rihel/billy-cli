@@ -14,6 +14,7 @@ import {
 import { randomUUID } from 'node:crypto'
 import type { Response } from 'express'
 import { AnyAuthGuard } from '../modules/auth/index.js'
+import { RateLimit, RateLimitGuard } from '../common/security/index.js'
 import { requestContext } from '@repo/kits'
 import { AgentSseBridge } from './agent-sse.bridge.js'
 
@@ -33,6 +34,8 @@ export class AgentControlController {
 
   @Post('chat')
   @HttpCode(200)
+  @UseGuards(RateLimitGuard)
+  @RateLimit({ scope: 'agent-chat', limit: 10, windowSeconds: 60, identity: 'user' })
   chat(@Body() body: unknown) {
     return this.callJson('/internal/agent/chat', body)
   }

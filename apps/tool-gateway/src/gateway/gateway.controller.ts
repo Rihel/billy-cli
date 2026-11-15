@@ -5,6 +5,7 @@ import {
   HttpCode,
   Inject,
   Post,
+  Res,
   UseGuards,
   UseFilters,
   UseInterceptors,
@@ -90,13 +91,14 @@ export class ToolGatewayController {
   /** readiness：进程 + Redis；worker 数量作为观测值返回，不因为 0 个 worker 摘掉网关 */
   @Get('readyz')
   @HttpCode(200)
-  async readyz() {
+  async readyz(@Res({ passthrough: true }) response: { status(code: number): void }) {
     let redisOk = true
     try {
       await this.redis.ping()
     } catch {
       redisOk = false
     }
+    if (!redisOk) response.status(503)
     const workers = await this.directory.list().catch((): WorkerRegistration[] => [])
     return {
       status: redisOk ? 'ok' : 'degraded',

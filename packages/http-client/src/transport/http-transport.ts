@@ -34,8 +34,9 @@ export class HttpTransport {
       options.timeoutMs ?? config.timeout ?? this.options.timeoutMs,
     )
     const fetchImpl = this.options.fetchImpl ?? fetch
+    let response: Response
     try {
-      return await fetchImpl(url, {
+      response = await fetchImpl(url, {
         method: config.method ?? 'GET',
         headers,
         body,
@@ -43,10 +44,22 @@ export class HttpTransport {
         ...(duplex ? { duplex } : {}),
       } as RequestInit)
     } catch (error) {
-      throw toTransportError(error, url, config.method ?? 'GET', signal)
-    } finally {
       cleanup()
+      throw toTransportError(error, url, config.method ?? 'GET', signal)
     }
+    const timeoutMs = options.timeoutMs ?? config.timeout ?? this.options.timeoutMs
+    if (!response.body || !timeoutMs || timeoutMs <= 0) {
+      cleanup()
+      return response
+    }
+    // 超时覆盖到响应体：否则「响应头很快、body 卡死」会永久挂住（内部 JSON 调用）。
+    // timer 在 body 关闭 / 出错 / 取消时清理；超时由上面的 signal abort 传播成读取错误。
+    const bodyStream = withBodyTimeout(response.body as ReadableStream<Uint8Array>, signal, cleanup)
+    return new Response(bodyStream, {
+      status: response.status,
+      statusText: response.statusText,
+      headers: response.headers,
+    })
   }
 
   /**
@@ -309,4 +322,51 @@ async function* readSse(body: ReadableStream<Uint8Array>): AsyncIterable<StreamM
   } finally {
     reader.releaseLock()
   }
+}
+
+/** 保持 requestRaw 的超时计时直到响应体被消费完（关闭 / 出错 / 取消时清理） */
+const withBodyTimeout = (
+  source: ReadableStream<Uint8Array>,
+  signal: AbortSignal | undefined,
+  cleanup: () => void,
+): ReadableStream<Uint8Array> => {
+  const reader = source.getReader()
+  let aborted = false
+  const finish = (): void => {
+    cleanup()
+    signal?.removeEventListener('abort', onAbort)
+  }
+  const onAbort = (): void => {
+    aborted = true
+    void reader.cancel(signal?.reason)
+  }
+  signal?.addEventListener('abort', onAbort, { once: true })
+  return new ReadableStream<Uint8Array>({
+    async pull(stream) {
+      try {
+        const { done, value } = await reader.read()
+        if (done) {
+          finish()
+          if (aborted) {
+            stream.error(
+              new ApiError(ApiErrorCodes.NetworkError, '请求超时', {
+                details: { cause: signal?.reason },
+              }),
+            )
+          } else {
+            stream.close()
+          }
+        } else {
+          stream.enqueue(value)
+        }
+      } catch (error) {
+        finish()
+        stream.error(error)
+      }
+    },
+    cancel(reason) {
+      finish()
+      return reader.cancel(reason)
+    },
+  })
 }

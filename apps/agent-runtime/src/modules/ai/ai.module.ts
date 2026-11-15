@@ -42,6 +42,8 @@ import {
 } from './runtime/index.js'
 import { createRemoteToolInvoker } from './runtime/remote-tool.client.js'
 import { GatewayToolCatalog } from './runtime/gateway-tool-catalog.js'
+import { ConversationRunQueue } from './runtime/run-queue.service.js'
+import { ConversationRunQueueDispatcher } from './runtime/run-queue.dispatcher.js'
 import {
   SKILL_DIRS,
   SKILL_LIBRARY_DIR,
@@ -301,6 +303,7 @@ let warnedMissingEnvelope = false
     MemoryRepository,
     MemoryService,
     MemoryExtractorService,
+    ConversationRunQueue,
     MemoryTools,
     MemoryThreadCleanupService,
 
@@ -438,6 +441,7 @@ let warnedMissingEnvelope = false
     ChatAttachmentService,
     AttachmentKeyPolicy,
     AgentChatService,
+    ConversationRunQueueDispatcher,
     AgentTitleService,
     AgentStreamStore,
     AgentRecoveryService,

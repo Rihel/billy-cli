@@ -5,13 +5,13 @@ import type { ComponentType } from 'react'
 import {
   PlugIcon,
   BellRingIcon,
-  BotIcon,
   BrainIcon,
   ChartLineIcon,
   CpuIcon,
   FolderOpenIcon,
   GaugeIcon,
   HistoryIcon,
+  KeyRoundIcon,
   LayoutDashboardIcon,
   RadioTowerIcon,
   ScrollTextIcon,
@@ -44,13 +44,17 @@ export const MENU_ITEMS: MenuItem[] = [
     key: '/main/dashboard',
     icon: LayoutDashboardIcon,
   },
-  // AI：会话 / 运行的审计与复盘（只读，不提供删除 —— 运行与时间线是审计证据）
+  // AI：配置面（模型 / 用量 / Key / 工具 / 技能 / 记忆 / 文件 / 连接器）与运行的审计复盘
+  // （审计只读，不提供删除 —— 运行与时间线是审计证据）。
+  // **不在这里放「AI 会话」**：会话是顶层分区（顶栏「会话」），侧栏这一组只放管理台的配置页，
+  // 免得同一个目的地有两道门，还让人以为会话是"AI 配置"里的一项。
   {
     label: 'AI',
     key: 'ai',
     children: [
-      { label: 'AI 会话', key: '/main/ai/chat', icon: BotIcon },
       { label: '模型管理', key: '/main/ai/models', icon: CpuIcon },
+      { label: '网关用量', key: '/main/ai/usage', icon: ChartLineIcon },
+      { label: '上游 Key', key: '/main/ai/keys', icon: KeyRoundIcon },
       { label: '工具配置', key: '/main/ai/tools', icon: WrenchIcon },
       { label: '技能库', key: '/main/ai/skills', icon: SparklesIcon },
       { label: '记忆', key: '/main/ai/memories', icon: BrainIcon },

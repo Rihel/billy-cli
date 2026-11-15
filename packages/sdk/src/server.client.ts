@@ -15,6 +15,11 @@ import {
   AiModelUpdateDto,
   AiProviderCreateDto,
   AiProviderIdDto,
+  AiProviderKeyCreateDto,
+  AiProviderKeyIdDto,
+  AiProviderKeyListDto,
+  AiProviderKeyModel,
+  AiProviderKeyUpdateDto,
   AiProviderListDto,
   AiProviderModel,
   AiProviderSyncResultModel,
@@ -133,7 +138,17 @@ import {
   AgentStatusModel,
   AgentTimelineItemModel,
   AgentTimelineListDto,
+  AgentRunQueueItemModel,
+  AgentRunQueueListDto,
+  AgentRunQueueRemoveDto,
+  AgentRunQueueUpdateDto,
   AgentUsageSummaryModel,
+  GatewayUsageItemModel,
+  GatewayUsageListDto,
+  GatewayUsageReconcileDto,
+  GatewayUsageReconcileResultModel,
+  GatewayUsageSummaryModel,
+  GatewayUsageSummaryQueryDto,
   AgentUsageSummaryQueryDto,
   AgentUsageRangeDto,
 } from '@repo/shared'
@@ -498,6 +513,16 @@ export class ServerClient extends HttpClient<BearerTokenCredentials> {
      */
     models: () => this.post<AiAvailableModelListModel>('/agent/models'),
 
+    /** 待执行队列（输入框上方展示；只操作 source=user 的 queued 项） */
+    queue: {
+      list: (data: AgentRunQueueListDto) =>
+        this.post<AgentRunQueueItemModel[]>('/agent/queue/list', data),
+      update: (data: AgentRunQueueUpdateDto) =>
+        this.post<AgentRunQueueItemModel>('/agent/queue/update', data),
+      remove: (data: AgentRunQueueRemoveDto) =>
+        this.post<{ removed: boolean }>('/agent/queue/remove', data),
+    },
+
     timeline: {
       /** 时间线分页（消息 / 推理 / 工具调用与结果 / 步骤 / 计划 / 摘要…） */
       list: (data: AgentTimelineListDto) =>
@@ -511,6 +536,20 @@ export class ServerClient extends HttpClient<BearerTokenCredentials> {
     /** 手动回填 AI 用量日表（管理员） */
     usageRollup: (data: AgentUsageRangeDto) =>
       this.post<{ days: number }>('/agent/usage/rollup', data),
+
+    /** 模型网关调用账（管理员）：逐请求明细 */
+    gatewayUsage: {
+      list: (data: GatewayUsageListDto) =>
+        this.post<AppPageQueryResponse<GatewayUsageItemModel>>('/agent/usage/gateway/list', data),
+
+      /** 调用账汇总（按天 / 模型 / 供应商） */
+      summary: (data: GatewayUsageSummaryQueryDto) =>
+        this.post<GatewayUsageSummaryModel>('/agent/usage/gateway/summary', data),
+
+      /** 与 runs.usage 对账（只读差异，不自动修正） */
+      reconcile: (data: GatewayUsageReconcileDto) =>
+        this.post<GatewayUsageReconcileResultModel>('/agent/usage/gateway/reconcile', data),
+    },
 
     /** POST 建流地址（交给 AI SDK transport 的 `api`） */
     chatStreamUrl: (): string => `${this.agentBaseUrl}${AGENT_CHAT_STREAM_PATH}`,
@@ -585,6 +624,21 @@ export class ServerClient extends HttpClient<BearerTokenCredentials> {
       /** 连通性测试（支持未保存先测；失败原因回供应商原文） */
       test: (data: AiProviderTestDto) =>
         this.post<AiProviderTestResultModel>('/ai-model/provider/test', data),
+
+      /** 上游 key 池（只回 hasSecret，不回明文） */
+      key: {
+        list: (data: AiProviderKeyListDto) =>
+          this.post<AiProviderKeyModel[]>('/ai-model/provider-key/list', data),
+
+        create: (data: AiProviderKeyCreateDto) =>
+          this.post<AiProviderKeyModel>('/ai-model/provider-key/create', data),
+
+        update: (data: AiProviderKeyUpdateDto) =>
+          this.post<AiProviderKeyModel>('/ai-model/provider-key/update', data),
+
+        remove: (data: AiProviderKeyIdDto) =>
+          this.post<SuccessResultModel>('/ai-model/provider-key/remove', data),
+      },
     },
 
     model: {

@@ -42,6 +42,19 @@ describe('HttpTransport', () => {
     expect(JSON.parse(String(calls[0].init.body))).toEqual({ hello: 'world' })
   })
 
+  it('requestRaw：超时覆盖到响应体（body 卡死不会永久挂住）', async () => {
+    const transport = new HttpTransport({
+      timeoutMs: 20,
+      fetchImpl: (async () =>
+        new Response(streamOf(['{"a":1}'], false), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        })) as unknown as typeof fetch,
+    })
+    const response = await transport.requestRaw({ url: 'http://x/slow-body' })
+    await expect(response.text()).rejects.toThrow(/请求超时/)
+  })
+
   it('requestRaw：网络层失败抛 ApiError（NetworkError）', async () => {
     const transport = new HttpTransport({
       baseUrl: 'http://gw:9992',

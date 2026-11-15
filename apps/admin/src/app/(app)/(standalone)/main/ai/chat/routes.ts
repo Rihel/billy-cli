@@ -5,8 +5,10 @@
  * 散在各处改一处漏一处（尤其 `new` 这个保留段）。
  */
 
-/** 会话页根路径（侧栏 + 空态 / 重定向用） */
-export const CHAT_ROOT = '/main/ai/chat'
+import { Pages } from '@/lib/constants'
+
+/** 会话页根路径（侧栏 + 空态 / 重定向用）。路径本身定义在 `Pages.chat`，与顶层菜单同源 */
+export const CHAT_ROOT = Pages.chat
 
 /**
  * 「还没建会话」的占位地址段。

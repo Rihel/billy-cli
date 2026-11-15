@@ -55,6 +55,7 @@ export class AgentRunService {
       depth: run.depth,
       toolCallId: run.toolCallId,
       agentKey: run.agentKey,
+      origin: run.origin,
       triggeredBy: run.triggeredBy,
       requestId: run.requestId,
       status: run.status,

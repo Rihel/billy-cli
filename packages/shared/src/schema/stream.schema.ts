@@ -87,6 +87,24 @@ export const STREAM_AI_OWNER_CHANNEL_PREFIX = 'ai:owner:'
 export const STREAM_CONVERSATION_RUN_CHANGED_EVENT = 'conversation.run.changed'
 
 /**
+ * 会话**新开一轮**事件（发布到 `ai:owner:{ownerId}`）。
+ *
+ * 与 `conversation.run.changed` 的分工：changed 表达"这个会话现在是否在跑"（对账用），
+ * started 表达"这一轮是谁、从哪来的"，用于**自动续流** —— 排队中的用户消息 / 子 agent
+ * 完成唤醒在服务端起跑时没有前端请求连着，页面只能靠它知道"该接回到哪一轮了"。
+ */
+export const STREAM_CONVERSATION_RUN_STARTED_EVENT = 'conversation.run.started'
+
+/** 新开一轮的负载：`origin=subagent` 表示这是子 agent 完成唤醒的根 run */
+export const ConversationRunStartedEventSchema = z.object({
+  conversationId: z.string().min(1),
+  runId: z.string().min(1),
+  /** user / subagent */
+  origin: z.string(),
+})
+export type ConversationRunStartedEventModel = z.infer<typeof ConversationRunStartedEventSchema>
+
+/**
  * 会话运行态变更负载。
  *
  * `running` 由服务端在**发布时**按 `runs` 现算（根 run 的 pending / running），

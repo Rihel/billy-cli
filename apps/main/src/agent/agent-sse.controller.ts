@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto'
 import type { Response } from 'express'
 import { AgentSseBridge } from './agent-sse.bridge.js'
 import { AnyAuthGuard } from '../modules/auth/index.js'
+import { RateLimit, RateLimitGuard } from '../common/security/index.js'
 import { requestContext } from '@repo/kits'
 
 const SSE_HEADERS = {
@@ -21,6 +22,8 @@ export class AgentSseController {
 
   @Post('chat/stream')
   @HttpCode(200)
+  @UseGuards(RateLimitGuard)
+  @RateLimit({ scope: 'agent-chat', limit: 10, windowSeconds: 60, identity: 'user' })
   async chatStream(
     @Body() body: unknown,
     @Headers('authorization') authorization: string | undefined,

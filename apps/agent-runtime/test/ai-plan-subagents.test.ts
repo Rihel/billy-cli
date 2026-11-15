@@ -118,7 +118,7 @@ const spec = (partial: Partial<AgentSpec> & { key: string }): AgentSpec => ({
 })
 
 describe('规划能力（规划工具组 + plan 事件）', () => {
-  it('规划工具组交出四个规划声明（增量操作、不是委派类、只给主 agent）', () => {
+  it('规划工具组交出四个规划声明（增量操作、不是委派类、父子都可用）', () => {
     const specs = buildToolSpecs(new PlannerTools(new PlannerStore(stubTimeline)))
     expect(specs.map((item) => item.key)).toEqual([...PLAN_KEYS])
     // 声明的工具名就是 mock 认得的工具名（mock 只能发它"认得"的工具）
@@ -132,7 +132,7 @@ describe('规划能力（规划工具组 + plan 事件）', () => {
       // 规划不是委派类工具（`delegation` 未标记）；但都是 `child: 'deny'`：
       // 清单归属发起这一轮的主 agent（也顺手堵住"子 agent 的清单顶掉父的当前计划"）
       expect(item.delegation).toBeUndefined()
-      expect(item.child).toBe('deny')
+      expect(item.child).toBe('allow')
       // 说明是"能给模型看"的一段话（什么时候用 / 什么时候不用 / 纪律）
       expect(item.description.length).toBeGreaterThan(60)
     }
@@ -596,7 +596,7 @@ describe('子 agent（core bean + 运行期动态创建）', () => {
       expect(childKeys).toContain(key)
     }
     // `child: 'deny'` 的工具同样不给（四个规划工具都只给主 agent，子助手把结论交回即可）
-    for (const key of PLAN_KEYS) expect(childKeys).not.toContain(key)
+    for (const key of PLAN_KEYS) expect(childKeys).toContain(key)
   })
 
   it('对外清单用 canSpawnSubAgents 表达能力（不再有静态子 agent 名单）', () => {
@@ -662,20 +662,27 @@ describe('子 agent（core bean + 运行期动态创建）', () => {
     const output = page.items.find(
       (item) => item.kind === TimelineKind.ToolResult && item.toolKey === MOCK_DELEGATE_TOOL,
     )
-    const outcome = output?.payload?.output as {
+    const spawned = output?.payload?.output as {
+      subAgentId: string
       subRunId: string
       conversationId: string
       status: string
-      result: string
-      stepCount: number
     }
-    expect(outcome.status).toBe('succeeded')
-    expect(outcome.result).toContain(MOCK_CHILD_TEXT)
-    expect(outcome.stepCount).toBeGreaterThan(0)
+    expect(spawned.status).toBe('running')
 
     // ② 子 run：独立一行，父子列齐备（agent_key = sub:<name>）
-    const child = await runs.findEntity(outcome.subRunId)
-    expect(child).not.toBeNull()
+    let child = await runs.findEntity(spawned.subRunId)
+    const deadline = Date.now() + 10_000
+    while (
+      child &&
+      !['succeeded', 'failed', 'canceled'].includes(child.status) &&
+      Date.now() < deadline
+    ) {
+      await new Promise((resolve) => setTimeout(resolve, 100))
+      child = await runs.findEntity(spawned.subRunId)
+    }
+    expect(child?.status).toBe(RunStatus.Succeeded)
+    const outcome = { subRunId: child!.id, conversationId: child!.conversationId }
     expect(child?.parentRunId).toBe(result.runId)
     expect(child?.depth).toBe(1)
     expect(child?.toolCallId).toBeTruthy()
@@ -724,13 +731,9 @@ describe('子 agent（core bean + 运行期动态创建）', () => {
       ),
     ).toBe(true)
 
-    // ⑤ 消耗：父的合计**含子**，且子那一份仍留在自己 run 里（谁的活花多少都查得到）
-    const parent = await runs.findEntity(result.runId)
-    const parentUsage = parent?.usage as { totalTokens: number; subAgents: { totalTokens: number } }
-    expect(parentUsage.subAgents.totalTokens).toBeGreaterThan(0)
-    expect(parentUsage.totalTokens).toBeGreaterThan(parentUsage.subAgents.totalTokens)
+    // ⑤ 消耗：异步子 run 的用量在自己的 run 里（父 run 已先结束）
     const childUsage = child?.usage as { totalTokens: number }
-    expect(childUsage.totalTokens).toBe(parentUsage.subAgents.totalTokens)
+    expect(childUsage.totalTokens).toBeGreaterThan(0)
 
     // ⑥ 轮数只数根 run（子 agent 不是一轮）
     const conversation = await runs.findActive(result.conversationId)
@@ -758,7 +761,7 @@ describe('子 agent（core bean + 运行期动态创建）', () => {
     // 工具面 = 全部 − 委派类 − child:deny：bash 在，run-sub-agent 与四个规划工具都不在
     // （规划工具都是 `child: 'deny'`：清单归属主 agent，子助手只把结论交回）
     expect(toolNames).toContain(MOCK_COMMAND_TOOL)
-    for (const key of PLAN_KEYS) expect(toolNames).not.toContain(key)
+    for (const key of PLAN_KEYS) expect(toolNames).toContain(key)
     expect(toolNames).not.toContain(MOCK_DELEGATE_TOOL)
   }, 30_000)
 

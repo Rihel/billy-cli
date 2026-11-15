@@ -102,10 +102,10 @@ describe('plan-complete（完成任务，支持一次完成多个）', () => {
     await expect(spec.exec({ ids: ['c1'] }, ctx as never)).rejects.toThrowError(/还没有任务清单/)
   })
 
-  it('它是"只给主 agent"的工具，且 ids 至少 1 个、最多 50 个', () => {
+  it('它是"父子 agent 都可用"的工具，且 ids 至少 1 个、最多 50 个', () => {
     const { spec } = build()
     expect(spec.key).toBe(TOOL_KEYS.planComplete)
-    expect(spec.child).toBe('deny')
+    expect(spec.child).toBe('allow')
     expect(spec.params.safeParse({ ids: [] }).success).toBe(false)
     expect(
       spec.params.safeParse({ ids: Array.from({ length: 51 }, (_, i) => `c${i}`) }).success,

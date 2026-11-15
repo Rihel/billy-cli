@@ -77,7 +77,19 @@ export const requestJson = async <T>(
     throw new InternalApiError(response.status, detail)
   }
 
-  const payload = (await response.json().catch(() => null)) as unknown
+  let payload: unknown
+  try {
+    payload = await response.json()
+  } catch (error) {
+    if (init.signal?.aborted) throw new InternalAbortError()
+    if ((error as { name?: string })?.name === 'AbortError') {
+      throw new InternalTimeoutError(timeoutMs)
+    }
+    if (error instanceof ApiError && error.message === '请求超时') {
+      throw new InternalTimeoutError(timeoutMs)
+    }
+    throw new InternalTransportError(error instanceof Error ? error.message : String(error), error)
+  }
   const parsed = schema.safeParse(payload)
   if (!parsed.success) throw new InternalProtocolError(parsed.error.issues)
   return parsed.data

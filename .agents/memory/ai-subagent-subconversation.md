@@ -11,7 +11,10 @@
 - 会话列表只出根会话（`parent_conversation_id IS NULL`）；删父会话级联软删子会话，
   文件清理只对根做一次（子会话共享父工作区，不能重复清）。
 - 用量 rollup 仍只统计 `parent_run_id IS NULL`；父 run 的 `usage.subAgents` 汇总子 run，不双计。
-- `run-sub-agent` 的结论带 `conversationId`；子会话可 detail，但**还不能单独 resume / 分享**。
+- `run-sub-agent` 的结论带 `conversationId`；子助手卡片已有「打开子会话」入口，子会话**只读**（隐藏输入框、可返回父会话）。
+- 子会话有**自己的 memory thread**（`AgentRunner` 用 childConversationId 建 thread），轮后也走 `MemoryExtractorService`（可选、失败静默）。
+- **仍未做**：子会话单独 resume、分享（分享目前只支持文件）。
+- 历史子 run 回填：`pnpm db:backfill-subconversations`（默认预览，`-- --apply` 执行；按 `(parent_run_id, tool_call_id)` 建子会话并迁 runs/timelines）。
 - 迁移 `1794700000000-ConversationSubagent`：六个字段 + `uk_conversation_origin`
   （同一父 run 的同一 toolCallId 只建一次子会话）+ 父/创建索引。
 

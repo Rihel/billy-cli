@@ -98,6 +98,20 @@ type ModelForm = {
   inputModalities?: string[]
   /** 输出模态（多选；我们只做对话，实际基本就是 `text`） */
   outputModalities?: string[]
+  /**
+   * 价格（币种见 `currency`，按 1M tokens / 每图 / 每秒计价）。
+   *
+   * `undefined` = 未配置（提交时按 `null` 落库，网关不估算成本）；
+   * 价格只用于成本估算，不影响能否选用（§4.9 的选型只看启停）。
+   */
+  inputPricePer1m?: number
+  outputPricePer1m?: number
+  cacheReadPricePer1m?: number
+  cacheWritePricePer1m?: number
+  pricePerImage?: number
+  pricePerSecond?: number
+  /** 币种（三位代码，如 CNY / USD；缺省 CNY） */
+  currency: string
 }
 
 /** 供应商表单初值（新建用） */
@@ -111,7 +125,7 @@ const PROVIDER_FORM_DEFAULTS: ProviderForm = {
   enabled: true,
 }
 
-/** 模型表单初值（新建用；输出模态默认声明「文本」） */
+/** 模型表单初值（新建用；输出模态默认声明「文本」，价格留空 = 未配置，币种默认 CNY） */
 const MODEL_FORM_DEFAULTS: ModelForm = {
   modelKey: '',
   displayName: '',
@@ -121,6 +135,13 @@ const MODEL_FORM_DEFAULTS: ModelForm = {
   mode: 'chat',
   inputModalities: undefined,
   outputModalities: ['text'],
+  inputPricePer1m: undefined,
+  outputPricePer1m: undefined,
+  cacheReadPricePer1m: undefined,
+  cacheWritePricePer1m: undefined,
+  pricePerImage: undefined,
+  pricePerSecond: undefined,
+  currency: 'CNY',
 }
 
 /**
@@ -150,6 +171,14 @@ const MODEL_FORM_BLANK: ModelForm = {
   mode: 'chat',
   inputModalities: undefined,
   outputModalities: undefined,
+  inputPricePer1m: undefined,
+  outputPricePer1m: undefined,
+  cacheReadPricePer1m: undefined,
+  cacheWritePricePer1m: undefined,
+  pricePerImage: undefined,
+  pricePerSecond: undefined,
+  // 币种清空：有值时由 values 回填，避免上一条的币种串过来
+  currency: '',
 }
 
 /** 模态多选（用复选框而不是下拉多选：取值少、一眼看清当前声明了什么） */
@@ -214,6 +243,10 @@ const toTimestamp = (value?: string | Date | null): number | undefined => {
   if (value === null || value === undefined) return undefined
   return value instanceof Date ? value.getTime() : new Date(value).getTime()
 }
+
+/** 价格校验：留空 = 未配置；填了就必须是非负数（负数会被后端 400） */
+const nonNegativeError = (value: unknown): string | undefined =>
+  typeof value === 'number' && value < 0 ? '不能是负数' : undefined
 
 export default function AiModelsPage() {
   const client = useServerClient()
@@ -392,6 +425,14 @@ export default function AiModelsPage() {
       // `null` = 未声明（区别于"空数组 = 明确声明什么都不支持"）
       inputModalities: model.inputModalities ?? undefined,
       outputModalities: model.outputModalities ?? undefined,
+      // 价格：`null` = 未配置（表单只能表达"空"，所以转 undefined）
+      inputPricePer1m: model.inputPricePer1m ?? undefined,
+      outputPricePer1m: model.outputPricePer1m ?? undefined,
+      cacheReadPricePer1m: model.cacheReadPricePer1m ?? undefined,
+      cacheWritePricePer1m: model.cacheWritePricePer1m ?? undefined,
+      pricePerImage: model.pricePerImage ?? undefined,
+      pricePerSecond: model.pricePerSecond ?? undefined,
+      currency: model.currency || 'CNY',
     })
     editModelDialog.open(model)
   }
@@ -475,6 +516,14 @@ export default function AiModelsPage() {
           // 三态：`undefined` = 撤成"未声明"（传 null），数组就是明确声明
           inputModalities: (value.inputModalities ?? null) as never,
           outputModalities: (value.outputModalities ?? null) as never,
+          // 价格：输入框清空 = 显式清掉（传 null）；不填不动
+          inputPricePer1m: value.inputPricePer1m ?? null,
+          outputPricePer1m: value.outputPricePer1m ?? null,
+          cacheReadPricePer1m: value.cacheReadPricePer1m ?? null,
+          cacheWritePricePer1m: value.cacheWritePricePer1m ?? null,
+          pricePerImage: value.pricePerImage ?? null,
+          pricePerSecond: value.pricePerSecond ?? null,
+          currency: value.currency.trim().toUpperCase() || 'CNY',
         })
         toastSuccess('模型已更新')
         editModelDialog.close()
@@ -487,6 +536,14 @@ export default function AiModelsPage() {
           contextWindow: value.contextWindow ?? undefined,
           maxOutputTokens: value.maxOutputTokens ?? undefined,
           enabled: value.enabled,
+          // 价格：省略 = 未配置（不是传 null：创建时省略即可）
+          inputPricePer1m: value.inputPricePer1m ?? undefined,
+          outputPricePer1m: value.outputPricePer1m ?? undefined,
+          cacheReadPricePer1m: value.cacheReadPricePer1m ?? undefined,
+          cacheWritePricePer1m: value.cacheWritePricePer1m ?? undefined,
+          pricePerImage: value.pricePerImage ?? undefined,
+          pricePerSecond: value.pricePerSecond ?? undefined,
+          currency: value.currency.trim().toUpperCase() || 'CNY',
         })
         toastSuccess('模型已新增', '手工模型不会被同步覆盖')
         createModelDialog.close()
@@ -724,6 +781,73 @@ export default function AiModelsPage() {
               <span className="text-xs text-muted-foreground">我们只做对话，通常只勾「文本」</span>
             </div>
           ),
+        },
+      ],
+    },
+    {
+      title: '价格（成本估算）',
+      description:
+        '可选：网关用这里的价格把用量折算成成本，并作为 key 池「日成本上限」的计量口径；留空 = 未配置，只计量 token 不估算成本',
+      fields: [
+        {
+          name: 'inputPricePer1m',
+          label: '输入价格（/1M tokens）',
+          widget: 'number',
+          props: { min: 0, step: 0.01 },
+          hint: '每 100 万输入 token 的价格',
+          validate: nonNegativeError,
+        },
+        {
+          name: 'outputPricePer1m',
+          label: '输出价格（/1M tokens）',
+          widget: 'number',
+          props: { min: 0, step: 0.01 },
+          hint: '每 100 万输出 token 的价格',
+          validate: nonNegativeError,
+        },
+        {
+          name: 'cacheReadPricePer1m',
+          label: '缓存读价格（/1M tokens）',
+          widget: 'number',
+          props: { min: 0, step: 0.01 },
+          hint: '命中缓存（cache hit）的输入 token 单价；供应商没这项就留空',
+          validate: nonNegativeError,
+        },
+        {
+          name: 'cacheWritePricePer1m',
+          label: '缓存写价格（/1M tokens）',
+          widget: 'number',
+          props: { min: 0, step: 0.01 },
+          hint: '写入缓存的 token 单价；供应商没这项就留空',
+          validate: nonNegativeError,
+        },
+        {
+          name: 'pricePerImage',
+          label: '每张图价格',
+          widget: 'number',
+          props: { min: 0, step: 0.01 },
+          hint: '生图 / 视觉类模型的按图计价；纯文本模型留空',
+          validate: nonNegativeError,
+        },
+        {
+          name: 'pricePerSecond',
+          label: '每秒价格',
+          widget: 'number',
+          props: { min: 0, step: 0.01 },
+          hint: '按秒计价的模型（如语音 / 视频）；留空表示不适用',
+          validate: nonNegativeError,
+        },
+        {
+          name: 'currency',
+          label: '币种',
+          span: 2,
+          hint: '三位币种代码，如 CNY / USD；留空按 CNY 保存',
+          validate: (value) => {
+            const code = typeof value === 'string' ? value.trim() : ''
+            return code.length > 0 && !/^[A-Za-z]{3}$/.test(code)
+              ? '请输入三位币种代码，如 CNY / USD'
+              : undefined
+          },
         },
       ],
     },
@@ -1194,7 +1318,7 @@ export default function AiModelsPage() {
         items={modelFormItems(editModelDialog.isOpen)}
         description={
           editModelDialog.isOpen
-            ? '可改展示名 / 上下文窗口 / 最大输出 / 启停；模型标识由供应商侧决定，不可改。'
+            ? '可改展示名 / 上下文窗口 / 最大输出 / 启停 / 价格；模型标识由供应商侧决定，不可改。'
             : '自建网关的 /models 拉不全时用；手工模型不会被同步覆盖（同步只补它没见过的）。'
         }
         onCancel={() => {

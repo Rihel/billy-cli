@@ -68,6 +68,7 @@ const toModel = (record: RunEntity): AgentRunModel => ({
   depth: record.depth,
   toolCallId: record.toolCallId,
   agentKey: record.agentKey,
+  origin: record.origin,
   triggeredBy: record.triggeredBy,
   requestId: record.requestId,
   status: record.status,

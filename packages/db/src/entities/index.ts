@@ -13,6 +13,7 @@ export { AiUsageDailyDimensionEntity } from './ai-usage-daily-dimension-entity.j
 export { AiUsageDailyEntity } from './ai-usage-daily-entity.js'
 export { AlertLogEntity } from './alert-log-entity.js'
 export { ConversationEntity } from './conversation-entity.js'
+export { ConversationRunQueueEntity } from './conversation-run-queue-entity.js'
 export { FileShareEntity } from './file-share-entity.js'
 export { MonitorAlertEntity } from './monitor-alert-entity.js'
 export { MonitorMetricSampleEntity } from './monitor-metric-sample-entity.js'
@@ -37,6 +38,7 @@ import { AiUsageDailyDimensionEntity } from './ai-usage-daily-dimension-entity.j
 import { AiUsageDailyEntity } from './ai-usage-daily-entity.js'
 import { AlertLogEntity } from './alert-log-entity.js'
 import { ConversationEntity } from './conversation-entity.js'
+import { ConversationRunQueueEntity } from './conversation-run-queue-entity.js'
 import { FileShareEntity } from './file-share-entity.js'
 import { MonitorAlertEntity } from './monitor-alert-entity.js'
 import { MonitorMetricSampleEntity } from './monitor-metric-sample-entity.js'
@@ -63,6 +65,7 @@ export const DB_ENTITIES = [
   AiUsageDailyEntity,
   AlertLogEntity,
   ConversationEntity,
+  ConversationRunQueueEntity,
   FileShareEntity,
   MonitorAlertEntity,
   MonitorMetricSampleEntity,

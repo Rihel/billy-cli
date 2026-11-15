@@ -2,7 +2,16 @@ import { createAppUrlConfig } from '@repo/shared'
 
 export const Pages = {
   login: '/auth/login',
+  /**
+   * 「管理」分区的根（顶层菜单的默认落点，`/` 也重定向到这里）。
+   * 它与 `chat` 构成管理台的**两个顶层分区**（见 `components/AppTopBar.tsx`）。
+   */
   dashboard: '/main/dashboard',
+  /**
+   * 「会话」分区根路径：真正的会话路由在 `app/main/ai/chat/routes.ts`，
+   * 那里 `CHAT_ROOT` 直接取这个值，避免顶层菜单与路由文件各写一份路径。
+   */
+  chat: '/main/ai/chat',
 }
 export const PublicPaths = [Pages.login]
 

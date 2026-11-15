@@ -18,7 +18,7 @@
 | 同步/测试 | 已迁网关：`POST /internal/providers/{list-models,test}`；main 只 upsert / 返回结果 |
 | 供应商画像 | `PROVIDER_ENDPOINTS` 已从两个 app 的 provider-adapters 收到 `@repo/shared`（含 chatPath / authStyle） |
 
-**Ollama 本地验证**（无需密钥）：
+**Ollama 本地验证**（无需密钥；列模型走 `/api/tags`，probe 对无鉴权协议允许空 key）：
 1. DB 里插 `ai_providers(kind='ollama', base_url='http://127.0.0.1:11434')` + `ai_models(model_key='qwen3.8:27b')`；
 2. 起 `pnpm dev:model-gateway`；
 3. `curl -H 'x-internal-token: dev-model-token' localhost:9992/internal/catalog`；
@@ -27,12 +27,11 @@
 
 ## 未做（别再误以为已有）
 
-- admin 页面：key 池 CRUD、模型价格输入、网关用量/成本页；
-- `model_gateway_usage` 的读取 API 与 SDK（目前只有表 + 写入）；
-- provider key 的 SDK 方法（main 的 CRUD API 已有）；
-- key 加密（仍明文入库）；
-- 生图（P4.4：images/jobs/产物落 OSS + ai_files）；
-- k8s 清单（目前只有 Dockerfile + compose）。
+- key 加密（`ai_providers.api_key` / `ai_provider_keys.secret` 仍明文；本轮明确不做）；
+- 生图（P4.4：images/jobs/产物落 OSS + ai_files）。
+
+已补：`model_gateway_usage` 读取 API（main `/agent/usage/gateway/*`）、用量/成本/对账 admin 页、
+key 池与模型价格 admin 页、provider key SDK、k8s 清单（含 HPA/PVC）、AI 对话按用户限流。
 
 ## 失效信号
 

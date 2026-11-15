@@ -32,6 +32,8 @@ export { ConversationSubagent1794700000000 } from './1794700000000-ConversationS
 export { AiToolAudit1794800000000 } from './1794800000000-AiToolAudit.js'
 export { ModelGatewayBilling1794676773109 } from './1794676773109-ModelGatewayBilling.js'
 export { ModelGatewayUsageTotalTokens1794676931674 } from './1794676931674-ModelGatewayUsageTotalTokens.js'
+export { ConversationRunQueue1794711383585 } from './1794711383585-ConversationRunQueue.js'
+export { AddRunOrigin1794713000000 } from './1794713000000-AddRunOrigin.js'
 
 import { Initial1786897309083 } from './1786897309083-initial.js'
 import { AddAdmins1787000000000 } from './1787000000000-add-admins.js'
@@ -67,6 +69,8 @@ import { ConversationSubagent1794700000000 } from './1794700000000-ConversationS
 import { AiToolAudit1794800000000 } from './1794800000000-AiToolAudit.js'
 import { ModelGatewayBilling1794676773109 } from './1794676773109-ModelGatewayBilling.js'
 import { ModelGatewayUsageTotalTokens1794676931674 } from './1794676931674-ModelGatewayUsageTotalTokens.js'
+import { ConversationRunQueue1794711383585 } from './1794711383585-ConversationRunQueue.js'
+import { AddRunOrigin1794713000000 } from './1794713000000-AddRunOrigin.js'
 
 /** 迁移按时间戳升序；TypeORM 会再排序，但这里保持可读 */
 export const DB_MIGRATIONS = [
@@ -104,4 +108,6 @@ export const DB_MIGRATIONS = [
   AiToolAudit1794800000000,
   ModelGatewayBilling1794676773109,
   ModelGatewayUsageTotalTokens1794676931674,
+  ConversationRunQueue1794711383585,
+  AddRunOrigin1794713000000,
 ]

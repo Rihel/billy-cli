@@ -6,6 +6,7 @@ import type {
 } from '@repo/contracts'
 import { AiProviderEntity } from '@repo/db'
 import { Db } from '@repo/kits'
+import { authStyleOf } from '@repo/shared'
 import { listProviderModels } from './provider-adapters.js'
 import { ProviderProbeFailedError } from './probe.errors.js'
 
@@ -28,7 +29,8 @@ export class ProviderProbeService {
 
   async listModels(input: ProviderListModelsRequest): Promise<ProviderListModelsResponse> {
     const config = await this.resolve(input)
-    if (!config.apiKey?.trim()) {
+    // 无鉴权协议（Ollama）允许没有 key；其余必须有
+    if (authStyleOf(config.kind) !== 'none' && !config.apiKey?.trim()) {
       throw new ProviderProbeFailedError(
         '该供应商未配置密钥，无法拉取模型明细；请先在「编辑供应商」里填入 API Key',
       )

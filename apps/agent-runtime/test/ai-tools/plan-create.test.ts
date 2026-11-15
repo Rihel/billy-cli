@@ -143,10 +143,10 @@ describe('plan-create（创建任务清单；已有清单时是追加）', () =>
     ).rejects.toThrowError(/缺少运行时上下文/)
   })
 
-  it('它是"只给主 agent"的工具，且一次最多建 30 项、至少 1 项', () => {
+  it('它是"父子 agent 都可用"的工具，且一次最多建 30 项、至少 1 项', () => {
     const { spec } = build()
     expect(spec.key).toBe(TOOL_KEYS.planCreate)
-    expect(spec.child).toBe('deny')
+    expect(spec.child).toBe('allow')
     expect(spec.params.safeParse({ goal: 'g', tasks: [] }).success).toBe(false)
     expect(
       spec.params.safeParse({

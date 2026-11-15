@@ -74,6 +74,10 @@ export class RedisStore implements OnApplicationBootstrap, OnApplicationShutdown
     return this.fromPromise(() => this.raw.ttl(key))
   }
 
+  lpop(key: string): Promise<string | null> {
+    return this.fromPromise(() => this.raw.lpop(key))
+  }
+
   incr(key: string): Promise<number> {
     return this.fromPromise(() => this.raw.incr(key))
   }

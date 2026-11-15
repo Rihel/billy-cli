@@ -28,7 +28,7 @@ import { materializeTasks, PlannerStore } from './planner.store.js'
  * | `delete` | `plan-delete` | 删除任务（支持多个，可删空） |
  *
  * 四个工具共享同一份依赖（`PlannerStore`：读清单 / 同轮串行 / 失败不改内存）与同一组
- * 组级默认值（`category: core` + `child: 'deny'`：清单归属发起这一轮的主 agent，
+ * 组级默认值（`category: core` + `child: 'allow'`：子 agent 也可以维护自己的任务清单，
  * 子助手把结论交回父即可 —— 这也堵住"子 agent 的清单顶掉父的当前计划"）。
  *
  * 三条共同口径（协议层见 `plan.protocol.ts`）：
@@ -37,7 +37,7 @@ import { materializeTasks, PlannerStore } from './planner.store.js'
  * 3. **失败不改内存**：校验不过抛 `ToolDeniedError`，由网关翻成可纠正的结论。
  */
 @Injectable()
-@ToolGroup({ category: 'core', scope: 'all', child: 'deny' })
+@ToolGroup({ category: 'core', scope: 'all', child: 'allow' })
 export class PlannerTools {
   constructor(@Inject(PlannerStore) private readonly store: PlannerStore) {}
 

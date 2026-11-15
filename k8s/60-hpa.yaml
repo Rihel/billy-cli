@@ -1,0 +1,96 @@
+# HPA（autoscaling/v2）：按 CPU 利用率扩缩容三个面向请求的服务。
+#
+# ── 前置条件：metrics-server ──
+# HPA 的 Resource 指标来自 metrics.k8s.io，由 metrics-server 提供。没有它时 HPA 会一直报
+#   `unable to get metrics for resource cpu: ... metrics not available`
+# 并停在 minReplicas，**不会报错也不会扩容**。先确认：
+#   kubectl top pods -n billy
+# 若命令不存在或报 metrics not available，先装 metrics-server（或改用 Prometheus Adapter）。
+#
+# ── 几个必然的语义 ──
+# - 利用率 = 实际 CPU / **requests**（不是 limits）。所以 requests 就是扩容基准：
+#   main 100m → 70m 触发；runtime 250m → 175m；model-gateway 200m → 140m。
+# - HPA 一旦创建就接管 replicas：Deployment 里的 replicas 只是创建时的初值，
+#   从此改 Deployment 的 replicas 不会生效，要改就改这里（minReplicas）。
+# - 扩出来的 Pod 受 podAntiAffinity 与节点容量影响，容量不够会 Pending（不会报错）；
+#   PDB 只约束节点排水 / 驱逐，不约束扩缩容本身。
+# - 缩容默认有 5 分钟稳定窗（stabilizationWindowSeconds=300），流量突降不会立刻砍副本。
+#
+# tool-gateway / tool-worker 不配 HPA：
+# - tool-gateway 只是转发 + 审计，压力在执行侧；
+# - tool-worker 的本地工作区不共享，多副本会破坏同一会话的命令连续性（见 24-deployment 注释）。
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: billy-main
+  namespace: billy
+  labels:
+    app.kubernetes.io/name: billy-main
+    app.kubernetes.io/component: main
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: billy-main
+  # 3 是「任何时刻都能容忍 1 个实例不可用」的下限，与 PDB minAvailable=2 配合；
+  # 上限 8 给突发流量留余量，同时受 Node 容量与 DB 连接池约束。
+  minReplicas: 3
+  maxReplicas: 8
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: billy-agent-runtime
+  namespace: billy
+  labels:
+    app.kubernetes.io/name: billy-agent-runtime
+    app.kubernetes.io/component: agent-runtime
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: billy-agent-runtime
+  # 运行中的 agent run 有状态（Redis 租约 + 工作区 PVC），扩缩容不会中断已有 run；
+  # 上限 8 需要 PVC 是 **RWX**（每个 Pod 都挂同一份工作区），RWO 下不要开到这里。
+  minReplicas: 2
+  maxReplicas: 8
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: billy-model-gateway
+  namespace: billy
+  labels:
+    app.kubernetes.io/name: billy-model-gateway
+    app.kubernetes.io/component: model-gateway
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: billy-model-gateway
+  # 模型转发主要是 IO 等待；CPU 高说明在并发做协议适配 / 大 body 处理。
+  # 上限 8 时 DB 连接池 8 × 5 = 40（见 11-configmap-model-gateway.yaml 的 DB_POOL_SIZE）。
+  minReplicas: 2
+  maxReplicas: 8
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70

@@ -1,6 +1,7 @@
 import {
   Inject,
   Injectable,
+  Optional,
   type OnApplicationBootstrap,
   type OnApplicationShutdown,
 } from '@nestjs/common'
@@ -11,6 +12,7 @@ import { AgentConfig, type AgentConfig as AgentConfigValue } from '../core/confi
 import { MASTRA } from '../mastra/ai.mastra.js'
 import { RunRepository } from './run.repository.js'
 import { TimelineRepository } from './timeline.repository.js'
+import { ConversationRunQueue } from './run-queue.service.js'
 
 /** 恢复租约键：多副本同时启动时，只让一个副本执行恢复（其余什么都不做） */
 const RECOVERY_LEASE_KEY = 'agent:recovery:lease'
@@ -40,6 +42,8 @@ export class AgentRecoveryService implements OnApplicationBootstrap, OnApplicati
     @Inject(TimelineRepository) private readonly timelines: TimelineRepository,
     @Inject(RedisStore) private readonly redis: RedisStore,
     @Inject(AppLogger) private readonly logger: AppLogger,
+    // 父 run 被看门狗判失败 → 级联取消子 run 与待唤醒项（测试手构时缺省）
+    @Optional() @Inject(ConversationRunQueue) private readonly runQueue?: ConversationRunQueue,
   ) {}
 
   async onApplicationBootstrap(): Promise<void> {
@@ -280,6 +284,22 @@ export class AgentRecoveryService implements OnApplicationBootstrap, OnApplicati
             toolCallCount: progress.toolCallCount,
           },
           finishedAt,
+        })
+      }
+      // 父 run 失败（超时）→ 子 agent 与待唤醒项一起取消（设计 §7）
+      try {
+        const children = await this.runs.listChildren(candidate.id)
+        for (const child of children) {
+          await this.runs.cancelActive(child.conversationId)
+          await this.runQueue?.cancelByDedupe(child.id)
+        }
+        if (candidate.conversationId) {
+          await this.runQueue?.cancelConversation(candidate.conversationId, 'subagent')
+        }
+      } catch (error) {
+        this.logger.warn('ai.watchdog.cascade_cancel_failed', {
+          runId: candidate.id,
+          reason: error instanceof Error ? error.message : String(error),
         })
       }
       this.logger.warn('ai.watchdog.marked_timeout', {

@@ -79,6 +79,14 @@ export interface BuildContextInput {
   /** 本轮用户输入（参与估算） */
   userMessage: string
   /**
+   * 内部系统通知（**不冒充用户消息**）：子 agent 完成唤醒这一轮使用。
+   *
+   * 给了它，最终那条消息就是 `role: 'system'`（而不是 `role: 'user'`）；
+   * `userMessage` 仍用于命名 / 记忆抽取等旁路，不参与上下文排版。
+   * 时间线里也不会写用户消息 —— 唤醒不是用户说的。
+   */
+  internalNotice?: string
+  /**
    * 本轮要注入的长期记忆块（可选）。
    *
    * 由调用方按 `userId` 查好传进来（与附件成本同一口径：context 不碰存储），
@@ -226,7 +234,8 @@ export class ContextService {
     const baseTokens = this.messagesTokens(systemMessages)
     // 本轮输入 = 用户文字 + 附件成本（附件成本由调用方按真实内容算好；没有附件就是 0）
     const extraInputTokens = Math.max(0, Math.trunc(input.extraInputTokens ?? 0))
-    const userTokens = estimateTokens(input.userMessage) + 4 + extraInputTokens
+    const currentInput = input.internalNotice ?? input.userMessage
+    const userTokens = estimateTokens(currentInput) + 4 + extraInputTokens
 
     // 保护：最近 N 轮的起始轮号（轮号越小越旧）
     const lastTurnIndex = segments.length > 0 ? segments[segments.length - 1].turnIndex : 0
@@ -240,7 +249,10 @@ export class ContextService {
       const messages: ModelMessage[] = [
         ...systemMessages,
         ...kept.flatMap((segment) => segment.messages),
-        { role: 'user', content: input.userMessage },
+        // 唤醒 run 用内部系统通知收尾；普通用户消息保持 `role:'user'`（同一条路径，不分叉）
+        input.internalNotice
+          ? { role: 'system', content: input.internalNotice }
+          : { role: 'user', content: input.userMessage },
       ]
       const estimated = this.messagesTokens(messages) + extraInputTokens
       const snapshot: ContextSnapshot = {

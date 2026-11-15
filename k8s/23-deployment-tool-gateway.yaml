@@ -1,0 +1,102 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: billy-tool-gateway
+  namespace: billy
+  labels:
+    app.kubernetes.io/name: billy-tool-gateway
+    app.kubernetes.io/component: tool-gateway
+spec:
+  # 内部工具面网关：只做鉴权 / 选 worker / 超时 / 审计，本身很轻，2 副本够覆盖滚动更新。
+  # 没有 HPA：真正的执行压力在 tool-worker 上，扩网关不会提高工具吞吐。
+  replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  minReadySeconds: 5
+  progressDeadlineSeconds: 600
+  revisionHistoryLimit: 5
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: billy-tool-gateway
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: billy-tool-gateway
+        app.kubernetes.io/component: tool-gateway
+    spec:
+      terminationGracePeriodSeconds: 60
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                topologyKey: kubernetes.io/hostname
+                labelSelector:
+                  matchLabels:
+                    app.kubernetes.io/name: billy-tool-gateway
+      containers:
+        - name: tool-gateway
+          # ← 替换为你的镜像地址与 tag
+          image: registry.example.com/billy-cli/tool-gateway:v0.0.0
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 9993
+              protocol: TCP
+          envFrom:
+            # 共享配置 → 网关专属配置 → 共享 Secret（DB / Redis / TOOL_INTERNAL_TOKEN）
+            - configMapRef:
+                name: billy-shared
+            - configMapRef:
+                name: billy-tool-gateway
+            - secretRef:
+                name: billy-app
+          env:
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+          lifecycle:
+            preStop:
+              exec:
+                command: ['/bin/sh', '-c', 'sleep 8']
+          startupProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 2
+            timeoutSeconds: 2
+            failureThreshold: 30
+          readinessProbe:
+            # /readyz 探 Redis；不可用时 HTTP 503，readiness 会真正摘流；
+            # 依赖故障时调用会以 retryable 的失败结论回到模型，不会拖垮网关。
+            httpGet:
+              path: /readyz
+              port: http
+            periodSeconds: 3
+            timeoutSeconds: 2
+            failureThreshold: 2
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 2
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: '1'
+              memory: 512Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ['ALL']
+      securityContext:
+        # Dockerfile 已 `USER appuser`（非 root），这里再做一次显式声明兜底
+        runAsNonRoot: true

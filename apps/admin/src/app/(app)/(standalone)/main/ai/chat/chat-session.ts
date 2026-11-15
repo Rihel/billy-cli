@@ -48,6 +48,22 @@ export interface ChatAttachmentInfo {
   bytes?: number
 }
 
+/**
+ * 子 agent 完成唤醒的系统卡（时间线 `status=subagent_completed` 与实时块同一形状）。
+ *
+ * 它表达的是"父这一轮为什么又开始了"：不是用户说话，是子助手交了结论。
+ */
+export interface SubAgentCompletedData {
+  status: string
+  subAgentId: string
+  subRunId: string
+  name: string
+  childStatus: string
+  summary: string | null
+  error: string | null
+  childConversationId?: string
+}
+
 /** 工具单元里的 part 形状（历史与实时都收敛成这一种） */
 export interface ChatToolPartLike {
   type: 'dynamic-tool'
@@ -94,6 +110,7 @@ export type ChatUnit =
       lastDeltaIndex: number
     }
   | { kind: 'summary'; key: string; index: number; text: string; covers: string }
+  | { kind: 'notice'; key: string; index: number; data: SubAgentCompletedData }
   | { kind: 'event'; key: string; index: number; part: ToolEventPart }
   | { kind: 'unknown'; key: string; index: number; partType: string }
 
@@ -344,6 +361,24 @@ const applyPart = (
         }),
       }
     }
+    case 'data-subagent-completed': {
+      // 子 agent 完成唤醒的系统卡：历史（时间线 status）与实时块同形状，按 subRunId 归并
+      const data = asRecord((part as { data?: unknown }).data)
+      if (!data || typeof data.name !== 'string') return null
+      const subRunId = typeof data.subRunId === 'string' ? data.subRunId : `notice-${index}`
+      const key = `notice-${subRunId}`
+      return {
+        units: replaceUnit(state.units, key, {
+          kind: 'notice',
+          key,
+          index,
+          data: data as unknown as SubAgentCompletedData,
+        }),
+      }
+    }
+    case 'data-queue':
+      // 排队应答只用于提示（会话页横幅），不是消息内容；不生成"未识别片段"卡
+      return null
     case 'data-plan':
       // 计划由 `collectMessagePlan` 统一算（工具出参与计划事件两处来源），这里只标记需要重算
       return { plan: collectMessagePlan(message.parts) }

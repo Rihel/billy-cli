@@ -1,0 +1,28 @@
+# tool-gateway 的非敏感运行配置（内部服务，容器端口 9993）。
+#
+# 敏感项全在 Secret `billy-app`：DB_URL（写审计）/ REDIS_URL（worker 注册表）/ TOOL_INTERNAL_TOKEN。
+# Deployment 的 envFrom 顺序：billy-shared → billy-tool-gateway → billy-app（键不重复）。
+#
+# ⚠️ `TOOL_INTERNAL_TOKEN` 必须与 tool-worker、以及调用方（agent-runtime）完全一致，
+# 否则 gateway ↔ worker 的每次调用都是 403。用共享 Secret `billy-app` 保证。
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: billy-tool-gateway
+  namespace: billy
+  labels:
+    app.kubernetes.io/name: billy-tool-gateway
+    app.kubernetes.io/component: tool-gateway
+data:
+  # 容器监听端口；Service 的 targetPort 按它
+  PORT: '9993'
+  # worker 静态兜底地址：注册表（Redis）为空 / 不可达时才会用到。
+  # 正常路径是 gateway 从注册表里按负载挑 worker 的 Pod IP（见 24-deployment-tool-worker.yaml），
+  # 因此这里填 Service 只是「至少还有一个能调」的兜底。
+  TOOL_WORKER_URL: http://billy-tool-worker.billy.svc.cluster.local:9994
+  # 注册表 freshness：超过这个时间没心跳的 worker 不参与选路；与 worker 的 TOOL_WORKER_STALE_MS 对齐
+  TOOL_WORKER_STALE_MS: '30000'
+  # 单次调用默认上限；请求里的 deadlineMs 更小则听请求的
+  TOOL_GATEWAY_TIMEOUT_MS: '30000'
+  # 单用户 + 单工具每分钟上限（gateway 自己的限流，不是 facade 的 run 准入）
+  TOOL_GATEWAY_RATE_LIMIT_PER_MINUTE: '60'

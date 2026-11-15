@@ -61,6 +61,13 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: metadata.name
+          # 会话工作区持久卷：bash / 文件工具共用 `{挂载点}/{conversationId}/`。
+          # - 挂载点必须与 ConfigMap 的 AGENT_COMMAND_WORK_DIR 一致（不改时默认也是这个路径）；
+          # - PVC 必须是 RWX：HPA 会把 runtime 扩到 8 个 Pod，RWO 下只有第一个能挂上；
+          # - 卷根目录的属主 / 权限由存储类决定，写不进去时给 Pod 补 fsGroup（见 PVC 文件注释）。
+          volumeMounts:
+            - name: workspaces
+              mountPath: /home/appuser/.billy/workspaces
           # 与 main 相同：先等 endpoint 摘流，再接收 SIGTERM，避免在途长请求被立刻切断
           lifecycle:
             preStop:
@@ -101,6 +108,13 @@ spec:
             allowPrivilegeEscalation: false
             capabilities:
               drop: ['ALL']
+      # 工作区卷：与 15-pvc-agent-runtime-workspaces.yaml 的 PVC 名严格对应。
+      # 只挂 workspaces 子目录，不整挂 /home/appuser/.billy —— 那会把 lark-cli 的本地状态
+      # （HOME/.billy/lark-cli）也卷进来，而它的并发写语义没有验证过。
+      volumes:
+        - name: workspaces
+          persistentVolumeClaim:
+            claimName: billy-agent-runtime-workspaces
       securityContext:
         # Dockerfile 已 `USER appuser`（非 root），这里再做一次显式声明兜底
         runAsNonRoot: true

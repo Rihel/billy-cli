@@ -360,6 +360,7 @@ export const mapServerEnv = (env: NodeJS.ProcessEnv): Record<string, unknown> =>
   db: {
     url: optional(env.DB_URL),
     sync: parseBoolean(env.DB_SYNC),
+    poolSize: optional(env.DB_POOL_SIZE),
   },
   redis: {
     url: optional(env.REDIS_URL),

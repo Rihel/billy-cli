@@ -7,6 +7,10 @@ import { TOOL_KEYS } from '../core/tools/tool-keys.js'
 import { ToolDeniedError } from '../core/tools/tools.types.js'
 import type { ToolCallContext } from '../core/tools/tools.types.js'
 import { AgentRunner, type SubAgentOutcome } from '../runtime/agent-runner.js'
+import { RunRepository } from '../runtime/run.repository.js'
+import { TimelineRepository } from '../runtime/timeline.repository.js'
+import { ConversationRunQueue } from '../runtime/run-queue.service.js'
+import { RunStatus } from '@repo/shared'
 import type { AgentRuntimeEnvelope } from '../core/envelope.js'
 
 /**
@@ -54,6 +58,30 @@ const SubAgentConfigSchema = z.object({
 
 type SubAgentConfig = z.infer<typeof SubAgentConfigSchema>
 
+const ListSubAgentsInputSchema = z.object({
+  status: z.string().optional().describe('只看某个状态（可选）'),
+})
+
+const WaitSubAgentsInputSchema = z.object({
+  sub_agent_ids: z
+    .array(z.string())
+    .optional()
+    .describe('要等的子 agent（subAgentId）；省略 = 当前父 run 下所有未完成子 agent'),
+  timeout_ms: z
+    .number()
+    .int()
+    .min(0)
+    .max(120_000)
+    .default(30_000)
+    .describe('最多等多久（毫秒）；到点返回 pending，不算失败'),
+})
+
+const CancelSubAgentInputSchema = z.object({
+  sub_agent_id: z.string().min(1).describe('要取消的子 agent（subAgentId = 子会话 id）'),
+})
+
+const NoConfigSchema = z.object({})
+
 /**
  * **子 agent 工具**（`run-sub-agent`）：主 agent 用它**在运行期创建**子 agent。
  *
@@ -72,6 +100,9 @@ export class RunSubAgentTool {
   constructor(
     @Inject(AgentRunner) private readonly runner: AgentRunner,
     @Inject(AppLogger) private readonly logger: AppLogger,
+    @Inject(RunRepository) private readonly runs: RunRepository,
+    @Inject(TimelineRepository) private readonly timelines: TimelineRepository,
+    @Inject(ConversationRunQueue) private readonly runQueue: ConversationRunQueue,
   ) {}
 
   // 工具说明 = **这个工具的唯一一份说明**（系统提示词里的「工具」段直接渲染它）
@@ -106,16 +137,150 @@ export class RunSubAgentTool {
         'run-sub-agent 缺少运行时上下文（编排层未注入信封）—— 这是配置错误，请把这条结论告诉用户',
       )
     }
-    return this.runner.runSubAgent({
+    const spawned = await this.runner.spawnSubAgent({
       name: input.name,
       systemPrompt: input.system_prompt,
       task: input.task,
       toolCallId: ctx.toolCallId,
       envelope,
-      // 非流式调用没有 writer：跳过实时出口，**只落库**（前端看历史，内容一样全）
-      ...(ctx.writer ? { writer: ctx.writer } : {}),
-      // 四个旋钮从工具配置来（0 = 沿用部署默认，见 AgentRunner）
       quotas: ctx.settings.config,
+      ...(ctx.writer ? { writer: ctx.writer } : {}),
     })
+    this.logger.log('ai.subagent.spawned', {
+      parentRunId: envelope.parentRunId,
+      ...spawned,
+    })
+    return {
+      ...spawned,
+      conversationId: spawned.subAgentId,
+      name: input.name,
+      status: 'running',
+      result: '',
+      error: null,
+      stepCount: 0,
+      toolCallCount: 0,
+      usage: null,
+      durationMs: 0,
+    } as unknown as SubAgentOutcome
+  }
+  /** 看当前父 run 下的子 agent 状态（非阻塞，不消费结果） */
+  @ToolDecl({
+    key: TOOL_KEYS.subAgentList,
+    title: '查看子助手状态',
+    params: ListSubAgentsInputSchema,
+    config: NoConfigSchema,
+    description: dedent`
+      查看当前这一轮派出的子 agent 状态（运行中 / 成功 / 失败 / 取消）。
+      非阻塞，不等待、不消费结果；要看完整结论用 wait-sub-agent，要取消用 cancel-sub-agent。
+      什么时候用：想知道子助手跑到哪了、有没有失败；不要用它代替等待。
+    `,
+  })
+  async list(
+    input: z.infer<typeof ListSubAgentsInputSchema>,
+    ctx: ToolCallContext,
+  ): Promise<{ agents: Array<Record<string, unknown>> }> {
+    const envelope = ctx.envelope as AgentRuntimeEnvelope
+    const children = await this.runs.listChildren(envelope.parentRunId)
+    const latest = new Map<string, (typeof children)[number]>()
+    for (const child of children) latest.set(child.conversationId, child)
+    const agents: Array<Record<string, unknown>> = []
+    for (const child of latest.values()) {
+      if (input.status && child.status !== input.status) continue
+      const summary =
+        child.status === RunStatus.Succeeded
+          ? ((await this.timelines.lastTextOfRun(child.id)) ?? '').slice(0, 500)
+          : null
+      agents.push({
+        subAgentId: child.conversationId,
+        currentRunId: child.id,
+        name: child.agentKey.replace(/^sub:/, ''),
+        status: child.status,
+        resultSummary: summary,
+        error: null,
+      })
+    }
+    return { agents }
+  }
+
+  /** 父还在跑时，主动等子 agent 结果（会消费唤醒队列项） */
+  @ToolDecl({
+    key: TOOL_KEYS.waitSubAgent,
+    title: '等待子助手',
+    params: WaitSubAgentsInputSchema,
+    config: NoConfigSchema,
+    description: dedent`
+      等指定的子 agent（或当前父 run 下所有未完成子 agent）完成，返回结论。
+      最多等 timeout_ms；到点返回 pending，子 agent 会继续跑，父可以继续做别的。
+      已经拿到的结果会消费掉，避免父结束后重复唤醒；没有 pending 时不要反复空等。
+    `,
+  })
+  async wait(
+    input: z.infer<typeof WaitSubAgentsInputSchema>,
+    ctx: ToolCallContext,
+  ): Promise<{ agents: Array<Record<string, unknown>>; pending: string[]; timedOut: boolean }> {
+    const envelope = ctx.envelope as AgentRuntimeEnvelope
+    const deadline = Date.now() + input.timeout_ms
+    const terminal = new Set([
+      RunStatus.Succeeded,
+      RunStatus.Failed,
+      RunStatus.Canceled,
+      RunStatus.Interrupted,
+    ])
+    for (;;) {
+      const children = await this.runs.listChildren(envelope.parentRunId)
+      const latest = new Map<string, (typeof children)[number]>()
+      for (const child of children) latest.set(child.conversationId, child)
+      const targets = [...latest.values()].filter((child) =>
+        input.sub_agent_ids?.length
+          ? input.sub_agent_ids.includes(child.conversationId)
+          : !terminal.has(child.status),
+      )
+      const done = targets.filter((child) => terminal.has(child.status))
+      const pending = targets.filter((child) => !terminal.has(child.status))
+      if (pending.length === 0 || Date.now() >= deadline) {
+        const agents: Array<Record<string, unknown>> = []
+        for (const child of done) {
+          await this.runQueue.consumeByDedupe(child.id)
+          agents.push({
+            subAgentId: child.conversationId,
+            currentRunId: child.id,
+            status: child.status,
+            result:
+              child.status === RunStatus.Succeeded
+                ? ((await this.timelines.lastTextOfRun(child.id)) ?? '')
+                : null,
+          })
+        }
+        return {
+          agents,
+          pending: pending.map((child) => child.conversationId),
+          timedOut: pending.length > 0,
+        }
+      }
+      await new Promise((resolve) => setTimeout(resolve, 250))
+    }
+  }
+
+  /** 取消某个子 agent（子会话）当前正在跑的 run */
+  @ToolDecl({
+    key: TOOL_KEYS.cancelSubAgent,
+    title: '取消子助手',
+    params: CancelSubAgentInputSchema,
+    config: NoConfigSchema,
+    description: dedent`
+      取消一个子 agent 正在跑的 run（不删除它的会话与历史）。
+      已完成的子 agent 返回当前状态，不会报错；父被 stop / 删会话时也会级联取消。
+    `,
+  })
+  async cancel(
+    input: z.infer<typeof CancelSubAgentInputSchema>,
+    ctx: ToolCallContext,
+  ): Promise<{ canceled: boolean; status: string }> {
+    const envelope = ctx.envelope as AgentRuntimeEnvelope
+    const children = await this.runs.listChildren(envelope.parentRunId)
+    const rows = children.filter((child) => child.conversationId === input.sub_agent_id)
+    for (const child of rows) await this.runQueue.cancelByDedupe(child.id)
+    const canceled = await this.runs.cancelActive(input.sub_agent_id)
+    return { canceled: canceled > 0, status: canceled > 0 ? 'canceled' : 'unchanged' }
   }
 }

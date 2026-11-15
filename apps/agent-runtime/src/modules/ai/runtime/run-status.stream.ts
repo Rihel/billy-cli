@@ -3,7 +3,9 @@ import { AppLogger, StreamHub } from '@repo/kits'
 import {
   STREAM_AI_OWNER_CHANNEL_PREFIX,
   STREAM_CONVERSATION_RUN_CHANGED_EVENT,
+  STREAM_CONVERSATION_RUN_STARTED_EVENT,
   type ConversationRunChangedEventModel,
+  type ConversationRunStartedEventModel,
 } from '@repo/shared'
 import { ConversationRepository } from './conversation.repository.js'
 
@@ -35,6 +37,31 @@ export class RunStatusStream implements RunStatusListener {
     @Inject(ConversationRepository) private readonly conversations: ConversationRepository,
     @Inject(AppLogger) private readonly logger: AppLogger,
   ) {}
+
+  /**
+   * 新开一轮：告诉归属者"这一轮是谁发起的（user / subagent 唤醒）"。
+   *
+   * 排队消息与子 agent 唤醒都在**没有前端连接**的情况下起跑；页面靠这条事件知道
+   * 该把流接回哪个会话（`running=true` 的 changed 事件只说明在跑，不说明接哪一轮）。
+   * 失败只 warn，不影响运行主流程。
+   */
+  async started(conversationId: string, runId: string, origin: string): Promise<void> {
+    try {
+      const ownerId = await this.conversations.findOwnerId(conversationId)
+      if (!ownerId) return
+      const payload: ConversationRunStartedEventModel = { conversationId, runId, origin }
+      this.hub.publish(`${STREAM_AI_OWNER_CHANNEL_PREFIX}${ownerId}`, {
+        event: STREAM_CONVERSATION_RUN_STARTED_EVENT,
+        data: payload,
+      })
+    } catch (error) {
+      this.logger.warn('ai.run_status.started_failed', {
+        conversationId,
+        runId,
+        reason: error instanceof Error ? error.message : String(error),
+      })
+    }
+  }
 
   async changed(conversationId: string): Promise<void> {
     try {

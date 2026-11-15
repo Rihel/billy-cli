@@ -38,6 +38,8 @@ export type SubAgentLiveEntry =
 /** 一个子助手当前能看到的全部内容（状态 + 聚合正文 / 推理 + 工具往返） */
 export interface SubAgentLive {
   runId: string
+  /** 子会话 id（子 agent = 子会话；用于从卡片打开它的会话） */
+  conversationId?: string | null
   /** 发起这次委派的 `run-sub-agent` 工具调用 id（主时间线据此去重：同一件事只画一张卡） */
   toolCallId?: string | null
   name: string
@@ -107,6 +109,8 @@ export const mergeSubAgentState = (live: SubAgentLive, data: Record<string, unkn
   if (task) live.task = task
   const toolCallId = asText(data.toolCallId)
   if (toolCallId) live.toolCallId = toolCallId
+  const conversationId = asText(data.conversationId)
+  if (conversationId) live.conversationId = conversationId
   if (typeof data.result === 'string') live.result = data.result
   if (typeof data.error === 'string' || data.error === null) live.error = data.error
   const reason = asText(data.reason)

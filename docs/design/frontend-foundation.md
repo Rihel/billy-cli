@@ -270,7 +270,7 @@ SSE → 页面即时出现新事件，形成**端到端自证**（不需要额�
 | web（9840） | 13 个 `page.tsx`：落地页 / 竞品页 / 4 个 auth 页 / `/account` 与 `/account/sessions` / 5 个 markdown 示例；主题能力已接入（`ThemeProvider` + `createThemeBootScript`，key `billy-theme`） |
 | admin（9845） | 21 个 `page.tsx`（含 `/` 重定向；其余为登录、控制台、用户 / 管理员、个人中心、监控 5 页、AI 7 页（会话 / 模型 / 工具 / 技能库 / 文件 / 连接器 / 审计）、会话详情、技能编辑器、`/s/[token]` 分享页） |
 | admin 根布局 | **两棵**：`app/(app)/layout.tsx`（html/body + 字体 + 主题脚本 + `Providers`）与 `app/(share)/layout.tsx`（html/body + 字体 + 主题脚本，**不挂 `Providers`**） |
-| admin 嵌套布局 | `(app)/(standalone)/main/layout.tsx`（AI 会话，全窗口工作台）、`(app)/(canvas)/main/layout.tsx`（技能编辑器，全窗口画布，不套会话字号） |
+| admin 嵌套布局 | `(app)/(standalone)/main/layout.tsx`（AI 会话，全窗口工作台）、`(app)/(canvas)/main/layout.tsx`（技能编辑器，全窗口画布，不套会话字号）；两者都挂共享顶栏 `components/AppTopBar.tsx`（顶层「会话 / 管理」切换，判据 `lib/sections.ts`） |
 | admin API 层 | Hono：`app/api/[[...route]]/route.ts`（`export const runtime = 'nodejs'`，`GET/HEAD/POST/PUT/PATCH/DELETE = handle(app)`）+ `src/api/app.ts`（`basePath('/api')`、`secureHeaders`）+ `src/api/share.ts`（`/api/s/:token/content` 字节转发，支持 Range/HEAD） |
 | 分享页归属 | 在 **admin**（`(share)/s/[token]`），不在 web；web 无 `/s` 路由；admin `proxy.ts` 的 matcher 显式排除 `s/` 与 `api` |
 | 组件库 | `components/ui` 61 个、`components/ai-elements` 48 个、平铺自有组件 35 个、hooks 6 个；`@repo/ui` 测试 17 文件 / 118 项 |

@@ -307,6 +307,28 @@ const toSubAgentPart = (
 }
 
 /**
+ * 「子 agent 完成」系统卡 → `data-subagent-completed` part（与实时块同构）。
+ *
+ * 时间线里落的是 `status=subagent_completed` 的 status 行（见 `ChatService.executeQueuedTurn`）；
+ * 不是这个形状的 status 行（cancelled / timeout / compacting…）返回 null。
+ */
+const toSubAgentCompletedPart = (
+  item: AgentTimelineItemModel,
+): UIMessage['parts'][number] | null => {
+  const payload = item.payload
+  if (payload?.status !== 'subagent_completed') return null
+  const subRunId =
+    typeof payload.subRunId === 'string' && payload.subRunId.length > 0
+      ? payload.subRunId
+      : `notice-${item.seq}`
+  return {
+    type: 'data-subagent-completed',
+    id: subRunId,
+    data: payload,
+  } as UIMessage['parts'][number]
+}
+
+/**
  * 一个 run 的事件 → assistant 消息的 parts。
  *
  * **工具卡按"调用发生的位置"就地铺开**（踩过的坑）：早先工具是攒到最后统一追加的，
@@ -420,8 +442,14 @@ export const toParts = (events: AgentTimelineItemModel[]): UIMessage['parts'] =>
         plans.push(item)
         break
       }
+      case TimelineKind.Status: {
+        // 子 agent 完成唤醒：父这一轮由它触发，必须在时间线上看得见"为什么又开始了"
+        const notice = toSubAgentCompletedPart(item)
+        if (notice) parts.push(notice)
+        break
+      }
       default:
-        // 步骤 / 状态 / 错误：审计用，不进对话正文（在审计页看）；摘要有自己的卡片，见上
+        // 步骤 / 其它状态 / 错误：审计用，不进对话正文（在审计页看）；摘要有自己的卡片，见上
         break
     }
   }

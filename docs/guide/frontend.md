@@ -44,9 +44,10 @@
   → 告警发送后 `StreamHub.publish('admin:all', 'alert.fired')` 实时到达；页内「触发测试告警」
   可一键自检全链路（协议与频道权限见 `stream` skill 与 `docs/design/frontend-foundation.md`）
 - 布局：`(app)` / `(share)` 两个 root layout —— `(app)/layout.tsx` 装载 Providers 与主题脚本，
-  其下 `main/layout.tsx` 是管理台外壳（`AppHeader` + `AppSider` + `AppMenu`）；AI 会话页在
-  `(standalone)` 路由组、技能编辑器在 `(canvas)` 路由组，两者复用同一份 `AdminAuthBoundary`
-  （路由组不产生 URL 段，地址仍是 `/main/ai/chat/**`、`/main/ai/skills/[skillKey]`）。
+  其下 `main/layout.tsx` 是管理台外壳（`AppTopBar` + `AppSider` + `AppMenu` + `AppHeader`）；
+  AI 会话页在 `(standalone)` 路由组、技能编辑器在 `(canvas)` 路由组，三者**共用同一条全局顶栏**
+  `AppTopBar`（顶层菜单只有「会话 / 管理」两项，判据在 `lib/sections.ts`）并复用同一份
+  `AdminAuthBoundary`（路由组不产生 URL 段，地址仍是 `/main/ai/chat/**`、`/main/ai/skills/[skillKey]`）。
   `(app)/layout.tsx`、`(share)/layout.tsx`、`main/layout.tsx` 均标记 `force-dynamic`；
   鉴权收在 `main` / `(canvas)` / `(standalone)` 共用的 `AdminAuthBoundary` 里（SSR 读 cookie 调
   `admin.getMe()`，失败 `redirect()` 到登录页）

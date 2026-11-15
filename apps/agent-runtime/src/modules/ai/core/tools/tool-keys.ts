@@ -27,6 +27,10 @@ export const TOOL_KEYS = {
   planDelete: 'plan-delete',
   /** 子 agent 能力：**运行期动态创建一个子 agent 并跑完**（提示词由主 agent 现写） */
   runSubAgent: 'run-sub-agent',
+  /** 异步子 agent 的配套工具 */
+  subAgentList: 'sub-agent-list',
+  waitSubAgent: 'wait-sub-agent',
+  cancelSubAgent: 'cancel-sub-agent',
   /**
    * 命令执行能力：在本机跑一条命令行命令（跨平台：Windows `cmd.exe` / POSIX `/bin/sh`）。
    *

@@ -29,7 +29,9 @@ import {
 } from '@repo/ui'
 import {
   STREAM_CONVERSATION_RUN_CHANGED_EVENT,
+  STREAM_CONVERSATION_RUN_STARTED_EVENT,
   ConversationRunChangedEventSchema,
+  ConversationRunStartedEventSchema,
   type AgentConversationModel,
   type AppPageQueryResponse,
 } from '@repo/shared'
@@ -41,14 +43,12 @@ import {
   usePanelRef,
 } from '@repo/ui/components/ui/resizable.tsx'
 import {
-  LayoutDashboardIcon,
   PanelLeftCloseIcon,
   PanelLeftOpenIcon,
   PencilIcon,
   PlusIcon,
   Trash2Icon,
 } from 'lucide-react'
-import { Pages } from '@/lib/constants'
 import { useServerClient } from '@/lib/server-client'
 import { relativeTimeText } from './format'
 import { conversationPath, newConversationPath, CHAT_ROOT } from './routes'
@@ -146,6 +146,25 @@ export default function ChatLayout({ children }: { children: ReactNode }) {
       if (!running || (cached && !known)) {
         void queryClient.invalidateQueries({ queryKey: ['ai', 'conversations'] })
       }
+      // 运行态变了 → 会话页那份"当前是否有活动 run"的对账查询立刻重拉一次：
+      // 排队消息 / 子 agent 唤醒是**服务端自己起跑**的，页面只能靠这一步接回流。
+      void queryClient.invalidateQueries({ queryKey: ['ai', 'active-run', conversationId] })
+    },
+    /**
+     * 新开一轮：排队中的用户消息 / 子 agent 完成唤醒在服务端起跑时**没有前端连接**。
+     * 收到事件就把该会话标成 running，并让会话页去 `/agent/run/stream` 接流；
+     * 不在这里直接 resume：布局层不持有 `useChat` 实例，接流归会话页（`chat-conversation`）。
+     */
+    [STREAM_CONVERSATION_RUN_STARTED_EVENT]: (raw) => {
+      const parsed = ConversationRunStartedEventSchema.safeParse(raw)
+      if (!parsed.success) return
+      const { conversationId } = parsed.data
+      queryClient.setQueryData<AgentConversationModel>(
+        ['ai', 'conversation', conversationId],
+        (current) => (current ? { ...current, running: true } : current),
+      )
+      void queryClient.invalidateQueries({ queryKey: ['ai', 'active-run', conversationId] })
+      void queryClient.invalidateQueries({ queryKey: ['ai', 'conversations'] })
     },
   })
 
@@ -278,36 +297,14 @@ export default function ChatLayout({ children }: { children: ReactNode }) {
               >
                 {sidebarCollapsed ? null : (
                   <aside className="flex h-full min-h-0 w-full flex-col gap-2 overflow-hidden bg-surface-3 p-3">
-                    {/* 会话页是独立布局（没有管理台左菜单）——「返回管理台」必须是**看得见的一行**，
-                    不能只靠页头那个图标（用户实测找不到）。列表栏在桌面上恒在，放这里最稳 */}
-                    <div className="flex items-center gap-1">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="min-w-0 flex-1 justify-start gap-1.5"
-                        nativeButton={false}
-                        render={
-                          <Link href={Pages.dashboard}>
-                            <LayoutDashboardIcon className="size-3.5" />
-                            返回管理台
-                          </Link>
-                        }
-                      />
-                      <Button
-                        variant="ghost"
-                        size="icon-sm"
-                        onClick={collapseSidebar}
-                        title="收起会话列表"
-                        aria-label="收起会话列表"
-                      >
-                        <PanelLeftCloseIcon className="size-3.5" />
-                      </Button>
-                    </div>
+                    {/* 顶层「会话 / 管理」切换在全局顶栏里（两棵布局树共用一条）——
+                    列表栏不再自带「返回管理台」入口，这一行只放会话自己的操作，
+                    省下来的一行高度全给会话列表（会话页最紧的就是竖直空间） */}
                     <div className="flex items-center gap-2">
                       {/* 新建 = 跳到 `new` 这个保留段：首轮发出后服务端给会话 id，页面再 replace 成真实地址 */}
                       <Button
                         size="sm"
-                        className="gap-1.5"
+                        className="min-w-0 flex-1 justify-center gap-1.5"
                         // 渲染成 <a>（可新开标签、可前进后退）时要显式告诉 Base UI 这不是原生 button，
                         // 否则每次进页面都会在控制台报一条"应为原生 <button>"的警告
                         nativeButton={false}
@@ -319,6 +316,15 @@ export default function ChatLayout({ children }: { children: ReactNode }) {
                         }
                       />
                       <RefreshButton onClick={() => void conversationsQuery.refetch()} />
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        onClick={collapseSidebar}
+                        title="收起会话列表"
+                        aria-label="收起会话列表"
+                      >
+                        <PanelLeftCloseIcon className="size-3.5" />
+                      </Button>
                     </div>
                     {/* 列表不画外框也不画行分隔线：选中 / 悬停用底色区分，分隔交给中间那根分隔条 */}
                     <div

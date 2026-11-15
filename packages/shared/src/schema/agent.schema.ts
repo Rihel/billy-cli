@@ -472,6 +472,8 @@ export const AgentRunSchema = z.object({
   /** 子 run 专用：父那次工具调用的 id（幂等键的一半，重放时同一 id 只生效一次） */
   toolCallId: z.string().nullable(),
   agentKey: z.string(),
+  /** 发起来源：`user`（用户消息）/ `subagent`（子 agent 完成唤醒的根 run） */
+  origin: z.string(),
   /** 发起人（= 登录用户 id；列表页按人筛选时用） */
   triggeredBy: z.string().nullable(),
   /** 发起该轮的 HTTP X-Request-Id（把审计记录与日志 / 告警串起来，排障第一步） */

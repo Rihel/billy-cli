@@ -1,0 +1,23 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: billy-model-gateway
+  namespace: billy
+  labels:
+    app.kubernetes.io/name: billy-model-gateway
+    app.kubernetes.io/component: model-gateway
+spec:
+  # 内部服务：只给 agent-runtime 通过 MODEL_GATEWAY_URL 调用，不接公网 Ingress。
+  # 集群内地址（runtime 的 ConfigMap 必须与这里一致）：
+  #   http://billy-model-gateway.billy.svc.cluster.local:9992
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: billy-model-gateway
+  ports:
+    - name: http
+      port: 9992
+      targetPort: http # 对应容器端口名 http(9992)
+      protocol: TCP
+      appProtocol: http
+  # 模型请求是无状态转发，无需会话保持
+  sessionAffinity: None

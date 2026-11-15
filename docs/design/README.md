@@ -14,6 +14,7 @@
 | --- | --- |
 | [distributed-ai-architecture.md](distributed-ai-architecture.md) | AI 分布式架构升级（评审稿）：**0.1 落地现状（main/runtime/Kafka）** → 背景/目标 → 瓶颈 → 方案 → 决策 D1–D10（含 Mastra 边界、内部 SDK、子会话）→ 运行状态机 → 组件保活与心跳 → 流程 → 可观测与告警 → 容量 → 运行形态（本地/非 k8s/k8s）与服务发现→ 分期 → 待决 |
 | [model-gateway.md](model-gateway.md) | **评审稿**：第 5 个服务 model-gateway（9992）——canonical 接口 / 流式转发 / 文件与生图产物 / 计量与成本 / key 池与配额 / 迁移与回退（§13 待拍板） |
+| [async-subagent.md](async-subagent.md) | 异步子 agent 与会话 run 队列方案：run-sub-agent 异步化、用户优先队列、完成唤醒父 run、工具契约与分阶段实施 |
 | [distributed-ai-conclusions.md](distributed-ai-conclusions.md) | 讨论结论一页版：已定 / 建议 / 待拍板，含工具边界、连接器、planner/ask/memory、子会话、迁移顺序与当前进度 |
 
 ## AI

@@ -28,6 +28,8 @@ export interface RunProgress {
 const progressKey = (runId: string) => `agent:run:${runId}`
 /** 输出记录（List，按顺序追加；供断线重连补发） */
 const chunksKey = (runId: string) => `agent:stream:${runId}`
+/** 输出记录字节数（随 list 一起增减，用于字节上限） */
+const chunksBytesKey = (runId: string) => `agent:stream:${runId}:bytes`
 /** 跨副本实时转发频道 */
 const chunkChannel = (runId: string) => `agent:stream:${runId}:chunk`
 /** 跨副本停止信号频道 */
@@ -39,6 +41,8 @@ const PROGRESS_TTL_SECONDS = 6 * 60 * 60
 const CHUNKS_TTL_SECONDS = 60 * 60
 /** 输出记录最多保留多少条（防止异常情况把内存打满） */
 const CHUNKS_MAX = 20_000
+/** 单 run 输出记录字节上限（防止长回复把 Redis 内存打满；按 UTF-8 字节计） */
+const CHUNKS_MAX_BYTES = 32 * 1024 * 1024
 
 /**
  * 运行期状态存储（Redis）：**进度 + 输出记录 + 跨副本广播**。
@@ -127,10 +131,30 @@ export class AgentStreamStore {
   /** 追加一条输出片段，返回它的位置（从 0 开始） */
   async appendChunk(runId: string, chunk: unknown): Promise<number> {
     const key = chunksKey(runId)
-    const size = await this.redis.rpush(key, JSON.stringify(chunk))
-    // 只留最近 CHUNKS_MAX 条（正常对话远达不到；异常情况防爆）
-    if (size > CHUNKS_MAX) await this.redis.ltrim(key, size - CHUNKS_MAX, -1)
+    const payload = JSON.stringify(chunk)
+    const bytes = Buffer.byteLength(payload)
+    const size = await this.redis.rpush(key, payload)
     await this.redis.expire(key, CHUNKS_TTL_SECONDS)
+
+    const bytesKey = chunksBytesKey(runId)
+    const totalBytes = await this.redis.incrBy(bytesKey, bytes)
+    await this.redis.expire(bytesKey, CHUNKS_TTL_SECONDS)
+
+    // 双重上限：条数 + 字节。字节超限时从头部弹出并扣减；并发追加同一 run 不常见，
+    // 这里的计数是近似值（弹出失败/竞争只会导致提前裁剪，不会超上限）。
+    if (size > CHUNKS_MAX) await this.redis.ltrim(key, size - CHUNKS_MAX, -1)
+    let overflow = totalBytes - CHUNKS_MAX_BYTES
+    if (overflow > 0) {
+      let removed = 0
+      while (overflow > 0) {
+        const popped = await this.redis.lpop(key)
+        if (popped === null) break
+        const poppedBytes = Buffer.byteLength(popped)
+        removed += poppedBytes
+        overflow -= poppedBytes
+      }
+      if (removed > 0) await this.redis.incrBy(bytesKey, -removed)
+    }
     return size - 1
   }
 
@@ -147,7 +171,7 @@ export class AgentStreamStore {
   }
 
   async clearChunks(runId: string): Promise<void> {
-    await this.redis.del(chunksKey(runId))
+    await this.redis.del(chunksKey(runId), chunksBytesKey(runId))
   }
 
   // ── 跨副本转发 ────────────────────────────────────────────────
@@ -175,6 +199,43 @@ export class AgentStreamStore {
       })
     })
     if (final) this.kafkaMeta.delete(runId)
+  }
+
+  /**
+   * 发布一条**不属于任何 run** 的控制帧（当前只有"排队应答"）。
+   *
+   * 为什么需要它：Kafka 模式下 main 只把 Kafka 事件转成前端 SSE，runtime 的 HTTP 响应体
+   * 是被 drain 掉的。排队应答发生在**还没建 run** 的时候，没有 `runId` 可走 `publishChunk`；
+   * 不给这条通道，前端在 Kafka 模式下会收不到 `data-queue`，连接一直挂着等 `[DONE]`。
+   *
+   * `runId` 用队列项 id 占位（事件协议要求非空）；`final=true` 让 main 写完这帧就结束响应。
+   */
+  async publishControl(
+    input: { clientId: string; runId: string; conversationId: string; ownerId: string },
+    chunk: unknown,
+    final = false,
+  ): Promise<void> {
+    if (!this.kafka) return
+    const createdAt = new Date().toISOString()
+    const event: AgentRunEventModel = {
+      version: AGENT_RUN_EVENT_VERSION,
+      ...input,
+      chunk,
+      final: false,
+      createdAt,
+    }
+    await this.kafka.send(AGENT_RUN_EVENT_TOPIC, event, input.runId)
+    if (!final) return
+    // main 的桥上 `final` 事件只写 `[DONE]`、不转发 chunk —— 所以收尾必须单独再发一条
+    await this.kafka.send(
+      AGENT_RUN_EVENT_TOPIC,
+      {
+        ...event,
+        chunk: { type: '__run_end__' },
+        final: true,
+      } satisfies AgentRunEventModel,
+      input.runId,
+    )
   }
 
   /** 广播停止信号（运行在别的副本上时也停得掉） */

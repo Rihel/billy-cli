@@ -45,6 +45,9 @@ export const assistantAgent: AgentSpec = {
     TOOL_KEYS.planComplete,
     TOOL_KEYS.planDelete,
     TOOL_KEYS.runSubAgent,
+    TOOL_KEYS.subAgentList,
+    TOOL_KEYS.waitSubAgent,
+    TOOL_KEYS.cancelSubAgent,
     TOOL_KEYS.bash,
     // 联网：默认先直取（有 URL / 接口），搜索只作兜底 —— 顺序也按这个优先级排
     TOOL_KEYS.webFetch,

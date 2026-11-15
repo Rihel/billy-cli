@@ -25,7 +25,7 @@ export class Db implements OnApplicationBootstrap, OnApplicationShutdown {
       url: config.url,
       synchronize: config.sync,
       logging: false,
-      poolSize: 10,
+      poolSize: config.poolSize,
       entities: config.entities as DataSourceOptions['entities'],
       subscribers: config.subscribers as DataSourceOptions['subscribers'],
     })

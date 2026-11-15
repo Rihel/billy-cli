@@ -29,6 +29,7 @@
     "db:gen": "pnpm --filter @repo/db run db:generate",
     "gen:tool-catalog": "tsx --tsconfig apps/agent-runtime/tsconfig.json scripts/generate-tool-catalog.ts",
     "db:migrate": "pnpm --filter @repo/db run db:migrate",
+    "db:backfill-subconversations": "pnpm --filter @app/agent-runtime exec tsx scripts/backfill-subconversations.ts",
     "build": "turbo run build",
     "typecheck": "turbo run typecheck",
     "test": "turbo run test",

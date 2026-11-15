@@ -45,6 +45,15 @@ export class RunEntity extends AuditEntity {
   agentKey!: string
 
   /**
+   * 这一轮由谁发起：`user` = 用户消息（含用户排队后调度）；`subagent` = 子 agent 完成后
+   * 的唤醒 run（`parent_run_id` 仍为 NULL，属于根 run）。
+   *
+   * 只为审计 / UI 区分"用户主动发起"与"子 agent 完成唤醒"，不参与唯一索引与会话占用判定。
+   */
+  @Column({ name: 'origin', type: 'varchar', length: 16, default: 'user' })
+  origin: 'user' | 'subagent' = 'user'
+
+  /**
    * 父 run（**子 agent 专用**；`NULL` = 根 run = 一轮问答）。
    *
    * 逻辑引用，**不加物理外键**（工程硬规则）：同一张表递归引用自己更不该加外键，

@@ -171,7 +171,15 @@ const getJson = async (
     )
   }
 
-  const text = await response.text()
+  let text: string
+  try {
+    text = await response.text()
+  } catch (error) {
+    throw new ProviderProbeFailedError(
+      `读取供应商响应失败：${messageOf(error)}（地址 ${endpoint}）`,
+      endpoint,
+    )
+  }
   if (!response.ok) {
     throw new ProviderProbeFailedError(
       `供应商接口返回 HTTP ${response.status}：${truncate(text)}（地址 ${endpoint}）`,
@@ -547,6 +555,41 @@ const listOpenAiCompatibleModels = async (
 }
 
 /**
+ * Ollama 原生列模型：`GET /api/tags`（不是 OpenAI 的 `/models`）。
+ *
+ * `models[]` 的 `name` 是 `qwen3:27b` 这种带 tag 的锚点；`details` 原样进 raw。
+ * 窗口不在这里猜（要 `/api/show` 才有，拉 N 个模型就 N 次请求，同步路径不展开）。
+ */
+const listOllamaModels = async (
+  input: ListProviderModelsInput,
+  profile: ProviderEndpointProfile,
+  timeoutMs: number,
+): Promise<ListProviderModelsResult> => {
+  const baseUrl = resolveBaseUrl(input.kind, profile, input.baseUrl)
+  const endpoint = endpointOf(baseUrl, '/api/tags')
+  const body = await getJson(endpoint, { headers: { accept: 'application/json' } }, timeoutMs)
+  const models: RemoteModel[] = []
+  const seen = new Set<string>()
+  for (const item of asArray(body.models)) {
+    const record = asRecord(item)
+    const modelKey = record ? (asString(record.name) ?? asString(record.model)) : undefined
+    if (!record || !modelKey || seen.has(modelKey)) continue
+    seen.add(modelKey)
+    models.push({
+      modelKey,
+      displayName: modelKey,
+      capabilities: asRecord(record.details) ?? undefined,
+      raw: record,
+      mode: 'chat',
+      // Ollama 不声明模态；是否吃图取决于具体模型，留给「未声明」而不是猜
+      inputModalities: null,
+      outputModalities: ['text'],
+    })
+  }
+  return { endpoint, models }
+}
+
+/**
  * 按 `kind` 拉取供应商的模型清单（唯一入口）。
  *
  * 三种明确失败（都抛 {@link ProviderProbeFailedError} 3403，message 里带供应商原文与地址）：
@@ -566,6 +609,9 @@ export const listProviderModels = async (
     throw new ProviderProbeFailedError(
       `该供应商不支持自动拉取模型明细，请手工新增模型（供应商类型：${label}）`,
     )
+  }
+  if (input.kind === AiProviderKind.Ollama) {
+    return listOllamaModels(input, profile, input.timeoutMs ?? DEFAULT_SYNC_TIMEOUT_MS)
   }
   return listOpenAiCompatibleModels(input, profile, input.timeoutMs ?? DEFAULT_SYNC_TIMEOUT_MS)
 }

@@ -230,7 +230,7 @@ pnpm typecheck && pnpm test && pnpm check:ui && pnpm check:inject && pnpm check:
 三条改它之前必须知道的：
 - **出参永远是完整清单快照**（`{goal, revision, tasks, summary, warnings?}`）→ 每个工具都会落一条 `plan`
   时间线事件，「当前计划」= 最后一条（`runtime/plan.protocol.ts` 的 `PLAN_TOOL_KEYS` 要跟着登记新 key）；
-- **四个都 `child: 'deny'`**（只给主 agent），内部共享"本轮内存 → 时间线 + 同轮串行 + 失败不改内存"的机制；
+- **四个都 `child: 'allow'`**（父子 agent 各自一份 plan，按 run 隔离，父不会被子清单顶掉），内部共享"本轮内存 → 时间线 + 同轮串行 + 失败不改内存"的机制；
 - 加第五个规划工具时：`core/tools/tool-keys.ts` 加 key → `PLAN_TOOL_KEYS` 登记 → 在 `PlannerTools` 里加一个
   `@ToolDecl` 方法（`PlannerStore` 已在组构造器注入）→ `assistant.agent.ts` 授权 → `test/ai-tools/<key>.test.ts`（标准测试集强制）。
 

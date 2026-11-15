@@ -17,7 +17,14 @@ import type { UIMessage, UIMessageChunk } from 'ai'
  * 为什么改在 `processResponseStream` 而不是 SSE 字节流：SDK 已经把 SSE 解析成 chunk 对象了，
  * 在这里按 `type` 打标记是最稳的位置（不碰编码、不手写解析）。
  */
-export const TRANSIENT_DATA_CHUNK_TYPES: ReadonlySet<string> = new Set(['data-sub-agent-delta'])
+export const TRANSIENT_DATA_CHUNK_TYPES: ReadonlySet<string> = new Set([
+  'data-sub-agent-delta',
+  /**
+   * 排队应答：只用于横幅提示，**不是消息内容**。
+   * 不标 transient 的话，会话忙时发一条消息会额外多出一条"（空消息）"气泡。
+   */
+  'data-queue',
+])
 
 /** 给指定的 data 块打上 `transient` 标记（纯函数，可单测） */
 export const markTransientChunks = (

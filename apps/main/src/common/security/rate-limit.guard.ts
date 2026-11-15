@@ -12,6 +12,7 @@ import {
   describeErrorCode,
   isIpWhitelisted,
   normalizeIp,
+  requestContext,
 } from '@repo/kits'
 import { AppErrorCodes } from '@repo/shared'
 import type { Request } from 'express'
@@ -25,13 +26,18 @@ export interface RateLimitOptions {
   /** 窗口秒数，默认 60 */
   windowSeconds?: number
   /**
+   * 计数维度：`ip`（默认）或 `user`（当前登录用户 / 管理员）。
+   * `user` 维度用于 AI 对话这类「按人」的准入；未登录时回落 IP。
+   */
+  identity?: 'ip' | 'user'
+  /**
    * 豁免白名单（精确 IP / IPv4 CIDR）；缺省读 ServerConfig.rateLimitWhitelist
    * （env `RATE_LIMIT_WHITELIST`）。命中白名单跳过限流。
    */
   whitelist?: string[]
 }
 
-const RATE_LIMIT_METADATA = Symbol.for('RateLimitOptions')
+export const RATE_LIMIT_METADATA = Symbol.for('RateLimitOptions')
 
 /** 方法装饰器：声明该路由的限流策略，配合 `@UseGuards(RateLimitGuard)` 使用 */
 export const RateLimit = (options: RateLimitOptions): MethodDecorator =>
@@ -90,8 +96,12 @@ export class RateLimitGuard implements CanActivate {
 
     if (isIpWhitelisted(ip, whitelist)) return true
 
+    const userId = options.identity === 'user' ? requestContext.get('userId') : undefined
+    const adminId = options.identity === 'user' ? requestContext.get('adminId') : undefined
+    const identity = userId ? `u:${userId}` : adminId ? `a:${adminId}` : ip
+
     const decision = await this.rateLimiter.check(
-      `${options.scope}:${ip}`,
+      `${options.scope}:${identity}`,
       options.limit ?? 20,
       options.windowSeconds ?? 60,
     )

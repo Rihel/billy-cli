@@ -1,4 +1,4 @@
-import { Inject, Injectable } from '@nestjs/common'
+import { Inject, Injectable, Optional } from '@nestjs/common'
 import { AppLogger, type PageQueryResult } from '@repo/kits'
 import {
   RunStatus,
@@ -21,6 +21,7 @@ import { ConversationRepository, toConversationModel } from './conversation.repo
 import { RunRepository } from './run.repository.js'
 import { TimelineRepository } from './timeline.repository.js'
 import { FileService } from '../files/file.service.js'
+import { ConversationRunQueue } from './run-queue.service.js'
 
 /**
  * 会话服务：会话的增删查 + 归属校验。
@@ -37,6 +38,8 @@ export class AgentConversationService {
     @Inject(AGENT_REGISTRY) private readonly registry: AgentRegistry,
     @Inject(AppLogger) private readonly logger: AppLogger,
     @Inject(FileService) private readonly files: FileService,
+    // 删会话要清队列（测试 / 脚本手构时缺省）
+    @Optional() @Inject(ConversationRunQueue) private readonly runQueue?: ConversationRunQueue,
   ) {}
 
   /** 新建会话（agentKey 未知时由注册表抛 3303） */
@@ -209,6 +212,8 @@ export class AgentConversationService {
    */
   async remove(userId: string, input: AgentConversationIdDto): Promise<void> {
     await this.requireOwned(userId, input.conversationId)
+    // 删会话：排队项全部取消（含用户消息与子 agent 唤醒，设计 §7）
+    const queuedCanceled = (await this.runQueue?.cancelConversation(input.conversationId)) ?? 0
     const canceled = await this.runs.cancelActive(input.conversationId)
     if (canceled > 0) {
       await this.timelines.append({
@@ -246,6 +251,7 @@ export class AgentConversationService {
     this.logger.log('ai.conversation.removed', {
       conversationId: input.conversationId,
       canceledRuns: canceled,
+      canceledQueued: queuedCanceled,
       operator: userId,
     })
   }
