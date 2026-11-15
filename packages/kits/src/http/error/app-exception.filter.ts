@@ -62,7 +62,9 @@ export class AppExceptionFilter implements ExceptionFilter {
     }
 
     const descriptor = mapError(exception)
-    this.logger.error('请求处理失败', { error: exception })
+    // `err` 才会被 pino 的 Error 序列化器展开（message / stack / cause）；
+    // 用 `error` 当键会序列化成 `{}`，线上只剩「请求处理失败」而无从定位（2026-11-15 踩过）。
+    this.logger.error('请求处理失败', { err: exception })
 
     // 告警接入：技术错误异步通知（fire-and-forget，失败不影响错误响应）
     try {

@@ -17,6 +17,24 @@ interface HttpRequestLike {
 }
 
 /**
+ * 取审计要读的业务体（兼容「已包信封」与「裸响应」两种形态）。
+ *
+ * `ResponseEnvelopeInterceptor` 是控制器上更外层的那一个时，它会先把 handler 的返回值包成
+ * `{ code, data }` 再交给本拦截器的 `tap` —— 此时 `response.outcome` 是 `undefined`，
+ * 直接读就把整条工具调用炸成 500（2026-11-15 实测：所有工具调用回 `5001`，
+ * 而 worker 其实已经执行成功，只是结论被吞掉，模型只能判定「网络全挂」）。
+ *
+ * 审计是旁路：拆不出业务体就少写一条并告警，绝不能反过来毁掉工具结论。
+ */
+const businessBodyOf = (value: unknown): ToolInvokeResponse | null => {
+  if (!value || typeof value !== 'object') return null
+  const candidate = 'outcome' in value ? value : (value as { data?: unknown }).data
+  return candidate && typeof candidate === 'object' && 'outcome' in candidate
+    ? (candidate as ToolInvokeResponse)
+    : null
+}
+
+/**
  * 工具调用切面（Nest Interceptor）：**策略 pre → handler → 审计 post**。
  *
  * 为什么用 Interceptor 而不是 Controller 里手写：
@@ -60,9 +78,7 @@ export class ToolCallInterceptor implements NestInterceptor {
       }
       // 清洗后的入参交给后面的 Pipe / handler；reason 不再下传
       request.body = { ...invokeRequest, input: checked.input, settings: checked.settings }
-      return next
-        .handle()
-        .pipe(tap((response: ToolInvokeResponse) => this.record(raw, response, startedAt)))
+      return next.handle().pipe(tap((response: unknown) => this.record(raw, response, startedAt)))
     }) as ReturnType<NestInterceptor['intercept']>
   }
 
@@ -83,31 +99,40 @@ export class ToolCallInterceptor implements NestInterceptor {
 
   private record(
     raw: Partial<ToolInvokeRequest> | undefined,
-    response: ToolInvokeResponse,
+    response: unknown,
     startedAt: number,
   ): void {
     if (!raw?.requestId || !raw.toolKey || !raw.caller) return
+    const body = businessBodyOf(response)
+    if (!body) {
+      this.logger.warn('tool_gateway.audit_skipped', {
+        requestId: raw.requestId,
+        toolKey: raw.toolKey,
+        reason: '响应里没有 outcome，审计跳过',
+      })
+      return
+    }
     const durationMs = Date.now() - startedAt
     this.logger.info('tool_gateway.invoked', {
-      requestId: response.requestId,
+      requestId: body.requestId,
       runId: raw.caller.runId,
       conversationId: raw.caller.conversationId,
       toolKey: raw.toolKey,
       toolCallId: raw.toolCallId ?? null,
-      workerId: response.workerId,
-      ok: response.outcome.ok,
-      ...(response.outcome.ok ? {} : { reason: response.outcome.reason }),
+      workerId: body.workerId,
+      ok: body.outcome.ok,
+      ...(body.outcome.ok ? {} : { reason: body.outcome.reason }),
       durationMs,
     })
     void this.audit.record({
-      requestId: response.requestId,
+      requestId: body.requestId,
       runId: raw.caller.runId,
       conversationId: raw.caller.conversationId,
       userId: raw.caller.userId ?? null,
       toolKey: raw.toolKey,
       toolCallId: raw.toolCallId ?? null,
-      workerId: response.workerId,
-      outcome: response.outcome,
+      workerId: body.workerId,
+      outcome: body.outcome,
       durationMs,
     })
   }

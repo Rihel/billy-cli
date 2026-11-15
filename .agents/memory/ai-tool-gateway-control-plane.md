@@ -2,9 +2,15 @@
 
 > **查证优先级：必核** —— 路由 / 策略 / 审计落点；改 gateway 或 runtime 的远程开关后重核。
 
-## 结论（2026-11-14）
+## 结论（2026-11-15）
 
-- 目录：`GET/POST /v1/tools/list` 返回 manifest（bash / web-fetch），按 caller 的 scope 过滤；
+- **坑：invoke 路由上「信封 × 审计」的顺序有语义**。控制器必须是
+  `@UseInterceptors(ResponseEnvelopeInterceptor, ToolCallInterceptor)`（信封在外）。
+  写反时信封先包成 `{code,data}`，审计的 tap 再读 `response.outcome` → TypeError →
+  整条工具调用回 500 `5001`，而 worker 其实已执行成功、结论被吞掉，模型只会判定「网络全挂」。
+  实测 2026-11-15：会话里 39 条工具结果全是这个 500，`ai_tool_audit` 一条都没写。
+  现审计侧用 `businessBodyOf` 拆信封兜底（拿不到 outcome 就 warn 跳过，不毁工具结论）。
+- 目录：`GET/POST /v1/tools/list` 返回 manifest，按 caller 的 scope 过滤；
   manifest 来自 `@repo/tool-catalog`，`ai_tools` 的 enabled / scope / allowedAgents 已接入。
 - 配置：`ToolConfigService` 读 `ai_tools`（5s 缓存），把 enabled / scope / limits / config /
   secrets / version 合并进 `ToolInvokeRequest.settings`；停用/越权在策略层拒绝。
@@ -15,33 +21,32 @@
 - 审计：每次调用写 `ai_tool_audit`（gateway 唯一写方）；timeline 由 agent-runtime 写。
 - 远程执行：agent-runtime 命中 `TOOL_GATEWAY_URL` + `TOOL_GATEWAY_TOOLS` 时，`ToolGateway.invoke`
   **在本地插件链之前**直接走 gateway；策略只有 gateway 一份，避免双限流/双审计。
-- worker：仍只接 bash；web / file / skill / memory 待迁。
+- 响应：invoke 返回 `{code:0,data:ToolInvokeResponse}` 信封，runtime 用 `requestEnvelope` 解。
 
 ## 关键位置
 
 | 位置 | 内容 |
 | --- | --- |
-| `apps/tool-gateway/src/tool.catalog.ts` | 静态 manifest + scope 过滤 |
-| `apps/tool-gateway/src/internal-token.guard.ts` | 内部令牌 Guard |
-| `apps/tool-gateway/src/tool-call.interceptor.ts` | 策略 pre/短路 + 审计 post |
-| `apps/tool-gateway/src/zod-body.pipe.ts` | 契约 Pipe |
+| `apps/tool-gateway/src/gateway/gateway.controller.ts` | 路由 + Guard/Pipe/Interceptor 绑定（**顺序有语义**） |
+| `apps/tool-gateway/src/catalog/tool.catalog.ts` | 静态 manifest + scope 过滤 |
+| `apps/tool-gateway/src/http/internal-token.guard.ts` | 内部令牌 Guard |
+| `apps/tool-gateway/src/policy/tool-call.interceptor.ts` | 策略 pre/短路 + 审计 post + `businessBodyOf` 拆信封 |
 | `apps/tool-gateway/src/policy/tool.policy.ts` | enabled / scope / validate / rate-limit（域服务） |
 | `apps/tool-gateway/src/config/tool.config.service.ts` | 读 `ai_tools` + 5s 缓存 |
-| `apps/tool-gateway/src/tool.audit.ts` | 写 `ai_tool_audit` |
-| `apps/agent-runtime/src/modules/ai/core/tools/tool.gateway.ts` | 远程 allowlist 在插件链前短路 |
-| `packages/db/src/migrations/1794800000000-AiToolAudit.ts` | 审计表 |
+| `apps/tool-gateway/src/audit/tool.audit.ts` | 写 `ai_tool_audit` |
+| `apps/agent-runtime/src/modules/ai/runtime/remote-tool.client.ts` | runtime 侧远程调用 + 失败归因 |
 
 ## 核对命令
 
 ```bash
-grep -n "v1/tools/list" apps/tool-gateway/src/gateway.controller.ts
-grep -n "UseGuards\|UseInterceptors\|ZodBodyPipe" apps/tool-gateway/src/gateway.controller.ts
-grep -n "rateLimitPerMinute" apps/tool-gateway/src/app-config.ts apps/tool-gateway/src/tool.policy.ts
-grep -n "ai_tool_audit" apps/tool-gateway/src/tool.audit.ts packages/db/src/migrations/1794800000000-AiToolAudit.ts
-grep -n "remote?.supports" apps/agent-runtime/src/modules/ai/core/tools/tool.gateway.ts
+grep -n "UseInterceptors(ResponseEnvelopeInterceptor, ToolCallInterceptor)" \
+  apps/tool-gateway/src/gateway/gateway.controller.ts   # 顺序必须是 Envelope 在前
+pnpm --filter @app/tool-gateway test                    # 含 envelope-audit 组合用例
+psql -h 127.0.0.1 -U root -d billy-cli -c \
+  "select created_at, tool_key, status, reason from ai_tool_audit order by created_at desc limit 5"
 ```
 
 ## 失效信号
 
-插件链全量迁完 / web 等工具迁 worker / 目录改为 DB + 事件失效 / 审计表结构变化；
+信封拦截器从 invoke 路由移除 / 审计改到 service 里写 / 插件链全量迁完 / 工具目录改 DB + 事件失效；
 任一出现都要回来改卡片。

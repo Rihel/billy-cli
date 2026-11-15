@@ -52,7 +52,9 @@ export class ToolGatewayController {
   @Post('v1/tools/invoke')
   @HttpCode(200)
   @UseGuards(InternalTokenGuard)
-  @UseInterceptors(ToolCallInterceptor, ResponseEnvelopeInterceptor)
+  // 顺序有语义：信封在外层，审计（内层）才读得到 handler 的裸响应。
+  // 反过来时 `ToolCallInterceptor` 的 tap 拿到的是 `{ code, data }`，读 `outcome` 直接 500。
+  @UseInterceptors(ResponseEnvelopeInterceptor, ToolCallInterceptor)
   async invoke(
     @Body(new ZodBodyPipe(ToolInvokeRequestSchema)) request: ToolInvokeRequest,
   ): Promise<ToolInvokeResponse> {
