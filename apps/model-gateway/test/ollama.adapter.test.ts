@@ -36,6 +36,37 @@ describe('Ollama 协议翻译', () => {
     expect(out.options).toMatchObject({ temperature: 0.3, num_predict: 128 })
   })
 
+  it('请求：assistant 的 tool_calls.arguments 转成对象（字符串会被 Ollama 直接拒）', () => {
+    const out = toOllamaBody(
+      {
+        messages: [
+          { role: 'user', content: '北京天气？' },
+          {
+            role: 'assistant',
+            content: '',
+            tool_calls: [
+              {
+                id: 'call_1',
+                type: 'function',
+                function: { name: 'get_weather', arguments: '{"city":"北京"}' },
+              },
+              { id: 'call_2', type: 'function', function: { name: 'bad', arguments: '{oops' } },
+            ],
+          },
+          { role: 'tool', tool_call_id: 'call_1', content: '晴' },
+        ],
+      },
+      'qwen3.8:27b',
+    )
+    const messages = out.messages as Record<string, unknown>[]
+    expect(messages[1].tool_calls).toEqual([
+      { function: { name: 'get_weather', arguments: { city: '北京' } } },
+      { function: { name: 'bad', arguments: {} } },
+    ])
+    // 其余字段照旧透传（tool 消息的 tool_call_id 不能被吃掉）
+    expect(messages[2]).toMatchObject({ role: 'tool', tool_call_id: 'call_1', content: '晴' })
+  })
+
   it('流式行：content / thinking / tool_calls / done usage', () => {
     const content = ollamaChunkToOpenai(
       { message: { role: 'assistant', content: '你' }, done: false },

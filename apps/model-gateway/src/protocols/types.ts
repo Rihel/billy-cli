@@ -64,6 +64,27 @@ export const authHeaders = (target: GatewayTarget): Record<string, string> => {
   return { authorization: `Bearer ${key}` }
 }
 
+/**
+ * OpenAI 的 `tool_calls[].function.arguments`（JSON 字符串）→ 对象。
+ *
+ * 原生协议的**请求侧**都收对象（Anthropic 的 `tool_use.input`、Ollama 的 `function.arguments`），
+ * 而 OpenAI 形态里它是字符串；坏 JSON 用 `{}` 兜底（宁可让上游报参数校验，也别把整条请求弄挂）。
+ */
+export const parseToolArguments = (value: unknown): Record<string, unknown> => {
+  if (value && typeof value === 'object' && !Array.isArray(value)) {
+    return value as Record<string, unknown>
+  }
+  if (typeof value !== 'string' || !value.trim()) return {}
+  try {
+    const parsed = JSON.parse(value) as unknown
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+      ? (parsed as Record<string, unknown>)
+      : {}
+  } catch {
+    return {}
+  }
+}
+
 /** OpenAI 兼容族（含 DeepSeek）的公共构造：替换 model、注入鉴权、按 stream 加 accept */
 export const buildOpenAiRequest = (input: {
   body: GatewayChatBody

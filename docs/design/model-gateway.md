@@ -197,7 +197,7 @@ runtime 侧随之删改：`RuntimeModel` 去掉 `apiKey` / `baseURL`（改带我
 | 适配器 | 覆盖 | 上游形态 | 关键差异 |
 | --- | --- | --- | --- |
 | `openai-compatible` | Kimi / 豆包 / 千问 / 智谱 / 硅基 / MiniMax / 千帆 / 混元 / 阶跃 / 星火 / 自建 | `POST {base}/chat/completions`，SSE | 路径与鉴权按 kind 画像；`reasoning_content` / `reasoning` 原样透传；usage 字段各家写法不同 |
-| `deepseek` | DeepSeek 官方 | `POST https://api.deepseek.com/chat/completions`（无 `/v1`），SSE | `reasoning_content` 双向保留；**V4 模型要求每条 assistant 消息都带 `reasoning_content`**（官方 SDK 用空串兜底），网关要照做；`prompt_cache_hit_tokens` 映射为缓存读 |
+| `deepseek` | DeepSeek 官方 | `POST https://api.deepseek.com/chat/completions`（无 `/v1`），SSE | `reasoning_content` 双向保留；**请求带 `tools` 时每条 assistant 消息都必须带 `reasoning_content`**（官方文档：工具调用的后续请求「必须完整回传」，即使该轮没实际调用工具），网关补空串兜底——判据是「带不带 tools」，与 thinking / reasoning_effort / 模型名无关（2026-11-15 实测）；`prompt_cache_hit_tokens` 映射为缓存读 |
 | `anthropic` | Claude | `POST {base}/v1/messages`，SSE **事件流** | 结构完全不同：`system` 顶层、`max_tokens` 必填、`tool_use` / `tool_result` 块、`thinking` 块、图片 base64、`cache_read_input_tokens`；必须逐事件翻译 |
 | `ollama` | 本地 / 自建 Ollama | `POST {base}/api/chat`，**NDJSON（不是 SSE）** | 每行一个 JSON；`message.thinking` / `images` base64 / `tool_calls`；usage 是 `prompt_eval_count` / `eval_count`（无缓存字段）；模型列表走 `/api/tags`、窗口走 `/api/show` |
 

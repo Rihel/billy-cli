@@ -25,6 +25,25 @@
 4. `curl -N -X POST .../v1/models/{id}/chat/completions -H 'x-internal-token: ...' -d '{"messages":[...],"stream":true}'`
    → 网关把 Ollama 的 NDJSON 翻成 OpenAI SSE（`reasoning_content` 来自 `message.thinking`）。
 
+## 坑：DeepSeek 思考模式 + 工具续跑必须回放 `reasoning_content`
+
+- **触发条件**：请求**带 `tools`** 时，历史里每条 assistant 都必须有 `reasoning_content`，
+  缺了上游必回 400（`The reasoning_content in the thinking mode must be passed back to the API`）；
+  该轮没实际调工具也算，以 tool 结果收尾的续跑最容易中。**不带 `tools` 时上游忽略该字段、不报错**。
+- **判据不是**「传没传 thinking / reasoning_effort、模型名是否含 reasoner」：runtime 经网关调用**都不发**这两个参数，
+  模型名又是 `deepseek-flash` → 旧判据全不中、整段跳过。2026-11-15 实测（直打网关，最小请求体）。
+- **修法**：`apps/model-gateway/src/protocols/deepseek.adapter.ts` 的 `withDeepSeekReasoning`——
+  带 tools 就给 assistant 补 `""`（上游接受空串；`thinking:{type:disabled}` 时补空串同样 200）。
+- **核对**：`pnpm --filter @app/model-gateway test`；线上复现看 `timelines` 的 `system/error` 行 + `model_gateway_usage` 的 400 流水。
+
+## 坑：Ollama 的 assistant `tool_calls[].function.arguments` 必须对象
+
+- OpenAI 形态给的是 JSON **字符串**；Ollama 的 Go 结构体要对象，原样透传直接 400
+  `Value looks like object, but can't find closing '}' symbol`（2026-11-15 实测：字符串 400 / 对象 200）。
+- 现象与 DeepSeek 那条同类：**「调工具 → 拿结果 → 再问」的第二轮必挂**；请求侧转换在
+  `ollama.adapter.ts` 的 `toOllamaToolCalls`（`id` / `type` / `index` 一并收掉）。
+- 核对：`pnpm --filter @app/model-gateway test`；本地起 9992 后用带 tool_calls 历史的请求重放。
+
 ## 未做（别再误以为已有）
 
 - key 加密（`ai_providers.api_key` / `ai_provider_keys.secret` 仍明文；本轮明确不做）；

@@ -7,6 +7,7 @@ import type { Response } from 'express'
 import type { GatewayTarget } from '../catalog/model.catalog.service.js'
 import {
   joinUrl,
+  parseToolArguments,
   resolveBaseUrl,
   type ProtocolAdapter,
   type RelayOptions,
@@ -19,13 +20,38 @@ const asString = (value: unknown): string | undefined =>
 const asRecord = (value: unknown): Record<string, unknown> =>
   value && typeof value === 'object' ? (value as Record<string, unknown>) : {}
 
-/** OpenAI 的 content（string / parts）→ Ollama 的 content + images(base64) */
+/**
+ * OpenAI assistant 的 `tool_calls` → Ollama 形态。
+ *
+ * **Ollama 的 `function.arguments` 要对象**（OpenAI 是 JSON 字符串）：原样透传会被上游拒
+ * （`Value looks like object, but can't find closing '}' symbol`，2026-11-15 实测），
+ * 于是「调工具 → 拿结果 → 再问」的第二轮必挂。`id` / `type` / `index` 是 OpenAI 才有的字段，收掉。
+ */
+const toOllamaToolCalls = (value: unknown): Record<string, unknown>[] | null => {
+  const calls = Array.isArray(value) ? value : []
+  if (calls.length === 0) return null
+  return calls.map((call) => {
+    const fn = asRecord(asRecord(call).function)
+    return {
+      function: {
+        name: asString(fn.name) ?? '',
+        arguments: parseToolArguments(fn.arguments),
+      },
+    }
+  })
+}
+
+/** OpenAI 的 content（string / parts）→ Ollama 的 content + images(base64)，tool_calls 转对象 */
 const toOllamaMessages = (
   messages: readonly Record<string, unknown>[],
 ): Record<string, unknown>[] =>
   messages.map((message) => {
     const content = message.content
-    if (typeof content === 'string') return { ...message, content }
+    const toolCalls = toOllamaToolCalls(message.tool_calls)
+    const base: Record<string, unknown> = { ...message }
+    delete base.tool_calls
+    const toolField = toolCalls ? { tool_calls: toolCalls } : {}
+    if (typeof content === 'string') return { ...base, content, ...toolField }
     const parts = Array.isArray(content) ? content : []
     const texts: string[] = []
     const images: string[] = []
@@ -40,9 +66,10 @@ const toOllamaMessages = (
       }
     }
     return {
-      ...message,
+      ...base,
       content: texts.join('\n'),
       ...(images.length > 0 ? { images } : {}),
+      ...toolField,
     }
   })
 

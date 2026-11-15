@@ -8,6 +8,7 @@ import type { GatewayTarget } from '../catalog/model.catalog.service.js'
 import {
   authHeaders,
   joinUrl,
+  parseToolArguments,
   resolveBaseUrl,
   type ProtocolAdapter,
   type RelayOptions,
@@ -78,17 +79,6 @@ const userBlocksOf = (content: unknown): Record<string, unknown>[] => {
   return blocks
 }
 
-/** OpenAI tool_calls 的 arguments（JSON 字符串）→ Anthropic tool_use.input；坏 JSON 用 {} */
-const parseArguments = (value: unknown): Record<string, unknown> => {
-  if (value && typeof value === 'object') return asRecord(value)
-  if (typeof value !== 'string' || !value.trim()) return {}
-  try {
-    return asRecord(JSON.parse(value) as unknown)
-  } catch {
-    return {}
-  }
-}
-
 /** OpenAI assistant 消息 → Anthropic text / tool_use blocks */
 const assistantBlocksOf = (message: Record<string, unknown>): Record<string, unknown>[] => {
   const blocks = textBlocksOf(message.content)
@@ -99,7 +89,7 @@ const assistantBlocksOf = (message: Record<string, unknown>): Record<string, unk
       type: 'tool_use',
       id: asString(row.id) ?? `call_${index}`,
       name: asString(fn.name) ?? '',
-      input: parseArguments(fn.arguments),
+      input: parseToolArguments(fn.arguments),
     })
   })
   return blocks
