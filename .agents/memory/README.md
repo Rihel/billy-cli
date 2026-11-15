@@ -59,9 +59,12 @@
 | [ai-context-compression](ai-context-compression.md) | 摘要压缩只在轮前；轮内另有工具结果预算（prepareStep + turn-budget），落库出参不动 | 必核 | 2026-10-29 |
 | [ai-agent-file-map](ai-agent-file-map.md) | AI 运行期关键链路的位置速查（上下文、时间线、记忆、技能、子 agent） | 抽核 | 2026-10-25 |
 | [ai-file-management](ai-file-management.md) | `ai_files` + 9 个文件工具 + 每会话 workspace；入站引用、`uploads/`/`files/` 约定、删会话清理；HTML 预览的 CDN 白名单与「必须用 Tailwind、`<style>` 补位」口径 | 必核 | 2026-11-14 |
+| [ai-command-limits](ai-command-limits.md) | bash 时长 5 分钟、模型无 timeout 入参；远端链 4 个 deadline 必须一起抬；写文件 10MB 要同时改 maxWriteBytes/maxBytes 与已入库配置 | 必核 | 2026-11-15 |
 | [dev-session-log](dev-session-log.md) | 开发会话记录在 `~/.dsh/sessions/`，zstd + JSONL，可直接统计调用与用量 | 抽核 | 2026-10-25 |
 | [token-cost-model](token-cost-model.md) | skill 只占工具输出 1%–3%，成本主项是「调用次数 × 累积上下文」 | 免核 | 2026-10-25 |
+| [ai-subagent-card-state](ai-subagent-card-state.md) | 子助手卡状态以库里子 run 为终态权威；实时块会停在起跑快照（父流关闭 / 唤醒轮清空），历史 part 的 status 也是起跑快照 | 必核 | 2026-11-15 |
 | [ai-chat-render-state](ai-chat-render-state.md) | 会话页按 part 类型增量归约成渲染单元；逐帧增量走 transient（后端不改），渲染期不再扫 parts；子 agent 过程在主区 tab 条（右栏已无该 tab） | 抽核 | 2026-11-15 |
+| [ai-chat-right-panel](ai-chat-right-panel.md) | 右栏四 tab 的取数源；主区切子 agent tab 时右栏按 `activeRunId` 换作用域（系统指令/技能/任务），文件仍按根会话 | 必核 | 2026-11-15 |
 | [ai-chat-route-remount](ai-chat-route-remount.md) | 会话页 `new → 真实 id` 的 replace 会重挂载页面子树，`useState` 全丢（选择类状态要存 React 之外） | 抽核 | 2026-10-27 |
 | [ai-memory-module](ai-memory-module.md) | 短期 thread 落 Redis（按 token 预算、定时清理、续跑回灌）、长期 `ai_memories`；注入走 system 消息 + 快照记 ids | 抽核 | 2026-11-14 |
 | [ai-skills-loading](ai-skills-loading.md) | 技能：我们只发现/校验/授权路径，正文与 references 由 Mastra 按需读；`catalog/` 现有内置 `html-page`、另加载 `~/.agents/skills`（每轮约 +11k token）；有清单 ≠ 会主动用 | 抽核 | 2026-11-12 |
@@ -75,6 +78,8 @@
 | [lark-cli-connector](lark-cli-connector.md) | @larksuite/cli 是下载 Go 二进制的 launcher；skills 内嵌；config 在 HOME；whoami 不能探活、doctor 才行 | 抽核 | 2026-11-09 |
 | [product-facts](product-facts.md) | README / 落地页 / pitch 共用的能力数字口径（工具 26 / 连接器 4 / skill 28 / ai-elements 48 …） | 必核 | 2026-11-13 |
 | [agent-tool-authorization](agent-tool-authorization.md) | agent 授权是结构化选择器；作用域装配期过滤工具面；子 agent = 父授权 ∩ 全部 − 委派 − deny，并按 caller 过滤 | 必核 | 2026-11-14 |
+| [ui-dialog-escape](ui-dialog-escape.md) | Base UI Dialog 没有 `onEscapeKeyDown`：Esc 要先退全屏 / 不关窗，就在 `onOpenChange` 里看 `details.reason === 'escape-key'` 并 `details.cancel()` | 必核 | 2026-11-15 |
+| [ai-subagent-result-and-wake](ai-subagent-result-and-wake.md) | 结论正文只收 `text`；wait 收口要含「已完成未消费」的子并打「已交付」标记（卡要有人补写）；`subagents/` 只给引擎写 | 必核 | 2026-11-15 |
 | [security-remediation-2026-11](security-remediation-2026-11.md) | 找回密码（hash + 邮件）/ 桶私有 + 预签名 / STS 收紧 / 邮箱部分唯一 / 锁看门狗 / 工具面 caller 过滤 的落点与核对命令 | 抽核 | 2026-11-14 |
 | [event-bus](event-bus.md) | kits 分三层：PubSub（传输）→ StreamHub（SSE）/ EventBus（`events:`）；at-most-once，只做失效通知 | 抽核 | 2026-11-10 |
 | [model-gateway](model-gateway.md) | 内部模型网关（9992）：canonical `/v1/models/{id}/chat/completions`、协议适配器、runtime 开关与 Ollama 验证 | 抽核 | 2026-11-15 |
