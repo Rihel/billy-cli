@@ -47,7 +47,7 @@ export const toolWorkerAppConfigSchema = z.object({
     /** 会话临时目录的根（本地盘可丢弃；真相在工作区对象存储） */
     workspaceRoot: z.string().min(1).default(join(tmpdir(), 'billy-tool-worker')),
     /** 单条命令默认 / 硬上限 */
-    commandTimeoutMs: z.coerce.number().int().positive().default(15_000),
+    commandTimeoutMs: z.coerce.number().int().positive().default(300_000),
     /** 每条流（stdout / stderr）的输出上限 */
     maxOutputBytes: z.coerce
       .number()

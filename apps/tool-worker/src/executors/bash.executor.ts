@@ -62,11 +62,8 @@ export class BashExecutor implements ToolExecutor {
     try {
       await mkdir(cwd, { recursive: true })
       const remaining = Math.max(1, request.deadlineMs - 500)
-      const timeoutMs = Math.min(
-        input.timeout_ms ?? this.config.commandTimeoutMs,
-        this.config.commandTimeoutMs,
-        remaining,
-      )
+      // 命令时长只由部署配置决定（模型入参里没有时长）；同时不超过这次调用的剩余预算
+      const timeoutMs = Math.min(this.config.commandTimeoutMs, remaining)
       const startedAt = Date.now()
       const result = await this.runtime.exec({
         command: input.command,

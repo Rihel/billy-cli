@@ -92,10 +92,10 @@ const build = (exec = vi.fn()) => {
 }
 
 describe('ToolWorkerService：bash 执行', () => {
-  it('把命令放进本会话临时工作区，并夹紧超时', async () => {
+  it('把命令放进本会话临时工作区；模型传的 timeout_ms 被丢弃，只认配置', async () => {
     const { service, exec } = build()
     const outcome = await service.execute(
-      request({ input: { command: 'echo hi', timeout_ms: 60_000 }, deadlineMs: 60_000 }),
+      request({ input: { command: 'echo hi', timeout_ms: 5_000 }, deadlineMs: 60_000 }),
     )
 
     expect(outcome.ok).toBe(true)

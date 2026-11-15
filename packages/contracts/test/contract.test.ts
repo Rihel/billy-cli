@@ -36,7 +36,7 @@ describe('tool 契约', () => {
   })
 
   it('拒绝越界 deadline', () => {
-    expect(() => ToolInvokeRequestSchema.parse({ ...base, deadlineMs: 300_001 })).toThrow(
+    expect(() => ToolInvokeRequestSchema.parse({ ...base, deadlineMs: 360_001 })).toThrow(
       /deadline/i,
     )
   })

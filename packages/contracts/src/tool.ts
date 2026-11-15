@@ -47,8 +47,8 @@ export const ToolInvokeRequestSchema = z.object({
   workspaceConversationId: z.string().min(1).optional(),
   /** 网关合并后的生效配置；worker 只读，不落库、不进日志 */
   settings: ToolRuntimeSettingsSchema.optional(),
-  /** 本次调用的墙钟上限（含排队）；网关与 worker 都不能超过它 */
-  deadlineMs: z.number().int().positive().max(300_000),
+  /** 本次调用的墙钟上限（含排队）；网关与 worker 都不能超过它（5 分钟命令 + 传输余量） */
+  deadlineMs: z.number().int().positive().max(360_000),
   /** 会话选择的文件权限；worker 只接受沙箱内的两档 */
   fileAccess: z.enum(['read-only', 'workspace-write']).optional(),
 })

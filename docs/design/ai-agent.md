@@ -1400,7 +1400,7 @@ AI SDK 的 `data-sub-agent` part，和主内容走同一条 SSE：
 | --- | --- |
 | 开关 | `AGENT_COMMAND_ENABLED`（**默认 `false`**，自用 / 内网确需时显式打开）。关掉时工具**仍在**（装配期工具池必须非空），每次调用返回"已被关闭"的结论 —— 模型能理解并改口 |
 | 目录边界 | 默认根 `~/.billy/workspaces`（可用 `AGENT_COMMAND_WORK_DIR` 覆盖），每个会话一个子目录 `{root}/{conversationId}/`；`bash` 与文件工具**共用**这个工作区。agent 传入的 `cwd` 必须落在会话工作区内，越界**拒绝并说明边界**（不静默夹回）；判边界用 `path.relative` + `realpath`（软链逃逸也拦），天然处理 `..` 与 Windows 大小写差异。启动时与每次执行前都 `mkdir -p` 兜底（根目录被删后新建会话里的命令不会全部因 cwd 不存在而失败；建不出来只记错误，不拦启动）。**注意：路径约束只约束访问入口，不约束命令里能读什么** —— 命令里的 `..` / 绝对路径 / 脚本里的 `fs` 仍能读到工作区之外；真正的隔离只能靠沙箱（`enforce` 下默认）或容器 / 低权限用户 |
-| 时长上限 | `AGENT_COMMAND_TIMEOUT_MS`（默认 15s）：它**既是默认值也是硬上限** —— 模型传更小听它的，传更大一律夹到这里 |
+| 时长上限 | `AGENT_COMMAND_TIMEOUT_MS`（默认 5 分钟）：配置值即硬上限 —— 模型入参里**没有**时长可传 |
 | 输出上限 | `AGENT_COMMAND_MAX_OUTPUT_BYTES`（默认 64KB / 每条流）：超出即截断并终止命令 |
 | 停止 | 运行时信封的 `abortSignal`（与"停止整棵树"同一口径） |
 | 审计 | 完整入参出参落时间线（`tool-call` / `tool-result`，不裁剪）+ 每次执行一条 `ai.command.executed` info 日志 |
@@ -1428,7 +1428,7 @@ AI SDK 的 `data-sub-agent` part，和主内容走同一条 SSE：
 
 ```bash
 AGENT_COMMAND_ENABLED=false           # 默认关闭；自用 / 内网确需时显式改 true
-AGENT_COMMAND_TIMEOUT_MS=15000        # 单条命令的时长默认值与硬上限
+AGENT_COMMAND_TIMEOUT_MS=300000       # 单条命令的时长硬上限（默认 5 分钟）
 AGENT_COMMAND_MAX_OUTPUT_BYTES=65536  # 每条流（stdout / stderr）的输出上限
 AGENT_COMMAND_WORK_DIR=               # 缺省 = ~/.billy/workspaces（启动 / 执行前自动创建）
 ```

@@ -18,13 +18,6 @@ export const BashParams = z.object({
     .describe(
       '工作目录（相对默认工作目录，或它的子目录的绝对路径）；省略即用默认工作目录。**不允许跑到工作目录之外**',
     ),
-  timeout_ms: z
-    .number()
-    .int()
-    .positive()
-    .max(120_000)
-    .optional()
-    .describe('这次命令最多等多久（毫秒）；省略用服务端默认值（超过服务端上限会被夹到上限）'),
 })
 
 export const BASH_TOOL = {

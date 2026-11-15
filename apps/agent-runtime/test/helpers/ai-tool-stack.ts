@@ -81,7 +81,7 @@ export const TEST_TOOL_ENV_CAPS: ToolEnvCaps = {
   maxPagesPerTurnMax: 5,
   command: {
     enabled: true,
-    timeoutMsMax: 15_000,
+    timeoutMsMax: 300_000,
     maxOutputBytesMax: 64 * 1024,
   },
   web: {

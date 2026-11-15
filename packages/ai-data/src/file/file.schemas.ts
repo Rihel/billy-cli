@@ -13,7 +13,7 @@ export const FileConfigSchema = z.object({
     .number()
     .int()
     .positive()
-    .default(5 * 1024 * 1024),
+    .default(10 * 1024 * 1024),
   maxFilesPerConversation: z.number().int().positive().default(200),
   maxTotalBytesPerConversation: z
     .number()
@@ -35,7 +35,7 @@ export const FileConfigSchema = z.object({
     .number()
     .int()
     .positive()
-    .default(1024 * 1024),
+    .default(10 * 1024 * 1024),
   searchMaxFiles: z.number().int().positive().default(500),
   searchMaxBytes: z
     .number()

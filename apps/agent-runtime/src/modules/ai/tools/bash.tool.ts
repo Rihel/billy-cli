@@ -17,15 +17,15 @@ import {
 /**
  * `bash` 的**参数定义**（给模型看的数据结构）。
  *
- * 三个字段刻意保持极简：命令、在哪个目录跑、最多跑多久。
- * 上限（时长 / 输出）由**配置**再夹一次（库里可改，env 是硬上限），模型传什么都不越界。
+ * 两个字段刻意保持极简：命令、在哪个目录跑。
+ * 时长与输出上限只由**配置**决定（库里可改，env 是硬上限），模型不能自己要求跑多久。
  */
 /** **配置定义**：每个字段都必须有默认值（注册机在启动期用 `config.parse({})` 校验） */
 const BashConfig = z.object({
   /** 能力级开关（配置表里还有一个治理级开关 `enabled`，两者都开才放行） */
   enabled: z.boolean().default(true),
-  /** 单条命令的时长**默认值与硬上限**（ms）：模型传更小就听它的，传更大一律夹到这里 */
-  timeoutMs: z.number().int().positive().default(15_000),
+  /** 单条命令的时长上限（ms）：配置值即硬上限，模型不能传时长 */
+  timeoutMs: z.number().int().positive().default(300_000),
   /** 单条流（stdout / stderr 各自）的输出上限（字节）；超出即截断并终止命令 */
   maxOutputBytes: z
     .number()
@@ -141,11 +141,8 @@ export class BashTool implements OnApplicationBootstrap {
       workspaceRoot: workDir,
       // 会话页选的文件权限（只读 / 可写）；逃不出沙箱
       fileAccess: envelope?.fileAccess ?? 'workspace-write',
-      // 配置里的时长既是**默认值**也是**硬上限**（normalize 已按 env 夹过）
-      timeoutMs: Math.min(
-        input.timeout_ms ?? ctx.settings.config.timeoutMs,
-        ctx.settings.config.timeoutMs,
-      ),
+      // 时长只由配置决定（normalize 已按 env 夹过），模型入参里没有这一项
+      timeoutMs: ctx.settings.config.timeoutMs,
       maxOutputBytes: ctx.settings.config.maxOutputBytes,
       ...(ctx.signal ? { signal: ctx.signal } : {}),
     })

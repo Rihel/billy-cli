@@ -213,8 +213,8 @@ export const serverAppConfigSchema = z.object({
      * 对外部署保持关闭，真要本机执行请放进容器 / 低权限用户 / 只读工作区。
      */
     commandEnabled: z.boolean().default(false),
-    /** 单条命令的时长默认值与硬上限（ms） */
-    commandTimeoutMs: z.coerce.number().int().positive().default(15_000),
+    /** 单条命令的时长硬上限（ms），模型不能传时长 */
+    commandTimeoutMs: z.coerce.number().int().positive().default(300_000),
     /** 单条流的输出上限（字节）；超出即截断并终止命令 */
     commandMaxOutputBytes: z.coerce
       .number()

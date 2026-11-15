@@ -49,9 +49,9 @@ const BASH_FIELDS: ConfigFieldSpec[] = [
   },
   {
     key: 'timeoutMs',
-    label: '单条命令默认时长（毫秒）',
+    label: '单条命令时长上限（毫秒）',
     kind: 'number',
-    hint: '模型可以要求更短；要求更长会被夹到这个值',
+    hint: '模型不能传时长；这里填的值就是硬上限（默认 5 分钟）',
   },
   {
     key: 'maxOutputBytes',

@@ -164,7 +164,7 @@ export const WRITE_FILE_TOOL = {
   params: WriteFileInputSchema,
   description: dedent`
     把完整内容写入 workspace 文件（整文件覆盖）；父目录自动创建。
-    局部改用 replace-file，末尾追加用 append-file。只写文本；单次内容上限 1MB。
+    局部改用 replace-file，末尾追加用 append-file。只写文本；单次内容上限 10MB（超大内容分段写 / 追加）。
     路径必须在本会话 workspace 内；不要写 files/ 缓存（会被重新下载覆盖）。
   `,
 } as const
@@ -177,7 +177,7 @@ export const REPLACE_FILE_TOOL = {
   description: dedent`
     在 workspace 文本文件里做**精确字符串替换**（不是正则）；默认要求 oldText 唯一匹配。
     大文件先用 file-search 定位，再拿更长的唯一片段替换。
-    只改文本；单次内容上限 1MB；路径必须在本会话 workspace 内。
+    只改文本；单次内容上限 10MB；路径必须在本会话 workspace 内。
   `,
 } as const
 

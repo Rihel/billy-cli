@@ -103,12 +103,12 @@ describe('bash 的策略（开关 / 目录边界 / 时长上限）', () => {
     expect(spec.child ?? 'allow').toBe('allow')
   })
 
-  it('配置默认值：15 秒 / 64KB / 开关打开（每个配置项都有默认值，库里没行也能跑）', () => {
+  it('配置默认值：5 分钟 / 64KB / 开关打开（每个配置项都有默认值，库里没行也能跑）', () => {
     const { deps, spec } = buildStack()
     return deps.config.settings(spec).then((settings) => {
       expect(settings.config).toMatchObject({
         enabled: true,
-        timeoutMs: 15_000,
+        timeoutMs: 300_000,
         maxOutputBytes: 64 * 1024,
       })
     })
@@ -207,18 +207,17 @@ describe('bash 的策略（开关 / 目录边界 / 时长上限）', () => {
     expect(result.stdout).toContain('in-workdir')
   })
 
-  it('时长上限：模型传超长超时会被夹到配置上限（否则一条命令能挂住一整轮）', async () => {
+  it('时长上限：命令跑到配置时长就被终止（模型入参里没有时长可传）', async () => {
     const { deps, gateway, spec } = buildStack({
       sourceRows: { [TOOL_KEYS.bash]: { config: { timeoutMs: 300 } } },
     })
     const startedAt = Date.now()
-    // 模型要 120 秒，配置上限 300ms：必须以 300ms 为准
+    // 配置上限 300ms：命令必须按 300ms 被终止，而不是挂 30 秒
     const outcome = await gateway.invoke(
       spec,
       {
         command: 'node -e "setTimeout(function () {}, 30000)"',
-        timeout_ms: 120_000,
-        reason: '验证超长超时会被夹到配置上限',
+        reason: '验证命令按配置时长被终止',
       },
       { callId: 'call-5', envelope: null, log: silentLogger as never },
     )

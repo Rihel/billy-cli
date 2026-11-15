@@ -122,7 +122,7 @@ AI 的"交付物"可能是文件、网页链接、一段文本，也可能是**�
 | `filename` | varchar(255) | 展示名；入站原始文件名，AI 取 `path` 最后一段 |
 | `key` | varchar(512) | 对象存储完整 key；入站是附件已有的 key，AI 是服务端拼的会话 key |
 | `media_type` | varchar(128) | 服务端按后缀推断，不信模型自述 |
-| `bytes` | int | 文件字节数（单文件上限 5MB，int 足够） |
+| `bytes` | int | 文件字节数（单文件上限 10MB，int 足够） |
 | `sha256` | varchar(64) null | 内容哈希：幂等 / 覆盖判定 / 下载校验；AI 必有，入站可空（key 自带 md5） |
 | `user_id` | varchar(20) null | 上传者 / 提交者；管理员 / 无身份为 null |
 | `run_id` | varchar(20) null | 入站 = 收到附件的那一轮；AI = 提交的那一轮 |
@@ -196,10 +196,11 @@ export interface AgentFileNode {
 
 | 项 | 默认 | 可配 | env 硬上限 |
 | --- | --- | --- | --- |
-| 单文件 | 5MB | `maxBytes` | `AGENT_FILE_MAX_BYTES` |
+| 单文件 | 10MB | `maxBytes` | `AGENT_FILE_MAX_BYTES` |
 | 单会话文件数 | 200 | `maxFilesPerConversation` | `AGENT_FILE_MAX_FILES` |
 | 单会话总字节 | 100MB | `maxTotalBytesPerConversation` | `AGENT_FILE_MAX_TOTAL_BYTES` |
 | 单次读取 | 5MB | `readMaxBytes` | `AGENT_FILE_READ_MAX_BYTES` |
+| 单次写入 / 替换 / 追加 | 10MB | `maxWriteBytes` | `AGENT_FILE_WRITE_MAX_BYTES` |
 
 超限**拒绝并说明**（"本会话文件已达上限 200 个 / 100MB"），不静默丢弃。
 配额是**会话视角**：入站 + 出站都算；同一入站对象跨会话各算一次（不是存储成本的重复计算）。
@@ -413,7 +414,7 @@ const SubmitInput = z.object({
 **并发**：同一 `(conversationId, path)` 的提交用**进程内**串行闸门 `PathLock`
 （`files/path-lock.ts`，key = `${conversationId}:${fileKey}`），不同路径互不影响；
 `write-file` / `replace-file` / `append-file` 用同一把闸门（key 用绝对路径）。
-锁只覆盖"读源文件 → 查旧行 → 上传 → upsert"这一小段，不把 5MB 上传放进数据库事务。
+锁只覆盖"读源文件 → 查旧行 → 上传 → upsert"这一小段，不把 10MB 上传放进数据库事务。
 跨副本**不**互斥 —— 工作区本来就是本地盘，与 §10.4 的限制同类；同一会话的并发提交在
 多副本下仍可能各写一次对象（覆盖语义下结果一致，最后写入者胜）。
 
@@ -563,7 +564,7 @@ const WriteFileInput = z.object({
 **描述**
 
 > 把完整内容写入 workspace 文件（整文件覆盖）；父目录自动创建。
-> 局部改用 `replace-file`，末尾追加用 `append-file`。只写文本；单次内容上限 1MB。
+> 局部改用 `replace-file`，末尾追加用 `append-file`。只写文本；单次内容上限 10MB。
 > 路径必须在本会话 workspace 内；不要写 `files/` 缓存（会被重新下载覆盖）。
 
 ### 6.8 `replace-file`
@@ -594,7 +595,7 @@ const ReplaceFileInput = z.object({
 
 > 在 workspace 文本文件里做**精确字符串替换**（不是正则）；默认要求 `oldText` 唯一匹配。
 > 大文件先用 `file-search` 定位，再拿更长的唯一片段替换。
-> 只改文本；单次内容上限 1MB；路径必须在本会话 workspace 内。
+> 只改文本；单次内容上限 10MB；路径必须在本会话 workspace 内。
 
 ### 6.9 `append-file`
 
@@ -693,7 +694,7 @@ const WorkspaceFilesInput = z.object({
 | `workspace-files` 的 `pathPrefix` 越界 | `invalid-input` | 只能列本会话 workspace 内的目录 |
 | `replace-file` 没找到 `oldText` | `invalid-input` | 原文必须精确匹配 |
 | `replace-file` 多处匹配且 `all=false` | `invalid-input` | 提供更长的唯一上下文，或 `all=true` |
-| `write-file` / `append-file` 超内容上限 | `invalid-input` | 单次 1MB / 文件 5MB |
+| `write-file` / `append-file` 超内容上限 | `invalid-input` | 单次 10MB / 文件 10MB |
 | `write-file` / `replace-file` / `append-file` 目标在 `files/` 下 | `invalid-input` | `files/` 是下载缓存，先复制到其他路径再改 |
 | 文件不存在 / 非本会话（`file-download` / `file-list`） | `forbidden` | 本会话没有这个文件（不区分不存在与越权） |
 | 对象存储读写失败 | `upstream` | 稍后重试（`retryable: true`） |
@@ -751,7 +752,7 @@ putObject(input: {
 - S3：`PutObjectCommand({ Bucket, Key, Body, ContentType })`（`providers/s3.ts` 已 import 该命令）；
 - COS：`providers/cos.ts` 对应实现；
 - 统一走 `guard('putObject', …)`，失败包成 `ObjectStorageError`；
-- 本期单文件 ≤5MB，Buffer 进内存完全够；真要放大上限再改流式 / 分片。
+- 本期单文件 ≤10MB，Buffer 进内存完全够；真要放大上限再改流式 / 分片。
 
 ### 7.2 下载强制 attachment
 
@@ -931,7 +932,7 @@ window.location.href = url
 
 `GET /agent/file/workspace-content?conversationId=&path=&download=`
 
-- `AnyAuthGuard` + 会话归属；`path` 必须在 workspace 内；软链拒绝；单文件 ≤5MB；
+- `AnyAuthGuard` + 会话归属；`path` 必须在 workspace 内；软链拒绝；单文件 ≤10MB；
 - `createReadStream` 按扩展名给 `Content-Type` 与 `Content-Length`；`Cache-Control: no-store`；
   `X-Content-Type-Options: nosniff`；视频 / 音频支持 `Range`（拖动进度条）；
 - `download=1` 或 Office / 未知类型 → `Content-Disposition: attachment`；图片 / PDF / 视频 / 音频默认 `inline`；
@@ -968,6 +969,10 @@ window.location.href = url
 - 预览弹窗：左侧当前文件清单（后台为当前页，聊天右栏为当前视图的全部文件），
   顶部「上一个 / 下一个」（快捷键 `↑` / `↓`；`←` / `→` 留给 PPT 内部翻页），右侧全屏内容；
   HTML 用 `SandboxFrame` 的无 chrome 模式（`frameless`）；
+- 预览弹窗的「全屏」（头部按钮 / `f`）：收掉左侧清单、顶栏、底栏，内容铺满，右上角悬浮
+  「退出全屏」还原；`Esc` 在全屏时先退全屏、再按一次才关窗。全屏是弹窗内部状态
+  （`apps/admin/src/components/preview-fullscreen.tsx` 的 `usePreviewFullscreen`），关窗即复位，
+  调用方 props 不变；分享页用同一套按钮与快捷键，只收顶栏；
 - 指标卡在**控制台 dashboard** 的「文件用量」区：文件总数 / 总占用 / 用户上传 / AI 生成，
   数据来自同一份 stats；文件页不再重复放指标卡；
 - 管理员列表会返回对象存储 `key` 供下载；该 key 仍只用于已鉴权页面，不写日志 / 不外发。
@@ -1189,7 +1194,7 @@ pnpm typecheck && pnpm test && pnpm check:ui && pnpm check:inject && pnpm check:
 | Office 在线预览 | 部分 | DOCX / XLSX / XLS / PPTX 已用前端库；老 `.doc` / `.ppt` 仍只下载 |
 | 删除 / 撤回工具 | 未做 | 依赖会话删除或后续单独设计 |
 | 私有桶 | 未做 | 现状 public-read；要私有得改桶策略 + 全链路预签名 |
-| 大文件流式上传 | 未做 | 本期 Buffer ≤5MB；更大走流式 / 分片 |
+| 大文件流式上传 | 未做 | 本期 Buffer ≤10MB；更大走流式 / 分片 |
 | 大文件自动摘要 | 未做 | 工具只提供分页 / `file-search` 定位；整份总结靠模型分段读 + 上下文压缩，或用户缩小范围 |
 | 工作区文件编辑（面板） | 未做 | 面板只读；编辑由 AI 用 `write-file` / `replace-file` / `append-file` |
 | 工作区跨实例 | 限制 | 工作区是本地盘；多实例下请求可能落到别的 Pod 看到空目录；会话文件（OSS）为准 |

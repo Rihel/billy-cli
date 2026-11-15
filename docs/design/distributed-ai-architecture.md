@@ -343,7 +343,7 @@ bash / file 工具按根会话工作；会话列表过滤子会话；删父级�
 | client ↔ server | SSE 注释帧；ingress 长连接 | 15s；网关空闲 75s、读 3600s | 客户端抖动重连（0–3s）；**不 abort run** |
 | server ↔ facade | facade 写注释帧；server 读空闲超时 | 15s；空闲 60s | facade 死：server 发 error；server 死：facade 继续写时间线/Redis |
 | facade ↔ model-gateway | HTTP keep-alive + 首字节超时 | keep-alive 30s；连接 5s、首字节 120s、空闲 180s | 首字节前可重试 2 次；有字节后不重试；客户端断则 abort 上游 |
-| facade ↔ tool-gateway | 每次 invoke 带 deadline；progress 帧 | progress 10s；deadline = 工具超时 + 5s | 超时/断：工具失败结论；回调型不重试；取消沿连接传播 |
+| facade ↔ tool-gateway | 每次 invoke 带 deadline；progress 帧 | progress 10s；deadline = 工具配置时长 + 传输余量（bash 默认 5 分钟 + 10 秒） | 超时/断：工具失败结论；回调型不重试；取消沿连接传播 |
 | tool-gateway ↔ worker | worker 注册心跳 + 任务租约 | 注册 10s / TTL 30s；租约 30s / 续 10s | worker 失联：任务失败；仅 `idempotent` 重试；无 worker → 503 |
 | 所有 app ↔ PG | 连接池 keepalive + readiness `SELECT 1` | 探活 2s；语句超时按查询设 | 池自动重连/退避；readiness 503 摘流 |
 | 所有 app ↔ Redis | ioredis 自动重连 + readiness `PING` | 探活 2s；重连指数退避 | 准入 fail-open；停止广播/续传降级；租约失效 |
@@ -381,7 +381,7 @@ bash / file 工具按根会话工作；会话列表过滤子会话；删父级�
 | 用户停止 | `POST /run/stop` | `canceled` |
 | 客户端断开 | 连接关闭 | **不 abort**，facade 继续跑完，可重连 |
 | server 副本死 | 中继连接断 | **不 abort**，facade 继续写时间线 / Redis |
-| 工具超时 | 工具自身 deadline | 工具失败结论，整轮继续 |
+| 工具超时 | 工具配置的时长上限（bash 默认 5 分钟） | 工具失败结论，整轮继续 |
 | 用户未回答 | `suspended` | 不判超时；等 resume / 放弃 |
 
 ### 6.6 边界

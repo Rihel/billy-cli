@@ -44,7 +44,7 @@ export const createRemoteToolInvoker = (
       .map((item) => item.trim())
       .filter(Boolean),
   )
-  const deadlineMs = Number(env.TOOL_GATEWAY_DEADLINE_MS ?? 30_000)
+  const deadlineMs = Number(env.TOOL_GATEWAY_DEADLINE_MS ?? 310_000)
   const client = new ToolGatewayClient({ baseUrl: url, token, timeoutMs: deadlineMs })
 
   return {

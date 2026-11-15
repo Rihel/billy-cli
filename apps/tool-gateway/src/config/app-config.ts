@@ -29,8 +29,8 @@ export const toolGatewayAppConfigSchema = z.object({
     workerUrl: z.string().url().optional(),
     /** 注册表 freshness：超过这个时间没心跳就不选 */
     staleAfterMs: z.coerce.number().int().positive().default(30_000),
-    /** 单次调用的默认上限；请求里的 deadlineMs 更小则听请求的 */
-    invokeTimeoutMs: z.coerce.number().int().positive().max(300_000).default(30_000),
+    /** 单次调用的安全上限；请求里的 deadlineMs 更小则听请求的（bash 默认 5 分钟） */
+    invokeTimeoutMs: z.coerce.number().int().positive().max(360_000).default(310_000),
     /** 单用户 + 单工具每分钟调用上限（gateway 自己的限流，不是 facade 的 run 准入） */
     rateLimitPerMinute: z.coerce.number().int().positive().default(60),
   }),

@@ -102,8 +102,8 @@ export class ToolGateway {
         ...(envelope?.workspaceConversationId
           ? { workspaceConversationId: envelope.workspaceConversationId }
           : {}),
-        // 目前没有工具级通用 deadline；先给 30s，足够覆盖 bash 的 15s 上限
-        deadlineMs: 30_000,
+        // 暂无按工具派生的 deadline：5 分钟命令 + 10 秒传输余量
+        deadlineMs: 310_000,
         ...(envelope?.fileAccess ? { fileAccess: envelope.fileAccess } : {}),
       })
     }
