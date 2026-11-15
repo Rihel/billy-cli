@@ -10,6 +10,14 @@
   `user/{userId}/{md5}{ext}`。`uploads/` 前缀保留给入站，`file-submit` 拒绝。
 - 9 工具：`file-submit/file-download/file-list` + `read-file/file-search/workspace-files/write-file/replace-file/append-file`；
   组级 `child:'deny'`，配置在 `files/file.schemas.ts`，业务在 `files/file.service.ts`。
+- **两条链的取法不同**（2026-11-15 起）：右栏文件树走 `POST /agent/file/workspace`（controller 传
+  `all: true`）→ **一次返回全量一维数组** + `depthLimited`，树由前端拼；**模型工具** `workspace-files`
+  才分页（`offset` 入参、一页 `workspaceMaxFiles`=500、出参 `hasMore`），因为那是 token 预算问题。
+  `truncated` 已删除；遍历按目录名**码位**排序（不用 `localeCompare`），否则分页边界会漂。
+  深度上限 `workspaceMaxDepth` 默认 16（工具侧读库里的配置，改默认值要同步 `ai_tools.config`）。
+- **噪音目录清单** `NOISE_DIRS` / `NOISE_FILES` 在 `file.service.ts` 顶部（24 个目录 + 3 类文件，
+  含 node_modules/.git/dist/.next/.turbo/.cache/.venv 等），`workspace-files` 与 `file-search` 共用；
+  `files/` `uploads/` 仍由 `includeCaches` 单独控制，别混为一谈。
 - workspace：`{AGENT_COMMAND_WORK_DIR || ~/.billy/workspaces}/{conversationId}`；`BashTool` 与文件工具共用；
   `BashConfig.workDir` 已退役。入站物化到 `uploads/`，`file-download` 默认放 `files/`；`files/` 拒绝写（缓存会被覆盖）。
 - HTTP：`POST /agent/file/workspace`、`POST /agent/file/preview`（source ai/workspace）、
@@ -42,10 +50,15 @@
 
 ## 坑
 
+- **`packages/ai-data` 与 `packages/tool-catalog` 没有 `dev` 脚本**，不在 `pnpm dev:pkgs` 的 watch 里：
+  改完必须手动 `pnpm --filter @repo/ai-data run build`（tool-catalog 同）再 `pnpm gen:tool-catalog`；
+  否则 runtime / main / worker 加载的是旧 `dist`，跑测试却全绿（测试走 src）。
+- 生成工具目录必须在 **build 之后**：`gen:tool-catalog` 的入参 schema 从 `@repo/tool-catalog/dist` 读，
+  先 gen 后 build 会把旧 schema 写回 `generated.ts`（改完再 build 一次）。
 - `AgentChatService` / `AgentConversationService` 新增依赖必须放构造器**末尾**：手工测试按位置传参，插中间会全错位。
 - 工作区根不存在时不能 `realpath(root)` 做包含判断（会把“待创建”误判越界）；以最近已存在祖先 + base 根判断。
 - `ai_files` upsert 必须用原生 SQL 把 `deleted_at` 置 null；TypeORM 软删过滤会撞唯一键。
-- `file-search` 默认 AND；`workspace-files` 默认隐藏 `files/` / `uploads/`。
+- `file-search` 默认 AND。
 
 ## 依据
 
@@ -53,6 +66,9 @@
 - `apps/agent-runtime/src/modules/ai/files/**`、`apps/agent-runtime/src/modules/ai/core/tools/workspace.ts`
 - 核对：`pnpm --filter @app/agent-runtime test test/ai-file-service.test.ts test/ai-tools-battery.test.ts`；
   CDN 白名单：`grep -rn "SANDBOX_CDN_HOSTS" packages/shared/src packages/ui/src apps/agent-runtime/test`
+- 分页 / 噪音目录现状：
+  `grep -n "hasMore\|NOISE_DIRS" packages/ai-data/src/file/file.service.ts`、
+  `PGPASSWORD=pg1234 psql -h localhost -U root -d billy-cli -At -c "select tool_key, config->>'workspaceMaxDepth', config->>'workspaceMaxFiles' from ai_tools where tool_key='workspace-files';"`
 
 ## 失效信号
 

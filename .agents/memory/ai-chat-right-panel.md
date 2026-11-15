@@ -1,17 +1,23 @@
-# 会话页右栏：四个 tab 的取数源与"子助手作用域"
+# 会话页右栏：五个 tab 的取数源与"子助手作用域"
 
 > **查证优先级：必核** —— 取数路径 / 字段 / 快照机制类结论，改动 chat 目录或 agent-runner 后重核。
 
 ## 结论（2026-11-15）
 
-右栏（`right-panel.tsx`）四个 tab 的主语**跟着主区 tab 条走**（`activeRunId`）：
+右栏（`right-panel.tsx`）五个 tab 的主语**跟着主区 tab 条走**（`activeRunId`）：
 
 | tab | 主会话 | 切到子 agent tab 时 |
 | --- | --- | --- |
 | 系统指令 | `POST /agent/instructions` 的会话快照 / 静态定义 | 同一接口传**子会话 id** → 我们交给子助手的完整指令（原稿 + 能力边界） |
 | 技能 | 会话消息 parts 里 `skill` 工具调用 | 子 run 自己时间线派生（同一函数 `activatedSkillsOf`） |
 | 任务 | `conversationPlanOf` 合流的当前计划 | `request_snapshot.task`（目标）+ 子 run 自己的 `plan` 事件 |
-| 文件 | 根会话文件树 | **不切**：子助手写的就是父工作区 |
+| 文件 | 根会话文件树（`aiFiles`，OSS 持久） | **不切**：子助手写的就是父工作区 |
+| 工作区 | 本地工作区清单（`POST /agent/file/workspace`，一次全量 + 前端建树） | **不切**：同上，并在面板里注明 |
+
+`文件` / `工作区` 是**两个平级 tab**（2026-11-15 起，原先是同一个 tab 里的分段切换）；
+两者都走「一次拿全量、前端 `buildWorkspaceTree` 拼树」，不分页 —— 分页只保留给模型工具 `workspace-files`。
+工作区那棵树**虚拟滚动**：`flattenWorkspaceRows` 先按折叠状态拍平成一维行，再交给 `@repo/ui` 的
+`DataList`（react-virtuoso）。树要改结构时先看这个函数，别在递归里直接渲染。
 
 关键事实（不是猜测）：
 
