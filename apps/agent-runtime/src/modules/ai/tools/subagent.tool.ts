@@ -10,6 +10,7 @@ import { AgentRunner, type SubAgentOutcome } from '../runtime/agent-runner.js'
 import { RunRepository } from '../runtime/run.repository.js'
 import { TimelineRepository } from '../runtime/timeline.repository.js'
 import { ConversationRunQueue } from '../runtime/run-queue.service.js'
+import { subAgentResultPath } from '../runtime/subagent-result.js'
 import { RunStatus, TimelineKind, TimelineRole } from '@repo/shared'
 import type { AgentRuntimeEnvelope } from '../core/envelope.js'
 
@@ -175,7 +176,8 @@ export class RunSubAgentTool {
     description: dedent`
       查看当前这一轮派出的子 agent 状态（运行中 / 成功 / 失败 / 取消）。
       非阻塞，不等待、不消费结果；要看完整结论用 wait-sub-agent（传 sub_agent_ids），要取消用 cancel-sub-agent。
-      已完成的子助手只带摘要（最多 2000 字，超出会标 summaryTruncated）—— 别把摘要当完整结论。
+      已完成的子助手带摘要（最多 2000 字，超出会标 summaryTruncated）与工作区 path；
+      别把摘要当完整结论 —— 要全文用 read-file 读 path。
       什么时候用：想知道子助手跑到哪了、有没有失败；不要用它代替等待。
     `,
   })
@@ -194,19 +196,24 @@ export class RunSubAgentTool {
         child.status === RunStatus.Succeeded
           ? ((await this.timelines.lastTextOfRun(child.id)) ?? '')
           : ''
+      const name = child.agentKey.replace(/^sub:/, '')
       const summary =
         child.status === RunStatus.Succeeded ? full.slice(0, LIST_SUMMARY_CHARS) : null
       agents.push({
         subAgentId: child.conversationId,
         currentRunId: child.id,
-        name: child.agentKey.replace(/^sub:/, ''),
+        name,
         status: child.status,
         resultSummary: summary,
+        // 完整结论落在这个工作区文件里（子助手收尾时写的），用 read-file 按行分页读
+        ...(child.status === RunStatus.Succeeded
+          ? { path: subAgentResultPath(name, child.id) }
+          : {}),
         // 明确标注截断：否则模型会把摘要当成完整结论，直接拿它写汇总（实测踩过）
         ...(full.length > LIST_SUMMARY_CHARS
           ? {
               summaryTruncated: true,
-              summaryHint: '摘要已截断；完整结论用 wait-sub-agent 传 sub_agent_ids 获取',
+              summaryHint: '摘要已截断；完整结论用 read-file 读 path',
             }
           : {}),
         error: null,
@@ -222,8 +229,9 @@ export class RunSubAgentTool {
     params: WaitSubAgentsInputSchema,
     config: NoConfigSchema,
     description: dedent`
-      等指定的子 agent（或当前父 run 下所有子助手）完成，返回完整结论。
+      等指定的子 agent（或当前父 run 下所有子助手）完成。
       不传 sub_agent_ids = 等全部子助手；已经完成的也会一起返回（不会返回空数组）。
+      返回每个子助手的 summary（前 2000 字）+ path；**完整结论用 read-file 读 path**（按行分页、可续读）。
       最多等 timeout_ms；到点返回 pending，子 agent 会继续跑，父可以继续做别的。
       已经拿到的结果会消费掉，避免父结束后重复唤醒；没有 pending 时不要反复空等。
     `,
@@ -285,15 +293,28 @@ export class RunSubAgentTool {
                 summary: result ? result.slice(-500) : null,
                 error: child.errorMessage ?? null,
                 childConversationId: child.conversationId,
+                path: subAgentResultPath(child.agentKey.replace(/^sub:/, ''), child.id),
               },
               finishedAt: new Date(),
             })
           }
+          const name = child.agentKey.replace(/^sub:/, '')
           agents.push({
             subAgentId: child.conversationId,
             currentRunId: child.id,
+            name,
             status: child.status,
-            result: child.status === RunStatus.Succeeded ? result : null,
+            // 全文落工作区文件（子助手收尾时写的）：需要细节用 read-file 按行分页读
+            ...(child.status === RunStatus.Succeeded
+              ? { path: subAgentResultPath(name, child.id) }
+              : {}),
+            summary: result.slice(0, LIST_SUMMARY_CHARS),
+            ...(result.length > LIST_SUMMARY_CHARS
+              ? {
+                  summaryTruncated: true,
+                  summaryHint: '完整结论用 read-file 读 path',
+                }
+              : {}),
           })
         }
         return {

@@ -23,6 +23,8 @@ import { toUsageRecord, totalTokensOf, usageField } from './usage.js'
 import { ConversationRepository } from './conversation.repository.js'
 import { MemoryExtractorService } from '../memory/memory.extractor.service.js'
 import { ConversationRunQueue } from './run-queue.service.js'
+import { FileService } from '../files/file.service.js'
+import { subAgentResultPath } from './subagent-result.js'
 import { RunRepository } from './run.repository.js'
 import type { RunEntity } from '@repo/db'
 import { KeyedSemaphore } from './keyed-semaphore.js'
@@ -198,6 +200,13 @@ export class AgentRunner {
     @Optional()
     @Inject(ConversationRunQueue)
     private readonly runQueue?: ConversationRunQueue,
+    /**
+     * 子助手结论落工作区（写入失败不影响主链路：唤醒通知会退回「摘要 + 子会话」）。
+     * 可选注入，测试栈不装文件服务时跳过。
+     */
+    @Optional()
+    @Inject(FileService)
+    private readonly files?: FileService,
   ) {}
 
   /** 子 agent 并发闸门（按父 run 计）：同一轮最多同时跑 `SUB_AGENT_MAX_CONCURRENT` 个 */
@@ -673,6 +682,39 @@ export class AgentRunner {
 
   /** 收尾：终态 + 消耗 + 统计 + 实时状态，并把结论交给主 agent */
   /**
+   * 子助手结论写入工作区（`subagents/<名字>-<subRunId>.md`）。
+   *
+   * 返回的是**相对路径**（工作区根），直接给模型用 `read-file` 读；写失败返回 null。
+   */
+  private async persistResultFile(
+    request: SubAgentRequest,
+    subRunId: string,
+    text: string,
+  ): Promise<string | null> {
+    const files = this.files
+    if (!files || !text.trim()) return null
+    const filePath = subAgentResultPath(request.name, subRunId)
+    try {
+      await files.writeFile(
+        {
+          // 子会话共享父会话工作区：落到根会话，父模型与用户都能看见
+          conversationId:
+            request.envelope.workspaceConversationId ?? request.envelope.conversationId,
+          userId: request.envelope.triggeredBy,
+          isAdmin: request.envelope.isAdmin,
+          runId: subRunId,
+          toolCallId: request.toolCallId,
+        },
+        { filePath, content: text },
+      )
+      return filePath
+    } catch (error) {
+      this.logger.warn('ai.subagent.result_persist_failed', { subRunId, filePath, error })
+      return null
+    }
+  }
+
+  /**
    * 子助手**每完成一个就唤醒父一次**（增量推进），通知里带同一批的进度。
    *
    * 为什么不做批次聚合：父 agent 拿到第一个结果就能开始推进，不必等最慢的那个；
@@ -686,6 +728,7 @@ export class AgentRunner {
     status: string
     text: string
     error: string | null
+    resultPath: string | null
   }): Promise<void> {
     const runQueue = this.runQueue
     if (!runQueue) return
@@ -717,6 +760,7 @@ export class AgentRunner {
         status: input.status,
         result: input.text,
         error: input.error,
+        ...(input.resultPath ? { resultPath: input.resultPath } : {}),
         // 唤醒 run 的身份口径随父：admin 的 skill-* 工具在唤醒那一轮不能凭空消失
         isAdmin: input.request.envelope.isAdmin,
         ...(progress ? { progress } : {}),
@@ -767,6 +811,15 @@ export class AgentRunner {
         finishedAt: new Date(),
       })
     }
+    /**
+     * 子助手结论落工作区：`subagents/<名字>-<subRunId>.md`。
+     *
+     * 父模型与用户都不该从"几万字塞进上下文"里拿结论 —— 唤醒通知只带 path + 摘要，
+     * 需要全文用 `read-file` 按行分页读（用户也能在文件树里直接看）。
+     * 写失败只 warn：唤醒通知会退回「摘要 + 子会话」，主链路不受影响。
+     */
+    const resultPath = await this.persistResultFile(request, subRunId, text)
+
     /**
      * 子 run 的用量补记（父 run 收尾汇总之外的兜底，见 `ConversationRepository.addTokens`）。
      *
@@ -836,6 +889,7 @@ export class AgentRunner {
         status: outcome.status,
         text,
         error,
+        resultPath,
       }).catch((error: unknown) => {
         this.logger.error('ai.subagent.enqueue_failed', { subRunId, error })
       })

@@ -19,6 +19,8 @@
 - **每个子助手完成都会单独通知你**（一条内部系统通知，不是用户的新消息）；通知里会写这一批
   还有谁在跑；
 - 还有在跑的就继续做别的或继续等，**不要提前写最终汇总**；全部到齐后再汇总一次；
+- 子助手的完整结论落在工作区 `subagents/` 下的 Markdown 文件里；`wait-sub-agent` / `sub-agent-list`
+  只给摘要与 `path`，**需要全文用 `read-file` 读 path**（按行分页，先读再按需续读）；
 - 需要主动等（或拿完整结论）用 `wait-sub-agent`，查看谁在跑用 `sub-agent-list`。
 
 {{~ include('partials/requirements') }}

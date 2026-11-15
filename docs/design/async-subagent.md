@@ -230,8 +230,12 @@ output: { canceled: boolean, status }
 - **完成卡由「消费队列项的一方」写**：正常路径是 dispatcher 消费并写；父模型在 `wait-sub-agent`
   里抢先消费时由工具补写（`consumeByDedupe` 只对 `queued` 生效并返回是否命中，两条路径天然不重复）。
   否则 wait 一消费，卡就永远缺失（2026-11-15 实测：父会话里一张完成卡都没有）；
+- **子助手结论落工作区文件**（`subagents/<名字>-<subRunId>.md`）：子 run 收尾时写，
+  `wait-sub-agent` / `sub-agent-list` 只返回 `path + summary`（前 2000 字，超出标 `summaryTruncated`），
+  父模型需要全文用 `read-file` 读 path（按行分页、可续读），用户也能在文件树里看到。
+  为什么不再整段返回：三份报告几万字全量灌进父上下文，既撑窗口又贵（实测单会话 331 万 token）；
 - `wait-sub-agent` **不带 `sub_agent_ids` = 当前父 run 下全部子助手**（含已完成的），
-  返回完整结论 + 仍未完成的 `pending`；曾只收「未完成」的，全跑完后返回空数组，父模型白等 88 秒；
+  返回摘要 + path + 仍未完成的 `pending`；曾只收「未完成」的，全跑完后返回空数组，父模型白等 88 秒；
 - `sub-agent-list` 的 `resultSummary` 上限 2000 字，超出会标 `summaryTruncated` 并提示
   「完整结论用 wait-sub-agent 传 sub_agent_ids」—— 摘要不能当完整结论用；
 - 这一轮**不在时间线写用户消息**（只写系统卡），但发给模型的收尾消息是 `user` 角色 ——
