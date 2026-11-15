@@ -137,6 +137,10 @@ export class RedisStore implements OnApplicationBootstrap, OnApplicationShutdown
     return this.fromPromise(() => this.raw.hset(key, fields))
   }
 
+  hget(key: string, field: string): Promise<string | null> {
+    return this.fromPromise(() => this.raw.hget(key, field))
+  }
+
   hgetall(key: string): Promise<Record<string, string>> {
     return this.fromPromise(() => this.raw.hgetall(key))
   }

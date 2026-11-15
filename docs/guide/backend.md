@@ -16,7 +16,7 @@
 | HTTP | auth / admin / user / session / storage / share / monitor / ops / config + 全部 AI CRUD（模型 / 工具 / 技能 / 连接器 / 记忆 / 会话 / 运行 / 时间线 / 用量）+ `/agent/chat/stream` 中继 + `/agent/{status,list,instructions}` 代理 | 只有 `/internal/agent/{chat/stream, chat/resume, run/stop, run/stream, run/:runId/stream, status, list, instructions}` 与 `/healthz`、`/readyz`、`/info` |
 | 业务模块 | `auth` / `admin` / `user` / `session` / `storage` / `stream` / `share` / `monitor` / `ops` / `runtime-config` / `ai-model` / `ai-usage` / `ai-admin`（conversation / file / tool / skill / connector / memory） | `ai`（agents / runtime / core / files / memory / skills / connectors / mastra / monitoring / tools）+ `ai-usage` + `monitor` + `ops`（模型目录与调用走 `model-gateway`） |
 | 状态写入 | 配置表、`conversations` / `ai_files` 的 CRUD、用量汇总 | `runs` / `timelines` / `ai_memories` 执行期写入 |
-| 前端可见 | 是（前端只连 9989） | 否（输出经 Kafka `agent.run.events` 回到 main 的 SSE） |
+| 前端可见 | 是（前端只连 9989） | 否（输出经 Redis pub/sub 定向频道回到 main 的 SSE） |
 | 模型调用 | 不直连供应商（只做配置 CRUD / 同步 / 测试） | 只调 `model-gateway`（9992）拿目录 + 对话；**不读模型配置表、不持供应商 key** |
 
 三条硬边界：
@@ -154,28 +154,31 @@ apps/agent-runtime/src/modules/ai/
 - **配置感知**：技能库 / 连接器由 main 写库并发事件（见下节），runtime 订阅后落盘 / 同步；
   模型与工具配置直接读库。
 
-## Kafka 与 SSE 链路
+## 流式输出链路（pub/sub → SSE）
 
 ```
 前端 ──POST /agent/chat/stream──> main（AnyAuthGuard，生成 clientId）
                                    │  带 x-internal-token + x-user-id/x-admin-id + x-main-client-id
                                    └──> runtime POST /internal/agent/chat/stream
                                           │  跑 agent loop，逐段 publishChunk：
-                                          ├─ Redis 广播（旧 SSE 路径 / 断线补发）
-                                          └─ Kafka topic agent.run.events（key = runId）
-main（AgentSseBridge，@KafkaConsumer('agent.run.events','main-sse-<pod>')）
-  └─ 按事件里的 clientId 找到前端连接，原样写 data: 帧；final 写 data: [DONE]
+                                          └─ Redis pub/sub 频道 agent:stream:client:<clientId>
+main（AgentSseBridge，PubSub.subscribeAsync 订阅该频道）
+  └─ 把帧里的 chunk 原样写成 data:；final 帧写 data: [DONE] 并退订
 ```
 
-- **topic**：逻辑名 `agent.run.events`（`@repo/shared` 的 `AGENT_RUN_EVENT_TOPIC`），实际名带
-  `KAFKA_TOPIC_PREFIX` 前缀，默认 **`app.agent.run.events`**；3 分区、key = runId（同一 run 内有序）。
-  本地建 topic：`scripts/kafka-create-topics.sh`。
-- **事件结构**：`AgentRunEventSchema`（`clientId` / `runId` / `conversationId` / `chunk` / `final` 等），
-  main 不解析模型内容，只做传输。
-- **背压与容错**：main 会持续读掉 runtime 的 SSE 响应体（只用于维持运行与快速失败），内容以 Kafka 为准；
-  Kafka 未配置时 runtime 不发事件（`KafkaService` 可选），main 的 SSE 会空等——**拆分模式下流式对话依赖 Kafka**。
-- **断线重连**不是 Kafka 回放：`GET /agent/run/stream` / `GET /agent/run/:runId/stream` 由 main 代理到
-  runtime，runtime 从 Redis 进度记录补发 `offset` 之后的片段（不重跑、不重复扣费）。
+- **频道**：`agent:stream:client:<clientId>`（`@repo/shared` 的 `agentStreamChannel`）。只有挂着这条
+  SSE 连接的 main 实例收到，其它副本零流量。
+- **收件地址**：`clientId` 由 main 在 attach 时生成，runtime 用 `bindClient` 写进 Redis 进度 Hash
+  （`agent:run:<runId>` 的 `clientId` 字段），**重连落在别的副本上也能被找回来**；每次发布现读，
+  不做进程内缓存。
+- **帧结构**：`AgentStreamFrameSchema`（`runId` / `chunk` / `final`），main 不解析模型内容，只做传输。
+- **背压与容错**：main 会持续读掉 runtime 的 SSE 响应体（只用于维持运行与快速失败），内容以 pub/sub 为准；
+  发布失败只记日志，不阻断模型流。
+- **断线重连**不是 broker 回放：`GET /agent/run/stream` / `GET /agent/run/:runId/stream` 由 main 代理到
+  runtime，runtime 从 Redis 输出记录补发 `offset` 之后的片段（不重跑、不重复扣费），补发帧与实时帧
+  走同一条频道。
+- **为什么不用 Kafka**（2026-11-15 回退）：这条链路不需要积压 / 回放 / 多消费方，而 Kafka 会让每个
+  main 副本消费全量事件并丢弃不匹配的；实测 18 小时写出 1,536,196 条 / 686MB。
 - **停止 / 续答**：`POST /agent/run/stop`、`POST /agent/chat/resume` 由 main 转发到 runtime；
   停止请求带 `x-user-id` / `x-admin-id`，runtime 只允许本人的 run。
 

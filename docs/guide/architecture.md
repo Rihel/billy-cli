@@ -141,7 +141,7 @@
                                                                              agent-runtime（9990）
                                                                                ├─ agent loop（Mastra）
                                                                                ├─ 工具面 ──→ tool-gateway（9993）──→ tool-worker（9994）
-                                                                               └─ Kafka agent.run.events ──→ main 的 SSE ──→ 浏览器
+                                                                               └─ Redis pub/sub（agent:stream:client:<clientId>）──→ main 的 SSE ──→ 浏览器
 ```
 
 分层规则：`apps/main`（公网 HTTP 适配 + 控制面业务模块）与 `apps/agent-runtime`（agent 执行面）

@@ -12,8 +12,9 @@
 - **runtime**：只有 `/internal/agent/{chat/stream, chat/resume, run/stop, run/stream, run/:runId/stream}`
   与 `/healthz`、`/readyz`、`/info`；无 public controller / 用户鉴权，只校验 `x-internal-token`
   （`AGENT_INTERNAL_TOKEN`）+ `x-user-id` / `x-admin-id` / `x-main-client-id`。
-- **输出**：runtime 每段 chunk 发 Kafka `agent.run.events`（实际 `app.agent.run.events`，3 分区，key=runId）；
-  main `AgentSseBridge` 按事件的 `clientId` 写 SSE，`final` → `[DONE]`。
+- **输出**：runtime 每段 chunk 发 Redis pub/sub 频道 `agent:stream:client:<clientId>`（2026-11-15 起，
+  之前是 Kafka `agent.run.events`）；main `AgentSseBridge` 订阅后写 SSE，`final` → `[DONE]`。
+  详见 [sse-transport](sse-transport.md)。
 - **配置事件**：`ai.skill.changed` 走 Redis EventBus（runtime 落盘 + 启动全量 sync 兜底）；
   `ai.connector.sync` 走 Redis + Kafka 双发（runtime 按 `connectorId + requestedAt` 幂等）。
 - **已补**：`run/stop`、`chat/resume`、`GET /agent/run/stream` 重连；file 的 HTTP 在 main，
@@ -23,8 +24,7 @@
 
 1. `db:gen` / `db:migrate` 已收归 `@repo/db`；`seed:admin` 由 `@app/main` 执行。
 2. 非流式 `POST /agent/chat` 无服务端路由，但 `@repo/sdk` 的 `chat()` 仍在请求它 → 404。
-3. 流式对话强依赖 Kafka：没配 `KAFKA_BROKERS` / 没建 topic 时 main 的 SSE 空等，无进程内降级。
-4. 重连是 runtime 的 Redis 补发，不是 Kafka 回放；Redis 丢键 / runtime 重启后不可续。
+3. 重连是 runtime 的 Redis 输出记录补发，不是 broker 回放；Redis 丢键 / runtime 重启后不可续。
 5. 拆分后 `apps/main/test` 只剩 5 个用例，auth / storage / share 单测未迁入（缺失，不是通过）。
 6. AI 对话无限流 / 无准入（main 的 `/agent/chat/stream` 只有 `AnyAuthGuard`）。
 
@@ -40,8 +40,8 @@ grep -n "AGENT_INTERNAL_TOKEN" apps/agent-runtime/.env | head -1
 
 `docs/guide/backend.md`、`docs/design/distributed-ai-architecture.md` 0.1 节、`apps/main/src/agent/*`、
 `apps/agent-runtime/src/modules/ai/api/agent-internal.controller.ts`、
-`packages/shared/src/schema/agent-run-event.schema.ts`；端口与脚本以根 `package.json` 为准。
+`packages/shared/src/schema/agent-stream-frame.schema.ts`；端口与脚本以根 `package.json` 为准。
 
 ## 失效信号
 
-再拆 / 合 app、model-gateway 落地、Kafka 换成别的回传方式、db 脚本搬到 main、内部令牌改成正式鉴权。
+再拆 / 合 app、model-gateway 落地、SSE 回传再换（Kafka / 内部 SSE 中继）、db 脚本搬到 main、内部令牌改成正式鉴权。

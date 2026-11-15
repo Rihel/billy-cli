@@ -47,10 +47,9 @@ AGENT_WORKSPACE_MODE=enforce                                # 命令隔离：沙
 > 两份 `.env.example` 都已带 `AGENT_INTERNAL_TOKEN=dev-agent-internal`，`pnpm bootstrap` 直接生成；
 > 两端取值必须一致，否则 `/internal/agent/*` 全部 401。
 
-**Kafka（流式对话必需）**：`docker compose --profile kafka up -d` 起 Kafka 与 kafka-ui，再执行
-`scripts/kafka-create-topics.sh` 建 `app.agent.run.events`（3 分区、key = runId）。
-没配 `KAFKA_BROKERS` / 没建 topic 时，runtime 不发事件，main 的 SSE 会建立连接但收不到内容；
-会话 / 文件 / 配置等非流式接口不受影响。
+**Kafka（可选，只有连接器同步用）**：`docker compose --profile kafka up -d` 起 Kafka 与 kafka-ui，再执行
+`scripts/kafka-create-topics.sh` 建 `app.ai.connector.sync`。流式对话**不再依赖 Kafka**（2026-11-15 起
+走 Redis pub/sub 定向频道），没配 `KAFKA_BROKERS` 时连接器同步仍能靠 Redis EventBus + 幂等补偿收敛。
 
 `OBJECT_STORAGE_ENDPOINT` **可以不配**：对象存储是可选能力（`s3` 下不配 endpoint 即未启用，
 `cos` 由 `OBJECT_STORAGE_PROVIDER` 决定），未配置或 MinIO / S3 不可达时服务照常启动，

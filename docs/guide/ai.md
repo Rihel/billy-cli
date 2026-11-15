@@ -20,10 +20,10 @@
 
 前端只连 main；接口在 `/agent` 前缀下（`AnyAuthGuard`：前台用户与管理员同一套；用量接口仅管理员）。
 main 校验身份后把请求转发给 runtime 的内部接口（`/internal/agent/*`，带内部令牌），
-runtime 的模型输出经 Kafka `agent.run.events` 回到 main 的 SSE：
+runtime 的模型输出经 Redis pub/sub 定向频道（`agent:stream:client:<clientId>`）回到 main 的 SSE：
 
 ```text
-POST /agent/chat/stream        建立流式对话（SSE；main 转发 runtime，输出经 Kafka 回写）
+POST /agent/chat/stream        建立流式对话（SSE；main 转发 runtime，输出经 pub/sub 回写）
 POST /agent/chat/resume        回答挂起中的一轮（ask-user-questions 之后续跑；不是断线续传）
 GET  /agent/run/stream         重连当前运行（EventSource 只能 GET；runtime 从 Redis 补发 offset）
 GET  /agent/run/:runId/stream  重连指定运行

@@ -165,6 +165,20 @@ export class PubSub implements OnApplicationShutdown {
     return () => this.unsubscribe('exact', channel, handler)
   }
 
+  /**
+   * 订阅一个精确频道，并**等 Redis 侧 SUBSCRIBE 真正生效**后才返回取消订阅函数。
+   *
+   * 用途：调用方马上要被投递（如 SSE 连接挂上之后立刻触发生产者）。`subscribe` 是后台建连，
+   * 中间那一小段里发布的消息会丢；这里把这段竞态收进 kits，调用方不必自己 sleep。
+   */
+  async subscribeAsync(channel: string, handler: PubSubHandler): Promise<() => void> {
+    assertChannel(channel)
+    this.handlersOf(this.exact, channel).add(handler)
+    await this.connect()
+    await this.subscribeChannel(channel)
+    return () => this.unsubscribe('exact', channel, handler)
+  }
+
   /** 按模式订阅（如 `stream:*`）。返回取消订阅函数。 */
   subscribePattern(pattern: string, handler: PubSubHandler): () => void {
     assertChannel(pattern)

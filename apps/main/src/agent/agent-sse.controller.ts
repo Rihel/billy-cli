@@ -14,7 +14,7 @@ const SSE_HEADERS = {
   'x-accel-buffering': 'no',
 }
 
-/** 前端唯一入口：main 起流，runtime 跑 agent，输出经 Kafka 回到这里 */
+/** 前端唯一入口：main 起流，runtime 跑 agent，输出经 pub/sub 回到这里 */
 @Controller('agent')
 @UseGuards(AnyAuthGuard)
 export class AgentSseController {
@@ -33,15 +33,11 @@ export class AgentSseController {
   ): Promise<void> {
     const clientId = randomUUID()
     const runtime = process.env.AGENT_RUNTIME_URL ?? 'http://127.0.0.1:9990'
-    const kafkaEnabled = Boolean(process.env.KAFKA_BROKERS?.trim())
 
     response.writeHead(200, SSE_HEADERS)
     response.flushHeaders()
-    if (!kafkaEnabled) {
-      await this.relayDirect(runtime, body, headers, response)
-      return
-    }
-    this.bridge.attach(clientId, response)
+    // 先挂订阅再触发运行：runtime 一旦开跑就会往这条频道发帧，晚一步首帧就丢了
+    await this.bridge.attach(clientId, response)
 
     const requestHeaders = this.headers(clientId, headers)
     requestHeaders['content-type'] = 'application/json'
@@ -53,23 +49,15 @@ export class AgentSseController {
         body: JSON.stringify(body ?? {}),
       })
       if (!upstream.ok || !upstream.body) {
-        response.write(
-          `data: ${JSON.stringify({ type: 'error', errorText: 'agent-runtime 启动失败' })}\n\n`,
-        )
-        response.write('data: [DONE]\n\n')
-        response.end()
+        this.bridge.detach(clientId)
+        this.fail(response, 'agent-runtime 启动失败')
         return
       }
-      // runtime 的 SSE 体只用来维持运行；内容以 Kafka 为准，这里必须持续读掉背压。
+      // runtime 的 SSE 体只用来维持运行；内容以 pub/sub 为准，这里必须持续读掉背压。
       void this.drain(upstream.body)
     } catch {
-      if (!response.writableEnded) {
-        response.write(
-          `data: ${JSON.stringify({ type: 'error', errorText: 'agent-runtime 不可用' })}\n\n`,
-        )
-        response.write('data: [DONE]\n\n')
-        response.end()
-      }
+      this.bridge.detach(clientId)
+      this.fail(response, 'agent-runtime 不可用')
     }
   }
 
@@ -88,39 +76,9 @@ export class AgentSseController {
     return headers
   }
 
-  /** 未配置 Kafka 的降级：直接转发 runtime 的 SSE（单机/开发） */
-  private async relayDirect(
-    runtime: string,
-    body: unknown,
-    headers: Record<string, string>,
-    response: Response,
-  ): Promise<void> {
-    const requestHeaders = this.headers(randomUUID(), headers)
-    requestHeaders['content-type'] = 'application/json'
-    try {
-      const upstream = await fetch(`${runtime}/internal/agent/chat/stream`, {
-        method: 'POST',
-        headers: requestHeaders,
-        body: JSON.stringify(body ?? {}),
-      })
-      if (!upstream.ok || !upstream.body) return this.fail(response)
-      const reader = upstream.body.getReader()
-      for (;;) {
-        const { done, value } = await reader.read()
-        if (done) break
-        response.write(Buffer.from(value))
-      }
-      response.end()
-    } catch {
-      this.fail(response)
-    }
-  }
-
-  private fail(response: Response): void {
+  private fail(response: Response, errorText: string): void {
     if (response.writableEnded) return
-    response.write(
-      `data: ${JSON.stringify({ type: 'error', errorText: 'agent-runtime 调用失败' })}\n\n`,
-    )
+    response.write(`data: ${JSON.stringify({ type: 'error', errorText })}\n\n`)
     response.write('data: [DONE]\n\n')
     response.end()
   }
@@ -133,7 +91,7 @@ export class AgentSseController {
         if (done) return
       }
     } catch {
-      // 前端断开 / runtime 结束都正常；Kafka 事件负责收尾
+      // 前端断开 / runtime 结束都正常；pub/sub 的 final 帧负责收尾
     }
   }
 }

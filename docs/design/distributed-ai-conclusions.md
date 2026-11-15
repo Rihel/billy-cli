@@ -12,8 +12,8 @@
 | 五服务 | 已落地 4 个：`apps/main`（9989，公网 BFF）/ `apps/agent-runtime`（9990，只跑 agent loop）/ `apps/tool-gateway`（9993）/ `apps/tool-worker`（9994）；**model-gateway 未建** |
 | model-gateway | **未建**；细化设计（接口 / 流 / 产物 / 计量 / key 池）见 [model-gateway.md](model-gateway.md)（评审稿） |
 | 客户端契约 | 前端只连 main；`/agent/*` 路径不变。**非流式 `POST /agent/chat` 没有服务端路由**（SDK 方法还在），调用 404 |
-| runtime → main 输出 | **Kafka `agent.run.events`**（实际 `app.agent.run.events`，3 分区，key=runId）：runtime 每段 chunk 发 topic，main `AgentSseBridge` 按 `clientId` 写 SSE，final → `[DONE]`。设计稿里的内部 SSE 中继未采用 |
-| 停止 / 续答 / 重连 | 已补：main `/agent/run/stop`、`/agent/chat/resume`、`GET /agent/run/stream`、`GET /agent/run/:runId/stream` 全部转发 runtime 内部接口；重连从 runtime 的 Redis 进度补发（**不是 Kafka 回放**） |
+| runtime → main 输出 | **Redis pub/sub 定向频道** `agent:stream:client:<clientId>`：runtime 每段 chunk 发频道，持有该连接的 main 实例 `AgentSseBridge` 按序写 SSE，final → `[DONE]`。`clientId` 绑定存 Redis 进度 Hash（跨副本可读）。2026-11-15 起从 Kafka `app.agent.run.events` 回退：实测 1.5M 条 / 686MB，而 Kafka 的回放能力从未被使用（补发走 Redis 输出记录） |
+| 停止 / 续答 / 重连 | 已补：main `/agent/run/stop`、`/agent/chat/resume`、`GET /agent/run/stream`、`GET /agent/run/:runId/stream` 全部转发 runtime 内部接口；重连从 runtime 的 Redis 输出记录按 offset 补发（**不经 broker**） |
 | file 接口 | 在 **main**（`/agent/file/*` 的清单 / 预览 / 后台列表 / workspace-content）；runtime 只有文件工具执行侧 |
 | 配置变更事件 | `ai.skill.changed` 走 Redis EventBus（at-most-once + 启动全量 sync 兜底）；`ai.connector.sync` 走 Redis + Kafka 双发（消费方按 `connectorId + requestedAt` 幂等） |
 | 运行形态 | 固定 main + runtime 双进程；`AGENT_RUNTIME=embedded` / `packages/ai-runtime` **未实现** |
@@ -95,7 +95,7 @@
 6. 插件链 / 工具配置 / 审计迁 gateway（✅ 策略已闭环）；runtime 的本地 `ToolGateway` 仍在（承载未迁 worker 的工具与编排原语），尚未删
 7. 连接器（若保留）：gateway 控制面 + connector worker
 8. 子会话（第一版已落地；UI / resume / 回填待做）
-9. facade 拆分（✅ main / runtime 已拆，Kafka SSE）/ 可观测 / 多租户配额 / 硬化（进行中）
+9. facade 拆分（✅ main / runtime 已拆，pub/sub SSE）/ 可观测 / 多租户配额 / 硬化（进行中）
 
 ## 7. 待拍板清单
 

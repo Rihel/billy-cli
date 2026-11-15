@@ -15,7 +15,7 @@ billy-cli 是一套**全栈应用 Monorepo 模板**：pnpm + Turbo 构建，Type
 | --- | --- |
 | 构建 | pnpm + Turbo（`turbo.json` 按依赖拓扑编排） |
 | 服务端 HTTP | NestJS 12（`@nestjs/core` + `@nestjs/common` + `@nestjs/platform-express`，底层 Express 5）；**两个进程**：`apps/main`（`@app/main`，公网 BFF，9989）+ `apps/agent-runtime`（`@app/agent-runtime`，只跑 agent loop，9990，不对外） |
-| 服务端推流 | `@repo/kits` 的 `StreamHub`（`POST /sse/subscribe` 长连接 + Redis pub/sub 跨实例广播）+ `@repo/http-client` 的 `HttpStreamClient`（浏览器 / Node 双环境，默认 POST + Bearer 认证）；**AI 流式另走 Kafka**：runtime 把模型输出发 `agent.run.events`，main 的 `AgentSseBridge` 消费后写回前端 SSE |
+| 服务端推流 | `@repo/kits` 的 `StreamHub`（`POST /sse/subscribe` 长连接 + Redis pub/sub 跨实例广播）+ `@repo/http-client` 的 `HttpStreamClient`（浏览器 / Node 双环境，默认 POST + Bearer 认证）；**AI 流式另用 pub/sub 定向频道**：runtime 把模型输出发 `agent:stream:client:<clientId>`，main 的 `AgentSseBridge` 订阅后写回前端 SSE（Kafka 只服务连接器同步） |
 | 服务端日志 | 自建 logger（`@repo/shared/logger` 的 `createLogger`，**不用 nestjs-pino**）：kits `LoggerModule` 建唯一 pino 实例（pino-pretty 开发美化；生产可多目标 transport 推送 pino-loki；redact 脱敏），`AppLogger` 供业务注入、`NestLoggerAdapter` 接管 Nest 框架日志；请求日志由 `@repo/kits` 的 `RequestLoggerMiddleware` 自记录 |
 | 业务位置 | 控制面业务全归 main：`apps/main/src/modules/<业务>/{module, controller, service, repository, errors, index}`（auth / user / admin / session / storage / share / monitor / stream / config + 全部 AI CRUD） |
 | agent 运行面 | 只在 `apps/agent-runtime/src/modules/ai/**`（agents / runtime / core / tools / files / memory / skills / connectors / mastra / monitoring）；**Mastra 只在这里出现**，`pnpm check:mastra` 守边界 |
@@ -39,7 +39,7 @@ apps/main       公网 BFF：NestJS HTTP 边界 + 控制面业务模块 + 配置
                · modules/<业务>/  module / controller / service / repository / errors / index
                                （auth / admin / user / session / storage / share / monitor / ops /
                                  runtime-config / ai-model / ai-usage / ai-admin/*）
-               · agent/         /agent 的转发与 Kafka→SSE 中继（AgentSseBridge）
+               · agent/         /agent 的转发与 pub/sub→SSE 中继（AgentSseBridge）
                · app-config.ts  serverAppConfigSchema + mapServerEnv + loadServerAppConfig
                · root.module.ts 组合根：AppConfigModule + 各基础设施 forRootAsync + 业务模块 imports
 apps/model-gateway  模型网关：canonical OpenAI 接口（/v1/models/{id}/chat/completions）+ 模型目录
@@ -109,7 +109,7 @@ apps/admin    后台（`@repo/ui` + @tanstack/react-table + @tanstack/react-form
 
 1. **前端只连 main（9989）**；runtime 没有 public controller，也不发 CORS。main 校验身份后带
    `x-internal-token` / `x-user-id` / `x-admin-id` 调 runtime。
-2. **main 不做 agent 执行**：不 import Mastra 编排、不跑工具循环；它只做转发、Kafka→SSE 中继
+2. **main 不做 agent 执行**：不 import Mastra 编排、不跑工具循环；它只做转发、pub/sub→SSE 中继
    与全部控制面 CRUD。
 3. **runtime 不做控制面 CRUD**：技能库 / 连接器 / 工具配置由 main 写库，runtime 靠事件
    （`ai.skill.changed` / `ai.connector.sync`）或启动全量同步感知。
@@ -144,15 +144,17 @@ apps/admin    后台（`@repo/ui` + @tanstack/react-table + @tanstack/react-form
                                    │ 带 x-internal-token + 身份头，转发到 runtime
                                    └──> agent-runtime（POST /internal/agent/chat/stream）
                                           │ 跑 agent loop（Mastra / 工具面 / 记忆 / 技能）
-                                          └─ Kafka topic agent.run.events（key = runId）
-main（AgentSseBridge，`@KafkaConsumer(AGENT_RUN_EVENT_TOPIC, 'main-sse-<实例>')`）
-  └─ 按 clientId 找到前端连接，原样写 data: 帧；final 写 [DONE]
+                                          └─ Redis pub/sub：agent:stream:client:<clientId>
+main（AgentSseBridge，`PubSub.subscribeAsync(agentStreamChannel(clientId))`）
+  └─ 原样写 data: 帧；final 写 [DONE] 并退订
 ```
 
 - **AI 的配置 CRUD 与查询在 main，执行在 runtime**：模型 / 工具 / 技能 / 连接器 / 记忆 / 会话 /
   运行 / 时间线 / 用量的接口全在 `apps/main/src/modules/ai-admin/**` 与 `ai-model` / `ai-usage`；
   真正跑 agent 的代码只在 `apps/agent-runtime/src/modules/ai/**`。
-- **流式对话依赖 Kafka**：未配 `KAFKA_BROKERS` 或没建 topic 时，main 的 SSE 会建立连接但收不到内容
-  （没有进程内降级路径）。断线重连仍走 runtime 的 Redis 进度补发，不是 Kafka 回放。
+- **流式对话只依赖 Redis**：收件地址（`clientId`）存在 runtime 的进度 Hash 里，重连落在哪个副本都
+  能找到；补发从 Redis 输出记录按 offset 读，不是 broker 回放。`KAFKA_BROKERS` 只影响连接器同步。
+  2026-11-15 之前用 Kafka 承载这条流，实测 18 小时 1,536,196 条 / 686MB，且跨副本绑定是进程内的，
+  已回退。
 - **迁移入口在 `@repo/db`**：根脚本 `db:gen` / `db:migrate` 指向 `@repo/db`（CLI DataSource 在
   `packages/db/data-source.ts`），产物落在 `packages/db/src/migrations/`。

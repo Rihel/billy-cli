@@ -325,7 +325,7 @@ Anthropic 事件映射：
 
 ### 4.5 与 runtime → main 的流无关
 
-runtime → main 是 **Kafka 事件流**（`app.agent.run.events`，key=runId），main 的 `AgentSseBridge` 按 clientId 写 SSE；网关只处理「供应商 → runtime」这一段字节流，不碰 UI 协议、不碰 Kafka。
+runtime → main 是 **Redis pub/sub 定向频道**（`agent:stream:client:<clientId>`），main 的 `AgentSseBridge` 写 SSE；网关只处理「供应商 → runtime」这一段字节流，不碰 UI 协议、不碰 Kafka。
 取消链：浏览器断开 **不 abort run**（现有设计）；`/agent/run/stop` → runtime `abortSignal` → AI SDK abort → 网关检测断开 → abort 上游。
 
 ## 5. 文件与产物

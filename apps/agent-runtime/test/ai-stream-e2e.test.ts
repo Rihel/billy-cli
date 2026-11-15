@@ -1,8 +1,8 @@
 import 'dotenv/config'
 import { createServer, type Server } from 'node:http'
 import type { AddressInfo } from 'node:net'
-import { Db, IdGeneration, RedisStore, setAuditUserProvider } from '@repo/kits'
-import { RunStatus, TimelineKind, TimelineRole } from '@repo/shared'
+import { Db, IdGeneration, PubSub, RedisStore, setAuditUserProvider } from '@repo/kits'
+import { RunStatus, TimelineKind, TimelineRole, agentStreamChannel } from '@repo/shared'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { ConversationEntity, RunEntity, TimelineEntity } from '@repo/db'
 import { DEFAULT_AGENT_KEY, createAgentDefinitions } from '../src/modules/ai/agents/index.js'
@@ -69,8 +69,34 @@ const silentLogger = {
   debug: () => undefined,
 } as never
 
+/** 补发/实时帧只走定向频道：HTTP 响应体是给控制器判状态用的空壳 */
+const noopResponse = () => ({
+  writeHead: () => undefined,
+  flushHeaders: () => undefined,
+  write: () => undefined,
+  end: () => undefined,
+  writableEnded: false,
+  on: () => undefined,
+})
+
+/** 订阅某个 clientId 的频道，收集 runtime 发出的帧（等价于 main 侧连接） */
+const collectFrames = async (clientId: string) => {
+  const frames: Array<{ chunk: unknown; final: boolean }> = []
+  const unsubscribe = await mainPubSub.subscribeAsync(agentStreamChannel(clientId), (payload) => {
+    frames.push(payload as { chunk: unknown; final: boolean })
+  })
+  return {
+    frames,
+    text: () => frames.map((frame) => JSON.stringify(frame.chunk)).join(''),
+    stop: () => unsubscribe(),
+  }
+}
+
 let db: Db
 let redis: RedisStore
+let pubsub: PubSub
+/** 模拟 main 侧：独立实例，否则帧会被 PubSub 的自回环过滤掉 */
+let mainPubSub: PubSub
 let streamStore: AgentStreamStore
 let mock: MockModelServer
 let chat: AgentChatService
@@ -223,7 +249,9 @@ beforeAll(async () => {
     silentLogger,
   )
   await redis.onApplicationBootstrap()
-  streamStore = new AgentStreamStore(redis, silentLogger)
+  pubsub = new PubSub({ url: REDIS_URL } as never, new IdGeneration(), silentLogger)
+  mainPubSub = new PubSub({ url: REDIS_URL } as never, new IdGeneration(), silentLogger)
+  streamStore = new AgentStreamStore(redis, silentLogger, pubsub)
 
   const conversationRepo = new ConversationRepository(db)
   runs = new RunRepository(db, { changed: async () => {} })
@@ -359,6 +387,8 @@ afterAll(async () => {
     await db.dataSource.query('DELETE FROM conversations WHERE user_id = $1', [userId])
   }
   await new Promise<void>((resolve) => http.close(() => resolve()))
+  await mainPubSub.onApplicationShutdown()
+  await pubsub.onApplicationShutdown()
   await redis.onApplicationShutdown()
   await db.onApplicationShutdown()
   await mock.close()
@@ -621,18 +651,16 @@ describe('流式链路端到端（mock 模型 + 真实 DB + 真实 Redis）', ()
     await streamStore.appendChunk(run.id, { type: 'text-delta', id: 't1', delta: '补发2' })
     await streamStore.appendChunk(run.id, { type: STREAM_END_MARKER })
 
-    const frames: string[] = []
-    const resumed = await chat.resumeRun(USER, run.id, 0, {
-      writeHead: () => undefined,
-      flushHeaders: () => undefined,
-      write: (chunk: string) => frames.push(chunk),
-      end: () => undefined,
-      writableEnded: false,
-      on: () => undefined,
-    })
+    // 补发帧走定向频道（由 main 侧订阅），HTTP 响应体不再承载内容
+    const sink = await collectFrames('client_resume_1')
+    const resumed = await chat.resumeRun(USER, run.id, 0, noopResponse(), 'client_resume_1')
     expect(resumed).toBe(true)
-    expect(frames.join('')).toContain('补发1')
-    expect(frames.join('')).toContain('补发2')
+    // 帧经 Redis 回到订阅方是异步的：等它到齐再断言
+    await waitFor(async () => sink.frames.some((frame) => frame.final))
+    expect(sink.text()).toContain('补发1')
+    expect(sink.text()).toContain('补发2')
+    expect(sink.frames.at(-1)?.final).toBe(true)
+    sink.stop()
 
     await runs.finish(run.id, { status: RunStatus.Interrupted })
     await streamStore.clearRun(run.id)
@@ -644,16 +672,11 @@ describe('流式链路端到端（mock 模型 + 真实 DB + 真实 Redis）', ()
     createdConversationIds.push(conversation.id)
 
     // ① 没有进行中的运行 → false（控制器回 204，AI SDK 静默收尾）
-    const emptyFrames: string[] = []
-    const none = await chat.resumeCurrentRun(USER, 0, {
-      writeHead: () => undefined,
-      write: (chunk: string) => emptyFrames.push(chunk),
-      end: () => undefined,
-      writableEnded: false,
-      on: () => undefined,
-    })
+    const empty = await collectFrames('client_none_1')
+    const none = await chat.resumeCurrentRun(USER, 0, noopResponse(), undefined, 'client_none_1')
     expect(none).toBe(false)
-    expect(emptyFrames).toHaveLength(0)
+    expect(empty.frames).toHaveLength(0)
+    empty.stop()
 
     // ② 有进行中的运行 → 补发（含本轮身份 data-run，前端据此重新拿到 runId）
     const run = await runs.create({
@@ -670,18 +693,19 @@ describe('流式链路端到端（mock 模型 + 真实 DB + 真实 Redis）', ()
     await streamStore.appendChunk(run.id, { type: 'text-delta', id: 't1', delta: '接回来了' })
     await streamStore.appendChunk(run.id, { type: STREAM_END_MARKER })
 
-    const frames: string[] = []
-    const resumed = await chat.resumeCurrentRun(USER, 0, {
-      writeHead: () => undefined,
-      flushHeaders: () => undefined,
-      write: (chunk: string) => frames.push(chunk),
-      end: () => undefined,
-      writableEnded: false,
-      on: () => undefined,
-    })
+    const sink = await collectFrames('client_resume_2')
+    const resumed = await chat.resumeCurrentRun(
+      USER,
+      0,
+      noopResponse(),
+      undefined,
+      'client_resume_2',
+    )
     expect(resumed).toBe(true)
-    expect(frames.join('')).toContain('接回来了')
-    expect(frames.join('')).toContain(run.id)
+    await waitFor(async () => sink.frames.some((frame) => frame.final))
+    expect(sink.text()).toContain('接回来了')
+    expect(sink.text()).toContain(run.id)
+    sink.stop()
 
     await runs.finish(run.id, { status: RunStatus.Interrupted })
     await streamStore.clearRun(run.id)
@@ -717,39 +741,31 @@ describe('流式链路端到端（mock 模型 + 真实 DB + 真实 Redis）', ()
     await streamStore.appendChunk(run.id, { type: STREAM_END_MARKER })
 
     // 当前看的是 B：没有活动 run，一帧都不该发（AI SDK 收到 204 静默收尾）
-    const idleFrames: string[] = []
+    const idle = await collectFrames('client_idle_1')
     const none = await chat.resumeCurrentRun(
       USER,
       0,
-      {
-        writeHead: () => undefined,
-        write: (chunk: string) => idleFrames.push(chunk),
-        end: () => undefined,
-        writableEnded: false,
-        on: () => undefined,
-      },
+      noopResponse(),
       idleConversation.id,
+      'client_idle_1',
     )
     expect(none).toBe(false)
-    expect(idleFrames).toHaveLength(0)
+    expect(idle.frames).toHaveLength(0)
+    idle.stop()
 
     // 回到 A：仍能接回自己那一轮
-    const frames: string[] = []
+    const sink = await collectFrames('client_run_1')
     const resumed = await chat.resumeCurrentRun(
       USER,
       0,
-      {
-        writeHead: () => undefined,
-        flushHeaders: () => undefined,
-        write: (chunk: string) => frames.push(chunk),
-        end: () => undefined,
-        writableEnded: false,
-        on: () => undefined,
-      },
+      noopResponse(),
       runningConversation.id,
+      'client_run_1',
     )
     expect(resumed).toBe(true)
-    expect(frames.join('')).toContain('A 的正文')
+    await waitFor(async () => sink.frames.some((frame) => frame.final))
+    expect(sink.text()).toContain('A 的正文')
+    sink.stop()
 
     await runs.finish(run.id, { status: RunStatus.Interrupted })
     await streamStore.clearRun(run.id)

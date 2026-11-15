@@ -1,8 +1,8 @@
 import 'dotenv/config'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { randomUUID } from 'node:crypto'
-import { Db, IdGeneration, RedisStore, setAuditUserProvider } from '@repo/kits'
-import { RunStatus, TimelineKind, TimelineRole } from '@repo/shared'
+import { Db, IdGeneration, PubSub, RedisStore, setAuditUserProvider } from '@repo/kits'
+import { RunStatus, TimelineKind, TimelineRole, agentStreamChannel } from '@repo/shared'
 import { ConversationEntity, ConversationRunQueueEntity, RunEntity, TimelineEntity } from '@repo/db'
 import { DEFAULT_AGENT_KEY, createAgentDefinitions } from '../src/modules/ai/agents/index.js'
 import { createAgentRegistry } from '../src/modules/ai/agents/registry.js'
@@ -89,6 +89,7 @@ const TEST_CONFIG = {
 
 let db: Db
 let redis: RedisStore
+let pubsub: PubSub
 let mock: MockModelServer
 let chat: AgentChatService
 let conversations: AgentConversationService
@@ -175,7 +176,8 @@ beforeAll(async () => {
   conversationRepo = new ConversationRepository(db)
   runs = new RunRepository(db, { changed: async () => {} })
   timelines = new TimelineRepository(db)
-  const streamStore = new AgentStreamStore(redis, silentLogger)
+  pubsub = new PubSub({ url: REDIS_URL } as never, new IdGeneration(), silentLogger)
+  const streamStore = new AgentStreamStore(redis, silentLogger, pubsub)
   queue = new ConversationRunQueue(db, redis, silentLogger)
 
   const config = { ...TEST_CONFIG, baseURL: mock.baseURL } as never
@@ -288,6 +290,7 @@ afterAll(async () => {
     )
     await db.dataSource.query('DELETE FROM conversations WHERE user_id = $1', [userId])
   }
+  await pubsub.onApplicationShutdown()
   await redis.onApplicationShutdown()
   await db.onApplicationShutdown()
   await mock.close()
@@ -314,7 +317,12 @@ const seedActiveRun = async (conversationId: string): Promise<string> => {
 
 const seedWakeItem = async (
   conversationId: string,
-  overrides: { subRunId?: string; name?: string; result?: string } = {},
+  overrides: {
+    subRunId?: string
+    name?: string
+    result?: string
+    progress?: { total: number; completed: number; pending: string[] }
+  } = {},
 ) => {
   const subRunId = overrides.subRunId ?? `subrun_${randomUUID().replace(/-/g, '').slice(0, 12)}`
   const subAgentId = `subconv_${subRunId.slice(-10)}`
@@ -330,6 +338,7 @@ const seedWakeItem = async (
       result: overrides.result ?? '共 3 条待办：A、B、C',
       error: null,
       isAdmin: false,
+      ...(overrides.progress ? { progress: overrides.progress } : {}),
     },
   })
   return { item, subRunId, subAgentId }
@@ -338,7 +347,10 @@ const seedWakeItem = async (
 describe('异步子 agent 唤醒 dispatcher（真实 DB + 假模型）', () => {
   it('子 agent 完成队列项 → 父会话新建 origin=subagent 的 run，先系统卡后回复', async () => {
     const conversationId = await createConversation()
-    const { item, subRunId } = await seedWakeItem(conversationId)
+    // 逐个唤醒 + 同批进度：通知里要写清「还有谁在跑」，父 agent 不用自己数
+    const { item, subRunId } = await seedWakeItem(conversationId, {
+      progress: { total: 2, completed: 1, pending: ['背景口碑'] },
+    })
 
     // tick 扫到这一条（真实入口），跑完由 dispatcher 收尾
     const started = await dispatcher.tick([conversationId])
@@ -381,15 +393,23 @@ describe('异步子 agent 唤醒 dispatcher（真实 DB + 假模型）', () => {
       own.some((row) => row.kind === TimelineKind.Text && row.role === TimelineRole.User),
     ).toBe(false)
 
-    // 模型收到的收尾消息是内部 system 通知（不是用户消息）
+    // 模型收到的收尾消息是**内部系统通知**：角色走 user（模型只认最后一条 user 当本轮任务），
+    // 但文案首尾都写明「不是用户的新消息」
     const request = mock.requests.at(-1)
     const messages = (request?.messages ?? []) as Array<{ role?: string; content?: unknown }>
     const notice = JSON.stringify(messages)
     expect(notice).toContain('子 agent「待办统计」已完成')
     expect(notice).toContain('共 3 条待办')
+    expect(notice).toContain('内部系统通知')
+    // 同批进度：还有 1 个在跑（背景口碑），并明确「全部到齐后再汇总」
+    expect(notice).toContain('还有 1 个在跑（背景口碑）')
+    expect(notice).toContain('全部到齐后再做最终汇总')
     expect(
       messages.some(
-        (message) => message.role === 'system' && JSON.stringify(message).includes('内部系统通知'),
+        (message) =>
+          message.role === 'user' &&
+          JSON.stringify(message).includes('不是用户的新消息') &&
+          JSON.stringify(message).includes('不要把这当成「用户重复提问」'),
       ),
     ).toBe(true)
 
@@ -627,29 +647,33 @@ describe('异步子 agent 唤醒 dispatcher（真实 DB + 假模型）', () => {
   })
 })
 
-describe('排队应答的 Kafka 通道（防回归）', () => {
-  it('publishControl：先发 data-queue 帧，再单独发 final 事件（main 的桥只认后者收尾）', async () => {
-    const sent: Array<Record<string, unknown>> = []
-    const store = new AgentStreamStore(redis, silentLogger, {
-      send: async (_topic: string, event: Record<string, unknown>) => {
-        sent.push(event)
-      },
-    } as never)
-    await store.publishControl(
-      { clientId: 'client_1', runId: 'queue_1', conversationId: 'conv_1', ownerId: USER },
-      { type: 'data-queue', data: { queued: true } },
-      true,
-    )
-    expect(sent).toHaveLength(2)
-    expect(sent[0]).toMatchObject({
-      clientId: 'client_1',
-      conversationId: 'conv_1',
-      ownerId: USER,
-      final: false,
-      chunk: { type: 'data-queue' },
+describe('排队应答的定向通道（防回归）', () => {
+  it('publishControl：先发 data-queue 帧，再单独发 final 帧（main 的桥只认后者收尾）', async () => {
+    // 用独立的 PubSub 模拟 main 侧订阅（同一实例会被自回环过滤掉，收不到自己发的帧）
+    const listener = new PubSub({ url: REDIS_URL } as never, new IdGeneration(), silentLogger)
+    const frames: Array<Record<string, unknown>> = []
+    const unsubscribe = await listener.subscribeAsync(agentStreamChannel('client_1'), (payload) => {
+      frames.push(payload as Record<string, unknown>)
     })
-    // final 事件的 chunk 不会被 main 转发：它只负责写 [DONE] 并结束响应
-    expect(sent[1]).toMatchObject({ final: true, chunk: { type: '__run_end__' } })
+    try {
+      const store = new AgentStreamStore(redis, silentLogger, pubsub)
+      await store.publishControl(
+        { clientId: 'client_1', runId: 'queue_1' },
+        { type: 'data-queue', data: { queued: true } },
+      )
+      await waitFor(async () => frames.length >= 2)
+      expect(frames).toHaveLength(2)
+      expect(frames[0]).toMatchObject({
+        runId: 'queue_1',
+        final: false,
+        chunk: { type: 'data-queue' },
+      })
+      // final 帧的 chunk 不会被 main 转发：它只负责写 [DONE] 并结束响应
+      expect(frames[1]).toMatchObject({ final: true, chunk: { type: '__run_end__' } })
+    } finally {
+      unsubscribe()
+      await listener.onApplicationShutdown()
+    }
   })
 })
 

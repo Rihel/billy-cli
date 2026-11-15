@@ -14,7 +14,7 @@
 | 服务拆分 | `server` / `agent-runtime` / `model-gateway` / `tool-gateway` / `tool-worker` 五个 | `apps/main`（9989）/ `apps/agent-runtime`（9990）/ `apps/tool-gateway`（9993）/ `apps/tool-worker`（9994） | **model-gateway 未建**，模型调用仍由 runtime 直连供应商 |
 | 命名 | 文档里的 `server`（BFF）/ `facade`（编排） | `apps/main` / `apps/agent-runtime` | 包名 `@app/main` / `@app/agent-runtime`；旧的单 `server` app 及其 `@app/…server` 包名已删除 |
 | 客户端契约 | 「客户端 API 不变」 | 前端只连 main 9989，`/agent/*` 路径不变 | 非流式 `POST /agent/chat` 当前没有实现的服务端路由（SDK 里仍留着方法），见后端文档「已知缺口」 |
-| runtime → main 的输出 | 设计稿是 facade → server 的**内部 SSE 中继** + offset 续读 | 实际走 **Kafka `agent.run.events`**：runtime 每段 chunk 发 topic，main 的 `AgentSseBridge` 消费后按 `clientId` 写 SSE | 断线重连仍走 runtime 的 Redis 补发（不是 Kafka 回放）；Kafka 未配时流式对话空等 |
+| runtime → main 的输出 | 设计稿是 facade → server 的**内部 SSE 中继** + offset 续读 | **Redis pub/sub 定向频道** `agent:stream:client:<clientId>`：runtime 发、main 的 `AgentSseBridge` 写 SSE；`clientId` 绑定在 Redis 进度 Hash | 2026-11-15 从 Kafka 回退（1.5M 条 / 686MB，回放能力没人用）；断线重连走 Redis 输出记录补发 |
 | 停止 / 续答 | `POST /run/stop`、suspended 后 resume | **已补**：main `/agent/run/stop`、`/agent/chat/resume` 转发 runtime 内部接口 | 无 |
 | 文件接口 | 归 server（数据面唯一写方） | `GET/POST /agent/file/*` 在 **main**；runtime 只有文件工具执行侧（`modules/ai/files`） | worker 侧 file 工具已直连 PG/OSS（见结论文档） |
 | 控制面 → 运行面的配置变更 | 未细写 | **Redis EventBus**：`ai.skill.changed`（技能落盘 / 刷新）；**Redis + Kafka 双发**：`ai.connector.sync`（连接器同步 / 摘工具 / 刷缓存） | 都是 at-most-once / 幂等补偿；没有统一的事件目录 |
@@ -29,15 +29,14 @@
         └──内部 HTTP（x-internal-token / x-user-id / x-admin-id / x-main-client-id）──>
               runtime POST /internal/agent/chat/stream
                 └─ agent loop → 每段输出：① Redis 广播（旧路径 / 断线补发）
-                                          ② Kafka agent.run.events（key = runId）
-        main AgentSseBridge（@KafkaConsumer('agent.run.events','main-sse-<pod>')）
+                                          ② Redis pub/sub：agent:stream:client:<clientId>
+        main AgentSseBridge（PubSub 订阅该 clientId 频道）
           └─ 按事件 clientId 写 data: 帧；final → data: [DONE]
 ```
 
-- topic 逻辑名 `agent.run.events`，实际 `app.agent.run.events`（`KAFKA_TOPIC_PREFIX` 默认 `app`），
-  3 分区、key = runId；事件结构 `@repo/shared` 的 `AgentRunEventSchema`。
-- runtime 未配 Kafka 时不发事件（`KafkaService` 可选注入）；发布失败只记 `ai.kafka.publish_failed`，
-  不阻断模型流。
+- 帧结构 `@repo/shared` 的 `AgentStreamFrameSchema`（`runId` / `chunk` / `final`；收件地址在频道名里）。
+- `clientId` 由 main 在 attach 时生成并写进 runtime 的进度 Hash（`agent:run:<runId>`），
+  重连落在别的副本上也能把实时片段发给新连接；发布失败只记日志，不阻断模型流。
 - 配置文件与命令：main `AGENT_RUNTIME_URL` / `AGENT_INTERNAL_TOKEN` / `KAFKA_BROKERS`；
   runtime `PORT=9990` / `AGENT_INTERNAL_TOKEN` / `KAFKA_BROKERS`。
 
@@ -103,12 +102,12 @@ client ──> main（BFF，SSE 中继）──> agent-runtime（编排）──
                                                                 ├─ 数据 API ──> main（file / skill / memory）
                                                                 └─ 对象存储 / 临时工作区
 runtime 内部：planner / subagent / ask（编排原语，不经 worker）
-输出回传（实际实现）：runtime ──Kafka agent.run.events(key=runId)──> main 的 AgentSseBridge ──SSE──> client
+输出回传（实际实现）：runtime ──Redis pub/sub(agent:stream:client:<clientId>)──> main 的 AgentSseBridge ──SSE──> client
 状态：PG（真相）/ Redis（流、锁、配额）/ S3（工作区）
 ```
 
 > 实际链路与上图差异：没有 model-gateway（runtime 直连供应商）；runtime → main 的输出不是内部 SSE
-> 中继，而是 Kafka topic `agent.run.events`；断线重连走 runtime 的 Redis 补发。
+> 中继，而是 Redis pub/sub 的定向频道 `agent:stream:client:<clientId>`；断线重连走 runtime 的 Redis 输出记录补发。
 
 ### 3.2 app 清单（原设计五个，当前四个）
 
@@ -418,13 +417,13 @@ client → main：POST /agent/chat/stream（AnyAuthGuard；生成 clientId）
 main → runtime：POST /internal/agent/chat/stream（x-internal-token + 身份头 + x-main-client-id）
 runtime：agent loop → 每段 publishChunk：
          ├─ Redis 广播（旧 SSE 路径 / 断线补发）
-         └─ Kafka agent.run.events（key = runId）
-main：AgentSseBridge（@KafkaConsumer('agent.run.events','main-sse-<pod>')）按 clientId 写 data: 帧，final → [DONE]
+         └─ Redis pub/sub：agent:stream:client:<clientId>
+main：AgentSseBridge（订阅该 clientId 频道）按序写 data: 帧，final → [DONE]
 停止 / 续答：main /agent/run/stop、/agent/chat/resume 转发 runtime 内部接口
 断线重连：main 代理 runtime 的 GET /internal/agent/run/stream，从 Redis 进度补发 offset
 ```
 
-契约：`AgentRunEventSchema`（`clientId` / `runId` / `conversationId` / `chunk` / `final`）；
+契约：`AgentStreamFrameSchema`（`runId` / `chunk` / `final`，`clientId` 体现在频道名）；
 设计稿里的 `TurnCommand` / `TurnEvent` 尚未实现。
 
 ### 7.2 工作区一次执行
@@ -602,7 +601,7 @@ worker 10–30 并发命令。SLO：首 token ≤ 供应商 TTFT + 300ms；中�
 | P1 | **容量止血**：资源 2C/4Gi + HPA、DB 池可配、单副本/单用户准入、背景 lane、Redis 缓冲字节上限、`/metrics` + 可用性/容量告警 | 5–8d |
 | P2 | **工作区外部化**：S3 + 清单 + 临时目录、Redis 锁、配额/GC | 8–12d |
 | P3 | **facade 拆分**：AI runtime 迁出、server 变 BFF、run 状态机/心跳/租约迁到 facade、SSE 中继、trace 贯通、Mastra 只进 facade + `check:mastra` 收紧 | 15–20d |
-| P3 现状 | ✅ main/runtime 拆分已落地（9989 / 9990，Kafka SSE）；⏳ trace 贯通、租约仍未做；`check:mastra` 已收紧到「只有 runtime 可 import」 | — |
+| P3 现状 | ✅ main/runtime 拆分已落地（9989 / 9990，pub/sub SSE）；⏳ trace 贯通、租约仍未做；`check:mastra` 已收紧到「只有 runtime 可 import」 | — |
 | P4 | **模型网关**：key 池、租户配额、降级、用量对账 | 8–12d（**未开始**，无 `apps/model-gateway`） |
 | P5 | **工具网关 + worker**：bash 控制面已落地；继续迁 web/file/skill/memory、插件链全量、删 runtime 本地 ToolGateway | 15–20d |
 | P5 现状 | ✅ bash / web / memory / file / read-tool-result 已迁 worker（worker 直连 PG/OSS/Redis）；skill-* 留在 main；gateway 策略闭环 | — |

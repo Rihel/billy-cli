@@ -1,9 +1,9 @@
-import { Inject, Injectable, Optional, type OnApplicationBootstrap } from '@nestjs/common'
-import { AppLogger, KafkaService, RedisStore } from '@repo/kits'
+import { Inject, Injectable } from '@nestjs/common'
+import { AppLogger, PubSub, RedisStore } from '@repo/kits'
 import {
-  AGENT_RUN_EVENT_TOPIC,
-  AGENT_RUN_EVENT_VERSION,
-  type AgentRunEventModel,
+  AGENT_STREAM_FRAME_VERSION,
+  agentStreamChannel,
+  type AgentStreamFrameModel,
 } from '@repo/shared'
 
 /**
@@ -24,14 +24,12 @@ export interface RunProgress {
   updatedAt: string
 }
 
-/** 进度键前缀（单键 Hash） */
+/** 进度键前缀（单键 Hash；`clientId` 也放在这里，见 `bindClient`） */
 const progressKey = (runId: string) => `agent:run:${runId}`
 /** 输出记录（List，按顺序追加；供断线重连补发） */
 const chunksKey = (runId: string) => `agent:stream:${runId}`
 /** 输出记录字节数（随 list 一起增减，用于字节上限） */
 const chunksBytesKey = (runId: string) => `agent:stream:${runId}:bytes`
-/** 跨副本实时转发频道 */
-const chunkChannel = (runId: string) => `agent:stream:${runId}:chunk`
 /** 跨副本停止信号频道 */
 const stopChannel = (runId: string) => `agent:stream:${runId}:stop`
 
@@ -43,9 +41,11 @@ const CHUNKS_TTL_SECONDS = 60 * 60
 const CHUNKS_MAX = 20_000
 /** 单 run 输出记录字节上限（防止长回复把 Redis 内存打满；按 UTF-8 字节计） */
 const CHUNKS_MAX_BYTES = 32 * 1024 * 1024
+/** 一轮结束的片段类型（与 `chat.service` 的 `STREAM_END_MARKER` 同值，避免反向 import） */
+const END_MARKER = '__run_end__'
 
 /**
- * 运行期状态存储（Redis）：**进度 + 输出记录 + 跨副本广播**。
+ * 运行期状态存储（Redis）：**进度 + 输出记录 + 跨副本转发**。
  *
  * 为什么这三样都在 Redis（设计文档 §3.10）：
  * - 多实例下"连接落在哪个副本"不该改变行为 → 状态一律外置；
@@ -56,43 +56,28 @@ const CHUNKS_MAX_BYTES = 32 * 1024 * 1024
  * 只会让"实时进度 / 断线补发"降级 —— 所以不需要双写一致性协议。
  */
 @Injectable()
-export class AgentStreamStore implements OnApplicationBootstrap {
-  /** 运行归属：publishChunk 发 Kafka 时带上，main 只推给对应连接 */
-  private readonly kafkaMeta = new Map<
-    string,
-    { clientId: string; conversationId: string; ownerId: string }
-  >()
-
+export class AgentStreamStore {
   constructor(
     @Inject(RedisStore) private readonly redis: RedisStore,
     @Inject(AppLogger) private readonly logger: AppLogger,
-    @Optional() @Inject(KafkaService) private readonly kafka?: KafkaService,
+    @Inject(PubSub) private readonly pubsub: PubSub,
   ) {}
 
   /**
-   * 启动时预热 Kafka 生产者：**不 await**（broker 不可达不能拖住启动，见 kits 的
-   * 「不阻塞启动」规则），失败只记日志并进冷却。
+   * 绑定一次前端连接：把 `clientId`（这条 SSE 连接的收件地址）写进进度 Hash。
    *
-   * 收益：Kafka 配错/挂掉在启动日志里就能看见（而不是等第一条消息），第一条输出也不用再等建连。
-   * 预热只是把「第一次 send 才建连」提到启动期，连接仍然是进程内按 topic 复用的一条。
+   * **必须落 Redis，不能只放进程内 Map**：断线重连可能落在另一个副本上，产 run 的那个副本
+   * 读不到新地址就会把实时片段发给已经关掉的老连接（旧实现就是这么丢帧的）。
    */
-  onApplicationBootstrap(): void {
-    this.kafka?.warmup([AGENT_RUN_EVENT_TOPIC])
+  async bindClient(runId: string, clientId: string): Promise<void> {
+    await this.redis.hset(progressKey(runId), { clientId })
+    await this.redis.expire(progressKey(runId), PROGRESS_TTL_SECONDS)
   }
 
-  /** 绑定一次前端连接；没有绑定就不发 Kafka（兼容旧 SSE 路径与单测） */
-  bindClient(runId: string, clientId: string, conversationId: string, ownerId: string): void {
-    this.kafkaMeta.set(runId, { clientId, conversationId, ownerId })
-  }
-
-  /**
-   * Kafka 是否已装配。
-   *
-   * 两种传输是互斥的（见 `publishChunk`）：装了 Kafka 就只走 Kafka；没装才用 Redis 频道。
-   * 调用方（断线重连）据此决定「补发完要不要挂住订阅」。
-   */
-  get kafkaEnabled(): boolean {
-    return Boolean(this.kafka)
+  /** 当前绑定到这条 run 的收件地址（没有绑定 = 没人要实时片段，直接丢） */
+  private async clientOf(runId: string): Promise<string | null> {
+    const clientId = await this.redis.hget(progressKey(runId), 'clientId')
+    return clientId && clientId.trim().length > 0 ? clientId : null
   }
 
   // ── 运行中进度 ────────────────────────────────────────────────
@@ -198,126 +183,64 @@ export class AgentStreamStore implements OnApplicationBootstrap {
   // ── 跨副本转发 ────────────────────────────────────────────────
 
   /**
-   * 广播一条片段。**两种传输互斥，按是否装配 Kafka 分流**：
+   * 广播一条片段给**持有这条 run 的那个前端连接**。
    *
-   * - **Kafka 已装配**：只发 Kafka。main 消费后按 `clientId` 写给前端连接，runtime 不直接服务
-   *   浏览器 —— 此时 Redis 频道没有任何订阅者，publish 是白费；
-   * - **未装配 Kafka（直连模式）**：走 Redis pub/sub。补发是另一个 HTTP 请求，生产者不在
-   *   那个请求里，实时片段只能靠这条频道传过去。
+   * 频道按 `clientId` 定向：只有挂着这条连接的 main 实例收到，其它实例零流量
+   * （Kafka 的广播模型是每个副本都收全量、再按 clientId 丢，副本数 N 就放大 N 倍）。
    *
-   * 注意：`chunkChannel` 是「生产者 → 订阅者」的**单向**广播。订阅方（如断线重连）调它会把
-   * 消息再送回同一频道，自激成无限回环 —— 补发请用 `forwardChunk`。
+   * `clientId` **每次现读 Redis**，不吃进程内缓存：重连可能落在别的副本上，
+   * 缓存一秒就会把这一秒的片段发给已经关掉的连接。代价是每条片段多一次 `HGET`。
    */
   async publishChunk(runId: string, chunk: unknown): Promise<void> {
-    if (this.kafka) {
-      this.emitToKafka(runId, chunk)
-      return
-    }
-    await this.redis.publish(chunkChannel(runId), JSON.stringify(chunk))
-  }
-
-  /**
-   * 只发 Kafka、**绝不碰 Redis 频道**：给断线重连的补发用。
-   *
-   * 补发内容本来就在 Redis 列表里（`readChunks`），重发到频道只会让同频道上的其它在线连接
-   * 收到重复帧；而 Kafka 模式下 main 是 drain 掉 runtime 响应体的，补发只能经 Kafka 到前端。
-   * 未装配 Kafka（直连模式）时不用发 —— 调用方直接把补发帧写进 HTTP 响应。
-   */
-  async forwardChunk(runId: string, chunk: unknown): Promise<void> {
-    if (!this.kafka) return
-    this.emitToKafka(runId, chunk)
-  }
-
-  /** 发一条 Kafka 事件（fire-and-forget：Kafka 故障不能拖住模型流） */
-  private emitToKafka(runId: string, chunk: unknown): void {
-    const meta = this.kafkaMeta.get(runId)
-    if (!meta || !this.kafka) return
-    const final = (chunk as { type?: unknown })?.type === '__run_end__'
-    const event: AgentRunEventModel = {
-      version: AGENT_RUN_EVENT_VERSION,
-      ...meta,
+    const clientId = await this.clientOf(runId)
+    if (!clientId) return
+    const frame: AgentStreamFrameModel = {
+      version: AGENT_STREAM_FRAME_VERSION,
       runId,
       chunk,
-      final,
+      final: (chunk as { type?: unknown })?.type === END_MARKER,
       createdAt: new Date().toISOString(),
     }
-    void this.kafka.send(AGENT_RUN_EVENT_TOPIC, event, runId).catch((error: unknown) => {
-      this.logger.warn('ai.kafka.publish_failed', {
-        runId,
-        reason: error instanceof Error ? error.message : String(error),
-      })
-    })
-    if (final) this.kafkaMeta.delete(runId)
+    await this.pubsub.broadcast(agentStreamChannel(clientId), frame)
   }
 
   /**
    * 发布一条**不属于任何 run** 的控制帧（当前只有"排队应答"）。
    *
-   * 为什么需要它：Kafka 模式下 main 只把 Kafka 事件转成前端 SSE，runtime 的 HTTP 响应体
-   * 是被 drain 掉的。排队应答发生在**还没建 run** 的时候，没有 `runId` 可走 `publishChunk`；
-   * 不给这条通道，前端在 Kafka 模式下会收不到 `data-queue`，连接一直挂着等 `[DONE]`。
-   *
-   * `runId` 用队列项 id 占位（事件协议要求非空）；`final=true` 让 main 写完这帧就结束响应。
+   * 为什么需要它：main 只把 pub/sub 帧转成前端 SSE，runtime 的 HTTP 响应体是被 drain 掉的。
+   * 排队应答发生在**还没建 run** 的时候，没有 runId 可查绑定，只能直接把 `clientId` 递进来。
    */
-  async publishControl(
-    input: { clientId: string; runId: string; conversationId: string; ownerId: string },
-    chunk: unknown,
-    final = false,
-  ): Promise<void> {
-    if (!this.kafka) return
-    const createdAt = new Date().toISOString()
-    const event: AgentRunEventModel = {
-      version: AGENT_RUN_EVENT_VERSION,
-      ...input,
+  async publishControl(input: { clientId: string; runId: string }, chunk: unknown): Promise<void> {
+    const frame: AgentStreamFrameModel = {
+      version: AGENT_STREAM_FRAME_VERSION,
+      runId: input.runId,
       chunk,
       final: false,
-      createdAt,
+      createdAt: new Date().toISOString(),
     }
-    await this.kafka.send(AGENT_RUN_EVENT_TOPIC, event, input.runId)
-    if (!final) return
-    // main 的桥上 `final` 事件只写 `[DONE]`、不转发 chunk —— 所以收尾必须单独再发一条
-    await this.kafka.send(
-      AGENT_RUN_EVENT_TOPIC,
-      {
-        ...event,
-        chunk: { type: '__run_end__' },
-        final: true,
-      } satisfies AgentRunEventModel,
-      input.runId,
-    )
+    const channel = agentStreamChannel(input.clientId)
+    await this.pubsub.broadcast(channel, frame)
+    // main 的桥只在 `final` 帧上写 `[DONE]`：收尾必须单独再发一帧
+    await this.pubsub.broadcast(channel, {
+      ...frame,
+      chunk: { type: END_MARKER },
+      final: true,
+    } satisfies AgentStreamFrameModel)
   }
 
   /** 广播停止信号（运行在别的副本上时也停得掉） */
   async publishStop(runId: string): Promise<void> {
-    await this.redis.publish(stopChannel(runId), 'stop')
+    await this.pubsub.broadcast(stopChannel(runId), { stop: true })
   }
 
   /**
-   * 订阅某次运行的实时片段与停止信号。
+   * 订阅某次运行的**停止信号**（跨副本）。
    *
-   * 用一条**独立连接**（ioredis 的订阅连接不能再发普通命令）；
-   * 返回取消订阅函数（内部 quit 掉那条连接）。
+   * 只订阅停止、不订阅片段：片段由「跑 run 的那一侧」直接发到前端连接频道，
+   * 订阅方再转发会自激（2026-11-15 的 OOM 就是这条回环）。
    */
-  async subscribeRun(
-    runId: string,
-    onChunk: (chunk: unknown) => void,
-    onStop: () => void,
-  ): Promise<() => Promise<void>> {
-    const chunk = chunkChannel(runId)
-    const stop = stopChannel(runId)
-    const unsubscribe = await this.redis.subscribe([chunk, stop], (channel, message) => {
-      if (channel === chunk) {
-        try {
-          onChunk(JSON.parse(message) as unknown)
-        } catch {
-          // 忽略坏帧（不影响主流程）
-        }
-        return
-      }
-      if (channel === stop) onStop()
-    })
-
-    return unsubscribe
+  async subscribeStop(runId: string, onStop: () => void): Promise<() => void> {
+    return this.pubsub.subscribe(stopChannel(runId), () => onStop())
   }
 
   /** 打一条 warn（供看门狗/恢复流程复用；保持 logger 只在这里注入一次） */
