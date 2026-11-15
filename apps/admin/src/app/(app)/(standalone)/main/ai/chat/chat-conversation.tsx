@@ -1420,8 +1420,9 @@ export function ChatConversation({ conversationId }: { conversationId: string })
                           const needsQuestion = message.units.some(
                             (unit) => unit.kind === 'question',
                           )
+                          // 「完成卡」（notice）也算子助手卡：两张卡的入口都要切 tab，不跳子会话路由
                           const needsSubAgent = message.units.some(
-                            (unit) => unit.kind === 'sub-agent',
+                            (unit) => unit.kind === 'sub-agent' || unit.kind === 'notice',
                           )
                           return (
                             <ChatMessage

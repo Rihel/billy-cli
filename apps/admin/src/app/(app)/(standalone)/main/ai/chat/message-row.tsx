@@ -176,7 +176,13 @@ function ChatUnitView({
         />
       )
     case 'notice':
-      return <SubAgentCompletedCard data={unit.data} />
+      // 完成卡也是子助手卡：父会话里点它应该切到上方 tab，而不是跳子会话路由
+      return (
+        <SubAgentCompletedCard
+          data={unit.data}
+          {...(onOpenSubAgent ? { onOpen: onOpenSubAgent } : {})}
+        />
+      )
     case 'event': {
       const owner = unit.part.data.toolCallId
       if (owner && ownedToolCalls.has(owner)) return null
