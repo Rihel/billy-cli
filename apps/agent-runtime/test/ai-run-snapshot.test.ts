@@ -107,6 +107,42 @@ describe('buildRunSnapshot', () => {
     expect(snapshot.parts).toEqual([{ type: 'text', text: '第一段', id: 't0' }])
   })
 
+  it('工具入参闭合在 sinceRev 前、结果在之后：种子必须保留工具卡', () => {
+    const records = recordsOf([
+      { type: 'tool-input-start', toolCallId: 'c1', toolName: 'bash' },
+      { type: 'tool-input-delta', toolCallId: 'c1', inputTextDelta: '{}' },
+      { type: 'tool-input-available', toolCallId: 'c1', toolName: 'bash', input: {} },
+      // 另一个未闭合 part：文本还在流 → sinceRev = 这一条
+      { type: 'text-start', id: 't1' },
+      { type: 'text-delta', id: 't1', delta: '还在流' },
+      // 工具结果在增量里，只有 output、没有 input-start
+      { type: 'tool-output-available', toolCallId: 'c1', output: { ok: true } },
+    ])
+    const { snapshot } = buildRunSnapshot('run-1', records, {
+      parts: [
+        {
+          type: 'dynamic-tool',
+          toolName: 'bash',
+          toolCallId: 'c1',
+          state: 'input-available',
+          input: {},
+        },
+        { type: 'text', text: '还在流（DB 版本）', id: 't1' },
+      ],
+    })
+
+    // 工具卡必须留在种子里（增量里没有创建它的 start）；文本交给增量
+    expect(snapshot.parts).toEqual([
+      {
+        type: 'dynamic-tool',
+        toolName: 'bash',
+        toolCallId: 'c1',
+        state: 'input-available',
+        input: {},
+      },
+    ])
+  })
+
   it('没有 id 的老行无法判定重叠：种子保留（兼容旧数据）', () => {
     const records = recordsOf([
       { type: 'text-start', id: 't1' },

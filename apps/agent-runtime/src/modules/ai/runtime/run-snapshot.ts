@@ -278,8 +278,17 @@ export const buildRunSnapshot = (
    * 只靠"关闭在一起"的时序保证不了，必须按 id 显式去重。
    */
   const tailIds = new Set<string>()
+  /**
+   * 只有「创建型」块才代表 tail 里会**新建**一个 part；`tool-output-*` / `*-delta` / `*-end`
+   * 都是**更新**已有 part。把更新型 id 也算进去，会把种子里那张工具卡误删 ——
+   * 增量里只有结果、没有 `tool-input-start`，AI SDK 找不到 tool invocation 会直接抛
+   * `TypeError`，恢复整条流失败。
+   */
+  const createsPart = new Set(['text-start', 'reasoning-start', 'tool-input-start'])
   for (const { rev, chunk } of decoded) {
     if (rev < sinceRev) continue
+    const type = String(chunk.type ?? '')
+    if (!createsPart.has(type) && !type.startsWith('data-')) continue
     const id = partIdOf(chunk)
     if (id) tailIds.add(id)
   }
