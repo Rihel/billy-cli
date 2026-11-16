@@ -16,13 +16,12 @@ import type { Response } from 'express'
 import { AnyAuthGuard } from '../modules/auth/index.js'
 import { RateLimit, RateLimitGuard } from '../common/security/index.js'
 import { requestContext } from '@repo/kits'
-import { AgentSseBridge } from './agent-sse.bridge.js'
+import { AgentSseBridge, parseStreamProtocol } from './agent-sse.bridge.js'
 
 const SSE_HEADERS = {
   'content-type': 'text/event-stream',
   'cache-control': 'no-cache',
   connection: 'keep-alive',
-  'x-vercel-ai-ui-message-stream': 'v1',
   'x-accel-buffering': 'no',
 }
 
@@ -52,11 +51,13 @@ export class AgentControlController {
     @Body() body: unknown,
     @Headers() headers: Record<string, string>,
     @Res() response: Response,
+    @Query('protocol') protocol: string | undefined,
   ): Promise<void> {
     const clientId = randomUUID()
+    const streamProtocol = parseStreamProtocol(protocol)
     response.writeHead(200, SSE_HEADERS)
     response.flushHeaders()
-    await this.bridge.attach(clientId, response)
+    await this.bridge.attach(clientId, response, { protocol: streamProtocol })
     try {
       const upstream = await fetch(`${this.runtime()}/internal/agent/chat/resume`, {
         method: 'POST',
@@ -64,24 +65,37 @@ export class AgentControlController {
         body: JSON.stringify(body ?? {}),
       })
       if (!upstream.ok || !upstream.body) {
-        this.bridge.detach(clientId)
-        return this.fail(response)
+        this.bridge.fail(clientId, 'agent-runtime 调用失败')
+        return
       }
       void this.drain(upstream.body)
     } catch {
-      this.bridge.detach(clientId)
-      this.fail(response)
+      this.bridge.fail(clientId, 'agent-runtime 不可用')
     }
   }
 
   @Get('run/stream')
   async resumeCurrent(
-    @Query('offset') offset: string | undefined,
+    @Query('sinceRev') sinceRev: string | undefined,
     @Query('conversationId') conversationId: string | undefined,
+    @Query('protocol') protocol: string | undefined,
     @Res() response: Response,
   ): Promise<void> {
     await this.stream(
-      `/internal/agent/run/stream?offset=${encodeURIComponent(offset ?? '0')}&conversationId=${encodeURIComponent(conversationId ?? '')}`,
+      `/internal/agent/run/stream?sinceRev=${encodeURIComponent(sinceRev ?? '')}&conversationId=${encodeURIComponent(conversationId ?? '')}`,
+      response,
+      parseStreamProtocol(protocol),
+    )
+  }
+
+  /** 当前进行中那一轮的快照（没有就 204，前端据此不要点亮"恢复中"） */
+  @Get('run/snapshot')
+  async snapshotCurrent(
+    @Query('conversationId') conversationId: string | undefined,
+    @Res() response: Response,
+  ): Promise<void> {
+    await this.proxySnapshot(
+      `/internal/agent/run/snapshot?conversationId=${encodeURIComponent(conversationId ?? '')}`,
       response,
     )
   }
@@ -89,13 +103,21 @@ export class AgentControlController {
   @Get('run/:runId/stream')
   async resumeRun(
     @Param('runId') runId: string,
-    @Query('offset') offset: string | undefined,
+    @Query('sinceRev') sinceRev: string | undefined,
+    @Query('protocol') protocol: string | undefined,
     @Res() response: Response,
   ): Promise<void> {
     await this.stream(
-      `/internal/agent/run/${encodeURIComponent(runId)}/stream?offset=${encodeURIComponent(offset ?? '0')}`,
+      `/internal/agent/run/${encodeURIComponent(runId)}/stream?sinceRev=${encodeURIComponent(sinceRev ?? '')}`,
       response,
+      parseStreamProtocol(protocol),
     )
+  }
+
+  /** 指定 run 的快照（知道 runId 时用） */
+  @Get('run/:runId/snapshot')
+  async snapshotRun(@Param('runId') runId: string, @Res() response: Response): Promise<void> {
+    await this.proxySnapshot(`/internal/agent/run/${encodeURIComponent(runId)}/snapshot`, response)
   }
 
   private runtime(): string {
@@ -136,10 +158,10 @@ export class AgentControlController {
    *
    * 补发帧与后续实时帧走同一条定向频道，main 只负责按序写给前端。
    */
-  private async stream(path: string, response: Response): Promise<void> {
+  private async stream(path: string, response: Response, protocol: 'agui' | 'ai'): Promise<void> {
     const clientId = randomUUID()
     // 先挂 session 但不发头部：runtime 可能马上推帧；等确认有流再发 200，避免把 204 写成 200
-    await this.bridge.attach(clientId, response, true)
+    await this.bridge.attach(clientId, response, { deferred: true, protocol })
     const upstream = await fetch(`${this.runtime()}${path}`, {
       headers: this.headers(clientId, {}),
     }).catch(() => null)
@@ -175,12 +197,25 @@ export class AgentControlController {
     }
   }
 
-  private fail(response: Response): void {
-    if (response.writableEnded) return
-    response.write(
-      `data: ${JSON.stringify({ type: 'error', errorText: 'agent-runtime 调用失败' })}\n\n`,
-    )
-    response.write('data: [DONE]\n\n')
-    response.end()
+  /** 快照代理：runtime 的 204 原样透传，JSON 原样回给前端 */
+  private async proxySnapshot(path: string, response: Response): Promise<void> {
+    const upstream = await fetch(`${this.runtime()}${path}`, {
+      headers: this.headers(randomUUID(), {}),
+    }).catch(() => null)
+    if (!upstream) {
+      response.status(502).json({ message: 'agent-runtime 不可用' })
+      return
+    }
+    if (upstream.status === 204) {
+      response.status(204).end()
+      return
+    }
+    const body = await upstream.text().catch(() => '')
+    if (!upstream.ok) {
+      response.status(upstream.status).json({ message: 'agent-runtime 调用失败' })
+      return
+    }
+    response.setHeader('content-type', 'application/json; charset=utf-8')
+    response.send(body)
   }
 }

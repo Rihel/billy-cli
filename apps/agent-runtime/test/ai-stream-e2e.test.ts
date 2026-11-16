@@ -45,6 +45,14 @@ import {
   startMockModelServer,
 } from './helpers/mock-model-server.js'
 import { buildToolStackDeps, makeBashTool } from './helpers/ai-tool-stack.js'
+import {
+  agUiEventToChunks,
+  createAgUiDecodeState,
+  encodeAgUiChunk,
+  isAgUiEvent,
+  type AgUiChunk,
+  type AgUiEvent,
+} from '@repo/shared'
 import { STUB_IMAGE_BYTES, stubAttachments } from './helpers/attachments.js'
 
 /**
@@ -81,13 +89,13 @@ const noopResponse = () => ({
 
 /** 订阅某个 clientId 的频道，收集 runtime 发出的帧（等价于 main 侧连接） */
 const collectFrames = async (clientId: string) => {
-  const frames: Array<{ chunk: unknown; final: boolean }> = []
+  const frames: Array<{ event: unknown; final: boolean }> = []
   const unsubscribe = await mainPubSub.subscribeAsync(agentStreamChannel(clientId), (payload) => {
-    frames.push(payload as { chunk: unknown; final: boolean })
+    frames.push(payload as { event: unknown; final: boolean })
   })
   return {
     frames,
-    text: () => frames.map((frame) => JSON.stringify(frame.chunk)).join(''),
+    text: () => frames.map((frame) => JSON.stringify(frame.event)).join(''),
     stop: () => unsubscribe(),
   }
 }
@@ -161,45 +169,47 @@ const postStream = async (
   return { status: response.status, headers: response.headers, text }
 }
 
-/** 从 `data-run` 块取应用会话 id（不拿"最近一条会话"，避免并行测试互相抢） */
-const conversationIdOfSse = (sse: string): string | undefined => {
-  for (const line of sse.split('\n')) {
-    if (!line.startsWith('data: {')) continue
-    try {
-      const chunk = JSON.parse(line.slice(6)) as {
-        type?: string
-        data?: { conversationId?: string }
-      }
-      if (chunk.type === 'data-run') return chunk.data?.conversationId
-    } catch {
-      // 忽略非 JSON 的注释帧
-    }
-  }
-  return undefined
-}
-
-/** 从 SSE 原文里解析出所有 JSON 片段（忽略注释帧与 `[DONE]`） */
-const chunksOfSse = (sse: string): Array<{ type?: string; data?: Record<string, unknown> }> =>
+/** SSE 原文 → AG-UI 事件（忽略注释帧） */
+const eventsOfSse = (sse: string): AgUiEvent[] =>
   sse
     .split('\n')
     .filter((line) => line.startsWith('data: {'))
-    .map((line) => JSON.parse(line.slice(6)) as { type?: string; data?: Record<string, unknown> })
-
-/** 从 UI Message Stream 的 SSE 原文里拼出正文（delta 是逐字的，不能直接对原文 toContain） */
-const uiTextOfSse = (sse: string): string =>
-  sse
-    .split('\n')
-    .filter((line) => line.startsWith('data: {'))
-    .map((line) => {
+    .flatMap((line) => {
       try {
-        return JSON.parse(line.slice(6)) as { type?: string; delta?: string }
+        const parsed = JSON.parse(line.slice(6)) as unknown
+        return isAgUiEvent(parsed) ? [parsed] : []
       } catch {
-        return null
+        return []
       }
     })
-    .filter((chunk): chunk is { type: string; delta: string } => chunk?.type === 'text-delta')
-    .map((chunk) => chunk.delta)
+
+/** 从 `RUN_STARTED` 取应用会话 id（不拿"最近一条会话"，避免并行测试互相抢） */
+const conversationIdOfSse = (sse: string): string | undefined =>
+  eventsOfSse(sse).find((event) => event.type === 'RUN_STARTED')?.threadId
+
+/**
+ * 事件 → chunk（断言仍可以按旧的 chunk 口径写）。
+ *
+ * 状态贯穿整份 SSE：工具入参靠 `TOOL_CALL_ARGS` 累积，每个事件新建 state 就拼不出 input。
+ */
+const chunksOfSse = (sse: string): AgUiChunk[] => {
+  const state = createAgUiDecodeState()
+  return eventsOfSse(sse).flatMap((event) => agUiEventToChunks(event, state) as AgUiChunk[])
+}
+
+/** 从事件流里拼出正文（delta 是逐字的，不能直接对原文 toContain） */
+const uiTextOfSse = (sse: string): string =>
+  chunksOfSse(sse)
+    .filter((chunk) => chunk.type === 'text-delta')
+    .map((chunk) => String(chunk.delta ?? ''))
     .join('')
+
+/** 种一条输出记录：chunk → AG-UI 事件 → appendEvent（与 runtime 发射口同一条路径） */
+const appendChunks = async (runId: string, chunk: AgUiChunk): Promise<void> => {
+  for (const event of encodeAgUiChunk(chunk, { threadId: '', runId })) {
+    await streamStore.appendEvent(runId, event)
+  }
+}
 
 /** 回答挂起的一轮（同样是 SSE，收完再断言） */
 const postResume = async (
@@ -399,9 +409,14 @@ describe('流式链路端到端（mock 模型 + 真实 DB + 真实 Redis）', ()
     const { status, headers, text } = await postStream({ message: '帮我看看待办' })
     expect(status).toBe(200)
     expect(headers.get('content-type')).toContain('text/event-stream')
-    expect(headers.get('x-vercel-ai-ui-message-stream')).toBe('v1')
+    expect(headers.get('x-vercel-ai-ui-message-stream')).toBeNull()
     expect(text).toContain('data: ')
-    expect(text).toContain('[DONE]')
+    expect(text).not.toContain('[DONE]')
+    expect(text).toContain('"RUN_FINISHED"')
+    // 运行边界显式：首帧 RUN_STARTED、末帧 RUN_FINISHED（不靠"流结束"表达）
+    const eventTypes = eventsOfSse(text).map((event) => event.type)
+    expect(eventTypes[0]).toBe('RUN_STARTED')
+    expect(eventTypes.at(-1)).toBe('RUN_FINISHED')
 
     /**
      * **轮内实时用量**（2026-11-14）：每步模型调用结束就发一条 `data-step-usage`，
@@ -527,7 +542,7 @@ describe('流式链路端到端（mock 模型 + 真实 DB + 真实 Redis）', ()
     expect(status).toBe(200)
 
     // 与 `data-run-usage` 同一手法：先给客户端，再进 Redis 输出记录（于是断线补发也拿得到）
-    expect(text).toContain('data-conversation-title')
+    expect(chunksOfSse(text).some((chunk) => chunk.type === 'data-conversation-title')).toBe(true)
     expect(text).toContain(MOCK_TITLE_TEXT)
 
     const conversationId = /"conversationId":"([^"]+)"/.exec(text)?.[1]
@@ -548,10 +563,11 @@ describe('流式链路端到端（mock 模型 + 真实 DB + 真实 Redis）', ()
     expect(status).toBe(200)
 
     // ① 状态块：带 id（= 子 run id），前端按 id 归并出"这个子助手当前什么样"
-    const stateFrames = text
-      .split('\n\n')
-      .filter((frame) => frame.startsWith('data: ') && frame.includes('"data-sub-agent"'))
-      .map((frame) => JSON.parse(frame.slice(6)) as { id?: string; data?: Record<string, unknown> })
+    const allChunks = chunksOfSse(text)
+    const stateFrames = allChunks.filter((chunk) => chunk.type === 'data-sub-agent') as Array<{
+      id?: string
+      data?: Record<string, unknown>
+    }>
     expect(stateFrames.length).toBeGreaterThan(0)
     const childRunId = stateFrames[0].id
     expect(childRunId).toBeTruthy()
@@ -563,10 +579,12 @@ describe('流式链路端到端（mock 模型 + 真实 DB + 真实 Redis）', ()
     expect(finished?.data?.usage).toBeTruthy()
 
     // ② 增量块：**不带 id**（AI SDK 的 data part 按 id 归并，同 id 会互相覆盖 —— 增量必须一块一个）
-    const deltaFrames = text
-      .split('\n\n')
-      .filter((frame) => frame.startsWith('data: ') && frame.includes('"data-sub-agent-delta"'))
-      .map((frame) => JSON.parse(frame.slice(6)) as { id?: string; data?: Record<string, unknown> })
+    const deltaFrames = allChunks.filter(
+      (chunk) => chunk.type === 'data-sub-agent-delta',
+    ) as Array<{
+      id?: string
+      data?: Record<string, unknown>
+    }>
     expect(deltaFrames.length).toBeGreaterThan(0)
     expect(deltaFrames.every((frame) => frame.id === undefined)).toBe(true)
     const streamed = deltaFrames.map((frame) => frame.data?.text ?? '').join('')
@@ -594,7 +612,7 @@ describe('流式链路端到端（mock 模型 + 真实 DB + 真实 Redis）', ()
     const runId = finishedRun[0].id
     await waitFor(async () => (await streamStore.readRun(runId)) === null)
     expect(await streamStore.readRun(runId)).toBeNull()
-    expect((await streamStore.readChunks(runId, 0)).length).toBeGreaterThan(0)
+    expect((await streamStore.readAllEvents(runId)).length).toBeGreaterThan(0)
   })
 
   it('停止：运行中的一轮被中断 → 状态是 canceled（不是 failed）', async () => {
@@ -647,9 +665,9 @@ describe('流式链路端到端（mock 模型 + 真实 DB + 真实 Redis）', ()
       status: RunStatus.Running,
     })
     await streamStore.startRun(run.id, { status: RunStatus.Running, stage: 'generating' })
-    await streamStore.appendChunk(run.id, { type: 'text-delta', id: 't1', delta: '补发1' })
-    await streamStore.appendChunk(run.id, { type: 'text-delta', id: 't1', delta: '补发2' })
-    await streamStore.appendChunk(run.id, { type: STREAM_END_MARKER })
+    await appendChunks(run.id, { type: 'text-delta', id: 't1', delta: '补发1' })
+    await appendChunks(run.id, { type: 'text-delta', id: 't1', delta: '补发2' })
+    await appendChunks(run.id, { type: STREAM_END_MARKER })
 
     // 补发帧走定向频道（由 main 侧订阅），HTTP 响应体不再承载内容
     const sink = await collectFrames('client_resume_1')
@@ -665,6 +683,108 @@ describe('流式链路端到端（mock 模型 + 真实 DB + 真实 Redis）', ()
     await runs.finish(run.id, { status: RunStatus.Interrupted })
     await streamStore.clearRun(run.id)
   })
+
+  it('快照补发：已闭合内容进快照，未闭合 part 从 sinceRev 接上（不整轮重放）', async () => {
+    const conversation = await conversations.create(USER, {})
+    createdConversationIds.push(conversation.id)
+    const run = await runs.create({
+      conversationId: conversation.id,
+      agentKey: DEFAULT_AGENT_KEY,
+      status: RunStatus.Running,
+    })
+    await streamStore.startRun(run.id, { status: RunStatus.Running, stage: 'generating' })
+    await appendChunks(run.id, { type: 'start', messageId: 'msg_snapshot' })
+    await appendChunks(run.id, { type: 'text-start', id: 'text-1' })
+    await appendChunks(run.id, { type: 'text-delta', id: 'text-1', delta: '已完成正文' })
+    await appendChunks(run.id, { type: 'text-end', id: 'text-1' })
+    await appendChunks(run.id, { type: 'reasoning-start', id: 'reason-1' })
+    await appendChunks(run.id, { type: 'reasoning-delta', id: 'reason-1', delta: '还在想' })
+
+    const sink = await collectFrames('client_snapshot_1')
+    const resumed = await chat.resumeRun(USER, run.id, 0, noopResponse(), 'client_snapshot_1')
+    expect(resumed).toBe(true)
+    await waitFor(async () =>
+      sink.frames.some(
+        (frame) =>
+          (frame.event as { type?: string; type?: string } | undefined)?.type ===
+          'REASONING_MESSAGE_CONTENT',
+      ),
+    )
+
+    const events = sink.frames.map((frame) => frame.event as { type?: string })
+    // 首帧是运行身份（手册 §8 坑 11），消息头紧随其后
+    expect(events[0]?.type).toBe('RUN_STARTED')
+    expect(events[1]?.type).toBe('CUSTOM')
+    // 已闭合的正文只发一次（快照），未闭合的推理从自己的 start 接上
+    expect(events.filter((event) => event.type === 'TEXT_MESSAGE_CONTENT')).toHaveLength(1)
+    expect(events.filter((event) => event.type === 'TEXT_MESSAGE_START')).toHaveLength(1)
+    expect(events.filter((event) => event.type === 'REASONING_MESSAGE_START')).toHaveLength(1)
+    expect(sink.text()).toContain('已完成正文')
+    expect(sink.text()).toContain('还在想')
+    sink.stop()
+
+    await runs.finish(run.id, { status: RunStatus.Interrupted })
+    await streamStore.clearRun(run.id)
+  }, 30_000)
+
+  it('快照从时间线构建：输出记录被裁剪也不丢消息 id 与已闭合正文', async () => {
+    const conversation = await conversations.create(USER, {})
+    createdConversationIds.push(conversation.id)
+    const run = await runs.create({
+      conversationId: conversation.id,
+      agentKey: DEFAULT_AGENT_KEY,
+      status: RunStatus.Running,
+    })
+    await timelines.append({
+      conversationId: conversation.id,
+      runId: run.id,
+      messageId: 'msg_from_timeline',
+      role: TimelineRole.Assistant,
+      kind: TimelineKind.Text,
+      payload: { text: '时间线里的已闭合正文' },
+    })
+    await streamStore.startRun(run.id, { status: RunStatus.Running, stage: 'generating' })
+    // 模拟输出记录已被头部裁剪：下一个 rev 从 100 开始
+    await redis.set(`agent:stream:${run.id}:rev`, '99')
+    await appendChunks(run.id, { type: 'text-delta', id: 'open-1', delta: '还在流的部分' })
+
+    const sink = await collectFrames('client_timeline_snapshot')
+    const resumed = await chat.resumeRun(
+      USER,
+      run.id,
+      0,
+      noopResponse(),
+      'client_timeline_snapshot',
+    )
+    expect(resumed).toBe(true)
+    await waitFor(async () =>
+      sink.frames.some(
+        (frame) => (frame.event as { type?: string } | undefined)?.type === 'TEXT_MESSAGE_CONTENT',
+      ),
+    )
+
+    const events = sink.frames.map((frame) => frame.event as Record<string, unknown>)
+    const start = events.find(
+      (event) => event.type === 'CUSTOM' && event.name === 'agent.message',
+    ) as { value?: { messageId?: string } } | undefined
+    expect(start?.value?.messageId).toBe('msg_from_timeline')
+    // 已闭合正文来自时间线（不是被裁掉的输出记录）
+    expect(
+      events.some(
+        (event) => event.type === 'TEXT_MESSAGE_CONTENT' && event.delta === '时间线里的已闭合正文',
+      ),
+    ).toBe(true)
+    // 未闭合 part 的增量仍然接得上
+    expect(
+      events.some(
+        (event) => event.type === 'TEXT_MESSAGE_CONTENT' && event.delta === '还在流的部分',
+      ),
+    ).toBe(true)
+    sink.stop()
+
+    await runs.finish(run.id, { status: RunStatus.Interrupted })
+    await streamStore.clearRun(run.id)
+  }, 30_000)
 
   it('按用户续流（不知道 runId 时）：找到进行中的那一轮就补发，没有就返回 false → 204', async () => {
     // 场景：页面刷新后前端不知道 runId（它只在 data-run 块里给过一次）→ 服务端按登录用户找
@@ -686,12 +806,12 @@ describe('流式链路端到端（mock 模型 + 真实 DB + 真实 Redis）', ()
       triggeredBy: USER,
     })
     await streamStore.startRun(run.id, { status: RunStatus.Running, stage: 'generating' })
-    await streamStore.appendChunk(run.id, {
+    await appendChunks(run.id, {
       type: 'data-run',
       data: { runId: run.id, conversationId: conversation.id, agentKey: DEFAULT_AGENT_KEY },
     })
-    await streamStore.appendChunk(run.id, { type: 'text-delta', id: 't1', delta: '接回来了' })
-    await streamStore.appendChunk(run.id, { type: STREAM_END_MARKER })
+    await appendChunks(run.id, { type: 'text-delta', id: 't1', delta: '接回来了' })
+    await appendChunks(run.id, { type: STREAM_END_MARKER })
 
     const sink = await collectFrames('client_resume_2')
     const resumed = await chat.resumeCurrentRun(
@@ -729,7 +849,7 @@ describe('流式链路端到端（mock 模型 + 真实 DB + 真实 Redis）', ()
       triggeredBy: USER,
     })
     await streamStore.startRun(run.id, { status: RunStatus.Running, stage: 'generating' })
-    await streamStore.appendChunk(run.id, {
+    await appendChunks(run.id, {
       type: 'data-run',
       data: {
         runId: run.id,
@@ -737,8 +857,8 @@ describe('流式链路端到端（mock 模型 + 真实 DB + 真实 Redis）', ()
         agentKey: DEFAULT_AGENT_KEY,
       },
     })
-    await streamStore.appendChunk(run.id, { type: 'text-delta', id: 't1', delta: 'A 的正文' })
-    await streamStore.appendChunk(run.id, { type: STREAM_END_MARKER })
+    await appendChunks(run.id, { type: 'text-delta', id: 't1', delta: 'A 的正文' })
+    await appendChunks(run.id, { type: STREAM_END_MARKER })
 
     // 当前看的是 B：没有活动 run，一帧都不该发（AI SDK 收到 204 静默收尾）
     const idle = await collectFrames('client_idle_1')
@@ -839,7 +959,8 @@ describe('流式链路端到端（mock 模型 + 真实 DB + 真实 Redis）', ()
       attachments: [attachment],
     })
     expect(status).toBe(200)
-    expect(text).toContain('[DONE]')
+    expect(text).not.toContain('[DONE]')
+    expect(text).toContain('"RUN_FINISHED"')
 
     // 1) 模型请求里有这张图（data URL 形式的 image part）
     const withImage = mock.requests.filter((body) => JSON.stringify(body).includes(expectedDataUrl))
@@ -866,7 +987,7 @@ describe('流式链路端到端（mock 模型 + 真实 DB + 真实 Redis）', ()
   it('工具挂起：问题卡事件落库，回答后用同一个 run 续跑', async () => {
     const { status, text } = await postStream({ message: `先问我几个问题 ${MOCK_ASK_MARKER}` })
     expect(status).toBe(200)
-    expect(text).toContain('data-tool-call-suspended')
+    expect(chunksOfSse(text).some((chunk) => chunk.type === 'data-tool-call-suspended')).toBe(true)
     expect(text).toContain('这份给谁看')
 
     const conversationId = conversationIdOfSse(text)!
@@ -914,8 +1035,8 @@ describe('流式链路端到端（mock 模型 + 真实 DB + 真实 Redis）', ()
     })
     expect(resumed.status).toBe(200)
     expect(uiTextOfSse(resumed.text)).toContain(MOCK_FINAL_TEXT)
-    expect(resumed.text).toContain('[DONE]')
-    expect(resumed.text).toContain('[DONE]')
+    expect(resumed.text).not.toContain('[DONE]')
+    expect(resumed.text).toContain('"RUN_FINISHED"')
 
     // 同一条 run 走完：不再占会话，状态 succeeded
     expect(await runs.findActive(conversationId)).toBeNull()
@@ -969,7 +1090,7 @@ describe('流式链路端到端（mock 模型 + 真实 DB + 真实 Redis）', ()
     })
     expect(resumed.status).toBe(200)
     expect(uiTextOfSse(resumed.text)).toContain(MOCK_FINAL_TEXT)
-    expect(resumed.text).toContain('[DONE]')
+    expect(resumed.text).not.toContain('[DONE]')
 
     expect(await runs.findActive(conversationId)).toBeNull()
     const rows = await db.dataSource.query<{ status: string }[]>(
@@ -1030,7 +1151,7 @@ describe('流式链路端到端（mock 模型 + 真实 DB + 真实 Redis）', ()
   it('挂起中的一轮可以主动停止，释放会话', async () => {
     const { status, text } = await postStream({ message: `问完就停 ${MOCK_ASK_MARKER}` })
     expect(status).toBe(200)
-    expect(text).toContain('data-tool-call-suspended')
+    expect(chunksOfSse(text).some((chunk) => chunk.type === 'data-tool-call-suspended')).toBe(true)
 
     const conversationId = conversationIdOfSse(text)!
     expect(conversationId).toBeTruthy()
@@ -1077,7 +1198,8 @@ describe('流式链路端到端（mock 模型 + 真实 DB + 真实 Redis）', ()
     // 紧接着重试：同一个会话应当能直接开跑（不被 3306 挡）
     const retried = await postStream({ conversationId: conversation.id, message: '再试一次' })
     expect(retried.status).toBe(200)
-    expect(retried.text).toContain('[DONE]')
+    expect(retried.text).not.toContain('[DONE]')
+    expect(retried.text).toContain('"RUN_FINISHED"')
 
     // 这个用例故意让处理器抛了一次错，清掉以免影响后面的断言（本文件把它们当"意外"）
     serverErrors.length = 0

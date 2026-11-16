@@ -133,6 +133,7 @@ import {
   AgentRunIdDto,
   AgentRunListDto,
   AgentRunModel,
+  AgentRunSnapshotModel,
   AgentRunStopDto,
   AgentRunStopResultModel,
   AgentStatusModel,
@@ -174,7 +175,7 @@ const STREAM_SUBSCRIBE_PATH = '/sse/subscribe'
 /** 建流路由：响应体是 AI SDK v6 的 UI Message Stream（**不套业务信封**） */
 const AGENT_CHAT_STREAM_PATH = '/agent/chat/stream'
 
-/** 续流路由：`GET ...?offset=N`，无进行中的流时服务端回 204（AI SDK 续传约定） */
+/** 续流路由：`GET ...?sinceRev=N`，无进行中的流时服务端回 204（AI SDK 续传约定） */
 const agentResumeStreamPath = (runId: string): string =>
   `/agent/run/${encodeURIComponent(runId)}/stream`
 
@@ -558,8 +559,8 @@ export class ServerClient extends HttpClient<BearerTokenCredentials> {
     chatResumeUrl: (): string => `${this.agentBaseUrl}/agent/chat/resume`,
 
     /** GET 续流地址（知道 runId 时用；交给 AI SDK transport 的 `prepareReconnectToStreamRequest`） */
-    resumeStreamUrl: (runId: string, offset = 0): string =>
-      `${this.agentBaseUrl}${agentResumeStreamPath(runId)}?offset=${offset}`,
+    resumeStreamUrl: (runId: string, sinceRev = 0): string =>
+      `${this.agentBaseUrl}${agentResumeStreamPath(runId)}?sinceRev=${sinceRev}`,
 
     /**
      * GET 续流地址（**不知道 runId 时用**）：服务端按登录用户 + 指定会话找当前进行中的那一轮，
@@ -569,10 +570,41 @@ export class ServerClient extends HttpClient<BearerTokenCredentials> {
      * **务必传 `conversationId`**：不传则服务端只按用户跨会话找最近一条，切到已结束的会话
      * 会接上别的会话正在跑的流（串流）。新会话页传占位段 `new`，永不匹配任何 run。
      */
-    currentRunStreamUrl: (offset = 0, conversationId?: string): string =>
-      `${this.agentBaseUrl}/agent/run/stream?offset=${offset}${
+    currentRunStreamUrl: (sinceRev = 0, conversationId?: string): string =>
+      `${this.agentBaseUrl}/agent/run/stream?sinceRev=${sinceRev}${
         conversationId ? `&conversationId=${encodeURIComponent(conversationId)}` : ''
       }`,
+
+    /**
+     * 正在跑的那一轮的**已闭合内容快照**（没有进行中的轮 → null）。
+     *
+     * 恢复链路先拿它渲染已完成部分，再从 `sinceRev` 接增量 —— 不必整轮重放。
+     * `runId` 与 `conversationId` 二选一；只知道会话 id 时传后者。
+     */
+    snapshotUrl: (conversationId?: string): string =>
+      `${this.agentBaseUrl}/agent/run/snapshot${
+        conversationId ? `?conversationId=${encodeURIComponent(conversationId)}` : ''
+      }`,
+
+    runSnapshotUrl: (runId: string): string =>
+      `${this.agentBaseUrl}/agent/run/${encodeURIComponent(runId)}/snapshot`,
+
+    snapshot: async (data: {
+      conversationId?: string
+      runId?: string
+    }): Promise<AgentRunSnapshotModel | null> => {
+      const url = data.runId
+        ? `${this.agentBaseUrl}/agent/run/${encodeURIComponent(data.runId)}/snapshot`
+        : `${this.agentBaseUrl}/agent/run/snapshot${
+            data.conversationId ? `?conversationId=${encodeURIComponent(data.conversationId)}` : ''
+          }`
+      const response = await fetch(url, {
+        headers: await this.agent.authHeaders(),
+      })
+      if (response.status === 204) return null
+      if (!response.ok) throw new Error('获取运行快照失败')
+      return (await response.json()) as AgentRunSnapshotModel
+    },
 
     /**
      * 当前凭证的鉴权头（给 AI SDK transport 用）。

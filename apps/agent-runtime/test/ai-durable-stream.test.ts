@@ -284,22 +284,39 @@ afterAll(async () => {
 describe('可恢复执行（durable）下的流式收尾', () => {
   it('durable 包装对象也能读出步骤与用量：整轮成功、步骤行落库、会话轮次与标题更新', async () => {
     const text = await postStream({ message: '帮我看看待办' })
-    // 响应正常收尾（[DONE] 是"服务端已落好终态"的信号）
-    expect(text).toContain('[DONE]')
-    // 用量在**收尾落库之后、[DONE] 之前**下发（会话页的用量条就靠它；缺失时前端显示"—"）
-    const usageFrame = text
+    // 收尾是 RUN_FINISHED（AG-UI），不再有 [DONE]
+    expect(text).not.toContain('[DONE]')
+    expect(text).toContain('"RUN_FINISHED"')
+    // 用量在**收尾落库之后、RUN_FINISHED 之前**下发（会话页的用量条就靠它；缺失时前端显示"—"）
+    const events = text
       .split('\n')
-      .filter((line) => line.startsWith('data: ') && line.includes('"data-run-usage"'))
-    expect(usageFrame).toHaveLength(1)
-    const usageData = (JSON.parse(usageFrame[0].slice(6)) as { data: { usage: unknown } }).data
-    expect(usageData.usage).toBeTruthy()
-    expect(text.indexOf('data-run-usage')).toBeLessThan(text.indexOf('[DONE]'))
+      .filter((line) => line.startsWith('data: {'))
+      .flatMap((line) => {
+        try {
+          return [JSON.parse(line.slice(6)) as Record<string, unknown>]
+        } catch {
+          return []
+        }
+      })
+    const usageEvents = events.filter(
+      (event) =>
+        event.type === 'CUSTOM' &&
+        event.name === 'agent.usage' &&
+        (event.value as { kind?: string } | undefined)?.kind === 'data-run-usage',
+    )
+    expect(usageEvents).toHaveLength(1)
+    const usageData = (usageEvents[0]?.value as { data?: { usage?: unknown } } | undefined)?.data
+    expect(usageData?.usage).toBeTruthy()
+    expect(text.indexOf('"data-run-usage"')).toBeLessThan(text.indexOf('"RUN_FINISHED"'))
     // 轮内实时用量（`data-step-usage`）在 durable 下同样要发：`agent.stream()` 这时返回的是包装对象
     // （`{ output, fullStream, … }`），`live-usage.ts` 认的正是 `fullStream`；缺了它页签开着的人
     // 只有轮末才看到数字（用户反馈的"用量不实时"）
-    const liveFrames = text
-      .split('\n')
-      .filter((line) => line.startsWith('data: ') && line.includes('"data-step-usage"'))
+    const liveFrames = events.filter(
+      (event) =>
+        event.type === 'CUSTOM' &&
+        event.name === 'agent.usage' &&
+        (event.value as { kind?: string } | undefined)?.kind === 'data-step-usage',
+    )
     expect(liveFrames.length).toBeGreaterThanOrEqual(1)
     expect(text.lastIndexOf('"data-step-usage"')).toBeLessThan(text.indexOf('"data-run-usage"'))
 

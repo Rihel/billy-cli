@@ -15,7 +15,7 @@
   → 同一会话同时只允许一次进行中的**根**运行（子 run 与父 run 同时跑是正常状态）；
 - 幂等键 `uk_run_tool_call (parent_run_id, tool_call_id)`。
 
-**进度放 Redis、结果放 Postgres**：运行中的 step / 当前动作 / offset / 心跳在 Redis（`agent:run:{runId}`，TTL 6h），
+**进度放 Redis、结果放 Postgres**：运行中的 step / 当前动作 / rev / 心跳在 Redis（`agent:run:{runId}`，TTL 6h），
 跑完删；终态、消耗、统计落 `runs`（长期保留）。看门狗按 `heartbeat_at` 与总时长判超时
 （`markTimeout` 的判据必须与 `findStale` **完全一致**，否则会出现"心跳还在跳但超时"处置不掉的 bug）。
 看门狗必须同时扫 **`pending`**（`startRun` 先插 pending 再置 running，中间失败会卡死会话），
@@ -130,14 +130,15 @@ pending 行两个时间列为 NULL，直接比较会永远为 false。
 **测试里手工 `new AgentChatService(...)` 是位置参数**，加依赖时必须同步补位（`test/helpers/attachments.ts`
 给了替身），漏补的症状是"logger 不是函数"这类与真实原因毫不相干的报错。
 
-## 3. SSE 流式协议（AI SDK v6 UI Message Stream）
+## 3. SSE 流式协议（AG-UI 1.0，2026-11-17 起）
 
-- 端点：`POST /agent/chat/stream`（建流，**不套业务信封**）、`GET /agent/run/:runId/stream?offset=N`
-  （知道 runId 时续流）、`GET /agent/run/stream?offset=N`（**不知道 runId 时续流**：服务端按登录用户找
-  当前进行中的那一轮，没有回 204）、`POST /agent/run/stop`（停止）；两条续流都必须是 GET —— AI SDK 的
-  `reconnectToStream` 固定发 GET，指到 POST-only 的建流地址会 **404**（踩过）；
-- 帧格式 `data: {json}\n\n`，结束 `data: [DONE]\n\n`；响应头有 `x-vercel-ai-ui-message-stream: v1`、
-  `x-accel-buffering: no`；心跳是 SSE 注释帧 `: ping\n\n`（自写，15s）；
+- 端点：`POST /agent/chat/stream`（建流，**不套业务信封**）、`GET /agent/run/:runId/stream?sinceRev=N`
+  （知道 runId 时续流）、`GET /agent/run/stream?sinceRev=N`（**不知道 runId 时续流**：服务端按登录用户找
+  当前进行中的那一轮，没有回 204）、`GET /agent/run/snapshot`（已闭合内容快照，没有进行中的轮回 204）、
+  `POST /agent/run/stop`（停止）；
+- 帧格式 `data: {AG-UI event}\n\n`，收尾 `RUN_FINISHED`（**不发 `[DONE]`**；只有 `?protocol=ai` 回退口
+  才写 `[DONE]`）；不再有 `x-vercel-ai-ui-message-stream` 响应头，`x-accel-buffering: no` 保留；
+  心跳是 SSE 注释帧 `: ping\n\n`（自写，15s）；
 - ⚠️ **心跳写入必须先续租、且只在 `writeHead` 之后写**：客户端断开 / 响应已结束时
   `response.write()` 会抛「Connection is closed.」，而它跑在定时器里 = 进程级未捕获异常 =
   `process.exit(1)`（表现为"聊着聊着服务重启、其它会话全丢"）。响应头之前写还会隐式发出 200，
@@ -145,13 +146,15 @@ pending 行两个时间列为 NULL，直接比较会永远为 false。
 - **`startRun` 之后的所有步骤都要在 try 里**：模型解析 / 读附件 / 组装上下文失败时，
   早先只留下一条 `running` 行（没有错误、后续 3306）；现在失败落终态，且响应头未发时把真实
   错误码抛回 HTTP（3406 / 3311 才能传到前端 `onError`）。
-- **`[DONE]` 在收尾落库之后才发** —— 客户端见到它就代表终态已写库；
+- **`RUN_FINISHED` 在收尾落库之后才发** —— 客户端见到它就代表终态已写库；
 - 每个片段同时落三处：时间线（真相）/ Redis 输出记录（补发）/ pub/sub（跨副本）；
-- ⚠️ **补发不能直接从 offset 切**：offset 可能落在 reasoning / text / tool-input 中间，
-  AI SDK 的状态机收到没有 `*-start` 的 delta 会整页报错。`resumeRun` 先读全量，
-  由 `runtime/stream-resume.ts` 回退到当前块开头并补回消息 `start`；找不到开头时补 start，
-  孤立 end 丢弃。改续流逻辑时别绕过它；
-- **`data-*` 块**（前端渲染的细节都在这）：`data-run`（本轮身份，**第一个块**，不带 id）/
+- 补发**不再整轮重放**：快照 parts 从 **`timelines`** 归约（`message-snapshot.ts`，含 assistant
+  messageId），Redis 输出记录只算 `sinceRev`；`resumeRun` 先 `beginReplay` 合闸门，再按 chunk
+  整形，最后由 `runtime/stream-resume.ts` 回退到块开头 / 补消息 `start` / 孤立 end 丢弃 /
+  `coalesceDeltas` 合并增量。20k 裁剪时只补未闭合 part（`openPartChunks`）。改续流逻辑时别绕过它；
+- **单点编码在执行服务**：`chat.service` 的 `emitAgUi` 是唯一发射口（建流 / 续跑 / 无头执行 / 收尾），
+  网关只透传；事件 → chunk 的逆映射只在 `?protocol=ai` 回退口与补发整形里用；
+- **内部 `data-*` 块**（前端渲染的细节都在这；上网关后是 `CUSTOM` 事件，名字见 `AGUI_CUSTOM`）：`data-run`（本轮身份，**第一个块**，不带 id）/
   `data-run-usage`（收尾权威用量，不带 id）/ `data-step-usage`（每步实时用量，与前者同形；由
   `runtime/live-usage.ts` 在原始流上取，因为 v6 适配层把 step 的 usage 丢了）/
   `data-sub-agent`（子助手状态快照，**带 id = 子 run id，同 id 覆盖**）/
@@ -163,8 +166,9 @@ pending 行两个时间列为 NULL，直接比较会永远为 false。
 
 1. **`useChat().stop()` 只断本地连接，不取消服务端生成** → 停止必须再调 `POST /agent/run/stop`
    （服务端本进程直接 abort；不在本进程则经 Redis 停止频道广播给持有者）；
-2. **重连靠 `useChat({ resume: true })`**，不要在 `useEffect` 里手调 `resumeStream()`（StrictMode 下会重复）；
-   前端用 `prepareReconnectToStreamRequest` 把 runId 换成我们的续流地址。
+2. **重连靠 `useRunRecovery`**（`chat/run-recovery.ts`，手册 §7.2）：先取 `snapshot`（null = 没在跑），
+   以快照 parts 为种子，再从 `sinceRev` 接增量；`onRun` 把 runId 接回页面，`active` 并入 `busy`。
+   恢复流不走 `useChat`，不要改回 `resume: true`（拿不到快照、会整轮重放）。
 
 ## 5. 崩溃恢复（三档，代价要说清）
 

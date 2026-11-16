@@ -2,6 +2,15 @@ import { describe, expect, it, vi } from 'vitest'
 import type { Response } from 'express'
 import { AgentSseBridge } from '../src/agent/agent-sse.bridge.js'
 
+/**
+ * 网关出口的两套协议（2026-11-17 迁移 AG-UI 后重写）。
+ *
+ * 钉住的是**出口契约**：
+ * - 默认 `agui`：事件原样透传，收尾是 `RUN_FINISHED` + `end()`，**不写 `[DONE]`**；
+ * - 回退 `ai`：事件逆映射回旧 chunk，收尾仍写 `[DONE]`（老前端零改动）；
+ * - 只认 `RUN_FINISHED` / 旧结束标记判定收尾，不能只看 `frame.final`。
+ */
+
 const response = () => {
   const writes: string[] = []
   let ended = false
@@ -47,10 +56,10 @@ const silentLogger = {
   debug: vi.fn(),
 }
 
-const frame = (over: Record<string, unknown> = {}) => ({
-  version: 1,
+const frame = (event: unknown, over: Record<string, unknown> = {}) => ({
+  version: 2,
   runId: 'run-1',
-  chunk: { type: 'text-delta', delta: 'hi' },
+  event,
   final: false,
   createdAt: new Date().toISOString(),
   ...over,
@@ -58,26 +67,36 @@ const frame = (over: Record<string, unknown> = {}) => ({
 
 const channelOf = (clientId: string): string => `agent:stream:client:${clientId}`
 
+const deliver = (pubsub: ReturnType<typeof makePubSub>, clientId: string, payload: unknown) => {
+  pubsub.handlers.get(channelOf(clientId))?.(payload)
+}
+
 describe('AgentSseBridge（pub/sub → SSE）', () => {
-  it('按 clientId 频道把 chunk 原样写成 SSE 帧', async () => {
+  it('默认 agui：事件原样写成 SSE 帧', async () => {
     const pubsub = makePubSub()
     const bridge = new AgentSseBridge(pubsub as never, silentLogger as never)
     const res = response()
     await bridge.attach('client-1', res)
     expect(pubsub.handlers.has(channelOf('client-1'))).toBe(true)
 
-    pubsub.handlers.get(channelOf('client-1'))?.(frame())
-    expect(res.writes[0]).toBe('data: {"type":"text-delta","delta":"hi"}\n\n')
+    const event = { type: 'TEXT_MESSAGE_CONTENT', messageId: 'm', delta: 'hi' }
+    deliver(pubsub, 'client-1', frame(event))
+
+    expect(res.writes[0]).toBe(`data: ${JSON.stringify(event)}\n\n`)
   })
 
-  it('final 帧写 [DONE]、关闭连接并退订', async () => {
+  it('RUN_FINISHED 收尾：不写 [DONE]，直接 end 并退订', async () => {
     const pubsub = makePubSub()
     const bridge = new AgentSseBridge(pubsub as never, silentLogger as never)
     const res = response()
     await bridge.attach('client-1', res)
 
-    pubsub.handlers.get(channelOf('client-1'))?.(frame({ final: true }))
-    expect(res.writes.at(-1)).toBe('data: [DONE]\n\n')
+    const event = { type: 'RUN_FINISHED', threadId: 't', runId: 'run-1' }
+    // 故意不置 frame.final：收尾必须由事件本身判定
+    deliver(pubsub, 'client-1', frame(event))
+
+    expect(res.writes.at(-1)).toBe(`data: ${JSON.stringify(event)}\n\n`)
+    expect(res.writes.join('')).not.toContain('[DONE]')
     expect(res.ended).toBe(true)
     expect(pubsub.unsubscribe).toHaveBeenCalledTimes(1)
   })
@@ -86,18 +105,53 @@ describe('AgentSseBridge（pub/sub → SSE）', () => {
     const pubsub = makePubSub()
     const bridge = new AgentSseBridge(pubsub as never, silentLogger as never)
     const res = response()
-    await bridge.attach('client-1', res, true)
+    await bridge.attach('client-1', res, { deferred: true })
 
-    const handler = pubsub.handlers.get(channelOf('client-1'))
-    handler?.(frame({ chunk: { type: 'start' } }))
-    handler?.(frame({ chunk: { type: 'text-delta', delta: 'a' } }))
+    const message = { type: 'CUSTOM', name: 'agent.message', value: { messageId: 'm' } }
+    const text = { type: 'TEXT_MESSAGE_CONTENT', messageId: 't', delta: 'a' }
+    deliver(pubsub, 'client-1', frame(message))
+    deliver(pubsub, 'client-1', frame(text))
     expect(res.writes).toHaveLength(0)
 
     bridge.start('client-1')
     expect(res.writes).toEqual([
-      'data: {"type":"start"}\n\n',
-      'data: {"type":"text-delta","delta":"a"}\n\n',
+      `data: ${JSON.stringify(message)}\n\n`,
+      `data: ${JSON.stringify(text)}\n\n`,
     ])
+  })
+
+  it('回退口 protocol=ai：事件逆映射成 chunk，收尾写 [DONE]', async () => {
+    const pubsub = makePubSub()
+    const bridge = new AgentSseBridge(pubsub as never, silentLogger as never)
+    const res = response()
+    await bridge.attach('client-1', res, { protocol: 'ai' })
+
+    deliver(
+      pubsub,
+      'client-1',
+      frame({ type: 'TEXT_MESSAGE_CONTENT', messageId: 't', delta: 'hi' }),
+    )
+    expect(res.writes[0]).toBe('data: {"type":"text-delta","id":"t","delta":"hi"}\n\n')
+
+    deliver(pubsub, 'client-1', frame({ type: 'RUN_FINISHED', threadId: 't', runId: 'run-1' }))
+    expect(res.writes.at(-1)).toBe('data: [DONE]\n\n')
+    expect(res.ended).toBe(true)
+  })
+
+  it('旧记录（裸 chunk）在 agui 出口现场编码，不把 chunk 直接写出去', async () => {
+    const pubsub = makePubSub()
+    const bridge = new AgentSseBridge(pubsub as never, silentLogger as never)
+    const res = response()
+    await bridge.attach('client-1', res)
+
+    deliver(pubsub, 'client-1', frame({ type: 'text-delta', id: 't', delta: '旧记录' }))
+
+    const parsed = JSON.parse(res.writes[0]!.slice('data: '.length)) as Record<string, unknown>
+    expect(parsed).toMatchObject({
+      type: 'TEXT_MESSAGE_CONTENT',
+      messageId: 't',
+      delta: '旧记录',
+    })
   })
 
   it('非法帧直接丢弃（不写坏 SSE）', async () => {
@@ -106,7 +160,7 @@ describe('AgentSseBridge（pub/sub → SSE）', () => {
     const res = response()
     await bridge.attach('client-1', res)
 
-    pubsub.handlers.get(channelOf('client-1'))?.({ nope: true })
+    deliver(pubsub, 'client-1', { nope: true })
     expect(res.writes).toHaveLength(0)
   })
 })

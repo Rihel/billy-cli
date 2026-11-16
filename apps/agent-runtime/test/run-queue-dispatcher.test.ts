@@ -2,7 +2,16 @@ import 'dotenv/config'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { randomUUID } from 'node:crypto'
 import { Db, IdGeneration, PubSub, RedisStore, setAuditUserProvider } from '@repo/kits'
-import { RunStatus, TimelineKind, TimelineRole, agentStreamChannel } from '@repo/shared'
+import {
+  RunStatus,
+  TimelineKind,
+  TimelineRole,
+  agentStreamChannel,
+  agUiEventToChunks,
+  createAgUiDecodeState,
+  isAgUiEvent,
+  type AgUiChunk,
+} from '@repo/shared'
 import { ConversationEntity, ConversationRunQueueEntity, RunEntity, TimelineEntity } from '@repo/db'
 import { DEFAULT_AGENT_KEY, createAgentDefinitions } from '../src/modules/ai/agents/index.js'
 import { createAgentRegistry } from '../src/modules/ai/agents/registry.js'
@@ -135,13 +144,21 @@ const fakeResponse = (): StreamResponseLike & { chunks: string[] } => {
   return response
 }
 
-const chunksOf = (
-  sse: string,
-): Array<{ type?: string; id?: string; data?: Record<string, unknown> }> =>
-  sse
+/** SSE 原文 → 内部 chunk（状态贯穿整份流，工具入参才能累积） */
+const chunksOf = (sse: string): AgUiChunk[] => {
+  const state = createAgUiDecodeState()
+  return sse
     .split('\n')
     .filter((line) => line.startsWith('data: {'))
-    .map((line) => JSON.parse(line.slice(6)) as { type?: string; data?: Record<string, unknown> })
+    .flatMap((line) => {
+      try {
+        const parsed = JSON.parse(line.slice(6)) as unknown
+        return isAgUiEvent(parsed) ? agUiEventToChunks(parsed, state) : []
+      } catch {
+        return []
+      }
+    })
+}
 
 beforeAll(async () => {
   mock = await startMockModelServer()
@@ -524,10 +541,10 @@ describe('异步子 agent 唤醒 dispatcher（真实 DB + 假模型）', () => {
     const response = fakeResponse()
     await chat.chatStream(USER, { conversationId, message: '排队中的用户消息' } as never, response)
     const sse = response.chunks.join('')
-    expect(sse).toContain('data-queue')
     const facts = chunksOf(sse)
     expect(facts.find((chunk) => chunk.type === 'data-queue')?.data?.queued).toBe(true)
-    expect(sse).toContain('data: [DONE]')
+    expect(sse).not.toContain('[DONE]')
+    expect(sse).toContain('"RUN_FINISHED"')
 
     const pending = await db.getRepository(ConversationRunQueueEntity).find({
       where: { conversationId, source: 'user' },
@@ -754,10 +771,10 @@ describe('排队应答的定向通道（防回归）', () => {
       expect(frames[0]).toMatchObject({
         runId: 'queue_1',
         final: false,
-        chunk: { type: 'data-queue' },
+        event: { type: 'CUSTOM', name: 'agent.queue' },
       })
-      // final 帧的 chunk 不会被 main 转发：它只负责写 [DONE] 并结束响应
-      expect(frames[1]).toMatchObject({ final: true, chunk: { type: '__run_end__' } })
+      // final 帧就是 RUN_FINISHED：main 收到它直接 end，不写 [DONE]
+      expect(frames[1]).toMatchObject({ final: true, event: { type: 'RUN_FINISHED' } })
     } finally {
       unsubscribe()
       await listener.onApplicationShutdown()

@@ -299,7 +299,7 @@ ai/
 
 | 档 | 场景 | 手段 | 代价 |
 | --- | --- | --- | --- |
-| ① 断线重连 | 用户刷新页面 / 网络抖动，**进程还活着** | 从 Redis 输出记录 `agent:stream:{runId}` 按 offset 补发（`resumeSafeChunks` 校正起点） | 无重跑；需要 Redis 才能跨实例 |
+| ① 断线重连 | 用户刷新页面 / 网络抖动，**进程还活着** | 从 Redis 输出记录 `agent:stream:{runId}` 按 **rev** 补发：已闭合内容给快照，未闭合 part 从 `sinceRev` 接（`resumeSafeChunks` 校正起点） | 无重跑；需要 Redis 才能跨实例 |
 | ② 崩溃恢复 | 服务重启 / 进程被杀，run 未完成 | boot 时 `recoverAllDurableAgents()`；**工具必须幂等** | **重发 LLM 调用（真花钱）+ 重跑工具**；官方明文 |
 | ③ 不恢复 | 同上，但不想付 ② 的代价 | 启动时把 `running` 且进程已死的 run 标记为 `interrupted`，前端提示"该轮已中断，可重试" | 用户需手动重发；但成本可控、语义诚实 |
 
@@ -315,13 +315,16 @@ ai/
 
 ### 3.5 前端全细节流式
 
-- 传输：AI SDK v6 的 UI Message Stream（`x-vercel-ai-ui-message-stream`），服务端用
-  `toAISdkStream({ from: 'agent', version: 'v6' })` + `handleChatStream`；
+- 传输：**AG-UI 1.0**（`@ag-ui/core@1.0.4`）。执行服务把内部 chunk 编成 AG-UI 事件，
+  存储 / 广播 / 响应体 / 网关出口全是同一份事件；前端只保留一层"事件 → chunk"适配
+  （`parseAgUiSse` + `agUiEventToChunks`，渲染模型不变）。协议契约见
+  `packages/shared/src/agui/`，迁移过程见 `docs/dev-logs/2026-11-17.md`；
 - **每个细节**都要流到前端：文本、推理、工具调用（输入流 / 输入可用 / 输出可用 / 出错 / 审批）、
   步骤边界、来源引用（完整 part/chunk 清单与 AI Elements 组件的 props 映射见 §4.2，待补）；
 - **业务状态**（排队 / 运行 / 已中断 / 已恢复 / 失败 / 完成）用自定义 `data-*` part 或
   `messageMetadata` 注入同一条流，前端 `useChat` 的 `onData` 消费 → 状态与内容**同源、不会错位**；
-- 断线：前端带 `runId + offset` 重新订阅（走 §3.3 ①），拿回缺失片段而不是重来。
+- 断线：前端带 `runId + sinceRev` 重新订阅（走 §3.3 ①），服务端给"已闭合内容快照 + 增量"，
+  不再整轮重放；收尾是 `RUN_FINISHED`（**全链路不发 `[DONE]`**）。
 
 ### 3.6 多实例
 
@@ -333,8 +336,8 @@ ai/
 
 | 能力 | 落法 |
 | --- | --- |
-| 输出记录（断线补发） | Redis List `agent:stream:{runId}`，按 offset 顺序追加 / 读取 |
-| 跨副本实时转发 | Redis pub/sub 频道 `agent:stream:{runId}:chunk` |
+| 输出记录（断线补发） | Redis List `agent:stream:{runId}`，记录 `{ rev, event }`；rev 用 `INCR`（与 List 下标解耦） |
+| 跨副本实时转发 | Redis pub/sub 频道 `agent:stream:client:<clientId>`（按连接定向，只有持有连接的副本收） |
 | 跨副本停止 | 频道 `agent:stream:{runId}:stop`（本进程有 controller 就直接 abort） |
 | 运行中进度 | Hash `agent:run:{runId}`（TTL 6h，见 §3.12） |
 | 恢复租约 | `RedisStore.acquireLock('agent:recovery:lease', 60s)` |
@@ -703,7 +706,7 @@ AGENT_CONTEXT_MODEL_WINDOWS={"deepseek/deepseek-chat":65536}   # 按模型覆盖
 
 | 状态 | 谁产生 | 放哪 | 多副本下怎么用 |
 | --- | --- | --- | --- |
-| 运行输出记录（供补发） | 正在跑的那个副本 | Redis List `agent:stream:{runId}`（按 `offset` 索引） | 重连落在**任意**副本都能按 offset 补发 |
+| 运行输出记录（供补发） | 正在跑的那个副本 | Redis List `agent:stream:{runId}`（记录 `{rev,event}`） | 重连落在**任意**副本都能按 rev 补发 |
 | 实时内容转发 | 同上 | Redis pub/sub 频道 `agent:stream:{runId}:chunk` | 副本 B 订阅到副本 A 的新内容，转发给自己持有的连接 |
 | 业务真相（`timelines` / `runs` / `conversations`） | 同上 | Postgres（我们的表） | 任意副本可查、可续、可审计 |
 | 状态广播（多标签页 / 多设备同步） | 同上 | 既有 `StreamHub`（Redis pub/sub） | **旁路通道**，不做主通道，避免两条真相 |
@@ -711,7 +714,7 @@ AGENT_CONTEXT_MODEL_WINDOWS={"deepseek/deepseek-chat":65536}   # 按模型覆盖
 **客户端连接模型（不需要粘性）**
 
 - **POST 建流**（AI SDK 协议）：落在副本 A → A 跑这一轮，把流写给客户端，同时写 Redis 输出记录；
-- **GET 重连**（断线/刷新后）：可能落在副本 B → B 从**输出记录**里读 `offset` 之后的片段**补发**
+- **GET 重连**（断线/刷新后）：可能落在副本 B → B 从**输出记录**里读 `sinceRev` 之后的事件**补发**（已闭合内容走快照）
   （`runtime/stream-resume.ts` 把起点回退到当前块开头），再订阅 pub/sub 继续转发实时内容；
 - **不需要网关做 sticky session**（这正是把状态外置的目的）；但**网关必须放行长连接**：
   关闭响应缓冲（`x-accel-buffering: no`，§5.1 已写）、`proxy_read_timeout` ≥ 心跳间隔的数倍。
@@ -759,7 +762,7 @@ WHERE id = $1 AND status = 'running' AND heartbeat_at < now() - interval '…'
 ┌────────────── 前端（apps/admin 的会话页）─────────────────────────────────┐
 │ /main/ai/chat/<conversationId>：useChat（AI SDK v6 transport）+ ai-elements│
 │   · 内容与业务状态来自**同一条** UI Message Stream（状态走持久 data part） │
-│   · 刷新/断线：GET 重连（带 offset，可按会话）→ 无感补发，不重跑           │
+│   · 刷新/断线：GET 重连（带 sinceRev，可按会话）→ 快照 + 增量，不重跑     │
 └──────────┬──────────────────────────────────────────────────────────────┘
            │ POST /agent/chat/stream（建流） GET /agent/run/{stream,:runId/stream}（重连）
            │ POST /agent/chat（非流式） POST /agent/{status,list,models,instructions}（装配查询）
@@ -788,7 +791,7 @@ WHERE id = $1 AND status = 'running' AND heartbeat_at < now() - interval '…'
 └───────┬───────────────────────┘
         ▼
 ┌── Redis（单副本可选 · **多实例必需**）──────────────────────────────────┐
-│ 输出记录 agent:stream:{runId}（按 offset 补发）                          │
+│ 输出记录 agent:stream:{runId}（{rev,event}，按 rev 补发）                │
 │ pub/sub：跨副本转发 chunk / 停止 stop / 恢复租约 agent:recovery:lease     │
 │ 既有 StreamHub（状态旁路广播）· RateLimit · 分布式锁                      │
 └─────────────────────────────────────────────────────────────────────────┘
@@ -818,7 +821,7 @@ WHERE id = $1 AND status = 'running' AND heartbeat_at < now() - interval '…'
   │        每个 part 完成即落 timelines（text / reasoning / tool-call / tool-result / step）
   │        工具入参出参**完整**落库（不裁剪）
   ├─(6) toAISdkStream(version v6) + withSseHeartbeat → pipeUIMessageStreamToResponse
-  │        同时把每个 chunk 写入 Redis 输出记录（带 offset）
+  │        同时把每个 AG-UI 事件写入 Redis 输出记录（带 rev）
   └─(7) 流结束收尾：读 totalUsage / steps / toolCalls
            ├─ 更新 runs（succeeded + usage + step_count + tool_call_count + 耗时）
            └─ 累加 conversations（turn_count / total_tokens，SQL 内原子累加）
@@ -828,16 +831,16 @@ WHERE id = $1 AND status = 'running' AND heartbeat_at < now() - interval '…'
 
 ```
 客户端刷新 / 网络抖动
-  │  GET /agent/run/:runId/stream?offset=N        ← 可能落在**另一个**副本
+  │  GET /agent/run/:runId/stream?sinceRev=N        ← 可能落在**另一个**副本
   ▼ 副本 B
   ├─ 归属校验（该会话属于当前用户）→ 否则 3304
   ├─ 无进行中的流 → 204（AI SDK 约定，前端据此结束重连）
   └─ 读 Redis 输出记录 agent:stream:{runId}（不是 Mastra 的 observe）
-       ├─ 取 offset 之后的片段 → 经 resumeSafeChunks 校正起点 → 补发（**不重跑、不重复扣费**）
+       ├─ 取 sinceRev 之后的事件 → 经 resumeSafeChunks 校正起点 → 补发（**不重跑、不重复扣费**）
        └─ 订阅 agent:stream:{runId}:chunk → 副本 A 的新内容实时续上
 ```
 
-> **offset 落在块中间时不能直接补发**：AI SDK 的 UI 状态机要求
+> **起点落在 part 中间时不能直接补发**：AI SDK 的 UI 状态机要求
 > `reasoning-delta` / `text-delta` 前必须有对应的 start。补发前由
 > `runtime/stream-resume.ts` 把起点回退到当前块开头，找不到开头就补 start；
 > 否则会出现 `Received reasoning-delta for missing reasoning part` 整页报错。
@@ -909,7 +912,7 @@ WHERE id = $1 AND status = 'running' AND heartbeat_at < now() - interval '…'
   │ 15 SSE 帧 ◄───┤                  │              │              │             │           │
   │               │ 16 每个 part 完成 ────────────────────────────►│ INSERT timelines
   │               │    （text/reasoning/tool-call/tool-result/step；**完整不裁剪**）          │
-  │               │ 17 同一时刻追加输出记录 ───────────────────────────────────►│ append(offset)
+  │               │ 17 同一时刻追加输出记录 ───────────────────────────────────►│ append(rev)
   │               │ 18 流结束：读 totalUsage / steps / toolCalls ────┤           │           │
   │               │ 19 终态 + 消耗 ───────────────────────────────────────────────────────►│ UPDATE runs(succeeded + usage + counts)
   │               │ 20 会话累加（SQL 内原子累加）────────────────────────────────────────────►│ UPDATE conversations
@@ -957,7 +960,7 @@ WHERE id = $1 AND status = 'running' AND heartbeat_at < now() - interval '…'
 | 时刻 | Postgres | Redis | 为什么这个顺序 |
 | --- | --- | --- | --- |
 | 消息到达 | `INSERT runs`（pending → running） | 写进度键（status / streamId / startedAt） | **先 PG 后 Redis**：Redis 只存进度，不能当真相；PG 成功而 Redis 失败只是"没有实时进度"，记 warn 继续跑，**不因此拒绝请求** |
-| 推理过程中 | **不写**（除每 part 完成时落 `timelines`） | 高频更新进度（stage / offset / heartbeat / 当前步 / 增量 usage） | 避免长过程里反复 UPDATE PG 同一行（锁 + WAL 放大） |
+| 推理过程中 | **不写**（除每 part 完成时落 `timelines`） | 高频更新进度（stage / rev / heartbeat / 当前步 / 增量 usage） | 避免长过程里反复 UPDATE PG 同一行（锁 + WAL 放大） |
 | 跑完 | `UPDATE runs`（最终结果 + 消耗 + 统计） | **再删进度键** | **先 PG 后删除**：反过来会留下"没有进度、也没有结果"的窗口，看门狗与前端都会误判 |
 | 进程崩溃 | 停在 `running` | 进度可能仍在（或已过期） | 看门狗按 **PG 的 `heartbeat_at`** 判定，不依赖 Redis 是否有键 |
 
@@ -978,7 +981,7 @@ key: agent:run:{runId}          TTL: 6h
   stage         queued | generating | tool:{toolKey} | compacting | finishing
   engineRunId   Mastra 的 runId（observe / recover 用）
   streamId      activeStreamId（重连与停止用）
-  offset        输出记录的最后位置（重连从这里接）
+  rev           输出记录的最后序号（重连从这里接）
   step          当前第几步（配合 AGENT_MAX_STEPS）
   heartbeatAt   心跳时间（看门狗的第一判据，同时冗余到 PG）
   usage         { inputTokens, outputTokens } 增量估算
@@ -992,7 +995,7 @@ key: agent:run:{runId}          TTL: 6h
 
 | 消费者 | 用它做什么 |
 | --- | --- |
-| 重连端点（GET） | 取 `offset` 决定从哪补发；取 `streamId` 判断"是否还有进行中的流"（无 → 204） |
+| 重连端点（GET） | 取 `sinceRev` 决定从哪补发（缺省先给快照）；取 `streamId` 判断"是否还有进行中的流"（无 → 204） |
 | 停止端点 | 取 `streamId` + 通过 pub/sub abort（多副本必须共享 pubsub，§3.10） |
 | 看门狗 | 交叉验证 PG 的 `heartbeat_at`（PG 为第一判据，进度辅助定位"卡在哪一步"） |
 | 前端旁路（多标签页） | 展示"另一处正在跑 / 当前到第几步"，不必再拉整条流 |
@@ -1002,7 +1005,7 @@ key: agent:run:{runId}          TTL: 6h
 | 东西 | 位置 | 生命周期 | 用途 |
 | --- | --- | --- | --- |
 | 运行中进度 | Redis 单键 Hash | 本轮运行期间（TTL 兜底） | **到哪了**（本节机制） |
-| 输出记录 | Redis（Mastra cache 语义） | 到本轮结束 + 留存期 | **补发**：断线后按 offset 续上，不重跑 |
+| 输出记录 | Redis（Mastra cache 语义） | 到本轮结束 + 留存期 | **补发**：断线后按 rev / sinceRev 续上，不重跑 |
 | 运行快照 | PG `runs.snapshot` | 随 run 长期保留 | **恢复**：进程死后重跑的依据（经存储适配层） |
 
 **异常时不变量**（与 §3.11.6 的崩溃点表配套）
@@ -1030,7 +1033,7 @@ key: agent:run:{runId}          TTL: 6h
 ```
 ① 发现
    副本定期检查：runs.status = running 且 heartbeat_at 已过期（`AGENT_HEARTBEAT_TIMEOUT_MS`，
-   默认 60s）；或总时长超过 `AGENT_RUN_TIMEOUT_MS`（默认 10 分钟）
+   默认 60s）；或总时长超过 `AGENT_RUN_TIMEOUT_MS`（默认 0 = 不限制，只靠心跳判活）
    → 或者启动时扫一遍（boot 阶段，单副本才做清理，见 §3.11.4）
 
 ② 决定谁来干（避免多个副本同时恢复同一条）
@@ -1067,19 +1070,24 @@ key: agent:run:{runId}          TTL: 6h
 #### 3.13.2 前端刷新页面怎么重连
 
 ```
-① 不需要"先问状态"的接口：直接带 offset 重连
+① 客户端不需要"先问状态"：直接带 `sinceRev` 重连
    服务端没有 `POST /agent/run/status` 这类"查这一轮到哪了"的端点（曾设想，未实现）。
-   前端手上的 offset 来自上一次流（`useChat` 内部维护），够用；服务端自己按 run 的
-   `status` + Redis 进度键判断"这一轮还在不在"（PG 终态优先于 Redis，见 §3.12）。
+   知道快照时带 `client.agent.snapshot()` 返回的 `sinceRev`；不知道时传 0，
+   服务端按"没有快照"处理：先给已闭合内容快照，再补 `sinceRev` 增量。
+   服务端自己按 run 的 `status` + Redis 进度键判断"这一轮还在不在"
+   （PG 终态优先于 Redis，见 §3.12）。
 
 ② 重连 SSE（两条 GET，都是 AI SDK `reconnectToStream` 的约定）
-   GET /agent/run/stream?offset={offset}&conversationId={id}   ← 不知道 runId 时（刷新 / 换设备）
-   GET /agent/run/{runId}/stream?offset={offset}               ← 知道 runId 时
+   GET /agent/run/stream?sinceRev={sinceRev}&conversationId={id}   ← 不知道 runId 时（刷新 / 换设备）
+   GET /agent/run/{runId}/stream?sinceRev={sinceRev}               ← 知道 runId 时
    · 校验会话归属（不是自己的 → 3304）
-   · 从 Redis 输出记录读 offset 之后的内容补发（不重跑），再订阅 pub/sub 续上实时内容
+   · **快照 parts 从 `timelines` 归约**（全部已闭合内容 + assistant 消息 id），
+     Redis 输出记录只负责算 `sinceRev`；输出记录有 20k 上限，不能拿它当快照
+   · 补发前先 `beginReplay` 合闸门（产事件的一侧在落时间线/记录之前等），补发完 `endReplay`
+   · 补发与实时事件走同一条定向频道（`agent:stream:client:<clientId>`），补发完请求即结束
    · run 已到终态、或 Redis 里没有进度 → 204（前端据此停止重连）
-   前端写法：useChat({ resume: true })（挂载时自动重连）；
-   **不要**自己在 useEffect 里调 resumeStream()（§5.6 第 5 条）
+   前端写法：`useRunRecovery`（`chat/run-recovery.ts`）：先 `snapshot()`，null 就什么都不做；
+   有快照则以 parts 为种子、从 `sinceRev` 接增量，`onRun` 接回 runId、`active` 并入 `busy`
 
 ③ 已结束（succeeded / failed / interrupted / canceled）→ 不重连流
    POST /agent/timeline/list { conversationId, runId? } → 拿 timelines 重建
@@ -1317,7 +1325,7 @@ AI SDK 的 `data-sub-agent` part，和主内容走同一条 SSE：
 | 并发（代码常量） | 3 | **同时运行**的子 agent 上限（`SUB_AGENT_MAX_CONCURRENT`）。超出的**排队**，跑完一个再进一个；与总数上限是两回事 |
 | `subAgentMaxDepth` | 1 | 深度上限（当前工具面已保证为 1，留配置位给将来） |
 | `subAgentMaxSteps` | 沿用 `AGENT_MAX_STEPS` | 单个子 agent 的步数上限 |
-| `subAgentTimeoutMs` | 沿用 `runTimeoutMs` | 单个子 agent 的墙钟上限 |
+| `subAgentTimeoutMs` | 沿用 `runTimeoutMs`（都为 0 = 不限） | 单个子 agent 的墙钟上限 |
 
 三条实现要点（改并发相关逻辑前必看）：
 
@@ -2339,20 +2347,20 @@ AI SDK v6 的续传是**两层 API**（不是同一方法的两个名字）：
 **现状**：收尾就在请求处理函数里、流管道写完之后同步做（`chatStream` 内：`recorder.finish` →
 首轮命名 → `runs.finish` → 累加会话 → 推 `data-run-usage`）；没有引入 scheduler 或 `waitUntil` 的替身。
 
-⚠️ **最容易踩的语义坑**：在 `resume: true` 下，`chat.stop()` **只是断开连接，并不取消生成**
+⚠️ **最容易踩的语义坑**：`chat.stop()` **只是断开连接，并不取消生成**
 （官方原文 + 专门的 troubleshooting 页）。要真正停止必须自建 stop 端点：
 读 activeStreamId → 落库 partial 的 assistant 消息 → 取消 producer → **仅当 activeStreamId 仍相同才清空**；
 并且**禁止在组件 unmount / 路由 cleanup 里调 stop**（那会把正在跑的生成掐掉）。
 
 **续流为什么必须暴露成 GET（两处 GET 例外）**：AI SDK 的 `reconnectToStream` **固定发 GET**，
-所以"按 run 续流"（`GET /agent/run/:runId/stream?offset=N`）与"不知道 runId 时按登录用户 + 会话续流"
-（`GET /agent/run/stream?offset=N&conversationId=X`，服务端**只在该会话内**找当前进行中的那一轮，
+所以"按 run 续流"（`GET /agent/run/:runId/stream?sinceRev=N`）与"不知道 runId 时按登录用户 + 会话续流"
+（`GET /agent/run/stream?sinceRev=N&conversationId=X`，服务端**只在该会话内**找当前进行中的那一轮，
 没有就 204）都只能是 GET。**`conversationId` 不能省**：只按用户跨会话找，会把另一个会话正在跑的
 流接进当前页面（串流）；新会话页还没有真实 id，传占位段 `new`（永不匹配任何 run → 204）。
 
-⚠️ **踩过的坑**：`useChat({ resume: true })` 挂载时**一定会**发一次续流 GET。若 `prepareReconnectToStreamRequest`
-在拿不到 runId 时退回建流地址（`/agent/chat/stream`，POST-only），浏览器就会对建流路由发 GET → **404**。
-前端侧的正确做法是用"按用户续流"那个端点（没有进行中的流 → 204 → SDK 静默收尾）。
+⚠️ **踩过的坑**：续流端点必须是 GET，且**不能退回建流地址**（`/agent/chat/stream`，POST-only）——
+浏览器会对它发 GET → **404**。现在的 `useRunRecovery` 先问 `snapshot`，没有进行中的轮只回 204、
+不打开流；有快照才用"按用户续流"端点接增量。
 
 ### 5.4 业务状态机怎么进前端（同一条流、两种通道）
 
@@ -2370,8 +2378,8 @@ AI SDK v6 的续传是**两层 API**（不是同一方法的两个名字）：
 | --- | --- | --- | --- |
 | `data-run` | 不带 | 编排层（`chatStream` 开头第一个片段） | **本轮身份**：`runId` / `conversationId` / `agentKey` —— 前端据此记住 runId（停止与重连只认它），新建会话时也靠它拿到 conversationId |
 | `data-step-usage` | 不带 | 编排层（**每步模型调用结束时**，由 `runtime/live-usage.ts` 在原始流上取） | **轮内实时用量**（2026-11-14）：`usage` / `stepCount` / `durationMs`，字段与 `data-run-usage` **完全同形**，值是"这一轮到目前为止"的累计。为什么必须自己在原始流上取：发给浏览器的 AI SDK **v6** UI 流里**不带 usage** —— `@mastra/ai-sdk` 的 v6 映射把 `step-finish` 拍成裸 `{ type: 'finish-step' }`（只有 v5 分支带），而 Mastra 原始片段里 `payload.output.usage` 就是这一步的账。**实时值是下界**（子 agent、命名、记忆抽取都要收尾才并账），轮末会跳一下 |
-| `data-run-usage` | 不带 | 编排层（**收尾落库之后、`[DONE]` 之前**；续跑收尾同样发） | **本轮用量**：`usage`（输入 / 输出 / 缓存读 / 推理 token，缺失一律 `null`）+ `stepCount` / `toolCallCount` / `durationMs`。为什么走流而不是让前端再查一次：用量只有收尾时才知道，而这个位置是唯一能保证"客户端看到用量时库里也一定有了"的地方；同时进 Redis 输出记录与广播，所以断线补发也拿得到。前端渲染在**输入框右下角**（k / m 缩写 + 悬停精确值，见 §4.9.3）；历史回看时 `history.ts` 从 `runs.usage` 重建同一块。**权威值**：与实时块同形，追加在最后，前端从后往前扫，先命中的就是最新的 |
-| `data-run-suspended` | 不带 | 编排层（工具挂起收尾时，见 §3.7.1） | 这一轮停在"等用户回答"：`runId` / `conversationId` —— 前端据此切到问答卡、不再等 `[DONE]` |
+| `data-run-usage` | 不带 | 编排层（**收尾落库之后、`RUN_FINISHED` 之前**；续跑收尾同样发） | **本轮用量**：`usage`（输入 / 输出 / 缓存读 / 推理 token，缺失一律 `null`）+ `stepCount` / `toolCallCount` / `durationMs`。为什么走流而不是让前端再查一次：用量只有收尾时才知道，而这个位置是唯一能保证"客户端看到用量时库里也一定有了"的地方；同时进 Redis 输出记录与广播，所以断线补发也拿得到。前端渲染在**输入框右下角**（k / m 缩写 + 悬停精确值，见 §4.9.3）；历史回看时 `history.ts` 从 `runs.usage` 重建同一块。**权威值**：与实时块同形，追加在最后，前端从后往前扫，先命中的就是最新的 |
+| `data-run-suspended` | 不带 | 编排层（工具挂起收尾时，见 §3.7.1） | 这一轮停在"等用户回答"：`runId` / `conversationId` —— 前端据此切到问答卡、不再等 `RUN_FINISHED` |
 | `data-conversation-title` | 不带 | 编排层（收尾命名之后） | 首轮自动命名的新标题（`runId` / `conversationId` / `title`）：前端就地改列表项与页头，不用重拉（§4.10.1） |
 | `data-sub-agent` | **带**（= 子 run id） | `run-sub-agent` 工具（经工具上下文的 `writer`） | 子助手状态快照：status / 结论 / 步数与工具次数 / usage（§3.14.5） |
 | `data-sub-agent-delta` | 不带 | 同上 | 子助手的流式增量（text / reasoning），一块一个。**前端在传输层把它标成 `transient`**（`chat-transport.ts`），只走 `onData`、不落 part —— 否则一块一个 part 会把页面拖死，见 `ai-chat-state.md` |
@@ -2405,8 +2413,8 @@ AI SDK v6 的续传是**两层 API**（不是同一方法的两个名字）：
    必须显式传 `onError`；
 3. `uiMessageChunkSchema()` **不能当服务端校验器**（实测非法 `type` 也能通过）；
 4. `convertToModelMessages` 在 v6 变 **async**（必须 `await`）；
-5. React 19 StrictMode 下**没有官方指南**（调研确认 grep 无命中）→ 别自己在 `useEffect` 里调
-   `resumeStream()`，用 `resume: true`（源码内部已有并发去重）；
+5. React 19 StrictMode 下**没有官方指南**（调研确认 grep 无命中）→ 恢复链路用 `useRunRecovery`
+   （内部有 sequence / starting 去重），不要退回 `resume: true`；
 6. 官方文档里 `writer.write({ type: 'source' })` 与按 `part.type === 'source'` 渲染**都是错的** ——
    v6 只有 `source-url` / `source-document`。
 
@@ -2507,7 +2515,7 @@ AI SDK v6 的续传是**两层 API**（不是同一方法的两个名字）：
 | ~~Mastra 表与业务表同库~~ | 已由"自建 adapter"决策消除 —— 不存在官方表 | — |
 | 多副本恢复租约 | ~~官方文档说"无分布式锁"，1.69.0 代码里却有 `#acquireRecoveryLease` + `RedisStreamsPubSub implements LeaseProvider`~~ → **已落地**：租约改由我们自己的 `RedisStore.acquireLock` 提供（60s TTL），不依赖 Mastra 的 pubsub | 上线前**实测**：两个副本同时 boot，看是否只有一个执行恢复 |
 | 恢复语义与用户预期 | "重启后接着跑"在崩溃场景会**重放已完成的部分**（重复文本/重复工具调用） | 业务状态机里显式区分 `running` / `recovered` / `interrupted`，前端如实标注"本轮已恢复重跑" |
-| **`stop()` 语义陷阱** | `resume: true` 下 `chat.stop()` 只断线、**不取消生成**（官方原文） | 必须自建 stop 端点（落 partial → 取消 producer → 条件清空 activeStreamId）；禁止在 unmount 里 stop |
+| **`stop()` 语义陷阱** | `chat.stop()` 只断线、**不取消生成**（官方原文） | 必须自建 stop 端点（落 partial → 取消 producer → 条件清空 activeStreamId）；禁止在 unmount 里 stop |
 | **`after`/`waitUntil` 无等价物** | 官方续传示例依赖 Next.js 专有钩子，非 Next 环境**官方没有替代示例** | 自己实现"响应结束后继续收尾"（见 §7 待拍板第 2 项），并为此写验收用例 |
 | 前端两条信息来源 | AI 内容流（parts）与业务状态（data part）若各自实现，容易出现状态与内容错位 | 状态**走同一条流的持久 `data-*` part**（§5.4），不另开第二条通道 |
 

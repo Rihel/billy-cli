@@ -131,6 +131,11 @@ export class RedisStore implements OnApplicationBootstrap, OnApplicationShutdown
     return this.fromPromise(() => this.raw.lrange(key, start, stop))
   }
 
+  /** 读指定下标的元素（补发时先取首条记录的 rev，用来把 rev 换算成 List 下标） */
+  lindex(key: string, index: number): Promise<string | null> {
+    return this.fromPromise(() => this.raw.lindex(key, index))
+  }
+
   // ── Hash（运行进度 / 规则状态 / 注册表） ─────────────────────
 
   hset(key: string, fields: Record<string, string | number>): Promise<number> {

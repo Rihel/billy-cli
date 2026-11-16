@@ -224,6 +224,15 @@ export class TimelineRepository {
    * 用途：崩溃恢复时复用已成功的子 agent 结论（幂等，不重跑）——
    * 结论只存在于时间线里（没有第二份副本，这是有意的）。
    */
+  /** 某个 run 的全部时间线行（按 seq 升序；快照归约用） */
+  async listByRun(runId: string): Promise<TimelineEntity[]> {
+    const repo = await this.repo()
+    return repo.find({
+      where: { runId },
+      order: { seq: 'ASC' },
+    })
+  }
+
   /** 这一轮有没有调用过某个工具（记忆抽取据此判断"模型是不是已经自己记过了"） */
   async hasToolCall(runId: string, toolKey: string): Promise<boolean> {
     const row = await (

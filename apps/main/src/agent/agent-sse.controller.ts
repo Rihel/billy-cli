@@ -1,7 +1,17 @@
-import { Body, Controller, Headers, HttpCode, Inject, Post, Res, UseGuards } from '@nestjs/common'
+import {
+  Body,
+  Controller,
+  Headers,
+  HttpCode,
+  Inject,
+  Post,
+  Query,
+  Res,
+  UseGuards,
+} from '@nestjs/common'
 import { randomUUID } from 'node:crypto'
 import type { Response } from 'express'
-import { AgentSseBridge } from './agent-sse.bridge.js'
+import { AgentSseBridge, parseStreamProtocol } from './agent-sse.bridge.js'
 import { AnyAuthGuard } from '../modules/auth/index.js'
 import { RateLimit, RateLimitGuard } from '../common/security/index.js'
 import { requestContext } from '@repo/kits'
@@ -10,7 +20,6 @@ const SSE_HEADERS = {
   'content-type': 'text/event-stream',
   'cache-control': 'no-cache',
   connection: 'keep-alive',
-  'x-vercel-ai-ui-message-stream': 'v1',
   'x-accel-buffering': 'no',
 }
 
@@ -30,14 +39,16 @@ export class AgentSseController {
     @Headers('cookie') cookie: string | undefined,
     @Res() response: Response,
     @Headers() headers: Record<string, string>,
+    @Query('protocol') protocol: string | undefined,
   ): Promise<void> {
     const clientId = randomUUID()
+    const streamProtocol = parseStreamProtocol(protocol)
     const runtime = process.env.AGENT_RUNTIME_URL ?? 'http://127.0.0.1:9990'
 
     response.writeHead(200, SSE_HEADERS)
     response.flushHeaders()
     // 先挂订阅再触发运行：runtime 一旦开跑就会往这条频道发帧，晚一步首帧就丢了
-    await this.bridge.attach(clientId, response)
+    await this.bridge.attach(clientId, response, { protocol: streamProtocol })
 
     const requestHeaders = this.headers(clientId, headers)
     requestHeaders['content-type'] = 'application/json'
@@ -49,15 +60,13 @@ export class AgentSseController {
         body: JSON.stringify(body ?? {}),
       })
       if (!upstream.ok || !upstream.body) {
-        this.bridge.detach(clientId)
-        this.fail(response, 'agent-runtime 启动失败')
+        this.bridge.fail(clientId, 'agent-runtime 启动失败')
         return
       }
       // runtime 的 SSE 体只用来维持运行；内容以 pub/sub 为准，这里必须持续读掉背压。
       void this.drain(upstream.body)
     } catch {
-      this.bridge.detach(clientId)
-      this.fail(response, 'agent-runtime 不可用')
+      this.bridge.fail(clientId, 'agent-runtime 不可用')
     }
   }
 
@@ -74,13 +83,6 @@ export class AgentSseController {
     if (input.cookie) headers.cookie = input.cookie
     if (input['x-request-id']) headers['x-request-id'] = input['x-request-id']
     return headers
-  }
-
-  private fail(response: Response, errorText: string): void {
-    if (response.writableEnded) return
-    response.write(`data: ${JSON.stringify({ type: 'error', errorText })}\n\n`)
-    response.write('data: [DONE]\n\n')
-    response.end()
   }
 
   private async drain(body: ReadableStream<Uint8Array>): Promise<void> {

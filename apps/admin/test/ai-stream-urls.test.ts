@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { createAppClients } from '@repo/sdk'
 
 /**
@@ -28,31 +28,70 @@ describe('AI 流地址', () => {
 
   it('重连（不知道 runId）走 GET /agent/run/stream —— **绝不能是建流地址**', () => {
     const url = client.agent.currentRunStreamUrl()
-    expect(url).toBe('http://server.test/agent/run/stream?offset=0')
+    expect(url).toBe('http://server.test/agent/run/stream?sinceRev=0')
     expect(url).not.toContain('/agent/chat/stream')
     expect(client.agent.currentRunStreamUrl(12)).toBe(
-      'http://server.test/agent/run/stream?offset=12',
+      'http://server.test/agent/run/stream?sinceRev=12',
     )
   })
 
   it('重连带 conversationId：只在当前会话内找活动 run（防串流）', () => {
     expect(client.agent.currentRunStreamUrl(0, 'conv_1')).toBe(
-      'http://server.test/agent/run/stream?offset=0&conversationId=conv_1',
+      'http://server.test/agent/run/stream?sinceRev=0&conversationId=conv_1',
     )
     // 特殊字符要转义，避免拼出坏参数
     expect(client.agent.currentRunStreamUrl(3, 'a b&c')).toBe(
-      'http://server.test/agent/run/stream?offset=3&conversationId=a%20b%26c',
+      'http://server.test/agent/run/stream?sinceRev=3&conversationId=a%20b%26c',
     )
     // 不传时保持旧口径（兼容没有会话上下文的调用）
-    expect(client.agent.currentRunStreamUrl(0)).toBe('http://server.test/agent/run/stream?offset=0')
+    expect(client.agent.currentRunStreamUrl(0)).toBe(
+      'http://server.test/agent/run/stream?sinceRev=0',
+    )
   })
 
-  it('重连（知道 runId）走 GET /agent/run/:runId/stream，offset 透传', () => {
+  it('重连（知道 runId）走 GET /agent/run/:runId/stream，sinceRev 透传', () => {
     expect(client.agent.resumeStreamUrl('run_1', 7)).toBe(
-      'http://server.test/agent/run/run_1/stream?offset=7',
+      'http://server.test/agent/run/run_1/stream?sinceRev=7',
     )
     // runId 需要转义，避免拼出奇怪路径
     expect(client.agent.resumeStreamUrl('a/b')).toContain('a%2Fb')
+  })
+
+  it('快照地址：按会话 / 按 runId 两条，都是 GET', () => {
+    expect(client.agent.snapshotUrl('conv_1')).toBe(
+      'http://server.test/agent/run/snapshot?conversationId=conv_1',
+    )
+    expect(client.agent.runSnapshotUrl('run_1')).toBe('http://server.test/agent/run/run_1/snapshot')
+  })
+
+  it('snapshot：204 表示没有进行中的轮（返回 null），200 解析 JSON', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(new Response(null, { status: 204 }))
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            runId: 'run_1',
+            messageId: 'msg_1',
+            rev: 2,
+            sinceRev: 3,
+            parts: [{ type: 'text', text: '已完成' }],
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        ),
+      )
+    vi.stubGlobal('fetch', fetchMock)
+    try {
+      await expect(client.agent.snapshot({ conversationId: 'conv_1' })).resolves.toBeNull()
+      const snapshot = await client.agent.snapshot({ runId: 'run_1' })
+      expect(snapshot?.sinceRev).toBe(3)
+      expect(fetchMock.mock.calls[0]?.[0]).toBe(
+        'http://server.test/agent/run/snapshot?conversationId=conv_1',
+      )
+      expect(fetchMock.mock.calls[1]?.[0]).toBe('http://server.test/agent/run/run_1/snapshot')
+    } finally {
+      vi.unstubAllGlobals()
+    }
   })
 
   it('鉴权头与普通请求同一套（未登录时不带 Authorization）', async () => {

@@ -203,3 +203,37 @@ function ensureStarts(chunks: ResumeChunk[]): ResumeChunk[] {
 
   return out
 }
+
+/**
+ * 合并相邻同 id 的增量（实测 15,657 → 317 帧）。
+ *
+ * 只合并**同一 part / 同一工具**且**相邻**的增量：隔了别的块就不能并，
+ * 否则会把"中间插入的工具卡"挪到文本后面，顺序就错了。
+ */
+export function coalesceDeltas(chunks: ResumeChunk[]): ResumeChunk[] {
+  const out: ResumeChunk[] = []
+  for (const chunk of chunks) {
+    const last = out.at(-1)
+    const type = chunk.type
+    if (
+      last &&
+      (type === 'text-delta' || type === 'reasoning-delta') &&
+      last.type === type &&
+      last.id === chunk.id
+    ) {
+      last.delta = String(last.delta ?? '') + String(chunk.delta ?? '')
+      continue
+    }
+    if (
+      last &&
+      type === 'tool-input-delta' &&
+      last.type === type &&
+      last.toolCallId === chunk.toolCallId
+    ) {
+      last.inputTextDelta = String(last.inputTextDelta ?? '') + String(chunk.inputTextDelta ?? '')
+      continue
+    }
+    out.push({ ...chunk })
+  }
+  return out
+}

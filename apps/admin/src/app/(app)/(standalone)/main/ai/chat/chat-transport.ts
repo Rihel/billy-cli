@@ -1,5 +1,11 @@
 import { DefaultChatTransport } from 'ai'
 import type { UIMessage, UIMessageChunk } from 'ai'
+import {
+  agUiEventToChunks,
+  createAgUiDecodeState,
+  parseAgUiSse,
+  type AgUiChunk,
+} from '@repo/shared'
 
 /**
  * 逐帧增量块：按 AI SDK 的 **transient** 语义处理 —— 只走 `onData`，**不落成 part**。
@@ -13,9 +19,6 @@ import type { UIMessage, UIMessageChunk } from 'ai'
  * 这个字段是协议**本来就为此设计**的（`ai-agent.md` §5.2 / §5.4：进度类增量走 transient，
  * 内容与状态走持久 part），只是当初写流的时候没落到实现上。这里在**传输层**改回来：
  * 数据照常一块块到达 `onData`，只是不再变成 part —— 后端一个字都不用改。
- *
- * 为什么改在 `processResponseStream` 而不是 SSE 字节流：SDK 已经把 SSE 解析成 chunk 对象了，
- * 在这里按 `type` 打标记是最稳的位置（不碰编码、不手写解析）。
  */
 export const TRANSIENT_DATA_CHUNK_TYPES: ReadonlySet<string> = new Set([
   'data-sub-agent-delta',
@@ -44,15 +47,45 @@ export const markTransientChunks = (
   )
 
 /**
- * 会话页用的传输层：在默认实现上加一层"增量块不落 part"。
+ * AG-UI SSE → AI SDK 的 chunk 流（**唯一一层适配**）。
  *
- * 续传（`reconnectToStream`）走的是同一个 `processResponseStream`，所以断线重连补发的
- * 增量块同样不会堆成 part —— 这也是"重开页面又卡一次"的那个入口。
+ * 渲染模型保持不变（`useChat` + `UIMessage.parts`），只把传输换掉：
+ * `data: {...AG-UI event...}` → `agUiEventToChunks` → `UIMessageChunk`。
+ * `decodeState` 要贯穿整条流 —— 工具入参靠 `TOOL_CALL_ARGS` 累积，每条事件新建一份就永远拼不出 input。
+ *
+ * 不再调 `super.processResponseStream`：父类解析的是 AI SDK 自己的 SSE 方言，
+ * 我们的服务端现在发的是 AG-UI 事件。跳过父类不会丢能力（`onData` / 消息归并都在
+ * `processUIMessageStream` 里，由 `useChat` 自己按 chunk 处理）。
+ */
+export const agUiSseToChunkStream = (
+  stream: ReadableStream<Uint8Array>,
+): ReadableStream<UIMessageChunk> =>
+  new ReadableStream<UIMessageChunk>({
+    async start(controller) {
+      const state = createAgUiDecodeState()
+      try {
+        for await (const event of parseAgUiSse(stream)) {
+          for (const chunk of agUiEventToChunks(event, state)) {
+            controller.enqueue(chunk as AgUiChunk as UIMessageChunk)
+          }
+        }
+        controller.close()
+      } catch (error) {
+        controller.error(error)
+      }
+    },
+  })
+
+/**
+ * 会话页用的传输层：AG-UI SSE → chunk，再叠一层"增量块不落 part"。
+ *
+ * 断线重连（`reconnectToStream`）走的是同一个 `processResponseStream`，所以恢复流
+ * （快照 + `sinceRev` 增量）同样会经过这份适配 —— 恢复不需要另一套解析。
  */
 export class ChatTransport extends DefaultChatTransport<UIMessage> {
   protected override processResponseStream(
     stream: ReadableStream<Uint8Array>,
   ): ReadableStream<UIMessageChunk> {
-    return markTransientChunks(super.processResponseStream(stream))
+    return markTransientChunks(agUiSseToChunkStream(stream))
   }
 }

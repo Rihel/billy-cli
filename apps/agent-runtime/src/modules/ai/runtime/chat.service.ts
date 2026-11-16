@@ -7,11 +7,15 @@ import {
   RunStatus,
   TimelineKind,
   TimelineRole,
+  encodeAgUiChunk,
+  isRunFinalEvent,
   estimateContentTokens,
   type AgentChatDto,
   type AgentChatResumeDto,
   type AgentChatResultModel,
   type AgentRunStopResultModel,
+  type AgUiChunk,
+  type AgentRunSnapshotModel,
   type ChatAttachmentModel,
 } from '@repo/shared'
 import type { Mastra } from '@mastra/core/mastra'
@@ -66,7 +70,9 @@ import { StreamRecorder, toolFailureOf } from './stream-recorder.js'
 import { fitMessagesToToolBudget } from './turn-budget.js'
 import { readStreamSteps, readStreamUsage } from './stream-result.js'
 import { createLiveUsage } from './live-usage.js'
-import { resumeSafeChunks } from './stream-resume.js'
+import { coalesceDeltas, resumeSafeChunks } from './stream-resume.js'
+import { buildRunSnapshot, decodeRecords, openPartChunks } from './run-snapshot.js'
+import { buildMessageParts } from './message-snapshot.js'
 import { toPlanPayload } from './plan.protocol.js'
 import { mergeUsage, toUsageRecord, totalTokensOf } from './usage.js'
 
@@ -1344,7 +1350,7 @@ export class AgentChatService {
         status: RunStatus.Running,
         stage: 'generating',
         streamId,
-        offset: 0,
+        rev: 0,
         step: 0,
       })
 
@@ -1356,7 +1362,8 @@ export class AgentChatService {
           isKnownTool: (toolKey) => Boolean(this.toolRegistry.get(toolKey)),
         },
       )
-      let offset = 0
+      let rev = 0
+      const messageIdRef: { value: string } = { value: '' }
       let stepCount = 0
       let lastProgressAt = 0
       /** 这一轮流里是否出现了工具挂起（`ask-user-questions`） */
@@ -1445,9 +1452,16 @@ export class AgentChatService {
             // 先给客户端，再落库：用户的体感不该被落库拖慢
             controller.enqueue(outgoing)
             try {
+              // 闸门要在**落时间线之前**等：先落库再等，补发可能把这条已闭合 part 读进快照，
+              // 闸门放开后实时又发一遍 → 重复
+              await this.streamStore.waitForReplayGate(run.id)
               await recorder.consume(recordedChunk)
-              offset = await this.streamStore.appendChunk(run.id, outgoing)
-              await this.streamStore.publishChunk(run.id, outgoing)
+              rev = await this.emitAgUi({
+                runId: run.id,
+                threadId: conversation.id,
+                chunk: outgoing,
+                messageIdRef,
+              })
               if (chunk.type === 'start-step') stepCount += 1
               const nowMs = Date.now()
               if (nowMs - lastProgressAt >= STREAM_PROGRESS_THROTTLE_MS) {
@@ -1457,7 +1471,7 @@ export class AgentChatService {
                     chunk.type === 'tool-input-available'
                       ? `tool:${chunk.toolName ?? ''}`
                       : 'generating',
-                  offset,
+                  rev,
                   step: stepCount,
                   heartbeatAt: new Date().toISOString(),
                 })
@@ -1475,8 +1489,8 @@ export class AgentChatService {
       )
 
       // 手写流而不是用 `pipeUIMessageStreamToResponse`：要自己控制"什么时候结束响应"——
-      // **收尾（终态 / 消耗 / 统计）落库之后才发 `[DONE]`**，于是客户端看到 `[DONE]`
-      // 就代表服务端已经落好终态（否则会出现"收到 [DONE] 但查运行还是 running"的窗口）。
+      // **收尾（终态 / 消耗 / 统计）落库之后才发 `RUN_FINISHED`**，于是客户端看到它
+      // 就代表服务端已经落好终态（否则会出现"收到结束帧但查运行还是 running"的窗口）。
       response.writeHead(200, UI_STREAM_HEADERS)
       response.flushHeaders?.()
       streamStarted = true
@@ -1494,9 +1508,13 @@ export class AgentChatService {
           agentKey: definition.key,
         },
       }
-      writeSse(response, sseFrame(runHead))
-      offset = await this.streamStore.appendChunk(run.id, runHead)
-      await this.streamStore.publishChunk(run.id, runHead)
+      rev = await this.emitAgUi({
+        runId: run.id,
+        threadId: conversation.id,
+        chunk: runHead,
+        response,
+        messageIdRef,
+      })
 
       const reader = recorded.getReader()
       for (;;) {
@@ -1504,7 +1522,11 @@ export class AgentChatService {
         if (done) break
         // 客户端断开后**继续读**：这一轮的内容仍要落库 / 落 Redis，
         // 用户重新接回来（resume）时才能补发 —— 不能因为一次断线就把整轮丢掉。
-        writeSse(response, sseFrame(value))
+        this.writeAgUiChunk(response, value, {
+          threadId: conversation.id,
+          runId: run.id,
+          ...(messageIdRef.value ? { messageId: messageIdRef.value } : {}),
+        })
         // 挂起事件到了就主动收流：Mastra 的挂起流不会再自己结束（它在等 resume），
         // 继续 read 会一直挂着，会话永远不释放。cancel 上游，下面按 suspended 收尾。
         if (value.type === 'data-tool-call-suspended') {
@@ -1545,15 +1567,17 @@ export class AgentChatService {
         })
         await this.runs.setActiveStream(run.id, null)
         stopHeartbeat()
-        writeSse(
-          response,
-          sseFrame({
+        await this.emitAgUi({
+          runId: run.id,
+          threadId: conversation.id,
+          chunk: {
             type: 'data-run-suspended',
             data: { runId: run.id, conversationId: conversation.id },
-          }),
-        )
-        writeSse(response, 'data: [DONE]\n\n')
-        endSse(response)
+          },
+          response,
+          messageIdRef,
+        })
+        await this.finishAgUiRun(response, run.id, conversation.id)
         this.logger.log('ai.stream.suspended', {
           conversationId: conversation.id,
           runId: run.id,
@@ -1625,9 +1649,13 @@ export class AgentChatService {
             title: title.title,
           },
         }
-        writeSse(response, sseFrame(titleChunk))
-        offset = await this.streamStore.appendChunk(run.id, titleChunk)
-        await this.streamStore.publishChunk(run.id, titleChunk)
+        rev = await this.emitAgUi({
+          runId: run.id,
+          threadId: conversation.id,
+          chunk: titleChunk,
+          response,
+          messageIdRef,
+        })
       }
 
       this.logger.log('ai.stream.succeeded', {
@@ -1641,7 +1669,7 @@ export class AgentChatService {
       /**
        * **本轮用量**下发（`data-run-usage`，**不带 id**：一块一个）。
        *
-       * 为什么走流而不是让前端再查一次：用量只有收尾时才知道，而"收尾已落库"与"[DONE]"之间
+       * 为什么走流而不是让前端再查一次：用量只有收尾时才知道，而"收尾已落库"与"RUN_FINISHED"之间
        * 是唯一能保证"客户端看到用量时，库里也一定有了"的位置；同时进 Redis 记录与广播，
        * 于是**断线重连补发**也拿得到（否则刷新后这一段就丢了）。
        *
@@ -1657,15 +1685,18 @@ export class AgentChatService {
           durationMs,
         },
       }
-      writeSse(response, sseFrame(usageChunk))
-      offset = await this.streamStore.appendChunk(run.id, usageChunk)
-      await this.streamStore.publishChunk(run.id, usageChunk)
+      await this.emitAgUi({
+        runId: run.id,
+        threadId: conversation.id,
+        chunk: usageChunk,
+        response,
+        messageIdRef,
+      })
 
       // 终态已落库 → 先停心跳，再告诉客户端"这一轮结束"：
       // 顺序反了会留出"response 已 end、定时器又写一帧"的窗口（正是进程被杀的那个 bug）
       stopHeartbeat()
-      writeSse(response, 'data: [DONE]\n\n')
-      endSse(response)
+      await this.finishAgUiRun(response, run.id, conversation.id)
     } catch (error) {
       const durationMs = Date.now() - startedAt
       const reason = error instanceof Error ? error.message : String(error)
@@ -1761,15 +1792,14 @@ export class AgentChatService {
        * 响应头还没发 → 这一轮**根本没建流**（模型解析 / 附件读取 / 上下文组装失败）。
        * 此时必须把真实错误**抛回 HTTP 层**：控制器会把 3406 / 3311 这类具体错误码
        * 原样返回，前端 `onError` 能显示"去后台配模型"这种可行动的原因。
-       * 若在这里吞掉并写一个 `[DONE]`，客户端只会看到"空回答"，而错误码永远传不出去。
+       * 若在这里吞掉并写一个结束帧，客户端只会看到"空回答"，而错误码永远传不出去。
        */
       if (!streamStarted) {
         throw mapped ?? error
       }
 
       // 失败也要给客户端一个明确收尾（错误本身已随 error chunk 下发）
-      writeSse(response, 'data: [DONE]\n\n')
-      endSse(response)
+      await this.finishAgUiRun(response, run.id, conversation.id)
     } finally {
       stopHeartbeat()
       stopFirstTokenTimer()
@@ -1785,9 +1815,13 @@ export class AgentChatService {
       this.activeRuns.delete(run.id)
       // 通知"还在补发中的重连连接"：本轮结束了（同一条流协议里的结束标记）
       try {
-        await this.streamStore.publishChunk(run.id, {
-          type: STREAM_END_MARKER,
-        })
+        if (streamStarted && !response.writableEnded) {
+          await this.emitAgUi({
+            runId: run.id,
+            threadId: conversation.id,
+            chunk: { type: STREAM_END_MARKER },
+          })
+        }
       } catch {
         // 广播失败无碍：补发连接会被客户端的 idle 处理或下一次刷新收敛
       }
@@ -1897,7 +1931,7 @@ export class AgentChatService {
         status: RunStatus.Running,
         stage: 'generating',
         streamId,
-        offset: 0,
+        rev: 0,
         step: 0,
       })
 
@@ -1976,6 +2010,7 @@ export class AgentChatService {
       })
 
       let suspendedAgain = false
+      const messageIdRef: { value: string } = { value: '' }
       const consume = async (stream: unknown): Promise<void> => {
         const reader = (
           liveUsage.wrap(stream) as unknown as ReadableStream<UiChunkLike>
@@ -1999,10 +2034,14 @@ export class AgentChatService {
           }
           const recordedChunk = normalizeSuspendedChunk(chunk, run.id)
           const outgoing = toClientToolChunk(recordedChunk)
-          writeSse(response, sseFrame(outgoing))
+          await this.emitAgUi({
+            runId: run.id,
+            threadId: conversation.id,
+            chunk: outgoing,
+            response,
+            messageIdRef,
+          })
           await recorder.consume(recordedChunk)
-          await this.streamStore.appendChunk(run.id, outgoing)
-          await this.streamStore.publishChunk(run.id, outgoing)
           if (suspendedAgain) break
         }
       }
@@ -2073,11 +2112,9 @@ export class AgentChatService {
           durationMs: (run.durationMs ?? 0) + (Date.now() - startedAt),
         })
         await this.runs.setActiveStream(run.id, null)
-        await this.streamStore.publishChunk(run.id, { type: STREAM_END_MARKER })
         await this.streamStore.clearRun(run.id)
         stopHeartbeat()
-        writeSse(response, 'data: [DONE]\n\n')
-        endSse(response)
+        await this.finishAgUiRun(response, run.id, conversation.id)
         return
       }
       const stepCount = (run.stepCount ?? 0) + steps.length
@@ -2092,28 +2129,30 @@ export class AgentChatService {
         durationMs,
       })
       await this.runs.setActiveStream(run.id, null)
-      await this.streamStore.publishChunk(run.id, { type: STREAM_END_MARKER })
       await this.streamStore.clearRun(run.id)
       await this.conversationRepo.accumulate(conversation.id, totalTokensOf(usage))
 
       /**
        * 续跑收尾同样下发**本轮用量**（与首轮同一条 `data-run-usage`）。
        *
-       * 早先这条路只发 `[DONE]`：回答完挂起的问题后，前端右下角停在最后一条实时值
+       * 早先这条路只发结束帧：回答完挂起的问题后，前端右下角停在最后一条实时值
        * （`data-step-usage`）或干脆是上一轮的旧值 —— 子 agent / 命名 / 记忆抽取的并账永远到不了界面。
-       * 位置同首轮：终态已落库之后、`[DONE]` 之前；也进输出记录与广播，断线补发拿得到。
+       * 位置同首轮：终态已落库之后、`RUN_FINISHED` 之前；也进输出记录与广播，断线补发拿得到。
        */
       const usageChunk = {
         type: 'data-run-usage',
         data: { runId: run.id, usage, stepCount, toolCallCount, durationMs },
       }
-      writeSse(response, sseFrame(usageChunk))
-      await this.streamStore.appendChunk(run.id, usageChunk)
-      await this.streamStore.publishChunk(run.id, usageChunk)
+      await this.emitAgUi({
+        runId: run.id,
+        threadId: conversation.id,
+        chunk: usageChunk,
+        response,
+        messageIdRef,
+      })
 
       stopHeartbeat()
-      writeSse(response, 'data: [DONE]\n\n')
-      endSse(response)
+      await this.finishAgUiRun(response, run.id, conversation.id)
       this.logger.log('ai.stream.resumed', {
         conversationId: conversation.id,
         runId: run.id,
@@ -2155,11 +2194,9 @@ export class AgentChatService {
         this.logger.error('ai.stream.resume_failed', { runId: run.id, reason })
       }
       await this.runs.setActiveStream(run.id, null)
-      await this.streamStore.publishChunk(run.id, { type: STREAM_END_MARKER })
       await this.streamStore.clearRun(run.id)
       if (!streamStarted) throw error
-      writeSse(response, 'data: [DONE]\n\n')
-      endSse(response)
+      await this.finishAgUiRun(response, run.id, conversation.id)
     } finally {
       stopHeartbeat()
       stopFirstTokenTimer()
@@ -2198,20 +2235,20 @@ export class AgentChatService {
   }
 
   /**
-   * 断线重连（**不报 runId 的版本**，`GET /agent/run/stream?offset=N`）：
+   * 断线重连（**不报 runId 的版本**，`GET /agent/run/stream?sinceRev=N`）：
    *
-   * 页面刷新 / 换设备后，前端并不知道 runId（它只在流里的 `data-run` 块里给过一次）。
+   * 页面刷新 / 换设备后，前端并不知道 runId（它只在流里的 `RUN_STARTED` 里给过一次）。
    * 与其让前端把它存进 localStorage（换设备就丢），不如按**登录用户**在库里找"当前进行中的那一轮"
    * —— 真相在 Postgres，浏览器只是个显示器。
    *
    * 传了 `conversationId` 就**只在该会话内**找（会话页必须传：否则切到已结束的会话时，
    * 会把另一个会话正在跑的流接进来）；不传则回退按用户找 —— 兼容还没有会话上下文的旧调用。
    *
-   * 返回 false 表示当前没有进行中的运行 → 控制器回 204（AI SDK 的续传约定，客户端静默收尾）。
+   * 返回 false 表示当前没有进行中的运行 → 控制器回 204（客户端静默收尾）。
    */
   async resumeCurrentRun(
     userId: string,
-    offset: number,
+    sinceRev: number | undefined,
     response: StreamResponseLike,
     conversationId?: string,
     clientId?: string,
@@ -2220,22 +2257,79 @@ export class AgentChatService {
       ? await this.runs.findActiveByConversation(userId, conversationId)
       : await this.runs.findActiveByUser(userId)
     if (!active) return false
-    return this.resumeRun(userId, active.id, offset, response, clientId)
+    return this.resumeRun(userId, active.id, sinceRev, response, clientId)
   }
 
   /**
-   * 断线重连（`GET /agent/run/:runId/stream?offset=N`）：
-   * 先从 Redis 输出记录**补发** `offset` 之后的片段（不重跑、不重复扣费），再接实时片段。
+   * 正在跑的那一轮的「已闭合内容快照」。
    *
-   * 实时片段的来源：补发帧与实时帧走同一条定向频道（`agent:stream:client:<clientId>`），
-   * main 的 SSE 桥收到后写给前端；补发完本请求即结束，**不在这里挂订阅**。
+   * 前端拿到它先渲染已完成的部分，再从 `sinceRev` 接增量 —— 不必整轮重放。
+   * 没有进行中的轮（或已收尾）返回 null：调用方据此不要点亮"恢复中"。
+   */
+  async snapshotRun(userId: string, runId: string): Promise<AgentRunSnapshotModel | null> {
+    const run = await this.runs.findEntity(runId)
+    if (!run) throw new RunNotFoundError(runId)
+    await this.conversations.requireOwned(userId, run.conversationId)
+    if (run.status !== RunStatus.Running && run.status !== RunStatus.Pending) return null
+    const progress = await this.streamStore.readRun(runId)
+    if (!progress || progress.status !== RunStatus.Running) return null
+    const [snapshotData, records] = await Promise.all([
+      this.loadSnapshotData(runId),
+      this.streamStore.readAllEvents(runId),
+    ])
+    return buildRunSnapshot(run.id, records, snapshotData).snapshot
+  }
+
+  /**
+   * 快照的持久化来源：`timelines` 里的**全部已闭合 part** + assistant 消息 id。
    *
-   * 返回 false 表示"没有进行中的流" → 控制器回 204（AI SDK 的续传约定）。
+   * 与前端 `history.ts` 同一套映射（`buildMessageParts`）；输出记录只负责算 `sinceRev`，
+   * 不再承担“快照”职责 —— 它有 20k 上限，长轮次会被裁掉头部。
+   */
+  private async loadSnapshotData(runId: string): Promise<{
+    messageId?: string
+    parts?: Array<Record<string, unknown>>
+  }> {
+    const items = await this.timelines.listByRun(runId)
+    const messageId =
+      items.find((item) => item.role === TimelineRole.Assistant && item.messageId)?.messageId ??
+      null
+    const parts = buildMessageParts(items)
+    return {
+      ...(messageId ? { messageId } : {}),
+      ...(parts.length > 0 ? { parts } : {}),
+    }
+  }
+
+  /** 按会话找"当前进行中的那一轮"再取快照（前端只知道会话 id 时用） */
+  async snapshotCurrentRun(
+    userId: string,
+    conversationId?: string,
+  ): Promise<AgentRunSnapshotModel | null> {
+    const active = conversationId
+      ? await this.runs.findActiveByConversation(userId, conversationId)
+      : await this.runs.findActiveByUser(userId)
+    if (!active) return null
+    return this.snapshotRun(userId, active.id)
+  }
+
+  /**
+   * 断线重连（`GET /agent/run/:runId/stream?sinceRev=N`）：
+   *
+   * **不再整轮重放**（手册 §6）。两条腿：
+   * - 快照：`buildRunSnapshot` 只给"已闭合 part"，合并成少量重放块；
+   * - 增量：从 `sinceRev`（含）开始，先按 chunk 口径整形（回退到块开头 / 丢孤立 end /
+   *   合并相邻增量），再编回 AG-UI 事件。
+   *
+   * 补发走**一次 pipeline**（1.5 万帧 ~3s → ~56ms），且与实时事件走同一条定向频道；
+   * 本请求只发、不订阅（订阅自己会自激，2026-11-15 OOM 的根因）。
+   *
+   * 返回 false 表示"没有进行中的流" → 控制器回 204。
    */
   async resumeRun(
     userId: string,
     runId: string,
-    offset: number,
+    sinceRev: number | undefined,
     response: StreamResponseLike,
     clientId?: string,
   ): Promise<boolean> {
@@ -2248,7 +2342,7 @@ export class AgentChatService {
     /**
      * **Postgres 终态优先于 Redis 进度**：进程崩溃时旧进程没来得及删进度键
      * （TTL 6h），启动清理把 run 标成 `interrupted` 后，Redis 里可能仍写着 `running`。
-     * 只看 Redis 会让客户端"接回"一条永远不会有新片段的死流（挂到超时）。
+     * 只看 Redis 会让客户端"接回"一条永远不会有新事件的死流（挂到超时）。
      */
     if (run.status !== RunStatus.Running && run.status !== RunStatus.Pending) {
       return false
@@ -2262,49 +2356,92 @@ export class AgentChatService {
     // 断线后的补发连接同样可能随时消失：socket 的 error 事件不能变成进程级未捕获异常
     response.on?.('error', () => undefined)
 
-    /**
-     * 补发起点不能直接信任 offset：它可能落在 reasoning / text / tool-input 的
-     * 中间。AI SDK 的 UI 状态机收到没有 `*-start` 的 delta 会整页报错
-     * `Received reasoning-delta for missing reasoning part`。
-     *
-     * 先读全量（上限 20k 条，正常一轮远小于此），再由 `resumeSafeChunks`
-     * 把起点回退到当前块的开头；找不到开头时补 start，孤立 end 丢弃。
-     */
-    const all = (await this.streamStore.readChunks(runId, 0)) as UiChunkLike[]
-    const backlog = resumeSafeChunks(all, offset) as UiChunkLike[]
-
-    /**
-     * **补发的第一块必须是 `start`**（消息身份所在的那块）。
-     *
-     * AI SDK 的 `useChat({ resume: true })` 在补发时先按自己的规则生成一个消息 id，
-     * 收到带 `messageId` 的 `start` 块才把它换成正主；而"第一块"就会触发一次写消息 ——
-     * 如果第一块不是 `start`，它会先在列表里**新 push 一条**空消息（正主随后写进去），
-     * 于是刷新后同一个回答在界面上出现两份（还会互相覆盖着长，看起来像"没重连"）。
-     *
-     * 我们为了让前端尽早拿到 runId，`data-run` 是写在 `start` 之前的（实时流这样没问题，
-     * 因为那时列表里还没有同 id 的消息）—— 所以**补发时把 `start` 挪到最前面**。
-     */
-    const startIndex = backlog.findIndex((chunk) => chunk?.type === 'start')
-    const ordered =
-      startIndex > 0
-        ? [backlog[startIndex], ...backlog.slice(0, startIndex), ...backlog.slice(startIndex + 1)]
-        : backlog
-
-    for (const chunk of ordered) {
-      if (chunk?.type === STREAM_END_MARKER) {
-        // 补发到结束帧：`publishChunk` 会带 `final`，main 写完 `[DONE]` 就收尾
-        await this.streamStore.publishChunk(runId, { type: STREAM_END_MARKER })
-        break
-      }
-      /**
-       * 补发帧与实时帧走**同一条定向频道**（`agent:stream:client:<clientId>`）。
-       *
-       * 注意别再退化成「订阅自己发的频道、在回调里再转发」：2026-11-15 的自激风暴就是这条回环
-       * （一次重连每秒上万条，把生产队列堆到 GB 级、进程 OOM）。这里只发、不订阅。
-       */
-      await this.streamStore.publishChunk(runId, chunk)
+    // 先合闸门再读记录：顺序反了，读快照到合闸门之间的实时事件会插到重放前面
+    await this.streamStore.beginReplay(runId)
+    try {
+      return await this.replayRun(run, sinceRev, response)
+    } finally {
+      await this.streamStore.endReplay(runId)
     }
-    // 实时片段继续由「跑 run 的那一侧」发给**新**绑定的 clientId：重连时 `bindClient` 已经把
+  }
+
+  /** 补发主体（闸门内执行；只发不订阅） */
+  private async replayRun(
+    run: { id: string; conversationId: string },
+    sinceRev: number | undefined,
+    response: StreamResponseLike,
+  ): Promise<boolean> {
+    const [snapshotData, records] = await Promise.all([
+      this.loadSnapshotData(run.id),
+      this.streamStore.readAllEvents(run.id),
+    ])
+    /**
+     * 未裁剪时优先用**事件记录**归约：它能保留 part 的原始 id，同一页面重连时前端按 id
+     * 原地更新；裁剪后才改用时间线快照（原始 id 已经丢了，只能按位置合成）。
+     */
+    const trimmed = (records[0]?.rev ?? 1) > 1
+    const { snapshot, replayChunks } = buildRunSnapshot(run.id, records, {
+      ...(snapshotData.messageId ? { messageId: snapshotData.messageId } : {}),
+      ...(trimmed && snapshotData.parts ? { parts: snapshotData.parts } : {}),
+    })
+
+    /**
+     * 客户端没报 `sinceRev`（刷新 / 换设备）→ 先给快照再给增量；
+     * 报了（例如浏览器自己接着上次的 rev）→ 只补之后的，避免重复。
+     */
+    const includeSnapshot = sinceRev === undefined || sinceRev <= 0
+    const from = includeSnapshot ? snapshot.sinceRev : Math.max(0, Math.floor(sinceRev))
+    const tail = records.filter((record) => record.rev >= from)
+    /**
+     * 正常情况按 `sinceRev` 切片；被裁剪时 `sinceRev` 已经不可信，只补**仍未闭合 part**
+     * 的增量（已闭合内容全部在时间线快照里，不能再发一遍）。
+     */
+    const tailChunks = trimmed
+      ? openPartChunks(records)
+      : decodeRecords(tail).map((record) => record.chunk)
+    const compacted = coalesceDeltas(resumeSafeChunks(tailChunks, 0))
+
+    const ctx = { threadId: run.conversationId, runId: run.id }
+    const events: unknown[] = []
+    /**
+     * **首帧是 `RUN_STARTED`**（手册 §8 坑 11）：客户端据此建运行、拿 runId。
+     *
+     * `start`（消息身份）紧随其后。前端恢复链路（`useRunRecovery`）已经用快照的
+     * `messageId` 建好种子消息，同 id 的 `start` 不会重置 parts —— 所以这里不必再
+     * 为旧版 `useChat({ resume: true })` 把 `start` 放到最前面。
+     */
+    events.push(
+      ...encodeAgUiChunk(
+        {
+          type: 'data-run',
+          data: { runId: run.id, conversationId: run.conversationId },
+        },
+        ctx,
+      ),
+    )
+    events.push(...encodeAgUiChunk({ type: 'start', messageId: snapshot.messageId }, ctx))
+    for (const chunk of includeSnapshot ? replayChunks : []) {
+      events.push(...encodeAgUiChunk(chunk as AgUiChunk, ctx))
+    }
+    for (const chunk of compacted) {
+      const encoded = encodeAgUiChunk(chunk as AgUiChunk, ctx)
+      events.push(...encoded)
+      // 结束帧后面的内容不再补：客户端看到 RUN_FINISHED 就收尾了
+      if (encoded.some((event) => isRunFinalEvent(event))) break
+    }
+    /**
+     * 解码后的 `finish` 会被编码成 RAW（它也可能只是"模型这一条消息说完了"），
+     * 所以运行边界要看**记录里的事件类型**，单独补一帧 `RUN_FINISHED`。
+     */
+    const endsHere =
+      (records.at(-1)?.event as { type?: string } | null | undefined)?.type === 'RUN_FINISHED'
+    const lastType = (events.at(-1) as { type?: string } | undefined)?.type
+    if (endsHere && lastType !== 'RUN_FINISHED') {
+      events.push(...encodeAgUiChunk({ type: '__run_end__' }, ctx))
+    }
+
+    await this.streamStore.publishEvents(run.id, events)
+    // 实时事件继续由「跑 run 的那一侧」发给**新**绑定的 clientId：重连时 `bindClient` 已经把
     // 地址改成新的（存在 Redis 的进度 Hash 里，跨副本也读得到），所以补发完就能收尾。
     endSse(response)
     return true
@@ -2381,6 +2518,60 @@ export class AgentChatService {
    * 区别只在"写给谁"：这里没有 `response`，前端靠 `conversation.run.started` 自动续流，
    * 断线重连走 `GET /agent/run/stream` 从输出记录补发。
    */
+  /**
+   * **唯一发射口**：chunk → AG-UI 事件 → 输出记录（rev）→ 定向广播 →（可选）响应体。
+   *
+   * 四条路径（建流 / 续跑 / 无头执行 / 收尾）都必须走这里。漏一条就会留下 chunk 帧，
+   * 于是"存的是事件、传的是 chunk"，两套映射迟早漂移（手册 §4.1）。
+   */
+  private async emitAgUi(input: {
+    runId: string
+    threadId: string
+    chunk: unknown
+    response?: StreamResponseLike
+    messageIdRef?: { value: string }
+  }): Promise<number> {
+    // 补发闸门：补发期间产事件的一侧**不放行**，避免实时事件插到重放中间
+    await this.streamStore.waitForReplayGate(input.runId)
+    const chunk = input.chunk as { type?: string; messageId?: string } | null
+    if (input.messageIdRef && chunk?.type === 'start' && typeof chunk.messageId === 'string') {
+      input.messageIdRef.value = chunk.messageId
+    }
+    const events = encodeAgUiChunk(chunk as AgUiChunk, {
+      threadId: input.threadId,
+      runId: input.runId,
+      ...(input.messageIdRef?.value ? { messageId: input.messageIdRef.value } : {}),
+    })
+    let rev = 0
+    for (const event of events) {
+      rev = await this.streamStore.appendEvent(input.runId, event)
+      await this.streamStore.publishEvent(input.runId, event)
+      if (input.response) writeSse(input.response, sseFrame(event))
+    }
+    return rev
+  }
+
+  /** 只把 chunk 编成 AG-UI 写进响应体（HTTP 体不承载消费，main 只 drain） */
+  private writeAgUiChunk(
+    response: StreamResponseLike,
+    chunk: unknown,
+    ctx: { threadId: string; runId: string; messageId?: string },
+  ): void {
+    for (const event of encodeAgUiChunk(chunk as AgUiChunk, ctx)) {
+      writeSse(response, sseFrame(event))
+    }
+  }
+
+  /** 收尾：写一帧 `RUN_FINISHED`（进记录 + 广播 + 响应体），再关响应 */
+  private async finishAgUiRun(
+    response: StreamResponseLike,
+    runId: string,
+    threadId: string,
+  ): Promise<void> {
+    await this.emitAgUi({ runId, threadId, chunk: { type: '__run_end__' }, response })
+    endSse(response)
+  }
+
   private async executeQueuedTurn(input: {
     run: { id: string; engineRunId: string }
     conversation: ConversationEntity
@@ -2437,14 +2628,17 @@ export class AgentChatService {
       firstTokenTimer.unref?.()
     }
 
-    /** 一个片段 → 输出记录 + 广播（断线重连按 offset 从这里补发） */
-    const emit = async (chunk: unknown): Promise<number> => {
-      const offset = await this.streamStore.appendChunk(run.id, chunk)
-      await this.streamStore.publishChunk(run.id, chunk)
-      return offset
-    }
+    /** 一个片段 → AG-UI 事件 → 输出记录 + 广播（断线重连按 rev 补发） */
+    const messageIdRef: { value: string } = { value: '' }
+    const emit = async (chunk: unknown): Promise<number> =>
+      this.emitAgUi({
+        runId: run.id,
+        threadId: conversation.id,
+        chunk,
+        messageIdRef,
+      })
 
-    let offset = 0
+    let rev = 0
     try {
       // 排队过一段时间的用户消息也要登记 / 物化附件（与 `chatStream` 同一入口；失败不阻塞）
       if (origin === 'user' && input.attachments && input.attachments.length > 0) {
@@ -2530,7 +2724,7 @@ export class AgentChatService {
         status: RunStatus.Running,
         stage: 'generating',
         streamId,
-        offset: 0,
+        rev: 0,
         step: 0,
       })
 
@@ -2556,7 +2750,7 @@ export class AgentChatService {
       }
 
       // 先把"这一轮的身份"写进输出记录：续流连接的第一块就能拿到 runId（含来源）
-      offset = await emit({
+      rev = await emit({
         type: 'data-run',
         data: {
           runId: run.id,
@@ -2566,7 +2760,7 @@ export class AgentChatService {
         },
       })
       if (input.card) {
-        offset = await emit({
+        rev = await emit({
           type: 'data-subagent-completed',
           id: String(input.card.subRunId ?? run.id),
           data: input.card,
@@ -2630,8 +2824,9 @@ export class AgentChatService {
         const recordedChunk = normalizeSuspendedChunk(chunk, run.id)
         const outgoing = toClientToolChunk(recordedChunk)
         try {
+          await this.streamStore.waitForReplayGate(run.id)
           await recorder.consume(recordedChunk)
-          offset = await emit(outgoing)
+          rev = await emit(outgoing)
           if (chunk.type === 'start-step') stepCount += 1
           const nowMs = Date.now()
           if (nowMs - lastProgressAt >= STREAM_PROGRESS_THROTTLE_MS) {
@@ -2641,7 +2836,7 @@ export class AgentChatService {
                 chunk.type === 'tool-input-available'
                   ? `tool:${chunk.toolName ?? ''}`
                   : 'generating',
-              offset,
+              rev,
               step: stepCount,
               heartbeatAt: new Date().toISOString(),
             })
@@ -2731,7 +2926,7 @@ export class AgentChatService {
       if (origin === 'user') await this.applyTitle(conversation, input.message, title)
 
       if (title?.title) {
-        offset = await emit({
+        rev = await emit({
           type: 'data-conversation-title',
           data: { runId: run.id, conversationId: conversation.id, title: title.title },
         })
@@ -2840,7 +3035,7 @@ export class AgentChatService {
       }
       this.activeRuns.delete(run.id)
       try {
-        await this.streamStore.publishChunk(run.id, { type: STREAM_END_MARKER })
+        await emit({ type: STREAM_END_MARKER })
       } catch {
         // 广播失败无碍：补发连接会被客户端的 idle 处理或下一次刷新收敛
       }
@@ -2893,8 +3088,12 @@ export class AgentChatService {
     response.writeHead(200, UI_STREAM_HEADERS)
     response.flushHeaders?.()
     response.on?.('error', () => undefined)
-    writeSse(response, sseFrame(chunk))
-    writeSse(response, 'data: [DONE]\n\n')
+    this.writeAgUiChunk(response, chunk, { threadId: conversationId, runId: item.id })
+    this.writeAgUiChunk(
+      response,
+      { type: '__run_end__' },
+      { threadId: conversationId, runId: item.id },
+    )
     endSse(response)
     /**
      * main 不转发 HTTP 响应体、只转发 pub/sub 帧：这条应答必须再走一次 `publishControl`，
@@ -3137,7 +3336,7 @@ export type { TimelineEntity }
  * - 每个片段**同时**落三处：时间线（真相）、Redis 输出记录（补发）、pub/sub（跨副本转发）；
  * - 心跳用 SSE 注释帧自己写（`@mastra/ai-sdk` 的 `withSseHeartbeat` 收的是 Web Response，这里是 Express）；
  * - 停止：本进程 abort + 跨副本经 Redis 频道广播；
- * - 重连：按 `offset` 从输出记录补发，再接实时；没有进行中的流则回 204。
+ * - 重连：快照 + `sinceRev` 增量（不再整轮重放），没有进行中的流则回 204。
  */
 export const STREAM_HEARTBEAT_MS = 15_000
 export const STREAM_PROGRESS_THROTTLE_MS = 1_000
@@ -3207,8 +3406,7 @@ const UI_STREAM_HEADERS: Record<string, string> = {
   'content-type': 'text/event-stream',
   'cache-control': 'no-cache',
   connection: 'keep-alive',
-  // 协议自描述（官方客户端不校验，但自建后端写上便于排查）与关掉网关缓冲
-  'x-vercel-ai-ui-message-stream': 'v1',
+  // AG-UI 不认 vercel 的协议头（写了只会在排查时误导，手册 §8 坑 12）；只关网关缓冲
   'x-accel-buffering': 'no',
 }
 

@@ -1280,6 +1280,9 @@ importers:
 
   packages/shared:
     dependencies:
+      '@ag-ui/core':
+        specifier: 1.0.4
+        version: 1.0.4(zod@4.6.7)
       dayjs:
         specifier: ^1.11.23
         version: 1.11.23
@@ -1588,6 +1591,14 @@ packages:
       '@grpc/grpc-js':
         optional: true
       express:
+        optional: true
+
+  '@ag-ui/core@1.0.4':
+    resolution: {integrity: sha512-Z/G3UXYRyZ/1LcOtCCf6RJiFPTjRqaNublW/kQ7wsfiP4Qw5oIVmvO6NkUQYoqCoMXuXggyD3MMH2Td5OVKECQ==}
+    peerDependencies:
+      zod: ^3.25.18 || ^4.0.0
+    peerDependenciesMeta:
+      zod:
         optional: true
 
   '@ai-sdk/deepseek@3.0.80':
@@ -9014,6 +9025,10 @@ snapshots:
       uuid: 11.1.1
     optionalDependencies:
       express: 5.3.0(supports-color@7.2.0)
+
+  '@ag-ui/core@1.0.4(zod@4.6.7)':
+    optionalDependencies:
+      zod: 4.6.7
 
   '@ai-sdk/deepseek@3.0.80(zod@4.6.7)':
     dependencies:

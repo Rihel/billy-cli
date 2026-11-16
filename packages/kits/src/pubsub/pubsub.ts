@@ -150,6 +150,44 @@ export class PubSub implements OnApplicationShutdown {
   }
 
   /**
+   * 批量发布（一次 `pipeline`，**少 N-1 次往返**）。
+   *
+   * 用途：断线补发。逐条 `await broadcast` 时，1.5 万帧要 ~3 秒 —— 这段时间里实时帧
+   * 会插到补发中间（手册 §0.2 的乱序根因）。批量后实测 ~56ms。
+   *
+   * @returns 成功入队的条数（失败只记日志，不打断调用方）
+   */
+  async broadcastMany(channel: string, payloads: readonly unknown[]): Promise<number> {
+    if (payloads.length === 0) return 0
+    assertChannel(channel)
+    const publishedAt = Date.now()
+    let bodies: string[]
+    try {
+      bodies = payloads.map((payload) =>
+        JSON.stringify({
+          instanceId: this.instanceId,
+          channel,
+          payload,
+          publishedAt,
+        } satisfies PubSubEnvelope),
+      )
+    } catch (error) {
+      throw new Error(`Pub/Sub 负载无法序列化为 JSON（channel: ${channel}）：${String(error)}`)
+    }
+
+    try {
+      await this.connect()
+      const pipeline = this.pub.pipeline()
+      for (const body of bodies) pipeline.publish(channel, body)
+      const results = await pipeline.exec()
+      return results?.filter(([error]) => error === null).length ?? 0
+    } catch (error) {
+      this.logger.warn('Pub/Sub 批量广播失败', { channel, count: bodies.length, error })
+      return 0
+    }
+  }
+
+  /**
    * 订阅一个**精确频道**（同步注册，连接在后台建立）。返回取消订阅函数。
    *
    * 注意：同一个频道不要同时用 `subscribe` 和 `subscribePattern` 订阅 ——

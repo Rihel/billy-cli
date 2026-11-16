@@ -2,7 +2,13 @@ import 'dotenv/config'
 import { createServer, type Server } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { Db, IdGeneration, RedisStore, setAuditUserProvider } from '@repo/kits'
-import { TimelineKind } from '@repo/shared'
+import {
+  TimelineKind,
+  agUiEventToChunks,
+  createAgUiDecodeState,
+  isAgUiEvent,
+  type AgUiChunk,
+} from '@repo/shared'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { ConversationEntity, RunEntity, TimelineEntity } from '@repo/db'
 import { DEFAULT_AGENT_KEY } from '../src/modules/ai/agents/index.js'
@@ -102,14 +108,28 @@ let httpBase: string
 const createdConversationIds: string[] = []
 
 /** SSE 原文里按 part 类型取出来（宽容解析：只认 JSON 得动的 `data:` 帧） */
+/** SSE 原文 → 指定 chunk（AG-UI 事件先解码回 chunk；状态要贯穿整份流） */
 const partsOfType = (
   text: string,
   type: string,
-): Array<{ id?: string; data: Record<string, unknown> }> =>
-  text
-    .split('\n\n')
-    .filter((frame) => frame.startsWith('data: ') && frame.includes(`"${type}"`))
-    .map((frame) => JSON.parse(frame.slice(6)) as { id?: string; data: Record<string, unknown> })
+): Array<{ id?: string; data: Record<string, unknown> }> => {
+  const state = createAgUiDecodeState()
+  return text
+    .split('\n')
+    .filter((line) => line.startsWith('data: {'))
+    .flatMap((line) => {
+      try {
+        const parsed = JSON.parse(line.slice(6)) as unknown
+        return isAgUiEvent(parsed) ? (agUiEventToChunks(parsed, state) as AgUiChunk[]) : []
+      } catch {
+        return []
+      }
+    })
+    .filter((chunk) => chunk.type === type) as Array<{
+    id?: string
+    data: Record<string, unknown>
+  }>
+}
 
 beforeAll(async () => {
   mock = await startMockModelServer()

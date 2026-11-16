@@ -39,10 +39,11 @@ description: 在 Billy 工程中使用服务端推送（SSE，命名统一为 st
 
 内部事件（缓存失效 / 状态变更通知）**不走 SSE**，用 `@repo/kits` 的 `EventBus`（同一套 `PubSub` 传输，`events:` 频道）。
 
-AI 会话的流式输出**不走本 skill 的 StreamHub/HttpStreamClient**：它用的是 AI SDK v6 的
-UI Message Stream 协议（前端 `useChat` 直接消费），服务端自己写 SSE 帧、自己用
-`AgentStreamStore`（Redis）做输出记录与广播，端点是 `POST /agent/chat/stream`（建流）+
-`GET /agent/run/:runId/stream?offset=N`（重连，无进行中流回 204）+ `POST /agent/run/stop`（停止）。
+AI 会话的流式输出**不走本 skill 的 StreamHub/HttpStreamClient**：它用的是 **AG-UI 1.0**
+（执行服务把内部 chunk 编成 AG-UI 事件，前端 `useChat` 经一层适配消费），服务端自己写 SSE 帧、
+自己用 `AgentStreamStore`（Redis）做输出记录与广播，端点是 `POST /agent/chat/stream`（建流）+
+`GET /agent/run/:runId/stream?sinceRev=N`（重连，无进行中流回 204）+ `GET /agent/run/snapshot`
+（快照）+ `POST /agent/run/stop`（停止）。收尾是 `RUN_FINISHED`，不发 `[DONE]`。
 要改那一条链路，看 skill `develop-ai-agent` 的 `references/runtime.md`（含 `data-*` 块约定与两处官方语义坑）。
 
 ## 参考文件（本 skill 的组成部分）

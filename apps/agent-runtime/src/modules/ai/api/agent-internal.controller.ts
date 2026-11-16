@@ -131,7 +131,7 @@ export class AgentInternalController {
 
   @Get('run/stream')
   async resumeCurrentRun(
-    @Query('offset') offset: string,
+    @Query('sinceRev') sinceRev: string,
     @Query('conversationId') conversationId: string,
     @Headers('x-main-client-id') clientId: string | undefined,
     @Headers('x-user-id') userId: string | undefined,
@@ -140,10 +140,9 @@ export class AgentInternalController {
     @Res() response: Response,
   ): Promise<void> {
     const owner = this.requireOwner(token, userId, adminId)
-    const from = Number.parseInt(offset ?? '0', 10)
     const resumed = await this.chat.resumeCurrentRun(
       owner.id,
-      Number.isFinite(from) && from > 0 ? from : 0,
+      parseSinceRev(sinceRev),
       response,
       conversationId?.trim() || undefined,
       clientId?.trim() || undefined,
@@ -154,7 +153,7 @@ export class AgentInternalController {
   @Get('run/:runId/stream')
   async resumeRun(
     @Param('runId') runId: string,
-    @Query('offset') offset: string,
+    @Query('sinceRev') sinceRev: string,
     @Headers('x-main-client-id') clientId: string | undefined,
     @Headers('x-user-id') userId: string | undefined,
     @Headers('x-admin-id') adminId: string | undefined,
@@ -162,15 +161,53 @@ export class AgentInternalController {
     @Res() response: Response,
   ): Promise<void> {
     const owner = this.requireOwner(token, userId, adminId)
-    const from = Number.parseInt(offset ?? '0', 10)
     const resumed = await this.chat.resumeRun(
       owner.id,
       runId,
-      Number.isFinite(from) && from > 0 ? from : 0,
+      parseSinceRev(sinceRev),
       response,
       clientId?.trim() || undefined,
     )
     if (!resumed) response.status(204).end()
+  }
+
+  /** 当前进行中那一轮的快照（刷新先渲染已完成内容，再接 sinceRev 增量） */
+  @Get('run/snapshot')
+  async snapshotCurrentRun(
+    @Query('conversationId') conversationId: string,
+    @Headers('x-user-id') userId: string | undefined,
+    @Headers('x-admin-id') adminId: string | undefined,
+    @Headers('x-internal-token') token: string | undefined,
+    @Res() response: Response,
+  ): Promise<void> {
+    const owner = this.requireOwner(token, userId, adminId)
+    const snapshot = await this.chat.snapshotCurrentRun(
+      owner.id,
+      conversationId?.trim() || undefined,
+    )
+    if (!snapshot) {
+      response.status(204).end()
+      return
+    }
+    response.json(snapshot)
+  }
+
+  /** 指定 run 的快照（知道 runId 时用；没有进行中的流回 204） */
+  @Get('run/:runId/snapshot')
+  async snapshotRun(
+    @Param('runId') runId: string,
+    @Headers('x-user-id') userId: string | undefined,
+    @Headers('x-admin-id') adminId: string | undefined,
+    @Headers('x-internal-token') token: string | undefined,
+    @Res() response: Response,
+  ): Promise<void> {
+    const owner = this.requireOwner(token, userId, adminId)
+    const snapshot = await this.chat.snapshotRun(owner.id, runId)
+    if (!snapshot) {
+      response.status(204).end()
+      return
+    }
+    response.json(snapshot)
   }
 
   /** 只校验内部令牌（目录类查询不需要调用方身份） */
@@ -189,4 +226,11 @@ export class AgentInternalController {
     if (!id) throw new UnauthorizedException('缺少调用方身份')
     return { id, isAdmin: !userId && Boolean(adminId) }
   }
+}
+
+/** `sinceRev` 查询参数：非法 / 缺省 → undefined（= 先给快照，再补增量） */
+const parseSinceRev = (value: string | undefined): number | undefined => {
+  if (value === undefined || value === '') return undefined
+  const parsed = Number.parseInt(value, 10)
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : undefined
 }
