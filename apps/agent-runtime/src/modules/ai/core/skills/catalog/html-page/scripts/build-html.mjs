@@ -235,6 +235,29 @@ const main = () => {
     addWarning('no-tailwind', '没有引 @tailwindcss/browser：页面样式不符合交付口径')
   }
 
+  // 版本写死：`@tailwindcss/browser@4` 这种浮动版本，CDN 发新版会悄悄换样式
+  const tailwind = /@tailwindcss\/browser@([^/"'\s]+)/.exec(merged)
+  if (tailwind && !/^\d+\.\d+\.\d+/.test(tailwind[1])) {
+    addWarning(
+      'tailwind-unpinned',
+      `Tailwind 版本没写死（@${tailwind[1]}）：锁到 4.3.5 这类具体版本，否则 CDN 发新版会悄悄换样式`,
+    )
+  }
+
+  // 三级兜底：只引一家 CDN 时，那家不可达就整页丢库 / 样式（只看 script / link，字体 URL 不算）
+  const cdnHosts = new Set()
+  for (const tag of merged.matchAll(
+    /<(?:script|link)\b[^>]*?(?:src|href)\s*=\s*["']https:\/\/([^/"']+)/gi,
+  )) {
+    if (CDN_HOSTS.includes(tag[1])) cdnHosts.add(tag[1])
+  }
+  if (cdnHosts.size === 1) {
+    addWarning(
+      'single-cdn',
+      `只引了 ${[...cdnHosts][0]} 一家 CDN：它不可达时页面会丢库 / 样式，按三级兜底补齐`,
+    )
+  }
+
   const bytes = Buffer.byteLength(merged, 'utf8')
   if (bytes > MAX_OUTPUT_BYTES) {
     addError(

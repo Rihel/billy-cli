@@ -127,6 +127,42 @@ describe('html-page 构建脚本', () => {
     expect((report?.errors ?? []).map((error) => error.code)).not.toContain('leftover-relative')
   })
 
+  it('Tailwind 浮动版本 + 只引一家 CDN 时给 warning，但不阻断构建', async () => {
+    const script = await buildScript()
+    const cwd = makeWorkspace({
+      'src/index.html': `<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8">
+<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+</head><body><section>hi</section></body></html>`,
+    })
+
+    const { status, report } = run(script, cwd)
+    expect(report?.ok).toBe(true)
+    expect(status).toBe(0)
+    const codes = (report?.warnings ?? []).map((warning) => warning.code)
+    // 浮动版本会让 CDN 发新版时悄悄换样式；只引一家断了就丢栅格 —— 两条都要在报告里说出来
+    expect(codes).toContain('tailwind-unpinned')
+    expect(codes).toContain('single-cdn')
+  })
+
+  it('版本写死 + 三级兜底时不报这两条 warning', async () => {
+    const script = await buildScript()
+    const cwd = makeWorkspace({
+      'src/index.html': `<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8">
+<script src="https://registry.npmmirror.com/@tailwindcss/browser/4.3.5/files/dist/index.global.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4.3.5/dist/index.global.js"></script>
+<script src="https://unpkg.com/@tailwindcss/browser@4.3.5/dist/index.global.js"></script>
+</head><body><section>hi</section></body></html>`,
+    })
+
+    const { report } = run(script, cwd)
+    expect(report?.ok).toBe(true)
+    const codes = (report?.warnings ?? []).map((warning) => warning.code)
+    expect(codes).not.toContain('tailwind-unpinned')
+    expect(codes).not.toContain('single-cdn')
+  })
+
   it('片段里写 <head>、include 缺失、相对图片引用都会拦下，且不写产物', async () => {
     const script = await buildScript()
     const cwd = makeWorkspace({

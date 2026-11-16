@@ -26,6 +26,7 @@ description: 只要产出 HTML 就用它 —— .html 页面文件（调研报�
 ## 样式：必须用 Tailwind，覆盖不到的可补 `<style>`
 
 - **每个页面都必须引 Tailwind CSS v4 浏览器版（`@tailwindcss/browser`），主体样式用工具类写**；
+- **Tailwind 也不例外：版本写死（`4.3.5`）+ 三级兜底**，别只写一条 `jsdelivr` —— 断一家就丢栅格；
 - **`<style>` 不是禁用**：动画 / 伪元素 / 打印 / 库覆盖 / `@theme` 用它补位；判据是「补位」不是「替代」；
 - **字体一律无衬线，不要衬线字体**：不写 `font-serif` / 宋体 / `Noto Serif` / `Georgia`，正文用无衬线系统栈。
 
@@ -51,7 +52,7 @@ dist/index.html       产物，file-submit 提交这个
 1. `write-file` 写 `src/index.html` 骨架（Tailwind、库、include 指令）；
 2. 每节一个 `write-file` 写进 `src/sections/`；
 3. `skill_read` 读本技能的 `scripts/build-html.mjs`，**原样**落到工作区 `scripts/build-html.mjs`
-   （工作区里已有就直接用，别自己重写）；
+   （工作区里已有就直接用，别自己重写；**不要 `cp` 技能目录** —— 那个路径随部署变，容器 / 远程 worker 里不存在）；
 4. `bash` 跑 `node scripts/build-html.mjs`，按 JSON 报告改 `errors`，再跑；
 5. `ok:true` 后 `file-submit` 提交 `dist/index.html`（`fileKey` 以 `.html` 结尾）。
 

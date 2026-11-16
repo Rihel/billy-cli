@@ -102,6 +102,10 @@ describe('内置技能：html-page', () => {
     expect(body).toContain('默认就拆')
     expect(body).not.toContain('60KB')
     expect(body).not.toContain('小页面')
+    // 取脚本只能靠 skill_read：技能目录路径随部署变，cp 在容器 / 远程 worker 里会失败
+    expect(body).toContain('不要 `cp` 技能目录')
+    // Tailwind 也必须版本写死 + 三级兜底（真实会话里模型写成 @4 单 CDN，断一家就丢栅格）
+    expect(body).toContain('三级兜底')
 
     const ref = (await new SkillLoader(logger).resolve(['html-page']))[0]
     expect(ref).toBeDefined()

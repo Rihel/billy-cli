@@ -37,7 +37,7 @@
 ```
 
 - **它没有全局变量**（不像 `echarts` / `Chart`）：三级兜底只能挂 `onerror`，别写 `window.tailwind` 判断；
-- 版本写死 `4.3.5`；三家的包内路径都是 `dist/index.global.js`；
+- 版本写死 `4.3.5`；三家的包内路径都是 `dist/index.global.js`；**别只写一条 CDN**（断一家就丢栅格）；
 - 主题覆盖用 `<style type="text/tailwindcss">@theme { --font-sans: … }</style>`；
 - **Tailwind 必引必用**（整页、`html` 围栏、页面片段都算）：主体布局与排版落在工具类上，
   没引它按「样式没写完」处理；
