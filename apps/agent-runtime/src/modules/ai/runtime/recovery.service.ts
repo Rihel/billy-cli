@@ -228,7 +228,9 @@ export class AgentRecoveryService implements OnApplicationBootstrap, OnApplicati
    */
   async sweepStaleRuns(): Promise<number> {
     const heartbeatBefore = new Date(Date.now() - this.config.heartbeatTimeoutMs)
-    const startedBefore = new Date(Date.now() - this.config.runTimeoutMs)
+    // runTimeoutMs = 0 表示不设总时长上限：传 epoch 让"总时长"判据永不命中，只保留心跳判据
+    const startedBefore =
+      this.config.runTimeoutMs > 0 ? new Date(Date.now() - this.config.runTimeoutMs) : new Date(0)
     const candidates = await this.runs.findStale(heartbeatBefore, startedBefore)
     let swept = 0
 

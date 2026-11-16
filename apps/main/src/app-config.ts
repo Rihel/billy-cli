@@ -177,16 +177,17 @@ export const serverAppConfigSchema = z.object({
     durableEnabled: z.boolean().default(true),
     /** 心跳超时（ms）：超过就认为这一轮已经没人管了（崩溃或卡死） */
     heartbeatTimeoutMs: z.coerce.number().int().positive().default(60_000),
-    /** 单轮总时长上限（ms）：超过即判超时（防"进程活着但模型 hang 住"永远挂着） */
-    runTimeoutMs: z.coerce
-      .number()
-      .int()
-      .positive()
-      .default(10 * 60_000),
+    /**
+     * 单轮总时长上限（ms）：**0 = 不限制**（默认）。
+     *
+     * 长任务（多子 agent / 长工具往返）不该被墙钟一刀切；"进程还活着吗"交给心跳，
+     * "卡住不吐字"交给 `firstTokenTimeoutMs`。需要硬上限的部署再显式配环境变量。
+     */
+    runTimeoutMs: z.coerce.number().int().nonnegative().default(0),
     /**
      * 首 token 超时（ms）：从发起模型调用到**第一段输出**之间没有任何动静就判失败。
      *
-     * 与 `runTimeoutMs`（总时长）是两件事：总时长防"跑不完"，这条防"卡住不吐字"。
+     * 与 `runTimeoutMs`（总时长，默认不限）是两件事：这条防"卡住不吐字"。
      * 设为 0 表示关闭（完全交给总时长兜底）。
      */
     firstTokenTimeoutMs: z.coerce.number().int().nonnegative().default(120_000),
@@ -201,7 +202,7 @@ export const serverAppConfigSchema = z.object({
     subAgentMaxDepth: z.coerce.number().int().positive().default(1),
     /** 单个子 agent 的步数上限（0 = 沿用 AGENT_MAX_STEPS） */
     subAgentMaxSteps: z.coerce.number().int().nonnegative().default(0),
-    /** 单个子 agent 的墙钟上限（ms；0 = 沿用 runTimeoutMs） */
+    /** 单个子 agent 的墙钟上限（ms；0 = 沿用 runTimeoutMs；都为 0 = 不限） */
     subAgentTimeoutMs: z.coerce.number().int().nonnegative().default(0),
     // ── 命令执行（工具组 `BashTool`，设计文档 §3.15）──
     /**

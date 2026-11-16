@@ -252,6 +252,38 @@ describe('看门狗（条件 UPDATE 抢执行权）', () => {
     expect(rows[0].status).toBe(RunStatus.Failed)
   })
 
+  it('runTimeoutMs=0：不再按总时长判超时，但心跳过期仍然收掉', async () => {
+    const noLimit = new AgentRecoveryService(
+      null,
+      { ...config, runTimeoutMs: 0 },
+      runs,
+      timelines,
+      {} as never,
+      silentLogger,
+    )
+    // ① 跑了一小时但心跳很新 → 不处置
+    const longRun = await newRun(RunStatus.Running)
+    await db.dataSource.query(
+      'UPDATE runs SET started_at = $2, heartbeat_at = now() WHERE id = $1',
+      [longRun.run.id, new Date(Date.now() - 60 * 60_000)],
+    )
+    await noLimit.sweepStaleRuns()
+    const longRows = await db.dataSource.query<{ status: string }[]>(
+      'SELECT status FROM runs WHERE id = $1',
+      [longRun.run.id],
+    )
+    expect(longRows[0].status).toBe(RunStatus.Running)
+
+    // ② 心跳过期（进程可能没了）→ 仍然按 stale_heartbeat 收掉
+    const staleRun = await newRun(RunStatus.Running, 5_000)
+    await noLimit.sweepStaleRuns()
+    const staleRows = await db.dataSource.query<{ status: string }[]>(
+      'SELECT status FROM runs WHERE id = $1',
+      [staleRun.run.id],
+    )
+    expect(staleRows[0].status).toBe(RunStatus.Failed)
+  })
+
   /**
    * **卡在 pending 的运行也要能被看门狗收掉**（2026-10-18 修）。
    *

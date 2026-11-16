@@ -102,13 +102,6 @@ interface ChunkLike {
   errorText?: string
 }
 
-/**
- * 配置缺失时的兜底值。
- *
- * 别把 `undefined` 交给 `setTimeout` —— 那等于**立即超时**（子 agent 刚起就被判超时），
- * 是本模块最隐蔽的失败形态（配置写成 `as never` 的测试栈最容易踩）。
- */
-const DEFAULT_RUN_TIMEOUT_MS = 10 * 60_000
 const DEFAULT_MAX_PER_RUN = 4
 const DEFAULT_MAX_DEPTH = 1
 /**
@@ -575,14 +568,15 @@ export class AgentRunner {
           : {}),
       },
     )
-    // 子 agent 的墙钟上限（0 = 沿用单轮上限）；心跳照跳，看门狗不会误杀长跑的子 agent
-    const timeoutMs =
-      quotas.timeoutMs ||
-      this.config.subAgentTimeoutMs ||
-      this.config.runTimeoutMs ||
-      DEFAULT_RUN_TIMEOUT_MS
+    /**
+     * 子 agent 的墙钟上限：工具配额 → 子 agent 配置 → 单轮上限，**都为 0 = 不限制**。
+     *
+     * 别把 0 交给 `setTimeout`（那等于立即超时）；心跳照跳，看门狗仍能识别"进程没了"。
+     */
+    const timeoutMs = quotas.timeoutMs || this.config.subAgentTimeoutMs || this.config.runTimeoutMs
     const timeoutController = new AbortController()
-    const timeoutTimer = setTimeout(() => timeoutController.abort(), timeoutMs)
+    const timeoutTimer =
+      timeoutMs > 0 ? setTimeout(() => timeoutController.abort(), timeoutMs) : undefined
     const signals = [timeoutController.signal]
     if (envelope.abortSignal) signals.push(envelope.abortSignal)
     const abortSignal = AbortSignal.any(signals)
@@ -722,7 +716,7 @@ export class AgentRunner {
       )
     } finally {
       clearInterval(heartbeat)
-      clearTimeout(timeoutTimer)
+      if (timeoutTimer) clearTimeout(timeoutTimer)
     }
   }
 

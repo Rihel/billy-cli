@@ -49,6 +49,7 @@ export interface AgentConfig {
   /** 心跳超时（ms）：超过即认为这一轮已无人管 */
   heartbeatTimeoutMs: number
   /** 单轮总时长上限（ms） */
+  /** 单轮总时长上限（ms；0 = 不限制，只靠心跳判活） */
   runTimeoutMs: number
   /** 首 token 超时（ms；0 = 关闭，只由总时长兜底） */
   firstTokenTimeoutMs: number
