@@ -1,26 +1,42 @@
 /**
- * 构建期资产拷贝：把 `src` 下的非 TS 资产（目前是提示词模板 `*.eta`）按原目录结构拷到 `dist`。
+ * 构建期资产拷贝：把 `src` 下的非 TS 资产按原目录结构拷到 `dist`。
  *
- * 为什么需要：server 用 `tsc` 构建，**tsc 只编译 TS、不搬其它文件**。提示词模板是运行时
+ * 两类资产：
+ * 1. 提示词模板 `*.eta` 与技能正文 `*.md` —— 按扩展名收；
+ * 2. **技能目录整树**（`modules/ai/core/skills/catalog/**`）—— 按 Agent Skills 规范，
+ *    技能自带 `scripts/` / `references/` / `assets/`，类型不限（如 `html-page` 的
+ *    `scripts/build-html.mjs` 是 JS）。只按扩展名收会把脚本漏在镜像外，
+ *    表现是"模型读技能里的脚本 → 文件不存在"。
+ *
+ * 为什么需要：server 用 `tsc` 构建，**tsc 只编译 TS、不搬其它文件**。这些资产是运行时
  * 用 `import.meta.dirname` 相对定位读取的（dev 走 src、构建后走 dist），少了这一步，
- * 生产镜像里 `dist/modules/ai/core/prompts/templates/` 就是空的 → 启动即报「模板渲染失败」。
+ * 生产镜像里模板目录 / 技能目录就是空的 → 启动即报「模板渲染失败」或技能缺文件。
  *
  * 用 `.ts` + Node 原生类型剥离（Node 26 起无需 tsx）：构建期与 dev 都直接 `node` 运行。
  */
 import { cpSync, existsSync, mkdirSync, readdirSync } from 'node:fs'
-import { dirname, join, relative } from 'node:path'
+import { dirname, join, relative, sep } from 'node:path'
 
-/** 需要随构建拷贝的资产扩展名（提示词模板 `.eta` 与技能文件 `.md`；新增其它资产时加到这里） */
+/** 需要随构建拷贝的资产扩展名（提示词模板 `.eta` 与技能正文 `.md`；技能目录不靠这个） */
 const ASSET_EXTENSIONS: string[] = ['.eta', '.md']
+/** 技能目录（相对 `src`）：整树随包，脚本 / 参考文件 / 素材都在里面 */
+const SKILL_CATALOG = join('modules', 'ai', 'core', 'skills', 'catalog')
 const SRC = 'src'
 const DIST = 'dist'
 
-/** 递归收集 `dir` 下匹配扩展名的文件 */
+/** 是否该随构建拷贝：技能目录整树，其余看扩展名 */
+const shouldCopy = (full: string): boolean => {
+  const path = relative(SRC, full)
+  if (path === SKILL_CATALOG || path.startsWith(SKILL_CATALOG + sep)) return true
+  return ASSET_EXTENSIONS.some((ext) => full.endsWith(ext))
+}
+
+/** 递归收集 `dir` 下需要拷贝的文件 */
 const collect = (dir: string): string[] =>
   readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
     const full = join(dir, entry.name)
     if (entry.isDirectory()) return collect(full)
-    return ASSET_EXTENSIONS.some((ext) => entry.name.endsWith(ext)) ? [full] : []
+    return shouldCopy(full) ? [full] : []
   })
 
 if (!existsSync(SRC)) {

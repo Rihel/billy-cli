@@ -31,6 +31,16 @@
   `connect-src 'none'`、表单、框架仍全禁。写法在**内置技能** `catalog/html-page`，提示词只留
   「写任何 HTML 之前先加载 `html-page`」（无条件段，`.html` 文件与 `html` / `gsap` 围栏都算）+ 白名单三行
   （细节搬进技能是为了不让它每轮付 token）。
+- **整页默认拆片段 + 构建**（2026-11-17）：`catalog/html-page` 带 `scripts/build-html.mjs`（include 展开 /
+  css-js 内联 / 产物校验，零依赖、无网络）与 `references/build-pipeline.md`。流程 = `src/index.html` 骨架 +
+  `src/sections/*.html` → `node scripts/build-html.mjs` → `dist/index.html` → `file-submit`；没有 bash / node 时
+  退化为分片 `append-file`。`SKILL.md` 只留流程与硬口径（正文 < 150 行，测试钉住），细节在
+  `references/{sandbox,styles,libraries,checklist,build-pipeline}.md`。**技能目录整树随包**：`copy-assets`
+  现在对 `skills/catalog/**` 全收（以前只收 `.md` / `.eta`，`.mjs` 会漏在镜像外，表现为模型读不到技能脚本）。
+- **存量页面实测**（2026-11-17，`~/.billy/workspaces` + `~/.billy-cli` 共 25 个）：全部零本地资源引用、
+  零 `fetch` / XHR / WebSocket / 表单 / iframe / module import，22–87KB，可直接被 `build-html.mjs` 合并（25/25）；
+  10 个未引 Tailwind（`no-tailwind` warning）。审计发现校验曾误扫 `<script>` 体内（`url(%23n)` 被当相对引用，4 个页面必挂），
+  已改为只扫标记与样式。
 - **Tailwind 在沙箱里可用**（2026-11-13 实测）：`@tailwindcss/browser@4.3.5` 由三家 CDN 的
   `dist/index.global.js` 取同一个文件，加载后扫描 DOM 注入 `<style>`；在沙箱同款 CSP
   （`style-src 'unsafe-inline'`）下 `bg-red-500` / `p-4` / `text-center` 均生效。它**无全局变量**，
@@ -65,7 +75,8 @@
 - `docs/design/ai-file-manager.md`（§3 / §6 / §8 / §15）
 - `apps/agent-runtime/src/modules/ai/files/**`、`apps/agent-runtime/src/modules/ai/core/tools/workspace.ts`
 - 核对：`pnpm --filter @app/agent-runtime test test/ai-file-service.test.ts test/ai-tools-battery.test.ts`；
-  CDN 白名单：`grep -rn "SANDBOX_CDN_HOSTS" packages/shared/src packages/ui/src apps/agent-runtime/test`
+  CDN 白名单：`grep -rn "SANDBOX_CDN_HOSTS" packages/shared/src packages/ui/src apps/agent-runtime/test`；
+  技能资产随包：`ls apps/agent-runtime/{src,dist}/modules/ai/core/skills/catalog/html-page/{scripts,references}`
 - 分页 / 噪音目录现状：
   `grep -n "hasMore\|NOISE_DIRS" packages/ai-data/src/file/file.service.ts`、
   `PGPASSWORD=pg1234 psql -h localhost -U root -d billy-cli -At -c "select tool_key, config->>'workspaceMaxDepth', config->>'workspaceMaxFiles' from ai_tools where tool_key='workspace-files';"`
@@ -74,4 +85,5 @@
 
 - 表结构 / key 公式 / workspace 布局 / 工具 key 改动；多副本 workspace 策略改动；
   桶策略（公开读 / 私有）与预签名链路改动时，`files-panel` / 文件页 / `useStorageUrl` 要跟着看；
-  CDN 白名单（`SANDBOX_CDN_HOSTS`）改动时提示词与两个包的测试要跟着改。
+  CDN 白名单（`SANDBOX_CDN_HOSTS`）改动时提示词与两个包的测试要跟着改；
+  技能目录里新增资产类型（`.mjs` / 脚本 / 素材）时 `copy-assets` 的 `skills/catalog/**` 规则要保持覆盖。

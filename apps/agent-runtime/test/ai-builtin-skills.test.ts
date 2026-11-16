@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { SANDBOX_CDN_HOSTS } from '@repo/shared'
 import { describe, expect, it } from 'vitest'
@@ -28,6 +28,14 @@ const readBuiltinSkill = async (name: string): Promise<string> => {
   return readFileSync(join(ref.path, 'SKILL.md'), 'utf8')
 }
 
+/** 读技能目录下的参考文件（路径相对技能目录，如 `references/libraries.md`） */
+const readBuiltinReference = async (name: string, path: string): Promise<string> => {
+  const refs = await new SkillLoader(logger).resolve([name])
+  const ref = refs[0]
+  if (!ref) throw new Error(`内置技能不存在：${name}`)
+  return readFileSync(join(ref.path, path), 'utf8')
+}
+
 describe('内置技能：html-page', () => {
   it('随包目录能被发现，description 写清"什么时候用"', async () => {
     const skills = await new SkillLoader(logger).list()
@@ -40,16 +48,12 @@ describe('内置技能：html-page', () => {
     expect(skill?.description).toContain('三级 CDN')
   })
 
-  it('三级 CDN 与沙箱白名单一致，且写法要点与交付流程齐全', async () => {
+  it('三级 CDN 与沙箱白名单一致，正文给边界与样式口径', async () => {
     const body = await readBuiltinSkill('html-page')
 
     for (const host of SANDBOX_CDN_HOSTS) {
       expect(body).toContain(host)
     }
-    // 三级兜底的实际写法（模型最容易写错的两处：不写兜底、`</script>` 不转义）
-    expect(body).toContain('document.write')
-    expect(body).toContain('<\\/script>')
-    expect(body).toContain('版本写死')
     // 沙箱边界：白名单之外加载不出来；数据必须内联
     expect(body).toContain('一律加载不出来')
     expect(body).toContain('数据必须内联')
@@ -64,18 +68,54 @@ describe('内置技能：html-page', () => {
     // 交付流程：先 write-file 落 workspace，再 file-submit 到会话文件
     expect(body).toContain('write-file')
     expect(body).toContain('file-submit')
+
+    // 三级兜底的**实际写法**放在参考文件里（正文只留规矩，不让每次加载都付模板的 token）
+    const libraries = await readBuiltinReference('html-page', 'references/libraries.md')
+    expect(libraries).toContain('document.write')
+    expect(libraries).toContain('<\\/script>')
+    expect(libraries).toContain('版本写死')
   })
 
   it('2D 绘制 / 动画 / 公式入口写死版本，并说清页面里没有内置 gsap', async () => {
-    const body = await readBuiltinSkill('html-page')
+    const libraries = await readBuiltinReference('html-page', 'references/libraries.md')
 
     // 三类库的入口：包名 + 版本写死，模型照抄即可；升版本时这三处要一起改
     for (const entry of ['@svgdotjs/svg.js@3.2.8', 'konva@10.9.1', 'gsap@3.15.1', 'katex@0.19.1']) {
-      expect(body).toContain(entry)
+      expect(libraries).toContain(entry)
     }
     // 内置 gsap 只给 `gsap` 围栏，`.html` 页面预览不注入脚本 —— 漏了这句模型会直接 gsap.to 报 not defined
-    expect(body).toContain('没有内置 gsap')
+    expect(libraries).toContain('没有内置 gsap')
     // KaTeX 只引 JS 不引 CSS 会退化成裸文本，所以 CSS 入口必须写出来
-    expect(body).toContain('katex.min.css')
+    expect(libraries).toContain('katex.min.css')
+  })
+
+  it('整页默认拆片段：流程、脚本与参考文件都在技能目录里', async () => {
+    const body = await readBuiltinSkill('html-page')
+    // 流程必须写到"跑脚本 → 交产物"这一步，否则模型只会拆不会合
+    expect(body).toContain('scripts/build-html.mjs')
+    expect(body).toContain('node scripts/build-html.mjs')
+    expect(body).toContain('dist/index.html')
+    expect(body).toContain('references/build-pipeline.md')
+    // 没有 bash / node 时的退路：分片追加同一个文件
+    expect(body).toContain('append-file')
+    // 口径是**默认就拆**，不按体积判断（拆的是结构，不是大小）
+    expect(body).toContain('默认就拆')
+    expect(body).not.toContain('60KB')
+    expect(body).not.toContain('小页面')
+
+    const ref = (await new SkillLoader(logger).resolve(['html-page']))[0]
+    expect(ref).toBeDefined()
+    // 构建脚本与参考文件是**资产**：`copy-assets` 要整树带进镜像，缺一个模型就读不到
+    const script = join(ref!.path, 'scripts', 'build-html.mjs')
+    expect(existsSync(script)).toBe(true)
+    const source = readFileSync(script, 'utf8')
+    expect(source).toContain('include:')
+    expect(source).toContain('MAX_OUTPUT_BYTES')
+    // 正文保持精简：细节都在 references/，文末索引按需读（技能每次加载都要付正文的 token）
+    for (const file of ['build-pipeline', 'libraries', 'styles', 'sandbox', 'checklist']) {
+      expect(body).toContain(`references/${file}.md`)
+      expect(existsSync(join(ref!.path, 'references', `${file}.md`))).toBe(true)
+    }
+    expect(body.split('\n').length).toBeLessThan(150)
   })
 })
