@@ -19,6 +19,7 @@
     "dev:server": "pnpm --filter @app/main run dev",
     "dev:tools": "pnpm --parallel --filter @app/tool-gateway --filter @app/tool-worker run dev",
     "dev:stack": "pnpm --parallel --filter @app/main --filter @app/agent-runtime --filter @app/model-gateway --filter @app/tool-gateway --filter @app/tool-worker run dev",
+    "start:stack": "pnpm --parallel --filter @app/main --filter @app/agent-runtime --filter @app/model-gateway --filter @app/tool-gateway --filter @app/tool-worker run start",
     "dev:tool-gateway": "pnpm --filter @app/tool-gateway run dev",
     "dev:tool-worker": "pnpm --filter @app/tool-worker run dev",
     "kill:dev": "node --import tsx/esm scripts/kill-dev.ts",
