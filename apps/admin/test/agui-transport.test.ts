@@ -142,6 +142,25 @@ describe('agUiSseToChunkStream', () => {
     ])
   })
 
+  it('取消输出流会连底层 source 一起 cancel（组件卸载不泄漏连接）', async () => {
+    let sourceCancelled = false
+    const source = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(
+          new TextEncoder().encode('data: {"type":"RUN_STARTED","threadId":"t","runId":"r"}\n\n'),
+        )
+      },
+      cancel() {
+        sourceCancelled = true
+      },
+    })
+    const output = agUiSseToChunkStream(source)
+    const reader = output.getReader()
+    await reader.read()
+    await reader.cancel()
+    expect(sourceCancelled).toBe(true)
+  })
+
   it('RUN_ERROR 变成 error chunk（useChat 的 onError 能拿到原因）', async () => {
     const chunks = await collect(
       agUiSseToChunkStream(sse([{ type: 'RUN_ERROR', message: '模型挂了' }])),

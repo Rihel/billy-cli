@@ -19,13 +19,19 @@ const payloadOf = (frame: string): string =>
  *   会 `JSON.parse` 抛错并把整条流 error 掉（手册 §8 坑 1）；
  * - 流结束前没有 `\n\n` 的尾帧也要冲出来（服务端直接 `end()` 时会出现）。
  */
+export interface ParseAgUiSseOptions {
+  /** 取消信号：组件卸载 / 关闭弹窗时中止读取，并把底层 reader cancel 掉 */
+  signal?: AbortSignal
+}
+
 export async function* parseAgUiSse(
   input: ReadableStream<Uint8Array> | AsyncIterable<Uint8Array>,
+  options: ParseAgUiSseOptions = {},
 ): AsyncGenerator<AgUiEvent> {
   const decoder = new TextDecoder()
   let buffer = ''
 
-  for await (const piece of iterate(input)) {
+  for await (const piece of iterate(input, options.signal)) {
     buffer += decoder.decode(piece, { stream: true })
     buffer = buffer.replaceAll('\r\n', '\n')
     let boundary = buffer.indexOf('\n\n')
@@ -59,21 +65,35 @@ function parseFrame(frame: string): AgUiEvent | null {
 
 async function* iterate(
   input: ReadableStream<Uint8Array> | AsyncIterable<Uint8Array>,
+  signal?: AbortSignal,
 ): AsyncGenerator<Uint8Array> {
-  if (Symbol.asyncIterator in input) {
-    yield* input as AsyncIterable<Uint8Array>
-    return
-  }
-  const reader = (input as ReadableStream<Uint8Array>).getReader()
-  try {
-    for (;;) {
-      const { done, value } = await reader.read()
-      if (done) return
-      if (value) yield value
+  if (signal?.aborted) return
+  /**
+   * 优先走 `getReader()`：它在取消时要 `reader.cancel()` 才能把底层 fetch body 放掉。
+   * 只写 `yield* input` 的话，消费者取消后源流会一直挂着（组件卸载后连接泄漏）。
+   */
+  if (typeof (input as ReadableStream<Uint8Array>).getReader === 'function') {
+    const reader = (input as ReadableStream<Uint8Array>).getReader()
+    const abort = (): void => {
+      void reader.cancel().catch(() => undefined)
     }
-  } finally {
-    reader.releaseLock()
+    signal?.addEventListener('abort', abort, { once: true })
+    try {
+      for (;;) {
+        const { done, value } = await reader.read()
+        if (done) return
+        if (value) yield value
+      }
+    } finally {
+      signal?.removeEventListener('abort', abort)
+      try {
+        reader.releaseLock()
+      } catch {
+        // reader 已因 cancel / 流结束释放
+      }
+    }
   }
+  yield* input as AsyncIterable<Uint8Array>
 }
 
 /** 这个对象是不是 AG-UI 事件（旧记录是 chunk，两种形态会在 TTL 内共存） */

@@ -66,6 +66,16 @@ const CHUNKS_TTL_SECONDS = 60 * 60
 const CHUNKS_MAX = 20_000
 /** 单 run 输出记录字节上限（防止长回复把 Redis 内存打满；按 UTF-8 字节计） */
 const CHUNKS_MAX_BYTES = 32 * 1024 * 1024
+/**
+ * 补发闸门最长等待：**TTL + 余量**。
+ *
+ * 正常情况下等不到这个数（键到期会被 Redis 删掉）；这是"TTL 没生效"时的最后一道保险，
+ * 不是常规出口 —— 常规出口只有"闸门键消失"。
+ */
+const REPLAY_GATE_MAX_WAIT_MS = (REPLAY_GATE_TTL_SECONDS + 5) * 1000
+
+/** 闸门轮询退避：10ms → 100ms 封顶（闸门活跃时别把生成侧压成每秒上百次 EXISTS） */
+const replayPollDelay = (attempt: number): number => Math.min(10 * 2 ** Math.min(attempt, 4), 100)
 
 /**
  * 运行期状态存储（Redis）：**进度 + 输出记录 + 跨副本转发**。
@@ -264,10 +274,17 @@ export class AgentStreamStore {
    * 为什么不在 `publishEvent` 里等：事件此时已经 `appendEvent` 进了记录，
    * 补发可能把它读进去 —— 等完再发就会重复。等在 append 之前，记录是稳定的。
    *
-   * 最多等 15s（闸门 TTL 30s 是兜底）；超时直接放行，宁可极小概率乱序也不永久卡住生成。
+   * **TTL 是唯一出口**：闸门键带 `REPLAY_GATE_TTL_SECONDS` 过期，所以"补发方进程被杀"这种
+   * 情况会由 Redis 自己把键清掉，等待方最多等一个 TTL。这里**不设"超时就放行"** ——
+   * 那正是乱序的根因：生成侧放行时补发还没读完记录，同一段内容两边都发。
+   *
+   * 兜底保护：如果 TTL 因为 Redis 原因没生效（键一直在），最多等 `REPLAY_GATE_MAX_WAIT_MS`
+   * 就放行并记一条 error 级日志 —— 宁可留一条可排查的告警，也不无限期卡住生成。
+   * 轮询用退避（10 → 100ms）：闸门活跃期间每条事件只多做几次 `EXISTS`，不再固定 100 次/秒。
    */
   async waitForReplayGate(runId: string): Promise<void> {
-    for (let attempt = 0; attempt < 1_500; attempt += 1) {
+    const startedAt = Date.now()
+    for (let attempt = 0; ; attempt += 1) {
       let exists = 0
       try {
         exists = await this.redis.exists(replayKey(runId))
@@ -276,7 +293,16 @@ export class AgentStreamStore {
         return
       }
       if (exists === 0) return
-      await new Promise((resolve) => setTimeout(resolve, 10))
+      const waited = Date.now() - startedAt
+      if (waited >= REPLAY_GATE_MAX_WAIT_MS) {
+        this.warn('ai.stream.replay_gate_stuck', {
+          runId,
+          waitedMs: waited,
+          reason: '闸门键超过 TTL 仍未释放（Redis 过期未生效？），放行以免卡死生成',
+        })
+        return
+      }
+      await new Promise((resolve) => setTimeout(resolve, replayPollDelay(attempt)))
     }
   }
 
@@ -319,9 +345,13 @@ export class AgentStreamStore {
    * 为什么需要它：main 只把 pub/sub 帧转成前端 SSE，runtime 的 HTTP 响应体是被 drain 掉的。
    * 排队应答发生在**还没建 run** 的时候，没有 runId 可查绑定，只能直接把 `clientId` 递进来。
    */
-  async publishControl(input: { clientId: string; runId: string }, chunk: unknown): Promise<void> {
+  async publishControl(
+    input: { clientId: string; runId: string; conversationId?: string },
+    chunk: unknown,
+  ): Promise<void> {
+    const threadId = input.conversationId ?? ''
     const events = encodeAgUiChunk(chunk as AgUiChunk, {
-      threadId: '',
+      threadId,
       runId: input.runId,
     })
     const channel = agentStreamChannel(input.clientId)
@@ -333,7 +363,7 @@ export class AgentStreamStore {
     await this.pubsub.broadcastMany(channel, [
       this.frameOf(input.runId, {
         type: 'RUN_FINISHED',
-        threadId: '',
+        threadId,
         runId: input.runId,
         timestamp: Date.now(),
       }),

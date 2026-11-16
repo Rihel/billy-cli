@@ -59,12 +59,13 @@ export const markTransientChunks = (
  */
 export const agUiSseToChunkStream = (
   stream: ReadableStream<Uint8Array>,
-): ReadableStream<UIMessageChunk> =>
-  new ReadableStream<UIMessageChunk>({
+): ReadableStream<UIMessageChunk> => {
+  const abort = new AbortController()
+  return new ReadableStream<UIMessageChunk>({
     async start(controller) {
       const state = createAgUiDecodeState()
       try {
-        for await (const event of parseAgUiSse(stream)) {
+        for await (const event of parseAgUiSse(stream, { signal: abort.signal })) {
           for (const chunk of agUiEventToChunks(event, state)) {
             controller.enqueue(chunk as AgUiChunk as UIMessageChunk)
           }
@@ -74,7 +75,12 @@ export const agUiSseToChunkStream = (
         controller.error(error)
       }
     },
+    cancel() {
+      // 消费者取消（组件卸载 / 切会话）：连底层 fetch body 一起放掉，别只丢上层
+      abort.abort()
+    },
   })
+}
 
 /**
  * 会话页用的传输层：AG-UI SSE → chunk，再叠一层"增量块不落 part"。

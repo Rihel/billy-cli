@@ -29,7 +29,8 @@ describe('StreamRecorder：思考行带真实时长', () => {
 
     const reasoning = rows.find((row) => row.kind === 'reasoning')
     expect(reasoning).toBeDefined()
-    expect(reasoning?.payload).toEqual({ text: '我在想…' })
+    // 思考行同时记下 part id：断线重连时快照与增量靠它对齐（2026-11-17 起）
+    expect(reasoning?.payload).toEqual({ text: '我在想…', id: 'r-1' })
     expect(typeof reasoning?.durationMs).toBe('number')
     expect(reasoning?.durationMs as number).toBeGreaterThanOrEqual(0)
   })

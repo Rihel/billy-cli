@@ -207,7 +207,8 @@ export class AgentControlController {
       return
     }
     if (upstream.status === 204) {
-      response.status(204).end()
+      // 统一套 AppResponse 信封：SDK 的 `HttpClient.get` 才能复用鉴权 / 401 刷新 / 错误归一
+      response.json({ code: 0, data: null })
       return
     }
     const body = await upstream.text().catch(() => '')
@@ -215,7 +216,6 @@ export class AgentControlController {
       response.status(upstream.status).json({ message: 'agent-runtime 调用失败' })
       return
     }
-    response.setHeader('content-type', 'application/json; charset=utf-8')
-    response.send(body)
+    response.json({ code: 0, data: JSON.parse(body) as unknown })
   }
 }

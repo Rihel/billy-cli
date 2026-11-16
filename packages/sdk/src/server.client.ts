@@ -589,22 +589,22 @@ export class ServerClient extends HttpClient<BearerTokenCredentials> {
     runSnapshotUrl: (runId: string): string =>
       `${this.agentBaseUrl}/agent/run/${encodeURIComponent(runId)}/snapshot`,
 
-    snapshot: async (data: {
+    snapshot: (data: {
       conversationId?: string
       runId?: string
-    }): Promise<AgentRunSnapshotModel | null> => {
-      const url = data.runId
-        ? `${this.agentBaseUrl}/agent/run/${encodeURIComponent(data.runId)}/snapshot`
-        : `${this.agentBaseUrl}/agent/run/snapshot${
-            data.conversationId ? `?conversationId=${encodeURIComponent(data.conversationId)}` : ''
-          }`
-      const response = await fetch(url, {
-        headers: await this.agent.authHeaders(),
-      })
-      if (response.status === 204) return null
-      if (!response.ok) throw new Error('获取运行快照失败')
-      return (await response.json()) as AgentRunSnapshotModel
-    },
+    }): Promise<AgentRunSnapshotModel | null> =>
+      /**
+       * 走 `HttpClient.get` 而不是裸 fetch：401 刷新 / 登出 / 错误信封与其它接口同一套。
+       * 服务端没有进行中的轮时返回 `{ code: 0, data: null }`（不再是 204）。
+       */
+      data.runId
+        ? this.get<AgentRunSnapshotModel | null>(
+            `/agent/run/${encodeURIComponent(data.runId)}/snapshot`,
+          )
+        : this.get<AgentRunSnapshotModel | null>(
+            '/agent/run/snapshot',
+            data.conversationId ? { conversationId: data.conversationId } : undefined,
+          ),
 
     /**
      * 当前凭证的鉴权头（给 AI SDK transport 用）。

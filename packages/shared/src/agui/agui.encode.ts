@@ -151,7 +151,7 @@ export const encodeAgUiChunk = (chunk: AgUiChunk, ctx: AgUiEncodeContext): AgUiE
 
     // ── 业务扩展：带 id 的用 `{ id?, data }` 信封 ─────────────
     case 'data-plan':
-      return [custom(AGUI_CUSTOM.plan, chunk.data, ts)]
+      return [custom(AGUI_CUSTOM.plan, { data: chunk.data }, ts)]
 
     case 'data-sub-agent':
     case 'data-sub-agent-delta':
@@ -179,20 +179,20 @@ export const encodeAgUiChunk = (chunk: AgUiChunk, ctx: AgUiEncodeContext): AgUiE
     }
 
     case 'data-run-suspended':
-      return [custom(AGUI_CUSTOM.runSuspended, chunk.data, ts)]
+      return [custom(AGUI_CUSTOM.runSuspended, { data: chunk.data }, ts)]
 
     case 'data-queue':
-      return [custom(AGUI_CUSTOM.queue, chunk.data, ts)]
+      return [custom(AGUI_CUSTOM.queue, { data: chunk.data }, ts)]
 
     case 'data-step-usage':
     case 'data-run-usage':
       return [custom(AGUI_CUSTOM.usage, { kind: type, data: chunk.data }, ts)]
 
     case 'data-conversation-title':
-      return [custom(AGUI_CUSTOM.title, chunk.data, ts)]
+      return [custom(AGUI_CUSTOM.title, { data: chunk.data }, ts)]
 
     case 'data-status':
-      return [custom(AGUI_CUSTOM.status, chunk.data, ts)]
+      return [custom(AGUI_CUSTOM.status, { data: chunk.data }, ts)]
 
     case 'data-summary':
       return [custom(AGUI_CUSTOM.summary, { ...(id ? { id } : {}), data: chunk.data }, ts)]

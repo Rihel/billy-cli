@@ -404,27 +404,31 @@ export class StreamRecorder {
   }
 
   private async flushText(id: string): Promise<void> {
-    const text = (this.texts.get(id) ?? '').trim()
+    // 判断"有没有内容"用 trim 后的结果，**存的是原文**：末尾空行 / 缩进是渲染的一部分
+    // （Markdown 的硬换行就靠行尾两个空格），裁掉会让"恢复出来的那段"和实时看到的不一样。
+    // `id` 一起入库：断线重连时快照与增量靠它对齐，否则同一段文字会被补发两遍。
+    const raw = this.texts.get(id) ?? ''
     this.texts.delete(id)
-    if (!text) return
+    if (!raw.trim()) return
     await this.append({
       role: TimelineRole.Assistant,
       kind: TimelineKind.Text,
-      payload: { text },
+      payload: { text: raw, id },
     })
   }
 
   private async flushReasoning(id: string): Promise<void> {
-    const text = (this.reasonings.get(id) ?? '').trim()
+    // 同上：存原文 + 带上 part id（重连对齐用）
+    const raw = this.reasonings.get(id) ?? ''
     const startedAt = this.reasoningStartedAt.get(id)
     this.reasonings.delete(id)
     this.reasoningStartedAt.delete(id)
-    if (!text) return
+    if (!raw.trim()) return
     const finishedAt = Date.now()
     await this.append({
       role: TimelineRole.Assistant,
       kind: TimelineKind.Reasoning,
-      payload: { text },
+      payload: { text: raw, id },
       // 真实时长（前端据此显示"思考了 N 秒"；拿不到就不写，界面显示"思考完成"而不是假数字）
       ...(startedAt !== undefined
         ? {

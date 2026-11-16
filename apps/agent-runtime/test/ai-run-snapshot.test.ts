@@ -85,6 +85,39 @@ describe('buildRunSnapshot', () => {
     ])
   })
 
+  it('种子与增量按 part id 去重：时间线里已闭合、记录里仍打开的那段不再进种子', () => {
+    // t0 已闭合；t1 还在流式（记录里没有 text-end）
+    const records = recordsOf([
+      { type: 'text-start', id: 't0' },
+      { type: 'text-delta', id: 't0', delta: '第一段' },
+      { type: 'text-end', id: 't0' },
+      { type: 'text-start', id: 't1' },
+      { type: 'text-delta', id: 't1', delta: '第二段' },
+    ])
+    // 时间线（DB）已经把 t1 落库了：两个数据源在这段上重叠
+    const { snapshot } = buildRunSnapshot('run-1', records, {
+      parts: [
+        { type: 'text', text: '第一段', id: 't0' },
+        { type: 'text', text: '第二段（DB 的完整版）', id: 't1' },
+      ],
+    })
+
+    expect(snapshot.sinceRev).toBe(4)
+    // t1 会在 rev 4 之后由增量补发 → 种子必须去掉它，否则同一段渲染两遍
+    expect(snapshot.parts).toEqual([{ type: 'text', text: '第一段', id: 't0' }])
+  })
+
+  it('没有 id 的老行无法判定重叠：种子保留（兼容旧数据）', () => {
+    const records = recordsOf([
+      { type: 'text-start', id: 't1' },
+      { type: 'text-delta', id: 't1', delta: '在流式' },
+    ])
+    const { snapshot } = buildRunSnapshot('run-1', records, {
+      parts: [{ type: 'text', text: '老时间线行（没有 id）' }],
+    })
+    expect(snapshot.parts).toEqual([{ type: 'text', text: '老时间线行（没有 id）' }])
+  })
+
   it('工具卡：ARGS 累积成完整 input，结果挂回同一张卡', () => {
     const records = recordsOf([
       { type: 'tool-input-start', toolCallId: 'c1', toolName: 'bash' },

@@ -80,11 +80,12 @@ describe('encodeAgUiChunk', () => {
     })
   })
 
-  it('业务扩展走 CUSTOM，带 id 的用 { id, data } 信封', () => {
+  it('业务扩展走 CUSTOM，统一包 { data } 信封（裸载荷也是）', () => {
+    // 裸载荷型也必须包一层：否则解码端无法区分"信封"和"业务载荷自己带 data 字段"
     expect(encodeAgUiChunk({ type: 'data-plan', data: { tasks: [] } }, ctx)[0]).toMatchObject({
       type: AgUiEventType.CUSTOM,
       name: AGUI_CUSTOM.plan,
-      value: { tasks: [] },
+      value: { data: { tasks: [] } },
     })
     expect(
       encodeAgUiChunk({ type: 'data-sub-agent', id: 'sub-1', data: { status: 'running' } }, ctx)[0],
@@ -116,6 +117,38 @@ describe('encodeAgUiChunk', () => {
       type: AgUiEventType.RAW,
       event: { type: 'brand-new-chunk', x: 1 },
     })
+  })
+})
+
+describe('CUSTOM 解码的信封口径', () => {
+  const custom = (name: string, value: unknown) =>
+    agUiEventToChunks({ type: AgUiEventType.CUSTOM, name, value } as never, createAgUiDecodeState())
+
+  it('新格式：裸载荷型也走 { data } 信封，解回业务载荷', () => {
+    expect(custom(AGUI_CUSTOM.plan, { data: { tasks: [] } })).toEqual([
+      { type: 'data-plan', data: { tasks: [] } },
+    ])
+    expect(custom(AGUI_CUSTOM.status, { data: { status: 'running' } })).toEqual([
+      { type: 'data-status', data: { status: 'running' } },
+    ])
+  })
+
+  it('旧记录：裸载荷自己带 data 字段时整份保留（不再误剥一层）', () => {
+    // 旧编码不包信封；业务载荷里本来就有 data 字段（JSON 类结果）
+    const payload = { name: 'diff', data: { lines: 2 } }
+    expect(custom(AGUI_CUSTOM.plan, payload)).toEqual([{ type: 'data-plan', data: payload }])
+  })
+
+  it('旧记录：没有 data 字段的裸载荷照常解出', () => {
+    expect(custom(AGUI_CUSTOM.title, { title: '新标题' })).toEqual([
+      { type: 'data-conversation-title', data: { title: '新标题' } },
+    ])
+  })
+
+  it('信封型（带 id 的业务卡）仍从信封里取 data', () => {
+    expect(custom(AGUI_CUSTOM.toolEvent, { id: 'call-1', data: { kind: 'x' } })).toEqual([
+      { type: 'data-tool-event', id: 'call-1', data: { kind: 'x' } },
+    ])
   })
 })
 

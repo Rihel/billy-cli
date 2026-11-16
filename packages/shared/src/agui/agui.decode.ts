@@ -128,16 +128,34 @@ export const agUiEventToChunks = (
 }
 
 /** CUSTOM → chunk（与 `encodeAgUiChunk` 的业务分支一一对应） */
+/**
+ * 裸载荷型 CUSTOM（plan / queue / title / status / runSuspended / usage）的取数规则。
+ *
+ * 编码侧（2026-11-17 起）统一包成 `{ data }`；**旧记录**是裸数据。两者的区分只能靠形状：
+ * 只有「唯一的键就是 data」才算信封。
+ *
+ * 不能沿用旧的「有 `data` 键就剥一层」：业务载荷自己带 `data` 字段时（JSON 类结果、
+ * 将来的 status payload）会被静默截断成那个字段 —— 这类丢字段最难查。
+ */
+const barePayload = (value: unknown): unknown => {
+  const envelope = asRecord(value)
+  if (envelope && Object.keys(envelope).length === 1 && 'data' in envelope) return envelope.data
+  return value
+}
+
 const customToChunks = (name: string, value: unknown): AgUiChunk[] => {
   const envelope = asRecord(value)
   const id = typeof envelope?.id === 'string' && envelope.id ? envelope.id : undefined
-  const data = envelope && 'data' in envelope ? envelope.data : value
+  /** 信封型（`{ id?, data }`）：data 一定在信封里，直接取 */
+  const data = envelope?.data
+  /** 裸载荷型：新记录是 `{ data }` 信封，旧记录是裸数据 */
+  const bare = barePayload(value)
 
   switch (name) {
     case AGUI_CUSTOM.message:
       return [{ type: 'start', messageId: String(envelope?.messageId ?? '') }]
     case AGUI_CUSTOM.plan:
-      return [{ type: 'data-plan', data }]
+      return [{ type: 'data-plan', data: bare }]
     case AGUI_CUSTOM.subAgent: {
       const kind = typeof envelope?.kind === 'string' ? envelope.kind : 'data-sub-agent'
       return [{ type: kind, ...(id ? { id } : {}), data }]
@@ -147,17 +165,17 @@ const customToChunks = (name: string, value: unknown): AgUiChunk[] => {
     case AGUI_CUSTOM.suspended:
       return [{ type: 'data-tool-call-suspended', ...(id ? { id } : {}), data }]
     case AGUI_CUSTOM.runSuspended:
-      return [{ type: 'data-run-suspended', data }]
+      return [{ type: 'data-run-suspended', data: bare }]
     case AGUI_CUSTOM.queue:
-      return [{ type: 'data-queue', data }]
+      return [{ type: 'data-queue', data: bare }]
     case AGUI_CUSTOM.usage: {
       const kind = typeof envelope?.kind === 'string' ? envelope.kind : 'data-run-usage'
       return [{ type: kind, data }]
     }
     case AGUI_CUSTOM.title:
-      return [{ type: 'data-conversation-title', data }]
+      return [{ type: 'data-conversation-title', data: bare }]
     case AGUI_CUSTOM.status:
-      return [{ type: 'data-status', data }]
+      return [{ type: 'data-status', data: bare }]
     case AGUI_CUSTOM.summary:
       return [{ type: 'data-summary', ...(id ? { id } : {}), data }]
     default:

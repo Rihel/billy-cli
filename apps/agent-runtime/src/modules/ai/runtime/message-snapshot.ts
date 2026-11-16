@@ -34,6 +34,17 @@ const textOf = (item: TimelineEntity): string => {
   return typeof text === 'string' ? text : ''
 }
 
+/**
+ * 时间线行里记下的 **part id**（`stream-recorder.flushText/flushReasoning` 写入）。
+ *
+ * 老行没有这个字段（返回 undefined）：映射出来的 part 也就不带 id，
+ * 重连时无法与增量对齐 —— 这是兼容旧数据的有意退让，不是漏写。
+ */
+const idOf = (item: TimelineEntity): string | undefined => {
+  const id = item.payload?.id
+  return typeof id === 'string' && id.length > 0 ? id : undefined
+}
+
 const durationOf = (item: TimelineEntity | undefined): number | undefined => {
   const audited = asRecord(item?.payload?.outcome)?.durationMs
   if (typeof audited === 'number' && Number.isFinite(audited)) return audited
@@ -135,17 +146,21 @@ export const buildMessageParts = (
     switch (item.kind) {
       case TEXT: {
         const text = textOf(item)
-        if (text) parts.push({ type: 'text', text })
+        // `id` 是新行才有的（老行没存 part id）：带上它才能和增量对齐、避免同一段补两遍
+        const partId = idOf(item)
+        if (text) parts.push({ type: 'text', text, ...(partId ? { id: partId } : {}) })
         break
       }
       case REASONING: {
         const text = textOf(item)
         if (!text) break
         const durationMs = durationOf(item)
+        const partId = idOf(item)
         parts.push({
           type: 'reasoning',
           text,
           state: 'done',
+          ...(partId ? { id: partId } : {}),
           ...(durationMs !== undefined ? { durationMs } : {}),
         })
         break

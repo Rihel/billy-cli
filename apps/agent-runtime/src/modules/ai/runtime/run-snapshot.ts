@@ -149,7 +149,9 @@ export const buildRunSnapshot = (
         const id = String(chunk.id ?? '')
         const part = open.get(`text:${id}`)
         if (!part || part.entry.kind !== 'text') break
-        part.entry.text = part.text.trim()
+        // 不 trim：快照会直接当种子渲染，裁掉行尾空格 / 缩进会让"恢复出来的那段"
+        // 与实时看到的不一致（Markdown 硬换行就靠行尾两个空格）
+        part.entry.text = part.text
         part.entry.closeRev = rev
         close(`text:${id}`)
         break
@@ -181,7 +183,7 @@ export const buildRunSnapshot = (
         const id = String(chunk.id ?? '')
         const part = open.get(`reasoning:${id}`)
         if (!part || part.entry.kind !== 'reasoning') break
-        part.entry.text = part.text.trim()
+        part.entry.text = part.text
         part.entry.closeRev = rev
         close(`reasoning:${id}`)
         break
@@ -268,6 +270,20 @@ export const buildRunSnapshot = (
   const openStartRevs = [...open.values()].map((part) => part.entry.startRev)
   const sinceRev = openStartRevs.length > 0 ? Math.min(...openStartRevs) : lastRev + 1
 
+  /**
+   * 重放尾部（`rev >= sinceRev`）涉及哪些 part id。
+   *
+   * 这些 part 的内容**已经由增量补发**，不能再出现在种子快照里 —— 否则前端渲染两遍
+   * （线上表现：同一段文字 / 同一张工具卡重复）。种子的时间线快照与增量是两套数据源，
+   * 只靠"关闭在一起"的时序保证不了，必须按 id 显式去重。
+   */
+  const tailIds = new Set<string>()
+  for (const { rev, chunk } of decoded) {
+    if (rev < sinceRev) continue
+    const id = partIdOf(chunk)
+    if (id) tailIds.add(id)
+  }
+
   const closed = entries
     .filter((entry) => entryRev(entry) < sinceRev)
     .sort((a, b) => entryRev(a) - entryRev(b))
@@ -276,17 +292,36 @@ export const buildRunSnapshot = (
    * `options.parts`（时间线快照）优先：它包含**全部已闭合内容**，不受输出记录裁剪影响。
    * 没有传时才退回事件记录归约（测试 / 极早期空时间线）。
    */
-  const parts = options.parts ? [...options.parts] : closed.map(partOf)
+  const seedParts = options.parts
+    ? options.parts.filter((part) => {
+        const id = seedPartId(part)
+        // 老行没有 id：无法判断是否重叠，只能保留（兼容旧数据）
+        return !id || !tailIds.has(id)
+      })
+    : closed.map(partOf)
   return {
     snapshot: {
       runId,
       messageId: options.messageId || messageId || `run-${runId}-assistant`,
       rev: Math.max(0, sinceRev - 1),
       sinceRev,
-      parts: [...parts],
+      parts: [...seedParts],
     },
-    replayChunks: options.parts ? snapshotPartsToChunks(options.parts) : closed.flatMap(chunksOf),
+    replayChunks: options.parts ? snapshotPartsToChunks(seedParts) : closed.flatMap(chunksOf),
   }
+}
+
+/** chunk 归属的 part id（文本 / 推理用 `id`，工具用 `toolCallId`，业务块用 `id`） */
+const partIdOf = (chunk: DecodedChunk['chunk']): string => {
+  const record = chunk as Record<string, unknown>
+  const raw = record.toolCallId ?? record.id
+  return typeof raw === 'string' ? raw : ''
+}
+
+/** 种子 part 的 id（文本 / 推理是 `id`，工具是 `toolCallId`） */
+const seedPartId = (part: Record<string, unknown>): string => {
+  const raw = part.id ?? part.toolCallId
+  return typeof raw === 'string' ? raw : ''
 }
 
 type OpenEntry = Extract<SnapshotEntry, { kind: 'text' | 'reasoning' | 'tool' }>

@@ -36,6 +36,20 @@ const item = (partial: Record<string, unknown>) => {
   } as never
 }
 
+describe('buildMessageParts 的 part id', () => {
+  it('文本 / 推理行带 id 时映射到 part.id，老行不带', () => {
+    const parts = buildMessageParts([
+      item({ kind: TimelineKind.Text, payload: { text: '正文', id: 'text-9' } }),
+      item({ kind: TimelineKind.Reasoning, payload: { text: '想了想', id: 'reason-9' } }),
+      item({ kind: TimelineKind.Text, payload: { text: '老行（没 id）' } }),
+    ])
+
+    expect(parts[0]).toEqual({ type: 'text', text: '正文', id: 'text-9' })
+    expect(parts[1]).toMatchObject({ type: 'reasoning', text: '想了想', id: 'reason-9' })
+    expect(parts[2]).toEqual({ type: 'text', text: '老行（没 id）' })
+  })
+})
+
 describe('buildMessageParts', () => {
   it('文本 / 推理 / 工具结果补在同一张卡上', () => {
     const parts = buildMessageParts([

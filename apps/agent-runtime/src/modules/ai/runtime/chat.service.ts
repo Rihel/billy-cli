@@ -2273,11 +2273,21 @@ export class AgentChatService {
     if (run.status !== RunStatus.Running && run.status !== RunStatus.Pending) return null
     const progress = await this.streamStore.readRun(runId)
     if (!progress || progress.status !== RunStatus.Running) return null
-    const [snapshotData, records] = await Promise.all([
-      this.loadSnapshotData(runId),
-      this.streamStore.readAllEvents(runId),
-    ])
-    return buildRunSnapshot(run.id, records, snapshotData).snapshot
+    /**
+     * 快照要同时读时间线（parts）和输出记录（sinceRev），两个数据源之间有毫秒级窗口：
+     * 期间若有一个 part 闭合，可能出现"时间线已含、记录也含"的重叠。合闸门让产事件的一侧
+     * 先停一下，两次读拿到同一时刻的视图（`buildRunSnapshot` 里还有按 part id 的兜底去重）。
+     */
+    await this.streamStore.beginReplay(runId)
+    try {
+      const [snapshotData, records] = await Promise.all([
+        this.loadSnapshotData(runId),
+        this.streamStore.readAllEvents(runId),
+      ])
+      return buildRunSnapshot(run.id, records, snapshotData).snapshot
+    } finally {
+      await this.streamStore.endReplay(runId)
+    }
   }
 
   /**
@@ -3101,7 +3111,7 @@ export class AgentChatService {
      */
     if (clientId) {
       void this.streamStore
-        .publishControl({ clientId, runId: item.id }, chunk)
+        .publishControl({ clientId, runId: item.id, conversationId }, chunk)
         .catch((error: unknown) => {
           this.logger.warn('ai.run_queue.ack_publish_failed', {
             conversationId,

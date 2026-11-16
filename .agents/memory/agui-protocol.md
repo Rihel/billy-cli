@@ -22,6 +22,18 @@
   （`openPartChunks`），否则已闭合内容会被发第二遍。重放 = `RUN_STARTED` → `start`（种子消息同 id，不重置）→ 快照 → 增量。
 - **补发闸门**：`beginReplay` 先合（Redis 计数 + TTL 30s），产事件的一侧在**落时间线与记录之前**
   `waitForReplayGate`，补发完 `endReplay` 放开；顺序反了实时帧会插到重放中间。
+  **TTL 是唯一出口**（2026-11-17 修正）：不再"等 15s 超时放行"——那会在补发方进程被杀时
+  提前放行、造成乱序；现在只在闸门键消失（Redis 过期）后放行，兜底上限 `TTL + 5s` 并记
+  `ai.stream.replay_gate_stuck`。轮询退避 10→100ms，避免把生成侧压成上百次 EXISTS/秒。
+- **CUSTOM 信封口径（2026-11-17 修正）**：**所有**业务扩展都包 `{ data }`（`plan` / `queue` /
+  `title` / `status` / `runSuspended` 以前是裸载荷）；解码靠「只有唯一键 `data` 才算信封」判断，
+  旧记录回退成裸载荷。不要再写 `'data' in value`——业务载荷自己带 `data` 字段时会被剥掉。
+- **快照与增量按 part id 去重（2026-11-17 修正）**：时间线文本 / 推理行现在存 `payload.id`
+  （`stream-recorder.flushText/flushReasoning`），`buildRunSnapshot` 会把**重放尾部涉及 id**
+  的种子 part 剔掉 —— 时间线（先落库）与输出记录（后写）之间有窗口，不去重同一段会渲染两遍。
+  老行没有 id，无法判定重叠，只能保留（兼容旧数据）。
+- **快照正文不 trim**：`run-snapshot` 与 recorder 都存原文（只 trim 判断"是否空"），
+  否则恢复出来的段落与实时渲染不一致（Markdown 硬换行靠行尾两个空格）。
 - **前端恢复**：`useRunRecovery`（`chat/run-recovery.ts`）先 `snapshot()`（null 不亮灯），
   快照 parts 作 `readUIMessageStream` 种子，从 `sinceRev` 接增量；`onRun` 接回 runId、
   `active` 并入 `busy`；结束时同 id 原位替换并回 messages。不要再退回 `useChat({ resume: true })`。
@@ -32,4 +44,4 @@
 - 依据：`packages/shared/src/agui/`、`runtime/run-snapshot.ts`、`main/src/agent/agent-sse.bridge.ts`；
   `docs/dev-logs/2026-11-17.md`。
 - 失效信号：改回 chunk 帧 / 在网关出口编码 / 用 List 下标当水位 / 重新发 `[DONE]` /
-  快照带上未闭合 part。
+  快照带上未闭合 part / 闸门重新引入超时放行 / CUSTOM 改回裸载荷。

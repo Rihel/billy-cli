@@ -60,7 +60,10 @@ export interface RunRecoveryState {
 export const useRunRecovery = (options: UseRunRecoveryOptions): RunRecoveryState => {
   const [active, setActive] = useState(false)
   const optionsRef = useRef(options)
-  optionsRef.current = options
+  // 渲染期不写 ref：放到 effect 里（晚一帧，`start` 在 effect 之后触发，拿到的已是最新值）
+  useEffect(() => {
+    optionsRef.current = options
+  })
 
   /** 当前恢复的序号：换会话 / 关闭时 +1，旧协程据此安静退出 */
   const sequenceRef = useRef(0)

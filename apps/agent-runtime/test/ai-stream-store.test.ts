@@ -132,7 +132,7 @@ describe('AgentStreamStore 定向转发', () => {
     const store = new AgentStreamStore(makeRedis() as never, silentLogger, pubsub as never)
 
     await store.publishControl(
-      { clientId: 'client1', runId: 'queue1' },
+      { clientId: 'client1', runId: 'queue1', conversationId: 'conv-1' },
       { type: 'data-queue', data: {} },
     )
 
@@ -147,6 +147,7 @@ describe('AgentStreamStore 定向转发', () => {
     ]
     expect(closing[0]?.final).toBe(true)
     expect((closing[0]?.event as { type?: string } | undefined)?.type).toBe('RUN_FINISHED')
+    expect((closing[0]?.event as { threadId?: string } | undefined)?.threadId).toBe('conv-1')
   })
 
   it('停止信号经 pub/sub 广播，订阅只订停止频道', async () => {
@@ -200,6 +201,44 @@ describe('AgentStreamStore 补发闸门', () => {
     await store.endReplay('run1')
     await waiting
     expect(released).toBe(true)
+  })
+})
+
+describe('AgentStreamStore 补发闸门（TTL 是唯一出口）', () => {
+  /**
+   * 旧实现等 15s 就"超时放行"，那是乱序根因；现在闸门只在键消失后放行，
+   * 键的消失由 Redis TTL 保证。这条用假定时器把"15s 已过"跑出来，确认仍然不放行。
+   */
+  it('闸门未释放时不会因为等待时间到而放行', async () => {
+    let count = 1
+    const redis = {
+      incr: async () => count,
+      incrBy: async () => count,
+      expire: async () => true,
+      exists: async () => (count > 0 ? 1 : 0),
+      del: async () => 1,
+      hget: async () => null,
+    }
+    const store = new AgentStreamStore(redis as never, silentLogger, makePubSub() as never)
+
+    vi.useFakeTimers()
+    try {
+      let released = false
+      const waiting = store.waitForReplayGate('run1').then(() => {
+        released = true
+      })
+
+      await vi.advanceTimersByTimeAsync(15_000)
+      expect(released).toBe(false)
+
+      // 补发结束（键消失）后才放行
+      count = 0
+      await vi.advanceTimersByTimeAsync(500)
+      await waiting
+      expect(released).toBe(true)
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })
 

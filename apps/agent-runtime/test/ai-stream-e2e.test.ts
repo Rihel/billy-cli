@@ -59,11 +59,11 @@ import { STUB_IMAGE_BYTES, stubAttachments } from './helpers/attachments.js'
  * 流式链路端到端：假模型 + 真实数据库 + **真实 Redis**，不需要外部密钥。
  *
  * 覆盖设计文档里几条硬要求：
- * - UI Message Stream 协议（响应头 / `data:` 帧 / `[DONE]`）；
+ * - AG-UI 协议（响应头 / `data:` 事件 / `RUN_FINISHED`）；
  * - **每个 part 完成即落库**（刷新不丢内容）；
  * - 输出记录与运行中进度落在 Redis（跑完清进度）；
  * - 停止 = `canceled`（不是 failed）；
- * - 断线重连按 `offset` 补发（不重跑），没有进行中的流时返回"无流"语义。
+ * - 断线重连按 `sinceRev` 补发（快照 + 增量，不重跑），没有进行中的流时返回"无流"语义。
  */
 
 const USER = 'user_ai_stream'
@@ -405,7 +405,7 @@ afterAll(async () => {
 })
 
 describe('流式链路端到端（mock 模型 + 真实 DB + 真实 Redis）', () => {
-  it('SSE 协议正确：响应头 / data 帧 / [DONE]，且内容逐段落库、收尾完整', async () => {
+  it('SSE 协议正确：响应头 / AG-UI 事件 / RUN_FINISHED，且内容逐段落库、收尾完整', async () => {
     const { status, headers, text } = await postStream({ message: '帮我看看待办' })
     expect(status).toBe(200)
     expect(headers.get('content-type')).toContain('text/event-stream')
@@ -537,7 +537,7 @@ describe('流式链路端到端（mock 模型 + 真实 DB + 真实 Redis）', ()
     ).toContain('output-available')
   })
 
-  it('首轮自动命名：收尾时用 `data-conversation-title` 实时下发（前端不必等下一次刷新）', async () => {
+  it('首轮自动命名：收尾时用 `agent.title` 实时下发（前端不必等下一次刷新）', async () => {
     const { status, text } = await postStream({ message: '帮我看看最近有哪些待办' })
     expect(status).toBe(200)
 
@@ -655,7 +655,7 @@ describe('流式链路端到端（mock 模型 + 真实 DB + 真实 Redis）', ()
     expect(statusRows.some((item) => item.payload?.reason === 'user_stopped')).toBe(true)
   })
 
-  it('重连补发：按 offset 从输出记录补发，遇到结束标记就收尾（不重跑）', async () => {
+  it('重连补发：按 sinceRev 补发（快照 + 增量），遇到 RUN_FINISHED 就收尾（不重跑）', async () => {
     // 手工种一次"正在跑"的运行 + 两条输出记录 + 结束标记，确定性地验证补发逻辑
     const conversation = await conversations.create(USER, {})
     createdConversationIds.push(conversation.id)

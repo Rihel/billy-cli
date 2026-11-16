@@ -64,18 +64,26 @@ describe('AI 流地址', () => {
     expect(client.agent.runSnapshotUrl('run_1')).toBe('http://server.test/agent/run/run_1/snapshot')
   })
 
-  it('snapshot：204 表示没有进行中的轮（返回 null），200 解析 JSON', async () => {
+  it('snapshot：data=null 表示没有进行中的轮，有快照时解出 data', async () => {
     const fetchMock = vi
       .fn()
-      .mockResolvedValueOnce(new Response(null, { status: 204 }))
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ code: 0, data: null }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        }),
+      )
       .mockResolvedValueOnce(
         new Response(
           JSON.stringify({
-            runId: 'run_1',
-            messageId: 'msg_1',
-            rev: 2,
-            sinceRev: 3,
-            parts: [{ type: 'text', text: '已完成' }],
+            code: 0,
+            data: {
+              runId: 'run_1',
+              messageId: 'msg_1',
+              rev: 2,
+              sinceRev: 3,
+              parts: [{ type: 'text', text: '已完成' }],
+            },
           }),
           { status: 200, headers: { 'content-type': 'application/json' } },
         ),
