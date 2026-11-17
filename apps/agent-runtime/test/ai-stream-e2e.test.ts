@@ -33,6 +33,7 @@ import { TimelineRepository } from '../src/modules/ai/runtime/timeline.repositor
 import {
   MOCK_ASK_MARKER,
   MOCK_ASK_TOOL,
+  MOCK_ASK_TWICE_MARKER,
   MOCK_CHILD_TEXT,
   MOCK_DELEGATE_MARKER,
   MOCK_DELEGATE_PARALLEL_MARKER,
@@ -1109,6 +1110,71 @@ describe('流式链路端到端（mock 模型 + 真实 DB + 真实 Redis）', ()
     expect(cancelOutput?.cancelled).toBe(true)
     expect(cancelOutput?.answers).toEqual([])
   }, 30_000)
+
+  /**
+   * 上游 Issue 1（P0）：续跑后又挂起时，runtime 不能把这条 engine run 的 suspension fence 掉。
+   *
+   * 早先第一段续跑收尾时无条件 `agent.abortRunStream(run.engineRunId)`，Mastra 1.82 的
+   * `abortRunStream → abortRun(runId, pubsub, { fenceResume = true })` 语义是"abort 发生在
+   * 挂起期间 → 这个 suspension 永远不能恢复"，第二次回答于是抛
+   * `cannot resume aborted run`、run 标 failed 3302。这里把整条链路走一遍：
+   * 挂起 → 回答 → **再挂起** → 再回答 → 成功。
+   */
+  it('连续两次挂起：第二次回答同样能续跑（不被 resume fence 挡住）', async () => {
+    const { status, text } = await postStream({ message: `分两次问我 ${MOCK_ASK_TWICE_MARKER}` })
+    expect(status).toBe(200)
+    expect(chunksOfSse(text).some((chunk) => chunk.type === 'data-tool-call-suspended')).toBe(true)
+
+    const conversationId = conversationIdOfSse(text)!
+    expect(conversationId).toBeTruthy()
+    createdConversationIds.push(conversationId)
+
+    const first = await runs.findActive(conversationId)
+    expect(first?.status).toBe(RunStatus.Suspended)
+    expect(first?.id).toBeTruthy()
+
+    // 第一次回答：模型继续跑几步，然后**又挂起**（同一条 run，另一个 toolCallId）
+    const second = await postResume({
+      runId: first!.id,
+      toolCallId: 'call_mock_ask_1',
+      answers: [{ id: 'audience', value: '长辈自己' }],
+    })
+    expect(second.status).toBe(200)
+    expect(
+      chunksOfSse(second.text).some((chunk) => chunk.type === 'data-tool-call-suspended'),
+    ).toBe(true)
+    // 又挂起了不是失败：这条 run 仍停在 suspended，等第二次回答
+    const stillSuspended = await runs.findActive(conversationId)
+    expect(stillSuspended?.id).toBe(first!.id)
+    expect(stillSuspended?.status).toBe(RunStatus.Suspended)
+    const afterFirst = await db.dataSource.query<{ status: string }[]>(
+      'SELECT status FROM runs WHERE id = $1',
+      [first!.id],
+    )
+    expect(afterFirst[0]?.status).toBe(RunStatus.Suspended)
+
+    // 第二次回答：这才是被 fence 挡住的那一步（修复前这里 500 / run 标 failed 3302）
+    const third = await postResume({
+      runId: first!.id,
+      toolCallId: 'call_mock_ask_2',
+      answers: [{ id: 'audience', value: '同事' }],
+    })
+    expect(third.status).toBe(200)
+    expect(uiTextOfSse(third.text)).toContain(MOCK_FINAL_TEXT)
+    expect(await runs.findActive(conversationId)).toBeNull()
+    const rows = await db.dataSource.query<{ status: string }[]>(
+      'SELECT status FROM runs WHERE id = $1',
+      [first!.id],
+    )
+    expect(rows[0]?.status).toBe(RunStatus.Succeeded)
+
+    // 两次回答各落一条问题工具的结果行（历史重建靠它把两张卡都收成只读）
+    const after = await timelines.list({ conversationId, page: 1, size: 200 })
+    const askResults = after.items.filter(
+      (item) => item.kind === TimelineKind.ToolResult && item.toolKey === MOCK_ASK_TOOL,
+    )
+    expect(askResults).toHaveLength(2)
+  }, 40_000)
 
   it('子 agent 并行：一步派 4 个，最多同时跑 3 个（第 4 个排队）', async () => {
     const { status, text } = await postStream({

@@ -44,9 +44,9 @@ describe('buildMessageParts 的 part id', () => {
       item({ kind: TimelineKind.Text, payload: { text: '老行（没 id）' } }),
     ])
 
-    expect(parts[0]).toEqual({ type: 'text', text: '正文', id: 'text-9' })
+    expect(parts[0]).toEqual({ type: 'text', text: '正文', state: 'done', id: 'text-9' })
     expect(parts[1]).toMatchObject({ type: 'reasoning', text: '想了想', id: 'reason-9' })
-    expect(parts[2]).toEqual({ type: 'text', text: '老行（没 id）' })
+    expect(parts[2]).toEqual({ type: 'text', text: '老行（没 id）', state: 'done' })
   })
 })
 
@@ -75,7 +75,7 @@ describe('buildMessageParts', () => {
     ])
 
     expect(parts).toEqual([
-      { type: 'text', text: '先看看' },
+      { type: 'text', text: '先看看', state: 'done' },
       { type: 'reasoning', text: '想一下', state: 'done', durationMs: 1_200 },
       {
         type: 'dynamic-tool',

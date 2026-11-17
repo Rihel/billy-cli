@@ -336,6 +336,29 @@ describe('对话链路端到端（mock 模型 + 真实数据库）', () => {
     expect(conversation.title).toBe(MOCK_TITLE_TEXT)
   })
 
+  /**
+   * 非流式路径（`agent.generate`）也要落 `payload.id`。
+   *
+   * 恢复链路靠 part id 把「时间线快照」与「增量补发」去重；这条路径曾经只写正文，
+   * 于是它产出的段落永远没有 id（与升级前的老行同病），去重只能整套放弃。
+   */
+  it('非流式路径的文本 / 推理行也带 part id', async () => {
+    const result = await chat.chat(USER, { message: '帮我看看最近有哪些待办' })
+    createdConversationIds.push(result.conversationId)
+
+    const page = await timelines.list({ conversationId: result.conversationId, page: 1, size: 200 })
+    const prose = page.items.filter(
+      (item) =>
+        item.role === TimelineRole.Assistant &&
+        (item.kind === TimelineKind.Text || item.kind === TimelineKind.Reasoning),
+    )
+    expect(prose.length).toBeGreaterThan(0)
+    for (const row of prose) {
+      expect(typeof row.payload?.id).toBe('string')
+      expect(String(row.payload?.id).length).toBeGreaterThan(0)
+    }
+  })
+
   it('同一会话并发：已有进行中的一轮 → 3306（真相在数据库的唯一索引）', async () => {
     const first = await chat.chat(USER, { message: '第一轮' })
     createdConversationIds.push(first.conversationId)

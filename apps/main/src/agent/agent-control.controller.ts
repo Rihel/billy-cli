@@ -216,6 +216,16 @@ export class AgentControlController {
       response.status(upstream.status).json({ message: 'agent-runtime 调用失败' })
       return
     }
-    response.json({ code: 0, data: JSON.parse(body) as unknown })
+    // 200 但空 body（中间层截断 / 代理异常）不能让 `JSON.parse('')` 抛成 500：
+    // 快照拿不到就按"本次没有快照"处理（前端拿到 null 不会点亮恢复灯）。
+    let data: unknown = null
+    if (body) {
+      try {
+        data = JSON.parse(body) as unknown
+      } catch {
+        data = null
+      }
+    }
+    response.json({ code: 0, data })
   }
 }

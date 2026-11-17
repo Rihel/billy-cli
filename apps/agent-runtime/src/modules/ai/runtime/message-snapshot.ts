@@ -148,7 +148,10 @@ export const buildMessageParts = (
         const text = textOf(item)
         // `id` 是新行才有的（老行没存 part id）：带上它才能和增量对齐、避免同一段补两遍
         const partId = idOf(item)
-        if (text) parts.push({ type: 'text', text, ...(partId ? { id: partId } : {}) })
+        // `state: 'done'` 与实时流同构：`readUIMessageStream` 归约出来的 text part 收尾就是这个状态，
+        // 快照种子缺了它，前端按 state 判断"是否仍在流式"（光标 / 动画）时恢复后的段落与实时不一致。
+        if (text)
+          parts.push({ type: 'text', text, state: 'done', ...(partId ? { id: partId } : {}) })
         break
       }
       case REASONING: {

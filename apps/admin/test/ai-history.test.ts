@@ -37,7 +37,7 @@ const item = (
     ...partial,
   }) as AgentTimelineItemModel
 
-const run = (id: string, parentRunId: string | null): AgentRunModel =>
+const run = (id: string, parentRunId: string | null, status = 'succeeded'): AgentRunModel =>
   ({
     id,
     conversationId: CONVERSATION,
@@ -47,7 +47,7 @@ const run = (id: string, parentRunId: string | null): AgentRunModel =>
     agentKey: parentRunId ? 'sub:待办统计' : 'assistant',
     triggeredBy: 'user_1',
     requestId: null,
-    status: 'succeeded',
+    status,
     recoveryCount: 0,
     errorCode: null,
     errorStage: null,
@@ -583,5 +583,57 @@ describe('历史里的耗时（工具条与思考块要显示真实值）', () =
     )
     expect(messages[0].parts).toHaveLength(1)
     expect(messages[0].parts[0]).toMatchObject({ type: 'text', text: '还是回答一句' })
+  })
+})
+
+/**
+ * 挂起卡的可回答性必须跟着 **run 的真实状态**走（2026-11-17 上游 Issue 2）。
+ *
+ * 只按"同 toolCallId 有没有 ToolResult"判断的话，一次失败（run 标 failed、问题从没被回答）
+ * 会让卡片永远显示"待回答"：用户提交拿到 409 `RunNotSuspended`，刷新后还是待回答 ——
+ * 死循环观感。终态 run 的这类卡一律置只读。
+ */
+describe('toUIMessages：终态 run 的挂起卡', () => {
+  const askCall = item({
+    seq: 1,
+    kind: 'tool-call',
+    toolKey: 'ask-user-questions',
+    toolCallId: 'call_1',
+    payload: { input: { questions: [] } },
+  })
+  const askSuspended = item({
+    seq: 2,
+    kind: 'tool-suspended',
+    toolKey: 'ask-user-questions',
+    toolCallId: 'call_1',
+    payload: {
+      runId: ROOT_RUN,
+      toolCallId: 'call_1',
+      toolName: 'ask-user-questions',
+      suspendPayload: { questions: [{ id: 'q1', type: 'text', title: '给谁看？' }] },
+    },
+  })
+  const cardOf = (status: string): { resumed?: boolean; cancelled?: boolean } | undefined => {
+    const messages = toUIMessages([askCall, askSuspended], [run(ROOT_RUN, null, status)])
+    const part = messages
+      .flatMap((message) => message.parts)
+      .find((candidate) => candidate.type === 'data-tool-call-suspended') as
+      | { data?: { resumed?: boolean; cancelled?: boolean } }
+      | undefined
+    return part?.data
+  }
+
+  it('run 已失败、问题没答过：置只读（不再误判成待回答）', () => {
+    expect(cardOf('failed')).toMatchObject({ resumed: true, cancelled: true })
+  })
+
+  it('run 被停止 / 中断同样置只读', () => {
+    expect(cardOf('canceled')?.resumed).toBe(true)
+    expect(cardOf('interrupted')?.resumed).toBe(true)
+  })
+
+  it('run 仍在挂起：保持可回答', () => {
+    expect(cardOf('suspended')).toMatchObject({ resumed: false })
+    expect(cardOf('suspended')?.cancelled).toBeUndefined()
   })
 })

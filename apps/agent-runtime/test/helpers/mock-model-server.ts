@@ -104,6 +104,13 @@ export const MOCK_PLAN_INITIAL = {
 
 /** 用户消息里带这个标记时：先调 `ask-user-questions` 挂起，续跑后回固定文本 */
 export const MOCK_ASK_MARKER = '[ask]'
+/**
+ * 用户消息里带这个标记时：**连续挂起两次**（第二次发的是另一个 toolCallId）。
+ *
+ * 专门钉 "resume 之后又挂起" 这条路径：第二次回答能不能续跑，取决于 runtime 有没有在
+ * 第一次续跑收尾时把这条 engine run 的 suspension fence 掉（上游 Issue 1）。
+ */
+export const MOCK_ASK_TWICE_MARKER = '[ask-twice]'
 /** 问题工具（Mastra 原生工具；不经过我们的工具注册机） */
 export const MOCK_ASK_TOOL = 'ask-user-questions'
 export const MOCK_ASK_QUESTIONS = [
@@ -344,6 +351,19 @@ const ASK_CALL: MockToolCall = {
   name: MOCK_ASK_TOOL,
   args: { questions: MOCK_ASK_QUESTIONS, reason: MOCK_REASON },
 }
+/** `[ask-twice]` 的两次提问：toolCallId 必须不同，续跑时要按"挂的是哪一个"回答 */
+const ASK_TWICE_CALLS: MockToolCall[] = [
+  {
+    id: 'call_mock_ask_1',
+    name: MOCK_ASK_TOOL,
+    args: { questions: MOCK_ASK_QUESTIONS, reason: MOCK_REASON },
+  },
+  {
+    id: 'call_mock_ask_2',
+    name: MOCK_ASK_TOOL,
+    args: { questions: MOCK_ASK_QUESTIONS, reason: MOCK_REASON },
+  },
+]
 /** 事件演示：跑一次会把"状态快照 + 流水行"写进父流（断言 SSE 里出现 `data-tool-event`） */
 const EVENTS_CALL: MockToolCall = {
   id: 'call_mock_events',
@@ -380,6 +400,10 @@ const messagesOf = (body: Record<string, unknown>): Array<Record<string, unknown
 /** 本轮（含历史）是否已经有工具结果 —— 有就说明"模型已经拿到过工具反馈" */
 const hasToolResult = (body: Record<string, unknown>): boolean =>
   messagesOf(body).some((message) => message.role === 'tool')
+
+/** 这一轮已有的工具结果条数（`[ask-twice]` 靠它决定"该发第几次提问"） */
+const toolResultCount = (body: Record<string, unknown>): number =>
+  messagesOf(body).filter((message) => message.role === 'tool').length
 
 /** 最近一次工具结果的原文（"上一步"的判定只看它） */
 const latestToolResultText = (body: Record<string, unknown>): string | null => {
@@ -485,6 +509,11 @@ const decideToolCall = (
 const decideToolCalls = (body: Record<string, unknown>, state: MockServerState): MockToolCall[] => {
   if (wanted(body, MOCK_DELEGATE_PARALLEL_MARKER)) {
     return hasToolResult(body) ? [] : DELEGATE_PARALLEL_CALLS
+  }
+  // 连续两次挂起：已经答过几次，就发第几次的提问（答满两次 → 回文本）
+  if (wanted(body, MOCK_ASK_TWICE_MARKER)) {
+    const asked = toolResultCount(body)
+    return asked < ASK_TWICE_CALLS.length ? [ASK_TWICE_CALLS[asked]!] : []
   }
   const call = decideToolCall(body, state)
   return call ? [call] : []

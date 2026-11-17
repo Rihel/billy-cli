@@ -1065,7 +1065,10 @@ export class AgentChatService {
           role: TimelineRole.Assistant,
           kind: TimelineKind.Reasoning,
           messageId,
-          payload: { text: reasoning },
+          // `id` 与流式路径同一口径（`stream-recorder` 的 `payload.id`）：恢复时快照与增量
+          // 按 part id 去重，缺了它同一段会被补两遍。非流式没有流式 part id，用派生 id 即可
+          // —— 唯一性范围是一条消息，`messageId` 已经按 run + 步号唯一。
+          payload: { text: reasoning, id: `${messageId}:reasoning` },
         })
       }
       if (step.text) {
@@ -1073,7 +1076,7 @@ export class AgentChatService {
           role: TimelineRole.Assistant,
           kind: TimelineKind.Text,
           messageId,
-          payload: { text: step.text },
+          payload: { text: step.text, id: `${messageId}:text` },
         })
       }
       for (const call of step.toolCalls ?? []) {
@@ -2070,8 +2073,15 @@ export class AgentChatService {
       }
       // resume 只恢复了工具；要继续 agentic loop，再起一段**新引擎 run**，
       // 复用同一个 memory thread。旧 engine run 已经结束，拿它调 stream 不会发起模型调用。
-      // 旧引擎 run 可能还占着 agent 的 active stream 槽位；先放掉，否则新 stream 不发起模型调用
-      agent.abortRunStream?.(run.engineRunId)
+      // 旧引擎 run 可能还占着 agent 的 active stream 槽位；先放掉，否则新 stream 不发起模型调用。
+      //
+      // **只在这次续跑不会再挂起时才放**：`abortRunStream` 内部是
+      // `abortRun(runId, pubsub, { fenceResume = true })`，语义是"abort 发生在挂起期间 →
+      // 这个 suspension 永远不能恢复"（`resumeStream` 入口 `#throwIfRunAborted` 会直接抛）。
+      // 续跑又挂了下一个问题时这条 engine run 仍是「可恢复的挂起点」，放掉就等于把
+      // 第二次回答判死（run 标 failed 3302，用户再提交得 409）—— 会话 rj7w3stssee4eh2urzia 实测。
+      // 「释放流槽位」与「放弃可恢复性」在 Mastra 里是两个操作，这里只在前者成立时才做。
+      if (!suspendedAgain) agent.abortRunStream?.(run.engineRunId)
       const { runId: _finishedEngineRunId, ...continuationOptions } = runOptions
       const answerText = answers
         .map(

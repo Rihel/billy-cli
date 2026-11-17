@@ -1,5 +1,6 @@
 import {
   ChatAttachmentSchema,
+  RunStatus,
   TimelineKind,
   TimelineRole,
   type AgentRunModel,
@@ -228,13 +229,14 @@ export const toUIMessages = (
       })
     }
 
-    const parts = toParts(sorted)
+    const run = runById.get(runId)
+    // 挂起卡能不能回答，取决于 **run 的真实状态**（见 `toParts` 的 `stillSuspended`）
+    const parts = toParts(sorted, { stillSuspended: run?.status === RunStatus.Suspended })
     // 子助手卡：工具出参只是"起跑快照"，终态以库里的子 run 为准（否则永远是"进行中 0 步"）
     applyChildRunStates(parts, runs)
     // 用量：实时是收尾下发的 `data-run-usage`，历史（刷新 / 切会话）只能从 runs 重建 ——
     // 缺了它，回看历史时就只剩正文、统计全空（用户看到的"统计只在当场那一轮有"）。
     // 追加在最后，与实时流的位置一致。
-    const run = runById.get(runId)
     if (run?.usage) {
       parts.push({
         type: 'data-run-usage',
@@ -371,8 +373,14 @@ const toSubAgentCompletedPart = (
  * 于是刷新后历史里的工具卡全被挪到消息末尾（正文在前、工具卡挤在下面），
  * 与实时流（AI SDK 边调边铺）的形态对不上 —— 用户看到的"刷新后工具调用排到后面去了"就是它。
  * 配对靠"先铺卡、结果到达时就地补出参"（对象按引用改，位置不变）。
+ *
+ * `options.stillSuspended` 是该 run 的真实状态（`status === 'suspended'`）：传 `false` 时，
+ * 没被回答过的挂起卡直接置成只读（run 已终态，提交只会 409）。缺省按"还在挂起"处理。
  */
-export const toParts = (events: AgentTimelineItemModel[]): UIMessage['parts'] => {
+export const toParts = (
+  events: AgentTimelineItemModel[],
+  options: { stillSuspended?: boolean } = {},
+): UIMessage['parts'] => {
   const parts: UIMessage['parts'] = []
   /** 问答的答案（按 toolCallId 索引）：挂起行没有答案，配在续跑后的结果行里 */
   const answersByCall = answersByCallOf(events)
@@ -414,11 +422,18 @@ export const toParts = (events: AgentTimelineItemModel[]): UIMessage['parts'] =>
       case TimelineKind.ToolSuspended: {
         // 挂起行 → 问题卡。若同一 toolCallId 后面已经有 ToolResult，说明已经续跑过：
         // 卡片不再让用户重复回答，而是**留在原位置**当只读的问答记录（`resumed: true`）。
+        //
+        // 第二个只读来源：**run 已经终态、这组问题从没被回答**（典型是上一次续跑失败，
+        // run 标了 failed）。只按 ToolResult 判断的话，卡片会一直是"待回答"，用户提交只会拿到
+        // `RunNotSuspended`（409），刷新后仍是待回答 —— 形成死循环观感。
         const toolCallId = item.toolCallId ?? undefined
         const output = toolCallId ? answersByCall.get(toolCallId) : undefined
         const answered = toolCallId ? answersByCall.has(toolCallId) : false
         const record = asRecord(output)
         const cancelled = record?.cancelled === true
+        // 调用方没给 run 状态时按"还在挂起"处理（保守：宁可多给一次机会，也不误锁可回答的卡）
+        const stillSuspended = options.stillSuspended ?? true
+        const aborted = !answered && !stillSuspended
         const structured = record?.answers
         const answers = Array.isArray(structured)
           ? (structured as QuestionAnswer[])
@@ -436,8 +451,8 @@ export const toParts = (events: AgentTimelineItemModel[]): UIMessage['parts'] =>
             toolCallId,
             toolName: item.toolKey ?? 'ask-user-questions',
             suspendPayload: item.payload?.suspendPayload,
-            resumed: answered,
-            ...(cancelled ? { cancelled: true } : {}),
+            resumed: answered || aborted,
+            ...(cancelled || aborted ? { cancelled: true } : {}),
             ...(answers ? { answers } : {}),
           },
         } as unknown as UIMessage['parts'][number])
