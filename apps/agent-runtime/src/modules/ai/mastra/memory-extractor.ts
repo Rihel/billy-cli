@@ -1,6 +1,6 @@
 import { Agent } from '@mastra/core/agent'
-import { decideModelForMastra } from '../core/model-decision.js'
 import type { RuntimeModel } from '../core/envelope.js'
+import { toMastraModelInstance } from './agent.adapter.js'
 
 /** 一次抽取调用的原始结果（用量由调用方并账） */
 export interface MemoryExtractionRun {
@@ -22,12 +22,13 @@ export const runMemoryExtraction = async (input: {
   timeoutMs: number
   maxOutputTokens: number
 }): Promise<MemoryExtractionRun> => {
-  const decision = decideModelForMastra(input.model)
+  // 同上：实例必须指向网关（`apiKey` 为空串时拿描述去调会在本地失败）
+  const { instance } = await toMastraModelInstance(input.model)
   const agent = new Agent({
     id: 'memory-extractor',
     name: '记忆抽取',
     instructions: input.instructions,
-    model: decision.model,
+    model: instance as never,
   })
   const result = await agent.generate([{ role: 'user', content: input.transcript }] as never, {
     maxSteps: 1,

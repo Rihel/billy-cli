@@ -1,6 +1,6 @@
 import { Agent } from '@mastra/core/agent'
-import { decideModelForMastra } from '../core/model-decision.js'
 import type { RuntimeModel } from '../core/envelope.js'
+import { toMastraModelInstance } from './agent.adapter.js'
 
 /** 一次压缩调用的原始结果（用量交给调用方并进这一轮的账） */
 export interface CompressionRun {
@@ -21,12 +21,14 @@ export const runContextCompression = async (input: {
   transcript: string
   maxOutputTokens: number
 }): Promise<CompressionRun> => {
-  const decision = decideModelForMastra(input.model)
+  // 模型实例必须走 `toMastraModelInstance`：网关模式下 `apiKey` 是空串、真实 key 只在网关侧，
+  // 拿 `decideModelForMastra().model` 那段描述去调会在本地就失败（命名那次踩过，见 title.service.ts）
+  const { instance } = await toMastraModelInstance(input.model)
   const agent = new Agent({
     id: 'context-compressor',
     name: '上下文压缩',
     instructions: input.instructions,
-    model: decision.model,
+    model: instance as never,
   })
   const result = await agent.generate([{ role: 'user', content: input.transcript }] as never, {
     maxSteps: 1,
