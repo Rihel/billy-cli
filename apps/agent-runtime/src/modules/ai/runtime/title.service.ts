@@ -1,11 +1,9 @@
 import { Inject, Injectable } from '@nestjs/common'
 import { Agent } from '@mastra/core/agent'
 import { AppLogger } from '@repo/kits'
-import { TimelineKind, TimelineRole } from '@repo/shared'
-import { decideModelForMastra } from '../core/model-decision.js'
 import type { RuntimeModel } from '../core/envelope.js'
+import { toMastraModelInstance } from '../mastra/agent.adapter.js'
 import { PROMPT_ENGINE, type PromptEngine } from '../core/prompts/prompt.engine.js'
-import { TimelineRepository } from './timeline.repository.js'
 import { toUsageRecord } from './usage.js'
 
 /** 自动会话名的字符上限（用户口径：**10 个字符内**） */
@@ -14,11 +12,18 @@ export const TITLE_MAX_CHARS = 10
 /** 这次命名调用的墙钟上限（ms）：起名是"锦上添花"，不能因为模型慢把一轮问答拖住 */
 const TITLE_TIMEOUT_MS = 10_000
 
-/** 输出长度上限：名字最多 10 字，给 32 token 足够（顺带避免模型长篇推理） */
-const TITLE_MAX_OUTPUT_TOKENS = 32
+/**
+ * 输出长度上限。
+ *
+ * **不能按"名字只要 10 字"给 32 token**：推理型模型（线上的 deepseek-flash 就是）会把
+ * 预算先花在 reasoning 上，32 个 token 全用在思考、正文一个字不剩 —— 现场表现是
+ * `ai.conversation.title_empty`、标题永远停在兜底名（2026-11-18 实测）。给 256 让它想完，
+ * 名字长度另有 `sanitizeTitle` 按码点截断兜着。
+ */
+const TITLE_MAX_OUTPUT_TOKENS = 256
 
-/** 送进模型的对话记录上限（字符）：命名只需要"这段对话在做什么"，不需要全文 */
-const TRANSCRIPT_MAX_CHARS = 2_000
+/** 送进模型的消息上限（字符）：命名只需要"用户在说什么"，不需要全文 */
+const MESSAGE_MAX_CHARS = 2_000
 
 /** 一次命名调用的结果（`usage` 交给调用方并进那一轮的账） */
 export interface FirstTurnTitle {
@@ -60,15 +65,16 @@ export const sanitizeTitle = (raw: string | null | undefined): string | null => 
 }
 
 /**
- * **首轮会话命名**：把这一轮的对话记录交给模型，换回一个 ≤10 字的会话名。
+ * **首轮会话命名**：把用户这一轮发来的消息交给模型，换回一个 ≤10 字的会话名。
  *
  * 三条硬要求（用户口径 + 工程口径）：
  * 1. **与当前 agent 上下文完全隔离**：这里**不用** Mastra 实例上那个 agent，而是现场造一个
  *    只有"命名指令"、**没有工具 / 技能 / 记忆 / 运行时信封**的临时 agent ——
- *    它看不到会话系统提示词，也拿不到任何工具，只有"记录 → 名字"这一件事；
- * 2. **只读这一轮的记录**：只取该 run 的用户 / 助手文本（工具入参出参与推理过程对命名是噪声），
- *    并按字符数封顶；
- * 3. **失败不影响这一轮**：超时 / 模型报错 / 输出收拾不出名字 → 返回 null，调用方保留兜底标题。
+ *    它看不到会话系统提示词，也拿不到任何工具，只有"消息 → 名字"这一件事；
+ * 2. **只读用户这条消息**：命名与主回答**并行**跑（run 一启动就起跑），此时还没有助手回复
+ *    可读；消息按字符数封顶，粘贴的大段日志不需要整份喂进去；
+ * 3. **失败不影响这一轮**：超时 / 模型报错 / 被取消 / 输出收拾不出名字 → 返回 null，
+ *    调用方保留兜底标题。
  *
  * 模型仍用**这一轮实际使用的那个**（管理员配的）—— 换一个"便宜的模型"就多一份配置与授权面，
  * 而这一次调用只要几十个 token。
@@ -76,33 +82,57 @@ export const sanitizeTitle = (raw: string | null | undefined): string | null => 
 @Injectable()
 export class AgentTitleService {
   constructor(
-    @Inject(TimelineRepository) private readonly timelines: TimelineRepository,
     @Inject(PROMPT_ENGINE) private readonly prompts: PromptEngine,
     @Inject(AppLogger) private readonly logger: AppLogger,
   ) {}
 
+  /**
+   * 起一个名字；起不出来返回 null（**不会抛**，调用方按"没起成"处理）。
+   *
+   * `signal` 是这一轮的中止信号：用户点停止 → 这次命名调用跟着断开，
+   * 不让一个已经没有人在等的助手继续烧 token。
+   */
   async generateFirstTurnTitle(input: {
     conversationId: string
     runId: string
+    /** 用户这一轮发来的消息 */
+    message: string
     model: RuntimeModel
+    /** 这一轮的中止信号（可选：非流式入口没有可取消的运行） */
+    signal?: AbortSignal
   }): Promise<FirstTurnTitle | null> {
-    const transcript = await this.readTranscript(input.conversationId, input.runId)
-    if (!transcript) return null
+    const message = input.message.trim()
+    if (!message) return null
+    const content =
+      message.length > MESSAGE_MAX_CHARS ? `${message.slice(0, MESSAGE_MAX_CHARS)}…` : message
 
     const startedAt = Date.now()
     try {
-      const decision = decideModelForMastra(input.model)
+      /**
+       * 模型实例**必须走 `toMastraModelInstance`**（和主回答同一个入口）。
+       *
+       * 踩过的坑：这里原先用 `decideModelForMastra(model).model` —— 那只是一段
+       * `{ id, apiKey }` 描述。生产环境模型全走内部网关（`apiKey` 是空串、真实 key 只在网关），
+       * Mastra 拿空 key 去官方端点，**请求在本地就失败了**，一次也没打到网关：
+       * 库里所有会话标题于是全是"首条消息截断"的兜底名（2026-11-18 用会话
+       * `e7l7rsk8d35rwemgjgdh` + `model_gateway_usage` 只有 1 条记录定位到）。
+       * 这个函数在网关模式下会造"指向网关 + 内部令牌 + 归因头"的真实例，用量也能记到这一轮。
+       */
+      const { instance } = await toMastraModelInstance(input.model)
       // 隔离就体现在这一行：临时 agent，自己的指令、没有工具 / 技能 / 记忆，也没有 requestContext
       const agent = new Agent({
         id: 'conversation-title',
         name: '会话命名',
         instructions: this.prompts.renderPartial('title', { maxChars: TITLE_MAX_CHARS }),
-        model: decision.model,
+        model: instance as never,
       })
-      const result = await agent.generate([{ role: 'user', content: transcript }] as never, {
+      const result = await agent.generate([{ role: 'user', content }] as never, {
         maxSteps: 1,
         modelSettings: { maxOutputTokens: TITLE_MAX_OUTPUT_TOKENS },
-        abortSignal: AbortSignal.timeout(TITLE_TIMEOUT_MS),
+        // 自身超时 + 本轮中止信号合并：任一触发都结束这次调用
+        abortSignal: input.signal
+          ? AbortSignal.any([input.signal, AbortSignal.timeout(TITLE_TIMEOUT_MS)])
+          : AbortSignal.timeout(TITLE_TIMEOUT_MS),
       })
       const title = sanitizeTitle(result.text as string | undefined)
       const usage = toUsageRecord(result.totalUsage ?? result.usage ?? null)
@@ -121,41 +151,16 @@ export class AgentTitleService {
       })
       return { title, usage }
     } catch (error) {
-      // 起名失败不能影响这一轮：记一条 warn，调用方保住"首条消息"那版标题
-      this.logger.warn('ai.conversation.title_failed', {
-        conversationId: input.conversationId,
-        runId: input.runId,
-        reason: error instanceof Error ? error.message : String(error),
-      })
+      // 起名失败（含被取消）不能影响这一轮：记一条 warn，调用方保住"首条消息"那版标题
+      this.logger.warn(
+        input.signal?.aborted ? 'ai.conversation.title_aborted' : 'ai.conversation.title_failed',
+        {
+          conversationId: input.conversationId,
+          runId: input.runId,
+          reason: error instanceof Error ? error.message : String(error),
+        },
+      )
       return null
     }
-  }
-
-  /**
-   * 该轮的对话记录（用户 / 助手文本，按 seq 顺序）。
-   *
-   * 只取这一轮的**根 run**：子 agent 的明细与工具往返对命名是噪声；
-   * 推理过程同理（想什么不影响"这段对话在做什么"）。
-   */
-  private async readTranscript(conversationId: string, runId: string): Promise<string | null> {
-    const page = await this.timelines.list({
-      conversationId,
-      runId,
-      page: 1,
-      size: 200,
-    })
-    const lines: string[] = []
-    for (const item of page.items) {
-      if (item.kind !== TimelineKind.Text) continue
-      if (item.role !== TimelineRole.User && item.role !== TimelineRole.Assistant) continue
-      const text = typeof item.payload?.text === 'string' ? item.payload.text.trim() : ''
-      if (!text) continue
-      lines.push(`${item.role === TimelineRole.User ? '用户' : '助手'}：${text}`)
-    }
-    if (lines.length === 0) return null
-    const transcript = lines.join('\n')
-    return transcript.length > TRANSCRIPT_MAX_CHARS
-      ? `${transcript.slice(0, TRANSCRIPT_MAX_CHARS)}…`
-      : transcript
   }
 }

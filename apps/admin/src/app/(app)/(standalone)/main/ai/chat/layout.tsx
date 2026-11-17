@@ -30,8 +30,10 @@ import {
 import {
   STREAM_CONVERSATION_RUN_CHANGED_EVENT,
   STREAM_CONVERSATION_RUN_STARTED_EVENT,
+  STREAM_CONVERSATION_TITLE_CHANGED_EVENT,
   ConversationRunChangedEventSchema,
   ConversationRunStartedEventSchema,
+  ConversationTitleChangedEventSchema,
   type AgentConversationModel,
   type AppPageQueryResponse,
 } from '@repo/shared'
@@ -149,6 +151,45 @@ export default function ChatLayout({ children }: { children: ReactNode }) {
       // 运行态变了 → 会话页那份"当前是否有活动 run"的对账查询立刻重拉一次：
       // 排队消息 / 子 agent 唤醒是**服务端自己起跑**的，页面只能靠这一步接回流。
       void queryClient.invalidateQueries({ queryKey: ['ai', 'active-run', conversationId] })
+    },
+    /**
+     * 首轮命名的结果：命名与主回答**并行**跑，名字可能比回答先到。
+     *
+     * 只改标题这一个字段（列表行 + 会话详情各一处），不整份重拉 —— 名字变了不代表
+     * 轮数 / 排序 / 运行态变了，那些由 `conversation.run.changed` 负责。
+     * 会话不在缓存里（别的标签页刚建）就失效重拉，否则光改字段加不出一行来。
+     */
+    [STREAM_CONVERSATION_TITLE_CHANGED_EVENT]: (raw) => {
+      const parsed = ConversationTitleChangedEventSchema.safeParse(raw)
+      if (!parsed.success) return
+      const { conversationId, title } = parsed.data
+      const cached = queryClient.getQueryData<
+        InfiniteData<AppPageQueryResponse<AgentConversationModel>>
+      >(['ai', 'conversations'])
+      const known =
+        cached?.pages.some((page) => page.items.some((item) => item.id === conversationId)) ?? false
+      queryClient.setQueryData<InfiniteData<AppPageQueryResponse<AgentConversationModel>>>(
+        ['ai', 'conversations'],
+        (current) =>
+          current
+            ? {
+                ...current,
+                pages: current.pages.map((page) => ({
+                  ...page,
+                  items: page.items.map((item) =>
+                    item.id === conversationId ? { ...item, title } : item,
+                  ),
+                })),
+              }
+            : current,
+      )
+      queryClient.setQueryData<AgentConversationModel>(
+        ['ai', 'conversation', conversationId],
+        (current) => (current ? { ...current, title } : current),
+      )
+      if (cached && !known) {
+        void queryClient.invalidateQueries({ queryKey: ['ai', 'conversations'] })
+      }
     },
     /**
      * 新开一轮：排队中的用户消息 / 子 agent 完成唤醒在服务端起跑时**没有前端连接**。

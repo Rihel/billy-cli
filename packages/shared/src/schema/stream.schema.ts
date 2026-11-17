@@ -120,6 +120,28 @@ export const ConversationRunChangedEventSchema = z.object({
 export type ConversationRunChangedEventModel = z.infer<typeof ConversationRunChangedEventSchema>
 
 /**
+ * 会话**标题变更**事件（发布到 `ai:owner:{ownerId}`）。
+ *
+ * 为什么走整站 SSE 而不是 run 流里的 `data-conversation-title`：首轮命名与主回答**并行**跑，
+ * 名字可能在回答收尾之前就出来 —— run 流是一条有序事件流，从中间插一发数据事件会和主回答的
+ * 事件争 rev 顺序；整站频道天然独立，而且**非流式入口**（`/agent/chat`，根本没有 run 流）
+ * 也能把同一条消息推给前端。
+ *
+ * 负载只带「哪个会话、现在叫什么」：真相仍以 `conversation/detail` 的查询结果为准，
+ * 事件负责让界面**当场**变化，查询负责在（重）连接后对账。
+ */
+export const STREAM_CONVERSATION_TITLE_CHANGED_EVENT = 'conversation.title.changed'
+
+/** 会话标题变更负载 */
+export const ConversationTitleChangedEventSchema = z.object({
+  /** 会话 id */
+  conversationId: z.string().min(1),
+  /** 新标题（模型起的名；兜底名不推 —— 它建会话时就已经在库里了） */
+  title: z.string().min(1),
+})
+export type ConversationTitleChangedEventModel = z.infer<typeof ConversationTitleChangedEventSchema>
+
+/**
  * SSE 订阅请求体。
  *
  * 频道命名规范 `<域>:<id>`，如 `user:42` / `admin:all` / `task:42`。

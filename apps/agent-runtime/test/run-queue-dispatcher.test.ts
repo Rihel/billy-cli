@@ -275,7 +275,7 @@ beforeAll(async () => {
     modelsStub,
     silentLogger,
     createPromptEngine(),
-    new AgentTitleService(timelines, createPromptEngine(), silentLogger),
+    new AgentTitleService(createPromptEngine(), silentLogger),
     undefined as never,
     undefined as never,
     undefined as never,

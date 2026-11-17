@@ -4,8 +4,10 @@ import {
   STREAM_AI_OWNER_CHANNEL_PREFIX,
   STREAM_CONVERSATION_RUN_CHANGED_EVENT,
   STREAM_CONVERSATION_RUN_STARTED_EVENT,
+  STREAM_CONVERSATION_TITLE_CHANGED_EVENT,
   type ConversationRunChangedEventModel,
   type ConversationRunStartedEventModel,
+  type ConversationTitleChangedEventModel,
 } from '@repo/shared'
 import { ConversationRepository } from './conversation.repository.js'
 
@@ -58,6 +60,32 @@ export class RunStatusStream implements RunStatusListener {
       this.logger.warn('ai.run_status.started_failed', {
         conversationId,
         runId,
+        reason: error instanceof Error ? error.message : String(error),
+      })
+    }
+  }
+
+  /**
+   * 会话**标题变了**：推给归属者，前端侧栏 / 页头当场更新。
+   *
+   * 与 `data-conversation-title`（run 流内的数据事件）的分工：首轮命名现在与主回答**并行**跑，
+   * 名字可能在回答收尾之前就出来，从一条有序的 run 流中间插数据事件会打乱 rev 顺序；
+   * 而整站 SSE 是独立频道，且**非流式入口**（`/agent/chat`）没有 run 流，只有这条通路推得出去。
+   * 失败只 warn，不影响运行主流程（与另外两条通知同一姿态）。
+   */
+  async titleChanged(conversationId: string, title: string): Promise<void> {
+    try {
+      const ownerId = await this.conversations.findOwnerId(conversationId)
+      if (!ownerId) return
+      const payload: ConversationTitleChangedEventModel = { conversationId, title }
+      this.hub.publish(`${STREAM_AI_OWNER_CHANNEL_PREFIX}${ownerId}`, {
+        event: STREAM_CONVERSATION_TITLE_CHANGED_EVENT,
+        data: payload,
+      })
+    } catch (error) {
+      this.logger.warn('ai.conversation.title_push_failed', {
+        conversationId,
+        title,
         reason: error instanceof Error ? error.message : String(error),
       })
     }

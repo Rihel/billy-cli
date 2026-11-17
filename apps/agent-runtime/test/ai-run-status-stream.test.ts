@@ -1,5 +1,9 @@
 import { describe, expect, it, vi } from 'vitest'
-import { STREAM_AI_OWNER_CHANNEL_PREFIX, STREAM_CONVERSATION_RUN_CHANGED_EVENT } from '@repo/shared'
+import {
+  STREAM_AI_OWNER_CHANNEL_PREFIX,
+  STREAM_CONVERSATION_RUN_CHANGED_EVENT,
+  STREAM_CONVERSATION_TITLE_CHANGED_EVENT,
+} from '@repo/shared'
 import { RunStatusStream } from '../src/modules/ai/runtime/run-status.stream.js'
 import { silentLogger } from './helpers/ai-tool-stack.js'
 
@@ -60,6 +64,53 @@ describe('会话运行态推流（ai:owner 频道）', () => {
     expect(logger.warn).toHaveBeenCalledWith(
       'ai.run_status.stream_failed',
       expect.objectContaining({ conversationId: 'conv_1' }),
+    )
+  })
+})
+
+/**
+ * 标题变更的**整站 SSE** 出口。
+ *
+ * 这条通路存在的理由：首轮命名与主回答并行，名字可能在回答收尾之前就出来，
+ * 而 run 流是一条有序事件流、非流式入口又没有 run 流 —— 只有整站频道两条路径都覆盖得到。
+ */
+describe('会话标题推流（ai:owner 频道）', () => {
+  it('把新标题推到归属者的频道', async () => {
+    const { stream, publish } = build('admin_1', false)
+
+    await stream.titleChanged('conv_1', '待办整理')
+
+    expect(publish).toHaveBeenCalledTimes(1)
+    expect(publish).toHaveBeenCalledWith(`${STREAM_AI_OWNER_CHANNEL_PREFIX}admin_1`, {
+      event: STREAM_CONVERSATION_TITLE_CHANGED_EVENT,
+      data: { conversationId: 'conv_1', title: '待办整理' },
+    })
+  })
+
+  it('归属者查不到时静默跳过，不推空频道', async () => {
+    const { stream, publish } = build(null, false)
+
+    await stream.titleChanged('conv_missing', '待办整理')
+
+    expect(publish).not.toHaveBeenCalled()
+  })
+
+  it('推流失败只记 warn，绝不把异常抛回这一轮', async () => {
+    const logger = { ...silentLogger, warn: vi.fn() }
+    const broken = new RunStatusStream(
+      {
+        publish: () => {
+          throw new Error('redis down')
+        },
+      } as never,
+      { findOwnerId: async () => 'admin_1', isRunning: async () => false } as never,
+      logger as never,
+    )
+
+    await expect(broken.titleChanged('conv_1', '待办整理')).resolves.toBeUndefined()
+    expect(logger.warn).toHaveBeenCalledWith(
+      'ai.conversation.title_push_failed',
+      expect.objectContaining({ conversationId: 'conv_1', title: '待办整理' }),
     )
   })
 })

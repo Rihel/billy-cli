@@ -344,7 +344,7 @@ beforeAll(async () => {
     modelsStub,
     silentLogger,
     createPromptEngine(),
-    new AgentTitleService(timelines, createPromptEngine(), silentLogger),
+    new AgentTitleService(createPromptEngine(), silentLogger),
   )
 
   // 真 HTTP 服务：让 `pipeUIMessageStreamToResponse` 走真实的 ServerResponse
@@ -538,19 +538,16 @@ describe('流式链路端到端（mock 模型 + 真实 DB + 真实 Redis）', ()
     ).toContain('output-available')
   })
 
-  it('首轮自动命名：收尾时用 `agent.title` 实时下发（前端不必等下一次刷新）', async () => {
+  it('首轮自动命名：与主回答**并行**跑，回答收尾时库里已是模型起的名', async () => {
     const { status, text } = await postStream({ message: '帮我看看最近有哪些待办' })
     expect(status).toBe(200)
 
-    // 与 `data-run-usage` 同一手法：先给客户端，再进 Redis 输出记录（于是断线补发也拿得到）
-    expect(chunksOfSse(text).some((chunk) => chunk.type === 'data-conversation-title')).toBe(true)
-    expect(text).toContain(MOCK_TITLE_TEXT)
-
-    const conversationId = /"conversationId":"([^"]+)"/.exec(text)?.[1]
+    // 命名不再挂在收尾里（那条 `data-conversation-title` 也随之取消），所以从 `RUN_STARTED` 取会话 id
+    const conversationId = conversationIdOfSse(text)
     expect(conversationId).toBeTruthy()
     if (conversationId) createdConversationIds.push(conversationId)
 
-    // 推送与落库**同一口径**：库里也确实是这个名字
+    // 命名与主回答并行：答案出完时标题早就是模型名了，兜底名只在这之前短暂存在
     const rows = await db.dataSource.query<{ title: string }[]>(
       'SELECT title FROM conversations WHERE id = $1',
       [conversationId],

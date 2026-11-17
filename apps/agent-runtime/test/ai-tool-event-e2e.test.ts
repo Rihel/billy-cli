@@ -267,7 +267,7 @@ beforeAll(async () => {
     modelsStub,
     silentLogger,
     prompts,
-    new AgentTitleService(timelines, prompts, silentLogger),
+    new AgentTitleService(prompts, silentLogger),
   )
 
   http = createServer((req, res) => {
@@ -343,7 +343,8 @@ describe('工具自定义事件端到端（mock 模型 + 真实 DB + 真实 Redi
     expect(events.some((part) => part.data.event === 'not-declared')).toBe(false)
 
     // ④ 事件**不落库**：时间线里只有工具调用 / 结果 / 文本，没有事件行
-    const conversationId = /"conversationId":"([^"]+)"/.exec(text)?.[1]
+    // 会话 id 从 `RUN_STARTED` 的 threadId 取（标题那条数据事件已经不再下发，不能靠正则捞）
+    const conversationId = /"threadId":"([^"]+)"/.exec(text)?.[1]
     expect(conversationId).toBeTruthy()
     if (conversationId) createdConversationIds.push(conversationId)
     const page = await timelines.list({ conversationId: conversationId!, page: 1, size: 200 })

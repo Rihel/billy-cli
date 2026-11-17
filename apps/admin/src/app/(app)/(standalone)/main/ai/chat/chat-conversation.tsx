@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useChat } from '@ai-sdk/react'
-import { useQuery, useQueryClient, type InfiniteData } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   isTextUIPart,
   parseJsonEventStream,
@@ -89,12 +89,7 @@ import { ATTACHMENT_ACCEPT, formatFileSize } from './attachment-utils'
 import { createLongTextFile, LONG_TEXT_PASTE_MIN_CHARS, splitLongText } from './long-text'
 import { rejectedText, scanFiles, useAttachmentsUpload } from './use-attachments-upload'
 import { currentModelModalities, useAvailableModels } from './use-available-models'
-import type {
-  AgentConversationModel,
-  AgentRunQueueItemModel,
-  ChatAttachmentModel,
-} from '@repo/shared'
-import type { AppPageQueryResponse } from '@repo/shared'
+import type { AgentRunQueueItemModel, ChatAttachmentModel } from '@repo/shared'
 import {
   CHAT_ATTACHMENT_MAX_BYTES,
   CHAT_ATTACHMENT_MAX_COUNT,
@@ -528,40 +523,6 @@ export function ChatConversation({ conversationId }: { conversationId: string })
         setQueueNotice(data.message ?? '上一轮还在跑，这条消息已排队，轮到时会自动继续')
         return
       }
-      /**
-       * 首轮结束时的**自动命名**：服务端在收尾阶段把新标题推下来（`data-conversation-title`）。
-       *
-       * 为什么要推：命名发生在服务端收尾，前端那份"会话列表 / 会话详情"缓存不会自己知道 ——
-       * 就地改缓存（而不是整份重拉）才能让侧栏与页头**当场**换名字，且不多一次请求。
-       * 服务端没推（没改名 / 起名失败）时什么都不做：前端本来就显示着兜底标题。
-       */
-      if (part.type === 'data-conversation-title') {
-        const data = part.data as { conversationId?: string; title?: string }
-        const targetId = data.conversationId ?? activeConversationIdRef.current
-        if (!targetId || !data.title) return
-        // 会话列表现在是 infinite query（多页），实时改名要把每一页都改到
-        queryClient.setQueryData<InfiniteData<AppPageQueryResponse<AgentConversationModel>>>(
-          ['ai', 'conversations'],
-          (current) =>
-            current
-              ? {
-                  ...current,
-                  pages: current.pages.map((page) => ({
-                    ...page,
-                    items: page.items.map((item) =>
-                      item.id === targetId ? { ...item, title: data.title! } : item,
-                    ),
-                  })),
-                }
-              : current,
-        )
-        queryClient.setQueryData<AgentConversationModel>(
-          ['ai', 'conversation', targetId],
-          (current) => (current ? { ...current, title: data.title! } : current),
-        )
-        return
-      }
-
       // 本轮身份：记住 runId 与（新建会话时的）真实会话 id
       if (part.type !== 'data-run') return
       const data = part.data as { runId?: string; conversationId?: string }

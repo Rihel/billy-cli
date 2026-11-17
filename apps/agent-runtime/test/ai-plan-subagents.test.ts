@@ -1173,7 +1173,7 @@ const buildStack = async () => {
     modelsStub,
     silentLogger,
     createPromptEngine(),
-    new AgentTitleService(timelines, createPromptEngine(), silentLogger),
+    new AgentTitleService(createPromptEngine(), silentLogger),
   )
 
   const runService = new AgentRunService(runs, conversations)

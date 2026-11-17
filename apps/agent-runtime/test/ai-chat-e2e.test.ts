@@ -222,7 +222,7 @@ beforeAll(async () => {
     modelsStub,
     silentLogger,
     createPromptEngine(),
-    new AgentTitleService(timelines, createPromptEngine(), silentLogger),
+    new AgentTitleService(createPromptEngine(), silentLogger),
     // 文件 / 附件归属这两项本文件不触发，位置占位
     undefined,
     undefined,
@@ -486,12 +486,12 @@ describe('对话链路端到端（mock 模型 + 真实数据库）', () => {
     expect(retried, '改正后的那次调用应当带着 reason 落库').toBeDefined()
   })
 
-  it('首轮结束后用模型起名：≤10 字，且与当前 agent 上下文**完全隔离**', async () => {
+  it('首轮一开始就并行起名：≤10 字，且与当前 agent 上下文**完全隔离**', async () => {
     const before = mock.requests.length
     const result = await chat.chat(USER, { message: '帮我看看最近有哪些待办' })
     createdConversationIds.push(result.conversationId)
 
-    // 1) 标题来自那次命名调用（首条消息那版 12 字只是兜底，被模型名覆盖）
+    // 1) 标题来自那次命名调用（首条消息截出来那版只是兜底，被模型名覆盖）
     const conversation = await conversations.detail(USER, { conversationId: result.conversationId })
     expect(conversation.title).toBe(MOCK_TITLE_TEXT)
     expect(Array.from(conversation.title).length).toBeLessThanOrEqual(10)
@@ -510,7 +510,7 @@ describe('对话链路端到端（mock 模型 + 真实数据库）', () => {
     expect(serialized).not.toContain('可用工具')
     expect(serialized).not.toContain('通用约定')
     expect(serialized).not.toContain('本角色的额外约定')
-    expect(serialized).toContain('用户：帮我看看最近有哪些待办')
+    expect(serialized).toContain('帮我看看最近有哪些待办')
     expect(titleBody.tools ?? []).toEqual([])
   })
 
@@ -533,10 +533,18 @@ describe('对话链路端到端（mock 模型 + 真实数据库）', () => {
 
     const firstTurnRequests = mock.requests.slice(beforeFirst)
     expect(firstTurnRequests.length).toBeGreaterThan(0)
+    /**
+     * 首轮同时会发两发请求：命名（无工具）与主回答（带工具），两者**并行**，谁先到 mock 不确定
+     * —— 这里按"有没有工具"挑出主回答那条，不能按下标取。
+     */
+    const firstMain = firstTurnRequests.find(
+      (body) => Array.isArray(body.tools) && body.tools.length > 0,
+    )
+    expect(firstMain).toBeDefined()
     // 首轮那份里注入了**当前平台**的画像与时间，不是写死的文案
     //（标记用片段的完整标题：正文里另有"命令按运行环境里那个 shell 语法写"这类提法，不能用"运行环境"当标记）
     const firstSystem = String(
-      (firstTurnRequests[0]!.messages as Array<{ role: string; content: unknown }>).find(
+      ((firstMain?.messages ?? []) as Array<{ role: string; content: unknown }>).find(
         (message) => message.role === 'system',
       )?.content ?? '',
     )
@@ -555,8 +563,13 @@ describe('对话链路端到端（mock 模型 + 真实数据库）', () => {
     await chat.chat(USER, { conversationId: first.conversationId, message: '那现在呢？' })
     const secondTurnRequests = mock.requests.slice(beforeSecond)
     expect(secondTurnRequests.length).toBeGreaterThan(0)
+    // 第二轮不再命名（首轮之后不自动改名），此时只可能是主回答，但仍按"带工具"取，避免口径漂移
+    const secondMain = secondTurnRequests.find(
+      (body) => Array.isArray(body.tools) && body.tools.length > 0,
+    )
+    expect(secondMain).toBeDefined()
     const secondSystem = String(
-      (secondTurnRequests[0]!.messages as Array<{ role: string; content: unknown }>).find(
+      ((secondMain?.messages ?? []) as Array<{ role: string; content: unknown }>).find(
         (message) => message.role === 'system',
       )?.content ?? '',
     )

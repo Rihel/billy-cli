@@ -228,7 +228,7 @@ beforeAll(async () => {
     modelsStub,
     silentLogger,
     createPromptEngine(),
-    new AgentTitleService(timelines, createPromptEngine(), silentLogger),
+    new AgentTitleService(createPromptEngine(), silentLogger),
   )
 
   http = createServer((req, res) => {

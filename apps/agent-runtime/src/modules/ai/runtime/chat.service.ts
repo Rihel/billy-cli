@@ -435,66 +435,94 @@ export class AgentChatService {
   }
 
   /**
-   * **首轮结束时给会话起名**（模型生成、≤10 字、与当前 agent 上下文完全隔离）。
+   * **首轮命名的前提**：这一轮是首轮，且标题还是「兜底那版」。
    *
-   * 三个前提全满足才做；任何一条不满足就返回 null（保住"首条消息"那版兜底标题）：
-   * 1. **这一轮是首轮**（开局时 `turnCount === 0`，第一轮之后不再改名）；
-   * 2. 标题**还是兜底那版** —— 用户中途改过名就永远听用户的，后台不许悄悄冲掉它；
-   * 3. 命名调用成功且从模型输出里收拾出了名字（超时 / 报错 / 空输出都算失败）。
-   *
-   * 为什么这次调用的 token 计进这一轮：`runs.usage` 的语义是"这一轮花掉的钱"，
-   * 为这一轮起的名字正是这一轮花的 —— 分开记会让账目凭空少一块（它不占 `step` 行，
-   * 因为它不是回答的一步）。
+   * 首轮之后（`turnCount > 0`）不再自动改名；用户中途改过名（标题已不是
+   * `titleFrom(首条消息)`）也永远听用户的 —— 后台不许悄悄冲掉人工名字。
    */
-  private async generateFirstTurnTitle(
+  private needsFirstTurnTitle(conversation: ConversationEntity, message: string): boolean {
+    if (conversation.turnCount > 0) return false
+    return !conversation.title || conversation.title === titleFrom(message)
+  }
+
+  /**
+   * **首轮命名**：run 一启动就和主回答**并行**跑（早就不在收尾里做了）。
+   *
+   * - 先落兜底名（首条消息截出来的那版），侧栏立刻有名字，不用等模型；
+   * - 名字一回来就落库 + 推整站 SSE（`conversation.title.changed`），前端当场更新；
+   * - 失败（超时 / 报错 / 被取消）只 warn 并保住兜底名 —— 返回的 promise **不会 reject**，
+   *   调用方在收尾处 `await` 它，只为把这次调用的 token 并进这一轮的账。
+   *
+   * `signal` 是这一轮的中止信号：用户点停止 → 命名调用一起断开。
+   */
+  private startFirstTurnTitle(
     conversation: ConversationEntity,
     runId: string,
     message: string,
     model: RuntimeModel,
+    signal?: AbortSignal,
   ): Promise<FirstTurnTitle | null> {
-    if (conversation.turnCount > 0) return null
-    if (conversation.title && conversation.title !== titleFrom(message)) return null
-    return this.titles.generateFirstTurnTitle({
-      conversationId: conversation.id,
-      runId,
-      model,
+    if (!this.needsFirstTurnTitle(conversation, message)) return Promise.resolve(null)
+    // 立即起跑（async IIFE 同步执行到第一个 await）：兜底名先落，再等模型
+    return (async () => {
+      await this.writeFallbackTitle(conversation, message)
+      const generated = await this.titles.generateFirstTurnTitle({
+        conversationId: conversation.id,
+        runId,
+        message,
+        model,
+        ...(signal ? { signal } : {}),
+      })
+      if (generated?.title) await this.commitTitle(conversation, message, generated.title)
+      return generated
+    })().catch((error: unknown) => {
+      // 起名是"锦上添花"：任何意外都不能影响这一轮，更不能让调用方的 await 炸掉收尾
+      this.logger.warn('ai.conversation.title_failed', {
+        conversationId: conversation.id,
+        runId,
+        reason: error instanceof Error ? error.message : String(error),
+      })
+      return null
     })
   }
 
-  /** 落标题：模型起的名优先；没起成则只在标题为空时用首条消息兜底（用户改过的名不动） */
-  private async applyTitle(
-    conversation: ConversationEntity,
-    message: string,
-    generated: FirstTurnTitle | null,
-  ): Promise<void> {
-    if (generated?.title) {
-      await this.conversationRepo.setTitle(conversation.id, generated.title)
-      return
-    }
-    if (!conversation.title) {
-      await this.conversationRepo.setTitle(conversation.id, titleFrom(message))
-    }
-  }
-
   /**
-   * 失败 / 超时的一轮也要把兜底标题落下去。
-   *
-   * 标题原本只在**成功收尾**时写；首轮失败（模型超时、上下文过长）就留一条空白会话，
-   * 侧栏里认不出来。这里只补"还没有标题"的会话，用户改过的名不动；失败也不影响原错误上抛。
+   * 落**兜底名**：只在标题还空着时写（用户改过的名、模型起的名都不动）。
+   * 失败只 warn —— 起名是锦上添花，不能影响这一轮。
    */
-  private async ensureFallbackTitle(
+  private async writeFallbackTitle(
     conversation: ConversationEntity,
     message: string,
   ): Promise<void> {
     if (conversation.title) return
     try {
-      await this.applyTitle(conversation, message, null)
+      const title = titleFrom(message)
+      await this.conversationRepo.setTitle(conversation.id, title)
+      conversation.title = title
     } catch (error) {
       this.logger.warn('ai.conversation.title_fallback_failed', {
         conversationId: conversation.id,
         reason: error instanceof Error ? error.message : String(error),
       })
     }
+  }
+
+  /**
+   * 落**模型起的名字**：写库前重读一次标题 —— 命名与主回答并行，这段等待期间用户可能
+   * 已经手动改名（那就永远听用户的）。落库后推整站 SSE，侧栏 / 页头不用等下一次刷新。
+   */
+  private async commitTitle(
+    conversation: ConversationEntity,
+    message: string,
+    title: string,
+  ): Promise<void> {
+    const fallback = titleFrom(message)
+    const fresh = await this.conversationRepo.findEntity(conversation.id)
+    if (!fresh) return
+    if (fresh.title && fresh.title !== fallback) return
+    await this.conversationRepo.setTitle(conversation.id, title)
+    conversation.title = title
+    await this.runEvents?.titleChanged(conversation.id, title)
   }
 
   /** 本进程内活动运行的中止控制器（跨副本经 Redis 停止频道广播） */
@@ -529,6 +557,9 @@ export class AgentChatService {
         identityId: userId,
       })
       const modelInstance = await this.resolveModelInstance(model)
+      // 首轮命名：**与主回答并行**起跑（早就不再放收尾），失败只留兜底名。
+      // 非流式入口没有可取消的运行，因此不传中止信号。
+      const titlePromise = this.startFirstTurnTitle(conversation, run.id, input.message, model)
 
       // ② 组装上下文（窗口优先用库里配的实测值；超限则先压缩一次再重新组装，只压一次）
       let built = await this.buildContext(
@@ -615,22 +646,19 @@ export class AgentChatService {
       const steps = (result.steps ?? []) as unknown as StepLike[]
       const persisted = await this.persistSteps(conversation.id, run.id, steps)
 
-      // ⑤ 首轮命名：把这一轮的记录交给模型起个短名（与 agent 上下文完全隔离的一次小调用）
-      // 命名与记忆抽取都是"与 agent 隔离的一次小调用"，并行跑，失败都不影响这一轮
-      const [title, extracted] = await Promise.all([
-        this.generateFirstTurnTitle(conversation, run.id, input.message, model),
-        this.memoryExtractor
-          ? this.memoryExtractor.maybeExtract({
-              conversationId: conversation.id,
-              runId: run.id,
-              userId,
-              agentKey: definition.key,
-              userMessage: input.message,
-              turnCount: conversation.turnCount,
-              model,
-            })
-          : Promise.resolve(null),
-      ])
+      // ⑤ 记忆抽取仍在收尾（它要读完整一轮）；命名已与主回答并行跑完，这里只等它并账
+      const extracted = this.memoryExtractor
+        ? await this.memoryExtractor.maybeExtract({
+            conversationId: conversation.id,
+            runId: run.id,
+            userId,
+            agentKey: definition.key,
+            userMessage: input.message,
+            turnCount: conversation.turnCount,
+            model,
+          })
+        : null
+      const title = await titlePromise
 
       // ⑤ 收尾：终态 + 消耗（含子 agent 汇总与这次命名）+ 统计 + 会话累计 + 标题
       const usageBase = await this.rollUpUsage(
@@ -653,7 +681,6 @@ export class AgentChatService {
         durationMs,
       })
       await this.conversationRepo.accumulate(conversation.id, totalTokensOf(usage))
-      await this.applyTitle(conversation, input.message, title)
 
       this.logger.log('ai.chat.succeeded', {
         conversationId: conversation.id,
@@ -707,7 +734,7 @@ export class AgentChatService {
       // 父 run 失败 → 级联取消子 agent 与待唤醒项（与流式路径同一口径）
       await this.cascadeStop(run.id, conversation.id)
       // 失败的一轮也要有会话名（否则首轮失败就留一条空白会话）
-      await this.ensureFallbackTitle(conversation, input.message)
+      await this.writeFallbackTitle(conversation, input.message)
       clearInterval(heartbeat)
       throw mapped
     }
@@ -1296,6 +1323,14 @@ export class AgentChatService {
         identityId: userId,
       })
       const modelInstance = await this.resolveModelInstance(model)
+      // 首轮命名：**与主回答并行**起跑（不阻塞这一轮；用户点停止 → 这次命名一起断开）
+      const titlePromise = this.startFirstTurnTitle(
+        conversation,
+        run.id,
+        input.message,
+        model,
+        abort.signal,
+      )
 
       // ② 组装上下文（窗口优先用库里配的实测值；超限则先压缩一次再重新组装，只压一次）
       let built = await this.buildContext(
@@ -1596,22 +1631,19 @@ export class AgentChatService {
       // 直接读 `output.steps` 会拿到 undefined（踩过的崩点，见 stream-result.ts 的注释）
       const steps = (await readStreamSteps(output)) as unknown as StepLike[]
       const persisted = await recorder.finish(steps)
-      // 首轮命名：与 agent 上下文完全隔离的一次小调用（失败不影响这一轮，见 title.service.ts）
-      // 命名与记忆抽取都是"与 agent 隔离的一次小调用"，并行跑，失败都不影响这一轮
-      const [title, extracted] = await Promise.all([
-        this.generateFirstTurnTitle(conversation, run.id, input.message, model),
-        this.memoryExtractor
-          ? this.memoryExtractor.maybeExtract({
-              conversationId: conversation.id,
-              runId: run.id,
-              userId,
-              agentKey: definition.key,
-              userMessage: input.message,
-              turnCount: conversation.turnCount,
-              model,
-            })
-          : Promise.resolve(null),
-      ])
+      // 记忆抽取仍在收尾（要读完整一轮）；命名已与主回答并行跑完，这里只等它并账
+      const extracted = this.memoryExtractor
+        ? await this.memoryExtractor.maybeExtract({
+            conversationId: conversation.id,
+            runId: run.id,
+            userId,
+            agentKey: definition.key,
+            userMessage: input.message,
+            turnCount: conversation.turnCount,
+            model,
+          })
+        : null
+      const title = await titlePromise
       const usageBase = await this.rollUpUsage(run.id, toUsageRecord(await readStreamUsage(output)))
       // 并账要**保留 usageBase 里的非 token 字段**（如 `subAgents`）：
       // `mergeUsage` 只逐字段加 token，直接把它的结果当 usage 会把那些字段抹掉（踩过：子 agent 明细消失）
@@ -1633,33 +1665,6 @@ export class AgentChatService {
       })
       await this.runs.setActiveStream(run.id, null)
       await this.conversationRepo.accumulate(conversation.id, totalTokensOf(usage))
-      await this.applyTitle(conversation, input.message, title)
-
-      /**
-       * 标题变更**实时下发**（`data-conversation-title`）。
-       *
-       * 自动命名发生在收尾阶段，前端那份"会话列表 / 会话详情"缓存不会自己知道 ——
-       * 不推的话侧栏与页头要等下一次刷新或切会话才显示新名字（用户反馈：重命名没有实时响应）。
-       * 与 `data-run-usage` 同一手法：先给客户端，再进 Redis 记录 + 广播，于是断线补发也拿得到。
-       * 只在下发时**确实改过名字**（`title` 非空）时才发；名字没变时前端本来就有正确的值。
-       */
-      if (title?.title) {
-        const titleChunk = {
-          type: 'data-conversation-title',
-          data: {
-            runId: run.id,
-            conversationId: conversation.id,
-            title: title.title,
-          },
-        }
-        rev = await this.emitAgUi({
-          runId: run.id,
-          threadId: conversation.id,
-          chunk: titleChunk,
-          response,
-          messageIdRef,
-        })
-      }
 
       this.logger.log('ai.stream.succeeded', {
         conversationId: conversation.id,
@@ -1737,7 +1742,7 @@ export class AgentChatService {
         // 父 run 失败 → 级联取消它派出去、还在跑的子 agent，以及待唤醒的队列项
         await this.cascadeStop(run.id, conversation.id)
         // 失败的一轮也要有会话名（否则侧栏是一条空白）
-        await this.ensureFallbackTitle(conversation, input.message)
+        await this.writeFallbackTitle(conversation, input.message)
       } else if (abort.signal.aborted) {
         // 用户主动停止：是 canceled，不是 failed（语义要分清）
         await this.runs.finish(run.id, {
@@ -1786,7 +1791,7 @@ export class AgentChatService {
           durationMs,
         })
         // 失败的一轮也要有会话名（以前只有成功收尾才落标题 → 失败会话在侧栏是一条空白）
-        await this.ensureFallbackTitle(conversation, input.message)
+        await this.writeFallbackTitle(conversation, input.message)
       }
 
       await this.runs.setActiveStream(run.id, null)
@@ -2673,6 +2678,11 @@ export class AgentChatService {
         identityId: userId,
       })
       const modelInstance = await this.resolveModelInstance(model)
+      // 首轮命名：只有用户发起的轮次才命名（子 agent 唤醒不是用户说的），与主回答并行跑
+      const titlePromise =
+        origin === 'user'
+          ? this.startFirstTurnTitle(conversation, run.id, input.message, model, abort.signal)
+          : Promise.resolve(null)
 
       let built = await this.buildContext(
         conversation.id,
@@ -2908,24 +2918,20 @@ export class AgentChatService {
 
       const steps = (await readStreamSteps(output)) as unknown as StepLike[]
       const persisted = await recorder.finish(steps)
-      // 命名 / 记忆抽取只属于用户消息：子 agent 唤醒不是用户说的，不参与首轮命名
-      const [title, extracted] =
-        origin === 'user'
-          ? await Promise.all([
-              this.generateFirstTurnTitle(conversation, run.id, input.message, model),
-              this.memoryExtractor
-                ? this.memoryExtractor.maybeExtract({
-                    conversationId: conversation.id,
-                    runId: run.id,
-                    userId,
-                    agentKey: definition.key,
-                    userMessage: input.message,
-                    turnCount: conversation.turnCount,
-                    model,
-                  })
-                : Promise.resolve(null),
-            ])
-          : [null, null]
+      // 记忆抽取只属于用户消息（子 agent 唤醒不是用户说的）；命名已与主回答并行跑完
+      const extracted =
+        origin === 'user' && this.memoryExtractor
+          ? await this.memoryExtractor.maybeExtract({
+              conversationId: conversation.id,
+              runId: run.id,
+              userId,
+              agentKey: definition.key,
+              userMessage: input.message,
+              turnCount: conversation.turnCount,
+              model,
+            })
+          : null
+      const title = await titlePromise
       const usageBase = await this.rollUpUsage(run.id, toUsageRecord(await readStreamUsage(output)))
       let usage = usageBase
       for (const extra of [title?.usage, extracted?.usage]) {
@@ -2943,14 +2949,6 @@ export class AgentChatService {
       })
       await this.runs.setActiveStream(run.id, null)
       await this.conversationRepo.accumulate(conversation.id, totalTokensOf(usage))
-      if (origin === 'user') await this.applyTitle(conversation, input.message, title)
-
-      if (title?.title) {
-        rev = await emit({
-          type: 'data-conversation-title',
-          data: { runId: run.id, conversationId: conversation.id, title: title.title },
-        })
-      }
       await emit({
         type: 'data-run-usage',
         data: {
@@ -2997,7 +2995,7 @@ export class AgentChatService {
           finishedAt: new Date(),
         })
         await this.cascadeStop(run.id, conversation.id)
-        if (origin === 'user') await this.ensureFallbackTitle(conversation, input.message)
+        if (origin === 'user') await this.writeFallbackTitle(conversation, input.message)
         this.logger.error('ai.stream.queued_turn_first_token_timeout', {
           runId: run.id,
           timeoutMs: this.config.firstTokenTimeoutMs,
@@ -3042,7 +3040,7 @@ export class AgentChatService {
         finishedAt: new Date(),
       })
       await this.cascadeStop(run.id, conversation.id)
-      if (origin === 'user') await this.ensureFallbackTitle(conversation, input.message)
+      if (origin === 'user') await this.writeFallbackTitle(conversation, input.message)
       this.logger.error('ai.stream.queued_turn_failed', { runId: run.id, origin, reason })
       return 'failed'
     } finally {
