@@ -448,6 +448,12 @@ ai/
   `agent.stream` / `resumeStream` 都带 `memory: { thread: conversationId, resource: userId }`，
   并 `savePerStep: true`。当前 memory 用 `InMemoryStore`（进程内），**重启续跑**仍需换成
   落库的 memory 存储域或启动时从 `timelines` 回灌 —— 这是已知缺口。
+- **续跑又挂起时不许 abort 旧 engine run**：「释放流槽位」与「放弃可恢复性」在 Mastra 里是
+  两个操作。`agent.abortRunStream(engineRunId)` 内部是
+  `abortRun(runId, pubsub, { fenceResume = true })`：挂起期间调用会把这个 suspension
+  **永久 fence**（并对 parked run 删掉快照行），之后 `resumeStream` 直接抛
+  `cannot resume aborted run`、run 标 `failed 3302`。所以只在
+  `if (!suspendedAgain)`（这次续跑没再挂起、要起新 engine run）时才释放旧槽位。
 
 **时间线 / 历史**
 
@@ -468,6 +474,10 @@ ai/
   不是运行被中断**，它不会换个说法再问一遍。时间线的 `tool-result` 记
   `{ cancelled: true, answers: [] }`，历史重建据此把卡片标成「已取消」；
 - `resumed=true` 的挂起事件**不重复落** `tool-suspended`，只补记 toolName，避免历史出现两张卡。
+- **run 终态的未答挂起卡也置只读**：历史重建除了看"同 `toolCallId` 有没有 `tool-result`"，
+  还要看 run 的真实状态（`status === 'suspended'`）。run 已 failed / canceled / 中断而问题从没被回答时，
+  卡片置 `resumed + cancelled`：否则它一直显示"待回答"，用户提交只会拿到 `RunNotSuspended`（409），
+  刷新后依旧 —— 2026-11-17 上游 Issue 2。
 - **每道题都有"选项之外"的兜底输入**（2026-11-03 补）：单选题在选项末尾多一个「其他（自行填写）」，
   多选题是多一个可与其他项同时勾的「其他」，两类题下面都有一个自由输入框；在那里写文字等同选中「其他」
   （单选覆盖选中项、多选追加在末尾、清空即取消）。提交前由 `resolveAnswerValue` 把"选中项 + 自定义文本"

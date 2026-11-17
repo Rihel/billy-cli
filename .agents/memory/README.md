@@ -108,3 +108,5 @@
 | [sse-transport](sse-transport.md) | AI 会话输出走 Redis pub/sub 定向频道（clientId 存 Redis 进度 Hash）；载荷是 AG-UI 事件，补发按 rev；Kafka 只剩连接器同步 | 抽核 | 2026-11-17 |
 | [main-runtime-split](main-runtime-split.md) | 拆分后的边界：main 9989 控制面 + runtime 9990 执行面、内部接口、Kafka 回传、配置事件；6 条已知缺口 | 必核 | 2026-11-14 |
 | [admin-shell-layout](admin-shell-layout.md) | admin 三棵布局树共用一条顶栏（会话 / 管理）；共享 Sidebar 是 fixed，侧栏必须行内 top/height 下移 | 必核 | 2026-11-15 |
+| [ai-resume-fence](ai-resume-fence.md) | `abortRunStream` 默认 `fenceResume: true`：挂起期间 abort = 永久放弃可恢复性；续跑又挂起时必须跳过它 | 必核 | 2026-11-17 |
+| [ai-timeline-part-id](ai-timeline-part-id.md) | text / reasoning 行必须带 `payload.id`（流式 + 非流式两条写入路径）；老数据 2,465 行缺 id 但全在终态 run，不回填 | 必核 | 2026-11-17 |
