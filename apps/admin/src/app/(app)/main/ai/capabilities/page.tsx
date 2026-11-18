@@ -183,81 +183,90 @@ export default function CapabilitiesPage() {
                 <Button
                   size="sm"
                   variant="outline"
-                  onClick={async () => {
-                    if (!service.baseUrl) return toastError('这个服务由实例注册，没有 baseUrl 可测')
-                    try {
-                      const result = await testMutation.mutateAsync({
-                        baseUrl: service.baseUrl,
-                        healthPath: service.healthPath,
-                      })
-                      if (result.ok) toastSuccess('连通正常')
-                      else toastError(result.message ?? '连不上')
-                    } catch (error) {
-                      toastError(messageOf(error))
-                    }
-                  }}
+                  onClick={() =>
+                    void (async () => {
+                      if (!service.baseUrl)
+                        return toastError('这个服务由实例注册，没有 baseUrl 可测')
+                      try {
+                        const result = await testMutation.mutateAsync({
+                          baseUrl: service.baseUrl,
+                          healthPath: service.healthPath,
+                        })
+                        if (result.ok) toastSuccess('连通正常')
+                        else toastError(result.message ?? '连不上')
+                      } catch (error) {
+                        toastError(messageOf(error))
+                      }
+                    })()
+                  }
                 >
                   测试连通
                 </Button>
                 <Button
                   size="sm"
                   variant="outline"
-                  onClick={async () => {
-                    if (!service.baseUrl) return toastError('没有 baseUrl')
-                    try {
-                      const manifest = await pullMutation.mutateAsync({
-                        baseUrl: service.baseUrl,
-                        healthPath: service.healthPath,
-                      })
-                      setEditing(service)
-                      setForm({
-                        service: service.service,
-                        title: service.title,
-                        owner: service.owner,
-                        baseUrl: service.baseUrl,
-                        healthPath: service.healthPath,
-                        authHeader: 'x-api-key',
-                        credential: '',
-                        capabilities: JSON.stringify(manifest, null, 2),
-                      })
-                      setOpen(true)
-                      toastSuccess('已拉取清单，确认后保存')
-                    } catch (error) {
-                      toastError(messageOf(error))
-                    }
-                  }}
+                  onClick={() =>
+                    void (async () => {
+                      if (!service.baseUrl) return toastError('没有 baseUrl')
+                      try {
+                        const manifest = await pullMutation.mutateAsync({
+                          baseUrl: service.baseUrl,
+                          healthPath: service.healthPath,
+                        })
+                        setEditing(service)
+                        setForm({
+                          service: service.service,
+                          title: service.title,
+                          owner: service.owner,
+                          baseUrl: service.baseUrl,
+                          healthPath: service.healthPath,
+                          authHeader: 'x-api-key',
+                          credential: '',
+                          capabilities: JSON.stringify(manifest, null, 2),
+                        })
+                        setOpen(true)
+                        toastSuccess('已拉取清单，确认后保存')
+                      } catch (error) {
+                        toastError(messageOf(error))
+                      }
+                    })()
+                  }
                 >
                   拉清单
                 </Button>
                 <Button
                   size="sm"
                   variant="outline"
-                  onClick={async () => {
-                    try {
-                      await statusMutation.mutateAsync({
-                        service: service.service,
-                        status: service.status === 'active' ? 'disabled' : 'active',
-                      })
-                      await listQuery.refetch()
-                    } catch (error) {
-                      toastError(messageOf(error))
-                    }
-                  }}
+                  onClick={() =>
+                    void (async () => {
+                      try {
+                        await statusMutation.mutateAsync({
+                          service: service.service,
+                          status: service.status === 'active' ? 'disabled' : 'active',
+                        })
+                        await listQuery.refetch()
+                      } catch (error) {
+                        toastError(messageOf(error))
+                      }
+                    })()
+                  }
                 >
                   {service.status === 'active' ? '停用' : '启用'}
                 </Button>
                 <Button
                   size="sm"
                   variant="outline"
-                  onClick={async () => {
-                    if (!window.confirm(`删除服务 ${service.service}？能力会从目录消失`)) return
-                    try {
-                      await removeMutation.mutateAsync(service.service)
-                      await listQuery.refetch()
-                    } catch (error) {
-                      toastError(messageOf(error))
-                    }
-                  }}
+                  onClick={() =>
+                    void (async () => {
+                      if (!window.confirm(`删除服务 ${service.service}？能力会从目录消失`)) return
+                      try {
+                        await removeMutation.mutateAsync(service.service)
+                        await listQuery.refetch()
+                      } catch (error) {
+                        toastError(messageOf(error))
+                      }
+                    })()
+                  }
                 >
                   删除
                 </Button>

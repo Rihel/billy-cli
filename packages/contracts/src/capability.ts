@@ -153,6 +153,7 @@ export const ServiceRegistrationSchema = z
   })
 
 export type ServiceRegistration = z.infer<typeof ServiceRegistrationSchema>
+export type ServiceRegistrationInput = z.input<typeof ServiceRegistrationSchema>
 
 /** 网关注册表里的一条实例 */
 export const RegisteredInstanceSchema = ServiceInstanceSchema.extend({

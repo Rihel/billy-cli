@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
-import type { AppLogger, WorkspaceRuntimeService } from '@repo/kits'
+import type { AppLogger, Db, RedisStore, WorkspaceRuntimeService } from '@repo/kits'
+import type { FileService, MemoryRepository, MemoryService } from '@repo/ai-data'
 import type { ToolInvokeRequest } from '@repo/contracts'
 import { BashExecutor } from '../src/executors/bash.executor.js'
 import { ToolExecutorRegistry } from '../src/executors/executor.registry.js'
@@ -81,9 +82,9 @@ const build = (exec = vi.fn()) => {
         new WebFetchExecutor(config, logger),
         new WebSearchExecutor(config, logger),
         new WebRequestExecutor(config, logger),
-        new MemoryExecutor(config, logger),
-        new FileExecutor(config, logger),
-        new ReadToolResultExecutor(config, logger),
+        new MemoryExecutor({} as MemoryService, {} as MemoryRepository),
+        new FileExecutor({} as FileService, {}, logger),
+        new ReadToolResultExecutor({} as RedisStore, {} as Db, config, logger),
       ),
       logger,
     ),

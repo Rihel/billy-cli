@@ -8,7 +8,7 @@ import {
   type InstanceHeartbeat,
   type RegisteredInstance,
   type RegisteredService,
-  type ServiceRegistration,
+  type ServiceRegistrationInput,
   type ServiceRegisterResult,
 } from '@repo/contracts'
 import { ToolGatewayConfig, type ToolGatewayConfigValue } from '../config/app-config.js'
@@ -77,7 +77,7 @@ export class ServiceRegistry {
   ) {}
 
   /** 登记 / 更新一个服务（内部服务每个实例启动时都会调一次） */
-  async register(input: ServiceRegistration): Promise<ServiceRegisterResult> {
+  async register(input: ServiceRegistrationInput): Promise<ServiceRegisterResult> {
     await this.ensureLoaded()
     const parsed = ServiceRegistrationSchema.parse(input)
     const now = Date.now()
