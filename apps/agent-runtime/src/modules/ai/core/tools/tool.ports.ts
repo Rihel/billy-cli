@@ -15,7 +15,7 @@ export interface ToolRateCounter {
 /** 时钟端口（生产是系统时钟，测试可固定 —— 分页与耗时都要确定性） */
 export const TOOL_CLOCK = Symbol.for('ToolClock')
 
-/** 远程工具执行端口（tool-gateway）；未配置时网关回落到进程内 `spec.exec` */
+/** 远程工具执行端口（capability-gateway）；未配置时网关回落到进程内 `spec.exec` */
 export const REMOTE_TOOL_INVOKER = Symbol.for('RemoteToolInvoker')
 
 export interface RemoteToolInvokeInput {

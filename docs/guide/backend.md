@@ -1,7 +1,7 @@
 # 后端（NestJS）
 
 > 本文主线是 **`apps/main`**（公网 BFF，9989）与 **`apps/agent-runtime`**（agent loop，9990）。
-> 另有内部 **`apps/model-gateway`**（9992，模型网关）与 **`apps/tool-gateway` / `apps/tool-worker`**
+> 另有内部 **`apps/model-gateway`**（9992，模型网关）与 **`apps/capability-gateway` / `apps/common-capability`**
 > （9993 / 9994，工具面），它们只在内网、只接受内部令牌。
 > 本文写 main / runtime 的边界、模块、鉴权、API、Kafka / SSE 链路、日志与监控。
 > 通用能力封装见 [packages.md](./packages.md)，部署见 [deployment.md](./deployment.md)。
@@ -141,7 +141,7 @@ apps/agent-runtime/src/modules/ai/
 | `GET /healthz` / `GET /readyz` / `GET /info` | 与 main 同一套 `OpsModule` 探针实现（`/readyz` 探 DB + Redis） |
 
 - **响应格式**：内部业务 JSON 统一 `{ code: 0, data }`（runtime 全局 `ResponseEnvelopeInterceptor`；
-  tool-gateway / tool-worker / model-gateway 的业务路由同约定）。`/healthz`、`/readyz`、`/info` 探针与
+  capability-gateway / common-capability / model-gateway 的业务路由同约定）。`/healthz`、`/readyz`、`/info` 探针与
   `/v1/**` 模型协议、SSE/NDJSON 流式响应保持裸格式。
 - **身份**：`requireToken` 校验 `x-internal-token === AGENT_INTERNAL_TOKEN`（目录类查询到此为止）；
   会话类接口再经 `requireOwner` 从 `x-user-id` / `x-admin-id` 取调用者，缺失即 401。

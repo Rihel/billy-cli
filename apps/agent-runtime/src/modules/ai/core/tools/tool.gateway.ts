@@ -59,7 +59,7 @@ export class ToolGateway {
     @Inject(AppLogger) private readonly logger: AppLogger,
     @Inject(AGENT_TOOL_PLUGINS) private readonly plugins: readonly ToolPlugin[],
     @Inject(TOOL_CLOCK) private readonly clock: ToolClock,
-    /** 可选：allowlist 内的工具走远程 tool-gateway；未配置时完全走进程内执行 */
+    /** 可选：allowlist 内的工具走远程 capability-gateway；未配置时完全走进程内执行 */
     @Optional() @Inject(REMOTE_TOOL_INVOKER) private readonly remote?: RemoteToolInvoker | null,
   ) {}
 
@@ -78,7 +78,7 @@ export class ToolGateway {
     const caller = toCaller(envelope)
 
     /**
-     * 远程执行：**策略已经搬到 tool-gateway**，这里不再跑本地插件链。
+     * 远程执行：**策略已经搬到 capability-gateway**，这里不再跑本地插件链。
      * 只在 `TOOL_GATEWAY_URL` + allowlist 命中时走；否则保持原有进程内路径。
      */
     if (this.remote?.supports(spec.key)) {

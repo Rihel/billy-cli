@@ -36,7 +36,6 @@
     "@repo/kits": "workspace:*",
     "@repo/monitor": "workspace:*",
     "@repo/shared": "workspace:*",
-    "@repo/tool-catalog": "workspace:*",
     "@repo/web-runtime": "workspace:*",
     "ai": "^7.0.164",
     "dedent": "^1.7.2",

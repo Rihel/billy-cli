@@ -5,7 +5,7 @@
 ## 结论
 
 - 5 个包按「运行时 + 依赖方向」分层：`shared`（纯 TS 契约与工具）→ `kits`（Node + Nest 基础设施）→
-  `apps/main` / `apps/agent-runtime` / `tool-gateway` / `tool-worker`；`ui`（React 组件）单独给两个 Next app；
+  `apps/main` / `apps/agent-runtime` / `capability-gateway` / `common-capability`；`ui`（React 组件）单独给两个 Next app；
   `http-client` → `sdk` 给前端调后端。
   **不是按功能域分的**，所以「包不够细」不是问题。
 - 拆包买不到东西的三个原因（2026-11-13 实测）：

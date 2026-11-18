@@ -21,7 +21,7 @@
 ## 核对命令
 
 ```bash
-grep -n "default(300_000)" apps/agent-runtime/src/modules/ai/tools/bash.tool.ts apps/tool-worker/src/config/app-config.ts
+grep -n "default(300_000)" apps/agent-runtime/src/modules/ai/tools/bash.tool.ts apps/common-capability/src/config/app-config.ts
 grep -n "deadlineMs: 310_000" apps/agent-runtime/src/modules/ai/core/tools/tool.gateway.ts
 grep -n "max(360_000)" packages/contracts/src/tool.ts
 grep -n "MAX_TIMEOUT_MS" packages/kits/src/foundation/command/command.result.ts

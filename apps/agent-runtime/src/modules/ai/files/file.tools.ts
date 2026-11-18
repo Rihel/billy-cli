@@ -19,7 +19,7 @@ import {
   REPLACE_FILE_TOOL,
   WORKSPACE_FILES_TOOL,
   WRITE_FILE_TOOL,
-} from '@repo/tool-catalog'
+} from '../tools/definitions/files.js'
 import { FileService, type FileContext } from './file.service.js'
 
 /**

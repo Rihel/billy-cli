@@ -21,14 +21,14 @@
 | `packages/db/src/migrations/index.ts` | 迁移 re-export + `DB_MIGRATIONS` |
 | `apps/main/src/root.module.ts`、`apps/agent-runtime/src/root.module.ts` | `entities: [...DB_ENTITIES]` |
 | `packages/db/data-source.ts` | CLI DataSource 用包导出 |
-| `apps/tool-gateway/src/root.module.ts` | 只注册审计实体 |
+| `apps/capability-gateway/src/root.module.ts` | 只注册审计实体 |
 
 ## 核对命令
 
 ```bash
 grep -n "DB_ENTITIES" apps/main/src/root.module.ts packages/db/src/entities/index.ts
 grep -n "DB_MIGRATIONS" packages/db/data-source.ts packages/db/src/migrations/index.ts
-grep -n "AiToolAuditEntity" apps/tool-gateway/src/root.module.ts apps/tool-gateway/src/audit/tool.audit.ts
+grep -n "AiToolAuditEntity" apps/capability-gateway/src/root.module.ts apps/capability-gateway/src/audit/tool.audit.ts
 grep -n "packages/db" apps/agent-runtime/scripts/db-generate.ts apps/agent-runtime/package.json
 ```
 

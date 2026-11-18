@@ -41,6 +41,7 @@ import { AiAdminConversationModule } from './modules/ai-admin/conversation/index
 import { AiFileAdminModule } from './modules/ai-admin/file/index.js'
 import { AiToolAdminModule } from './modules/ai-admin/tool/index.js'
 import { AiConnectorAdminModule } from './modules/ai-admin/connector/index.js'
+import { CapabilityServiceAdminModule } from './modules/ai-admin/capability/index.js'
 import { AiSkillAdminModule } from './modules/ai-admin/skill/index.js'
 import { AgentSseBridge } from './agent/agent-sse.bridge.js'
 import { AgentControlController } from './agent/agent-control.controller.js'
@@ -178,6 +179,7 @@ import { UserModule } from './modules/user/index.js'
     AiModelModule,
     AiSkillAdminModule,
     AiConnectorAdminModule,
+    CapabilityServiceAdminModule,
     AiToolAdminModule,
     AiAdminConversationModule,
     AiFileAdminModule,

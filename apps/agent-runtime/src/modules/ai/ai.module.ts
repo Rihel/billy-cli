@@ -41,7 +41,7 @@ import {
   TimelineRepository,
 } from './runtime/index.js'
 import { createRemoteToolInvoker } from './runtime/remote-tool.client.js'
-import { GatewayToolCatalog, filterToolFace } from './runtime/gateway-tool-catalog.js'
+import { GatewayToolCatalog, applyCatalogToToolFace } from './runtime/gateway-capability-catalog.js'
 import { ConversationRunQueue } from './runtime/run-queue.service.js'
 import { ConversationRunQueueDispatcher } from './runtime/run-queue.dispatcher.js'
 import {
@@ -89,12 +89,7 @@ import {
   TOOL_ENV_CAPS,
 } from './core/tools/tool.config.ports.js'
 import { ToolConfigService } from './core/tools/tool.config.service.js'
-import {
-  REMOTE_TOOL_INVOKER,
-  TOOL_CLOCK,
-  TOOL_RATE_COUNTER,
-  type RemoteToolInvoker,
-} from './core/tools/tool.ports.js'
+import { REMOTE_TOOL_INVOKER, TOOL_CLOCK, TOOL_RATE_COUNTER } from './core/tools/tool.ports.js'
 import { RedisToolRateCounter } from './core/tools/tool.rate-counter.redis.js'
 import { systemToolClock } from './core/tools/tool.clock.js'
 import { ToolCallMetaStore } from './core/tools/tool.meta.js'
@@ -367,7 +362,6 @@ let warnedMissingEnvelope = false
         AppLogger,
         AGENT_MEMORY,
         GatewayToolCatalog,
-        REMOTE_TOOL_INVOKER,
       ],
       useFactory: async (
         config: AgentConfigValue,
@@ -378,7 +372,6 @@ let warnedMissingEnvelope = false
         logger: AppLogger,
         memory: ReturnType<typeof createAgentMemory>,
         catalog: GatewayToolCatalog,
-        remote: RemoteToolInvoker | null,
       ) => {
         return createMastra({
           /**
@@ -415,11 +408,7 @@ let warnedMissingEnvelope = false
              * 不能被 `generated.ts` 的滞后连坐。未配置或抖动时 fail-open 回本地。
              */
             const catalogKeys = caller ? await catalog.allowedKeys(caller) : null
-            const allowed = filterToolFace(
-              local,
-              catalogKeys,
-              (key) => remote?.supports(key) ?? false,
-            )
+            const allowed = applyCatalogToToolFace(local, catalogKeys)
             return toMastraTools(tools.toolbox(allowed), logger)
           },
           resolveSkills: async (names) => toMastraSkills(await skillLoader.resolve(names)),

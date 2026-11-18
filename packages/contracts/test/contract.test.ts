@@ -51,8 +51,8 @@ describe('tool 契约', () => {
 
 describe('worker 注册键', () => {
   it('key 稳定且可区分', () => {
-    expect(workerKey('w-1')).toBe('ai:tool-worker:w-1')
-    expect(WORKERS_ALIVE_KEY).toBe('ai:tool-workers:alive')
+    expect(workerKey('w-1')).toBe('ai:common-capability:w-1')
+    expect(WORKERS_ALIVE_KEY).toBe('ai:common-capabilitys:alive')
     expect(WORKER_STALE_MS).toBe(30_000)
   })
 })

@@ -1,0 +1,26 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: billy-common-capability
+  namespace: billy
+  labels:
+    app.kubernetes.io/name: billy-common-capability
+    app.kubernetes.io/component: common-capability
+spec:
+  # 内部服务：两个用途
+  # 1) capability-gateway 的 TOOL_WORKER_URL 静态兜底（注册表为空时）；
+  # 2) 运维直连探针 / 排障。
+  # 正常调用路径是 gateway 从 Redis 注册表拿到 Pod IP 直连，不经过本 Service。
+  #
+  # ⚠️ 多副本时不要把它当作执行入口：轮询会让同一会话的命令落到不同 Pod，
+  # 本地工作区不共享（原因见 24-deployment-common-capability.yaml 顶部注释）。
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: billy-common-capability
+  ports:
+    - name: http
+      port: 9994
+      targetPort: http # 对应容器端口名 http(9994)
+      protocol: TCP
+      appProtocol: http
+  sessionAffinity: None

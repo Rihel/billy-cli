@@ -16,9 +16,9 @@
 #   PDB 只约束节点排水 / 驱逐，不约束扩缩容本身。
 # - 缩容默认有 5 分钟稳定窗（stabilizationWindowSeconds=300），流量突降不会立刻砍副本。
 #
-# tool-gateway / tool-worker 不配 HPA：
-# - tool-gateway 只是转发 + 审计，压力在执行侧；
-# - tool-worker 的本地工作区不共享，多副本会破坏同一会话的命令连续性（见 24-deployment 注释）。
+# capability-gateway / common-capability 不配 HPA：
+# - capability-gateway 只是转发 + 审计，压力在执行侧；
+# - common-capability 的本地工作区不共享，多副本会破坏同一会话的命令连续性（见 24-deployment 注释）。
 ---
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler

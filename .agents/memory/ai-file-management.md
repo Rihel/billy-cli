@@ -60,11 +60,9 @@
 
 ## 坑
 
-- **`packages/ai-data` 与 `packages/tool-catalog` 没有 `dev` 脚本**，不在 `pnpm dev:pkgs` 的 watch 里：
-  改完必须手动 `pnpm --filter @repo/ai-data run build`（tool-catalog 同）再 `pnpm gen:tool-catalog`；
-  否则 runtime / main / worker 加载的是旧 `dist`，跑测试却全绿（测试走 src）。
-- 生成工具目录必须在 **build 之后**：`gen:tool-catalog` 的入参 schema 从 `@repo/tool-catalog/dist` 读，
-  先 gen 后 build 会把旧 schema 写回 `generated.ts`（改完再 build 一次）。
+- **`packages/ai-data` 没有 `dev` 脚本**，不在 `pnpm dev:pkgs` 的 watch 里：
+  改完必须手动 `pnpm --filter @repo/ai-data run build`，否则 runtime / main / worker 加载的是旧 `dist`，
+  跑测试却全绿（测试走 src）。2026-11-18 起 `@repo/tool-catalog` 已删，不再有 `gen:tool-catalog` 这一步。
 - `AgentChatService` / `AgentConversationService` 新增依赖必须放构造器**末尾**：手工测试按位置传参，插中间会全错位。
 - 工作区根不存在时不能 `realpath(root)` 做包含判断（会把“待创建”误判越界）；以最近已存在祖先 + base 根判断。
 - `ai_files` upsert 必须用原生 SQL 把 `deleted_at` 置 null；TypeORM 软删过滤会撞唯一键。

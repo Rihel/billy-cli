@@ -3,6 +3,7 @@
 import { usePathname, useRouter } from 'next/navigation'
 import type { ComponentType } from 'react'
 import {
+  BoxesIcon,
   PlugIcon,
   BellRingIcon,
   BrainIcon,
@@ -59,6 +60,7 @@ export const MENU_ITEMS: MenuItem[] = [
       { label: '技能库', key: '/main/ai/skills', icon: SparklesIcon },
       { label: '记忆', key: '/main/ai/memories', icon: BrainIcon },
       { label: '文件管理', key: '/main/ai/files', icon: FolderOpenIcon },
+      { label: '能力服务', key: '/main/ai/capabilities', icon: BoxesIcon },
       { label: '连接器', key: '/main/ai/connectors', icon: PlugIcon },
       { label: '审计与复盘', key: '/main/ai/audit', icon: HistoryIcon },
     ],

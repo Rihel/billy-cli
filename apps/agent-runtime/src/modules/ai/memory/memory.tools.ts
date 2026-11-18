@@ -4,7 +4,11 @@ import { ToolDecl, ToolGroup } from '../core/tools/tool.decorator.js'
 import { TOOL_KEYS } from '../core/tools/tool-keys.js'
 import { ToolDeniedError } from '../core/tools/tools.types.js'
 import type { ToolCallContext } from '../core/tools/tools.types.js'
-import { MEMORY_FORGET_TOOL, MEMORY_SAVE_TOOL, MEMORY_SEARCH_TOOL } from '@repo/tool-catalog'
+import {
+  MEMORY_FORGET_TOOL,
+  MEMORY_SAVE_TOOL,
+  MEMORY_SEARCH_TOOL,
+} from '../tools/definitions/memory.js'
 import { MemoryService } from './memory.service.js'
 
 /** 工具开关（入库、后台可改；其余上限是代码常量，不再加环境变量） */

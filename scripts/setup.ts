@@ -31,14 +31,14 @@ const envFiles: Array<{ path: string; example: string; label: string }> = [
     label: 'agent-runtime（会话运行时）',
   },
   {
-    path: 'apps/tool-gateway/.env',
-    example: 'apps/tool-gateway/.env.example',
-    label: 'tool-gateway（工具网关）',
+    path: 'apps/capability-gateway/.env',
+    example: 'apps/capability-gateway/.env.example',
+    label: 'capability-gateway（工具网关）',
   },
   {
-    path: 'apps/tool-worker/.env',
-    example: 'apps/tool-worker/.env.example',
-    label: 'tool-worker（工具执行）',
+    path: 'apps/common-capability/.env',
+    example: 'apps/common-capability/.env.example',
+    label: 'common-capability（工具执行）',
   },
   {
     path: 'apps/admin/.env',
@@ -258,8 +258,8 @@ async function ensureEnvFiles(yes: boolean): Promise<void> {
     const envTargets = [
       'apps/main/.env',
       'apps/agent-runtime/.env',
-      'apps/tool-gateway/.env',
-      'apps/tool-worker/.env',
+      'apps/capability-gateway/.env',
+      'apps/common-capability/.env',
     ].filter((file) => created.includes(file))
     if (envTargets.length > 0) {
       const pairs: Array<[string, string]> = []
@@ -280,7 +280,7 @@ async function ensureEnvFiles(yes: boolean): Promise<void> {
         for (const file of envTargets) replaceInFile(file, pairs)
         console.log(
           colors.green(
-            '  ✓ main / agent-runtime / tool-gateway / tool-worker .env 已对齐到 compose 端口',
+            '  ✓ main / agent-runtime / capability-gateway / common-capability .env 已对齐到 compose 端口',
           ),
         )
       }
@@ -389,8 +389,8 @@ async function smokeTest(yes: boolean, skip: boolean): Promise<void> {
     )
     await sleep(700)
   }
-  await startIfNeeded(9994, 'tool-worker')
-  await startIfNeeded(9993, 'tool-gateway')
+  await startIfNeeded(9994, 'common-capability')
+  await startIfNeeded(9993, 'capability-gateway')
   await startIfNeeded(9990, 'agent-runtime')
   await sleep(700)
   if (!mainRunning) {

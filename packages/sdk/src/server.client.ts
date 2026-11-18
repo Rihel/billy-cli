@@ -8,6 +8,13 @@ import {
   AiConnectorListDto,
   AiConnectorModel,
   AiConnectorUpdateDto,
+  CapabilityServiceIdDto,
+  CapabilityServiceListDto,
+  CapabilityServiceModel,
+  CapabilityServiceSaveDto,
+  CapabilityServiceStatusDto,
+  CapabilityServiceTestDto,
+  CapabilityServiceTestResultDto,
   AiModelCreateDto,
   AiModelIdDto,
   AiModelListDto,
@@ -775,6 +782,32 @@ export class ServerClient extends HttpClient<BearerTokenCredentials> {
 
     /** 软删 */
     remove: (data: AiMemoryRemoveDto) => this.post<{ removed: boolean }>('/ai-memory/remove', data),
+  }
+
+  /* ========== 能力服务（后台登记外部 API） ========== */
+
+  capabilityService = {
+    /** 列表（不含凭据，只给 hasCredential） */
+    list: (data: CapabilityServiceListDto) =>
+      this.post<CapabilityServiceModel[]>('/ai-capability/list', data),
+
+    /** 保存 = 登记（source:'manual'） */
+    save: (data: CapabilityServiceSaveDto) =>
+      this.post<CapabilityServiceModel>('/ai-capability/save', data),
+
+    remove: (data: CapabilityServiceIdDto) =>
+      this.post<{ removed: boolean }>('/ai-capability/remove', data),
+
+    status: (data: CapabilityServiceStatusDto) =>
+      this.post<{ updated: boolean }>('/ai-capability/status', data),
+
+    /** 只测连通，不登记 */
+    test: (data: CapabilityServiceTestDto) =>
+      this.post<CapabilityServiceTestResultDto>('/ai-capability/test', data),
+
+    /** 拉对方 `POST /manifest` 的内容，给页面确认 */
+    pullManifest: (data: CapabilityServiceTestDto) =>
+      this.post<Record<string, unknown>>('/ai-capability/pull-manifest', data),
   }
 
   /* ========== 连接器（外部能力来源） ========== */

@@ -32,7 +32,7 @@ import {
  * 与旧 `modules/ai/api/ai-tool.service.ts` 同一套对外行为，但**不依赖 agent loop / Mastra /
  * 工具执行器**：
  * - **基础信息在代码、镜像入库**：`title` / `description` / `category` / `paramSchema` 由
- *   `@repo/tool-catalog` 的 manifest 提供；库里那行是启动期（或懒创建时）写下的镜像；
+ *   本地 manifest 快照提供；库里那行是启动期（或懒创建时）写下的镜像；
  * - **前端只配配置**：可改的只有开关 / 作用域 / 限额 / 配置值 / 秘钥；
  * - **合法性只有声明知道**：`config` / `secrets` 写入前一律过 `ToolAdminSpec` 的 schema；
  * - **秘钥明文入库、接口不回明文**：只回 `hintOf` 派生的 `secretFields[].hint`；

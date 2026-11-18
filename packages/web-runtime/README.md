@@ -2,7 +2,7 @@
 
 联网工具的可复用运行时：**出网 / SSRF 校验 / HTML→Markdown / 按行分页 / 反爬识别**。
 
-server 的 `web-fetch` / `web-request` 与 tool-worker 的 `web-fetch` 共用这一份，避免两套 UA、超时、
+server 的 `web-fetch` / `web-request` 与 common-capability 的 `web-fetch` 共用这一份，避免两套 UA、超时、
 内网拦截和分页口径各自漂移。
 
 ## 导出

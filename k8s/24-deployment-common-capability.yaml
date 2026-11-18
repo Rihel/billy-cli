@@ -1,0 +1,128 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: billy-common-capability
+  namespace: billy
+  labels:
+    app.kubernetes.io/name: billy-common-capability
+    app.kubernetes.io/component: common-capability
+spec:
+  # ⚠️ 默认 1 副本，不是「不想扩」，是当前实现的正确性约束：
+  # - bash 工作区是**本 Pod 本地盘**上的 {TOOL_WORKER_WORKSPACE_ROOT}/{conversationId}；
+  # - gateway 按负载随机选 worker，同一会话的连续命令会落到不同 Pod，看不到上一个 Pod 写的文件。
+  # 要横向扩 worker，必须先给 TOOL_WORKER_WORKSPACE_ROOT 挂共享 RWX 卷（或按会话做亲和），
+  # 再把副本数 / HPA 提上去。web-fetch 的翻页 ref 已有 workerId 亲和，不受影响。
+  replicas: 1
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      # 单副本时 maxUnavailable=0 + maxSurge=1 是唯一不中断的选择：
+      # 新 Pod 就绪并注册到 Redis 之后，旧 Pod 才被摘掉。
+      maxUnavailable: 0
+      maxSurge: 1
+  minReadySeconds: 5
+  progressDeadlineSeconds: 600
+  revisionHistoryLimit: 5
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: billy-common-capability
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: billy-common-capability
+        app.kubernetes.io/component: common-capability
+    spec:
+      # 单条命令默认 15s 超时；60s 足够让在跑命令结束、worker 从注册表摘除
+      terminationGracePeriodSeconds: 60
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                topologyKey: kubernetes.io/hostname
+                labelSelector:
+                  matchLabels:
+                    app.kubernetes.io/name: billy-common-capability
+      containers:
+        - name: common-capability
+          # ← 替换为你的镜像地址与 tag；tag 变了要同步 ConfigMap 的 TOOL_WORKER_VERSION
+          image: registry.example.com/billy-cli/common-capability:v0.0.0
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 9994
+              protocol: TCP
+          envFrom:
+            # 共享配置（NODE_ENV / 日志 / 对象存储 provider·bucket·endpoint）
+            # → worker 专属配置 → 共享 Secret（DB / Redis / 对象存储密钥 / TOOL_INTERNAL_TOKEN）
+            - configMapRef:
+                name: billy-shared
+            - configMapRef:
+                name: billy-common-capability
+            - secretRef:
+                name: billy-app
+          env:
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: POD_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
+            # 注册表里的唯一 id：直接用 Pod 名，排障时能从 Redis / 日志反查到 Pod
+            - name: TOOL_WORKER_ID
+              value: $(POD_NAME)
+            # 每个 Pod 注册**自己的 Pod IP**，而不是 Service DNS：
+            # gateway 用这个地址直连选中的 worker，翻页 ref 的 workerId 亲和才成立。
+            # 若填 Service DNS，多副本时请求会被 kube-proxy 轮询到其它 Pod，亲和失效。
+            - name: TOOL_WORKER_ENDPOINT
+              value: http://$(POD_IP):9994
+          lifecycle:
+            preStop:
+              exec:
+                # 先等 Service endpoint 摘流，再让进程收到 SIGTERM。
+                # 注意：gateway 正常路径走注册表里的 Pod IP、不经过 Service，
+                # 真正的「摘流」是 SIGTERM 后进程把自己从 Redis 注册表标 draining 并删除；
+                # 这 8s 只是给 kube-proxy / 观测面留收敛时间。
+                command: ['/bin/sh', '-c', 'sleep 8']
+          startupProbe:
+            # 只探进程：/readyz 会探 Redis + 沙箱，启动阶段依赖未就绪会误杀
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 2
+            timeoutSeconds: 2
+            failureThreshold: 30
+          readinessProbe:
+            # /readyz 真的会 503（Redis 不可用 / enforce 下沙箱不可用），探针语义是严格有效的
+            httpGet:
+              path: /readyz
+              port: http
+            periodSeconds: 3
+            timeoutSeconds: 2
+            failureThreshold: 2
+          livenessProbe:
+            # 绝不探外部依赖：Redis 抖动时重启 worker 只会丢本地工作区，不能修好 Redis
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 2
+            failureThreshold: 3
+          resources:
+            # worker 跑任意命令（npm install / 编译）比较吃资源；limit 决定单条命令会不会被 OOM 杀。
+            # 跑重任务时按实际调大，或把 MAX_CONCURRENCY 降下来，两者要一起看。
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              cpu: '1'
+              memory: 1Gi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ['ALL']
+      securityContext:
+        # Dockerfile 已 `USER appuser`（非 root），这里再做一次显式声明兜底
+        runAsNonRoot: true

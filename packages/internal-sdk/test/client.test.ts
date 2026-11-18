@@ -1,37 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
-import { TOOL_CONTRACT_VERSION, type ToolInvokeRequest } from '@repo/contracts'
-import {
-  InternalApiError,
-  InternalProtocolError,
-  InternalTimeoutError,
-  ToolGatewayClient,
-  ToolWorkerClient,
-} from '../src/index.js'
-
-const request: ToolInvokeRequest = {
-  version: TOOL_CONTRACT_VERSION,
-  requestId: 'req-1',
-  toolKey: 'bash',
-  toolCallId: 'call-1',
-  input: { command: 'echo hi' },
-  caller: {
-    conversationId: 'c-1',
-    runId: 'r-1',
-    userId: 'u-1',
-    agentKey: 'assistant',
-    rootAgentKey: 'assistant',
-    depth: 0,
-  },
-  deadlineMs: 1_000,
-}
-
-const okResponse = {
-  version: TOOL_CONTRACT_VERSION,
-  requestId: 'req-1',
-  workerId: 'w-1',
-  durationMs: 2,
-  outcome: { ok: true, data: { stdout: 'hi' } },
-}
+import { TOOL_CONTRACT_VERSION, type CapabilityInvokeRequest } from '@repo/contracts'
+import { CapabilityGatewayClient, InternalApiError } from '../src/index.js'
 
 const envelope = (data: unknown) => ({ code: 0, data })
 
@@ -41,124 +10,81 @@ const jsonResponse = (body: unknown, status = 200): Response =>
     headers: { 'content-type': 'application/json' },
   })
 
-describe('ToolGatewayClient', () => {
-  it('带令牌调用 /v1/tools/invoke，并校验响应', async () => {
-    const fetchImpl = vi.fn(async () => jsonResponse(envelope(okResponse)))
-    const client = new ToolGatewayClient({
-      baseUrl: 'http://gateway:9993/',
-      token: 'token',
-      fetchImpl: fetchImpl as unknown as typeof fetch,
+const caller: CapabilityInvokeRequest['caller'] = {
+  conversationId: 'c-1',
+  runId: 'r-1',
+  userId: 'u-1',
+  agentKey: 'assistant',
+  rootAgentKey: 'assistant',
+  depth: 0,
+}
+
+const invokeResult = {
+  version: TOOL_CONTRACT_VERSION,
+  requestId: 'req-1',
+  capability: 'exec/bash',
+  service: 'exec',
+  instanceId: 'cc-1',
+  durationMs: 3,
+  outcome: { ok: true, data: { stdout: 'hi' } },
+}
+
+describe('CapabilityGatewayClient', () => {
+  it('invoke 走 POST /v1/capabilities/invoke，带令牌并脱信封', async () => {
+    const fetchImpl = vi.fn(async () => jsonResponse(envelope(invokeResult)))
+    const client = new CapabilityGatewayClient({ baseUrl: 'http://gw', token: 'tok', fetchImpl })
+
+    const result = await client.invoke({
+      capability: 'exec/bash',
+      input: { command: 'echo hi' },
+      caller,
+      deadlineMs: 1_000,
     })
 
-    const result = await client.invokeTool(request)
-    expect(result.workerId).toBe('w-1')
-    expect(fetchImpl).toHaveBeenCalledTimes(1)
+    expect(result.outcome).toMatchObject({ ok: true, data: { stdout: 'hi' } })
     const [url, init] = fetchImpl.mock.calls[0] as unknown as [string, RequestInit]
-    expect(url).toBe('http://gateway:9993/v1/tools/invoke')
-    expect(new Headers(init.headers).get('x-internal-token')).toBe('token')
-    expect(JSON.parse(String(init.body))).toMatchObject({ toolKey: 'bash' })
+    expect(String(url)).toContain('/v1/capabilities/invoke')
+    expect(init.method).toBe('POST')
+    expect(new Headers(init.headers).get('x-internal-token')).toBe('tok')
   })
 
-  it('非 2xx 抛 InternalApiError，响应不符契约抛 InternalProtocolError', async () => {
-    const apiClient = new ToolGatewayClient({
-      baseUrl: 'http://gateway:9993',
-      token: 'token',
-      fetchImpl: (async () => jsonResponse({ error: 'nope' }, 500)) as unknown as typeof fetch,
-    })
-    await expect(apiClient.invokeTool(request)).rejects.toBeInstanceOf(InternalApiError)
-
-    const protocolClient = new ToolGatewayClient({
-      baseUrl: 'http://gateway:9993',
-      token: 'token',
-      fetchImpl: (async () => jsonResponse(envelope({ nope: true }))) as unknown as typeof fetch,
-    })
-    await expect(protocolClient.invokeTool(request)).rejects.toBeInstanceOf(InternalProtocolError)
-  })
-
-  it('超时映射成 InternalTimeoutError', async () => {
-    const client = new ToolGatewayClient({
-      baseUrl: 'http://gateway:9993',
-      token: 'token',
-      fetchImpl: (async () => {
-        throw new DOMException('timeout', 'TimeoutError')
-      }) as unknown as typeof fetch,
-    })
-    await expect(client.invokeTool(request)).rejects.toBeInstanceOf(InternalTimeoutError)
-  })
-
-  it('listTools 解析工具清单', async () => {
-    const client = new ToolGatewayClient({
-      baseUrl: 'http://gateway:9993',
-      token: 'token',
-      fetchImpl: (async () =>
-        jsonResponse(
-          envelope({
-            version: TOOL_CONTRACT_VERSION,
-            tools: [
-              {
-                key: 'bash',
-                title: '执行命令',
-                description: '在沙箱里执行命令',
-                category: 'core',
-                scope: 'all',
-                executor: 'worker',
-                params: { type: 'object' },
-                version: 1,
-              },
-            ],
-          }),
-        )) as unknown as typeof fetch,
-    })
-    const result = await client.listTools({
-      version: TOOL_CONTRACT_VERSION,
-      caller: request.caller,
+  it('listCapabilities 把规范 key 原样返回', async () => {
+    const fetchImpl = vi.fn(async () =>
+      jsonResponse(
+        envelope({
+          version: 1,
+          capabilities: [
+            {
+              key: 'exec/bash',
+              name: 'exec__bash',
+              service: 'exec',
+              tool: 'bash',
+              title: '执行命令',
+              description: '跑命令',
+              inputSchema: { type: 'object' },
+              risk: 'write',
+              scope: 'all',
+              available: true,
+              tags: [],
+            },
+          ],
+        }),
+      ),
+    )
+    const client = new CapabilityGatewayClient({ baseUrl: 'http://gw', token: 't', fetchImpl })
+    const result = await client.listCapabilities({
+      caller: { ...caller, conversationId: 'catalog', runId: 'catalog' },
       agentKey: 'assistant',
       depth: 0,
     })
-    expect(result.tools[0]?.key).toBe('bash')
+    expect(result.capabilities[0]?.key).toBe('exec/bash')
   })
 
-  it('listWorkers 解析注册表结构', async () => {
-    const client = new ToolGatewayClient({
-      baseUrl: 'http://gateway:9993',
-      token: 'token',
-      fetchImpl: (async () =>
-        jsonResponse(
-          envelope({
-            workers: [
-              {
-                workerId: 'w-1',
-                endpoint: 'http://worker:9994',
-                version: '0.1.0',
-                zone: 'local',
-                executors: ['bash'],
-                tools: ['bash'],
-                sandboxMode: 'enforce',
-                maxConcurrency: 4,
-                active: 1,
-                draining: false,
-                startedAt: new Date().toISOString(),
-              },
-            ],
-          }),
-        )) as unknown as typeof fetch,
-    })
-    await expect(client.listWorkers()).resolves.toHaveLength(1)
-  })
-})
-
-describe('ToolWorkerClient', () => {
-  it('调用 /v1/exec 并复用同一套错误映射', async () => {
-    const fetchImpl = vi.fn(async () => jsonResponse(envelope(okResponse)))
-    const client = new ToolWorkerClient({
-      baseUrl: 'http://worker:9994',
-      token: 'token',
-      fetchImpl: fetchImpl as unknown as typeof fetch,
-    })
-    const result = await client.exec(request)
-    expect(result.outcome.ok).toBe(true)
-    const [url, init] = fetchImpl.mock.calls[0] as unknown as [string, RequestInit]
-    expect(url).toBe('http://worker:9994/v1/exec')
-    expect(new Headers(init.headers).get('x-internal-token')).toBe('token')
+  it('非 2xx 归为 InternalApiError', async () => {
+    const fetchImpl = vi.fn(async () => jsonResponse({ message: 'boom' }, 500))
+    const client = new CapabilityGatewayClient({ baseUrl: 'http://gw', token: 't', fetchImpl })
+    await expect(
+      client.invoke({ capability: 'exec/bash', input: {}, caller, deadlineMs: 100 }),
+    ).rejects.toBeInstanceOf(InternalApiError)
   })
 })

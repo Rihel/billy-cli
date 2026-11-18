@@ -5,7 +5,7 @@ import { z } from 'zod'
 import { AppLogger, WorkspaceRuntimeService, type WorkspaceExecResult } from '@repo/kits'
 import { ToolDecl, ToolGroup } from '../core/tools/tool.decorator.js'
 import { TOOL_KEYS } from '../core/tools/tool-keys.js'
-import { BASH_TOOL } from '@repo/tool-catalog'
+import { BASH_TOOL } from './definitions/bash.js'
 import { TOOL_ENV_CAPS } from '../core/tools/tool.config.ports.js'
 import type { ToolCallContext, ToolEnvCaps } from '../core/tools/tools.types.js'
 import {

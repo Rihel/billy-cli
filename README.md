@@ -66,8 +66,8 @@ GitHub：[Rihel/billy-cli](https://github.com/Rihel/billy-cli)
 | Admin 后台 | `apps/admin`（`@app/admin`） | 9845 | 是 | 控制台 / 监控 / 用户 / AI / 免授权分享页 |
 | **main（公网 BFF）** | `apps/main`（`@app/main`） | **9989** | **是** | 鉴权、用户 / 管理员 / 会话 / 存储 / 分享 / 监控 / 运维 / 配置、全部 AI 配置与 CRUD（模型 / 工具 / 技能 / 连接器 / 记忆 / 会话 / 运行 / 时间线 / 用量）、`/agent/chat/stream` 的 Kafka→SSE 中继 |
 | **agent-runtime** | `apps/agent-runtime`（`@app/agent-runtime`） | **9990** | 否（只给 main 调） | 只跑 agent loop：Mastra / 上下文 / 工具面 / 记忆 / 技能加载 / 子 agent / run 状态机；只暴露 `/internal/agent/*` 与 `/healthz` 等运维探针，没有 public controller 与鉴权 |
-| tool-gateway | `apps/tool-gateway`（`@app/tool-gateway`） | 9993 | 内网 | 工具目录 / 策略（enabled / scope / 限流 / 校验）/ worker 路由 / `ai_tool_audit`，不执行工具 |
-| tool-worker | `apps/tool-worker`（`@app/tool-worker`） | 9994 | 内网 | 工具执行（bash / web / file / memory 等），按能力注册到 Redis，沙箱执行 |
+| capability-gateway | `apps/capability-gateway`（`@app/capability-gateway`） | 9993 | 内网 | 工具目录 / 策略（enabled / scope / 限流 / 校验）/ worker 路由 / `ai_tool_audit`，不执行工具 |
+| common-capability | `apps/common-capability`（`@app/common-capability`） | 9994 | 内网 | 工具执行（bash / web / file / memory 等），按能力注册到 Redis，沙箱执行 |
 
 **前端只连 main（9989）**。runtime 不直接对外，main 鉴权后带上内部 token 与身份头调用它；
 runtime 的模型输出写到 Kafka `agent.run.events`，main 消费后按 `clientId` 写回前端 SSE。
@@ -102,13 +102,13 @@ pnpm bootstrap
 # 终端 1：并行 watch 构建 packages（shared / kits / http-client / sdk）
 pnpm dev:pkgs
 
-# 终端 2：main + agent-runtime + tool-gateway + tool-worker 一起起
+# 终端 2：main + agent-runtime + capability-gateway + common-capability 一起起
 pnpm dev:stack    # main http://localhost:9989 / runtime 9990 / gateway 9993 / worker 9994
 
 # 也可以分开起（改哪边看哪边的日志）
 pnpm dev:main     # 公网 BFF，9989
 pnpm dev:runtime  # agent loop，9990
-pnpm dev:tools    # tool-gateway 9993 + tool-worker 9994
+pnpm dev:tools    # capability-gateway 9993 + common-capability 9994
 
 # 终端 3：Web 前台
 pnpm dev:web      # http://localhost:9840
@@ -151,8 +151,8 @@ pnpm docker:up
 │   ├── agent-runtime/  只跑 agent loop（Mastra / 工具面 / 记忆 / 技能 / 子 agent / 恢复），
 │   │                   只暴露 /internal/agent/* 与探针（9990，不对外）
 │   ├── model-gateway/  内部模型网关：canonical OpenAI 接口 + openai/deepseek/ollama 协议适配 + 模型目录（9992，不对外）
-│   ├── tool-gateway/   工具目录 / 策略 / worker 路由 / 审计（9993，不执行工具）
-│   ├── tool-worker/    工具执行 + 能力自注册（9994）
+│   ├── capability-gateway/   工具目录 / 策略 / worker 路由 / 审计（9993，不执行工具）
+│   ├── common-capability/    工具执行 + 能力自注册（9994）
 │   ├── web/            Next.js 16 前台：落地页 / 账号 / Markdown 示例（9840）
 │   └── admin/          Next.js 16 管理后台：控制台 / 监控 / 用户 / AI / 免授权分享页（9845）
 ├── packages/
@@ -161,9 +161,8 @@ pnpm docker:up
 │   ├── db/        TypeORM 实体 + 迁移（唯一来源，两个 Nest 应用共用）
 │   ├── monitor/   监控引擎：指标采集 / 规则评估 / 告警 / 通知（main 与 runtime 各装配一份）
 │   ├── ai-data/   AI 数据能力（FileService / MemoryService 等，main 与 worker 共用）
-│   ├── tool-catalog/  工具定义唯一来源（参数 / 描述 / scope）
 │   ├── contracts/     内部服务契约（Zod schema，跨 app 共用）
-│   ├── internal-sdk/  内部服务 typed client（tool-gateway / worker / runtime）
+│   ├── internal-sdk/  内部服务 typed client（capability-gateway / worker / runtime）
 │   ├── web-runtime/   bash / web / 文件工具的共享执行实现
 │   ├── http-client/  通用 HTTP + 鉴权管线（策略 / 凭证 / SSE 客户端）
 │   ├── sdk/       ServerClient：全类型化业务 API，构建在 http-client 之上
@@ -183,7 +182,7 @@ pnpm docker:up
 | [架构与项目结构](docs/guide/architecture.md) | 完整目录、分层与数据流、组合根与生命周期、分页与 `DbService` |
 | [后端](docs/guide/backend.md) | `apps/main`（HTTP 边界 / 鉴权 / API）+ `apps/agent-runtime`（agent loop / Kafka SSE），业务模块、错误格式、日志、监控告警 |
 | [前端](docs/guide/frontend.md) | Web / Admin 页面、设计系统、组件库与管理端组件 |
-| [共享包](docs/guide/packages.md) | `@repo/shared`、`@repo/kits`、`@repo/db`、`@repo/web-runtime`、`@repo/tool-catalog`、`@repo/http-client`、`@repo/sdk` |
+| [共享包](docs/guide/packages.md) | `@repo/shared`、`@repo/kits`、`@repo/db`、`@repo/web-runtime`、`@repo/http-client`、`@repo/sdk` |
 | [AI 能力](docs/guide/ai.md) | 运行时与接口、工具与连接器、文件管理、技能库、记忆、工作区隔离、Agent Skills、AI 使用配置（codegraph） |
 | [部署](docs/guide/deployment.md) | 环境变量、生产构建、Docker、Kubernetes、反向代理 |
 | [设计文档](docs/design/) | 每个能力的方案与取舍（AI、SSE、监控、设计系统、连接器…），按主题索引 |
@@ -200,7 +199,7 @@ pnpm docker:up
 | `pnpm dev:pkgs` / `pnpm build:pkgs` | watch 构建 / 构建 packages |
 | `pnpm dev:stack` | 一条命令起 main（9989）+ runtime（9990）+ gateway（9993）+ worker（9994） |
 | `pnpm dev:main` / `pnpm dev:runtime` / `pnpm dev:model-gateway` | 单独起公网 BFF（9989）/ agent loop（9990）/ 模型网关（9992） |
-| `pnpm dev:tools` / `pnpm dev:tool-gateway` / `pnpm dev:tool-worker` | 起工具侧（两个 / 单个） |
+| `pnpm dev:tools` / `pnpm dev:capability-gateway` / `pnpm dev:common-capability` | 起工具侧（两个 / 单个） |
 | `pnpm dev:web` / `pnpm dev:admin` | 启动前台（9840）/ 后台（9845） |
 | `pnpm kill:dev` | 停掉全部 dev 服务（`--dry-run` 仅预览） |
 | `pnpm kill:start` / `pnpm kill:port <端口>` | 跨平台按端口停进程（默认 9840 / 9845 / 9989 / 9990 / 9993 / 9994，`--dry-run` 预览） |
@@ -225,7 +224,7 @@ pnpm docker:up                              # 全部（migrate + main + agent-ru
 docker compose --profile kafka up -d        # 可选：追加 Kafka（生产流式对话建议启用）
 ```
 
-- 镜像：`docker/Dockerfile.base` / `.main` / `.agent-runtime` / `.tool-gateway` / `.tool-worker` / `.web`；`lark-cli` 只装在 agent-runtime 镜像（连接器的命令行执行方），main 镜像不装
+- 镜像：`docker/Dockerfile.base` / `.main` / `.agent-runtime` / `.capability-gateway` / `.common-capability` / `.web`；`lark-cli` 只装在 agent-runtime 镜像（连接器的命令行执行方），main 镜像不装
 - **拆分状态（2026-11-14）**：compose 与 k8s 已按 main（9989）+ agent-runtime（9990）拆好；
   runtime / gateway / worker 都不透出公网端口，只由 main / runtime 内部调用；compose 已包含一次性
   `migrate`、gateway/worker、web 与 admin。Kafka 未配置时 main 降级为直接转发 runtime SSE。字段与跨文件不变量见 [k8s/README.md](k8s/README.md)

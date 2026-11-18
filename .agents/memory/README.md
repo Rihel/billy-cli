@@ -78,6 +78,7 @@
 | [scaffold-cli-removed](scaffold-cli-removed.md) | 2026-11-09 起没有代码生成器与模板副本，新模块照现有实现手写；守卫为 check:inject / check:mastra / check:ui | 免核 | 2026-11-09 |
 | [lark-cli-connector](lark-cli-connector.md) | @larksuite/cli 是下载 Go 二进制的 launcher；skills 内嵌；config 在 HOME；whoami 不能探活、doctor 才行 | 抽核 | 2026-11-09 |
 | [product-facts](product-facts.md) | README / 落地页 / pitch 共用的能力数字口径（工具 26 / 连接器 4 / skill 28 / ai-elements 48 …） | 必核 | 2026-11-13 |
+| [ai-tool-key-naming](ai-tool-key-naming.md) | 能力 key = 扁平工具名（`xxx-xxx`），全局唯一；服务是工具的分组（1:N），模型面与 key 相同 | 免核 | 2026-11-18 |
 | [agent-tool-authorization](agent-tool-authorization.md) | agent 授权是结构化选择器；作用域装配期过滤工具面；子 agent = 父授权 ∩ 全部 − 委派 − deny，并按 caller 过滤 | 必核 | 2026-11-14 |
 | [ui-dialog-escape](ui-dialog-escape.md) | Base UI Dialog 没有 `onEscapeKeyDown`：Esc 要先退全屏 / 不关窗，就在 `onOpenChange` 里看 `details.reason === 'escape-key'` 并 `details.cancel()` | 必核 | 2026-11-15 |
 | [ai-subagent-result-and-wake](ai-subagent-result-and-wake.md) | 结论正文只收 `text`；wait 收口要含「已完成未消费」的子并打「已交付」标记（卡要有人补写）；`subagents/` 只给引擎写 | 必核 | 2026-11-15 |
@@ -88,13 +89,13 @@
 | [main-runtime-dedup](main-runtime-dedup.md) | main / runtime 的共享边界：横切 HTTP 在 kits、监控引擎在 @repo/monitor、静态声明只在 runtime、实体直接进 @repo/db | 抽核 | 2026-11-14 |
 | [stateless-scaling](stateless-scaling.md) | 核心业务无状态可多副本；AI memory 已落 Redis，飞书 CLI 状态在 Pod 本地，工作区仍在 Pod 本地盘 | 抽核 | 2026-11-14 |
 | [db-package](db-package.md) | `@repo/db` 统一实体/迁移；main / runtime 用 `DB_ENTITIES`，gateway 只注册审计实体；迁移 CLI 仍挂在 agent-runtime | 必核 | 2026-11-14 |
-| [tool-metadata-authority](tool-metadata-authority.md) | 定义唯一来源 `@repo/tool-catalog`；gateway 运行时目录；worker 只报能力；`ai_tools` 只存配置 | 必核 | 2026-11-14 |
+| [tool-metadata-authority](tool-metadata-authority.md) | 能力定义在服务（zod）；网关目录权威；runtime 只留模型面副本；`@repo/tool-catalog` 已删 | 必核 | 2026-11-18 |
 | [ai-tool-result-internal-api](ai-tool-result-internal-api.md) | read-tool-result 改 worker 直连 Redis/PG，旧取页 API 已删 | 必核 | 2026-11-14 |
 | [ai-file-internal-api](ai-file-internal-api.md) | file 已改 worker 直连 PG/OSS，旧 worker→控制面 API 已删除 | 必核 | 2026-11-14 |
 | [ai-skill-internal-api](ai-skill-internal-api.md) | skill-* 留在 agent-runtime 本地执行，worker→控制面旧 API 已删 | 必核 | 2026-11-14 |
 | [ai-memory-internal-api](ai-memory-internal-api.md) | memory 已改 worker 直连 DB；旧 worker→控制面内部 API 已删除 | 必核 | 2026-11-14 |
-| [tool-worker-executors](tool-worker-executors.md) | worker 执行器契约 + registry；已接 bash/web-fetch；web ref 经 Redis 亲和回同一 worker | 必核 | 2026-11-14 |
-| [ai-tool-gateway-control-plane](ai-tool-gateway-control-plane.md) | gateway 已闭环 bash：静态目录 / scope+validate+rate-limit / `ai_tool_audit`；runtime 远程在插件链前短路；**信封必须在审计外层**（写反 → 所有工具 500 `5001`，结果被吞） | 必核 | 2026-11-15 |
+| [common-capability-executors](common-capability-executors.md) | worker 执行器契约 + registry；已接 bash/web-fetch；web ref 经 Redis 亲和回同一 worker | 必核 | 2026-11-14 |
+| [ai-capability-gateway-control-plane](ai-capability-gateway-control-plane.md) | gateway 已闭环 bash：静态目录 / scope+validate+rate-limit / `ai_tool_audit`；runtime 远程在插件链前短路；**信封必须在审计外层**（写反 → 所有工具 500 `5001`，结果被吞） | 必核 | 2026-11-15 |
 | [ai-run-queue](ai-run-queue.md) | 异步子 agent 的会话 run 队列：新表、优先级、dedupe、当前实施边界 | 抽核 | 2026-11-15 |
 | [ai-subagent-subconversation](ai-subagent-subconversation.md) | 子 agent 建子会话：run/timeline 挂子会话，工作区/文件归根会话；列表只出根、删父级联；用量仍只算子 run 的父 | 必核 | 2026-11-14 |
 | [ai-scale-bottlenecks](ai-scale-bottlenecks.md) | 扛流量的六个卡点：512Mi 限额、无准入、工作区本地盘、Redis 缓冲无字节上限、DB 池 10/实例、时间线无分区 | 必核 | 2026-11-14 |

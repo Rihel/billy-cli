@@ -98,7 +98,7 @@ export const requestJson = async <T>(
 /**
  * 读响应信封里的 `data`（Nest 侧的 `ResponseEnvelopeInterceptor` 统一包 `{ code, data }`）。
  *
- * 内部服务的业务接口都套了这层信封（`/internal/**`、tool-gateway / tool-worker 的业务路由）；
+ * 内部服务的业务接口都套了这层信封（`/internal/**`、capability-gateway / common-capability 的业务路由）；
  * 只有 healthz / readyz 探针保持裸 JSON（`requestJson`）。两种约定分开写，避免调用方自己再脱壳。
  */
 export const requestEnvelope = async <T>(

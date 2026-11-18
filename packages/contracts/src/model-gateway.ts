@@ -4,7 +4,7 @@ import { z } from 'zod'
  * model-gateway 内部契约（版本 1）。
  *
  * 约定：
- * - 网关的**业务响应不套信封**（与 tool-gateway 一致），直接回 JSON；
+ * - 网关的**业务响应不套信封**（与 capability-gateway 一致），直接回 JSON；
  * - 对外对话接口是 **OpenAI Chat Completions 形态**（runtime 用 AI SDK 的 openai-compatible 解析）；
  * - 这里只定义「网关 ↔ 内部调用方」的结构，不定义各供应商的私有协议。
  */

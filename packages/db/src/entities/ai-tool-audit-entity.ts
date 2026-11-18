@@ -1,7 +1,7 @@
 import { Column, Entity, Index, PrimaryColumn } from 'typeorm'
 
 /**
- * 工具调用审计（tool-gateway 写，管理端 / 排障读）。
+ * 工具调用审计（capability-gateway 写，管理端 / 排障读）。
  *
  * 只记调用事实与结论，不记入参/出参全文（全文在 timelines）。
  */

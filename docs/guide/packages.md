@@ -1,6 +1,6 @@
-# 共享包（shared / kits / db / web-runtime / tool-catalog / http-client / sdk）
+# 共享包（shared / kits / db / web-runtime / http-client / sdk）
 
-> 本篇讲 `@repo/shared`、`@repo/kits`、`@repo/db`、`@repo/web-runtime`、`@repo/tool-catalog`、`@repo/http-client` 与 `@repo/sdk`；组件库 `@repo/ui` 见 [frontend.md](./frontend.md)。
+> 本篇讲 `@repo/shared`、`@repo/kits`、`@repo/db`、`@repo/web-runtime`、`@repo/http-client` 与 `@repo/sdk`；组件库 `@repo/ui` 见 [frontend.md](./frontend.md)。
 
 ## @repo/shared — 前后端共享层
 
@@ -39,17 +39,9 @@ Zod schema 单一事实源，同时派生 TypeScript 类型（`*.schema.ts` 导�
 
 ## @repo/web-runtime — 联网工具运行时
 
-- 出网 / SSRF 校验 / HTML→Markdown / 按行分页 / 反爬识别，runtime 与 tool-worker 共用。
+- 出网 / SSRF 校验 / HTML→Markdown / 按行分页 / 反爬识别，runtime 与 common-capability 共用。
 - 错误用 `WebToolError`（`reason` / `hint` / `retryable`），不依赖 Nest / DB；调用方翻成 `ToolOutcome`。
 - 出网只走 `http.ts`；业务工具不要自己 `fetch`。
-
-## @repo/tool-catalog — 工具定义唯一来源
-
-- `TOOL_DEFINITIONS` / `getToolDefinition` / `toToolManifest`：key / 标题 / 描述 / 参数 Zod / scope / executor。
-- runtime 的 `@ToolDecl`（经 `@repo/tool-catalog` 转成定义）与 gateway 的 `/v1/tools/list` 共用；
-  **不要再手写 manifest**。
-- DB `ai_tools` 只存 enabled / limits / config / secrets，不存 schema。
-- worker 只注册 executor key + 版本，不报 schema。
 
 ## @repo/monitor — 监控引擎
 

@@ -1,6 +1,6 @@
 # @repo/db
 
-数据库**唯一事实源**：所有 TypeORM 实体、迁移、实体清单都在这里，server / tool-gateway / 后续新 app 共用。
+数据库**唯一事实源**：所有 TypeORM 实体、迁移、实体清单都在这里，server / capability-gateway / 后续新 app 共用。
 
 ## 导出
 

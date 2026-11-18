@@ -33,8 +33,8 @@
 │   │           ├── ai-usage/ ops/            # 用量、探针（监控引擎来自 @repo/monitor）
 │   │           └── （没有 auth / user / storage / share 等控制面模块）
 │   ├── model-gateway/                    # 模型网关：canonical OpenAI + openai/deepseek/ollama 协议适配 + 目录（9992）
-│   ├── tool-gateway/                     # 工具目录 / 策略 / worker 路由 / 审计（@app/tool-gateway，9993）
-│   ├── tool-worker/                      # 工具执行 + 能力自注册（@app/tool-worker，9994）
+│   ├── capability-gateway/                     # 工具目录 / 策略 / worker 路由 / 审计（@app/capability-gateway，9993）
+│   ├── common-capability/                      # 工具执行 + 能力自注册（@app/common-capability，9994）
 │   ├── web/                             # Next.js 16 前台（@app/web，端口 9840）
 │   │   └── src/
 │   │       ├── actions/auth.actions.ts  # Server Actions（登录 / 注册）
@@ -100,7 +100,6 @@
 │   │                                    #   <name>.module.ts（@Global；需要配置的再给 forRoot / forRootAsync）+ index.ts
 │   ├── db/                               # @repo/db — TypeORM 实体 + 迁移 + DB_ENTITIES / DB_MIGRATIONS（唯一来源）
 │   ├── ai-data/                          # @repo/ai-data — FileService / MemoryService / workspace（main 与 worker 共用）
-│   ├── tool-catalog/                     # @repo/tool-catalog — 工具定义唯一来源（参数 / 描述 / scope）
 │   ├── contracts/                        # @repo/contracts — 内部服务契约（Zod schema）
 │   ├── internal-sdk/                     # @repo/internal-sdk — 内部服务 typed client（gateway / worker / runtime）
 │   ├── web-runtime/                      # @repo/web-runtime — bash / web / 文件工具的共享执行实现
@@ -140,7 +139,7 @@
                                                                                      ▼
                                                                              agent-runtime（9990）
                                                                                ├─ agent loop（Mastra）
-                                                                               ├─ 工具面 ──→ tool-gateway（9993）──→ tool-worker（9994）
+                                                                               ├─ 工具面 ──→ capability-gateway（9993）──→ common-capability（9994）
                                                                                └─ Redis pub/sub（agent:stream:client:<clientId>）──→ main 的 SSE ──→ 浏览器
 ```
 

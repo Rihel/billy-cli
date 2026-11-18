@@ -31,7 +31,6 @@
     "@repo/kits": "workspace:*",
     "@repo/monitor": "workspace:*",
     "@repo/shared": "workspace:*",
-    "@repo/tool-catalog": "workspace:*",
     "@repo/web-runtime": "workspace:*",
     "dedent": "^1.7.2",
     "dotenv": "^18.0.9",

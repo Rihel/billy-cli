@@ -28,10 +28,10 @@ export const WorkerRegistrationSchema = z.object({
 export type WorkerRegistration = z.infer<typeof WorkerRegistrationSchema>
 
 /** 存活 ZSET：score = 最后心跳时间（ms） */
-export const WORKERS_ALIVE_KEY = 'ai:tool-workers:alive'
+export const WORKERS_ALIVE_KEY = 'ai:common-capabilitys:alive'
 
 /** 单个 worker 的 Hash 键 */
-export const workerKey = (workerId: string): string => `ai:tool-worker:${workerId}`
+export const workerKey = (workerId: string): string => `ai:common-capability:${workerId}`
 
 /**
  * 注册过期时间：心跳 10s、30s 未续视为失联。

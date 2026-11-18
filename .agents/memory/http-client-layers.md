@@ -13,7 +13,7 @@
 
 内部 JSON 契约（2026-11-15 起）：
 
-- `/internal/**` 与 tool-gateway / tool-worker 业务路由：`{ code, data }` 信封；
+- `/internal/**` 与 capability-gateway / common-capability 业务路由：`{ code, data }` 信封；
 - `/v1/**`（模型协议）、`/healthz` `/readyz`、流式：**裸 JSON / SSE / NDJSON**，不能包；
 - `internal-sdk` 业务调用用 `requestEnvelope`，探针用 `requestJson`。
 

@@ -1,10 +1,10 @@
-# main / agent-runtime 的非敏感运行配置（model-gateway / tool-gateway / tool-worker 见 11/12/13 号文件）。
+# main / agent-runtime 的非敏感运行配置（model-gateway / capability-gateway / common-capability 见 11/12/13 号文件）。
 #
 # 拆分原则：
 # - `billy-shared`：五个服务都可能用到的公共配置（NODE_ENV / 对象存储 / 日志 / Kafka）；
 # - `billy-main`：公网入口专属（端口 9989、认证与限流、runtime 地址、网关相关超时）；
 # - `billy-agent-runtime`：内部运行时专属（端口 9990、多实例恢复、agent 模型配置、模型网关地址）。
-# 新增的 model-gateway / tool-gateway / tool-worker 各有自己的 ConfigMap（11/12/13 号文件），
+# 新增的 model-gateway / capability-gateway / common-capability 各有自己的 ConfigMap（11/12/13 号文件），
 # 也都用同一份 `billy-shared`。
 #
 # 敏感项（DB_URL / REDIS_URL / JWT_SECRET / 对象存储密钥 / AGENT_INTERNAL_TOKEN /

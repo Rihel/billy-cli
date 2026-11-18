@@ -8,7 +8,7 @@ import { AiToolAdminService } from './tool-admin.service.js'
  * AI 工具管理模块（`/ai-tool/*`）—— **main 本地**的控制面。
  *
  * 只做配置 CRUD + 工作区能力探测：不 import `modules/ai`（agent loop / Mastra / 工具执行器），
- * 工具元数据来自 `@repo/tool-catalog`，配置行落在 `ai_tools`。
+ * 工具元数据来自本地快照（`tool-manifests.ts`），配置行落在 `ai_tools`。
  *
  * - `AdminModule`：`AdminAuthGuard` 依赖 `AdminService`（鉴权）；
  * - `WorkspaceRuntimeService` 由根模块已装配的 `WorkspaceModule`（`@Global`）提供；

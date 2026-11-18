@@ -1,7 +1,7 @@
 import type { MigrationInterface, QueryRunner } from 'typeorm'
 
 /**
- * 工具审计表（tool-gateway 唯一写方）。
+ * 工具审计表（capability-gateway 唯一写方）。
  *
  * 只记“谁在什么轮次调了什么工具、结果如何、多久”，入参/出参全文仍以 timeline 为准；
  * 不建物理外键（工程硬规则）。

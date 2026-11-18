@@ -1,9 +1,8 @@
-import { InternalApiError, InternalTransportError, ToolGatewayClient } from '@repo/internal-sdk'
-import { TOOL_CONTRACT_VERSION } from '@repo/contracts'
+import { CapabilityGatewayClient, InternalTransportError } from '@repo/internal-sdk'
 import type { ToolDenyReasonValue, ToolOutcome } from '../core/tools/tools.types.js'
 import type { RemoteToolInvoker } from '../core/tools/tool.ports.js'
 
-/** worker / 网关的失败原因 → 我们的领域 reason（不认识的一律归 internal） */
+/** 网关的失败原因 → 我们的领域 reason（不认识的一律归 internal） */
 const toReason = (reason: string): ToolDenyReasonValue => {
   if (reason === 'timeout' || reason === 'aborted') return reason
   if (reason === 'invalid-input') return 'invalid-input'
@@ -11,10 +10,11 @@ const toReason = (reason: string): ToolDenyReasonValue => {
   if (reason === 'rate-limited') return 'rate-limited'
   if (reason === 'disabled') return 'disabled'
   if (
-    reason === 'no-worker' ||
+    reason === 'no-provider' ||
     reason === 'busy' ||
-    reason === 'worker-unavailable' ||
-    reason.startsWith('worker-http-')
+    reason === 'service-unavailable' ||
+    reason === 'service-protocol-error' ||
+    reason.startsWith('service-http-')
   ) {
     return 'upstream'
   }
@@ -22,10 +22,12 @@ const toReason = (reason: string): ToolDenyReasonValue => {
 }
 
 /**
- * 可选能力：把 allowlist 里的工具**执行**转到 tool-gateway（插件链仍在本进程先跑）。
+ * 可选能力：把 allowlist 里的工具**执行**转到能力网关（插件链仍在本进程先跑）。
  *
  * 只读环境变量，不进 AgentConfig：这是部署级开关，默认关；不设 `TOOL_GATEWAY_URL` 时返回 null，
- * 主链路行为与拆分前完全一致（本地 `spec.exec`）。
+ * 主链路行为与拆分前一致（本地 `spec.exec`）。
+ *
+ * 能力 key 就是工具名（`xxx-xxx`）；服务只是在网关里把这些工具登记成一组，runtime 不关心。
  */
 export const createRemoteToolInvoker = (
   env: NodeJS.ProcessEnv = process.env,
@@ -45,22 +47,16 @@ export const createRemoteToolInvoker = (
       .filter(Boolean),
   )
   const deadlineMs = Number(env.TOOL_GATEWAY_DEADLINE_MS ?? 310_000)
-  const client = new ToolGatewayClient({ baseUrl: url, token, timeoutMs: deadlineMs })
+  const client = new CapabilityGatewayClient({ baseUrl: url, token, timeoutMs: deadlineMs })
 
   return {
     supports: (toolKey) => tools.has(toolKey),
     async invoke(input) {
       try {
-        const response = await client.invokeTool(
+        const result = await client.invoke(
           {
-            version: TOOL_CONTRACT_VERSION,
-            requestId: input.toolCallId ?? `${input.toolKey}-${Date.now()}`,
-            toolKey: input.toolKey,
-            toolCallId: input.toolCallId,
+            capability: input.toolKey,
             input: input.input,
-            ...(input.workspaceConversationId
-              ? { workspaceConversationId: input.workspaceConversationId }
-              : {}),
             caller: {
               conversationId: input.caller.conversationId,
               runId: input.caller.runId,
@@ -71,11 +67,11 @@ export const createRemoteToolInvoker = (
               depth: input.caller.depth,
             },
             deadlineMs: input.deadlineMs,
-            ...(input.fileAccess ? { fileAccess: input.fileAccess } : {}),
+            ...(input.toolCallId ? { idempotencyKey: input.toolCallId } : {}),
           },
           { timeoutMs: input.deadlineMs },
         )
-        const outcome = response.outcome
+        const outcome = result.outcome
         if (outcome.ok) return { ok: true, data: outcome.data }
         return {
           ok: false,
@@ -89,10 +85,7 @@ export const createRemoteToolInvoker = (
         return {
           ok: false,
           reason: 'internal',
-          message:
-            error instanceof InternalApiError
-              ? `工具网关返回 ${error.status}：${error.detail}`
-              : `工具网关调用失败：${error instanceof Error ? error.message : String(error)}`,
+          message: `能力网关调用失败：${error instanceof Error ? error.message : String(error)}`,
           retryable,
         } as ToolOutcome
       }

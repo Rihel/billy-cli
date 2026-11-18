@@ -11,7 +11,7 @@ import {
   SKILL_IMPORT_TOOL,
   SKILL_LIST_TOOL,
   SKILL_SAVE_TOOL,
-} from '@repo/tool-catalog'
+} from '../tools/definitions/skills.js'
 import { SkillLibraryService } from './skill.service.js'
 
 /**

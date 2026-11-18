@@ -4,8 +4,8 @@
 # - billy-main（apps/main，9989）：公网唯一入口，Deployment / Service / Ingress / PDB；
 # - billy-agent-runtime（apps/agent-runtime，9990）：内部 ClusterIP，不接公网 Ingress；
 # - billy-model-gateway（apps/model-gateway，9992）：内部模型网关；
-# - billy-tool-gateway（apps/tool-gateway，9993）：内部工具面网关；
-# - billy-tool-worker（apps/tool-worker，9994）：内部工具执行体。
+# - billy-capability-gateway（apps/capability-gateway，9993）：内部工具面网关；
+# - billy-common-capability（apps/common-capability，9994）：内部工具执行体。
 # 后三个都只在内网，不接公网 Ingress。web / admin 的部署另议。
 # 全部占位符需替换：镜像地址与 tag、域名 api.example.com、DB / Redis 地址与凭据。
 # 字段取值的来由（尤其「滚动更新为什么不 502」）见同目录 README.md。

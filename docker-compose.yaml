@@ -26,7 +26,7 @@ x-app-env: &app-env
   MODEL_INTERNAL_TOKEN: ${MODEL_INTERNAL_TOKEN:-local-dev-model-token}
   MODEL_GATEWAY_TOKEN: ${MODEL_GATEWAY_TOKEN:-local-dev-model-token}
   # runtime / worker 调工具网关
-  TOOL_GATEWAY_URL: http://tool-gateway:9993
+  TOOL_GATEWAY_URL: http://capability-gateway:9993
   TOOL_INTERNAL_TOKEN: ${TOOL_INTERNAL_TOKEN:-local-dev-tool-token}
   TOOL_GATEWAY_TOKEN: ${TOOL_GATEWAY_TOKEN:-local-dev-tool-token}
   # agent 对话的流式内容经 Kafka 从 runtime 转到 main（runtime 发 agent.run.events，main 消费后写 SSE）。
@@ -156,7 +156,7 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-      tool-gateway:
+      capability-gateway:
         condition: service_healthy
       model-gateway:
         condition: service_healthy
@@ -237,11 +237,11 @@ services:
   # ──────────────────────────────────────────
   # Tool gateway / worker（内部工具面，无公网端口）
   # ──────────────────────────────────────────
-  tool-worker:
+  common-capability:
     build:
       context: .
-      dockerfile: docker/Dockerfile.tool-worker
-    container_name: billy-tool-worker
+      dockerfile: docker/Dockerfile.common-capability
+    container_name: billy-common-capability
     restart: unless-stopped
     depends_on:
       migrate:
@@ -255,7 +255,7 @@ services:
       PORT: '9994'
       TOOL_WORKER_PORT: '9994'
       TOOL_WORKER_DB_URL: postgresql://root:pg1234@postgres:5432/billy-cli
-      TOOL_WORKER_ENDPOINT: http://tool-worker:9994
+      TOOL_WORKER_ENDPOINT: http://common-capability:9994
       TOOL_WORKER_WORKSPACE_ROOT: /home/appuser/.billy-cli
       # compose 的 alpine worker 没有 bwrap / seatbelt；本地一键起用 off，生产按宿主能力设 enforce
       AGENT_WORKSPACE_MODE: off
@@ -270,16 +270,16 @@ services:
       retries: 5
       start_period: 30s
 
-  tool-gateway:
+  capability-gateway:
     build:
       context: .
-      dockerfile: docker/Dockerfile.tool-gateway
-    container_name: billy-tool-gateway
+      dockerfile: docker/Dockerfile.capability-gateway
+    container_name: billy-capability-gateway
     restart: unless-stopped
     depends_on:
       migrate:
         condition: service_completed_successfully
-      tool-worker:
+      common-capability:
         condition: service_healthy
       postgres:
         condition: service_healthy
@@ -289,7 +289,7 @@ services:
       <<: *app-env
       PORT: '9993'
       TOOL_GATEWAY_PORT: '9993'
-      TOOL_WORKER_URL: http://tool-worker:9994
+      TOOL_WORKER_URL: http://common-capability:9994
     expose:
       - '9993'
     healthcheck:

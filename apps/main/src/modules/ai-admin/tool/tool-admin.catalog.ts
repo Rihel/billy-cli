@@ -1,6 +1,6 @@
 import { FileConfigSchema } from '@repo/ai-data'
 import { ToolCategory } from '@repo/shared'
-import { ALL_TOOL_MANIFESTS } from '@repo/tool-catalog'
+import { ALL_TOOL_MANIFESTS } from './tool-manifests.js'
 import { BROWSER_UA } from '@repo/web-runtime'
 import { z } from 'zod'
 
@@ -8,12 +8,12 @@ import { z } from 'zod'
  * 工具管理（`/ai-tool/*`）的**代码侧元数据目录**。
  *
  * 为什么需要这一层：`ai_tools` 只存"可变的值"（开关 / 作用域 / 限额 / 配置 / 秘钥），
- * 标题 / 说明 / 参数定义由 `@repo/tool-catalog` 的 manifest 提供，而**配置的合法性**
+ * 标题 / 说明 / 参数定义由本地 manifest 快照（`tool-manifests.ts`）提供，而**配置的合法性**
  * （默认值、字段类型、秘钥字段）只有工具声明自己知道。main 的 ai-tool 模块不持有
  * agent loop / Mastra / 工具执行器，所以把控制面需要的那一份声明集中在这里：
  *
  * - **基础信息**（key / title / description / category / scope / params）**直接取 manifest**，
- *   不手抄第二份 —— 那是 `@repo/tool-catalog` 的职责；
+ *   不手抄第二份 —— 那是 manifest 快照的职责；
  * - **配置 schema**：能从共享包复用的就复用（文件工具取 `@repo/ai-data` 的
  *   `FileConfigSchema`，与 worker / 运行时同一份）；其余工具的控制面声明在 main 侧只有
  *   这一处，字段与默认值对齐运行时工具声明；

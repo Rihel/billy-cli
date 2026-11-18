@@ -462,9 +462,6 @@ importers:
       '@repo/shared':
         specifier: workspace:*
         version: link:../../packages/shared
-      '@repo/tool-catalog':
-        specifier: workspace:*
-        version: link:../../packages/tool-catalog
       '@repo/web-runtime':
         specifier: workspace:*
         version: link:../../packages/web-runtime
@@ -545,6 +542,116 @@ importers:
         specifier: ^5.1.0
         version: 5.1.0(@opentelemetry/api@1.9.1)(@types/node@26.6.6)(jsdom@31.0.0(@noble/hashes@2.4.0))(vite@8.1.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.49.0)(tsx@4.23.15)(yaml@2.9.1))
 
+  apps/capability-gateway:
+    dependencies:
+      '@nestjs/common':
+        specifier: ^12.4.0
+        version: 12.4.0(reflect-metadata@0.2.2)(rxjs@7.8.2)(supports-color@7.2.0)
+      '@nestjs/config':
+        specifier: ^12.1.1
+        version: 12.1.1(@nestjs/common@12.4.0(reflect-metadata@0.2.2)(rxjs@7.8.2)(supports-color@7.2.0))(rxjs@7.8.2)
+      '@nestjs/core':
+        specifier: ^12.4.0
+        version: 12.4.0(@nestjs/common@12.4.0(reflect-metadata@0.2.2)(rxjs@7.8.2)(supports-color@7.2.0))(@nestjs/platform-express@12.4.0)(reflect-metadata@0.2.2)(rxjs@7.8.2)
+      '@nestjs/platform-express':
+        specifier: ^12.4.0
+        version: 12.4.0(@nestjs/common@12.4.0(reflect-metadata@0.2.2)(rxjs@7.8.2)(supports-color@7.2.0))(@nestjs/core@12.4.0)(rxjs@7.8.2)(supports-color@7.2.0)
+      '@repo/contracts':
+        specifier: workspace:*
+        version: link:../../packages/contracts
+      '@repo/db':
+        specifier: workspace:*
+        version: link:../../packages/db
+      '@repo/internal-sdk':
+        specifier: workspace:*
+        version: link:../../packages/internal-sdk
+      '@repo/kits':
+        specifier: workspace:*
+        version: link:../../packages/kits
+      dotenv:
+        specifier: ^18.0.9
+        version: 18.0.9
+      reflect-metadata:
+        specifier: ^0.2.2
+        version: 0.2.2
+      rxjs:
+        specifier: ^7.8.2
+        version: 7.8.2
+      zod:
+        specifier: ^4.6.7
+        version: 4.6.7
+    devDependencies:
+      '@types/node':
+        specifier: ^26.6.6
+        version: 26.6.6
+      tsx:
+        specifier: ^4.23.15
+        version: 4.23.15
+      typescript:
+        specifier: ^7.0.2
+        version: 7.0.2
+      vitest:
+        specifier: ^5.1.0
+        version: 5.1.0(@opentelemetry/api@1.9.1)(@types/node@26.6.6)(jsdom@31.0.0(@noble/hashes@2.4.0))(vite@8.1.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.49.0)(tsx@4.23.15)(yaml@2.9.1))
+
+  apps/common-capability:
+    dependencies:
+      '@nestjs/common':
+        specifier: ^12.4.0
+        version: 12.4.0(reflect-metadata@0.2.2)(rxjs@7.8.2)(supports-color@7.2.0)
+      '@nestjs/config':
+        specifier: ^12.1.1
+        version: 12.1.1(@nestjs/common@12.4.0(reflect-metadata@0.2.2)(rxjs@7.8.2)(supports-color@7.2.0))(rxjs@7.8.2)
+      '@nestjs/core':
+        specifier: ^12.4.0
+        version: 12.4.0(@nestjs/common@12.4.0(reflect-metadata@0.2.2)(rxjs@7.8.2)(supports-color@7.2.0))(@nestjs/platform-express@12.4.0)(reflect-metadata@0.2.2)(rxjs@7.8.2)
+      '@nestjs/platform-express':
+        specifier: ^12.4.0
+        version: 12.4.0(@nestjs/common@12.4.0(reflect-metadata@0.2.2)(rxjs@7.8.2)(supports-color@7.2.0))(@nestjs/core@12.4.0)(rxjs@7.8.2)(supports-color@7.2.0)
+      '@repo/ai-data':
+        specifier: workspace:*
+        version: link:../../packages/ai-data
+      '@repo/capability':
+        specifier: workspace:*
+        version: link:../../packages/capability
+      '@repo/contracts':
+        specifier: workspace:*
+        version: link:../../packages/contracts
+      '@repo/db':
+        specifier: workspace:*
+        version: link:../../packages/db
+      '@repo/kits':
+        specifier: workspace:*
+        version: link:../../packages/kits
+      '@repo/shared':
+        specifier: workspace:*
+        version: link:../../packages/shared
+      '@repo/web-runtime':
+        specifier: workspace:*
+        version: link:../../packages/web-runtime
+      dotenv:
+        specifier: ^18.0.9
+        version: 18.0.9
+      reflect-metadata:
+        specifier: ^0.2.2
+        version: 0.2.2
+      zod:
+        specifier: ^4.6.7
+        version: 4.6.7
+    devDependencies:
+      '@types/node':
+        specifier: ^26.6.6
+        version: 26.6.6
+      tsx:
+        specifier: ^4.23.15
+        version: 4.23.15
+      typescript:
+        specifier: ^7.0.2
+        version: 7.0.2
+      vitest:
+        specifier: ^5.1.0
+        version: 5.1.0(@opentelemetry/api@1.9.1)(@types/node@26.6.6)(jsdom@31.0.0(@noble/hashes@2.4.0))(vite@8.1.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.49.0)(tsx@4.23.15)(yaml@2.9.1))
+
   apps/main:
     dependencies:
       '@nestjs/common':
@@ -583,9 +690,6 @@ importers:
       '@repo/shared':
         specifier: workspace:*
         version: link:../../packages/shared
-      '@repo/tool-catalog':
-        specifier: workspace:*
-        version: link:../../packages/tool-catalog
       '@repo/web-runtime':
         specifier: workspace:*
         version: link:../../packages/web-runtime
@@ -724,119 +828,6 @@ importers:
         specifier: ^5.1.0
         version: 5.1.0(@opentelemetry/api@1.9.1)(@types/node@26.6.6)(jsdom@31.0.0(@noble/hashes@2.4.0))(vite@8.1.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.49.0)(tsx@4.23.15)(yaml@2.9.1))
 
-  apps/tool-gateway:
-    dependencies:
-      '@nestjs/common':
-        specifier: ^12.4.0
-        version: 12.4.0(reflect-metadata@0.2.2)(rxjs@7.8.2)(supports-color@7.2.0)
-      '@nestjs/config':
-        specifier: ^12.1.1
-        version: 12.1.1(@nestjs/common@12.4.0(reflect-metadata@0.2.2)(rxjs@7.8.2)(supports-color@7.2.0))(rxjs@7.8.2)
-      '@nestjs/core':
-        specifier: ^12.4.0
-        version: 12.4.0(@nestjs/common@12.4.0(reflect-metadata@0.2.2)(rxjs@7.8.2)(supports-color@7.2.0))(@nestjs/platform-express@12.4.0)(reflect-metadata@0.2.2)(rxjs@7.8.2)
-      '@nestjs/platform-express':
-        specifier: ^12.4.0
-        version: 12.4.0(@nestjs/common@12.4.0(reflect-metadata@0.2.2)(rxjs@7.8.2)(supports-color@7.2.0))(@nestjs/core@12.4.0)(rxjs@7.8.2)(supports-color@7.2.0)
-      '@repo/contracts':
-        specifier: workspace:*
-        version: link:../../packages/contracts
-      '@repo/db':
-        specifier: workspace:*
-        version: link:../../packages/db
-      '@repo/internal-sdk':
-        specifier: workspace:*
-        version: link:../../packages/internal-sdk
-      '@repo/kits':
-        specifier: workspace:*
-        version: link:../../packages/kits
-      '@repo/tool-catalog':
-        specifier: workspace:*
-        version: link:../../packages/tool-catalog
-      dotenv:
-        specifier: ^18.0.9
-        version: 18.0.9
-      reflect-metadata:
-        specifier: ^0.2.2
-        version: 0.2.2
-      rxjs:
-        specifier: ^7.8.2
-        version: 7.8.2
-      zod:
-        specifier: ^4.6.7
-        version: 4.6.7
-    devDependencies:
-      '@types/node':
-        specifier: ^26.6.6
-        version: 26.6.6
-      tsx:
-        specifier: ^4.23.15
-        version: 4.23.15
-      typescript:
-        specifier: ^7.0.2
-        version: 7.0.2
-      vitest:
-        specifier: ^5.1.0
-        version: 5.1.0(@opentelemetry/api@1.9.1)(@types/node@26.6.6)(jsdom@31.0.0(@noble/hashes@2.4.0))(vite@8.1.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.49.0)(tsx@4.23.15)(yaml@2.9.1))
-
-  apps/tool-worker:
-    dependencies:
-      '@nestjs/common':
-        specifier: ^12.4.0
-        version: 12.4.0(reflect-metadata@0.2.2)(rxjs@7.8.2)(supports-color@7.2.0)
-      '@nestjs/config':
-        specifier: ^12.1.1
-        version: 12.1.1(@nestjs/common@12.4.0(reflect-metadata@0.2.2)(rxjs@7.8.2)(supports-color@7.2.0))(rxjs@7.8.2)
-      '@nestjs/core':
-        specifier: ^12.4.0
-        version: 12.4.0(@nestjs/common@12.4.0(reflect-metadata@0.2.2)(rxjs@7.8.2)(supports-color@7.2.0))(@nestjs/platform-express@12.4.0)(reflect-metadata@0.2.2)(rxjs@7.8.2)
-      '@nestjs/platform-express':
-        specifier: ^12.4.0
-        version: 12.4.0(@nestjs/common@12.4.0(reflect-metadata@0.2.2)(rxjs@7.8.2)(supports-color@7.2.0))(@nestjs/core@12.4.0)(rxjs@7.8.2)(supports-color@7.2.0)
-      '@repo/ai-data':
-        specifier: workspace:*
-        version: link:../../packages/ai-data
-      '@repo/contracts':
-        specifier: workspace:*
-        version: link:../../packages/contracts
-      '@repo/db':
-        specifier: workspace:*
-        version: link:../../packages/db
-      '@repo/kits':
-        specifier: workspace:*
-        version: link:../../packages/kits
-      '@repo/shared':
-        specifier: workspace:*
-        version: link:../../packages/shared
-      '@repo/tool-catalog':
-        specifier: workspace:*
-        version: link:../../packages/tool-catalog
-      '@repo/web-runtime':
-        specifier: workspace:*
-        version: link:../../packages/web-runtime
-      dotenv:
-        specifier: ^18.0.9
-        version: 18.0.9
-      reflect-metadata:
-        specifier: ^0.2.2
-        version: 0.2.2
-      zod:
-        specifier: ^4.6.7
-        version: 4.6.7
-    devDependencies:
-      '@types/node':
-        specifier: ^26.6.6
-        version: 26.6.6
-      tsx:
-        specifier: ^4.23.15
-        version: 4.23.15
-      typescript:
-        specifier: ^7.0.2
-        version: 7.0.2
-      vitest:
-        specifier: ^5.1.0
-        version: 5.1.0(@opentelemetry/api@1.9.1)(@types/node@26.6.6)(jsdom@31.0.0(@noble/hashes@2.4.0))(vite@8.1.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.49.0)(tsx@4.23.15)(yaml@2.9.1))
-
   apps/web:
     dependencies:
       '@base-ui/react':
@@ -954,9 +945,6 @@ importers:
       '@repo/shared':
         specifier: workspace:*
         version: link:../shared
-      '@repo/tool-catalog':
-        specifier: workspace:*
-        version: link:../tool-catalog
       typeorm:
         specifier: ^1.1.2
         version: 1.1.2(ioredis@5.11.1(supports-color@7.2.0))(mysql2@3.24.6(@types/node@26.6.6))(pg@8.23.1)(redis@5.12.1(@opentelemetry/api@1.9.1))(supports-color@7.2.0)(ts-node@10.9.2(@types/node@26.6.6)(typescript@7.0.2))
@@ -964,6 +952,31 @@ importers:
         specifier: ^4.6.7
         version: 4.6.7
     devDependencies:
+      tsdown:
+        specifier: ^0.23.7
+        version: 0.23.7(tsx@4.23.15)(typescript@7.0.2)(unrun@0.3.1(synckit@0.11.13))
+      typescript:
+        specifier: ^7.0.2
+        version: 7.0.2
+      unrun:
+        specifier: ^0.3.1
+        version: 0.3.1(synckit@0.11.13)
+      vitest:
+        specifier: ^5.1.0
+        version: 5.1.0(@opentelemetry/api@1.9.1)(@types/node@26.6.6)(jsdom@31.0.0(@noble/hashes@2.4.0))(vite@8.1.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.49.0)(tsx@4.23.15)(yaml@2.9.1))
+
+  packages/capability:
+    dependencies:
+      '@repo/contracts':
+        specifier: workspace:*
+        version: link:../contracts
+      zod:
+        specifier: ^4.6.7
+        version: 4.6.7
+    devDependencies:
+      '@types/node':
+        specifier: ^26.6.6
+        version: 26.6.6
       tsdown:
         specifier: ^0.23.7
         version: 0.23.7(tsx@4.23.15)(typescript@7.0.2)(unrun@0.3.1(synckit@0.11.13))
@@ -1314,34 +1327,6 @@ importers:
       '@types/spark-md5':
         specifier: ^3.0.5
         version: 3.0.5
-      tsdown:
-        specifier: ^0.23.7
-        version: 0.23.7(tsx@4.23.15)(typescript@7.0.2)(unrun@0.3.1(synckit@0.11.13))
-      typescript:
-        specifier: ^7.0.2
-        version: 7.0.2
-      unrun:
-        specifier: ^0.3.1
-        version: 0.3.1(synckit@0.11.13)
-      vitest:
-        specifier: ^5.1.0
-        version: 5.1.0(@opentelemetry/api@1.9.1)(@types/node@26.6.6)(jsdom@31.0.0(@noble/hashes@2.4.0))(vite@8.1.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.49.0)(tsx@4.23.15)(yaml@2.9.1))
-
-  packages/tool-catalog:
-    dependencies:
-      '@repo/contracts':
-        specifier: workspace:*
-        version: link:../contracts
-      '@repo/shared':
-        specifier: workspace:*
-        version: link:../shared
-      dedent:
-        specifier: ^1.7.2
-        version: 1.7.2
-      zod:
-        specifier: ^4.6.7
-        version: 4.6.7
-    devDependencies:
       tsdown:
         specifier: ^0.23.7
         version: 0.23.7(tsx@4.23.15)(typescript@7.0.2)(unrun@0.3.1(synckit@0.11.13))

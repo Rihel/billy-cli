@@ -16,6 +16,8 @@
 | [model-gateway.md](model-gateway.md) | **评审稿**：第 5 个服务 model-gateway（9992）——canonical 接口 / 流式转发 / 文件与生图产物 / 计量与成本 / key 池与配额 / 迁移与回退（§13 待拍板） |
 | [async-subagent.md](async-subagent.md) | 异步子 agent 与会话 run 队列方案：run-sub-agent 异步化、用户优先队列、完成唤醒父 run、工具契约与分阶段实施 |
 | [distributed-ai-conclusions.md](distributed-ai-conclusions.md) | 讨论结论一页版：已定 / 建议 / 待拍板，含工具边界、连接器、planner/ask/memory、子会话、迁移顺序与当前进度 |
+| [capability-gateway.md](capability-gateway.md) | **评审稿**：能力网关重定义（服务登记 + 能力治理 + 能力路由）与按安全边界拆域服务——市面对标、被否掉的方案、12 条决策、三阶段迁移、7 项待拍板 |
+| [capability-protocol.md](capability-protocol.md) | **草案**：内部能力接入协议 v1——`namespace/tool` 规范 key 与模型面映射、服务/能力/执行声明、sync 与 task 三形态、长耗时命令约定、回调、幂等分页凭据、32 工具新旧对照与别名迁移 |
 
 ## AI
 
