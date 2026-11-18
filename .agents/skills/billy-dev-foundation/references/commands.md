@@ -16,7 +16,7 @@ pnpm hooks:install # 手动重装 lefthook 钩子（pnpm install 已自动装）
 pnpm dev:pkgs      # watch 构建有 dev 脚本的包（shared / kits / http-client / sdk / contracts / internal-sdk）
 pnpm dev:main      # 启动公网 BFF（@app/main，9989；node --watch --import tsx/esm src/main.ts）
 pnpm dev:runtime   # 启动 agent loop（@app/agent-runtime，9990）
-pnpm dev:stack     # 一条命令起 main + agent-runtime + capability-gateway + common-capability
+pnpm dev:stack     # 一条命令起后端全套：main / agent-runtime / model-gateway / capability-gateway / common-capability
 pnpm dev:tools     # capability-gateway（9993）+ common-capability（9994）
 pnpm dev:web       # Web 前台（9840）
 pnpm dev:admin     # Admin 后台（9845）
@@ -28,8 +28,9 @@ pnpm start:web     # 生产启动 Web（standalone，默认 9840；Docker 内 30
 pnpm start:admin   # 生产启动 Admin（standalone，默认 9845）
 pnpm start:main    # 生产启动 main（9989）
 pnpm start:runtime # 生产启动 agent-runtime（9990，只给 main 调）
+pnpm start:stack   # 生产启动全套（后端 5 个 + admin 9845 + web 9840；需先 pnpm build）
 pnpm kill:dev      # 一键停掉全部 dev 服务（Web / Admin / main / runtime / tools / packages watcher；--dry-run 仅预览）
-pnpm kill:start    # 跨平台按端口停 start 服务（默认 9840 / 9845 / 9989 / 9990 / 9993 / 9994；--dry-run / --force）
+pnpm kill:start    # 跨平台按端口停 start 服务（默认 9840 / 9845 / 9989 / 9990 / 9992 / 9993 / 9994；--dry-run / --force）
 pnpm kill:port 3001  # 按指定端口停进程
 pnpm build:pkgs    # 仅构建 packages（含只有 build 的 db / ai-data / web-runtime；ui 直接用源码）
 pnpm build         # 全量构建（turbo，按依赖拓扑）

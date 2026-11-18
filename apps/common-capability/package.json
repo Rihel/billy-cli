@@ -21,6 +21,7 @@
     "@repo/capability": "workspace:*",
     "@repo/contracts": "workspace:*",
     "@repo/db": "workspace:*",
+    "@repo/internal-sdk": "workspace:*",
     "@repo/kits": "workspace:*",
     "@repo/shared": "workspace:*",
     "@repo/web-runtime": "workspace:*",

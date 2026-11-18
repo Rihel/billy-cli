@@ -266,18 +266,31 @@ const applyPart = (
   if (isToolUIPart(part)) {
     const toolPart = toToolPart(part)
     if (!toolPart) return null
-    const key = `tool-${toolPart.toolCallId}`
+    /**
+     * `wait-task` 按 **taskId** 合并（协议 §10.2）：同一个长任务会被轮询好几次，
+     * 每次都出新卡会把会话刷成日志流；这里只保留最后一张（快照本身就是最新状态）。
+     *
+     * 输入还没到（input-streaming）时先按 toolCallId 建占位卡，拿到 taskId 后把占位卡摘掉。
+     */
+    const taskId = toolPart.toolName === 'wait-task' ? asRecord(toolPart.input)?.taskId : undefined
+    const mergeKey =
+      typeof taskId === 'string' && taskId ? `wait-task-${taskId}` : `tool-${toolPart.toolCallId}`
+    const placeholderKey = `tool-${toolPart.toolCallId}`
+    const units =
+      mergeKey === placeholderKey
+        ? state.units
+        : state.units.filter((unit) => unit.key !== placeholderKey)
     // 计划工具由消息末尾的计划卡代表；问题工具由问答卡代表（只有报错时才露原始卡）
     const hidden =
       isPlanToolName(toolPart.toolName) ||
       (toolPart.toolName === 'ask-user-questions' && toolPart.state !== 'output-error')
-    const existing = findUnit(state.units, key)
+    const existing = findUnit(units, mergeKey)
     const delegated = existing && existing.kind === 'tool' ? existing.delegated : false
     const events = state.eventsByCall.get(toolPart.toolCallId) ?? []
     return {
-      units: replaceUnit(state.units, key, {
+      units: replaceUnit(units, mergeKey, {
         kind: 'tool',
-        key,
+        key: mergeKey,
         index,
         part: toolPart,
         events,

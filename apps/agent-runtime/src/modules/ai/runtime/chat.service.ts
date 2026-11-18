@@ -41,6 +41,7 @@ import {
 } from '../mastra/agent-memory.js'
 import { type AgentRuntimeEnvelope, type RuntimeModel } from '../core/envelope.js'
 import { RUNTIME_MODEL_RESOLVER, type RuntimeModelResolver } from './model-resolver.js'
+import { cancelRemoteRunTasks } from './remote-tool.client.js'
 import type { AgentDefinition, AgentRegistry } from '../agents/types.js'
 import { buildEnvironmentData } from '../core/prompts/environment.js'
 import { PROMPT_ENGINE, type PromptEngine } from '../core/prompts/prompt.engine.js'
@@ -3161,6 +3162,8 @@ export class AgentChatService {
    * 幂等：重复调用只是再查一遍。
    */
   private async cascadeStop(runId: string, conversationId: string): Promise<void> {
+    // 网关侧本轮的 session 任务一并取消（helper 内部吞错：网关抖不能拦住本地停止）
+    await cancelRemoteRunTasks(runId, this.logger)
     try {
       const children = await this.runs.listChildren(runId)
       for (const child of children) {

@@ -1,9 +1,9 @@
 import { Inject, Injectable } from '@nestjs/common'
 import { MemoryRepository, MemoryService } from '@repo/ai-data'
-import { MEMORY_SCHEMAS, MEMORY_TOOL_KEYS } from '../../capabilities/schemas.js'
+import { MEMORY_CONTENT_MAX, AiMemoryKindField } from '@repo/shared'
+import { CapabilityDecl, CapabilityGroup, findCapabilityDecl } from '@repo/capability'
+import { z } from 'zod'
 import type { ToolInvokeRequest, ToolOutcome } from '@repo/contracts'
-
-export { MEMORY_TOOL_KEYS }
 
 /**
  * memory-* 执行器：worker **直连 PG**（受限 DB 账号），不再回调 server。
@@ -12,20 +12,59 @@ export { MEMORY_TOOL_KEYS }
  * 数据流单向：gateway → worker → PG，worker 不反向调用编排层。
  */
 @Injectable()
+@CapabilityGroup({ risk: 'read' })
 export class MemoryExecutor {
-  readonly keys = MEMORY_TOOL_KEYS
-
   constructor(
     @Inject(MemoryService) private readonly memory: MemoryService,
     @Inject(MemoryRepository) private readonly _repository: MemoryRepository,
   ) {}
 
-  async execute(toolKey: string, request: ToolInvokeRequest): Promise<ToolOutcome> {
-    const schema = MEMORY_SCHEMAS[toolKey]
-    if (!schema) {
-      return { ok: false, reason: 'unknown-tool', message: `未知工具：${toolKey}` }
-    }
-    const parsed = schema.safeParse(request.input)
+  @CapabilityDecl({
+    tool: 'memory-save',
+    title: '保存记忆',
+    description: '保存一条长期记忆',
+    risk: 'write',
+    input: z.object({
+      content: z.string().min(1).max(MEMORY_CONTENT_MAX).describe('要记住的内容'),
+      kind: AiMemoryKindField.optional().describe('类型：profile / preference / fact / constraint'),
+      key: z.string().min(1).max(64).optional().describe('稳定标识；同一 key 会更新原记忆'),
+      pinned: z.boolean().optional().describe('是否每轮都带上'),
+    }),
+  })
+  async memorySave(request: ToolInvokeRequest): Promise<ToolOutcome> {
+    return this.run('memory-save', request)
+  }
+
+  @CapabilityDecl({
+    tool: 'memory-search',
+    title: '搜索记忆',
+    description: '按语义搜索长期记忆',
+    input: z.object({
+      query: z.string().min(1).max(200).describe('关键词（按内容模糊匹配）'),
+      limit: z.number().int().min(1).max(50).optional().default(10),
+    }),
+  })
+  async memorySearch(request: ToolInvokeRequest): Promise<ToolOutcome> {
+    return this.run('memory-search', request)
+  }
+
+  @CapabilityDecl({
+    tool: 'memory-forget',
+    title: '删除记忆',
+    description: '删掉一条长期记忆',
+    risk: 'write',
+    input: z.object({
+      id: z.string().min(1).optional().describe('记忆 id'),
+      key: z.string().min(1).max(64).optional().describe('稳定标识（与 id 二选一）'),
+    }),
+  })
+  async memoryForget(request: ToolInvokeRequest): Promise<ToolOutcome> {
+    return this.run('memory-forget', request)
+  }
+
+  /** 公共执行体：鉴权 → 按声明校验入参 → 分派 */
+  private async run(tool: string, request: ToolInvokeRequest): Promise<ToolOutcome> {
+    const parsed = findCapabilityDecl(this, tool).input.safeParse(request.input)
     if (!parsed.success) {
       return {
         ok: false,
@@ -41,7 +80,7 @@ export class MemoryExecutor {
     const userId = request.caller.userId
     const agentKey = request.caller.rootAgentKey
 
-    if (toolKey === 'memory-save') {
+    if (tool === 'memory-save') {
       const result = await this.memory.saveFromTool(userId, agentKey, args as { content: string })
       if (!result.ok) {
         return { ok: false, reason: 'invalid-input', message: result.reason, retryable: false }
@@ -56,7 +95,7 @@ export class MemoryExecutor {
       }
     }
 
-    if (toolKey === 'memory-search') {
+    if (tool === 'memory-search') {
       const rows = await this.memory.searchFromTool(
         userId,
         agentKey,

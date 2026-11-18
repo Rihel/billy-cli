@@ -22,7 +22,7 @@ export type ToolKeyValue = string
 export type ToolScopeValue = 'all' | 'admin' | 'user' | 'agent'
 
 /** 工具类别（`category:<值>` 选择器的可用取值；新增类别时一并加在这里） */
-export const TOOL_CATEGORY_VALUES = ['core', 'business', 'runtime', 'connector'] as const
+export const TOOL_CATEGORY_VALUES = ['core', 'business', 'runtime', 'external'] as const
 
 /** 工具类别 */
 export type ToolCategoryValue = (typeof TOOL_CATEGORY_VALUES)[number]
@@ -368,20 +368,6 @@ export interface ToolSpec<C = Record<string, unknown>, I = unknown, O = unknown>
    * 于是"工具会吐什么"在代码里是封闭的、可对账的（设计 §5.17）。
    */
   readonly events: readonly ToolEventDecl[]
-  /**
-   * 连接器来源（只有连接器产出的工具才有）。
-   *
-   * 网关的 `connector-guard` 插件靠它做"实例总闸"：实例停用 / 缺密钥时拒绝调用。
-   * 不放进设置对象（`ToolSettings`）——那是可被库覆盖的值，来源是不可变的声明。
-   *
-   * `toolName` 是**接入方的工具原名**（不是归一化后的 key 尾巴）：`connector:<实例>/<工具>`
-   * 选择器按它精确匹配，不做 key 反解（实例 key 与工具名都含 `-`，反解必然歧义）。
-   */
-  readonly connector?: {
-    readonly id: string
-    readonly key: string
-    readonly toolName?: string
-  }
   /** 默认作用域（库里可覆盖） */
   readonly scope: ToolScopeValue
   /** 委派类工具（创建 / 指挥子 agent）：子 agent 工具面要把它们排除 */
@@ -422,7 +408,7 @@ export const AGENT_TOOL_GROUPS = Symbol.for('AgentToolGroups')
 /**
  * 「这个 agent 可用此刻注册机里的全部工具」的标记（照技能侧 `ALL_SKILLS` 的写法）。
  *
- * 为什么需要它：连接器产出的工具是运行期出现的，agent 定义里写不出具体 key。
+ * 为什么需要它：工具面可能随能力目录变化，agent 定义里写不出具体 key。
  * 装配时展开成"当时注册机里的全部 key"；取值用 `*`（真实工具 key 的形状不允许 `*`）。
  */
 export const ALL_TOOLS = '*'

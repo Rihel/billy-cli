@@ -1,6 +1,6 @@
 # AI 能力
 
-> 产品里的 AI 怎么跑（会话 / 流式 / 工具 / 连接器 / 恢复 / 用量），以及工程怎么让 AI 参与开发。
+> 产品里的 AI 怎么跑（会话 / 流式 / 工具 / 恢复 / 用量），以及工程怎么让 AI 参与开发。
 > 扩展步骤见 [ai-extension-guide](../design/ai-extension-guide.md) 与 `develop-ai-agent` skill。
 
 ## 运行时与接口
@@ -9,13 +9,13 @@
 
 - **agent loop 在 `apps/agent-runtime/src/modules/ai`**：agents / runtime（上下文、流式、恢复、
   子 agent、用量采集）/ core（工具注册机与网关、插件、技能加载、提示词）/ tools（内建工具组）/
-  files / memory / skills / connectors / mastra（唯一能 import `@mastra/*` 的地方）/ monitoring；
+  files / memory / skills / mastra（唯一能 import `@mastra/*` 的地方）/ monitoring；
   另有 `ai-model`（只读模型配置）与 `ai-usage`。
 - **控制面与全部 CRUD 在 `apps/main/src/modules/ai-admin`**：conversation（会话 / 运行 / 时间线 / 用量）·
-  file（`/agent/file/*`）· tool（`/ai-tool/*`）· skill（`/ai-skill/*`）· connector（`/ai-connector/*`）·
+  file（`/agent/file/*`）· tool（`/ai-tool/*`）· skill（`/ai-skill/*`）·
   memory（`/ai-memory/*`）；`ai-model`（供应商 / 模型配置）、`ai-usage`（用量汇总）也在 main。
 
-后台有八个页面：**会话** / 模型 / 工具 / 技能库 / 记忆 / 文件管理 / 连接器 / 审计。它和「用 AI 写这个模板」
+后台有七个页面：**会话** / 模型 / 工具 / 技能库 / 记忆 / 文件管理 / 审计。它和「用 AI 写这个模板」
 是两件事：后者靠 Agent Skills（见下节），前者是产品里的 AI。
 
 前端只连 main；接口在 `/agent` 前缀下（`AnyAuthGuard`：前台用户与管理员同一套；用量接口仅管理员）。
@@ -49,7 +49,7 @@ POST /agent/usage/summary      用量汇总（main）
   `skill-enable` / `skill-import`），以及文件管理九件套（`file-submit` / `file-download` / `file-list` /
   `read-file` / `file-search` / `workspace-files` / `write-file` / `replace-file` / `append-file`）。
   另有 3 个 Mastra 运行时自带、不进注册机的工具（`skill` / `skill_search` / `skill_read`），后台工具清单只读展示。
-  agent 的授权清单支持选择器（`'*'`、`{ category }`、`{ connector }`），装配期按调用身份过滤作用域——
+  agent 的授权清单支持选择器（`'*'`、`{ category }`），装配期按调用身份过滤作用域——
   没授权的工具**根本不会出现在模型面前**。
 - **技能库**（库 / 落盘分裂在两个 app：`apps/main/src/modules/ai-admin/skill` 写库，`apps/agent-runtime/src/modules/ai/skills` 落盘并加载）：后台「AI → 技能库」在线写技能（类 Notion 的块编辑器写正文 +
   `references/` / `scripts/`），也能贴 skills.sh / GitHub 链接把技能**下载进库**；启停立即生效、不用重启。
@@ -64,12 +64,6 @@ POST /agent/usage/summary      用量汇总（main）
   九个文件工具全部过同一套网关；对话右栏按会话看文件，后台「AI → 文件管理」跨会话列表 / 预览 / 分享
   （总量统计在控制台）；Office 前端直连对象存储，S3 / COS 需配 CORS。管理员还能给文件生成**免授权分享链接**
   （`/s/{token}`，有效期可选、明文 token 只显示一次、可撤销，OSS 地址不进浏览器）。
-- **连接器**（控制面在 `apps/main/src/modules/ai-admin/connector`，运行期同步与驱动在 `apps/agent-runtime/src/modules/ai/connectors`）：外部能力不再写死进代码。后台「AI → 连接器」加一条实例
-  （地址 + 凭证），就产出一组受管工具，走的是和内建工具同一个网关（开关、限额、审计、脱敏一致）。
-  内置 4 个型号：**PostgreSQL / MySQL**（查表结构与只读查询）、**Redis**（按前缀只读扫键 / 读字符串与哈希）、
-  **飞书 CLI**（受限 `run` + CLI 内嵌技能文档，覆盖消息 / 文档 / 多维表格 / 日历等 20+ 业务域；
-  授权状态存 `ai_connectors.auth_state`，无状态 pod 重启 / 换实例后不用重新授权）。
-  目录（有哪些型号）、实例（连的谁）、远端能力、工具四层分开；换地址 / 换密钥 / 停用整家服务只改数据，不发版。
 - **运行控制**：动态子 agent（提示词由主 agent 现场写）、命令执行（开关 / 工作目录 / 时长与输出上限可配，
   `AGENT_COMMAND_ENABLED` 默认关闭）、联网预算（统一 UA、超时、字节上限、内网拦截）。
 - **工作区运行时**：`bash` 与文件工具共用会话工作区；模式 `read-only` / `workspace-write` / `danger-full-access`，
@@ -83,12 +77,10 @@ POST /agent/usage/summary      用量汇总（main）
 - **前端**：`@repo/ui` 内置 48 个 ai-elements，后台会话页开箱可用。
 
 **配置位置**：模型与供应商在「AI → 模型管理」，工具开关与限额在「AI → 工具配置」，
-技能在「AI → 技能库」，长期记忆在「AI → 记忆」，文件在「AI → 文件管理」，外部服务在「AI → 连接器」，
+技能在「AI → 技能库」，长期记忆在「AI → 记忆」，文件在「AI → 文件管理」，
 用量与调用回放在「AI → 审计」与控制台。
 设计细节与取舍见 [`docs/design/ai-agent.md`](../design/ai-agent.md) 与
-[`docs/design/ai-agent-tool-engine.md`](../design/ai-agent-tool-engine.md)；
-连接器的现状与方向见 skill
-[`develop-ai-agent/references/connector.md`](../../.agents/skills/develop-ai-agent/references/connector.md)。
+[`docs/design/ai-agent-tool-engine.md`](../design/ai-agent-tool-engine.md)。
 
 ## 定义自己的 agent
 
@@ -109,7 +101,6 @@ export const researcherAgent: AgentSpec = {
     TOOL_KEYS.webFetch,          // 具体 key
     TOOL_KEYS.webSearch,
     TOOL_KEYS.readToolResult,
-    { category: 'connector' },   // 连接器产出的工具（受作用域再过滤一层）
   ],
   skills: [],                    // 只挂它要用的技能；没有就不挂，别写 ALL_SKILLS
   prompt: { template: 'researcher' },
@@ -124,14 +115,15 @@ export const AGENT_SPECS: readonly AgentSpec[] = [assistantAgent, researcherAgen
 四条口径：
 
 1. **工具写什么**：具体 key（从 `TOOL_KEYS` 取，写错启动期报错）、`'*'`（只给示例 agent）、
-   `{ category: 'business' | 'connector' | ... }`、`{ connector: '<实例 key>' }`（可再带 `tool` 精确到一个工具）。
-   连接器选择器允许零命中——连接器是运行期同步进来的，启动时可能还没同步。
+   `{ category: 'business' | 'runtime' | 'core' | 'external' }`、`EXTERNAL_TOOLS`（能力目录里的外部工具，见下）。
 2. **不给的就是不给**：不在清单里的工具不会出现在模型面前；不要用提示词写「不要用某工具」，
    那约束不住模型，授权能。子 agent 的工具面 = **父 agent 的授权面 ∩（全部 − 委派类 − `child: 'deny'`）**。
-3. **作用域是第二层**：连接器工具默认 `scope: 'admin'`；要给产品 agent 用，就在「AI → 工具配置」里
-   把作用域改成 `agent` 并填 `allowedAgents`（或 `all`）。装配期会按调用身份再过滤一遍，
-   前台用户根本看不到管理员工具。
-4. **提示词里的工具清单是渲染出来的**：模板里不要手写工具名，`registry.describe()` 会按实际授权清单生成。
+3. **外部工具要显式放行**：MCP / 外部登记服务的工具不在本地代码里，agent 写 `'*'` 或
+   `EXTERNAL_TOOLS`（`{ external: true }`）才会出现在工具面；子 agent 暂不包含外部工具。
+4. **作用域是第二层**：工具默认 `scope` 由声明给（数据库类、运维类默认 `admin`）；要给产品 agent 用，
+   就在「AI → 工具配置」里把作用域改成 `agent` 并填 `allowedAgents`（或 `all`）。装配期会按调用身份
+   再过滤一遍，前台用户根本看不到管理员工具。
+5. **提示词里的工具清单是渲染出来的**：模板里不要手写工具名，`registry.describe()` 会按实际授权清单生成。
 
 验证：启动不报错 → `POST /agent/list` 看这个 agent 的工具数 → 跑一轮后查审计 `request_snapshot.toolKeys`
 （应当是**展开后的具体 key**，不是选择器）→ 分别用管理员和前台用户身份各跑一次，确认作用域。

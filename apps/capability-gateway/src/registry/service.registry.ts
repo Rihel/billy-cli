@@ -1,5 +1,13 @@
-import { ConflictException, Inject, Injectable, Optional } from '@nestjs/common'
-import { AppLogger, RedisStore } from '@repo/kits'
+import {
+  BadRequestException,
+  ConflictException,
+  Inject,
+  Injectable,
+  Optional,
+} from '@nestjs/common'
+import { AppLogger, Db, RedisStore } from '@repo/kits'
+import { AiCapabilityServiceEntity } from '@repo/db'
+import { randomUUID } from 'node:crypto'
 import {
   RegisteredServiceSchema,
   ServiceRegistrationSchema,
@@ -12,6 +20,13 @@ import {
   type ServiceRegisterResult,
 } from '@repo/contracts'
 import { ToolGatewayConfig, type ToolGatewayConfigValue } from '../config/app-config.js'
+import {
+  BUILTIN_CAPABILITIES,
+  BUILTIN_CAPABILITY_KEYS,
+  GATEWAY_SERVICE,
+  findBuiltinCapability,
+} from './builtin.capabilities.js'
+import { UnsafeTargetError, allowPrivateNetworkOf, assertSafeTarget } from './target.guard.js'
 
 /** 注册表快照：服务不多，一个 key 存整份，省掉索引维护 */
 interface TaskLocation {
@@ -60,6 +75,8 @@ export class ServiceRegistry {
   private readonly services = new Map<string, RegisteredService>()
   /** 出站凭据单独存：目录/快照里只留 `hasCredential` */
   private readonly credentials = new Map<string, string>()
+  /** runId → 本轮发起的 session 任务（停止对话时级联取消；内存 + Redis） */
+  private readonly runTasks = new Map<string, { ids: string[]; expiresAt: number }>()
   /** taskId → 发起它的实例（内存 + Redis，Redis 里带 TTL） */
   private readonly tasks = new Map<
     string,
@@ -74,13 +91,34 @@ export class ServiceRegistry {
     @Inject(ToolGatewayConfig) private readonly config: ToolGatewayConfigValue,
     @Optional() @Inject(RedisStore) private readonly redis?: RedisStore,
     @Optional() @Inject(AppLogger) private readonly logger?: AppLogger,
+    /** DB 是目录的事实源（Redis 只是运行时快照）；单测不传时退回纯内存 */
+    @Optional() @Inject(Db) private readonly db?: Db,
   ) {}
 
   /** 登记 / 更新一个服务（内部服务每个实例启动时都会调一次） */
   async register(input: ServiceRegistrationInput): Promise<ServiceRegisterResult> {
     await this.ensureLoaded()
     const parsed = ServiceRegistrationSchema.parse(input)
+    // 外部服务：默认 https、内网 / 回环 / 元数据地址一律拒绝（协议 §4.4）
+    if (parsed.source === 'manual' && parsed.baseUrl) {
+      try {
+        await assertSafeTarget(parsed.baseUrl, {
+          allowHttp: parsed.allowHttp,
+          allowPrivateNetwork: allowPrivateNetworkOf(this.config.allowPrivateNetwork),
+        })
+      } catch (error) {
+        if (error instanceof UnsafeTargetError) throw new BadRequestException(error.message)
+        throw error
+      }
+    }
     const now = Date.now()
+    for (const capability of parsed.capabilities) {
+      if (BUILTIN_CAPABILITY_KEYS.has(capability.tool)) {
+        throw new ConflictException(
+          `工具名 ${capability.tool} 是网关内建能力（wait-task / cancel-task），不能登记`,
+        )
+      }
+    }
     const existing = this.services.get(parsed.service)
     const previous = new Map((existing?.capabilities ?? []).map((item) => [item.tool, item]))
 
@@ -135,9 +173,10 @@ export class ServiceRegistry {
       title: parsed.title,
       owner: parsed.owner,
       source: parsed.source,
+      protocol: parsed.protocol,
       healthPath: parsed.healthPath,
       allowHttp: parsed.allowHttp,
-      status: existing?.status === 'disabled' ? 'disabled' : 'active',
+      status: existing?.status === 'disabled' ? 'disabled' : parsed.status,
       capabilities: parsed.capabilities,
       deprecated: [...deprecated],
       instances,
@@ -238,6 +277,22 @@ export class ServiceRegistry {
         })
       }
     }
+    // 内建能力不属于任何服务：始终在目录里（任务结果只能靠轮询拿）
+    for (const capability of BUILTIN_CAPABILITIES) {
+      items.push({
+        key: capability.tool,
+        name: capability.tool,
+        service: GATEWAY_SERVICE,
+        tool: capability.tool,
+        title: capability.title,
+        description: capability.description,
+        inputSchema: capability.inputSchema,
+        risk: capability.risk,
+        scope: capability.scope,
+        available: true,
+        tags: capability.tags,
+      })
+    }
     return items
   }
 
@@ -249,8 +304,10 @@ export class ServiceRegistry {
   }): Promise<CapabilityInfo[]> {
     const items = await this.catalog()
     return items.filter((item) => {
-      const service = this.services.get(item.service)
-      const capability = service?.capabilities.find((entry) => entry.tool === item.tool)
+      const capability =
+        item.service === GATEWAY_SERVICE
+          ? findBuiltinCapability(item.tool)
+          : this.services.get(item.service)?.capabilities.find((entry) => entry.tool === item.tool)
       if (!capability) return false
       if (capability.scope === 'agent') {
         const allowed = capability.allowedAgents ?? []
@@ -304,8 +361,10 @@ export class ServiceRegistry {
       const chosen = tied[Math.floor(Math.random() * tied.length)] ?? best
       return { service, endpoint: chosen.endpoint, instanceId: chosen.instanceId }
     }
-    if (service.source === 'manual' && service.baseUrl) {
-      return { service, endpoint: service.baseUrl, instanceId: 'external' }
+    if (service.source === 'manual') {
+      // 探活已判定 down：目录保留（available:false），但不再派发——调用明确报 no-provider（设计 D9）
+      if (service.probe.state === 'down') return null
+      if (service.baseUrl) return { service, endpoint: service.baseUrl, instanceId: 'external' }
     }
     return null
   }
@@ -384,6 +443,35 @@ export class ServiceRegistry {
       )
   }
 
+  /** 记一行「这轮对话发起了哪个任务」（只记 `owner=session` 的） */
+  async saveRunTask(runId: string, taskId: string, ttlSeconds: number): Promise<void> {
+    const now = Date.now()
+    const existing = this.runTasks.get(runId)
+    const ids = existing && existing.expiresAt > now ? [...existing.ids] : []
+    if (!ids.includes(taskId)) ids.push(taskId)
+    this.runTasks.set(runId, { ids, expiresAt: now + ttlSeconds * 1_000 })
+    if (!this.redis) return
+    await this.redis
+      .setJson(`ai:capability:run-tasks:${runId}`, ids, ttlSeconds)
+      .catch((error: unknown) =>
+        this.logger?.warn('capability.registry.run_task_persist_failed', {
+          runId,
+          reason: error instanceof Error ? error.message : String(error),
+        }),
+      )
+  }
+
+  /** 本轮发起过的任务 id（跨副本走 Redis；没有就返回空） */
+  async runTaskIds(runId: string): Promise<string[]> {
+    const local = this.runTasks.get(runId)
+    if (local && local.expiresAt > Date.now()) return [...local.ids]
+    if (!this.redis) return local?.ids ?? []
+    const remote = await this.redis
+      .getJson<string[]>(`ai:capability:run-tasks:${runId}`)
+      .catch(() => null)
+    return remote ?? local?.ids ?? []
+  }
+
   async taskLocation(taskId: string): Promise<TaskLocation | null> {
     const local = this.tasks.get(taskId)
     if (local && local.expiresAt > Date.now()) return local.location
@@ -414,14 +502,27 @@ export class ServiceRegistry {
   private async ensureLoaded(): Promise<void> {
     if (this.loading) return this.loading
     this.loading = (async () => {
+      // DB 优先（事实源）；DB 为空（迁移窗口）再用 Redis 快照兜底
+      if (this.db) {
+        const rows = await this.db
+          .getRepository(AiCapabilityServiceEntity)
+          .find()
+          .catch(() => [])
+        for (const row of rows) {
+          const parsed = RegisteredServiceSchema.safeParse(row.snapshot)
+          if (parsed.success) this.services.set(parsed.data.service, parsed.data)
+        }
+      }
       if (!this.redis) return
-      const snapshot = await this.redis
-        .getJson<{ services?: Record<string, unknown> }>(STORE_KEY)
-        .catch((): { services?: Record<string, unknown> } | null => null)
-      for (const raw of Object.values(snapshot?.services ?? {})) {
-        const parsed = RegisteredServiceSchema.safeParse(raw)
-        if (!parsed.success) continue
-        this.services.set(parsed.data.service, parsed.data)
+      if (this.services.size === 0) {
+        const snapshot = await this.redis
+          .getJson<{ services?: Record<string, unknown> }>(STORE_KEY)
+          .catch((): { services?: Record<string, unknown> } | null => null)
+        for (const raw of Object.values(snapshot?.services ?? {})) {
+          const parsed = RegisteredServiceSchema.safeParse(raw)
+          if (!parsed.success) continue
+          this.services.set(parsed.data.service, parsed.data)
+        }
       }
       const credentials = await this.redis
         .getJson<Record<string, string>>(CREDENTIALS_KEY)
@@ -434,6 +535,7 @@ export class ServiceRegistry {
   }
 
   private async persist(): Promise<void> {
+    await this.persistDb()
     if (!this.redis) return
     await Promise.all([
       this.redis.setJson(STORE_KEY, { services: Object.fromEntries(this.services) }),
@@ -443,5 +545,30 @@ export class ServiceRegistry {
         reason: error instanceof Error ? error.message : String(error),
       })
     })
+  }
+
+  /** 目录落 DB：整条快照 upsert，退役的服务删行（登记表不需要软删历史） */
+  private async persistDb(): Promise<void> {
+    if (!this.db) return
+    try {
+      const repo = this.db.getRepository(AiCapabilityServiceEntity)
+      const existing = await repo.find()
+      const byService = new Map(existing.map((row) => [row.service, row]))
+      const rows = [...this.services.values()].map((service) => ({
+        // upsert 不走 `@BeforeInsert`，id 自己给（沿用已有行，避免换主键）
+        id: byService.get(service.service)?.id ?? randomUUID().replace(/-/g, '').slice(0, 20),
+        service: service.service,
+        snapshot: service as unknown as Record<string, unknown>,
+      }))
+      // `snapshot` 是 jsonb 的任意对象，TypeORM 的 DeepPartial 泛型认不出它，这里退到 never
+      if (rows.length > 0) await repo.upsert(rows as never, { conflictPaths: ['service'] })
+      const keep = new Set(this.services.keys())
+      const stale = existing.filter((row) => !keep.has(row.service))
+      if (stale.length > 0) await repo.delete(stale.map((row) => row.id))
+    } catch (error) {
+      this.logger?.warn('capability.registry.db_persist_failed', {
+        reason: error instanceof Error ? error.message : String(error),
+      })
+    }
   }
 }

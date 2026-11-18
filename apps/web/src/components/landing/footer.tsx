@@ -69,7 +69,7 @@ export function Footer({ user, authEnabled }: FooterProps) {
               </span>
             </Link>
             <p className="mt-4 max-w-xs text-sm leading-relaxed text-muted-foreground">
-              开箱即用的 AI 应用开发基座：会话、工具、连接器、可观测与设计系统都在仓库里。
+              开箱即用的 AI 应用开发基座：会话、工具、可观测与设计系统都在仓库里。
             </p>
           </div>
 

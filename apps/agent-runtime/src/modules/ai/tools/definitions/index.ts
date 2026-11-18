@@ -5,6 +5,7 @@ import { WEB_FETCH_TOOL } from './web-fetch.js'
 import { WEB_SEARCH_TOOL } from './web-search.js'
 import { MEMORY_FORGET_TOOL, MEMORY_SAVE_TOOL, MEMORY_SEARCH_TOOL } from './memory.js'
 import { READ_TOOL_RESULT_TOOL } from './read-tool-result.js'
+import { CANCEL_TASK_TOOL, TOOL_SEARCH_TOOL, WAIT_TASK_TOOL } from './task.js'
 import { WEB_REQUEST_TOOL } from './web-request.js'
 import {
   APPEND_FILE_TOOL,
@@ -39,6 +40,14 @@ export {
   MemorySearchInputSchema,
 } from './memory.js'
 export { READ_TOOL_RESULT_TOOL, ReadToolResultParams } from './read-tool-result.js'
+export {
+  CANCEL_TASK_TOOL,
+  TOOL_SEARCH_TOOL,
+  WAIT_TASK_TOOL,
+  CANCEL_TASK_PARAMS,
+  TOOL_SEARCH_PARAMS,
+  WAIT_TASK_PARAMS,
+} from './task.js'
 export { WEB_REQUEST_TOOL, WebRequestParams } from './web-request.js'
 export {
   APPEND_FILE_TOOL,
@@ -119,6 +128,9 @@ export const TOOL_DEFINITIONS = [
   APPEND_FILE_TOOL,
   READ_TOOL_RESULT_TOOL,
   WEB_REQUEST_TOOL,
+  WAIT_TASK_TOOL,
+  CANCEL_TASK_TOOL,
+  TOOL_SEARCH_TOOL,
 ] as const
 
 export const getToolDefinition = (key: string): ToolDefinition | undefined =>

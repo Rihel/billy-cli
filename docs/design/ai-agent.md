@@ -7,7 +7,7 @@
 >
 > **状态**：四章均已落地。2026-11-13 按代码把「现状 / 结构 / 清单 / 字段 / 接口 / 路径」重新核对过；
 > 设计与取舍的论证保留原貌（历史背景不删），现行口径以文中标注「以此为准」的段落为准。
-> 子系统另有专文：`ai-agent-tool-engine.md`（工具引擎）、`ai-connector.md`（连接器）、
+> 子系统另有专文：`ai-agent-tool-engine.md`（工具引擎）、
 > `ai-file-manager.md`（会话文件）、`ai-skill-library.md`（技能库）、`workspace-runtime.md`
 > （工作区运行时与命令隔离）、`ai-usage-stats.md`（用量统计）。
 
@@ -59,7 +59,6 @@ ai/
   runtime/            会话 / 运行 / 时间线 / 上下文组装 / 录制 / 续传 / 恢复 / 看门狗 / 子 run / 附件 / 标题
   files/              会话文件（ai_files）：仓储 / 服务 / 工具组 FileTools
   skills/             技能库：DB 事实源 + 落盘 + 控制器 + 工具组 SkillTools
-  connectors/         连接器：目录 / 驱动 / 同步 / 动态工具 / 网关总闸（见 ai-connector.md）
   mastra/             Mastra 适配器（**唯一允许 import @mastra 的目录**）
   monitoring/         用量汇总与监控规则（ai_usage_daily / ai_usage_daily_dimension）
 ```
@@ -76,10 +75,10 @@ ai/
 > `AGENT_TOOL_GROUPS` 汇总的是**工具组实例**（一个组 1..n 个工具）；`AgentCore` / `asTools()` 已取消。
 > 见 `docs/design/ai-agent-tool-engine.md` §5.2。
 >
-> **再补两条现状（2026-11-13）**：①工具来源有三个 —— 代码里的工具组（planner / subagent / bash /
-> read-tool-result / web / 技能库 / 文件，共 26 个工具）、连接器运行期产出的动态工具（`origin='connector'`）、
-> 以及不进注册机的运行时自带工具（`skill` / `skill_search` / `skill_read`）；②**工具面按请求解析**
-> （`tools: async ({ requestContext }) => …`），作用域过滤在每次调用前生效，连接器新同步的工具也不必重启。
+> **现状（2026-11-18）**：①工具来源有两个 —— 代码里的工具组（planner / subagent / bash /
+> read-tool-result / web / 技能库 / 文件）、以及不进注册机的运行时自带工具（`skill` / `skill_search` /
+> `skill_read`）；连接器模块已删除，外部能力改由能力网关承接；②**工具面按请求解析**
+> （`tools: async ({ requestContext }) => …`），作用域过滤在每次调用前生效。
 
 - 业务工具（若接入）各自 `@Injectable()`，构造器注入对应业务 service，在构造期用 `createTool` 绑定
   `execute`；本脚手架默认不绑定业务工具，AI 模块与业务模块解耦；
@@ -787,7 +786,7 @@ WHERE id = $1 AND status = 'running' AND heartbeat_at < now() - interval '…'
 │ agents/   一个 agent 一个声明（key / 名称 / 工具选择器 / 技能 / 提示词模板）│
 │ tools/    具体工具组（@ToolGroup + 方法级 @ToolDecl）                      │
 │ runtime/  会话 / 运行 / 时间线 / 上下文组装（裁剪+压缩）/ 录制 / 续传 / 恢复 │
-│ files/ skills/ connectors/  会话文件 · 技能库 · 连接器（各有专文）          │
+│ files/ skills/  会话文件 · 技能库（各有专文）                               │
 │ mastra/   Mastra 适配器（唯一可 import @mastra 的目录）                    │
 └───────┬──────────────────────────────┬──────────────────────────────────┘
         │                              │ 落库（保真、不裁剪）
@@ -1945,15 +1944,14 @@ Mastra 存储接口里 `memory` domain 也不再实现（见 §4.4）。
 | --- | --- | --- | --- |
 | `ai_providers` | 一个模型供应商接入 | `uk_provider_name` / `uk_provider_slug`（都带 `deleted_at IS NULL`）、`idx_provider_enabled`；密钥列是 `api_key`（**明文**） | §4.8 / `ai-model` 模块 |
 | `ai_models` | 该供应商下的一个模型 | `uk_model_provider_key (provider_id, model_key)` 软删感知、`idx_model_provider`、`idx_model_enabled`；含 `mode` / `input_modalities` / `output_modalities` | §4.8 / §3.16.5 |
-| `ai_tools` | 一个注册工具的可变配置 | `uk_tool_key`（软删感知）、`idx_tool_enabled`、`idx_tool_connector`；`origin` 区分 `code` / `connector` | `ai-agent-tool-engine.md` §5.5 |
-| `ai_connectors` | 一个外部能力来源（库 / Redis / 飞书 CLI） | `uk_connector_key`（软删感知）、`idx_connector_enabled`；`secrets` 明文 | `ai-connector.md` §3.2 |
+| `ai_tools` | 一个注册工具的可变配置 | `uk_tool_key`（软删感知）、`idx_tool_enabled` | `ai-agent-tool-engine.md` §5.5 |
 | `ai_files` | 一个会话内文件（入站附件 / AI 产出） | `uk_ai_file_path (conversation_id, path)`、`idx_ai_file_conversation`、`idx_ai_file_source`；软删 | `ai-file-manager.md` §3 |
 | `ai_skills` | 一个 Agent Skills 技能（DB 是事实源） | `uk_skill_key`（软删感知）、`idx_skill_enabled`、`idx_skill_source`；`version` 做乐观锁 | `ai-skill-library.md` |
 | `ai_skill_files` | 技能目录里的一个文本文件 | `uk_skill_file (skill_id, path)`、`idx_skill_file_skill`；**硬删** | `ai-skill-library.md` |
 | `ai_usage_daily` | 每日用量主表（一天一行） | `uk_ai_usage_daily_date (stat_date)` | `ai-usage-stats.md` |
 | `ai_usage_daily_dimension` | 按 model / agent / tool 分桶的每日用量 | `uk_ai_usage_dimension (stat_date, dimension_type, dimension_key)` | `ai-usage-stats.md` |
 
-**外键规则同样适用**：上面所有 AI 表之间（`provider_id` / `conversation_id` / `run_id` / `connector_id` /
+**外键规则同样适用**：上面所有 AI 表之间（`provider_id` / `conversation_id` / `run_id` /
 `skill_id`）都是**逻辑引用，无物理外键**。
 
 ### 4.7 消耗、轮数与步数：统计口径与位置（对齐你的问题）
@@ -2102,7 +2100,7 @@ OpenAI 兼容形态通常一页返回全部，翻页只保留"最多 10 页 + `h
 `3405` **供应商未配置密钥** / `3406` 还没有可用的模型（§4.9.2）。
 
 后续模块继续往这一段续号：`3407` 工具未注册 / `3408` 工具配置不合法（工具配置，§5.5）、
-`3409`–`3411` 连接器（不存在 / 配置不合法 / 同步失败）、`3412`–`3418` 技能库、`3419`–`3423` 文件分享。
+`3409`–`3411`（连接器已删除，编号留空不复用）、`3412`–`3418` 技能库、`3419`–`3423` 文件分享。
 （`3405` 原来是"未配置密钥加密口令"，密钥改明文后这个含义已废弃，**现在指供应商缺密钥**。）
 
 ### 4.9 运行时只用"配过的模型"（选模型怎么落到 agent 上）

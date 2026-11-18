@@ -62,7 +62,7 @@ const build = (full: string | null) => {
 describe('ReadToolResultExecutor（直连 Redis）', () => {
   it('从 Redis 取全文并分页', async () => {
     const executor = build(JSON.stringify({ text: 'x'.repeat(300) }))
-    const outcome = await executor.execute(request())
+    const outcome = await executor.readToolResult(request())
     expect(outcome.ok).toBe(true)
     if (!outcome.ok) return
     const data = outcome.data as { content: string; page: { totalPages: number } }
@@ -72,7 +72,7 @@ describe('ReadToolResultExecutor（直连 Redis）', () => {
 
   it('句柄不属于当前会话 → forbidden', async () => {
     const executor = build('{}')
-    const outcome = await executor.execute(
+    const outcome = await executor.readToolResult(
       request({ caller: { ...request().caller, conversationId: 'other' } } as never),
     )
     expect(outcome).toMatchObject({ ok: false, reason: 'forbidden' })

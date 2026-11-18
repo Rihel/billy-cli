@@ -49,6 +49,16 @@ export const CapabilityPaginationSchema = z.enum(['none', 'cursor'])
 export const ServiceSourceSchema = z.enum(['code', 'manual'])
 export const ServiceStatusSchema = z.enum(['draft', 'active', 'disabled'])
 
+/**
+ * 服务侧的原生协议。
+ *
+ * - `capability`：本仓的能力协议（内部服务只有这一种）；
+ * - `mcp`：外部服务的 MCP 接入（当前只落标识与目录治理，网关适配器待建）。
+ */
+export const ServiceProtocolSchema = z.enum(['capability', 'mcp'])
+
+export type ServiceProtocol = z.infer<typeof ServiceProtocolSchema>
+
 /** 执行声明：默认同步；`task` 才需要 owner / yield / wait / cancel */
 const CapabilityExecutionObject = z.object({
   mode: CapabilityModeSchema.default('sync'),
@@ -62,7 +72,6 @@ const CapabilityExecutionObject = z.object({
     .object({ minIntervalMs: z.number().int().positive().default(1_000) })
     .default({ minIntervalMs: 1_000 }),
   maxRunMs: z.number().int().positive().max(86_400_000).default(1_800_000),
-  callback: z.object({ supported: z.boolean().default(false) }).default({ supported: false }),
 })
 
 /** 不写 `execution` 时的默认值（同步、默认 30s） */
@@ -88,6 +97,13 @@ export const CapabilityDeclSchema = z.object({
   pagination: CapabilityPaginationSchema.default('none'),
   tags: z.array(z.string().min(1)).default([]),
   execution: CapabilityExecutionSchema,
+  /**
+   * 提供方的原始工具名（只有 MCP 这类外部协议需要）。
+   *
+   * 模型面/审计用扁平的 `tool`（受 §3.4 字符规则约束）；MCP 的工具名常带 `_` 或大写，
+   * 网关把它们归一成合法 key 的同时，用这个字段记住原名去调用。
+   */
+  remoteTool: z.string().min(1).max(128).optional(),
 })
 
 export type CapabilityDecl = z.infer<typeof CapabilityDeclSchema>
@@ -118,6 +134,9 @@ export const ServiceRegistrationSchema = z
     description: z.string().max(500).optional(),
     owner: z.string().min(1).max(128),
     source: ServiceSourceSchema.default('code'),
+    protocol: ServiceProtocolSchema.default('capability'),
+    /** 后台登记可以先落 `draft`，自检通过后再切 `active`；内部服务默认 active */
+    status: ServiceStatusSchema.default('active'),
     baseUrl: z.string().url().optional(),
     healthPath: z.string().min(1).max(128).default('/healthz'),
     auth: z
@@ -138,6 +157,14 @@ export const ServiceRegistrationSchema = z
     }
     if (value.source === 'code' && !value.instance) {
       ctx.addIssue({ code: 'custom', path: ['instance'], message: '内部服务必须带上本实例信息' })
+    }
+    // 内部服务只说能力协议：MCP 标识只用于外部服务（适配器待建）
+    if (value.source === 'code' && value.protocol === 'mcp') {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['protocol'],
+        message: '内部服务只支持能力协议，MCP 只用于外部手工登记的服务',
+      })
     }
     const tools = new Set<string>()
     for (const capability of value.capabilities) {
@@ -171,6 +198,8 @@ export const RegisteredServiceSchema = z.object({
   description: z.string().optional(),
   owner: z.string(),
   source: ServiceSourceSchema,
+  /** 旧持久化记录没有这个字段：`safeParse` 按默认值补齐为能力协议 */
+  protocol: ServiceProtocolSchema.default('capability'),
   baseUrl: z.string().optional(),
   healthPath: z.string(),
   auth: z
@@ -226,6 +255,40 @@ export const InstanceDeregisterSchema = z.object({
 })
 
 export type InstanceDeregistration = z.infer<typeof InstanceDeregisterSchema>
+
+/**
+ * MCP 发现（网关作为 MCP client，去对方 server 拉工具清单）。
+ *
+ * 只支持 HTTP 型（Streamable HTTP / JSON-RPC 2.0，一次 POST 一次响应）；stdio 需要本地适配器，v1 不做。
+ */
+export const McpDiscoverSchema = z.object({
+  url: z.string().url(),
+  /** 额外的请求头（鉴权等）；值不进日志 */
+  headers: z.record(z.string(), z.string()).optional(),
+  /** 联调允许 http（生产默认 https） */
+  allowHttp: z.boolean().default(false),
+})
+
+export type McpDiscover = z.infer<typeof McpDiscoverSchema>
+
+export const McpToolSchema = z.object({
+  /** 归一后的扁平 key（模型面/审计用） */
+  key: z.string(),
+  /** 对方的原始工具名（调用时原样传回） */
+  remoteTool: z.string().min(1),
+  title: z.string().min(1),
+  description: z.string(),
+  inputSchema: z.record(z.string(), z.unknown()),
+})
+
+export type McpTool = z.infer<typeof McpToolSchema>
+
+export const McpDiscoverResultSchema = z.object({
+  protocolVersion: z.string(),
+  tools: z.array(McpToolSchema),
+})
+
+export type McpDiscoverResult = z.infer<typeof McpDiscoverResultSchema>
 
 export const ServiceDeregisterSchema = z.object({
   service: z.string().regex(SERVICE_NAME_REGEX),
@@ -336,6 +399,22 @@ export const CapabilityTaskCancelSchema = z.object({
 
 export type CapabilityTaskCancel = z.infer<typeof CapabilityTaskCancelSchema>
 
+/** 停止一轮对话：级联取消**本轮发起的** `owner=session` 任务（协议 §9） */
+export const CapabilityRunCancelSchema = z.object({
+  runId: z.string().min(1).max(128),
+})
+
+export type CapabilityRunCancel = z.infer<typeof CapabilityRunCancelSchema>
+
+export const CapabilityRunCancelResultSchema = z.object({
+  /** 本轮记录过的任务数 */
+  targets: z.number().int().nonnegative(),
+  /** 取消后确认为 `canceled` 的数量 */
+  canceled: z.number().int().nonnegative(),
+})
+
+export type CapabilityRunCancelResult = z.infer<typeof CapabilityRunCancelResultSchema>
+
 /** 服务返回的任务快照（协议 §9） */
 export const CapabilityTaskSnapshotSchema = z.object({
   version: z.literal(1),
@@ -406,6 +485,10 @@ export const REMOTE_TOOL_KEYS: ReadonlySet<string> = new Set([
   'file-download',
   'workspace-files',
   'read-tool-result',
+  // 网关内建：任务结果轮询 / 取消（回调已取消，轮询是唯一出路）
+  'wait-task',
+  'cancel-task',
+  'tool-search',
 ])
 
 export const isRemoteToolKey = (key: string): boolean => REMOTE_TOOL_KEYS.has(key)

@@ -44,7 +44,6 @@ const decl = (over: Partial<CapabilityDecl> = {}): CapabilityDecl => ({
     cancel: 'none',
     poll: { minIntervalMs: 1_000 },
     maxRunMs: 1_800_000,
-    callback: { supported: false },
   },
   ...over,
 })

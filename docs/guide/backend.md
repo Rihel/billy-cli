@@ -13,8 +13,8 @@
 | 定位 | 公网 BFF + 业务控制面 | agent 运行面（agent loop） |
 | 对外 | 前端 / SDK / 分享页 / 探针都连它 | **不对外**，只接受 main 带内部令牌的调用 |
 | 鉴权 | `UserAuthGuard` / `AdminAuthGuard` / `AnyAuthGuard` / `RateLimitGuard` | 没有用户鉴权，只有 `x-internal-token`（`AGENT_INTERNAL_TOKEN`）+ `x-user-id` / `x-admin-id` 身份头 |
-| HTTP | auth / admin / user / session / storage / share / monitor / ops / config + 全部 AI CRUD（模型 / 工具 / 技能 / 连接器 / 记忆 / 会话 / 运行 / 时间线 / 用量）+ `/agent/chat/stream` 中继 + `/agent/{status,list,instructions}` 代理 | 只有 `/internal/agent/{chat/stream, chat/resume, run/stop, run/stream, run/:runId/stream, status, list, instructions}` 与 `/healthz`、`/readyz`、`/info` |
-| 业务模块 | `auth` / `admin` / `user` / `session` / `storage` / `stream` / `share` / `monitor` / `ops` / `runtime-config` / `ai-model` / `ai-usage` / `ai-admin`（conversation / file / tool / skill / connector / memory） | `ai`（agents / runtime / core / files / memory / skills / connectors / mastra / monitoring / tools）+ `ai-usage` + `monitor` + `ops`（模型目录与调用走 `model-gateway`） |
+| HTTP | auth / admin / user / session / storage / share / monitor / ops / config + 全部 AI CRUD（模型 / 工具 / 技能 / 记忆 / 会话 / 运行 / 时间线 / 用量）+ `/agent/chat/stream` 中继 + `/agent/{status,list,instructions}` 代理 | 只有 `/internal/agent/{chat/stream, chat/resume, run/stop, run/stream, run/:runId/stream, status, list, instructions}` 与 `/healthz`、`/readyz`、`/info` |
+| 业务模块 | `auth` / `admin` / `user` / `session` / `storage` / `stream` / `share` / `monitor` / `ops` / `runtime-config` / `ai-model` / `ai-usage` / `ai-admin`（conversation / file / tool / skill / memory） | `ai`（agents / runtime / core / files / memory / skills / mastra / monitoring / tools）+ `ai-usage` + `monitor` + `ops`（模型目录与调用走 `model-gateway`） |
 | 状态写入 | 配置表、`conversations` / `ai_files` 的 CRUD、用量汇总 | `runs` / `timelines` / `ai_memories` 执行期写入 |
 | 前端可见 | 是（前端只连 9989） | 否（输出经 Redis pub/sub 定向频道回到 main 的 SSE） |
 | 模型调用 | 不直连供应商（只做配置 CRUD / 同步 / 测试） | 只调 `model-gateway`（9992）拿目录 + 对话；**不读模型配置表、不持供应商 key** |
@@ -25,8 +25,8 @@
    `x-user-id` / `x-admin-id` / `x-main-client-id` / `x-internal-token` 传给 runtime。
 2. **main 不做 agent 执行**：不 import Mastra 的业务编排、不跑工具循环；它只做请求转发、
    Kafka→SSE 中继与所有 CRUD。
-3. **runtime 不做控制面 CRUD**：技能库、连接器、工具配置由 main 写库，runtime 通过
-   事件（`ai.skill.changed` / `ai.connector.sync`）或启动时全量同步感知。
+3. **runtime 不做控制面 CRUD**：技能库、工具配置由 main 写库，runtime 通过
+   事件（`ai.skill.changed`）或启动时全量同步感知。
 
 ## main — NestJS 12 HTTP 边界
 
@@ -121,7 +121,6 @@ apps/agent-runtime/src/modules/ai/
 ├── files/          # 文件工具的执行侧（FileRepository / FileService / workspace / path-lock）
 ├── memory/         # 长期记忆（ai_memories）与短期 thread 维护
 ├── skills/         # 技能库落盘 + ai.skill.changed 订阅者（SkillLibraryService）
-├── connectors/     # 连接器运行期同步 + ai.connector.sync 订阅者
 ├── mastra/         # Mastra 适配器（agent / tools / skills / memory），Mastra 只在这里出现
 └── monitoring/     # AI 运行指标与规则
 ```
@@ -151,7 +150,7 @@ apps/agent-runtime/src/modules/ai/
   清单在 main 侧缓存 30s（`apps/main/src/agent/agent-catalog.service.ts`）。
 - **run 生命周期**：`chat.service.ts` 负责读写 `runs` / `timelines` / Redis 进度与 durable 恢复；
   进程崩溃由启动清理与看门狗兜底（详见 [distributed-ai-architecture.md](../design/distributed-ai-architecture.md) 第 5–6 节）。
-- **配置感知**：技能库 / 连接器由 main 写库并发事件（见下节），runtime 订阅后落盘 / 同步；
+- **配置感知**：技能库由 main 写库并发事件（见下节），runtime 订阅后落盘 / 同步；
   模型与工具配置直接读库。
 
 ## 流式输出链路（pub/sub → SSE）
@@ -189,10 +188,8 @@ main 是配置的唯一写方，runtime 需要感知两类变化：
 | 事件 | 传输 | 生产方 | 消费方 | 语义 |
 | --- | --- | --- | --- | --- |
 | `ai.skill.changed` | Redis Pub/Sub（kits `EventBus`，频道 `events:ai.skill.changed`） | main `modules/ai-admin/skill`（`SKILL_CHANGE_TOPIC`） | runtime `skills/skill-change.subscriber.ts` | at-most-once；runtime 收到后从 DB 读全量文件并落盘 / 刷新 loader；漏事件由启动 `syncAll` 自愈 |
-| `ai.connector.sync` | Redis Pub/Sub（`events:ai.connector.sync`）+ Kafka（topic `ai.connector.sync`，可选） | main `modules/ai-admin/connector`（`ConnectorSyncNotifier`） | runtime `connectors/connector-sync.subscriber.ts`（Redis 订阅 + `@KafkaConsumer('ai.connector.sync','runtime')`） | 两条腿都发，任一成功即送达；消费方按 `connectorId + requestedAt` 幂等 |
 
 事件体都是**只读契约**（字段只增不改）；skill 事件带 `action`（`upsert` / `remove`）/ `version`，
-连接器事件带 `action`（`sync` / `remove` / `refresh`）/ `version` / `requestedAt`。
 
 ## main 业务模块
 
@@ -216,7 +213,7 @@ modules/                       # 业务领域（每个模块同目录：module +
 ├── ops/            # OpsController（根路径 GET /healthz、/readyz、/info，运维探针的 GET 例外）+ OpsModule
 ├── session/        # 多设备会话管理（登录设备列表 / 踢下线）
 ├── ai-admin/       # AI 控制面 HTTP：conversation（会话 / 运行 / 时间线 / 用量）· file（/agent/file/*）·
-│                   #   tool（/ai-tool/*）· skill（/ai-skill/*）· connector（/ai-connector/*）·
+│                   #   tool（/ai-tool/*）· skill（/ai-skill/*）·
 │                   #   memory.controller.ts（/ai-memory/*，MemoryService 来自 @repo/ai-data）
 ├── ai-model/       # 供应商与模型配置（后台配置即生效；runtime 读同一份表）
 ├── ai-usage/       # 每日用量汇总 + 定时 rollup（按模型 / 按 agent；由 ai-admin/conversation 模块引入）
@@ -403,7 +400,7 @@ export class UserModule {}
   依次尝试两个守卫，任一通过即放行，用于「双端都要开放」的能力
 - 两类 token 的**身份体系**严格隔离（用户 token 不会获得管理员身份、反之亦然），但接口鉴权分四类：
   仅管理员（`/admin/*` 的受保护路由、`/user/*`、`/monitor/*`、`/ai-model/*`、`/ai-tool/*`、
-  `/ai-connector/*`、`/ai-skill/*`、`/agent/usage/*`、`/agent/file/admin/*`）、仅前台用户
+  `/ai-skill/*`、`/agent/usage/*`、`/agent/file/admin/*`）、仅前台用户
   （`/auth/get-me`、`/auth/update-info`、`/auth/change-password`）、任一身份（`AnyAuthGuard`：
   `/storage/*`、`/session/*`、`/sse/*`、`/share/{create,list,revoke}`、`/agent/*` 的其余接口）、
   内部密钥（`POST /share/resolve` 只给 Next 内容路由调，靠 `x-share-internal` 头里的
@@ -544,14 +541,13 @@ export class UserModule {}
 | `POST /ai-model/model/{list,create,update,remove}` | 模型配置 | 管理员 |
 | `POST /ai-tool/{list,detail,update,reset}` | 工具配置（开关 / 作用域 / 限额 / 配置值 / 密钥） | 管理员 |
 | `POST /ai-tool/workspace`          | 执行环境能力（只读探测：沙箱是否可用 / 允许哪些文件权限） | 管理员 |
-| `POST /ai-connector/{catalog,list,create,update,detail,test,sync,remove}` | 连接器实例 | 管理员 |
 | `POST /ai-skill/{list,detail,create,update,remove}` | 技能库增删改查（DB 为事实源，落盘给 runtime） | 管理员 |
 | `POST /ai-skill/file/{read,save,remove}` | 技能文件读写删（`SKILL.md` 不允许删） | 管理员 |
 | `POST /ai-skill/import/preview`    | 导入预览（链接里有哪些技能、哪些已存在） | 管理员 |
 | `POST /ai-skill/import`            | 从链接导入技能（skills.sh / GitHub / Markdown） | 管理员 |
 
 > 鉴权列：**管理员** = `AdminAuthGuard`（后台管理员令牌；`/admin/*` 的受保护路由、`/user/*`、
-> `/monitor/*`、`/ai-model/*`、`/ai-tool/*`、`/ai-connector/*`、`/ai-skill/*`、`/agent/usage/*`、
+> `/monitor/*`、`/ai-model/*`、`/ai-tool/*`、`/ai-skill/*`、`/agent/usage/*`、
 > `/agent/file/admin/*` 都是它；`/storage/get-temporary-credentials` 在控制器里额外拒绝前台身份）；
 > **用户** = `UserAuthGuard`（前台用户令牌，只用在 `/auth/get-me`、`/auth/update-info`、
 > `/auth/change-password`）；**用户 / 管理员** = `AnyAuthGuard`（两套身份任一通过，身份分域由

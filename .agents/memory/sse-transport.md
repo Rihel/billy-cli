@@ -15,7 +15,7 @@
 - **停止信号**：`agent:stream:<runId>:stop` 也走 pub/sub，订阅方在 runtime（`subscribeStop`）。
 - **连接数**：每进程就 2 条（`PubSub` 的 pub + sub，所有频道复用）。不要再走
   `RedisStore.subscribe`（每次调用 `raw.duplicate()`，一条流一条连接）。
-- **Kafka** 现在只服务 `ai.connector.sync`；AI 流式对话与它无关。
+- **Kafka**：连接器模块删除（2026-11-18）后没有业务 topic 依赖；AI 流式对话与它无关。
 
 ## 事故与实测（2026-11-15）
 

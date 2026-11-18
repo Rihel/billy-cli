@@ -21,7 +21,7 @@ description: >-
 **分工**：本 skill 讲**怎么写**（机制与配方）；**该不该做、工具面怎么切、权限与成本、安全与审计、
 怎么验收**看工程级 skill `ai-agent-engineering`。
 **权威设计文档**：`docs/design/ai-agent.md`（运行时）+ `docs/design/ai-agent-tool-engine.md`
-（工具 DSL / 注册机 / 网关插件 / 配置入库 / Mastra 适配器）+ `docs/design/ai-connector.md`（连接器）——
+（工具 DSL / 注册机 / 网关插件 / 配置入库 / Mastra 适配器）——
 改 AI 前先读，改完同步。**加工具 / 加技能 / 加连接器的落地步骤**统一看
 `docs/design/ai-extension-guide.md`。
 

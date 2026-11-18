@@ -15,10 +15,10 @@ billy-cli 是一套**全栈应用 Monorepo 模板**：pnpm + Turbo 构建，Type
 | --- | --- |
 | 构建 | pnpm + Turbo（`turbo.json` 按依赖拓扑编排） |
 | 服务端 HTTP | NestJS 12（`@nestjs/core` + `@nestjs/common` + `@nestjs/platform-express`，底层 Express 5）；**两个进程**：`apps/main`（`@app/main`，公网 BFF，9989）+ `apps/agent-runtime`（`@app/agent-runtime`，只跑 agent loop，9990，不对外） |
-| 服务端推流 | `@repo/kits` 的 `StreamHub`（`POST /sse/subscribe` 长连接 + Redis pub/sub 跨实例广播）+ `@repo/http-client` 的 `HttpStreamClient`（浏览器 / Node 双环境，默认 POST + Bearer 认证）；**AI 流式另用 pub/sub 定向频道**：runtime 把模型输出发 `agent:stream:client:<clientId>`，main 的 `AgentSseBridge` 订阅后写回前端 SSE（Kafka 只服务连接器同步） |
+| 服务端推流 | `@repo/kits` 的 `StreamHub`（`POST /sse/subscribe` 长连接 + Redis pub/sub 跨实例广播）+ `@repo/http-client` 的 `HttpStreamClient`（浏览器 / Node 双环境，默认 POST + Bearer 认证）；**AI 流式另用 pub/sub 定向频道**：runtime 把模型输出发 `agent:stream:client:<clientId>`，main 的 `AgentSseBridge` 订阅后写回前端 SSE（Kafka 当前无业务 topic） |
 | 服务端日志 | 自建 logger（`@repo/shared/logger` 的 `createLogger`，**不用 nestjs-pino**）：kits `LoggerModule` 建唯一 pino 实例（pino-pretty 开发美化；生产可多目标 transport 推送 pino-loki；redact 脱敏），`AppLogger` 供业务注入、`NestLoggerAdapter` 接管 Nest 框架日志；请求日志由 `@repo/kits` 的 `RequestLoggerMiddleware` 自记录 |
 | 业务位置 | 控制面业务全归 main：`apps/main/src/modules/<业务>/{module, controller, service, repository, errors, index}`（auth / user / admin / session / storage / share / monitor / stream / config + 全部 AI CRUD） |
-| agent 运行面 | 只在 `apps/agent-runtime/src/modules/ai/**`（agents / runtime / core / tools / files / memory / skills / connectors / mastra / monitoring）；**Mastra 只在这里出现**，`pnpm check:mastra` 守边界 |
+| agent 运行面 | 只在 `apps/agent-runtime/src/modules/ai/**`（agents / runtime / core / tools / files / memory / skills / mastra / monitoring）；**Mastra 只在这里出现**，`pnpm check:mastra` 守边界 |
 | 通用能力 | `@repo/kits`（一个基础设施一个目录 = `provider + <name>.config.ts + <name>.module.ts + index.ts`，均 `@Global()` + `XxxModule.forRoot(options)` / `forRootAsync(options)`，配置对象即模块自身 bean，无业务实体） |
 | 应用配置 | `AppConfigFacade`（bootstrap 前用 Zod 加载校验 + 缓存）+ `@nestjs/config` 的全局 `ConfigService`（各模块 `forRootAsync` 惰性取命名空间分片；应用级业务配置由业务层 `resolveServerConfig(config)` 取 `server` 分片，不单设配置 bean） |
 | 依赖注入 | NestJS 内建 DI（`@nestjs/common` 的 `@Injectable` / `@Inject` / `@Optional` + 构造器注入 + 生命周期钩子） |
@@ -47,7 +47,7 @@ apps/model-gateway  模型网关：canonical OpenAI 接口（/v1/models/{id}/cha
                · 只读 ai_providers / ai_models；不碰会话 / 时间线 / ai_files（9992，不对外）
 apps/agent-runtime  agent 运行面：只跑 agent loop，只暴露 /internal/agent/* 与运维探针（9990，不对外）
                · modules/ai/    api/（AgentInternalController，唯一业务 controller）+ agents / runtime /
-                               core / tools / files / memory / skills / connectors / mastra / monitoring
+                               core / tools / files / memory / skills / mastra / monitoring
                · modules/       ai-usage / ops（模型目录与调用走 model-gateway）
                · 与 main 同构的 app-config.ts / config.ts / root.module.ts / main.ts
    ↓ 两者都只依赖
@@ -111,8 +111,8 @@ apps/admin    后台（`@repo/ui` + @tanstack/react-table + @tanstack/react-form
    `x-internal-token` / `x-user-id` / `x-admin-id` 调 runtime。
 2. **main 不做 agent 执行**：不 import Mastra 编排、不跑工具循环；它只做转发、pub/sub→SSE 中继
    与全部控制面 CRUD。
-3. **runtime 不做控制面 CRUD**：技能库 / 连接器 / 工具配置由 main 写库，runtime 靠事件
-   （`ai.skill.changed` / `ai.connector.sync`）或启动全量同步感知。
+3. **runtime 不做控制面 CRUD**：技能库 / 工具配置由 main 写库，runtime 靠事件
+   （`ai.skill.changed`）或启动全量同步感知。
 
 ## 4. 一次请求的数据流
 
@@ -149,11 +149,11 @@ main（AgentSseBridge，`PubSub.subscribeAsync(agentStreamChannel(clientId))`）
   └─ 原样写 data: 帧；final 写 [DONE] 并退订
 ```
 
-- **AI 的配置 CRUD 与查询在 main，执行在 runtime**：模型 / 工具 / 技能 / 连接器 / 记忆 / 会话 /
+- **AI 的配置 CRUD 与查询在 main，执行在 runtime**：模型 / 工具 / 技能 / 记忆 / 会话 /
   运行 / 时间线 / 用量的接口全在 `apps/main/src/modules/ai-admin/**` 与 `ai-model` / `ai-usage`；
   真正跑 agent 的代码只在 `apps/agent-runtime/src/modules/ai/**`。
 - **流式对话只依赖 Redis**：收件地址（`clientId`）存在 runtime 的进度 Hash 里，重连落在哪个副本都
-  能找到；补发从 Redis 输出记录按 offset 读，不是 broker 回放。`KAFKA_BROKERS` 只影响连接器同步。
+  能找到；补发从 Redis 输出记录按 offset 读，不是 broker 回放。`KAFKA_BROKERS` 当前没有业务 topic 依赖。
   2026-11-15 之前用 Kafka 承载这条流，实测 18 小时 1,536,196 条 / 686MB，且跨副本绑定是进程内的，
   已回退。
 - **迁移入口在 `@repo/db`**：根脚本 `db:gen` / `db:migrate` 指向 `@repo/db`（CLI DataSource 在

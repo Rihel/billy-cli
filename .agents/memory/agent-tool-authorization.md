@@ -5,9 +5,9 @@
 ## 结论（2026-11-10）
 
 - `AgentSpec.tools` 是**结构化选择器**数组：字符串 = 具体 key 或 `'*'`；对象 =
-  `{ category }` 或 `{ connector, tool? }`。定义在 `core/tools/tool-selector.ts`，**没有字符串解析器**。
+  `{ category }`。定义在 `core/tools/tool-selector.ts`，**没有字符串解析器**。
 - 展开只在一处：`ToolRegistry.expand(selectors)`。具体 key 不存在 → 装配期 `describe()` 抛；
-  连接器选择器**允许零命中**（连接器运行期才同步）。
+  （连接器模块 2026-11-18 已删除，对应的 `{ connector }` 选择器一并移除。）
 - 作用域**装配期就过滤工具面**：`ai.module.ts` 的 `resolveTools(ids, caller)` →
   `ToolRegistry.authorized(keys, caller)`；`ScopePlugin` 只兜调用期。判据纯函数在 `tool.scope.ts`。
 - **没有 caller 时只放行 `scope='all'`**（`ToolRegistry.publicKeys`，2026-11-14 起）：

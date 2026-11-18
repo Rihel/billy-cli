@@ -8,6 +8,8 @@ import {
 import { AppLogger, RedisStore } from '@repo/kits'
 import type { RegisteredService } from '@repo/contracts'
 import { ServiceRegistry } from './service.registry.js'
+import { UnsafeTargetError, allowPrivateNetworkOf, assertSafeTarget } from './target.guard.js'
+import { ToolGatewayConfig, type ToolGatewayConfigValue } from '../config/app-config.js'
 
 /**
  * 外部服务的探活（心跳）：网关每 30 秒敲一次 `GET {baseUrl}{healthPath}`。
@@ -22,6 +24,7 @@ export class CapabilityProbeService implements OnApplicationBootstrap, OnApplica
 
   constructor(
     @Inject(ServiceRegistry) private readonly registry: ServiceRegistry,
+    @Inject(ToolGatewayConfig) private readonly config: ToolGatewayConfigValue,
     @Inject(AppLogger) private readonly logger: AppLogger,
     @Optional() @Inject(RedisStore) private readonly redis?: RedisStore,
   ) {}
@@ -59,15 +62,28 @@ export class CapabilityProbeService implements OnApplicationBootstrap, OnApplica
   }
 
   async probe(service: RegisteredService): Promise<void> {
-    const url = new URL(service.healthPath || '/healthz', service.baseUrl)
+    // MCP 端点没有 HTTP 健康检查（GET 通常 405）：探活会把它误判 down，
+    // 而 `pick()` 在 down 时不再派发。MCP 的可用性以调用结果为准（失败回 upstream）。
+    if (service.protocol === 'mcp') return
+    const target = new URL(service.healthPath || '/healthz', service.baseUrl)
     try {
-      const response = await fetch(url, {
+      await assertSafeTarget(target.href, {
+        allowHttp: service.allowHttp,
+        allowPrivateNetwork: allowPrivateNetworkOf(this.config.allowPrivateNetwork),
+      })
+      const response = await fetch(target, {
         method: 'GET',
         redirect: 'manual',
         signal: AbortSignal.timeout(3_000),
       })
       await this.registry.markProbe(service.service, response.ok)
     } catch (error) {
+      if (error instanceof UnsafeTargetError) {
+        this.logger.warn('capability_gateway.probe_unsafe_target', {
+          service: service.service,
+          reason: error.message,
+        })
+      }
       this.logger.warn('capability_gateway.probe_failed', {
         service: service.service,
         reason: error instanceof Error ? error.message : String(error),

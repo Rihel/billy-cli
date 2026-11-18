@@ -18,7 +18,7 @@
 7. 是**横切基础能力**（多源配置 / 日志 / ID 生成 / 错误 / 调度器…）？ → `packages/kits/src/foundation/<能力>/`
 8. 是**业务逻辑**（有状态、有 service + repository + errors 三层）？ → 控制面业务放
    `apps/main/src/modules/<业务>/`；**agent 执行侧**（agent loop / Mastra / 工具 / 技能 / 记忆 /
-   连接器 / 提示词 / run 状态机）放 `apps/agent-runtime/src/modules/ai/` 对应子目录
+   提示词 / run 状态机）放 `apps/agent-runtime/src/modules/ai/` 对应子目录
 9. 是 **HTTP 边界 / 全类型客户端 / 前端页面**？ → 公网接口在
    `apps/main/src/modules/<业务>/<业务>.controller.ts` + `packages/sdk/` + `apps/web|admin/`；
    runtime 只开 `/internal/agent/*`（`apps/agent-runtime/src/modules/ai/api/agent-internal.controller.ts`）
@@ -35,7 +35,7 @@
 | 外部资源统一入口 | `packages/kits/src/<name>/`（provider + `<name>.config.ts` + `<name>.module.ts` + `index.ts`） | 见下方「基础设施模块」模式 |
 | 横切基础能力 | `packages/kits/src/foundation/<name>/`（同上四件套） | `@Injectable()` + 放进对应 `<name>.module.ts` 的 `providers` / `exports` |
 | 业务逻辑（控制面） | `apps/main/src/modules/<业务>/{errors, <业务>.repository, <业务>.service, <业务>.module, index}.ts` | 三层 + module `providers` 声明，再把模块加入 `apps/main/src/root.module.ts` 的 `imports`；实体由 `DB_ENTITIES` 注入 |
-| agent 执行侧 | `apps/agent-runtime/src/modules/ai/<子域>/`（agents / runtime / core / tools / files / memory / skills / connectors / mastra / monitoring） | 只跑 agent loop；Mastra 只在这层出现（`pnpm check:mastra` 守）；不要在这里加控制面 CRUD |
+| agent 执行侧 | `apps/agent-runtime/src/modules/ai/<子域>/`（agents / runtime / core / tools / files / memory / skills / mastra / monitoring） | 只跑 agent loop；Mastra 只在这层出现（`pnpm check:mastra` 守）；不要在这里加控制面 CRUD |
 | HTTP 边界（公网） | `apps/main/src/modules/<业务>/<业务>.controller.ts` | `@Controller` + `@Post` + `@HttpCode(200)` + `@Body({ schema: Schema })`，加入本模块 `controllers` |
 | HTTP 边界（内部） | `apps/agent-runtime/src/modules/ai/api/agent-internal.controller.ts` | `/internal/agent/*` + `x-internal-token` 校验；只给 main 调，不做用户鉴权 |
 | 横切 HTTP 构件 | `packages/kits/src/http/{error,request-context,request-logger,request-metrics}/` + 根目录的 Zod 校验 / 响应信封 / 探针路径（外部从 `@repo/kits` 导入） | 不依赖具体业务模块（技术告警经 `ERROR_ALERT_HOOK` token 由 `root.module.ts` 注入）；main 专属访问控制（`extractToken` / 限流守卫）放 `apps/main/src/common/security/`，因为它依赖应用级 ServerConfig |
@@ -94,7 +94,7 @@
   再把该模块加入 `apps/main/src/root.module.ts` 的 `imports`（无副作用导入与自动注册）。
   实现 `OnApplicationBootstrap` / `OnApplicationShutdown` 钩子的类由 Nest 按生命周期调度。
   （实体由 `@repo/db` 的 `DB_ENTITIES` 在 `DbModule.forRootAsync` 工厂里统一注入，模块内不用再列。）
-- **AI 的执行侧不在这里**：agent loop / Mastra / 工具 / 技能 / 记忆 / 连接器 / 提示词写
+- **AI 的执行侧不在这里**：agent loop / Mastra / 工具 / 技能 / 记忆 / 提示词写
   `apps/agent-runtime/src/modules/ai/`（见 `develop-ai-agent`），main 只做这些能力的配置 CRUD。
 - 参考：`apps/main/src/modules/user/`。
 

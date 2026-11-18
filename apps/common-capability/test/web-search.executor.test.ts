@@ -96,7 +96,7 @@ afterAll(async () => {
 describe('WebSearchExecutor', () => {
   it('用 settings 的密钥与 baseUrl 调搜索接口', async () => {
     const executor = new WebSearchExecutor(config, logger)
-    const outcome = await executor.execute(
+    const outcome = await executor.webSearch(
       request({
         settings: {
           config: { baseUrl, allowPrivateNetwork: true },
@@ -115,7 +115,7 @@ describe('WebSearchExecutor', () => {
 
   it('缺密钥返回 precheck-failed', async () => {
     const executor = new WebSearchExecutor(config, logger)
-    const outcome = await executor.execute(
+    const outcome = await executor.webSearch(
       request({ settings: { config: {}, limits: {}, secrets: {}, version: 'test' } }),
     )
     expect(outcome).toMatchObject({ ok: false, reason: 'precheck-failed' })

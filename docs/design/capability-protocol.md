@@ -1,7 +1,7 @@
-# 能力接入协议 v1（草案）
+# 能力接入协议 v1（定稿）
 
-> 状态：**草案，待评审**（2026-11-18）。只回答「内部服务如何把能力交给 AI 调用」，不含实现。
-> 设计背景、取舍与被否掉的方案见 [capability-gateway.md](capability-gateway.md)。
+> 状态：**v1 已定稿**（2026-11-18 评审）。只回答「内部服务如何把能力交给 AI 调用」，不含实现。
+> 实现状态逐条标在 [capability-gateway.md](capability-gateway.md) §0 与 §9（✅ / ⚠️ / ❌）。
 > 本文按 §0 的取值写成；要改规则先改 §0，再改正文，避免正文与结论打架。
 
 ## 0. 已定取值
@@ -16,19 +16,41 @@
 | 探针例外 | `GET /healthz` / `GET /readyz` | 也用 POST | k8s / 负载均衡的探针只会发 GET |
 | 能力定义位置 | **在服务自己的代码里，用 zod 写**（装饰器只是内部便利写法） | 集中写在 `pkg` | 定义与实现同处，改一处就够；pkg 只放机制，不放具体能力（§5.1） |
 | 默认执行形态 | `mode: sync` | 默认 task | 挡住「所有服务都做成异步」的过度设计 |
-| 登记方式 | 代码声明（构建期收集）+ 后台表单填写 | 只支持内部服务 | 外部团队不在我们集群内，不可能跑我们的构建；两条路径终点相同 |
+| 登记方式 | 代码声明（启动时上报）+ 后台表单填写 | 只支持内部服务 | 外部团队不在我们集群内，不可能跑我们的构建；两条路径终点相同 |
 | 网关名 | `capability-gateway`（能力网关） | `tool-gateway` | 已定（2026-11-18）；代码标识随阶段 1–2 一起改 |
-| 通用能力服务名 | `common-capability`（原 `tool-worker`） | 保留 `tool-worker` | 只跑 `exec` / `web`；服务名与进程名是两回事，见 §2.1 |
+| 通用能力服务名 | `common-capability`（原 `tool-worker`） | 保留 `tool-worker` | 服务名与进程名是两回事；本地口径一个进程 = 一个服务 `common`（17 个能力），见设计稿 §0 |
+
+### 0.1 术语（本文只用这几个词）
+
+| 词 | 含义 | 不是什么 |
+| --- | --- | --- |
+| **服务** | 一组能力的登记单位 + owner（1:N），全局唯一 | 不是一个工具，也不等于一个进程 |
+| **能力 key = 工具名** | `xxx-xxx`，全局唯一，模型面名字与它相同 | 不是 `服务名/工具名`，不带 `__` 派生 |
+| **清单（manifest）** | 一次性声明的服务信息 + 能力列表 | 不是心跳，不是注册中心 |
+| **登记** | 把清单写进网关（`POST /v1/services/register`） | 不表示服务活着 |
+| **实例心跳** | 内部服务每 10 秒报 `active`（只报负载，不报能力） | 不是清单更新 |
+| **外部探活** | 网关主动 `GET {baseUrl}{healthPath}`（只对外部服务） | 不是服务反向报活 |
+
+### 0.2 修订记录
+
+| 日期 | 改了什么 | 原因 | 影响章节 |
+| --- | --- | --- | --- |
+| 2026-11-18 | key 从 `服务名/工具名` 改为扁平工具名，删 `__` 派生与别名表 | 一个能力出现两个名字，同步多处必漂移 | §3、§4.7、附录 A/B |
+| 2026-11-18 | `common-capability` 收敛为单服务 `common`（17 能力） | 同一进程 / 部署 / 团队拆四行是「假服务」 | §2.1、§4.6 |
+| 2026-11-18 | 能力定义改装饰器（`@CapabilityGroup` + `@CapabilityDecl`） | 声明与执行体同处，入参与登记同一份 | §5.1 |
+| 2026-11-18 | 新增 `protocol`（capability / mcp） | 外部服务要能区分自建协议与 MCP | §4 |
+| 2026-11-18 | **回调移出 v1**，删 `callback.supported` | 不愿意为"快一点"对外暴露入站接口；轮询是唯一真相 | §1、§6、§11、§19 |
 
 ## 1. 定位与边界
 
-**包含**：服务与网关的定义、命名规则、服务声明、能力声明、调用、同步结果、异步任务、长耗时执行、回调、幂等、分页、凭据注入。
+**包含**：服务与网关的定义、命名规则、服务声明、能力声明、调用、同步结果、异步任务、长耗时执行、幂等、分页、凭据注入。
 
 **不包含**：
 
 - 注册 / 心跳 / 服务发现 —— 部署解决（地址由部署给）；
 - 限流 / 配额 / 审计 / 脱敏 —— 网关做，服务不实现；
 - 密钥存储 —— 网关注入，服务不持有；
+- 回调 —— **v1 不做**：它要求我们对外暴露入站接口（见 §11）；
 - 流式进度、人工介入、工具检索 —— 见 §19。
 
 ## 2. 服务与网关
@@ -37,7 +59,10 @@
 
 **一个服务 = 一组能力 + 一个 owner + 一条数据与权限边界。**
 
-它**通常**对应一个部署单元，但两者不是一回事：一个进程可以先承载多个服务身份（各自一份 manifest），只要每个服务自己的边界清楚；将来规模上来再按服务拆进程。
+它**通常**对应一个部署单元，但两者不是一回事：协议允许一个进程承载多个服务身份（各自一份 manifest），
+只要每个服务自己的边界清楚；将来规模上来再按服务拆进程。
+**本仓本地口径收得更紧：一个进程 = 一个服务**（`common-capability` 只登记 `common`，bash / web / files /
+memory 是代码内的能力分组），见设计稿 §0。
 
 判断标准（满足多数才算）：
 
@@ -75,7 +100,7 @@
 | --- | --- | --- |
 | 声明 | 我叫什么、我有哪些工具、参数长什么样、怎么执行 | 汇总、校验、拼 key、按身份过滤 |
 | 调用 | 收到请求就执行，返回结果或受理 | 拆 key、路由、超时、重试、分页、翻译错误 |
-| 异步 | 生成任务 id、维护任务状态、给出终态 | 存索引、轮询、去重回调、GC |
+| 异步 | 生成任务 id、维护任务状态、给出终态 | 存索引、轮询、GC |
 | 治理 | **不做** | 鉴权、scope、限额、幂等、脱敏、审计 |
 | 凭据 | 不持有第三方密钥 | 调用前注入 |
 | 发现 | 不知道网关存在 | 部署时就知道服务地址 |
@@ -118,9 +143,9 @@
 | 规则 | 值 |
 | --- | --- |
 | 服务名 | `[a-z0-9][a-z0-9-]*`，≤ 24 |
-| 工具名（key） | `[a-z0-9][a-z0-9-]*`，≤ 60（`ai_tools.tool_key` 是 varchar(64)） |
+| 工具名（key） | `[a-z0-9][a-z0-9-]*`，≤ 32（契约 `TOOL_NAME_REGEX`；`ai_tools.tool_key` 是 varchar(64)，有余量） |
 | 禁止 | `__`、`/`、空格、中文、大写 |
-| 模型面 | 与 key 相同，≤ 64 |
+| 模型面 | 与 key 相同，≤ 32（provider 上限 64，有余量） |
 
 ### 3.5 为什么不再带服务前缀
 
@@ -133,8 +158,8 @@
 
 ### 3.6 预留
 
-`gateway`（网关内建：取结果、等任务、取消任务）作为工具名保留前缀；`plan-*`、`agent-*` 是编排原语，
-不登记、由 runtime 本地执行。
+`wait-task` / `cancel-task`（网关内建的等任务 / 取消任务）与将来的 `gateway-*` 作为工具名保留，
+不分配给服务；`plan-*`、`agent-*` 是编排原语，不登记、由 runtime 本地执行。
 
 ### 3.7 外部来源
 
@@ -142,7 +167,7 @@
 | --- | --- |
 | 内部服务 | 代码声明 + 启动注册（`source:'code'`） |
 | 外部团队 | 后台表单登记（`source:'manual'`）+ 自有工具名 |
-| 外部 MCP / 连接器 | 由网关做适配后以 `manual` 登记，工具名冲突直接拒绝 |
+| 外部 MCP | 由网关做适配后以 `manual` 登记，工具名冲突直接拒绝（连接器模块已于 2026-11-18 删除；MCP 适配器同日落地） |
 
 ### 3.8 改名
 
@@ -181,12 +206,12 @@
 
 | 路径 | 适合 | 能力清单从哪来 | 谁维护 | 事实源 |
 | --- | --- | --- | --- | --- |
-| 代码声明（构建期收集） | 我们 monorepo 里的服务 | 代码里的声明 | 服务 owner + 发布流程 | 代码，构建期写入网关 |
+| 代码声明（启动时上报） | 我们 monorepo 里的服务 | 代码里的声明 | 服务 owner + 发布流程 | 代码；进程启动时上报网关 |
 | 后台登记（表单） | 外部团队、不在我们集群内的服务 | 后台逐条填 / 交一份 JSON 清单 / 可选 `POST /manifest` 拉取（见 §4.3） | 平台管理员 + 对方 owner | 网关里的登记记录 |
 
 两条路径的**终点相同**：网关里一条服务记录 + 若干能力。之后的目录、治理、路由完全一致，AI 侧看不出区别。
 
-**登记是一次性声明，不是持续心跳**（健康由网关每 30 秒主动探活，见 §4.3）。服务不向网关报活；这也是为什么外部团队只要填一次信息就能被调用。
+**能力清单是一次性声明**：外部服务不向网关报活（健康由网关每 30 秒主动探活，见 §4.3）；内部服务的**实例存活**靠 10 秒心跳（§4.6.1），但心跳只报「我在跑几个」，不报能力。这也是为什么外部团队只要填一次信息就能被调用。
 
 ### 4.2 后台登记要填什么
 
@@ -305,6 +330,10 @@ app.post('/invoke', (req, res) => {
 
 两项都过，才允许 `draft → active`（§4.5）。
 
+适用范围：**只对 `source=manual`（后台登记）成立**；内部服务（`source=code`）启动即登记为 `active`。
+**已实现（2026-11-18）**：后台保存先按 `draft` 登记，再跑「测试连通 + 冒烟调用」；两项都过才切 `active`，
+否则留在 `draft` 并把原因返回页面（冒烟只要求对方按协议回 `{version, ok}`，业务失败也算通过）。
+
 ### 4.4 外部服务的网络与安全
 
 外部服务不在我们集群内，网关要主动出网调它，必须满足：
@@ -313,7 +342,10 @@ app.post('/invoke', (req, res) => {
 2. **baseUrl 防 SSRF**：解析后的 IP 不得落在回环、链路本地、云元数据地址段；每次调用重新校验（防 DNS rebinding）；
 3. **出口受控**：按登记时选的出口走，不允许任意目标；
 4. **响应体积上限与超时**强制生效（默认 15s），避免被对方拖死；
-5. **默认不支持回调**：对方要回调我们，需要公网入口与单独评审（见 §11）。
+5. **不要求也不接受回调**：任务终态由调用方轮询 `POST /tasks/get`（v1 不做回调，见 §11）。
+
+**已实现（2026-11-18）**：网关在**登记、探活、调用**三处都跑目标校验——默认 https（http 需登记时显式勾选）、
+禁止回环 / 链路本地 / 内网 / 云元数据地址；生产必须把 `gateway.allowPrivateNetwork` 置 false（开发 / 测试默认放行内网）。
 
 ### 4.5 状态与生效
 
@@ -327,6 +359,8 @@ app.post('/invoke', (req, res) => {
 - 改 `baseUrl` / 鉴权 / 能力清单后自动回到 `draft`，需重新测试；
 - **探活 / 心跳失败只把 `available` 置 false**，目录保留、调用报 `no-provider`，不自动回到 `draft`、不自动下线；
 - 变更留版本（谁改的、改了什么），因为改 `description` / `inputSchema` 会直接改变模型行为。
+
+**当前实现**：`draft → active` 由后台自检驱动（见 §4.3）；"谁改的"仍未记录（只有自增 `version` 与 `updatedAt`）。
 
 ### 4.6 内部服务：按负载选实例
 
@@ -378,7 +412,7 @@ POST /v1/instances/deregister
 
 同步调用不留状态。只有 `mode:"task"` 的调用成功后才多一行：网关记 `taskId → 实例`（Redis，TTL = 任务寿命），`wait` / `cancel` 按它回到原实例——否则轮询可能落到没有这个任务的实例上。
 
-命令类任务（`exec/bash`）必须记。服务若把任务状态放共享存储、任意实例可查，这一行也可以不要。
+命令类任务（`bash`）必须记。服务若把任务状态放共享存储、任意实例可查，这一行也可以不要。
 
 #### 4.6.4 外部服务
 
@@ -424,8 +458,8 @@ x-internal-token: <内部令牌>
 - **全量覆盖**：body 就是这一版完整的能力清单；不在清单里的能力转 `deprecated`——**保留配置行，不物理删除**（时间线还引用它）；
 - **幂等**：内容没变 = no-op，不产生新版本；
 - **diff 留痕**：返回 `{ added, changed, removed }`，并留一条版本记录（谁提交的、代码版本）；
-- **校验**：key 前缀必须等于 `service`；工具名服务内唯一；`inputSchema` 必须能解析；
-- **即时生效**：清目录缓存 + 发 `ai.capability.changed`。
+- **校验**：工具名全局唯一（跨服务重名拒绝，409）、服务内唯一；`inputSchema` 必须是可解析、顶层 `object` 的 JSON Schema；
+- **生效**：网关内存快照即时；runtime 的模型面靠目录 **5s TTL** 刷新（`ai.capability.changed` 事件未实现，用 TTL 兜住"5 秒内消失"的验收口径）。
 
 **滚动发布的已知窗口**：新版本第一次上报后目录立刻有新能力，但老实例还在跑旧代码，这个窗口里调用新能力可能失败。脚手架期接受；要消除得按「实例支持哪些能力」过滤，本期不做。
 
@@ -463,7 +497,7 @@ x-internal-token: <内部令牌>
 | `tool` | 是 | — | 工具名，**服务内唯一**；语义变了要换新工具名 |
 | `title` | 是 | — | ≤ 64 |
 | `description` | 是 | — | **给模型看**，≤ 900；写清何时用 / 何时不用 / 约束 |
-| `inputSchema` | 是 | — | JSON Schema 2020-12，顶层必须是 `object` |
+| `inputSchema` | 是 | `{type:'object'}` | JSON Schema 2020-12，顶层必须是 `object`；不填则网关不校验入参（契约缺省空对象，自定义能力应显式给） |
 | `risk` | 否 | `read` | `read` / `write`；`write` 可由策略要求管理员或会话内确认 |
 | `idempotent` | 否 | `false` | 决定网关能否重试 |
 | `scope` | 否 | `all` | `all` / `user` / `admin` / `agent` |
@@ -482,26 +516,28 @@ x-internal-token: <内部令牌>
 **定义留在服务自己的代码里，`pkg` 里只放机制、不放定义。**
 
 ```ts
-// common-capability/src/tools/bash.tool.ts
-const BashInput = z.object({
-  command: z.string().min(1).max(2000).describe('要执行的整条命令行'),
-  cwd: z.string().optional().describe('工作目录；不允许跑到工作目录之外'),
-})
-
-@CapabilityGroup({ service: 'exec' })
-export class BashTool {
+// common-capability/src/executors/bash.executor.ts（节选）
+@Injectable()
+@CapabilityGroup({ risk: 'write' })
+export class BashExecutor {
   @CapabilityDecl({
     tool: 'bash',
     title: '执行 bash 命令',
     description: '……',
-    input: BashInput,
-    risk: 'write',
+    input: z.object({
+      command: z.string().min(1).max(2_000).describe('要执行的整条命令行'),
+      cwd: z.string().optional().describe('工作目录；不允许跑到工作目录之外'),
+    }),
     execution: {
       mode: 'task', owner: 'session', yieldMs: 45_000,
       wait: { maxWaitMs: 60_000 }, cancel: 'supported', maxRunMs: 1_800_000,
     },
   })
-  async run(input: z.infer<typeof BashInput>, ctx: CapabilityCtx) { … }
+  async bash(request: ToolInvokeRequest): Promise<ToolOutcome> {
+    // 与登记同一份入参：声明里改了字段，这里自动跟上
+    const parsed = findCapabilityDecl(this, 'bash').input.safeParse(request.input)
+    …
+  }
 }
 ```
 
@@ -513,7 +549,7 @@ export class BashTool {
 
 **`reason`**：由网关在调用前从入参里摘出、提升为 `invoke.reason`，服务收到的 `input` 里没有它。
 
-**`@repo/tool-catalog` 不再承载定义**：它的 32 条要么搬进各自服务，要么只留一份构建期快照供 review（不作为注册来源）；`pnpm gen:tool-catalog` 随之退役或改成校验脚本。
+**`@repo/tool-catalog` 已退役**：32 条定义搬进各自服务；`pnpm gen:tool-catalog` 一并删除。
 
 **声明了但不注册**：编排原语（`plan/*`、`agent/*`）用同一套装饰器声明，注册时跳过（不进网关目录）。
 
@@ -527,8 +563,7 @@ export class BashTool {
   "wait": { "maxWaitMs": 60000 },
   "cancel": "supported",
   "poll": { "minIntervalMs": 1000 },
-  "maxRunMs": 1800000,
-  "callback": { "supported": true }
+  "maxRunMs": 1800000
 }
 ```
 
@@ -541,7 +576,6 @@ export class BashTool {
 | `cancel` | `none` | `supported` / `none` |
 | `poll.minIntervalMs` | `1000` | 客户端最小轮询间隔 |
 | `maxRunMs` | `1800000` | 任务总寿命，到期服务标 `failed(timeout)` |
-| `callback.supported` | `false` | 是否支持网关回调；外部服务默认 `false` |
 
 ### 6.1 三种执行形态
 
@@ -549,7 +583,7 @@ export class BashTool {
 | --- | --- | --- | --- |
 | 纯同步 | `{ "mode": "sync" }` | 查订单、发通知 | 调用返回即结果 |
 | 受理即完成 | `{ "mode": "sync" }` + `data` 带业务 id | 下单、提工单 | 另开一个能力查状态（如 `order/status`） |
-| 受理未完成 | `mode:"task"` | 长命令、导出、审批 | 轮询 `POST /tasks/get` 或回调 |
+| 受理未完成 | `mode:"task"` | 长命令、导出、审批 | 轮询 `POST /tasks/get`（v1 无回调） |
 
 **默认「受理即完成」而不是「受理未完成」**：下单接口返回订单号，业务上这笔交易已经成立；用户过一会儿问「订单到哪了」是再调一次查询能力，不是轮询同一次调用。只有当「结果必须回到当前对话才能继续」时才用 `task`。
 
@@ -558,7 +592,7 @@ export class BashTool {
 | 场景 | 配置 |
 | --- | --- |
 | 长耗时命令（install / build / 渲染） | `mode:"task"`, `owner:"session"`, `yieldMs:45000`, `wait.maxWaitMs:60000`, `cancel:"supported"` |
-| 业务作业（导出 / 审批 / 等支付） | `mode:"task"`, `owner:"user"`, `yieldMs:0`, `wait.maxWaitMs:0`, `callback.supported:true` |
+| 业务作业（导出 / 审批 / 等支付） | `mode:"task"`, `owner:"user"`, `yieldMs:0`, `wait.maxWaitMs:0`（结果靠轮询，v1 无回调） |
 
 ## 7. 调用
 
@@ -606,6 +640,22 @@ x-capability-config: <JSON，可选，网关注入的配置；服务只读>
 | `idempotencyKey` | 否 | `idempotent=true` 时网关生成，重试不变 |
 | `pagination` | 否 | 仅 `pagination=cursor` |
 | `traceId` | 否 | 链路追踪 |
+
+### 7.1 配置下发（`x-capability-config`）
+
+网关在调用前把**工具级配置**放进 `x-capability-config`（JSON，可选；没有配置就不带这个头）：
+
+```json
+{ "config": { "baseUrl": "https://api.example.com", "timeoutMs": 20000 }, "secrets": { "apiKey": "…" } }
+```
+
+- 来源：网关读 `ai_tools` 的 `config` / `secrets`（工具级，不是服务级出站凭据）；
+- 值必须是 ASCII（非 ASCII 需 base64，v1 不做）；服务只读、不回写；
+- 这个头**不进日志、不进审计**（与出站凭据同一口径脱敏）；
+- 服务不实现配置也行：不带这个头时按自己的部署默认值跑。
+
+**已实现（2026-11-18）**：网关调用前读 `ai_tools` 的 `config` / `limits` / `secrets`（工具级，5s 缓存），
+有内容就随 `x-capability-config` 下发；含非 ASCII 时用 `b64:` + base64url(JSON)，worker 侧按同一约定解码。
 
 ## 8. 响应（三种形态，HTTP 200）
 
@@ -692,9 +742,18 @@ POST {baseUrl}/tasks/cancel   { "taskId": "cmd-01J8" }
 
 **级联取消**：一轮对话被停止时，网关级联取消**该轮发起的、`owner=session` 的任务**（命令、渲染这类随会话存在的执行）。`owner=user` / `tenant` 的任务只解除等待、不取消——业务动作不能因为关掉对话就回滚，要取消得走显式操作。
 
-**过期**：`result` 保留 `resultTtlMs`（服务声明，默认 7 天），过期后 `state=expired`，查询不报错。
+**已实现（2026-11-18）**：网关受理 session 任务时记 `runId → taskId`（Redis，TTL = `maxRunMs` + 1h），
+`POST /v1/tasks/cancel-run` 按 runId 逐个取消；runtime 在停止对话的 `cascadeStop` 里调用（best-effort，3s 超时，
+失败只 warn）。
 
-**完成后唤醒**：任务进入终态时网关发出事件，agent-runtime 据此唤醒发起它的会话（新起一轮，把结果作为上下文）。用户不在线时只落时间线，等下次进来再消费——唤醒不等于必须立刻调模型。
+**过期**：结果保留 **7 天**（v1 固定；「按能力声明 `resultTtlMs` 覆盖」留到后续版本），过期后
+`state=expired`，查询不报错。
+
+**完成后不自动唤醒（v1 口径 B，2026-11-18）**：任务进入终态时网关**不发事件**、runtime **不起新 run**。
+结果靠模型主动 `wait-task` 取，或在下一轮对话里按需查询。
+
+为什么不做：自动唤醒会替用户烧一轮模型（用户不在线也照跑），而 `wait-task` 已经覆盖"等结果"的场景；
+`owner=user` / `tenant` 的业务任务本来也不该因为完成就打扰会话。这不是"没实现"，是**明确不做**。
 
 ## 10. 长耗时命令的约定
 
@@ -726,45 +785,38 @@ POST {baseUrl}/tasks/cancel   { "taskId": "cmd-01J8" }
 3. **沙箱 / 工作区生命周期必须覆盖命令生命周期**。worker 重启 = 命令丢失，此时状态必须报 `lost`，不能假装还在跑；
 4. **后台命令不占 HTTP 并发槽，但要单独限「同时运行命令数」**。否则一个用户开 20 个 build 就能打爆一台机器。
 
-### 10.1 模型侧两个内建工具
+### 10.1 模型侧内建工具
 
-网关提供，不属于任何服务的能力清单：
+网关提供，不属于任何服务的能力清单（**扁平命名，`/` 不合法**；`gateway` 前缀留给网关内建能力）：
 
-- `gateway/wait-task({ taskId, waitMs })`：长轮询，未结束返回当前快照 + `running: true`；
-- `gateway/cancel-task({ taskId })`：幂等取消。
+- `wait-task({ taskId, waitMs })`：长轮询，未结束返回当前快照 + `running: true`；
+- `cancel-task({ taskId })`：幂等取消；
+- `tool-search({ query, limit? })`：在**当前身份可见**的能力目录里用 **BM25** 检索工具（中文按字符
+  unigram + bigram，字段加权 key/title/tags/description），返回 top-k 的 key + 说明；零模型调用、
+  不烧 token，命中后直接调那个工具。
 
-对命令和业务任务通用。
+对命令和业务任务通用。**已实现（2026-11-18）**：它们是网关内建能力，目录里以 `service='gateway'`
+出现（不占服务登记名额）；runtime 在网关模式下挂载这两个工具，没配网关时不挂载。
 
 ### 10.2 时间线合并
 
 同一个 `taskId` 的多次 `wait-task` 在时间线上**合成一张卡片**，显示最新输出与状态。否则一次 build 会刷出二十多张卡，会话变成日志流。
 
-## 11. 回调
+**已实现（2026-11-18）**：在 admin 的 `ChatUnit` 归约里按 `wait-task.taskId` 合并（最新快照覆盖同一 key）；
+输入还没到时先按 toolCallId 建占位卡，拿到 taskId 后摘掉。不同 taskId、其它工具都不合并。
 
-```
-POST {gateway}/v1/tasks/callback
-x-internal-token: <服务令牌>
-x-callback-signature: HMAC(service, eventId + occurredAt + body)
-```
+## 11. 回调（v1 明确不做）
 
-```json
-{
-  "version": 1,
-  "taskId": "ord-8891",
-  "eventId": "evt-3f2a",
-  "state": "succeeded",
-  "data": { "orderStatus": "paid" },
-  "occurredAt": "2026-11-18T00:10:00Z"
-}
-```
+**决定（2026-11-18）**：v1 不提供回调。任务终态只靠轮询（`POST /tasks/get`）拿，网关不对任何服务暴露任务回调端点。
 
-五条铁律：
+理由：
 
-1. **回调打给网关，不打给调用方**。绕开网关等于绕过治理、审计与幂等；
-2. **回调地址由网关生成**，URL 内嵌不透明 token 绑死 taskId，不接受调用方传入；
-3. **必须带 `eventId`**，网关去重；**必须带 `occurredAt`**，只进不退（终态不能被旧事件改回）；
-4. **轮询是真相，回调只是加速**。回调丢了不能让任务永远挂着；
-5. **外部服务默认不支持回调**：要回调我们的网关需要公网入口与出网策略，`callback.supported` 由网关按网络位置决定是否启用。
+- 回调要求**我们**提供一个公网可写的入站接口，还要做令牌、签名、去重、防重放、限流——成本和攻击面都不小；
+- 收益只是"早几百毫秒知道结果"，而任务本来就有轮询；模型侧的等待体验由 `wait-task` 长轮询解决（§10.1）；
+- 轮询是真相、回调只是加速：既然不做加速，就只保留真相，少一条会挂的东西。
+
+影响：`execution` 里不再有 `callback` 字段；服务不需要实现任何"主动通知"；`/v1/tasks/callback` 端点不存在。
+将来若真要做，按"回调打给网关、带 `eventId` 与 `occurredAt`、只进不退、外部服务默认关闭"的口径重新评审。
 
 ## 12. 幂等与重试
 
@@ -773,33 +825,43 @@ x-callback-signature: HMAC(service, eventId + occurredAt + body)
 - 网关不重试已执行的操作，即使服务声明了 `retryable`；
 - 查询、取消都幂等。
 
+**当前实现**：`idempotencyKey` 只透传给服务；网关不去重、不重试（`idempotent` 字段尚未驱动行为）。
+
 ## 13. 三个超时，别混
 
 | 超时 | 谁定 | 管什么 |
 | --- | --- | --- |
-| `deadlineMs` | 网关 | 单次 HTTP 等待，超出按 `timeout` 处理 |
+| `deadlineMs` | 上游给、网关夹紧 | runtime 传本次调用预算，网关再夹到部署上限（`invokeTimeoutMs`）；单次 HTTP 超出按 `timeout` 处理 |
 | `yieldMs` | 服务声明 | 调用时同步等待窗口，超出返回 task（**不是失败**） |
 | `maxRunMs` | 服务声明 | 任务总寿命，到期标 `failed(timeout)` 并保留已有输出 |
+
+**当前实现**：yield 窗口用常量（45s）——声明里的 `yieldMs` / `wait.maxWaitMs` 未生效；
+**任务执行预算已按 `maxRunMs` 算**（2026-11-18 修正：此前误用 `deadlineMs`，调用方传小 deadline 会把还在跑的
+命令提前杀掉）；但 `maxRunMs` 到期标 `failed(timeout)` 仍未做。
 
 ## 14. 分页
 
 - `pagination: cursor` 的能力返回 `nextCursor`，网关把它变成不透明句柄交给模型；
 - 模型后续只回传句柄，看不到游标本体；
-- 服务不实现分页也行：网关对超大结果截断并给「取下一页」的引用。
+- 服务不实现分页也行：由**产生结果的一方**截断，并把全文存进可长期取回的地方，给模型一个不透明句柄；
+  网关本身不存结果。**当前归属**：`read-tool-result` 是 `common-capability` 的能力（不是网关内建），
+  全文存 Redis（1 小时）+ 时间线兜底；分页句柄由 `@repo/ai-data` 的 `paginate` 产生。
 
 ## 15. 凭据
 
 - 服务不读库、不持有第三方密钥；
 - 网关按 `auth.mode` 在调用前注入到声明里的 header，并保证不进日志、不进审计；
 - **服务级出站凭据 v1 必做**：后台登记外部服务时录入 header 名与密钥值，网关调用前注入；密钥单独存储，页面只回提示串，日志与审计脱敏。没有它，集群外的服务根本调不通；
-- 密钥支持轮换：同一服务可同时存在新旧两个值，旧值在保留期内仍被接受，便于对方平滑切换；
+- 密钥轮换：v1 是**单值替换**（保存即生效，旧值立即失效）；「新旧并存 + 保留期」需要
+  `credential` + `previousCredential` + `previousExpiresAt` 三列，留到后续版本；
 - 能力专属配置走 `x-capability-config`（JSON），服务只读；
 - 用户级 OAuth **v1 不做**；`caller` 已带身份，将来注入用户 token 不用改协议。
 
 ## 16. 版本与兼容
 
 - 只加可选字段**不升版本**；删字段 / 改语义才升；
-- 网关同时接受相邻两版，维持一个发布周期；
+- **v1 只接受 `protocolVersion=1`**（契约是字面量 1）；「同时接受相邻两版」是升版时的目标，届时再定义
+  版本协商（`protocolVersion` 之外的兼容窗口与告警）；
 - 工具名稳定：语义变了换新工具名，旧名标 `deprecated` 并保留（时间线里还有历史引用）；
 - `description` / `inputSchema` 可随时改（模型实时读），后台留版本记录。
 
@@ -807,7 +869,7 @@ x-callback-signature: HMAC(service, eventId + occurredAt + body)
 
 ### 17.1 内部服务（代码声明）
 
-1. 写声明：服务名（全局唯一）+ 每条能力的工具名（**全局唯一**）；monorepo 里写 TS、构建期生成 JSON；
+1. 写声明：服务名（全局唯一）+ 每条能力的工具名（**全局唯一**）；monorepo 里写 TS，进程启动时上报；
 2. 实现 `POST /invoke`：校验 → 执行 → 返回三种形态之一；
 3. 声明是 task 的，再实现 `POST /tasks/get` 与 `POST /tasks/cancel`；
 4. 声明随构建进网关，在 `ai_tools` 配开关 / scope / 限额；
@@ -823,7 +885,7 @@ x-callback-signature: HMAC(service, eventId + occurredAt + body)
 
 ### 17.3 两条路径的共同点
 
-不管走哪条，服务最终都被归一成「一条服务记录 + 若干能力」，后续治理与路由没有分支。外部服务的能力清单以网关登记记录为准，内部服务以代码为准（构建期覆盖登记记录）。
+不管走哪条，服务最终都被归一成「一条服务记录 + 若干能力」，后续治理与路由没有分支。外部服务的能力清单以网关登记记录为准，内部服务以代码为准（启动时上报覆盖登记记录）。
 
 **多实例的服务**额外自查两条：任务状态与幂等键是否共享存储（否则查询、取消、重试都可能落到「没有这个任务」的实例上，见 §4.6）。
 
@@ -839,38 +901,59 @@ x-callback-signature: HMAC(service, eventId + occurredAt + body)
 | `ok:false` | `isError: true` |
 | `nextCursor` | `nextCursor` |
 
-外部 MCP 服务由网关做这层映射：它上报的工具名直接当工具名用，服务名由注册时分配；不要求对方实现本协议。将来要让外部 MCP 客户端调我们，同一层反过来写。
+外部 MCP 服务由网关做这层映射：它上报的工具名直接当工具名用，服务名由注册时分配；不要求对方实现本协议。
+将来要让外部 MCP 客户端调我们，同一层反过来写。
+
+**适配器边界（已实现，HTTP 型）**：
+
+- 传输：**Streamable HTTP**（一次 POST 一次 JSON-RPC 响应；`text/event-stream` 响应也能解析）；stdio 型需要本地进程适配器，**不做**；
+- 握手 / 会话：兼容两代——**2025-03-26 ~ 2025-11-25 版**做 `initialize`（`protocolVersion` / `clientInfo`）并缓存 `Mcp-Session-Id` 5 分钟；**2026-07-28 版**移除了握手与会话，对方回「方法不存在 / 405」时按无状态继续。每个 POST 都带 `MCP-Protocol-Version`（旧版本忽略）；之后 `tools/list`（分页拉全）与 `tools/call`；
+- 工具名：MCP 原名可能带 `_` / 大写，归一成 §3.4 的扁平 key，原名存进声明的 `remoteTool`，调用时原样传回；
+- 凭据：后台 MCP 配置里的 `headers` 在「同步清单」时全部带上；**登记后只保留一个鉴权 header**（v1 限制，多 header 待扩）；
+- 目录：`tools/list` 的结果落能力快照；不再手工录入；工具名冲突按 §3.2 拒绝；
+- 调用：`protocol='mcp'` 的服务 invoke 走 MCP `tools/call`，`isError:true` → `mcp-tool-error`，其余把 MCP `result` 原样作为 data；单次 HTTP 超时**跟随调用 deadline**（fetch 类工具经常 >10s）。
+- 探活：MCP 服务**不参与 HTTP 探活**（GET 通常 405，会被误判 down 而停止派发）；可用性以调用结果为准（失败回 `upstream`）。
+- 模型面：runtime 按能力目录**动态生成外部工具**（agent 声明 `'*'` 或 `EXTERNAL_TOOLS` 才暴露；执行走网关）；子 agent 暂不含外部工具。
 
 ## 19. 明确不在 v1
 
 人工介入（`waiting-input` / 审批）、流式进度、批量调用、用户级 OAuth、多租户配额分摊。
 
-两项明确**先不做**：
+四项明确**先不做**：
 
+- **回调（`POST /v1/tasks/callback`）**：v1 不做，理由见 §11（不愿对外暴露入站接口）；
+- **任务完成自动唤醒**：v1 不做（口径 B），结果靠 `wait-task` 主动取，见 §9；
 - **工具语义检索（`tool_search`）**：现在三十多个工具还能整份下发，先不做；等数量再涨、或者模型开始选不准了再上，协议里的 `tags` 是为它预留的；
 - **对外暴露 MCP 端点**：本工程是脚手架，先只服务自家 agent，不把网关做成对外产品。
 
-## 附录 A：现有 32 个工具的新旧对照
+本节是协议边界；哪些条款已实现见 [capability-gateway.md](capability-gateway.md) §9。
 
-表里的「新 key」就是工具名（扁平 `xxx-xxx`）。
+## 附录 A：工具清单与归属（扁平 key 之后）
 
-| 旧 key | 新 key | 归属 |
+下表「现行 key」就是工具名（扁平 `xxx-xxx`）。**这一轮没有改名**：现行 key 与旧工具名相同；
+早先设计的 `服务名/工具名` 方案已作废。
+
+| 工具（现行 key） | 归属 | 状态 |
 | --- | --- | --- |
-| `bash` | `exec/bash` | 通用能力服务 |
-| `web-fetch` / `web-search` / `web-request` | `web/fetch` / `web/search` / `web/request` | 通用能力服务 |
-| `memory-save` / `memory-search` / `memory-forget` | `memory/save` / `memory/search` / `memory/forget` | AI 数据域服务 |
-| `append-file` / `read-file` / `replace-file` / `write-file` / `file-list` / `file-search` / `file-submit` / `file-download` / `workspace-files` | `files/append` / `files/read` / `files/replace` / `files/write` / `files/list` / `files/search` / `files/submit` / `files/download` / `files/workspace` | AI 数据域服务 |
-| `read-tool-result` | `gateway/read-result` | 网关内建 |
-| `skill-list` / `skill-save` / `skill-delete` / `skill-enable` / `skill-import` / `skill-file-save` / `skill-file-append` | `skill/list` / `skill/save` / `skill/delete` / `skill/enable` / `skill/import` / `skill/file-save` / `skill/file-append` | 技能服务（控制面） |
-| `plan-create` / `plan-complete` / `plan-delete` / `plan-reorder` | `plan/create` / `plan/complete` / `plan/delete` / `plan/reorder` | 编排原语（不进注册中心） |
-| `run-sub-agent` / `cancel-sub-agent` / `sub-agent-list` / `wait-sub-agent` | `agent/run-subagent` / `agent/cancel-subagent` / `agent/list-subagents` / `agent/wait-subagent` | 编排原语（不进注册中心） |
+| `bash` | `common-capability`（通用能力组） | ✅ |
+| `web-fetch` / `web-search` / `web-request` | 同上 | ✅ |
+| `file-submit` / `file-download` / `file-list` / `read-file` / `file-search` / `workspace-files` / `write-file` / `replace-file` / `append-file` | `common-capability`（文件域，同进程） | ✅ |
+| `memory-save` / `memory-search` / `memory-forget` | `common-capability`（AI 数据域，同进程） | ✅ |
+| `read-tool-result` | `common-capability` | ✅（原设计为网关内建 `read-result`，未采用） |
+| `skill-list` / `skill-save` / `skill-delete` / `skill-enable` / `skill-import` / `skill-file-save` / `skill-file-append` | `agent-runtime` 本地执行（控制面），**不登记** | ✅ |
+| `plan-create` / `plan-complete` / `plan-delete` / `plan-reorder` | 编排原语，不进目录 | ✅ |
+| `run-sub-agent` / `cancel-sub-agent` / `sub-agent-list` / `wait-sub-agent` | 编排原语，不进目录 | ✅ |
+| `wait-task` / `cancel-task` | 网关内建（协议 §10.1） | ✅ |
+| 外部 MCP 工具（`protocol='mcp'`） | 网关适配器（协议 §18） | ❌ 未实现 |
 
-## 附录 B：迁移与别名
+合计：登记 **17** 条（全部在 `common`）+ 计划中的网关内建 2 条 + 不登记 15 条（skill 7 + plan 4 + agent 4）。
 
-改名会断三类历史数据：`ai_tools` 的配置行、时间线里的工具块、审计里的调用记录。
+## 附录 B：迁移与别名（当前口径）
 
-1. （已不需要）key 没改名，别名表已删除；
-2. 历史时间线里的 key 原样可读；
-3. **`ai_tools` 行就地改名**（唯一索引带软删条件，改名安全），配置跟着走；
-4. （已不需要）key 始终保持扁平，没有改名迁移；
-5. **提示词 / 技能文档里提到旧工具名的地方一起改**，否则模型会照着旧名字调用。
+**key 全程没有改名**（就是原来的扁平工具名），所以不需要别名表。曾短暂采用过的
+`服务名/工具名` 方案已于同日回退；若历史记录里出现过带 `/` 的 key，按原样保留、不再迁移。
+
+- 历史时间线 / 审计里的 key 原样可读；
+- `ai_tools.tool_key` 与能力 key 一致，无需就地改名；
+- 工具名一旦登记不可变：语义变了换新 key，旧 key 标 `deprecated` 保留一个发布周期（§3.8）；
+- 提示词 / 技能文档里提到旧工具名的地方要同步改，否则模型会照着旧名字调用。

@@ -6,7 +6,7 @@ const steps = [
   { cmd: 'pnpm dev:pkgs & pnpm dev:server & pnpm dev:web', note: '并行启动开发环境 · 前台 9840' },
   {
     cmd: 'pnpm dev:admin',
-    note: '管理后台 9845 · 控制台 / 监控 / AI 会话 / 模型 / 工具 / 审计 / 连接器',
+    note: '管理后台 9845 · 控制台 / 监控 / AI 会话 / 模型 / 工具 / 审计',
   },
 ]
 

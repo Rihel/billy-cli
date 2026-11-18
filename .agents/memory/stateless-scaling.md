@@ -13,7 +13,7 @@
 1. **AI 会话工作区在 Pod 本地盘**：`{AGENT_COMMAND_WORK_DIR:-~/.billy/workspaces}/<conversationId>`
    （`core/tools/workspace.ts:16`、`:25`），k8s Deployment **没有挂卷**。重启 / 换副本后
    `bash` 与文件工具看到的工作区是空的 —— 这是「本地 agent 体验」在多副本下的缺口。
-2. **飞书 CLI 连接器**：配置 / 用户 token 已存 `ai_connectors.auth_state`（2026-11-10），
+2. **飞书 CLI 连接器（2026-11-18 已随模块删除）**：配置 / 用户 token 曾存 `ai_connectors.auth_state`，
    调用前 hydrate 到 Pod 本地临时 HOME、调用后 diff 写回，实例级 Redis 锁串行化；
    Pod 本地只剩临时文件，重启 / 换副本不丢授权。
 
@@ -23,7 +23,7 @@
 
 ## 可接受的内存态（不影响正确性）
 
-tool config 5s 缓存、connector state 5s 缓存、web 页缓存（ref 失效会明确提示重新抓）、
+tool config 5s 缓存、web 页缓存（ref 失效会明确提示重新抓）、
 planner / tool result 内存（有 timeline 兜底）、activeRuns 停止广播（Redis）。
 `bash` / lark-cli 产出的文件是 Pod 本地临时物，不是业务真相。
 

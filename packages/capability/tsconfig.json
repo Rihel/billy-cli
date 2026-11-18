@@ -9,7 +9,8 @@
     "skipLibCheck": true,
     "types": ["node"],
     "declaration": true,
-    "verbatimModuleSyntax": false
+    "verbatimModuleSyntax": false,
+    "experimentalDecorators": true
   },
   "include": ["src", "test", "tsdown.config.ts"]
 }

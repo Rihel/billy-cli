@@ -53,7 +53,6 @@
    key 写错在启动期就报错。
 
 `tools` 除了具体 key / `'*'`，还能写结构化选择器：`{ category: 'business' }`、
-`{ connector: 'prod-pg' }`、`{ connector: 'prod-pg', tool: 'query' }`。
 **裁剪思路与授权三层**见 [define-agent.md](./define-agent.md)。
 
 ## 5. 加一个技能（三种入口，别混）
@@ -129,20 +128,3 @@ agent 声明里 `skills: ['*']` 在**每次运行**现算，所以新建 / 停�
   `agentKey` / `tools` 那套字段，不放宽它，否则"工具清单忘了注入"就没人拦）；
 - **子 agent 不注入**：它的提示词由主 agent 现写，`request_snapshot` 要保持原样。
 
-## 9. 加一个连接器（外部能力来源）
-
-**别用工具组写外部集成**——连接器是数据 + 驱动的组合，工具由连接器同步产生。两条路：
-
-1. **只加实例**（不改代码）：后台「AI → 连接器」→ 选型号 → 填地址/账号 → 测试 → 同步；
-2. **加新型号/驱动**（改代码）：
-   `connectors/connector.catalog.ts` 加目录条目（必须给 `defaults`，如 `dialect` / 默认端口）→
-   `connectors/drivers/<name>.driver.ts` 实现 `describe / invoke / probe`（禁 import `@mastra`）→
-   `ai.module.ts` 的 `providers` 与 `CONNECTOR_DRIVERS` 各加一行 → `test/ai-connector.test.ts` 补断言。
-   **命令行型驱动**（样板 `drivers/lark-cli.driver.ts` + `.policy.ts`）：能力面只出一个受限 `run`，
-   参数数组 `spawn` 直跑、不走 shell（detached 进程组，超时/取消按组杀）；白名单写纯函数（禁 `--profile` / `--yes` / 管理命令）；
-   每实例独立 `HOME`、子进程环境变量走白名单；CLI 由 `docker/Dockerfile.agent-runtime` 预装
-   （main 镜像不装 lark-cli，命令行只在 runtime 执行），驱动不做运行期安装。
-
-四条硬口径：工具 key 前缀 `c-<实例>-<工具>`、追溯只认 `connector_id`；连接器工具默认 `scope='admin'`；
-密钥在实例上（`connector-guard` 会嫁接进工具设置，precheck / 脱敏才正常）；驱动异常统一 `upstream`。
-完整步骤与验证清单见 `docs/design/ai-extension-guide.md` §3，设计与取舍见 `docs/design/ai-connector.md`。

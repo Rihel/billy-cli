@@ -1,37 +1,23 @@
 import { describe, expect, it } from 'vitest'
-import { z } from 'zod'
 import { ToolGateway } from '../src/modules/ai/core/tools/tool.gateway.js'
 import { ToolRegistry } from '../src/modules/ai/core/tools/tool.registry.js'
-import { expandToolSelectors } from '../src/modules/ai/core/tools/tool-selector.js'
+import { EXTERNAL_TOOLS, expandToolSelectors } from '../src/modules/ai/core/tools/tool-selector.js'
 import type { ToolSelectorEntry } from '../src/modules/ai/core/tools/tool-selector.js'
-import type { ToolSpec } from '../src/modules/ai/core/tools/tools.types.js'
 import { EventDeclTool } from '../src/modules/ai/tools/tool-event-testkit.js'
 import { buildToolStackDeps, silentLogger } from './helpers/ai-tool-stack.js'
 
 /**
- * 工具选择器（agent 授权清单里的 `*` / `category` / `connector` / 具体 key）。
+ * 工具选择器（agent 授权清单里的 `*` / `category` / 具体 key）。
  *
  * 测两件事：
- * 1. **展开**：四条分支、去重、顺序、连接器零命中（连接器是运行期同步的，启动时可能还没有）；
+ * 1. **展开**：三条分支、去重、顺序；
  * 2. **注册机接线**：具体 key 不存在要在装配期报错；作用域过滤与子 agent 工具面上限。
  */
 
 const entries: ToolSelectorEntry[] = [
   { key: 'plan-create', category: 'core' },
   { key: 'bash', category: 'core' },
-  {
-    key: 'c-local-query',
-    category: 'connector',
-    connectorKey: 'local',
-    connectorToolName: 'query',
-  },
-  {
-    key: 'c-local-list',
-    category: 'connector',
-    connectorKey: 'local',
-    connectorToolName: 'list-tables',
-  },
-  { key: 'c-prod-query', category: 'connector', connectorKey: 'prod', connectorToolName: 'query' },
+  { key: 'query-db', category: 'business' },
 ]
 
 describe('工具选择器：展开', () => {
@@ -44,75 +30,41 @@ describe('工具选择器：展开', () => {
   })
 
   it('按类别选', () => {
-    expect(expandToolSelectors([{ category: 'connector' }], entries)).toEqual([
-      'c-local-query',
-      'c-local-list',
-      'c-prod-query',
-    ])
+    expect(expandToolSelectors([{ category: 'core' }], entries)).toEqual(['plan-create', 'bash'])
+    expect(expandToolSelectors([{ category: 'business' }], entries)).toEqual(['query-db'])
+    expect(expandToolSelectors([{ category: 'runtime' }], entries)).toEqual([])
   })
 
-  it('按连接器选：实例的全部工具', () => {
-    expect(expandToolSelectors([{ connector: 'local' }], entries)).toEqual([
-      'c-local-query',
-      'c-local-list',
-    ])
-  })
-
-  it('按连接器选：精确到一个工具（用接入方原名，不做 key 反解）', () => {
-    expect(expandToolSelectors([{ connector: 'local', tool: 'query' }], entries)).toEqual([
-      'c-local-query',
-    ])
-  })
-
-  it('连接器零命中不是错误（运行期才同步进来）', () => {
-    expect(expandToolSelectors([{ connector: 'not-yet' }], entries)).toEqual([])
+  it('外部工具选择器在本地展开时不做任何事（由装配层从目录补）', () => {
+    expect(expandToolSelectors([EXTERNAL_TOOLS], entries)).toEqual([])
+    expect(expandToolSelectors(['bash', EXTERNAL_TOOLS], entries)).toEqual(['bash'])
   })
 
   it('混写去重且保持首次出现的顺序', () => {
     expect(
-      expandToolSelectors(
-        ['c-local-query', { connector: 'local' }, 'plan-create', 'plan-create'],
-        entries,
-      ),
-    ).toEqual(['c-local-query', 'c-local-list', 'plan-create'])
+      expandToolSelectors(['bash', { category: 'core' }, 'plan-create', 'plan-create'], entries),
+    ).toEqual(['bash', 'plan-create'])
   })
 
-  it('写错的类别 / 连接器 key / 空选择器当场报错', () => {
+  it('写错的类别 / 空选择器当场报错', () => {
     expect(() => expandToolSelectors([''], entries)).toThrowError(/不能为空/)
     expect(() => expandToolSelectors(['plan create'], entries)).toThrowError(/不能包含空白/)
     expect(() => expandToolSelectors([{ category: 'nope' as never }], entries)).toThrowError(
       /未知的工具类别/,
     )
-    expect(() => expandToolSelectors([{ connector: 'Bad Key' }], entries)).toThrowError(
-      /连接器实例 key 不合法/,
+    expect(() => expandToolSelectors([{ foo: 'bar' } as never], entries)).toThrowError(
+      /必须带 category/,
     )
-    expect(() => expandToolSelectors([{ connector: 'local', tool: '  ' }], entries)).toThrowError(
-      /工具名不能为空/,
+    expect(() => expandToolSelectors([{ external: false } as never], entries)).toThrowError(
+      /external 只能是 true/,
     )
-    expect(() =>
-      expandToolSelectors([{ category: 'core', connector: 'local' } as never], entries),
-    ).toThrowError(/只能有 category 或 connector/)
   })
 })
-
-const connectorSpec: ToolSpec = {
-  key: 'c-local-query',
-  title: '查表',
-  description: '连接器产出的只读查询工具',
-  category: 'connector',
-  params: z.object({}),
-  config: z.object({}),
-  events: [],
-  connector: { id: 'conn-1', key: 'local', toolName: 'query' },
-  scope: 'admin',
-  exec: async () => ({}),
-}
 
 const buildRegistry = () => {
   const deps = buildToolStackDeps()
   const gateway = new ToolGateway(deps.config, silentLogger as never, deps.plugins, deps.clock)
   const registry = new ToolRegistry([new EventDeclTool()], gateway, deps.config)
-  registry.registerDynamic('conn-1', [connectorSpec])
   return { deps, registry }
 }
 
@@ -148,9 +100,7 @@ describe('工具选择器：注册机接线', () => {
   it('子 agent 的工具面 = 父授权 ∩ 全部 − 委派类', () => {
     const { registry } = buildRegistry()
     expect([...registry.childToolbox([{ category: 'core' }]).keys()]).toEqual(['test-event-decl'])
-    expect([...registry.childToolbox(['*']).keys()]).toEqual(
-      expect.arrayContaining(['test-event-decl', 'c-local-query']),
-    )
+    expect([...registry.childToolbox(['*']).keys()]).toEqual(['test-event-decl'])
     expect([...registry.childToolbox([]).keys()]).toEqual([])
   })
 })

@@ -37,7 +37,7 @@ const build = () => {
 describe('MemoryExecutor（直连 DB 数据层）', () => {
   it('memory-save 直接调 MemoryService，不经过 server', async () => {
     const { executor, memory } = build()
-    const outcome = await executor.execute('memory-save', request())
+    const outcome = await executor.memorySave(request())
     expect(outcome).toEqual({ ok: true, data: { saved: true, id: 'm-1', key: 'theme' } })
     expect(memory.saveFromTool).toHaveBeenCalledWith('u-1', 'assistant', {
       content: '用户喜欢深色主题',
@@ -46,8 +46,7 @@ describe('MemoryExecutor（直连 DB 数据层）', () => {
 
   it('没有用户身份时拒绝', async () => {
     const { executor } = build()
-    const outcome = await executor.execute(
-      'memory-save',
+    const outcome = await executor.memorySave(
       request({ caller: { ...request().caller, userId: null } }),
     )
     expect(outcome).toMatchObject({ ok: false, reason: 'forbidden' })

@@ -4,7 +4,6 @@ import { usePathname, useRouter } from 'next/navigation'
 import type { ComponentType } from 'react'
 import {
   BoxesIcon,
-  PlugIcon,
   BellRingIcon,
   BrainIcon,
   ChartLineIcon,
@@ -45,7 +44,7 @@ export const MENU_ITEMS: MenuItem[] = [
     key: '/main/dashboard',
     icon: LayoutDashboardIcon,
   },
-  // AI：配置面（模型 / 用量 / Key / 工具 / 技能 / 记忆 / 文件 / 连接器）与运行的审计复盘
+  // AI：配置面（模型 / 用量 / Key / 工具 / 技能 / 记忆 / 文件）与运行的审计复盘
   // （审计只读，不提供删除 —— 运行与时间线是审计证据）。
   // **不在这里放「AI 会话」**：会话是顶层分区（顶栏「会话」），侧栏这一组只放管理台的配置页，
   // 免得同一个目的地有两道门，还让人以为会话是"AI 配置"里的一项。
@@ -61,7 +60,6 @@ export const MENU_ITEMS: MenuItem[] = [
       { label: '记忆', key: '/main/ai/memories', icon: BrainIcon },
       { label: '文件管理', key: '/main/ai/files', icon: FolderOpenIcon },
       { label: '能力服务', key: '/main/ai/capabilities', icon: BoxesIcon },
-      { label: '连接器', key: '/main/ai/connectors', icon: PlugIcon },
       { label: '审计与复盘', key: '/main/ai/audit', icon: HistoryIcon },
     ],
   },

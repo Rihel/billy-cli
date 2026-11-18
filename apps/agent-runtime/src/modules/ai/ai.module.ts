@@ -63,20 +63,10 @@ import {
 } from './memory/index.js'
 import { toMastraSkills } from './mastra/skill.adapter.js'
 import { toMastraTools } from './mastra/tool.adapter.js'
-import { AGENT_TOOL_GROUPS } from './core/tools/tools.types.js'
-import { ConnectorGuardPlugin } from './connectors/connector.guard.plugin.js'
-import { CONNECTOR_STATE_SOURCE } from './connectors/connector.state.js'
-import type { ConnectorStateSource } from './connectors/connector.state.js'
-import { ConnectorRepository } from './connectors/connector.repository.js'
-import { ConnectorService } from './connectors/connector.service.js'
-import { ConnectorSyncService } from './connectors/connector.sync.service.js'
-import { ConnectorSyncSubscriber } from './connectors/connector-sync.subscriber.js'
-import { CONNECTOR_DRIVERS } from './connectors/connector.types.js'
-import type { ConnectorDriver, ConnectorDriverMap } from './connectors/connector.types.js'
-import { ConnectorStateStore } from './connectors/connector-state.store.js'
-import { LarkCliDriver } from './connectors/drivers/lark-cli.driver.js'
-import { RedisDriver } from './connectors/drivers/redis.driver.js'
-import { SqlDriver } from './connectors/drivers/sql.driver.js'
+import { AGENT_TOOL_GROUPS, ALL_TOOLS } from './core/tools/tools.types.js'
+import { createExternalTool } from './core/tools/external.tool.js'
+import { isExternalSelector } from './core/tools/tool-selector.js'
+import type { RemoteToolInvoker } from './core/tools/tool.ports.js'
 import type { ToolEnvCaps } from './core/tools/tools.types.js'
 import type { AgentToolGroup } from './core/tools/tool.class.js'
 import { AGENT_TOOL_PLUGINS, ToolGateway } from './core/tools/tool.gateway.js'
@@ -95,6 +85,7 @@ import { systemToolClock } from './core/tools/tool.clock.js'
 import { ToolCallMetaStore } from './core/tools/tool.meta.js'
 import { ToolResultStore } from './core/tools/tool-result.store.js'
 import { ReadToolResultTool } from './tools/read-tool-result.tool.js'
+import { TaskTool } from './tools/task.tool.js'
 import { FileRepository } from './files/file.repository.js'
 import { FileService } from './files/file.service.js'
 import { FILE_CAPS } from '@repo/ai-data'
@@ -164,12 +155,18 @@ let warnedMissingEnvelope = false
         BashTool,
         RunSubAgentTool,
         ReadToolResultTool,
+        TaskTool,
         WebTools,
         SkillTools,
         FileTools,
         MemoryTools,
       ],
-      useFactory: (...groups: AgentToolGroup[]): AgentToolGroup[] => groups,
+      // 任务工具（wait-task / cancel-task）只在网关模式下有意义：没配网关就没有 worker 任务，
+      // 装配期直接摘掉，避免模型看见两个永远报错的工具。
+      useFactory: (...groups: AgentToolGroup[]): AgentToolGroup[] => {
+        const hasGateway = Boolean(process.env.TOOL_GATEWAY_URL?.trim())
+        return hasGateway ? groups : groups.filter((group) => !(group instanceof TaskTool))
+      },
     },
     // 部署上限（env）：库里的值再大也突破不了
     {
@@ -221,25 +218,15 @@ let warnedMissingEnvelope = false
     // 网关插件链：**数组顺序 = 执行顺序**（redact → paginate → audit-end 不能换）
     {
       provide: AGENT_TOOL_PLUGINS,
-      inject: [
-        TOOL_RATE_COUNTER,
-        AppLogger,
-        ToolResultStore,
-        TOOL_ENV_CAPS,
-        ToolCallMetaStore,
-        CONNECTOR_STATE_SOURCE,
-      ],
+      inject: [TOOL_RATE_COUNTER, AppLogger, ToolResultStore, TOOL_ENV_CAPS, ToolCallMetaStore],
       useFactory: (
         counter: RedisToolRateCounter,
         logger: AppLogger,
         results: ToolResultStore,
         caps: ToolEnvCaps,
         metas: ToolCallMetaStore,
-        connectorStates: ConnectorStateSource,
       ) => [
         new EnabledPlugin(),
-        // 连接器总闸：实例停用 / 缺密钥时拒绝调用（设计 §3.9）
-        new ConnectorGuardPlugin(connectorStates),
         new ScopePlugin(),
         new RateLimitPlugin(counter, logger),
         new ValidatePlugin(),
@@ -256,32 +243,6 @@ let warnedMissingEnvelope = false
     GatewayToolCatalog,
     ToolSeedService,
 
-    // ───────────────────────── 连接器（外部能力来源）─────────────────────────
-    // 驱动是代码、实例是数据：驱动表在这里装配（加一种接法 = 加一个 provider + 一行）
-    ConnectorStateStore,
-    SqlDriver,
-    RedisDriver,
-    LarkCliDriver,
-    {
-      provide: CONNECTOR_DRIVERS,
-      inject: [SqlDriver, RedisDriver, LarkCliDriver],
-      useFactory: (
-        sql: SqlDriver,
-        redis: RedisDriver,
-        larkCli: LarkCliDriver,
-      ): ConnectorDriverMap =>
-        new Map<string, ConnectorDriver>([
-          [sql.kind, sql],
-          [redis.kind, redis],
-          [larkCli.kind, larkCli],
-        ]),
-    },
-    ConnectorRepository,
-    ConnectorService,
-    { provide: CONNECTOR_STATE_SOURCE, useExisting: ConnectorService },
-    ConnectorSyncService,
-    ConnectorSyncSubscriber,
-
     // ───────────────────────── 工具组（运行时能力） ─────────────────────────
     AgentRunner,
     PlannerStore,
@@ -289,6 +250,7 @@ let warnedMissingEnvelope = false
     BashTool,
     RunSubAgentTool,
     ReadToolResultTool,
+    TaskTool,
     WebTools,
     SkillTools,
     {
@@ -362,6 +324,7 @@ let warnedMissingEnvelope = false
         AppLogger,
         AGENT_MEMORY,
         GatewayToolCatalog,
+        REMOTE_TOOL_INVOKER,
       ],
       useFactory: async (
         config: AgentConfigValue,
@@ -372,6 +335,7 @@ let warnedMissingEnvelope = false
         logger: AppLogger,
         memory: ReturnType<typeof createAgentMemory>,
         catalog: GatewayToolCatalog,
+        remote: RemoteToolInvoker | null,
       ) => {
         return createMastra({
           /**
@@ -394,8 +358,8 @@ let warnedMissingEnvelope = false
             return decision.model
           },
           definitions: registry.all(),
-          // 授权清单在这里展开（具体 key / `'*'` / `{ category }` / `{ connector }`）：
-          // 连接器产出的工具是运行期出现的，且作用域要按这一次的身份过滤 —— 没授权的工具不出现
+          // 授权清单在这里展开（具体 key / `'*'` / `{ category }`）：
+          // 工具面按这一次的授权与调用身份过滤 —— 没授权的工具不出现
           resolveTools: async (ids, caller) => {
             const keys = tools.expand(ids)
             // 没有运行时身份（构造期 / 装配期）：只放行 scope='all'，绝不"没身份就全给"
@@ -409,7 +373,23 @@ let warnedMissingEnvelope = false
              */
             const catalogKeys = caller ? await catalog.allowedKeys(caller) : null
             const allowed = applyCatalogToToolFace(local, catalogKeys)
-            return toMastraTools(tools.toolbox(allowed), logger)
+            const toolbox = new Map(tools.toolbox(allowed))
+            /**
+             * 外部工具（MCP / 外部登记服务）：agent 写了 `'*'` 或 `EXTERNAL_TOOLS` 才暴露。
+             * 目录已经按这次身份过滤过（scope），这里只补本地没声明的那些。
+             */
+            const wantsExternal =
+              caller !== undefined &&
+              (ids.includes(ALL_TOOLS) || ids.some((selector) => isExternalSelector(selector)))
+            if (wantsExternal) {
+              const capabilities = await catalog.capabilities(caller)
+              const localKeys = new Set(keys)
+              for (const capability of capabilities ?? []) {
+                if (localKeys.has(capability.key)) continue
+                toolbox.set(capability.key, createExternalTool(capability, remote))
+              }
+            }
+            return toMastraTools(toolbox, logger)
           },
           resolveSkills: async (names) => toMastraSkills(await skillLoader.resolve(names)),
           storage: new AgentMastraStore(db, logger),

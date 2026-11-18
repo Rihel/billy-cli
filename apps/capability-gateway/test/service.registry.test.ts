@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { ToolGatewayConfigValue } from '../src/config/app-config.js'
+import type { Db } from '@repo/kits'
 import { ServiceRegistry } from '../src/registry/service.registry.js'
 
 const config: ToolGatewayConfigValue = {
@@ -32,6 +33,27 @@ const external = (over: Record<string, unknown> = {}) => ({
   baseUrl: 'https://orders.example.com',
   capabilities: [{ tool: 'create', title: '下单', description: '创建订单' }],
   ...over,
+})
+
+describe('ServiceRegistry：协议标识', () => {
+  it('登记快照原样落 protocol（外部 MCP 服务）', async () => {
+    const registry = new ServiceRegistry(config)
+    await registry.register(external({ protocol: 'mcp' }))
+    const service = (await registry.snapshot()).find((item) => item.service === 'order')!
+    expect(service.protocol).toBe('mcp')
+    expect(service.source).toBe('manual')
+  })
+
+  it('旧记录没有 protocol 时按能力协议补齐；内部服务不接受 mcp', async () => {
+    const registry = new ServiceRegistry(config)
+    await registry.register(internal())
+    const service = (await registry.snapshot()).find((item) => item.service === 'exec')!
+    expect(service.protocol).toBe('capability')
+
+    await expect(registry.register(internal({ protocol: 'mcp' }))).rejects.toThrow(
+      '内部服务只支持能力协议',
+    )
+  })
 })
 
 describe('ServiceRegistry：登记与目录', () => {
@@ -119,7 +141,12 @@ describe('ServiceRegistry：登记与目录', () => {
 
     await registry.deregisterService('order')
     expect(await registry.find('create')).toBeNull()
-    expect(await registry.catalog()).toEqual([])
+    // 只有网关内建能力留在目录里（不属于任何服务，不受退役影响）
+    expect((await registry.catalog()).map((item) => item.key)).toEqual([
+      'wait-task',
+      'cancel-task',
+      'tool-search',
+    ])
   })
 
   it('实例摘除只摘流量，服务和能力都还在', async () => {
@@ -162,13 +189,13 @@ describe('ServiceRegistry：登记与目录', () => {
     expect(services[0]!.auth).not.toHaveProperty('credential')
 
     await registry.setStatus('order', 'disabled')
-    expect(await registry.catalog()).toEqual([])
+    expect((await registry.catalog()).filter((item) => item.service !== 'gateway')).toEqual([])
 
     await registry.setStatus('order', 'active')
     expect((await registry.catalog()).map((item) => item.key)).toContain('create')
   })
 
-  it('四个服务身份登记 17 个能力后，目录能列全（exec / web / files / memory）', async () => {
+  it('登记 17 个能力后目录能列全，另含 2 个网关内建能力', async () => {
     const registry = new ServiceRegistry(config)
     const services = {
       exec: ['bash'],
@@ -200,10 +227,50 @@ describe('ServiceRegistry：登记与目录', () => {
     }
 
     const catalog = await registry.catalog()
-    expect(catalog).toHaveLength(17)
+    // 17 个登记能力 + 2 个网关内建（wait-task / cancel-task）
+    expect(catalog).toHaveLength(20)
+    expect(catalog.filter((item) => item.service === 'gateway')).toHaveLength(3)
     expect(catalog.map((item) => item.key)).toEqual(
       expect.arrayContaining(['bash', 'web-fetch', 'read-tool-result', 'memory-search']),
     )
     expect(catalog.every((item) => item.available)).toBe(true)
+  })
+})
+
+describe('ServiceRegistry：目录落 DB（事实源）', () => {
+  const buildDb = () => {
+    const rows: Array<{ id: string; service: string; snapshot: unknown }> = []
+    let seq = 0
+    const repo = {
+      find: async () => [...rows],
+      upsert: async (incoming: Array<{ service: string; snapshot: unknown }>) => {
+        for (const item of incoming) {
+          const found = rows.find((row) => row.service === item.service)
+          if (found) found.snapshot = item.snapshot
+          else rows.push({ id: `id-${++seq}`, service: item.service, snapshot: item.snapshot })
+        }
+      },
+      delete: async (ids: string[]) => {
+        for (const id of ids) {
+          const index = rows.findIndex((row) => row.id === id)
+          if (index >= 0) rows.splice(index, 1)
+        }
+      },
+    }
+    return { db: { getRepository: () => repo } as unknown as Db, rows }
+  }
+
+  it('登记写 DB 快照；新建实例从 DB 恢复目录；退役删行', async () => {
+    const { db, rows } = buildDb()
+    const registry = new ServiceRegistry(config, undefined, undefined, db)
+    await registry.register(external())
+    expect(rows.map((row) => row.service)).toEqual(['order'])
+
+    const reloaded = new ServiceRegistry(config, undefined, undefined, db)
+    expect(await reloaded.find('create')).not.toBeNull()
+    expect((await reloaded.catalog()).map((item) => item.key)).toContain('create')
+
+    await reloaded.deregisterService('order')
+    expect(rows).toEqual([])
   })
 })

@@ -61,7 +61,7 @@ export interface AgentSpec {
   name: string
   description: string
   /**
-   * 允许调用的工具：具体 key（从 `tools/tool-keys.ts` 取）、`'*'`，或按类别 / 连接器批量选
+   * 允许调用的工具：具体 key（从 `tools/tool-keys.ts` 取）、`'*'`，或按类别批量选
    * （见 `core/tools/tool-selector.ts`）。
    */
   tools: readonly ToolSelector[]

@@ -620,6 +620,9 @@ importers:
       '@repo/db':
         specifier: workspace:*
         version: link:../../packages/db
+      '@repo/internal-sdk':
+        specifier: workspace:*
+        version: link:../../packages/internal-sdk
       '@repo/kits':
         specifier: workspace:*
         version: link:../../packages/kits

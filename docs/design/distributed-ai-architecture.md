@@ -1,5 +1,7 @@
 # AI 分布式架构升级（评审稿）
 
+> **历史注记（2026-11-18）**：连接器模块已整体删除（见 `capability-gateway.md` D11），文中连接器相关内容仅作历史论证保留。
+
 > 云端多租户、大量用户直接用 Agent。拆 5 个可独立扩缩容的 app，客户端 API 不变，保住「本地 Agent」体验。
 > **状态（2026-11-14 更新）**：P3 的 main / agent-runtime 拆分与 P5 的 tool-gateway + tool-worker 已落地；
 > model-gateway 未建。本文保留设计论证，**正文里的 `server` / `facade` 分别读作 `main` / `agent-runtime`**；

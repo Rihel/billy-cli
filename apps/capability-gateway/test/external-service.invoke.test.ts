@@ -56,6 +56,7 @@ const registerExternal = async (registry: ServiceRegistry, baseUrl: string): Pro
     owner: 'B 团队',
     source: 'manual',
     baseUrl,
+    allowHttp: true,
     capabilities: [
       {
         tool: 'create',
@@ -185,6 +186,7 @@ describe('外部服务接入（协议 §4.3 / §7）', () => {
       owner: 'B 团队',
       source: 'manual',
       baseUrl,
+      allowHttp: true,
       auth: { mode: 'gateway-injected', header: 'x-api-key', credential: 'secret-1' },
       capabilities: [{ tool: 'create', title: '下单', description: '创建订单' }],
     })

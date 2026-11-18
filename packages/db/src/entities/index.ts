@@ -1,5 +1,5 @@
 export { AdminEntity } from './admin-entity.js'
-export { AiConnectorEntity } from './ai-connector-entity.js'
+export { AiCapabilityServiceEntity } from './ai-capability-service-entity.js'
 export { AiFileEntity } from './ai-file-entity.js'
 export { AiMemoryEntity } from './ai-memory-entity.js'
 export { AiModelEntity } from './ai-model-entity.js'
@@ -24,7 +24,7 @@ export { TimelineEntity } from './timeline-entity.js'
 export { UserEntity } from './user-entity.js'
 
 import { AdminEntity } from './admin-entity.js'
-import { AiConnectorEntity } from './ai-connector-entity.js'
+import { AiCapabilityServiceEntity } from './ai-capability-service-entity.js'
 import { AiFileEntity } from './ai-file-entity.js'
 import { AiMemoryEntity } from './ai-memory-entity.js'
 import { AiModelEntity } from './ai-model-entity.js'
@@ -51,7 +51,7 @@ import { UserEntity } from './user-entity.js'
 /** 全量实体：app 组合根 / 测试 DataSource 直接复用，避免每个 app 各抄一份 */
 export const DB_ENTITIES = [
   AdminEntity,
-  AiConnectorEntity,
+  AiCapabilityServiceEntity,
   AiFileEntity,
   AiMemoryEntity,
   AiModelEntity,

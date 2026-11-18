@@ -33,6 +33,11 @@ export const toolGatewayAppConfigSchema = z.object({
     invokeTimeoutMs: z.coerce.number().int().positive().max(360_000).default(310_000),
     /** 单用户 + 单工具每分钟调用上限（gateway 自己的限流，不是 facade 的 run 准入） */
     rateLimitPerMinute: z.coerce.number().int().positive().default(60),
+    /**
+     * 是否允许外部服务指向内网 / 回环地址（协议 §4.4 的 SSRF 防护）。
+     * 留空按环境兜底：生产禁止、开发 / 测试放行；生产必须显式 false。
+     */
+    allowPrivateNetwork: z.coerce.boolean().optional(),
   }),
 })
 
@@ -40,6 +45,9 @@ export type ToolGatewayAppConfig = z.infer<typeof toolGatewayAppConfigSchema>
 
 export const ToolGatewayConfig = Symbol.for('ToolGatewayConfig')
 export type ToolGatewayConfigValue = ToolGatewayAppConfig['gateway']
+
+const parseBoolean = (value: string | undefined): boolean | undefined =>
+  value === undefined || value === '' ? undefined : value !== 'false'
 
 const optional = (value: string | undefined): string | undefined =>
   value === undefined || value === '' ? undefined : value
@@ -70,6 +78,7 @@ export const mapToolGatewayEnv = (env: NodeJS.ProcessEnv): Record<string, unknow
     staleAfterMs: optional(env.TOOL_WORKER_STALE_MS),
     invokeTimeoutMs: optional(env.TOOL_GATEWAY_TIMEOUT_MS),
     rateLimitPerMinute: optional(env.TOOL_GATEWAY_RATE_LIMIT_PER_MINUTE),
+    allowPrivateNetwork: parseBoolean(env.TOOL_GATEWAY_ALLOW_PRIVATE_NETWORK),
   },
 })
 

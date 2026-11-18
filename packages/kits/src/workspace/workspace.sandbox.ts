@@ -53,7 +53,7 @@ export const defaultDenyPaths = (home = homedir()): string[] => [
   join(home, '.git-credentials'),
   join(home, '.npmrc'),
   join(home, '.config', 'gh'),
-  // 连接器把用户授权落在 CLI 的 HOME 下，不能给命令读到
+  // 外部 CLI 的用户授权落在各自 HOME 下，不能给命令读到
   join(home, '.billy', 'lark-cli'),
 ]
 

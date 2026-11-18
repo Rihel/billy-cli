@@ -1,18 +1,17 @@
 import { Inject, Injectable } from '@nestjs/common'
+import { z } from 'zod'
 import { AppLogger, Db, RedisStore } from '@repo/kits'
 import { TimelineEntity } from '@repo/db'
 import { parsePageHandle, paginate } from '@repo/ai-data'
 import { TimelineKind } from '@repo/shared'
+import { CapabilityDecl, CapabilityGroup, findCapabilityDecl } from '@repo/capability'
 import type { ToolInvokeRequest, ToolOutcome } from '@repo/contracts'
 import { ToolWorkerConfig, type ToolWorkerConfigValue } from '../config/app-config.js'
-import type { ToolExecutor } from '../executors/tool.executor.js'
-import { ReadToolResultParams } from '../capabilities/schemas.js'
 
 /** read-tool-result 直连 Redis / PG：分页全文由 server 的 paginate 插件写 Redis，timeline 兜底 */
 @Injectable()
-export class ReadToolResultExecutor implements ToolExecutor {
-  readonly key = 'read-tool-result'
-
+@CapabilityGroup({ risk: 'read' })
+export class ReadToolResultExecutor {
   constructor(
     @Inject(RedisStore) private readonly redis: RedisStore,
     @Inject(Db) private readonly db: Db,
@@ -20,8 +19,18 @@ export class ReadToolResultExecutor implements ToolExecutor {
     @Inject(AppLogger) private readonly logger: AppLogger,
   ) {}
 
-  async execute(request: ToolInvokeRequest): Promise<ToolOutcome> {
-    const parsed = ReadToolResultParams.safeParse(request.input)
+  @CapabilityDecl({
+    tool: 'read-tool-result',
+    title: '取工具结果下一页',
+    description: '按句柄取分页结果',
+    input: z.object({
+      handle: z.string().min(1).max(128).describe('上一页给出的取页句柄'),
+      page: z.number().int().positive().optional().describe('要取的页码'),
+    }),
+  })
+  async readToolResult(request: ToolInvokeRequest): Promise<ToolOutcome> {
+    // 与登记同一份入参
+    const parsed = findCapabilityDecl(this, 'read-tool-result').input.safeParse(request.input)
     if (!parsed.success) {
       return {
         ok: false,
@@ -30,7 +39,8 @@ export class ReadToolResultExecutor implements ToolExecutor {
         retryable: false,
       }
     }
-    const handle = parsePageHandle(parsed.data.handle)
+    const input = parsed.data as { handle: string; page?: number }
+    const handle = parsePageHandle(input.handle)
     if (!handle) {
       return {
         ok: false,
@@ -73,7 +83,7 @@ export class ReadToolResultExecutor implements ToolExecutor {
     const pageBytes = Number(
       request.settings?.limits.pageBytes ?? request.settings?.config.pageBytes ?? 8 * 1024,
     )
-    const page = paginate(full, pageBytes, parsed.data.page ?? 1, parsed.data.handle)
+    const page = paginate(full, pageBytes, input.page ?? 1, input.handle)
     this.logger.info('tool_worker.read_tool_result', {
       requestId: request.requestId,
       runId: caller.runId,

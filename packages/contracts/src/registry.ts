@@ -11,7 +11,7 @@ export const WorkerRegistrationSchema = z.object({
   endpoint: z.string().url(),
   version: z.string().min(1).max(64),
   zone: z.string().min(1).max(64),
-  /** 支持的 executor 类型（当前只有 bash；后续 web / connector） */
+  /** 支持的 executor 类型（当前只有 bash；后续 web） */
   executors: z.array(z.string()).default([]),
   /** 支持的具体 tool key */
   tools: z.array(z.string()).default([]),

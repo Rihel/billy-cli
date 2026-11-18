@@ -9,15 +9,15 @@ import {
 } from '@repo/contracts'
 
 /**
- * 能力定义的写法（内部服务用）。
+ * 能力与服务定义的**类型与转换**（内部服务用）。
  *
  * 三条口径：
- * - **定义与实现写在同一个服务里**，pkg 只提供这套工具函数，不放具体能力；
- * - 入参用 zod 写，注册前一次性转成 JSON Schema（模型看到的就是它）；
- * - `register: false` 的能力会被声明但不上报（编排原语用）。
+ * - **定义与实现写在同一个服务里**，pkg 只提供机制与类型，不放具体能力；
+ * - 能力不写在这里，写 `@CapabilityDecl`（见 `decorator.ts`）—— 本文件只留类型与转换；
+ * - 入参用 zod 写，登记前一次性转成 JSON Schema（模型看到的就是它）。
  */
 export interface CapabilityDefinition {
-  /** 工具名，服务内唯一（服务名由 `defineService` 给） */
+  /** 工具名，服务内唯一（服务是「一组工具」的登记单位） */
   tool: string
   title: string
   /** 给模型看：什么时候用、什么时候不用、约束 */
@@ -36,19 +36,14 @@ export interface CapabilityDefinition {
   register?: boolean
 }
 
-export const defineCapability = (definition: CapabilityDefinition): CapabilityDefinition =>
-  definition
-
 export interface ServiceDefinition {
-  /** 服务名（namespace），全局唯一 */
+  /** 服务名（全局唯一；一个进程 = 一个服务） */
   service: string
   title: string
   description?: string
   owner: string
   capabilities: CapabilityDefinition[]
 }
-
-export const defineService = (definition: ServiceDefinition): ServiceDefinition => definition
 
 /** zod → JSON Schema（draft 2020-12）；`.describe()` 直接变成 `description` */
 export const toInputSchema = (schema: z.ZodType): Record<string, unknown> => {
@@ -79,9 +74,11 @@ export interface RegistrationOptions {
   baseUrl?: string
   source?: 'code' | 'manual'
   healthPath?: string
+  /** 外部服务的原生协议；内部服务只说能力协议（默认 capability） */
+  protocol?: 'capability' | 'mcp'
 }
 
-/** 服务定义 → 上报给网关的登记体（key 由网关拼，这里不拼） */
+/** 服务定义 → 上报给网关的登记体（key 就是工具名，由网关建索引） */
 export const toRegistration = (
   service: ServiceDefinition,
   options: RegistrationOptions = {},
@@ -92,6 +89,7 @@ export const toRegistration = (
     title: service.title,
     owner: service.owner,
     source: options.source ?? 'code',
+    protocol: options.protocol ?? 'capability',
     ...(service.description === undefined ? {} : { description: service.description }),
     ...(options.baseUrl === undefined ? {} : { baseUrl: options.baseUrl }),
     ...(options.healthPath === undefined ? {} : { healthPath: options.healthPath }),

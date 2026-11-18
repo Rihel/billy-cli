@@ -3,12 +3,14 @@ import {
   CapabilityServiceIdSchema,
   CapabilityServiceListSchema,
   CapabilityServiceSaveSchema,
+  CapabilityServiceMcpPullSchema,
   CapabilityServiceStatusSchema,
   CapabilityServiceTestSchema,
 } from '@repo/shared'
 import type {
   CapabilityServiceIdDto,
   CapabilityServiceListDto,
+  CapabilityServiceMcpPullDto,
   CapabilityServiceSaveDto,
   CapabilityServiceStatusDto,
   CapabilityServiceTestDto,
@@ -59,6 +61,13 @@ export class CapabilityServiceAdminController {
   @HttpCode(200)
   test(@Body({ schema: CapabilityServiceTestSchema }) input: CapabilityServiceTestDto) {
     return this.services.test(input)
+  }
+
+  /** 从 MCP server 拉工具清单（网关做握手 + tools/list），返回给页面确认后再保存 */
+  @Post('pull-mcp')
+  @HttpCode(200)
+  pullMcp(@Body({ schema: CapabilityServiceMcpPullSchema }) input: CapabilityServiceMcpPullDto) {
+    return this.services.pullMcp(input)
   }
 
   /** 拉对方清单（`POST {baseUrl}/manifest`），返回内容给页面确认后再保存 */

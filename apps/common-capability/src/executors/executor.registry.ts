@@ -1,4 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common'
+import { scanCapabilities, type CapabilityDefinition } from '@repo/capability'
+import type { ToolInvokeRequest, ToolOutcome } from '@repo/contracts'
 import { BashExecutor } from './bash.executor.js'
 import { WebFetchExecutor } from '../tools/web/web-fetch.executor.js'
 import { WebSearchExecutor } from '../tools/web/web-search.executor.js'
@@ -11,12 +13,14 @@ import type { ToolExecutor } from './tool.executor.js'
 /**
  * worker 的执行器注册表。
  *
- * 新增工具 = 新写一个 `ToolExecutor` provider 并在构造器里注册；
- * 能力登记时按这里的 key 映射到 `服务名/工具名`，避免“说支持、实际没有”的漂移。
+ * 新增能力 = 给执行器加一个带 `@CapabilityDecl` 的方法（key 就是工具名），这里不再手工列 key：
+ * 注册表从声明扫描绑定（`scanCapabilities`），声明缺执行体在启动期就抛。
  */
 @Injectable()
 export class ToolExecutorRegistry {
   private readonly executors = new Map<string, ToolExecutor>()
+  private readonly declarations = new Map<string, CapabilityDefinition>()
+  private readonly executorInstances: readonly object[]
 
   constructor(
     @Inject(BashExecutor) bash: BashExecutor,
@@ -27,24 +31,35 @@ export class ToolExecutorRegistry {
     @Inject(FileExecutor) file: FileExecutor,
     @Inject(ReadToolResultExecutor) readToolResult: ReadToolResultExecutor,
   ) {
-    this.register(bash)
-    this.register(webFetch)
-    this.register(webSearch)
-    this.register(webRequest)
-    for (const key of memory.keys) {
-      this.register({ key, execute: (request) => memory.execute(key, request) })
+    this.executorInstances = [bash, webFetch, webSearch, webRequest, memory, file, readToolResult]
+    for (const instance of this.executorInstances) {
+      for (const { method, decl } of scanCapabilities(instance)) {
+        const handler = (instance as Record<string, unknown>)[method] as (
+          request: ToolInvokeRequest,
+        ) => Promise<ToolOutcome>
+        this.bind({ key: decl.tool, execute: (request) => handler.call(instance, request) }, decl)
+      }
     }
-    for (const key of file.keys) {
-      this.register({ key, execute: (request) => file.execute(key, request) })
-    }
-    this.register(readToolResult)
   }
 
-  register(executor: ToolExecutor): void {
-    if (this.executors.has(executor.key)) {
-      throw new Error(`执行器重复注册：${executor.key}`)
-    }
-    this.executors.set(executor.key, executor)
+  /** 能力登记用：按声明顺序给出的执行器实例（manifest 从它们聚合能力） */
+  instances(): readonly object[] {
+    return this.executorInstances
+  }
+
+  /** 能力登记用：已绑定的能力声明（与执行体同一份） */
+  definitions(): CapabilityDefinition[] {
+    return [...this.declarations.values()]
+  }
+
+  /** 声明为 `mode:'task'` 的能力（协议 §6：先受理再查/取消） */
+  isTaskTool(toolKey: string): boolean {
+    return this.declarations.get(toolKey)?.execution?.mode === 'task'
+  }
+
+  /** 任务的总寿命（协议 §13 的 `maxRunMs`）：任务执行预算按它算，不按单次 HTTP 的 deadline 算 */
+  maxRunMs(toolKey: string): number {
+    return this.declarations.get(toolKey)?.execution?.maxRunMs ?? 1_800_000
   }
 
   get(toolKey: string): ToolExecutor | undefined {
@@ -53,5 +68,13 @@ export class ToolExecutorRegistry {
 
   tools(): string[] {
     return [...this.executors.keys()]
+  }
+
+  private bind(executor: ToolExecutor, decl: CapabilityDefinition): void {
+    if (this.executors.has(executor.key)) {
+      throw new Error(`执行器重复注册：${executor.key}`)
+    }
+    this.executors.set(executor.key, executor)
+    this.declarations.set(executor.key, decl)
   }
 }

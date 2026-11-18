@@ -11,7 +11,12 @@ import {
   UseFilters,
 } from '@nestjs/common'
 import { AppExceptionFilter } from '@repo/kits'
-import { TOOL_CONTRACT_VERSION, type ToolInvokeRequest } from '@repo/contracts'
+import {
+  TOOL_CONTRACT_VERSION,
+  ToolRuntimeSettingsSchema,
+  type ToolInvokeRequest,
+  type ToolRuntimeSettings,
+} from '@repo/contracts'
 import { z } from 'zod'
 import { ToolWorkerConfig, type ToolWorkerConfigValue } from './config/app-config.js'
 import { TaskManager } from './task.manager.js'
@@ -45,9 +50,6 @@ const InvokeBodySchema = z.object({
   idempotencyKey: z.string().max(128).optional(),
 })
 
-/** 声明为 `mode:'task'` 的能力：先起后台任务，`yieldMs` 内没完就把句柄交回去 */
-const TASK_TOOLS = new Set(['bash'])
-
 /** 一次同步等待的上限（协议 §6：`yieldMs` 默认 45 秒） */
 const YIELD_MS = 45_000
 
@@ -57,6 +59,24 @@ const TaskQuerySchema = z.object({
 })
 
 const TaskCancelSchema = z.object({ taskId: z.string().min(1).max(128) })
+
+/**
+ * 网关下发的工具级配置（`x-capability-config`）：ASCII JSON，或 `b64:` + base64url(JSON)。
+ *
+ * 解析失败按「没有配置」处理（不拦调用）：服务的部署默认值仍然可用。
+ */
+const decodeSettings = (raw: string | undefined): ToolRuntimeSettings | undefined => {
+  if (!raw) return undefined
+  try {
+    const json = raw.startsWith('b64:')
+      ? Buffer.from(raw.slice(4), 'base64url').toString('utf8')
+      : raw
+    const parsed = ToolRuntimeSettingsSchema.safeParse(JSON.parse(json))
+    return parsed.success ? parsed.data : undefined
+  } catch {
+    return undefined
+  }
+}
 
 @Controller()
 @UseFilters(AppExceptionFilter)
@@ -73,6 +93,7 @@ export class CapabilityInvokeController {
   async invoke(
     @Headers('x-internal-token') token: string | undefined,
     @Headers('x-capability-key') capabilityKey: string | undefined,
+    @Headers('x-capability-config') settingsHeader: string | undefined,
     @Body() body: unknown,
   ): Promise<Record<string, unknown>> {
     if (token !== this.config.internalToken) {
@@ -96,6 +117,7 @@ export class CapabilityInvokeController {
     }
     const toolKey = capabilityKey
 
+    const settings = decodeSettings(settingsHeader)
     const request: ToolInvokeRequest = {
       version: TOOL_CONTRACT_VERSION,
       requestId: input.requestId ?? randomUUID(),
@@ -112,11 +134,19 @@ export class CapabilityInvokeController {
         depth: input.caller.depth,
       } as ToolInvokeRequest['caller'],
       deadlineMs: input.deadlineMs,
+      ...(settings === undefined ? {} : { settings }),
     }
 
-    if (TASK_TOOLS.has(input.tool)) {
+    // 任务形态取自能力声明（`execution.mode === 'task'`），不另维护一份 key 列表
+    if (this.executors.isTaskTool(toolKey)) {
+      // 任务执行预算 = 声明的 maxRunMs（协议 §13）：`deadlineMs` 只约束本次 HTTP 的等待窗口，
+      // 不该把还在跑的命令提前杀掉（否则调用方传个小 deadline 就把任务毁了）。
+      const taskRequest: ToolInvokeRequest = {
+        ...request,
+        deadlineMs: this.executors.maxRunMs(toolKey),
+      }
       const snapshot = await this.tasks.start(
-        request,
+        taskRequest,
         Math.max(1_000, Math.min(YIELD_MS, input.deadlineMs - 1_000)),
       )
       if (snapshot.state === 'succeeded') {

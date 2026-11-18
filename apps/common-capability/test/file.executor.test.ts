@@ -41,15 +41,14 @@ const build = () => {
 describe('FileExecutor（直连 FileService）', () => {
   it('file-list 直接调 FileService，不经过 server', async () => {
     const { executor, files } = build()
-    const outcome = await executor.execute('file-list', request())
+    const outcome = await executor.fileList(request())
     expect(outcome).toEqual({ ok: true, data: { files: [] } })
     expect(files.list).toHaveBeenCalledWith('c-1')
   })
 
   it('没有用户身份直接 forbidden', async () => {
     const { executor } = build()
-    const outcome = await executor.execute(
-      'file-list',
+    const outcome = await executor.fileList(
       request({ caller: { ...request().caller, userId: null } }),
     )
     expect(outcome).toMatchObject({ ok: false, reason: 'forbidden' })

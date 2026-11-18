@@ -71,7 +71,7 @@ afterAll(async () => {
 describe('WebFetchExecutor', () => {
   it('抓取 HTML → Markdown，返回分页与 ref', async () => {
     const executor = new WebFetchExecutor(config, logger)
-    const outcome = await executor.execute(request({ url: baseUrl, page: 1 }))
+    const outcome = await executor.webFetch(request({ url: baseUrl, page: 1 }))
     expect(outcome.ok).toBe(true)
     if (!outcome.ok) return
     const data = outcome.data as {
@@ -88,7 +88,7 @@ describe('WebFetchExecutor', () => {
 
   it('缺 url / ref 返回 invalid-input', async () => {
     const executor = new WebFetchExecutor(config, logger)
-    const outcome = await executor.execute(request({ page: 1 }))
+    const outcome = await executor.webFetch(request({ page: 1 }))
     expect(outcome).toMatchObject({ ok: false, reason: 'invalid-input' })
   })
 })

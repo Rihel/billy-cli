@@ -47,9 +47,9 @@ AGENT_WORKSPACE_MODE=enforce                                # 命令隔离：沙
 > 两份 `.env.example` 都已带 `AGENT_INTERNAL_TOKEN=dev-agent-internal`，`pnpm bootstrap` 直接生成；
 > 两端取值必须一致，否则 `/internal/agent/*` 全部 401。
 
-**Kafka（可选，只有连接器同步用）**：`docker compose --profile kafka up -d` 起 Kafka 与 kafka-ui，再执行
-`scripts/kafka-create-topics.sh` 建 `app.ai.connector.sync`。流式对话**不再依赖 Kafka**（2026-11-15 起
-走 Redis pub/sub 定向频道），没配 `KAFKA_BROKERS` 时连接器同步仍能靠 Redis EventBus + 幂等补偿收敛。
+**Kafka（可选）**：`docker compose --profile kafka up -d` 起 Kafka 与 kafka-ui，再执行
+`scripts/kafka-create-topics.sh` 建 topic。连接器模块已于 2026-11-18 删除，当前没有业务 topic 依赖它；
+流式对话走 Redis pub/sub 定向频道。
 
 `OBJECT_STORAGE_ENDPOINT` **可以不配**：对象存储是可选能力（`s3` 下不配 endpoint 即未启用，
 `cos` 由 `OBJECT_STORAGE_PROVIDER` 决定），未配置或 MinIO / S3 不可达时服务照常启动，
@@ -168,8 +168,7 @@ runtime 只有 Deployment + ClusterIP Service，不接公网 Ingress）：
 ### 特性
 
 - **main / agent-runtime**：两个独立镜像，multi-stage + `pnpm deploy --prod` 提取运行时依赖，
-  仅携带编译产物与生产依赖，非 root 用户运行；`lark-cli` 只装在 agent-runtime（飞书 CLI 连接器的
-  执行方，版本由 `LARK_CLI_VERSION` 固定），main 镜像不装
+  仅携带编译产物与生产依赖，非 root 用户运行
 - **web**：Next.js `output: 'standalone'` 模式，产物不携带源码与 devDependencies
 - **基础镜像**：内置 `bash / curl / wget / jq / bind-tools / tzdata（Asia/Shanghai）` 等运维工具，
   并切换 npmmirror 镜像源

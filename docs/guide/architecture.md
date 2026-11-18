@@ -18,7 +18,7 @@
 │   │   │   ├── common/security/         # 仅 main 专属访问控制：token / 身份读取 + 限流守卫 + 「任一身份」编排
 │   │   │   │                            #   （横切 HTTP 构件在 @repo/kits 的 src/http/，两个 app 共用）
 │   │   │   └── modules/                 # 业务模块（13 个）：auth / admin / user / session / monitor / storage / stream /
-│   │   │                                #   runtime-config / share / ai-admin（conversation / file / tool / skill / connector / memory）/
+│   │   │                                #   runtime-config / share / ai-admin（conversation / file / tool / skill / memory）/
 │   │   │                                #   ai-model / ai-usage / ops
 │   │   │                                #   每模块 module + controller + service + index（repository / errors 按需）
 │   ├── agent-runtime/                    # agent loop（@app/agent-runtime，9990，只给 main 调）
@@ -28,7 +28,7 @@
 │   │       ├── main.ts / root.module.ts / app-config.ts / config.ts   # 与 main 同构的装配骨架
 │   │       └── modules/
 │   │           ├── ai/                   # agent loop 主体：api（/internal/agent/*）/ agents / runtime / core /
-│   │           │                         #   tools / files / memory / skills / connectors / mastra / monitoring
+│   │           │                         #   tools / files / memory / skills / mastra / monitoring
 │   │           ├── ai-model/             # 读供应商 / 模型配置（不写库）
 │   │           ├── ai-usage/ ops/            # 用量、探针（监控引擎来自 @repo/monitor）
 │   │           └── （没有 auth / user / storage / share 等控制面模块）
@@ -56,7 +56,7 @@
 │           │   └── api/[[...route]]/   # Hono 内容接口（转发字节，浏览器看不到 OSS 地址）
 │           │   # main/：dashboard / user-center / system/{users,admins}
 │           │   #   / monitor/{status,live,metrics,logs,rules}
-│           │   #   / ai/{chat,chat/[conversationId],audit,connectors,files,models,skills,skills/[skillKey],tools}
+│           │   #   / ai/{chat,chat/[conversationId],audit,files,models,skills,skills/[skillKey],tools}
 │           │   #   其中 chat（(standalone)）与技能编辑器（(canvas)）用沉浸式布局
 │           ├── api/                     # app.ts / share.ts（Hono 路由，挂载到 app/api/[[...route]]）
 │           ├── components/              # AppHeader / AppMenu / AppSider + share-dialog / file-preview-dialog 等
@@ -69,9 +69,9 @@
 │   │   └── src/
 │   │       ├── schema/                  # Zod 共享 schema（auth / admin / user / session / stream / monitor /
 │   │       │                            #   object-storage / app-config / agent / ai-model / ai-tool / ai-tool-event /
-│   │       │                            #   ai-connector / ai-skill / share / base）
+│   │       │                            #   ai-skill / share / base）
 │   │       ├── dicts/                   # app-error-code / user-status / ai / ai-model / ai-tool / ai-tool-event /
-│   │       │                            #   ai-connector / ai-capability / ai-modality / ai-skill 字典
+│   │       │                            #   ai-capability / ai-modality / ai-skill 字典
 │   │       ├── app-response.ts          # AppResponse 统一响应格式 + ResponseUtils
 │   │       ├── logger.ts                # 日志工厂 createLogger（前后端共用；后端经 kits LoggerModule 包装成 AppLogger）
 │   │       ├── browser.ts               # 浏览器端子入口

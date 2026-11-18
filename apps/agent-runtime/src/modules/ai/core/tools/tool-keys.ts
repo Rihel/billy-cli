@@ -46,6 +46,15 @@ export const TOOL_KEYS = {
    */
   readToolResult: 'read-tool-result',
   /**
+   * **任务轮询 / 取消**（网关内建，不属于任何服务）：长任务受理后用它们拿结果或叫停。
+   *
+   * 回调已取消（2026-11-18），轮询是拿长任务的唯一出路；见协议 §10.1。
+   */
+  waitTask: 'wait-task',
+  cancelTask: 'cancel-task',
+  /** 工具检索（网关内建，BM25）：工具多 / 不确定用哪个时先搜 */
+  toolSearch: 'tool-search',
+  /**
    * **搜索网页**：调 DeepSeek 搜索接口（`/v1/tools/search`），返回排序后的来源清单。
    *
    * 与 `web-fetch` 的分工：`web-search` 解决"**不知道答案在哪个网页**"（找来源），

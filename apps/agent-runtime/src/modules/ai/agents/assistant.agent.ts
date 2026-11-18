@@ -7,7 +7,7 @@ import type { AgentSpec } from './types.js'
  * 默认 agent：通用助手（会写任务清单、能造子助手、能联网、能执行命令）。
  *
  * **它是「能力上限」的示例，不是产品形态**：工具面写 `ALL_TOOLS`（全量），
- * 所以连接器产出的工具也自动挂上。使用方定义自己的 agent 时应按职责裁剪
+ * 所以能力目录里的外部工具也会自动挂上。使用方定义自己的 agent 时应按职责裁剪
  * （`docs/guide/ai.md` 的「定义自己的 agent」、skill `develop-ai-agent/references/define-agent.md`）。
  *
  * 「能做什么」由 `tools` 决定：这里只授权**运行时能力**——规划一组四个工具
@@ -36,9 +36,9 @@ export const assistantAgent: AgentSpec = {
   key: 'assistant',
   name: '通用助手',
   description:
-    '日常问答 + 任务清单（创建 / 重排 / 完成 / 删除）+ 联网查资料（搜索 / 抓网页 / 调接口）+ 可临时创建子助手 + 可执行本机命令（默认关闭，仅自用部署显式开启）',
+    '日常问答 + 任务清单（创建 / 重排 / 完成 / 删除）+ 联网查资料（搜索 / 抓网页 / 调接口）+ 可临时创建子助手 + 可执行本机命令（默认关闭，仅自用部署显式开启）+ 长任务轮询 / 取消（wait-task / cancel-task）',
   tools: [
-    // 连接器产出的工具是运行期出现的，用标记展开（见设计 `ai-connector.md` §3.5）
+    // 工具面按授权清单展开，运行期再按调用身份过滤
     ALL_TOOLS,
     TOOL_KEYS.planCreate,
     TOOL_KEYS.planReorder,

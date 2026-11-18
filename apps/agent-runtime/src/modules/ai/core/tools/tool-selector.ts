@@ -2,32 +2,31 @@ import { TOOL_CATEGORY_VALUES } from './tools.types.js'
 import type { ToolCategoryValue } from './tools.types.js'
 
 /**
- * **工具选择器**：agent 授权清单里，除了具体 key，还能按「类别」或「连接器」批量选。
+ * **工具选择器**：agent 授权清单里，除了具体 key，还能按「类别」批量选。
  *
  * 结构化的对象，不用字符串语法 —— agent 是代码定义的，类型检查能在编译期挡住拼写错误，
  * 也省掉一层解析器（`docs/design/ai-agent-tool-engine.md` 的授权一节）。
  *
  * ```ts
  * tools: [
- *   TOOL_KEYS.planCreate,                    // 具体 key（字符串，原来的写法）
- *   ALL_TOOLS,                               // 全量（字符串 '*'，示例 agent 用）
- *   { category: 'connector' },               // 某一类工具
- *   { connector: 'prod-pg' },                // 某个连接器产出的全部工具
- *   { connector: 'prod-pg', tool: 'query' }, // 某个连接器产出的一个工具（工具名用接入方原名）
+ *   TOOL_KEYS.planCreate,   // 具体 key（字符串，原来的写法）
+ *   ALL_TOOLS,              // 全量（字符串 '*'，示例 agent 用）
+ *   { category: 'core' },   // 某一类工具
  * ]
  * ```
  *
- * 口径：
- * - **具体 key 必须存在**：写错在装配期报错（注册机 `spec()` 会抛），不拖到运行期；
- * - **连接器选择器允许零命中**：连接器是运行期同步进来的，启动时可能还没同步；
- * - **只做正向展开，不做 key 反解**：连接器 key 与工具名都含 `-`，反解必然歧义
- *   （见 `connectors/connector.keys.ts`），精确匹配用 spec 上的 `connector.toolName`。
+ * 口径：**具体 key 必须存在**——写错在装配期报错（注册机 `spec()` 会抛），不拖到运行期。
  */
 
-/** 按类别 / 连接器批量选 */
-export type ToolPattern =
-  | { readonly category: ToolCategoryValue }
-  | { readonly connector: string; readonly tool?: string }
+/** 按类别批量选，或"全部外部工具" */
+export type ToolPattern = { readonly category: ToolCategoryValue } | { readonly external: true }
+
+/** 授权清单里的"全部外部工具"（能力目录里、本地没声明的那些） */
+export const EXTERNAL_TOOLS = { external: true } as const
+
+/** 是不是"全部外部工具"选择器 */
+export const isExternalSelector = (selector: ToolSelector): boolean =>
+  typeof selector === 'object' && 'external' in selector
 
 /** 授权清单里的一项：具体 key（含 `'*'`）或批量选择器 */
 export type ToolSelector = string | ToolPattern
@@ -36,16 +35,7 @@ export type ToolSelector = string | ToolPattern
 export interface ToolSelectorEntry {
   key: string
   category: ToolCategoryValue
-  /** 连接器产出的工具才有：实例 key */
-  connectorKey?: string
-  /** 连接器产出的工具才有：接入方的工具原名（不是归一化后的 key 尾巴） */
-  connectorToolName?: string
 }
-
-/** 连接器选择器里的实例 key 口径（与 `isValidConnectorKey` 一致） */
-const CONNECTOR_KEY_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
-/** 实例 key 的最大长度（与 `ai_connectors.key` 的 varchar(32) 一致） */
-const CONNECTOR_KEY_MAX = 32
 
 const isCategory = (value: string): value is ToolCategoryValue =>
   (TOOL_CATEGORY_VALUES as readonly string[]).includes(value)
@@ -62,31 +52,17 @@ const assertSelector = (selector: ToolSelector): void => {
     if (/\s/.test(selector.trim())) throw new Error(`工具选择器不能包含空白：${selector}`)
     return
   }
-  const hasCategory = 'category' in selector
-  const hasConnector = 'connector' in selector
-  if (hasCategory === hasConnector) {
-    throw new Error('工具选择器必须且只能有 category 或 connector 其中之一')
-  }
-  if (hasCategory) {
-    if (!isCategory(selector.category)) {
-      throw new Error(
-        `未知的工具类别：${String(selector.category)}（可用：${TOOL_CATEGORY_VALUES.join(' / ')}）`,
-      )
-    }
+  if ('external' in selector) {
+    if (selector.external !== true) throw new Error('工具选择器 external 只能是 true')
     return
   }
-  const { connector, tool } = selector as { connector: string; tool?: string }
-  if (
-    !connector ||
-    !CONNECTOR_KEY_PATTERN.test(connector) ||
-    connector.length > CONNECTOR_KEY_MAX
-  ) {
-    throw new Error(
-      `连接器实例 key 不合法：${connector || '(空)'}（小写字母 / 数字 / 连字符，且不超过 ${CONNECTOR_KEY_MAX} 位）`,
-    )
+  if (!('category' in selector)) {
+    throw new Error('工具选择器必须带 category 或 external')
   }
-  if (tool !== undefined && !tool.trim()) {
-    throw new Error('连接器选择器里的工具名不能为空')
+  if (!isCategory(selector.category)) {
+    throw new Error(
+      `未知的工具类别：${String(selector.category)}（可用：${TOOL_CATEGORY_VALUES.join(' / ')}）`,
+    )
   }
 }
 
@@ -119,16 +95,9 @@ export const expandToolSelectors = (
       }
       continue
     }
-    if ('category' in selector) {
-      for (const entry of entries) {
-        if (entry.category === selector.category) push(entry.key)
-      }
-      continue
-    }
+    if ('external' in selector) continue // 外部工具不在本地注册机里，由装配层从目录补
     for (const entry of entries) {
-      if (entry.connectorKey !== selector.connector) continue
-      if (selector.tool !== undefined && entry.connectorToolName !== selector.tool) continue
-      push(entry.key)
+      if (entry.category === selector.category) push(entry.key)
     }
   }
 

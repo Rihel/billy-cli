@@ -9,6 +9,7 @@ const toReason = (reason: string): ToolDenyReasonValue => {
   if (reason === 'forbidden') return 'forbidden'
   if (reason === 'rate-limited') return 'rate-limited'
   if (reason === 'disabled') return 'disabled'
+  if (reason === 'mcp-tool-error') return 'upstream'
   if (
     reason === 'no-provider' ||
     reason === 'busy' ||
@@ -40,7 +41,7 @@ export const createRemoteToolInvoker = (
   const tools = new Set(
     (
       env.TOOL_GATEWAY_TOOLS ??
-      'bash,web-fetch,web-search,memory-save,memory-search,memory-forget,file-submit,file-download,file-list,read-file,file-search,workspace-files,write-file,replace-file,append-file,read-tool-result,web-request'
+      'bash,web-fetch,web-search,memory-save,memory-search,memory-forget,file-submit,file-download,file-list,read-file,file-search,workspace-files,write-file,replace-file,append-file,read-tool-result,web-request,wait-task,cancel-task,tool-search'
     )
       .split(',')
       .map((item) => item.trim())
@@ -90,5 +91,33 @@ export const createRemoteToolInvoker = (
         } as ToolOutcome
       }
     },
+  }
+}
+
+/**
+ * 停止一轮对话时**级联取消本轮发起的网关任务**（协议 §9）。
+ *
+ * 只取消网关记录的 `owner=session` 任务（`POST /v1/tasks/cancel-run`）——
+ * `owner=user` / `tenant` 的业务任务不能因为关掉对话就回滚，那得走显式操作。
+ * 失败只记 warn：本地停止流程不能被网关拖住。
+ */
+export const cancelRemoteRunTasks = async (
+  runId: string,
+  logger?: { warn: (message: string, meta?: Record<string, unknown>) => void },
+): Promise<void> => {
+  const url = process.env.TOOL_GATEWAY_URL?.trim()
+  if (!url) return
+  const token =
+    process.env.TOOL_GATEWAY_TOKEN?.trim() ||
+    process.env.TOOL_INTERNAL_TOKEN?.trim() ||
+    'dev-tool-token'
+  try {
+    const client = new CapabilityGatewayClient({ baseUrl: url, token, timeoutMs: 3_000 })
+    await client.cancelRunTasks(runId)
+  } catch (error) {
+    logger?.warn('ai.tool.task_cancel_failed', {
+      runId,
+      reason: error instanceof Error ? error.message : String(error),
+    })
   }
 }

@@ -1,2 +1,3 @@
+export * from './decorator.js'
 export * from './define.js'
-export * from './registry-client.js'
+export * from './registrar.js'

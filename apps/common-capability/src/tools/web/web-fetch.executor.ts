@@ -1,5 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common'
+import { z } from 'zod'
 import { AppLogger } from '@repo/kits'
+import { CapabilityDecl, CapabilityGroup, findCapabilityDecl } from '@repo/capability'
 import type { ToolInvokeRequest, ToolOutcome } from '@repo/contracts'
 import {
   BROWSER_UA,
@@ -22,8 +24,13 @@ import {
   type WebResponse,
 } from '@repo/web-runtime'
 import { ToolWorkerConfig, type ToolWorkerConfigValue } from '../../config/app-config.js'
-import type { ToolExecutor } from '../../executors/tool.executor.js'
-import { WebFetchParams } from '../../capabilities/schemas.js'
+
+/** 声明里那份 zod 解析出来的形状（机制包宽类型丢了推导，这里补一处结构断言） */
+interface WebFetchInput {
+  url?: string
+  ref?: string
+  page: number
+}
 
 interface WebPageOutput {
   ref: string
@@ -191,8 +198,8 @@ const present = (
  * 需要按工具改参时，再把 settings 放进契约由 gateway 下发。
  */
 @Injectable()
-export class WebFetchExecutor implements ToolExecutor {
-  readonly key = 'web-fetch'
+@CapabilityGroup({ risk: 'read' })
+export class WebFetchExecutor {
   private readonly cache = new WebCache()
 
   constructor(
@@ -200,8 +207,29 @@ export class WebFetchExecutor implements ToolExecutor {
     @Inject(AppLogger) private readonly logger: AppLogger,
   ) {}
 
-  async execute(request: ToolInvokeRequest): Promise<ToolOutcome> {
-    const parsed = WebFetchParams.safeParse(request.input)
+  @CapabilityDecl({
+    tool: 'web-fetch',
+    title: '抓取网页',
+    description: '抓取网页并转成 Markdown，按页返回；续页用 ref + page。',
+    input: z.object({
+      url: z.string().min(1).max(2048).optional().describe('要抓的网页地址；首次抓取必填'),
+      ref: z
+        .string()
+        .min(1)
+        .max(64)
+        .optional()
+        .describe('上一次抓取返回的缓存句柄；读后续页时传它'),
+      page: z
+        .number()
+        .int()
+        .positive()
+        .default(1)
+        .describe('要第几页（从 1 开始，1 页 = 1000 行）'),
+    }),
+  })
+  async webFetch(request: ToolInvokeRequest): Promise<ToolOutcome> {
+    // 与登记同一份入参
+    const parsed = findCapabilityDecl(this, 'web-fetch').input.safeParse(request.input)
     if (!parsed.success) {
       return {
         ok: false,
@@ -210,7 +238,7 @@ export class WebFetchExecutor implements ToolExecutor {
         retryable: false,
       }
     }
-    const input = parsed.data
+    const input = parsed.data as WebFetchInput
     const web = this.config.web
     const config = {
       timeoutMs: web.timeoutMs,
@@ -224,7 +252,7 @@ export class WebFetchExecutor implements ToolExecutor {
     try {
       if (input.ref) {
         const cached = this.cache.get(input.ref, config.cacheTtlMs)
-        if (cached) return { ok: true, data: present(cached, input.page, true, this.key) }
+        if (cached) return { ok: true, data: present(cached, input.page, true, 'web-fetch') }
         if (!input.url) {
           return {
             ok: false,
@@ -248,7 +276,7 @@ export class WebFetchExecutor implements ToolExecutor {
       const target = normalizeUrl(input.url)
       const ref = makeRef('web-fetch', target.href, config.pageLines)
       const hit = this.cache.get(ref, config.cacheTtlMs)
-      if (hit) return { ok: true, data: present(hit, input.page, true, this.key) }
+      if (hit) return { ok: true, data: present(hit, input.page, true, 'web-fetch') }
 
       const started = Date.now()
       const response = await fetchGuarded(target.href, {
@@ -311,7 +339,7 @@ export class WebFetchExecutor implements ToolExecutor {
       })
       return {
         ok: true,
-        data: present(doc, input.page, false, this.key, {
+        data: present(doc, input.page, false, 'web-fetch', {
           ...(body.note ? { note: body.note } : {}),
           ...(via ? { via } : {}),
         }),

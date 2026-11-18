@@ -10,7 +10,7 @@
 `src/app/globals.css` 只保留设计系统入口、`@source` 与前台专属的 `@keyframes`。
 
 - 页面：`/`（首页）、`/auth/*`（登录 / 注册 / 忘记密码 / 重置密码）、`/account`（**个人中心**：账号资料）与 `/account/sessions`（**登录设备**：列表 + 单设备下线），受保护用户区、`/comparison`（竞品调研）、`/markdown/*`（Markdown 渲染示例）
-- 首页（`components/landing/*`）：Hero → 事实横带 → 技术栈滚动 → **AI 能力**（对话 / 工具 / 连接器）→ 可观测性 → 设计系统 → 维护性 → 快速开始 → CTA；页面上的数字（内建工具 / 连接器型号 / Agent Skills / ai-elements）应与 README 同一口径，改能力时两处一起改
+- 首页（`components/landing/*`）：Hero → 事实横带 → 技术栈滚动 → **AI 能力**（对话 / 工具）→ 可观测性 → 设计系统 → 维护性 → 快速开始 → CTA；页面上的数字（内建工具 / Agent Skills / ai-elements）应与 README 同一口径，改能力时两处一起改
 - Server Actions（`actions/auth.actions.ts`）封装登录 / 注册 / 忘记密码 / 重置密码 / 登出，token 写入 httpOnly cookie
 - `lib/server-client.ts`：调用 `@repo/sdk` 的 `createAppClients` 装配 HTTP 客户端（浏览器端单例 + 服务端无状态客户端 + 凭证读写），本文件只注入 `tokenKey` / 两端地址 / 401 善后；`lib/constants.ts` 的地址解析走 `@repo/shared` 的 `createAppUrlConfig`（环境变量读取留在 app，`NEXT_PUBLIC_*` 需构建期替换）；httpOnly cookie 在 `lib/auth-session.ts` 读取
 - `providers/QueryProvider.tsx` 注入 TanStack Query（`QueryCache` / `MutationCache` 的 `onError` 统一 toast）；`providers/WebStorageProvider.tsx` 把 `@repo/ui` 的上传组件接到 `storage.getPresignedUrl`；`providers/ThemeProvider.tsx` 应用已存储 / 系统的主题（**前台已支持暗色**，入口在落地页头部与移动端抽屉）
@@ -33,7 +33,6 @@
   AI 八页：`/main/ai/chat`（会话，含运行详情；具体会话为 `/main/ai/chat/[conversationId]`）、
   `/main/ai/models`（供应商 / 模型）、
   `/main/ai/tools`（工具开关与限额）、`/main/ai/audit`（调用审计 / 用量）、
-  `/main/ai/connectors`（连接器：数据库 / Redis / 飞书 CLI 实例）、
   `/main/ai/files`（AI 文件管理：跨会话列表 / 预览 / 分享；总量统计在控制台）、
   `/main/ai/skills`（AI 技能库；`/main/ai/skills/[skillKey]` 是沉浸式技能编辑器）、
   `/main/ai/memories`（长期记忆：按用户查看 / 编辑 / 停用 / 删除）

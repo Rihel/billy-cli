@@ -28,15 +28,15 @@ const stages = [
     no: '04',
     icon: Plug,
     title: '能连外部',
-    desc: '数据库、Redis、飞书 CLI 在后台加一条连接器，就产出一组模型能调的工具。地址、凭证、开关、限额、审计都挂在连接器上，接一个新系统不用改代码、不用发版。',
-    chips: ['postgres / mysql', 'redis', 'lark-cli', 'ai-connector'],
+    desc: '外部服务实现一个 POST /invoke，后台登记地址、鉴权与能力清单，就产出一组模型能调的工具。探活、开关、限额、审计都归能力网关，接一个新系统不用改网关代码。',
+    chips: ['能力网关', '外部登记', '探活'],
   },
 ]
 
 const facts = [
   ['conversations · runs · timelines', '会话、运行、时间线三张表，全部入库'],
   ['29 个内建工具', '计划、子 agent、命令、联网、取页、记忆、技能库、文件'],
-  ['4 类连接器', '数据库 / Redis / 飞书 CLI，一行数据接一个外部系统'],
+  ['17 项网关能力', 'bash / web / 文件 / 记忆 / 任务轮询，一个进程一个服务'],
   ['48 个 ai-elements', '会话、消息、推理、工具、计划'],
 ]
 
@@ -61,8 +61,7 @@ export function AiSection() {
                 到能上线
               </h2>
               <p className="mt-6 max-w-sm text-base leading-relaxed text-muted-foreground">
-                不是接一个模型
-                API、画一个聊天框就结束。会话、流式、工具、连接器、权限、恢复、用量、审计
+                不是接一个模型 API、画一个聊天框就结束。会话、流式、工具、权限、恢复、用量、审计
                 都在仓库里跑通，你要改的是提示词、工具和业务。
               </p>
 
@@ -143,7 +142,8 @@ export class OrderTools {
                 <p className="border-t border-border px-5 py-3 text-xs leading-relaxed text-muted-foreground">
                   写进 <code className="font-mono text-foreground">AGENT_TOOL_GROUPS</code>{' '}
                   就注册完成： 参数自动生成给模型的 schema，开关、限额、审计、分页由网关统一处理。
-                  不想写代码也可以走连接器：后台加一行数据，同样产出受管工具。
+                  不想写代码也可以接外部服务：后台登记一个实现 POST /invoke
+                  的服务，同样产出受管工具。
                 </p>
               </div>
             </Reveal>

@@ -13,10 +13,10 @@ Zod schema 单一事实源，同时派生 TypeScript 类型（`*.schema.ts` 导�
   基石，不导出类型。
 - `schema/`（16 个 schema 文件 + `index.ts` 汇总导出）：auth / admin / user / session / stream（SSE 事件与订阅）/
   monitor（告警规则、日志、健康检查）/ object-storage / app-config / agent / ai-model / ai-tool /
-  ai-tool-event / ai-connector / ai-skill（技能库）/ share（免授权文件分享）/ base（模型与分页、游标基类）
+  ai-tool-event / ai-skill（技能库）/ share（免授权文件分享）/ base（模型与分页、游标基类）
 - `dicts/`（10 个字典 + `index.ts`）：`app-error-code.dict.ts`（错误码字典：`value` + `http` + `label`，业务抛错、
   server 映射、前端文案共用同一份定义）、`user-status.dict.ts`，以及 AI 相关字典（`ai` / `ai-model` / `ai-tool` /
-  `ai-tool-event` / `ai-connector` / `ai-capability` / `ai-modality` / `ai-skill`）
+  `ai-tool-event` / `ai-capability` / `ai-modality` / `ai-skill`）
 - `app-response.ts`：`AppResponse<T>` / `AppPageQueryResponse<T>` / `AppCursorQueryResponse<T>` 与
   `ResponseUtils`（`success` / `error` / `isSuccess`）
 - `logger.ts`：日志工厂 `createLogger(name, pretty, level, { redact, transport })`，

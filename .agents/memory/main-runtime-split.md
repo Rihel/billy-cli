@@ -7,7 +7,7 @@
 - **两个 Nest 应用**：`apps/main`（`@app/main`，9989，公网 BFF）与 `apps/agent-runtime`
   （`@app/agent-runtime`，9990，只跑 agent loop）。前端只连 main。
 - **main**：auth / user / admin / session / storage / share / monitor / ops / config、全部 AI CRUD
-  （ai-model / ai-tool / ai-skill / ai-connector / ai-memory / conversation / run / timeline / usage）、
+  （ai-model / ai-tool / ai-skill / ai-memory / conversation / run / timeline / usage）、
   `/agent/*` 的 SSE 中继与 `/agent/file/*`（含 `workspace-content`）。
 - **runtime**：只有 `/internal/agent/{chat/stream, chat/resume, run/stop, run/stream, run/:runId/stream}`
   与 `/healthz`、`/readyz`、`/info`；无 public controller / 用户鉴权，只校验 `x-internal-token`
@@ -16,7 +16,7 @@
   之前是 Kafka `agent.run.events`）；main `AgentSseBridge` 订阅后写 SSE，`final` → `[DONE]`。
   详见 [sse-transport](sse-transport.md)。
 - **配置事件**：`ai.skill.changed` 走 Redis EventBus（runtime 落盘 + 启动全量 sync 兜底）；
-  `ai.connector.sync` 走 Redis + Kafka 双发（runtime 按 `connectorId + requestedAt` 幂等）。
+  （`ai.connector.sync` 随连接器模块 2026-11-18 删除一并移除。）
 - **已补**：`run/stop`、`chat/resume`、`GET /agent/run/stream` 重连；file 的 HTTP 在 main，
   runtime 只有文件工具执行侧。`dev:stack` 起全套，`kill:start` 端口含 9990。
 

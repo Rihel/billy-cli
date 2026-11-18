@@ -64,6 +64,7 @@ describe('ToolExecutorRegistry', () => {
       new FileExecutor({} as FileService, {}, logger),
       new ReadToolResultExecutor({} as RedisStore, {} as Db, config, logger),
     )
+    // 顺序 = 各执行器里 @CapabilityDecl 的声明顺序（扫描绑定，不手抄清单）
     expect(registry.tools()).toEqual([
       'bash',
       'web-fetch',
@@ -72,15 +73,15 @@ describe('ToolExecutorRegistry', () => {
       'memory-save',
       'memory-search',
       'memory-forget',
-      'file-submit',
-      'file-download',
       'file-list',
       'read-file',
-      'file-search',
-      'workspace-files',
       'write-file',
-      'replace-file',
       'append-file',
+      'replace-file',
+      'file-search',
+      'file-submit',
+      'file-download',
+      'workspace-files',
       'read-tool-result',
     ])
     await registry.get('bash')!.execute(request('bash'))

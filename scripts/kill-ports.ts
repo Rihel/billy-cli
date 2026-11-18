@@ -3,7 +3,7 @@
  * 跨平台按端口停进程（生产 start / 本地起服务后收尾用）。
  *
  * 用法：
- *   pnpm kill:start              # 默认停 web 9840 / admin 9845 / server 9989 / gateway 9993 / worker 9994
+ *   pnpm kill:start              # 默认停 web 9840 / admin 9845 / server 9989 / runtime 9990 / model-gateway 9992 / gateway 9993 / worker 9994
  *   pnpm kill:port 3001 8080     # 停指定端口
  *   ... --dry-run                # 只列出将被停止的进程（-n 同义）
  *   ... --force                  # 跳过「进程不属于本仓库」的保护
@@ -26,7 +26,7 @@ import colors from 'picocolors'
 
 const IS_WIN = process.platform === 'win32'
 const ROOT = realpathSync(fileURLToPath(new URL('..', import.meta.url)))
-const DEFAULT_PORTS = [9840, 9845, 9989, 9990, 9993, 9994]
+const DEFAULT_PORTS = [9840, 9845, 9989, 9990, 9992, 9993, 9994]
 const TERM_GRACE_MS = 2000
 
 const args = process.argv.slice(2)
@@ -37,7 +37,7 @@ const help = args.includes('--help') || args.includes('-h')
 if (help) {
   console.log(`用法：pnpm kill:start [端口...] [--dry-run] [--force]
 
-  不带端口时默认 ${DEFAULT_PORTS.join(' / ')}（web / admin / server / gateway / worker）
+  不带端口时默认 ${DEFAULT_PORTS.join(' / ')}（web / admin / server / runtime / model-gateway / gateway / worker）
   --dry-run, -n  只列出会被停止的进程，不做终止
   --force        跳过「进程不属于本仓库」的保护（误杀风险自负）
 `)

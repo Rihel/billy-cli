@@ -86,8 +86,8 @@ export const createMastra = async ({
 }: CreateMastraOptions): Promise<Mastra> => {
   const built = new Map<string, ReturnType<typeof createMastraAgent>>()
   for (const definition of definitions) {
-    // 工具面**按请求解析**（设计 `ai-connector.md` §3.5）：
-    // 连接器产出的工具是运行期出现的，不能在建实例时烙死；作用域也要按这次的身份过滤
+    // 工具面**按请求解析**（按调用身份过滤作用域）：
+    // 工具面不能在建实例时烙死：授权与作用域要按这次的身份过滤
     // （没授权的工具根本不出现，而不是出现后被拒）。
     const buildTools = async (requestContext?: RequestContext): Promise<ToolsInput> => {
       const envelope = readEnvelope(requestContext)

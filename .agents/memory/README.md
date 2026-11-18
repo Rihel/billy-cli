@@ -76,8 +76,7 @@
 | [ui-data-table-column-id](ui-data-table-column-id.md) | DataTable 用列 id 当 key：同一 columns 数组里两列共用 `accessorKey` 会刷屏重复 key 告警 | 抽核 | 2026-11-07 |
 | [ui-scrollbar](ui-scrollbar.md) | 原生滚动条伪元素不支持过渡 → 视觉由 `OverlayScrollbar` 自己画（淡入淡出、只跟随被滚容器）；Chromium 写了 `scrollbar-width`/`scrollbar-color` 会关掉 `::-webkit-scrollbar` 定制 | 抽核 | 2026-11-13 |
 | [scaffold-cli-removed](scaffold-cli-removed.md) | 2026-11-09 起没有代码生成器与模板副本，新模块照现有实现手写；守卫为 check:inject / check:mastra / check:ui | 免核 | 2026-11-09 |
-| [lark-cli-connector](lark-cli-connector.md) | @larksuite/cli 是下载 Go 二进制的 launcher；skills 内嵌；config 在 HOME；whoami 不能探活、doctor 才行 | 抽核 | 2026-11-09 |
-| [product-facts](product-facts.md) | README / 落地页 / pitch 共用的能力数字口径（工具 26 / 连接器 4 / skill 28 / ai-elements 48 …） | 必核 | 2026-11-13 |
+| [product-facts](product-facts.md) | README / 落地页 / pitch 共用的能力数字口径（工具 26 / skill 28 / ai-elements 48 …；连接器已删除） | 必核 | 2026-11-13 |
 | [ai-tool-key-naming](ai-tool-key-naming.md) | 能力 key = 扁平工具名（`xxx-xxx`），全局唯一；服务是工具的分组（1:N），模型面与 key 相同 | 免核 | 2026-11-18 |
 | [agent-tool-authorization](agent-tool-authorization.md) | agent 授权是结构化选择器；作用域装配期过滤工具面；子 agent = 父授权 ∩ 全部 − 委派 − deny，并按 caller 过滤 | 必核 | 2026-11-14 |
 | [ui-dialog-escape](ui-dialog-escape.md) | Base UI Dialog 没有 `onEscapeKeyDown`：Esc 要先退全屏 / 不关窗，就在 `onOpenChange` 里看 `details.reason === 'escape-key'` 并 `details.cancel()` | 必核 | 2026-11-15 |
@@ -89,13 +88,13 @@
 | [main-runtime-dedup](main-runtime-dedup.md) | main / runtime 的共享边界：横切 HTTP 在 kits、监控引擎在 @repo/monitor、静态声明只在 runtime、实体直接进 @repo/db | 抽核 | 2026-11-14 |
 | [stateless-scaling](stateless-scaling.md) | 核心业务无状态可多副本；AI memory 已落 Redis，飞书 CLI 状态在 Pod 本地，工作区仍在 Pod 本地盘 | 抽核 | 2026-11-14 |
 | [db-package](db-package.md) | `@repo/db` 统一实体/迁移；main / runtime 用 `DB_ENTITIES`，gateway 只注册审计实体；迁移 CLI 仍挂在 agent-runtime | 必核 | 2026-11-14 |
-| [tool-metadata-authority](tool-metadata-authority.md) | 能力定义在服务（zod）；网关目录权威；runtime 只留模型面副本；`@repo/tool-catalog` 已删 | 必核 | 2026-11-18 |
+| [tool-metadata-authority](tool-metadata-authority.md) | 能力定义在服务（`@CapabilityDecl` 内联 zod）；网关目录权威（扁平 key + inputSchema）；runtime 只留模型面副本；`@repo/tool-catalog` 已删 | 必核 | 2026-11-18 |
 | [ai-tool-result-internal-api](ai-tool-result-internal-api.md) | read-tool-result 改 worker 直连 Redis/PG，旧取页 API 已删 | 必核 | 2026-11-14 |
 | [ai-file-internal-api](ai-file-internal-api.md) | file 已改 worker 直连 PG/OSS，旧 worker→控制面 API 已删除 | 必核 | 2026-11-14 |
 | [ai-skill-internal-api](ai-skill-internal-api.md) | skill-* 留在 agent-runtime 本地执行，worker→控制面旧 API 已删 | 必核 | 2026-11-14 |
 | [ai-memory-internal-api](ai-memory-internal-api.md) | memory 已改 worker 直连 DB；旧 worker→控制面内部 API 已删除 | 必核 | 2026-11-14 |
-| [common-capability-executors](common-capability-executors.md) | worker 执行器契约 + registry；已接 bash/web-fetch；web ref 经 Redis 亲和回同一 worker | 必核 | 2026-11-14 |
-| [ai-capability-gateway-control-plane](ai-capability-gateway-control-plane.md) | gateway 已闭环 bash：静态目录 / scope+validate+rate-limit / `ai_tool_audit`；runtime 远程在插件链前短路；**信封必须在审计外层**（写反 → 所有工具 500 `5001`，结果被吞） | 必核 | 2026-11-15 |
+| [common-capability-executors](common-capability-executors.md) | 执行器 = 能力组：`@CapabilityGroup` + 方法级 `@CapabilityDecl`，注册表扫描绑定 17 个能力（只有 bash 是 task） | 必核 | 2026-11-18 |
+| [ai-capability-gateway](ai-capability-gateway.md) | 本地口径：一个进程 = 一个服务 `common`（17 能力）；装饰器定义；登记 HTTP 只在 internal-sdk；protocol / inputSchema 全链路；admin 页与 toast `z-[100]` | 必核 | 2026-11-18 |
 | [ai-run-queue](ai-run-queue.md) | 异步子 agent 的会话 run 队列：新表、优先级、dedupe、当前实施边界 | 抽核 | 2026-11-15 |
 | [ai-subagent-subconversation](ai-subagent-subconversation.md) | 子 agent 建子会话：run/timeline 挂子会话，工作区/文件归根会话；列表只出根、删父级联；用量仍只算子 run 的父 | 必核 | 2026-11-14 |
 | [ai-scale-bottlenecks](ai-scale-bottlenecks.md) | 扛流量的六个卡点：512Mi 限额、无准入、工作区本地盘、Redis 缓冲无字节上限、DB 池 10/实例、时间线无分区 | 必核 | 2026-11-14 |
@@ -106,7 +105,7 @@
 | [engineering-toolchain](engineering-toolchain.md) | oxlint + oxfmt + lefthook：0/0 门禁、oxfmt 0.x 钉版本、Windows sh 转义的坑 | 必核 | 2026-11-13 |
 | [packages-layout](packages-layout.md) | 5 个包按运行时分层且单消费者；build 0.9s / typecheck 1.2s，拆包无收益，问题是依赖卫生与入口 | 抽核 | 2026-11-13 |
 | [app-start-standalone](app-start-standalone.md) | standalone 下 `next start` 不兼容；统一走 `scripts/start-standalone.ts`，本地端口 9840/9845 | 必核 | 2026-11-13 |
-| [sse-transport](sse-transport.md) | AI 会话输出走 Redis pub/sub 定向频道（clientId 存 Redis 进度 Hash）；载荷是 AG-UI 事件，补发按 rev；Kafka 只剩连接器同步 | 抽核 | 2026-11-17 |
+| [sse-transport](sse-transport.md) | AI 会话输出走 Redis pub/sub 定向频道（clientId 存 Redis 进度 Hash）；载荷是 AG-UI 事件，补发按 rev；Kafka 已无业务 topic | 抽核 | 2026-11-17 |
 | [main-runtime-split](main-runtime-split.md) | 拆分后的边界：main 9989 控制面 + runtime 9990 执行面、内部接口、Kafka 回传、配置事件；6 条已知缺口 | 必核 | 2026-11-14 |
 | [admin-shell-layout](admin-shell-layout.md) | admin 三棵布局树共用一条顶栏（会话 / 管理）；共享 Sidebar 是 fixed，侧栏必须行内 top/height 下移 | 必核 | 2026-11-15 |
 | [ai-resume-fence](ai-resume-fence.md) | `abortRunStream` 默认 `fenceResume: true`：挂起期间 abort = 永久放弃可恢复性；续跑又挂起时必须跳过它 | 必核 | 2026-11-17 |

@@ -2,7 +2,7 @@
 
 > 本文件是 `develop-ai-agent` skill 的组成部分：讲**怎么想**（职责 → 工具面 → 授权三层）。
 > 「写到哪个文件、代码样例、命令」在 [`docs/guide/ai.md`](../../../../docs/guide/ai.md) 的「定义自己的 agent」；
-> 工具怎么实现见 `SKILL.md` §2.1；连接器怎么接见 [connector.md](./connector.md)。
+> 工具怎么实现见 `SKILL.md` §2.1。
 
 ## 0. 先分清三件事
 
@@ -23,7 +23,7 @@
 "帮用户跟进事项：记进展、汇总卡点、生成交接说明"
   → 读：item-query / item-summary
   → 写：item-draft-action（草案）+ item-append-action（确认后写）
-  → 不需要：bash、web-*、plan-*、连接器
+  → 不需要：bash、web-*、plan-*
 ```
 
 三条切口：
@@ -41,8 +41,6 @@
 tools: [
   TOOL_KEYS.planCreate,                    // 具体 key（写错启动期报错）
   { category: 'business' },                // 某一类
-  { connector: 'prod-pg' },                // 某个连接器产出的全部工具
-  { connector: 'prod-pg', tool: 'query' }, // 精确到接入方的一个工具
 ]
 ```
 
@@ -51,8 +49,6 @@ tools: [
 口径：
 
 - **具体 key 必须存在**：装配期 `describe()` 会抛，不会拖到用户提问时；
-- **连接器选择器允许零命中**：连接器是运行期同步的，启动时没同步不是错误；
-- **不做 key 反解**：`{ connector: 'x', tool: 'y' }` 匹配的是 spec 上的 `connector.toolName`
   （接入方原名），不是拼出来的 key 尾巴。
 
 ## 3. 授权是三层，不是一层
@@ -64,7 +60,7 @@ tools: [
 ```
 
 - **① 是上限**：不在清单里的工具，模型根本看不见；子 agent 的工具面 = 父授权 ∩（全部 − 委派类 − `child: deny`）。
-- **② 是第二层**：连接器工具默认 `admin`；产品 agent 要用，改成 `agent` + `allowedAgents`（或 `all`）。
+- **② 是第二层**：工具默认 scope 由声明给（数据库类默认 `admin`）；产品 agent 要用，改成 `agent` + `allowedAgents`（或 `all`）。
   装配期按 `isAdmin` / `rootAgentKey` 过滤，前台用户不会看到管理员工具。
 - **③ 只解释**：提示词里写"不要用某工具"没有约束力，**从授权里去掉**才是约束。
 
@@ -74,13 +70,12 @@ tools: [
 | --- | --- | --- |
 | 复制内置示例 agent，工具面留 `'*'` | 产品 agent 又变成万能助手 | 按职责列清单，默认不给 |
 | 在提示词里写"不要执行命令" | 模型照样调，只是偶尔被拒 | 授权里去掉 `bash` |
-| 给连接器工具不改 scope | 产品 agent 拿到了却每次被拒 | 改 `agent` + `allowedAgents` |
 | 每个小功能建一个 agent | 前端选择器一堆，提示词各写一遍 | 同一角色加工具 / 加技能 |
 | 把工具名手写进提示词模板 | 授权一改，提示词就骗模型 | 用 `registry.describe()` 渲染 |
 
 ## 5. 验收清单
 
-- [ ] 启动不报错（未知 key、未知类别、非法连接器 key 都在装配期炸）；
+- [ ] 启动不报错（未知 key、未知类别都在装配期炸）；
 - [ ] `POST /agent/list` 里这个 agent 的工具数与预期一致；
 - [ ] 跑一轮后审计 `request_snapshot.toolKeys` 是**展开后的具体 key**；
 - [ ] 用管理员与前台用户各跑一次，确认作用域过滤生效（该看不见的看不见）；

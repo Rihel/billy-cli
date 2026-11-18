@@ -72,7 +72,7 @@ afterAll(async () => {
 describe('WebRequestExecutor', () => {
   it('POST JSON 并返回展开后的响应体', async () => {
     const executor = new WebRequestExecutor(config, logger)
-    const outcome = await executor.execute(
+    const outcome = await executor.webRequest(
       request({ url: baseUrl, method: 'POST', body: { hello: 'world' } }),
     )
     expect(outcome.ok).toBe(true)
@@ -84,7 +84,7 @@ describe('WebRequestExecutor', () => {
 
   it('GET 带 body 返回 invalid-input', async () => {
     const executor = new WebRequestExecutor(config, logger)
-    const outcome = await executor.execute(request({ url: baseUrl, method: 'GET', body: 'x' }))
+    const outcome = await executor.webRequest(request({ url: baseUrl, method: 'GET', body: 'x' }))
     expect(outcome).toMatchObject({ ok: false, reason: 'invalid-input' })
   })
 })

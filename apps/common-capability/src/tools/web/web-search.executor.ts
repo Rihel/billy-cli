@@ -1,12 +1,20 @@
 import { Inject, Injectable } from '@nestjs/common'
+import { z } from 'zod'
 import { AppLogger } from '@repo/kits'
+import { CapabilityDecl, CapabilityGroup, findCapabilityDecl } from '@repo/capability'
 import { SearchToolError, WebToolError, searchWeb, type SearchItem } from '@repo/web-runtime'
 import type { ToolInvokeRequest, ToolOutcome } from '@repo/contracts'
 import { ToolWorkerConfig, type ToolWorkerConfigValue } from '../../config/app-config.js'
-import type { ToolExecutor } from '../../executors/tool.executor.js'
-import { WebSearchParams } from '../../capabilities/schemas.js'
 
 const SEARCH_MAX_CONTENT_CHARS = 1200
+
+/** 声明里那份 zod 解析出来的形状（机制包宽类型丢了推导，这里补一处结构断言） */
+interface WebSearchInput {
+  query: string
+  count: number
+  needContent: boolean
+  question?: string
+}
 
 interface WebSearchItem {
   title: string
@@ -46,16 +54,27 @@ const toSearchItem = (item: SearchItem, needContent: boolean): WebSearchItem => 
  * 也支持 worker 部署级 `TOOL_WEB_SEARCH_API_KEY` 兜底；出网复用 `@repo/web-runtime` 的搜索客户端。
  */
 @Injectable()
-export class WebSearchExecutor implements ToolExecutor {
-  readonly key = 'web-search'
-
+@CapabilityGroup({ risk: 'read' })
+export class WebSearchExecutor {
   constructor(
     @Inject(ToolWorkerConfig) private readonly config: ToolWorkerConfigValue,
     @Inject(AppLogger) private readonly logger: AppLogger,
   ) {}
 
-  async execute(request: ToolInvokeRequest): Promise<ToolOutcome> {
-    const parsed = WebSearchParams.safeParse(request.input)
+  @CapabilityDecl({
+    tool: 'web-search',
+    title: '搜索网页',
+    description: '按关键词搜索网页，返回标题、链接与摘要；需要正文时置 needContent。',
+    input: z.object({
+      query: z.string().min(1).max(128).describe('搜索词'),
+      count: z.number().int().min(1).max(20).default(8).describe('返回多少条（1~20）'),
+      needContent: z.boolean().default(false).describe('是否顺带抓回网页正文'),
+      question: z.string().min(1).max(128).optional().describe('用户的原始问题'),
+    }),
+  })
+  async webSearch(request: ToolInvokeRequest): Promise<ToolOutcome> {
+    // 与登记同一份入参
+    const parsed = findCapabilityDecl(this, 'web-search').input.safeParse(request.input)
     if (!parsed.success) {
       return {
         ok: false,
@@ -64,7 +83,7 @@ export class WebSearchExecutor implements ToolExecutor {
         retryable: false,
       }
     }
-    const input = parsed.data
+    const input = parsed.data as WebSearchInput
     const settings = request.settings
     const apiKey = settings?.secrets.apiKey ?? process.env.TOOL_WEB_SEARCH_API_KEY
     if (!apiKey) {

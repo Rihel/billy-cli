@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  RegisteredServiceSchema,
   ServiceRegistrationSchema,
   isCapabilityKey,
   isServiceName,
@@ -60,6 +61,51 @@ describe('服务登记契约', () => {
       ],
     })
     expect(result.success).toBe(false)
+  })
+
+  it('protocol 默认 capability；外部 MCP 服务照收，内部服务拒收', () => {
+    const internalRegistration = ServiceRegistrationSchema.parse({
+      ...base,
+      source: 'code',
+      instance: { instanceId: 'cc-1', endpoint: 'http://10.0.0.1:9994' },
+    })
+    expect(internalRegistration.protocol).toBe('capability')
+
+    const externalMcp = ServiceRegistrationSchema.parse({
+      ...base,
+      source: 'manual',
+      protocol: 'mcp',
+      baseUrl: 'https://o.example',
+    })
+    expect(externalMcp.protocol).toBe('mcp')
+
+    expect(
+      ServiceRegistrationSchema.safeParse({
+        ...base,
+        source: 'code',
+        protocol: 'mcp',
+        instance: { instanceId: 'cc-1', endpoint: 'http://10.0.0.1:9994' },
+      }).success,
+    ).toBe(false)
+  })
+
+  it('旧持久化记录没有 protocol 时由 safeParse 补齐为能力协议', () => {
+    const parsed = RegisteredServiceSchema.parse({
+      service: 'order',
+      title: '订单服务',
+      owner: 'B 团队',
+      source: 'manual',
+      baseUrl: 'https://o.example',
+      healthPath: '/healthz',
+      allowHttp: false,
+      status: 'active',
+      capabilities: [],
+      deprecated: [],
+      instances: {},
+      version: 1,
+      updatedAt: 0,
+    })
+    expect(parsed.protocol).toBe('capability')
   })
 
   it('执行声明缺省是 sync', () => {

@@ -16,9 +16,6 @@ export { AddRunSuspendedStatus1791800000000 } from './1791800000000-AddRunSuspen
 export { DropTodo1791900000000 } from './1791900000000-DropTodo.js'
 export { MonitorEngine1792595910578 } from './1792595910578-MonitorEngine.js'
 export { AiUsageDaily1792600317837 } from './1792600317837-AiUsageDaily.js'
-export { AiConnector1794000000000 } from './1794000000000-AiConnector.js'
-export { AiConnectorCatalogKind1794000000001 } from './1794000000001-AiConnectorCatalogKind.js'
-export { ConnectorAuthState1794324144802 } from './1794324144802-ConnectorAuthState.js'
 export { AiSkillLibrary1794325439344 } from './1794325439344-AiSkillLibrary.js'
 export { RenameRunCommandToBash1794325500000 } from './1794325500000-RenameRunCommandToBash.js'
 export { AiFiles1794394249884 } from './1794394249884-AiFiles.js'
@@ -53,9 +50,6 @@ import { AddRunSuspendedStatus1791800000000 } from './1791800000000-AddRunSuspen
 import { DropTodo1791900000000 } from './1791900000000-DropTodo.js'
 import { MonitorEngine1792595910578 } from './1792595910578-MonitorEngine.js'
 import { AiUsageDaily1792600317837 } from './1792600317837-AiUsageDaily.js'
-import { AiConnector1794000000000 } from './1794000000000-AiConnector.js'
-import { AiConnectorCatalogKind1794000000001 } from './1794000000001-AiConnectorCatalogKind.js'
-import { ConnectorAuthState1794324144802 } from './1794324144802-ConnectorAuthState.js'
 import { AiSkillLibrary1794325439344 } from './1794325439344-AiSkillLibrary.js'
 import { RenameRunCommandToBash1794325500000 } from './1794325500000-RenameRunCommandToBash.js'
 import { AiFiles1794394249884 } from './1794394249884-AiFiles.js'
@@ -71,6 +65,8 @@ import { ModelGatewayBilling1794676773109 } from './1794676773109-ModelGatewayBi
 import { ModelGatewayUsageTotalTokens1794676931674 } from './1794676931674-ModelGatewayUsageTotalTokens.js'
 import { ConversationRunQueue1794711383585 } from './1794711383585-ConversationRunQueue.js'
 import { AddRunOrigin1794713000000 } from './1794713000000-AddRunOrigin.js'
+import { AddCapabilityServiceSnapshots1795014133189 } from './1795014133189-AddCapabilityServiceSnapshots.js'
+import { DropConnectorModule1795014903484 } from './1795014903484-DropConnectorModule.js'
 
 /** 迁移按时间戳升序；TypeORM 会再排序，但这里保持可读 */
 export const DB_MIGRATIONS = [
@@ -92,9 +88,6 @@ export const DB_MIGRATIONS = [
   DropTodo1791900000000,
   MonitorEngine1792595910578,
   AiUsageDaily1792600317837,
-  AiConnector1794000000000,
-  AiConnectorCatalogKind1794000000001,
-  ConnectorAuthState1794324144802,
   AiSkillLibrary1794325439344,
   RenameRunCommandToBash1794325500000,
   AiFiles1794394249884,
@@ -110,4 +103,6 @@ export const DB_MIGRATIONS = [
   ModelGatewayUsageTotalTokens1794676931674,
   ConversationRunQueue1794711383585,
   AddRunOrigin1794713000000,
+  AddCapabilityServiceSnapshots1795014133189,
+  DropConnectorModule1795014903484,
 ]

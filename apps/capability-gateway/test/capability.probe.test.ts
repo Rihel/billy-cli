@@ -47,9 +47,10 @@ describe('CapabilityProbeService：外部服务探活', () => {
       owner: 'B 团队',
       source: 'manual',
       baseUrl,
+      allowHttp: true,
       capabilities: [{ tool: 'create', title: '下单', description: '创建订单' }],
     })
-    const probe = new CapabilityProbeService(registry, logger)
+    const probe = new CapabilityProbeService(registry, config, logger)
     const service = (await registry.snapshot())[0]!
 
     await probe.probe(service)
@@ -79,11 +80,33 @@ describe('CapabilityProbeService：外部服务探活', () => {
       owner: 'B 团队',
       source: 'manual',
       baseUrl: 'http://127.0.0.1:1',
+      allowHttp: true,
       capabilities: [{ tool: 'ping', title: 'ping', description: 'ping' }],
     })
-    const probe = new CapabilityProbeService(registry, logger)
+    const probe = new CapabilityProbeService(registry, config, logger)
     const service = (await registry.snapshot())[0]!
     for (let i = 0; i < 3; i += 1) await probe.probe(service)
     expect((await registry.snapshot())[0]!.probe.state).toBe('down')
+  })
+})
+
+describe('MCP 服务不参与 HTTP 探活', () => {
+  it('probe() 对 protocol=mcp 直接返回，不改探活状态', async () => {
+    const registry = new ServiceRegistry(config)
+    await registry.register({
+      protocolVersion: 1,
+      service: 'mcp-demo',
+      title: 'MCP 示例',
+      owner: '测试',
+      source: 'manual',
+      protocol: 'mcp',
+      baseUrl: 'https://mcp.example.com',
+      healthPath: '/mcp?key=x',
+      capabilities: [{ tool: 'ping', title: 'ping', description: 'ping' }],
+    })
+    const probe = new CapabilityProbeService(registry, config, logger)
+    const service = (await registry.snapshot())[0]!
+    await probe.probe(service)
+    expect((await registry.snapshot())[0]!.probe.state).toBe('unknown')
   })
 })

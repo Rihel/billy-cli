@@ -258,21 +258,6 @@ export const AppErrorCodes = createDict({
     value: 3408,
     http: 400,
   },
-  ConnectorNotFound: {
-    label: '连接器不存在',
-    value: 3409,
-    http: 404,
-  },
-  ConnectorConfigInvalid: {
-    label: '连接器配置不合法',
-    value: 3410,
-    http: 400,
-  },
-  ConnectorSyncFailed: {
-    label: '连接器同步失败',
-    value: 3411,
-    http: 409,
-  },
   SkillNotFound: {
     label: '技能不存在',
     value: 3412,

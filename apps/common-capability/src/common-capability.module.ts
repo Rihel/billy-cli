@@ -12,6 +12,7 @@ import { FileRepository, FileService, FILE_CAPS } from '@repo/ai-data'
 import { FileExecutor } from './tools/file/file.executor.js'
 import { ReadToolResultExecutor } from './tools/read-tool-result.executor.js'
 import { CapabilityInvokeController } from './invoke.controller.js'
+import { OpsController } from './ops.controller.js'
 import { CapabilityRegistration } from './capability.registration.js'
 import { TaskManager } from './task.manager.js'
 import { ToolWorkerService } from './worker.service.js'
@@ -19,7 +20,7 @@ import { ActiveTaskCounter } from './active-task.counter.js'
 
 @Module({
   imports: [ConfigModule],
-  controllers: [CapabilityInvokeController],
+  controllers: [CapabilityInvokeController, OpsController],
   providers: [
     {
       provide: ToolWorkerConfig,

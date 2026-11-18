@@ -18,8 +18,8 @@ export const ToolCategory = createDict({
    * 不进注册机，网关拦不到，后台只读展示（设计 §5.10 路线 A）
    */
   Runtime: { label: '运行时自带', value: 'runtime' },
-  /** 连接器产出的工具（来源见 `ToolOrigin`；设计 `ai-connector.md` §3.2） */
-  Connector: { label: '连接器', value: 'connector' },
+  /** 能力目录里的外部工具（MCP / 外部登记服务）：不在本地注册机，执行走能力网关 */
+  External: { label: '外部工具', value: 'external' },
 })
 
 /** 工具作用域：这一次调用允不允许（授权在 agent 声明里，作用域是第二层关卡） */

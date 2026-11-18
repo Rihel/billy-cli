@@ -1,5 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common'
+import { z } from 'zod'
 import { AppLogger } from '@repo/kits'
+import { CapabilityDecl, CapabilityGroup, findCapabilityDecl } from '@repo/capability'
 import {
   BROWSER_UA,
   WebCache,
@@ -21,8 +23,17 @@ import {
 } from '@repo/web-runtime'
 import type { ToolInvokeRequest, ToolOutcome } from '@repo/contracts'
 import { ToolWorkerConfig, type ToolWorkerConfigValue } from '../../config/app-config.js'
-import type { ToolExecutor } from '../../executors/tool.executor.js'
-import { WebRequestParams } from '../../capabilities/schemas.js'
+
+/** 声明里那份 zod 解析出来的形状（机制包宽类型丢了推导，这里补一处结构断言） */
+interface WebRequestInput {
+  url?: string
+  method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE' | 'HEAD' | 'OPTIONS'
+  query?: Record<string, string | number | boolean>
+  headers?: Record<string, string>
+  body?: string | Record<string, unknown> | unknown[]
+  ref?: string
+  page: number
+}
 
 interface WebPageOutput {
   ref: string
@@ -180,8 +191,8 @@ const present = (
 
 /** web-request 执行器：任意方法 / 头 / body，响应按类型给可读文本；缓存与 web-fetch 同形 */
 @Injectable()
-export class WebRequestExecutor implements ToolExecutor {
-  readonly key = 'web-request'
+@CapabilityGroup({ risk: 'read' })
+export class WebRequestExecutor {
   private readonly cache = new WebCache()
 
   constructor(
@@ -189,8 +200,33 @@ export class WebRequestExecutor implements ToolExecutor {
     @Inject(AppLogger) private readonly logger: AppLogger,
   ) {}
 
-  async execute(request: ToolInvokeRequest): Promise<ToolOutcome> {
-    const parsed = WebRequestParams.safeParse(request.input)
+  @CapabilityDecl({
+    tool: 'web-request',
+    title: '请求 HTTP 接口',
+    description: '直接发一个 HTTP 请求，用于 JSON 接口、需要 POST 或自定义头的场景。',
+    risk: 'write',
+    input: z.object({
+      url: z.string().min(1).max(2048).optional().describe('请求地址；首次请求必填'),
+      method: z
+        .enum(['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS'])
+        .default('GET')
+        .describe('HTTP 方法'),
+      query: z
+        .record(z.string(), z.union([z.string(), z.number(), z.boolean()]))
+        .optional()
+        .describe('查询参数'),
+      headers: z.record(z.string(), z.string()).optional().describe('自定义请求头'),
+      body: z
+        .union([z.string(), z.record(z.string(), z.unknown()), z.array(z.unknown())])
+        .optional()
+        .describe('请求体'),
+      ref: z.string().min(1).max(64).optional().describe('上一次请求返回的缓存句柄'),
+      page: z.number().int().positive().default(1).describe('要第几页'),
+    }),
+  })
+  async webRequest(request: ToolInvokeRequest): Promise<ToolOutcome> {
+    // 与登记同一份入参
+    const parsed = findCapabilityDecl(this, 'web-request').input.safeParse(request.input)
     if (!parsed.success) {
       return {
         ok: false,
@@ -199,7 +235,7 @@ export class WebRequestExecutor implements ToolExecutor {
         retryable: false,
       }
     }
-    const input = parsed.data
+    const input = parsed.data as WebRequestInput
     const web = this.config.web
     const config = {
       timeoutMs: web.timeoutMs,
@@ -213,7 +249,7 @@ export class WebRequestExecutor implements ToolExecutor {
     try {
       if (input.ref) {
         const cached = this.cache.get(input.ref, config.cacheTtlMs)
-        if (cached) return { ok: true, data: present(cached, input.page, true, this.key) }
+        if (cached) return { ok: true, data: present(cached, input.page, true, 'web-request') }
         if (!input.url) {
           return {
             ok: false,
@@ -264,7 +300,7 @@ export class WebRequestExecutor implements ToolExecutor {
 
       const ref = makeRef('web-request', method, target.href, requestBody ?? '', config.pageLines)
       const hit = this.cache.get(ref, config.cacheTtlMs)
-      if (hit) return { ok: true, data: present(hit, input.page, true, this.key) }
+      if (hit) return { ok: true, data: present(hit, input.page, true, 'web-request') }
 
       const started = Date.now()
       const response = await fetchGuarded(target.href, {
@@ -304,7 +340,7 @@ export class WebRequestExecutor implements ToolExecutor {
       })
       return {
         ok: true,
-        data: present(doc, input.page, false, this.key, html?.note ? { note: html.note } : {}),
+        data: present(doc, input.page, false, 'web-request', html?.note ? { note: html.note } : {}),
       }
     } catch (error) {
       if (error instanceof WebToolError) {

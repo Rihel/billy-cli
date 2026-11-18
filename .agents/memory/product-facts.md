@@ -9,7 +9,7 @@
 | 项 | 值 | 出处 |
 | --- | --- | --- |
 | 内建 AI 工具 | 29（另 3 个运行时自带） | `TOOL_KEYS`：计划 4 + 子 agent + `bash` + 取页 + 联网 3 + 记忆 3 + 技能库 7 + 文件 9 |
-| 连接器型号 | 4 | `CONNECTOR_CATALOG`：PostgreSQL / MySQL / Redis / 飞书 CLI |
+| 连接器型号 | 0 | 模块已于 2026-11-18 删除（原 4 个型号：PostgreSQL / MySQL / Redis / 飞书 CLI） |
 | 业务模块 | 13 | `apps/main/src/modules/`（含 `share`） |
 | 数据表 | 20 | `apps/main/src/database/entities/` |
 | ai-elements | 48 | `packages/ui/src/components/ai-elements/*.tsx` |
@@ -21,7 +21,7 @@
 协议：MIT（`LICENSE` 与各 `package.json` 的 `license` 一致；2026-11-10 由 ISC 切换）。
 README、落地页（`apps/web/src/components/landing/*`）、`docs/guide/`、`docs/billy-pitch.md` 必须同一口径；
 改能力时一起改。README 只保留入口级摘要，详情在 `docs/guide/`。工具数只算「内建」的 29 个，
-连接器按实例动态产出的工具不计入；Mastra 自动挂的 `skill` / `skill_search` / `skill_read` 单独说明。
+Mastra 自动挂的 `skill` / `skill_search` / `skill_read` 单独说明；连接器已删除，不再计入。
 
 ## 依据
 
@@ -37,5 +37,5 @@ find apps/admin/src/app -path '*main/ai/*' -name page.tsx | grep -v '\[.*\]' | w
 
 ## 失效信号
 
-新增 / 下线工具、连接器型号、业务模块、实体、skill、后台页面或检查脚本时，
+新增 / 下线工具、业务模块、实体、skill、后台页面或检查脚本时，
 本卡数字与 README、落地页、`docs/guide/`、`docs/billy-pitch.md` 同时过期。

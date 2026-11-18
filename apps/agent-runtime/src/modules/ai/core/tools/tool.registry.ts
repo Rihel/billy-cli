@@ -22,36 +22,27 @@ export interface ToolMeta {
   category: ToolCategoryValue
 }
 
-/** 一段工具来源：代码声明的（静态）或连接器产出的（动态） */
+/** 一条已注册的工具：声明 + 网关包装后的可调用体 */
 interface Entry {
   spec: ToolSpec
   tool: Tool
-  /** 动态段才有：产出它的连接器 id */
-  connectorId?: string
 }
 
 /**
- * **工具注册机**（设计 `docs/design/ai-agent-tool-engine.md` §5.3；连接器动态段见
- * `docs/design/ai-connector.md` §3.5）。
+ * **工具注册机**（设计 `docs/design/ai-agent-tool-engine.md` §5.3）。
  *
- * 五件事：
+ * 四件事：
  * 1. **注册与校验**：对 `AGENT_TOOL_GROUPS` 的每个工具组跑 `buildToolSpecs()`；
  *    key 重复、声明不全、`config.parse({})` 给不出默认值 —— 一律**启动即失败**；
- * 2. **动态段**：连接器同步时 `registerDynamic(connectorId, specs)`，停用 / 删除时
- *    `removeDynamic(connectorId)`；冲突只记日志 + 拒绝，不炸进程；
- * 3. **发工具**：`toolbox()` / `childToolbox()` 交给适配器，全部经网关包装；
- * 4. **读配置**：`settings(key)` 走 `ToolConfigService`（缓存 + 合并 + env 上限）；
- * 5. **元数据**：`describe()` 给提示词与后台列表用。
+ * 2. **发工具**：`toolbox()` / `childToolbox()` 交给适配器，全部经网关包装；
+ * 3. **读配置**：`settings(key)` 走 `ToolConfigService`（缓存 + 合并 + env 上限）；
+ * 4. **元数据**：`describe()` 给提示词与后台列表用。
  *
- * 它**不**写库：代码工具的种子同步在 `ToolSeedService`（只喂 `staticSpecs()`），
- * 连接器工具由 `ConnectorSyncService` 写（只走 `registerDynamic`）。
+ * 它**不**写库：工具的种子同步在 `ToolSeedService`（只喂 `staticSpecs()`）。
  */
 @Injectable()
 export class ToolRegistry {
   private readonly staticTools = new Map<string, Entry>()
-  private readonly dynamicTools = new Map<string, Entry>()
-  /** 每次动态段变化 +1：适配器据此缓存"工具 → Mastra 工具"的转换结果 */
-  private dynamicVersion = 0
 
   constructor(
     @Inject(AGENT_TOOL_GROUPS) groups: readonly AgentToolGroup[],
@@ -85,64 +76,10 @@ export class ToolRegistry {
     }
   }
 
-  /** 动态段版本号（适配器缓存用） */
-  get version(): number {
-    return this.dynamicVersion
-  }
-
   /**
-   * 注册一批连接器工具。
+   * 展开授权清单里的**选择器**（具体 key / `'*'` / `{ category }`），返回工具 key。
    *
-   * 冲突处理（刻意不抛到进程外）：key 已存在（静态或动态）就拒绝这一个，
-   * 记日志后继续——一条连接器配错不该拖垮整个服务。返回值是实际注册成功的 key。
-   */
-  registerDynamic(
-    connectorId: string,
-    specs: readonly ToolSpec[],
-    onConflict?: (message: string) => void,
-  ): string[] {
-    const registered: string[] = []
-    for (const spec of specs) {
-      const conflict = this.lookup(spec.key)
-      if (conflict) {
-        onConflict?.(`连接器 ${connectorId} 的工具 key 冲突：${spec.key}`)
-        continue
-      }
-      const defaults = spec.config.safeParse({})
-      if (!defaults.success) {
-        onConflict?.(`连接器 ${connectorId} 的工具 ${spec.key} 默认值不全`)
-        continue
-      }
-      // 静态段与动态段共用同一个网关包装：治理链路只有一条
-      this.dynamicTools.set(spec.key, {
-        spec,
-        tool: this.gateway.wrap(spec),
-        connectorId,
-      })
-      registered.push(spec.key)
-    }
-    if (registered.length > 0) this.dynamicVersion += 1
-    return registered
-  }
-
-  /** 摘掉一条连接器产出的全部工具 */
-  removeDynamic(connectorId: string): string[] {
-    const removed: string[] = []
-    for (const [key, entry] of this.dynamicTools) {
-      if (entry.connectorId === connectorId) {
-        this.dynamicTools.delete(key)
-        removed.push(key)
-      }
-    }
-    if (removed.length > 0) this.dynamicVersion += 1
-    return removed
-  }
-
-  /**
-   * 展开授权清单里的**选择器**（具体 key / `'*'` / `{ category }` / `{ connector }`），返回工具 key。
-   *
-   * 具体 key 原样返回，存在性由 `spec()` 判（装配期就会抛）；连接器选择器允许零命中
-   * （连接器是运行期同步的，启动时可能还没有）。
+   * 具体 key 原样返回，存在性由 `spec()` 判（装配期就会抛）。
    */
   expand(selectors: readonly ToolSelector[]): string[] {
     return expandToolSelectors(selectors, this.selectorEntries())
@@ -190,9 +127,9 @@ export class ToolRegistry {
     return entry.spec
   }
 
-  /** 全部 key（静态 + 动态；诊断 / 后台对账用） */
+  /** 全部 key（诊断 / 后台对账用） */
   keys(): string[] {
-    return [...this.staticTools.keys(), ...this.dynamicTools.keys()]
+    return [...this.staticTools.keys()]
   }
 
   /** 代码声明的 key（种子同步只认这一段） */
@@ -202,10 +139,10 @@ export class ToolRegistry {
 
   /** 全部声明（后台快照用） */
   specs(): ToolSpec[] {
-    return [...this.staticTools.values(), ...this.dynamicTools.values()].map((entry) => entry.spec)
+    return [...this.staticTools.values()].map((entry) => entry.spec)
   }
 
-  /** 代码声明（种子同步专用：连接器工具不该被"代码声明"覆盖） */
+  /** 代码声明（种子同步专用） */
   staticSpecs(): ToolSpec[] {
     return [...this.staticTools.values()].map((entry) => entry.spec)
   }
@@ -251,7 +188,7 @@ export class ToolRegistry {
   childToolbox(parentTools?: readonly ToolSelector[]): Toolbox {
     const allowed = parentTools ? new Set(this.expand(parentTools)) : null
     const tools = new Map<string, Tool>()
-    for (const [key, entry] of [...this.staticTools, ...this.dynamicTools]) {
+    for (const [key, entry] of this.staticTools) {
       if (allowed && !allowed.has(key)) continue
       if (entry.spec.delegation === true) continue
       if (entry.spec.child === 'deny') continue
@@ -287,8 +224,6 @@ export class ToolRegistry {
     return this.specs().map((spec) => ({
       key: spec.key,
       category: spec.category,
-      ...(spec.connector?.key ? { connectorKey: spec.connector.key } : {}),
-      ...(spec.connector?.toolName ? { connectorToolName: spec.connector.toolName } : {}),
     }))
   }
 
@@ -300,6 +235,6 @@ export class ToolRegistry {
   }
 
   private lookup(key: string): Entry | undefined {
-    return this.staticTools.get(key) ?? this.dynamicTools.get(key)
+    return this.staticTools.get(key)
   }
 }

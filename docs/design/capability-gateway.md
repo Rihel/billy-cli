@@ -1,13 +1,17 @@
-# 能力网关与能力域服务（设计评审稿 v0）
+# 能力网关与能力域服务（设计稿 v1，2026-11-18 评审通过）
 
-> **落地进度（2026-11-18）**：阶段 1–3 已完成——两个 app 改名、能力契约、网关登记/调用/任务接口、
-> `common-capability` 四个服务身份（exec / web / files / memory，共 17 个能力）自注册、runtime 切
-> `/v1/capabilities/*`、旧 `/v1/tools/*` 与 `@repo/tool-catalog` 全部下线；后台 `/main/ai/capabilities`
-> 可登记外部服务。剩余：把 files/memory 抽成独立 data-service（当前同进程多身份）。
+> **落地进度（2026-11-18）**：阶段 1–2 已完成（两个 app 改名、能力契约、网关登记 / 目录 / 治理 / 路由、
+> 扁平 key、后台 `/main/ai/capabilities`、`@repo/tool-catalog` 退役）；阶段 3 **部分完成**
+> （三形态 task、`taskId → 实例`、`wait-task` / `cancel-task`、时间线合并、级联取消已有；
+完成唤醒按口径 B **不做**）；
+> 阶段 4–5：files / memory 仍在 `common-capability`；**连接器模块已删除（2026-11-18）**。**逐条验收状态见 §9。**
+> **本地口径（2026-11-18 晚）**：一个进程 = 一个服务 `common`（17 个能力；bash / web / files / memory
+> 只是代码内的能力分组），能力用 `@CapabilityGroup` + 方法级 `@CapabilityDecl` 定义，登记 HTTP 只在
+> `@repo/internal-sdk`。
 >
-> 状态：**草案，待评审**（2026-11-18）。只回答「为什么这么改、改成什么样、怎么迁」，接口细节见
-> [capability-protocol.md](capability-protocol.md)。
-> 拍板项集中在 §8，评审时逐条确认。
+> 状态：**评审通过，v1 实施中**（2026-11-18）。只回答「为什么这么改、改成什么样、怎么迁」，接口细节见
+> [capability-protocol.md](capability-protocol.md)。拍板项见 §8。
+> 修订记录（同日）：扁平 key / 单服务 / 装饰器 / `protocol` 字段 / **取消回调**，详见 dev-log `2026-11-18.md`。
 >
 > **命名已定（2026-11-18）**：网关 `tool-gateway` → **`capability-gateway`**；通用能力服务
 > `tool-worker` → **`common-capability`**。代码标识（目录、包名、`TOOL_GATEWAY_URL`、k8s 清单）
@@ -16,7 +20,6 @@
 >
 > 相关：
 > [distributed-ai-architecture.md](distributed-ai-architecture.md)（D5 工具执行、§10.5 服务发现）、
-> [ai-connector.md](ai-connector.md)（连接器现状）、
 > [ai-agent-tool-engine.md](ai-agent-tool-engine.md)（工具引擎与 `ai_tools`）。
 
 ## 0. 一页结论
@@ -25,7 +28,7 @@
 
 1. **能力网关**从「工具目录 + 治理 + 选 worker」升级为「**服务登记 + 能力治理 + 能力路由**」；
 2. **服务**从「一个装全部执行器的 worker」拆成「按安全边界划分的域服务」：通用能力、AI 数据域、外部接入；
-3. **连接器模块退役**，sql / redis / 飞书变成「外部接入服务」，与 MCP 服务走同一条接入路径；
+3. **连接器模块删除**（2026-11-18），sql / redis / 飞书能力随模块下线；后续由「外部接入服务」承接，与 MCP 服务走同一条接入路径；
 4. **协议**对外只有一份：扁平工具名作 key + `POST /invoke` + `task` 三形态（见协议稿）。
 
 **不改什么**：agent loop 仍在 `agent-runtime`；`ai_tools` 仍是开关 / 限额 / 配置的事实源；模型侧只能看到派生名，不感知服务拓扑。
@@ -48,7 +51,7 @@
 
 1. **`ToolManifest.executor` 已经失真**：它写着 `worker / server / facade`，但 `server` 那一档里 7 个是技能控制面、3 个是子助手编排，根本不是一类东西。这个字段描述的是「代码放在哪」，不是「这东西归谁管」。
 2. **注册表在 worker 手里**：worker 启动直接往 Redis 写 `ai:tool-worker:<id>` 与 `ai:tool-workers:alive`，网关只是只读方。没有登记入口，没有事实源，加一种能力只能改代码。
-3. **连接器完全绕开网关**：sql / redis / lark-cli 在 `agent-runtime` 里执行（约 2700 行），产出的工具写进 `ai_tools`（`origin=connector`）。它既不是通用能力，也不受网关治理。
+3. **连接器完全绕开网关**：sql / redis / lark-cli 在 `agent-runtime` 里执行（约 2700 行），产出的工具写进 `ai_tools`（`origin=connector`）。它既不是通用能力，也不受网关治理。**（2026-11-18：模块已整体删除，表与列一并删除）**
 
 **主要矛盾**：能力目录没有单一权威，执行方没有登记入口。
 
@@ -97,13 +100,12 @@ flowchart LR
 
   M -->|"① 取目录 ② 调能力"| G
 
-  subgraph S1["通用能力服务"]
-    E["exec-service<br/>exec/bash"]
-    W["web-service<br/>web/fetch · web/search · web/request"]
+  subgraph S1["common-capability（一个服务 common，17 个能力）"]
+    E["bash · web-* · file-* · memory-* · read-tool-result<br/>代码内分四组，不分服务"]
   end
 
-  subgraph S2["AI 数据域服务"]
-    D["ai-data-service<br/>memory/* · files/*"]
+  subgraph S2["AI 数据域服务（预留，未拆）"]
+    D["data-service<br/>file-* · memory-*"]
   end
 
   subgraph S3["外部接入服务"]
@@ -112,8 +114,7 @@ flowchart LR
   end
 
   G --> E
-  G --> W
-  G --> D
+  G -.->|未拆| D
   G --> X1
   G --> X2
 
@@ -121,7 +122,7 @@ flowchart LR
   G -.-> AUD[("ai_tool_audit<br/>每次调用落库")]
 
   E --> SB["沙箱 / 临时工作区"]
-  W --> NET(("公网"))
+  E --> NET(("公网"))
   D --> DB[("ai_memories · ai_files")]
   D --> OSS[("对象存储 / 工作区")]
   X1 --> T3(("第三方 SaaS"))
@@ -142,18 +143,18 @@ sequenceDiagram
 
   Note over S,G: 声明由代码产出，地址由部署给定，网关汇总成 target
   S->>G: 声明（manifest：服务名 · 能力清单 · 端点）
-  G->>G: 校验 key 前缀 = service，且能力在声明目录里
-  G->>G: 落目录（DB）+ 运行时快照（Redis）
+  G->>G: 校验工具名全局唯一 + 服务内唯一
+  G->>G: 落登记快照（Redis；DB 表尚未建）
 
   R->>G: 取能力目录（按用户 / agent / 深度过滤）
-  G-->>R: 能力清单（含 available 标记，模型面名字用 __）
+  G-->>R: 能力清单（含 available 标记，模型面名字 = key）
   R->>U: 把清单交给模型（工具面）
   U-->>R: 选中某能力 + 参数
   R->>G: invoke（能力 key · 入参 · 调用方身份 · deadline）
   G->>G: 治理：scope · 限流 · 校验 · 脱敏 · 幂等
-  G->>S: 转发（key 前缀直达服务）
+  G->>S: 转发（key → 服务索引 → 选实例）
   S-->>G: 完成 / 受理（task）/ 业务失败
-  G->>G: 审计落库（canonicalKey + rawKey）
+  G->>G: 审计落库（key）
   G-->>R: 统一结论
   R-->>U: 工具结果或任务句柄
 ```
@@ -162,12 +163,14 @@ sequenceDiagram
 
 | 类别 | 判据 | 现在包含 | 部署特征 |
 | --- | --- | --- | --- |
-| **通用能力** | 输入输出只取决于参数，不碰业务数据，无业务规则 | `exec/bash`、`web/*` | 需要沙箱 / 出网；可独立扩容 |
-| **业务域能力** | 有自己的表、权限、业务规则 | `memory/*`、`files/*`（领域层是 `@repo/ai-data`） | 不出网；只连自己的库 |
+| **通用能力** | 输入输出只取决于参数，不碰业务数据，无业务规则 | `bash`、`web-*` | 需要沙箱 / 出网；可独立扩容 |
+| **业务域能力** | 有自己的表、权限、业务规则 | `memory-*`、`file-*`（领域层是 `@repo/ai-data`） | 不出网；只连自己的库 |
 | **外部接入** | 能力属于别人的系统 | sql / redis / 飞书、MCP 服务 | 出网策略独立；凭据由网关代持 |
-| **编排原语** | 需要 run 状态或客户端交互 | `plan/*`、`agent/*` | 留在 runtime，**不进注册中心** |
+| **编排原语** | 需要 run 状态或客户端交互 | `plan-*`、`agent` 系 | 留在 runtime，**不进注册中心** |
 
-按这个划分，`apps/common-capability`（原 `tool-worker`）瘦到只剩 `exec/bash` 与 `web/*`（4 个能力），不再持有数据库账号和对象存储权限。
+按这个划分，`apps/common-capability`（原 `tool-worker`）最终应瘦到只剩 `bash` 与 `web-*`（4 个能力），
+不再持有数据库账号和对象存储权限。**当前未执行**：它仍是 17 个能力、仍持有 DB 与 OSS 权限
+（阶段 4，见 §7）。
 
 **外部接入这一类不需要在我们的仓库里有代码**：B 团队的订单服务跑在自己的集群里，在自己服务里挂一个 `POST /invoke` 路由（约 30 行），管理员在后台填地址、鉴权与能力清单就能接进来（协议 §4.1–§4.5）。模型侧与内部服务完全一样，对方也不需要把服务改造成 MCP。
 
@@ -177,7 +180,7 @@ sequenceDiagram
 它不执行任何能力、不碰业务数据。理由：治理只有一处才不打架；代价：网关是链路必经点，它挂了全链路不可用（现状已如此）。
 
 **D2 登记有两条路径，但都是「一次性声明」，不是心跳。**
-内部服务：地址由部署给，能力清单由代码给（构建期生成 JSON）；外部服务：在自己服务里挂一个 `POST /invoke` 路由，再在后台表单里填地址、鉴权与能力清单（可表单逐条填 / 交 JSON / 拉 manifest，见协议 §4.1–§4.5）。两条路径的终点相同——网关里一条服务记录，之后目录、治理、路由完全一致。理由：集群外的团队不可能跑我们的构建，也不该被要求改造成 MCP；**反向心跳与服务发现不做，健康靠网关每 30 秒主动探活**。代价：手工登记要审核、要测连通、要留版本。
+内部服务：地址由部署给，能力清单由代码给（进程启动时上报）；外部服务：在自己服务里挂一个 `POST /invoke` 路由，再在后台表单里填地址、鉴权与能力清单（可表单逐条填 / 交 JSON / 拉 manifest，见协议 §4.1–§4.5）。两条路径的终点相同——网关里一条服务记录，之后目录、治理、路由完全一致。理由：集群外的团队不可能跑我们的构建，也不该被要求改造成 MCP；**反向心跳与服务发现不做，健康靠网关每 30 秒主动探活**。代价：手工登记要审核、要测连通、要留版本。
 
 **D3 能力 key 就是工具名（扁平 `xxx-xxx`），服务是工具的分组（1:N）。**
 服务声明「服务名 + 一堆工具名」，登记后网关建 `key → 服务` 索引；key 全局唯一，跨服务重名在登记时拒绝。
@@ -194,8 +197,8 @@ sequenceDiagram
 **D6 任务状态分两层：`state` 六态固定，业务状态放 `data`。**
 理由：网关只关心「结束了没有」，不该理解「已支付」；代价：查询方要看两处。
 
-**D7 回调是加速，轮询是真相。**
-回调打网关、带 `eventId` 去重、按 `occurredAt` 只进不退；外部服务默认不支持回调。理由：回调丢一次任务就永远挂着；代价：多一条要维护的端点。
+**D7 不做回调，轮询是唯一真相。（2026-11-18 改）**
+v1 不提供 `/v1/tasks/callback`，任务终态只靠 `POST /tasks/get` 拿。理由：回调要**我们**对外暴露一个公网入站接口，还要做令牌、签名、去重、防重放、限流，攻击面与维护成本都不小，收益只是"早几百毫秒"；而等待体验已由 `wait-task` 长轮询解决。代价：对方任务完成得慢时，模型侧只能按轮询间隔拿到结果。
 
 **D8 任务归属 `owner` 决定网关存什么。**
 `session`（命令类）→ 网关存句柄与日志引用；`user` / `tenant`（业务类）→ 网关只存索引，真相在业务服务库里。理由：防止网关变成业务状态的第二份真相；代价：查任务多一跳。
@@ -206,8 +209,8 @@ sequenceDiagram
 **D10 凭据由网关注入，服务不持有第三方密钥。**
 v1 只做服务令牌与网关注入，用户级 OAuth 后置，但协议里保留注入点（`caller` + `auth.header`）。理由：这是网关存在的第一理由，也是后面接多租户不返工的前提；代价：网关要管凭据生命周期与脱敏。
 
-**D11 连接器模块退役，能力并入「外部接入服务」。**
-执行搬成 sql / redis / 飞书三个服务（或 MCP target），凭据与后台配置搬到服务管理。理由：它既不是通用能力也不是数据域能力；代价：`ai_connectors` 表与配置页要改语义，凭据这块不能跟着模块一起删。
+**D11 连接器模块退役，能力并入「外部接入服务」。（已执行，2026-11-18 改为直接删除）**
+删除范围：runtime `connectors/**`、main `ai-admin/connector`、admin 页面与菜单、SDK 段、`ai_connectors` 表、`ai_tools` 的 `origin` / `connector_id` / `remote_tool_name` 三列（迁移 `DropConnectorModule`）。代价：sql / redis / 飞书能力在下线期不可用，等外部接入服务（或 MCP 适配器）承接后再补。
 
 **D12 不把网关叫 registry。**
 叫 registry 会诱导后来的人把它做成注册中心。名字塑造行为。
@@ -219,34 +222,31 @@ B 团队已有自己的 API，接入方式是在他们的服务里挂一个 `POS
 内部服务登记实例（`endpoint` / `maxConcurrency` / `active` 心跳），网关每次调用选 `active / maxConcurrency` 最低的实例，失败换一个；task 调用额外记一行 `taskId → 实例`。外部服务只有一个 `baseUrl`，不做 LB，多实例由对方的 LB 吸收。理由：内部实例是我们自己部署的，知道谁在哪、谁闲；外部团队用自己的 LB 更合理。代价：网关多一套实例心跳与一行任务映射——注册的只是地址，不是能力。
 
 **D15 能力定义留在服务内，pkg 只放机制。**
-`@CapabilityGroup` / `@CapabilityDecl` 装饰器 + 扫描器 + zod→JSON Schema 转换 + 注册客户端，下沉成一个机制包；具体能力（zod 参数 + 方法）写在服务自己的 `*.tool.ts` 里，定义与实现同文件。`@repo/tool-catalog` 从「定义唯一来源」降为「构建期快照 / 退役」，`gen:tool-catalog` 随之退役或改成校验脚本。理由：现在定义在 pkg、实现又要反过来 import pkg，改一个工具动两处还会漂移；装饰器写法在 runtime 已经验证过，团队不用学新东西。代价：一次性搬 32 条；机制包要支持「声明了但注册时跳过」（编排原语）。
+`@CapabilityGroup` / `@CapabilityDecl` 装饰器 + 扫描器 + zod→JSON Schema 转换 + 注册客户端，下沉成一个机制包；具体能力（zod 参数 + 方法）写在服务自己的 `*.tool.ts` 里，定义与实现同文件。`@repo/tool-catalog` 已退役（定义搬进各服务），`gen:tool-catalog` 一并删除。理由：现在定义在 pkg、实现又要反过来 import pkg，改一个工具动两处还会漂移；装饰器写法在 runtime 已经验证过，团队不用学新东西。代价：一次性搬 32 条；机制包要支持「声明了但注册时跳过」（编排原语）。
 
 ## 6. 服务拆分（现状 → 目标）
 
 ### 6.1 拆分后的服务
 
-| 服务 | 工具 | 现在在哪 | 部署（脚手架期） |
+| 服务 | 工具 | 部署（本地口径） | 状态 |
 | --- | --- | --- | --- |
-| `exec` | `exec/bash` | tool-worker | `common-capability`（先和 web 同进程） |
-| `web` | `web/fetch` · `web/search` · `web/request` | tool-worker | 同上；出网吃紧时先拆出去 |
-| `files` | `files/append` · `read` · `replace` · `write` · `list` · `search` · `submit` · `download` · `workspace`（9 个） | tool-worker | `data-service`（先和 memory 同进程） |
-| `memory` | `memory/save` · `search` · `forget`（3 个） | tool-worker | 同上 |
-| `skill` | `skill/list` · `save` · `delete` · `enable` · `import` · `file-save` · `file-append`（7 个） | main | 留 main（控制面，不单独出进程） |
-| `gateway` | `read-result` + `wait-task` + `cancel-task` | gateway | 网关内建，不走服务登记 |
-| `plan` / `agent` | `plan/*`（4）· `agent/*`（4） | agent-runtime | 不登记，留 runtime（编排原语） |
+| `common` | `bash` 1 + `web-*` 3 + `file-*` 9 + `memory-*` 3 + `read-tool-result` 1（**17 个**，代码内四组） | `common-capability`（一个进程 = 一个服务） | ✅ |
+| `skill` | `skill-*` 7 个 | `agent-runtime` 本地执行（控制面），**不登记** | ✅ 与目标不同（原计划归技能服务） |
+| `wait-task` / `cancel-task` | 2 个 | 网关内建（目录里 `service='gateway'`），不走服务登记 | ✅ |
+| `plan` / `agent` | `plan-*` 4 · `agent` 系 4 | `agent-runtime`，不登记（编排原语） | ✅ |
 
-合计：**登记 23 条**（1 + 3 + 9 + 3 + 7）+ **网关内建 3 条** + **不登记 8 条**（plan 4 + agent 4）。
+合计：**登记 17 条**（全在 `common`）+ **计划中的网关内建 2 条** + **不登记 15 条**（skill 7 + plan 4 + agent 4）。
 
-部署上只需要 **3 个进程**：`capability-gateway`（原 `tool-gateway`）、`common-capability`（原 `tool-worker`，承载 exec + web 两个服务身份）、`data-service`（承载 files + memory 两个服务身份）。脚手架期**不按服务拆进程**——一个进程承载多个服务身份是允许的（协议 §2.1），等安全边界或负载真顶到再拆。**内部服务可以多副本，网关按实例做负载均衡；外部服务固定一个地址，不做 LB**（见 §6.5）。
+部署上只需要 **3 个进程**：`capability-gateway`（原 `tool-gateway`）、`common-capability`（原 `tool-worker`）、`data-service`（预留：files / memory 抽成 AI 数据域）。**本地口径：一个进程 = 一个服务**——`common-capability` 整体登记为 `common`，bash / web / files / memory 只是代码内的能力分组；安全边界在能力级 risk / scope 表达，不靠多服务身份。**内部服务可以多副本，网关按实例做负载均衡；外部服务固定一个地址，不做 LB**（见 §6.5）。
 
-### 6.2 现状对照
+### 6.2 现状对照（历史 → 目标；阶段 4 未执行）
 
 | 旧归属 | 数量 | 目标归属 |
 | --- | --- | --- |
-| `apps/tool-worker`（bash / web / memory / file / read-tool-result） | 17 | `exec/bash`、`web/*` 留通用能力服务；`memory/*`、`files/*` 去 AI 数据域服务 |
+| `apps/tool-worker`（bash / web / memory / file / read-tool-result） | 17 | 全部留 `common`（本地口径单服务）；将来把 `memory-*`、`file-*` 拆去 AI 数据域服务 |
 | `apps/main`（skill-*、wait/cancel/list-sub-agent） | 10 | `skill/*` 归技能服务（控制面）；`agent/*` 归编排原语，不进注册中心 |
 | `apps/agent-runtime`（plan-*、run-sub-agent） | 5 | 编排原语，不进注册中心 |
-| `agent-runtime` 连接器（sql / redis / lark-cli） | 动态 | 外部接入服务，按协议登记 |
+| `agent-runtime` 连接器（sql / redis / lark-cli） | 动态 | **已删除（2026-11-18）**；能力待外部接入服务承接 |
 
 完整的 32 条新旧 key 对照见协议稿附录 A。
 
@@ -260,7 +260,7 @@ B 团队已有自己的 API，接入方式是在他们的服务里挂一个 `POS
 | --- | --- |
 | `service` | 唯一（服务是工具的分组，1:N） |
 | `title` / `description` / `owner` | 展示与追责 |
-| `source` | `code`（内部，构建期声明）/ `manual`（后台登记） |
+| `source` | `code`（内部，启动时上报）/ `manual`（后台登记） |
 | `baseUrl` / `healthPath` | 接入地址 |
 | `authMode` / `authHeader` / `credential` | 出站鉴权，**服务级密钥只存这一层** |
 | `allowHttp` | 联调开关，开了打不安全标记 |
@@ -269,7 +269,13 @@ B 团队已有自己的 API，接入方式是在他们的服务里挂一个 `POS
 | `manifestPath` | 可选，`POST /manifest` 拉清单的地址 |
 | `lastProbedAt` / `probeState` | 探活结果（30 秒一次） |
 
-**工具层（沿用 `ai_tools`）**：字段全保留（`enabled` / `scope` / `allowedAgents` / `limits` / `config` / `secrets` / 标题描述覆盖 / `paramSchema` 镜像）；`tool_key` 就是工具名，另加一列冗余 `service`（登记归属，便于按服务筛选与批量操作）。
+> **实现状态（2026-11-18）**：`ai_capability_services` 表**已建**（一行一个服务，整条
+> `RegisteredService` 存 jsonb；网关写、重启从 DB 恢复，Redis 只是运行时快照）；服务级
+> `defaultScope` / `defaultLimits` 仍未实现（治理仍只读 `ai_tools` 单层）。
+> `draft` 已有入口：后台保存先落 draft，两项自检通过后切 active。
+
+**工具层（沿用 `ai_tools`）**：字段全保留（`enabled` / `scope` / `allowedAgents` / `limits` / `config` / `secrets` / 标题描述覆盖 / `paramSchema` 镜像）；`tool_key` 就是工具名。
+计划中的冗余列 `service`（按服务筛选与批量操作）**未实现**，工具后台也就没有"所属服务"筛选。
 
 **继承与短路**
 
@@ -292,13 +298,16 @@ B 团队已有自己的 API，接入方式是在他们的服务里挂一个 `POS
 2. **服务详情**：基本信息 + 该服务的工具列表（开关 / scope / 限额 / 配置 / 密钥）；
 3. **全部工具**（现有 `/ai-tool/*` 保留）：加「所属服务」筛选，避免两套入口功能重叠。
 
-**生效路径**：写 = main 后台 API → 落库 → 删缓存 → 发 `ai.capability.changed`；读 = 网关 5s TTL、runtime 目录 30s TTL + 收到事件立即刷新。
+**生效路径**：写 = main 后台 API → 网关 `POST /v1/services/register|status` → 网关内存快照 + DB（+ Redis 快照）；
+读 = 网关侧即时（内存）、runtime 目录 30s TTL。main 与网关是**两个进程**，"删对方缓存"没有通道，
+所以只能靠 TTL 或事件。**当前没有 `ai.capability.changed` 事件**，改用 **runtime 目录 5s TTL** 兜住
+「停用后 5 秒内从模型面消失」的验收口径（网关侧本身是即时的）。
 
 **覆盖规则**
 
 | | `source=code` | `source=manual` |
 | --- | --- | --- |
-| 标题 / 描述 / 参数 schema | 构建期覆盖，页面只读 | 后台可编辑，留版本 |
+| 标题 / 描述 / 参数 schema | 启动时上报覆盖，页面只读 | 后台可编辑，留版本 |
 | 开关 / scope / 限额 / 配置 / 密钥 | **不覆盖**，人工优先 | 后台可编辑 |
 | 重新拉 manifest | — | diff 后人工确认，不静默覆盖人工改动 |
 
@@ -324,6 +333,11 @@ B 团队已有自己的 API，接入方式是在他们的服务里挂一个 `POS
 | 成本 | 10 个服务约每分钟 20 次探测，探测并发上限 5 |
 
 熔断（连续调用失败就暂停派发若干秒）是另一件事，本期不做。
+
+> **实现状态（2026-11-18）**：30s 周期、只探 `manual` + `active`、3s 超时、不跟随重定向、3 失败 down /
+> 2 成功 up、多副本 `acquireLock` 选主、**探活 down 时不再派发**（`pick()` 返回 null → 调用报 `no-provider`）
+> 都已实现；**未实现**：响应体 `status` 判定、1KB 读取上限、Redis `ai:svc:probe:<service>`（TTL 90s）、
+> 失败后立即补探、无 `healthPath` 时的 60s 冷却、down 告警。
 
 ### 6.5 内部服务做负载均衡，外部服务不做
 
@@ -353,7 +367,8 @@ exec                              ← service（一组工具，服务名全局�
 
 **任务多一行映射**：`mode:"task"` 的调用成功后记 `taskId → 实例`（Redis，TTL = 任务寿命），`wait` / `cancel` 回原实例。命令类任务必须记；任务状态共享的服务可以不记。
 
-**命令任务与滚动重启**：重启会杀掉在跑的命令（任务标 `lost`），脚手架期接受。
+**命令任务与滚动重启**：重启会杀掉在跑的命令，脚手架期接受。**实现现状**：服务侧任务表在进程内，
+重启后查询直接返回 `expired`；协议里的 `lost` 态尚未实现。
 
 **外部服务**：一个地址，不拆实例、不做 LB，多实例由对方的 LB 吸收；对方要保证任务状态与幂等键共享存储、健康检查只代表入口。
 
@@ -375,7 +390,8 @@ POST /v1/services/register    body = 服务声明 + 能力清单 + 自己的 ins
 - 内容没变 = no-op，不刷版本；
 - 滚动发布的窗口期（目录已有新能力、老实例还不支持）本期接受，不做按实例能力过滤。
 
-**服务侧的完整生命周期**（都调网关接口，走 `@repo/internal-sdk` 的 `CapabilityRegistryClient`，不自己拼 HTTP）：
+**服务侧的完整生命周期**（都调网关接口，HTTP 走 `@repo/internal-sdk` 的 `CapabilityGatewayClient`，
+生命周期编排在 `@repo/capability` 的 `CapabilityRegistrar`，服务侧不自己拼 HTTP）：
 
 | 时机 | 调用 |
 | --- | --- |
@@ -388,14 +404,14 @@ POST /v1/services/register    body = 服务声明 + 能力清单 + 自己的 ins
 
 ## 7. 迁移路径
 
-| 阶段 | 内容 | 影响面 | 可回滚 |
-| --- | --- | --- | --- |
-| 0 | 协议定稿（本轮） | 只有文档 | — |
-| 1 | 契约与命名：两个 app 改名；`@repo/contracts` 加扁平 key 校验与全局唯一约束；**能力定义搬进各服务 + 注册客户端下沉成机制包** | contracts / 机制包 / 各服务 / 两个 app / k8s / 测试 | 是 |
-| 2 | 目录：网关汇总服务声明（构建期收集 + 后台登记），产出模型面目录；`ai_tools` 就地改名 | gateway / main 后台 / admin 页 | 是（旧 key 双读） |
-| 3 | 执行形态与路由：`exec/bash` 支持 `yieldMs` + `task` 三形态；`gateway/wait-task`、`gateway/cancel-task`；时间线合并；内部实例心跳 + 按负载选实例 + task 映射 | gateway / common-capability / runtime / admin 时间线 | 是（开关控制） |
-| 4 | 服务拆分：`memory/*`、`files/*` 搬到 AI 数据域服务；`common-capability` 去掉 DB 与 OSS 权限 | 新 app + common-capability + 配置 | 是（旧路径保留一版） |
-| 5 | 连接器并入；删除 worker 直写 Redis、删除 runtime 的 `filterToolFace` 分流、删除网关静态 fallback | connectors / worker / runtime / gateway | 否（终态） |
+| 阶段 | 内容 | 影响面 | 可回滚 | 状态（2026-11-18） |
+| --- | --- | --- | --- | --- |
+| 0 | 协议定稿（本轮） | 只有文档 | — | ✅ |
+| 1 | 契约与命名：两个 app 改名；`@repo/contracts` 加扁平 key 校验与全局唯一约束；**能力定义搬进各服务 + 注册客户端下沉成机制包** | contracts / 机制包 / 各服务 / 两个 app / k8s / 测试 | 是 | ✅ |
+| 2 | 目录：网关汇总服务声明（启动时上报 + 后台登记），产出模型面目录；`ai_tools` 就地改名 | gateway / main 后台 / admin 页 | 是（旧 key 双读） | ✅（key 未改名） |
+| 3 | 执行形态与路由：`bash` 支持 `yieldMs` + `task` 三形态；`wait-task`、`cancel-task`；时间线合并；内部实例心跳 + 按负载选实例 + task 映射 | gateway / common-capability / runtime / admin 时间线 | 是（开关控制） | ✅ |
+| 4 | 服务拆分：`memory-*`、`file-*` 搬到 AI 数据域服务；`common-capability` 去掉 DB 与 OSS 权限 | 新 app + common-capability + 配置 | 是（旧路径保留一版） | ❌ 未开始 |
+| 5 | 连接器删除；删除 worker 直写 Redis、删除 runtime 的 `filterToolFace` 分流、删除网关静态 fallback | connectors / worker / runtime / gateway | 否（终态） | ⚠️ 连接器已删除、`filterToolFace` 已删；网关静态 fallback 仍在（`workerUrl` 兜底） |
 
 阶段 1–2 可以并行；阶段 4 是唯一需要新部署单元的。
 
@@ -404,39 +420,51 @@ POST /v1/services/register    body = 服务声明 + 能力清单 + 自己的 ins
 | # | 事项 | 决定 |
 | --- | --- | --- |
 | 1 | 网关名 / 服务名 | 网关 `tool-gateway` → **`capability-gateway`**；通用能力服务 `tool-worker` → **`common-capability`**。代码标识（目录 / 包名 / k8s 清单）**已改（2026-11-18）**；env 名暂留一版 |
-| 2 | `tool_search` | **先不做**（脚手架阶段工具数还可控）；协议里的 `tags` 留给它 |
+| 2 | `tool_search` | **已做（2026-11-19）**：网关内建 `tool-search`，BM25 检索当前身份可见目录，返回 top-k key + 说明 |
 | 3 | 对外 MCP 端点 | **不做**——只服务自家 agent，不把网关做成对外产品 |
 | 4 | 凭据 | 服务级出站凭据进 v1（后台填 header + 密钥，网关注入）；用户级 OAuth 不上（协议 §15） |
-| 5 | worker 拆域 | 见 §6.1：3 个进程；一个进程可承载多个服务身份 |
-| 6 | 任务完成后 | **自动唤醒**会话（结果回灌；用户不在线只落时间线） |
+| 5 | worker 拆域 | 见 §6.1：3 个进程；本地口径一个进程登记一个服务 |
+| 6 | 任务完成后 | **v1 不自动唤醒**（2026-11-18 改，口径 B）：模型用 `wait-task` 主动取，不替用户烧一轮模型 |
 | 7 | 停止对话 | **级联取消**该轮发起的 `owner=session` 任务；`owner=user` 只解除等待 |
 | 8 | http | **支持**（默认 https，联调可显式勾选 http 并标记为不安全） |
 | 9 | 外部清单与健康 | 推荐 `POST /manifest` 拉清单 + 网关每 30s 探活；**不做反向心跳** |
+| 10 | 回调 | **v1 不做**——不对外暴露任务回调入站接口；任务终态只靠轮询（D7） |
 | — | 仍未定 | 外部服务的出口策略（公共出口 / 专线、白名单谁批）；自检要不要给可执行脚本 |
 
-## 9. 验收标准
+> **实现状态**：第 7 条（级联取消）**已实现**；第 6 条按新口径（不自动唤醒）**明确不做**；
+> 第 8 条 http 只落了 `allowHttp` 标记（未做校验与不安全来源标记）。逐条见 §9。
 
-- 接入一个新的「通知服务」**不改网关一行代码**；
-- 能力清单能从 `POST /manifest` 一键拉到；探活失败时能力变 `available:false` 但**不从目录消失**，恢复后自动回来；
-- http 链路能跑通（联调环境），且日志与审计里能看出这是不安全来源；
-- 停止一轮对话，会取消这一轮发起的命令任务；`owner=user` 的任务不受影响；
-- 任务进入终态后，发起它的会话能被唤醒并拿到结果；用户不在线时结果落在时间线；
-- 用后台表单接入一个**集群外**的服务（B 团队的订单服务）：对方只加一个 `/invoke` 路由，我们侧不改代码、不发版，模型就能调用；
-- 模型面下发的工具名全部满足 `^[a-zA-Z0-9_-]{1,64}$`，接真实 provider 不报错；
-- 一次 `pnpm install` 级别的长命令，时间线上只有**一张**卡片，能看到最新输出与最终退出码；
-- 回调丢失时，任务仍能靠轮询拿到终态；
-- 网关重启后目录不空（DB 是事实源，Redis 只是快照）；
-- 后台停用一个能力后，模型面在 5 秒内消失；恢复后回来，且**不会**因为「暂时没有健康提供者」而消失。
+## 9. 验收标准（2026-11-18 现状核对）
+
+| # | 标准 | 状态 | 现状 / 依据 |
+| --- | --- | --- | --- |
+| 1 | 接入一个新的「通知服务」**不改网关一行代码** | ✅ | 后台登记 + 同步清单即可（`source=manual`） |
+| 2 | 能力清单能从 `POST /manifest` 一键拉到；探活失败时 `available:false` 但**不消失**，恢复自动回来 | ✅ | 同步与目录 `available` 已实现；探活 down 时 `pick()` 返回 null（报 `no-provider`） |
+| 3 | http 链路能跑通，且日志 / 审计能看出这是不安全来源 | ✅ | 目标校验（https 默认 / SSRF 段拒绝）+ 明文 http 时记 `insecure_target` warn |
+| 4 | 停止一轮对话，取消该轮发起的命令任务；`owner=user` 不受影响 | ✅ | 网关记 `runId → taskId`（仅 session）+ `POST /v1/tasks/cancel-run`，runtime 在 `cascadeStop` 调用 |
+| 5 | 任务终态**不自动唤醒**（v1 口径 B） | — | 结果靠 `wait-task` 主动取；不发事件、不起新 run，避免替用户烧 token |
+| 6 | 集群外服务只加 `/invoke` 就能被模型调用 | ✅ | 外部服务调用与凭据注入已实现 |
+| 7 | 模型面工具名满足 provider 字符集 | ✅ | 工具名 ≤32、`[a-z0-9-]`，比 provider 上限更严 |
+| 8 | 一次长命令在时间线上只有**一张**卡片，能看到最新输出与退出码 | ✅ | `wait-task` + admin 按 `taskId` 合并（单测覆盖） |
+| 9 | 任务终态只靠轮询即可拿到（**v1 不做回调**） | ✅ | 模型侧 `wait-task` / `cancel-task` 已实现（网关内建） |
+| 10 | 网关重启后目录不空（DB 是事实源） | ✅ | `ai_capability_services`（快照 jsonb）落库；重启从 DB 恢复，Redis 只是快照 |
+| 11 | 后台停用一个能力后模型面在 5 秒内消失 | ✅ | runtime 目录 TTL 改为 5s（无事件，用 TTL 兜住） |
+| 12 | 后台登记前过两项自检（连通 + 冒烟调用）才允许启用 | ✅ | 保存先落 draft，自检双过切 active；未过留 draft 并返回原因 |
+| 13 | MCP 服务能登记、同步工具并被调用（HTTP 型） | ✅ | `initialize` + `tools/list` + `tools/call`；本地假 server / DeepWiki / 高德均验证通过 |
+| 14 | 外部工具能被模型看到并调用 | ⚠️ | runtime 已按目录生成动态工具（`'*'` / `EXTERNAL_TOOLS`），单测覆盖；整栈“模型自主调用”未实测 |
+| 15 | 模型能按意图检索工具（BM25） | ✅ | 网关内建 `tool-search`；本地实测「列出文件→file-list」「执行命令→bash」「搜索网页→web-search」 |
+
+结论：**除第 5 条（按口径 B 明确不做）外，1–4、6–12 全部达成。**
 
 ## 附录：与现有代码的对应
 
-| 现在 | 角色 | 目标 |
-| --- | --- | --- |
-| `apps/tool-gateway`（9993） | 目录 / 策略 / 选 worker / 审计 | `capability-gateway`：服务登记 + 能力目录 + 三形态执行 + 治理 |
-| `apps/tool-worker`（9994） | 全部执行器 + 自注册 Redis | `common-capability`：只跑 `exec` / `web`，不再自注册、不持 DB |
-| `packages/tool-catalog` | 32 个能力的定义 + 生成的 manifest | 退役（或只留构建期快照供 review）；定义搬进各服务，pkg 只留装饰器 / 扫描 / 转换 / 注册客户端 |
-| `packages/contracts` | `ToolManifest` / `ToolInvoke*` | 协议契约：扁平能力 key、服务登记 / 实例 / 目录 / 任务 |
-| `apps/main` 的 `ai_tools` 后台 | 开关 / scope / 限额 / 配置 | 不变，key 改名 |
-| `agent-runtime` 的 `connectors/**` | sql / redis / lark-cli 执行 | 退役，变成外部接入服务 |
-| `agent-runtime` 的 `gateway-tool-catalog.ts` | 用网关目录过滤本地工具面 | 简化：目录即工具面，删掉 `filterToolFace` 分流 |
-| Redis `ai:tool-worker:*` | worker 注册表 | 网关的服务快照（不是身份来源） |
+| 现在 | 角色 | 目标 | 状态 |
+| --- | --- | --- | --- |
+| `apps/tool-gateway`（9993） | 目录 / 策略 / 选 worker / 审计 | `capability-gateway`：服务登记 + 能力目录 + 三形态执行 + 治理 | ✅ 改名 + 重构完成 |
+| `apps/tool-worker`（9994） | 全部执行器 + 自注册 Redis | `common-capability`：只跑 `bash` / `web-*`，不再自注册、不持 DB | ⚠️ 改名与单服务登记完成；执行器未瘦身、仍持 DB/OSS |
+| `packages/tool-catalog` | 32 个能力的定义 + 生成的 manifest | 退役；定义搬进各服务，pkg 只留装饰器 / 扫描 / 转换 / 注册生命周期 | ✅ 已删 |
+| `packages/contracts` | `ToolManifest` / `ToolInvoke*` | 协议契约：扁平能力 key、服务登记 / 实例 / 目录 / 任务 | ✅ |
+| `apps/main` 的 `ai_tools` 后台 | 开关 / scope / 限额 / 配置 | 不变，key 改名 | ✅（key 未改名；无 `service` 列） |
+| `agent-runtime` 的 `connectors/**` | sql / redis / lark-cli 执行 | 退役，变成外部接入服务 | ✅ 已删除（2026-11-18） |
+| `agent-runtime` 的 `gateway-tool-catalog.ts` | 用网关目录过滤本地工具面 | 简化：目录即工具面 | ⚠️ 已改名 `GatewayToolCatalog` + `applyCatalogToToolFace`，仍在用 |
+| Redis `ai:tool-worker:*` | worker 注册表 | 网关的服务快照（不是身份来源） | ✅ 已删；快照在 `ai:capability:registry` |

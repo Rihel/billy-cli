@@ -9,10 +9,13 @@ import {
   type CapabilityInvokeResult,
   type CapabilityListRequest,
   type CapabilityListResponse,
+  type McpDiscover,
+  type McpDiscoverResult,
   type CapabilityServiceStatus,
   type CapabilityTaskQuery,
   type CapabilityTaskSnapshot,
   type RegisteredService,
+  McpDiscoverResultSchema,
   type ServiceRegistration,
   type ServiceRegisterResult,
 } from '@repo/contracts'
@@ -48,6 +51,35 @@ export class CapabilityGatewayClient {
     )
   }
 
+  /** 实例心跳：只刷 `active`；返回 `known=false` 时服务侧应重发 register */
+  heartbeat(
+    service: string,
+    instanceId: string,
+    active: number,
+    options: InvokeOptions = {},
+  ): Promise<{ known: boolean }> {
+    return requestEnvelope(
+      this.options,
+      '/v1/instances/heartbeat',
+      z.object({ known: z.boolean() }),
+      { method: 'POST', body: { service, instanceId, active }, ...options },
+    )
+  }
+
+  /** 实例摘除（优雅停机）：只摘流量，服务记录与能力保留 */
+  deregisterInstance(
+    service: string,
+    instanceId: string,
+    options: InvokeOptions = {},
+  ): Promise<{ removed: boolean }> {
+    return requestEnvelope(
+      this.options,
+      '/v1/instances/deregister',
+      z.object({ removed: z.boolean() }),
+      { method: 'POST', body: { service, instanceId }, ...options },
+    )
+  }
+
   setStatus(
     status: CapabilityServiceStatus,
     options: InvokeOptions = {},
@@ -64,6 +96,15 @@ export class CapabilityGatewayClient {
     return requestEnvelope(this.options, '/v1/services/list', ServiceListResponseSchema, {
       method: 'POST',
       body: {},
+      ...options,
+    })
+  }
+
+  /** 发现一个 MCP server 的工具（后台同步能力清单用；不落库） */
+  discoverMcp(input: McpDiscover, options: InvokeOptions = {}): Promise<McpDiscoverResult> {
+    return requestEnvelope(this.options, '/v1/services/mcp/list', McpDiscoverResultSchema, {
+      method: 'POST',
+      body: input,
       ...options,
     })
   }
@@ -99,6 +140,19 @@ export class CapabilityGatewayClient {
       body: query,
       ...options,
     })
+  }
+
+  /** 停止一轮对话：取消本轮发起的 session 任务（服务侧自己的任务不随对话取消） */
+  cancelRunTasks(
+    runId: string,
+    options: InvokeOptions = {},
+  ): Promise<{ targets: number; canceled: number }> {
+    return requestEnvelope(
+      this.options,
+      '/v1/tasks/cancel-run',
+      z.object({ targets: z.number(), canceled: z.number() }),
+      { method: 'POST', body: { runId }, ...options },
+    )
   }
 
   cancelTask(taskId: string, options: InvokeOptions = {}): Promise<CapabilityTaskSnapshot> {
