@@ -5,7 +5,7 @@ import { useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
 import { useForm } from '@tanstack/react-form'
 import { useStore } from '@tanstack/react-store'
-import { ToolCategory, ToolScope } from '@repo/shared'
+import { ToolCategory } from '@repo/shared'
 import type { AiToolModel, AiToolUpdateDto, AiToolWorkspaceStatusModel } from '@repo/shared'
 import {
   Alert,
@@ -19,10 +19,8 @@ import {
   DictTag,
   Input,
   ModalForm,
-  SegmentedControl,
   Switch,
   Tag,
-  TagsInput,
   toastError,
   toastWarning,
   cn,
@@ -30,7 +28,7 @@ import {
   JsonView,
 } from '@repo/ui'
 import { ChevronDownIcon, KeyRoundIcon, RotateCcwIcon, TriangleAlertIcon } from 'lucide-react'
-import { ToolConfigPanel } from './config-panels'
+import { ToolConfigPanel, hasToolConfigFields } from './config-panels'
 import { ToolEventsPanel } from './tool-events'
 import { buildToolUpdatePayload, toFormValues } from './tool-payload'
 import type { ToolFormValues } from './tool-payload'
@@ -40,7 +38,8 @@ import type { ToolFormValues } from './tool-payload'
  *
  * 分三块，对应三类信息：
  * 1. **只读区** —— 来自代码声明与运行期快照，后台改不了（key / 类别 / 入参定义 / 哪些 agent 用它）；
- * 2. **治理区** —— 开关、作用域、`allowedAgents`、限额（`ai_tools` 表里那一行）；
+ * 2. **治理区** —— 开关与限额（`ai_tools` 表里那一行）；作用域不再在页面暴露，
+ *    访问控制由 agent 声明（谁能用）与服务授权（外部服务给谁）两层决定；
  * 3. **工具区** —— 工具专属配置（一期按 key 手写面板）与秘钥。
  *
  * 保存只提交改动过的字段（省略 = 不改，见 `tool-payload.ts`）；秘钥留空 = 不改、
@@ -195,13 +194,6 @@ export function ToolFormModal({
     setSubmitError(undefined)
   }, [open, tool, form])
 
-  const agentOptions = tool
-    ? Array.from(new Set([...tool.agents, ...values.allowedAgents])).map((agent) => ({
-        label: agent,
-        value: agent,
-      }))
-    : []
-
   return (
     <ModalForm<ToolFormValues>
       open={open && tool !== null}
@@ -259,7 +251,7 @@ export function ToolFormModal({
                   </span>
                 ) : (
                   <span className="text-xs text-muted-foreground">
-                    没有 agent 声明使用它（作用域与授权是两层关卡）
+                    没有 agent 声明使用它（agent 声明是唯一授权来源）
                   </span>
                 )}
               </ReadonlyItem>
@@ -282,60 +274,30 @@ export function ToolFormModal({
             </div>
           </FormSection>
 
-          <FormSection
-            title="自定义事件（只读）"
-            description="事件在代码里声明、启动期镜像入库，页面只读；这里看的是「可能发什么」，实发内容在对话流的工具卡里看"
-          >
-            <ToolEventsPanel events={tool.events} />
-          </FormSection>
+          {tool.events.length > 0 ? (
+            <FormSection
+              title="自定义事件（只读）"
+              description="事件在代码里声明、启动期镜像入库，页面只读；这里看的是「可能发什么」，实发内容在对话流的工具卡里看"
+            >
+              <ToolEventsPanel events={tool.events} />
+            </FormSection>
+          ) : null}
 
-          <FormSection title="治理" description="开关与作用域都在这里改，改完下一次工具调用生效">
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <div className="flex flex-col gap-1.5">
-                <span className="text-sm font-medium">启用</span>
-                <Switch
-                  checked={values.enabled}
-                  aria-label="工具启用状态"
-                  onCheckedChange={(next) => form.setFieldValue('enabled', next === true)}
-                />
-                <span className="text-xs text-muted-foreground">
-                  关掉后调用会被拒；但工具面是装配期快照 —— 提示词里仍然列着它
-                </span>
-              </div>
-              <div className="flex flex-col gap-1.5">
-                <span className="text-sm font-medium">作用域</span>
-                <SegmentedControl
-                  value={values.scope}
-                  options={[ToolScope.All, ToolScope.Agent].map((scope) => ({
-                    label: ToolScope.getLabel(scope),
-                    value: scope,
-                  }))}
-                  onValueChange={(next) =>
-                    form.setFieldValue('scope', next as typeof ToolScope.All)
-                  }
-                />
-                <span className="text-xs text-muted-foreground">
-                  这一次调用允不允许；作用域是第二层关卡，授权仍在 agent 声明里
-                </span>
-              </div>
-              {values.scope === ToolScope.Agent ? (
-                <div className="flex flex-col gap-1.5 sm:col-span-2">
-                  <span className="text-sm font-medium">指定 agent</span>
-                  <TagsInput
-                    value={values.allowedAgents}
-                    options={agentOptions}
-                    placeholder="输入 agent key 后回车；上方列出的是已声明使用它的 agent"
-                    onChange={(next) => form.setFieldValue('allowedAgents', next)}
-                  />
-                  <span className="text-xs text-muted-foreground">
-                    只有这里的 agent 能调它（子 agent 沿用父 agent 的判定）
-                  </span>
-                </div>
-              ) : null}
+          <FormSection title="治理" description="开关在这里改，改完下一次工具调用生效">
+            <div className="flex flex-col gap-1.5">
+              <span className="text-sm font-medium">启用</span>
+              <Switch
+                checked={values.enabled}
+                aria-label="工具启用状态"
+                onCheckedChange={(next) => form.setFieldValue('enabled', next === true)}
+              />
+              <span className="text-xs text-muted-foreground">
+                关掉后调用会被拒；但工具面是装配期快照 —— 提示词里仍然列着它
+              </span>
             </div>
           </FormSection>
 
-          <FormSection title="限额" description="留空 = 不限制；上限还会被部署侧的硬上限再夹一次">
+          <FormSection title="限额" description="留空 = 不限制；分页上限由工具代码声明，不在后台改">
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <NumberField
                 label="每轮最多调用次数"
@@ -355,35 +317,25 @@ export function ToolFormModal({
                 value={values.rateMax}
                 onChange={(next) => form.setFieldValue('rateMax', next)}
               />
-              <NumberField
-                label="单页字节数"
-                hint="单次给模型的出参上限；留空用工具声明里的值"
-                value={values.pageBytes}
-                onChange={(next) => form.setFieldValue('pageBytes', next)}
-              />
-              <NumberField
-                label="每轮最多取页次数"
-                hint="大结果分页回取的次数上限（防反复取页烧 token）"
-                value={values.maxPagesPerTurn}
-                onChange={(next) => form.setFieldValue('maxPagesPerTurn', next)}
-              />
             </div>
           </FormSection>
 
-          <FormSection
-            title="工具专属配置"
-            description="一期按工具手写面板；每个字段下方标出代码默认值，可一键用回默认"
-          >
-            <ToolConfigPanel
-              toolKey={tool.toolKey}
-              config={values.config}
-              defaults={tool.defaultConfig}
-              workspaceStatus={workspaceStatus}
-              onChange={(key, value) =>
-                form.setFieldValue('config', { ...values.config, [key]: value })
-              }
-            />
-          </FormSection>
+          {hasToolConfigFields(tool.toolKey, tool.defaultConfig) ? (
+            <FormSection
+              title="工具专属配置"
+              description="一期按工具手写面板；每个字段下方标出代码默认值，可一键用回默认"
+            >
+              <ToolConfigPanel
+                toolKey={tool.toolKey}
+                config={values.config}
+                defaults={tool.defaultConfig}
+                workspaceStatus={workspaceStatus}
+                onChange={(key, value) =>
+                  form.setFieldValue('config', { ...values.config, [key]: value })
+                }
+              />
+            </FormSection>
+          ) : null}
 
           {tool.secretFields.length > 0 ? (
             <FormSection
@@ -437,7 +389,7 @@ export function ToolFormModal({
           <FormSection
             title="恢复默认"
             description={dedent`
-              会清掉这个工具的人工覆盖值（开关 / 作用域 / 指定 agent / 限额 / 工具专属配置 / 文案），
+              会清掉这个工具的人工覆盖值（开关 / 限额 / 工具专属配置 / 文案），
               回到代码声明的默认，并清空已配置的秘钥。
             `}
           >

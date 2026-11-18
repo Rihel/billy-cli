@@ -249,6 +249,10 @@ const WorkspaceCapabilityNote = ({ status }: { status: AiToolWorkspaceStatusMode
 }
 
 /** 工具专属配置面板（没有可配项时只给一句话） */
+/** 这个工具是否有专属配置面板（没有就整段隐藏，不再显示空提示） */
+export const hasToolConfigFields = (toolKey: string, defaults: Record<string, unknown>): boolean =>
+  fieldsOf(toolKey, defaults).length > 0
+
 export function ToolConfigPanel({
   toolKey,
   config,
