@@ -554,7 +554,8 @@ export default function CapabilitiesPage() {
                       </code>
                       {statusTag(service)}
                       {protocolTag(service)}
-                      {isInternal ? null : probeTag(service)}
+                      {/* MCP 不走 HTTP 探活（GET /mcp 会 405），不展示探活状态 */}
+                      {isInternal || service.protocol === 'mcp' ? null : probeTag(service)}
                     </div>
                     <div className="mt-1 text-xs text-muted-foreground">
                       {service.baseUrl ?? '（由实例注册）'} · {service.owner} ·{' '}
