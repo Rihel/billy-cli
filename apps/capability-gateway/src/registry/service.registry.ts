@@ -427,7 +427,25 @@ export class ServiceRegistry {
     >
   > {
     await this.ensureLoaded()
-    return [...this.services.values()]
+    // 网关内建能力（wait-task / cancel-task / tool-search）不属于任何登记服务：
+    // 单独合成一条只读服务，后台才能在「能力服务」里看到并配置工具级配置。
+    const builtin = RegisteredServiceSchema.parse({
+      service: GATEWAY_SERVICE,
+      title: '网关内建',
+      description: 'wait-task / cancel-task / tool-search；不参与服务登记与探活',
+      owner: '平台组',
+      source: 'code',
+      protocol: 'capability',
+      healthPath: '/',
+      allowHttp: false,
+      status: 'active',
+      capabilities: BUILTIN_CAPABILITIES,
+      deprecated: [],
+      instances: {},
+      version: 1,
+      updatedAt: Date.now(),
+    })
+    return [...this.services.values(), builtin]
   }
 
   /** 外部服务的出站凭据（内部服务返回 null，用网关自己的内部令牌） */

@@ -18,7 +18,6 @@ import {
   ShieldCheckIcon,
   SparklesIcon,
   UsersIcon,
-  WrenchIcon,
 } from 'lucide-react'
 import {
   SidebarGroup,
@@ -55,7 +54,6 @@ export const MENU_ITEMS: MenuItem[] = [
       { label: '模型管理', key: '/main/ai/models', icon: CpuIcon },
       { label: '网关用量', key: '/main/ai/usage', icon: ChartLineIcon },
       { label: '上游 Key', key: '/main/ai/keys', icon: KeyRoundIcon },
-      { label: '工具配置', key: '/main/ai/tools', icon: WrenchIcon },
       { label: '技能库', key: '/main/ai/skills', icon: SparklesIcon },
       { label: '记忆', key: '/main/ai/memories', icon: BrainIcon },
       { label: '文件管理', key: '/main/ai/files', icon: FolderOpenIcon },

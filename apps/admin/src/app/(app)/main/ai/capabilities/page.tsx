@@ -3,6 +3,8 @@
 import { useState } from 'react'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import type {
+  AiToolModel,
+  AiToolUpdateDto,
   CapabilityServiceCapabilityDto,
   CapabilityServiceModel,
   CapabilityServiceProtocol,
@@ -29,8 +31,9 @@ import {
   toastError,
   toastSuccess,
 } from '@repo/ui'
-import { PlusIcon, RotateCwIcon } from 'lucide-react'
+import { PlusIcon, RotateCwIcon, WrenchIcon } from 'lucide-react'
 import { useServerClient } from '@/lib/server-client'
+import { ToolFormModal } from '../tools/tool-form'
 
 /**
  * 能力服务（`/main/ai/capabilities`）—— 内部实例的登记目录 + 外部服务的登记入口。
@@ -285,6 +288,12 @@ export default function CapabilitiesPage() {
   /** 能力清单弹窗：查看哪个服务、选中哪个能力 */
   const [inspecting, setInspecting] = useState<CapabilityServiceModel | null>(null)
   const [inspectTool, setInspectTool] = useState<string | null>(null)
+  /** 工具级配置（服务详情里直接编辑，不再单独去「工具配置」页） */
+  const [toolEditing, setToolEditing] = useState<AiToolModel | null>(null)
+  const [toolFormOpen, setToolFormOpen] = useState(false)
+  const [runtimeToolsOpen, setRuntimeToolsOpen] = useState(false)
+  /** 服务筛选：全部 / MCP / 内部（code）/ 外部（manual 能力协议） */
+  const [serviceFilter, setServiceFilter] = useState<'all' | 'mcp' | 'internal' | 'external'>('all')
 
   const listQuery = useQuery({
     queryKey: ['capabilityService', 'list'],
@@ -293,6 +302,21 @@ export default function CapabilitiesPage() {
 
   const saveMutation = useMutation({
     mutationFn: (dto: CapabilityServiceSaveDto) => client.capabilityService.save(dto),
+  })
+  const aiToolsQuery = useQuery({
+    queryKey: ['aiTool', 'list', 'all'],
+    queryFn: () => client.aiTool.list({ page: 1, size: 100 }),
+  })
+  const workspaceQuery = useQuery({
+    queryKey: ['aiTool', 'workspace'],
+    queryFn: () => client.aiTool.workspace(),
+    staleTime: 5 * 60 * 1000,
+  })
+  const updateToolMutation = useMutation({
+    mutationFn: (dto: AiToolUpdateDto) => client.aiTool.update(dto),
+  })
+  const resetToolMutation = useMutation({
+    mutationFn: (input: { toolKey: string }) => client.aiTool.reset(input),
   })
   const removeMutation = useMutation({
     mutationFn: (service: string) => client.capabilityService.remove({ service }),
@@ -507,11 +531,45 @@ export default function CapabilitiesPage() {
   }
 
   const services = listQuery.data ?? []
+  const mcpServices = services.filter((service) => service.protocol === 'mcp')
+  const internalServices = services.filter((service) => service.source === 'code')
+  const externalServices = services.filter(
+    (service) => service.source === 'manual' && service.protocol !== 'mcp',
+  )
+  const visibleServices =
+    serviceFilter === 'all'
+      ? services
+      : serviceFilter === 'mcp'
+        ? mcpServices
+        : serviceFilter === 'internal'
+          ? internalServices
+          : externalServices
   const current = inspecting
     ? (inspecting.capabilities.find((item) => item.tool === inspectTool) ??
       inspecting.capabilities[0])
     : null
+  const serviceToolKeys = new Set(
+    services.flatMap((service) => service.capabilities.map((capability) => capability.tool)),
+  )
+  /** 运行时编排工具（plan / 子助手 / 技能库）：不在能力目录里，但同样有工具级配置 */
+  const runtimeTools = (aiToolsQuery.data?.items ?? []).filter(
+    (tool) => !serviceToolKeys.has(tool.toolKey),
+  )
   const currentParams = current ? schemaParams(current.inputSchema) : null
+  const currentTool = current
+    ? (aiToolsQuery.data?.items ?? []).find((tool) => tool.toolKey === current.tool)
+    : undefined
+
+  const saveTool = async (dto: AiToolUpdateDto) => {
+    await updateToolMutation.mutateAsync(dto)
+    await aiToolsQuery.refetch()
+    toastSuccess('工具配置已更新（下次调用生效）')
+  }
+  const resetTool = async (tool: AiToolModel) => {
+    await resetToolMutation.mutateAsync({ toolKey: tool.toolKey })
+    await aiToolsQuery.refetch()
+    toastSuccess('已恢复代码默认值')
+  }
 
   return (
     <div className="flex flex-col gap-4 p-4 sm:py-6">
@@ -520,6 +578,11 @@ export default function CapabilitiesPage() {
         description="内部服务的实例进程自登记（进程 = 一个服务）；外部服务在这里登记地址、鉴权与能力清单。网关是唯一写方，页面只读 + 转发。"
         extra={
           <>
+            {runtimeTools.length > 0 ? (
+              <Button variant="outline" onClick={() => setRuntimeToolsOpen(true)}>
+                <WrenchIcon className="mr-1 size-4" /> 运行时工具（{runtimeTools.length}）
+              </Button>
+            ) : null}
             <Button variant="outline" onClick={() => void listQuery.refetch()}>
               <RotateCwIcon className="mr-1 size-4" /> 刷新
             </Button>
@@ -540,70 +603,94 @@ export default function CapabilitiesPage() {
           </p>
         </div>
       ) : (
-        <div className="flex flex-col gap-3">
-          {services.map((service) => {
-            const isInternal = service.source === 'code'
-            return (
-              <article key={service.service} className="rounded-xl bg-card p-4">
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="text-sm font-medium">{service.title}</span>
-                      <code className="font-mono text-[11px] text-muted-foreground">
-                        {service.service}
-                      </code>
-                      {statusTag(service)}
-                      {protocolTag(service)}
-                      {/* MCP 不走 HTTP 探活（GET /mcp 会 405），不展示探活状态 */}
-                      {isInternal || service.protocol === 'mcp' ? null : probeTag(service)}
+        <>
+          <SegmentedControl
+            value={serviceFilter}
+            options={[
+              { label: `全部（${services.length}）`, value: 'all' },
+              { label: `MCP（${mcpServices.length}）`, value: 'mcp' },
+              { label: `内部（${internalServices.length}）`, value: 'internal' },
+              { label: `外部（${externalServices.length}）`, value: 'external' },
+            ]}
+            onValueChange={(next) =>
+              setServiceFilter(next as 'all' | 'mcp' | 'internal' | 'external')
+            }
+          />
+          {visibleServices.length === 0 ? (
+            <div className="rounded-xl bg-card p-8 text-center text-sm text-muted-foreground">
+              这个筛选下没有服务
+            </div>
+          ) : (
+            <div className="flex flex-col gap-3">
+              {visibleServices.map((service) => {
+                const isInternal = service.source === 'code'
+                return (
+                  <article key={service.service} className="rounded-xl bg-card p-4">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="text-sm font-medium">{service.title}</span>
+                          <code className="font-mono text-[11px] text-muted-foreground">
+                            {service.service}
+                          </code>
+                          {statusTag(service)}
+                          {protocolTag(service)}
+                          {/* MCP 不走 HTTP 探活（GET /mcp 会 405），不展示探活状态 */}
+                          {isInternal || service.protocol === 'mcp' ? null : probeTag(service)}
+                        </div>
+                        <div className="mt-1 text-xs text-muted-foreground">
+                          {service.baseUrl ?? '（由实例注册）'} · {service.owner} ·{' '}
+                          {service.capabilities.length} 个能力 · v{service.version}
+                          {service.hasCredential ? ' · 已配凭据' : ''}
+                        </div>
+                      </div>
+                      {isInternal && service.service !== 'gateway' ? (
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs text-muted-foreground">
+                            {service.status === 'active' ? '启用' : '停用'}
+                          </span>
+                          <Switch
+                            checked={service.status === 'active'}
+                            disabled={statusMutation.isPending}
+                            onCheckedChange={(enabled) => void toggleStatus(service, enabled)}
+                          />
+                        </div>
+                      ) : null}
                     </div>
-                    <div className="mt-1 text-xs text-muted-foreground">
-                      {service.baseUrl ?? '（由实例注册）'} · {service.owner} ·{' '}
-                      {service.capabilities.length} 个能力 · v{service.version}
-                      {service.hasCredential ? ' · 已配凭据' : ''}
-                    </div>
-                  </div>
-                  {isInternal ? (
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs text-muted-foreground">
-                        {service.status === 'active' ? '启用' : '停用'}
-                      </span>
-                      <Switch
-                        checked={service.status === 'active'}
-                        disabled={statusMutation.isPending}
-                        onCheckedChange={(enabled) => void toggleStatus(service, enabled)}
-                      />
-                    </div>
-                  ) : null}
-                </div>
 
-                <div className="mt-3 flex flex-wrap items-center gap-2">
-                  <Button size="sm" variant="outline" onClick={() => openInspect(service)}>
-                    能力清单（{service.capabilities.length}）
-                  </Button>
-                  {isInternal ? null : (
-                    <>
-                      <Button size="sm" variant="outline" onClick={() => openEdit(service)}>
-                        编辑
+                    <div className="mt-3 flex flex-wrap items-center gap-2">
+                      <Button size="sm" variant="outline" onClick={() => openInspect(service)}>
+                        能力清单（{service.capabilities.length}）
                       </Button>
-                      <Button size="sm" variant="outline" onClick={() => void testService(service)}>
-                        测试连通
-                      </Button>
-                      <ConfirmAction
-                        danger
-                        title={`删除服务 ${service.service}？`}
-                        description="删除后能力从目录消失，已引用这些能力的会话将无法再调用。"
-                        onConfirm={() => removeService(service.service)}
-                      >
-                        删除
-                      </ConfirmAction>
-                    </>
-                  )}
-                </div>
-              </article>
-            )
-          })}
-        </div>
+                      {isInternal ? null : (
+                        <>
+                          <Button size="sm" variant="outline" onClick={() => openEdit(service)}>
+                            编辑
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => void testService(service)}
+                          >
+                            测试连通
+                          </Button>
+                          <ConfirmAction
+                            danger
+                            title={`删除服务 ${service.service}？`}
+                            description="删除后能力从目录消失，已引用这些能力的会话将无法再调用。"
+                            onConfirm={() => removeService(service.service)}
+                          >
+                            删除
+                          </ConfirmAction>
+                        </>
+                      )}
+                    </div>
+                  </article>
+                )
+              })}
+            </div>
+          )}
+        </>
       )}
 
       {/* 能力清单：居中弹窗 + 左右主从（左选能力，右看描述与参数说明） */}
@@ -690,6 +777,37 @@ export default function CapabilitiesPage() {
                       ))}
                     </ul>
                   )}
+                  <div className="mt-6 border-t border-border/60 pt-4">
+                    <div className="text-sm font-medium">工具配置</div>
+                    {currentTool ? (
+                      <>
+                        <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                          <Tag color={currentTool.enabled ? 'success' : 'default'}>
+                            {currentTool.enabled ? '已启用' : '已停用'}
+                          </Tag>
+                          <span>作用域 {currentTool.scope}</span>
+                          <span>类别 {currentTool.category}</span>
+                        </div>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="mt-3"
+                          onClick={() => {
+                            setToolEditing(currentTool)
+                            setToolFormOpen(true)
+                          }}
+                        >
+                          编辑工具配置
+                        </Button>
+                      </>
+                    ) : (
+                      <p className="mt-2 text-xs text-muted-foreground">
+                        {inspecting?.source === 'manual'
+                          ? '外部 / MCP 能力没有工具级配置行：使用服务级凭据与「服务授权」。'
+                          : '这个能力没有工具级配置行（例如网关内建能力）。'}
+                      </p>
+                    )}
+                  </div>
                 </>
               ) : (
                 <p className="text-xs text-muted-foreground">这个服务还没有能力。</p>
@@ -699,6 +817,66 @@ export default function CapabilitiesPage() {
           {/* 固定高度 + bodyScroll={false}：页脚用普通流式布局，别用默认的 sticky（会停在弹窗中部盖住列表） */}
           <DialogFooter className="static shrink-0">
             <Button variant="outline" onClick={() => setInspecting(null)}>
+              关闭
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <ToolFormModal
+        tool={toolEditing}
+        workspaceStatus={workspaceQuery.data}
+        open={toolFormOpen}
+        onSave={saveTool}
+        onReset={resetTool}
+        saving={updateToolMutation.isPending || resetToolMutation.isPending}
+        onClose={() => setToolFormOpen(false)}
+      />
+
+      <Dialog
+        open={runtimeToolsOpen}
+        onOpenChange={(open) => (!open ? setRuntimeToolsOpen(false) : undefined)}
+      >
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>运行时工具（{runtimeTools.length}）</DialogTitle>
+            <DialogDescription>
+              由 runtime 本地执行、不在能力目录里的工具；点「编辑」配置开关、限额与专属配置。
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex max-h-[55dvh] flex-col gap-1 overflow-y-auto px-2">
+            {runtimeTools.map((tool) => (
+              <div
+                key={tool.toolKey}
+                className="flex flex-wrap items-center justify-between gap-2 rounded-lg px-2 py-2 hover:bg-surface-1"
+              >
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-sm font-medium">{tool.title}</span>
+                    <code className="font-mono text-[11px] text-muted-foreground">
+                      {tool.toolKey}
+                    </code>
+                    <Tag color={tool.enabled ? 'success' : 'default'}>
+                      {tool.enabled ? '已启用' : '已停用'}
+                    </Tag>
+                  </div>
+                </div>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => {
+                    setRuntimeToolsOpen(false)
+                    setToolEditing(tool)
+                    setToolFormOpen(true)
+                  }}
+                >
+                  编辑
+                </Button>
+              </div>
+            ))}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setRuntimeToolsOpen(false)}>
               关闭
             </Button>
           </DialogFooter>
