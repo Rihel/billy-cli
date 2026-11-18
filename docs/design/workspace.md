@@ -95,12 +95,15 @@ type WorkspaceBackend = 'local' | 'container' | 'microvm'
 
 残余风险（共享内核）靠三样压低：审计、配额限流、分级开放（早期不公开注册）。
 
-### 2.3 旧 L1 沙箱退役
+### 2.3 L1 沙箱：容器后端不需要，local 后端保留
 
-现有 [workspace-runtime.md](workspace-runtime.md) 的 macOS `sandbox-exec` / Linux `bwrap`（L1）在容器方案下**退役**：
+现有 [workspace-runtime.md](workspace-runtime.md) 的 macOS `sandbox-exec` / Linux `bwrap`（L1）**不退役**，按后端区分：
 
-- 容器已是隔离边界，容器内再套一层 OS 沙箱没有意义。
-- `local` 后端仅保留给自托管单租户，不做云端默认。
+- **container / microvm 后端**：容器/VM 已是隔离边界，容器内再套一层 OS 沙箱没有意义——这条路径不用 L1。
+- **local 后端**：命令直接跑在宿主进程与宿主目录上，没有容器边界，**必须保留 L1 沙箱**（默认 `enforce` + fail closed），否则等于裸奔。
+- `local` 仍然只留给自托管单租户，不做云端默认；它的安全模型要写清楚：**L1 沙箱 + 目录边界，不是容器**。
+
+`WorkspaceRuntime` 的 `local` 实现复用现有 `WorkspaceRuntimeService` 的沙箱逻辑，**不要删**。
 
 ## 3. 文件系统与持久化
 
@@ -285,7 +288,8 @@ MCP 一旦交给模型，模型就能执行 SQL/命令。**权限边界（只读
          └────(下一个会话)─────┘
 ```
 
-- **创建**：会话首次需要执行环境时自动创建（用户不必显式操作）；也可由用户显式创建多个。
+- **默认工作区**：主体（当前是 admin）创建时初始化一条记录（`is_default = true`、`status = idle`、统一镜像的当前版本），**不启动容器**；会话默认落在这里，用户不必先建工作区。侧边栏把它作为兜底分组展示。
+- **创建（容器）**：会话首次需要执行环境时自动拉起容器（用户不必显式操作）；也可由用户显式创建多个工作区。
 - **idle**：最后一个会话结束后进入空闲，保留 **2 小时**，期间回来直接续用。保留期的作用是「防打断」，不是「防丢数据」。
 - **destroyed**：过期即销毁，容器与可写层一并删除。产物在 OSS，代码在 git。
 - **不做**：环境快照、归档、恢复白名单。
@@ -315,17 +319,20 @@ MCP 一旦交给模型，模型就能执行 SQL/命令。**权限边界（只读
 
 其余工具由 AI 在环境里按需安装（`apt-get` / `pip` / `npm`）。**镜像目标不是「预装齐全」，是「让 AI 装得动」。**
 
-### 9.2 模板
+### 9.2 只有一个镜像，按版本发布
 
-| 镜像 | 内容 | 面向 |
-| --- | --- | --- |
-| `base` | 最小集 | 通用、脚本、文件处理 |
-| `python-data` | base + pandas/numpy/matplotlib | 数据分析 |
-| `node-web` | base + 常见前端工具 | 网页/前端 |
+v1 **不做多模板**：全平台一个基础镜像（`billy-workspace`），通过**版本 tag** 区分：
 
-v1 只提供平台预置模板，**不支持用户自定义镜像**；镜像作为 Workspace 属性（`image`），记录**具体 tag**，不用 `latest`。
+| 项 | 口径 |
+| --- | --- |
+| 镜像 | `billy-workspace`（Debian slim + 9.1 的最小集） |
+| 版本 | 具体 tag（如 `2026.11.0`），**不用 `latest`** |
+| 记录 | `ai_workspaces.image` 存完整引用 `billy-workspace:<tag>` |
+| 升级 | 新 tag 发布后，旧 workspace 保持原 tag，直到销毁重建；**不做原地升级** |
+| 自定义 | **不开放**用户自定义镜像 |
+| 分发 | 节点预拉当前版本；不做 P2P / 预热流水线 |
 
-分发：v1 不做 P2P / 预热流水线，节点提前拉好这三个镜像即可；规模上来再考虑镜像预热与分发加速。
+不分模板的原因：AI 能自己装（9.1），多模板只会让镜像维护和冷启动变复杂；统一镜像 + 版本，已经能表达「今天的环境和明天的环境不一样」。
 
 ### 9.3 提示词
 
@@ -341,8 +348,10 @@ v1 只提供平台预置模板，**不支持用户自定义镜像**；镜像作�
 -- 工作空间（执行环境）：只记配置与状态，不记文件
 ai_workspaces
   id            varchar(20)  PK
-  user_id       varchar(20)  NOT NULL
+  owner_type    varchar(8)   NOT NULL  -- admin | user（当前只有 admin 用 AI 会话）
+  owner_id      varchar(20)  NOT NULL
   name          varchar(64)  NOT NULL
+  is_default    boolean      NOT NULL DEFAULT false  -- 每个主体恰好一条
   backend       varchar(16)  NOT NULL  -- local | container | microvm
   image         varchar(64)            -- container 时必填
   location      jsonb                  -- backend 相关（root / container 配置 / host）
@@ -350,6 +359,11 @@ ai_workspaces
   status        varchar(16)  NOT NULL  -- active | idle | destroyed
   created_at    timestamptz
   last_used_at  timestamptz
+
+-- 默认工作区唯一：同一主体只能有一条默认
+CREATE UNIQUE INDEX uk_workspace_default
+  ON ai_workspaces (owner_type, owner_id)
+  WHERE is_default = true AND deleted_at IS NULL;
 
 -- 会话挂载到工作空间（1:N）
 conversations
@@ -366,24 +380,26 @@ ai_files
 - `location` 用 jsonb：不同 backend 字段不同，不为三种后端各建一套列。
 - `file_access` 在 Workspace 级：权限是场所的属性，不是某次会话的属性。
 - `conversations.workspace_id` 可空只是迁移期；稳定后应 NOT NULL。
+- `owner_type + owner_id` 而不是 `user_id`：当前只有 admin 用 AI 会话，但将来用户端开放时同一张表可复用；不把 `admins.id` 与 `users.id` 混进同一列。
 
 ## 11. 迁移路径
 
 从现状（会话即目录 + L1 沙箱 + `ai_files` 即真身）迁移：
 
 1. **建表**：`ai_workspaces` + `conversations.workspace_id`（可空）+ `ai_files.workspace_id`（可空）。
-2. **回填**：每个会话建一个默认 workspace，按 `{root}/{conversationId}` 生成 `location`；`ai_files` 按会话归属回填 `workspace_id`。
-3. **改清理逻辑**（第一优先级）：`cleanupConversation` 现在会 `rm` 整个工作区目录——必须改成「删会话只解绑」，只有销毁 workspace 才清目录。
-4. **抽 `WorkspaceRuntime` 端口**：`exec` + `fs` 锚定 `location`；`local` 实现 = 现有逻辑搬家，行为不变。
-5. **灰度切容器**：新会话创建容器环境，旧会话保留 local；`WorkspaceRuntime` 按 backend 分发。
-6. **`ai_files` 收敛**：只保留「保存的文件」，工作区临时文件改为实时查询。
-7. **删 L1 沙箱**：`local` 仅自托管保留。
+2. **存量主体回填默认工作区**：每个存量 `admin` 建一条 `is_default = true` 的空工作区（统一镜像的当前版本、`status = idle`），与 `AdminService.create()` 的初始化同一套逻辑。
+3. **存量会话回填**：每个存量会话建一条**非默认** workspace（`name` 取会话标题，`location.root = {root}/{conversationId}`），`conversations.workspace_id` 指向它——保留原目录隔离与数据；`ai_files` 按会话归属回填 `workspace_id`。
+4. **改清理逻辑**（第一优先级）：`cleanupConversation` 现在会 `rm` 整个工作区目录——必须改成「删会话只解绑」，只有销毁 workspace 才清目录。
+5. **抽 `WorkspaceRuntime` 端口**：`exec` + `fs` 锚定 `location`；`local` 实现 = 现有逻辑搬家，行为不变。
+6. **灰度切容器**：新会话创建容器环境，旧会话保留 local；`WorkspaceRuntime` 按 backend 分发。
+7. **`ai_files` 收敛**：只保留「保存的文件」，工作区临时文件改为实时查询。
+8. **删 L1 沙箱**：`local` 仅自托管保留。
 
 ## 12. 验收用例
 
 | # | 场景 | 期望 |
 | --- | --- | --- |
-| E1 | 新用户首次开会话 | 自动创建 workspace，`base` 镜像，无感知 |
+| E1 | 新用户首次开会话 | 自动创建 workspace（统一镜像），无感知 |
 | E2 | 同一 workspace 开两个会话 | 共享文件系统；写互斥；bash 串行 |
 | E3 | 会话结束 2 小时后再回来 | 环境已销毁；产物在 OSS；代码靠 git 重建 |
 | E4 | 容器内 `apt-get install` | 成功；网络全通；命令计入审计 |
@@ -393,6 +409,8 @@ ai_files
 | E8 | 平台侧 MCP 连 MySQL | 只读；凭据不回显；审计落库 |
 | E9 | 容器尝试访问 `169.254.169.254` | 拒绝 |
 | E10 | `local` 后端在云端多租户 | 配置拒绝，进程不启动 |
+| E11 | 新建 admin | 立刻有一条默认工作区（`idle`、当前镜像版本）；首条执行消息时容器才拉起 |
+| E12 | 重复执行 `seed:admin` | 不产生第二条默认工作区（幂等） |
 
 ## 13. 决策记录
 
@@ -402,11 +420,12 @@ ai_files
 | D2 | 环境空闲保留期 | **已定**：2 小时 |
 | D3 | MCP 适配器实现（invoke 路由、工具清单同步） | **进行中** |
 | D4 | file 工具访问容器文件的方式 | **已定（v1）**：`docker exec` 直接执行，不预置常驻文件服务（§3.2） |
-| D5 | 镜像构建与分发 | **已定（v1）**：节点预拉三个模板镜像，不做 P2P / 预热流水线（§9.2） |
+| D5 | 镜像构建与分发 | **已定（v1）**：单一镜像按版本发布，节点预拉当前版本，不做 P2P / 预热流水线（§9.2） |
 | D6 | 自定义镜像 | **已定**：不开放 |
 | D7 | 风险提示规则的初始清单 | **已定**：见 §13.1 |
 | D8 | MCP 凭据模式 | **已定**：`user`（每人一份）与 `shared`（服务一份 + 授权）并存，见 §5.4 |
 | D9 | MCP 工具风险分级 | 待补：`McpToolSchema` 加 `risk`，外部工具默认 `write` |
+| D10 | 默认工作区初始化 | **已定**：主体（当前 admin）创建时建一条 `is_default` 记录（`idle`、当前镜像版本），容器懒启动；挂钩 `AdminService.create()`，`seed:admin` 自动覆盖；存量由迁移回填 |
 
 ### 13.1 风险提示初始规则（命令级）
 
