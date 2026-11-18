@@ -92,7 +92,11 @@ export const createMastra = async ({
     const buildTools = async (requestContext?: RequestContext): Promise<ToolsInput> => {
       const envelope = readEnvelope(requestContext)
       const caller: ToolCallerIdentity | undefined = envelope
-        ? { isAdmin: envelope.isAdmin, rootAgentKey: envelope.rootAgentKey }
+        ? {
+            isAdmin: envelope.isAdmin,
+            userId: envelope.triggeredBy,
+            rootAgentKey: envelope.rootAgentKey,
+          }
         : undefined
       const tools = await resolveTools(definition.tools, caller)
       // 问答（向用户提问并挂起）**只给主 agent**：子 agent 是临时执行体，没人能回答它。

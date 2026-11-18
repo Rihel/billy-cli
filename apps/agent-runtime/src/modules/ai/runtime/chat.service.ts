@@ -3207,7 +3207,11 @@ export class AgentChatService {
   ): Promise<RequestContext> {
     // 子 agent 工具面 = 父 agent 授权面 ∩ 全部 − 委派类 − child:deny，**再按本次身份过滤作用域**
     // （admin 工具不因父 agent 声明了就对普通用户触发的那一轮可见）
-    const caller = { isAdmin: options.isAdmin ?? false, rootAgentKey: definition.key }
+    const caller = {
+      isAdmin: options.isAdmin ?? false,
+      userId,
+      rootAgentKey: definition.key,
+    }
     const childToolbox = await this.toolRegistry.authorizedChildToolbox(definition.tools, caller)
 
     const envelope: AgentRuntimeEnvelope = {

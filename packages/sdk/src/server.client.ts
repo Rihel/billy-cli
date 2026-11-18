@@ -8,6 +8,8 @@ import {
   CapabilityServiceCapabilityDto,
   CapabilityServiceMcpPullDto,
   CapabilityServiceTestDto,
+  ServiceGrantModel,
+  ServiceGrantSetDto,
   CapabilityServiceTestResultDto,
   AiModelCreateDto,
   AiModelIdDto,
@@ -806,6 +808,13 @@ export class ServerClient extends HttpClient<BearerTokenCredentials> {
     /** 从 MCP server 拉工具清单（网关做握手 + tools/list） */
     pullMcp: (data: CapabilityServiceMcpPullDto) =>
       this.post<CapabilityServiceCapabilityDto[]>('/ai-capability/pull-mcp', data),
+
+    /** 服务级授权：全部授权行 */
+    listGrants: () => this.post<ServiceGrantModel[]>('/ai-capability/grants/list', {}),
+
+    /** 服务级授权：覆盖式设置某个管理员可用的外部服务/MCP */
+    setGrants: (data: ServiceGrantSetDto) =>
+      this.post<ServiceGrantModel[]>('/ai-capability/grants/set', data),
   }
 
   /* ========== 登录设备（会话） ========== */

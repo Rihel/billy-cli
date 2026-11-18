@@ -119,6 +119,7 @@ export class CapabilityRegistryController {
   ): Promise<CapabilityListResponse> {
     const capabilities = await this.registry.listFor({
       isAdmin: input.caller.isAdmin,
+      userId: input.caller.userId,
       agentKey: input.agentKey,
       rootAgentKey: input.caller.rootAgentKey,
     })
@@ -195,6 +196,25 @@ export class CapabilityRegistryController {
         instanceId: '',
         durationMs: Date.now() - startedAt,
         outcome: { ok: false, reason: 'no-provider', message: '没有这个能力', retryable: true },
+      }
+      await this.record(input, result)
+      return result
+    }
+
+    if (!(await this.registry.canUseService(input.caller, found.service))) {
+      const result: CapabilityInvokeResult = {
+        version: 1,
+        requestId: randomUUID(),
+        capability: found.key,
+        service: found.service.service,
+        instanceId: '',
+        durationMs: Date.now() - startedAt,
+        outcome: {
+          ok: false,
+          reason: 'forbidden',
+          message: '没有权限使用这个服务（请让管理员在「服务授权」里开通）',
+          retryable: false,
+        },
       }
       await this.record(input, result)
       return result
@@ -312,6 +332,7 @@ export class CapabilityRegistryController {
     const limit = typeof parsed.limit === 'number' ? parsed.limit : 8
     const capabilities = await this.registry.listFor({
       isAdmin: input.caller.isAdmin,
+      userId: input.caller.userId,
       agentKey: input.caller.agentKey,
       rootAgentKey: input.caller.rootAgentKey,
     })

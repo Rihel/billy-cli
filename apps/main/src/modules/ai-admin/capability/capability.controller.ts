@@ -6,6 +6,8 @@ import {
   CapabilityServiceMcpPullSchema,
   CapabilityServiceStatusSchema,
   CapabilityServiceTestSchema,
+  ServiceGrantListSchema,
+  ServiceGrantSetSchema,
 } from '@repo/shared'
 import type {
   CapabilityServiceIdDto,
@@ -14,9 +16,13 @@ import type {
   CapabilityServiceSaveDto,
   CapabilityServiceStatusDto,
   CapabilityServiceTestDto,
+  ServiceGrantListDto,
+  ServiceGrantSetDto,
 } from '@repo/shared'
+import { requestContext } from '@repo/kits'
 import { AdminAuthGuard } from '../../admin/admin-auth.guard.js'
 import { CapabilityServiceAdminService } from './capability.service.js'
+import { ServiceGrantAdminService } from './service-grant.service.js'
 
 /**
  * 能力服务管理路由（`/ai-capability/*`，全部后台管理员鉴权 + 全部 POST + 无路径参数）。
@@ -28,6 +34,7 @@ import { CapabilityServiceAdminService } from './capability.service.js'
 export class CapabilityServiceAdminController {
   constructor(
     @Inject(CapabilityServiceAdminService) private readonly services: CapabilityServiceAdminService,
+    @Inject(ServiceGrantAdminService) private readonly grants: ServiceGrantAdminService,
   ) {}
 
   @Post('list')
@@ -39,8 +46,12 @@ export class CapabilityServiceAdminController {
   /** 保存 = 登记（`source:'manual'`）；同一个接口既是新建也是更新 */
   @Post('save')
   @HttpCode(200)
-  save(@Body({ schema: CapabilityServiceSaveSchema }) input: CapabilityServiceSaveDto) {
-    return this.services.save(input)
+  async save(@Body({ schema: CapabilityServiceSaveSchema }) input: CapabilityServiceSaveDto) {
+    const saved = await this.services.save(input)
+    // 新登记的外部服务默认授权给登记人；已有服务再次保存不会扩大授权
+    const adminId = requestContext.get('adminId')
+    if (adminId && saved.source === 'manual') await this.grants.ensureGrant(adminId, input.service)
+    return saved
   }
 
   @Post('remove')
@@ -61,6 +72,20 @@ export class CapabilityServiceAdminController {
   @HttpCode(200)
   test(@Body({ schema: CapabilityServiceTestSchema }) input: CapabilityServiceTestDto) {
     return this.services.test(input)
+  }
+
+  /** 服务级授权：全部授权行（页面一次拉全） */
+  @Post('grants/list')
+  @HttpCode(200)
+  listGrants(@Body({ schema: ServiceGrantListSchema }) _input: ServiceGrantListDto) {
+    return this.grants.list()
+  }
+
+  /** 覆盖式设置某个管理员可用的外部服务/MCP */
+  @Post('grants/set')
+  @HttpCode(200)
+  setGrants(@Body({ schema: ServiceGrantSetSchema }) input: ServiceGrantSetDto) {
+    return this.grants.set(input)
   }
 
   /** 从 MCP server 拉工具清单（网关做握手 + tools/list），返回给页面确认后再保存 */

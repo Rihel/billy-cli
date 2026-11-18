@@ -67,6 +67,7 @@ import { ConversationRunQueue1794711383585 } from './1794711383585-ConversationR
 import { AddRunOrigin1794713000000 } from './1794713000000-AddRunOrigin.js'
 import { AddCapabilityServiceSnapshots1795014133189 } from './1795014133189-AddCapabilityServiceSnapshots.js'
 import { DropConnectorModule1795014903484 } from './1795014903484-DropConnectorModule.js'
+import { AddServiceGrants1795021748273 } from './1795021748273-AddServiceGrants.js'
 
 /** 迁移按时间戳升序；TypeORM 会再排序，但这里保持可读 */
 export const DB_MIGRATIONS = [
@@ -105,4 +106,5 @@ export const DB_MIGRATIONS = [
   AddRunOrigin1794713000000,
   AddCapabilityServiceSnapshots1795014133189,
   DropConnectorModule1795014903484,
+  AddServiceGrants1795021748273,
 ]

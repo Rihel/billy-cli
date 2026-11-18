@@ -199,17 +199,20 @@ invoke(bash, workspaceId)
 
 ### 5.1 定性
 
-MCP 是**能力接入协议**，与内置 code 能力并列，归能力目录/网关管理；**不是工作空间的一部分**。`protocol: 'capability' | 'mcp'` 字段已在契约中，但 MCP 适配器（invoke 路由、工具清单同步）**尚未实现**，属于本设计的待建项。
+MCP 是**能力接入协议**，与内置 code 能力并列，归能力目录/网关管理；**不是工作空间的一部分**。
+`protocol: 'capability' | 'mcp'` 已在契约中，MCP 适配器（`initialize` / `tools/list` / `tools/call`）**已实现**（HTTP 型）；
+stdio 不做。
 
-### 5.2 三类来源与位置
+### 5.2 来源与位置
 
 | 类型 | 例子 | MCP server 位置 | 凭据 |
 | --- | --- | --- | --- |
-| 平台托管 | Redis / MySQL 连接器 | 平台侧 | 平台凭据 |
-| 用户自带 | 用户填的远程 MCP URL | 远端 | 用户 auth |
-| 环境内 | 必须从环境网络访问的 MCP | 容器内 | 环境内临时注入 |
+| 平台托管 | 高德 / DeepWiki / 团队自建的远程 MCP | 平台侧 | 平台凭据（服务一份） |
+| 环境内（按需） | 只能从环境网络访问的 MCP | 容器内 | 平台注入的临时凭据 |
 
-Redis / MySQL 默认走**平台侧**：连接信息是用户级配置，凭据集中管理，不为每个容器装 MCP 进程。只有「只能从环境网络访问」时才下沉到容器，且凭据必须临时注入、用完即删。
+- 默认走**平台侧**：不为每个容器装 MCP 进程；
+- 只有「只能从环境网络访问」时才下沉到容器，凭据临时注入、用完即删；
+- **不做用户自带 MCP（BYO）**：MCP 由管理员登记，平台一份凭据，通过服务级授权决定谁能用。
 
 ### 5.3 与能力的统一
 
@@ -221,48 +224,17 @@ MCP 能力与 code 能力走同一个 `where` 路由：
 
 工作空间只提供 exec / fs 两个原语，不关心调用方是内置能力还是 MCP。
 
-### 5.4 凭据与授权：两种模式
+### 5.4 凭据与授权
 
-MCP 服务登记时声明 `credentialScope`，两种模式并存：
+- **凭据属于平台**：一个服务一份，加密存储、接口不回显，只由网关在调用时注入；
+- **授权按服务**：`source='manual'`（外部服务 / MCP）需要 `ai_service_grants` 允许；
+  `source='code'`（自建协议服务，如 `common`）默认全部可用，不参与授权；
+- 授权是**管理员 × 服务**的允许列表，任何管理员都能配置；页面在「服务授权」，设计见
+  [service-authorization.md](service-authorization.md)；
+- 工作区**不保存 MCP 凭据、不感知授权**；它只按 `where` 决定在哪执行。
 
-| 模式 | 凭据归属 | 调用条件 | 适用 |
-| --- | --- | --- | --- |
-| `user` | **每个用户各一份** | 调用者自己的凭据 | 用户连自己的 Redis / MySQL |
-| `shared` | **服务一份**（平台凭据） | 调用者必须被授权（grant） | 平台内置 MCP、共享的 SaaS 能力 |
-
-调用链：
-
-```
-invoke(mcpTool, caller)
-  → credentialScope === 'user'
-       → 取 (caller.userId, service) 的凭据
-       → 没有 → 拒绝，提示「先配置凭据」
-  → credentialScope === 'shared'
-       → 取服务凭据 + 检查 grant(caller.userId, service)
-       → 未授权 → forbidden
-```
-
-规则：
-
-- **凭据加密存储**（KMS），接口不回显，只在调用时注入。
-- **授权（grant）**由管理员/服务所有者发放；平台内置能力默认授权给所有用户，付费或敏感能力需显式授权。
-- **共享模式必须配配额**，避免一个人耗尽共享额度。
-- **两种模式互斥**：一个服务只能选一种；同一个库若既要个人又要共享，登记两个服务。
-
-数据模型：
-
-```sql
-ai_capability_services
-  + credential_scope varchar(8) NOT NULL DEFAULT 'shared'  -- user | shared
-
-user_capability_credentials
-  user_id, service, encrypted, fingerprint, created_at, last_used_at
-
-user_capability_grants
-  user_id, service, status, granted_at, granted_by
-```
-
-> 现状：MCP 凭据是「服务级一份」（`credentialFor(service)`），只支持 `shared` 且没有授权检查。要做到两种模式，需按上表扩 `credential_scope`、加两张表，并把 `credentialFor` 换成按 `(userId, service)` 或「服务凭据 + grant」取。
+> 用户级凭据、`credentialScope: user/shared`、用户自带 MCP、跨用户隔离**暂不做**；
+> 相关论证见 [resource-isolation.md](resource-isolation.md)（暂缓）。
 
 ### 5.5 安全
 

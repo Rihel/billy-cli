@@ -451,7 +451,7 @@ POST /v1/services/register    body = 服务声明 + 能力清单 + 自己的 ins
 | 11 | 后台停用一个能力后模型面在 5 秒内消失 | ✅ | runtime 目录 TTL 改为 5s（无事件，用 TTL 兜住） |
 | 12 | 后台登记前过两项自检（连通 + 冒烟调用）才允许启用 | ✅ | 保存先落 draft，自检双过切 active；未过留 draft 并返回原因 |
 | 13 | MCP 服务能登记、同步工具并被调用（HTTP 型） | ✅ | `initialize` + `tools/list` + `tools/call`；本地假 server / DeepWiki / 高德均验证通过 |
-| 14 | 外部工具能被模型看到并调用 | ⚠️ | runtime 已按目录生成动态工具（`'*'` / `EXTERNAL_TOOLS`），单测覆盖；整栈“模型自主调用”未实测 |
+| 14 | 外部工具能被模型看到并调用 | ✅ | 2026-11-19 整栈实测：会话 `o6gqgsctdw2esg7pky0i` 中模型自主调用 `maps-weather` / `maps-geo` / `maps-direction-*`，审计 ok；用户级隔离仍未做 |
 | 15 | 模型能按意图检索工具（BM25） | ✅ | 网关内建 `tool-search`；本地实测「列出文件→file-list」「执行命令→bash」「搜索网页→web-search」 |
 
 结论：**除第 5 条（按口径 B 明确不做）外，1–4、6–12 全部达成。**

@@ -3,6 +3,7 @@ export { AiCapabilityServiceEntity } from './ai-capability-service-entity.js'
 export { AiFileEntity } from './ai-file-entity.js'
 export { AiMemoryEntity } from './ai-memory-entity.js'
 export { AiModelEntity } from './ai-model-entity.js'
+export { AiServiceGrantEntity } from './ai-service-grant-entity.js'
 export { AiProviderKeyEntity } from './ai-provider-key-entity.js'
 export { AiProviderEntity } from './ai-provider-entity.js'
 export { AiSkillEntity } from './ai-skill-entity.js'
@@ -28,6 +29,7 @@ import { AiCapabilityServiceEntity } from './ai-capability-service-entity.js'
 import { AiFileEntity } from './ai-file-entity.js'
 import { AiMemoryEntity } from './ai-memory-entity.js'
 import { AiModelEntity } from './ai-model-entity.js'
+import { AiServiceGrantEntity } from './ai-service-grant-entity.js'
 import { AiProviderKeyEntity } from './ai-provider-key-entity.js'
 import { AiProviderEntity } from './ai-provider-entity.js'
 import { AiSkillEntity } from './ai-skill-entity.js'
@@ -55,6 +57,7 @@ export const DB_ENTITIES = [
   AiFileEntity,
   AiMemoryEntity,
   AiModelEntity,
+  AiServiceGrantEntity,
   AiProviderKeyEntity,
   AiProviderEntity,
   AiSkillEntity,

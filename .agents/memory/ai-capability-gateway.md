@@ -24,6 +24,14 @@
 - **外部工具进模型面（2026-11-18）**：runtime 从能力目录取 `CapabilityInfo`，对**本地没声明**的工具
   现场造 `ToolSpec`（category `external`，JSON Schema → zod），执行走 `RemoteToolInvoker`；
   agent 声明 `'*'` 或 `EXTERNAL_TOOLS`（`{ external: true }`）才会出现；**子 agent 暂不含外部工具**。
+- **MCP 整栈实测（2026-11-19，admin 端）**：会话 `o6gqgsctdw2esg7pky0i` 里模型自主选了 MCP 工具，
+  `maps-weather` / `maps-geo`×2 / `maps-direction-driving` / `maps-direction-transit-integrate`，
+  审计全 `ok`（93–319ms），时间线有 tool-call/tool-result（output-available）。证明「目录 → 动态工具 → 网关 → MCP」整链通；
+  但该会话 owner 是 admin id（isAdmin），用户级隔离仍未做。
+- **服务级授权（2026-11-19）**：`ai_service_grants`（admin × manual 服务，服务名不是 id）；
+  只作用于 `source='manual'`（外部/MCP），`code` 服务默认全部可用；网关 `listFor/invoke/tool-search`
+  按 grant 过滤（5s 缓存）；runtime 目录请求与缓存 key 已补 `userId`；页面 `/main/ai/authorizations`；
+  迁移回填存量 admin × 存量 manual 服务；新 manual 服务自动授权给登记人。
 - **工具检索（2026-11-19）**：网关内建 `tool-search`（BM25，中文 unigram+bigram，key/title/tags/description 加权），
   只检索**当前身份可见**目录（复用 `listFor`），返回 top-k 的 key/说明/score；零模型调用；runtime 有同名工具。
 - **toast viewport `z-[100]`**：全局反馈高于一切浮层（原先 `z-50` 被 Dialog backdrop-blur 糊住）。

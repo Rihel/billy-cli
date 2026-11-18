@@ -186,6 +186,7 @@ export interface ToolSettings<C = Record<string, unknown>> {
  */
 export interface ToolCallerIdentity {
   readonly isAdmin: boolean
+  readonly userId: string | null
   readonly rootAgentKey: string
 }
 

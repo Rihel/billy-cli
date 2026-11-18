@@ -60,6 +60,7 @@ export const MENU_ITEMS: MenuItem[] = [
       { label: '记忆', key: '/main/ai/memories', icon: BrainIcon },
       { label: '文件管理', key: '/main/ai/files', icon: FolderOpenIcon },
       { label: '能力服务', key: '/main/ai/capabilities', icon: BoxesIcon },
+      { label: '服务授权', key: '/main/ai/authorizations', icon: ShieldCheckIcon },
       { label: '审计与复盘', key: '/main/ai/audit', icon: HistoryIcon },
     ],
   },

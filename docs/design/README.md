@@ -18,6 +18,8 @@
 | [distributed-ai-conclusions.md](distributed-ai-conclusions.md) | 讨论结论一页版：已定 / 建议 / 待拍板，含工具边界、连接器、planner/ask/memory、子会话、迁移顺序与当前进度 |
 | [capability-gateway.md](capability-gateway.md) | **评审稿**：能力网关重定义（服务登记 + 能力治理 + 能力路由）与按安全边界拆域服务——市面对标、被否掉的方案、12 条决策、三阶段迁移、7 项待拍板 |
 | [capability-protocol.md](capability-protocol.md) | **草案**：内部能力接入协议 v1——`namespace/tool` 规范 key 与模型面映射、服务/能力/执行声明、sync 与 task 三形态、长耗时命令约定、回调、幂等分页凭据、32 工具新旧对照与别名迁移 |
+| [resource-isolation.md](resource-isolation.md) | **暂缓（2026-11-19）**：资源隔离 v1（单用户）——主体/归属模型、五层防线、能力服务与凭据 P0、模型 Key、管理员支持模式、迁移与隔离测试矩阵；项目/成员/授权只留扩展点 |
+| [service-authorization.md](service-authorization.md) | **设计稿（2026-11-19）**：服务级授权——仅外部服务/MCP 需授权、自建协议服务默认全量；`ai_service_grants` 表、默认值与迁移、网关过滤链路、授权接口与页面 |
 
 ## AI
 

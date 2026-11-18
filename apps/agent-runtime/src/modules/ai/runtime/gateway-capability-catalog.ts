@@ -39,7 +39,7 @@ export class GatewayToolCatalog {
   async capabilities(caller: ToolCallerIdentity): Promise<CapabilityInfo[] | null> {
     const url = process.env.TOOL_GATEWAY_URL?.trim()
     if (!url) return null
-    const cacheKey = `${caller.isAdmin ? 'admin' : 'user'}:${caller.rootAgentKey}`
+    const cacheKey = `${caller.isAdmin ? 'admin' : 'user'}:${caller.userId ?? '-'}:${caller.rootAgentKey}`
     const cached = this.cache.get(cacheKey)
     const now = Date.now()
     if (cached && now - cached.at < CACHE_TTL_MS) return cached.capabilities
@@ -54,6 +54,7 @@ export class GatewayToolCatalog {
         caller: {
           conversationId: 'catalog',
           runId: 'catalog',
+          userId: caller.userId,
           isAdmin: caller.isAdmin,
           agentKey: caller.rootAgentKey,
           rootAgentKey: caller.rootAgentKey,

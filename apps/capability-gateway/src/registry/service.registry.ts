@@ -6,7 +6,7 @@ import {
   Optional,
 } from '@nestjs/common'
 import { AppLogger, Db, RedisStore } from '@repo/kits'
-import { AiCapabilityServiceEntity } from '@repo/db'
+import { AiCapabilityServiceEntity, AiServiceGrantEntity } from '@repo/db'
 import { randomUUID } from 'node:crypto'
 import {
   RegisteredServiceSchema,
@@ -86,6 +86,8 @@ export class ServiceRegistry {
     }
   >()
   private loading: Promise<void> | null = null
+  /** 管理员授权缓存（5s）：授权变更最多 5s 生效 */
+  private readonly grantCache = new Map<string, { at: number; services: Set<string> }>()
 
   constructor(
     @Inject(ToolGatewayConfig) private readonly config: ToolGatewayConfigValue,
@@ -296,25 +298,58 @@ export class ServiceRegistry {
     return items
   }
 
-  /** 按调用方过滤（scope 规则与 `ai_tools` 一致） */
+  /**
+   * 服务级授权：`manual` 服务必须被授权；`code` 服务默认全部可用。
+   *
+   * 单测 / 无 DB 场景不拦（生产网关必然有 DB）；未登录或非管理员一律拒绝 manual。
+   */
+  async canUseService(
+    caller: { isAdmin?: boolean; userId?: string | null },
+    service: RegisteredService,
+  ): Promise<boolean> {
+    if (service.source !== 'manual') return true
+    if (!this.db) return true
+    if (!caller.isAdmin || !caller.userId) return false
+    const cached = this.grantCache.get(caller.userId)
+    let services: Set<string>
+    if (cached && Date.now() - cached.at < 5_000) {
+      services = cached.services
+    } else {
+      const rows = await this.db
+        .getRepository(AiServiceGrantEntity)
+        .find({ where: { principalType: 'admin', principalId: caller.userId } })
+      services = new Set(rows.map((row) => row.service))
+      this.grantCache.set(caller.userId, { at: Date.now(), services })
+    }
+    return services.has(service.service)
+  }
+
+  /** 按调用方过滤（先服务级授权，再 scope 规则） */
   async listFor(caller: {
     isAdmin?: boolean
+    userId?: string | null
     agentKey: string
     rootAgentKey: string
   }): Promise<CapabilityInfo[]> {
     const items = await this.catalog()
-    return items.filter((item) => {
+    const visible: CapabilityInfo[] = []
+    for (const item of items) {
+      const service = item.service === GATEWAY_SERVICE ? null : this.services.get(item.service)
       const capability =
-        item.service === GATEWAY_SERVICE
+        service === null
           ? findBuiltinCapability(item.tool)
-          : this.services.get(item.service)?.capabilities.find((entry) => entry.tool === item.tool)
-      if (!capability) return false
+          : service?.capabilities.find((entry) => entry.tool === item.tool)
+      if (!capability) continue
+      if (service && !(await this.canUseService(caller, service))) continue
       if (capability.scope === 'agent') {
         const allowed = capability.allowedAgents ?? []
-        return allowed.includes(caller.agentKey) || allowed.includes(caller.rootAgentKey)
+        if (!allowed.includes(caller.agentKey) && !allowed.includes(caller.rootAgentKey)) continue
+      } else if (!scopeAllows(caller, capability)) {
+        continue
       }
-      return scopeAllows(caller, capability)
-    })
+      visible.push(item)
+    }
+    return visible
   }
 
   /**

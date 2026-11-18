@@ -1,6 +1,11 @@
 import { Module } from '@nestjs/common'
 import { ConfigModule, ConfigService } from '@nestjs/config'
-import { AiCapabilityServiceEntity, AiToolAuditEntity, AiToolEntity } from '@repo/db'
+import {
+  AiCapabilityServiceEntity,
+  AiServiceGrantEntity,
+  AiToolAuditEntity,
+  AiToolEntity,
+} from '@repo/db'
 import {
   AppConfigModule,
   DbModule,
@@ -38,7 +43,12 @@ import { ToolGatewayModule } from './gateway/gateway.module.js'
       inject: [ConfigService],
       useFactory: (config: ConfigService) => ({
         ...config.getOrThrow<DbConfig>('db'),
-        entities: [AiToolAuditEntity, AiToolEntity, AiCapabilityServiceEntity],
+        entities: [
+          AiToolAuditEntity,
+          AiToolEntity,
+          AiCapabilityServiceEntity,
+          AiServiceGrantEntity,
+        ],
       }),
     }),
     ToolGatewayModule,
