@@ -14,10 +14,8 @@ import {
 import { AGENT_REGISTRY, createAgentRegistry } from './agents/registry.js'
 import { AgentService } from './agents/service.js'
 import type { AgentRegistry as AgentRegistryValue } from './agents/types.js'
-import { BashTool } from './tools/bash.tool.js'
 import { RunSubAgentTool } from './tools/subagent.tool.js'
 import { PlannerStore, PlannerTools } from './tools/planner/index.js'
-import { WebTools } from './tools/web.tools.js'
 import { createPromptEngine, PROMPT_ENGINE } from './core/prompts/index.js'
 import { ModelGatewayCatalogService } from './runtime/model-gateway.catalog.js'
 import { RUNTIME_MODEL_RESOLVER } from './runtime/model-resolver.js'
@@ -41,7 +39,7 @@ import {
   TimelineRepository,
 } from './runtime/index.js'
 import { createRemoteToolInvoker } from './runtime/remote-tool.client.js'
-import { GatewayToolCatalog, applyCatalogToToolFace } from './runtime/gateway-capability-catalog.js'
+import { GatewayToolCatalog } from './runtime/gateway-capability-catalog.js'
 import { ConversationRunQueue } from './runtime/run-queue.service.js'
 import { ConversationRunQueueDispatcher } from './runtime/run-queue.dispatcher.js'
 import {
@@ -59,13 +57,11 @@ import {
   MemoryRepository,
   MemoryService,
   MemoryThreadCleanupService,
-  MemoryTools,
 } from './memory/index.js'
 import { toMastraSkills } from './mastra/skill.adapter.js'
 import { toMastraTools } from './mastra/tool.adapter.js'
 import { AGENT_TOOL_GROUPS, ALL_TOOLS } from './core/tools/tools.types.js'
-import { createExternalTool } from './core/tools/external.tool.js'
-import { isExternalSelector } from './core/tools/tool-selector.js'
+import { createCapabilityTool } from './core/tools/external.tool.js'
 import type { RemoteToolInvoker } from './core/tools/tool.ports.js'
 import type { ToolEnvCaps } from './core/tools/tools.types.js'
 import type { AgentToolGroup } from './core/tools/tool.class.js'
@@ -83,18 +79,15 @@ import { REMOTE_TOOL_INVOKER, TOOL_CLOCK, TOOL_RATE_COUNTER } from './core/tools
 import { RedisToolRateCounter } from './core/tools/tool.rate-counter.redis.js'
 import { systemToolClock } from './core/tools/tool.clock.js'
 import { ToolCallMetaStore } from './core/tools/tool.meta.js'
-import { ToolResultStore } from './core/tools/tool-result.store.js'
-import { ReadToolResultTool } from './tools/read-tool-result.tool.js'
+import { ToolDiscoveryStore } from './core/tools/tool-discovery.store.js'
 import { TaskTool } from './tools/task.tool.js'
 import { FileRepository } from './files/file.repository.js'
 import { FileService } from './files/file.service.js'
 import { FILE_CAPS } from '@repo/ai-data'
-import { FileTools } from './files/file.tools.js'
 import {
   AuditEndPlugin,
   AuditStartPlugin,
   EnabledPlugin,
-  PaginatePlugin,
   PrecheckPlugin,
   RateLimitPlugin,
   RedactPlugin,
@@ -150,17 +143,7 @@ let warnedMissingEnvelope = false
     // 工具组实例（**唯一的工具来源**）：注册机对每个组跑 `buildToolSpecs()` 拿 1..n 个工具
     {
       provide: AGENT_TOOL_GROUPS,
-      inject: [
-        PlannerTools,
-        BashTool,
-        RunSubAgentTool,
-        ReadToolResultTool,
-        TaskTool,
-        WebTools,
-        SkillTools,
-        FileTools,
-        MemoryTools,
-      ],
+      inject: [PlannerTools, RunSubAgentTool, TaskTool, SkillTools],
       // 任务工具（wait-task / cancel-task）只在网关模式下有意义：没配网关就没有 worker 任务，
       // 装配期直接摘掉，避免模型看见两个永远报错的工具。
       useFactory: (...groups: AgentToolGroup[]): AgentToolGroup[] => {
@@ -175,18 +158,7 @@ let warnedMissingEnvelope = false
       useFactory: (config: AgentConfigValue): ToolEnvCaps => ({
         pageBytesMax: config.toolPageBytesMax,
         maxPagesPerTurnMax: config.toolMaxPagesPerTurnMax,
-        command: {
-          enabled: config.commandEnabled,
-          timeoutMsMax: config.commandTimeoutMs,
-          maxOutputBytesMax: config.commandMaxOutputBytes,
-          ...(config.commandWorkDir ? { workDir: config.commandWorkDir } : {}),
-        },
-        web: {
-          enabled: config.webEnabled,
-          timeoutMsMax: config.webTimeoutMs,
-          maxBytesMax: config.webMaxBytes,
-          allowPrivateNetwork: config.webAllowPrivateNetwork,
-        },
+        ...(config.commandWorkDir ? { command: { workDir: config.commandWorkDir } } : {}),
         file: {
           maxBytesMax: config.fileMaxBytes,
           maxFilesMax: config.fileMaxFiles,
@@ -213,19 +185,13 @@ let warnedMissingEnvelope = false
       inject: [RedisStore],
       useFactory: (redis: RedisStore) => new RedisToolRateCounter(redis),
     },
-    ToolResultStore,
     ToolConfigService,
+    ToolDiscoveryStore,
     // 网关插件链：**数组顺序 = 执行顺序**（redact → paginate → audit-end 不能换）
     {
       provide: AGENT_TOOL_PLUGINS,
-      inject: [TOOL_RATE_COUNTER, AppLogger, ToolResultStore, TOOL_ENV_CAPS, ToolCallMetaStore],
-      useFactory: (
-        counter: RedisToolRateCounter,
-        logger: AppLogger,
-        results: ToolResultStore,
-        caps: ToolEnvCaps,
-        metas: ToolCallMetaStore,
-      ) => [
+      inject: [TOOL_RATE_COUNTER, AppLogger, ToolCallMetaStore],
+      useFactory: (counter: RedisToolRateCounter, logger: AppLogger, metas: ToolCallMetaStore) => [
         new EnabledPlugin(),
         new ScopePlugin(),
         new RateLimitPlugin(counter, logger),
@@ -233,7 +199,6 @@ let warnedMissingEnvelope = false
         new PrecheckPlugin(),
         new AuditStartPlugin(),
         new RedactPlugin(logger),
-        new PaginatePlugin(results, caps, logger),
         new AuditEndPlugin(metas, logger),
       ],
     },
@@ -247,11 +212,8 @@ let warnedMissingEnvelope = false
     AgentRunner,
     PlannerStore,
     PlannerTools,
-    BashTool,
     RunSubAgentTool,
-    ReadToolResultTool,
     TaskTool,
-    WebTools,
     SkillTools,
     {
       provide: FILE_CAPS,
@@ -259,14 +221,12 @@ let warnedMissingEnvelope = false
     },
     FileRepository,
     FileService,
-    FileTools,
 
     // ───────────────────────── 长期记忆（用户级事实）─────────────────────────
     MemoryRepository,
     MemoryService,
     MemoryExtractorService,
     ConversationRunQueue,
-    MemoryTools,
     MemoryThreadCleanupService,
 
     // ───────────────────────── 技能库（DB 是事实源，落盘给 Mastra）─────────────────────────
@@ -325,6 +285,7 @@ let warnedMissingEnvelope = false
         AGENT_MEMORY,
         GatewayToolCatalog,
         REMOTE_TOOL_INVOKER,
+        ToolDiscoveryStore,
       ],
       useFactory: async (
         config: AgentConfigValue,
@@ -336,6 +297,7 @@ let warnedMissingEnvelope = false
         memory: ReturnType<typeof createAgentMemory>,
         catalog: GatewayToolCatalog,
         remote: RemoteToolInvoker | null,
+        discovery: ToolDiscoveryStore,
       ) => {
         return createMastra({
           /**
@@ -361,34 +323,43 @@ let warnedMissingEnvelope = false
           // 授权清单在这里展开（具体 key / `'*'` / `{ category }`）：
           // 工具面按这一次的授权与调用身份过滤 —— 没授权的工具不出现
           resolveTools: async (ids, caller) => {
-            const keys = tools.expand(ids)
-            // 没有运行时身份（构造期 / 装配期）：只放行 scope='all'，绝不"没身份就全给"
+            const wantsAll = ids.includes(ALL_TOOLS)
+            const localKeys = tools.expand(ids)
+            // 没有运行时身份（构造期 / 装配期）：只放行 scope='all'，且不碰能力目录
             const local = caller
-              ? await tools.authorized(keys, caller)
-              : await tools.publicKeys(keys)
-            /**
-             * 目录只约束**走网关**的工具（与执行分流同一口径）：
-             * 本地执行的工具（规划 / 子助手管理 / 技能库）以本地注册机 + `ai_tools` 为准，
-             * 不能被 `generated.ts` 的滞后连坐。未配置或抖动时 fail-open 回本地。
-             */
-            const catalogKeys = caller ? await catalog.allowedKeys(caller) : null
-            const allowed = applyCatalogToToolFace(local, catalogKeys)
-            const toolbox = new Map(tools.toolbox(allowed))
-            /**
-             * 外部工具（MCP / 外部登记服务）：agent 写了 `'*'` 或 `EXTERNAL_TOOLS` 才暴露。
-             * 目录已经按这次身份过滤过（scope），这里只补本地没声明的那些。
-             */
-            const wantsExternal =
-              caller !== undefined &&
-              (ids.includes(ALL_TOOLS) || ids.some((selector) => isExternalSelector(selector)))
-            if (wantsExternal) {
+              ? await tools.authorized(localKeys, caller)
+              : await tools.publicKeys(localKeys)
+            const toolbox = new Map(tools.toolbox(local))
+
+            if (caller) {
               const capabilities = await catalog.capabilities(caller)
-              const localKeys = new Set(keys)
-              for (const capability of capabilities ?? []) {
-                if (localKeys.has(capability.key)) continue
-                toolbox.set(capability.key, createExternalTool(capability, remote))
+              const visible = new Map(
+                (capabilities ?? []).map((capability) => [capability.key, capability]),
+              )
+              /**
+               * 内部服务 + 网关内建（`source='code'`）：随工具面一起给，提示词里也列。
+               * 本地注册机已声明的（规划 / 子助手 / 技能 / 网关任务工具）跳过，避免两份。
+               */
+              for (const [key, capability] of visible) {
+                if (capability.source !== 'code') continue
+                if (localKeys.includes(key)) continue
+                if (!wantsAll && !ids.includes(key)) continue
+                toolbox.set(key, createCapabilityTool(capability, remote))
+              }
+              /**
+               * 外部服务（MCP / 手工登记）：**不随工具面下发**；
+               * 只补这个会话已经用 `tool-search` 搜到过的（下一轮生效）。
+               */
+              const discovered = await discovery.list(caller.conversationId)
+              for (const key of discovered) {
+                const capability = visible.get(key)
+                if (!capability || capability.source === 'code') continue
+                if (localKeys.includes(key)) continue
+                if (!wantsAll && !ids.includes(key)) continue
+                toolbox.set(key, createCapabilityTool(capability, remote))
               }
             }
+
             return toMastraTools(toolbox, logger)
           },
           resolveSkills: async (names) => toMastraSkills(await skillLoader.resolve(names)),

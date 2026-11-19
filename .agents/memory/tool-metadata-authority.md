@@ -12,11 +12,13 @@
   模型面名字与 key 相同。`defineCapability` / `defineService` 已删，只剩类型与 `toRegistration` / `toInputSchema`。
 - **网关是目录权威**：`POST /v1/capabilities/list` 返回 key / name / `inputSchema` / risk / scope / available；
   旧的 `/v1/tools/list|invoke` **已删除**。
-- **runtime 的模型面副本**：`apps/agent-runtime/src/modules/ai/tools/definitions/*` 只提供参数与文案；
-  远程 key 由 `isRemoteToolKey` 判定（`packages/contracts` 的 `REMOTE_TOOL_KEYS`），执行走
-  `CapabilityGatewayClient.invoke`。`GatewayToolCatalog` 用目录做授权 / 开关过滤（30s 缓存，网关抖动 fail-open）。
-- **main 后台**：`ai-admin/tool/tool-manifests.ts` 是 `ai_tools` 种子用的 manifest 快照；
-  `ai_tools` 仍只存 enabled / limits / config / secrets，不是 schema 来源。
+- **runtime 不再留模型面副本**（2026-11-20）：`tools/definitions/*` 与本地执行体已删；
+  `resolveTools` 直接按目录建工具（`source='code'` 随工具面下发，`manual` 搜到才下发），
+  提示词首轮从目录渲染。`GatewayToolCatalog` 缓存 5s，网关抖动 fail-open。
+  代价：能力 key 的拼写不再在启动期报错（目录是运行期数据）。
+- **main 后台（2026-11-20 起）**：`tool-manifests.ts` 快照已删；工具清单元数据问执行面
+  （`POST /internal/agent/tools`）与能力网关（`/v1/capabilities/list`），`ToolAdminCatalog` 5s 缓存、两边不可用只降级。
+  `ai_tools` 仍只存 enabled / limits / config / secrets。
 - **`@repo/tool-catalog` 与 `pnpm gen:tool-catalog` 已删除**（2026-11-18）。
 
 ## 核对命令

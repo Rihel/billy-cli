@@ -2,10 +2,12 @@ import {
   AgentInstructionsModelSchema,
   AgentListSchema,
   AgentStatusSchema,
+  AgentToolListSchema,
   type AgentInstructionsDto,
   type AgentInstructionsModel,
   type AgentListModel,
   type AgentStatusModel,
+  type AgentToolListModel,
 } from '@repo/shared'
 import { requestEnvelope, type InternalClientOptions, type InvokeOptions } from './http.js'
 
@@ -30,6 +32,15 @@ export class AgentRuntimeClient {
   /** agent 清单（`skills: ['*']` 由 runtime 按当前技能库现算） */
   list(options: InvokeOptions = {}): Promise<AgentListModel> {
     return requestEnvelope(this.options, '/internal/agent/list', AgentListSchema, {
+      method: 'POST',
+      body: {},
+      ...options,
+    })
+  }
+
+  /** 运行时内建工具清单（控制面工具配置页用；静态声明只在 runtime 一份） */
+  tools(options: InvokeOptions = {}): Promise<AgentToolListModel> {
+    return requestEnvelope(this.options, '/internal/agent/tools', AgentToolListSchema, {
       method: 'POST',
       body: {},
       ...options,

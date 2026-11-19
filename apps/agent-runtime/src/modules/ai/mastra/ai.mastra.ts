@@ -4,7 +4,6 @@ import type { MastraCompositeStore } from '@mastra/core/storage'
 import type { RequestContext } from '@mastra/core/request-context'
 import type { AgentModelId } from '../core/config.js'
 import type { RuntimeModel } from '../core/envelope.js'
-import type { ToolSelector } from '../core/tools/tool-selector.js'
 import type { ToolCallerIdentity } from '../core/tools/tools.types.js'
 import { createMastraAgent, modelFromEnvelope } from './agent.adapter.js'
 import { readEnvelope } from './context.adapter.js'
@@ -45,7 +44,7 @@ export interface CreateMastraOptions {
    * 此时不过滤（构造期的工具面不参与真实调用）。
    */
   resolveTools: (
-    toolIds: readonly ToolSelector[],
+    toolIds: readonly string[],
     caller?: ToolCallerIdentity,
   ) => ToolsInput | Promise<ToolsInput>
   /**
@@ -96,6 +95,7 @@ export const createMastra = async ({
             isAdmin: envelope.isAdmin,
             userId: envelope.triggeredBy,
             rootAgentKey: envelope.rootAgentKey,
+            conversationId: envelope.conversationId,
           }
         : undefined
       const tools = await resolveTools(definition.tools, caller)

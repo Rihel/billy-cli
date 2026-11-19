@@ -12,15 +12,12 @@ import { createAgentRegistry } from '../src/modules/ai/agents/registry.js'
 import { createPromptEngine } from '../src/modules/ai/core/prompts/index.js'
 import { AgentTitleService } from '../src/modules/ai/runtime/title.service.js'
 import { SkillLoader } from '../src/modules/ai/core/skills/index.js'
-import { FileTools } from '../src/modules/ai/files/file.tools.js'
-import { WebTools } from '../src/modules/ai/tools/web.tools.js'
 import { RunSubAgentTool } from '../src/modules/ai/tools/subagent.tool.js'
 import { PlannerStore, PlannerTools } from '../src/modules/ai/tools/planner/index.js'
 import { AgentRunner } from '../src/modules/ai/runtime/agent-runner.js'
 import { AgentChatService, STREAM_END_MARKER } from '../src/modules/ai/runtime/chat.service.js'
 import { toMastraSkills } from '../src/modules/ai/mastra/skill.adapter.js'
 import { toMastraTools } from '../src/modules/ai/mastra/tool.adapter.js'
-import { ReadToolResultTool } from '../src/modules/ai/tools/read-tool-result.tool.js'
 import { ToolGateway } from '../src/modules/ai/core/tools/tool.gateway.js'
 import { ToolRegistry } from '../src/modules/ai/core/tools/tool.registry.js'
 import { AgentConversationService } from '../src/modules/ai/runtime/conversation.service.js'
@@ -45,7 +42,7 @@ import {
   type MockModelServer,
   startMockModelServer,
 } from './helpers/mock-model-server.js'
-import { buildToolStackDeps, makeBashTool } from './helpers/ai-tool-stack.js'
+import { buildToolStackDeps } from './helpers/ai-tool-stack.js'
 import {
   agUiEventToChunks,
   createAgUiDecodeState,
@@ -136,9 +133,6 @@ const TEST_CONFIG = {
   subAgentMaxSteps: 5,
   subAgentTimeoutMs: 60_000,
   // 命令执行（core bean `command`）：端到端要能真跑一条命令，这里给全部字段
-  commandEnabled: true,
-  commandTimeoutMs: 5_000,
-  commandMaxOutputBytes: 64 * 1024,
 } as never
 
 const createdConversationIds: string[] = []
@@ -290,14 +284,7 @@ beforeAll(async () => {
   // 工具组实例（唯一的工具来源）：与 `ai.module.ts` 的装配口径一致
   const plannerStore = new PlannerStore(timelines)
   toolRegistry = new ToolRegistry(
-    [
-      makeBashTool(silentLogger),
-      new RunSubAgentTool(runner, silentLogger),
-      new PlannerTools(plannerStore),
-      new ReadToolResultTool(deps.results, deps.counter, deps.caps),
-      new WebTools(silentLogger as never),
-      new FileTools({} as never, { enabled: true } as never),
-    ],
+    [new RunSubAgentTool(runner, silentLogger), new PlannerTools(plannerStore)],
     gateway,
     deps.config,
   )

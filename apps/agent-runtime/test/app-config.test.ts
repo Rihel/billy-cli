@@ -42,12 +42,10 @@ describe('server 分片：HTTP 长连接超时', () => {
   })
 })
 
-describe('agent 分片：命令执行默认关闭', () => {
-  it('默认 commandEnabled=false；要本机执行必须显式 AGENT_COMMAND_ENABLED=true', () => {
-    const defaults = serverAppConfigSchema.parse(mapServerEnv({} as NodeJS.ProcessEnv))
-    expect(defaults.agent.commandEnabled).toBe(false)
-    const mapped = mapServerEnv({ AGENT_COMMAND_ENABLED: 'true' } as NodeJS.ProcessEnv)
-    expect(serverAppConfigSchema.parse(mapped).agent.commandEnabled).toBe(true)
+describe('agent 分片：工作区根', () => {
+  it('AGENT_COMMAND_WORK_DIR 映射到 agent.commandWorkDir（文件物化 / 工作区路径共用）', () => {
+    const mapped = mapServerEnv({ AGENT_COMMAND_WORK_DIR: '/tmp/ws' } as NodeJS.ProcessEnv)
+    expect(serverAppConfigSchema.parse(mapped).agent.commandWorkDir).toBe('/tmp/ws')
   })
 })
 

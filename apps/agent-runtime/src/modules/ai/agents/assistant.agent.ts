@@ -4,33 +4,22 @@ import { ALL_SKILLS } from '../core/skills/skills.types.js'
 import type { AgentSpec } from './types.js'
 
 /**
- * 默认 agent：通用助手（会写任务清单、能造子助手、能联网、能执行命令）。
+ * 默认 agent：通用助手（任务清单、子助手、联网、执行命令、文件操作）。
  *
- * **它是「能力上限」的示例，不是产品形态**：工具面写 `ALL_TOOLS`（全量），
- * 所以能力目录里的外部工具也会自动挂上。使用方定义自己的 agent 时应按职责裁剪
- * （`docs/guide/ai.md` 的「定义自己的 agent」、skill `develop-ai-agent/references/define-agent.md`）。
+ * **它是「能力上限」的示例，不是产品形态**：工具面写 `ALL_TOOLS`（全部可见工具），
+ * 运行期再按「本地注册机的编排工具 + 能力目录里的内部服务能力」拼出来。
+ * 使用方定义自己的 agent 时应按职责裁剪（`docs/guide/ai.md` 的「定义自己的 agent」、
+ * skill `develop-ai-agent/references/define-agent.md`）。
  *
- * 「能做什么」由 `tools` 决定：这里只授权**运行时能力**——规划一组四个工具
- * （`plan-create` / `plan-reorder` / `plan-complete` / `plan-delete`）、
- * `run-sub-agent`（子 agent）、`bash`（执行命令行命令）、
- * `web-fetch` / `web-request` / `web-search`（联网）。AI 模块已与业务模块解耦，
- * 没有绑定任何业务工具，所以提示词只需要交代"什么时候用"，不需要（也不允许）点名不存在的业务工具。
- * 工具 key 从 `tool-keys.ts` 取（不写裸字符串，改名时编译期就报错）。
+ * 权限只写 key / `'*'`，不再区分「内外部」：
+ * - 运行时编排能力（规划四个、`run-sub-agent`、技能库）在本进程注册机里；
+ * - `bash` / 联网 / 文件 / 记忆 / 取页这些是**服务侧能力**，由能力目录下发；
+ * - MCP / 外部登记服务**不随工具面下发**，模型需要时自己用 `tool-search` 找，
+ *   搜到后下一轮才可调用（见 `core/tools/tool-discovery.store.ts`）。
  *
  * `run-sub-agent` 是**委派类工具**：给出去之后，这个 agent 就能为一件事临时造一个专职子助手
  * （子助手的提示词由它现写、工具面是"全部 − 委派类"）——见设计文档 §3.14。
  * 子助手不是注册表成员，所以这里不需要声明任何"子 agent 名单"。
- *
- * `bash` 是**跨平台命令执行**（Windows `cmd.exe` / POSIX `/bin/sh`，底层 execa）：
- * 开关与边界（默认工作目录 / 时长 / 输出上限）由 `agent.command*` 配置收口，见 §3.15。
- * **默认关闭**（`AGENT_COMMAND_ENABLED=false`）：它不是沙箱，命令以服务进程权限执行、
- * 能读写该身份能读写的一切；自用 / 内网确需时才显式打开。它**不是**委派类工具，
- * 所以打开时子助手也拿得到（"有你的全部工具"这条口径不变）。
- *
- * `web-fetch` / `web-request` / `web-search` 是**联网三件套**：**优先直取** —— 有 URL 就用
- * `web-fetch` 读正文、有接口地址就用 `web-request` 调；只有确实不知道来源时才用 `web-search`
- * 找候选，拿到 URL 后仍回到 `web-fetch`。三者共用统一出网预算与内网拦截，
- * 抓取与请求还按 1000 行一页返回、带 `ref` 续读（见 `tools/web.tools.ts` 的类注释）。
  */
 export const assistantAgent: AgentSpec = {
   key: 'assistant',
@@ -48,21 +37,6 @@ export const assistantAgent: AgentSpec = {
     TOOL_KEYS.subAgentList,
     TOOL_KEYS.waitSubAgent,
     TOOL_KEYS.cancelSubAgent,
-    TOOL_KEYS.bash,
-    // 联网：默认先直取（有 URL / 接口），搜索只作兜底 —— 顺序也按这个优先级排
-    TOOL_KEYS.webFetch,
-    TOOL_KEYS.webRequest,
-    TOOL_KEYS.webSearch,
-    // 文件管理：会话文件（OSS）+ 工作区读写
-    TOOL_KEYS.fileSubmit,
-    TOOL_KEYS.fileDownload,
-    TOOL_KEYS.fileList,
-    TOOL_KEYS.readFile,
-    TOOL_KEYS.fileSearch,
-    TOOL_KEYS.workspaceFiles,
-    TOOL_KEYS.writeFile,
-    TOOL_KEYS.replaceFile,
-    TOOL_KEYS.appendFile,
   ],
   /**
    * 技能：**全部已加载技能**（`core/skills/catalog/` + `AGENT_SKILLS_DIRS` 配置的目录）。

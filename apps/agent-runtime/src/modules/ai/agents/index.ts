@@ -35,7 +35,7 @@ export const createAgentDefinitions = (
   registry: ToolRegistry,
 ): AgentDefinition[] =>
   AGENT_SPECS.map((spec) => {
-    // 提示词里那段"可用工具"与能力清单是**同一份展开结果**：选择器只在这里展开一次
+    // 装配期只能用本地注册机（能力目录是运行期数据）；首轮再由编排层补齐后重渲染
     const toolMeta = registry.describe(spec.tools)
     const data: PromptData = {
       agentKey: spec.key,
@@ -43,6 +43,8 @@ export const createAgentDefinitions = (
       tools: toolMeta,
       ...spec.prompt.data,
     }
+    const renderInstructions = (tools: PromptData['tools']): string =>
+      prompts.render(spec.prompt.template, { ...data, tools })
     return {
       key: spec.key,
       name: spec.name,
@@ -52,6 +54,7 @@ export const createAgentDefinitions = (
       skills: [...(spec.skills ?? [])],
       model: spec.model,
       canSpawnSubAgents: toolMeta.some((tool) => tool.key === TOOL_KEYS.runSubAgent),
-      instructions: prompts.render(spec.prompt.template, data),
+      instructions: renderInstructions(toolMeta),
+      renderInstructions,
     }
   })

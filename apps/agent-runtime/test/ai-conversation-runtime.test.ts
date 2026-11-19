@@ -319,11 +319,11 @@ describe('会话重命名（用户手动改名）', () => {
 })
 
 describe('查看系统指令（前端「查看系统指令」的数据源）', () => {
-  it('返回装配期渲染好的原文：与真正挂上去的那份是同一个字符串，不另存副本', () => {
+  it('返回装配期渲染好的原文：与真正挂上去的那份是同一个字符串，不另存副本', async () => {
     // MASTRA / 模型服务与"读系统指令"无关：给 null / 替身即可（这条路径只碰注册表）
     const service = new AgentService(null, registry, {} as never)
 
-    const result = service.instructions({})
+    const result = await service.instructions({})
     expect(result.agentKey).toBe(DEFAULT_AGENT_KEY)
     expect(result.name).toBeTruthy()
     // 四段结构（角色 / 要求 / 工具 / 原则）都在，且工具清单来自**实际授权**（不是手抄）
@@ -335,9 +335,9 @@ describe('查看系统指令（前端「查看系统指令」的数据源）', (
     expect(result.instructions).toContain('plan-create')
   })
 
-  it('未注册的 agentKey：3303，**不静默回落**成默认 agent（否则会让人看错对象）', () => {
+  it('未注册的 agentKey：3303，**不静默回落**成默认 agent（否则会让人看错对象）', async () => {
     const service = new AgentService(null, registry, {} as never)
-    expect(() => service.instructions({ agentKey: 'not-exists' })).toThrowError(
+    await expect(service.instructions({ agentKey: 'not-exists' })).rejects.toThrowError(
       expect.objectContaining({ code: AppErrorCodes.AgentNotFound }),
     )
   })

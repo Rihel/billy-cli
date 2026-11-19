@@ -8,7 +8,7 @@ export class EnabledPlugin implements ToolPlugin {
 
   pre(ctx: ToolCallContext): ToolOutcome<never> | void {
     // 治理级开关（配置表）与能力级开关（工具自己的 `config.enabled`）**都开**才放行：
-    // 后者让 `AGENT_COMMAND_ENABLED=false` 这类部署边界仍然管用（见 command.tool 的 normalize）
+    // 后者让服务侧下发的部署边界（env 上限）仍然管用
     const capabilityEnabled = (ctx.settings.config as { enabled?: boolean }).enabled !== false
     if (ctx.settings.enabled && capabilityEnabled) return
     return {

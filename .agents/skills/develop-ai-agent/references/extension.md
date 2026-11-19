@@ -52,7 +52,7 @@
    "可用工具"那段由 `ToolRegistry.describe(spec.tools)` 渲染 —— 提示词里的工具清单与实际挂载的**同源**，
    key 写错在启动期就报错。
 
-`tools` 除了具体 key / `'*'`，还能写结构化选择器：`{ category: 'business' }`、
+`tools` 只写具体 key 或 `'*'`（全部可见工具）；不再有类别 / 外部选择器，
 **裁剪思路与授权三层**见 [define-agent.md](./define-agent.md)。
 
 ## 5. 加一个技能（三种入口，别混）

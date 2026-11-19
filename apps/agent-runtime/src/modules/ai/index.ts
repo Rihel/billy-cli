@@ -12,8 +12,8 @@
  * - `runtime/`      会话 / 运行 / 时间线 / 上下文 / 流记录 / 子 agent 执行器 / 崩溃恢复 +
  *                   `plan.protocol`（计划协议）；
  * - `agents/`       agent 声明（一个文件一个）+ `index.ts` 唯一登记处 + `types` / `registry` / `service`；
- * - `tools/`        具体工具（用 `core/tools` 的引擎写）：`command.tool` / `subagent.tool` /
- *                   `read-tool-result.tool` / `planner/**`（规划工具组）；
+ * - `tools/`        本进程编排工具（用 `core/tools` 的引擎写）：`subagent.tool` / `task.tool` /
+ *                   `planner/**`（规划工具组）；能力类工具（bash / 联网 / 文件 / 记忆）由能力目录下发；
  * - `mastra/`       适配器（**唯一可 import `@mastra`**）：`ai.mastra` 装配 + tool / agent / context /
  *                   stream / skill 适配器。
  */
@@ -30,4 +30,3 @@ export * from './agents/index.js'
 export * from './core/tools/index.js'
 export * from './core/skills/index.js'
 export * from './core/prompts/index.js'
-export * from './tools/read-tool-result.tool.js'

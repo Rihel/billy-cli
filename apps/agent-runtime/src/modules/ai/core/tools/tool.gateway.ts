@@ -5,6 +5,7 @@ import { toCaller } from './tool.caller.js'
 import { ToolConfigService } from './tool.config.service.js'
 import { createToolEventEmitter } from './tool-event.js'
 import { REMOTE_TOOL_INVOKER, TOOL_CLOCK, type RemoteToolInvoker } from './tool.ports.js'
+import { ToolDiscoveryStore } from './tool-discovery.store.js'
 import { ToolDeniedError } from './tools.types.js'
 import type {
   Tool,
@@ -31,6 +32,16 @@ const rawCallReason = (rawInput: unknown): string | null => {
   if (rawInput === null || typeof rawInput !== 'object' || Array.isArray(rawInput)) return null
   const value = (rawInput as Record<string, unknown>).reason
   return typeof value === 'string' ? value : null
+}
+
+/** 从 `tool-search` 的出参里取命中的工具 key（结构见网关 `runToolSearch`） */
+const searchedKeysOf = (data: unknown): string[] => {
+  if (!data || typeof data !== 'object') return []
+  const items = (data as { items?: unknown }).items
+  if (!Array.isArray(items)) return []
+  return items
+    .map((item) => (item && typeof item === 'object' ? (item as { key?: unknown }).key : undefined))
+    .filter((key): key is string => typeof key === 'string' && key.trim().length > 0)
 }
 
 /**
@@ -61,6 +72,8 @@ export class ToolGateway {
     @Inject(TOOL_CLOCK) private readonly clock: ToolClock,
     /** 可选：allowlist 内的工具走远程 capability-gateway；未配置时完全走进程内执行 */
     @Optional() @Inject(REMOTE_TOOL_INVOKER) private readonly remote?: RemoteToolInvoker | null,
+    /** 可选：`tool-search` 的结果记进会话，下一轮据此注入外部工具 */
+    @Optional() @Inject(ToolDiscoveryStore) private readonly discovery?: ToolDiscoveryStore | null,
   ) {}
 
   /** 把一份声明包成可调用的工具（注册机对外的只有这种） */
@@ -97,7 +110,7 @@ export class ToolGateway {
       // `reason` 是工具面的协议字段，不属于能力入参：远程校验前剥掉，
       // 否则网关按能力声明的 JSON Schema 校验会判 `Unrecognized key: "reason"`。
       const { reason: _reason, ...capabilityInput } = input
-      return this.remote.invoke({
+      const outcome = await this.remote.invoke({
         toolKey: spec.key,
         toolCallId: call.callId,
         input: capabilityInput,
@@ -110,6 +123,12 @@ export class ToolGateway {
         deadlineMs: 310_000,
         ...(envelope?.fileAccess ? { fileAccess: envelope.fileAccess } : {}),
       })
+      // 检索出参里带命中的 key：记进会话，下一轮 resolveTools 据此注入外部工具
+      if (spec.key === 'tool-search' && outcome.ok) {
+        const keys = searchedKeysOf(outcome.data)
+        if (keys.length > 0) await this.discovery?.remember(caller.conversationId, keys)
+      }
+      return outcome
     }
 
     const settings = await this.config.settings(spec)

@@ -1,5 +1,4 @@
 import type { AgentListModel } from '@repo/shared'
-import type { ToolSelector } from '../core/tools/tool-selector.js'
 
 /**
  * 单个 agent 的**应用层定义**（策略）：它是谁、能做什么、用哪套提示词。
@@ -26,7 +25,7 @@ export interface AgentDefinition {
    * 模型再怎么"想"也调不动（提示词只负责「什么时候用」）。
    * 引用不存在的工具 key 会在 bootstrap 期直接报错（见 `ai.registry.ts` 的校验）。
    */
-  tools: readonly ToolSelector[]
+  tools: readonly string[]
   /**
    * 允许使用的**技能名子集**（`core/skills/catalog/<name>/SKILL.md` 与 `AgentConfig.skillsDirs`
    * 各目录下的 `<name>/SKILL.md`）。
@@ -35,15 +34,24 @@ export interface AgentDefinition {
    * 写 `['*']`（`ALL_SKILLS`）= 全部已加载技能，装配期展开成真实名字。
    */
   skills: readonly string[]
-  /** 系统提示词（渲染产物：文本来自 `core/prompts/templates/*.eta`） */
+  /** 系统提示词（装配期的渲染产物：只有本地注册机里的工具） */
   instructions: string
+  /**
+   * 用**这一份工具清单**重渲染系统指令（首轮由编排层带上能力目录调用）。
+   *
+   * 为什么不在装配期渲染完：目录是运行期数据，随能力登记 / 授权变化；
+   * 而系统指令要跟“这一轮模型实际能用的工具”一致，否则提示词与工具面各说各话。
+   */
+  renderInstructions?: (
+    tools: readonly { key: string; title: string; description: string }[],
+  ) => string
   /** 覆盖默认模型（多模型时用；本轮留位，装配处已支持） */
   model?: string
   /**
    * 能不能造子 agent（装配期按**展开后的**授权清单算）。
    *
-   * 不放到前端去判 `tools.includes('run-sub-agent')`：`'*'` 与
-   * `{ category: 'core' }` 也能把委派工具带上，前端看不出来。
+   * 不放到前端去判 `tools.includes('run-sub-agent')`：`'*'` 也能把委派工具带上，
+   * 前端看不出来。
    */
   canSpawnSubAgents?: boolean
 }
@@ -61,10 +69,12 @@ export interface AgentSpec {
   name: string
   description: string
   /**
-   * 允许调用的工具：具体 key（从 `tools/tool-keys.ts` 取）、`'*'`，或按类别批量选
-   * （见 `core/tools/tool-selector.ts`）。
+   * 允许调用的工具：具体 key（从 `tools/tool-keys.ts` 取）或 `'*'`（全部可见工具）。
+   *
+   * 能力 key（`bash` / `web-*` / `file-*` …）不在本工程的注册机里，由装配层按能力目录解析；
+   * 写错不会在启动期报错（目录是运行期数据），以运行期工具面为准。
    */
-  tools: readonly ToolSelector[]
+  tools: readonly string[]
   /** 允许使用的技能名子集（`core/skills/catalog/<name>/`；未知名字装配期报错） */
   skills?: readonly string[]
   /** 提示词模板：`templates/<template>.eta` + 自定义变量 */

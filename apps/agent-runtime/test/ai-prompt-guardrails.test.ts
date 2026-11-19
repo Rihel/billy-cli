@@ -10,10 +10,36 @@ import { DEFAULT_AGENT_KEY, createAgentDefinitions } from '../src/modules/ai/age
  * 但它们只是模板里的一段文字 —— 改模板时最容易顺手删掉，删完没有任何东西会红。
  * 这里把"必须存在的那几条"钉住：措辞可以再打磨，**语义不能丢**。
  */
+/** 与运行期同一口径：本地编排工具 + 能力目录里的内部能力（这里用固定清单模拟合并结果） */
+const CAPABILITY_KEYS = [
+  'bash',
+  'web-fetch',
+  'web-search',
+  'web-request',
+  'file-submit',
+  'file-download',
+  'file-list',
+  'read-file',
+  'file-search',
+  'workspace-files',
+  'write-file',
+  'replace-file',
+  'append-file',
+  'memory-save',
+  'memory-search',
+  'memory-forget',
+  'read-tool-result',
+  'wait-task',
+  'cancel-task',
+  'tool-search',
+] as const
+
 const assistantPrompt = (): string => {
   const definitions = createAgentDefinitions(createPromptEngine(), {
-    describe: (keys: readonly string[]) =>
-      keys.map((key) => ({ key, title: key, description: key })),
+    describe: (keys: readonly string[]) => [
+      ...keys.filter((key) => key !== '*').map((key) => ({ key, title: key, description: key })),
+      ...CAPABILITY_KEYS.map((key) => ({ key, title: key, description: key })),
+    ],
   } as never)
   const assistant = definitions.find((definition) => definition.key === DEFAULT_AGENT_KEY)
   if (!assistant) throw new Error('没有找到默认 agent 的定义')

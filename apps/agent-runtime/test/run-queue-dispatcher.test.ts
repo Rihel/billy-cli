@@ -22,9 +22,6 @@ import { toMastraSkills } from '../src/modules/ai/mastra/skill.adapter.js'
 import { SkillLoader } from '../src/modules/ai/core/skills/index.js'
 import { ToolGateway } from '../src/modules/ai/core/tools/tool.gateway.js'
 import { ToolRegistry } from '../src/modules/ai/core/tools/tool.registry.js'
-import { FileTools } from '../src/modules/ai/files/file.tools.js'
-import { WebTools } from '../src/modules/ai/tools/web.tools.js'
-import { ReadToolResultTool } from '../src/modules/ai/tools/read-tool-result.tool.js'
 import { RunSubAgentTool } from '../src/modules/ai/tools/subagent.tool.js'
 import { PlannerStore, PlannerTools } from '../src/modules/ai/tools/planner/index.js'
 import { AgentRunner } from '../src/modules/ai/runtime/agent-runner.js'
@@ -41,7 +38,7 @@ import { ConversationRunQueue } from '../src/modules/ai/runtime/run-queue.servic
 import { ConversationRunQueueDispatcher } from '../src/modules/ai/runtime/run-queue.dispatcher.js'
 import { AgentStreamStore } from '../src/modules/ai/runtime/stream-store.service.js'
 import { AgentTitleService } from '../src/modules/ai/runtime/title.service.js'
-import { buildToolStackDeps, makeBashTool } from './helpers/ai-tool-stack.js'
+import { buildToolStackDeps } from './helpers/ai-tool-stack.js'
 import { stubAttachments } from './helpers/attachments.js'
 import {
   MOCK_CHILD_MARKER,
@@ -95,9 +92,6 @@ const TEST_CONFIG = {
   subAgentMaxDepth: 1,
   subAgentMaxSteps: 5,
   subAgentTimeoutMs: 60_000,
-  commandEnabled: false,
-  commandTimeoutMs: 5_000,
-  commandMaxOutputBytes: 64 * 1024,
 } as never
 
 let db: Db
@@ -220,14 +214,7 @@ beforeAll(async () => {
     queue,
   )
   toolRegistry = new ToolRegistry(
-    [
-      makeBashTool(silentLogger),
-      new WebTools(silentLogger as never),
-      new FileTools({} as never, { enabled: true } as never),
-      new RunSubAgentTool(runner, silentLogger),
-      new PlannerTools(new PlannerStore(timelines)),
-      new ReadToolResultTool(deps.results, deps.counter, deps.caps),
-    ],
+    [new RunSubAgentTool(runner, silentLogger), new PlannerTools(new PlannerStore(timelines))],
     gateway,
     deps.config,
   )

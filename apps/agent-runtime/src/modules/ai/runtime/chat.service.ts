@@ -47,6 +47,11 @@ import { buildEnvironmentData } from '../core/prompts/environment.js'
 import { PROMPT_ENGINE, type PromptEngine } from '../core/prompts/prompt.engine.js'
 import { SkillLoader } from '../core/skills/index.js'
 import { ToolRegistry } from '../core/tools/tool.registry.js'
+import { ALL_TOOLS } from '../core/tools/tools.types.js'
+import { renderAgentInstructions } from '../agents/instructions.js'
+import { createCapabilityTool } from '../core/tools/external.tool.js'
+import { REMOTE_TOOL_INVOKER, type RemoteToolInvoker } from '../core/tools/tool.ports.js'
+import { GatewayToolCatalog } from './gateway-capability-catalog.js'
 import { ToolCallMetaStore } from '../core/tools/tool.meta.js'
 import { toMastraModelInstance } from '../mastra/agent.adapter.js'
 import { toRequestContext } from '../mastra/context.adapter.js'
@@ -381,6 +386,10 @@ export class AgentChatService {
     @Optional() @Inject(ConversationRunQueue) private readonly runQueue?: ConversationRunQueue,
     // 运行态事件（`conversation.run.started`，前端据此自动续流）：不传时跳过推流
     @Optional() @Inject(RunStatusStream) private readonly runEvents?: RunStatusStream,
+    // 能力目录：首轮据此把内部服务能力写进系统指令、给子助手补工具面（测试不传则退回本地声明）
+    @Optional() @Inject(GatewayToolCatalog) private readonly catalog?: GatewayToolCatalog,
+    // 目录能力一律经网关执行；测试不传时目录能力会被跳过
+    @Optional() @Inject(REMOTE_TOOL_INVOKER) private readonly remote?: RemoteToolInvoker | null,
   ) {}
 
   /** 主 agent 的对话记忆（与 createMastra 共用同一个实例） */
@@ -618,7 +627,13 @@ export class AgentChatService {
           fileAccess: conversation.fileAccess,
           workspaceConversationId: conversation.rootConversationId ?? conversation.id,
           ...(conversation.workspaceId ? { workspaceId: conversation.workspaceId } : {}),
-          systemPrompt: await this.resolveSystemPrompt(conversation, run.id, definition),
+          systemPrompt: await this.resolveSystemPrompt(
+            conversation,
+            run.id,
+            definition,
+            userId,
+            isAdmin,
+          ),
           // 身份要进运行时信封：admin 作用域的工具（skill-*）按它过滤工具面。
           // 漏传的后果是模型手上根本没有这些工具，只能绕去 bash 写盘（2026-11-11 实际踩过）。
           isAdmin,
@@ -1434,7 +1449,13 @@ export class AgentChatService {
           workspaceConversationId: conversation.rootConversationId ?? conversation.id,
           ...(conversation.workspaceId ? { workspaceId: conversation.workspaceId } : {}),
           abortSignal: abort.signal,
-          systemPrompt: await this.resolveSystemPrompt(conversation, run.id, definition),
+          systemPrompt: await this.resolveSystemPrompt(
+            conversation,
+            run.id,
+            definition,
+            userId,
+            isAdmin,
+          ),
           // 同上：工具面按身份过滤，admin 的 skill-* 工具要靠这个字段才出现
           isAdmin,
         },
@@ -1958,7 +1979,13 @@ export class AgentChatService {
           workspaceConversationId: conversation.rootConversationId ?? conversation.id,
           ...(conversation.workspaceId ? { workspaceId: conversation.workspaceId } : {}),
           abortSignal: abort.signal,
-          systemPrompt: await this.resolveSystemPrompt(conversation, run.id, definition),
+          systemPrompt: await this.resolveSystemPrompt(
+            conversation,
+            run.id,
+            definition,
+            userId,
+            isAdmin,
+          ),
           // 续跑与首轮同一身份口径：admin 的 skill-* 工具不能因为"续跑"而消失
           isAdmin,
         },
@@ -2815,7 +2842,13 @@ export class AgentChatService {
           workspaceConversationId: conversation.rootConversationId ?? conversation.id,
           ...(conversation.workspaceId ? { workspaceId: conversation.workspaceId } : {}),
           abortSignal: abort.signal,
-          systemPrompt: await this.resolveSystemPrompt(conversation, run.id, definition),
+          systemPrompt: await this.resolveSystemPrompt(
+            conversation,
+            run.id,
+            definition,
+            userId,
+            input.isAdmin,
+          ),
           isAdmin: input.isAdmin,
         },
       )
@@ -3216,8 +3249,25 @@ export class AgentChatService {
       isAdmin: options.isAdmin ?? false,
       userId,
       rootAgentKey: definition.key,
+      conversationId,
     }
-    const childToolbox = await this.toolRegistry.authorizedChildToolbox(definition.tools, caller)
+    const childToolbox = new Map(
+      await this.toolRegistry.authorizedChildToolbox(definition.tools, caller),
+    )
+    /**
+     * 能力目录里的内部服务 / 网关能力也要给子助手（本地注册机只有编排工具）。
+     * 外部服务（MCP / 手工登记）不给子助手：子助手的任务应该用父已经确认过的手段完成。
+     */
+    if (this.catalog && this.remote) {
+      const capabilities = await this.catalog.capabilities(caller)
+      const wantsAll = definition.tools.includes(ALL_TOOLS)
+      for (const capability of capabilities ?? []) {
+        if (capability.source !== 'code') continue
+        if (childToolbox.has(capability.key)) continue
+        if (!wantsAll && !definition.tools.includes(capability.key)) continue
+        childToolbox.set(capability.key, createCapabilityTool(capability, this.remote))
+      }
+    }
 
     const envelope: AgentRuntimeEnvelope = {
       conversationId,
@@ -3275,15 +3325,21 @@ export class AgentChatService {
     conversation: ConversationEntity,
     runId: string,
     definition: AgentDefinition,
+    userId: string,
+    isAdmin: boolean,
   ): Promise<string> {
     // ★ 首轮生成一次：同一个 agent 的后续轮次**逐字复用**首轮那份（不是"重算后比对"）
     const previous = await this.timelines.latestSystemPrompt(conversation.id)
     if (previous && previous.agentKey === definition.key) return previous.text
 
+    const instructions = await renderAgentInstructions(
+      definition,
+      this.toolRegistry,
+      this.catalog,
+      { isAdmin, userId, conversationId: conversation.id },
+    )
     const environment = this.renderEnvironment(conversation)
-    const systemPrompt = environment
-      ? `${definition.instructions}\n\n${environment}`
-      : definition.instructions
+    const systemPrompt = environment ? `${instructions}\n\n${environment}` : instructions
 
     await this.timelines.append({
       conversationId: conversation.id,

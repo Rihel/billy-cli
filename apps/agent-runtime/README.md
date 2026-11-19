@@ -6,20 +6,21 @@ Agent 会话运行时（端口 9990）。只暴露内部入口 `/internal/agent/
 
 ```
 src/
-├── main.ts                 # 入口：await loadServerAppConfig() → NestFactory 引导 + 横切中间件 + 优雅关闭
-├── app-config.ts           # 应用配置：serverAppConfigSchema（复用 kits 各模块 schema）+ mapServerEnv + loadServerAppConfig
-├── root.module.ts          # 组合根：AppConfigModule + 各基础设施 forRootAsync + 业务模块 + 全局管道/过滤器/拦截器
-├── config.ts               # ServerConfig 类型（= ServerAppConfig['server']）+ resolveServerConfig(config)
-├── common/                 # 横切 HTTP 构件（不依赖业务模块；各包有 index.ts，外部从 common/index.ts 导入）
-│   ├── error/              #   错误码映射 · 边界错误 · 全局异常过滤器 · 告警钩子
-│   ├── request-context/    #   （模块，@Global）ALS 上下文 + 自注册中间件（requestId / X-Request-Id）
-│   ├── request-metrics/    #   （模块，@Global）自注册埋点中间件（QPS / 耗时直方图，注入 Telemetry）
-│   ├── security/           #   token 与身份读取 · 限流守卫
-│   └── http/               #   Zod 校验管道 · 响应信封拦截器
-├── database/               # TypeORM 实体与迁移（实体在 root.module.ts 的 DbModule.forRootAsync 工厂里注入）
-└── modules/<业务>/          # NestJS 业务模块：module + controller + service + repository + errors
-    └── runtime-config/     # 运行配置接口（RuntimeConfigController 公开 POST /config/get）
+├── main.ts                 # 入口：loadServerAppConfig → NestFactory 引导 + 横切中间件 + 优雅关闭
+├── app-config.ts           # 应用配置：serverAppConfigSchema + mapServerEnv + loadServerAppConfig
+├── config.ts               # ServerConfig 类型 + resolveServerConfig
+├── root.module.ts          # 组合根：基础设施 forRootAsync + 业务模块 + 全局管道/过滤器/拦截器
+└── modules/
+    ├── ai/                 # agent 编排（会话 / 运行 / 时间线 / 上下文 / 提示词 / 技能 / 子 agent）
+    │   ├── agents/         #   agent 声明（一个文件一个）+ 唯一登记处
+    │   ├── core/           #   工具引擎、提示词引擎、技能加载
+    │   ├── runtime/        #   会话与运行链路、流式记录、能力目录
+    │   └── mastra/         #   Mastra 适配器（唯一可 import @mastra）
+    └── ops/                # 健康探针 /readyz
 ```
+
+> 能力执行体不在本服务：bash / 联网 / 文件 / 记忆等由 `common-capability` 与 `workspace-service`
+> 登记到能力网关，runtime 按目录装配工具面并经网关调用。
 
 ## 分层约定
 

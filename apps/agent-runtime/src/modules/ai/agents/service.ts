@@ -1,9 +1,10 @@
-import { Inject, Injectable } from '@nestjs/common'
+import { Inject, Injectable, Optional } from '@nestjs/common'
 import type {
   AgentInstructionsDto,
   AgentInstructionsModel,
   AgentListModel,
   AgentStatusModel,
+  AgentToolListModel,
 } from '@repo/shared'
 import type { Mastra } from '@mastra/core/mastra'
 import { RUNTIME_MODEL_RESOLVER, type RuntimeModelResolver } from '../runtime/model-resolver.js'
@@ -12,6 +13,10 @@ import type { AgentRegistry } from './types.js'
 import { MASTRA } from '../mastra/ai.mastra.js'
 import { ALL_SKILLS } from '../core/skills/skills.types.js'
 import { SkillLoader } from '../core/skills/skill.loader.js'
+import { ToolRegistry } from '../core/tools/tool.registry.js'
+import { GatewayToolCatalog } from '../runtime/gateway-capability-catalog.js'
+import { renderAgentInstructions } from './instructions.js'
+import { toJsonSchema } from '../core/tools/tool.schema.js'
 
 /**
  * Agent 装配查询服务：能力状态 + agent 清单 + 取用已装配的 Mastra 实例。
@@ -29,6 +34,9 @@ export class AgentService {
     @Inject(AGENT_REGISTRY) private readonly registry: AgentRegistry,
     @Inject(RUNTIME_MODEL_RESOLVER) private readonly models: RuntimeModelResolver,
     @Inject(SkillLoader) private readonly skills: SkillLoader,
+    @Inject(ToolRegistry) private readonly toolRegistry: ToolRegistry,
+    // 目录不可用（未配网关 / 抖动）时退回装配期版本；单测可不传
+    @Optional() @Inject(GatewayToolCatalog) private readonly catalog?: GatewayToolCatalog,
   ) {}
 
   /**
@@ -67,6 +75,25 @@ export class AgentService {
   }
 
   /**
+   * **运行时内建工具清单**（控制面「工具配置」页的数据源）。
+   *
+   * 静态声明只在 runtime 一份：main 不再存 manifest 快照，要用就问这里。
+   * 只列本进程注册机里的工具；能力目录里的能力由 main 直接问网关。
+   */
+  tools(): AgentToolListModel {
+    return {
+      tools: this.toolRegistry.specs().map((spec) => ({
+        key: spec.key,
+        title: spec.title,
+        description: spec.description,
+        category: spec.category,
+        scope: spec.scope,
+        paramSchema: toJsonSchema(spec),
+      })),
+    }
+  }
+
+  /**
    * 某个 agent 的**系统指令原文**（前端「查看系统指令」用它）。
    *
    * 直接回装配期渲染好的 `instructions`：**没有第二份副本** ——
@@ -76,13 +103,23 @@ export class AgentService {
    * 未注册的 agentKey 由注册表抛 3303，**不静默回落成默认 agent**：
    * 回落会让人以为"我看的是这个 agent 的指令"，其实不是。
    */
-  instructions(input: AgentInstructionsDto): AgentInstructionsModel {
+  async instructions(input: AgentInstructionsDto): Promise<AgentInstructionsModel> {
     const definition = this.registry.resolve(input.agentKey)
+    const instructions = await renderAgentInstructions(
+      definition,
+      this.toolRegistry,
+      this.catalog,
+      {
+        isAdmin: false,
+        userId: null,
+        conversationId: 'agent-instructions',
+      },
+    )
     return {
       agentKey: definition.key,
       name: definition.name,
       description: definition.description,
-      instructions: definition.instructions,
+      instructions,
       // 静态定义：没有会话、也没有快照时间
       source: 'definition',
       recordedAt: null,

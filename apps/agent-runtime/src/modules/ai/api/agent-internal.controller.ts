@@ -54,6 +54,14 @@ export class AgentInternalController {
     return this.agents.list()
   }
 
+  /** 运行时内建工具清单：main 的工具配置页用它（不再持有 manifest 快照） */
+  @Post('tools')
+  @HttpCode(200)
+  tools(@Headers('x-internal-token') token: string | undefined) {
+    this.requireToken(token)
+    return this.agents.tools()
+  }
+
   /** 静态系统指令：main 只在「会话还没有快照」时用它补默认值 */
   @Post('instructions')
   @HttpCode(200)

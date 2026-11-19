@@ -68,20 +68,8 @@ export interface AgentConfig {
   /** 单个子 agent 的墙钟上限（ms；0 = 沿用 `runTimeoutMs`） */
   subAgentTimeoutMs: number
 
-  // ── 命令执行（工具组 `BashTool`，§3.15）──
-  /**
-   * 是否允许 agent 在本机执行命令行命令。
-   *
-   * 关掉时工具仍在（装配期工具池必须非空），但每次调用返回"已被关闭"的结论 ——
-   * 模型能理解并改口，好过遇到一个不存在的工具。
-   */
-  commandEnabled: boolean
-  /** 单条命令的时长**默认值与硬上限**（ms）：模型传更小就听它的，传更大一律夹到这里 */
-  commandTimeoutMs: number
-  /** 单条流（stdout / stderr 各自）的输出上限（字节）；超出即截断并终止命令 */
-  commandMaxOutputBytes: number
-  /** 每类流（stdout / stderr 各自）最多实时发多少行的**部署上限**（后台可调低，但调不出这个上限） */
-  /** 命令的工作根目录（缺省 = 服务进程工作目录）；agent 传入的 `cwd` 只能在这个目录之内 */
+  // ── 工作区根（仅供文件元数据物化；命令执行在 workspace-service）──
+  /** 工作区根目录（缺省 = `~/.billy/workspaces`）；文件物化与工作区路径共用 */
   commandWorkDir?: string
 
   // ── 文件管理（工具组 `FileTools`，设计 docs/design/ai-file-manager.md）──
@@ -99,26 +87,6 @@ export interface AgentConfig {
   fileWorkspaceMaxFiles?: number
   fileWorkspaceMaxDepth?: number
 
-  // ── 联网（工具组 `WebTools`：`web-fetch` / `web-request` / `web-search`）──
-  /**
-   * 是否允许 agent 出网。
-   *
-   * 关掉时工具仍在（装配期工具池必须非空），但每次调用返回"已被关闭"的结论 ——
-   * 模型能理解并改口，好过遇到一个不存在的工具。
-   */
-  webEnabled: boolean
-  /** 单次请求的总时长默认值与**硬上限**（ms）：整条重定向链共用这一个预算 */
-  webTimeoutMs: number
-  /** 单次请求最多读多少字节的**硬上限**（后台可调低，调不出这个上限） */
-  webMaxBytes: number
-  /**
-   * 是否允许访问内网 / 回环地址（**默认关**）。
-   *
-   * 这是"让模型能被网页内容诱导去请求 `169.254.169.254` 之类的地址吗"这个问题的回答。
-   * 打开它等于放弃 SSRF 防护，只在自用 / 内网环境下打开。
-   */
-  webAllowPrivateNetwork: boolean
-
   // ── 工具引擎（设计 ai-agent-tool-engine.md §5.5 / §5.6）──
   /** 单次给模型的工具出参上限（字节）**硬上限**（后台可改工具级阈值，但改不出这个上限） */
   toolPageBytesMax: number
@@ -126,24 +94,8 @@ export interface AgentConfig {
   toolMaxPagesPerTurnMax: number
 }
 
-/**
- * 「模型 + 密钥」齐全才算可用。
- *
- * 不把未配置当成启动失败：模板允许 clone 后先跑通其余功能，
- * 未配置时接口返回 3301 明确告知原因，前端据此展示配置指引。
- */
-export const isAgentConfigured = (config: AgentConfig): boolean =>
-  Boolean(config.model && config.apiKey)
-
 /** Mastra 模型标识：`provider/model`（model router 靠这个前缀选 provider，故类型上锁死） */
 export type AgentModelId = `${string}/${string}`
-
-/** 已确认可用的模型配置（`model` / `apiKey` 必填，由 `isAgentConfigured` 收口） */
-export interface ResolvedAgentModel {
-  model: AgentModelId
-  apiKey: string
-  baseURL?: string
-}
 
 /**
  * 校验模型标识格式并收窄类型。
@@ -159,10 +111,3 @@ export const toAgentModelId = (modelId: string): AgentModelId => {
   }
   return modelId as AgentModelId
 }
-
-/** 解析并校验模型配置 */
-export const resolveAgentModel = (config: AgentConfig): ResolvedAgentModel => ({
-  model: toAgentModelId(config.model ?? ''),
-  apiKey: config.apiKey ?? '',
-  baseURL: config.baseURL,
-})

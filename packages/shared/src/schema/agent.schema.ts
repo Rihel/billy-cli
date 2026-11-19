@@ -107,6 +107,25 @@ export const AgentStatusSchema = z.object({
 
 export type AgentStatusModel = z.infer<typeof AgentStatusSchema>
 
+/** 运行时内建的一条工具声明（控制面「工具配置」页用它，避免 main 再存一份清单快照） */
+export const AgentToolMetaSchema = z.object({
+  key: z.string(),
+  title: z.string(),
+  description: z.string(),
+  category: z.string(),
+  scope: z.string(),
+  /** 给模型看的入参 JSON Schema（含引擎注入的必填 `reason`） */
+  paramSchema: z.record(z.string(), z.unknown()).nullable(),
+})
+
+export type AgentToolMetaModel = z.infer<typeof AgentToolMetaSchema>
+
+export const AgentToolListSchema = z.object({
+  tools: z.array(AgentToolMetaSchema),
+})
+
+export type AgentToolListModel = z.infer<typeof AgentToolListSchema>
+
 // ─────────────────────────── 会话 / 运行 / 时间线（读写链路） ───────────────────────────
 // 命名口径：**轮（turn）** = 一次问答；**步（step）** = 一轮里的一次模型调用。
 // 详见 docs/design/ai-agent.md 的术语表。

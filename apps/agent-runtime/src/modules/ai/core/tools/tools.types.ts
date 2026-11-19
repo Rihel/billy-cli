@@ -92,24 +92,9 @@ export interface ToolEnvCaps {
   pageBytesMax: number
   /** 每轮取页次数硬上限 */
   maxPagesPerTurnMax: number
-  /** 命令执行的部署边界（`AGENT_COMMAND_*`）：既有部署的 env 语义由此保留 */
+  /** 工作区根（文件物化用；命令执行在 workspace-service） */
   command?: {
-    enabled: boolean
-    timeoutMsMax: number
-    maxOutputBytesMax: number
     workDir?: string
-  }
-  /**
-   * 联网的部署边界（`AGENT_WEB_*`）。
-   *
-   * `allowPrivateNetwork` 在这里是**硬闸**：env 没打开时，后台把工具配置里的同名字段打开也不生效 ——
-   * 允许模型访问内网是部署方的决定，不该由页面上的一个开关决定。
-   */
-  web?: {
-    enabled: boolean
-    timeoutMsMax: number
-    maxBytesMax: number
-    allowPrivateNetwork: boolean
   }
   /** 文件管理的部署边界（env）：库里的值再大也突破不了 */
   file?: {
@@ -188,6 +173,8 @@ export interface ToolCallerIdentity {
   readonly isAdmin: boolean
   readonly userId: string | null
   readonly rootAgentKey: string
+  /** 发起这一轮的会话（`tool-search` 的发现集合按会话记） */
+  readonly conversationId: string
 }
 
 /** 谁在调这次工具（来自编排层注入的运行时信封） */

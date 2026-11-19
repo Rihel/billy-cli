@@ -1,7 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common'
 import { AppLogger } from '@repo/kits'
 import { CapabilityGatewayClient } from '@repo/internal-sdk'
-import { isRemoteToolKey, type CapabilityInfo } from '@repo/contracts'
+import type { CapabilityInfo } from '@repo/contracts'
 import type { ToolCallerIdentity } from '../core/tools/tools.types.js'
 
 /**
@@ -13,10 +13,8 @@ const CACHE_TTL_MS = 5_000
 /**
  * 消费网关的运行时能力目录（`POST /v1/capabilities/list`）。
  *
- * server 仍是当前的单体编排层：本地注册机负责执行与参数定义，这里只用 gateway 返回的 key
- * 做**运行时授权 / 开关过滤**；拆出 facade 后，同一份目录也可以直接用来构造远端工具面。
- *
- * 未配置 `TOOL_GATEWAY_URL` 时返回 null（保持本地路径）；gateway 抖动 fail-open，
+ * 目录是能力的**唯一事实源**：`resolveTools` 用它装配工具面，编排层用它渲染系统指令里的
+ * 内置能力清单。未配置 `TOOL_GATEWAY_URL` 时返回 null；gateway 抖动 fail-open，
  * 因为"网关暂时不可用"不该让整个对话没有工具可用。
  */
 @Injectable()
@@ -24,16 +22,6 @@ export class GatewayToolCatalog {
   private readonly cache = new Map<string, { at: number; capabilities: CapabilityInfo[] }>()
 
   constructor(@Inject(AppLogger) private readonly logger: AppLogger) {}
-
-  async allowedKeys(caller: ToolCallerIdentity): Promise<Set<string> | null> {
-    const capabilities = await this.capabilities(caller)
-    if (!capabilities) return null
-    return new Set(
-      capabilities
-        .filter((capability) => isRemoteToolKey(capability.key))
-        .map((capability) => capability.key),
-    )
-  }
 
   /** 这次身份的完整能力目录（含外部服务 / MCP 的工具；未配置网关返回 null） */
   async capabilities(caller: ToolCallerIdentity): Promise<CapabilityInfo[] | null> {
@@ -73,19 +61,4 @@ export class GatewayToolCatalog {
       return null
     }
   }
-}
-
-/**
- * 工具面合并：**目录只约束走网关的工具**。
- *
- * - 本地编排工具（`plan/*`、`agent/*`、`skill/*`）不在别名表里，视为本地工具，目录管不着；
- * - 走网关的工具（别名表里的 17 个）必须在目录里才出现，停用/越权时自然消失；
- * - 目录不可用（null）时 fail-open，整份本地工具面放行。
- */
-export const applyCatalogToToolFace = (
-  local: readonly string[],
-  catalogKeys: ReadonlySet<string> | null,
-): string[] => {
-  if (!catalogKeys) return [...local]
-  return local.filter((key) => !isRemoteToolKey(key) || catalogKeys.has(key))
 }

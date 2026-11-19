@@ -1,15 +1,8 @@
-import {
-  AppLogger,
-  CommandRunner,
-  WorkspaceConfigSchema,
-  WorkspaceRuntimeService,
-} from '@repo/kits'
-import { BashTool } from '../../src/modules/ai/tools/bash.tool.js'
+import { AppLogger } from '@repo/kits'
 import {
   AuditEndPlugin,
   AuditStartPlugin,
   EnabledPlugin,
-  PaginatePlugin,
   PrecheckPlugin,
   RateLimitPlugin,
   RedactPlugin,
@@ -18,7 +11,6 @@ import {
 } from '../../src/modules/ai/core/tools/plugins/index.js'
 import { ToolCallMetaStore } from '../../src/modules/ai/core/tools/tool.meta.js'
 import { buildToolSpecs } from '../../src/modules/ai/core/tools/tool.class.js'
-import { ToolResultStore } from '../../src/modules/ai/core/tools/tool-result.store.js'
 import { systemToolClock } from '../../src/modules/ai/core/tools/tool.clock.js'
 import { MemoryToolRateCounter } from './tool-kit-ports.js'
 import { ToolConfigService } from '../../src/modules/ai/core/tools/tool.config.service.js'
@@ -67,14 +59,6 @@ export class MemoryToolConfigSource implements ToolConfigSource {
   }
 }
 
-/** 测试用的假时间线（`ToolResultStore` 的兜底查询用；默认"查不到"） */
-export const fakeTimelineRepository = (
-  stored: Map<string, string> = new Map(),
-): { findToolOutput: (conversationId: string, toolCallId: string) => Promise<string | null> } => ({
-  findToolOutput: async (conversationId, toolCallId) =>
-    stored.get(`${conversationId}:${toolCallId}`) ?? null,
-})
-
 /** 测试用的部署上限（与 `apps/agent-runtime/src/app-config.ts` 的默认值一致） */
 export const TEST_TOOL_ENV_CAPS: ToolEnvCaps = {
   pageBytesMax: 8 * 1024,
@@ -98,10 +82,6 @@ export interface ToolStackOptions {
   caps?: ToolEnvCaps
   /** 配置来源（默认内存：全部走代码默认值） */
   source?: ToolConfigSource
-  /** 时间线（`ToolResultStore` 的兜底） */
-  timelines?: {
-    findToolOutput: (conversationId: string, toolCallId: string) => Promise<string | null>
-  }
   /** 插件（默认不装插件：单测工具本体时不想被开关 / 限流挡） */
   plugins?: readonly import('../../src/modules/ai/core/tools/tools.types.js').ToolPlugin[]
 }
@@ -115,16 +95,12 @@ export interface ToolStackOptions {
 export const buildToolStackDeps = (options: ToolStackOptions = {}) => {
   const source = options.source ?? new MemoryToolConfigSource()
   const caps = options.caps ?? TEST_TOOL_ENV_CAPS
-  const results = new ToolResultStore(
-    (options.timelines ?? fakeTimelineRepository()) as never,
-    { set: async () => null, get: async () => null } as never,
-  )
   const metas = new ToolCallMetaStore()
   const counter = new MemoryToolRateCounter()
   const config = new ToolConfigService(silentLogger as never, source, caps)
   /**
    * **与生产同序的插件链**（设计 §5.4）：测试要验的就是这条链，
-   * 所以默认装齐 9 个（想验"没有插件时工具本体如何"再显式传 `plugins: []`）。
+   * 所以默认装齐（想验"没有插件时工具本体如何"再显式传 `plugins: []`）。
    */
   const plugins = options.plugins ?? [
     new EnabledPlugin(),
@@ -134,10 +110,9 @@ export const buildToolStackDeps = (options: ToolStackOptions = {}) => {
     new PrecheckPlugin(),
     new AuditStartPlugin(),
     new RedactPlugin(silentLogger as never),
-    new PaginatePlugin(results, caps, silentLogger as never),
     new AuditEndPlugin(metas, silentLogger as never),
   ]
-  return { source, caps, results, metas, counter, config, clock: systemToolClock, plugins }
+  return { source, caps, metas, counter, config, clock: systemToolClock, plugins }
 }
 
 /**
@@ -204,25 +179,3 @@ export const specByKey = (group: object, key: string): ToolSpec => {
   if (!spec) throw new Error(`工具组 ${group.constructor.name} 没有交出工具 ${key}`)
   return spec
 }
-
-/**
- * 测试用的 `bash` 工具：**固定不做隔离**（`mode: 'off'`）。
- *
- * 隔离语义（只读 / 可写 / fail-closed）在 `@repo/kits` 的 `test/workspace.test.ts` 里钉死，
- * 这里只解决"工具组的依赖怎么拼"—— 否则每个测试文件都要重复造一遍 runtime。
- */
-export const makeBashTool = (
-  logger: unknown,
-  caps?: import('../../src/modules/ai/core/tools/tools.types.js').ToolEnvCaps,
-): BashTool =>
-  new BashTool(
-    new WorkspaceRuntimeService(
-      // 测试固定用"不做隔离"的执行路径：隔离语义在 @repo/kits 的 workspace.test.ts 里钉死
-      WorkspaceConfigSchema.parse({ mode: 'off' }),
-      new CommandRunner(),
-      logger as never,
-      async () => ({ available: false, probedAt: new Date().toISOString() }),
-    ),
-    logger as never,
-    caps as never,
-  )

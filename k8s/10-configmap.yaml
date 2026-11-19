@@ -55,6 +55,8 @@ data:
   RATE_LIMIT_TRUST_PROXY: 'true'
   # 内部调用地址：runtime 的 ClusterIP Service（见 31-service-agent-runtime.yaml）
   AGENT_RUNTIME_URL: http://billy-agent-runtime.billy.svc.cluster.local:9990
+  # 能力网关：后台「工具配置」页从这里取服务能力清单（内建工具问 runtime）
+  TOOL_GATEWAY_URL: http://billy-capability-gateway.billy.svc.cluster.local:9993
   # 长连接超时：必须**大于**网关的上游空闲超时，否则网关会往正在关闭的 socket 发请求 → 间歇 502
   # ingress-nginx 的 upstream-keepalive-timeout 默认 60s，故这里 75s / 80s（后端比网关长）
   KEEP_ALIVE_TIMEOUT_MS: '75000'
@@ -78,6 +80,8 @@ data:
   APP_VERSION: v0.0.0
   # 多副本：恢复 / 停止 / 断线补发依赖 Redis 租约；漏配时滚动更新会让新 Pod 误伤其它副本在跑的 run
   AGENT_MULTI_INSTANCE: 'true'
+  # 能力网关：bash / 文件 / 联网 / 记忆等能力都在服务侧执行（runtime 不再跑本地执行体）
+  TOOL_GATEWAY_URL: http://billy-capability-gateway.billy.svc.cluster.local:9993
   # 与 main 取同一组超时；runtime 也可能被 SSE / 长任务占用，优雅关闭必须留足排空时间
   KEEP_ALIVE_TIMEOUT_MS: '75000'
   HEADERS_TIMEOUT_MS: '80000'

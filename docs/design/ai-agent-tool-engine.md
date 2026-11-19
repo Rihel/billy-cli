@@ -349,22 +349,24 @@ export interface ToolSpec<C = Record<string, unknown>, I = unknown, O = unknown>
 
 ```ts
 export interface ToolRegistry {
-  expand(selectors: readonly ToolSelector[]): string[]          // '*' / { category } / { connector, tool? }
+  expand(keys: readonly string[]): string[]                     // '*' = 本注册机全部；未知 key 跳过（目录能力）
   authorized(keys: readonly string[], caller: ToolCallerIdentity): Promise<string[]>  // 按作用域过滤
-  describe(keys?: readonly ToolSelector[]): ToolMeta[]
+  describe(keys?: readonly string[]): ToolMeta[]
   get(key: string): Tool | undefined
-  spec(key: string): ToolSpec                                   // 未知 key 抛错
+  spec(key: string): ToolSpec                                   // 未知 key 抛错（只用于本地已注册 key）
   settings(key: string): Promise<ToolSettings>
-  toolbox(selectors: readonly ToolSelector[]): Toolbox
-  childToolbox(parentTools?: readonly ToolSelector[]): Toolbox   // 父授权 ∩（全部 − 委派类 − child:deny）
-  keys(): string[]                                              // 静态 + 动态
+  toolbox(keys: readonly string[]): Toolbox
+  childToolbox(parentTools?: readonly string[]): Toolbox         // 父授权 ∩（全部 − 委派类 − child:deny）
+  keys(): string[]
   staticSpecs(): ToolSpec[]                                     // 种子同步只认这一段
-  registerDynamic(connectorId: string, specs: readonly ToolSpec[], onConflict?): string[]
-  removeDynamic(connectorId: string): string[]
 }
 
 export type Toolbox = ReadonlyMap<string, Tool>
 ```
+
+**能力目录与工具面的关系（2026-11-20 起）**：注册机只管本进程的**编排工具**（规划 / 子 agent / 技能库 / 网关任务工具）。
+注册机里没有的 key 由 `resolveTools` 从能力目录解析：`source='code'` 的内部服务能力随工具面下发，
+`source='manual'` 的外部服务只在 `tool-search` 搜到后（会话级记录）于下一轮补进工具面。
 
 ### 5.4 网关与插件
 

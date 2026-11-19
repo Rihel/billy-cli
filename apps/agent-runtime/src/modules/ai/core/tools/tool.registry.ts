@@ -3,8 +3,7 @@ import { buildToolSpecs, type AgentToolGroup } from './tool.class.js'
 import { ToolGateway } from './tool.gateway.js'
 import { ToolConfigService } from './tool.config.service.js'
 import { scopeAllows } from './tool.scope.js'
-import { expandToolSelectors, type ToolSelector, type ToolSelectorEntry } from './tool-selector.js'
-import { AGENT_TOOL_GROUPS } from './tools.types.js'
+import { AGENT_TOOL_GROUPS, ALL_TOOLS } from './tools.types.js'
 import type {
   Tool,
   ToolCallerIdentity,
@@ -77,12 +76,29 @@ export class ToolRegistry {
   }
 
   /**
-   * 展开授权清单里的**选择器**（具体 key / `'*'` / `{ category }`），返回工具 key。
+   * 展开授权清单：`'*'` = 本注册机里的全部工具；具体 key 只认已注册的。
    *
-   * 具体 key 原样返回，存在性由 `spec()` 判（装配期就会抛）。
+   * **未知 key 直接跳过**：能力目录里的工具（bash / web-* / file-* …）不在注册机，
+   * 由装配层按目录解析；这里不能抛错，否则一个受限 agent 写了自己的能力 key 就连启动都过不去。
    */
-  expand(selectors: readonly ToolSelector[]): string[] {
-    return expandToolSelectors(selectors, this.selectorEntries())
+  expand(selectors: readonly string[]): string[] {
+    const keys: string[] = []
+    const seen = new Set<string>()
+    const push = (key: string): void => {
+      if (seen.has(key)) return
+      seen.add(key)
+      keys.push(key)
+    }
+    for (const selector of selectors) {
+      const key = selector.trim()
+      if (!key) continue
+      if (key === ALL_TOOLS) {
+        for (const registered of this.staticTools.keys()) push(registered)
+        continue
+      }
+      if (this.staticTools.has(key)) push(key)
+    }
+    return keys
   }
 
   /**
@@ -148,7 +164,7 @@ export class ToolRegistry {
   }
 
   /** 元数据（提示词渲染 + 后台列表） */
-  describe(keys?: readonly ToolSelector[]): ToolMeta[] {
+  describe(keys?: readonly string[]): ToolMeta[] {
     const target = keys ? this.expand(keys).map((key) => this.spec(key)) : this.specs()
     return target.map((spec) => ({
       key: spec.key,
@@ -164,12 +180,11 @@ export class ToolRegistry {
   }
 
   /** 按授权清单组装工具箱（主 agent 用；选择器在这里展开） */
-  toolbox(keys: readonly ToolSelector[]): Toolbox {
+  toolbox(keys: readonly string[]): Toolbox {
     const tools = new Map<string, Tool>()
     for (const key of this.expand(keys)) {
       const entry = this.lookup(key)
-      if (!entry) throw new Error(`未知的工具 key: ${key}（已注册: ${this.keys().join(', ')}）`)
-      tools.set(key, entry.tool)
+      if (entry) tools.set(key, entry.tool)
     }
     return tools
   }
@@ -185,7 +200,7 @@ export class ToolRegistry {
    * 排除法（委派类 / `child: deny`）不变：新工具默认子 agent 也能用，
    * 要"只给主 agent"必须显式声明。
    */
-  childToolbox(parentTools?: readonly ToolSelector[]): Toolbox {
+  childToolbox(parentTools?: readonly string[]): Toolbox {
     const allowed = parentTools ? new Set(this.expand(parentTools)) : null
     const tools = new Map<string, Tool>()
     for (const [key, entry] of this.staticTools) {
@@ -207,7 +222,7 @@ export class ToolRegistry {
    * 运行期应让模型**根本看不到**不该用的工具（2026-11-14 评审：P1-4）。
    */
   async authorizedChildToolbox(
-    parentTools: readonly ToolSelector[] | undefined,
+    parentTools: readonly string[] | undefined,
     caller: ToolCallerIdentity,
   ): Promise<Toolbox> {
     const child = this.childToolbox(parentTools)
@@ -217,14 +232,6 @@ export class ToolRegistry {
       if (allowed.has(key)) tools.set(key, tool)
     }
     return tools
-  }
-
-  /** 选择器展开用的最小信息（只从声明上取，不碰库） */
-  private selectorEntries(): ToolSelectorEntry[] {
-    return this.specs().map((spec) => ({
-      key: spec.key,
-      category: spec.category,
-    }))
   }
 
   /** 委派类工具的 key（诊断用） */

@@ -1,5 +1,5 @@
 import 'dotenv/config'
-import { Db, describePlatform, resolveShell, setAuditUserProvider } from '@repo/kits'
+import { Db, describePlatform, setAuditUserProvider } from '@repo/kits'
 import { AppErrorCodes, RunStatus, TimelineKind, TimelineRole } from '@repo/shared'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { ConversationEntity, RunEntity, TimelineEntity, AiMemoryEntity } from '@repo/db'
@@ -10,8 +10,6 @@ import { createAgentRegistry } from '../src/modules/ai/agents/registry.js'
 import { createPromptEngine } from '../src/modules/ai/core/prompts/index.js'
 import { AgentTitleService } from '../src/modules/ai/runtime/title.service.js'
 import { SkillLoader } from '../src/modules/ai/core/skills/index.js'
-import { FileTools } from '../src/modules/ai/files/file.tools.js'
-import { WebTools } from '../src/modules/ai/tools/web.tools.js'
 import { RunSubAgentTool } from '../src/modules/ai/tools/subagent.tool.js'
 import { PlannerStore, PlannerTools } from '../src/modules/ai/tools/planner/index.js'
 import {
@@ -26,10 +24,9 @@ import { MemoryService } from '../src/modules/ai/memory/memory.service.js'
 import { MemoryExtractorService } from '../src/modules/ai/memory/memory.extractor.service.js'
 import { toMastraSkills } from '../src/modules/ai/mastra/skill.adapter.js'
 import { toMastraTools } from '../src/modules/ai/mastra/tool.adapter.js'
-import { ReadToolResultTool } from '../src/modules/ai/tools/read-tool-result.tool.js'
 import { ToolGateway } from '../src/modules/ai/core/tools/tool.gateway.js'
 import { ToolRegistry } from '../src/modules/ai/core/tools/tool.registry.js'
-import { buildToolStackDeps, makeBashTool } from './helpers/ai-tool-stack.js'
+import { buildToolStackDeps } from './helpers/ai-tool-stack.js'
 import { STUB_IMAGE_BYTES, stubAttachments } from './helpers/attachments.js'
 import { AgentConversationService } from '../src/modules/ai/runtime/conversation.service.js'
 import { ConversationRepository } from '../src/modules/ai/runtime/conversation.repository.js'
@@ -37,13 +34,7 @@ import { ContextService } from '../src/modules/ai/runtime/context.service.js'
 import { RunRepository } from '../src/modules/ai/runtime/run.repository.js'
 import { TimelineRepository } from '../src/modules/ai/runtime/timeline.repository.js'
 import {
-  MOCK_COMMAND,
-  MOCK_COMMAND_MARKER,
-  MOCK_COMMAND_OUTPUT,
-  MOCK_COMMAND_TOOL,
   MOCK_FINAL_TEXT,
-  MOCK_NO_REASON_FIXED,
-  MOCK_NO_REASON_MARKER,
   MOCK_PLAN_CREATE_TOOL,
   MOCK_PLAN_INITIAL,
   MOCK_REASON,
@@ -101,9 +92,6 @@ const TEST_CONFIG = {
   subAgentMaxSteps: 5,
   subAgentTimeoutMs: 60_000,
   // 命令执行（core bean `command`）：端到端要能真跑一条命令，这里给全部字段
-  commandEnabled: true,
-  commandTimeoutMs: 5_000,
-  commandMaxOutputBytes: 64 * 1024,
 }
 
 const createdConversationIds: string[] = []
@@ -167,14 +155,7 @@ beforeAll(async () => {
   // 工具组实例（唯一的工具来源）：与 `ai.module.ts` 的装配口径一致
   const plannerStore = new PlannerStore(timelines)
   toolRegistry = new ToolRegistry(
-    [
-      makeBashTool(silentLogger),
-      new WebTools(silentLogger as never),
-      new FileTools({} as never, { enabled: true } as never),
-      new RunSubAgentTool(runner, silentLogger),
-      new PlannerTools(plannerStore),
-      new ReadToolResultTool(deps.results, deps.counter, deps.caps),
-    ],
+    [new RunSubAgentTool(runner, silentLogger), new PlannerTools(plannerStore)],
     gateway,
     deps.config,
   )
@@ -411,79 +392,6 @@ describe('对话链路端到端（mock 模型 + 真实数据库）', () => {
 
     const conversation = await conversations.detail(USER, { conversationId: first.conversationId })
     expect(conversation.turnCount).toBe(2)
-  })
-
-  it('命令执行：模型调 bash → 真跑一条跨平台命令，入参出参完整落库', async () => {
-    const result = await chat.chat(USER, {
-      message: `${MOCK_COMMAND_MARKER} 跑一下看看这台机器的环境`,
-    })
-    createdConversationIds.push(result.conversationId)
-
-    expect(result.status).toBe(RunStatus.Succeeded)
-    expect(result.toolCallCount).toBe(1)
-
-    const page = await timelines.list({ conversationId: result.conversationId, page: 1, size: 100 })
-    const toolCall = page.items.find((item) => item.kind === TimelineKind.ToolCall)
-    expect(toolCall?.toolKey).toBe(MOCK_COMMAND_TOOL)
-    // 入参完整落库：就是模型写的那条命令（外加引擎注入的必填 `reason`）
-    expect(toolCall?.payload?.input).toEqual({ command: MOCK_COMMAND, reason: MOCK_REASON })
-
-    // 出参完整落库：真的跑了（退出码 0、stdout 里有输出、shell 按当前平台解析）
-    const toolResult = page.items.find((item) => item.kind === TimelineKind.ToolResult)
-    const output = toolResult?.payload?.output as Record<string, unknown>
-    expect(output.ok).toBe(true)
-    expect(output.exitCode).toBe(0)
-    expect(String(output.stdout)).toContain(MOCK_COMMAND_OUTPUT)
-    expect(output.shell).toBe(resolveShell(process.platform))
-    expect(output.timedOut).toBe(false)
-    expect(output.truncated).toBe(false)
-    expect(toolResult?.state).toBe('output-available')
-  })
-
-  /**
-   * **这个特性的价值所在**（设计 §5.18）：模型漏写 `reason` → 被拒 → 模型拿到明确话术 → 改正后成功。
-   *
-   * 端到端验三件事：
-   * 1. 拒绝**不炸整轮**（失败是结论，模型还能继续）；
-   * 2. 拒绝话术**点名 reason**（模型据此才知道要补什么）；
-   * 3. 改正后的那次调用**带着理由落进时间线**（审计查得到"这次为什么调它"）。
-   */
-  it('漏写 reason 被拒 → 模型改正后成功（纪律闭环）', async () => {
-    const result = await chat.chat(USER, {
-      message: `${MOCK_NO_REASON_MARKER} 跑一下看看这台机器的环境`,
-    })
-    createdConversationIds.push(result.conversationId)
-
-    // 整轮照样成功（拒绝是结论，不是崩溃）
-    expect(result.status).toBe(RunStatus.Succeeded)
-
-    const page = await timelines.list({ conversationId: result.conversationId, page: 1, size: 100 })
-    const rows = page.items.filter((item) => item.kind === TimelineKind.ToolResult)
-
-    // 1) 漏写 reason 的那次被拒：结论里明确写着"要说明 reason"
-    const rejected = rows.find(
-      (item) => (item.payload?.output as Record<string, unknown> | undefined)?.error === true,
-    )
-    expect(rejected, '漏写 reason 的那次调用应当被拒').toBeDefined()
-    expect(JSON.stringify(rejected?.payload ?? {})).toContain('reason')
-
-    // 2) 改正后那次成功：命令真的跑了（两条结果里只有一条带 ok）
-    const succeeded = rows.find(
-      (item) => (item.payload?.output as Record<string, unknown> | undefined)?.ok === true,
-    )
-    expect(succeeded, '改正后应当成功').toBeDefined()
-    expect(String((succeeded?.payload?.output as Record<string, unknown>)?.stdout)).toContain(
-      MOCK_COMMAND_OUTPUT,
-    )
-    expect(rows).toHaveLength(2)
-
-    // 3) 落库的入参里带着模型改正后写的理由（引用同一份常量，改文案不会假红）
-    const calls = page.items.filter((item) => item.kind === TimelineKind.ToolCall)
-    const retried = calls.find(
-      (item) =>
-        (item.payload?.input as { reason?: string } | undefined)?.reason === MOCK_NO_REASON_FIXED,
-    )
-    expect(retried, '改正后的那次调用应当带着 reason 落库').toBeDefined()
   })
 
   it('首轮一开始就并行起名：≤10 字，且与当前 agent 上下文**完全隔离**', async () => {

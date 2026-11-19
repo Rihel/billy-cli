@@ -58,6 +58,7 @@ describe('CapabilityGatewayClient', () => {
               key: 'exec/bash',
               name: 'exec__bash',
               service: 'exec',
+              source: 'code',
               tool: 'bash',
               title: '执行命令',
               description: '跑命令',

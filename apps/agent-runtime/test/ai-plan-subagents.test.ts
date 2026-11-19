@@ -14,14 +14,11 @@ import {
   type PlanOutput,
 } from '../src/modules/ai/tools/planner/index.js'
 import { RunSubAgentTool } from '../src/modules/ai/tools/subagent.tool.js'
-import { FileTools } from '../src/modules/ai/files/file.tools.js'
-import { WebTools } from '../src/modules/ai/tools/web.tools.js'
 import { createPromptEngine } from '../src/modules/ai/core/prompts/index.js'
 import { AgentTitleService } from '../src/modules/ai/runtime/title.service.js'
 import { SkillLoader } from '../src/modules/ai/core/skills/index.js'
 import { toMastraSkills } from '../src/modules/ai/mastra/skill.adapter.js'
 import { toMastraTools } from '../src/modules/ai/mastra/tool.adapter.js'
-import { ReadToolResultTool } from '../src/modules/ai/tools/read-tool-result.tool.js'
 import { buildToolSpecs, type AgentToolGroup } from '../src/modules/ai/core/tools/tool.class.js'
 import { ToolGateway } from '../src/modules/ai/core/tools/tool.gateway.js'
 import { ToolRegistry } from '../src/modules/ai/core/tools/tool.registry.js'
@@ -35,11 +32,10 @@ import { ConversationRepository } from '../src/modules/ai/runtime/conversation.r
 import { ContextService } from '../src/modules/ai/runtime/context.service.js'
 import { RunRepository } from '../src/modules/ai/runtime/run.repository.js'
 import { TimelineRepository } from '../src/modules/ai/runtime/timeline.repository.js'
-import { buildToolStackDeps, makeBashTool } from './helpers/ai-tool-stack.js'
+import { buildToolStackDeps } from './helpers/ai-tool-stack.js'
 import { stubAttachments } from './helpers/attachments.js'
 import {
   MOCK_CHILD_TEXT,
-  MOCK_COMMAND_TOOL,
   MOCK_DELEGATE_MARKER,
   MOCK_DELEGATE_TOOL,
   MOCK_PLAN_COMPLETE_TOOL,
@@ -571,30 +567,13 @@ describe('子 agent（core bean + 运行期动态创建）', () => {
         { runSubAgent: async () => ({ status: 'succeeded' }) } as never,
         silentLogger,
       ),
-      makeBashTool(silentLogger),
-      new WebTools(silentLogger as never),
-      new FileTools({} as never, { enabled: true } as never),
     ])
     expect(registry.delegationKeys()).toEqual([MOCK_DELEGATE_TOOL])
     const childKeys = [...registry.childToolbox().keys()]
-    // 非委派类工具照给子 agent（如 bash）
-    expect(childKeys).toContain(TOOL_KEYS.bash)
+    // 非委派类工具照给子 agent（如规划工具）
+    expect(childKeys).toContain(TOOL_KEYS.planCreate)
     // 关键：子 agent 拿不到委派工具 → 递归在**能力上**不可能，不靠提示词自律
     expect(childKeys).not.toContain(MOCK_DELEGATE_TOOL)
-    // 文件工具给子 agent：子助手可以读工作区、写自己的交付文件
-    for (const key of [
-      TOOL_KEYS.fileList,
-      TOOL_KEYS.fileDownload,
-      TOOL_KEYS.readFile,
-      TOOL_KEYS.fileSearch,
-      TOOL_KEYS.workspaceFiles,
-      TOOL_KEYS.writeFile,
-      TOOL_KEYS.replaceFile,
-      TOOL_KEYS.appendFile,
-      TOOL_KEYS.fileSubmit,
-    ]) {
-      expect(childKeys).toContain(key)
-    }
     // `child: 'deny'` 的工具同样不给（四个规划工具都只给主 agent，子助手把结论交回即可）
     for (const key of PLAN_KEYS) expect(childKeys).toContain(key)
   })
@@ -619,9 +598,6 @@ describe('子 agent（core bean + 运行期动态创建）', () => {
         { runSubAgent: async () => ({ status: 'succeeded' }) } as never,
         silentLogger,
       ),
-      makeBashTool(silentLogger),
-      new WebTools(silentLogger as never),
-      new FileTools({} as never, { enabled: true } as never),
     ])
     const registry = createAgentRegistry(
       createAgentDefinitions(createPromptEngine(), toolRegistry),
@@ -805,9 +781,9 @@ describe('子 agent（core bean + 运行期动态创建）', () => {
     const toolNames = (childRequest!.tools as Array<{ function?: { name?: string } }>).map(
       (tool) => tool.function?.name,
     )
-    // 工具面 = 全部 − 委派类 − child:deny：bash 与四个规划工具都在（清单按会话隔离、子助手有自己那份），
+    // 工具面 = 全部 − 委派类 − child:deny：四个规划工具都在（清单按会话隔离、子助手有自己那份），
     // 只有 run-sub-agent 这类委派工具被排除（深度天然封顶）
-    expect(toolNames).toContain(MOCK_COMMAND_TOOL)
+    expect(toolNames).toContain(TOOL_KEYS.planCreate)
     for (const key of PLAN_KEYS) expect(toolNames).toContain(key)
     expect(toolNames).not.toContain(MOCK_DELEGATE_TOOL)
   }, 30_000)
@@ -1068,9 +1044,6 @@ const TEST_CONFIG = {
   subAgentMaxSteps: 5,
   subAgentTimeoutMs: 60_000,
   // 命令执行（core bean `command`）：端到端要能真跑一条命令，这里给全部字段
-  commandEnabled: true,
-  commandTimeoutMs: 5_000,
-  commandMaxOutputBytes: 64 * 1024,
 } as never
 
 const buildStack = async () => {
@@ -1123,12 +1096,8 @@ const buildStack = async () => {
   toolRegistry = new ToolRegistry(
     [
       // 命令执行：与 `ai.module.ts` 的装配口径一致（assistant 已授权 bash）
-      makeBashTool(silentLogger),
-      new WebTools(silentLogger as never),
-      new FileTools({} as never, { enabled: true } as never),
       new RunSubAgentTool(runner, silentLogger),
       new PlannerTools(plannerStore),
-      new ReadToolResultTool(deps.results, deps.counter, deps.caps),
     ],
     gateway,
     deps.config,

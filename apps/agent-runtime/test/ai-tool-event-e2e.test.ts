@@ -22,10 +22,7 @@ import { SkillLoader } from '../src/modules/ai/core/skills/index.js'
 import { ToolGateway } from '../src/modules/ai/core/tools/tool.gateway.js'
 import { ToolRegistry } from '../src/modules/ai/core/tools/tool.registry.js'
 import { TOOL_KEYS } from '../src/modules/ai/core/tools/tool-keys.js'
-import { FileTools } from '../src/modules/ai/files/file.tools.js'
-import { WebTools } from '../src/modules/ai/tools/web.tools.js'
 import { RunSubAgentTool } from '../src/modules/ai/tools/subagent.tool.js'
-import { ReadToolResultTool } from '../src/modules/ai/tools/read-tool-result.tool.js'
 import { PlannerStore, PlannerTools } from '../src/modules/ai/tools/planner/index.js'
 import { ToolEventDemoTool } from '../src/modules/ai/tools/tool-event-testkit.js'
 import { AgentChatService } from '../src/modules/ai/runtime/chat.service.js'
@@ -37,7 +34,7 @@ import { ContextService } from '../src/modules/ai/runtime/context.service.js'
 import { RunRepository } from '../src/modules/ai/runtime/run.repository.js'
 import { AgentStreamStore } from '../src/modules/ai/runtime/stream-store.service.js'
 import { TimelineRepository } from '../src/modules/ai/runtime/timeline.repository.js'
-import { buildToolStackDeps, makeBashTool } from './helpers/ai-tool-stack.js'
+import { buildToolStackDeps } from './helpers/ai-tool-stack.js'
 import { stubAttachments } from './helpers/attachments.js'
 import {
   MOCK_EVENT_LINE,
@@ -174,12 +171,8 @@ beforeAll(async () => {
   const plannerStore = new PlannerStore(timelines)
   toolRegistry = new ToolRegistry(
     [
-      makeBashTool(silentLogger),
-      new WebTools(silentLogger as never),
-      new FileTools({} as never, { enabled: true } as never),
       new RunSubAgentTool(runner, silentLogger),
       new PlannerTools(plannerStore),
-      new ReadToolResultTool(deps.results, deps.counter, deps.caps),
       // 测试专用：只在这一份测试里挂上去（生产 `AGENT_TOOL_GROUPS` 不含它）
       new ToolEventDemoTool(),
     ],
@@ -200,8 +193,6 @@ beforeAll(async () => {
     TOOL_KEYS.planComplete,
     TOOL_KEYS.planDelete,
     TOOL_KEYS.runSubAgent,
-    TOOL_KEYS.bash,
-    TOOL_KEYS.readToolResult,
     MOCK_EVENTS_TOOL,
   ]
   const definition: AgentDefinition = {

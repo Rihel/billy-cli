@@ -34,8 +34,8 @@ description: >-
 4. **术语固定**：轮（turn）= 一次问答 = 一个**根 run**；步（step）= 一次模型调用；
    「回合」已弃用；对外标识统一叫 **agent key / tool key**（不叫 agentId）；
 5. **静态声明只在 runtime 有一份**：agent 规格（`agents/*.agent.ts`）、提示词（`core/prompts/**`）、
-   工具选择器（`core/tools/tool-selector.ts`）、技能类型（`core/skills/skills.types.ts`）
-   **禁止复制到 main**。main 要清单 / 状态 / 系统指令，走 `@repo/internal-sdk` 的
+   技能类型（`core/skills/skills.types.ts`）**禁止复制到 main**；能力元数据只在服务侧
+   `@CapabilityDecl`（runtime 按目录取，不另存副本）。main 要清单 / 状态 / 系统指令，走 `@repo/internal-sdk` 的
    `AgentRuntimeClient`（`apps/main/src/agent/agent-catalog.service.ts`，清单缓存 30s）；
    main 只保留「会话快照」这一段（读 `timelines` + 归属校验）。
 

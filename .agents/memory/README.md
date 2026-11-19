@@ -95,6 +95,7 @@
 | [ai-memory-internal-api](ai-memory-internal-api.md) | memory 已改 worker 直连 DB；旧 worker→控制面内部 API 已删除 | 必核 | 2026-11-14 |
 | [common-capability-executors](common-capability-executors.md) | 执行器 = 能力组：`@CapabilityGroup` + 方法级 `@CapabilityDecl`，注册表扫描绑定 17 个能力（只有 bash 是 task） | 必核 | 2026-11-18 |
 | [ai-capability-gateway](ai-capability-gateway.md) | 本地口径：一个进程 = 一个服务 `common`（17 能力）；装饰器定义；登记 HTTP 只在 internal-sdk；protocol / inputSchema 全链路；admin 页与 toast `z-[100]` | 必核 | 2026-11-18 |
+| [runtime-cleanup](runtime-cleanup.md) | runtime 只做编排：能力定义/执行体已删、工具面来自能力目录、外部服务搜到才下发、授权只剩 key | 必核 | 2026-11-20 |
 | [ai-run-queue](ai-run-queue.md) | 异步子 agent 的会话 run 队列：新表、优先级、dedupe、当前实施边界 | 抽核 | 2026-11-15 |
 | [ai-subagent-subconversation](ai-subagent-subconversation.md) | 子 agent 建子会话：run/timeline 挂子会话，工作区/文件归根会话；列表只出根、删父级联；用量仍只算子 run 的父 | 必核 | 2026-11-14 |
 | [ai-scale-bottlenecks](ai-scale-bottlenecks.md) | 扛流量的六个卡点：512Mi 限额、无准入、工作区本地盘、Redis 缓冲无字节上限、DB 池 10/实例、时间线无分区 | 必核 | 2026-11-14 |

@@ -204,27 +204,10 @@ export const serverAppConfigSchema = z.object({
     subAgentMaxSteps: z.coerce.number().int().nonnegative().default(0),
     /** 单个子 agent 的墙钟上限（ms；0 = 沿用 runTimeoutMs；都为 0 = 不限） */
     subAgentTimeoutMs: z.coerce.number().int().nonnegative().default(0),
-    // ── 命令执行（工具组 `BashTool`，设计文档 §3.15）──
-    /**
-     * 是否允许 agent 在本机执行命令行命令（**默认关**）。
-     *
-     * 这是**让模型在本机跑命令**的能力：命令以服务进程的身份与权限执行，
-     * **能读写该身份能读写的一切，不是沙箱**（工具自己也在注释里写明了）。
-     * 默认关；自用 / 内网确需时显式设 `AGENT_COMMAND_ENABLED=true`，
-     * 对外部署保持关闭，真要本机执行请放进容器 / 低权限用户 / 只读工作区。
-     */
-    commandEnabled: z.boolean().default(false),
-    /** 单条命令的时长硬上限（ms），模型不能传时长 */
-    commandTimeoutMs: z.coerce.number().int().positive().default(300_000),
-    /** 单条流的输出上限（字节）；超出即截断并终止命令 */
-    commandMaxOutputBytes: z.coerce
-      .number()
-      .int()
-      .positive()
-      .default(64 * 1024),
+    // ── 工作区根（文件物化 + 工作区路径；命令执行在 workspace-service）──
     /** 命令的工作根目录（缺省 = 服务进程工作目录）；agent 只能在这个目录之内指定 cwd */
     commandWorkDir: z.string().optional(),
-    // ── 文件管理（工具组 `FileTools`，设计 docs/design/ai-file-manager.md）──
+    // ── 文件管理（文件元数据物化的部署上限）──
     /** 单文件硬上限（字节） */
     fileMaxBytes: z.coerce.number().int().positive().optional(),
     /** 单会话文件数硬上限 */
@@ -245,29 +228,6 @@ export const serverAppConfigSchema = z.object({
     /** workspace-files 的文件数 / 深度上限 */
     fileWorkspaceMaxFiles: z.coerce.number().int().positive().optional(),
     fileWorkspaceMaxDepth: z.coerce.number().int().positive().optional(),
-    // ── 联网（工具组 `WebTools`：`web-fetch` / `web-request` / `web-search`）──
-    /**
-     * 是否允许 agent 出网（**默认开**）。
-     *
-     * 关掉后联网工具仍在，但每次调用返回"已被关闭"的结论。
-     * 完全不给模型联网能力的部署置 `false`。
-     */
-    webEnabled: z.boolean().default(true),
-    /** 单次请求的总时长默认值与硬上限（ms）：整条重定向链共用这一个预算 */
-    webTimeoutMs: z.coerce.number().int().positive().default(20_000),
-    /** 单次请求最多读多少字节（超出即截断，工具出参里给 `truncated`） */
-    webMaxBytes: z.coerce
-      .number()
-      .int()
-      .positive()
-      .default(2 * 1024 * 1024),
-    /**
-     * 是否允许访问内网 / 回环地址（**默认关**）。
-     *
-     * 关着的时候 `127.0.0.1` / `10.x` / `169.254.169.254` 一律拒绝 ——
-     * 网页内容可以诱导模型去请求这些地址（SSRF）。要抓本机服务时，这里与工具配置**两处都要打开**。
-     */
-    webAllowPrivateNetwork: z.boolean().default(false),
     // ── 工具引擎（设计 ai-agent-tool-engine.md §5.5 / §5.6）──
     /**
      * 单次给模型的工具出参上限（字节）**硬上限**。
@@ -470,9 +430,6 @@ export const mapServerEnv = (env: NodeJS.ProcessEnv): Record<string, unknown> =>
     subAgentMaxDepth: optional(env.AGENT_SUB_AGENT_MAX_DEPTH),
     subAgentMaxSteps: optional(env.AGENT_SUB_AGENT_MAX_STEPS),
     subAgentTimeoutMs: optional(env.AGENT_SUB_AGENT_TIMEOUT_MS),
-    commandEnabled: parseBoolean(env.AGENT_COMMAND_ENABLED),
-    commandTimeoutMs: optional(env.AGENT_COMMAND_TIMEOUT_MS),
-    commandMaxOutputBytes: optional(env.AGENT_COMMAND_MAX_OUTPUT_BYTES),
     commandWorkDir: optional(env.AGENT_COMMAND_WORK_DIR),
     fileMaxBytes: optional(env.AGENT_FILE_MAX_BYTES),
     fileMaxFiles: optional(env.AGENT_FILE_MAX_FILES),
@@ -486,10 +443,6 @@ export const mapServerEnv = (env: NodeJS.ProcessEnv): Record<string, unknown> =>
     fileSearchMaxResults: optional(env.AGENT_FILE_SEARCH_MAX_RESULTS),
     fileWorkspaceMaxFiles: optional(env.AGENT_FILE_WORKSPACE_MAX_FILES),
     fileWorkspaceMaxDepth: optional(env.AGENT_FILE_WORKSPACE_MAX_DEPTH),
-    webEnabled: parseBoolean(env.AGENT_WEB_ENABLED),
-    webTimeoutMs: optional(env.AGENT_WEB_TIMEOUT_MS),
-    webMaxBytes: optional(env.AGENT_WEB_MAX_BYTES),
-    webAllowPrivateNetwork: parseBoolean(env.AGENT_WEB_ALLOW_PRIVATE_NETWORK),
     toolPageBytesMax: optional(env.AGENT_TOOL_PAGE_BYTES_MAX),
     toolMaxPagesPerTurnMax: optional(env.AGENT_TOOL_MAX_PAGES_PER_TURN),
   },

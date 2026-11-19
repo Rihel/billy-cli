@@ -310,6 +310,8 @@ export const CapabilityInfoSchema = z.object({
   key: z.string(),
   name: z.string(),
   service: z.string(),
+  /** 能力来源：`code` = 我们自己的服务 / 网关内建，`manual` = 外部登记服务（MCP 等） */
+  source: ServiceSourceSchema,
   tool: z.string(),
   title: z.string(),
   description: z.string(),

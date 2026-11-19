@@ -114,16 +114,18 @@ export const AGENT_SPECS: readonly AgentSpec[] = [assistantAgent, researcherAgen
 
 四条口径：
 
-1. **工具写什么**：具体 key（从 `TOOL_KEYS` 取，写错启动期报错）、`'*'`（只给示例 agent）、
-   `{ category: 'business' | 'runtime' | 'core' | 'external' }`、`EXTERNAL_TOOLS`（能力目录里的外部工具，见下）。
+1. **工具写什么**：具体 key（从 `TOOL_KEYS` 取）或 `'*'`（全部可见工具，只给示例 agent）。
+   不再有类别 / `EXTERNAL_TOOLS` 这类选择器：来源（本进程编排 / 内部服务 / 外部服务）不属于授权语法。
 2. **不给的就是不给**：不在清单里的工具不会出现在模型面前；不要用提示词写「不要用某工具」，
-   那约束不住模型，授权能。子 agent 的工具面 = **父 agent 的授权面 ∩（全部 − 委派类 − `child: 'deny'`）**。
-3. **外部工具要显式放行**：MCP / 外部登记服务的工具不在本地代码里，agent 写 `'*'` 或
-   `EXTERNAL_TOOLS`（`{ external: true }`）才会出现在工具面；子 agent 暂不包含外部工具。
+   那约束不住模型，授权能。子 agent 的工具面 = **父 agent 的授权面 ∩（全部 − 委派类 − `child: 'deny'`）**，
+   能力目录里的内部服务能力同样按这条规则补进去。
+3. **外部服务由模型自己搜索**：MCP / 外部登记服务的工具不随工具面下发；模型用 `tool-search` 找到 key 后，
+   runtime 记进会话，**下一轮**才补进工具面（`core/tools/tool-discovery.store.ts`）。子 agent 不含外部服务。
 4. **作用域是第二层**：工具默认 `scope` 由声明给（数据库类、运维类默认 `admin`）；要给产品 agent 用，
    就在「AI → 工具配置」里把作用域改成 `agent` 并填 `allowedAgents`（或 `all`）。装配期会按调用身份
    再过滤一遍，前台用户根本看不到管理员工具。
-5. **提示词里的工具清单是渲染出来的**：模板里不要手写工具名，`registry.describe()` 会按实际授权清单生成。
+5. **提示词里的工具清单是渲染出来的**：本地编排工具来自注册机，内部服务能力来自能力目录（首轮渲染一次并落快照）；
+   模板里不要手写工具名。
 
 验证：启动不报错 → `POST /agent/list` 看这个 agent 的工具数 → 跑一轮后查审计 `request_snapshot.toolKeys`
 （应当是**展开后的具体 key**，不是选择器）→ 分别用管理员和前台用户身份各跑一次，确认作用域。

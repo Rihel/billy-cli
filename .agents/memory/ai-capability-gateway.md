@@ -21,9 +21,10 @@
 - **后台 `/main/ai/capabilities`**：卡片列表 + 按类型给操作（`code` 只给启停 Switch；`manual` 才有编辑 /
   测试连通 / 删除）+ 能力清单居中 Dialog（`sm:max-w-[50vw]`、`h-[80dvh]`、左主从）+ 协议联动表单
   （MCP 填标准配置 JSON）+ 能力只同步不手填 + 双按钮行动行。
-- **外部工具进模型面（2026-11-18）**：runtime 从能力目录取 `CapabilityInfo`，对**本地没声明**的工具
-  现场造 `ToolSpec`（category `external`，JSON Schema → zod），执行走 `RemoteToolInvoker`；
-  agent 声明 `'*'` 或 `EXTERNAL_TOOLS`（`{ external: true }`）才会出现；**子 agent 暂不含外部工具**。
+- **外部工具进模型面（2026-11-20 改口径）**：`CapabilityInfo` 新增 `source`（`code` / `manual`）。
+  runtime 对**本地没声明**的目录能力现场造 `ToolSpec`（JSON Schema → zod，`modelParams` 注入必填 reason）：
+  `source='code'` 随工具面下发（提示词也列）；`source='manual'`（MCP / 手工登记）**不随工具面下发**，
+  只在 `tool-search` 命中后记进会话，下一轮再补；子 agent 不含外部服务。`EXTERNAL_TOOLS` 选择器已删。
 - **MCP 整栈实测（2026-11-19，admin 端）**：会话 `o6gqgsctdw2esg7pky0i` 里模型自主选了 MCP 工具，
   `maps-weather` / `maps-geo`×2 / `maps-direction-driving` / `maps-direction-transit-integrate`，
   审计全 `ok`（93–319ms），时间线有 tool-call/tool-result（output-available）。证明「目录 → 动态工具 → 网关 → MCP」整链通；
