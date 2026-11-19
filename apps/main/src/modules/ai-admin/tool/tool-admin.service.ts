@@ -15,9 +15,8 @@ import type { ZodError } from 'zod'
 import { hintOf } from '../../ai-model/secret-hint.js'
 import {
   defaultsOf,
-  findToolAdminSpec,
   mergeConfig,
-  TOOL_ADMIN_SPECS,
+  ToolAdminCatalog,
   type ToolAdminSpec,
 } from './tool-admin.catalog.js'
 import { ToolConfigInvalidError, ToolNotRegisteredError } from './tool-admin.errors.js'
@@ -31,8 +30,8 @@ import {
  *
  * 与旧 `modules/ai/api/ai-tool.service.ts` 同一套对外行为，但**不依赖 agent loop / Mastra /
  * 工具执行器**：
- * - **基础信息在代码、镜像入库**：`title` / `description` / `category` / `paramSchema` 由
- *   本地 manifest 快照提供；库里那行是启动期（或懒创建时）写下的镜像；
+ * - **基础信息问执行面**：`title` / `description` / `category` / `paramSchema` 由
+ *   agent-runtime（内建工具）与能力网关（服务能力）提供；库里那行是启动期（或懒创建时）写下的镜像；
  * - **前端只配配置**：可改的只有开关 / 作用域 / 限额 / 配置值 / 秘钥；
  * - **合法性只有声明知道**：`config` / `secrets` 写入前一律过 `ToolAdminSpec` 的 schema；
  * - **秘钥明文入库、接口不回明文**：只回 `hintOf` 派生的 `secretFields[].hint`；
@@ -45,6 +44,7 @@ export class AiToolAdminService {
     private readonly repository: AiToolAdminRepositoryPort,
     @Inject(WorkspaceRuntimeService) private readonly workspace: WorkspaceRuntimeService,
     @Inject(AppLogger) private readonly logger: AppLogger,
+    @Inject(ToolAdminCatalog) private readonly catalog: ToolAdminCatalog,
   ) {}
 
   /**
@@ -96,7 +96,7 @@ export class AiToolAdminService {
 
   /** 详情（缺失的配置行按代码声明合成，不产生写操作） */
   async detail(toolKey: string): Promise<AiToolModel> {
-    const spec = findToolAdminSpec(toolKey)
+    const spec = await this.catalog.find(toolKey)
     if (!spec) throw new ToolNotRegisteredError(toolKey)
     if (spec.runtime) return this.toModel(spec, null)
     const row = await this.repository.findByKey(toolKey)
@@ -105,7 +105,7 @@ export class AiToolAdminService {
 
   /** 更新：config / secrets / limits / 开关 / 作用域（全部先校验） */
   async update(input: AiToolUpdateDto): Promise<AiToolModel> {
-    const spec = this.requireEditable(input.toolKey)
+    const spec = await this.requireEditable(input.toolKey)
     if (input.config) {
       const parsed = spec.config.safeParse({ ...defaultsOf(spec), ...input.config })
       if (!parsed.success) throw new ToolConfigInvalidError(formatIssues(parsed.error))
@@ -135,7 +135,7 @@ export class AiToolAdminService {
 
   /** 恢复默认：清掉人工覆盖（秘钥一并清空），来源回 `seed` */
   async reset(toolKey: string): Promise<AiToolModel> {
-    const spec = this.requireEditable(toolKey)
+    const spec = await this.requireEditable(toolKey)
     if (!(await this.repository.findByKey(toolKey))) {
       await this.repository.createSeed(spec)
     }
@@ -146,15 +146,15 @@ export class AiToolAdminService {
 
   /** 快照：代码声明 + runtime 工具（只读），用库里的配置行覆盖可变部分 */
   private async snapshot(): Promise<AiToolModel[]> {
-    const rows = await this.repository.listAll()
+    const [rows, specs] = await Promise.all([this.repository.listAll(), this.catalog.specs()])
     const byKey = new Map(rows.map((row) => [row.toolKey, row]))
-    return TOOL_ADMIN_SPECS.map((spec) =>
+    return specs.map((spec) =>
       this.toModel(spec, spec.runtime ? null : (byKey.get(spec.key) ?? null)),
     )
   }
 
-  private requireEditable(toolKey: string): ToolAdminSpec {
-    const spec = findToolAdminSpec(toolKey)
+  private async requireEditable(toolKey: string): Promise<ToolAdminSpec> {
+    const spec = await this.catalog.find(toolKey)
     // runtime 自带工具在代码清单里，但不可编辑 —— 与旧实现一样按 3407 拒绝
     if (!spec || !spec.editable) throw new ToolNotRegisteredError(toolKey)
     return spec

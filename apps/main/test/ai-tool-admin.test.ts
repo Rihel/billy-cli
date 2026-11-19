@@ -1,8 +1,12 @@
 import 'reflect-metadata'
 import { describe, expect, it } from 'vitest'
+import { z } from 'zod'
 import type { AiToolEntity } from '@repo/db'
 import type { AppLogger, WorkspaceRuntimeService } from '@repo/kits'
-import type { ToolAdminSpec } from '../src/modules/ai-admin/tool/tool-admin.catalog.js'
+import type {
+  ToolAdminCatalog,
+  ToolAdminSpec,
+} from '../src/modules/ai-admin/tool/tool-admin.catalog.js'
 import type {
   AiToolAdminRepositoryPort,
   AiToolAdminResetValues,
@@ -18,6 +22,21 @@ import { AiToolAdminService } from '../src/modules/ai-admin/tool/tool-admin.serv
  */
 
 const PLAINTEXT = 'sk-test-super-secret-1234'
+
+const spec: ToolAdminSpec = {
+  key: 'web-search',
+  title: '搜索网页（先找来源，再读）',
+  description: '搜索网页，返回来源清单',
+  category: 'core',
+  scope: 'all',
+  config: z.object({ enabled: z.boolean().default(true) }),
+  secrets: z.object({ apiKey: z.string().min(1).optional() }),
+  secretFields: [{ name: 'apiKey', label: 'DeepSeek API Key' }],
+  paramSchema: null,
+  pageBytes: null,
+  editable: true,
+  runtime: false,
+}
 
 const row = (over: Partial<AiToolEntity> = {}): AiToolEntity =>
   ({
@@ -114,7 +133,11 @@ const logger = {
 describe('AiToolAdminService.update（秘钥不出明文）', () => {
   it('只返回提示串，响应体里不含明文秘钥', async () => {
     const repository = new FakeRepository(row())
-    const service = new AiToolAdminService(repository, workspace, logger)
+    const catalog = {
+      specs: async () => [spec],
+      find: async (key: string) => (key === spec.key ? spec : undefined),
+    } as unknown as ToolAdminCatalog
+    const service = new AiToolAdminService(repository, workspace, logger, catalog)
 
     const result = await service.update({ toolKey: 'web-search', enabled: false })
 
