@@ -9,6 +9,7 @@ import { toastError, toastSuccess } from '@repo/ui'
 import { MessageResponse } from '@repo/ui/components/ai-elements/message.tsx'
 import { SandboxFrame } from '@repo/ui/components/ai-elements/markdown-fences/sandbox-frame.tsx'
 import { OfficePreview, type OfficeKind } from '@/components/office-preview'
+import { MonacoCodePreview, isMonacoFile } from '@/components/monaco-code-preview'
 import {
   FullscreenButton,
   FullscreenExitButton,
@@ -339,6 +340,8 @@ export function FilePreviewDialog({
                 <div className="px-6 py-2 sm:px-10">
                   <MessageResponse className="text-sm">{text ?? ''}</MessageResponse>
                 </div>
+              ) : isMonacoFile(current.filename) ? (
+                <MonacoCodePreview filename={current.filename} value={text ?? ''} />
               ) : (
                 <pre className="whitespace-pre-wrap break-words text-xs">{text ?? ''}</pre>
               )
