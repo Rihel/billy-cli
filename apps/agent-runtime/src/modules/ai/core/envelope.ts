@@ -66,6 +66,8 @@ export interface AgentRuntimeEnvelope {
    * 根会话缺省等于 `conversationId`；子会话指向根会话（共享父工作区）。
    */
   workspaceConversationId?: string
+  /** 会话绑定的工作区（执行面优先用它） */
+  workspaceId?: string
   /** 当前这一轮（子 agent 拿它当父亲） */
   parentRunId: string
   /** 发起人（子 run 继承，审计用） */

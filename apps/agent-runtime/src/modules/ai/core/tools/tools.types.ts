@@ -195,6 +195,8 @@ export interface ToolCaller {
   conversationId: string
   /** 工作区 / 文件归属的根会话（子会话共享父工作区） */
   workspaceConversationId?: string
+  /** 会话绑定的工作区 id（执行面优先用它） */
+  workspaceId?: string
   /** 当前这一轮的根 run id */
   runId: string
   /** 发起人（用户 / 管理员 id；无身份时为 null） */

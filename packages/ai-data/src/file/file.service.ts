@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto'
-import { appendFile, mkdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises'
+import { appendFile, mkdir, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises'
 import { dirname, relative, resolve } from 'node:path'
 import {
   Inject,
@@ -20,6 +20,7 @@ import {
   type ChatAttachmentModel,
 } from '@repo/shared'
 import { FILE_CAPS } from './file.types.js'
+import { WORKSPACE_FS_PORT, type WorkspaceFsPort } from './workspace-fs.port.js'
 import { FileDeniedError } from './file.errors.js'
 import type { FileCaps } from './file.types.js'
 import {
@@ -50,6 +51,8 @@ import { PathLock } from './path-lock.js'
 
 export interface FileContext {
   conversationId: string
+  /** 所属工作区（执行面改造后，fs 原语按它路由；未绑定时缺省走本地根） */
+  workspaceId?: string
   userId: string | null
   isAdmin: boolean
   runId: string | null
@@ -159,6 +162,7 @@ export class FileService implements OnApplicationBootstrap, OnApplicationShutdow
     @Inject(FileRepository) private readonly files: FileRepository,
     @Inject(AppLogger) private readonly logger: AppLogger,
     @Optional() @Inject(FILE_CAPS) private readonly caps?: FileCaps,
+    @Optional() @Inject(WORKSPACE_FS_PORT) private readonly fsPort?: WorkspaceFsPort,
   ) {}
 
   onApplicationBootstrap(): void {
@@ -211,6 +215,99 @@ export class FileService implements OnApplicationBootstrap, OnApplicationShutdow
 
   private workspaceOf(ctx: FileContext): string {
     return conversationWorkspace(this.caps, ctx.conversationId)
+  }
+
+  /** 工作区文件系统端口：有远程实现时走它，否则本地 fs（自托管 / 未接执行面） */
+  private relPath(ctx: FileContext, target: string): string {
+    return relPath(this.workspaceOf(ctx), target)
+  }
+
+  private async readBytesOf(ctx: FileContext, target: string): Promise<Buffer> {
+    if (this.fsPort && ctx.workspaceId) {
+      return this.fsPort.readBytes(ctx.workspaceId, this.relPath(ctx, target))
+    }
+    return readFile(target)
+  }
+
+  private async writeBytesOf(ctx: FileContext, target: string, body: Buffer): Promise<void> {
+    if (this.fsPort && ctx.workspaceId) {
+      await this.fsPort.writeBytes(ctx.workspaceId, this.relPath(ctx, target), body)
+      return
+    }
+    await mkdir(dirname(target), { recursive: true })
+    await this.atomicWrite(target, body)
+  }
+
+  private async readTextOf(ctx: FileContext, target: string): Promise<string> {
+    if (this.fsPort && ctx.workspaceId) {
+      return this.fsPort.readText(ctx.workspaceId, this.relPath(ctx, target))
+    }
+    return readFile(target, 'utf8')
+  }
+
+  private async writeTextOf(ctx: FileContext, target: string, content: string): Promise<void> {
+    if (this.fsPort && ctx.workspaceId) {
+      await this.fsPort.writeText(ctx.workspaceId, this.relPath(ctx, target), content)
+      return
+    }
+    await mkdir(dirname(target), { recursive: true })
+    await this.atomicWrite(target, Buffer.from(content, 'utf8'))
+  }
+
+  private async appendTextOf(ctx: FileContext, target: string, content: string): Promise<void> {
+    if (this.fsPort && ctx.workspaceId) {
+      await this.fsPort.appendText(ctx.workspaceId, this.relPath(ctx, target), content)
+      return
+    }
+    await mkdir(dirname(target), { recursive: true })
+    await appendFile(target, content, { mode: 0o600 })
+  }
+
+  private async statOf(
+    ctx: FileContext,
+    target: string,
+  ): Promise<{ isDirectory(): boolean; isFile(): boolean; size: number; mtime: Date } | null> {
+    if (this.fsPort && ctx.workspaceId) {
+      try {
+        const info = await this.fsPort.stat(ctx.workspaceId, this.relPath(ctx, target))
+        return {
+          isDirectory: () => info.type === 'dir',
+          isFile: () => info.type === 'file',
+          size: info.size,
+          mtime: new Date(info.mtime ?? 0),
+        }
+      } catch {
+        return null
+      }
+    }
+    const info = await stat(target).catch(() => null)
+    if (!info) return null
+    return {
+      isDirectory: () => info.isDirectory(),
+      isFile: () => info.isFile(),
+      size: info.size,
+      mtime: info.mtime,
+    }
+  }
+
+  /** 目录项：有远程实现时走 port.list，否则本地 readdir */
+  private async readdirOf(
+    ctx: FileContext,
+    dir: string,
+  ): Promise<
+    Array<{ name: string; isDirectory(): boolean; isFile(): boolean; isSymbolicLink(): boolean }>
+  > {
+    if (this.fsPort && ctx.workspaceId) {
+      const rel = this.relPath(ctx, dir)
+      const entries = await this.fsPort.list(ctx.workspaceId, rel === '' ? '.' : rel)
+      return entries.map((entry) => ({
+        name: entry.name,
+        isDirectory: () => entry.type === 'dir',
+        isFile: () => entry.type === 'file',
+        isSymbolicLink: () => false,
+      }))
+    }
+    return readdir(dir, { withFileTypes: true }).catch(() => [])
   }
 
   /** 会话详情用：把 `ai_files` 组装成树 */
@@ -461,8 +558,8 @@ export class FileService implements OnApplicationBootstrap, OnApplicationShutdow
       conversationId: ctx.conversationId,
       path: input.filePath,
     })
-    const info = await stat(target)
-    if (!info.isFile()) throw new FileDeniedError('invalid-input', '不是普通文件')
+    const info = await this.statOf(ctx, target)
+    if (!info?.isFile()) throw new FileDeniedError('invalid-input', '不是普通文件')
     if (info.size > config.readMaxBytes) {
       throw new FileDeniedError('invalid-input', `文件超过读取上限 ${config.readMaxBytes} 字节`)
     }
@@ -470,7 +567,7 @@ export class FileService implements OnApplicationBootstrap, OnApplicationShutdow
       throw new FileDeniedError('invalid-input', 'read-file 只读文本文件；二进制用 bash / python')
     }
 
-    const lines = (await readFile(target, 'utf8')).split('\n')
+    const lines = (await this.readTextOf(ctx, target)).split('\n')
     const totalLines = lines.length
     const offset = Math.max(1, input.offset ?? 1)
     const limit = Math.min(input.limit ?? config.pageLines, 500)
@@ -575,7 +672,7 @@ export class FileService implements OnApplicationBootstrap, OnApplicationShutdow
         truncated = true
         return
       }
-      const content = await readFile(file, 'utf8').catch(() => null)
+      const content = await this.readTextOf(ctx, file).catch(() => null)
       if (content === null) return
       const lines = content.split('\n')
       for (let index = 0; index < lines.length; index += 1) {
@@ -600,7 +697,7 @@ export class FileService implements OnApplicationBootstrap, OnApplicationShutdow
         truncated = truncated || depth > config.workspaceMaxDepth
         return
       }
-      const entries = await readdirSafe(dir)
+      const entries = await this.readdirOf(ctx, dir)
       for (const entry of entries) {
         if (truncated) return
         if (entry.isSymbolicLink()) continue
@@ -679,7 +776,7 @@ export class FileService implements OnApplicationBootstrap, OnApplicationShutdow
         depthLimited = true
         return
       }
-      const entries = await readdirSafe(dir)
+      const entries = await this.readdirOf(ctx, dir)
       entries.sort((left, right) => (left.name < right.name ? -1 : left.name > right.name ? 1 : 0))
       for (const entry of entries) {
         if (hasMore) return
@@ -698,7 +795,7 @@ export class FileService implements OnApplicationBootstrap, OnApplicationShutdow
         } else if (entry.isFile()) {
           // 噪音文件不算进页码：否则 offset 会把「文件真的少了」和「被过滤了」混在一起
           if (isNoiseFile(entry.name)) continue
-          const info = await stat(full).catch(() => null)
+          const info = await this.statOf(ctx, full)
           if (!info) continue
           if (cursor < offset) {
             cursor += 1
@@ -786,11 +883,10 @@ export class FileService implements OnApplicationBootstrap, OnApplicationShutdow
       throw new FileDeniedError('invalid-input', `文件超过单文件上限 ${config.maxBytes} 字节`)
     }
     return this.locks.run(`${ctx.conversationId}:${target}`, async () => {
-      const existing = await stat(target).catch(() => null)
+      const existing = await this.statOf(ctx, target)
       if (existing?.isDirectory()) throw new FileDeniedError('invalid-input', '目标是目录')
       const created = !existing
-      await mkdir(dirname(target), { recursive: true })
-      await this.atomicWrite(target, body)
+      await this.writeTextOf(ctx, target, body.toString('utf8'))
       return { path: target, bytes: body.length, lines: lineCount(input.content), created }
     })
   }
@@ -807,15 +903,15 @@ export class FileService implements OnApplicationBootstrap, OnApplicationShutdow
       path: input.filePath,
     })
     this.assertNotCache(ctx, target)
-    const info = await stat(target)
-    if (!info.isFile()) throw new FileDeniedError('invalid-input', '不是普通文件')
+    const info = await this.statOf(ctx, target)
+    if (!info?.isFile()) throw new FileDeniedError('invalid-input', '不是普通文件')
     if (info.size > config.readMaxBytes) {
       throw new FileDeniedError('invalid-input', `文件超过读取上限 ${config.readMaxBytes} 字节`)
     }
     if (!isTextFile(target)) throw new FileDeniedError('invalid-input', '只处理文本文件')
 
     return this.locks.run(`${ctx.conversationId}:${target}`, async () => {
-      const before = await readFile(target, 'utf8')
+      const before = await this.readTextOf(ctx, target)
       const occurrences = before.split(input.oldText).length - 1
       if (occurrences === 0) {
         throw new FileDeniedError('invalid-input', '没有找到要替换的内容（oldText 必须精确匹配）')
@@ -840,7 +936,7 @@ export class FileService implements OnApplicationBootstrap, OnApplicationShutdow
       if (body.length > config.maxBytes) {
         throw new FileDeniedError('invalid-input', `替换后超过单文件上限 ${config.maxBytes} 字节`)
       }
-      await this.atomicWrite(target, body)
+      await this.writeTextOf(ctx, target, after)
       return {
         path: target,
         replaced: input.all === true ? occurrences : 1,
@@ -867,7 +963,7 @@ export class FileService implements OnApplicationBootstrap, OnApplicationShutdow
     if (content.includes(0)) throw new FileDeniedError('invalid-input', '写入内容包含二进制 NUL')
 
     return this.locks.run(`${ctx.conversationId}:${target}`, async () => {
-      const existing = await stat(target).catch(() => null)
+      const existing = await this.statOf(ctx, target)
       if (existing?.isDirectory()) throw new FileDeniedError('invalid-input', '目标是目录')
       if (existing && existing.size + content.length > config.maxBytes) {
         throw new FileDeniedError('invalid-input', `追加后超过单文件上限 ${config.maxBytes} 字节`)
@@ -875,9 +971,8 @@ export class FileService implements OnApplicationBootstrap, OnApplicationShutdow
       if (content.length > config.maxWriteBytes) {
         throw new FileDeniedError('invalid-input', `单次追加超过 ${config.maxWriteBytes} 字节`)
       }
-      await mkdir(dirname(target), { recursive: true })
-      await appendFile(target, content, { mode: 0o600 })
-      const after = await readFile(target, 'utf8')
+      await this.appendTextOf(ctx, target, input.content)
+      const after = await this.readTextOf(ctx, target)
       return {
         path: target,
         bytes: Buffer.byteLength(after, 'utf8'),
@@ -904,13 +999,13 @@ export class FileService implements OnApplicationBootstrap, OnApplicationShutdow
       conversationId: input.conversationId,
       path: input.path,
     })
-    const info = await stat(target)
-    if (!info.isFile()) throw new FileDeniedError('invalid-input', '不是普通文件')
+    const info = await this.statOf(ctx, target)
+    if (!info?.isFile()) throw new FileDeniedError('invalid-input', '不是普通文件')
     if (info.size > config.maxBytes) {
       throw new FileDeniedError('invalid-input', '文件超过单文件上限')
     }
 
-    const body = await readFile(target)
+    const body = await this.readBytesOf(ctx, target)
     const digest = sha256(body)
     const extension = extensionOf(input.path)
     const owner = ctx.isAdmin ? 'admin' : ctx.userId ? `user/${ctx.userId}` : 'system'
@@ -971,10 +1066,10 @@ export class FileService implements OnApplicationBootstrap, OnApplicationShutdow
       conversationId: ctx.conversationId,
       path,
     })
-    const info = await stat(target)
-    if (!info.isFile()) throw new FileDeniedError('invalid-input', '不是普通文件')
+    const info = await this.statOf(ctx, target)
+    if (!info?.isFile()) throw new FileDeniedError('invalid-input', '不是普通文件')
     if (!isTextFile(target)) throw new FileDeniedError('invalid-input', '这个文件不是文本类型')
-    const body = await readFile(target)
+    const body = await this.readBytesOf(ctx, target)
     return {
       text: body.subarray(0, limit).toString('utf8'),
       mediaType: mediaTypeOf(target),
@@ -987,14 +1082,14 @@ export class FileService implements OnApplicationBootstrap, OnApplicationShutdow
     ctx: FileContext,
     path: string,
     download = false,
-  ): Promise<{ path: string; size: number; mediaType: string; inline: boolean }> {
+  ): Promise<{ path: string; size: number; mediaType: string; inline: boolean; body?: Buffer }> {
     const target = await resolveWorkspacePath({
       caps: this.caps,
       conversationId: ctx.conversationId,
       path,
     })
-    const info = await stat(target)
-    if (!info.isFile()) throw new FileDeniedError('invalid-input', '不是普通文件')
+    const info = await this.statOf(ctx, target)
+    if (!info?.isFile()) throw new FileDeniedError('invalid-input', '不是普通文件')
     if (info.size > this.configOf(ctx).maxBytes) {
       throw new FileDeniedError(
         'invalid-input',
@@ -1012,6 +1107,10 @@ export class FileService implements OnApplicationBootstrap, OnApplicationShutdow
         mediaType.startsWith('video/') ||
         mediaType.startsWith('audio/') ||
         mediaType === 'application/pdf')
+    if (this.fsPort && ctx.workspaceId) {
+      const body = await this.readBytesOf(ctx, target)
+      return { path: target, size: body.length, mediaType, inline, body }
+    }
     return { path: target, size: info.size, mediaType, inline }
   }
 
@@ -1073,11 +1172,10 @@ export class FileService implements OnApplicationBootstrap, OnApplicationShutdow
       }).catch(() => null)
       if (!target) continue
       try {
-        const existing = await stat(target).catch(() => null)
+        const existing = await this.statOf(ctx, target)
         if (existing?.isFile() && existing.size === attachment.bytes) continue
         const object = await this.storage.getObject({ key: attachment.key })
-        await mkdir(dirname(target), { recursive: true })
-        await this.atomicWrite(target, object.body)
+        await this.writeBytesOf(ctx, target, object.body)
       } catch (error) {
         this.logger.warn('ai.file.materialize_failed', {
           conversationId: ctx.conversationId,
@@ -1135,10 +1233,4 @@ export class FileService implements OnApplicationBootstrap, OnApplicationShutdow
     await writeFile(temp, body, { mode: 0o600 })
     await rename(temp, target)
   }
-}
-
-/** `readdir` 的统一兜底：目录读不到就当空（权限 / 被删），不炸整个工具 */
-const readdirSafe = async (dir: string) => {
-  const { readdir } = await import('node:fs/promises')
-  return readdir(dir, { withFileTypes: true }).catch(() => [])
 }

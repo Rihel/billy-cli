@@ -392,6 +392,7 @@ async function smokeTest(yes: boolean, skip: boolean): Promise<void> {
   await startIfNeeded(9994, 'common-capability')
   await startIfNeeded(9993, 'capability-gateway')
   await startIfNeeded(9990, 'agent-runtime')
+  await startIfNeeded(9995, 'workspace-service')
   await sleep(700)
   if (!mainRunning) {
     children.push(
@@ -464,7 +465,7 @@ const main = async (): Promise<void> => {
   console.log(colors.bold(colors.green('\n✅ 初始化完成，启动开发环境：')))
   console.log(`  ${colors.cyan('pnpm dev:pkgs')}    # 终端 1：watch 构建 packages`)
   console.log(
-    `  ${colors.cyan('pnpm dev:stack')}   # 终端 2：main(9989) + agent-runtime(9990) + tools`,
+    `  ${colors.cyan('pnpm dev:stack')}   # 终端 2：main(9989) + agent-runtime(9990) + tools + workspace(9995)`,
   )
   console.log(`  ${colors.cyan('pnpm dev:web')}      # 终端 3：Web 前台（http://localhost:9840）`)
   console.log(

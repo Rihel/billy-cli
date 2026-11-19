@@ -62,6 +62,8 @@ export type ServiceProtocol = z.infer<typeof ServiceProtocolSchema>
 /** 执行声明：默认同步；`task` 才需要 owner / yield / wait / cancel */
 const CapabilityExecutionObject = z.object({
   mode: CapabilityModeSchema.default('sync'),
+  /** 执行位置：`host` 平台侧 / `workspace` 工作区（执行面按它路由） */
+  where: z.enum(['host', 'workspace']).default('host'),
   owner: CapabilityOwnerSchema.default('session'),
   yieldMs: z.number().int().nonnegative().default(45_000),
   wait: z
@@ -346,6 +348,8 @@ export type CapabilityListResponse = z.infer<typeof CapabilityListResponseSchema
 /** 一次能力调用（发给服务的 body 由网关按协议 §7 组装） */
 export const CapabilityInvokeRequestSchema = z.object({
   capability: z.string().min(1),
+  /** 会话绑定的工作区（执行面直接用它，不必再查会话） */
+  workspaceId: z.string().min(1).max(20).optional(),
   input: z.record(z.string(), z.unknown()).default({}),
   reason: z.string().optional(),
   caller: z.object({

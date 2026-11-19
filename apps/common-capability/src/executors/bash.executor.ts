@@ -1,18 +1,14 @@
-import { mkdir } from 'node:fs/promises'
-import { isAbsolute, relative, resolve } from 'node:path'
+import { isAbsolute } from 'node:path'
 import { Inject, Injectable } from '@nestjs/common'
 import { z } from 'zod'
-import { AppLogger, WorkspaceRuntimeService } from '@repo/kits'
+import { AppLogger } from '@repo/kits'
 import { CapabilityDecl, CapabilityGroup, findCapabilityDecl } from '@repo/capability'
+import { WorkspaceServiceClient } from '@repo/internal-sdk'
 import type { ToolInvokeRequest, ToolOutcome } from '@repo/contracts'
 import { ToolWorkerConfig, type ToolWorkerConfigValue } from '../config/app-config.js'
+import { WorkspaceLocator } from './workspace.locator.js'
 
 const SAFE_ID = /^[\p{L}\p{N}._-]{1,128}$/u
-
-const inside = (root: string, target: string): boolean => {
-  const rel = relative(root, target)
-  return rel === '' || (!rel.startsWith('..') && !isAbsolute(rel))
-}
 
 /** 声明里那份 zod 解析出来的形状（机制包宽类型丢了推导，这里补一处结构断言） */
 interface BashInput {
@@ -20,12 +16,18 @@ interface BashInput {
   cwd?: string
 }
 
-/** bash 执行器：工作区在本地临时目录（可丢弃），隔离由 WorkspaceRuntimeService 负责 */
+/**
+ * bash 执行器：命令在**会话绑定的工作区**里执行（workspace-service）。
+ *
+ * 执行位置从「本进程的沙箱 / 本地目录」改为「工作区」（容器 / 沙箱由执行面决定）；
+ * 能力登记、task 形态、限流与审计仍留在 common-capability。
+ */
 @Injectable()
 @CapabilityGroup({ risk: 'write' })
 export class BashExecutor {
   constructor(
-    @Inject(WorkspaceRuntimeService) private readonly runtime: WorkspaceRuntimeService,
+    @Inject(WorkspaceLocator) private readonly locator: WorkspaceLocator,
+    @Inject(WorkspaceServiceClient) private readonly client: WorkspaceServiceClient,
     @Inject(ToolWorkerConfig) private readonly config: ToolWorkerConfigValue,
     @Inject(AppLogger) private readonly logger: AppLogger,
   ) {}
@@ -34,7 +36,7 @@ export class BashExecutor {
     tool: 'bash',
     title: '执行 bash 命令',
     description:
-      '在沙箱里执行一条命令，返回退出码、stdout 与 stderr。命令要幂等，输出尽量用管道收窄。',
+      '在工作区里执行一条命令，返回退出码、stdout 与 stderr。命令要幂等，输出尽量用管道收窄。',
     input: z.object({
       command: z
         .string()
@@ -48,11 +50,12 @@ export class BashExecutor {
         .min(1)
         .max(512)
         .optional()
-        .describe('工作目录（相对默认工作目录，或它的子目录）；不允许跑到工作目录之外'),
+        .describe('工作目录（相对工作区根，或它的子目录）；不允许跑到工作区之外'),
     }),
     timeoutMs: 300_000,
     execution: {
       mode: 'task',
+      where: 'workspace',
       owner: 'session',
       yieldMs: 45_000,
       wait: { maxWaitMs: 60_000 },
@@ -61,7 +64,6 @@ export class BashExecutor {
     },
   })
   async bash(request: ToolInvokeRequest): Promise<ToolOutcome> {
-    // 与登记同一份入参：声明里改了字段，这里自动跟上
     const parsed = findCapabilityDecl(this, 'bash').input.safeParse(request.input)
     if (!parsed.success) {
       return {
@@ -84,28 +86,34 @@ export class BashExecutor {
       }
     }
 
-    const workspaceRoot = resolve(this.config.workspaceRoot, workspaceConversationId)
-    const cwd = resolve(workspaceRoot, input.cwd ?? '.')
-    if (!inside(workspaceRoot, cwd)) {
+    const cwd = input.cwd?.trim()
+    if (cwd && (isAbsolute(cwd) || cwd.split(/[/\\]/).includes('..'))) {
       return {
         ok: false,
         reason: 'invalid-input',
-        message: '工作目录必须在本会话工作区之内',
+        message: '工作目录必须在工作区之内',
         retryable: false,
       }
     }
 
     try {
-      await mkdir(cwd, { recursive: true })
+      const workspaceId = await this.locator.workspaceIdOf(workspaceConversationId)
+      if (!workspaceId) {
+        return {
+          ok: false,
+          reason: 'no-workspace',
+          message: '会话还没有绑定工作区',
+          retryable: false,
+        }
+      }
       const remaining = Math.max(1, request.deadlineMs - 500)
       // 命令时长只由部署配置决定（模型入参里没有时长）；同时不超过这次调用的剩余预算
       const timeoutMs = Math.min(this.config.commandTimeoutMs, remaining)
       const startedAt = Date.now()
-      const result = await this.runtime.exec({
+      const result = await this.client.exec({
+        workspaceId,
         command: input.command,
-        cwd,
-        workspaceRoot,
-        fileAccess: request.fileAccess ?? 'workspace-write',
+        ...(cwd ? { cwd } : {}),
         timeoutMs,
         maxOutputBytes: this.config.maxOutputBytes,
       })
@@ -114,12 +122,12 @@ export class BashExecutor {
         requestId: request.requestId,
         runId: request.caller.runId,
         conversationId,
+        workspaceId,
         toolKey: 'bash',
         command: input.command,
         exitCode: result.exitCode,
         ok: result.ok,
         runtime: result.runtime,
-        mode: result.mode,
         durationMs: Date.now() - startedAt,
       })
       return { ok: true, data: result }

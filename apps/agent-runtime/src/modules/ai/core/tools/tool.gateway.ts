@@ -94,14 +94,18 @@ export class ToolGateway {
         rawInput && typeof rawInput === 'object' && !Array.isArray(rawInput)
           ? (rawInput as Record<string, unknown>)
           : {}
+      // `reason` 是工具面的协议字段，不属于能力入参：远程校验前剥掉，
+      // 否则网关按能力声明的 JSON Schema 校验会判 `Unrecognized key: "reason"`。
+      const { reason: _reason, ...capabilityInput } = input
       return this.remote.invoke({
         toolKey: spec.key,
         toolCallId: call.callId,
-        input,
+        input: capabilityInput,
         caller,
         ...(envelope?.workspaceConversationId
           ? { workspaceConversationId: envelope.workspaceConversationId }
           : {}),
+        ...(envelope?.workspaceId ? { workspaceId: envelope.workspaceId } : {}),
         // 暂无按工具派生的 deadline：5 分钟命令 + 10 秒传输余量
         deadlineMs: 310_000,
         ...(envelope?.fileAccess ? { fileAccess: envelope.fileAccess } : {}),

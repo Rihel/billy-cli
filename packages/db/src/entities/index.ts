@@ -12,6 +12,7 @@ export { AiToolAuditEntity } from './ai-tool-audit-entity.js'
 export { AiToolEntity } from './ai-tool-entity.js'
 export { AiUsageDailyDimensionEntity } from './ai-usage-daily-dimension-entity.js'
 export { AiUsageDailyEntity } from './ai-usage-daily-entity.js'
+export { AiWorkspaceEntity } from './ai-workspace-entity.js'
 export { AlertLogEntity } from './alert-log-entity.js'
 export { ConversationEntity } from './conversation-entity.js'
 export { ConversationRunQueueEntity } from './conversation-run-queue-entity.js'
@@ -38,6 +39,7 @@ import { AiToolAuditEntity } from './ai-tool-audit-entity.js'
 import { AiToolEntity } from './ai-tool-entity.js'
 import { AiUsageDailyDimensionEntity } from './ai-usage-daily-dimension-entity.js'
 import { AiUsageDailyEntity } from './ai-usage-daily-entity.js'
+import { AiWorkspaceEntity } from './ai-workspace-entity.js'
 import { AlertLogEntity } from './alert-log-entity.js'
 import { ConversationEntity } from './conversation-entity.js'
 import { ConversationRunQueueEntity } from './conversation-run-queue-entity.js'
@@ -66,6 +68,7 @@ export const DB_ENTITIES = [
   AiToolEntity,
   AiUsageDailyDimensionEntity,
   AiUsageDailyEntity,
+  AiWorkspaceEntity,
   AlertLogEntity,
   ConversationEntity,
   ConversationRunQueueEntity,

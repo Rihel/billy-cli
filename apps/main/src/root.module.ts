@@ -39,6 +39,7 @@ import { AiModelModule } from './modules/ai-model/index.js'
 import { AuthModule } from './modules/auth/index.js'
 import { AiAdminConversationModule } from './modules/ai-admin/conversation/index.js'
 import { AiFileAdminModule } from './modules/ai-admin/file/index.js'
+import { WorkspaceAdminModule } from './modules/ai-admin/workspace/index.js'
 import { AiToolAdminModule } from './modules/ai-admin/tool/index.js'
 import { CapabilityServiceAdminModule } from './modules/ai-admin/capability/index.js'
 import { AiSkillAdminModule } from './modules/ai-admin/skill/index.js'
@@ -181,6 +182,7 @@ import { UserModule } from './modules/user/index.js'
     AiToolAdminModule,
     AiAdminConversationModule,
     AiFileAdminModule,
+    WorkspaceAdminModule,
     StorageModule,
     StreamModule,
     SessionModule,

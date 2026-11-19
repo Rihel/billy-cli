@@ -171,18 +171,26 @@ Workspace = { location, runtime }
 
 原则：需要访问用户文件的进环境；需要访问平台网络/数据库的留平台侧。这既是安全边界，也避免容器内跑一套完整服务。
 
-### 4.2 能力声明新增执行位置
+### 4.2 能力声明新增执行位置（已实现）
 
-`@CapabilityDecl` 在现有 `risk` / `input` 之外增加：
+`@CapabilityDecl` 的 `execution` 增加：
 
 ```ts
 execution: { where: 'host' | 'workspace' }
 ```
 
-- `host`：平台侧执行，无额外上下文。
-- `workspace`：需要 `workspaceId`，经 `WorkspaceRuntime` 转发。
+- `host`：平台侧执行（web / memory / read-tool-result / file-submit / file-download）；
+- `workspace`：由 **workspace-service 自己登记**（`service: 'workspace'`），网关按扁平 key 直接路由；
+  调用方带 `workspaceId`（`request.workspaceId`），执行面不再必须按会话反查。
 
-网关/编排层按字段路由，不按能力名硬编码。现有 `request.workspaceConversationId` 由 `request.workspaceId` 取代。
+落地细节：
+
+- `capability-gateway` 的路由仍然只按 **key → 服务**，`where` 不参与网关路由——它决定**谁登记**这个能力；
+- common-capability 的 manifest 过滤 `where === 'workspace'` 的能力，避免跨服务重名 409；
+- workspace-service 登记：`bash`（task 形态）+ `file-list` / `read-file` / `write-file` /
+  `append-file` / `replace-file` / `workspace-files` / `file-search`（sync）；
+- **OSS 语义留在平台侧**：`file-submit` / `file-download` 仍在 common-capability；
+- `request.workspaceId` 已贯通：runtime 信封 → 网关调用 → workspace-service（缺省时回落按会话查）。
 
 ### 4.3 懒创建与唤醒
 
@@ -197,6 +205,22 @@ invoke(bash, workspaceId)
 ```
 
 与生命周期共用同一套机制，不重复实现。
+
+### 4.4 file 能力的接缝
+
+`FileService` 现在直接调 `node:fs` 操作 `{workspaceRoot}/{conversationId}` 的本地目录。迁移分两步：
+
+1. **已完成**：`FileContext.workspaceId` + `WorkspaceFsPort`（`packages/ai-data/src/file/workspace-fs.port.ts`）；
+   file 执行器按会话解析工作区（`WorkspaceLocator`），不再假设本地根。
+2. **已完成**：`FileService` 的 `node:fs` 原语（stat / read / write / append / readdir / rm）
+   已换成 `WorkspaceFsPort`；common-capability 注入「调 workspace-service」的实现，本地实现保留给自托管。
+3. **另**：fs 类文件能力已迁到 workspace-service 执行（见 §4.2），common 只留 OSS 类。
+
+边界：
+
+- `file-submit` / `file-download` 的 OSS 语义留在平台侧（元数据与对象存储不迁到执行面），
+  但读写工作区文件走 port；
+- 分页、噪音目录、软链校验等**业务**留在 `FileService`，port 只做原语，换实现时模型面行为不变。
 
 ## 5. MCP
 
@@ -280,22 +304,38 @@ MCP 一旦交给模型，模型就能执行 SQL/命令。**权限边界（只读
 
 每条命令、每次能力调用落库（现有 `ai_tool_audit` 链路可沿用）。网络不拦，但要知道发生过什么——这是审批撤销后唯一的追踪手段。
 
-## 7. 生命周期
+## 7. 生命周期与职责
+
+### 7.1 谁写什么
+
+| 数据 | 写方 | 存哪 |
+| --- | --- | --- |
+| 配置（name / image / backend / file_access / is_default） | **main** | `ai_workspaces` |
+| 期望状态（running / stopped，用户意图） | **main** | `ai_workspaces.desired_status` |
+| 实际运行态（容器是否活着、containerId、lastUsedAt） | **workspace-service** | 内存 + 容器标签，**不落 DB** |
+
+- **main 是控制面**：列表、创建、改名、删除、启停，只写表。
+- **workspace-service 是执行面**：建 / 停 / 销毁容器、exec、fs；**不写 `ai_workspaces`**。
+- 列表 = 表里的配置 + 向 workspace-service 查一次运行态；查不到就显示「未启动 / 不可用」。
+- 容器带 `workspace-id` 标签，workspace-service 重启后按标签扫回，不依赖 DB 恢复。
+
+### 7.2 状态流转
 
 ```
-创建 → active ──(闲置)──→ idle ──(过期)──→ destroyed
-         ↑                    │
-         └────(下一个会话)─────┘
+desired_status: stopped ──用户启动 / 首次执行──→ running
+                running ──用户停止────────────→ stopped
+                running ──2h idle 回收────────→ （实际停止，desired 不变）
 ```
 
-- **默认工作区**：主体（当前是 admin）创建时初始化一条记录（`is_default = true`、`status = idle`、统一镜像的当前版本），**不启动容器**；会话默认落在这里，用户不必先建工作区。侧边栏把它作为兜底分组展示。
-- **创建（容器）**：会话首次需要执行环境时自动拉起容器（用户不必显式操作）；也可由用户显式创建多个工作区。
-- **idle**：最后一个会话结束后进入空闲，保留 **2 小时**，期间回来直接续用。保留期的作用是「防打断」，不是「防丢数据」。
-- **destroyed**：过期即销毁，容器与可写层一并删除。产物在 OSS，代码在 git。
+- **默认工作区**：主体（当前是 admin）创建时由 main 写一条记录（`is_default = true`、`desired_status = stopped`、统一镜像的当前版本），**不启动容器**；会话默认落在这里，用户不必先建工作区。侧边栏把它作为兜底分组展示。
+- **懒启动**：会话首次需要执行时 `ensure` 拉起容器；也可由用户显式点「启动」。
+- **2 小时 idle 回收**：workspace-service 定时器停止并释放容器。这是**实际状态变化**，不回写 DB——`desired_status` 仍是 `running`，用户下次执行时 `ensure` 重新拉起。
+- **用户手动停止**：main 写 `desired_status = stopped`；此后不自动拉起，必须用户点「启动」。
+- **销毁**：用户删除工作区 → main 软删记录 → 调 workspace-service `destroy`。
 - **不做**：环境快照、归档、恢复白名单。
 - **删除会话不删除环境**；只有环境过期或用户显式销毁才删。
 
-**用户可管理的**：查看有哪些环境、启动/停止、销毁。没有重命名、归档、长期保留。
+**用户可管理的**：查看有哪些环境、启动/停止、销毁。重命名、归档、长期保留暂不做。
 
 ## 8. 并发
 
@@ -334,6 +374,17 @@ v1 **不做多模板**：全平台一个基础镜像（`billy-workspace`），�
 
 不分模板的原因：AI 能自己装（9.1），多模板只会让镜像维护和冷启动变复杂；统一镜像 + 版本，已经能表达「今天的环境和明天的环境不一样」。
 
+构建：
+
+```bash
+docker build -f docker/Dockerfile.workspace-image -t billy-workspace:<tag> docker
+```
+
+> 注意区分两个镜像：`docker/Dockerfile.workspace-image` 是**被管的工作区容器**（shell / 语言运行时 / git），
+> `docker/Dockerfile.workspace-service` 是**执行面服务**（9995，管容器生命周期）。
+
+常驻：`WORKSPACE_IDLE_TIMEOUT_MS=0` 时回收器跳过，容器一直活着，直到用户手动停止 / 删除；默认 2 小时。
+
 ### 9.3 提示词
 
 系统提示词/环境说明必须写清楚：当前是 Debian、包管理用 `apt-get`、Python 用 `pip3`、Node 用 `npm`。否则模型会试 `yum` / `apk` / `brew`，浪费轮次。
@@ -356,7 +407,7 @@ ai_workspaces
   image         varchar(64)            -- container 时必填
   location      jsonb                  -- backend 相关（root / container 配置 / host）
   file_access   varchar(16)  NOT NULL  -- read-only | write
-  status        varchar(16)  NOT NULL  -- active | idle | destroyed
+  desired_status varchar(16) NOT NULL DEFAULT 'stopped'  -- running | stopped（用户意图；实际运行态不落库）
   created_at    timestamptz
   last_used_at  timestamptz
 
@@ -381,13 +432,14 @@ ai_files
 - `file_access` 在 Workspace 级：权限是场所的属性，不是某次会话的属性。
 - `conversations.workspace_id` 可空只是迁移期；稳定后应 NOT NULL。
 - `owner_type + owner_id` 而不是 `user_id`：当前只有 admin 用 AI 会话，但将来用户端开放时同一张表可复用；不把 `admins.id` 与 `users.id` 混进同一列。
+- `desired_status` 只表达**用户意图**；容器是否真的在跑由 workspace-service 实时返回，不落库（避免双写）。
 
 ## 11. 迁移路径
 
 从现状（会话即目录 + L1 沙箱 + `ai_files` 即真身）迁移：
 
 1. **建表**：`ai_workspaces` + `conversations.workspace_id`（可空）+ `ai_files.workspace_id`（可空）。
-2. **存量主体回填默认工作区**：每个存量 `admin` 建一条 `is_default = true` 的空工作区（统一镜像的当前版本、`status = idle`），与 `AdminService.create()` 的初始化同一套逻辑。
+2. **存量主体回填默认工作区**：每个存量 `admin` 建一条 `is_default = true` 的空工作区（统一镜像的当前版本、`desired_status = stopped`），与 `AdminService.create()` 的初始化同一套逻辑。
 3. **存量会话回填**：每个存量会话建一条**非默认** workspace（`name` 取会话标题，`location.root = {root}/{conversationId}`），`conversations.workspace_id` 指向它——保留原目录隔离与数据；`ai_files` 按会话归属回填 `workspace_id`。
 4. **改清理逻辑**（第一优先级）：`cleanupConversation` 现在会 `rm` 整个工作区目录——必须改成「删会话只解绑」，只有销毁 workspace 才清目录。
 5. **抽 `WorkspaceRuntime` 端口**：`exec` + `fs` 锚定 `location`；`local` 实现 = 现有逻辑搬家，行为不变。
@@ -409,7 +461,7 @@ ai_files
 | E8 | 平台侧 MCP 连 MySQL | 只读；凭据不回显；审计落库 |
 | E9 | 容器尝试访问 `169.254.169.254` | 拒绝 |
 | E10 | `local` 后端在云端多租户 | 配置拒绝，进程不启动 |
-| E11 | 新建 admin | 立刻有一条默认工作区（`idle`、当前镜像版本）；首条执行消息时容器才拉起 |
+| E11 | 新建 admin | 立刻有一条默认工作区（`stopped`、当前镜像版本）；首条执行消息时容器才拉起 |
 | E12 | 重复执行 `seed:admin` | 不产生第二条默认工作区（幂等） |
 
 ## 13. 决策记录
@@ -425,7 +477,8 @@ ai_files
 | D7 | 风险提示规则的初始清单 | **已定**：见 §13.1 |
 | D8 | MCP 凭据模式 | **已定**：`user`（每人一份）与 `shared`（服务一份 + 授权）并存，见 §5.4 |
 | D9 | MCP 工具风险分级 | 待补：`McpToolSchema` 加 `risk`，外部工具默认 `write` |
-| D10 | 默认工作区初始化 | **已定**：主体（当前 admin）创建时建一条 `is_default` 记录（`idle`、当前镜像版本），容器懒启动；挂钩 `AdminService.create()`，`seed:admin` 自动覆盖；存量由迁移回填 |
+| D10 | 默认工作区初始化 | **已定**：主体（当前 admin）创建时建一条 `is_default` 记录（`stopped`、当前镜像版本），容器懒启动；挂钩 `AdminService.create()`，`seed:admin` 自动覆盖；存量由迁移回填 |
+| D11 | 服务职责划分 | **已定（方案 B）**：main 管 CRUD / 配置 / `desired_status`；workspace-service 只执行、不写表；运行态不落 DB（容器标签 + 内存）；2h 回收由 workspace-service 定时器做，不回写 `desired_status` |
 
 ### 13.1 风险提示初始规则（命令级）
 

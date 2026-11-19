@@ -43,12 +43,12 @@ const buildRegistry = (): ToolExecutorRegistry =>
     new WebSearchExecutor(config, logger),
     new WebRequestExecutor(config, logger),
     new MemoryExecutor({} as MemoryService, {} as MemoryRepository),
-    new FileExecutor({} as FileService, {}, logger),
+    new FileExecutor({} as FileService, {}, logger, { workspaceIdOf: async () => null } as never),
     new ReadToolResultExecutor({} as RedisStore, {} as Db, config, logger),
   )
 
 describe('能力声明（一个进程 = 一个服务 common）', () => {
-  it('四个代码内分组聚合成 17 个能力，key 就是工具名', () => {
+  it('只登记 host 类能力（9 个）；workspace 类由 workspace-service 登记', () => {
     const registry = buildRegistry()
     const service = buildCommonService(registry.instances())
     const registration = toRegistration(service, {
@@ -59,29 +59,21 @@ describe('能力声明（一个进程 = 一个服务 common）', () => {
     expect(registration.service).toBe('common')
     expect(registration.source).toBe('code')
     expect(registration.protocol).toBe('capability')
-    expect(keys).toHaveLength(17)
-    expect(new Set(keys).size).toBe(17)
+    expect(keys).toHaveLength(9)
+    expect(new Set(keys).size).toBe(9)
     expect(keys).toEqual([
-      'bash',
       'web-fetch',
       'web-search',
       'web-request',
       'memory-save',
       'memory-search',
       'memory-forget',
-      'file-list',
-      'read-file',
-      'write-file',
-      'append-file',
-      'replace-file',
-      'file-search',
       'file-submit',
       'file-download',
-      'workspace-files',
       'read-tool-result',
     ])
-    // 声明与执行体一一对应（扫描绑定，不是手抄清单）
-    expect(registry.tools()).toEqual(keys)
+    // 能力是执行器的子集（扫描绑定，不手抄清单）；workspace 类执行器仍在 registry 里
+    expect(keys.every((key) => registry.tools().includes(key))).toBe(true)
   })
 
   it('能力登记与执行体同源：每条声明都带可用的入参 JSON Schema', () => {
@@ -95,14 +87,14 @@ describe('能力声明（一个进程 = 一个服务 common）', () => {
       expect(capability.description.length).toBeGreaterThan(0)
       expect(registry.definitions().some((item) => item.tool === capability.tool)).toBe(true)
     }
+    // workspace 类能力由 workspace-service 登记，common 只登记 host 类
+    expect(registration.capabilities.some((item) => item.tool === 'bash')).toBe(false)
+    expect(registration.capabilities.some((item) => item.tool === 'file-list')).toBe(false)
     // 风险声明按能力给（不是整组一刀切）
-    expect(registration.capabilities.find((item) => item.tool === 'bash')?.risk).toBe('write')
     expect(registration.capabilities.find((item) => item.tool === 'web-fetch')?.risk).toBe('read')
     expect(registration.capabilities.find((item) => item.tool === 'web-request')?.risk).toBe(
       'write',
     )
-    expect(registration.capabilities.find((item) => item.tool === 'file-list')?.risk).toBe('read')
-    expect(registration.capabilities.find((item) => item.tool === 'write-file')?.risk).toBe('write')
   })
 
   it('只有 bash 是任务形态（执行形态取自声明）', () => {

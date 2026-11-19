@@ -24,6 +24,8 @@ export interface RemoteToolInvokeInput {
   input: Record<string, unknown>
   caller: import('./tools.types.js').ToolCaller
   workspaceConversationId?: string
+  /** 会话绑定的工作区（执行面优先用它） */
+  workspaceId?: string
   deadlineMs: number
   fileAccess?: 'read-only' | 'workspace-write'
 }

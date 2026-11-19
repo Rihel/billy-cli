@@ -31,6 +31,11 @@ export { ModelGatewayBilling1794676773109 } from './1794676773109-ModelGatewayBi
 export { ModelGatewayUsageTotalTokens1794676931674 } from './1794676931674-ModelGatewayUsageTotalTokens.js'
 export { ConversationRunQueue1794711383585 } from './1794711383585-ConversationRunQueue.js'
 export { AddRunOrigin1794713000000 } from './1794713000000-AddRunOrigin.js'
+export { AddCapabilityServiceSnapshots1795014133189 } from './1795014133189-AddCapabilityServiceSnapshots.js'
+export { DropConnectorModule1795014903484 } from './1795014903484-DropConnectorModule.js'
+export { AddServiceGrants1795021748273 } from './1795021748273-AddServiceGrants.js'
+export { AddWorkspaces1795030000000 } from './1795030000000-AddWorkspaces.js'
+export { FixConversationWorkspaces1795040000000 } from './1795040000000-FixConversationWorkspaces.js'
 
 import { Initial1786897309083 } from './1786897309083-initial.js'
 import { AddAdmins1787000000000 } from './1787000000000-add-admins.js'
@@ -68,6 +73,8 @@ import { AddRunOrigin1794713000000 } from './1794713000000-AddRunOrigin.js'
 import { AddCapabilityServiceSnapshots1795014133189 } from './1795014133189-AddCapabilityServiceSnapshots.js'
 import { DropConnectorModule1795014903484 } from './1795014903484-DropConnectorModule.js'
 import { AddServiceGrants1795021748273 } from './1795021748273-AddServiceGrants.js'
+import { AddWorkspaces1795030000000 } from './1795030000000-AddWorkspaces.js'
+import { FixConversationWorkspaces1795040000000 } from './1795040000000-FixConversationWorkspaces.js'
 
 /** 迁移按时间戳升序；TypeORM 会再排序，但这里保持可读 */
 export const DB_MIGRATIONS = [
@@ -107,4 +114,6 @@ export const DB_MIGRATIONS = [
   AddCapabilityServiceSnapshots1795014133189,
   DropConnectorModule1795014903484,
   AddServiceGrants1795021748273,
+  AddWorkspaces1795030000000,
+  FixConversationWorkspaces1795040000000,
 ]

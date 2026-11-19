@@ -20,6 +20,7 @@ import {
   type FileConfigValue,
 } from '@repo/ai-data'
 import { CapabilityDecl, CapabilityGroup, findCapabilityDecl } from '@repo/capability'
+import { WorkspaceLocator } from '../../executors/workspace.locator.js'
 import type { ToolInvokeRequest, ToolOutcome } from '@repo/contracts'
 
 /**
@@ -35,6 +36,7 @@ export class FileExecutor {
     @Inject(FileService) private readonly files: FileService,
     @Inject(FILE_CAPS) private readonly caps: FileCaps,
     @Inject(AppLogger) private readonly logger: AppLogger,
+    @Inject(WorkspaceLocator) private readonly locator: WorkspaceLocator,
   ) {}
 
   @CapabilityDecl({
@@ -42,6 +44,7 @@ export class FileExecutor {
     title: '列文件',
     description: '列出会话工作区里的文件',
     input: ListInputSchema,
+    execution: { where: 'workspace' },
   })
   async fileList(request: ToolInvokeRequest): Promise<ToolOutcome> {
     return this.run('file-list', request)
@@ -52,6 +55,7 @@ export class FileExecutor {
     title: '读文件',
     description: '读工作区里的文本文件',
     input: ReadFileInputSchema,
+    execution: { where: 'workspace' },
   })
   async readFile(request: ToolInvokeRequest): Promise<ToolOutcome> {
     return this.run('read-file', request)
@@ -63,6 +67,7 @@ export class FileExecutor {
     description: '整文件覆盖写入',
     risk: 'write',
     input: WriteFileInputSchema,
+    execution: { where: 'workspace' },
   })
   async writeFile(request: ToolInvokeRequest): Promise<ToolOutcome> {
     return this.run('write-file', request)
@@ -74,6 +79,7 @@ export class FileExecutor {
     description: '把内容追加到文件末尾',
     risk: 'write',
     input: AppendFileInputSchema,
+    execution: { where: 'workspace' },
   })
   async appendFile(request: ToolInvokeRequest): Promise<ToolOutcome> {
     return this.run('append-file', request)
@@ -85,6 +91,7 @@ export class FileExecutor {
     description: '替换文件里的指定片段',
     risk: 'write',
     input: ReplaceFileInputSchema,
+    execution: { where: 'workspace' },
   })
   async replaceFile(request: ToolInvokeRequest): Promise<ToolOutcome> {
     return this.run('replace-file', request)
@@ -95,6 +102,7 @@ export class FileExecutor {
     title: '搜文件内容',
     description: '按关键字搜索工作区文件内容',
     input: FileSearchInputSchema,
+    execution: { where: 'workspace' },
   })
   async fileSearch(request: ToolInvokeRequest): Promise<ToolOutcome> {
     return this.run('file-search', request)
@@ -127,6 +135,7 @@ export class FileExecutor {
     title: '工作区清单',
     description: '列出对象存储里的工作区文件',
     input: WorkspaceFilesInputSchema,
+    execution: { where: 'workspace' },
   })
   async workspaceFiles(request: ToolInvokeRequest): Promise<ToolOutcome> {
     return this.run('workspace-files', request)
@@ -147,8 +156,11 @@ export class FileExecutor {
       }
     }
 
+    const workspaceConversationId = request.workspaceConversationId ?? request.caller.conversationId
+    const workspaceId = await this.locator.workspaceIdOf(workspaceConversationId).catch(() => null)
     const ctx: FileContext = {
-      conversationId: request.workspaceConversationId ?? request.caller.conversationId,
+      conversationId: workspaceConversationId,
+      ...(workspaceId ? { workspaceId } : {}),
       userId: request.caller.userId,
       isAdmin: request.caller.isAdmin ?? false,
       runId: request.caller.runId,

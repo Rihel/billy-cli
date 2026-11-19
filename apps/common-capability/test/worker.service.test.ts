@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
-import type { AppLogger, Db, RedisStore, WorkspaceRuntimeService } from '@repo/kits'
+import type { AppLogger, Db, RedisStore } from '@repo/kits'
 import type { FileService, MemoryRepository, MemoryService } from '@repo/ai-data'
+import type { WorkspaceServiceClient } from '@repo/internal-sdk'
 import type { ToolInvokeRequest } from '@repo/contracts'
 import { BashExecutor } from '../src/executors/bash.executor.js'
 import { ToolExecutorRegistry } from '../src/executors/executor.registry.js'
@@ -61,29 +62,26 @@ const request = (over: Partial<ToolInvokeRequest> = {}): ToolInvokeRequest => ({
 const build = (exec = vi.fn()) => {
   exec.mockResolvedValue({
     ok: true,
-    command: 'echo hi',
-    shell: '/bin/sh',
-    cwd: '/tmp/billy-common-capability-test/c-1',
     exitCode: 0,
     stdout: 'hi\n',
     stderr: '',
-    timedOut: false,
-    aborted: false,
-    truncated: false,
     durationMs: 3,
-    runtime: 'sandbox',
-    mode: 'workspace-write',
+    truncated: false,
+    runtime: 'container',
   })
-  const runtime = { exec } as unknown as WorkspaceRuntimeService
+  const locator = { workspaceIdOf: vi.fn(async () => 'ws-1') }
+  const client = { exec } as unknown as WorkspaceServiceClient
   return {
     service: new ToolWorkerService(
       new ToolExecutorRegistry(
-        new BashExecutor(runtime, config, logger),
+        new BashExecutor(locator as never, client, config, logger),
         new WebFetchExecutor(config, logger),
         new WebSearchExecutor(config, logger),
         new WebRequestExecutor(config, logger),
         new MemoryExecutor({} as MemoryService, {} as MemoryRepository),
-        new FileExecutor({} as FileService, {}, logger),
+        new FileExecutor({} as FileService, {}, logger, {
+          workspaceIdOf: async () => null,
+        } as never),
         new ReadToolResultExecutor({} as RedisStore, {} as Db, config, logger),
       ),
       logger,
@@ -102,13 +100,13 @@ describe('ToolWorkerService：bash 执行', () => {
     expect(outcome.ok).toBe(true)
     expect(exec).toHaveBeenCalledTimes(1)
     const arg = exec.mock.calls[0]![0] as {
-      cwd: string
-      workspaceRoot: string
-      timeoutMs: number
-      maxOutputBytes: number
+      workspaceId: string
+      cwd?: string
+      timeoutMs?: number
+      maxOutputBytes?: number
     }
-    expect(arg.workspaceRoot).toBe('/tmp/billy-common-capability-test/c-1')
-    expect(arg.cwd).toBe('/tmp/billy-common-capability-test/c-1')
+    expect(arg.workspaceId).toBe('ws-1')
+    expect(arg.cwd).toBeUndefined()
     expect(arg.timeoutMs).toBe(15_000)
     expect(arg.maxOutputBytes).toBe(64 * 1024)
   })

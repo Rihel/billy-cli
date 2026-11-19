@@ -298,6 +298,8 @@ export const AgentConversationSchema = z.object({
   /** 子会话深度（根 0，子 1） */
   depth: z.number().int().nonnegative().optional(),
   title: z.string(),
+  /** 所属工作区（执行环境）；迁移期可为空 */
+  workspaceId: z.string().nullable().optional(),
   /** 状态：见 ConversationStatus 字典 */
   status: z.string(),
   /**
@@ -337,6 +339,8 @@ export const AgentConversationCreateSchema = z.object({
   title: z.string().max(200).optional(),
   /** 文件权限；省略用默认值（可写） */
   fileAccess: AgentFileAccessSchema.optional(),
+  /** 工作区；省略用当前主体的默认工作区 */
+  workspaceId: z.string().min(1).max(20).optional(),
 })
 
 export type AgentConversationCreateDto = z.infer<typeof AgentConversationCreateSchema>

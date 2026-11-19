@@ -65,6 +65,7 @@ export class ServiceInvoker {
       version: 1 as const,
       requestId,
       tool: found.capability.tool,
+      ...(request.workspaceId ? { workspaceId: request.workspaceId } : {}),
       input: request.input,
       reason: request.reason ?? '',
       caller: request.caller,

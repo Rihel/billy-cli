@@ -35,7 +35,10 @@ const build = () => {
   const files = {
     list: vi.fn(async () => ({ files: [] })),
   } as unknown as FileService
-  return { executor: new FileExecutor(files, {}, logger), files }
+  return {
+    executor: new FileExecutor(files, {}, logger, { workspaceIdOf: async () => null } as never),
+    files,
+  }
 }
 
 describe('FileExecutor（直连 FileService）', () => {

@@ -3,6 +3,9 @@ packages:
   - 'apps/*'
 allowBuilds:
   bcrypt: true
+  # dockerode 的可选依赖：只用本地 socket，不需要 SSH 连接 / native 构建
+  ssh2: false
+  cpu-features: false
   esbuild: true
   lefthook: true
   protobufjs: true

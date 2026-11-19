@@ -1,6 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common'
-import type { ConversationEntity } from '@repo/db'
-import { AppLogger, requestContext, type PageQueryResult } from '@repo/kits'
+import { AiWorkspaceEntity, type ConversationEntity } from '@repo/db'
+import { AppLogger, Db, requestContext, type PageQueryResult } from '@repo/kits'
 import { RunStatus } from '@repo/shared'
 import type {
   AgentConversationCreateDto,
@@ -52,6 +52,7 @@ export class AiAdminConversationService {
     @Inject(AiUsageService) private readonly usage: AiUsageService,
     @Inject(AiModelService) private readonly models: AiModelService,
     @Inject(AppLogger) private readonly logger: AppLogger,
+    @Inject(Db) private readonly db: Db,
   ) {}
 
   /**
@@ -78,8 +79,20 @@ export class AiAdminConversationService {
   async create(input: AgentConversationCreateDto): Promise<AgentConversationModel> {
     const ownerId = this.ownerId()
     const agentKey = await this.agents.resolveAgentKey(input.agentKey)
+    // 会话是过程，工作区是场所：新会话默认绑到该主体的默认工作区
+    const workspace = input.workspaceId
+      ? await this.db
+          .getRepository(AiWorkspaceEntity)
+          .findOne({ where: { id: input.workspaceId, ownerId }, select: { id: true } })
+      : await this.db
+          .getRepository(AiWorkspaceEntity)
+          .findOne({
+            where: { ownerType: 'admin', ownerId, isDefault: true },
+            select: { id: true },
+          })
     const conversation = await this.conversations.create({
       userId: ownerId,
+      workspaceId: workspace?.id ?? null,
       agentKey,
       title: input.title ?? '',
       // 只决定沙箱内的写权限；"要不要沙箱"是部署配置

@@ -27,6 +27,7 @@ export const toConversationModel = (
   kind: record.kind,
   depth: record.depth,
   title: record.title,
+  workspaceId: record.workspaceId ?? null,
   status: record.status,
   fileAccess: record.fileAccess === 'read-only' ? 'read-only' : 'workspace-write',
   turnCount: record.turnCount,

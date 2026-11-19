@@ -67,6 +67,7 @@ export const createRemoteToolInvoker = (
               rootAgentKey: input.caller.rootAgentKey,
               depth: input.caller.depth,
             },
+            ...(input.workspaceId ? { workspaceId: input.workspaceId } : {}),
             deadlineMs: input.deadlineMs,
             ...(input.toolCallId ? { idempotencyKey: input.toolCallId } : {}),
           },

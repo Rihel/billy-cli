@@ -155,6 +155,10 @@ import {
   GatewayUsageSummaryQueryDto,
   AgentUsageSummaryQueryDto,
   AgentUsageRangeDto,
+  WorkspaceModel,
+  WorkspaceCreateDto,
+  WorkspaceUpdateDto,
+  WorkspaceIdDto,
 } from '@repo/shared'
 import { HttpClient, HttpStreamClient, type HttpClientOptions } from '@repo/http-client'
 import type { BearerTokenCredentials, CredentialsManager } from '@repo/http-client'
@@ -815,6 +819,25 @@ export class ServerClient extends HttpClient<BearerTokenCredentials> {
     /** 服务级授权：覆盖式设置某个管理员可用的外部服务/MCP */
     setGrants: (data: ServiceGrantSetDto) =>
       this.post<ServiceGrantModel[]>('/ai-capability/grants/set', data),
+  }
+
+  /* ========== 工作区（AI 执行环境） ========== */
+
+  workspace = {
+    /** 当前管理员的工作区（含实时运行态） */
+    list: () => this.post<WorkspaceModel[]>('/ai-workspace/list', {}),
+
+    create: (data: WorkspaceCreateDto) => this.post<WorkspaceModel>('/ai-workspace/create', data),
+
+    update: (data: WorkspaceUpdateDto) => this.post<WorkspaceModel>('/ai-workspace/update', data),
+
+    remove: (data: WorkspaceIdDto) => this.post<{ removed: boolean }>('/ai-workspace/remove', data),
+
+    /** 拉起容器（desired_status → running） */
+    start: (data: WorkspaceIdDto) => this.post<WorkspaceModel>('/ai-workspace/start', data),
+
+    /** 停止容器（desired_status → stopped） */
+    stop: (data: WorkspaceIdDto) => this.post<WorkspaceModel>('/ai-workspace/stop', data),
   }
 
   /* ========== 登录设备（会话） ========== */

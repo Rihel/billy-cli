@@ -45,6 +45,8 @@ export const ToolInvokeRequestSchema = z.object({
   caller: ToolCallerSchema,
   /** 工作区 / 文件归属的根会话；子会话共享父工作区时传父 id */
   workspaceConversationId: z.string().min(1).optional(),
+  /** 会话绑定的工作区（优先于 workspaceConversationId 推导） */
+  workspaceId: z.string().min(1).max(20).optional(),
   /** 网关合并后的生效配置；worker 只读，不落库、不进日志 */
   settings: ToolRuntimeSettingsSchema.optional(),
   /** 本次调用的墙钟上限（含排队）；网关与 worker 都不能超过它（5 分钟命令 + 传输余量） */

@@ -62,6 +62,14 @@ export class ConversationEntity extends AuditEntity {
   title = ''
 
   /**
+   * 所属工作空间（执行环境）。迁移期可空；稳定后 NOT NULL。
+   *
+   * 会话是**过程**，工作空间是**场所**：一个会话恒有一个工作空间（`docs/design/workspace.md`）。
+   */
+  @Column({ name: 'workspace_id', type: 'varchar', length: 20, nullable: true })
+  workspaceId: string | null = null
+
+  /**
    * 本会话的**文件权限**：`workspace-write`（默认）/ `read-only`。
    *
    * 只决定"沙箱内能不能写工作区"；能不能出沙箱是部署配置（`AGENT_WORKSPACE_MODE`），

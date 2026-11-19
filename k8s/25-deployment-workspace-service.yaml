@@ -1,0 +1,73 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: billy-workspace-service
+  namespace: billy
+  labels:
+    app.kubernetes.io/name: billy-workspace-service
+    app.kubernetes.io/component: workspace-service
+spec:
+  # ⚠️ 固定 1 副本：运行态（handle 映射 + 容器标签）在执行面内存里，
+  # 多副本会各自管理同一批 Pod、重复回收。要横向扩，先把运行态做成分区 / 一致性租约。
+  replicas: 1
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  minReadySeconds: 5
+  progressDeadlineSeconds: 600
+  revisionHistoryLimit: 5
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: billy-workspace-service
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: billy-workspace-service
+        app.kubernetes.io/component: workspace-service
+    spec:
+      serviceAccountName: billy-workspace-service
+      terminationGracePeriodSeconds: 60
+      containers:
+        - name: workspace-service
+          image: billy-workspace-service:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 9995
+          envFrom:
+            - configMapRef:
+                name: billy-shared
+            - configMapRef:
+                name: billy-workspace-service
+            - secretRef:
+                name: billy-app
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 20
+            periodSeconds: 20
+            timeoutSeconds: 3
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: '1'
+              memory: 512Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            runAsNonRoot: true
+            capabilities:
+              drop: ['ALL']

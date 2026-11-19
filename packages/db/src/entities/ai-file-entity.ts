@@ -19,11 +19,16 @@ import { Column, Entity, Index } from 'typeorm'
 @Entity('ai_files')
 @Index('uk_ai_file_path', ['conversationId', 'path'], { unique: true })
 @Index('idx_ai_file_conversation', ['conversationId', 'updatedAt'])
+@Index('idx_ai_file_workspace', ['workspaceId', 'updatedAt'])
 @Index('idx_ai_file_source', ['conversationId', 'source'])
 export class AiFileEntity extends BaseEntity {
   /** 所属会话（逻辑引用，无物理外键） */
   @Column({ name: 'conversation_id', type: 'varchar', length: 20 })
   conversationId!: string
+
+  /** 所属工作空间（`docs/design/workspace.md`：文件归属从会话迁到工作空间；迁移期可空） */
+  @Column({ name: 'workspace_id', type: 'varchar', length: 20, nullable: true })
+  workspaceId: string | null = null
 
   /** 来源：见 `FileSource` 字典（user / ai） */
   @Column({ name: 'source', type: 'varchar', length: 8, default: 'ai' })

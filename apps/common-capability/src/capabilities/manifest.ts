@@ -20,7 +20,8 @@ export const COMMON_SERVICE = {
 /** 执行器实例 → 服务定义（能力按各执行器的声明顺序聚合） */
 export const buildCommonService = (executors: readonly object[]): ServiceDefinition => ({
   ...COMMON_SERVICE,
-  capabilities: executors.flatMap((executor) =>
-    scanCapabilities(executor).map((scanned) => scanned.decl),
-  ),
+  capabilities: executors
+    .flatMap((executor) => scanCapabilities(executor).map((scanned) => scanned.decl))
+    // 执行位置在工作区的能力由 workspace-service 登记，common 不重复登记（避免跨服务重名 409）
+    .filter((decl) => decl.execution?.where !== 'workspace'),
 })

@@ -57,6 +57,7 @@ export const MENU_ITEMS: MenuItem[] = [
       { label: '技能库', key: '/main/ai/skills', icon: SparklesIcon },
       { label: '记忆', key: '/main/ai/memories', icon: BrainIcon },
       { label: '文件管理', key: '/main/ai/files', icon: FolderOpenIcon },
+      { label: '工作区', key: '/main/ai/workspaces', icon: BoxesIcon },
       { label: '能力服务', key: '/main/ai/capabilities', icon: BoxesIcon },
       { label: '服务授权', key: '/main/ai/authorizations', icon: ShieldCheckIcon },
       { label: '审计与复盘', key: '/main/ai/audit', icon: HistoryIcon },

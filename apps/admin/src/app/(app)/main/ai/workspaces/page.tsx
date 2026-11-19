@@ -1,0 +1,234 @@
+'use client'
+
+import { useState } from 'react'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import type { WorkspaceBackend, WorkspaceModel } from '@repo/shared'
+import {
+  Button,
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  Input,
+  Label,
+  PageToolbar,
+  Tag,
+  toastError,
+  toastSuccess,
+} from '@repo/ui'
+import { BoxesIcon, PlayIcon, PlusIcon, SquareIcon, Trash2Icon } from 'lucide-react'
+import { useServerClient } from '@/lib/server-client'
+
+const fail = (error: unknown): void =>
+  toastError(error instanceof Error ? error.message : String(error))
+
+const BACKEND_LABEL: Record<WorkspaceBackend, string> = {
+  local: '本地',
+  container: '容器',
+  microvm: 'MicroVM',
+}
+
+/**
+ * 工作区（`/main/ai/workspaces`）：AI 执行环境的控制面。
+ *
+ * 口径（见 `docs/design/workspace.md` §7）：
+ * - 这里的「启动 / 停止」只写**期望状态**并调执行面；容器实际是否在跑看卡片上的实时标签；
+ * - 每个管理员创建时自动有一条默认工作区，默认工作区不能删；
+ * - 空闲 2 小时后执行面会回收容器（实际状态变化，不回写期望状态）。
+ */
+export default function WorkspacesPage() {
+  const client = useServerClient()
+  const queryClient = useQueryClient()
+  const [createOpen, setCreateOpen] = useState(false)
+  const [name, setName] = useState('')
+  const [backend, setBackend] = useState<WorkspaceBackend>('container')
+
+  const { data = [], isLoading } = useQuery({
+    queryKey: ['workspaces'],
+    queryFn: () => client.workspace.list(),
+  })
+
+  const invalidate = (): Promise<void> =>
+    queryClient.invalidateQueries({ queryKey: ['workspaces'] })
+
+  const create = useMutation({
+    mutationFn: () => client.workspace.create({ name: name.trim() || undefined, backend }),
+    onSuccess: async () => {
+      toastSuccess('工作区已创建')
+      setCreateOpen(false)
+      setName('')
+      await invalidate()
+    },
+    onError: fail,
+  })
+
+  const start = useMutation({
+    mutationFn: (id: string) => client.workspace.start({ id }),
+    onSuccess: async () => {
+      toastSuccess('已启动')
+      await invalidate()
+    },
+    onError: fail,
+  })
+
+  const stop = useMutation({
+    mutationFn: (id: string) => client.workspace.stop({ id }),
+    onSuccess: async () => {
+      toastSuccess('已停止')
+      await invalidate()
+    },
+    onError: fail,
+  })
+
+  const remove = useMutation({
+    mutationFn: (id: string) => client.workspace.remove({ id }),
+    onSuccess: async () => {
+      toastSuccess('已删除')
+      await invalidate()
+    },
+    onError: fail,
+  })
+
+  const busy = start.isPending || stop.isPending || remove.isPending
+
+  return (
+    <div className="flex flex-col gap-4">
+      <PageToolbar
+        title="工作区"
+        description="AI 执行环境：会话在里面跑命令、读写文件。容器按需启动，空闲 2 小时后回收。"
+        extra={
+          <Button onClick={() => setCreateOpen(true)}>
+            <PlusIcon className="size-4" />
+            新建工作区
+          </Button>
+        }
+      />
+
+      {isLoading ? (
+        <p className="text-sm text-muted-foreground">加载中…</p>
+      ) : data.length === 0 ? (
+        <p className="text-sm text-muted-foreground">还没有工作区，点右上角新建一个。</p>
+      ) : (
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+          {data.map((item) => (
+            <WorkspaceCard
+              key={item.id}
+              item={item}
+              busy={busy}
+              onStart={(id) => start.mutate(id)}
+              onStop={(id) => stop.mutate(id)}
+              onRemove={(id) => remove.mutate(id)}
+            />
+          ))}
+        </div>
+      )}
+
+      <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>新建工作区</DialogTitle>
+          </DialogHeader>
+          <div className="flex flex-col gap-4">
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="workspace-name">名称</Label>
+              <Input
+                id="workspace-name"
+                value={name}
+                onChange={(event) => setName(event.target.value)}
+                placeholder="例如：数据分析"
+              />
+            </div>
+            <div className="flex flex-col gap-2">
+              <Label>执行后端</Label>
+              <div className="flex gap-2">
+                {(['container', 'local'] as const).map((value) => (
+                  <Button
+                    key={value}
+                    type="button"
+                    size="sm"
+                    variant={backend === value ? 'default' : 'outline'}
+                    onClick={() => setBackend(value)}
+                  >
+                    {BACKEND_LABEL[value]}
+                  </Button>
+                ))}
+              </div>
+              <p className="text-xs text-muted-foreground">
+                容器：隔离执行，云端默认；本地：自托管单机，走 L1 沙箱。
+              </p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setCreateOpen(false)}>
+              取消
+            </Button>
+            <Button onClick={() => create.mutate()} disabled={create.isPending}>
+              创建
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  )
+}
+
+function WorkspaceCard({
+  item,
+  busy,
+  onStart,
+  onStop,
+  onRemove,
+}: {
+  item: WorkspaceModel
+  busy: boolean
+  onStart: (id: string) => void
+  onStop: (id: string) => void
+  onRemove: (id: string) => void
+}) {
+  const running = item.runtime.state === 'running'
+  const stateLabel = running
+    ? '运行中'
+    : item.desiredStatus === 'running'
+      ? '启动中'
+      : item.runtime.state === 'unknown'
+        ? '不可用'
+        : '已停止'
+  return (
+    <div className="rounded-lg border border-border p-4">
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2">
+            <BoxesIcon className="size-4 shrink-0 text-muted-foreground" />
+            <span className="truncate font-medium">{item.name}</span>
+            {item.isDefault ? <Tag>默认</Tag> : null}
+          </div>
+          <p className="mt-1 truncate text-xs text-muted-foreground">
+            {BACKEND_LABEL[item.backend]} · {item.image ?? '默认镜像'} ·{' '}
+            {item.fileAccess === 'write' ? '可写' : '只读'}
+          </p>
+        </div>
+        <Tag>{stateLabel}</Tag>
+      </div>
+      <div className="mt-3 flex items-center gap-2">
+        {running ? (
+          <Button size="sm" variant="outline" onClick={() => onStop(item.id)} disabled={busy}>
+            <SquareIcon className="size-3.5" />
+            停止
+          </Button>
+        ) : (
+          <Button size="sm" onClick={() => onStart(item.id)} disabled={busy}>
+            <PlayIcon className="size-3.5" />
+            启动
+          </Button>
+        )}
+        {item.isDefault ? null : (
+          <Button size="sm" variant="ghost" onClick={() => onRemove(item.id)} disabled={busy}>
+            <Trash2Icon className="size-3.5" />
+            删除
+          </Button>
+        )}
+      </div>
+    </div>
+  )
+}

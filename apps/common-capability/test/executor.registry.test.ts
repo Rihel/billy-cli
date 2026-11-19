@@ -35,6 +35,10 @@ const config: ToolWorkerConfigValue = {
 
 const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn() } as unknown as AppLogger
 const runtime = { exec: vi.fn() } as unknown as WorkspaceRuntimeService
+const locator = { workspaceIdOf: vi.fn(async () => 'ws-1') }
+const client = {
+  exec: runtime.exec,
+} as unknown as import('@repo/internal-sdk').WorkspaceServiceClient
 
 const request = (toolKey: string): ToolInvokeRequest => ({
   version: 1,
@@ -56,12 +60,12 @@ const request = (toolKey: string): ToolInvokeRequest => ({
 describe('ToolExecutorRegistry', () => {
   it('注册 bash，并按 key 分发', async () => {
     const registry = new ToolExecutorRegistry(
-      new BashExecutor(runtime, config, logger),
+      new BashExecutor(locator as never, client, config, logger),
       new WebFetchExecutor(config, logger),
       new WebSearchExecutor(config, logger),
       new WebRequestExecutor(config, logger),
       new MemoryExecutor({} as MemoryService, {} as MemoryRepository),
-      new FileExecutor({} as FileService, {}, logger),
+      new FileExecutor({} as FileService, {}, logger, { workspaceIdOf: async () => null } as never),
       new ReadToolResultExecutor({} as RedisStore, {} as Db, config, logger),
     )
     // 顺序 = 各执行器里 @CapabilityDecl 的声明顺序（扫描绑定，不手抄清单）
@@ -90,12 +94,12 @@ describe('ToolExecutorRegistry', () => {
 
   it('未注册的工具返回 undefined（由 service 翻成 unsupported-tool）', () => {
     const registry = new ToolExecutorRegistry(
-      new BashExecutor(runtime, config, logger),
+      new BashExecutor(locator as never, client, config, logger),
       new WebFetchExecutor(config, logger),
       new WebSearchExecutor(config, logger),
       new WebRequestExecutor(config, logger),
       new MemoryExecutor({} as MemoryService, {} as MemoryRepository),
-      new FileExecutor({} as FileService, {}, logger),
+      new FileExecutor({} as FileService, {}, logger, { workspaceIdOf: async () => null } as never),
       new ReadToolResultExecutor({} as RedisStore, {} as Db, config, logger),
     )
     expect(registry.get('plan-create')).toBeUndefined()

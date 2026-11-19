@@ -36,7 +36,8 @@ import {
 import type { Response } from 'express'
 import { AdminAuthGuard } from '../../admin/admin-auth.guard.js'
 import { AnyAuthGuard } from '../../auth/index.js'
-import { requestContext } from '@repo/kits'
+import { Db, requestContext } from '@repo/kits'
+import { ConversationEntity } from '@repo/db'
 import { AiAdminConversationService } from '../conversation/conversation.service.js'
 
 /** 会话页右栏「文件」tab：工作区、文本预览、admin 文件页 */
@@ -46,6 +47,7 @@ export class AiFileController {
   constructor(
     @Inject(FileService) private readonly files: FileService,
     @Inject(AiAdminConversationService) private readonly conversations: AiAdminConversationService,
+    @Inject(Db) private readonly db: Db,
   ) {}
 
   @Post('workspace')
@@ -58,7 +60,7 @@ export class AiFileController {
   ) {
     await this.conversations.requireOwned(input.conversationId)
     try {
-      return await this.files.workspaceFiles(this.context(input.conversationId), {
+      return await this.files.workspaceFiles(await this.context(input.conversationId), {
         includeCaches: input.includeCaches,
         // 右栏文件树要**一次成型**：分页的半棵树会让用户以为文件少了（模型工具另走分页）
         all: true,
@@ -80,7 +82,7 @@ export class AiFileController {
     await this.conversations.requireOwned(input.conversationId)
     try {
       return await this.files.previewText(
-        this.context(input.conversationId),
+        await this.context(input.conversationId),
         input.path,
         input.source ?? 'ai',
       )
@@ -96,7 +98,7 @@ export class AiFileController {
   ) {
     await this.conversations.requireOwned(input.conversationId)
     try {
-      return await this.files.workspaceLink(this.context(input.conversationId), input)
+      return await this.files.workspaceLink(await this.context(input.conversationId), input)
     } catch (error) {
       this.rethrow(error)
     }
@@ -144,7 +146,7 @@ export class AiFileController {
     try {
       await this.conversations.requireOwned(input.conversationId)
       const content = await this.files.workspaceContent(
-        this.context(input.conversationId),
+        await this.context(input.conversationId),
         input.path,
         input.download === '1',
       )
@@ -159,6 +161,25 @@ export class AiFileController {
         )}`,
       )
       const match = range?.match(/^bytes=(\d*)-(\d*)$/)
+      // 执行面（容器）没有本地路径：字节已经在内存里，直接切 Range 返回
+      if (content.body) {
+        const buf = content.body
+        if (match && buf.length > 0) {
+          const start = match[1] ? Number(match[1]) : 0
+          const end = match[2] ? Number(match[2]) : buf.length - 1
+          const safeEnd = Math.min(end, buf.length - 1)
+          if (start <= safeEnd) {
+            response.status(206)
+            response.setHeader('Content-Range', `bytes ${start}-${safeEnd}/${buf.length}`)
+            response.setHeader('Content-Length', String(safeEnd - start + 1))
+            response.end(buf.subarray(start, safeEnd + 1))
+            return
+          }
+        }
+        response.setHeader('Content-Length', String(buf.length))
+        response.end(buf)
+        return
+      }
       if (match && content.size > 0) {
         const start = match[1] ? Number(match[1]) : 0
         const end = match[2] ? Number(match[2]) : content.size - 1
@@ -182,11 +203,16 @@ export class AiFileController {
     }
   }
 
-  private context(conversationId: string): FileContext {
+  /** 上下文里带上工作区 id：文件树 / 预览才能读到容器内的文件（读不到时回落本地根） */
+  private async context(conversationId: string): Promise<FileContext> {
     const userId = requestContext.get('userId') ?? null
     const adminId = requestContext.get('adminId') ?? null
+    const row = await this.db
+      .getRepository(ConversationEntity)
+      .findOne({ where: { id: conversationId }, select: { workspaceId: true } })
     return {
       conversationId,
+      ...(row?.workspaceId ? { workspaceId: row.workspaceId } : {}),
       userId: userId ?? adminId,
       isAdmin: Boolean(adminId) && !userId,
       runId: null,

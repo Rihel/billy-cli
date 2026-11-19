@@ -1,0 +1,42 @@
+# workspace-service 的 RBAC：它要创建 / 删除 / exec 工作区 Pod。
+#
+# 最小权限：只对带 `app=billy-workspace` 标签的 Pod 做 get/list/watch/create/delete，
+# 以及 pods/exec 的 create。不要给 deployments / services 等其它资源。
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: billy-workspace-service
+  namespace: billy
+  labels:
+    app.kubernetes.io/name: billy-workspace-service
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: billy-workspace-service
+  namespace: billy
+  labels:
+    app.kubernetes.io/name: billy-workspace-service
+rules:
+  - apiGroups: ['']
+    resources: ['pods']
+    verbs: ['get', 'list', 'watch', 'create', 'delete']
+  - apiGroups: ['']
+    resources: ['pods/exec']
+    verbs: ['create', 'get']
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: billy-workspace-service
+  namespace: billy
+  labels:
+    app.kubernetes.io/name: billy-workspace-service
+subjects:
+  - kind: ServiceAccount
+    name: billy-workspace-service
+    namespace: billy
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: billy-workspace-service

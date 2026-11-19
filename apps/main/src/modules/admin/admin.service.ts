@@ -25,6 +25,7 @@ import type {
 import { Inject, Injectable } from '@nestjs/common'
 import { InvalidOldPasswordError, InvalidTokenError } from '../auth/errors.js'
 import { toAdmin, AdminRepository } from './admin.repository.js'
+import { WorkspaceAdminService } from '../ai-admin/workspace/workspace.service.js'
 import {
   AdminDisabledError,
   AdminEmailTakenError,
@@ -44,6 +45,7 @@ export class AdminService {
     @Inject(TokenSigner) private readonly tokenSigner: TokenSigner,
     @Inject(SessionStore) private readonly sessionStore: SessionStore,
     @Inject(AppLogger) private readonly logger: AppLogger,
+    @Inject(WorkspaceAdminService) private readonly workspaces: WorkspaceAdminService,
   ) {}
 
   async login(input: AdminLoginDto): Promise<AdminAuthResultModel> {
@@ -102,6 +104,13 @@ export class AdminService {
     if (existing) throw new AdminEmailTakenError(input.email)
     const hashed = await this.passwordHasher.hash(input.password)
     const admin = toAdmin(await this.adminRepository.create({ ...input, password: hashed }))
+    // 默认工作区：建号即建记录（容器懒启动）。失败不阻塞建号，补偿任务会补。
+    await this.workspaces.ensureDefault(admin.id).catch((error: unknown) => {
+      this.logger.warn('admin.default_workspace_failed', {
+        id: admin.id,
+        reason: error instanceof Error ? error.message : String(error),
+      })
+    })
     this.logger.log('admin.created', { id: admin.id })
     return admin
   }

@@ -1,0 +1,69 @@
+# ─────────────────────────────────────────────
+# billy-workspace：AI 执行环境镜像（会话里跑命令 / 读写文件的地方）。
+#
+# 与 workspace-service 镜像不是一回事：
+# - workspace-service：执行面**服务**（9995），管容器生命周期；
+# - billy-workspace：**被管的工作区容器**，只提供 shell / 运行时 / git。
+#
+# 运行时口径：
+# - Python 3.13（python:3.13-slim-bookworm）
+# - Node 26（从 node:26-bookworm-slim 多阶段注入；两者同为 Debian bookworm，glibc 一致）
+# - pnpm 12（corepack）
+#
+# 构建（在仓库根目录；国内网络用代理把 host.docker.internal 指到宿主代理）：
+#   docker build -f docker/Dockerfile.workspace-image \
+#     --build-arg HTTP_PROXY=http://host.docker.internal:7897 \
+#     --build-arg HTTPS_PROXY=http://host.docker.internal:7897 \
+#     -t billy-workspace:2026.11.0 docker
+#
+# 设计口径（docs/design/workspace.md §9）：
+# - Debian slim（glibc，pip / node-gyp 装包坑少），不是 Alpine；
+# - 只放「能装」的最小集，其余由 AI 在环境里 apt/pip/npm 按需安装；
+# - 容器内是 root：`apt-get install` 要用；隔离靠容器边界，不靠容器内降权。
+# ─────────────────────────────────────────────
+FROM node:26-bookworm-slim AS node
+
+FROM python:3.13-slim-bookworm
+
+ENV DEBIAN_FRONTEND=noninteractive
+ENV LANG=C.UTF-8
+ENV LC_ALL=C.UTF-8
+
+# 从 Node 26 镜像注入 node / npm / corepack（都是 Debian bookworm，动态链接兼容）
+COPY --from=node /usr/local/bin/node /usr/local/bin/node
+COPY --from=node /usr/local/lib/node_modules /usr/local/lib/node_modules
+RUN ln -sf /usr/local/lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm \
+  && ln -sf /usr/local/lib/node_modules/npm/bin/npx-cli.js /usr/local/bin/npx
+
+# apt 走国内源直连（代理对 deb.debian.org 会 502）；corepack 阶段仍走 build-arg 代理
+RUN unset http_proxy https_proxy HTTP_PROXY HTTPS_PROXY \
+  && sed -i 's|deb.debian.org|mirrors.aliyun.com|g' /etc/apt/sources.list.d/debian.sources \
+  && apt-get update \
+  && apt-get install -y --no-install-recommends \
+    bash \
+    coreutils \
+    findutils \
+    grep \
+    sed \
+    gawk \
+    tar \
+    gzip \
+    unzip \
+    curl \
+    wget \
+    ca-certificates \
+    libatomic1 \
+    git \
+    jq \
+    less \
+  && rm -rf /var/lib/apt/lists/*
+
+# pnpm 12：npm 全局安装（走 build 时的 HTTP(S)_PROXY）
+RUN npm i -g pnpm@12
+
+# 工作区根：workspace-service 的 fs / exec 都锚定这里（container 后端固定 /workspace）
+RUN mkdir -p /workspace
+WORKDIR /workspace
+
+# 缺省常驻命令；driver 会覆盖成同样的值（单独 `docker run` 调试时也能起）
+CMD ["sleep", "infinity"]
