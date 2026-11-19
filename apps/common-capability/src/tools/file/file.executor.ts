@@ -110,8 +110,13 @@ export class FileExecutor {
 
   @CapabilityDecl({
     tool: 'file-submit',
-    title: '提交文件',
-    description: '把文件提交到对象存储',
+    title: '提交文件到会话',
+    description: [
+      '把 workspace 里的一个文件提交为本会话的 AI 生成文件（上传对象存储，用户可预览 / 下载）。',
+      '用户上传的原文件已经自动进文件树，不要重复提交；修改后的新文件换一个 fileKey 再提交。',
+      'filePath 传 workspace 路径，fileKey 传会话内路径（不得以 uploads/ 开头）；工具自动拼 userId 与会话 id。',
+      '同一个 fileKey 再提交会覆盖旧版本。不要提交密钥、凭据或工作区之外的文件。',
+    ].join('\n'),
     risk: 'write',
     input: SubmitInputSchema,
   })
@@ -121,8 +126,12 @@ export class FileExecutor {
 
   @CapabilityDecl({
     tool: 'file-download',
-    title: '下载文件',
-    description: '把对象存储里的文件拉到工作区',
+    title: '下载会话文件到工作区',
+    description: [
+      '把本会话的文件从对象存储下载到 workspace，返回本地路径；不返回内容。',
+      '入站附件通常已经物化到 uploads/，会直接命中缓存；AI 文件下载到 files/。',
+      '大文件下载后用 read-file 分页读；编辑用 write-file / replace-file / append-file，不要直接改 files/ 缓存。',
+    ].join('\n'),
     risk: 'write',
     input: DownloadInputSchema,
   })

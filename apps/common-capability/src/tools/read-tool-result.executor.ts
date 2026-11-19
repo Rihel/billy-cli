@@ -21,8 +21,16 @@ export class ReadToolResultExecutor {
 
   @CapabilityDecl({
     tool: 'read-tool-result',
-    title: '取工具结果下一页',
-    description: '按句柄取分页结果',
+    title: '读取工具结果的下一页',
+    description: [
+      '读取某个工具结果的后续页（结果太大时只给了你一页）。',
+      '',
+      '什么时候用：出参里有 page 与 handle，而你需要后面的内容。',
+      '什么时候不用：第一页够用就别取 —— 每次取页都花 token。',
+      '',
+      '约束：取到的是原文片段（没有摘要），自己判断该看哪一页；',
+      '同一个 handle 可以反复取（结果已入库），但每轮取页次数有上限。',
+    ].join('\n'),
     input: z.object({
       handle: z.string().min(1).max(128).describe('上一页给出的取页句柄'),
       page: z.number().int().positive().optional().describe('要取的页码'),

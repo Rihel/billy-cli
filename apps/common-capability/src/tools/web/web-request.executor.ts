@@ -202,8 +202,16 @@ export class WebRequestExecutor {
 
   @CapabilityDecl({
     tool: 'web-request',
-    title: '请求 HTTP 接口',
-    description: '直接发一个 HTTP 请求，用于 JSON 接口、需要 POST 或自定义头的场景。',
+    title: '发起 HTTP 请求（JSON API / 自定义方法与头）',
+    description: [
+      '发起一次 HTTP 请求（GET / POST / PUT / PATCH / DELETE / HEAD / OPTIONS），按页返回状态码、响应头与响应体。',
+      '',
+      '用在：目标是接口 —— JSON API、要 POST、要看状态码、要自定义头、要读 RSS / XML。',
+      '不用：只是读网页 → web-fetch（它会把 HTML 洗成 Markdown）。',
+      '',
+      '非 2xx 不算失败，状态码与响应体照样返回。续页用 ref + page。',
+      '只请求需要的接口；不要外发响应里的凭据。',
+    ].join('\n'),
     risk: 'write',
     input: z.object({
       url: z.string().min(1).max(2048).optional().describe('请求地址；首次请求必填'),
