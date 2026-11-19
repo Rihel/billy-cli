@@ -222,16 +222,22 @@ export class FileService implements OnApplicationBootstrap, OnApplicationShutdow
     return relPath(this.workspaceOf(ctx), target)
   }
 
+  /** 端口路径：工作区根是空串，契约要求非空 → 统一成 `.` */
+  private portPath(ctx: FileContext, target: string): string {
+    const rel = this.relPath(ctx, target)
+    return rel === '' ? '.' : rel
+  }
+
   private async readBytesOf(ctx: FileContext, target: string): Promise<Buffer> {
     if (this.fsPort && ctx.workspaceId) {
-      return this.fsPort.readBytes(ctx.workspaceId, this.relPath(ctx, target))
+      return this.fsPort.readBytes(ctx.workspaceId, this.portPath(ctx, target))
     }
     return readFile(target)
   }
 
   private async writeBytesOf(ctx: FileContext, target: string, body: Buffer): Promise<void> {
     if (this.fsPort && ctx.workspaceId) {
-      await this.fsPort.writeBytes(ctx.workspaceId, this.relPath(ctx, target), body)
+      await this.fsPort.writeBytes(ctx.workspaceId, this.portPath(ctx, target), body)
       return
     }
     await mkdir(dirname(target), { recursive: true })
@@ -240,14 +246,14 @@ export class FileService implements OnApplicationBootstrap, OnApplicationShutdow
 
   private async readTextOf(ctx: FileContext, target: string): Promise<string> {
     if (this.fsPort && ctx.workspaceId) {
-      return this.fsPort.readText(ctx.workspaceId, this.relPath(ctx, target))
+      return this.fsPort.readText(ctx.workspaceId, this.portPath(ctx, target))
     }
     return readFile(target, 'utf8')
   }
 
   private async writeTextOf(ctx: FileContext, target: string, content: string): Promise<void> {
     if (this.fsPort && ctx.workspaceId) {
-      await this.fsPort.writeText(ctx.workspaceId, this.relPath(ctx, target), content)
+      await this.fsPort.writeText(ctx.workspaceId, this.portPath(ctx, target), content)
       return
     }
     await mkdir(dirname(target), { recursive: true })
@@ -256,7 +262,7 @@ export class FileService implements OnApplicationBootstrap, OnApplicationShutdow
 
   private async appendTextOf(ctx: FileContext, target: string, content: string): Promise<void> {
     if (this.fsPort && ctx.workspaceId) {
-      await this.fsPort.appendText(ctx.workspaceId, this.relPath(ctx, target), content)
+      await this.fsPort.appendText(ctx.workspaceId, this.portPath(ctx, target), content)
       return
     }
     await mkdir(dirname(target), { recursive: true })
@@ -269,7 +275,7 @@ export class FileService implements OnApplicationBootstrap, OnApplicationShutdow
   ): Promise<{ isDirectory(): boolean; isFile(): boolean; size: number; mtime: Date } | null> {
     if (this.fsPort && ctx.workspaceId) {
       try {
-        const info = await this.fsPort.stat(ctx.workspaceId, this.relPath(ctx, target))
+        const info = await this.fsPort.stat(ctx.workspaceId, this.portPath(ctx, target))
         return {
           isDirectory: () => info.type === 'dir',
           isFile: () => info.type === 'file',
@@ -368,7 +374,7 @@ export class FileService implements OnApplicationBootstrap, OnApplicationShutdow
       conversationId: ctx.conversationId,
       path: input.filePath,
     })
-    const info = await stat(filePath).catch(() => null)
+    const info = await this.statOf(ctx, filePath)
     if (!info?.isFile()) {
       throw new FileDeniedError('invalid-input', `不是普通文件：${input.filePath}`)
     }
@@ -389,7 +395,7 @@ export class FileService implements OnApplicationBootstrap, OnApplicationShutdow
     }
 
     return this.locks.run(`${ctx.conversationId}:${fileKey}`, async () => {
-      const body = await readFile(filePath)
+      const body = await this.readBytesOf(ctx, filePath)
       const digest = sha256(body)
       const existing = await this.files.find(ctx.conversationId, fileKey)
       if (existing?.sha256 === digest) {
@@ -485,10 +491,10 @@ export class FileService implements OnApplicationBootstrap, OnApplicationShutdow
       path: input.filePath ?? defaultPath,
       allowMissing: true,
     })
-    const existing = await stat(target).catch(() => null)
+    const existing = await this.statOf(ctx, target)
     if (existing?.isFile()) {
       if (row.sha256) {
-        const current = sha256(await readFile(target))
+        const current = sha256(await this.readBytesOf(ctx, target))
         if (current === row.sha256) {
           return {
             fileKey: row.path,
@@ -524,8 +530,7 @@ export class FileService implements OnApplicationBootstrap, OnApplicationShutdow
         true,
       )
     }
-    await mkdir(dirname(target), { recursive: true })
-    await this.atomicWrite(target, object.body)
+    await this.writeBytesOf(ctx, target, object.body)
     return {
       fileKey: row.path,
       key: row.key,
@@ -815,19 +820,21 @@ export class FileService implements OnApplicationBootstrap, OnApplicationShutdow
       }
     }
 
-    const startInfo = await stat(start).catch(() => null)
+    const startInfo = await this.statOf(ctx, start)
     if (!startInfo) {
       if (!input.pathPrefix) return { items: [], total: 0, hasMore: false, depthLimited: false }
       throw new FileDeniedError('invalid-input', `目录不存在：${input.pathPrefix}`)
     }
     if (startInfo.isDirectory()) await walk(start, 0)
     else if (offset === 0 && !isNoiseFile(displayName(start))) {
-      const info = await stat(start)
-      items.push({
-        path: relPath(root, start),
-        bytes: info.size,
-        mtime: info.mtime.toISOString(),
-      })
+      const info = await this.statOf(ctx, start)
+      if (info) {
+        items.push({
+          path: relPath(root, start),
+          bytes: info.size,
+          mtime: info.mtime.toISOString(),
+        })
+      }
     }
 
     return { items, total: items.length, hasMore, depthLimited }
@@ -850,9 +857,9 @@ export class FileService implements OnApplicationBootstrap, OnApplicationShutdow
       allowMissing: true,
     }).catch(() => null)
     if (!target) return null
-    const info = await stat(target).catch(() => null)
+    const info = await this.statOf(ctx, target)
     if (!info?.isFile()) return null
-    const body = await readFile(target).catch(() => null)
+    const body = await this.readBytesOf(ctx, target).catch(() => null)
     if (!body) return null
     let lines = 0
     for (const byte of body) if (byte === 0x0a) lines += 1

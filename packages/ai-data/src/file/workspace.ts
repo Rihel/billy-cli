@@ -71,6 +71,12 @@ export const resolveWorkspacePath = async (input: {
     throw new FileDeniedError('invalid-input', `文件路径必须在本会话工作区内（${root}）`)
   }
 
+  // 本地根不存在 = 文件真身在执行面（容器 / 远程）：不做本地 realpath，只保留相对路径校验
+  const rootExists = await stat(root)
+    .then(() => true)
+    .catch(() => false)
+  if (!rootExists && inside(root, target)) return target
+
   const probe = input.allowMissing ? await nearestExisting(target) : target
   let real: string
   try {
