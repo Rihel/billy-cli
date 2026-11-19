@@ -1,3 +1,4 @@
+import dedent from 'dedent'
 import { Inject, Injectable } from '@nestjs/common'
 import {
   AppendFileInputSchema,
@@ -76,10 +77,10 @@ export class FileExecutor {
   @CapabilityDecl({
     tool: 'file-list',
     title: '列出会话文件',
-    description: [
-      '列出本会话的文件（用户上传 + AI 生成），按更新时间倒序返回元数据；不返回文件内容。',
-      '不确定有哪些文件、或忘了 fileKey 时用。只看 workspace 里的文件用 workspace-files。',
-    ].join('\n'),
+    description: dedent`
+      列出本会话的文件（用户上传 + AI 生成），按更新时间倒序返回元数据；不返回文件内容。
+      不确定有哪些文件、或忘了 fileKey 时用。只看 workspace 里的文件用 workspace-files。
+    `,
     input: ListInputSchema,
     execution: { mode: 'sync', where: 'workspace' },
   })
@@ -90,11 +91,11 @@ export class FileExecutor {
   @CapabilityDecl({
     tool: 'read-file',
     title: '分页读取工作区文件',
-    description: [
-      '分页读 workspace 里的文本文件；默认 200 行 / 16KB，offset 是 1-based 行号，返回 totalLines / hasMore / nextOffset。',
-      '大文件不要一次读完：先用 file-search 在整个工作区定位行号，再用 offset 读那一段。',
-      '只读文本；二进制用 bash / python。路径必须在本会话 workspace 内。',
-    ].join('\n'),
+    description: dedent`
+      分页读 workspace 里的文本文件；默认 200 行 / 16KB，offset 是 1-based 行号，返回 totalLines / hasMore / nextOffset。
+      大文件不要一次读完：先用 file-search 在整个工作区定位行号，再用 offset 读那一段。
+      只读文本；二进制用 bash / python。路径必须在本会话 workspace 内。
+    `,
     input: ReadFileInputSchema,
     execution: { mode: 'sync', where: 'workspace' },
   })
@@ -106,11 +107,11 @@ export class FileExecutor {
   @CapabilityDecl({
     tool: 'write-file',
     title: '写入工作区文件',
-    description: [
-      '把完整内容写入 workspace 文件（整文件覆盖）；父目录自动创建。',
-      '局部改用 replace-file，末尾追加用 append-file。只写文本；单次内容上限 10MB（超大内容分段写 / 追加）。',
-      '路径必须在本会话 workspace 内；不要写 files/ 缓存（会被重新下载覆盖）。',
-    ].join('\n'),
+    description: dedent`
+      把完整内容写入 workspace 文件（整文件覆盖）；父目录自动创建。
+      局部改用 replace-file，末尾追加用 append-file。只写文本；单次内容上限 10MB（超大内容分段写 / 追加）。
+      路径必须在本会话 workspace 内；不要写 files/ 缓存（会被重新下载覆盖）。
+    `,
     risk: 'write',
     input: WriteFileInputSchema,
     execution: { mode: 'sync', where: 'workspace' },
@@ -123,11 +124,11 @@ export class FileExecutor {
   @CapabilityDecl({
     tool: 'append-file',
     title: '追加工作区文件内容',
-    description: [
-      '把内容追加到 workspace 文件末尾；文件不存在则创建。不会自动补换行。',
-      '要改中间用 replace-file，要整文件覆盖用 write-file。',
-      '只写文本；追加后不能超过单文件上限；路径必须在本会话 workspace 内。',
-    ].join('\n'),
+    description: dedent`
+      把内容追加到 workspace 文件末尾；文件不存在则创建。不会自动补换行。
+      要改中间用 replace-file，要整文件覆盖用 write-file。
+      只写文本；追加后不能超过单文件上限；路径必须在本会话 workspace 内。
+    `,
     risk: 'write',
     input: AppendFileInputSchema,
     execution: { mode: 'sync', where: 'workspace' },
@@ -140,11 +141,11 @@ export class FileExecutor {
   @CapabilityDecl({
     tool: 'replace-file',
     title: '替换工作区文件内容',
-    description: [
-      '在 workspace 文本文件里做精确字符串替换（不是正则）；默认要求 oldText 唯一匹配。',
-      '大文件先用 file-search 定位，再拿更长的唯一片段替换。',
-      '只改文本；单次内容上限 10MB；路径必须在本会话 workspace 内。',
-    ].join('\n'),
+    description: dedent`
+      在 workspace 文本文件里做精确字符串替换（不是正则）；默认要求 oldText 唯一匹配。
+      大文件先用 file-search 定位，再拿更长的唯一片段替换。
+      只改文本；单次内容上限 10MB；路径必须在本会话 workspace 内。
+    `,
     risk: 'write',
     input: ReplaceFileInputSchema,
     execution: { mode: 'sync', where: 'workspace' },
@@ -200,12 +201,12 @@ export class FileExecutor {
   @CapabilityDecl({
     tool: 'workspace-files',
     title: '列出工作区文件',
-    description: [
-      '列出 workspace 里的文件，扁平列表（不是树）；默认不显示 files/ 下载缓存与 uploads/ 入站副本。',
-      '返回相对路径 / 大小 / mtime，可直接给 read-file / replace-file；要搜索内容用 file-search。',
-      '只看会话文件（OSS）用 file-list。一页 500 条：hasMore=true 时带 offset 翻下一页。',
-      '自动跳过 node_modules / .git 等依赖与构建目录。',
-    ].join('\n'),
+    description: dedent`
+      列出 workspace 里的文件，扁平列表（不是树）；默认不显示 files/ 下载缓存与 uploads/ 入站副本。
+      返回相对路径 / 大小 / mtime，可直接给 read-file / replace-file；要搜索内容用 file-search。
+      只看会话文件（OSS）用 file-list。一页 500 条：hasMore=true 时带 offset 翻下一页。
+      自动跳过 node_modules / .git 等依赖与构建目录。
+    `,
     input: WorkspaceFilesInputSchema,
     execution: { mode: 'sync', where: 'workspace' },
   })
@@ -217,11 +218,11 @@ export class FileExecutor {
   @CapabilityDecl({
     tool: 'file-search',
     title: '搜索工作区文件内容',
-    description: [
-      '在整个 workspace 的文本文件里搜关键词；空格分隔多个关键词（同一行必须全部出现），返回文件路径 + 行号 + 行内容。',
-      '大文件先搜后读：拿到行号后用 read-file 的 offset 读上下文。',
-      '跳过二进制 / 软链 / 依赖目录；结果有上限。',
-    ].join('\n'),
+    description: dedent`
+      在整个 workspace 的文本文件里搜关键词；空格分隔多个关键词（同一行必须全部出现），返回文件路径 + 行号 + 行内容。
+      大文件先搜后读：拿到行号后用 read-file 的 offset 读上下文。
+      跳过二进制 / 软链 / 依赖目录；结果有上限。
+    `,
     input: FileSearchInputSchema,
     execution: { mode: 'sync', where: 'workspace' },
   })

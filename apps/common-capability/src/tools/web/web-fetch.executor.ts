@@ -1,3 +1,4 @@
+import dedent from 'dedent'
 import { Inject, Injectable } from '@nestjs/common'
 import { z } from 'zod'
 import { AppLogger } from '@repo/kits'
@@ -210,15 +211,15 @@ export class WebFetchExecutor {
   @CapabilityDecl({
     tool: 'web-fetch',
     title: '抓取网页（转 Markdown，按页读）',
-    description: [
-      '抓取一个网页，HTML 转成 Markdown 后按页返回。',
-      '',
-      '用在：答案在某个网页上（文档 / 公告 / 文章），但你手上没有、或可能过时。',
-      '不用：要调 JSON 接口、要 POST → web-request；登录 / 强反爬站点抓不到，别反复试。',
-      '',
-      '读法：document 是全文规模（字符/行/页），content 是本页，页脚写"共几页 / 第几页 / 还剩几页"。',
-      '续页用 ref + page；via 非空 = 正文被反爬拦了，走的是官方摘要接口（是摘要，不是全文）。',
-    ].join('\n'),
+    description: dedent`
+      抓取一个网页，HTML 转成 Markdown 后按页返回。
+
+      用在：答案在某个网页上（文档 / 公告 / 文章），但你手上没有、或可能过时。
+      不用：要调 JSON 接口、要 POST → web-request；登录 / 强反爬站点抓不到，别反复试。
+
+      读法：document 是全文规模（字符/行/页），content 是本页，页脚写"共几页 / 第几页 / 还剩几页"。
+      续页用 ref + page；via 非空 = 正文被反爬拦了，走的是官方摘要接口（是摘要，不是全文）。
+    `,
     input: z.object({
       url: z.string().min(1).max(2048).optional().describe('要抓的网页地址；首次抓取必填'),
       ref: z

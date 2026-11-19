@@ -1,3 +1,4 @@
+import dedent from 'dedent'
 import { Inject, Injectable } from '@nestjs/common'
 import { z } from 'zod'
 import { AppLogger } from '@repo/kits'
@@ -64,13 +65,13 @@ export class WebSearchExecutor {
   @CapabilityDecl({
     tool: 'web-search',
     title: '搜索网页（先找来源，再读）',
-    description: [
-      '搜索网页：给关键词，返回按相关度排序的来源清单（标题 / 链接 / 摘要 / 发布时间 / 权威度）。',
-      '',
-      '用在：确实不知道答案在哪个网页上，或要多个来源交叉核对。',
-      '',
-      'score ≥ 1.5 为优质，authority ≥ 3 为极权威。',
-    ].join('\n'),
+    description: dedent`
+      搜索网页：给关键词，返回按相关度排序的来源清单（标题 / 链接 / 摘要 / 发布时间 / 权威度）。
+
+      用在：确实不知道答案在哪个网页上，或要多个来源交叉核对。
+
+      score ≥ 1.5 为优质，authority ≥ 3 为极权威。
+    `,
     input: z.object({
       query: z.string().min(1).max(128).describe('搜索词'),
       count: z.number().int().min(1).max(20).default(8).describe('返回多少条（1~20）'),

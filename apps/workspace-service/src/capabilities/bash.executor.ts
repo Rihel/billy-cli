@@ -1,3 +1,4 @@
+import dedent from 'dedent'
 import { Inject, Injectable } from '@nestjs/common'
 import { z } from 'zod'
 import { CapabilityDecl, CapabilityGroup, findCapabilityDecl } from '@repo/capability'
@@ -27,20 +28,20 @@ export class BashExecutor {
   @CapabilityDecl({
     tool: 'bash',
     title: '执行 bash 命令',
-    description: [
-      '在工作区里执行一条命令行命令，拿到退出码、stdout 与 stderr。',
-      '',
-      '什么时候用：答案只能靠真实执行得到（跑脚本 / 测试、计算、取当前时间）。',
-      '',
-      '什么时候不用：能直接回答的、要用户拍板的、需要持续输入的。',
-      '',
-      '不要读平台源码、配置、密钥、环境变量或数据库：不属于用户任务。',
-      '',
-      '执行环境：命令在会话绑定的工作区里跑（容器或本地沙箱），只能访问工作区目录；',
-      '实际以出参 runtime 为准。',
-      '',
-      '约束：命令要幂等；输出用管道 head / grep 收窄。',
-    ].join('\n'),
+    description: dedent`
+      在工作区里执行一条命令行命令，拿到退出码、stdout 与 stderr。
+
+      什么时候用：答案只能靠真实执行得到（跑脚本 / 测试、计算、取当前时间）。
+
+      什么时候不用：能直接回答的、要用户拍板的、需要持续输入的。
+
+      不要读平台源码、配置、密钥、环境变量或数据库：不属于用户任务。
+
+      执行环境：命令在会话绑定的工作区里跑（容器或本地沙箱），只能访问工作区目录；
+      实际以出参 runtime 为准。
+
+      约束：命令要幂等；输出用管道 head / grep 收窄。
+    `,
     input: z.object({
       command: z.string().min(1).max(2_000).describe('要执行的整条命令行'),
       cwd: z.string().min(1).max(512).optional().describe('工作目录（相对工作区根）'),

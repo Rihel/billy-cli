@@ -25,6 +25,7 @@
     "@repo/kits": "workspace:*",
     "@repo/shared": "workspace:*",
     "@repo/web-runtime": "workspace:*",
+    "dedent": "^1.7.2",
     "dotenv": "^18.0.9",
     "reflect-metadata": "^0.2.2",
     "zod": "^4.6.7"

@@ -638,6 +638,9 @@ importers:
       '@repo/web-runtime':
         specifier: workspace:*
         version: link:../../packages/web-runtime
+      dedent:
+        specifier: ^1.7.2
+        version: 1.7.2
       dotenv:
         specifier: ^18.0.9
         version: 18.0.9
@@ -972,6 +975,9 @@ importers:
       '@repo/kits':
         specifier: workspace:*
         version: link:../../packages/kits
+      dedent:
+        specifier: ^1.7.2
+        version: 1.7.2
       dockerode:
         specifier: ^5.0.1
         version: 5.0.1(supports-color@7.2.0)
