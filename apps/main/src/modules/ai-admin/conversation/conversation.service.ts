@@ -84,12 +84,10 @@ export class AiAdminConversationService {
       ? await this.db
           .getRepository(AiWorkspaceEntity)
           .findOne({ where: { id: input.workspaceId, ownerId }, select: { id: true } })
-      : await this.db
-          .getRepository(AiWorkspaceEntity)
-          .findOne({
-            where: { ownerType: 'admin', ownerId, isDefault: true },
-            select: { id: true },
-          })
+      : await this.db.getRepository(AiWorkspaceEntity).findOne({
+          where: { ownerType: 'admin', ownerId, isDefault: true },
+          select: { id: true },
+        })
     const conversation = await this.conversations.create({
       userId: ownerId,
       workspaceId: workspace?.id ?? null,
