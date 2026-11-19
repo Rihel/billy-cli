@@ -35,3 +35,6 @@ k8s/secret.yaml
 
 # 视频制作工程（本地产物：素材、预览、成片，不入库）
 opus-video/
+
+# Monaco 静态资源（build 时由 scripts/copy-monaco.mjs 生成）
+apps/admin/public/monaco/

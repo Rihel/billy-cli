@@ -6,7 +6,7 @@
   "type": "module",
   "scripts": {
     "dev": "next dev --port 9845",
-    "build": "next build",
+    "build": "node scripts/copy-monaco.mjs && next build",
     "start": "node ../../scripts/start-standalone.ts admin 9845",
     "sync:vendor": "node scripts/sync-vendor.ts",
     "typecheck": "tsc --noEmit",
@@ -45,6 +45,7 @@
     "immer": "^11.2.9",
     "lodash": "^4.18.1",
     "lucide-react": "^1.70.0",
+    "monaco-editor": "^0.57.0",
     "next": "16.4.6",
     "pptx-preview": "1.0.7",
     "react": "^19.3.1",

@@ -45,6 +45,6 @@ export const config = {
    * 被拦到登录页就完全失去意义。注意写 `s/` 而不是 `s`，避免误伤 `/s...` 开头的其它路径。
    */
   matcher: [
-    '/((?!_next/static|_next/image|favicon.ico|icon.svg|apple-icon.png|opengraph-image|twitter-image|api|s/).*)',
+    '/((?!_next/static|_next/image|favicon.ico|icon.svg|apple-icon.png|opengraph-image|twitter-image|monaco/|api|s/).*)',
   ],
 }
