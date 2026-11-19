@@ -435,8 +435,19 @@ function WorkspaceRowView({
   onPreview: (file: AgentWorkspaceFile) => void
   onDownload: (file: AgentWorkspaceFile) => void
 }) {
-  // 缩进代替原来递归嵌套的 `border-l` 竖线：虚拟化后每行独立挂载，跨行画竖线会断成一段一段
-  const indent = 6 + row.depth * 12
+  // 缩进 + 每级一条竖线：虚拟化后每行独立挂载，竖线画在行内（绝对定位）才能随行连续
+  const indent = 10 + row.depth * 20
+  const guides =
+    row.depth > 0
+      ? Array.from({ length: row.depth }, (_, level) => (
+          <span
+            key={level}
+            aria-hidden
+            className="pointer-events-none absolute inset-y-0 border-l border-border/70"
+            style={{ left: 20 + level * 20 }}
+          />
+        ))
+      : null
   if (row.type === 'dir') {
     const open = !collapsed.has(row.path)
     return (
@@ -446,8 +457,9 @@ function WorkspaceRowView({
         title={open ? '收起' : '展开'}
         onClick={() => onToggle(row.path)}
         style={{ paddingLeft: indent }}
-        className="flex w-full items-center gap-1.5 rounded py-1 pr-1.5 text-left text-xs text-muted-foreground hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+        className="relative flex w-full items-center gap-1.5 rounded py-1 pr-1.5 text-left text-xs text-muted-foreground hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
       >
+        {guides}
         <ChevronDownIcon
           className={cn('size-3.5 shrink-0 transition-transform', !open && '-rotate-90')}
         />
@@ -462,13 +474,16 @@ function WorkspaceRowView({
   const file = row.file
   if (!file) return null
   return (
-    <FileRow
-      name={row.name}
-      bytes={file.bytes}
-      indent={indent}
-      onPreview={() => onPreview(file)}
-      onDownload={() => onDownload(file)}
-    />
+    <div className="relative">
+      {guides}
+      <FileRow
+        name={row.name}
+        bytes={file.bytes}
+        indent={indent}
+        onPreview={() => onPreview(file)}
+        onDownload={() => onDownload(file)}
+      />
+    </div>
   )
 }
 
