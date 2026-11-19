@@ -113,7 +113,15 @@ export class WorkspaceInvokeController {
     if (decl.execution?.mode === 'task') {
       const snapshot = await this.tasks.start(converted, decl.execution?.yieldMs ?? 45_000)
       if (snapshot.state === 'running') {
-        return { version: 1, ok: true, task: { taskId: snapshot.id } }
+        return {
+          version: 1,
+          ok: true,
+          task: {
+            id: snapshot.id,
+            state: 'running',
+            ...(snapshot.data === undefined ? {} : { data: snapshot.data }),
+          },
+        }
       }
       if (snapshot.state === 'succeeded') {
         return { version: 1, ok: true, data: snapshot.result?.data }
