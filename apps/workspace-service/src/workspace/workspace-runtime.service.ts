@@ -52,11 +52,14 @@ export class WorkspaceRuntime {
     @Inject(SandboxRuntime) private readonly sandbox: SandboxRuntime,
     @Inject(WorkspaceServiceConfig) private readonly config: WorkspaceServiceConfigValue,
     @Inject(AppLogger) private readonly logger: AppLogger,
+    /** 只给测试注入用；生产不传，按配置自建 */
+    driver?: ContainerDriver,
   ) {
     this.driver =
-      this.config.containerRuntime === 'kubernetes'
+      driver ??
+      (this.config.containerRuntime === 'kubernetes'
         ? new KubernetesDriver(this.config.kubectlBin, this.config.k8sNamespace)
-        : new DockerDriver()
+        : new DockerDriver())
   }
 
   async ensure(workspaceId: string): Promise<WorkspaceStatusResponse> {
@@ -93,9 +96,52 @@ export class WorkspaceRuntime {
     return { removed: true }
   }
 
+  /**
+   * 认领孤儿容器：把「DB 里是 container 后端、实际在跑、但内存里没有 handle」的容器登记回来。
+   *
+   * 为什么必须有：进程重启（发版 / 被调度走）之后 `handles` 是空的，容器却还在跑。
+   * 不认领的话 `reapIdle` 永远扫不到它们，会一直占着内存和 CPU 到下一次有人用它为止。
+   *
+   * `lastUsedAt` 取「现在」而不是容器的启动时间：多活一个 idle 窗口是可接受的，
+   * 把一个正在跑命令的容器当成闲置的杀掉不可以。
+   */
+  async reconcile(now = Date.now()): Promise<number> {
+    const ids = await this.repo.listContainerWorkspaceIds()
+    let adopted = 0
+    for (const id of ids) {
+      if (this.handles.has(id)) continue
+      const name = this.containerName(id)
+      const info = await this.driver
+        .inspect(name)
+        .catch((): { running: boolean; startedAt?: number } => ({ running: false }))
+      if (!info.running) continue
+      this.handles.set(id, {
+        workspaceId: id,
+        backend: 'container',
+        root: CONTAINER_WORKDIR,
+        containerName: name,
+        startedAt: info.startedAt ?? now,
+        lastUsedAt: now,
+      })
+      adopted += 1
+      this.logger.info('workspace.container.adopted', {
+        workspaceId: id,
+        containerId: name,
+        startedAt: info.startedAt,
+      })
+    }
+    return adopted
+  }
+
   /** 回收器：超过 idleTimeout 的 handle 停止容器；`idleTimeoutMs <= 0` 表示常驻不回收 */
   async reapIdle(now = Date.now()): Promise<number> {
     if (this.config.idleTimeoutMs <= 0) return 0
+    // 先认领再回收：否则重启后已在跑的容器永远扫不到，也永远不回收
+    await this.reconcile(now).catch((error: unknown) => {
+      this.logger.warn('workspace.reconcile.failed', {
+        reason: error instanceof Error ? error.message : String(error),
+      })
+    })
     let reaped = 0
     for (const [id, handle] of this.handles) {
       if (now - handle.lastUsedAt < this.config.idleTimeoutMs) continue

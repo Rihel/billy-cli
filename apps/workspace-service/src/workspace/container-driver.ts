@@ -41,6 +41,13 @@ export interface ContainerStartInput {
  */
 export interface ContainerDriver {
   readonly kind: 'docker' | 'kubernetes'
+  /**
+   * 只读探测：容器在不在跑、什么时候起的。
+   *
+   * **不产生副作用**（不创建、不唤醒），所以回收器用它认领孤儿容器是安全的：
+   * `ensure` 会把已销毁的环境重新拉起来，用它探活等于每次都把所有工作区唤醒一遍。
+   */
+  inspect(name: string): Promise<{ running: boolean; startedAt?: number }>
   exists(name: string): Promise<boolean>
   start(input: ContainerStartInput): Promise<void>
   exec(
@@ -105,13 +112,22 @@ export class DockerDriver implements ContainerDriver {
     this.docker = new Docker({ socketPath })
   }
 
-  async exists(name: string): Promise<boolean> {
+  async inspect(name: string): Promise<{ running: boolean; startedAt?: number }> {
     try {
-      await this.docker.getContainer(name).inspect()
-      return true
+      const info = await this.docker.getContainer(name).inspect()
+      const startedAt = info.State?.StartedAt ? Date.parse(info.State.StartedAt) : Number.NaN
+      return {
+        running: Boolean(info.State?.Running),
+        ...(Number.isFinite(startedAt) ? { startedAt } : {}),
+      }
     } catch {
-      return false
+      // 容器不存在（或 daemon 暂时不可达）：当作没在跑，回收器下一轮再看
+      return { running: false }
     }
+  }
+
+  async exists(name: string): Promise<boolean> {
+    return (await this.inspect(name)).running
   }
 
   async start(input: ContainerStartInput): Promise<void> {
@@ -198,9 +214,30 @@ export class KubernetesDriver implements ContainerDriver {
     return this.namespace ? ['-n', this.namespace] : []
   }
 
+  async inspect(name: string): Promise<{ running: boolean; startedAt?: number }> {
+    const out = await run(
+      this.bin,
+      [
+        'get',
+        'pod',
+        name,
+        ...this.ns(),
+        '-o',
+        'jsonpath={.status.phase}|{.metadata.creationTimestamp}',
+      ],
+      10_000,
+    )
+    if (out.code !== 0) return { running: false }
+    const [phase, created] = out.stdout.trim().split('|')
+    const startedAt = created ? Date.parse(created) : Number.NaN
+    return {
+      running: phase === 'Running',
+      ...(Number.isFinite(startedAt) ? { startedAt } : {}),
+    }
+  }
+
   async exists(name: string): Promise<boolean> {
-    const out = await run(this.bin, ['get', 'pod', name, ...this.ns(), '-o', 'name'], 10_000)
-    return out.code === 0 && out.stdout.trim().length > 0
+    return (await this.inspect(name)).running
   }
 
   async start(input: ContainerStartInput): Promise<void> {

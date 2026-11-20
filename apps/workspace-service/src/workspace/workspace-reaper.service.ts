@@ -20,6 +20,18 @@ export class WorkspaceReaper implements OnApplicationBootstrap, OnApplicationShu
   ) {}
 
   onApplicationBootstrap(): void {
+    // 进程刚起来时内存里没有任何 handle：先把还在跑的容器认领回来，再开始定时回收。
+    // 不认领的话它们永远不进 handles，也就永远扫不到（见 WorkspaceRuntime.reconcile）。
+    void this.runtime.reconcile().then(
+      (count) => {
+        if (count > 0) this.logger.info('workspace.reconcile.adopted', { count })
+      },
+      (error: unknown) => {
+        this.logger.warn('workspace.reconcile.failed', {
+          reason: error instanceof Error ? error.message : String(error),
+        })
+      },
+    )
     this.timer = setInterval(() => {
       void this.runtime.reapIdle().then(
         (count) => {

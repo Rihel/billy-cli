@@ -27,4 +27,17 @@ export class WorkspaceRepository {
       fileAccess: row.fileAccess as WorkspaceConfig['fileAccess'],
     }
   }
+
+  /**
+   * 列出所有 container 后端的工作区 id（只取 id）。
+   *
+   * 回收器用它做「孤儿认领」：进程重启后内存里的 handle 没了，但容器还在跑，
+   * 得从 DB 反查出候选集，再逐个探测容器是否真的在跑。
+   */
+  async listContainerWorkspaceIds(): Promise<string[]> {
+    const rows = await this.db
+      .getRepository(AiWorkspaceEntity)
+      .find({ where: { backend: 'container' }, select: { id: true } })
+    return rows.map((row) => row.id)
+  }
 }
