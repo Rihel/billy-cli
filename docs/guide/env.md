@@ -273,6 +273,35 @@ capability-gateway / workspace-service，两侧令牌必须同值。下列寻址
 | `ADMIN_PASSWORD` | `admin123` | 首个管理员密码（首次登录后尽快改） | 仅 seed:admin |
 | `ADMIN_REAL_NAME` | `超级管理员` | 首个管理员显示名 | 仅 seed:admin |
 
+`seed:admin` 建出来的是**超级管理员**（`admins.type='god'`）：邮箱已存在时只把类型升为 `god`、
+不覆盖密码，因此超管被误删后可以用同一条命令恢复。
+
+### 个人凭据加密（`personal_credentials`）
+
+| 变量 | 默认 | 说明 | 必填 |
+| --- | --- | --- | --- |
+| `PERSONAL_CREDENTIAL_KEY` | 空 | 主密钥简写：32 字节 base64（等价于 `v1:<base64>`） | 二选一 |
+| `PERSONAL_CREDENTIAL_KEYS` | 空 | 多把密钥：`v1:<base64>,v2:<base64>`，用于轮换期间新旧共存 | 二选一 |
+| `PERSONAL_CREDENTIAL_KEY_CURRENT` | `v1` | **写入**用哪一把；解密永远按密文自带的 keyId | 可选 |
+
+生成本地密钥：`node -e "console.log(require('node:crypto').randomBytes(32).toString('base64'))"`。
+凭据解析接口 `POST /internal/credentials/resolve` 用 `TOOL_INTERNAL_TOKEN` 鉴权（与网关 / 执行面同值），
+不单独引入新令牌。
+配了但长度不对会**拒绝启动**（长度错等于强度错）；一把都没配则允许启动，但凭据写入会明确报错。
+生产必须配，且放 Secret（不要放 ConfigMap）。
+
+### 超管种子（启动期，见 `AdminSeedService`）
+
+| 变量 | 默认 | 说明 | 必填 |
+| --- | --- | --- | --- |
+| `ADMIN_SEED_FROM_ENV` | `true` | 是否允许用 `GOD_ADMIN_*` 做启动期超管种子 | 可选 |
+| `GOD_ADMIN_EMAIL` | 空 | 首个超管邮箱；与密码成对才生效 | 不配=不种子 |
+| `GOD_ADMIN_PASSWORD` | 空 | 首个超管密码（≥6 位，不达标则跳过并告警） | 不配=不种子 |
+
+触发条件：开关为真、两个变量都非空、库里**没有存活超管**；若曾经有超管但已被删（含软删计数 > 0），
+只打告警不自动重建（避免覆盖运维意图，恢复走 `pnpm seed:admin`）。失败不阻塞启动。
+生产环境放 Secret，不要放 ConfigMap。
+
 ---
 
 ## agent-runtime
@@ -356,7 +385,6 @@ agent loop 执行侧：会话编排 / 工具面 / 上下文 / 技能 / 子 agent
 
 | 变量 | 默认 | 说明 | 必填 |
 | --- | --- | --- | --- |
-| `AGENT_SKILLS_DIRS` | `~/.agents/skills` | 额外技能目录（逗号分隔，仓库内置 catalog 之外） | 可选 |
 | `AGENT_SKILLS_LIBRARY_DIR` | `~/.billy/skills` | 技能库落盘目录（DB 是事实源；启动会清掉库里不存在的技能目录，**不要**指向 `~/.agents/skills`） | 可选 |
 | `GITHUB_TOKEN` | 空 | 技能链接导入用；读取时兼容 `GH_TOKEN` | 不配=未启用 |
 
@@ -784,7 +812,7 @@ AGENT_FILE_MAX_BYTES AGENT_FILE_MAX_FILES AGENT_FILE_MAX_TOTAL_BYTES AGENT_FILE_
 AGENT_FILE_PAGE_LINES_MAX AGENT_FILE_READ_MAX_BYTES AGENT_FILE_SEARCH_MAX_BYTES
 AGENT_FILE_SEARCH_MAX_FILES AGENT_FILE_SEARCH_MAX_RESULTS AGENT_FILE_WORKSPACE_MAX_DEPTH
 AGENT_FILE_WORKSPACE_MAX_FILES AGENT_FILE_WRITE_MAX_BYTES AGENT_FIRST_TOKEN_TIMEOUT_MS
-AGENT_HEARTBEAT_TIMEOUT_MS AGENT_MULTI_INSTANCE AGENT_RUN_TIMEOUT_MS AGENT_SKILLS_DIRS
+AGENT_HEARTBEAT_TIMEOUT_MS AGENT_MULTI_INSTANCE AGENT_RUN_TIMEOUT_MS
 AGENT_SKILLS_LIBRARY_DIR AGENT_SUB_AGENT_MAX_DEPTH AGENT_SUB_AGENT_MAX_PER_RUN
 AGENT_SUB_AGENT_MAX_STEPS AGENT_SUB_AGENT_TIMEOUT_MS AGENT_TOOL_MAX_PAGES_PER_TURN
 AGENT_TOOL_PAGE_BYTES_MAX AGENT_WATCHDOG_INTERVAL_MS AGENT_WEB_ALLOW_PRIVATE_NETWORK

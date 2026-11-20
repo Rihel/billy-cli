@@ -1,4 +1,8 @@
 import {
+  MarketItemKeyDto,
+  MarketItemListDto,
+  MarketItemModel,
+  MarketItemSaveDto,
   AiAvailableModelListModel,
   CapabilityServiceIdDto,
   CapabilityServiceListDto,
@@ -40,6 +44,9 @@ import {
   AiSkillImportPreviewResultModel,
   AiSkillImportResultModel,
   AiSkillKeyDto,
+  SkillGrantListDto,
+  SkillGrantModel,
+  SkillGrantSetDto,
   AiSkillListDto,
   AiSkillModel,
   AiMemoryListDto,
@@ -47,6 +54,11 @@ import {
   AiMemoryRemoveDto,
   AiMemoryUpdateDto,
   AiSkillUpdateDto,
+  CredentialBindDto,
+  CredentialIdDto,
+  CredentialListDto,
+  CredentialModel,
+  CredentialUpdateInjectDto,
   AiToolKeyDto,
   AiToolListDto,
   AiToolModel,
@@ -768,6 +780,14 @@ export class ServerClient extends HttpClient<BearerTokenCredentials> {
     /** 从链接导入（skills.sh / GitHub / 直接 Markdown 链接） */
     import: (data: AiSkillImportDto) =>
       this.post<AiSkillImportResultModel>('/ai-skill/import', data),
+
+    /** 平台技能的授权列表（哪些主体能看见它） */
+    listGrants: (data: SkillGrantListDto) =>
+      this.post<SkillGrantModel[]>('/ai-skill/grants/list', data),
+
+    /** 覆盖式设置授权：传进来的就是最终集合，`[]` = 收回全部 */
+    setGrants: (data: SkillGrantSetDto) =>
+      this.post<SkillGrantModel[]>('/ai-skill/grants/set', data),
   }
 
   /* ========== 长期记忆 ========== */
@@ -838,6 +858,52 @@ export class ServerClient extends HttpClient<BearerTokenCredentials> {
 
     /** 停止容器（desired_status → stopped） */
     stop: (data: WorkspaceIdDto) => this.post<WorkspaceModel>('/ai-workspace/stop', data),
+  }
+
+  /* ========== 个人凭据 ========== */
+
+  /**
+   * 个人凭据（**管理员鉴权**，设计 `docs/design/workspace-cli-credentials.md` §6.4）。
+   *
+   * 三条口径：
+   * - **值只进不出**：响应里只有 `config`（明文配置）与 `secretHint`（`root` / `AKID…abcd`），
+   *   任何角色都取不到明文；
+   * - **归属由身份决定**：普通管理员 / 用户只看自己的，超管可看全部元数据；
+   * - **改映射不改值**：改 `inject` 走 `updateInject`，改值必须重新绑定（AAD 与字段绑定）。
+   */
+  aiCredential = {
+    /** 列表：当前身份可见的凭据（超管为全部元数据） */
+    list: (data: CredentialListDto = {}) =>
+      this.post<CredentialModel[]>('/ai-credential/list', data),
+
+    /** 详情（同样不含明文） */
+    detail: (data: CredentialIdDto) => this.post<CredentialModel>('/ai-credential/detail', data),
+
+    /** 绑定：字段值由模板采集，服务端按模板校验后加密入库 */
+    create: (data: CredentialBindDto) => this.post<CredentialModel>('/ai-credential/create', data),
+
+    /** 修改注入映射（文件 / 环境变量规则） */
+    updateInject: (data: CredentialUpdateInjectDto) =>
+      this.post<CredentialModel>('/ai-credential/update-inject', data),
+
+    /** 吊销（置 revoked 并软删；容器内的旧文件由同步流程删除） */
+    remove: (data: CredentialIdDto) =>
+      this.post<{ removed: boolean }>('/ai-credential/remove', data),
+  }
+
+  /* ========== AI 市场 ========== */
+
+  /**
+   * AI 市场（**管理员鉴权**，v1 只做 MCP 区）：
+   * 市场只准备"声明"，不装二进制、不启容器；市场不是白名单。
+   */
+  aiMarket = {
+    list: (data: MarketItemListDto = {}) => this.post<MarketItemModel[]>('/ai-market/list', data),
+
+    /** 收录 / 更新一条 MCP 条目（key 幂等） */
+    save: (data: MarketItemSaveDto) => this.post<MarketItemModel>('/ai-market/save', data),
+
+    remove: (data: MarketItemKeyDto) => this.post<{ removed: boolean }>('/ai-market/remove', data),
   }
 
   /* ========== 登录设备（会话） ========== */

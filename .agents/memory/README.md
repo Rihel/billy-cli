@@ -78,6 +78,11 @@
 | [scaffold-cli-removed](scaffold-cli-removed.md) | 2026-11-09 起没有代码生成器与模板副本，新模块照现有实现手写；守卫为 check:inject / check:mastra / check:ui | 免核 | 2026-11-09 |
 | [product-facts](product-facts.md) | README / 落地页 / pitch 共用的能力数字口径（工具 35 / 能力 20 / skill 28 / 组件 61 / ai-elements 48 / 检查 9；连接器已删除） | 必核 | 2026-11-20 |
 | [ai-tool-key-naming](ai-tool-key-naming.md) | 能力 key = 扁平工具名（`xxx-xxx`），全局唯一；服务是工具的分组（1:N），模型面与 key 相同 | 免核 | 2026-11-18 |
+| [ai-market](ai-market.md) | 市场 v1 只做 MCP 区：`ai_market_items`（key 幂等 upsert）、scope 固定 platform、不装二进制；个人区待开放 | 必核 | 2026-11-20 |
+| [skill-scope-grants](skill-scope-grants.md) | 技能唯一性按可见集合（platform 按 key、personal 按 owner+key）；`ai_skill_grants` 授权表；P9 剩余过滤/种子/删宿主目录 | 必核 | 2026-11-20 |
+| [workspace-setup-stage](workspace-setup-stage.md) | 初始化阶段在 workspace-service：装包→`.agents/`→凭据（走 main resolve）→`.billy/setup.json`；幂等 hash 只覆盖包+技能；env 必须 `sh -c` 整条包装 | 必核 | 2026-11-20 |
+| [credential-envelope](credential-envelope.md) | 凭据密文 `v1:keyId:iv:tag:ct`、AAD 绑行身份防搬运；模板驱动校验/拆分/提示；`personal_credentials` 按 owner+name 唯一 | 必核 | 2026-11-20 |
+| [admin-owner-scope](admin-owner-scope.md) | 归属唯一入口 `currentOwner` / `scopeOf`；管理员类型只认会话（`adminType`），管理员管理挂 GodAdminGuard；超管来自 env 种子 / seed:admin | 必核 | 2026-11-20 |
 | [agent-tool-authorization](agent-tool-authorization.md) | agent 授权是结构化选择器；作用域装配期过滤工具面；子 agent = 父授权 ∩ 全部 − 委派 − deny，并按 caller 过滤 | 必核 | 2026-11-14 |
 | [ui-dialog-escape](ui-dialog-escape.md) | Base UI Dialog 没有 `onEscapeKeyDown`：Esc 要先退全屏 / 不关窗，就在 `onOpenChange` 里看 `details.reason === 'escape-key'` 并 `details.cancel()` | 必核 | 2026-11-15 |
 | [ai-subagent-result-and-wake](ai-subagent-result-and-wake.md) | 结论正文只收 `text`；wait 收口要含「已完成未消费」的子并打「已交付」标记（卡要有人补写）；`subagents/` 只给引擎写 | 必核 | 2026-11-15 |

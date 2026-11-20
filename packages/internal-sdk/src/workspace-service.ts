@@ -4,12 +4,14 @@ import {
   WorkspaceExecResultSchema,
   WorkspaceFsResultSchema,
   WorkspaceStatusResponseSchema,
+  WorkspaceSyncResponseSchema,
   type WorkspaceEnsureResponse,
   type WorkspaceExecRequest,
   type WorkspaceExecResult,
   type WorkspaceFsRequest,
   type WorkspaceFsResult,
   type WorkspaceStatusResponse,
+  type WorkspaceSyncResponse,
 } from '@repo/contracts'
 import { requestJson, type InternalClientOptions, type InvokeOptions } from './http.js'
 
@@ -51,6 +53,24 @@ export class WorkspaceServiceClient {
       method: 'POST',
       body: { workspaceId },
       ...options,
+    })
+  }
+
+  /** 同步凭据 / 技能到**已在运行**的工作区（绝不 ensure：只查不起） */
+  sync(
+    workspaceId: string,
+    credentialVersion?: string,
+    options: InvokeOptions & { skills?: boolean } = {},
+  ): Promise<WorkspaceSyncResponse> {
+    const { skills, ...rest } = options
+    return requestJson(this.options, '/v1/workspaces/sync', WorkspaceSyncResponseSchema, {
+      method: 'POST',
+      body: {
+        workspaceId,
+        ...(credentialVersion ? { credentialVersion } : {}),
+        ...(skills ? { skills } : {}),
+      },
+      ...rest,
     })
   }
 
