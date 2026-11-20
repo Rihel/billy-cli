@@ -16,12 +16,12 @@
 
 容器可随时销毁、可在不同驱动和不同机器上重建，而上述三样必须长期跟随用户。本设计以此为核心约束，将系统划分为**可丢弃的执行层**与**按人持有的声明层**，并通过一个统一的初始化阶段把声明还原成可用的环境。
 
-设计重点在个人凭据：它以「一次初始化落地、变更时同步」的方式工作，而不是每次执行临时注入；它托管的对象限定为**可撤销的授权与可吊销的凭据**，而非不可撤销的原始密钥。
+设计重点在个人凭据：它以「一次初始化落地、变更时同步」的方式工作，而不是每次执行临时注入。托管两类东西——可撤销的 OAuth 授权，以及数据库口令、Redis 口令、云厂商 AK-SK 这类本就没有授权机制的静态凭据；后者只注入工作区，绑定需二次确认。
 
 **核心结论**
 
 1. 执行层（容器、装好的二进制）可丢弃；声明层（凭据、清单、技能）按人持有，永不依赖工作区存活。
-2. 凭据在初始化阶段落地到容器，凭据变更推送到该用户的全部运行中工作区，执行路径上不再查询凭据。
+2. 凭据在初始化阶段落地到容器，凭据变更推送到该用户的全部运行中工作区；**容器内的执行路径不再查询凭据**（平台侧 MCP 调用仍按请求取用）。
 3. CLI 作为生态长尾的接入面，不进入能力网关；平台只负责环境、清单与凭据，不维护 CLI 目录、不逐个子命令声明。
 
 ---
@@ -39,7 +39,7 @@
 | P1 | 技能正文由 Mastra 从宿主机路径读取，带脚本的技能在宿主机执行 | 容器化后这些路径不可见，技能体系断链 | `skill.loader.ts`、`ai.mastra.ts` |
 | P2 | 旧连接器模块（2026-11-18 删除）采用「平台为每个系统手写驱动」 | 无法跟上生态增速；删除后留下 sql / redis / 飞书 CLI 三个缺口 | 连接器模块历史 |
 | P3 | 第三方能力多以 CLI 提供，且普遍为个人账号授权 | 登录态存于本机目录，工作区闲置两小时销毁后丢失，用户需反复授权 | 本设计第 6 节 |
-| P4 | 已安装的 CLI 随容器销毁 | 重建时若由模型按技能重装，首条命令等待以分钟计，且版本不可控 | 本设计 4.5 |
+| P4 | 已安装的 CLI 随容器销毁 | 重建时若由模型按技能重装，首条命令等待以分钟计，且版本不可控 | 本设计 6.3 |
 | P5 | 技能存在三个加载来源，其中含宿主全局目录 | 多租户下会把部署者本地技能注入所有用户上下文 | `AI_SKILLS_DIRS`（默认 `~/.agents/skills`） |
 | P6 | Mastra 自带的 `skill` / `skill_search` / `skill_read` 不经注册机 | 网关无法拦截，缺少开关、限额与审计 | `ai.mastra.ts` |
 
@@ -60,7 +60,7 @@
 | G1 | 资产位置无关 | 任意工作区、任意驱动、任意容器、重建后、换设备，首条命令即可用，无需重新登录或重新配置 |
 | G2 | 执行路径不依赖控制面 | 已在运行的工作区，其命令执行不受控制面可用性影响 |
 | G3 | 身份以正确的主体执行 | 任何一次外部系统操作，可追溯到具体的执行者与凭据，且不可越权 |
-| G4 | 重建成本可控 | 冷启动（含安装依赖）≤ 60 秒；命中缓存 ≤ 5 秒 |
+| G4 | 重建成本可控 | 清单 ≤ 3 个包；冷装 ≤ 90 秒；命中依赖缓存 ≤ 5 秒 |
 | G5 | 生态可接入 | 新增一个 CLI 不需要平台改动；官方支持的工具通过适配器增强 |
 
 G1 可作为全局判据：设计方案冲突时，以更接近 G1 者为准。
@@ -70,9 +70,10 @@ G1 可作为全局判据：设计方案冲突时，以更接近 G1 者为准。
 | 不做 | 原因 |
 | --- | --- |
 | 环境快照与持久化容器 | 快照会成为正确性依赖，引出归档、恢复、白名单、跨天续用等一整套机制；用「声明重放 + 依赖缓存」可达同等效果 |
-| 组织、角色、权限树（RBAC） | 当前为个人级产品；用户级隔离已标记暂缓（见 resource-isolation.md） |
+| 组织、租户与可扩展角色体系 | 当前为个人级产品；管理员只区分 `normal` / `god` 两级，目的是跨主体查看时能归属到具体责任人，不做权限树 |
 | 为 CLI 编写子命令级能力声明 | 等同于把无限供给压回有限供给，是连接器模式失败的原因 |
 | 平台维护 CLI 目录与安装器 | 装什么、什么版本，应由用户声明决定 |
+| 容器网络出口管控 | 可达性由用户防火墙决定；出口黑名单对 IP 可硬拦、对域名只能软拦，收益不足，本期不做 |
 
 ---
 
@@ -105,13 +106,15 @@ G1 可作为全局判据：设计方案冲突时，以更接近 G1 者为准。
 
 ### 4.4 托管边界
 
-平台托管的对象限定为**可撤销的授权**与**可吊销的凭据**：
+托管的目的有两个：**让 AI 能代表这个人执行**，以及**记录这份权限是谁的、谁用过**。后者是安全与排障的基础——出了事要能说清是哪个人、哪次执行。
 
-| 类型 | 是否托管 | 理由 |
+| 类型 | 是否托管 | 边界与理由 |
 | --- | --- | --- |
-| OAuth 授权（access / refresh token） | 是 | 用户可在授权方系统内随时撤销，平台仅持有可失效的凭证 |
-| 静态凭据（API Key / AK-SK / 密码） | 有限支持 | 撤销权在用户，泄露后果由平台与用户共担；仅注入工作区，不供平台服务使用 |
-| 平台自身密钥（MCP 服务凭据、模型供应商 Key） | 不进个人凭据表 | 归属为平台，与个人授权生命周期不同 |
+| OAuth 授权（access / refresh token） | 是 | 用户可在授权方系统内随时撤销；平台只持可失效的凭证 |
+| 静态凭据（数据库口令、Redis 口令、API Key、AK-SK） | 是 | 这类资源本就没有 OAuth，不托管就等于不支持。代价是泄露后无法止损，因此：只注入工作区、不经由平台自带服务使用、绑定需二次确认 |
+| 用户在本平台的登录密码 | 否 | 属于身份认证，存于 `users` 表，不进凭据库 |
+| SSH 私钥 | v1 否 | 输入与轮换的交互成本高，`kind` 已预留 |
+| 平台自身密钥（MCP 服务凭据、模型供应商 Key） | 不进个人表 | 归属为平台，与个人授权的生命周期不同 |
 
 ---
 
@@ -262,15 +265,21 @@ ai_workspaces
 
 ```json
 { "manager": "npm", "spec": "@larksuite/cli@1.2.3", "verify": "lark --version", "cli": "lark" }
+{ "manager": "apt", "spec": "default-mysql-client", "verify": "mysql --version" }
+{ "manager": "apt", "spec": "redis-tools", "verify": "redis-cli --version" }
 ```
+
+后两行是「不接适配器、只装二进制」的例子：数据库与 Redis 客户端不需要命令识别与凭据预检，凭据由模板注入，命令由模型按技能直接写。注意 Redis 客户端在 Debian 里是 `redis-tools`，`redis` 是服务端。
 
 - `spec` 必须锁定版本，否则声明不具备可重放性；
 - `verify` 必填，安装后执行一次，失败即记录明确原因；
-- `cli` 指向代码中的适配器（见 6.4）。无适配器的包仍可安装，仅缺少命令识别、凭据检查与导入能力。
+- `cli` 指向代码中的适配器（见 6.5）。无适配器的包仍可安装，仅缺少命令识别、凭据检查与导入能力。
 
 归属规则：**用户一份默认清单 + 工作区追加**。默认清单保证新工作区零准备可用；工作区追加项仅对该工作区生效。
 
-镜像前提：工作区镜像须保证包管理器可用且源可配置。当前 apt 已配置国内镜像，npm registry 与 pip index 未配置，在国内网络下安装大概率失败，此项属交付前置条件。
+镜像前提：工作区镜像须保证包管理器可用，且源可配成国内镜像。当前镜像（`billy-workspace:2026.11.1`）已内置 Python 3.13、Node 26、pnpm、uv，并把 apt、pip、uv、npm、pnpm 全部指向国内源，容器内可直接装包。
+
+升级镜像后必须同步更新三处 `WORKSPACE_DEFAULT_IMAGE`（`docker-compose.yaml`、`k8s/14-configmap-workspace-service.yaml`、本地 `.env`），否则新镜像不会被使用；已在运行的工作区需销毁重建才会换镜像。
 
 ### 6.3 初始化阶段
 
@@ -280,7 +289,7 @@ ai_workspaces
 | --- | --- | --- |
 | ① | 按 `packages` 安装，逐项执行 `verify` | 单项失败不阻断其余项，汇总至 `setup_report` 回传会话 |
 | ② | 物化技能至 `.agents/<skill>/` | 单技能失败仅跳过并告警 |
-| ③ | 落地凭据（文件 / env 文件），更新 `.billy/credentials.json` | 无可用凭据时记录状态，不阻断环境创建 |
+| ③ | 落地凭据（文件 / env 文件），对已有适配器的 provider 执行一次 `status` 校验，更新 `.billy/credentials.json` | 单个 provider 校验失败记入 `setup_report`，不阻断环境创建 |
 | ④ | 写入 `.billy/setup.json`（setupId + hash + credentialVersion） | — |
 
 约束：
@@ -292,9 +301,23 @@ ai_workspaces
 
 冷启动策略：v1 仅实现 eager（初始化时全部安装），`lazy`（命令未找到时触发安装并重试）延后至 v1.5，因其需要「命令 → 包」映射与重试语义。
 
+预算口径（与 §3.1 的 G4 对应）：
+
+- **清单上限 3 个包**。单包冷装约 30 秒，3 个包约 90 秒，这是首条命令可接受的等待上限；
+- 命中依赖缓存时应在 5 秒内完成；
+- 超过 3 个包的场景应拆出专用工作区，而不是把同一个环境的初始化拖到数分钟；
+- 初始化耗时超过 90 秒时打告警日志，便于发现清单失控。
+
 安全约束：清单在每次重建时于模型执行前运行，等价于持久化代码执行。因此清单仅允许用户在管理端编辑，模型只能建议；变更留历史记录，支持整体禁用。
 
 ### 6.4 个人凭据
+
+托管两类东西，各有适用面：
+
+- **OAuth 授权**：可撤销、有范围、可刷新，交互上优先引导；
+- **静态凭据**：数据库密码、Redis 密码、云厂商 AK/SK 这类「对方不支持授权」的资源，只能用这一种。它是主路径之一，不是兜底。
+
+绑定静态凭据须二次确认并明示「泄露后只能手动吊销」。实现顺序上静态凭据先行打样，产品文案上引导用户优先选择授权方式。
 
 #### 6.4.1 数据模型
 
@@ -303,14 +326,15 @@ personal_credentials
   id            varchar(20)  PK
   owner_type    varchar(8)   NOT NULL  -- user | admin
   owner_id      varchar(20)  NOT NULL
-  provider      varchar(32)  NOT NULL  -- lark | github | aws …
+  provider      varchar(32)  NOT NULL  -- lark | github | mysql | redis | tencent-cloud …
   name          varchar(64)  NOT NULL  -- 用户命名，同一 provider 可绑定多个账号
-  kind          varchar(16)  NOT NULL  -- api-key | aksk | oauth | password | ssh-key
+  kind          varchar(16)  NOT NULL  -- static | oauth | ssh-key
+  template      varchar(32)  NOT NULL  -- 字段模板标识，默认取 provider
   lifetime      varchar(16)  NOT NULL  -- long-term | temporary
   refresh       varchar(16)  NOT NULL DEFAULT 'none'  -- oauth | manual | external | none
   expires_at    timestamp(3)           -- temporary 时必填
   secret_enc    text         NOT NULL  -- 密文信封，见 6.4.2
-  secret_hint   varchar(16)            -- 末四位，仅用于界面展示
+  secret_hint   varchar(32)            -- 展示用标识（如 AKID…abcd），非完整值
   config        jsonb        NOT NULL DEFAULT '{}'::jsonb
   inject        jsonb        NOT NULL DEFAULT '[]'::jsonb
   status        varchar(16)  NOT NULL  -- active | expired | revoked
@@ -326,23 +350,52 @@ personal_credentials
 
 | 字段 | 说明 |
 | --- | --- |
-| `provider` / `name` | 前者供代码匹配适配器，后者供用户区分账号；合并将导致同一 provider 无法多账号 |
-| `kind` | 决定密文内的结构；不对每种类型拆表，也不使用 `secret1/2/3` 列 |
+| `provider` / `name` | 前者供代码匹配适配器与模板，后者供用户区分账号；合并将导致同一 provider 无法多账号 |
+| `kind` | 只表达**生命周期语义**，不表达“是哪种资源”：`static` 不刷新、`oauth` 可刷新、`ssh-key` 是私钥。资源差异由模板表达 |
+| `template` | 指向字段模板；同一 provider 可有多个模板（不同采集方式），缺省取 provider 同名模板 |
 | `lifetime` | 描述库中记录的有效期；注入容器者始终为临时凭证 |
 | `refresh` | 仅对 `temporary` 有意义：`oauth` 由平台续期，`manual` 需用户重新提供，`external` 由外部系统签发 |
 | `status = expired` | 仅在确定性失败（`invalid_grant` / `invalid_token`）时写入；网络故障不得置为该状态 |
 
-各 `kind` 的明文结构：
+#### 6.4.1.1 字段模板
 
-```
-api-key  → { key }
-aksk     → { accessKeyId, accessKeySecret, sessionToken? }
-oauth    → { accessToken, refreshToken, expiresAt, scope }
-password → { username, password }
-ssh-key  → { privateKey, passphrase? }
+字段不由 `kind` 写死，而由**模板**描述。模板是平台侧的声明（代码或后台数据），决定表单长什么样、哪些字段加密、导入时映射到哪个字段：
+
+```json
+{
+  "provider": "mysql",
+  "kind": "static",
+  "fields": [
+    { "key": "host",     "label": "主机",   "type": "text",     "required": true, "scope": "config" },
+    { "key": "port",     "label": "端口",   "type": "number",   "required": true, "scope": "config", "default": 3306 },
+    { "key": "database", "label": "库名",   "type": "text",     "required": true, "scope": "config" },
+    { "key": "username", "label": "用户名", "type": "text",     "required": true, "scope": "config" },
+    { "key": "password", "label": "密码",   "type": "password", "required": true, "scope": "secret" }
+  ],
+  "hintField": "username"
+}
 ```
 
-v1 实现前三类。`password` 与 `ssh-key` 的输入交互成本较高，延后。
+`scope = config` 的字段进明文 `config`，`scope = secret` 的字段打包进密文。前端表单、后端校验、注入模板、导入映射全部由这一份模板驱动。
+
+四类资源落在同一模型：
+
+| 资源 | provider | config | secret |
+| --- | --- | --- | --- |
+| 腾讯云 AK/SK | `tencent-cloud` | `{ region }` | `{ secretId, secretKey }` |
+| CLS 日志 | `tencent-cloud` | `{ region, topicId }` | 同上（可与上一条共用） |
+| MySQL | `mysql` | `{ host, port, database, username }` | `{ password }` |
+| Redis | `redis` | `{ host, port, db, username }` | `{ password }` |
+
+由此得到的约束：
+
+- **新增一种资源不需要改表、不需要加枚举**，只需新增一份模板；
+- `oauth` 的模板固定为 `{ accessToken, refreshToken, expiresAt, scope }`，因为刷新逻辑依赖这几个字段；
+- `secret_hint` 取模板的 `hintField`：数据库取用户名，云厂商取密钥尾部（`AKID…abcd`），界面据此辨认；
+- 导入映射（6.4.5）里引用的字段名必须存在于模板的 `secret` 中，否则在入库前就报错，不会写入残缺记录；
+- 模型只传 `provider`（+ 可选 `name`），不接触具体字段与值。
+
+v1 首批模板：`tencent-cloud`、`mysql`、`redis`、`lark`、`github`。
 
 #### 6.4.2 密文与密钥
 
@@ -357,7 +410,7 @@ v1:<keyId>:<iv_b64>:<tag_b64>:<ct_b64>
 加密时以该行身份作为附加认证数据（AAD）：
 
 ```
-AAD = `${id}|${owner_type}:${owner_id}|${provider}|${kind}`
+AAD = `${id}|${owner_type}:${owner_id}|${provider}|${template}`
 ```
 
 目的为防止密文整段搬运：缺少 AAD 时，将 A 行密文写入 B 行即可使 B 继承 A 的凭据。
@@ -395,7 +448,7 @@ AAD = `${id}|${owner_type}:${owner_id}|${provider}|${kind}`
 3. **幂等**：内容哈希一致时跳过写入；
 4. **吊销即删除**：文件模式下凭据在容器内驻留至销毁，吊销同步动作必须包含删除文件。
 
-模板须支持字段路径引用（如 `${secret.accessKeyId}`），以支持 AK-SK 拆分与 `Bearer` 拼接。
+模板须支持字段路径引用（如 `${secret.secretId}`、`${secret.password}`），以支持 AK-SK 拆分与 `Bearer` 拼接。字段名由模板定义，不在代码中硬编码。
 
 #### 6.4.4 执行前检查
 
@@ -420,13 +473,23 @@ AAD = `${id}|${owner_type}:${owner_id}|${provider}|${kind}`
 | 命令命中某 provider，但凭据缺失或已过期 | **拒绝执行**，返回「缺少 X 凭据」，由模型转告用户 |
 | 命令未命中任何 provider | 正常执行 |
 
-检查为纯本地读取，无 RPC 开销，因此拒绝策略不引入额外延迟，也不受控制面可用性影响。
+检查为纯本地读取，**不做任何 RPC、不查库、不比对版本**，因此拒绝策略不引入额外延迟，也不受控制面可用性影响。
+
+版本比对只发生在 `ensure`（工作区创建或唤醒）时，不在每条命令前执行。由此存在一个窗口：凭据在会话进行中被修改、而该工作区尚未 `ensure`，本次执行仍使用旧副本。该窗口由 `ensure` 同步兜底，不通过逐条命令校验消除。
 
 #### 6.4.5 从工作区导入
 
 用户在完成任务后可能希望保留本次使用的凭据。导入分为三步。
 
 **触发。** 模型依据自身执行历史（本次登录过哪个服务、安装过哪些工具）提出保存建议；平台侧提供兜底检测（容器内存在凭据文件而库中无同名记录）。
+
+**候选从哪来。** 平台提供只读工具 `credential-candidates`，返回「本次用过、适配器声明了 `importFrom`、库中尚无同名记录」的 provider：
+
+```ts
+credentialCandidates() → [{ provider, displayName, longTerm, expiresAt }]
+```
+
+线索三条，强弱不同：本次执行过的命令命中适配器 `commands`（中）、初始化清单里带 `cli` 的包（弱）、`importFrom` 探测到凭据文件/命令确实可读（强）。候选为空时不追问用户；`longTerm=false` 的条目在提问时须明示有效期很短，并给出走授权的入口。
 
 **执行。** 模型调用 `credential-import`，**仅传 provider，不传路径**：
 
@@ -502,6 +565,11 @@ main 侧流程：查库 → 解密 → 对 oauth 且临近过期的记录加锁 
 
 吊销需单独加权：普通更新失败可等待兜底；吊销失败意味着旧凭据仍可用，因此吊销采用「推送 + 失败重试 + 重试期间拒绝执行」。
 
+两点补充：
+
+- **部署前提**：当前 `workspace-service` 为单副本，运行集合在本进程内即可确定。多副本时 `reconcile` 会把同一容器认领到多个实例，须先引入按实例划分的归属标记（容器标签），再扩副本；
+- **两个真相的优先级**：运行时以 `expires_at` 为准；`status` 只表达确定性失效（吊销、`invalid_grant`）。即 `status='active'` 但 `expires_at` 已过，按不可用处理。
+
 #### 6.4.7 消费方
 
 | 消费方 | 位置 | 注入通道 | 更新时机 |
@@ -512,11 +580,45 @@ main 侧流程：查库 → 解密 → 对 oauth 且临近过期的记录加锁 
 
 因此采用**一份存储 + 一个解析入口 + 两个注入适配器**，而非为 CLI 与 MCP 分别建设。容器内 MCP 因常驻，其「同步」的实际含义是重启进程，须在实现中明确。
 
+**数据库 / Redis 走容器内的客户端**（`mysql`、`redis-cli`），不新增消费方。网络可达性由用户负责：放通了就能连，没放通就连不上，平台不做限制，也不做网络代理。
+
+由此产生的边界必须写清：
+
+- 容器能连到的网段 = 用户放通的全部网段，**不只是那个库**；容器里由模型生成的任意命令都能到达同一范围；
+- 平台不解析、不拦截 SQL 与 Redis 命令（它们由客户端直接发出，不经网关），因此「只读」只能靠用户提供的只读账号保证，不靠平台；
+- 审计记录的是「执行了什么命令」，不是「执行了什么语句」。
+
 平台侧 MCP 按调用人取凭据的前提是服务声明需求：
 
 ```
 { credential: { name: 'lark', inject: ['header:Authorization: Bearer ${secret.accessToken}'] } }
 ```
+
+#### 6.4.8 审计表
+
+凭据的每一次读取、刷新、导入、吊销与拒绝都要留痕，且**记录中不含凭据值**：
+
+```sql
+personal_credential_audits
+  id            varchar(20)  PK
+  credential_id varchar(20)  NULL       -- 拒绝类事件可能没有对应记录
+  owner_type    varchar(8)   NOT NULL
+  owner_id      varchar(20)  NOT NULL
+  action        varchar(16)  NOT NULL   -- issue | refresh | revoke | import | resolve | deny
+  consumer      varchar(32)  NOT NULL   -- workspace-service | capability-gateway | web
+  request_id    varchar(64)  NULL       -- 关联到具体那次执行
+  detail        jsonb        NOT NULL DEFAULT '{}'::jsonb  -- 失败原因等，绝不含凭据值
+  created_at    timestamp(3) NOT NULL
+
+  INDEX (credential_id, created_at)
+  INDEX (owner_type, owner_id, created_at)
+```
+
+说明：
+
+- 独立成表而不是塞进主表：审计是追加写，混入主表会让热行持续膨胀，也会拖慢每次解析；
+- `deny` 用于记录被拒绝的调用（越权、缺凭据、吊销后仍尝试使用），这类事件没有 `credential_id` 时也必须有记录；
+- 记录只追加，不提供删除接口；保留期与归档策略另行确定。
 
 ### 6.5 CLI 适配器
 
@@ -535,7 +637,8 @@ export interface CliAdapter {
   }
   readonly credential?: {
     name: string
-    kind: 'oauth' | 'api-key' | 'aksk'
+    kind: 'static' | 'oauth'
+    template?: string            // 字段模板标识，缺省取 provider 同名模板
     inject: InjectRule[]
   }
   readonly importFrom?:
@@ -551,7 +654,7 @@ export interface CliAdapter {
 | `gh` | device code / token | `~/.config/gh/hosts.yml` | `command`: `gh auth token` |
 | `gcloud` | 无浏览器登录 | SQLite（不可直接解析） | `command`: `gcloud auth print-access-token` |
 | `aws` / `az` | device code / SSO | 文件或加密缓存 | `command` |
-| `vercel` / `stripe` / `netlify` | 浏览器 + localhost 回调 | 文件 / 系统钥匙串 | `mode: 'platform'`，由平台代做 OAuth |
+| `vercel` / `stripe` / `netlify` | 浏览器 + localhost 回调 | 文件 / 系统钥匙串 | **不支持自动登录**：服务方不会为平台注册 client，只能由用户在本机登录后手工导入 |
 | `datadog` / `terraform` | 无登录，仅 API Key | 环境变量 | `auth` 省略 |
 
 **无适配器的 CLI 仍可正常使用**，仅缺少命令识别、凭据预检与导入能力。适配器为增强项，非准入门槛；设置门槛将使平台退化为白名单。
@@ -584,7 +687,25 @@ ai_skills
       OR scope = 'personal' AND owner_type IS NOT NULL)
 ```
 
-`SkillSource` 字典增加 `builtin`，与 `online` / `import` / `agent` 并列。`skill_key` 保持全局唯一（含个人技能），以维持 `.agents/<skill_key>/` 与模型引用的一致性；个人创建时若与既有技能重名，服务端自动追加序号（`weekly-report-2`）并在返回值中给出实际 key。
+`SkillSource` 字典增加 `builtin`，与 `online` / `import` / `agent` 并列。
+
+**`skill_key` 的唯一边界是「可见集合」，不是全库**：
+
+```sql
+-- 删除现有的全库唯一索引（uk_skill_key），它会让个人技能与平台技能互相挤占
+DROP INDEX IF EXISTS uk_skill_key;
+
+-- 平台技能之间唯一
+CREATE UNIQUE INDEX uk_skill_platform ON ai_skills (skill_key)
+  WHERE scope = 'platform' AND deleted_at IS NULL;
+-- 同一 owner 的个人技能之间唯一
+CREATE UNIQUE INDEX uk_skill_personal ON ai_skills (owner_type, owner_id, skill_key)
+  WHERE scope = 'personal' AND deleted_at IS NULL;
+```
+
+理由：物化按 caller 过滤，别人的个人技能不会进入我的容器；全库唯一既不必要，还会让先占名字的人影响其他人的命名。
+
+同名冲突只出现在「个人技能与已授权的平台技能」之间（两者会同时进入容器）。处理方式为个人优先：物化时个人技能覆盖同名平台技能目录，并在目录内写入来源标记；技能目录展示名附带来源后缀，避免用户误以为自己改的是平台技能。
 
 **写入目标由调用方身份决定，不由入参决定**：用户调用一律落到 `personal` + 自身 owner，入参中的 `scope` 被忽略；管理员在管理端可指定 `platform`。否则任意调用方均可污染平台技能库。
 
@@ -643,7 +764,9 @@ ai_skill_grants
 
 #### 6.7.6 代价
 
-读取任何技能正文均需环境存在，纯查询类任务亦会拉起容器；正文必须经数据库物化进容器，不以「runtime 直读」作为优化。代价通过依赖缓存与清单预算控制（见 6.3）。
+读取任何技能正文均需环境存在，纯查询类任务亦会拉起容器。
+
+正文必须经数据库物化进容器，**不采用「runtime 从库直读正文」的方案**：正文与脚本必须处于同一环境，否则技能里写的脚本路径和相对位置全部失效。该取舍已定，不再作为可选优化。代价通过依赖缓存与清单预算控制（见 6.3）。
 
 ### 6.8 工具面调整
 
@@ -656,6 +779,7 @@ ai_skill_grants
 | 授权管理 | — | 可用 | `ai_skill_grants` |
 | Mastra `skill` / `skill_search` / `skill_read` | 退役 | 退役 | 读取宿主路径，且不经注册机 |
 | 正文读取与检索 | 可用 | 可用 | 由 `file-read` / `file-search` 承接 |
+| `credential-candidates` | 可用 | 可用 | 只读，返回本次可保存的 provider 清单（见 6.4.5） |
 | `credential-import` | 可用 | 可用 | 新增（见 6.4.5），经注册机与网关，带审计 |
 
 现有实现中该工具组为 `@ToolGroup({ scope: 'admin' })`，需改为 `scope: 'all'` 并在运行时校验归属，否则用户侧无法使用。
@@ -825,7 +949,7 @@ export class AdminSeedService implements OnApplicationBootstrap {
 | 工作区 | 本人 | 本人 | 全部（可启停） |
 | 个人凭据 | 本人（值不回显） | 本人 | 全部元数据 + 可吊销 + 触发验证；**不可见值** |
 | 个人技能 | 本人 | 本人 | 全部（正文可见，落审计） |
-| 平台技能 | 已授权 | 全部 | 全部 |
+| 平台技能 | 内置 + 已授权 | 全部 | 全部 |
 | 记忆 | 本人 | 本人 | 全部 |
 | 文件 | 本人 | 本人 | 全部 |
 | 用量 | 本人 | 本人 | 全部 |
@@ -849,6 +973,24 @@ export class AdminSeedService implements OnApplicationBootstrap {
 
 ---
 
+### 6.11 前端归属与迁移
+
+**目标形态**：会话界面属于用户端（`apps/web`），管理后台（`apps/admin`）只承载配置、审计与监控。
+
+**当前形态**：会话界面位于 `apps/admin/src/app/(app)/(standalone)/main/ai/chat/`（40 个文件），原因是此前仅管理员可创建会话；这是阶段性状态，不是最终定位。
+
+迁移分三步，前置条件是 9.1 的归属修正：
+
+| 步骤 | 内容 | 依赖 |
+| --- | --- | --- |
+| 1 | 组件与传输层解耦：UI 组件不感知身份，`transport` 由外层注入（admin 提供 admin token，web 提供 user token） | 无，可立即开始 |
+| 2 | `apps/web` 新增会话路由，复用组件 + 用户侧 transport | 9.1 归属修正完成 |
+| 3 | `apps/admin` 只保留管理能力；如需「以管理员身份复现用户问题」，须单独设计越权审计，本期不做 | — |
+
+约束：**不得复制两份会话代码**。组件共享、传输层各自实现，是唯一可持续的形态。
+
+SSE 侧无需改造：`stream-auth.guard.ts` 已支持 `auth: 'user' | 'admin' | 'both'`，用户端直接复用。
+
 ## 7. 决策记录
 
 | # | 决策 | 备选方案 | 理由 |
@@ -860,7 +1002,7 @@ export class AdminSeedService implements OnApplicationBootstrap {
 | D5 | 注入以文件为主、env 为辅 | env 全局优先 | 多数 CLI 仅读配置文件；env 适用于少数只读环境变量的工具 |
 | D6 | 凭据刷新置于 main | 执行面自行刷新 | 执行面不连接 Redis，无法加锁；并发刷新会使 refresh token 相互作废 |
 | D7 | 执行前检查使用本地清单 | 每次执行向控制面查询 | 本地读取无延迟，且不依赖控制面可用性 |
-| D8 | 托管范围限定为可撤销授权 | 全量托管原始密钥 | 撤销权归属决定托管是否成立；原始密钥泄露后果不可控 |
+| D8 | 托管两类：OAuth 授权与静态凭据 | 只托管可撤销的授权 | 数据库口令、AK-SK 本就没有 OAuth，不托管等于不支持；代价是泄露后无法止损，故限制使用范围（仅注入工作区）并要求二次确认 |
 | D9 | 凭据导入由模型传 provider，路径由平台掌握 | 模型直接提供文件路径 | 避免模型获得「读取任意文件并写入平台库」的能力 |
 | D10 | 技能正文物化进容器 | runtime 从 DB 直读正文 | 正文与脚本需处于同一环境，保证执行一致性 |
 | D11 | 技能分平台级与个人级，平台级需显式授权 | 全部技能平台级、全员可见 | 平台导入的技能内容不可控；个人技能含自有业务细节 |
@@ -868,6 +1010,7 @@ export class AdminSeedService implements OnApplicationBootstrap {
 | D13 | 设 `god` / `normal` 两级管理员 | 不设超管；或设角色树 | 排障与合规需要跨主体查看；两级足够，字符串类型便于后续扩展 |
 | D14 | 归属隔离优先，超管例外 | 管理员一律可见全部 | 管理员之间也应隔离个人凭据与技能；「看全部」限定在元数据与经审计的内容 |
 | D15 | 凭据明文对任何角色不开放 | 超管可解密查看 | 一旦明文可读，加密存储只剩形式；排障用可用性验证替代 |
+| D16 | 不对用户网络做限制，容器直连可达地址 | 平台代查 / 网络代理 / 端口白名单 | 网络只有通与不通两种状态，细粒度限制须由平台代理全部流量，成本高于收益；可达性由用户防火墙决定 |
 
 ---
 
@@ -878,11 +1021,13 @@ export class AdminSeedService implements OnApplicationBootstrap {
 | 凭据在容器内驻留（文件模式，最长至容器销毁） | 泄露窗口变长 | 600 权限、容器边界、闲置销毁、吊销即删文件 |
 | 模型误用 CLI（参数错误、输出解析错误） | 任务成功率下降 | 技能正文提供可直接复用的命令；关键工具以适配器补充 `status` 校验 |
 | 静态凭据无时效止损 | 泄露后长期有效 | 仅注入工作区、外传类命令直接拒绝、绑定页明示风险 |
-| 控制面不可用 | 新建工作区与刷新不可用 | 已运行工作区不受影响（执行路径不查询凭据） |
-| 初始化安装耗时 | 首条命令等待 | 依赖缓存、清单预算（60 秒）、超时降级 |
+| 控制面不可用 | 新建工作区、刷新、平台侧 MCP 调用不可用 | 容器内已落地的工作区不受影响；平台侧 MCP 每次请求取凭据，仍依赖控制面 |
+| 初始化安装耗时 | 首条命令等待 | 依赖缓存、清单上限 3 个包、超时降级并告警 |
 | 镜像源不可达 | 安装失败，G1 不成立 | 镜像契约要求包管理器可用且源可配置 |
 | 推送失败 | 工作区间状态不一致 | 版本号比对兜底，`ensure` 时先同步 |
 | 适配器随 CLI 版本失效 | 导入失败 | 导入失败明确报错，不写入空值；降级为用户手工提供 |
+| 多副本部署 | 同一容器被多个实例认领，回收相互干扰 | 扩副本前先引入按实例划分的归属标记（见 6.4.6） |
+| 容器可直达用户放通的网段 | 模型生成的任意命令都能访问该范围，不止目标库 | 由用户以只读账号与网络 ACL 控制；审计记录完整命令，事后可追 |
 
 ---
 
@@ -896,10 +1041,11 @@ export class AdminSeedService implements OnApplicationBootstrap {
 
 1. 增加「身份 → owner」换算（存在 `userId` 即为 `user`，仅有 `adminId` 才为 `admin`），替换全部写死位置；
 2. `ensureDefault` 按 owner 懒创建；
-3. `admins.type`（`god` / `normal`）+ 会话携带 `adminType` + `scopeOf` 归属过滤收敛；
-4. 技能增加 owner 字段。
+3. `admins.type`（`god` / `normal`）+ 会话携带 `adminType` + `scopeOf` 归属过滤收敛。
 
-工作量约 1 人日。该项是所有按人归属设计的基础，须先于凭据模块实施。
+技能的 owner 字段属于 P9，不在此列。
+
+工作量约 1.5 人日（含 `admins.type` 与种子服务），对应 9.2 的 P0。该项是所有按人归属设计的基础，须先于凭据模块实施。
 
 ### 9.2 阶段划分
 
@@ -907,7 +1053,7 @@ export class AdminSeedService implements OnApplicationBootstrap {
 | --- | --- | --- | --- |
 | P0 | 归属修正（9.1）：身份 → owner、`admins.type`、`scopeOf` 收敛、`AdminSeedService` | — | 1.5 天 |
 | P1 | `exec` 端口增加 `env`（docker 直传 / k8s 前缀包装，纯函数单测） | — | 0.5 天 |
-| P2 | 凭据表、密文信封、AAD、密钥管理，加密工具下沉至 kits | P0 | 1 天 |
+| P2 | 凭据表、字段模板与校验、密文信封、AAD、密钥管理，加密工具下沉至 kits | P0 | 1.5 天 |
 | P3 | 凭据管理面：列表 / 绑定 / 修改映射 / 吊销（值不回显） | P2 | 0.5 天 |
 | P4 | 解析与刷新：内部接口、按人加锁、提前量刷新、审计 | P2 | 1 天 |
 | P5 | 初始化阶段：安装 → 物化技能 → 落地凭据 → 记录版本 | P1 | 2 天 |
@@ -916,7 +1062,7 @@ export class AdminSeedService implements OnApplicationBootstrap {
 | P8 | 导入与保存流程：`credential-import`、适配器、收尾指令 | P4 | 1.5 天 |
 | P9 | 技能入库与授权：`scope` / owner、`ai_skill_grants`、按授权过滤、撤销同步、种子化、删除 `AI_SKILLS_DIRS` | P0 | 3.5 天 |
 | P10 | 工具面退役与系统指令改造 | P5 | 1 天 |
-| P11 | OAuth 适配器（飞书） | P4 | 2 天 |
+| P11 | OAuth 适配器（飞书）：P4 完成后即可开始，与 P5–P10 并行，不阻塞 CLI 链路 | P4 | 2 天 |
 | P12 | AI 市场（MCP 区） | P3 | 2 天 |
 
 P1–P4 与 P5–P10 可并行。
@@ -947,15 +1093,17 @@ P1–P4 与 P5–P10 可并行。
 | C18 | 导入对象仅为 access token | 确认界面明示有效期，并提供授权入口 |
 | C19 | 适配器与 CLI 版本不匹配 | 明确报错「读取到文件但未找到目标字段」，不写入空值 |
 | C20 | 变更凭据时另一工作区已销毁 | 不唤醒；其下次 `ensure` 时按版本比对同步 |
-| C21 | 用户在会话中说「把刚才这套做法记下来」 | 存为个人技能，仅本人可见；返回实际 `skill_key`（重名时自动加后缀） |
+| C21 | 用户在会话中说「把刚才这套做法记下来」 | 存为个人技能，仅本人可见；与平台技能同名时按 6.7.1 的规则处理 |
 | C22 | 管理员撤销某用户对平台技能的授权 | 该用户活跃工作区内的 `.agents/<key>/` 被删除，模型下一轮不可见 |
-| C23 | 用户 A 与用户 B 各自保存同名技能 | 服务端自动区分 key，两者互不可见 |
+| C23 | 用户 A 与用户 B 各自保存同名技能 | 两者均使用原 key，各自可见、互不干扰（唯一性按 owner 划分） |
 | C24 | 超管查看某用户的凭据 | 可见元数据与状态，可吊销，接口不返回明文 |
 | C25 | 尝试降级最后一个超管 | 拒绝，提示至少保留一个 |
 | C26 | 普通管理员调用管理员管理接口 | 拒绝（菜单不可见 + 接口拦截） |
 | C27 | 超管查看他人会话 | 只读可见，落一条跨主体访问审计 |
 | C28 | 首次部署配置超管种子后重启 | 创建唯一超管；再次重启不覆盖已有密码 |
 | C29 | 超管被删除后重启 | 仅告警，不自动重建；运维脚本可恢复 |
+| C30 | 绑定 MySQL 连接（清单含 `mysql-client`），在另一工作区查询 | 表单按模板渲染；config 明文、密码密文；新工作区落地后 `mysql` 命令可直接用注入的口令连上；网络不通时由客户端报连接超时 |
+| C31 | 模板字段改名后执行导入 | 入库前即报错（字段不存在），不写入残缺记录 |
 
 ---
 
@@ -963,11 +1111,11 @@ P1–P4 与 P5–P10 可并行。
 
 | # | 问题 | 当前倾向 | 待定原因 |
 | --- | --- | --- | --- |
-| Q1 | 静态密钥是否支持 | 支持，仅注入工作区并明示风险 | 不支持则无法覆盖 aws / docker / 数据库等场景 |
+| Q1 | v1 首批提供哪些 provider 模板 | `tencent-cloud` / `mysql` / `redis` / `lark` / `github` 五份 | 模板决定表单与校验，加模板是纯增量，可以按实际场景逐步补 |
 | Q2 | 执行位置是否仅限云端容器 | v3 仅云端 | 若需支持用户本机执行，凭据模块须准备两套形态 |
 | Q3 | 导入时同名凭据已存在 | 先确认再覆盖 | 覆盖为敏感操作 |
 | Q4 | 刷新失败的降级策略 | 仅确定性错误置过期 | 需与可用性要求权衡 |
-| Q5 | `password` / `ssh-key` 是否纳入 | v1 不纳入 | 输入交互成本较高 |
+| Q5 | `ssh-key` 是否纳入 | v1 不纳入（`kind` 已预留） | 私钥输入与轮换的交互成本较高 |
 | Q6 | 多身份（aws profile 等） | v1 单身份，多账号以 `name` 区分 | 复杂度较高 |
 | Q7 | 静态凭据的风险确认交互 | 未定 | 需产品确认提示与确认形态 |
 | Q8 | 网络策略分档的端点配置格式 | 未定 | 见 workspace.md §4.3 |
@@ -986,10 +1134,14 @@ P1–P4 与 P5–P10 可并行。
 | `exec` 端口 | `{ command, cwd, timeoutMs, stdin }` | 增加可选 `env` |
 | 初始化阶段 | 无，创建后直接执行 | 安装 → 物化 → 凭据 → 版本 |
 | 工作区归属 | `ownerOf()` 写死 `admin` | 由身份推导 |
-| 凭据 | 未实现 | `personal_credentials` 及全链路 |
+| 凭据 | 未实现 | `personal_credentials` + `personal_credential_audits` + 字段模板 |
+| 管理员类型 | `admins` 无 `type` 列 | `type`（`god` / `normal`）+ `AdminSeedService` |
+| 技能归属 | `ai_skills` 无 owner，`uk_skill_key` 全库唯一 | `scope` / `owner_type` / `owner_id`；唯一索引改为按可见集合 |
+| 技能授权 | 未实现 | `ai_skill_grants` |
 | 技能来源 | 含宿主目录 | 仅数据库 |
 | 技能工具 | Mastra 自带仍在用 | 已退役，改由 `file-*` 承接 |
 | 孤儿容器回收 | 已修复（启动与回收前认领） | — |
+| 运行镜像 | 无 uv；apt 已换源，npm / pip 仍用境外默认源 | 已升级为 `2026.11.1`：uv + apt / pip / uv / npm / pnpm 四个国内源 |
 
 ## 附录 B：市面对标
 
@@ -1011,3 +1163,6 @@ P1–P4 与 P5–P10 可并行。
 | v1 | 2026-11-19 | 初稿：CLI 接入、凭据跨工作区复用、技能与新工作区衔接 |
 | v2 | 2026-11-20 | 以「资产位置无关」为判据重构；引入资产三层与初始化清单 |
 | v3 | 2026-11-20 | 凭据改为初始化落地 + 变更同步；表更名为 `personal_credentials`；补充密文格式、类型与有效期、导入与同步流程；注入改为文件为主 |
+| v3 修订 | 2026-11-20 | 成本预算与清单上限对齐；技能唯一性改为按可见集合；OAuth 排期与对外口径对齐；长尾 CLI 不再假设平台代做 OAuth；新增前端归属与迁移（6.11）；补执行前检查与状态优先级的边界 |
+| v3 修订二 | 2026-11-20 | 凭据字段改为模板驱动：`kind` 收敛为 `static` / `oauth` / `ssh-key`，新增 `template` 列与 6.4.1.1 字段模板；数据库 / Redis / 云 AK-SK 归一为同一模型 |
+| v3 修订三 | 2026-11-20 | 确定容器直连用户放通的网络、平台不做代理（D16）；网络出口黑名单评估后暂不做，记入非目标；补 `credential-candidates` 工具与候选线索；镜像升级（uv + 四个国内源）写入前置条件 |
