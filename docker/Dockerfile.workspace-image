@@ -8,9 +8,15 @@
 # 运行时口径：
 # - Python 3.13（python:3.13-slim-bookworm）
 # - Node 26（从 node:26-bookworm-slim 多阶段注入；两者同为 Debian bookworm，glibc 一致）
-# - pnpm 12（corepack）
+# - pnpm 12（npm 全局安装，源走国内镜像）
+# - uv（Python 包管理器，pip 安装，源走国内镜像）
 #
-# 构建（在仓库根目录；国内网络用代理把 host.docker.internal 指到宿主代理）：
+# 包管理器镜像源（构建参数可覆盖）：
+# - apt：mirrors.aliyun.com
+# - pip / uv：mirrors.aliyun.com/pypi
+# - npm / pnpm：registry.npmmirror.com
+#
+# 构建（在仓库根目录；若宿主有代理可显式传入，不走代理时直接用镜像源）：
 #   docker build -f docker/Dockerfile.workspace-image \
 #     --build-arg HTTP_PROXY=http://host.docker.internal:7897 \
 #     --build-arg HTTPS_PROXY=http://host.docker.internal:7897 \
@@ -29,15 +35,21 @@ ENV DEBIAN_FRONTEND=noninteractive
 ENV LANG=C.UTF-8
 ENV LC_ALL=C.UTF-8
 
+# 镜像源：都可用 --build-arg 覆盖（海外构建或换源时）
+ARG APT_MIRROR=mirrors.aliyun.com
+ARG PIP_INDEX_URL=https://mirrors.aliyun.com/pypi/simple/
+ARG PIP_TRUSTED_HOST=mirrors.aliyun.com
+ARG NPM_REGISTRY=https://registry.npmmirror.com
+
 # 从 Node 26 镜像注入 node / npm / corepack（都是 Debian bookworm，动态链接兼容）
 COPY --from=node /usr/local/bin/node /usr/local/bin/node
 COPY --from=node /usr/local/lib/node_modules /usr/local/lib/node_modules
 RUN ln -sf /usr/local/lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm \
   && ln -sf /usr/local/lib/node_modules/npm/bin/npx-cli.js /usr/local/bin/npx
 
-# apt 走国内源直连（代理对 deb.debian.org 会 502）；corepack 阶段仍走 build-arg 代理
+# apt 走国内源直连（代理对 deb.debian.org 会 502）
 RUN unset http_proxy https_proxy HTTP_PROXY HTTPS_PROXY \
-  && sed -i 's|deb.debian.org|mirrors.aliyun.com|g' /etc/apt/sources.list.d/debian.sources \
+  && sed -i "s|deb.debian.org|${APT_MIRROR}|g" /etc/apt/sources.list.d/debian.sources \
   && apt-get update \
   && apt-get install -y --no-install-recommends \
     bash \
@@ -58,8 +70,23 @@ RUN unset http_proxy https_proxy HTTP_PROXY HTTPS_PROXY \
     less \
   && rm -rf /var/lib/apt/lists/*
 
-# pnpm 12：npm 全局安装（走 build 时的 HTTP(S)_PROXY）
-RUN npm i -g pnpm@12
+# 包管理器镜像源：pip 写进配置文件，uv 同时读环境变量，npm/pnpm 写全局配置
+ENV PIP_INDEX_URL=${PIP_INDEX_URL} \
+    PIP_TRUSTED_HOST=${PIP_TRUSTED_HOST} \
+    UV_DEFAULT_INDEX=${PIP_INDEX_URL} \
+    UV_INDEX_URL=${PIP_INDEX_URL}
+RUN pip config set global.index-url "${PIP_INDEX_URL}" \
+  && pip config set global.trusted-host "${PIP_TRUSTED_HOST}" \
+  && npm config set registry "${NPM_REGISTRY}" --global
+
+# pnpm 12：npm 全局安装（装包走上面配的镜像源）
+RUN npm i -g pnpm@12 \
+  && pnpm config set registry "${NPM_REGISTRY}"
+
+# uv：用 pip 装（走镜像源），不要用 astral.sh 的安装脚本（国内常被墙）
+RUN pip install --no-cache-dir uv \
+  && uv --version \
+  && pnpm --version
 
 # 工作区根：workspace-service 的 fs / exec 都锚定这里（container 后端固定 /workspace）
 RUN mkdir -p /workspace

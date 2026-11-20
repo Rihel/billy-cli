@@ -298,7 +298,7 @@ services:
       # 向能力网关登记 `workspace` 服务；回调地址必须是网关可达的容器地址（不是 127.0.0.1）
       WORKSPACE_GATEWAY_URL: http://capability-gateway:9993
       WORKSPACE_SERVICE_ENDPOINT: http://workspace-service:9995
-      WORKSPACE_DEFAULT_IMAGE: billy-workspace:2026.11.0
+      WORKSPACE_DEFAULT_IMAGE: billy-workspace:2026.11.1
       WORKSPACE_LOCAL_ROOT: /home/appuser/.billy/workspaces
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock

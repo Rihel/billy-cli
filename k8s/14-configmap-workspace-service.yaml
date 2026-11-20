@@ -29,7 +29,7 @@ data:
   WORKSPACE_K8S_NAMESPACE: 'billy'
   # 工作区容器镜像；**必须与镜像 tag 同步**，且必须能被集群拉取（节点要能访问该 registry）。
   # workspace-service 创建的工作区 Pod 不设置 imagePullSecrets，私有仓库需要节点级凭据。
-  WORKSPACE_DEFAULT_IMAGE: 'billy-workspace:2026.11.0'
+  WORKSPACE_DEFAULT_IMAGE: 'billy-workspace:2026.11.1'
   # local 后端（仅自托管 / 本地联调）的根；kubernetes 后端不用它
   WORKSPACE_LOCAL_ROOT: '/home/appuser/.billy/workspaces'
   # 2 小时空闲回收
