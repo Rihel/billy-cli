@@ -36,6 +36,13 @@ export { DropConnectorModule1795014903484 } from './1795014903484-DropConnectorM
 export { AddServiceGrants1795021748273 } from './1795021748273-AddServiceGrants.js'
 export { AddWorkspaces1795030000000 } from './1795030000000-AddWorkspaces.js'
 export { FixConversationWorkspaces1795040000000 } from './1795040000000-FixConversationWorkspaces.js'
+export { AddAdminType1795060000000 } from './1795060000000-AddAdminType.js'
+export { AddPersonalCredentials1795185298937 } from './1795185298937-AddPersonalCredentials.js'
+export { AddCredentialAudits1795185653632 } from './1795185653632-AddCredentialAudits.js'
+export { AddWorkspaceSetups1795186004681 } from './1795186004681-AddWorkspaceSetups.js'
+export { AddCredentialVersion1795186595366 } from './1795186595366-AddCredentialVersion.js'
+export { AddSkillScopes1795187070810 } from './1795187070810-AddSkillScopes.js'
+export { AddMarketItems1795188270503 } from './1795188270503-AddMarketItems.js'
 
 import { Initial1786897309083 } from './1786897309083-initial.js'
 import { AddAdmins1787000000000 } from './1787000000000-add-admins.js'
@@ -75,6 +82,13 @@ import { DropConnectorModule1795014903484 } from './1795014903484-DropConnectorM
 import { AddServiceGrants1795021748273 } from './1795021748273-AddServiceGrants.js'
 import { AddWorkspaces1795030000000 } from './1795030000000-AddWorkspaces.js'
 import { FixConversationWorkspaces1795040000000 } from './1795040000000-FixConversationWorkspaces.js'
+import { AddAdminType1795060000000 } from './1795060000000-AddAdminType.js'
+import { AddPersonalCredentials1795185298937 } from './1795185298937-AddPersonalCredentials.js'
+import { AddCredentialAudits1795185653632 } from './1795185653632-AddCredentialAudits.js'
+import { AddWorkspaceSetups1795186004681 } from './1795186004681-AddWorkspaceSetups.js'
+import { AddCredentialVersion1795186595366 } from './1795186595366-AddCredentialVersion.js'
+import { AddSkillScopes1795187070810 } from './1795187070810-AddSkillScopes.js'
+import { AddMarketItems1795188270503 } from './1795188270503-AddMarketItems.js'
 
 /** 迁移按时间戳升序；TypeORM 会再排序，但这里保持可读 */
 export const DB_MIGRATIONS = [
@@ -116,4 +130,11 @@ export const DB_MIGRATIONS = [
   AddServiceGrants1795021748273,
   AddWorkspaces1795030000000,
   FixConversationWorkspaces1795040000000,
+  AddAdminType1795060000000,
+  AddPersonalCredentials1795185298937,
+  AddCredentialAudits1795185653632,
+  AddWorkspaceSetups1795186004681,
+  AddCredentialVersion1795186595366,
+  AddSkillScopes1795187070810,
+  AddMarketItems1795188270503,
 ]

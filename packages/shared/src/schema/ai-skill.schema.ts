@@ -22,11 +22,11 @@ export const SKILL_FILE_PATH_PATTERN =
   /^(?:SKILL\.md|(?:references|scripts|assets)\/[A-Za-z0-9._-]+(?:\/[A-Za-z0-9._-]+)*)$/
 
 /** 单文件内容上限（字符数；UTF-8 下中文约 3 字节/字，按字符限足够宽松） */
-export const SKILL_FILE_MAX_CHARS = 200_000
+export const SKILL_FILE_MAX_CHARS = 20 * 1024 * 1024
 /** 单个技能最多几个文件 */
-export const SKILL_MAX_FILES = 100
+export const SKILL_MAX_FILES = 200
 /** 单个技能全部文件的内容上限（字符数） */
-export const SKILL_TOTAL_MAX_CHARS = 800_000
+export const SKILL_TOTAL_MAX_CHARS = 50 * 1024 * 1024
 /** 技能描述上限（Mastra 校验的硬上限是 1024） */
 export const SKILL_DESCRIPTION_MAX = 1024
 
@@ -154,6 +154,8 @@ export const AiSkillCreateSchema = z.object({
   frontmatter: z.record(z.string(), z.unknown()).optional(),
   /** 默认启用：建完就能被 agent 用上 */
   enabled: z.boolean().optional().default(true),
+  /** 写入范围：只有 god 可显式指定（普通管理员忽略，一律写个人） */
+  scope: z.enum(['platform', 'personal']).optional(),
   /** 可选的参考文件 / 脚本（一次建完） */
   files: z.array(AiSkillDraftFileSchema).max(SKILL_MAX_FILES).optional(),
 })
@@ -212,6 +214,8 @@ export type AiSkillFileRemoveDto = z.infer<typeof AiSkillFileRemoveSchema>
 export const AiSkillImportSchema = z.object({
   /** 技能来源链接（或 `owner/repo[/slug]` 简写） */
   url: z.string().min(3).max(1024),
+  /** 写入范围：只有 god 可显式指定 */
+  scope: z.enum(['platform', 'personal']).optional(),
   /** 同名技能已存在时：false（默认）跳过，true 覆盖 */
   overwrite: z.boolean().optional().default(false),
   /** 只导入其中几个（省略 = 全部）；来自预览页勾选 */

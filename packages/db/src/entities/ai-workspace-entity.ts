@@ -53,6 +53,19 @@ export class AiWorkspaceEntity extends BaseEntity {
   @Column({ name: 'desired_status', type: 'varchar', length: 16, default: 'stopped' })
   desiredStatus = 'stopped'
 
+  /**
+   * 初始化清单引用（`ai_workspace_setups.id`）。
+   *
+   * 空值 = 使用 owner 的 `default` 清单；`setupExtra` 是本工作区追加的安装项，
+   * 两者合并后才进入初始化阶段。
+   */
+  @Column({ name: 'setup_id', type: 'varchar', length: 20, nullable: true })
+  setupId: string | null = null
+
+  /** 本工作区追加的安装项（结构同清单的 `packages`） */
+  @Column({ name: 'setup_extra', type: 'jsonb', default: () => "'[]'" })
+  setupExtra: unknown[] = []
+
   /** 最后使用时间（main 在会话绑定时更新；执行面不写） */
   @Column({ name: 'last_used_at', type: 'timestamp', precision: 3, nullable: true })
   lastUsedAt: Date | null = null

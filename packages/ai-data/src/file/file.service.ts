@@ -768,6 +768,32 @@ export class FileService implements OnApplicationBootstrap, OnApplicationShutdow
       (input.pathPrefix?.startsWith('files/') ?? false) ||
       (input.pathPrefix?.startsWith('uploads/') ?? false)
 
+    // 右栏文件树（`all` + 无前缀）走**一次取整棵树**的驱动能力：
+    // 容器后端用单次 `find`，避免逐文件 `docker exec`（1500 文件实测 58 秒 → 亚秒级）。
+    if (input.all === true && !input.pathPrefix && this.fsPort?.listTree && ctx.workspaceId) {
+      const tree = await this.fsPort.listTree(ctx.workspaceId, '.', {
+        maxDepth: config.workspaceMaxDepth,
+        excludeDirs: [...NOISE_DIRS],
+      })
+      const prefixDirs = new Set(includeCaches ? [] : ['files', 'uploads'])
+      const rows = tree
+        .filter((entry) => {
+          const segments = entry.path.split('/')
+          if (segments.length === 0) return false
+          if (segments.some((segment) => NOISE_DIRS.has(segment))) return false
+          if (prefixDirs.has(segments[0])) return false
+          if (segments.length - 1 > config.workspaceMaxDepth) return false
+          return !isNoiseFile(segments[segments.length - 1] ?? '')
+        })
+        .sort((left, right) => (left.path < right.path ? -1 : left.path > right.path ? 1 : 0))
+        .map((entry) => ({
+          path: entry.path,
+          bytes: entry.size,
+          mtime: new Date(entry.mtime).toISOString(),
+        }))
+      return { items: rows, total: rows.length, hasMore: false, depthLimited: false }
+    }
+
     const items: Array<{ path: string; bytes: number; mtime: string }> = []
     /** 已经路过的文件数（用于跳过 offset 之前的页） */
     let cursor = 0

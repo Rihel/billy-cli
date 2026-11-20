@@ -67,6 +67,34 @@ export const WorkspaceStatusResponseSchema = z.object({
 })
 export type WorkspaceStatusResponse = z.infer<typeof WorkspaceStatusResponseSchema>
 
+/**
+ * exec 注入的环境变量。
+ *
+ * 值将来装的是凭据（密码 / AK-SK / Token），因此限制键名、单值长度与总项数：
+ * - 键名必须是 POSIX 变量名（`env 'K=V'` 前缀包装与 `Env` 直传都依赖它）；
+ * - 单值上限 8192 字符、总量上限 64 项，避免把超大内容塞进命令行。
+ * **值不得写进日志 / 错误消息。**
+ */
+export const WorkspaceExecEnvSchema = z
+  .record(z.string(), z.string().max(8192, '单个环境变量值不能超过 8192 个字符'))
+  .superRefine((env, ctx) => {
+    const keys = Object.keys(env)
+    // zod 4 的 record 对非法键只给英文 "Invalid key in record"，所以键名自己校验，保证文案是中文
+    for (const key of keys) {
+      if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(key)) {
+        ctx.addIssue({
+          code: 'custom',
+          message: '环境变量名只能包含字母、数字、下划线，且不能以数字开头',
+          path: [key],
+        })
+      }
+    }
+    if (keys.length > 64) {
+      ctx.addIssue({ code: 'custom', message: '环境变量最多 64 项', path: [] })
+    }
+  })
+export type WorkspaceExecEnv = z.infer<typeof WorkspaceExecEnvSchema>
+
 /** exec：在环境内跑一条命令 */
 export const WorkspaceExecRequestSchema = z.object({
   workspaceId: z.string().min(1).max(64),
@@ -79,6 +107,11 @@ export const WorkspaceExecRequestSchema = z.object({
     .positive()
     .max(16 * 1024 * 1024)
     .optional(),
+  /**
+   * 执行时注入的环境变量（初始化阶段 / 凭据落地用）。
+   * 只作为端口能力存在，不通过 `bash` 工具开放给模型。
+   */
+  env: WorkspaceExecEnvSchema.optional(),
 })
 export type WorkspaceExecRequest = z.infer<typeof WorkspaceExecRequestSchema>
 
@@ -99,6 +132,24 @@ export const WorkspaceExecResultSchema = z.object({
 })
 export type WorkspaceExecResult = z.infer<typeof WorkspaceExecResultSchema>
 
+/** 同步：把凭据 / 技能重新落地进**已在运行**的工作区（不拉起、不唤醒） */
+export const WorkspaceSyncRequestSchema = z.object({
+  workspaceId: z.string().min(1).max(64),
+  /** 推送方算出的凭据版本（执行面写进 `.billy/setup.json` 供比对） */
+  credentialVersion: z.string().max(64).optional(),
+  /** 是否同时收敛技能目录（写可见技能、删除已不可见的 `.agents/<key>`） */
+  skills: z.boolean().optional(),
+})
+export type WorkspaceSyncRequest = z.infer<typeof WorkspaceSyncRequestSchema>
+
+export const WorkspaceSyncResponseSchema = z.object({
+  workspaceId: z.string(),
+  ok: z.boolean(),
+  /** 落地后的凭据版本 */
+  credentialVersion: z.string(),
+})
+export type WorkspaceSyncResponse = z.infer<typeof WorkspaceSyncResponseSchema>
+
 /** fs：统一文件操作（容器后端经 docker exec 实现） */
 export const WorkspaceFsOpSchema = z.enum([
   'list',
@@ -109,6 +160,7 @@ export const WorkspaceFsOpSchema = z.enum([
   'append',
   'replace',
   'stat',
+  'list-tree',
   'remove',
   'search',
 ])
@@ -128,6 +180,9 @@ export const WorkspaceFsRequestSchema = z.object({
   query: z.string().optional(),
   /** list 是否递归 */
   recursive: z.boolean().optional(),
+  /** list-tree：最大深度（相对 path）与要跳过的目录名（含依赖 / 构建产物） */
+  maxDepth: z.number().int().positive().max(64).optional(),
+  excludeDirs: z.array(z.string().min(1).max(64)).max(100).optional(),
   /** 单次返回上限（条 / 字节） */
   limit: z.number().int().positive().max(10_000).optional(),
 })

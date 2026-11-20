@@ -19,6 +19,11 @@ export type WorkspaceRuntimeState = z.infer<typeof WorkspaceRuntimeStateSchema>
 
 /** 工作区（AI 执行环境）：配置 + 用户意图 + 实时运行态 */
 export const WorkspaceModelSchema = BaseModelSchema.extend({
+  /** 归属主体（超管会看到其他人的工作区，页面据此区分同名的「默认工作区」） */
+  ownerType: z.enum(['user', 'admin']),
+  ownerId: z.string(),
+  /** 归属人展示名（邮箱）；查不到时为 null */
+  ownerName: z.string().nullable(),
   name: z.string(),
   isDefault: z.boolean(),
   backend: WorkspaceBackendSchema,

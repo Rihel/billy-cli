@@ -20,14 +20,36 @@ import { Column, Entity, Index } from 'typeorm'
  * - **`origin_url` 只对导入来源有意义**：记录"从哪个链接装来的"，便于重装与追溯。
  */
 @Entity('ai_skills')
-// 软删感知的唯一键（照 `ai_tools` / `ai_models` 的口径：删掉后可重建同一个 key）
-@Index('uk_skill_key', ['skillKey'], {
+// 唯一性的边界是「可见集合」，不是全库（§6.7.1）：
+// 平台技能之间唯一，个人技能按 owner 唯一 —— 别人的个人技能不会进入我的容器，
+// 全库唯一既不必要，还会让先占名字的人影响其它人的命名。
+@Index('uk_skill_platform', ['skillKey'], {
   unique: true,
-  where: 'deleted_at IS NULL',
+  where: `"scope" = 'platform' AND "deleted_at" IS NULL`,
+})
+@Index('uk_skill_personal', ['ownerType', 'ownerId', 'skillKey'], {
+  unique: true,
+  where: `"scope" = 'personal' AND "deleted_at" IS NULL`,
 })
 @Index('idx_skill_enabled', ['enabled'])
 @Index('idx_skill_source', ['source'])
+@Index('idx_skill_owner', ['ownerType', 'ownerId'])
 export class AiSkillEntity extends AuditEntity {
+  /**
+   * 归属范围：`platform`（内置 / 平台导入，需授予才可见）或 `personal`（仅 owner 可见）。
+   *
+   * 唯一索引按「可见集合」划分：平台技能按 `skill_key` 唯一，个人技能按 `owner + skill_key` 唯一。
+   */
+  @Column({ name: 'scope', type: 'varchar', length: 8, default: 'platform' })
+  scope = 'platform'
+
+  /** 个人技能的归属体系（`platform` 时为空） */
+  @Column({ name: 'owner_type', type: 'varchar', length: 8, nullable: true })
+  ownerType: string | null = null
+
+  @Column({ name: 'owner_id', type: 'varchar', length: 20, nullable: true })
+  ownerId: string | null = null
+
   /** 技能名（= 落盘目录名；`SKILL.md` 的 frontmatter `name` 与它一致） */
   @Column({ name: 'skill_key', type: 'varchar', length: 64 })
   skillKey!: string

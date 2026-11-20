@@ -1,4 +1,5 @@
 import { AsyncLocalStorage } from 'node:async_hooks'
+import type { AdminTypeValue } from '@repo/shared'
 
 /** 请求上下文数据：贯穿中间件 → 守卫 → 控制器 → service 的隐式传递通道 */
 export interface RequestContextData {
@@ -8,6 +9,14 @@ export interface RequestContextData {
   userId: string | null
   /** 当前登录管理员 id（后台管理体系；未登录为 null） */
   adminId: string | null
+  /**
+   * 当前管理员类型（`normal` / `god`），由管理员守卫从**服务端会话**取出后写入。
+   *
+   * 为什么放在上下文而不是每次查库：归属过滤（`scopeOf`）在每个按 owner 过滤的查询里都要用，
+   * 每请求查一次库会把读放大到每次列表；而超管身份变更时该账号的会话已被撤销，
+   * 旧 token 无法再通过校验，因此上下文里的值不会陈旧。
+   */
+  adminType?: AdminTypeValue
   /**
    * 客户端 IP（登录设备列表的会话元数据用；取不到为 null）。
    * 可选：历史上构造过上下文的地方（如单测）不必补这两个字段。

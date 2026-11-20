@@ -35,6 +35,16 @@ export interface WorkspaceFsPort {
   appendText(workspaceId: string, path: string, content: string): Promise<void>
   stat(workspaceId: string, path: string): Promise<WorkspaceFsStat>
   list(workspaceId: string, path: string): Promise<WorkspaceFsEntry[]>
+  /**
+   * 一次拿回整棵树（路径 / 大小 / mtime）：容器后端用单次 `find` 实现。
+   *
+   * 可选：驱动不支持时 FileService 回落到逐目录 `list` + 逐文件 `stat`。
+   */
+  listTree?(
+    workspaceId: string,
+    path: string,
+    options: { maxDepth: number; excludeDirs: readonly string[] },
+  ): Promise<{ path: string; size: number; mtime: number }[]>
   remove(workspaceId: string, path: string): Promise<void>
   search(workspaceId: string, path: string, query: string): Promise<string[]>
 }

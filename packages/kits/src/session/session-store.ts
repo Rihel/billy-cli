@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto'
 import { Inject, Injectable } from '@nestjs/common'
+import type { AdminTypeValue } from '@repo/shared'
 import { JwtConfig } from '../jwt/jwt.config.js'
 import { IdGeneration } from '../foundation/id-generation/id-generation.js'
 import { RedisStoreError } from '../foundation/errors/infrastructure-errors.js'
@@ -11,6 +12,14 @@ export type SessionType = 'user' | 'admin'
 export interface SessionSubject {
   sub: string
   type: SessionType
+  /**
+   * 管理员类型（`normal` / `god`）；用户体系不填。
+   *
+   * 只认**会话里的值**而不是每次查库：类型变更时会撤销该账号全部会话，
+   * 旧 token 直接失效，因此会话一旦建立，其中的类型就是这个 token 的有效身份。
+   * 升级前登记的旧会话没有这个字段，读到 `undefined` 一律按 `normal` 处理（最小权限）。
+   */
+  adminType?: AdminTypeValue
 }
 
 /** 创建会话时采集的元数据（登录设备列表用；取不到为 null） */

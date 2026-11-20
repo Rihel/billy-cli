@@ -81,6 +81,16 @@ export const AppErrorCodes = createDict({
     value: 2006,
     http: 400,
   },
+  AdminTypeForbidden: {
+    label: '只有超级管理员可以调整管理员类型',
+    value: 2008,
+    http: 403,
+  },
+  LastGodAdminRequired: {
+    label: '至少需要保留一个超级管理员',
+    value: 2009,
+    http: 400,
+  },
   UserDisabled: {
     label: '用户已被禁用',
     value: 2007,
@@ -130,6 +140,56 @@ export const AppErrorCodes = createDict({
     label: '该存储操作仅限管理员',
     value: 3203,
     http: 403,
+  },
+  CredentialTemplateNotFound: {
+    label: '该服务没有可用的凭据模板',
+    value: 3401,
+    http: 400,
+  },
+  CredentialInvalidInput: {
+    label: '凭据字段不合法',
+    value: 3402,
+    http: 400,
+  },
+  CredentialNameTaken: {
+    label: '同名凭据已存在',
+    value: 3403,
+    http: 409,
+  },
+  CredentialKeyNotConfigured: {
+    label: '凭据加密密钥未配置，暂时无法保存凭据',
+    value: 3404,
+    http: 503,
+  },
+  CredentialNotFound: {
+    label: '凭据不存在',
+    value: 3405,
+    http: 404,
+  },
+  CredentialRefreshRejected: {
+    label: '凭据授权已失效，需要重新授权',
+    value: 3406,
+    http: 400,
+  },
+  WorkspaceDefaultUndeletable: {
+    label: '默认工作区不能删除',
+    value: 3602,
+    http: 400,
+  },
+  WorkspaceNotFound: {
+    label: '工作区不存在',
+    value: 3603,
+    http: 404,
+  },
+  SkillQuotaExceeded: {
+    label: '个人技能数量已达上限（50 个）',
+    value: 3601,
+    http: 400,
+  },
+  MarketItemNotFound: {
+    label: '市场条目不存在',
+    value: 3501,
+    http: 404,
   },
   AgentUnavailable: {
     label: 'AI 能力未配置（缺少模型或密钥）',

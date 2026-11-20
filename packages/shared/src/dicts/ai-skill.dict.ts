@@ -16,6 +16,19 @@ export const SkillSource = createDict({
   Import: { label: '链接导入', value: 'import' },
   /** agent 通过 `skill-save` 工具写入 */
   Agent: { label: 'Agent 创建', value: 'agent' },
+  /** 随版本发布的内置技能（种子入库，全员可见） */
+  Builtin: { label: '内置', value: 'builtin' },
+})
+
+/**
+ * 技能归属范围（`docs/design/workspace-cli-credentials.md` §6.7.1）。
+ *
+ * - `platform`：平台级技能，默认不对外开放，需显式授予；
+ * - `personal`：个人技能，仅 owner 可见。
+ */
+export const SkillScope = createDict({
+  Platform: { label: '平台', value: 'platform' },
+  Personal: { label: '个人', value: 'personal' },
 })
 
 /**

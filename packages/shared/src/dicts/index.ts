@@ -1,4 +1,6 @@
 export * from './app-error-code.dict'
+export * from './admin-type.dict'
+export * from './credential.dict'
 export * from './user-status.dict'
 export * from './ai.dict'
 export * from './ai-tool.dict'
