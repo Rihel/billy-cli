@@ -24,7 +24,7 @@ export const SKILL_FILE_PATH_PATTERN =
 /** 单文件内容上限（字符数；UTF-8 下中文约 3 字节/字，按字符限足够宽松） */
 export const SKILL_FILE_MAX_CHARS = 20 * 1024 * 1024
 /** 单个技能最多几个文件 */
-export const SKILL_MAX_FILES = 200
+export const SKILL_MAX_FILES = 2000
 /** 单个技能全部文件的内容上限（字符数） */
 export const SKILL_TOTAL_MAX_CHARS = 50 * 1024 * 1024
 /** 技能描述上限（Mastra 校验的硬上限是 1024） */
