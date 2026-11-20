@@ -12,10 +12,13 @@
 | `pnpm lint:types` | 类型感知检查（悬空 Promise、await 非 Promise 等） | ~1.5s |
 | `pnpm fmt` | 全仓格式化 | ~40ms |
 | `pnpm fmt:check` | 只检查不写入 | ~40ms |
-| `pnpm verify` | lint + lint:types + fmt:check + 三道守卫 | ~2s |
+| `pnpm verify` | 7 项：`lint` + `lint:types` + `fmt:check` + `check:inject` + `check:mastra` + `check:redis-raw` + `check:ui` | ~2s |
+| `pnpm typecheck` | 逐 workspace 跑 `tsc --noEmit`（turbo，带缓存） | 按包缓存，未逐包计时 |
+| `pnpm test` | 逐 workspace 跑 `vitest run`（turbo，带缓存） | 按包缓存，未逐包计时 |
 | `pnpm hooks:install` | 重新安装 Git 钩子（`pnpm install` 已自动装） | 毫秒级 |
 
-提交前最少跑一次 `pnpm verify`；改了跨包类型再跑 `pnpm typecheck`。
+提交前最少跑一次 `pnpm verify`；改了跨包类型再跑 `pnpm typecheck`；`pnpm test` 独立跑
+（钩子不跑它，见 §5）。**verify 7 项 + typecheck + test = 9 道检查**。
 
 ## 2. 工具链组成
 
@@ -25,8 +28,13 @@
 | `oxlint-tsgolint` | `^7.0.2007` | 类型感知规则引擎（要求 TypeScript 7+） |
 | `oxfmt` | 精确 `0.78.0` | 格式化（Prettier 兼容，0.x 需钉版本） |
 | `lefthook` | `^2.2.2` | Git 钩子（pre-commit / commit-msg / pre-push） |
+| `turbo` | `^2.11.10` | 任务图与缓存（`typecheck` / `test` / 构建） |
+| `typescript` | `^7.0.2` | 类型检查（`pnpm typecheck`） |
+| `tsx` | `^4.23.15` | 直接跑 TS 脚本（`bootstrap` / `check:*` / 启动脚本） |
+| Node | **≥26**（实测 26.13.0） | 运行时；`engines.node: ">=26"` |
+| pnpm | `12.18.0`（`packageManager` 固定） | 包管理 |
 
-配置位置：`.oxlintrc.jsonc`、`.oxfmtrc.json`、`.editorconfig`、`lefthook.yml`。
+配置位置：`.oxlintrc.jsonc`、`.oxfmtrc.json`、`.editorconfig`、`lefthook.yml`、`turbo.json`。
 
 ## 3. 规则策略
 
@@ -67,9 +75,9 @@ useEffect(() => { ... }, [focus?.nonce])
 
 | 钩子 | 行为 |
 | --- | --- |
-| `pre-commit` | 对暂存文件跑 `oxfmt` + `oxlint --fix`，改完自动重新 `git add` |
-| `commit-msg` | 校验 `<类型>：<摘要>`（新增/重构/修复/变更/文档/测试/配置/样式/杂项），Merge/Revert/fixup 放行 |
-| `pre-push` | 跑 `pnpm verify` + `pnpm typecheck` |
+| `pre-commit` | **两个 job 并行**：`oxfmt`（format，`stage_fixed`）与 `oxlint --fix`（lint，`stage_fixed`），各自按 glob 只处理暂存文件，改完自动重新 `git add` |
+| `commit-msg` | `node scripts/check-commit-msg.ts {1}` 校验 `<类型>：<摘要>`；类型限 **9 种**：新增 / 重构 / 修复 / 变更 / 文档 / 测试 / 配置 / 样式 / 杂项；摘要 ≤50 字；Merge / Revert / fixup / squash 放行 |
+| `pre-push` | 跑 `pnpm verify` + `pnpm typecheck`（**不跑 `pnpm test`**，避免把重活塞进 push） |
 
 **跳过钩子**（自担风险，没有 CI 兜底）：
 
@@ -97,17 +105,27 @@ set LEFTHOOK=0 && git commit ...
 - 四个工具都有三平台原生二进制；Windows 需要 **Git for Windows**（钩子靠它自带的 `sh` 执行），不需要 WSL。
 - 行尾统一 LF：`.gitattributes` + `.editorconfig` + oxfmt `endOfLine: "lf"` 三重约束；`*.bat` / `*.cmd` 保持 CRLF。
 - 若 Windows 首次安装被 pnpm 的 supply-chain 策略拦下平台绑定，把对应 `@oxlint/binding-win32-*`、`@oxfmt/binding-win32-*`、`@oxlint-tsgolint/win32-*`、`lefthook-windows-*` 加进 `pnpm-workspace.yaml` 的 `minimumReleaseAgeExclude`。
-- 启动脚本已改为 Node（`scripts/start-standalone.ts`），`db:gen` 与 `clean` 也不再依赖 `bash` / `rm -rf`。
+- 启动脚本已改为 Node（`scripts/start-standalone.ts`、`scripts/kill-ports.ts`），`db:gen` 与 `clean` 也不再依赖 `bash` / `rm -rf`。
 
 ## 7. 与既有检查的关系
 
 ```
 oxlint（语法/语义） → oxfmt（排版） → tsc（类型）
-check:inject（DI）  check:mastra（边界）  check:ui（前端约定）
+check:inject（DI）  check:mastra（边界）  check:redis-raw（Redis 入口）  check:ui（前端约定）
 ```
 
-`pnpm verify` 聚合 lint / lint:types / fmt:check + 三道守卫（6 道）；加上 `typecheck` / `test` 共 **8 道**。
+`pnpm verify` = 7 项（`lint` / `lint:types` / `fmt:check` + **四道守卫** `check:inject` / `check:mastra` /
+`check:redis-raw` / `check:ui`）；加上 `typecheck` / `test` 共 **9 道**。
 提交钩子只跑 `verify` + `typecheck`，`test` 仍独立，避免把重活塞进 push。
+
+四道守卫各自守什么：
+
+| 守卫 | 守什么 |
+| --- | --- |
+| `check:inject` | 构造器注入必须带 `@Inject`、provider 必须 `@Injectable`（DI 静默失效排查） |
+| `check:mastra` | `@mastra/*` 只允许出现在 runtime 的 mastra 适配层（执行面边界） |
+| `check:redis-raw` | `apps/*` 禁止直接用 redis 客户端 `.raw`，统一走 `RedisStore` |
+| `check:ui` | 前端 5 条不变量（见 [frontend.md](./frontend.md) 的设计系统一节） |
 
 ## 8. 调整规则的流程
 
@@ -175,18 +193,22 @@ check:inject（DI）  check:mastra（边界）  check:ui（前端约定）
 
 ## 10. 用 turbo 跑检查
 
-`turbo.json` 里给根任务加了 `//#` 前缀（root task），所以 `turbo run <task>` 也能触发全仓检查，并复用 turbo 缓存：
+`turbo.json` 的 tasks 是 `dev` / `build` / `build:docker` / `typecheck` / `test`；**根任务（`//#` 前缀）7 个**：
+`//#lint`、`//#lint:types`、`//#fmt:check`、`//#check:inject`、`//#check:mastra`、`//#check:ui`、`//#verify`。
+**没有 `//#check:redis-raw`** —— 它仍由 `//#verify` 里跑的 `pnpm verify` 覆盖，只是不能单独当作 turbo 任务命中缓存。
+所以 `turbo run <task>` 也能触发全仓检查，并复用 turbo 缓存：
 
 | 命令 | 覆盖范围 |
 | --- | --- |
 | `pnpm turbo run lint` / `lint:types` / `fmt:check` | 单项根任务；命中缓存时 ~20ms |
-| `pnpm turbo run verify` | lint + lint:types + fmt:check + 三道守卫（等同 `pnpm verify`，带缓存） |
-| `pnpm turbo run verify typecheck test` | 全套：verify + 每包 typecheck + 每包 test（13 个任务，可并行/缓存） |
+| `pnpm turbo run verify` | 等同 `pnpm verify`（7 项，带缓存） |
+| `pnpm turbo run check:redis-raw` | **会报错**（`Could not find task`）：没有对应根任务，直接 `pnpm check:redis-raw` |
+| `pnpm turbo run verify typecheck test` | 全套：verify + 每包 typecheck + 每包 test（**37 个任务**：1 个根任务 + 17 个声明了 `typecheck` 的 workspace + 19 个声明了 `test` 的 workspace，可并行/缓存） |
 
 说明：
 
-- lint / fmt 仍是**单进程全仓**（30ms 级），不要按包拆成 9 个任务——拆了反而慢。
-  turbo 在这里提供的是统一任务图、缓存和「一条命令跑全套”，不是并行加速。
+- lint / fmt 仍是**单进程全仓**（30ms 级），不要按包拆成二十个任务——拆了反而慢。
+  turbo 在这里提供的是统一任务图、缓存和「一条命令跑全套」，不是并行加速。
 - 日常改完直接 `pnpm verify` 最快；想复用缓存、或将来接 CI，用
   `pnpm turbo run verify typecheck test`。
 - root task 的缓存输入是**全仓文件哈希**（已实测），源码/配置任何改动都会让缓存失效，不会出现陈旧缓存。

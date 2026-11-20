@@ -5,8 +5,8 @@
 ## 结论（2026-11-18，装饰器 + 扁平 key）
 
 - **定义在服务里**：执行器类上的 `@CapabilityGroup` + 方法级 `@CapabilityDecl`（入参 zod 内联，
-  与执行体校验同一份）。`common-capability` 是**一个进程一个服务 `common`**（17 个能力），
-  启动时 `toRegistration` 把 zod 转 JSON Schema 后 `POST /v1/services/register` 上报。
+  与执行体校验同一份）。`common-capability` 登记服务 `common`（声明 17、实际登记 9；bash + 7 个工作区
+  文件由 `workspace-service` 登记为 `workspace` 8 个），网关内建 3 个；合计 **20 个 code 能力**。
   文件域 9 个 schema 仍由 `@repo/ai-data` 提供（server 与 worker 单一来源）。
 - **key = 扁平工具名**（`bash` / `file-list`，不含服务名）：网关按 key 建索引，跨服务重名登记 409；
   模型面名字与 key 相同。`defineCapability` / `defineService` 已删，只剩类型与 `toRegistration` / `toInputSchema`。

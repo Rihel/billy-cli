@@ -2,10 +2,12 @@
 
 > **查证优先级：必核** —— 服务名 / 能力数 / 协议字段 / 客户端归属；改网关或服务登记后重核。
 
-## 结论（2026-11-18，本地口径修正）
+## 结论（2026-11-18 起，2026-11-20 补工作区执行面）
 
-- **服务 = 一个部署 / 责任单元**：`common-capability` 整体登记为 **`common`**（17 个能力）；
-  bash / web / files / memory 只是代码内的能力分组，不是服务身份（协议允许一进程多身份，本地不用）。
+- **服务 = 一个部署 / 责任单元**：`common-capability` 登记为 **`common`**，实际登记 **9 个能力**
+  （声明 17 个：bash + 7 个工作区文件按 `execution.where='workspace'` 过滤，由 workspace-service 登记）；
+  `workspace-service` 登记 **`workspace`**（8 个：`bash` + 工作区文件 7 个）；网关内建 `wait-task` /
+  `cancel-task` / `tool-search`（不属于任何服务，固定 `source='code'`）。合计 **20 个 code 能力**。
 - **能力定义用装饰器**：`@CapabilityGroup`（组默认 risk / scope）+ 方法级 `@CapabilityDecl`（入参 zod 内联）；
   注册表 `ToolExecutorRegistry` 用 `scanCapabilities` 扫描绑定（`decl.tool` → 方法），声明缺执行体启动期就抛。
   `defineCapability` / `defineService` 与独立 `capabilities/schemas.ts` 已删（file 域 schema 仍来自 `@repo/ai-data`）。
@@ -54,13 +56,14 @@
   `isError:true` → `mcp-tool-error`（runtime 归 `upstream`）；后台 MCP 表单可同步清单，保存自检 = 握手 + 列工具；
   stdio / 长连接 SSE 不做；登记只保留一个鉴权 header（多 header 待扩）；MCP 服务**跳过 HTTP 探活**（GET 405 会误判 down），HTTP 超时跟随调用 deadline，`MCP-Protocol-Version` 用协商后的版本。
 
-## 运行态实测（2026-11-18，重启网关 + 服务后）
+## 运行态实测（2026-11-20，工作区执行面接入后）
 
-- `POST /v1/services/list` 只返回一条 `common`（`source=code`、`protocol=capability`、17 个能力、
-  1 个实例、`active`）；本机没有残留的 exec / web / files / memory 旧行。
-- 17 条能力的 `inputSchema` 都带 `type:'object'`；`bash` 的 properties 是 `[command, cwd]`、
-  required 是 `[command]`（与告知里的实测一致）。
-- `POST /v1/capabilities/invoke` 用裸名 `bash` 路由到 `common` 实例并返回 `stdout: smoke`。
+- `POST /v1/services/list` 应看到两条 `source=code`、`protocol=capability` 的服务：`common`（9 个能力）
+  与 `workspace`（8 个能力，含 `bash`）；外部 MCP / 手工登记的服务另计。
+- 17 个登记能力的 `inputSchema` 都带 `type:'object'`；`bash` 在 `workspace` 服务下，properties 含
+  `command`（+`cwd`），`required` 含 `command`。
+- `POST /v1/capabilities/invoke` 用裸名 `bash` 路由到 `workspace` 实例；`web-fetch` / `memory-*` 路由到
+  `common` 实例（2026-11-18 单服务口径下二者都在 `common`，现按 `execution.where` 拆分）。
 - MCP 端到端（假 server / DeepWiki / 高德，2026-11-18）：假 server 返回 `echo:hello from gateway`；
   DeepWiki（`mcp.deepwiki.com/mcp`，免鉴权）拉到 3 个工具并返回 React 文档目录；
   高德（`mcp.amap.com/mcp?key=…`，官方 key）拉到 15 个工具（`maps-weather` / `maps-geo` 等），
@@ -86,7 +89,9 @@
 
 ```bash
 grep -n "service: 'common'" apps/common-capability/src/capabilities/manifest.ts
-grep -rn "@CapabilityDecl(" apps/common-capability/src | wc -l        # 应为 17
+grep -rn "@CapabilityDecl(" apps/common-capability/src | wc -l        # 应为 17（登记 9，workspace 的 8 个被过滤）
+grep -rn "@CapabilityDecl(" apps/workspace-service/src | wc -l        # 应为 8
+grep -c "@CapabilityDecl(" apps/capability-gateway/src/registry/builtin.capabilities.ts  # 应为 3
 grep -n "ServiceProtocolSchema\|protocol" packages/contracts/src/capability.ts | head
 grep -rn "defineCapability\|defineService\|CapabilityRegistryClient" apps packages --include=*.ts | grep -v node_modules || echo "已彻底移除"
 grep -n "z-\[100\]" packages/ui/src/components/ui/toast.tsx
