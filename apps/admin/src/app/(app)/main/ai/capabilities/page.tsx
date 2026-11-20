@@ -12,6 +12,7 @@ import type {
 } from '@repo/shared'
 import {
   Button,
+  Checkbox,
   cn,
   ConfirmAction,
   Dialog,
@@ -31,8 +32,10 @@ import {
   toastError,
   toastSuccess,
 } from '@repo/ui'
-import { PlusIcon, RotateCwIcon, WrenchIcon } from 'lucide-react'
+import { PlusIcon, RotateCwIcon, ShieldCheckIcon, WrenchIcon } from 'lucide-react'
 import { useServerClient } from '@/lib/server-client'
+import { BatchGrantDialog } from '@/components/batch-grant-dialog'
+import type { BatchGrantApplyInput, GrantCandidate } from '@/components/batch-grant-dialog'
 import { ToolFormModal } from '../tools/tool-form'
 
 /**
@@ -294,6 +297,9 @@ export default function CapabilitiesPage() {
   const [runtimeToolsOpen, setRuntimeToolsOpen] = useState(false)
   /** 服务筛选：全部 / MCP / 内部（code）/ 外部（manual 能力协议） */
   const [serviceFilter, setServiceFilter] = useState<'all' | 'mcp' | 'internal' | 'external'>('all')
+  /** 勾选的外部服务（批量授权用；内部服务默认全部可用，不参与授权） */
+  const [selectedServices, setSelectedServices] = useState<CapabilityServiceModel[]>([])
+  const [grantOpen, setGrantOpen] = useState(false)
 
   const listQuery = useQuery({
     queryKey: ['capabilityService', 'list'],
@@ -395,6 +401,7 @@ export default function CapabilitiesPage() {
   const removeService = async (service: string) => {
     try {
       await removeMutation.mutateAsync(service)
+      setSelectedServices((current) => current.filter((item) => item.service !== service))
       toastSuccess('已删除')
       await listQuery.refetch()
     } catch (error) {
@@ -571,6 +578,85 @@ export default function CapabilitiesPage() {
     toastSuccess('已恢复代码默认值')
   }
 
+  /** 只有外部服务 / MCP 需要授权；内部服务（code）默认全部可用。全选只作用于当前筛选下可见的外部服务 */
+  const manualServices = visibleServices.filter((service) => service.source === 'manual')
+  const selectedServiceNames = new Set(selectedServices.map((service) => service.service))
+  const allManualSelected =
+    manualServices.length > 0 &&
+    manualServices.every((service) => selectedServiceNames.has(service.service))
+  const someManualSelected =
+    !allManualSelected &&
+    manualServices.some((service) => selectedServiceNames.has(service.service))
+
+  const toggleService = (service: CapabilityServiceModel, checked: boolean): void => {
+    setSelectedServices((current) =>
+      checked
+        ? [...current.filter((item) => item.service !== service.service), service]
+        : current.filter((item) => item.service !== service.service),
+    )
+  }
+
+  const toggleAllServices = (checked: boolean): void => {
+    setSelectedServices((current) => {
+      const manualNames = new Set(manualServices.map((service) => service.service))
+      const rest = current.filter((item) => !manualNames.has(item.service))
+      return checked ? [...rest, ...manualServices] : rest
+    })
+  }
+
+  /** 授权弹窗的候选主体：管理员（服务授权目前只认管理员） */
+  const searchAdmins = async (keyword: string): Promise<GrantCandidate[]> => {
+    const result = await client.admin.pageQuery({
+      page: 1,
+      size: 100,
+      orderBy: 'createdAt',
+      order: 'asc',
+      ...(keyword ? { keyword } : {}),
+    })
+    return result.items.map((admin) => ({
+      id: admin.id,
+      label: admin.realName || admin.email,
+      hint: admin.email,
+    }))
+  }
+
+  /** 每个外部服务当前已授权给哪些管理员 */
+  const loadServiceGrantMap = async (serviceNames: string[]): Promise<Map<string, Set<string>>> => {
+    const rows = await client.capabilityService.listGrants()
+    const map = new Map(serviceNames.map((name) => [name, new Set<string>()]))
+    for (const row of rows) map.get(row.service)?.add(row.principalId)
+    return map
+  }
+
+  /**
+   * 批量写授权：服务授权接口是**按管理员覆盖式**的，所以逐个受影响的管理员
+   * 读出他当前可用的服务集合，再按差量增删所选服务。
+   */
+  const applyServiceGrants = async ({ add, remove }: BatchGrantApplyInput): Promise<void> => {
+    const rows = await client.capabilityService.listGrants()
+    const byAdmin = new Map<string, Set<string>>()
+    for (const row of rows) {
+      const set = byAdmin.get(row.principalId) ?? new Set<string>()
+      set.add(row.service)
+      byAdmin.set(row.principalId, set)
+    }
+    const targets = new Set([...add, ...remove])
+    const picked = new Set(selectedServices.map((service) => service.service))
+    for (const adminId of targets) {
+      const next = new Set(byAdmin.get(adminId) ?? [])
+      if (add.includes(adminId)) for (const service of picked) next.add(service)
+      if (remove.includes(adminId)) for (const service of picked) next.delete(service)
+      await client.capabilityService.setGrants({ adminId, services: [...next] })
+    }
+    const changed = [
+      add.length > 0 ? `授予 ${add.length} 个管理员` : '',
+      remove.length > 0 ? `收回 ${remove.length} 个管理员` : '',
+    ]
+      .filter(Boolean)
+      .join('、')
+    toastSuccess('授权已更新', `${changed}（网关 5 秒内生效）`)
+  }
+
   return (
     <div className="flex flex-col gap-4 p-4 sm:py-6">
       <PageToolbar
@@ -583,6 +669,14 @@ export default function CapabilitiesPage() {
                 <WrenchIcon className="mr-1 size-4" /> 运行时工具（{runtimeTools.length}）
               </Button>
             ) : null}
+            <Button
+              variant="outline"
+              disabled={selectedServices.length === 0}
+              onClick={() => setGrantOpen(true)}
+            >
+              <ShieldCheckIcon className="mr-1 size-4" /> 授权
+              {selectedServices.length > 0 ? `（${selectedServices.length}）` : ''}
+            </Button>
             <Button variant="outline" onClick={() => void listQuery.refetch()}>
               <RotateCwIcon className="mr-1 size-4" /> 刷新
             </Button>
@@ -616,6 +710,24 @@ export default function CapabilitiesPage() {
               setServiceFilter(next as 'all' | 'mcp' | 'internal' | 'external')
             }
           />
+          <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
+            <Label className="gap-2 text-xs font-normal text-muted-foreground">
+              <Checkbox
+                aria-label="全选外部服务"
+                checked={allManualSelected}
+                indeterminate={someManualSelected}
+                disabled={manualServices.length === 0}
+                onCheckedChange={(checked) => toggleAllServices(checked)}
+              />
+              全选外部服务（{manualServices.length}）
+            </Label>
+            <span>内部服务默认全部可用，不参与授权；外部服务 / MCP 需要授权给管理员</span>
+            {selectedServices.length > 0 ? (
+              <Button size="sm" variant="ghost" onClick={() => setSelectedServices([])}>
+                清空选择
+              </Button>
+            ) : null}
+          </div>
           {visibleServices.length === 0 ? (
             <div className="rounded-xl bg-card p-8 text-center text-sm text-muted-foreground">
               这个筛选下没有服务
@@ -629,6 +741,13 @@ export default function CapabilitiesPage() {
                     <div className="flex flex-wrap items-start justify-between gap-3">
                       <div className="min-w-0">
                         <div className="flex flex-wrap items-center gap-2">
+                          {service.source === 'manual' ? (
+                            <Checkbox
+                              aria-label={`选择外部服务 ${service.service}`}
+                              checked={selectedServiceNames.has(service.service)}
+                              onCheckedChange={(checked) => toggleService(service, checked)}
+                            />
+                          ) : null}
                           <span className="text-sm font-medium">{service.title}</span>
                           <code className="font-mono text-[11px] text-muted-foreground">
                             {service.service}
@@ -1048,6 +1167,21 @@ export default function CapabilitiesPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <BatchGrantDialog
+        open={grantOpen}
+        onClose={() => setGrantOpen(false)}
+        items={selectedServices.map((service) => ({
+          id: service.service,
+          label: service.title,
+        }))}
+        principalLabel="管理员"
+        scopeKey="capabilities"
+        notice="服务授权按管理员生效：授权后该管理员才能看到并调用所选外部服务 / MCP；内部服务默认全部可用。"
+        searchPrincipals={searchAdmins}
+        loadGrants={loadServiceGrantMap}
+        onApply={applyServiceGrants}
+      />
     </div>
   )
 }

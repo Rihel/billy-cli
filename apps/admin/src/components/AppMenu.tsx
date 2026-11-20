@@ -4,7 +4,6 @@ import { usePathname, useRouter } from 'next/navigation'
 import type { ComponentType } from 'react'
 import {
   ActivityIcon,
-  BadgeCheckIcon,
   BlocksIcon,
   BellRingIcon,
   BrainIcon,
@@ -62,14 +61,12 @@ export const MENU_ITEMS: MenuItem[] = [
       { label: '网关用量', key: '/main/ai/usage', icon: ChartLineIcon },
       { label: '上游 Key', key: '/main/ai/keys', icon: KeyRoundIcon },
       { label: '技能库', key: '/main/ai/skills', icon: SparklesIcon },
-      { label: '技能授权', key: '/main/ai/skills/grants', icon: ShieldCheckIcon },
       { label: 'AI 市场', key: '/main/ai/market', icon: StoreIcon },
       { label: '记忆', key: '/main/ai/memories', icon: BrainIcon },
       { label: '文件管理', key: '/main/ai/files', icon: FolderOpenIcon },
       { label: '工作区', key: '/main/ai/workspaces', icon: LayersIcon },
       { label: '凭据管理', key: '/main/ai/credentials', icon: LockIcon },
       { label: '能力服务', key: '/main/ai/capabilities', icon: BlocksIcon },
-      { label: '服务授权', key: '/main/ai/authorizations', icon: BadgeCheckIcon },
       { label: '审计与复盘', key: '/main/ai/audit', icon: HistoryIcon },
     ],
   },

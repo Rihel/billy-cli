@@ -17,9 +17,11 @@ function Checkbox({ className, ...props }: CheckboxPrimitive.Root.Props) {
     >
       <CheckboxPrimitive.Indicator
         data-slot="checkbox-indicator"
-        className="grid place-content-center text-current transition-none [&>svg]:size-3.5"
+        className="group/indicator grid place-content-center text-current transition-none [&>svg]:size-3.5"
       >
-        <CheckIcon />
+        {/* 半选（indeterminate）时不画对勾，画一条短横：否则和多选看起来一模一样 */}
+        <CheckIcon className="group-data-[indeterminate]/indicator:hidden" />
+        <span className="hidden h-0.5 w-2.5 rounded-full bg-current group-data-[indeterminate]/indicator:block" />
       </CheckboxPrimitive.Indicator>
     </CheckboxPrimitive.Root>
   )

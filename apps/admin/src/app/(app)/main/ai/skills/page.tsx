@@ -25,9 +25,11 @@ import {
   toastError,
   toastSuccess,
 } from '@repo/ui'
-import { InfoIcon, LinkIcon, PlusIcon, SearchIcon } from 'lucide-react'
+import { InfoIcon, LinkIcon, PlusIcon, SearchIcon, ShieldCheckIcon } from 'lucide-react'
 import { useServerClient } from '@/lib/server-client'
 import { useAuthStore } from '@/stores/auth.store'
+import { BatchGrantDialog } from '@/components/batch-grant-dialog'
+import type { BatchGrantApplyInput, GrantCandidate } from '@/components/batch-grant-dialog'
 import { CreateSkillDialog } from './create-skill-dialog'
 import { ImportSkillDialog } from './import-skill-dialog'
 import { buildSkillColumns } from './skill-columns'
@@ -59,6 +61,9 @@ export default function SkillsPage() {
   const [importOpen, setImportOpen] = useState(false)
   const [importPreview, setImportPreview] = useState<AiSkillImportPreviewResultModel | null>(null)
   const [importResult, setImportResult] = useState<AiSkillImportResultModel | null>(null)
+  /** 勾选的技能（跨页保留；批量授权按它生效） */
+  const [selectedSkills, setSelectedSkills] = useState<AiSkillModel[]>([])
+  const [grantOpen, setGrantOpen] = useState(false)
 
   const listQuery = useQuery({
     queryKey: ['aiSkill', 'list', { page, pageSize, keyword, source, onlyEnabled }],
@@ -126,6 +131,7 @@ export default function SkillsPage() {
   const handleRemove = async (skill: AiSkillModel): Promise<void> => {
     try {
       await removeMutation.mutateAsync(skill.skillKey)
+      setSelectedSkills((current) => current.filter((item) => item.skillKey !== skill.skillKey))
       toastSuccess(`已删除「${skill.skillKey}」`, '落盘目录已一并移除')
       void refetch()
     } catch (error) {
@@ -156,8 +162,101 @@ export default function SkillsPage() {
     }
   }
 
+  const rows = listQuery.data?.items ?? []
+  const selectedKeys = new Set(selectedSkills.map((skill) => skill.skillKey))
+  const selectedOnPage = rows.filter((skill) => selectedKeys.has(skill.skillKey))
+  const allSelected = rows.length > 0 && selectedOnPage.length === rows.length
+  const someSelected = selectedOnPage.length > 0 && !allSelected
+
+  const toggleSkill = (skill: AiSkillModel, checked: boolean): void => {
+    setSelectedSkills((current) =>
+      checked
+        ? [...current.filter((item) => item.skillKey !== skill.skillKey), skill]
+        : current.filter((item) => item.skillKey !== skill.skillKey),
+    )
+  }
+
+  /** 表头全选只作用于当前页（服务端分页，别的页的勾选保留） */
+  const toggleAllOnPage = (checked: boolean): void => {
+    setSelectedSkills((current) => {
+      const pageKeys = new Set(rows.map((row) => row.skillKey))
+      const rest = current.filter((item) => !pageKeys.has(item.skillKey))
+      return checked ? [...rest, ...rows] : rest
+    })
+  }
+
+  /** 授权弹窗的候选主体：前台用户（`principal_type='user'`） */
+  const searchUsers = async (keyword: string): Promise<GrantCandidate[]> => {
+    const result = await client.user.pageQuery({
+      page: 1,
+      size: 100,
+      orderBy: 'createdAt',
+      order: 'asc',
+      ...(keyword ? { keyword } : {}),
+    })
+    return result.items.map((user) => ({
+      id: user.id,
+      label: user.realName || user.email,
+      hint: user.status === 'disabled' ? `${user.email} · 已禁用` : user.email,
+    }))
+  }
+
+  /** 每个技能当前已授权的用户 id（只算 user，管理员 / 全员授权不动） */
+  const loadSkillGrantMap = async (skillKeys: string[]): Promise<Map<string, Set<string>>> => {
+    const entries = await Promise.all(
+      skillKeys.map(async (skillKey) => {
+        const rows = await client.aiSkill.listGrants({ skillKey })
+        const users = new Set(
+          rows.filter((row) => row.principalType === 'user').map((row) => row.principalId),
+        )
+        return [skillKey, users] as const
+      }),
+    )
+    return new Map(entries)
+  }
+
+  /**
+   * 批量写授权：技能授权接口是**覆盖式**的，所以先把每个技能当前的授权读出来，
+   * 保留管理员 / 全员授权，再按差量增删用户。
+   */
+  const applySkillGrants = async ({ add, remove }: BatchGrantApplyInput): Promise<void> => {
+    const targets = selectedSkills
+    for (const skill of targets) {
+      const current = await client.aiSkill.listGrants({ skillKey: skill.skillKey })
+      const kept = current
+        .filter((row) => row.principalType !== 'user')
+        .map((row) => ({ principalType: row.principalType, principalId: row.principalId }))
+      const users = new Set(
+        current.filter((row) => row.principalType === 'user').map((row) => row.principalId),
+      )
+      for (const principalId of add) users.add(principalId)
+      for (const principalId of remove) users.delete(principalId)
+      await client.aiSkill.setGrants({
+        skillKey: skill.skillKey,
+        principals: [
+          ...kept,
+          ...[...users].map((principalId) => ({ principalType: 'user' as const, principalId })),
+        ],
+      })
+    }
+    const changed = [
+      add.length > 0 ? `授予 ${add.length} 人` : '',
+      remove.length > 0 ? `收回 ${remove.length} 人` : '',
+    ]
+      .filter(Boolean)
+      .join('、')
+    toastSuccess('授权已更新', `已对 ${targets.length} 个技能${changed}；运行中的工作区会同步目录`)
+  }
+
   const columns = buildSkillColumns({
     saving,
+    selection: {
+      selected: selectedKeys,
+      allSelected,
+      someSelected,
+      onToggle: toggleSkill,
+      onToggleAll: toggleAllOnPage,
+    },
     onOpen: (skill) => router.push(`/main/ai/skills/${encodeURIComponent(skill.skillKey)}`),
     onToggleEnabled: handleToggleEnabled,
     onRemove: handleRemove,
@@ -217,6 +316,16 @@ export default function SkillsPage() {
               type="button"
               size="sm"
               variant="outline"
+              disabled={selectedSkills.length === 0}
+              onClick={() => setGrantOpen(true)}
+            >
+              <ShieldCheckIcon />
+              授权{selectedSkills.length > 0 ? `（${selectedSkills.length}）` : ''}
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
               onClick={() => {
                 setImportResult(null)
                 setImportPreview(null)
@@ -264,6 +373,18 @@ export default function SkillsPage() {
         onPreview={handlePreview}
         onImport={handleImport}
         canChooseScope={adminType === 'god'}
+      />
+
+      <BatchGrantDialog
+        open={grantOpen}
+        onClose={() => setGrantOpen(false)}
+        items={selectedSkills.map((skill) => ({ id: skill.skillKey, label: skill.skillKey }))}
+        principalLabel="用户"
+        scopeKey="skills"
+        notice="只对平台技能生效：内置技能全员可见、个人技能仅本人可见，这两类写入授权也不会改变可见性；已有的管理员 / 全员授权不受影响。"
+        searchPrincipals={searchUsers}
+        loadGrants={loadSkillGrantMap}
+        onApply={applySkillGrants}
       />
 
       <details className="shrink-0 rounded-xl bg-surface-1 px-4 py-3">

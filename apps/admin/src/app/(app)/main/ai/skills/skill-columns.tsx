@@ -3,7 +3,7 @@
 import dayjs from 'dayjs'
 import { SkillSource } from '@repo/shared'
 import type { AiSkillModel } from '@repo/shared'
-import { ConfirmAction, DictTag, IconText, Switch, TableActions, Tag } from '@repo/ui'
+import { Checkbox, ConfirmAction, DictTag, IconText, Switch, TableActions, Tag } from '@repo/ui'
 import type { DataTableColumnDef } from '@repo/ui'
 import { PencilIcon, Trash2Icon } from 'lucide-react'
 
@@ -16,14 +16,44 @@ import { PencilIcon, Trash2Icon } from 'lucide-react'
 export type SkillColumnsOptions = {
   /** 有写请求在飞：行内开关与删除先禁掉，避免连点打出一串并发写 */
   saving: boolean
+  /** 勾选状态（页面级批量授权用） */
+  selection: SkillSelectionOptions
   onOpen: (skill: AiSkillModel) => void
   onToggleEnabled: (skill: AiSkillModel, enabled: boolean) => void
   onRemove: (skill: AiSkillModel) => void | Promise<void>
 }
 
+/** 勾选：表头全选只作用于当前页（服务端分页） */
+export type SkillSelectionOptions = {
+  selected: Set<string>
+  allSelected: boolean
+  someSelected: boolean
+  onToggle: (skill: AiSkillModel, checked: boolean) => void
+  onToggleAll: (checked: boolean) => void
+}
+
 export const buildSkillColumns = (
   options: SkillColumnsOptions,
 ): DataTableColumnDef<AiSkillModel>[] => [
+  {
+    id: 'select',
+    meta: { width: 40 },
+    header: () => (
+      <Checkbox
+        aria-label="全选当前页技能"
+        checked={options.selection.allSelected}
+        indeterminate={options.selection.someSelected}
+        onCheckedChange={(checked) => options.selection.onToggleAll(checked)}
+      />
+    ),
+    cell: ({ row }) => (
+      <Checkbox
+        aria-label={`选择技能 ${row.original.skillKey}`}
+        checked={options.selection.selected.has(row.original.skillKey)}
+        onCheckedChange={(checked) => options.selection.onToggle(row.original, checked)}
+      />
+    ),
+  },
   {
     header: '技能',
     id: 'skill',
