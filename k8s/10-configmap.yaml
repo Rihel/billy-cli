@@ -1,15 +1,16 @@
-# main / agent-runtime 的非敏感运行配置（model-gateway / capability-gateway / common-capability 见 11/12/13 号文件）。
+# main / agent-runtime 的非敏感运行配置（model-gateway / capability-gateway / common-capability /
+# workspace-service 各有一份专属 ConfigMap，见 11/12/13/14 号文件）。
 #
 # 拆分原则：
-# - `billy-shared`：五个服务都可能用到的公共配置（NODE_ENV / 对象存储 / 日志 / Kafka）；
-# - `billy-main`：公网入口专属（端口 9989、认证与限流、runtime 地址、网关相关超时）；
-# - `billy-agent-runtime`：内部运行时专属（端口 9990、多实例恢复、agent 模型配置、模型网关地址）。
-# 新增的 model-gateway / capability-gateway / common-capability 各有自己的 ConfigMap（11/12/13 号文件），
-# 也都用同一份 `billy-shared`。
+# - `billy-shared`：六个服务都可能用到的公共配置（NODE_ENV / 对象存储 / 日志；Kafka 可选）；
+# - `billy-main`：公网入口专属（端口 9989、认证与限流、runtime / 模型网关 / 能力网关 / 工作区服务地址、长连接超时）；
+# - `billy-agent-runtime`：内部运行时专属（端口 9990、多实例恢复、模型网关与能力网关地址、工作区根）。
+# 四个内网服务（11 model-gateway / 12 capability-gateway / 13 common-capability / 14 workspace-service）
+# 各有自己的 ConfigMap，也都用同一份 `billy-shared`。
 #
-# 敏感项（DB_URL / REDIS_URL / JWT_SECRET / 对象存储密钥 / AGENT_INTERNAL_TOKEN /
-# MODEL_INTERNAL_TOKEN / MODEL_GATEWAY_TOKEN / TOOL_INTERNAL_TOKEN）统一放在 Secret `billy-app`，
-# 所有 Deployment 共享同一份；建 Secret 的命令与全部键说明见 README.md §1。
+# 敏感项（DB_URL / REDIS_URL / JWT_SECRET / 对象存储密钥 / AGENT_INTERNAL_TOKEN / MODEL_INTERNAL_TOKEN /
+# MODEL_GATEWAY_TOKEN / TOOL_INTERNAL_TOKEN / TOOL_GATEWAY_TOKEN / WORKSPACE_INTERNAL_TOKEN）
+# 统一放在 Secret `billy-app`，所有 Deployment 共享同一份；建 Secret 的命令与全部键说明见 README.md §2。
 # Deployment 的 envFrom 顺序是 billy-shared → 各自 ConfigMap → billy-app（键不重复，避免覆盖歧义）。
 ---
 apiVersion: v1
@@ -26,9 +27,10 @@ data:
   OBJECT_STORAGE_BUCKET: billy-cli
   OBJECT_STORAGE_ENDPOINT: http://minio.billy.svc.cluster.local:9000
   LOG_LEVEL: info
-  # ── agent 对话的 SSE 通路依赖 Kafka ──
-  # runtime 把输出发到 agent.run.events，main 消费后转成前端 SSE；不配时普通 CRUD 正常，
-  # 但 /agent/chat/stream 收不到内容。生产启用 agent 时必须填写。
+  # ── Kafka（可选，当前无业务使用）──
+  # 只有配置了 KAFKA_BROKERS 时 main / agent-runtime 才装配 KafkaModule；当前没有任何业务
+  # 生产 / 消费方 —— AI 流式输出走 Redis pub/sub（runtime 发布 agent:stream:client:<clientId>，
+  # main 的 AgentSseBridge 订阅后写 SSE），不依赖 Kafka。不接异步消息时整段留空即可。
   # KAFKA_BROKERS: kafka.billy.svc.cluster.local:9092
   # KAFKA_CLIENT_ID: app
   # KAFKA_TOPIC_PREFIX: app
@@ -55,8 +57,14 @@ data:
   RATE_LIMIT_TRUST_PROXY: 'true'
   # 内部调用地址：runtime 的 ClusterIP Service（见 31-service-agent-runtime.yaml）
   AGENT_RUNTIME_URL: http://billy-agent-runtime.billy.svc.cluster.local:9990
-  # 能力网关：后台「工具配置」页从这里取服务能力清单（内建工具问 runtime）
+  # 能力网关：后台能力 / 工具配置页从这里取能力目录（内建 wait-task / cancel-task / tool-search 也在网关）
   TOOL_GATEWAY_URL: http://billy-capability-gateway.billy.svc.cluster.local:9993
+  # 工作区执行面：后台文件页 / 工作区控制（ensure / stop / destroy）用；
+  # 令牌由 Secret 的 WORKSPACE_INTERNAL_TOKEN 提供。不配时回落 127.0.0.1:9995，Pod 里必然调不到。
+  WORKSPACE_SERVICE_URL: http://billy-workspace-service.billy.svc.cluster.local:9995
+  # 模型网关：后台「模型管理」的供应商模型明细同步走它（main 不直接碰供应商）；
+  # 令牌由 Secret 的 MODEL_GATEWAY_TOKEN 提供。不配时回落 127.0.0.1:9992。
+  MODEL_GATEWAY_URL: http://billy-model-gateway.billy.svc.cluster.local:9992
   # 长连接超时：必须**大于**网关的上游空闲超时，否则网关会往正在关闭的 socket 发请求 → 间歇 502
   # ingress-nginx 的 upstream-keepalive-timeout 默认 60s，故这里 75s / 80s（后端比网关长）
   KEEP_ALIVE_TIMEOUT_MS: '75000'
@@ -80,7 +88,8 @@ data:
   APP_VERSION: v0.0.0
   # 多副本：恢复 / 停止 / 断线补发依赖 Redis 租约；漏配时滚动更新会让新 Pod 误伤其它副本在跑的 run
   AGENT_MULTI_INSTANCE: 'true'
-  # 能力网关：bash / 文件 / 联网 / 记忆等能力都在服务侧执行（runtime 不再跑本地执行体）
+  # 能力网关：工具面默认走能力网关（runtime 不再有进程内执行体）；
+  # 模型面工具清单也来自网关的能力目录（含 MCP / 外部服务工具）。
   TOOL_GATEWAY_URL: http://billy-capability-gateway.billy.svc.cluster.local:9993
   # 与 main 取同一组超时；runtime 也可能被 SSE / 长任务占用，优雅关闭必须留足排空时间
   KEEP_ALIVE_TIMEOUT_MS: '75000'
@@ -89,13 +98,15 @@ data:
   # ── 模型网关（内部 9992）──
   # runtime 只向网关要模型目录、把模型实例指向网关，自己不再读供应商 key / 配置表。
   # 地址必须与 32-service-model-gateway.yaml 的 Service DNS + 端口一致。
-  # 配套令牌在 Secret `billy-app`：runtime 读 MODEL_GATEWAY_TOKEN，网关读 MODEL_INTERNAL_TOKEN，
-  # 两个键必须同值（见 README §3）。
+  # 配套令牌在 Secret `billy-app`：runtime / main 读 MODEL_GATEWAY_TOKEN，网关读 MODEL_INTERNAL_TOKEN，
+  # 两个键必须同值（见 README §4）。
   MODEL_GATEWAY_URL: http://billy-model-gateway.billy.svc.cluster.local:9992
   # 会话工作区根：必须与工作区 PVC 的挂载路径一致（默认值也是它，显式写出防止 HOME 变更后错位）。
-  # 该目录由 15-pvc-agent-runtime-workspaces.yaml 挂载；RWO 存储类下不能多副本。
+  # 该目录由 15-pvc-agent-runtime-workspaces.yaml 挂载，只用于 runtime 侧的入站附件物化 / 本地工作区根；
+  # bash 与工作区文件能力已迁到 workspace-service 的容器（容器内 /workspace 是 emptyDir），不用这个根。
   AGENT_COMMAND_WORK_DIR: /home/appuser/.billy/workspaces
-  # ── agent 模型配置（非敏感）──
-  # MASTRA_MODEL: deepseek/deepseek-chat
-  # MASTRA_BASE_URL: https://api.deepseek.com
-  # AGENT_WORKSPACE_MODE: sandbox
+  # ── 模型配置不进 Pod 环境：供应商 / 模型走后台「模型管理」入库，由 model-gateway 读取；
+  #    runtime 只按能力目录 / 模型目录解析，不需要 MASTRA_* / 供应商 key。
+  #    （MASTRA_* 仍是 main 首次启动的**可选**种子，见 README §2 的说明。）
+  # runtime / common-capability 不再本地执行 bash；本文件不设置 AGENT_WORKSPACE_MODE
+  # （该键只影响服务自身的本地沙箱 / GET /info 的展示，不影响 workspace-service 的工作区容器）。

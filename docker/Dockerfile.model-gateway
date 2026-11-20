@@ -8,25 +8,27 @@ FROM node26-pnpm12:1.0 AS builder
 WORKDIR /app
 
 COPY package.json pnpm-lock.yaml turbo.json pnpm-workspace.yaml ./
-# 必须复制**全部** workspace 成员清单（增删成员时所有 Dockerfile 都要同步）
-COPY apps/admin/package.json             ./apps/admin/
-COPY apps/agent-runtime/package.json     ./apps/agent-runtime/
-COPY apps/main/package.json              ./apps/main/
-COPY apps/model-gateway/package.json     ./apps/model-gateway/
-COPY apps/tool-gateway/package.json      ./apps/tool-gateway/
-COPY apps/tool-worker/package.json       ./apps/tool-worker/
-COPY apps/web/package.json               ./apps/web/
-COPY packages/ai-data/package.json       ./packages/ai-data/
-COPY packages/contracts/package.json     ./packages/contracts/
-COPY packages/db/package.json            ./packages/db/
-COPY packages/http-client/package.json   ./packages/http-client/
-COPY packages/internal-sdk/package.json  ./packages/internal-sdk/
-COPY packages/kits/package.json          ./packages/kits/
-COPY packages/sdk/package.json           ./packages/sdk/
-COPY packages/shared/package.json        ./packages/shared/
-COPY packages/tool-catalog/package.json  ./packages/tool-catalog/
-COPY packages/ui/package.json            ./packages/ui/
-COPY packages/web-runtime/package.json   ./packages/web-runtime/
+# 必须复制**全部** workspace 成员清单（增删成员时 8 份服务 Dockerfile 都要同步这份清单）
+COPY apps/admin/package.json               ./apps/admin/
+COPY apps/agent-runtime/package.json       ./apps/agent-runtime/
+COPY apps/capability-gateway/package.json  ./apps/capability-gateway/
+COPY apps/common-capability/package.json   ./apps/common-capability/
+COPY apps/main/package.json                ./apps/main/
+COPY apps/model-gateway/package.json       ./apps/model-gateway/
+COPY apps/web/package.json                 ./apps/web/
+COPY apps/workspace-service/package.json   ./apps/workspace-service/
+COPY packages/ai-data/package.json         ./packages/ai-data/
+COPY packages/capability/package.json      ./packages/capability/
+COPY packages/contracts/package.json       ./packages/contracts/
+COPY packages/db/package.json              ./packages/db/
+COPY packages/http-client/package.json     ./packages/http-client/
+COPY packages/internal-sdk/package.json    ./packages/internal-sdk/
+COPY packages/kits/package.json            ./packages/kits/
+COPY packages/monitor/package.json         ./packages/monitor/
+COPY packages/sdk/package.json             ./packages/sdk/
+COPY packages/shared/package.json          ./packages/shared/
+COPY packages/ui/package.json              ./packages/ui/
+COPY packages/web-runtime/package.json     ./packages/web-runtime/
 
 COPY scripts/ ./scripts/
 RUN pnpm install --frozen-lockfile

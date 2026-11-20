@@ -16,9 +16,12 @@
 #   PDB 只约束节点排水 / 驱逐，不约束扩缩容本身。
 # - 缩容默认有 5 分钟稳定窗（stabilizationWindowSeconds=300），流量突降不会立刻砍副本。
 #
-# capability-gateway / common-capability 不配 HPA：
-# - capability-gateway 只是转发 + 审计，压力在执行侧；
-# - common-capability 的本地工作区不共享，多副本会破坏同一会话的命令连续性（见 24-deployment 注释）。
+# 另外三个服务不配 HPA（当前清单口径）：
+# - capability-gateway：只做能力目录 / 路由 / 审计，压力在执行侧，扩网关不提高吞吐；
+# - common-capability：固定 1 副本 —— 实例任务句柄 / 在跑计数在进程内，旧数据的本地回落文件不共享
+#  （见 24-deployment-common-capability.yaml 顶部注释）；
+# - workspace-service：固定 1 副本 —— 工作区 handle 映射在执行面内存里，多副本会重复管理同一批 Pod
+#  （见 25-deployment-workspace-service.yaml 顶部注释）。
 ---
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler

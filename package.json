@@ -49,6 +49,7 @@
     "start:server": "pnpm --filter @app/main run start",
     "start:capability-gateway": "pnpm --filter @app/capability-gateway run start",
     "start:common-capability": "pnpm --filter @app/common-capability run start",
+    "start:workspace-service": "pnpm --filter @app/workspace-service run start",
     "clean": "node scripts/clean.ts",
     "check:inject": "node --import tsx/esm scripts/check-inject-decorators.ts",
     "check:mastra": "node --import tsx/esm scripts/check-mastra-boundary.ts",

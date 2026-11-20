@@ -1,7 +1,11 @@
 # common-capability 的非敏感运行配置（内部服务，容器端口 9994）。
 #
-# 敏感项全在 Secret `billy-app`：DB_URL / REDIS_URL / TOOL_INTERNAL_TOKEN / 对象存储密钥；
-# 对象存储的 provider / region / bucket / endpoint 在 `billy-shared`。
+# 它是能力执行服务 `common`：9 个能力（file-submit / file-download、web-*、memory-*、
+# read-tool-result），不跑 bash（bash 由 workspace-service 执行）。启动时向能力网关登记，
+# 之后只发心跳。
+#
+# 敏感项全在 Secret `billy-app`：DB_URL / REDIS_URL / TOOL_INTERNAL_TOKEN / WORKSPACE_INTERNAL_TOKEN /
+# 对象存储密钥；对象存储的 provider / region / bucket / endpoint 在 `billy-shared`。
 # Deployment 的 envFrom 顺序：billy-shared → billy-common-capability → billy-app（键不重复）。
 #
 # 注意：本 Deployment 还用 downward API 注入 POD_NAME / POD_IP，并在容器的 env 里派生出
@@ -17,20 +21,16 @@ metadata:
 data:
   # 容器监听端口；Service 的 targetPort 按它
   PORT: '9994'
-  # 部署版本（注册表里用于按版本灰度选路）：**必须与镜像 tag 同步**
-  TOOL_WORKER_VERSION: v0.0.0
-  # 本 worker 的会话工作区根（会话 id 作为子目录）。镜像已建好 /home/appuser/.billy-cli 并 chown；
-  # 这是**本 Pod 的本地盘**，可丢弃的前提是文件真相在对象存储里。
+  # 能力网关：**登记地址**（启动时向它登记 `common` 的 9 个能力并续心跳）。
+  # 不配会跳过登记（只打一条 warn）→ 后台能力目录里没有 common，调用返回 no-provider。
+  CAPABILITY_GATEWAY_URL: http://billy-capability-gateway.billy.svc.cluster.local:9993
+  # workspace-service：file-submit / file-download 的 WorkspaceFsPort 走它（读写工作区文件）。
+  # 不配时回落 http://127.0.0.1:9995，Pod 里必然调不到。
+  WORKSPACE_SERVICE_URL: http://billy-workspace-service.billy.svc.cluster.local:9995
+  # 本地回落根：仅当会话还没有绑定工作区（没有 workspaceId）时，文件读写才落到本 Pod 本地盘；
+  # 正常路径（会话已绑定工作区）的文件 / 命令执行都在 workspace-service 的容器里，不用这个根。
   TOOL_WORKER_WORKSPACE_ROOT: /home/appuser/.billy-cli
-  # 单 Pod 同时执行上限：与内存 limit 一起看，别让 8 条重命令把一个 1Gi 的 Pod 打 OOM
+  # 单 Pod 同时执行上限：与内存 limit 一起看，别让 8 条并发的大结果 / web 拉取把 1Gi 的 Pod 打 OOM
   TOOL_WORKER_MAX_CONCURRENCY: '8'
-  # 心跳 10s / 30s 过期；与 capability-gateway 的 TOOL_WORKER_STALE_MS 对齐
+  # 心跳间隔（gateway 侧按自己的 TOOL_WORKER_STALE_MS 判过期）
   TOOL_WORKER_HEARTBEAT_MS: '10000'
-  TOOL_WORKER_STALE_MS: '30000'
-  # ── 沙箱策略：这里必须是 off ──
-  # 默认 enforce 要求容器内装有 bubblewrap（Linux）/ sandbox-exec（macOS），且节点放开
-  # unprivileged userns；`docker/Dockerfile.common-capability` 的 runner 是纯 node:alpine，没装 bwrap。
-  # 保持默认值时 /readyz 永远 503、worker 永远起不来，所以这里显式 off（命令以 appuser 身份直接执行）。
-  # ⚠️ off 不做隔离，只适合自托管 / 单租户；多租户上线前必须在镜像里装 bwrap、放开 userns，
-  #    再把这里改回 enforce（或直接删掉这一行使用默认值）。
-  AGENT_WORKSPACE_MODE: 'off'

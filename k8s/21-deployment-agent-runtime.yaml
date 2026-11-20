@@ -10,7 +10,8 @@ spec:
   # 内部运行时：不接公网流量，2 副本即可覆盖滚动更新；真正防重依赖 AGENT_MULTI_INSTANCE + Redis 租约
   replicas: 2
   # 与 main 同一套滚动策略：先起新 Pod 并等就绪，再杀旧 Pod。
-  # runtime 上可能有在跑的 agent run（SSE / Kafka 事件），滚动期间必须保留至少一份可用实例。
+  # runtime 上可能有在跑的 agent run（SSE 走 Redis pub/sub，事件/补发在 Redis），
+  # 滚动期间必须保留至少一份可用实例。
   strategy:
     type: RollingUpdate
     rollingUpdate:
@@ -61,7 +62,8 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: metadata.name
-          # 会话工作区持久卷：bash / 文件工具共用 `{挂载点}/{conversationId}/`。
+          # 会话工作区持久卷：runtime 侧的入站附件物化 / 本地工作区根 `{挂载点}/{conversationId}/`。
+          # bash 与工作区文件能力已迁到 workspace-service（容器内 /workspace 是 emptyDir），不用这个卷。
           # - 挂载点必须与 ConfigMap 的 AGENT_COMMAND_WORK_DIR 一致（不改时默认也是这个路径）；
           # - PVC 必须是 RWX：HPA 会把 runtime 扩到 8 个 Pod，RWO 下只有第一个能挂上；
           # - 卷根目录的属主 / 权限由存储类决定，写不进去时给 Pod 补 fsGroup（见 PVC 文件注释）。
@@ -109,8 +111,8 @@ spec:
             capabilities:
               drop: ['ALL']
       # 工作区卷：与 15-pvc-agent-runtime-workspaces.yaml 的 PVC 名严格对应。
-      # 只挂 workspaces 子目录，不整挂 /home/appuser/.billy —— 那会把 lark-cli 的本地状态
-      # （HOME/.billy/lark-cli）也卷进来，而它的并发写语义没有验证过。
+      # 只挂 workspaces 子目录，不整挂 /home/appuser/.billy —— 避免把镜像 HOME 下的其它状态
+      # （历史 lark-cli 目录等）卷进来，那类目录的并发写语义没有验证过。
       volumes:
         - name: workspaces
           persistentVolumeClaim:

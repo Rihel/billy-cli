@@ -1,19 +1,27 @@
 # agent-runtime 的会话工作区持久卷。
 #
-# 挂载点：`/home/appuser/.billy/workspaces`（见 21-deployment-agent-runtime.yaml 的 volumeMounts）。
-# 路径必须与 `AGENT_COMMAND_WORK_DIR` 一致——那是 runtime bash / 文件工具共用的工作区根，
-# 布局是 `{根}/{conversationId}/`。不持久化时：Pod 重建 = 会话文件全丢；多副本 = 各看各的。
+# 挂载点：`/home/appuser/.billy/workspaces`（见 21-deployment-agent-runtime.yaml 的 volumeMounts），
+# 布局是 `{根}/{conversationId}/`。现在它主要承载 runtime 侧的**入站附件物化 / 本地工作区根**
+# （`AGENT_COMMAND_WORK_DIR` 指向它）；bash 与工作区文件能力已经迁到 workspace-service 的容器里执行，
+# 后者的 `/workspace` 是 emptyDir，不挂这个 PVC。
+#
+# 仍然必须是 ReadWriteMany：runtime 是 2 副本且由 HPA 扩到 8，同一份工作区根要被多个 Pod 同时挂载；
+# 不持久化时 Pod 重建 = 未提交的物化文件全丢。
 #
 # ⚠️ ReadWriteMany 不是「随便哪个 storageClass 都给」：
 # - 需要底层支持多节点同时读写（NFS / CephFS / EFS / Azure Files / 部分 CSI 的 RWX 模式）；
 # - 下面 `storageClassName` 默认注释掉 = 用集群默认存储类，**默认类通常是 RWO**（EBS / local-path 等），
 #   直接 apply 会 Pending 或只能单 Pod 挂载。上线前按集群实际情况取消注释并填对。
-# - 如果集群**只有 RWO**：把 agent-runtime 改成 StatefulSet 单副本（或 `replicas: 1` 的 Deployment），
+# - 如果集群**只有 RWO**：把 agent-runtime 改成单副本（StatefulSet 或 `replicas: 1` 的 Deployment），
 #   并同步把 60-hpa.yaml 里 billy-agent-runtime 的 HPA 删掉 / 上限设为 1；否则第二个 Pod 会挂不上卷、
 #   一直 Pending（RWO 的语义是同一时间只允许一个节点挂载）。
 # - 写权限：卷根目录的属主由存储类决定。容器以非 root 的 appuser 运行，若 /readyz 正常但写文件 EACCES，
 #   给 runtime Pod 补 `securityContext.fsGroup`（取镜像内 appuser 的 UID，`docker run --rm <镜像> id appuser`），
 #   或在存储侧把目录属主 / 权限设好。不要在清单里猜 UID。
+#
+# ⚠️ 这个 PVC **不供 workspace-service 使用**：workspace-service 自己不带业务卷（见 25-deployment），
+# 它创建的工作区 Pod 用 emptyDir `/workspace`，Pod 回收后工作区里的未提交文件即丢失；
+# 文件真相在对象存储（file-submit 提交过的文件）与数据库记录里。
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
@@ -28,7 +36,7 @@ spec:
   volumeMode: Filesystem
   resources:
     requests:
-      # 20Gi 是起步值：只存会话工作区文件（真相在对象存储），可按实际增长调大。
+      # 20Gi 是起步值：只存会话工作区物化文件（真身在对象存储），可按实际增长调大。
       # 注意：PVC 扩容还要求存储类支持 allowVolumeExpansion。
       storage: 20Gi
   # ← 按集群实际存储类取消注释并替换；必须支持 RWX。

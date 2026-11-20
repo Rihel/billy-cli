@@ -7,7 +7,8 @@ metadata:
     app.kubernetes.io/name: billy-workspace-service
     app.kubernetes.io/component: workspace-service
 spec:
-  # 内部服务：main（控制面）与 capability-gateway（能力路由）调它，不暴露公网。
+  # 内部服务：main（控制面：文件页 / 工作区控制）、common-capability（WorkspaceFsPort：
+  # file-submit / file-download）与 capability-gateway（能力路由 /invoke）调它，不暴露公网。
   type: ClusterIP
   selector:
     app.kubernetes.io/name: billy-workspace-service

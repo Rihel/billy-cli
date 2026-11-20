@@ -17,6 +17,7 @@ spec:
       targetPort: http # 对应容器端口名 http(9989)
       protocol: TCP
       appProtocol: http
-  # SSE 长连接**不需要**会话保持：事件经 Redis pub/sub 跨实例广播，
-  # 客户端重连落到哪个 Pod 都能收到（这也让滚动更新时客户端重连不挑实例）
+  # SSE 长连接**不需要**会话保持：事件经 Redis pub/sub 按 `agent:stream:client:<clientId>`
+  # 定向投递到持有该连接的 main 实例，客户端重连落到哪个 Pod 都能重新绑定
+  #（这也就让滚动更新时客户端重连不挑实例）
   sessionAffinity: None

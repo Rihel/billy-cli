@@ -7,7 +7,8 @@ metadata:
     app.kubernetes.io/name: billy-capability-gateway
     app.kubernetes.io/component: capability-gateway
 spec:
-  # 内部服务：由 agent-runtime 的工具面调用（TOOL_GATEWAY_URL），不接公网 Ingress。
+  # 内部服务：由 agent-runtime 的工具面调用（TOOL_GATEWAY_URL），billy-main 的后台能力 / 工具配置页
+  # 也走它；common-capability / workspace-service 启动时向它登记。不接公网 Ingress。
   # 集群内地址：http://billy-capability-gateway.billy.svc.cluster.local:9993
   type: ClusterIP
   selector:
@@ -18,5 +19,5 @@ spec:
       targetPort: http # 对应容器端口名 http(9993)
       protocol: TCP
       appProtocol: http
-  # 网关本身无状态：worker 注册表在 Redis，选路在每次请求里完成
+  # 网关本身无状态：能力注册表在 Redis，选路在每次请求里完成
   sessionAffinity: None

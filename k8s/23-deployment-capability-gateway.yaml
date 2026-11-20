@@ -7,8 +7,10 @@ metadata:
     app.kubernetes.io/name: billy-capability-gateway
     app.kubernetes.io/component: capability-gateway
 spec:
-  # 内部工具面网关：只做鉴权 / 选 worker / 超时 / 审计，本身很轻，2 副本够覆盖滚动更新。
-  # 没有 HPA：真正的执行压力在 common-capability 上，扩网关不会提高工具吞吐。
+  # 内部能力网关：做鉴权 / 能力目录 / 按实例选路 / 超时 / 审计 / MCP 代理 / 内建能力
+  # （wait-task / cancel-task / tool-search），本身很轻，2 副本够覆盖滚动更新。
+  # 没有 HPA：执行压力在 common-capability（common 的 9 个能力）与 workspace-service（bash + 文件），
+  # 扩网关不会提高执行吞吐。
   replicas: 2
   strategy:
     type: RollingUpdate

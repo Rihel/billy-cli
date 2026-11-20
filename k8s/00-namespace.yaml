@@ -1,12 +1,13 @@
 # Billy 服务端 Kubernetes 部署清单
 #
-# 本目录覆盖五个服务：
-# - billy-main（apps/main，9989）：公网唯一入口，Deployment / Service / Ingress / PDB；
-# - billy-agent-runtime（apps/agent-runtime，9990）：内部 ClusterIP，不接公网 Ingress；
-# - billy-model-gateway（apps/model-gateway，9992）：内部模型网关；
-# - billy-capability-gateway（apps/capability-gateway，9993）：内部工具面网关；
-# - billy-common-capability（apps/common-capability，9994）：内部工具执行体。
-# 后三个都只在内网，不接公网 Ingress。web / admin 的部署另议。
+# 本目录覆盖六个 Nest 服务：
+# - billy-main（apps/main，9989）：公网唯一入口 / BFF，Deployment / Service / Ingress / PDB / HPA；
+# - billy-agent-runtime（apps/agent-runtime，9990）：agent loop，内部 ClusterIP，不接公网 Ingress；
+# - billy-model-gateway（apps/model-gateway，9992）：内部模型网关（供应商 key / 协议适配）；
+# - billy-capability-gateway（apps/capability-gateway，9993）：内部能力网关（能力目录 / 路由 / 审计 / MCP）；
+# - billy-common-capability（apps/common-capability，9994）：执行服务 `common` 的 9 个能力；
+# - billy-workspace-service（apps/workspace-service，9995）：工作区执行面（bash + 7 个工作区文件能力）。
+# 后四个只在内网，不接公网 Ingress。web / admin 的部署另议。
 # 全部占位符需替换：镜像地址与 tag、域名 api.example.com、DB / Redis 地址与凭据。
 # 字段取值的来由（尤其「滚动更新为什么不 502」）见同目录 README.md。
 apiVersion: v1

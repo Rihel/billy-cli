@@ -4,7 +4,7 @@
 # Deployment 的 envFrom 顺序：billy-shared → billy-model-gateway → billy-app（键不重复）。
 #
 # ⚠️ `MODEL_INTERNAL_TOKEN` 是 model-gateway **自己**读的变量名；
-# agent-runtime 侧读的是 `MODEL_GATEWAY_TOKEN`。两者必须同值，否则 runtime 调网关一律 401。
+# agent-runtime / billy-main 侧读的是 `MODEL_GATEWAY_TOKEN`。两者必须同值，否则调用一律 401。
 apiVersion: v1
 kind: ConfigMap
 metadata:

@@ -7,8 +7,13 @@ metadata:
     app.kubernetes.io/name: billy-workspace-service
     app.kubernetes.io/component: workspace-service
 spec:
-  # ⚠️ 固定 1 副本：运行态（handle 映射 + 容器标签）在执行面内存里，
-  # 多副本会各自管理同一批 Pod、重复回收。要横向扩，先把运行态做成分区 / 一致性租约。
+  # ⚠️ 固定 1 副本（不加 HPA）：运行态（workspaceId → handle / 容器名映射）在执行面内存里，
+  # 多副本会各自管理同一批 Pod、重复回收，且网关回调的是注册时上报的实例地址。
+  # 要横向扩，先把运行态做成分区 / 一致性租约，并让每个 Pod 上报自己的 WORKSPACE_SERVICE_ENDPOINT。
+  #
+  # 本 Deployment **不挂业务 PVC**：kubernetes 后端下工作区就是一个带 `app=billy-workspace`
+  # 标签的 Pod（`/workspace` 用 emptyDir），由本服务通过 ServiceAccount / Role 创建、exec、删除
+  # （见 16-rbac-workspace-service.yaml）。工作区里的未提交文件随 Pod 回收丢失，文件真相在对象存储。
   replicas: 1
   strategy:
     type: RollingUpdate
@@ -27,15 +32,19 @@ spec:
         app.kubernetes.io/name: billy-workspace-service
         app.kubernetes.io/component: workspace-service
     spec:
+      # 创建 / exec / 删除工作区 Pod 需要这个 SA 的 RBAC（16 号文件）；漏配则 kubectl 403
       serviceAccountName: billy-workspace-service
       terminationGracePeriodSeconds: 60
       containers:
         - name: workspace-service
+          # ← 替换为你的镜像地址与 tag（当前是无 registry 前缀的占位值）
           image: billy-workspace-service:latest
           imagePullPolicy: IfNotPresent
           ports:
             - name: http
               containerPort: 9995
+          # 共享配置（NODE_ENV / 日志 / 对象存储，实际只读 NODE_ENV / LOG_LEVEL）→ 专属配置 → 共享 Secret
+          #（DB_URL / WORKSPACE_INTERNAL_TOKEN / 向能力网关登记用的 TOOL_INTERNAL_TOKEN）
           envFrom:
             - configMapRef:
                 name: billy-shared
@@ -43,6 +52,8 @@ spec:
                 name: billy-workspace-service
             - secretRef:
                 name: billy-app
+          # 探针：/readyz、/healthz 当前都只回 200（不探 DB）；DB 故障不会被 readiness 摘流，
+          # 失败会体现在调用错误 / 日志里。
           readinessProbe:
             httpGet:
               path: /readyz

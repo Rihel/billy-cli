@@ -7,8 +7,8 @@ metadata:
     app.kubernetes.io/name: billy-model-gateway
     app.kubernetes.io/component: model-gateway
 spec:
-  # 内部服务：只给 agent-runtime 通过 MODEL_GATEWAY_URL 调用，不接公网 Ingress。
-  # 集群内地址（runtime 的 ConfigMap 必须与这里一致）：
+  # 内部服务：agent-runtime（模型调用）与 billy-main（模型明细同步）通过 MODEL_GATEWAY_URL 调用，
+  # 不接公网 Ingress。集群内地址（runtime / main 的 ConfigMap 必须与这里一致）：
   #   http://billy-model-gateway.billy.svc.cluster.local:9992
   type: ClusterIP
   selector:

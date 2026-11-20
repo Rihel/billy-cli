@@ -13,25 +13,28 @@ WORKDIR /app
 COPY package.json pnpm-lock.yaml turbo.json pnpm-workspace.yaml ./
 # 必须复制**全部** workspace 成员的清单：pnpm install --frozen-lockfile 需要完整的 workspace 图，
 # 少一个成员就会 ERR_PNPM_WORKSPACE_PKG_NOT_FOUND。
-# 新增 / 删除 workspace 成员（apps/* 或 packages/*）时，三份 Dockerfile 都要同步这份清单。
-COPY apps/admin/package.json             ./apps/admin/
-COPY apps/agent-runtime/package.json     ./apps/agent-runtime/
-COPY apps/main/package.json              ./apps/main/
+# 新增 / 删除 workspace 成员（apps/* 或 packages/*）时，8 份服务 Dockerfile 都要同步这份清单：
+# main / agent-runtime / model-gateway / capability-gateway / common-capability / workspace-service / web / admin。
+COPY apps/admin/package.json               ./apps/admin/
+COPY apps/agent-runtime/package.json       ./apps/agent-runtime/
+COPY apps/capability-gateway/package.json  ./apps/capability-gateway/
+COPY apps/common-capability/package.json   ./apps/common-capability/
+COPY apps/main/package.json                ./apps/main/
 COPY apps/model-gateway/package.json       ./apps/model-gateway/
-COPY apps/capability-gateway/package.json      ./apps/capability-gateway/
-COPY apps/common-capability/package.json       ./apps/common-capability/
-COPY apps/web/package.json               ./apps/web/
-COPY packages/ai-data/package.json       ./packages/ai-data/
-COPY packages/contracts/package.json     ./packages/contracts/
-COPY packages/db/package.json            ./packages/db/
-COPY packages/http-client/package.json   ./packages/http-client/
-COPY packages/internal-sdk/package.json  ./packages/internal-sdk/
-COPY packages/kits/package.json          ./packages/kits/
-COPY packages/sdk/package.json           ./packages/sdk/
-COPY packages/shared/package.json        ./packages/shared/
-COPY packages/tool-catalog/package.json  ./packages/tool-catalog/
-COPY packages/ui/package.json            ./packages/ui/
-COPY packages/web-runtime/package.json   ./packages/web-runtime/
+COPY apps/web/package.json                 ./apps/web/
+COPY apps/workspace-service/package.json   ./apps/workspace-service/
+COPY packages/ai-data/package.json         ./packages/ai-data/
+COPY packages/capability/package.json      ./packages/capability/
+COPY packages/contracts/package.json       ./packages/contracts/
+COPY packages/db/package.json              ./packages/db/
+COPY packages/http-client/package.json     ./packages/http-client/
+COPY packages/internal-sdk/package.json    ./packages/internal-sdk/
+COPY packages/kits/package.json            ./packages/kits/
+COPY packages/monitor/package.json         ./packages/monitor/
+COPY packages/sdk/package.json             ./packages/sdk/
+COPY packages/shared/package.json          ./packages/shared/
+COPY packages/ui/package.json              ./packages/ui/
+COPY packages/web-runtime/package.json     ./packages/web-runtime/
 
 # 安装全部依赖（含 devDependencies，build 需要）
 COPY scripts/ ./scripts/

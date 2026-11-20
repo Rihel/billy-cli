@@ -1,10 +1,11 @@
 # ─────────────────────────────────────────────
-# 两个应用容器共享的运行时环境变量。
+# 六个 Nest 服务（main / agent-runtime / model-gateway / capability-gateway /
+# common-capability / workspace-service）共享的运行时环境变量。
 #
-# 注意：main 与 agent-runtime 必须拿到**完全一致**的 DB / Redis / JWT / 对象存储配置，
-# 以及同一个 AGENT_INTERNAL_TOKEN —— 后者是 main 调 runtime 内部接口的凭证，
-# 两边不一致时 /internal/agent/* 一律 401。故用 YAML 锚点只维护一份。
-# 各服务再用 `environment: <<: *app-env` 合并自己独有的变量（PORT / AGENT_RUNTIME_URL）。
+# 注意：六个服务必须拿到**完全一致**的 DB / Redis / 对象存储配置，以及四组内部 token
+#（AGENT_INTERNAL_TOKEN / MODEL_* / TOOL_* / WORKSPACE_INTERNAL_TOKEN）——
+# 校验方与携带方不一致时对应内部接口一律 401 / 403。故用 YAML 锚点只维护一份。
+# 各服务再用 `environment: <<: *app-env` 合并自己独有的变量（PORT / 各服务专用 URL）。
 # ─────────────────────────────────────────────
 x-app-env: &app-env
   DB_URL: postgresql://root:pg1234@postgres:5432/billy-cli
@@ -19,23 +20,25 @@ x-app-env: &app-env
   OBJECT_STORAGE_ENDPOINT: http://minio:9000
   # main ↔ agent-runtime 的内部调用令牌；两边必须相同（compose 里默认给本地开发值，生产务必覆盖）
   AGENT_INTERNAL_TOKEN: ${AGENT_INTERNAL_TOKEN:-local-dev-internal-token}
-  # 会话工作区：main 文件页、runtime bash、worker 文件工具共用同一个卷
+  # 会话工作区根（布局 {根}/{conversationId}/）：main 的文件页、runtime 的入站附件物化共用；
+  # common-capability 用 TOOL_WORKER_WORKSPACE_ROOT 指向同一个卷（未绑定工作区的旧数据回落用）。
+  # bash / 工作区文件能力的新执行面是 workspace-service（容器内 /workspace），不再用这个根。
   AGENT_COMMAND_WORK_DIR: /home/appuser/.billy-cli
   # runtime 调模型网关（内部 9992）；runtime 已不再读模型配置表 / 不持供应商 key
   MODEL_GATEWAY_URL: http://model-gateway:9992
   MODEL_INTERNAL_TOKEN: ${MODEL_INTERNAL_TOKEN:-local-dev-model-token}
   MODEL_GATEWAY_TOKEN: ${MODEL_GATEWAY_TOKEN:-local-dev-model-token}
-  # runtime / worker 调工具网关
+  # runtime / main 调能力网关（capability-gateway）；workspace-service 登记时也携带同一令牌
   TOOL_GATEWAY_URL: http://capability-gateway:9993
   TOOL_INTERNAL_TOKEN: ${TOOL_INTERNAL_TOKEN:-local-dev-tool-token}
   TOOL_GATEWAY_TOKEN: ${TOOL_GATEWAY_TOKEN:-local-dev-tool-token}
-  # 执行面：bash / file 在工作区里执行；main 的控制面也调它
+  # 执行面：bash / 文件能力在工作区容器里执行；main 的控制面与 common-capability 的
+  # WorkspaceFsPort（file-submit / file-download）也调它
   WORKSPACE_SERVICE_URL: http://workspace-service:9995
   WORKSPACE_INTERNAL_TOKEN: ${WORKSPACE_INTERNAL_TOKEN:-local-dev-workspace-token}
-  # agent 对话的流式内容经 Kafka 从 runtime 转到 main（runtime 发 agent.run.events，main 消费后写 SSE）。
-  # 未配置时普通 CRUD 正常，但 /agent/chat/stream 收不到内容。
-  # 启用方式：先 `docker compose --profile kafka up -d`，再把下面 KAFKA_BROKERS 设为
-  # kafka:9092（容器内 listener）。该变量由 main / agent-runtime 共享，两边值相同。
+  # AI 流式走 Redis pub/sub：runtime 发布 agent:stream:client:<clientId>，main 的 AgentSseBridge
+  # 订阅后写 SSE，不依赖 Kafka。Kafka 可选：只有 KAFKA_BROKERS 存在时 main / agent-runtime 才装配
+  # KafkaModule，当前没有任何业务生产 / 消费方；不接异步消息时留空即可。
   KAFKA_BROKERS: ${KAFKA_BROKERS:-}
 
 services:
@@ -104,7 +107,7 @@ services:
       retries: 10
 
   # ──────────────────────────────────────────
-  # Main（NestJS 12 + Express）：公网唯一入口，HTTP/CRUD + Kafka SSE
+  # Main（NestJS 12 + Express）：公网唯一入口，HTTP/CRUD + agent SSE 中继（Redis pub/sub）
   # ──────────────────────────────────────────
   main:
     build:
@@ -143,7 +146,7 @@ services:
       start_period: 30s
 
   # ──────────────────────────────────────────
-  # Agent runtime（NestJS 12 + Express）：内部服务，只跑 agent 与工具
+  # Agent runtime（NestJS 12 + Express）：内部服务，跑 agent loop；工具 / 模型经网关远程执行
   # 不映射宿主端口；需要本机调试时临时取消下面 expose 旁的注释映射。
   # ──────────────────────────────────────────
   agent-runtime:
@@ -174,10 +177,10 @@ services:
     # ports:
     #   - '9990:9990' # 仅本地调试时打开；生产/CI 不应暴露 runtime
     volumes:
-      # 飞书 CLI 连接器的配置与用户授权（/home/appuser/.billy/lark-cli/<实例>）。
-      # lark-cli 只装在 runtime 镜像里，卷也只挂 runtime。
+      # lark-cli 仍预装在 runtime 镜像里（历史遗留：飞书 CLI 连接器已于 2026-11-18 删除，
+      # 当前没有代码消费这个目录）；保留卷只是避免重建容器时带上残留状态。
       - lark-cli-data:/home/appuser/.billy
-      # 会话工作区与 main 文件页 / worker 共用
+      # 会话工作区根：main 文件页 / runtime 附件物化 / common-capability 回落共用
       - workspace-data:/home/appuser/.billy-cli
     healthcheck:
       test: ['CMD', 'curl', '-fsS', 'http://127.0.0.1:9990/healthz']
@@ -238,7 +241,8 @@ services:
       start_period: 30s
 
   # ──────────────────────────────────────────
-  # Tool gateway / worker（内部工具面，无公网端口）
+  # 内部能力面（无公网端口）：common-capability（执行服务 common 的 9 个能力）/
+  # workspace-service（工作区执行面）/ capability-gateway（能力目录 / 路由 / 审计）
   # ──────────────────────────────────────────
   common-capability:
     build:
@@ -260,8 +264,6 @@ services:
       TOOL_WORKER_DB_URL: postgresql://root:pg1234@postgres:5432/billy-cli
       TOOL_WORKER_ENDPOINT: http://common-capability:9994
       TOOL_WORKER_WORKSPACE_ROOT: /home/appuser/.billy-cli
-      # compose 的 alpine worker 没有 bwrap / seatbelt；本地一键起用 off，生产按宿主能力设 enforce
-      AGENT_WORKSPACE_MODE: off
     expose:
       - '9994'
     volumes:
@@ -293,10 +295,11 @@ services:
       WORKSPACE_SERVICE_PORT: '9995'
       WORKSPACE_DB_URL: postgresql://root:pg1234@postgres:5432/billy-cli
       WORKSPACE_INTERNAL_TOKEN: dev-workspace-token
+      # 向能力网关登记 `workspace` 服务；回调地址必须是网关可达的容器地址（不是 127.0.0.1）
+      WORKSPACE_GATEWAY_URL: http://capability-gateway:9993
+      WORKSPACE_SERVICE_ENDPOINT: http://workspace-service:9995
       WORKSPACE_DEFAULT_IMAGE: billy-workspace:2026.11.0
       WORKSPACE_LOCAL_ROOT: /home/appuser/.billy/workspaces
-      # 本地一键起：local 后端没有 OS 沙箱，用 off 仅联调；生产按宿主能力设 enforce
-      AGENT_WORKSPACE_MODE: off
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - workspace-data:/home/appuser/.billy/workspaces
@@ -328,7 +331,6 @@ services:
       <<: *app-env
       PORT: '9993'
       TOOL_GATEWAY_PORT: '9993'
-      TOOL_WORKER_URL: http://common-capability:9994
     expose:
       - '9993'
     healthcheck:
@@ -375,7 +377,8 @@ services:
   # ──────────────────────────────────────────
   # Kafka + 控制台（可选，默认不启动）
   #   docker compose --profile kafka up -d
-  # 启用后把 main / agent-runtime 共享的 KAFKA_BROKERS 设为 kafka:9092（容器内 listener），
+  # 当前没有业务生产 / 消费方（AI 流式走 Redis pub/sub，不需要 Kafka）；只有将来接异步消息
+  # 时才启用，并把 main / agent-runtime 共享的 KAFKA_BROKERS 设为 kafka:9092（容器内 listener），
   # 宿主机应用则用 127.0.0.1:29092。
   # ──────────────────────────────────────────
   kafka:

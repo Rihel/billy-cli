@@ -7,7 +7,8 @@ metadata:
     app.kubernetes.io/name: billy-model-gateway
     app.kubernetes.io/component: model-gateway
 spec:
-  # 内部模型网关：被 agent-runtime 调用，副本数由 HPA（60-hpa.yaml）接管。
+  # 内部模型网关：被 agent-runtime（模型调用）与 billy-main（模型明细同步）调用，
+  # 副本数由 HPA（60-hpa.yaml）接管。
   # HPA 生效后这里的 replicas 只是「创建时初值」，后续以 HPA 为准。
   replicas: 2
   # 与 main / runtime 同一套滚动策略：先起新 Pod 并等就绪，再杀旧 Pod。

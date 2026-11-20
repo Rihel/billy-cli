@@ -1,6 +1,6 @@
-# 常规入口（除 SSE 外的所有接口）。
-# SSE 走同目录 ingress-sse.yaml：ingress-nginx 按「最长路径优先」合并，
-# 故 /sse 命中那份带 proxy-buffering=off 的 Ingress。
+# 常规入口（SSE 路径由同目录 51-ingress-sse.yaml 接管）。
+# ingress-nginx 按「最长路径优先」合并：/sse、/agent/chat/stream、/agent/run 命中
+# 51 号那份带 proxy-buffering=off 的 Ingress，其余路径走本份。
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
