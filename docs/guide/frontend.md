@@ -64,8 +64,9 @@
 /main/ai/memories                  记忆
 /main/ai/files                     文件管理（跨会话列表 / 预览 / 分享）
 /main/ai/workspaces                工作区
-/main/ai/capabilities              能力服务
-/main/ai/authorizations            服务授权
+/main/ai/capabilities              能力服务（勾选外部服务 → 页面级「授权」）
+/main/ai/authorizations            ⤶ 旧入口，重定向到 /main/ai/capabilities
+/main/ai/skills/grants             ⤶ 旧入口，重定向到 /main/ai/skills
 /main/ai/audit                     审计与复盘（调用审计 + 用量）
 /main/ai/chat/[conversationId]     会话工作台（/main/ai/chat/new 为「新会话」保留段）
 /main/ai/skills/[skillKey]         沉浸式技能编辑器（画布布局）
@@ -74,10 +75,10 @@
 /main/ai/chat                      ⤶ 旧入口，重定向到 /main/ai/chat/new
 ```
 
-- 侧栏 AI 组 **10 项**：`models` / `usage` / `keys` / `skills` / `memories` / `files` / `workspaces` /
-  `capabilities` / `authorizations` / `audit`；会话工作台走**顶层「会话」分区**（不在侧栏 AI 组里）；
-  技能编辑器从技能库点进去
-- 菜单单一来源 `components/AppMenu.tsx`：控制台 / AI（10 项）/ 运维监控（5 项）/ 系统设置（2 项），
+- 侧栏 AI 组 **11 项**：`models` / `usage` / `keys` / `skills` / `market` / `memories` / `files` /
+  `workspaces` / `credentials` / `capabilities` / `audit`；授权不单独占菜单（技能库 / 能力服务里勾选后授权）；
+  会话工作台走**顶层「会话」分区**（不在侧栏 AI 组里）；技能编辑器从技能库点进去
+- 菜单单一来源 `components/AppMenu.tsx`：控制台 / AI（11 项）/ 运维监控（5 项）/ 系统设置（2 项），
   系统设置项按用户体系开关 `authRequired` 隐藏
 - 免授权分享页 `/s/[token]` 走独立 root layout（`(share)` 路由组），不挂 `Providers`、带
   `noindex` / `no-referrer`；`/main/ai/files` 文件列表页的 `ShareDialog` 生成链接（明文 token 只显示一次，

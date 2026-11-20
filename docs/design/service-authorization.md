@@ -70,12 +70,14 @@ POST /ai-capability/grants/list   → { grants: [{ adminId, service, grantedBy, 
 POST /ai-capability/grants/set    → { adminId, services: string[] }   覆盖式设置
 ```
 
-页面：`/main/ai/authorizations`（「服务授权」）：
+页面：**已并入「能力服务」**（2026-11-21）——`/main/ai/capabilities` 里勾选外部服务 / MCP →
+页面级「授权」→ 弹窗选管理员（三态：全部已授 / 部分 / 未授，只提交差量）。
+接口语义不变：按管理员覆盖式，调用方先把每个管理员当前可用的服务集合读出来再合并所选服务。
+旧页 `/main/ai/authorizations` 保留重定向到能力服务，避免书签 404。
 
-- 左/上：管理员列表（邮箱、姓名）；
-- 右侧：该管理员可用的 manual 服务勾选（code 服务只读展示为"默认可用"）；
+- 只有 `source='manual'` 的服务带勾选框（`code` 服务默认全部可用，不参与授权）；
 - 任意管理员可修改任意管理员的授权；
-- 服务列表来自能力服务目录，只展示 `source='manual'`。
+- 技能侧同构：`/main/ai/skills` 勾选 → 「授权」→ 只选用户（见 `skill-scope-grants` 记忆卡）。
 
 ## 5. 边界与非目标
 

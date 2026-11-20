@@ -14,9 +14,12 @@
 - **按 caller 过滤已落地**：`apps/workspace-service/src/workspace/skill-visibility.ts` 的 `visibleSkillsOf`
   （内置全员 / 平台需授予 / 个人仅 owner / 同名个人优先），初始化物化走 `listVisibleSkills(caller)`。
   超管全量：执行面读一次 `admins.type`（`AdminEntity` 已登记），god 可见全部平台技能。
-- **授权接口 + 管理页已落地**：`/ai-skill/grants/{list,set}`（覆盖式，空数组=收回全部）与 `/main/ai/skills/grants` 页面，
-  写入 `ai_skill_grants` 后直接改变 `visibleSkillsOf` 的物化结果。**坑**：`repo.insert` 不触发
-  `@BeforeInsert`，必须显式给 id（这次在 grants 上又遇到一次）。
+- **授权接口 + 入口已落地**：`/ai-skill/grants/{list,set}`（覆盖式，空数组=收回全部），写入后直接改变
+  `visibleSkillsOf` 的物化结果。**坑**：`repo.insert` 不触发 `@BeforeInsert`，必须显式给 id。
+- **入口已并入技能库（2026-11-21）**：`/main/ai/skills` 勾选条目 → 页面级「授权」→ 弹窗**只选用户**
+  （`principal_type='user'`）；三态（全部已授 / 部分 / 未授）只提交差量，写入前 `listGrants` 读现有
+  授权并保留 admin/all（接口是覆盖式的，不能直接拿勾选集覆盖）。旧页 `/main/ai/skills/grants` 保留重定向。
+  只对平台技能生效：内置技能全员可见、个人技能仅 owner 可见。
 - **写入目标由身份决定（P9 第四步）**：`skill-scope.ts` 的 `resolveSkillWriteTarget`（用户→personal、
   god→platform、普通管理员→自身 personal、无上下文→platform）已在 `skill.service.create` 生效；
   入参 `scope` 不参与（D12）。**注意**：update / remove / read 仍是全库按 skillKey 定位，
@@ -24,10 +27,11 @@
 - **撤销同步已落地**：执行面 `syncSkills`（写可见 + 删不可见 `.agents/<key>`，目录名白名单防注入），
   `/v1/workspaces/sync` 带 `skills` 开关；main `SkillSyncService` 在 `SkillGrantService.set` 后按
   「变更前后并集」推送（只查不起，失败由 ensure 兜底）。`all` 授权会广播到全部工作区（仍只推运行中的）。
-- **配额已落地**：个人技能上限 50（`create` 前查 `countPersonal`，超限 3601）；单文件 1 MB 与管理员可见范围待补。
-- **尚未实现（P9 剩余）**：
-  授权接口 / 页面、撤销授权后的目录删除同步、builtin 种子化、删除 `AI_SKILLS_DIRS`、个人技能配额与管理员可见范围。
-  `AI_SKILLS_DIRS` 已删除（技能只来自随包 catalog + 技能库落盘投影）；Mastra 技能工具已退役。
+- **配额已落地**：个人技能上限 50（`create` 前查 `countPersonal`，超限 3601）。
+- **已补齐的历史缺口**：撤销授权的目录删除同步（`syncSkills`）、builtin 种子化（`SkillSeedService`）、
+  `AI_SKILLS_DIRS` 删除、Mastra 技能工具退役。
+- **仍待补**：单文件 1 MB 上限、管理员对他人个人技能的可见范围（列表已按 caller 过滤，update / remove / read
+  仍只按 skillKey 定位）。
 
 ## 提示词与工具面（P10 进度）
 
