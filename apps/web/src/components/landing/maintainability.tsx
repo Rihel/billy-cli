@@ -26,10 +26,14 @@ const derivation = [
 ]
 
 const checks = [
-  { cmd: 'pnpm typecheck', detail: '五个包一起过类型' },
-  { cmd: 'pnpm test', detail: '服务端与前端单测' },
+  { cmd: 'pnpm lint', detail: '语法 / 正确性 / React / Next / a11y 规则' },
+  { cmd: 'pnpm lint:types', detail: '类型感知检查（悬空 Promise、await 非 Promise 等）' },
+  { cmd: 'pnpm fmt:check', detail: '格式化只检查不写入' },
+  { cmd: 'pnpm typecheck', detail: '17 个 workspace 一起过类型' },
+  { cmd: 'pnpm test', detail: '服务端与前端单测，19 个 workspace' },
   { cmd: 'pnpm check:inject', detail: '依赖注入写法全工程一致' },
   { cmd: 'pnpm check:mastra', detail: '适配器边界，业务不被框架渗透' },
+  { cmd: 'pnpm check:redis-raw', detail: 'Redis 入口统一走 RedisStore' },
   { cmd: 'pnpm check:ui', detail: '组件导出、设计系统、无硬编码颜色' },
 ]
 
@@ -53,7 +57,7 @@ export function Maintainability() {
           </h2>
           <p className="mt-6 max-w-2xl text-base leading-relaxed text-muted-foreground">
             字段定义一次，校验、实体、接口类型、表单、列表都跟着走；依赖方向单向，检查脚本在提交前拦住走样。
-            27 个 Agent Skills 指向仓库真实文件，AI
+            28 个 Agent Skills 指向仓库真实文件，AI
             改代码时读到的就是这套约束，不是一份过时的说明书。
           </p>
         </Reveal>
@@ -81,7 +85,7 @@ export function Maintainability() {
 
           {/* 右：检查与依赖方向 */}
           <div>
-            <h3 className="text-base font-medium text-foreground">五道检查，过了才算做完</h3>
+            <h3 className="text-base font-medium text-foreground">九道检查，过了才算做完</h3>
             <div className="mt-4">
               {checks.map((check) => (
                 <Reveal key={check.cmd}>

@@ -1,9 +1,9 @@
 import { Reveal } from './reveal'
 
 const facts = [
-  { k: '10', label: '内建 AI 工具', detail: '计划、子 agent、命令、联网、取页' },
-  { k: '17', label: '网关能力', detail: 'bash / web / 文件 / 记忆 / 任务轮询' },
-  { k: '27', label: 'Agent Skills', detail: '每条规范都指向仓库真实文件' },
+  { k: '35', label: '可调用工具', detail: '本地编排 15 · 能力服务 17 · 网关内建 3' },
+  { k: '20', label: '能力目录', detail: 'common 9 · workspace 8 · 网关内建 3' },
+  { k: '28', label: 'Agent Skills', detail: '每条规范都指向仓库真实文件' },
   { k: '48', label: 'AI 界面组件', detail: '会话、消息、推理、工具、计划' },
 ]
 

@@ -172,7 +172,7 @@ export function DesignShowcase() {
         <Reveal delay={80}>
           <div className="mt-6 flex flex-wrap items-center gap-x-8 gap-y-3 text-sm text-muted-foreground">
             <span>
-              <span className="text-foreground">60+</span> 个基础组件
+              <span className="text-foreground">61</span> 个基础组件
             </span>
             <span>
               <span className="text-foreground">48</span> 个 AI 界面组件
