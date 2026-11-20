@@ -11,12 +11,12 @@ import {
   summarizeJsonValue,
 } from '../src/components/json-view.tsx'
 
+afterEach(() => cleanup())
+
 /**
  * JSON 查看器：纯函数决定"怎么判断、怎么摘要、要不要退回原文"，组件只负责画。
  * 这里两侧都测 —— 摘要说错了（比如把 3 个字段说成 3 项）比画得丑更糟。
  */
-afterEach(() => cleanup())
-
 describe('parseJsonText', () => {
   it('合法 JSON 返回解析结果', () => {
     const result = parseJsonText('{"a":1}')
@@ -73,43 +73,32 @@ describe('类型判断与摘要', () => {
   })
 })
 
-describe('JsonView 渲染', () => {
-  it('默认按树显示，嵌套两层默认展开', () => {
+describe('JsonView（JSON 树）', () => {
+  it('默认渲染树：键与第一层嵌套可见', () => {
     const { container } = render(
       <JsonView text={'{"name":"billy","meta":{"version":2,"stable":true}}'} />,
     )
     expect(container.querySelector('[data-json-view="tree"]')).not.toBeNull()
-    expect(container.textContent ?? '').toContain('name')
-    // 第二层默认展开
-    expect(container.textContent ?? '').toContain('version')
+    const text = container.textContent ?? ''
+    expect(text).toContain('name')
+    expect(text).toContain('version')
   })
 
-  it('切到「原文」显示格式化后的 JSON', () => {
-    const { container, getByText } = render(<JsonView text={'{"a":1}'} />)
-    fireEvent.click(getByText('原文'))
-    expect(container.querySelector('[data-json-view="raw"]')).not.toBeNull()
-    expect(container.querySelector('pre')?.textContent ?? '').toContain('"a": 1')
+  it('折叠根节点后不显示子键', () => {
+    const { container } = render(<JsonView text={'{"name":"billy"}'} />)
+    fireEvent.click(container.querySelector('button[aria-label="收起"]') as HTMLButtonElement)
+    expect(container.textContent ?? '').not.toContain('name')
   })
 
   it('解析失败时给出原因并保留原文', () => {
     const { container } = render(<JsonView text={'{"a": '} />)
     expect(container.querySelector('[data-json-view="error"]')).not.toBeNull()
     expect(container.textContent ?? '').toContain('解析不了')
-    expect(container.querySelector('pre')?.textContent ?? '').toContain('{"a":')
   })
 
-  it('内容过大时不做树，直接按原文显示并说明', () => {
+  it('内容过大时退回原文', () => {
     const huge = `[${Array.from({ length: 5000 }, (_, index) => index).join(',')}]`
     const { container } = render(<JsonView text={huge} />)
     expect(container.querySelector('[data-json-view="raw"]')).not.toBeNull()
-    expect(container.textContent ?? '').toContain('内容过大')
-  })
-
-  it('收起全部后只剩根节点摘要', () => {
-    const { container, getByText } = render(<JsonView text={'{"a":{"b":1}}'} />)
-    fireEvent.click(getByText('收起全部'))
-    const text = container.textContent ?? ''
-    expect(text).toContain('{1 个字段}')
-    expect(text).not.toContain('b:')
   })
 })

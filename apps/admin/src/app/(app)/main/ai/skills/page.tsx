@@ -27,6 +27,7 @@ import {
 } from '@repo/ui'
 import { InfoIcon, LinkIcon, PlusIcon, SearchIcon } from 'lucide-react'
 import { useServerClient } from '@/lib/server-client'
+import { useAuthStore } from '@/stores/auth.store'
 import { CreateSkillDialog } from './create-skill-dialog'
 import { ImportSkillDialog } from './import-skill-dialog'
 import { buildSkillColumns } from './skill-columns'
@@ -53,6 +54,7 @@ export default function SkillsPage() {
   const [source, setSource] = useState<string | null>(null)
   const [onlyEnabled, setOnlyEnabled] = useState(false)
 
+  const adminType = useAuthStore((state) => state.adminInfo?.type)
   const [createOpen, setCreateOpen] = useState(false)
   const [importOpen, setImportOpen] = useState(false)
   const [importPreview, setImportPreview] = useState<AiSkillImportPreviewResultModel | null>(null)
@@ -249,6 +251,7 @@ export default function SkillsPage() {
         saving={createMutation.isPending}
         onClose={() => setCreateOpen(false)}
         onCreate={handleCreate}
+        canChooseScope={adminType === 'god'}
       />
 
       <ImportSkillDialog
@@ -260,6 +263,7 @@ export default function SkillsPage() {
         onClose={() => setImportOpen(false)}
         onPreview={handlePreview}
         onImport={handleImport}
+        canChooseScope={adminType === 'god'}
       />
 
       <details className="shrink-0 rounded-xl bg-surface-1 px-4 py-3">

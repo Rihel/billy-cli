@@ -22,6 +22,9 @@ import {
   Label,
   Switch,
   Tag,
+  Tabs,
+  TabsList,
+  TabsTrigger,
 } from '@repo/ui'
 import { LinkIcon, RefreshCwIcon } from 'lucide-react'
 
@@ -42,6 +45,8 @@ export interface ImportSkillDialogProps {
   onClose: () => void
   onPreview: (url: string) => Promise<void>
   onImport: (dto: AiSkillImportDto) => Promise<void>
+  /** 只有 god 能选平台 / 个人 */
+  canChooseScope?: boolean
 }
 
 const statusLabel: Record<AiSkillImportItemModel['status'], { text: string; color: string }> = {
@@ -60,9 +65,11 @@ export function ImportSkillDialog({
   onClose,
   onPreview,
   onImport,
+  canChooseScope = false,
 }: ImportSkillDialogProps) {
   const [url, setUrl] = useState('')
   const [overwrite, setOverwrite] = useState(false)
+  const [scope, setScope] = useState<'platform' | 'personal'>('platform')
   const [selected, setSelected] = useState<Set<string>>(new Set())
 
   useEffect(() => {
@@ -108,6 +115,7 @@ export function ImportSkillDialog({
       url: url.trim(),
       overwrite,
       ...(selected.size < preview.skills.length ? { skillKeys: [...selected] } : {}),
+      ...(canChooseScope ? { scope } : {}),
     })
   }
 
@@ -175,6 +183,21 @@ export function ImportSkillDialog({
               onCheckedChange={(checked) => setOverwrite(checked === true)}
             />
           </div>
+
+          {canChooseScope ? (
+            <div className="flex flex-col gap-1.5">
+              <span className="text-sm font-medium">写入范围</span>
+              <Tabs
+                value={scope}
+                onValueChange={(value) => setScope(value as 'platform' | 'personal')}
+              >
+                <TabsList>
+                  <TabsTrigger value="platform">平台技能</TabsTrigger>
+                  <TabsTrigger value="personal">个人技能</TabsTrigger>
+                </TabsList>
+              </Tabs>
+            </div>
+          ) : null}
 
           {preview ? (
             <div className="flex flex-col gap-2">

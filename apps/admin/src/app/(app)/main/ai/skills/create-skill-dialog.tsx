@@ -15,6 +15,9 @@ import {
   DialogTitle,
   Input,
   Label,
+  Tabs,
+  TabsList,
+  TabsTrigger,
 } from '@repo/ui'
 
 /**
@@ -28,20 +31,37 @@ export interface CreateSkillDialogProps {
   saving: boolean
   onClose: () => void
   onCreate: (dto: AiSkillCreateDto) => Promise<void>
+  /** 只有 god 能选平台 / 个人（普通管理员一律个人） */
+  canChooseScope?: boolean
 }
 
-export function CreateSkillDialog({ open, saving, onClose, onCreate }: CreateSkillDialogProps) {
+export function CreateSkillDialog({
+  open,
+  saving,
+  onClose,
+  onCreate,
+  canChooseScope = false,
+}: CreateSkillDialogProps) {
   const [skillKey, setSkillKey] = useState('')
+  const [scope, setScope] = useState<'platform' | 'personal'>('platform')
 
   useEffect(() => {
-    if (open) setSkillKey('')
+    if (open) {
+      setSkillKey('')
+      setScope('platform')
+    }
   }, [open])
 
   const valid = SKILL_KEY_PATTERN.test(skillKey.trim())
 
   const submit = async (): Promise<void> => {
     if (!valid || saving) return
-    await onCreate({ skillKey: skillKey.trim(), body: '', enabled: true })
+    await onCreate({
+      skillKey: skillKey.trim(),
+      body: '',
+      enabled: true,
+      ...(canChooseScope ? { scope } : {}),
+    })
   }
 
   return (
@@ -75,6 +95,20 @@ export function CreateSkillDialog({ open, saving, onClose, onCreate }: CreateSki
           <p className="text-xs text-muted-foreground">
             小写字母 / 数字 / 连字符，以字母或数字开头，≤64 字符；回车直接创建
           </p>
+          {canChooseScope ? (
+            <div className="flex flex-col gap-1.5">
+              <Label className="text-xs">写入范围</Label>
+              <Tabs
+                value={scope}
+                onValueChange={(value) => setScope(value as 'platform' | 'personal')}
+              >
+                <TabsList>
+                  <TabsTrigger value="platform">平台技能</TabsTrigger>
+                  <TabsTrigger value="personal">个人技能</TabsTrigger>
+                </TabsList>
+              </Tabs>
+            </div>
+          ) : null}
         </div>
 
         <DialogFooter>

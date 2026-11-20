@@ -51,6 +51,36 @@ export const toolCallReason = (input: unknown): string | null => {
   return trimmed.length > 0 ? trimmed : null
 }
 
+/**
+ * 卡片标题右侧的**只读细节**：让不同工具在折叠态也能区分（跑了什么命令 / 哪个文件 / 哪个域名）。
+ *
+ * 全部按"字段存在且非空"取值，取不到就返回 undefined（不为了展示位伪造内容）。
+ */
+export const toolHeaderDetail = (toolName: string, input: unknown): string | undefined => {
+  if (!input || typeof input !== 'object') return undefined
+  const record = input as Record<string, unknown>
+  const text = (key: string): string | undefined => {
+    const value = record[key]
+    return typeof value === 'string' && value.trim() ? value.trim() : undefined
+  }
+  const command = text('command')
+  // bash 只显示命令：没有命令就不给细节（不能拿别的字段凑）
+  if (toolName === 'bash') return command
+  const path = text('path') ?? text('filePath') ?? text('pathPrefix') ?? text('prefix')
+  if (path) return path
+  const url = text('url')
+  if (url) {
+    try {
+      return new URL(url).host
+    } catch {
+      return url
+    }
+  }
+  const taskId = text('taskId')
+  if (taskId) return taskId.slice(0, 8)
+  return text('query')
+}
+
 export interface ToolCardProps {
   /** 工具 part（AI SDK 的 `dynamic-tool` 形态，调用中 / 有出参 / 出错都在里面） */
   part: ToolPart
@@ -98,6 +128,7 @@ export function ToolCard({ part, events, defaultOpen, streaming, durationMs }: T
 
   const toolName = getToolName(part)
   const reason = toolCallReason(part.input)
+  const detail = toolHeaderDetail(toolName, part.input)
   /**
    * `skill-save` / `skill-import` 用一张"技能写入"卡代替原始入参 / 出参：
    * 入参里常常是几千字正文，铺成 JSON 既难读又占地方；内容的细读交给右侧抽屉。
@@ -120,19 +151,21 @@ export function ToolCard({ part, events, defaultOpen, streaming, durationMs }: T
         toolName={toolName}
         className="px-2.5 py-1.5"
         meta={durationLabel}
+        detail={detail}
       />
+      {/* 「为什么」放在头部正下方：不展开也能看到，比折进入参 JSON 更符合"先看动机" */}
+      {reason && (
+        <p className="px-2.5 pb-1.5 text-xs leading-4 text-muted-foreground line-clamp-2">
+          <span className="font-medium">为什么：</span>
+          {reason}
+        </p>
+      )}
       <ToolContent className="space-y-2 p-2.5">
         {/*
           "为什么"放在**卡片头部之下、入参之上**：它是这次调用的动机（模型自述的目的），
           比入参更该先被扫到；折进「入参」的 JSON 里就等于没做这个特性。
           放在 `ToolContent` 内是为了跟着展开态走（与入参出参同一层），只读一行、不参与交互。
         */}
-        {reason && (
-          <p className="rounded-md bg-surface-1 px-2 py-1.5 text-xs text-muted-foreground">
-            <span className="font-medium">为什么：</span>
-            {reason}
-          </p>
-        )}
         {skillWrite ? (
           <SkillToolSummary part={part} />
         ) : (

@@ -4,16 +4,10 @@ import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import type { AgentFileModel, AgentFileNode, AgentWorkspaceFile } from '@repo/shared'
 import { Badge, Button, cn, DataList } from '@repo/ui'
-import {
-  ChevronDownIcon,
-  DownloadIcon,
-  EyeIcon,
-  FileIcon,
-  FolderIcon,
-  RefreshCwIcon,
-} from 'lucide-react'
+import { ChevronDownIcon, DownloadIcon, EyeIcon, FolderIcon, RefreshCwIcon } from 'lucide-react'
 import type { ServerClient } from './data'
 import { FilePreviewDialog, isPreviewTextItem, officeKind } from '@/components/file-preview-dialog'
+import { fileIconOf } from '@/components/file-type-icon'
 import { formatFileSize } from './attachment-utils'
 
 /**
@@ -158,6 +152,7 @@ export function FilesPanel({
   const previewItems = (preview?.items ?? []).map((target) => ({
     id: target.id,
     filename: target.filename,
+    path: target.path,
     subtitle: target.source === 'ai' ? '会话文件' : '工作区',
     badge: target.badge,
     mediaType: target.mediaType,
@@ -478,6 +473,7 @@ function WorkspaceRowView({
       {guides}
       <FileRow
         name={row.name}
+        compact
         bytes={file.bytes}
         indent={indent}
         onPreview={() => onPreview(file)}
@@ -490,6 +486,7 @@ function WorkspaceRowView({
 function FileRow({
   name,
   bytes,
+  compact,
   source,
   indent,
   onPreview,
@@ -497,6 +494,8 @@ function FileRow({
 }: {
   name: string
   bytes: number
+  /** 工作区列表：只显示文件名（大小 / 来源留给预览弹窗） */
+  compact?: boolean
   source?: 'user' | 'ai'
   indent?: number
   onPreview: () => void
@@ -520,36 +519,47 @@ function FileRow({
       className="group flex cursor-pointer items-center gap-2 rounded px-1.5 py-1 hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
       style={indent === undefined ? undefined : { paddingLeft: indent }}
     >
-      <FileIcon className="size-3.5 shrink-0 text-muted-foreground" />
-      <span className="min-w-0 flex-1 truncate text-xs">{name}</span>
-      <span className="shrink-0 text-[10px] text-muted-foreground">{formatFileSize(bytes)}</span>
-      {source ? (
+      {(() => {
+        const Icon = fileIconOf(name)
+        return <Icon className="size-3.5 shrink-0 text-muted-foreground" />
+      })()}
+      <span className={cn('min-w-0 flex-1 truncate', compact ? 'text-[11px]' : 'text-xs')}>
+        {name}
+      </span>
+      {compact ? null : (
+        <span className="shrink-0 text-[10px] text-muted-foreground">{formatFileSize(bytes)}</span>
+      )}
+      {source && !compact ? (
         <Badge variant="outline" className="shrink-0 text-[10px]">
           {source === 'user' ? '用户上传' : 'AI 生成'}
         </Badge>
       ) : null}
-      <Button
-        size="icon-sm"
-        variant="ghost"
-        onClick={(event) => {
-          event.stopPropagation()
-          onPreview()
-        }}
-        title="预览"
-      >
-        <EyeIcon className="size-3.5" />
-      </Button>
-      <Button
-        size="icon-sm"
-        variant="ghost"
-        onClick={(event) => {
-          event.stopPropagation()
-          onDownload()
-        }}
-        title="下载"
-      >
-        <DownloadIcon className="size-3.5" />
-      </Button>
+      {compact ? null : (
+        <>
+          <Button
+            size="icon-sm"
+            variant="ghost"
+            onClick={(event) => {
+              event.stopPropagation()
+              onPreview()
+            }}
+            title="预览"
+          >
+            <EyeIcon className="size-3.5" />
+          </Button>
+          <Button
+            size="icon-sm"
+            variant="ghost"
+            onClick={(event) => {
+              event.stopPropagation()
+              onDownload()
+            }}
+            title="下载"
+          >
+            <DownloadIcon className="size-3.5" />
+          </Button>
+        </>
+      )}
     </div>
   )
 }

@@ -85,7 +85,7 @@ export function MonacoCodePreview({ filename, value }: { filename: string; value
           minimap: { enabled: false },
           scrollBeyondLastLine: false,
           wordWrap: 'on',
-          fontSize: 12,
+          fontSize: 11,
           lineNumbers: 'on',
           renderLineHighlight: 'none',
           contextmenu: false,

@@ -3,9 +3,6 @@
 import type { CustomRenderer } from 'streamdown'
 
 import { FENCE_LANGUAGES } from './fence-spec.ts'
-import { GsapFence } from './gsap-fence.tsx'
-import { HtmlFence } from './html-fence.tsx'
-import { JsonFence } from './json-fence.tsx'
 import { XflowFence } from './xflow-fence.tsx'
 
 /**
@@ -15,10 +12,8 @@ import { XflowFence } from './xflow-fence.tsx'
  * 语言标识集中定义在 `FENCE_LANGUAGES`，避免"注册的名字"和"提示词里写的名字"各写一遍再对不上。
  */
 export const markdownFenceRenderers: CustomRenderer[] = [
+  // 只保留流程图；html / gsap / json 围栏已退役 —— 它们按普通代码块（CodeMirror）渲染
   { language: FENCE_LANGUAGES.xflow, component: XflowFence },
-  { language: FENCE_LANGUAGES.html, component: HtmlFence },
-  { language: FENCE_LANGUAGES.gsap, component: GsapFence },
-  { language: FENCE_LANGUAGES.json, component: JsonFence },
 ]
 
 /** 由前端渲染（而不是当普通代码块）的语言标识 */

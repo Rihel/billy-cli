@@ -40,6 +40,8 @@ export type ToolHeaderProps = {
    * 组件自己只能算"挂载到结束"这段时间，刷新后就没了。
    */
   meta?: ReactNode
+  /** 标题右侧的**只读细节**（如 bash 的命令），超长省略；点开卡片才看全 */
+  detail?: ReactNode
 } & (
   | { type: ToolUIPart['type']; state: ToolUIPart['state']; toolName?: never }
   | {
@@ -83,6 +85,7 @@ export const ToolHeader = ({
   state,
   toolName,
   meta,
+  detail,
   ...props
 }: ToolHeaderProps) => {
   const derivedName = type === 'dynamic-tool' ? toolName : type.split('-').slice(1).join('-')
@@ -91,9 +94,18 @@ export const ToolHeader = ({
     <CollapsibleTrigger className={cn('flex w-full items-center gap-2 p-3', className)} {...props}>
       {/* 工具条铺满整行：左边「跑了什么」，右边「跑到哪了」 */}
       <WrenchIcon className="size-4 shrink-0 text-muted-foreground" />
-      <span className="truncate font-medium text-sm">{title ?? derivedName}</span>
+      <span className="max-w-[40%] shrink-0 truncate font-medium text-sm">
+        {title ?? derivedName}
+      </span>
+      {detail ? (
+        // 细节紧贴标题右侧（不再 flex-1 撑满整行，否则看起来像"居中"），
+        // 超过可用宽度时省略；状态徽标仍靠右
+        <span className="ml-2 min-w-0 max-w-[55%] shrink truncate text-left font-mono text-xs text-muted-foreground">
+          {detail}
+        </span>
+      ) : null}
       {meta ? (
-        <span className="shrink-0 text-xs text-muted-foreground tabular-nums">{meta}</span>
+        <span className="ml-2 shrink-0 text-xs text-muted-foreground tabular-nums">{meta}</span>
       ) : null}
       <span className="ml-auto shrink-0">{getStatusBadge(state)}</span>
       <ChevronDownIcon className="size-4 shrink-0 text-muted-foreground transition-transform group-data-[state=open]:rotate-180" />
@@ -139,7 +151,7 @@ export const ToolInput = ({ className, input, ...props }: ToolInputProps) => (
     ) : (
       // 入参是结构化的，用 JSON 查看器而不是高亮代码块：一层一行、可折叠，长嵌套不用横向滚
       //（`JsonView` 自带 200KB / 2000 条上限，超大入参退回原文；它自己也带边框与底色，不再套一层容器）
-      <JsonView maxHeight={288} value={input} />
+      <JsonView maxHeight={288} value={input} className="rounded-none border-0 bg-transparent" />
     )}
   </div>
 )
@@ -158,7 +170,9 @@ export const ToolOutput = ({ className, output, errorText, ...props }: ToolOutpu
 
   if (typeof output === 'object' && !isValidElement(output)) {
     // 出参同理；字符串出参可能是任意文本（日志、命令输出），仍按代码块显示
-    Output = <JsonView maxHeight={288} value={output} />
+    Output = (
+      <JsonView maxHeight={288} value={output} className="rounded-none border-0 bg-transparent" />
+    )
   } else if (typeof output === 'string') {
     Output = <CodeBlock code={output} language="json" />
   }
@@ -170,8 +184,10 @@ export const ToolOutput = ({ className, output, errorText, ...props }: ToolOutpu
       </h4>
       <div
         className={cn(
-          'overflow-x-auto rounded-md text-xs [&_table]:w-full',
-          errorText ? 'bg-destructive/10 text-destructive' : 'bg-muted/50 text-foreground',
+          'overflow-x-auto text-xs [&_table]:w-full',
+          // 对象的出参由 JsonView 自己渲染（已去掉它的卡片外观）；
+          // 字符串出参走 CodeBlock、本身带底，这里不再套一层底色
+          errorText && 'rounded-md bg-destructive/10 p-2 text-destructive',
         )}
       >
         {errorText && <div>{errorText}</div>}

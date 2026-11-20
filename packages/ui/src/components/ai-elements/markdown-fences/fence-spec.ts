@@ -11,12 +11,7 @@ import { SANDBOX_CDN_HOSTS } from '@repo/shared/browser'
 export const FENCE_LANGUAGES = {
   /** 流程图：JSON → React Flow */
   xflow: 'xflow',
-  /** 页面预览：沙箱 iframe 直出 HTML */
-  html: 'html',
-  /** 动画：沙箱 iframe + 内置 gsap */
-  gsap: 'gsap',
-  /** 结构化数据：可折叠的树 */
-  json: 'json',
+  // html / gsap / json 围栏已退役（按普通代码块渲染）；沙箱能力仍被文件预览复用
 } as const
 
 // ── xflow ────────────────────────────────────────────────────────────────────

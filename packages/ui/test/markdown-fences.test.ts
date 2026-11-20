@@ -237,13 +237,6 @@ describe('buildSandboxDocument', () => {
 
 describe('围栏注册表', () => {
   it('四类新围栏都注册了，语言标识与常量一致', () => {
-    expect(new Set(RENDERED_FENCE_LANGUAGES)).toEqual(
-      new Set([
-        FENCE_LANGUAGES.xflow,
-        FENCE_LANGUAGES.html,
-        FENCE_LANGUAGES.gsap,
-        FENCE_LANGUAGES.json,
-      ]),
-    )
+    expect(new Set(RENDERED_FENCE_LANGUAGES)).toEqual(new Set([FENCE_LANGUAGES.xflow]))
   })
 })

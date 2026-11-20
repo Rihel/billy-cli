@@ -5,6 +5,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { WorkspaceBackend, WorkspaceModel } from '@repo/shared'
 import {
   Button,
+  IconText,
   Dialog,
   DialogContent,
   DialogFooter,
@@ -17,8 +18,9 @@ import {
   toastError,
   toastSuccess,
 } from '@repo/ui'
-import { BoxesIcon, PlayIcon, PlusIcon, SquareIcon, Trash2Icon } from 'lucide-react'
+import { BoxesIcon, PlayIcon, PlusIcon, SquareIcon, Trash2Icon, UserRoundIcon } from 'lucide-react'
 import { useServerClient } from '@/lib/server-client'
+import { useAuthStore } from '@/stores/auth.store'
 
 const fail = (error: unknown): void =>
   toastError(error instanceof Error ? error.message : String(error))
@@ -186,6 +188,7 @@ function WorkspaceCard({
   onStop: (id: string) => void
   onRemove: (id: string) => void
 }) {
+  const me = useAuthStore((s) => s.adminInfo?.id)
   const running = item.runtime.state === 'running'
   const stateLabel = running
     ? '运行中'
@@ -207,6 +210,16 @@ function WorkspaceCard({
             {BACKEND_LABEL[item.backend]} · {item.image ?? '默认镜像'} ·{' '}
             {item.fileAccess === 'write' ? '可写' : '只读'}
           </p>
+          {item.ownerId !== me ? (
+            <div className="mt-1">
+              <IconText
+                icon={<UserRoundIcon />}
+                size="small"
+                tooltip={`所属用户：${item.ownerName ?? item.ownerId}`}
+                aria-label={`所属用户：${item.ownerName ?? item.ownerId}`}
+              />
+            </div>
+          ) : null}
         </div>
         <Tag>{stateLabel}</Tag>
       </div>

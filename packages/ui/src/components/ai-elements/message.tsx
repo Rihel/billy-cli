@@ -19,10 +19,11 @@ import type { ComponentProps, HTMLAttributes, ReactElement } from 'react'
 import { createContext, memo, useCallback, useContext, useEffect, useMemo, useState } from 'react'
 
 import { Streamdown } from 'streamdown'
+import { isValidElement, type ComponentType, type ReactNode } from 'react'
+import { CodeFence, PlainPre } from './code-fence.tsx'
+import { markdownFenceRenderers, RENDERED_FENCE_LANGUAGES } from './markdown-fences/renderers.tsx'
 
 import 'katex/dist/katex.min.css'
-
-import { markdownFenceRenderers } from './markdown-fences/renderers.tsx'
 
 export type MessageProps = HTMLAttributes<HTMLDivElement> & {
   from: UIMessage['role']
@@ -286,11 +287,59 @@ export type MessageResponseProps = ComponentProps<typeof Streamdown>
  */
 const streamdownPlugins = { cjk, code, math, mermaid, renderers: markdownFenceRenderers }
 
+/**
+ * 普通代码围栏 → CodeMirror（语言高亮 + 右下角 hover 操作的复制/下载）；
+ * 表格 → shadcn Table（无外层卡片、无 Streamdown 的复制/下载工具条）。
+ * 自定义围栏（json / html / gsap / xflow）走 renderers，不经过这里。
+ */
+const streamdownComponents = {
+  pre: ({ children }: { children?: ReactNode }) => {
+    const child = Array.isArray(children) ? children[0] : children
+    if (isValidElement(child)) {
+      const props = child.props as { className?: string; children?: ReactNode }
+      const language = /language-([\w+-]+)/.exec(props.className ?? '')?.[1] ?? ''
+      const raw = typeof props.children === 'string' ? props.children : ''
+      // 自定义围栏（json / html / gsap / xflow）仍交给各自组件渲染，不能当普通代码块
+      if (raw && RENDERED_FENCE_LANGUAGES.includes(language)) {
+        const renderer = markdownFenceRenderers.find((item) =>
+          Array.isArray(item.language)
+            ? item.language.includes(language)
+            : item.language === language,
+        )
+        if (renderer) {
+          const Fence = renderer.component as unknown as ComponentType<Record<string, unknown>>
+          return <Fence code={raw.replace(/\n$/, '')} language={language} isIncomplete={false} />
+        }
+      }
+      if (raw) return <CodeFence code={raw.replace(/\n$/, '')} language={language} />
+    }
+    return <PlainPre>{children}</PlainPre>
+  },
+  // 表格：无边框、无外框工具条，单元格允许换行（长内容不再把表撑出横向滚动）
+  table: ({ children }: { children?: ReactNode }) => (
+    <div className="my-3 w-full overflow-x-auto">
+      <table className="w-full table-auto border-collapse text-sm">{children}</table>
+    </div>
+  ),
+  thead: ({ children }: { children?: ReactNode }) => <thead>{children}</thead>,
+  tbody: ({ children }: { children?: ReactNode }) => <tbody>{children}</tbody>,
+  tr: ({ children }: { children?: ReactNode }) => (
+    <tr className="border-border/60 border-b last:border-0">{children}</tr>
+  ),
+  th: ({ children }: { children?: ReactNode }) => (
+    <th className="px-3 py-2 text-left align-top font-medium text-muted-foreground">{children}</th>
+  ),
+  td: ({ children }: { children?: ReactNode }) => (
+    <td className="whitespace-normal break-words px-3 py-2 align-top">{children}</td>
+  ),
+}
+
 export const MessageResponse = memo(
   ({ className, ...props }: MessageResponseProps) => (
     <Streamdown
       className={cn('size-full [&>*:first-child]:mt-0 [&>*:last-child]:mb-0', className)}
       plugins={streamdownPlugins}
+      components={streamdownComponents}
       // 正文里不带行号：聊天里的代码是"读"的，不是"讨论第 12 行"的；而语言是 text 的那种
       // 字符画（架构图、树形图）被行号挤窄后更难读，多出来的数字栏也让人以为看的是源码。
       // 需要行号时调用方传 `lineNumbers` 覆盖即可。

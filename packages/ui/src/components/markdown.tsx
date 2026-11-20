@@ -129,26 +129,23 @@ const markdownComponents: Components = {
     </div>
   ),
   thead: ({ className, children, ...props }) => (
-    <thead className={cn('bg-muted', className)} {...props}>
+    <thead className={cn('border-border/60 border-b text-muted-foreground', className)} {...props}>
       {children}
     </thead>
   ),
   tbody: ({ children }) => <tbody>{children}</tbody>,
   tr: ({ className, children, ...props }) => (
-    <tr className={cn('even:bg-muted/40', className)} {...props}>
+    <tr className={cn('border-border/60 border-b last:border-0', className)} {...props}>
       {children}
     </tr>
   ),
   th: ({ className, children, ...props }) => (
-    <th
-      className={cn('border border-border px-3 py-2 text-left font-semibold', className)}
-      {...props}
-    >
+    <th className={cn('px-3 py-2 text-left font-semibold align-top', className)} {...props}>
       {children}
     </th>
   ),
   td: ({ className, children, ...props }) => (
-    <td className={cn('border border-border px-3 py-2 align-top', className)} {...props}>
+    <td className={cn('px-3 py-2 align-top whitespace-normal break-words', className)} {...props}>
       {children}
     </td>
   ),

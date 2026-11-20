@@ -118,15 +118,19 @@ export function SubAgentCard({
             ) : (
               <BotIcon className="size-4 shrink-0 text-muted-foreground" aria-hidden />
             )}
-            <span className="min-w-0 flex-1 truncate font-medium">子助手 · {agent.name}</span>
+            <span className="min-w-0 max-w-[45%] shrink truncate font-medium">
+              子助手 · {agent.name}
+            </span>
+            {/* 状态与消耗紧贴标题右侧（不再被 flex-1 推到最右），中间留白交给后面的 spacer */}
             <Badge variant={statusVariant(status)}>{statusLabel[status] ?? status}</Badge>
-            <span className="w-full text-xs text-muted-foreground sm:w-auto">
+            <span className="min-w-0 truncate text-xs text-muted-foreground">
               {progress}
               {/* 子助手自己的消耗（k / m 缩写，与右下角统计同一套口径）；
                   它**已计入父那一轮的合计**（`rollUpUsage`），不是额外再花一份 */}
               {typeof totalTokens === 'number' ? ` · ${tokenText(totalTokens)} token` : ''}
               {duration ? ` · ${duration}` : ''}
             </span>
+            <span className="flex-1" aria-hidden />
             <ChevronDownIcon
               className={cn(
                 'size-4 shrink-0 text-muted-foreground transition-transform',

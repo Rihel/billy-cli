@@ -16,6 +16,10 @@ import {
   Button,
   ConfirmAction,
   Dialog,
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
   DialogContent,
   DialogFooter,
   DialogHeader,
@@ -56,13 +60,16 @@ import {
 import {
   ChevronRightIcon,
   FolderIcon,
+  MoreHorizontalIcon,
   PanelLeftCloseIcon,
   PanelLeftOpenIcon,
   PencilIcon,
   PlusIcon,
+  UserRoundIcon,
   Trash2Icon,
 } from 'lucide-react'
 import { useServerClient } from '@/lib/server-client'
+import { useAuthStore } from '@/stores/auth.store'
 import { relativeTimeText } from './format'
 import { conversationPath, newConversationPath, CHAT_ROOT } from './routes'
 import { ChatMobileNavContext } from './mobile-nav-context'
@@ -92,12 +99,70 @@ const SIDEBAR_WIDTH = { default: 264, min: 180, max: 420 } as const
 /** 会话列表每页条数；触底自动取下一页（会话可能几十上百条，不能只拉第一页） */
 const CONVERSATION_PAGE_SIZE = 30
 
+/**
+ * 会话行的「更多」操作：**鼠标移入即打开菜单**（点开也行）。
+ *
+ * 抽成组件是因为要用 `useState` 控制 open —— 在列表 map 里不能直接用 hooks。
+ * 菜单在 Portal 里，移出触发区不立刻关（否则指针一进菜单就被判离开），
+ * 由菜单自己的 pointerleave / 选中 / Esc / 点外面关闭。
+ */
+function ConversationMenu(props: {
+  conversation: AgentConversationModel
+  onRename: (conversation: AgentConversationModel) => void
+  onDelete: (conversation: AgentConversationModel) => void
+}) {
+  const [open, setOpen] = useState(false)
+  return (
+    <div
+      className="pointer-events-none absolute inset-y-1 right-1 flex items-center rounded-md bg-surface-4 px-0.5 opacity-0 transition-opacity group-hover:pointer-events-auto group-hover:opacity-100 focus-within:pointer-events-auto focus-within:opacity-100"
+      onPointerEnter={() => setOpen(true)}
+    >
+      <DropdownMenu open={open} onOpenChange={setOpen}>
+        <DropdownMenuTrigger
+          render={
+            <button
+              type="button"
+              aria-label="更多会话操作"
+              className="inline-flex size-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-surface-3 hover:text-foreground"
+            >
+              <MoreHorizontalIcon className="size-3.5" />
+            </button>
+          }
+        />
+        <DropdownMenuContent align="end" className="w-32" onPointerLeave={() => setOpen(false)}>
+          <DropdownMenuItem
+            onClick={() => {
+              setOpen(false)
+              props.onRename(props.conversation)
+            }}
+          >
+            <PencilIcon className="size-3.5" />
+            重命名
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            variant="destructive"
+            onClick={() => {
+              setOpen(false)
+              props.onDelete(props.conversation)
+            }}
+          >
+            <Trash2Icon className="size-3.5" />
+            删除
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </div>
+  )
+}
+
 export default function ChatLayout({ children }: { children: ReactNode }) {
   const client = useServerClient()
   const pathname = usePathname()
   const router = useRouter()
   const queryClient = useQueryClient()
+  const me = useAuthStore((s) => s.adminInfo?.id)
   const renameDialog = useDisclosure<AgentConversationModel>()
+  const removeDialog = useDisclosure<AgentConversationModel>()
   const conversationsQuery = useInfiniteQuery({
     queryKey: ['ai', 'conversations'],
     queryFn: ({ pageParam }) =>
@@ -264,6 +329,7 @@ export default function ChatLayout({ children }: { children: ReactNode }) {
     onSuccess: (_result, conversationId) => {
       invalidateConversation(conversationId)
       toastSuccess('已删除会话')
+      removeDialog.close()
       // 删掉的正是当前打开的那个 → 回到「新会话」，别停在一个已经打不开的地址上
       if (pathname === conversationPath(conversationId)) router.push(newConversationPath())
     },
@@ -322,15 +388,26 @@ export default function ChatLayout({ children }: { children: ReactNode }) {
       key: string
       workspaceId: string | null
       name: string
+      ownerId: string | null
+      ownerName: string | null
       conversations: AgentConversationModel[]
     }> = workspaceList.map((workspace) => ({
       key: workspace.id,
       workspaceId: workspace.id,
       name: workspace.isDefault ? `${workspace.name}（默认）` : workspace.name,
+      ownerId: workspace.ownerId,
+      ownerName: workspace.ownerName,
       conversations: byId.get(workspace.id) ?? [],
     }))
     if (ungrouped.length > 0) {
-      result.push({ key: 'ungrouped', workspaceId: null, name: '未分组', conversations: ungrouped })
+      result.push({
+        key: 'ungrouped',
+        workspaceId: null,
+        name: '未分组',
+        ownerId: null,
+        ownerName: null,
+        conversations: ungrouped,
+      })
     }
     return result
   }, [items, workspacesQuery.data])
@@ -473,6 +550,14 @@ export default function ChatLayout({ children }: { children: ReactNode }) {
                                 <span className="min-w-0 flex-1 truncate text-[11px] font-medium text-muted-foreground">
                                   {group.name}
                                 </span>
+                                {group.ownerId && group.ownerId !== me ? (
+                                  <IconText
+                                    icon={<UserRoundIcon />}
+                                    size="small"
+                                    tooltip={`所属用户：${group.ownerName ?? group.ownerId}`}
+                                    aria-label={`所属用户：${group.ownerName ?? group.ownerId}`}
+                                  />
+                                ) : null}
                               </button>
                               {group.workspaceId ? (
                                 <div className="flex items-center gap-0.5 opacity-0 transition-opacity group-hover/ws:opacity-100 focus-within:opacity-100">
@@ -551,34 +636,17 @@ export default function ChatLayout({ children }: { children: ReactNode }) {
                                       ) : null}
                                     </Link>
                                     {/*
-                              操作：悬停 / 键盘聚焦时**盖在时间的位置上**出现。
-                              自带一层 `bg-surface-4` 底色：遇到"刚刚"这种很短的文案，操作区会比时间宽，
-                              没底色就会直接压到标题上（看起来像标题少了一截）。
+                              操作：悬停 / 键盘聚焦时出现「更多」按钮，点开才是菜单 ——
+                              比两个常驻图标安静，也不会把短时间文案挤成两行。
                             */}
-                                    <div className="pointer-events-none absolute inset-y-1 right-1 flex items-center gap-0.5 rounded-md bg-surface-4 px-0.5 opacity-0 transition-opacity group-hover:pointer-events-auto group-hover:opacity-100 focus-within:pointer-events-auto focus-within:opacity-100">
-                                      <IconText
-                                        icon={<PencilIcon />}
-                                        size="small"
-                                        type="primary"
-                                        aria-label="重命名会话"
-                                        tooltip="重命名"
-                                        onClick={() => {
-                                          renameForm.reset({ title: conversation.title })
-                                          renameDialog.open(conversation)
-                                        }}
-                                      />
-                                      <ConfirmAction
-                                        danger
-                                        title="删除这个会话？"
-                                        description="会话会被软删除（列表里不再显示）；运行记录与时间线保留，审计页仍可查。"
-                                        disabled={removeMutation.isPending}
-                                        onConfirm={async () => {
-                                          await removeMutation.mutateAsync(conversation.id)
-                                        }}
-                                      >
-                                        <Trash2Icon className="size-3.5" />
-                                      </ConfirmAction>
-                                    </div>
+                                    <ConversationMenu
+                                      conversation={conversation}
+                                      onRename={(target) => {
+                                        renameForm.reset({ title: target.title })
+                                        renameDialog.open(target)
+                                      }}
+                                      onDelete={(target) => removeDialog.open(target)}
+                                    />
                                   </div>
                                 )
                               })}
@@ -735,6 +803,37 @@ export default function ChatLayout({ children }: { children: ReactNode }) {
             ]}
             onCancel={renameDialog.close}
           />
+
+          {/* 删除会话：二次确认，明确说明是软删除（记录保留、可审计） */}
+          <Dialog open={removeDialog.isOpen} onOpenChange={(open) => !open && removeDialog.close()}>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>
+                  删除会话「{removeDialog.data?.title || removeDialog.data?.id}」？
+                </DialogTitle>
+              </DialogHeader>
+              <p className="text-sm text-muted-foreground">
+                会话会从列表里删除（软删除），它名下的子会话一并移除；运行记录与时间线**保留**，审计页仍可查。
+                该操作不可从界面撤销。
+              </p>
+              <DialogFooter>
+                <Button variant="outline" onClick={removeDialog.close}>
+                  取消
+                </Button>
+                <Button
+                  variant="destructive"
+                  disabled={removeMutation.isPending}
+                  onClick={() => {
+                    const target = removeDialog.data
+                    if (!target) return
+                    void removeMutation.mutateAsync(target.id)
+                  }}
+                >
+                  确认删除
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
         </>
       </ChatMobileNavContext.Provider>
       <Dialog open={createWorkspaceOpen} onOpenChange={setCreateWorkspaceOpen}>

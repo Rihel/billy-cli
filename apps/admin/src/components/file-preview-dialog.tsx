@@ -2,14 +2,23 @@
 
 import { formatFileSize } from '@repo/shared/browser'
 import { Button, cn, Dialog, DialogContent, DialogHeader, DialogTitle, FilePreview } from '@repo/ui'
-import { useEffect, useState } from 'react'
-import { CheckIcon, ChevronDownIcon, ChevronUpIcon, CopyIcon, DownloadIcon } from 'lucide-react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { fileIconOf } from '@/components/file-type-icon'
+import {
+  CheckIcon,
+  ChevronDownIcon,
+  ChevronRightIcon,
+  ChevronUpIcon,
+  CopyIcon,
+  DownloadIcon,
+  FolderIcon,
+} from 'lucide-react'
 import { useHotkeys } from 'react-hotkeys-hook'
 import { toastError, toastSuccess } from '@repo/ui'
 import { MessageResponse } from '@repo/ui/components/ai-elements/message.tsx'
 import { SandboxFrame } from '@repo/ui/components/ai-elements/markdown-fences/sandbox-frame.tsx'
 import { OfficePreview, type OfficeKind } from '@/components/office-preview'
-import { MonacoCodePreview, isMonacoFile } from '@/components/monaco-code-preview'
+import { MonacoCodePreview } from '@/components/monaco-code-preview'
 import {
   FullscreenButton,
   FullscreenExitButton,
@@ -25,6 +34,8 @@ export interface PreviewDialogItem {
   badge?: string
   mediaType: string
   bytes: number
+  /** 相对路径（用于左侧树形分组；没有就按 filename 平铺） */
+  path?: string
   /** 可直接放进 FilePreview 的地址；文本类可以为 null */
   url: string | null
   /** 需要异步换链接的类型（如工作区文件要先物化到 OSS）；只对当前项调用 */
@@ -132,6 +143,56 @@ export const officeKind = (
  * 「全屏」是弹窗自己的状态：收掉侧栏 / 顶栏 / 底栏只留内容，右上角悬浮按钮还原；
  * 状态不外抛，关窗即复位，调用方的 props 不受影响。
  */
+/** 左侧树：目录 → 子目录 / 文件（按 path 分组，文件保留原下标用于切换） */
+interface PreviewTreeDir {
+  name: string
+  path: string
+  dirs: Map<string, PreviewTreeDir>
+  files: { item: PreviewDialogItem; index: number }[]
+}
+
+const buildPreviewTree = (items: readonly PreviewDialogItem[]): PreviewTreeDir => {
+  const root: PreviewTreeDir = { name: '', path: '', dirs: new Map(), files: [] }
+  items.forEach((item, index) => {
+    const rel = (item.path ?? item.filename).split('/').filter(Boolean)
+    rel.pop()
+    let dir = root
+    for (const segment of rel) {
+      const path = dir.path ? `${dir.path}/${segment}` : segment
+      let next = dir.dirs.get(segment)
+      if (!next) {
+        next = { name: segment, path, dirs: new Map(), files: [] }
+        dir.dirs.set(segment, next)
+      }
+      dir = next
+    }
+    dir.files.push({ item, index })
+  })
+  return root
+}
+
+type PreviewTreeRow =
+  | { type: 'dir'; name: string; path: string; depth: number }
+  | { type: 'file'; item: PreviewDialogItem; index: number; depth: number }
+
+const flattenPreviewTree = (
+  dir: PreviewTreeDir,
+  collapsed: ReadonlySet<string>,
+  depth = 0,
+): PreviewTreeRow[] => {
+  const rows: PreviewTreeRow[] = []
+  for (const child of [...dir.dirs.values()].sort((a, b) => a.name.localeCompare(b.name))) {
+    rows.push({ type: 'dir', name: child.name, path: child.path, depth })
+    if (!collapsed.has(child.path)) rows.push(...flattenPreviewTree(child, collapsed, depth + 1))
+  }
+  for (const file of [...dir.files].sort((a, b) =>
+    a.item.filename.localeCompare(b.item.filename),
+  )) {
+    rows.push({ type: 'file', item: file.item, index: file.index, depth })
+  }
+  return rows
+}
+
 export function FilePreviewDialog({
   items,
   index,
@@ -150,9 +211,38 @@ export function FilePreviewDialog({
   loading: boolean
 }) {
   const current = index === null ? null : items[index]
+  const [collapsedDirs, setCollapsedDirs] = useState<Set<string>>(new Set())
+  /** 左侧文件树宽度（可拖动分隔条调整；不含小屏，小屏本来就把树收起） */
+  const [sidebarWidth, setSidebarWidth] = useState(256)
+  const dragRef = useRef<{ startX: number; startWidth: number } | null>(null)
+
+  useEffect(() => {
+    const onMove = (event: PointerEvent): void => {
+      const drag = dragRef.current
+      if (!drag) return
+      setSidebarWidth(Math.min(520, Math.max(180, drag.startWidth + event.clientX - drag.startX)))
+    }
+    const onUp = (): void => {
+      dragRef.current = null
+      document.body.style.userSelect = ''
+      document.body.style.cursor = ''
+    }
+    window.addEventListener('pointermove', onMove)
+    window.addEventListener('pointerup', onUp)
+    return () => {
+      window.removeEventListener('pointermove', onMove)
+      window.removeEventListener('pointerup', onUp)
+    }
+  }, [])
+  const treeRows = useMemo(
+    () => flattenPreviewTree(buildPreviewTree(items), collapsedDirs),
+    [items, collapsedDirs],
+  )
   const [resolvedUrl, setResolvedUrl] = useState<string | null>(null)
   const [urlError, setUrlError] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
+  /** markdown / html 可以切「预览 ↔ 代码」（其余文件只有一种形态） */
+  const [codeMode, setCodeMode] = useState(false)
   const {
     fullscreen,
     toggle: toggleFullscreen,
@@ -163,6 +253,7 @@ export function FilePreviewDialog({
     setResolvedUrl(null)
     setUrlError(null)
     setCopied(false)
+    setCodeMode(false)
     if (!current?.loadUrl) {
       return
     }
@@ -207,6 +298,16 @@ export function FilePreviewDialog({
   const hasPrev = index > 0
   const hasNext = index < items.length - 1
   const canCopy = (isText || html || markdown) && !loading && text !== null
+  /** 有专门渲染的文件（markdown / html）可以切代码视图 */
+  const canToggleView = html || markdown
+  /** 二进制（非文本、非 Office、非图片/PDF）不尝试预览 */
+  const binaryUnsupported =
+    !isText &&
+    !html &&
+    !markdown &&
+    !officeKind(current) &&
+    !current.mediaType.startsWith('image/') &&
+    current.mediaType !== 'application/pdf'
 
   const copyCurrent = async () => {
     try {
@@ -253,6 +354,26 @@ export function FilePreviewDialog({
                 {index + 1} / {items.length}
               </span>
               <div className="ml-auto flex shrink-0 items-center gap-1 pr-2">
+                {canToggleView ? (
+                  <div className="mr-1 flex items-center rounded-md border border-border p-0.5">
+                    <Button
+                      size="sm"
+                      variant={codeMode ? 'ghost' : 'secondary'}
+                      className="h-6 px-2 text-[11px]"
+                      onClick={() => setCodeMode(false)}
+                    >
+                      预览
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant={codeMode ? 'secondary' : 'ghost'}
+                      className="h-6 px-2 text-[11px]"
+                      onClick={() => setCodeMode(true)}
+                    >
+                      代码
+                    </Button>
+                  </div>
+                ) : null}
                 <Button
                   variant="ghost"
                   size="icon-sm"
@@ -284,31 +405,102 @@ export function FilePreviewDialog({
           {fullscreen ? null : (
             <aside
               aria-label="文件列表"
-              className="hidden w-64 shrink-0 overflow-y-auto border-r bg-surface-1 p-2 sm:block"
+              style={{ width: sidebarWidth }}
+              className="hidden shrink-0 overflow-y-auto border-r bg-surface-1 p-2 sm:block"
             >
               <div className="px-2 pb-1.5 text-[11px] font-medium tracking-wide text-muted-foreground uppercase">
                 文件列表（{items.length}）
               </div>
-              {items.map((item, itemIndex) => (
-                <button
-                  key={item.id}
-                  type="button"
-                  onClick={() => onIndexChange(itemIndex)}
-                  className={
-                    itemIndex === index
-                      ? 'flex w-full flex-col gap-0.5 rounded-md bg-muted px-2 py-1.5 text-left'
-                      : 'flex w-full flex-col gap-0.5 rounded-md px-2 py-1.5 text-left hover:bg-muted/60'
-                  }
-                >
-                  <span className="truncate text-xs font-medium">{item.filename}</span>
-                  <span className="flex items-center gap-2 text-[10px] text-muted-foreground">
-                    {item.badge ? <span>{item.badge}</span> : null}
-                    {item.subtitle ? <span className="truncate">{item.subtitle}</span> : null}
-                    <span className="ml-auto shrink-0">{formatFileSize(item.bytes)}</span>
-                  </span>
-                </button>
-              ))}
+              {treeRows.map((row) =>
+                row.type === 'dir' ? (
+                  <button
+                    key={`dir:${row.path}`}
+                    type="button"
+                    onClick={() =>
+                      setCollapsedDirs((previous) => {
+                        const next = new Set(previous)
+                        if (next.has(row.path)) next.delete(row.path)
+                        else next.add(row.path)
+                        return next
+                      })
+                    }
+                    style={{ paddingLeft: 8 + row.depth * 12 }}
+                    className="flex w-full items-center gap-1 rounded-md py-1 pr-2 text-left text-xs text-muted-foreground hover:bg-muted/60"
+                  >
+                    <ChevronRightIcon
+                      className={
+                        collapsedDirs.has(row.path)
+                          ? 'size-3 shrink-0'
+                          : 'size-3 shrink-0 rotate-90'
+                      }
+                    />
+                    <FolderIcon className="size-3.5 shrink-0" />
+                    <span className="min-w-0 flex-1 truncate">{row.name}</span>
+                  </button>
+                ) : (
+                  <button
+                    key={row.item.id}
+                    type="button"
+                    onClick={() => onIndexChange(row.index)}
+                    style={{ paddingLeft: 8 + row.depth * 12 + 16 }}
+                    className={
+                      row.index === index
+                        ? 'flex w-full flex-col gap-0.5 rounded-md bg-muted py-1.5 pr-2 text-left'
+                        : 'flex w-full flex-col gap-0.5 rounded-md py-1.5 pr-2 text-left hover:bg-muted/60'
+                    }
+                  >
+                    <span className="flex min-w-0 items-center gap-1.5">
+                      {(() => {
+                        const Icon = fileIconOf(row.item.filename)
+                        return <Icon className="size-3.5 shrink-0 text-muted-foreground" />
+                      })()}
+                      <span
+                        className={
+                          row.item.badge === '工作区'
+                            ? 'truncate text-[11px] font-normal'
+                            : 'truncate text-xs font-medium'
+                        }
+                      >
+                        {row.item.filename}
+                      </span>
+                    </span>
+                    {/* 工作区文件：列表里只给文件名，大小 / 来源等留给预览区，别把树撑成两行 */}
+                    {row.item.badge === '工作区' ? null : (
+                      <span className="flex items-center gap-2 text-[10px] text-muted-foreground">
+                        {row.item.badge ? <span>{row.item.badge}</span> : null}
+                        {row.item.subtitle ? (
+                          <span className="truncate">{row.item.subtitle}</span>
+                        ) : null}
+                        <span className="ml-auto shrink-0">{formatFileSize(row.item.bytes)}</span>
+                      </span>
+                    )}
+                  </button>
+                ),
+              )}
             </aside>
+          )}
+
+          {/* 可拖动分隔条：拖拽改左栏宽度（键盘左右键也能调，焦点在分隔条上时） */}
+          {fullscreen ? null : (
+            <div
+              role="separator"
+              aria-orientation="vertical"
+              aria-label="调整文件列表宽度"
+              tabIndex={0}
+              onPointerDown={(event) => {
+                dragRef.current = { startX: event.clientX, startWidth: sidebarWidth }
+                document.body.style.userSelect = 'none'
+                document.body.style.cursor = 'col-resize'
+              }}
+              onKeyDown={(event) => {
+                if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return
+                event.preventDefault()
+                setSidebarWidth((width) =>
+                  Math.min(520, Math.max(180, width + (event.key === 'ArrowRight' ? 16 : -16))),
+                )
+              }}
+              className="hidden w-1 shrink-0 cursor-col-resize bg-border/40 transition-colors hover:bg-border sm:block"
+            />
           )}
 
           <div
@@ -333,6 +525,10 @@ export function FilePreviewDialog({
                   className="h-full"
                 />
               )
+            ) : canToggleView && codeMode ? (
+              <MonacoCodePreview filename={current.filename} value={text ?? ''} />
+            ) : binaryUnsupported ? (
+              <Empty text="这是二进制文件，不支持在线预览，请下载查看。" />
             ) : isText ? (
               loading ? (
                 <Empty text="正在读取…" />
@@ -340,10 +536,10 @@ export function FilePreviewDialog({
                 <div className="px-6 py-2 sm:px-10">
                   <MessageResponse className="text-sm">{text ?? ''}</MessageResponse>
                 </div>
-              ) : isMonacoFile(current.filename) ? (
-                <MonacoCodePreview filename={current.filename} value={text ?? ''} />
               ) : (
-                <pre className="whitespace-pre-wrap break-words text-xs">{text ?? ''}</pre>
+                // 除 markdown（富文本）/ html（沙箱）/ Office 这些专门渲染的以外，
+                // 文本文件一律交给 Monaco（未知扩展名按 plaintext，可选中/查找/折叠）
+                <MonacoCodePreview filename={current.filename} value={text ?? ''} />
               )
             ) : current.url || resolvedUrl ? (
               <FilePreview

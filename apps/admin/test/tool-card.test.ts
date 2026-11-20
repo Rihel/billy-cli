@@ -8,6 +8,7 @@ import {
   ToolCard,
   shouldAutoOpen,
   toolCallReason,
+  toolHeaderDetail,
 } from '../src/app/(app)/(standalone)/main/ai/chat/tool-card.tsx'
 
 /**
@@ -19,6 +20,27 @@ import {
  * 点击交互（`onOpenChange` → 自动展开）需要 DOM 渲染测试基建，项目没有、也不为此加依赖，
  * 所以这里钉两件能钉的事：**判据本身**，以及 **`open` 真的接管了折叠**（SSR 下初值即结果）。
  */
+describe('toolHeaderDetail', () => {
+  it('bash 显示命令，文件类显示路径', () => {
+    expect(toolHeaderDetail('bash', { command: 'ls -la', reason: '看目录' })).toBe('ls -la')
+    expect(toolHeaderDetail('read-file', { path: 'src/index.ts' })).toBe('src/index.ts')
+    expect(toolHeaderDetail('workspace-files', { pathPrefix: 'src/' })).toBe('src/')
+  })
+
+  it('网页类只显示域名；wait-task 截短 taskId', () => {
+    expect(toolHeaderDetail('web-fetch', { url: 'https://api.github.com/repos/x/y' })).toBe(
+      'api.github.com',
+    )
+    expect(toolHeaderDetail('wait-task', { taskId: 'tsk_1234567890' })).toBe('tsk_1234')
+  })
+
+  it('取不到字段时返回 undefined（不为展示位编内容）', () => {
+    expect(toolHeaderDetail('read-file', {})).toBeUndefined()
+    expect(toolHeaderDetail('bash', { path: 'x' })).toBeUndefined()
+    expect(toolHeaderDetail('read-file', null)).toBeUndefined()
+  })
+})
+
 describe('shouldAutoOpen', () => {
   it('有事件、用户没动过手 → 自动展开', () => {
     expect(shouldAutoOpen(true, false)).toBe(true)

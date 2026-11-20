@@ -5,7 +5,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "next dev --port 9845",
+    "dev": "node scripts/copy-monaco.mjs && next dev --port 9845",
     "build": "node scripts/copy-monaco.mjs && next build",
     "start": "node ../../scripts/start-standalone.ts admin 9845",
     "sync:vendor": "node scripts/sync-vendor.ts",

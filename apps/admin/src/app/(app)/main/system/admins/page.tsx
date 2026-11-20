@@ -25,7 +25,7 @@ import {
   useDisclosure,
 } from '@repo/ui'
 import type { DataTableColumnDef } from '@repo/ui'
-import { UserStatus } from '@repo/shared'
+import { AdminType, UserStatus } from '@repo/shared'
 import type { AdminModel } from '@repo/shared'
 import { LockIcon, PencilIcon, PlusIcon, SearchIcon } from 'lucide-react'
 
@@ -34,6 +34,8 @@ type CreateAdminForm = {
   password: string
   realName?: string
   avatar?: string
+  /** 只有超管能进这个页面，因此可以建超管；默认普通管理员（最小权限） */
+  type: string
 }
 
 type EditAdminForm = {
@@ -41,6 +43,8 @@ type EditAdminForm = {
   realName?: string | null
   avatar?: string | null
   status: 'enabled' | 'disabled'
+  /** 改成普通管理员时，后端会拒绝降级最后一个超管（2009） */
+  type: string
 }
 
 type ResetPasswordForm = {
@@ -100,6 +104,7 @@ export default function AdminsPage() {
       password: '',
       realName: '',
       avatar: '',
+      type: 'normal',
     } as CreateAdminForm,
     onSubmit: async ({ value }) => {
       await client.admin.create(value)
@@ -115,6 +120,7 @@ export default function AdminsPage() {
       realName: null,
       avatar: null,
       status: 'enabled',
+      type: 'normal',
     } as EditAdminForm,
     onSubmit: async ({ value }) => {
       if (!editDialog.data) return
@@ -123,6 +129,7 @@ export default function AdminsPage() {
         realName: value.realName,
         avatar: value.avatar,
         status: value.status,
+        type: value.type,
       })
       toastSuccess('更新成功')
       await refetch()
@@ -167,6 +174,16 @@ export default function AdminsPage() {
         <EmptyValue value={row.original.realName} emptyText={<Tag>未设置</Tag>}>
           <span className="text-muted-foreground">{row.original.realName}</span>
         </EmptyValue>
+      ),
+    },
+    {
+      header: '类型',
+      accessorKey: 'type',
+      meta: { width: 130 },
+      cell: ({ row }) => (
+        <Tag color={row.original.type === 'god' ? 'orange' : 'default'}>
+          {AdminType.getLabel(row.original.type) ?? row.original.type}
+        </Tag>
       ),
     },
     {
@@ -334,6 +351,13 @@ export default function AdminsPage() {
             ),
           },
           {
+            name: 'type',
+            label: '管理员类型',
+            hint: '超级管理员可跨主体查看元数据、管理其他管理员；普通管理员只能管平台配置与自己的资源',
+            widget: 'select',
+            props: { options: AdminType.options },
+          },
+          {
             name: 'password',
             label: '初始密码',
             hint: '至少 6 位；建议字母、数字与符号混合',
@@ -379,6 +403,13 @@ export default function AdminsPage() {
                 onChange={(key) => field.handleChange(key)}
               />
             ),
+          },
+          {
+            name: 'type',
+            label: '管理员类型',
+            hint: '降级最后一个超级管理员会被拒绝（至少保留一个）',
+            widget: 'select',
+            props: { options: AdminType.options },
           },
           {
             name: 'status',
