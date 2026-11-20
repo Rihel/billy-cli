@@ -7,7 +7,8 @@ import { resolveServerConfig, type ServerConfig } from '../../config.js'
 import { AdminService } from './admin.service.js'
 
 /**
- * 后台管理员鉴权守卫：校验管理员 token（type='admin'），把 adminId 注入请求上下文。
+ * 后台管理员鉴权守卫：校验管理员 token（type='admin'），把 adminId **与管理员类型**
+ * 注入请求上下文（归属过滤 `scopeOf` 直接读后者）。
  * 用户体系开关（ServerConfig.authEnabled）关闭时直接放行。
  */
 @Injectable()
@@ -29,8 +30,9 @@ export class AdminAuthGuard implements CanActivate {
     if (!token) throw unauthorizedError()
 
     try {
-      const adminId = await this.adminService.verifyToken({ token })
+      const { adminId, adminType } = await this.adminService.verifyToken({ token })
       requestContext.set('adminId', adminId)
+      requestContext.set('adminType', adminType)
       return true
     } catch {
       throw tokenInvalidError()

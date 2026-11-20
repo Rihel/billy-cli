@@ -35,3 +35,17 @@ export class CannotRemoveSelfError extends AppError {
     super('Cannot remove the currently logged-in admin')
   }
 }
+
+export class AdminTypeForbiddenError extends AppError {
+  readonly code = AppErrorCodes.AdminTypeForbidden
+  constructor() {
+    super('Only a super admin can change the admin type')
+  }
+}
+
+export class LastGodAdminRequiredError extends AppError {
+  readonly code = AppErrorCodes.LastGodAdminRequired
+  constructor() {
+    super('At least one super admin must remain')
+  }
+}

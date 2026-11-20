@@ -72,6 +72,28 @@ import { AiFileController } from './file.controller.js'
             ...(data.mtime === undefined ? {} : { mtime: data.mtime }),
           }
         },
+        async listTree(workspaceId, path, options) {
+          const r = await client.fs({
+            workspaceId,
+            op: 'list-tree',
+            path,
+            maxDepth: options.maxDepth,
+            excludeDirs: [...options.excludeDirs],
+          })
+          if (!r.ok) throw new Error(r.message ?? '列目录失败')
+          const data = (r.data ?? {}) as {
+            entries?: { path?: string; size?: number; mtime?: number }[]
+          }
+          return (data.entries ?? [])
+            .filter((entry): entry is { path: string; size?: number; mtime?: number } =>
+              Boolean(entry.path),
+            )
+            .map((entry) => ({
+              path: entry.path,
+              size: entry.size ?? 0,
+              mtime: entry.mtime ?? 0,
+            }))
+        },
         async list(workspaceId, path) {
           const r = await client.fs({ workspaceId, op: 'list', path })
           if (!r.ok) throw new Error(r.message ?? '列目录失败')

@@ -25,6 +25,8 @@ import type {
 } from '@repo/shared'
 import { AiModelService } from '../../ai-model/index.js'
 import { AiUsageService } from '../../ai-usage/index.js'
+import { WorkspaceAdminService } from '../workspace/workspace.service.js'
+import { currentOwner, type OwnerRef } from '../../../common/security/index.js'
 import { AgentCatalogService } from '../../../agent/agent-catalog.service.js'
 import { AiConversationRepository, toConversationModel } from './conversation.repository.js'
 import { ConversationNotFoundError, RunNotFoundError } from './errors.js'
@@ -53,6 +55,7 @@ export class AiAdminConversationService {
     @Inject(AiModelService) private readonly models: AiModelService,
     @Inject(AppLogger) private readonly logger: AppLogger,
     @Inject(Db) private readonly db: Db,
+    @Inject(WorkspaceAdminService) private readonly workspaces: WorkspaceAdminService,
   ) {}
 
   /**
@@ -77,17 +80,16 @@ export class AiAdminConversationService {
 
   /** 新建会话（agentKey 未知时由执行面目录解析出 3303） */
   async create(input: AgentConversationCreateDto): Promise<AgentConversationModel> {
-    const ownerId = this.ownerId()
+    const owner = currentOwner()
+    const ownerId = owner.ownerId
     const agentKey = await this.agents.resolveAgentKey(input.agentKey)
-    // 会话是过程，工作区是场所：新会话默认绑到该主体的默认工作区
+    // 会话是过程，工作区是场所：新会话默认绑到该主体的默认工作区。
+    // 归属按**身份类型 + id** 一起查（用户 / 管理员两套 id 都是 nanoid，只按 id 会串号）。
     const workspace = input.workspaceId
       ? await this.db
           .getRepository(AiWorkspaceEntity)
-          .findOne({ where: { id: input.workspaceId, ownerId }, select: { id: true } })
-      : await this.db.getRepository(AiWorkspaceEntity).findOne({
-          where: { ownerType: 'admin', ownerId, isDefault: true },
-          select: { id: true },
-        })
+          .findOne({ where: { id: input.workspaceId, ...owner }, select: { id: true } })
+      : await this.defaultWorkspaceOf(owner)
     const conversation = await this.conversations.create({
       userId: ownerId,
       workspaceId: workspace?.id ?? null,
@@ -103,6 +105,23 @@ export class AiAdminConversationService {
       isAdmin: this.isAdminIdentity(),
     })
     return conversation
+  }
+
+  /**
+   * 主体的默认工作区；第一次建会话时**懒创建**。
+   *
+   * 用户端没有"建工作区"入口，若这里只查不建，用户登录后建出的会话永远没有工作区，
+   * `bash` 只会返回「会话还没有绑定工作区」（`docs/design/workspace-cli-credentials.md` §9.1）。
+   */
+  private async defaultWorkspaceOf(owner: OwnerRef) {
+    const repo = this.db.getRepository(AiWorkspaceEntity)
+    const found = await repo.findOne({
+      where: { ...owner, isDefault: true },
+      select: { id: true },
+    })
+    if (found) return found
+    await this.workspaces.ensureDefault(owner)
+    return repo.findOne({ where: { ...owner, isDefault: true }, select: { id: true } })
   }
 
   list(input: AgentConversationListDto): Promise<PageQueryResult<AgentConversationModel>> {

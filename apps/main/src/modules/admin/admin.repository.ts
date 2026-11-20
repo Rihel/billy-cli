@@ -33,6 +33,18 @@ export class AdminRepository {
     return repo.findOneBy({ email })
   }
 
+  /** 按类型计数（软删不计）；最后一个超管的判定与种子服务都用它 */
+  async countByType(type: string): Promise<number> {
+    const repo = await this.repo()
+    return repo.count({ where: { type } })
+  }
+
+  /** 按类型计数，**含软删**：区分「从来没建过超管」与「超管被删了」（后者不自动重建） */
+  async countByTypeIncludingDeleted(type: string): Promise<number> {
+    const repo = await this.repo()
+    return repo.count({ where: { type }, withDeleted: true })
+  }
+
   async create(data: DeepPartial<AdminEntity>): Promise<AdminEntity> {
     const repo = await this.repo()
     return repo.save(repo.create(data))

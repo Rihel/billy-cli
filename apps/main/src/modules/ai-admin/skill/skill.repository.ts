@@ -5,6 +5,7 @@ import { AiSkillEntity, AiSkillFileEntity } from '@repo/db'
 import type { EntityManager } from 'typeorm'
 import { In } from 'typeorm'
 import { hashContent, SKILL_FILE } from './skill.rules.js'
+import { pickVisibleSkill } from './skill-scope.js'
 
 /**
  * 技能库的数据访问层（从 agent-runtime 的 `SkillRepository` 迁移，表结构不变）。
@@ -28,16 +29,70 @@ export class SkillRepository {
   }
 
   /** 按名字取（软删自动排除） */
+  /**
+   * 按 skillKey 取调用方可见的那一行（个人优先于平台；别人的个人技能不可见）。
+   * `skill_key` 现在可能有多行（平台 + 各 owner 的个人技能），不能再 `findOne`。
+   */
+  async findVisible(
+    skillKey: string,
+    caller: { ownerType: 'user' | 'admin'; ownerId: string } | null,
+  ): Promise<AiSkillEntity | null> {
+    const rows = await (await this.repo()).find({ where: { skillKey } })
+    return pickVisibleSkill(rows, caller)
+  }
+
+  /** 某个 scope + owner 下是否已存在同名技能（新建冲突判定用，不看别人的个人技能） */
+  async existsInScope(
+    skillKey: string,
+    target: { scope: 'platform' | 'personal'; ownerType: string | null; ownerId: string | null },
+  ): Promise<boolean> {
+    const rows = await (await this.repo()).find({ where: { skillKey } })
+    return rows.some((row) =>
+      target.scope === 'platform'
+        ? row.scope === 'platform'
+        : row.scope === 'personal' &&
+          row.ownerType === target.ownerType &&
+          row.ownerId === target.ownerId,
+    )
+  }
+
+  /** 某 owner 的个人技能数量（配额判定用；软删不计） */
+  async countPersonal(owner: { ownerType: string; ownerId: string }): Promise<number> {
+    return (await this.repo()).count({
+      where: { scope: 'personal', ownerType: owner.ownerType, ownerId: owner.ownerId },
+    })
+  }
+
   async find(skillKey: string): Promise<AiSkillEntity | null> {
     return (await this.repo()).findOneBy({ skillKey })
   }
 
   /** 分页列表（后台页用；按更新时间倒序，方便「刚改过的在上面」） */
-  async page(query: AiSkillListDto): Promise<PageQueryResult<AiSkillEntity>> {
+  /**
+   * 技能列表：**按可见集合过滤**（§6.7.1）。
+   *
+   * 平台技能全员可见（是否可用由调用方另判），个人技能只有 owner 能看到；
+   * 超管（god）不过滤。列表不筛的话，普通管理员会在页面上看到别人的个人技能。
+   */
+  async page(
+    query: AiSkillListDto,
+    caller: { ownerType: 'user' | 'admin'; ownerId: string; adminType?: 'normal' | 'god' } | null,
+  ): Promise<PageQueryResult<AiSkillEntity>> {
     const builder = (await this.repo())
       .createQueryBuilder('s')
       .orderBy('s.updated_at', 'DESC')
       .addOrderBy('s.id', 'DESC')
+    const isGod = caller?.ownerType === 'admin' && caller.adminType === 'god'
+    if (!isGod) {
+      if (caller) {
+        builder.andWhere(
+          "(s.scope = 'platform' OR (s.scope = 'personal' AND s.owner_type = :ownerType AND s.owner_id = :ownerId))",
+          { ownerType: caller.ownerType, ownerId: caller.ownerId },
+        )
+      } else {
+        builder.andWhere("s.scope = 'platform'")
+      }
+    }
     if (query.keyword) {
       builder.andWhere('(s.skill_key ILIKE :keyword OR s.title ILIKE :keyword)', {
         keyword: `%${query.keyword}%`,

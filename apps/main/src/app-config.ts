@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import {
   AppConfigFacade,
+  CredentialCryptoConfigSchema,
   DbConfigSchema,
   envConfigLoader,
   JwtConfigSchema,
@@ -70,6 +71,13 @@ export const serverAppConfigSchema = z.object({
        */
       appVersion: z.string().default('dev'),
       /**
+       * 是否允许用 `GOD_ADMIN_EMAIL` / `GOD_ADMIN_PASSWORD` 做首个超管种子。
+       *
+       * 种子幂等且失败不阻塞启动：已存在超管就什么都不做；超管被删过则只告警不重建
+       * （避免覆盖运维意图）。详见 `docs/design/workspace-cli-credentials.md` §6.10.1。
+       */
+      adminSeedFromEnv: z.boolean().default(true),
+      /**
        * 优雅关闭的总期限（ms）：`SIGTERM` 后最多等这么久排空在途请求，超时强制退出。
        *
        * 关闭顺序（Nest `app.close()`）：`beforeApplicationShutdown`（SSE Hub 排空长连接）→
@@ -123,6 +131,18 @@ export const serverAppConfigSchema = z.object({
    */
   workspace: WorkspaceConfigSchema,
   /**
+   * 个人凭据的加密配置（`docs/design/workspace-cli-credentials.md` §6.4.2）。
+   *
+   * 主密钥来自环境变量（32 字节 base64），支持多把并存以便轮换：
+   * - `PERSONAL_CREDENTIAL_KEYS`：`v1:<base64>,v2:<base64>`；
+   * - `PERSONAL_CREDENTIAL_KEY`：单把的简写（等价于 `v1:<base64>`）；
+   * - `PERSONAL_CREDENTIAL_KEY_CURRENT`：写入用哪一把，缺省 `v1`。
+   *
+   * 配了但长度不对 → **拒绝启动**（长度错等于强度错）；一把都没配则允许启动，
+   * 但凭据写入会明确报错（与对象存储同一套"可降级"口径）。
+   */
+  credential: CredentialCryptoConfigSchema,
+  /**
    * AI 模型模块配置（配置类数据：供应商 / 模型，见设计文档 §4.8）。
    *
    * 与本模块的数据表配套：只要"要不要用环境变量做首次种子"。
@@ -160,6 +180,24 @@ const optionalNumber = (value: string | undefined): number | undefined => {
 const parseBoolean = (value: string | undefined): boolean | undefined =>
   value === undefined ? undefined : value === 'true'
 
+/**
+ * 凭据主密钥：`PERSONAL_CREDENTIAL_KEYS`（`keyId:base64,...`）优先，
+ * 其次单把简写 `PERSONAL_CREDENTIAL_KEY`（keyId 固定 `v1`）。
+ */
+const credentialKeysOf = (env: NodeJS.ProcessEnv): Record<string, string> | undefined => {
+  const keys: Record<string, string> = {}
+  for (const segment of (env.PERSONAL_CREDENTIAL_KEYS ?? '').split(',')) {
+    const trimmed = segment.trim()
+    if (!trimmed) continue
+    const separator = trimmed.indexOf(':')
+    if (separator <= 0) continue
+    keys[trimmed.slice(0, separator).trim()] = trimmed.slice(separator + 1).trim()
+  }
+  const single = env.PERSONAL_CREDENTIAL_KEY?.trim()
+  if (single) keys.v1 = single
+  return Object.keys(keys).length > 0 ? keys : undefined
+}
+
 const parseList = (value: string | undefined): string[] | undefined =>
   value === undefined
     ? undefined
@@ -182,6 +220,7 @@ export const mapServerEnv = (env: NodeJS.ProcessEnv): Record<string, unknown> =>
     keepAliveTimeoutMs: optional(env.KEEP_ALIVE_TIMEOUT_MS),
     headersTimeoutMs: optional(env.HEADERS_TIMEOUT_MS),
     appVersion: optional(env.APP_VERSION),
+    adminSeedFromEnv: parseBoolean(env.ADMIN_SEED_FROM_ENV),
     shutdownTimeoutMs: optional(env.SHUTDOWN_TIMEOUT_MS),
   },
   db: {
@@ -266,6 +305,10 @@ export const mapServerEnv = (env: NodeJS.ProcessEnv): Record<string, unknown> =>
         unavailableCooldownMs: optional(env.KAFKA_UNAVAILABLE_COOLDOWN_MS),
       }
     : undefined,
+  credential: {
+    keys: credentialKeysOf(env),
+    current: optional(env.PERSONAL_CREDENTIAL_KEY_CURRENT),
+  },
   workspace: {
     mode: optional(env.AGENT_WORKSPACE_MODE),
     sandboxNetwork: optional(env.AGENT_WORKSPACE_SANDBOX_NETWORK),

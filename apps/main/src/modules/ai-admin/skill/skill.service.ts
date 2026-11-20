@@ -1,4 +1,4 @@
-import { Inject, Injectable } from '@nestjs/common'
+import { Inject, Injectable, Optional } from '@nestjs/common'
 import { AppLogger, type PageQueryResult } from '@repo/kits'
 import {
   SKILL_DESCRIPTION_PLACEHOLDER,
@@ -39,10 +39,16 @@ import {
   SkillInvalidError,
   SkillKeyConflictError,
   SkillNotFoundError,
+  SkillQuotaExceededError,
   SkillVersionConflictError,
 } from './skill.errors.js'
 import { fetchRemoteSkillSources, type RemoteSkillSource } from './skill.remote.js'
 import { SkillRepository } from './skill.repository.js'
+
+/** 个人技能数量上限（§6.7.5） */
+const PERSONAL_SKILL_QUOTA = 50
+import { currentSkillCaller, resolveSkillWriteTarget } from './skill-scope.js'
+import { SkillSyncService } from './skill-sync.service.js'
 import {
   SKILL_CHANGE_NOTIFIER,
   type SkillChangeEvent,
@@ -67,11 +73,12 @@ export class SkillAdminService {
     @Inject(SkillRepository) private readonly repository: SkillRepository,
     @Inject(SKILL_CHANGE_NOTIFIER) private readonly notifier: SkillChangeNotifier,
     @Inject(AppLogger) private readonly logger: AppLogger,
+    @Optional() @Inject(SkillSyncService) private readonly skillSync?: SkillSyncService,
   ) {}
 
   /** 列表 */
   async list(query: AiSkillListDto): Promise<PageQueryResult<AiSkillModel>> {
-    const page = await this.repository.page(query)
+    const page = await this.repository.page(query, currentSkillCaller())
     return { ...page, items: page.items.map((entity) => toModel(entity)) }
   }
 
@@ -85,7 +92,18 @@ export class SkillAdminService {
   /** 新建（在线创建；建完默认启用，通知 runtime 落盘） */
   async create(input: AiSkillCreateDto): Promise<AiSkillDetailModel> {
     const skillKey = normalizeSkillOrThrow(input.skillKey)
-    if (await this.repository.find(skillKey)) throw new SkillKeyConflictError(skillKey)
+    const target = resolveSkillWriteTarget(currentSkillCaller(), input.scope)
+    // 个人技能配额（§6.7.5）：避免单人的技能目录无限膨胀、挤占上下文
+    if (target.scope === 'personal' && target.ownerType && target.ownerId) {
+      const owned = await this.repository.countPersonal({
+        ownerType: target.ownerType,
+        ownerId: target.ownerId,
+      })
+      if (owned >= PERSONAL_SKILL_QUOTA) throw new SkillQuotaExceededError(PERSONAL_SKILL_QUOTA)
+    }
+    // 冲突只看同一 scope + owner：个人技能可以与平台同名（个人优先覆盖）
+    if (await this.repository.existsInScope(skillKey, target))
+      throw new SkillKeyConflictError(skillKey)
 
     const draft: SkillDraft = {
       skillKey,
@@ -114,6 +132,10 @@ export class SkillAdminService {
         frontmatter: draft.frontmatter,
         enabled: input.enabled ?? true,
         source: SkillSource._source.Online.value,
+        // 写入目标由身份决定，入参里的 scope 不参与（D12）
+        scope: target.scope,
+        ownerType: target.ownerType,
+        ownerId: target.ownerId,
         lastValidatedAt: new Date(),
         warnings: validation.warnings,
       },
@@ -200,6 +222,26 @@ export class SkillAdminService {
   async remove(skillKey: string): Promise<{ ok: boolean }> {
     const entity = await this.requireSkill(skillKey)
     await this.repository.softRemove(entity.id)
+    // 按**技能归属**推工作区：平台技能（god 维护）影响全部；个人技能只影响 owner 自己的工作区
+    // （AI 通过 skill-save 写进来的技能同样落成个人技能，owner 就是当时操作的账号）
+    try {
+      await this.skillSync?.push(
+        entity.scope === 'platform'
+          ? [{ principalType: 'all', principalId: '*' }]
+          : [
+              {
+                principalType: (entity.ownerType === 'user' ? 'user' : 'admin') as 'user' | 'admin',
+                principalId: entity.ownerId ?? '',
+              },
+            ],
+      )
+    } catch (error) {
+      this.logger.warn('skill.sync_push_failed', {
+        skillKey: entity.skillKey,
+        reason: String(error),
+      })
+    }
+
     await this.notify({
       skillKey: entity.skillKey,
       action: 'remove',
@@ -293,6 +335,7 @@ export class SkillAdminService {
    * **逐个技能报告**：一个坏技能不影响整批；同名已存在时按 `overwrite` 跳过或覆盖。
    */
   async import(input: AiSkillImportDto): Promise<AiSkillImportResultModel> {
+    const target = resolveSkillWriteTarget(currentSkillCaller(), input.scope)
     const fetched = await this.fetchOrThrow(input.url)
     const selected = input.skillKeys?.length
       ? fetched.sources.filter((source) => input.skillKeys!.includes(source.skillKey))
@@ -303,7 +346,7 @@ export class SkillAdminService {
 
     const items: AiSkillImportItemModel[] = []
     for (const source of selected) {
-      items.push(await this.importOne(source, input.overwrite ?? false))
+      items.push(await this.importOne(source, input.overwrite ?? false, target))
     }
     // 扫描阶段就失败的目录也要如实报告（否则用户以为「都导进来了」）
     for (const failure of fetched.failures) {
@@ -353,6 +396,11 @@ export class SkillAdminService {
   private async importOne(
     source: RemoteSkillSource,
     overwrite: boolean,
+    target: {
+      scope: 'platform' | 'personal'
+      ownerType: 'user' | 'admin' | null
+      ownerId: string | null
+    },
   ): Promise<AiSkillImportItemModel> {
     const entry = source.files.find((file) => file.path === SKILL_FILE)
     if (!entry)
@@ -384,6 +432,9 @@ export class SkillAdminService {
             description: draft.description,
             frontmatter: draft.frontmatter,
             enabled: true,
+            scope: target.scope,
+            ownerType: target.ownerType,
+            ownerId: target.ownerId,
             source: SkillSource._source.Import.value,
             originUrl: source.originUrl,
             lastValidatedAt: new Date(),
@@ -405,6 +456,9 @@ export class SkillAdminService {
             description: draft.description,
             frontmatter: draft.frontmatter,
             enabled: true,
+            scope: target.scope,
+            ownerType: target.ownerType,
+            ownerId: target.ownerId,
             source: SkillSource._source.Import.value,
             originUrl: source.originUrl,
             warnings: draft.warnings,
@@ -437,6 +491,26 @@ export class SkillAdminService {
       fileCount: files.length,
     })
 
+    // 按**技能归属**推工作区：平台技能（god 维护）影响全部；个人技能只影响 owner 自己的工作区
+    // （AI 通过 skill-save 写进来的技能同样落成个人技能，owner 就是当时操作的账号）
+    try {
+      await this.skillSync?.push(
+        entity.scope === 'platform'
+          ? [{ principalType: 'all', principalId: '*' }]
+          : [
+              {
+                principalType: (entity.ownerType === 'user' ? 'user' : 'admin') as 'user' | 'admin',
+                principalId: entity.ownerId ?? '',
+              },
+            ],
+      )
+    } catch (error) {
+      this.logger.warn('skill.sync_push_failed', {
+        skillKey: entity.skillKey,
+        reason: String(error),
+      })
+    }
+
     await this.notify({
       skillKey: entity.skillKey,
       action: entity.enabled ? 'upsert' : 'remove',
@@ -468,7 +542,7 @@ export class SkillAdminService {
   }
 
   private async requireSkill(skillKey: string): Promise<AiSkillEntity> {
-    const entity = await this.repository.find(skillKey)
+    const entity = await this.repository.findVisible(skillKey, currentSkillCaller())
     if (!entity) throw new SkillNotFoundError(skillKey)
     return entity
   }

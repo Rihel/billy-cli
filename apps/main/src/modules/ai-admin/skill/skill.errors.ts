@@ -55,3 +55,11 @@ export class SkillVersionConflictError extends AppError {
     super(`技能已被其他人修改，请刷新后重试：${skillKey}`)
   }
 }
+
+/** 个人技能配额（§6.7.5：50 个 / 单文件 1 MB，避免技能目录膨胀占用上下文） */
+export class SkillQuotaExceededError extends AppError {
+  readonly code = AppErrorCodes.SkillQuotaExceeded
+  constructor(readonly limit: number) {
+    super(`Personal skill quota exceeded: ${limit}`)
+  }
+}

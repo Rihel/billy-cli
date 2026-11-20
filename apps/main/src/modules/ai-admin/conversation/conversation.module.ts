@@ -4,6 +4,7 @@ import { AdminModule } from '../../admin/index.js'
 import { AiModelModule } from '../../ai-model/index.js'
 import { AiUsageModule } from '../../ai-usage/index.js'
 import { AuthModule } from '../../auth/index.js'
+import { WorkspaceCoreModule } from '../workspace/workspace.core.module.js'
 import { AiAdminConversationController } from './conversation.controller.js'
 import { AiConversationRepository } from './conversation.repository.js'
 import { AiAdminConversationService } from './conversation.service.js'
@@ -28,7 +29,8 @@ import { AiTimelineQueryRepository } from './timeline-query.repository.js'
  * 3. `apps/main/src/agent/agent-sse.controller.ts` 的 `/agent/chat/stream` 保持不动。
  */
 @Module({
-  imports: [AuthModule, AdminModule, AiModelModule, AiUsageModule],
+  // WorkspaceCoreModule：建会话时懒创建 / 查找主体的默认工作区（只依赖 Db，不反向依赖本模块）
+  imports: [AuthModule, AdminModule, AiModelModule, AiUsageModule, WorkspaceCoreModule],
   controllers: [AiAdminConversationController],
   providers: [
     AiConversationRepository,

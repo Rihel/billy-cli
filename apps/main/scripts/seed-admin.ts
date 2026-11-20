@@ -6,7 +6,12 @@ import { loadServerAppConfig } from '../src/app-config.js'
 import { AdminService } from '../src/modules/admin/index.js'
 
 /**
- * 初始化第一个后台管理员账号（幂等：重复执行因邮箱唯一会报错并退出）。
+ * 初始化 / 恢复**超级管理员**账号（幂等）。
+ *
+ * 语义（与启动期 `AdminSeedService` 复用同一段逻辑 `AdminService.seedGod`）：
+ * - 邮箱不存在 → 建成 `god`；
+ * - 邮箱已存在 → 只把类型升为 `god`，**不覆盖密码**；
+ * - 超管被误删后，用同一条命令即可恢复（迁移与种子服务不写死任何账号）。
  *
  * 用法：
  *   pnpm seed:admin
@@ -34,8 +39,10 @@ const main = async () => {
   })
 
   try {
-    const admin = await app.get(AdminService).create({ email, password, realName })
-    console.log(`[seed-admin] created: ${admin.email} (${admin.id})`)
+    const { admin, created } = await app.get(AdminService).seedGod({ email, password, realName })
+    console.log(
+      `[seed-admin] ${created ? 'created' : 'upgraded to god'}: ${admin.email} (${admin.id})`,
+    )
   } catch (error) {
     console.error(`[seed-admin] failed: ${(error as Error).message}`)
     process.exitCode = 1

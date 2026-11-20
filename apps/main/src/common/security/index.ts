@@ -5,3 +5,4 @@
 export * from './authentication.js'
 export * from './rate-limit.guard.js'
 export * from './any-of-guards.js'
+export * from './owner.js'

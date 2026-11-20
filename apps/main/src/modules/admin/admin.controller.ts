@@ -26,9 +26,11 @@ import {
   RateLimit,
   RateLimitGuard,
   currentAdminId,
+  currentAdminType,
 } from '../../common/security/index.js'
 import { AdminAuthGuard } from './admin-auth.guard.js'
 import { AdminService } from './admin.service.js'
+import { GodAdminGuard } from './god-admin.guard.js'
 
 /**
  * 后台管理员「免鉴权」路由（/admin/login、/admin/logout）。
@@ -84,32 +86,39 @@ export class AdminController {
     })
   }
 
+  // 以下六个是「管理员管理」：只有超管可调（菜单可见性只是交互层，接口独立校验）。
+  // 类上已挂 AdminAuthGuard，方法上只补 GodAdminGuard，避免同一请求校验两次 token。
   @Post('create')
   @HttpCode(200)
+  @UseGuards(GodAdminGuard)
   create(@Body({ schema: CreateAdminSchema }) input: CreateAdminDto) {
-    return this.adminService.create(input)
+    return this.adminService.create(input, { adminType: currentAdminType() })
   }
 
   @Post('page-query')
   @HttpCode(200)
+  @UseGuards(GodAdminGuard)
   pageQuery(@Body({ schema: PageQueryAdminSchema }) input: PageQueryAdminDto) {
     return this.adminService.page(input)
   }
 
   @Post('detail')
   @HttpCode(200)
+  @UseGuards(GodAdminGuard)
   detail(@Body({ schema: GetAdminDetailSchema }) input: GetAdminDetailDto) {
     return this.adminService.get(input)
   }
 
   @Post('update')
   @HttpCode(200)
+  @UseGuards(GodAdminGuard)
   update(@Body({ schema: UpdateAdminSchema }) input: UpdateAdminDto) {
-    return this.adminService.update(input)
+    return this.adminService.update(input, { adminType: currentAdminType() })
   }
 
   @Post('remove')
   @HttpCode(200)
+  @UseGuards(GodAdminGuard)
   remove(@Body({ schema: RemoveAdminSchema }) input: RemoveAdminDto) {
     return this.adminService.remove({
       ...input,
@@ -119,6 +128,7 @@ export class AdminController {
 
   @Post('reset-password')
   @HttpCode(200)
+  @UseGuards(GodAdminGuard)
   resetPassword(@Body({ schema: ResetAdminPasswordSchema }) input: ResetAdminPasswordDto) {
     return this.adminService.resetPassword(input)
   }

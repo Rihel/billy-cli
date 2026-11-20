@@ -1,7 +1,7 @@
 import { Body, Controller, HttpCode, Inject, Post, UseGuards } from '@nestjs/common'
-import { requestContext } from '@repo/kits'
 import { z } from 'zod'
 import { AdminAuthGuard } from '../../admin/admin-auth.guard.js'
+import { currentOwner, type OwnerRef } from '../../../common/security/index.js'
 import { WorkspaceAdminService } from './workspace.service.js'
 
 const IdSchema = z.object({ id: z.string().min(1).max(20) })
@@ -32,8 +32,9 @@ const UpdateSchema = z.object({
 export class WorkspaceAdminController {
   constructor(@Inject(WorkspaceAdminService) private readonly service: WorkspaceAdminService) {}
 
-  private owner(): string {
-    return String(requestContext.get('adminId') ?? '')
+  /** 归属由身份推导（用户端不经过这个控制器，这里必然是管理员） */
+  private owner(): OwnerRef {
+    return currentOwner()
   }
 
   @Post('list')

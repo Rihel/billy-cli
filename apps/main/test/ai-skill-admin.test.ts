@@ -43,6 +43,21 @@ class FakeSkillRepository {
     return this.skills.get(skillKey) ?? null
   }
 
+  /** 单 owner 的假库：可见性与按 key 查找等价 */
+  async findVisible(skillKey: string): Promise<AiSkillEntity | null> {
+    return this.find(skillKey)
+  }
+
+  async existsInScope(skillKey: string): Promise<boolean> {
+    return this.skills.has(skillKey)
+  }
+
+  /** 配额判定：假库按当前条数返回（个人技能场景由测试直接改返回值） */
+  quota = 0
+  async countPersonal(): Promise<number> {
+    return this.quota
+  }
+
   async filesOf(skillId: string): Promise<AiSkillFileEntity[]> {
     return [...(this.files.get(skillId) ?? [])].sort((left, right) => {
       if (left.path === SKILL_FILE) return -1
