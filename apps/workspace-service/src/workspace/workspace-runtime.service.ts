@@ -12,7 +12,15 @@ import type {
   WorkspaceStatusResponse,
 } from '@repo/contracts'
 import { WorkspaceRepository } from './workspace.repository.js'
+import { WorkspaceSetupService } from './workspace-setup.service.js'
+import { createExecShell } from './setup-shell.js'
+import {
+  checkCommandCredentials,
+  type CredentialGateDenial,
+  type CredentialManifest,
+} from './credential-gate.js'
 import { DockerDriver, KubernetesDriver, type ContainerDriver } from './container-driver.js'
+import { withEnvPrefix } from './exec-env.js'
 import { WorkspaceServiceConfig, type WorkspaceServiceConfigValue } from '../config/app-config.js'
 
 /** 容器内固定的工作目录（与镜像约定一致） */
@@ -26,7 +34,50 @@ interface Handle {
   containerName?: string
   startedAt: number
   lastUsedAt: number
+  /** 初始化阶段落地的凭据环境变量（每次 exec 注入；P7 的本地清单校验也用它） */
+  env?: Record<string, string>
+  /** 初始化是否已跑过（含失败；失败不重试，避免每条命令都等一遍安装超时） */
+  setupDone?: boolean
+  /** 本地凭据清单缓存（执行前检查只读它；初始化 / 同步后更新，缺失时从磁盘读一次） */
+  credentials?: CredentialManifest
 }
+
+/** 把目录名拼进 `find -name` 的安全判断：只允许普通目录名（不含引号 / 空格 / 路径分隔符） */
+const isSafeDirName = (name: string): boolean => /^[A-Za-z0-9._-]+$/.test(name)
+
+/**
+ * 一次 `find` 取回整棵树（容器后端）。
+ *
+ * `-printf '%P\t%s\t%T@\n'`：相对路径、字节数、mtime（秒.毫秒），
+ * 避免每个文件一次 `docker exec`（实测 1500 个文件要 58 秒）。
+ */
+export const buildFindTreeCommand = (
+  target: string,
+  maxDepth: number,
+  excludeDirs: readonly string[],
+): string => {
+  const quote = (value: string): string => `'${value.replace(/'/g, "'\\''")}'`
+  const names = excludeDirs.filter(isSafeDirName)
+  // 不用 `\( … \)` 分组：容器里是 dash（sh），反斜杠在字符串里还要再转义一层，极易写错；
+  // `-not -path '*/NAME/*'` 没有括号、无需分组，语义也更直白。
+  const excludes = names.map((name) => `-not -path ${quote(`*/${name}/*`)}`).join(' ')
+  return `find ${quote(target)} -maxdepth ${Math.max(1, Math.floor(maxDepth))} -type f ${excludes} -printf '%P\\t%s\\t%T@\\n'`
+}
+
+/** 解析 `find -printf` 的输出（容器与测试共用；坏行直接跳过，不整体失败） */
+export const parseFindTree = (stdout: string): { path: string; size: number; mtime: number }[] =>
+  stdout
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .flatMap((line) => {
+      const [rawPath, rawSize, rawMtime] = line.split('\t')
+      if (!rawPath || !rawSize) return []
+      const size = Number(rawSize)
+      const seconds = Number(rawMtime)
+      if (!Number.isFinite(size) || !Number.isFinite(seconds)) return []
+      return [{ path: rawPath, size, mtime: Math.round(seconds * 1000) }]
+    })
 
 const inside = (root: string, target: string): boolean => {
   const rel = relative(root, target)
@@ -51,6 +102,7 @@ export class WorkspaceRuntime {
     @Inject(WorkspaceRepository) private readonly repo: WorkspaceRepository,
     @Inject(SandboxRuntime) private readonly sandbox: SandboxRuntime,
     @Inject(WorkspaceServiceConfig) private readonly config: WorkspaceServiceConfigValue,
+    @Inject(WorkspaceSetupService) private readonly setup: WorkspaceSetupService,
     @Inject(AppLogger) private readonly logger: AppLogger,
     /** 只给测试注入用；生产不传，按配置自建 */
     driver?: ContainerDriver,
@@ -156,11 +208,26 @@ export class WorkspaceRuntime {
     const handle = await this.ensureHandle(workspaceId)
     handle.lastUsedAt = Date.now()
     const config = await this.requireConfig(workspaceId)
+    // 初始化阶段落地的凭据环境变量随每条命令注入（请求自带的 env 优先）
+    const env =
+      handle.env && Object.keys(handle.env).length > 0
+        ? { ...handle.env, ...request.env }
+        : request.env
+    return this.dispatch(handle, config, { ...request, ...(env ? { env } : {}) })
+  }
+
+  /** 真正的执行（初始化阶段也复用它，避免 ensureHandle → setup → exec 的递归） */
+  private async dispatch(
+    handle: Handle,
+    config: WorkspaceConfig,
+    request: WorkspaceExecRequest,
+  ): Promise<WorkspaceExecResult> {
     const cwd = request.cwd ?? '.'
     const timeoutMs = request.timeoutMs ?? 300_000
     if (handle.backend === 'local') {
       const result = await this.sandbox.exec({
-        command: request.command,
+        // kits 的 exec 入参没有 env 端口：local 用命令前缀包装，cwd 等字段保持不变
+        command: withEnvPrefix(request.command, request.env),
         cwd: resolve(handle.root, cwd),
         workspaceRoot: handle.root,
         fileAccess: config.fileAccess === 'read-only' ? 'read-only' : 'workspace-write',
@@ -184,6 +251,7 @@ export class WorkspaceRuntime {
       command: request.command,
       cwd: resolve(CONTAINER_WORKDIR, cwd),
       timeoutMs,
+      ...(request.env ? { env: request.env } : {}),
     })
     return {
       ok: outcome.code === 0,
@@ -198,6 +266,93 @@ export class WorkspaceRuntime {
         : outcome.code === 0
           ? {}
           : { reason: 'exec-failed', message: outcome.stderr.slice(0, 500) }),
+    }
+  }
+
+  /**
+   * 凭据同步：把 main 推送的变更重新落地进**已在运行**的工作区（§6.4.6）。
+   *
+   * **只查不起**：容器不在跑就明确失败（抛错），绝不 ensure —— 否则每次凭据变更
+   * 都会把所有闲置工作区唤醒一遍。
+   */
+  async syncCredentials(
+    workspaceId: string,
+    expectedVersion?: string,
+    options: { skills?: boolean } = {},
+  ): Promise<{
+    workspaceId: string
+    ok: boolean
+    credentialVersion: string
+    removedSkills?: string[]
+  }> {
+    const config = await this.requireConfig(workspaceId)
+    const handle = await this.adoptRunningHandle(workspaceId, config)
+    const shell = this.shellFor(handle, config)
+    const removedSkills = options.skills
+      ? (await this.setup.syncSkills(workspaceId, shell)).removed
+      : []
+    const { env, version, manifest } = await this.setup.syncCredentials(workspaceId, shell)
+    handle.env = env
+    handle.credentials = { items: manifest }
+    if (expectedVersion && expectedVersion !== version) {
+      // 推送方与执行面算出的版本不一致：说明两边读到的表不是同一瞬间，落日志即可（下次同步会收敛）
+      this.logger.warn('workspace.sync.version_mismatch', {
+        workspaceId,
+        expectedVersion,
+        actualVersion: version,
+      })
+    }
+    return {
+      workspaceId,
+      ok: true,
+      credentialVersion: version,
+      ...(removedSkills.length > 0 ? { removedSkills } : {}),
+    }
+  }
+
+  /**
+   * 执行前检查（§6.4.4）：命令命中某 provider，但本地清单里没有可用凭据 → 拒绝。
+   *
+   * **纯本地**：只读缓存的 `.billy/credentials.json`（没有缓存时读一次磁盘），
+   * 不查库、不做 RPC、不比对版本 —— 拒绝策略不引入延迟，也不受控制面可用性影响。
+   */
+  async authorizeCommand(
+    workspaceId: string,
+    command: string,
+  ): Promise<CredentialGateDenial | null> {
+    const handle = await this.ensureHandle(workspaceId)
+    if (!handle.credentials) {
+      handle.credentials = (await this.readCredentialManifest(workspaceId, handle)) ?? { items: [] }
+    }
+    return checkCommandCredentials(command, handle.credentials)
+  }
+
+  /** 读一次清单文件（不存在 / 解析失败按空清单处理，不阻断命令） */
+  private async readCredentialManifest(
+    workspaceId: string,
+    handle: Handle,
+  ): Promise<CredentialManifest | null> {
+    try {
+      const result =
+        handle.backend === 'local'
+          ? await this.localFs(handle.root, {
+              workspaceId,
+              op: 'read',
+              path: '.billy/credentials.json',
+            })
+          : await this.containerFs(handle.containerName!, {
+              workspaceId,
+              op: 'read',
+              path: '.billy/credentials.json',
+            })
+      if (!result.ok) return null
+      const data = result.data as { version?: string; items?: unknown } | undefined
+      return {
+        ...(data?.version ? { version: data.version } : {}),
+        items: Array.isArray(data?.items) ? (data.items as CredentialManifest['items']) : [],
+      }
+    } catch {
+      return null
     }
   }
 
@@ -237,6 +392,31 @@ export class WorkspaceRuntime {
               ),
             },
           }
+        }
+        case 'list-tree': {
+          // 本地后端：一次递归读完（每个目录一次 readdir，不再逐文件 stat 往返）
+          const excluded = new Set(request.excludeDirs ?? [])
+          const maxDepth = request.maxDepth ?? 16
+          const entries: { path: string; size: number; mtime: number }[] = []
+          const walk = async (dir: string, depth: number): Promise<void> => {
+            if (depth > maxDepth) return
+            const children = await readdir(dir, { withFileTypes: true }).catch(() => [])
+            for (const child of children) {
+              if (child.isSymbolicLink()) continue
+              const full = join(dir, child.name)
+              if (child.isDirectory()) {
+                if (excluded.has(child.name)) continue
+                await walk(full, depth + 1)
+                continue
+              }
+              if (!child.isFile()) continue
+              const info = await stat(full).catch(() => null)
+              if (!info) continue
+              entries.push({ path: relative(target, full), size: info.size, mtime: info.mtimeMs })
+            }
+          }
+          await walk(target, 0)
+          return { ok: true, data: { entries } }
         }
         case 'read': {
           const content = await readFile(target, 'utf8')
@@ -332,6 +512,14 @@ export class WorkspaceRuntime {
             })
           return { ok: true, data: { entries } }
         }
+        case 'list-tree': {
+          // 容器后端：**一次 find** 拿回全部路径 / 大小 / mtime（根治逐文件 docker exec）
+          const out = await exec(
+            buildFindTreeCommand(target, request.maxDepth ?? 16, request.excludeDirs ?? []),
+          )
+          if (out.code !== 0) return { ok: false, reason: 'exec-failed', message: out.stderr }
+          return { ok: true, data: { entries: parseFindTree(out.stdout) } }
+        }
         case 'read': {
           const out = await exec(`cat ${quote(target)}`)
           return { ok: true, data: { path: request.path, content: out.stdout } }
@@ -414,7 +602,106 @@ export class WorkspaceRuntime {
     const config = await this.requireConfig(workspaceId)
     if (config.backend === 'container') {
       const name = this.containerName(workspaceId)
+      if (await this.containerExists(name)) {
+        // 镜像升级后，运行中的容器仍是旧镜像（旧源 / 旧工具链）：重建一次才换得过来。
+        // 容器里的内容是临时的（tmpfs），重建不丢"资产"，只是要重新装依赖。
+        const wanted = config.image?.trim() || this.config.defaultImage
+        const actual = await this.driver.imageOf(name).catch(() => null)
+        if (actual && actual !== wanted) {
+          this.logger.warn('workspace.image.stale', { workspaceId, actual, wanted })
+          await this.removeContainer(name)
+        }
+      }
       if (!(await this.containerExists(name))) await this.startContainer(name, config)
+      const handle: Handle = {
+        workspaceId,
+        backend: 'container',
+        root: CONTAINER_WORKDIR,
+        containerName: name,
+        startedAt: Date.now(),
+        lastUsedAt: Date.now(),
+      }
+      this.handles.set(workspaceId, handle)
+      await this.initialize(handle, config)
+      return handle
+    }
+    if (config.backend === 'microvm') {
+      throw new Error('microvm 后端未实现')
+    }
+    const root = resolve(
+      this.config.localRoot,
+      String((config.location as { root?: string } | undefined)?.root ?? workspaceId),
+    )
+    await mkdir(root, { recursive: true })
+    const handle: Handle = {
+      workspaceId,
+      backend: 'local',
+      root,
+      startedAt: Date.now(),
+      lastUsedAt: Date.now(),
+    }
+    this.handles.set(workspaceId, handle)
+    await this.initialize(handle, config)
+    return handle
+  }
+
+  /**
+   * 初始化阶段（§6.3）：装 CLI → 物化技能 → 落地凭据 → 写版本。
+   *
+   * 失败**不阻断执行**：工作区仍可用，问题体现在 `setup_report` 与日志里；
+   * 同一个 handle 只跑一次（`setupDone`），避免每条命令都等一遍安装超时。
+   */
+  private async initialize(handle: Handle, config: WorkspaceConfig): Promise<void> {
+    if (handle.setupDone) return
+    handle.setupDone = true
+    const shell = this.shellFor(handle, config)
+    try {
+      const { env, report, manifest } = await this.setup.run(handle.workspaceId, shell)
+      handle.env = env
+      handle.credentials = { items: manifest }
+      this.logger.info('workspace.setup.applied', {
+        workspaceId: handle.workspaceId,
+        envKeys: Object.keys(env).length,
+        failedPackages: report.packages.filter((item) => item.outcome === 'failed').length,
+        failedCredentials: report.credentials.filter((item) => item.outcome === 'failed').length,
+      })
+    } catch (error) {
+      this.logger.warn('workspace.setup.failed', {
+        workspaceId: handle.workspaceId,
+        reason: error instanceof Error ? error.message : String(error),
+      })
+    }
+  }
+
+  /** 初始化 / 同步用的 shell 端口：命令走 `dispatch`，避免递归回 `exec` */
+  private shellFor(handle: Handle, config: WorkspaceConfig) {
+    return createExecShell(async (command, opts) => {
+      const result = await this.dispatch(handle, config, {
+        workspaceId: handle.workspaceId,
+        command,
+        ...(opts?.timeoutMs ? { timeoutMs: opts.timeoutMs } : {}),
+      })
+      return {
+        ok: result.ok,
+        code: result.exitCode,
+        stdout: result.stdout,
+        stderr: result.stderr,
+      }
+    })
+  }
+
+  /**
+   * 拿一个"已在运行"的句柄（不 start）。
+   *
+   * 内存里没有句柄时按容器存在性认领 —— 与孤儿回收同口径：**不依赖内存句柄**。
+   */
+  private async adoptRunningHandle(workspaceId: string, config: WorkspaceConfig): Promise<Handle> {
+    const existing = this.handles.get(workspaceId)
+    if (existing) return existing
+
+    if (config.backend === 'container') {
+      const name = this.containerName(workspaceId)
+      if (!(await this.containerExists(name))) throw new Error('工作区没有在运行，跳过同步')
       const handle: Handle = {
         workspaceId,
         backend: 'container',
@@ -426,14 +713,11 @@ export class WorkspaceRuntime {
       this.handles.set(workspaceId, handle)
       return handle
     }
-    if (config.backend === 'microvm') {
-      throw new Error('microvm 后端未实现')
-    }
+
     const root = resolve(
       this.config.localRoot,
       String((config.location as { root?: string } | undefined)?.root ?? workspaceId),
     )
-    await mkdir(root, { recursive: true })
     const handle: Handle = {
       workspaceId,
       backend: 'local',

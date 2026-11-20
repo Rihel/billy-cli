@@ -4,10 +4,17 @@ import { WorkspaceServiceConfig, type WorkspaceServiceConfigValue } from '../con
 import { WorkspaceController } from './workspace.controller.js'
 import { WorkspaceRepository } from './workspace.repository.js'
 import { WorkspaceRuntime } from './workspace-runtime.service.js'
+import { WorkspaceSetupService } from './workspace-setup.service.js'
+import { WorkspaceCredentialClient } from './credential.client.js'
 import { WorkspaceReaper } from './workspace-reaper.service.js'
 import { WorkspaceInvokeController } from '../capabilities/invoke.controller.js'
 import { BashExecutor } from '../capabilities/bash.executor.js'
 import { FileExecutor } from '../capabilities/file.executor.js'
+import {
+  CredentialCandidatesExecutor,
+  CredentialImportExecutor,
+} from '../capabilities/credential.executor.js'
+import { WorkspaceCredentialImportService } from './credential-import.service.js'
 import { WorkspaceLocator } from '../capabilities/workspace.locator.js'
 import { WorkspaceCapabilityRegistration } from '../capabilities/capability.registration.js'
 import { WorkspaceTaskManager } from '../capabilities/task.manager.js'
@@ -25,12 +32,17 @@ import { WorkspaceTaskController } from '../capabilities/tasks.controller.js'
         config.getOrThrow<WorkspaceServiceConfigValue>('service'),
     },
     WorkspaceRepository,
+    WorkspaceCredentialClient,
+    WorkspaceSetupService,
     WorkspaceRuntime,
     WorkspaceReaper,
     WorkspaceLocator,
     BashExecutor,
     FileExecutor,
     WorkspaceTaskManager,
+    WorkspaceCredentialImportService,
+    CredentialCandidatesExecutor,
+    CredentialImportExecutor,
     WorkspaceCapabilityRegistration,
   ],
   exports: [WorkspaceRuntime],

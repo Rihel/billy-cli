@@ -14,6 +14,7 @@ import {
   WorkspaceExecRequestSchema,
   WorkspaceFsRequestSchema,
   WorkspaceIdRequestSchema,
+  WorkspaceSyncRequestSchema,
 } from '@repo/contracts'
 import { WorkspaceServiceConfig, type WorkspaceServiceConfigValue } from '../config/app-config.js'
 import { WorkspaceRuntime } from './workspace-runtime.service.js'
@@ -77,6 +78,17 @@ export class WorkspaceController {
     this.check(token)
     const input = WorkspaceIdRequestSchema.parse(body)
     return this.runtime.status(input.workspaceId)
+  }
+
+  /** 凭据同步：只对**已在运行**的工作区生效，不拉起容器 */
+  @Post('v1/workspaces/sync')
+  @HttpCode(200)
+  async sync(@Headers('x-internal-token') token: string | undefined, @Body() body: unknown) {
+    this.check(token)
+    const input = WorkspaceSyncRequestSchema.parse(body)
+    return this.runtime.syncCredentials(input.workspaceId, input.credentialVersion, {
+      skills: input.skills === true,
+    })
   }
 
   @Post('v1/workspaces/exec')

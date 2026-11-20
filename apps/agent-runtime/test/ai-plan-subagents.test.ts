@@ -755,7 +755,8 @@ describe('子 agent（core bean + 运行期动态创建）', () => {
      * **快照 = 我们交出去的那份完整指令**（主 agent 原稿 + 能力边界尾巴），且与模型请求的 system
      * **开头逐字一致**。
      *
-     * 实测口径（2026-11-15）：Mastra 会在 system 末尾追加 `<available_skills>`（技能目录 +
+     * 实测口径（2026-11-20 更新）：技能目录由 runtime 自己渲染成 `## 可用技能`（Mastra 的
+     * `<available_skills>` 注入已随技能工具退役而移除）；
      * "技能不是工具"的使用说明），所以模型最终收到的 system = 我们的快照 + 框架追加段。
      * 该追加段不在我们的快照里（主会话的"渲染后快照"同样不含，属于全局既有口径）——
      * 这条断言把"我们负责的那部分完整"钉住；若哪天 Mastra 不再追加 / 换了标记，这里会失败，
@@ -776,7 +777,6 @@ describe('子 agent（core bean + 运行期动态创建）', () => {
     )
     expect(snapshotText).toContain(MOCK_SUBAGENT_PROMPT)
     expect(childSystem.startsWith(snapshotText)).toBe(true)
-    expect(childSystem).toContain('<available_skills>')
 
     const toolNames = (childRequest!.tools as Array<{ function?: { name?: string } }>).map(
       (tool) => tool.function?.name,

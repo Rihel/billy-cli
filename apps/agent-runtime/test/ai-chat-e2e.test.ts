@@ -459,12 +459,11 @@ describe('对话链路端到端（mock 模型 + 真实数据库）', () => {
     expect(firstSystem).toContain(describePlatform().label)
     expect(firstSystem).toContain(String(new Date().getFullYear()))
     /**
-     * 模型请求里的 system = **我们落库的那份快照 + Mastra 追加的技能目录**（`<available_skills>`）。
-     * 追加段不在快照里 —— 快照记的是"我们定义并交给运行时的指令"，不是框架拼完的最终 system。
-     * 右栏「系统指令」据此如实标注来源（2026-11-15 实测；子 agent 侧同一条口径，见
-     * `ai-plan-subagents.test.ts`）。
+     * 模型请求里的 system = **我们落库的那份快照 + runtime 自己渲染的技能目录**（`## 可用技能`）。
+     * 目录段的来源是 `SkillLoader`（按 caller 过滤），不再由 Mastra 注入 `<available_skills>`
+     * —— 技能工具已退役（§6.7.3）。
      */
-    expect(firstSystem).toContain('<available_skills>')
+    expect(firstSystem).toContain('## 可用技能')
 
     const beforeSecond = mock.requests.length
     await chat.chat(USER, { conversationId: first.conversationId, message: '那现在呢？' })

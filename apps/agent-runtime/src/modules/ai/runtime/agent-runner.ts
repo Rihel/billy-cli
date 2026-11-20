@@ -1,3 +1,4 @@
+import { skillCatalogSection } from '../core/skills/skill-catalog.js'
 import { Inject, Injectable, Optional } from '@nestjs/common'
 import { ModuleRef } from '@nestjs/core'
 import dedent from 'dedent'
@@ -412,10 +413,13 @@ export class AgentRunner {
      * 只依赖信封（工具面），所以子会话一建好就能落库；同一份字符串既写进子会话的系统指令快照，
      * 又交给 `createMastraAgent` —— 「面板/审计看到的那份」与「我们交给运行时的那份」是同一个值，
      * 不靠两处各拼一遍（那正是漂移的来源）。
-     * **不是**模型最终收到的 system：Mastra 在请求侧还会追加 `<available_skills>` 技能目录段
+     * **不是**模型最终收到的 system：技能目录段由编排层渲染（`## 可用技能`），
+     * 快照只记"我们定义并交给运行时的指令"
      * （2026-11-15 实测，主会话同样如此），那一段不在快照里。
      */
-    const childInstructions = withCapabilityTail(request.systemPrompt, envelope.childToolbox)
+    const childInstructions =
+      withCapabilityTail(request.systemPrompt, envelope.childToolbox) +
+      skillCatalogSection(envelope.skills)
 
     let child: { id: string }
     let agentKey: string

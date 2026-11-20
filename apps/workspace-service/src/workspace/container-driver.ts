@@ -1,6 +1,7 @@
 import { spawn } from 'node:child_process'
 import { PassThrough } from 'node:stream'
 import Docker from 'dockerode'
+import { withEnvPrefix } from './exec-env.js'
 
 const CONTAINER_WORKDIR = '/workspace'
 
@@ -49,10 +50,18 @@ export interface ContainerDriver {
    */
   inspect(name: string): Promise<{ running: boolean; startedAt?: number }>
   exists(name: string): Promise<boolean>
+  /** 运行中容器实际用的镜像（用于"镜像升级后重建"判定；拿不到返回 null） */
+  imageOf(name: string): Promise<string | null>
   start(input: ContainerStartInput): Promise<void>
   exec(
     name: string,
-    input: { command: string; cwd: string; timeoutMs: number; stdin?: string },
+    input: {
+      command: string
+      cwd: string
+      timeoutMs: number
+      stdin?: string
+      env?: Record<string, string>
+    },
   ): Promise<CommandOutcome>
   remove(name: string): Promise<void>
 }
@@ -130,6 +139,14 @@ export class DockerDriver implements ContainerDriver {
     return (await this.inspect(name)).running
   }
 
+  async imageOf(name: string): Promise<string | null> {
+    const info = await this.docker
+      .getContainer(name)
+      .inspect()
+      .catch(() => null)
+    return (info as { Config?: { Image?: string } } | null)?.Config?.Image ?? null
+  }
+
   async start(input: ContainerStartInput): Promise<void> {
     const container = await this.docker.createContainer({
       name: input.name,
@@ -151,13 +168,24 @@ export class DockerDriver implements ContainerDriver {
 
   async exec(
     name: string,
-    input: { command: string; cwd: string; timeoutMs: number; stdin?: string },
+    input: {
+      command: string
+      cwd: string
+      timeoutMs: number
+      stdin?: string
+      env?: Record<string, string>
+    },
   ): Promise<CommandOutcome> {
     const startedAt = Date.now()
     const container = this.docker.getContainer(name)
+    // 仅当非空时传 Env：空数组在语义上等价于不传，但会改变请求体，没必要冒这个险
+    const env = input.env
+      ? Object.entries(input.env).map(([key, value]) => `${key}=${value}`)
+      : undefined
     const exec = await container.exec({
       Cmd: ['sh', '-c', input.command],
       WorkingDir: input.cwd,
+      ...(env && env.length > 0 ? { Env: env } : {}),
       AttachStdin: input.stdin !== undefined,
       AttachStdout: true,
       AttachStderr: true,
@@ -240,6 +268,15 @@ export class KubernetesDriver implements ContainerDriver {
     return (await this.inspect(name)).running
   }
 
+  async imageOf(name: string): Promise<string | null> {
+    const out = await run(
+      this.bin,
+      ['get', 'pod', name, ...this.ns(), '-o', 'jsonpath={.spec.containers[0].image}'],
+      10_000,
+    )
+    return out.code === 0 && out.stdout.trim() ? out.stdout.trim() : null
+  }
+
   async start(input: ContainerStartInput): Promise<void> {
     const manifest = [
       'apiVersion: v1',
@@ -286,9 +323,17 @@ export class KubernetesDriver implements ContainerDriver {
 
   exec(
     name: string,
-    input: { command: string; cwd: string; timeoutMs: number; stdin?: string },
+    input: {
+      command: string
+      cwd: string
+      timeoutMs: number
+      stdin?: string
+      env?: Record<string, string>
+    },
   ): Promise<CommandOutcome> {
-    const script = `cd ${JSON.stringify(input.cwd)} && ${input.command}`
+    // env 前缀只对紧随其后的一条命令生效，必须放在 `cd ... &&` 之后：
+    // 放在最前面会变成 `env 'K=V' cd ...`，而 cd 是 shell 内建命令、env 找不到可执行文件，整条命令会直接失败。
+    const script = `cd ${JSON.stringify(input.cwd)} && ${withEnvPrefix(input.command, input.env)}`
     return run(
       this.bin,
       ['exec', name, ...this.ns(), '--', 'sh', '-c', script],

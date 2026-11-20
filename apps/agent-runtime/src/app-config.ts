@@ -99,18 +99,12 @@ export const serverAppConfigSchema = z.object({
    */
   agent: z.object({
     // ── 技能目录（机制见 docs/design/ai-agent.md §1.4）──
-    /**
-     * 额外的技能目录（随部署打包的 `core/skills/catalog/` 之外）。
-     *
-     * 每个子目录一个技能（`<名字>/SKILL.md`）；默认 `~/.agents/skills`，可用 `AGENT_SKILLS_DIRS`
-     * （逗号分隔多个）换成自己的目录。目录不存在就跳过；里面的坏技能只跳过、不拦启动。
-     */
-    skillsDirs: z.array(z.string()).default(['~/.agents/skills']),
+    // 宿主技能目录来源已删除（P9）：技能只来自「随包 catalog + 技能库落盘投影」。
     /**
      * 技能库的落盘目录（后台在线编辑 / 从 skills.sh、GitHub 链接导入 / agent 写入的技能都落到这里）。
      *
-     * **这个目录由我们独占**：启动时会清掉库里不存在的技能目录，所以不要指向
-     * `~/.agents/skills` 这种"还有别的东西"的目录；想加外部技能库请配 `skillsDirs`。
+     * **这个目录由我们独占**：启动时会清掉库里不存在的技能目录。它是数据库的投影，
+     * 宿主技能目录来源已在 P9 删除。
      */
     skillsLibraryDir: z.string().default('~/.billy/skills'),
     // ── 上下文策略（详见 docs/design/ai-agent.md §3.9）──
@@ -245,14 +239,6 @@ const parseKeyValueNumbers = (value: string | undefined): Record<string, number>
   return Object.keys(result).length > 0 ? result : undefined
 }
 
-const parseList = (value: string | undefined): string[] | undefined =>
-  value === undefined
-    ? undefined
-    : value
-        .split(',')
-        .map((item) => item.trim())
-        .filter(Boolean)
-
 /**
  * 环境变量 → 嵌套配置。未设置的键留 `undefined`，由 schema 默认值兜底。
  */
@@ -342,7 +328,6 @@ export const mapServerEnv = (env: NodeJS.ProcessEnv): Record<string, unknown> =>
     probeTimeoutMs: optionalNumber(env.AGENT_WORKSPACE_PROBE_TIMEOUT_MS),
   },
   agent: {
-    skillsDirs: parseList(env.AGENT_SKILLS_DIRS),
     ...(env.AGENT_SKILLS_LIBRARY_DIR ? { skillsLibraryDir: env.AGENT_SKILLS_LIBRARY_DIR } : {}),
     contextTriggerRatio: optional(env.AGENT_CONTEXT_TRIGGER_RATIO),
     contextTrimTargetRatio: optional(env.AGENT_CONTEXT_TRIM_TARGET_RATIO),

@@ -9,7 +9,6 @@ import { createMastraAgent, modelFromEnvelope } from './agent.adapter.js'
 import { readEnvelope } from './context.adapter.js'
 import { agentMemory } from './agent-memory.js'
 import { askUserQuestionsTool } from './ask-user-questions.tool.js'
-import { toMastraSkills } from './skill.adapter.js'
 import type { AgentDefinition } from '../agents/types.js'
 
 /**
@@ -77,7 +76,6 @@ export const createMastra = async ({
   resolveModel,
   definitions,
   resolveTools,
-  resolveSkills,
   storage,
   durableAgents = false,
   memory,
@@ -132,18 +130,11 @@ export const createMastra = async ({
         ),
         // 动态参数：Mastra 每次调用时带着这一轮的 requestContext 求值（构造期不带，那时不过滤）
         tools: async ({ requestContext }) => buildTools(requestContext),
+        // **技能工具已退役**（§6.7.3）：目录由 runtime 渲染进系统指令，正文由模型用 `file-read`
+        // 读工作区里的 `.agents/<name>/SKILL.md`。这里传空数组而不是删掉属性（Mastra 要求必填），
+        // 效果是它不再注册 `skill` / `skill_search` / `skill_read`。
+        skills: [],
         memory: memory ?? agentMemory,
-        // 技能按角色授权，交**目录路径**给 Mastra：清单注入 + 正文/参考文件按需读都由它负责
-        // （`skill` / `skill_search` / `skill_read` 工具；我们只管发现与校验，见 `SkillLoader`）。
-        //
-        // **动态求值**：装配期只算一次的话，在线新建 / 停用的技能要重启才生效；
-        // 这里优先用运行时信封里「这一轮实际解析出来的技能」（编排层按 `SkillLoader` 现算），
-        // 构造期 / 无信封调用（如 `agent.listSkills()`）回落到装配期那一份。
-        skills: async ({ requestContext }) => {
-          const envelope = readEnvelope(requestContext)
-          if (envelope) return toMastraSkills(envelope.skills)
-          return resolveSkills(definition.skills)
-        },
         ...(durableAgents ? { durable: true } : {}),
         ...(memory ? { memory } : {}),
       }),

@@ -90,7 +90,7 @@ describe('提示词纪律句（执行命令 / 能力边界 / 宽泛任务）', (
    */
   it('技能要主动加载：设计 / 页面类任务先 skill 再动手，不等用户点名', () => {
     expect(prompt).toContain('技能（主动加载，不要等用户点名）')
-    expect(prompt).toContain('有匹配的就先用 `skill` 加载正文')
+    expect(prompt).toContain('有匹配的先用 `file-read` 读 `.agents/<技能名>/SKILL.md`')
     expect(prompt).toContain('先加载设计 / 前端 / 排版类技能，再写第一版')
     expect(prompt).toContain('不要先交一版普通结果、等用户再来提醒才重做')
     // 具体对话里的原话不能进系统提示词（用户反馈：系统提示词里怎么还有测试例子的字眼）
@@ -148,8 +148,7 @@ describe('提示词纪律句（执行命令 / 能力边界 / 宽泛任务）', (
     const partial = createPromptEngine().renderPartial('partials/requirements', { tools: [] })
     expect(partial).toContain('`html-page`')
     expect(partial).toContain('写任何 HTML 之前先加载')
-    expect(partial).toContain('`html` 围栏')
-    expect(partial).toContain('`gsap` 动画围栏')
+    expect(partial).toContain('`.html` 页面')
   })
 
   /**

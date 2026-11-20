@@ -4,6 +4,7 @@ import { z } from 'zod'
 import { CapabilityDecl, CapabilityGroup, findCapabilityDecl } from '@repo/capability'
 import type { ToolInvokeRequest, ToolOutcome } from '@repo/contracts'
 import { WorkspaceRuntime } from '../workspace/workspace-runtime.service.js'
+import { gateMessageOf } from '../workspace/credential-gate.js'
 import { WorkspaceLocator } from './workspace.locator.js'
 
 interface BashInput {
@@ -74,6 +75,16 @@ export class BashExecutor {
         ok: false,
         reason: 'no-workspace',
         message: '会话还没有绑定工作区',
+        retryable: false,
+      }
+    }
+    // 执行前检查（§6.4.4）：命中某 provider 但本地清单缺凭据 → 直接拒绝，不执行
+    const denial = await this.runtime.authorizeCommand(workspaceId, input.command)
+    if (denial) {
+      return {
+        ok: false,
+        reason: 'missing-credential',
+        message: gateMessageOf(denial),
         retryable: false,
       }
     }

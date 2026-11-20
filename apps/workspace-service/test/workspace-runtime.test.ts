@@ -44,11 +44,26 @@ const make = async (): Promise<{ runtime: WorkspaceRuntime; root: string }> => {
     localRoot: root,
   }
   const logger = { info: vi.fn(), warn: vi.fn(), log: vi.fn(), error: vi.fn() }
+  // 初始化阶段单独有测试；这里只验证运行时的执行语义
+  const setup = {
+    run: vi.fn(async () => ({
+      env: {},
+      report: {
+        setupId: 'default',
+        hash: 'x',
+        durationMs: 0,
+        packages: [],
+        skills: [],
+        credentials: [],
+      },
+    })),
+  }
   return {
     runtime: new WorkspaceRuntime(
       repo as never,
       sandbox as never,
       config as never,
+      setup as never,
       logger as never,
     ),
     root,
@@ -141,6 +156,9 @@ const makeContainer = (running: readonly string[]) => {
       fileAccess: 'write' as const,
     })),
     listContainerWorkspaceIds: vi.fn(async () => ['ws-a', 'ws-b']),
+    listVisibleSkills: vi.fn(async () => []),
+    findSetupContext: vi.fn(async () => null),
+    listActiveCredentialVersions: vi.fn(async () => []),
   }
   const config = {
     internalToken: 'test-token',
@@ -156,11 +174,16 @@ const makeContainer = (running: readonly string[]) => {
     localRoot: '/tmp',
   }
   const logger = { info: vi.fn(), warn: vi.fn(), log: vi.fn(), error: vi.fn() }
+  const setup = {
+    run: vi.fn(async () => ({ env: {}, report: null, manifest: [] })),
+    syncCredentials: vi.fn(async () => ({ env: {}, version: 'v1', report: null, manifest: [] })),
+  }
   return {
     runtime: new WorkspaceRuntime(
       repo as never,
       { exec: vi.fn() } as never,
       config as never,
+      setup as never,
       logger as never,
       driver as never,
     ),
@@ -168,6 +191,24 @@ const makeContainer = (running: readonly string[]) => {
     logger,
   }
 }
+
+describe('WorkspaceRuntime（container 后端：凭据同步不拉起容器）', () => {
+  it('容器不在跑 → 同步失败，且绝不 start', async () => {
+    const { runtime, driver } = makeContainer([])
+
+    await expect(runtime.syncCredentials('ws-a')).rejects.toThrow('工作区没有在运行')
+    expect(driver.start).not.toHaveBeenCalled()
+  })
+
+  it('容器在跑 → 直接认领并落地凭据，不 start', async () => {
+    const { runtime, driver } = makeContainer(['billy-ws-ws-a'])
+
+    const result = await runtime.syncCredentials('ws-a', 'v1')
+
+    expect(driver.start).not.toHaveBeenCalled()
+    expect(result.credentialVersion).toBe('v1')
+  })
+})
 
 describe('WorkspaceRuntime（container 后端：孤儿认领）', () => {
   it('重启后把还在跑的容器认领回来，状态是 running', async () => {

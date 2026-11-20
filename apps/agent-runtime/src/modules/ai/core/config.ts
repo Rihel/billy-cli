@@ -11,19 +11,10 @@ export interface AgentConfig {
 
   // ── 技能目录（`core/skills`，设计与机制见 §1.4）──
   /**
-   * **额外的**技能目录（随部署打包的 `core/skills/catalog/` 之外的）。
-   *
-   * 每个目录下按 `<技能名>/SKILL.md` 组织（与仓库根 `.agents/skills/`、`~/.agents/skills/` 同构）。
-   * 默认 `['~/.agents/skills']`：装了就自动可用，没装就是空目录、跳过并记一条日志。
-   * 目录里的坏技能只跳过（记错误日志），不会让服务起不来 —— 见 `SkillLoader`。
-   */
-  skillsDirs: readonly string[]
-
-  /**
    * **技能库的落盘目录**（后台 / agent 在线维护的技能，DB 是事实源）。
    *
-   * 技能保存时由 `SkillMaterializer` 写成 `<本目录>/<技能名>/...`，Mastra 只认这个目录；
-   * 它由我们独占，外部技能库请配 `skillsDirs`（否则会被 `syncAll` 当成孤儿目录清掉）。
+   * 技能保存时由 `SkillMaterializer` 写成 `<本目录>/<技能名>/...`，Mastra 只认这个目录。
+   * 它是**数据库的投影**，由平台独占（宿主技能目录来源已在 P9 删除）。
    */
   skillsLibraryDir: string
 

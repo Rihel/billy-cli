@@ -11,7 +11,15 @@ import {
   type LoggerConfig,
   type WorkspaceConfigValue,
 } from '@repo/kits'
-import { AiWorkspaceEntity, ConversationEntity } from '@repo/db'
+import {
+  AdminEntity,
+  AiSkillEntity,
+  AiSkillFileEntity,
+  AiWorkspaceEntity,
+  AiWorkspaceSetupEntity,
+  ConversationEntity,
+  PersonalCredentialEntity,
+} from '@repo/db'
 import { WorkspaceServiceModule } from './workspace/workspace.module.js'
 
 /**
@@ -29,7 +37,16 @@ import { WorkspaceServiceModule } from './workspace/workspace.module.js'
       inject: [ConfigService],
       useFactory: (config: ConfigService) => ({
         ...config.getOrThrow<DbConfig>('db'),
-        entities: [AiWorkspaceEntity, ConversationEntity],
+        // 执行面对这些表**只读**：工作区 / 会话定位 + 初始化阶段（清单 / 技能 / 凭据名）
+        entities: [
+          AdminEntity,
+          AiWorkspaceEntity,
+          ConversationEntity,
+          AiWorkspaceSetupEntity,
+          AiSkillEntity,
+          AiSkillFileEntity,
+          PersonalCredentialEntity,
+        ],
       }),
     }),
     LoggerModule.forRootAsync({

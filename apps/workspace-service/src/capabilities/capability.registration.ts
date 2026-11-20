@@ -9,6 +9,7 @@ import { CapabilityGatewayClient } from '@repo/internal-sdk'
 import { CapabilityRegistrar, toRegistration } from '@repo/capability'
 import { BashExecutor } from './bash.executor.js'
 import { FileExecutor } from './file.executor.js'
+import { CredentialCandidatesExecutor, CredentialImportExecutor } from './credential.executor.js'
 import { buildWorkspaceService } from './manifest.js'
 import { WorkspaceServiceConfig, type WorkspaceServiceConfigValue } from '../config/app-config.js'
 
@@ -26,6 +27,9 @@ export class WorkspaceCapabilityRegistration
   constructor(
     @Inject(BashExecutor) private readonly bash: BashExecutor,
     @Inject(FileExecutor) private readonly file: FileExecutor,
+    @Inject(CredentialCandidatesExecutor)
+    private readonly credentialCandidates: CredentialCandidatesExecutor,
+    @Inject(CredentialImportExecutor) private readonly credentialImport: CredentialImportExecutor,
     @Inject(WorkspaceServiceConfig) private readonly config: WorkspaceServiceConfigValue,
     @Inject(AppLogger) private readonly logger: AppLogger,
   ) {}
@@ -41,13 +45,21 @@ export class WorkspaceCapabilityRegistration
     })
     this.registrar = new CapabilityRegistrar({
       client,
-      registration: toRegistration(buildWorkspaceService([this.bash, this.file]), {
-        instance: {
-          instanceId: this.config.instanceId,
-          endpoint: this.config.endpoint,
-          maxConcurrency: 4,
+      registration: toRegistration(
+        buildWorkspaceService([
+          this.bash,
+          this.file,
+          this.credentialCandidates,
+          this.credentialImport,
+        ]),
+        {
+          instance: {
+            instanceId: this.config.instanceId,
+            endpoint: this.config.endpoint,
+            maxConcurrency: 4,
+          },
         },
-      }),
+      ),
       heartbeatIntervalMs: 10_000,
       activeProvider: () => 0,
       logger: {

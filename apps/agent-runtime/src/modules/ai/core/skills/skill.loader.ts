@@ -54,8 +54,8 @@ export const SKILL_CATALOG_DIR = Symbol.for('SkillCatalogDir')
  * 1. `core/skills/catalog/` —— 随部署打包，**校验不通过直接启动失败**（我们自己的资产，坏了就是发版事故）；
  * 2. 技能库落盘目录（`AgentConfig.skillsLibraryDir`，后台 / agent 在线维护、DB 是事实源）：
  *    由 `SkillMaterializer` 写入，**坏一个只跳过**（落盘是最后一步，磁盘异常不该拦启动）；
- * 3. `AI_SKILLS_DIRS` 配置的目录 —— 用户自带技能库（默认 `~/.agents/skills`），
- *    **坏一个只跳过并记错误日志**，不拿别人的技能库绑架整个服务启动。
+ * 3. （已删除）宿主技能目录 `AI_SKILLS_DIRS` —— P9 起不再读取任何宿主目录：
+ *    多租户下会把部署者本地技能注入所有用户上下文。`extraDirs` 参数只剩测试在用。
  *
  * 扫描结果进程内缓存；技能库的写操作完成后由 `SkillLibraryService` 调 `reload()` 清缓存 ——
  * 于是"在线新建一个技能"不需要重启就能被 `ALL_SKILLS` 展开到。

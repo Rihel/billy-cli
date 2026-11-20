@@ -54,6 +54,7 @@ import { REMOTE_TOOL_INVOKER, type RemoteToolInvoker } from '../core/tools/tool.
 import { GatewayToolCatalog } from './gateway-capability-catalog.js'
 import { ToolCallMetaStore } from '../core/tools/tool.meta.js'
 import { toMastraModelInstance } from '../mastra/agent.adapter.js'
+import { skillCatalogSection } from '../core/skills/skill-catalog.js'
 import { toRequestContext } from '../mastra/context.adapter.js'
 import type { ConversationEntity, ConversationRunQueueEntity, TimelineEntity } from '@repo/db'
 import { AgentConversationService } from './conversation.service.js'
@@ -3269,6 +3270,11 @@ export class AgentChatService {
       }
     }
 
+    // 技能目录由 runtime 自己渲染进系统指令（§6.7.3）：只给 name + description，
+    // 正文由模型用 `file-read` 读工作区里的 `.agents/<name>/SKILL.md`
+    const skills = await this.skillLoader.resolve(definition.skills)
+    const systemPrompt = `${options.systemPrompt ?? definition.instructions}${skillCatalogSection(skills)}`
+
     const envelope: AgentRuntimeEnvelope = {
       conversationId,
       workspaceConversationId: options.workspaceConversationId ?? conversationId,
@@ -3285,8 +3291,8 @@ export class AgentChatService {
       // 子 agent 的工具面 = 父 agent 的授权面 ∩ 全部 − 委派类 − child:deny
       // （"子助手有你的全部工具"里的"你的"指父 agent 被授权的那一份，不是注册机全量）
       childToolbox,
-      skills: await this.skillLoader.resolve(definition.skills),
-      ...(options.systemPrompt ? { systemPrompt: options.systemPrompt } : {}),
+      skills,
+      systemPrompt,
       ...(options.abortSignal ? { abortSignal: options.abortSignal } : {}),
     }
     // 与 `RequestContext` 的读写收在适配器里（主体不认识 Mastra 的这个词）

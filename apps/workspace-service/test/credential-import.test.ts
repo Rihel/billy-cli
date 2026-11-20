@@ -1,0 +1,122 @@
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import type { AppLogger } from '@repo/kits'
+import { WorkspaceCredentialImportService } from '../src/workspace/credential-import.service.js'
+import type { WorkspaceRuntime } from '../src/workspace/workspace-runtime.service.js'
+import type { WorkspaceRepository } from '../src/workspace/workspace.repository.js'
+
+/**
+ * 从工作区导入凭据（§6.4.5）：候选探测与"读→解析→入库"链路。
+ *
+ * 用假 shell 输出模拟容器；main 的导入接口用 fetch 打桩，断言**只传 provider 与解析后的值**。
+ */
+
+const LARK_JSON = JSON.stringify({ token: 'lark-token-123' })
+
+const make = () => {
+  const runtime = {
+    exec: vi.fn(async (_id: string, request: { command: string }) => {
+      const command = request.command
+      if (command.includes('gh auth token')) {
+        return { ok: true, exitCode: 0, stdout: 'ghp_token_abc\n', stderr: '', durationMs: 1 }
+      }
+      if (command === 'gh auth status') {
+        return { ok: true, exitCode: 0, stdout: 'Logged in', stderr: '', durationMs: 1 }
+      }
+      if (command.includes('lark-cli/config.json')) {
+        return { ok: true, exitCode: 0, stdout: LARK_JSON, stderr: '', durationMs: 1 }
+      }
+      if (command.startsWith('if [ -f')) {
+        return { ok: true, exitCode: 0, stdout: '__MISSING__\n', stderr: '', durationMs: 1 }
+      }
+      return { ok: true, exitCode: 0, stdout: '', stderr: '', durationMs: 1 }
+    }),
+  }
+  const repo = {
+    findSetupContext: vi.fn(async () => ({
+      ownerType: 'user' as const,
+      ownerId: 'u_1',
+      setupId: null,
+      setupExtra: [],
+    })),
+  }
+  const logger = { log: vi.fn(), warn: vi.fn(), error: vi.fn() } as unknown as AppLogger
+  const service = new WorkspaceCredentialImportService(
+    runtime as unknown as WorkspaceRuntime,
+    repo as unknown as WorkspaceRepository,
+    { mainUrl: 'http://main:9989', mainToken: 'internal-token' } as never,
+    logger,
+  )
+  return { service, runtime, repo }
+}
+
+afterEach(() => {
+  vi.unstubAllGlobals()
+})
+
+describe('credential-candidates', () => {
+  it('只返回"适配器声明了导入来源且容器里读得到"的 provider', async () => {
+    const { service } = make()
+
+    const candidates = await service.candidates('ws_1')
+
+    expect(candidates.map((item) => item.provider)).toEqual(['github', 'lark'])
+    expect(candidates.find((item) => item.provider === 'lark')).toMatchObject({
+      displayName: '飞书（Lark）',
+      longTerm: false,
+    })
+  })
+})
+
+describe('credential-import', () => {
+  it('命令型来源：按行取值，只把 provider 与值交给 main，返回摘要不含值', async () => {
+    const { service, repo } = make()
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({
+        code: 0,
+        data: { credential: { id: 'cred_1', name: 'gh', provider: 'gh', status: 'active' } },
+      }),
+    }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    const credential = await service.import('ws_1', 'github')
+
+    expect(credential).toMatchObject({ id: 'cred_1', name: 'gh', status: 'active', verified: true })
+    const [url, init] = fetchMock.mock.calls[0] as unknown as [URL, RequestInit]
+    expect(String(url)).toContain('/internal/credentials/import')
+    expect(JSON.parse(String(init.body))).toMatchObject({
+      ownerType: 'user',
+      ownerId: 'u_1',
+      provider: 'github',
+      values: { token: 'ghp_token_abc' },
+    })
+    expect(repo.findSetupContext).toHaveBeenCalledWith('ws_1')
+  })
+
+  it('文件型来源：按 jsonPath 取值', async () => {
+    const { service } = make()
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({
+        code: 0,
+        data: { credential: { id: 'cred_2', name: 'lark', provider: 'lark', status: 'active' } },
+      }),
+    }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await service.import('ws_1', 'lark')
+
+    const [, init] = fetchMock.mock.calls[0] as unknown as [URL, RequestInit]
+    expect(JSON.parse(String(init.body))).toMatchObject({
+      provider: 'lark',
+      values: { accessToken: 'lark-token-123' },
+    })
+  })
+
+  it('不支持导入的 provider（mysql）→ 明确报错，不调用 main', async () => {
+    const { service } = make()
+    vi.stubGlobal('fetch', vi.fn())
+
+    await expect(service.import('ws_1', 'mysql')).rejects.toThrow('不支持从工作区导入')
+  })
+})

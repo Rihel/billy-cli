@@ -42,12 +42,8 @@ import { createRemoteToolInvoker } from './runtime/remote-tool.client.js'
 import { GatewayToolCatalog } from './runtime/gateway-capability-catalog.js'
 import { ConversationRunQueue } from './runtime/run-queue.service.js'
 import { ConversationRunQueueDispatcher } from './runtime/run-queue.dispatcher.js'
-import {
-  SKILL_DIRS,
-  SKILL_LIBRARY_DIR,
-  SkillLoader,
-  SkillMaterializer,
-} from './core/skills/index.js'
+import { SKILL_LIBRARY_DIR, SkillLoader, SkillMaterializer } from './core/skills/index.js'
+import { SkillSeedService } from './core/skills/skill-seed.service.js'
 import { SkillLibraryService } from './skills/skill.service.js'
 import { SkillRepository } from './skills/skill.repository.js'
 import { SkillTools } from './skills/skill.tools.js'
@@ -127,6 +123,7 @@ let warnedMissingEnvelope = false
   imports: [],
   controllers: [AgentInternalController],
   providers: [
+    SkillSeedService,
     {
       provide: AgentConfig,
       inject: [ConfigService],
@@ -230,12 +227,8 @@ let warnedMissingEnvelope = false
     MemoryThreadCleanupService,
 
     // ───────────────────────── 技能库（DB 是事实源，落盘给 Mastra）─────────────────────────
-    // 额外技能目录：配置 → loader（loader 只管扫目录，不认配置从哪来）
-    {
-      provide: SKILL_DIRS,
-      inject: [AgentConfig],
-      useFactory: (config: AgentConfigValue): readonly string[] => config.skillsDirs,
-    },
+    // 宿主技能目录来源已删除（P9）：技能只来自「随包 catalog + 技能库落盘投影」，
+    // 不再提供 `SKILL_DIRS`，loader 的额外目录参数只剩测试在用。
     {
       provide: SKILL_LIBRARY_DIR,
       inject: [AgentConfig],

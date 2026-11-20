@@ -54,6 +54,10 @@ export const workspaceServiceAppConfigSchema = z.object({
     gatewayUrl: z.string().url().optional(),
     /** 实例 id（多副本时必须唯一） */
     instanceId: z.string().min(1).default(`${hostname()}-${process.pid}`),
+    /** main（控制面）地址：初始化阶段按 owner 解析凭据用 */
+    mainUrl: z.string().url().default('http://127.0.0.1:9989'),
+    /** 调 main 内部接口的令牌（= `TOOL_INTERNAL_TOKEN`）；缺省回落本服务 internalToken */
+    mainToken: z.string().min(1).optional(),
     /** 本服务对外地址（网关回连 /invoke 用） */
     endpoint: z.string().url().default('http://127.0.0.1:9995'),
     /** 网关调用的内部令牌（与 internalToken 同源） */
@@ -91,6 +95,8 @@ export const mapWorkspaceServiceEnv = (env: NodeJS.ProcessEnv): Record<string, u
   },
   service: {
     internalToken: optional(env.WORKSPACE_INTERNAL_TOKEN),
+    mainUrl: optional(env.MAIN_URL),
+    mainToken: optional(env.TOOL_INTERNAL_TOKEN),
     defaultImage: optional(env.WORKSPACE_DEFAULT_IMAGE),
     containerRuntime: optional(env.WORKSPACE_CONTAINER_RUNTIME),
     kubectlBin: optional(env.WORKSPACE_KUBECTL_BIN),
