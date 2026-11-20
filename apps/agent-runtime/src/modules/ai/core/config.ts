@@ -33,7 +33,6 @@ export interface AgentConfig {
   /** 裁剪目标 */
   contextTrimTargetRatio: number
   /** 压缩目标 */
-  contextCompactTargetRatio: number
   /** 最近几轮永不裁 */
   contextKeepRecentTurns: number
   /** 单条工具结果给模型的视图上限（相对窗口） */

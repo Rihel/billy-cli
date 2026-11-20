@@ -3,12 +3,10 @@ import {
   AppConfigFacade,
   DbConfigSchema,
   envConfigLoader,
-  JwtConfigSchema,
   KafkaConfigSchema,
   LarkConfigSchema,
   LoggerConfigSchema,
   NotifyConfigSchema,
-  PasswordConfigSchema,
   RedisConfigSchema,
   StorageConfigSchema,
   WorkspaceConfigSchema,
@@ -28,21 +26,6 @@ export const serverAppConfigSchema = z.object({
     .object({
       /** HTTP 服务端口 */
       port: z.coerce.number().int().positive().default(9989),
-      /** 用户体系开关：false 时关闭前台 / 后台两套鉴权，守卫直接放行 */
-      authEnabled: z.boolean().default(true),
-      /** 找回密码 token 有效期（分钟） */
-      resetPasswordTokenTtlMinutes: z.coerce.number().int().positive().default(30),
-      /**
-       * 前台站点地址（web），用于拼找回密码的重置链接。
-       *
-       * 邮件里的链接必须能点开，所以这里要绝对地址；本地开发默认 web 的 dev 端口 `9840`
-       * （见 `apps/web/package.json` 的 dev / start 脚本）。
-       */
-      appUrl: z.string().default('http://localhost:9840'),
-      /** 限流豁免白名单（精确 IP / IPv4 CIDR） */
-      rateLimitWhitelist: z.array(z.string()).default([]),
-      /** 是否信任代理转发头（x-forwarded-for） */
-      rateLimitTrustProxy: z.boolean().default(false),
       /**
        * 空闲长连接保持时长（ms），映射到 Node `server.keepAliveTimeout`。
        *
@@ -94,25 +77,11 @@ export const serverAppConfigSchema = z.object({
     }),
   db: DbConfigSchema,
   redis: RedisConfigSchema,
-  jwt: JwtConfigSchema,
-  password: PasswordConfigSchema,
   storage: StorageConfigSchema,
   logger: LoggerConfigSchema,
   notify: NotifyConfigSchema,
   /** 告警业务配置（MonitorConfig 命名空间；schema 唯一来源在 @repo/monitor） */
   monitor: MonitorConfigSchema,
-  /**
-   * 文件分享（`/s/{token}`，见 `docs/design/file-share.md`）。
-   *
-   * 只有一个变量：**Next ↔ server 的内部密钥**。
-   * 分享链接由前端用自己的域名拼（server 不该知道分享页挂在哪个域），
-   * 有效期由调用方传，缺省值写在 service 的常量里 —— 不需要配置。
-   */
-  share: z.object({
-    /** `/share/resolve` 的调用凭证；空 = 该接口一律 404（分享页取不到字节） */
-    internalSecret: z.string().default(''),
-  }),
-
   /** 飞书应用凭据：未配置则不装配 LarkModule */
   lark: LarkConfigSchema.optional(),
   /** Kafka：未配置 brokers 则不装配 KafkaModule */
@@ -125,16 +94,10 @@ export const serverAppConfigSchema = z.object({
   /**
    * AI Agent 业务配置（AgentConfig 命名空间，见 modules/ai/core/config.ts）。
    *
-   * 恒存在（不像 lark / kafka 那样整体可选）：模型与密钥缺任意一个都只是「能力不可用」，
-   * `/agent/*` 返回 3301 并保留其余功能；这样前端能拿到确定的状态结构而不是 404。
+   * 恒存在（不像 lark / kafka 那样整体可选）：运行时旋钮缺省即用默认值；
+   * 模型不在这里配（统一经 model-gateway 目录解析）。
    */
   agent: z.object({
-    /** 默认模型标识（`provider/model`，如 `deepseek/deepseek-chat` / `openai/gpt-4o-mini`） */
-    model: z.string().optional(),
-    /** 模型 API Key */
-    apiKey: z.string().optional(),
-    /** OpenAI 兼容端点地址（自建网关 / 代理）；留空走 provider 默认端点 */
-    baseURL: z.string().optional(),
     // ── 技能目录（机制见 docs/design/ai-agent.md §1.4）──
     /**
      * 额外的技能目录（随部署打包的 `core/skills/catalog/` 之外）。
@@ -156,7 +119,6 @@ export const serverAppConfigSchema = z.object({
     /** 裁剪目标：裁到「窗口 × 本比例」为止 */
     contextTrimTargetRatio: z.coerce.number().positive().max(1).default(0.5),
     /** 压缩目标：摘要后到「窗口 × 本比例」为止 */
-    contextCompactTargetRatio: z.coerce.number().positive().max(1).default(0.4),
     /** 最近几轮永不裁（保底能正常对话） */
     contextKeepRecentTurns: z.coerce.number().int().positive().default(3),
     /** 单条工具结果给模型的视图上限（相对窗口；落库仍是完整原文） */
@@ -243,17 +205,6 @@ export const serverAppConfigSchema = z.object({
     toolMaxPagesPerTurnMax: z.coerce.number().int().positive().default(5),
   }),
   /**
-   * AI 模型模块配置（配置类数据：供应商 / 模型，见设计文档 §4.8）。
-   *
-   * 与本模块的数据表配套：只要"要不要用环境变量做首次种子"。
-   * 密钥**明文入库**（2026-10-01 决定），所以这里不再有加密口令。
-   */
-  aiModel: z.object({
-    /** 密钥加密口令（AES-256-GCM）；缺省回落 `jwt.secret`，两者都缺 → 服务层抛 3405 */
-    /** 首次启动时是否允许用 `MASTRA_*` 环境变量种子初始化供应商与模型（库里有供应商就什么都不做） */
-    seedFromEnv: z.boolean().default(true),
-  }),
-  /**
    * model-gateway（模型网关）连接配置。
    *
    * runtime 只向网关要目录、只把模型实例指向网关，**不再读任何供应商 key / 配置表**。
@@ -308,11 +259,6 @@ const parseList = (value: string | undefined): string[] | undefined =>
 export const mapServerEnv = (env: NodeJS.ProcessEnv): Record<string, unknown> => ({
   server: {
     port: optional(env.PORT),
-    authEnabled: env.AUTH_ENABLED === undefined ? undefined : env.AUTH_ENABLED !== 'false',
-    resetPasswordTokenTtlMinutes: optional(env.RESET_PASSWORD_TOKEN_TTL_MINUTES),
-    appUrl: optional(env.WEB_URL),
-    rateLimitWhitelist: parseList(env.RATE_LIMIT_WHITELIST),
-    rateLimitTrustProxy: parseBoolean(env.RATE_LIMIT_TRUST_PROXY),
     keepAliveTimeoutMs: optional(env.KEEP_ALIVE_TIMEOUT_MS),
     headersTimeoutMs: optional(env.HEADERS_TIMEOUT_MS),
     appVersion: optional(env.APP_VERSION),
@@ -326,13 +272,6 @@ export const mapServerEnv = (env: NodeJS.ProcessEnv): Record<string, unknown> =>
   redis: {
     url: optional(env.REDIS_URL),
     keyPrefix: optional(env.REDIS_KEY_PREFIX),
-  },
-  jwt: {
-    secret: optional(env.JWT_SECRET),
-    expiresIn: optional(env.JWT_EXPIRES_IN),
-  },
-  password: {
-    passwordHashRounds: optional(env.PASSWORD_HASH_ROUNDS),
   },
   storage: {
     provider: optional(env.OBJECT_STORAGE_PROVIDER),
@@ -349,9 +288,6 @@ export const mapServerEnv = (env: NodeJS.ProcessEnv): Record<string, unknown> =>
     loki: env.LOKI_HOST
       ? { host: env.LOKI_HOST, labels: { env: env.NODE_ENV ?? 'local' } }
       : undefined,
-  },
-  share: {
-    internalSecret: optional(env.SHARE_INTERNAL_SECRET),
   },
   monitor: {
     enabled: env.ALERT_ENABLED === undefined ? undefined : env.ALERT_ENABLED !== 'false',
@@ -406,14 +342,10 @@ export const mapServerEnv = (env: NodeJS.ProcessEnv): Record<string, unknown> =>
     probeTimeoutMs: optionalNumber(env.AGENT_WORKSPACE_PROBE_TIMEOUT_MS),
   },
   agent: {
-    model: optional(env.MASTRA_MODEL),
-    apiKey: optional(env.MASTRA_API_KEY),
-    baseURL: optional(env.MASTRA_BASE_URL),
     skillsDirs: parseList(env.AGENT_SKILLS_DIRS),
     ...(env.AGENT_SKILLS_LIBRARY_DIR ? { skillsLibraryDir: env.AGENT_SKILLS_LIBRARY_DIR } : {}),
     contextTriggerRatio: optional(env.AGENT_CONTEXT_TRIGGER_RATIO),
     contextTrimTargetRatio: optional(env.AGENT_CONTEXT_TRIM_TARGET_RATIO),
-    contextCompactTargetRatio: optional(env.AGENT_CONTEXT_COMPACT_TARGET_RATIO),
     contextKeepRecentTurns: optional(env.AGENT_CONTEXT_KEEP_RECENT_TURNS),
     contextToolResultMaxRatio: optional(env.AGENT_CONTEXT_TOOL_RESULT_MAX_RATIO),
     contextToolResultTotalRatio: optional(env.AGENT_CONTEXT_TOOL_RESULT_TOTAL_RATIO),
@@ -445,10 +377,6 @@ export const mapServerEnv = (env: NodeJS.ProcessEnv): Record<string, unknown> =>
     fileWorkspaceMaxDepth: optional(env.AGENT_FILE_WORKSPACE_MAX_DEPTH),
     toolPageBytesMax: optional(env.AGENT_TOOL_PAGE_BYTES_MAX),
     toolMaxPagesPerTurnMax: optional(env.AGENT_TOOL_MAX_PAGES_PER_TURN),
-  },
-  aiModel: {
-    // 未设置时留 undefined，由 schema 默认值（true）兜底
-    seedFromEnv: parseBoolean(env.AGENT_SEED_FROM_ENV),
   },
   modelGateway: {
     url: optional(env.MODEL_GATEWAY_URL),

@@ -45,7 +45,6 @@ const config = {
   apiKey: 'k',
   contextTriggerRatio: 0.7,
   contextTrimTargetRatio: 0.5,
-  contextCompactTargetRatio: 0.4,
   contextKeepRecentTurns: 3,
   contextToolResultMaxRatio: 0.1,
   contextFallbackWindow: 32_000,

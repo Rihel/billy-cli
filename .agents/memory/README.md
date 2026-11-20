@@ -76,7 +76,7 @@
 | [ui-data-table-column-id](ui-data-table-column-id.md) | DataTable 用列 id 当 key：同一 columns 数组里两列共用 `accessorKey` 会刷屏重复 key 告警 | 抽核 | 2026-11-07 |
 | [ui-scrollbar](ui-scrollbar.md) | 原生滚动条伪元素不支持过渡 → 视觉由 `OverlayScrollbar` 自己画（淡入淡出、只跟随被滚容器）；Chromium 写了 `scrollbar-width`/`scrollbar-color` 会关掉 `::-webkit-scrollbar` 定制 | 抽核 | 2026-11-13 |
 | [scaffold-cli-removed](scaffold-cli-removed.md) | 2026-11-09 起没有代码生成器与模板副本，新模块照现有实现手写；守卫为 check:inject / check:mastra / check:ui | 免核 | 2026-11-09 |
-| [product-facts](product-facts.md) | README / 落地页 / pitch 共用的能力数字口径（工具 26 / skill 28 / ai-elements 48 …；连接器已删除） | 必核 | 2026-11-13 |
+| [product-facts](product-facts.md) | README / 落地页 / pitch 共用的能力数字口径（工具 35 / 能力 20 / skill 28 / 组件 61 / ai-elements 48 / 检查 9；连接器已删除） | 必核 | 2026-11-20 |
 | [ai-tool-key-naming](ai-tool-key-naming.md) | 能力 key = 扁平工具名（`xxx-xxx`），全局唯一；服务是工具的分组（1:N），模型面与 key 相同 | 免核 | 2026-11-18 |
 | [agent-tool-authorization](agent-tool-authorization.md) | agent 授权是结构化选择器；作用域装配期过滤工具面；子 agent = 父授权 ∩ 全部 − 委派 − deny，并按 caller 过滤 | 必核 | 2026-11-14 |
 | [ui-dialog-escape](ui-dialog-escape.md) | Base UI Dialog 没有 `onEscapeKeyDown`：Esc 要先退全屏 / 不关窗，就在 `onOpenChange` 里看 `details.reason === 'escape-key'` 并 `details.cancel()` | 必核 | 2026-11-15 |
@@ -93,13 +93,14 @@
 | [ai-file-internal-api](ai-file-internal-api.md) | file 已改 worker 直连 PG/OSS，旧 worker→控制面 API 已删除 | 必核 | 2026-11-14 |
 | [ai-skill-internal-api](ai-skill-internal-api.md) | skill-* 留在 agent-runtime 本地执行，worker→控制面旧 API 已删 | 必核 | 2026-11-14 |
 | [ai-memory-internal-api](ai-memory-internal-api.md) | memory 已改 worker 直连 DB；旧 worker→控制面内部 API 已删除 | 必核 | 2026-11-14 |
-| [common-capability-executors](common-capability-executors.md) | 执行器 = 能力组：`@CapabilityGroup` + 方法级 `@CapabilityDecl`，注册表扫描绑定 17 个能力（只有 bash 是 task） | 必核 | 2026-11-18 |
+| [common-capability-executors](common-capability-executors.md) | 执行器 = 能力组：`@CapabilityGroup` + 方法级 `@CapabilityDecl`；common 登记 9、workspace 登记 8（只有 bash 是 task），合计 20 个 code 能力 | 必核 | 2026-11-20 |
 | [ai-capability-gateway](ai-capability-gateway.md) | 本地口径：一个进程 = 一个服务 `common`（17 能力）；装饰器定义；登记 HTTP 只在 internal-sdk；protocol / inputSchema 全链路；admin 页与 toast `z-[100]` | 必核 | 2026-11-18 |
 | [runtime-cleanup](runtime-cleanup.md) | runtime 只做编排：能力定义/执行体已删、工具面来自能力目录、外部服务搜到才下发、授权只剩 key | 必核 | 2026-11-20 |
 | [ai-run-queue](ai-run-queue.md) | 异步子 agent 的会话 run 队列：新表、优先级、dedupe、当前实施边界 | 抽核 | 2026-11-15 |
 | [ai-subagent-subconversation](ai-subagent-subconversation.md) | 子 agent 建子会话：run/timeline 挂子会话，工作区/文件归根会话；列表只出根、删父级联；用量仍只算子 run 的父 | 必核 | 2026-11-14 |
 | [ai-scale-bottlenecks](ai-scale-bottlenecks.md) | 扛流量的六个卡点：512Mi 限额、无准入、工作区本地盘、Redis 缓冲无字节上限、DB 池 10/实例、时间线无分区 | 必核 | 2026-11-14 |
 | [workspace-runtime](workspace-runtime.md) | 执行环境三层（界面选 / 部署限 / 探测证）：默认沙箱、不可用兜底 local；出参 `runtime` 是唯一事实 | 必核 | 2026-11-12 |
+| [env-config](env-config.md) | 环境变量：`.env` 覆盖真实进程环境（dotenv override）、每 app 只声明自己分片、端口别名与模板布局、已删死键 | 必核 | 2026-11-20 |
 | [infra-optional-degradation](infra-optional-degradation.md) | 对象存储未配置/不可达不拦启动；`AGENT_COMMAND_WORK_DIR` 在启动与执行前自愈；问答取消走 `resumeStream({cancelled:true})` | 必核 | 2026-11-11 |
 | [ai-chat-scroll](ai-chat-scroll.md) | 进会话自己滑到底：占位让历史加载变成「第二次长高」，走的是 `resize` 不是 `initial`；非流式一律 instant | 抽核 | 2026-11-13 |
 | [ai-chat-running-state](ai-chat-running-state.md) | 续流必须带 conversationId（否则串流）；运行中灯走 `ai:owner` 事件驱动 + 重连对账（不再轮询） | 抽核 | 2026-11-13 |

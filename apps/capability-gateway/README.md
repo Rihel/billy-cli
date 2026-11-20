@@ -1,53 +1,46 @@
 # capability-gateway
 
-内部工具控制面：**目录 + 策略 + 选 worker + 超时 + 审计**，不执行工具；连主库只写审计。
+能力网关（内部，9993）：**能力目录 / 授权过滤 / 调用路由 / 限流校验 / MCP client / 审计**，不执行能力。
 
-当前路由 `bash` / `web-fetch` / `web-request` / `web-search` / `memory-*` / `read-tool-result`；`file-*` 暂走 server，`skill-*` 由 server 本地执行：
+执行在 `common-capability`（服务 `common`，9 个能力）与 `workspace-service`（服务 `workspace`，8 个能力）；
+网关按 Redis 注册表选实例，再直连该实例上报的 endpoint 转发 `/invoke`（没有静态 worker 兜底地址）。
 
-- `POST /v1/tools/list`：按 caller / agent / 深度返回可用工具 manifest；
-- `POST /v1/tools/invoke`：`ToolInvokeRequest` → `ToolInvokeResponse`；
-- 每次调用写 `ai_tool_audit`（需要 `DB_URL`）；
-- `GET /v1/workers`：当前注册表里看到的 worker（调试 / 运维）；
-- `GET /healthz` / `GET /readyz`。
+## 职责与接口
 
-worker 发现走 Redis 注册表（`ai:common-capability:<id>` + `ai:common-capabilitys:alive`）；
-注册表为空时回退到 `TOOL_WORKER_URL`。
+- **登记 / 心跳**：`POST /v1/services/register`、`POST /v1/instances/heartbeat`、
+  `POST /v1/instances/deregister`、`POST /v1/services/deregister`；
+- **目录 / 调用**：`POST /v1/capabilities/list`（按调用身份 + 服务授权过滤）、`POST /v1/capabilities/invoke`
+  （治理 → 路由 → 审计），任务 `POST /v1/tasks/get|cancel|cancel-run`；
+- **后台**：`POST /v1/services/list`、`POST /v1/services/status`、`POST /v1/services/mcp/list`；
+- **内建能力**（进程内处理，不登记给任何服务）：`wait-task` / `cancel-task` / `tool-search`；
+- 每次 invoke 写 `ai_tool_audit`；登记记录落 `ai_capability_services`（DB 是事实源，Redis 只是运行时快照）；
+- `GET /healthz` / `GET /readyz`（readyz 探 Redis）。
+
+## 配置
+
+见 `.env.example`：`PORT` / `DB_URL` / `REDIS_URL` / `TOOL_INTERNAL_TOKEN` /
+`TOOL_WORKER_STALE_MS` / `TOOL_GATEWAY_TIMEOUT_MS` / `TOOL_GATEWAY_RATE_LIMIT_PER_MINUTE` /
+`TOOL_GATEWAY_ALLOW_PRIVATE_NETWORK`。完整说明见 [docs/guide/env.md](../../docs/guide/env.md)。
 
 ## 本地跑
 
 ```bash
 cp .env.example .env
-# gateway 需要 DB（写 ai_tool_audit）与 Redis（注册表 + 限流）
 pnpm --filter @repo/contracts build
 pnpm --filter @repo/internal-sdk build
 pnpm --filter @repo/db build
-pnpm --filter @app/common-capability dev   # 另一个终端
+pnpm --filter @app/common-capability dev      # 另一个终端
+pnpm --filter @app/workspace-service dev      # 另一个终端（bash / 文件能力）
 pnpm --filter @app/capability-gateway dev
 ```
 
-调一次：
+验证目录：
 
 ```bash
-curl -s http://127.0.0.1:9993/v1/tools/invoke \
-  -H 'content-type: application/json' \
-  -H 'x-internal-token: dev-tool-token' \
-  -d '{"version":1,"requestId":"r1","toolKey":"bash","toolCallId":null,
-       "input":{"command":"echo hi"},"caller":{"conversationId":"c1","runId":"run1","userId":"u1","isAdmin":false,
-       "agentKey":"assistant","rootAgentKey":"assistant","depth":0},"deadlineMs":10000}'
-```
-
-## 目录
-
-```
-src/
-  main.ts / root.module.ts
-  config/app-config.ts          # 环境变量 + zod
-  gateway/                      # controller / service / module
-  catalog/tool.catalog.ts       # 工具 manifest
-  policy/                       # 策略服务 + ToolCallInterceptor
-  audit/tool.audit.ts           # ai_tool_audit 写入
-  http/                         # InternalTokenGuard + ZodBodyPipe
-  workers/worker.directory.ts   # 注册表 + 静态 worker
+curl -s -X POST http://127.0.0.1:9993/v1/capabilities/list \
+  -H 'content-type: application/json' -H 'x-internal-token: dev-tool-token' \
+  -d '{"caller":{"conversationId":"c1","runId":"r1","userId":"u1","isAdmin":true,
+       "agentKey":"assistant","rootAgentKey":"assistant","depth":0}}'
 ```
 
 ## 规则

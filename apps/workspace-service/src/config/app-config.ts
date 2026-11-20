@@ -30,8 +30,6 @@ export const workspaceServiceAppConfigSchema = z.object({
     defaultImage: z.string().min(1).default('billy-workspace:latest'),
     /** 容器后端：docker（单机 / compose）或 kubernetes（云端多租户，走 kubectl） */
     containerRuntime: z.enum(['docker', 'kubernetes']).default('docker'),
-    /** docker CLI 路径（docker 后端） */
-    dockerBin: z.string().min(1).default('docker'),
     /** kubectl 路径（kubernetes 后端） */
     kubectlBin: z.string().min(1).default('kubectl'),
     /** workspace Pod 所在命名空间 */
@@ -95,7 +93,6 @@ export const mapWorkspaceServiceEnv = (env: NodeJS.ProcessEnv): Record<string, u
     internalToken: optional(env.WORKSPACE_INTERNAL_TOKEN),
     defaultImage: optional(env.WORKSPACE_DEFAULT_IMAGE),
     containerRuntime: optional(env.WORKSPACE_CONTAINER_RUNTIME),
-    dockerBin: optional(env.WORKSPACE_DOCKER_BIN),
     kubectlBin: optional(env.WORKSPACE_KUBECTL_BIN),
     k8sNamespace: optional(env.WORKSPACE_K8S_NAMESPACE),
     containerMemory: optional(env.WORKSPACE_CONTAINER_MEMORY),

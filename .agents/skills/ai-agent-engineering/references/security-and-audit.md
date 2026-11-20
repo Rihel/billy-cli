@@ -62,16 +62,22 @@
 
 ## 4. 命令执行边界
 
+命令**不在 runtime 进程里执行**：`bash` 由能力网关路由到 `workspace-service`，在工作区容器 / k8s Pod
+（或自托管单租户的本地沙箱）里跑；runtime 只造工具、带身份与 `reason` 调用。
+
 | 项 | 事实 | 依据 |
 | --- | --- | --- |
-| 身份 | **以服务进程的身份与权限执行**，能读写该身份能读写的一切 | `tools/bash.tool.ts:110-113` |
-| 目录边界 | `resolve` + `path.relative` 判定（不是字符串前缀）：天然处理 `..` 逃逸与 Windows 大小写差异；越界**拒绝并说明**，不静默夹回 | `bash.tool.ts:304-321` |
-| 两层开关 | env 硬开关（`AGENT_COMMAND_ENABLED`）+ 库开关（`ai_tools.enabled` / `config.enabled`），**都开才放行** | `plugins/enabled.plugin.ts:10-13`、`bash.tool.ts:286-302` |
-| 时长 / 输出 | 模型传的时长只能更小；配置值既是默认值也是硬上限，且被 env 夹紧 | `bash.tool.ts:229-234,286-302` |
+| 身份 | 工作区后端的运行身份（容器内 root / 宿主进程的 `appuser`），只拥有该环境的文件与网络权限 | `apps/workspace-service/src/capabilities/bash.executor.ts` |
+| 目录边界 | 工作区根 = `AGENT_COMMAND_WORK_DIR`（或工作区配置）；路径由执行面按工作区边界校验，越界拒绝并说明 | `apps/workspace-service/src/workspace/*`、`packages/ai-data/src/file/workspace.ts` |
+| 开关 | 能力网关的 service 状态 + 工具启用（`ai_tools.enabled`）+ agent 授权（工具面里有没有 `bash`）；**没有** `AGENT_COMMAND_ENABLED` 这类 env 开关 | `apps/capability-gateway/src/registry/*`、`apps/agent-runtime/src/modules/ai/core/tools/plugins/enabled.plugin.ts` |
+| 时长 / 输出 | 平台限额（`execution` 声明 / 能力配置 / 网关 deadline）三级取严；模型传的只能更小 | `packages/contracts/src/capability.ts` 的 `execution`、`apps/workspace-service/src/capabilities/bash.executor.ts` |
 | 实时刷屏 | 逐行事件必须限流（行数上限 + 如实报省略量），并给部署侧硬上限；完整内容始终在出参 | 机制见 `docs/design/ai-agent-tool-engine.md` §5.17 |
-| 纪律 | 有副作用的命令先问用户；只读公开请求不必先问；失败不原样重试 | `bash.tool.ts:198-210` |
+| 纪律 | 有副作用的命令先问用户；只读公开请求不必先问；失败不原样重试 | 提示词 `assistant.eta` + 工具出参的 `reason` |
 
-**执行环境是 web 产品的安全底线**（`docs/design/workspace-runtime.md`）：默认 `AGENT_WORKSPACE_MODE=enforce` —— 命令只能在 OS 沙箱（macOS Seatbelt / Linux bwrap）里跑，**沙箱不可用就拒绝执行（fail closed）**，绝不退回宿主进程。会话页只能选沙箱内的 `fileAccess`（`read-only` / `workspace-write`），选不到"出沙箱"；`AGENT_WORKSPACE_MODE=off` 只给自托管单租户。网络默认 `deny`。L1 进程沙箱只挡误操作、不挡恶意代码，多租户必须上容器（端口已留）。实际环境随出参 `runtime` / `mode` 返回。
+**执行环境是 web 产品的安全底线**：部署默认 `AGENT_WORKSPACE_MODE=enforce` —— 命令在工作区里跑，
+沙箱 / 容器不可用就拒绝执行（fail closed）；会话能选的文件权限只有沙箱内两档（`read-only` /
+`workspace-write`），`danger-full-access` 只在自托管单租户显式 `off` 时由部署放开；容器后端天然隔离，
+网络默认 `deny`。环境变量口径见 [docs/guide/env.md](../../../docs/guide/env.md) 的 workspace-service 一节。
 
 ## 5. 不可信内容与注入
 

@@ -22,11 +22,6 @@ export const toolGatewayAppConfigSchema = z.object({
   gateway: z.object({
     /** gateway / worker 之间的内部令牌；生产必须显式配置 */
     internalToken: z.string().min(1).default('dev-tool-token'),
-    /**
-     * 固定 worker 地址（本地开发 / 单 worker 部署）。
-     * 注册表为空或不可用时的兜底；生产多 worker 应留空，走 Redis 注册表。
-     */
-    workerUrl: z.string().url().optional(),
     /** 注册表 freshness：超过这个时间没心跳就不选 */
     staleAfterMs: z.coerce.number().int().positive().default(30_000),
     /** 单次调用的安全上限；请求里的 deadlineMs 更小则听请求的（bash 默认 5 分钟） */
@@ -74,7 +69,6 @@ export const mapToolGatewayEnv = (env: NodeJS.ProcessEnv): Record<string, unknow
   },
   gateway: {
     internalToken: optional(env.TOOL_INTERNAL_TOKEN),
-    workerUrl: optional(env.TOOL_WORKER_URL),
     staleAfterMs: optional(env.TOOL_WORKER_STALE_MS),
     invokeTimeoutMs: optional(env.TOOL_GATEWAY_TIMEOUT_MS),
     rateLimitPerMinute: optional(env.TOOL_GATEWAY_RATE_LIMIT_PER_MINUTE),

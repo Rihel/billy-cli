@@ -30,10 +30,6 @@ export const toolWorkerAppConfigSchema = z.object({
   worker: z.object({
     /** 注册表里的唯一 id；多副本时必须唯一（默认 hostname-pid） */
     id: z.string().min(1).default(`${hostname()}-${process.pid}`),
-    /** 部署版本，用于按版本灰度选路 */
-    version: z.string().min(1).default('0.1.0'),
-    /** 可用区 / 机房；gateway 同区优先 */
-    zone: z.string().min(1).default('local'),
     /** gateway 直连地址（k8s 下用 Pod IP 或 Service；本地默认 loopback） */
     endpoint: z.string().url().default('http://127.0.0.1:9994'),
     /** gateway / worker 之间的内部令牌；生产必须显式配置 */
@@ -42,8 +38,6 @@ export const toolWorkerAppConfigSchema = z.object({
     gatewayUrl: z.string().url().optional(),
     /** 心跳间隔：注册表 freshness 用 */
     heartbeatIntervalMs: z.coerce.number().int().positive().default(10_000),
-    /** 心跳过期：超过即视为失联（与 contracts 的 WORKER_STALE_MS 对齐） */
-    staleAfterMs: z.coerce.number().int().positive().default(30_000),
     /** 本 worker 同时执行的上限（注册表里的 active 是近似值） */
     maxConcurrency: z.coerce.number().int().positive().default(8),
     /** 会话临时目录的根（本地盘可丢弃；真相在工作区对象存储） */
@@ -129,13 +123,10 @@ export const mapToolWorkerEnv = (env: NodeJS.ProcessEnv): Record<string, unknown
   },
   worker: {
     id: optional(env.TOOL_WORKER_ID),
-    version: optional(env.TOOL_WORKER_VERSION),
-    zone: optional(env.TOOL_WORKER_ZONE),
     endpoint: optional(env.TOOL_WORKER_ENDPOINT),
     internalToken: optional(env.TOOL_INTERNAL_TOKEN),
     gatewayUrl: optional(env.CAPABILITY_GATEWAY_URL) ?? optional(env.TOOL_GATEWAY_URL),
     heartbeatIntervalMs: optional(env.TOOL_WORKER_HEARTBEAT_MS),
-    staleAfterMs: optional(env.TOOL_WORKER_STALE_MS),
     maxConcurrency: optional(env.TOOL_WORKER_MAX_CONCURRENCY),
     workspaceRoot: optional(env.TOOL_WORKER_WORKSPACE_ROOT),
     commandTimeoutMs: optional(env.TOOL_WORKER_COMMAND_TIMEOUT_MS),
