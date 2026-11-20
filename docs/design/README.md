@@ -29,6 +29,7 @@
 | [ai-file-manager.md](ai-file-manager.md) | AI 文件管理：会话级文件树 / 对象存储 / 提交与回读 / 前端预览下载 |
 | [workspace-runtime.md](workspace-runtime.md) | 工作区运行时：命令隔离（默认强制、fail closed、会话只读/可写）与平台后端（历史论证，模型已由 workspace.md 取代） |
 | [workspace.md](workspace.md) | **设计稿**：工作空间 = AI 执行环境（取代「会话级目录」模型）——概念模型 / Docker 加固 / 文件与持久化 / 能力作用方式 / MCP / 生命周期 / 迁移与验收 |
+| [workspace-cli-credentials.md](workspace-cli-credentials.md) | **设计稿 v3（2026-11-20）**：工作区执行环境 + 技能归属与授权 + 个人凭据 + 后台菜单与数据权限——目标与非目标、资产三层、初始化阶段、`personal_credentials`（密文 / 类型 / 有效期 / 导入 / 同步）、技能分平台级与个人级及授权表、CLI 适配器、决策记录、风险、实施计划与验收 |
 | [ai-agent-tool-engine.md](ai-agent-tool-engine.md) | 工具引擎：工具组 / 注册机 / 网关插件 / 配置入库 |
 | [ai-skill-library.md](ai-skill-library.md) | 技能库：在线编辑 / 链接导入（skills.sh、GitHub）/ 启停，DB 是事实源、落盘给 Mastra |
 | [ai-memory.md](ai-memory.md) | 记忆（草案）：短期 thread 落 Redis、长期 `ai_memories` 落 PG、注入与工具写入 |
