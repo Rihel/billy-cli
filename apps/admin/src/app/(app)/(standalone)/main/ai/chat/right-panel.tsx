@@ -40,6 +40,19 @@ import { statusLabel } from './sub-agent-panel'
 export type RightPanelTab = 'system' | 'skills' | 'plan' | 'files' | 'workspace'
 
 /**
+ * tab 按钮：手机上（<640）**只留文字标签**。
+ *
+ * 五个 tab 带图标时在 390px 宽里塞不下（约 340–430px，视「技能（3）任务（2/5）」这类
+ * 计数而定），溢出后只能靠 `overflow-x-auto` 横滑，而滚动条已被 `scrollbar-none` 藏掉、
+ * 用户看不出右边还有 tab。去掉图标 + 字号降到 12px 后总宽约 320px，五格一眼看全；
+ * 640 起（平板与桌面）宽度足够，用 `sm:` 原样还原图标与 14px 字号。
+ */
+const TAB_TRIGGER_CLASS = 'shrink-0 px-1 text-xs sm:px-1.5 sm:text-sm'
+
+/** tab 图标：只在 ≥640 出现（理由见 `TAB_TRIGGER_CLASS`），桌面观感不变 */
+const TAB_ICON_CLASS = 'hidden size-3.5 sm:block'
+
+/**
  * 会话页**右栏**：把"这一轮的旁证"集中到一处，按 tab 切换。
  *
  * 五个 tab（子 agent 的完整过程**不在这里**：它跟主会话是**平级**的两条会话，
@@ -152,12 +165,14 @@ export function ConversationRightPanel({
       value={tab}
       onValueChange={(value) => setTab(value as RightPanelTab)}
       // 面板**白底**（页面底是中灰，白底把右栏从主区里分出来）+ 四周内边距：
-      // 内容不再贴着面板边缘，tab 条的胶囊也有呼吸空间
-      className="flex h-full min-h-0 flex-col gap-1.5 bg-card p-3"
+      // 内容不再贴着面板边缘，tab 条的胶囊也有呼吸空间。
+      // 手机上外层 Sheet 已经包了 p-2，这里再 p-3 就等于离屏幕边缘 20px，390px 下
+      // 文件行会被挤到 134px 可用宽度；base 收到 p-2，lg 起原样回到 p-3（桌面不变）
+      className="flex h-full min-h-0 flex-col gap-1.5 bg-card p-2 lg:p-3"
     >
       {/* 作用域提示：不写清楚，用户会以为右栏还是"这个会话"的信息 */}
       {scoped ? (
-        <p className="shrink-0 rounded-md bg-surface-2 px-2 py-1.5 text-[11px] leading-4 text-muted-foreground">
+        <p className="shrink-0 rounded-md bg-surface-2 px-2 py-1.5 text-xs leading-4 text-muted-foreground lg:text-[11px]">
           以下信息属于子助手{' '}
           <span className="font-medium text-foreground">{scope.name || '…'}</span>
           {scope.status && statusLabel[scope.status] ? `（${statusLabel[scope.status]}）` : ''} ·
@@ -168,24 +183,24 @@ export function ConversationRightPanel({
       {/* overflow-x-auto 会把另一轴也算成 auto：横向滚动条吃掉 8px 高度后，32px 的标签条
           立刻纵向溢出、长出竖直滚动条。这里显式锁死纵向 + 不画滚动条（标签条不需要） */}
       <TabsList className="w-full justify-start overflow-x-auto overflow-y-hidden scrollbar-none pb-0.5">
-        <TabsTrigger value="system" className="shrink-0">
-          <ScrollTextIcon className="size-3.5" />
+        <TabsTrigger value="system" className={TAB_TRIGGER_CLASS}>
+          <ScrollTextIcon className={TAB_ICON_CLASS} />
           系统指令
         </TabsTrigger>
-        <TabsTrigger value="skills" className="shrink-0">
-          <SparklesIcon className="size-3.5" />
+        <TabsTrigger value="skills" className={TAB_TRIGGER_CLASS}>
+          <SparklesIcon className={TAB_ICON_CLASS} />
           技能{activatedSkills.length > 0 ? `（${activatedSkills.length}）` : ''}
         </TabsTrigger>
-        <TabsTrigger value="plan" className="shrink-0">
-          <ListTodoIcon className="size-3.5" />
+        <TabsTrigger value="plan" className={TAB_TRIGGER_CLASS}>
+          <ListTodoIcon className={TAB_ICON_CLASS} />
           任务{planProgress ? `（${planProgress.done}/${planProgress.total}）` : ''}
         </TabsTrigger>
-        <TabsTrigger value="files" className="shrink-0">
-          <FolderIcon className="size-3.5" />
+        <TabsTrigger value="files" className={TAB_TRIGGER_CLASS}>
+          <FolderIcon className={TAB_ICON_CLASS} />
           文件
         </TabsTrigger>
-        <TabsTrigger value="workspace" className="shrink-0">
-          <FolderTreeIcon className="size-3.5" />
+        <TabsTrigger value="workspace" className={TAB_TRIGGER_CLASS}>
+          <FolderTreeIcon className={TAB_ICON_CLASS} />
           工作区
         </TabsTrigger>
       </TabsList>
@@ -377,7 +392,9 @@ function SubAgentPlanPanel({ scope }: { scope: SubAgentScope }) {
     <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-auto">
       <section className="shrink-0 rounded-lg border border-border/60 bg-surface-2 px-2.5 py-2">
         <h4 className="text-[11px] font-medium text-muted-foreground">任务目标</h4>
-        <p className="mt-1 whitespace-pre-wrap text-xs leading-5">
+        {/* 任务目标里常出现长路径 / 长 token：390px 下不折行就只能横向滚。
+            只在 <lg 允许断词，lg 起 break-normal 还原（桌面换行行为与原来一致） */}
+        <p className="mt-1 whitespace-pre-wrap break-words text-xs leading-5 lg:break-normal">
           {scope.task ?? '（没有记录任务目标）'}
         </p>
       </section>
@@ -480,7 +497,9 @@ function ActivatedSkillsPanel({
                 type="button"
                 variant="link"
                 size="sm"
-                className="h-auto w-fit gap-1 px-0 text-[11px]"
+                // 手机上文字链接只有 16px 高，手指点不中：base 加纵向内边距撑到 28px，
+                // lg 起 py-0 还原（桌面这条链接的高度与位置都不变）
+                className="h-auto w-fit gap-1 px-0 py-1.5 text-xs lg:py-0 lg:text-[11px]"
                 onClick={() => setViewing(skill.name)}
               >
                 查看技能
@@ -593,6 +612,9 @@ function SystemPromptPanel({
           aria-label="复制系统指令全文"
           disabled={!instructions}
           onClick={copy}
+          // IconText 本体只有文字高（约 16px），触屏很难点中：base 撑到 32px 高；
+          // lg 起 min-h-0 还原（inline-flex 原本 min-height 即 0，桌面排版不变）
+          className="min-h-8 lg:min-h-0"
         />
       </div>
       <div className="min-h-0 flex-1 overflow-auto rounded-md bg-surface-2 p-2.5">

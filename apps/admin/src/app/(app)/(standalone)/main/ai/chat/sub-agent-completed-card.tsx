@@ -42,7 +42,8 @@ export function SubAgentCompletedCard({
           <Button
             variant="link"
             size="sm"
-            className="ml-auto h-auto shrink-0 px-0 text-xs"
+            // 手机把「查看过程」抬到 ~28px 高再给拇指点；lg 起 py-0 与改动前一致
+            className="ml-auto h-auto shrink-0 px-0 py-1.5 text-xs lg:py-0"
             onClick={() => onOpen(data.subRunId)}
           >
             查看过程
@@ -50,7 +51,7 @@ export function SubAgentCompletedCard({
         ) : data.childConversationId ? (
           <Link
             href={conversationPath(data.childConversationId)}
-            className="ml-auto shrink-0 text-xs text-primary hover:underline"
+            className="ml-auto shrink-0 py-1.5 text-xs text-primary hover:underline lg:py-0"
           >
             打开子会话
             <ArrowUpRightIcon className="ml-0.5 inline size-3" aria-hidden />

@@ -1098,7 +1098,16 @@ export const PromptInputFooter = ({ className, ...props }: PromptInputFooterProp
 export type PromptInputToolsProps = HTMLAttributes<HTMLDivElement>
 
 export const PromptInputTools = ({ className, ...props }: PromptInputToolsProps) => (
-  <div className={cn('flex min-w-0 items-center gap-1', className)} {...props} />
+  /**
+   * `flex-wrap`（窄屏允许换行）+ `lg:flex-nowrap`（桌面保持一行）：
+   * 工具区里是「模型选择 + 分段控件 + 上传按钮 + 若干提示文字」，390px 下这一串
+   * 本来就比一行宽 —— 不换行时它会把整行撑出输入框（右侧按钮被裁掉）。
+   * 桌面一行放得下，`lg:flex-nowrap` 让桌面观感与加之前完全一致。
+   */
+  <div
+    className={cn('flex min-w-0 flex-wrap items-center gap-1 lg:flex-nowrap', className)}
+    {...props}
+  />
 )
 
 export type PromptInputButtonTooltip =

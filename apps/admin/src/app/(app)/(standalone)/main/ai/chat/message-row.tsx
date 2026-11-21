@@ -102,8 +102,10 @@ function ChatUnitView({
   switch (unit.kind) {
     case 'text':
       // 用户消息保持纯文本（不走 Markdown：用户打什么就显示什么）
+      // 手机上常贴整条命令 / 日志 / URL：`pre-wrap` 不会在长串内断行，窄屏会直接被气泡裁掉，
+      // 所以 base 放开 `break-words`；桌面（lg 起）仍用 `break-normal`，与改动前逐像素一致。
       return isUser ? (
-        <p className="whitespace-pre-wrap">{unit.text}</p>
+        <p className="break-words whitespace-pre-wrap lg:break-normal">{unit.text}</p>
       ) : (
         <MessageResponse isAnimating={streaming && unit.streaming}>{unit.text}</MessageResponse>
       )
@@ -273,7 +275,9 @@ export const ChatMessage = memo(function ChatMessage({
       </MessageContent>
       <MessageActions
         className={cn(
-          '-mt-1 w-full opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100',
+          // 触屏没有 hover：复制入口在手机上必须常显，否则永远点不到；
+          // lg 起恢复「悬停淡入」（配合 focus-within 保留键盘可达），桌面观感不变。
+          '-mt-1 w-full opacity-100 transition-opacity focus-within:opacity-100 lg:opacity-0 lg:group-hover:opacity-100',
           isUser && 'justify-end',
         )}
       >

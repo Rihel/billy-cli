@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useMemo, useState, type CSSProperties } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import type { AgentFileModel, AgentFileNode, AgentWorkspaceFile } from '@repo/shared'
 import { Badge, Button, cn, DataList } from '@repo/ui'
@@ -197,16 +197,23 @@ export function FilesPanel({
       <div className="flex flex-wrap items-center gap-1.5">
         {view === 'workspace' ? (
           <div className="ml-auto flex items-center gap-1">
-            <Button size="sm" variant="ghost" onClick={() => setIncludeCaches((value) => !value)}>
+            {/* 工具栏按钮（h-7 = 28px）在手机上偏小：base 抬到 32px，lg 起还原 h-7 */}
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-8 lg:h-7"
+              onClick={() => setIncludeCaches((value) => !value)}
+            >
               {includeCaches ? '隐藏缓存' : '显示缓存'}
             </Button>
             <Button
               size="sm"
               variant="ghost"
+              className="h-8 lg:h-7"
               onClick={() => void workspaceQuery.refetch()}
               disabled={workspaceQuery.isFetching}
             >
-              <RefreshCwIcon className="size-3.5" />
+              <RefreshCwIcon className="size-4 lg:size-3.5" />
             </Button>
           </div>
         ) : null}
@@ -215,7 +222,7 @@ export function FilesPanel({
           <Button
             size="sm"
             variant="ghost"
-            className={cn('h-7 shrink-0', view === 'session' && 'ml-auto')}
+            className={cn('h-8 shrink-0 lg:h-7', view === 'session' && 'ml-auto')}
             onClick={toggleAllDirs}
             title={allCollapsed ? '展开所有目录' : '收起所有目录'}
           >
@@ -250,8 +257,11 @@ export function FilesPanel({
           <Empty text="工作区还没有文件。AI 写文件后出现。" />
         ) : (
           // 外层滚动区是 block（不是 flex），所以这里用 h-full 拿到确定高度：
-          // Virtuoso 的 `height: 100%` 需要一个有确定高度的父容器，否则高度算成 0、一行都不渲染
-          <div className="flex h-full min-h-0 flex-col gap-1">
+          // Virtuoso 的 `height: 100%` 需要一个有确定高度的父容器，否则高度算成 0、一行都不渲染。
+          // `--tree-step` 是每层缩进的宽度：390px 下 20px/级会把深层文件名挤没，base 收到 14px；
+          // 用 CSS 变量而不是 JS 断点，是为了让缩进随视口变化时**不触发 React 重渲染**（虚拟行不重挂载），
+          // 且 lg 起原样回到 20px —— 桌面缩进与竖线位置逐像素不变。
+          <div className="flex h-full min-h-0 flex-col gap-1 [--tree-step:14px] lg:[--tree-step:20px]">
             {/* 深度截断不是分页：文件真的在更深的目录里没被列出，要如实说 */}
             {depthLimited ? (
               <p className="shrink-0 px-1.5 text-[11px] leading-4 text-muted-foreground">
@@ -329,7 +339,7 @@ function SessionNode({
           aria-expanded={open}
           title={open ? '收起' : '展开'}
           onClick={() => onToggle(node.path)}
-          className="flex w-full items-center gap-1.5 rounded px-1.5 py-1 text-left text-xs text-muted-foreground hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+          className="flex w-full items-center gap-1 rounded px-1 py-1.5 text-left text-xs text-muted-foreground hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring lg:gap-1.5 lg:px-1.5 lg:py-1"
         >
           <ChevronDownIcon
             className={cn('size-3.5 shrink-0 transition-transform', !open && '-rotate-90')}
@@ -338,11 +348,14 @@ function SessionNode({
           <span className="min-w-0 flex-1 truncate">{node.name}</span>
           {/* 收起时给出里面有多少项：否则看不出是空目录还是被折起来了 */}
           {open || children.length === 0 ? null : (
-            <span className="shrink-0 text-[10px]">{children.length}</span>
+            // 10px 在手机上是"看不清"的尺寸：base 给 11px，lg 起回到 10px（列表密度不变）
+            <span className="shrink-0 text-[11px] lg:text-[10px]">{children.length}</span>
           )}
         </button>
         {open ? (
-          <div className="ml-3 border-l pl-2">
+          // 每级 20px 的缩进（ml-3 + border 1 + pl-2）在 390px 下把深层文件名挤到几字宽：
+          // base 收到 14px/级（ml-2 + pl-1.5），lg 起原样回到 20px（桌面树形缩进与竖线位置不变）
+          <div className="ml-2 border-l pl-1.5 lg:ml-3 lg:pl-2">
             {children.map((child) => (
               <SessionNode
                 key={child.path}
@@ -430,8 +443,10 @@ function WorkspaceRowView({
   onPreview: (file: AgentWorkspaceFile) => void
   onDownload: (file: AgentWorkspaceFile) => void
 }) {
-  // 缩进 + 每级一条竖线：虚拟化后每行独立挂载，竖线画在行内（绝对定位）才能随行连续
-  const indent = 10 + row.depth * 20
+  // 缩进 + 每级一条竖线：虚拟化后每行独立挂载，竖线画在行内（绝对定位）才能随行连续。
+  // 每级步长走 `--tree-step`（见外层容器）：手机上 14px、桌面 20px，缩进量仍是 `10 + depth × step`。
+  // 行高只由字号与纵向内边距决定，和缩进无关 —— 所以窄屏只收横向，虚拟滚动量到的行高不变。
+  const indent = `calc(10px + ${row.depth} * var(--tree-step))`
   const guides =
     row.depth > 0
       ? Array.from({ length: row.depth }, (_, level) => (
@@ -439,7 +454,7 @@ function WorkspaceRowView({
             key={level}
             aria-hidden
             className="pointer-events-none absolute inset-y-0 border-l border-border/70"
-            style={{ left: 20 + level * 20 }}
+            style={{ left: `calc(${level + 1} * var(--tree-step))` }}
           />
         ))
       : null
@@ -452,7 +467,7 @@ function WorkspaceRowView({
         title={open ? '收起' : '展开'}
         onClick={() => onToggle(row.path)}
         style={{ paddingLeft: indent }}
-        className="relative flex w-full items-center gap-1.5 rounded py-1 pr-1.5 text-left text-xs text-muted-foreground hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+        className="relative flex w-full items-center gap-1 rounded py-1.5 pr-1 text-left text-xs text-muted-foreground hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring lg:gap-1.5 lg:py-1 lg:pr-1.5"
       >
         {guides}
         <ChevronDownIcon
@@ -461,7 +476,7 @@ function WorkspaceRowView({
         <FolderIcon className="size-3.5 shrink-0" />
         <span className="min-w-0 flex-1 truncate">{row.name}</span>
         {open || !row.childCount ? null : (
-          <span className="shrink-0 text-[10px]">{row.childCount}</span>
+          <span className="shrink-0 text-[11px] lg:text-[10px]">{row.childCount}</span>
         )}
       </button>
     )
@@ -497,7 +512,7 @@ function FileRow({
   /** 工作区列表：只显示文件名（大小 / 来源留给预览弹窗） */
   compact?: boolean
   source?: 'user' | 'ai'
-  indent?: number
+  indent?: CSSProperties['paddingLeft']
   onPreview: () => void
   onDownload: () => void
 }) {
@@ -516,29 +531,40 @@ function FileRow({
           onPreview()
         }
       }}
-      className="group flex cursor-pointer items-center gap-2 rounded px-1.5 py-1 hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+      // 390px 下这行要塞「图标 + 文件名 + 大小 + 来源 + 两个图标按钮」，横向先收 gap / 内边距；
+      // 纵向 base 给到 py-1.5 让整行更好点（行高由 Virtuoso 实测，不是常量）。lg 起全部还原。
+      className="group flex cursor-pointer items-center gap-1.5 rounded px-1 py-1.5 hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring lg:gap-2 lg:px-1.5 lg:py-1"
       style={indent === undefined ? undefined : { paddingLeft: indent }}
     >
       {(() => {
         const Icon = fileIconOf(name)
         return <Icon className="size-3.5 shrink-0 text-muted-foreground" />
       })()}
-      <span className={cn('min-w-0 flex-1 truncate', compact ? 'text-[11px]' : 'text-xs')}>
+      {/* 手机上 11px 的文件名太小，base 回到 12px（text-xs）；lg 起还是 11px（工作区列表的紧凑密度不变） */}
+      <span
+        className={cn('min-w-0 flex-1 truncate', compact ? 'text-xs lg:text-[11px]' : 'text-xs')}
+      >
         {name}
       </span>
       {compact ? null : (
-        <span className="shrink-0 text-[10px] text-muted-foreground">{formatFileSize(bytes)}</span>
+        // 大小在预览弹窗里也有；<640 先让位给文件名（390px 下这一项要吃掉约 40px）
+        <span className="hidden shrink-0 text-[10px] text-muted-foreground sm:inline">
+          {formatFileSize(bytes)}
+        </span>
       )}
       {source && !compact ? (
-        <Badge variant="outline" className="shrink-0 text-[10px]">
+        // 来源是语义信息，只收窄不隐藏：390px 下文件名仍有约 200px 可用
+        <Badge variant="outline" className="shrink-0 text-[11px] lg:text-[10px]">
           {source === 'user' ? '用户上传' : 'AI 生成'}
         </Badge>
       ) : null}
       {compact ? null : (
         <>
+          {/* 整行本身已经可点预览，手机上去掉这个重复入口，把宽 / 高让给文件名与「下载」 */}
           <Button
             size="icon-sm"
             variant="ghost"
+            className="hidden sm:inline-flex"
             onClick={(event) => {
               event.stopPropagation()
               onPreview()
@@ -547,16 +573,18 @@ function FileRow({
           >
             <EyeIcon className="size-3.5" />
           </Button>
+          {/* 下载是触屏主操作：base 从 28px 撑到 32px，lg 起 size-7 还原 */}
           <Button
             size="icon-sm"
             variant="ghost"
+            className="size-8 lg:size-7"
             onClick={(event) => {
               event.stopPropagation()
               onDownload()
             }}
             title="下载"
           >
-            <DownloadIcon className="size-3.5" />
+            <DownloadIcon className="size-4 lg:size-3.5" />
           </Button>
         </>
       )}

@@ -168,9 +168,12 @@ export function SessionTabs({
         - 外层显式 `overflow-y-hidden`：`overflow-x-auto` 会把另一轴也算成 auto，
           横向滚动条吃掉的高度又长出竖直滚动条（踩过）；
         - **不写 `scrollbar-none`**：这里的横向滚动条是给用户看的可滚动手感，
-          滑块视觉仍由全局 `OverlayScrollbar` 统一画（原生只留拖拽热区）。
+          滑块视觉仍由全局 `OverlayScrollbar` 统一画（原生只留拖拽热区）；
+        - `overscroll-x-contain`：手机上横滑到头时别把余量交给浏览器 ——
+          iOS 那边继续横滑会被判成"返回上一页"手势，整页直接退出去了。
+          它只截断滚动链、不改任何视觉，桌面尺寸与滚动条表现都不受影响。
       */}
-      <div className="shrink-0 overflow-x-auto overflow-y-hidden border-b border-border pb-1">
+      <div className="shrink-0 overflow-x-auto overflow-y-hidden overscroll-x-contain border-b border-border pb-1">
         <TabsList className="w-max justify-start">
           <TabsTrigger value={MAIN_SESSION_TAB} className="flex-none">
             <MessagesSquareIcon className="size-3.5" />

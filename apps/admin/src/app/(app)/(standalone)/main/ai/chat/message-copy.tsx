@@ -278,7 +278,14 @@ export function MessageCopyMenu({ message }: { message: UIMessage }) {
     <DropdownMenu>
       <DropdownMenuTrigger
         render={
-          <MessageAction tooltip="复制这条消息" label="复制这条消息" aria-label="复制这条消息">
+          <MessageAction
+            tooltip="复制这条消息"
+            label="复制这条消息"
+            aria-label="复制这条消息"
+            // 触发键由 `message-row` 在手机上常显（触屏没有 hover）：把热区从 28px 抬到 32px，
+            // 拇指才落得准；lg 起 size-7 还原，桌面复制键的大小与位置都不变。
+            className="size-8 lg:size-7"
+          >
             <CopyIcon className="size-3.5" />
           </MessageAction>
         }
