@@ -34,8 +34,62 @@ export const mergeAssistantMessage = (messages: UIMessage[], live: UIMessage): U
   return next
 }
 
+/**
+ * 恢复入口的启动判据（纯函数，便于单测）。
+ *
+ * 「在途」必须来自**同步标记**（ref），不能来自 `resuming` state：服务端一收到 resume
+ * 就 `markRunning`，而 state 要等下一次渲染 —— 这个窗口正是竞态的入口。
+ */
+export interface RecoveryStartState {
+  /** 本地续跑（回答挂起的问题）正在消费同一轮流 */
+  blocked: boolean
+  /** 恢复协程正在启动（快照请求还在途） */
+  starting: boolean
+  /** 恢复流已经建立 */
+  hasController: boolean
+}
+
+export const canStartRecovery = (state: RecoveryStartState): boolean =>
+  !state.blocked && !state.starting && !state.hasController
+
+/**
+ * 续跑请求的「先占位、后发送」闸门（纯函数，便于单测）。
+ *
+ * `begin` **必须在 `fetch` 之前**同步执行：它写的是在途 ref（恢复入口据此让路），
+ * `setResuming(true)` 只是顺带给渲染用 —— 只靠 state 会晚一帧。
+ * 请求失败（网络 / HTTP / 没有流）时清占位、回落空闲，并按需接回恢复：
+ * 服务端可能已经收到答案并在跑，`recover` 内部会先取快照，没有进行中的轮就什么都不做。
+ */
+export interface ResumeRequestGuard {
+  begin: () => void
+  clear: () => void
+  recover: () => void
+}
+
+export const submitResumeRequest = async (
+  guard: ResumeRequestGuard,
+  send: () => Promise<Response>,
+): Promise<Response> => {
+  guard.begin()
+  try {
+    return await send()
+  } catch (cause) {
+    guard.clear()
+    guard.recover()
+    throw cause
+  }
+}
+
 export interface UseRunRecoveryOptions {
   enabled: boolean
+  /**
+   * 同步闸门：本地续跑正在消费同一轮流时返回 `true`。
+   *
+   * 必须是 ref（**发请求之前**就会置位）：`resuming` 是 state，要等渲染；
+   * 而服务端收到 resume 就开跑 —— 这段窗口里若自动 `start()`，恢复流会把自己的
+   * clientId 覆盖绑到 Redis 单槽上，把续跑的事件全引向死地址。
+   */
+  isBlocked?: () => boolean
   /** 会话 / 轮次切换时重置（换会话必须重新取快照） */
   reloadKey?: string
   loadSnapshot: () => Promise<AgentRunSnapshotModel | null>
@@ -79,7 +133,17 @@ export const useRunRecovery = (options: UseRunRecoveryOptions): RunRecoveryState
   }, [])
 
   const start = useCallback((): void => {
-    if (startingRef.current || controllerRef.current) return
+    // 自动 / 手动入口共用这道闸门：本地续跑在途时一条恢复流都不能开
+    // （它会抢走 Redis 单槽的 clientId，见 `isBlocked`）
+    if (
+      !canStartRecovery({
+        blocked: optionsRef.current.isBlocked?.() ?? false,
+        starting: startingRef.current,
+        hasController: controllerRef.current !== null,
+      })
+    ) {
+      return
+    }
     startingRef.current = true
     const sequence = sequenceRef.current + 1
     sequenceRef.current = sequence
@@ -186,6 +250,8 @@ export const useRunRecovery = (options: UseRunRecoveryOptions): RunRecoveryState
       stop()
       return
     }
+    // 自动入口同样过闸：本地续跑在途时这里什么都不能做 ——
+    // 等它结束、`enabled` 重新翻 true 再来（本地的收尾会按需接回）
     start()
     return stop
   }, [options.enabled, options.reloadKey, start, stop])

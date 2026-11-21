@@ -72,7 +72,7 @@ import { ModelPicker } from './model-picker'
 import { ChatMessage } from './message-row'
 import { useActiveSubAgentName, useChatMessages, useChatSessionStore } from './chat-session'
 import { ChatTransport } from './chat-transport'
-import { mergeAssistantMessage, useRunRecovery } from './run-recovery'
+import { mergeAssistantMessage, submitResumeRequest, useRunRecovery } from './run-recovery'
 import { toUIMessages } from './history'
 import { conversationPlanOfPlans } from './plan-panel'
 import { ConversationRightPanel, type RightPanelTab } from './right-panel'
@@ -234,6 +234,17 @@ export function ChatConversation({ conversationId }: { conversationId: string })
    * 这个标记让续跑也进入 `streaming` 口径（与普通一轮同一种表现）。
    */
   const [resuming, setResuming] = useState(false)
+  /**
+   * 本地续跑「在途」的**同步**标记（与 `resuming` 配套）。
+   *
+   * 为什么不能只靠 `resuming`：state 要等渲染，而服务端一收到 resume 就 `markRunning` ——
+   * 这段窗口里 `streaming` 仍是 false，恢复链路的两个入口（`enabled` 自动 start /
+   * 详情轮询发现 running）都会以为没人消费这一轮，另开一条 `GET run/stream`；
+   * 它会把自己的 clientId 覆盖绑到 Redis 单槽上，随后又被 `stop()` 掉，
+   * 续跑事件就全发往死地址（表现是边缘 nginx 60s 后回 504 HTML）。
+   */
+  const resumeInFlightRef = useRef(false)
+  const isResumeInFlight = useCallback(() => resumeInFlightRef.current, [])
   const [errorText, setErrorText] = useState<string>()
   /** 会话忙时这条消息被排队（服务端回一帧 `data-queue`）：提示用户"轮到时会自动继续" */
   const [queueNotice, setQueueNotice] = useState<string>()
@@ -608,6 +619,8 @@ export function ChatConversation({ conversationId }: { conversationId: string })
   const localStreaming = status === 'streaming' || status === 'submitted'
   const recovery = useRunRecovery({
     enabled: !isNew && !localStreaming && !resuming,
+    // 本地续跑在途时恢复链路必须让路（ref 同步生效，`resuming` 可能还没渲染）
+    isBlocked: isResumeInFlight,
     reloadKey: conversationId,
     loadSnapshot: loadRecoverySnapshot,
     streamUrl: recoveryStreamUrl,
@@ -688,6 +701,8 @@ export function ChatConversation({ conversationId }: { conversationId: string })
   useEffect(() => {
     if (isNew || streaming || !activeRunQuery.data?.running) return
     if (recoveryActive) return
+    // 本地续跑在途（ref 同步生效，`resuming` 可能还没渲染）：不能再开一条恢复流
+    if (resumeInFlightRef.current) return
     // 排队 / 唤醒轮起跑：没有本地流，交给恢复链路（它会先取快照）
     startRecovery()
   }, [activeRunQuery.data?.running, isNew, recoveryActive, startRecovery, streaming])
@@ -879,30 +894,20 @@ export function ChatConversation({ conversationId }: { conversationId: string })
    * 为什么不用 `useChat` 的 `sendMessage`：那会生成一条新的用户消息 / 新的一轮；
    * 挂起的语义是"同一轮从工具处继续"，用户答案不是新的聊天输入。
    *
-   * 两条时序要求（都踩过）：
+   * 三条时序要求（都踩过）：
    * 1. **提交动作只覆盖"请求被接受"这一段**：早先整个函数 `await` 到续跑流结束才返回，
    *    于是服务端已经在疯狂输出、卡片却一直显示「提交中…」，用户以为没提交成功；
    * 2. **续跑期间要算"在跑"**（`resuming`）：否则 `useChat` 的 `status` 停在 `ready`，
-   *    「AI 正在处理」的指示与停止入口都会消失。
+   *    「AI 正在处理」的指示与停止入口都会消失；
+   * 3. **发请求之前就要把"本地在消费"标记打开**（ref 同步生效）：`resuming` 是 state，
+   *    要等渲染；而服务端一收到 resume 就 `markRunning` —— 这段窗口里恢复链路会另开一条流，
+   *    抢走 Redis 单槽的 clientId（见 `resumeInFlightRef`）。
    *
-   * 所以：请求成功 → 立刻把这题标成"已回答"（dock 收起、时间线留只读记录）→ 打开 `resuming`
-   * → 把续跑流交给后台消费，函数马上返回。
+   * 所以：**先占位**（在途 ref + `resuming`）→ 发请求 → 成功立刻把这题标成"已回答"
+   * （dock 收起、时间线留只读记录）→ 把续跑流交给后台消费，函数马上返回。
+   * 失败 / 中断则回落空闲，并交给恢复链路按需接回（服务端可能其实已经收到答案在跑）。
    */
   const answerQuestions = async (input: AnswerQuestionsInput) => {
-    const response = await fetch(`${client.agent.chatResumeUrl()}?protocol=agui`, {
-      method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-        ...(await client.agent.authHeaders()),
-      },
-      body: JSON.stringify(input),
-    })
-    if (!response.ok) {
-      const detail = await response.text().catch(() => '')
-      throw new Error(detail || `续跑失败（HTTP ${response.status}）`)
-    }
-    if (!response.body) throw new Error('续跑没有返回流')
-
     const seed =
       viewMessages.find((message) =>
         message.parts.some(
@@ -934,6 +939,41 @@ export function ChatConversation({ conversationId }: { conversationId: string })
       })
 
     /**
+     * **发请求之前同步占位**：`begin` 里既写 ref（恢复入口据此让路，立刻生效），
+     * 又打开 `resuming`（渲染用）。请求段的所有失败形态（网络 / 非 2xx / 没有流）
+     * 都在 `send` 里抛出，由 `submitResumeRequest` 统一回落空闲 + 按需接回恢复。
+     */
+    const response = await submitResumeRequest(
+      {
+        begin: () => {
+          resumeInFlightRef.current = true
+          setResuming(true)
+        },
+        clear: () => {
+          resumeInFlightRef.current = false
+          setResuming(false)
+        },
+        recover: startRecovery,
+      },
+      async () => {
+        const next = await fetch(`${client.agent.chatResumeUrl()}?protocol=agui`, {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+            ...(await client.agent.authHeaders()),
+          },
+          body: JSON.stringify(input),
+        })
+        if (!next.ok) {
+          const detail = await next.text().catch(() => '')
+          throw new Error(detail || `续跑失败（HTTP ${next.status}）`)
+        }
+        if (!next.body) throw new Error('续跑没有返回流')
+        return next
+      },
+    )
+
+    /**
      * **先把这题标成已回答**：不等第一个续跑块到达。
      *
      * 为什么要抢先：服务端从收到答案到吐出第一块之间有一段（模型重新起算）——
@@ -943,7 +983,6 @@ export function ChatConversation({ conversationId }: { conversationId: string })
     setMessages((current) =>
       current.map((message) => (message.id === seed.id ? withAnsweredRecord(message) : message)),
     )
-    setResuming(true)
 
     /** 后台消费续跑流：不 await（上面的理由），失败只影响提示，不回滚已回答的记录 */
     void (async () => {
@@ -979,8 +1018,14 @@ export function ChatConversation({ conversationId }: { conversationId: string })
         }
       } catch (cause) {
         setErrorText(`续跑中断：${cause instanceof Error ? cause.message : String(cause)}`)
+        // 流断了但服务端可能还在跑：先回落空闲（清掉在途标记，恢复链路才能进场），
+        // 再交给它按需接回（`startRecovery` 内部先取快照，没有进行中的轮就什么都不做）
+        resumeInFlightRef.current = false
+        setResuming(false)
+        startRecovery()
       } finally {
         // 收尾即回到空闲：`streaming` 随之回落，"轮结束后对账"那个 effect 会刷新列表与详情
+        resumeInFlightRef.current = false
         setResuming(false)
       }
     })()
