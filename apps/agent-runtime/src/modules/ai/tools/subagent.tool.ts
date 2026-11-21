@@ -1,4 +1,4 @@
-import { Inject, Injectable, Optional } from '@nestjs/common'
+import { Inject, Injectable } from '@nestjs/common'
 import dedent from 'dedent'
 import { z } from 'zod'
 import { AppLogger } from '@repo/kits'
@@ -10,7 +10,6 @@ import { AgentRunner, type SubAgentOutcome } from '../runtime/agent-runner.js'
 import { RunRepository } from '../runtime/run.repository.js'
 import { TimelineRepository } from '../runtime/timeline.repository.js'
 import { ConversationRunQueue } from '../runtime/run-queue.service.js'
-import { FileService } from '../files/file.service.js'
 import { subAgentResultPath } from '../runtime/subagent-result.js'
 import { RunStatus, TimelineKind, TimelineRole } from '@repo/shared'
 import type { AgentRuntimeEnvelope } from '../core/envelope.js'
@@ -88,7 +87,7 @@ const NoConfigSchema = z.object({})
  * **子 agent 工具**（`run-sub-agent`）：主 agent 用它**在运行期创建**子 agent。
  *
  * - 提示词由主 agent 现写（本工具的 `system_prompt`）；
- * - 工具面 = **全部工具 − 委派类 − `child: deny`**（所以它不能再造子 agent，深度天然为 1）；
+ * - 工具面 = **与主 agent 同一份 − 委派类 − `child: deny`**（所以它不能再造子 agent，深度天然为 1）；
  * - 它的一切明细都入库（独立 run + 完整时间线）；
  * - **信封会传下去**（`AgentRunner` 造临时 Agent 时注入 `requestContext`，`depth + 1`）——
  *   于是网关的身份 / 作用域 / 限流与审计字段在子 agent 那轮同样成立。
@@ -105,10 +104,6 @@ export class RunSubAgentTool {
     @Inject(RunRepository) private readonly runs: RunRepository,
     @Inject(TimelineRepository) private readonly timelines: TimelineRepository,
     @Inject(ConversationRunQueue) private readonly runQueue: ConversationRunQueue,
-    /** 子助手结论文件的元信息（行数 / 大小）；测试栈不装时只回 path */
-    @Optional()
-    @Inject(FileService)
-    private readonly files?: FileService,
   ) {}
 
   // 工具说明 = **这个工具的唯一一份说明**（系统提示词里的「工具」段直接渲染它）
@@ -334,9 +329,19 @@ export class RunSubAgentTool {
             currentRunId: child.id,
             name,
             status: child.status,
-            // 只给文件元信息（路径 / 行数 / 字节数）：正文让模型自己 read-file 读
-            ...(child.status === RunStatus.Succeeded
-              ? await this.resultMeta(envelope, name, child.id)
+            /**
+             * 只给文件元信息（路径 / 行数 / 字节数）：正文让模型自己 `read-file` 读。
+             *
+             * 大小按子 run 的**最后正文**算，不再 `stat` 宿主本地文件 —— 结论由引擎写到
+             * 工作区执行面（容器 / 远程），宿主本地那份根本不存在；
+             * 旧实现用本地 stat 报出「有 3604 字节」，父 agent 按路径读却 404（2026-11-22 实测）。
+             */
+            ...(child.status === RunStatus.Succeeded && result
+              ? {
+                  path: subAgentResultPath(name, child.id),
+                  bytes: Buffer.byteLength(result, 'utf8'),
+                  lines: result.split('\n').length,
+                }
               : {}),
           })
         }
@@ -348,35 +353,6 @@ export class RunSubAgentTool {
       }
       await new Promise((resolve) => setTimeout(resolve, 250))
     }
-  }
-
-  /**
-   * 子助手结论文件的元信息（路径 / 行数 / 字节数）。
-   *
-   * 只给"有多大"，不给内容：父模型需要正文时自己 `read-file` 读 —— 摘要、全文
-   * 复制进上下文都是重复 token（2026-11-15 定）。
-   */
-  private async resultMeta(
-    envelope: AgentRuntimeEnvelope,
-    name: string,
-    subRunId: string,
-  ): Promise<{ path: string; bytes?: number; lines?: number }> {
-    const path = subAgentResultPath(name, subRunId)
-    const files = this.files
-    if (!files) return { path }
-    const meta = await files
-      .statFile(
-        {
-          conversationId: envelope.workspaceConversationId ?? envelope.conversationId,
-          userId: envelope.triggeredBy,
-          isAdmin: envelope.isAdmin,
-          runId: envelope.parentRunId,
-          toolCallId: null,
-        },
-        path,
-      )
-      .catch(() => null)
-    return meta ? { path, bytes: meta.bytes, lines: meta.lines } : { path }
   }
 
   /** 取消某个子 agent（子会话）当前正在跑的 run */

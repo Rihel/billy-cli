@@ -168,6 +168,26 @@ describe('wait-sub-agent（等结果）', () => {
     expect(out.timedOut).toBe(false)
   })
 
+  it('path 的字节数 / 行数按子 run 正文算（不再 stat 宿主本地文件）', async () => {
+    // 回归：工作区在容器时宿主本地没有这份文件，旧实现却 stat 出「存在 + 大小」，
+    // 父 agent 按 path 去 read-file 必然 404（2026-11-22，会话 pyao4cssrwn3qf291wh8）。
+    const text = '第一行\n第二行\n第三行'
+    const { deps, tool } = build([child()], { text })
+    const spec = specByKey(tool, TOOL_KEYS.waitSubAgent)
+    const settings = await deps.config.settings(spec)
+    const ctx = makeToolContext({ spec, settings, envelope })
+    const out = (await spec.exec(
+      { sub_agent_ids: ['sub-conv-1'], timeout_ms: 1_000 },
+      ctx as never,
+    )) as { agents: Array<Record<string, unknown>> }
+
+    expect(out.agents[0]).toMatchObject({
+      path: 'subagents/剧情主线-sub-run-1.md',
+      bytes: Buffer.byteLength(text, 'utf8'),
+      lines: 3,
+    })
+  })
+
   it('不传 id：只等本会话未完成的子（已完成的不会被等，返回空）', async () => {
     const { deps, tool } = build([child()])
     const spec = specByKey(tool, TOOL_KEYS.waitSubAgent)

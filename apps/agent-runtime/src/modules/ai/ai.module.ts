@@ -36,6 +36,7 @@ import {
   RunRepository,
   RunStatusStream,
   RUN_STATUS_LISTENER,
+  SubAgentResultWriter,
   TimelineRepository,
 } from './runtime/index.js'
 import { createRemoteToolInvoker } from './runtime/remote-tool.client.js'
@@ -207,6 +208,7 @@ let warnedMissingEnvelope = false
 
     // ───────────────────────── 工具组（运行时能力） ─────────────────────────
     AgentRunner,
+    SubAgentResultWriter,
     PlannerStore,
     PlannerTools,
     RunSubAgentTool,

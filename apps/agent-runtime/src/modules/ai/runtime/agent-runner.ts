@@ -26,8 +26,7 @@ import { toUsageRecord, totalTokensOf, usageField } from './usage.js'
 import { ConversationRepository } from './conversation.repository.js'
 import { MemoryExtractorService } from '../memory/memory.extractor.service.js'
 import { ConversationRunQueue } from './run-queue.service.js'
-import { FileService } from '../files/file.service.js'
-import { subAgentResultPath } from './subagent-result.js'
+import { SubAgentResultWriter } from './subagent-result.writer.js'
 import { RunRepository } from './run.repository.js'
 import type { RunEntity } from '@repo/db'
 import { KeyedSemaphore } from './keyed-semaphore.js'
@@ -197,12 +196,12 @@ export class AgentRunner {
     @Inject(ConversationRunQueue)
     private readonly runQueue?: ConversationRunQueue,
     /**
-     * 子助手结论落工作区（写入失败不影响主链路：唤醒通知会退回「摘要 + 子会话」）。
-     * 可选注入，测试栈不装文件服务时跳过。
+     * 子助手结论落**工作区执行面**（写入失败不影响主链路：唤醒通知会退回「摘要 + 子会话」）。
+     * 可选注入：测试栈 / 未装配时跳过落盘。
      */
     @Optional()
-    @Inject(FileService)
-    private readonly files?: FileService,
+    @Inject(SubAgentResultWriter)
+    private readonly resultWriter?: SubAgentResultWriter,
   ) {}
 
   /** 子 agent 并发闸门（按父 run 计）：同一轮最多同时跑 `SUB_AGENT_MAX_CONCURRENT` 个 */
@@ -737,33 +736,17 @@ export class AgentRunner {
    * 子助手结论写入工作区（`subagents/<名字>-<subRunId>.md`）。
    *
    * 返回的是**相对路径**（工作区根），直接给模型用 `read-file` 读；写失败返回 null。
+   * 具体落在哪个文件系统由 `SubAgentResultWriter` 决定 —— 必须与 `read-file` / `bash`
+   * 同一个执行面，否则父 agent 读到的是 `No such file or directory`（2026-11-22 实测）。
    */
   private async persistResultFile(
     request: SubAgentRequest,
     subRunId: string,
     text: string,
   ): Promise<{ path: string; bytes: number; lines: number } | null> {
-    const files = this.files
-    if (!files || !text.trim()) return null
-    const filePath = subAgentResultPath(request.name, subRunId)
-    try {
-      const written = await files.writeFile(
-        {
-          // 子会话共享父会话工作区：落到根会话，父模型与用户都能看见
-          conversationId:
-            request.envelope.workspaceConversationId ?? request.envelope.conversationId,
-          userId: request.envelope.triggeredBy,
-          isAdmin: request.envelope.isAdmin,
-          runId: subRunId,
-          toolCallId: request.toolCallId,
-        },
-        { filePath, content: text },
-      )
-      return { path: filePath, bytes: written.bytes, lines: written.lines }
-    } catch (error) {
-      this.logger.warn('ai.subagent.result_persist_failed', { subRunId, filePath, error })
-      return null
-    }
+    const writer = this.resultWriter
+    if (!writer || !text.trim()) return null
+    return await writer.write(request.envelope, request.name, subRunId, text)
   }
 
   /**
