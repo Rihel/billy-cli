@@ -12,6 +12,7 @@ import {
   CopyIcon,
   DownloadIcon,
   FolderIcon,
+  XIcon,
 } from 'lucide-react'
 import { useHotkeys } from 'react-hotkeys-hook'
 import { toastError, toastSuccess } from '@repo/ui'
@@ -193,6 +194,94 @@ const flattenPreviewTree = (
   return rows
 }
 
+/**
+ * 文件树：**左侧栏与手机抽屉共用一份**。
+ *
+ * 为什么抽出来：左栏一直是 `hidden sm:block` —— 手机上（<640）根本没有文件树，只能靠顶部
+ * 「上一个 / 下一个」盲翻，用户报的「预览不显示文件树」就是这个。现在 <640 用一个覆盖层装
+ * 同一棵树（`variant='sheet'`：行更高、更好点），≥640 仍是左栏（`variant='sidebar'`：行更紧凑）。
+ * 两份结构完全一样，只有行高与字号不同 —— 不再是两套实现。
+ */
+function PreviewFileTree({
+  variant,
+  rows,
+  activeIndex,
+  collapsedDirs,
+  onToggleDir,
+  onSelect,
+}: {
+  variant: 'sidebar' | 'sheet'
+  rows: PreviewTreeRow[]
+  /** 当前文件在 `items` 里的下标（不是行下标） */
+  activeIndex: number
+  collapsedDirs: ReadonlySet<string>
+  onToggleDir: (path: string) => void
+  onSelect: (index: number) => void
+}) {
+  const sheet = variant === 'sheet'
+  return (
+    <>
+      {rows.map((row) =>
+        row.type === 'dir' ? (
+          <button
+            key={`dir:${row.path}`}
+            type="button"
+            onClick={() => onToggleDir(row.path)}
+            style={{ paddingLeft: 8 + row.depth * 12 }}
+            className={cn(
+              'flex w-full items-center gap-1 rounded-md pr-2 text-left text-xs text-muted-foreground hover:bg-muted/60',
+              // 手机上这一行是触摸目标：抬到 ~36px；桌面保持 28px 的紧凑密度
+              sheet ? 'py-2' : 'py-1',
+            )}
+          >
+            <ChevronRightIcon
+              className={cn('size-3 shrink-0', !collapsedDirs.has(row.path) && 'rotate-90')}
+            />
+            <FolderIcon className="size-3.5 shrink-0" />
+            <span className="min-w-0 flex-1 truncate">{row.name}</span>
+          </button>
+        ) : (
+          <button
+            key={row.item.id}
+            type="button"
+            onClick={() => onSelect(row.index)}
+            style={{ paddingLeft: 8 + row.depth * 12 + 16 }}
+            className={cn(
+              'flex w-full flex-col gap-0.5 rounded-md pr-2 text-left',
+              sheet ? 'py-2.5' : 'py-1.5',
+              row.index === activeIndex ? 'bg-muted' : 'hover:bg-muted/60',
+            )}
+          >
+            <span className="flex min-w-0 items-center gap-1.5">
+              {(() => {
+                const Icon = fileIconOf(row.item.filename)
+                return <Icon className="size-3.5 shrink-0 text-muted-foreground" />
+              })()}
+              <span
+                className={
+                  row.item.badge === '工作区'
+                    ? 'truncate text-[11px] font-normal'
+                    : 'truncate text-xs font-medium'
+                }
+              >
+                {row.item.filename}
+              </span>
+            </span>
+            {/* 工作区文件：列表里只给文件名，大小 / 来源等留给预览区，别把树撑成两行 */}
+            {row.item.badge === '工作区' ? null : (
+              <span className="flex items-center gap-2 text-[10px] text-muted-foreground">
+                {row.item.badge ? <span>{row.item.badge}</span> : null}
+                {row.item.subtitle ? <span className="truncate">{row.item.subtitle}</span> : null}
+                <span className="ml-auto shrink-0">{formatFileSize(row.item.bytes)}</span>
+              </span>
+            )}
+          </button>
+        ),
+      )}
+    </>
+  )
+}
+
 export function FilePreviewDialog({
   items,
   index,
@@ -212,6 +301,13 @@ export function FilePreviewDialog({
 }) {
   const current = index === null ? null : items[index]
   const [collapsedDirs, setCollapsedDirs] = useState<Set<string>>(new Set())
+  /**
+   * 手机端文件树覆盖层（<640）。
+   *
+   * 左栏在 <640 是 `hidden`（`sm:block`），原先只能靠「上一个 / 下一个」盲翻；
+   * 这里用同一棵树做覆盖层：点任一文件即切换并收起。桌面（≥640）不渲染它，左栏照旧。
+   */
+  const [treeOpen, setTreeOpen] = useState(false)
   /** 左侧文件树宽度（可拖动分隔条调整；不含小屏，小屏本来就把树收起） */
   const [sidebarWidth, setSidebarWidth] = useState(256)
   const dragRef = useRef<{ startX: number; startWidth: number } | null>(null)
@@ -238,6 +334,15 @@ export function FilePreviewDialog({
     () => flattenPreviewTree(buildPreviewTree(items), collapsedDirs),
     [items, collapsedDirs],
   )
+  /** 展开 / 收起一个目录（侧栏与手机覆盖层共用同一份折叠态） */
+  const toggleDir = (path: string) => {
+    setCollapsedDirs((previous) => {
+      const next = new Set(previous)
+      if (next.has(path)) next.delete(path)
+      else next.add(path)
+      return next
+    })
+  }
   const [resolvedUrl, setResolvedUrl] = useState<string | null>(null)
   const [urlError, setUrlError] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
@@ -374,9 +479,27 @@ export function FilePreviewDialog({
                     </Button>
                   </div>
                 ) : null}
+                {/*
+                  手机上（<640）左栏是隐藏的，这里给一个文件树入口：`文件 N`。
+                  它顶替下面「上一个 / 下一个」两个键的位置 —— 触屏上按树点选比逐个翻更快，
+                  而这两个翻页键在 390px 的页头里既难点又占宽度，所以只在 ≥640 显示。
+                */}
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-7 gap-1 px-2 sm:hidden"
+                  onClick={() => setTreeOpen(true)}
+                  aria-label={`文件列表，共 ${items.length} 个文件`}
+                >
+                  <FolderIcon className="size-3.5" />
+                  文件
+                  <span className="tabular-nums text-muted-foreground">{items.length}</span>
+                </Button>
                 <Button
                   variant="ghost"
                   size="icon-sm"
+                  // 翻页键只在 ≥640 出现（手机上有文件树覆盖层，理由见上面那个按钮）
+                  className="hidden sm:inline-flex"
                   disabled={!hasPrev}
                   onClick={() => onIndexChange(index - 1)}
                   title="上一个文件（↑）"
@@ -387,6 +510,7 @@ export function FilePreviewDialog({
                 <Button
                   variant="ghost"
                   size="icon-sm"
+                  className="hidden sm:inline-flex"
                   disabled={!hasNext}
                   onClick={() => onIndexChange(index + 1)}
                   title="下一个文件（↓）"
@@ -411,72 +535,14 @@ export function FilePreviewDialog({
               <div className="px-2 pb-1.5 text-[11px] font-medium tracking-wide text-muted-foreground uppercase">
                 文件列表（{items.length}）
               </div>
-              {treeRows.map((row) =>
-                row.type === 'dir' ? (
-                  <button
-                    key={`dir:${row.path}`}
-                    type="button"
-                    onClick={() =>
-                      setCollapsedDirs((previous) => {
-                        const next = new Set(previous)
-                        if (next.has(row.path)) next.delete(row.path)
-                        else next.add(row.path)
-                        return next
-                      })
-                    }
-                    style={{ paddingLeft: 8 + row.depth * 12 }}
-                    className="flex w-full items-center gap-1 rounded-md py-1 pr-2 text-left text-xs text-muted-foreground hover:bg-muted/60"
-                  >
-                    <ChevronRightIcon
-                      className={
-                        collapsedDirs.has(row.path)
-                          ? 'size-3 shrink-0'
-                          : 'size-3 shrink-0 rotate-90'
-                      }
-                    />
-                    <FolderIcon className="size-3.5 shrink-0" />
-                    <span className="min-w-0 flex-1 truncate">{row.name}</span>
-                  </button>
-                ) : (
-                  <button
-                    key={row.item.id}
-                    type="button"
-                    onClick={() => onIndexChange(row.index)}
-                    style={{ paddingLeft: 8 + row.depth * 12 + 16 }}
-                    className={
-                      row.index === index
-                        ? 'flex w-full flex-col gap-0.5 rounded-md bg-muted py-1.5 pr-2 text-left'
-                        : 'flex w-full flex-col gap-0.5 rounded-md py-1.5 pr-2 text-left hover:bg-muted/60'
-                    }
-                  >
-                    <span className="flex min-w-0 items-center gap-1.5">
-                      {(() => {
-                        const Icon = fileIconOf(row.item.filename)
-                        return <Icon className="size-3.5 shrink-0 text-muted-foreground" />
-                      })()}
-                      <span
-                        className={
-                          row.item.badge === '工作区'
-                            ? 'truncate text-[11px] font-normal'
-                            : 'truncate text-xs font-medium'
-                        }
-                      >
-                        {row.item.filename}
-                      </span>
-                    </span>
-                    {/* 工作区文件：列表里只给文件名，大小 / 来源等留给预览区，别把树撑成两行 */}
-                    {row.item.badge === '工作区' ? null : (
-                      <span className="flex items-center gap-2 text-[10px] text-muted-foreground">
-                        {row.item.badge ? <span>{row.item.badge}</span> : null}
-                        {row.item.subtitle ? (
-                          <span className="truncate">{row.item.subtitle}</span>
-                        ) : null}
-                        <span className="ml-auto shrink-0">{formatFileSize(row.item.bytes)}</span>
-                      </span>
-                    )}
-                  </button>
-                ),
-              )}
+              <PreviewFileTree
+                variant="sidebar"
+                rows={treeRows}
+                activeIndex={index}
+                collapsedDirs={collapsedDirs}
+                onToggleDir={toggleDir}
+                onSelect={onIndexChange}
+              />
             </aside>
           )}
 
@@ -559,6 +625,41 @@ export function FilePreviewDialog({
               <Empty text="当前类型不支持在线预览，请下载查看。" />
             )}
           </div>
+
+          {/*
+            手机端文件树覆盖层（<640）：与左栏**同一棵树、同一份折叠态**，点文件即切换并收起。
+            `absolute inset-0` 只盖住内容区 —— 页头的标题 / 关闭键 / 复制下载按钮都还在，
+            所以"挑文件"和"看当前文件"是叠在一起的两层，不打断预览。
+          */}
+          {treeOpen ? (
+            <div className="absolute inset-0 z-20 flex flex-col bg-surface-2 sm:hidden">
+              <div className="flex shrink-0 items-center gap-2 border-b px-4 py-2.5">
+                <span className="text-xs font-medium">文件列表（{items.length}）</span>
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  className="ml-auto size-8"
+                  aria-label="收起文件列表"
+                  onClick={() => setTreeOpen(false)}
+                >
+                  <XIcon className="size-4" />
+                </Button>
+              </div>
+              <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-2">
+                <PreviewFileTree
+                  variant="sheet"
+                  rows={treeRows}
+                  activeIndex={index}
+                  collapsedDirs={collapsedDirs}
+                  onToggleDir={toggleDir}
+                  onSelect={(next) => {
+                    onIndexChange(next)
+                    setTreeOpen(false)
+                  }}
+                />
+              </div>
+            </div>
+          ) : null}
 
           {/* 全屏态唯一的外露控件：让开内置关闭键（right-2 + 28px），和它并排 */}
           {fullscreen ? (

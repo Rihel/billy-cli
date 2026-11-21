@@ -14,24 +14,17 @@ import {
 import { useForm } from '@tanstack/react-form'
 import {
   Button,
-  ConfirmAction,
   Dialog,
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
   DialogContent,
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  IconText,
   Input,
   Label,
   ModalForm,
   RefreshButton,
   Sheet,
   SheetContent,
-  SheetHeader,
   SheetTitle,
   cn,
   toastSuccess,
@@ -58,21 +51,18 @@ import {
   usePanelRef,
 } from '@repo/ui/components/ui/resizable.tsx'
 import {
-  ChevronRightIcon,
-  FolderIcon,
-  MoreHorizontalIcon,
+  FolderPlusIcon,
   PanelLeftCloseIcon,
   PanelLeftOpenIcon,
-  PencilIcon,
   PlusIcon,
-  UserRoundIcon,
-  Trash2Icon,
+  RefreshCwIcon,
 } from 'lucide-react'
 import { useServerClient } from '@/lib/server-client'
 import { useAuthStore } from '@/stores/auth.store'
-import { relativeTimeText } from './format'
 import { conversationPath, newConversationPath, CHAT_ROOT } from './routes'
 import { ChatMobileNavContext } from './mobile-nav-context'
+// 会话列表主体（桌面侧栏 + 手机抽屉共用一份，见该文件顶部说明）
+import { ConversationGroupList } from './conversation-list'
 
 /**
  * 会话页的**外层壳**：左侧会话列表（库里的真相），右侧对话区。
@@ -98,62 +88,6 @@ const SIDEBAR_WIDTH = { default: 264, min: 180, max: 420 } as const
 
 /** 会话列表每页条数；触底自动取下一页（会话可能几十上百条，不能只拉第一页） */
 const CONVERSATION_PAGE_SIZE = 30
-
-/**
- * 会话行的「更多」操作：**鼠标移入即打开菜单**（点开也行）。
- *
- * 抽成组件是因为要用 `useState` 控制 open —— 在列表 map 里不能直接用 hooks。
- * 菜单在 Portal 里，移出触发区不立刻关（否则指针一进菜单就被判离开），
- * 由菜单自己的 pointerleave / 选中 / Esc / 点外面关闭。
- */
-function ConversationMenu(props: {
-  conversation: AgentConversationModel
-  onRename: (conversation: AgentConversationModel) => void
-  onDelete: (conversation: AgentConversationModel) => void
-}) {
-  const [open, setOpen] = useState(false)
-  return (
-    <div
-      className="pointer-events-none absolute inset-y-1 right-1 flex items-center rounded-md bg-surface-4 px-0.5 opacity-0 transition-opacity group-hover:pointer-events-auto group-hover:opacity-100 focus-within:pointer-events-auto focus-within:opacity-100"
-      onPointerEnter={() => setOpen(true)}
-    >
-      <DropdownMenu open={open} onOpenChange={setOpen}>
-        <DropdownMenuTrigger
-          render={
-            <button
-              type="button"
-              aria-label="更多会话操作"
-              className="inline-flex size-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-surface-3 hover:text-foreground"
-            >
-              <MoreHorizontalIcon className="size-3.5" />
-            </button>
-          }
-        />
-        <DropdownMenuContent align="end" className="w-32" onPointerLeave={() => setOpen(false)}>
-          <DropdownMenuItem
-            onClick={() => {
-              setOpen(false)
-              props.onRename(props.conversation)
-            }}
-          >
-            <PencilIcon className="size-3.5" />
-            重命名
-          </DropdownMenuItem>
-          <DropdownMenuItem
-            variant="destructive"
-            onClick={() => {
-              setOpen(false)
-              props.onDelete(props.conversation)
-            }}
-          >
-            <Trash2Icon className="size-3.5" />
-            删除
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
-    </div>
-  )
-}
 
 export default function ChatLayout({ children }: { children: ReactNode }) {
   const client = useServerClient()
@@ -532,148 +466,33 @@ export default function ChatLayout({ children }: { children: ReactNode }) {
                         className="min-h-0 flex-1 overflow-y-auto overscroll-contain"
                         onScroll={handleListScroll}
                       >
-                        {groups.map((group) => (
-                          <div key={group.key} className="flex flex-col pb-1">
-                            <div className="group/ws flex items-center gap-1 rounded-md px-1 py-1.5 hover:bg-surface-2">
-                              <button
-                                type="button"
-                                className="flex min-w-0 flex-1 items-center gap-1 text-left"
-                                onClick={() => toggleGroup(group.key)}
-                              >
-                                <ChevronRightIcon
-                                  className={cn(
-                                    'size-3 shrink-0 text-muted-foreground transition-transform',
-                                    !collapsed.has(group.key) && 'rotate-90',
-                                  )}
-                                />
-                                <FolderIcon className="size-3.5 shrink-0 text-muted-foreground" />
-                                <span className="min-w-0 flex-1 truncate text-[11px] font-medium text-muted-foreground">
-                                  {group.name}
-                                </span>
-                                {group.ownerId && group.ownerId !== me ? (
-                                  <IconText
-                                    icon={<UserRoundIcon />}
-                                    size="small"
-                                    tooltip={`所属用户：${group.ownerName ?? group.ownerId}`}
-                                    aria-label={`所属用户：${group.ownerName ?? group.ownerId}`}
-                                  />
-                                ) : null}
-                              </button>
-                              {group.workspaceId ? (
-                                <div className="flex items-center gap-0.5 opacity-0 transition-opacity group-hover/ws:opacity-100 focus-within:opacity-100">
-                                  <IconText
-                                    icon={<PlusIcon />}
-                                    size="small"
-                                    tooltip="在此工作区新建会话"
-                                    aria-label="在此工作区新建会话"
-                                    onClick={() => createInWorkspace.mutate(group.workspaceId!)}
-                                  />
-                                  <ConfirmAction
-                                    danger
-                                    title="删除这个工作区？"
-                                    description="工作区会被软删，容器随之销毁；里面的会话保留，但不再归属它。"
-                                    disabled={removeWorkspace.isPending}
-                                    onConfirm={async () => {
-                                      await removeWorkspace.mutateAsync(group.workspaceId!)
-                                    }}
-                                  >
-                                    <Trash2Icon className="size-3.5" />
-                                  </ConfirmAction>
-                                </div>
-                              ) : null}
-                            </div>
-                            {!collapsed.has(group.key) &&
-                              group.conversations.map((conversation) => {
-                                const active = pathname === conversationPath(conversation.id)
-                                // 相对时间（用户口径）：列表扫的是"新旧"，不是具体时刻 ——
-                                // 超过一周自动回落成日期（见 `relativeTimeText`）
-                                const time = relativeTimeText(
-                                  conversation.updatedAt ?? conversation.createdAt,
-                                )
-                                return (
-                                  // 行操作（改名 / 删除）是 `<Link>` 的**兄弟节点**、不是子节点：
-                                  // 嵌在 Link 里的话，点操作会连带触发跳转 —— `ConfirmAction` 的触发自带 onClick，
-                                  // 没有留给调用方 `preventDefault` 的口子
-                                  <div key={conversation.id} className="group relative">
-                                    {/*
-                              一行式（对齐 DSH）：标题在左、时间在右，悬停时**同一位置**换成操作 icon。
-                              为什么不再显示「N 轮」：一行只有一份右对齐的信息，时间才是用户扫列表的判据；
-                              轮数是过程指标，要看就进会话看。token 累计同理，属于会话详情，不塞列表行。
-                            */}
-                                    <Link
-                                      href={conversationPath(conversation.id)}
-                                      aria-current={active ? 'page' : undefined}
-                                      className={cn(
-                                        'flex w-full items-center gap-2 rounded-md py-2 pr-2 pl-9 text-left text-sm',
-                                        'transition-colors hover:bg-surface-4/60',
-                                        active && 'bg-surface-4',
-                                      )}
-                                    >
-                                      {/* 运行中：一行放不下「运行中」三个字，只留一个呼吸点（语义用 sr-only 补） */}
-                                      {conversation.running ? (
-                                        <span
-                                          className="relative flex size-1.5 shrink-0"
-                                          title="运行中"
-                                        >
-                                          <span
-                                            className="absolute inline-flex size-full animate-ping rounded-full bg-success opacity-75"
-                                            aria-hidden
-                                          />
-                                          <span
-                                            className="relative inline-flex size-1.5 rounded-full bg-success"
-                                            aria-hidden
-                                          />
-                                          <span className="sr-only">运行中</span>
-                                        </span>
-                                      ) : null}
-                                      <span className="min-w-0 flex-1 truncate font-medium">
-                                        {conversation.title || '(无标题)'}
-                                      </span>
-                                      {time ? (
-                                        <span className="shrink-0 text-xs text-muted-foreground group-hover:invisible">
-                                          {time}
-                                        </span>
-                                      ) : null}
-                                    </Link>
-                                    {/*
-                              操作：悬停 / 键盘聚焦时出现「更多」按钮，点开才是菜单 ——
-                              比两个常驻图标安静，也不会把短时间文案挤成两行。
-                            */}
-                                    <ConversationMenu
-                                      conversation={conversation}
-                                      onRename={(target) => {
-                                        renameForm.reset({ title: target.title })
-                                        renameDialog.open(target)
-                                      }}
-                                      onDelete={(target) => removeDialog.open(target)}
-                                    />
-                                  </div>
-                                )
-                              })}
-                          </div>
-                        ))}
-                        {items.length === 0 && !conversationsQuery.isLoading && (
-                          <p className="p-3 text-xs text-muted-foreground">还没有会话</p>
-                        )}
-                        {conversationsQuery.isLoading && (
-                          <p className="p-3 text-xs text-muted-foreground">正在加载会话…</p>
-                        )}
-                        {conversationsQuery.hasNextPage ? (
-                          <div className="flex justify-center p-2">
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              disabled={conversationsQuery.isFetchingNextPage}
-                              onClick={() => void conversationsQuery.fetchNextPage()}
-                            >
-                              {conversationsQuery.isFetchingNextPage ? '正在加载…' : '加载更多会话'}
-                            </Button>
-                          </div>
-                        ) : items.length > 0 ? (
-                          <p className="p-3 text-center text-[11px] text-muted-foreground">
-                            共 {items.length} 个会话，已经到底了
-                          </p>
-                        ) : null}
+                        <ConversationGroupList
+                          variant="sidebar"
+                          groups={groups}
+                          collapsed={collapsed}
+                          onToggleGroup={toggleGroup}
+                          pathname={pathname}
+                          me={me}
+                          list={{
+                            count: items.length,
+                            isLoading: conversationsQuery.isLoading,
+                            hasNextPage: conversationsQuery.hasNextPage,
+                            isFetchingNextPage: conversationsQuery.isFetchingNextPage,
+                            onLoadMore: () => void conversationsQuery.fetchNextPage(),
+                          }}
+                          onRename={(target) => {
+                            renameForm.reset({ title: target.title })
+                            renameDialog.open(target)
+                          }}
+                          onDelete={(target) => removeDialog.open(target)}
+                          onCreateInWorkspace={(workspaceId) =>
+                            createInWorkspace.mutate(workspaceId)
+                          }
+                          onDeleteWorkspace={async (workspaceId) => {
+                            await removeWorkspace.mutateAsync(workspaceId)
+                          }}
+                          deleteWorkspacePending={removeWorkspace.isPending}
+                        />
                       </div>
                       {isNewRoute || isRoot ? (
                         <p className="px-1 text-xs text-muted-foreground">
@@ -726,59 +545,100 @@ export default function ChatLayout({ children }: { children: ReactNode }) {
           {isMobile ? (
             <>
               <Sheet open={mobileListOpen} onOpenChange={setMobileListOpen}>
-                <SheetContent side="left" className="flex w-[86vw] max-w-sm flex-col p-0">
-                  <SheetHeader className="shrink-0 border-b px-4 py-3">
+                {/* `gap-0`：SheetContent 默认 `gap-4`，而这里标题栏自己带 `border-b` ——
+                    保留默认间距会在发丝线和第一行内容之间多出一条 16px 的空档。抽屉只在
+                    手机上渲染，桌面侧栏是另一棵树，不受影响 */}
+                <SheetContent side="left" className="flex w-[86vw] max-w-sm flex-col gap-0 p-0">
+                  {/*
+                    标题栏**不用 `SheetHeader`**：它自带 `sticky z-20`，而 Sheet 的关闭键
+                    是 `z-auto` 的绝对定位元素 —— 标题栏的底色会盖住右上角那颗 X，点不到。
+                    抽屉本来就只有"点遮罩 / 点会话"两条出路，关闭键再不可见就真的像卡住了。
+                    这里用普通 div 复刻同样的视觉（44px 高、发丝线、左右 16px）。
+                  */}
+                  <div className="flex shrink-0 items-center border-b border-border px-4 py-3">
                     <SheetTitle>会话列表</SheetTitle>
-                  </SheetHeader>
+                  </div>
                   <div className="flex min-h-0 flex-1 flex-col gap-2 p-3">
-                    <Button
-                      size="sm"
-                      className="gap-1.5"
-                      nativeButton={false}
-                      render={
-                        <Link href={newConversationPath()} onClick={() => setMobileListOpen(false)}>
-                          <PlusIcon className="size-3.5" />
-                          新建会话
-                        </Link>
-                      }
-                    />
-                    <div className="min-h-0 flex-1 overflow-y-auto">
-                      {items.map((conversation) => {
-                        const active = pathname === conversationPath(conversation.id)
-                        return (
+                    {/*
+                      入口行：新建会话（主）/ 新建工作区 / 刷新。
+                      为什么「新建工作区」必须在抽屉里：工作区是会话的容器，而手机上原先只有
+                      平铺列表 —— 桌面能建工作区、能进某个工作区建会话，手机上两件事都做不到
+                      （用户报的「没有工作区」就是这个）。三个入口并排是为了不再多占一行高度。
+                    */}
+                    <div className="flex items-center gap-2">
+                      <Button
+                        size="sm"
+                        className="h-8 min-w-0 flex-1 gap-1.5"
+                        nativeButton={false}
+                        render={
                           <Link
-                            key={conversation.id}
-                            href={conversationPath(conversation.id)}
+                            href={newConversationPath()}
                             onClick={() => setMobileListOpen(false)}
-                            className={cn(
-                              'flex flex-col gap-0.5 rounded-md px-3 py-2 text-sm',
-                              active ? 'bg-surface-4' : 'hover:bg-surface-4/60',
-                            )}
                           >
-                            <span className="truncate font-medium">
-                              {conversation.title || '(无标题)'}
-                            </span>
-                            <span className="text-[11px] text-muted-foreground">
-                              {conversation.running ? '运行中 · ' : ''}
-                              {conversation.turnCount} 轮
-                            </span>
+                            <PlusIcon className="size-3.5" />
+                            新建会话
                           </Link>
-                        )
-                      })}
-                      {items.length === 0 && !conversationsQuery.isLoading ? (
-                        <p className="p-3 text-xs text-muted-foreground">还没有会话</p>
-                      ) : null}
-                      {conversationsQuery.hasNextPage ? (
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          className="mt-2 w-full"
-                          disabled={conversationsQuery.isFetchingNextPage}
-                          onClick={() => void conversationsQuery.fetchNextPage()}
-                        >
-                          {conversationsQuery.isFetchingNextPage ? '正在加载…' : '加载更多会话'}
-                        </Button>
-                      ) : null}
+                        }
+                      />
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-8 shrink-0 gap-1.5"
+                        onClick={() => setCreateWorkspaceOpen(true)}
+                      >
+                        <FolderPlusIcon className="size-3.5" />
+                        新建工作区
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        className="size-8 shrink-0"
+                        aria-label="刷新会话列表"
+                        title="刷新会话列表"
+                        onClick={() => void conversationsQuery.refetch()}
+                      >
+                        <RefreshCwIcon className="size-4 text-muted-foreground" />
+                      </Button>
+                    </div>
+                    {/*
+                      列表主体与桌面侧栏**同一个组件**（`conversation-list.tsx`）：
+                      分组 / 折叠 / 组内「+」建会话 / 删除工作区 / 分页 / 行菜单全共用，
+                      抽屉只换行排布与常显菜单（`variant="drawer"`）。
+                    */}
+                    <div
+                      className="min-h-0 flex-1 overflow-y-auto overscroll-contain"
+                      onScroll={handleListScroll}
+                    >
+                      <ConversationGroupList
+                        variant="drawer"
+                        groups={groups}
+                        collapsed={collapsed}
+                        onToggleGroup={toggleGroup}
+                        pathname={pathname}
+                        me={me}
+                        list={{
+                          count: items.length,
+                          isLoading: conversationsQuery.isLoading,
+                          hasNextPage: conversationsQuery.hasNextPage,
+                          isFetchingNextPage: conversationsQuery.isFetchingNextPage,
+                          onLoadMore: () => void conversationsQuery.fetchNextPage(),
+                        }}
+                        onNavigate={() => setMobileListOpen(false)}
+                        onRename={(target) => {
+                          renameForm.reset({ title: target.title })
+                          renameDialog.open(target)
+                        }}
+                        onDelete={(target) => removeDialog.open(target)}
+                        onCreateInWorkspace={(workspaceId) =>
+                          createInWorkspace.mutate(workspaceId, {
+                            onSuccess: () => setMobileListOpen(false),
+                          })
+                        }
+                        onDeleteWorkspace={async (workspaceId) => {
+                          await removeWorkspace.mutateAsync(workspaceId)
+                        }}
+                        deleteWorkspacePending={removeWorkspace.isPending}
+                      />
                     </div>
                   </div>
                 </SheetContent>
