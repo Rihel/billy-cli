@@ -34,24 +34,35 @@ const makePubSub = () => ({
   subscribe: vi.fn(() => () => undefined),
 })
 
-/** 内存版 List + INCR：够测 `appendEvent` / `readEvents` 的 rev 语义 */
+/** 内存版 List + INCR：够测 `appendEvent` / `appendEvents` / `readEvents` 的 rev 语义 */
 const makeListRedis = (seed: string[] = []) => {
   const items = [...seed]
-  let rev = seed.length
+  const counters = new Map<string, number>()
+  const bump = (key: string, amount: number): number => {
+    const next = (counters.get(key) ?? 0) + amount
+    counters.set(key, next)
+    return next
+  }
   return {
     items,
-    incr: vi.fn(async () => {
-      rev += 1
-      return rev
-    }),
+    incr: vi.fn(async (key: string) => bump(key, 1)),
+    incrBy: vi.fn(async (key: string, amount: number) => bump(key, amount)),
     rpush: vi.fn(async (_key: string, value: string) => {
       items.push(value)
       return items.length
     }),
+    // 批量追加：一次调用写 N 条（顺序与入参一致）
+    rpushMany: vi.fn(async (_key: string, values: string[]) => {
+      items.push(...values)
+      return items.length
+    }),
     expire: vi.fn(async () => true),
-    incrBy: vi.fn(async (_key: string, amount: number) => amount),
-    ltrim: vi.fn(async () => 'OK'),
-    lpop: vi.fn(async () => null),
+    ltrim: vi.fn(async (_key: string, start: number, stop: number) => {
+      items.splice(0, start)
+      if (stop !== -1) items.splice(stop + 1)
+      return 'OK'
+    }),
+    lpop: vi.fn(async () => items.shift() ?? null),
     lindex: vi.fn(async (_key: string, index: number) => items[index] ?? null),
     lrange: vi.fn(async (_key: string, start: number, stop: number) =>
       items.slice(start, stop === -1 ? undefined : stop + 1),
@@ -250,10 +261,46 @@ describe('AgentStreamStore 输出记录（rev）', () => {
     expect(await store.appendEvent('run1', { type: 'TEXT_MESSAGE_START' })).toBe(1)
     expect(await store.appendEvent('run1', { type: 'TEXT_MESSAGE_END' })).toBe(2)
 
-    expect(redis.rpush).toHaveBeenCalledWith(
-      'agent:stream:run1',
+    expect(redis.rpushMany).toHaveBeenCalledWith('agent:stream:run1', [
       JSON.stringify({ rev: 1, event: { type: 'TEXT_MESSAGE_START' } }),
-    )
+    ])
+    expect(redis.rpushMany).toHaveBeenCalledWith('agent:stream:run1', [
+      JSON.stringify({ rev: 2, event: { type: 'TEXT_MESSAGE_END' } }),
+    ])
+  })
+
+  it('appendEvents 批量：rev 连续、一次 RPUSH 写多值、字节计数累计', async () => {
+    const redis = makeListRedis()
+    const store = new AgentStreamStore(redis as never, silentLogger, makePubSub() as never)
+
+    const rev = await store.appendEvents('run1', [
+      { type: 'TEXT_MESSAGE_CONTENT', messageId: 'm', delta: '你' },
+      { type: 'TEXT_MESSAGE_CONTENT', messageId: 'm', delta: '好' },
+      { type: 'TEXT_MESSAGE_END', messageId: 'm' },
+    ])
+
+    // 一批拿到连续的 rev 段，返回最后一个
+    expect(rev).toBe(3)
+    expect(redis.rpushMany).toHaveBeenCalledTimes(1)
+    const [, payloads] = redis.rpushMany.mock.calls[0] as [string, string[]]
+    expect(payloads).toHaveLength(3)
+    expect(payloads.map((item) => (JSON.parse(item) as { rev: number }).rev)).toEqual([1, 2, 3])
+    // 一批只做一次 rev 段 + 一次字节计数（不是逐条 6 次往返）
+    expect(redis.incrBy).toHaveBeenCalledTimes(2)
+    expect(redis.incrBy).toHaveBeenCalledWith('agent:stream:run1:rev', 3)
+    expect(redis.incrBy).toHaveBeenCalledWith('agent:stream:run1:bytes', expect.any(Number))
+
+    // 第二批接着上一批的水位，不回退
+    expect(await store.appendEvents('run1', [{ type: 'RUN_FINISHED' }])).toBe(4)
+  })
+
+  it('appendEvents 空数组不碰 Redis（收尾路径可能传空批）', async () => {
+    const redis = makeListRedis()
+    const store = new AgentStreamStore(redis as never, silentLogger, makePubSub() as never)
+
+    expect(await store.appendEvents('run1', [])).toBe(0)
+    expect(redis.rpushMany).not.toHaveBeenCalled()
+    expect(redis.incrBy).not.toHaveBeenCalled()
   })
 
   it('readEvents 按 rev 切片，读侧把旧记录归一成 event', async () => {

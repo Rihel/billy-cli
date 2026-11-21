@@ -310,3 +310,74 @@ describe('失败不阻断：单项失败只进报告', () => {
     expect(report.credentials).toEqual([])
   })
 })
+
+describe('技能物化：单文件失败不连坐，正文优先，失败不写幂等标记', () => {
+  it('素材写失败 → 报告 partial、SKILL.md 仍然落地、不写 done 标记', async () => {
+    const { service } = makeService({
+      skills: [
+        {
+          key: 'design',
+          files: [
+            { path: 'assets/photos.json', content: '{}' },
+            { path: 'references/a.md', content: 'ref' },
+            { path: 'SKILL.md', content: '# body' },
+          ],
+        },
+      ],
+    })
+    const writes: string[] = []
+    const shell: SetupShell = {
+      async exec() {
+        return ok()
+      },
+      async write(path) {
+        // 大文件撞 argv 上限：模拟 2026-11-22 现场
+        if (path.endsWith('assets/photos.json')) throw new Error('argument list too long')
+        writes.push(path)
+      },
+      async read() {
+        return null
+      },
+    }
+
+    const { report } = await service.run('ws_1', shell)
+
+    expect(report.skills).toEqual([
+      {
+        skillKey: 'design',
+        outcome: 'partial',
+        message: expect.stringContaining('assets/photos.json'),
+      },
+    ])
+    // SKILL.md 必须最先写：正文在，技能才算存在
+    expect(writes[0]).toBe('.agents/design/SKILL.md')
+    expect(writes).toContain('.agents/design/references/a.md')
+    // 没写全就不落幂等标记，下次 ensure 还会重试
+    expect(writes.some((path) => path.startsWith('.billy/setup/'))).toBe(false)
+  })
+
+  it('全部文件都失败 → 报告 failed，同样不写标记', async () => {
+    const { service } = makeService({
+      skills: [{ key: 'broken', files: [{ path: 'SKILL.md', content: '# body' }] }],
+    })
+    const writes: string[] = []
+    const shell: SetupShell = {
+      async exec() {
+        return ok()
+      },
+      async write(path) {
+        writes.push(path)
+        throw new Error('disk full')
+      },
+      async read() {
+        return null
+      },
+    }
+
+    const { report } = await service.run('ws_1', shell)
+
+    expect(report.skills[0]).toMatchObject({ skillKey: 'broken', outcome: 'failed' })
+    // 只尝试过技能文件与版本文件，没有任何 done 标记
+    expect(writes.filter((path) => path.startsWith('.billy/setup/'))).toEqual([])
+  })
+})

@@ -1,73 +1,39 @@
 'use client'
 
+import type { UIMessage } from 'ai'
 import { Badge } from '@repo/ui'
-// ai-elements 组件**走子路径**（不进 barrel：体积大、按需引入，见 docs/design/ai-agent.md §1）
-import {
-  Reasoning,
-  ReasoningContent,
-  ReasoningTrigger,
-} from '@repo/ui/components/ai-elements/reasoning.tsx'
-import {
-  Tool,
-  ToolContent,
-  ToolHeader,
-  ToolInput,
-  ToolOutput,
-} from '@repo/ui/components/ai-elements/tool.tsx'
 import { BotIcon, LoaderCircleIcon } from 'lucide-react'
-import { isSubAgentActive, type SubAgentLive } from './sub-agent-live'
+import { isSubAgentActive, livePartsOf, type SubAgentLive } from './sub-agent-live'
+import { statusLabel, statusVariant } from './sub-agent-status'
+import { ChatMessage } from './message-row'
+import { toMessageState } from './chat-session'
 
 /**
  * 子助手的**过程视图**（主区顶部子 agent tab 在"运行中"时显示的内容）。
  *
  * 数据来自实时流（`sub-agent-live.ts` 收集的 `data-sub-agent*` 块）——
  * 会话页在**同一次渲染**里把最后一条消息的 parts 收好传进来，所以运行中也能逐帧看到推理与正文；
- * 跑完之后改用库里那份完整时间线（见 `session-tabs.tsx` 的 `SubRunView`），
- * 这份视图只在"还在跑 / 库里暂时没有该 run"时出场。
+ * 跑完之后改用库里那份完整时间线（见 `session-tabs.tsx` 的 `SubRunView`）。
  *
- * 正文用 `whitespace-pre-wrap` 而不是 Markdown 渲染：这一段是**每个增量 tick 都在变**的长文本，
- * 边跑边做一遍 Markdown 解析纯属浪费；跑到终点后由 `SubRunView` 用主对话同一个 `ChatMessage`
- * 渲染成正式的样子。
+ * **渲染只有一条路**：实时事件先映射成与历史时间线同形的 UI parts（`livePartsOf`），
+ * 再交给主对话同一个 `ChatMessage`（工具卡 / 推理卡 / 正文都只有那一份实现）。
+ * 2026-11-21 之前这里手写过一套工具卡与灰底正文，结果是"同一段过程，跑到一半和跑完
+ * 长得不一样"（用户反馈）；现在不再自己画。
  */
-
-/** 运行状态 → 人话（卡片、tab 与运行记录都用这一份，口径不分叉） */
-export const statusLabel: Record<string, string> = {
-  pending: '排队中',
-  running: '进行中',
-  suspended: '等待回答',
-  succeeded: '已完成',
-  failed: '失败',
-  interrupted: '已中断',
-  canceled: '已停止',
-  rejected: '未执行',
-}
-
-export const statusVariant = (
-  status?: string,
-): 'default' | 'secondary' | 'destructive' | 'outline' => {
-  if (status === 'succeeded') return 'default'
-  if (status === 'failed') return 'destructive'
-  if (status === 'running') return 'secondary'
-  return 'outline'
-}
 
 const formatDuration = (ms?: number): string =>
   ms === undefined ? '—' : ms < 1000 ? `${ms} ms` : `${(ms / 1000).toFixed(2)} s`
 
 export function SubAgentLiveView({ live }: { live: SubAgentLive }) {
   const active = isSubAgentActive(live)
-  // 正文 / 推理在写入时已经聚合成字符串（见 `sub-agent-live.ts` 的文件头）：
-  // 这里不再每帧 filter+map+join 数万条增量
-  const streamedText = live.text
-  const streamedReasoning = live.reasoning
-  const text = streamedText || live.result || ''
-  const entries = live.entries ?? []
+  const parts = livePartsOf(live, { streaming: active })
   const hasAnything =
     Boolean(live.task) ||
-    Boolean(streamedReasoning) ||
-    Boolean(text) ||
+    Boolean(live.reasoning) ||
+    Boolean(live.text) ||
+    Boolean(live.result) ||
     live.events.length > 0 ||
-    entries.length > 0
+    (live.entries?.length ?? 0) > 0
 
   return (
     <div className="flex flex-col gap-3">
@@ -100,108 +66,26 @@ export function SubAgentLiveView({ live }: { live: SubAgentLive }) {
       ) : null}
       {live.reason ? <p className="text-xs text-warning">{live.reason}</p> : null}
 
-      {entries.length > 0 ? (
-        entries.map((entry, index) => {
-          if (entry.kind === 'text') {
-            return (
-              <div
-                key={`text-${index}`}
-                className="rounded-md bg-muted/40 p-2 text-sm whitespace-pre-wrap"
-              >
-                {entry.text}
-              </div>
-            )
-          }
-          if (entry.kind === 'reasoning') {
-            return (
-              <Reasoning key={`reasoning-${index}`} isStreaming={active}>
-                <ReasoningTrigger
-                  getThinkingMessage={(streaming) => (
-                    <span>{streaming ? '子助手思考中…' : '子助手思考过程'}</span>
-                  )}
-                />
-                <ReasoningContent>{entry.text}</ReasoningContent>
-              </Reasoning>
-            )
-          }
-          const event = entry.event
-          return (
-            <Tool key={`${event.toolCallId ?? index}-${event.kind}`} defaultOpen={false}>
-              <ToolHeader
-                type="dynamic-tool"
-                state={event.isError ? 'output-error' : 'output-available'}
-                toolName={event.toolKey ?? 'tool'}
-              />
-              <ToolContent>
-                {event.kind === 'tool-call' ? (
-                  <ToolInput input={event.input} />
-                ) : (
-                  <ToolOutput
-                    output={event.output}
-                    errorText={
-                      event.isError
-                        ? (event.errorText ?? JSON.stringify(event.output ?? ''))
-                        : undefined
-                    }
-                  />
-                )}
-              </ToolContent>
-            </Tool>
-          )
-        })
+      {hasAnything ? (
+        // 与主对话、与跑完后的 SubRunView **同一个渲染器**：工具卡 / 推理 / 正文都只有一份实现
+        <ChatMessage
+          message={toMessageState({
+            id: live.runId,
+            role: 'assistant',
+            parts,
+          } as UIMessage)}
+          streaming={active}
+          showTrailingCards={false}
+        />
       ) : (
-        <>
-          {streamedReasoning ? (
-            <Reasoning isStreaming={active}>
-              <ReasoningTrigger
-                getThinkingMessage={(streaming) => (
-                  <span>{streaming ? '子助手思考中…' : '子助手思考过程'}</span>
-                )}
-              />
-              <ReasoningContent>{streamedReasoning}</ReasoningContent>
-            </Reasoning>
-          ) : null}
-
-          {text ? (
-            <div className="rounded-md bg-muted/40 p-2 text-sm whitespace-pre-wrap">{text}</div>
-          ) : null}
-
-          {/* 旧数据没有 entries：仍按旧顺序展示工具事件 */}
-          {live.events.map((event, index) => (
-            <Tool key={`${event.toolCallId ?? index}-${event.kind}`} defaultOpen={false}>
-              <ToolHeader
-                type="dynamic-tool"
-                state={event.isError ? 'output-error' : 'output-available'}
-                toolName={event.toolKey ?? 'tool'}
-              />
-              <ToolContent>
-                {event.kind === 'tool-call' ? (
-                  <ToolInput input={event.input} />
-                ) : (
-                  <ToolOutput
-                    output={event.output}
-                    errorText={
-                      event.isError
-                        ? (event.errorText ?? JSON.stringify(event.output ?? ''))
-                        : undefined
-                    }
-                  />
-                )}
-              </ToolContent>
-            </Tool>
-          ))}
-        </>
-      )}
-
-      {live.error ? <p className="text-xs text-destructive">{live.error}</p> : null}
-
-      {!hasAnything ? (
         <p className="text-xs text-muted-foreground">
           {active
             ? '子助手正在准备…（推理与工具往返会在这里逐帧出现）'
             : '这个子助手没有留下可显示的过程记录。'}
         </p>
-      ) : null}
+      )}
+
+      {live.error ? <p className="text-xs text-destructive">{live.error}</p> : null}
     </div>
   )
 }

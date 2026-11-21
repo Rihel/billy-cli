@@ -22,6 +22,13 @@
   handle 记 `credentialsReady`（认领来的 handle 标 `false`）。`ensureHandle` 命中旧 handle 且
   `credentialsReady===false` 时只重跑凭据段；初始化失败另排 5s 定时补偿（unref，成功自停）。
   安装失败不重试（贵），凭据失败必须重试（便宜）—— 两者语义分开记账。
+- **写文件不能把内容塞进 argv**（2026-11-22 实测）：`setup-shell.write` 原来把 base64 内联进
+  `printf` 参数，Linux 单条 argv 上限 128KB，>96KB 的文件（`design-taste-frontend` 的
+  `assets/photos/photos.json` 360KB）直接 `argument list too long`。现在按 48KB 分片、每片一条
+  `exec` 追加，空内容也会真的落一个空文件。
+- **技能物化单文件失败不连坐**：`materializeSkills` 先写 `SKILL.md`、逐文件 try/catch，报告里
+  记 `partial`（全部失败才是 `failed`）。**技能没写全就不写 `.billy/setup/<id>@<hash>.done`**，
+  否则一次瞬时失败会被永久固化（旧实现无条件写标记，所以那个技能一直只剩 52 个素材）。
 - **清单读取必须 JSON.parse**：`fs read` 的出参是 `{ path, content, bytes }`，原实现把整个出参当清单结构，
   读出永远是空 items 并缓存 → 阴性中毒，一次读"成功"即永久拒绝。读失败不缓存、拒绝前重读一次磁盘。
   容器后端 `cat` 非 0 要返回失败（否则文件不存在被当成空清单）。

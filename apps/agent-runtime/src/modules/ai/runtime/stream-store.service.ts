@@ -174,17 +174,40 @@ export class AgentStreamStore {
    * 双上限（条数 20k + 字节 32MB）超了从头部裁剪，rev 不受影响。
    */
   async appendEvent(runId: string, event: unknown): Promise<number> {
-    const key = chunksKey(runId)
-    const rev = await this.redis.incr(revKey(runId))
-    const payload = JSON.stringify({ rev, event })
-    const bytes = Buffer.byteLength(payload)
-    const size = await this.redis.rpush(key, payload)
-    await this.redis.expire(key, CHUNKS_TTL_SECONDS)
-    await this.redis.expire(revKey(runId), CHUNKS_TTL_SECONDS)
+    return this.appendEvents(runId, [event])
+  }
 
+  /**
+   * **批量**追加一组事件，返回最后一个 rev（rev 段连续）。
+   *
+   * 为什么批量：逐条 append 是 6 次串行往返（`INCR` + `RPUSH` + 2×`EXPIRE` + `INCRBY` + `EXPIRE`），
+   * 而流式输出是一帧接一帧的 —— 逐帧追加就把 Redis 往返变成了 token 级成本。
+   * 批量后一批只要 2 个往返：`INCRBY n` 拿连续 rev 段 → `RPUSH 多值` / 字节计数并发发出，
+   * TTL 刷新的三条 `EXPIRE` 也并发（同一批命令，等一次回包）。
+   */
+  async appendEvents(runId: string, events: readonly unknown[]): Promise<number> {
+    if (events.length === 0) return 0
+    const key = chunksKey(runId)
     const bytesKey = chunksBytesKey(runId)
-    const totalBytes = await this.redis.incrBy(bytesKey, bytes)
-    await this.redis.expire(bytesKey, CHUNKS_TTL_SECONDS)
+    const revEnd = await this.redis.incrBy(revKey(runId), events.length)
+    const firstRev = revEnd - events.length + 1
+    const payloads: string[] = []
+    let bytes = 0
+    events.forEach((event, index) => {
+      const payload = JSON.stringify({ rev: firstRev + index, event })
+      bytes += Buffer.byteLength(payload)
+      payloads.push(payload)
+    })
+    const [size, totalBytes] = await Promise.all([
+      this.redis.rpushMany(key, payloads),
+      this.redis.incrBy(bytesKey, bytes),
+    ])
+    // TTL 每次追加都刷：长轮次里记录可能一直活过一个 TTL，不能只在建流那一次设
+    await Promise.all([
+      this.redis.expire(key, CHUNKS_TTL_SECONDS),
+      this.redis.expire(revKey(runId), CHUNKS_TTL_SECONDS),
+      this.redis.expire(bytesKey, CHUNKS_TTL_SECONDS),
+    ])
 
     // 双重上限：条数 + 字节。字节超限时从头部弹出并扣减；并发追加同一 run 不常见，
     // 这里的计数是近似值（弹出失败/竞争只会导致提前裁剪，不会超上限）。
@@ -201,7 +224,7 @@ export class AgentStreamStore {
       }
       if (removed > 0) await this.redis.incrBy(bytesKey, -removed)
     }
-    return rev
+    return revEnd
   }
 
   /**

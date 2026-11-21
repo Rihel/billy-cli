@@ -86,12 +86,25 @@ export class WorkspaceSetupService {
       await this.installPackages(shell, plan.packages, report, startedAt)
       await this.materializeSkills(shell, plan.skills, report)
       await this.materializeFiles(shell, plan.files)
-      await shell.write(marker, new Date().toISOString()).catch((error: unknown) =>
-        this.logger.warn('workspace.setup.marker_failed', {
+      /**
+       * **技能没写全就不落幂等标记**：标记是"这次初始化已经完成"的承诺，写下去就不会再重试。
+       * 旧实现无论成败都写，一次瞬时失败（网络、写文件超限）会被永久固化 ——
+       * 2026-11-22 的 `design-taste-frontend` 就是这么只剩 52 个素材的。
+       */
+      const failedSkills = report.skills.filter((item) => item.outcome !== 'materialized')
+      if (failedSkills.length === 0) {
+        await shell.write(marker, new Date().toISOString()).catch((error: unknown) =>
+          this.logger.warn('workspace.setup.marker_failed', {
+            workspaceId,
+            reason: error instanceof Error ? error.message : String(error),
+          }),
+        )
+      } else {
+        this.logger.warn('workspace.setup.marker_skipped', {
           workspaceId,
-          reason: error instanceof Error ? error.message : String(error),
-        }),
-      )
+          failedSkills: failedSkills.map((item) => item.skillKey),
+        })
+      }
     } else {
       // 幂等命中：不重装、不重写技能（但凭据仍要刷新，见下）
       this.logger.info('workspace.setup.marked', { workspaceId, marker })
@@ -194,6 +207,8 @@ export class WorkspaceSetupService {
       workspaceId,
       visible: skills.length,
       removed: removed.length,
+      // 部分失败也要显性化：管理页点了「同步」但技能没写全时，日志是唯一的证据
+      failed: report.skills.filter((item) => item.outcome !== 'materialized').length,
     })
     return { written: skills.map((skill) => skill.key), removed }
   }
@@ -332,24 +347,45 @@ export class WorkspaceSetupService {
 
   // ── ② 技能与配置文件 ──────────────────────────────────────
 
+  /**
+   * 物化一个技能：**单文件失败不连坐**，且 `SKILL.md` 排第一位。
+   *
+   * 顺序的理由：技能正文才是模型要读的东西；素材 / 脚本再多，正文没写上就等于这个技能不存在
+   * （2026-11-22：52 个素材写完后第 53 个失败，`SKILL.md` 一直没落地）。
+   * 为什么不是一个 try 包整个技能：一个坏文件不该让后面的正文、参考文件全部作废。
+   */
   private async materializeSkills(
     shell: SetupShell,
     skills: { key: string; files: { path: string; content: string }[] }[],
     report: WorkspaceSetupReport,
   ): Promise<void> {
     for (const skill of skills) {
-      try {
-        for (const file of skill.files) {
+      const files = [...skill.files].sort((left, right) => {
+        const rank = (path: string): number => (path === 'SKILL.md' ? 0 : 1)
+        return rank(left.path) - rank(right.path)
+      })
+      const failed: string[] = []
+      for (const file of files) {
+        try {
           await shell.write(`.agents/${skill.key}/${file.path}`, file.content)
+        } catch (error) {
+          failed.push(`${file.path}（${error instanceof Error ? error.message : String(error)}）`)
         }
-        report.skills.push({ skillKey: skill.key, outcome: 'materialized' })
-      } catch (error) {
-        report.skills.push({
-          skillKey: skill.key,
-          outcome: 'failed',
-          message: error instanceof Error ? error.message : String(error),
-        })
       }
+      if (failed.length === 0) {
+        report.skills.push({ skillKey: skill.key, outcome: 'materialized' })
+        continue
+      }
+      this.logger.warn('workspace.setup.skill_partial', {
+        skillKey: skill.key,
+        total: files.length,
+        failed: failed.length,
+      })
+      report.skills.push({
+        skillKey: skill.key,
+        outcome: failed.length === files.length ? 'failed' : 'partial',
+        message: failed.slice(0, 3).join('；'),
+      })
     }
   }
 

@@ -346,6 +346,10 @@ desired_status: stopped ──用户启动 / 首次执行──→ running
 - **bash**：按 Workspace **串行**——命令会写什么由模型决定，无法预判，只能整个串行。
 - **资源配额**：个人总配额（CPU/内存/磁盘/并发）封顶；单 Workspace 再设上限。
 
+> **已实现（2026-11-22）**：锁在执行面进程内（`apps/workspace-service/src/workspace/keyed-mutex.ts`）——
+> `exec()` 按工作区串行、`fs()` 的写类操作按 `workspaceId:path` 串行；写（`write` / `replace` /
+> `write-bytes`）走「同目录 tmp + `rename`」原子落盘，读不再可能读到半截文件。配额仍未做。
+
 ## 9. 镜像
 
 ### 9.1 基础镜像

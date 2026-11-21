@@ -34,7 +34,7 @@ import { SkillPreviewDialog } from './skill-preview-dialog'
 import { FilesPanel } from './files-panel'
 import { toUIMessages } from './history'
 import { subRunName } from './sub-agent-live'
-import { statusLabel } from './sub-agent-panel'
+import { statusLabel } from './sub-agent-status'
 
 /** 右栏的 tab（`focus` 与初始 tab 都用它，避免各处写裸字符串） */
 export type RightPanelTab = 'system' | 'skills' | 'plan' | 'files' | 'workspace'

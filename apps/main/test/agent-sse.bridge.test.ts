@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Response } from 'express'
 import { AgentSseBridge } from '../src/agent/agent-sse.bridge.js'
 
@@ -161,6 +161,84 @@ describe('AgentSseBridge（pub/sub → SSE）', () => {
     await bridge.attach('client-1', res)
 
     deliver(pubsub, 'client-1', { nope: true })
+    expect(res.writes).toHaveLength(0)
+  })
+})
+
+/**
+ * 空闲心跳（2026-11-22 补）。
+ *
+ * 这条流会分钟级静默（`bash` 最长 5 分钟、首 token 前不吐字、排队等 runtime 开跑），
+ * 代理普遍 30~120s 空闲就断。心跳只在**空闲**时补字节，有输出时不加噪声；
+ * 响应头还没写出去时（deferred 的补发连接）不能写，否则会隐式发出 200。
+ */
+describe('AgentSseBridge 空闲心跳', () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+  })
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('空闲 15s 写注释帧', async () => {
+    const pubsub = makePubSub()
+    const bridge = new AgentSseBridge(pubsub as never, silentLogger as never)
+    const res = response()
+    await bridge.attach('client-1', res)
+
+    await vi.advanceTimersByTimeAsync(14_000)
+    expect(res.writes).toHaveLength(0)
+    await vi.advanceTimersByTimeAsync(1_000)
+    expect(res.writes).toEqual([': ping\n\n'])
+
+    bridge.detach('client-1')
+  })
+
+  it('刚发过业务帧就跳过（心跳只补空闲段）', async () => {
+    const pubsub = makePubSub()
+    const bridge = new AgentSseBridge(pubsub as never, silentLogger as never)
+    const res = response()
+    await bridge.attach('client-1', res)
+
+    await vi.advanceTimersByTimeAsync(10_000)
+    deliver(pubsub, 'client-1', frame({ type: 'TEXT_MESSAGE_CONTENT', messageId: 'm', delta: 'a' }))
+    expect(res.writes).toHaveLength(1)
+
+    // t=15s：距上次写只有 5s → 不补心跳
+    await vi.advanceTimersByTimeAsync(5_000)
+    expect(res.writes).toHaveLength(1)
+
+    // t=30s：距上次写 20s → 补一帧
+    await vi.advanceTimersByTimeAsync(15_000)
+    expect(res.writes.at(-1)).toBe(': ping\n\n')
+
+    bridge.detach('client-1')
+  })
+
+  it('deferred（响应头还没发）期间不写：写完头之后才补', async () => {
+    const pubsub = makePubSub()
+    const bridge = new AgentSseBridge(pubsub as never, silentLogger as never)
+    const res = response()
+    await bridge.attach('client-1', res, { deferred: true })
+
+    await vi.advanceTimersByTimeAsync(60_000)
+    expect(res.writes).toHaveLength(0)
+
+    bridge.start('client-1')
+    await vi.advanceTimersByTimeAsync(15_000)
+    expect(res.writes).toEqual([': ping\n\n'])
+
+    bridge.detach('client-1')
+  })
+
+  it('detach 之后定时器停掉（不再往死 socket 写）', async () => {
+    const pubsub = makePubSub()
+    const bridge = new AgentSseBridge(pubsub as never, silentLogger as never)
+    const res = response()
+    await bridge.attach('client-1', res)
+
+    bridge.detach('client-1')
+    await vi.advanceTimersByTimeAsync(60_000)
     expect(res.writes).toHaveLength(0)
   })
 })

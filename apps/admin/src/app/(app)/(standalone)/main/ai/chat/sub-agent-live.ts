@@ -398,3 +398,89 @@ export const mergeSubAgent = (base: SubAgentLive, patch?: SubAgentLive): SubAgen
         : base.entries,
   }
 }
+
+/**
+ * 实时过程 → UI parts（与历史时间线同一套形状）。
+ *
+ * 只做**配对 + 排序**，不画任何东西：工具卡、推理卡、正文的样式都只有 `message-row.tsx`
+ * 那一份实现，运行中与跑完不再各画一套。
+ *
+ * - `entries` 是新的有序片段（推荐）；没有时退回旧数据顺序（推理 → 正文 → 事件）；
+ * - `tool-call` / `tool-result` 按 `toolCallId` 配对成一张卡（结果到达时就地补出参）。
+ */
+export const livePartsOf = (
+  live: SubAgentLive,
+  /** 还在跑：把**最后一段正文 / 推理**标成 streaming（推理卡才会显示"思考中…"） */
+  options: { streaming?: boolean } = {},
+): UIMessage['parts'] => {
+  const entries: SubAgentLiveEntry[] = live.entries?.length
+    ? live.entries
+    : [
+        ...(live.reasoning ? [{ kind: 'reasoning' as const, text: live.reasoning }] : []),
+        ...(live.text ? [{ kind: 'text' as const, text: live.text }] : []),
+        ...live.events.map((event) => ({ kind: 'tool' as const, event })),
+      ]
+
+  const parts: UIMessage['parts'] = []
+  /** 已铺开的工具卡（结果到达时就地补；同一 id 只画一张） */
+  const byCall = new Map<string, Record<string, unknown>>()
+  let index = 0
+
+  for (const entry of entries) {
+    index += 1
+    if (entry.kind === 'text') {
+      parts.push({ type: 'text', text: entry.text } as unknown as UIMessage['parts'][number])
+      continue
+    }
+    if (entry.kind === 'reasoning') {
+      parts.push({
+        type: 'reasoning',
+        text: entry.text,
+        state: 'done',
+      } as unknown as UIMessage['parts'][number])
+      continue
+    }
+
+    const { event } = entry
+    const toolCallId = event.toolCallId ? String(event.toolCallId) : `live-${index}`
+    const existing = byCall.get(toolCallId)
+    if (event.kind === 'tool-call') {
+      const part: Record<string, unknown> = {
+        type: 'dynamic-tool',
+        toolName: event.toolKey ?? 'tool',
+        toolCallId,
+        state: 'input-available',
+        input: event.input,
+      }
+      byCall.set(toolCallId, part)
+      parts.push(part as unknown as UIMessage['parts'][number])
+      continue
+    }
+
+    // 只有结果、没有调用（旧数据 / 断流后补的块）：补一张只有出参的卡
+    const target: Record<string, unknown> = existing ?? {
+      type: 'dynamic-tool',
+      toolName: event.toolKey ?? 'tool',
+      toolCallId,
+      input: undefined,
+    }
+    target.state = event.isError ? 'output-error' : 'output-available'
+    target.output = event.output
+    if (event.isError) {
+      target.errorText = event.errorText ?? JSON.stringify(event.output ?? '')
+    }
+    if (!existing) parts.push(target as unknown as UIMessage['parts'][number])
+  }
+
+  if (options.streaming) {
+    for (let index = parts.length - 1; index >= 0; index -= 1) {
+      const part = parts[index] as unknown as { type: string; state?: string }
+      if (part.type === 'text' || part.type === 'reasoning') {
+        part.state = 'streaming'
+        break
+      }
+    }
+  }
+
+  return parts
+}

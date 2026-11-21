@@ -81,6 +81,7 @@
 | [ai-tool-key-naming](ai-tool-key-naming.md) | 能力 key = 扁平工具名（`xxx-xxx`），全局唯一；服务是工具的分组（1:N），模型面与 key 相同 | 免核 | 2026-11-18 |
 | [ai-market](ai-market.md) | 市场 v1 只做 MCP 区：`ai_market_items`（key 幂等 upsert）、scope 固定 platform、不装二进制；个人区待开放 | 必核 | 2026-11-20 |
 | [skill-scope-grants](skill-scope-grants.md) | 技能唯一性按可见集合（platform 按 key、personal 按 owner+key）；`ai_skill_grants` 授权表；P9 剩余过滤/种子/删宿主目录 | 必核 | 2026-11-20 |
+| [workspace-file-concurrency](workspace-file-concurrency.md) | 同一工作区并发：bash 按工作区串行、写按 `workspaceId:path` 串行、写走同目录 tmp+rename 原子落盘；锁在执行面进程内（1 副本） | 抽核 | 2026-11-22 |
 | [workspace-setup-stage](workspace-setup-stage.md) | 初始化阶段在 workspace-service：装包→`.agents/`→凭据（走 main resolve）→`.billy/setup.json`；幂等 hash 只覆盖包+技能；env 必须 `sh -c` 整条包装；凭据段失败靠 credentialsReady + 5s 定时补偿，清单读取要 JSON.parse | 必核 | 2026-11-21 |
 | [credential-envelope](credential-envelope.md) | 凭据密文 `v1:keyId:iv:tag:ct`、AAD 绑行身份防搬运；模板驱动校验/拆分/提示；`personal_credentials` 按 owner+name 唯一；`key` 区分同 provider 多模板（lark-app 自建应用）；lark 无明文导出、走 credential-save | 必核 | 2026-11-21 |
 | [admin-owner-scope](admin-owner-scope.md) | 归属唯一入口 `currentOwner` / `scopeOf`；管理员类型只认会话（`adminType`），管理员管理挂 GodAdminGuard；超管来自 env 种子 / seed:admin | 必核 | 2026-11-20 |
@@ -113,7 +114,7 @@
 | [engineering-toolchain](engineering-toolchain.md) | oxlint + oxfmt + lefthook：0/0 门禁、oxfmt 0.x 钉版本、Windows sh 转义的坑 | 必核 | 2026-11-13 |
 | [packages-layout](packages-layout.md) | 5 个包按运行时分层且单消费者；build 0.9s / typecheck 1.2s，拆包无收益，问题是依赖卫生与入口 | 抽核 | 2026-11-13 |
 | [app-start-standalone](app-start-standalone.md) | standalone 下 `next start` 不兼容；统一走 `scripts/start-standalone.ts`，本地端口 9840/9845 | 必核 | 2026-11-13 |
-| [sse-transport](sse-transport.md) | AI 会话输出走 Redis pub/sub 定向频道（clientId 存 Redis 进度 Hash）；载荷是 AG-UI 事件，补发按 rev；Kafka 已无业务 topic | 抽核 | 2026-11-17 |
+| [sse-transport](sse-transport.md) | AI 会话输出走 Redis pub/sub 定向频道（clientId 存 Redis 进度 Hash）；载荷是 AG-UI 事件，增量 100ms 合并、补发按 rev；心跳两段（runtime 体 15s + main 出口空闲 15s） | 抽核 | 2026-11-22 |
 | [main-runtime-split](main-runtime-split.md) | 拆分后的边界：main 9989 控制面 + runtime 9990 执行面、内部接口、Kafka 回传、配置事件；6 条已知缺口 | 必核 | 2026-11-14 |
 | [admin-shell-layout](admin-shell-layout.md) | admin 三棵布局树共用一条顶栏（会话 / 管理）；共享 Sidebar 是 fixed，侧栏必须行内 top/height 下移 | 必核 | 2026-11-15 |
 | [admin-chat-mobile](admin-chat-mobile.md) | 会话页手机端（<1024）：两个 Sheet 抽屉 + base/lg 双档；`SheetHeader` 压关闭键、hover-only 入口不可达、placeholder/热区/缩进口径 | 抽核 | 2026-11-21 |

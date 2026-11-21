@@ -1,7 +1,8 @@
-import { mkdtemp, rm } from 'node:fs/promises'
+import { mkdtemp, readdir, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import type { WorkspaceFsRequest, WorkspaceFsResult } from '@repo/contracts'
 import { WorkspaceRuntime } from '../src/workspace/workspace-runtime.service.js'
 
 const cleanup: string[] = []
@@ -339,5 +340,182 @@ describe('WorkspaceRuntime（凭据清单与补偿，issue 9）', () => {
 
     expect(gate?.denial.reason).toBe('missing')
     expect(gate?.transient).toBe(true)
+  })
+})
+
+/** 容器后端：记录驱动里的在跑命令数，验证"按工作区串行" */
+const makeSerialContainer = () => {
+  const inflight = { now: 0, max: 0 }
+  const driver = {
+    kind: 'docker' as const,
+    inspect: vi.fn(async () => ({ running: true })),
+    imageOf: vi.fn(async () => 'billy-workspace:test'),
+    exists: vi.fn(async () => true),
+    start: vi.fn(async () => undefined),
+    exec: vi.fn(async () => {
+      inflight.now += 1
+      inflight.max = Math.max(inflight.max, inflight.now)
+      await new Promise((resolve) => setTimeout(resolve, 10))
+      inflight.now -= 1
+      return { code: 0, stdout: '', stderr: '', durationMs: 10, timedOut: false }
+    }),
+    remove: vi.fn(async () => undefined),
+  }
+  const repo = {
+    findConfig: vi.fn(async (id: string) => ({
+      id,
+      name: 'test',
+      backend: 'container' as const,
+      location: {},
+      fileAccess: 'write' as const,
+    })),
+    listContainerWorkspaceIds: vi.fn(async () => []),
+    listVisibleSkills: vi.fn(async () => []),
+    findSetupContext: vi.fn(async () => null),
+    listActiveCredentialVersions: vi.fn(async () => []),
+  }
+  const config = {
+    internalToken: 'test-token',
+    defaultImage: 'billy-workspace:test',
+    containerRuntime: 'docker' as const,
+    kubectlBin: 'kubectl',
+    k8sNamespace: '',
+    containerMemory: '1g',
+    containerCpus: '1',
+    containerPidsLimit: 64,
+    idleTimeoutMs: 10,
+    reapIntervalMs: 1_000,
+    localRoot: '/tmp',
+  }
+  const setup = {
+    run: vi.fn(async () => ({
+      env: {},
+      report: {
+        setupId: 'default',
+        hash: 'x',
+        durationMs: 0,
+        packages: [],
+        skills: [],
+        credentials: [],
+      },
+      manifest: [],
+      resolved: true,
+    })),
+    syncCredentials: vi.fn(async () => ({
+      env: {},
+      version: 'v1',
+      report: {
+        setupId: 'default',
+        hash: 'x',
+        durationMs: 0,
+        packages: [],
+        skills: [],
+        credentials: [],
+      },
+      manifest: [],
+      resolved: true,
+    })),
+  }
+  const logger = { info: vi.fn(), warn: vi.fn(), log: vi.fn(), error: vi.fn() }
+  const runtime = new WorkspaceRuntime(
+    repo as never,
+    { exec: vi.fn() } as never,
+    config as never,
+    setup as never,
+    logger as never,
+    driver as never,
+  )
+  return { runtime, inflight }
+}
+
+describe('执行面串行（docs/design/workspace.md §8）', () => {
+  it('同一工作区的 bash 一次只跑一条（并发三路 → 最大并发 1）', async () => {
+    const { runtime, inflight } = makeSerialContainer()
+
+    await Promise.all([
+      runtime.exec('ws-s', { workspaceId: 'ws-s', command: 'a' }),
+      runtime.exec('ws-s', { workspaceId: 'ws-s', command: 'b' }),
+      runtime.exec('ws-s', { workspaceId: 'ws-s', command: 'c' }),
+    ])
+
+    expect(inflight.max).toBe(1)
+  })
+
+  it('不同工作区互不阻塞（两路 → 最大并发 2）', async () => {
+    const { runtime, inflight } = makeSerialContainer()
+
+    await Promise.all([
+      runtime.exec('ws-x', { workspaceId: 'ws-x', command: 'a' }),
+      runtime.exec('ws-y', { workspaceId: 'ws-y', command: 'b' }),
+    ])
+
+    expect(inflight.max).toBe(2)
+  })
+})
+
+describe('同一路径的写按路径串行（主 agent / 子 agent 并发写不互相截断）', () => {
+  it('第一路没写完，第二路不会开始', async () => {
+    const { runtime } = await make()
+    const id = 'ws-lock'
+    // 先把 handle 建好：首次 ensure 会跑初始化，两路并发时谁先拿到 handle 不确定，
+    // 这里要钉的是"写锁"，不是初始化时序
+    await runtime.ensure(id)
+    const internals = runtime as unknown as {
+      localFs: (root: string, request: WorkspaceFsRequest) => Promise<WorkspaceFsResult>
+    }
+    const original = internals.localFs.bind(runtime)
+    const started: string[] = []
+    let release!: (value: WorkspaceFsResult) => void
+    const gate = new Promise<WorkspaceFsResult>((resolve) => {
+      release = resolve
+    })
+    internals.localFs = vi.fn(async (root: string, request: WorkspaceFsRequest) => {
+      if (request.op === 'write' && request.content === 'first') {
+        started.push('first')
+        return gate
+      }
+      started.push(String(request.content ?? request.op))
+      return original(root, request)
+    })
+
+    const first = runtime.fs(id, {
+      workspaceId: id,
+      op: 'write',
+      path: 'shared.txt',
+      content: 'first',
+    })
+    const second = runtime.fs(id, {
+      workspaceId: id,
+      op: 'write',
+      path: 'shared.txt',
+      content: 'second',
+    })
+    await new Promise((resolve) => setTimeout(resolve, 20))
+
+    // 同一把 `workspaceId:path` 锁：第二路还在排队
+    expect(started).toEqual(['first'])
+    release({ ok: true, data: { path: 'shared.txt' } })
+    await Promise.all([first, second])
+    expect(started).toEqual(['first', 'second'])
+  })
+})
+
+describe('写文件原子化：同目录 tmp + rename', () => {
+  it('大文件写完不残留临时文件，读回内容完整', async () => {
+    const { runtime, root } = await make()
+    const id = 'ws-atomic'
+    const content = 'x'.repeat(100_000)
+
+    const written = await runtime.fs(id, {
+      workspaceId: id,
+      op: 'write',
+      path: 'dir/big.txt',
+      content,
+    })
+    expect(written.ok).toBe(true)
+
+    const read = await runtime.fs(id, { workspaceId: id, op: 'read', path: 'dir/big.txt' })
+    expect((read.data as { content: string }).content).toBe(content)
+    expect(await readdir(join(root, id, 'dir'))).toEqual(['big.txt'])
   })
 })

@@ -75,6 +75,7 @@ import { runContextCompression } from '../mastra/summarizer.js'
 import { toRehydrateMessages } from '../memory/memory.rehydrate.js'
 import { AgentStreamStore } from './stream-store.service.js'
 import { StreamRecorder, toolFailureOf } from './stream-recorder.js'
+import { DeltaCoalescer, isCoalescedDelta } from './stream-deltas.js'
 import { fitMessagesToToolBudget } from './turn-budget.js'
 import { readStreamSteps, readStreamUsage } from './stream-result.js'
 import { createLiveUsage } from './live-usage.js'
@@ -397,6 +398,21 @@ export class AgentChatService {
     @Inject(ToolDiscoveryStore)
     private readonly discovery?: ToolDiscoveryStore,
   ) {}
+
+  /**
+   * 每轮一个的**增量合并器**（`text-delta` / `reasoning-delta` / `data-sub-agent-delta`）。
+   *
+   * 见 `stream-deltas.ts`：逐 token 发射会把 Redis 往返变成 token 级成本，而前端本来就按
+   * 100ms 合并渲染。这里按 runId 持有，`emitAgUi` 负责取用，收尾时 `dispose` 冲残余。
+   * `ctx` 是可变的：同一轮里 `response` 可能后到（先建流、再绑响应的路径），以最新一次为准。
+   */
+  private readonly deltaCoalescers = new Map<
+    string,
+    {
+      ctx: { runId: string; threadId: string; response?: StreamResponseLike }
+      coalescer: DeltaCoalescer
+    }
+  >()
 
   /** 主 agent 的对话记忆（与 createMastra 共用同一个实例） */
   private get agentMemory(): typeof sharedAgentMemory {
@@ -1534,14 +1550,20 @@ export class AgentChatService {
             // 先给客户端，再落库：用户的体感不该被落库拖慢
             controller.enqueue(outgoing)
             try {
-              // 闸门要在**落时间线之前**等：先落库再等，补发可能把这条已闭合 part 读进快照，
-              // 闸门放开后实时又发一遍 → 重复
-              await this.streamStore.waitForReplayGate(run.id)
+              /**
+               * 闸门要在**落时间线之前**等：先落库再等，补发可能把这条已闭合 part 读进快照，
+               * 闸门放开后实时又发一遍 → 重复。
+               *
+               * 但**增量块不落时间线**（录制器只在 part 结束时落库），所以它们既不用等闸门、
+               * 也不用每 token 一次 Redis 往返 —— 直接进合并器，由 flush 统一处理。
+               */
+              if (!isCoalescedDelta(outgoing)) await this.streamStore.waitForReplayGate(run.id)
               await recorder.consume(recordedChunk)
               rev = await this.emitAgUi({
                 runId: run.id,
                 threadId: conversation.id,
                 chunk: outgoing,
+                response,
                 messageIdRef,
               })
               if (chunk.type === 'start-step') stepCount += 1
@@ -1604,14 +1626,13 @@ export class AgentChatService {
         if (done) break
         // 客户端断开后**继续读**：这一轮的内容仍要落库 / 落 Redis，
         // 用户重新接回来（resume）时才能补发 —— 不能因为一次断线就把整轮丢掉。
-        this.writeAgUiChunk(response, value, {
-          threadId: conversation.id,
-          runId: run.id,
-          ...(messageIdRef.value ? { messageId: messageIdRef.value } : {}),
-        })
-        // 挂起事件到了就主动收流：Mastra 的挂起流不会再自己结束（它在等 resume），
-        // 继续 read 会一直挂着，会话永远不释放。cancel 上游，下面按 suspended 收尾。
+        //
+        // 响应体**不再承载业务内容**（main 只 `drain` 它，内容一律走定向广播）：
+        // 逐 chunk 再序列化一遍是纯粹的写放大，早先每个 token 都要付一次。
+        // 这个循环仍然必须读：它是驱动上面 transform（录制 + 发射）的泵。
         if (value.type === 'data-tool-call-suspended') {
+          // 挂起事件到了就主动收流：Mastra 的挂起流不会再自己结束（它在等 resume），
+          // 继续 read 会一直挂着，会话永远不释放。cancel 上游，下面按 suspended 收尾。
           // 不 cancel 上游：挂起后 Mastra 还要把嵌套 workflow 的快照补完整；
           // 直接断读会让 resume 拿到缺了嵌套 step input 的快照。
           break
@@ -1876,6 +1897,12 @@ export class AgentChatService {
         }
       } catch {
         // 广播失败无碍：补发连接会被客户端的 idle 处理或下一次刷新收敛
+      }
+      // 冲掉残余增量并停表：必须在 `clearRun` 之前（进度键没了，广播就找不到收件人）
+      try {
+        await this.disposeCoalescer(run.id)
+      } catch {
+        // 合并器收尾失败只影响最后 ≤100ms 的增量，时间线里已有已闭合内容
       }
       try {
         await this.streamStore.clearRun(run.id)
@@ -2267,6 +2294,12 @@ export class AgentChatService {
       stopHeartbeat()
       stopFirstTokenTimer()
       this.activeRuns.delete(run.id)
+      // 冲掉残余增量再关响应（否则最后 ≤100ms 的正文会随连接一起丢）
+      try {
+        await this.disposeCoalescer(run.id)
+      } catch {
+        // 合并器收尾失败只影响最后一段增量，已闭合内容都在时间线里
+      }
       if (streamStarted) endSse(response)
     }
   }
@@ -2599,8 +2632,73 @@ export class AgentChatService {
    *
    * 四条路径（建流 / 续跑 / 无头执行 / 收尾）都必须走这里。漏一条就会留下 chunk 帧，
    * 于是"存的是事件、传的是 chunk"，两套映射迟早漂移（手册 §4.1）。
+   *
+   * 两类块走两条路：
+   * - **增量块**（`text-delta` / `reasoning-delta` / `data-sub-agent-delta`）只进合并器，
+   *   攒 100ms 或 2k 字再一起发射（见 `stream-deltas.ts`）—— 逐 token 发射的固定成本
+   *   远大于内容本身；
+   * - **其它块**（part 边界 / 工具 / 计划 / 收尾 / 用量）先冲掉攒着的增量，再立即发射，
+   *   保证顺序与"结束帧一定在正文之后"。
    */
   private async emitAgUi(input: {
+    runId: string
+    threadId: string
+    chunk: unknown
+    response?: StreamResponseLike
+    messageIdRef?: { value: string }
+  }): Promise<number> {
+    const coalescer = this.coalescerOf(input)
+    if (isCoalescedDelta(input.chunk)) {
+      coalescer.push(input.chunk)
+      return coalescer.rev
+    }
+    // 非增量块：先把缓冲冲出去（顺序），再排在它后面发射
+    await coalescer.flush()
+    return coalescer.run(() => this.emitAgUiChunk(input))
+  }
+
+  /** 取（或建）这一轮的合并器：`response` / `threadId` 以最新一次传入的为准 */
+  private coalescerOf(input: {
+    runId: string
+    threadId: string
+    response?: StreamResponseLike
+  }): DeltaCoalescer {
+    let entry = this.deltaCoalescers.get(input.runId)
+    if (!entry) {
+      const ctx: { runId: string; threadId: string; response?: StreamResponseLike } = {
+        runId: input.runId,
+        threadId: input.threadId,
+      }
+      const coalescer = new DeltaCoalescer({
+        intervalMs: STREAM_DELTA_FLUSH_MS,
+        maxChars: STREAM_DELTA_MAX_CHARS,
+        sink: (chunks) => this.emitAgUiChunks(ctx, chunks),
+        onError: (error) => {
+          this.logger.warn('ai.stream.emit_failed', {
+            runId: input.runId,
+            reason: error instanceof Error ? error.message : String(error),
+          })
+        },
+      })
+      entry = { ctx, coalescer }
+      this.deltaCoalescers.set(input.runId, entry)
+    }
+    // 响应体是"顺带写一份"的可选通道（main 只 drain）：哪次调用带了就记上，不带时沿用上一次
+    if (input.response) entry.ctx.response = input.response
+    if (input.threadId) entry.ctx.threadId = input.threadId
+    return entry.coalescer
+  }
+
+  /** 收尾：冲掉残余增量并停表（随后到达的 push 会被丢弃 —— 那时这一轮已经结束） */
+  private async disposeCoalescer(runId: string): Promise<void> {
+    const entry = this.deltaCoalescers.get(runId)
+    if (!entry) return
+    this.deltaCoalescers.delete(runId)
+    await entry.coalescer.dispose()
+  }
+
+  /** 发一块（非增量）：等闸门 → 编码 → 追加 + 广播 + 响应体 */
+  private async emitAgUiChunk(input: {
     runId: string
     threadId: string
     chunk: unknown
@@ -2618,11 +2716,32 @@ export class AgentChatService {
       runId: input.runId,
       ...(input.messageIdRef?.value ? { messageId: input.messageIdRef.value } : {}),
     })
-    let rev = 0
-    for (const event of events) {
-      rev = await this.streamStore.appendEvent(input.runId, event)
-      await this.streamStore.publishEvent(input.runId, event)
-      if (input.response) writeSse(input.response, sseFrame(event))
+    return this.appendAndBroadcast(input, events)
+  }
+
+  /** 发一批（合并后的增量）：闸门只等一次，追加与广播也各一次 */
+  private async emitAgUiChunks(
+    input: { runId: string; threadId: string; response?: StreamResponseLike },
+    chunks: Array<Record<string, unknown>>,
+  ): Promise<number> {
+    if (chunks.length === 0) return 0
+    await this.streamStore.waitForReplayGate(input.runId)
+    const ctx = { threadId: input.threadId, runId: input.runId }
+    const events: unknown[] = []
+    for (const chunk of chunks) events.push(...encodeAgUiChunk(chunk as AgUiChunk, ctx))
+    return this.appendAndBroadcast(input, events)
+  }
+
+  /** 事件 → 输出记录（rev）→ 定向广播 → 响应体（批量各一次） */
+  private async appendAndBroadcast(
+    input: { runId: string; response?: StreamResponseLike },
+    events: readonly unknown[],
+  ): Promise<number> {
+    if (events.length === 0) return 0
+    const rev = await this.streamStore.appendEvents(input.runId, events)
+    await this.streamStore.publishEvents(input.runId, events)
+    if (input.response) {
+      for (const event of events) writeSse(input.response, sseFrame(event))
     }
     return rev
   }
@@ -2912,7 +3031,8 @@ export class AgentChatService {
         const recordedChunk = normalizeSuspendedChunk(chunk, run.id)
         const outgoing = toClientToolChunk(recordedChunk)
         try {
-          await this.streamStore.waitForReplayGate(run.id)
+          // 增量块不落时间线 → 不用等闸门（见 chatStream 里的同一段说明）
+          if (!isCoalescedDelta(outgoing)) await this.streamStore.waitForReplayGate(run.id)
           await recorder.consume(recordedChunk)
           rev = await emit(outgoing)
           if (chunk.type === 'start-step') stepCount += 1
@@ -3114,6 +3234,12 @@ export class AgentChatService {
         await emit({ type: STREAM_END_MARKER })
       } catch {
         // 广播失败无碍：补发连接会被客户端的 idle 处理或下一次刷新收敛
+      }
+      // 冲掉残余增量再清进度键（清完 broadcast 就没有收件人了）
+      try {
+        await this.disposeCoalescer(run.id)
+      } catch {
+        // 合并器收尾失败只影响最后 ≤100ms 的增量，时间线里已有已闭合内容
       }
       try {
         await this.streamStore.clearRun(run.id)
@@ -3463,6 +3589,15 @@ export type { TimelineEntity }
  */
 export const STREAM_HEARTBEAT_MS = 15_000
 export const STREAM_PROGRESS_THROTTLE_MS = 1_000
+/**
+ * 增量合并的冲刷间隔（毫秒）。
+ *
+ * 取 100ms 是为了**与前端渲染批次对齐**：`chat-session.ts` 的 `applyChunk` 本来就是 100ms
+ * 合并一次通知，传输再快也只会被合并掉，纯粹烧 Redis 往返与带宽。
+ */
+export const STREAM_DELTA_FLUSH_MS = 100
+/** 单帧累计字数上限：超了立刻冲，避免一个长帧把 100ms 的间隔拖成好几秒的观感 */
+export const STREAM_DELTA_MAX_CHARS = 2_000
 
 /** 流式片段的最小结构（录制器与转发共用） */
 interface UiChunkLike {

@@ -8,7 +8,8 @@ import { BotIcon, LoaderCircleIcon, MessagesSquareIcon } from 'lucide-react'
 import { loadWholeRuns, loadWholeTimeline, type ServerClient } from './data'
 import { toUIMessages } from './history'
 import { ChatMessage } from './message-row'
-import { SubAgentLiveView, statusLabel, statusVariant } from './sub-agent-panel'
+import { SubAgentLiveView } from './sub-agent-panel'
+import { statusLabel, statusVariant } from './sub-agent-status'
 import {
   isActiveRunStatus,
   isSubAgentActive,

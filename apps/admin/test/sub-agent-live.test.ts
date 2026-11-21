@@ -9,6 +9,7 @@ import {
   liveSubAgentsOf,
   liveToolCallCount,
   subAgentStatus,
+  livePartsOf,
   subAgentTabLabels,
   subAgentTabs,
   withRunState,
@@ -435,5 +436,102 @@ describe('withRunState：库里的子 run 覆盖终态字段', () => {
     const live = liveOf()
     withRunState(live, runOf())
     expect(live).toMatchObject({ status: 'running', stepCount: 3 })
+  })
+})
+
+/**
+ * 实时过程 → UI parts：**运行中与跑完共用同一个渲染器**的前提。
+ *
+ * 要钉住的是"形状"而不是样式：工具调用与结果必须配成**一张卡**（与历史时间线一致），
+ * 顺序按到达顺序；只有结果没有调用的旧数据补一张只有出参的卡。
+ */
+describe('实时过程映射成 UI parts', () => {
+  const live = (overrides: Record<string, unknown> = {}) =>
+    ({
+      runId: 'run_1',
+      name: '子助手',
+      text: '',
+      reasoning: '',
+      events: [],
+      ...overrides,
+    }) as unknown as Parameters<typeof livePartsOf>[0]
+
+  it('正文 / 推理 / 工具按到达顺序排列，调用与结果配成一张卡', () => {
+    const parts = livePartsOf(
+      live({
+        entries: [
+          { kind: 'text', text: '先看看环境' },
+          { kind: 'reasoning', text: '需要确认目录' },
+          {
+            kind: 'tool',
+            event: {
+              kind: 'tool-call',
+              toolCallId: 'c1',
+              toolKey: 'bash',
+              input: { command: 'ls' },
+            },
+          },
+          {
+            kind: 'tool',
+            event: { kind: 'tool-result', toolCallId: 'c1', toolKey: 'bash', output: { ok: true } },
+          },
+        ],
+      }),
+    )
+
+    expect(parts.map((part) => part.type)).toEqual(['text', 'reasoning', 'dynamic-tool'])
+    const tool = parts[2] as unknown as {
+      state: string
+      input: unknown
+      output: unknown
+      toolName: string
+    }
+    expect(tool.state).toBe('output-available')
+    expect(tool.toolName).toBe('bash')
+    expect(tool.input).toEqual({ command: 'ls' })
+    expect(tool.output).toEqual({ ok: true })
+  })
+
+  it('只有结果没有调用（旧数据）时，仍单独成一张卡', () => {
+    const parts = livePartsOf(
+      live({
+        entries: [
+          {
+            kind: 'tool',
+            event: { kind: 'tool-result', toolCallId: 'c2', toolKey: 'read-file', output: 'hi' },
+          },
+        ],
+      }),
+    )
+    expect(parts).toHaveLength(1)
+    const tool = parts[0] as unknown as { state: string; output: unknown }
+    expect(tool.state).toBe('output-available')
+    expect(tool.output).toBe('hi')
+  })
+
+  it('没有 entries 的旧数据按「推理 → 正文 → 工具」回退', () => {
+    const parts = livePartsOf(
+      live({
+        reasoning: '想一想',
+        text: '结论',
+        events: [{ kind: 'tool-call', toolCallId: 'c3', toolKey: 'bash', input: {} }],
+      }),
+    )
+    expect(parts.map((part) => part.type)).toEqual(['reasoning', 'text', 'dynamic-tool'])
+  })
+
+  it('运行中只把最后一段正文 / 推理标成 streaming', () => {
+    const parts = livePartsOf(
+      live({
+        entries: [
+          { kind: 'reasoning', text: '想' },
+          { kind: 'text', text: '写一半' },
+        ],
+      }),
+      { streaming: true },
+    )
+    const [reasoning, text] = parts as unknown as { state?: string }[]
+    expect(reasoning?.state).toBe('done')
+    expect(text?.state).toBe('streaming')
   })
 })

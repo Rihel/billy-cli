@@ -71,6 +71,7 @@ import { SkillSlashInput, SkillTags } from './skill-slash-input'
 import { markAdoptedConversation, NEW_CONVERSATION_SLUG } from './routes'
 import { ModelPicker } from './model-picker'
 import { ChatMessage } from './message-row'
+import { groupChatTurns } from './chat-turns'
 import { useActiveSubAgentName, useChatMessages, useChatSessionStore } from './chat-session'
 import { ChatTransport } from './chat-transport'
 import { mergeAssistantMessage, submitResumeRequest, useRunRecovery } from './run-recovery'
@@ -126,7 +127,10 @@ const attachmentMetadataOf = (metadata: unknown): ChatAttachmentModel[] => {
  * 打开了就该一直开着；而且新会话首轮发出后地址会 `replace`（组件重挂载），
  * 状态放内存里会被这一次重挂载清掉。
  */
+/** 右栏开合的记忆 key 前缀：**按会话**分开记（新会话没有 key = 默认关，不被别的会话带开） */
 const PANEL_OPEN_STORAGE_KEY = 'ai-chat-right-panel-open'
+const panelStorageKey = (conversationId: string): string =>
+  `${PANEL_OPEN_STORAGE_KEY}:${conversationId}`
 
 /** 右栏宽度：默认 40%，最小 260px、最大 55%；窗口变宽时按比例吸收 */
 const PANEL_WIDTH = { default: '40%', min: 260, max: '55%' } as const
@@ -384,12 +388,10 @@ export function ChatConversation({ conversationId }: { conversationId: string })
    * 惰性初值会让首帧与 SSR 不一致（hydration 报错）；写成 effect，首帧两处都是"关"。
    */
   useEffect(() => {
-    const stored = window.localStorage.getItem(PANEL_OPEN_STORAGE_KEY)
-    // key 存在 = 用户以前自己开合过，按他上次的选择恢复
-    if (stored !== null) {
-      setPanelOpen(stored === '1')
-    }
-  }, [])
+    const stored = window.localStorage.getItem(panelStorageKey(conversationId))
+    // key 存在 = 这个会话里用户自己开合过，按他上次的选择恢复；新会话没有 key，保持关闭
+    setPanelOpen(stored === '1')
+  }, [conversationId])
 
   /**
    * 读回这个会话上次选的模型。
@@ -425,7 +427,7 @@ export function ChatConversation({ conversationId }: { conversationId: string })
     // 手动开的时候按原口径落在「系统指令」：清掉上一次的切换请求，别让焦点粘住
     setPanelFocus(null)
     setPanelOpen(next)
-    window.localStorage.setItem(PANEL_OPEN_STORAGE_KEY, next ? '1' : '0')
+    window.localStorage.setItem(panelStorageKey(conversationId), next ? '1' : '0')
   }
 
   /** 复制会话 id（会话 id 是要贴给别人的东西：排障时一次贴清楚，比截图靠谱） */
@@ -729,6 +731,12 @@ export function ChatConversation({ conversationId }: { conversationId: string })
    * `useLiveSubAgents()`，实时增量只让那个子树更新，主时间线不跟着重渲染。
    */
   const messageStates = useChatMessages()
+
+  /**
+   * 按用户消息切轮次：用户气泡的 `sticky` 以「这一轮」为包含块 ——
+   * 读一轮的回答时它钉在列顶部，下一轮的气泡到达顶部时把它顶走。
+   */
+  const turns = useMemo(() => groupChatTurns(messageStates), [messageStates])
 
   /**
    * **整个会话的当前计划**（右栏「任务」tab 的数据）。
@@ -1047,13 +1055,17 @@ export function ChatConversation({ conversationId }: { conversationId: string })
   }
 
   /**
-   * **新会话空态**：还没发出第一条消息（也还没在流）时，整页换成居中的品牌 + 输入框。
+   * **空会话态**：没有任何消息（且已加载完）时，整页换成居中的品牌 + 输入框。
    *
-   * 判据用 `messages.length === 0` 而不是只看路由是不是 `new`：发出第一条后消息立刻进 store，
-   * 页面当帧就切回「页头 + tab 条 + timeline」的常规布局（与 DSH 一致）。`streaming` 也排除 ——
-   * 排队续跑 / 服务端自己起跑时消息可能还没进本地 store，那时不该退回空态。
+   * 判据是"空"，不是"路由是不是 new"：工作区里的「+」会**先把会话建好**再跳过去（真实 id），
+   * 这时它同样是空会话，用户看到的应该和 `/new` 一样（居中输入、无页头、无右栏）。
+   * 2026-11-22 之前只看 `isNew`，于是从工作区新建的会话掉回了普通布局（用户反馈）。
+   *
+   * 三个排除项：`loading`（历史还在路上，别先闪一下空态）、`error` / `errorText`
+   * （加载失败要显示报错，不能被空态吞掉）、`streaming`（排队续跑 / 服务端起跑时消息
+   * 可能还没进本地 store，那时也不该退回空态）。
    */
-  const isLanding = isNew && viewMessages.length === 0 && !streaming
+  const isLanding = !loading && !error && !errorText && viewMessages.length === 0 && !streaming
 
   /**
    * 这一轮用哪个 agent。多 agent 时是下拉；页头与新会话居中态**共用同一份**，避免两处各造一套
@@ -1571,32 +1583,43 @@ export function ChatConversation({ conversationId }: { conversationId: string })
                             </div>
                           </ConversationEmptyState>
                         ) : (
-                          messageStates.map((message) => {
-                            // 只给"真的用得上"的行挂回调：其余行拿到稳定的 undefined，memo 才不会每帧失效
-                            const needsPlan = message.plan !== null
-                            const needsPreview = message.files.length > 0
-                            const needsQuestion = message.units.some(
-                              (unit) => unit.kind === 'question',
-                            )
-                            // 「完成卡」（notice）也算子助手卡：两张卡的入口都要切 tab，不跳子会话路由
-                            const needsSubAgent = message.units.some(
-                              (unit) => unit.kind === 'sub-agent' || unit.kind === 'notice',
-                            )
-                            return (
-                              <ChatMessage
-                                key={message.id}
-                                message={message}
-                                streaming={streaming}
-                                {...(needsPlan ? { onOpenPlan: openPlanPanel } : {})}
-                                {...(needsPreview ? { onPreviewImage: previewAttachments } : {})}
-                                {...(needsQuestion ? { onAnswerQuestions: answerQuestions } : {})}
-                                // 子助手卡的「查看过程」= 切到它在主区顶部的 tab（不再跳子会话路由）
-                                {...(needsSubAgent ? { onOpenSubAgent: openSubAgentTab } : {})}
-                                // 计划卡 / 问题卡固定在输入框上方，消息流里不再重复
-                                showTrailingCards={false}
-                              />
-                            )
-                          })
+                          turns.map((turn) => (
+                            // 一轮一个容器：气泡吸顶的范围被限制在这一轮内，下一轮的气泡接替它
+                            <div key={turn.key} className="flex flex-col gap-5">
+                              {turn.messages.map((message) => {
+                                // 只给"真的用得上"的行挂回调：其余行拿到稳定的 undefined，memo 才不会每帧失效
+                                const needsPlan = message.plan !== null
+                                const needsPreview = message.files.length > 0
+                                const needsQuestion = message.units.some(
+                                  (unit) => unit.kind === 'question',
+                                )
+                                // 「完成卡」（notice）也算子助手卡：两张卡的入口都要切 tab，不跳子会话路由
+                                const needsSubAgent = message.units.some(
+                                  (unit) => unit.kind === 'sub-agent' || unit.kind === 'notice',
+                                )
+                                return (
+                                  <ChatMessage
+                                    key={message.id}
+                                    message={message}
+                                    streaming={streaming}
+                                    {...(needsPlan ? { onOpenPlan: openPlanPanel } : {})}
+                                    {...(needsPreview
+                                      ? { onPreviewImage: previewAttachments }
+                                      : {})}
+                                    {...(needsQuestion
+                                      ? { onAnswerQuestions: answerQuestions }
+                                      : {})}
+                                    // 子助手卡的「查看过程」= 切到它在主区顶部的 tab（不再跳子会话路由）
+                                    {...(needsSubAgent ? { onOpenSubAgent: openSubAgentTab } : {})}
+                                    // 计划卡 / 问题卡固定在输入框上方，消息流里不再重复
+                                    showTrailingCards={false}
+                                    // 用户气泡是这一轮的标题：滚动读回答时钉在列顶部，下一轮顶走它
+                                    pinned={message.role === 'user'}
+                                  />
+                                )
+                              })}
+                            </div>
+                          ))
                         )}
                       </ConversationContent>
                       <ConversationScrollButton />

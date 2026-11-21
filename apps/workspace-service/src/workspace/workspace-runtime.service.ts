@@ -1,5 +1,6 @@
-import { appendFile, mkdir, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises'
-import { dirname, join, relative, resolve, isAbsolute } from 'node:path'
+import { randomBytes } from 'node:crypto'
+import { appendFile, mkdir, readFile, readdir, rename, rm, stat, writeFile } from 'node:fs/promises'
+import { dirname, join, posix, relative, resolve, isAbsolute } from 'node:path'
 import { Inject, Injectable } from '@nestjs/common'
 import { AppLogger, WorkspaceRuntimeService as SandboxRuntime } from '@repo/kits'
 import type {
@@ -14,6 +15,7 @@ import type {
 import { WorkspaceRepository } from './workspace.repository.js'
 import { WorkspaceSetupService } from './workspace-setup.service.js'
 import { createExecShell } from './setup-shell.js'
+import { KeyedMutex } from './keyed-mutex.js'
 import {
   checkCommandCredentials,
   type CredentialGateDenial,
@@ -26,6 +28,12 @@ import { WorkspaceServiceConfig, type WorkspaceServiceConfigValue } from '../con
 /** 容器内固定的工作目录（与镜像约定一致） */
 const CONTAINER_WORKDIR = '/workspace'
 const MAX_OUTPUT = 64 * 1024
+
+/** 会改动工作区文件的操作：只有它们需要按路径串行（读不排队，靠原子写保证读到的不是半截） */
+const MUTATING_FS_OPS = new Set(['write', 'write-bytes', 'append', 'replace', 'remove'])
+
+/** 原子写的临时文件后缀（同目录内 `rename` 才是原子的，不跨目录） */
+const tmpSuffix = (): string => `.billy-tmp-${randomBytes(4).toString('hex')}`
 
 interface Handle {
   workspaceId: string
@@ -116,6 +124,15 @@ const inside = (root: string, target: string): boolean => {
 export class WorkspaceRuntime {
   private readonly handles = new Map<string, Handle>()
   private readonly driver: ContainerDriver
+  /**
+   * bash 按**工作区**串行、文件写按 **`workspaceId:path`** 串行（`docs/design/workspace.md` §8）。
+   *
+   * 为什么要串行 bash：命令会写什么由模型决定、无法预判（`npm install`、`git checkout` 都会动共享目录），
+   * 只能整个工作区排队；文件写则只锁同一条路径，不同路径互不阻塞。
+   * 读不加锁：写已经改了「同目录 tmp + rename」，读端要么读到旧版、要么读到新版，不会是半截。
+   */
+  private readonly execLocks = new KeyedMutex()
+  private readonly fsLocks = new KeyedMutex()
 
   constructor(
     @Inject(WorkspaceRepository) private readonly repo: WorkspaceRepository,
@@ -235,7 +252,9 @@ export class WorkspaceRuntime {
       handle.env && Object.keys(handle.env).length > 0
         ? { ...handle.env, ...request.env }
         : request.env
-    return this.dispatch(handle, config, { ...request, ...(env ? { env } : {}) })
+    return this.execLocks.run(workspaceId, () =>
+      this.dispatch(handle, config, { ...request, ...(env ? { env } : {}) }),
+    )
   }
 
   /** 真正的执行（初始化阶段也复用它，避免 ensureHandle → setup → exec 的递归） */
@@ -409,8 +428,13 @@ export class WorkspaceRuntime {
   async fs(workspaceId: string, request: WorkspaceFsRequest): Promise<WorkspaceFsResult> {
     const handle = await this.ensureHandle(workspaceId)
     handle.lastUsedAt = Date.now()
-    if (handle.backend === 'local') return this.localFs(handle.root, request)
-    return this.containerFs(handle.containerName!, request)
+    const run = (): Promise<WorkspaceFsResult> =>
+      handle.backend === 'local'
+        ? this.localFs(handle.root, request)
+        : this.containerFs(handle.containerName!, request)
+    if (!MUTATING_FS_OPS.has(request.op)) return run()
+    // 同一路径的写 / 替换 / 追加 / 删除排队；不同路径、只读操作并行
+    return this.fsLocks.run(`${workspaceId}:${posix.normalize(request.path)}`, run)
   }
 
   // ── 后端：local ──────────────────────────────────────────────
@@ -481,17 +505,19 @@ export class WorkspaceRuntime {
         }
         case 'write-bytes': {
           const body = Buffer.from(request.base64 ?? '', 'base64')
-          await mkdir(dirname(target), { recursive: true })
-          await writeFile(target, body)
+          await this.writeAtomic(target, body)
           return { ok: true, data: { path: request.path, bytes: body.length } }
         }
         case 'write':
         case 'replace':
         case 'append': {
-          await mkdir(dirname(target), { recursive: true })
           const content = request.content ?? ''
-          if (request.op === 'append') await appendFile(target, content, 'utf8')
-          else await writeFile(target, content, 'utf8')
+          if (request.op === 'append') {
+            await mkdir(dirname(target), { recursive: true })
+            await appendFile(target, content, 'utf8')
+          } else {
+            await this.writeAtomic(target, content)
+          }
           return { ok: true, data: { path: request.path, bytes: Buffer.byteLength(content) } }
         }
         case 'stat': {
@@ -529,6 +555,25 @@ export class WorkspaceRuntime {
         reason: 'exec-failed',
         message: error instanceof Error ? error.message : String(error),
       }
+    }
+  }
+
+  /**
+   * 原子写：先写同目录临时文件，再 `rename` 覆盖目标。
+   *
+   * 为什么不是直接 `writeFile(target)`：直接写会先截断再逐块写，并发的 `read` 可能读到半截
+   * （模型读到半份 JSON 会得出"文件坏了"的结论）。`rename` 在同一文件系统上是原子的，
+   * 读端只会看到旧版或新版。临时文件必须在**同目录**，跨目录 rename 会退化成拷贝。
+   */
+  private async writeAtomic(target: string, body: string | Buffer): Promise<void> {
+    await mkdir(dirname(target), { recursive: true })
+    const tmp = `${target}${tmpSuffix()}`
+    try {
+      await writeFile(tmp, body)
+      await rename(tmp, target)
+    } catch (error) {
+      await rm(tmp, { force: true }).catch(() => undefined)
+      throw error
     }
   }
 
@@ -581,28 +626,42 @@ export class WorkspaceRuntime {
           return { ok: true, data: { base64: out.stdout.trim() } }
         }
         case 'write-bytes': {
+          const tmp = `${target}${tmpSuffix()}`
           const out = await exec(
-            `mkdir -p "$(dirname ${quote(target)})" && base64 -d > ${quote(target)}`,
+            `mkdir -p "$(dirname ${quote(target)})" && base64 -d > ${quote(tmp)} && mv -f ${quote(tmp)} ${quote(target)}`,
             request.base64 ?? '',
           )
-          if (out.code !== 0) return { ok: false, reason: 'exec-failed', message: out.stderr }
+          if (out.code !== 0) {
+            await exec(`rm -f ${quote(tmp)}`).catch(() => undefined)
+            return { ok: false, reason: 'exec-failed', message: out.stderr }
+          }
           return { ok: true, data: { path: request.path } }
         }
         case 'write':
         case 'append':
         case 'replace': {
-          const redirect = request.op === 'append' ? '>>' : '>'
+          const content = request.content ?? ''
+          // 追加不重建文件；写 / 替换走「同目录 tmp + mv」，容器内 mv 是原子 rename
+          if (request.op === 'append') {
+            const out = await exec(
+              `mkdir -p "$(dirname ${quote(target)})" && cat >> ${quote(target)}`,
+              content,
+            )
+            if (out.code !== 0) {
+              return { ok: false, reason: 'exec-failed', message: out.stderr }
+            }
+            return { ok: true, data: { path: request.path, bytes: Buffer.byteLength(content) } }
+          }
+          const tmp = `${target}${tmpSuffix()}`
           const out = await exec(
-            `mkdir -p "$(dirname ${quote(target)})" && cat ${redirect} ${quote(target)}`,
-            request.content ?? '',
+            `mkdir -p "$(dirname ${quote(target)})" && cat > ${quote(tmp)} && mv -f ${quote(tmp)} ${quote(target)}`,
+            content,
           )
           if (out.code !== 0) {
+            await exec(`rm -f ${quote(tmp)}`).catch(() => undefined)
             return { ok: false, reason: 'exec-failed', message: out.stderr }
           }
-          return {
-            ok: true,
-            data: { path: request.path, bytes: Buffer.byteLength(request.content ?? '') },
-          }
+          return { ok: true, data: { path: request.path, bytes: Buffer.byteLength(content) } }
         }
         case 'stat': {
           const out = await exec(`stat -c '%F|%s|%Y' ${quote(target)}`)

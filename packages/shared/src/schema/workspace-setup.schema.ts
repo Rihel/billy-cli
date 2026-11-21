@@ -69,7 +69,8 @@ export const WorkspaceSetupReportSchema = z.object({
   skills: z.array(
     z.object({
       skillKey: z.string(),
-      outcome: z.enum(['materialized', 'failed']),
+      /** `partial`：技能部分文件写入失败（`SKILL.md` 优先写，正文通常仍在） */
+      outcome: z.enum(['materialized', 'partial', 'failed']),
       message: z.string().optional(),
     }),
   ),

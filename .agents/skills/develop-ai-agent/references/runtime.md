@@ -138,7 +138,14 @@ pending 行两个时间列为 NULL，直接比较会永远为 false。
   `POST /agent/run/stop`（停止）；
 - 帧格式 `data: {AG-UI event}\n\n`，收尾 `RUN_FINISHED`（**不发 `[DONE]`**；只有 `?protocol=ai` 回退口
   才写 `[DONE]`）；不再有 `x-vercel-ai-ui-message-stream` 响应头，`x-accel-buffering: no` 保留；
-  心跳是 SSE 注释帧 `: ping\n\n`（自写，15s）；
+- **心跳有两段，别只改一处**：
+  - 执行服务 → 网关（runtime 的 POST 响应体）：注释帧 `: ping\n\n`，15s，由 `ensureHeartbeat` 写
+    （见下条的写入约束）；
+  - 网关 → 浏览器（真正给前端的那条 SSE）：`AgentSseBridge` 每 15s 的**空闲**心跳，距上次写帧
+    不足 15s 就跳过。补它是因为这条流会分钟级静默（`bash` 最长 5 分钟、首 token 前不吐字、
+    排队等 runtime 开跑），手机网络 / 公司代理普遍 30~120s 空闲就断；断了不丢数据
+    （快照 + `sinceRev` 能续），但用户会看到一次「重连 → 拉快照 → 补发」。`deferred`（还没写响应头）
+    阶段一律不发，`detach` / `fail` 必须 `clearInterval`。客户端解析侧已跳过注释帧（`parseAgUiSse`）。
 - ⚠️ **心跳写入必须先续租、且只在 `writeHead` 之后写**：客户端断开 / 响应已结束时
   `response.write()` 会抛「Connection is closed.」，而它跑在定时器里 = 进程级未捕获异常 =
   `process.exit(1)`（表现为"聊着聊着服务重启、其它会话全丢"）。响应头之前写还会隐式发出 200，
@@ -147,7 +154,15 @@ pending 行两个时间列为 NULL，直接比较会永远为 false。
   早先只留下一条 `running` 行（没有错误、后续 3306）；现在失败落终态，且响应头未发时把真实
   错误码抛回 HTTP（3406 / 3311 才能传到前端 `onError`）。
 - **`RUN_FINISHED` 在收尾落库之后才发** —— 客户端见到它就代表终态已写库；
-- 每个片段同时落三处：时间线（真相）/ Redis 输出记录（补发）/ pub/sub（跨副本）；
+- **每个片段同时落三处**：时间线（真相）/ Redis 输出记录（补发）/ pub/sub（跨副本）；
+- ⚠️ **增量块按帧合并，不要退回逐 token 发射**（2026-11-22）：`text-delta` / `reasoning-delta` /
+  `data-sub-agent-delta` 进 `runtime/stream-deltas.ts` 的 `DeltaCoalescer`，攒 100ms（与前端的
+  100ms 渲染批次对齐）或 2k 字再一起发；其它块（part 边界 / 工具 / 计划 / 收尾 / 用量）先 flush
+  再立即发，顺序由合并器的同一条 Promise 链保证。发射侧同时改成 `appendEvents`（`INCRBY n` 拿
+  连续 rev 段 + 一次 `RPUSH 多值`）与 `publishEvents`（一次 pipeline）。逐 token 时代的固定成本是
+  每 token 约 10 次 Redis 往返（2 次闸门 `EXISTS` + 6 次 append + `HGET` + `PUBLISH`），
+  **别把闸门加回增量路径**：增量不落时间线，不需要它；
+- 响应体只作"顺带写一份"的可选通道（main 只 `drain`），内容一律以 pub/sub 为准；
 - 补发**不再整轮重放**：快照 parts 从 **`timelines`** 归约（`message-snapshot.ts`，含 assistant
   messageId），Redis 输出记录只算 `sinceRev`；`resumeRun` 先 `beginReplay` 合闸门，再按 chunk
   整形，最后由 `runtime/stream-resume.ts` 回退到块开头 / 补消息 `start` / 孤立 end 丢弃 /

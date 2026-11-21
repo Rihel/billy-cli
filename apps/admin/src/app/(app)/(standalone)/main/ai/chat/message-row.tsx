@@ -24,6 +24,7 @@ import { ContextSummaryCard } from './context-summary-card'
 import { SubAgentCard } from './sub-agent-card'
 import { SubAgentCompletedCard } from './sub-agent-completed-card'
 import { mergeSubAgent } from './sub-agent-live'
+import { UserMessageText } from './user-message-text'
 import type { ChatMessageState, ChatUnit } from './chat-session'
 import { useLiveSubAgent } from './chat-session'
 import { useElapsedSeconds } from './use-elapsed'
@@ -79,6 +80,7 @@ function ChatUnitView({
   showTrailingCards,
   ownedToolCalls,
   isUser,
+  userTextVariant = 'inline',
   onAnswerQuestions,
   onOpenSubAgent,
 }: {
@@ -88,6 +90,8 @@ function ChatUnitView({
   /** 这一条消息里已有工具卡的 toolCallId：事件已被认领，不再单独成卡 */
   ownedToolCalls: ReadonlySet<string>
   isUser: boolean
+  /** 用户正文的展开按钮摆在哪：吸顶消息浮右上角（展开后可能比视口高，底部按钮够不着） */
+  userTextVariant?: 'inline' | 'sticky'
   onAnswerQuestions?: (input: AnswerQuestionsInput) => Promise<void>
   onOpenSubAgent?: (runId: string) => void
 }) {
@@ -105,7 +109,7 @@ function ChatUnitView({
       // 手机上常贴整条命令 / 日志 / URL：`pre-wrap` 不会在长串内断行，窄屏会直接被气泡裁掉，
       // 所以 base 放开 `break-words`；桌面（lg 起）仍用 `break-normal`，与改动前逐像素一致。
       return isUser ? (
-        <p className="break-words whitespace-pre-wrap lg:break-normal">{unit.text}</p>
+        <UserMessageText text={unit.text} variant={userTextVariant} />
       ) : (
         <MessageResponse isAnimating={streaming && unit.streaming}>{unit.text}</MessageResponse>
       )
@@ -218,6 +222,14 @@ export interface ChatMessageProps {
    * 子 agent tab 的完整过程保留默认的 true。
    */
   showTrailingCards?: boolean
+  /**
+   * 是否吸顶：**每一轮的用户气泡**为 true —— 滚动读这一轮的回答时，气泡钉在列表顶部。
+   *
+   * 钉住的是**这条消息本身**（不是另起一条吸顶条）：不滚动时它在原位，滚过之后停住；
+   * 下一轮的气泡到达顶部时把它顶走，所以视觉上吸着的是「视口之前最近的那条用户消息」。
+   * 边界由外层轮次容器决定（见 `chat-turns.ts`），sticky 只在包含块内有效。
+   */
+  pinned?: boolean
 }
 
 export const ChatMessage = memo(function ChatMessage({
@@ -228,6 +240,7 @@ export const ChatMessage = memo(function ChatMessage({
   onAnswerQuestions,
   onOpenSubAgent,
   showTrailingCards = true,
+  pinned = false,
 }: ChatMessageProps) {
   const isUser = message.role === 'user'
   const attachments = toAttachmentItems(message.files, message.id)
@@ -240,7 +253,15 @@ export const ChatMessage = memo(function ChatMessage({
   }, [message.units])
 
   return (
-    <Message from={message.role} className="max-w-full gap-1.5">
+    <Message
+      from={message.role}
+      className={cn(
+        'max-w-full gap-1.5',
+        // 吸顶：整行铺实底盖住从下面滚过的回答（气泡右对齐，只给气泡上底色的话
+        // 文字会从左侧空隙"透"出来）；不加内边距，吸顶时气泡本身贴住列表顶部
+        pinned && 'sticky top-0 z-20 bg-card',
+      )}
+    >
       <MessageContent
         className={cn(
           'gap-1.5 group-[.is-user]:px-3 group-[.is-user]:py-2',
@@ -259,6 +280,7 @@ export const ChatMessage = memo(function ChatMessage({
             showTrailingCards={showTrailingCards}
             ownedToolCalls={ownedToolCalls}
             isUser={isUser}
+            userTextVariant={pinned ? 'sticky' : 'inline'}
             {...(onAnswerQuestions ? { onAnswerQuestions } : {})}
             {...(onOpenSubAgent ? { onOpenSubAgent } : {})}
           />

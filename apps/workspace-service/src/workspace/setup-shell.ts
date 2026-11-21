@@ -36,7 +36,18 @@ const shellPath = (path: string): string => {
 const base64Of = (content: string): string => Buffer.from(content, 'utf8').toString('base64')
 
 /**
- * 用一条 `exec` 实现出 `SetupShell`（container / local 都适用）。
+ * 单条命令里 base64 的分片长度（4 的倍数：每片独立解码仍按 3 字节对齐）。
+ *
+ * **为什么必须分片**：内容 base64 后是作为 `printf` 的参数传进去的，Linux 对单条 argv
+ * 有 128KB 上限（`MAX_ARG_STRLEN`），超过直接 `argument list too long`，命令不会执行。
+ * 大文件（如 360KB 的素材、1MB 的脚本）因此会整条失败；而一个文件失败就会带走整个技能
+ * （2026-11-22 实测：`design-taste-frontend` 只落了 52 个素材，`SKILL.md` 始终没写上）。
+ * 48KB 留足余量，且每个分片单独一条 `exec`——拼成一条长命令同样会撞上限。
+ */
+const WRITE_CHUNK_CHARS = 48_000
+
+/**
+ * 用 `exec` 实现出 `SetupShell`（container / local 都适用）。
  *
  * 写文件走 `base64 -d`：内容里有引号、换行、`$` 时直接 heredoc 会被 shell 解释，
  * base64 之后只剩 `A-Za-z0-9+/=`，不存在注入面。
@@ -48,13 +59,24 @@ export const createExecShell = (
 
   async write(path, content, mode = 600) {
     const dir = path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : '.'
-    const command = [
-      `mkdir -p ${shellPath(dir)}`,
-      `printf %s ${shellQuote(base64Of(content))} | base64 -d > ${shellPath(path)}`,
-      `chmod ${mode} ${shellPath(path)}`,
-    ].join(' && ')
-    const result = await exec(command, { timeoutMs: 15_000 })
-    if (!result.ok) throw new Error(`写文件失败（${path}）：${result.stderr.slice(0, 300)}`)
+    const target = shellPath(path)
+    // 先建目录并截断（空文件也要真的落下来），再逐片追加，最后改权限
+    const prepared = await exec(`mkdir -p ${shellPath(dir)} && : > ${target}`, {
+      timeoutMs: 15_000,
+    })
+    if (!prepared.ok) throw new Error(`写文件失败（${path}）：${prepared.stderr.slice(0, 300)}`)
+
+    const base64 = base64Of(content)
+    for (let offset = 0; offset < base64.length; offset += WRITE_CHUNK_CHARS) {
+      const chunk = base64.slice(offset, offset + WRITE_CHUNK_CHARS)
+      const result = await exec(`printf %s ${shellQuote(chunk)} | base64 -d >> ${target}`, {
+        timeoutMs: 15_000,
+      })
+      if (!result.ok) throw new Error(`写文件失败（${path}）：${result.stderr.slice(0, 300)}`)
+    }
+
+    const chmod = await exec(`chmod ${mode} ${target}`, { timeoutMs: 15_000 })
+    if (!chmod.ok) throw new Error(`写文件失败（${path}）：${chmod.stderr.slice(0, 300)}`)
   },
 
   async read(path) {

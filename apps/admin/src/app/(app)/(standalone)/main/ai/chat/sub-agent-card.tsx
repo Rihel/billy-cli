@@ -19,7 +19,7 @@ import {
 } from '@repo/ui/components/ai-elements/message.tsx'
 import { durationText, tokenText } from './format'
 import { conversationPath } from './routes'
-import { statusLabel, statusVariant } from './sub-agent-panel'
+import { statusLabel, statusVariant } from './sub-agent-status'
 import {
   isSubAgentActive,
   liveToolCallCount,

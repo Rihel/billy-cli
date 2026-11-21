@@ -123,6 +123,16 @@ export class RedisStore implements OnApplicationBootstrap, OnApplicationShutdown
     return this.fromPromise(() => this.raw.rpush(key, value))
   }
 
+  /**
+   * 批量追加（一条 `RPUSH` 带多个值）。
+   *
+   * 逐条 append 时 N 条 = N 次往返；流式输出按批攒好再写，一个往返就够（见 `AgentStreamStore.appendEvents`）。
+   */
+  rpushMany(key: string, values: readonly string[]): Promise<number> {
+    if (values.length === 0) return Promise.resolve(0)
+    return this.fromPromise(() => this.raw.rpush(key, ...values))
+  }
+
   ltrim(key: string, start: number, stop: number): Promise<string> {
     return this.fromPromise(() => this.raw.ltrim(key, start, stop))
   }
