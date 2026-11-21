@@ -203,6 +203,41 @@ describe('toUIMessages', () => {
     }
   })
 
+  it('失败工具卡回放真实 errorText（不再显示空出参的 `""`）', () => {
+    // 回归：失败时 payload.output 是 null、原因单独在 payload.errorText；
+    // 旧实现 JSON.stringify(output ?? '') 把 `cat: ... No such file` 吞成 `""`（2026-11-22）。
+    const messages = toUIMessages(
+      [
+        item({ seq: 1, kind: 'text', role: 'user', payload: { text: '读报告' } }),
+        item({
+          seq: 2,
+          kind: 'tool-call',
+          toolKey: 'read-file',
+          toolCallId: 'call_1',
+          payload: { input: { filePath: 'subagents/架构分层评审.md' } },
+        }),
+        item({
+          seq: 3,
+          kind: 'tool-result',
+          toolKey: 'read-file',
+          toolCallId: 'call_1',
+          payload: {
+            output: null,
+            isError: true,
+            errorText: 'cat: /workspace/subagents/架构分层评审.md: No such file or directory',
+          },
+        }),
+      ],
+      [run(ROOT_RUN, null)],
+    )
+
+    const tool = messages[1].parts.find((part) => part.type === 'dynamic-tool')
+    expect(tool).toMatchObject({
+      state: 'output-error',
+      errorText: 'cat: /workspace/subagents/架构分层评审.md: No such file or directory',
+    })
+  })
+
   it('子 agent：明细不进主对话，但结论合成成 data-sub-agent part（与实时流同构）', () => {
     const messages = toUIMessages(
       [

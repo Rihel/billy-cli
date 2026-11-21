@@ -295,6 +295,20 @@ const durationMsOf = (item: AgentTimelineItemModel | undefined): number | undefi
   return typeof own === 'number' && Number.isFinite(own) ? own : undefined
 }
 
+/**
+ * 工具失败的真实原因：**优先取落库的 `payload.errorText`**。
+ *
+ * 时间线里 `output` 在失败时是 `null`，真正的原因单独存在 `errorText`
+ * （`ToolGateway` / 能力网关都这么落）。旧实现只 `JSON.stringify(output ?? '')`，
+ * 于是刷新后的工具卡显示 `错误 ""`，把 `cat: ... No such file or directory` 这类
+ * 可行动的报错吞掉（2026-11-22 实测，会话 `pyao4cssrwn3qf291wh8`）。
+ */
+const errorTextOf = (result: AgentTimelineItemModel | undefined, output: unknown): string => {
+  const stored = result?.payload?.errorText
+  if (typeof stored === 'string' && stored.trim().length > 0) return stored
+  return JSON.stringify(output ?? '')
+}
+
 /** 工具调用（或只有结果的历史残留）→ 一张卡；结果还没到时 `state` 是 `input-available` */
 const toToolPart = (
   call: AgentTimelineItemModel | undefined,
@@ -310,7 +324,7 @@ const toToolPart = (
       `tool-${call?.seq ?? result?.seq ?? 0}`) as string,
     state: result ? (isError ? 'output-error' : 'output-available') : 'input-available',
     input: call?.payload?.input,
-    ...(result ? (isError ? { errorText: JSON.stringify(output ?? '') } : { output }) : {}),
+    ...(result ? (isError ? { errorText: errorTextOf(result, output) } : { output }) : {}),
     ...(durationMsOf(result) !== undefined ? { durationMs: durationMsOf(result) } : {}),
   }
 }
@@ -320,7 +334,7 @@ const applyToolResult = (part: ToolPartLike, result: AgentTimelineItemModel): vo
   const isError = result.payload?.isError === true
   const output = result.payload?.output
   part.state = isError ? 'output-error' : 'output-available'
-  if (isError) part.errorText = JSON.stringify(output ?? '')
+  if (isError) part.errorText = errorTextOf(result, output)
   else part.output = output
   // 耗时在这里也要挂一次：绝大多数工具卡是"调用行 + 结果行"**配对**出来的（走这条路径），
   // 只在 `toToolPart` 挂会漏掉它们
