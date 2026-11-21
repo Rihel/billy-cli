@@ -74,14 +74,15 @@
 | [dependency-upgrade](dependency-upgrade.md) | 全量升级落点与坑：ioredis 6 与 TypeORM peer 冲突、jsdom 31 需 parse5 8.1、Table 9 新 API、AI SDK 7 usage 字段 | 抽核 | 2026-11-07 |
 | [ui-components-over-native](ui-components-over-native.md) | 控件先 `@repo/ui`：已有 `DateTimePicker` / `DateRangePicker` / `Calendar`，别上原生 `input type=date`；表单用 `items[].render` 接线 | 抽核 | 2026-11-13 |
 | [ui-data-table-column-id](ui-data-table-column-id.md) | DataTable 用列 id 当 key：同一 columns 数组里两列共用 `accessorKey` 会刷屏重复 key 告警 | 抽核 | 2026-11-07 |
+| [ui-font-stack](ui-font-stack.md) | 字体一律系统栈（admin / web 三个根 layout 不接 `next/font`）；退役 Geist / Space Grotesk，`check:ui` 拦 `next/font/google` | 必核 | 2026-11-21 |
 | [ui-scrollbar](ui-scrollbar.md) | 原生滚动条伪元素不支持过渡 → 视觉由 `OverlayScrollbar` 自己画（淡入淡出、只跟随被滚容器）；Chromium 写了 `scrollbar-width`/`scrollbar-color` 会关掉 `::-webkit-scrollbar` 定制 | 抽核 | 2026-11-13 |
 | [scaffold-cli-removed](scaffold-cli-removed.md) | 2026-11-09 起没有代码生成器与模板副本，新模块照现有实现手写；守卫为 check:inject / check:mastra / check:ui | 免核 | 2026-11-09 |
 | [product-facts](product-facts.md) | README / 落地页 / pitch 共用的能力数字口径（工具 35 / 能力 20 / skill 28 / 组件 61 / ai-elements 48 / 检查 9；连接器已删除） | 必核 | 2026-11-20 |
 | [ai-tool-key-naming](ai-tool-key-naming.md) | 能力 key = 扁平工具名（`xxx-xxx`），全局唯一；服务是工具的分组（1:N），模型面与 key 相同 | 免核 | 2026-11-18 |
 | [ai-market](ai-market.md) | 市场 v1 只做 MCP 区：`ai_market_items`（key 幂等 upsert）、scope 固定 platform、不装二进制；个人区待开放 | 必核 | 2026-11-20 |
 | [skill-scope-grants](skill-scope-grants.md) | 技能唯一性按可见集合（platform 按 key、personal 按 owner+key）；`ai_skill_grants` 授权表；P9 剩余过滤/种子/删宿主目录 | 必核 | 2026-11-20 |
-| [workspace-setup-stage](workspace-setup-stage.md) | 初始化阶段在 workspace-service：装包→`.agents/`→凭据（走 main resolve）→`.billy/setup.json`；幂等 hash 只覆盖包+技能；env 必须 `sh -c` 整条包装 | 必核 | 2026-11-20 |
-| [credential-envelope](credential-envelope.md) | 凭据密文 `v1:keyId:iv:tag:ct`、AAD 绑行身份防搬运；模板驱动校验/拆分/提示；`personal_credentials` 按 owner+name 唯一 | 必核 | 2026-11-20 |
+| [workspace-setup-stage](workspace-setup-stage.md) | 初始化阶段在 workspace-service：装包→`.agents/`→凭据（走 main resolve）→`.billy/setup.json`；幂等 hash 只覆盖包+技能；env 必须 `sh -c` 整条包装；凭据段失败靠 credentialsReady + 5s 定时补偿，清单读取要 JSON.parse | 必核 | 2026-11-21 |
+| [credential-envelope](credential-envelope.md) | 凭据密文 `v1:keyId:iv:tag:ct`、AAD 绑行身份防搬运；模板驱动校验/拆分/提示；`personal_credentials` 按 owner+name 唯一；`key` 区分同 provider 多模板（lark-app 自建应用）；lark 无明文导出、走 credential-save | 必核 | 2026-11-21 |
 | [admin-owner-scope](admin-owner-scope.md) | 归属唯一入口 `currentOwner` / `scopeOf`；管理员类型只认会话（`adminType`），管理员管理挂 GodAdminGuard；超管来自 env 种子 / seed:admin | 必核 | 2026-11-20 |
 | [agent-tool-authorization](agent-tool-authorization.md) | agent 授权是结构化选择器；作用域装配期过滤工具面；子 agent = 父授权 ∩ 全部 − 委派 − deny，并按 caller 过滤 | 必核 | 2026-11-14 |
 | [ui-dialog-escape](ui-dialog-escape.md) | Base UI Dialog 没有 `onEscapeKeyDown`：Esc 要先退全屏 / 不关窗，就在 `onOpenChange` 里看 `details.reason === 'escape-key'` 并 `details.cancel()` | 必核 | 2026-11-15 |
