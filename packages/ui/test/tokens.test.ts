@@ -96,13 +96,14 @@ describe('设计系统 token 体系（globals.css 自洽性）', () => {
     expect(ROOT_ONLY_TOKENS.filter((token) => !light.has(token))).toEqual([])
   })
 
-  it('字体回退链引用 app 注入的 next/font 变量，展示字体经 --font-display 派生', () => {
-    // 这三个变量名是产品决策（Geist / Geist Mono / Space Grotesk），由 app 的 layout 用 next/font 注入；
-    // 一致性由 check:ui 第 ⑤ 条与 apps/*/layout.tsx 的字面量对照（next/font 要求字面量，无法共享常量）
-    expect(themeBlock).toMatch(/--font-sans:\s*var\(--font-geist\)/)
-    expect(themeBlock).toMatch(/--font-mono:\s*var\(--font-geist-mono\)/)
-    expect(rootBlock).toMatch(/--font-display:\s*var\(--font-space-grotesk\)/)
+  it('字体栈是纯系统字体（不再依赖 Google 字体），展示字体经 --font-display 派生', () => {
+    // 2026-11-21 起不再用 next/font/google（Geist / Space Grotesk）：字体栈直接落到系统 UI 字体，
+    // 与中文（PingFang / 雅黑）同一套光学尺寸。app 侧不许再 import next/font/google，由 check:ui 守卫。
+    expect(themeBlock).toMatch(/--font-sans:\s*\n?\s*system-ui/)
+    expect(themeBlock).toMatch(/--font-mono:\s*ui-monospace/)
+    expect(rootBlock).toMatch(/--font-display:\s*var\(--font-sans\)/)
     expect(themeBlock).toContain('--font-heading: var(--font-display')
+    expect(`${themeBlock}${rootBlock}`).not.toContain('--font-geist')
   })
 
   it('侧边栏与图表首色由主 token 派生（改主色能全局联动，不许改回手抄字面量）', () => {

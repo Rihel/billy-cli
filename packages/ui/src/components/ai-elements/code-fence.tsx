@@ -11,7 +11,7 @@ type EditorComponent = ComponentType<Record<string, unknown>>
 const buildTheme = (view: typeof import('@codemirror/view')) =>
   view.EditorView.theme({
     '&': { backgroundColor: 'transparent', color: 'var(--foreground)', fontSize: '12px' },
-    '.cm-content': { fontFamily: 'var(--font-geist-mono)', padding: '10px 0' },
+    '.cm-content': { fontFamily: 'var(--font-mono)', padding: '10px 0' },
     '.cm-gutters': { display: 'none' },
     '.cm-activeLine': { backgroundColor: 'transparent' },
     '.cm-scroller': { lineHeight: '1.65' },

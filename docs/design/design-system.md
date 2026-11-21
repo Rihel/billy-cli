@@ -63,7 +63,7 @@ apps/web | apps/admin   应用：globals.css 接入 + 字体字面量 + 页面
 | 颜色 / 圆角 token、`@theme` 映射、base 层、`@custom-variant dark` | `packages/ui/src/globals.css` |
 | 字体变量规范（回退链引用的变量名） | 同上（`@theme inline` 与 `:root` 里的 `--font-*`） |
 | 组件质感规则（等宽数字 / 滚动条）、markdown 渲染与高亮 token | 同上（`@layer` 之外的规则） |
-| 字体加载（`next/font`） | `apps/<app>/src/app/layout.tsx`（框架要求字面量，见 §7.1） |
+| 字体加载 | **不做**（2026-11-21 起系统字体栈，根 layout 不接 `next/font`，见 §4.1.1） |
 | app 专属样式（前台 keyframes 等） | `apps/<app>/src/app/globals.css` |
 
 ## 4. 设计系统构成
@@ -81,20 +81,24 @@ apps/web | apps/admin   应用：globals.css 接入 + 字体字面量 + 页面
 > 与 `--font-display` 这两个根层专属项）。此前写的「51 个 / 颜色 38 个」是 10-22 新增
 > `--surface-1..4` 之前的数，已过期。
 >
-> 字体实际是三个：**Geist**（`--font-sans`）/ **Geist Mono**（`--font-mono`）/
-> **Space Grotesk**（`--font-display` → `--font-heading`），由两个 app 的根 `layout.tsx`
-> 用 `next/font` 注入 `--font-geist` / `--font-geist-mono` / `--font-space-grotesk`。
+> 字体：2026-11-21 起**不再用 Google Fonts**（原来的 Geist / Geist Mono / Space Grotesk 全部退役），
+> `--font-sans` / `--font-mono` 直接是系统字体栈（`system-ui` / `ui-monospace` + PingFang / 雅黑），
+> `--font-display` 派生自 `--font-sans`。app 的根 `layout.tsx` 不接 `next/font`。
 
-新增的三个语义色取值与依据：
+#### 4.1.1 字体：纯系统栈，不再拉 Google Fonts（2026-11-21）
 
-| Token | 浅色 | 深色 | 依据 |
-| --- | --- | --- | --- |
-| `--success` | emerald-700 `oklch(0.508 0.118 165.612)` | emerald-400 `oklch(0.765 0.177 163.223)` | 语义色会作**文字色**，浅色取 700 档才达 WCAG AA（600 档约 3.8:1，不达标） |
-| `--warning` | amber-700 `oklch(0.555 0.163 48.998)` | amber-400 `oklch(0.828 0.189 84.429)` | 同上 |
-| `--info` | sky-700 `oklch(0.5 0.134 242.749)` | sky-400 `oklch(0.746 0.16 232.661)` | 与品牌靛紫 `--ring` 明确区分 |
+**决策**：`--font-sans` / `--font-mono` 改为系统字体栈，`--font-display` 派生自 `--font-sans`；
+三个 app 的根 `layout.tsx` 都删掉 `next/font/google` 接线。
 
-> 取值与既有 `--destructive`（浅色 red-600 / 深色 red-400）保持同一档位模式；
-> 700 档的选择由 `admin-design-language.md` §2.5 的可访问性原则驱动。
+- **为什么**：原先从 Google Fonts 下载 Geist / Geist Mono / Space Grotesk，内网 / 离线环境构建与首屏
+  都依赖外网；且会话页字号阶梯（12px 基准）是按中文定的，Geist 的字面比 PingFang 饱满，
+  同一 px 下西文显得大一圈（工具卡长命令最明显）。换成系统 UI 字体后与中文天然同档。
+- **取舍**：放弃品牌化西文字形（Geist / Space Grotesk 的辨识度），换来零外网依赖与中西文光学一致；
+  标题层次改由字号 / 字重承担（`--font-heading` 仍走 `--font-display`）。
+- **守卫**：`pnpm check:ui` 第 ⑤ 条拦截 root layout 里的 `next/font/google`；
+  `packages/ui/test/tokens.test.ts` 钉死字体栈是系统栈、且不再出现 `--font-geist`。
+- **回退路径**：若将来要恢复品牌字体，用 `next/font/local` 自带字体文件（不依赖外网），
+  并在 ui 的 `@theme` 里改回 `var(...)`，同时恢复 `check:ui` 的字面量校验。
 
 ### 4.2 token 分两层，改上层即全局联动
 
@@ -196,10 +200,10 @@ apps/web | apps/admin   应用：globals.css 接入 + 字体字面量 + 页面
 
 | 守卫 | 拦截什么 | 反向验证 |
 | --- | --- | --- |
-| `packages/ui/test/tokens.test.ts`（6 项，**纯 CSS 自洽、零手工清单**） | ① 明暗不对称（浅色与深色的键集合必须完全一致）② `@theme` 映射不自洽（`--color-X: var(--Y)` 指向别的变量 → 工具类取值落空）③ 映射来源变量缺定义 ④ 颜色 token 漏映射 ⑤ 根层专属 token 缺失 ⑥ 字体回退链未引用 app 注入的变量 | 删深色 `--success`（2 项红）/ 摘 `@theme` 映射 / 把映射指向不存在的变量 / 新增 token 只写浅色 → **各自红灯** |
+| `packages/ui/test/tokens.test.ts`（6 项，**纯 CSS 自洽、零手工清单**） | ① 明暗不对称（浅色与深色的键集合必须完全一致）② `@theme` 映射不自洽（`--color-X: var(--Y)` 指向别的变量 → 工具类取值落空）③ 映射来源变量缺定义 ④ 颜色 token 漏映射 ⑤ 根层专属 token 缺失 ⑥ 字体栈是系统栈、且不出现 `--font-geist`（不再依赖 Google 字体） | 删深色 `--success`（2 项红）/ 摘 `@theme` 映射 / 把映射指向不存在的变量 / 新增 token 只写浅色 → **各自红灯** |
 | `pnpm check:ui` ③ 禁止新增硬编码调色板 | 在 `packages/ui/src` 与 `apps/<app>/src` **新增**调色板类（`bg-blue-500` 等） | 基线按「文件 → 上限」冻结，超限即违例；只许减少不许增加。**2026-11-13 实测**全仓命中 7 文件 / 7 处：`apps/web` 6 处 `to-violet-600` + `packages/ui/src/components/display.tsx` 1 处；基线表里仍留有一些历史条目（旧 admin 路径、`tag.tsx` 30），是未回收的松量 |
 | `pnpm check:ui` ④ 样式入口可解析 | `apps/*/src` 与 `packages/ui/src` 里 `@import "@repo/x/y.css"` 指向不存在的文件 | 包改名 / 导出改名后引用静默失效（实测抓到过 IDE 入口 `tailwind-ide.css` 的残留引用） |
-| `pnpm check:ui` ⑤ 字体规范一致 | `apps/<app>/src/app/layout.tsx` 的 `next/font` 变量名与 `globals.css` 字体回退链不一致（规范**从 CSS 推导**，不维护第二份清单） | 改一个字体字面量即违例 |
+| `pnpm check:ui` ⑤ 字体接入规范 | root layout 里出现 `next/font/google`；或设计系统声明了要 app 注入的字体变量、layout 没写字面量（规范**从 CSS 推导**） | 任一 root layout 加回 Google 字体即违例 |
 | `pnpm check:ui` ①②（既有） | 自有组件未导出 / 前端包缺 `typecheck` 脚本 | — |
 
 > `tokens.test.ts` 顶部有 `// @vitest-environment node`：ui 包默认是 jsdom 环境，
@@ -208,7 +212,10 @@ apps/web | apps/admin   应用：globals.css 接入 + 字体字面量 + 页面
 
 ## 7. 关键实测结论
 
-### 7.1 `next/font` 拒绝任何非字面量
+### 7.1 `next/font` 拒绝任何非字面量（历史，2026-11-21 已退役字体加载）
+
+> 现已不接 `next/font`（改系统字体栈，见 §4.1.1），本节仅保留给"将来若用 `next/font/local`
+> 自带品牌字体"时的参考：变量名仍必须写字面量。
 
 把变量名常量（哪怕来自 `@repo/ui`）传给 `variable` 会直接构建失败：
 
@@ -468,8 +475,9 @@ ring / border / shadow。表单控件保留自身描边（输入框的边界是�
 
 - **token**：`packages/ui/src/globals.css` 的 `:root` 共 **55 个变量**（颜色 42 / md 高亮 11 / 圆角 1 / 字体 1），
   明暗两套；`--brand` 现值 `oklch(0.55 0.21 280)`（深色 `oklch(0.673 0.182 277)`）。
-- **字体**：Geist / Geist Mono / Space Grotesk，`next/font` 在两个 app 的根 layout 注入 `--font-geist*` /
-  `--font-space-grotesk`，`globals.css` 拼 `--font-sans` / `--font-mono` / `--font-display`（`--font-heading` 派生）。
+- **字体**：2026-11-21 起为**纯系统栈**（`system-ui` / `ui-monospace` + PingFang / 雅黑）；
+  根 layout 不接 `next/font`，`--font-sans` / `--font-mono` / `--font-display` 全在 `@repo/ui` 定义
+  （`--font-heading` 派生），`check:ui` 拦 `next/font/google`。
 - **组件库**：`components/ui` **61** 个、`components/ai-elements` **48** 个、平铺自有组件 **35** 个、hooks **6** 个；
   `@repo/ui` 测试 **17 文件 / 118 项**（含 token 守卫 6 项）—— 文中此前的「ui 32 / 52 / 71 项」都是历史值。
 - **主题**：admin 与 web 都具备三态切换（key 分别是 `billy-admin-theme` / `billy-theme`）；

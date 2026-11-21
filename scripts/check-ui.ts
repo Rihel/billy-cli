@@ -33,9 +33,9 @@
  *     包改名 / 导出改名后这些引用会**静默失效**（IDE 入口 `tailwind-ide.css` 不参与构建，
  *     坏了没人发现）。
  *
- *  E. **字体规范一致**：`apps/<app>/src/app/layout.tsx` 的 `next/font` 变量名
- *     必须与 `globals.css` 里字体回退链引用的变量一致 —— 规范**从 CSS 推导**，不维护第二份清单。
- *     （`next/font` 要求字面量，传变量直接构建失败，故 app 侧无法 import 定义，只能靠守卫兜住。）
+ *  E. **字体接入规范**：root layout **不许再 import `next/font/google`**（2026-11-21 起字体一律走
+ *     `@repo/ui` 的系统字体栈，不再从 Google Fonts 下载 Geist / Space Grotesk）；
+ *     若设计系统仍声明了「app 要注入的字体变量」，layout 里必须写出同名**字面量**（规范从 CSS 推导）。
  *
  * 用法：`pnpm check:ui`（非零退出码表示存在违例）。
  */
@@ -54,7 +54,7 @@ export interface UiViolation {
    * 'script'   = 前端包缺 typecheck 脚本
    * 'palette'  = 新增硬编码业务调色板类（应走设计系统语义 token）
    * 'style'    = 工作区包样式入口无法解析
-   * 'font'     = next/font 变量名与设计系统规范不一致
+   * 'font'     = root layout 接了 Google Fonts，或字体变量与设计系统规范不一致
    */
   kind: 'export' | 'script' | 'palette' | 'style' | 'font'
   /** 涉及的包 / 文件（相对 cwd） */
@@ -269,19 +269,21 @@ export function scanStyleEntries(cwd = process.cwd()): UiViolation[] {
   return violations
 }
 
-/** E. next/font 变量名是否与设计系统规范一致（规范从 globals.css 推导，不维护第二份清单） */
+/** E. 字体接入：root layout 不许接 `next/font/google`；设计系统若声明注入变量，layout 必须写字面量 */
 export function scanFontContract(cwd = process.cwd()): UiViolation[] {
   const violations: UiViolation[] = []
 
   const cssPath = join(cwd, UI_ROOT, 'src/globals.css')
   if (!existsSync(cssPath)) return []
-  // 只取「应用需注入」的三个变量：--font-heading 是从 --font-display 派生的别名，不算
-  const expected = [
-    ...readFileSync(cssPath, 'utf8').matchAll(
-      /--font-(?:sans|mono|display)\s*:\s*var\((--[a-z0-9-]+)\)/g,
-    ),
-  ].map((match) => match[1] as string)
-  if (expected.length === 0) return []
+  // 只取「应用需注入」的变量：--font-heading 是从 --font-display 派生的别名，不算；
+  // 设计系统自己定义过的变量（如 --font-sans）也不算「需要 app 注入」。
+  const css = readFileSync(cssPath, 'utf8')
+  const defined = new Set(
+    [...css.matchAll(/^\s*(--[a-z0-9-]+)\s*:/gm)].map((match) => match[1] as string),
+  )
+  const expected = [...css.matchAll(/--font-(?:sans|mono|display)\s*:\s*var\((--[a-z0-9-]+)\)/g)]
+    .map((match) => match[1] as string)
+    .filter((name) => !defined.has(name))
 
   const targets: string[] = []
   const appsDir = join(cwd, APPS_ROOT)
@@ -304,6 +306,17 @@ export function scanFontContract(cwd = process.cwd()): UiViolation[] {
   for (const target of targets) {
     if (!existsSync(target)) continue
     const source = readFileSync(target, 'utf8')
+    // 2026-11-21 决策：字体一律用系统栈，root layout 不许再拉 Google Fonts
+    if (/from\s+['"]next\/font\/google['"]/.test(source)) {
+      violations.push({
+        kind: 'font',
+        target: relative(cwd, target),
+        detail:
+          'root layout 不许 import `next/font/google`：字体一律用 @repo/ui 定义的系统字体栈' +
+          '（2026-11-21 决策，内网 / 离线部署不依赖外网字体）',
+      })
+      continue
+    }
     const missing = expected.filter(
       (name) => !source.includes(`'${name}'`) && !source.includes(`"${name}"`),
     )
@@ -312,7 +325,7 @@ export function scanFontContract(cwd = process.cwd()): UiViolation[] {
         kind: 'font',
         target: relative(cwd, target),
         detail:
-          `next/font 变量名与 ${UI_ROOT}/src/globals.css 的字体规范不一致，缺少字面量：` +
+          `字体变量与 ${UI_ROOT}/src/globals.css 的规范不一致，layout 里缺少字面量：` +
           `${missing.join(' / ')}（next/font 要求字面量，无法 import 常量）`,
       })
     }

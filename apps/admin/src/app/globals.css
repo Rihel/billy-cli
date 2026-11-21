@@ -85,7 +85,7 @@
   outline: none;
 }
 .skill-code-editor .cm-scroller {
-  font-family: var(--font-geist-mono);
+  font-family: var(--font-mono);
   line-height: 1.7;
 }
 .skill-code-editor .cm-gutters {
