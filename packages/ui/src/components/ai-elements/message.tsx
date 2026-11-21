@@ -19,7 +19,7 @@ import type { ComponentProps, HTMLAttributes, ReactElement } from 'react'
 import { createContext, memo, useCallback, useContext, useEffect, useMemo, useState } from 'react'
 
 import { Streamdown } from 'streamdown'
-import { isValidElement, type ComponentType, type ReactNode } from 'react'
+import { cloneElement, isValidElement, type ComponentType, type ReactNode } from 'react'
 import { CodeFence, PlainPre } from './code-fence.tsx'
 import { markdownFenceRenderers, RENDERED_FENCE_LANGUAGES } from './markdown-fences/renderers.tsx'
 
@@ -299,6 +299,14 @@ const streamdownComponents = {
       const props = child.props as { className?: string; children?: ReactNode }
       const language = /language-([\w+-]+)/.exec(props.className ?? '')?.[1] ?? ''
       const raw = typeof props.children === 'string' ? props.children : ''
+      // mermaid 的 diagram 分支挂在 Streamdown **内部 code 组件**上：这里必须把 children 原样透传回去，
+      // 截成 CodeFence 就只剩一个带复制/下载的代码块。透传时补上默认 pre 的职责——
+      // 内部 code 组件靠 `data-block` 区分块级/行内，丢了标记 mermaid 会退化成行内纯文本。
+      if (language === 'mermaid') {
+        return cloneElement(child as ReactElement<Record<string, unknown>>, {
+          'data-block': 'true',
+        })
+      }
       // 自定义围栏（json / html / gsap / xflow）仍交给各自组件渲染，不能当普通代码块
       if (raw && RENDERED_FENCE_LANGUAGES.includes(language)) {
         const renderer = markdownFenceRenderers.find((item) =>
