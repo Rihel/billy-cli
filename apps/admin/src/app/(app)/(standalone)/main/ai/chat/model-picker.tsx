@@ -121,7 +121,17 @@ export function ModelPicker({
     <ModelSelector open={open} onOpenChange={setOpen}>
       <ModelSelectorTrigger
         render={
-          <Button variant="outline" size="sm" disabled={disabled} className="max-w-56 gap-2">
+          /**
+           * 390px 的输入区 footer 只有 ~346px，模型按钮原来的 224px（`max-w-56`）加上
+           * 文件权限、附件按钮就没有余量了 —— 窄屏收到 160px（`max-w-40`），名字本就
+           * `truncate`，完整名字在下拉里。`sm:` 起仍按 224px，桌面（≥1024）一字未变。
+           */
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={disabled}
+            className="max-w-40 gap-2 sm:max-w-56"
+          >
             <span className="truncate">{current?.displayName ?? '选择模型'}</span>
             {current ? <ModelModalityBadges inputModalities={current.inputModalities} /> : null}
             <ChevronsUpDownIcon className="size-3.5 shrink-0 opacity-60" />

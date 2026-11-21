@@ -292,7 +292,11 @@ export function QuestionCard({
 
   return (
     <div className="w-full rounded-lg bg-surface-1 p-3 text-sm">
-      <div className="mb-2 flex items-center gap-2">
+      {/*
+        手机上题数一多，右侧进度点会跟标题抢同一行，把「共 N 个问题，逐题回答」挤成竖排；
+        窄屏允许换行、进度点整体折到第二行（`ml-auto` 让它仍靠右），桌面一行放得下，观感不变。
+      */}
+      <div className="mb-2 flex flex-wrap items-center gap-2">
         <Badge variant="secondary">
           {cancelled
             ? '已取消'
@@ -351,6 +355,10 @@ export function QuestionCard({
               </div>
             ) : (
               <>
+                {/*
+                  选项 / 「其他」这几行本身整行可点：手机把行高抬到 36px 更好用拇指命中，
+                  lg 起回到 py-1.5 —— 桌面行高与改动前一致。
+                */}
                 {current.type === 'single' && current.options?.length ? (
                   <RadioGroup
                     className="mt-2 gap-1.5"
@@ -363,7 +371,7 @@ export function QuestionCard({
                     {current.options.map((option) => (
                       <Label
                         key={option.label}
-                        className="flex cursor-pointer items-start gap-2 rounded-md px-2 py-1.5 hover:bg-muted/60"
+                        className="flex cursor-pointer items-start gap-2 rounded-md px-2 py-2 hover:bg-muted/60 lg:py-1.5"
                       >
                         <RadioGroupItem value={option.label} className="mt-0.5" />
                         <span className="min-w-0">
@@ -378,7 +386,7 @@ export function QuestionCard({
                     ))}
                     <Label
                       key="__other__"
-                      className="flex cursor-pointer items-start gap-2 rounded-md px-2 py-1.5 hover:bg-muted/60"
+                      className="flex cursor-pointer items-start gap-2 rounded-md px-2 py-2 hover:bg-muted/60 lg:py-1.5"
                     >
                       <RadioGroupItem value={OTHER_OPTION} className="mt-0.5" />
                       <span className="min-w-0">
@@ -400,7 +408,7 @@ export function QuestionCard({
                       return (
                         <Label
                           key={option.label}
-                          className="flex cursor-pointer items-start gap-2 rounded-md px-2 py-1.5 hover:bg-muted/60"
+                          className="flex cursor-pointer items-start gap-2 rounded-md px-2 py-2 hover:bg-muted/60 lg:py-1.5"
                         >
                           <Checkbox
                             checked={list.includes(option.label)}
@@ -423,7 +431,7 @@ export function QuestionCard({
                     })}
                     <Label
                       key="__other__"
-                      className="flex cursor-pointer items-start gap-2 rounded-md px-2 py-1.5 hover:bg-muted/60"
+                      className="flex cursor-pointer items-start gap-2 rounded-md px-2 py-2 hover:bg-muted/60 lg:py-1.5"
                     >
                       <Checkbox
                         checked={

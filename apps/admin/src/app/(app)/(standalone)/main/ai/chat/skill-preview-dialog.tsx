@@ -10,6 +10,7 @@ import {
   DialogHeader,
   DialogTitle,
   Markdown,
+  cn,
 } from '@repo/ui'
 import { ExternalLinkIcon, FileCode2Icon, FileTextIcon } from 'lucide-react'
 import { useServerClient } from '@/lib/server-client'
@@ -126,13 +127,48 @@ function SkillPreviewDialogBody({
             ) : draft ? (
               <Badge variant="outline">尚未落库</Badge>
             ) : null}
-            {source ? <Badge variant="outline">{source}</Badge> : null}
+            {/*
+              来源是 `skill-import` 的原始 URL，`Badge` 自带 `whitespace-nowrap` + `shrink-0`，
+              390px 下会顶穿弹窗（外层 `overflow-hidden` 直接把它切掉）。
+              这里让徽标最多占满一行、内部文本用省略号收尾；桌面宽度够，URL 原样完整显示。
+            */}
+            {source ? (
+              <Badge variant="outline" className="max-w-full">
+                <span className="truncate">{source}</span>
+              </Badge>
+            ) : null}
           </div>
           <DialogDescription className="mt-1 max-h-28 overflow-y-auto whitespace-pre-wrap break-words text-xs leading-5">
             <span className="font-medium text-muted-foreground">什么时候用：</span>
             {description || '（没有描述）'}
           </DialogDescription>
         </DialogHeader>
+
+        {/*
+          手机上左栏（220px）整体隐藏，若不补入口，references / scripts 就再也打不开 ——
+          这里换成一条横向可滚的文件条。断点跟 aside 的 `sm:flex` 对齐：`sm` 起交回左栏，
+          所以 640px 以上（含桌面）完全不渲染这条，桌面版面与改动前一致。
+        */}
+        {files.length > 1 ? (
+          <div className="flex shrink-0 gap-1 overflow-x-auto border-b border-border/60 px-3 py-2 sm:hidden">
+            {files.map((file) => (
+              <button
+                key={file.path}
+                type="button"
+                onClick={() => setPath(file.path)}
+                className={cn(
+                  // py-2 让每个文件落在 ~32px 的可点高度上（纯文字只有 ~16px）
+                  'shrink-0 rounded-md px-2 py-2 font-mono text-xs',
+                  path === file.path
+                    ? 'bg-surface-3 text-foreground'
+                    : 'text-muted-foreground hover:bg-surface-1/60',
+                )}
+              >
+                {file.path}
+              </button>
+            ))}
+          </div>
+        ) : null}
 
         <div className="flex min-h-0 flex-1">
           {/* 左：文件树（与编辑器同构，但没有新增 / 删除） */}

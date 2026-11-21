@@ -31,7 +31,6 @@ import {
   RefreshButton,
   Sheet,
   SheetContent,
-  SheetHeader,
   SheetTitle,
   cn,
   toastSuccess,
@@ -105,17 +104,29 @@ const CONVERSATION_PAGE_SIZE = 30
  * 抽成组件是因为要用 `useState` 控制 open —— 在列表 map 里不能直接用 hooks。
  * 菜单在 Portal 里，移出触发区不立刻关（否则指针一进菜单就被判离开），
  * 由菜单自己的 pointerleave / 选中 / Esc / 点外面关闭。
+ *
+ * `persistent` 是给**手机端会话抽屉**用的（桌面永远不传 = 沿用下面这套悬停显隐，一字未变）：
+ * 触摸设备没有 hover，`opacity-0` 的入口既看不见也点不到；而且触点会先触发 pointerenter
+ * 再触发 click，若仍挂着"移入即打开"，菜单刚开就被 trigger 的 click 关掉 —— 所以
+ * persistent 下既不淡出，也不注册 pointerenter。
  */
 function ConversationMenu(props: {
   conversation: AgentConversationModel
   onRename: (conversation: AgentConversationModel) => void
   onDelete: (conversation: AgentConversationModel) => void
+  /** 窄屏抽屉：常显、可点（触摸没有 hover），并放大触发器的热区 */
+  persistent?: boolean
 }) {
   const [open, setOpen] = useState(false)
   return (
     <div
-      className="pointer-events-none absolute inset-y-1 right-1 flex items-center rounded-md bg-surface-4 px-0.5 opacity-0 transition-opacity group-hover:pointer-events-auto group-hover:opacity-100 focus-within:pointer-events-auto focus-within:opacity-100"
-      onPointerEnter={() => setOpen(true)}
+      className={cn(
+        'absolute inset-y-1 right-1 flex items-center rounded-md px-0.5 transition-opacity',
+        props.persistent
+          ? 'pointer-events-auto opacity-100'
+          : 'pointer-events-none bg-surface-4 opacity-0 group-hover:pointer-events-auto group-hover:opacity-100 focus-within:pointer-events-auto focus-within:opacity-100',
+      )}
+      onPointerEnter={props.persistent ? undefined : () => setOpen(true)}
     >
       <DropdownMenu open={open} onOpenChange={setOpen}>
         <DropdownMenuTrigger
@@ -123,13 +134,21 @@ function ConversationMenu(props: {
             <button
               type="button"
               aria-label="更多会话操作"
-              className="inline-flex size-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-surface-3 hover:text-foreground"
+              className={cn(
+                'inline-flex items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-surface-3 hover:text-foreground',
+                // 手机上 24px 的图标按钮偏小，给到 28px（抽屉是窄屏专用，桌面仍是 size-6）
+                props.persistent ? 'size-7' : 'size-6',
+              )}
             >
               <MoreHorizontalIcon className="size-3.5" />
             </button>
           }
         />
-        <DropdownMenuContent align="end" className="w-32" onPointerLeave={() => setOpen(false)}>
+        <DropdownMenuContent
+          align="end"
+          className="w-32"
+          onPointerLeave={props.persistent ? undefined : () => setOpen(false)}
+        >
           <DropdownMenuItem
             onClick={() => {
               setOpen(false)
@@ -727,9 +746,15 @@ export default function ChatLayout({ children }: { children: ReactNode }) {
             <>
               <Sheet open={mobileListOpen} onOpenChange={setMobileListOpen}>
                 <SheetContent side="left" className="flex w-[86vw] max-w-sm flex-col p-0">
-                  <SheetHeader className="shrink-0 border-b px-4 py-3">
+                  {/*
+                    标题栏**不用 `SheetHeader`**：它自带 `sticky z-20`，而 Sheet 的关闭键
+                    是 `z-auto` 的绝对定位元素 —— 标题栏的底色会盖住右上角那颗 X，点不到。
+                    抽屉本来就只有"点遮罩 / 点会话"两条出路，关闭键再不可见就真的像卡住了。
+                    这里用普通 div 复刻同样的视觉（44px 高、发丝线、左右 16px）。
+                  */}
+                  <div className="flex shrink-0 items-center border-b border-border px-4 py-3">
                     <SheetTitle>会话列表</SheetTitle>
-                  </SheetHeader>
+                  </div>
                   <div className="flex min-h-0 flex-1 flex-col gap-2 p-3">
                     <Button
                       size="sm"
@@ -746,23 +771,42 @@ export default function ChatLayout({ children }: { children: ReactNode }) {
                       {items.map((conversation) => {
                         const active = pathname === conversationPath(conversation.id)
                         return (
-                          <Link
-                            key={conversation.id}
-                            href={conversationPath(conversation.id)}
-                            onClick={() => setMobileListOpen(false)}
-                            className={cn(
-                              'flex flex-col gap-0.5 rounded-md px-3 py-2 text-sm',
-                              active ? 'bg-surface-4' : 'hover:bg-surface-4/60',
-                            )}
-                          >
-                            <span className="truncate font-medium">
-                              {conversation.title || '(无标题)'}
-                            </span>
-                            <span className="text-[11px] text-muted-foreground">
-                              {conversation.running ? '运行中 · ' : ''}
-                              {conversation.turnCount} 轮
-                            </span>
-                          </Link>
+                          /*
+                            桌面列表行靠悬停出「更多」，触摸设备没有悬停 —— 抽屉里若照搬，
+                            手机上就完全没有改名 / 删除的入口。这里改成**常显**一个「更多」
+                            （`persistent`），并给 Link 留出它的位置（`pr-10`）。
+                            新增的 `active:` 只是触摸按下时的反馈：手机上既没有 hover，
+                            点下去要立刻有反应，否则像没点中。桌面不渲染这一段。
+                          */
+                          <div key={conversation.id} className="group relative">
+                            <Link
+                              href={conversationPath(conversation.id)}
+                              onClick={() => setMobileListOpen(false)}
+                              className={cn(
+                                'flex flex-col gap-0.5 rounded-md py-2 pr-10 pl-3 text-sm',
+                                active
+                                  ? 'bg-surface-4'
+                                  : 'hover:bg-surface-4/60 active:bg-surface-4',
+                              )}
+                            >
+                              <span className="truncate font-medium">
+                                {conversation.title || '(无标题)'}
+                              </span>
+                              <span className="text-[11px] text-muted-foreground">
+                                {conversation.running ? '运行中 · ' : ''}
+                                {conversation.turnCount} 轮
+                              </span>
+                            </Link>
+                            <ConversationMenu
+                              persistent
+                              conversation={conversation}
+                              onRename={(target) => {
+                                renameForm.reset({ title: target.title })
+                                renameDialog.open(target)
+                              }}
+                              onDelete={(target) => removeDialog.open(target)}
+                            />
+                          </div>
                         )
                       })}
                       {items.length === 0 && !conversationsQuery.isLoading ? (

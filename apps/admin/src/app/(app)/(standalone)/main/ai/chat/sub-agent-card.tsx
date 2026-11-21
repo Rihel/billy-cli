@@ -84,7 +84,9 @@ export function SubAgentCard({
     <Button
       variant="link"
       size="sm"
-      className="h-auto shrink-0 px-0 text-xs"
+      // 手机上加一节纵向内边距把「查看过程」抬到 ~28px 高（纯文字行高只有 ~16px，拇指很难点中）；
+      // lg 起 py-0 还原成与改动前完全一致的链接样式。
+      className="h-auto shrink-0 px-0 py-1.5 text-xs lg:py-0"
       onClick={() => onOpen(agent.runId)}
     >
       查看过程
@@ -92,7 +94,8 @@ export function SubAgentCard({
   ) : agent.conversationId ? (
     <Link
       href={conversationPath(agent.conversationId)}
-      className="shrink-0 text-xs text-primary hover:underline"
+      // 同 entry：窄屏给可点高度，桌面不加任何内边距
+      className="shrink-0 py-1.5 text-xs text-primary hover:underline lg:py-0"
     >
       打开子会话
       <ArrowUpRightIcon className="ml-0.5 inline size-3" aria-hidden />
@@ -123,7 +126,13 @@ export function SubAgentCard({
             </span>
             {/* 状态与消耗紧贴标题右侧（不再被 flex-1 推到最右），中间留白交给后面的 spacer */}
             <Badge variant={statusVariant(status)}>{statusLabel[status] ?? status}</Badge>
-            <span className="min-w-0 truncate text-xs text-muted-foreground">
+            {/*
+              桌面一行放得下：进度跟在徽标后面，超长时 truncate 省略；
+              手机一行只剩 ~20px，会被截成「已…」，等于把步数 / token / 耗时全丢掉 ——
+              窄屏让它独占第二行（order-last + basis-full），lg 起 order/basis 还原，
+              视觉上仍是徽标右边的同一行。
+            */}
+            <span className="order-last min-w-0 basis-full truncate text-xs text-muted-foreground lg:order-none lg:basis-auto">
               {progress}
               {/* 子助手自己的消耗（k / m 缩写，与右下角统计同一套口径）；
                   它**已计入父那一轮的合计**（`rollUpUsage`），不是额外再花一份 */}

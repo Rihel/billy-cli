@@ -29,7 +29,15 @@ export function PlanSummaryCard({
     <div className="flex flex-col gap-1.5 rounded-md bg-surface-2 px-2.5 py-1.5">
       <div className="flex flex-wrap items-center gap-2">
         <ListTodoIcon className="size-4 shrink-0 text-muted-foreground" />
-        <span className="min-w-0 flex-1 truncate text-sm font-medium" title={plan.goal}>
+        {/*
+          手机上进度徽标 + 「查看清单」已经吃掉半行，目标只给一行（truncate）会只剩几个字，
+          而 `title` 悬停提示在触屏上看不到 —— 窄屏放宽到两行（line-clamp-2）；
+          lg 起回到单行省略（line-clamp-1），渲染结果与原来的 truncate 一致，桌面排版不变。
+        */}
+        <span
+          className="min-w-0 flex-1 line-clamp-2 text-sm font-medium lg:line-clamp-1"
+          title={plan.goal}
+        >
           {plan.goal || '执行计划'}
         </span>
         <Badge variant="outline" className="shrink-0 tabular-nums">

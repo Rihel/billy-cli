@@ -25,7 +25,6 @@ import {
   SegmentedControl,
   Sheet,
   SheetContent,
-  SheetHeader,
   SheetTitle,
   toastError,
   toastSuccess,
@@ -1171,8 +1170,18 @@ export function ChatConversation({ conversationId }: { conversationId: string })
         {/* 待发附件条：粘完、发之前就能看清带了什么（图给缩略图，别的给文件名与大小） */}
         <PromptInputBody>
           <PromptInputAttachmentsBar onPreviewImage={previewAttachments} />
+          {/*
+            占位文案按断点分两份：桌面那份带「⌘/Ctrl + Enter 发送，Enter 换行」，
+            手机上没有这两个键，提示是错的；而且 90 字塞进 390px 的输入框只会被裁成一截
+            （textarea 是 `field-sizing-content`，placeholder 不参与高度计算）。
+            用 `isMobile` 而不是 CSS：文案要换整句，不是隐藏某一段；桌面分支一字未改。
+          */}
           <PromptInputTextarea
-            placeholder={`说说你想做什么…（⌘/Ctrl + Enter 发送，Enter 换行；可粘贴图片 / 文件，长文本自动转附件，${ATTACHMENT_LIMIT_TEXT}）`}
+            placeholder={
+              isMobile
+                ? '说说你想做什么…（可粘贴图片 / 文件）'
+                : `说说你想做什么…（⌘/Ctrl + Enter 发送，Enter 换行；可粘贴图片 / 文件，长文本自动转附件，${ATTACHMENT_LIMIT_TEXT}）`
+            }
             submitOn="mod+enter"
             /**
              * 粘贴超过阈值的纯文本 → 直接变成附件，输入框留空给用户写自己的问题。
@@ -1236,7 +1245,13 @@ export function ChatConversation({ conversationId }: { conversationId: string })
               </span>
             ) : null}
           </PromptInputTools>
-          <div className="flex min-w-0 items-center gap-2">
+          {/*
+            390px 下「模型 + 权限 + 附件」这一排已经把整行占满：跟着挤在同一行的用量行
+            只剩几个像素（`truncate` 之后就是一句省略号）。所以窄屏**强制让这一组单独占一行**
+            （`w-full justify-end`：用量在左、发送键落在右下角），`sm:` 起回到
+            `w-auto + ml-auto` —— 与原来 `justify-between` 的两端布局完全一致，桌面不变。
+          */}
+          <div className="ml-auto flex w-full min-w-0 items-center justify-end gap-2 sm:w-auto">
             <UsageLine usage={usage} turn={turn} current={currentUsage} />
             {/* 流式中这个按钮就是"停止"（内部按 status 换成方块图标），onStop 里做真正的取消 */}
             <PromptInputSubmit status={busy ? 'streaming' : status} onStop={() => void stopRun()} />
@@ -1268,13 +1283,18 @@ export function ChatConversation({ conversationId }: { conversationId: string })
         */
         <div className="relative flex h-full min-h-0 flex-col overflow-y-auto px-6 py-10">
           {isMobile && mobileNav ? (
+            /*
+              同上：空态里这个入口是**唯一**的会话列表入口，不能只有一个 12px 字形。
+              `top-2 left-2` 让 32px 的方块与页面 24px 的内边距对齐（视觉重心仍在左上角）。
+              空态只在手机上带这个按钮，桌面无变化。
+            */
             <IconText
               icon={<MessagesSquareIcon />}
               size="small"
               type="primary"
               tooltip="会话列表"
               aria-label="会话列表"
-              className="absolute top-3 left-3"
+              className="absolute top-2 left-2 size-8 justify-center rounded-md bg-surface-2 hover:bg-surface-3"
               onClick={mobileNav.openConversations}
             />
           ) : null}
@@ -1325,12 +1345,18 @@ export function ChatConversation({ conversationId }: { conversationId: string })
                 {/* 顶层「会话 / 管理」切换在全局顶栏里，这里不再放「回到管理台」图标 ——
                   页头横向空间全部留给标题与模型选择；移动端仍留一个"会话列表"入口（抽屉） */}
                 {isMobile && mobileNav ? (
+                  /*
+                    `IconText` 只有字形那么大（12px）—— 390px 上等于一个点不中的小点。
+                    给它一个 32px 的方形热区（`size-8` + 居中 + 按键底色），手指才落得准。
+                    这一段只在 `isMobile` 分支里渲染，桌面页头根本没有它。
+                  */
                   <IconText
                     icon={<MessagesSquareIcon />}
                     size="small"
                     type="primary"
                     tooltip="会话列表"
                     aria-label="会话列表"
+                    className="size-8 shrink-0 justify-center rounded-md bg-surface-2 hover:bg-surface-3"
                     onClick={mobileNav.openConversations}
                   />
                 ) : null}
@@ -1482,7 +1508,14 @@ export function ChatConversation({ conversationId }: { conversationId: string })
 
                   {/* 输入框上方的常驻 dock：运行状态 / 当前任务进度 / 待回答的问题。
                 放在 Conversation 外面，所以不会被消息列表滚走；问题卡永远贴着输入框。 */}
-                  <div className="flex max-h-[55vh] shrink-0 flex-col gap-2 overflow-y-auto px-3">
+                  {/*
+                    `shrink-0` 只在 ≥lg 保留（桌面尺寸下余量充足，行为与原来一致）：
+                    <1024 的高度可能被键盘 / 横屏压得很矮，而这一块最高能到 55vh —— 它若
+                    不可压缩，flex 只能把**输入区**（最后一个子项）挤出可视区。放开收缩后
+                    优先级变成「消息列表先让位 → dock 自己滚动 → 输入区始终在底部」。
+                    390 竖屏没有溢出，所以外观不变；这是给"矮视口"兜底的结构，不是尺寸调整。
+                  */}
+                  <div className="flex max-h-[55vh] min-h-0 flex-col gap-2 overflow-y-auto px-3 lg:shrink-0">
                     {isSubConversation ? (
                       <div className="rounded-lg border border-border bg-surface-2 px-3 py-2 text-xs text-muted-foreground">
                         这是子助手产生的子会话，只读展示；要让它继续工作，请回到父会话重新委派。
@@ -1562,9 +1595,17 @@ export function ChatConversation({ conversationId }: { conversationId: string })
             className="flex w-full max-w-none flex-col p-0 data-[side=right]:w-full data-[side=right]:max-w-none data-[side=right]:sm:max-w-none"
             style={{ width: '100%', maxWidth: 'none', height: '100dvh' }}
           >
-            <SheetHeader className="sr-only">
+            {/*
+              手机端右栏给一条**可见的窄标题栏**（桌面分栏里没有这层壳，不受影响）：
+              Sheet 的关闭键是绝对定位在右上角（`top-3 right-3`）的，而右栏内容顶部
+              正好是它自己的 tab 条 —— 标题栏 `sr-only` 时关闭键会压住「工作区」那一格，
+              点 tab 变成关面板。留出这一行，关闭键有了独立落点，内容也从它下面开始。
+              这里**不用 `SheetHeader`**：它自带 `sticky z-20`，而关闭键是 `z-auto` 的
+              绝对定位元素 —— 会被标题栏的底色压在下面，看不见也点不到。
+            */}
+            <div className="shrink-0 border-b border-border px-4 py-3">
               <SheetTitle>会话详情</SheetTitle>
-            </SheetHeader>
+            </div>
             <div className="min-h-0 flex-1 overflow-hidden p-2">
               <ConversationRightPanel
                 client={client}
