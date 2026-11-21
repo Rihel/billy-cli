@@ -12,6 +12,9 @@
   `pnpm --filter @repo/db db:migrate`（脚本先构建 `@repo/db`）；
   `db:gen` 输出到 `packages/db/src/migrations/`。
 - gateway 的 `DbModule` 只注册 `AiToolAuditEntity`，用 repository 写 `ai_tool_audit`；不整包注册。
+- **坑（2026-11-21 实测）**：`id` 由 `BaseEntity` 的 `@BeforeInsert` 生成（20 位 nanoid），
+  TypeORM 对**普通对象** `save({...})` 与 `insert({...})` **都不跑实体钩子** → id 走 `DEFAULT`（NULL），
+  报 `null value in column "id"`。写法只有两种：`repo.save(repo.create({...}))`，或 `insert` 时显式给 id。
 
 ## 关键位置
 
@@ -30,6 +33,8 @@ grep -n "DB_ENTITIES" apps/main/src/root.module.ts packages/db/src/entities/inde
 grep -n "DB_MIGRATIONS" packages/db/data-source.ts packages/db/src/migrations/index.ts
 grep -n "AiToolAuditEntity" apps/capability-gateway/src/root.module.ts apps/capability-gateway/src/audit/tool.audit.ts
 grep -n "packages/db" apps/agent-runtime/scripts/db-generate.ts apps/agent-runtime/package.json
+# 新增写库点后核对：save / insert 是否漏了实体钩子或 id
+grep -rn "\.save({\|\.insert({" apps packages --include=*.ts | grep -v migrations
 ```
 
 ## 失效信号
