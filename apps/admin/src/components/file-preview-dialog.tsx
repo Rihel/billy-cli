@@ -27,6 +27,7 @@ import { useHotkeys } from 'react-hotkeys-hook'
 import { toastError, toastSuccess } from '@repo/ui'
 import { MessageResponse } from '@repo/ui/components/ai-elements/message.tsx'
 import { SandboxFrame } from '@repo/ui/components/ai-elements/markdown-fences/sandbox-frame.tsx'
+import { MarkdownMeta } from '@/components/markdown-meta'
 import { OfficePreview, type OfficeKind } from '@/components/office-preview'
 import { MonacoCodePreview } from '@/components/monaco-code-preview'
 import {
@@ -35,6 +36,7 @@ import {
   usePreviewFullscreen,
 } from '@/components/preview-fullscreen'
 import { copyText } from '@/lib/clipboard'
+import { splitFrontmatter } from '@/lib/skill-markdown'
 
 /** 预览弹窗里一份文件的最小视图模型（不绑定会话 / 后台某一种列表） */
 export interface PreviewDialogItem {
@@ -154,14 +156,14 @@ export const officeKind = (
  * 状态不外抛，关窗即复位，调用方的 props 不受影响。
  */
 /** 左侧树：目录 → 子目录 / 文件（按 path 分组，文件保留原下标用于切换） */
-interface PreviewTreeDir {
+export interface PreviewTreeDir {
   name: string
   path: string
   dirs: Map<string, PreviewTreeDir>
   files: { item: PreviewDialogItem; index: number }[]
 }
 
-const buildPreviewTree = (items: readonly PreviewDialogItem[]): PreviewTreeDir => {
+export const buildPreviewTree = (items: readonly PreviewDialogItem[]): PreviewTreeDir => {
   const root: PreviewTreeDir = { name: '', path: '', dirs: new Map(), files: [] }
   items.forEach((item, index) => {
     const rel = (item.path ?? item.filename).split('/').filter(Boolean)
@@ -185,15 +187,32 @@ type PreviewTreeRow =
   | { type: 'dir'; name: string; path: string; depth: number }
   | { type: 'file'; item: PreviewDialogItem; index: number; depth: number }
 
-const flattenPreviewTree = (
+/**
+ * 一份文件的**祖先目录路径**（由浅到深，不含文件名）。
+ *
+ * 用途：预览弹窗打开时自动展开到当前文件那一层 —— 默认全折叠，但「当前正在看的文件」
+ * 必须可见，否则树里连高亮行都没有。
+ */
+export const ancestorDirsOf = (path: string): string[] => {
+  const segments = path.split('/').filter(Boolean)
+  segments.pop()
+  return segments.map((_, index) => segments.slice(0, index + 1).join('/'))
+}
+
+/**
+ * 树 → 可见行。**默认全折叠**（`expanded` 为空 = 只出第一层），点了才展开子树。
+ *
+ * 与右栏文件树同一口径：目录默认收起，靠 `aria-expanded` 与箭头朝向表达状态。
+ */
+export const flattenPreviewTree = (
   dir: PreviewTreeDir,
-  collapsed: ReadonlySet<string>,
+  expanded: ReadonlySet<string>,
   depth = 0,
 ): PreviewTreeRow[] => {
   const rows: PreviewTreeRow[] = []
   for (const child of [...dir.dirs.values()].sort((a, b) => a.name.localeCompare(b.name))) {
     rows.push({ type: 'dir', name: child.name, path: child.path, depth })
-    if (!collapsed.has(child.path)) rows.push(...flattenPreviewTree(child, collapsed, depth + 1))
+    if (expanded.has(child.path)) rows.push(...flattenPreviewTree(child, expanded, depth + 1))
   }
   for (const file of [...dir.files].sort((a, b) =>
     a.item.filename.localeCompare(b.item.filename),
@@ -215,7 +234,7 @@ function PreviewFileTree({
   variant,
   rows,
   activeIndex,
-  collapsedDirs,
+  expandedDirs,
   onToggleDir,
   onSelect,
 }: {
@@ -223,7 +242,8 @@ function PreviewFileTree({
   rows: PreviewTreeRow[]
   /** 当前文件在 `items` 里的下标（不是行下标） */
   activeIndex: number
-  collapsedDirs: ReadonlySet<string>
+  /** 已展开的目录路径（空集合 = 全部收起，与右栏文件树同一口径） */
+  expandedDirs: ReadonlySet<string>
   onToggleDir: (path: string) => void
   onSelect: (index: number) => void
 }) {
@@ -244,7 +264,7 @@ function PreviewFileTree({
             )}
           >
             <ChevronRightIcon
-              className={cn('size-3 shrink-0', !collapsedDirs.has(row.path) && 'rotate-90')}
+              className={cn('size-3 shrink-0', expandedDirs.has(row.path) && 'rotate-90')}
             />
             <FolderIcon className="size-3.5 shrink-0" />
             <span className="min-w-0 flex-1 truncate">{row.name}</span>
@@ -295,7 +315,33 @@ export function FilePreviewDialog({
   loading: boolean
 }) {
   const current = index === null ? null : items[index]
-  const [collapsedDirs, setCollapsedDirs] = useState<Set<string>>(new Set())
+  /**
+   * 目录展开态：**只存「展开了哪些」，空集合 = 全部收起**。
+   *
+   * 为什么记展开而不是记收起：默认全折叠是产品口径，记收起就得在拿到数据后
+   * 把每个目录补进去（异步数据会晚一拍，首帧会闪一下全展开）。
+   */
+  const [expandedDirs, setExpandedDirs] = useState<ReadonlySet<string>>(() => new Set())
+  /**
+   * 当前文件的祖先目录：打开弹窗 / 切文件时并进展开集合，保证正在看的那份文件在树里可见。
+   *
+   * 只**追加**不移除：手动展开的目录不会因为切了个文件被收掉；
+   * 依赖里有 `previewOpen`：关掉再打开**同一份**文件也会重新展开（否则手动收起过就再也看不到高亮）。
+   */
+  const activePath = current ? (current.path ?? current.filename) : null
+  const activeAncestors = useMemo(
+    () => (activePath ? ancestorDirsOf(activePath) : []),
+    [activePath],
+  )
+  const previewOpen = index !== null
+  useEffect(() => {
+    if (!previewOpen || activeAncestors.length === 0) return
+    setExpandedDirs((previous) =>
+      activeAncestors.every((path) => previous.has(path))
+        ? previous
+        : new Set([...previous, ...activeAncestors]),
+    )
+  }, [previewOpen, activeAncestors])
   /**
    * 手机端文件树覆盖层（<640）。
    *
@@ -326,12 +372,12 @@ export function FilePreviewDialog({
     }
   }, [])
   const treeRows = useMemo(
-    () => flattenPreviewTree(buildPreviewTree(items), collapsedDirs),
-    [items, collapsedDirs],
+    () => flattenPreviewTree(buildPreviewTree(items), expandedDirs),
+    [items, expandedDirs],
   )
-  /** 展开 / 收起一个目录（侧栏与手机覆盖层共用同一份折叠态） */
+  /** 展开 / 收起一个目录（侧栏与手机覆盖层共用同一份展开态） */
   const toggleDir = (path: string) => {
-    setCollapsedDirs((previous) => {
+    setExpandedDirs((previous) => {
       const next = new Set(previous)
       if (next.has(path)) next.delete(path)
       else next.add(path)
@@ -343,6 +389,17 @@ export function FilePreviewDialog({
   const [copied, setCopied] = useState(false)
   /** markdown / html 可以切「预览 ↔ 代码」（其余文件只有一种形态） */
   const [codeMode, setCodeMode] = useState(false)
+  /**
+   * markdown 的正文与 frontmatter。
+   *
+   * 预览只渲染正文（`---` 开头的 YAML 交给 Markdown 会被当成 setext 标题，正文里
+   * 冒出 `name:` / `description:`）；name / description 放进正文上方的元信息块。
+   * 「代码」视图仍用原文，要抄 YAML 时看得见。
+   */
+  const { meta: frontmatter, body: markdownBody } = useMemo(
+    () => splitFrontmatter(text ?? ''),
+    [text],
+  )
   const {
     fullscreen,
     toggle: toggleFullscreen,
@@ -550,7 +607,7 @@ export function FilePreviewDialog({
                 variant="sidebar"
                 rows={treeRows}
                 activeIndex={index}
-                collapsedDirs={collapsedDirs}
+                expandedDirs={expandedDirs}
                 onToggleDir={toggleDir}
                 onSelect={onIndexChange}
               />
@@ -581,7 +638,12 @@ export function FilePreviewDialog({
           )}
 
           <div
-            className={html ? 'min-h-0 flex-1 overflow-hidden' : 'min-h-0 flex-1 overflow-auto p-4'}
+            className={
+              // html 的沙箱要撑满且不滚动；其余（含 html 的「代码」视图）用滚动容器
+              html && !codeMode
+                ? 'min-h-0 flex-1 overflow-hidden'
+                : 'min-h-0 flex-1 overflow-auto p-4'
+            }
           >
             {officeKind(current) && current.loadBytes ? (
               <OfficePreview
@@ -590,7 +652,7 @@ export function FilePreviewDialog({
                 loadBytes={current.loadBytes}
                 filename={current.filename}
               />
-            ) : html ? (
+            ) : html && !codeMode ? (
               loading ? (
                 <Empty text="正在读取…" />
               ) : (
@@ -603,6 +665,7 @@ export function FilePreviewDialog({
                 />
               )
             ) : canToggleView && codeMode ? (
+              // html 也要走这里：否则「代码」永远落在沙箱分支（实测点不动，2026-11-21 报障）
               <MonacoCodePreview filename={current.filename} value={text ?? ''} />
             ) : binaryUnsupported ? (
               <Empty text="这是二进制文件，不支持在线预览，请下载查看。" />
@@ -611,7 +674,8 @@ export function FilePreviewDialog({
                 <Empty text="正在读取…" />
               ) : markdown ? (
                 <div className="px-6 py-2 sm:px-10">
-                  <MessageResponse className="text-sm">{text ?? ''}</MessageResponse>
+                  <MarkdownMeta meta={frontmatter} className="mt-4" />
+                  <MessageResponse className="text-sm">{markdownBody}</MessageResponse>
                 </div>
               ) : (
                 // 除 markdown（富文本）/ html（沙箱）/ Office 这些专门渲染的以外，
@@ -661,7 +725,7 @@ export function FilePreviewDialog({
                   variant="sheet"
                   rows={treeRows}
                   activeIndex={index}
-                  collapsedDirs={collapsedDirs}
+                  expandedDirs={expandedDirs}
                   onToggleDir={toggleDir}
                   onSelect={(next) => {
                     onIndexChange(next)

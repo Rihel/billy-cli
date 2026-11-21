@@ -5,6 +5,11 @@ import { currentOwner, type OwnerRef } from '../../../common/security/index.js'
 import { WorkspaceAdminService } from './workspace.service.js'
 
 const IdSchema = z.object({ id: z.string().min(1).max(20) })
+/** 与 shared 的 `WorkspaceFileReadSchema` 同口径：归属 + 工作区内路径 */
+const FileReadSchema = z.object({
+  id: z.string().min(1).max(20),
+  path: z.string().min(1).max(512),
+})
 const BackendSchema = z.enum(['local', 'container', 'microvm'])
 const FileAccessSchema = z.enum(['read-only', 'write'])
 
@@ -72,5 +77,26 @@ export class WorkspaceAdminController {
   @HttpCode(200)
   stop(@Body({ schema: IdSchema }) body: z.infer<typeof IdSchema>) {
     return this.service.stop(this.owner(), body.id)
+  }
+
+  /** 只读文件树：后台工作区卡片上的「文件」弹窗（未运行会明确报错） */
+  @Post('files')
+  @HttpCode(200)
+  files(@Body({ schema: IdSchema }) body: z.infer<typeof IdSchema>) {
+    return this.service.files(this.owner(), body.id)
+  }
+
+  /** 读单个文件正文（文本预览，> 512KB 拒绝） */
+  @Post('file/read')
+  @HttpCode(200)
+  readFile(@Body({ schema: FileReadSchema }) body: z.infer<typeof FileReadSchema>) {
+    return this.service.readFile(this.owner(), body.id, body.path)
+  }
+
+  /** 下载单个文件（base64，> 8MB 拒绝） */
+  @Post('file/download')
+  @HttpCode(200)
+  downloadFile(@Body({ schema: FileReadSchema }) body: z.infer<typeof FileReadSchema>) {
+    return this.service.downloadFile(this.owner(), body.id, body.path)
   }
 }

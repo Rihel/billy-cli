@@ -29,8 +29,12 @@ export function SubAgentCompletedCard({
   const succeeded = data.childStatus === 'succeeded'
   const summary = [data.summary, data.error].filter(Boolean).join(' ').trim()
   return (
-    <Card className="gap-0 py-0">
-      <div className="flex flex-wrap items-center gap-x-2 gap-y-1 px-2.5 py-1.5 text-sm">
+    /*
+      单行系统卡：收起态的子助手卡就是一条 `surface-2` 标题栏，这张卡与它同形 ——
+      白底上给一条有边界的灰带，才看得出"这是主时间线之外插进来的一条系统事件"。
+    */
+    <Card className="gap-0 rounded-lg border border-border/60 bg-surface-2 py-0">
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1 px-4 py-2 text-sm">
         <BotIcon className="size-4 shrink-0 text-muted-foreground" aria-hidden />
         <span className="min-w-0 truncate font-medium">
           子助手「{data.name}」已完成，父会话继续

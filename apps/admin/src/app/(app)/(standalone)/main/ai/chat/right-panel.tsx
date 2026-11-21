@@ -47,10 +47,11 @@ export type RightPanelTab = 'system' | 'skills' | 'plan' | 'files' | 'workspace'
  * 用户看不出右边还有 tab。去掉图标 + 字号降到 12px 后总宽约 320px，五格一眼看全；
  * 640 起（平板与桌面）宽度足够，用 `sm:` 原样还原图标与 14px 字号。
  */
-const TAB_TRIGGER_CLASS = 'shrink-0 px-1 text-xs sm:px-1.5 sm:text-sm'
+const TAB_TRIGGER_CLASS =
+  'shrink-0 px-1 text-xs data-active:bg-card data-active:text-foreground group-data-[variant=default]/tabs-list:data-active:shadow-none sm:px-1.5 sm:text-sm'
 
 /** tab 图标：只在 ≥640 出现（理由见 `TAB_TRIGGER_CLASS`），桌面观感不变 */
-const TAB_ICON_CLASS = 'hidden size-3.5 sm:block'
+const TAB_ICON_CLASS = 'hidden size-3.5 text-muted-foreground sm:block'
 
 /**
  * 会话页**右栏**：把"这一轮的旁证"集中到一处，按 tab 切换。
@@ -182,7 +183,12 @@ export function ConversationRightPanel({
 
       {/* overflow-x-auto 会把另一轴也算成 auto：横向滚动条吃掉 8px 高度后，32px 的标签条
           立刻纵向溢出、长出竖直滚动条。这里显式锁死纵向 + 不画滚动条（标签条不需要） */}
-      <TabsList className="w-full justify-start overflow-x-auto overflow-y-hidden scrollbar-none pb-0.5">
+      {/*
+        选中态 = 轨道（`surface-3`）上的一张白卡：默认的「surface-1 压在 surface-2 上」只差 1%，
+        在纯白右栏里等于没有选中态（截图里五个 tab 看着一样灰）。轨道加深一档 + 白卡选中，
+        五格才读得出"现在在哪一页"；仍未用描边、投影或渐变。
+      */}
+      <TabsList className="w-full justify-start overflow-x-auto overflow-y-hidden scrollbar-none rounded-lg bg-surface-3 pb-0.5">
         <TabsTrigger value="system" className={TAB_TRIGGER_CLASS}>
           <ScrollTextIcon className={TAB_ICON_CLASS} />
           系统指令

@@ -56,3 +56,51 @@ export const WorkspaceUpdateSchema = z.object({
   fileAccess: WorkspaceFileAccessSchema.optional(),
 })
 export type WorkspaceUpdateDto = z.infer<typeof WorkspaceUpdateSchema>
+
+/**
+ * 工作区文件（只读浏览，后台工作区卡片上的「文件」弹窗）。
+ *
+ * 只给**元信息**：文件列表与内容都从执行面按需读，不在库里缓存。
+ * 内容读取有上限（见 `WORKSPACE_FILE_PREVIEW_MAX_BYTES`）：超出就明确拒绝，
+ * 不把整份大文件塞进 HTTP / 浏览器。
+ */
+export const WorkspaceFileEntrySchema = z.object({
+  /** 相对工作区根目录的路径 */
+  path: z.string(),
+  size: z.number().int().nonnegative(),
+  mtime: z.number().nonnegative(),
+})
+export type WorkspaceFileEntry = z.infer<typeof WorkspaceFileEntrySchema>
+
+export const WorkspaceFilesModelSchema = z.object({
+  entries: z.array(WorkspaceFileEntrySchema),
+})
+export type WorkspaceFilesModel = z.infer<typeof WorkspaceFilesModelSchema>
+
+export const WorkspaceFileReadSchema = z.object({
+  id: z.string().min(1).max(20),
+  path: z.string().min(1).max(512),
+})
+export type WorkspaceFileReadDto = z.infer<typeof WorkspaceFileReadSchema>
+
+export const WorkspaceFileContentModelSchema = z.object({
+  path: z.string(),
+  content: z.string(),
+  bytes: z.number().int().nonnegative(),
+})
+export type WorkspaceFileContentModel = z.infer<typeof WorkspaceFileContentModelSchema>
+
+export const WorkspaceFileDownloadSchema = z.object({
+  id: z.string().min(1).max(20),
+  path: z.string().min(1).max(512),
+})
+export type WorkspaceFileDownloadDto = z.infer<typeof WorkspaceFileDownloadSchema>
+
+/** 下载：服务端读字节转 base64（有体积上限，超了直接拒绝） */
+export const WorkspaceFileBlobModelSchema = z.object({
+  path: z.string(),
+  filename: z.string(),
+  base64: z.string(),
+  bytes: z.number().int().nonnegative(),
+})
+export type WorkspaceFileBlobModel = z.infer<typeof WorkspaceFileBlobModelSchema>

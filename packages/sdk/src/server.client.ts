@@ -173,6 +173,11 @@ import {
   WorkspaceCreateDto,
   WorkspaceUpdateDto,
   WorkspaceIdDto,
+  WorkspaceFilesModel,
+  WorkspaceFileReadDto,
+  WorkspaceFileContentModel,
+  WorkspaceFileDownloadDto,
+  WorkspaceFileBlobModel,
 } from '@repo/shared'
 import { HttpClient, HttpStreamClient, type HttpClientOptions } from '@repo/http-client'
 import type { BearerTokenCredentials, CredentialsManager } from '@repo/http-client'
@@ -868,6 +873,17 @@ export class ServerClient extends HttpClient<BearerTokenCredentials> {
 
     /** 停止容器（desired_status → stopped） */
     stop: (data: WorkspaceIdDto) => this.post<WorkspaceModel>('/ai-workspace/stop', data),
+
+    /** 只读文件树（工作区未运行会明确报错，不自动拉起容器） */
+    files: (data: WorkspaceIdDto) => this.post<WorkspaceFilesModel>('/ai-workspace/files', data),
+
+    /** 读单个文件正文（≤ 512KB；超出由服务端拒绝） */
+    readFile: (data: WorkspaceFileReadDto) =>
+      this.post<WorkspaceFileContentModel>('/ai-workspace/file/read', data),
+
+    /** 下载单个文件（base64，≤ 8MB；与预览共用归属与运行态检查） */
+    downloadFile: (data: WorkspaceFileDownloadDto) =>
+      this.post<WorkspaceFileBlobModel>('/ai-workspace/file/download', data),
   }
 
   /* ========== 个人凭据 ========== */

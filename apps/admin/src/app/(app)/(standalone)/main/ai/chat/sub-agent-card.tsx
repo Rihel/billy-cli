@@ -105,11 +105,17 @@ export function SubAgentCard({
   )
 
   return (
-    <Card className="gap-0 py-0">
+    /*
+      卡片必须**自己成面**：会话区现在是白纸，`Card` 默认又是纯白无边框，
+      白卡贴白纸等于没有卡（2026-11-21 反馈）。与工具卡同一套：白卡 + 发丝边 +
+      `surface-2` 的标题栏（收起时整张就是那条标题栏），展开后正文落回白底。
+    */
+    <Card className="gap-0 overflow-hidden rounded-lg border border-border/60 bg-card py-0">
       <Collapsible open={open} onOpenChange={setOpen}>
-        <div className="flex items-center gap-2 pr-2">
+        {/* 标题栏的底色挂在**整行**上：右侧「查看过程」在 trigger 外面，底色只给 trigger 会留一截白 */}
+        <div className="flex items-center gap-2 bg-surface-2 pr-4">
           <CollapsibleTrigger
-            className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-1 px-2.5 py-1.5 text-left text-sm transition-colors hover:bg-muted/50"
+            className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-1 px-4 py-2 text-left text-sm transition-colors hover:bg-surface-3/70"
             // 展开态要能读屏：把"这是可展开的子助手卡"说清楚，而不是让读屏只看到一串徽标
             aria-label={`子助手 ${agent.name} 的执行正文${open ? '（点击收起）' : '（点击展开）'}`}
           >
@@ -154,7 +160,7 @@ export function SubAgentCard({
         <CollapsibleContent>
           {body ? (
             // 正文可能是整篇报告（几万字），给一个限高 + 内部滚动：不撑爆时间线，也读得完
-            <div className="max-h-80 overflow-auto bg-surface-1 px-3 py-2">
+            <div className="max-h-80 overflow-auto px-4 py-2">
               <Message from="assistant" className="max-w-full gap-0">
                 <MessageContent className="gap-1">
                   <MessageResponse>{body}</MessageResponse>
@@ -162,14 +168,14 @@ export function SubAgentCard({
               </Message>
             </div>
           ) : (
-            <p className="bg-surface-1 px-3 py-2 text-xs text-muted-foreground">
+            <p className="px-4 py-2 text-xs text-muted-foreground">
               {active
                 ? '正在干活，还没有产出正文 —— 点右上角入口看完整过程。'
                 : '这个子助手没有留下正文 —— 点右上角入口看完整过程。'}
             </p>
           )}
           {agent.error ? (
-            <p className="bg-destructive/10 px-3 py-2 text-xs text-destructive">{agent.error}</p>
+            <p className="bg-destructive/10 px-4 py-2 text-xs text-destructive">{agent.error}</p>
           ) : null}
         </CollapsibleContent>
       </Collapsible>

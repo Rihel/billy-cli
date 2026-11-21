@@ -2,8 +2,10 @@ import { describe, expect, it } from 'vitest'
 import { flattenWorkspaceRows } from '../src/app/(app)/(standalone)/main/ai/chat/files-panel.tsx'
 
 /**
- * 工作区树的「拍平」是虚拟滚动的前提：折叠必须真的**少行**（而不是渲染出来再隐藏），
- * 缩进层级也必须跟着深度走 —— 这两条错了，树看起来就只是"文件少了"。
+ * 工作区树的「拍平」是虚拟滚动的前提：展开必须真的**多行**、收起必须真的**少行**
+ * （而不是渲染出来再隐藏），缩进层级也必须跟着深度走 —— 这两条错了，树看起来就只是"文件少了"。
+ *
+ * 默认口径：**空集合 = 全部收起**，只出第一层。
  */
 const file = (path: string) => ({
   name: path.split('/').pop() ?? path,
@@ -26,8 +28,18 @@ const tree = [
 ]
 
 describe('flattenWorkspaceRows（工作区树 → 可见行）', () => {
-  it('全展开时按深度优先展开，depth 逐层递增', () => {
+  it('空集合 = 全部收起，只出第一层', () => {
     const rows = flattenWorkspaceRows(tree as never, new Set())
+
+    expect(rows.map((row) => `${row.depth}:${row.path}`)).toEqual([
+      '0:notes',
+      '0:reports',
+      '0:root.md',
+    ])
+  })
+
+  it('展开的目录按深度优先出子树，depth 逐层递增', () => {
+    const rows = flattenWorkspaceRows(tree as never, new Set(['notes', 'reports', 'reports/deep']))
 
     expect(rows.map((row) => `${row.depth}:${row.path}`)).toEqual([
       '0:notes',
@@ -40,33 +52,21 @@ describe('flattenWorkspaceRows（工作区树 → 可见行）', () => {
     ])
   })
 
-  it('收起的目录只留自己那一行，子树整段不出现', () => {
-    const rows = flattenWorkspaceRows(tree as never, new Set(['notes']))
-
-    expect(rows.map((row) => row.path)).toEqual([
-      'notes',
-      'reports',
-      'reports/deep',
-      'reports/deep/c.md',
-      'root.md',
-    ])
-  })
-
-  it('收起父目录时，深处被折起来的子目录也不会漏出来', () => {
-    // 父收起 + 子也标记为收起：父那一行之后不应再出现 reports/deep
-    const rows = flattenWorkspaceRows(tree as never, new Set(['reports', 'reports/deep']))
+  it('展开父目录不会顺带展开子目录', () => {
+    const rows = flattenWorkspaceRows(tree as never, new Set(['notes', 'reports']))
 
     expect(rows.map((row) => row.path)).toEqual([
       'notes',
       'notes/a.md',
       'notes/b.md',
       'reports',
+      'reports/deep',
       'root.md',
     ])
   })
 
   it('目录行带直接子项数（收起时显示，区分空目录）', () => {
-    const rows = flattenWorkspaceRows(tree as never, new Set(['notes']))
+    const rows = flattenWorkspaceRows(tree as never, new Set())
     const notes = rows.find((row) => row.path === 'notes')
     expect(notes?.childCount).toBe(2)
   })

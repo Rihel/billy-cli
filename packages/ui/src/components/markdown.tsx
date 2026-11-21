@@ -43,15 +43,19 @@ const markdownComponents: Components = {
   h6: ({ children }) => (
     <h6 className="mb-2 mt-6 scroll-m-20 text-sm font-semibold tracking-tight">{children}</h6>
   ),
-  p: ({ children }) => <p className="my-4 leading-relaxed">{children}</p>,
-  a: ({ href, children }) => (
-    <a
-      href={href}
-      className="font-medium text-primary underline underline-offset-4 hover:opacity-80"
-    >
-      {children}
-    </a>
-  ),
+  p: ({ children }) => <p className="my-4 leading-[1.75]">{children}</p>,
+  a: ({ href, children }) => {
+    const external = typeof href === 'string' && /^https?:\/\//i.test(href)
+    return (
+      <a
+        href={href}
+        className="break-words font-medium text-foreground underline decoration-brand/40 underline-offset-[3px] transition-colors hover:text-brand hover:decoration-brand"
+        {...(external ? { target: '_blank', rel: 'noreferrer noopener' } : {})}
+      >
+        {children}
+      </a>
+    )
+  },
   strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
   em: ({ children }) => <em className="italic">{children}</em>,
   del: ({ children }) => <del className="line-through">{children}</del>,
@@ -123,9 +127,10 @@ const markdownComponents: Components = {
       {children}
     </pre>
   ),
+  // 与聊天正文同一套：短列不折行、长列封顶 22rem，超宽横向滚动
   table: ({ children }) => (
     <div className="my-4 w-full overflow-x-auto">
-      <table className="w-full border-collapse text-sm">{children}</table>
+      <table className="w-max min-w-full table-auto border-collapse text-sm">{children}</table>
     </div>
   ),
   thead: ({ className, children, ...props }) => (
@@ -140,13 +145,16 @@ const markdownComponents: Components = {
     </tr>
   ),
   th: ({ className, children, ...props }) => (
-    <th className={cn('px-3 py-2 text-left font-semibold align-top', className)} {...props}>
+    <th
+      className={cn('px-3 py-2 text-left align-top font-semibold whitespace-nowrap', className)}
+      {...props}
+    >
       {children}
     </th>
   ),
   td: ({ className, children, ...props }) => (
-    <td className={cn('px-3 py-2 align-top whitespace-normal break-words', className)} {...props}>
-      {children}
+    <td className={cn('px-3 py-2 align-top', className)} {...props}>
+      <div className="max-w-[22rem] whitespace-normal break-words">{children}</div>
     </td>
   ),
   input: ({ className, ...props }) => (

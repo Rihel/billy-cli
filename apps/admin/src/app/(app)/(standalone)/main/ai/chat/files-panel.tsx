@@ -42,12 +42,15 @@ export function FilesPanel({
   const [includeCaches, setIncludeCaches] = useState(false)
   const [preview, setPreview] = useState<{ items: PreviewTarget[]; index: number } | null>(null)
   /**
-   * 目录折叠状态：只存「收起了哪些」，空集合 = 全部展开。
+   * 目录展开状态：只存「展开了哪些」，**空集合 = 全部收起（默认）**。
+   *
+   * 为什么记展开而不是记收起：默认全折叠是产品口径，记收起就得在拿到数据后把每个目录
+   * 补进去 —— 数据是异步来的，首帧会先闪一下全展开，而「默认」应该是稳定态。
    *
    * 两个视图现在是两个独立 tab（各自一个 `FilesPanel` 实例），所以不需要再按视图分两份记。
-   * 不持久化：切 tab / 刷新 / 换会话都回到全展开 —— 「看不到就重新找」比记住一个隐藏状态更安全。
+   * 不持久化：切 tab / 刷新 / 换会话都回到全折叠。
    */
-  const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(() => new Set())
+  const [expanded, setExpanded] = useState<ReadonlySet<string>>(() => new Set())
   const queryClient = useQueryClient()
   /**
    * 删除会话文件（硬删：`ai_files` 行 + 对象存储一起删）。
@@ -93,28 +96,28 @@ export function FilesPanel({
 
   const workspaceTree = useMemo(() => buildWorkspaceTree(workspaceItems), [workspaceItems])
   /**
-   * 工作区树 → **当前可见行**（折叠的子树整段不出现）。
+   * 工作区树 → **当前可见行**（展开的目录才把子树拍进来）。
    *
-   * 虚拟滚动只接受一维数组，所以树必须在渲染前拍平；折叠状态参与拍平，
+   * 虚拟滚动只接受一维数组，所以树必须在渲染前拍平；展开状态参与拍平，
    * 这样「收起」就是真的少行，而不是渲染出来再 CSS 隐藏。
    */
   const workspaceRows = useMemo(
-    () => flattenWorkspaceRows(workspaceTree, collapsed),
-    [workspaceTree, collapsed],
+    () => flattenWorkspaceRows(workspaceTree, expanded),
+    [workspaceTree, expanded],
   )
 
   const sessionFiles = useMemo(() => flattenSessionFiles(files), [files])
   const current = preview ? preview.items[preview.index] : null
 
-  // 当前视图的目录集合（折叠交互两个视图共用，只是数据源不同）
+  // 当前视图的目录集合（展开交互两个视图共用，只是数据源不同）
   const sessionDirPaths = useMemo(() => collectSessionDirPaths(files), [files])
   const workspaceDirPaths = useMemo(() => collectDirPaths(workspaceTree), [workspaceTree])
   const dirPaths = view === 'session' ? sessionDirPaths : workspaceDirPaths
-  /** 全部收起：按钮这时反过来提供「全部展开」；点一次就能从深目录里退出来 */
-  const allCollapsed = dirPaths.length > 0 && dirPaths.every((path) => collapsed.has(path))
+  /** 全部展开：按钮这时反过来提供「全部收起」；点一次就把深目录都收起来 */
+  const allExpanded = dirPaths.length > 0 && dirPaths.every((path) => expanded.has(path))
 
   const toggleDir = (path: string): void => {
-    setCollapsed((previous) => {
+    setExpanded((previous) => {
       const next = new Set(previous)
       if (next.has(path)) next.delete(path)
       else next.add(path)
@@ -122,7 +125,7 @@ export function FilesPanel({
     })
   }
   const toggleAllDirs = (): void => {
-    setCollapsed(allCollapsed ? new Set<string>() : new Set(dirPaths))
+    setExpanded(allExpanded ? new Set<string>() : new Set(dirPaths))
   }
 
   const textQuery = useQuery({
@@ -247,9 +250,9 @@ export function FilesPanel({
             variant="ghost"
             className={cn('h-8 shrink-0 lg:h-7', view === 'session' && 'ml-auto')}
             onClick={toggleAllDirs}
-            title={allCollapsed ? '展开所有目录' : '收起所有目录'}
+            title={allExpanded ? '收起所有目录' : '展开所有目录'}
           >
-            {allCollapsed ? '全部展开' : '全部收起'}
+            {allExpanded ? '全部收起' : '全部展开'}
           </Button>
         ) : null}
       </div>
@@ -264,7 +267,7 @@ export function FilesPanel({
                 <SessionNode
                   key={node.path}
                   node={node}
-                  collapsed={collapsed}
+                  expanded={expanded}
                   onToggle={toggleDir}
                   onPreview={openSession}
                   onDownload={(file) => void download(sessionTarget(file))}
@@ -306,7 +309,7 @@ export function FilesPanel({
               renderItem={(row) => (
                 <WorkspaceRowView
                   row={row}
-                  collapsed={collapsed}
+                  expanded={expanded}
                   onToggle={toggleDir}
                   onPreview={openWorkspace}
                   onDownload={(file) => void download(workspaceTarget(file))}
@@ -350,21 +353,21 @@ function Empty({ text }: { text: string }) {
 
 function SessionNode({
   node,
-  collapsed,
+  expanded,
   onToggle,
   onPreview,
   onDownload,
   onRemove,
 }: {
   node: AgentFileNode
-  collapsed: ReadonlySet<string>
+  expanded: ReadonlySet<string>
   onToggle: (path: string) => void
   onPreview: (file: AgentFileModel) => void
   onDownload: (file: AgentFileModel) => void
   onRemove?: (file: AgentFileModel) => void | Promise<void>
 }) {
   if (node.type === 'dir') {
-    const open = !collapsed.has(node.path)
+    const open = expanded.has(node.path)
     const children = node.children ?? []
     return (
       <div>
@@ -374,7 +377,7 @@ function SessionNode({
           aria-expanded={open}
           title={open ? '收起' : '展开'}
           onClick={() => onToggle(node.path)}
-          className="flex w-full items-center gap-1 rounded px-1 py-1.5 text-left text-xs text-muted-foreground hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring lg:gap-1.5 lg:px-1.5 lg:py-1"
+          className="flex w-full items-center gap-1 rounded px-1 py-1.5 text-left text-xs text-muted-foreground hover:bg-surface-2/70 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring lg:gap-1.5 lg:px-1.5 lg:py-1"
         >
           <ChevronDownIcon
             className={cn('size-3.5 shrink-0 transition-transform', !open && '-rotate-90')}
@@ -395,7 +398,7 @@ function SessionNode({
               <SessionNode
                 key={child.path}
                 node={child}
-                collapsed={collapsed}
+                expanded={expanded}
                 onToggle={onToggle}
                 onPreview={onPreview}
                 onDownload={onDownload}
@@ -440,10 +443,10 @@ interface WorkspaceRow {
   file?: AgentWorkspaceFile
 }
 
-/** 树 → 当前可见行；折叠的目录只留自己那一行，子树整段不出现 */
+/** 树 → 当前可见行；未展开的目录只留自己那一行，子树整段不出现（默认全折叠） */
 export function flattenWorkspaceRows(
   nodes: readonly WorkspaceTreeNode[],
-  collapsed: ReadonlySet<string>,
+  expanded: ReadonlySet<string>,
   depth = 0,
 ): WorkspaceRow[] {
   const rows: WorkspaceRow[] = []
@@ -457,8 +460,8 @@ export function flattenWorkspaceRows(
         type: 'dir',
         childCount: children.length,
       })
-      if (!collapsed.has(node.path)) {
-        rows.push(...flattenWorkspaceRows(children, collapsed, depth + 1))
+      if (expanded.has(node.path)) {
+        rows.push(...flattenWorkspaceRows(children, expanded, depth + 1))
       }
     } else if (node.file) {
       rows.push({ path: node.path, name: node.name, depth, type: 'file', file: node.file })
@@ -469,13 +472,13 @@ export function flattenWorkspaceRows(
 
 function WorkspaceRowView({
   row,
-  collapsed,
+  expanded,
   onToggle,
   onPreview,
   onDownload,
 }: {
   row: WorkspaceRow
-  collapsed: ReadonlySet<string>
+  expanded: ReadonlySet<string>
   onToggle: (path: string) => void
   onPreview: (file: AgentWorkspaceFile) => void
   onDownload: (file: AgentWorkspaceFile) => void
@@ -496,7 +499,7 @@ function WorkspaceRowView({
         ))
       : null
   if (row.type === 'dir') {
-    const open = !collapsed.has(row.path)
+    const open = expanded.has(row.path)
     return (
       <button
         type="button"
@@ -504,7 +507,7 @@ function WorkspaceRowView({
         title={open ? '收起' : '展开'}
         onClick={() => onToggle(row.path)}
         style={{ paddingLeft: indent }}
-        className="relative flex w-full items-center gap-1 rounded py-1.5 pr-1 text-left text-xs text-muted-foreground hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring lg:gap-1.5 lg:py-1 lg:pr-1.5"
+        className="relative flex w-full items-center gap-1 rounded py-1.5 pr-1 text-left text-xs text-muted-foreground hover:bg-surface-2/70 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring lg:gap-1.5 lg:py-1 lg:pr-1.5"
       >
         {guides}
         <ChevronDownIcon
@@ -573,7 +576,7 @@ function FileRow({
       }}
       // 390px 下这行要塞「图标 + 文件名 + 大小 + 来源 + 两个图标按钮」，横向先收 gap / 内边距；
       // 纵向 base 给到 py-1.5 让整行更好点（行高由 Virtuoso 实测，不是常量）。lg 起全部还原。
-      className="group flex cursor-pointer items-center gap-1.5 rounded px-1 py-1.5 hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring lg:gap-2 lg:px-1.5 lg:py-1"
+      className="group flex cursor-pointer items-center gap-1.5 rounded px-1 py-1.5 hover:bg-surface-2/70 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring lg:gap-2 lg:px-1.5 lg:py-1"
       style={indent === undefined ? undefined : { paddingLeft: indent }}
     >
       {(() => {
@@ -687,7 +690,7 @@ function flattenSessionFiles(nodes: readonly AgentFileNode[]): AgentFileModel[] 
   return result
 }
 
-/** 会话文件树里所有目录的路径（「全部收起」用；顺序无所谓） */
+/** 会话文件树里所有目录的路径（「全部展开 / 收起」用；顺序无所谓） */
 function collectSessionDirPaths(nodes: readonly AgentFileNode[]): string[] {
   const result: string[] = []
   const walk = (list: readonly AgentFileNode[]) => {
@@ -755,7 +758,7 @@ const mediaTypeOf = (filename: string): string => {
   return map[ext] ?? 'application/octet-stream'
 }
 
-/** 工作区树里所有目录的路径（「全部收起」用） */
+/** 工作区树里所有目录的路径（「全部展开 / 收起」用） */
 function collectDirPaths(nodes: readonly WorkspaceTreeNode[]): string[] {
   const result: string[] = []
   const walk = (list: readonly WorkspaceTreeNode[]) => {

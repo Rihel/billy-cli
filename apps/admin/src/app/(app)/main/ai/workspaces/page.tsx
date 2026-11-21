@@ -18,8 +18,17 @@ import {
   toastError,
   toastSuccess,
 } from '@repo/ui'
-import { BoxesIcon, PlayIcon, PlusIcon, SquareIcon, Trash2Icon, UserRoundIcon } from 'lucide-react'
+import {
+  BoxesIcon,
+  FolderOpenIcon,
+  PlayIcon,
+  PlusIcon,
+  SquareIcon,
+  Trash2Icon,
+  UserRoundIcon,
+} from 'lucide-react'
 import { useServerClient } from '@/lib/server-client'
+import { WorkspaceFilesDialog } from './workspace-files-dialog'
 import { useAuthStore } from '@/stores/auth.store'
 
 const fail = (error: unknown): void =>
@@ -43,6 +52,8 @@ export default function WorkspacesPage() {
   const client = useServerClient()
   const queryClient = useQueryClient()
   const [createOpen, setCreateOpen] = useState(false)
+  /** 正在看文件的工作区（`null` = 弹窗关闭） */
+  const [filesOf, setFilesOf] = useState<WorkspaceModel | null>(null)
   const [name, setName] = useState('')
   const [backend, setBackend] = useState<WorkspaceBackend>('container')
 
@@ -121,6 +132,7 @@ export default function WorkspacesPage() {
               onStart={(id) => start.mutate(id)}
               onStop={(id) => stop.mutate(id)}
               onRemove={(id) => remove.mutate(id)}
+              onFiles={() => setFilesOf(item)}
             />
           ))}
         </div>
@@ -171,6 +183,8 @@ export default function WorkspacesPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <WorkspaceFilesDialog client={client} workspace={filesOf} onClose={() => setFilesOf(null)} />
     </div>
   )
 }
@@ -181,12 +195,15 @@ function WorkspaceCard({
   onStart,
   onStop,
   onRemove,
+  onFiles,
 }: {
   item: WorkspaceModel
   busy: boolean
   onStart: (id: string) => void
   onStop: (id: string) => void
   onRemove: (id: string) => void
+  /** 打开这个工作区的文件弹窗（未运行时入口禁用） */
+  onFiles: () => void
 }) {
   const me = useAuthStore((s) => s.adminInfo?.id)
   const running = item.runtime.state === 'running'
@@ -235,6 +252,16 @@ function WorkspaceCard({
             启动
           </Button>
         )}
+        <Button
+          size="sm"
+          variant="ghost"
+          onClick={onFiles}
+          disabled={busy || !running}
+          title={running ? '查看工作区文件' : '工作区未运行，先启动再查看文件'}
+        >
+          <FolderOpenIcon className="size-3.5" />
+          文件
+        </Button>
         {item.isDefault ? null : (
           <Button size="sm" variant="ghost" onClick={() => onRemove(item.id)} disabled={busy}>
             <Trash2Icon className="size-3.5" />

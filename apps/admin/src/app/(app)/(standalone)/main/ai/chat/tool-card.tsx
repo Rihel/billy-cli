@@ -137,7 +137,10 @@ export function ToolCard({ part, events, defaultOpen, streaming, durationMs }: T
 
   return (
     <Tool
-      className="mb-2"
+      // 工具卡是**过程卡片**：整张收成 `rounded-lg` 白卡 + 一条灰标题栏（见 `ToolHeader`）。
+      // 消息区现在是一张白纸，纯白卡贴在白纸上只剩一条描边；标题栏那一档面色差
+      // 让它一眼是"一次工具调用"，而不是正文里的一段灰字。
+      className="mb-2 overflow-hidden rounded-lg border-border/60 bg-card"
       open={open}
       onOpenChange={(next) => {
         // 记下"用户动过手"：从此以后自动展开让位，只认用户的选择
@@ -149,18 +152,22 @@ export function ToolCard({ part, events, defaultOpen, streaming, durationMs }: T
         type="dynamic-tool"
         state={part.state}
         toolName={toolName}
-        className="px-2.5 py-1.5"
+        className="bg-surface-2 px-4 py-2 transition-colors hover:bg-surface-3/70"
         meta={durationLabel}
         detail={detail}
       />
       {/* 「为什么」放在头部正下方：不展开也能看到，比折进入参 JSON 更符合"先看动机" */}
       {reason && (
-        <p className="px-2.5 pb-1.5 text-xs leading-4 text-muted-foreground line-clamp-2">
+        /*
+          内边距与标题栏同一档（12px），并留出上下的呼吸：贴着卡片边和标题栏时，
+          「为什么」会看着像卡片边框的一部分，而不是一条说明（2026-11-21 反馈）。
+        */
+        <p className="px-4 pt-1.5 pb-3 text-xs leading-5 text-muted-foreground line-clamp-2">
           <span className="font-medium">为什么：</span>
           {reason}
         </p>
       )}
-      <ToolContent className="space-y-2 p-2.5">
+      <ToolContent className="space-y-2 p-3.5">
         {/*
           "为什么"放在**卡片头部之下、入参之上**：它是这次调用的动机（模型自述的目的），
           比入参更该先被扫到；折进「入参」的 JSON 里就等于没做这个特性。

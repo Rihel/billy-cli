@@ -3,8 +3,38 @@ import { AppLogger, Db } from '@repo/kits'
 import { AdminEntity, AiWorkspaceEntity, UserEntity } from '@repo/db'
 import { WorkspaceServiceClient } from '@repo/internal-sdk'
 import type { WorkspaceBackend, WorkspaceFileAccess } from '@repo/contracts'
+import type {
+  WorkspaceFileBlobModel,
+  WorkspaceFileContentModel,
+  WorkspaceFileEntry,
+  WorkspaceFilesModel,
+} from '@repo/shared'
 import { scopeOf, type OwnerRef } from '../../../common/security/index.js'
 import { DefaultWorkspaceUndeletableError, WorkspaceNotFoundError } from './workspace.errors.js'
+
+/** 文件预览上限：超过就拒绝，不把大文件塞进 HTTP / 浏览器 */
+const FILE_PREVIEW_MAX_BYTES = 512 * 1024
+/** 下载上限（base64 会膨胀 1/3，8MB 已经是一次很重的响应） */
+const FILE_DOWNLOAD_MAX_BYTES = 8 * 1024 * 1024
+/** 浏览深度与噪音目录（依赖 / 构建 / 缓存；与文件面板同一批） */
+const BROWSE_MAX_DEPTH = 8
+const BROWSE_EXCLUDE_DIRS = [
+  'node_modules',
+  '.git',
+  'dist',
+  'build',
+  'out',
+  'target',
+  'coverage',
+  '.next',
+  '.turbo',
+  '.cache',
+  '.pnpm-store',
+  '__pycache__',
+  '.venv',
+  'venv',
+  '.gradle',
+]
 
 export interface WorkspaceModel {
   id: string
@@ -183,6 +213,80 @@ export class WorkspaceAdminService {
     await this.client.stop(row.id)
     await this.repo().update({ id: row.id }, { desiredStatus: 'stopped' })
     return this.toModel(await this.requireOwned(owner, id))
+  }
+
+  /**
+   * 工作区文件树（**只读**）：后台卡片上「文件」弹窗用。
+   *
+   * `fs` 内部会 `ensureHandle`（等于拉起容器），所以先查运行态：
+   * 停止的工作区直接说明，不背着用户启动。
+   */
+  async files(owner: OwnerRef, id: string): Promise<WorkspaceFilesModel> {
+    const row = await this.requireOwned(owner, id)
+    await this.assertRunning(row.id)
+    const result = await this.client.fs({
+      workspaceId: row.id,
+      op: 'list-tree',
+      path: '.',
+      maxDepth: BROWSE_MAX_DEPTH,
+      excludeDirs: BROWSE_EXCLUDE_DIRS,
+    })
+    if (!result.ok) throw new BadRequestException(result.message ?? '读取工作区文件失败')
+    const entries = (result.data as { entries?: WorkspaceFileEntry[] } | undefined)?.entries ?? []
+    return { entries }
+  }
+
+  /** 读单个文件正文（文本预览）：先 `stat` 看体积，超上限直接拒绝 */
+  async readFile(owner: OwnerRef, id: string, path: string): Promise<WorkspaceFileContentModel> {
+    const row = await this.requireOwned(owner, id)
+    await this.assertRunning(row.id)
+    const info = await this.client.fs({ workspaceId: row.id, op: 'stat', path })
+    if (!info.ok) throw new BadRequestException(info.message ?? '读取文件失败')
+    const meta = info.data as { type?: string; size?: number } | undefined
+    if (meta?.type === 'dir') throw new BadRequestException('这是一个目录，不能预览')
+    const size = meta?.size ?? 0
+    if (size > FILE_PREVIEW_MAX_BYTES) {
+      throw new BadRequestException(
+        `文件 ${Math.ceil(size / 1024)}KB，超过在线预览上限 ${FILE_PREVIEW_MAX_BYTES / 1024}KB`,
+      )
+    }
+    const result = await this.client.fs({ workspaceId: row.id, op: 'read', path })
+    if (!result.ok) throw new BadRequestException(result.message ?? '读取文件失败')
+    const data = result.data as { content?: string } | undefined
+    return { path, content: data?.content ?? '', bytes: size }
+  }
+
+  /** 下载单个文件：字节转 base64 回给浏览器（只读；有体积上限） */
+  async downloadFile(owner: OwnerRef, id: string, path: string): Promise<WorkspaceFileBlobModel> {
+    const row = await this.requireOwned(owner, id)
+    await this.assertRunning(row.id)
+    const info = await this.client.fs({ workspaceId: row.id, op: 'stat', path })
+    if (!info.ok) throw new BadRequestException(info.message ?? '读取文件失败')
+    const meta = info.data as { type?: string; size?: number } | undefined
+    if (meta?.type === 'dir') throw new BadRequestException('这是一个目录，不能下载')
+    const size = meta?.size ?? 0
+    if (size > FILE_DOWNLOAD_MAX_BYTES) {
+      throw new BadRequestException(
+        `文件 ${Math.ceil(size / 1024)}KB，超过下载上限 ${FILE_DOWNLOAD_MAX_BYTES / 1024 / 1024}MB`,
+      )
+    }
+    const result = await this.client.fs({ workspaceId: row.id, op: 'read-bytes', path })
+    if (!result.ok) throw new BadRequestException(result.message ?? '读取文件失败')
+    const data = result.data as { base64?: string } | undefined
+    return {
+      path,
+      filename: path.split('/').pop() ?? path,
+      base64: data?.base64 ?? '',
+      bytes: size,
+    }
+  }
+
+  /** 运行态必须是 running：`fs` 会 ensureHandle，先拦掉「点开就偷偷启动」 */
+  private async assertRunning(workspaceId: string): Promise<void> {
+    const status = await this.client.status(workspaceId).catch(() => null)
+    if (status?.state !== 'running') {
+      throw new BadRequestException('工作区未运行，先启动再查看文件')
+    }
   }
 
   private async requireOwned(owner: OwnerRef, id: string): Promise<AiWorkspaceEntity> {

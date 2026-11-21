@@ -5,7 +5,6 @@ import { Badge, Collapsible, CollapsibleContent, CollapsibleTrigger, Progress, c
 // ai-elements 组件**走子路径且带扩展名**（不进 barrel：体积大、按需引入，见 docs/design/ai-agent.md §1）
 import {
   Plan as PlanCard,
-  PlanAction,
   PlanContent,
   PlanDescription,
   PlanFooter,
@@ -447,14 +446,24 @@ export function PlanPanel({ plan, change, history = [] }: PlanPanelProps) {
 
   return (
     <PlanCard defaultOpen>
-      <PlanHeader>
+      {/*
+        窄栏（右栏最窄 260px）下**不要**把目标 / 进度 / 版本挤在同一行：三样东西各自
+        折成两三截，读起来像乱码（2026-11-21 反馈）。这里把 `PlanHeader` 默认的
+        `flex items-start justify-between` 覆盖成竖排 ——
+        第一行只放目标（可自然折 2~3 行），第二行放进度 + 版本 + 折叠键。
+      */}
+      <PlanHeader className="flex flex-col items-stretch justify-start gap-1.5">
         <PlanTitle>{plan.goal || '执行计划'}</PlanTitle>
-        {/* PlanDescription / PlanTitle 的 children 类型就是 string（内部可能走 Shimmer），只能传整串 */}
-        <PlanDescription>{`已完成 ${done} / 共 ${total}${blocked > 0 ? ` · ${blocked} 项受阻` : ''}`}</PlanDescription>
-        <PlanAction className="flex items-center gap-2">
-          <Badge variant="outline">{revisionLabel}</Badge>
-          <PlanTrigger />
-        </PlanAction>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          {/* PlanDescription / PlanTitle 的 children 类型就是 string（内部可能走 Shimmer），只能传整串 */}
+          <PlanDescription className="min-w-0">
+            {`已完成 ${done} / 共 ${total}${blocked > 0 ? ` · ${blocked} 项受阻` : ''}`}
+          </PlanDescription>
+          <div className="ml-auto flex shrink-0 items-center gap-2">
+            <Badge variant="outline">{revisionLabel}</Badge>
+            <PlanTrigger />
+          </div>
+        </div>
       </PlanHeader>
 
       <div className="px-(--card-spacing)">

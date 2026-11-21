@@ -186,7 +186,17 @@ export function ConversationGroupList({
         const isCollapsed = collapsed.has(group.key)
         return (
           <div key={group.key} className="flex flex-col pb-1">
-            <div className="group/ws flex items-center gap-1 rounded-md px-1 py-1.5 hover:bg-surface-2">
+            {/*
+              组头（工作区名）在桌面侧栏**吸顶**：会话多时滚动中要一直能看出"现在这一组是谁"。
+              吸顶底色必须是导轨色本身（`surface-3`）；抽屉里背景不是导轨色，吸顶反而会贴块错色，
+              所以只在桌面挂 sticky（抽屉本来就是短列表）。
+            */}
+            <div
+              className={cn(
+                'group/ws flex items-center gap-1 rounded-md px-1 py-1.5 hover:bg-surface-2',
+                !drawer && 'sticky top-0 z-10 bg-surface-3',
+              )}
+            >
               <button
                 type="button"
                 aria-expanded={!isCollapsed}
@@ -326,9 +336,11 @@ export function ConversationGroupList({
                         aria-current={active ? 'page' : undefined}
                         onClick={onNavigate}
                         className={cn(
-                          'flex w-full items-center gap-2 rounded-md py-2 pr-2 pl-9 text-left text-sm',
-                          'transition-colors hover:bg-surface-4/60',
-                          active && 'bg-surface-4',
+                          // 选中态是一张**白卡**（导轨是 `surface-3`）：明度差把"当前会话"从
+                          // 一排灰底条目里拎出来，比再用一档灰（`surface-4`，只差 1%）有效得多。
+                          'flex w-full items-center gap-2 rounded-lg py-2 pr-2 pl-9 text-left text-sm',
+                          'transition-colors hover:bg-card/70',
+                          active && 'bg-card text-foreground',
                         )}
                       >
                         {/* 运行中：一行放不下「运行中」三个字，只留一个呼吸点（语义用 sr-only 补） */}

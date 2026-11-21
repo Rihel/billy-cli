@@ -293,6 +293,27 @@ const streamdownPlugins = { cjk, code, math, mermaid, renderers: markdownFenceRe
  * 自定义围栏（json / html / gsap / xflow）走 renderers，不经过这里。
  */
 const streamdownComponents = {
+  /**
+   * 正文段落：**行高提到 1.75**（会话页的字号被 `.chat-type-scale` 压到 12px，
+   * 继承下来的 1.5 行高对中文偏挤）。只给段落，不碰标题与代码块 —— 它们各自带行高。
+   */
+  p: ({ children }: { children?: ReactNode }) => <p className="leading-[1.75]">{children}</p>,
+  /**
+   * 链接：正文色 + 品牌淡下划线（不再用浏览器默认的紧贴下划线，也不把整段文字染成品牌色）；
+   * 悬停时文字与下划线一起转品牌色，点开走新窗口（内链仍留在当前页）。
+   */
+  a: ({ href, children }: { href?: string; children?: ReactNode }) => {
+    const external = typeof href === 'string' && /^https?:\/\//i.test(href)
+    return (
+      <a
+        href={href}
+        className="break-words text-foreground underline decoration-brand/40 underline-offset-[3px] transition-colors hover:text-brand hover:decoration-brand"
+        {...(external ? { target: '_blank', rel: 'noreferrer noopener' } : {})}
+      >
+        {children}
+      </a>
+    )
+  },
   pre: ({ children }: { children?: ReactNode }) => {
     const child = Array.isArray(children) ? children[0] : children
     if (isValidElement(child)) {
@@ -323,10 +344,20 @@ const streamdownComponents = {
     }
     return <PlainPre>{children}</PlainPre>
   },
-  // 表格：无边框、无外框工具条，单元格允许换行（长内容不再把表撑出横向滚动）
+  /**
+   * 表格：**列宽按内容走，短列不折行**。
+   *
+   * 之前是 `w-full` + 单元格换行，本意是"不出现横向滚动"，结果 6 列挤进容器后连
+   * 「排名」「题材标签」这种两个字的表头都被拆成两行（2026-11-21 反馈）。
+   * 现在：
+   * - 表头一律 `whitespace-nowrap`（表头宽度就是这个列的下限）；
+   * - `w-max min-w-full`：列按内容取宽，容器更宽时再铺满，不再为了塞下而压缩短列；
+   * - 单元格内容套一层 `max-w-[22rem]` 的盒子：只有长说明（研究报告里的"核心数据"那种）
+   *   才会折行，且折在一个可读的宽度里；再宽就让整个表横向滚动。
+   */
   table: ({ children }: { children?: ReactNode }) => (
     <div className="my-3 w-full overflow-x-auto">
-      <table className="w-full table-auto border-collapse text-sm">{children}</table>
+      <table className="w-max min-w-full table-auto border-collapse text-sm">{children}</table>
     </div>
   ),
   thead: ({ children }: { children?: ReactNode }) => <thead>{children}</thead>,
@@ -335,10 +366,14 @@ const streamdownComponents = {
     <tr className="border-border/60 border-b last:border-0">{children}</tr>
   ),
   th: ({ children }: { children?: ReactNode }) => (
-    <th className="px-3 py-2 text-left align-top font-medium text-muted-foreground">{children}</th>
+    <th className="px-3 py-2 text-left align-top font-medium whitespace-nowrap text-muted-foreground">
+      {children}
+    </th>
   ),
   td: ({ children }: { children?: ReactNode }) => (
-    <td className="whitespace-normal break-words px-3 py-2 align-top">{children}</td>
+    <td className="px-3 py-2 align-top">
+      <div className="max-w-[22rem] whitespace-normal break-words">{children}</div>
+    </td>
   ),
 }
 

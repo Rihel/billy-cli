@@ -41,6 +41,7 @@ import {
 // ai-elements 组件**走子路径**（不进 barrel：体积大、按需引入，见 docs/design/ai-agent.md §1）
 import {
   Conversation,
+  ConversationAutoScroll,
   ConversationContent,
   ConversationEmptyState,
   ConversationScrollButton,
@@ -51,7 +52,6 @@ import {
   PromptInputBody,
   PromptInputFooter,
   PromptInputSubmit,
-  PromptInputTextarea,
   PromptInputTools,
   PromptInputProvider,
   usePromptInputController,
@@ -67,6 +67,7 @@ import {
 import { useServerClient } from '@/lib/server-client'
 import { AppName } from '@/lib/constants'
 import { useChatMobileNav } from './mobile-nav-context'
+import { SkillSlashInput, SkillTags } from './skill-slash-input'
 import { markAdoptedConversation, NEW_CONVERSATION_SLUG } from './routes'
 import { ModelPicker } from './model-picker'
 import { ChatMessage } from './message-row'
@@ -652,6 +653,20 @@ export function ChatConversation({ conversationId }: { conversationId: string })
   }, [live, messages])
 
   /**
+   * 最后一条**用户**消息的 id：交给 `ConversationAutoScroll` 当触发值。
+   *
+   * 用户发新消息 → 强制回到底部（哪怕当时正在上翻历史）；
+   * 流式增量不会改这个 id，所以 AI 输出时不会抢视图。
+   */
+  const lastUserMessageId = useMemo(() => {
+    for (let index = viewMessages.length - 1; index >= 0; index -= 1) {
+      const message = viewMessages[index]
+      if (message.role === 'user') return message.id
+    }
+    return null
+  }, [viewMessages])
+
+  /**
    * 恢复结束（active true → false）立即并回 `messages`，再清 live。
    *
    * 此刻用户还发不出下一条（输入框是"停止"），所以顺序天然正确 ——
@@ -1074,6 +1089,8 @@ export function ChatConversation({ conversationId }: { conversationId: string })
         onEdit={setEditingQueue}
         onRemove={removeQueueItem}
       />
+      {/* 已选技能：输入框**外面**的左上角（放进 InputGroup 会被 items-center 居中） */}
+      <SkillTags />
       <PromptInput
         /**
          * 附件的大小 / 类型校验**刻意不交给 `PromptInput` 的 `maxFileSize` / `accept`**，
@@ -1221,7 +1238,11 @@ export function ChatConversation({ conversationId }: { conversationId: string })
             （textarea 是 `field-sizing-content`，placeholder 不参与高度计算）。
             用 `isMobile` 而不是 CSS：文案要换整句，不是隐藏某一段；桌面分支一字未改。
           */}
-          <PromptInputTextarea
+          {/*
+            `/` 触发技能选择 + 已选标签：外壳仍是普通 textarea（附件 / 粘贴 / 快捷键
+            都走原链路），只多了菜单与标签，见 `skill-slash-input.tsx`。
+          */}
+          <SkillSlashInput
             placeholder={
               isMobile
                 ? '说说你想做什么…（可粘贴图片 / 文件）'
@@ -1335,44 +1356,47 @@ export function ChatConversation({ conversationId }: { conversationId: string })
           新会话：没有页头、没有 tab 条，也不显示右栏 —— 只有居中一块品牌与输入框。
           移动端唯一要留的是「会话列表」入口（它平时的位置在页头里）。
         */
-        <div className="relative flex h-full min-h-0 flex-col overflow-y-auto px-6 py-10">
-          {isMobile && mobileNav ? (
-            /*
+        <div className="flex h-full min-h-0 flex-col bg-surface-3 p-2 sm:p-3">
+          {/* 与常规会话同一套「画布 + 白纸」：新会话与老会话之间只差内容，不差底座 */}
+          <div className="relative flex min-h-0 flex-1 flex-col overflow-y-auto rounded-xl bg-card px-6 py-10">
+            {isMobile && mobileNav ? (
+              /*
               同上：空态里这个入口是**唯一**的会话列表入口，不能只有一个 12px 字形。
               `top-2 left-2` 让 32px 的方块与页面 24px 的内边距对齐（视觉重心仍在左上角）。
               空态只在手机上带这个按钮，桌面无变化。
             */
-            <IconText
-              icon={<MessagesSquareIcon />}
-              size="small"
-              type="primary"
-              tooltip="会话列表"
-              aria-label="会话列表"
-              className="absolute top-2 left-2 size-8 justify-center rounded-md bg-surface-2 hover:bg-surface-3"
-              onClick={mobileNav.openConversations}
-            />
-          ) : null}
-          {/* `m-auto` 而不是 `justify-center`：内容比视口高时（窄屏 + 展开的附件条）
+              <IconText
+                icon={<MessagesSquareIcon />}
+                size="small"
+                type="primary"
+                tooltip="会话列表"
+                aria-label="会话列表"
+                className="absolute top-2 left-2 size-8 justify-center rounded-md bg-surface-2 hover:bg-surface-3"
+                onClick={mobileNav.openConversations}
+              />
+            ) : null}
+            {/* `m-auto` 而不是 `justify-center`：内容比视口高时（窄屏 + 展开的附件条）
               居中会把顶部裁掉，auto 边距在没空间时会自己收成 0 */}
-          <div className="m-auto flex w-full max-w-3xl flex-col items-center gap-6">
-            <div className="flex flex-col items-center gap-2.5 text-center">
-              <span className="grid size-12 place-items-center rounded-2xl bg-brand text-white shadow-sm">
-                <TerminalSquareIcon className="size-6" strokeWidth={2.2} />
-              </span>
-              <h1 className="font-heading text-2xl font-semibold tracking-tight">{AppName}</h1>
-              <p className="text-sm text-muted-foreground">
-                说说你想做什么 —— 它会自己规划、调用工具，必要时派子 agent 分头干
-              </p>
-            </div>
-            <div className="flex w-full flex-col gap-2">
-              {/* 输入框上方一行：这一轮用哪个助手（多 agent 时可直接换） */}
-              <div className="flex min-w-0 items-center gap-1.5 px-1 text-xs text-muted-foreground">
-                <BotIcon className="size-3.5 shrink-0" />
-                {agentSelect ?? (
-                  <span className="truncate">{activeAgent?.name ?? '未配置助手'}</span>
-                )}
+            <div className="m-auto flex w-full max-w-3xl flex-col items-center gap-6">
+              <div className="flex flex-col items-center gap-2.5 text-center">
+                <span className="grid size-12 place-items-center rounded-2xl bg-brand text-white shadow-sm">
+                  <TerminalSquareIcon className="size-6" strokeWidth={2.2} />
+                </span>
+                <h1 className="font-heading text-2xl font-semibold tracking-tight">{AppName}</h1>
+                <p className="text-sm text-muted-foreground">
+                  说说你想做什么 —— 它会自己规划、调用工具，必要时派子 agent 分头干
+                </p>
               </div>
-              {composer}
+              <div className="flex w-full flex-col gap-2">
+                {/* 输入框上方一行：这一轮用哪个助手（多 agent 时可直接换） */}
+                <div className="flex min-w-0 items-center gap-1.5 px-1 text-xs text-muted-foreground">
+                  <BotIcon className="size-3.5 shrink-0" />
+                  {agentSelect ?? (
+                    <span className="truncate">{activeAgent?.name ?? '未配置助手'}</span>
+                  )}
+                </div>
+                {composer}
+              </div>
             </div>
           </div>
         </div>
@@ -1393,218 +1417,240 @@ export function ChatConversation({ conversationId }: { conversationId: string })
             className="h-full"
             style={{ overflow: 'hidden', contain: 'paint' }}
           >
-            {/* 左栏自带内边距（外层 section 已不再加）：右栏才能通顶贴边 */}
-            <div className="flex h-full min-h-0 flex-col gap-2 p-4">
-              <header className="flex min-w-0 items-center gap-2">
-                {/* 顶层「会话 / 管理」切换在全局顶栏里，这里不再放「回到管理台」图标 ——
+            {/*
+            左栏是**画布 + 白纸**两层（2026-11-21）：
+            外层 `padding` 留出页面底色（与左侧导轨同色的工作台），内层一张 `rounded-xl bg-card`
+            的白纸把页头 / tab 条 / 时间线 / 输入区整个装进去。
+            为什么这么分：原先页头、消息、输入框直接铺在页面底上，三者同色同层，
+            大屏看就是"一整片白"；白纸 + 画布是管理台既有的面层语言（列表页也是灰底白卡），
+            不需要边框、投影或渐变就能把这一栏立起来。
+          */}
+            <div className="flex h-full min-h-0 flex-col bg-surface-3 p-2 sm:p-3">
+              <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl bg-card">
+                <header className="flex min-w-0 items-center gap-2 px-3 pt-3 pb-2 sm:px-4">
+                  {/* 顶层「会话 / 管理」切换在全局顶栏里，这里不再放「回到管理台」图标 ——
                   页头横向空间全部留给标题与模型选择；移动端仍留一个"会话列表"入口（抽屉） */}
-                {isMobile && mobileNav ? (
-                  /*
+                  {isMobile && mobileNav ? (
+                    /*
                     `IconText` 只有字形那么大（12px）—— 390px 上等于一个点不中的小点。
                     给它一个 32px 的方形热区（`size-8` + 居中 + 按键底色），手指才落得准。
                     这一段只在 `isMobile` 分支里渲染，桌面页头根本没有它。
                   */
-                  <IconText
-                    icon={<MessagesSquareIcon />}
-                    size="small"
-                    type="primary"
-                    tooltip="会话列表"
-                    aria-label="会话列表"
-                    className="size-8 shrink-0 justify-center rounded-md bg-surface-2 hover:bg-surface-3"
-                    onClick={mobileNav.openConversations}
-                  />
-                ) : null}
-                <h1 className="min-w-0 flex-1 truncate font-heading text-base font-semibold sm:text-lg">
-                  {isNew ? '新会话' : conversationQuery.data?.title || '会话'}
-                </h1>
-                {activeAgent ? (
-                  <Badge variant="secondary" className="hidden shrink-0 lg:inline-flex">
-                    {activeAgent.name}
-                  </Badge>
-                ) : (
-                  <Badge variant="outline" className="hidden shrink-0 lg:inline-flex">
-                    未配置
-                  </Badge>
-                )}
-                {runId ? (
-                  <span className="hidden font-mono text-xs text-muted-foreground xl:inline">
-                    run {runId}
-                  </span>
-                ) : null}
-                {status !== 'ready' ? (
-                  <Badge
-                    variant={status === 'error' ? 'destructive' : 'outline'}
-                    className="hidden shrink-0 lg:inline-flex"
-                  >
-                    {status}
-                  </Badge>
-                ) : null}
-                {/* 右侧：复制会话 id + 换 agent + 右栏开关（页头在左栏里，这一排就落在 timeline 页头右侧） */}
-                <div className="ml-auto flex items-center gap-2">
-                  {/* 新会话还没有 id（首轮发出后地址会换成真实 id，那时这个按钮才出现） */}
-                  {!isNew ? (
                     <IconText
-                      icon={<CopyIcon />}
+                      icon={<MessagesSquareIcon />}
                       size="small"
                       type="primary"
-                      className="hidden lg:inline-flex"
-                      tooltip="复制会话 id"
-                      aria-label="复制会话 id"
-                      onClick={copyConversationId}
+                      tooltip="会话列表"
+                      aria-label="会话列表"
+                      className="size-8 shrink-0 justify-center rounded-md bg-surface-2 hover:bg-surface-3"
+                      onClick={mobileNav.openConversations}
                     />
                   ) : null}
-                  {agentSelect ? <div className="hidden lg:block">{agentSelect}</div> : null}
-                  <Button
-                    variant={(isMobile ? mobilePanelOpen : panelOpen) ? 'secondary' : 'outline'}
-                    size="icon-sm"
-                    // 手机上它是页头唯一的右栏入口：icon-sm 只有 28px，拇指不好点，base 抬到
-                    // 32px；lg 起 size-7 还原（桌面页头按钮尺寸与位置不变）
-                    className="size-8 lg:size-7"
-                    aria-pressed={isMobile ? mobilePanelOpen : panelOpen}
-                    aria-label={(isMobile ? mobilePanelOpen : panelOpen) ? '隐藏右栏' : '显示右栏'}
-                    title={
-                      (isMobile ? mobilePanelOpen : panelOpen)
-                        ? '隐藏右栏（系统指令 / 技能 / 任务 / 文件）'
-                        : '显示右栏（系统指令 / 技能 / 任务 / 文件）'
-                    }
-                    onClick={togglePanel}
-                  >
-                    <PanelRightIcon className="size-3.5" />
-                  </Button>
-                </div>
-              </header>
+                  <h1 className="min-w-0 flex-1 truncate font-heading text-base font-semibold sm:text-lg">
+                    {isNew ? '新会话' : conversationQuery.data?.title || '会话'}
+                  </h1>
+                  {activeAgent ? (
+                    <Badge variant="secondary" className="hidden shrink-0 lg:inline-flex">
+                      {activeAgent.name}
+                    </Badge>
+                  ) : (
+                    <Badge variant="outline" className="hidden shrink-0 lg:inline-flex">
+                      未配置
+                    </Badge>
+                  )}
+                  {runId ? (
+                    <span className="hidden font-mono text-xs text-muted-foreground xl:inline">
+                      run {runId}
+                    </span>
+                  ) : null}
+                  {status !== 'ready' ? (
+                    <Badge
+                      variant={status === 'error' ? 'destructive' : 'outline'}
+                      className="hidden shrink-0 lg:inline-flex"
+                    >
+                      {status}
+                    </Badge>
+                  ) : null}
+                  {/* 右侧：复制会话 id + 换 agent + 右栏开关（页头在左栏里，这一排就落在 timeline 页头右侧） */}
+                  <div className="ml-auto flex items-center gap-2">
+                    {/* 新会话还没有 id（首轮发出后地址会换成真实 id，那时这个按钮才出现） */}
+                    {!isNew ? (
+                      <IconText
+                        icon={<CopyIcon />}
+                        size="small"
+                        type="primary"
+                        className="hidden lg:inline-flex"
+                        tooltip="复制会话 id"
+                        aria-label="复制会话 id"
+                        onClick={copyConversationId}
+                      />
+                    ) : null}
+                    {agentSelect ? <div className="hidden lg:block">{agentSelect}</div> : null}
+                    <Button
+                      variant={(isMobile ? mobilePanelOpen : panelOpen) ? 'secondary' : 'outline'}
+                      size="icon-sm"
+                      // 手机上它是页头唯一的右栏入口：icon-sm 只有 28px，拇指不好点，base 抬到
+                      // 32px；lg 起 size-7 还原（桌面页头按钮尺寸与位置不变）
+                      className="size-8 lg:size-7"
+                      aria-pressed={isMobile ? mobilePanelOpen : panelOpen}
+                      aria-label={
+                        (isMobile ? mobilePanelOpen : panelOpen) ? '隐藏右栏' : '显示右栏'
+                      }
+                      title={
+                        (isMobile ? mobilePanelOpen : panelOpen)
+                          ? '隐藏右栏（系统指令 / 技能 / 任务 / 文件）'
+                          : '显示右栏（系统指令 / 技能 / 任务 / 文件）'
+                      }
+                      onClick={togglePanel}
+                    >
+                      <PanelRightIcon className="size-3.5" />
+                    </Button>
+                  </div>
+                </header>
 
-              {errorText || error ? (
-                <Alert variant="destructive">
-                  <AlertDescription>{errorText ?? error?.message}</AlertDescription>
-                </Alert>
-              ) : null}
-              {queueNotice ? (
-                <Alert>
-                  <AlertDescription>{queueNotice}</AlertDescription>
-                </Alert>
-              ) : null}
+                {errorText || error ? (
+                  <Alert variant="destructive" className="mx-3 sm:mx-4">
+                    <AlertDescription>{errorText ?? error?.message}</AlertDescription>
+                  </Alert>
+                ) : null}
+                {queueNotice ? (
+                  <Alert className="mx-3 sm:mx-4">
+                    <AlertDescription>{queueNotice}</AlertDescription>
+                  </Alert>
+                ) : null}
 
-              {/*
+                {/*
               主区顶部是 tab 条：第一个「主会话」，其余每个子 agent 一个（`session-tabs.tsx`）。
               主会话内容作为 children 常驻挂载 —— 切到子 agent 再切回来，输入框草稿与滚动位置都还在。
             */}
-              <SessionTabs
-                client={client}
-                // 新会话还没有 id：既没有子 run，也没有可查的运行记录
-                conversationId={isNew ? undefined : conversationId}
-                activeTab={activeSessionTab}
-                onTabChange={setActiveSessionTab}
-              >
-                <div className="flex min-h-0 flex-1 flex-col gap-2">
-                  {/* 消息列表不画外框：整块与页面同底，气泡 / 工具卡自己带层次，边框只会把界面切成一块块 */}
-                  <Conversation
-                    className="min-h-0 flex-1"
-                    /**
-                     * 只有**流式输出**才用平滑跟随；其余内容长高一律瞬间到位。
-                     *
-                     * 为什么：`use-stick-to-bottom` 只在**第一次**长高时用 `initial`，之后都用 `resize`。
-                     * 而挂载时这里已经渲染着“正在加载会话历史…”，所以历史到达算**第二次**长高 ——
-                     * 默认的 `resize="smooth"` 会在那一刻起一段弹簧动画（看起来就是"进会话后自己滑到底"）。
-                     * `initial="instant"` 管不到它，必须让非流式的 `resize` 也是 instant。
-                     */
-                    resize={streaming && !loading ? 'smooth' : 'instant'}
-                  >
-                    {/* 覆盖 ai-elements 的 `gap-8 p-4`：管理台是**高密度工作台**，
-                      消息间距收到 12px、留白收到 12px（下面每张卡自己再收一层） */}
-                    <ConversationContent className="gap-3 p-3">
-                      {loading && messageStates.length === 0 ? (
-                        <p className="p-3 text-xs text-muted-foreground">正在加载会话历史…</p>
-                      ) : messageStates.length === 0 && viewMessages.length > 0 ? (
-                        <p className="p-3 text-xs text-muted-foreground">正在整理会话…</p>
-                      ) : messageStates.length === 0 ? (
-                        <ConversationEmptyState className="gap-4">
-                          <span className="grid size-11 place-items-center rounded-xl bg-surface-2 text-muted-foreground">
-                            <BotIcon className="size-5" />
-                          </span>
-                          <div className="space-y-1.5">
-                            <h3 className="font-heading text-base font-medium tracking-tight">
-                              {isNew ? '问点什么' : '这个会话还没有内容'}
-                            </h3>
-                            <p className="max-w-md text-xs leading-relaxed text-muted-foreground">
-                              试着问「最近有哪些待办」，或让它「分步整理一份待办周报」——它会自己规划、必要时造一个子助手
-                            </p>
-                          </div>
-                        </ConversationEmptyState>
-                      ) : (
-                        messageStates.map((message) => {
-                          // 只给"真的用得上"的行挂回调：其余行拿到稳定的 undefined，memo 才不会每帧失效
-                          const needsPlan = message.plan !== null
-                          const needsPreview = message.files.length > 0
-                          const needsQuestion = message.units.some(
-                            (unit) => unit.kind === 'question',
-                          )
-                          // 「完成卡」（notice）也算子助手卡：两张卡的入口都要切 tab，不跳子会话路由
-                          const needsSubAgent = message.units.some(
-                            (unit) => unit.kind === 'sub-agent' || unit.kind === 'notice',
-                          )
-                          return (
-                            <ChatMessage
-                              key={message.id}
-                              message={message}
-                              streaming={streaming}
-                              {...(needsPlan ? { onOpenPlan: openPlanPanel } : {})}
-                              {...(needsPreview ? { onPreviewImage: previewAttachments } : {})}
-                              {...(needsQuestion ? { onAnswerQuestions: answerQuestions } : {})}
-                              // 子助手卡的「查看过程」= 切到它在主区顶部的 tab（不再跳子会话路由）
-                              {...(needsSubAgent ? { onOpenSubAgent: openSubAgentTab } : {})}
-                              // 计划卡 / 问题卡固定在输入框上方，消息流里不再重复
-                              showTrailingCards={false}
-                            />
-                          )
-                        })
-                      )}
-                    </ConversationContent>
-                    <ConversationScrollButton />
-                  </Conversation>
+                <SessionTabs
+                  client={client}
+                  // 新会话还没有 id：既没有子 run，也没有可查的运行记录
+                  conversationId={isNew ? undefined : conversationId}
+                  activeTab={activeSessionTab}
+                  onTabChange={setActiveSessionTab}
+                >
+                  <div className="flex min-h-0 flex-1 flex-col gap-2">
+                    {/* 消息列表自身不画外框：白纸已经把这一栏与画布分开，气泡 / 工具卡各自带层次，
+                        再给列表加边框只会把界面切成一块块 */}
+                    <Conversation
+                      className="min-h-0 flex-1"
+                      /**
+                       * 只有**流式输出**才用平滑跟随；其余内容长高一律瞬间到位。
+                       *
+                       * 为什么：`use-stick-to-bottom` 只在**第一次**长高时用 `initial`，之后都用 `resize`。
+                       * 而挂载时这里已经渲染着“正在加载会话历史…”，所以历史到达算**第二次**长高 ——
+                       * 默认的 `resize="smooth"` 会在那一刻起一段弹簧动画（看起来就是"进会话后自己滑到底"）。
+                       * `initial="instant"` 管不到它，必须让非流式的 `resize` 也是 instant。
+                       */
+                      resize={streaming && !loading ? 'smooth' : 'instant'}
+                    >
+                      {/* 覆盖 ai-elements 的 `gap-8 p-4`：管理台是**高密度工作台**，
+                      消息间距按**轮**拉开到 20px（一轮内部的缩进 / 卡片仍各收一层）——
+                      12px 时上下两轮会糊成一段，读起来像文档而不是对话。
+                      `max-w-4xl`：白纸最宽可到 1000px+，正文铺满一行会让眼睛来回扫；
+                      限宽后消息列与输入框同宽、居中，宽屏下也不会"文字从左墙贴到右墙" */}
+                      <ConversationAutoScroll trigger={lastUserMessageId} />
+                      <ConversationContent className="mx-auto w-full max-w-4xl gap-5 px-3 py-4">
+                        {loading && messageStates.length === 0 ? (
+                          <p className="p-3 text-xs text-muted-foreground">正在加载会话历史…</p>
+                        ) : messageStates.length === 0 && viewMessages.length > 0 ? (
+                          <p className="p-3 text-xs text-muted-foreground">正在整理会话…</p>
+                        ) : messageStates.length === 0 ? (
+                          <ConversationEmptyState className="gap-4">
+                            <span className="grid size-11 place-items-center rounded-2xl bg-brand/10 text-brand">
+                              <BotIcon className="size-5" />
+                            </span>
+                            <div className="space-y-1.5">
+                              <h3 className="font-heading text-base font-medium tracking-tight">
+                                {isNew ? '问点什么' : '这个会话还没有内容'}
+                              </h3>
+                              <p className="max-w-md text-xs leading-relaxed text-muted-foreground">
+                                试着问「最近有哪些待办」，或让它「分步整理一份待办周报」——它会自己规划、必要时造一个子助手
+                              </p>
+                            </div>
+                          </ConversationEmptyState>
+                        ) : (
+                          messageStates.map((message) => {
+                            // 只给"真的用得上"的行挂回调：其余行拿到稳定的 undefined，memo 才不会每帧失效
+                            const needsPlan = message.plan !== null
+                            const needsPreview = message.files.length > 0
+                            const needsQuestion = message.units.some(
+                              (unit) => unit.kind === 'question',
+                            )
+                            // 「完成卡」（notice）也算子助手卡：两张卡的入口都要切 tab，不跳子会话路由
+                            const needsSubAgent = message.units.some(
+                              (unit) => unit.kind === 'sub-agent' || unit.kind === 'notice',
+                            )
+                            return (
+                              <ChatMessage
+                                key={message.id}
+                                message={message}
+                                streaming={streaming}
+                                {...(needsPlan ? { onOpenPlan: openPlanPanel } : {})}
+                                {...(needsPreview ? { onPreviewImage: previewAttachments } : {})}
+                                {...(needsQuestion ? { onAnswerQuestions: answerQuestions } : {})}
+                                // 子助手卡的「查看过程」= 切到它在主区顶部的 tab（不再跳子会话路由）
+                                {...(needsSubAgent ? { onOpenSubAgent: openSubAgentTab } : {})}
+                                // 计划卡 / 问题卡固定在输入框上方，消息流里不再重复
+                                showTrailingCards={false}
+                              />
+                            )
+                          })
+                        )}
+                      </ConversationContent>
+                      <ConversationScrollButton />
+                    </Conversation>
 
-                  {/* 输入框上方的常驻 dock：运行状态 / 当前任务进度 / 待回答的问题。
+                    {/* 输入框上方的常驻 dock：运行状态 / 当前任务进度 / 待回答的问题。
                 放在 Conversation 外面，所以不会被消息列表滚走；问题卡永远贴着输入框。 */}
-                  {/*
+                    {/*
                     `shrink-0` 只在 ≥lg 保留（桌面尺寸下余量充足，行为与原来一致）：
                     <1024 的高度可能被键盘 / 横屏压得很矮，而这一块最高能到 55vh —— 它若
                     不可压缩，flex 只能把**输入区**（最后一个子项）挤出可视区。放开收缩后
                     优先级变成「消息列表先让位 → dock 自己滚动 → 输入区始终在底部」。
                     390 竖屏没有溢出，所以外观不变；这是给"矮视口"兜底的结构，不是尺寸调整。
                   */}
-                  <div className="flex max-h-[55vh] min-h-0 flex-col gap-2 overflow-y-auto px-3 lg:shrink-0">
-                    {isSubConversation ? (
-                      <div className="rounded-lg border border-border bg-surface-2 px-3 py-2 text-xs text-muted-foreground">
-                        这是子助手产生的子会话，只读展示；要让它继续工作，请回到父会话重新委派。
-                        {rootConversationId ? (
-                          <Link
-                            href={conversationPath(rootConversationId)}
-                            className="ml-1 text-primary hover:underline"
-                          >
-                            返回父会话
-                          </Link>
-                        ) : null}
-                      </div>
-                    ) : null}
-                    <RunActivity
-                      messages={viewMessages}
-                      status={busy ? 'streaming' : status}
-                      activeSubAgentName={activeSubAgentName}
-                    />
-                    {conversationPlan ? (
-                      <PlanSummaryCard
-                        plan={conversationPlan.current.plan}
-                        onOpen={() => focusRightPanel('plan')}
+                    <div className="mx-auto flex max-h-[55vh] min-h-0 w-full max-w-4xl flex-col gap-2 overflow-y-auto px-3 lg:shrink-0">
+                      {isSubConversation ? (
+                        <div className="rounded-lg border border-border bg-surface-2 px-3 py-2 text-xs text-muted-foreground">
+                          这是子助手产生的子会话，只读展示；要让它继续工作，请回到父会话重新委派。
+                          {rootConversationId ? (
+                            <Link
+                              href={conversationPath(rootConversationId)}
+                              className="ml-1 text-primary hover:underline"
+                            >
+                              返回父会话
+                            </Link>
+                          ) : null}
+                        </div>
+                      ) : null}
+                      <RunActivity
+                        messages={viewMessages}
+                        status={busy ? 'streaming' : status}
+                        activeSubAgentName={activeSubAgentName}
                       />
-                    ) : null}
-                    {activeQuestion ? (
-                      <QuestionCard data={activeQuestion} onSubmit={answerQuestions} />
-                    ) : null}
-                  </div>
+                      {conversationPlan ? (
+                        <PlanSummaryCard
+                          plan={conversationPlan.current.plan}
+                          onOpen={() => focusRightPanel('plan')}
+                        />
+                      ) : null}
+                      {activeQuestion ? (
+                        <QuestionCard data={activeQuestion} onSubmit={answerQuestions} />
+                      ) : null}
+                    </div>
 
-                  <div className={isSubConversation ? 'hidden' : 'px-3 pb-3'}>{composer}</div>
-                </div>
-              </SessionTabs>
+                    <div
+                      className={
+                        isSubConversation ? 'hidden' : 'mx-auto w-full max-w-4xl px-3 pb-3'
+                      }
+                    >
+                      {composer}
+                    </div>
+                  </div>
+                </SessionTabs>
+              </div>
             </div>
           </ResizablePanel>
 

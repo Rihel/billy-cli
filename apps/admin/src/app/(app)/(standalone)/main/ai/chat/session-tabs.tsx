@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, type ReactNode } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import type { AgentRunModel } from '@repo/shared'
 import { Badge, Tabs, TabsContent, TabsList, TabsTrigger, cn } from '@repo/ui'
@@ -173,7 +173,7 @@ export function SessionTabs({
           iOS 那边继续横滑会被判成"返回上一页"手势，整页直接退出去了。
           它只截断滚动链、不改任何视觉，桌面尺寸与滚动条表现都不受影响。
       */}
-      <div className="shrink-0 overflow-x-auto overflow-y-hidden overscroll-x-contain border-b border-border pb-1">
+      <div className="shrink-0 overflow-x-auto overflow-y-hidden overscroll-x-contain border-b border-border px-3 pb-1 sm:px-4">
         <TabsList className="w-max justify-start">
           <TabsTrigger value={MAIN_SESSION_TAB} className="flex-none">
             <MessagesSquareIcon className="size-3.5" />
@@ -221,9 +221,11 @@ export function SessionTabs({
           <TabsContent
             key={tab.runId}
             value={tab.runId}
-            className="min-h-0 flex-1 overflow-auto p-3"
+            className="mx-auto flex min-h-0 w-full max-w-4xl flex-1 flex-col"
           >
-            <SubAgentTabContent client={client} conversationId={conversationId} tab={tab} />
+            <EndAlignedPanel className="min-h-0 flex-1 overflow-auto px-3 py-3 sm:px-4">
+              <SubAgentTabContent client={client} conversationId={conversationId} tab={tab} />
+            </EndAlignedPanel>
           </TabsContent>
         ) : null,
       )}
@@ -254,6 +256,48 @@ function SubAgentTabContent({
     return <SubRunView client={client} conversationId={conversationId} run={tab.run} />
   }
   return <p className="text-xs text-muted-foreground">这个子助手还没有可显示的过程记录。</p>
+}
+
+/**
+ * 子 agent 面板的滚动容器：**切到这条 tab 就停在最新一轮**（底部）。
+ *
+ * 原先这里只是个普通 `overflow-auto`，切过去永远停在顶部 —— 一段几十步的过程
+ * 要自己往下拖到底才知道结果（2026-11-21 反馈）。这里补三件事：
+ * 1. 挂载即滚到底（就是"切过去停在最新"）；
+ * 2. 内容继续长高（运行中的子助手）时跟随；
+ * 3. 用户自己往上翻就停（`stick` 变 false），不抢视图。
+ */
+function EndAlignedPanel({ children, className }: { children: ReactNode; className?: string }) {
+  const ref = useRef<HTMLDivElement>(null)
+  const stick = useRef(true)
+
+  useEffect(() => {
+    const element = ref.current
+    if (!element) return
+    const content = element.firstElementChild
+    stick.current = true
+    element.scrollTop = element.scrollHeight
+
+    const onScroll = () => {
+      stick.current = element.scrollHeight - element.scrollTop - element.clientHeight < 24
+    }
+    element.addEventListener('scroll', onScroll, { passive: true })
+    // 时间线是异步到的：数据到了内容才长高，所以要在内容上观察，而不是算一次 scrollHeight
+    const observer = new ResizeObserver(() => {
+      if (stick.current) element.scrollTop = element.scrollHeight
+    })
+    if (content) observer.observe(content)
+    return () => {
+      element.removeEventListener('scroll', onScroll)
+      observer.disconnect()
+    }
+  }, [])
+
+  return (
+    <div ref={ref} className={className}>
+      <div>{children}</div>
+    </div>
+  )
 }
 
 /** 一个子 run 的完整过程（元信息 + 与主对话同一套渲染） */

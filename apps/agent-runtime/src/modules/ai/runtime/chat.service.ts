@@ -54,6 +54,7 @@ import { REMOTE_TOOL_INVOKER, type RemoteToolInvoker } from '../core/tools/tool.
 import { GatewayToolCatalog } from './gateway-capability-catalog.js'
 import { ToolCallMetaStore } from '../core/tools/tool.meta.js'
 import { toMastraModelInstance } from '../mastra/agent.adapter.js'
+import { requestedSkillsOf, requestedSkillsSection } from '../core/skills/requested-skills.js'
 import { skillCatalogSection } from '../core/skills/skill-catalog.js'
 import { toRequestContext } from '../mastra/context.adapter.js'
 import type { ConversationEntity, ConversationRunQueueEntity, TimelineEntity } from '@repo/db'
@@ -644,6 +645,8 @@ export class AgentChatService {
             userId,
             isAdmin,
           ),
+          // `/技能名` 点名：只在这一轮生效（续跑 / 子 agent 唤醒没有用户原文，不传）
+          userMessage: input.message,
           // 身份要进运行时信封：admin 作用域的工具（skill-*）按它过滤工具面。
           // 漏传的后果是模型手上根本没有这些工具，只能绕去 bash 写盘（2026-11-11 实际踩过）。
           isAdmin,
@@ -1466,6 +1469,8 @@ export class AgentChatService {
             userId,
             isAdmin,
           ),
+          // `/技能名` 点名：只在这一轮生效（续跑 / 子 agent 唤醒没有用户原文，不传）
+          userMessage: input.message,
           // 同上：工具面按身份过滤，admin 的 skill-* 工具要靠这个字段才出现
           isAdmin,
         },
@@ -3251,6 +3256,12 @@ export class AgentChatService {
       fileAccess?: 'read-only' | 'workspace-write'
       /** 工作区/文件归属的根会话（子会话共享父工作区） */
       workspaceConversationId?: string
+      /**
+       * 本轮用户输入原文（用来识别 `/技能名` 点名；子 agent 唤醒 / 续跑没有这一项）。
+       *
+       * 只在这里用一次：拼进**这一轮**的系统指令，不落会话级提示词快照。
+       */
+      userMessage?: string
     } = {},
   ): Promise<RequestContext> {
     // 子 agent 工具面 = 父 agent 授权面 ∩ 全部 − 委派类 − child:deny，**再按本次身份过滤作用域**
@@ -3282,7 +3293,10 @@ export class AgentChatService {
     // 技能目录由 runtime 自己渲染进系统指令（§6.7.3）：只给 name + description，
     // 正文由模型用 `file-read` 读工作区里的 `.agents/<name>/SKILL.md`
     const skills = await this.skillLoader.resolve(definition.skills)
-    const systemPrompt = `${options.systemPrompt ?? definition.instructions}${skillCatalogSection(skills)}`
+    // `/技能名` 点名（与可见技能求交集）：写进**这一轮**的系统指令，不进会话级快照，
+    // 否则首轮快照会漏掉后续每轮各自的点名（快照按设计逐字复用）
+    const requestedSkills = requestedSkillsOf(options.userMessage ?? '', skills)
+    const systemPrompt = `${options.systemPrompt ?? definition.instructions}${skillCatalogSection(skills)}${requestedSkillsSection(requestedSkills)}`
 
     const envelope: AgentRuntimeEnvelope = {
       conversationId,

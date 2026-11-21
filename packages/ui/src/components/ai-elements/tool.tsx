@@ -71,8 +71,26 @@ const statusIcons: Record<ToolPart['state'], ReactNode> = {
   'output-error': <XCircleIcon className="size-4 text-destructive" />,
 }
 
+/**
+ * 状态徽标的底色：**语义色极淡平涂**（与 `Tag` 的语义五色同一套口径）。
+ *
+ * 为什么不再用 `variant="secondary"`：工具卡头部现在是 `surface-2` 的标题栏，
+ * 次级底色的徽标压在同一档面色上会整个糊掉；而状态本来就是"结论"，
+ * 用语义色的淡底 + 语义前景，一眼能分出完成 / 出错 / 等待确认，
+ * 又不会变成强彩色块（设计系统 §8「标签」）。
+ */
+const statusTones: Record<ToolPart['state'], string> = {
+  'approval-requested': 'bg-warning/10 text-warning',
+  'approval-responded': 'bg-info/10 text-info',
+  'input-available': 'bg-info/10 text-info',
+  'input-streaming': 'bg-surface-3 text-muted-foreground',
+  'output-available': 'bg-success/10 text-success',
+  'output-denied': 'bg-warning/10 text-warning',
+  'output-error': 'bg-destructive/10 text-destructive',
+}
+
 export const getStatusBadge = (status: ToolPart['state']) => (
-  <Badge className="gap-1.5 rounded-full text-xs" variant="secondary">
+  <Badge className={cn('gap-1.5 rounded-full text-xs', statusTones[status])} variant="secondary">
     {statusIcons[status]}
     {statusLabels[status]}
   </Badge>

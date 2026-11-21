@@ -7,12 +7,14 @@ import { Button } from '@repo/ui'
 import { Markdown } from '@repo/ui/components/markdown.tsx'
 import { SandboxFrame } from '@repo/ui/components/ai-elements/markdown-fences/sandbox-frame.tsx'
 import type { ShareMetaModel } from '@repo/shared'
+import { MarkdownMeta } from '@/components/markdown-meta'
 import { OfficePreview } from '@/components/office-preview'
 import {
   FullscreenButton,
   FullscreenExitButton,
   usePreviewFullscreen,
 } from '@/components/preview-fullscreen'
+import { splitFrontmatter } from '@/lib/skill-markdown'
 
 /**
  * 分享页的预览体（设计 `docs/design/file-share.md` §6.2）。
@@ -202,9 +204,13 @@ function Body({
   }
 
   if (meta.previewKind === 'markdown') {
+    // 与文件预览同一口径：frontmatter 不进正文（否则 `---` 被当成 setext 标题），
+    // name / description 单独提成元信息块，其余字段不展示（原文可下载）。
+    const { meta: frontmatter, body } = splitFrontmatter(text)
     return (
       <div className="mx-auto max-w-3xl px-6 py-6">
-        <Markdown content={text} />
+        <MarkdownMeta meta={frontmatter} />
+        <Markdown content={body} />
       </div>
     )
   }

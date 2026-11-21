@@ -5,7 +5,7 @@ import { cn } from '#lib/utils.ts'
 import type { UIMessage } from 'ai'
 import { ArrowDownIcon, DownloadIcon } from 'lucide-react'
 import type { ComponentProps } from 'react'
-import { useCallback } from 'react'
+import { useCallback, useEffect, useRef } from 'react'
 import { StickToBottom, useStickToBottomContext } from 'use-stick-to-bottom'
 
 export type ConversationProps = ComponentProps<typeof StickToBottom>
@@ -27,6 +27,37 @@ export const Conversation = ({ className, ...props }: ConversationProps) => (
     {...props}
   />
 )
+
+/**
+ * 出现「用户自己发的新消息」时，强制回到底部。
+ *
+ * 为什么不能只靠 `resize` 跟随：一轮结束后输入区上方的 dock（任务卡 / 运行状态）高度会变，
+ * `use-stick-to-bottom` 会把粘底状态判成"不在底部"；之后用户再发消息，内容长高也不会跟
+ * （2026-11-21 反馈"发完新消息不滚"）。
+ *
+ * 触发值取**最后一条用户消息的 id**：历史加载完、用户发新消息都会变；
+ * 流式增量不会变，所以不会在 AI 输出时抢视图。用户自己发消息是唯一"必须拉到底"的动作。
+ */
+export const ConversationAutoScroll = ({
+  trigger,
+  behavior = 'smooth',
+}: {
+  /** 触发值（一般传最后一条用户消息的 id）：变化时滚到底 */
+  trigger: unknown
+  behavior?: 'smooth' | 'instant'
+}) => {
+  const { scrollToBottom } = useStickToBottomContext()
+  const last = useRef(trigger)
+
+  useEffect(() => {
+    if (trigger === last.current) return
+    last.current = trigger
+    // 库返回 Promise（平滑滚动被用户打断时会 resolve false），这里不关心结果
+    void scrollToBottom(behavior)
+  }, [trigger, behavior, scrollToBottom])
+
+  return null
+}
 
 export type ConversationContentProps = ComponentProps<typeof StickToBottom.Content>
 
