@@ -57,8 +57,8 @@ import {
 } from './memory/index.js'
 import { toMastraSkills } from './mastra/skill.adapter.js'
 import { toMastraTools } from './mastra/tool.adapter.js'
-import { AGENT_TOOL_GROUPS, ALL_TOOLS } from './core/tools/tools.types.js'
-import { createCapabilityTool } from './core/tools/external.tool.js'
+import { AGENT_TOOL_GROUPS } from './core/tools/tools.types.js'
+import { addCapabilityTools } from './core/tools/external.tool.js'
 import type { RemoteToolInvoker } from './core/tools/tool.ports.js'
 import type { ToolEnvCaps } from './core/tools/tools.types.js'
 import type { AgentToolGroup } from './core/tools/tool.class.js'
@@ -318,7 +318,6 @@ let warnedMissingEnvelope = false
           // 授权清单在这里展开（具体 key / `'*'` / `{ category }`）：
           // 工具面按这一次的授权与调用身份过滤 —— 没授权的工具不出现
           resolveTools: async (ids, caller) => {
-            const wantsAll = ids.includes(ALL_TOOLS)
             const localKeys = tools.expand(ids)
             // 没有运行时身份（构造期 / 装配期）：只放行 scope='all'，且不碰能力目录
             const local = caller
@@ -327,32 +326,21 @@ let warnedMissingEnvelope = false
             const toolbox = new Map(tools.toolbox(local))
 
             if (caller) {
-              const capabilities = await catalog.capabilities(caller)
-              const visible = new Map(
-                (capabilities ?? []).map((capability) => [capability.key, capability]),
-              )
               /**
-               * 内部服务 + 网关内建（`source='code'`）：随工具面一起给，提示词里也列。
-               * 本地注册机已声明的（规划 / 子助手 / 技能 / 网关任务工具）跳过，避免两份。
-               */
-              for (const [key, capability] of visible) {
-                if (capability.source !== 'code') continue
-                if (localKeys.includes(key)) continue
-                if (!wantsAll && !ids.includes(key)) continue
-                toolbox.set(key, createCapabilityTool(capability, remote))
-              }
-              /**
-               * 外部服务（MCP / 手工登记）：**不随工具面下发**；
+               * 能力目录：内部服务 + 网关内建随工具面一起给；外部服务（MCP / 手工登记）
                * 只补这个会话已经用 `tool-search` 搜到过的（下一轮生效）。
+               * 与子助手工具面共用 `addCapabilityTools` —— 两边只差委派类，不能各自拼一份。
                */
+              const capabilities = await catalog.capabilities(caller)
               const discovered = await discovery.list(caller.conversationId)
-              for (const key of discovered) {
-                const capability = visible.get(key)
-                if (!capability || capability.source === 'code') continue
-                if (localKeys.includes(key)) continue
-                if (!wantsAll && !ids.includes(key)) continue
-                toolbox.set(key, createCapabilityTool(capability, remote))
-              }
+              addCapabilityTools({
+                toolbox,
+                capabilities,
+                declared: ids,
+                discovered,
+                remote,
+                skipKeys: new Set(localKeys),
+              })
             }
 
             return toMastraTools(toolbox, logger)

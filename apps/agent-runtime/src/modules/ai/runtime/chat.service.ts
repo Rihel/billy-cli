@@ -47,12 +47,12 @@ import { buildEnvironmentData } from '../core/prompts/environment.js'
 import { PROMPT_ENGINE, type PromptEngine } from '../core/prompts/prompt.engine.js'
 import { SkillLoader } from '../core/skills/index.js'
 import { ToolRegistry } from '../core/tools/tool.registry.js'
-import { ALL_TOOLS } from '../core/tools/tools.types.js'
 import { renderAgentInstructions } from '../agents/instructions.js'
-import { createCapabilityTool } from '../core/tools/external.tool.js'
+import { addCapabilityTools } from '../core/tools/external.tool.js'
 import { REMOTE_TOOL_INVOKER, type RemoteToolInvoker } from '../core/tools/tool.ports.js'
 import { GatewayToolCatalog } from './gateway-capability-catalog.js'
 import { ToolCallMetaStore } from '../core/tools/tool.meta.js'
+import { ToolDiscoveryStore } from '../core/tools/tool-discovery.store.js'
 import { toMastraModelInstance } from '../mastra/agent.adapter.js'
 import { requestedSkillsOf, requestedSkillsSection } from '../core/skills/requested-skills.js'
 import { skillCatalogSection } from '../core/skills/skill-catalog.js'
@@ -392,6 +392,10 @@ export class AgentChatService {
     @Optional() @Inject(GatewayToolCatalog) private readonly catalog?: GatewayToolCatalog,
     // 目录能力一律经网关执行；测试不传时目录能力会被跳过
     @Optional() @Inject(REMOTE_TOOL_INVOKER) private readonly remote?: RemoteToolInvoker | null,
+    // 会话里通过 `tool-search` 搜到的外部工具（MCP / 手工登记）：子助手与主 agent 同一工具面
+    @Optional()
+    @Inject(ToolDiscoveryStore)
+    private readonly discovery?: ToolDiscoveryStore,
   ) {}
 
   /** 主 agent 的对话记忆（与 createMastra 共用同一个实例） */
@@ -3264,8 +3268,9 @@ export class AgentChatService {
       userMessage?: string
     } = {},
   ): Promise<RequestContext> {
-    // 子 agent 工具面 = 父 agent 授权面 ∩ 全部 − 委派类 − child:deny，**再按本次身份过滤作用域**
-    // （admin 工具不因父 agent 声明了就对普通用户触发的那一轮可见）
+    // 子 agent 工具面 = 与主 agent **同一份**（本地 + 能力目录 code + 会话搜到的外部/MCP），
+    // 再按本次身份过滤作用域；差别只有委派类（`child:'deny'` 目前也只剩子助手那一组）与
+    // `ask-user-questions`（子助手没有回答通道，见 `ai.mastra.ts`）。
     const caller = {
       isAdmin: options.isAdmin ?? false,
       userId,
@@ -3276,18 +3281,21 @@ export class AgentChatService {
       await this.toolRegistry.authorizedChildToolbox(definition.tools, caller),
     )
     /**
-     * 能力目录里的内部服务 / 网关能力也要给子助手（本地注册机只有编排工具）。
-     * 外部服务（MCP / 手工登记）不给子助手：子助手的任务应该用父已经确认过的手段完成。
+     * 能力目录里的工具（内部服务 / 网关内建 / MCP / 手工登记）与主 agent **同一口径**：
+     * - `source='code'` 的内部能力随工具面一起给；
+     * - 外部服务只给本会话已经 `tool-search` 搜到过的（`ToolDiscoveryStore`），
+     *   与 `resolveTools` 的补法一致 —— 子助手与主 agent 的差别**只有委派类**，
+     *   外加 `ask-user-questions` 这个"子助手没人能回答"的必需例外（在 `ai.mastra.ts` 挂）。
      */
     if (this.catalog && this.remote) {
-      const capabilities = await this.catalog.capabilities(caller)
-      const wantsAll = definition.tools.includes(ALL_TOOLS)
-      for (const capability of capabilities ?? []) {
-        if (capability.source !== 'code') continue
-        if (childToolbox.has(capability.key)) continue
-        if (!wantsAll && !definition.tools.includes(capability.key)) continue
-        childToolbox.set(capability.key, createCapabilityTool(capability, this.remote))
-      }
+      addCapabilityTools({
+        toolbox: childToolbox,
+        capabilities: await this.catalog.capabilities(caller),
+        declared: definition.tools,
+        discovered: (await this.discovery?.list(conversationId)) ?? [],
+        remote: this.remote,
+        skipKeys: new Set(childToolbox.keys()),
+      })
     }
 
     // 技能目录由 runtime 自己渲染进系统指令（§6.7.3）：只给 name + description，

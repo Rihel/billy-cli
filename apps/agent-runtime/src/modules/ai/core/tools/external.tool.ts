@@ -4,7 +4,7 @@ import type { AgentRuntimeEnvelope } from '../envelope.js'
 import { withCallReason } from './call-reason.js'
 import { toCaller } from './tool.caller.js'
 import type { RemoteToolInvoker } from './tool.ports.js'
-import { ToolDeniedError } from './tools.types.js'
+import { ALL_TOOLS, ToolDeniedError } from './tools.types.js'
 import type { Tool, ToolCallInput, ToolOutcome, ToolSpec } from './tools.types.js'
 
 /**
@@ -87,5 +87,35 @@ export const createCapabilityTool = (
         deadlineMs: 310_000,
       })
     },
+  }
+}
+
+/**
+ * 把能力目录里的工具补进一份工具面（主 agent 与子助手**同一口径**）。
+ *
+ * - `source='code'`（内部服务 / 网关内建）：随工具面一起给；
+ * - 外部服务（MCP / 手工登记）：只给本会话已经 `tool-search` 搜到过的 key。
+ *
+ * 两处调用（`ai.module` 的 `resolveTools` 与 `chat.service` 的子工具面）共用它，
+ * 避免出现"主 agent 有、子助手没有"的漂移（2026-11-22 定：子助手与主 agent 只差委派类）。
+ */
+export const addCapabilityTools = (input: {
+  toolbox: Map<string, Tool>
+  capabilities: readonly CapabilityInfo[] | null | undefined
+  /** agent 声明的工具清单（含 `ALL_TOOLS` 通配） */
+  declared: readonly string[]
+  /** 本会话 `tool-search` 搜到过、允许补进来的外部工具 key */
+  discovered: Iterable<string>
+  remote: RemoteToolInvoker | null
+  /** 已在本地注册机里的 key（避免同名两份） */
+  skipKeys?: ReadonlySet<string>
+}): void => {
+  const wantsAll = input.declared.includes(ALL_TOOLS)
+  const discovered = new Set(input.discovered)
+  for (const capability of input.capabilities ?? []) {
+    if (capability.source !== 'code' && !discovered.has(capability.key)) continue
+    if (input.skipKeys?.has(capability.key)) continue
+    if (!wantsAll && !input.declared.includes(capability.key)) continue
+    input.toolbox.set(capability.key, createCapabilityTool(capability, input.remote))
   }
 }

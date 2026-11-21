@@ -88,7 +88,7 @@ export interface AgentRuntimeEnvelope {
   rootAgentKey: string
   /** **本轮使用的模型**（子 agent 继承它，不单独选模型） */
   model: RuntimeModel
-  /** 算好的**子 agent 工具面**（全部 − 委派类 − `child: deny`） */
+  /** 算好的**子 agent 工具面**（与主 agent 同面 − 委派类 − `child: deny`） */
   childToolbox: Toolbox
   /** 子 agent 的技能面（与父 agent 同一口径） */
   skills: readonly SkillRef[]
