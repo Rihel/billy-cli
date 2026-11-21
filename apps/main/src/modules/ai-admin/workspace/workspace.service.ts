@@ -119,16 +119,22 @@ export class WorkspaceAdminService {
 
   async create(owner: OwnerRef, input: WorkspaceCreateInput): Promise<WorkspaceModel> {
     await this.ensureDefault(owner)
-    const entity = await this.repo().save({
-      ...owner,
-      name: input.name?.trim() || '未命名工作区',
-      isDefault: false,
-      backend: input.backend ?? 'container',
-      image: input.image?.trim() || null,
-      location: null,
-      fileAccess: input.fileAccess ?? 'write',
-      desiredStatus: 'stopped',
-    })
+    const repo = this.repo()
+    // 同 ensureDefault：id 由 BaseEntity 的 `@BeforeInsert` 生成，必须先用 `create()`
+    // 变成实体实例。直接 `save({...})` 普通对象不会跑实体钩子，插入时 id 走 DEFAULT = NULL，
+    // 撞 `id NOT NULL`（2026-11-21 实测报错）。
+    const entity = await repo.save(
+      repo.create({
+        ...owner,
+        name: input.name?.trim() || '未命名工作区',
+        isDefault: false,
+        backend: input.backend ?? 'container',
+        image: input.image?.trim() || null,
+        location: null,
+        fileAccess: input.fileAccess ?? 'write',
+        desiredStatus: 'stopped',
+      }),
+    )
     return this.toModel(entity)
   }
 
