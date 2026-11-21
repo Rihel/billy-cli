@@ -15,6 +15,9 @@
 - 子 agent 工具面 = **父授权 ∩（全部 − 委派类 − `child: deny`），再按本次 caller 过滤作用域**：
   `chat.service.ts` 的 `buildRuntimeContext` 先构造 caller（`isAdmin` + `rootAgentKey`）再调
   `authorizedChildToolbox(definition.tools, caller)`（不再用同步的 `childToolbox` 裸版）。
+  **2026-11-22 定**：子助手与主 agent **同一工具面**（本地 + `source='code'` 能力 + 本会话
+  `tool-search` 搜到的外部 / MCP），差别只有委派类与 `ask-user-questions`（子助手没有回答通道）；
+  能力目录的合并走同一个 `addCapabilityTools`（`core/tools/external.tool.ts`），不要两边各拼一份。
 - 快照里的 `toolKeys` 是**展开后的具体 key**（`this.toolRegistry.expand(...)`），不是选择器。
 - **`child` 默认 `'allow'`**：`@ToolGroup` / `@ToolDecl` 不写 `child` 就是子 agent 可用；
   `FileTools` 没有显式 `deny`，所以子助手能读写工作区（2026-11-15 实测：子 run 快照含 `write-file` / `file-submit`）。

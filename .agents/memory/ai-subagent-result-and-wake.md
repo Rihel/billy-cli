@@ -26,15 +26,28 @@
    浓缩版、全文没人读。正确做法：让子助手把全文放进最终回复（引擎落盘），或写到 `reports/`
    （2026-11-15 会话 `p4cmqhspjjyuhnfp4dsi`；纪律句在 `assistant.eta`，`ai-prompt-guardrails` 守着）。
 
+5. **结论文件必须写进「执行面」的工作区**（2026-11-22 实测，会话 `pyao4cssrwn3qf291wh8`）：
+   工作区是容器 / 远程时，`bash` 与 `read-file` 都在容器 `/workspace`；引擎若用宿主本地
+   `FileService` 写 `{AGENT_COMMAND_WORK_DIR}/{会话}/subagents/`，父 agent 按同一路径读必 404
+   （`cat: /workspace/subagents/…: No such file or directory`），而本地 `stat` 还能报出「3604 字节」
+   —— **假路径比没路径更糟**。正确做法：`SubAgentResultWriter` 走能力网关 `write-file`
+   （按会话 `workspaceId` 路由），未接网关才回落本地；`wait-sub-agent` 的 bytes/lines 按子 run
+   正文算，不再 `stat` 宿主本地文件。硬规则出处：`docs/design/workspace.md` §3
+   「文件与命令必须在同一个 Workspace 内」。
+
 ## 依据
 
 - `apps/agent-runtime/src/modules/ai/runtime/agent-runner.ts`（流循环的 `if (delta.kind === 'text')`；
-  `enqueueSubAgentWake` 的 `isConsumed` 前置）
-- `apps/agent-runtime/src/modules/ai/tools/subagent.tool.ts`（`wait` 的 targets 与 `markConsumed`）
+  `enqueueSubAgentWake` 的 `isConsumed` 前置；`persistResultFile` 委托 `SubAgentResultWriter`）
+- `apps/agent-runtime/src/modules/ai/runtime/subagent-result.writer.ts`（网关 `write-file` + 本地兜底）
+- `apps/agent-runtime/src/modules/ai/tools/subagent.tool.ts`（`wait` 的 targets 与 `markConsumed`；
+  元信息按正文算）
 - `apps/agent-runtime/src/modules/ai/runtime/run-queue.service.ts`（`markConsumed` / `isConsumed` /
   `listQueuedSubAgentKeys`）、`run-queue.dispatcher.ts`（claim 后的 `skipped_consumed`）
 - 会话 `cdzcqdf6bteca91p10cm`：队列行 `mr9ga19v2h4k2n2cvwau`（20:41:18 入队 → 20:44:00 才起 run）；
   唤醒 run `g3k4jo7l7124iw8t4sy3`（9.2 万 token / 1 步 / 0 工具）
+- 会话 `pyao4cssrwn3qf291wh8`：`wait-sub-agent` 回 `3604 字节`，随后 3 个 `read-file` 的
+  `errorText` 全是 `cat: /workspace/subagents/…: No such file or directory`
 
 ## 核对命令
 

@@ -20,6 +20,9 @@
   `files/` `uploads/` 仍由 `includeCaches` 单独控制，别混为一谈。
 - workspace：`{AGENT_COMMAND_WORK_DIR || ~/.billy/workspaces}/{conversationId}`；`BashTool` 与文件工具共用；
   `BashConfig.workDir` 已退役。入站物化到 `uploads/`，`file-download` 默认放 `files/`；`files/` 拒绝写（缓存会被覆盖）。
+  **2026-11-22 补**：会话绑了容器工作区时，模型面文件工具读写的真身是容器 `/workspace`（走 workspace-service），
+  宿主那份只剩「入站附件物化 / 自托管本地后端」；引擎侧往工作区写文件也必须走执行面（见
+  `ai-subagent-result-and-wake` 第 5 条），不能直接用宿主本地 `FileService`。
 - HTTP：`POST /agent/file/workspace`、`POST /agent/file/preview`（source ai/workspace）、
   `GET /agent/file/workspace-content`（cookie + Range + inline/attachment）。
 - **单文件删除（2026-11-21）**：`POST /agent/file/remove`（会话侧，先 `requireOwned` 再按
