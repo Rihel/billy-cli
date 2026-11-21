@@ -1,10 +1,17 @@
 'use client'
 
 import { useMemo, useState, type CSSProperties } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { AgentFileModel, AgentFileNode, AgentWorkspaceFile } from '@repo/shared'
-import { Badge, Button, cn, DataList } from '@repo/ui'
-import { ChevronDownIcon, DownloadIcon, EyeIcon, FolderIcon, RefreshCwIcon } from 'lucide-react'
+import { Badge, Button, cn, ConfirmAction, DataList, toastError, toastSuccess } from '@repo/ui'
+import {
+  ChevronDownIcon,
+  DownloadIcon,
+  EyeIcon,
+  FolderIcon,
+  RefreshCwIcon,
+  Trash2Icon,
+} from 'lucide-react'
 import type { ServerClient } from './data'
 import { FilePreviewDialog, isPreviewTextItem, officeKind } from '@/components/file-preview-dialog'
 import { fileIconOf } from '@/components/file-type-icon'
@@ -41,6 +48,24 @@ export function FilesPanel({
    * 不持久化：切 tab / 刷新 / 换会话都回到全展开 —— 「看不到就重新找」比记住一个隐藏状态更安全。
    */
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(() => new Set())
+  const queryClient = useQueryClient()
+  /**
+   * 删除会话文件（硬删：`ai_files` 行 + 对象存储一起删）。
+   *
+   * 会话文件树来自 `conversation/detail` 的 `aiFiles`，删完直接失效那条 query；
+   * 工作区文件是另一套异步生命周期（`fs remove`），这里不给删除入口。
+   */
+  const removeMutation = useMutation({
+    mutationFn: async (fileId: string) => {
+      if (!conversationId) throw new Error('缺少会话 id，无法删除文件')
+      return client.agent.file.remove({ conversationId, fileId })
+    },
+    onSuccess: () => {
+      toastSuccess('文件已删除')
+      void queryClient.invalidateQueries({ queryKey: ['ai', 'conversation', conversationId] })
+    },
+    onError: (error: unknown) => toastError(error instanceof Error ? error.message : '删除失败'),
+  })
 
   /**
    * 工作区清单：**一次拿全量一维数组**，树在前端拼。
@@ -153,8 +178,6 @@ export function FilesPanel({
     id: target.id,
     filename: target.filename,
     path: target.path,
-    subtitle: target.source === 'ai' ? '会话文件' : '工作区',
-    badge: target.badge,
     mediaType: target.mediaType,
     bytes: target.bytes,
     // 桶私有：二进制一律按需签短时地址；文本走 preview 接口，Office 走 loadBytes
@@ -245,6 +268,9 @@ export function FilesPanel({
                   onToggle={toggleDir}
                   onPreview={openSession}
                   onDownload={(file) => void download(sessionTarget(file))}
+                  onRemove={(file) => {
+                    void removeMutation.mutateAsync(file.id)
+                  }}
                 />
               ))}
             </div>
@@ -300,6 +326,13 @@ export function FilesPanel({
           const target = preview?.items.find((candidate) => candidate.id === item.id)
           if (target) void download(target)
         }}
+        onRemove={async (item) => {
+          const target = preview?.items.find((candidate) => candidate.id === item.id)
+          if (!target?.fileId) return
+          await removeMutation.mutateAsync(target.fileId)
+          // 文件已经不存在了，别把弹窗停在一份删掉的内容上
+          setPreview(null)
+        }}
         text={textQuery.data?.text ?? null}
         loading={textQuery.isLoading}
       />
@@ -321,12 +354,14 @@ function SessionNode({
   onToggle,
   onPreview,
   onDownload,
+  onRemove,
 }: {
   node: AgentFileNode
   collapsed: ReadonlySet<string>
   onToggle: (path: string) => void
   onPreview: (file: AgentFileModel) => void
   onDownload: (file: AgentFileModel) => void
+  onRemove?: (file: AgentFileModel) => void | Promise<void>
 }) {
   if (node.type === 'dir') {
     const open = !collapsed.has(node.path)
@@ -364,6 +399,7 @@ function SessionNode({
                 onToggle={onToggle}
                 onPreview={onPreview}
                 onDownload={onDownload}
+                onRemove={onRemove}
               />
             ))}
           </div>
@@ -380,6 +416,7 @@ function SessionNode({
       source={file.source}
       onPreview={() => onPreview(file)}
       onDownload={() => onDownload(file)}
+      {...(onRemove ? { onRemove: () => onRemove(file) } : {})}
     />
   )
 }
@@ -506,6 +543,7 @@ function FileRow({
   indent,
   onPreview,
   onDownload,
+  onRemove,
 }: {
   name: string
   bytes: number
@@ -515,6 +553,8 @@ function FileRow({
   indent?: CSSProperties['paddingLeft']
   onPreview: () => void
   onDownload: () => void
+  /** 删除（硬删，不可恢复）；工作区行不传 */
+  onRemove?: () => void | Promise<void>
 }) {
   return (
     // 行内含「下载」按钮，不能嵌套 <button>；整行可点按并已补键盘事件，保留 role=button
@@ -586,6 +626,29 @@ function FileRow({
           >
             <DownloadIcon className="size-4 lg:size-3.5" />
           </Button>
+          {onRemove ? (
+            <ConfirmAction
+              danger
+              title={`删除「${name}」？`}
+              description="文件与对象存储里的内容会被立即删除，无法恢复。"
+              okText="删除"
+              onConfirm={onRemove}
+              trigger={
+                <Button
+                  size="icon-sm"
+                  variant="ghost"
+                  className="size-8 lg:size-7"
+                  onClick={(event) => event.stopPropagation()}
+                  title="删除"
+                  aria-label="删除"
+                >
+                  <Trash2Icon className="size-4 lg:size-3.5" />
+                </Button>
+              }
+            >
+              删除
+            </ConfirmAction>
+          ) : null}
         </>
       )}
     </div>
@@ -594,7 +657,11 @@ function FileRow({
 
 interface PreviewTarget {
   id: string
+  /** `ai_files.id`（会话文件才有；删除靠它） */
+  fileId?: string
   source: 'ai' | 'workspace'
+  /** 工作区文件不可删（走另一套生命周期） */
+  removable?: boolean
   path: string
   key?: string
   filename: string
@@ -636,6 +703,7 @@ function collectSessionDirPaths(nodes: readonly AgentFileNode[]): string[] {
 
 const sessionTarget = (file: AgentFileModel): PreviewTarget => ({
   id: `ai:${file.path}`,
+  fileId: file.id,
   source: 'ai',
   path: file.path,
   key: file.key,
@@ -649,6 +717,7 @@ const sessionTarget = (file: AgentFileModel): PreviewTarget => ({
 const workspaceTarget = (file: AgentWorkspaceFile): PreviewTarget => ({
   id: `workspace:${file.path}`,
   source: 'workspace',
+  removable: false,
   path: file.path,
   filename: file.path.split('/').pop() ?? file.path,
   mediaType: mediaTypeOf(file.path),

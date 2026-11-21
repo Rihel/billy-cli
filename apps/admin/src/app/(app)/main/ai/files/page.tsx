@@ -2,18 +2,20 @@
 
 import { useMemo, useState } from 'react'
 import Link from 'next/link'
-import { useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery } from '@tanstack/react-query'
 import { formatFileSize } from '@repo/shared/browser'
 import type { AgentFileAdminItem } from '@repo/shared'
 import {
   Badge,
   Button,
+  ConfirmAction,
   DataTable,
   DateRangePicker,
   DisplayValue,
   Input,
   RefreshButton,
   toastError,
+  toastSuccess,
 } from '@repo/ui'
 import type { DataTableColumnDef, DateRangeValue } from '@repo/ui'
 import {
@@ -23,6 +25,7 @@ import {
   EyeIcon,
   SearchIcon,
   Share2Icon,
+  Trash2Icon,
 } from 'lucide-react'
 import { useServerClient } from '@/lib/server-client'
 import { FilePreviewDialog, isPreviewTextItem, officeKind } from '@/components/file-preview-dialog'
@@ -82,8 +85,8 @@ export default function AiFilesPage() {
       files.map((file) => ({
         id: file.id,
         filename: file.filename,
-        subtitle: file.conversationTitle || undefined,
-        badge: file.source === 'user' ? '用户上传' : 'AI 生成',
+        // 必须带上相对路径：预览弹窗左栏按它建目录树，漏了就退化成一排平铺文件
+        path: file.path,
         mediaType: file.mediaType,
         bytes: file.bytes,
         // 桶私有：预览地址按需签短时预签名（文本走 textQuery，Office 走 loadBytes）
@@ -125,6 +128,18 @@ export default function AiFilesPage() {
     setKeyword(searchText.trim() || undefined)
     setPage(1)
   }
+
+  /** 删除单个文件（硬删：行 + 对象存储一起删，不可恢复） */
+  const removeMutation = useMutation({
+    mutationFn: (file: AgentFileAdminItem) => client.agent.file.adminRemove({ fileId: file.id }),
+    onSuccess: (_result, file) => {
+      toastSuccess('文件已删除')
+      // 正在预览的就是它：先关弹窗，避免停在一份已经不存在的文件上
+      if (previewId === file.id) setPreviewId(null)
+      refresh()
+    },
+    onError: (error: unknown) => toastError(error instanceof Error ? error.message : '删除失败'),
+  })
 
   const refresh = () => {
     void filesQuery.refetch()
@@ -241,6 +256,22 @@ export default function AiFilesPage() {
           >
             <Share2Icon className="size-3.5" />
           </Button>
+          <ConfirmAction
+            danger
+            title={`删除「${row.original.filename}」？`}
+            description="文件与对象存储里的内容会被立即删除，无法恢复。"
+            okText="删除"
+            onConfirm={async () => {
+              await removeMutation.mutateAsync(row.original)
+            }}
+            trigger={
+              <Button variant="ghost" size="icon-sm" title="删除文件" aria-label="删除文件">
+                <Trash2Icon className="size-3.5" />
+              </Button>
+            }
+          >
+            删除
+          </ConfirmAction>
         </div>
       ),
     },
@@ -337,6 +368,10 @@ export default function AiFilesPage() {
         onDownload={(item) => {
           const file = files.find((candidate) => candidate.id === item.id)
           if (file) void download(file)
+        }}
+        onRemove={async (item) => {
+          const file = files.find((candidate) => candidate.id === item.id)
+          if (file) await removeMutation.mutateAsync(file)
         }}
         text={textQuery.data?.text ?? null}
         loading={textQuery.isLoading}

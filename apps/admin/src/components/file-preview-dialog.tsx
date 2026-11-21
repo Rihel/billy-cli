@@ -1,7 +1,15 @@
 'use client'
 
-import { formatFileSize } from '@repo/shared/browser'
-import { Button, cn, Dialog, DialogContent, DialogHeader, DialogTitle, FilePreview } from '@repo/ui'
+import {
+  Button,
+  cn,
+  ConfirmAction,
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  FilePreview,
+} from '@repo/ui'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { fileIconOf } from '@/components/file-type-icon'
 import {
@@ -12,6 +20,7 @@ import {
   CopyIcon,
   DownloadIcon,
   FolderIcon,
+  Trash2Icon,
   XIcon,
 } from 'lucide-react'
 import { useHotkeys } from 'react-hotkeys-hook'
@@ -31,12 +40,12 @@ import { copyText } from '@/lib/clipboard'
 export interface PreviewDialogItem {
   id: string
   filename: string
-  subtitle?: string
-  badge?: string
   mediaType: string
   bytes: number
   /** 相对路径（用于左侧树形分组；没有就按 filename 平铺） */
   path?: string
+  /** 不可删除（如工作区文件走另一套生命周期）；默认 true */
+  removable?: boolean
   /** 可直接放进 FilePreview 的地址；文本类可以为 null */
   url: string | null
   /** 需要异步换链接的类型（如工作区文件要先物化到 OSS）；只对当前项调用 */
@@ -247,34 +256,17 @@ function PreviewFileTree({
             onClick={() => onSelect(row.index)}
             style={{ paddingLeft: 8 + row.depth * 12 + 16 }}
             className={cn(
-              'flex w-full flex-col gap-0.5 rounded-md pr-2 text-left',
+              // 只留文件名：来源 / 会话 / 大小这些信息在预览区看，树本身要能一眼扫完
+              'flex w-full items-center gap-1.5 rounded-md pr-2 text-left',
               sheet ? 'py-2.5' : 'py-1.5',
               row.index === activeIndex ? 'bg-muted' : 'hover:bg-muted/60',
             )}
           >
-            <span className="flex min-w-0 items-center gap-1.5">
-              {(() => {
-                const Icon = fileIconOf(row.item.filename)
-                return <Icon className="size-3.5 shrink-0 text-muted-foreground" />
-              })()}
-              <span
-                className={
-                  row.item.badge === '工作区'
-                    ? 'truncate text-[11px] font-normal'
-                    : 'truncate text-xs font-medium'
-                }
-              >
-                {row.item.filename}
-              </span>
-            </span>
-            {/* 工作区文件：列表里只给文件名，大小 / 来源等留给预览区，别把树撑成两行 */}
-            {row.item.badge === '工作区' ? null : (
-              <span className="flex items-center gap-2 text-[10px] text-muted-foreground">
-                {row.item.badge ? <span>{row.item.badge}</span> : null}
-                {row.item.subtitle ? <span className="truncate">{row.item.subtitle}</span> : null}
-                <span className="ml-auto shrink-0">{formatFileSize(row.item.bytes)}</span>
-              </span>
-            )}
+            {(() => {
+              const Icon = fileIconOf(row.item.filename)
+              return <Icon className="size-3.5 shrink-0 text-muted-foreground" />
+            })()}
+            <span className="min-w-0 flex-1 truncate text-xs font-medium">{row.item.filename}</span>
           </button>
         ),
       )}
@@ -288,6 +280,7 @@ export function FilePreviewDialog({
   onIndexChange,
   onClose,
   onDownload,
+  onRemove,
   text,
   loading,
 }: {
@@ -296,6 +289,8 @@ export function FilePreviewDialog({
   onIndexChange: (index: number) => void
   onClose: () => void
   onDownload: (item: PreviewDialogItem) => void
+  /** 删除当前文件（硬删，不可恢复）；不给就不显示删除入口 */
+  onRemove?: (item: PreviewDialogItem) => void | Promise<void>
   text: string | null
   loading: boolean
 }) {
@@ -518,6 +513,22 @@ export function FilePreviewDialog({
                 >
                   <ChevronDownIcon className="size-4" />
                 </Button>
+                {onRemove && current.removable !== false ? (
+                  <ConfirmAction
+                    danger
+                    title={`删除「${current.filename}」？`}
+                    description="文件与对象存储里的内容会被立即删除，无法恢复。"
+                    okText="删除"
+                    onConfirm={() => onRemove(current)}
+                    trigger={
+                      <Button variant="ghost" size="icon-sm" title="删除文件" aria-label="删除文件">
+                        <Trash2Icon className="size-4" />
+                      </Button>
+                    }
+                  >
+                    删除
+                  </ConfirmAction>
+                ) : null}
                 <FullscreenButton onClick={toggleFullscreen} />
               </div>
             </div>

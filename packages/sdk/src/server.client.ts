@@ -135,7 +135,9 @@ import {
   AgentFileAdminStatsDto,
   AgentFileAdminStatsModel,
   AgentFileAdminPreviewDto,
+  AgentFileAdminRemoveDto,
   AgentFileLinkModel,
+  AgentFileRemoveDto,
   AgentFileWorkspaceLinkDto,
   AgentFilePreviewModel,
   AgentWorkspaceListModel,
@@ -502,6 +504,14 @@ export class ServerClient extends HttpClient<BearerTokenCredentials> {
       /** 后台独立文件页：文本预览（管理员；任意会话） */
       adminPreview: (data: AgentFileAdminPreviewDto) =>
         this.post<AgentFilePreviewModel>('/agent/file/admin/preview', data),
+
+      /** 删除会话文件（硬删；只能删自己会话里的） */
+      remove: (data: AgentFileRemoveDto) =>
+        this.post<{ removed: boolean }>('/agent/file/remove', data),
+
+      /** 后台独立文件页：删除单个文件（管理员；任意会话，硬删） */
+      adminRemove: (data: AgentFileAdminRemoveDto) =>
+        this.post<{ removed: boolean }>('/agent/file/admin/remove', data),
 
       workspaceContentUrl: (data: { conversationId: string; path: string; download?: boolean }) => {
         const query = new URLSearchParams({

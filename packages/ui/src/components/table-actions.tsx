@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import type { ReactNode } from 'react'
+import type { ReactElement, ReactNode } from 'react'
 
 import {
   AlertDialog,
@@ -12,6 +12,7 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
+  AlertDialogTrigger,
 } from '#components/ui/alert-dialog'
 import { IconText } from '#components/icon'
 
@@ -23,7 +24,14 @@ export const TableActions = ({ children }: { children: ReactNode }) => {
 export type ConfirmActionProps = {
   title: ReactNode
   description?: ReactNode
+  /** 触发器内容（默认渲染成 IconText 文字操作） */
   children: ReactNode
+  /**
+   * 自定义触发器（图标按钮 / 页头按钮用）；给了就替代默认的 IconText。
+   *
+   * Base UI 的 Trigger 会把开合行为 merge 到这个元素上，所以元素自己只管外观。
+   */
+  trigger?: ReactElement
   danger?: boolean
   disabled?: boolean
   okText?: string
@@ -36,6 +44,7 @@ export function ConfirmAction({
   title,
   description,
   children,
+  trigger,
   danger,
   disabled,
   okText = '确认',
@@ -47,16 +56,20 @@ export function ConfirmAction({
 
   return (
     <AlertDialog open={open} onOpenChange={(next) => setOpen(next)}>
-      <IconText
-        type={danger ? 'danger' : 'default'}
-        danger={danger}
-        disabled={disabled}
-        onClick={() => {
-          if (!disabled) setOpen(true)
-        }}
-      >
-        {children}
-      </IconText>
+      {trigger === undefined ? (
+        <IconText
+          type={danger ? 'danger' : 'default'}
+          danger={danger}
+          disabled={disabled}
+          onClick={() => {
+            if (!disabled) setOpen(true)
+          }}
+        >
+          {children}
+        </IconText>
+      ) : (
+        <AlertDialogTrigger render={trigger} />
+      )}
       <AlertDialogContent size={danger ? 'sm' : 'default'}>
         <AlertDialogHeader>
           <AlertDialogTitle>{title}</AlertDialogTitle>

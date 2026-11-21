@@ -123,6 +123,17 @@ export class FileRepository {
     return saved
   }
 
+  /**
+   * 物理删除一行（硬删）：`delete` 不是 `softDelete`，行直接消失。
+   *
+   * 与 `softDeleteByConversation`（会话清理的软删）刻意分开：单文件删除是用户显式动作，
+   * 留软删残行只会让 `(conversation_id, path)` 唯一键继续占位。
+   */
+  async hardDelete(id: string): Promise<boolean> {
+    const result = await this.repo().delete({ id })
+    return (result.affected ?? 0) > 0
+  }
+
   async softDeleteByConversation(conversationId: string): Promise<void> {
     await this.repo()
       .createQueryBuilder()
@@ -228,6 +239,7 @@ export class FileRepository {
   /** 行 → 对外模型（不含字节） */
   toModel(record: AiFileEntity): AgentFileModel {
     return {
+      id: record.id,
       path: record.path,
       source: record.source === 'user' ? 'user' : 'ai',
       filename: record.filename,

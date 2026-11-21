@@ -139,6 +139,8 @@ export type AgentFileSourceValue = z.infer<typeof AgentFileSourceSchema>
 
 /** 会话文件（`ai_files` 一行的对外投影；不含字节） */
 export const AgentFileModelSchema = z.object({
+  /** `ai_files.id`（删除等按 id 操作的入口用它） */
+  id: z.string(),
   /** 会话内逻辑路径：入站 uploads/{md5}{ext}，AI {fileKey} */
   path: z.string(),
   source: AgentFileSourceSchema,
@@ -222,11 +224,23 @@ export const AgentFileLinkModelSchema = z.object({
 export type AgentFileLinkModel = z.infer<typeof AgentFileLinkModelSchema>
 
 /** 管理员预览：按文件 id 取文本内容（任意会话） */
-/** 管理员预览：按文件 id 取文本内容（任意会话） */
 export const AgentFileAdminPreviewSchema = z.object({
   fileId: z.string().min(1).max(32),
 })
 export type AgentFileAdminPreviewDto = z.infer<typeof AgentFileAdminPreviewSchema>
+
+/** 删除会话文件（硬删；带 conversationId 做归属校验，只能删自己会话里的） */
+export const AgentFileRemoveSchema = z.object({
+  conversationId: z.string().min(1).max(32),
+  fileId: z.string().min(1).max(32),
+})
+export type AgentFileRemoveDto = z.infer<typeof AgentFileRemoveSchema>
+
+/** 管理员删除文件（硬删；任意会话，不受会话归属限制） */
+export const AgentFileAdminRemoveSchema = z.object({
+  fileId: z.string().min(1).max(32),
+})
+export type AgentFileAdminRemoveDto = z.infer<typeof AgentFileAdminRemoveSchema>
 
 /** 全量文件列表的一行 */
 export const AgentFileAdminItemSchema = z.object({

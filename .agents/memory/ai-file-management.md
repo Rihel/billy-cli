@@ -22,6 +22,13 @@
   `BashConfig.workDir` 已退役。入站物化到 `uploads/`，`file-download` 默认放 `files/`；`files/` 拒绝写（缓存会被覆盖）。
 - HTTP：`POST /agent/file/workspace`、`POST /agent/file/preview`（source ai/workspace）、
   `GET /agent/file/workspace-content`（cookie + Range + inline/attachment）。
+- **单文件删除（2026-11-21）**：`POST /agent/file/remove`（会话侧，先 `requireOwned` 再按
+  `conversationId` 校验归属）与 `POST /agent/file/admin/remove`（管理员，任意会话）。
+  语义是**硬删**：先删 OSS 对象（**只删 `source='ai'` 的**；入站附件内容寻址、可能跨会话共用，
+  与 `cleanupConversation` 同口径；失败只 warn 不阻断），再 `ai_files` **物理删除**
+  （`FileRepository.hardDelete`，不是会话清理用的软删 —— 软删会让 `(conversation_id, path)` 唯一键
+  继续占位，重新上传同名文件会踩唯一键）。`AgentFileModel` 因此多带一个 `id`（前端按 id 删）。
+  工作区文件（`workspace` 源）不在这条链上，走 `WORKSPACE_FS_PORT.remove`。
 - **对象存储桶默认私有（2026-11-14 起）**：预览 / 下载一律由服务端签**短时预签名**地址
   （前端 `useStorageUrl` / `client.storage.getDownloadUrl`；聊天文件面板与文件页走 `loadUrl`）；
   `formatStorageUrl` 只对绝对 URL 有效，不能再拿 key 拼公开地址。

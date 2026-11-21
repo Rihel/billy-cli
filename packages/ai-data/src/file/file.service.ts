@@ -341,6 +341,7 @@ export class FileService implements OnApplicationBootstrap, OnApplicationShutdow
     const items = rows.map((row) => {
       const model = this.files.toModel(row)
       return {
+        id: model.id,
         path: model.path,
         source: model.source,
         filename: model.filename,
@@ -1056,7 +1057,6 @@ export class FileService implements OnApplicationBootstrap, OnApplicationShutdow
   }
 
   /** 管理员预览：按文件 id 读任意会话的文本（不要求会话归属） */
-  /** 管理员预览：按文件 id 读任意会话的文本（不要求会话归属） */
   async adminPreview(
     fileId: string,
   ): Promise<{ text: string; mediaType: string; truncated: boolean }> {
@@ -1072,6 +1072,40 @@ export class FileService implements OnApplicationBootstrap, OnApplicationShutdow
       mediaType: row.mediaType,
       truncated: object.body.length > limit,
     }
+  }
+
+  /**
+   * 删除单个文件（**硬删**）：先删对象存储里的对象，再把 `ai_files` 行物理删除。
+   *
+   * 归属口径：传了 `conversationId` 就必须与这行一致（会话侧入口，防跨会话删除）；
+   * 管理员入口不传，可删任意文件。
+   *
+   * **对象只删 `source='ai'` 的**：入站附件（`source='user'`）是内容寻址、可能被多个会话引用，
+   * 删了会把别的会话里的同一份文件一起弄坏（与 `cleanupConversation` 同一口径）。
+   * 对象删除失败只记 warn 不阻断 —— 行才是事实源，孤儿对象比"删不掉"更好收拾。
+   */
+  async remove(input: { fileId: string; conversationId?: string }): Promise<{ removed: boolean }> {
+    const row = await this.files.findById(input.fileId)
+    if (!row || (input.conversationId && row.conversationId !== input.conversationId)) {
+      throw new FileDeniedError('not-found', '文件不存在或已被删除')
+    }
+    if (row.source === 'ai' && this.storage.enabled) {
+      await this.storage.removeObject({ key: row.key }).catch((error: unknown) => {
+        this.logger.warn('ai.file.remove_object_failed', {
+          fileId: row.id,
+          key: row.key,
+          reason: error instanceof Error ? error.message : String(error),
+        })
+      })
+    }
+    const removed = await this.files.hardDelete(row.id)
+    this.logger.info('ai.file.removed', {
+      fileId: row.id,
+      conversationId: row.conversationId,
+      source: row.source,
+      removed,
+    })
+    return { removed }
   }
 
   /** 文本预览（会话文件 / 工作区）：只返回文本，不返回二进制 */

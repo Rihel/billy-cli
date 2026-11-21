@@ -40,6 +40,7 @@ export const toConversationModel = (
 
 /** `ai_files` 一行的对外投影（文件树节点里的 `file`） */
 const toFileModel = (record: AiFileEntity): AgentFileModel => ({
+  id: record.id,
   path: record.path,
   source: record.source === 'user' ? 'user' : 'ai',
   filename: record.filename,

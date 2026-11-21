@@ -18,11 +18,15 @@ import {
 import {
   AgentFileAdminListSchema,
   AgentFileAdminPreviewSchema,
+  AgentFileAdminRemoveSchema,
   AgentFileAdminStatsSchema,
+  AgentFileRemoveSchema,
   AgentFileWorkspaceLinkSchema,
   type AgentFileAdminListDto,
   type AgentFileAdminPreviewDto,
+  type AgentFileAdminRemoveDto,
   type AgentFileAdminStatsDto,
+  type AgentFileRemoveDto,
   type AgentFileWorkspaceLinkDto,
 } from '@repo/shared'
 import {
@@ -199,6 +203,29 @@ export class AiFileController {
         response.end()
         return
       }
+      this.rethrow(error)
+    }
+  }
+
+  /** 管理员删除（硬删）：任意会话，不受归属限制 */
+  @Post('admin/remove')
+  @HttpCode(200)
+  @UseGuards(AdminAuthGuard)
+  adminRemove(@Body({ schema: AgentFileAdminRemoveSchema }) input: AgentFileAdminRemoveDto) {
+    return this.files.remove({ fileId: input.fileId })
+  }
+
+  /** 会话侧删除（硬删）：先校验会话归属，只能删自己会话里的文件 */
+  @Post('remove')
+  @HttpCode(200)
+  async remove(@Body({ schema: AgentFileRemoveSchema }) input: AgentFileRemoveDto) {
+    try {
+      await this.conversations.requireOwned(input.conversationId)
+      return await this.files.remove({
+        fileId: input.fileId,
+        conversationId: input.conversationId,
+      })
+    } catch (error) {
       this.rethrow(error)
     }
   }
