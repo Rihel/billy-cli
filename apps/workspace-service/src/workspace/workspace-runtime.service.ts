@@ -38,8 +38,27 @@ interface Handle {
   env?: Record<string, string>
   /** 初始化是否已跑过（含失败；失败不重试，避免每条命令都等一遍安装超时） */
   setupDone?: boolean
+  /**
+   * **凭据段**是否已成功落地（`undefined` = 还没跑过）。
+   *
+   * 与 `setupDone` 分开记账：安装失败不该重试（贵），凭据解析失败必须补偿（便宜）。
+   * 认领来的 handle 没有这一步，标 `false` 让首次 ensure 补偿。
+   */
+  credentialsReady?: boolean
+  /** 补偿定时器（同一 handle 只排一个，成功即停） */
+  credentialRetryTimer?: ReturnType<typeof setTimeout>
   /** 本地凭据清单缓存（执行前检查只读它；初始化 / 同步后更新，缺失时从磁盘读一次） */
   credentials?: CredentialManifest
+}
+
+/** 凭据补偿的重试间隔（解析失败多为 control plane 还没就绪，几秒后自愈） */
+const CREDENTIAL_RETRY_INTERVAL_MS = 5_000
+
+/** 执行前检查的结论：拒绝原因 + 这次拒绝是不是**暂态**（值得重试） */
+export interface CredentialGateResult {
+  denial: CredentialGateDenial
+  /** true = 凭据还在落地 / 上次失败正在补偿，稍后重试同一命令有意义 */
+  transient: boolean
 }
 
 /** 把目录名拼进 `find -name` 的安全判断：只允许普通目录名（不含引号 / 空格 / 路径分隔符） */
@@ -136,6 +155,7 @@ export class WorkspaceRuntime {
 
   async stop(workspaceId: string): Promise<WorkspaceStatusResponse> {
     const handle = this.handles.get(workspaceId)
+    if (handle) this.clearCredentialRetry(handle)
     if (handle?.backend === 'container') {
       await this.removeContainer(handle.containerName!)
     }
@@ -174,6 +194,8 @@ export class WorkspaceRuntime {
         containerName: name,
         startedAt: info.startedAt ?? now,
         lastUsedAt: now,
+        // 认领的容器没跑过本进程的初始化：标 false，首次 ensure 时补一次凭据段
+        credentialsReady: false,
       })
       adopted += 1
       this.logger.info('workspace.container.adopted', {
@@ -291,9 +313,18 @@ export class WorkspaceRuntime {
     const removedSkills = options.skills
       ? (await this.setup.syncSkills(workspaceId, shell)).removed
       : []
-    const { env, version, manifest } = await this.setup.syncCredentials(workspaceId, shell)
-    handle.env = env
-    handle.credentials = { items: manifest }
+    const { env, version, manifest, resolved } = await this.setup.syncCredentials(
+      workspaceId,
+      shell,
+    )
+    // 解析失败时**保留上一份好状态**：空清单 / 残缺 env 覆盖缓存，会把"暂态失败"变成永久拒绝
+    if (resolved) {
+      handle.env = env
+      handle.credentials = { items: manifest }
+    }
+    handle.credentialsReady = resolved
+    if (resolved) this.clearCredentialRetry(handle)
+    else this.scheduleCredentialRetry(handle)
     if (expectedVersion && expectedVersion !== version) {
       // 推送方与执行面算出的版本不一致：说明两边读到的表不是同一瞬间，落日志即可（下次同步会收敛）
       this.logger.warn('workspace.sync.version_mismatch', {
@@ -315,19 +346,34 @@ export class WorkspaceRuntime {
    *
    * **纯本地**：只读缓存的 `.billy/credentials.json`（没有缓存时读一次磁盘），
    * 不查库、不做 RPC、不比对版本 —— 拒绝策略不引入延迟，也不受控制面可用性影响。
+   *
+   * 两条反脆弱口径（issue 9 实测踩过）：
+   * - **读失败不缓存**：把「读不出来」缓存成空清单，会让一次失败变成永久拒绝（阴性中毒）；
+   * - 拒绝前若缓存为空，**再读一次磁盘**：清单是初始化 / 同步写下的，重读往往就自愈了。
    */
   async authorizeCommand(
     workspaceId: string,
     command: string,
-  ): Promise<CredentialGateDenial | null> {
+  ): Promise<CredentialGateResult | null> {
     const handle = await this.ensureHandle(workspaceId)
     if (!handle.credentials) {
-      handle.credentials = (await this.readCredentialManifest(workspaceId, handle)) ?? { items: [] }
+      handle.credentials = (await this.readCredentialManifest(workspaceId, handle)) ?? undefined
     }
-    return checkCommandCredentials(command, handle.credentials)
+    const denial = checkCommandCredentials(command, handle.credentials ?? null)
+    if (!denial) return null
+
+    if (!handle.credentials) {
+      const reread = await this.readCredentialManifest(workspaceId, handle)
+      if (reread) {
+        handle.credentials = reread
+        const retried = checkCommandCredentials(command, reread)
+        if (!retried) return null
+      }
+    }
+    return { denial, transient: handle.credentialsReady === false }
   }
 
-  /** 读一次清单文件（不存在 / 解析失败按空清单处理，不阻断命令） */
+  /** 读一次清单文件（不存在 / 解析失败返回 null，**不缓存**；不阻断命令） */
   private async readCredentialManifest(
     workspaceId: string,
     handle: Handle,
@@ -346,12 +392,16 @@ export class WorkspaceRuntime {
               path: '.billy/credentials.json',
             })
       if (!result.ok) return null
-      const data = result.data as { version?: string; items?: unknown } | undefined
+      // fs read 的出参是 `{ path, content, bytes }`：清单结构在 content 文本里
+      const content = (result.data as { content?: unknown } | undefined)?.content
+      if (typeof content !== 'string' || content.trim().length === 0) return null
+      const parsed = JSON.parse(content) as { version?: unknown; items?: unknown }
       return {
-        ...(data?.version ? { version: data.version } : {}),
-        items: Array.isArray(data?.items) ? (data.items as CredentialManifest['items']) : [],
+        ...(typeof parsed.version === 'string' ? { version: parsed.version } : {}),
+        items: Array.isArray(parsed.items) ? (parsed.items as CredentialManifest['items']) : [],
       }
     } catch {
+      // 文件还没写 / JSON 半截：交给调用方"下次再读"，不要缓存成空清单
       return null
     }
   }
@@ -522,6 +572,8 @@ export class WorkspaceRuntime {
         }
         case 'read': {
           const out = await exec(`cat ${quote(target)}`)
+          // 文件不存在时 `cat` 非 0：不能把空输出当成"读到了空清单"（会把拒绝永久化）
+          if (out.code !== 0) return { ok: false, reason: 'exec-failed', message: out.stderr }
           return { ok: true, data: { path: request.path, content: out.stdout } }
         }
         case 'read-bytes': {
@@ -597,6 +649,9 @@ export class WorkspaceRuntime {
     const existing = this.handles.get(workspaceId)
     if (existing) {
       existing.lastUsedAt = Date.now()
+      // 凭据段上次失败（典型：重启窗口里 main 还没就绪）：命中旧 handle 也要补一次，
+      // 只重跑凭据段（便宜），不重跑安装（贵）
+      if (existing.credentialsReady === false) await this.retryCredentials(existing)
       return existing
     }
     const config = await this.requireConfig(workspaceId)
@@ -650,27 +705,96 @@ export class WorkspaceRuntime {
    *
    * 失败**不阻断执行**：工作区仍可用，问题体现在 `setup_report` 与日志里；
    * 同一个 handle 只跑一次（`setupDone`），避免每条命令都等一遍安装超时。
+   *
+   * **分段语义**（issue 9）：
+   * - 安装失败 → 不重试（重装很贵，且模型看到 retryable=false 会自己换路）；
+   * - 凭据段失败 → 标记 `credentialsReady=false` 并排一次补偿定时器。
+   *   不能只靠"下一条命令触发 ensure"补偿：模型被拒一次常直接下结论，等不到下一条命令。
    */
   private async initialize(handle: Handle, config: WorkspaceConfig): Promise<void> {
     if (handle.setupDone) return
     handle.setupDone = true
     const shell = this.shellFor(handle, config)
     try {
-      const { env, report, manifest } = await this.setup.run(handle.workspaceId, shell)
-      handle.env = env
-      handle.credentials = { items: manifest }
+      const { env, report, manifest, resolved } = await this.setup.run(handle.workspaceId, shell)
+      if (resolved) {
+        handle.env = env
+        handle.credentials = { items: manifest }
+      }
+      handle.credentialsReady = resolved
       this.logger.info('workspace.setup.applied', {
         workspaceId: handle.workspaceId,
         envKeys: Object.keys(env).length,
         failedPackages: report.packages.filter((item) => item.outcome === 'failed').length,
         failedCredentials: report.credentials.filter((item) => item.outcome === 'failed').length,
+        credentialsReady: resolved,
       })
+      if (!resolved) this.scheduleCredentialRetry(handle)
     } catch (error) {
+      handle.credentialsReady = false
       this.logger.warn('workspace.setup.failed', {
         workspaceId: handle.workspaceId,
         reason: error instanceof Error ? error.message : String(error),
       })
+      this.scheduleCredentialRetry(handle)
     }
+  }
+
+  /**
+   * 只重跑**凭据段**（不装包、不重写技能）。
+   *
+   * 触发点有三个：命中旧 handle 的 ensure、初始化失败后的定时器、定时器自身的重排。
+   * 成功后清定时器；仍失败就再等 5 秒 —— 凭据段很便宜，多试几次好过让模型看到永久拒绝。
+   */
+  private async retryCredentials(handle: Handle): Promise<void> {
+    if (handle.credentialsReady !== false) return
+    const config = await this.requireConfig(handle.workspaceId).catch(() => null)
+    if (!config) return
+    const shell = this.shellFor(handle, config)
+    try {
+      const { env, manifest, resolved } = await this.setup.syncCredentials(
+        handle.workspaceId,
+        shell,
+      )
+      if (resolved) {
+        handle.env = env
+        handle.credentials = { items: manifest }
+      }
+      handle.credentialsReady = resolved
+      if (resolved) {
+        this.clearCredentialRetry(handle)
+        this.logger.info('workspace.credentials.recovered', { workspaceId: handle.workspaceId })
+        return
+      }
+      this.scheduleCredentialRetry(handle)
+    } catch (error) {
+      handle.credentialsReady = false
+      this.logger.warn('workspace.credentials.retry_failed', {
+        workspaceId: handle.workspaceId,
+        reason: error instanceof Error ? error.message : String(error),
+      })
+      this.scheduleCredentialRetry(handle)
+    }
+  }
+
+  /** 排一次凭据补偿（同一 handle 只排一个；handle 被替换或已就绪就放弃） */
+  private scheduleCredentialRetry(handle: Handle): void {
+    if (handle.credentialRetryTimer) return
+    const timer = setTimeout(() => {
+      handle.credentialRetryTimer = undefined
+      if (this.handles.get(handle.workspaceId) !== handle) return
+      if (handle.credentialsReady !== false) return
+      void this.retryCredentials(handle)
+    }, CREDENTIAL_RETRY_INTERVAL_MS)
+    // 定时器不该吊住进程退出（测试 / 一次性脚本里尤其明显）
+    timer.unref?.()
+    handle.credentialRetryTimer = timer
+  }
+
+  private clearCredentialRetry(handle: Handle): void {
+    if (!handle.credentialRetryTimer) return
+    clearTimeout(handle.credentialRetryTimer)
+    handle.credentialRetryTimer = undefined
   }
 
   /** 初始化 / 同步用的 shell 端口：命令走 `dispatch`，避免递归回 `exec` */
@@ -709,6 +833,8 @@ export class WorkspaceRuntime {
         containerName: name,
         startedAt: Date.now(),
         lastUsedAt: Date.now(),
+        // 这里同样"没跑过初始化"：标 false 让首次 ensure 补凭据（undefined ≠ false）
+        credentialsReady: false,
       }
       this.handles.set(workspaceId, handle)
       return handle
@@ -724,6 +850,7 @@ export class WorkspaceRuntime {
       root,
       startedAt: Date.now(),
       lastUsedAt: Date.now(),
+      credentialsReady: false,
     }
     this.handles.set(workspaceId, handle)
     return handle

@@ -10,6 +10,7 @@ import { CapabilityRegistrar, toRegistration } from '@repo/capability'
 import { BashExecutor } from './bash.executor.js'
 import { FileExecutor } from './file.executor.js'
 import { CredentialCandidatesExecutor, CredentialImportExecutor } from './credential.executor.js'
+import { CredentialSaveExecutor } from './credential-save.executor.js'
 import { buildWorkspaceService } from './manifest.js'
 import { WorkspaceServiceConfig, type WorkspaceServiceConfigValue } from '../config/app-config.js'
 
@@ -30,6 +31,7 @@ export class WorkspaceCapabilityRegistration
     @Inject(CredentialCandidatesExecutor)
     private readonly credentialCandidates: CredentialCandidatesExecutor,
     @Inject(CredentialImportExecutor) private readonly credentialImport: CredentialImportExecutor,
+    @Inject(CredentialSaveExecutor) private readonly credentialSave: CredentialSaveExecutor,
     @Inject(WorkspaceServiceConfig) private readonly config: WorkspaceServiceConfigValue,
     @Inject(AppLogger) private readonly logger: AppLogger,
   ) {}
@@ -51,6 +53,7 @@ export class WorkspaceCapabilityRegistration
           this.file,
           this.credentialCandidates,
           this.credentialImport,
+          this.credentialSave,
         ]),
         {
           instance: {

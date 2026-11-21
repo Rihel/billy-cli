@@ -59,11 +59,15 @@ describe('credential-candidates', () => {
 
     const candidates = await service.candidates('ws_1')
 
-    expect(candidates.map((item) => item.provider)).toEqual(['github', 'lark'])
-    expect(candidates.find((item) => item.provider === 'lark')).toMatchObject({
-      displayName: '飞书（Lark）',
-      longTerm: false,
-    })
+    expect(candidates.map((item) => item.provider)).toEqual(['github'])
+  })
+
+  it('lark 没有明文导出通道 → 永不出现在候选里（不再假装能导入）', async () => {
+    const { service } = make()
+
+    const candidates = await service.candidates('ws_1')
+
+    expect(candidates.some((item) => item.provider === 'lark')).toBe(false)
   })
 })
 
@@ -72,10 +76,12 @@ describe('credential-import', () => {
     const { service, repo } = make()
     const fetchMock = vi.fn(async () => ({
       ok: true,
-      json: async () => ({
-        code: 0,
-        data: { credential: { id: 'cred_1', name: 'gh', provider: 'gh', status: 'active' } },
-      }),
+      status: 200,
+      text: async () =>
+        JSON.stringify({
+          code: 0,
+          data: { credential: { id: 'cred_1', name: 'gh', provider: 'gh', status: 'active' } },
+        }),
     }))
     vi.stubGlobal('fetch', fetchMock)
 
@@ -93,24 +99,29 @@ describe('credential-import', () => {
     expect(repo.findSetupContext).toHaveBeenCalledWith('ws_1')
   })
 
-  it('文件型来源：按 jsonPath 取值', async () => {
+  it('lark 没有可读的导入来源 → 明确报错（真实 CLI 只有加密库，没有明文导出）', async () => {
     const { service } = make()
-    const fetchMock = vi.fn(async () => ({
-      ok: true,
-      json: async () => ({
-        code: 0,
-        data: { credential: { id: 'cred_2', name: 'lark', provider: 'lark', status: 'active' } },
-      }),
-    }))
+    const fetchMock = vi.fn()
     vi.stubGlobal('fetch', fetchMock)
 
-    await service.import('ws_1', 'lark')
+    await expect(service.import('ws_1', 'lark')).rejects.toThrow('不支持从工作区导入')
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
 
-    const [, init] = fetchMock.mock.calls[0] as unknown as [URL, RequestInit]
-    expect(JSON.parse(String(init.body))).toMatchObject({
-      provider: 'lark',
-      values: { accessToken: 'lark-token-123' },
-    })
+  it('入库失败透传控制面原因（带字段键名），不是只有 HTTP 状态码', async () => {
+    const { service } = make()
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => ({
+        ok: false,
+        status: 400,
+        text: async () => JSON.stringify({ code: 4000, message: 'appId：请填写应用 ID' }),
+      })),
+    )
+
+    await expect(service.import('ws_1', 'github')).rejects.toThrow(
+      '凭据入库失败：HTTP 400（appId：请填写应用 ID）',
+    )
   })
 
   it('不支持导入的 provider（mysql）→ 明确报错，不调用 main', async () => {

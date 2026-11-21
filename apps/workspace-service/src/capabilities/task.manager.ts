@@ -49,6 +49,7 @@ export class WorkspaceTaskManager {
           ok: false,
           reason: 'executor-error',
           message: error instanceof Error ? error.message : String(error),
+          retryable: false,
         }
       })
     this.tasks.set(id, record)
@@ -102,8 +103,13 @@ export class WorkspaceTaskManager {
         state: 'failed',
         error:
           outcome && !outcome.ok
-            ? { reason: outcome.reason, message: outcome.message }
-            : { reason: 'executor-error', message: '执行失败' },
+            ? {
+                reason: outcome.reason,
+                message: outcome.message,
+                // 快照是唯一通道：暂态语义不带上，控制器就只能硬编码 false（issue 11）
+                ...(outcome.retryable !== undefined ? { retryable: outcome.retryable } : {}),
+              }
+            : { reason: 'executor-error', message: '执行失败', retryable: false },
       }
     }
     return {

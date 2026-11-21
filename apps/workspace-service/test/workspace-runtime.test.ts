@@ -56,6 +56,22 @@ const make = async (): Promise<{ runtime: WorkspaceRuntime; root: string }> => {
         skills: [],
         credentials: [],
       },
+      manifest: [],
+      resolved: true,
+    })),
+    syncCredentials: vi.fn(async () => ({
+      env: {},
+      version: '0',
+      report: {
+        setupId: 'default',
+        hash: 'x',
+        durationMs: 0,
+        packages: [],
+        skills: [],
+        credentials: [],
+      },
+      manifest: [],
+      resolved: true,
     })),
   }
   return {
@@ -67,6 +83,7 @@ const make = async (): Promise<{ runtime: WorkspaceRuntime; root: string }> => {
       logger as never,
     ),
     root,
+    setup,
   }
 }
 
@@ -175,8 +192,14 @@ const makeContainer = (running: readonly string[]) => {
   }
   const logger = { info: vi.fn(), warn: vi.fn(), log: vi.fn(), error: vi.fn() }
   const setup = {
-    run: vi.fn(async () => ({ env: {}, report: null, manifest: [] })),
-    syncCredentials: vi.fn(async () => ({ env: {}, version: 'v1', report: null, manifest: [] })),
+    run: vi.fn(async () => ({ env: {}, report: null, manifest: [], resolved: true })),
+    syncCredentials: vi.fn(async () => ({
+      env: {},
+      version: 'v1',
+      report: null,
+      manifest: [],
+      resolved: true,
+    })),
   }
   return {
     runtime: new WorkspaceRuntime(
@@ -189,6 +212,7 @@ const makeContainer = (running: readonly string[]) => {
     ),
     driver,
     logger,
+    setup,
   }
 }
 
@@ -233,5 +257,87 @@ describe('WorkspaceRuntime（container 后端：孤儿认领）', () => {
     expect(reaped).toBe(1)
     expect(driver.remove).toHaveBeenCalledWith('billy-ws-ws-a')
     expect((await runtime.status('ws-a')).state).toBe('stopped')
+  })
+})
+
+describe('WorkspaceRuntime（凭据清单与补偿，issue 9）', () => {
+  const item = { provider: 'github', name: 'gh', expiresAt: null }
+  const manifestOf = (items: { provider: string; name: string; expiresAt: string | null }[]) =>
+    JSON.stringify({ version: '1-1', items })
+
+  it('清单是 JSON 文本：读出来必须 parse（不能把 fs 出参当结构）', async () => {
+    const { runtime, setup } = await make()
+    // 模拟"初始化 / 补偿暂时都拿不到凭据"：缓存不落地，只能读磁盘
+    setup.run.mockRejectedValue(new Error('main 还没就绪'))
+    setup.syncCredentials.mockRejectedValue(new Error('main 还没就绪'))
+    const id = 'ws-manifest'
+    await runtime.fs(id, {
+      workspaceId: id,
+      op: 'write',
+      path: '.billy/credentials.json',
+      content: manifestOf([item]),
+    })
+
+    // 修复前：把 fs 出参直接当清单 → items 永远空 → 有凭据也被拒
+    expect(await runtime.authorizeCommand(id, 'gh pr list')).toBeNull()
+  })
+
+  it('读失败不缓存空清单：后来写上的清单立刻生效（阴性缓存中毒）', async () => {
+    const { runtime, setup } = await make()
+    setup.run.mockRejectedValue(new Error('main 还没就绪'))
+    setup.syncCredentials.mockRejectedValue(new Error('main 还没就绪'))
+    const id = 'ws-negative'
+
+    const denied = await runtime.authorizeCommand(id, 'gh pr list')
+    expect(denied?.denial).toMatchObject({ provider: 'github', reason: 'missing' })
+
+    await runtime.fs(id, {
+      workspaceId: id,
+      op: 'write',
+      path: '.billy/credentials.json',
+      content: manifestOf([item]),
+    })
+    expect(await runtime.authorizeCommand(id, 'gh pr list')).toBeNull()
+  })
+
+  it('解析失败不覆盖已有好状态：空清单不会冲掉已落地的凭据', async () => {
+    const { runtime, setup } = makeContainer(['billy-ws-ws-a'])
+    setup.syncCredentials.mockResolvedValueOnce({
+      env: { GH_TOKEN: 't' },
+      version: '1-1',
+      report: null,
+      manifest: [item],
+      resolved: true,
+    })
+    await runtime.syncCredentials('ws-a')
+    // 之后一直是暂态失败（包括 ensure 触发的补偿）
+    setup.syncCredentials.mockResolvedValue({
+      env: {},
+      version: '0',
+      report: null,
+      manifest: [],
+      resolved: false,
+    })
+    await runtime.syncCredentials('ws-a')
+
+    // 上一份好清单还在 → 门照常放行（暂态失败不能变成永久拒绝）
+    expect(await runtime.authorizeCommand('ws-a', 'gh pr list')).toBeNull()
+  })
+
+  it('认领的 handle 凭据未就绪 → 拒绝标为暂态，调用方据此给 retryable', async () => {
+    const { runtime, setup } = makeContainer(['billy-ws-ws-a'])
+    setup.syncCredentials.mockResolvedValue({
+      env: {},
+      version: '0',
+      report: null,
+      manifest: [],
+      resolved: false,
+    })
+    await runtime.reconcile()
+
+    const gate = await runtime.authorizeCommand('ws-a', 'gh pr list')
+
+    expect(gate?.denial.reason).toBe('missing')
+    expect(gate?.transient).toBe(true)
   })
 })

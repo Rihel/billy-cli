@@ -17,6 +17,7 @@ import { toUiStream } from '../mastra/stream.adapter.js'
 import { toRequestContext } from '../mastra/context.adapter.js'
 import { toMastraTools } from '../mastra/tool.adapter.js'
 import { ToolRegistry } from '../core/tools/tool.registry.js'
+import { GatewayToolCatalog } from './gateway-capability-catalog.js'
 import type { Toolbox } from '../core/tools/tools.types.js'
 import { ToolCallMetaStore } from '../core/tools/tool.meta.js'
 import { AgentConfig, type AgentConfig as AgentConfigValue } from '../core/config.js'
@@ -233,7 +234,14 @@ export class AgentRunner {
   private knownToolPredicate(): ((toolKey: string) => boolean) | undefined {
     try {
       const registry = this.moduleRef.get(ToolRegistry, { strict: false })
-      return (toolKey: string) => Boolean(registry.get(toolKey))
+      // 目录能力不在注册机里：不把网关目录算进来，它们会被录制器一律标成 unknown-tool（issue 11）
+      let catalog: GatewayToolCatalog | undefined
+      try {
+        catalog = this.moduleRef.get(GatewayToolCatalog, { strict: false })
+      } catch {
+        catalog = undefined
+      }
+      return (toolKey: string) => Boolean(registry.get(toolKey)) || (catalog?.has(toolKey) ?? false)
     } catch {
       return undefined
     }

@@ -398,6 +398,15 @@ export class AgentChatService {
     return this.injectedMemory ?? sharedAgentMemory
   }
 
+  /**
+   * 已知工具 = 本进程注册机 ∪ 网关目录。
+   *
+   * 目录能力（bash / file-* / credential-*）不在注册机里；只查注册机会把它们的所有拒绝
+   * 一律标成 `unknown-tool`，时间线与模型都读不出真实原因（issue 11）。
+   */
+  private isKnownToolKey = (toolKey: string): boolean =>
+    Boolean(this.toolRegistry.get(toolKey)) || (this.catalog?.has(toolKey) ?? false)
+
   private async ensureAgentThread(
     conversationId: string,
     userId: string,
@@ -1416,7 +1425,7 @@ export class AgentChatService {
         { conversationId: conversation.id, runId: run.id },
         {
           metas: this.toolMetas,
-          isKnownTool: (toolKey) => Boolean(this.toolRegistry.get(toolKey)),
+          isKnownTool: this.isKnownToolKey,
         },
       )
       let rev = 0
@@ -2033,7 +2042,7 @@ export class AgentChatService {
         { conversationId: conversation.id, runId: run.id },
         {
           metas: this.toolMetas,
-          isKnownTool: (toolKey) => Boolean(this.toolRegistry.get(toolKey)),
+          isKnownTool: this.isKnownToolKey,
         },
       )
 
@@ -2796,7 +2805,7 @@ export class AgentChatService {
         { conversationId: conversation.id, runId: run.id },
         {
           metas: this.toolMetas,
-          isKnownTool: (toolKey) => Boolean(this.toolRegistry.get(toolKey)),
+          isKnownTool: this.isKnownToolKey,
         },
       )
       let stepCount = 0

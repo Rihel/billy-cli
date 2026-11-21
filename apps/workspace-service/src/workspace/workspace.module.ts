@@ -14,7 +14,9 @@ import {
   CredentialCandidatesExecutor,
   CredentialImportExecutor,
 } from '../capabilities/credential.executor.js'
+import { CredentialSaveExecutor } from '../capabilities/credential-save.executor.js'
 import { WorkspaceCredentialImportService } from './credential-import.service.js'
+import { WorkspaceCredentialSaveService } from './credential-save.service.js'
 import { WorkspaceLocator } from '../capabilities/workspace.locator.js'
 import { WorkspaceCapabilityRegistration } from '../capabilities/capability.registration.js'
 import { WorkspaceTaskManager } from '../capabilities/task.manager.js'
@@ -41,8 +43,10 @@ import { WorkspaceTaskController } from '../capabilities/tasks.controller.js'
     FileExecutor,
     WorkspaceTaskManager,
     WorkspaceCredentialImportService,
+    WorkspaceCredentialSaveService,
     CredentialCandidatesExecutor,
     CredentialImportExecutor,
+    CredentialSaveExecutor,
     WorkspaceCapabilityRegistration,
   ],
   exports: [WorkspaceRuntime],

@@ -25,6 +25,8 @@ import {
   CREDENTIAL_TEMPLATES,
   CredentialLifetime,
   CredentialStatus,
+  credentialTemplateByKey,
+  credentialTemplateKeyOf,
   credentialTemplateOf,
   type CredentialInjectRule,
   type CredentialModel,
@@ -41,19 +43,24 @@ import { KeyRoundIcon, PencilIcon, PlusIcon, SearchIcon } from 'lucide-react'
  * - **改映射不改值**：映射用 JSON 编辑（注入规则是平台设施，面向管理员）。
  */
 
-/** 绑定表单：模板字段按 `v_<provider>_<key>` 命名，避免不同 provider 同名字段互相串值 */
+/**
+ * 绑定表单。
+ *
+ * `template` 存的是**模板 key**（不是 provider）：同一 provider 可以有多份模板
+ * （飞书既有 OAuth 授权 `lark`，也有自建应用 AK/SK `lark-app`），靠 key 区分才不串值。
+ */
 type BindForm = {
-  provider: string
+  template: string
   name: string
   lifetime: string
   expiresAt: string
 } & Record<string, unknown>
 
-/** 模板字段在表单里的字段名 */
-const fieldNameOf = (provider: string, key: string): string => `v_${provider}_${key}`
+/** 模板字段在表单里的字段名（按模板 key 前缀，同 provider 多模板也不互相覆盖） */
+const fieldNameOf = (templateKey: string, key: string): string => `v_${templateKey}_${key}`
 
-const templateLabel = (provider: string): string =>
-  credentialTemplateOf(provider)?.label ?? provider
+const templateLabel = (provider: string, template?: string | null): string =>
+  credentialTemplateOf(provider, template)?.label ?? provider
 
 const statusColor: Record<string, string> = {
   active: 'green',
@@ -63,12 +70,15 @@ const statusColor: Record<string, string> = {
 
 const toFormValues = (template: CredentialTemplate): Record<string, unknown> => {
   const values: Record<string, unknown> = {}
+  const templateKey = credentialTemplateKeyOf(template)
   for (const field of template.fields) {
-    if (field.default !== undefined)
-      values[fieldNameOf(template.provider, field.key)] = field.default
+    if (field.default !== undefined) values[fieldNameOf(templateKey, field.key)] = field.default
   }
   return values
 }
+
+/** 绑定表单默认选中的模板 key（mysql 是最常用的一份；用户可切到其它模板） */
+const DEFAULT_TEMPLATE_KEY = 'mysql'
 
 export default function CredentialsPage() {
   const client = useServerClient()
@@ -93,27 +103,27 @@ export default function CredentialsPage() {
 
   const bindForm = useForm({
     defaultValues: {
-      provider: 'mysql',
+      template: DEFAULT_TEMPLATE_KEY,
       name: '',
       lifetime: 'long-term',
       expiresAt: '',
-      ...toFormValues(
-        CREDENTIAL_TEMPLATES.find((item) => item.provider === 'mysql') ?? CREDENTIAL_TEMPLATES[0],
-      ),
+      ...toFormValues(credentialTemplateByKey(DEFAULT_TEMPLATE_KEY) ?? CREDENTIAL_TEMPLATES[0]),
     } as BindForm,
     onSubmit: async ({ value }) => {
-      const template = credentialTemplateOf(value.provider)
+      const template = credentialTemplateByKey(value.template)
       if (!template) {
-        toastError('该服务没有可用的凭据模板')
+        toastError('该模板不存在，刷新页面后重试')
         return
       }
+      const templateKey = credentialTemplateKeyOf(template)
       const values: Record<string, unknown> = {}
       for (const field of template.fields) {
-        const raw = value[fieldNameOf(template.provider, field.key)]
+        const raw = value[fieldNameOf(templateKey, field.key)]
         if (raw !== undefined && raw !== '') values[field.key] = raw
       }
       await client.aiCredential.create({
         provider: template.provider,
+        template: templateKey,
         name: value.name?.trim() || undefined,
         lifetime: value.lifetime === 'temporary' ? 'temporary' : 'long-term',
         expiresAt: value.lifetime === 'temporary' && value.expiresAt ? value.expiresAt : undefined,
@@ -158,7 +168,7 @@ export default function CredentialsPage() {
       cell: ({ row }) => (
         <span className="inline-flex items-center gap-1.5 font-medium">
           <KeyRoundIcon className="size-3.5 text-muted-foreground" />
-          {templateLabel(row.original.provider)}
+          {templateLabel(row.original.provider, row.original.template)}
         </span>
       ),
     },
@@ -269,10 +279,11 @@ export default function CredentialsPage() {
     })
   }
 
-  /** 绑定表单里"当前 provider 的模板字段"：其余 provider 的字段隐藏但保留在表单里 */
-  const templateFields = CREDENTIAL_TEMPLATES.flatMap((template) =>
-    template.fields.map((field) => ({
-      name: fieldNameOf(template.provider, field.key),
+  /** 绑定表单里"当前模板的字段"：其余模板的字段隐藏但保留在表单里 */
+  const templateFields = CREDENTIAL_TEMPLATES.flatMap((template) => {
+    const templateKey = credentialTemplateKeyOf(template)
+    return template.fields.map((field) => ({
+      name: fieldNameOf(templateKey, field.key),
       label: `${template.label} · ${field.label}`,
       widget:
         field.type === 'password'
@@ -283,9 +294,9 @@ export default function CredentialsPage() {
       hint: field.hint,
       placeholder: field.placeholder,
       required: field.required && field.default === undefined,
-      hidden: (values: BindForm) => values.provider !== template.provider,
-    })),
-  )
+      hidden: (values: BindForm) => values.template !== templateKey,
+    }))
+  })
 
   return (
     <div className="h-full w-full overflow-auto p-4 sm:py-6">
@@ -325,17 +336,17 @@ export default function CredentialsPage() {
         description="凭据加密存储，任何角色都无法查看明文；同一个服务可以用不同名称绑定多个账号。"
         items={[
           {
-            name: 'provider',
-            label: '服务',
+            name: 'template',
+            label: '服务 / 形态',
             widget: 'select',
             required: true,
             props: {
               options: CREDENTIAL_TEMPLATES.map((template) => ({
                 label: template.label,
-                value: template.provider,
+                value: credentialTemplateKeyOf(template),
               })),
             },
-            hint: '选择后按模板采集字段，字段说明由模板提供',
+            hint: '同一服务可有多份模板（如飞书的用户授权与自建应用密钥），按选项区分；选中后按模板采集字段',
           },
           {
             name: 'name',

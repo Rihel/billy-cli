@@ -669,6 +669,7 @@ agent loop 执行侧：会话编排 / 工具面 / 上下文 / 技能 / 子 agent
 | --- | --- | --- | --- |
 | `WORKSPACE_INTERNAL_TOKEN` | `dev-workspace-token` | main / common-capability 调它用的内部令牌 | 生产必改 |
 | `TOOL_INTERNAL_TOKEN` | `dev-tool-token` | 向能力网关登记时携带的令牌；必须与 capability-gateway 同值 | 生产必改 |
+| `MAIN_URL` | `http://127.0.0.1:9989` | 控制面地址：初始化 / 同步时解析凭据、凭据入库都调它。**main 端口不同必须显式配** —— 不配会静默回落默认值，改端口部署后启动不报错、直到第一条凭据命令才 `fetch failed` | 部署改端口时必改 |
 | `WORKSPACE_GATEWAY_URL` | 空 | 能力网关地址；空 = 跳过登记（只打 warn），兼容回落 `TOOL_GATEWAY_URL` | 不配=未启用 |
 | `WORKSPACE_SERVICE_ENDPOINT` | `http://127.0.0.1:9995` | 登记时上报的本实例地址（网关路由后回调 `/invoke`）；compose / 多机要写成对网关可达的地址 | 可选 |
 | `WORKSPACE_INSTANCE_ID` | `hostname-pid` | 实例 id；固定 1 副本，通常不用配 | 可选 |

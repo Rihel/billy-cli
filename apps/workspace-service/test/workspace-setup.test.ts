@@ -129,8 +129,10 @@ describe('首次初始化：按固定顺序走完四步', () => {
     const { service } = makeService()
     const { shell, execs, writes } = makeShell()
 
-    const { env, report } = await service.run('ws_1', shell)
+    const { env, report, resolved } = await service.run('ws_1', shell)
 
+    // 凭据段整体解析成功：调用方据此把 credentialsReady 标 true
+    expect(resolved).toBe(true)
     // ① 先 verify（失败）→ 安装 → 再 verify（成功）
     expect(execs[0]).toBe('lark --version')
     expect(execs[1]).toContain('npm install -g --no-fund --no-audit lark-cli@1.2.3')
@@ -289,10 +291,22 @@ describe('失败不阻断：单项失败只进报告', () => {
     })
     const { shell, writes } = makeShell()
 
-    const { env, report } = await service.run('ws_1', shell)
+    const { env, report, resolved } = await service.run('ws_1', shell)
 
     expect(report.credentials.map((item) => item.outcome)).toEqual(['failed', 'failed'])
     expect(env).toEqual({ FOO: 'bar' })
     expect(writes.some((item) => item.path === '.billy/setup.json')).toBe(true)
+    // 暂态失败必须显性化：空清单不等于"没有凭据"，否则补偿永远不会触发（issue 9）
+    expect(resolved).toBe(false)
+  })
+
+  it('没有绑定任何凭据 → resolved=true（不是失败，不触发补偿）', async () => {
+    const { service } = makeService({ credentialNames: [] })
+    const { shell } = makeShell()
+
+    const { resolved, report } = await service.run('ws_1', shell)
+
+    expect(resolved).toBe(true)
+    expect(report.credentials).toEqual([])
   })
 })

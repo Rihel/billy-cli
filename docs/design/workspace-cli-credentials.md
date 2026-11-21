@@ -779,8 +779,9 @@ ai_skill_grants
 | 授权管理 | — | 可用 | `ai_skill_grants` |
 | Mastra `skill` / `skill_search` / `skill_read` | 退役 | 退役 | 读取宿主路径，且不经注册机 |
 | 正文读取与检索 | 可用 | 可用 | 由 `file-read` / `file-search` 承接 |
-| `credential-candidates` | 可用 | 可用 | 只读，返回本次可保存的 provider 清单（见 6.4.5） |
-| `credential-import` | 可用 | 可用 | 新增（见 6.4.5），经注册机与网关，带审计 |
+| `credential-candidates` | 可用 | 可用 | 只读，返回本次可保存的 provider 清单（见 6.4.5）。**不含平台已注入的凭据**：空列表不等于没注入 |
+| `credential-import` | 可用 | 可用 | 新增（见 6.4.5），经注册机与网关，带审计。只适用于有明文导出通道的 provider（lark 没有），且不是使用凭据的必经路 |
+| `credential-save` | 可用 | 可用 | 把**用户主动给出**的值加密入库（provider / template / name / values → main 内部导入接口）；与 import 的「值不经过模型」互补，值不回显、不落日志 |
 
 现有实现中该工具组为 `@ToolGroup({ scope: 'admin' })`，需改为 `scope: 'all'` 并在运行时校验归属，否则用户侧无法使用。
 

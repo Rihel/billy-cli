@@ -15,6 +15,7 @@ import {
   AdminEntity,
   AiSkillEntity,
   AiSkillFileEntity,
+  AiSkillGrantEntity,
   AiWorkspaceEntity,
   AiWorkspaceSetupEntity,
   ConversationEntity,
@@ -45,6 +46,9 @@ import { WorkspaceServiceModule } from './workspace/workspace.module.js'
           AiWorkspaceSetupEntity,
           AiSkillEntity,
           AiSkillFileEntity,
+          // 技能可见性按授权过滤（`workspace.repository.listVisibleSkills`）；
+          // 漏登记会在运行期抛 EntityMetadataNotFoundError，且初始化有兜底会把错误吞成 warn
+          AiSkillGrantEntity,
           PersonalCredentialEntity,
         ],
       }),

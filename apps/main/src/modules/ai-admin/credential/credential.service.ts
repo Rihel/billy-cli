@@ -8,6 +8,7 @@ import {
   CredentialStatus,
   buildCredentialValuesSchema,
   credentialHintOf,
+  credentialTemplateKeyOf,
   credentialTemplateOf,
   nanoid,
   splitCredentialValues,
@@ -103,9 +104,12 @@ export class PersonalCredentialService {
 
     const parsed = buildCredentialValuesSchema(template).safeParse(input.values)
     if (!parsed.success) {
-      // 只回模板的中文提示，绝不回字段值（可能含密码）
+      // 只回模板的中文提示，绝不回字段值（可能含密码）；
+      // **必须带字段键名** —— 执行面的模型只有看到 `appId：请填写…` 才知道该改哪个键
       throw new CredentialInvalidInputError(
-        parsed.error.issues.map((issue) => issue.message).join('；'),
+        parsed.error.issues
+          .map((issue) => `${issue.path.join('.') || 'values'}：${issue.message}`)
+          .join('；'),
       )
     }
 
@@ -121,7 +125,8 @@ export class PersonalCredentialService {
 
     // schema 已补齐默认值（端口 / 库号 / 地域），parsed.data 就是最终入库形态
     const { config, secret } = splitCredentialValues(template, parsed.data)
-    const templateId = input.template?.trim() || template.provider
+    // 模板 key 才是持久化标识：同 provider 多模板（lark / lark-app）靠它区分
+    const templateId = input.template?.trim() || credentialTemplateKeyOf(template)
 
     // id 必须先于加密产生：AAD 里有 id，密文与这一行的身份绑定
     const id = nanoid()

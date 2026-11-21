@@ -5,6 +5,7 @@ import { toCaller } from './tool.caller.js'
 import { ToolConfigService } from './tool.config.service.js'
 import { createToolEventEmitter } from './tool-event.js'
 import { REMOTE_TOOL_INVOKER, TOOL_CLOCK, type RemoteToolInvoker } from './tool.ports.js'
+import { ToolCallMetaStore } from './tool.meta.js'
 import { ToolDiscoveryStore } from './tool-discovery.store.js'
 import { ToolDeniedError } from './tools.types.js'
 import type {
@@ -74,6 +75,8 @@ export class ToolGateway {
     @Optional() @Inject(REMOTE_TOOL_INVOKER) private readonly remote?: RemoteToolInvoker | null,
     /** 可选：`tool-search` 的结果记进会话，下一轮据此注入外部工具 */
     @Optional() @Inject(ToolDiscoveryStore) private readonly discovery?: ToolDiscoveryStore | null,
+    /** 可选：目录能力不经插件链，远程调用要自己写审计旁证 */
+    @Optional() @Inject(ToolCallMetaStore) private readonly metas?: ToolCallMetaStore | null,
   ) {}
 
   /** 把一份声明包成可调用的工具（注册机对外的只有这种） */
@@ -103,25 +106,52 @@ export class ToolGateway {
           retryable: false,
         }
       }
+      const startedAt = this.clock.now()
       const input =
         rawInput && typeof rawInput === 'object' && !Array.isArray(rawInput)
           ? (rawInput as Record<string, unknown>)
           : {}
       // `reason` 是工具面的协议字段，不属于能力入参：远程校验前剥掉，
       // 否则网关按能力声明的 JSON Schema 校验会判 `Unrecognized key: "reason"`。
-      const { reason: _reason, ...capabilityInput } = input
-      const outcome = await this.remote.invoke({
-        toolKey: spec.key,
-        toolCallId: call.callId,
-        input: capabilityInput,
-        caller,
-        ...(envelope?.workspaceConversationId
-          ? { workspaceConversationId: envelope.workspaceConversationId }
-          : {}),
-        ...(envelope?.workspaceId ? { workspaceId: envelope.workspaceId } : {}),
-        // 暂无按工具派生的 deadline：5 分钟命令 + 10 秒传输余量
-        deadlineMs: 310_000,
-        ...(envelope?.fileAccess ? { fileAccess: envelope.fileAccess } : {}),
+      const { reason: rawReason, ...capabilityInput } = input
+      const callReason = typeof rawReason === 'string' ? rawReason : undefined
+      let outcome: ToolOutcome
+      try {
+        outcome = await this.remote.invoke({
+          toolKey: spec.key,
+          toolCallId: call.callId,
+          input: capabilityInput,
+          caller,
+          ...(envelope?.workspaceConversationId
+            ? { workspaceConversationId: envelope.workspaceConversationId }
+            : {}),
+          ...(envelope?.workspaceId ? { workspaceId: envelope.workspaceId } : {}),
+          // 暂无按工具派生的 deadline：5 分钟命令 + 10 秒传输余量
+          deadlineMs: 310_000,
+          ...(envelope?.fileAccess ? { fileAccess: envelope.fileAccess } : {}),
+        })
+      } catch (error) {
+        // 远程客户端内部已兜传输异常；这里再兜一层，保证「成功 / 失败 / 异常」三路都有旁证
+        outcome = {
+          ok: false,
+          reason: 'internal',
+          message: `能力网关调用异常：${error instanceof Error ? error.message : String(error)}`,
+          retryable: true,
+        }
+      }
+      /**
+       * 目录能力**不经本进程插件链**，没人写 `ToolCallMeta`：
+       * 时间线的 tool-result 就会丢掉拒绝原因（issue 11）。旁证在这里补写。
+       */
+      this.metas?.put(caller.runId, call.callId, {
+        ok: outcome.ok,
+        ...(outcome.ok ? {} : { reason: outcome.reason }),
+        ...(callReason ? { callReason } : {}),
+        // 目录能力的配置在网关 / 后台侧，本进程拿不到版本：用固定标记表示"远端决定"
+        configVersion: 'gateway',
+        durationMs: Math.max(0, this.clock.now() - startedAt),
+        outputBytes:
+          outcome.ok === true ? Buffer.byteLength(JSON.stringify(outcome.data ?? ''), 'utf8') : 0,
       })
       // 检索出参里带命中的 key：记进会话，下一轮 resolveTools 据此注入外部工具
       if (spec.key === 'tool-search' && outcome.ok) {

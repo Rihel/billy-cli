@@ -11,6 +11,9 @@
   `share` / `aiModel`）；`.env.example` 也不再互相复制。
 - **端口别名**：内网服务专属键优先于 `PORT` —— `MODEL_GATEWAY_PORT` / `TOOL_GATEWAY_PORT` /
   `TOOL_WORKER_PORT` / `WORKSPACE_SERVICE_PORT`；模板只写 `PORT`，容器 / k8s 也写 `PORT`。
+- **端口敏感键必须进模板**：带 schema 默认值的 URL（如 workspace-service 的 `MAIN_URL`，默认
+  `http://127.0.0.1:9989`）不写进 `.env.example`，部署改端口后启动不报错、直到运行时才 `fetch failed`。
+  加此类键时同步补模板与 `docs/guide/env.md`。
 - **bootstrap 只生成 6 份 `.env`**（main / agent-runtime / capability-gateway / common-capability /
   admin / web）；model-gateway / workspace-service 要手动 `cp` 模板。
 - **本次删掉的死键**：`TOOL_WORKER_URL`、`TOOL_WORKER_VERSION` / `ZONE`、common 侧

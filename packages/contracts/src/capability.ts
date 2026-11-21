@@ -429,7 +429,17 @@ export const CapabilityTaskSnapshotSchema = z.object({
   data: z.unknown().optional(),
   progress: z.object({ percent: z.number().optional(), message: z.string().optional() }).optional(),
   result: z.object({ ok: z.literal(true), data: z.unknown() }).optional(),
-  error: z.object({ reason: z.string().min(1), message: z.string().min(1) }).optional(),
+  /**
+   * 失败原因。`retryable` 是**暂态语义**：执行器的暂态拒绝（凭据正在补偿、限流等）
+   * 必须一路传到模型，否则它会把"过一会儿再试就好"当成"这条路走不通"（issue 11）。
+   */
+  error: z
+    .object({
+      reason: z.string().min(1),
+      message: z.string().min(1),
+      retryable: z.boolean().optional(),
+    })
+    .optional(),
   nextCursor: z.string().optional(),
 })
 
@@ -491,6 +501,10 @@ export const REMOTE_TOOL_KEYS: ReadonlySet<string> = new Set([
   'file-download',
   'workspace-files',
   'read-tool-result',
+  // 凭据能力（登记在 `workspace` 服务上；新增能力时要和登记面一起补）
+  'credential-candidates',
+  'credential-import',
+  'credential-save',
   // 网关内建：任务结果轮询 / 取消（回调已取消，轮询是唯一出路）
   'wait-task',
   'cancel-task',

@@ -11,6 +11,7 @@ import { WorkspaceRuntime } from './workspace-runtime.service.js'
 import { WorkspaceRepository } from './workspace.repository.js'
 import { createExecShell, type SetupShell } from './setup-shell.js'
 import { adapterOf, CLI_ADAPTERS, type CliAdapter } from './cli-adapters.js'
+import { importCredentialToMain, type CredentialMainTarget } from './credential-main.client.js'
 import { WorkspaceServiceConfig, type WorkspaceServiceConfigValue } from '../config/app-config.js'
 
 /**
@@ -67,7 +68,7 @@ export class WorkspaceCredentialImportService {
     const context = await this.repo.findSetupContext(workspaceId)
     if (!context) throw new Error(`工作区不存在：${workspaceId}`)
 
-    const response = await this.callMain('/internal/credentials/import', {
+    const credential = await importCredentialToMain(this.mainTarget(), {
       ownerType: context.ownerType,
       ownerId: context.ownerId,
       provider: adapter.key,
@@ -85,7 +86,7 @@ export class WorkspaceCredentialImportService {
       }
     }
     this.logger.log('credential.imported', { workspaceId, provider, field, verified })
-    return verified === undefined ? response.credential : { ...response.credential, verified }
+    return verified === undefined ? credential : { ...credential, verified }
   }
 
   // ── 读取与解析 ────────────────────────────────────────────
@@ -143,23 +144,11 @@ export class WorkspaceCredentialImportService {
     return line ?? null
   }
 
-  private async callMain<T extends CredentialImportResponse>(
-    path: string,
-    body: unknown,
-  ): Promise<T> {
-    const response = await fetch(new URL(path, this.config.mainUrl), {
-      method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-        // main 的 `/internal/*` 认 TOOL_INTERNAL_TOKEN
-        'x-internal-token': this.config.mainToken ?? this.config.internalToken,
-      },
-      body: JSON.stringify(body),
-      signal: AbortSignal.timeout(20_000),
-    })
-    if (!response.ok) throw new Error(`导入失败：HTTP ${response.status}`)
-    const envelope = (await response.json()) as { code: number; data?: T; message?: string }
-    if (!envelope.data) throw new Error(envelope.message ?? '导入失败')
-    return envelope.data
+  /** 调 main 内部接口的目标（地址 + 令牌，令牌缺省回落本服务内部令牌） */
+  private mainTarget(): CredentialMainTarget {
+    return {
+      mainUrl: this.config.mainUrl,
+      token: this.config.mainToken ?? this.config.internalToken,
+    }
   }
 }

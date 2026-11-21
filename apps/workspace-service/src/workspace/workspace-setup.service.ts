@@ -66,6 +66,8 @@ export class WorkspaceSetupService {
     env: Record<string, string>
     report: WorkspaceSetupReport
     manifest: { provider: string; name: string; expiresAt: string | null }[]
+    /** 凭据段是否**整体解析成功**（false = 暂态失败，调用方应当补偿重试） */
+    resolved: boolean
   }> {
     const startedAt = Date.now()
     const plan = await this.planOf(workspaceId)
@@ -95,12 +97,11 @@ export class WorkspaceSetupService {
       this.logger.info('workspace.setup.marked', { workspaceId, marker })
     }
 
-    const { env: credentialEnv, manifest } = await this.materializeCredentials(
-      workspaceId,
-      shell,
-      plan,
-      report,
-    )
+    const {
+      env: credentialEnv,
+      manifest,
+      resolved,
+    } = await this.materializeCredentials(workspaceId, shell, plan, report)
 
     await shell
       .write(
@@ -137,7 +138,7 @@ export class WorkspaceSetupService {
       skills: report.skills.length,
       credentials: report.credentials.length,
     })
-    return { env: { ...plan.env, ...credentialEnv }, report, manifest }
+    return { env: { ...plan.env, ...credentialEnv }, report, manifest, resolved }
   }
 
   /**
@@ -205,6 +206,8 @@ export class WorkspaceSetupService {
     version: string
     report: WorkspaceSetupReport
     manifest: { provider: string; name: string; expiresAt: string | null }[]
+    /** 凭据段是否整体解析成功（false = 暂态失败，调用方应当补偿重试） */
+    resolved: boolean
   }> {
     const plan = await this.planOf(workspaceId)
     const report: WorkspaceSetupReport = {
@@ -215,14 +218,20 @@ export class WorkspaceSetupService {
       skills: [],
       credentials: [],
     }
-    const { env, version, manifest } = await this.applyCredentials(workspaceId, shell, plan, report)
+    const { env, version, manifest, resolved } = await this.applyCredentials(
+      workspaceId,
+      shell,
+      plan,
+      report,
+    )
     report.durationMs = 0
     this.logger.info('workspace.sync.credentials', {
       workspaceId,
       version,
       credentials: report.credentials.length,
+      resolved,
     })
-    return { env, version, report, manifest }
+    return { env, version, report, manifest, resolved }
   }
 
   // ── 计划：清单 + 技能 + 归属 ────────────────────────────────
@@ -371,8 +380,14 @@ export class WorkspaceSetupService {
     env: Record<string, string>
     version: string
     manifest: { provider: string; name: string; expiresAt: string | null }[]
+    resolved: boolean
   }> {
-    const { env, manifest } = await this.materializeCredentials(workspaceId, shell, plan, report)
+    const { env, manifest, resolved } = await this.materializeCredentials(
+      workspaceId,
+      shell,
+      plan,
+      report,
+    )
     const rows = await this.repo.listActiveCredentialVersions(plan.owner)
     const version = credentialVersionOf(rows)
 
@@ -394,7 +409,7 @@ export class WorkspaceSetupService {
     await shell
       .write('.billy/credentials.json', JSON.stringify({ version, items: manifest }, null, 2))
       .catch(() => undefined)
-    return { env, version, manifest }
+    return { env, version, manifest, resolved }
   }
 
   // ── ③ 凭据落地 ─────────────────────────────────────────────
@@ -407,9 +422,12 @@ export class WorkspaceSetupService {
   ): Promise<{
     env: Record<string, string>
     manifest: { provider: string; name: string; expiresAt: string | null }[]
+    /** 整体解析是否成功；false 表示暂态失败（不是"确实没有凭据"） */
+    resolved: boolean
   }> {
     const names = await this.repo.listActiveCredentialNames(plan.owner)
-    if (names.length === 0) return { env: {}, manifest: [] }
+    // 没有绑定任何凭据：这不是失败，别让补偿逻辑一直重试
+    if (names.length === 0) return { env: {}, manifest: [], resolved: true }
 
     let items: CredentialResolvedItem[]
     try {
@@ -426,7 +444,8 @@ export class WorkspaceSetupService {
         workspaceId,
         reason: error instanceof Error ? error.message : String(error),
       })
-      return { env: {}, manifest: [] }
+      // **暂态失败**：空清单不能当成"解析成功"，否则拒绝语义会被永久化（issue 9）
+      return { env: {}, manifest: [], resolved: false }
     }
 
     const env: Record<string, string> = {}
@@ -463,7 +482,7 @@ export class WorkspaceSetupService {
         })
       }
     }
-    return { env, manifest }
+    return { env, manifest, resolved: true }
   }
 
   // ── 契约形状收敛 ──────────────────────────────────────────

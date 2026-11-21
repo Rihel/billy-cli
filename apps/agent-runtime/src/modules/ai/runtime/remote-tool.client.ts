@@ -2,14 +2,24 @@ import { CapabilityGatewayClient, InternalTransportError } from '@repo/internal-
 import type { ToolDenyReasonValue, ToolOutcome } from '../core/tools/tools.types.js'
 import type { RemoteToolInvoker } from '../core/tools/tool.ports.js'
 
-/** 网关的失败原因 → 我们的领域 reason（不认识的一律归 internal） */
-const toReason = (reason: string): ToolDenyReasonValue => {
+/**
+ * 网关的失败原因 → 我们的领域 reason（不认识的一律归 internal）。
+ *
+ * 执行面新增的领域原因必须在这里有映射：漏一个就会把「缺凭据 / 没绑工作区」翻成
+ * `internal`（"我们写错了"），时间线与模型都读不懂（issue 11）。
+ */
+export const toReason = (reason: string): ToolDenyReasonValue => {
   if (reason === 'timeout' || reason === 'aborted') return reason
   if (reason === 'invalid-input') return 'invalid-input'
   if (reason === 'forbidden') return 'forbidden'
   if (reason === 'rate-limited') return 'rate-limited'
   if (reason === 'disabled') return 'disabled'
   if (reason === 'mcp-tool-error') return 'upstream'
+  if (reason === 'unsupported-tool') return 'unknown-tool'
+  // 前置条件不满足（缺凭据 / 没绑工作区 / 凭据入库失败）：可纠正，不是我们的内部错误
+  if (reason === 'missing-credential' || reason === 'no-workspace' || reason === 'import-failed') {
+    return 'precheck-failed'
+  }
   if (
     reason === 'no-provider' ||
     reason === 'busy' ||
@@ -41,7 +51,9 @@ export const createRemoteToolInvoker = (
   const tools = new Set(
     (
       env.TOOL_GATEWAY_TOOLS ??
-      'bash,web-fetch,web-search,memory-save,memory-search,memory-forget,file-submit,file-download,file-list,read-file,file-search,workspace-files,write-file,replace-file,append-file,read-tool-result,web-request,wait-task,cancel-task,tool-search'
+      // 默认 = 登记在 `workspace` / `common` 两个服务上的全部 code 能力。
+      // 新增能力必须同步这里：只登记不减白名单，模型面根本看不见它（issue 2）
+      'bash,web-fetch,web-search,memory-save,memory-search,memory-forget,file-submit,file-download,file-list,read-file,file-search,workspace-files,write-file,replace-file,append-file,read-tool-result,web-request,wait-task,cancel-task,tool-search,credential-candidates,credential-import,credential-save'
     )
       .split(',')
       .map((item) => item.trim())

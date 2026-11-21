@@ -43,6 +43,12 @@ export type CredentialInjectRule =
 export interface CredentialTemplate {
   /** provider 标识（`mysql` / `redis` / `tencent-cloud` / `lark` / `github`） */
   provider: string
+  /**
+   * 模板 key（**同 provider 可挂多份模板**，如 lark 的 oauth 授权与自建应用 AK/SK）。
+   *
+   * 缺省等于 `provider`；模板检索、入库的 `template` 列、AAD 都按它取值。
+   */
+  key?: string
   /** 生命周期语义（`static` 不刷新 / `oauth` 可刷新 / `ssh-key` 预留） */
   kind: 'static' | 'oauth' | 'ssh-key'
   /** 中文展示名 */

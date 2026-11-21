@@ -5,7 +5,7 @@ import { BashExecutor } from '../src/capabilities/bash.executor.js'
  * `bash` 的执行前检查接线（§6.4.4）：命中缺凭据 → 直接拒绝，**不执行命令**。
  */
 
-const make = (denial: unknown) => {
+const make = (gate: unknown) => {
   const exec = vi.fn(async () => ({
     ok: true,
     exitCode: 0,
@@ -15,7 +15,7 @@ const make = (denial: unknown) => {
     runtime: 'sandbox' as const,
   }))
   const executor = new BashExecutor(
-    { authorizeCommand: vi.fn(async () => denial), exec } as never,
+    { authorizeCommand: vi.fn(async () => gate), exec } as never,
     { workspaceIdOf: vi.fn(async () => 'ws_1') } as never,
   )
   return { executor, exec }
@@ -37,12 +37,29 @@ const request = (command: string) =>
 
 describe('bash 执行前检查', () => {
   it('缺凭据时返回 missing-credential，且命令不执行', async () => {
-    const { executor, exec } = make({ provider: 'github', label: 'GitHub', reason: 'missing' })
+    const { executor, exec } = make({
+      denial: { provider: 'github', label: 'GitHub', reason: 'missing' },
+      transient: false,
+    })
 
     const outcome = await executor.bash(request('gh pr list'))
 
     expect(outcome).toMatchObject({ ok: false, reason: 'missing-credential', retryable: false })
     expect(String(outcome.message)).toContain('GitHub')
+    expect(exec).not.toHaveBeenCalled()
+  })
+
+  it('暂态拒绝（凭据正在补偿）→ retryable 且引导重试，不当成永久失败', async () => {
+    const { executor, exec } = make({
+      denial: { provider: 'lark', label: '飞书（Lark）', reason: 'missing' },
+      transient: true,
+    })
+
+    const outcome = await executor.bash(request('lark-cli im send'))
+
+    expect(outcome).toMatchObject({ ok: false, reason: 'missing-credential', retryable: true })
+    expect(String(outcome.message)).toContain('自动重试')
+    expect(outcome.ok === false ? outcome.hint : '').toContain('暂态')
     expect(exec).not.toHaveBeenCalled()
   })
 

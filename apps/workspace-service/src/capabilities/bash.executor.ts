@@ -79,13 +79,22 @@ export class BashExecutor {
       }
     }
     // 执行前检查（§6.4.4）：命中某 provider 但本地清单缺凭据 → 直接拒绝，不执行
-    const denial = await this.runtime.authorizeCommand(workspaceId, input.command)
-    if (denial) {
+    const gate = await this.runtime.authorizeCommand(workspaceId, input.command)
+    if (gate) {
+      // 暂态拒绝（凭据正在补偿）必须标 retryable 并引导重试：
+      // 模型看到 retryable=false 会判断"这条路走不通"，转而下错误结论（issue 9）
       return {
         ok: false,
         reason: 'missing-credential',
-        message: gateMessageOf(denial),
-        retryable: false,
+        message: gate.transient
+          ? `${gateMessageOf(gate.denial)}（凭据正在自动重试，几秒后重试本条命令即可）`
+          : gateMessageOf(gate.denial),
+        retryable: gate.transient,
+        ...(gate.transient
+          ? {
+              hint: '这是暂态失败：平台正在自动补偿凭据，稍后重试同一条命令，不要改走别的路径',
+            }
+          : {}),
       }
     }
     const result = await this.runtime.exec(workspaceId, {

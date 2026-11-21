@@ -23,6 +23,14 @@ export interface CliAdapter {
   commands: readonly string[]
   /** 对应字段模板 */
   template: string
+  /**
+   * **初始化 / 登录态命令**的子命令前缀（不含命令名本身）。
+   *
+   * 这类命令的目的正是「把凭据配进去 / 看登录态」，凭据预检必须放行，
+   * 否则第一次配置就死在预检上（清单里还没有该 provider 的条目，永远过不了门）。
+   * 前缀只豁免**这一段**，复合命令里的业务段照旧检查。
+   */
+  bootstrap?: readonly (readonly string[])[]
   /** 导入来源；没有 = 该 CLI 不支持自动导入（如数据库口令） */
   importFrom?: CliImportSource
   /** 无副作用的登录态检查（导入后验证可用性；没有就跳过验证） */
@@ -36,6 +44,12 @@ export const CLI_ADAPTERS: readonly CliAdapter[] = [
     key: 'github',
     commands: ['gh'],
     template: 'github',
+    bootstrap: [
+      ['auth', 'login'],
+      ['auth', 'status'],
+      ['auth', 'refresh'],
+      ['auth', 'logout'],
+    ],
     importFrom: { kind: 'command', command: 'gh auth token', extract: 'line', field: 'token' },
     status: 'gh auth status',
     longTerm: true,
@@ -44,12 +58,22 @@ export const CLI_ADAPTERS: readonly CliAdapter[] = [
     key: 'lark',
     commands: ['lark', 'lark-cli'],
     template: 'lark',
-    importFrom: {
-      kind: 'file',
-      path: '~/.config/lark-cli/config.json',
-      jsonPath: '$.token',
-      field: 'accessToken',
-    },
+    bootstrap: [
+      ['config', 'init'],
+      ['config', 'bind'],
+      ['config', 'show'],
+      ['auth', 'login'],
+      ['auth', 'status'],
+      ['auth', 'list'],
+      ['doctor'],
+    ],
+    /**
+     * **刻意没有 `importFrom`**：真实 lark-cli（2026.11）把 token / appSecret 加密存在
+     * `~/.local/share/lark-cli/`（master.key + *.enc），配置在 `~/.lark-cli/config.json` 且不含 token，
+     * 也没有任何明文导出命令（`auth status` 只给 scope / 到期时间，`config show` 掩码）。
+     * 声明一个永远读不出值的导入来源，只会让 candidates 永远不出现、import 取空 —— 那是假能力。
+     * 「保存用户主动给出的值」走 `credential-save`，不在这里假装能导入。
+     */
     longTerm: false,
   },
   { key: 'mysql', commands: ['mysql'], template: 'mysql', longTerm: true },

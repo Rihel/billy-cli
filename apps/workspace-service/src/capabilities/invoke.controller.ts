@@ -9,13 +9,15 @@ import {
   UseFilters,
 } from '@nestjs/common'
 import { randomUUID } from 'node:crypto'
-import { findCapabilityDecl } from '@repo/capability'
+import { scanCapabilities, type CapabilityDefinition } from '@repo/capability'
 import { AppExceptionFilter } from '@repo/kits'
 import { z } from 'zod'
-import type { ToolOutcome } from '@repo/contracts'
+import type { ToolInvokeRequest, ToolOutcome } from '@repo/contracts'
 import { BashExecutor } from './bash.executor.js'
 import { WorkspaceTaskManager } from './task.manager.js'
 import { FileExecutor } from './file.executor.js'
+import { CredentialCandidatesExecutor, CredentialImportExecutor } from './credential.executor.js'
+import { CredentialSaveExecutor } from './credential-save.executor.js'
 import { WorkspaceServiceConfig, type WorkspaceServiceConfigValue } from '../config/app-config.js'
 
 /** 网关 → 服务 的调用体（服务侧协议：`tool` 而不是 `capability`） */
@@ -38,20 +40,62 @@ const InvokeBodySchema = z.object({
   idempotencyKey: z.string().max(128).optional(),
 })
 
+interface DispatchedCapability {
+  decl: CapabilityDefinition
+  invoke: (request: ToolInvokeRequest) => Promise<ToolOutcome>
+}
+
+/**
+ * **分发面与登记面同源**：逐个执行器扫描 `@CapabilityDecl`，按 tool 名建索引。
+ *
+ * 以前这里是手写的 tool → handler 映射，新增能力时只改了登记面（`capability.registration.ts`）
+ * 忘了这里，「登记了但调不通」会静默存在（issue 5：credential 工具全部 unsupported-tool）。
+ * 现在登记与分发读的是同一份声明，加一个能力只需要加一个带声明的方法。
+ */
+export const indexCapabilities = (
+  executors: readonly object[],
+): Map<string, DispatchedCapability> => {
+  const byTool = new Map<string, DispatchedCapability>()
+  for (const executor of executors) {
+    for (const { method, decl } of scanCapabilities(executor)) {
+      const handler = (executor as Record<string, unknown>)[method] as unknown as (
+        request: ToolInvokeRequest,
+      ) => Promise<ToolOutcome>
+      byTool.set(decl.tool, { decl, invoke: (request) => handler.call(executor, request) })
+    }
+  }
+  return byTool
+}
+
 /**
  * 能力协议的 `/invoke` 入口（网关调用）。
  *
- * v1 只有 `bash` 一个能力；返回 `{ version, requestId, tool, outcome }`。
+ * 路由规则只有一条：工具名 → 声明；声明是 `execution.mode='task'` 的走任务形态
+ * （先受理、上游轮询 `/tasks/get`），其余直接等结果。
  */
 @Controller()
 @UseFilters(AppExceptionFilter)
 export class WorkspaceInvokeController {
+  private readonly byTool: ReadonlyMap<string, DispatchedCapability>
+
   constructor(
     @Inject(BashExecutor) private readonly bash: BashExecutor,
     @Inject(FileExecutor) private readonly file: FileExecutor,
     @Inject(WorkspaceTaskManager) private readonly tasks: WorkspaceTaskManager,
+    @Inject(CredentialCandidatesExecutor)
+    private readonly credentialCandidates: CredentialCandidatesExecutor,
+    @Inject(CredentialImportExecutor) private readonly credentialImport: CredentialImportExecutor,
+    @Inject(CredentialSaveExecutor) private readonly credentialSave: CredentialSaveExecutor,
     @Inject(WorkspaceServiceConfig) private readonly config: WorkspaceServiceConfigValue,
-  ) {}
+  ) {
+    this.byTool = indexCapabilities([
+      this.bash,
+      this.file,
+      this.credentialCandidates,
+      this.credentialImport,
+      this.credentialSave,
+    ])
+  }
 
   @Post('invoke')
   @HttpCode(200)
@@ -73,7 +117,7 @@ export class WorkspaceInvokeController {
       }
     }
     const input = parsed.data
-    const converted = {
+    const converted: ToolInvokeRequest = {
       version: 1 as const,
       requestId: input.requestId ?? randomUUID(),
       toolKey: input.tool,
@@ -83,23 +127,8 @@ export class WorkspaceInvokeController {
       caller: input.caller,
       deadlineMs: input.deadlineMs,
     }
-    // file 的 fs 原语：直接分发给 FileExecutor
-    const fileHandler = (
-      {
-        'file-list': () => this.file.fileList(converted),
-        'read-file': () => this.file.readFile(converted),
-        'write-file': () => this.file.writeFile(converted),
-        'append-file': () => this.file.appendFile(converted),
-        'replace-file': () => this.file.replaceFile(converted),
-        'workspace-files': () => this.file.workspaceFiles(converted),
-        'file-search': () => this.file.fileSearch(converted),
-      } as Record<string, (() => Promise<ToolOutcome>) | undefined>
-    )[input.tool]
-    if (fileHandler) {
-      const outcome = await fileHandler()
-      return { version: 1, ...outcome }
-    }
-    if (input.tool !== 'bash') {
+    const capability = this.byTool.get(input.tool)
+    if (!capability) {
       return {
         version: 1,
         ok: false,
@@ -108,10 +137,13 @@ export class WorkspaceInvokeController {
         retryable: false,
       }
     }
-    const decl = findCapabilityDecl(this.bash, 'bash')
+
     // 长命令走 task 形态：先受理再让上游轮询 `/tasks/get`
-    if (decl.execution?.mode === 'task') {
-      const snapshot = await this.tasks.start(converted, decl.execution?.yieldMs ?? 45_000)
+    if (capability.decl.execution?.mode === 'task') {
+      const snapshot = await this.tasks.start(
+        converted,
+        capability.decl.execution?.yieldMs ?? 45_000,
+      )
       if (snapshot.state === 'running') {
         return {
           version: 1,
@@ -131,11 +163,13 @@ export class WorkspaceInvokeController {
         ok: false,
         reason: snapshot.error?.reason ?? 'task-failed',
         message: snapshot.error?.message ?? '任务失败',
-        retryable: false,
+        // 暂态 / 永久语义必须全链路透传：执行器说可重试，这里不能咽掉（issue 11）
+        retryable: snapshot.error?.retryable ?? false,
       }
     }
-    const outcome = await this.bash.bash(converted)
+
     // 服务响应契约：{ version, ok, data | reason/message }
+    const outcome = await capability.invoke(converted)
     return { version: 1, ...outcome }
   }
 }

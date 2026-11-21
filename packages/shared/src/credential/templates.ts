@@ -160,10 +160,59 @@ const TEMPLATES: CredentialTemplate[] = [
     hintField: 'accessToken',
     hintMode: 'tail',
   },
+  {
+    provider: 'lark',
+    key: 'lark-app',
+    kind: 'static',
+    label: '飞书自建应用（App ID / Secret）',
+    description:
+      '飞书开放平台自建应用的 App ID / App Secret，以应用（bot）身份调用；写入 lark-cli 配置目录。身份面注意：bot 只能调支持应用身份的命令，通讯录搜索等 user-only 命令会报 only supports user（不是凭据门的问题）',
+    fields: [
+      {
+        key: 'appId',
+        label: 'App ID',
+        type: 'text',
+        scope: 'config',
+        required: true,
+        placeholder: 'cli_…',
+      },
+      {
+        key: 'appSecret',
+        label: 'App Secret',
+        type: 'password',
+        scope: 'secret',
+        required: true,
+      },
+    ],
+    // 应用密钥取尾部做提示（`****abcd` 能认出是哪一套应用）
+    hintField: 'appSecret',
+    hintMode: 'tail',
+    /**
+     * 实测口径（2026-11-21）：lark-cli 接受明文 `appSecret` 字符串
+     * （二进制校验文案 "appSecret must be a string or {source, id} object"）。
+     * 路径按真实 CLI 布局放在 `~/.lark-cli/`，**不是** `~/.config/lark-cli/`。
+     */
+    inject: [
+      {
+        type: 'file',
+        path: '~/.lark-cli/config.json',
+        template: '{\n  "appId": "${config.appId}",\n  "appSecret": "${secret.appSecret}"\n}\n',
+      },
+    ],
+  },
 ]
 
-/** provider → 模板（同一 provider 可有多个模板，v1 先一个 provider 一份） */
-const BY_PROVIDER = new Map(TEMPLATES.map((template) => [template.provider, template]))
+/**
+ * 模板 key → 模板（`key` 缺省等于 `provider`）。
+ *
+ * 同一 provider 可以有多份模板：`lark`（用户授权）与 `lark-app`（自建应用 AK/SK）并存，
+ * 靠 key 区分；入库的 `template` 列、AAD、注入规则解析全都按 key 走。
+ */
+const BY_KEY = new Map(TEMPLATES.map((template) => [template.key ?? template.provider, template]))
+
+/** 模板的稳定标识（没有显式 `key` 时就是 provider） */
+export const credentialTemplateKeyOf = (template: CredentialTemplate): string =>
+  template.key ?? template.provider
 
 /** 全部内置模板（管理端展示 / 市场预填用；按 provider 排序，结果稳定） */
 export const CREDENTIAL_TEMPLATES: readonly CredentialTemplate[] = [...TEMPLATES].sort(
@@ -171,7 +220,15 @@ export const CREDENTIAL_TEMPLATES: readonly CredentialTemplate[] = [...TEMPLATES
 )
 
 /**
- * 取模板：显式 `template` 优先，缺省回落 provider 同名模板。
+ * 按**模板 key** 取（管理端表单选的是 key，不是 provider）。
+ *
+ * 同 provider 多模板时，只有 key 能唯一定位一份模板。
+ */
+export const credentialTemplateByKey = (key: string): CredentialTemplate | undefined =>
+  BY_KEY.get(key.trim())
+
+/**
+ * 取模板：显式 `template`（模板 key）优先，缺省回落 provider 同名模板。
  *
  * 返回 `undefined` 表示"没有这份模板"（未收录的 provider / 字段模板被改名），
  * 由调用方决定报错口径 —— 共享层不抛业务错误。
@@ -181,5 +238,5 @@ export const credentialTemplateOf = (
   template?: string | null,
 ): CredentialTemplate | undefined => {
   const key = template?.trim() || provider
-  return BY_PROVIDER.get(key)
+  return BY_KEY.get(key)
 }

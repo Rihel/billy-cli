@@ -67,3 +67,32 @@ describe('命中但不可用 → 拒绝', () => {
     expect(denial).toMatchObject({ provider: 'mysql', reason: 'missing' })
   })
 })
+
+describe('初始化 / 登录态命令豁免（issue 1）', () => {
+  it('配凭据的命令本身不被拦：清单里还没有该 provider 也要放行', () => {
+    const empty = manifest([])
+    expect(checkCommandCredentials('lark-cli config init --app-id cli_x', empty, NOW)).toBeNull()
+    expect(checkCommandCredentials('lark-cli auth login', empty, NOW)).toBeNull()
+    expect(checkCommandCredentials('gh auth login', empty, NOW)).toBeNull()
+    expect(checkCommandCredentials('gh auth refresh -s repo', empty, NOW)).toBeNull()
+  })
+
+  it('豁免只到子命令：复合命令里的业务段照旧拒绝', () => {
+    const denial = checkCommandCredentials(
+      'lark-cli config init && lark-cli im send',
+      manifest([]),
+      NOW,
+    )
+    expect(denial).toMatchObject({ provider: 'lark', reason: 'missing' })
+  })
+
+  it('无副作用探测（--help / --version / doctor）对所有 provider 放行', () => {
+    expect(checkCommandCredentials('lark-cli --help', manifest([]), NOW)).toBeNull()
+    expect(checkCommandCredentials('mysql --version', manifest([]), NOW)).toBeNull()
+    expect(checkCommandCredentials('lark-cli doctor', manifest([]), NOW)).toBeNull()
+  })
+
+  it('sudo / 环境变量前缀后的子命令同样识别', () => {
+    expect(checkCommandCredentials('sudo gh auth status', manifest([]), NOW)).toBeNull()
+  })
+})

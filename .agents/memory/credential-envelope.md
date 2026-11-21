@@ -11,7 +11,8 @@
 - **密钥环**：环境变量 `PERSONAL_CREDENTIAL_KEYS`（`v1:<base64>,v2:<base64>`）或单把简写
   `PERSONAL_CREDENTIAL_KEY`；`PERSONAL_CREDENTIAL_KEY_CURRENT` 指定写用哪把；解密永远按密文自带 keyId。
   32 字节不对 → 启动即失败；一把都没配 → 可启动但写入报错（不落明文）。
-- **模板驱动一切**：`packages/shared/src/credential/templates.ts` 的 5 份模板是唯一事实源，
+- **模板驱动一切**：`packages/shared/src/credential/templates.ts` 的模板是唯一事实源（6 份 / 5 个 provider：
+  lark 另有 `key: 'lark-app'` 的自建应用 AK/SK 模板，注入 `~/.lark-cli/config.json`），
   `scope=config` 进明文列、`scope=secret` 进密文；校验 / 拆分 / `secret_hint` 全由模板派生，
   **代码里不写具体字段名**。加一种资源只加模板。
 - **表**：`personal_credentials`（`packages/db/src/entities/personal-credential-entity.ts`），
@@ -38,10 +39,17 @@
   **零 RPC**：拒绝策略不受控制面可用性影响。P8 把命令表移进完整 CLI 适配器。
 - **导入后校验（P8 补）**：适配器可选 `status`（gh = `gh auth status`），导入成功后跑一次，
   结果以 `verified` 返回；无 status 的适配器不带该字段，失败只告警不回滚。
-- **从工作区导入（P8）**：`workspace-service/src/workspace/cli-adapters.ts`（github=命令 `gh auth token`、
-  lark=文件 `~/.config/lark-cli/config.json`；mysql/redis/tencent-cloud 无 importFrom）+ `credential-import.service.ts`
-  读→解析→调 main `POST /internal/credentials/import`（`importForOwner`，显式主体）。模型只传 provider；
+- **从工作区导入（P8）**：`workspace-service/src/workspace/cli-adapters.ts`（github=命令 `gh auth token`；
+  mysql/redis/tencent-cloud/lark 无 importFrom）+ `credential-import.service.ts` 读→解析→调 main
+  `POST /internal/credentials/import`（`importForOwner`，显式主体）。模型只传 provider；
   适配器 key 必须等于**模板 provider**（如 `github` 而不是 `gh`），否则清单里的 provider 对不上。
+  **lark 永不进候选**：真实 CLI 把 token/appSecret 加密存在 `~/.local/share/lark-cli/`（master.key + *.enc），
+  配置在 `~/.lark-cli/config.json` 且不含 token，没有任何明文导出命令 —— 以前声明的
+  `~/.config/lark-cli/config.json $.token` 是虚构路径，已删。
+- **保存用户给的值**：`credential-save`（workspace-service，`credential-save.executor.ts` + `credential-save.service.ts`）
+  收 provider / template / name / values → 同一个 main 内部导入接口；与 import 互补（import 的值不经过模型）。
+- **失败原因必须透传**：workspace 的 `credential-main.client.ts` 非 2xx 时读响应体 message 拼进错误；
+  main 的模板校验错误带字段键名（`appId：请填写应用 ID`）—— 模型只能靠错误文案自纠。
 - **飞书刷新适配器（P11）**：`lark-oauth.refresh.ts`（`LARK_APP_ID/SECRET` 存在才注册），
   调 `authen/v2/oauth/token`；`invalid_grant`/`invalid_token`/401 → Rejected（置 expired），
   5xx/网络错误原样抛（不降级），无 refreshToken 直接 Rejected。
