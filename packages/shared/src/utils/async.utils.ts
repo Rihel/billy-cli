@@ -53,6 +53,39 @@ export async function batchExecute<T>(
   }
 }
 
+/**
+ * 逐项并发跑一批异步任务，**结果顺序与入参一致**。
+ *
+ * 与 `batchExecute` 的区别：那个按片（chunk）并发、不保序、失败聚合成 AggregateError；
+ * 这个按项并发、保序、任一任务失败立即 reject —— 适合"并发拉 N 个文件，但要按原顺序组装"。
+ *
+ * @example
+ * ```ts
+ * const texts = await mapLimit(files, 8, (file) => fetchText(file.path))
+ * ```
+ */
+export async function mapLimit<T, R>(
+  items: readonly T[],
+  concurrency: number,
+  handler: (item: T, index: number) => Promise<R>,
+): Promise<R[]> {
+  if (!Number.isInteger(concurrency) || concurrency < 1) {
+    throw new RangeError('mapLimit concurrency 必须是大于 0 的整数')
+  }
+  if (items.length === 0) return []
+
+  const results = Array.from<R>({ length: items.length })
+  let cursor = 0
+  const worker = async (): Promise<void> => {
+    while (cursor < items.length) {
+      const index = cursor++
+      results[index] = await handler(items[index] as T, index)
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(concurrency, items.length) }, () => worker()))
+  return results
+}
+
 export function sleep(time: number) {
   return new Promise<void>((resolve) => {
     setTimeout(() => {

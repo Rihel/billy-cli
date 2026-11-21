@@ -15,6 +15,11 @@
 - `SKILL.md` 由「description + frontmatter + 正文」拼出来；frontmatter 不进块编辑器。
 - 写链路：校验（Mastra `validateSkillContent`，收在 `core/skills/skill.content.ts`）→ 事务写库（乐观锁
   `expectedVersion`，冲突 3417）→ 落盘 → `loader.reload()`。落盘失败报 3418，重启自愈。
+- **导入要快就别串行**（2026-11-21）：`skill.remote.ts` 的文件下载走 `mapLimit(…, 8)`。
+  实测 `taste-skill`（520 个文件 / 1631 个候选）串行分钟级 → 并发后 **76s**；并发 16 反而 101s
+  （raw 对端限速），8 是实测档。预览与导入共享 2 分钟结果缓存（`RESULT_TTL_MS`，最多 3 份），
+  同一链接第二次操作不再下载。剩下的耗时是「文件树 API（~17s）+ 520 次文件往返」本身，
+  再快只能跳过大目录或改 zipball 单请求。
 - **链接导入**：`skill.source.ts`（`parse-github-url` 解析 + skills.sh 映射）→ `skill.remote.ts`
   （`@octokit/rest` 取 `git/trees/HEAD?recursive=1`，文件走 raw，失败回落 contents）。
   skills.sh 的公开 API 要 Vercel OIDC（实测 401），**不能用**；第三方 well-known 来源（`/site/...`）不支持。

@@ -340,7 +340,8 @@ export class SkillLibraryService implements OnApplicationBootstrap {
   /**
    * 导入预览：先看这个链接里有哪些技能、哪些已存在，再决定导哪些 / 是否覆盖。
    *
-   * 预览与导入各自下载一次（技能仓库不大；换来的好处是不用维护"预取缓存"的生命周期）。
+   * 预览与导入共享 `skill.remote` 里的 2 分钟结果缓存：同一链接第二次操作不再下载
+   * （一个技能可能有几百个文件，各拉一遍是双倍等待）。
    */
   async preview(input: AiSkillImportPreviewDto): Promise<AiSkillImportPreviewResultModel> {
     const fetched = await this.fetchOrThrow(input.url)

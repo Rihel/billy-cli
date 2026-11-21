@@ -1,5 +1,6 @@
 import { Octokit } from '@octokit/rest'
 import {
+  mapLimit,
   SKILL_FILE_MAX_CHARS,
   SKILL_FILE_PATH_PATTERN,
   SKILL_MAX_FILES,
@@ -35,6 +36,14 @@ const MAX_SKILLS_PER_IMPORT = 25
 const MAX_READ_BYTES = SKILL_FILE_MAX_CHARS * 4
 /** 文件树缓存（预览 + 导入不该打两次 API） */
 const TREE_TTL_MS = 5 * 60_000
+/**
+ * 单技能文件的并发下载数。
+ *
+ * 为什么必须并发：一个技能可能有几百个文件（实测 `taste-skill` 520 个），串行时每个文件
+ * 一次 HTTPS 往返（raw 实测 0.3–2.1s），500 个就是分钟级。8 路并发把总时长压到约 1/8；
+ * 实测：8 路 76s，16 路反而 101s（对端限速 + 连接竞争），所以定在 8。
+ */
+const FILE_CONCURRENCY = 8
 
 /** 允许导入的文本扩展名（扩展名 + 读取后无 NUL 字节双重判断） */
 const TEXT_EXTENSIONS = new Set([
@@ -96,8 +105,37 @@ interface TreeEntry {
 
 const treeCache = new Map<string, { at: number; entries: TreeEntry[] }>()
 
-/** 下载一个链接里的全部技能 */
+/**
+ * 「预览 → 导入」的短时结果缓存。
+ *
+ * 预览与导入各自都会全量下载（预览要看文件数、导入要文件内容），一个 520 文件的技能
+ * 下两遍就是双倍等待。按用户给的链接缓存 2 分钟、最多 3 份（一份几百 KB–几 MB，够用且不会涨）。
+ */
+const RESULT_TTL_MS = 2 * 60_000
+const RESULT_CACHE_MAX = 3
+const resultCache = new Map<string, { at: number; result: RemoteFetchResult }>()
+
+/**
+ * 下载一个链接里的全部技能（带「预览 → 导入」短时缓存）。
+ *
+ * 缓存命中只省一次下载，不影响正确性：`import` 自己会做重名 / 覆盖判断，
+ * 2 分钟内的重复操作拿到的是同一份远端快照，正好避免两边各拉一遍。
+ */
 export const fetchRemoteSkillSources = async (input: string): Promise<RemoteFetchResult> => {
+  const key = input.trim()
+  const cached = resultCache.get(key)
+  if (cached && Date.now() - cached.at < RESULT_TTL_MS) return cached.result
+  const result = await loadRemoteSkillSources(key)
+  resultCache.set(key, { at: Date.now(), result })
+  if (resultCache.size > RESULT_CACHE_MAX) {
+    const oldest = resultCache.keys().next().value
+    if (oldest !== undefined) resultCache.delete(oldest)
+  }
+  return result
+}
+
+/** 真正下载（不经过结果缓存） */
+const loadRemoteSkillSources = async (input: string): Promise<RemoteFetchResult> => {
   const parsed = parseSkillSource(input)
   const label = describeSkillSource(parsed)
   const originUrl = input.trim()
@@ -226,38 +264,34 @@ const buildSkillSource = async (
     .map((entry) => ({ entry, relative: entry.path.slice(prefix.length) }))
     .sort((left, right) => left.relative.localeCompare(right.relative))
 
-  const files: { path: string; content: string }[] = []
-  const skipped: string[] = []
-  let totalChars = 0
+  type FileOutcome = { file: { path: string; content: string } } | { skipped: string }
+  const outcomes = await mapLimit<{ entry: TreeEntry; relative: string }, FileOutcome>(
+    candidates,
+    FILE_CONCURRENCY,
+    async ({ entry, relative }) => {
+      if (entry.mode === '120000') return { skipped: `${relative}（符号链接）` }
+      if (!SKILL_FILE_PATH_PATTERN.test(relative)) {
+        return { skipped: `${relative}（不支持的路径）` }
+      }
+      const dot = relative.lastIndexOf('.')
+      const extension = dot >= 0 ? relative.slice(dot).toLowerCase() : ''
+      if (!TEXT_EXTENSIONS.has(extension)) {
+        return { skipped: `${relative}（非文本扩展名）` }
+      }
+      const content = await readRepoFile(parsed.owner, parsed.repo, ref, entry.path)
+      if (content.includes('\u0000')) return { skipped: `${relative}（二进制内容）` }
+      if (content.length > SKILL_FILE_MAX_CHARS) {
+        throw new Error(
+          `${relative} 内容 ${content.length} 字符，超过单文件上限 ${SKILL_FILE_MAX_CHARS}`,
+        )
+      }
+      return { file: { path: relative, content } }
+    },
+  )
 
-  for (const { entry, relative } of candidates) {
-    if (entry.mode === '120000') {
-      skipped.push(`${relative}（符号链接）`)
-      continue
-    }
-    if (!SKILL_FILE_PATH_PATTERN.test(relative)) {
-      skipped.push(`${relative}（不支持的路径）`)
-      continue
-    }
-    const dot = relative.lastIndexOf('.')
-    const extension = dot >= 0 ? relative.slice(dot).toLowerCase() : ''
-    if (!TEXT_EXTENSIONS.has(extension)) {
-      skipped.push(`${relative}（非文本扩展名）`)
-      continue
-    }
-    const content = await readRepoFile(parsed.owner, parsed.repo, ref, entry.path)
-    if (content.includes('\u0000')) {
-      skipped.push(`${relative}（二进制内容）`)
-      continue
-    }
-    if (content.length > SKILL_FILE_MAX_CHARS) {
-      throw new Error(
-        `${relative} 内容 ${content.length} 字符，超过单文件上限 ${SKILL_FILE_MAX_CHARS}`,
-      )
-    }
-    totalChars += content.length
-    files.push({ path: relative, content })
-  }
+  const files = outcomes.flatMap((outcome) => ('file' in outcome ? [outcome.file] : []))
+  const skipped = outcomes.flatMap((outcome) => ('skipped' in outcome ? [outcome.skipped] : []))
+  const totalChars = files.reduce((sum, file) => sum + file.content.length, 0)
 
   if (files.length > SKILL_MAX_FILES)
     throw new Error(`文件数 ${files.length} 超过上限 ${SKILL_MAX_FILES}`)
