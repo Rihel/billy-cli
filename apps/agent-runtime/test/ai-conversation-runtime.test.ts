@@ -342,3 +342,68 @@ describe('查看系统指令（前端「查看系统指令」的数据源）', (
     )
   })
 })
+
+/**
+ * 子会话的工作区归属：工作区是**根会话**的事，子会话创建时直接继承父会话的绑定。
+ *
+ * 旧的 bug 是只复制 userId / fileAccess 等、漏了 workspaceId，导致子 agent 一调
+ * bash / 文件工具就报 no-workspace；能力侧还有一层根会话回落兜底（见 workspace-service）。
+ */
+describe('子会话继承父会话的工作区（ensureSubagent）', () => {
+  it('父会话有 workspaceId：子会话落同一工作区，根会话指向父会话', async () => {
+    const parent = await conversations.create({
+      userId: USER,
+      agentKey: DEFAULT_AGENT_KEY,
+      workspaceId: 'ws_parent_1',
+      lastActiveAt: new Date(),
+    })
+    createdConversationIds.push(parent.id)
+    const parentEntity = await conversations.findEntity(parent.id)
+    if (!parentEntity) throw new Error('父会话写入后读不到')
+
+    const child = await conversations.ensureSubagent({
+      parent: parentEntity,
+      name: '检索',
+      agentKey: 'sub-research',
+      depth: 1,
+      originRunId: 'run_ws_inherit_1',
+      originToolCallId: 'call_ws_inherit_1',
+    })
+    createdConversationIds.push(child.id)
+
+    expect(child.workspaceId).toBe('ws_parent_1')
+    const rows = await db.dataSource.query<
+      { workspace_id: string | null; root_conversation_id: string | null }[]
+    >('SELECT workspace_id, root_conversation_id FROM conversations WHERE id = $1', [child.id])
+    expect(rows[0]?.workspace_id).toBe('ws_parent_1')
+    expect(rows[0]?.root_conversation_id).toBe(parent.id)
+  })
+
+  it('父会话没有工作区：子会话也不写 workspaceId（不凭空造绑定）', async () => {
+    const parent = await conversations.create({
+      userId: USER,
+      agentKey: DEFAULT_AGENT_KEY,
+      lastActiveAt: new Date(),
+    })
+    createdConversationIds.push(parent.id)
+    const parentEntity = await conversations.findEntity(parent.id)
+    if (!parentEntity) throw new Error('父会话写入后读不到')
+
+    const child = await conversations.ensureSubagent({
+      parent: parentEntity,
+      name: '整理',
+      agentKey: 'sub-research',
+      depth: 1,
+      originRunId: 'run_ws_inherit_2',
+      originToolCallId: 'call_ws_inherit_2',
+    })
+    createdConversationIds.push(child.id)
+
+    expect(child.workspaceId).toBeNull()
+    const rows = await db.dataSource.query<{ workspace_id: string | null }[]>(
+      'SELECT workspace_id FROM conversations WHERE id = $1',
+      [child.id],
+    )
+    expect(rows[0]?.workspace_id).toBeNull()
+  })
+})

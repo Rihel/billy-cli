@@ -77,6 +77,8 @@ export class ConversationRepository {
       agentKey: input.agentKey,
       title: `子助手：${input.name}`.slice(0, 200),
       fileAccess: input.parent.fileAccess,
+      // 工作区归属跟随父会话：父没有工作区就不写（不凭空造绑定），由能力侧回落根会话自愈
+      ...(input.parent.workspaceId ? { workspaceId: input.parent.workspaceId } : {}),
       status: 'active',
       lastActiveAt: new Date(),
       kind: 'subagent',
