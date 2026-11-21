@@ -4,6 +4,8 @@ import {
   buildCredentialValuesSchema,
   credentialAadOf,
   credentialHintOf,
+  credentialTemplateByKey,
+  credentialTemplateKeyOf,
   credentialTemplateOf,
   splitCredentialValues,
 } from '../src/credential'
@@ -26,9 +28,10 @@ const must = <T>(value: T | undefined): T => {
 }
 
 describe('内置模板自身的一致性', () => {
-  it('五个 provider 都在，字段名唯一、必填字段有中文标签', () => {
-    const providers = CREDENTIAL_TEMPLATES.map((template) => template.provider)
-    expect(providers).toEqual(['github', 'lark', 'mysql', 'redis', 'tencent-cloud'])
+  it('六个模板 / 五个 provider 都在，字段名唯一、必填字段有中文标签', () => {
+    const providers = new Set(CREDENTIAL_TEMPLATES.map((template) => template.provider))
+    expect([...providers]).toEqual(['github', 'lark', 'mysql', 'redis', 'tencent-cloud'])
+    expect(CREDENTIAL_TEMPLATES).toHaveLength(6)
 
     for (const template of CREDENTIAL_TEMPLATES) {
       const keys = template.fields.map((field) => field.key)
@@ -59,6 +62,20 @@ describe('内置模板自身的一致性', () => {
     expect(credentialTemplateOf('mysql', 'mysql')?.provider).toBe('mysql')
     expect(credentialTemplateOf('mysql', null)?.provider).toBe('mysql')
     expect(credentialTemplateOf('unknown-cli')).toBeUndefined()
+  })
+
+  it('同 provider 多模板靠 key 区分：lark（OAuth）与 lark-app（自建应用 AK/SK）', () => {
+    const oauth = must(credentialTemplateOf('lark'))
+    const app = must(credentialTemplateOf('lark', 'lark-app'))
+    expect(credentialTemplateKeyOf(oauth)).toBe('lark')
+    expect(oauth.kind).toBe('oauth')
+    expect(app.provider).toBe('lark')
+    expect(app.kind).toBe('static')
+    expect(app.fields.map((field) => field.key)).toEqual(['appId', 'appSecret'])
+    // 真实 CLI 布局：写在 ~/.lark-cli/，不是 ~/.config/lark-cli/
+    expect(app.inject?.[0]).toMatchObject({ type: 'file', path: '~/.lark-cli/config.json' })
+    expect(credentialTemplateByKey('lark-app')).toBe(app)
+    expect(credentialTemplateByKey('lark')).toBe(oauth)
   })
 })
 
