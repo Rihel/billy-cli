@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest'
 import type { ToolOutcome } from '@repo/contracts'
 import {
   MAX_EFFECT_RESULT_BYTES,
-  canRerun,
+  canRerunSettled,
+  canRerunUnknown,
   decideEffect,
   type EffectPolicy,
   type EffectRecord,
@@ -43,10 +44,17 @@ describe('副作用台账的纯判定', () => {
     })
   })
 
-  it('可重跑的条件只有两个：只读，或声明了幂等', () => {
-    expect(canRerun(readOnly)).toBe(true)
-    expect(canRerun(idempotentWrite)).toBe(true)
-    expect(canRerun(irreversible)).toBe(false)
+  it('已结算的重跑条件：只读，或声明了幂等', () => {
+    expect(canRerunSettled(readOnly)).toBe(true)
+    expect(canRerunSettled(idempotentWrite)).toBe(true)
+    expect(canRerunSettled(irreversible)).toBe(false)
+  })
+
+  it('未知态的重跑条件：只有只读（超时不等于执行结束）', () => {
+    expect(canRerunUnknown(readOnly)).toBe(true)
+    // 声明幂等的写也不放行：旧执行可能还在外跑，重跑就是并发两份
+    expect(canRerunUnknown(idempotentWrite)).toBe(false)
+    expect(canRerunUnknown(irreversible)).toBe(false)
   })
 
   it('已完成：重复调用直接复用历史结论，不再执行', () => {
@@ -88,18 +96,20 @@ describe('副作用台账的纯判定', () => {
     if (decision.kind === 'blocked') expect(decision.reason).toBe('effect-unknown')
   })
 
-  it('只读 / 幂等写派发后超时：允许重试', () => {
+  it('只读派发后超时：允许重试', () => {
     const expired = record({ deadlineAt: new Date(NOW - 1) })
     expect(decideEffect(expired, NOW, readOnly, 'same-hash')).toEqual({
       kind: 'proceed',
       attempt: 'retry',
       generation: 2,
     })
-    expect(decideEffect(expired, NOW, idempotentWrite, 'same-hash')).toEqual({
-      kind: 'proceed',
-      attempt: 'retry',
-      generation: 2,
-    })
+  })
+
+  it('幂等写派发后超时：不再自动重试（超时不等于执行结束）', () => {
+    const expired = record({ deadlineAt: new Date(NOW - 1) })
+    const decision = decideEffect(expired, NOW, idempotentWrite, 'same-hash')
+    expect(decision.kind).toBe('blocked')
+    if (decision.kind === 'blocked') expect(decision.reason).toBe('effect-unknown')
   })
 
   it('不可逆动作的失败结论丢失：报结果不可用，不猜成功也不猜失败', () => {

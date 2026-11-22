@@ -109,15 +109,15 @@ describe('ToolEffectLedger（副作用台账）', () => {
     expect(rows[0]?.status).toBe('unknown')
   })
 
-  it('幂等写派发后超时 → 允许重试，attempts 递增', async () => {
+  it('只读派发后超时 → 允许重试，attempts 递增', async () => {
     const runId = newRun()
-    await begin(runId, { timeoutMs: 1, idempotent: true })
+    await begin(runId, { timeoutMs: 1, risk: 'read' })
     await db.dataSource.query(
       `UPDATE ai_tool_effects SET deadline_at = now() - interval '1 second' WHERE run_id = $1`,
       [runId],
     )
 
-    expect(await begin(runId, { idempotent: true })).toEqual({
+    expect(await begin(runId, { risk: 'read' })).toEqual({
       kind: 'proceed',
       attempt: 'retry',
       generation: 2,
@@ -128,6 +128,26 @@ describe('ToolEffectLedger（副作用台账）', () => {
     )
     expect(rows[0]?.status).toBe('dispatched')
     expect(Number(rows[0]?.attempts)).toBe(2)
+  })
+
+  it('幂等写派发后超期 → 不自动重试（超时不等于执行结束）', async () => {
+    const runId = newRun()
+    await begin(runId, { timeoutMs: 1, idempotent: true })
+    await db.dataSource.query(
+      `UPDATE ai_tool_effects SET deadline_at = now() - interval '1 second' WHERE run_id = $1`,
+      [runId],
+    )
+
+    const decision = await begin(runId, { idempotent: true })
+    expect(decision.kind).toBe('blocked')
+    if (decision.kind === 'blocked') expect(decision.reason).toBe('effect-unknown')
+
+    const rows = await db.dataSource.query<Array<{ status: string; attempts: number }>>(
+      'SELECT status, attempts FROM ai_tool_effects WHERE run_id = $1',
+      [runId],
+    )
+    expect(rows[0]?.status).toBe('unknown')
+    expect(Number(rows[0]?.attempts)).toBe(1)
   })
 
   it('结论超过留存上限：不可逆动作报结果不可用，不重跑', async () => {
@@ -168,21 +188,21 @@ describe('ToolEffectLedger（副作用台账）', () => {
 describe('ToolEffectLedger：结算代际与超期兜底', () => {
   it('旧代的迟到响应不能结算新一代（返回 stale，记录保持 dispatched）', async () => {
     const runId = newRun()
-    const first = await begin(runId, { timeoutMs: 1, idempotent: true })
+    const first = await begin(runId, { timeoutMs: 1, risk: 'read' })
     expect(first).toEqual({ kind: 'proceed', attempt: 'first', generation: 1 })
 
-    // 模拟第一次派发超期后，另一个执行者重新派发
+    // 模拟第一次派发超期后，另一个执行者重新派发（只读能力才允许在未知态重跑）
     await db.dataSource.query(
       `UPDATE ai_tool_effects SET deadline_at = now() - interval '1 second' WHERE run_id = $1`,
       [runId],
     )
-    const retry = await begin(runId, { idempotent: true })
+    const retry = await begin(runId, { risk: 'read' })
     expect(retry).toEqual({ kind: 'proceed', attempt: 'retry', generation: 2 })
 
-    // 旧代（generation 1）的响应回来：不许写
+    // 旧代（generation 1）的响应回来：只能归档进**旧代自己的历史行**，不能结算主表
     expect(
       await ledger.settle({ runId, toolCallId: 'call-1', generation: 1, outcome: okOutcome }),
-    ).toBe('stale')
+    ).toBe('archived')
 
     // 新一代（generation 2）的响应可以正常结算
     const other: ToolOutcome = { ok: true, data: { output: 'retry-result' } }
@@ -196,6 +216,18 @@ describe('ToolEffectLedger：结算代际与超期兜底', () => {
     )
     expect(rows[0]?.status).toBe('completed')
     expect(rows[0]?.outcome).toMatchObject({ data: { output: 'retry-result' } })
+
+    // 两代历史都在：第一代 unknown 但留了归档结论，第二代 completed
+    const attempts = await db.dataSource.query<
+      Array<{ generation: number; status: string; outcome: unknown }>
+    >(
+      `SELECT generation, status, outcome FROM ai_tool_effect_attempts WHERE run_id = $1
+        ORDER BY generation`,
+      [runId],
+    )
+    expect(attempts.map((row) => row.generation)).toEqual([1, 2])
+    expect(attempts[0]).toMatchObject({ status: 'unknown', outcome: { data: { output: 'hi' } } })
+    expect(attempts[1]).toMatchObject({ status: 'completed' })
   })
 
   it('超期 dispatched 由扫描器转 unknown（不再依赖下一次 begin）', async () => {
@@ -254,15 +286,15 @@ describe('ToolEffectLedger：结算代际与超期兜底', () => {
 describe('ToolEffectLedger：重试认领的并发', () => {
   it('两个执行者同时抢同一次重试派发：只有一个拿到 proceed', async () => {
     const runId = newRun()
-    await begin(runId, { timeoutMs: 1, idempotent: true })
+    await begin(runId, { timeoutMs: 1, risk: 'read' })
     await db.dataSource.query(
       `UPDATE ai_tool_effects SET deadline_at = now() - interval '1 second' WHERE run_id = $1`,
       [runId],
     )
 
     const results = await Promise.all([
-      begin(runId, { idempotent: true }),
-      begin(runId, { idempotent: true }),
+      begin(runId, { risk: 'read' }),
+      begin(runId, { risk: 'read' }),
     ])
     expect(results.filter((result) => result.kind === 'proceed')).toHaveLength(1)
     expect(results.filter((result) => result.kind === 'blocked')).toHaveLength(1)
@@ -337,9 +369,108 @@ describe('ToolEffectLedger：task 型调用的任务号', () => {
       outcome: { ok: true, data: { task: { id: 'task-old' } } },
     })
     await db.dataSource.query(
-      `UPDATE ai_tool_effects SET created_at = now() - interval '7 hours' WHERE run_id = $1`,
+      `UPDATE ai_tool_effects SET created_at = now() - interval '7 hours',
+                                  updated_at = now() - interval '7 hours'
+        WHERE run_id = $1`,
+      [runId],
+    )
+    await db.dataSource.query(
+      `UPDATE ai_tool_effect_attempts SET updated_at = now() - interval '7 hours'
+        WHERE run_id = $1`,
       [runId],
     )
     expect(await ledger.taskIdsForRun(runId)).toEqual([])
+  })
+})
+
+/**
+ * 历史表的意义：重派发不能抹掉上一代已经归档的结论（复审的「硬伤二」）。
+ * 主表只保留当前态，历史按代留行 —— 否则台账在最需要用来说明事故时会选择性失忆。
+ */
+describe('ToolEffectLedger：每代历史互不覆盖', () => {
+  it('归档之后又被重派发：上一代的归档结论仍在历史表里', async () => {
+    const runId = newRun()
+    await begin(runId, { timeoutMs: 1, risk: 'read' })
+    await db.dataSource.query(
+      `UPDATE ai_tool_effects SET deadline_at = now() - interval '1 second' WHERE run_id = $1`,
+      [runId],
+    )
+    await ledger.sweepExpired()
+
+    const late: ToolOutcome = { ok: true, data: { output: 'first-generation-really-done' } }
+    expect(await ledger.settle({ runId, toolCallId: 'call-1', generation: 1, outcome: late })).toBe(
+      'archived',
+    )
+
+    // 归档之后允许只读能力重跑：主表被清空，但历史行不能被清
+    expect(await begin(runId, { risk: 'read' })).toEqual({
+      kind: 'proceed',
+      attempt: 'retry',
+      generation: 2,
+    })
+
+    const attempts = await db.dataSource.query<
+      Array<{ generation: number; status: string; outcome: unknown }>
+    >(
+      `SELECT generation, status, outcome FROM ai_tool_effect_attempts WHERE run_id = $1
+        ORDER BY generation`,
+      [runId],
+    )
+    expect(attempts[0]).toMatchObject({
+      generation: 1,
+      status: 'unknown',
+      outcome: { data: { output: 'first-generation-really-done' } },
+    })
+    expect(attempts[1]).toMatchObject({ generation: 2, status: 'dispatched' })
+
+    const effect = await db.dataSource.query<Array<{ status: string; outcome: unknown }>>(
+      'SELECT status, outcome FROM ai_tool_effects WHERE run_id = $1',
+      [runId],
+    )
+    // 主表是新的一代：结论被清空（这是对的，当前态不该挂着上一代的结果）
+    expect(effect[0]).toMatchObject({ status: 'dispatched', outcome: null })
+  })
+
+  it('旧代迟到响应被判归档时，任务号照样记下来（停止时才能兜底取消）', async () => {
+    const runId = newRun()
+    await begin(runId, { timeoutMs: 1, risk: 'read' })
+    await db.dataSource.query(
+      `UPDATE ai_tool_effects SET deadline_at = now() - interval '1 second' WHERE run_id = $1`,
+      [runId],
+    )
+    expect(await begin(runId, { risk: 'read' })).toMatchObject({ generation: 2 })
+
+    // 第一代其实提交过任务：被判归档（不是结算），但 task_id 必须留下
+    expect(
+      await ledger.settle({
+        runId,
+        toolCallId: 'call-1',
+        generation: 1,
+        taskId: 'task-from-gen-1',
+        outcome: { ok: true, data: { task: { id: 'task-from-gen-1' } } },
+      }),
+    ).toBe('archived')
+    expect(await ledger.taskIdsForRun(runId)).toContain('task-from-gen-1')
+  })
+
+  it('扫描器把主表转 unknown 时，同一代的历史行一起转（两表状态一致）', async () => {
+    const runId = newRun()
+    await begin(runId, { timeoutMs: 1 })
+    await db.dataSource.query(
+      `UPDATE ai_tool_effects SET deadline_at = now() - interval '1 second' WHERE run_id = $1`,
+      [runId],
+    )
+    await ledger.sweepExpired()
+
+    const effect = await db.dataSource.query<Array<{ status: string }>>(
+      'SELECT status FROM ai_tool_effects WHERE run_id = $1',
+      [runId],
+    )
+    const attempts = await db.dataSource.query<Array<{ status: string }>>(
+      'SELECT status FROM ai_tool_effect_attempts WHERE run_id = $1',
+      [runId],
+    )
+    expect(effect[0]?.status).toBe('unknown')
+    expect(attempts[0]?.status).toBe('unknown')
   })
 })

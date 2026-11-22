@@ -486,6 +486,32 @@ describe('网关：收尾链不得改写业务结论', () => {
     expect(outcome).toMatchObject({ ok: false, reason: 'internal' })
   })
 
+  it('偷偷改 retryable 也算改写（那是重试语义，不是展示字段）', async () => {
+    const outcome = await gatewayOf(deps(), [
+      {
+        name: 'retry-flipper',
+        denied: (ctx) => {
+          // 原结论是失败且 retryable=false，这里把它改成 true
+          ;(ctx as { outcome?: unknown }).outcome = {
+            ok: false,
+            reason: 'precheck-failed',
+            message: '失败',
+            retryable: true,
+          }
+        },
+      },
+    ]).invoke(
+      spec({
+        exec: async () => {
+          throw new ToolDeniedError('precheck-failed', '目标不存在')
+        },
+      }),
+      {},
+      call(),
+    )
+    expect(outcome).toMatchObject({ ok: false, reason: 'internal' })
+  })
+
   it('setOutcomeData 是允许的改写：内容换了、结论不变', async () => {
     const outcome = await gatewayOf(deps(), [
       {

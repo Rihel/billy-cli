@@ -417,6 +417,11 @@ export const CapabilityRunCancelResultSchema = z.object({
   targets: z.number().int().nonnegative(),
   /** 取消后确认为 `canceled` 的数量 */
   canceled: z.number().int().nonnegative(),
+  /**
+   * 是否只完成了部分取消：台账查询失败时退化成「只取消 Redis 映射里的任务」，
+   * 这时不能声称「已全部取消」，要让调用方知道这一轮可能漏了任务。
+   */
+  degraded: z.boolean().default(false),
 })
 
 export type CapabilityRunCancelResult = z.infer<typeof CapabilityRunCancelResultSchema>

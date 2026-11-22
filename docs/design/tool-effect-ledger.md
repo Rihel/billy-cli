@@ -28,7 +28,9 @@ durable run 崩溃恢复会**重放同一个工具调用**（Mastra 从上一个
 
 ## 3. 数据结构
 
-`packages/db/src/entities/ai-tool-effect-entity.ts`（表 `ai_tool_effects`）：
+两张表：**主表**（当前状态，`ai_tool_effects`）与**历史表**（每代一行，`ai_tool_effect_attempts`）。
+
+主表 `packages/db/src/entities/ai-tool-effect-entity.ts`：
 
 | 列 | 含义 |
 | --- | --- |
@@ -41,6 +43,13 @@ durable run 崩溃恢复会**重放同一个工具调用**（Mastra 从上一个
 | `outcome` / `result_bytes` | 结论快照（≤ 32KB 才存完整结论，超限只记大小） |
 | `task_id` | task 型调用提交成功后的任务号（非 task 调用为 null） |
 | `settled_at` | 结算时间 |
+
+历史表 `ai_tool_effect_attempts` 的列：`effect_id` + `generation`（唯一）、`run_id` / `tool_call_id` /
+`capability`、`status`、`deadline_at` / `dispatched_at` / `settled_at`、`outcome` / `result_bytes`、`task_id`。
+
+**为什么必须两张表**：重派发会把主表的 `outcome` / `settled_at` 清空（新的一代开始了），
+上一代的迟到归档结论就会被抹掉 —— 而「第一代到底执行过没有」正是出事时最需要回答的问题。
+按代留行之后：主表答「现在在跑什么」，历史表答「之前每一代发生过什么」，重试与归档互不覆盖。
 
 不存入参明文（参数全文在 timelines），不提供删除能力（台账是证据）。
 
@@ -59,7 +68,8 @@ durable run 崩溃恢复会**重放同一个工具调用**（Mastra 从上一个
 A 的迟到响应回来会把结论写进第 2 代，随后 B 的真实结论无处可写（只能记一条 skipped）。
 
 `unknown` 之后的迟到真实响应不会改状态（unknown 就是「当时不知道」），
-但会把结论、大小与 `settled_at` **归档**进台账；第二个迟到的响应不再覆盖已归档的那份。
+但会把结论、大小与 `settled_at` **归档**进这一代自己的历史行；第二个迟到的响应不再覆盖已归档的那份。
+旧代的迟到响应即使被判 `stale`（主表已重派发），也只会写历史行，不动主表。
 
 **能力分级直接复用契约里已有的两个字段**（不新造概念）：
 
@@ -69,6 +79,17 @@ A 的迟到响应回来会把结论写进第 2 代，随后 B 的真实结论无
 | `write` | `true` | 幂等写（服务端按幂等键去重） | 允许重跑 |
 | `write` | `false` | **不可逆副作用** | **永不自动重跑** |
 
+**再加一条与「状态」相关的边界（容易写错）**：
+
+| 上一代的状态 | 能不能自动重跑 |
+| --- | --- |
+| 已结算成功但没有结论正文 / 已结算失败 | 只读、幂等写可重跑（旧执行确定已结束） |
+| `unknown` / 派发超期 | **只有只读**可重跑；写类一律报 `effect-unknown` 等核验 |
+
+理由：`deadline_at` 过期只说明「网关等不到结算」，**不说明外部执行已经结束**。此时对幂等写重跑，
+就等于让同一操作有两份并发执行；而 `idempotent: true` 只表示「业务上重复可接受」，
+不代表下游有并发去重能力（「读余额 → 算新值 → 写回」声明了幂等照样会打架）。
+
 不可逆能力面对历史状态时：
 
 | 历史状态 | 处置 |
@@ -77,7 +98,7 @@ A 的迟到响应回来会把结论写进第 2 代，随后 B 的真实结论无
 | `completed` 但结论超限未留存 | `effect-result-unavailable`：请用只读能力核验，不要重复执行 |
 | `failed` 且结论留存 | 返回那次失败结论 |
 | `dispatched` 未过期 | `effect-in-flight` |
-| `dispatched` 已过期 / `unknown` | `effect-unknown`：已派发但结论未知，不重跑 |
+| `dispatched` 已过期 / `unknown` | `effect-unknown`：已派发但结论未知，不重跑（只读能力例外，见上表） |
 | `unknown` 但已有归档结论 | 仍是 `effect-unknown`：归档只补证据，不改判定 |
 | 同句柄但 `request_hash` 不同 | `effect-conflict`：上下文被改写，拒绝执行 |
 
@@ -89,7 +110,10 @@ A 的迟到响应回来会把结论写进第 2 代，随后 B 的真实结论无
 - **重试认领**：`UPDATE ... WHERE status = 旧状态 AND attempts = 旧值`，抢不到报 in-flight；
 - **结算**：带代际且只写 `status = 'dispatched' AND attempts = <generation>` 的行 ——
   旧代的迟到响应、以及已经判成 `unknown` 的行都不会被改写（后者只做归档）；
-- **超期兜底**：`ToolEffectSweeper` 每 60s 扫一轮，把 `deadline_at` 已过的 `dispatched` 判成 `unknown`。
+  主表与历史表在**同一事务**里更新，历史表缺行（本功能上线前就在跑的老记录）时回退到只写主表；
+- **重派发收尾**：CAS 抢到新一轮派发权后，把上一代仍挂在 `dispatched` 的历史行收尾成 `unknown`
+  （既然重新派发了就不再等它），之后它迟到的响应走归档；
+- **超期兜底**：`ToolEffectSweeper` 每 60s 扫一轮，以**主表**为准选出超期行，再把对应历史行一起转 `unknown`。
   `begin()` 里的「过期即 unknown」是懒判，只覆盖「同一调用被重放」的场景；没人再碰的记录靠这一轮兜底。
 - **台账不可用**（DB 抖动）：只读能力放行并告警；**写入类能力直接拒绝**（`effect-ledger-unavailable`）。
   理由：宁可这次调不通，也不要留下一个事后查不出来的副作用。
@@ -98,9 +122,11 @@ A 的迟到响应回来会把结论写进第 2 代，随后 B 的真实结论无
 
 `ai:capability:run-tasks:<runId>` 那条 Redis 映射是 best-effort（写失败只 warn，进程死在
 「任务提交成功」与「映射落库」之间还会整条丢）。丢了就取消不到任务，长任务继续烧资源到自然结束。
-所以 `settle()` 顺手把下游返回的 `task_id` 落进台账，停止对话时
-`cancel-run` 取「Redis 映射 ∪ 台账按 run 反查（默认 6 小时内）」的并集 —— 少取消一个任务的代价
-比多查一次库大得多。
+所以 `settle()` 顺手把下游返回的 `task_id` 落进两张表，停止对话时
+`cancel-run` 取「Redis 映射 ∪ 台账按 run 反查」的并集 —— 少取消一个任务的代价比多查一次库大得多。
+两个细节：**任务号与结算代际解耦**（旧代迟到响应被判 `stale` 也照样落任务号）；
+窗口按**任务号写入时间**（`updated_at`）算，不是按记录创建时间（记录建得早、任务提交得晚不能漏）。
+台账查询失败时结果返回 `degraded: true` 并记 error，不谎称「已全部取消」。
 
 仍有一个不可恢复的窗口：**进程死在「提交成功」与「拿回任务号」之间**（响应还没到）。
 那时谁也不知道 task id，只能靠下游任务自然结束；这一点在设计里如实保留，不做假装兜底。

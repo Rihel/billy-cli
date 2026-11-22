@@ -155,7 +155,29 @@ describe('级联取消（停止对话时只取消 session 任务）', () => {
     const result = await controller.cancelRun({ runId: 'run-1' })
 
     expect(cancelTask.mock.calls.map(([taskId]) => taskId)).toEqual(['t-1', 't-2'])
-    expect(result).toEqual({ targets: 2, canceled: 1 })
+    expect(result).toEqual({ targets: 2, canceled: 1, degraded: false })
+  })
+
+  it('台账查询失败时明确降级，不能谎称「全部取消」', async () => {
+    const cancelTask = vi.fn().mockResolvedValue({ version: 1, id: 't-1', state: 'canceled' })
+    const logger = { warn: vi.fn(), error: vi.fn(), log: vi.fn() }
+    const controller = new CapabilityRegistryController(
+      { runTaskIds: async () => ['t-1'] } as unknown as ServiceRegistry,
+      { cancelTask } as unknown as ServiceInvoker,
+      {} as CapabilityPolicyService,
+      { record: vi.fn() } as unknown as ToolAuditService,
+      {
+        taskIdsForRun: async () => {
+          throw new Error('db down')
+        },
+      } as unknown as ToolEffectLedger,
+      logger as never,
+    )
+
+    const result = await controller.cancelRun({ runId: 'run-1' })
+
+    expect(result).toEqual({ targets: 1, canceled: 1, degraded: true })
+    expect(logger.error).toHaveBeenCalled()
   })
 
   it('Redis 映射丢了也能从台账兜底取消（并去重）', async () => {
@@ -174,7 +196,7 @@ describe('级联取消（停止对话时只取消 session 任务）', () => {
     const result = await controller.cancelRun({ runId: 'run-1' })
 
     expect(cancelTask.mock.calls.map(([taskId]) => taskId)).toEqual(['t-1', 't-2'])
-    expect(result).toEqual({ targets: 2, canceled: 2 })
+    expect(result).toEqual({ targets: 2, canceled: 2, degraded: false })
   })
 })
 

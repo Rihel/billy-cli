@@ -18,12 +18,31 @@ export interface EffectPolicy {
   idempotent: boolean
 }
 
-/** 是否允许在同一个 `(runId, toolCallId)` 上再执行一次 */
-export const canRerun = (policy: EffectPolicy): boolean =>
+/**
+ * 上一代**已经有确定结论**（结算过 / 明确失败）时，能不能在同一个 `(runId, toolCallId)` 上再执行一次。
+ *
+ * 只读天然可以；声明幂等的写也可以 —— 此时旧执行确定已经结束，重跑不会与它并发。
+ */
+export const canRerunSettled = (policy: EffectPolicy): boolean =>
   policy.risk === 'read' || policy.idempotent
+
+/**
+ * 结果**未知**（派发超期 / `unknown`）时能不能自动重跑：**只有只读可以**。
+ *
+ * 这是这一层最容易写错的地方：`deadline_at` 过期只说明「网关等不到结算」，
+ * **不说明旧执行已经结束** —— 外部服务完全可能还在跑。此时重跑就等于让同一操作有两份并发执行。
+ * 而 `idempotent: true` 只表示「业务上重复执行可接受」，不代表下游有并发去重能力
+ * （「读余额 → 算新值 → 写回」这种声明了幂等照样会打架）。
+ *
+ * 所以这条规则不看 `idempotent`：写类操作在未知态一律不自动重跑，交给上层核验
+ * （只读工具 / 任务查询 / 人）。
+ */
+export const canRerunUnknown = (policy: EffectPolicy): boolean => policy.risk === 'read'
 
 /** 台账里读出来的一行（只保留判定需要的字段） */
 export interface EffectRecord {
+  /** 主表 `ai_tool_effects.id`：历史表按它 + generation 定位到「哪一代」 */
+  id: string
   runId: string
   toolCallId: string
   capability: string
@@ -70,7 +89,8 @@ export const decideEffect = (
   requestHash: string,
 ): EffectDecision => {
   if (!existing) return { kind: 'proceed', attempt: 'first', generation: 1 }
-  const rerunnable = canRerun(policy)
+  const settledRerun = canRerunSettled(policy)
+  const unknownRerun = canRerunUnknown(policy)
 
   // 同一个句柄换了参数 = 上下文被改写（或句柄复用），既不是重放也不是新调用，直接拦下
   if (existing.requestHash !== requestHash) {
@@ -84,7 +104,7 @@ export const decideEffect = (
 
   if (existing.status === 'completed') {
     if (existing.outcome) return { kind: 'replay', outcome: existing.outcome }
-    return rerunnable
+    return settledRerun
       ? { kind: 'proceed', attempt: 'retry', generation: existing.attempts + 1 }
       : {
           kind: 'blocked',
@@ -96,7 +116,8 @@ export const decideEffect = (
 
   if (existing.status === 'failed') {
     // 不可逆动作失败也不重跑：失败可能发生在「请求已发出、响应没回来」之后
-    if (rerunnable) return { kind: 'proceed', attempt: 'retry', generation: existing.attempts + 1 }
+    if (settledRerun)
+      return { kind: 'proceed', attempt: 'retry', generation: existing.attempts + 1 }
     if (existing.outcome) return { kind: 'replay', outcome: existing.outcome }
     return {
       kind: 'blocked',
@@ -107,13 +128,13 @@ export const decideEffect = (
   }
 
   if (existing.status === 'unknown') {
-    return rerunnable
+    return unknownRerun
       ? { kind: 'proceed', attempt: 'retry', generation: existing.attempts + 1 }
       : {
           kind: 'blocked',
           reason: 'effect-unknown',
           message:
-            '这次操作已经派发给外部服务，但没有拿到结论（可能已经生效）。为了不重复产生副作用，这里不会自动重跑；请用只读能力核验后再决定下一步。',
+            '这次操作已经派发给外部服务，但没有拿到结论（可能还在执行、也可能已经生效）。这里不会自动重跑：超时不等于执行结束，请先用只读能力核验，再决定下一步。',
         }
   }
 
@@ -125,12 +146,12 @@ export const decideEffect = (
       message: '这次操作正在执行中，同一个调用不会重复派发。',
     }
   }
-  return rerunnable
+  return unknownRerun
     ? { kind: 'proceed', attempt: 'retry', generation: existing.attempts + 1 }
     : {
         kind: 'blocked',
         reason: 'effect-unknown',
         message:
-          '这次操作派发后超时且没有拿到结论（可能已经生效）。为了不重复产生副作用，这里不会自动重跑；请用只读能力核验后再决定下一步。',
+          '这次操作派发后超时且没有拿到结论（可能还在执行、也可能已经生效）。这里不会自动重跑：超时不等于执行结束，请先用只读能力核验，再决定下一步。',
       }
 }

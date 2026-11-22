@@ -309,7 +309,8 @@ ai/
 
 崩溃恢复会**重跑工具**。当前业务写工具（若接入）会在重跑时**再写一条数据** —— 这是必须解决的问题：
 - 幂等键：`runId + toolCallId`（Mastra 的历史消息里带 toolCallId；重放时同一 toolCallId 只生效一次）；
-- 位置：业务侧一张轻量去重表（或复用 `RedisStore` 的 `setJson + TTL`）；
+- 位置：**能力网关的 `ai_tool_effects` + `ai_tool_effect_attempts`**（已落地，见
+  `docs/design/tool-effect-ledger.md`）；`(runId, toolCallId)` 唯一，按代留历史；
 - 只读工具（`list-xxx` / `get-xxx`）天然幂等，无需处理。
 
 ### 3.5 前端全细节流式

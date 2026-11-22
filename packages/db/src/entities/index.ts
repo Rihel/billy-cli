@@ -11,6 +11,7 @@ export { AiSkillEntity } from './ai-skill-entity.js'
 export { AiSkillFileEntity } from './ai-skill-file-entity.js'
 export { AiSkillGrantEntity } from './ai-skill-grant-entity.js'
 export { AiToolAuditEntity } from './ai-tool-audit-entity.js'
+export { AiToolEffectAttemptEntity } from './ai-tool-effect-attempt-entity.js'
 export { AiToolEffectEntity } from './ai-tool-effect-entity.js'
 export { AiToolEntity } from './ai-tool-entity.js'
 export { AiUsageDailyDimensionEntity } from './ai-usage-daily-dimension-entity.js'
@@ -45,6 +46,7 @@ import { AiSkillEntity } from './ai-skill-entity.js'
 import { AiSkillFileEntity } from './ai-skill-file-entity.js'
 import { AiSkillGrantEntity } from './ai-skill-grant-entity.js'
 import { AiToolAuditEntity } from './ai-tool-audit-entity.js'
+import { AiToolEffectAttemptEntity } from './ai-tool-effect-attempt-entity.js'
 import { AiToolEffectEntity } from './ai-tool-effect-entity.js'
 import { AiToolEntity } from './ai-tool-entity.js'
 import { AiUsageDailyDimensionEntity } from './ai-usage-daily-dimension-entity.js'
@@ -81,6 +83,7 @@ export const DB_ENTITIES = [
   AiSkillFileEntity,
   AiSkillGrantEntity,
   AiToolAuditEntity,
+  AiToolEffectAttemptEntity,
   AiToolEffectEntity,
   AiToolEntity,
   AiUsageDailyDimensionEntity,

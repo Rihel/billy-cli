@@ -4,6 +4,7 @@ import {
   AiCapabilityServiceEntity,
   AiServiceGrantEntity,
   AiToolAuditEntity,
+  AiToolEffectAttemptEntity,
   AiToolEffectEntity,
   AiToolEntity,
 } from '@repo/db'
@@ -46,6 +47,7 @@ import { ToolGatewayModule } from './gateway/gateway.module.js'
         ...config.getOrThrow<DbConfig>('db'),
         entities: [
           AiToolAuditEntity,
+          AiToolEffectAttemptEntity,
           AiToolEffectEntity,
           AiToolEntity,
           AiCapabilityServiceEntity,

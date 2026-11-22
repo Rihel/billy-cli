@@ -35,12 +35,18 @@ const rawCallReason = (rawInput: unknown): string | null => {
   return typeof value === 'string' ? value : null
 }
 
-/** 收尾链只能加工内容的判据：结论快照（`ok` 与失败 `reason`） */
-type ConclusionSnapshot = { ok: true } | { ok: false; reason: string } | null
+/**
+ * 收尾链只能加工内容的判据：结论快照（`ok`、失败 `reason`、`retryable`）。
+ *
+ * 为什么连 `retryable` 一起比：它不是展示字段，而是**重试语义** ——
+ * 把 `false` 改成 `true`，模型就会把一个本不该重试的失败原地重放。
+ */
+type ConclusionSnapshot = { ok: true } | { ok: false; reason: string; retryable: boolean } | null
 
 const conclusionOf = (outcome: ToolOutcome<unknown> | undefined): ConclusionSnapshot => {
   if (!outcome) return null
-  return outcome.ok ? { ok: true } : { ok: false, reason: outcome.reason }
+  if (outcome.ok) return { ok: true }
+  return { ok: false, reason: outcome.reason, retryable: outcome.retryable === true }
 }
 
 const sameConclusion = (
@@ -50,7 +56,11 @@ const sameConclusion = (
   if (before === null) return after === undefined
   if (after === undefined) return false
   if (before.ok !== after.ok) return false
-  return before.ok || before.reason === (after as { reason: string }).reason
+  if (before.ok) return true
+  if (!after.ok) {
+    return before.reason === after.reason && before.retryable === (after.retryable === true)
+  }
+  return false
 }
 
 /** 从 `tool-search` 的出参里取命中的工具 key（结构见网关 `runToolSearch`） */

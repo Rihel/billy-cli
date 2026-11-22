@@ -93,6 +93,7 @@ import { AddMarketItems1795188270503 } from './1795188270503-AddMarketItems.js'
 import { AddRunOwnership1795318386890 } from './1795318386890-RunOwnership.js'
 import { AddToolEffects1795331980277 } from './1795331980277-AddToolEffects.js'
 import { AddToolEffectTaskId1795333984507 } from './1795333984507-AddToolEffectTaskId.js'
+import { AddToolEffectAttempts1795338900853 } from './1795338900853-AddToolEffectAttempts.js'
 
 /** 迁移按时间戳升序；TypeORM 会再排序，但这里保持可读 */
 export const DB_MIGRATIONS = [
@@ -144,4 +145,5 @@ export const DB_MIGRATIONS = [
   AddRunOwnership1795318386890,
   AddToolEffects1795331980277,
   AddToolEffectTaskId1795333984507,
+  AddToolEffectAttempts1795338900853,
 ]

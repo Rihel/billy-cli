@@ -317,7 +317,20 @@ export class CapabilityRegistryController {
     // 两个来源取并集：Redis 映射是 best-effort（写失败 / 进程死在提交与映射之间都会丢），
     // 台账是持久事实。少取消一个任务 = 让它继续烧资源到自然结束。
     const mapped = await this.registry.runTaskIds(input.runId)
-    const persisted = await this.effects.taskIdsForRun(input.runId).catch((): string[] => [])
+    let persisted: string[] = []
+    let degraded = false
+    try {
+      persisted = await this.effects.taskIdsForRun(input.runId)
+    } catch (error) {
+      // 台账查不了 = 这轮只能取消 Redis 映射里的任务。不能静默当成「没有任务」，
+      // 否则前端看到「已取消」而实际漏了任务 —— 明确降级并留 error 日志。
+      degraded = true
+      this.logger.error('tool_gateway.task_ids_query_failed', {
+        runId: input.runId,
+        mapped: mapped.length,
+        reason: error instanceof Error ? error.message : String(error),
+      })
+    }
     const taskIds = [...new Set([...mapped, ...persisted])]
     const recovered = taskIds.length - mapped.length
     if (recovered > 0) {
@@ -332,7 +345,7 @@ export class CapabilityRegistryController {
       const snapshot = await this.invoker.cancelTask(taskId)
       if (snapshot.state === 'canceled') canceled += 1
     }
-    return { targets: taskIds.length, canceled }
+    return { targets: taskIds.length, canceled, degraded }
   }
 
   /** 取消任务：幂等，终态时返回当前快照 */

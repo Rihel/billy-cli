@@ -9,16 +9,24 @@
   现在网关在 `CapabilityRegistryController.invoke` 里用 `ai_tool_effects` 认领 / 结算。
 - **分级复用契约既有字段**，不新造：`risk='read'` 或 `idempotent=true` → 可重跑；
   `risk='write'` 且 `idempotent=false` → **永不自动重跑**（派发过就如实报 `effect-unknown`）。
-- **状态机**：`dispatched → completed | failed | unknown`；派发超过 `deadline_at`（调用预算 + 5s）
-  仍未结算即 unknown —— `begin()` 的过期判断是**懒判**，另有 `ToolEffectSweeper` 每 60s 兜底扫描。
+- **但「未知态」是另一条线**：`unknown` / 派发超期时**只有只读能重跑**，写类（含幂等写）一律
+  `effect-unknown` 等核验 —— 超时不等于执行结束，幂等只表示「业务上重复可接受」，
+  不代表下游有并发去重能力。
+- **两张表**：`ai_tool_effects`（当前状态，`(run_id, tool_call_id)` 一行）+ `ai_tool_effect_attempts`
+  （每代一行，`(effect_id, generation)` 唯一）。重派发会清主表 `outcome`，但历史行的归档结论
+  必须留着 —— 不然「第一代到底执行过没有」永远答不出来。
+- **状态机**：`dispatched → completed | failed | unknown`；`begin()` 的过期判断是**懒判**，
+  另有 `ToolEffectSweeper` 每 60s 兜底扫描（以主表为准，把对应历史行一起转 unknown）。
 - **派发代际（= `attempts`）**：`begin()` 返回 generation，`settle()` 必须带回，只写
   `status='dispatched' AND attempts=<generation>` 的行；否则旧代的迟到响应会结算到新一代上
   （2026-11-22 复审抓出的 P0，已修）。`unknown` 之后的迟到响应只**归档**结论，不改状态。
 - **没有 `idempotencyKey` 就不进台账**（建不出「同一次调用」的身份），按普通调用处理。
 - **台账写不进去时**：只读能力放行 + 告警；写入能力直接拒绝（`effect-ledger-unavailable`）。
 - 结论正文 ≤ 32KB 才留存；超限只记 `result_bytes`，重放时报 `effect-result-unavailable`。
-- **task 型调用**：`settle()` 顺手把下游任务号落进 `task_id`；`/v1/tasks/cancel-run` 取
-  「Redis `ai:capability:run-tasks:<runId>` ∪ 台账 `taskIdsForRun`（默认 6h）」并集，
+- **task 型调用**：`settle()` 把下游任务号落进两张表的 `task_id`（**与结算代际解耦**：
+  旧代迟到被判 `stale` 也照样写）；`/v1/tasks/cancel-run` 取
+  「Redis `ai:capability:run-tasks:<runId>` ∪ 台账 `taskIdsForRun`（默认 6h，按 `updated_at` 算）」并集，
+  查询失败返回 `degraded: true`；
   兜住 Redis 映射丢失导致取消不到任务。不可恢复窗口：进程死在「提交成功、拿回任务号」之间。
 - 设计（状态机全表、并发边界、明确不做的）见 `docs/design/tool-effect-ledger.md`。
 

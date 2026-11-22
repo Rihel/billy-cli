@@ -146,7 +146,7 @@ export class CapabilityGatewayClient {
   cancelRunTasks(
     runId: string,
     options: InvokeOptions = {},
-  ): Promise<{ targets: number; canceled: number }> {
+  ): Promise<{ targets: number; canceled: number; degraded?: boolean }> {
     return requestEnvelope(
       this.options,
       '/v1/tasks/cancel-run',
