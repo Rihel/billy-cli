@@ -2,6 +2,7 @@ import { AgentRuntimeClient } from '@repo/internal-sdk'
 import type {
   AgentConversationCancelResultModel,
   AgentInfoModel,
+  AgentTimelineStatusResultModel,
   AgentInstructionsDto,
   AgentInstructionsModel,
   AgentListModel,
@@ -61,6 +62,15 @@ export class AgentCatalogService {
   ): Promise<AgentConversationCancelResultModel> {
     // 删会话可能一次取消多轮 / 多个子 run，给比目录查询更宽的 30s
     return this.client.cancelConversation({ conversationId, operator }, { timeoutMs: 30_000 })
+  }
+
+  /** 追加控制面状态事件（改名 / 文件权限变更）；timeline 写方收口到 runtime */
+  appendTimelineStatus(
+    conversationId: string,
+    payload: Record<string, unknown>,
+  ): Promise<AgentTimelineStatusResultModel> {
+    // 控制面审计事件不该拖慢页面主操作：给短超时，失败由调用方决定是否降级
+    return this.client.appendTimelineStatus({ conversationId, payload }, { timeoutMs: 5_000 })
   }
 
   /** agent 清单（`skills: ['*']` 由执行面按当前技能库现算） */

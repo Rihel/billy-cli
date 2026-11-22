@@ -3,6 +3,7 @@ import {
   AgentInstructionsModelSchema,
   AgentListSchema,
   AgentStatusSchema,
+  AgentTimelineStatusResultSchema,
   AgentToolListSchema,
   type AgentConversationCancelDto,
   type AgentConversationCancelResultModel,
@@ -10,6 +11,8 @@ import {
   type AgentInstructionsModel,
   type AgentListModel,
   type AgentStatusModel,
+  type AgentTimelineStatusDto,
+  type AgentTimelineStatusResultModel,
   type AgentToolListModel,
 } from '@repo/shared'
 import { requestEnvelope, type InternalClientOptions, type InvokeOptions } from './http.js'
@@ -69,6 +72,19 @@ export class AgentRuntimeClient {
         body: input,
         ...options,
       },
+    )
+  }
+
+  /** 追加控制面状态事件（改名 / 文件权限变更）；timeline 写方收口到 runtime */
+  appendTimelineStatus(
+    input: AgentTimelineStatusDto,
+    options: InvokeOptions = {},
+  ): Promise<AgentTimelineStatusResultModel> {
+    return requestEnvelope(
+      this.options,
+      '/internal/agent/timeline/status',
+      AgentTimelineStatusResultSchema,
+      { method: 'POST', body: input, ...options },
     )
   }
 

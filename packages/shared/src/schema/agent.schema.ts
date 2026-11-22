@@ -793,3 +793,17 @@ export const AgentConversationCancelResultSchema = z.object({
 })
 
 export type AgentConversationCancelResultModel = z.infer<typeof AgentConversationCancelResultSchema>
+
+/** 追加一条控制面时间线状态事件（改名 / 文件权限变更；timeline 写方收口到 runtime） */
+export const AgentTimelineStatusSchema = z.object({
+  conversationId: z.string().min(1).max(32),
+  payload: z.record(z.string(), z.unknown()),
+})
+
+export type AgentTimelineStatusDto = z.infer<typeof AgentTimelineStatusSchema>
+
+export const AgentTimelineStatusResultSchema = z.object({
+  ok: z.literal(true),
+})
+
+export type AgentTimelineStatusResultModel = z.infer<typeof AgentTimelineStatusResultSchema>

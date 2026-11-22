@@ -1,12 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common'
 import { TimelineEntity } from '@repo/db'
 import { Db, pageWith, type PageQueryResult } from '@repo/kits'
-import {
-  TimelineKind,
-  TimelineRole,
-  type AgentTimelineItemModel,
-  type AgentTimelineListDto,
-} from '@repo/shared'
+import { TimelineKind, type AgentTimelineItemModel, type AgentTimelineListDto } from '@repo/shared'
 
 /** 实体 → 对外模型 */
 export const toTimelineModel = (record: TimelineEntity): AgentTimelineItemModel => ({
@@ -29,10 +24,10 @@ export const toTimelineModel = (record: TimelineEntity): AgentTimelineItemModel 
 })
 
 /**
- * 时间线查询仓储：**只读 + 只追加**（不提供更新 / 删除）。
+ * 时间线查询仓储：**只读**。
  *
- * 追加只用于会话 CRUD 产生的状态留痕（改名 / 改文件权限 / 删除），
- * 运行过程中的事件写入仍归 agent-runtime。
+ * 写入（运行过程 + 改名 / 改文件权限的控制面事件）全部归 agent-runtime；
+ * 控制面需要留痕时调内部 `timeline/status` 接口，不在这里直插。
  */
 @Injectable()
 export class AiTimelineQueryRepository {
@@ -75,30 +70,5 @@ export class AiTimelineQueryRepository {
       agentKey: typeof row?.payload?.agentKey === 'string' ? row.payload.agentKey : null,
       createdAt: row?.createdAt ?? null,
     }
-  }
-
-  /** 追加一条状态事件（会话改名 / 文件权限变化 / 删除时留痕） */
-  async appendStatus(conversationId: string, payload: Record<string, unknown>): Promise<void> {
-    const repo = await this.repo()
-    const entity = repo.create({
-      conversationId,
-      seq: await this.nextSeq(conversationId),
-      role: TimelineRole.System,
-      kind: TimelineKind.Status,
-      payload,
-      finishedAt: new Date(),
-    })
-    await repo.save(entity)
-  }
-
-  /** 会话内下一个序号（同一会话同时只允许一轮进行中，取 max+1 不存在并发竞争） */
-  private async nextSeq(conversationId: string): Promise<number> {
-    const repo = await this.repo()
-    const row = await repo
-      .createQueryBuilder('t')
-      .select('MAX(t.seq)', 'max')
-      .where('t.conversationId = :conversationId', { conversationId })
-      .getRawOne<{ max: number | null }>()
-    return Number(row?.max ?? 0) + 1
   }
 }

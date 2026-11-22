@@ -151,12 +151,20 @@ export class AiAdminConversationService {
     if (from === input.title) return toConversationModel(conversation)
 
     await this.conversations.setTitle(input.conversationId, input.title)
-    await this.timelines.appendStatus(input.conversationId, {
-      reason: 'conversation_renamed',
-      from,
-      to: input.title,
-      operator: ownerId,
-    })
+    // timeline 写方是 runtime：控制面事件走内部接口；失败只降级为日志，不把改名回滚成失败
+    await this.agents
+      .appendTimelineStatus(input.conversationId, {
+        reason: 'conversation_renamed',
+        from,
+        to: input.title,
+        operator: ownerId,
+      })
+      .catch((error: unknown) => {
+        this.logger.warn('ai.conversation.timeline_failed', {
+          conversationId: input.conversationId,
+          reason: error instanceof Error ? error.message : String(error),
+        })
+      })
     this.logger.log('ai.conversation.renamed', {
       conversationId: input.conversationId,
       from,
@@ -179,12 +187,19 @@ export class AiAdminConversationService {
       return toConversationModel(conversation)
     }
     await this.conversations.setFileAccess(input.conversationId, input.fileAccess)
-    await this.timelines.appendStatus(input.conversationId, {
-      reason: 'conversation_file_access_changed',
-      from: conversation.fileAccess,
-      to: input.fileAccess,
-      operator: ownerId,
-    })
+    await this.agents
+      .appendTimelineStatus(input.conversationId, {
+        reason: 'conversation_file_access_changed',
+        from: conversation.fileAccess,
+        to: input.fileAccess,
+        operator: ownerId,
+      })
+      .catch((error: unknown) => {
+        this.logger.warn('ai.conversation.timeline_failed', {
+          conversationId: input.conversationId,
+          reason: error instanceof Error ? error.message : String(error),
+        })
+      })
     this.logger.log('ai.conversation.file_access_changed', {
       conversationId: input.conversationId,
       from: conversation.fileAccess,

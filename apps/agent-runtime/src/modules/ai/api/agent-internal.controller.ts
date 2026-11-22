@@ -17,16 +17,19 @@ import {
   AgentConversationCancelSchema,
   AgentInstructionsSchema,
   AgentRunStopSchema,
+  AgentTimelineStatusSchema,
   type AgentChatDto,
   type AgentChatResumeDto,
   type AgentConversationCancelDto,
   type AgentInstructionsDto,
   type AgentRunStopDto,
+  type AgentTimelineStatusDto,
 } from '@repo/shared'
 import type { Response } from 'express'
 import { AgentService } from '../agents/service.js'
 import { AgentChatService } from '../runtime/chat.service.js'
 import { AgentConversationService } from '../runtime/conversation.service.js'
+import { AgentTimelineService } from '../runtime/timeline.service.js'
 
 /** main 的内部会话入口：身份由 main 鉴权后通过内部 token + 头传入 */
 @Controller('internal/agent')
@@ -35,6 +38,7 @@ export class AgentInternalController {
     @Inject(AgentChatService) private readonly chat: AgentChatService,
     @Inject(AgentService) private readonly agents: AgentService,
     @Inject(AgentConversationService) private readonly conversations: AgentConversationService,
+    @Inject(AgentTimelineService) private readonly timelines: AgentTimelineService,
   ) {}
 
   /**
@@ -143,6 +147,18 @@ export class AgentInternalController {
   ) {
     this.requireToken(token)
     return this.conversations.cancelActiveConversation(input.conversationId, input.operator)
+  }
+
+  /** 追加控制面状态事件（改名 / 文件权限变更）；timeline 写方收口到 runtime */
+  @Post('timeline/status')
+  @HttpCode(200)
+  async appendTimelineStatus(
+    @Body({ schema: AgentTimelineStatusSchema }) input: AgentTimelineStatusDto,
+    @Headers('x-internal-token') token: string | undefined,
+  ): Promise<{ ok: true }> {
+    this.requireToken(token)
+    await this.timelines.appendStatus(input.conversationId, input.payload)
+    return { ok: true }
   }
 
   @Post('run/stop')

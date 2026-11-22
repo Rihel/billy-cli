@@ -1,6 +1,11 @@
 import { Inject, Injectable } from '@nestjs/common'
 import type { PageQueryResult } from '@repo/kits'
-import type { AgentTimelineItemModel, AgentTimelineListDto } from '@repo/shared'
+import {
+  TimelineKind,
+  TimelineRole,
+  type AgentTimelineItemModel,
+  type AgentTimelineListDto,
+} from '@repo/shared'
 import { AgentConversationService } from './conversation.service.js'
 import { TimelineRepository } from './timeline.repository.js'
 
@@ -23,5 +28,21 @@ export class AgentTimelineService {
   ): Promise<PageQueryResult<AgentTimelineItemModel>> {
     await this.conversations.requireOwned(userId, input.conversationId)
     return this.timelines.list(input)
+  }
+
+  /**
+   * 追加控制面状态事件（改名 / 文件权限变更）。
+   *
+   * timeline 的写方是 runtime：main 不再自己插 timeline，改名 / 改权限后调内部接口。
+   * 调用方已做归属校验，这里只负责落一条 system/status 事件。
+   */
+  async appendStatus(conversationId: string, payload: Record<string, unknown>): Promise<void> {
+    await this.timelines.append({
+      conversationId,
+      role: TimelineRole.System,
+      kind: TimelineKind.Status,
+      payload,
+      finishedAt: new Date(),
+    })
   }
 }

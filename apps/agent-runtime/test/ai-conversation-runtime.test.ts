@@ -1,6 +1,6 @@
 import 'dotenv/config'
 import { Db, setAuditUserProvider } from '@repo/kits'
-import { AppErrorCodes } from '@repo/shared'
+import { AppErrorCodes, TimelineKind, TimelineRole } from '@repo/shared'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { ConversationEntity, RunEntity, TimelineEntity } from '@repo/db'
 import { DEFAULT_AGENT_KEY, createAgentDefinitions } from '../src/modules/ai/agents/index.js'
@@ -123,6 +123,26 @@ describe('会话运行时（真实数据库）', () => {
     expect(conversation.turnCount).toBe(0)
     expect(conversation.totalTokens).toBe(0)
     expect(conversation.title).toBe('')
+  })
+
+  it('appendStatus 落一条 system/status 时间线（控制面事件写口）', async () => {
+    const conversation = await conversationService.create(USER, {})
+    createdConversationIds.push(conversation.id)
+
+    await timelineService.appendStatus(conversation.id, {
+      reason: 'conversation_renamed',
+      from: '',
+      to: '新名字',
+      operator: USER,
+    })
+
+    const page = await timelines.list({ conversationId: conversation.id, page: 1, size: 20 })
+    expect(page.items).toHaveLength(1)
+    expect(page.items[0]).toMatchObject({
+      role: TimelineRole.System,
+      kind: TimelineKind.Status,
+      payload: { reason: 'conversation_renamed', to: '新名字' },
+    })
   })
 
   it('未知 agentKey → 3303（装配期就该拦住的那种）', async () => {
