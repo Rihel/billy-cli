@@ -56,9 +56,22 @@ User ──1:N── Workspace ──1:N── Session
 | 项目 | Claude Code Projects、Codex Cloud | 部分借鉴：项目概念由 git 仓库承担 |
 | 任务 | Manus | 部分借鉴：按需创建、闲置回收、只恢复重要文件 |
 
-## 2. 执行后端
+## 2. 执行驱动
 
-### 2.1 v1 选型：Docker 容器
+### 2.0 驱动一览（2026-11-22 起）
+
+一个工作区只有一个驱动，创建时确定、之后不可更改（换驱动 = 换环境，数据不迁移）：
+
+| 驱动 | 实现 | 依赖 | 典型部署 |
+| --- | --- | --- | --- |
+| `host` | 宿主进程 + L1 沙箱 | 无 Docker；macOS 用 `sandbox-exec`、Linux 用 `bwrap` | 无 Docker 的单机 / Windows（沙箱不可用时 `AGENT_WORKSPACE_SANDBOX=false`） |
+| `container` | Docker Engine（dockerode） | Docker daemon + 工作区镜像 | 云端默认、compose |
+| `pod` | Kubernetes Pod（kubectl） | K8s 集群 | 多副本云端 |
+
+驱动接口见 [workspace-env-contract.md](workspace-env-contract.md)：`probe / prepare / exec / fs / dispose`；
+`microvm` 仍是预留（未实现）。
+
+### 2.1 container 驱动：Docker 容器
 
 | 方案 | 隔离 | 部署门槛 | 结论 |
 | --- | --- | --- | --- |
@@ -72,12 +85,13 @@ User ──1:N── Workspace ──1:N── Session
 **架构约束：后端必须可替换。** 业务代码只依赖 `WorkspaceRuntime` 接口，不直接依赖 docker。未来切换 gVisor 只是把 `--runtime=runsc` 换上去，镜像与代码不动。
 
 ```
-type WorkspaceBackend = 'local' | 'container' | 'microvm'
+type WorkspaceDriver = 'host' | 'container' | 'pod'
 ```
 
 - `container`：当前实现为 Docker；未来可换 runsc / Kata。
-- `local`：仅用于自托管单租户（`AGENT_WORKSPACE_SANDBOX=false` 的历史口径），云端多租户禁止。
-- `microvm`：预留，未实现。
+- `pod`：Kubernetes Pod；多副本只有它能跨宿主。
+- `host`：命令跑在宿主进程上（自托管单租户），安全边界靠 L1 沙箱 + 目录范围。
+- `microvm`：预留，未实现（`backend` 列仍保留给旧数据，由 driver 推导）。
 
 ### 2.2 容器加固（云端多租户的硬要求）
 
@@ -95,69 +109,114 @@ type WorkspaceBackend = 'local' | 'container' | 'microvm'
 
 残余风险（共享内核）靠三样压低：审计、配额限流、分级开放（早期不公开注册）。
 
-### 2.3 L1 沙箱：容器后端不需要，local 后端保留
+### 2.3 L1 沙箱：container / pod 不需要，host 保留
 
 现有 [workspace-runtime.md](workspace-runtime.md) 的 macOS `sandbox-exec` / Linux `bwrap`（L1）**不退役**，按后端区分：
 
-- **container / microvm 后端**：容器/VM 已是隔离边界，容器内再套一层 OS 沙箱没有意义——这条路径不用 L1。
-- **local 后端**：命令直接跑在宿主进程与工作区目录上，没有容器边界，**必须保留 L1 沙箱**（默认 `enforce` + fail closed），否则等于裸奔。
-- `local` 仍然只留给自托管单租户，不做云端默认；它的安全模型要写清楚：**L1 沙箱 + 目录边界，不是容器**。
+- **container / pod 驱动**：容器 / Pod 已是隔离边界，里面再套一层 OS 沙箱没有意义——这条路径不用 L1。
+- **host 驱动**：命令直接跑在宿主进程与工作区目录上，没有容器边界，**必须保留 L1 沙箱**（默认开启 + fail closed），否则等于裸奔。
+- `host` 仍然只留给自托管单租户，不做云端默认；它的安全模型要写清楚：**L1 沙箱 + 目录边界，不是容器**。
 
-`WorkspaceRuntime` 的 `local` 实现复用现有 `WorkspaceRuntimeService` 的沙箱逻辑，**不要删**。
+`host` 驱动的执行复用现有 `WorkspaceRuntimeService` 的沙箱逻辑，**不要删**。
 
 ## 3. 文件系统与持久化
 
 ### 3.1 一个坐标
 
 ```
-Workspace = { location, runtime }
-   location : 文件在哪（真身）
-   runtime  : 命令在哪跑
+Workspace = { driver, root }
+   driver : 命令在哪跑（host / container / pod）
+   root   : 文件在哪（host = 宿主目录；container / pod = /workspace）
    两者必须指向同一份字节
 ```
 
-三种后端都满足：
+三种驱动都满足：
 
-| 后端 | 文件真身 | 命令在哪 |
-| --- | --- | --- |
-| local | 宿主某目录 | 宿主（自托管） |
-| container | 容器可写层（不挂卷） | 容器内 |
-| microvm | VM 磁盘 | VM 内 |
+| 驱动 | 文件真身 | 命令在哪 | 停止之后 |
+| --- | --- | --- | --- |
+| host | 宿主目录（默认 `~/.billy/workspaces/<id>`，或用户指定目录） | 宿主进程（L1 沙箱） | 目录保留（`dispose('stop')` 不删） |
+| container | 容器可写层（`/workspace` 是 tmpfs，不挂宿主卷） | 容器内 | 清空 |
+| pod | Pod 内 emptyDir（`/workspace`） | Pod 内 | 随 Pod 删除清空 |
 
 **container 不挂宿主卷**：环境自包含，容器可写层就是文件系统。挂临时卷可以省掉 file 工具改造，但与「环境自包含」的定位相悖，v1 不用。
 
-#### 3.1.1 工作区目录（local 后端）
+#### 3.1.1 host 驱动的目录（默认托管 vs 用户指定）
 
-local 后端的工作区就是**宿主机上的一个目录**，没有第二种目录。差别只有「配没配 `location.root`」：
+`host` 驱动的工作区就是**脚本进程所在机器上的一个目录**，差别只有「配没配 `location.root`」：
 
-| | 没配（默认） | 配了 |
+| | 没配（默认托管） | 配了（用户指定） |
 | --- | --- | --- |
-| 目录 | `<WORKSPACE_LOCAL_ROOT>/<workspaceId>`，默认 `~/.billy/workspaces/<id>`（不存在就建） | 用户给的绝对路径（`realpath` 后），必须**已存在且是目录** |
-| 初始化 | 跑：装 CLI / 物化 `.agents/` / 写 `.billy/` / 落凭据 | **不跑**：这些都会写进用户自己的项目，污染仓库 |
-| 校验 | 无 | 必须落在 `WORKSPACE_LOCAL_ALLOWED_ROOTS` 内、且不覆盖凭据 denylist；`AGENT_WORKSPACE_SANDBOX` 必须 `enforce` |
+| 目录 | `<WORKSPACE_LOCAL_ROOT>/<workspaceId>`，默认 `~/.billy/workspaces/<workspaceId>`；首次 `ensure` 时创建 | 用户给的绝对路径（`realpath` 后），必须**已存在且是目录** |
+| 初始化 | 跑：物化技能；装全局 CLI、落 HOME 凭据按声明（沙箱开着就不做） | 跑，但**只物化技能**（写 `.agents/` 与 `.billy/setup*`），不装全局 CLI、不写 HOME 凭据 |
+| 校验 | 无 | 必须在 `WORKSPACE_LOCAL_ALLOWED_ROOTS` 之内、不覆盖凭据目录、`AGENT_WORKSPACE_SANDBOX=true` |
+| 停止 / 删除记录 | 目录保留（数据是用户的） | 目录保留；只会删掉带 `.billy-skill` 标记的技能目录 |
 
-> 已知不一致：`WORKSPACE_LOCAL_ROOT` 的代码兜底目前仍是系统临时目录（`<tmpdir>/billy-workspaces`），
-> 与默认目录 `~/.billy/workspaces` 的约定不符，待统一；现状与待办见
-> [workspace-local-followups.md](workspace-local-followups.md)。
+> 默认目录已统一为 `~/.billy/workspaces`（2026-11-22），不再回落到系统临时目录。
 
 代价与边界：
 
-- **文件能力不经沙箱**：`local` 的 `file-*` 直接以服务进程身份读写（只做「路径必须工作区内」），
+- **文件能力不经沙箱**：`host` 的 `file-*` 直接以服务进程身份读写（只做「路径必须工作区内」），
   所以「允许根」是唯一的范围限制，不能让它退化成「任意路径」；默认关闭（不配允许根就拒绝）。
-- **bash 靠 L1 沙箱**：沙箱仍允许读全盘（除凭据 denylist）、只允许写工作区与缓存，
-  所以「配一个 `/Users/you` 这种过宽目录」会被凭据目录检查挡掉（`.ssh` / `.aws` 等在里面）。
+- **bash 靠 L1 沙箱**：沙箱允许读工作区（禁读 `.ssh` / `.aws` 等凭据目录）、只允许写工作区与缓存，
+  所以「配一个 `/Users/you` 这种过宽目录」会被凭据目录检查挡掉。
 - **不提供 `location.setup` 开关**：配了目录后要不要装 CLI / 落凭据，现有需求没有；真需要时按
   「另起一个清单类型」设计，不在 v1 偷加。
-- **容器后端不参与**：要「容器 + 宿主目录」得先解挂载带来的逃逸面（见 §2.2），那是另一个方案。
+- **容器 / Pod 不参与**：要「容器 + 宿主目录」得先解挂载带来的逃逸面（见 §2.2），那是另一个方案。
+
+#### 3.1.2 工作区目录结构（长什么样）
+
+一个工作区目录里，平台只写两类东西：**技能正文** 与 **初始化记录**；其余都是命令和模型自己产生的。
+`<workspaceId>` 就是 `ai_workspaces.id`。
+
+**host（默认托管）**
+
+```
+~/.billy/workspaces/<workspaceId>/
+├── .agents/                        # 技能正文：模型用 read-file 读这里的 SKILL.md
+│   └── <skillKey>/
+│       ├── SKILL.md
+│       ├── references/…            # 技能自带的参考文件（没有就不建）
+│       └── .billy-skill            # 归属标记：只有带它的目录会被同步收敛删除
+├── .billy/
+│   ├── setup.json                  # 这次初始化用了哪个清单（setupId / hash / 时间）
+│   ├── setup/<setupId>@<hash>.done # 幂等标记（技能没写全就不写，下次重试）
+│   └── credentials.json            # 凭据清单（版本 + 条目；只在「可写 HOME」时写）
+└── …                               # 命令 / 模型产出的文件（项目代码、依赖、产物）
+```
+
+**host（用户指定目录）**：结构相同，但只写 `.agents/` 与 `.billy/setup*`；没有 `credentials.json`，
+也不装全局 CLI —— 不把平台资产塞进用户自己的项目。
+
+**container / pod**
+
+```
+/workspace/                         # 容器内固定工作目录（tmpfs / emptyDir，不挂宿主卷）
+├── .agents/<skillKey>/…            # 同上
+├── .billy/setup.json
+├── .billy/setup/<setupId>@<hash>.done
+├── .billy/credentials.json
+└── …                               # 容器自己的可写层
+```
+
+停止容器 / 删除 Pod 后整个 `/workspace` 消失（预期行为）；凭据落在**容器内**的 HOME
+（`~/.config/gh/hosts.yml`、`~/.lark-cli/config.json`、`~/.my.cnf` 等），不会写回宿主。
+
+**运行时级（不在工作区里）**
+
+| 目录 | 谁写 | 内容 |
+| --- | --- | --- |
+| `~/.billy/skills` | agent-runtime（`AGENT_SKILLS_LIBRARY_DIR`） | 技能库落盘（DB 是事实源）；启动时清掉库里不存在的目录 |
+| `~/.billy/workspaces` | workspace-service（`WORKSPACE_LOCAL_ROOT`） | 所有 host 工作区目录的根 |
 
 ### 3.2 文件访问通道
 
 `file-*` 工具与 `bash` 共享同一个环境文件系统，但走不同通道：
 
-- `bash` → 容器 exec（命令直接在环境内跑）。
-- `file-*` → **v1 直接用 `docker exec` 在容器内执行**：一次调用一次 exec；`file-list` / `workspace-files` 用容器内 `find`，`file-search` 用容器内 `grep`，遍历留在环境内、不逐文件传回。
+- `bash` → 驱动 `exec`（`host` 走沙箱进程，`container` / `pod` 走容器 exec）。
+- `file-*` → 驱动 `fs`：`host` 直接用 Node fs 读写那个目录；`container` / `pod` 把文件操作翻译成容器命令
+  （`ls` / `find` / `cat` / `base64` / `stat` / `grep`），一次调用一次 exec，遍历留在环境内、不逐文件传回。
   - 不预置常驻文件服务：少一个进程、少一种协议、少一处鉴权，v1 够用。
-  - 若 file 调用成为性能瓶颈，再引入常驻服务（HTTP / Unix socket），届时只换实现、不动调用方。
+  - 两套实现必须语义一致：`test/fs-contract.test.ts` 用同一组用例跑 `hostFs` 与 `containerFs`。
 
 ### 3.3 持久化的两端
 
@@ -364,7 +423,7 @@ desired_status: stopped ──用户启动 / 首次执行──→ running
 ### 7.3 多副本（2026-11-22 落地）
 
 - **只支持 kubernetes 后端**：任意 Pod 都能 `kubectl exec` 工作区 Pod；Docker 容器在宿主本地，
-  跨宿主副本 exec 不到，local 后端是 Pod 本地盘，二者启动自检直接拒绝多副本。
+  跨宿主副本 exec 不到，host 驱动是 Pod 本地盘，二者启动自检直接拒绝多副本。
 - 开发 / 单机验证可以用**同宿主 Docker 多副本**：`WORKSPACE_ALLOW_SHARED_DOCKER=true`，所有副本必须共享同一个 Docker daemon；跨宿主 Docker 仍不支持。
 - 运行态仍是「内存 + 容器标签」，但**跨副本的 lifecycle / exec / fs 锁和 lastUsed 放 Redis**；
   `handles` 只是本地缓存，exec / fs 前会探测容器是否还活着，失效就重建。
@@ -448,9 +507,10 @@ ai_workspaces
   owner_id      varchar(20)  NOT NULL
   name          varchar(64)  NOT NULL
   is_default    boolean      NOT NULL DEFAULT false  -- 每个主体恰好一条
-  backend       varchar(16)  NOT NULL  -- local | container | microvm
-  image         varchar(64)            -- container 时必填
-  location      jsonb                  -- backend 相关（root / container 配置 / host）
+  driver        varchar(16)            -- host | container | pod（创建时定死；空 = 按 backend 与部署默认推导）
+  backend       varchar(16)  NOT NULL  -- local | container | microvm（旧列，保留兼容；由 driver 推导）
+  image         varchar(64)            -- container / pod 时必填
+  location      jsonb                  -- host 的 root 等（按 driver 解释）
   file_access   varchar(16)  NOT NULL  -- read-only | write
   desired_status varchar(16) NOT NULL DEFAULT 'stopped'  -- running | stopped（用户意图；实际运行态不落库）
   created_at    timestamptz
@@ -473,7 +533,8 @@ ai_files
 
 说明：
 
-- `location` 用 jsonb：不同 backend 字段不同，不为三种后端各建一套列。
+- `driver` 是唯一识别「跑在哪」的字段；`backend` 只留给旧数据，读写都以 `driver` 为准。
+- `location` 用 jsonb：不同 driver 字段不同（目前只有 host 用 `root`），不为每种驱动各建一套列。
 - `file_access` 在 Workspace 级：权限是场所的属性，不是某次会话的属性。
 - `conversations.workspace_id` 可空只是迁移期；稳定后应 NOT NULL。
 - `owner_type + owner_id` 而不是 `user_id`：当前只有 admin 用 AI 会话，但将来用户端开放时同一张表可复用；不把 `admins.id` 与 `users.id` 混进同一列。
