@@ -10,13 +10,21 @@
 - **分级复用契约既有字段**，不新造：`risk='read'` 或 `idempotent=true` → 可重跑；
   `risk='write'` 且 `idempotent=false` → **永不自动重跑**（派发过就如实报 `effect-unknown`）。
 - **状态机**：`dispatched → completed | failed | unknown`；派发超过 `deadline_at`（调用预算 + 5s）
-  仍未结算即 unknown。结算只写 `status='dispatched'` 的行，迟到的响应不会覆盖 unknown。
+  仍未结算即 unknown —— `begin()` 的过期判断是**懒判**，另有 `ToolEffectSweeper` 每 60s 兜底扫描。
+- **派发代际（= `attempts`）**：`begin()` 返回 generation，`settle()` 必须带回，只写
+  `status='dispatched' AND attempts=<generation>` 的行；否则旧代的迟到响应会结算到新一代上
+  （2026-11-22 复审抓出的 P0，已修）。`unknown` 之后的迟到响应只**归档**结论，不改状态。
 - **没有 `idempotencyKey` 就不进台账**（建不出「同一次调用」的身份），按普通调用处理。
 - **台账写不进去时**：只读能力放行 + 告警；写入能力直接拒绝（`effect-ledger-unavailable`）。
 - 结论正文 ≤ 32KB 才留存；超限只记 `result_bytes`，重放时报 `effect-result-unavailable`。
 - 设计（状态机全表、并发边界、明确不做的）见 `docs/design/tool-effect-ledger.md`。
 
 ## 踩坑
+
+- **TypeORM `dataSource.query()` 对 DML 返回 `[rows, affected]`，不是 rows 数组**：裸写
+  `rows.length` 恒为 2，把「一行都没更新」当成「更新成功」。CAS / 租约释放 / 快照命中的判断
+  全都会失真（`run_ownership` 的 `releaseRunOwnership` 与 `persistWorkflowSnapshot` 就这么错过）。
+  统一用 `@repo/kits` 的 `affectedRowsOf()` 读结果（`packages/kits/src/db/dml-result.ts`）。
 
 - **唯一索引必须带 `WHERE deleted_at IS NULL`**：实体继承 `BaseEntity`（有软删列），把
   `deleted_at` 放进唯一键在 PG 下挡不住重复（NULL 互不相等）。

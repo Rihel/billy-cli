@@ -4,6 +4,7 @@ import { ToolGatewayConfig, type ToolGatewayConfigValue } from '../config/app-co
 import { ToolConfigService } from '../config/tool.config.service.js'
 import { ToolAuditService } from '../audit/tool.audit.js'
 import { ToolEffectLedger } from '../effects/tool-effect.ledger.js'
+import { ToolEffectSweeper } from '../effects/tool-effect.sweeper.js'
 import { InternalTokenGuard } from '../http/internal-token.guard.js'
 import { GatewayHealthController } from './gateway.controller.js'
 import { CapabilityRegistryController } from '../registry/capability-registry.controller.js'
@@ -28,6 +29,7 @@ import { ServiceRegistry } from '../registry/service.registry.js'
     ToolConfigService,
     ToolAuditService,
     ToolEffectLedger,
+    ToolEffectSweeper,
     InternalTokenGuard,
     ServiceRegistry,
     ServiceInvoker,

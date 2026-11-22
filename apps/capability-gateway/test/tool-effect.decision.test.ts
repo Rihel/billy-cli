@@ -39,6 +39,7 @@ describe('副作用台账的纯判定', () => {
     expect(decideEffect(null, NOW, irreversible, 'same-hash')).toEqual({
       kind: 'proceed',
       attempt: 'first',
+      generation: 1,
     })
   })
 
@@ -61,10 +62,12 @@ describe('副作用台账的纯判定', () => {
     expect(decideEffect(failed, NOW, readOnly, 'same-hash')).toEqual({
       kind: 'proceed',
       attempt: 'retry',
+      generation: 2,
     })
     expect(decideEffect(failed, NOW, idempotentWrite, 'same-hash')).toEqual({
       kind: 'proceed',
       attempt: 'retry',
+      generation: 2,
     })
     expect(decideEffect(failed, NOW, irreversible, 'same-hash')).toEqual({
       kind: 'replay',
@@ -90,10 +93,12 @@ describe('副作用台账的纯判定', () => {
     expect(decideEffect(expired, NOW, readOnly, 'same-hash')).toEqual({
       kind: 'proceed',
       attempt: 'retry',
+      generation: 2,
     })
     expect(decideEffect(expired, NOW, idempotentWrite, 'same-hash')).toEqual({
       kind: 'proceed',
       attempt: 'retry',
+      generation: 2,
     })
   })
 
@@ -106,6 +111,7 @@ describe('副作用台账的纯判定', () => {
     expect(decideEffect(lost, NOW, readOnly, 'same-hash')).toEqual({
       kind: 'proceed',
       attempt: 'retry',
+      generation: 2,
     })
   })
 

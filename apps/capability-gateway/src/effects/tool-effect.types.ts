@@ -42,7 +42,11 @@ export interface EffectRecord {
  * （**不是**「假装成功」，也**不是**「假装失败」）。
  */
 export type EffectDecision =
-  | { kind: 'proceed'; attempt: 'first' | 'retry' }
+  /**
+   * `generation` = 本次派发在台账上的**代际**（= `attempts` 的值）。
+   * 结算时必须带回来：旧代（超时后被重新派发的那一次）的迟到响应不得结算新一代的记录。
+   */
+  | { kind: 'proceed'; attempt: 'first' | 'retry'; generation: number }
   | { kind: 'replay'; outcome: ToolOutcome }
   | { kind: 'blocked'; reason: EffectBlockedReason; message: string }
 
@@ -65,7 +69,7 @@ export const decideEffect = (
   policy: EffectPolicy,
   requestHash: string,
 ): EffectDecision => {
-  if (!existing) return { kind: 'proceed', attempt: 'first' }
+  if (!existing) return { kind: 'proceed', attempt: 'first', generation: 1 }
   const rerunnable = canRerun(policy)
 
   // 同一个句柄换了参数 = 上下文被改写（或句柄复用），既不是重放也不是新调用，直接拦下
@@ -81,7 +85,7 @@ export const decideEffect = (
   if (existing.status === 'completed') {
     if (existing.outcome) return { kind: 'replay', outcome: existing.outcome }
     return rerunnable
-      ? { kind: 'proceed', attempt: 'retry' }
+      ? { kind: 'proceed', attempt: 'retry', generation: existing.attempts + 1 }
       : {
           kind: 'blocked',
           reason: 'effect-result-unavailable',
@@ -92,7 +96,7 @@ export const decideEffect = (
 
   if (existing.status === 'failed') {
     // 不可逆动作失败也不重跑：失败可能发生在「请求已发出、响应没回来」之后
-    if (rerunnable) return { kind: 'proceed', attempt: 'retry' }
+    if (rerunnable) return { kind: 'proceed', attempt: 'retry', generation: existing.attempts + 1 }
     if (existing.outcome) return { kind: 'replay', outcome: existing.outcome }
     return {
       kind: 'blocked',
@@ -104,7 +108,7 @@ export const decideEffect = (
 
   if (existing.status === 'unknown') {
     return rerunnable
-      ? { kind: 'proceed', attempt: 'retry' }
+      ? { kind: 'proceed', attempt: 'retry', generation: existing.attempts + 1 }
       : {
           kind: 'blocked',
           reason: 'effect-unknown',
@@ -122,7 +126,7 @@ export const decideEffect = (
     }
   }
   return rerunnable
-    ? { kind: 'proceed', attempt: 'retry' }
+    ? { kind: 'proceed', attempt: 'retry', generation: existing.attempts + 1 }
     : {
         kind: 'blocked',
         reason: 'effect-unknown',

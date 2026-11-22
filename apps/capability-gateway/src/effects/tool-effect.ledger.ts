@@ -1,7 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common'
 import { AiToolEffectEntity } from '@repo/db'
 import type { ToolOutcome } from '@repo/contracts'
-import { AppLogger, Db } from '@repo/kits'
+import { AppLogger, Db, affectedRowsOf } from '@repo/kits'
 import {
   MAX_EFFECT_RESULT_BYTES,
   decideEffect,
@@ -28,8 +28,20 @@ export interface BeginEffectInput {
 export interface SettleEffectInput {
   runId: string
   toolCallId: string
+  /** 本次派发的代际（`begin` 返回的 `generation`）：旧代的迟到响应不得结算新一代 */
+  generation: number
   outcome: ToolOutcome
 }
+
+/**
+ * 结算结果：
+ *
+ * - `settled`：这一代的派发被正常结算（`completed` / `failed`）；
+ * - `archived`：这一代已经被判成 `unknown`，只把真实结论与时间归档，**状态保持不变**
+ *   （unknown 的意思就是「当时不知道」，事后补上结论不等于它当初没进过 unknown）；
+ * - `stale`：代际不匹配或行不在 `dispatched`（旧代迟到响应 / 别人刚重派发）——什么都不写。
+ */
+export type SettleResult = 'settled' | 'archived' | 'stale'
 
 /**
  * 工具副作用台账（`docs/design/tool-effect-ledger.md`）。
@@ -72,7 +84,7 @@ export class ToolEffectLedger {
             settledAt: null,
           }),
         )
-        return { kind: 'proceed', attempt: 'first' }
+        return { kind: 'proceed', attempt: 'first', generation: 1 }
       } catch (error) {
         if (!isUniqueViolation(error)) throw error
         // 并发：另一个执行者刚好抢先插入，落到下面的「按已有记录判定」
@@ -86,7 +98,7 @@ export class ToolEffectLedger {
         toolCallId: input.toolCallId,
         capability: input.capability,
       })
-      return { kind: 'proceed', attempt: 'first' }
+      return { kind: 'proceed', attempt: 'first', generation: 1 }
     }
 
     const decision = decideEffect(record, now, input.policy, input.requestHash)
@@ -110,8 +122,14 @@ export class ToolEffectLedger {
     }
   }
 
-  /** 结算：只有「还是 dispatched」的那一行能被写成结论（超时判 unknown 之后不会被覆盖） */
-  async settle(input: SettleEffectInput): Promise<boolean> {
+  /**
+   * 结算：**必须带代际**，且只写自己那一代。
+   *
+   * 不带代际会有一个真实故障：A 拿 `attempts=1` 派发后超时，B 恢复时 CAS 到 `attempts=2`
+   * 重新派发；A 的迟到响应回来时若只看 `status='dispatched'`，就会把 A 的结论写进 B 那一代，
+   * 随后 B 的真实结论无处可写（只能记一条 settle_skipped）。带代际后两种结果都被明确拒绝。
+   */
+  async settle(input: SettleEffectInput): Promise<SettleResult> {
     let bytes = 0
     let stored: ToolOutcome | null = input.outcome
     try {
@@ -120,27 +138,71 @@ export class ToolEffectLedger {
       bytes = MAX_EFFECT_RESULT_BYTES + 1
     }
     if (bytes > MAX_EFFECT_RESULT_BYTES) stored = null
+    const payload = stored === null ? null : JSON.stringify(stored)
     const status: EffectStatus = input.outcome.ok ? 'completed' : 'failed'
-    const rows = await this.db.dataSource.query<Array<{ id: string }>>(
-      `
+
+    const settledRows = affectedRowsOf<{ id: string }>(
+      await this.db.dataSource.query(
+        `
       UPDATE ai_tool_effects
          SET status = $3,
              outcome = $4::jsonb,
              result_bytes = $5,
              settled_at = now(),
              updated_at = now()
-       WHERE run_id = $1 AND tool_call_id = $2 AND status = 'dispatched' AND deleted_at IS NULL
+       WHERE run_id = $1 AND tool_call_id = $2
+         AND status = 'dispatched' AND attempts = $6 AND deleted_at IS NULL
       RETURNING id
       `,
-      [
-        input.runId,
-        input.toolCallId,
-        status,
-        stored === null ? null : JSON.stringify(stored),
-        bytes,
-      ],
+        [input.runId, input.toolCallId, status, payload, bytes, input.generation],
+      ),
     )
-    return rows.length > 0
+    if (settledRows.length > 0) return 'settled'
+
+    // 已经判过 unknown：状态不动，但把这代的真实结论与时间补进去（证据不该丢）
+    const archivedRows = affectedRowsOf<{ id: string }>(
+      await this.db.dataSource.query(
+        `
+      UPDATE ai_tool_effects
+         SET outcome = $3::jsonb,
+             result_bytes = $4,
+             settled_at = now(),
+             updated_at = now()
+       WHERE run_id = $1 AND tool_call_id = $2
+         AND status = 'unknown' AND attempts = $5 AND settled_at IS NULL AND deleted_at IS NULL
+      RETURNING id
+      `,
+        [input.runId, input.toolCallId, payload, bytes, input.generation],
+      ),
+    )
+    return archivedRows.length > 0 ? 'archived' : 'stale'
+  }
+
+  /**
+   * 把「派发后超期、又没人结算」的行判成 `unknown`。
+   *
+   * 懒转换（等下一次 `begin` 再判）只在同一调用被重放时发生；崩溃后没人再碰它的那些行
+   * 会永久停在 `dispatched`。这个方法补上定时转换，语义才算和文档一致。
+   * 条件用库里的 `now()`，与写入 `deadline_at` 的时钟同源。
+   */
+  async sweepExpired(limit = 200): Promise<number> {
+    const rows = affectedRowsOf<{ id: string }>(
+      await this.db.dataSource.query(
+        `
+      UPDATE ai_tool_effects
+         SET status = 'unknown', updated_at = now()
+       WHERE id IN (
+         SELECT id FROM ai_tool_effects
+          WHERE status = 'dispatched' AND deadline_at < now() AND deleted_at IS NULL
+          ORDER BY deadline_at
+          LIMIT $1
+       )
+      RETURNING id
+      `,
+        [limit],
+      ),
+    )
+    return rows.length
   }
 
   private async find(runId: string, toolCallId: string): Promise<EffectRecord | null> {
@@ -162,8 +224,9 @@ export class ToolEffectLedger {
 
   /** 抢重试派发权：条件写回，抢不到返回 0（别的执行者已经接手） */
   private async casDispatch(record: EffectRecord, deadlineAt: Date): Promise<number> {
-    const rows = await this.db.dataSource.query<Array<{ id: string }>>(
-      `
+    const rows = affectedRowsOf<{ id: string }>(
+      await this.db.dataSource.query(
+        `
       UPDATE ai_tool_effects
          SET status = 'dispatched',
              attempts = attempts + 1,
@@ -175,7 +238,8 @@ export class ToolEffectLedger {
        WHERE run_id = $1 AND tool_call_id = $2 AND status = $3 AND attempts = $5 AND deleted_at IS NULL
       RETURNING id
       `,
-      [record.runId, record.toolCallId, record.status, deadlineAt, record.attempts],
+        [record.runId, record.toolCallId, record.status, deadlineAt, record.attempts],
+      ),
     )
     return rows.length
   }

@@ -14,7 +14,7 @@ import {
   type WorkflowRuns,
 } from '@mastra/core/storage'
 import type { WorkflowRunState } from '@mastra/core/workflows'
-import { Db, type AppLogger } from '@repo/kits'
+import { Db, affectedRowsOf, type AppLogger } from '@repo/kits'
 import { RunStatus } from '@repo/shared'
 import { RunEntity } from '@repo/db'
 
@@ -229,15 +229,17 @@ export class AgentWorkflowsStorage extends WorkflowsStorage {
   }
 
   async releaseRunOwnership(fence: RunFence): Promise<boolean> {
-    const rows = await this.db.dataSource.query<Array<{ run_id: string }>>(
-      `
+    const rows = affectedRowsOf<{ run_id: string }>(
+      await this.db.dataSource.query(
+        `
       UPDATE run_ownership
          SET lease_expires_at = NULL, updated_at = now()
        WHERE run_id = $1 AND owner_id = $2 AND generation = $3
          AND lease_expires_at IS NOT NULL
       RETURNING run_id
       `,
-      [fence.runId, fence.ownerId, fence.generation],
+        [fence.runId, fence.ownerId, fence.generation],
+      ),
     )
     return rows.length > 0
   }
@@ -308,8 +310,9 @@ export class AgentWorkflowsStorage extends WorkflowsStorage {
     const status = toRunStatus(input.snapshot?.status as string | undefined)
     // 只 set 当前 workflow 的 key：用 jsonb_set 避免「读整份快照 → 内存合并 → 回写整份 JSONB」。
     // 两个 workflow 交替 checkpoint 时，这能省掉一次读和另一份快照的重复传输。
-    const rows = await this.db.dataSource.query<Array<{ id: string }>>(
-      `
+    const rows = affectedRowsOf<{ id: string }>(
+      await this.db.dataSource.query(
+        `
       UPDATE runs
          SET snapshot = jsonb_set(
                CASE
@@ -327,7 +330,8 @@ export class AgentWorkflowsStorage extends WorkflowsStorage {
        WHERE engine_run_id = $1
        RETURNING id
       `,
-      [input.runId, input.workflowName, JSON.stringify(input.snapshot), status ?? null],
+        [input.runId, input.workflowName, JSON.stringify(input.snapshot), status ?? null],
+      ),
     )
     const affected = rows.length
     if (affected > 0) return

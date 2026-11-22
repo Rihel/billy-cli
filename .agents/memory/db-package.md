@@ -12,6 +12,10 @@
   `pnpm --filter @repo/db db:migrate`（脚本先构建 `@repo/db`）；
   `db:gen` 输出到 `packages/db/src/migrations/`。
 - gateway 的 `DbModule` 只注册 `AiToolAuditEntity`，用 repository 写 `ai_tool_audit`；不整包注册。
+- **坑（2026-11-22 实测）**：`dataSource.query()` 执行 **DML**（`UPDATE/INSERT ... RETURNING`）
+  返回的是 `[rows, affected]` 结构化结果，不是 rows 数组 —— 裸 `.length` 恒为 2，
+  会把「一行都没更新」误判成命中。统一用 `@repo/kits` 的 `affectedRowsOf()` 读
+  （`packages/kits/src/db/dml-result.ts`，`SELECT` 的普通数组它也认）。
 - **坑（2026-11-21 实测）**：`id` 由 `BaseEntity` 的 `@BeforeInsert` 生成（20 位 nanoid），
   TypeORM 对**普通对象** `save({...})` 与 `insert({...})` **都不跑实体钩子** → id 走 `DEFAULT`（NULL），
   报 `null value in column "id"`。写法只有两种：`repo.save(repo.create({...}))`，或 `insert` 时显式给 id。

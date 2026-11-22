@@ -65,6 +65,25 @@ describe('AgentWorkflowsStorage run fencing', () => {
     expect(third.record!.generation).toBeGreaterThan(first.record!.generation)
   })
 
+  it('释放租约只认当前代际：旧代释放不生效、也不谎报成功', async () => {
+    const runId = newRunId()
+    const first = await storage.claimRunOwnership({ runId, ownerId: 'pod-a', leaseMs: 60_000 })
+    const oldFence = { runId, ownerId: 'pod-a', generation: first.record!.generation }
+
+    const second = await storage.claimRunOwnership({
+      runId,
+      ownerId: 'pod-b',
+      leaseMs: 60_000,
+      force: true,
+    })
+    expect(second.acquired).toBe(true)
+    const newFence = { runId, ownerId: 'pod-b', generation: second.record!.generation }
+
+    // 旧代释放：DML 没命中就必须返回 false（曾因把 [rows, affected] 当 rows 而恒为 true）
+    await expect(storage.releaseRunOwnership(oldFence)).resolves.toBe(false)
+    await expect(storage.releaseRunOwnership(newFence)).resolves.toBe(true)
+  })
+
   it('旧 generation 的写入被 RunFenceConflictError 拒绝', async () => {
     const runId = newRunId()
     const first = await storage.claimRunOwnership({ runId, ownerId: 'pod-a', leaseMs: 60_000 })

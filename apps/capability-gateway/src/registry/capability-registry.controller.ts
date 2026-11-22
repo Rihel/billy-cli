@@ -257,7 +257,8 @@ export class CapabilityRegistryController {
         Math.ceil(found.capability.execution.maxRunMs / 1_000) + 3_600,
       )
     }
-    await this.settleEffect(input, result.outcome)
+    // 结算必须带代际：超时后可能已经被别的执行者重新派发，旧代的结论不能写进新一代
+    await this.settleEffect(input, effect.generation, result.outcome)
     await this.record(input, result)
     return result
   }
@@ -390,9 +391,12 @@ export class CapabilityRegistryController {
     found: { key: string; capability: CapabilityDecl; service: RegisteredService },
     effectiveInput: Record<string, unknown>,
     startedAt: number,
-  ): Promise<{ kind: 'run' } | { kind: 'terminal'; result: CapabilityInvokeResult }> {
+  ): Promise<
+    | { kind: 'run'; generation: number | null }
+    | { kind: 'terminal'; result: CapabilityInvokeResult }
+  > {
     const toolCallId = input.idempotencyKey
-    if (!toolCallId) return { kind: 'run' }
+    if (!toolCallId) return { kind: 'run', generation: null }
 
     const policy = { risk: found.capability.risk, idempotent: found.capability.idempotent }
     let decision: EffectDecision
@@ -414,7 +418,7 @@ export class CapabilityRegistryController {
         risk: policy.risk,
         reason: error instanceof Error ? error.message : String(error),
       })
-      if (policy.risk === 'read') return { kind: 'run' }
+      if (policy.risk === 'read') return { kind: 'run', generation: null }
       return {
         kind: 'terminal',
         result: this.effectResult(input, found, startedAt, {
@@ -426,7 +430,7 @@ export class CapabilityRegistryController {
       }
     }
 
-    if (decision.kind === 'proceed') return { kind: 'run' }
+    if (decision.kind === 'proceed') return { kind: 'run', generation: decision.generation }
     if (decision.kind === 'replay') {
       this.logger.log('tool_gateway.effect_replayed', {
         capability: found.key,
@@ -455,30 +459,47 @@ export class CapabilityRegistryController {
     }
   }
 
-  /** 结算台账；失败只记日志（调用已经发生，翻成工具失败反而误导模型） */
+  /**
+   * 结算台账；失败只记日志（调用已经发生，翻成工具失败反而误导模型）。
+   *
+   * `generation` 为 null 表示这次调用没进台账（没有 `idempotencyKey`），直接跳过。
+   */
   private async settleEffect(
     input: CapabilityInvokeRequest,
+    generation: number | null,
     outcome: CapabilityInvokeResult['outcome'],
   ): Promise<void> {
     const toolCallId = input.idempotencyKey
-    if (!toolCallId) return
+    if (!toolCallId || generation === null) return
     try {
-      const settled = await this.effects.settle({
+      const result = await this.effects.settle({
         runId: input.caller.runId,
         toolCallId,
+        generation,
         outcome,
       })
-      if (!settled) {
-        // 典型原因：这次调用被判成 unknown 之后才回来。结论仍然写进审计，但不覆盖台账状态。
-        this.logger.warn('tool_gateway.effect_settle_skipped', {
+      if (result === 'stale') {
+        // 旧代的迟到响应，或结算前已被判 unknown：结论只留在审计里，不改台账
+        this.logger.warn('tool_gateway.effect_settle_stale', {
           runId: input.caller.runId,
           toolCallId,
+          generation,
+        })
+        return
+      }
+      if (result === 'archived') {
+        // 这一代当时已经判成 unknown：状态不动，但把真实结论补进台账留档
+        this.logger.warn('tool_gateway.effect_settle_archived', {
+          runId: input.caller.runId,
+          toolCallId,
+          generation,
         })
       }
     } catch (error) {
       this.logger.error('tool_gateway.effect_settle_failed', {
         runId: input.caller.runId,
         toolCallId,
+        generation,
         reason: error instanceof Error ? error.message : String(error),
       })
     }
