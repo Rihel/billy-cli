@@ -16,8 +16,23 @@ import { ConversationRunQueue } from './run-queue.service.js'
 
 /** 恢复租约键：多副本同时启动时，只让一个副本执行恢复（其余什么都不做） */
 const RECOVERY_LEASE_KEY = 'agent:recovery:lease'
-/** 租约 TTL（秒）：比恢复 + 看门狗一轮的耗时宽裕即可 */
-const RECOVERY_LEASE_TTL_SECONDS = 60
+/**
+ * 恢复租约 TTL（秒）。
+ *
+ * 恢复不再是启动阻塞项；TTL 放大到 10 分钟，覆盖常见的一批 durable run 恢复。
+ * 真正的 per-run 互斥仍需要 run fencing（后续 Batch 4），这里只是减少重叠窗口。
+ */
+const RECOVERY_LEASE_TTL_SECONDS = 600
+/** 抢不到租约时的重试次数与间隔：别的副本可能刚开始恢复，等它一轮 */
+const RECOVERY_LEASE_ATTEMPTS = 3
+const RECOVERY_LEASE_RETRY_DELAY_MS = 60_000
+
+/** 可被进程退出打断的等待（定时器 unref） */
+const wait = (ms: number): Promise<void> =>
+  new Promise((resolve) => {
+    const timer = setTimeout(resolve, ms)
+    timer.unref?.()
+  })
 
 /**
  * 恢复与看门狗（设计文档 §3.13.1）。
@@ -68,15 +83,21 @@ export class AgentRecoveryService implements OnApplicationBootstrap, OnApplicati
         reason: error instanceof Error ? error.message : String(error),
       })
     }
-    await this.recoverOnBoot()
-    try {
-      await this.interruptOrphansOnBoot(bootedAt)
-    } catch (error) {
-      // 启动清理失败不是致命错误：看门狗仍会在 heartbeatTimeoutMs 后兜底
-      this.logger.error('ai.recovery.interrupt_failed', {
-        reason: error instanceof Error ? error.message : String(error),
+    /**
+     * 恢复**不阻塞启动**：listen 先起来，恢复在后台跑；否则恢复超过 startupProbe
+     * 的 60s 窗口会被 k8s 重启，租约还没到期、新 Pod 又抢不到，最后谁也没恢复完。
+     *
+     * 顺序仍是「恢复 → 单副本启动清理」：清理用 bootedAt 之前的判据，不能反过来把
+     * 恢复刚接管的 run 当成遗留行。
+     */
+    void this.recoverOnBoot()
+      .then(() => this.interruptOrphansOnBoot(bootedAt))
+      .catch((error: unknown) => {
+        // 启动清理失败不是致命错误：看门狗仍会在 heartbeatTimeoutMs 后兜底
+        this.logger.error('ai.recovery.interrupt_failed', {
+          reason: error instanceof Error ? error.message : String(error),
+        })
       })
-    }
 
     this.timer = setInterval(() => {
       void this.sweepStaleRuns().catch((error: unknown) => {
@@ -107,12 +128,22 @@ export class AgentRecoveryService implements OnApplicationBootstrap, OnApplicati
     }
 
     let token: string | null = null
-    try {
-      token = await this.redis.acquireLock(RECOVERY_LEASE_KEY, RECOVERY_LEASE_TTL_SECONDS)
-    } catch (error) {
-      this.logger.warn('ai.recovery.lease_failed', {
-        reason: error instanceof Error ? error.message : String(error),
-      })
+    for (let attempt = 1; attempt <= RECOVERY_LEASE_ATTEMPTS && !token; attempt++) {
+      try {
+        token = await this.redis.acquireLock(RECOVERY_LEASE_KEY, RECOVERY_LEASE_TTL_SECONDS)
+      } catch (error) {
+        this.logger.warn('ai.recovery.lease_failed', {
+          reason: error instanceof Error ? error.message : String(error),
+        })
+      }
+      if (token) break
+      if (attempt < RECOVERY_LEASE_ATTEMPTS) {
+        this.logger.log('ai.recovery.lease_retry', {
+          attempt,
+          delayMs: RECOVERY_LEASE_RETRY_DELAY_MS,
+        })
+        await wait(RECOVERY_LEASE_RETRY_DELAY_MS)
+      }
     }
     if (!token) {
       this.logger.log('ai.recovery.skipped', { reason: '另一个副本持有恢复租约' })

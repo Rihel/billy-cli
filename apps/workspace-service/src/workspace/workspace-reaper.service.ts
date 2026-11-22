@@ -20,18 +20,24 @@ export class WorkspaceReaper implements OnApplicationBootstrap, OnApplicationShu
   ) {}
 
   onApplicationBootstrap(): void {
-    // 进程刚起来时内存里没有任何 handle：先把还在跑的容器认领回来，再开始定时回收。
-    // 不认领的话它们永远不进 handles，也就永远扫不到（见 WorkspaceRuntime.reconcile）。
-    void this.runtime.reconcile().then(
-      (count) => {
-        if (count > 0) this.logger.info('workspace.reconcile.adopted', { count })
-      },
-      (error: unknown) => {
-        this.logger.warn('workspace.reconcile.failed', {
-          reason: error instanceof Error ? error.message : String(error),
-        })
-      },
-    )
+    // 单副本：进程刚起来时内存里没有任何 handle，先把还在跑的容器认领回来再定时回收。
+    // 多副本不认领全量（每个 Pod 各存一份没意义）：回收器直接按 DB 列表 + Redis lastUsed 扫。
+    if (this.runtime.isDistributed()) {
+      this.logger.info('workspace.reaper.distributed', {
+        reason: '多副本：回收器按 DB 列表 + Redis lastUsed 扫描，不做全量认领',
+      })
+    } else {
+      void this.runtime.reconcile().then(
+        (count) => {
+          if (count > 0) this.logger.info('workspace.reconcile.adopted', { count })
+        },
+        (error: unknown) => {
+          this.logger.warn('workspace.reconcile.failed', {
+            reason: error instanceof Error ? error.message : String(error),
+          })
+        },
+      )
+    }
     this.timer = setInterval(() => {
       void this.runtime.reapIdle().then(
         (count) => {

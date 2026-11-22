@@ -1,7 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common'
 import { AiWorkspaceEntity, type ConversationEntity } from '@repo/db'
 import { AppLogger, Db, requestContext, type PageQueryResult } from '@repo/kits'
-import { RunStatus } from '@repo/shared'
 import type {
   AgentConversationCreateDto,
   AgentConversationFileAccessDto,
@@ -41,8 +40,9 @@ import { AiTimelineQueryRepository } from './timeline-query.repository.js'
  * - 管理员在会话页操作时，会话的 `user_id` 存的就是管理员 id（与历史数据兼容）；
  * - 前端传不了归属，越权与不存在返回同一个错误（3304 / 3305），避免探测他人会话。
  *
- * 写入只有会话 create / rename / file-access / remove 四处；运行与时间线只读
- * （`remove` 的"取消进行中一轮"是状态收尾，不是内容修改）。
+ * 写入只有会话 create / rename / file-access / remove 四处；运行与时间线只读。
+ * `remove` 的"取消进行中一轮"改为调执行面内部接口（runs / timelines 的写方是 runtime），
+ * 控制面不再直接 UPDATE runs / 插 timeline。
  */
 @Injectable()
 export class AiAdminConversationService {
@@ -205,27 +205,22 @@ export class AiAdminConversationService {
     const ownerId = this.ownerId()
     await this.requireOwnedBy(ownerId, input.conversationId)
 
-    const canceled = await this.runs.cancelActive(input.conversationId)
-    if (canceled > 0) {
-      await this.timelines.appendStatus(input.conversationId, {
-        status: RunStatus.Canceled,
-        reason: 'conversation_removed',
-        operator: ownerId,
-        canceledRuns: canceled,
-      })
-    }
+    // runs / timelines / conversation_run_queue 只由执行面写：先让它取消活动 run 与队列项，
+    // 再软删会话行。控制面自己 UPDATE runs 会绕过状态广播，也破坏「每张表一个写方」。
+    const { canceledRuns, queuedCanceled } = await this.agents.cancelConversation(
+      input.conversationId,
+      ownerId,
+    )
 
     const children = await this.conversations.listChildren(input.conversationId)
-    for (const child of children) {
-      await this.runs.cancelActive(child.id)
-      await this.conversations.softDelete(child.id)
-    }
+    for (const child of children) await this.conversations.softDelete(child.id)
     await this.conversations.softDelete(input.conversationId)
     await this.conversations.softDeleteFiles(input.conversationId)
 
     this.logger.log('ai.conversation.removed', {
       conversationId: input.conversationId,
-      canceledRuns: canceled,
+      canceledRuns,
+      canceledQueued: queuedCanceled,
       operator: ownerId,
     })
   }

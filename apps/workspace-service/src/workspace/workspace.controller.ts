@@ -6,10 +6,12 @@ import {
   Headers,
   HttpCode,
   Inject,
+  Optional,
   Post,
+  ServiceUnavailableException,
   UseFilters,
 } from '@nestjs/common'
-import { AppExceptionFilter } from '@repo/kits'
+import { AppExceptionFilter, RedisStore } from '@repo/kits'
 import {
   WorkspaceExecRequestSchema,
   WorkspaceFsRequestSchema,
@@ -30,6 +32,8 @@ export class WorkspaceController {
   constructor(
     @Inject(WorkspaceRuntime) private readonly runtime: WorkspaceRuntime,
     @Inject(WorkspaceServiceConfig) private readonly config: WorkspaceServiceConfigValue,
+    // 单副本不装配 Redis；多副本时 readiness 必须证明锁依赖可用
+    @Optional() @Inject(RedisStore) private readonly redis?: RedisStore,
   ) {}
 
   private check(token: string | undefined): void {
@@ -44,8 +48,16 @@ export class WorkspaceController {
   }
 
   @Get('readyz')
-  ready(): { ok: boolean } {
-    return { ok: true }
+  async ready(): Promise<{ ok: boolean }> {
+    if (!this.config.multiInstance) return { ok: true }
+    try {
+      await this.redis?.ping()
+      if (!this.redis) throw new Error('RedisStore 未装配')
+      return { ok: true }
+    } catch {
+      // 多副本下锁依赖不可用 = 不能安全执行；让网关 / k8s 把本 Pod 摘掉
+      throw new ServiceUnavailableException('Redis 不可用，工作区执行面暂不可用')
+    }
   }
 
   @Post('v1/workspaces/ensure')

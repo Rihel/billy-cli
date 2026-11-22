@@ -1,5 +1,6 @@
 import { AgentRuntimeClient } from '@repo/internal-sdk'
 import type {
+  AgentConversationCancelResultModel,
   AgentInfoModel,
   AgentInstructionsDto,
   AgentInstructionsModel,
@@ -46,6 +47,20 @@ export class AgentCatalogService {
   /** 能力状态（可用模型 + agent 数）：直接问执行面，不缓存（模型开关随时会改） */
   status(): Promise<AgentStatusModel> {
     return this.client.status()
+  }
+
+  /**
+   * 取消会话内所有进行中的 run + 队列项。
+   *
+   * runs / timelines / conversation_run_queue 的写方是执行面；main 删会话前先调这里，
+   * 再把会话行软删，避免控制面直接改运行状态。
+   */
+  cancelConversation(
+    conversationId: string,
+    operator: string,
+  ): Promise<AgentConversationCancelResultModel> {
+    // 删会话可能一次取消多轮 / 多个子 run，给比目录查询更宽的 30s
+    return this.client.cancelConversation({ conversationId, operator }, { timeoutMs: 30_000 })
   }
 
   /** agent 清单（`skills: ['*']` 由执行面按当前技能库现算） */

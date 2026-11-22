@@ -104,15 +104,18 @@ export const program = async (): Promise<void> => {
       process.exit(1)
     }, timeoutMs)
 
+    let exitCode = 0
     try {
       await app.close()
       clearTimeout(forceExit)
       logger.log(`服务已关闭（耗时 ${Date.now() - startedAtMs}ms）`, 'bootstrap')
     } catch (error) {
+      // 关闭失败必须让退出码反映出来：否则 k8s / 进程管理器会把一次失败的关闭当成正常退出
+      exitCode = 1
       clearTimeout(forceExit)
       logger.error(error, '关闭资源失败', 'bootstrap')
     }
-    process.exit(0)
+    process.exit(exitCode)
   }
   process.once('SIGINT', () => void shutdown('SIGINT'))
   process.once('SIGTERM', () => void shutdown('SIGTERM'))

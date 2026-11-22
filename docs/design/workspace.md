@@ -312,12 +312,12 @@ MCP 一旦交给模型，模型就能执行 SQL/命令。**权限边界（只读
 | --- | --- | --- |
 | 配置（name / image / backend / file_access / is_default） | **main** | `ai_workspaces` |
 | 期望状态（running / stopped，用户意图） | **main** | `ai_workspaces.desired_status` |
-| 实际运行态（容器是否活着、containerId、lastUsedAt） | **workspace-service** | 内存 + 容器标签，**不落 DB** |
+| 实际运行态（容器是否活着、containerId、lastUsedAt） | **workspace-service** | 内存 + 容器标签 + Redis 锁 / lastUsed（多副本），**不落 DB** |
 
 - **main 是控制面**：列表、创建、改名、删除、启停，只写表。
 - **workspace-service 是执行面**：建 / 停 / 销毁容器、exec、fs；**不写 `ai_workspaces`**。
 - 列表 = 表里的配置 + 向 workspace-service 查一次运行态；查不到就显示「未启动 / 不可用」。
-- 容器带 `workspace-id` 标签，workspace-service 重启后按标签扫回，不依赖 DB 恢复。
+- 容器带 `workspace-id` 标签，workspace-service 重启 / 换副本后按容器名认领，不依赖 DB 恢复。
 
 ### 7.2 状态流转
 
@@ -337,6 +337,21 @@ desired_status: stopped ──用户启动 / 首次执行──→ running
 
 **用户可管理的**：查看有哪些环境、启动/停止、销毁。重命名、归档、长期保留暂不做。
 
+### 7.3 多副本（2026-11-22 落地）
+
+- **只支持 kubernetes 后端**：任意 Pod 都能 `kubectl exec` 工作区 Pod；Docker 容器在宿主本地，
+  跨宿主副本 exec 不到，local 后端是 Pod 本地盘，二者启动自检直接拒绝多副本。
+- 运行态仍是「内存 + 容器标签」，但**跨副本的 lifecycle / exec / fs 锁和 lastUsed 放 Redis**；
+  `handles` 只是本地缓存，exec / fs 前会探测容器是否还活着，失效就重建。
+- 回收器每个副本都扫 DB 列表，但先抢 lifecycle、再抢 exec；抢不到就跳过。不做全量认领。
+- 每个 Pod 上报自己的 `WORKSPACE_INSTANCE_ID` / `WORKSPACE_SERVICE_ENDPOINT`（POD_NAME / POD_IP），
+  网关 / tasks/get 才能回到原实例。
+- **发布顺序**：先从 1 副本换成**支持 Redis 锁的新版本**（`WORKSPACE_MULTI_INSTANCE=false` 也可），
+  等全部 Pod 都是新版本后再开 `WORKSPACE_MULTI_INSTANCE=true` 并扩到 2 副本。旧版没有 Redis 锁，
+  新旧混跑时滚动更新仍会双写。
+- **不在本期**：正在跑的 bash 跨 Pod 存活（Pod 死任务 expired，用户重试）；task 持久化；
+  Docker 多宿主。
+
 ## 8. 并发
 
 同一 Workspace 绑定多个 Session 时必须定义并发语义：
@@ -346,9 +361,10 @@ desired_status: stopped ──用户启动 / 首次执行──→ running
 - **bash**：按 Workspace **串行**——命令会写什么由模型决定，无法预判，只能整个串行。
 - **资源配额**：个人总配额（CPU/内存/磁盘/并发）封顶；单 Workspace 再设上限。
 
-> **已实现（2026-11-22）**：锁在执行面进程内（`apps/workspace-service/src/workspace/keyed-mutex.ts`）——
-> `exec()` 按工作区串行、`fs()` 的写类操作按 `workspaceId:path` 串行；写（`write` / `replace` /
-> `write-bytes`）走「同目录 tmp + `rename`」原子落盘，读不再可能读到半截文件。配额仍未做。
+> **已实现（2026-11-22）**：单副本走 `KeyedMutex`，多副本走 `RedisLockService`（`workspace-coordinator.ts`）——
+> `lifecycle` 锁管 ensure / setup / stop / destroy / reap，`exec` 锁按工作区串行，`fs` 写按
+> `workspaceId:path` 串行；写（`write` / `replace` / `write-bytes`）走「同目录 tmp + `rename`」原子落盘，
+> 读不再可能读到半截文件。配额仍未做；Pod 中途死亡时旧命令可能继续，语义是 at-least-once。
 
 ## 9. 镜像
 
@@ -482,7 +498,7 @@ ai_files
 | D8 | MCP 凭据模式 | **已定**：`user`（每人一份）与 `shared`（服务一份 + 授权）并存，见 §5.4 |
 | D9 | MCP 工具风险分级 | 待补：`McpToolSchema` 加 `risk`，外部工具默认 `write` |
 | D10 | 默认工作区初始化 | **已定**：主体（当前 admin）创建时建一条 `is_default` 记录（`stopped`、当前镜像版本），容器懒启动；挂钩 `AdminService.create()`，`seed:admin` 自动覆盖；存量由迁移回填 |
-| D11 | 服务职责划分 | **已定（方案 B）**：main 管 CRUD / 配置 / `desired_status`；workspace-service 只执行、不写表；运行态不落 DB（容器标签 + 内存）；2h 回收由 workspace-service 定时器做，不回写 `desired_status` |
+| D11 | 服务职责划分 | **已定（方案 B）**：main 管 CRUD / 配置 / `desired_status`；workspace-service 只执行、不写表；运行态不落 DB（容器标签 + 内存；多副本时锁 / lastUsed 落 Redis）；2h 回收由 workspace-service 定时器做，不回写 `desired_status` |
 
 ### 13.1 风险提示初始规则（命令级）
 

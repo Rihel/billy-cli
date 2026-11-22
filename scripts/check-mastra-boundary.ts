@@ -61,9 +61,74 @@ const walk = (dir: string, out: string[] = []): string[] => {
   return out
 }
 
-/** 统计一个文件里 `from '@mastra` 的次数 */
-const countMastraImports = (content: string): number =>
-  content.split('\n').filter((line) => line.includes("from '@mastra")).length
+/**
+ * 去掉注释，避免注释里写 `import '@mastra...'` 被误判成依赖。
+ *
+ * 使用一个小型词法扫描而不是直接 regex：字符串里的 `//` 不能被当注释。
+ */
+const stripComments = (source: string): string => {
+  let out = ''
+  let quote: string | null = null
+  for (let i = 0; i < source.length; i++) {
+    const char = source[i]
+    if (quote) {
+      out += char
+      if (char === '\\') {
+        out += source[++i] ?? ''
+        continue
+      }
+      if (char === quote) quote = null
+      continue
+    }
+    if (char === "'" || char === '"' || char === '`') {
+      quote = char
+      out += char
+      continue
+    }
+    const next = source[i + 1]
+    if (char === '/' && next === '/') {
+      while (i < source.length && source[i] !== '\n') i++
+      continue
+    }
+    if (char === '/' && next === '*') {
+      i += 2
+      while (i < source.length && !(source[i] === '*' && source[i + 1] === '/')) i++
+      i += 1
+      continue
+    }
+    out += char
+  }
+  return out
+}
+
+/**
+ * 统计一个文件里对 `@mastra/*` 的依赖次数。
+ *
+ * 覆盖：静态 `import ... from` / `export ... from`、副作用 `import '@mastra'`、
+ * 动态 `import()`、`require()`、类型位置的 `import('@mastra/...')`，双引号同样认。
+ * 先剥注释，避免文档里的示例被算成依赖。
+ *
+ * 为什么不用 TypeScript Compiler API：仓库的 typescript@7 原生包只暴露版本号 /
+ * unstable type-checker，不提供 `createSourceFile` 这类 AST 入口；这里用词法扫描兜住
+ * 所有**可静态识别**的写法，比只扫 `from '@mastra` 的单引号字符串可靠得多。
+ */
+const countMastraImports = (content: string): number => {
+  const source = stripComments(content)
+  const spec = `['"]@mastra(?:/[^'"]*)?['"]`
+  const patterns = [
+    // import ... from / export ... from（含 import type）
+    new RegExp(`\\bfrom\\s*${spec}`, 'g'),
+    // 副作用 import '@mastra/...'
+    new RegExp(`\\bimport\\s+${spec}`, 'g'),
+    // 动态 import('@mastra/...')（类型位置的 import() 也长这样）
+    new RegExp(`\\bimport\\s*\\(\\s*${spec}\\s*\\)`, 'g'),
+    // require('@mastra/...')
+    new RegExp(`\\brequire\\s*\\(\\s*${spec}\\s*\\)`, 'g'),
+  ]
+  let count = 0
+  for (const pattern of patterns) count += source.match(pattern)?.length ?? 0
+  return count
+}
 
 /** 纯函数：给定"文件 → 内容"，给出违规清单（便于单测直接喂内存数据） */
 export const findMastraViolations = (
@@ -109,7 +174,6 @@ export const runCheck = (root = process.cwd()): MastraViolation[] => {
   const files: Record<string, string> = {}
   for (const full of walk(join(root, SCAN_ROOT))) {
     const content = readFileSync(full, 'utf8')
-    if (!content.includes("from '@mastra")) continue
     files[relative(root, full).split('\\').join('/')] = content
   }
   return findMastraViolations(files)

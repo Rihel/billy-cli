@@ -1,4 +1,10 @@
-import { ForbiddenException, Inject, Injectable, NotFoundException } from '@nestjs/common'
+import {
+  ConflictException,
+  ForbiddenException,
+  Inject,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common'
 import { ConversationEntity, ConversationRunQueueEntity } from '@repo/db'
 import { Db, requestContext } from '@repo/kits'
 import type {
@@ -26,14 +32,48 @@ export class AgentRunQueueService {
     await this.requireOwned(input.conversationId)
     const row = await this.requireUserItem(input.conversationId, input.queueId)
     const payload = { ...row.payload, message: input.message }
-    await this.repo().update(row.id, { payload })
+    // 条件更新：检查与更新之间可能已被 runtime claim（dispatching），不能再改它的 payload
+    const result = await this.repo()
+      .createQueryBuilder()
+      .update(ConversationRunQueueEntity)
+      .set({ payload })
+      .where(
+        'id = :id AND conversation_id = :conversationId AND source = :source AND status = :status',
+        {
+          id: row.id,
+          conversationId: row.conversationId,
+          source: 'user',
+          status: 'queued',
+        },
+      )
+      .execute()
+    if ((result.affected ?? 0) === 0) {
+      throw new ConflictException('该队列项已开始执行，不能再修改')
+    }
     return toItem(Object.assign(row, { payload }))
   }
 
   async remove(input: AgentRunQueueRemoveDto): Promise<{ removed: boolean }> {
     await this.requireOwned(input.conversationId)
     const row = await this.requireUserItem(input.conversationId, input.queueId)
-    await this.repo().update(row.id, { status: 'canceled', finishedAt: new Date() })
+    // 条件更新：检查与更新之间可能已被 runtime claim，不能把 dispatching/started 改成 canceled
+    const result = await this.repo()
+      .createQueryBuilder()
+      .update(ConversationRunQueueEntity)
+      .set({ status: 'canceled', finishedAt: new Date() })
+      .where(
+        'id = :id AND conversation_id = :conversationId AND source = :source AND status = :status',
+        {
+          id: row.id,
+          conversationId: row.conversationId,
+          source: 'user',
+          status: 'queued',
+        },
+      )
+      .execute()
+    if ((result.affected ?? 0) === 0) {
+      throw new ConflictException('该队列项已开始执行，不能再删除')
+    }
     return { removed: true }
   }
 

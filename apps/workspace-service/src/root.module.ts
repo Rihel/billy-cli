@@ -6,6 +6,7 @@ import {
   DbModule,
   IdGenerationModule,
   LoggerModule,
+  RedisModule,
   WorkspaceModule,
   type DbConfig,
   type LoggerConfig,
@@ -26,8 +27,9 @@ import { WorkspaceServiceModule } from './workspace/workspace.module.js'
 /**
  * workspace-service 的组合根。
  *
- * 只接它需要的基础设施：DB（只读 `ai_workspaces`）、日志、沙箱（local 后端）。
- * 不连 Redis / 对象存储 —— 执行面不持有这些。
+ * 基础设施：DB（只读 `ai_workspaces`）、日志、沙箱（local 后端）。
+ * 单副本不连 Redis；`WORKSPACE_MULTI_INSTANCE=true` 时装配 RedisModule，
+ * 用分布式锁 / 共享 lastUsed 支持多副本（对象存储仍不持有）。
  */
 @Module({
   imports: [
@@ -58,6 +60,16 @@ import { WorkspaceServiceModule } from './workspace/workspace.module.js'
       inject: [ConfigService],
       useFactory: (config: ConfigService) => config.getOrThrow<LoggerConfig>('logger'),
     }),
+    // 多副本才连 Redis：单副本保持执行面不依赖 Redis 的现状
+    ...(process.env.WORKSPACE_MULTI_INSTANCE && process.env.WORKSPACE_MULTI_INSTANCE !== 'false'
+      ? [
+          RedisModule.forRootAsync({
+            imports: [ConfigModule],
+            inject: [ConfigService],
+            useFactory: (config: ConfigService) => config.getOrThrow('redis'),
+          }),
+        ]
+      : []),
     CommandModule,
     WorkspaceModule.forRootAsync({
       imports: [ConfigModule],

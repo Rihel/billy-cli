@@ -85,7 +85,7 @@ export class AgentSseBridge {
     clientId: string,
     res: Response,
     options: { deferred?: boolean; protocol?: StreamProtocol } = {},
-  ): Promise<void> {
+  ): Promise<boolean> {
     const session: Session = {
       clientId,
       res,
@@ -115,14 +115,19 @@ export class AgentSseBridge {
       if (session.closed || this.sessions.get(clientId) !== session) {
         this.clearHeartbeat(session)
         unsubscribe()
-        return
+        return false
       }
       session.unsubscribe = unsubscribe
+      return true
     } catch (error) {
       this.logger.warn('agent.sse.subscribe_failed', {
         clientId,
         reason: error instanceof Error ? error.message : String(error),
       })
+      // 订阅没成功就不能让调用方继续触发 runtime：否则这一轮所有帧都发到没人收的频道，
+      // 连接又被心跳保活，前端会一直停在"思考中"。
+      this.clearHeartbeat(session)
+      return false
     }
   }
 

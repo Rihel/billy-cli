@@ -131,9 +131,19 @@ export class ConversationRunQueueDispatcher implements OnModuleInit, OnModuleDes
     }
 
     try {
-      const handle = await this.chat.startQueuedTurn(item)
-      // run 已创建：立刻落 run_id（进程在"建了 run、还没标 started"之间被杀也能对账）
-      await this.queue.markStarted(item.id, handle.runId)
+      // run 先以 pending 建出来，但**只有把队列项从 dispatching 抢成 started 成功，才允许起跑**。
+      // 抢不到说明这一项刚被取消 / 删会话 / 换手：startQueuedTurn 会把 pending run 立刻取消。
+      const handle = await this.chat.startQueuedTurn(item, (runId) =>
+        this.queue.markStarted(item.id, runId),
+      )
+      if (!handle) {
+        this.logger.log('ai.run_queue.claim_lost', {
+          conversationId,
+          queueId: item.id,
+          source: item.source,
+        })
+        return false
+      }
       const status = await handle.done
       await this.queue.finishByRun(
         handle.runId,
@@ -150,12 +160,28 @@ export class ConversationRunQueueDispatcher implements OnModuleInit, OnModuleDes
       return true
     } catch (error) {
       if (error instanceof ConversationBusyError) {
-        // 检查与 claim 之间被别的一轮抢到了：放回队列，下一次 tick 再取（不是失败）
-        await this.queue.requeue(item.id)
+        // 检查与 claim 之间被别的一轮抢到了：放回队列，下一次 tick 再取（不是失败）。
+        // requeue 带前置状态：如果期间被取消，不能把它复活成 queued。
+        const requeued = await this.queue.requeue(item.id)
+        if (!requeued) {
+          this.logger.log('ai.run_queue.requeue_skipped', {
+            conversationId,
+            queueId: item.id,
+            reason: '已不在 dispatching（可能已取消）',
+          })
+        }
         return false
       }
       const reason = error instanceof Error ? error.message : String(error)
-      await this.queue.markFailed(item.id, reason)
+      const marked = await this.queue.markFailed(item.id, reason)
+      if (!marked) {
+        this.logger.log('ai.run_queue.fail_skipped', {
+          conversationId,
+          queueId: item.id,
+          reason: '已不在 dispatching/started（可能已取消）',
+        })
+        return false
+      }
       this.logger.error('ai.run_queue.dispatch_failed', {
         conversationId,
         queueId: item.id,
@@ -183,8 +209,12 @@ export class ConversationRunQueueDispatcher implements OnModuleInit, OnModuleDes
         continue
       }
       if (TERMINAL.has(run.status)) {
-        // `finishByRun` 只收 started：进程在 markStarted 之前被杀时先补这一笔
-        if (row.status === 'dispatching') await this.queue.markStarted(row.id, run.id)
+        // `finishByRun` 只收 started：进程在 markStarted 之前被杀时先补这一笔。
+        // 补不上说明这一项已被取消/换手，不要继续改它的终态。
+        if (row.status === 'dispatching') {
+          const started = await this.queue.markStarted(row.id, run.id)
+          if (!started) continue
+        }
         await this.queue.finishByRun(
           run.id,
           run.status === RunStatus.Succeeded

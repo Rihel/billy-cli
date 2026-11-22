@@ -1,6 +1,7 @@
 export * from './redis.config.js'
 export * from './redis.module.js'
 export * from './redis-store.js'
+export * from './redis-url.js'
 export * from './redis-lock.service.js'
 export * from './redis-lock.decorator.js'
 export * from './redis-list-cache.js'

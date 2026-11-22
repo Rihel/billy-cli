@@ -14,16 +14,19 @@ import {
 import {
   AgentChatResumeSchema,
   AgentChatSchema,
+  AgentConversationCancelSchema,
   AgentInstructionsSchema,
   AgentRunStopSchema,
   type AgentChatDto,
   type AgentChatResumeDto,
+  type AgentConversationCancelDto,
   type AgentInstructionsDto,
   type AgentRunStopDto,
 } from '@repo/shared'
 import type { Response } from 'express'
 import { AgentService } from '../agents/service.js'
 import { AgentChatService } from '../runtime/chat.service.js'
+import { AgentConversationService } from '../runtime/conversation.service.js'
 
 /** main 的内部会话入口：身份由 main 鉴权后通过内部 token + 头传入 */
 @Controller('internal/agent')
@@ -31,6 +34,7 @@ export class AgentInternalController {
   constructor(
     @Inject(AgentChatService) private readonly chat: AgentChatService,
     @Inject(AgentService) private readonly agents: AgentService,
+    @Inject(AgentConversationService) private readonly conversations: AgentConversationService,
   ) {}
 
   /**
@@ -123,6 +127,22 @@ export class AgentInternalController {
       owner.isAdmin,
       clientId?.trim() || undefined,
     )
+  }
+
+  /**
+   * 取消会话内所有进行中的 run + 队列项。
+   *
+   * main 删会话前调用：runs / timelines / conversation_run_queue 的写方是 runtime，
+   * main 不再自己 `UPDATE runs` / 插 timeline。
+   */
+  @Post('conversation/cancel')
+  @HttpCode(200)
+  cancelConversation(
+    @Body({ schema: AgentConversationCancelSchema }) input: AgentConversationCancelDto,
+    @Headers('x-internal-token') token: string | undefined,
+  ) {
+    this.requireToken(token)
+    return this.conversations.cancelActiveConversation(input.conversationId, input.operator)
   }
 
   @Post('run/stop')

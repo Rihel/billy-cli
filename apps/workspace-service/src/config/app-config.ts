@@ -6,6 +6,7 @@ import {
   DbConfigSchema,
   envConfigLoader,
   LoggerConfigSchema,
+  RedisConfigSchema,
   WorkspaceConfigSchema,
 } from '@repo/kits'
 
@@ -21,11 +22,20 @@ export const workspaceServiceAppConfigSchema = z.object({
   }),
   logger: LoggerConfigSchema,
   db: DbConfigSchema,
+  /** 多副本时的跨副本锁 / lastUsed（单副本不装配 RedisModule） */
+  redis: RedisConfigSchema,
   /** local 后端的沙箱配置（复用 kits 的 L1 沙箱） */
   workspace: WorkspaceConfigSchema,
   service: z.object({
     /** 内部令牌：main / 执行面之间；生产必须显式配置 */
     internalToken: z.string().min(1).default('dev-workspace-token'),
+    /**
+     * 是否多副本。
+     *
+     * 多副本只支持 kubernetes 后端：Docker 容器在某个宿主上，跨宿主的副本 exec 不到；
+     * local 后端更是 Pod 本地盘。打开后启动自检会拒绝 docker / local。
+     */
+    multiInstance: z.boolean().default(false),
     /** 容器后端的默认镜像（workspace.image 为空时回退） */
     defaultImage: z.string().min(1).default('billy-workspace:latest'),
     /** 容器后端：docker（单机 / compose）或 kubernetes（云端多租户，走 kubectl） */
@@ -88,6 +98,10 @@ export const mapWorkspaceServiceEnv = (env: NodeJS.ProcessEnv): Record<string, u
     url: optional(env.WORKSPACE_DB_URL) ?? optional(env.DB_URL),
     poolSize: optional(env.DB_POOL_SIZE),
   },
+  redis: {
+    url: optional(env.REDIS_URL),
+    keyPrefix: optional(env.REDIS_KEY_PREFIX),
+  },
   workspace: {
     mode: optional(env.AGENT_WORKSPACE_MODE),
     sandboxNetwork: optional(env.AGENT_WORKSPACE_SANDBOX_NETWORK),
@@ -95,6 +109,7 @@ export const mapWorkspaceServiceEnv = (env: NodeJS.ProcessEnv): Record<string, u
   },
   service: {
     internalToken: optional(env.WORKSPACE_INTERNAL_TOKEN),
+    multiInstance: parseBoolean(env.WORKSPACE_MULTI_INSTANCE),
     mainUrl: optional(env.MAIN_URL),
     mainToken: optional(env.TOOL_INTERNAL_TOKEN),
     defaultImage: optional(env.WORKSPACE_DEFAULT_IMAGE),

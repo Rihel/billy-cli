@@ -1,8 +1,11 @@
 import {
+  AgentConversationCancelResultSchema,
   AgentInstructionsModelSchema,
   AgentListSchema,
   AgentStatusSchema,
   AgentToolListSchema,
+  type AgentConversationCancelDto,
+  type AgentConversationCancelResultModel,
   type AgentInstructionsDto,
   type AgentInstructionsModel,
   type AgentListModel,
@@ -45,6 +48,28 @@ export class AgentRuntimeClient {
       body: {},
       ...options,
     })
+  }
+
+  /**
+   * 取消会话内所有进行中的 run + 队列项（main 删会话前调用）。
+   *
+   * runs / timelines / conversation_run_queue 的写方是 runtime；main 通过它收口，
+   * 不再自己 UPDATE runs / 插 timeline。
+   */
+  cancelConversation(
+    input: AgentConversationCancelDto,
+    options: InvokeOptions = {},
+  ): Promise<AgentConversationCancelResultModel> {
+    return requestEnvelope(
+      this.options,
+      '/internal/agent/conversation/cancel',
+      AgentConversationCancelResultSchema,
+      {
+        method: 'POST',
+        body: input,
+        ...options,
+      },
+    )
   }
 
   /** 系统指令原文（静态定义；会话快照由 main 自己读时间线） */

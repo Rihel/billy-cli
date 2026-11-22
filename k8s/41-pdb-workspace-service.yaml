@@ -1,0 +1,15 @@
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: billy-workspace-service
+  namespace: billy
+  labels:
+    app.kubernetes.io/name: billy-workspace-service
+    app.kubernetes.io/component: workspace-service
+spec:
+  # 2 副本下节点排水最多打掉 1 个；滚动更新本身由 maxUnavailable: 0 约束
+  minAvailable: 1
+  unhealthyPodEvictionPolicy: AlwaysAllow
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: billy-workspace-service

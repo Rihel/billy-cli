@@ -47,8 +47,13 @@ export class AgentSseController {
 
     response.writeHead(200, SSE_HEADERS)
     response.flushHeaders()
-    // 先挂订阅再触发运行：runtime 一旦开跑就会往这条频道发帧，晚一步首帧就丢了
-    await this.bridge.attach(clientId, response, { protocol: streamProtocol })
+    // 先挂订阅再触发运行：runtime 一旦开跑就会往这条频道发帧，晚一步首帧就丢了。
+    // 订阅失败绝不能"照常起跑"：那一轮所有帧都会发到没人收的频道。
+    const attached = await this.bridge.attach(clientId, response, { protocol: streamProtocol })
+    if (!attached) {
+      this.bridge.fail(clientId, '实时通道订阅失败，请重试')
+      return
+    }
 
     const requestHeaders = this.headers(clientId, headers)
     requestHeaders['content-type'] = 'application/json'

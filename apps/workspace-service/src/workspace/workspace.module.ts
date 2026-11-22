@@ -4,6 +4,7 @@ import { WorkspaceServiceConfig, type WorkspaceServiceConfigValue } from '../con
 import { WorkspaceController } from './workspace.controller.js'
 import { WorkspaceRepository } from './workspace.repository.js'
 import { WorkspaceRuntime } from './workspace-runtime.service.js'
+import { WorkspaceCoordinator } from './workspace-coordinator.js'
 import { WorkspaceSetupService } from './workspace-setup.service.js'
 import { WorkspaceCredentialClient } from './credential.client.js'
 import { WorkspaceReaper } from './workspace-reaper.service.js'
@@ -36,6 +37,7 @@ import { WorkspaceTaskController } from '../capabilities/tasks.controller.js'
     WorkspaceRepository,
     WorkspaceCredentialClient,
     WorkspaceSetupService,
+    WorkspaceCoordinator,
     WorkspaceRuntime,
     WorkspaceReaper,
     WorkspaceLocator,

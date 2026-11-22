@@ -25,6 +25,11 @@ export const DEFAULT_ROOTS = [
   'packages/monitor/src',
   'apps/agent-runtime/src',
   'apps/model-gateway/src',
+  // 这四个 app 的开发态同样走 tsx（不产出 design:paramtypes），不扫等于没有守
+  'apps/main/src',
+  'apps/capability-gateway/src',
+  'apps/common-capability/src',
+  'apps/workspace-service/src',
 ]
 
 export interface InjectViolation {

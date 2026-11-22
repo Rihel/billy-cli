@@ -7,6 +7,7 @@ import {
 } from '@nestjs/common'
 import { Redis as RedisClient } from 'ioredis'
 import { RedisConfig } from './redis.config.js'
+import { redisTargetOf } from './redis-url.js'
 import { IdGeneration } from '../foundation/id-generation/id-generation.js'
 import { RedisStoreError } from '../foundation/errors/infrastructure-errors.js'
 
@@ -31,7 +32,12 @@ export class RedisStore implements OnApplicationBootstrap, OnApplicationShutdown
     this.idGeneration = idGeneration
     const url = config.url
     const keyPrefix = config.keyPrefix
-    this.logger.info('正在链接Redis', { url, keyPrefix })
+    // 连接串可能带用户名 / 密码：只记可安全落日志的 host / port / TLS
+    const target = redisTargetOf(url)
+    this.logger.info('正在链接Redis', {
+      ...(target ?? { host: 'unknown', port: 0, tls: false }),
+      keyPrefix,
+    })
     this.raw = new RedisClient(url, { keyPrefix, lazyConnect: true })
     this.raw.on('error', (error) => {
       this.logger.error('Redis 连接错误', { error })

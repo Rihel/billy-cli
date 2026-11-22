@@ -37,7 +37,7 @@ main 的 `AgentSseBridge` 订阅这个**定向频道**后写成前端 SSE（`/ag
 
 ## 1. 文件与部署顺序
 
-`k8s/` 共 **24 个 YAML**（另有本 README）：
+`k8s/` 共 **25 个 YAML**（另有本 README）：
 
 | 文件 | 内容 |
 | --- | --- |
@@ -54,21 +54,22 @@ main 的 `AgentSseBridge` 订阅这个**定向频道**后写成前端 SSE（`/ag
 | `22-deployment-model-gateway.yaml` | model-gateway Deployment（9992） |
 | `23-deployment-capability-gateway.yaml` | capability-gateway Deployment（9993） |
 | `24-deployment-common-capability.yaml` | common-capability Deployment（9994，**1 副本**，原因见文件头注释） |
-| `25-deployment-workspace-service.yaml` | workspace-service Deployment（9995，**1 副本**，引用 ServiceAccount，不挂业务 PVC） |
+| `25-deployment-workspace-service.yaml` | workspace-service Deployment（9995，**2 副本**，引用 ServiceAccount，不挂业务 PVC；多副本锁依赖 Redis） |
 | `30-service.yaml` | main 的 ClusterIP Service（80 → 容器 `http` 9989） |
 | `31-service-agent-runtime.yaml` | agent-runtime 的 ClusterIP Service（9990） |
 | `32-service-model-gateway.yaml` | model-gateway 的 ClusterIP Service（9992） |
 | `33-service-capability-gateway.yaml` | capability-gateway 的 ClusterIP Service（9993） |
 | `34-service-common-capability.yaml` | common-capability 的 ClusterIP Service（9994，运维直连 / 排障用） |
 | `35-service-workspace-service.yaml` | workspace-service 的 ClusterIP Service（9995） |
-| `40-pdb.yaml` | main 的 PodDisruptionBudget（`minAvailable: 2`，只有 main 有 PDB） |
+| `40-pdb.yaml` | main 的 PodDisruptionBudget（`minAvailable: 2`） |
+| `41-pdb-workspace-service.yaml` | workspace-service 的 PodDisruptionBudget（`minAvailable: 1`） |
 | `50-ingress.yaml` | 常规入口（ingress-nginx）→ `billy-main` |
 | `51-ingress-sse.yaml` | SSE 专用入口（`/sse`、`/agent/chat/stream`、`/agent/run`，关缓冲）→ `billy-main` |
 | `60-hpa.yaml` | 三份 HPA：`billy-main` 3–8、`billy-agent-runtime` 2–8、`billy-model-gateway` 2–8，CPU 70% |
 
 对象总数与数量口径：
 
-- **6 个 Deployment**：main 3 副本、runtime 2、model-gateway 2、capability-gateway 2、common-capability 1、workspace-service 1；
+- **6 个 Deployment**：main 3 副本、runtime 2、model-gateway 2、capability-gateway 2、common-capability 1、workspace-service 2；
 - **7 份 ConfigMap**：`billy-shared` / `billy-main` / `billy-agent-runtime`（10 号文件 3 份）+ 11–14 号各 1 份；
 - **6 个 ClusterIP Service**；**3 份 HPA**；**2 份 Ingress**；**1 个 PDB**；**1 个 PVC**；**1 份 RBAC**（SA + Role + RoleBinding）。
 
@@ -126,7 +127,7 @@ kubectl apply -f k8s/20-deployment.yaml \
 kubectl apply -f k8s/30-service.yaml -f k8s/31-service-agent-runtime.yaml \
   -f k8s/32-service-model-gateway.yaml -f k8s/33-service-capability-gateway.yaml \
   -f k8s/34-service-common-capability.yaml -f k8s/35-service-workspace-service.yaml
-kubectl apply -f k8s/40-pdb.yaml -f k8s/60-hpa.yaml
+kubectl apply -f k8s/40-pdb.yaml -f k8s/41-pdb-workspace-service.yaml -f k8s/60-hpa.yaml
 kubectl apply -f k8s/50-ingress.yaml -f k8s/51-ingress-sse.yaml
 ```
 
@@ -144,7 +145,7 @@ kubectl apply -f k8s/50-ingress.yaml -f k8s/51-ingress-sse.yaml
 | 键 | 消费者 | 说明 |
 | --- | --- | --- |
 | `DB_URL` | 六个服务 | PostgreSQL 连接串；common-capability 优先读 `TOOL_WORKER_DB_URL`、workspace-service 优先读 `WORKSPACE_DB_URL`，未设时回落到它 |
-| `REDIS_URL` | main / runtime / model-gateway / capability-gateway / common-capability | Redis 连接串（pub/sub、会话租约、能力注册表、缓存）；workspace-service 不连 Redis |
+| `REDIS_URL` | main / runtime / model-gateway / capability-gateway / common-capability / workspace-service（多副本时） | Redis 连接串（pub/sub、会话租约、能力注册表、缓存；多副本工作区锁 / lastUsed） |
 | `JWT_SECRET` | main / runtime | 签发校验 JWT |
 | `AGENT_INTERNAL_TOKEN` | main / runtime | main → runtime 内部接口（`/internal/agent/*`）的凭证，两边必须相同 |
 | `MODEL_INTERNAL_TOKEN` | **model-gateway** | 网关自身校验的令牌（`x-internal-token`） |
@@ -196,8 +197,8 @@ model-gateway 读取；`MASTRA_*` 只保留为 main **首次启动的可选种�
 - workspace-service：
   - `WORKSPACE_GATEWAY_URL=http://billy-capability-gateway.billy.svc.cluster.local:9993`（**启动登记地址**；
     不配会跳过登记，`bash` / 文件能力就没有提供方）；
-  - `WORKSPACE_SERVICE_ENDPOINT=http://billy-workspace-service.billy.svc.cluster.local:9995`（**登记时上报的
-    本实例地址**，网关选路后回调它执行 `/invoke`；不配会回落 `127.0.0.1:9995`，网关在别的 Pod 上打不到）；
+  - `WORKSPACE_SERVICE_ENDPOINT=http://$(POD_IP):9995`（**本实例地址**，Deployment 用 downward API
+    注入 `POD_IP`；不能用 Service DNS，否则网关 / `tasks/get` 会轮询到别的 Pod）；
 - 能力网关没有静态 worker 兜底地址：它从 Redis 注册表按 `active / maxConcurrency` 选实例，再直连该实例
   上报的地址（common-capability 用 Pod IP，workspace-service 用 `WORKSPACE_SERVICE_ENDPOINT`）。
 
@@ -225,7 +226,7 @@ model-gateway 读取；`MASTRA_*` 只保留为 main **首次启动的可选种�
 | `CAPABILITY_GATEWAY_URL` / `WORKSPACE_GATEWAY_URL` == capability-gateway Service 的 DNS + 端口 | 改 Service 名 / 端口时要同步 common-capability / workspace-service 的登记地址 |
 | 每个服务的 `PORT` == 容器端口 == Service `targetPort`（名称统一 `http`） | 端口名是 Service 与探针的共同引用点；不一致时 Service 直接没有 endpoint |
 | `TOOL_WORKER_ENDPOINT` 用 **Pod IP**（downward API `status.podIP`）而不是 Service DNS | 网关按注册表选中实例后直连该地址；走 Service 会被 kube-proxy 轮询到别的 Pod，实例选路 / 任务归属失效 |
-| `WORKSPACE_SERVICE_ENDPOINT` == workspace-service 的 Service DNS + 端口（当前 1 副本） | 登记时上报的回调地址；写错时网关能登记、但一调 `/invoke` 就连不上 |
+| `WORKSPACE_SERVICE_ENDPOINT` 用 **Pod IP**（downward API `status.podIP`），不是 Service DNS | 网关按注册实例回调 `/invoke`、`tasks/get` 也按实例回查；走 Service 会被轮询到别的 Pod，任务归属失效 |
 | PVC 挂载路径 `/home/appuser/.billy/workspaces` == `AGENT_COMMAND_WORK_DIR` | runtime 的附件物化 / 本地工作区根；不一致时持久化等于没做 |
 | workspace-service 的 Deployment 必须 `serviceAccountName: billy-workspace-service`，且 16 号文件先于它 apply | 否则创建 / exec / 删除工作区 Pod 一律 403 |
 | `WORKSPACE_CONTAINER_RUNTIME=kubernetes` 时容器里必须有可用的 kubectl + kubeconfig | 执行面用 kubectl 操作 Pod；镜像只装 kubectl，「凭据由运行环境提供」，清单本身没有注入 kubeconfig（见 §10） |
@@ -256,8 +257,8 @@ kubectl -n billy get hpa            # TARGETS 列不应长期是 <unknown>/70%
 - 缩容默认有 5 分钟稳定窗（`stabilizationWindowSeconds=300`），流量突降不会立刻砍副本；
 - **runtime 的 `maxReplicas: 8` 依赖工作区 PVC 是 RWX**；只有 RWO 时不要开 HPA（见 §6）；
 - **capability-gateway / common-capability / workspace-service 不配 HPA**：网关只做目录 / 路由 / 审计；
-  common-capability 固定 1 副本（进程内任务句柄 / 旧数据本地回落）；workspace-service 固定 1 副本
-  （工作区 handle 映射在内存里，多副本会重复管理同一批 Pod）。
+  common-capability 固定 1 副本（进程内任务句柄 / 旧数据本地回落）；workspace-service 固定 2 副本
+  （跨副本锁 / lastUsed 走 Redis；CPU 不反映执行负载，要扩用 active_executions 指标）。
 
 ## 6. 工作区 PVC 与 workspace-service 的前置条件
 
@@ -289,9 +290,11 @@ kubectl -n billy get pvc                    # STATUS 必须是 Bound，不是 Pe
   （`sleep infinity`，`/workspace` 用 emptyDir），由 workspace-service 通过 kubectl 创建 / exec / 删除；
 - **RBAC**：`16-rbac-workspace-service.yaml` 只授 `pods` 的 get/list/watch/create/delete 与 `pods/exec` 的
   create/get，不给其它资源；Deployment 通过 `serviceAccountName` 使用它。**漏配 SA / RBAC 时执行面 403**；
-- **固定 1 副本**：运行态（`workspaceId → handle / 容器名` + 空闲回收）在执行面内存里，多副本会各自管理同一批
-  Pod、重复回收；要横向扩，先把运行态做成分区 / 一致性租约，并让每个 Pod 上报自己的
-  `WORKSPACE_SERVICE_ENDPOINT`；
+- **2 副本**：运行态（`workspaceId → handle / 容器名`）仍在内存，但跨副本 lifecycle / exec / fs 锁与
+  lastUsed 放 Redis；每个 Pod 用 downward API 上报自己的 `WORKSPACE_SERVICE_ENDPOINT`（POD_IP）。
+  Docker 跨宿主 / local 后端仍只允许 1 副本，启动自检会拒绝 `WORKSPACE_MULTI_INSTANCE=true`；
+- **首次启用多副本的发布顺序**：先把 1 副本全部换成支持 Redis 锁的新版本（`WORKSPACE_MULTI_INSTANCE=false`
+  也可），再开 `WORKSPACE_MULTI_INSTANCE=true` / `replicas: 2`；旧版没有 Redis 锁，新旧混跑会双写。
 - **kubectl 凭据**：镜像只装 kubectl（`docker/Dockerfile.workspace-service` 注释也写明「kubeconfig 由运行环境提供」），
   本目录**没有**注入 `KUBECONFIG` / in-cluster 凭据的清单；上线前必须由运行环境补上（kubectl 不自动读 Pod 内的
   ServiceAccount token，见 §10）；
@@ -450,7 +453,7 @@ kubectl -n billy exec deploy/billy-agent-runtime -- \
 
 - **metrics-server 未装 = HPA 不工作**（停在 minReplicas，不报错），见 §5；
 - **存储类不支持 RWX = runtime 多副本起不来**，见 §6；只有 RWO 时改单副本并撤掉 runtime HPA；
-- **workspace-service 固定 1 副本**（运行态在内存），不配 HPA；多副本前先做运行态外置 / 分区；
+- **workspace-service 固定 2 副本**（跨副本锁在 Redis），不配 HPA；Docker 跨宿主 / local 仍只允许单副本；
 - **workspace-service 的 kubectl 凭据是缺口**：清单给 SA + RBAC，但镜像里的 kubectl 不会自动使用
   in-cluster ServiceAccount，需要运行环境注入 `KUBECONFIG` / 凭据（当前 Deployment 没有这部分）。上线前必须补齐，
   否则创建 / exec 工作区 Pod 会失败；

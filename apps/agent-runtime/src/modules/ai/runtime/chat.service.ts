@@ -855,15 +855,19 @@ export class AgentChatService {
     agentKey: string,
     userId: string,
     origin: 'user' | 'subagent' = 'user',
+    options: { deferStart?: boolean } = {},
   ) {
     try {
-      const run = await this.runs.create({
-        conversationId: conversation.id,
-        agentKey,
-        status: RunStatus.Pending,
-        triggeredBy: userId,
-        origin,
-      })
+      const run = await this.runs.create(
+        {
+          conversationId: conversation.id,
+          agentKey,
+          status: RunStatus.Pending,
+          triggeredBy: userId,
+          origin,
+        },
+        { notify: options.deferStart !== true },
+      )
       /**
        * **把引擎 runId 定死成我们这一行的 id**，起跑时就回写。
        *
@@ -877,7 +881,8 @@ export class AgentChatService {
        * 双方用同一个 id，快照就能落到正确那一行上。
        */
       const engineRunId = `eng_${run.id}`
-      await this.runs.markRunning(run.id, engineRunId)
+      // 排队调度要等队列项抢到才允许起跑（deferStart）；直接发起的对话照旧立刻 running
+      if (!options.deferStart) await this.runs.markRunning(run.id, engineRunId)
       return { ...run, engineRunId }
     } catch (error) {
       // TypeORM 把 PG 的错误信息放在 `driverError` 里（顶层只有 message），两处都取一下
@@ -2566,10 +2571,13 @@ export class AgentChatService {
    * 创建 run 是同步的（调用方要立刻拿到 runId 落 `queue.run_id`），之后的无头执行在后台跑，
    * 结果通过 `done` 返回：`succeeded/failed/canceled`。执行内部**不抛业务错**，失败已落 `runs`。
    */
-  async startQueuedTurn(item: ConversationRunQueueEntity): Promise<{
+  async startQueuedTurn(
+    item: ConversationRunQueueEntity,
+    claim?: (runId: string) => Promise<boolean>,
+  ): Promise<{
     runId: string
     done: Promise<'succeeded' | 'failed' | 'canceled'>
-  }> {
+  } | null> {
     const conversation = await this.conversationRepo.findEntity(item.conversationId)
     if (!conversation) throw new Error('会话不存在或已删除，队列项不再执行')
     const payload = asRecord(item.payload)
@@ -2582,10 +2590,35 @@ export class AgentChatService {
     )
     const queue = { id: item.id, source: item.source, dedupeKey: item.dedupeKey }
 
+    /**
+     * 队列项抢到才允许起跑：`claim` 是 `dispatching -> started` 的条件 UPDATE。
+     * 抢不到（已被删会话 / 取消 / 换手）时，这一行 pending run 必须立刻取消 ——
+     * 否则会留下一条永远"在进行中"的审计记录，并占住会话的活动 run 唯一索引。
+     */
+    const claimRun = async (run: { id: string; engineRunId: string }): Promise<boolean> => {
+      if (!claim) return true
+      try {
+        if (await claim(run.id)) return true
+      } catch (error) {
+        await this.runs.finish(run.id, { status: RunStatus.Canceled }).catch(() => undefined)
+        throw error
+      }
+      await this.runs.finish(run.id, { status: RunStatus.Canceled })
+      return false
+    }
+
     if (item.source === 'subagent') {
       const wake = toSubAgentWake(payload)
       if (!wake) throw new Error('子 agent 唤醒 payload 缺少 subAgentId / subRunId / name')
-      const run = await this.startRun(conversation, definition.key, conversation.userId, 'subagent')
+      const run = await this.startRun(
+        conversation,
+        definition.key,
+        conversation.userId,
+        'subagent',
+        { deferStart: true },
+      )
+      if (!(await claimRun(run))) return null
+      await this.runs.markRunning(run.id, run.engineRunId)
       const done = this.executeQueuedTurn({
         run,
         conversation,
@@ -2603,7 +2636,11 @@ export class AgentChatService {
 
     const user = toQueuedUser(payload)
     if (!user) throw new Error('用户排队消息 payload 缺少 message')
-    const run = await this.startRun(conversation, definition.key, conversation.userId, 'user')
+    const run = await this.startRun(conversation, definition.key, conversation.userId, 'user', {
+      deferStart: true,
+    })
+    if (!(await claimRun(run))) return null
+    await this.runs.markRunning(run.id, run.engineRunId)
     const done = this.executeQueuedTurn({
       run,
       conversation,

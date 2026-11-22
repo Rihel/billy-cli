@@ -433,7 +433,7 @@ main 是配置的唯一写方，下游需要感知两类变化（没有事件的
   `danger-full-access` 是**部署级**能力（`AGENT_WORKSPACE_MODE=off` 才放开，默认 `enforce`，
   沙箱不可用 fail closed）；容器后端本身即隔离，没有再按文件权限做只读约束。
   会话级 `file_access` 当前没有传到执行面（见「已知缺口」第 5 条）。
-- **部署约束**：运行态在进程内存里，k8s 固定 1 副本（多副本会各自管理同一批 Pod、重复回收）。
+- **部署约束**：k8s 可多副本（2 副本，跨副本 lifecycle / exec / fs 锁与 lastUsed 走 Redis；任意副本都能处理任意工作区）；Docker 跨宿主 / local 后端仍只允许单副本，启动自检会拒绝。
 
 ### model-gateway（9992）
 

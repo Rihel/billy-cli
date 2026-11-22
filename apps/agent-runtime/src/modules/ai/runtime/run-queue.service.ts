@@ -50,34 +50,55 @@ export class ConversationRunQueue {
     @Inject(AppLogger) private readonly logger: AppLogger,
   ) {}
 
-  /** 入队；dedupeKey 冲突时返回已有行（幂等）；超过每会话上限抛错 */
+  /**
+   * 入队；dedupeKey 冲突时返回已有行（幂等）；超过每会话上限抛错。
+   *
+   * 容量检查与插入必须在**同一个事务 + 会话级 advisory lock** 里：多副本同时入队时
+   * `count -> insert` 的 check-then-act 会让 50 条上限被突破。锁只按 conversation 串行，
+   * 不同会话互不影响；dedupe 也放在锁内先查，已入队的重试不会被容量误拒。
+   */
   async enqueue(input: EnqueueRunInput): Promise<ConversationRunQueueEntity> {
-    const pending = await this.pendingCount(input.conversationId)
-    if (pending >= MAX_QUEUED_PER_CONVERSATION) {
-      throw new Error(
-        `该会话已有 ${pending} 条待处理消息（上限 ${MAX_QUEUED_PER_CONVERSATION}），请等当前任务结束后再发`,
-      )
-    }
-    const repo = this.db.getRepository(ConversationRunQueueEntity)
-    const row = repo.create({
-      conversationId: input.conversationId,
-      source: input.source,
-      priority: input.source === 'user' ? 0 : 1,
-      status: 'queued',
-      dedupeKey: input.dedupeKey ?? null,
-      payload: input.payload,
-    })
     try {
-      const saved = await repo.save(row)
-      this.logger.log('ai.run_queue.enqueued', {
-        queueId: saved.id,
-        conversationId: input.conversationId,
-        source: input.source,
+      return await this.db.dataSource.transaction(async (manager) => {
+        await manager.query('SELECT pg_advisory_xact_lock(hashtext($1))', [
+          `run_queue:${input.conversationId}`,
+        ])
+        const repo = manager.getRepository(ConversationRunQueueEntity)
+        if (input.dedupeKey) {
+          const existing = await repo.findOne({ where: { dedupeKey: input.dedupeKey } })
+          if (existing) return existing
+        }
+        const pending = await repo.count({
+          where: { conversationId: input.conversationId, status: 'queued' },
+        })
+        if (pending >= MAX_QUEUED_PER_CONVERSATION) {
+          throw new Error(
+            `该会话已有 ${pending} 条待处理消息（上限 ${MAX_QUEUED_PER_CONVERSATION}），请等当前任务结束后再发`,
+          )
+        }
+        const saved = await repo.save(
+          repo.create({
+            conversationId: input.conversationId,
+            source: input.source,
+            priority: input.source === 'user' ? 0 : 1,
+            status: 'queued',
+            dedupeKey: input.dedupeKey ?? null,
+            payload: input.payload,
+          }),
+        )
+        this.logger.log('ai.run_queue.enqueued', {
+          queueId: saved.id,
+          conversationId: input.conversationId,
+          source: input.source,
+        })
+        return saved
       })
-      return saved
     } catch (error) {
+      // 事务已回滚；并发的同 dedupeKey 可能刚插入成功，回读一次保证幂等
       if (input.dedupeKey) {
-        const existing = await repo.findOne({ where: { dedupeKey: input.dedupeKey } })
+        const existing = await this.db
+          .getRepository(ConversationRunQueueEntity)
+          .findOne({ where: { dedupeKey: input.dedupeKey } })
         if (existing) return existing
       }
       throw error
@@ -121,27 +142,61 @@ export class ConversationRunQueue {
     }
   }
 
-  /** 取到但没能起跑（会话又被占用 / 竞态）：放回队列，下一轮再取 */
-  async requeue(id: string): Promise<void> {
-    await this.db
+  /**
+   * 取到但没能起跑（会话又被占用 / 竞态）：放回队列，下一轮再取。
+   *
+   * 必须带 `from='dispatching'`：取消可能在这两步之间发生，无条件的 update 会把
+   * 已取消的项复活成 queued，下一轮又执行一条用户已经删掉的请求。
+   */
+  async requeue(id: string): Promise<boolean> {
+    const result = await this.db
       .getRepository(ConversationRunQueueEntity)
-      .update(id, { status: 'queued', startedAt: null })
+      .createQueryBuilder()
+      .update(ConversationRunQueueEntity)
+      .set({ status: 'queued', startedAt: null })
+      .where('id = :id AND status = :status', { id, status: 'dispatching' })
+      .execute()
+    return (result.affected ?? 0) > 0
   }
 
-  async markStarted(id: string, runId: string): Promise<void> {
-    await this.db.getRepository(ConversationRunQueueEntity).update(id, { status: 'started', runId })
+  /** `dispatching -> started` 的条件转移；返回 false = 队列项已被取消 / 已换手 */
+  async markStarted(id: string, runId: string): Promise<boolean> {
+    const result = await this.db
+      .getRepository(ConversationRunQueueEntity)
+      .createQueryBuilder()
+      .update(ConversationRunQueueEntity)
+      .set({ status: 'started', runId })
+      .where('id = :id AND status = :status', { id, status: 'dispatching' })
+      .execute()
+    return (result.affected ?? 0) > 0
   }
 
-  async markDone(id: string): Promise<void> {
-    await this.db
+  async markDone(id: string): Promise<boolean> {
+    const result = await this.db
       .getRepository(ConversationRunQueueEntity)
-      .update(id, { status: 'done', finishedAt: new Date() })
+      .createQueryBuilder()
+      .update(ConversationRunQueueEntity)
+      .set({ status: 'done', finishedAt: new Date() })
+      .where('id = :id AND status IN (:...statuses)', {
+        id,
+        statuses: ['dispatching', 'started'],
+      })
+      .execute()
+    return (result.affected ?? 0) > 0
   }
 
-  async markFailed(id: string, error: string): Promise<void> {
-    await this.db
+  async markFailed(id: string, error: string): Promise<boolean> {
+    const result = await this.db
       .getRepository(ConversationRunQueueEntity)
-      .update(id, { status: 'failed', error, finishedAt: new Date() })
+      .createQueryBuilder()
+      .update(ConversationRunQueueEntity)
+      .set({ status: 'failed', error, finishedAt: new Date() })
+      .where('id = :id AND status IN (:...statuses)', {
+        id,
+        statuses: ['dispatching', 'started'],
+      })
+      .execute()
+    return (result.affected ?? 0) > 0
   }
 
   /** 取消一个队列项（已 started/done 的不动） */

@@ -130,11 +130,18 @@ export class RunRepository {
     await this.status.changed(row.conversationId)
   }
 
-  async create(data: DeepPartial<RunEntity>): Promise<AgentRunModel> {
+  async create(
+    data: DeepPartial<RunEntity>,
+    options: { notify?: boolean } = {},
+  ): Promise<AgentRunModel> {
     const repo = await this.repo()
     const model = toModel(await repo.save(repo.create(data)))
-    // 根 run 落库即"这一轮开始了"（pending 也算在跑）：不等 markRunning，前端立刻亮灯
-    if (!model.parentRunId) await this.status.changed(model.conversationId)
+    // 根 run 落库即"这一轮开始了"（pending 也算在跑）：不等 markRunning，前端立刻亮灯。
+    // 排队调度会先建 pending run 再抢队列项，抢不到要立刻取消；那条路径必须能压掉这次
+    // 点亮，否则前端会看到一轮从未执行的 run 闪一下。
+    if (!model.parentRunId && options.notify !== false) {
+      await this.status.changed(model.conversationId)
+    }
     return model
   }
 

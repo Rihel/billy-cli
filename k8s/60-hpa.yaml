@@ -20,8 +20,8 @@
 # - capability-gateway：只做能力目录 / 路由 / 审计，压力在执行侧，扩网关不提高吞吐；
 # - common-capability：固定 1 副本 —— 实例任务句柄 / 在跑计数在进程内，旧数据的本地回落文件不共享
 #  （见 24-deployment-common-capability.yaml 顶部注释）；
-# - workspace-service：固定 1 副本 —— 工作区 handle 映射在执行面内存里，多副本会重复管理同一批 Pod
-#  （见 25-deployment-workspace-service.yaml 顶部注释）。
+# - workspace-service：固定 2 副本（不做 HPA）—— 执行面的 CPU 主要花在 kubectl 往返 / 等待，
+#   CPU 不反映执行负载；要按并发扩，应使用 active_executions 自定义指标，而不是 CPU HPA。
 ---
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler

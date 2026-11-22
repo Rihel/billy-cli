@@ -775,3 +775,21 @@ export const AgentRunStopResultSchema = z.object({
 })
 
 export type AgentRunStopResultModel = z.infer<typeof AgentRunStopResultSchema>
+
+/** 取消会话内所有进行中的运行 + 队列项（main 删会话前调用；runs/timelines 只由 runtime 写） */
+export const AgentConversationCancelSchema = z.object({
+  conversationId: z.string().min(1).max(32),
+  /** 操作人（写时间线审计用） */
+  operator: z.string().min(1).max(64),
+})
+
+export type AgentConversationCancelDto = z.infer<typeof AgentConversationCancelSchema>
+
+export const AgentConversationCancelResultSchema = z.object({
+  /** 被取消的待处理队列项数 */
+  queuedCanceled: z.number().int().nonnegative(),
+  /** 被取消的进行中 run 数（含子会话） */
+  canceledRuns: z.number().int().nonnegative(),
+})
+
+export type AgentConversationCancelResultModel = z.infer<typeof AgentConversationCancelResultSchema>

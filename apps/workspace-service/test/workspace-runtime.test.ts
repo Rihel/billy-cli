@@ -10,7 +10,11 @@ afterEach(async () => {
   await Promise.all(cleanup.splice(0).map((dir) => rm(dir, { recursive: true, force: true })))
 })
 
-const make = async (): Promise<{ runtime: WorkspaceRuntime; root: string }> => {
+const make = async (): Promise<{
+  runtime: WorkspaceRuntime
+  root: string
+  setup: { run: ReturnType<typeof vi.fn>; syncCredentials: ReturnType<typeof vi.fn> }
+}> => {
   const root = await mkdtemp(join(tmpdir(), 'ws-runtime-'))
   cleanup.push(root)
   const repo = {
@@ -95,6 +99,14 @@ describe('WorkspaceRuntime（local 后端）', () => {
     expect(result.state).toBe('running')
   })
 
+  it('并发首次 ensure 只初始化一次（singleflight）', async () => {
+    const { runtime, setup } = await make()
+
+    await Promise.all([runtime.ensure('ws-sf'), runtime.ensure('ws-sf')])
+
+    expect(setup.run).toHaveBeenCalledTimes(1)
+  })
+
   it('写文件后能读回、能列出', async () => {
     const { runtime } = await make()
     const id = 'ws-b'
@@ -143,7 +155,7 @@ describe('WorkspaceRuntime（local 后端）', () => {
 })
 
 /** 造一个 container 后端的 runtime + 可编程的假驱动 */
-const makeContainer = (running: readonly string[]) => {
+const makeContainer = (running: readonly string[], coordinator?: never) => {
   const alive = new Set(running)
   const removed: string[] = []
   const driver = {
@@ -152,6 +164,7 @@ const makeContainer = (running: readonly string[]) => {
       alive.has(name) ? { running: true, startedAt: Date.now() - 3_600_000 } : { running: false },
     ),
     exists: vi.fn(async (name: string) => alive.has(name)),
+    imageOf: vi.fn(async () => 'billy-workspace:test'),
     start: vi.fn(async () => undefined),
     exec: vi.fn(async () => ({
       code: 0,
@@ -210,12 +223,25 @@ const makeContainer = (running: readonly string[]) => {
       setup as never,
       logger as never,
       driver as never,
+      coordinator,
     ),
     driver,
     logger,
     setup,
   }
 }
+
+describe('WorkspaceRuntime（container 后端：已有容器不重复初始化）', () => {
+  it('容器已在跑 → 只补凭据段，不重跑装包 / 技能', async () => {
+    const { runtime, setup } = makeContainer(['billy-ws-ws-a'])
+
+    const status = await runtime.ensure('ws-a')
+
+    expect(status.state).toBe('running')
+    expect(setup.run).not.toHaveBeenCalled()
+    expect(setup.syncCredentials).toHaveBeenCalledTimes(1)
+  })
+})
 
 describe('WorkspaceRuntime（container 后端：凭据同步不拉起容器）', () => {
   it('容器不在跑 → 同步失败，且绝不 start', async () => {
@@ -427,6 +453,32 @@ const makeSerialContainer = () => {
   )
   return { runtime, inflight }
 }
+
+describe('WorkspaceRuntime（多副本回收）', () => {
+  it('按 Redis 共享 lastUsed 回收；exec 锁被占时跳过', async () => {
+    const now = Date.now()
+    let execBusy = true
+    const coordinator = {
+      distributed: true,
+      withLock: async <T>(_kind: string, _id: string, task: () => Promise<T>) => task(),
+      tryWithLock: async <T>(kind: string, _id: string, task: () => Promise<T>) => {
+        if (kind === 'exec' && execBusy) return { acquired: false as const }
+        return { acquired: true as const, result: await task() }
+      },
+      lastUsed: async () => now - 60_000,
+      touch: async () => undefined,
+      clear: async () => undefined,
+    }
+    const { runtime, driver } = makeContainer(['billy-ws-ws-a'], coordinator as never)
+
+    expect(await runtime.reapIdle(now)).toBe(0)
+    expect(driver.remove).not.toHaveBeenCalled()
+
+    execBusy = false
+    expect(await runtime.reapIdle(now)).toBe(1)
+    expect(driver.remove).toHaveBeenCalledWith('billy-ws-ws-a')
+  })
+})
 
 describe('执行面串行（docs/design/workspace.md §8）', () => {
   it('同一工作区的 bash 一次只跑一条（并发三路 → 最大并发 1）', async () => {

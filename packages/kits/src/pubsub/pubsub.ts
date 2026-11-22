@@ -212,8 +212,15 @@ export class PubSub implements OnApplicationShutdown {
   async subscribeAsync(channel: string, handler: PubSubHandler): Promise<() => void> {
     assertChannel(channel)
     this.handlersOf(this.exact, channel).add(handler)
-    await this.connect()
-    await this.subscribeChannel(channel)
+    try {
+      await this.connect()
+      await this.subscribeChannel(channel)
+    } catch (error) {
+      // 订阅失败不能把 handler 留在 exact 里：否则会话断开后它仍被当成"还在收消息"，
+      // 而且重连 resubscribeAll 会替一条已经失败的连接重新订阅。
+      this.unsubscribe('exact', channel, handler)
+      throw error
+    }
     return () => this.unsubscribe('exact', channel, handler)
   }
 

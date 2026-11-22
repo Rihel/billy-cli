@@ -153,7 +153,7 @@
 - **能力底座 `@repo/kits`**：数据库（事务、四种分页、批量写入、软删、SQL 打印）、Redis、限流、JWT、会话、密码、对象存储、SSE、事件总线 / PubSub、飞书、通知、遥测、调度（croner + 时间轮）、本地沙箱；能力声明 / 契约 / 内网客户端分别收在 `@repo/capability` / `@repo/contracts` / `@repo/internal-sdk`。Kafka 保留为按需装配（当前无业务生产 / 消费方）。
 - **6 个 Nest 服务**：main（公网 BFF）/ agent-runtime（agent loop）/ model-gateway / capability-gateway / common-capability / workspace-service，内部服务只在内网互调。
 - **13 个业务模块 / 26 张表**：`auth`、`admin`、`user`、`session`、`storage`、`stream`、`share`、`monitor`、`ops`、`runtime-config`、`ai-model`、`ai-usage`、`ai-admin`（conversation / file / tool / capability / skill / workspace）；实体 26 个、迁移 38 个。
-- **部署**：Docker multi-stage，compose 一键起 6 个 Nest 服务 + 2 个前端 + 依赖；Kubernetes 24 个清单（含工作区 RBAC / PVC）。
+- **部署**：Docker multi-stage，compose 一键起 6 个 Nest 服务 + 2 个前端 + 依赖；Kubernetes 25 个清单（含工作区 RBAC / PVC）。
 
 ### 6.5 AI 原生开发：28 个 Agent Skills
 

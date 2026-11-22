@@ -20,10 +20,10 @@ data:
   # 能力网关：**登记地址**（启动时向它登记 `workspace` 的 bash / 文件能力并续心跳）。
   # 不配会跳过登记（只打一条 warn）→ 后台能力目录里没有 workspace，bash / 文件调用 no-provider。
   WORKSPACE_GATEWAY_URL: http://billy-capability-gateway.billy.svc.cluster.local:9993
-  # 登记时上报的**本实例地址**（capability-gateway 选路后回调它执行 /invoke）。
-  # 不配时回落 http://127.0.0.1:9995 —— 网关在别的 Pod 上，回调必然打错地方。
-  # 当前固定 1 副本，所以用 Service DNS 即可；多副本时每个 Pod 要上报自己的地址。
-  WORKSPACE_SERVICE_ENDPOINT: http://billy-workspace-service.billy.svc.cluster.local:9995
+  # 多副本：跨副本锁 / lastUsed 走 Redis；启动自检会拒绝 docker / local 后端。
+  WORKSPACE_MULTI_INSTANCE: 'true'
+  # 登记地址不在这里配：每个 Pod 的 instanceId / endpoint 由 Deployment 的 downward API
+  # 注入（POD_NAME / POD_IP），不能用 Service DNS（否则网关 / tasks/get 会回错 Pod）。
   # 云端多租户：必须用 kubernetes（docker 后端要挂 docker.sock，等于把宿主 daemon 交出去）
   WORKSPACE_CONTAINER_RUNTIME: 'kubernetes'
   WORKSPACE_K8S_NAMESPACE: 'billy'

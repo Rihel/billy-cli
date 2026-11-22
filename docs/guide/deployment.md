@@ -197,11 +197,11 @@ docker build -f docker/Dockerfile.workspace-image -t billy-workspace:2026.11.0 d
 
 ### Kubernetes 部署
 
-`k8s/` 目录提供 **24 个 YAML 清单**（另有说明文档 README），覆盖 **6 个 Deployment**：
+`k8s/` 目录提供 **25 个 YAML 清单**（另有说明文档 README），覆盖 **6 个 Deployment**：
 
 - main（3 副本）、agent-runtime（2 副本）、model-gateway（2 副本）、capability-gateway（2 副本）、
-  common-capability（1 副本，本地工作区不共享）、workspace-service（**固定 1 副本**：运行态在内存里，
-  多副本会各自管理同一批 Pod）。
+  common-capability（1 副本，本地工作区不共享）、workspace-service（**2 副本**：跨副本
+  lifecycle / exec / fs 锁与 lastUsed 走 Redis；Docker 跨宿主 / local 仍只允许单副本）。
 - **PVC / RBAC**：`15-pvc-agent-runtime-workspaces.yaml` 是 agent-runtime 的会话工作区卷（RWX、20Gi、
   `storageClassName` 需按集群替换）；`16-rbac-workspace-service.yaml` 给 workspace-service 配
   ServiceAccount / Role / RoleBinding（Role 只授 pods 的 get/list/watch/create/delete 与 `pods/exec`，

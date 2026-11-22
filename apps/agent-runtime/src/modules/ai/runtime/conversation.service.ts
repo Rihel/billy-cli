@@ -205,6 +205,43 @@ export class AgentConversationService {
   }
 
   /**
+   * 取消会话内所有正在跑的一轮 + 待处理队列项（含子会话）。
+   *
+   * 只写 runtime 拥有的表（runs / timelines / conversation_run_queue）；main 删会话时
+   * 先调内部接口走这里，再软删会话行 —— 避免 main 直接 UPDATE runs / 插入 timeline，
+   * 把「每张表一个写方」的边界重新撕开。
+   */
+  async cancelActiveConversation(
+    conversationId: string,
+    operator: string,
+  ): Promise<{ queuedCanceled: number; canceledRuns: number }> {
+    // 先取消队列（含用户消息与子 agent 唤醒，设计 §7），再收运行
+    const queuedCanceled = (await this.runQueue?.cancelConversation(conversationId)) ?? 0
+    const canceled = await this.runs.cancelActive(conversationId)
+    if (canceled > 0) {
+      await this.timelines.append({
+        conversationId,
+        role: TimelineRole.System,
+        kind: TimelineKind.Status,
+        payload: {
+          status: RunStatus.Canceled,
+          reason: 'conversation_removed',
+          operator,
+          canceledRuns: canceled,
+        },
+        finishedAt: new Date(),
+      })
+    }
+    let total = canceled
+    const children = await this.conversations.listChildren(conversationId)
+    for (const child of children) {
+      total += await this.runs.cancelActive(child.id)
+      await this.runQueue?.cancelConversation(child.id)
+    }
+    return { queuedCanceled, canceledRuns: total }
+  }
+
+  /**
    * 软删会话（唯一的删除入口）。
    *
    * **删之前先结束在跑的运行**：否则"用户看不到了、模型还在跑、钱还在烧"。
@@ -212,30 +249,14 @@ export class AgentConversationService {
    */
   async remove(userId: string, input: AgentConversationIdDto): Promise<void> {
     await this.requireOwned(userId, input.conversationId)
-    // 删会话：排队项全部取消（含用户消息与子 agent 唤醒，设计 §7）
-    const queuedCanceled = (await this.runQueue?.cancelConversation(input.conversationId)) ?? 0
-    const canceled = await this.runs.cancelActive(input.conversationId)
-    if (canceled > 0) {
-      await this.timelines.append({
-        conversationId: input.conversationId,
-        role: TimelineRole.System,
-        kind: TimelineKind.Status,
-        payload: {
-          status: RunStatus.Canceled,
-          reason: 'conversation_removed',
-          operator: userId,
-          canceledRuns: canceled,
-        },
-        finishedAt: new Date(),
-      })
-    }
-    // 子会话随父会话一起软删：先取消它们的活动 run，再删行；子会话与父共享工作区，
+    const { queuedCanceled, canceledRuns } = await this.cancelActiveConversation(
+      input.conversationId,
+      userId,
+    )
+    // 子会话随父会话一起软删；活动 run 已在上一步取消。子会话与父共享工作区，
     // 文件清理只对根会话做一次（否则会把父工作区删掉）。
     const children = await this.conversations.listChildren(input.conversationId)
-    for (const child of children) {
-      await this.runs.cancelActive(child.id)
-      await this.conversations.softDelete(child.id)
-    }
+    for (const child of children) await this.conversations.softDelete(child.id)
     await this.conversations.softDelete(input.conversationId)
     if (this.files) {
       try {
@@ -250,7 +271,7 @@ export class AgentConversationService {
     }
     this.logger.log('ai.conversation.removed', {
       conversationId: input.conversationId,
-      canceledRuns: canceled,
+      canceledRuns,
       canceledQueued: queuedCanceled,
       operator: userId,
     })

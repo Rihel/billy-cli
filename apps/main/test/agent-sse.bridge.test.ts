@@ -71,6 +71,25 @@ const deliver = (pubsub: ReturnType<typeof makePubSub>, clientId: string, payloa
   pubsub.handlers.get(channelOf(clientId))?.(payload)
 }
 
+describe('AgentSseBridge（订阅失败）', () => {
+  it('subscribeAsync 失败时 attach 返回 false，调用方不该起 run', async () => {
+    const pubsub = {
+      subscribeAsync: vi.fn(async () => {
+        throw new Error('redis down')
+      }),
+    }
+    const bridge = new AgentSseBridge(pubsub as never, silentLogger as never)
+    const res = response()
+
+    await expect(bridge.attach('client-fail', res)).resolves.toBe(false)
+
+    expect(silentLogger.warn).toHaveBeenCalledWith(
+      'agent.sse.subscribe_failed',
+      expect.objectContaining({ clientId: 'client-fail' }),
+    )
+  })
+})
+
 describe('AgentSseBridge（pub/sub → SSE）', () => {
   it('默认 agui：事件原样写成 SSE 帧', async () => {
     const pubsub = makePubSub()

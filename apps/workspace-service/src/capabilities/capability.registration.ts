@@ -13,6 +13,7 @@ import { CredentialCandidatesExecutor, CredentialImportExecutor } from './creden
 import { CredentialSaveExecutor } from './credential-save.executor.js'
 import { buildWorkspaceService } from './manifest.js'
 import { WorkspaceServiceConfig, type WorkspaceServiceConfigValue } from '../config/app-config.js'
+import { WorkspaceRuntime } from '../workspace/workspace-runtime.service.js'
 
 /**
  * workspace-service 向能力网关登记 `workspace` 服务（bash）。
@@ -33,6 +34,7 @@ export class WorkspaceCapabilityRegistration
     @Inject(CredentialImportExecutor) private readonly credentialImport: CredentialImportExecutor,
     @Inject(CredentialSaveExecutor) private readonly credentialSave: CredentialSaveExecutor,
     @Inject(WorkspaceServiceConfig) private readonly config: WorkspaceServiceConfigValue,
+    @Inject(WorkspaceRuntime) private readonly runtime: WorkspaceRuntime,
     @Inject(AppLogger) private readonly logger: AppLogger,
   ) {}
 
@@ -64,7 +66,8 @@ export class WorkspaceCapabilityRegistration
         },
       ),
       heartbeatIntervalMs: 10_000,
-      activeProvider: () => 0,
+      // 网关按 active/maxConcurrency 选最闲实例；多副本下别再固定报 0
+      activeProvider: () => this.runtime.activeCount(),
       logger: {
         info: (message, meta) => this.logger.info(message, meta),
         warn: (message, meta) => this.logger.warn(message, meta),

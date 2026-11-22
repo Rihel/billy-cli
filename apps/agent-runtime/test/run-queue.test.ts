@@ -66,6 +66,23 @@ describe('ConversationRunQueue', () => {
     expect(second?.dedupeKey).toBe(`${CONV}-sub-1`)
   })
 
+  it('取消后条件转移全部失败，终态不会被复活', async () => {
+    const row = await queue.enqueue({
+      conversationId: CONV,
+      source: 'user',
+      payload: { text: 'cancel-race' },
+    })
+    expect(await queue.cancel(row.id)).toBe(true)
+
+    expect(await queue.markStarted(row.id, 'run-late')).toBe(false)
+    expect(await queue.markDone(row.id)).toBe(false)
+    expect(await queue.markFailed(row.id, 'late-failure')).toBe(false)
+    expect(await queue.requeue(row.id)).toBe(false)
+
+    const rows = await queue.listUnfinished()
+    expect(rows.some((item) => item.id === row.id)).toBe(false)
+  })
+
   it('dedupeKey 重复入队返回同一行', async () => {
     const a = await queue.enqueue({
       conversationId: CONV,

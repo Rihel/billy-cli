@@ -57,7 +57,11 @@ export class AgentControlController {
     const streamProtocol = parseStreamProtocol(protocol)
     response.writeHead(200, SSE_HEADERS)
     response.flushHeaders()
-    await this.bridge.attach(clientId, response, { protocol: streamProtocol })
+    const attached = await this.bridge.attach(clientId, response, { protocol: streamProtocol })
+    if (!attached) {
+      this.bridge.fail(clientId, '实时通道订阅失败，请重试')
+      return
+    }
     try {
       const upstream = await fetch(`${this.runtime()}/internal/agent/chat/resume`, {
         method: 'POST',
@@ -161,7 +165,12 @@ export class AgentControlController {
   private async stream(path: string, response: Response, protocol: 'agui' | 'ai'): Promise<void> {
     const clientId = randomUUID()
     // 先挂 session 但不发头部：runtime 可能马上推帧；等确认有流再发 200，避免把 204 写成 200
-    await this.bridge.attach(clientId, response, { deferred: true, protocol })
+    const attached = await this.bridge.attach(clientId, response, { deferred: true, protocol })
+    if (!attached) {
+      this.bridge.detach(clientId)
+      response.status(503).json({ message: '实时通道订阅失败，请重试' })
+      return
+    }
     const upstream = await fetch(`${this.runtime()}${path}`, {
       headers: this.headers(clientId, {}),
     }).catch(() => null)
