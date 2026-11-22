@@ -1,5 +1,6 @@
 import {
   Body,
+  ConflictException,
   Controller,
   Get,
   Headers,
@@ -17,11 +18,17 @@ import {
   AgentConversationCancelSchema,
   AgentInstructionsSchema,
   AgentRunStopSchema,
+  AgentRunQueueRemoveResultSchema,
+  AgentRunQueueRemoveSchema,
+  AgentRunQueueUpdateSchema,
   AgentTimelineStatusSchema,
+  toAgentRunQueueItem,
   type AgentChatDto,
   type AgentChatResumeDto,
   type AgentConversationCancelDto,
   type AgentInstructionsDto,
+  type AgentRunQueueRemoveDto,
+  type AgentRunQueueUpdateDto,
   type AgentRunStopDto,
   type AgentTimelineStatusDto,
 } from '@repo/shared'
@@ -30,6 +37,7 @@ import { AgentService } from '../agents/service.js'
 import { AgentChatService } from '../runtime/chat.service.js'
 import { AgentConversationService } from '../runtime/conversation.service.js'
 import { AgentTimelineService } from '../runtime/timeline.service.js'
+import { ConversationRunQueue } from '../runtime/run-queue.service.js'
 
 /** main 的内部会话入口：身份由 main 鉴权后通过内部 token + 头传入 */
 @Controller('internal/agent')
@@ -39,6 +47,7 @@ export class AgentInternalController {
     @Inject(AgentService) private readonly agents: AgentService,
     @Inject(AgentConversationService) private readonly conversations: AgentConversationService,
     @Inject(AgentTimelineService) private readonly timelines: AgentTimelineService,
+    @Inject(ConversationRunQueue) private readonly runQueue: ConversationRunQueue,
   ) {}
 
   /**
@@ -159,6 +168,36 @@ export class AgentInternalController {
     this.requireToken(token)
     await this.timelines.appendStatus(input.conversationId, input.payload)
     return { ok: true }
+  }
+
+  /** 修改用户排队消息（main 只做归属校验，写口在 runtime） */
+  @Post('run-queue/update')
+  @HttpCode(200)
+  async updateRunQueue(
+    @Body({ schema: AgentRunQueueUpdateSchema }) input: AgentRunQueueUpdateDto,
+    @Headers('x-internal-token') token: string | undefined,
+  ) {
+    this.requireToken(token)
+    const row = await this.runQueue.updateUserItem(
+      input.conversationId,
+      input.queueId,
+      input.message,
+    )
+    if (!row) throw new ConflictException('该队列项已开始执行，不能再修改')
+    return toAgentRunQueueItem(row)
+  }
+
+  /** 删除用户排队消息（条件更新，幂等语义由调用方决定） */
+  @Post('run-queue/remove')
+  @HttpCode(200)
+  async removeRunQueue(
+    @Body({ schema: AgentRunQueueRemoveSchema }) input: AgentRunQueueRemoveDto,
+    @Headers('x-internal-token') token: string | undefined,
+  ) {
+    this.requireToken(token)
+    return AgentRunQueueRemoveResultSchema.parse({
+      removed: await this.runQueue.cancelUserItem(input.conversationId, input.queueId),
+    })
   }
 
   @Post('run/stop')

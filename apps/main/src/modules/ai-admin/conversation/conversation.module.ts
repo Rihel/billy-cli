@@ -47,6 +47,6 @@ import { AiTimelineQueryRepository } from './timeline-query.repository.js'
     },
     AiAdminConversationService,
   ],
-  exports: [AiAdminConversationService],
+  exports: [AiAdminConversationService, AgentCatalogService],
 })
 export class AiAdminConversationModule {}

@@ -2,6 +2,8 @@ import {
   AgentConversationCancelResultSchema,
   AgentInstructionsModelSchema,
   AgentListSchema,
+  AgentRunQueueItemSchema,
+  AgentRunQueueRemoveResultSchema,
   AgentStatusSchema,
   AgentTimelineStatusResultSchema,
   AgentToolListSchema,
@@ -10,6 +12,10 @@ import {
   type AgentInstructionsDto,
   type AgentInstructionsModel,
   type AgentListModel,
+  type AgentRunQueueItemModel,
+  type AgentRunQueueRemoveDto,
+  type AgentRunQueueRemoveResultModel,
+  type AgentRunQueueUpdateDto,
   type AgentStatusModel,
   type AgentTimelineStatusDto,
   type AgentTimelineStatusResultModel,
@@ -84,6 +90,36 @@ export class AgentRuntimeClient {
       this.options,
       '/internal/agent/timeline/status',
       AgentTimelineStatusResultSchema,
+      { method: 'POST', body: input, ...options },
+    )
+  }
+
+  /** 修改用户排队消息（写入由 runtime 收口） */
+  updateRunQueue(
+    input: AgentRunQueueUpdateDto,
+    options: InvokeOptions = {},
+  ): Promise<AgentRunQueueItemModel> {
+    return requestEnvelope(
+      this.options,
+      '/internal/agent/run-queue/update',
+      AgentRunQueueItemSchema,
+      {
+        method: 'POST',
+        body: input,
+        ...options,
+      },
+    )
+  }
+
+  /** 删除用户排队消息（写入由 runtime 收口） */
+  removeRunQueue(
+    input: AgentRunQueueRemoveDto,
+    options: InvokeOptions = {},
+  ): Promise<AgentRunQueueRemoveResultModel> {
+    return requestEnvelope(
+      this.options,
+      '/internal/agent/run-queue/remove',
+      AgentRunQueueRemoveResultSchema,
       { method: 'POST', body: input, ...options },
     )
   }

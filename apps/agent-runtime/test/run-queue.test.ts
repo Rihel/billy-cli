@@ -83,6 +83,21 @@ describe('ConversationRunQueue', () => {
     expect(rows.some((item) => item.id === row.id)).toBe(false)
   })
 
+  it('updateUserItem / cancelUserItem 只改用户自己排队的项', async () => {
+    const row = await queue.enqueue({
+      conversationId: CONV,
+      source: 'user',
+      payload: { message: 'old' },
+    })
+
+    const updated = await queue.updateUserItem(CONV, row.id, 'new')
+    expect(updated?.payload.message).toBe('new')
+
+    expect(await queue.cancelUserItem(CONV, row.id)).toBe(true)
+    expect(await queue.updateUserItem(CONV, row.id, 'again')).toBeNull()
+    expect(await queue.cancelUserItem(CONV, row.id)).toBe(false)
+  })
+
   it('dedupeKey 重复入队返回同一行', async () => {
     const a = await queue.enqueue({
       conversationId: CONV,

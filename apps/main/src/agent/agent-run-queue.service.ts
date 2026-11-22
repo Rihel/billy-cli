@@ -1,23 +1,23 @@
-import {
-  ConflictException,
-  ForbiddenException,
-  Inject,
-  Injectable,
-  NotFoundException,
-} from '@nestjs/common'
+import { ForbiddenException, Inject, Injectable, NotFoundException } from '@nestjs/common'
 import { ConversationEntity, ConversationRunQueueEntity } from '@repo/db'
 import { Db, requestContext } from '@repo/kits'
-import type {
-  AgentRunQueueItemModel,
-  AgentRunQueueListDto,
-  AgentRunQueueRemoveDto,
-  AgentRunQueueUpdateDto,
+import {
+  toAgentRunQueueItem,
+  type AgentRunQueueItemModel,
+  type AgentRunQueueListDto,
+  type AgentRunQueueRemoveDto,
+  type AgentRunQueueRemoveResultModel,
+  type AgentRunQueueUpdateDto,
 } from '@repo/shared'
+import { AgentCatalogService } from './agent-catalog.service.js'
 
 /** 会话输入框上方待执行队列的读取 / 编辑 / 删除（只操作 source=user 的 queued 项） */
 @Injectable()
 export class AgentRunQueueService {
-  constructor(@Inject(Db) private readonly db: Db) {}
+  constructor(
+    @Inject(Db) private readonly db: Db,
+    @Inject(AgentCatalogService) private readonly agents: AgentCatalogService,
+  ) {}
 
   async list(input: AgentRunQueueListDto): Promise<AgentRunQueueItemModel[]> {
     await this.requireOwned(input.conversationId)
@@ -25,56 +25,20 @@ export class AgentRunQueueService {
       where: { conversationId: input.conversationId, status: 'queued' },
       order: { priority: 'ASC', createdAt: 'ASC' },
     })
-    return rows.map(toItem)
+    return rows.map(toAgentRunQueueItem)
   }
 
   async update(input: AgentRunQueueUpdateDto): Promise<AgentRunQueueItemModel> {
     await this.requireOwned(input.conversationId)
-    const row = await this.requireUserItem(input.conversationId, input.queueId)
-    const payload = { ...row.payload, message: input.message }
-    // 条件更新：检查与更新之间可能已被 runtime claim（dispatching），不能再改它的 payload
-    const result = await this.repo()
-      .createQueryBuilder()
-      .update(ConversationRunQueueEntity)
-      .set({ payload })
-      .where(
-        'id = :id AND conversation_id = :conversationId AND source = :source AND status = :status',
-        {
-          id: row.id,
-          conversationId: row.conversationId,
-          source: 'user',
-          status: 'queued',
-        },
-      )
-      .execute()
-    if ((result.affected ?? 0) === 0) {
-      throw new ConflictException('该队列项已开始执行，不能再修改')
-    }
-    return toItem(Object.assign(row, { payload }))
+    await this.requireUserItem(input.conversationId, input.queueId)
+    // 写口在 runtime：main 只做归属 / 可见性校验，条件 UPDATE 由 runtime 执行
+    return this.agents.updateRunQueue(input)
   }
 
-  async remove(input: AgentRunQueueRemoveDto): Promise<{ removed: boolean }> {
+  async remove(input: AgentRunQueueRemoveDto): Promise<AgentRunQueueRemoveResultModel> {
     await this.requireOwned(input.conversationId)
-    const row = await this.requireUserItem(input.conversationId, input.queueId)
-    // 条件更新：检查与更新之间可能已被 runtime claim，不能把 dispatching/started 改成 canceled
-    const result = await this.repo()
-      .createQueryBuilder()
-      .update(ConversationRunQueueEntity)
-      .set({ status: 'canceled', finishedAt: new Date() })
-      .where(
-        'id = :id AND conversation_id = :conversationId AND source = :source AND status = :status',
-        {
-          id: row.id,
-          conversationId: row.conversationId,
-          source: 'user',
-          status: 'queued',
-        },
-      )
-      .execute()
-    if ((result.affected ?? 0) === 0) {
-      throw new ConflictException('该队列项已开始执行，不能再删除')
-    }
-    return { removed: true }
+    await this.requireUserItem(input.conversationId, input.queueId)
+    return this.agents.removeRunQueue(input)
   }
 
   private repo() {
@@ -100,21 +64,5 @@ export class AgentRunQueueService {
     if (row.source !== 'user') throw new ForbiddenException('只能修改或删除用户消息')
     if (row.status !== 'queued') throw new ForbiddenException('该队列项已开始执行，不能再修改')
     return row
-  }
-}
-
-const toItem = (row: ConversationRunQueueEntity): AgentRunQueueItemModel => {
-  const payload = row.payload ?? {}
-  const message = typeof payload.message === 'string' ? payload.message : null
-  const name = typeof payload.name === 'string' ? payload.name : null
-  const result = typeof payload.result === 'string' ? payload.result : null
-  return {
-    id: row.id,
-    source: row.source === 'subagent' ? 'subagent' : 'user',
-    status: row.status,
-    message,
-    subAgentName: name,
-    resultSummary: result ? result.slice(0, 200) : null,
-    createdAt: row.createdAt,
   }
 }

@@ -209,15 +209,15 @@ server 用 `DB_ENTITIES` 装配，gateway 只注册自己写的审计实体。
 | --- | --- | --- |
 | `runs` | agent-runtime（执行 / 取消 / 看门狗）；main 只读 | 已收口；main 删会话改调 runtime 取消接口 |
 | `timelines` | agent-runtime（执行事件 / 快照 / 控制面状态事件）；main 只读 | 已收口：rename / fileAccess 走 runtime `timeline/status` 内部接口 |
-| `conversation_run_queue` | agent-runtime（claim / 状态转移）；main 仍编辑 / 删除用户排队项（条件 UPDATE） | 例外：目标是把写口也收口到 runtime |
+| `conversation_run_queue` | agent-runtime（claim / 状态转移 / 用户排队项编辑 / 删除）；main 只读列表 | 已收口：main 的 update / remove 走 runtime 内部接口 |
 | `conversations` | main（CRUD / 标题 / 权限 / 软删）+ agent-runtime（子会话创建 / 无 conversationId 的非流式 chat） | 例外：需要定「谁创建、谁只改元数据」 |
 | `ai_workspaces` / `ai_skills` / 凭据 | main 写；workspace-service 只读 | 清晰 |
 | `model_gateway_usage` | model-gateway | 清晰 |
 | `ai_tool_audit` | capability-gateway | 清晰 |
 | `run_ownership` | agent-runtime（Mastra run fencing） | 清晰 |
 
-结论：**不是"已经每表一个写方"，而是"已知例外并收口了大半"**。剩余例外按
-`conversation_run_queue` → `conversations` 的顺序处理，不拆库。
+结论：**不是"已经每表一个写方"，而是"已知例外并收口了大半"**。剩余例外只剩
+`conversations`（main 与 runtime 都能创建），不拆库。
 
 ### D8 Mastra 只在 facade
 

@@ -15,6 +15,28 @@ export const AgentRunQueueItemSchema = z.object({
 })
 export type AgentRunQueueItemModel = z.infer<typeof AgentRunQueueItemSchema>
 
+/** 队列行 → 对外模型（main 列表 / runtime 内部写接口共用，避免两套映射漂移） */
+export interface AgentRunQueueRow {
+  id: string
+  source: string
+  status: string
+  payload: Record<string, unknown> | null
+  createdAt?: Date
+}
+
+export const toAgentRunQueueItem = (row: AgentRunQueueRow): AgentRunQueueItemModel => {
+  const payload = row.payload ?? {}
+  return {
+    id: row.id,
+    source: row.source === 'subagent' ? 'subagent' : 'user',
+    status: row.status,
+    message: typeof payload.message === 'string' ? payload.message : null,
+    subAgentName: typeof payload.name === 'string' ? payload.name : null,
+    resultSummary: typeof payload.result === 'string' ? payload.result.slice(0, 200) : null,
+    createdAt: row.createdAt,
+  }
+}
+
 export const AgentRunQueueListSchema = z.object({ conversationId: z.string().min(1) })
 export type AgentRunQueueListDto = z.infer<typeof AgentRunQueueListSchema>
 
@@ -30,3 +52,9 @@ export const AgentRunQueueRemoveSchema = z.object({
   queueId: z.string().min(1),
 })
 export type AgentRunQueueRemoveDto = z.infer<typeof AgentRunQueueRemoveSchema>
+
+/** 删除队列项结果（内部接口与 main 共用） */
+export const AgentRunQueueRemoveResultSchema = z.object({
+  removed: z.boolean(),
+})
+export type AgentRunQueueRemoveResultModel = z.infer<typeof AgentRunQueueRemoveResultSchema>

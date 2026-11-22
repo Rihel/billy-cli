@@ -199,6 +199,49 @@ export class ConversationRunQueue {
     return (result.affected ?? 0) > 0
   }
 
+  /**
+   * 修改一条**用户自己排着队**的消息（main 的队列编辑接口走内部调用）。
+   *
+   * 只允许 `source=user AND status=queued`；条件 UPDATE 防「检查后被 claim」。
+   */
+  async updateUserItem(
+    conversationId: string,
+    id: string,
+    message: string,
+  ): Promise<ConversationRunQueueEntity | null> {
+    const repo = this.db.getRepository(ConversationRunQueueEntity)
+    const row = await repo.findOne({ where: { id, conversationId } })
+    if (!row || row.source !== 'user' || row.status !== 'queued') return null
+    const payload = { ...row.payload, message }
+    const result = await repo
+      .createQueryBuilder()
+      .update(ConversationRunQueueEntity)
+      .set({ payload })
+      .where(
+        'id = :id AND conversation_id = :conversationId AND source = :source AND status = :status',
+        { id, conversationId, source: 'user', status: 'queued' },
+      )
+      .execute()
+    if ((result.affected ?? 0) === 0) return null
+    row.payload = payload
+    return row
+  }
+
+  /** 取消一条**用户自己排着队**的消息（条件同 updateUserItem） */
+  async cancelUserItem(conversationId: string, id: string): Promise<boolean> {
+    const result = await this.db
+      .getRepository(ConversationRunQueueEntity)
+      .createQueryBuilder()
+      .update(ConversationRunQueueEntity)
+      .set({ status: 'canceled', finishedAt: new Date() })
+      .where(
+        'id = :id AND conversation_id = :conversationId AND source = :source AND status = :status',
+        { id, conversationId, source: 'user', status: 'queued' },
+      )
+      .execute()
+    return (result.affected ?? 0) > 0
+  }
+
   /** 取消一个队列项（已 started/done 的不动） */
   async cancel(id: string): Promise<boolean> {
     const result = await this.db

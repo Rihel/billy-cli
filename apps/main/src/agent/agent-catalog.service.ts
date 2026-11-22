@@ -6,6 +6,10 @@ import type {
   AgentInstructionsDto,
   AgentInstructionsModel,
   AgentListModel,
+  AgentRunQueueItemModel,
+  AgentRunQueueRemoveDto,
+  AgentRunQueueRemoveResultModel,
+  AgentRunQueueUpdateDto,
   AgentStatusModel,
 } from '@repo/shared'
 import { AgentNotFoundError } from '../modules/ai-admin/conversation/errors.js'
@@ -71,6 +75,15 @@ export class AgentCatalogService {
   ): Promise<AgentTimelineStatusResultModel> {
     // 控制面审计事件不该拖慢页面主操作：给短超时，失败由调用方决定是否降级
     return this.client.appendTimelineStatus({ conversationId, payload }, { timeoutMs: 5_000 })
+  }
+
+  /** 修改 / 删除用户排队消息：main 只做归属校验，写口在 runtime */
+  updateRunQueue(input: AgentRunQueueUpdateDto): Promise<AgentRunQueueItemModel> {
+    return this.client.updateRunQueue(input, { timeoutMs: 5_000 })
+  }
+
+  removeRunQueue(input: AgentRunQueueRemoveDto): Promise<AgentRunQueueRemoveResultModel> {
+    return this.client.removeRunQueue(input, { timeoutMs: 5_000 })
   }
 
   /** agent 清单（`skills: ['*']` 由执行面按当前技能库现算） */
