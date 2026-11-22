@@ -7,6 +7,7 @@ import { Button, IconText, PageToolbar, Tag, toastError, toastSuccess } from '@r
 import {
   BoxesIcon,
   FolderOpenIcon,
+  ShieldAlertIcon,
   PlayIcon,
   PlusIcon,
   SquareIcon,
@@ -88,15 +89,11 @@ export default function WorkspacesPage() {
   const sandboxOff =
     (serverInfo?.sandbox as { mode?: string } | undefined)?.mode === 'off' ||
     (serverInfo?.sandbox as { sandbox?: boolean } | undefined)?.sandbox === false
+  // 沙箱开关只影响本机（host）工作区；全是容器工作区时提示没有意义，不显示
+  const hasHostWorkspace = data.some((item) => item.driver === 'host' || item.backend === 'local')
 
   return (
-    <div className="flex flex-col gap-4">
-      {sandboxOff ? (
-        <div className="rounded-lg border border-warning/40 bg-warning/10 px-4 py-3 text-sm">
-          当前部署关闭了命令沙箱（`AGENT_WORKSPACE_SANDBOX=false`）：工作区里的命令会以服务进程身份执行，
-          没有系统级隔离。仅建议在自托管单机使用。
-        </div>
-      ) : null}
+    <div className="flex flex-col gap-4 p-4 sm:py-6">
       <PageToolbar
         title="工作区"
         description="AI 执行环境：会话在里面跑命令、读写文件。容器按需启动，空闲 2 小时后回收。"
@@ -107,6 +104,15 @@ export default function WorkspacesPage() {
           </Button>
         }
       />
+      {sandboxOff && hasHostWorkspace ? (
+        <div className="flex items-start gap-2 rounded-md border border-warning/25 bg-warning/5 px-3 py-2 text-xs leading-relaxed text-muted-foreground">
+          <ShieldAlertIcon className="mt-0.5 size-3.5 shrink-0 text-warning" />
+          <span>
+            <span className="font-medium text-foreground">命令沙箱已关闭</span>
+            ：工作区里的命令会以服务进程身份执行，没有系统级隔离，仅建议自托管单机使用。
+          </span>
+        </div>
+      ) : null}
 
       {isLoading ? (
         <p className="text-sm text-muted-foreground">加载中…</p>
