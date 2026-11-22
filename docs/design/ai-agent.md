@@ -339,7 +339,8 @@ ai/
 | 跨副本实时转发 | Redis pub/sub 频道 `agent:stream:client:<clientId>`（按连接定向，只有持有连接的副本收） |
 | 跨副本停止 | 频道 `agent:stream:{runId}:stop`（本进程有 controller 就直接 abort） |
 | 运行中进度 | Hash `agent:run:{runId}`（TTL 6h，见 §3.12） |
-| 恢复租约 | `RedisStore.acquireLock('agent:recovery:lease', 60s)` |
+| 恢复租约 | `RedisStore.acquireLock('agent:recovery:lease', 600s)`（2026-11-22 从 60s 放大，恢复不再阻塞启动） |
+| run fencing | `run_ownership` 表 + `AgentWorkflowsStorage.claimRunOwnership()`：generation 校验，旧执行者写入被拒 |
 
 代价照实说：Mastra 自己的 cache / pubsub 仍是**进程内默认实现**，所以"另一副本上的 Mastra 事件重放"拿不到 ——
 我们也不需要它，补发用的是**我们自己写的**输出记录。多实例的启动自检只要求配了 `REDIS_URL`
@@ -742,7 +743,7 @@ AGENT_CONTEXT_MODEL_WINDOWS={"deepseek/deepseek-chat":65536}   # 按模型覆盖
 
 **恢复与看门狗的互斥**
 
-- 恢复：多副本同时 boot 会抢同一条；抢的是 `RedisStore.acquireLock('agent:recovery:lease', 60s)`
+- 恢复：多副本同时 boot 会抢同一条；抢的是 `RedisStore.acquireLock('agent:recovery:lease', 600s)`
   → 只有一个副本真正执行 `recoverAllDurableAgents()`；仍按"单副本优先 + 租约兜底 + 上线实测"处理（§2.4 / §6.3）；
 - 看门狗**不用分布式锁，用条件更新**（天然幂等）：
 
@@ -861,7 +862,7 @@ WHERE id = $1 AND status = 'running' AND heartbeat_at < now() - interval '…'
   │
   ├─ boot（OnApplicationBootstrap）
   │   ├─ 启动自检：AGENT_MULTI_INSTANCE=true 却缺 REDIS_URL → **启动失败**
-  │   ├─ 取恢复租约（RedisStore.acquireLock：agent:recovery:lease，60s TTL）→ 只有一个副本执行
+  │   ├─ 取恢复租约（RedisStore.acquireLock：agent:recovery:lease，600s TTL）→ 只有一个副本执行
   │   └─ recoverAllDurableAgents()
   │        ├─ 读快照（runs.snapshot，经我们的存储适配层）
   │        ├─ 重跑：重发 LLM 调用 + 重跑工具   ← 官方明文，**真花钱**
@@ -1046,7 +1047,7 @@ key: agent:run:{runId}          TTL: 6h
    → 或者启动时扫一遍（boot 阶段，单副本才做清理，见 §3.11.4）
 
 ② 决定谁来干（避免多个副本同时恢复同一条）
-   去 Redis 抢恢复租约（RedisStore.acquireLock：agent:recovery:lease，60s TTL）
+   去 Redis 抢恢复租约（RedisStore.acquireLock：agent:recovery:lease，600s TTL）
    抢到的副本执行，没抢到的什么都不做
 
 ③ 恢复执行
@@ -2526,7 +2527,7 @@ AI SDK v6 的续传是**两层 API**（不是同一方法的两个名字）：
 | **zod 双份** | ~~`@mastra/memory@1.31.0` 依赖 `zod ^4.6.4`，本仓锁 `^4.4.3`~~ → **已执行**：全仓 zod 升到 4.x（lock 里只剩一个版本） | 关闭；升级 Mastra 时再看一次 peer 依赖 |
 | 自建 adapter 与版本耦合 | Mastra 升级若调整 storage 接口（增删方法），我们的 adapter 可能编译不过或行为漂移 | 适配层集中在一个目录、注释标注"对齐哪个版本"；升级清单里把"跑 adapter 回归"列为必做 |
 | ~~Mastra 表与业务表同库~~ | 已由"自建 adapter"决策消除 —— 不存在官方表 | — |
-| 多副本恢复租约 | ~~官方文档说"无分布式锁"，1.69.0 代码里却有 `#acquireRecoveryLease` + `RedisStreamsPubSub implements LeaseProvider`~~ → **已落地**：租约改由我们自己的 `RedisStore.acquireLock` 提供（60s TTL），不依赖 Mastra 的 pubsub | 上线前**实测**：两个副本同时 boot，看是否只有一个执行恢复 |
+| 多副本恢复租约 | ~~官方文档说"无分布式锁"，1.69.0 代码里却有 `#acquireRecoveryLease` + `RedisStreamsPubSub implements LeaseProvider`~~ → **已落地**：租约改由我们自己的 `RedisStore.acquireLock` 提供（600s TTL），不依赖 Mastra 的 pubsub | 上线前**实测**：两个副本同时 boot，看是否只有一个执行恢复 |
 | 恢复语义与用户预期 | "重启后接着跑"在崩溃场景会**重放已完成的部分**（重复文本/重复工具调用） | 业务状态机里显式区分 `running` / `recovered` / `interrupted`，前端如实标注"本轮已恢复重跑" |
 | **`stop()` 语义陷阱** | `chat.stop()` 只断线、**不取消生成**（官方原文） | 必须自建 stop 端点（落 partial → 取消 producer → 条件清空 activeStreamId）；禁止在 unmount 里 stop |
 | **`after`/`waitUntil` 无等价物** | 官方续传示例依赖 Next.js 专有钩子，非 Next 环境**官方没有替代示例** | 自己实现"响应结束后继续收尾"（见 §7 待拍板第 2 项），并为此写验收用例 |

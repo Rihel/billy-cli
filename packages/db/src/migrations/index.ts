@@ -43,6 +43,7 @@ export { AddWorkspaceSetups1795186004681 } from './1795186004681-AddWorkspaceSet
 export { AddCredentialVersion1795186595366 } from './1795186595366-AddCredentialVersion.js'
 export { AddSkillScopes1795187070810 } from './1795187070810-AddSkillScopes.js'
 export { AddMarketItems1795188270503 } from './1795188270503-AddMarketItems.js'
+export { AddRunOwnership1795318386890 } from './1795318386890-RunOwnership.js'
 
 import { Initial1786897309083 } from './1786897309083-initial.js'
 import { AddAdmins1787000000000 } from './1787000000000-add-admins.js'
@@ -89,6 +90,7 @@ import { AddWorkspaceSetups1795186004681 } from './1795186004681-AddWorkspaceSet
 import { AddCredentialVersion1795186595366 } from './1795186595366-AddCredentialVersion.js'
 import { AddSkillScopes1795187070810 } from './1795187070810-AddSkillScopes.js'
 import { AddMarketItems1795188270503 } from './1795188270503-AddMarketItems.js'
+import { AddRunOwnership1795318386890 } from './1795318386890-RunOwnership.js'
 
 /** 迁移按时间戳升序；TypeORM 会再排序，但这里保持可读 */
 export const DB_MIGRATIONS = [
@@ -137,4 +139,5 @@ export const DB_MIGRATIONS = [
   AddCredentialVersion1795186595366,
   AddSkillScopes1795187070810,
   AddMarketItems1795188270503,
+  AddRunOwnership1795318386890,
 ]

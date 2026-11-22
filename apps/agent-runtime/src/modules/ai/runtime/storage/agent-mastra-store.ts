@@ -1,6 +1,13 @@
 import {
   MastraCompositeStore,
+  RunFenceConflictError,
   WorkflowsStorage,
+  type ClaimRunOwnershipInput,
+  type ClaimRunOwnershipResult,
+  type RenewRunOwnershipInput,
+  type RenewRunOwnershipResult,
+  type RunFence,
+  type RunOwnershipRecord,
   type StorageListWorkflowRunsInput,
   type UpdateWorkflowStateOptions,
   type WorkflowRun,
@@ -129,6 +136,164 @@ export class AgentWorkflowsStorage extends WorkflowsStorage {
     return true
   }
 
+  /** 支持 run fencing：所有权记录在 `run_ownership`，写入时校验 generation */
+  supportsRunFencing(): boolean {
+    return true
+  }
+
+  async claimRunOwnership(input: ClaimRunOwnershipInput): Promise<ClaimRunOwnershipResult> {
+    const leaseMs = Math.max(1, Math.trunc(input.leaseMs))
+    const rows = await this.db.dataSource.query<
+      Array<{
+        run_id: string
+        owner_id: string
+        generation: string
+        lease_expires_at: Date | null
+        live: boolean
+        acquired: boolean
+      }>
+    >(
+      `
+      WITH upsert AS (
+        INSERT INTO run_ownership (run_id, owner_id, generation, lease_expires_at, updated_at)
+        VALUES (
+          $1,
+          $2,
+          GREATEST(1, floor(extract(epoch from clock_timestamp()) * 1000)::bigint),
+          now() + ($4::text || ' milliseconds')::interval,
+          now()
+        )
+        ON CONFLICT (run_id) DO UPDATE
+          SET owner_id = EXCLUDED.owner_id,
+              generation = run_ownership.generation + 1,
+              lease_expires_at = EXCLUDED.lease_expires_at,
+              updated_at = now()
+          WHERE (run_ownership.lease_expires_at IS NULL OR run_ownership.lease_expires_at <= now() OR $3::boolean)
+            AND ($5::bigint IS NULL OR run_ownership.generation = $5::bigint)
+        RETURNING run_id, owner_id, generation, lease_expires_at,
+                  (lease_expires_at IS NOT NULL AND lease_expires_at > now()) AS live
+      )
+      SELECT run_id, owner_id, generation, lease_expires_at, live, true AS acquired FROM upsert
+      UNION ALL
+      SELECT run_id, owner_id, generation, lease_expires_at,
+             (lease_expires_at IS NOT NULL AND lease_expires_at > now()) AS live, false AS acquired
+        FROM run_ownership
+       WHERE run_id = $1 AND NOT EXISTS (SELECT 1 FROM upsert)
+       LIMIT 1
+      `,
+      [input.runId, input.ownerId, input.force === true, leaseMs, input.expectedGeneration ?? null],
+    )
+    const row = rows[0]
+    if (!row) return { acquired: false, record: null }
+    return {
+      acquired: row.acquired,
+      record: this.toOwnershipRecord(row),
+    }
+  }
+
+  async renewRunOwnership(input: RenewRunOwnershipInput): Promise<RenewRunOwnershipResult> {
+    const leaseMs = Math.max(1, Math.trunc(input.leaseMs))
+    const rows = await this.db.dataSource.query<
+      Array<{
+        run_id: string
+        owner_id: string
+        generation: string
+        lease_expires_at: Date | null
+        live: boolean
+        renewed: boolean
+      }>
+    >(
+      `
+      WITH updated AS (
+        UPDATE run_ownership
+           SET lease_expires_at = now() + ($4::text || ' milliseconds')::interval,
+               updated_at = now()
+         WHERE run_id = $1 AND owner_id = $2 AND generation = $3
+           AND lease_expires_at IS NOT NULL AND lease_expires_at > now()
+        RETURNING run_id, owner_id, generation, lease_expires_at,
+                  (lease_expires_at IS NOT NULL AND lease_expires_at > now()) AS live
+      )
+      SELECT run_id, owner_id, generation, lease_expires_at, live, true AS renewed FROM updated
+      UNION ALL
+      SELECT run_id, owner_id, generation, lease_expires_at,
+             (lease_expires_at IS NOT NULL AND lease_expires_at > now()) AS live, false AS renewed
+        FROM run_ownership
+       WHERE run_id = $1 AND NOT EXISTS (SELECT 1 FROM updated)
+       LIMIT 1
+      `,
+      [input.runId, input.ownerId, input.generation, leaseMs],
+    )
+    const row = rows[0]
+    if (!row) return { renewed: false, record: null }
+    return { renewed: row.renewed, record: this.toOwnershipRecord(row) }
+  }
+
+  async releaseRunOwnership(fence: RunFence): Promise<boolean> {
+    const rows = await this.db.dataSource.query<Array<{ run_id: string }>>(
+      `
+      UPDATE run_ownership
+         SET lease_expires_at = NULL, updated_at = now()
+       WHERE run_id = $1 AND owner_id = $2 AND generation = $3
+         AND lease_expires_at IS NOT NULL
+      RETURNING run_id
+      `,
+      [fence.runId, fence.ownerId, fence.generation],
+    )
+    return rows.length > 0
+  }
+
+  async getRunOwnership(input: { runId: string }): Promise<RunOwnershipRecord | null> {
+    const rows = await this.db.dataSource.query<
+      Array<{
+        run_id: string
+        owner_id: string
+        generation: string
+        lease_expires_at: Date | null
+        live: boolean
+      }>
+    >(
+      `
+      SELECT run_id, owner_id, generation, lease_expires_at,
+             (lease_expires_at IS NOT NULL AND lease_expires_at > now()) AS live
+        FROM run_ownership
+       WHERE run_id = $1
+      `,
+      [input.runId],
+    )
+    const row = rows[0]
+    return row ? this.toOwnershipRecord(row) : null
+  }
+
+  private toOwnershipRecord(row: {
+    run_id: string
+    owner_id: string
+    generation: string
+    lease_expires_at: Date | null
+    live: boolean
+  }): RunOwnershipRecord {
+    return {
+      runId: row.run_id,
+      ownerId: row.owner_id,
+      generation: Number(row.generation),
+      leaseExpiresAt: row.lease_expires_at ? new Date(row.lease_expires_at) : null,
+      live: row.live,
+    }
+  }
+
+  /** 写入前校验 fence：旧 generation / 过期租约一律拒绝 */
+  private async assertFence(fence: RunFence, operation: string): Promise<void> {
+    const rows = await this.db.dataSource.query<Array<{ ok: number }>>(
+      `
+      SELECT 1 AS ok
+        FROM run_ownership
+       WHERE run_id = $1 AND owner_id = $2 AND generation = $3
+         AND (lease_expires_at IS NULL OR lease_expires_at > now())
+      `,
+      [fence.runId, fence.ownerId, fence.generation],
+    )
+    if (rows.length === 0) throw new RunFenceConflictError(fence, operation)
+  }
+
   /** 持久化快照（durable agent 的 checkpoint） */
   async persistWorkflowSnapshot(input: {
     workflowName: string
@@ -137,7 +302,9 @@ export class AgentWorkflowsStorage extends WorkflowsStorage {
     snapshot: WorkflowRunState
     createdAt?: Date
     updatedAt?: Date
+    fence?: RunFence
   }): Promise<void> {
+    if (input.fence) await this.assertFence(input.fence, 'persistWorkflowSnapshot')
     const status = toRunStatus(input.snapshot?.status as string | undefined)
     // 只 set 当前 workflow 的 key：用 jsonb_set 避免「读整份快照 → 内存合并 → 回写整份 JSONB」。
     // 两个 workflow 交替 checkpoint 时，这能省掉一次读和另一份快照的重复传输。
@@ -252,6 +419,7 @@ export class AgentWorkflowsStorage extends WorkflowsStorage {
 
   /** 更新某个步骤的结果（并进快照的 context，供恢复时续跑） */
   async updateWorkflowResults(input: UpdateResultsInput): Promise<UpdateResultsOutput> {
+    if (input.fence) await this.assertFence(input.fence, 'updateWorkflowResults')
     const snapshot = (await this.loadWorkflowSnapshot(input)) ?? ({} as WorkflowRunState)
     const context = { ...((snapshot.context ?? {}) as Record<string, unknown>) }
     context[input.stepId] = input.result
@@ -265,7 +433,9 @@ export class AgentWorkflowsStorage extends WorkflowsStorage {
     workflowName: string
     runId: string
     opts: UpdateWorkflowStateOptions
+    fence?: RunFence
   }): Promise<WorkflowRunState | undefined> {
+    if (input.fence) await this.assertFence(input.fence, 'updateWorkflowState')
     const snapshot = (await this.loadWorkflowSnapshot(input)) ?? ({} as WorkflowRunState)
     const next = {
       ...snapshot,

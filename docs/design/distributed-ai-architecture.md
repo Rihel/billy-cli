@@ -311,7 +311,7 @@ bash / file 工具按根会话工作；会话列表过滤子会话；删父级�
 - **唯一索引是并发底线**；应用层的 run 租约只防「双跑」，不替代 DB 状态。
 - 目标态加 **run 租约**：`SET NX PX 60s`，每 15s 续；租约丢失 → 立即 abort + 条件更新，
   避免脑裂时两个 facade 同时跑同一轮。
-- 崩溃恢复：启动抢 `agent:recovery:lease`（60s）→ `recoverAllDurableAgents()` →
+- 崩溃恢复：启动抢 `agent:recovery:lease`（600s）→ `recoverAllDurableAgents()` →
   清理孤儿（单副本才按启动时间；多副本跳过）→ 看门狗兜底。多副本必须
   `AGENT_MULTI_INSTANCE=true`，否则滚动更新会误杀别的副本。
 - durable 快照 + Redis memory thread 让续跑不依赖原进程；根 run 的重试 = 新 run，
@@ -336,7 +336,7 @@ bash / file 工具按根会话工作；会话列表过滤子会话；删父级�
 | DB `runs.heartbeat_at` | 15s（子 run 1s） | PG | 证明「还有人在管」 | 60s 后看门狗判 `stale_heartbeat` |
 | Redis 进度 `heartbeatAt` | 15s | Redis | 重连 / 观测 | 只降级实时性，不影响正确性（TTL 6h） |
 | run 租约（目标态） | TTL 60s / 续 15s | Redis | 防双跑 | 丢失即自我中止 |
-| 恢复租约 | TTL 60s | Redis | 多副本只让一个做启动恢复 | 过期后别的副本可接手 |
+| 恢复租约 | TTL 600s | Redis | 多副本只让一个做启动恢复 | 过期后别的副本可接手；真正的 per-run 互斥由 `run_ownership` fencing 兜底 |
 
 ### 6.2 组件保活矩阵
 

@@ -27,6 +27,7 @@ export { MonitorRuleEntity } from './monitor-rule-entity.js'
 export { PersonalCredentialEntity } from './personal-credential-entity.js'
 export { PersonalCredentialAuditEntity } from './personal-credential-audit-entity.js'
 export { RunEntity } from './run-entity.js'
+export { RunOwnershipEntity } from './run-ownership-entity.js'
 export { TimelineEntity } from './timeline-entity.js'
 export { UserEntity } from './user-entity.js'
 
@@ -59,6 +60,7 @@ import { MonitorRuleEntity } from './monitor-rule-entity.js'
 import { PersonalCredentialEntity } from './personal-credential-entity.js'
 import { PersonalCredentialAuditEntity } from './personal-credential-audit-entity.js'
 import { RunEntity } from './run-entity.js'
+import { RunOwnershipEntity } from './run-ownership-entity.js'
 import { TimelineEntity } from './timeline-entity.js'
 import { UserEntity } from './user-entity.js'
 
@@ -93,6 +95,7 @@ export const DB_ENTITIES = [
   PersonalCredentialEntity,
   PersonalCredentialAuditEntity,
   RunEntity,
+  RunOwnershipEntity,
   TimelineEntity,
   UserEntity,
 ]
