@@ -41,6 +41,14 @@ export class AiWorkspaceEntity extends BaseEntity {
   @Column({ name: 'image', type: 'varchar', length: 128, nullable: true })
   image: string | null = null
 
+  /**
+   * 这个工作区用哪个驱动：`host` / `docker` / `kubernetes`；空 = 按 backend 与部署默认推导。
+   *
+   * 有了它，「这个工作区跑在哪」是一次**查表**而不是层层推断，一套部署里也能混跑。
+   */
+  @Column({ name: 'driver', type: 'varchar', length: 16, nullable: true })
+  driver: string | null = null
+
   /** backend 相关配置：local 的 root / container 的 workdir 等 */
   @Column({ name: 'location', type: 'jsonb', nullable: true })
   location: Record<string, unknown> | null = null

@@ -44,6 +44,7 @@ import { RUNTIME_MODEL_RESOLVER, type RuntimeModelResolver } from './model-resol
 import { cancelRemoteRunTasks } from './remote-tool.client.js'
 import type { AgentDefinition, AgentRegistry } from '../agents/types.js'
 import { buildEnvironmentData } from '../core/prompts/environment.js'
+import { WorkspaceEnvironmentClient } from './workspace-environment.client.js'
 import { PROMPT_ENGINE, type PromptEngine } from '../core/prompts/prompt.engine.js'
 import { SkillLoader } from '../core/skills/index.js'
 import { ToolRegistry } from '../core/tools/tool.registry.js'
@@ -397,6 +398,10 @@ export class AgentChatService {
     @Optional()
     @Inject(ToolDiscoveryStore)
     private readonly discovery?: ToolDiscoveryStore,
+    // 工作区执行环境（提示词「运行环境」段）；测试 / 脚本不传时整段省略（放末尾，别打乱位置参数）
+    @Optional()
+    @Inject(WorkspaceEnvironmentClient)
+    private readonly workspaceEnvironment?: WorkspaceEnvironmentClient,
   ) {}
 
   /**
@@ -3538,7 +3543,7 @@ export class AgentChatService {
       this.catalog,
       { isAdmin, userId, conversationId: conversation.id },
     )
-    const environment = this.renderEnvironment(conversation)
+    const environment = await this.renderEnvironment(conversation)
     const systemPrompt = environment ? `${instructions}\n\n${environment}` : instructions
 
     await this.timelines.append({
@@ -3557,10 +3562,14 @@ export class AgentChatService {
     return systemPrompt
   }
 
-  private renderEnvironment(conversation: ConversationEntity): string | undefined {
+  private async renderEnvironment(conversation: ConversationEntity): Promise<string | undefined> {
     if (conversation.turnCount > 0) return undefined
     try {
-      return this.prompts.renderPartial('partials/environment', buildEnvironmentData())
+      const workspace = await this.workspaceEnvironment?.of(conversation.workspaceId)
+      return this.prompts.renderPartial(
+        'partials/environment',
+        buildEnvironmentData(undefined, undefined, undefined, workspace ?? undefined),
+      )
     } catch (error) {
       this.logger.warn('ai.environment.render_failed', {
         conversationId: conversation.id,

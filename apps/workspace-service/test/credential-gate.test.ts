@@ -4,7 +4,7 @@ import {
   commandsOfLine,
   gateMessageOf,
   type CredentialManifest,
-} from '../src/workspace/credential-gate.js'
+} from '../src/workspace/credential/gate.js'
 
 /**
  * 执行前检查（`docs/design/workspace-cli-credentials.md` §6.4.4）。

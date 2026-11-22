@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { AppLogger } from '@repo/kits'
-import { WorkspaceCredentialImportService } from '../src/workspace/credential-import.service.js'
+import { WorkspaceCredentialImportService } from '../src/workspace/credential/import.service.js'
 import type { WorkspaceRuntime } from '../src/workspace/workspace-runtime.service.js'
 import type { WorkspaceRepository } from '../src/workspace/workspace.repository.js'
 

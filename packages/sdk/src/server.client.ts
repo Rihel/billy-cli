@@ -861,6 +861,14 @@ export class ServerClient extends HttpClient<BearerTokenCredentials> {
   workspace = {
     /** 当前管理员的工作区（含实时运行态） */
     list: () => this.post<WorkspaceModel[]>('/ai-workspace/list', {}),
+    /** 部署级信息（沙箱是否关闭 / 容器运行时）：工作区页的提示用 */
+    serverInfo: () => this.post<Record<string, unknown>>('/ai-workspace/server-info', {}),
+    /** 新建工作区会落在哪（后端 / 驱动 / 位置说明）；界面只展示，不让用户选 */
+    defaults: () =>
+      this.post<{
+        driver: 'host' | 'container' | 'pod'
+        location: string
+      }>('/ai-workspace/defaults', {}),
 
     create: (data: WorkspaceCreateDto) => this.post<WorkspaceModel>('/ai-workspace/create', data),
 

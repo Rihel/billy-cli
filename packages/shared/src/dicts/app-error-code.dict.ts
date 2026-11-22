@@ -181,6 +181,11 @@ export const AppErrorCodes = createDict({
     value: 3603,
     http: 404,
   },
+  WorkspaceHostRootInvalid: {
+    label: '文件夹不可用：需要完整路径、已存在的文件夹，且位于允许的范围内',
+    value: 3604,
+    http: 400,
+  },
   SkillQuotaExceeded: {
     label: '个人技能数量已达上限（50 个）',
     value: 3601,

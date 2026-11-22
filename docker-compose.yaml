@@ -300,9 +300,15 @@ services:
       WORKSPACE_SERVICE_ENDPOINT: http://workspace-service:9995
       WORKSPACE_DEFAULT_IMAGE: billy-workspace:2026.11.1
       WORKSPACE_LOCAL_ROOT: /home/appuser/.billy/workspaces
+      # 宿主目录工作区（local 后端）：要把宿主目录挂进本容器，并把「容器内路径」配进白名单。
+      # 宿主路径按宿主视角写在这里，容器内看到的是 /host-code；工作区 root 填 /host-code/xxx。
+      # WORKSPACE_LOCAL_ALLOWED_ROOTS: /host-code
+      # 是否启用命令隔离（旧键 AGENT_WORKSPACE_MODE=enforce 等价）
+      # AGENT_WORKSPACE_SANDBOX: 'true'
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - workspace-data:/home/appuser/.billy/workspaces
+      # - /Users/you/code:/host-code:rw
     expose:
       - '9995'
     healthcheck:

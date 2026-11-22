@@ -104,7 +104,7 @@ const makeHarness = (): Harness => {
       location: {},
       fileAccess: 'write' as const,
     })),
-    listContainerWorkspaceIds: vi.fn(async () => [workspaceId]),
+    listContainerWorkspaceIds: vi.fn(async () => [{ id: workspaceId, runtime: 'docker' as const }]),
   }
   const setup = {
     run: vi.fn(async () => ({ env: {}, report: null, manifest: [], resolved: true })),

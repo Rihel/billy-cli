@@ -4,7 +4,7 @@ import { z } from 'zod'
 import { CapabilityDecl, CapabilityGroup, findCapabilityDecl } from '@repo/capability'
 import type { ToolInvokeRequest, ToolOutcome } from '@repo/contracts'
 import { WorkspaceRuntime } from '../workspace/workspace-runtime.service.js'
-import { gateMessageOf } from '../workspace/credential-gate.js'
+import { gateMessageOf } from '../workspace/credential/gate.js'
 import { WorkspaceLocator } from './workspace.locator.js'
 
 interface BashInput {
@@ -38,8 +38,8 @@ export class BashExecutor {
 
       不要读平台源码、配置、密钥、环境变量或数据库：不属于用户任务。
 
-      执行环境：命令在会话绑定的工作区里跑（容器或本地沙箱），只能访问工作区目录；
-      实际以出参 runtime 为准。
+      执行环境：命令在会话绑定的工作区里跑；语法按当前执行环境的 shell（sh / cmd，见系统提示里的运行环境）。
+      只能访问工作区目录；实际以出参 runtime 为准。
 
       约束：命令要幂等；输出用管道 head / grep 收窄。
     `,

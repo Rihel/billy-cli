@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { createExecShell, type SetupExecResult } from '../src/workspace/setup-shell.js'
+import { createExecShell, type SetupExecResult } from '../src/workspace/setup/shell.js'
 
 /**
  * 初始化阶段的写文件（`createExecShell`）。

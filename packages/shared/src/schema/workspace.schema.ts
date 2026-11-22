@@ -28,6 +28,15 @@ export const WorkspaceModelSchema = BaseModelSchema.extend({
   isDefault: z.boolean(),
   backend: WorkspaceBackendSchema,
   image: z.string().nullable(),
+  /** 执行驱动：host / container / pod；空 = 自动推导 */
+  driver: z.enum(['host', 'container', 'pod']).nullable(),
+  /**
+   * 宿主目录（仅 `local` 后端有意义）：工作区根在宿主机上的绝对路径。
+   *
+   * 空 = 平台托管目录 `<WORKSPACE_LOCAL_ROOT>/<workspaceId>`；填了 = 直接用宿主上已有的目录
+   * （用户的项目目录），此时**不跑初始化**（不写 `.billy/`、不物化 `.agents/`、不装全局 CLI）。
+   */
+  root: z.string().nullable(),
   fileAccess: WorkspaceFileAccessSchema,
   desiredStatus: WorkspaceDesiredStatusSchema,
   runtime: z.object({
@@ -45,6 +54,10 @@ export const WorkspaceCreateSchema = z.object({
   name: z.string().min(1).max(64).optional(),
   backend: WorkspaceBackendSchema.optional(),
   image: z.string().max(128).optional(),
+  /** 执行驱动：host 只能配 local；container / pod 只能配 container；空 = 推导 */
+  driver: z.enum(['host', 'container', 'pod']).optional(),
+  /** 宿主目录：仅 `local` 后端可填，必须是绝对路径（存在性 / 允许根由执行面校验） */
+  root: z.string().min(1).max(512).optional(),
   fileAccess: WorkspaceFileAccessSchema.optional(),
 })
 export type WorkspaceCreateDto = z.infer<typeof WorkspaceCreateSchema>
@@ -53,6 +66,10 @@ export const WorkspaceUpdateSchema = z.object({
   id: z.string().min(1).max(20),
   name: z.string().min(1).max(64).optional(),
   image: z.string().max(128).nullable().optional(),
+  /** 执行驱动；`null` = 回到自动推导 */
+  driver: z.enum(['host', 'container', 'pod']).nullable().optional(),
+  /** `null` = 清空，回到平台托管目录 */
+  root: z.string().max(512).nullable().optional(),
   fileAccess: WorkspaceFileAccessSchema.optional(),
 })
 export type WorkspaceUpdateDto = z.infer<typeof WorkspaceUpdateSchema>

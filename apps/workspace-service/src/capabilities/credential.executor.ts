@@ -3,7 +3,7 @@ import { Inject, Injectable } from '@nestjs/common'
 import { z } from 'zod'
 import { CapabilityDecl, CapabilityGroup, findCapabilityDecl } from '@repo/capability'
 import type { ToolInvokeRequest, ToolOutcome } from '@repo/contracts'
-import { WorkspaceCredentialImportService } from '../workspace/credential-import.service.js'
+import { WorkspaceCredentialImportService } from '../workspace/credential/import.service.js'
 import { WorkspaceLocator } from './workspace.locator.js'
 
 /** 没有绑定工作区时的统一拒绝（两个凭据能力共用） */

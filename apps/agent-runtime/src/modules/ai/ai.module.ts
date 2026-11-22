@@ -18,6 +18,7 @@ import { RunSubAgentTool } from './tools/subagent.tool.js'
 import { PlannerStore, PlannerTools } from './tools/planner/index.js'
 import { createPromptEngine, PROMPT_ENGINE } from './core/prompts/index.js'
 import { ModelGatewayCatalogService } from './runtime/model-gateway.catalog.js'
+import { WorkspaceEnvironmentClient } from './runtime/workspace-environment.client.js'
 import { RUNTIME_MODEL_RESOLVER } from './runtime/model-resolver.js'
 import {
   AgentChatService,
@@ -136,6 +137,8 @@ let warnedMissingEnvelope = false
     // 模型网关目录（进程内只读缓存）；同时作为运行时的模型解析端口
     ModelGatewayCatalogService,
     { provide: RUNTIME_MODEL_RESOLVER, useExisting: ModelGatewayCatalogService },
+    // 工作区执行环境声明（提示词里的「运行环境」用它；没配 WORKSPACE_SERVICE_URL 时整段省略）
+    WorkspaceEnvironmentClient,
 
     // ───────────────────────── 工具引擎（主体） ─────────────────────────
     // 工具组实例（**唯一的工具来源**）：注册机对每个组跑 `buildToolSpecs()` 拿 1..n 个工具

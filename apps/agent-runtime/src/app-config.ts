@@ -214,6 +214,15 @@ export const serverAppConfigSchema = z.object({
 export type ServerAppConfig = z.infer<typeof serverAppConfigSchema>
 
 /** 空串视为未配置（env 常见写法 `KEY=`） */
+/** 沙箱开关：新键 `AGENT_WORKSPACE_SANDBOX`（true/false）；旧键 `AGENT_WORKSPACE_MODE=off` 兼容 */
+const parseSandbox = (env: NodeJS.ProcessEnv): boolean | undefined => {
+  const raw = env.AGENT_WORKSPACE_SANDBOX?.trim()
+  if (raw) return !['false', '0', 'off', 'no'].includes(raw.toLowerCase())
+  const legacy = env.AGENT_WORKSPACE_MODE?.trim()
+  if (!legacy) return undefined
+  return legacy !== 'off'
+}
+
 const optional = (value: string | undefined): string | undefined => (value ? value : undefined)
 
 const optionalNumber = (value: string | undefined): number | undefined => {
@@ -323,7 +332,7 @@ export const mapServerEnv = (env: NodeJS.ProcessEnv): Record<string, unknown> =>
       }
     : undefined,
   workspace: {
-    mode: optional(env.AGENT_WORKSPACE_MODE),
+    sandbox: parseSandbox(env),
     sandboxNetwork: optional(env.AGENT_WORKSPACE_SANDBOX_NETWORK),
     probeTimeoutMs: optionalNumber(env.AGENT_WORKSPACE_PROBE_TIMEOUT_MS),
   },
@@ -362,6 +371,11 @@ export const mapServerEnv = (env: NodeJS.ProcessEnv): Record<string, unknown> =>
     fileWorkspaceMaxDepth: optional(env.AGENT_FILE_WORKSPACE_MAX_DEPTH),
     toolPageBytesMax: optional(env.AGENT_TOOL_PAGE_BYTES_MAX),
     toolMaxPagesPerTurnMax: optional(env.AGENT_TOOL_MAX_PAGES_PER_TURN),
+  },
+  workspaceService: {
+    url: optional(env.WORKSPACE_SERVICE_URL),
+    token: optional(env.WORKSPACE_INTERNAL_TOKEN) ?? optional(env.TOOL_INTERNAL_TOKEN),
+    timeoutMs: optional(env.WORKSPACE_SERVICE_TIMEOUT_MS),
   },
   modelGateway: {
     url: optional(env.MODEL_GATEWAY_URL),

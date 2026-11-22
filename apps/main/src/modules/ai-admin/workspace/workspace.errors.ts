@@ -21,3 +21,16 @@ export class WorkspaceNotFoundError extends AppError {
     super(`Workspace not found${workspaceId ? `: ${workspaceId}` : ''}`)
   }
 }
+
+/**
+ * 文件夹配置不合法（**语法**层：完整路径、不是 `/`、不含 `..`、底层后端必须是 local）。
+ *
+ * 存在性、是否落在允许根之内、是否是目录由执行面校验 —— main 与 workspace-service 可能不在
+ * 同一台机器 / 同一个容器里，main 看不到宿主文件系统。
+ */
+export class WorkspaceHostRootInvalidError extends AppError {
+  readonly code = AppErrorCodes.WorkspaceHostRootInvalid
+  constructor(readonly reason: string) {
+    super(`Invalid workspace host root: ${reason}`)
+  }
+}

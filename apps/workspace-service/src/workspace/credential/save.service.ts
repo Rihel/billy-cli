@@ -1,9 +1,12 @@
 import { Inject, Injectable } from '@nestjs/common'
 import { AppLogger } from '@repo/kits'
 import type { CredentialImportResponse } from '@repo/contracts'
-import { WorkspaceRepository } from './workspace.repository.js'
-import { importCredentialToMain } from './credential-main.client.js'
-import { WorkspaceServiceConfig, type WorkspaceServiceConfigValue } from '../config/app-config.js'
+import { WorkspaceRepository } from '../workspace.repository.js'
+import { importCredentialToMain } from './main.client.js'
+import {
+  WorkspaceServiceConfig,
+  type WorkspaceServiceConfigValue,
+} from '../../config/app-config.js'
 
 /** 用户主动给出的凭据值（键名 = 模板字段 key） */
 export interface CredentialSaveInput {

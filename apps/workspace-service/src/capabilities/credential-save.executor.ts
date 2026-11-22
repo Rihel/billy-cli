@@ -3,7 +3,7 @@ import { Inject, Injectable } from '@nestjs/common'
 import { z } from 'zod'
 import { CapabilityDecl, CapabilityGroup, findCapabilityDecl } from '@repo/capability'
 import type { ToolInvokeRequest, ToolOutcome } from '@repo/contracts'
-import { WorkspaceCredentialSaveService } from '../workspace/credential-save.service.js'
+import { WorkspaceCredentialSaveService } from '../workspace/credential/save.service.js'
 import { WorkspaceLocator } from './workspace.locator.js'
 
 /**

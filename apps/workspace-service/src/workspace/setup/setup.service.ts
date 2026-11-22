@@ -1,6 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common'
 import { AppLogger } from '@repo/kits'
-import { shellQuote } from './exec-env.js'
+import { shellQuote } from '../exec/env.js'
 import {
   credentialVersionOf,
   type WorkspaceSetupFile,
@@ -8,17 +8,18 @@ import {
   type WorkspaceSetupReport,
 } from '@repo/shared'
 import type { CredentialInjectRule } from '@repo/shared'
-import type { CredentialResolvedItem } from '@repo/contracts'
-import { WorkspaceRepository } from './workspace.repository.js'
-import { WorkspaceCredentialClient } from './credential.client.js'
+import type { CredentialResolvedItem, WorkspaceFeatures } from '@repo/contracts'
+import { WorkspaceRepository } from '../workspace.repository.js'
+import { WorkspaceCredentialClient } from '../credential/client.js'
+import { installCommandOf, mergeSetupPackages, renderInjectRules, setupHashOf } from './pure.js'
+import type { SetupShell } from './shell.js'
 import {
-  installCommandOf,
-  mergeSetupPackages,
-  renderInjectRules,
-  setupHashOf,
-} from './setup-pure.js'
-import type { SetupShell } from './setup-shell.js'
-import { WorkspaceServiceConfig, type WorkspaceServiceConfigValue } from '../config/app-config.js'
+  WorkspaceServiceConfig,
+  type WorkspaceServiceConfigValue,
+} from '../../config/app-config.js'
+
+/** 技能目录的归属标记：只有带它的 `.agents/<key>/` 才允许被同步收敛删除（见 docs/design/workspace-env-contract.md D6） */
+const SKILL_MARKER = '.billy-skill'
 
 /** 初始化总预算（§6.3）：超时项标记 timeout，工作区仍可用 */
 const SETUP_BUDGET_MS = 5 * 60 * 1000
@@ -62,6 +63,7 @@ export class WorkspaceSetupService {
   async run(
     workspaceId: string,
     shell: SetupShell,
+    features: WorkspaceFeatures,
   ): Promise<{
     env: Record<string, string>
     report: WorkspaceSetupReport
@@ -83,9 +85,14 @@ export class WorkspaceSetupService {
     const marker = `.billy/setup/${plan.setupId}@${plan.hash}.done`
     const done = await shell.read(marker).catch(() => null)
     if (!done) {
-      await this.installPackages(shell, plan.packages, report, startedAt)
+      // 装包与配置文件属于「平台代管」的资产：环境声明为不能装全局包时整体跳过
+      // （Host 默认如此：CLI 由用户在宿主机自己装，见 docs/design/workspace-env-contract.md D1）
+      if (features.installGlobal) {
+        await this.installPackages(shell, plan.packages, report, startedAt)
+        await this.materializeFiles(shell, plan.files)
+      }
+      // 技能两种环境都要物化：正文只从工作区 `.agents/` 读
       await this.materializeSkills(shell, plan.skills, report)
-      await this.materializeFiles(shell, plan.files)
       /**
        * **技能没写全就不落幂等标记**：标记是"这次初始化已经完成"的承诺，写下去就不会再重试。
        * 旧实现无论成败都写，一次瞬时失败（网络、写文件超限）会被永久固化 ——
@@ -110,11 +117,12 @@ export class WorkspaceSetupService {
       this.logger.info('workspace.setup.marked', { workspaceId, marker })
     }
 
-    const {
-      env: credentialEnv,
-      manifest,
-      resolved,
-    } = await this.materializeCredentials(workspaceId, shell, plan, report)
+    // 凭据要写宿主 HOME：环境声明为不可写时跳过（Host + 沙箱默认如此），
+    // 同时**不写** `.billy/credentials.json` —— 没有落地就不登记，避免预检以为有凭据
+    const credential = features.writeHome
+      ? await this.materializeCredentials(workspaceId, shell, plan, report)
+      : { env: {}, manifest: [], resolved: true }
+    const { env: credentialEnv, manifest, resolved } = credential
 
     await shell
       .write(
@@ -131,9 +139,11 @@ export class WorkspaceSetupService {
         ),
       )
       .catch(() => undefined)
-    await shell
-      .write('.billy/credentials.json', JSON.stringify({ version: 0, items: manifest }, null, 2))
-      .catch(() => undefined)
+    if (features.writeHome) {
+      await shell
+        .write('.billy/credentials.json', JSON.stringify({ version: 0, items: manifest }, null, 2))
+        .catch(() => undefined)
+    }
 
     report.durationMs = Date.now() - startedAt
     if (report.durationMs > 90_000) {
@@ -151,7 +161,13 @@ export class WorkspaceSetupService {
       skills: report.skills.length,
       credentials: report.credentials.length,
     })
-    return { env: { ...plan.env, ...credentialEnv }, report, manifest, resolved }
+    // 清单里的环境变量同样属于「平台代管」：不能装包的环境也不注入（Host 用宿主自己的环境）
+    return {
+      env: features.installGlobal ? { ...plan.env, ...credentialEnv } : {},
+      report,
+      manifest,
+      resolved,
+    }
   }
 
   /**
@@ -176,18 +192,16 @@ export class WorkspaceSetupService {
       ownerId: context.ownerId,
     })
 
-    const listed = await shell.exec('ls -1 .agents 2>/dev/null || true', { timeoutMs: 15_000 })
-    const existing = listed.ok
-      ? listed.stdout
-          .split('\n')
-          .map((item) => item.trim())
-          .filter(Boolean)
-      : []
+    const existing = await shell.listDirs('.agents').catch(() => [])
     const visible = new Set(skills.map((skill) => skill.key))
 
     const removed: string[] = []
     for (const key of existing) {
       if (visible.has(key) || !/^[A-Za-z0-9._-]+$/.test(key)) continue
+      // 只删「我们自己写过」的目录：用户指定目录里可能有同名或无关的 `.agents/*`，
+      // 没带标记就不动（docs/design/workspace-env-contract.md D6）
+      const owned = await shell.read(`.agents/${key}/${SKILL_MARKER}`).catch(() => null)
+      if (owned === null) continue
       const result = await shell.exec(`rm -rf ${shellQuote(`.agents/${key}`)}`, {
         timeoutMs: 15_000,
       })
@@ -216,6 +230,7 @@ export class WorkspaceSetupService {
   async syncCredentials(
     workspaceId: string,
     shell: SetupShell,
+    features: WorkspaceFeatures,
   ): Promise<{
     env: Record<string, string>
     version: string
@@ -233,12 +248,9 @@ export class WorkspaceSetupService {
       skills: [],
       credentials: [],
     }
-    const { env, version, manifest, resolved } = await this.applyCredentials(
-      workspaceId,
-      shell,
-      plan,
-      report,
-    )
+    const { env, version, manifest, resolved } = features.writeHome
+      ? await this.applyCredentials(workspaceId, shell, plan, report)
+      : { env: {}, version: '0', manifest: [], resolved: true }
     report.durationMs = 0
     this.logger.info('workspace.sync.credentials', {
       workspaceId,
@@ -373,6 +385,15 @@ export class WorkspaceSetupService {
         }
       }
       if (failed.length === 0) {
+        // 标记文件是「这个目录归平台所有」的证据，删除收敛时据此判断
+        await shell
+          .write(`.agents/${skill.key}/${SKILL_MARKER}`, 'managed-by-billy\n')
+          .catch((error: unknown) =>
+            this.logger.warn('workspace.setup.skill_marker_failed', {
+              skillKey: skill.key,
+              reason: error instanceof Error ? error.message : String(error),
+            }),
+          )
         report.skills.push({ skillKey: skill.key, outcome: 'materialized' })
         continue
       }

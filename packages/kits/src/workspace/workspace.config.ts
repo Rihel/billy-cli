@@ -8,13 +8,13 @@ import { z } from 'zod'
  */
 export const WorkspaceConfigSchema = z.object({
   /**
-   * 隔离策略：
-   * - `enforce`（默认）：命令只能在沙箱里跑；沙箱不可用就**拒绝执行**（fail closed），
+   * 是否启用命令隔离（`AGENT_WORKSPACE_SANDBOX`）：
+   * - `true`（默认）：命令只能在沙箱里跑；沙箱不可用就**拒绝执行**（fail closed），
    *   绝不悄悄退回"以服务进程身份跑"；
-   * - `off`：不做隔离，命令直接以服务进程身份执行 —— **仅限自托管单租户**，
-   *   多租户 / SaaS 部署不要开。
+   * - `false`：不做隔离，命令直接以服务进程身份执行 —— **仅限自托管单租户**，
+   *   多租户 / SaaS 部署不要开。旧键 `AGENT_WORKSPACE_MODE=off` 等价于它。
    */
-  mode: z.enum(['enforce', 'off']).default('enforce'),
+  sandbox: z.boolean().default(true),
   /**
    * 沙箱内的联网策略。默认 `deny`：同 Pod 的 DB / Redis / k8s API / 云厂商 metadata
    * 都是"一条 curl 就能摸到"的东西，文件隔离挡不住它们。

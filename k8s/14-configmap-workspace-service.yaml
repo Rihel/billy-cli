@@ -38,4 +38,5 @@ data:
   LOG_PREFIX: 'workspace-service'
   # local 后端没有 OS 沙箱时用 off 仅联调；kubernetes 后端的工作区是容器 / Pod，隔离靠容器边界，
   # 本键对 kubernetes 后端不生效，保持默认 enforce。
-  AGENT_WORKSPACE_MODE: 'enforce'
+  # 是否启用命令隔离（旧键 AGENT_WORKSPACE_MODE=enforce 等价）
+  AGENT_WORKSPACE_SANDBOX: 'true'

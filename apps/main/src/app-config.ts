@@ -131,6 +131,16 @@ export const serverAppConfigSchema = z.object({
    */
   workspace: WorkspaceConfigSchema,
   /**
+   * 工作区默认值（**部署决定，用户不选**）：新建工作区 / 懒创建的默认工作区按这里的后端与驱动建。
+   * 无 Docker 的单机设 `WORKSPACE_DEFAULT_BACKEND=local`；云端保持默认 container。
+   */
+  workspaceAdmin: z
+    .object({
+      /** 新建工作区 / 默认工作区的驱动：host（本机）/ container（Docker）/ pod（Kubernetes） */
+      defaultDriver: z.enum(['host', 'container', 'pod']).default('container'),
+    })
+    .default({ defaultDriver: 'container' }),
+  /**
    * 个人凭据的加密配置（`docs/design/workspace-cli-credentials.md` §6.4.2）。
    *
    * 主密钥来自环境变量（32 字节 base64），支持多把并存以便轮换：
@@ -169,6 +179,15 @@ export const serverAppConfigSchema = z.object({
 export type ServerAppConfig = z.infer<typeof serverAppConfigSchema>
 
 /** 空串视为未配置（env 常见写法 `KEY=`） */
+/** 沙箱开关：新键 `AGENT_WORKSPACE_SANDBOX`（true/false）；旧键 `AGENT_WORKSPACE_MODE=off` 兼容 */
+const parseSandbox = (env: NodeJS.ProcessEnv): boolean | undefined => {
+  const raw = env.AGENT_WORKSPACE_SANDBOX?.trim()
+  if (raw) return !['false', '0', 'off', 'no'].includes(raw.toLowerCase())
+  const legacy = env.AGENT_WORKSPACE_MODE?.trim()
+  if (!legacy) return undefined
+  return legacy !== 'off'
+}
+
 const optional = (value: string | undefined): string | undefined => (value ? value : undefined)
 
 const optionalNumber = (value: string | undefined): number | undefined => {
@@ -309,8 +328,17 @@ export const mapServerEnv = (env: NodeJS.ProcessEnv): Record<string, unknown> =>
     keys: credentialKeysOf(env),
     current: optional(env.PERSONAL_CREDENTIAL_KEY_CURRENT),
   },
+  workspaceAdmin: {
+    /**
+     * 新建工作区（含懒创建的默认工作区）用哪个驱动：
+     * - `container`（默认）：Docker 容器；
+     * - `pod`：Kubernetes Pod；
+     * - `host`：无 Docker 的单机（Windows / 自托管），工作区是自动分配的本机目录。
+     */
+    defaultDriver: optional(env.WORKSPACE_DEFAULT_DRIVER),
+  },
   workspace: {
-    mode: optional(env.AGENT_WORKSPACE_MODE),
+    sandbox: parseSandbox(env),
     sandboxNetwork: optional(env.AGENT_WORKSPACE_SANDBOX_NETWORK),
     probeTimeoutMs: optionalNumber(env.AGENT_WORKSPACE_PROBE_TIMEOUT_MS),
   },

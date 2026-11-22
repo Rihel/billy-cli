@@ -1,10 +1,10 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { AppLogger } from '@repo/kits'
 import type { WorkspaceSetupPackage } from '@repo/shared'
-import { WorkspaceSetupService } from '../src/workspace/workspace-setup.service.js'
-import type { SetupExecResult, SetupShell } from '../src/workspace/setup-shell.js'
+import { WorkspaceSetupService } from '../src/workspace/setup/setup.service.js'
+import type { SetupExecResult, SetupShell } from '../src/workspace/setup/shell.js'
 import type { WorkspaceRepository } from '../src/workspace/workspace.repository.js'
-import type { WorkspaceCredentialClient } from '../src/workspace/credential.client.js'
+import type { WorkspaceCredentialClient } from '../src/workspace/credential/client.js'
 
 /**
  * 初始化阶段编排（`docs/design/workspace-cli-credentials.md` §6.3）。
@@ -13,6 +13,19 @@ import type { WorkspaceCredentialClient } from '../src/workspace/credential.clie
  * ① 安装（verify 未过才装）→ ② 物化技能 → ③ 落地凭据 → ④ 版本文件；
  * 单项失败只进 `setup_report`，不抛。
  */
+
+/** 容器形态的环境声明：能装包、能写 HOME（Host 的声明见 features.test.ts） */
+const CONTAINER_FEATURES = {
+  shell: 'sh',
+  sandbox: 'none',
+  network: 'allow',
+  writeHome: true,
+  installGlobal: true,
+  persistence: 'ephemeral',
+  resourceLimits: true,
+  extraReadRoots: false,
+  multiInstance: false,
+} as const
 
 const ok = (stdout = ''): SetupExecResult => ({ ok: true, code: 0, stdout, stderr: '' })
 const fail = (stderr = 'boom'): SetupExecResult => ({ ok: false, code: 1, stdout: '', stderr })
@@ -44,6 +57,9 @@ const makeShell = (options: { marker?: string | null; verifyFirst?: boolean } = 
     async read(path) {
       if (path.includes('.done')) return options.marker ?? null
       return null
+    },
+    async listDirs() {
+      return []
     },
   }
   return { shell, execs, writes }
@@ -129,7 +145,7 @@ describe('首次初始化：按固定顺序走完四步', () => {
     const { service } = makeService()
     const { shell, execs, writes } = makeShell()
 
-    const { env, report, resolved } = await service.run('ws_1', shell)
+    const { env, report, resolved } = await service.run('ws_1', shell, CONTAINER_FEATURES)
 
     // 凭据段整体解析成功：调用方据此把 credentialsReady 标 true
     expect(resolved).toBe(true)
@@ -161,7 +177,7 @@ describe('幂等：标记命中不重装', () => {
     const { service, credentials } = makeService()
     const { shell, execs, writes } = makeShell({ marker: 'done' })
 
-    const { env, report } = await service.run('ws_1', shell)
+    const { env, report } = await service.run('ws_1', shell, CONTAINER_FEATURES)
 
     expect(execs).toEqual([])
     expect(report.packages).toEqual([])
@@ -179,10 +195,38 @@ describe('幂等：标记命中不重装', () => {
     const { service } = makeService()
     const { shell, execs } = makeShell({ verifyFirst: true })
 
-    const { report } = await service.run('ws_1', shell)
+    const { report } = await service.run('ws_1', shell, CONTAINER_FEATURES)
 
     expect(execs.filter((command) => command.startsWith('npm install'))).toEqual([])
     expect(report.packages).toEqual([{ spec: 'lark-cli@1.2.3', outcome: 'skipped' }])
+  })
+})
+
+describe('Host 环境（按声明降级）', () => {
+  const HOST_FEATURES = {
+    ...CONTAINER_FEATURES,
+    // 开沙箱的 Host：写不了 HOME、装不了全局包
+    sandbox: 'os',
+    network: 'deny',
+    writeHome: false,
+    installGlobal: false,
+    persistence: 'durable',
+    resourceLimits: false,
+  } as const
+
+  it('只物化技能：不装包、不写凭据清单，凭据客户端也不调', async () => {
+    const { service, credentials } = makeService()
+    const { shell, execs, writes } = makeShell()
+
+    const { manifest, resolved } = await service.run('ws_1', shell, HOST_FEATURES)
+
+    expect(execs.some((command) => command.startsWith('npm install'))).toBe(false)
+    expect(credentials.resolve).not.toHaveBeenCalled()
+    expect(writes.some((item) => item.path.startsWith('.agents/'))).toBe(true)
+    expect(writes.some((item) => item.path.endsWith('.billy/credentials.json'))).toBe(false)
+    expect(manifest).toEqual([])
+    // 跳过凭据不是失败：不触发补偿重试
+    expect(resolved).toBe(true)
   })
 })
 
@@ -196,15 +240,17 @@ describe('P9 技能收敛：写可见、删不可见目录', () => {
     const shell = {
       async exec(command: string) {
         execs.push(command)
-        if (command.startsWith('ls -1 .agents'))
-          return { ok: true, code: 0, stdout: 'keep\nstale\n', stderr: '' }
         return { ok: true, code: 0, stdout: '', stderr: '' }
       },
       async write(path: string) {
         writes.push(path)
       },
-      async read() {
-        return null
+      async read(path: string) {
+        // 只有「我们写过的」目录带标记；没标记的不动
+        return path === '.agents/stale/.billy-skill' ? 'managed-by-billy' : null
+      },
+      async listDirs() {
+        return ['keep', 'stale']
       },
     }
 
@@ -221,7 +267,7 @@ describe('P6 推送同步：只刷凭据，不装包', () => {
     const { service } = makeService()
     const { shell, execs, writes } = makeShell()
 
-    const result = await service.syncCredentials('ws_1', shell)
+    const result = await service.syncCredentials('ws_1', shell, CONTAINER_FEATURES)
 
     // 没有 verify / 安装命令（推送同步不碰包）
     expect(execs).toEqual([])
@@ -250,7 +296,7 @@ describe('失败不阻断：单项失败只进报告', () => {
       },
     }
 
-    const { report } = await service.run('ws_1', failingShell)
+    const { report } = await service.run('ws_1', failingShell, CONTAINER_FEATURES)
 
     expect(report.packages[0].outcome).toBe('failed')
     expect(report.packages[0].message).toContain('network unreachable')
@@ -276,7 +322,7 @@ describe('失败不阻断：单项失败只进报告', () => {
     })
     const { shell, writes } = makeShell()
 
-    const { report } = await service.run('ws_1', shell)
+    const { report } = await service.run('ws_1', shell, CONTAINER_FEATURES)
 
     expect(report.credentials[0]).toMatchObject({ name: 'lark', outcome: 'denied' })
     expect(writes.some((item) => item.path === '~/.my.cnf')).toBe(false)
@@ -291,7 +337,7 @@ describe('失败不阻断：单项失败只进报告', () => {
     })
     const { shell, writes } = makeShell()
 
-    const { env, report, resolved } = await service.run('ws_1', shell)
+    const { env, report, resolved } = await service.run('ws_1', shell, CONTAINER_FEATURES)
 
     expect(report.credentials.map((item) => item.outcome)).toEqual(['failed', 'failed'])
     expect(env).toEqual({ FOO: 'bar' })
@@ -304,7 +350,7 @@ describe('失败不阻断：单项失败只进报告', () => {
     const { service } = makeService({ credentialNames: [] })
     const { shell } = makeShell()
 
-    const { resolved, report } = await service.run('ws_1', shell)
+    const { resolved, report } = await service.run('ws_1', shell, CONTAINER_FEATURES)
 
     expect(resolved).toBe(true)
     expect(report.credentials).toEqual([])
@@ -340,7 +386,7 @@ describe('技能物化：单文件失败不连坐，正文优先，失败不写�
       },
     }
 
-    const { report } = await service.run('ws_1', shell)
+    const { report } = await service.run('ws_1', shell, CONTAINER_FEATURES)
 
     expect(report.skills).toEqual([
       {
@@ -374,7 +420,7 @@ describe('技能物化：单文件失败不连坐，正文优先，失败不写�
       },
     }
 
-    const { report } = await service.run('ws_1', shell)
+    const { report } = await service.run('ws_1', shell, CONTAINER_FEATURES)
 
     expect(report.skills[0]).toMatchObject({ skillKey: 'broken', outcome: 'failed' })
     // 只尝试过技能文件与版本文件，没有任何 done 标记

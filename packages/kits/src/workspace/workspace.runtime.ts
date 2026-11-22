@@ -26,7 +26,7 @@ import type {
  * 2. **沙箱不可用就拒绝执行（fail closed）** —— 绝不悄悄退回"以服务进程身份跑"。
  *    Web 产品里那等于把服务器交给一个不可信的用户。
  *
- * 唯一的例外是部署显式配置 `AGENT_WORKSPACE_MODE=off`（自托管单租户）：此时整条执行
+ * 唯一的例外是部署显式配置 `AGENT_WORKSPACE_SANDBOX=false`（自托管单租户；旧键 `AGENT_WORKSPACE_MODE=off` 等价）：此时整条执行
  * 降级为 `danger-full-access`，并在出参里如实标出来。
  */
 @Injectable()
@@ -45,7 +45,7 @@ export class WorkspaceRuntimeService implements OnApplicationBootstrap {
   async onApplicationBootstrap(): Promise<void> {
     const sandbox = await this.capabilities()
     this.logger.log('workspace.runtime.ready', {
-      mode: this.config.mode,
+      mode: this.mode,
       sandbox: sandbox.available,
       impl: sandbox.impl,
       reason: sandbox.reason?.code,
@@ -60,13 +60,29 @@ export class WorkspaceRuntimeService implements OnApplicationBootstrap {
     return this.capability
   }
 
+  /**
+   * 部署侧沙箱模式：`enforce`（默认）或 `off`（自托管单租户，整条执行降级为
+   * `danger-full-access`）。
+   *
+   * 执行面要按它做**前置判断**（例如宿主目录工作区拒绝在 `off` 下运行），
+   * 所以在这里暴露配置的真实来源，避免调用方自己再读一遍环境变量、两边打架。
+   */
+  get mode(): 'enforce' | 'off' {
+    return this.config.sandbox ? 'enforce' : 'off'
+  }
+
+  /** 部署侧是否启用沙箱（新配置键；`mode` 是它的派生展示值） */
+  get sandboxEnabled(): boolean {
+    return this.config.sandbox
+  }
+
   /** 当前部署的执行能力：管理页与 `/info` 直接展示这个 */
   async status(): Promise<WorkspaceStatus> {
     const sandbox = await this.capabilities()
     return {
-      mode: this.config.mode,
-      // `off` 时没有隔离，也就没有"文件权限"可谈
-      fileAccessOptions: this.config.mode === 'off' ? [] : ['workspace-write', 'read-only'],
+      mode: this.mode,
+      // 关沙箱时没有隔离，也就没有"文件权限"可谈
+      fileAccessOptions: this.config.sandbox ? ['workspace-write', 'read-only'] : [],
       sandbox,
     }
   }
@@ -102,7 +118,7 @@ export class WorkspaceRuntimeService implements OnApplicationBootstrap {
    * （伪造信封 / 越权请求）都落到 `workspace-write` —— 只往严处走，绝不执行 `danger-full-access`。
    */
   private modeOf(fileAccess: WorkspaceFileAccess | undefined): SandboxMode {
-    if (this.config.mode === 'off') return 'danger-full-access'
+    if (!this.config.sandbox) return 'danger-full-access'
     return fileAccess === 'read-only' ? 'read-only' : 'workspace-write'
   }
 

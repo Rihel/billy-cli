@@ -1,4 +1,5 @@
-import { BadRequestException, Inject, Injectable } from '@nestjs/common'
+import { BadRequestException, Inject, Injectable, Optional } from '@nestjs/common'
+import { ConfigService } from '@nestjs/config'
 import { AppLogger, Db } from '@repo/kits'
 import { AdminEntity, AiWorkspaceEntity, UserEntity } from '@repo/db'
 import { WorkspaceServiceClient } from '@repo/internal-sdk'
@@ -10,7 +11,11 @@ import type {
   WorkspaceFilesModel,
 } from '@repo/shared'
 import { scopeOf, type OwnerRef } from '../../../common/security/index.js'
-import { DefaultWorkspaceUndeletableError, WorkspaceNotFoundError } from './workspace.errors.js'
+import {
+  DefaultWorkspaceUndeletableError,
+  WorkspaceHostRootInvalidError,
+  WorkspaceNotFoundError,
+} from './workspace.errors.js'
 
 /** 文件预览上限：超过就拒绝，不把大文件塞进 HTTP / 浏览器 */
 const FILE_PREVIEW_MAX_BYTES = 512 * 1024
@@ -45,6 +50,10 @@ export interface WorkspaceModel {
   isDefault: boolean
   backend: WorkspaceBackend
   image: string | null
+  /** 执行驱动：host / docker / kubernetes；空 = 推导 */
+  driver: 'host' | 'container' | 'pod' | null
+  /** 宿主目录（仅 `local`）：绝对路径；空 = 平台托管目录 */
+  root: string | null
   fileAccess: WorkspaceFileAccess
   desiredStatus: 'running' | 'stopped'
   /** 实时运行态（不落库） */
@@ -57,13 +66,41 @@ export interface WorkspaceCreateInput {
   name?: string
   backend?: WorkspaceBackend
   image?: string
+  driver?: 'host' | 'container' | 'pod'
+  /** 宿主目录：仅 `local` 后端可填 */
+  root?: string
   fileAccess?: WorkspaceFileAccess
 }
 
 export interface WorkspaceUpdateInput {
   name?: string
   image?: string | null
+  /** `null` = 回到部署默认运行时 */
+  driver?: 'host' | 'container' | 'pod' | null
+  /** `null` = 清空，回到平台托管目录 */
+  root?: string | null
   fileAccess?: WorkspaceFileAccess
+}
+
+/**
+ * 宿主目录的**语法**校验（存在性 / 允许根 / 是否目录由执行面校验）。
+ *
+ * 返回归一后的绝对路径；空值返回 null。`/` 与含 `..` 的路径一律拒绝：
+ * 前者等于把整个宿主交给工作区，后者会让「允许根之内」的包含关系变得不可静态判断。
+ */
+const driverMatches = (backend: WorkspaceBackend, driver: 'host' | 'container' | 'pod'): boolean =>
+  driver === 'host' ? backend === 'local' : backend === 'container'
+
+const normalizeHostRoot = (raw: string | null | undefined): string | null => {
+  if (raw === undefined || raw === null) return null
+  const value = raw.trim()
+  if (!value) return null
+  if (value.length > 512) throw new WorkspaceHostRootInvalidError('路径过长（上限 512 字符）')
+  if (!value.startsWith('/')) throw new WorkspaceHostRootInvalidError('必须是绝对路径')
+  if (value === '/') throw new WorkspaceHostRootInvalidError('不能是整个根目录 /')
+  if (value.includes('\0')) throw new WorkspaceHostRootInvalidError('路径含非法字符')
+  if (value.split('/').includes('..')) throw new WorkspaceHostRootInvalidError('不能含 .. 段')
+  return value.replace(/\/+$/, '') || '/'
 }
 
 /**
@@ -90,7 +127,36 @@ export class WorkspaceAdminService {
   constructor(
     @Inject(Db) private readonly db: Db,
     @Inject(AppLogger) private readonly logger: AppLogger,
+    // 工作区默认值（后端 / 驱动）来自部署配置；手工构造的测试不传时按环境变量兜底
+    @Optional() @Inject(ConfigService) private readonly config?: ConfigService,
   ) {}
+
+  private workspaceAdminDefaults(): { defaultDriver: 'host' | 'container' | 'pod' } {
+    const fromConfig = this.config?.get<{ defaultDriver?: 'host' | 'container' | 'pod' }>(
+      'workspaceAdmin',
+    )
+    const raw = fromConfig?.defaultDriver ?? process.env.WORKSPACE_DEFAULT_DRIVER?.trim()
+    return { defaultDriver: raw === 'host' || raw === 'pod' ? raw : 'container' }
+  }
+
+  /**
+   * 新建工作区会落在哪：给界面「会保存在 …」那行用。
+   *
+   * 用户不需要知道路径细节，这里只回答「容器内」还是「本机自动分配的目录」。
+   */
+  async defaults(): Promise<{ driver: 'host' | 'container' | 'pod'; location: string }> {
+    const { defaultDriver } = this.workspaceAdminDefaults()
+    if (defaultDriver !== 'host') {
+      const label = defaultDriver === 'pod' ? 'Kubernetes Pod' : 'Docker 容器'
+      return { driver: defaultDriver, location: `${label}内（停止后清空）` }
+    }
+    const info: Record<string, unknown> = await this.client.info().catch(() => ({}))
+    const root = typeof info.localRoot === 'string' ? info.localRoot : null
+    return {
+      driver: 'host',
+      location: root ? `本机 ${root}/<工作区 ID>` : '本机（自动分配目录）',
+    }
+  }
 
   private repo() {
     return this.db.getRepository(AiWorkspaceEntity)
@@ -117,7 +183,9 @@ export class WorkspaceAdminService {
           ...owner,
           name: '默认工作区',
           isDefault: true,
-          backend: 'container',
+          // 驱动由部署决定（无 Docker 的单机部署设 WORKSPACE_DEFAULT_DRIVER=host）
+          backend: this.workspaceAdminDefaults().defaultDriver === 'host' ? 'local' : 'container',
+          driver: this.workspaceAdminDefaults().defaultDriver,
           image: null,
           location: null,
           fileAccess: 'write',
@@ -139,6 +207,11 @@ export class WorkspaceAdminService {
     })
   }
 
+  /** 执行面的部署级信息（只读代理）：后台用来提示「沙箱关着 / 用 k8s」这类部署事实 */
+  serverInfo(): Promise<Record<string, unknown>> {
+    return this.client.info().catch(() => ({}))
+  }
+
   async list(owner: OwnerRef): Promise<WorkspaceModel[]> {
     const rows = await this.repo().find({
       where: scopeOf(owner),
@@ -150,6 +223,25 @@ export class WorkspaceAdminService {
   async create(owner: OwnerRef, input: WorkspaceCreateInput): Promise<WorkspaceModel> {
     await this.ensureDefault(owner)
     const repo = this.repo()
+    const defaults = this.workspaceAdminDefaults()
+    const backend = input.backend ?? (defaults.defaultDriver === 'host' ? 'local' : 'container')
+    // 没显式给 driver 时按后端补：local → host；container → 部署默认（host 不适用于容器）
+    const driver =
+      input.driver ??
+      (backend === 'local'
+        ? 'host'
+        : defaults.defaultDriver === 'host'
+          ? 'container'
+          : defaults.defaultDriver)
+    const root = normalizeHostRoot(input.root)
+    if (root && backend !== 'local') {
+      throw new WorkspaceHostRootInvalidError('宿主目录只能配在 local 后端的工作区上')
+    }
+    if (!driverMatches(backend, driver)) {
+      throw new WorkspaceHostRootInvalidError(
+        '执行驱动与后端不匹配（host 配 local，container/pod 配 container）',
+      )
+    }
     // 同 ensureDefault：id 由 BaseEntity 的 `@BeforeInsert` 生成，必须先用 `create()`
     // 变成实体实例。直接 `save({...})` 普通对象不会跑实体钩子，插入时 id 走 DEFAULT = NULL，
     // 撞 `id NOT NULL`（2026-11-21 实测报错）。
@@ -158,9 +250,10 @@ export class WorkspaceAdminService {
         ...owner,
         name: input.name?.trim() || '未命名工作区',
         isDefault: false,
-        backend: input.backend ?? 'container',
+        backend,
         image: input.image?.trim() || null,
-        location: null,
+        driver: backend === 'local' ? 'host' : driver,
+        location: root ? { root } : null,
         fileAccess: input.fileAccess ?? 'write',
         desiredStatus: 'stopped',
       }),
@@ -170,15 +263,35 @@ export class WorkspaceAdminService {
 
   async update(owner: OwnerRef, id: string, input: WorkspaceUpdateInput): Promise<WorkspaceModel> {
     const row = await this.requireOwned(owner, id)
-    await this.repo().update(
-      { id: row.id },
-      {
-        ...(input.name === undefined ? {} : { name: input.name.trim() || row.name }),
-        ...(input.image === undefined ? {} : { image: input.image?.trim() || null }),
-        ...(input.fileAccess === undefined ? {} : { fileAccess: input.fileAccess }),
-      },
-    )
-    return this.toModel(await this.requireOwned(owner, id))
+    // `undefined` = 不改；`null` = 清空回平台托管目录
+    let location: Record<string, unknown> | null | undefined
+    if (input.root !== undefined) {
+      if (row.backend !== 'local') {
+        throw new WorkspaceHostRootInvalidError('宿主目录只能配在 local 后端的工作区上')
+      }
+      const root = normalizeHostRoot(input.root)
+      location = root ? { root } : null
+    }
+    if (input.driver !== undefined) {
+      // 驱动创建时定死：换驱动等于换一套环境，旧环境的数据不会迁移，静默切换最坑人
+      const current =
+        row.driver === 'host' || row.driver === 'container' || row.driver === 'pod'
+          ? row.driver
+          : row.backend === 'local'
+            ? 'host'
+            : 'container'
+      if (input.driver !== current) {
+        throw new BadRequestException('工作区驱动创建后不能更改：需要别的驱动请新建工作区')
+      }
+    }
+    // 走 `save(row)` 而不是 `repo.update({...})`：jsonb 列在 `_QueryDeepPartialEntity` 下
+    // 不接受 `Record<string, unknown>`（同 credential-audit.repository 的取舍）。
+    if (input.name !== undefined) row.name = input.name.trim() || row.name
+    if (input.image !== undefined) row.image = input.image?.trim() || null
+    if (input.fileAccess !== undefined) row.fileAccess = input.fileAccess
+    if (location !== undefined) row.location = location
+    await this.repo().save(row)
+    return this.toModel(row)
   }
 
   async remove(owner: OwnerRef, id: string): Promise<{ removed: boolean }> {
@@ -323,6 +436,11 @@ export class WorkspaceAdminService {
       isDefault: row.isDefault,
       backend: row.backend as WorkspaceBackend,
       image: row.image,
+      driver:
+        row.driver === 'host' || row.driver === 'container' || row.driver === 'pod'
+          ? row.driver
+          : null,
+      root: ((row.location as { root?: string } | null)?.root ?? null) || null,
       fileAccess: row.fileAccess as WorkspaceFileAccess,
       desiredStatus: row.desiredStatus as 'running' | 'stopped',
       runtime,

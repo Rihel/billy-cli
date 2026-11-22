@@ -3,21 +3,7 @@
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { WorkspaceBackend, WorkspaceModel } from '@repo/shared'
-import {
-  Button,
-  IconText,
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  Input,
-  Label,
-  PageToolbar,
-  Tag,
-  toastError,
-  toastSuccess,
-} from '@repo/ui'
+import { Button, IconText, PageToolbar, Tag, toastError, toastSuccess } from '@repo/ui'
 import {
   BoxesIcon,
   FolderOpenIcon,
@@ -28,6 +14,7 @@ import {
   UserRoundIcon,
 } from 'lucide-react'
 import { useServerClient } from '@/lib/server-client'
+import { CreateWorkspaceDialog } from '@/components/create-workspace-dialog'
 import { WorkspaceFilesDialog } from './workspace-files-dialog'
 import { useAuthStore } from '@/stores/auth.store'
 
@@ -54,27 +41,20 @@ export default function WorkspacesPage() {
   const [createOpen, setCreateOpen] = useState(false)
   /** 正在看文件的工作区（`null` = 弹窗关闭） */
   const [filesOf, setFilesOf] = useState<WorkspaceModel | null>(null)
-  const [name, setName] = useState('')
-  const [backend, setBackend] = useState<WorkspaceBackend>('container')
 
   const { data = [], isLoading } = useQuery({
     queryKey: ['workspaces'],
     queryFn: () => client.workspace.list(),
   })
+  // 部署级信息：沙箱关着的时候要显式提示（命令会以服务进程身份执行）
+  const { data: serverInfo } = useQuery({
+    queryKey: ['workspace-server-info'],
+    queryFn: () => client.workspace.serverInfo(),
+    staleTime: 60_000,
+  })
 
   const invalidate = (): Promise<void> =>
     queryClient.invalidateQueries({ queryKey: ['workspaces'] })
-
-  const create = useMutation({
-    mutationFn: () => client.workspace.create({ name: name.trim() || undefined, backend }),
-    onSuccess: async () => {
-      toastSuccess('工作区已创建')
-      setCreateOpen(false)
-      setName('')
-      await invalidate()
-    },
-    onError: fail,
-  })
 
   const start = useMutation({
     mutationFn: (id: string) => client.workspace.start({ id }),
@@ -105,8 +85,18 @@ export default function WorkspacesPage() {
 
   const busy = start.isPending || stop.isPending || remove.isPending
 
+  const sandboxOff =
+    (serverInfo?.sandbox as { mode?: string } | undefined)?.mode === 'off' ||
+    (serverInfo?.sandbox as { sandbox?: boolean } | undefined)?.sandbox === false
+
   return (
     <div className="flex flex-col gap-4">
+      {sandboxOff ? (
+        <div className="rounded-lg border border-warning/40 bg-warning/10 px-4 py-3 text-sm">
+          当前部署关闭了命令沙箱（`AGENT_WORKSPACE_SANDBOX=false`）：工作区里的命令会以服务进程身份执行，
+          没有系统级隔离。仅建议在自托管单机使用。
+        </div>
+      ) : null}
       <PageToolbar
         title="工作区"
         description="AI 执行环境：会话在里面跑命令、读写文件。容器按需启动，空闲 2 小时后回收。"
@@ -138,51 +128,11 @@ export default function WorkspacesPage() {
         </div>
       )}
 
-      <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>新建工作区</DialogTitle>
-          </DialogHeader>
-          <div className="flex flex-col gap-4">
-            <div className="flex flex-col gap-2">
-              <Label htmlFor="workspace-name">名称</Label>
-              <Input
-                id="workspace-name"
-                value={name}
-                onChange={(event) => setName(event.target.value)}
-                placeholder="例如：数据分析"
-              />
-            </div>
-            <div className="flex flex-col gap-2">
-              <Label>执行后端</Label>
-              <div className="flex gap-2">
-                {(['container', 'local'] as const).map((value) => (
-                  <Button
-                    key={value}
-                    type="button"
-                    size="sm"
-                    variant={backend === value ? 'default' : 'outline'}
-                    onClick={() => setBackend(value)}
-                  >
-                    {BACKEND_LABEL[value]}
-                  </Button>
-                ))}
-              </div>
-              <p className="text-xs text-muted-foreground">
-                容器：隔离执行，云端默认；本地：自托管单机，走 L1 沙箱。
-              </p>
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="ghost" onClick={() => setCreateOpen(false)}>
-              取消
-            </Button>
-            <Button onClick={() => create.mutate()} disabled={create.isPending}>
-              创建
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <CreateWorkspaceDialog
+        open={createOpen}
+        onOpenChange={setCreateOpen}
+        onCreated={invalidate}
+      />
 
       <WorkspaceFilesDialog client={client} workspace={filesOf} onClose={() => setFilesOf(null)} />
     </div>
@@ -224,8 +174,14 @@ function WorkspaceCard({
             {item.isDefault ? <Tag>默认</Tag> : null}
           </div>
           <p className="mt-1 truncate text-xs text-muted-foreground">
-            {BACKEND_LABEL[item.backend]} · {item.image ?? '默认镜像'} ·{' '}
+            {BACKEND_LABEL[item.backend]} · {item.image ?? '默认镜像'} · {item.driver ?? '自动'} ·{' '}
             {item.fileAccess === 'write' ? '可写' : '只读'}
+          </p>
+          <p
+            className="mt-0.5 truncate text-xs text-muted-foreground"
+            title={item.root ?? undefined}
+          >
+            保存在：{item.root ?? '容器内 /workspace（临时）'}
           </p>
           {item.ownerId !== me ? (
             <div className="mt-1">

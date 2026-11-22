@@ -4,7 +4,7 @@ import {
   TRUNCATED_MARK,
   createOutputCollector,
   resolveMaxOutput,
-} from '../src/workspace/exec-output.js'
+} from '../src/workspace/exec/output.js'
 
 describe('命令输出收集器', () => {
   it('未超限原样返回，不标截断', () => {

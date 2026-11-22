@@ -84,6 +84,15 @@ export type ToolWorkerAppConfig = z.infer<typeof toolWorkerAppConfigSchema>
 export const ToolWorkerConfig = Symbol.for('ToolWorkerConfig')
 export type ToolWorkerConfigValue = ToolWorkerAppConfig['worker']
 
+/** 沙箱开关：新键 `AGENT_WORKSPACE_SANDBOX`（true/false）；旧键 `AGENT_WORKSPACE_MODE=off` 兼容 */
+const parseSandbox = (env: NodeJS.ProcessEnv): boolean | undefined => {
+  const raw = env.AGENT_WORKSPACE_SANDBOX?.trim()
+  if (raw) return !['false', '0', 'off', 'no'].includes(raw.toLowerCase())
+  const legacy = env.AGENT_WORKSPACE_MODE?.trim()
+  if (!legacy) return undefined
+  return legacy !== 'off'
+}
+
 const optional = (value: string | undefined): string | undefined =>
   value === undefined || value === '' ? undefined : value
 
@@ -117,7 +126,7 @@ export const mapToolWorkerEnv = (env: NodeJS.ProcessEnv): Record<string, unknown
     endpoint: optional(env.OBJECT_STORAGE_ENDPOINT),
   },
   workspace: {
-    mode: optional(env.AGENT_WORKSPACE_MODE),
+    sandbox: parseSandbox(env),
     sandboxNetwork: optional(env.AGENT_WORKSPACE_SANDBOX_NETWORK),
     probeTimeoutMs: optional(env.AGENT_WORKSPACE_PROBE_TIMEOUT_MS),
   },

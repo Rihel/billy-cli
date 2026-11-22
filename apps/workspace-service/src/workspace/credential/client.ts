@@ -1,6 +1,9 @@
 import { Inject, Injectable } from '@nestjs/common'
 import type { CredentialResolvedItem } from '@repo/contracts'
-import { WorkspaceServiceConfig, type WorkspaceServiceConfigValue } from '../config/app-config.js'
+import {
+  WorkspaceServiceConfig,
+  type WorkspaceServiceConfigValue,
+} from '../../config/app-config.js'
 
 /** 解析请求（与 main 的 `/internal/credentials/resolve` 契约一致） */
 export interface ResolveCredentialInput {

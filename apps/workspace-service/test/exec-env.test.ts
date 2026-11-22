@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { shellQuote, withEnvPrefix } from '../src/workspace/exec-env.js'
+import { shellQuote, withEnvPrefix } from '../src/workspace/exec/env.js'
 
 describe('withEnvPrefix', () => {
   it('无 env 时命令原样返回', () => {

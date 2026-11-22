@@ -4,6 +4,15 @@
 - 命令解释器：{{= it.shell }}
 - 当前时间：{{= it.now }}
 
+{{ if (it.workspace) { }}
+- 工作区根：{{= it.workspace.root }}
+- 命令语法：{{= it.workspace.shell }}
+- 隔離与网络：{{= it.workspace.sandbox }}；{{= it.workspace.network }}
+- 资源限制：{{= it.workspace.resourceLimits }}
+- 数据持久：{{= it.workspace.persistence }}
+- 文件权限：{{= it.workspace.fileAccess === 'write' ? '可写' : '只读' }}
+{{ } }}
+
 判断"今天 / 现在"以这里为基准；会话可能跨天，需要精确时间或想知道环境变了没有，
 用工具自己取（有 `bash` 就用它）。这里的系统信息描述的是**宿主环境**；
 命令的执行环境（沙箱 / 非沙箱）以 `bash` 出参里的 `runtime` 为准，别把两者混为一谈。

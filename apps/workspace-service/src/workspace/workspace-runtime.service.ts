@@ -1,10 +1,11 @@
-import { randomBytes } from 'node:crypto'
-import { appendFile, mkdir, readFile, readdir, rename, rm, stat, writeFile } from 'node:fs/promises'
-import { dirname, join, posix, relative, resolve, isAbsolute } from 'node:path'
+import { mkdir } from 'node:fs/promises'
+import { posix, resolve } from 'node:path'
 import { Inject, Injectable, Optional } from '@nestjs/common'
-import { AppLogger, WorkspaceRuntimeService as SandboxRuntime } from '@repo/kits'
+import { AppLogger, describePlatform, WorkspaceRuntimeService as SandboxRuntime } from '@repo/kits'
 import type {
   WorkspaceConfig,
+  WorkspaceEnvironment,
+  WorkspaceFeatures,
   WorkspaceExecRequest,
   WorkspaceExecResult,
   WorkspaceFsRequest,
@@ -13,32 +14,47 @@ import type {
   WorkspaceStatusResponse,
 } from '@repo/contracts'
 import { WorkspaceRepository } from './workspace.repository.js'
-import { WorkspaceSetupService } from './workspace-setup.service.js'
-import { createExecShell } from './setup-shell.js'
+import { WorkspaceSetupService } from './setup/setup.service.js'
+import { createExecShell, createHostShell } from './setup/shell.js'
 import { WorkspaceCoordinator } from './workspace-coordinator.js'
 import {
   checkCommandCredentials,
   type CredentialGateDenial,
   type CredentialManifest,
-} from './credential-gate.js'
-import { DockerDriver, KubernetesDriver, type ContainerDriver } from './container-driver.js'
-import { withEnvPrefix } from './exec-env.js'
+} from './credential/gate.js'
+import { DockerDriver, KubernetesDriver, type ContainerDriver } from './container/driver.js'
+import { HostRootError, resolveLocalRoot, type LocalRootPlan } from './host-root.js'
+import { ContainerWorkspaceDriver } from './environment/container.driver.js'
+import { HostWorkspaceDriver } from './environment/host.driver.js'
+import type { DriverRef, WorkspaceDriver } from './environment/types.js'
+import { containerFs, type ContainerFs } from './fs/container-fs.js'
+import { hostFs, type HostFs } from './fs/host-fs.js'
+import { resolveEnvironmentOf } from './features.js'
 import { WorkspaceServiceConfig, type WorkspaceServiceConfigValue } from '../config/app-config.js'
 
 /** 容器内固定的工作目录（与镜像约定一致） */
 const CONTAINER_WORKDIR = '/workspace'
-const MAX_OUTPUT = 64 * 1024
 
 /** 会改动工作区文件的操作：只有它们需要按路径串行（读不排队，靠原子写保证读到的不是半截） */
 const MUTATING_FS_OPS = new Set(['write', 'write-bytes', 'append', 'replace', 'remove'])
 
 /** 原子写的临时文件后缀（同目录内 `rename` 才是原子的，不跨目录） */
-const tmpSuffix = (): string => `.billy-tmp-${randomBytes(4).toString('hex')}`
 
 interface Handle {
   workspaceId: string
   backend: WorkspaceConfig['backend']
   root: string
+  /**
+   * 平台是否**托管**这个根（`false` = 用户宿主目录）。
+   *
+   * 托管根跑初始化（装 CLI / 物化 `.agents/` / 写 `.billy/`）；宿主目录不跑，
+   * 否则会把平台产物写进用户自己的项目。
+   */
+  managed?: boolean
+  /** 执行环境声明（工具、初始化、提示词都按它做事，见 docs/design/workspace-env-contract.md） */
+  features?: WorkspaceFeatures
+  /** 容器后端用哪个运行时（docker / kubernetes）；空 = 部署默认 */
+  containerRuntime?: 'docker' | 'kubernetes'
   containerName?: string
   startedAt: number
   lastUsedAt: number
@@ -70,47 +86,6 @@ export interface CredentialGateResult {
 }
 
 /** 把目录名拼进 `find -name` 的安全判断：只允许普通目录名（不含引号 / 空格 / 路径分隔符） */
-const isSafeDirName = (name: string): boolean => /^[A-Za-z0-9._-]+$/.test(name)
-
-/**
- * 一次 `find` 取回整棵树（容器后端）。
- *
- * `-printf '%P\t%s\t%T@\n'`：相对路径、字节数、mtime（秒.毫秒），
- * 避免每个文件一次 `docker exec`（实测 1500 个文件要 58 秒）。
- */
-export const buildFindTreeCommand = (
-  target: string,
-  maxDepth: number,
-  excludeDirs: readonly string[],
-): string => {
-  const quote = (value: string): string => `'${value.replace(/'/g, "'\\''")}'`
-  const names = excludeDirs.filter(isSafeDirName)
-  // 不用 `\( … \)` 分组：容器里是 dash（sh），反斜杠在字符串里还要再转义一层，极易写错；
-  // `-not -path '*/NAME/*'` 没有括号、无需分组，语义也更直白。
-  const excludes = names.map((name) => `-not -path ${quote(`*/${name}/*`)}`).join(' ')
-  return `find ${quote(target)} -maxdepth ${Math.max(1, Math.floor(maxDepth))} -type f ${excludes} -printf '%P\\t%s\\t%T@\\n'`
-}
-
-/** 解析 `find -printf` 的输出（容器与测试共用；坏行直接跳过，不整体失败） */
-export const parseFindTree = (stdout: string): { path: string; size: number; mtime: number }[] =>
-  stdout
-    .split('\n')
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .flatMap((line) => {
-      const [rawPath, rawSize, rawMtime] = line.split('\t')
-      if (!rawPath || !rawSize) return []
-      const size = Number(rawSize)
-      const seconds = Number(rawMtime)
-      if (!Number.isFinite(size) || !Number.isFinite(seconds)) return []
-      return [{ path: rawPath, size, mtime: Math.round(seconds * 1000) }]
-    })
-
-const inside = (root: string, target: string): boolean => {
-  const rel = relative(root, target)
-  return rel === '' || (!rel.startsWith('..') && !isAbsolute(rel))
-}
-
 /**
  * 执行面：按 `ai_workspaces` 的配置起环境、执行命令、读写文件。
  *
@@ -130,7 +105,11 @@ export class WorkspaceRuntime {
    * 重复装包，更糟的是后到者可能拿到一个还没 initialize 完的 handle 直接执行。
    */
   private readonly ensuring = new Map<string, Promise<Handle>>()
-  private readonly driver: ContainerDriver
+  private readonly fsImpl: { host: HostFs; container: ContainerFs }
+  /** 容器驱动缓存（docker / kubernetes 各一个）；测试注入的驱动放在 docker 槽位兜底 */
+  private readonly drivers = new Map<'docker' | 'kubernetes', ContainerDriver>()
+  /** 工作区驱动缓存（host / docker / kubernetes）：按工作区解析后复用 */
+  private readonly environments = new Map<string, WorkspaceDriver>()
   /**
    * bash 按**工作区**串行、文件写按 **`workspaceId:path`** 串行（`docs/design/workspace.md` §8）。
    *
@@ -154,6 +133,8 @@ export class WorkspaceRuntime {
     driver?: ContainerDriver,
     /** 单副本测试可省略；生产由 Nest 注入（Redis 或本地实现） */
     @Optional() @Inject(WorkspaceCoordinator) coordinator?: WorkspaceCoordinator,
+    /** 只给测试注入 fs 实现（默认用 hostFs / containerFs），用于钉串行与边界 */
+    @Optional() fsImpl?: { host: HostFs; container: ContainerFs },
   ) {
     this.coordinator = coordinator ?? new WorkspaceCoordinator()
     if (this.config.multiInstance) {
@@ -167,11 +148,65 @@ export class WorkspaceRuntime {
         throw new Error('WORKSPACE_MULTI_INSTANCE=true 但未配置 REDIS_URL：跨副本锁依赖 Redis')
       }
     }
-    this.driver =
-      driver ??
-      (this.config.containerRuntime === 'kubernetes'
+    this.fsImpl = fsImpl ?? { host: hostFs, container: containerFs }
+    // 驱动按工作区**按需**创建：一套部署里 docker / k8s 可以混跑（见 workspace.containerRuntime）
+    if (driver) this.drivers.set('docker', driver)
+  }
+
+  /** 这个工作区用哪个容器驱动：driver=pod → kubernetes，其余（container / 空）→ docker */
+  private runtimeOf(config: WorkspaceConfig): 'docker' | 'kubernetes' {
+    if (config.driver === 'pod') return 'kubernetes'
+    if (config.driver === 'container') return 'docker'
+    return this.config.containerRuntime
+  }
+
+  /** 取（并缓存）某个类型的工作区驱动：工具/初始化只认这一层 */
+  private environmentFor(kind: 'host' | 'container' | 'pod'): WorkspaceDriver {
+    const cached = this.environments.get(kind)
+    if (cached) return cached
+    const features = (config: WorkspaceConfig) => this.featuresFor(config)
+    const created: WorkspaceDriver =
+      kind === 'host'
+        ? new HostWorkspaceDriver({ sandbox: this.sandbox, hostFs: this.fsImpl.host, features })
+        : new ContainerWorkspaceDriver({
+            driver: this.driverFor(kind === 'pod' ? 'kubernetes' : 'docker'),
+            fs: this.fsImpl.container,
+            features,
+            defaultImage: this.config.defaultImage,
+            memory: this.config.containerMemory,
+            cpus: this.config.containerCpus,
+            pidsLimit: this.config.containerPidsLimit,
+            network: this.config.containerNetwork,
+          })
+    this.environments.set(kind, created)
+    return created
+  }
+
+  /** 按工作区选驱动（坐标解析在执行面，驱动只管原语） */
+  private environmentOf(config: WorkspaceConfig): WorkspaceDriver {
+    return this.environmentFor(this.resolveEnvironment(config).kind)
+  }
+
+  /** 句柄 → 驱动坐标（容器名只有容器驱动认识） */
+  private refOf(handle: Handle): DriverRef {
+    return {
+      workspaceId: handle.workspaceId,
+      root: handle.root,
+      managed: handle.managed ?? true,
+      ...(handle.containerName ? { containerName: handle.containerName } : {}),
+    }
+  }
+
+  /** 取（并缓存）容器驱动；测试注入的 driver 作为兜底 */
+  private driverFor(runtime: 'docker' | 'kubernetes'): ContainerDriver {
+    const cached = this.drivers.get(runtime)
+    if (cached) return cached
+    const created =
+      runtime === 'kubernetes'
         ? new KubernetesDriver(this.config.kubectlBin, this.config.k8sNamespace)
-        : new DockerDriver({ network: this.config.containerNetwork }))
+        : new DockerDriver({ network: this.config.containerNetwork })
+    this.drivers.set(runtime, created)
+    return created
   }
 
   /** 是否启用了跨副本协调（多副本 / 配了 Redis） */
@@ -197,7 +232,7 @@ export class WorkspaceRuntime {
       if (
         this.isDistributed() &&
         handle.backend === 'container' &&
-        !(await this.containerExists(handle.containerName!))
+        !(await this.containerExists(handle.containerName!, handle.containerRuntime ?? 'docker'))
       ) {
         this.clearCredentialRetry(handle)
         this.handles.delete(workspaceId)
@@ -207,7 +242,10 @@ export class WorkspaceRuntime {
     }
     const config = await this.repo.findConfig(workspaceId)
     if (config?.backend === 'container') {
-      const running = await this.containerExists(this.containerName(workspaceId))
+      const running = await this.containerExists(
+        this.containerName(workspaceId),
+        this.runtimeOf(config),
+      )
       return {
         workspaceId,
         state: running ? 'running' : 'stopped',
@@ -234,11 +272,28 @@ export class WorkspaceRuntime {
   private async stopUnlocked(workspaceId: string): Promise<WorkspaceStatusResponse> {
     const handle = this.handles.get(workspaceId)
     if (handle) this.clearCredentialRetry(handle)
-    if (handle?.backend === 'container') {
-      await this.removeContainer(handle.containerName!)
-    } else if (!handle && (this.isDistributed() || this.config.containerRuntime === 'kubernetes')) {
-      // 多副本回收可能落在没有本进程 handle 的 Pod 上：容器名是确定性的，直接删
-      await this.removeContainer(this.containerName(workspaceId))
+    if (handle) {
+      const config = await this.requireConfig(workspaceId)
+      await this.environmentOf(config).dispose(this.refOf(handle), 'stop')
+    } else {
+      // 多副本 / 别的副本回收：没有本地 handle，按配置重建坐标再释放
+      const config = await this.repo.findConfig(workspaceId).catch(() => null)
+      if (!config || config.backend !== 'container') {
+        this.handles.delete(workspaceId)
+        return { workspaceId, state: 'stopped' }
+      }
+      const runtime = this.runtimeOf(config)
+      if (this.isDistributed() || runtime === 'kubernetes') {
+        await this.environmentOf(config).dispose(
+          {
+            workspaceId,
+            root: CONTAINER_WORKDIR,
+            managed: true,
+            containerName: this.containerName(workspaceId),
+          },
+          'stop',
+        )
+      }
     }
     this.handles.delete(workspaceId)
     return { workspaceId, state: 'stopped' }
@@ -254,12 +309,13 @@ export class WorkspaceRuntime {
    * 把一个正在跑命令的容器当成闲置的杀掉不可以。
    */
   async reconcile(now = Date.now()): Promise<number> {
-    const ids = await this.repo.listContainerWorkspaceIds()
+    const rows = await this.repo.listContainerWorkspaceIds()
     let adopted = 0
-    for (const id of ids) {
+    for (const row of rows) {
+      const { id } = row
       if (this.handles.has(id)) continue
       const name = this.containerName(id)
-      const info = await this.driver
+      const info = await this.driverFor(row.runtime)
         .inspect(name)
         .catch((): { running: boolean; startedAt?: number } => ({ running: false }))
       if (!info.running) continue
@@ -267,6 +323,7 @@ export class WorkspaceRuntime {
         workspaceId: id,
         backend: 'container',
         root: CONTAINER_WORKDIR,
+        containerRuntime: row.runtime,
         containerName: name,
         startedAt: info.startedAt ?? now,
         lastUsedAt: now,
@@ -310,18 +367,18 @@ export class WorkspaceRuntime {
       return reaped
     }
 
-    const ids = await this.repo.listContainerWorkspaceIds().catch((error: unknown) => {
+    const rows = await this.repo.listContainerWorkspaceIds().catch((error: unknown) => {
       this.logger.warn('workspace.reap.list_failed', {
         reason: error instanceof Error ? error.message : String(error),
       })
-      return [] as string[]
+      return [] as { id: string; runtime: 'docker' | 'kubernetes' }[]
     })
     let reaped = 0
-    for (const id of ids) {
+    for (const { id, runtime } of rows) {
       const outcome = await this.coordinator.tryWithLock('lifecycle', id, async () => {
         const exec = await this.coordinator.tryWithLock('exec', id, async () => {
           // 列表来自 DB，容器未必在跑；不在跑就没有"回收"可言
-          if (!(await this.containerExists(this.containerName(id)))) return false
+          if (!(await this.containerExists(this.containerName(id), runtime))) return false
           const lastUsed = await this.coordinator.lastUsed(id)
           // 没有共享时间 = 不知道有没有人在用；宁可多等一轮，也不误杀
           if (lastUsed === null || now - lastUsed < this.config.idleTimeoutMs) return false
@@ -365,58 +422,12 @@ export class WorkspaceRuntime {
   }
 
   /** 真正的执行（初始化阶段也复用它，避免 ensureHandle → setup → exec 的递归） */
-  private async dispatch(
+  private dispatch(
     handle: Handle,
     config: WorkspaceConfig,
     request: WorkspaceExecRequest,
   ): Promise<WorkspaceExecResult> {
-    const cwd = request.cwd ?? '.'
-    const timeoutMs = request.timeoutMs ?? 300_000
-    if (handle.backend === 'local') {
-      const result = await this.sandbox.exec({
-        // kits 的 exec 入参没有 env 端口：local 用命令前缀包装，cwd 等字段保持不变
-        command: withEnvPrefix(request.command, request.env),
-        cwd: resolve(handle.root, cwd),
-        workspaceRoot: handle.root,
-        fileAccess: config.fileAccess === 'read-only' ? 'read-only' : 'workspace-write',
-        timeoutMs,
-        maxOutputBytes: request.maxOutputBytes ?? MAX_OUTPUT,
-      })
-      return {
-        ok: result.ok,
-        exitCode: result.exitCode ?? -1,
-        stdout: result.stdout,
-        stderr: result.stderr,
-        durationMs: result.durationMs,
-        truncated: result.truncated,
-        runtime: 'sandbox',
-        ...(result.reason
-          ? { reason: result.timedOut ? 'timeout' : 'exec-failed', message: result.reason }
-          : {}),
-      }
-    }
-    const outcome = await this.driver.exec(handle.containerName!, {
-      command: request.command,
-      cwd: resolve(CONTAINER_WORKDIR, cwd),
-      timeoutMs,
-      maxOutputBytes: request.maxOutputBytes ?? MAX_OUTPUT,
-      ...(request.env ? { env: request.env } : {}),
-    })
-    return {
-      ok: outcome.code === 0,
-      exitCode: outcome.code,
-      stdout: outcome.stdout,
-      stderr: outcome.stderr,
-      durationMs: outcome.durationMs,
-      // 以驱动实测的截断标记为准（不再拿输出长度猜）
-      truncated: outcome.stdoutTruncated || outcome.stderrTruncated,
-      runtime: 'container',
-      ...(outcome.timedOut
-        ? { reason: 'timeout', message: `命令超时（${timeoutMs}ms）` }
-        : outcome.code === 0
-          ? {}
-          : { reason: 'exec-failed', message: outcome.stderr.slice(0, 500) }),
-    }
+    return this.environmentOf(config).exec(this.refOf(handle), config, request)
   }
 
   /**
@@ -438,12 +449,14 @@ export class WorkspaceRuntime {
     const config = await this.requireConfig(workspaceId)
     const handle = await this.adoptRunningHandle(workspaceId, config)
     const shell = this.shellFor(handle, config)
+    const features = handle.features ?? this.featuresFor(config)
     const removedSkills = options.skills
       ? (await this.setup.syncSkills(workspaceId, shell)).removed
       : []
     const { env, version, manifest, resolved } = await this.setup.syncCredentials(
       workspaceId,
       shell,
+      features,
     )
     // 解析失败时**保留上一份好状态**：空清单 / 残缺 env 覆盖缓存，会把"暂态失败"变成永久拒绝
     if (resolved) {
@@ -485,13 +498,13 @@ export class WorkspaceRuntime {
   ): Promise<CredentialGateResult | null> {
     const handle = await this.ensureLiveHandle(workspaceId)
     if (!handle.credentials) {
-      handle.credentials = (await this.readCredentialManifest(workspaceId, handle)) ?? undefined
+      handle.credentials = (await this.readCredentialManifest(workspaceId)) ?? undefined
     }
     const denial = checkCommandCredentials(command, handle.credentials ?? null)
     if (!denial) return null
 
     if (!handle.credentials) {
-      const reread = await this.readCredentialManifest(workspaceId, handle)
+      const reread = await this.readCredentialManifest(workspaceId)
       if (reread) {
         handle.credentials = reread
         const retried = checkCommandCredentials(command, reread)
@@ -502,23 +515,13 @@ export class WorkspaceRuntime {
   }
 
   /** 读一次清单文件（不存在 / 解析失败返回 null，**不缓存**；不阻断命令） */
-  private async readCredentialManifest(
-    workspaceId: string,
-    handle: Handle,
-  ): Promise<CredentialManifest | null> {
+  private async readCredentialManifest(workspaceId: string): Promise<CredentialManifest | null> {
     try {
-      const result =
-        handle.backend === 'local'
-          ? await this.localFs(handle.root, {
-              workspaceId,
-              op: 'read',
-              path: '.billy/credentials.json',
-            })
-          : await this.containerFs(handle.containerName!, {
-              workspaceId,
-              op: 'read',
-              path: '.billy/credentials.json',
-            })
+      const result = await this.fs(workspaceId, {
+        workspaceId,
+        op: 'read',
+        path: '.billy/credentials.json',
+      })
       if (!result.ok) return null
       // fs read 的出参是 `{ path, content, bytes }`：清单结构在 content 文本里
       const content = (result.data as { content?: unknown } | undefined)?.content
@@ -538,278 +541,17 @@ export class WorkspaceRuntime {
     const handle = await this.ensureLiveHandle(workspaceId)
     handle.lastUsedAt = Date.now()
     await this.coordinator.touch(workspaceId)
-    const run = (): Promise<WorkspaceFsResult> =>
-      handle.backend === 'local'
-        ? this.localFs(handle.root, request)
-        : this.containerFs(handle.containerName!, request)
+    const run = async (): Promise<WorkspaceFsResult> => {
+      const config = await this.requireConfig(workspaceId)
+      return this.environmentOf(config).fs(this.refOf(handle), request)
+    }
     if (!MUTATING_FS_OPS.has(request.op)) return run()
     // 同一路径的写 / 替换 / 追加 / 删除排队；不同路径、只读操作并行
     return this.coordinator.withLock('fs', `${workspaceId}:${posix.normalize(request.path)}`, run)
   }
 
-  // ── 后端：local ──────────────────────────────────────────────
-
-  private async localFs(root: string, request: WorkspaceFsRequest): Promise<WorkspaceFsResult> {
-    const target = resolve(root, request.path)
-    if (!inside(root, target)) {
-      return { ok: false, reason: 'unsafe-path', message: '路径必须工作区内' }
-    }
-    try {
-      switch (request.op) {
-        case 'list': {
-          const entries = await readdir(target, { withFileTypes: true })
-          return {
-            ok: true,
-            data: {
-              entries: await Promise.all(
-                entries.map(async (entry) => {
-                  const full = join(target, entry.name)
-                  const info = await stat(full).catch(() => null)
-                  return {
-                    name: entry.name,
-                    path: relative(root, full),
-                    type: entry.isDirectory() ? 'dir' : 'file',
-                    size: info?.size ?? 0,
-                    mtime: info?.mtimeMs ?? 0,
-                  }
-                }),
-              ),
-            },
-          }
-        }
-        case 'list-tree': {
-          // 本地后端：一次递归读完（每个目录一次 readdir，不再逐文件 stat 往返）
-          const excluded = new Set(request.excludeDirs ?? [])
-          const maxDepth = request.maxDepth ?? 16
-          const entries: { path: string; size: number; mtime: number }[] = []
-          const walk = async (dir: string, depth: number): Promise<void> => {
-            if (depth > maxDepth) return
-            const children = await readdir(dir, { withFileTypes: true }).catch(() => [])
-            for (const child of children) {
-              if (child.isSymbolicLink()) continue
-              const full = join(dir, child.name)
-              if (child.isDirectory()) {
-                if (excluded.has(child.name)) continue
-                await walk(full, depth + 1)
-                continue
-              }
-              if (!child.isFile()) continue
-              const info = await stat(full).catch(() => null)
-              if (!info) continue
-              entries.push({ path: relative(target, full), size: info.size, mtime: info.mtimeMs })
-            }
-          }
-          await walk(target, 0)
-          return { ok: true, data: { entries } }
-        }
-        case 'read': {
-          const content = await readFile(target, 'utf8')
-          return {
-            ok: true,
-            data: { path: request.path, content, bytes: Buffer.byteLength(content) },
-          }
-        }
-        case 'read-bytes': {
-          const body = await readFile(target)
-          return { ok: true, data: { base64: body.toString('base64'), bytes: body.length } }
-        }
-        case 'write-bytes': {
-          const body = Buffer.from(request.base64 ?? '', 'base64')
-          await this.writeAtomic(target, body)
-          return { ok: true, data: { path: request.path, bytes: body.length } }
-        }
-        case 'write':
-        case 'replace':
-        case 'append': {
-          const content = request.content ?? ''
-          if (request.op === 'append') {
-            await mkdir(dirname(target), { recursive: true })
-            await appendFile(target, content, 'utf8')
-          } else {
-            await this.writeAtomic(target, content)
-          }
-          return { ok: true, data: { path: request.path, bytes: Buffer.byteLength(content) } }
-        }
-        case 'stat': {
-          const info = await stat(target)
-          return {
-            ok: true,
-            data: {
-              path: request.path,
-              type: info.isDirectory() ? 'dir' : 'file',
-              size: info.size,
-              mtime: info.mtimeMs,
-            },
-          }
-        }
-        case 'remove': {
-          await rm(target, { recursive: true, force: true })
-          return { ok: true, data: { path: request.path, removed: true } }
-        }
-        case 'search': {
-          const entries = await readdir(target, { withFileTypes: true, recursive: true })
-          const needle = request.query ?? ''
-          const matches: string[] = []
-          for (const entry of entries) {
-            if (!entry.isFile()) continue
-            const full = join(entry.parentPath ?? target, entry.name)
-            const content = await readFile(full, 'utf8').catch(() => '')
-            if (content.includes(needle)) matches.push(relative(root, full))
-          }
-          return { ok: true, data: { matches } }
-        }
-      }
-    } catch (error) {
-      return {
-        ok: false,
-        reason: 'exec-failed',
-        message: error instanceof Error ? error.message : String(error),
-      }
-    }
-  }
-
-  /**
-   * 原子写：先写同目录临时文件，再 `rename` 覆盖目标。
-   *
-   * 为什么不是直接 `writeFile(target)`：直接写会先截断再逐块写，并发的 `read` 可能读到半截
-   * （模型读到半份 JSON 会得出"文件坏了"的结论）。`rename` 在同一文件系统上是原子的，
-   * 读端只会看到旧版或新版。临时文件必须在**同目录**，跨目录 rename 会退化成拷贝。
-   */
-  private async writeAtomic(target: string, body: string | Buffer): Promise<void> {
-    await mkdir(dirname(target), { recursive: true })
-    const tmp = `${target}${tmpSuffix()}`
-    try {
-      await writeFile(tmp, body)
-      await rename(tmp, target)
-    } catch (error) {
-      await rm(tmp, { force: true }).catch(() => undefined)
-      throw error
-    }
-  }
-
-  // ── 后端：container ─────────────────────────────────────────
-
   private containerName(workspaceId: string): string {
     return `billy-ws-${workspaceId.toLowerCase()}`
-  }
-
-  private async containerFs(name: string, request: WorkspaceFsRequest): Promise<WorkspaceFsResult> {
-    const target = resolve(CONTAINER_WORKDIR, request.path)
-    if (!target.startsWith(CONTAINER_WORKDIR)) {
-      return { ok: false, reason: 'unsafe-path', message: '路径必须工作区内' }
-    }
-    const quote = (value: string): string => `'${value.replace(/'/g, "'\\''")}'`
-    const exec = (command: string, stdin?: string) =>
-      this.driver.exec(name, { command, cwd: CONTAINER_WORKDIR, timeoutMs: 30_000, stdin })
-    try {
-      switch (request.op) {
-        case 'list': {
-          const out = await exec(`ls -1p ${quote(target)}`)
-          const entries = out.stdout
-            .split('\n')
-            .map((line) => line.trim())
-            .filter((line) => (line && !line.endsWith('/') ? true : line.length > 1))
-            .filter((line) => line !== './')
-            .map((line) => {
-              const dir = line.endsWith('/')
-              const name = dir ? line.slice(0, -1) : line
-              return { name, path: name, type: dir ? 'dir' : 'file' }
-            })
-          return { ok: true, data: { entries } }
-        }
-        case 'list-tree': {
-          // 容器后端：**一次 find** 拿回全部路径 / 大小 / mtime（根治逐文件 docker exec）
-          const out = await exec(
-            buildFindTreeCommand(target, request.maxDepth ?? 16, request.excludeDirs ?? []),
-          )
-          if (out.code !== 0) return { ok: false, reason: 'exec-failed', message: out.stderr }
-          return { ok: true, data: { entries: parseFindTree(out.stdout) } }
-        }
-        case 'read': {
-          const out = await exec(`cat ${quote(target)}`)
-          // 文件不存在时 `cat` 非 0：不能把空输出当成"读到了空清单"（会把拒绝永久化）
-          if (out.code !== 0) return { ok: false, reason: 'exec-failed', message: out.stderr }
-          return { ok: true, data: { path: request.path, content: out.stdout } }
-        }
-        case 'read-bytes': {
-          const out = await exec(`base64 -w0 ${quote(target)}`)
-          return { ok: true, data: { base64: out.stdout.trim() } }
-        }
-        case 'write-bytes': {
-          const tmp = `${target}${tmpSuffix()}`
-          const out = await exec(
-            `mkdir -p "$(dirname ${quote(target)})" && base64 -d > ${quote(tmp)} && mv -f ${quote(tmp)} ${quote(target)}`,
-            request.base64 ?? '',
-          )
-          if (out.code !== 0) {
-            await exec(`rm -f ${quote(tmp)}`).catch(() => undefined)
-            return { ok: false, reason: 'exec-failed', message: out.stderr }
-          }
-          return { ok: true, data: { path: request.path } }
-        }
-        case 'write':
-        case 'append':
-        case 'replace': {
-          const content = request.content ?? ''
-          // 追加不重建文件；写 / 替换走「同目录 tmp + mv」，容器内 mv 是原子 rename
-          if (request.op === 'append') {
-            const out = await exec(
-              `mkdir -p "$(dirname ${quote(target)})" && cat >> ${quote(target)}`,
-              content,
-            )
-            if (out.code !== 0) {
-              return { ok: false, reason: 'exec-failed', message: out.stderr }
-            }
-            return { ok: true, data: { path: request.path, bytes: Buffer.byteLength(content) } }
-          }
-          const tmp = `${target}${tmpSuffix()}`
-          const out = await exec(
-            `mkdir -p "$(dirname ${quote(target)})" && cat > ${quote(tmp)} && mv -f ${quote(tmp)} ${quote(target)}`,
-            content,
-          )
-          if (out.code !== 0) {
-            await exec(`rm -f ${quote(tmp)}`).catch(() => undefined)
-            return { ok: false, reason: 'exec-failed', message: out.stderr }
-          }
-          return { ok: true, data: { path: request.path, bytes: Buffer.byteLength(content) } }
-        }
-        case 'stat': {
-          const out = await exec(`stat -c '%F|%s|%Y' ${quote(target)}`)
-          const [kind, size, mtime] = out.stdout.trim().split('|')
-          return {
-            ok: true,
-            data: {
-              path: request.path,
-              type: kind?.includes('directory') ? 'dir' : 'file',
-              size: Number(size ?? 0),
-              mtime: Number(mtime ?? 0) * 1000,
-            },
-          }
-        }
-        case 'remove': {
-          await exec(`rm -rf ${quote(target)}`)
-          return { ok: true, data: { path: request.path, removed: true } }
-        }
-        case 'search': {
-          const out = await exec(`grep -r -l ${quote(request.query ?? '')} ${quote(target)}`)
-          return {
-            ok: true,
-            data: {
-              matches: out.stdout
-                .split('\n')
-                .map((s) => s.trim())
-                .filter(Boolean),
-            },
-          }
-        }
-      }
-    } catch (error) {
-      return {
-        ok: false,
-        reason: 'exec-failed',
-        message: error instanceof Error ? error.message : String(error),
-      }
-    }
   }
 
   // ── ensure / 容器管理 ───────────────────────────────────────
@@ -846,7 +588,9 @@ export class WorkspaceRuntime {
   private async ensureLiveHandle(workspaceId: string): Promise<Handle> {
     let handle = await this.ensureHandle(workspaceId)
     if (this.isDistributed() && handle.backend === 'container') {
-      if (!(await this.containerExists(handle.containerName!))) {
+      if (
+        !(await this.containerExists(handle.containerName!, handle.containerRuntime ?? 'docker'))
+      ) {
         this.clearCredentialRetry(handle)
         this.handles.delete(workspaceId)
         handle = await this.ensureHandle(workspaceId)
@@ -870,33 +614,31 @@ export class WorkspaceRuntime {
     const config = await this.requireConfig(workspaceId)
     if (config.backend === 'container') {
       const name = this.containerName(workspaceId)
-      let wasRunning = await this.containerExists(name)
-      if (wasRunning) {
-        // 镜像升级后，运行中的容器仍是旧镜像（旧源 / 旧工具链）：重建一次才换得过来。
-        // 容器里的内容是临时的（tmpfs），重建不丢"资产"，只是要重新装依赖。
-        const wanted = config.image?.trim() || this.config.defaultImage
-        const actual = await this.driver.imageOf(name).catch(() => null)
-        if (actual && actual !== wanted) {
-          this.logger.warn('workspace.image.stale', { workspaceId, actual, wanted })
-          await this.removeContainer(name)
-          // 镜像已重建：下面必须走完整初始化，不能再按“已运行容器”只补凭据
-          wasRunning = false
-        }
+      const runtime = this.runtimeOf(config)
+      const features = this.featuresFor(config)
+      const ref: DriverRef = {
+        workspaceId,
+        root: CONTAINER_WORKDIR,
+        managed: true,
+        containerName: name,
       }
-      if (!(await this.containerExists(name))) await this.startContainer(name, config)
+      // 起环境（镜像比对 + 启动）交给驱动；`started` 决定要不要跑完整初始化
+      const { started } = await this.environmentOf(config).prepare(ref, config)
       const handle: Handle = {
         workspaceId,
         backend: 'container',
         root: CONTAINER_WORKDIR,
+        containerRuntime: runtime,
+        features,
         containerName: name,
         startedAt: Date.now(),
         lastUsedAt: Date.now(),
-        // 不是本进程刚建出来的容器：初始化（装包 / 技能）已经由创建它的进程跑过，
-        // 这里只补便宜的凭据段，避免每个副本首次接入都重装一遍。
-        ...(wasRunning ? { credentialsReady: false } : {}),
+        // 不是本进程刚建出来的容器：初始化已经由创建它的进程跑过，这里只补便宜的凭据段
+        ...(started ? {} : { credentialsReady: false }),
       }
-      if (wasRunning) await this.retryCredentials(handle)
-      else await this.initialize(handle, config)
+      this.logger.info('workspace.env.features', { workspaceId, ...features })
+      if (started) await this.initialize(handle, config)
+      else await this.retryCredentials(handle)
       // 初始化完成后再入 Map：否则后到者会看到一个「看起来可用、实际没准备好」的 handle
       this.handles.set(workspaceId, handle)
       return handle
@@ -907,21 +649,119 @@ export class WorkspaceRuntime {
     if (this.config.multiInstance) {
       throw new Error('WORKSPACE_MULTI_INSTANCE=true 不支持 local 后端：工作区目录在 Pod 本地盘')
     }
-    const root = resolve(
-      this.config.localRoot,
-      String((config.location as { root?: string } | undefined)?.root ?? workspaceId),
-    )
-    await mkdir(root, { recursive: true })
+    // 目录解析与校验在执行面（允许根 / 凭据目录 / 沙箱可用），驱动只负责建目录
+    const plan = await this.localRootPlan(config)
+    const features = this.featuresFor(config)
+    const ref: DriverRef = { workspaceId, root: plan.root, managed: plan.managed }
+    const prepared = await this.environmentOf(config).prepare(ref, config)
     const handle: Handle = {
       workspaceId,
       backend: 'local',
-      root,
+      root: prepared.ref.root,
+      managed: plan.managed,
+      features,
       startedAt: Date.now(),
       lastUsedAt: Date.now(),
     }
+    this.logger.info('workspace.env.features', { workspaceId, ...features })
+    // 两种 Host 形态都跑初始化，但「跑什么」由声明决定：
+    // 技能照物化（正文只从工作区读），装包与凭据按 features 跳过
     await this.initialize(handle, config)
     this.handles.set(workspaceId, handle)
     return handle
+  }
+
+  /**
+   * 部署级信息：平台、沙箱能力、容器运行时与本地目录配置（`GET /info`）。
+   *
+   * 只做只读汇总：沙箱探测有进程内缓存，拿不到（测试替身 / 探测异常）就如实标 unknown。
+   */
+  async info(): Promise<Record<string, unknown>> {
+    let sandbox: unknown = { mode: this.sandbox.mode ?? 'unknown', available: 'unknown' }
+    try {
+      sandbox = await this.sandbox.status()
+    } catch {
+      // 探测失败不影响 info：这里只是排障信息
+    }
+    return {
+      platform: describePlatform(),
+      sandbox,
+      containerRuntime: this.config.containerRuntime,
+      localRoot: this.config.localRoot,
+      localAllowedRoots: this.config.localAllowedRoots ?? [],
+      multiInstance: this.config.multiInstance,
+    }
+  }
+
+  /**
+   * 查询执行环境声明（不探测、不建环境）：提示词与后台展示用。
+   *
+   * 与 `status` 不同，这里**只读配置**：没跑过的工作区也能回答，避免为了渲染提示词去拉起容器。
+   */
+  async environment(workspaceId: string): Promise<WorkspaceEnvironment> {
+    const config = await this.requireConfig(workspaceId)
+    if (config.backend === 'container') {
+      return {
+        workspaceId,
+        backend: 'container',
+        root: CONTAINER_WORKDIR,
+        managed: true,
+        driver: this.resolveEnvironment(config).kind,
+        fileAccess: config.fileAccess,
+        features: this.featuresFor(config),
+      }
+    }
+    const requested = (config.location as { root?: string } | undefined)?.root?.trim()
+    return {
+      workspaceId,
+      backend: config.backend,
+      root: requested ? requested : resolve(this.config.localRoot, workspaceId),
+      managed: !requested,
+      driver: this.resolveEnvironment(config).kind,
+      fileAccess: config.fileAccess,
+      features: this.featuresFor(config),
+    }
+  }
+
+  /** 执行环境声明：只看配置与平台，不探测、不建环境（建会话时就能算出来） */
+  private featuresFor(config: WorkspaceConfig): WorkspaceFeatures {
+    return this.resolveEnvironment(config).features
+  }
+
+  /** 按工作区解析环境（kind + 声明）：同一部署内以后可以混跑 host / docker / k8s */
+  private resolveEnvironment(config: WorkspaceConfig) {
+    return resolveEnvironmentOf({
+      backend: config.backend,
+      ...(config.driver ? { driver: config.driver } : {}),
+      containerRuntime: this.config.containerRuntime,
+      containerNetwork: this.config.containerNetwork,
+      sandboxEnabled: this.sandbox.sandboxEnabled,
+      allowSharedDocker: this.config.allowSharedDocker,
+      multiInstance: this.config.multiInstance,
+    })
+  }
+
+  /**
+   * local 后端的根目录计划（平台托管 / 宿主目录）。
+   *
+   * 宿主目录额外要求沙箱 `enforce`：local 后端的文件能力直接以服务进程身份读写文件，
+   * 命令只靠 L1 沙箱划边界；关掉沙箱（`AGENT_WORKSPACE_SANDBOX=false`）等于把用户自己的目录交给
+   * 一条没有任何边界的进程，所以 fail closed。
+   */
+  private async localRootPlan(config: WorkspaceConfig): Promise<LocalRootPlan> {
+    const plan = await resolveLocalRoot({
+      localRoot: this.config.localRoot,
+      workspaceId: config.id,
+      requested: (config.location as { root?: string } | undefined)?.root ?? null,
+      allowedRoots: this.config.localAllowedRoots ?? [],
+    })
+    if (!plan.managed && this.sandbox.mode !== 'enforce') {
+      throw new HostRootError(
+        'unsandboxed',
+        '配了目录的工作区要求开启沙箱（AGENT_WORKSPACE_SANDBOX=true）：否则命令直接跑在宿主上、没有隔离边界',
+      )
+    }
+    return plan
   }
 
   /**
@@ -940,7 +780,12 @@ export class WorkspaceRuntime {
     handle.setupDone = true
     const shell = this.shellFor(handle, config)
     try {
-      const { env, report, manifest, resolved } = await this.setup.run(handle.workspaceId, shell)
+      const features = handle.features ?? this.featuresFor(config)
+      const { env, report, manifest, resolved } = await this.setup.run(
+        handle.workspaceId,
+        shell,
+        features,
+      )
       if (resolved) {
         handle.env = env
         handle.credentials = { items: manifest }
@@ -971,6 +816,7 @@ export class WorkspaceRuntime {
    * 成功后清定时器；仍失败就再等 5 秒 —— 凭据段很便宜，多试几次好过让模型看到永久拒绝。
    */
   private async retryCredentials(handle: Handle): Promise<void> {
+    if (handle.features?.writeHome === false) return
     if (handle.credentialsReady !== false) return
     const config = await this.requireConfig(handle.workspaceId).catch(() => null)
     if (!config) return
@@ -979,6 +825,7 @@ export class WorkspaceRuntime {
       const { env, manifest, resolved } = await this.setup.syncCredentials(
         handle.workspaceId,
         shell,
+        handle.features ?? this.featuresFor(config),
       )
       if (resolved) {
         handle.env = env
@@ -1026,7 +873,7 @@ export class WorkspaceRuntime {
 
   /** 初始化 / 同步用的 shell 端口：命令走 `dispatch`，避免递归回 `exec` */
   private shellFor(handle: Handle, config: WorkspaceConfig) {
-    return createExecShell(async (command, opts) => {
+    const exec = async (command: string, opts?: { timeoutMs?: number }) => {
       const result = await this.dispatch(handle, config, {
         workspaceId: handle.workspaceId,
         command,
@@ -1038,7 +885,10 @@ export class WorkspaceRuntime {
         stdout: result.stdout,
         stderr: result.stderr,
       }
-    })
+    }
+    // Host：文件用 Node fs 直写（不依赖 mkdir -p / base64 / chmod，Windows 也能物化技能）；
+    // 容器：仍走容器内 shell
+    return handle.backend === 'local' ? createHostShell(handle.root, exec) : createExecShell(exec)
   }
 
   /**
@@ -1052,11 +902,17 @@ export class WorkspaceRuntime {
 
     if (config.backend === 'container') {
       const name = this.containerName(workspaceId)
-      if (!(await this.containerExists(name))) throw new Error('工作区没有在运行，跳过同步')
+      const runtime = this.runtimeOf(config)
+      if (!(await this.containerExists(name, runtime))) {
+        throw new Error('工作区没有在运行，跳过同步')
+      }
+      const features = this.featuresFor(config)
       const handle: Handle = {
         workspaceId,
         backend: 'container',
         root: CONTAINER_WORKDIR,
+        containerRuntime: runtime,
+        features,
         containerName: name,
         startedAt: Date.now(),
         lastUsedAt: Date.now(),
@@ -1067,14 +923,13 @@ export class WorkspaceRuntime {
       return handle
     }
 
-    const root = resolve(
-      this.config.localRoot,
-      String((config.location as { root?: string } | undefined)?.root ?? workspaceId),
-    )
+    const plan = await this.localRootPlan(config)
+    if (plan.managed) await mkdir(plan.root, { recursive: true })
     const handle: Handle = {
       workspaceId,
       backend: 'local',
-      root,
+      root: plan.root,
+      managed: plan.managed,
       startedAt: Date.now(),
       lastUsedAt: Date.now(),
       credentialsReady: false,
@@ -1089,13 +944,14 @@ export class WorkspaceRuntime {
     return config
   }
 
-  private async containerExists(name: string): Promise<boolean> {
-    return this.driver.exists(name)
+  private async containerExists(name: string, runtime: 'docker' | 'kubernetes'): Promise<boolean> {
+    return this.driverFor(runtime).exists(name)
   }
 
   private async startContainer(name: string, config: WorkspaceConfig): Promise<void> {
     const image = config.image?.trim() || this.config.defaultImage
-    await this.driver.start({
+    const driver = this.driverFor(this.runtimeOf(config))
+    await driver.start({
       name,
       workspaceId: config.id,
       image,
@@ -1107,12 +963,12 @@ export class WorkspaceRuntime {
     this.logger.info('workspace.container.started', {
       workspaceId: config.id,
       image,
-      driver: this.driver.kind,
+      driver: driver.kind,
     })
   }
 
-  private async removeContainer(name: string): Promise<void> {
-    await this.driver.remove(name)
+  private async removeContainer(name: string, runtime: 'docker' | 'kubernetes'): Promise<void> {
+    await this.driverFor(runtime).remove(name)
   }
 
   private toStatus(handle: Handle): WorkspaceStatusResponse {

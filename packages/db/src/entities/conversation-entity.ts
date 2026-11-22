@@ -72,7 +72,7 @@ export class ConversationEntity extends AuditEntity {
   /**
    * 本会话的**文件权限**：`workspace-write`（默认）/ `read-only`。
    *
-   * 只决定"沙箱内能不能写工作区"；能不能出沙箱是部署配置（`AGENT_WORKSPACE_MODE`），
+   * 只决定"沙箱内能不能写工作区"；能不能出沙箱是部署配置（`AGENT_WORKSPACE_SANDBOX`），
    * 用户选不到（web 产品的安全底线，见 `docs/design/workspace-runtime.md`）。
    */
   @Column({ name: 'file_access', type: 'varchar', length: 16, default: 'workspace-write' })

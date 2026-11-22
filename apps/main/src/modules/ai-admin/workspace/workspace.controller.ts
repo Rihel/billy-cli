@@ -17,6 +17,8 @@ const CreateSchema = z.object({
   name: z.string().min(1).max(64).optional(),
   backend: BackendSchema.optional(),
   image: z.string().max(128).optional(),
+  driver: z.enum(['host', 'container', 'pod']).optional(),
+  root: z.string().min(1).max(512).optional(),
   fileAccess: FileAccessSchema.optional(),
 })
 
@@ -24,6 +26,8 @@ const UpdateSchema = z.object({
   id: z.string().min(1).max(20),
   name: z.string().min(1).max(64).optional(),
   image: z.string().max(128).nullable().optional(),
+  driver: z.enum(['host', 'container', 'pod']).nullable().optional(),
+  root: z.string().max(512).nullable().optional(),
   fileAccess: FileAccessSchema.optional(),
 })
 
@@ -40,6 +44,20 @@ export class WorkspaceAdminController {
   /** 归属由身份推导（用户端不经过这个控制器，这里必然是管理员） */
   private owner(): OwnerRef {
     return currentOwner()
+  }
+
+  /** 新建工作区会落在哪（后端 / 驱动 / 位置说明）：界面只展示，不让用户选 */
+  @Post('defaults')
+  @HttpCode(200)
+  defaults() {
+    return this.service.defaults()
+  }
+
+  /** 部署级信息（平台 / 沙箱 / 容器运行时）：后台据此提示「当前部署没有沙箱」 */
+  @Post('server-info')
+  @HttpCode(200)
+  serverInfo() {
+    return this.service.serverInfo()
   }
 
   @Post('list')

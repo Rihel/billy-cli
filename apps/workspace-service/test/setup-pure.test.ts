@@ -5,7 +5,7 @@ import {
   mergeSetupPackages,
   renderInjectRules,
   setupHashOf,
-} from '../src/workspace/setup-pure.js'
+} from '../src/workspace/setup/pure.js'
 
 /**
  * 初始化阶段的纯函数（`docs/design/workspace-cli-credentials.md` §6.2 / §6.3 / §6.4.3）。

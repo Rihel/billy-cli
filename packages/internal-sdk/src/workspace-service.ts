@@ -2,18 +2,24 @@ import {
   WorkspaceDestroyResponseSchema,
   WorkspaceEnsureResponseSchema,
   WorkspaceExecResultSchema,
+  WorkspaceEnvironmentSchema,
   WorkspaceFsResultSchema,
   WorkspaceStatusResponseSchema,
   WorkspaceSyncResponseSchema,
   type WorkspaceEnsureResponse,
   type WorkspaceExecRequest,
+  type WorkspaceEnvironment,
   type WorkspaceExecResult,
   type WorkspaceFsRequest,
   type WorkspaceFsResult,
   type WorkspaceStatusResponse,
   type WorkspaceSyncResponse,
 } from '@repo/contracts'
+import { z } from 'zod'
 import { requestJson, type InternalClientOptions, type InvokeOptions } from './http.js'
+
+/** `/info` 是排障用的开放结构：这里只保证「是一个对象」，字段由调用方按需读 */
+const WorkspaceInfoSchema = z.record(z.string(), z.unknown())
 
 /**
  * workspace-service 的内部客户端（main 的控制面、runtime 的编排用）。
@@ -23,6 +29,22 @@ import { requestJson, type InternalClientOptions, type InvokeOptions } from './h
  */
 export class WorkspaceServiceClient {
   constructor(private readonly options: InternalClientOptions) {}
+
+  /** 部署级信息（平台 / 沙箱 / 容器运行时）：后台据此提示「当前部署没有沙箱」 */
+  info(options: InvokeOptions = {}): Promise<Record<string, unknown>> {
+    return requestJson(this.options, '/info', WorkspaceInfoSchema, {
+      method: 'GET',
+      ...options,
+    })
+  }
+
+  environment(workspaceId: string, options: InvokeOptions = {}): Promise<WorkspaceEnvironment> {
+    return requestJson(this.options, '/v1/workspaces/environment', WorkspaceEnvironmentSchema, {
+      method: 'POST',
+      body: { workspaceId },
+      ...options,
+    })
+  }
 
   ensure(workspaceId: string, options: InvokeOptions = {}): Promise<WorkspaceEnsureResponse> {
     return requestJson(this.options, '/v1/workspaces/ensure', WorkspaceEnsureResponseSchema, {

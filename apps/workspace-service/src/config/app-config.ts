@@ -1,4 +1,4 @@
-import { hostname, tmpdir } from 'node:os'
+import { homedir, hostname } from 'node:os'
 import { join } from 'node:path'
 import { z } from 'zod'
 import {
@@ -69,8 +69,22 @@ export const workspaceServiceAppConfigSchema = z.object({
       .default(2 * 60 * 60 * 1000),
     /** 回收扫描间隔 */
     reapIntervalMs: z.coerce.number().int().positive().default(60_000),
-    /** local 后端的工作区根 */
-    localRoot: z.string().min(1).default(join(tmpdir(), 'billy-workspaces')),
+    /**
+     * local 后端的工作区根：默认 `~/.billy/workspaces`（与 `AGENT_COMMAND_WORK_DIR` 同一套约定）。
+     *
+     * 放家目录而不是临时目录：临时目录重启会被清掉，工作区回收后再 ensure 等于从零重建。
+     */
+    localRoot: z
+      .string()
+      .min(1)
+      .default(join(homedir(), '.billy', 'workspaces')),
+    /**
+     * local 后端的**宿主目录**白名单：允许把工作区根指到哪些宿主目录之下（逗号分隔的绝对路径）。
+     *
+     * 空 = 关闭该能力（工作区只能用 `<localRoot>/<workspaceId>`）：local 后端的命令与文件读写
+     * 都发生在宿主上，允许任意路径等于把整台机器交给工作区，默认不给。
+     */
+    localAllowedRoots: z.array(z.string()).default([]),
     /** 能力网关地址；配了才登记 bash / file 能力 */
     gatewayUrl: z.string().url().optional(),
     /** 实例 id（多副本时必须唯一） */
@@ -89,6 +103,15 @@ export const workspaceServiceAppConfigSchema = z.object({
 export type WorkspaceServiceAppConfig = z.infer<typeof workspaceServiceAppConfigSchema>
 export const WorkspaceServiceConfig = Symbol.for('WorkspaceServiceConfig')
 export type WorkspaceServiceConfigValue = WorkspaceServiceAppConfig['service']
+
+/** 沙箱开关：新键 `AGENT_WORKSPACE_SANDBOX`（true/false）；旧键 `AGENT_WORKSPACE_MODE=off` 兼容 */
+const parseSandbox = (env: NodeJS.ProcessEnv): boolean | undefined => {
+  const raw = env.AGENT_WORKSPACE_SANDBOX?.trim()
+  if (raw) return !['false', '0', 'off', 'no'].includes(raw.toLowerCase())
+  const legacy = env.AGENT_WORKSPACE_MODE?.trim()
+  if (!legacy) return undefined
+  return legacy !== 'off'
+}
 
 const optional = (value: string | undefined): string | undefined =>
   value === undefined || value === '' ? undefined : value
@@ -114,7 +137,7 @@ export const mapWorkspaceServiceEnv = (env: NodeJS.ProcessEnv): Record<string, u
     keyPrefix: optional(env.REDIS_KEY_PREFIX),
   },
   workspace: {
-    mode: optional(env.AGENT_WORKSPACE_MODE),
+    sandbox: parseSandbox(env),
     sandboxNetwork: optional(env.AGENT_WORKSPACE_SANDBOX_NETWORK),
     probeTimeoutMs: optional(env.AGENT_WORKSPACE_PROBE_TIMEOUT_MS),
   },
@@ -135,6 +158,10 @@ export const mapWorkspaceServiceEnv = (env: NodeJS.ProcessEnv): Record<string, u
     idleTimeoutMs: optional(env.WORKSPACE_IDLE_TIMEOUT_MS),
     reapIntervalMs: optional(env.WORKSPACE_REAP_INTERVAL_MS),
     localRoot: optional(env.WORKSPACE_LOCAL_ROOT),
+    localAllowedRoots: optional(env.WORKSPACE_LOCAL_ALLOWED_ROOTS)
+      ?.split(',')
+      .map((item) => item.trim())
+      .filter((item) => item.length > 0),
     gatewayUrl: optional(env.WORKSPACE_GATEWAY_URL) ?? optional(env.TOOL_GATEWAY_URL),
     instanceId: optional(env.WORKSPACE_INSTANCE_ID),
     endpoint: optional(env.WORKSPACE_SERVICE_ENDPOINT),

@@ -10,7 +10,18 @@ afterEach(async () => {
   await Promise.all(cleanup.splice(0).map((dir) => rm(dir, { recursive: true, force: true })))
 })
 
-const make = async (): Promise<{
+const make = async (
+  options: {
+    /** 工作区 `location`（文件夹场景填 `{ root: '/abs/dir' }`） */
+    location?: Record<string, unknown> | null
+    /** `WORKSPACE_LOCAL_ALLOWED_ROOTS` */
+    allowedRoots?: string[]
+    /** 沙箱开关（`AGENT_WORKSPACE_SANDBOX`） */
+    mode?: 'enforce' | 'off'
+    /** 测试注入的 fs 实现（钉串行 / 边界） */
+    fsImpl?: Parameters<typeof WorkspaceRuntime.prototype.constructor>[7]
+  } = {},
+): Promise<{
   runtime: WorkspaceRuntime
   root: string
   setup: { run: ReturnType<typeof vi.fn>; syncCredentials: ReturnType<typeof vi.fn> }
@@ -22,12 +33,15 @@ const make = async (): Promise<{
       id,
       name: 'test',
       backend: 'local' as const,
-      location: { root: id },
+      location: options.location ?? null,
       fileAccess: 'write' as const,
     })),
-    listContainerWorkspaceIds: vi.fn(async () => [] as string[]),
+    listContainerWorkspaceIds: vi.fn(async () => []),
   }
   const sandbox = {
+    // 沙箱开关由 kits 的运行时提供（`get sandboxEnabled`）：配了目录的工作区要求开着
+    sandboxEnabled: (options.mode ?? 'enforce') !== 'off',
+    mode: options.mode ?? 'enforce',
     exec: vi.fn(async () => ({
       ok: true,
       exitCode: 0,
@@ -47,6 +61,11 @@ const make = async (): Promise<{
     idleTimeoutMs: 10,
     reapIntervalMs: 1_000,
     localRoot: root,
+    localAllowedRoots: options.allowedRoots ?? [],
+    containerRuntime: 'docker',
+    containerNetwork: 'bridge',
+    allowSharedDocker: false,
+    multiInstance: false,
   }
   const logger = { info: vi.fn(), warn: vi.fn(), log: vi.fn(), error: vi.fn() }
   // 初始化阶段单独有测试；这里只验证运行时的执行语义
@@ -86,6 +105,9 @@ const make = async (): Promise<{
       config as never,
       setup as never,
       logger as never,
+      undefined,
+      undefined,
+      options.fsImpl,
     ),
     root,
     setup,
@@ -186,7 +208,10 @@ const makeContainer = (running: readonly string[], coordinator?: never) => {
       location: {},
       fileAccess: 'write' as const,
     })),
-    listContainerWorkspaceIds: vi.fn(async () => ['ws-a', 'ws-b']),
+    listContainerWorkspaceIds: vi.fn(async () => [
+      { id: 'ws-a', runtime: 'docker' as const },
+      { id: 'ws-b', runtime: 'docker' as const },
+    ]),
     listVisibleSkills: vi.fn(async () => []),
     findSetupContext: vi.fn(async () => null),
     listActiveCredentialVersions: vi.fn(async () => []),
@@ -507,28 +532,28 @@ describe('执行面串行（docs/design/workspace.md §8）', () => {
 
 describe('同一路径的写按路径串行（主 agent / 子 agent 并发写不互相截断）', () => {
   it('第一路没写完，第二路不会开始', async () => {
-    const { runtime } = await make()
-    const id = 'ws-lock'
-    // 先把 handle 建好：首次 ensure 会跑初始化，两路并发时谁先拿到 handle 不确定，
-    // 这里要钉的是"写锁"，不是初始化时序
-    await runtime.ensure(id)
-    const internals = runtime as unknown as {
-      localFs: (root: string, request: WorkspaceFsRequest) => Promise<WorkspaceFsResult>
-    }
-    const original = internals.localFs.bind(runtime)
     const started: string[] = []
     let release!: (value: WorkspaceFsResult) => void
     const gate = new Promise<WorkspaceFsResult>((resolve) => {
       release = resolve
     })
-    internals.localFs = vi.fn(async (root: string, request: WorkspaceFsRequest) => {
-      if (request.op === 'write' && request.content === 'first') {
-        started.push('first')
-        return gate
-      }
-      started.push(String(request.content ?? request.op))
-      return original(root, request)
-    })
+    const { hostFs } = await import('../src/workspace/fs/host-fs.js')
+    const gated = {
+      host: (async (root: string, request: WorkspaceFsRequest) => {
+        if (request.op === 'write' && request.content === 'first') {
+          started.push('first')
+          return gate
+        }
+        started.push(String(request.content ?? request.op))
+        return hostFs(root, request)
+      }) as typeof hostFs,
+      container: (async () => ({ ok: true, data: {} })) as never,
+    }
+    const { runtime } = await make({ fsImpl: gated })
+    const id = 'ws-lock'
+    // 先把 handle 建好：首次 ensure 会跑初始化，两路并发时谁先拿到 handle 不确定，
+    // 这里要钉的是"写锁"，不是初始化时序
+    await runtime.ensure(id)
 
     const first = runtime.fs(id, {
       workspaceId: id,
@@ -569,5 +594,104 @@ describe('写文件原子化：同目录 tmp + rename', () => {
     const read = await runtime.fs(id, { workspaceId: id, op: 'read', path: 'dir/big.txt' })
     expect((read.data as { content: string }).content).toBe(content)
     expect(await readdir(join(root, id, 'dir'))).toEqual(['big.txt'])
+  })
+})
+
+describe('WorkspaceRuntime（部署信息）', () => {
+  it('info 汇总平台 / 沙箱 / 容器运行时与目录配置；沙箱拿不到也不抛', async () => {
+    const { runtime, root } = await make()
+    const info = await runtime.info()
+    expect(info).toMatchObject({
+      containerRuntime: 'docker',
+      localRoot: root,
+      multiInstance: false,
+      platform: expect.objectContaining({ shell: expect.any(String) }),
+    })
+    // 测试替身没有 status()：降级成 unknown，而不是抛异常
+    expect(info.sandbox).toMatchObject({ available: 'unknown' })
+  })
+})
+
+describe('WorkspaceRuntime（环境声明查询）', () => {
+  it('local 默认目录：root 在 localRoot 下、managed=true、声明来自部署', async () => {
+    const { runtime, root } = await make()
+    const env = await runtime.environment('ws-env')
+    expect(env).toMatchObject({
+      workspaceId: 'ws-env',
+      backend: 'local',
+      managed: true,
+      fileAccess: 'write',
+      root: join(root, 'ws-env'),
+    })
+    expect(env.features).toMatchObject({
+      shell: 'sh',
+      sandbox: 'os',
+      persistence: 'durable',
+      installGlobal: false,
+    })
+  })
+
+  it('指定目录：managed=false、root 原样返回（不探测、不建目录）', async () => {
+    const host = await mkdtemp(join(tmpdir(), 'ws-env-'))
+    cleanup.push(host)
+    const { runtime } = await make({ location: { root: host }, allowedRoots: [tmpdir()] })
+    const env = await runtime.environment('ws-env2')
+    expect(env).toMatchObject({
+      backend: 'local',
+      managed: false,
+      root: host,
+      driver: 'host',
+    })
+  })
+})
+
+describe('WorkspaceRuntime（文件夹工作区）', () => {
+  it('跑初始化但按声明只物化技能：声明里不能装包 / 写 HOME', async () => {
+    const host = await mkdtemp(join(tmpdir(), 'ws-host-'))
+    cleanup.push(host)
+    const { runtime, setup } = await make({ location: { root: host }, allowedRoots: [tmpdir()] })
+
+    await runtime.ensure('ws-host')
+    expect(setup.run).toHaveBeenCalledTimes(1)
+    // 传进去的声明：Host 不能装全局包、不能写 HOME
+    expect(setup.run.mock.calls[0]?.[2]).toMatchObject({
+      installGlobal: false,
+      writeHome: false,
+      persistence: 'durable',
+    })
+
+    const written = await runtime.fs('ws-host', {
+      workspaceId: 'ws-host',
+      op: 'write',
+      path: 'note.txt',
+      content: 'hi',
+    })
+    expect(written.ok).toBe(true)
+
+    const listed = await readdir(host)
+    expect(listed).toContain('note.txt')
+    expect(listed).not.toContain('.billy')
+    expect(listed).not.toContain('.agents')
+  })
+
+  it('沙箱是 off 时拒绝文件夹（fail closed，不把文件夹交给无边界进程）', async () => {
+    const host = await mkdtemp(join(tmpdir(), 'ws-host-'))
+    cleanup.push(host)
+    const { runtime } = await make({
+      location: { root: host },
+      allowedRoots: [tmpdir()],
+      mode: 'off',
+    })
+    await expect(runtime.ensure('ws-off')).rejects.toThrow(/AGENT_WORKSPACE_SANDBOX=true/)
+  })
+
+  it('不在允许根内时拒绝', async () => {
+    const host = await mkdtemp(join(tmpdir(), 'ws-host-'))
+    cleanup.push(host)
+    const { runtime } = await make({
+      location: { root: host },
+      allowedRoots: [join(tmpdir(), 'another-root')],
+    })
+    await expect(runtime.ensure('ws-outside')).rejects.toThrow(/允许的范围/)
   })
 })

@@ -8,6 +8,24 @@ import { describePlatform, type PlatformInfo } from '@repo/kits'
  * 前缀缓存（DeepSeek 的自动缓存命中）每轮都失效 —— 省不出钱也省不出延迟。
  * 开局注入 + 需要精确时间时用 `bash` 自己取，是这两件事的平衡点。
  */
+/** 工作区执行环境（由 workspace-service 的声明提供；取不到时整段省略） */
+export interface EnvironmentWorkspace {
+  /** 工作区根（容器内 `/workspace`，或宿主目录） */
+  root: string
+  /** 命令解释器：`sh` / `cmd` */
+  shell: 'sh' | 'cmd'
+  /** 隔离描述，如「系统沙箱，只能写工作区与缓存」 */
+  sandbox: string
+  /** 网络描述，如「默认断网」「可出网」 */
+  network: string
+  /** 资源限制描述，如「2 CPU / 2GB / 512 进程」「无」 */
+  resourceLimits: string
+  /** 数据持久性描述，如「停止后保留」「停止后清空」 */
+  persistence: string
+  /** 工作区文件权限：可写 / 只读 */
+  fileAccess: 'write' | 'read-only'
+}
+
 export type EnvironmentData = {
   /** 操作系统画像，如 `macOS 24.6.0（darwin / arm64）` */
   os: string
@@ -15,6 +33,8 @@ export type EnvironmentData = {
   shell: string
   /** 本地时间（含时区与偏移），如 `2026年9月30日星期三 17:55:00（Asia/Shanghai，UTC+08:00）` */
   now: string
+  /** 工作区执行环境（可选：查询失败时整段不渲染） */
+  workspace?: EnvironmentWorkspace
 }
 
 /** 进程所在时区（IE 时区库名，如 `Asia/Shanghai`）；拿不到就回落 `UTC`，不编造 */
@@ -58,8 +78,10 @@ export const buildEnvironmentData = (
   now: Date = new Date(),
   platform: PlatformInfo = describePlatform(),
   timeZone: string = resolveTimeZone(),
+  workspace?: EnvironmentWorkspace,
 ): EnvironmentData => ({
   os: platform.label,
   shell: platform.shell,
   now: `${formatLocalTime(now, timeZone)}（${timeZone}，${formatOffset(now, timeZone)}）`,
+  ...(workspace ? { workspace } : {}),
 })

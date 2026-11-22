@@ -7,12 +7,15 @@ import {
   type CredentialCandidate,
 } from '@repo/shared'
 import type { CredentialImportResponse } from '@repo/contracts'
-import { WorkspaceRuntime } from './workspace-runtime.service.js'
-import { WorkspaceRepository } from './workspace.repository.js'
-import { createExecShell, type SetupShell } from './setup-shell.js'
+import { WorkspaceRuntime } from '../workspace-runtime.service.js'
+import { WorkspaceRepository } from '../workspace.repository.js'
+import { createExecShell, type SetupShell } from '../setup/shell.js'
 import { adapterOf, CLI_ADAPTERS, type CliAdapter } from './cli-adapters.js'
-import { importCredentialToMain, type CredentialMainTarget } from './credential-main.client.js'
-import { WorkspaceServiceConfig, type WorkspaceServiceConfigValue } from '../config/app-config.js'
+import { importCredentialToMain, type CredentialMainTarget } from './main.client.js'
+import {
+  WorkspaceServiceConfig,
+  type WorkspaceServiceConfigValue,
+} from '../../config/app-config.js'
 
 /**
  * 从工作区导入凭据（`docs/design/workspace-cli-credentials.md` §6.4.5）。

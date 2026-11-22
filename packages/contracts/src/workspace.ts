@@ -33,6 +33,8 @@ export const WorkspaceConfigSchema = z.object({
   backend: WorkspaceBackendSchema,
   /** container 后端必填：`billy-workspace:<tag>` */
   image: z.string().min(1).max(128).optional(),
+  /** 执行驱动：host / container / pod；缺省按 legacy backend 推导 */
+  driver: z.enum(['host', 'container', 'pod']).optional(),
   /** backend 相关配置（local 的 root / container 的 workdir 等） */
   location: z.record(z.string(), z.unknown()).optional(),
   fileAccess: WorkspaceFileAccessSchema,

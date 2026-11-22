@@ -30,3 +30,33 @@ export const withEnvPrefix = (command: string, env?: Record<string, string>): st
   const assignments = entries.map(([key, value]) => shellQuote(`${key}=${value}`))
   return `env ${assignments.join(' ')} sh -c ${shellQuote(command)}`
 }
+
+/**
+ * 按执行环境的 shell 生成环境变量注入前缀。
+ *
+ * - `sh`：`env 'K=V' sh -c '<command>'`（见 {@link withEnvPrefix}）；
+ * - `cmd`：`set "K=V" && <command>`，值里的 `^ & | < > ( )` 用 `^` 转义。
+ *   含 `"` / `%` / 换行的值**直接报错**：cmd 没有可靠的转义，拼错等于命令注入。
+ */
+export type EnvShell = 'sh' | 'cmd'
+
+const cmdEscape = (value: string): string => value.replace(/[\^&|<>()]/g, (char) => `^${char}`)
+
+export const withEnvPrefixFor = (
+  shell: EnvShell,
+  command: string,
+  env?: Record<string, string>,
+): string => {
+  const entries = Object.entries(env ?? {}).sort(([left], [right]) =>
+    left < right ? -1 : left > right ? 1 : 0,
+  )
+  if (entries.length === 0) return command
+  if (shell === 'sh') return withEnvPrefix(command, env)
+  const sets = entries.map(([key, value]) => {
+    if (/["%\r\n]/.test(value)) {
+      throw new Error(`环境变量 ${key} 含 cmd 无法安全转义的字符（" / % / 换行）`)
+    }
+    return `set "${key}=${cmdEscape(value)}"`
+  })
+  return `${sets.join(' && ')} && ${command}`
+}

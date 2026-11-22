@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildFindTreeCommand, parseFindTree } from '../src/workspace/workspace-runtime.service.js'
+import { buildFindTreeCommand, parseFindTree } from '../src/workspace/fs/find-tree.js'
 
 /** 一次 find 取整棵树（替代逐文件 docker exec）：命令拼装与输出解析 */
 describe('buildFindTreeCommand', () => {

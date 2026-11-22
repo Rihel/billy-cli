@@ -19,8 +19,6 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  Input,
-  Label,
   ModalForm,
   RefreshButton,
   Sheet,
@@ -60,6 +58,7 @@ import {
 import { useServerClient } from '@/lib/server-client'
 import { useAuthStore } from '@/stores/auth.store'
 import { conversationPath, newConversationPath, CHAT_ROOT } from './routes'
+import { CreateWorkspaceDialog } from '@/components/create-workspace-dialog'
 import { ChatMobileNavContext } from './mobile-nav-context'
 // 会话列表主体（桌面侧栏 + 手机抽屉共用一份，见该文件顶部说明）
 import { ConversationGroupList } from './conversation-list'
@@ -294,7 +293,6 @@ export default function ChatLayout({ children }: { children: ReactNode }) {
     queryFn: () => client.workspace.list(),
   })
   const [createWorkspaceOpen, setCreateWorkspaceOpen] = useState(false)
-  const [workspaceName, setWorkspaceName] = useState('')
   // 折叠的工作区（点文件夹名收起 / 展开）
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set())
   const toggleGroup = (key: string): void =>
@@ -351,16 +349,6 @@ export default function ChatLayout({ children }: { children: ReactNode }) {
     onSuccess: async (conversation) => {
       await queryClient.invalidateQueries({ queryKey: ['ai', 'conversations'] })
       router.push(conversationPath(conversation.id))
-    },
-  })
-
-  const createWorkspace = useMutation({
-    mutationFn: () => client.workspace.create({ name: workspaceName.trim() || undefined }),
-    onSuccess: async () => {
-      toastSuccess('工作区已创建')
-      setCreateWorkspaceOpen(false)
-      setWorkspaceName('')
-      await queryClient.invalidateQueries({ queryKey: ['workspaces'] })
     },
   })
 
@@ -696,30 +684,11 @@ export default function ChatLayout({ children }: { children: ReactNode }) {
           </Dialog>
         </>
       </ChatMobileNavContext.Provider>
-      <Dialog open={createWorkspaceOpen} onOpenChange={setCreateWorkspaceOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>新建工作区</DialogTitle>
-          </DialogHeader>
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="ws-name">名称</Label>
-            <Input
-              id="ws-name"
-              value={workspaceName}
-              onChange={(event) => setWorkspaceName(event.target.value)}
-              placeholder="例如：数据分析"
-            />
-          </div>
-          <DialogFooter>
-            <Button variant="ghost" onClick={() => setCreateWorkspaceOpen(false)}>
-              取消
-            </Button>
-            <Button onClick={() => createWorkspace.mutate()} disabled={createWorkspace.isPending}>
-              创建
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <CreateWorkspaceDialog
+        open={createWorkspaceOpen}
+        onOpenChange={setCreateWorkspaceOpen}
+        onCreated={() => queryClient.invalidateQueries({ queryKey: ['workspaces'] })}
+      />
     </>
   )
 }

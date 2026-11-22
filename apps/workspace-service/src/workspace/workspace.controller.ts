@@ -13,11 +13,13 @@ import {
 } from '@nestjs/common'
 import { AppExceptionFilter, RedisStore } from '@repo/kits'
 import {
+  WorkspaceEnvironmentRequestSchema,
   WorkspaceExecRequestSchema,
   WorkspaceFsRequestSchema,
   WorkspaceIdRequestSchema,
   WorkspaceSyncRequestSchema,
 } from '@repo/contracts'
+import type { WorkspaceEnvironment } from '@repo/contracts'
 import { WorkspaceServiceConfig, type WorkspaceServiceConfigValue } from '../config/app-config.js'
 import { WorkspaceRuntime } from './workspace-runtime.service.js'
 
@@ -60,6 +62,12 @@ export class WorkspaceController {
     }
   }
 
+  /** 部署级信息（平台 / 沙箱 / 容器运行时 / 目录配置）：排障与后台展示用 */
+  @Get('info')
+  info(): Promise<Record<string, unknown>> {
+    return this.runtime.info()
+  }
+
   @Post('v1/workspaces/ensure')
   @HttpCode(200)
   ensure(@Headers('x-internal-token') token: string | undefined, @Body() body: unknown) {
@@ -82,6 +90,17 @@ export class WorkspaceController {
     this.check(token)
     const input = WorkspaceIdRequestSchema.parse(body)
     return this.runtime.destroy(input.workspaceId)
+  }
+
+  @Post('v1/workspaces/environment')
+  @HttpCode(200)
+  async environment(
+    @Headers('x-internal-token') token: string | undefined,
+    @Body() body: unknown,
+  ): Promise<WorkspaceEnvironment> {
+    this.check(token)
+    const { workspaceId } = WorkspaceEnvironmentRequestSchema.parse(body)
+    return this.runtime.environment(workspaceId)
   }
 
   @Post('v1/workspaces/status')

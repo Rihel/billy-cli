@@ -7,7 +7,7 @@ import type { CommandResult, CommandRunOptions } from '../foundation/command/com
  * - `workspace-write`：可以写本会话工作区（默认）；
  * - `danger-full-access`：不受限 —— 在本工程 = **以服务进程身份执行**。
  *
- * 前两档只能由会话选择；`danger-full-access` 是**部署级**能力（`AGENT_WORKSPACE_MODE=off`），
+ * 前两档只能由会话选择；`danger-full-access` 是**部署级**能力（`AGENT_WORKSPACE_SANDBOX=false`），
  * 终端用户永远选不到（web 产品的安全底线，见 `docs/design/workspace-runtime.md`）。
  */
 export const SANDBOX_MODES = ['read-only', 'workspace-write', 'danger-full-access'] as const

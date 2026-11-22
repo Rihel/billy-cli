@@ -1,8 +1,8 @@
 import { spawn } from 'node:child_process'
 import { PassThrough } from 'node:stream'
 import Docker from 'dockerode'
-import { withEnvPrefix } from './exec-env.js'
-import { createOutputCollector, resolveMaxOutput } from './exec-output.js'
+import { withEnvPrefix } from '../exec/env.js'
+import { createOutputCollector, resolveMaxOutput } from '../exec/output.js'
 
 const CONTAINER_WORKDIR = '/workspace'
 

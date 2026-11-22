@@ -31,8 +31,17 @@ export class WorkspaceRepository {
     return {
       id: row.id,
       name: row.name,
-      backend: row.backend as WorkspaceConfig['backend'],
+      // 驱动优先：host → local，container / pod → container；没填 driver 才回落到旧列
+      backend:
+        row.driver === 'host'
+          ? 'local'
+          : row.driver === 'container' || row.driver === 'pod'
+            ? 'container'
+            : (row.backend as WorkspaceConfig['backend']),
       image: row.image ?? undefined,
+      ...(row.driver === 'host' || row.driver === 'container' || row.driver === 'pod'
+        ? { driver: row.driver }
+        : {}),
       location: (row.location ?? undefined) as WorkspaceConfig['location'],
       fileAccess: row.fileAccess as WorkspaceConfig['fileAccess'],
     }
@@ -162,11 +171,15 @@ export class WorkspaceRepository {
    * 回收器用它做「孤儿认领」：进程重启后内存里的 handle 没了，但容器还在跑，
    * 得从 DB 反查出候选集，再逐个探测容器是否真的在跑。
    */
-  async listContainerWorkspaceIds(): Promise<string[]> {
-    const rows = await this.db
-      .getRepository(AiWorkspaceEntity)
-      .find({ where: { backend: 'container' }, select: { id: true } })
-    return rows.map((row) => row.id)
+  async listContainerWorkspaceIds(): Promise<{ id: string; runtime: 'docker' | 'kubernetes' }[]> {
+    const rows = await this.db.getRepository(AiWorkspaceEntity).find({
+      where: { backend: 'container' },
+      select: { id: true, driver: true },
+    })
+    return rows.map((row) => ({
+      id: row.id,
+      runtime: row.driver === 'pod' ? 'kubernetes' : 'docker',
+    }))
   }
 }
 

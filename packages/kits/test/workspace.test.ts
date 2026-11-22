@@ -15,7 +15,7 @@ import type { SandboxCapability, WorkspaceFileAccess } from '../src/workspace/wo
  *
  * 1. **fail closed**：沙箱不可用就拒绝执行，绝不退回宿主进程；
  * 2. **会话只能选沙箱内的文件权限**（只读 / 可写），选不到"出沙箱"；
- * 3. `AGENT_WORKSPACE_MODE=off` 是唯一的"出沙箱"入口，且只在自托管由部署方显式打开。
+ * 3. `AGENT_WORKSPACE_SANDBOX=false`（旧键 `AGENT_WORKSPACE_MODE=off` 等价）是唯一的"出沙箱"入口，且只在自托管由部署方显式打开。
  *
  * 全部用桩：探测注入假实现、命令执行也注入假实现 —— 这套用例在 macOS / Linux / Windows
  * 上跑出同一份结论。
@@ -77,7 +77,7 @@ const build = (
   const { runner, commands } = fakeRunner()
   const service = new WorkspaceRuntimeService(
     WorkspaceConfigSchema.parse({
-      mode: options.mode ?? 'enforce',
+      sandbox: (options.mode ?? 'enforce') !== 'off',
       sandboxNetwork: 'deny',
     }),
     runner,
@@ -169,9 +169,9 @@ describe('status：部署能力对管理页 / `/info` 的口径', () => {
 })
 
 describe('配置默认值：web 产品的安全底线', () => {
-  it('默认 enforce + 断网', () => {
+  it('默认开沙箱 + 断网', () => {
     const config = WorkspaceConfigSchema.parse({})
-    expect(config.mode).toBe('enforce')
+    expect(config.sandbox).toBe(true)
     expect(config.sandboxNetwork).toBe('deny')
   })
 })
