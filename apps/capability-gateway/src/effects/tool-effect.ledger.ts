@@ -31,6 +31,8 @@ export interface SettleEffectInput {
   /** 本次派发的代际（`begin` 返回的 `generation`）：旧代的迟到响应不得结算新一代 */
   generation: number
   outcome: ToolOutcome
+  /** task 型调用提交成功后的任务号（非 task 调用为 null）：台账是停止时兜底取消的持久来源 */
+  taskId?: string | null
 }
 
 /**
@@ -148,13 +150,22 @@ export class ToolEffectLedger {
          SET status = $3,
              outcome = $4::jsonb,
              result_bytes = $5,
+             task_id = COALESCE($7, task_id),
              settled_at = now(),
              updated_at = now()
        WHERE run_id = $1 AND tool_call_id = $2
          AND status = 'dispatched' AND attempts = $6 AND deleted_at IS NULL
       RETURNING id
       `,
-        [input.runId, input.toolCallId, status, payload, bytes, input.generation],
+        [
+          input.runId,
+          input.toolCallId,
+          status,
+          payload,
+          bytes,
+          input.generation,
+          input.taskId ?? null,
+        ],
       ),
     )
     if (settledRows.length > 0) return 'settled'
@@ -166,13 +177,14 @@ export class ToolEffectLedger {
       UPDATE ai_tool_effects
          SET outcome = $3::jsonb,
              result_bytes = $4,
+             task_id = COALESCE($6, task_id),
              settled_at = now(),
              updated_at = now()
        WHERE run_id = $1 AND tool_call_id = $2
          AND status = 'unknown' AND attempts = $5 AND settled_at IS NULL AND deleted_at IS NULL
       RETURNING id
       `,
-        [input.runId, input.toolCallId, payload, bytes, input.generation],
+        [input.runId, input.toolCallId, payload, bytes, input.generation, input.taskId ?? null],
       ),
     )
     return archivedRows.length > 0 ? 'archived' : 'stale'
@@ -203,6 +215,26 @@ export class ToolEffectLedger {
       ),
     )
     return rows.length
+  }
+
+  /**
+   * 这一轮发起过的任务号（停止对话时兜底取消用）。
+   *
+   * `ai:capability:run-tasks:<runId>` 那条 Redis 映射是 best-effort：写失败只 warn、进程死
+   * 在「提交成功」与「映射落库」之间还会整条丢。台账是持久事实，停止时两边取并集，
+   * 才不会让任务变成没人管的孤儿。
+   */
+  async taskIdsForRun(runId: string, withinMs = 6 * 60 * 60 * 1000): Promise<string[]> {
+    const rows = await this.db.dataSource.query<Array<{ task_id: string }>>(
+      `
+      SELECT DISTINCT task_id
+        FROM ai_tool_effects
+       WHERE run_id = $1 AND task_id IS NOT NULL AND deleted_at IS NULL
+         AND created_at > now() - ($2::text || ' milliseconds')::interval
+      `,
+      [runId, withinMs],
+    )
+    return rows.map((row) => row.task_id)
   }
 
   private async find(runId: string, toolCallId: string): Promise<EffectRecord | null> {

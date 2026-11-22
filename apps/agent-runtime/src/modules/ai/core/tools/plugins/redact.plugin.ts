@@ -1,7 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common'
 import { AppLogger } from '@repo/kits'
 import { serializeToolValue } from '../paginate.js'
-import type { ToolCallContext, ToolPlugin } from '../tools.types.js'
+import type { ToolPhaseContext, ToolPlugin } from '../tools.types.js'
 
 /**
  * 秘钥脱敏：把出参里出现的秘钥明文换成提示串。
@@ -14,7 +14,7 @@ export class RedactPlugin implements ToolPlugin {
 
   constructor(@Inject(AppLogger) private readonly logger: AppLogger) {}
 
-  after(ctx: ToolCallContext): void {
+  after(ctx: ToolPhaseContext): void {
     const outcome = ctx.outcome
     if (!outcome?.ok) return
     const fields = ctx.spec.secretFields ?? []
@@ -34,11 +34,12 @@ export class RedactPlugin implements ToolPlugin {
     }
     if (redacted === serialized) return
     try {
-      ctx.outcome = { ...outcome, data: JSON.parse(redacted) }
+      // 只换内容，不动结论：`setOutcomeData` 是收尾链唯一允许的改写入口
+      ctx.setOutcomeData(JSON.parse(redacted))
       this.logger.debug('ai.tool.redacted', { toolKey: ctx.toolKey, fields: secrets.length })
     } catch {
       // 出参不是 JSON（工具返回了字符串）：直接给替换后的文本
-      ctx.outcome = { ...outcome, data: redacted }
+      ctx.setOutcomeData(redacted)
     }
   }
 }

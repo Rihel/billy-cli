@@ -17,6 +17,9 @@
 - **没有 `idempotencyKey` 就不进台账**（建不出「同一次调用」的身份），按普通调用处理。
 - **台账写不进去时**：只读能力放行 + 告警；写入能力直接拒绝（`effect-ledger-unavailable`）。
 - 结论正文 ≤ 32KB 才留存；超限只记 `result_bytes`，重放时报 `effect-result-unavailable`。
+- **task 型调用**：`settle()` 顺手把下游任务号落进 `task_id`；`/v1/tasks/cancel-run` 取
+  「Redis `ai:capability:run-tasks:<runId>` ∪ 台账 `taskIdsForRun`（默认 6h）」并集，
+  兜住 Redis 映射丢失导致取消不到任务。不可恢复窗口：进程死在「提交成功、拿回任务号」之间。
 - 设计（状态机全表、并发边界、明确不做的）见 `docs/design/tool-effect-ledger.md`。
 
 ## 踩坑

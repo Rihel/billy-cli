@@ -277,3 +277,69 @@ describe('ToolEffectLedger：重试认领的并发', () => {
     expect(Number(rows[0]?.attempts)).toBe(2)
   })
 })
+
+/**
+ * task 型调用的任务号要能按 run 反查（停止对话时兜底取消）。
+ * 背景：`ai:capability:run-tasks:<runId>` 是 best-effort 的 Redis 映射，丢了就取消不到任务。
+ */
+describe('ToolEffectLedger：task 型调用的任务号', () => {
+  it('结算时落 task_id，按 run 能查回来；非 task 调用不混进来', async () => {
+    const runId = newRun()
+    await begin(runId, { timeoutMs: 30_000 })
+    await ledger.settle({
+      runId,
+      toolCallId: 'call-1',
+      generation: 1,
+      taskId: 'task-abc',
+      outcome: { ok: true, data: { task: { id: 'task-abc' } } },
+    })
+
+    await begin(runId, { toolCallId: 'call-2' })
+    await ledger.settle({
+      runId,
+      toolCallId: 'call-2',
+      generation: 1,
+      outcome: okOutcome,
+    })
+
+    expect(await ledger.taskIdsForRun(runId)).toEqual(['task-abc'])
+  })
+
+  it('unknown 后归档的迟到结论同样会补上 task_id', async () => {
+    const runId = newRun()
+    await begin(runId, { timeoutMs: 1 })
+    await db.dataSource.query(
+      `UPDATE ai_tool_effects SET deadline_at = now() - interval '1 second' WHERE run_id = $1`,
+      [runId],
+    )
+    await ledger.sweepExpired()
+
+    expect(
+      await ledger.settle({
+        runId,
+        toolCallId: 'call-1',
+        generation: 1,
+        taskId: 'task-late',
+        outcome: { ok: true, data: { task: { id: 'task-late' } } },
+      }),
+    ).toBe('archived')
+    expect(await ledger.taskIdsForRun(runId)).toEqual(['task-late'])
+  })
+
+  it('窗口外的旧任务不返回（默认 6 小时，避免把历史轮次的任务一起取消）', async () => {
+    const runId = newRun()
+    await begin(runId, { timeoutMs: 30_000 })
+    await ledger.settle({
+      runId,
+      toolCallId: 'call-1',
+      generation: 1,
+      taskId: 'task-old',
+      outcome: { ok: true, data: { task: { id: 'task-old' } } },
+    })
+    await db.dataSource.query(
+      `UPDATE ai_tool_effects SET created_at = now() - interval '7 hours' WHERE run_id = $1`,
+      [runId],
+    )
+    expect(await ledger.taskIdsForRun(runId)).toEqual([])
+  })
+})

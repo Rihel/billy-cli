@@ -376,14 +376,20 @@ export type Toolbox = ReadonlyMap<string, Tool>
 /** 生命周期三阶段：before 短路 → denied；执行失败 → denied；执行成功 → after */
 export type ToolLifecyclePhase = 'before' | 'denied' | 'after'
 
+/** 收尾链上下文：outcome 只读，改内容走 setOutcomeData */
+export type ToolPhaseContext = Omit<ToolCallContext, 'outcome'> & {
+  readonly outcome?: ToolOutcome<unknown>
+  setOutcomeData: (data: unknown) => void
+}
+
 export interface ToolPlugin {
   readonly name: string
   /** 前置校验 / 准备。返回结论 = 短路，这次调用进入 denied 收尾 */
   before?(ctx: ToolCallContext): Promise<ToolOutcome<never> | void> | ToolOutcome<never> | void
-  /** 调用以失败 / 拒绝收尾后跑（只加工，不改业务事实） */
-  denied?(ctx: ToolCallContext): Promise<void> | void
+  /** 调用以失败 / 拒绝收尾后跑（只加工内容，不改业务结论） */
+  denied?(ctx: ToolPhaseContext): Promise<void> | void
   /** 调用成功后跑 */
-  after?(ctx: ToolCallContext): Promise<void> | void
+  after?(ctx: ToolPhaseContext): Promise<void> | void
 }
 ```
 
@@ -396,6 +402,11 @@ export interface ToolPlugin {
 ④ 收尾：失败（含短路、执行体拒绝、internal、aborted）走 denied 链；成功走 after 链
 ⑤ 返回 ToolOutcome
 ```
+
+**收尾链不得改写业务结论**：网关在跑收尾链之前就按 `outcome.ok` 决定了走 `denied` 还是 `after`，
+收尾链再改 `ok` / `reason` 会让「跑了哪条链」和「最终结论」对不上（审计按 denied 记、返回给模型的却是成功）。
+所以 `denied` / `after` 拿到的是 `ToolPhaseContext`（`outcome` 只读），要换结果内容用 `setOutcomeData`；
+运行期还有一道兜底：真被改写就把这次调用改成 `internal` 失败并记 `ai.tool.plugin_outcome_mutation`。
 
 **为什么把「拒绝」独立成一条链**：以前只有 `pre` / `post`，拒绝路径靠插件在 `post` 里看一眼
 `outcome.ok` 自己判断。问题是两条收尾链的职责本来就不同 —— 审计（含拒绝原因）两条都要跑，

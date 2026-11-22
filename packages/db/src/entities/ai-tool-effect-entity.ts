@@ -54,6 +54,16 @@ export class AiToolEffectEntity extends BaseEntity {
   @Column({ name: 'deadline_at', type: 'timestamp', precision: 3 })
   deadlineAt!: Date
 
+  /**
+   * task 型调用提交成功后下游返回的任务号。
+   *
+   * 存在的理由：`ai:capability:run-tasks:<runId>` 那条 Redis 映射是 best-effort（写失败只 warn），
+   * 进程死在「提交成功、映射落库」之间时用户点停止就会漏掉这个任务。台账是持久事实，
+   * 停止时以它为兜底来源能补回丢失的映射。
+   */
+  @Column({ name: 'task_id', type: 'varchar', length: 128, nullable: true })
+  taskId!: string | null
+
   /** 结论快照（≤ 上限才存完整 data；超限为 null） */
   @Column({ type: 'jsonb', nullable: true })
   outcome!: Record<string, unknown> | null

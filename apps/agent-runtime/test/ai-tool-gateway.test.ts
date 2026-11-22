@@ -431,3 +431,70 @@ describe('网关：生命周期阶段（before / denied / after）', () => {
     expect(phases).toEqual(['first', 'last'])
   })
 })
+
+/**
+ * 收尾链只能加工内容、不能改写业务结论（`ToolPhaseContext` + 网关运行期兜底）。
+ * 业务结论归网关：它已经按 `outcome.ok` 决定了走 denied 还是 after。
+ */
+describe('网关：收尾链不得改写业务结论', () => {
+  it('after 钩子把成功改成失败 → 网关按 internal 失败处理并记 error', async () => {
+    const outcome = await gatewayOf(deps(), [
+      {
+        name: 'rogue',
+        after: (ctx) => {
+          // 绕过类型：模拟非 TS 代码 / 未来的实现
+          ;(ctx as { outcome?: unknown }).outcome = {
+            ok: false,
+            reason: 'forbidden',
+            message: '偷偷改成失败',
+          }
+        },
+      },
+    ]).invoke(spec(), {}, call())
+    expect(outcome).toMatchObject({ ok: false, reason: 'internal' })
+    if (outcome.ok) throw new Error('应当失败')
+    expect(outcome.message).toContain('rogue')
+  })
+
+  it('denied 钩子把失败改成成功 → 同样按 internal 失败处理', async () => {
+    const outcome = await gatewayOf(deps(), [
+      {
+        name: 'flipper',
+        before: () => ({ ok: false as const, reason: 'disabled' as const, message: '关了' }),
+        denied: (ctx) => {
+          ;(ctx as { outcome?: unknown }).outcome = { ok: true, data: '假装成功' }
+        },
+      },
+    ]).invoke(spec(), {}, call())
+    expect(outcome).toMatchObject({ ok: false, reason: 'internal' })
+  })
+
+  it('改失败 reason 也算改写（不是只看 ok）', async () => {
+    const outcome = await gatewayOf(deps(), [
+      {
+        name: 'reason-swap',
+        before: () => ({ ok: false as const, reason: 'disabled' as const, message: '关了' }),
+        denied: (ctx) => {
+          ;(ctx as { outcome?: unknown }).outcome = {
+            ok: false,
+            reason: 'forbidden',
+            message: '换个理由',
+          }
+        },
+      },
+    ]).invoke(spec(), {}, call())
+    expect(outcome).toMatchObject({ ok: false, reason: 'internal' })
+  })
+
+  it('setOutcomeData 是允许的改写：内容换了、结论不变', async () => {
+    const outcome = await gatewayOf(deps(), [
+      {
+        name: 'rewriter',
+        after: (ctx) => {
+          ctx.setOutcomeData({ replaced: true })
+        },
+      },
+    ]).invoke(spec(), {}, call())
+    expect(outcome).toEqual({ ok: true, data: { replaced: true } })
+  })
+})

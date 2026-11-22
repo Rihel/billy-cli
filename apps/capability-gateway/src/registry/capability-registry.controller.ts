@@ -257,8 +257,9 @@ export class CapabilityRegistryController {
         Math.ceil(found.capability.execution.maxRunMs / 1_000) + 3_600,
       )
     }
-    // 结算必须带代际：超时后可能已经被别的执行者重新派发，旧代的结论不能写进新一代
-    await this.settleEffect(input, effect.generation, result.outcome)
+    // 结算必须带代际：超时后可能已经被别的执行者重新派发，旧代的结论不能写进新一代。
+    // task 型调用顺带把任务号落进台账：停止对话时的兜底取消靠它。
+    await this.settleEffect(input, effect.generation, result.outcome, result.task?.id ?? null)
     await this.record(input, result)
     return result
   }
@@ -313,7 +314,19 @@ export class CapabilityRegistryController {
   async cancelRun(
     @Body(new ZodBodyPipe(CapabilityRunCancelSchema)) input: CapabilityRunCancel,
   ): Promise<CapabilityRunCancelResult> {
-    const taskIds = await this.registry.runTaskIds(input.runId)
+    // 两个来源取并集：Redis 映射是 best-effort（写失败 / 进程死在提交与映射之间都会丢），
+    // 台账是持久事实。少取消一个任务 = 让它继续烧资源到自然结束。
+    const mapped = await this.registry.runTaskIds(input.runId)
+    const persisted = await this.effects.taskIdsForRun(input.runId).catch((): string[] => [])
+    const taskIds = [...new Set([...mapped, ...persisted])]
+    const recovered = taskIds.length - mapped.length
+    if (recovered > 0) {
+      this.logger.warn('tool_gateway.task_ids_recovered', {
+        runId: input.runId,
+        recovered,
+        mapped: mapped.length,
+      })
+    }
     let canceled = 0
     for (const taskId of taskIds) {
       const snapshot = await this.invoker.cancelTask(taskId)
@@ -468,6 +481,7 @@ export class CapabilityRegistryController {
     input: CapabilityInvokeRequest,
     generation: number | null,
     outcome: CapabilityInvokeResult['outcome'],
+    taskId: string | null,
   ): Promise<void> {
     const toolCallId = input.idempotencyKey
     if (!toolCallId || generation === null) return
@@ -477,6 +491,7 @@ export class CapabilityRegistryController {
         toolCallId,
         generation,
         outcome,
+        taskId,
       })
       if (result === 'stale') {
         // 旧代的迟到响应，或结算前已被判 unknown：结论只留在审计里，不改台账

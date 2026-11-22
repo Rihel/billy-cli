@@ -35,6 +35,24 @@ const rawCallReason = (rawInput: unknown): string | null => {
   return typeof value === 'string' ? value : null
 }
 
+/** 收尾链只能加工内容的判据：结论快照（`ok` 与失败 `reason`） */
+type ConclusionSnapshot = { ok: true } | { ok: false; reason: string } | null
+
+const conclusionOf = (outcome: ToolOutcome<unknown> | undefined): ConclusionSnapshot => {
+  if (!outcome) return null
+  return outcome.ok ? { ok: true } : { ok: false, reason: outcome.reason }
+}
+
+const sameConclusion = (
+  before: ConclusionSnapshot,
+  after: ToolOutcome<unknown> | undefined,
+): boolean => {
+  if (before === null) return after === undefined
+  if (after === undefined) return false
+  if (before.ok !== after.ok) return false
+  return before.ok || before.reason === (after as { reason: string }).reason
+}
+
 /** 从 `tool-search` 的出参里取命中的工具 key（结构见网关 `runToolSearch`） */
 const searchedKeysOf = (data: unknown): string[] => {
   if (!data || typeof data !== 'object') return []
@@ -184,6 +202,13 @@ export class ToolGateway {
       configVersion: settings.version,
       // 自定义事件出口（设计 §5.17）：按**声明**过滤 + payload 校验 + 失败只记 warn，
       // 组装在这里而不是执行体里 —— 工具作者只写 `ctx.emit(...)`，纪律只有一份实现
+      /**
+       * 收尾链唯一允许的改写：替换成功结果的内容。
+       * 结论（`ok` / `reason`）不在这里改 —— 那是网关的判定结果。
+       */
+      setOutcomeData: (data: unknown) => {
+        if (ctx.outcome?.ok) ctx.outcome = { ...ctx.outcome, data }
+      },
       emit: createToolEventEmitter({
         ...(call.writer ? { writer: call.writer } : {}),
         toolKey: spec.key,
@@ -268,12 +293,20 @@ export class ToolGateway {
     }
   }
 
-  /** 跑一条收尾链（denied / after）：插件抛错只记日志，不覆盖已经定下的结论 */
+  /**
+   * 跑一条收尾链（denied / after）：插件抛错只记日志，不覆盖已经定下的结论。
+   *
+   * 还会兜一条运行期约束：收尾链**不得改写业务结论**（`ok` / `reason`）。类型上把
+   * `outcome` 收成了只读（`ToolPhaseContext`），这里再防一手运行期改写（`as any` /
+   * 非 TS 代码 / 未来的实现）—— 真被改写就把这次调用按 `internal` 失败处理，
+   * 否则「跑了哪条收尾链」和「最终结论」会对不上。
+   */
   private async finish(
     spec: ToolSpec,
     ctx: ToolCallContext,
     phase: 'denied' | 'after',
   ): Promise<void> {
+    const conclusion = conclusionOf(ctx.outcome)
     for (const plugin of this.plugins) {
       const hook = plugin[phase]
       if (!hook) continue
@@ -286,6 +319,22 @@ export class ToolGateway {
           phase,
           reason: error instanceof Error ? error.message : String(error),
         })
+      }
+      if (!sameConclusion(conclusion, ctx.outcome)) {
+        this.logger.error('ai.tool.plugin_outcome_mutation', {
+          toolKey: spec.key,
+          plugin: plugin.name,
+          phase,
+          before: conclusion?.ok === true ? 'ok' : 'failed',
+          after: ctx.outcome?.ok === true ? 'ok' : 'failed',
+        })
+        ctx.outcome = {
+          ok: false,
+          reason: 'internal',
+          message: `收尾插件（${plugin.name}）改写了调用结论，本次调用按失败处理`,
+          retryable: false,
+        }
+        return
       }
     }
   }

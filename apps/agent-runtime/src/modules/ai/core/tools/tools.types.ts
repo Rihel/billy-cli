@@ -295,6 +295,15 @@ export interface ToolCallContext<C = Record<string, unknown>> {
   input: unknown
   /** 插件写：执行结论 */
   outcome?: ToolOutcome<unknown>
+  /**
+   * 收尾链**唯一允许**的改写入口：替换成功结果的内容（`redact` 用它脱敏）。
+   *
+   * 为什么不让收尾链直接改 `outcome`：网关在跑收尾链**之前**就按 `outcome.ok` 决定了走
+   * `denied` 还是 `after`，收尾链再改 `ok` / `reason` 会让「跑了哪条链」和「最终结论」对不上
+   * （审计按 denied 记、返回给模型的却是成功）。业务结论归网关，收尾链只加工内容。
+   * 运行期还有一道兜底：结论被改写时网关会把它改成 internal 失败并记 error（见 `ToolGateway`）。
+   */
+  setOutcomeData: (data: unknown) => void
   /** 插件写：分页页头（有了它就说明出参被包成了 `PagedToolValue`） */
   page?: ToolPageMeta
   /** 插件写：本次调用的配置版本（落审计） */
@@ -449,6 +458,17 @@ export interface ToolCallInput {
 export type ToolLifecyclePhase = 'before' | 'denied' | 'after'
 
 /**
+ * 收尾链看到的上下文：`outcome` 只读。
+ *
+ * 与 `ToolCallContext` 是同一对象（不是拷贝），只是把「能不能改结论」这件事在类型上收住：
+ * 想改结果内容就用 `setOutcomeData`。`before` 链仍拿完整上下文——它本来就要产出结论。
+ */
+export type ToolPhaseContext = Omit<ToolCallContext, 'outcome'> & {
+  readonly outcome?: ToolOutcome<unknown>
+  setOutcomeData: (data: unknown) => void
+}
+
+/**
  * 网关插件：按阶段挂载的行为。
  *
  * - `before`：前置校验 / 准备。返回结论 = **短路**，这次调用进入 `denied` 收尾；
@@ -462,8 +482,8 @@ export interface ToolPlugin {
   /** 插件名（日志、排查用；也是 env 里关掉它的标识） */
   readonly name: string
   before?(ctx: ToolCallContext): Promise<ToolOutcome<never> | void> | ToolOutcome<never> | void
-  denied?(ctx: ToolCallContext): Promise<void> | void
-  after?(ctx: ToolCallContext): Promise<void> | void
+  denied?(ctx: ToolPhaseContext): Promise<void> | void
+  after?(ctx: ToolPhaseContext): Promise<void> | void
 }
 
 /** 工具箱：key → 工具（主体自己的类型，不再是 Mastra 的 `ToolsInput`） */

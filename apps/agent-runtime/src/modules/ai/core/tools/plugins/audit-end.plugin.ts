@@ -2,7 +2,7 @@ import { Inject, Injectable } from '@nestjs/common'
 import { AppLogger } from '@repo/kits'
 import { serializeToolValue } from '../paginate.js'
 import { ToolCallMetaStore } from '../tool.meta.js'
-import type { ToolCallContext, ToolPlugin } from '../tools.types.js'
+import type { ToolPhaseContext, ToolPlugin } from '../tools.types.js'
 
 /**
  * 审计：写一份旁证（录制器写 `tool-result` 行时合并进 `payload.outcome`）+ 一条结构化日志。
@@ -19,16 +19,16 @@ export class AuditEndPlugin implements ToolPlugin {
   ) {}
 
   /** 拒绝收尾：审计必须记下被拒的调用（含拒绝原因），否则事后无法解释"模型想干什么" */
-  denied(ctx: ToolCallContext): void {
+  denied(ctx: ToolPhaseContext): void {
     this.record(ctx)
   }
 
   /** 成功收尾 */
-  after(ctx: ToolCallContext): void {
+  after(ctx: ToolPhaseContext): void {
     this.record(ctx)
   }
 
-  private record(ctx: ToolCallContext): void {
+  private record(ctx: ToolPhaseContext): void {
     const outcome = ctx.outcome
     const durationMs = Math.max(0, ctx.clock.now() - (ctx.startedAt ?? ctx.clock.now()))
     const outputBytes =
