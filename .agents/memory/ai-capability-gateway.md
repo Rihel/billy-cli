@@ -50,6 +50,10 @@
 - **模型面生效 5s**：runtime 目录 TTL 从 30s 收到 5s（`ai.capability.changed` 事件仍未做，用 TTL 兜口径）。
 - 运维：`registrar.stop()` 只注销实例、不删服务记录 —— 切单服务后网关里残留的旧
   exec / web / files / memory 四行要后台删除或 `POST /v1/services/deregister` 清一次。
+- **降级按风险分档（2026-11-22）**：`precheck` 的入参校验区分 `valid / invalid / unsupported`
+  与限流 Redis 故障，都按能力的 `risk` 决定 —— `write` 在「校验器不可用」或「限流不可用」时
+  **fail-closed**（`validator-unavailable` / `rate-limit-unavailable`），只读保持兼容降级。
+  工具调用的去重与副作用语义见 [ai-tool-effect-ledger](ai-tool-effect-ledger.md)。
 
 - **MCP 适配器（2026-11-18，HTTP 型）**：网关做 **client**——兼容两代协议：2025 版 `initialize`（缓存 `Mcp-Session-Id` 5 分钟）与 2026-07-28 无握手 / 无会话版（initialize 回 -32601 / 405 时按无状态继续），每个 POST 带 `MCP-Protocol-Version`；
   → `tools/list`（分页拉全）→ `tools/call`；MCP 工具名归一成扁平 key，原名存声明的 `remoteTool` 调用时传回；

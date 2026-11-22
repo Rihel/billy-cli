@@ -49,6 +49,12 @@ export const workspaceServiceAppConfigSchema = z.object({
     kubectlBin: z.string().min(1).default('kubectl'),
     /** workspace Pod 所在命名空间 */
     k8sNamespace: z.string().min(1).default('billy'),
+    /**
+     * 容器网络出口。默认 bridge：初始化要 `npm install -g`、agent 也要能 git clone / 拉网页。
+     * 配 `none` 就是断网工作区（镜像必须预先烘好依赖，否则初始化会失败）。
+     * 不允许 `host` —— 那等于把 agent 放进宿主网络栈。
+     */
+    containerNetwork: z.enum(['bridge', 'none']).default('bridge'),
     containerMemory: z.string().min(1).default('2g'),
     containerCpus: z.string().min(1).default('2'),
     containerPidsLimit: z.coerce.number().int().positive().default(512),
@@ -122,6 +128,7 @@ export const mapWorkspaceServiceEnv = (env: NodeJS.ProcessEnv): Record<string, u
     containerRuntime: optional(env.WORKSPACE_CONTAINER_RUNTIME),
     kubectlBin: optional(env.WORKSPACE_KUBECTL_BIN),
     k8sNamespace: optional(env.WORKSPACE_K8S_NAMESPACE),
+    containerNetwork: optional(env.WORKSPACE_CONTAINER_NETWORK),
     containerMemory: optional(env.WORKSPACE_CONTAINER_MEMORY),
     containerCpus: optional(env.WORKSPACE_CONTAINER_CPUS),
     containerPidsLimit: optional(env.WORKSPACE_CONTAINER_PIDS_LIMIT),

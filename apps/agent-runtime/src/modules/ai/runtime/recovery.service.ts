@@ -20,7 +20,13 @@ const RECOVERY_LEASE_KEY = 'agent:recovery:lease'
  * 恢复租约 TTL（秒）。
  *
  * 恢复不再是启动阻塞项；TTL 放大到 10 分钟，覆盖常见的一批 durable run 恢复。
- * 真正的 per-run 互斥仍需要 run fencing（后续 Batch 4），这里只是减少重叠窗口。
+ *
+ * 这层租约**只减少重叠窗口，不保证正确性**：正确性由 per-run fencing 兜底 ——
+ * Mastra 1.82 在 durable run 执行前 claim `run_ownership`（`owner_id + generation`），
+ * 租约过期 / 被别的副本 force 抢占后，旧执行者的写入会抛 `RunFenceConflictError` 而不落库
+ * （`AgentWorkflowsStorage.supportsRunFencing() = true`，见 `storage/agent-mastra-store.ts`）。
+ * 注意它只拦**状态写入**，拦不住已经发出去的外部副作用 —— 那部分要靠工具侧幂等 /
+ * 副作用台账（`ai_tool_effects`，见 `docs/design/tool-effect-ledger.md`）。
  */
 const RECOVERY_LEASE_TTL_SECONDS = 600
 /** 抢不到租约时的重试次数与间隔：别的副本可能刚开始恢复，等它一轮 */

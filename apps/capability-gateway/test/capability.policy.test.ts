@@ -52,11 +52,15 @@ const build = (
   over: {
     effective?: Record<string, unknown>
     incr?: number
+    /** 模拟 Redis 抖动：incr 直接抛错 */
+    incrError?: Error
     capability?: Partial<CapabilityDecl>
   } = {},
 ) => {
   const redis = {
-    incr: vi.fn().mockResolvedValue(over.incr ?? 1),
+    incr: over.incrError
+      ? vi.fn().mockRejectedValue(over.incrError)
+      : vi.fn().mockResolvedValue(over.incr ?? 1),
     expire: vi.fn().mockResolvedValue(true),
   }
   const toolConfig = {
@@ -71,10 +75,14 @@ const build = (
       ...over.effective,
     }),
   }
-  const service = new CapabilityPolicyService(redis as never, toolConfig as never, config, {
-    warn: vi.fn(),
-  } as never)
-  return { service, redis, toolConfig, capability: decl(over.capability) }
+  const logger = { warn: vi.fn(), error: vi.fn(), log: vi.fn() }
+  const service = new CapabilityPolicyService(
+    redis as never,
+    toolConfig as never,
+    config,
+    logger as never,
+  )
+  return { service, redis, toolConfig, logger, capability: decl(over.capability) }
 }
 
 describe('CapabilityPolicyService（新调用链的治理）', () => {
@@ -121,5 +129,44 @@ describe('CapabilityPolicyService（新调用链的治理）', () => {
       expect(result.outcome.reason).toBe('rate-limited')
       expect(result.outcome.retryable).toBe(true)
     }
+  })
+
+  it('写入类能力：入参校验器用不了就拒绝，不静默放行', async () => {
+    const { service, capability } = build({
+      capability: { inputSchema: { type: 'object', properties: 'nope' } },
+    })
+    const result = await service.precheck({ key: 'bash', capability }, caller(), { command: 'x' })
+    expect(result.ok).toBe(false)
+    if (!result.ok) expect(result.outcome.reason).toBe('validator-unavailable')
+  })
+
+  it('只读能力：入参校验器用不了按兼容放行（与旧行为一致）', async () => {
+    const { service, capability, logger } = build({
+      capability: { risk: 'read', inputSchema: { type: 'object', properties: 'nope' } },
+    })
+    const result = await service.precheck({ key: 'file-list', capability }, caller(), { path: '/' })
+    expect(result.ok).toBe(true)
+    expect(logger.warn).toHaveBeenCalled()
+  })
+
+  it('写入类能力：Redis 不可用时 fail-closed', async () => {
+    const { service, capability } = build({ incrError: new Error('redis down') })
+    const result = await service.precheck({ key: 'bash', capability }, caller(), { command: 'x' })
+    expect(result.ok).toBe(false)
+    if (!result.ok) {
+      expect(result.outcome.reason).toBe('rate-limit-unavailable')
+      expect(result.outcome.retryable).toBe(true)
+    }
+  })
+
+  it('只读能力：Redis 不可用时保持 fail-open 降级', async () => {
+    const { service, capability } = build({
+      incrError: new Error('redis down'),
+      capability: { risk: 'read' },
+    })
+    const result = await service.precheck({ key: 'file-list', capability }, caller(), {
+      command: 'x',
+    })
+    expect(result.ok).toBe(true)
   })
 })

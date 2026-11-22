@@ -1,0 +1,45 @@
+# 工具副作用台账（ai_tool_effects）
+
+**查证优先级：必核**（改网关调用链 / 契约的 `risk`·`idempotent` / 台账表结构后重核）
+
+## 结论（2026-11-22 落地）
+
+- **调用身份 = `(run_id, tool_call_id)`**：runtime 的 `remote-tool.client` 一直把 Mastra 的
+  `toolCallId` 当 `idempotencyKey` 往下传，此前只被服务侧当审计字段用，**没有去重**；
+  现在网关在 `CapabilityRegistryController.invoke` 里用 `ai_tool_effects` 认领 / 结算。
+- **分级复用契约既有字段**，不新造：`risk='read'` 或 `idempotent=true` → 可重跑；
+  `risk='write'` 且 `idempotent=false` → **永不自动重跑**（派发过就如实报 `effect-unknown`）。
+- **状态机**：`dispatched → completed | failed | unknown`；派发超过 `deadline_at`（调用预算 + 5s）
+  仍未结算即 unknown。结算只写 `status='dispatched'` 的行，迟到的响应不会覆盖 unknown。
+- **没有 `idempotencyKey` 就不进台账**（建不出「同一次调用」的身份），按普通调用处理。
+- **台账写不进去时**：只读能力放行 + 告警；写入能力直接拒绝（`effect-ledger-unavailable`）。
+- 结论正文 ≤ 32KB 才留存；超限只记 `result_bytes`，重放时报 `effect-result-unavailable`。
+- 设计（状态机全表、并发边界、明确不做的）见 `docs/design/tool-effect-ledger.md`。
+
+## 踩坑
+
+- **唯一索引必须带 `WHERE deleted_at IS NULL`**：实体继承 `BaseEntity`（有软删列），把
+  `deleted_at` 放进唯一键在 PG 下挡不住重复（NULL 互不相等）。
+- **jsonb 列不要用 `repo.update` 写结论**：TypeORM 的 `DeepPartial` 会把 `unknown` 字段收紧成
+  `{(...): string | undefined}`，`data: unknown` 直接类型不通过；台账的写入统一走 raw SQL
+  （`db.dataSource.query` + `$4::jsonb`），与 `run_ownership` 同风格。
+
+## 依据
+
+- `packages/db/src/entities/ai-tool-effect-entity.ts`、迁移 `1795331980277-AddToolEffects.ts`
+- `apps/capability-gateway/src/effects/{tool-effect.types,tool-effect.ledger,canonical-hash}.ts`
+- `apps/capability-gateway/src/registry/capability-registry.controller.ts`（claim / settle 接线）
+- 测试：`apps/capability-gateway/test/tool-effect.{decision,ledger}.test.ts`
+
+## 核对命令
+
+```bash
+psql "$DB_URL" -c '\d ai_tool_effects'
+grep -n "claimEffect\|settleEffect" apps/capability-gateway/src/registry/capability-registry.controller.ts
+pnpm --filter @app/capability-gateway exec vitest run test/tool-effect.ledger.test.ts
+```
+
+## 失效信号
+
+工具实现不再走网关（本地直连服务）/ 服务侧开始自己写 `ai_tool_effects` / 契约改名
+`idempotencyKey` / Mastra 重放时换了 toolCallId（那时身份不再是原调用）。

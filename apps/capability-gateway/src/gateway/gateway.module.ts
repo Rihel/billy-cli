@@ -3,6 +3,7 @@ import { ConfigModule, ConfigService } from '@nestjs/config'
 import { ToolGatewayConfig, type ToolGatewayConfigValue } from '../config/app-config.js'
 import { ToolConfigService } from '../config/tool.config.service.js'
 import { ToolAuditService } from '../audit/tool.audit.js'
+import { ToolEffectLedger } from '../effects/tool-effect.ledger.js'
 import { InternalTokenGuard } from '../http/internal-token.guard.js'
 import { GatewayHealthController } from './gateway.controller.js'
 import { CapabilityRegistryController } from '../registry/capability-registry.controller.js'
@@ -26,6 +27,7 @@ import { ServiceRegistry } from '../registry/service.registry.js'
     },
     ToolConfigService,
     ToolAuditService,
+    ToolEffectLedger,
     InternalTokenGuard,
     ServiceRegistry,
     ServiceInvoker,

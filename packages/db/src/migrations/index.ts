@@ -91,6 +91,7 @@ import { AddCredentialVersion1795186595366 } from './1795186595366-AddCredential
 import { AddSkillScopes1795187070810 } from './1795187070810-AddSkillScopes.js'
 import { AddMarketItems1795188270503 } from './1795188270503-AddMarketItems.js'
 import { AddRunOwnership1795318386890 } from './1795318386890-RunOwnership.js'
+import { AddToolEffects1795331980277 } from './1795331980277-AddToolEffects.js'
 
 /** 迁移按时间戳升序；TypeORM 会再排序，但这里保持可读 */
 export const DB_MIGRATIONS = [
@@ -140,4 +141,5 @@ export const DB_MIGRATIONS = [
   AddSkillScopes1795187070810,
   AddMarketItems1795188270503,
   AddRunOwnership1795318386890,
+  AddToolEffects1795331980277,
 ]

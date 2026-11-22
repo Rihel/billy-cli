@@ -8,7 +8,7 @@ import {
   UseGuards,
   UseInterceptors,
 } from '@nestjs/common'
-import { AppExceptionFilter, ResponseEnvelopeInterceptor } from '@repo/kits'
+import { AppExceptionFilter, AppLogger, ResponseEnvelopeInterceptor } from '@repo/kits'
 import {
   CapabilityInvokeRequestSchema,
   CapabilityListRequestSchema,
@@ -21,6 +21,7 @@ import {
   McpDiscoverSchema,
   ServiceDeregisterSchema,
   ServiceRegistrationSchema,
+  type CapabilityDecl,
   type CapabilityInvokeRequest,
   type CapabilityInvokeResult,
   type CapabilityListRequest,
@@ -35,12 +36,16 @@ import {
   type InstanceHeartbeat,
   type McpDiscover,
   type McpDiscoverResult,
+  type RegisteredService,
   type ServiceDeregistration,
   type ServiceRegistration,
   type ServiceRegisterResult,
 } from '@repo/contracts'
 import { randomUUID } from 'node:crypto'
 import { ToolAuditService } from '../audit/tool.audit.js'
+import { canonicalHash } from '../effects/canonical-hash.js'
+import { ToolEffectLedger } from '../effects/tool-effect.ledger.js'
+import type { EffectDecision } from '../effects/tool-effect.types.js'
 import { GATEWAY_SERVICE, findBuiltinCapability } from './builtin.capabilities.js'
 import { searchTools } from './tool.search.js'
 import { InternalTokenGuard } from '../http/internal-token.guard.js'
@@ -63,6 +68,8 @@ export class CapabilityRegistryController {
     @Inject(ServiceInvoker) private readonly invoker: ServiceInvoker,
     @Inject(CapabilityPolicyService) private readonly policy: CapabilityPolicyService,
     @Inject(ToolAuditService) private readonly audit: ToolAuditService,
+    @Inject(ToolEffectLedger) private readonly effects: ToolEffectLedger,
+    @Inject(AppLogger) private readonly logger: AppLogger,
   ) {}
 
   /** 内部服务的每个实例启动时调一次；幂等，清单没变就是 no-op */
@@ -235,6 +242,12 @@ export class CapabilityRegistryController {
       return result
     }
 
+    const effect = await this.claimEffect(input, found, decision.input, startedAt)
+    if (effect.kind === 'terminal') {
+      await this.record(input, effect.result)
+      return effect.result
+    }
+
     const result = await this.invoker.invoke({ ...input, input: decision.input })
     // 任务亲和之外再记一行「哪轮发起的」：停止对话时按 runId 级联取消（只记 owner=session）
     if (result.task && found.capability.execution.owner === 'session') {
@@ -244,6 +257,7 @@ export class CapabilityRegistryController {
         Math.ceil(found.capability.execution.maxRunMs / 1_000) + 3_600,
       )
     }
+    await this.settleEffect(input, result.outcome)
     await this.record(input, result)
     return result
   }
@@ -365,6 +379,129 @@ export class CapabilityRegistryController {
     }
   }
 
+  /**
+   * 认领这次调用（`docs/design/tool-effect-ledger.md`）。
+   *
+   * 只在带了 `idempotencyKey`（runtime 传的是 Mastra 的 toolCallId）时建台账 ——
+   * 那是「同一次调用」的唯一身份，没有它就没法判断重放，只能当普通调用。
+   */
+  private async claimEffect(
+    input: CapabilityInvokeRequest,
+    found: { key: string; capability: CapabilityDecl; service: RegisteredService },
+    effectiveInput: Record<string, unknown>,
+    startedAt: number,
+  ): Promise<{ kind: 'run' } | { kind: 'terminal'; result: CapabilityInvokeResult }> {
+    const toolCallId = input.idempotencyKey
+    if (!toolCallId) return { kind: 'run' }
+
+    const policy = { risk: found.capability.risk, idempotent: found.capability.idempotent }
+    let decision: EffectDecision
+    try {
+      decision = await this.effects.begin({
+        runId: input.caller.runId,
+        conversationId: input.caller.conversationId,
+        toolCallId,
+        capability: found.key,
+        requestHash: canonicalHash({ capability: found.key, input: effectiveInput }),
+        timeoutMs: input.deadlineMs,
+        policy,
+      })
+    } catch (error) {
+      // 台账写不进去 = 事后无法判断副作用是否发生。只读能力放行（代价是多跑一次查询），
+      // 不可逆动作一律拒绝 —— 宁可这次调不通，也不要留下一个查不出来的副作用。
+      this.logger.warn('tool_gateway.effect_ledger_unavailable', {
+        capability: found.key,
+        risk: policy.risk,
+        reason: error instanceof Error ? error.message : String(error),
+      })
+      if (policy.risk === 'read') return { kind: 'run' }
+      return {
+        kind: 'terminal',
+        result: this.effectResult(input, found, startedAt, {
+          ok: false,
+          reason: 'effect-ledger-unavailable',
+          message: '副作用台账暂不可用，出于安全考虑本次写入类调用没有执行，请稍后重试。',
+          retryable: true,
+        }),
+      }
+    }
+
+    if (decision.kind === 'proceed') return { kind: 'run' }
+    if (decision.kind === 'replay') {
+      this.logger.log('tool_gateway.effect_replayed', {
+        capability: found.key,
+        runId: input.caller.runId,
+        toolCallId,
+      })
+      return {
+        kind: 'terminal',
+        result: this.effectResult(input, found, startedAt, decision.outcome),
+      }
+    }
+    this.logger.warn('tool_gateway.effect_blocked', {
+      capability: found.key,
+      runId: input.caller.runId,
+      toolCallId,
+      reason: decision.reason,
+    })
+    return {
+      kind: 'terminal',
+      result: this.effectResult(input, found, startedAt, {
+        ok: false,
+        reason: decision.reason,
+        message: decision.message,
+        retryable: false,
+      }),
+    }
+  }
+
+  /** 结算台账；失败只记日志（调用已经发生，翻成工具失败反而误导模型） */
+  private async settleEffect(
+    input: CapabilityInvokeRequest,
+    outcome: CapabilityInvokeResult['outcome'],
+  ): Promise<void> {
+    const toolCallId = input.idempotencyKey
+    if (!toolCallId) return
+    try {
+      const settled = await this.effects.settle({
+        runId: input.caller.runId,
+        toolCallId,
+        outcome,
+      })
+      if (!settled) {
+        // 典型原因：这次调用被判成 unknown 之后才回来。结论仍然写进审计，但不覆盖台账状态。
+        this.logger.warn('tool_gateway.effect_settle_skipped', {
+          runId: input.caller.runId,
+          toolCallId,
+        })
+      }
+    } catch (error) {
+      this.logger.error('tool_gateway.effect_settle_failed', {
+        runId: input.caller.runId,
+        toolCallId,
+        reason: error instanceof Error ? error.message : String(error),
+      })
+    }
+  }
+
+  /** 台账结论直接回给调用方时用的结果壳（不经过服务，`instanceId` 记台账） */
+  private effectResult(
+    input: CapabilityInvokeRequest,
+    found: { key: string; service: RegisteredService },
+    startedAt: number,
+    outcome: CapabilityInvokeResult['outcome'],
+  ): CapabilityInvokeResult {
+    return {
+      version: 1,
+      requestId: randomUUID(),
+      capability: found.key,
+      service: found.service.service,
+      instanceId: 'effect-ledger',
+      durationMs: Date.now() - startedAt,
+      outcome,
+    }
+  }
+
   /** 审计写失败不阻断结论；网关是 ai_tool_audit 的唯一写方 */
   private async record(
     input: CapabilityInvokeRequest,
@@ -376,7 +513,8 @@ export class CapabilityRegistryController {
       conversationId: input.caller.conversationId,
       userId: input.caller.userId ?? null,
       toolKey: result.capability,
-      toolCallId: null,
+      // 与副作用台账同一个句柄：审计与台账可以按 (runId, toolCallId) 对账
+      toolCallId: input.idempotencyKey ?? null,
       workerId: `${result.service}:${result.instanceId}`,
       outcome: result.outcome,
       durationMs: result.durationMs,

@@ -690,6 +690,7 @@ agent loop 执行侧：会话编排 / 工具面 / 上下文 / 技能 / 子 agent
 | 变量 | 默认 | 说明 | 必填 |
 | --- | --- | --- | --- |
 | `WORKSPACE_CONTAINER_MEMORY` | `2g` | 工作区容器内存上限 | 可选 |
+| `WORKSPACE_CONTAINER_NETWORK` | `bridge` | 工作区容器网络出口：`bridge` 出网（装依赖 / git clone 需要）/ `none` 断网（镜像必须预烘依赖，否则初始化失败） | 可选 |
 | `WORKSPACE_CONTAINER_CPUS` | `2` | 工作区容器 CPU 上限 | 可选 |
 | `WORKSPACE_CONTAINER_PIDS_LIMIT` | `512` | 工作区容器 pid 上限 | 可选 |
 | `WORKSPACE_DEFAULT_IMAGE` | `billy-workspace:latest` | 工作区镜像；模板对齐发布版本 `billy-workspace:2026.11.0`，必须与 `docker/Dockerfile.workspace-image` 构建出的 tag 一致 | 生产必改 |

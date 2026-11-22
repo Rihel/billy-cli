@@ -101,6 +101,7 @@
 | [ai-skill-internal-api](ai-skill-internal-api.md) | skill-* 留在 agent-runtime 本地执行，worker→控制面旧 API 已删 | 必核 | 2026-11-14 |
 | [ai-memory-internal-api](ai-memory-internal-api.md) | memory 已改 worker 直连 DB；旧 worker→控制面内部 API 已删除 | 必核 | 2026-11-14 |
 | [common-capability-executors](common-capability-executors.md) | 执行器 = 能力组：`@CapabilityGroup` + 方法级 `@CapabilityDecl`；common 登记 9、workspace 登记 8（只有 bash 是 task），合计 20 个 code 能力 | 必核 | 2026-11-20 |
+| [ai-tool-effect-ledger](ai-tool-effect-ledger.md) | 工具副作用台账：按 `(runId, toolCallId)` 去重，`ai_tool_effects` 四态；分级用契约既有 `risk + idempotent`，不可逆副作用永不自动重跑 | 必核 | 2026-11-22 |
 | [ai-capability-gateway](ai-capability-gateway.md) | 本地口径：一个进程 = 一个服务 `common`（17 能力）；装饰器定义；登记 HTTP 只在 internal-sdk；protocol / inputSchema 全链路；admin 页与 toast `z-[100]` | 必核 | 2026-11-18 |
 | [runtime-cleanup](runtime-cleanup.md) | runtime 只做编排：能力定义/执行体已删、工具面来自能力目录、外部服务搜到才下发、授权只剩 key | 必核 | 2026-11-20 |
 | [ai-run-queue](ai-run-queue.md) | 异步子 agent 的会话 run 队列：新表、优先级、dedupe、当前实施边界 | 抽核 | 2026-11-15 |

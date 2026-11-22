@@ -2,6 +2,7 @@ import { spawn } from 'node:child_process'
 import { PassThrough } from 'node:stream'
 import Docker from 'dockerode'
 import { withEnvPrefix } from './exec-env.js'
+import { createOutputCollector, resolveMaxOutput } from './exec-output.js'
 
 const CONTAINER_WORKDIR = '/workspace'
 
@@ -15,14 +16,15 @@ const parseBytes = (value: string): number => {
   return Math.round(n * mult)
 }
 
-const MAX_OUTPUT = 64 * 1024
-
 export interface CommandOutcome {
   code: number
   stdout: string
   stderr: string
   durationMs: number
   timedOut: boolean
+  /** stdout / stderr 是否因超过上限被截断 */
+  stdoutTruncated: boolean
+  stderrTruncated: boolean
 }
 
 export interface ContainerStartInput {
@@ -32,6 +34,8 @@ export interface ContainerStartInput {
   memory: string
   cpus: string
   pidsLimit: number
+  /** 容器网络出口：bridge = 允许出网（默认，装依赖需要），none = 断网 */
+  network?: 'bridge' | 'none'
 }
 
 /**
@@ -61,6 +65,8 @@ export interface ContainerDriver {
       timeoutMs: number
       stdin?: string
       env?: Record<string, string>
+      /** 输出上限（字节，默认 MAX_EXEC_OUTPUT；只允许压小） */
+      maxOutputBytes?: number
     },
   ): Promise<CommandOutcome>
   remove(name: string): Promise<void>
@@ -71,54 +77,58 @@ const run = (
   args: string[],
   timeoutMs: number,
   stdin?: string,
-): Promise<CommandOutcome> =>
-  new Promise((resolve) => {
+  maxOutputBytes?: number,
+): Promise<CommandOutcome> => {
+  const limit = resolveMaxOutput(maxOutputBytes)
+  return new Promise((resolve) => {
     const startedAt = Date.now()
     const child = spawn(bin, args, { stdio: ['pipe', 'pipe', 'pipe'] })
-    let stdout = ''
-    let stderr = ''
+    const out = createOutputCollector(limit)
+    const err = createOutputCollector(limit)
     let timedOut = false
     const timer = setTimeout(() => {
       timedOut = true
       child.kill('SIGKILL')
     }, timeoutMs)
-    child.stdout.on('data', (chunk: Buffer) => {
-      if (stdout.length < MAX_OUTPUT * 4) stdout += chunk.toString()
-    })
-    child.stderr.on('data', (chunk: Buffer) => {
-      if (stderr.length < MAX_OUTPUT) stderr += chunk.toString()
-    })
-    child.on('error', (error) => {
+    child.stdout.on('data', (chunk: Buffer) => out.push(chunk))
+    child.stderr.on('data', (chunk: Buffer) => err.push(chunk))
+    const settle = (code: number, spawnError?: string): void => {
       clearTimeout(timer)
+      // spawn 失败（命令不存在 / 被杀）时没有流输出，用错误信息顶替 stderr（同样受上限约束）
+      const stderr = spawnError === undefined ? err.text() : spawnError.slice(0, limit)
       resolve({
-        code: -1,
-        stdout,
-        stderr: String(error.message),
-        durationMs: Date.now() - startedAt,
-        timedOut,
-      })
-    })
-    child.on('close', (code) => {
-      clearTimeout(timer)
-      resolve({
-        code: code ?? -1,
-        stdout,
+        code,
+        stdout: out.text(),
         stderr,
         durationMs: Date.now() - startedAt,
         timedOut,
+        stdoutTruncated: out.truncated(),
+        stderrTruncated:
+          spawnError === undefined ? err.truncated() : stderr.length < spawnError.length,
       })
-    })
+    }
+    child.on('error', (error) => settle(-1, String(error.message)))
+    child.on('close', (code) => settle(code ?? -1))
     if (stdin !== undefined) child.stdin.end(stdin)
     else child.stdin.end()
   })
+}
 
 /** 单机 Docker：compose / 开发机（dockerode 直连 Engine API，不走 docker CLI） */
 export class DockerDriver implements ContainerDriver {
   readonly kind = 'docker' as const
   private readonly docker: Docker
 
-  constructor(socketPath = process.env.DOCKER_SOCKET ?? '/var/run/docker.sock') {
-    this.docker = new Docker({ socketPath })
+  constructor(
+    private readonly options: {
+      socketPath?: string
+      /** 容器网络出口默认值：bridge = 允许出网（装依赖需要），none = 断网 */
+      network?: 'bridge' | 'none'
+    } = {},
+  ) {
+    this.docker = new Docker({
+      socketPath: options.socketPath ?? process.env.DOCKER_SOCKET ?? '/var/run/docker.sock',
+    })
   }
 
   async inspect(name: string): Promise<{ running: boolean; startedAt?: number }> {
@@ -148,6 +158,20 @@ export class DockerDriver implements ContainerDriver {
   }
 
   async start(input: ContainerStartInput): Promise<void> {
+    /**
+     * 沙箱的安全边界（2026-11-22 复核）：
+     *
+     * - **不挂宿主目录、不挂 docker.sock**：容器内拿不到宿主文件系统，也控制不了 daemon；
+     * - `CapDrop: ['ALL']`：默认能力集里有 `NET_RAW` 等，agent 跑的是不可信命令，全丢最省心。
+     *   实测（`billy-workspace:2026.11.1`）丢光之后 `node` / `npm` / `git` / `npm install -g`
+     *   仍然正常 —— 这些命令不需要 capability，root 对 root 自己的文件也有写权限；
+     * - `no-new-privileges`：`setuid` 提权到此为止；
+     * - **不启用只读根文件系统**：工作区初始化会在系统盘 `npm install -g`（写 `/usr/local/lib/node_modules`
+     *   与 `/root/.npm`），实测只读根会直接初始化失败。要开只读根，得先把依赖安装改到工作区内前缀，
+     *   那是产品形态变更，不在这一版偷偷做；
+     * - 网络出口由 `containerNetwork` 决定（默认 bridge）：装依赖 / git clone 需要出网，
+     *   断网工作区显式配 `none`，代价是初始化装不了依赖（镜像需预先烘好）。
+     */
     const container = await this.docker.createContainer({
       name: input.name,
       Image: input.image,
@@ -158,7 +182,10 @@ export class DockerDriver implements ContainerDriver {
         Memory: parseBytes(input.memory),
         NanoCpus: Math.round(Number(input.cpus) * 1_000_000_000),
         PidsLimit: input.pidsLimit,
-        NetworkMode: 'bridge',
+        NetworkMode: input.network ?? this.options.network ?? 'bridge',
+        // 显式声明：这三个默认值我们**不依赖**，写出来是防止将来被改默认
+        Privileged: false,
+        CapDrop: ['ALL'],
         SecurityOpt: ['no-new-privileges'],
         Tmpfs: { [CONTAINER_WORKDIR]: 'rw' },
       },
@@ -174,9 +201,11 @@ export class DockerDriver implements ContainerDriver {
       timeoutMs: number
       stdin?: string
       env?: Record<string, string>
+      maxOutputBytes?: number
     },
   ): Promise<CommandOutcome> {
     const startedAt = Date.now()
+    const limit = resolveMaxOutput(input.maxOutputBytes)
     const container = this.docker.getContainer(name)
     // 仅当非空时传 Env：空数组在语义上等价于不传，但会改变请求体，没必要冒这个险
     const env = input.env
@@ -192,12 +221,13 @@ export class DockerDriver implements ContainerDriver {
     })
     let timedOut = false
     const stream = await exec.start({ hijack: true, stdin: input.stdin !== undefined })
-    const stdoutChunks: Buffer[] = []
-    const stderrChunks: Buffer[] = []
+    // 必须按字节设上限：一个 `yes` / `cat /dev/urandom` 就能把内存打爆，收完再截来不及
+    const out = createOutputCollector(limit)
+    const err = createOutputCollector(limit)
     const stdout = new PassThrough()
     const stderr = new PassThrough()
-    stdout.on('data', (chunk: Buffer) => stdoutChunks.push(chunk))
-    stderr.on('data', (chunk: Buffer) => stderrChunks.push(chunk))
+    stdout.on('data', (chunk: Buffer) => out.push(chunk))
+    stderr.on('data', (chunk: Buffer) => err.push(chunk))
     // hijack 流是 Docker 的多路复用格式（8 字节帧头），必须 demux，否则输出里混进 \x01\x00...
     this.docker.modem.demuxStream(stream, stdout, stderr)
     if (input.stdin !== undefined) stream.end(input.stdin)
@@ -214,10 +244,12 @@ export class DockerDriver implements ContainerDriver {
     const info = await exec.inspect().catch(() => ({ ExitCode: -1 }))
     return {
       code: timedOut ? -1 : ((info as { ExitCode?: number }).ExitCode ?? -1),
-      stdout: Buffer.concat(stdoutChunks).toString(),
-      stderr: Buffer.concat(stderrChunks).toString(),
+      stdout: out.text(),
+      stderr: err.text(),
       durationMs: Date.now() - startedAt,
       timedOut,
+      stdoutTruncated: out.truncated(),
+      stderrTruncated: err.truncated(),
     }
   }
 
@@ -278,6 +310,11 @@ export class KubernetesDriver implements ContainerDriver {
   }
 
   async start(input: ContainerStartInput): Promise<void> {
+    /**
+     * Pod 的安全边界与 Docker 侧同构（见 `DockerDriver.start` 的说明）：
+     * 不挂 SA token、能力全丢、禁提权、seccomp 用运行时默认；
+     * 根文件系统保持可写（初始化要 `npm install -g`）。
+     */
     const manifest = [
       'apiVersion: v1',
       'kind: Pod',
@@ -288,11 +325,19 @@ export class KubernetesDriver implements ContainerDriver {
       `    workspace-id: "${input.workspaceId}"`,
       'spec:',
       '  restartPolicy: Never',
+      '  automountServiceAccountToken: false',
+      '  securityContext:',
+      '    seccompProfile:',
+      '      type: RuntimeDefault',
       '  containers:',
       '    - name: ws',
       `      image: ${input.image}`,
       '      command: ["sleep", "infinity"]',
       '      workingDir: /workspace',
+      '      securityContext:',
+      '        allowPrivilegeEscalation: false',
+      '        capabilities:',
+      '          drop: ["ALL"]',
       '      resources:',
       '        limits:',
       `          memory: ${input.memory}`,
@@ -329,6 +374,7 @@ export class KubernetesDriver implements ContainerDriver {
       timeoutMs: number
       stdin?: string
       env?: Record<string, string>
+      maxOutputBytes?: number
     },
   ): Promise<CommandOutcome> {
     // env 前缀只对紧随其后的一条命令生效，必须放在 `cd ... &&` 之后：
@@ -339,6 +385,7 @@ export class KubernetesDriver implements ContainerDriver {
       ['exec', name, ...this.ns(), '--', 'sh', '-c', script],
       input.timeoutMs,
       input.stdin,
+      input.maxOutputBytes,
     )
   }
 

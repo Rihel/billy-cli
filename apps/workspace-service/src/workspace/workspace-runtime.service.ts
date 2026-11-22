@@ -171,7 +171,7 @@ export class WorkspaceRuntime {
       driver ??
       (this.config.containerRuntime === 'kubernetes'
         ? new KubernetesDriver(this.config.kubectlBin, this.config.k8sNamespace)
-        : new DockerDriver())
+        : new DockerDriver({ network: this.config.containerNetwork }))
   }
 
   /** 是否启用了跨副本协调（多副本 / 配了 Redis） */
@@ -399,6 +399,7 @@ export class WorkspaceRuntime {
       command: request.command,
       cwd: resolve(CONTAINER_WORKDIR, cwd),
       timeoutMs,
+      maxOutputBytes: request.maxOutputBytes ?? MAX_OUTPUT,
       ...(request.env ? { env: request.env } : {}),
     })
     return {
@@ -407,7 +408,8 @@ export class WorkspaceRuntime {
       stdout: outcome.stdout,
       stderr: outcome.stderr,
       durationMs: outcome.durationMs,
-      truncated: outcome.stdout.length >= (request.maxOutputBytes ?? MAX_OUTPUT),
+      // 以驱动实测的截断标记为准（不再拿输出长度猜）
+      truncated: outcome.stdoutTruncated || outcome.stderrTruncated,
       runtime: 'container',
       ...(outcome.timedOut
         ? { reason: 'timeout', message: `命令超时（${timeoutMs}ms）` }
@@ -1100,6 +1102,7 @@ export class WorkspaceRuntime {
       memory: this.config.containerMemory,
       cpus: this.config.containerCpus,
       pidsLimit: this.config.containerPidsLimit,
+      network: this.config.containerNetwork,
     })
     this.logger.info('workspace.container.started', {
       workspaceId: config.id,
