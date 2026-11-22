@@ -18,7 +18,17 @@ export class AuditEndPlugin implements ToolPlugin {
     @Inject(AppLogger) private readonly logger: AppLogger,
   ) {}
 
-  post(ctx: ToolCallContext): void {
+  /** 拒绝收尾：审计必须记下被拒的调用（含拒绝原因），否则事后无法解释"模型想干什么" */
+  denied(ctx: ToolCallContext): void {
+    this.record(ctx)
+  }
+
+  /** 成功收尾 */
+  after(ctx: ToolCallContext): void {
+    this.record(ctx)
+  }
+
+  private record(ctx: ToolCallContext): void {
     const outcome = ctx.outcome
     const durationMs = Math.max(0, ctx.clock.now() - (ctx.startedAt ?? ctx.clock.now()))
     const outputBytes =

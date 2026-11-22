@@ -430,11 +430,40 @@ export interface ToolCallInput {
  * - post 只加工（脱敏 / 分页 / 审计），不改已确定的业务事实；
  * - 插件不互相调用：顺序由装配处的数组决定。
  */
+/**
+ * 工具调用的**生命周期阶段**（设计 §5.4）。
+ *
+ * ```
+ * before ──有结论──► denied（收尾）
+ *   │
+ *   └─无结论─► 执行 ──失败─► denied（收尾）
+ *                │
+ *                └──成功──► after（收尾）
+ * ```
+ *
+ * `denied` 与 `after` 是**互斥**的两条收尾链：一次调用只会走其中一条。
+ * 分开而不是「一个 post 里看 `outcome.ok`」，是因为两条链的职责不同 ——
+ * 审计（含拒绝原因）两条都要跑，而脱敏这类只对成功出参有意义的处理不该出现在拒绝路径上；
+ * 顺序也应该各自独立（拒绝链没有分页 / 脱敏，只有审计）。
+ */
+export type ToolLifecyclePhase = 'before' | 'denied' | 'after'
+
+/**
+ * 网关插件：按阶段挂载的行为。
+ *
+ * - `before`：前置校验 / 准备。返回结论 = **短路**，这次调用进入 `denied` 收尾；
+ * - `denied`：调用以失败 / 拒绝收尾后跑（只加工，不改业务事实）；
+ * - `after`：调用成功后跑。
+ *
+ * 插件不抛业务异常：抛出的一律按「插件写错了」兜成 `internal` 结论或 error 日志
+ * （见 `ToolGateway` 的三条纪律）。
+ */
 export interface ToolPlugin {
   /** 插件名（日志、排查用；也是 env 里关掉它的标识） */
   readonly name: string
-  pre?(ctx: ToolCallContext): Promise<ToolOutcome<never> | void> | ToolOutcome<never> | void
-  post?(ctx: ToolCallContext): Promise<void> | void
+  before?(ctx: ToolCallContext): Promise<ToolOutcome<never> | void> | ToolOutcome<never> | void
+  denied?(ctx: ToolCallContext): Promise<void> | void
+  after?(ctx: ToolCallContext): Promise<void> | void
 }
 
 /** 工具箱：key → 工具（主体自己的类型，不再是 Mastra 的 `ToolsInput`） */

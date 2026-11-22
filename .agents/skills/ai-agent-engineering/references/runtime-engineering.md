@@ -102,19 +102,23 @@
 
 ## 4. 并发与限额
 
-**9 个插件的固定顺序**（`ai.module.ts:142-162`，数组顺序 = 执行顺序）：
+**8 个插件的三段生命周期**（`ai.module.ts` 的 `AGENT_TOOL_PLUGINS` 工厂，数组顺序 = 执行顺序；
+契约 `ToolLifecyclePhase` 在 `tools.types.ts`）：
 
 ```
-pre:  enabled → scope → rate-limit → validate → precheck → audit-start
-exec: spec.exec（异常/中止在这里兜成结论，永不外抛）
-post: redact → paginate → audit-end        （拒绝也要跑 post，tool.gateway.ts:103-116）
+before: enabled → scope → rate-limit → validate → precheck → audit-start
+exec:   spec.exec（异常/中止在这里兜成结论，永不外抛）
+收尾:   失败 → denied 链（audit-end）；成功 → after 链（redact → audit-end）
 ```
 
-- pre 链**任一给出结论即短路**（`tool.gateway.ts:90-98`）：所以顺序决定"用户看到哪个拒绝理由"；
-  post 单个插件抛错只记 `ai.tool.plugin_failed`，不中断、不改变结论（`:106-116`）。
-- 顺序不能换的三条理由：`redact` 必须在 `paginate` **之前**（否则第一页可能带明文，`redact.plugin.ts:9`）；
-  `paginate` 必须在 `audit-end` **之前**（audit-end 记的是含分页的最终结论，`audit-end.plugin.ts:10`）；
-  `audit-start` 必须在 exec **之前**（记 `startedAt` 与 `configVersion`，`audit-start.plugin.ts:9-12`）。
+- `before` 链**任一给出结论即短路**：顺序决定"用户看到哪个拒绝理由"；`denied` / `after`
+  两条收尾链**互斥**（由网关按 `outcome.ok` 唯一判定），单个插件抛错只记
+  `ai.tool.plugin_failed`，不中断、不改变结论。
+- 顺序不能换的理由：`redact` 必须在 `audit-end` **之前**（审计记的是脱敏后的出参，
+  `redact.plugin.ts`）；`audit-start` 必须在 exec **之前**（记 `startedAt` 与 `configVersion`，
+  `audit-start.plugin.ts`）；`audit-end` 两条收尾链都挂（拒绝记 `ai.tool.denied` + 原因）。
+- **分页不是插件**：`paginate / toModelPage` 在 Mastra 适配层与上下文层用（`tool.adapter.ts` /
+  `context.service.ts`）；连接器下线后 `connector-guard` 也已移除（2026-11-22 收敛三阶段）。
 - `maxPerTurn`（`rate-limit.plugin.ts:19-36`）：按 run 计数 `ai:tool:turn:<runId>:<toolKey>`，TTL 3600，
   超了结论 `rate-limited` + `retryable: false`（本轮再试无意义）。
 - `rateLimit`（`:37-58`）：按 `userId ?? conversationId ?? 'anonymous'` 计数

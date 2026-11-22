@@ -6,7 +6,7 @@ import type { ToolCallContext, ToolPlugin } from '../tools.types.js'
 export class AuditStartPlugin implements ToolPlugin {
   readonly name = 'audit-start'
 
-  pre(ctx: ToolCallContext): void {
+  before(ctx: ToolCallContext): void {
     ctx.startedAt = ctx.clock.now()
     ctx.configVersion = ctx.settings.version
   }

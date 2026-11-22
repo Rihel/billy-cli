@@ -10,7 +10,7 @@ import type { ToolCallContext, ToolOutcome, ToolPlugin } from '../tools.types.js
 export class ValidatePlugin implements ToolPlugin {
   readonly name = 'validate'
 
-  pre(ctx: ToolCallContext): ToolOutcome<never> | void {
+  before(ctx: ToolCallContext): ToolOutcome<never> | void {
     const schema = (ctx.spec.modelParams ?? ctx.spec.params) as Parameters<typeof checkToolCall>[0]
     const checked = checkToolCall(schema, ctx.rawInput)
     if (!checked.ok) {

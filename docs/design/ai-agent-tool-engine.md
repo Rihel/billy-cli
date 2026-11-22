@@ -373,10 +373,17 @@ export type Toolbox = ReadonlyMap<string, Tool>
 位置 `ai/core/tools/tool.gateway.ts` 与 `ai/core/tools/plugins/*.ts`。
 
 ```ts
+/** 生命周期三阶段：before 短路 → denied；执行失败 → denied；执行成功 → after */
+export type ToolLifecyclePhase = 'before' | 'denied' | 'after'
+
 export interface ToolPlugin {
   readonly name: string
-  pre?(ctx: ToolCallContext): Promise<ToolOutcome<never> | void>  // 返回结论 = 短路
-  post?(ctx: ToolCallContext): Promise<void>                      // 只加工，不改业务事实
+  /** 前置校验 / 准备。返回结论 = 短路，这次调用进入 denied 收尾 */
+  before?(ctx: ToolCallContext): Promise<ToolOutcome<never> | void> | ToolOutcome<never> | void
+  /** 调用以失败 / 拒绝收尾后跑（只加工，不改业务事实） */
+  denied?(ctx: ToolCallContext): Promise<void> | void
+  /** 调用成功后跑 */
+  after?(ctx: ToolCallContext): Promise<void> | void
 }
 ```
 
@@ -384,28 +391,33 @@ export interface ToolPlugin {
 
 ```
 ① 归一化：合并配置，补默认值，数值上限夹紧
-② 依次跑 pre 插件，任一返回结论就短路跳到 ⑤
+② 依次跑 before 钩子，任一返回结论就短路
 ③ 跑 spec.exec（异常在这里兜成 internal 结论，不外抛）
-④ 依次跑 post 插件
+④ 收尾：失败（含短路、执行体拒绝、internal、aborted）走 denied 链；成功走 after 链
 ⑤ 返回 ToolOutcome
 ```
 
-插件现在 10 个（一期 9 个 + 连接器总闸；`exists` 在设计阶段就去掉了，见「实施记录」）：
+**为什么把「拒绝」独立成一条链**：以前只有 `pre` / `post`，拒绝路径靠插件在 `post` 里看一眼
+`outcome.ok` 自己判断。问题是两条收尾链的职责本来就不同 —— 审计（含拒绝原因）两条都要跑，
+而脱敏只对成功出参有意义；顺序也该各自独立（拒绝链只有审计，没有脱敏）。收敛成三阶段后，
+「这次调用走哪条收尾链」由网关唯一判定，插件只声明自己挂在哪个阶段。
+
+插件现在 8 个（`connector-guard` 随连接器模块在 2026-11-21 下线；分页不是插件 ——
+它在 Mastra 适配层 `/ 上下文层` 用 `paginate + toModelPage` 处理）：
 
 | 阶段 | 插件 | 做什么 |
 | --- | --- | --- |
-| pre | `enabled` | 总开关。关掉返回"已被管理员关闭"，不抛错 |
-| pre | `connector-guard` | **连接器总闸**（在 `connectors/connector.guard.plugin.ts`）：实例停用 / 缺密钥时拒绝调用（§5.7） |
-| pre | `scope` | 作用域与子 agent 深度判定 |
-| pre | `rate-limit` | 每轮次数与时间窗限流（复用 kits `RedisStore.incr`） |
-| pre | `validate` | 入参归一化、补默认值、统一话术（并摘出必填 `reason`，§5.18） |
-| pre | `precheck` | 工具自己的只读前置条件（目录是否在边界内、目标是否存在） |
-| pre | `audit-start` | 记开始时间与配置版本 |
-| post | `redact` | 秘钥字段在日志、时间线、出参里替换为提示串 |
-| post | `paginate` | 大返回分页，写 `ctx.page` |
-| post | `audit-end` | 落时间线、日志、指标 |
+| before | `enabled` | 总开关。关掉返回"已被管理员关闭"，不抛错 |
+| before | `scope` | 作用域与子 agent 深度判定 |
+| before | `rate-limit` | 每轮次数与时间窗限流（复用 kits `RedisStore.incr`） |
+| before | `validate` | 入参归一化、补默认值、统一话术（并摘出必填 `reason`，§5.18） |
+| before | `precheck` | 工具自己的只读前置条件（目录是否在边界内、目标是否存在） |
+| before | `audit-start` | 记开始时间与配置版本（无决策，只准备） |
+| after | `redact` | 秘钥字段在日志、时间线、出参里替换为提示串（只对成功出参） |
+| denied + after | `audit-end` | 两个阶段都挂：写旁证 + 结构化日志，拒绝路径记 `ai.tool.denied` 与拒绝原因 |
 
-顺序就是 `AGENT_TOOL_PLUGINS` 数组的顺序（`ai.module.ts` 里一眼可见），`redact → paginate → audit-end` 不能换。
+顺序就是 `AGENT_TOOL_PLUGINS` 数组的顺序（`ai.module.ts` 里一眼可见）；
+`redact` 必须在 `audit-end` 之前（审计记的是脱敏后的出参）。
 
 两条边界口径由插件统一执行：数值上限**夹紧**（工具声明的 `normalize`），语义边界**拒绝并说明**
 （`precheck` 返回一句理由，不静默夹回，否则模型不知道自己在边界外）。
@@ -447,7 +459,7 @@ DeepSeek Harness 就用它做底座（本机有源码，vendor 成 `@deepseek-ai
    `check:inject` 守构造器注入）。再进一个容器就是两套生命周期，工具的依赖会跨两个容器，
    现有的守卫也管不到跨容器那部分。
 2. Cordis 的强项是**第三方插件生态**：运行期装载/卸载、依赖驱动的启停、隔离、热插拔。
-   我们的插件是仓库内的策略单元（10 个、固定顺序、随应用发布），这些能力用不上。
+   我们的插件是仓库内的策略单元（8 个、固定顺序、随应用发布），这些能力用不上。
 3. 用 4.0 RC 的框架承载核心链路不划算；而且我们要的收益（统一关卡、可单测）用一个
    `ToolPlugin[]` 加纯 ctx 对象就能拿到，不需要框架。
 
@@ -456,9 +468,9 @@ DeepSeek Harness 就用它做底座（本机有源码，vendor 成 `@deepseek-ai
 1. **安全类插件只能拒绝**。DSH 的 `guard` 是单调的：任何 guard 只能给拒绝理由，不能放行另一个
    guard 已经拒绝的调用（`packages/core/tools/src/index.ts:1091-1108`）。我们的 `enabled` / `scope` /
    `rate-limit` 三个插件按这个语义写：只累积拒绝理由，后面的插件不能把前面插件的拒绝覆盖掉。
-2. **阶段划分**。它的管道是 `pre-execute → guard → around → post → result`。我们的 10 个插件可以照这个
-   对号入座：`enabled` / `connector-guard` / `scope` / `rate-limit` / `validate` / `precheck` 属 pre 与 guard，
-   `redact` / `paginate` / `audit-end` 属 post 与 result。
+2. **阶段划分**。它的管道是 `pre-execute → guard → around → post → result`。我们收敛成三阶段
+   `before / denied / after`（2026-11-22）：`enabled` / `scope` / `rate-limit` / `validate` / `precheck` /
+   `audit-start` 挂 `before`，`redact` 挂 `after`，`audit-end` 两条收尾链都挂。
 
 重新评估的触发条件（写在这里，省得下次再讨论一遍）：工具要支持**外部插件包**（npm 装上就能用、
 可热插拔、彼此隔离）；或者配置驱动的动态工具面要做到"不改代码就能加工具"。
@@ -1225,7 +1237,7 @@ AI SDK v6 的 data part 语义是「**同 `id` 后者覆盖前者**」（实测�
 | # | 设计稿 | 实施 | 理由 |
 | --- | --- | --- | --- |
 | 1 | 用例 ②「durable 不跑 agent 级工具钩子」 | **实测是跑的**，且 `{proceed:false, output}` 能短路 | 最早的结论来自对 dist 的 grep（durable 文件命中 0 次），但钩子是在 **Agent 层**包装工具实例的 —— 以实测为准，`test/ai-mastra-contract.test.ts` 把它钉住。我们**仍**包 `execute`，因为那样网关不必认识 Mastra 的钩子 API（主体框架无关），不是被迫 |
-| 2 | pre 插件 10 个（含 `exists`） | **9 个**（去掉 `exists`；后来连接器又加了 `connector-guard`，现在共 10 个） | 它要注入注册机，而注册机 → 网关 → 插件 → 注册机**成环**；且网关只会包注册机里的声明，这个分支运行期到不了。"模型编了个不存在的工具"在更靠前的地方就被上游落成工具错误结果，由**录制器**标成 `unknown-tool` state（可查、可计数）才算数 |
+| 2 | pre 插件 10 个（含 `exists`） | **9 个**（去掉 `exists`；连接器时期加过 `connector-guard`，连接器下线后一并移除，现 8 个） | 它要注入注册机，而注册机 → 网关 → 插件 → 注册机**成环**；且网关只会包注册机里的声明，这个分支运行期到不了。"模型编了个不存在的工具"在更靠前的地方就被上游落成工具错误结果，由**录制器**标成 `unknown-tool` state（可查、可计数）才算数 |
 | 3 | 分页「按字节切」 | 按**码点边界**切（每页仍受字节预算约束） | 按固定字节偏移硬切会让页边界压进半个汉字里，页与页之间**既重复又漏字**（单测逮住过）。现在逐字符累加，保证所有页拼起来逐字节等于原文 |
 | 4 | 表结构里没有"类别"列 | 加 `ai_tools.category`（冗余列，种子从声明写过来） | 后台页要按类别筛选；类别只在代码声明里，不落列就只能"先分页再过滤"（分页就假了） |
 | 5 | 待拍板 7：子 agent 提示词是否追加能力段 | **追加**（`withCapabilityTail`） | 子 agent 的提示词由主 agent 现写，它看不到我们的《工具》模板段，于是不知道自己有什么工具、也不知道"不能再造子助手"；追加不覆盖主 agent 的原话 |

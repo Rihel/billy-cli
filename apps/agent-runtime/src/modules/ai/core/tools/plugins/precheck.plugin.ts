@@ -6,7 +6,7 @@ import type { ToolCallContext, ToolOutcome, ToolPlugin } from '../tools.types.js
 export class PrecheckPlugin implements ToolPlugin {
   readonly name = 'precheck'
 
-  async pre(ctx: ToolCallContext): Promise<ToolOutcome<never> | void> {
+  async before(ctx: ToolCallContext): Promise<ToolOutcome<never> | void> {
     const missing = (ctx.spec.secretFields ?? [])
       .filter((field) => field.required)
       .filter((field) => ctx.settings.secret(field.name) === null)

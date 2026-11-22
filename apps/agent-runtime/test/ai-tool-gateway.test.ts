@@ -14,10 +14,11 @@ import type { ToolStackOptions } from './helpers/ai-tool-stack.js'
 /**
  * 网关与插件（设计 §5.4）。
  *
- * 测三件事：
- * 1. **顺序与短路**：pre 插件按数组顺序跑，任一给结论就不再执行工具；
+ * 测四件事：
+ * 1. **顺序与短路**：`before` 钩子按数组顺序跑，任一给结论就不再执行工具；
  * 2. **失败是结论**：执行体抛 `ToolDeniedError` → 对应 reason；抛别的 → `internal`；中止 → `aborted`；
- * 3. **post 链**：脱敏 → 分页 → 审计，且对**拒绝**也要记账（审计不能漏掉被拒的调用）。
+ * 3. **两条收尾链互斥**：成功走 `after`，失败 / 拒绝走 `denied`；
+ * 4. **审计两条都跑**：拒绝也要记账（审计不能漏掉被拒的调用）。
  */
 const deps = (options: ToolStackOptions = {}) => buildToolStackDeps(options)
 
@@ -47,16 +48,16 @@ const call = (over: Record<string, unknown> = {}) => ({
 })
 
 describe('网关：顺序、短路、结论', () => {
-  it('pre 插件按顺序跑；返回值 = 短路（工具不执行）', async () => {
+  it('before 钩子按顺序跑；返回值 = 短路（工具不执行）', async () => {
     const order: string[] = []
     let executed = 0
     const plugins: ToolPlugin[] = [
-      { name: 'first', pre: () => void order.push('first') },
+      { name: 'first', before: () => void order.push('first') },
       {
         name: 'second',
-        pre: () => ({ ok: false as const, reason: 'forbidden' as const, message: '不许' }),
+        before: () => ({ ok: false as const, reason: 'forbidden' as const, message: '不许' }),
       },
-      { name: 'third', pre: () => void order.push('third') },
+      { name: 'third', before: () => void order.push('third') },
     ]
     const outcome = await gatewayOf(deps(), plugins).invoke(
       spec({ exec: async () => void (executed += 1) }),
@@ -69,7 +70,7 @@ describe('网关：顺序、短路、结论', () => {
   })
 
   it('全部 pre 放行 → 执行体结果成为结论', async () => {
-    const outcome = await gatewayOf(deps(), [{ name: 'pass', pre: () => undefined }]).invoke(
+    const outcome = await gatewayOf(deps(), [{ name: 'pass', before: () => undefined }]).invoke(
       spec(),
       { value: 'hello' },
       call(),
@@ -148,7 +149,7 @@ describe('网关：顺序、短路、结论', () => {
     const outcome = await gatewayOf(deps(), [
       {
         name: 'broken',
-        pre: () => {
+        before: () => {
           throw new Error('插件写错了')
         },
       },
@@ -156,13 +157,13 @@ describe('网关：顺序、短路、结论', () => {
     expect(outcome).toMatchObject({ ok: false, reason: 'internal' })
   })
 
-  it('拒绝也要被审计记下来（post 链对失败同样跑）', async () => {
+  it('拒绝也要被审计记下来（denied 链对失败同样跑）', async () => {
     const stack = deps()
     const { AuditEndPlugin } = await import('../src/modules/ai/core/tools/plugins/index.js')
     await gatewayOf(stack, [
       {
         name: 'deny',
-        pre: () => ({ ok: false as const, reason: 'disabled' as const, message: '关了' }),
+        before: () => ({ ok: false as const, reason: 'disabled' as const, message: '关了' }),
       },
       new AuditEndPlugin(stack.metas, silentLogger as never),
     ]).invoke(spec(), {}, call())
@@ -364,5 +365,69 @@ describe('网关：远程执行 allowlist', () => {
     expect(outcome).toMatchObject({ ok: true, data: { local: true } })
     expect(remote.invoke).not.toHaveBeenCalled()
     expect(localExec).toHaveBeenCalledTimes(1)
+  })
+})
+
+/**
+ * 生命周期三阶段（`ToolLifecyclePhase`，设计 §5.4）：`before` 短路 → `denied`；
+ * 执行失败 → `denied`；执行成功 → `after`。两条收尾链**互斥**。
+ */
+describe('网关：生命周期阶段（before / denied / after）', () => {
+  const phases: string[] = []
+  const auditPlugin: ToolPlugin = {
+    name: 'audit',
+    denied: () => void phases.push('denied'),
+    after: () => void phases.push('after'),
+  }
+
+  it('成功：只跑 after 链', async () => {
+    phases.length = 0
+    const outcome = await gatewayOf(deps(), [auditPlugin]).invoke(spec(), {}, call())
+    expect(outcome.ok).toBe(true)
+    expect(phases).toEqual(['after'])
+  })
+
+  it('before 短路：只跑 denied 链', async () => {
+    phases.length = 0
+    const outcome = await gatewayOf(deps(), [
+      {
+        name: 'deny',
+        before: () => ({ ok: false as const, reason: 'disabled' as const, message: '关了' }),
+      },
+      auditPlugin,
+    ]).invoke(spec(), {}, call())
+    expect(outcome).toMatchObject({ ok: false, reason: 'disabled' })
+    expect(phases).toEqual(['denied'])
+  })
+
+  it('执行体拒绝：走 denied，而不是 after', async () => {
+    phases.length = 0
+    const outcome = await gatewayOf(deps(), [auditPlugin]).invoke(
+      spec({
+        exec: async () => {
+          throw new ToolDeniedError('precheck-failed', '目标不存在')
+        },
+      }),
+      {},
+      call(),
+    )
+    expect(outcome).toMatchObject({ ok: false, reason: 'precheck-failed' })
+    expect(phases).toEqual(['denied'])
+  })
+
+  it('收尾链按插件数组顺序跑；插件抛错只记日志，不覆盖结论', async () => {
+    phases.length = 0
+    const outcome = await gatewayOf(deps(), [
+      { name: 'first', after: () => void phases.push('first') },
+      {
+        name: 'broken',
+        after: () => {
+          throw new Error('收尾插件写错了')
+        },
+      },
+      { name: 'last', after: () => void phases.push('last') },
+    ]).invoke(spec(), {}, call())
+    expect(outcome).toEqual({ ok: true, data: { ok: 'done' } })
+    expect(phases).toEqual(['first', 'last'])
   })
 })

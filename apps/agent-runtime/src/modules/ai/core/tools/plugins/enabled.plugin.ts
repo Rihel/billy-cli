@@ -6,7 +6,7 @@ import type { ToolCallContext, ToolOutcome, ToolPlugin } from '../tools.types.js
 export class EnabledPlugin implements ToolPlugin {
   readonly name = 'enabled'
 
-  pre(ctx: ToolCallContext): ToolOutcome<never> | void {
+  before(ctx: ToolCallContext): ToolOutcome<never> | void {
     // 治理级开关（配置表）与能力级开关（工具自己的 `config.enabled`）**都开**才放行：
     // 后者让服务侧下发的部署边界（env 上限）仍然管用
     const capabilityEnabled = (ctx.settings.config as { enabled?: boolean }).enabled !== false

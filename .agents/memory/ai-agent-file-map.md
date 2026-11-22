@@ -14,7 +14,7 @@
 | 短期记忆（Mastra thread） | `mastra/agent-memory.ts`（2026-11-14 起 Redis）+ `chat.service.ts` 建 thread |
 | 技能加载 | `core/skills/skill.loader.ts`（扫 `core/skills/catalog/`；当前有内置 `html-page`，另加载 `~/.agents/skills`） |
 | 技能交给 Mastra | `mastra/skill.adapter.ts`（`toMastraSkills`） |
-| 工具注册与网关 | `core/tools/tool.registry.ts`（只存编排工具）、`tool.gateway.ts`（远程分流 + tool-search 发现）、`external.tool.ts`（目录能力）；插件在 `core/tools/plugins/` |
+| 工具注册与网关 | `core/tools/tool.registry.ts`（只存编排工具）、`tool.gateway.ts`（远程分流 + tool-search 发现 + 三段生命周期分派）、`external.tool.ts`（目录能力）；插件在 `core/tools/plugins/`，契约 `ToolLifecyclePhase` = `before / denied / after`（2026-11-22 收敛，见设计 §5.4） |
 | 子 agent 并发闸门 | `runtime/agent-runner.ts` + `core/constants.ts:30`（`SUB_AGENT_MAX_CONCURRENT = 3`） |
 | 用量统计 | `runtime/usage.ts`，汇总在 `modules/ai-usage`（表 `ai_usage_daily`） |
 | agent 规格 / 提示词 / 工具选择器 / 技能类型 | **只在 runtime**：`agents/*.agent.ts`、`core/prompts/**`、`core/tools/tool-selector.ts`、`core/skills/skills.types.ts` |

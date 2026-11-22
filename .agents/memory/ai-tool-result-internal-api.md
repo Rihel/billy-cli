@@ -6,7 +6,9 @@
 
 - `read-tool-result` 由 worker 的 `ReadToolResultExecutor` 直接读 Redis
   `ai:tool-result:<conversationId>:<toolCallId>`；未命中时回查 `timelines`。
-- 分页全文由 **agent-runtime** 的 `PaginatePlugin`（`modules/ai/core/tools/plugins/`）写入 Redis（TTL 1h），worker 只读。
+- 分页全文由 **agent-runtime** 写入 Redis（TTL 1h），worker 只读。**注意：`PaginatePlugin` 已删**
+  （见 `runtime-cleanup`），现在是 Mastra 适配层 / 上下文层直接调 `paginate + toModelPage`
+  （`mastra/tool.adapter.ts`、`runtime/context.service.ts`）。
 - 取页越权 / 每轮上限在 worker 内校验。
 - 旧 `/internal/ai/tool-result/execute`、`ToolResultDataClient`、`InternalToolResult*` 已删除。
 - 数据流单向：worker → Redis/PG。

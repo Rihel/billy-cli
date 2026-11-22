@@ -52,9 +52,9 @@ const searchedKeysOf = (data: unknown): string[] => {
  *
  * ```
  * ① 读生效配置（库里的值 + 代码默认值 + env 上限）
- * ② 依次跑 pre 插件；任一返回结论 → 短路，跳到 ④
+ * ② 依次跑 before 钩子；任一返回结论 → 短路
  * ③ 跑 spec.exec（异常 / 中止在这里兜成结论，永不外抛）
- * ④ 依次跑 post 插件（脱敏 → 分页 → 审计）
+ * ④ 收尾：失败走 denied 链，成功走 after 链（互斥）
  * ⑤ 返回 ToolOutcome
  * ```
  *
@@ -63,6 +63,9 @@ const searchedKeysOf = (data: unknown): string[] => {
  *   只记 `internal` 结论 + error 日志。工具错误在 Mastra 那边不会炸整轮（用例 ③ 实测过）；
  * - **顺序固定**：`AGENT_TOOL_PLUGINS` 的数组顺序就是执行顺序；
  * - **不 import @mastra**：网关是主体的一部分（`check:mastra` 守）。
+ *
+ * 生命周期三阶段（`ToolLifecyclePhase`）：`before` 短路 → `denied`；执行失败 → `denied`；
+ * 执行成功 → `after`。拒绝不再是「post 里看一眼 outcome」而是独立的一条收尾链。
  */
 @Injectable()
 export class ToolGateway {
@@ -191,10 +194,10 @@ export class ToolGateway {
       }),
     }
 
-    // ② pre：任一插件给结论就短路（安全类插件只累积拒绝，不互相覆盖）
+    // ② before：任一插件给结论就短路（安全类插件只累积拒绝，不互相覆盖）
     for (const plugin of this.plugins) {
-      if (!plugin.pre) continue
-      const outcome = await this.safePre(plugin, ctx)
+      if (!plugin.before) continue
+      const outcome = await this.runBefore(plugin, ctx)
       if (outcome) {
         ctx.outcome = outcome
         break
@@ -204,20 +207,8 @@ export class ToolGateway {
     // ③ 执行
     if (!ctx.outcome) ctx.outcome = await this.execute(spec, ctx)
 
-    // ④ post：脱敏 / 分页 / 审计（对拒绝也要跑 —— 拒绝必须被记下来）
-    for (const plugin of this.plugins) {
-      if (!plugin.post) continue
-      try {
-        await plugin.post(ctx)
-      } catch (error) {
-        this.logger.error('ai.tool.plugin_failed', {
-          toolKey: spec.key,
-          plugin: plugin.name,
-          phase: 'post',
-          reason: error instanceof Error ? error.message : String(error),
-        })
-      }
-    }
+    // ④ 收尾：失败 → denied，成功 → after（互斥；拒绝也必须被审计记下来）
+    await this.finish(spec, ctx, ctx.outcome?.ok === false ? 'denied' : 'after')
 
     return ctx.outcome ?? { ok: false, reason: 'internal', message: '工具没有给出结论' }
   }
@@ -277,19 +268,41 @@ export class ToolGateway {
     }
   }
 
-  private async safePre(
+  /** 跑一条收尾链（denied / after）：插件抛错只记日志，不覆盖已经定下的结论 */
+  private async finish(
+    spec: ToolSpec,
+    ctx: ToolCallContext,
+    phase: 'denied' | 'after',
+  ): Promise<void> {
+    for (const plugin of this.plugins) {
+      const hook = plugin[phase]
+      if (!hook) continue
+      try {
+        await hook.call(plugin, ctx)
+      } catch (error) {
+        this.logger.error('ai.tool.plugin_failed', {
+          toolKey: spec.key,
+          plugin: plugin.name,
+          phase,
+          reason: error instanceof Error ? error.message : String(error),
+        })
+      }
+    }
+  }
+
+  private async runBefore(
     plugin: ToolPlugin,
     ctx: ToolCallContext,
   ): Promise<ToolOutcome<never> | null> {
     try {
-      const outcome = await plugin.pre?.(ctx)
+      const outcome = await plugin.before?.(ctx)
       return outcome ?? null
     } catch (error) {
       const reason = error instanceof Error ? error.message : String(error)
       this.logger.error('ai.tool.plugin_failed', {
         toolKey: ctx.toolKey,
         plugin: plugin.name,
-        phase: 'pre',
+        phase: 'before',
         reason,
       })
       return {

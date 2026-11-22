@@ -14,7 +14,7 @@ export class RateLimitPlugin implements ToolPlugin {
     @Inject(AppLogger) private readonly logger: AppLogger,
   ) {}
 
-  async pre(ctx: ToolCallContext): Promise<ToolOutcome<never> | void> {
+  async before(ctx: ToolCallContext): Promise<ToolOutcome<never> | void> {
     const { maxPerTurn, rateLimit } = ctx.settings.limits
     if (maxPerTurn && ctx.caller) {
       // 轮内计数：TTL 给足一轮的时间（run 结束后由过期自然清掉）

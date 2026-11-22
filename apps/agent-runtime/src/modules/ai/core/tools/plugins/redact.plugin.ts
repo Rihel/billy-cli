@@ -14,7 +14,7 @@ export class RedactPlugin implements ToolPlugin {
 
   constructor(@Inject(AppLogger) private readonly logger: AppLogger) {}
 
-  post(ctx: ToolCallContext): void {
+  after(ctx: ToolCallContext): void {
     const outcome = ctx.outcome
     if (!outcome?.ok) return
     const fields = ctx.spec.secretFields ?? []

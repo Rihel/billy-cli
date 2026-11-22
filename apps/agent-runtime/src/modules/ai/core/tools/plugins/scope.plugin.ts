@@ -16,7 +16,7 @@ import type { ToolCallContext, ToolOutcome, ToolPlugin } from '../tools.types.js
 export class ScopePlugin implements ToolPlugin {
   readonly name = 'scope'
 
-  pre(ctx: ToolCallContext): ToolOutcome<never> | void {
+  before(ctx: ToolCallContext): ToolOutcome<never> | void {
     const { scope, allowedAgents } = ctx.settings
     if (scope === 'all') return
     const caller = ctx.caller
