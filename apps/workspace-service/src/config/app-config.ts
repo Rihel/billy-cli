@@ -36,6 +36,11 @@ export const workspaceServiceAppConfigSchema = z.object({
      * local 后端更是 Pod 本地盘。打开后启动自检会拒绝 docker / local。
      */
     multiInstance: z.boolean().default(false),
+    /**
+     * 允许同宿主 Docker 多副本（仅开发 / 单机验证）：所有副本必须连同一个 Docker daemon。
+     * 跨宿主 Docker 仍然不支持（容器在宿主本地，别的副本 exec 不到）。
+     */
+    allowSharedDocker: z.boolean().default(false),
     /** 容器后端的默认镜像（workspace.image 为空时回退） */
     defaultImage: z.string().min(1).default('billy-workspace:latest'),
     /** 容器后端：docker（单机 / compose）或 kubernetes（云端多租户，走 kubectl） */
@@ -110,6 +115,7 @@ export const mapWorkspaceServiceEnv = (env: NodeJS.ProcessEnv): Record<string, u
   service: {
     internalToken: optional(env.WORKSPACE_INTERNAL_TOKEN),
     multiInstance: parseBoolean(env.WORKSPACE_MULTI_INSTANCE),
+    allowSharedDocker: parseBoolean(env.WORKSPACE_ALLOW_SHARED_DOCKER),
     mainUrl: optional(env.MAIN_URL),
     mainToken: optional(env.TOOL_INTERNAL_TOKEN),
     defaultImage: optional(env.WORKSPACE_DEFAULT_IMAGE),

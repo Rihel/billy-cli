@@ -157,9 +157,10 @@ export class WorkspaceRuntime {
   ) {
     this.coordinator = coordinator ?? new WorkspaceCoordinator()
     if (this.config.multiInstance) {
-      if (this.config.containerRuntime !== 'kubernetes') {
+      if (this.config.containerRuntime === 'docker' && !this.config.allowSharedDocker) {
         throw new Error(
-          'WORKSPACE_MULTI_INSTANCE=true 只支持 kubernetes 后端：Docker 容器在宿主本地，跨副本 exec 不到',
+          'WORKSPACE_MULTI_INSTANCE=true 的 Docker 后端要求所有副本共享同一个 Docker daemon：' +
+            '开发验证请显式设置 WORKSPACE_ALLOW_SHARED_DOCKER=true；跨宿主请用 kubernetes',
         )
       }
       if (!process.env.REDIS_URL) {
@@ -900,6 +901,9 @@ export class WorkspaceRuntime {
     }
     if (config.backend === 'microvm') {
       throw new Error('microvm 后端未实现')
+    }
+    if (this.config.multiInstance) {
+      throw new Error('WORKSPACE_MULTI_INSTANCE=true 不支持 local 后端：工作区目录在 Pod 本地盘')
     }
     const root = resolve(
       this.config.localRoot,

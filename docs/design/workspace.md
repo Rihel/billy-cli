@@ -341,6 +341,7 @@ desired_status: stopped ──用户启动 / 首次执行──→ running
 
 - **只支持 kubernetes 后端**：任意 Pod 都能 `kubectl exec` 工作区 Pod；Docker 容器在宿主本地，
   跨宿主副本 exec 不到，local 后端是 Pod 本地盘，二者启动自检直接拒绝多副本。
+- 开发 / 单机验证可以用**同宿主 Docker 多副本**：`WORKSPACE_ALLOW_SHARED_DOCKER=true`，所有副本必须共享同一个 Docker daemon；跨宿主 Docker 仍不支持。
 - 运行态仍是「内存 + 容器标签」，但**跨副本的 lifecycle / exec / fs 锁和 lastUsed 放 Redis**；
   `handles` 只是本地缓存，exec / fs 前会探测容器是否还活着，失效就重建。
 - 回收器每个副本都扫 DB 列表，但先抢 lifecycle、再抢 exec；抢不到就跳过。不做全量认领。
