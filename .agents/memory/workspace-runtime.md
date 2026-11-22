@@ -5,10 +5,10 @@
 ## 结论
 
 - **Web 产品定位**：隔离是安全底线，不是用户偏好。用户只能选沙箱内的 `fileAccess`
-  （`read-only` / `workspace-write`）；"要不要沙箱"是部署配置 `AGENT_WORKSPACE_MODE`。
+  （`read-only` / `workspace-write`）；"要不要沙箱"是部署配置 `AGENT_WORKSPACE_SANDBOX`。
 - 默认 `enforce` + `sandboxNetwork=deny`；沙箱不可用 → **拒绝执行（fail closed）**，
   绝不退回"以服务进程身份跑"（旧版本的 local 兜底已删除）。
-- 只有显式 `AGENT_WORKSPACE_MODE=off`（仅自托管）才降级为 `danger-full-access`（宿主进程）。
+- 只有显式 `AGENT_WORKSPACE_SANDBOX=false`（仅自托管）才降级为 `danger-full-access`（宿主进程）。
 - 伪造信封里的 `fileAccess` 不会生效：`enforce` 下只认两档允许值，其余按 `workspace-write`。
 - **出参 `runtime` / `mode` 是唯一事实**：配置可变、提示词是装配期固定的，只有出参能说明这次在哪跑。
 

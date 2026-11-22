@@ -74,7 +74,7 @@
 | 实时刷屏 | 逐行事件必须限流（行数上限 + 如实报省略量），并给部署侧硬上限；完整内容始终在出参 | 机制见 `docs/design/ai-agent-tool-engine.md` §5.17 |
 | 纪律 | 有副作用的命令先问用户；只读公开请求不必先问；失败不原样重试 | 提示词 `assistant.eta` + 工具出参的 `reason` |
 
-**执行环境是 web 产品的安全底线**：部署默认 `AGENT_WORKSPACE_MODE=enforce` —— 命令在工作区里跑，
+**执行环境是 web 产品的安全底线**：部署默认 `AGENT_WORKSPACE_SANDBOX=true` —— 命令在工作区里跑，
 沙箱 / 容器不可用就拒绝执行（fail closed）；会话能选的文件权限只有沙箱内两档（`read-only` /
 `workspace-write`），`danger-full-access` 只在自托管单租户显式 `off` 时由部署放开；容器后端天然隔离，
 网络默认 `deny`。环境变量口径见 [docs/guide/env.md](../../../docs/guide/env.md) 的 workspace-service 一节。

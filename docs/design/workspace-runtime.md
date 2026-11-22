@@ -45,12 +45,12 @@ type SandboxMode = 'read-only' | 'workspace-write' | 'danger-full-access'
 - `danger-full-access`：**以服务进程身份执行**，不做任何隔离。
 
 前两档由**会话**选择（`conversations.file_access`）；第三档是**部署级**开关
-（`AGENT_WORKSPACE_MODE=off`），终端用户选不到 —— 界面上根本没有这个入口。
+（`AGENT_WORKSPACE_SANDBOX=false`），终端用户选不到 —— 界面上根本没有这个入口。
 
 ## 4. 决策规则
 
 ```
-部署策略 = AGENT_WORKSPACE_MODE（默认 enforce）
+部署策略 = AGENT_WORKSPACE_SANDBOX（默认 enforce）
 
 enforce：
   会话 fileAccess（read-only / workspace-write）
@@ -89,7 +89,7 @@ off（仅自托管）：
 默认值（`.env.example`）：
 
 ```env
-AGENT_WORKSPACE_MODE=enforce            # 默认强制隔离，fail closed
+AGENT_WORKSPACE_SANDBOX=true            # 默认强制隔离，fail closed
 AGENT_WORKSPACE_SANDBOX_NETWORK=deny    # 默认断网：同 Pod 的 DB / Redis / metadata 摸不到
 AGENT_WORKSPACE_PROBE_TIMEOUT_MS=2000
 ```
@@ -165,5 +165,5 @@ warn，含理由码）。
 | 开关粒度 | **会话级**，但只限沙箱内（只读 / 可写）；出沙箱是部署配置 | 2026-11-12 |
 | 默认值 | `enforce` + 断网；`bash` 默认仍关闭 | 2026-11-12 |
 | 沙箱不可用 | **拒绝执行**（fail closed），不退回宿主 | 2026-11-12 |
-| 自托管逃生门 | `AGENT_WORKSPACE_MODE=off`，仅部署方可见 | 2026-11-12 |
+| 自托管逃生门 | `AGENT_WORKSPACE_SANDBOX=false`，仅部署方可见 | 2026-11-12 |
 | 未做 | L2 容器、网络白名单、单次升级审批、资源限额 | — |

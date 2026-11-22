@@ -415,6 +415,12 @@ main 是配置的唯一写方，下游需要感知两类变化（没有事件的
   `microvm`（预留未实现）。容器名为 `billy-ws-<workspaceId>`，容器内固定工作目录 `/workspace`；
   镜像约定见 `docker/Dockerfile.workspace-image`（python:3.13-slim + node 26 + pnpm，tag
   `billy-workspace:2026.11.0`）。
+- **工作区目录（`local` 后端）**：工作区就是宿主机上的一个目录。没配 `location.root` 用默认
+  `<WORKSPACE_LOCAL_ROOT>/<workspaceId>`（约定 `~/.billy/workspaces/<id>`）；配了就指向宿主上已存在的
+  绝对路径，让 AI 直接读写本机项目目录（`bash` / 7 个文件能力都在它上面工作）。配了之后有三道闸：必须落在
+  `WORKSPACE_LOCAL_ALLOWED_ROOTS` 内（不配 = 禁用）、不能覆盖凭据 denylist（`.ssh` / `.aws` 等）、
+  要求 `AGENT_WORKSPACE_SANDBOX=true`；并且**不跑初始化**（不写 `.billy/` / `.agents/`、不装全局 CLI、
+  不注入凭据环境变量）。容器后端不参与（不挂宿主卷）。见 `docs/design/workspace.md` §3.1.1。
 - **docker 驱动**：dockerode 直连 Engine API（`DOCKER_SOCKET`，默认 `/var/run/docker.sock`），按镜像 /
   内存 / CPU / pids 限制创建容器，exec 走容器 API。**云端多租户不能用 docker 后端**（挂 docker.sock
   等于把宿主 daemon 交出去），必须用 k8s 后端。
@@ -424,13 +430,14 @@ main 是配置的唯一写方，下游需要感知两类变化（没有事件的
   `app=billy-workspace` 标签，见 `k8s/16-rbac-workspace-service.yaml`）。
 - **空闲回收**：`WorkspaceReaper` 每 60s 巡检一次，超过 `idleTimeoutMs`（默认 2h、`0` = 不回收）的
   工作区停掉；这是实际状态变化，不回写 `desired_status`，用户下次执行时 `ensure` 重新拉起。
-- **能力登记（8 个）**：登记服务 `workspace`——`bash`（`mode='task'`，先受理再轮询 `/tasks/get`，
+- **能力登记（11 个）**：登记服务 `workspace`——`bash`（`mode='task'`，先受理再轮询 `/tasks/get`，
   owner=session，yield 45s，最长 30min）+ 7 个工作区文件能力（`file-list` / `read-file` / `write-file` /
-  `append-file` / `replace-file` / `file-search` / `workspace-files`，均 `mode='sync'`）。服务侧另有
+  `append-file` / `replace-file` / `file-search` / `workspace-files`）+ 3 个凭据能力
+  （`credential-candidates` / `credential-import` / `credential-save`，直接返回）。服务侧另有
   `POST /invoke` / `POST /tasks/get` / `POST /tasks/cancel` 接收网关转发。
 - **文件权限**：工作区自身配置两档（`read-only` / `write`），`local` 后端映射到 kits 沙箱的三档
   （`read-only` / `workspace-write` / `danger-full-access`）：前两档由工作区配置决定，
-  `danger-full-access` 是**部署级**能力（`AGENT_WORKSPACE_MODE=off` 才放开，默认 `enforce`，
+  `danger-full-access` 是**部署级**能力（`AGENT_WORKSPACE_SANDBOX=false` 才放开，默认 `enforce`，
   沙箱不可用 fail closed）；容器后端本身即隔离，没有再按文件权限做只读约束。
   会话级 `file_access` 当前没有传到执行面（见「已知缺口」第 5 条）。
 - **部署约束**：k8s 可多副本（2 副本，跨副本 lifecycle / exec / fs 锁与 lastUsed 走 Redis；任意副本都能处理任意工作区）；Docker 跨宿主 / local 后端仍只允许单副本，启动自检会拒绝。

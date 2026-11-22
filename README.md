@@ -28,7 +28,7 @@ GitHub：[Rihel/billy-cli](https://github.com/Rihel/billy-cli)
   登记进来即可被 `tool-search` 发现。旧的「连接器」适配层已删除（2026-11-18），
   外部系统不再需要逐个发版接。
 - **执行在隔离环境里**：`bash` 与工作区文件能力由 workspace-service 在工作区里执行（容器 / k8s Pod /
-  本地沙箱），三档文件权限由部署的 `AGENT_WORKSPACE_MODE` 与容器后端决定，沙箱不可用时 fail closed。
+  本地沙箱），三档文件权限由部署的 `AGENT_WORKSPACE_SANDBOX` 与容器后端决定，沙箱不可用时 fail closed。
 - **出事不用登服务器**：`requestId` 串起日志、指标、告警与 AI 运行，后台五个监控页直接看。
 - **改一处处处对得上**：数据结构一份（Zod schema）派生实体 / 接口类型 / 表单 / 列表；依赖方向单向，
   九道检查拦住走样；28 个 Agent Skills 指向仓库真实文件，AI 改代码时读到的就是这套约束。

@@ -94,7 +94,7 @@ POST /ai-skill/* · /ai-memory/* · /ai-workspace/*  技能库 / 长期记忆 / 
   `tool-search` → **网关进程内**。runtime 只做编排与装配，不再持 bash / 联网 / 文件 / 记忆执行体。
 - **工作区隔离**：文件权限三档 `read-only` / `workspace-write` / `danger-full-access`（定义在 kits），
   会话只能选前两档（会话级 `file_access` 目前只进 runtime 的执行信封，尚未随能力调用下发到执行面，
-  见后端文档「已知缺口」）；部署默认 `AGENT_WORKSPACE_MODE=enforce`——沙箱不可用就**拒绝执行（fail closed）**，
+  见后端文档「已知缺口」）；部署默认 `AGENT_WORKSPACE_SANDBOX=true`——沙箱不可用就**拒绝执行（fail closed）**，
   只有自托管单租户显式设 `off` 才放开宿主执行。执行后端 `local`（kits 沙箱）/ `container`（docker 或
   k8s Pod）/ `microvm`（预留）；容器名 `billy-ws-<workspaceId>`，镜像 `billy-workspace:2026.11.0`，
   空闲默认 2h 回收；`GET /info` 暴露部署模式与会话可选的文件权限。

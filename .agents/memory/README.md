@@ -108,6 +108,7 @@
 | [run-fencing](run-fencing.md) | durable run 的 `run_ownership` 租约与 generation 校验；旧执行者写入抛 RunFenceConflictError | 必核 | 2026-11-22 |
 | [ai-subagent-subconversation](ai-subagent-subconversation.md) | 子 agent 建子会话：run/timeline 挂子会话，工作区/文件归根会话；列表只出根、删父级联；用量仍只算子 run 的父 | 必核 | 2026-11-14 |
 | [ai-scale-bottlenecks](ai-scale-bottlenecks.md) | 扛流量的六个卡点：512Mi 限额、无准入、工作区本地盘、Redis 缓冲无字节上限、DB 池 10/实例、时间线无分区 | 必核 | 2026-11-14 |
+| [workspace-host-root](workspace-host-root.md) | 工作区根两种形态：平台托管（跑初始化）/ 宿主目录（不跑）；宿主目录过允许根 + 凭据 denylist + 沙箱 enforce 三道闸 | 必核 | 2026-11-22 |
 | [workspace-runtime](workspace-runtime.md) | 执行环境三层（界面选 / 部署限 / 探测证）：默认沙箱、不可用兜底 local；出参 `runtime` 是唯一事实 | 必核 | 2026-11-12 |
 | [env-config](env-config.md) | 环境变量：`.env` 覆盖真实进程环境（dotenv override）、每 app 只声明自己分片、端口别名与模板布局、已删死键 | 必核 | 2026-11-20 |
 | [infra-optional-degradation](infra-optional-degradation.md) | 对象存储未配置/不可达不拦启动；`AGENT_COMMAND_WORK_DIR` 在启动与执行前自愈；问答取消走 `resumeStream({cancelled:true})` | 必核 | 2026-11-11 |

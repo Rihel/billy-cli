@@ -33,7 +33,7 @@
   失败重试（吊销 5 次、其余 3 次）；执行面 `POST /v1/workspaces/sync` 不 start、只重落凭据。
   **坑**：别用 `updated_at` 当版本 —— 解析时 `touch last_used_at` 会顶高它，永远不收敛。
   workspace-service 调 main `/internal/*` 必须用 `TOOL_INTERNAL_TOKEN`（不是 `WORKSPACE_INTERNAL_TOKEN`）。
-- **执行前检查（P7）**：`apps/workspace-service/src/workspace/credential-gate.ts` 的
+- **执行前检查（P7）**：`apps/workspace-service/src/workspace/credential/gate.ts` 的
   `CREDENTIAL_COMMANDS`（lark / gh / mysql / redis-cli / tccli）+ `checkCommandCredentials`；
   清单来自 `.billy/credentials.json`（初始化/同步后缓存在 handle 上），命中缺凭据 → `missing-credential`。
   **零 RPC**：拒绝策略不受控制面可用性影响。P8 把命令表移进完整 CLI 适配器。

@@ -76,7 +76,7 @@ type WorkspaceBackend = 'local' | 'container' | 'microvm'
 ```
 
 - `container`：当前实现为 Docker；未来可换 runsc / Kata。
-- `local`：仅用于自托管单租户（`AGENT_WORKSPACE_MODE=off` 的历史口径），云端多租户禁止。
+- `local`：仅用于自托管单租户（`AGENT_WORKSPACE_SANDBOX=false` 的历史口径），云端多租户禁止。
 - `microvm`：预留，未实现。
 
 ### 2.2 容器加固（云端多租户的硬要求）
@@ -100,7 +100,7 @@ type WorkspaceBackend = 'local' | 'container' | 'microvm'
 现有 [workspace-runtime.md](workspace-runtime.md) 的 macOS `sandbox-exec` / Linux `bwrap`（L1）**不退役**，按后端区分：
 
 - **container / microvm 后端**：容器/VM 已是隔离边界，容器内再套一层 OS 沙箱没有意义——这条路径不用 L1。
-- **local 后端**：命令直接跑在宿主进程与宿主目录上，没有容器边界，**必须保留 L1 沙箱**（默认 `enforce` + fail closed），否则等于裸奔。
+- **local 后端**：命令直接跑在宿主进程与工作区目录上，没有容器边界，**必须保留 L1 沙箱**（默认 `enforce` + fail closed），否则等于裸奔。
 - `local` 仍然只留给自托管单租户，不做云端默认；它的安全模型要写清楚：**L1 沙箱 + 目录边界，不是容器**。
 
 `WorkspaceRuntime` 的 `local` 实现复用现有 `WorkspaceRuntimeService` 的沙箱逻辑，**不要删**。
@@ -125,6 +125,30 @@ Workspace = { location, runtime }
 | microvm | VM 磁盘 | VM 内 |
 
 **container 不挂宿主卷**：环境自包含，容器可写层就是文件系统。挂临时卷可以省掉 file 工具改造，但与「环境自包含」的定位相悖，v1 不用。
+
+#### 3.1.1 工作区目录（local 后端）
+
+local 后端的工作区就是**宿主机上的一个目录**，没有第二种目录。差别只有「配没配 `location.root`」：
+
+| | 没配（默认） | 配了 |
+| --- | --- | --- |
+| 目录 | `<WORKSPACE_LOCAL_ROOT>/<workspaceId>`，默认 `~/.billy/workspaces/<id>`（不存在就建） | 用户给的绝对路径（`realpath` 后），必须**已存在且是目录** |
+| 初始化 | 跑：装 CLI / 物化 `.agents/` / 写 `.billy/` / 落凭据 | **不跑**：这些都会写进用户自己的项目，污染仓库 |
+| 校验 | 无 | 必须落在 `WORKSPACE_LOCAL_ALLOWED_ROOTS` 内、且不覆盖凭据 denylist；`AGENT_WORKSPACE_SANDBOX` 必须 `enforce` |
+
+> 已知不一致：`WORKSPACE_LOCAL_ROOT` 的代码兜底目前仍是系统临时目录（`<tmpdir>/billy-workspaces`），
+> 与默认目录 `~/.billy/workspaces` 的约定不符，待统一；现状与待办见
+> [workspace-local-followups.md](workspace-local-followups.md)。
+
+代价与边界：
+
+- **文件能力不经沙箱**：`local` 的 `file-*` 直接以服务进程身份读写（只做「路径必须工作区内」），
+  所以「允许根」是唯一的范围限制，不能让它退化成「任意路径」；默认关闭（不配允许根就拒绝）。
+- **bash 靠 L1 沙箱**：沙箱仍允许读全盘（除凭据 denylist）、只允许写工作区与缓存，
+  所以「配一个 `/Users/you` 这种过宽目录」会被凭据目录检查挡掉（`.ssh` / `.aws` 等在里面）。
+- **不提供 `location.setup` 开关**：配了目录后要不要装 CLI / 落凭据，现有需求没有；真需要时按
+  「另起一个清单类型」设计，不在 v1 偷加。
+- **容器后端不参与**：要「容器 + 宿主目录」得先解挂载带来的逃逸面（见 §2.2），那是另一个方案。
 
 ### 3.2 文件访问通道
 

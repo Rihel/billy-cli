@@ -551,7 +551,7 @@ worker 10–30 并发命令。SLO：首 token ≤ 供应商 TTFT + 300ms；中�
 - 迁移：`pnpm db:migrate` 一次；facade / gateway 不跑迁移。
 - 工作区：MinIO 当 S3；临时目录本地；不需要 RWX。
 - 沙箱：Linux bwrap / macOS sandbox-exec；Windows 默认禁用命令；
-  本地单租户可 `AGENT_WORKSPACE_MODE=off`（多租户禁止）。
+  本地单租户可 `AGENT_WORKSPACE_SANDBOX=false`（多租户禁止）。
 - 模型：真实 key，或 Ollama / vLLM 的 OpenAI 兼容端点经 model-gateway。
 - 观测：stdout 日志即可；Prometheus / Loki 可选。
 

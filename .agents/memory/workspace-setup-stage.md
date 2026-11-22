@@ -4,7 +4,7 @@
 
 ## 结论（2026-11-20）
 
-- **位置**：`apps/workspace-service/src/workspace/workspace-setup.service.ts`，由 `WorkspaceRuntime.ensureHandle`
+- **位置**：`apps/workspace-service/src/workspace/setup/setup.service.ts`，由 `WorkspaceRuntime.ensureHandle`
   在 handle **首次创建后**调用（`setupDone` 保证只跑一次），顺序固定：
   ① 按清单装包并 `verify`（已通过则 skipped，命中依赖缓存就是这个表现）→ ② 物化技能到 `.agents/<key>/`
   → ③ 落地凭据（文件 600 + env）→ ④ 写 `.billy/setup.json`、`.billy/credentials.json`。

@@ -146,7 +146,7 @@ docker compose --profile kafka up -d        # 可选：追加 Kafka + 控制台
   workspace-service 挂到 `/home/appuser/.billy/workspaces`（local 后端根）。
 - **workspace-service** 额外挂 `/var/run/docker.sock`（容器后端要真起工作区容器），
   并设 `WORKSPACE_CONTAINER_RUNTIME` / `WORKSPACE_DEFAULT_IMAGE` / `WORKSPACE_LOCAL_ROOT`；
-  本地一键起时 `AGENT_WORKSPACE_MODE=off` 仅联调，生产按宿主能力设 `enforce`。
+  本地一键起时 `AGENT_WORKSPACE_SANDBOX=false` 仅联调，生产按宿主能力设 `enforce`。
 
 MinIO 在 compose 里默认随 `docker compose up` 启动，但对象存储本身是可选能力：
 不用上传 / 附件 / 分享时可以不启它（`docker compose up -d postgres redis main agent-runtime web`），

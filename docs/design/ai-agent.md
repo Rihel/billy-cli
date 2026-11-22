@@ -1410,7 +1410,7 @@ AI SDK 的 `data-sub-agent` part，和主内容走同一条 SSE：
 命令在哪个环境执行由**工作区运行时**决定（见 [`workspace-runtime.md`](workspace-runtime.md)）：
 默认 `enforce` —— 命令只能在 OS 沙箱里跑（只能访问本会话工作区），**沙箱不可用就拒绝执行**，
 不会退回宿主进程；会话页只能选沙箱内的只读 / 可写（`conversations.file_access`）。只有部署显式设
-`AGENT_WORKSPACE_MODE=off`（自托管单租户）才以**服务进程的身份与权限**运行（`danger-full-access`）。
+`AGENT_WORKSPACE_SANDBOX=false`（自托管单租户）才以**服务进程的身份与权限**运行（`danger-full-access`）。
 实际环境随 `bash` 出参的 `runtime` / `mode` 返回；管理页的「执行环境」面板（`POST /ai-tool/workspace`）
 展示"这台部署的沙箱是否可用 + 为什么"。
 `danger-full-access` 下的取舍仍是"把可控的部分做死"：
@@ -1455,7 +1455,7 @@ AGENT_COMMAND_WORK_DIR=               # 缺省 = ~/.billy/workspaces（启动 / 
 执行环境是**另一个命名空间**（`workspace`，部署边界，终端用户改不到）：
 
 ```bash
-AGENT_WORKSPACE_MODE=enforce                   # enforce（默认）/ off（自托管单租户）
+AGENT_WORKSPACE_SANDBOX=true                   # enforce（默认）/ off（自托管单租户）
 AGENT_WORKSPACE_SANDBOX_NETWORK=deny           # 沙箱内网络默认 deny
 AGENT_WORKSPACE_PROBE_TIMEOUT_MS=2000          # 探测沙箱可用性的超时
 ```
@@ -1804,7 +1804,7 @@ return toAISdkMessages(messages, { version: 'v6' }) // 从 '@mastra/ai-sdk/ui' �
 | `user_id` | varchar(20) | 归属用户（= Mastra 的 `resource`；服务端从鉴权上下文取，不接受前端传） |
 | `agent_key` | varchar(64) | 用哪个 agent（默认 `assistant`） |
 | `title` | text | 会话标题（首条消息摘要 / 模型生成 / 用户改） |
-| `file_access` | varchar(16) | 本会话的**沙箱写权限**：`workspace-write`（默认）/ `read-only`。只决定"沙箱内能不能写工作区"，能不能出沙箱是部署配置（`AGENT_WORKSPACE_MODE`，见 `workspace-runtime.md`） |
+| `file_access` | varchar(16) | 本会话的**沙箱写权限**：`workspace-write`（默认）/ `read-only`。只决定"沙箱内能不能写工作区"，能不能出沙箱是部署配置（`AGENT_WORKSPACE_SANDBOX`，见 `workspace-runtime.md`） |
 | `status` | varchar(20) | 字典 `ConversationStatus`：`active` / `archived` |
 | `last_active_at` | timestamp(3) | 最后活动时间（**只记录**，不参与排序：列表按 `created_at` 排，用户要的是「会话什么时候开的」这个稳定顺序，改标题 / 刚聊过都不会把它顶上去） |
 | `turn_count` | int (default 0) | **轮数**：该会话已完成的问答轮数（列表页直接读，不必聚合 `runs`） |

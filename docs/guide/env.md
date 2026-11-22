@@ -215,8 +215,11 @@ capability-gateway / workspace-service，两侧令牌必须同值。下列寻址
 | `TOOL_GATEWAY_URL` | `http://127.0.0.1:9993` | main → capability-gateway（后台能力 / 工具配置页取目录） | 必填 |
 | `TOOL_GATEWAY_TOKEN` | 空 | 调网关时携带的令牌；空则回落 `TOOL_INTERNAL_TOKEN`，再空回落字面量 `dev-tool-token` | 可选 |
 | `TOOL_INTERNAL_TOKEN` | 空 | 模板给本地值 `dev-tool-token`；必须与 capability-gateway 同值 | 生产必改 |
+| `WORKSPACE_DEFAULT_DRIVER` | `container` | 新建工作区 / 懒创建的默认工作区用哪个驱动：`container`（Docker）/ `pod`（Kubernetes）/ `host`（无 Docker 单机，工作区是自动分配的本机目录）。用户建工作区时**不选**，由部署决定 | 可选 |
 | `WORKSPACE_SERVICE_URL` | `http://127.0.0.1:9995` | main → workspace-service（文件页 / 工作区控制） | 必填 |
 | `WORKSPACE_INTERNAL_TOKEN` | 空 | 空则回落 `TOOL_INTERNAL_TOKEN`，再空回落 `dev-workspace-token`；必须与 workspace-service 同值 | 生产必改 |
+| `WORKSPACE_SERVICE_URL` | 空 | 工作区执行面地址；配了才在首轮把「执行环境」写进系统提示（根 / 语法 / 隔离与网络 / 资源 / 持久 / 文件权限） | 可选 |
+| `WORKSPACE_INTERNAL_TOKEN` | 空（回落 `TOOL_INTERNAL_TOKEN`） | 调工作区执行面的内部令牌 | 可选 |
 | `MODEL_GATEWAY_URL` | `http://127.0.0.1:9992` | main → model-gateway（后台模型明细同步 / 连通性测试） | 必填 |
 | `MODEL_GATEWAY_TOKEN` | 空 | 携带给 model-gateway 的令牌；必须与网关的 `MODEL_INTERNAL_TOKEN` 同值 | 必填 |
 | `MODEL_GATEWAY_TIMEOUT_MS` | `60000` | 调模型网关超时（ms） | 可选 |
@@ -234,7 +237,7 @@ capability-gateway / workspace-service，两侧令牌必须同值。下列寻址
 
 | 变量 | 默认 | 说明 | 必填 |
 | --- | --- | --- | --- |
-| `AGENT_WORKSPACE_MODE` | `enforce` | 沙箱不可用时 fail closed；仅自托管单租户可 `off` | 可选 |
+| `AGENT_WORKSPACE_SANDBOX` | `true` | 是否启用命令隔离；`false` 时直接以服务进程身份执行（仅自托管单租户）。旧键 `AGENT_WORKSPACE_MODE=off` 等价 | 可选 |
 | `AGENT_WORKSPACE_SANDBOX_NETWORK` | `deny` | 沙箱联网策略 `allow` / `deny` | 可选 |
 | `AGENT_WORKSPACE_PROBE_TIMEOUT_MS` | `2000` | 沙箱探测超时（ms） | 可选 |
 | `AGENT_COMMAND_WORK_DIR` | 空 | 会话工作区根；空则回落 `~/.billy/workspaces`。容器 / k8s 里必须与挂载路径一致 | 可选 |
@@ -426,7 +429,7 @@ agent loop 执行侧：会话编排 / 工具面 / 上下文 / 技能 / 子 agent
 
 | 变量 | 默认 | 说明 | 必填 |
 | --- | --- | --- | --- |
-| `AGENT_WORKSPACE_MODE` | `enforce` | 沙箱不可用即拒绝执行 | 可选 |
+| `AGENT_WORKSPACE_SANDBOX` | `true` | 沙箱不可用即拒绝执行（fail closed） | 可选 |
 | `AGENT_WORKSPACE_SANDBOX_NETWORK` | `deny` | 沙箱联网策略 | 可选 |
 | `AGENT_WORKSPACE_PROBE_TIMEOUT_MS` | `2000` | 沙箱探测超时 | 可选 |
 | `AGENT_COMMAND_WORK_DIR` | 空 | 工作区根；空 = 不覆盖（不设 workDir）。容器 / k8s 里必须与挂载路径一致 | 可选 |
@@ -638,7 +641,7 @@ agent loop 执行侧：会话编排 / 工具面 / 上下文 / 技能 / 子 agent
 
 | 变量 | 默认 | 说明 | 必填 |
 | --- | --- | --- | --- |
-| `AGENT_WORKSPACE_MODE` | `enforce` | common 不执行命令，保持默认即可 | 可选 |
+| `AGENT_WORKSPACE_SANDBOX` | `true` | common 不执行命令，保持默认即可 | 可选 |
 | `AGENT_WORKSPACE_SANDBOX_NETWORK` | `deny` | 沙箱联网策略 | 可选 |
 | `AGENT_WORKSPACE_PROBE_TIMEOUT_MS` | `2000` | 沙箱探测超时 | 可选 |
 
@@ -680,7 +683,7 @@ agent loop 执行侧：会话编排 / 工具面 / 上下文 / 技能 / 子 agent
 
 | 变量 | 默认 | 说明 | 必填 |
 | --- | --- | --- | --- |
-| `WORKSPACE_CONTAINER_RUNTIME` | `docker` | `docker`（单机 / compose，dockerode 直连 Engine API）或 `kubernetes`（云端 Pod，走 kubectl） | 可选 |
+| `WORKSPACE_CONTAINER_RUNTIME` | `docker` | 部署默认容器运行时：`docker`（单机 / compose）或 `kubernetes`（云端 Pod）。单个工作区可在后台覆盖（`ai_workspaces.driver`：host / container / pod，空 = 推导） | 可选 |
 | `DOCKER_SOCKET` | `/var/run/docker.sock` | docker 后端的 Engine API socket（直接读 `process.env`，compose 里需挂载该 socket） | 可选 |
 | `WORKSPACE_KUBECTL_BIN` | `kubectl` | kubernetes 后端的 kubectl 路径 | 可选 |
 | `WORKSPACE_K8S_NAMESPACE` | `billy` | 工作区 Pod 所在命名空间 | 可选 |
@@ -694,7 +697,8 @@ agent loop 执行侧：会话编排 / 工具面 / 上下文 / 技能 / 子 agent
 | `WORKSPACE_CONTAINER_CPUS` | `2` | 工作区容器 CPU 上限 | 可选 |
 | `WORKSPACE_CONTAINER_PIDS_LIMIT` | `512` | 工作区容器 pid 上限 | 可选 |
 | `WORKSPACE_DEFAULT_IMAGE` | `billy-workspace:latest` | 工作区镜像；模板对齐发布版本 `billy-workspace:2026.11.0`，必须与 `docker/Dockerfile.workspace-image` 构建出的 tag 一致 | 生产必改 |
-| `WORKSPACE_LOCAL_ROOT` | `<tmpdir>/billy-workspaces` | local 后端（仅自托管 / 本地联调）的根；docker / kubernetes 后端不用 | 可选 |
+| `WORKSPACE_LOCAL_ROOT` | `~/.billy/workspaces` | local 后端（仅自托管 / 本地联调）的根；docker / kubernetes 后端不用 | 可选 |
+| `WORKSPACE_LOCAL_ALLOWED_ROOTS` | 空（关闭） | local 后端的**工作区目录**白名单（逗号分隔绝对路径）：工作区可把根指到这些目录之下。空 = 只能用 `<WORKSPACE_LOCAL_ROOT>/<workspaceId>`。配了目录的工作区**不跑初始化**（不写 `.billy/.agents`、不装全局 CLI、不注入凭据） | 要用工作区目录时必配 |
 | `WORKSPACE_IDLE_TIMEOUT_MS` | `7200000` | 空闲回收（默认 2 小时）；`0` = 常驻不回收 | 可选 |
 | `WORKSPACE_REAP_INTERVAL_MS` | `60000` | 回收扫描间隔 | 可选 |
 
@@ -702,7 +706,7 @@ agent loop 执行侧：会话编排 / 工具面 / 上下文 / 技能 / 子 agent
 
 | 变量 | 默认 | 说明 | 必填 |
 | --- | --- | --- | --- |
-| `AGENT_WORKSPACE_MODE` | `enforce` | 模板给 `off`（本地联调）；docker / kubernetes 后端靠容器边界，本键只在 local 后端生效 | 可选 |
+| `AGENT_WORKSPACE_SANDBOX` | `true` | 模板给 `off`（本地联调）；docker / kubernetes 后端靠容器边界，本键只在 local 后端生效。**配了目录的工作区要求 `true`**：`false` 时拒绝（命令会直接跑在宿主上、没有边界） | 可选 |
 | `AGENT_WORKSPACE_SANDBOX_NETWORK` | `deny` | 沙箱联网策略 | 可选 |
 | `AGENT_WORKSPACE_PROBE_TIMEOUT_MS` | `2000` | 沙箱探测超时 | 可选 |
 
