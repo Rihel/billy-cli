@@ -129,8 +129,8 @@ export class WorkspaceRuntime {
     @Inject(WorkspaceServiceConfig) private readonly config: WorkspaceServiceConfigValue,
     @Inject(WorkspaceSetupService) private readonly setup: WorkspaceSetupService,
     @Inject(AppLogger) private readonly logger: AppLogger,
-    /** 只给测试注入用；生产不传，按配置自建 */
-    driver?: ContainerDriver,
+    /** 只给测试注入用；生产不传，按配置自建（接口类型不能当 token，必须 @Optional） */
+    @Optional() driver?: ContainerDriver,
     /** 单副本测试可省略；生产由 Nest 注入（Redis 或本地实现） */
     @Optional() @Inject(WorkspaceCoordinator) coordinator?: WorkspaceCoordinator,
     /** 只给测试注入 fs 实现（默认用 hostFs / containerFs），用于钉串行与边界 */
