@@ -65,11 +65,14 @@ export class AiFileController {
   ) {
     await this.conversations.requireOwned(input.conversationId)
     try {
-      return await this.files.workspaceFiles(await this.context(input.conversationId), {
-        includeCaches: input.includeCaches,
-        // 右栏文件树要**一次成型**：分页的半棵树会让用户以为文件少了（模型工具另走分页）
-        all: true,
-      })
+      return await this.files.workspaceFiles(
+        await this.context(input.conversationId, { workspaceRoot: true }),
+        {
+          includeCaches: input.includeCaches,
+          // 右栏文件树要**一次成型**：分页的半棵树会让用户以为文件少了（模型工具另走分页）
+          all: true,
+        },
+      )
     } catch (error) {
       this.rethrow(error)
     }
@@ -87,7 +90,10 @@ export class AiFileController {
     await this.conversations.requireOwned(input.conversationId)
     try {
       return await this.files.previewText(
-        await this.context(input.conversationId),
+        await this.context(
+          input.conversationId,
+          input.source === 'workspace' ? { workspaceRoot: true } : undefined,
+        ),
         input.path,
         input.source ?? 'ai',
       )
@@ -103,7 +109,10 @@ export class AiFileController {
   ) {
     await this.conversations.requireOwned(input.conversationId)
     try {
-      return await this.files.workspaceLink(await this.context(input.conversationId), input)
+      return await this.files.workspaceLink(
+        await this.context(input.conversationId, { workspaceRoot: true }),
+        input,
+      )
     } catch (error) {
       this.rethrow(error)
     }
@@ -232,15 +241,19 @@ export class AiFileController {
   }
 
   /** 上下文里带上工作区 id：文件树 / 预览才能读到容器内的文件（读不到时回落本地根） */
-  private async context(conversationId: string): Promise<FileContext> {
+  private async context(
+    conversationId: string,
+    options?: { workspaceRoot?: boolean },
+  ): Promise<FileContext> {
     const userId = requestContext.get('userId') ?? null
     const adminId = requestContext.get('adminId') ?? null
     const row = await this.db
       .getRepository(ConversationEntity)
-      .findOne({ where: { id: conversationId }, select: { workspaceId: true } })
+      .findOne({ where: { id: conversationId }, select: { workspaceId: true, workdir: true } })
     return {
       conversationId,
       ...(row?.workspaceId ? { workspaceId: row.workspaceId } : {}),
+      ...(row?.workdir && !options?.workspaceRoot ? { workdir: row.workdir } : {}),
       userId: userId ?? adminId,
       isAdmin: Boolean(adminId) && !userId,
       runId: null,

@@ -36,7 +36,10 @@ const build = () => {
     list: vi.fn(async () => ({ files: [] })),
   } as unknown as FileService
   return {
-    executor: new FileExecutor(files, {}, logger, { workspaceIdOf: async () => null } as never),
+    executor: new FileExecutor(files, {}, logger, {
+      workspaceIdOf: async () => null,
+      resolve: async () => null,
+    } as never),
     files,
   }
 }

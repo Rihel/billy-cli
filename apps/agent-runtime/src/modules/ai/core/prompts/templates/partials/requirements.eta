@@ -8,8 +8,8 @@
 
 ## 技能（主动加载，不要等用户点名）
 
-- 技能正文已物化在工作区 `.agents/<技能名>/`：开始任务前先扫一遍可用技能的 name + description，
-  **有匹配的先用 `file-read` 读 `.agents/<技能名>/SKILL.md`**，再按它的步骤做；脚本直接用 `bash` 执行；
+- 技能正文已物化在工作区根 `../../.agents/<skillKey>/`（相对会话目录）：开始任务前先扫一遍可用技能的 name + description，
+  **有匹配的先用 `file-read` 读 `../../.agents/<skillKey>/SKILL.md`**，再按它的步骤做；脚本直接用 `bash` 执行；
 - 用户要「美化 / 设计 / 页面 / HTML / 报告 / 视觉」这类产出时，**先加载设计 / 前端 / 排版类技能，再写第一版**；
   不要先交一版普通结果、等用户再来提醒才重做；
 - **写任何 HTML 之前先加载 `html-page` 技能**：`.html` 页面、页面里的 HTML / SVG 片段都算 ——
@@ -22,7 +22,7 @@
 - 新建 / 修改技能用 `skill-save`；从 skills.sh / GitHub 链接安装用 `skill-import`；
 - **`description` 必须写"什么时候用"**：用户在什么场景、说什么话、要做什么时应该加载它；
   不要写"这个技能包含什么"的内容摘要 —— 模型是拿它做触发判断的；
-- **不要手写 `.agents/`**：它是技能库的投影，容器内改动不回写数据库，下次物化会被覆盖；
+- **不要手写 `../../.agents/`**：它是技能库的投影，容器内改动不回写数据库，下次物化会被覆盖；
   技能变更统一走技能库工具（`skill-save` / `skill-delete` / `skill-enable`）；
 - 技能正文写"做什么、按什么步骤、边界在哪"；长内容拆到 `references/`，脚本放 `scripts/`；
 - 启停用 `skill-enable`；`skill-delete` 不可恢复，删除前先确认；
@@ -77,10 +77,10 @@
 ## 文件操作（只用文件工具）
 
 - 读写文件内容只用 `read-file` / `write-file` / `replace-file` / `append-file`；
-  列会话文件用 `file-list`，列工作区文件用 `workspace-files`；上传 / 下载用 `file-submit` / `file-download`；
+  列会话文件用 `file-list`，列会话目录文件用 `workspace-files`；上传 / 下载用 `file-submit` / `file-download`；
 - **不要用 `bash` 的 `cat` / `sed` / `awk` / `echo >` / `tee` / `python` 读写文件**：
   会绕过 workspace 边界、大小限制与文件索引，用户看不到、审计也查不到；
-- 会话文件（OSS）先 `file-download` 到工作区，再 `read-file` / `file-search`；工作区文件直接读；
+- 会话文件（OSS）先 `file-download` 到会话目录，再 `read-file` / `file-search`；会话目录文件直接读；
 - 大文件先 `file-search`（空格分隔关键词）再 `read-file` 分页读；不要一次读完；
 - 用户上传的原文件已经在文件树 / `uploads/` 里，不要用 `file-submit` 重复提交；修改后的新文件换 `fileKey` 再提交。
 {{ } }}

@@ -33,6 +33,7 @@ export interface WorkspaceFsPort {
   writeBytes(workspaceId: string, path: string, body: Buffer): Promise<void>
   writeText(workspaceId: string, path: string, content: string): Promise<void>
   appendText(workspaceId: string, path: string, content: string): Promise<void>
+  mkdir(workspaceId: string, path: string): Promise<void>
   stat(workspaceId: string, path: string): Promise<WorkspaceFsStat>
   list(workspaceId: string, path: string): Promise<WorkspaceFsEntry[]>
   /**

@@ -70,6 +70,15 @@ export class ConversationEntity extends AuditEntity {
   workspaceId: string | null = null
 
   /**
+   * 会话默认工作目录（相对工作区根；如 `conversations/<rootId>`）。
+   *
+   * 老会话为 null → 工具层回落到工作区根（不做文件迁移）；子会话为 null，
+   * 解析时沿 `root_conversation_id` 取根会话的值。
+   */
+  @Column({ name: 'workdir', type: 'varchar', length: 255, nullable: true })
+  workdir: string | null = null
+
+  /**
    * 本会话的**文件权限**：`workspace-write`（默认）/ `read-only`。
    *
    * 只决定"沙箱内能不能写工作区"；能不能出沙箱是部署配置（`AGENT_WORKSPACE_SANDBOX`），

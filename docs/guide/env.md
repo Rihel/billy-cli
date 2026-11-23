@@ -216,6 +216,7 @@ capability-gateway / workspace-service，两侧令牌必须同值。下列寻址
 | `TOOL_GATEWAY_TOKEN` | 空 | 调网关时携带的令牌；空则回落 `TOOL_INTERNAL_TOKEN`，再空回落字面量 `dev-tool-token` | 可选 |
 | `TOOL_INTERNAL_TOKEN` | 空 | 模板给本地值 `dev-tool-token`；必须与 capability-gateway 同值 | 生产必改 |
 | `WORKSPACE_DEFAULT_DRIVER` | `container` | 新建工作区 / 懒创建的默认工作区用哪个驱动：`container`（Docker）/ `pod`（Kubernetes）/ `host`（无 Docker 单机，工作区是自动分配的本机目录）。用户建工作区时**不选**，由部署决定 | 可选 |
+| `WORKSPACE_CONVERSATION_WORKDIR_ENABLED` | `true` | 新会话是否写 `conversations/<id>` 默认工作目录；关掉后新会话回落到工作区根（老会话不受影响） | 可选 |
 | `WORKSPACE_SERVICE_URL` | `http://127.0.0.1:9995` | main → workspace-service（文件页 / 工作区控制） | 必填 |
 | `WORKSPACE_INTERNAL_TOKEN` | 空 | 空则回落 `TOOL_INTERNAL_TOKEN`，再空回落 `dev-workspace-token`；必须与 workspace-service 同值 | 生产必改 |
 | `MODEL_GATEWAY_URL` | `http://127.0.0.1:9992` | main → model-gateway（后台模型明细同步 / 连通性测试） | 必填 |

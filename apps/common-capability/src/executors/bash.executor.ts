@@ -50,7 +50,7 @@ export class BashExecutor {
         .min(1)
         .max(512)
         .optional()
-        .describe('工作目录（相对工作区根，或它的子目录）；不允许跑到工作区之外'),
+        .describe('工作目录（相对会话目录，或它的子目录）；不允许跑到工作区之外'),
     }),
     timeoutMs: 300_000,
     execution: {

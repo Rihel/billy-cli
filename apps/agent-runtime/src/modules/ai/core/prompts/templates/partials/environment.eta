@@ -6,6 +6,8 @@
 
 {{ if (it.workspace) { }}
 - 工作区根：{{= it.workspace.root }}
+{{ if (it.sessionRoot) { }}- 会话目录：{{= it.sessionRoot }}
+{{ } }}
 - 命令语法：{{= it.workspace.shell }}
 - 隔離与网络：{{= it.workspace.sandbox }}；{{= it.workspace.network }}
 - 资源限制：{{= it.workspace.resourceLimits }}

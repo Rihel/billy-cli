@@ -72,6 +72,48 @@ const context = (data: { userId: string | null; adminId: string | null }) => ({
 
 const input: AgentConversationListDto = { page: 1, size: 20, includeDeleted: false }
 
+describe('AiAdminConversationService（新会话工作目录）', () => {
+  const build = (enabled: boolean) => {
+    const create = vi.fn(async (data: Record<string, unknown>) => ({
+      ...conversationModel(String(data.id ?? 'generated')),
+      workspaceId: 'ws-1',
+    }))
+    const logger = { log: vi.fn(), warn: vi.fn(), error: vi.fn(), info: vi.fn(), debug: vi.fn() }
+    const service = new AiAdminConversationService(
+      { create } as unknown as AiConversationRepository,
+      {} as AiRunQueryRepository,
+      {} as AiTimelineQueryRepository,
+      { resolveAgentKey: vi.fn(async () => 'assistant') } as unknown as AgentCatalogService,
+      {} as AiUsageService,
+      {} as AiModelService,
+      logger as unknown as AppLogger,
+      { getRepository: () => ({ findOne: vi.fn(async () => ({ id: 'ws-1' })) }) } as never,
+      {} as never,
+      { get: vi.fn(() => ({ conversationWorkdir: enabled })) } as never,
+    )
+    return { service, create }
+  }
+
+  it('开启时写 conversations/<id>', async () => {
+    const { service, create } = build(true)
+    await requestContext.run(context({ userId: 'user-1', adminId: null }), () =>
+      service.create({ agentKey: 'assistant', workspaceId: 'ws-1' } as never),
+    )
+    const data = create.mock.calls[0]?.[0] as { id?: string; workdir?: string }
+    expect(data.id).toBeTruthy()
+    expect(data.workdir).toBe(`conversations/${data.id}`)
+  })
+
+  it('关闭时不写 workdir，回到工作区根行为', async () => {
+    const { service, create } = build(false)
+    await requestContext.run(context({ userId: 'user-1', adminId: null }), () =>
+      service.create({ agentKey: 'assistant', workspaceId: 'ws-1' } as never),
+    )
+    const data = create.mock.calls[0]?.[0] as { workdir?: string }
+    expect(data.workdir).toBeUndefined()
+  })
+})
+
 describe('AiAdminConversationService（会话列表归属）', () => {
   it('前台用户：列表归属取 requestContext.userId，且原样传给仓储', async () => {
     const { service, list } = createService({

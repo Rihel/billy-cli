@@ -63,6 +63,10 @@ export const createWorkspaceFsPort = (client: WorkspaceFsTransport): WorkspaceFs
     await dataOf(client, { workspaceId, op: 'append', path, content })
   },
 
+  async mkdir(workspaceId, path) {
+    await dataOf(client, { workspaceId, op: 'mkdir', path })
+  },
+
   async stat(workspaceId, path) {
     const data = await dataOf(client, { workspaceId, op: 'stat', path })
     const stat: WorkspaceFsStat = {

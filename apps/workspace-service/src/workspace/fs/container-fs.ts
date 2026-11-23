@@ -121,6 +121,11 @@ export const containerFs: ContainerFs = async (exec, request) => {
         }
         return { ok: true, data: { path: request.path, bytes: Buffer.byteLength(content) } }
       }
+      case 'mkdir': {
+        const out = await exec(`mkdir -p ${quote(target)}`)
+        if (out.code !== 0) return { ok: false, reason: 'exec-failed', message: out.stderr }
+        return { ok: true, data: { path: request.path } }
+      }
       case 'stat': {
         const out = await exec(`stat -c '%F|%s|%Y' ${quote(target)}`)
         if (out.code !== 0) return failureOf(out)

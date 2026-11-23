@@ -12,19 +12,33 @@ import { ConversationEntity } from '@repo/db'
  */
 @Injectable()
 export class WorkspaceLocator {
-  private readonly cache = new Map<string, { id: string; at: number }>()
+  private readonly cache = new Map<string, { id: string; workdir: string | null; at: number }>()
 
   constructor(@Inject(Db) private readonly db: Db) {}
 
-  async workspaceIdOf(conversationId: string): Promise<string | null> {
+  async resolve(
+    conversationId: string,
+  ): Promise<{ workspaceId: string; workdir: string | null } | null> {
     const cached = this.cache.get(conversationId)
-    if (cached && Date.now() - cached.at < 30_000) return cached.id
-    const row = await this.db
-      .getRepository(ConversationEntity)
-      .findOne({ where: { id: conversationId }, select: { id: true, workspaceId: true } })
+    if (cached && Date.now() - cached.at < 30_000) {
+      return { workspaceId: cached.id, workdir: cached.workdir }
+    }
+    const row = await this.db.getRepository(ConversationEntity).findOne({
+      where: { id: conversationId },
+      select: { id: true, workspaceId: true, workdir: true },
+    })
     const workspaceId = row?.workspaceId ?? null
-    if (workspaceId) this.cache.set(conversationId, { id: workspaceId, at: Date.now() })
-    return workspaceId
+    const workdir = row?.workdir ?? null
+    if (workspaceId) this.cache.set(conversationId, { id: workspaceId, workdir, at: Date.now() })
+    return workspaceId ? { workspaceId, workdir } : null
+  }
+
+  async workspaceIdOf(conversationId: string): Promise<string | null> {
+    return (await this.resolve(conversationId))?.workspaceId ?? null
+  }
+
+  async workdirOf(conversationId: string): Promise<string | null> {
+    return (await this.resolve(conversationId))?.workdir ?? null
   }
 
   /** 会话绑定工作区后清缓存（main 侧不需要，能力侧只读） */

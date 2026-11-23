@@ -39,6 +39,7 @@ const make = async (portOver: Partial<WorkspaceFsPort> = {}) => {
     writeBytes: vi.fn(async () => undefined),
     writeText: vi.fn(async () => undefined),
     appendText: vi.fn(async () => undefined),
+    mkdir: vi.fn(async () => undefined),
     stat: vi.fn(async () => ({ type: 'file' as const, size: 5 })),
     list: vi.fn(async () => []),
     remove: vi.fn(async () => undefined),
@@ -62,6 +63,45 @@ const make = async (portOver: Partial<WorkspaceFsPort> = {}) => {
   }
   return { service, port, logger, root, ctx }
 }
+
+describe('resolveWorkspacePath：会话 workdir 作为相对基准', () => {
+  it('相对路径落在 conversations/<id>，../../.agents 回到工作区根', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'ai-data-workdir-'))
+    roots.push(root)
+    const caps = { command: { workDir: root } }
+    const file = await resolveWorkspacePath({
+      caps,
+      conversationId: 'c1',
+      base: 'conversations/c1',
+      path: 'public/a.html',
+      remote: true,
+    })
+    expect(file).toBe(join(root, 'c1', 'conversations', 'c1', 'public', 'a.html'))
+    const skill = await resolveWorkspacePath({
+      caps,
+      conversationId: 'c1',
+      base: 'conversations/c1',
+      path: '../../.agents/html-page/SKILL.md',
+      remote: true,
+    })
+    expect(skill).toBe(join(root, 'c1', '.agents', 'html-page', 'SKILL.md'))
+  })
+
+  it('workdir 不能把路径带出工作区根', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'ai-data-workdir-'))
+    roots.push(root)
+    await mkdir(join(root, 'c1', 'conversations', 'c1'), { recursive: true })
+    await expect(
+      resolveWorkspacePath({
+        caps: { command: { workDir: root } },
+        conversationId: 'c1',
+        base: 'conversations/c1',
+        path: '../../../../etc/passwd',
+        remote: true,
+      }),
+    ).rejects.toThrow('文件路径')
+  })
+})
 
 describe('previewText（workspace）：执行面错误翻成业务码', () => {
   it('执行面 not-found → FileNotFoundError（3424），不是「不是普通文件」', async () => {
@@ -117,6 +157,30 @@ describe('previewText（workspace）：执行面错误翻成业务码', () => {
 
     expect(result.text).toBe('hello')
     expect(result.mediaType).toBe('text/markdown')
+  })
+})
+
+describe('workspaceFiles：右栏整棵树从会话目录开始', () => {
+  it('all=true 时 listTree 收到 workdir，并先 mkdir 会话目录', async () => {
+    const { service, port, ctx } = await make({
+      listTree: vi.fn(async () => [{ path: 'public/a.html', size: 2, mtime: Date.now() }]),
+    })
+    ctx.workdir = 'conversations/c1'
+    const result = await service.workspaceFiles(ctx, { all: true })
+    expect(port.mkdir).toHaveBeenCalledWith('ws1', 'conversations/c1')
+    expect(port.listTree).toHaveBeenCalledWith('ws1', 'conversations/c1', expect.anything())
+    expect(result.items.map((item) => item.path)).toEqual(['public/a.html'])
+  })
+})
+
+describe('workdir 路径兼容：会话相对与工作区相对都认', () => {
+  it('public/a 与 conversations/c1/public/a 落到同一个执行面路径', async () => {
+    const { service, port, ctx } = await make()
+    ctx.workdir = 'conversations/c1'
+    await service.statFile(ctx, 'public/a.html')
+    await service.statFile(ctx, 'conversations/c1/public/a.html')
+    expect(port.stat).toHaveBeenNthCalledWith(1, 'ws1', 'conversations/c1/public/a.html')
+    expect(port.stat).toHaveBeenNthCalledWith(2, 'ws1', 'conversations/c1/public/a.html')
   })
 })
 

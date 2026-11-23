@@ -2,7 +2,7 @@
 /**
  * 把 `src/` 下的 HTML 片段合并成**可直接预览的单文件 HTML**。
  *
- * 用法（在会话工作区根目录跑）：
+ * 用法（在会话目录的 tmp/html/<slug>/ 里跑）：
  *   node scripts/build-html.mjs
  *   node scripts/build-html.mjs --entry src/index.html --out dist/index.html
  *
@@ -89,7 +89,7 @@ const INCLUDE = /<!--\s*include:\s*([^\s]+?)\s*-->/g
 
 const expand = (file, stack, from) => {
   if (!inside(file)) {
-    addError('path-escape', `include 路径越出工作区：${rel(file)}`, undefined, from)
+    addError('path-escape', `include 路径越出构建目录：${rel(file)}`, undefined, from)
     return ''
   }
   if (stack.includes(file)) {
@@ -146,7 +146,7 @@ const inlineAsset = (url, kind, tag) => {
   if (!isRelative(url)) return tag
   const file = resolve(entryDir, url)
   if (!inside(file)) {
-    addError('path-escape', `资源路径越出工作区：${url}`)
+    addError('path-escape', `资源路径越出构建目录：${url}`)
     return tag
   }
   if (!existsSync(file)) {

@@ -1,4 +1,5 @@
 import { Inject, Injectable, Optional } from '@nestjs/common'
+import { join } from 'node:path'
 import dedent from 'dedent'
 import { AppError, AppLogger } from '@repo/kits'
 import {
@@ -846,6 +847,7 @@ export class AgentChatService {
     const ctx: FileContext = {
       conversationId: conversation.id,
       ...(conversation.workspaceId ? { workspaceId: conversation.workspaceId } : {}),
+      ...(conversation.workdir ? { workdir: conversation.workdir } : {}),
       userId,
       isAdmin,
       runId,
@@ -3585,9 +3587,12 @@ export class AgentChatService {
     if (conversation.turnCount > 0) return undefined
     try {
       const workspace = await this.workspaceEnvironment?.of(conversation.workspaceId)
+      const sessionRoot = workspace
+        ? join(workspace.root, 'conversations', conversation.rootConversationId ?? conversation.id)
+        : undefined
       return this.prompts.renderPartial(
         'partials/environment',
-        buildEnvironmentData(undefined, undefined, undefined, workspace ?? undefined),
+        buildEnvironmentData(undefined, undefined, undefined, workspace ?? undefined, sessionRoot),
       )
     } catch (error) {
       this.logger.warn('ai.environment.render_failed', {

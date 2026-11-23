@@ -138,8 +138,10 @@ export const serverAppConfigSchema = z.object({
     .object({
       /** 新建工作区 / 默认工作区的驱动：host（本机）/ container（Docker）/ pod（Kubernetes） */
       defaultDriver: z.enum(['host', 'container', 'pod']).default('container'),
+      /** 新会话是否写 `conversations/<id>` 工作目录；关掉即回到老行为（全部落工作区根） */
+      conversationWorkdir: z.boolean().default(true),
     })
-    .default({ defaultDriver: 'container' }),
+    .default({ defaultDriver: 'container', conversationWorkdir: true }),
   /**
    * 个人凭据的加密配置（`docs/design/workspace-cli-credentials.md` §6.4.2）。
    *
@@ -336,6 +338,7 @@ export const mapServerEnv = (env: NodeJS.ProcessEnv): Record<string, unknown> =>
      * - `host`：无 Docker 的单机（Windows / 自托管），工作区是自动分配的本机目录。
      */
     defaultDriver: optional(env.WORKSPACE_DEFAULT_DRIVER),
+    conversationWorkdir: parseBoolean(env.WORKSPACE_CONVERSATION_WORKDIR_ENABLED),
   },
   workspace: {
     sandbox: parseSandbox(env),

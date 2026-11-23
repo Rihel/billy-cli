@@ -163,6 +163,7 @@ export const WorkspaceFsOpSchema = z.enum([
   'replace',
   'stat',
   'list-tree',
+  'mkdir',
   'remove',
   'search',
 ])

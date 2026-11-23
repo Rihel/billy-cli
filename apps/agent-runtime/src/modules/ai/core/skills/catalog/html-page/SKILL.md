@@ -35,12 +35,15 @@ description: 只要产出 HTML 就用它 —— .html 页面文件（调研报�
 ## 交付：整页默认拆，构建成单文件
 
 **默认就拆**：只要交付整页 `.html`，一律「骨架 + 片段 + 构建」——**不要按体积判断**（拆的是结构，不是大小）。
-聊天里的 `html` / `gsap` 围栏是片段，没有工作区可构建，仍然直接写。
+聊天里的 `html` / `gsap` 围栏是片段，没有文件可构建，仍然直接写。
+
+在会话目录的 `tmp/html/<slug>/` 下构建（不要占 `projects/`）：
 
 ```
-src/index.html        骨架：<head>、Tailwind、第三方库、<!-- include: ... -->
-src/sections/*.html   片段：只写片段，不写 <!doctype> / <html> / <head> / <body>
-dist/index.html       产物，file-submit 提交这个
+tmp/html/<slug>/src/index.html        骨架：<head>、Tailwind、第三方库、<!-- include: ... -->
+tmp/html/<slug>/src/sections/*.html   片段：只写片段，不写 <!doctype> / <html> / <head> / <body>
+tmp/html/<slug>/scripts/build-html.mjs 构建脚本（从技能 scripts/ 原样拷来，不要自己重写）
+tmp/html/<slug>/dist/index.html       产物，file-submit 提交这个
 ```
 
 **两条协议**：`<!-- include: sections/hero.html -->` 展开片段（路径相对当前文件）；
@@ -51,14 +54,16 @@ dist/index.html       产物，file-submit 提交这个
 
 1. `write-file` 写 `src/index.html` 骨架（Tailwind、库、include 指令）；
 2. 每节一个 `write-file` 写进 `src/sections/`；
-3. `skill_read` 读本技能的 `scripts/build-html.mjs`，**原样**落到工作区 `scripts/build-html.mjs`
-   （工作区里已有就直接用，别自己重写；**不要 `cp` 技能目录** —— 那个路径随部署变，容器 / 远程 worker 里不存在）；
-4. `bash` 跑 `node scripts/build-html.mjs`，按 JSON 报告改 `errors`，再跑；
-5. `ok:true` 后 `file-submit` 提交 `dist/index.html`（`fileKey` 以 `.html` 结尾）。
+3. `skill_read` 读本技能的 `scripts/build-html.mjs`，**原样**落到 `tmp/html/<slug>/scripts/build-html.mjs`
+   （构建目录里已有就直接用，别自己重写；**不要 `cp` 技能目录** —— 那个路径随部署变，容器 / 远程 worker 里不存在）；
+4. 在 `tmp/html/<slug>/` 里 `bash` 跑 `node scripts/build-html.mjs`，按 JSON 报告改 `errors`，再跑；
+5. `ok:true` 后 `file-submit` 提交 `tmp/html/<slug>/dist/index.html`（`fileKey` 以 `.html` 结尾）。
 
 先看自己的工具清单：有 `write-file` / `file-submit` 就自己写、自己提交（子助手默认也有这组工具，
-工作区与父共享；每个子助手用不同文件名，避免并发覆盖）。确实没有才把整页 HTML 交回主 agent 落盘 ——
+会话目录与父共享；每个子助手用不同文件名，避免并发覆盖）。确实没有才把整页 HTML 交回主 agent 落盘 ——
 不要声称"已提交"。
+
+**要在工作区预览服务里打开时，把 `dist/index.html` 复制到会话目录的 `public/`；单文件交付仍走 `file-submit`，两套不要混。**
 
 **跑不了脚本时**（没有 `bash` / 命令执行被关 / 没有 node）：退化为分片写 —— `write-file` 写开头，
 之后每节 `append-file` 追加，最后 `replace-file` 收尾；回答里说明这次没走构建。

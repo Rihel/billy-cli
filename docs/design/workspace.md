@@ -175,14 +175,28 @@ Workspace = { driver, root }
 ├── .agents/                        # 技能正文：模型用 read-file 读这里的 SKILL.md
 │   └── <skillKey>/
 │       ├── SKILL.md
-│       ├── references/…            # 技能自带的参考文件（没有就不建）
+│       ├── references/             # 技能自带的参考文件（可选）
+│       ├── scripts/                # 技能自带的脚本（可选）
+│       ├── assets/                 # 技能自带的资源（可选）
 │       └── .billy-skill            # 归属标记：只有带它的目录会被同步收敛删除
 ├── .billy/
 │   ├── setup.json                  # 这次初始化用了哪个清单（setupId / hash / 时间）
 │   ├── setup/<setupId>@<hash>.done # 幂等标记（技能没写全就不写，下次重试）
-│   └── credentials.json            # 凭据清单（版本 + 条目；只在「可写 HOME」时写）
-└── …                               # 命令 / 模型产出的文件（项目代码、依赖、产物）
+│   ├── credentials.json            # 凭据清单（版本 + 条目；只在「可写 HOME」时写）
+│   └── preview/                    # host 预览状态与日志
+├── conversations/                  # 每个根会话一个默认目录
+│   └── <rootConversationId>/
+│       ├── public/                 # 静态预览根
+│       ├── projects/               # 新建 / clone 的项目
+│       ├── artifacts/              # 交付产物
+│       ├── tmp/                    # 临时 / 下载 / html-page 构建
+│       ├── uploads/                # 入站附件副本
+│       └── subagents/              # 子 agent 结论
+└── shared/                         # 可选：跨会话共享项目
 ```
+
+会话目录的完整规范（`tmp/html`、`projects/<name>`、`artifacts` 等）见
+[workspace-conversation-workdir.md](workspace-conversation-workdir.md)。
 
 **host（用户指定目录）**：结构相同，但只写 `.agents/` 与 `.billy/setup*`；没有 `credentials.json`，
 也不装全局 CLI —— 不把平台资产塞进用户自己的项目。
@@ -191,11 +205,12 @@ Workspace = { driver, root }
 
 ```
 /workspace/                         # 容器内固定工作目录（tmpfs / emptyDir，不挂宿主卷）
-├── .agents/<skillKey>/…            # 同上
+├── .agents/<skillKey>/             # 同上
 ├── .billy/setup.json
 ├── .billy/setup/<setupId>@<hash>.done
 ├── .billy/credentials.json
-└── …                               # 容器自己的可写层
+├── conversations/<rootConversationId>/  # 会话目录（public / projects / artifacts / tmp / uploads / subagents）
+└── shared/                         # 可选：跨会话共享项目
 ```
 
 停止容器 / 删除 Pod 后整个 `/workspace` 消失（预期行为）；凭据落在**容器内**的 HOME

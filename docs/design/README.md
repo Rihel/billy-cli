@@ -32,6 +32,8 @@
 | [workspace-cli-credentials.md](workspace-cli-credentials.md) | **设计稿 v3（2026-11-20）**：工作区执行环境 + 技能归属与授权 + 个人凭据 + 后台菜单与数据权限——目标与非目标、资产三层、初始化阶段、`personal_credentials`（密文 / 类型 / 有效期 / 导入 / 同步）、技能分平台级与个人级及授权表、CLI 适配器、决策记录、风险、实施计划与验收 |
 | [workspace-local-followups.md](workspace-local-followups.md) | **大白话（2026-11-22）**：本地工作区目录只有一个概念（没配用 `~/.billy/workspaces/<id>`、配了用给定路径）；**每节都有四模式对照表**（local 没配 / local 配了 / docker / k8s）——生命周期、一次 bash / 读 / 写、技能、凭据、安装清单、后台与接口、11 个能力、并发与多副本、会话绑定、安全边界、数据、报错、环境变量，另有总表和 7 个问题、4 件待定 |
 | [workspace-env-contract.md](workspace-env-contract.md) | **草案（2026-11-22）**：工作区执行环境驱动抽象第一版——四层分工（能力 / 执行面 / 驱动 / 策略）、`WorkspaceEnvironment` + `EnvFeatures`、Host 与 Docker 两种驱动（K8s 暂不纳入）、Windows 必须支持且沙箱先忽略、Host 只搬技能不搬凭据与装包、沙箱开关改为 `AGENT_WORKSPACE_SANDBOX` 布尔、12 条一致性测试、P1–P3 落地顺序 |
+| [workspace-preview.md](workspace-preview.md) | **设计稿（2026-11-23）**：工作区预览——每个工作区一个本地 `IP:端口` origin；静态 `serve` / NestJS 应用监听端口，浏览器直连，无子域名 / Kong；工作区页「预览」面板手动开启、默认关闭；无鉴权、容器 3000 / host 随机端口、进程生命周期、端口恢复、回收与 TTL、验收与风险 |
+| [workspace-conversation-workdir.md](workspace-conversation-workdir.md) | **设计稿（2026-11-23，P0–P4 已实现）**：会话工作目录规范——每个会话 `conversations/<rootConversationId>/`，`bash` / 文件工具默认在此；`.agents` / `.billy` 共享在根；会话内 `public/`（预览）、`projects/`（新建 / clone）、`tmp/`（临时 / 下载）、`artifacts/`（交付）、`tmp/`（临时）、`uploads/`（入站）、`subagents/`（子 agent 结论）；可选 `shared/`；老会话 `workdir=null` 回落根、不搬文件；预览按会话根；影响面、验收、迁移与排期 |
 | [ai-agent-tool-engine.md](ai-agent-tool-engine.md) | 工具引擎：工具组 / 注册机 / 网关插件 / 配置入库 |
 | [ai-skill-library.md](ai-skill-library.md) | 技能库：在线编辑 / 链接导入（skills.sh、GitHub）/ 启停，DB 是事实源、落盘给 Mastra |
 | [ai-memory.md](ai-memory.md) | 记忆（草案）：短期 thread 落 Redis、长期 `ai_memories` 落 PG、注入与工具写入 |

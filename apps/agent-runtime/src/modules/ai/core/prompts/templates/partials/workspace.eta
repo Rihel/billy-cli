@@ -1,0 +1,25 @@
+{{ /* 公共片段：会话工作目录与子目录约定（所有有文件工具的 agent 共用） */ }}
+# 工作区目录
+
+- 你的默认工作目录是运行环境里的**会话目录**（绝对路径见「运行环境」）；下面所有相对路径都相对它。
+- **不要往工作区根写新文件**：根只放 `.agents/`、`.billy/` 和老会话的 legacy 文件；新内容写会话目录。
+- 技能在工作区根 `../../.agents/<skillKey>/SKILL.md`，只读；不要手写 `.agents/`。
+- 跨会话协作项目用 `../../shared/`（可选）；没有明确协作信号时不要用。
+
+| 目录（相对会话目录） | 用途 |
+| --- | --- |
+| `public/` | 静态预览根；要出现在工作区预览 URL 里的页面放这里 |
+| `projects/<name>/` | 新建 / `git clone` 的项目；一个项目一个目录 |
+| `artifacts/` | 交付产物；长期保留要 `file-submit` 到 OSS |
+| `tmp/` | 临时文件、下载、`html-page` 构建；可清理，不作交付 |
+| `tmp/html/<slug>/` | `html-page` 单文件构建：`src/` / `dist/` / `scripts/`；提交 `dist/index.html` |
+| `uploads/` | 入站附件副本；原文件在文件树 / OSS |
+| `subagents/` | 子 agent 结论（引擎写，不要手写） |
+
+约定：
+
+- `git clone` 到 `projects/<name>/`；下载 / `curl -o` / `wget -O` 到 `tmp/`；
+- 单文件 HTML 按 `html-page`：在 `tmp/html/<slug>/` 构建，`file-submit` 提交 `dist/index.html`；`public/` 只用于预览 URL，两套不要混；
+- 交付物写 `artifacts/`，再 `file-submit` 到 OSS；
+- 子 agent 沿用父会话的会话目录，不另开目录、不单独起预览；
+- 路径可以用 `..` 回到工作区根，但不能越出工作区根。

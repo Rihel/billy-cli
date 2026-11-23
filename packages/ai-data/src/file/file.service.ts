@@ -59,6 +59,8 @@ export interface FileContext {
   conversationId: string
   /** 所属工作区（执行面改造后，fs 原语按它路由；未绑定时缺省走本地根） */
   workspaceId?: string
+  /** 会话默认目录（相对工作区根；老会话为空 = 工作区根；本地回落忽略） */
+  workdir?: string
   userId: string | null
   isAdmin: boolean
   runId: string | null
@@ -239,6 +241,12 @@ export class FileService implements OnApplicationBootstrap, OnApplicationShutdow
     return Boolean(this.fsPort && ctx.workspaceId)
   }
 
+  /** 首次文件操作时建会话目录；读操作也建，右栏才能马上看到 conversations/<id> */
+  private async ensureWorkdir(ctx: FileContext): Promise<void> {
+    if (!this.fsPort || !ctx.workspaceId || !ctx.workdir) return
+    await this.fsPort.mkdir(ctx.workspaceId, ctx.workdir).catch(() => undefined)
+  }
+
   /**
    * 工作区路径解析（唯一入口）。
    *
@@ -246,14 +254,22 @@ export class FileService implements OnApplicationBootstrap, OnApplicationShutdow
    * 判成 not-found（issue 4 的预览 404 根因）；由调用方按 `fsPort + workspaceId` 声明后，
    * 解析只做「路径包含性」校验，不再碰本地软链。
    */
+
   private async resolveOf(
     ctx: FileContext,
     path: string,
     options?: { allowMissing?: boolean },
   ): Promise<string> {
+    // 兼容两种写法：会话相对（public/x）与工作区相对（conversations/<id>/public/x）。
+    // 后者是右栏工作区树 / 模型从报错里学到的路径；不兼容会解析成 conversations/<id>/conversations/<id>/...
+    const workdir = ctx.workdir?.trim()
+    const raw = path.trim()
+    const workspaceRelative =
+      this.remoteOf(ctx) && Boolean(workdir) && (raw === workdir || raw.startsWith(`${workdir}/`))
     return resolveWorkspacePath({
       caps: this.caps,
       conversationId: ctx.conversationId,
+      ...(this.remoteOf(ctx) && workdir && !workspaceRelative ? { base: workdir } : {}),
       path,
       ...(options?.allowMissing ? { allowMissing: true } : {}),
       remote: this.remoteOf(ctx),
@@ -465,7 +481,10 @@ export class FileService implements OnApplicationBootstrap, OnApplicationShutdow
     const filePath = await this.resolveOf(ctx, input.filePath)
     const info = await this.statOf(ctx, filePath)
     if (!info?.isFile()) {
-      throw new FileDeniedError('invalid-input', `不是普通文件：${input.filePath}`)
+      throw new FileDeniedError(
+        'invalid-input',
+        `不是普通文件：${input.filePath}${ctx.workdir ? `（filePath 相对会话目录，当前会话目录是 ${ctx.workdir}）` : ''}`,
+      )
     }
     if (info.size <= 0) throw new FileDeniedError('invalid-input', '不能提交空文件')
     if (info.size > config.maxBytes) {
@@ -573,7 +592,7 @@ export class FileService implements OnApplicationBootstrap, OnApplicationShutdow
       throw new FileDeniedError('invalid-input', `文件超过读取上限 ${config.readMaxBytes} 字节`)
     }
     const source = row.source === 'user' ? ('user' as const) : ('ai' as const)
-    const defaultPath = source === 'user' ? row.path : `files/${row.path}`
+    const defaultPath = source === 'user' ? row.path : `tmp/${row.path}`
     const target = await this.resolveOf(ctx, input.filePath ?? defaultPath, { allowMissing: true })
     const existing = await this.statOf(ctx, target)
     if (existing?.isFile()) {
@@ -642,6 +661,7 @@ export class FileService implements OnApplicationBootstrap, OnApplicationShutdow
     truncated: boolean
   }> {
     const config = this.configOf(ctx)
+    await this.ensureWorkdir(ctx)
     const target = await this.resolveOf(ctx, input.filePath)
     const info = await this.statOf(ctx, target)
     if (!info?.isFile()) throw new FileDeniedError('invalid-input', '不是普通文件')
@@ -709,6 +729,7 @@ export class FileService implements OnApplicationBootstrap, OnApplicationShutdow
     scannedFiles: number
   }> {
     const config = this.configOf(ctx)
+    await this.ensureWorkdir(ctx)
     const keywords = Array.from(
       new Set(
         input.keywords
@@ -729,7 +750,9 @@ export class FileService implements OnApplicationBootstrap, OnApplicationShutdow
       input.maxResults ?? config.searchMaxResults,
       config.searchMaxResults,
     )
-    const root = this.workspaceOf(ctx)
+    const workspaceRoot = this.workspaceOf(ctx)
+    const root =
+      this.remoteOf(ctx) && ctx.workdir ? resolve(workspaceRoot, ctx.workdir) : workspaceRoot
     const start = input.pathPrefix ? await this.resolveOf(ctx, input.pathPrefix) : root
 
     const items: Array<{ filePath: string; line: number; text: string }> = []
@@ -827,10 +850,13 @@ export class FileService implements OnApplicationBootstrap, OnApplicationShutdow
     depthLimited: boolean
   }> {
     const config = this.configOf(ctx)
+    await this.ensureWorkdir(ctx)
     const pageSize =
       input.all === true ? Number.MAX_SAFE_INTEGER : Math.max(1, config.workspaceMaxFiles)
     const offset = Math.max(0, input.offset ?? 0)
-    const root = this.workspaceOf(ctx)
+    const workspaceRoot = this.workspaceOf(ctx)
+    const root =
+      this.remoteOf(ctx) && ctx.workdir ? resolve(workspaceRoot, ctx.workdir) : workspaceRoot
     const start = input.pathPrefix ? await this.resolveOf(ctx, input.pathPrefix) : root
     const includeCaches =
       input.includeCaches === true ||
@@ -840,7 +866,7 @@ export class FileService implements OnApplicationBootstrap, OnApplicationShutdow
     // 右栏文件树（`all` + 无前缀）走**一次取整棵树**的驱动能力：
     // 容器后端用单次 `find`，避免逐文件 `docker exec`（1500 文件实测 58 秒 → 亚秒级）。
     if (input.all === true && !input.pathPrefix && this.fsPort?.listTree && ctx.workspaceId) {
-      const tree = await this.fsPort.listTree(ctx.workspaceId, '.', {
+      const tree = await this.fsPort.listTree(ctx.workspaceId, ctx.workdir ?? '.', {
         maxDepth: config.workspaceMaxDepth,
         excludeDirs: [...NOISE_DIRS],
       })
@@ -945,6 +971,7 @@ export class FileService implements OnApplicationBootstrap, OnApplicationShutdow
     ctx: FileContext,
     filePath: string,
   ): Promise<{ path: string; bytes: number; lines: number } | null> {
+    await this.ensureWorkdir(ctx)
     const target = await this.resolveOf(ctx, filePath, { allowMissing: true }).catch(() => null)
     if (!target) return null
     const info = await this.statOf(ctx, target)
@@ -1299,7 +1326,18 @@ export class FileService implements OnApplicationBootstrap, OnApplicationShutdow
   }
 
   /** 会话删除：删工作区；AI 对象删除；入站对象保留（内容寻址共享） */
-  async cleanupConversation(conversationId: string): Promise<void> {
+  async cleanupConversation(
+    conversationId: string,
+    options?: { workspaceId?: string; workdir?: string | null },
+  ): Promise<void> {
+    if (options?.workspaceId && options.workdir && this.fsPort) {
+      await this.fsPort.remove(options.workspaceId, options.workdir).catch((error: unknown) => {
+        this.logger.warn('ai.file.workspace_remove_failed', {
+          conversationId,
+          reason: error instanceof Error ? error.message : String(error),
+        })
+      })
+    }
     const rows = await this.files.listAllWithDeleted(conversationId)
     for (const row of rows) {
       if (row.source !== 'ai') continue

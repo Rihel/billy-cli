@@ -1,6 +1,8 @@
 import { Inject, Injectable } from '@nestjs/common'
+import { ConfigService } from '@nestjs/config'
 import { AiWorkspaceEntity, type ConversationEntity } from '@repo/db'
 import { AppLogger, Db, requestContext, type PageQueryResult } from '@repo/kits'
+import { nanoid } from '@repo/shared'
 import type {
   AgentConversationCreateDto,
   AgentConversationFileAccessDto,
@@ -56,6 +58,7 @@ export class AiAdminConversationService {
     @Inject(AppLogger) private readonly logger: AppLogger,
     @Inject(Db) private readonly db: Db,
     @Inject(WorkspaceAdminService) private readonly workspaces: WorkspaceAdminService,
+    @Inject(ConfigService) private readonly config: ConfigService,
   ) {}
 
   /**
@@ -90,7 +93,12 @@ export class AiAdminConversationService {
           .getRepository(AiWorkspaceEntity)
           .findOne({ where: { id: input.workspaceId, ...owner }, select: { id: true } })
       : await this.defaultWorkspaceOf(owner)
+    const workdirEnabled =
+      this.config.get<{ conversationWorkdir?: boolean }>('workspaceAdmin')?.conversationWorkdir ??
+      true
+    const conversationId = workdirEnabled ? nanoid() : undefined
     const conversation = await this.conversations.create({
+      ...(conversationId ? { id: conversationId, workdir: `conversations/${conversationId}` } : {}),
       userId: ownerId,
       workspaceId: workspace?.id ?? null,
       agentKey,

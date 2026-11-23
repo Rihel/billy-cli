@@ -1,4 +1,5 @@
 import dedent from 'dedent'
+import { posix } from 'node:path'
 import { Inject, Injectable } from '@nestjs/common'
 import { z } from 'zod'
 import { CapabilityDecl, CapabilityGroup, findCapabilityDecl } from '@repo/capability'
@@ -38,14 +39,14 @@ export class BashExecutor {
 
       不要读平台源码、配置、密钥、环境变量或数据库：不属于用户任务。
 
-      执行环境：命令在会话绑定的工作区里跑；语法按当前执行环境的 shell（sh / cmd，见系统提示里的运行环境）。
+      执行环境：命令在会话绑定的工作区里跑；默认 cwd 是会话目录；语法按当前执行环境的 shell（sh / cmd，见系统提示里的运行环境）。
       只能访问工作区目录；实际以出参 runtime 为准。
 
       约束：命令要幂等；输出用管道 head / grep 收窄。
     `,
     input: z.object({
       command: z.string().min(1).max(2_000).describe('要执行的整条命令行'),
-      cwd: z.string().min(1).max(512).optional().describe('工作目录（相对工作区根）'),
+      cwd: z.string().min(1).max(512).optional().describe('工作目录（相对会话目录）'),
     }),
     timeoutMs: 300_000,
     execution: {
@@ -68,14 +69,31 @@ export class BashExecutor {
       }
     }
     const input = parsed.data as BashInput
-    const workspaceId =
-      request.workspaceId ?? (await this.locator.workspaceIdOf(request.caller.conversationId))
+    const conversationId = request.workspaceConversationId ?? request.caller.conversationId
+    const resolved = await this.locator.resolve(conversationId)
+    const workspaceId = request.workspaceId ?? resolved?.workspaceId ?? null
     if (!workspaceId) {
       return {
         ok: false,
         reason: 'no-workspace',
         message: '会话还没有绑定工作区',
         retryable: false,
+      }
+    }
+    const workdir = resolved?.workdir ?? null
+    if (workdir) {
+      const ensured = await this.runtime.fs(workspaceId, {
+        workspaceId,
+        op: 'mkdir',
+        path: workdir,
+      })
+      if (!ensured.ok) {
+        return {
+          ok: false,
+          reason: ensured.reason ?? 'exec-failed',
+          message: ensured.message ?? '会话目录创建失败',
+          retryable: false,
+        }
       }
     }
     // 执行前检查（§6.4.4）：命中某 provider 但本地清单缺凭据 → 直接拒绝，不执行
@@ -100,7 +118,11 @@ export class BashExecutor {
     const result = await this.runtime.exec(workspaceId, {
       workspaceId,
       command: input.command,
-      ...(input.cwd ? { cwd: input.cwd } : {}),
+      ...(workdir
+        ? { cwd: posix.join(workdir, input.cwd?.trim() || '') }
+        : input.cwd
+          ? { cwd: input.cwd }
+          : {}),
       timeoutMs: Math.min(300_000, request.deadlineMs),
     })
     return { ok: true, data: result }

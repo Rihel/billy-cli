@@ -11,13 +11,23 @@ import { WorkspaceLocator } from '../src/capabilities/workspace.locator.js'
 const make = (
   rows: Record<
     string,
-    { id: string; workspaceId: string | null; rootConversationId: string | null }
+    {
+      id: string
+      workspaceId: string | null
+      rootConversationId: string | null
+      workdir?: string | null
+    }
   >,
 ) => {
   const findOne = vi.fn(async ({ where }: { where: { id: string } }) => {
     const row = rows[where.id]
     if (!row) return null
-    return { id: row.id, workspaceId: row.workspaceId, rootConversationId: row.rootConversationId }
+    return {
+      id: row.id,
+      workspaceId: row.workspaceId,
+      rootConversationId: row.rootConversationId,
+      workdir: row.workdir ?? null,
+    }
   })
   const db = { getRepository: () => ({ findOne }) }
   return { locator: new WorkspaceLocator(db as never), findOne }
@@ -57,6 +67,29 @@ describe('WorkspaceLocator.workspaceIdOf', () => {
     expect(await locator.workspaceIdOf('c_child')).toBeNull()
     // 没有缓存阴性结果：每轮都是本行 + 根会话两次查询
     expect(findOne).toHaveBeenCalledTimes(4)
+  })
+
+  it('workdir：子会话沿根会话取，并缓存整体解析结果', async () => {
+    const { locator, findOne } = make({
+      c_child: { id: 'c_child', workspaceId: null, rootConversationId: 'c_root', workdir: null },
+      c_root: {
+        id: 'c_root',
+        workspaceId: 'ws_root',
+        rootConversationId: null,
+        workdir: 'conversations/c_root',
+      },
+    })
+
+    expect(await locator.resolve('c_child')).toEqual({
+      workspaceId: 'ws_root',
+      workdir: 'conversations/c_root',
+    })
+    expect(findOne).toHaveBeenCalledTimes(2)
+    expect(await locator.resolve('c_child')).toEqual({
+      workspaceId: 'ws_root',
+      workdir: 'conversations/c_root',
+    })
+    expect(findOne).toHaveBeenCalledTimes(2)
   })
 
   it('会话不存在：返回 null，不缓存', async () => {

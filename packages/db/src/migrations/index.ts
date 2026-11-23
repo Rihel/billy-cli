@@ -96,6 +96,7 @@ import { AddToolEffectTaskId1795333984507 } from './1795333984507-AddToolEffectT
 import { AddWorkspaceContainerRuntime1795356174175 } from './1795356174175-AddWorkspaceContainerRuntime.js'
 import { AddWorkspaceDriver1795357035915 } from './1795357035915-AddWorkspaceDriver.js'
 import { AddToolEffectAttempts1795338900853 } from './1795338900853-AddToolEffectAttempts.js'
+import { AddConversationWorkdir1795449370103 } from './1795449370103-AddConversationWorkdir.js'
 
 /** 迁移按时间戳升序；TypeORM 会再排序，但这里保持可读 */
 export const DB_MIGRATIONS = [
@@ -150,4 +151,5 @@ export const DB_MIGRATIONS = [
   AddWorkspaceContainerRuntime1795356174175,
   AddWorkspaceDriver1795357035915,
   AddToolEffectAttempts1795338900853,
+  AddConversationWorkdir1795449370103,
 ]

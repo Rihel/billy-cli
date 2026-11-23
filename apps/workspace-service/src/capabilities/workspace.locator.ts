@@ -14,7 +14,7 @@ import type { ToolInvokeRequest } from '@repo/contracts'
  */
 @Injectable()
 export class WorkspaceLocator {
-  private readonly cache = new Map<string, { id: string; at: number }>()
+  private readonly cache = new Map<string, { id: string; workdir: string | null; at: number }>()
 
   constructor(@Inject(Db) private readonly db: Db) {}
 
@@ -23,26 +23,41 @@ export class WorkspaceLocator {
     return request.workspaceId ?? (await this.workspaceIdOf(request.caller.conversationId))
   }
 
-  async workspaceIdOf(conversationId: string): Promise<string | null> {
+  /** 会话 → 工作区 + 默认目录；子会话沿根会话取 */
+  async resolve(
+    conversationId: string,
+  ): Promise<{ workspaceId: string; workdir: string | null } | null> {
     const cached = this.cache.get(conversationId)
-    if (cached && Date.now() - cached.at < 30_000) return cached.id
+    if (cached && Date.now() - cached.at < 30_000) {
+      return { workspaceId: cached.id, workdir: cached.workdir }
+    }
     const repo = this.db.getRepository(ConversationEntity)
     const row = await repo.findOne({
       where: { id: conversationId },
-      select: { id: true, workspaceId: true, rootConversationId: true },
+      select: { id: true, workspaceId: true, workdir: true, rootConversationId: true },
     })
     let workspaceId = row?.workspaceId ?? null
+    let workdir = row?.workdir ?? null
     const rootConversationId = row?.rootConversationId ?? null
     // 本行没绑工作区但有根会话：回落根会话（子 agent 的工作区归属语义在根会话上）
-    if (!workspaceId && rootConversationId && rootConversationId !== conversationId) {
+    if (rootConversationId && rootConversationId !== conversationId && (!workspaceId || !workdir)) {
       const root = await repo.findOne({
         where: { id: rootConversationId },
-        select: { id: true, workspaceId: true },
+        select: { id: true, workspaceId: true, workdir: true },
       })
-      workspaceId = root?.workspaceId ?? null
+      workspaceId = workspaceId ?? root?.workspaceId ?? null
+      workdir = workdir ?? root?.workdir ?? null
     }
     // 只缓存命中结果：缓存 null 会让"工作区后来绑上"的会话在 30s 内一直报 no-workspace
-    if (workspaceId) this.cache.set(conversationId, { id: workspaceId, at: Date.now() })
-    return workspaceId
+    if (workspaceId) this.cache.set(conversationId, { id: workspaceId, workdir, at: Date.now() })
+    return workspaceId ? { workspaceId, workdir } : null
+  }
+
+  async workspaceIdOf(conversationId: string): Promise<string | null> {
+    return (await this.resolve(conversationId))?.workspaceId ?? null
+  }
+
+  async workdirOf(conversationId: string): Promise<string | null> {
+    return (await this.resolve(conversationId))?.workdir ?? null
   }
 }

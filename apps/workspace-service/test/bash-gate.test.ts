@@ -16,7 +16,10 @@ const make = (gate: unknown) => {
   }))
   const executor = new BashExecutor(
     { authorizeCommand: vi.fn(async () => gate), exec } as never,
-    { workspaceIdOf: vi.fn(async () => 'ws_1') } as never,
+    {
+      workspaceIdOf: vi.fn(async () => 'ws_1'),
+      resolve: vi.fn(async () => ({ workspaceId: 'ws_1', workdir: null })),
+    } as never,
   )
   return { executor, exec }
 }
@@ -61,6 +64,34 @@ describe('bash 执行前检查', () => {
     expect(String(outcome.message)).toContain('自动重试')
     expect(outcome.ok === false ? outcome.hint : '').toContain('暂态')
     expect(exec).not.toHaveBeenCalled()
+  })
+
+  it('会话 workdir：先建目录，默认 cwd 指向会话目录', async () => {
+    const exec = vi.fn(async () => ({
+      ok: true,
+      exitCode: 0,
+      stdout: 'done',
+      stderr: '',
+      durationMs: 1,
+      runtime: 'sandbox' as const,
+    }))
+    const fs = vi.fn(async () => ({ ok: true, data: {} }))
+    const executor = new BashExecutor(
+      { authorizeCommand: vi.fn(async () => null), exec, fs } as never,
+      {
+        resolve: vi.fn(async () => ({ workspaceId: 'ws_1', workdir: 'conversations/c1' })),
+      } as never,
+    )
+
+    const outcome = await executor.bash(request('echo hi'))
+
+    expect(outcome.ok).toBe(true)
+    expect(fs).toHaveBeenCalledWith('ws_1', {
+      workspaceId: 'ws_1',
+      op: 'mkdir',
+      path: 'conversations/c1',
+    })
+    expect(exec).toHaveBeenCalledWith('ws_1', expect.objectContaining({ cwd: 'conversations/c1' }))
   })
 
   it('检查通过 → 正常执行', async () => {

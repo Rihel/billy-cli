@@ -90,7 +90,7 @@ describe('提示词纪律句（执行命令 / 能力边界 / 宽泛任务）', (
    */
   it('技能要主动加载：设计 / 页面类任务先 skill 再动手，不等用户点名', () => {
     expect(prompt).toContain('技能（主动加载，不要等用户点名）')
-    expect(prompt).toContain('有匹配的先用 `file-read` 读 `.agents/<技能名>/SKILL.md`')
+    expect(prompt).toContain('有匹配的先用 `file-read` 读 `../../.agents/<skillKey>/SKILL.md`')
     expect(prompt).toContain('先加载设计 / 前端 / 排版类技能，再写第一版')
     expect(prompt).toContain('不要先交一版普通结果、等用户再来提醒才重做')
     // 具体对话里的原话不能进系统提示词（用户反馈：系统提示词里怎么还有测试例子的字眼）
@@ -169,7 +169,7 @@ describe('提示词纪律句（执行命令 / 能力边界 / 宽泛任务）', (
    * 重跑时还会覆盖；父 agent 最终只读了引擎那份浓缩版，30 KB 全文没人读。
    */
   it('子助手落点纪律：`subagents/` 只让引擎写，长文走最终回复或 `reports/`', () => {
-    expect(prompt).toContain('不要让子助手往 `subagents/` 里写文件')
+    expect(prompt).toContain('不要让子助手往会话目录的 `subagents/` 里写文件')
     expect(prompt).toContain('由引擎自动落盘')
     expect(prompt).toContain('把全文放在最终回复里')
   })

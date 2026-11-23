@@ -35,6 +35,8 @@ export type EnvironmentData = {
   now: string
   /** 工作区执行环境（可选：查询失败时整段不渲染） */
   workspace?: EnvironmentWorkspace
+  /** 会话默认目录（绝对路径；老会话无 workdir 时缺省） */
+  sessionRoot?: string
 }
 
 /** 进程所在时区（IE 时区库名，如 `Asia/Shanghai`）；拿不到就回落 `UTC`，不编造 */
@@ -79,9 +81,11 @@ export const buildEnvironmentData = (
   platform: PlatformInfo = describePlatform(),
   timeZone: string = resolveTimeZone(),
   workspace?: EnvironmentWorkspace,
+  sessionRoot?: string,
 ): EnvironmentData => ({
   os: platform.label,
   shell: platform.shell,
   now: `${formatLocalTime(now, timeZone)}（${timeZone}，${formatOffset(now, timeZone)}）`,
   ...(workspace ? { workspace } : {}),
+  ...(sessionRoot ? { sessionRoot } : {}),
 })

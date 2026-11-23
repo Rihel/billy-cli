@@ -43,7 +43,7 @@ export class FileExecutor {
   @CapabilityDecl({
     tool: 'file-list',
     title: '列文件',
-    description: '列出会话工作区里的文件',
+    description: '列出本会话 OSS 文件',
     input: ListInputSchema,
     execution: { where: 'workspace' },
   })
@@ -54,7 +54,7 @@ export class FileExecutor {
   @CapabilityDecl({
     tool: 'read-file',
     title: '读文件',
-    description: '读工作区里的文本文件',
+    description: '读会话目录里的文本文件',
     input: ReadFileInputSchema,
     execution: { where: 'workspace' },
   })
@@ -101,7 +101,7 @@ export class FileExecutor {
   @CapabilityDecl({
     tool: 'file-search',
     title: '搜文件内容',
-    description: '按关键字搜索工作区文件内容',
+    description: '按关键字搜索会话目录文件内容',
     input: FileSearchInputSchema,
     execution: { where: 'workspace' },
   })
@@ -113,10 +113,10 @@ export class FileExecutor {
     tool: 'file-submit',
     title: '提交文件到会话',
     description: dedent`
-      把 workspace 里的一个文件提交为本会话的 AI 生成文件（上传对象存储，用户可预览 / 下载）。
+      把会话目录里的一个文件提交为本会话的 AI 生成文件（上传对象存储，用户可预览 / 下载）。
       用户上传的原文件已经自动进文件树，不要重复提交；修改后的新文件换一个 fileKey 再提交。
-      filePath 传 workspace 路径，fileKey 传会话内路径（不得以 uploads/ 开头）；工具自动拼 userId 与会话 id。
-      同一个 fileKey 再提交会覆盖旧版本。不要提交密钥、凭据或工作区之外的文件。
+      filePath 传会话目录路径，fileKey 传会话内路径（不得以 uploads/ 开头）；工具自动拼 userId 与会话 id。
+      同一个 fileKey 再提交会覆盖旧版本。不要提交密钥、凭据或会话目录之外的文件。
     `,
     risk: 'write',
     input: SubmitInputSchema,
@@ -127,11 +127,11 @@ export class FileExecutor {
 
   @CapabilityDecl({
     tool: 'file-download',
-    title: '下载会话文件到工作区',
+    title: '下载会话文件到会话目录',
     description: dedent`
-      把本会话的文件从对象存储下载到 workspace，返回本地路径；不返回内容。
-      入站附件通常已经物化到 uploads/，会直接命中缓存；AI 文件下载到 files/。
-      大文件下载后用 read-file 分页读；编辑用 write-file / replace-file / append-file，不要直接改 files/ 缓存。
+      把本会话的文件从对象存储下载到会话目录，返回路径；不返回内容。
+      入站附件通常已经物化到 uploads/，会直接命中缓存；AI 文件下载到 tmp/。
+      大文件下载后用 read-file 分页读；编辑用 write-file / replace-file / append-file，不要直接改 tmp/ 里正在下载的缓存。
     `,
     risk: 'write',
     input: DownloadInputSchema,
@@ -142,8 +142,8 @@ export class FileExecutor {
 
   @CapabilityDecl({
     tool: 'workspace-files',
-    title: '工作区清单',
-    description: '列出对象存储里的工作区文件',
+    title: '会话目录清单',
+    description: '列出会话目录文件',
     input: WorkspaceFilesInputSchema,
     execution: { where: 'workspace' },
   })
@@ -167,10 +167,12 @@ export class FileExecutor {
     }
 
     const workspaceConversationId = request.workspaceConversationId ?? request.caller.conversationId
-    const workspaceId = await this.locator.workspaceIdOf(workspaceConversationId).catch(() => null)
+    const resolved = await this.locator.resolve(workspaceConversationId).catch(() => null)
+    const workspaceId = resolved?.workspaceId ?? null
     const ctx: FileContext = {
       conversationId: workspaceConversationId,
       ...(workspaceId ? { workspaceId } : {}),
+      ...(resolved?.workdir ? { workdir: resolved.workdir } : {}),
       userId: request.caller.userId,
       isAdmin: request.caller.isAdmin ?? false,
       runId: request.caller.runId,

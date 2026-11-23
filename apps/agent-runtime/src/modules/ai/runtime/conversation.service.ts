@@ -248,7 +248,7 @@ export class AgentConversationService {
    * 说明：本步骤只把状态落成 `canceled` 并记一条状态事件；真正掐断生成要等流式端点接入后走 abort。
    */
   async remove(userId: string, input: AgentConversationIdDto): Promise<void> {
-    await this.requireOwned(userId, input.conversationId)
+    const conversation = await this.requireOwned(userId, input.conversationId)
     const { queuedCanceled, canceledRuns } = await this.cancelActiveConversation(
       input.conversationId,
       userId,
@@ -261,7 +261,12 @@ export class AgentConversationService {
     if (this.files) {
       try {
         // 删会话顺手清工作区 + 软删 ai_files + 删 AI 对象；入站对象保留（内容寻址共享）
-        await this.files.cleanupConversation(input.conversationId)
+        await this.files.cleanupConversation(
+          input.conversationId,
+          conversation.workspaceId && conversation.workdir
+            ? { workspaceId: conversation.workspaceId, workdir: conversation.workdir }
+            : undefined,
+        )
       } catch (error) {
         this.logger.error('ai.conversation.cleanup_failed', {
           conversationId: input.conversationId,

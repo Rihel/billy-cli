@@ -28,6 +28,31 @@ describe('运行环境片段（会话开局注入）', () => {
     expect(data.shell.endsWith('cmd.exe') || data.shell.endsWith('CMD.EXE')).toBe(true)
   })
 
+  it('工作区片段：会话目录与工作区根一起注入', () => {
+    const engine = createPromptEngine()
+    const workspace = {
+      root: '/workspace',
+      shell: 'sh' as const,
+      sandbox: '系统沙箱',
+      network: '默认断网',
+      resourceLimits: '无',
+      persistence: '停止后清空',
+      fileAccess: 'write' as const,
+    }
+    const text = engine.renderPartial(
+      'partials/environment',
+      buildEnvironmentData(
+        new Date('2026-09-30T09:55:00Z'),
+        mac,
+        'Asia/Shanghai',
+        workspace,
+        '/workspace/conversations/c1',
+      ),
+    )
+    expect(text).toContain('工作区根：/workspace')
+    expect(text).toContain('会话目录：/workspace/conversations/c1')
+  })
+
   it('模板渲染：数据经引擎渲染成提示词片段（提示词文本只走模板，不手拼）', () => {
     const engine = createPromptEngine()
     const text = engine.renderPartial(

@@ -60,6 +60,8 @@ const nearestExisting = async (target: string): Promise<string> => {
 export const resolveWorkspacePath = async (input: {
   caps?: FileCaps
   conversationId: string | null | undefined
+  /** 会话默认目录（相对工作区根；为空 = 工作区根） */
+  base?: string
   path: string
   allowMissing?: boolean
   /**
@@ -74,7 +76,8 @@ export const resolveWorkspacePath = async (input: {
   const root = conversationWorkspace(input.caps, input.conversationId)
   const raw = input.path?.trim() ?? ''
   if (!raw) throw new FileDeniedError('invalid-input', '文件路径不能为空')
-  const target = resolve(root, raw)
+  const baseDir = input.base?.trim() ? resolve(root, input.base) : root
+  const target = resolve(baseDir, raw)
   if (!inside(root, target)) {
     throw new FileDeniedError('invalid-input', `文件路径必须在本会话工作区内（${root}）`)
   }
