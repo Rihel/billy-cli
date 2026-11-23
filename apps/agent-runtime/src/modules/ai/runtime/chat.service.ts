@@ -2314,10 +2314,29 @@ export class AgentChatService {
     }
   }
 
-  /** 停止某一轮：本进程直接 abort；不在本进程则广播（跨副本） */
-  async stopRun(userId: string, runId: string): Promise<AgentRunStopResultModel> {
-    const run = await this.runs.findEntity(runId)
-    if (!run) throw new RunNotFoundError(runId)
+  /**
+   * 停止某一轮：本进程直接 abort；不在本进程则广播（跨副本）。
+   *
+   * `runId` 与 `conversationId` 至少给一个：前端刷新 / 换设备后 `runId` 可能丢了，
+   * 但「用户点了停止」必须生效 —— 按会话找当前进行中的那一轮兜底。
+   */
+  async stopRun(
+    userId: string,
+    input: string | { runId?: string; conversationId?: string },
+  ): Promise<AgentRunStopResultModel> {
+    // 兼容旧调用（直接传 runId 字符串）：内部 HTTP 已统一传对象
+    const request = typeof input === 'string' ? { runId: input } : input
+    const run = request.runId
+      ? await this.runs.findEntity(request.runId)
+      : request.conversationId
+        ? await this.runs.findActive(request.conversationId)
+        : null
+    // 精确 runId 找不到：旧语义保留（调用方传错了）；按会话找不到：没有可停的轮，幂等成功
+    if (!run) {
+      if (request.runId) throw new RunNotFoundError(request.runId)
+      return { stopped: true, injected: 'local' }
+    }
+    const runId = run.id
     await this.conversations.requireOwned(userId, run.conversationId)
 
     // 挂起中的一轮没有"本进程里的流"可 abort：直接把状态落成 canceled，释放会话。

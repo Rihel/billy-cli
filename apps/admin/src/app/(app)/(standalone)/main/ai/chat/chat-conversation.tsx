@@ -101,6 +101,9 @@ import { z } from 'zod'
 import { currentTurnUsage, loadWholeRuns, loadWholeTimeline, sessionUsageOf } from './data'
 import { markSuspendedAnswered, pinResumeMessageId } from './resume-answer'
 
+/** 停止后恢复链路的冷却窗口（等 runner 把 run 落成 canceled） */
+const STOP_RECOVERY_COOLDOWN_MS = 1_500
+
 /** 附件上限的展示文案（与 `AgentChatSchema` 的常量同源，改一处就够） */
 const ATTACHMENT_LIMIT_TEXT = `单个附件不超过 ${formatFileSize(CHAT_ATTACHMENT_MAX_BYTES)}`
 
@@ -250,6 +253,23 @@ export function ChatConversation({ conversationId }: { conversationId: string })
    */
   const resumeInFlightRef = useRef(false)
   const isResumeInFlight = useCallback(() => resumeInFlightRef.current, [])
+  /**
+   * 用户点了停止、停止请求还在途。
+   *
+   * 为什么必须挡住恢复链路：本地流一断，恢复链路就认为「没人消费这一轮」，
+   * 会在服务端真正停掉之前把流接回来，界面又亮成「正在思考」（issue 7）。
+   * 与 `resuming` 一样，除 state 外还要有同步 ref：`enabled` 要等渲染。
+   */
+  const [stopping, setStopping] = useState(false)
+  const stoppingRef = useRef(false)
+  /** 停止后给服务端一点收尾时间：立即放开恢复会读到还没落库的 running，界面又亮起来 */
+  const stopTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  useEffect(
+    () => () => {
+      if (stopTimerRef.current) clearTimeout(stopTimerRef.current)
+    },
+    [],
+  )
   const [errorText, setErrorText] = useState<string>()
   /** 会话忙时这条消息被排队（服务端回一帧 `data-queue`）：提示用户"轮到时会自动继续" */
   const [queueNotice, setQueueNotice] = useState<string>()
@@ -621,9 +641,9 @@ export function ChatConversation({ conversationId }: { conversationId: string })
   // 本地发送 / 续跑问答期间不启动恢复：这两条链路自己就在消费流
   const localStreaming = status === 'streaming' || status === 'submitted'
   const recovery = useRunRecovery({
-    enabled: !isNew && !localStreaming && !resuming,
-    // 本地续跑在途时恢复链路必须让路（ref 同步生效，`resuming` 可能还没渲染）
-    isBlocked: isResumeInFlight,
+    enabled: !isNew && !localStreaming && !resuming && !stopping,
+    // 本地续跑 / 停止在途时恢复链路必须让路（ref 同步生效，state 可能还没渲染）
+    isBlocked: () => isResumeInFlight() || stoppingRef.current,
     reloadKey: conversationId,
     loadSnapshot: loadRecoverySnapshot,
     streamUrl: recoveryStreamUrl,
@@ -634,7 +654,7 @@ export function ChatConversation({ conversationId }: { conversationId: string })
     onError: (recoveryError) =>
       setErrorText(recoveryError instanceof Error ? recoveryError.message : String(recoveryError)),
   })
-  const { active: recoveryActive, start: startRecovery } = recovery
+  const { active: recoveryActive, start: startRecovery, stop: stopRecovery } = recovery
   /** "在跑"= 本地流 / 问题续跑 / 断线恢复，三处都要并入（否则输入框会显示"发送"） */
   const busy = resuming || recoveryActive
   const streaming = localStreaming || busy
@@ -896,17 +916,42 @@ export function ChatConversation({ conversationId }: { conversationId: string })
   /**
    * 用户主动停止。
    *
-   * **必须两条都做**：`stop()` 只断本地连接，生成还在服务端跑（官方文档明说）——
-   * 真正取消是 `/agent/run/stop`（跨副本时服务端自己广播，前端不关心）。
+   * **必须三条都做**：
+   * 1. `stop()` 只断本地连接，生成还在服务端跑 —— 真正取消是 `/agent/run/stop`
+   *    （跨副本时服务端自己广播，前端不关心）；
+   * 2. 恢复流也要停掉：它是同一轮的另一个消费者，不 abort 会继续把事件画回界面；
+   * 3. 停止请求在途期间挡住恢复链路（`stopping` / `stoppingRef`），否则服务端还没停完，
+   *    恢复链路又把流接回来，界面重新点亮「正在思考」（issue 7）。
+   *
+   * `runId` 可能已经丢了（刷新 / 换设备）：带上 `conversationId` 让服务端按会话兜底找。
    */
   const stopRun = async () => {
     const target = runIdRef.current
+    const conversation = activeConversationIdRef.current
+    if (!target && !conversation) return
+    stoppingRef.current = true
+    setStopping(true)
     void stop()
-    if (!target) return
+    stopRecovery()
     try {
-      await client.agent.stopRun({ runId: target })
+      await client.agent.stopRun({
+        ...(target ? { runId: target } : {}),
+        ...(conversation ? { conversationId: conversation } : {}),
+      })
+      // 停止成功后清掉本地 runId：下一轮起跑前不应该再拿它去停止 / 续流
+      if (!target || runIdRef.current === target) runIdRef.current = undefined
+      setRunId(undefined)
     } catch (stopError) {
       setErrorText(stopError instanceof Error ? stopError.message : String(stopError))
+    } finally {
+      // 停止请求返回 ≠ run 已落成 canceled（runner 还要走收尾）；这段时间继续挡住恢复链路，
+      // 否则快照会读到 running、把流接回来，界面重新点亮「正在思考」
+      if (stopTimerRef.current) clearTimeout(stopTimerRef.current)
+      stopTimerRef.current = setTimeout(() => {
+        stopTimerRef.current = null
+        stoppingRef.current = false
+        setStopping(false)
+      }, STOP_RECOVERY_COOLDOWN_MS)
     }
   }
 

@@ -17,6 +17,7 @@ import { AnyAuthGuard } from '../modules/auth/index.js'
 import { RateLimit, RateLimitGuard } from '../common/security/index.js'
 import { requestContext } from '@repo/kits'
 import { AgentSseBridge, parseStreamProtocol } from './agent-sse.bridge.js'
+import { AgentRunStopSchema, type AgentRunStopDto } from '@repo/shared'
 
 const SSE_HEADERS = {
   'content-type': 'text/event-stream',
@@ -41,7 +42,7 @@ export class AgentControlController {
 
   @Post('run/stop')
   @HttpCode(200)
-  stop(@Body() body: { runId: string }) {
+  stop(@Body({ schema: AgentRunStopSchema }) body: AgentRunStopDto) {
     return this.callJson('/internal/agent/run/stop', body)
   }
 

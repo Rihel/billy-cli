@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   AgentChatResumeSchema,
   AgentChatSchema,
+  AgentRunStopSchema,
   CHAT_ATTACHMENT_MAX_BYTES,
   CHAT_ATTACHMENT_MAX_COUNT,
   ChatAttachmentSchema,
@@ -98,5 +99,27 @@ describe('AgentChatResumeSchema（回答 / 取消挂起）', () => {
   it('既没答案也没取消 → 拒绝（空提交没有意义）', () => {
     expect(AgentChatResumeSchema.safeParse({ runId: 'run_1' }).success).toBe(false)
     expect(AgentChatResumeSchema.safeParse({ runId: 'run_1', answers: [] }).success).toBe(false)
+  })
+})
+
+describe('AgentRunStopSchema（停止：runId 与 conversationId 二选一）', () => {
+  it('runId 精确停止（旧调用方照旧）', () => {
+    expect(AgentRunStopSchema.safeParse({ runId: 'run_1' }).success).toBe(true)
+  })
+
+  it('只给 conversationId：前端丢了 runId 也能停', () => {
+    expect(AgentRunStopSchema.safeParse({ conversationId: 'c_1' }).success).toBe(true)
+  })
+
+  it('两个都给也合法（服务端优先 runId）', () => {
+    expect(AgentRunStopSchema.safeParse({ runId: 'run_1', conversationId: 'c_1' }).success).toBe(
+      true,
+    )
+  })
+
+  it('两个都不给 → 拒绝，并给出可读原因', () => {
+    const parsed = AgentRunStopSchema.safeParse({})
+    expect(parsed.success).toBe(false)
+    expect(JSON.stringify(parsed.error?.issues)).toContain('runId 与 conversationId 至少给一个')
   })
 })

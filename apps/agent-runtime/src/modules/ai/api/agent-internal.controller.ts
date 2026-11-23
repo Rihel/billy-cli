@@ -209,7 +209,7 @@ export class AgentInternalController {
     @Headers('x-internal-token') token: string | undefined,
   ) {
     const owner = this.requireOwner(token, userId, adminId)
-    return this.chat.stopRun(owner.id, input.runId)
+    return this.chat.stopRun(owner.id, input)
   }
 
   @Get('run/stream')

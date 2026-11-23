@@ -755,10 +755,20 @@ export const AgentChatResultSchema = z.object({
 
 export type AgentChatResultModel = z.infer<typeof AgentChatResultSchema>
 
-/** 停止入参（`POST /agent/run/stop`） */
-export const AgentRunStopSchema = z.object({
-  runId: z.string().min(1).max(32),
-})
+/**
+ * 停止入参（`POST /agent/run/stop`）：`runId` 与 `conversationId` **至少给一个**。
+ *
+ * 兼容口径：runId 是精确停止（旧调用方照旧）；conversationId 用于前端丢了 runId 的场景
+ * （刷新 / 换设备 / 页面状态被清空），由服务端按会话找当前进行中的那一轮。
+ */
+export const AgentRunStopSchema = z
+  .object({
+    runId: z.string().min(1).max(32).optional(),
+    conversationId: z.string().min(1).max(32).optional(),
+  })
+  .refine((value) => Boolean(value.runId ?? value.conversationId), {
+    message: 'runId 与 conversationId 至少给一个',
+  })
 
 export type AgentRunStopDto = z.infer<typeof AgentRunStopSchema>
 

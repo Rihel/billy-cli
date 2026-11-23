@@ -109,6 +109,8 @@ export interface RunRecoveryState {
   active: boolean
   /** 手动触发一次（排队 / 唤醒轮起跑后由上层调用） */
   start: () => void
+  /** 立即停掉恢复流（用户点停止 / 会话切换时；停止期间恢复链路必须让路） */
+  stop: () => void
 }
 
 export const useRunRecovery = (options: UseRunRecoveryOptions): RunRecoveryState => {
@@ -256,5 +258,5 @@ export const useRunRecovery = (options: UseRunRecoveryOptions): RunRecoveryState
     return stop
   }, [options.enabled, options.reloadKey, start, stop])
 
-  return { active, start }
+  return { active, start, stop }
 }
