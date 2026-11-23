@@ -11,7 +11,7 @@ import { ResponseUtils } from '@repo/shared'
 import type { Request, Response } from 'express'
 import { BoundaryError } from './boundary-error.js'
 import { ERROR_ALERT_HOOK, type ErrorAlertHook } from './error-alert-hook.js'
-import { mapError } from './error-descriptor.js'
+import { mapError, messageOfDescriptor } from './error-descriptor.js'
 import { requestContext } from '../request-context/request-context.js'
 import { ZodValidationFailedError } from '../zod-validation.js'
 
@@ -84,6 +84,8 @@ export class AppExceptionFilter implements ExceptionFilter {
       return
     }
 
-    response.status(descriptor.http).json(ResponseUtils.error(descriptor.value, descriptor.label))
+    response
+      .status(descriptor.http)
+      .json(ResponseUtils.error(descriptor.value, messageOfDescriptor(descriptor)))
   }
 }

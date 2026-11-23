@@ -91,7 +91,9 @@ export const hostFs: HostFs = async (
         return { ok: true, data: { path: request.path, bytes: Buffer.byteLength(content) } }
       }
       case 'stat': {
-        const info = await stat(target)
+        const info = await stat(target).catch(() => null)
+        // 与容器侧对齐：不存在就是 not-found，不能落进 catch 变成笼统的 exec-failed
+        if (!info) return { ok: false, reason: 'not-found', message: '文件不存在' }
         return {
           ok: true,
           data: {

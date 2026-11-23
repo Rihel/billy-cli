@@ -21,6 +21,19 @@ export type ContainerFs = (
   request: WorkspaceFsRequest,
 ) => Promise<WorkspaceFsResult>
 
+/**
+ * 命令失败 → fs 结果：**先看退出码，再归因**。
+ *
+ * 旧实现 stat / read-bytes 不看退出码：文件不存在时 `stat` 的 stdout 为空，
+ * 照样回 `ok:true, type:'file'`，上层把「真没有」当「读到了空文件」（issue 4 的 404 根因之一）。
+ * `no such file` / `cannot stat` 归 `not-found`，其余归 `exec-failed`。
+ */
+const failureOf = (out: CommandOutcome): WorkspaceFsResult => ({
+  ok: false,
+  reason: /no such file|cannot stat|not found/i.test(out.stderr) ? 'not-found' : 'exec-failed',
+  message: out.stderr || `退出码 ${out.code}`,
+})
+
 export const containerFs: ContainerFs = async (exec, request) => {
   const target = resolve(CONTAINER_WORKDIR, request.path)
   if (!target.startsWith(CONTAINER_WORKDIR)) {
@@ -67,6 +80,7 @@ export const containerFs: ContainerFs = async (exec, request) => {
       }
       case 'read-bytes': {
         const out = await exec(`base64 -w0 ${quote(target)}`)
+        if (out.code !== 0) return failureOf(out)
         return { ok: true, data: { base64: out.stdout.trim() } }
       }
       case 'write-bytes': {
@@ -109,6 +123,7 @@ export const containerFs: ContainerFs = async (exec, request) => {
       }
       case 'stat': {
         const out = await exec(`stat -c '%F|%s|%Y' ${quote(target)}`)
+        if (out.code !== 0) return failureOf(out)
         const [kind, size, mtime] = out.stdout.trim().split('|')
         return {
           ok: true,

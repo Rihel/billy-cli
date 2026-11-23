@@ -44,7 +44,9 @@ export class SkillFileInvalidError extends AppError {
 export class SkillImportFailedError extends AppError {
   readonly code = AppErrorCodes.SkillImportFailed
   constructor(readonly reason: string) {
-    super(`技能导入失败：${reason}`)
+    // detail 才是用户 / 模型需要的那句原因（匿名限额、404、超时、没有 SKILL.md）；
+    // 只给字典 label 时界面永远只有一句「技能导入失败」
+    super(`技能导入失败：${reason}`, reason)
   }
 }
 

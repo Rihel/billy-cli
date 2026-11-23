@@ -17,6 +17,7 @@
   },
   "dependencies": {
     "@nestjs/common": "^12.4.0",
+    "@repo/contracts": "workspace:*",
     "@repo/db": "workspace:*",
     "@repo/kits": "workspace:*",
     "@repo/shared": "workspace:*",

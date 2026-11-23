@@ -62,6 +62,14 @@ export const resolveWorkspacePath = async (input: {
   conversationId: string | null | undefined
   path: string
   allowMissing?: boolean
+  /**
+   * 文件真身是否在执行面（容器 / 远程）。
+   *
+   * **必须由调用方显式声明**：早先按「本地 `{root}/{会话}` 在不在」来猜，
+   * 结果容器会话的本地残留（入站附件物化目录）让真身在容器的文件被本地 realpath 判成
+   * not-found（issue 4）。执行面只做路径包含性校验，不碰本地软链。
+   */
+  remote?: boolean
 }): Promise<string> => {
   const root = conversationWorkspace(input.caps, input.conversationId)
   const raw = input.path?.trim() ?? ''
@@ -71,18 +79,15 @@ export const resolveWorkspacePath = async (input: {
     throw new FileDeniedError('invalid-input', `文件路径必须在本会话工作区内（${root}）`)
   }
 
-  // 本地根不存在 = 文件真身在执行面（容器 / 远程）：不做本地 realpath，只保留相对路径校验
-  const rootExists = await stat(root)
-    .then(() => true)
-    .catch(() => false)
-  if (!rootExists && inside(root, target)) return target
+  // 执行面：只保留相对路径校验，不做本地 realpath
+  if (input.remote) return target
 
   const probe = input.allowMissing ? await nearestExisting(target) : target
   let real: string
   try {
     real = await realpath(probe)
   } catch {
-    throw new FileDeniedError('invalid-input', `文件路径不存在：${input.path}`)
+    throw new FileDeniedError('not-found', `文件路径不存在：${input.path}`)
   }
   // 最近的已存在祖先必须在工作区根之内；根还没建时，以它的父目录（base）为界。
   const base = workspaceRoot(input.caps)

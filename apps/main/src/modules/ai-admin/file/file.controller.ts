@@ -1,10 +1,8 @@
 import { createReadStream } from 'node:fs'
 import { basename } from 'node:path'
 import {
-  BadRequestException,
   Body,
   Controller,
-  ForbiddenException,
   Get,
   Headers,
   HttpCode,
@@ -12,7 +10,6 @@ import {
   Post,
   Query,
   Res,
-  ServiceUnavailableException,
   UseGuards,
 } from '@nestjs/common'
 import {
@@ -31,7 +28,11 @@ import {
 } from '@repo/shared'
 import {
   FileDeniedError,
+  FileForbiddenError,
+  FileInvalidInputError,
+  FileNotFoundError,
   FileService,
+  FileWorkspaceUnavailableError,
   WorkspaceContentQuerySchema,
   WorkspaceListSchema,
   WorkspacePreviewSchema,
@@ -248,10 +249,13 @@ export class AiFileController {
   }
 
   private rethrow(error: unknown): never {
+    // 必须抛 AppError 子类（带业务码）：包成 `BadRequestException` 会被边界统一成
+    // 「请求体格式不正确」，真实的 not-found / 目录 / 工作区不可用全部丢失（issue A）
     if (error instanceof FileDeniedError) {
-      if (error.reason === 'forbidden') throw new ForbiddenException(error.message)
-      if (error.reason === 'upstream') throw new ServiceUnavailableException(error.message)
-      throw new BadRequestException(error.message)
+      if (error.reason === 'forbidden') throw new FileForbiddenError(error.message)
+      if (error.reason === 'upstream') throw new FileWorkspaceUnavailableError(error.message)
+      if (error.reason === 'not-found') throw new FileNotFoundError(error.message)
+      throw new FileInvalidInputError(error.message)
     }
     throw error
   }

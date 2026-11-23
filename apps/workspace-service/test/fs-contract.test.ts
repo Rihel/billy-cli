@@ -300,6 +300,14 @@ describe('fs 一致性：同一组用例跑两种实现', () => {
     }
   })
 
+  it('stat 不存在的文件 → ok=false 且 reason=not-found（不能伪装成空文件）', async () => {
+    const impls = await makeImpls()
+    for (const item of impls) {
+      const info = await item.impl({ workspaceId: 'ws', op: 'stat', path: 'missing/a.txt' })
+      expect(info).toMatchObject({ ok: false, reason: 'not-found' })
+    }
+  })
+
   it('stat 返回类型、大小与毫秒时间', async () => {
     const impls = await makeImpls()
     for (const item of impls) {

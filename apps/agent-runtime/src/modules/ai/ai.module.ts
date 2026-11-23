@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import { AppLogger, Db, RedisStore } from '@repo/kits'
 import { DEFAULT_AGENT_KEY, createAgentDefinitions } from './agents/index.js'
+import { WorkspaceServiceClient } from '@repo/internal-sdk'
 import { AgentInternalController } from './api/agent-internal.controller.js'
 import { AgentConfig, type AgentConfig as AgentConfigValue } from './core/config.js'
 import { decideModelForMastra } from './core/model-decision.js'
@@ -18,7 +19,10 @@ import { RunSubAgentTool } from './tools/subagent.tool.js'
 import { PlannerStore, PlannerTools } from './tools/planner/index.js'
 import { createPromptEngine, PROMPT_ENGINE } from './core/prompts/index.js'
 import { ModelGatewayCatalogService } from './runtime/model-gateway.catalog.js'
-import { WorkspaceEnvironmentClient } from './runtime/workspace-environment.client.js'
+import {
+  WorkspaceEnvironmentClient,
+  type WorkspaceServiceSettings,
+} from './runtime/workspace-environment.client.js'
 import { RUNTIME_MODEL_RESOLVER } from './runtime/model-resolver.js'
 import {
   AgentChatService,
@@ -81,7 +85,7 @@ import { ToolDiscoveryStore } from './core/tools/tool-discovery.store.js'
 import { TaskTool } from './tools/task.tool.js'
 import { FileRepository } from './files/file.repository.js'
 import { FileService } from './files/file.service.js'
-import { FILE_CAPS } from '@repo/ai-data'
+import { FILE_CAPS, WORKSPACE_FS_PORT, createWorkspaceFsPort } from '@repo/ai-data'
 import {
   AuditEndPlugin,
   AuditStartPlugin,
@@ -223,6 +227,23 @@ let warnedMissingEnvelope = false
     },
     FileRepository,
     FileService,
+    // 执行面 fs 端口（issue 4）：会话绑了容器工作区时，FileService 的所有原语都要走
+    // workspace-service；没配 WORKSPACE_SERVICE_URL 时返回 null，回落到宿主本地 fs。
+    {
+      provide: WORKSPACE_FS_PORT,
+      inject: [ConfigService],
+      useFactory: (config: ConfigService) => {
+        const settings = config.get<WorkspaceServiceSettings>('workspaceService')
+        if (!settings?.url?.trim()) return null
+        return createWorkspaceFsPort(
+          new WorkspaceServiceClient({
+            baseUrl: settings.url,
+            token: settings.token,
+            ...(settings.timeoutMs ? { timeoutMs: settings.timeoutMs } : {}),
+          }),
+        )
+      },
+    },
 
     // ───────────────────────── 长期记忆（用户级事实）─────────────────────────
     MemoryRepository,

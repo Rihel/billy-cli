@@ -20,8 +20,14 @@ import {
   type ChatAttachmentModel,
 } from '@repo/shared'
 import { FILE_CAPS } from './file.types.js'
-import { WORKSPACE_FS_PORT, type WorkspaceFsPort } from './workspace-fs.port.js'
-import { FileDeniedError } from './file.errors.js'
+import { WORKSPACE_FS_PORT, WorkspaceFsError, type WorkspaceFsPort } from './workspace-fs.port.js'
+import {
+  FileDeniedError,
+  FileInvalidInputError,
+  FileNotFoundError,
+  FileNotPreviewableError,
+  FileWorkspaceUnavailableError,
+} from './file.errors.js'
 import type { FileCaps } from './file.types.js'
 import {
   conversationWorkspace,
@@ -228,6 +234,32 @@ export class FileService implements OnApplicationBootstrap, OnApplicationShutdow
     return rel === '' ? '.' : rel
   }
 
+  /** 这次调用是否落在执行面（容器 / 远程）：显式声明，**不按本地目录在不在猜** */
+  private remoteOf(ctx: FileContext): boolean {
+    return Boolean(this.fsPort && ctx.workspaceId)
+  }
+
+  /**
+   * 工作区路径解析（唯一入口）。
+   *
+   * 执行面必须显式传 `remote`：容器会话的本地残留会让 realpath 校验把真身在容器的文件
+   * 判成 not-found（issue 4 的预览 404 根因）；由调用方按 `fsPort + workspaceId` 声明后，
+   * 解析只做「路径包含性」校验，不再碰本地软链。
+   */
+  private async resolveOf(
+    ctx: FileContext,
+    path: string,
+    options?: { allowMissing?: boolean },
+  ): Promise<string> {
+    return resolveWorkspacePath({
+      caps: this.caps,
+      conversationId: ctx.conversationId,
+      path,
+      ...(options?.allowMissing ? { allowMissing: true } : {}),
+      remote: this.remoteOf(ctx),
+    })
+  }
+
   private async readBytesOf(ctx: FileContext, target: string): Promise<Buffer> {
     if (this.fsPort && ctx.workspaceId) {
       return this.fsPort.readBytes(ctx.workspaceId, this.portPath(ctx, target))
@@ -282,7 +314,10 @@ export class FileService implements OnApplicationBootstrap, OnApplicationShutdow
           size: info.size,
           mtime: new Date(info.mtime ?? 0),
         }
-      } catch {
+      } catch (error) {
+        // 「确实没有这个文件」等价于本地 stat 失败 → null（调用方据此报 not-found）；
+        // 其它失败（工作区没起 / 越界 / 超时）不能伪装成「不存在」，否则错误语义全丢
+        if (error instanceof WorkspaceFsError && error.reason !== 'not-found') throw error
         return null
       }
     }
@@ -293,6 +328,63 @@ export class FileService implements OnApplicationBootstrap, OnApplicationShutdow
       isFile: () => info.isFile(),
       size: info.size,
       mtime: info.mtime,
+    }
+  }
+
+  /**
+   * 预览专用 stat：**不吞执行面错误**。
+   *
+   * 普通 `statOf` 会把 not-found 与其它失败都收敛成 null，预览需要区分
+   * 「文件不存在」（3424）与「工作区不可用」（3427），所以远程分支原样抛
+   * `WorkspaceFsError`，由 `previewText` 翻成业务错误。
+   */
+  private async statForPreview(
+    ctx: FileContext,
+    target: string,
+  ): Promise<{ isDirectory(): boolean; isFile(): boolean; size: number; mtime: Date } | null> {
+    if (this.fsPort && ctx.workspaceId) {
+      const info = await this.fsPort.stat(ctx.workspaceId, this.portPath(ctx, target))
+      return {
+        isDirectory: () => info.type === 'dir',
+        isFile: () => info.type === 'file',
+        size: info.size,
+        mtime: new Date(info.mtime ?? 0),
+      }
+    }
+    const info = await stat(target).catch(() => null)
+    if (!info) return null
+    return {
+      isDirectory: () => info.isDirectory(),
+      isFile: () => info.isFile(),
+      size: info.size,
+      mtime: info.mtime,
+    }
+  }
+
+  /**
+   * 把执行面失败翻成文件业务错误，并留一条可排查的日志（带会话 / 工作区 / 路径 / reason）。
+   *
+   * 为什么不直接把 `WorkspaceFsError` 抛给边界：边界只认识业务码，
+   * 而 reason ∈ {not-found, unsafe-path, runtime-unavailable, …} 的对策完全不同。
+   */
+  private previewFailure(ctx: FileContext, path: string, error: unknown): Error {
+    if (!(error instanceof WorkspaceFsError)) {
+      return error instanceof Error ? error : new Error(String(error))
+    }
+    this.logger.warn('ai.file.preview_stat_failed', {
+      conversationId: ctx.conversationId,
+      workspaceId: ctx.workspaceId,
+      path,
+      reason: error.reason,
+    })
+    switch (error.reason) {
+      case 'not-found':
+        return new FileNotFoundError(path)
+      case 'unsafe-path':
+      case 'invalid-input':
+        return new FileInvalidInputError(error.message)
+      default:
+        return new FileWorkspaceUnavailableError(error.message)
     }
   }
 
@@ -370,11 +462,7 @@ export class FileService implements OnApplicationBootstrap, OnApplicationShutdow
     replaced: boolean
   }> {
     const config = this.configOf(ctx)
-    const filePath = await resolveWorkspacePath({
-      caps: this.caps,
-      conversationId: ctx.conversationId,
-      path: input.filePath,
-    })
+    const filePath = await this.resolveOf(ctx, input.filePath)
     const info = await this.statOf(ctx, filePath)
     if (!info?.isFile()) {
       throw new FileDeniedError('invalid-input', `不是普通文件：${input.filePath}`)
@@ -486,12 +574,7 @@ export class FileService implements OnApplicationBootstrap, OnApplicationShutdow
     }
     const source = row.source === 'user' ? ('user' as const) : ('ai' as const)
     const defaultPath = source === 'user' ? row.path : `files/${row.path}`
-    const target = await resolveWorkspacePath({
-      caps: this.caps,
-      conversationId: ctx.conversationId,
-      path: input.filePath ?? defaultPath,
-      allowMissing: true,
-    })
+    const target = await this.resolveOf(ctx, input.filePath ?? defaultPath, { allowMissing: true })
     const existing = await this.statOf(ctx, target)
     if (existing?.isFile()) {
       if (row.sha256) {
@@ -559,11 +642,7 @@ export class FileService implements OnApplicationBootstrap, OnApplicationShutdow
     truncated: boolean
   }> {
     const config = this.configOf(ctx)
-    const target = await resolveWorkspacePath({
-      caps: this.caps,
-      conversationId: ctx.conversationId,
-      path: input.filePath,
-    })
+    const target = await this.resolveOf(ctx, input.filePath)
     const info = await this.statOf(ctx, target)
     if (!info?.isFile()) throw new FileDeniedError('invalid-input', '不是普通文件')
     if (info.size > config.readMaxBytes) {
@@ -651,13 +730,7 @@ export class FileService implements OnApplicationBootstrap, OnApplicationShutdow
       config.searchMaxResults,
     )
     const root = this.workspaceOf(ctx)
-    const start = input.pathPrefix
-      ? await resolveWorkspacePath({
-          caps: this.caps,
-          conversationId: ctx.conversationId,
-          path: input.pathPrefix,
-        })
-      : root
+    const start = input.pathPrefix ? await this.resolveOf(ctx, input.pathPrefix) : root
 
     const items: Array<{ filePath: string; line: number; text: string }> = []
     let totalMatches = 0
@@ -667,7 +740,8 @@ export class FileService implements OnApplicationBootstrap, OnApplicationShutdow
 
     const scanFile = async (file: string): Promise<void> => {
       if (truncated) return
-      const info = await stat(file).catch(() => null)
+      // 走 statOf：容器工作区的文件真身在执行面，本地 stat 会全部落空（搜不到任何东西）
+      const info = await this.statOf(ctx, file)
       if (!info?.isFile()) return
       if (info.size > config.readMaxBytes) return
       const rel = relPath(root, file)
@@ -718,7 +792,7 @@ export class FileService implements OnApplicationBootstrap, OnApplicationShutdow
       }
     }
 
-    const startInfo = await stat(start).catch(() => null)
+    const startInfo = await this.statOf(ctx, start)
     if (!startInfo) {
       if (!input.pathPrefix)
         return { items: [], totalMatches: 0, truncated: false, scannedFiles: 0 }
@@ -757,13 +831,7 @@ export class FileService implements OnApplicationBootstrap, OnApplicationShutdow
       input.all === true ? Number.MAX_SAFE_INTEGER : Math.max(1, config.workspaceMaxFiles)
     const offset = Math.max(0, input.offset ?? 0)
     const root = this.workspaceOf(ctx)
-    const start = input.pathPrefix
-      ? await resolveWorkspacePath({
-          caps: this.caps,
-          conversationId: ctx.conversationId,
-          path: input.pathPrefix,
-        })
-      : root
+    const start = input.pathPrefix ? await this.resolveOf(ctx, input.pathPrefix) : root
     const includeCaches =
       input.includeCaches === true ||
       (input.pathPrefix?.startsWith('files/') ?? false) ||
@@ -877,12 +945,7 @@ export class FileService implements OnApplicationBootstrap, OnApplicationShutdow
     ctx: FileContext,
     filePath: string,
   ): Promise<{ path: string; bytes: number; lines: number } | null> {
-    const target = await resolveWorkspacePath({
-      caps: this.caps,
-      conversationId: ctx.conversationId,
-      path: filePath,
-      allowMissing: true,
-    }).catch(() => null)
+    const target = await this.resolveOf(ctx, filePath, { allowMissing: true }).catch(() => null)
     if (!target) return null
     const info = await this.statOf(ctx, target)
     if (!info?.isFile()) return null
@@ -901,12 +964,7 @@ export class FileService implements OnApplicationBootstrap, OnApplicationShutdow
     input: WriteFileInput,
   ): Promise<{ path: string; bytes: number; lines: number; created: boolean }> {
     const config = this.configOf(ctx)
-    const target = await resolveWorkspacePath({
-      caps: this.caps,
-      conversationId: ctx.conversationId,
-      path: input.filePath,
-      allowMissing: true,
-    })
+    const target = await this.resolveOf(ctx, input.filePath, { allowMissing: true })
     this.assertNotCache(ctx, target)
     const body = Buffer.from(input.content, 'utf8')
     if (body.includes(0)) throw new FileDeniedError('invalid-input', '写入内容包含二进制 NUL')
@@ -931,11 +989,7 @@ export class FileService implements OnApplicationBootstrap, OnApplicationShutdow
     input: ReplaceFileInput,
   ): Promise<{ path: string; replaced: number; bytes: number; lines: number }> {
     const config = this.configOf(ctx)
-    const target = await resolveWorkspacePath({
-      caps: this.caps,
-      conversationId: ctx.conversationId,
-      path: input.filePath,
-    })
+    const target = await this.resolveOf(ctx, input.filePath)
     this.assertNotCache(ctx, target)
     const info = await this.statOf(ctx, target)
     if (!info?.isFile()) throw new FileDeniedError('invalid-input', '不是普通文件')
@@ -986,12 +1040,7 @@ export class FileService implements OnApplicationBootstrap, OnApplicationShutdow
     input: AppendFileInput,
   ): Promise<{ path: string; bytes: number; lines: number; created: boolean }> {
     const config = this.configOf(ctx)
-    const target = await resolveWorkspacePath({
-      caps: this.caps,
-      conversationId: ctx.conversationId,
-      path: input.filePath,
-      allowMissing: true,
-    })
+    const target = await this.resolveOf(ctx, input.filePath, { allowMissing: true })
     this.assertNotCache(ctx, target)
     const content = Buffer.from(input.content, 'utf8')
     if (content.includes(0)) throw new FileDeniedError('invalid-input', '写入内容包含二进制 NUL')
@@ -1028,11 +1077,7 @@ export class FileService implements OnApplicationBootstrap, OnApplicationShutdow
     input: { conversationId: string; path: string; download?: boolean },
   ): Promise<{ url: string; mediaType: string; filename: string; bytes: number }> {
     const config = this.configOf(ctx)
-    const target = await resolveWorkspacePath({
-      caps: this.caps,
-      conversationId: input.conversationId,
-      path: input.path,
-    })
+    const target = await this.resolveOf(ctx, input.path)
     const info = await this.statOf(ctx, target)
     if (!info?.isFile()) throw new FileDeniedError('invalid-input', '不是普通文件')
     if (info.size > config.maxBytes) {
@@ -1128,15 +1173,22 @@ export class FileService implements OnApplicationBootstrap, OnApplicationShutdow
         truncated: object.body.length > limit,
       }
     }
-    const target = await resolveWorkspacePath({
-      caps: this.caps,
-      conversationId: ctx.conversationId,
-      path,
-    })
-    const info = await this.statOf(ctx, target)
-    if (!info?.isFile()) throw new FileDeniedError('invalid-input', '不是普通文件')
-    if (!isTextFile(target)) throw new FileDeniedError('invalid-input', '这个文件不是文本类型')
-    const body = await this.readBytesOf(ctx, target)
+    const target = await this.resolveOf(ctx, path)
+    let info: Awaited<ReturnType<FileService['statForPreview']>>
+    try {
+      info = await this.statForPreview(ctx, target)
+    } catch (error) {
+      throw this.previewFailure(ctx, path, error)
+    }
+    if (!info) throw new FileNotFoundError(path)
+    if (info.isDirectory()) throw new FileNotPreviewableError('目录不能预览')
+    if (!isTextFile(target)) throw new FileNotPreviewableError('这个文件不是文本类型')
+    let body: Buffer
+    try {
+      body = await this.readBytesOf(ctx, target)
+    } catch (error) {
+      throw this.previewFailure(ctx, path, error)
+    }
     return {
       text: body.subarray(0, limit).toString('utf8'),
       mediaType: mediaTypeOf(target),
@@ -1150,11 +1202,7 @@ export class FileService implements OnApplicationBootstrap, OnApplicationShutdow
     path: string,
     download = false,
   ): Promise<{ path: string; size: number; mediaType: string; inline: boolean; body?: Buffer }> {
-    const target = await resolveWorkspacePath({
-      caps: this.caps,
-      conversationId: ctx.conversationId,
-      path,
-    })
+    const target = await this.resolveOf(ctx, path)
     const info = await this.statOf(ctx, target)
     if (!info?.isFile()) throw new FileDeniedError('invalid-input', '不是普通文件')
     if (info.size > this.configOf(ctx).maxBytes) {
@@ -1231,12 +1279,9 @@ export class FileService implements OnApplicationBootstrap, OnApplicationShutdow
     for (const attachment of attachments) {
       const basename = attachment.key.split('/').pop() ?? ''
       if (!basename) continue
-      const target = await resolveWorkspacePath({
-        caps: this.caps,
-        conversationId: ctx.conversationId,
-        path: `uploads/${basename}`,
-        allowMissing: true,
-      }).catch(() => null)
+      const target = await this.resolveOf(ctx, `uploads/${basename}`, { allowMissing: true }).catch(
+        () => null,
+      )
       if (!target) continue
       try {
         const existing = await this.statOf(ctx, target)

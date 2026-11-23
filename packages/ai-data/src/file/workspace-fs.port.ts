@@ -50,3 +50,44 @@ export interface WorkspaceFsPort {
 }
 
 export const WORKSPACE_FS_PORT = Symbol.for('WorkspaceFsPort')
+
+/**
+ * 执行面拒绝原因（与 `@repo/contracts` 的 `WorkspaceErrorReason` 同集合）。
+ *
+ * 为什么不能在端口层直接抛 `Error(message)`：`not-found`（文件不存在）、
+ * `runtime-unavailable`（工作区没起）与 `unsafe-path`（越界）对上层的含义完全不同 ——
+ * 统一成一句话后，预览只能笼统报「不是普通文件」，真实原因全丢（issue A / issue 4）。
+ */
+export type WorkspaceFsFailureReason =
+  | 'not-found'
+  | 'invalid-input'
+  | 'unsafe-path'
+  | 'runtime-unavailable'
+  | 'exec-failed'
+  | 'timeout'
+  | 'unknown'
+
+const FAILURE_REASONS = new Set<string>([
+  'not-found',
+  'invalid-input',
+  'unsafe-path',
+  'runtime-unavailable',
+  'exec-failed',
+  'timeout',
+])
+
+export const workspaceFsReasonOf = (value: unknown): WorkspaceFsFailureReason =>
+  typeof value === 'string' && FAILURE_REASONS.has(value)
+    ? (value as WorkspaceFsFailureReason)
+    : 'unknown'
+
+/** 端口调用失败：保留执行面原样的 reason，供上层翻成业务错误码 / 语义 */
+export class WorkspaceFsError extends Error {
+  readonly reason: WorkspaceFsFailureReason
+
+  constructor(reason: WorkspaceFsFailureReason, message: string) {
+    super(message)
+    this.name = 'WorkspaceFsError'
+    this.reason = reason
+  }
+}

@@ -378,6 +378,31 @@ export const AppErrorCodes = createDict({
     value: 3423,
     http: 400,
   },
+  FileNotFound: {
+    label: '文件不存在或已删除',
+    value: 3424,
+    http: 404,
+  },
+  FileNotPreviewable: {
+    label: '该文件不支持预览',
+    value: 3425,
+    http: 400,
+  },
+  FileInvalidInput: {
+    label: '文件参数不合法',
+    value: 3426,
+    http: 400,
+  },
+  FileWorkspaceUnavailable: {
+    label: '工作区暂不可用',
+    value: 3427,
+    http: 503,
+  },
+  FileForbidden: {
+    label: '无权访问该文件',
+    value: 3428,
+    http: 403,
+  },
   InvalidInput: {
     label: '参数校验失败',
     value: 4001,

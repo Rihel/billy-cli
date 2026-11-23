@@ -16,6 +16,8 @@ export interface ErrorDescriptor {
   http: ErrorHttpStatus
   /** 中文文案 */
   label: string
+  /** 具体原因（有则边界拼成 `label：detail`，见 `messageOfDescriptor`） */
+  detail?: string
 }
 
 const toErrorHttpStatus = (status: unknown): ErrorHttpStatus => {
@@ -45,6 +47,16 @@ export const describeErrorCode = (code: number): ErrorDescriptor => {
     : { value: AppErrorCodes.Internal, http: 500, label: '系统错误' }
 }
 
+/**
+ * 响应 message：有 detail 时拼成 `label：detail`。
+ *
+ * 为什么是「拼接」而不是二选一：label 让用户 / 模型知道失败类别（可据它决定下一步），
+ * detail 才是这一次的具体原因（限额、超时、路径不存在）。只给 label 会让执行面模型
+ * 无从自纠，只给 detail 又会丢掉稳定的错误语义。
+ */
+export const messageOfDescriptor = (descriptor: ErrorDescriptor): string =>
+  descriptor.detail ? `${descriptor.label}：${descriptor.detail}` : descriptor.label
+
 /** AppError 及自定义错误统一以数字 `code` 标识业务错误码 */
 const hasAppErrorCode = (error: unknown): error is { code: number } =>
   !!error &&
@@ -71,7 +83,13 @@ const expressStatusOf = (error: unknown): number | undefined => {
  */
 export const mapError = (error: unknown): ErrorDescriptor => {
   if (hasAppErrorCode(error)) {
-    return describeErrorCode(error.code)
+    const descriptor = describeErrorCode(error.code)
+    // 字典 label 只回答「哪一类失败」；带 detail 的错误把「这一次为什么失败」一并交出去
+    const detail =
+      'detail' in error && typeof (error as { detail?: unknown }).detail === 'string'
+        ? (error as { detail?: string }).detail?.trim()
+        : undefined
+    return detail ? { ...descriptor, detail } : descriptor
   }
   if (error instanceof HttpException) {
     const status = error.getStatus()

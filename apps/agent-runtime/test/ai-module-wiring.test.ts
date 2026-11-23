@@ -1,5 +1,6 @@
 import 'reflect-metadata'
 import { describe, expect, it } from 'vitest'
+import { WORKSPACE_FS_PORT } from '@repo/ai-data'
 import { AiModule } from '../src/modules/ai/ai.module.js'
 
 /**
@@ -33,6 +34,11 @@ describe('AiModule 组合根：装配自洽', () => {
       missing.map((token) => String(token)),
       '导出但没有提供 —— 只会在启动时报 UnknownExportException',
     ).toEqual([])
+  })
+
+  it('注册了 WORKSPACE_FS_PORT：消费 FileService 的 app 都要接执行面端口', () => {
+    // 漏注册时 FileService 会静默落回宿主本地盘：容器会话的文件预览 / 读写全部 404 / 写错位置
+    expect(providedTokens()).toContain(WORKSPACE_FS_PORT)
   })
 
   it('`controllers` 非空（模块要么提供能力、要么暴露路由）', () => {
