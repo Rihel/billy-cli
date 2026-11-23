@@ -17,6 +17,10 @@
 - **对话详情仍有 2s 轮询**（`chat-conversation.tsx` 的 `activeRunQuery`）：那是断流后续流的兜底，
   与列表运行态不是一件事，别顺手删。
 - `running` 只认根 run 的 `pending` / `running`：**挂起（suspended）会灭灯**，与部分唯一索引口径不同。
+- **用户停止（2026-11-23）**：`POST /agent/run/stop` 收 `{runId? | conversationId?}`（至少一个）；
+  无 runId 时 runtime 用 `runs.findActive(conversationId)` 兜底，找不到按幂等成功处理。
+  admin 在停止请求期间 + **1.5s 冷却**内用 `stopping` / `stoppingRef` 挡住恢复链路，成功后清 `runIdRef`，
+  否则服务端还没把 run 落成 canceled，恢复流会读到 running 把界面重新点亮。
 
 ## 为什么保留一次"对账"
 

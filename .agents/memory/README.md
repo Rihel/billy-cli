@@ -59,7 +59,7 @@
 | [agui-protocol](agui-protocol.md) | 输出走 AG-UI 1.0：帧 v2 event、rev 水位、快照+sinceRev、RUN_FINISHED 收尾不发 [DONE] | 必核 | 2026-11-17 |
 | [ai-context-compression](ai-context-compression.md) | 摘要压缩只在轮前；轮内另有工具结果预算（prepareStep + turn-budget），落库出参不动 | 必核 | 2026-10-29 |
 | [ai-agent-file-map](ai-agent-file-map.md) | AI 运行期关键链路的位置速查（上下文、时间线、记忆、技能、子 agent） | 抽核 | 2026-10-25 |
-| [ai-file-management](ai-file-management.md) | `ai_files` + 9 个文件工具 + 每会话 workspace；入站引用、`uploads/`/`files/` 约定、删会话清理；HTML 预览的 CDN 白名单与「必须用 Tailwind、`<style>` 补位」口径 | 必核 | 2026-11-14 |
+| [ai-file-management](ai-file-management.md) | `ai_files` + 9 个文件工具 + 每会话 workspace；入站引用、`uploads/`/`files/` 约定、删会话清理；HTML 预览的 CDN 白名单与「必须用 Tailwind、`<style>` 补位」口径；文件错误码 3424–3428 与 remote 显式声明 | 必核 | 2026-11-23 |
 | [ai-command-limits](ai-command-limits.md) | bash 时长 5 分钟、模型无 timeout 入参；远端链 4 个 deadline 必须一起抬；写文件 10MB 要同时改 maxWriteBytes/maxBytes 与已入库配置 | 必核 | 2026-11-15 |
 | [dev-session-log](dev-session-log.md) | 开发会话记录在 `~/.dsh/sessions/`，zstd + JSONL，可直接统计调用与用量 | 抽核 | 2026-10-25 |
 | [token-cost-model](token-cost-model.md) | skill 只占工具输出 1%–3%，成本主项是「调用次数 × 累积上下文」 | 免核 | 2026-10-25 |
@@ -82,7 +82,7 @@
 | [ai-market](ai-market.md) | 市场 v1 只做 MCP 区：`ai_market_items`（key 幂等 upsert）、scope 固定 platform、不装二进制；个人区待开放 | 必核 | 2026-11-20 |
 | [skill-scope-grants](skill-scope-grants.md) | 技能唯一性按可见集合（platform 按 key、personal 按 owner+key）；`ai_skill_grants` 授权表；P9 剩余过滤/种子/删宿主目录 | 必核 | 2026-11-20 |
 | [workspace-file-concurrency](workspace-file-concurrency.md) | 同一工作区并发：bash 按工作区串行、写按 `workspaceId:path` 串行、写走同目录 tmp+rename 原子落盘；锁在执行面进程内（1 副本） | 抽核 | 2026-11-22 |
-| [workspace-setup-stage](workspace-setup-stage.md) | 初始化阶段在 workspace-service：装包→`.agents/`→凭据（走 main resolve）→`.billy/setup.json`；幂等 hash 只覆盖包+技能；env 必须 `sh -c` 整条包装；凭据段失败靠 credentialsReady + 5s 定时补偿，清单读取要 JSON.parse | 必核 | 2026-11-21 |
+| [workspace-setup-stage](workspace-setup-stage.md) | 初始化阶段在 workspace-service：装包→`.agents/`→凭据→`.billy/setup.json`；幂等 hash 只覆盖包+技能；`skillSetVersion` 60s 节流兜底、冷路径后台化、`writeMany` 批量写、host `~`/mode 口径；凭据段失败靠 credentialsReady + 5s 补偿，清单读取要 JSON.parse | 必核 | 2026-11-23 |
 | [credential-envelope](credential-envelope.md) | 凭据密文 `v1:keyId:iv:tag:ct`、AAD 绑行身份防搬运；模板驱动校验/拆分/提示；`personal_credentials` 按 owner+name 唯一；`key` 区分同 provider 多模板（lark-app 自建应用）；lark 无明文导出、走 credential-save | 必核 | 2026-11-21 |
 | [admin-owner-scope](admin-owner-scope.md) | 归属唯一入口 `currentOwner` / `scopeOf`；管理员类型只认会话（`adminType`），管理员管理挂 GodAdminGuard；超管来自 env 种子 / seed:admin | 必核 | 2026-11-20 |
 | [agent-tool-authorization](agent-tool-authorization.md) | agent 授权是结构化选择器；作用域装配期过滤工具面；子 agent 与主 agent 同面（含 MCP），只差委派类与 ask-user | 必核 | 2026-11-22 |
@@ -113,7 +113,7 @@
 | [env-config](env-config.md) | 环境变量：`.env` 覆盖真实进程环境（dotenv override）、每 app 只声明自己分片、端口别名与模板布局、已删死键 | 必核 | 2026-11-20 |
 | [infra-optional-degradation](infra-optional-degradation.md) | 对象存储未配置/不可达不拦启动；`AGENT_COMMAND_WORK_DIR` 在启动与执行前自愈；问答取消走 `resumeStream({cancelled:true})` | 必核 | 2026-11-11 |
 | [ai-chat-scroll](ai-chat-scroll.md) | 进会话自己滑到底：占位让历史加载变成「第二次长高」，走的是 `resize` 不是 `initial`；非流式一律 instant | 抽核 | 2026-11-13 |
-| [ai-chat-running-state](ai-chat-running-state.md) | 续流必须带 conversationId（否则串流）；运行中灯走 `ai:owner` 事件驱动 + 重连对账（不再轮询） | 抽核 | 2026-11-13 |
+| [ai-chat-running-state](ai-chat-running-state.md) | 续流必须带 conversationId（否则串流）；运行中灯走 `ai:owner` 事件驱动 + 重连对账（不再轮询）；停止支持 runId/conversationId 二选一并挡恢复 1.5s | 抽核 | 2026-11-23 |
 | [engineering-toolchain](engineering-toolchain.md) | oxlint + oxfmt + lefthook：0/0 门禁、oxfmt 0.x 钉版本、Windows sh 转义的坑 | 必核 | 2026-11-13 |
 | [packages-layout](packages-layout.md) | 5 个包按运行时分层且单消费者；build 0.9s / typecheck 1.2s，拆包无收益，问题是依赖卫生与入口 | 抽核 | 2026-11-13 |
 | [app-start-standalone](app-start-standalone.md) | standalone 下 `next start` 不兼容；统一走 `scripts/start-standalone.ts`，本地端口 9840/9845 | 必核 | 2026-11-13 |

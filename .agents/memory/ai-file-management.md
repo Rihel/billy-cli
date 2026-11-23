@@ -25,6 +25,13 @@
   `ai-subagent-result-and-wake` 第 5 条），不能直接用宿主本地 `FileService`。
 - HTTP：`POST /agent/file/workspace`、`POST /agent/file/preview`（source ai/workspace）、
   `GET /agent/file/workspace-content`（cookie + Range + inline/attachment）。
+- **工作区文件错误语义（2026-11-23）**：`WORKSPACE_FS_PORT` 统一由
+  `createWorkspaceFsPort(client)` 实现（`@repo/ai-data`，main / common-capability / agent-runtime 各装配一份），
+  `WorkspaceFsResult.reason` 原样透出为 `WorkspaceFsError`。文件业务码：3424 not-found / 3425 不可预览 /
+  3426 入参 / 3427 执行面不可用 / 3428 越权；`previewText` 用 `statForPreview` 区分 not-found 与
+  「工作区没起」，失败记 `ai.file.preview_stat_failed`。`resolveWorkspacePath` 必须由调用方显式传
+  `remote`（`fsPort + workspaceId`），**不能按本地 `{root}/{会话}` 在不在猜后端** —— 容器会话的本地
+  入站附件残留会让真身在容器的文件被本地 realpath 判成 not-found（预览 404 根因）。
 - **单文件删除（2026-11-21）**：`POST /agent/file/remove`（会话侧，先 `requireOwned` 再按
   `conversationId` 校验归属）与 `POST /agent/file/admin/remove`（管理员，任意会话）。
   语义是**硬删**：先删 OSS 对象（**只删 `source='ai'` 的**；入站附件内容寻址、可能跨会话共用，
