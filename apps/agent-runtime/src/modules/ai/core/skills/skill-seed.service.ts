@@ -4,6 +4,7 @@ import { AiSkillEntity, AiSkillFileEntity } from '@repo/db'
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs'
 import { join, relative } from 'node:path'
 import { SKILL_CATALOG_DIR } from './skill.loader.js'
+import { hashSkillFiles } from './skill.draft.js'
 
 const SKILL_FILE = 'SKILL.md'
 
@@ -94,6 +95,9 @@ export class SkillSeedService implements OnApplicationBootstrap {
               description: skill.description,
               enabled: true,
               source: 'builtin',
+              // 入库必须带内容哈希：工作区的技能集合版本靠它比对，缺哈希会让
+              // 「仅 seed 入库」的技能每次重启都被判成落后（issue 5）
+              contentHash: hashSkillFiles(skill.files),
               lastValidatedAt: new Date(),
             }),
           )
@@ -105,6 +109,7 @@ export class SkillSeedService implements OnApplicationBootstrap {
               enabled: true,
               source: 'builtin',
               scope: 'platform',
+              contentHash: hashSkillFiles(skill.files),
               lastValidatedAt: new Date(),
             }),
           )

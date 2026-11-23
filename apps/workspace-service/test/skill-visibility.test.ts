@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest'
-import { visibleSkillsOf, type SkillRow } from '../src/workspace/skill-visibility.js'
+import {
+  skillSetVersionOf,
+  visibleSkillsOf,
+  type SkillRow,
+} from '../src/workspace/skill-visibility.js'
 
 /**
  * 技能可见集合（§6.7.1 / §6.7.2）。
@@ -86,5 +90,36 @@ describe('个人技能', () => {
     const visible = visibleSkillsOf([platform, mine], [], USER)
     expect(visible).toHaveLength(1)
     expect(visible[0].files[0].content).toBe('personal')
+  })
+})
+
+describe('skillSetVersionOf（可见技能集合版本）', () => {
+  it('与技能顺序无关：同一份集合永远同一个版本', () => {
+    const a = { key: 'a', contentHash: 'h1' }
+    const b = { key: 'b', contentHash: 'h2' }
+    expect(skillSetVersionOf([a, b])).toBe(skillSetVersionOf([b, a]))
+    expect(skillSetVersionOf([a, b])).toHaveLength(16)
+  })
+
+  it('内容变化 / 集合增减都会改版本（否则 ensure 永远判「已同步」）', () => {
+    const base = skillSetVersionOf([{ key: 'a', contentHash: 'h1' }])
+    expect(skillSetVersionOf([{ key: 'a', contentHash: 'h2' }])).not.toBe(base)
+    expect(
+      skillSetVersionOf([
+        { key: 'a', contentHash: 'h1' },
+        { key: 'b', contentHash: '' },
+      ]),
+    ).not.toBe(base)
+  })
+
+  it('空集合也有稳定版本（首次初始化可写入）', () => {
+    expect(skillSetVersionOf([])).toBe(skillSetVersionOf([]))
+    expect(skillSetVersionOf([])).toHaveLength(16)
+  })
+
+  it('缺 contentHash 按空串算（历史行 / 未 seed 不会让版本抖动）', () => {
+    expect(skillSetVersionOf([{ key: 'a' }])).toBe(
+      skillSetVersionOf([{ key: 'a', contentHash: null }]),
+    )
   })
 })

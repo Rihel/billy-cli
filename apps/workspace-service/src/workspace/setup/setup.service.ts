@@ -12,6 +12,7 @@ import type { CredentialResolvedItem, WorkspaceFeatures } from '@repo/contracts'
 import { WorkspaceRepository } from '../workspace.repository.js'
 import { WorkspaceCredentialClient } from '../credential/client.js'
 import { installCommandOf, mergeSetupPackages, renderInjectRules, setupHashOf } from './pure.js'
+import { skillSetVersionOf } from '../skill-visibility.js'
 import type { SetupShell } from './shell.js'
 import {
   WorkspaceServiceConfig,
@@ -35,7 +36,18 @@ interface ResolvedPlan {
   files: WorkspaceSetupFile[]
   env: Record<string, string>
   skills: { key: string; files: { path: string; content: string }[] }[]
+  /** 可见技能集合版本（写 `.billy/setup.json`，ensure 时比对） */
+  skillSetVersion: string
   owner: { ownerType: 'user' | 'admin'; ownerId: string }
+}
+
+/** `.billy/setup.json` 的形状（历史文件可能缺字段，读取时按可选处理） */
+interface SetupState {
+  setupId?: string
+  hash?: string
+  credentialVersion?: number | string
+  skillSetVersion?: string
+  generatedAt?: string
 }
 
 /**
@@ -82,6 +94,8 @@ export class WorkspaceSetupService {
       credentials: [],
     }
 
+    // 旧版本要保留：技能没写全 / 幂等命中时不能把「期望版本」写进文件冒充已同步
+    const previous = await this.readSetupState(shell)
     const marker = `.billy/setup/${plan.setupId}@${plan.hash}.done`
     const done = await shell.read(marker).catch(() => null)
     if (!done) {
@@ -124,21 +138,20 @@ export class WorkspaceSetupService {
       : { env: {}, manifest: [], resolved: true }
     const { env: credentialEnv, manifest, resolved } = credential
 
-    await shell
-      .write(
-        '.billy/setup.json',
-        JSON.stringify(
-          {
-            setupId: plan.setupId,
-            hash: plan.hash,
-            credentialVersion: 0,
-            generatedAt: new Date().toISOString(),
-          },
-          null,
-          2,
-        ),
-      )
-      .catch(() => undefined)
+    // 幂等命中时没重新物化技能：沿用旧版本；首次初始化只在技能全部落盘后才记新版本
+    const skillsComplete = report.skills.every((item) => item.outcome === 'materialized')
+    const skillSetVersion = done
+      ? previous?.skillSetVersion
+      : skillsComplete
+        ? plan.skillSetVersion
+        : previous?.skillSetVersion
+    await this.writeSetupState(shell, {
+      setupId: plan.setupId,
+      hash: plan.hash,
+      credentialVersion: 0,
+      ...(skillSetVersion ? { skillSetVersion } : {}),
+      generatedAt: new Date().toISOString(),
+    })
     if (features.writeHome) {
       await shell
         .write('.billy/credentials.json', JSON.stringify({ version: 0, items: manifest }, null, 2))
@@ -184,7 +197,7 @@ export class WorkspaceSetupService {
   async syncSkills(
     workspaceId: string,
     shell: SetupShell,
-  ): Promise<{ written: string[]; removed: string[] }> {
+  ): Promise<{ written: string[]; removed: string[]; failed: number }> {
     const context = await this.repo.findSetupContext(workspaceId)
     if (!context) throw new Error(`工作区不存在：${workspaceId}`)
     const skills = await this.repo.listVisibleSkills({
@@ -224,7 +237,51 @@ export class WorkspaceSetupService {
       // 部分失败也要显性化：管理页点了「同步」但技能没写全时，日志是唯一的证据
       failed: report.skills.filter((item) => item.outcome !== 'materialized').length,
     })
-    return { written: skills.map((skill) => skill.key), removed }
+    return {
+      written: skills.map((skill) => skill.key),
+      removed,
+      failed: report.skills.filter((item) => item.outcome !== 'materialized').length,
+    }
+  }
+
+  /**
+   * **技能集合版本兜底**（§6.7.4）：比对 `.billy/setup.json` 的 `skillSetVersion`，
+   * 落后才物化；写全了才记新版本。
+   *
+   * 补的是两条「尽力而为」路径的洞：main 推送只推运行中的工作区、初始化物化只在新容器
+   * 首次创建时跑。技能在「工作区没在跑」或「推送丢一次」之后就再也不会进 `.agents/`。
+   */
+  async syncSkillsIfStale(
+    workspaceId: string,
+    shell: SetupShell,
+  ): Promise<{ version: string; changed: boolean; failed: number }> {
+    const context = await this.repo.findSetupContext(workspaceId)
+    if (!context) throw new Error(`工作区不存在：${workspaceId}`)
+    const owner = { ownerType: context.ownerType, ownerId: context.ownerId }
+    const desired = await this.repo.skillSetVersionOf(owner)
+    const previous = await this.readSetupState(shell)
+    if (previous?.skillSetVersion === desired) {
+      return { version: desired, changed: false, failed: 0 }
+    }
+
+    const result = await this.syncSkills(workspaceId, shell)
+    if (result.failed === 0) {
+      await this.writeSetupState(shell, {
+        setupId: previous?.setupId ?? context.setupId ?? 'default',
+        hash: previous?.hash ?? '',
+        credentialVersion: previous?.credentialVersion ?? 0,
+        skillSetVersion: desired,
+        generatedAt: new Date().toISOString(),
+      })
+    } else {
+      // 没写全就不记版本：否则一次瞬时失败会被下一次比对当成「已同步」而永久固化
+      this.logger.warn('workspace.skill.sync_incomplete', {
+        workspaceId,
+        desired,
+        failed: result.failed,
+      })
+    }
+    return { version: desired, changed: true, failed: result.failed }
   }
 
   async syncCredentials(
@@ -259,6 +316,22 @@ export class WorkspaceSetupService {
       resolved,
     })
     return { env, version, report, manifest, resolved }
+  }
+
+  /** 读 `.billy/setup.json`（不存在 / 半截一律 null，交给调用方按「没写过」处理） */
+  private async readSetupState(shell: SetupShell): Promise<SetupState | null> {
+    const raw = await shell.read('.billy/setup.json').catch(() => null)
+    if (!raw?.trim()) return null
+    try {
+      const parsed = JSON.parse(raw) as SetupState
+      return parsed && typeof parsed === 'object' ? parsed : null
+    } catch {
+      return null
+    }
+  }
+
+  private async writeSetupState(shell: SetupShell, state: SetupState): Promise<void> {
+    await shell.write('.billy/setup.json', JSON.stringify(state, null, 2)).catch(() => undefined)
   }
 
   // ── 计划：清单 + 技能 + 归属 ────────────────────────────────
@@ -296,6 +369,7 @@ export class WorkspaceSetupService {
       files: this.asFiles(setup?.files),
       env: this.asEnv(setup?.env),
       skills: skills.map((skill) => ({ key: skill.key, files: skill.files })),
+      skillSetVersion: skillSetVersionOf(skills),
       owner,
     }
   }
@@ -376,12 +450,22 @@ export class WorkspaceSetupService {
         const rank = (path: string): number => (path === 'SKILL.md' ? 0 : 1)
         return rank(left.path) - rank(right.path)
       })
+      const targets = files.map((file) => ({
+        path: `.agents/${skill.key}/${file.path}`,
+        content: file.content,
+      }))
       const failed: string[] = []
-      for (const file of files) {
-        try {
-          await shell.write(`.agents/${skill.key}/${file.path}`, file.content)
-        } catch (error) {
-          failed.push(`${file.path}（${error instanceof Error ? error.message : String(error)}）`)
+      try {
+        // 批量写：容器后端一次 exec 落多个文件（逐文件 docker exec 是冷路径 6s 的主因之一）
+        await shell.writeMany(targets)
+      } catch {
+        // 批量失败退回逐个写：把失败精确到文件，单文件失败不连坐
+        for (const [index, file] of files.entries()) {
+          try {
+            await shell.write(targets[index]!.path, file.content)
+          } catch (error) {
+            failed.push(`${file.path}（${error instanceof Error ? error.message : String(error)}）`)
+          }
         }
       }
       if (failed.length === 0) {
@@ -448,21 +532,15 @@ export class WorkspaceSetupService {
     const rows = await this.repo.listActiveCredentialVersions(plan.owner)
     const version = credentialVersionOf(rows)
 
-    await shell
-      .write(
-        '.billy/setup.json',
-        JSON.stringify(
-          {
-            setupId: plan.setupId,
-            hash: plan.hash,
-            credentialVersion: version,
-            generatedAt: new Date().toISOString(),
-          },
-          null,
-          2,
-        ),
-      )
-      .catch(() => undefined)
+    // 凭据同步不负责技能：技能版本必须沿用磁盘上的旧值（否则会冒充「技能已同步」）
+    const previous = await this.readSetupState(shell)
+    await this.writeSetupState(shell, {
+      setupId: plan.setupId,
+      hash: plan.hash,
+      credentialVersion: version,
+      ...(previous?.skillSetVersion ? { skillSetVersion: previous.skillSetVersion } : {}),
+      generatedAt: new Date().toISOString(),
+    })
     await shell
       .write('.billy/credentials.json', JSON.stringify({ version, items: manifest }, null, 2))
       .catch(() => undefined)
@@ -523,7 +601,7 @@ export class WorkspaceSetupService {
       })
       try {
         for (const file of rendered.files) {
-          await shell.write(file.path, file.content, 600)
+          await shell.write(file.path, file.content, 0o600)
         }
         Object.assign(env, rendered.env)
         report.credentials.push({

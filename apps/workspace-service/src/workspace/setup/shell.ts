@@ -1,5 +1,6 @@
 import { randomBytes } from 'node:crypto'
-import { chmod, mkdir, readdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
+import { chmod, mkdir, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises'
+import { homedir } from 'node:os'
 import { dirname, isAbsolute, relative, resolve } from 'node:path'
 import { shellQuote } from '../exec/env.js'
 
@@ -20,8 +21,20 @@ export interface SetupExecResult {
  */
 export interface SetupShell {
   exec(command: string, opts?: { timeoutMs?: number }): Promise<SetupExecResult>
-  /** 写文件（自动建父目录；默认 600 权限 —— 凭据文件必须只有执行用户可读） */
+  /**
+   * 写文件（自动建父目录；默认 `0o600` —— 凭据文件必须只有执行用户可读）。
+   *
+   * `mode` 是**权限位值**（八进制字面量 `0o600`），不是十进制数字：
+   * 旧约定让调用方传十进制 `600`，host 后端 `chmod(file, 600)` 会写成 `0o1130`（---x-wx--T），
+   * 连属主都读不了（issue 6）。exec 后端用 `mode.toString(8)` 生成 `chmod 600`，两边语义一致。
+   */
   write(path: string, content: string, mode?: number): Promise<void>
+  /**
+   * 批量写（物化技能用）：容器后端尽量合并成极少数命令，避免每个文件 2–4 次 `docker exec`。
+   *
+   * 失败时抛错即可 —— 调用方（`materializeSkills`）会退回逐个写，精确到文件记 partial。
+   */
+  writeMany(files: { path: string; content: string }[], mode?: number): Promise<void>
   /** 读文件；不存在返回 null */
   read(path: string): Promise<string | null>
   /** 列某个目录下的子目录名（技能收敛用；不依赖 shell，Windows 也能跑） */
@@ -59,10 +72,19 @@ const WRITE_CHUNK_CHARS = 48_000
  */
 export const createExecShell = (
   exec: (command: string, opts?: { timeoutMs?: number }) => Promise<SetupExecResult>,
-): SetupShell => ({
-  exec,
+): SetupShell => {
+  /** 单个文件的写命令（内容 base64 后作为 printf 参数，无注入面） */
+  const writeCommandOf = (path: string, content: string, mode: number): string => {
+    const dir = path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : '.'
+    const target = shellPath(path)
+    const pieces = [`mkdir -p ${shellPath(dir)}`, `: > ${target}`]
+    const base64 = base64Of(content)
+    if (base64) pieces.push(`printf %s ${shellQuote(base64)} | base64 -d >> ${target}`)
+    pieces.push(`chmod ${mode.toString(8)} ${target}`)
+    return pieces.join(' && ')
+  }
 
-  async write(path, content, mode = 600) {
+  const write = async (path: string, content: string, mode = 0o600): Promise<void> => {
     const dir = path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : '.'
     const target = shellPath(path)
     // 先建目录并截断（空文件也要真的落下来），再逐片追加，最后改权限
@@ -80,36 +102,76 @@ export const createExecShell = (
       if (!result.ok) throw new Error(`写文件失败（${path}）：${result.stderr.slice(0, 300)}`)
     }
 
-    const chmod = await exec(`chmod ${mode} ${target}`, { timeoutMs: 15_000 })
+    const chmod = await exec(`chmod ${mode.toString(8)} ${target}`, { timeoutMs: 15_000 })
     if (!chmod.ok) throw new Error(`写文件失败（${path}）：${chmod.stderr.slice(0, 300)}`)
-  },
+  }
 
-  async listDirs(path) {
-    const result = await exec(`ls -1p ${shellPath(path)} 2>/dev/null || true`, {
-      timeoutMs: 15_000,
-    })
-    return result.ok
-      ? result.stdout
-          .split('\n')
-          .map((line) => line.trim().replace(/\/+$/, ''))
-          .filter(Boolean)
-      : []
-  },
+  return {
+    exec,
+    write,
 
-  async read(path) {
-    // 用哨兵区分"文件不存在"与"文件为空"
-    const result = await exec(
-      `if [ -f ${shellPath(path)} ]; then cat ${shellPath(path)}; else echo __MISSING__; fi`,
-      {
+    async writeMany(files, mode = 0o600) {
+      // 超片文件（base64 > 48KB）退回 write 的分片路径；其余按总命令长度分批
+      const oversized: { path: string; content: string }[] = []
+      let batch: string[] = []
+      let chars = 0
+      const flush = async (): Promise<void> => {
+        if (batch.length === 0) return
+        const result = await exec(batch.join(' && '), { timeoutMs: 60_000 })
+        batch = []
+        chars = 0
+        if (!result.ok) throw new Error(`批量写文件失败：${result.stderr.slice(0, 300)}`)
+      }
+
+      for (const file of files) {
+        if (base64Of(file.content).length > WRITE_CHUNK_CHARS) {
+          oversized.push(file)
+          continue
+        }
+        const command = writeCommandOf(file.path, file.content, mode)
+        if (chars + command.length > WRITE_CHUNK_CHARS && batch.length > 0) await flush()
+        batch.push(command)
+        chars += command.length + 4
+      }
+      await flush()
+      for (const file of oversized) await write(file.path, file.content, mode)
+    },
+
+    async listDirs(path) {
+      const result = await exec(`ls -1p ${shellPath(path)} 2>/dev/null || true`, {
         timeoutMs: 15_000,
-      },
-    )
-    if (!result.ok) return null
-    return result.stdout === '__MISSING__\n' || result.stdout === '__MISSING__'
-      ? null
-      : result.stdout
-  },
-})
+      })
+      return result.ok
+        ? result.stdout
+            .split('\n')
+            .map((line) => line.trim().replace(/\/+$/, ''))
+            .filter(Boolean)
+        : []
+    },
+
+    async read(path) {
+      // 用哨兵区分"文件不存在"与"文件为空"
+      const result = await exec(
+        `if [ -f ${shellPath(path)} ]; then cat ${shellPath(path)}; else echo __MISSING__; fi`,
+        {
+          timeoutMs: 15_000,
+        },
+      )
+      if (!result.ok) return null
+      return result.stdout === '__MISSING__\n' || result.stdout === '__MISSING__'
+        ? null
+        : result.stdout
+    },
+  }
+}
+
+/** Host 初始化 IO 的边界选项 */
+export interface HostShellOptions {
+  /** 是否允许落到宿主 HOME（凭据注入）；Host + 沙箱默认不写 */
+  allowHome?: boolean
+  /** 宿主 HOME（测试可注入；默认 `os.homedir()`） */
+  home?: string
+}
 
 /**
  * **Host 后端的初始化 IO**：文件用 Node fs 直写，命令仍然走执行面。
@@ -117,49 +179,88 @@ export const createExecShell = (
  * 为什么不像容器那样全走 shell：Windows 上没有 `mkdir -p` / `printf | base64 -d` / `chmod`，
  * 而 Host 的初始化只需要「写文件 + 跑命令」两件事，写文件直接用 Node fs 就没有平台依赖了。
  *
- * 两条纪律：
- * 1. **只写工作区内**：Host 的初始化只落技能与标记（凭据与安装清单已按声明跳过），
- *    路径越界直接报错，不因为「能写宿主」就放开；
- * 2. **原子写**：同目录临时文件 + `rename`，与文件能力保持同一套语义。
+ * 三条纪律：
+ * 1. **`~` 与 exec shell 同语义**：都指**真实 HOME**，不能落到 `{工作区}/~`（issue 6 的凭据静默失效）；
+ * 2. **HOME 下不覆盖已有文件**：用户自己的 CLI 登录态不能被平台初始化冲掉；
+ * 3. **越界安全**：工作区内恒允许；HOME 需 `allowHome`；其余读返回 null / 空列表，写直接报错。
  */
-export const createHostShell = (root: string, exec: SetupShell['exec']): SetupShell => {
-  const target = (path: string): string => {
-    const resolved = isAbsolute(path) ? resolve(path) : resolve(root, path)
+export const createHostShell = (
+  root: string,
+  exec: SetupShell['exec'],
+  options: HostShellOptions = {},
+): SetupShell => {
+  const home = options.home ?? homedir()
+
+  const expand = (path: string): string => {
+    if (path === '~') return home
+    if (path.startsWith('~/')) return resolve(home, path.slice(2))
+    return isAbsolute(path) ? path : resolve(root, path)
+  }
+
+  /** 解析并做边界校验：工作区内恒允许；HOME 需 allowHome；其余 null */
+  const resolveTarget = (path: string): { file: string; home: boolean } | null => {
+    const resolved = resolve(expand(path))
     const rel = relative(root, resolved)
-    if (rel.startsWith('..') || isAbsolute(rel)) {
-      throw new Error(`初始化只允许写工作区内：${path}`)
+    if (rel === '' || (!rel.startsWith('..') && !isAbsolute(rel))) {
+      return { file: resolved, home: false }
     }
-    return resolved
+    const relHome = relative(home, resolved)
+    if (
+      options.allowHome &&
+      (relHome === '' || (!relHome.startsWith('..') && !isAbsolute(relHome)))
+    ) {
+      return { file: resolved, home: true }
+    }
+    return null
+  }
+
+  const requireTarget = (path: string): { file: string; home: boolean } => {
+    const found = resolveTarget(path)
+    if (!found) throw new Error(`初始化只允许写工作区内：${path}`)
+    return found
+  }
+
+  const exists = async (file: string): Promise<boolean> =>
+    stat(file)
+      .then(() => true)
+      .catch(() => false)
+
+  const write = async (path: string, content: string, mode = 0o600): Promise<void> => {
+    const { file, home: inHome } = requireTarget(path)
+    // HOME 下已有文件不覆盖：保护用户自己的 CLI 登录态
+    if (inHome && (await exists(file))) return
+    const tmp = `${file}.billy-tmp-${randomBytes(4).toString('hex')}`
+    await mkdir(dirname(file), { recursive: true })
+    try {
+      await writeFile(tmp, content, 'utf8')
+      await rename(tmp, file)
+    } catch (error) {
+      await rm(tmp, { force: true }).catch(() => undefined)
+      throw error
+    }
+    // Windows 上 chmod 基本无效（只影响只读位），失败不报错
+    await chmod(file, mode).catch(() => undefined)
   }
 
   return {
     exec,
-
-    async write(path, content, mode = 600) {
-      const file = target(path)
-      const tmp = `${file}.billy-tmp-${randomBytes(4).toString('hex')}`
-      await mkdir(dirname(file), { recursive: true })
-      try {
-        await writeFile(tmp, content, 'utf8')
-        await rename(tmp, file)
-      } catch (error) {
-        await rm(tmp, { force: true }).catch(() => undefined)
-        throw error
-      }
-      // Windows 上 chmod 基本无效（只影响只读位），失败不报错
-      await chmod(file, mode).catch(() => undefined)
+    write,
+    async writeMany(files, mode = 0o600) {
+      for (const file of files) await write(file.path, file.content, mode)
     },
-
     async listDirs(path) {
-      return readdir(target(path), { withFileTypes: true })
+      const found = resolveTarget(path)
+      if (!found) return []
+      return readdir(found.file, { withFileTypes: true })
         .then((entries) =>
           entries.filter((entry) => entry.isDirectory()).map((entry) => entry.name),
         )
         .catch(() => [])
     },
-
     async read(path) {
-      return readFile(target(path), 'utf8').catch(() => null)
+      const found = resolveTarget(path)
+      if (!found) return null
+      return readFile(found.file, 'utf8').catch(() => null)
     },
   }
 }

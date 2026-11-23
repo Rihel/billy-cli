@@ -10,7 +10,12 @@ import {
   PersonalCredentialEntity,
 } from '@repo/db'
 import { CredentialStatus } from '@repo/shared'
-import { visibleSkillsOf, type SkillGrantRow, type SkillRow } from './skill-visibility.js'
+import {
+  skillSetVersionOf as computeSkillSetVersion,
+  visibleSkillsOf,
+  type SkillGrantRow,
+  type SkillRow,
+} from './skill-visibility.js'
 import type { WorkspaceConfig } from '@repo/contracts'
 
 /**
@@ -88,19 +93,72 @@ export class WorkspaceRepository {
     ownerId: string
     adminType?: 'normal' | 'god'
   }): Promise<
-    { key: string; name: string; description: string; files: { path: string; content: string }[] }[]
+    {
+      key: string
+      name: string
+      description: string
+      contentHash: string | null
+      files: { path: string; content: string }[]
+    }[]
   > {
     const skills = await this.db.getRepository(AiSkillEntity).find({ where: { enabled: true } })
     if (skills.length === 0) return []
 
-    const grants = await this.db.getRepository(AiSkillGrantEntity).find({
-      select: { skillKey: true, principalType: true, principalId: true },
-    })
     const files = await this.db.getRepository(AiSkillFileEntity).find({
       where: skills.map((skill) => ({ skillId: skill.id })),
       select: { skillId: true, path: true, content: true },
     })
 
+    const idOf = new Map(skills.map((skill) => [skill.skillKey, skill.id]))
+    const rows = await this.visibleRows(caller, skills)
+    return rows.map((skill) => ({
+      key: skill.key,
+      name: skill.name,
+      description: skill.description,
+      contentHash: skill.contentHash ?? null,
+      files: files
+        .filter((file) => file.skillId === idOf.get(skill.key))
+        .map((file) => ({ path: file.path, content: file.content })),
+    }))
+  }
+
+  /**
+   * 可见技能集合的版本（**只读 `content_hash`，不拉正文**）。
+   *
+   * 冷路径（每次 ensure 的 60s 节流比对）用它判断「.agents/ 是否落后」；
+   * 拉正文是几十 KB～几 MB 的量级，不能为了一个版本号去读。
+   */
+  async skillSetVersionOf(caller: {
+    ownerType: 'user' | 'admin'
+    ownerId: string
+    adminType?: 'normal' | 'god'
+  }): Promise<string> {
+    const skills = await this.db.getRepository(AiSkillEntity).find({
+      where: { enabled: true },
+      select: {
+        id: true,
+        skillKey: true,
+        title: true,
+        description: true,
+        source: true,
+        scope: true,
+        ownerType: true,
+        ownerId: true,
+        contentHash: true,
+      },
+    })
+    if (skills.length === 0) return computeSkillSetVersion([])
+    return computeSkillSetVersion(await this.visibleRows(caller, skills))
+  }
+
+  /** 可见技能行（含授权过滤）；调用方决定要不要再补正文 */
+  private async visibleRows(
+    caller: { ownerType: 'user' | 'admin'; ownerId: string; adminType?: 'normal' | 'god' },
+    skills: AiSkillEntity[],
+  ): Promise<SkillRow[]> {
+    const grants = await this.db.getRepository(AiSkillGrantEntity).find({
+      select: { skillKey: true, principalType: true, principalId: true },
+    })
     const rows: SkillRow[] = skills.map((skill) => ({
       key: skill.skillKey,
       name: skill.title || skill.skillKey,
@@ -109,36 +167,29 @@ export class WorkspaceRepository {
       scope: skill.scope,
       ownerType: skill.ownerType,
       ownerId: skill.ownerId,
-      files: files
-        .filter((file) => file.skillId === skill.id)
-        .map((file) => ({ path: file.path, content: file.content })),
+      contentHash: skill.contentHash,
+      files: [],
     }))
     const grantRows: SkillGrantRow[] = grants.map((grant) => ({
       skillKey: grant.skillKey,
       principalType: grant.principalType,
       principalId: grant.principalId,
     }))
+    const adminType = caller.adminType ?? (await this.adminTypeOf(caller))
+    return visibleSkillsOf(rows, grantRows, { ...caller, ...(adminType ? { adminType } : {}) })
+  }
 
-    // 超管的"全部平台技能"需要 admins.type；执行面只读这一列，不引入权限逻辑
-    const adminType =
-      caller.ownerType === 'admin'
-        ? (
-            await this.db.getRepository(AdminEntity).findOne({
-              where: { id: caller.ownerId },
-              select: { type: true },
-            })
-          )?.type === 'god'
-          ? ('god' as const)
-          : ('normal' as const)
-        : undefined
-    return visibleSkillsOf(rows, grantRows, { ...caller, ...(adminType ? { adminType } : {}) }).map(
-      (skill) => ({
-        key: skill.key,
-        name: skill.name,
-        description: skill.description,
-        files: skill.files,
-      }),
-    )
+  /** 超管的"全部平台技能"需要 admins.type；执行面只读这一列，不引入权限逻辑 */
+  private async adminTypeOf(caller: {
+    ownerType: 'user' | 'admin'
+    ownerId: string
+  }): Promise<'normal' | 'god' | undefined> {
+    if (caller.ownerType !== 'admin') return undefined
+    const row = await this.db.getRepository(AdminEntity).findOne({
+      where: { id: caller.ownerId },
+      select: { type: true },
+    })
+    return row?.type === 'god' ? 'god' : 'normal'
   }
 
   /** 主体名下可用凭据的版本信息（算 `credentialVersion` 用） */

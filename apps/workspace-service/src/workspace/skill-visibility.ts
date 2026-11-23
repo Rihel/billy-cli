@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto'
+
 /**
  * 技能可见集合（`docs/design/workspace-cli-credentials.md` §6.7.1 / §6.7.2）。
  *
@@ -16,6 +18,8 @@ export interface SkillRow {
   scope: string
   ownerType: string | null
   ownerId: string | null
+  /** 技能内容哈希（`ai_skills.content_hash`）：算可见集合版本用，不需要拉正文 */
+  contentHash?: string | null
   files: { path: string; content: string }[]
 }
 
@@ -65,4 +69,21 @@ export const visibleSkillsOf = (
 
   // 个人优先：同名时用个人的目录覆盖平台的
   return [...new Map([...platform, ...personal]).values()]
+}
+
+/**
+ * 技能集合版本（`docs/design/workspace-cli-credentials.md` §6.7.4）：
+ * 可见技能的 `key + contentHash` 排序后 sha256 前 16 位。
+ *
+ * 为什么要有它：`ensure` 只在「新建容器」或「main 推送」时物化技能，
+ * 技能在「工作区没在跑」时新增 / 改动后，`.agents/` 永远不会更新。
+ * 版本写进 `.billy/setup.json`，每次 ensure 比对，落后才补 —— 便宜且可自愈。
+ *
+ * 缺哈希（历史行 / 未 seed）按空串算：只会让版本变化一次，seed 补上哈希后自然收敛。
+ */
+export const skillSetVersionOf = (
+  skills: readonly { key: string; contentHash?: string | null }[],
+): string => {
+  const rows = [...skills].map((skill) => `${skill.key}:${skill.contentHash ?? ''}`).sort()
+  return createHash('sha256').update(rows.join('\n')).digest('hex').slice(0, 16)
 }

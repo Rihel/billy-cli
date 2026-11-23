@@ -126,7 +126,8 @@ describe('WorkspaceRuntime（local 后端）', () => {
 
     await Promise.all([runtime.ensure('ws-sf'), runtime.ensure('ws-sf')])
 
-    expect(setup.run).toHaveBeenCalledTimes(1)
+    // 初始化已放后台（issue 5）：等它跑起来再断 singleflight
+    await vi.waitFor(() => expect(setup.run).toHaveBeenCalledTimes(1))
   })
 
   it('写文件后能读回、能列出', async () => {
@@ -652,7 +653,8 @@ describe('WorkspaceRuntime（文件夹工作区）', () => {
     const { runtime, setup } = await make({ location: { root: host }, allowedRoots: [tmpdir()] })
 
     await runtime.ensure('ws-host')
-    expect(setup.run).toHaveBeenCalledTimes(1)
+    // 初始化在后台：ensure 不阻塞，但必须很快跑起来
+    await vi.waitFor(() => expect(setup.run).toHaveBeenCalledTimes(1))
     // 传进去的声明：Host 不能装全局包、不能写 HOME
     expect(setup.run.mock.calls[0]?.[2]).toMatchObject({
       installGlobal: false,

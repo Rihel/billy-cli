@@ -36,11 +36,26 @@ const PACKAGE: WorkspaceSetupPackage = {
   verify: 'lark --version',
 }
 
-const makeShell = (options: { marker?: string | null; verifyFirst?: boolean } = {}) => {
+const makeShell = (
+  options: {
+    marker?: string | null
+    verifyFirst?: boolean
+    setupState?: string | null
+    failWrite?: (path: string) => boolean
+  } = {},
+) => {
   const execs: string[] = []
   const writes: { path: string; content: string; mode?: number }[] = []
   let verifyCalls = 0
+  const write = async (path: string, content: string, mode?: number): Promise<void> => {
+    if (options.failWrite?.(path)) throw new Error('disk full')
+    writes.push({ path, content, mode })
+  }
   const shell: SetupShell = {
+    write,
+    async writeMany(files, mode) {
+      for (const file of files) await write(file.path, file.content, mode)
+    },
     async exec(command) {
       execs.push(command)
       if (command === PACKAGE.verify) {
@@ -51,11 +66,9 @@ const makeShell = (options: { marker?: string | null; verifyFirst?: boolean } = 
       if (command.startsWith('npm install')) return ok()
       return ok()
     },
-    async write(path, content, mode) {
-      writes.push({ path, content, mode })
-    },
     async read(path) {
       if (path.includes('.done')) return options.marker ?? null
+      if (path === '.billy/setup.json') return options.setupState ?? null
       return null
     },
     async listDirs() {
@@ -72,6 +85,7 @@ const makeService = (
     skills?: { key: string; files: { path: string; content: string }[] }[]
     credentialNames?: string[]
     resolve?: () => Promise<unknown>
+    version?: string
   } = {},
 ) => {
   const repo = {
@@ -101,6 +115,7 @@ const makeService = (
     ),
     listActiveCredentialNames: vi.fn(async () => over.credentialNames ?? ['mysql']),
     listActiveCredentialVersions: vi.fn(async () => [{ version: 3 }]),
+    skillSetVersionOf: vi.fn(async () => over.version ?? 'v1'),
   }
   const credentials = {
     resolve: vi.fn(
@@ -157,10 +172,11 @@ describe('首次初始化：按固定顺序走完四步', () => {
     expect(writes.some((item) => item.path === '.agents/demo/SKILL.md')).toBe(true)
     // ③ 凭据文件 600 + env 返回
     const credentialFile = writes.find((item) => item.path === '~/.my.cnf')
-    expect(credentialFile).toMatchObject({ content: 'password=p@ss\n', mode: 600 })
+    expect(credentialFile).toMatchObject({ content: 'password=p@ss\n', mode: 0o600 })
     expect(env).toEqual({ FOO: 'bar', MYSQL_PWD: 'p@ss' })
     // ④ 版本 / 清单 / 幂等标记
-    expect(writes.some((item) => item.path === '.billy/setup.json')).toBe(true)
+    const setupFile = writes.find((item) => item.path === '.billy/setup.json')
+    expect(JSON.parse(setupFile!.content)).toMatchObject({ skillSetVersion: expect.any(String) })
     const manifest = writes.find((item) => item.path === '.billy/credentials.json')
     expect(JSON.parse(manifest!.content)).toMatchObject({
       items: [{ provider: 'mysql', name: 'mysql', expiresAt: null }],
@@ -341,7 +357,8 @@ describe('失败不阻断：单项失败只进报告', () => {
 
     expect(report.credentials.map((item) => item.outcome)).toEqual(['failed', 'failed'])
     expect(env).toEqual({ FOO: 'bar' })
-    expect(writes.some((item) => item.path === '.billy/setup.json')).toBe(true)
+    const setupFile = writes.find((item) => item.path === '.billy/setup.json')
+    expect(JSON.parse(setupFile!.content)).toMatchObject({ skillSetVersion: expect.any(String) })
     // 暂态失败必须显性化：空清单不等于"没有凭据"，否则补偿永远不会触发（issue 9）
     expect(resolved).toBe(false)
   })
@@ -425,5 +442,55 @@ describe('技能物化：单文件失败不连坐，正文优先，失败不写�
     expect(report.skills[0]).toMatchObject({ skillKey: 'broken', outcome: 'failed' })
     // 只尝试过技能文件与版本文件，没有任何 done 标记
     expect(writes.filter((path) => path.startsWith('.billy/setup/'))).toEqual([])
+  })
+})
+
+describe('技能集合版本兜底（issue 3）', () => {
+  it('版本一致 → 不重新物化，也不改 setup.json', async () => {
+    const { service } = makeService({ version: 'v1' })
+    const { shell, writes } = makeShell({
+      setupState: JSON.stringify({ setupId: 'setup_1', skillSetVersion: 'v1' }),
+    })
+
+    const result = await service.syncSkillsIfStale('ws_1', shell)
+
+    expect(result).toEqual({ version: 'v1', changed: false, failed: 0 })
+    expect(writes).toEqual([])
+  })
+
+  it('版本落后 → 重新物化并写回新版本（保留凭据版本）', async () => {
+    const { service } = makeService({ version: 'v2' })
+    const { shell, writes } = makeShell({
+      setupState: JSON.stringify({
+        setupId: 'setup_1',
+        credentialVersion: 3,
+        skillSetVersion: 'v1',
+      }),
+    })
+
+    const result = await service.syncSkillsIfStale('ws_1', shell)
+
+    expect(result).toMatchObject({ version: 'v2', changed: true, failed: 0 })
+    expect(writes.some((item) => item.path === '.agents/demo/SKILL.md')).toBe(true)
+    const setup = writes.find((item) => item.path === '.billy/setup.json')
+    expect(JSON.parse(setup!.content)).toMatchObject({
+      setupId: 'setup_1',
+      credentialVersion: 3,
+      skillSetVersion: 'v2',
+    })
+  })
+
+  it('技能没写全 → 不记版本（下次 ensure 继续重试）', async () => {
+    const { service } = makeService({ version: 'v2' })
+    const { shell, writes } = makeShell({
+      setupState: JSON.stringify({ setupId: 'setup_1', skillSetVersion: 'v1' }),
+      failWrite: (path) => path.startsWith('.agents/'),
+    })
+
+    const result = await service.syncSkillsIfStale('ws_1', shell)
+
+    expect(result.changed).toBe(true)
+    expect(result.failed).toBeGreaterThan(0)
+    expect(writes.some((item) => item.path === '.billy/setup.json')).toBe(false)
   })
 })

@@ -62,6 +62,8 @@ interface Handle {
   env?: Record<string, string>
   /** 初始化是否已跑过（含失败；失败不重试，避免每条命令都等一遍安装超时） */
   setupDone?: boolean
+  /** 初始化正在后台跑（Host 首条请求不再等它；期间跳过技能比对，避免重复物化） */
+  initializing?: boolean
   /**
    * **凭据段**是否已成功落地（`undefined` = 还没跑过）。
    *
@@ -71,12 +73,22 @@ interface Handle {
   credentialsReady?: boolean
   /** 补偿定时器（同一 handle 只排一个，成功即停） */
   credentialRetryTimer?: ReturnType<typeof setTimeout>
+  /**
+   * 技能集合上次比对时间（60s 节流）。
+   *
+   * 比对只读 `ai_skills.content_hash`（不拉正文），但仍是每条命令一次 DB 查询；
+   * 节流后「技能建好但没推送」最多 60s 内自愈，代价可忽略。
+   */
+  skillsCheckedAt?: number
   /** 本地凭据清单缓存（执行前检查只读它；初始化 / 同步后更新，缺失时从磁盘读一次） */
   credentials?: CredentialManifest
 }
 
 /** 凭据补偿的重试间隔（解析失败多为 control plane 还没就绪，几秒后自愈） */
 const CREDENTIAL_RETRY_INTERVAL_MS = 5_000
+
+/** 技能集合版本比对节流（issue 3：命中旧 handle 的每一条命令都查库太浪费） */
+const SKILL_CHECK_INTERVAL_MS = 60_000
 
 /** 执行前检查的结论：拒绝原因 + 这次拒绝是不是**暂态**（值得重试） */
 export interface CredentialGateResult {
@@ -105,6 +117,14 @@ export class WorkspaceRuntime {
    * 重复装包，更糟的是后到者可能拿到一个还没 initialize 完的 handle 直接执行。
    */
   private readonly ensuring = new Map<string, Promise<Handle>>()
+  /**
+   * 后台补做（凭据 / 技能）的单飞表：按 `workspaceId:任务` 去重。
+   *
+   * 为什么不能 await 在请求路径上：补凭据、比对技能版本、全量物化都不是当前命令/读文件
+   * 必需的，把它们塞进第一条 fs 请求会让冷启动变成 6s（issue 5）。
+   * 同一任务已排队时直接复用，避免并发请求重复执行。
+   */
+  private readonly background = new Map<string, Promise<void>>()
   private readonly fsImpl: { host: HostFs; container: ContainerFs }
   /** 容器驱动缓存（docker / kubernetes 各一个）；测试注入的驱动放在 docker 槽位兜底 */
   private readonly drivers = new Map<'docker' | 'kubernetes', ContainerDriver>()
@@ -560,9 +580,11 @@ export class WorkspaceRuntime {
     const existing = this.handles.get(workspaceId)
     if (existing) {
       existing.lastUsedAt = Date.now()
-      // 凭据段上次失败（典型：重启窗口里 main 还没就绪）：命中旧 handle 也要补一次，
-      // 只重跑凭据段（便宜），不重跑安装（贵）
-      if (existing.credentialsReady === false) await this.retryCredentials(existing)
+      // 凭据段 / 技能集合的补做都放后台：不是当前请求必需的，不能占请求
+      if (existing.credentialsReady === false) {
+        this.runInBackground(workspaceId, 'credentials', () => this.retryCredentials(existing))
+      }
+      this.runInBackground(workspaceId, 'skills', () => this.ensureSkillsFresh(existing))
       return existing
     }
     const pending = this.ensuring.get(workspaceId)
@@ -608,7 +630,10 @@ export class WorkspaceRuntime {
     const existing = this.handles.get(workspaceId)
     if (existing) {
       existing.lastUsedAt = Date.now()
-      if (existing.credentialsReady === false) await this.retryCredentials(existing)
+      if (existing.credentialsReady === false) {
+        this.runInBackground(workspaceId, 'credentials', () => this.retryCredentials(existing))
+      }
+      this.runInBackground(workspaceId, 'skills', () => this.ensureSkillsFresh(existing))
       return existing
     }
     const config = await this.requireConfig(workspaceId)
@@ -638,7 +663,11 @@ export class WorkspaceRuntime {
       }
       this.logger.info('workspace.env.features', { workspaceId, ...features })
       if (started) await this.initialize(handle, config)
-      else await this.retryCredentials(handle)
+      else {
+        // 容器已存在：初始化早就跑过，这里只补便宜的凭据 / 技能，且不占当前请求
+        this.runInBackground(workspaceId, 'credentials', () => this.retryCredentials(handle))
+        this.runInBackground(workspaceId, 'skills', () => this.ensureSkillsFresh(handle))
+      }
       // 初始化完成后再入 Map：否则后到者会看到一个「看起来可用、实际没准备好」的 handle
       this.handles.set(workspaceId, handle)
       return handle
@@ -665,9 +694,18 @@ export class WorkspaceRuntime {
     }
     this.logger.info('workspace.env.features', { workspaceId, ...features })
     // 两种 Host 形态都跑初始化，但「跑什么」由声明决定：
-    // 技能照物化（正文只从工作区读），装包与凭据按 features 跳过
-    await this.initialize(handle, config)
+    // 技能照物化（正文只从工作区读），装包与凭据按 features 跳过。
+    // **放后台**：初始化不是当前请求必需的（issue 5：冷路径不能把补做塞进第一条请求）；
+    // 入 Map 前先标记 initializing，避免并发的技能比对与初始化重复物化。
+    handle.initializing = true
     this.handles.set(workspaceId, handle)
+    this.runInBackground(workspaceId, 'setup', async () => {
+      try {
+        await this.initialize(handle, config)
+      } finally {
+        handle.initializing = false
+      }
+    })
     return handle
   }
 
@@ -791,6 +829,8 @@ export class WorkspaceRuntime {
         handle.credentials = { items: manifest }
       }
       handle.credentialsReady = resolved
+      // 初始化已经物化过技能：直接标记「刚检查过」，避免紧接着又跑一次版本比对
+      handle.skillsCheckedAt = Date.now()
       this.logger.info('workspace.setup.applied', {
         workspaceId: handle.workspaceId,
         envKeys: Object.keys(env).length,
@@ -871,6 +911,49 @@ export class WorkspaceRuntime {
     handle.credentialRetryTimer = undefined
   }
 
+  /** 后台补做（按 `workspaceId:任务` 单飞）；失败只记日志，不影响正在处理的请求 */
+  private runInBackground(workspaceId: string, task: string, run: () => Promise<void>): void {
+    const key = `${workspaceId}:${task}`
+    if (this.background.has(key)) return
+    const pending = run()
+      .catch((error: unknown) => {
+        this.logger.warn('workspace.background.failed', {
+          workspaceId,
+          task,
+          reason: error instanceof Error ? error.message : String(error),
+        })
+      })
+      .finally(() => {
+        this.background.delete(key)
+      })
+    this.background.set(key, pending)
+  }
+
+  /**
+   * 技能集合版本兜底（issue 3）：60s 节流比对 `.billy/setup.json`，落后才物化。
+   *
+   * 这条补的是「技能建的时候工作区没在跑」与「推送丢一次」两种洞 ——
+   * 之前只有 main 推送（只推运行中）与新建容器初始化两条尽力而为的路径。
+   */
+  private async ensureSkillsFresh(handle: Handle): Promise<void> {
+    if (handle.initializing) return
+    const now = Date.now()
+    if (handle.skillsCheckedAt && now - handle.skillsCheckedAt < SKILL_CHECK_INTERVAL_MS) return
+    // 先占位再干活：并发 ensure 只允许一条真正执行
+    handle.skillsCheckedAt = now
+    const config = await this.requireConfig(handle.workspaceId).catch(() => null)
+    if (!config) return
+    const shell = this.shellFor(handle, config)
+    const result = await this.setup.syncSkillsIfStale(handle.workspaceId, shell)
+    if (result.changed) {
+      this.logger.info('workspace.skills.synced', {
+        workspaceId: handle.workspaceId,
+        version: result.version,
+        failed: result.failed,
+      })
+    }
+  }
+
   /** 初始化 / 同步用的 shell 端口：命令走 `dispatch`，避免递归回 `exec` */
   private shellFor(handle: Handle, config: WorkspaceConfig) {
     const exec = async (command: string, opts?: { timeoutMs?: number }) => {
@@ -888,7 +971,9 @@ export class WorkspaceRuntime {
     }
     // Host：文件用 Node fs 直写（不依赖 mkdir -p / base64 / chmod，Windows 也能物化技能）；
     // 容器：仍走容器内 shell
-    return handle.backend === 'local' ? createHostShell(handle.root, exec) : createExecShell(exec)
+    return handle.backend === 'local'
+      ? createHostShell(handle.root, exec, { allowHome: handle.features?.writeHome === true })
+      : createExecShell(exec)
   }
 
   /**
