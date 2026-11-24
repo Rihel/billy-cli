@@ -7,7 +7,7 @@
 
 ```
 ├── apps/
-│   ├── main/                            # 公网 BFF（@app/main，9989）；实体唯一来源 @repo/db，没有 src/database/entities
+│   ├── main/                            # 公网 API / 控制面（@app/main，9989）；实体唯一来源 @repo/db，没有 src/database/entities
 │   │   ├── src/
 │   │   │   ├── main.ts                  # 入口：NestFactory 启动 + 全局 Express 配置 + 优雅关闭
 │   │   │   ├── root.module.ts           # 唯一组合根：配置 + 横切中间件 + 各基础设施 + 业务模块
@@ -173,7 +173,7 @@
 │                                        #   Ingress / Ingress-SSE / PVC + RBAC + 部署说明；内网服务不接公网 Ingress）
 ├── docs/                                # guide/（使用指南）/ design/（设计文档）/ dev-logs/（开发日志）
 │                                        #   + pagination.md / queue.md / sdk-refactor.md / billy-pitch.md
-├── scripts/                             # setup.ts（bootstrap）、kill-dev.ts、kill-ports.ts、check-*.ts 四道守卫、
+├── scripts/                             # bootstrap.mjs（入口）+ setup.ts（引导步骤）、kill-dev.ts、kill-ports.ts、check-*.ts 四道守卫、
 │                                        #   start-standalone.ts、clean.ts、codegraph-setup.ts
 ├── turbo.json
 ├── pnpm-workspace.yaml

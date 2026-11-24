@@ -9,8 +9,8 @@
 
 ### 8 个 app 与配置文件
 
-`bootstrap` 只生成 6 份（main / agent-runtime / capability-gateway / common-capability / admin / web），
-**model-gateway 与 workspace-service 需要手动复制模板**：
+`bootstrap` 生成全部 **8 份**（main / agent-runtime / model-gateway / capability-gateway /
+common-capability / workspace-service / admin / web）。跳过 bootstrap 或只跑部分步骤时，可手动复制模板：
 
 ```bash
 cp apps/model-gateway/.env.example apps/model-gateway/.env
@@ -89,13 +89,17 @@ main / agent-runtime 只认 `PORT`。其余四个内网服务各有一个**兼�
 
 #### `pnpm bootstrap` 会做什么、不会做什么
 
-`scripts/setup.ts`：
+`scripts/bootstrap.mjs`（入口，先补齐 node_modules）+ `scripts/setup.ts`（各步骤）：
 
-- 生成上面那 **6 份** `.env`（已存在则保留原配置，不覆盖）；
+- 生成上面那 **8 份** `.env`（已存在则保留原配置，不覆盖）；
 - 只对**本次新建**的文件做地址对齐：检测到 compose 宿主端口（15432 / 6380 / 19000）而本机端口
   （5432 / 6379 / 9000）未开时，把 main / agent-runtime / capability-gateway / common-capability
   里的 DB / Redis / MinIO 地址改成映射端口；admin / web 只替换 MinIO 地址；
-- **不会**生成 model-gateway / workspace-service 的 `.env`，也不会改已存在的 `.env`。
+- model-gateway / workspace-service 的库地址不按端口猜：直接读 main 的 `DB_URL`（和 `REDIS_URL`）
+  写进去，保证六个服务连同一个库；
+- 构建 packages（`pnpm build:pkgs`）后再迁移 —— `@repo/*` 的运行时入口是 `dist/`，不构建会在
+  `db:migrate` / `seed:admin` / 冒烟阶段报模块找不到；
+- **不会**改已存在的 `.env`。
 
 #### k8s / compose 的覆盖口径
 
@@ -123,7 +127,7 @@ main / agent-runtime 只认 `PORT`。其余四个内网服务各有一个**兼�
 
 ## main
 
-公网 BFF：控制面业务 + 全部管理 HTTP + `/agent/*` 转发；不跑 agent loop，模型调用统一经 model-gateway。
+公网 API：控制面业务 + 全部管理 HTTP + `/agent/*` 转发；不跑 agent loop，模型调用统一经 model-gateway。
 配置：`apps/main/.env.example` → `apps/main/.env`；端口 **9989**。
 
 ### 运行 / 端口
@@ -697,7 +701,7 @@ agent loop 执行侧：会话编排 / 工具面 / 上下文 / 技能 / 子 agent
 | `WORKSPACE_CONTAINER_NETWORK` | `bridge` | 工作区容器网络出口：`bridge` 出网（装依赖 / git clone 需要）/ `none` 断网（镜像必须预烘依赖，否则初始化失败） | 可选 |
 | `WORKSPACE_CONTAINER_CPUS` | `2` | 工作区容器 CPU 上限 | 可选 |
 | `WORKSPACE_CONTAINER_PIDS_LIMIT` | `512` | 工作区容器 pid 上限 | 可选 |
-| `WORKSPACE_DEFAULT_IMAGE` | `billy-workspace:latest` | 工作区镜像；模板对齐发布版本 `billy-workspace:2026.11.0`，必须与 `docker/Dockerfile.workspace-image` 构建出的 tag 一致 | 生产必改 |
+| `WORKSPACE_DEFAULT_IMAGE` | `billy-workspace:latest` | 工作区镜像；模板对齐发布版本 `billy-workspace:2026.11.1`，必须与 `docker/Dockerfile.workspace-image` 构建出的 tag 一致 | 生产必改 |
 | `WORKSPACE_LOCAL_ROOT` | `~/.billy/workspaces` | host 驱动的工作区根：每个工作区一个子目录 `<root>/<workspaceId>`（目录里长什么样见 `docs/design/workspace.md` 的「工作区目录结构」）；container / pod 不用 | 可选 |
 | `WORKSPACE_LOCAL_ALLOWED_ROOTS` | 空（关闭） | host 驱动的**指定目录**白名单（逗号分隔绝对路径）：工作区可把根指到这些目录之下。空 = 只能用 `<WORKSPACE_LOCAL_ROOT>/<workspaceId>`。配了目录的工作区**跑初始化但只物化技能**（写 `.agents/` 与 `.billy/setup*`，不装全局 CLI、不写 HOME 凭据）、且要求沙箱开启 | 要用工作区目录时必配 |
 | `WORKSPACE_IDLE_TIMEOUT_MS` | `7200000` | 空闲回收（默认 2 小时）；`0` = 常驻不回收 | 可选 |
@@ -844,8 +848,9 @@ AGENT_WEB_ENABLED AGENT_WEB_MAX_BYTES AGENT_WEB_TIMEOUT_MS
 5. **端口别名**：模板只写 `PORT`，但 `MODEL_GATEWAY_PORT` / `TOOL_GATEWAY_PORT` / `TOOL_WORKER_PORT` /
    `WORKSPACE_SERVICE_PORT` 仍被读取且**优先于 `PORT`**。沿用旧 `.env` 时若同时有两份不同端口值，
    以别名键为准。
-6. **model-gateway / workspace-service 不在 bootstrap 清单里**：新克隆的仓库要手动 `cp` 模板，
-   否则 `pnpm dev:stack` 里这两个服务会用 schema 默认值（端口 / 数据库都可能不对）。
+6. **bootstrap 会生成全部 8 份 `.env`**（含 model-gateway / workspace-service）；若用 `--skip-*`
+   或手动流程，务必也给这两个服务 `cp` 模板，否则 `pnpm dev:stack` 里它们会用 schema 默认值
+   （端口 / 数据库都可能不对）。
 7. **`.env` 会覆盖真实环境变量（6 个 Nest 服务）**：本机开发时命令行临时覆盖无效；容器 / CI 不要放
    `.env`，否则编排层注入的值会被文件覆盖。
 8. **admin / web 的 `NEXT_PUBLIC_*` 是构建期**：镜像构建时没有注入 `NEXT_PUBLIC_*` 参数（且

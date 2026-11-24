@@ -485,7 +485,7 @@ v1 **不做多模板**：全平台一个基础镜像（`billy-workspace`），�
 | 项 | 口径 |
 | --- | --- |
 | 镜像 | `billy-workspace`（Debian slim + 9.1 的最小集） |
-| 版本 | 具体 tag（如 `2026.11.0`），**不用 `latest`** |
+| 版本 | 具体 tag（如 `2026.11.1`），**不用 `latest`** |
 | 记录 | `ai_workspaces.image` 存完整引用 `billy-workspace:<tag>` |
 | 升级 | 新 tag 发布后，旧 workspace 保持原 tag，直到销毁重建；**不做原地升级** |
 | 自定义 | **不开放**用户自定义镜像 |

@@ -8,8 +8,8 @@
 > 每个变量的默认值、必填性、按用途分组见 **[环境变量指南](./env.md)**；本节只讲部署相关口径。
 
 **8 份配置文件**：六个 Nest 服务各有 `apps/<app>/.env`，两个前端各有 `apps/admin/.env` /
-`apps/web/.env.local`。`pnpm bootstrap` 只生成其中 6 份（main / agent-runtime / capability-gateway /
-common-capability / admin / web），`model-gateway` 与 `workspace-service` 需要手动复制模板：
+`apps/web/.env.local`。`pnpm bootstrap` 会生成全部 8 份（含 `model-gateway` 与 `workspace-service`，
+库地址自动与 main 对齐）；跳过 bootstrap 时手动复制模板：
 
 ```bash
 cp apps/model-gateway/.env.example apps/model-gateway/.env
@@ -65,7 +65,7 @@ pnpm --filter @app/common-capability build
 pnpm --filter @app/workspace-service build
 
 # 分别启动（各自读自己的 .env；main 依赖 runtime 在 9990）
-pnpm start:main                 # 公网 BFF：9989
+pnpm start:main                 # 公网 API / 控制面：9989
 pnpm start:runtime              # agent loop：9990（只给 main 调，不要暴露到公网）
 pnpm start:model-gateway        # 模型网关：9992
 pnpm start:capability-gateway   # 能力网关：9993
@@ -96,6 +96,10 @@ pnpm kill:start
 ## Docker
 
 ### Compose 服务（依赖一键起）
+
+> 首次先做两件事：`./build-base-image.sh`（所有服务镜像都 `FROM node26-pnpm12:1.0`）、
+> `pnpm bootstrap --skip-smoke`（生成八份 `.env`；compose 的 main / agent-runtime 用 `env_file`
+> 挂载，缺文件会直接报错）。
 
 ```bash
 docker compose up -d postgres redis minio   # 仅基础设施
@@ -162,7 +166,7 @@ MinIO 在 compose 里默认随 `docker compose up` 启动，但对象存储本�
 | 文件                             | 产物 |
 | -------------------------------- | ---- |
 | `Dockerfile.base`                | 基础镜像 `node26-pnpm12:1.0`（node 26.13.0-alpine + pnpm 12.18.0 + 运维工具） |
-| `Dockerfile.main`                | main（公网 BFF） |
+| `Dockerfile.main`                | main（公网 API / 控制面） |
 | `Dockerfile.agent-runtime`       | agent-runtime（同时被 `migrate` 复用） |
 | `Dockerfile.model-gateway`       | 模型网关 |
 | `Dockerfile.capability-gateway`  | 能力网关 |
@@ -192,7 +196,7 @@ docker build -t billy-admin:latest -f docker/Dockerfile.admin .
 
 # 被管工作区镜像：python 3.13-slim + node 26 + pnpm，工作目录 /workspace
 # tag 约定 billy-workspace:<版本>，默认值与 workspace-service 的 WORKSPACE_DEFAULT_IMAGE 对齐
-docker build -f docker/Dockerfile.workspace-image -t billy-workspace:2026.11.0 docker
+docker build -f docker/Dockerfile.workspace-image -t billy-workspace:2026.11.1 docker
 ```
 
 ### Kubernetes 部署

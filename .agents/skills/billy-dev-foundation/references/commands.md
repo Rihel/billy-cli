@@ -14,7 +14,7 @@ pnpm turbo run lint | lint:types | fmt:check | verify   # 同上的 turbo 根任
 pnpm turbo run verify typecheck test                    # 全套检查（verify + 每包 typecheck/test）
 pnpm hooks:install # 手动重装 lefthook 钩子（pnpm install 已自动装）
 pnpm dev:pkgs      # watch 构建有 dev 脚本的包（shared / kits / http-client / sdk / contracts / internal-sdk）
-pnpm dev:main      # 启动公网 BFF（@app/main，9989；node --watch --import tsx/esm src/main.ts）
+pnpm dev:main      # 启动公网 API / 控制面（@app/main，9989；node --watch --import tsx/esm src/main.ts）
 pnpm dev:runtime   # 启动 agent loop（@app/agent-runtime，9990）
 pnpm dev:stack     # 一条命令起六个 Nest 服务：main / agent-runtime / model-gateway / capability-gateway / common-capability / workspace-service
 pnpm dev:tools     # 工具侧三件套：capability-gateway（9993）+ common-capability（9994）+ workspace-service（9995）
@@ -43,8 +43,8 @@ pnpm db:gen <Name> # 依实体与数据库的差异生成迁移（写入 package
 pnpm db:migrate    # 执行迁移（由 @repo/db 执行；实体 / 迁移的事实源也在 @repo/db）
 pnpm seed:admin    # 创建首个管理员（admin@billy.local / admin123；根脚本指向 @app/main）
 pnpm docker:up     # Docker Compose 一键起全套（postgres / redis / minio / migrate + 6 个 Nest 服务 + web + admin）
-pnpm bootstrap     # 一键初始化引导：环境检查 → 依赖服务 → 生成六份 .env（main / agent-runtime / capability-gateway / common-capability / admin / web）→ install → 迁移 → 种子 → 冒烟
-pnpm bootstrap -y  # 全默认非交互（--skip-docker / --skip-install / --skip-migrate / --skip-seed / --skip-smoke 可跳过指定步骤）
+pnpm bootstrap     # 一键初始化引导：装依赖 → 环境检查 → 依赖服务 → 生成八份 .env（含 model-gateway / workspace-service）→ 构建 packages → 迁移 → 种子 → 冒烟；入口 scripts/bootstrap.mjs（先补 node_modules）
+pnpm bootstrap -y  # 全默认非交互（--skip-docker / --skip-install / --skip-build / --skip-migrate / --skip-seed / --skip-smoke 可跳过指定步骤）
 pnpm check:inject  # DI 装饰器一致性守卫（构造器 @Inject / providers @Injectable），违反返回非零退出码
 pnpm check:ui       # 前端约定守卫（五条）：① packages/ui/src/components/ 自有组件必须在 src/index.ts 导出；
                     #   ② 前端包（apps/ 里依赖 next 的 + @repo/ui）必须声明 typecheck 脚本；

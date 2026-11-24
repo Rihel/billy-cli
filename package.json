@@ -4,7 +4,7 @@
   "description": "",
   "type": "module",
   "scripts": {
-    "bootstrap": "node --import tsx/esm scripts/setup.ts",
+    "bootstrap": "node scripts/bootstrap.mjs",
     "seed:admin": "pnpm --filter @app/main run seed:admin",
     "dev:pkgs": "turbo run dev --filter=./packages/*",
     "build:pkgs": "turbo run build --filter=./packages/*",

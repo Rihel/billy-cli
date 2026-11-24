@@ -7,7 +7,7 @@
 
 模板自带一套能上生产的 AI 对话。现在按运行面 / 控制面拆成 **6 个 Nest 服务**（另有两个 Next 前端，只连 main）：
 
-- **main（9989，公网 BFF）**：控制面——鉴权、业务 CRUD、全部 AI 配置 / 管理 HTTP，以及 `/agent/*` 的入口与
+- **main（9989，公网 API / 控制面）**：控制面——鉴权、业务 CRUD、全部 AI 配置 / 管理 HTTP，以及 `/agent/*` 的入口与
   SSE 中继；**不跑 agent loop**。
 - **agent-runtime（9990，只给 main 调）**：只跑 agent loop——agents / 会话编排 / 工具面装配 / 提示词 /
   技能加载 / 子 agent / run 队列 / 恢复；对外只暴露 `/internal/agent/*` 与探针。
@@ -96,7 +96,7 @@ POST /ai-skill/* · /ai-memory/* · /ai-workspace/*  技能库 / 长期记忆 / 
   会话只能选前两档（会话级 `file_access` 目前只进 runtime 的执行信封，尚未随能力调用下发到执行面，
   见后端文档「已知缺口」）；部署默认 `AGENT_WORKSPACE_SANDBOX=true`——沙箱不可用就**拒绝执行（fail closed）**，
   只有自托管单租户显式设 `off` 才放开宿主执行。执行后端 `local`（kits 沙箱）/ `container`（docker 或
-  k8s Pod）/ `microvm`（预留）；容器名 `billy-ws-<workspaceId>`，镜像 `billy-workspace:2026.11.0`，
+  k8s Pod）/ `microvm`（预留）；容器名 `billy-ws-<workspaceId>`，镜像 `billy-workspace:2026.11.1`，
   空闲默认 2h 回收；`GET /info` 暴露部署模式与会话可选的文件权限。
 - **技能库**（库 / 落盘分裂在两个服务：main 的 `ai-admin/skill` 写库，runtime 的 `ai/skills` 落盘并加载）：
   后台「AI → 技能库」在线写技能（类 Notion 的块编辑器写正文 + `references/` / `scripts/`），也能贴

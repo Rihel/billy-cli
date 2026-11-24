@@ -14,8 +14,9 @@
 - **端口敏感键必须进模板**：带 schema 默认值的 URL（如 workspace-service 的 `MAIN_URL`，默认
   `http://127.0.0.1:9989`）不写进 `.env.example`，部署改端口后启动不报错、直到运行时才 `fetch failed`。
   加此类键时同步补模板与 `docs/guide/env.md`。
-- **bootstrap 只生成 6 份 `.env`**（main / agent-runtime / capability-gateway / common-capability /
-  admin / web）；model-gateway / workspace-service 要手动 `cp` 模板。
+- **bootstrap 生成 8 份 `.env`**（main / agent-runtime / model-gateway / capability-gateway /
+  common-capability / workspace-service / admin / web）；model-gateway / workspace-service 的
+  `DB_URL`（及 Redis）与 workspace-service 的 `WORKSPACE_DB_URL` 从 main 读入对齐。
 - **本次删掉的死键**：`TOOL_WORKER_URL`、`TOOL_WORKER_VERSION` / `ZONE`、common 侧
   `TOOL_WORKER_STALE_MS`、`WORKSPACE_DOCKER_BIN`、main 的整段 `agent` 命名空间、runtime 的
   `JWT_*` / `PASSWORD_*` / `SHARE_*` / `AUTH_ENABLED` / `MASTRA_*` 等；明细见

@@ -10,8 +10,11 @@ import colors from 'picocolors'
 
 /**
  * Billy 一键初始化引导（pnpm bootstrap）：
- * 环境检查 → Docker 依赖服务 → 生成 .env → 安装依赖 → 迁移 → 管理员种子 → 冒烟验证。
+ * 环境检查 → Docker 依赖服务 → 生成 .env → 安装依赖 → 构建 packages → 迁移 / 种子 → 冒烟验证。
  * 每步可跳过（--skip-*），交互确认；--yes 全用默认值（适合 CI / 脚本）。
+ *
+ * 入口是 scripts/bootstrap.mjs（纯 Node）：它先补齐 node_modules（setup.ts 自己跑在 tsx 上），
+ * 再把参数转给本文件。所以全新克隆直接 `pnpm bootstrap` 即可。
  *
  * 注：命令名取 bootstrap 而非 setup —— pnpm 存在内建 setup 命令，
  * 会拦截传给脚本的参数（-y / --skip-* 等），故避开撞名。
@@ -23,12 +26,17 @@ const envFiles: Array<{ path: string; example: string; label: string }> = [
   {
     path: 'apps/main/.env',
     example: 'apps/main/.env.example',
-    label: 'main（公网 BFF）',
+    label: 'main（公网 API / 控制面）',
   },
   {
     path: 'apps/agent-runtime/.env',
     example: 'apps/agent-runtime/.env.example',
     label: 'agent-runtime（会话运行时）',
+  },
+  {
+    path: 'apps/model-gateway/.env',
+    example: 'apps/model-gateway/.env.example',
+    label: 'model-gateway（模型网关）',
   },
   {
     path: 'apps/capability-gateway/.env',
@@ -39,6 +47,11 @@ const envFiles: Array<{ path: string; example: string; label: string }> = [
     path: 'apps/common-capability/.env',
     example: 'apps/common-capability/.env.example',
     label: 'common-capability（工具执行）',
+  },
+  {
+    path: 'apps/workspace-service/.env',
+    example: 'apps/workspace-service/.env.example',
+    label: 'workspace-service（工作区执行面）',
   },
   {
     path: 'apps/admin/.env',
@@ -129,7 +142,7 @@ const waitForHttp = async (url: string, timeoutMs: number): Promise<boolean> => 
 /* ---------------- 各步骤 ---------------- */
 
 async function checkEnvironment(): Promise<boolean> {
-  console.log(colors.cyan('\n[1/6] 环境检查'))
+  console.log(colors.cyan('\n[1/7] 环境检查'))
 
   // 与 package.json 的 engines 保持一致（README 写的是 >= 26）；低于它的人会在这里被拦下，
   // 而不是在 build / dev 阶段收到一堆语法或依赖错误
@@ -140,7 +153,8 @@ async function checkEnvironment(): Promise<boolean> {
   }
   console.log(colors.green(`  ✓ Node.js ${process.version}`))
 
-  const installHint = 'corepack enable && corepack prepare pnpm@12.18.0 --activate'
+  const installHint =
+    'npm install -g pnpm@12.18.0（Node 26 不再内置 corepack，不能用 corepack 安装）'
   let pnpmVersion = ''
   try {
     pnpmVersion = execFileSync('pnpm', ['--version'], {
@@ -164,7 +178,7 @@ async function checkEnvironment(): Promise<boolean> {
 }
 
 async function ensureDockerServices(yes: boolean, skip: boolean): Promise<void> {
-  console.log(colors.cyan('\n[2/6] Docker 依赖服务（postgres / redis / minio）'))
+  console.log(colors.cyan('\n[2/7] Docker 依赖服务（postgres / redis / minio）'))
 
   if (skip) {
     console.log(colors.yellow('  - 已跳过（--skip-docker），请自行保证依赖可用'))
@@ -229,8 +243,26 @@ const replaceInFile = (relativePath: string, pairs: readonly [string, string][])
   writeFileSync(full, text)
 }
 
+/** 读 .env 里某个键的值（没有返回 undefined） */
+const readEnvValue = (relativePath: string, key: string): string | undefined => {
+  const text = readFileSync(`${workspaceRoot}/${relativePath}`, 'utf8')
+  const match = text.match(new RegExp(`^${key}=(.*)$`, 'm'))
+  return match?.[1]
+}
+
+/** 覆盖 .env 里某个键的值（只替换该行，保留注释与其它键） */
+const setEnvValue = (relativePath: string, key: string, value: string): void => {
+  const full = `${workspaceRoot}/${relativePath}`
+  const text = readFileSync(full, 'utf8')
+  // 用函数式替换：值里若含 `$` 不会被当成替换模式
+  writeFileSync(
+    full,
+    text.replace(new RegExp(`^${key}=.*$`, 'm'), () => `${key}=${value}`),
+  )
+}
+
 async function ensureEnvFiles(yes: boolean): Promise<void> {
-  console.log(colors.cyan('\n[3/6] 环境变量文件（.env）'))
+  console.log(colors.cyan('\n[3/7] 环境变量文件（.env）'))
 
   const created: string[] = []
   for (const file of envFiles) {
@@ -249,6 +281,9 @@ async function ensureEnvFiles(yes: boolean): Promise<void> {
    * 15432 / 6380 / 19000 —— 不对齐的话，bootstrap 刚刚用 compose 拉起依赖，
    * 下一步 `pnpm db:migrate` 却连本机 5432，全新机器上会直接失败。
    * 只改**刚刚生成**的文件；已有 .env 是用户配置，不碰。
+   *
+   * model-gateway / workspace-service 的库地址不按端口猜，直接跟 main 对齐：
+   * 它们本来就必须连同一个库，读 main/.env 的 DB_URL（上面已按 compose 调过）最稳。
    */
   if (created.length > 0) {
     const composePg = (await probePort(15432)) && !(await probePort(5432))
@@ -287,16 +322,33 @@ async function ensureEnvFiles(yes: boolean): Promise<void> {
     }
 
     if (composeMinio) {
+      let frontAligned = false
       for (const file of ['apps/admin/.env', 'apps/web/.env.local']) {
         if (created.includes(file)) {
           replaceInFile(file, [
             ['http://localhost:9000/billy-cli', 'http://localhost:19000/billy-cli'],
           ])
+          frontAligned = true
         }
       }
-      if (created.some((file) => file !== 'apps/agent-runtime/.env')) {
+      if (frontAligned) {
         console.log(colors.green('  ✓ 前端 .env 的对象存储地址已对齐到 19000'))
       }
+    }
+
+    // 两个内网服务：库 / Redis 跟 main 走（compose 与「本机服务」两种形态都适用）
+    const mainDb = readEnvValue('apps/main/.env', 'DB_URL')
+    const mainRedis = readEnvValue('apps/main/.env', 'REDIS_URL')
+
+    if (mainDb && created.includes('apps/model-gateway/.env')) {
+      setEnvValue('apps/model-gateway/.env', 'DB_URL', mainDb)
+      if (mainRedis) setEnvValue('apps/model-gateway/.env', 'REDIS_URL', mainRedis)
+      console.log(colors.green('  ✓ model-gateway .env 的 DB / Redis 已与 main 对齐'))
+    }
+
+    if (mainDb && created.includes('apps/workspace-service/.env')) {
+      setEnvValue('apps/workspace-service/.env', 'WORKSPACE_DB_URL', mainDb)
+      console.log(colors.green('  ✓ workspace-service .env 的 WORKSPACE_DB_URL 已与 main 对齐'))
     }
   }
 
@@ -307,7 +359,7 @@ async function ensureEnvFiles(yes: boolean): Promise<void> {
 }
 
 async function ensureDeps(yes: boolean, skip: boolean): Promise<void> {
-  console.log(colors.cyan('\n[4/6] 依赖安装'))
+  console.log(colors.cyan('\n[4/7] 依赖安装'))
 
   if (skip) {
     console.log(colors.yellow('  - 已跳过（--skip-install）'))
@@ -328,8 +380,40 @@ async function ensureDeps(yes: boolean, skip: boolean): Promise<void> {
   console.log(colors.green('  ✓ 依赖安装完成'))
 }
 
+/**
+ * 构建 packages（`pnpm build:pkgs`）。
+ *
+ * 为什么必须在迁移之前：`@repo/*` 的运行时入口是 `dist/index.mjs`（`dist` 被 gitignore），
+ * 全新克隆里没有产物 —— 不先构建，`pnpm db:migrate` / `seed:admin` / 冒烟都会
+ * ERR_MODULE_NOT_FOUND。
+ */
+async function buildPackages(yes: boolean, skip: boolean): Promise<void> {
+  console.log(colors.cyan('\n[5/7] 构建 packages'))
+
+  if (skip) {
+    console.log(
+      colors.yellow(
+        '  - 已跳过（--skip-build）；未构建时迁移 / 种子 / 冒烟会因找不到 @repo/* 的 dist 失败',
+      ),
+    )
+    return
+  }
+
+  if (!(await ask('构建 packages（pnpm build:pkgs）？', true, yes))) {
+    console.log(colors.yellow('  - 跳过构建；后续步骤可能因 packages 未构建失败'))
+    return
+  }
+
+  const code = await run('pnpm', ['build:pkgs'])
+  if (code !== 0) {
+    console.error(colors.red('  ✗ pnpm build:pkgs 失败'))
+    process.exit(1)
+  }
+  console.log(colors.green('  ✓ packages 构建完成'))
+}
+
 async function migrateDatabase(yes: boolean, skip: boolean, skipSeed: boolean): Promise<void> {
-  console.log(colors.cyan('\n[5/6] 数据库迁移与种子数据'))
+  console.log(colors.cyan('\n[6/7] 数据库迁移与种子数据'))
 
   if (skip) {
     console.log(colors.yellow('  - 已跳过（--skip-migrate）'))
@@ -367,7 +451,7 @@ async function migrateDatabase(yes: boolean, skip: boolean, skipSeed: boolean): 
 }
 
 async function smokeTest(yes: boolean, skip: boolean): Promise<void> {
-  console.log(colors.cyan('\n[6/6] 服务冒烟验证'))
+  console.log(colors.cyan('\n[7/7] 服务冒烟验证'))
 
   if (skip) {
     console.log(colors.yellow('  - 已跳过（--skip-smoke）'))
@@ -376,7 +460,8 @@ async function smokeTest(yes: boolean, skip: boolean): Promise<void> {
 
   const serverUrl = 'http://localhost:9989/config/get'
   const mainRunning = await probePort(9989)
-  // 冒烟只做「起两个进程 → 探活 → 停止」，不加 --watch，避免子进程常驻。
+  // 冒烟只做「起服务进程 → 探活 → 停止」，不加 --watch，避免子进程常驻。
+  // 六个 Nest 服务都拉起来：任何一个配置加载失败，都会在这里暴露。
   const children: Array<ReturnType<typeof spawn>> = []
   const startIfNeeded = async (port: number, app: string): Promise<void> => {
     if (await probePort(port)) return
@@ -391,6 +476,7 @@ async function smokeTest(yes: boolean, skip: boolean): Promise<void> {
   }
   await startIfNeeded(9994, 'common-capability')
   await startIfNeeded(9993, 'capability-gateway')
+  await startIfNeeded(9992, 'model-gateway')
   await startIfNeeded(9990, 'agent-runtime')
   await startIfNeeded(9995, 'workspace-service')
   await sleep(700)
@@ -404,7 +490,7 @@ async function smokeTest(yes: boolean, skip: boolean): Promise<void> {
     )
   }
 
-  process.stdout.write('  正在启动 main + runtime 并请求 /config/get')
+  process.stdout.write('  正在启动六个服务并请求 main 的 /config/get')
   const ok = await waitForHttp(serverUrl, 45_000)
   console.log()
 
@@ -430,6 +516,7 @@ interface SetupOptions {
   yes: boolean
   skipDocker: boolean
   skipInstall: boolean
+  skipBuild: boolean
   skipMigrate: boolean
   skipSeed: boolean
   skipSmoke: boolean
@@ -438,10 +525,13 @@ interface SetupOptions {
 const main = async (): Promise<void> => {
   const program = new Command()
     .name('pnpm bootstrap')
-    .description('Billy 一键初始化：环境检查 → 依赖服务 → .env → 安装 → 迁移 → 种子 → 冒烟')
+    .description(
+      'Billy 一键初始化：装依赖 → 环境检查 → 依赖服务 → 八份 .env → 构建 packages → 迁移 → 种子 → 冒烟',
+    )
     .option('-y, --yes', '所有交互使用默认值（非交互，适合 CI / 脚本）')
     .option('--skip-docker', '跳过 Docker 依赖服务启动')
     .option('--skip-install', '跳过依赖安装')
+    .option('--skip-build', '跳过 packages 构建（pnpm build:pkgs）')
     .option('--skip-migrate', '跳过数据库迁移')
     .option('--skip-seed', '跳过管理员种子创建')
     .option('--skip-smoke', '跳过服务冒烟验证')
@@ -459,6 +549,7 @@ const main = async (): Promise<void> => {
   await ensureDockerServices(options.yes, options.skipDocker)
   await ensureEnvFiles(options.yes)
   await ensureDeps(options.yes, options.skipInstall)
+  await buildPackages(options.yes, options.skipBuild)
   await migrateDatabase(options.yes, options.skipMigrate, options.skipSeed)
   await smokeTest(options.yes, options.skipSmoke)
 
@@ -472,7 +563,16 @@ const main = async (): Promise<void> => {
     `  ${colors.cyan('pnpm dev:admin')}    # 终端 4（可选）：Admin 后台（http://localhost:9845）`,
   )
   console.log(`\n  Admin 登录：${colors.bold('admin@billy.local')} / ${colors.bold('admin123')}`)
-  console.log(colors.yellow('  提示：-y 全默认 / --skip-* 跳过指定步骤，适合重复执行与 CI。'))
+  console.log(
+    colors.yellow(
+      '  提示：-y 全默认 / --skip-(docker|install|build|migrate|seed|smoke) 跳过指定步骤，适合重复执行与 CI。',
+    ),
+  )
+  console.log(
+    colors.yellow(
+      '  首次对话前记得配置模型供应商（apps/main/.env 的 MASTRA_API_KEY，或在 Admin 后台「模型管理」里配置）。',
+    ),
+  )
 }
 
 main().catch((error: unknown) => {
