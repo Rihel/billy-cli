@@ -72,7 +72,12 @@ import { markAdoptedConversation, NEW_CONVERSATION_SLUG } from './routes'
 import { ModelPicker } from './model-picker'
 import { ChatMessage } from './message-row'
 import { groupChatTurns } from './chat-turns'
-import { useActiveSubAgentName, useChatMessages, useChatSessionStore } from './chat-session'
+import {
+  useActiveSubAgentName,
+  useChatMessages,
+  useChatSessionStore,
+  useSettledSubAgentRunIds,
+} from './chat-session'
 import { ChatTransport } from './chat-transport'
 import { mergeAssistantMessage, submitResumeRequest, useRunRecovery } from './run-recovery'
 import { toUIMessages } from './history'
@@ -806,6 +811,13 @@ export function ChatConversation({ conversationId }: { conversationId: string })
 
   /** 正在跑的子助手名字（运行指示用；只在这一项变化时重渲染） */
   const activeSubAgentName = useActiveSubAgentName()
+
+  /**
+   * 库内已终态的子 run id：运行指示退回 parts（冻在起跑快照）判活前先与它相认，
+   * 否则唤醒轮里会把已经跑完的子助手一直报成「正在干活」。
+   * 引用只在终态成员变化时换，不跟 100ms 实时窗重渲染。
+   */
+  const settledSubAgentRunIds = useSettledSubAgentRunIds()
 
   /**
    * 一轮**结束后对账**：把侧栏列表与该会话详情失效重取。
@@ -1697,6 +1709,7 @@ export function ChatConversation({ conversationId }: { conversationId: string })
                         messages={viewMessages}
                         status={busy ? 'streaming' : status}
                         activeSubAgentName={activeSubAgentName}
+                        settledRunIds={settledSubAgentRunIds}
                       />
                       {conversationPlan ? (
                         <PlanSummaryCard

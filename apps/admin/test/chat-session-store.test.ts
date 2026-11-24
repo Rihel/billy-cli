@@ -443,6 +443,41 @@ describe('ChatSessionStore：子 run 的库内终态', () => {
     vi.useRealTimers()
   })
 
+  it('已终态子 run id 跨轮保留，集合引用只在终态成员变化时换', () => {
+    vi.useFakeTimers()
+    const store = new ChatSessionStore()
+    expect(store.settledSubAgentRunIds().size).toBe(0)
+
+    store.applyChunk({
+      type: 'data-sub-agent',
+      data: { runId: 's1', name: '商业化', status: 'running' },
+    })
+    vi.advanceTimersByTime(150)
+    store.applyRunStates([runOf({})])
+    const settled = store.settledSubAgentRunIds()
+    expect([...settled]).toEqual(['s1'])
+
+    // 唤醒轮清空实时数据：已终态集合是跨轮成立的事实，引用也不该换
+    store.applyChunk({ type: 'data-run', data: { runId: 'r2' } })
+    vi.advanceTimersByTime(150)
+    expect(store.settledSubAgentRunIds()).toBe(settled)
+
+    // 实时窗里来了别的子助手增量：终态成员没变 → 引用不换（会话页不跟着 100ms 重渲染）
+    store.applyChunk({
+      type: 'data-sub-agent',
+      data: { runId: 's2', name: '另一个', status: 'running' },
+    })
+    vi.advanceTimersByTime(150)
+    expect(store.settledSubAgentRunIds()).toBe(settled)
+
+    // 新子 run 也终态之后才换新集合
+    store.applyRunStates([runOf({}), runOf({ id: 's2', agentKey: 'sub:另一个' })])
+    const next = store.settledSubAgentRunIds()
+    expect(next).not.toBe(settled)
+    expect([...next]).toEqual(['s1', 's2'])
+    vi.useRealTimers()
+  })
+
   it('运行中的 run 不覆盖实时步数（库里的 stepCount 收尾才落，覆盖会倒退成 0）', () => {
     vi.useFakeTimers()
     const store = new ChatSessionStore()

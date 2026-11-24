@@ -33,6 +33,7 @@ export const runActivityText = (
   messages: readonly UIMessage[],
   status: string,
   activeSubAgentName?: string | null,
+  settledRunIds?: ReadonlySet<string>,
 ): string | null => {
   if (status !== 'streaming' && status !== 'submitted') return null
   if (status === 'submitted') return '正在准备…'
@@ -40,7 +41,12 @@ export const runActivityText = (
   // 子助手在跑时它才是"当前正在干活的那个"（主 agent 在等它返回）。
   // 名字优先取会话 store 的实时数据（运行中最早、最准）；没传再退回消息里的子助手块。
   if (activeSubAgentName) return `子助手「${activeSubAgentName}」正在干活…`
-  const activeSubAgent = liveSubAgentsOf(messages).find(isSubAgentActive)
+  // 消息里的 part 可能**冻在起跑那一刻**（父流先关、终态块没赶上，唤醒轮里尤其常见），
+  // 所以退回 parts 判活前先与库内终态对账：store 认识且已终态的子 run 不算活跃；
+  // store 完全不认识时才信 part（保留"刚起跑、库还没到"的窗口）。
+  const activeSubAgent = liveSubAgentsOf(messages).find(
+    (live) => isSubAgentActive(live) && !(settledRunIds?.has(live.runId) ?? false),
+  )
   if (activeSubAgent) return `子助手「${activeSubAgent.name}」正在干活…`
 
   const parts = messages.at(-1)?.parts ?? []
@@ -75,13 +81,16 @@ export function RunActivity({
   messages,
   status,
   activeSubAgentName,
+  settledRunIds,
 }: {
   messages: readonly UIMessage[]
   status: string
   /** 正在跑的子助手名字（会话 store 的实时数据；没有就退回消息里的子助手块） */
   activeSubAgentName?: string | null
+  /** 库内已终态的子 run id（parts 兜底判活前对账，见 `runActivityText`） */
+  settledRunIds?: ReadonlySet<string>
 }) {
-  const text = runActivityText(messages, status, activeSubAgentName)
+  const text = runActivityText(messages, status, activeSubAgentName, settledRunIds)
   if (!text) return null
 
   return (

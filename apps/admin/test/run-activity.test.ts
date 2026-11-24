@@ -70,6 +70,39 @@ describe('runActivityText', () => {
     ).toBe('正在思考…')
   })
 
+  /**
+   * 2026-11-24 上游 issue（fork 报障）：父轮先收尾、子助手后完成时，终态块没赶上父流，
+   * 消息里的 part 冻在起跑快照；唤醒轮 store 已清空实时数据，兜底若只扫 parts 就会一直报
+   * 「正在干活」。判活前必须拿库内已终态对账。
+   */
+  it('parts 冻在起跑快照、库内已终态 → 不再报子助手在干活', () => {
+    expect(
+      runActivityText(
+        [message([subAgent({ status: 'running' }), { type: 'text', text: '汇总如下' }])],
+        'streaming',
+        null,
+        new Set(['sub1']),
+      ),
+    ).toBe('正在输出…')
+  })
+
+  it('parts 冻在无 status 的工具事件块、库内已终态 → 同样不算活跃', () => {
+    expect(
+      runActivityText(
+        [message([subAgent({ event: { kind: 'tool-call' } }), { type: 'text', text: '汇总如下' }])],
+        'streaming',
+        null,
+        new Set(['sub1']),
+      ),
+    ).toBe('正在输出…')
+  })
+
+  it('库内还没认识这个子 run（刚起跑窗口）→ 仍按 parts 判活跃', () => {
+    expect(
+      runActivityText([message([subAgent({ status: 'running' })])], 'streaming', null, new Set()),
+    ).toBe('子助手「北美欧洲线」正在干活…')
+  })
+
   it('收尾的工具不算信号：它后面有正文就报"正在输出"，什么都没有就报"正在思考"', () => {
     expect(
       runActivityText(
@@ -129,5 +162,17 @@ describe('RunActivity', () => {
     expect(stillWorking).toContain('role="status"')
     expect(stillWorking).toContain('正在思考…')
     expect(stillWorking).not.toContain('正在干活')
+  })
+
+  it('把 settledRunIds 传给文案判据：已终态子 run 不再报"正在干活"', () => {
+    const html = renderToStaticMarkup(
+      createElement(RunActivity, {
+        messages: [message([subAgent({ status: 'running' })])],
+        status: 'streaming',
+        settledRunIds: new Set(['sub1']),
+      }),
+    )
+    expect(html).toContain('正在思考…')
+    expect(html).not.toContain('正在干活')
   })
 })

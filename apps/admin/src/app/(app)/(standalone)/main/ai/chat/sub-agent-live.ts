@@ -243,6 +243,9 @@ export const isActiveRunStatus = (status: string): boolean =>
  */
 const TERMINAL_RUN_STATUSES = new Set(['succeeded', 'failed', 'canceled', 'interrupted'])
 
+/** 库里的子 run 是否已终态（`withRunState` 与运行指示的 parts 兜底共用一份判据） */
+export const isTerminalRunStatus = (status: string): boolean => TERMINAL_RUN_STATUSES.has(status)
+
 /**
  * 用库里的子 run 覆盖实时快照的**终态字段**（纯函数，不改入参）。
  *
@@ -255,7 +258,7 @@ export const withRunState = (live: SubAgentLive, run: AgentRunModel): SubAgentLi
     ...live,
     ...(live.conversationId ? {} : { conversationId: run.conversationId }),
   }
-  if (!TERMINAL_RUN_STATUSES.has(run.status)) return merged
+  if (!isTerminalRunStatus(run.status)) return merged
   merged.status = run.status
   merged.stepCount = run.stepCount
   merged.toolCallCount = run.toolCallCount

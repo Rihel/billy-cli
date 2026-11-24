@@ -18,6 +18,7 @@ import {
   appendSubAgentDelta,
   emptySubAgent,
   isSubAgentActive,
+  isTerminalRunStatus,
   mergeSubAgentState,
   subRunName,
   withRunState,
@@ -532,6 +533,9 @@ export interface ChatSessionSnapshot {
 /** 实时数据的合并窗口（毫秒）：数据到达不直接进 React，一窗合并一次 */
 const LIVE_FLUSH_MS = 100
 
+/** 空的「已终态子 run」集合：首屏 / SSR 共用一份引用，避免每次读取都换新对象 */
+const NO_SETTLED_RUNS: ReadonlySet<string> = new Set()
+
 /**
  * 一个会话的渲染状态 + 实时过程。
  *
@@ -554,6 +558,15 @@ export class ChatSessionStore {
    * 而"这个子助手早就跑完了"是**跨轮成立**的事实 —— 清掉就会退回起跑快照（进行中 0 步）。
    */
   private runStates = new Map<string, AgentRunModel>()
+  /**
+   * 库内**已终态**的子 run id（`runStates` 的派生视图，跨轮成立）。
+   *
+   * 为什么单存一份：运行指示在 store 判不出活跃时会退回消息里的 `data-sub-agent` part，
+   * 而那份 part 可能冻在起跑快照（父流先关、终态块没赶上）—— 判活前必须拿这份集合对账。
+   * 引用只在**终态成员**变化时换（见 `refreshSettledRunIds`），否则会话页会跟着 100ms 实时窗重渲染。
+   */
+  private settledRunIds: ReadonlySet<string> = NO_SETTLED_RUNS
+  private settledRunIdsSignature = ''
   private listeners = new Set<() => void>()
   private snapshot: ChatSessionSnapshot = {
     version: 0,
@@ -727,6 +740,13 @@ export class ChatSessionStore {
     return null
   }
 
+  /**
+   * 库内已终态的子 run id（运行指示的 parts 兜底判活前据此对账）。
+   *
+   * 箭头属性：直接当 `useSyncExternalStore` 的 getSnapshot 用，引用稳定（只在成员变化时换）。
+   */
+  settledSubAgentRunIds = (): ReadonlySet<string> => this.settledRunIds
+
   /** 实时数据一窗合并一次通知（增量块每秒上百个，逐个 setState 会拖死主线程） */
   private scheduleFlush(): void {
     if (this.flushTimer) {
@@ -740,7 +760,25 @@ export class ChatSessionStore {
     }, LIVE_FLUSH_MS)
   }
 
+  /**
+   * 重算「库内已终态的子 run id」集合。
+   *
+   * 引用**只在成员变化时换**：实时数据 100ms 一窗，若每次发布都新建 Set，
+   * 订阅它的会话页就会跟着每一窗重渲染 —— 这个缓存必须同时满足「跨轮成立」与「引用稳定」。
+   */
+  private refreshSettledRunIds(): void {
+    const ids = [...this.runStates.values()]
+      .filter((run) => isTerminalRunStatus(run.status))
+      .map((run) => run.id)
+      .sort()
+    const signature = ids.join(',')
+    if (signature === this.settledRunIdsSignature) return
+    this.settledRunIdsSignature = signature
+    this.settledRunIds = new Set(ids)
+  }
+
   private publish(): void {
+    this.refreshSettledRunIds()
     const messages = this.order
       .map((id) => this.states.get(id))
       .filter((state): state is ChatMessageState => Boolean(state))
@@ -814,5 +852,19 @@ export function useActiveSubAgentName(): string | null {
     store.subscribe,
     () => store.activeSubAgentName(),
     () => null,
+  )
+}
+
+/**
+ * 库内已终态的子 run id（运行指示用）。
+ *
+ * 引用稳定：`publish()` 按终态成员签名换引用，所以订阅它**不会**跟着 100ms 实时窗重渲染。
+ */
+export function useSettledSubAgentRunIds(): ReadonlySet<string> {
+  const store = useChatSessionStore()
+  return useSyncExternalStore(
+    store.subscribe,
+    store.settledSubAgentRunIds,
+    store.settledSubAgentRunIds,
   )
 }

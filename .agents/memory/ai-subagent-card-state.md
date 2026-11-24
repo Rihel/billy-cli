@@ -24,14 +24,18 @@
   「已调用 N 次工具」（`liveToolCallCount` 数实时事件里的 `tool-call`，`tool-result` 不重复数），
   **不显示步数**（显示 0 等于谎报）；`durationMs = 0` 是起跑快照的占位，不要渲染成「0ms」。
 - 轮询要看「有运行中的 run 行」：只按实时判活跃会提前停轮询，终态永远到不了前端。
+- **运行指示**（`run-activity.tsx`）的 parts 兜底同样要过库终态：`liveSubAgentsOf(messages)` 会扫到
+  上一轮冻在 `running` 的 part；`chat-session.ts` 的 `settledSubAgentRunIds`（库内已终态子 run id，
+  跨轮成立、引用只在成员变化时换）喂给 `RunActivity` 对账后才判活跃（2026-11-24 fork issue）。
 
 ## 依据
 
 - `apps/admin/src/app/(app)/(standalone)/main/ai/chat/history.ts`（`applyChildRunStates`）
 - `apps/admin/src/app/(app)/(standalone)/main/ai/chat/chat-session.ts`（`applyRunStates` / `views`）
 - `apps/admin/src/app/(app)/(standalone)/main/ai/chat/sub-agent-live.ts`（`withRunState` / `isActiveRunStatus`）
-- 单测：`apps/admin/test/chat-session-store.test.ts`（清空后仍终态 / 运行中不倒退 / 无实时块首屏）、
-  `apps/admin/test/ai-history.test.ts`（起跑快照被终态覆盖）
+- 单测：`apps/admin/test/chat-session-store.test.ts`（清空后仍终态 / 运行中不倒退 / 无实时块首屏 /
+  已终态集合跨轮与引用稳定）、`apps/admin/test/ai-history.test.ts`（起跑快照被终态覆盖）、
+  `apps/admin/test/run-activity.test.ts`（parts 冻在起跑快照时与库终态对账）
 
 ## 核对命令
 
@@ -39,6 +43,7 @@
 grep -n "applyChildRunStates" "apps/admin/src/app/(app)/(standalone)/main/ai/chat/history.ts"
 grep -n "applyRunStates\|private views" "apps/admin/src/app/(app)/(standalone)/main/ai/chat/chat-session.ts"
 grep -n "withRunState\|isActiveRunStatus" "apps/admin/src/app/(app)/(standalone)/main/ai/chat/sub-agent-live.ts"
+grep -n "settledSubAgentRunIds\|useSettledSubAgentRunIds" "apps/admin/src/app/(app)/(standalone)/main/ai/chat/chat-session.ts" "apps/admin/src/app/(app)/(standalone)/main/ai/chat/run-activity.tsx"
 ```
 
 ## 失效信号
