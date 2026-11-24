@@ -3,7 +3,7 @@
 > 本文件是 `develop-backend-api` skill 的组成部分，由主 SKILL.md 引用。
 > 接口交付前按本文件自测；响应格式细节见 [response-contract.md](./response-contract.md)。
 
-1. `pnpm dev:pkgs` 先确保改动的包已构建；`pnpm dev:main` 起公网 BFF（9989；
+1. `pnpm dev:pkgs` 先确保改动的包已构建；`pnpm dev:main` 起公网 API / 控制面（9989；
    agent 执行侧改动用 `pnpm dev:runtime`，9990；两边都要时 `pnpm dev:stack`）。
 2. curl 自测主路径 + 错误路径，断言 body `code`（与 `AppErrorCodes` 一致）与 HTTP 状态：
    ```bash

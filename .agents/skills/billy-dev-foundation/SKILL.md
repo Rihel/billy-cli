@@ -32,7 +32,7 @@ description: Billy 工程（billy-cli monorepo）开发必读 skill。任何在�
 ## 分层规则
 
 依赖方向不可逆：`shared` 不依赖业务包；`kits` 不 import `apps/*`；后端是**两个 app**：
-`apps/main`（公网 BFF，9989）是控制面业务与组合根的归属，`apps/agent-runtime`（9990，不对外）
+`apps/main`（公网 API / 控制面，9989）是控制面业务与组合根的归属，`apps/agent-runtime`（9990，不对外）
 只跑 agent loop（Mastra 只在这里出现）。两者各有自己的 `root.module.ts`（唯一组合根）；
 横切 HTTP 构件（错误 / 请求上下文 / 请求日志 / 请求指标 / 校验 / 信封）统一在 `@repo/kits` 的
 `src/http/`，`apps/main/src/common/` 只保留 main 专属的 `security/`（限流守卫依赖应用配置），

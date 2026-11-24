@@ -1,6 +1,6 @@
 # 后端（NestJS）
 
-> 本文主线是 **`apps/main`**（公网 BFF，9989）与 **`apps/agent-runtime`**（agent loop，9990）。
+> 本文主线是 **`apps/main`**（公网 API / 控制面，9989）与 **`apps/agent-runtime`**（agent loop，9990）。
 > 另有四个**只在内网、只认内部令牌**的服务：**`apps/model-gateway`**（9992，模型网关）、
 > **`apps/capability-gateway`**（9993，能力目录与调用路由）、**`apps/common-capability`**（9994，
 > 通用能力执行）、**`apps/workspace-service`**（9995，工作区执行面）。
@@ -11,7 +11,7 @@
 
 | 服务 | 端口 | 对外 | 职责 |
 | --- | --- | --- | --- |
-| `apps/main`（`@app/main`） | 9989 | **是**（前端 / SDK / 分享页 / 探针都连它） | 公网 BFF + 业务控制面：鉴权、业务控制面 CRUD、全部 AI 配置与管理 HTTP、`/agent/*`（对话入口 + SSE 桥 + 队列）、工作区控制面、模型网关用量页；**不跑 agent loop、不执行能力** |
+| `apps/main`（`@app/main`） | 9989 | **是**（前端 / SDK / 分享页 / 探针都连它） | 公网 API + 业务控制面：鉴权、业务控制面 CRUD、全部 AI 配置与管理 HTTP、`/agent/*`（对话入口 + SSE 桥 + 队列）、工作区控制面、模型网关用量页；**不跑 agent loop、不执行能力** |
 | `apps/agent-runtime`（`@app/agent-runtime`） | 9990 | 否（只给 main 调） | 只跑 agent loop：agents / 会话编排 / 工具面装配 / 提示词 / 技能加载 / 子 agent / run 队列 / 崩溃恢复；只暴露 `/internal/agent/*` 与探针 |
 | `apps/model-gateway`（`@app/model-gateway`） | 9992 | 内网 | 内部模型网关：canonical OpenAI 协议、四套上游协议适配、模型目录、上游 key 池、用量落库；runtime 不持供应商 key |
 | `apps/capability-gateway`（`@app/capability-gateway`） | 9993 | 内网 | 能力目录权威：服务登记 / 心跳 / 能力目录 / 授权过滤 / 调用路由 / 限流与入参校验 / MCP client / 审计；**不执行能力** |
@@ -414,7 +414,7 @@ main 是配置的唯一写方，下游需要感知两类变化（没有事件的
 - **后端驱动**：`local`（复用 kits 的 L1 沙箱，自托管单租户）/ `container`（docker 或 k8s）/
   `microvm`（预留未实现）。容器名为 `billy-ws-<workspaceId>`，容器内固定工作目录 `/workspace`；
   镜像约定见 `docker/Dockerfile.workspace-image`（python:3.13-slim + node 26 + pnpm，tag
-  `billy-workspace:2026.11.0`）。
+  `billy-workspace:2026.11.1`）。
 - **工作区目录（`local` 后端）**：工作区就是宿主机上的一个目录。没配 `location.root` 用默认
   `<WORKSPACE_LOCAL_ROOT>/<workspaceId>`（约定 `~/.billy/workspaces/<id>`）；配了就指向宿主上已存在的
   绝对路径，让 AI 直接读写本机项目目录（`bash` / 7 个文件能力都在它上面工作）。配了之后有三道闸：必须落在

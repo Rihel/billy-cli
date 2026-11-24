@@ -4,7 +4,7 @@
 
 ## 结论（2026-11-14）
 
-- **两个 Nest 应用**：`apps/main`（`@app/main`，9989，公网 BFF）与 `apps/agent-runtime`
+- **两个 Nest 应用**：`apps/main`（`@app/main`，9989，公网 API / 控制面）与 `apps/agent-runtime`
   （`@app/agent-runtime`，9990，只跑 agent loop）。前端只连 main。
 - **main**：auth / user / admin / session / storage / share / monitor / ops / config、全部 AI CRUD
   （ai-model / ai-tool / ai-skill / ai-memory / conversation / run / timeline / usage）、

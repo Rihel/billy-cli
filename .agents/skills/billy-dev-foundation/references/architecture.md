@@ -15,7 +15,7 @@ workspace-service）；前端两套独立入口（Web 前台 / Admin 后台）�
 | 层 | 选型 |
 | --- | --- |
 | 构建 | pnpm + Turbo（`turbo.json` 按依赖拓扑编排） |
-| 服务端 HTTP | NestJS 12（`@nestjs/core` + `@nestjs/common` + `@nestjs/platform-express`，底层 Express 5）；**6 个进程**：`apps/main`（`@app/main`，公网 BFF，9989）+ `apps/agent-runtime`（`@app/agent-runtime`，只跑 agent loop，9990，不对外）+ 四个内网服务 `model-gateway`（9992，模型网关）/ `capability-gateway`（9993，能力目录 / 路由 / 审计）/ `common-capability`（9994，通用能力执行）/ `workspace-service`（9995，工作区执行面） |
+| 服务端 HTTP | NestJS 12（`@nestjs/core` + `@nestjs/common` + `@nestjs/platform-express`，底层 Express 5）；**6 个进程**：`apps/main`（`@app/main`，公网 API / 控制面，9989）+ `apps/agent-runtime`（`@app/agent-runtime`，只跑 agent loop，9990，不对外）+ 四个内网服务 `model-gateway`（9992，模型网关）/ `capability-gateway`（9993，能力目录 / 路由 / 审计）/ `common-capability`（9994，通用能力执行）/ `workspace-service`（9995，工作区执行面） |
 | 服务端推流 | `@repo/kits` 的 `StreamHub`（`POST /sse/subscribe` 长连接 + Redis pub/sub 跨实例广播）+ `@repo/http-client` 的 `HttpStreamClient`（浏览器 / Node 双环境，默认 POST + Bearer 认证）；**AI 流式另用 pub/sub 定向频道**：runtime 把模型输出发 `agent:stream:client:<clientId>`，main 的 `AgentSseBridge` 订阅后写回前端 SSE（Kafka 当前无业务 topic） |
 | 服务端日志 | 自建 logger（`@repo/shared/logger` 的 `createLogger`，**不用 nestjs-pino**）：kits `LoggerModule` 建唯一 pino 实例（pino-pretty 开发美化；生产可多目标 transport 推送 pino-loki；redact 脱敏），`AppLogger` 供业务注入、`NestLoggerAdapter` 接管 Nest 框架日志；请求日志由 `@repo/kits` 的 `RequestLoggerMiddleware` 自记录 |
 | 业务位置 | 控制面业务全归 main：`apps/main/src/modules/<业务>/{module, controller, service, repository, errors, index}`（auth / admin / user / session / storage / share / monitor / stream / ops / runtime-config / ai-model / ai-usage / ai-admin（conversation / file / tool / capability / skill / workspace））+ 全部 AI 配置 CRUD |
@@ -32,7 +32,7 @@ workspace-service）；前端两套独立入口（Web 前台 / Admin 后台）�
 ## 3. 分层架构与依赖方向（最重要的心智模型）
 
 ```
-apps/main       公网 BFF：NestJS HTTP 边界 + 控制面业务模块 + 配置 + 唯一组合根（9989，对外）
+apps/main       公网 API：NestJS HTTP 边界 + 控制面业务模块 + 配置 + 唯一组合根（9989，对外）
                · common/security/  仅剩 main 专属的访问控制（token 与身份读取 · 限流守卫 ·
                                    「任一身份」守卫编排）；它依赖应用级 ServerConfig，故不进 kits
                · 横切 HTTP 构件（错误 / 请求上下文 / 请求日志 / 请求指标 / Zod 校验 / 响应信封）

@@ -1,7 +1,7 @@
 # Billy 服务端 Kubernetes 部署清单
 #
 # 本目录覆盖六个 Nest 服务：
-# - billy-main（apps/main，9989）：公网唯一入口 / BFF，Deployment / Service / Ingress / PDB / HPA；
+# - billy-main（apps/main，9989）：公网唯一入口 / 控制面 API，Deployment / Service / Ingress / PDB / HPA；
 # - billy-agent-runtime（apps/agent-runtime，9990）：agent loop，内部 ClusterIP，不接公网 Ingress；
 # - billy-model-gateway（apps/model-gateway，9992）：内部模型网关（供应商 key / 协议适配）；
 # - billy-capability-gateway（apps/capability-gateway，9993）：内部能力网关（能力目录 / 路由 / 审计 / MCP）；

@@ -2,7 +2,7 @@
 
 覆盖六个服务：
 
-- **billy-main**（`apps/main`，容器端口 **9989**）：公网唯一入口 / BFF；HTTP / CRUD + agent SSE 中继（Redis pub/sub）；Deployment / Service / 两份 Ingress / PDB / HPA；
+- **billy-main**（`apps/main`，容器端口 **9989**）：公网唯一入口 / 控制面 API；HTTP / CRUD + agent SSE 中继（Redis pub/sub）；Deployment / Service / 两份 Ingress / PDB / HPA；
 - **billy-agent-runtime**（`apps/agent-runtime`，容器端口 **9990**）：agent loop，只由 main 通过 `AGENT_RUNTIME_URL` 调用；Deployment / ClusterIP Service / 工作区 PVC / HPA，**不接公网 Ingress**；
 - **billy-model-gateway**（`apps/model-gateway`，容器端口 **9992**）：模型网关，持有供应商 key、做协议适配；runtime（模型调用）与 main（模型明细同步）调用；
 - **billy-capability-gateway**（`apps/capability-gateway`，容器端口 **9993**）：能力网关，能力目录 / 路由 / 审计 / MCP，内建 `wait-task` / `cancel-task` / `tool-search`；runtime（工具面）与 main（后台能力 / 工具配置页）调用；
@@ -298,7 +298,7 @@ kubectl -n billy get pvc                    # STATUS 必须是 Bound，不是 Pe
 - **kubectl 凭据**：镜像只装 kubectl（`docker/Dockerfile.workspace-service` 注释也写明「kubeconfig 由运行环境提供」），
   本目录**没有**注入 `KUBECONFIG` / in-cluster 凭据的清单；上线前必须由运行环境补上（kubectl 不自动读 Pod 内的
   ServiceAccount token，见 §10）；
-- **工作区镜像**：`WORKSPACE_DEFAULT_IMAGE`（默认 `billy-workspace:2026.11.0`）必须能被集群节点拉取；
+- **工作区镜像**：`WORKSPACE_DEFAULT_IMAGE`（默认 `billy-workspace:2026.11.1`）必须能被集群节点拉取；
   工作区 Pod 不带 `imagePullSecrets`，私有仓库需要节点级凭据或把镜像放到可达 registry；
 - 工作区 Pod 的 `/workspace` 是 emptyDir：**Pod 回收后未提交文件即丢失**；文件真相在对象存储
   （`file-submit` 提交过的文件）与数据库记录里。
@@ -459,7 +459,7 @@ kubectl -n billy exec deploy/billy-agent-runtime -- \
   否则创建 / exec 工作区 Pod 会失败；
 - **工作区 Pod 的 `/workspace` 是 emptyDir**：Pod 回收 / 重建后工作区里未提交的文件丢失；文件真相在对象存储
   （提交过的文件）与数据库里。runtime 的 PVC 只服务 runtime 侧的附件物化，不供工作区 Pod 使用；
-- **工作区镜像必须集群可拉取**：`WORKSPACE_DEFAULT_IMAGE` 默认 `billy-workspace:2026.11.0` 且工作区 Pod 不带
+- **工作区镜像必须集群可拉取**：`WORKSPACE_DEFAULT_IMAGE` 默认 `billy-workspace:2026.11.1` 且工作区 Pod 不带
   `imagePullSecrets`，私有 registry 需节点级凭据或可达的镜像地址；
 - **common-capability 固定 1 副本**：进程内 task 句柄 / 在跑计数不共享，旧数据（会话未绑定 workspaceId）的文件
   回落本 Pod 本地盘；扩副本前先确认这两点。它的注册地址是 Pod IP（downward API），Pod 重建 / IP 变化靠

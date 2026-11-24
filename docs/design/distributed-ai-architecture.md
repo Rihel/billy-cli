@@ -14,7 +14,7 @@
 | 设计项 | 设计稿 | 实际落地 | 差异 / 缺口 |
 | --- | --- | --- | --- |
 | 服务拆分 | `server` / `agent-runtime` / `model-gateway` / `tool-gateway` / `tool-worker` 五个 | `apps/main`（9989）/ `apps/agent-runtime`（9990）/ `apps/tool-gateway`（9993）/ `apps/tool-worker`（9994） | **model-gateway 未建**，模型调用仍由 runtime 直连供应商 |
-| 命名 | 文档里的 `server`（BFF）/ `facade`（编排） | `apps/main` / `apps/agent-runtime` | 包名 `@app/main` / `@app/agent-runtime`；旧的单 `server` app 及其 `@app/…server` 包名已删除 |
+| 命名 | 文档里的 `server`（入口层）/ `facade`（编排） | `apps/main` / `apps/agent-runtime` | 包名 `@app/main` / `@app/agent-runtime`；旧的单 `server` app 及其 `@app/…server` 包名已删除 |
 | 客户端契约 | 「客户端 API 不变」 | 前端只连 main 9989，`/agent/*` 路径不变 | 非流式 `POST /agent/chat` 当前没有实现的服务端路由（SDK 里仍留着方法），见后端文档「已知缺口」 |
 | runtime → main 的输出 | 设计稿是 facade → server 的**内部 SSE 中继** + offset 续读 | **Redis pub/sub 定向频道** `agent:stream:client:<clientId>`：runtime 发、main 的 `AgentSseBridge` 写 SSE；`clientId` 绑定在 Redis 进度 Hash | 2026-11-15 从 Kafka 回退（1.5M 条 / 686MB，回放能力没人用）；断线重连走 Redis 输出记录补发 |
 | 停止 / 续答 | `POST /run/stop`、suspended 后 resume | **已补**：main `/agent/run/stop`、`/agent/chat/resume` 转发 runtime 内部接口 | 无 |
@@ -99,7 +99,7 @@
 ### 3.1 架构（设计目标，标注落地状态）
 
 ```
-client ──> main（BFF，SSE 中继）──> agent-runtime（编排）──> model-gateway ✗未建 ──> 供应商
+client ──> main（公网 API，SSE 中继）──> agent-runtime（编排）──> model-gateway ✗未建 ──> 供应商
                                       └──> tool-gateway ──> tool-worker（所有能力工具）
                                                                 ├─ 数据 API ──> main（file / skill / memory）
                                                                 └─ 对象存储 / 临时工作区
@@ -146,7 +146,7 @@ runtime 内部：planner / subagent / ask（编排原语，不经 worker）
 
 ### D2 时间线归 facade 写
 
-**决策**：`runs` / `timelines` / `ai_memories` 由 facade 写，server 只读；server 只做 BFF 与 SSE 中继。
+**决策**：`runs` / `timelines` / `ai_memories` 由 facade 写，server 只读；server 只做入口转发与 SSE 中继。
 **理由**：时间线是编排过程的产物，main 崩了不能丢事件。**代价**：main 的用量 rollup 依赖 runtime 写入。
 
 ### D3 工作区：S3 真相 + 临时目录
@@ -623,7 +623,7 @@ worker 10–30 并发命令。SLO：首 token ≤ 供应商 TTFT + 300ms；中�
 | P0 | 契约 `@repo/contracts` + `@repo/internal-sdk` + 三个端口（TurnEngine / ModelClient / ToolInvoker），行为不变 | 3–5d |
 | P1 | **容量止血**：资源 2C/4Gi + HPA、DB 池可配、单副本/单用户准入、背景 lane、Redis 缓冲字节上限、`/metrics` + 可用性/容量告警 | 5–8d |
 | P2 | **工作区外部化**：S3 + 清单 + 临时目录、Redis 锁、配额/GC | 8–12d |
-| P3 | **facade 拆分**：AI runtime 迁出、server 变 BFF、run 状态机/心跳/租约迁到 facade、SSE 中继、trace 贯通、Mastra 只进 facade + `check:mastra` 收紧 | 15–20d |
+| P3 | **facade 拆分**：AI runtime 迁出、server 变入口层、run 状态机/心跳/租约迁到 facade、SSE 中继、trace 贯通、Mastra 只进 facade + `check:mastra` 收紧 | 15–20d |
 | P3 现状 | ✅ main/runtime 拆分已落地（9989 / 9990，pub/sub SSE）；⏳ trace 贯通、租约仍未做；`check:mastra` 已收紧到「只有 runtime 可 import」 | — |
 | P4 | **模型网关**：key 池、租户配额、降级、用量对账 | 8–12d（**未开始**，无 `apps/model-gateway`） |
 | P5 | **工具网关 + worker**：bash 控制面已落地；继续迁 web/file/skill/memory、插件链全量、删 runtime 本地 ToolGateway | 15–20d |
