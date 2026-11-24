@@ -259,8 +259,13 @@ facade 内继续只允许 `mastra/**` + 现有 allowlist，且 allowlist 只减�
 **规则**：新增内部端点 → 先加 `@repo/contracts` schema → 再加 SDK 方法 → 最后才允许调用方使用。
 `@repo/sdk` 是给前端 / 外部用的业务 SDK，不混内部服务客户端。
 
-**现状**：`ToolGatewayClient`（invoke / listWorkers / health）与 `ToolWorkerClient`（exec / health）
-已落地；tool-gateway 调 worker、server 的可选远程执行（`TOOL_GATEWAY_URL`）都已走 SDK。
+**现状（2026-11-24）**：`@repo/internal-sdk` 覆盖全部 app 间调用 ——
+`AgentRuntimeClient`（runtime：目录查询、取消会话、队列项、时间线状态，以及对话执行的
+`chat` / `stopRun` / 运行快照 / `openStream` SSE 透传）、`WorkspaceServiceClient`、`CapabilityGatewayClient`、
+`ModelGatewayClient`、`MainInternalClient`（workspace-service → main 的 `credentials/resolve`、
+`credentials/import`）。main 的 `/agent/*` 中转不再直接 fetch：JSON 走 typed client，
+SSE 用 `openStream` 拿原始流再交给 pub/sub 桥接。早先的 `ToolGatewayClient` / `ToolWorkerClient`
+随 tool-gateway / tool-worker 下线已删除。
 
 ### D10 子 agent = 子会话
 

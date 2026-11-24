@@ -46,6 +46,7 @@ import { AiToolAdminModule } from './modules/ai-admin/tool/index.js'
 import { CapabilityServiceAdminModule } from './modules/ai-admin/capability/index.js'
 import { AiSkillAdminModule } from './modules/ai-admin/skill/index.js'
 import { AgentSseBridge } from './agent/agent-sse.bridge.js'
+import { AgentRuntimeGateway } from './agent/agent-runtime.gateway.js'
 import { AgentControlController } from './agent/agent-control.controller.js'
 import { AgentRunQueueController } from './agent/agent-run-queue.controller.js'
 import { AgentRunQueueService } from './agent/agent-run-queue.service.js'
@@ -198,6 +199,7 @@ import { UserModule } from './modules/user/index.js'
   providers: [
     AgentRunQueueService,
     AgentSseBridge,
+    AgentRuntimeGateway,
     MemoryRepository,
     MemoryService,
     // 技术错误告警钩子：把 MonitorEngine 适配为 common 层 token（避免 HTTP 边界层反向依赖业务模块）

@@ -1,3 +1,10 @@
+import {
+  InternalApiError,
+  InternalProtocolError,
+  InternalTimeoutError,
+  InternalTransportError,
+  MainInternalClient,
+} from '@repo/internal-sdk'
 import type { CredentialImportResponse } from '@repo/contracts'
 
 /** 调 main 内部凭据接口要的东西（地址 + 内部令牌） */
@@ -17,11 +24,27 @@ export interface CredentialImportBody {
   values: Record<string, unknown>
 }
 
-/** main 的响应信封（成功 `{ code: 0, data }`，失败 `{ code, message }`） */
-interface Envelope {
-  code?: number
-  data?: CredentialImportResponse
-  message?: string
+/** main 的错误信封里带中文原因（`{ code, message }`）；网关错误页可能不是 JSON */
+const reasonOf = (detail: string): string => {
+  try {
+    const parsed = JSON.parse(detail) as { message?: unknown }
+    if (typeof parsed.message === 'string' && parsed.message.trim()) return parsed.message.trim()
+  } catch {
+    // 忽略：按原文截断即可
+  }
+  return detail.trim().slice(0, 300)
+}
+
+/** 内部调用失败的中文描述（错误码 / 原因都不含凭据值） */
+export const describeInternalFailure = (error: unknown): string => {
+  if (error instanceof InternalApiError) {
+    const reason = reasonOf(error.detail)
+    return `HTTP ${error.status}${reason ? `（${reason}）` : ''}`
+  }
+  if (error instanceof InternalProtocolError) return '响应不符合契约'
+  if (error instanceof InternalTimeoutError) return '控制面调用超时'
+  if (error instanceof InternalTransportError) return '控制面不可用'
+  return error instanceof Error ? error.message : String(error)
 }
 
 /**
@@ -34,27 +57,15 @@ export const importCredentialToMain = async (
   target: CredentialMainTarget,
   body: CredentialImportBody,
 ): Promise<CredentialImportResponse['credential']> => {
-  const response = await fetch(new URL('/internal/credentials/import', target.mainUrl), {
-    method: 'POST',
-    headers: {
-      'content-type': 'application/json',
-      'x-internal-token': target.token,
-    },
-    body: JSON.stringify(body),
-    signal: AbortSignal.timeout(20_000),
+  const client = new MainInternalClient({
+    baseUrl: target.mainUrl,
+    token: target.token,
+    timeoutMs: 20_000,
   })
-  // 先读文本：非 2xx 时响应体里的中文原因也要拿到（网关错误页可能不是 JSON）
-  const text = await response.text()
-  let envelope: Envelope = {}
   try {
-    envelope = text ? (JSON.parse(text) as Envelope) : {}
-  } catch {
-    envelope = {}
+    const result = await client.importCredential(body)
+    return result.credential
+  } catch (error) {
+    throw new Error(`凭据入库失败：${describeInternalFailure(error)}`)
   }
-  if (!response.ok) {
-    const detail = envelope.message?.trim() || text.trim().slice(0, 300)
-    throw new Error(`凭据入库失败：HTTP ${response.status}${detail ? `（${detail}）` : ''}`)
-  }
-  if (!envelope.data) throw new Error(envelope.message?.trim() || '凭据入库失败：响应缺少 data')
-  return envelope.data.credential
 }

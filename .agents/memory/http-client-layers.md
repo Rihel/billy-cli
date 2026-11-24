@@ -21,3 +21,12 @@
 Ollama 的 NDJSON 翻译仍在网关协议适配器，不在 http-client。
 
 失效信号：内部新增业务路由若忘了 `ResponseEnvelopeInterceptor`，`requestEnvelope` 会直接协议错误。
+
+内部 SDK 覆盖（2026-11-24）：
+
+- `@repo/internal-sdk` 是 app 间调用的唯一出口：`AgentRuntimeClient`（目录查询 + 对话执行的 `chat` / `stopRun` / 快照 / `openStream`）、`WorkspaceServiceClient`、`CapabilityGatewayClient`、`ModelGatewayClient`、`MainInternalClient`（workspace-service → main 的凭据 resolve / import）；
+- 可空 JSON 用 `requestJsonOptional`：204 或空 / 残缺 body 归一成 `null`（运行快照语义）；
+- SSE 透传用 `openStream`：只建连不解析帧，204 / 空体回 `body: null`，main 侧再交给 pub/sub 桥接；
+- 核对：`grep -rn "fetch(" apps/main/src` 不应出现 `/internal/` 直连；`grep -rn "x-internal-token" --include=*.ts apps/*/src | grep -v controller` 应只剩 SDK 内部。
+
+失效信号：新增内部端点若在调用方直接 fetch，或 `/agent/*` 又出现手拼 headers / 超时。

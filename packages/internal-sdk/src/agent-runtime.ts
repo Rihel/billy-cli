@@ -1,12 +1,17 @@
 import {
+  AgentChatResultSchema,
   AgentConversationCancelResultSchema,
   AgentInstructionsModelSchema,
   AgentListSchema,
   AgentRunQueueItemSchema,
   AgentRunQueueRemoveResultSchema,
+  AgentRunSnapshotSchema,
+  AgentRunStopResultSchema,
   AgentStatusSchema,
   AgentTimelineStatusResultSchema,
   AgentToolListSchema,
+  type AgentChatDto,
+  type AgentChatResultModel,
   type AgentConversationCancelDto,
   type AgentConversationCancelResultModel,
   type AgentInstructionsDto,
@@ -16,18 +21,31 @@ import {
   type AgentRunQueueRemoveDto,
   type AgentRunQueueRemoveResultModel,
   type AgentRunQueueUpdateDto,
+  type AgentRunSnapshotModel,
+  type AgentRunStopDto,
+  type AgentRunStopResultModel,
   type AgentStatusModel,
   type AgentTimelineStatusDto,
   type AgentTimelineStatusResultModel,
   type AgentToolListModel,
 } from '@repo/shared'
-import { requestEnvelope, type InternalClientOptions, type InvokeOptions } from './http.js'
+import {
+  openStream,
+  requestEnvelope,
+  requestJsonOptional,
+  type InternalClientOptions,
+  type InvokeOptions,
+  type OpenStreamResult,
+  type StreamRequestOptions,
+} from './http.js'
 
 /**
  * agent-runtime 的内部客户端（main → runtime）。
  *
- * 只覆盖**控制面要查执行面**的三件事：能力状态、agent 清单、系统指令原文。
- * 对话执行（chat / stream / stop / resume）仍走已有的 SSE 中转，不在这个类里。
+ * 覆盖两类调用：
+ * - **控制面查询 / 写入**：能力状态、agent 清单、内建工具、系统指令、取消会话、时间线状态、队列项；
+ * - **对话执行**：非流式一轮（`chat`）、停止（`stopRun`）、运行快照（204 = 没有），
+ *   以及只建立连接、不解析帧的 `openStream`（SSE 中转自己管订阅与回帧）。
  */
 export class AgentRuntimeClient {
   constructor(private readonly options: InternalClientOptions) {}
@@ -139,5 +157,66 @@ export class AgentRuntimeClient {
         ...options,
       },
     )
+  }
+
+  /** 非流式一轮问答（前端 `POST /agent/chat`；流式走 `openStream`） */
+  chat(input: AgentChatDto, options: InvokeOptions = {}): Promise<AgentChatResultModel> {
+    return requestEnvelope(this.options, '/internal/agent/chat', AgentChatResultSchema, {
+      method: 'POST',
+      body: input,
+      ...options,
+    })
+  }
+
+  /**
+   * 停止当前轮（幂等）：`runId` 与 `conversationId` 至少给一个。
+   *
+   * 重复停止也返回 `{ stopped: true }`；`injected` 说明指令是本地 abort 还是经 Redis 广播。
+   */
+  stopRun(input: AgentRunStopDto, options: InvokeOptions = {}): Promise<AgentRunStopResultModel> {
+    return requestEnvelope(this.options, '/internal/agent/run/stop', AgentRunStopResultSchema, {
+      method: 'POST',
+      body: input,
+      ...options,
+    })
+  }
+
+  /**
+   * 当前进行中那一轮的快照。
+   *
+   * 上游用 **204** 表示"这个会话现在没在跑"：这里归一成 `null`（前端据此不点亮恢复灯）。
+   * 同一接口 200 但 body 为空 / 被截断时也按 `null` 处理（2026-11-17 上游 Issue 3）。
+   */
+  snapshotCurrentRun(
+    conversationId: string | undefined,
+    options: InvokeOptions = {},
+  ): Promise<AgentRunSnapshotModel | null> {
+    const query = conversationId ? `?conversationId=${encodeURIComponent(conversationId)}` : ''
+    return requestJsonOptional(
+      this.options,
+      `/internal/agent/run/snapshot${query}`,
+      AgentRunSnapshotSchema,
+      { method: 'GET', ...options },
+    )
+  }
+
+  /** 指定 run 的快照（知道 runId 时用）；没有进行中的流时同样返回 `null` */
+  snapshotRun(runId: string, options: InvokeOptions = {}): Promise<AgentRunSnapshotModel | null> {
+    return requestJsonOptional(
+      this.options,
+      `/internal/agent/run/${encodeURIComponent(runId)}/snapshot`,
+      AgentRunSnapshotSchema,
+      { method: 'GET', ...options },
+    )
+  }
+
+  /**
+   * 打开执行面的流（SSE 透传）：只建立连接、返回原始响应体，**不解析帧**。
+   *
+   * main 的 `/agent/*` 中转需要：订阅先挂上、再让 runtime 开跑，内容经 pub/sub 回投；
+   * 这里只把上游的 body 交给调用方持续读掉（背压），204 时 `body` 为 null。
+   */
+  openStream(path: string, init: StreamRequestOptions = {}): Promise<OpenStreamResult> {
+    return openStream(this.options, path, init)
   }
 }

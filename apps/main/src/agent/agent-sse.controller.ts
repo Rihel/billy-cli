@@ -12,9 +12,10 @@ import {
 import { randomUUID } from 'node:crypto'
 import type { Response } from 'express'
 import { AgentSseBridge, parseStreamProtocol } from './agent-sse.bridge.js'
+import { AgentRuntimeGateway } from './agent-runtime.gateway.js'
+import { drainStream } from './stream-drain.js'
 import { AnyAuthGuard } from '../modules/auth/index.js'
 import { RateLimit, RateLimitGuard } from '../common/security/index.js'
-import { requestContext } from '@repo/kits'
 
 const SSE_HEADERS = {
   'content-type': 'text/event-stream',
@@ -23,11 +24,19 @@ const SSE_HEADERS = {
   'x-accel-buffering': 'no',
 }
 
-/** 前端唯一入口：main 起流，runtime 跑 agent，输出经 pub/sub 回到这里 */
+/**
+ * 前端唯一入口：main 起流，runtime 跑 agent，输出经 pub/sub 回到这里。
+ *
+ * 上游调用走 `AgentRuntimeGateway`（SDK）：这里只做「先挂订阅、再让 runtime 开跑」的顺序，
+ * 以及把上游响应体持续读掉（背压）。
+ */
 @Controller('agent')
 @UseGuards(AnyAuthGuard)
 export class AgentSseController {
-  constructor(@Inject(AgentSseBridge) private readonly bridge: AgentSseBridge) {}
+  constructor(
+    @Inject(AgentSseBridge) private readonly bridge: AgentSseBridge,
+    @Inject(AgentRuntimeGateway) private readonly runtime: AgentRuntimeGateway,
+  ) {}
 
   @Post('chat/stream')
   @HttpCode(200)
@@ -35,70 +44,45 @@ export class AgentSseController {
   @RateLimit({ scope: 'agent-chat', limit: 10, windowSeconds: 60, identity: 'user' })
   async chatStream(
     @Body() body: unknown,
-    @Headers('authorization') authorization: string | undefined,
-    @Headers('cookie') cookie: string | undefined,
-    @Res() response: Response,
     @Headers() headers: Record<string, string>,
+    @Res() response: Response,
     @Query('protocol') protocol: string | undefined,
   ): Promise<void> {
     const clientId = randomUUID()
-    const streamProtocol = parseStreamProtocol(protocol)
-    const runtime = process.env.AGENT_RUNTIME_URL ?? 'http://127.0.0.1:9990'
-
     response.writeHead(200, SSE_HEADERS)
     response.flushHeaders()
     // 先挂订阅再触发运行：runtime 一旦开跑就会往这条频道发帧，晚一步首帧就丢了。
     // 订阅失败绝不能"照常起跑"：那一轮所有帧都会发到没人收的频道。
-    const attached = await this.bridge.attach(clientId, response, { protocol: streamProtocol })
+    const attached = await this.bridge.attach(clientId, response, {
+      protocol: parseStreamProtocol(protocol),
+    })
     if (!attached) {
       this.bridge.fail(clientId, '实时通道订阅失败，请重试')
       return
     }
 
-    const requestHeaders = this.headers(clientId, headers)
-    requestHeaders['content-type'] = 'application/json'
-
+    let upstream
     try {
-      const upstream = await fetch(`${runtime}/internal/agent/chat/stream`, {
+      upstream = await this.runtime.openStream('/internal/agent/chat/stream', {
         method: 'POST',
-        headers: requestHeaders,
-        body: JSON.stringify(body ?? {}),
+        body: body ?? {},
+        // 调用方凭据要透传给 runtime（它据此校验运行归属）；身份头由 gateway 补
+        headers: {
+          'x-main-client-id': clientId,
+          'x-request-id': headers['x-request-id'],
+          authorization: headers.authorization,
+          cookie: headers.cookie,
+        },
       })
-      if (!upstream.ok || !upstream.body) {
-        this.bridge.fail(clientId, 'agent-runtime 启动失败')
-        return
-      }
-      // runtime 的 SSE 体只用来维持运行；内容以 pub/sub 为准，这里必须持续读掉背压。
-      void this.drain(upstream.body)
     } catch {
       this.bridge.fail(clientId, 'agent-runtime 不可用')
+      return
     }
-  }
-
-  private headers(clientId: string, input: Record<string, string>): Record<string, string> {
-    const headers: Record<string, string> = {
-      'x-main-client-id': clientId,
-      'x-internal-token': process.env.AGENT_INTERNAL_TOKEN ?? '',
+    if (!upstream.body || upstream.status >= 400) {
+      this.bridge.fail(clientId, 'agent-runtime 启动失败')
+      return
     }
-    const userId = requestContext.get('userId')
-    const adminId = requestContext.get('adminId')
-    if (userId) headers['x-user-id'] = userId
-    if (adminId) headers['x-admin-id'] = adminId
-    if (input.authorization) headers.authorization = input.authorization
-    if (input.cookie) headers.cookie = input.cookie
-    if (input['x-request-id']) headers['x-request-id'] = input['x-request-id']
-    return headers
-  }
-
-  private async drain(body: ReadableStream<Uint8Array>): Promise<void> {
-    const reader = body.getReader()
-    try {
-      for (;;) {
-        const { done } = await reader.read()
-        if (done) return
-      }
-    } catch {
-      // 前端断开 / runtime 结束都正常；pub/sub 的 final 帧负责收尾
-    }
+    // runtime 的 SSE 体只用来维持运行；内容以 pub/sub 为准，这里必须持续读掉背压。
+    void drainStream(upstream.body)
   }
 }

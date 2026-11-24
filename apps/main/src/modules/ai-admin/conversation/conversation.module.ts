@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common'
 import { AgentCatalogService } from '../../../agent/agent-catalog.service.js'
+import { agentRuntimeEndpoint } from '../../../agent/agent-runtime.env.js'
 import { AdminModule } from '../../admin/index.js'
 import { AiModelModule } from '../../ai-model/index.js'
 import { AiUsageModule } from '../../ai-usage/index.js'
@@ -39,11 +40,13 @@ import { AiTimelineQueryRepository } from './timeline-query.repository.js'
     {
       // 手工装配：客户端只包一层 HTTP + 内存缓存，不进容器依赖链（也不写 DI 装饰器）
       provide: AgentCatalogService,
-      useFactory: () =>
-        new AgentCatalogService({
-          baseUrl: process.env.AGENT_RUNTIME_URL ?? 'http://127.0.0.1:9990',
-          token: process.env.AGENT_INTERNAL_TOKEN ?? '',
-        }),
+      useFactory: () => {
+        const endpoint = agentRuntimeEndpoint()
+        return new AgentCatalogService({
+          baseUrl: endpoint.baseUrl,
+          token: endpoint.token,
+        })
+      },
     },
     AiAdminConversationService,
   ],

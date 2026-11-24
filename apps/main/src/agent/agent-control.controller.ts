@@ -13,11 +13,14 @@ import {
 } from '@nestjs/common'
 import { randomUUID } from 'node:crypto'
 import type { Response } from 'express'
+import { InternalApiError } from '@repo/internal-sdk'
+import { AgentChatSchema, AgentRunStopSchema } from '@repo/shared'
+import type { AgentChatDto, AgentRunStopDto } from '@repo/shared'
 import { AnyAuthGuard } from '../modules/auth/index.js'
 import { RateLimit, RateLimitGuard } from '../common/security/index.js'
-import { requestContext } from '@repo/kits'
 import { AgentSseBridge, parseStreamProtocol } from './agent-sse.bridge.js'
-import { AgentRunStopSchema, type AgentRunStopDto } from '@repo/shared'
+import { AgentRuntimeGateway } from './agent-runtime.gateway.js'
+import { drainStream } from './stream-drain.js'
 
 const SSE_HEADERS = {
   'content-type': 'text/event-stream',
@@ -26,28 +29,35 @@ const SSE_HEADERS = {
   'x-accel-buffering': 'no',
 }
 
-/** 会话控制：停止 / 回答问题续跑 / 断线重连；全部由 main 鉴权后转内部接口 */
+/**
+ * 会话控制：停止 / 回答问题续跑 / 断线重连；全部由 main 鉴权后转内部接口。
+ *
+ * 内部调用统一走 `AgentRuntimeGateway`（SDK）：令牌 / 超时 / 身份头只有一份实现；
+ * 这里只负责 HTTP 边界与 SSE 头、状态码的转换。
+ */
 @Controller('agent')
 @UseGuards(AnyAuthGuard)
 export class AgentControlController {
-  constructor(@Inject(AgentSseBridge) private readonly bridge: AgentSseBridge) {}
+  constructor(
+    @Inject(AgentSseBridge) private readonly bridge: AgentSseBridge,
+    @Inject(AgentRuntimeGateway) private readonly runtime: AgentRuntimeGateway,
+  ) {}
 
   @Post('chat')
   @HttpCode(200)
   @UseGuards(RateLimitGuard)
   @RateLimit({ scope: 'agent-chat', limit: 10, windowSeconds: 60, identity: 'user' })
-  chat(@Body() body: unknown) {
-    return this.callJson('/internal/agent/chat', body)
+  chat(@Body({ schema: AgentChatSchema }) body: AgentChatDto) {
+    return this.runtime.chat(body)
   }
 
   @Post('run/stop')
   @HttpCode(200)
   stop(@Body({ schema: AgentRunStopSchema }) body: AgentRunStopDto) {
-    return this.callJson('/internal/agent/run/stop', body)
+    return this.runtime.stopRun(body)
   }
 
   @Post('chat/resume')
-  @HttpCode(200)
   async resume(
     @Body() body: unknown,
     @Headers() headers: Record<string, string>,
@@ -63,20 +73,22 @@ export class AgentControlController {
       this.bridge.fail(clientId, '实时通道订阅失败，请重试')
       return
     }
+    let upstream
     try {
-      const upstream = await fetch(`${this.runtime()}/internal/agent/chat/resume`, {
+      upstream = await this.runtime.openStream('/internal/agent/chat/resume', {
         method: 'POST',
-        headers: this.headers(clientId, headers),
-        body: JSON.stringify(body ?? {}),
+        body: body ?? {},
+        headers: this.forwardedHeaders(clientId, headers),
       })
-      if (!upstream.ok || !upstream.body) {
-        this.bridge.fail(clientId, 'agent-runtime 调用失败')
-        return
-      }
-      void this.drain(upstream.body)
     } catch {
       this.bridge.fail(clientId, 'agent-runtime 不可用')
+      return
     }
+    if (upstream.status >= 400 || !upstream.body) {
+      this.bridge.fail(clientId, 'agent-runtime 调用失败')
+      return
+    }
+    void drainStream(upstream.body)
   }
 
   @Get('run/stream')
@@ -99,10 +111,7 @@ export class AgentControlController {
     @Query('conversationId') conversationId: string | undefined,
     @Res() response: Response,
   ): Promise<void> {
-    await this.proxySnapshot(
-      `/internal/agent/run/snapshot?conversationId=${encodeURIComponent(conversationId ?? '')}`,
-      response,
-    )
+    await this.proxySnapshot(() => this.runtime.snapshotCurrentRun(conversationId), response)
   }
 
   @Get('run/:runId/stream')
@@ -122,40 +131,25 @@ export class AgentControlController {
   /** 指定 run 的快照（知道 runId 时用） */
   @Get('run/:runId/snapshot')
   async snapshotRun(@Param('runId') runId: string, @Res() response: Response): Promise<void> {
-    await this.proxySnapshot(`/internal/agent/run/${encodeURIComponent(runId)}/snapshot`, response)
+    await this.proxySnapshot(() => this.runtime.snapshotRun(runId), response)
   }
 
-  private runtime(): string {
-    return process.env.AGENT_RUNTIME_URL ?? 'http://127.0.0.1:9990'
-  }
-
-  private headers(clientId: string, input: Record<string, string>): Record<string, string> {
-    const headers: Record<string, string> = {
-      'content-type': 'application/json',
+  /**
+   * SSE 透传要转发给执行面的头：本次中转的 clientId + 调用方凭据 + 请求 id。
+   *
+   * 身份头（`x-user-id` / `x-admin-id`）不在这里拼：由 `AgentRuntimeGateway` 统一从
+   * 请求上下文补齐，避免两份实现漂移（早先 control 侧漏转 `x-request-id`）。
+   */
+  private forwardedHeaders(
+    clientId: string,
+    headers: Record<string, string>,
+  ): Record<string, string | undefined> {
+    return {
       'x-main-client-id': clientId,
-      'x-internal-token': process.env.AGENT_INTERNAL_TOKEN ?? '',
+      'x-request-id': headers['x-request-id'],
+      authorization: headers.authorization,
+      cookie: headers.cookie,
     }
-    const userId = requestContext.get('userId')
-    const adminId = requestContext.get('adminId')
-    if (userId) headers['x-user-id'] = userId
-    if (adminId) headers['x-admin-id'] = adminId
-    if (input.authorization) headers.authorization = input.authorization
-    if (input.cookie) headers.cookie = input.cookie
-    return headers
-  }
-
-  private async callJson(path: string, body: unknown): Promise<unknown> {
-    const upstream = await fetch(`${this.runtime()}${path}`, {
-      method: 'POST',
-      headers: this.headers(randomUUID(), {}),
-      body: JSON.stringify(body ?? {}),
-    })
-    const payload = (await upstream.json().catch(() => ({}))) as unknown
-    if (!upstream.ok) {
-      throw new Error((payload as { message?: string })?.message ?? 'agent-runtime 调用失败')
-    }
-    // runtime 也套了响应信封；main 的信封拦截器会再包一层，这里先脱壳
-    return (payload as { data?: unknown }).data ?? payload
   }
 
   /**
@@ -172,19 +166,27 @@ export class AgentControlController {
       response.status(503).json({ message: '实时通道订阅失败，请重试' })
       return
     }
-    const upstream = await fetch(`${this.runtime()}${path}`, {
-      headers: this.headers(clientId, {}),
-    }).catch(() => null)
-    if (!upstream || upstream.status === 204 || !upstream.body) {
+    let upstream
+    try {
+      upstream = await this.runtime.openStream(path, {
+        headers: { 'x-main-client-id': clientId },
+      })
+    } catch {
       this.bridge.detach(clientId)
-      if (upstream?.status === 204) {
-        response.status(204).end()
-      } else {
-        response.status(502).json({ message: 'agent-runtime 不可用' })
-      }
+      response.status(502).json({ message: 'agent-runtime 不可用' })
       return
     }
-    if (!upstream.ok) {
+    if (upstream.status === 204) {
+      this.bridge.detach(clientId)
+      response.status(204).end()
+      return
+    }
+    if (!upstream.body) {
+      this.bridge.detach(clientId)
+      response.status(502).json({ message: 'agent-runtime 不可用' })
+      return
+    }
+    if (upstream.status < 200 || upstream.status >= 300) {
       this.bridge.detach(clientId)
       response.status(upstream.status).json({ message: 'agent-runtime 调用失败' })
       return
@@ -192,50 +194,22 @@ export class AgentControlController {
     response.writeHead(200, SSE_HEADERS)
     response.flushHeaders()
     this.bridge.start(clientId)
-    void this.drain(upstream.body)
+    void drainStream(upstream.body)
   }
 
-  private async drain(body: ReadableStream<Uint8Array>): Promise<void> {
-    const reader = body.getReader()
+  /**
+   * 快照代理：runtime 的 204（没有进行中的流）与空 / 残缺 body 都归成 `data: null`，
+   * 前端拿到 null 不会点亮恢复灯；运行异常按上游状态透传。
+   */
+  private async proxySnapshot(load: () => Promise<unknown>, response: Response): Promise<void> {
     try {
-      for (;;) {
-        const { done } = await reader.read()
-        if (done) return
+      response.json({ code: 0, data: await load() })
+    } catch (error) {
+      if (error instanceof InternalApiError) {
+        response.status(error.status).json({ message: 'agent-runtime 调用失败' })
+        return
       }
-    } catch {
-      // pub/sub 的 final 帧负责收尾
-    }
-  }
-
-  /** 快照代理：runtime 的 204 原样透传，JSON 原样回给前端 */
-  private async proxySnapshot(path: string, response: Response): Promise<void> {
-    const upstream = await fetch(`${this.runtime()}${path}`, {
-      headers: this.headers(randomUUID(), {}),
-    }).catch(() => null)
-    if (!upstream) {
       response.status(502).json({ message: 'agent-runtime 不可用' })
-      return
     }
-    if (upstream.status === 204) {
-      // 统一套 AppResponse 信封：SDK 的 `HttpClient.get` 才能复用鉴权 / 401 刷新 / 错误归一
-      response.json({ code: 0, data: null })
-      return
-    }
-    const body = await upstream.text().catch(() => '')
-    if (!upstream.ok) {
-      response.status(upstream.status).json({ message: 'agent-runtime 调用失败' })
-      return
-    }
-    // 200 但空 body（中间层截断 / 代理异常）不能让 `JSON.parse('')` 抛成 500：
-    // 快照拿不到就按"本次没有快照"处理（前端拿到 null 不会点亮恢复灯）。
-    let data: unknown = null
-    if (body) {
-      try {
-        data = JSON.parse(body) as unknown
-      } catch {
-        data = null
-      }
-    }
-    response.json({ code: 0, data })
   }
 }

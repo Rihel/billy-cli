@@ -1,6 +1,7 @@
 import type { Response } from 'express'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { AgentControlController } from '../src/agent/agent-control.controller.js'
+import { AgentRuntimeGateway } from '../src/agent/agent-runtime.gateway.js'
 
 /**
  * 快照代理的健壮性（2026-11-17 上游 Issue 3）。
@@ -8,6 +9,8 @@ import { AgentControlController } from '../src/agent/agent-control.controller.js
  * runtime 回 200 但 body 是空 / 被截断时，早先直接 `JSON.parse(body)` 会抛
  * `Unexpected end of JSON input`，被 Nest 兜成 500 —— 前端把"没有快照"当成了服务端故障。
  * 现在按"这次没有快照"（`data: null`）返回：前端拿到 null 不会点亮恢复灯。
+ *
+ * 2026-11-24：上游调用改走 `@repo/internal-sdk`（D9），断言的对外行为不变。
  */
 
 const response = () => {
@@ -30,19 +33,18 @@ const response = () => {
   return res as unknown as Response & { bodies: unknown[]; statuses: number[] }
 }
 
-const upstream = (init: { status: number; body: string }) =>
-  ({
-    ok: init.status >= 200 && init.status < 300,
+const upstream = (init: { status: number; body: string }): globalThis.Response =>
+  new globalThis.Response(init.status === 204 ? null : init.body, {
     status: init.status,
-    text: async () => init.body,
-  }) as unknown as globalThis.Response
+    headers: { 'content-type': 'application/json' },
+  })
 
 const controllerOf = (init: { status: number; body: string }) => {
   vi.stubGlobal(
     'fetch',
     vi.fn(async () => upstream(init)),
   )
-  return new AgentControlController({} as never)
+  return new AgentControlController({} as never, new AgentRuntimeGateway())
 }
 
 afterEach(() => {
@@ -71,12 +73,14 @@ describe('AgentControlController 快照代理', () => {
 
   it('200 + 正常 JSON：原样透传给前端', async () => {
     const res = response()
-    await controllerOf({ status: 200, body: '{"runId":"run_1","rev":3}' }).snapshotCurrent(
-      'conv_1',
-      res,
-    )
+    await controllerOf({
+      status: 200,
+      body: '{"runId":"run_1","messageId":"m1","rev":3,"sinceRev":1,"parts":[]}',
+    }).snapshotCurrent('conv_1', res)
 
-    expect(res.bodies).toEqual([{ code: 0, data: { runId: 'run_1', rev: 3 } }])
+    expect(res.bodies).toEqual([
+      { code: 0, data: { runId: 'run_1', messageId: 'm1', rev: 3, sinceRev: 1, parts: [] } },
+    ])
   })
 
   it('204（没有进行中的流）：仍是 data: null 的信封', async () => {

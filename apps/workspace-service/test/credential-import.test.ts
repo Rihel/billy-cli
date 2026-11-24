@@ -74,15 +74,16 @@ describe('credential-candidates', () => {
 describe('credential-import', () => {
   it('命令型来源：按行取值，只把 provider 与值交给 main，返回摘要不含值', async () => {
     const { service, repo } = make()
-    const fetchMock = vi.fn(async () => ({
-      ok: true,
-      status: 200,
-      text: async () =>
-        JSON.stringify({
-          code: 0,
-          data: { credential: { id: 'cred_1', name: 'gh', provider: 'gh', status: 'active' } },
-        }),
-    }))
+    const fetchMock = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            code: 0,
+            data: { credential: { id: 'cred_1', name: 'gh', provider: 'gh', status: 'active' } },
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        ),
+    )
     vi.stubGlobal('fetch', fetchMock)
 
     const credential = await service.import('ws_1', 'github')
@@ -112,11 +113,13 @@ describe('credential-import', () => {
     const { service } = make()
     vi.stubGlobal(
       'fetch',
-      vi.fn(async () => ({
-        ok: false,
-        status: 400,
-        text: async () => JSON.stringify({ code: 4000, message: 'appId：请填写应用 ID' }),
-      })),
+      vi.fn(
+        async () =>
+          new Response(JSON.stringify({ code: 4000, message: 'appId：请填写应用 ID' }), {
+            status: 400,
+            headers: { 'content-type': 'application/json' },
+          }),
+      ),
     )
 
     await expect(service.import('ws_1', 'github')).rejects.toThrow(
