@@ -7,6 +7,7 @@ import {
   loadWorkspaceServiceAppConfig,
   type WorkspaceServiceConfigValue,
 } from './config/app-config.js'
+import { productionMainUrlProblem } from './config/main-url.js'
 import { RootModule } from './root.module.js'
 
 /**
@@ -28,6 +29,14 @@ const program = async (): Promise<void> => {
 
   if (process.env.NODE_ENV === 'production' && service.internalToken === 'dev-workspace-token') {
     logger.error('生产环境必须配置 WORKSPACE_INTERNAL_TOKEN，拒绝启动', 'bootstrap')
+    process.exit(1)
+  }
+
+  // 缺 MAIN_URL 时 schema 会回落到 127.0.0.1:9989（本地开发需要），部署形态里必须显式配，
+  // 否则凭据解析 / 入库会静默连错地址 —— 启动期直接拒绝，别等第一条凭据命令才报 fetch failed。
+  const mainUrlProblem = productionMainUrlProblem(process.env)
+  if (mainUrlProblem) {
+    logger.error(mainUrlProblem, 'bootstrap')
     process.exit(1)
   }
 

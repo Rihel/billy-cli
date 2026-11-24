@@ -294,7 +294,11 @@ services:
       PORT: '9995'
       WORKSPACE_SERVICE_PORT: '9995'
       WORKSPACE_DB_URL: postgresql://root:pg1234@postgres:5432/billy-cli
-      WORKSPACE_INTERNAL_TOKEN: dev-workspace-token
+      # 注意：WORKSPACE_INTERNAL_TOKEN 用上面公共锚点的值（六个服务必须同值）。
+      # 早先这里覆盖成 dev-workspace-token，而 main / common-capability 带的是锚点值，
+      # 调用本服务会全部 401 —— 本地 `.env` 里两边都写 dev-workspace-token，所以只在这个文件里暴露。
+      # 控制面地址：凭据解析 / 凭据入库都调它；容器里不能用 127.0.0.1（缺了启动自检会拒绝）。
+      MAIN_URL: http://main:9989
       # 向能力网关登记 `workspace` 服务；回调地址必须是网关可达的容器地址（不是 127.0.0.1）
       WORKSPACE_GATEWAY_URL: http://capability-gateway:9993
       WORKSPACE_SERVICE_ENDPOINT: http://workspace-service:9995
