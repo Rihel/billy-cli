@@ -217,7 +217,7 @@ describe('FileService（文件管理主体）', () => {
     expect(storage.putObject).toHaveBeenCalledOnce()
 
     const downloaded = await service.download(ctx, { fileKey: 'reports/a.md' })
-    expect(downloaded.path.endsWith('files/reports/a.md')).toBe(true)
+    expect(downloaded.path.endsWith('tmp/reports/a.md')).toBe(true)
     expect((await stat(downloaded.path)).isFile()).toBe(true)
   })
 
