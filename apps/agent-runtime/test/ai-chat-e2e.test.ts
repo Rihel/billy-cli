@@ -262,6 +262,7 @@ describe('对话链路端到端（mock 模型 + 真实数据库）', () => {
     // 2) 运行记录：终态 + 消耗 + 统计 + **输入快照**（复盘的输入侧证据）
     const run = await runs.findEntity(result.runId)
     expect(run?.status).toBe(RunStatus.Succeeded)
+    expect(run?.taskId).toMatch(/^task_/)
     expect(run?.stepCount).toBe(result.stepCount)
     expect(run?.usage).toMatchObject({ totalTokens: expect.any(Number) })
     expect(run?.requestSnapshot).toMatchObject({

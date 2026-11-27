@@ -662,6 +662,9 @@ describe('子 agent（core bean + 运行期动态创建）', () => {
     expect(child?.parentRunId).toBe(result.runId)
     expect(child?.depth).toBe(1)
     expect(child?.toolCallId).toBeTruthy()
+    const parentForTask = await runs.findEntity(result.runId)
+    expect(parentForTask?.taskId).toMatch(/^task_/)
+    expect(child?.taskId).toBe(parentForTask?.taskId)
     // 子 agent 现在是**子会话**：run 挂在子会话上，不再复用父会话 id
     expect(outcome.conversationId).toBeTruthy()
     expect(outcome.conversationId).not.toBe(result.conversationId)

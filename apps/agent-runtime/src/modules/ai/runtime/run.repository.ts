@@ -64,6 +64,7 @@ export type TimeoutReason = 'stale_heartbeat' | 'run_timeout'
 const toModel = (record: RunEntity): AgentRunModel => ({
   id: record.id,
   conversationId: record.conversationId,
+  taskId: record.taskId,
   parentRunId: record.parentRunId,
   depth: record.depth,
   toolCallId: record.toolCallId,

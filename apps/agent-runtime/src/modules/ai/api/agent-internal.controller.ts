@@ -34,7 +34,7 @@ import {
 } from '@repo/shared'
 import type { Response } from 'express'
 import { AgentService } from '../agents/service.js'
-import { AgentChatService } from '../runtime/chat.service.js'
+import { RunExecutor } from '../engine/run-executor.js'
 import { AgentConversationService } from '../runtime/conversation.service.js'
 import { AgentTimelineService } from '../runtime/timeline.service.js'
 import { ConversationRunQueue } from '../runtime/run-queue.service.js'
@@ -43,7 +43,7 @@ import { ConversationRunQueue } from '../runtime/run-queue.service.js'
 @Controller('internal/agent')
 export class AgentInternalController {
   constructor(
-    @Inject(AgentChatService) private readonly chat: AgentChatService,
+    @Inject(RunExecutor) private readonly executor: RunExecutor,
     @Inject(AgentService) private readonly agents: AgentService,
     @Inject(AgentConversationService) private readonly conversations: AgentConversationService,
     @Inject(AgentTimelineService) private readonly timelines: AgentTimelineService,
@@ -99,7 +99,7 @@ export class AgentInternalController {
     @Headers('x-internal-token') token: string | undefined,
   ) {
     const owner = this.requireOwner(token, userId, adminId)
-    return this.chat.chat(owner.id, input, owner.isAdmin)
+    return this.executor.startOnce(owner, { type: 'start', input })
   }
 
   @Post('chat/stream')
@@ -113,12 +113,10 @@ export class AgentInternalController {
     @Res() response: Response,
   ): Promise<void> {
     const owner = this.requireOwner(token, userId, adminId)
-    await this.chat.chatStream(
-      owner.id,
-      input,
+    await this.executor.startStream(
+      owner,
+      { type: 'start', input, clientId: clientId?.trim() || undefined },
       response,
-      owner.isAdmin,
-      clientId?.trim() || undefined,
     )
   }
 
@@ -133,12 +131,10 @@ export class AgentInternalController {
     @Res() response: Response,
   ): Promise<void> {
     const owner = this.requireOwner(token, userId, adminId)
-    await this.chat.resumeChat(
-      owner.id,
-      input,
+    await this.executor.resumeStream(
+      owner,
+      { type: 'resume', input, clientId: clientId?.trim() || undefined },
       response,
-      owner.isAdmin,
-      clientId?.trim() || undefined,
     )
   }
 
@@ -209,7 +205,7 @@ export class AgentInternalController {
     @Headers('x-internal-token') token: string | undefined,
   ) {
     const owner = this.requireOwner(token, userId, adminId)
-    return this.chat.stopRun(owner.id, input)
+    return this.executor.stop(owner, { type: 'stop', input })
   }
 
   @Get('run/stream')
@@ -223,12 +219,15 @@ export class AgentInternalController {
     @Res() response: Response,
   ): Promise<void> {
     const owner = this.requireOwner(token, userId, adminId)
-    const resumed = await this.chat.resumeCurrentRun(
-      owner.id,
-      parseSinceRev(sinceRev),
+    const resumed = await this.executor.attach(
+      owner,
+      {
+        type: 'attach',
+        conversationId: conversationId?.trim() || undefined,
+        sinceRev: parseSinceRev(sinceRev),
+        clientId: clientId?.trim() || undefined,
+      },
       response,
-      conversationId?.trim() || undefined,
-      clientId?.trim() || undefined,
     )
     if (!resumed) response.status(204).end()
   }
@@ -244,12 +243,15 @@ export class AgentInternalController {
     @Res() response: Response,
   ): Promise<void> {
     const owner = this.requireOwner(token, userId, adminId)
-    const resumed = await this.chat.resumeRun(
-      owner.id,
-      runId,
-      parseSinceRev(sinceRev),
+    const resumed = await this.executor.attach(
+      owner,
+      {
+        type: 'attach',
+        runId,
+        sinceRev: parseSinceRev(sinceRev),
+        clientId: clientId?.trim() || undefined,
+      },
       response,
-      clientId?.trim() || undefined,
     )
     if (!resumed) response.status(204).end()
   }
@@ -264,10 +266,10 @@ export class AgentInternalController {
     @Res() response: Response,
   ): Promise<void> {
     const owner = this.requireOwner(token, userId, adminId)
-    const snapshot = await this.chat.snapshotCurrentRun(
-      owner.id,
-      conversationId?.trim() || undefined,
-    )
+    const snapshot = await this.executor.snapshot(owner, {
+      type: 'snapshot',
+      conversationId: conversationId?.trim() || undefined,
+    })
     if (!snapshot) {
       response.status(204).end()
       return
@@ -285,7 +287,7 @@ export class AgentInternalController {
     @Res() response: Response,
   ): Promise<void> {
     const owner = this.requireOwner(token, userId, adminId)
-    const snapshot = await this.chat.snapshotRun(owner.id, runId)
+    const snapshot = await this.executor.snapshot(owner, { type: 'snapshot', runId })
     if (!snapshot) {
       response.status(204).end()
       return

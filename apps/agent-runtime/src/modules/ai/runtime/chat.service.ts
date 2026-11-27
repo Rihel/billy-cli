@@ -23,6 +23,7 @@ import type { Mastra } from '@mastra/core/mastra'
 import { RequestContext } from '@mastra/core/request-context'
 import { AGENT_MAX_STEPS, AGENT_TOOL_CONCURRENCY } from '../core/constants.js'
 import { AgentConfig, type AgentConfig as AgentConfigValue } from '../core/config.js'
+import { createTaskId } from '../engine/task-id.js'
 import {
   AgentFailedError,
   AgentUnavailableError,
@@ -661,6 +662,7 @@ export class AgentChatService {
         userId,
         model,
         {
+          ...(run.taskId ? { taskId: run.taskId } : {}),
           fileAccess: conversation.fileAccess,
           workspaceConversationId: conversation.rootConversationId ?? conversation.id,
           ...(conversation.workspaceId ? { workspaceId: conversation.workspaceId } : {}),
@@ -862,12 +864,14 @@ export class AgentChatService {
     agentKey: string,
     userId: string,
     origin: 'user' | 'subagent' = 'user',
-    options: { deferStart?: boolean } = {},
+    options: { deferStart?: boolean; taskId?: string } = {},
   ) {
     try {
+      const taskId = options.taskId ?? createTaskId()
       const run = await this.runs.create(
         {
           conversationId: conversation.id,
+          taskId,
           agentKey,
           status: RunStatus.Pending,
           triggeredBy: userId,
@@ -1295,7 +1299,7 @@ export class AgentChatService {
      * 连接一断消息就丢了）。真正起跑由 dispatcher 按优先级调度；新 run 启动时
      * `conversation.run.started` 会通知前端自动续流（`/agent/run/stream`）。
      */
-    let run: { id: string; engineRunId: string }
+    let run: { id: string; engineRunId: string; taskId: string | null }
     try {
       run = await this.startRun(conversation, definition.key, userId)
     } catch (error) {
@@ -1490,6 +1494,7 @@ export class AgentChatService {
         model,
         // 中止信号（用户停止要停整棵树）+ 渲染后的系统指令（首轮末尾带运行环境）
         {
+          ...(run.taskId ? { taskId: run.taskId } : {}),
           fileAccess: conversation.fileAccess,
           workspaceConversationId: conversation.rootConversationId ?? conversation.id,
           ...(conversation.workspaceId ? { workspaceId: conversation.workspaceId } : {}),
@@ -2033,6 +2038,7 @@ export class AgentChatService {
         userId,
         model,
         {
+          ...(run.taskId ? { taskId: run.taskId } : {}),
           fileAccess: conversation.fileAccess,
           workspaceConversationId: conversation.rootConversationId ?? conversation.id,
           ...(conversation.workspaceId ? { workspaceId: conversation.workspaceId } : {}),
@@ -2621,7 +2627,11 @@ export class AgentChatService {
      * 抢不到（已被删会话 / 取消 / 换手）时，这一行 pending run 必须立刻取消 ——
      * 否则会留下一条永远"在进行中"的审计记录，并占住会话的活动 run 唯一索引。
      */
-    const claimRun = async (run: { id: string; engineRunId: string }): Promise<boolean> => {
+    const claimRun = async (run: {
+      id: string
+      engineRunId: string
+      taskId: string | null
+    }): Promise<boolean> => {
       if (!claim) return true
       try {
         if (await claim(run.id)) return true
@@ -2831,7 +2841,7 @@ export class AgentChatService {
   }
 
   private async executeQueuedTurn(input: {
-    run: { id: string; engineRunId: string }
+    run: { id: string; engineRunId: string; taskId: string | null }
     conversation: ConversationEntity
     definition: AgentDefinition
     userId: string
@@ -3039,6 +3049,7 @@ export class AgentChatService {
         userId,
         model,
         {
+          ...(run.taskId ? { taskId: run.taskId } : {}),
           fileAccess: conversation.fileAccess,
           workspaceConversationId: conversation.rootConversationId ?? conversation.id,
           ...(conversation.workspaceId ? { workspaceId: conversation.workspaceId } : {}),
@@ -3455,6 +3466,8 @@ export class AgentChatService {
        * 只在这里用一次：拼进**这一轮**的系统指令，不落会话级提示词快照。
        */
       userMessage?: string
+      /** 逻辑任务 id：子 agent 的 run 继承父任务 */
+      taskId?: string
     } = {},
   ): Promise<RequestContext> {
     // 子 agent 工具面 = 与主 agent **同一份**（本地 + 能力目录 code + 会话搜到的外部/MCP），
@@ -3497,6 +3510,7 @@ export class AgentChatService {
 
     const envelope: AgentRuntimeEnvelope = {
       conversationId,
+      ...(options.taskId ? { taskId: options.taskId } : {}),
       workspaceConversationId: options.workspaceConversationId ?? conversationId,
       parentRunId,
       triggeredBy: userId,

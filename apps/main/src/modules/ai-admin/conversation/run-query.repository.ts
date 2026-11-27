@@ -8,6 +8,7 @@ import { In, IsNull } from 'typeorm'
 export const toRunModel = (record: RunEntity): AgentRunModel => ({
   id: record.id,
   conversationId: record.conversationId,
+  taskId: record.taskId,
   parentRunId: record.parentRunId,
   depth: record.depth,
   toolCallId: record.toolCallId,

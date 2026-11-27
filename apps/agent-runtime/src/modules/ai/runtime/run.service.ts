@@ -51,6 +51,7 @@ export class AgentRunService {
     const model: AgentRunModel = {
       id: run.id,
       conversationId: run.conversationId,
+      taskId: run.taskId,
       parentRunId: run.parentRunId,
       depth: run.depth,
       toolCallId: run.toolCallId,

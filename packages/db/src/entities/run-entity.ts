@@ -14,6 +14,7 @@ import { Column, Entity, Index } from 'typeorm'
  */
 @Entity('runs')
 @Index('idx_run_conversation_created', ['conversationId', 'createdAt'])
+@Index('idx_run_task', ['conversationId', 'taskId', 'createdAt'])
 @Index('idx_run_status', ['status'])
 @Index('uk_run_engine_run_id', ['engineRunId'], { unique: true })
 /**
@@ -39,6 +40,13 @@ export class RunEntity extends AuditEntity {
   /** 所属会话 */
   @Column({ name: 'conversation_id', type: 'varchar', length: 20 })
   conversationId!: string
+
+  /**
+   * 逻辑任务 id：一次用户目标对应一个 task，重试 / 子 agent 的 run 继承同一个 task。
+   * 旧数据为 null，只读兼容；新 run 必须写入。
+   */
+  @Column({ name: 'task_id', type: 'varchar', length: 32, nullable: true })
+  taskId: string | null = null
 
   /** 本次用哪个 agent（会话可换 agent，以本轮为准）；子 agent 记 `sub:<name>` */
   @Column({ name: 'agent_key', type: 'varchar', length: 64 })

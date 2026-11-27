@@ -483,6 +483,7 @@ export class AgentRunner {
           })
           const created = await this.runs.create({
             conversationId: childConversation.id,
+            ...(envelope.taskId ? { taskId: envelope.taskId } : {}),
             agentKey: nextAgentKey,
             status: RunStatus.Pending,
             triggeredBy: envelope.triggeredBy,

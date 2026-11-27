@@ -4,6 +4,7 @@ import { AppLogger, Db, RedisStore } from '@repo/kits'
 import { DEFAULT_AGENT_KEY, createAgentDefinitions } from './agents/index.js'
 import { WorkspaceServiceClient } from '@repo/internal-sdk'
 import { AgentInternalController } from './api/agent-internal.controller.js'
+import { RunExecutor } from './engine/run-executor.js'
 import { AgentConfig, type AgentConfig as AgentConfigValue } from './core/config.js'
 import { decideModelForMastra } from './core/model-decision.js'
 import { MASTRA, createMastra } from './mastra/ai.mastra.js'
@@ -403,6 +404,7 @@ let warnedMissingEnvelope = false
     ChatAttachmentService,
     AttachmentKeyPolicy,
     AgentChatService,
+    RunExecutor,
     ConversationRunQueueDispatcher,
     AgentTitleService,
     AgentStreamStore,
@@ -419,6 +421,7 @@ let warnedMissingEnvelope = false
     AgentConversationService,
     AgentTimelineService,
     AgentChatService,
+    RunExecutor,
     ContextService,
     AgentStreamStore,
     AgentRecoveryService,

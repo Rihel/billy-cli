@@ -68,6 +68,8 @@ export interface AgentRuntimeEnvelope {
   workspaceConversationId?: string
   /** 会话绑定的工作区（执行面优先用它） */
   workspaceId?: string
+  /** 逻辑任务 id：同一用户目标下的重试 / 子 agent 共用 */
+  taskId?: string
   /** 当前这一轮（子 agent 拿它当父亲） */
   parentRunId: string
   /** 发起人（子 run 继承，审计用） */

@@ -509,6 +509,8 @@ export type AgentUserMessagePayloadModel = z.infer<typeof AgentUserMessagePayloa
 export const AgentRunSchema = z.object({
   id: z.string(),
   conversationId: z.string(),
+  /** 逻辑任务 id（一次用户目标）；旧数据为 null */
+  taskId: z.string().nullable(),
   /**
    * 父 run（子 agent 才有；`null` = 根 run = 一轮问答）。
    *
