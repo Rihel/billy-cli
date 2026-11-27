@@ -26,6 +26,9 @@
 | 文档 | 内容 |
 | --- | --- |
 | [ai-agent.md](ai-agent.md) | AI 运行时：会话 / 运行 / 流式 / 上下文 / 恢复 |
+| [runtime-foundation.md](runtime-foundation.md) | **详细设计（2026-11-27）**：S1 Runtime 收口——Engine/Host 协议、Session/Task/Run、RunExecutor、AgentLoop、ModelClient、迁移与验收 |
+| [product-roadmap.md](product-roadmap.md) | **产品路线图（2026-11-27）**：现状说明；Runtime 收口 → Agent 版本物化 → RSI；阶段目标、交付、验收、里程碑与启动工作 |
+| [rsi-roadmap.md](rsi-roadmap.md) | **RSI 详细路线图（2026-11-27）**：L2 / L3 阶段、交付物、验收、指标、安全边界 |
 | [ai-file-manager.md](ai-file-manager.md) | AI 文件管理：会话级文件树 / 对象存储 / 提交与回读 / 前端预览下载 |
 | [workspace-runtime.md](workspace-runtime.md) | 工作区运行时：命令隔离（默认强制、fail closed、会话只读/可写）与平台后端（历史论证，模型已由 workspace.md 取代） |
 | [workspace.md](workspace.md) | **设计稿**：工作空间 = AI 执行环境（取代「会话级目录」模型）——概念模型 / Docker 加固 / 文件与持久化 / 能力作用方式 / MCP / 生命周期 / 迁移与验收 |
