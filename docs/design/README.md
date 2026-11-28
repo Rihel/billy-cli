@@ -26,7 +26,7 @@
 | 文档 | 内容 |
 | --- | --- |
 | [ai-agent.md](ai-agent.md) | AI 运行时：会话 / 运行 / 流式 / 上下文 / 恢复 |
-| [runtime-foundation.md](runtime-foundation.md) | **详细设计（2026-11-27）**：S1 Runtime 收口——Engine/Host 协议、Session/Task/Run、RunExecutor、AgentLoop、ModelClient、迁移与验收 |
+| [runtime-foundation.md](runtime-foundation.md) | **详细设计（2026-11-27，2026-11-28 实现落地）**：S1 Runtime 收口——Engine/Host 协议、Session/Task/Run、RunExecutor、AgentLoop、ModelClient、迁移与验收 |
 | [product-roadmap.md](product-roadmap.md) | **产品路线图（2026-11-27）**：现状说明；Runtime 收口 → Agent 版本物化 → RSI；阶段目标、交付、验收、里程碑与启动工作 |
 | [rsi-roadmap.md](rsi-roadmap.md) | **RSI 详细路线图（2026-11-27）**：L2 / L3 阶段、交付物、验收、指标、安全边界 |
 | [ai-file-manager.md](ai-file-manager.md) | AI 文件管理：会话级文件树 / 对象存储 / 提交与回读 / 前端预览下载 |

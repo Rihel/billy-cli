@@ -1,6 +1,6 @@
 # Phase 1：Runtime 收口详细设计
 
-> 状态：草案（2026-11-27）
+> 状态：已实现（2026-11-27 设计，2026-11-28 落地；灰度开关 `AGENT_ENGINE_V2`）
 > 对应产品路线图的 **S1 可靠运行**。
 > 目标：把 `agent-runtime` 从“Mastra + chat.service 封装”收口为稳定引擎，为 S2 Agent 版本物化、S3 RSI 提供底座。
 
@@ -641,14 +641,46 @@ S1 不重写这些实现，只加接口与适配器。
 
 ## 15. 验收清单
 
-- [ ] `runs.task_id` 迁移完成，新 run 全量写入；
-- [ ] Engine 命令 / 事件类型落地；
-- [ ] `AgentInternalController` 改为 Host 适配器；
-- [ ] `RunExecutor` 接管 start / resume / stop / snapshot；
-- [ ] `ModelClient` 替换 `LoopModel.instance`；
-- [ ] SSE / 快照 / `sinceRev` 行为不变；
-- [ ] 进程重启后可恢复或标记 interrupted；
-- [ ] 两个 host（web / CLI 或 admin）共用同一引擎；
-- [ ] `AgentHarness` 公开类型删除；
-- [ ] `pnpm typecheck` / `test` / `verify` 全绿；
-- [ ] 内部 alpha 观察一周，无 P0。
+- [x] `runs.task_id` 迁移完成，新 run 全量写入；
+- [x] Engine 命令 / 事件类型落地；
+- [x] `AgentInternalController` 改为 Host 适配器；
+- [x] `RunExecutor` 接管 start / resume / stop / snapshot 的**命令入口与事件流**（v2 返回 `RunExecution`）；具体编排仍在 `AgentChatService`，按 §2.3「先适配、再迁执行体」逐步下沉；
+- [x] `ModelClient` 替换 `LoopModel.instance`（执行体经 `MastraModelClient` 取实例）；
+- [x] SSE / 快照 / `sinceRev` 行为不变；
+- [x] 进程重启后可恢复或标记 interrupted；
+- [x] 两个 host（web / CLI 或 admin）共用同一引擎；
+- [x] `AgentHarness` 公开类型删除；
+- [x] `pnpm typecheck` / `test` / `verify` 全绿；
+- [ ] 内部 alpha 观察一周，无 P0（需要真实运行观察，代码侧已具备观测事件与指标）。
+
+## 16. 实现落地（2026-11-28）
+
+| 设计 | 落地位置 | 说明 |
+| --- | --- | --- |
+| `runs.agent_version_id` | `packages/db` 迁移 `1795450000001-AddRunAgentVersionId` | S2 接入点；S1 只落字段、不写入 |
+| Engine 协议 | `modules/ai/engine/protocol.ts` | `Start/Resume/Stop/Snapshot/Attach` 命令、`RunStopReason`、错误体 |
+| 错误映射 | `modules/ai/engine/engine-errors.ts` | `AppError` → 协议码 + HTTP；可重试标记 |
+| `RunExecution` | `modules/ai/engine/run-execution.ts` | `RunEventSink` 把执行体的 SSE 帧收成 `AsyncIterable`；结束标记原样透传 |
+| `RunExecutor` | `modules/ai/engine/run-executor.ts` | `start/resume` 返回执行句柄；`stop/snapshot/attach` 保持；`AGENT_ENGINE_V2` 灰度；会话 / 模型 / 上下文 / 录制仍由执行体完成 |
+| `AgentLoop` | `modules/ai/engine/agent-loop.ts` + `adapters/loop.adapter.ts` | 薄 loop（ModelClient + Toolbox）真实可运行；`resume` 不假装支持 durable |
+| `ModelClient` | `modules/ai/engine/model-client.ts` + `adapters/model-client.adapter.ts` | AI SDK chunk → Loop 模型事件；执行体经它取 Mastra 实例 |
+| 能力接缝 | `modules/ai/engine/ports.ts` + `adapters/*` | ToolFace / ContextAssembler / MemoryPort / StreamPublisher / RunRecorder / WorkspaceFiles·Exec / ApprovalPort |
+| 观测 | `modules/ai/engine/engine-telemetry.ts` | `engine.run.*` 事件 + `engine_*` 指标（活跃 run / 成功率 / 耗时 / 409） |
+| 测试 | `apps/agent-runtime/test/engine-*.test.ts` | 命令映射、错误码、事件流、v2 泵、ModelClient、薄 loop |
+
+灰度：`AGENT_ENGINE_V2=true`（默认）走 v2；`false` 退回旧的直写 response 路径。
+两条路径复用同一份执行体，wire format 与 `sinceRev` 语义一致。
+
+## 17. S1 边界与后续
+
+已实现 S1 的「协议 + 入口 + 接缝 + 观测 + 灰度」，以下明确留到后续（不是遗漏，是设计边界）：
+
+| 项 | 现状 | 后续 |
+| --- | --- | --- |
+| 执行体下沉 | `AgentChatService` 仍承担会话解析 / 模型解析 / 上下文 / 录制 / 收尾 | S2 按 §6.2 逐步搬进 `RunExecutor`，删重复编排分支 |
+| 薄 `AgentLoop` 切主路径 | 已实现并用单测覆盖，默认不接（S1 保留 Mastra 循环算法） | S2 评估切换，先补 durable / suspend / 记忆等价性 |
+| `AgentLoop.resume` | 薄 loop 无 durable 快照，直接抛 `run_not_resumable` | 与 LoopCheckpoint 一起做 |
+| `runs.agent_version_id` | 字段已加、S1 不写入 | S2 Agent 版本物化时写入 |
+| 审批 / 沙箱接管 | `ApprovalPort` 记录挂起 / 续跑事实；沙箱执行在 workspace-service | 危险命令人工批准时替换 ApprovalPort 适配器 |
+| 内部 alpha 观察 | 观测事件与指标已就绪 | 真实运行观察一周，无 P0 后把 `AGENT_ENGINE_V2` 固定为默认 |
+| `runtime/` 目录与 `chat.service` 体积 | 已按域分目录；`chat.service` 约 2.6k 行，抽出首轮标题 / 摘要 / 步级落库 / AG-UI 发射 / 快照 / 用量 / 运行时上下文 / 看护 / chunk 泵 / 成功与失败收尾 | 下一轮收敛三条执行路径的 chunk 录制与收尾（先补 e2e 回归网） |

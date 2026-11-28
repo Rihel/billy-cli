@@ -104,6 +104,8 @@
 | [ai-tool-effect-ledger](ai-tool-effect-ledger.md) | 工具副作用台账：按 `(runId, toolCallId)` 去重，`ai_tool_effects` 四态；分级用契约既有 `risk + idempotent`，不可逆副作用永不自动重跑 | 必核 | 2026-11-22 |
 | [ai-capability-gateway](ai-capability-gateway.md) | 本地口径：一个进程 = 一个服务 `common`（17 能力）；装饰器定义；登记 HTTP 只在 internal-sdk；protocol / inputSchema 全链路；admin 页与 toast `z-[100]` | 必核 | 2026-11-18 |
 | [runtime-cleanup](runtime-cleanup.md) | runtime 只做编排：能力定义/执行体已删、工具面来自能力目录、外部服务搜到才下发、授权只剩 key | 必核 | 2026-11-20 |
+| [engine-v2](engine-v2.md) | 引擎 v2：RunExecutor 返回 RunExecution、AGENT_ENGINE_V2 开关、接缝 token/getter、薄 loop 不接主路径 | 必核 | 2026-11-28 |
+| [runtime-layout](runtime-layout.md) | runtime 按域分目录；chat.service 3847→3028，8 个模块抽出、看护统一 | 必核 | 2026-11-28 |
 | [ai-run-queue](ai-run-queue.md) | 异步子 agent 的会话 run 队列：新表、优先级、dedupe、当前实施边界 | 抽核 | 2026-11-15 |
 | [run-fencing](run-fencing.md) | durable run 的 `run_ownership` 租约与 generation 校验；旧执行者写入抛 RunFenceConflictError | 必核 | 2026-11-22 |
 | [ai-subagent-subconversation](ai-subagent-subconversation.md) | 子 agent 建子会话：run/timeline 挂子会话，工作区/文件归根会话；列表只出根、删父级联；用量仍只算子 run 的父 | 必核 | 2026-11-14 |
