@@ -3,7 +3,7 @@ import { TimelineKind, TimelineRole } from '@repo/shared'
 import {
   buildMessageParts,
   snapshotPartsToChunks,
-} from '../src/modules/ai/runtime/message-snapshot.js'
+} from '../src/modules/ai/runtime/context/message-snapshot.js'
 
 /**
  * 时间线 → 快照 parts（服务端版本）。

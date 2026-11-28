@@ -7,7 +7,7 @@ import {
   DEFAULT_FILE_CONFIG,
   FileService,
   type FileContext,
-} from '../src/modules/ai/files/file.service.js'
+} from '../src/modules/ai/domain/files/file.service.js'
 import type { AiFileEntity } from '@repo/db'
 import { TEST_TOOL_ENV_CAPS, silentLogger } from './helpers/ai-tool-stack.js'
 

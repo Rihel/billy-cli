@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { spawnSync } from 'node:child_process'
 import { describe, expect, it } from 'vitest'
-import { SkillLoader } from '../src/modules/ai/core/skills/skill.loader.js'
+import { SkillLoader } from '../src/modules/ai/tools/skills/skill.loader.js'
 
 /**
  * `html-page` 自带的构建脚本（`scripts/build-html.mjs`）的**真实执行**守卫。

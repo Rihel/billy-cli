@@ -4,7 +4,7 @@ import {
   coalesceKeyOf,
   isCoalescedDelta,
   mergeDelta,
-} from '../src/modules/ai/runtime/stream-deltas.js'
+} from '../src/modules/ai/runtime/stream/stream-deltas.js'
 
 /**
  * 增量合并器（2026-11-22）。

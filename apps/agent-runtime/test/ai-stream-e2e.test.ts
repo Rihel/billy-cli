@@ -5,28 +5,29 @@ import { Db, IdGeneration, PubSub, RedisStore, setAuditUserProvider } from '@rep
 import { RunStatus, TimelineKind, TimelineRole, agentStreamChannel } from '@repo/shared'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { ConversationEntity, RunEntity, TimelineEntity } from '@repo/db'
-import { DEFAULT_AGENT_KEY, createAgentDefinitions } from '../src/modules/ai/agents/index.js'
-import { agentMemory } from '../src/modules/ai/mastra/agent-memory.js'
-import { createMastra } from '../src/modules/ai/mastra/ai.mastra.js'
-import { createAgentRegistry } from '../src/modules/ai/agents/registry.js'
-import { createPromptEngine } from '../src/modules/ai/core/prompts/index.js'
-import { AgentTitleService } from '../src/modules/ai/runtime/title.service.js'
-import { SkillLoader } from '../src/modules/ai/core/skills/index.js'
-import { RunSubAgentTool } from '../src/modules/ai/tools/subagent.tool.js'
-import { PlannerStore, PlannerTools } from '../src/modules/ai/tools/planner/index.js'
-import { AgentRunner } from '../src/modules/ai/runtime/agent-runner.js'
-import { AgentChatService, STREAM_END_MARKER } from '../src/modules/ai/runtime/chat.service.js'
-import { toMastraSkills } from '../src/modules/ai/mastra/skill.adapter.js'
-import { toMastraTools } from '../src/modules/ai/mastra/tool.adapter.js'
-import { ToolGateway } from '../src/modules/ai/core/tools/tool.gateway.js'
-import { ToolRegistry } from '../src/modules/ai/core/tools/tool.registry.js'
-import { AgentConversationService } from '../src/modules/ai/runtime/conversation.service.js'
-import { ConversationRepository } from '../src/modules/ai/runtime/conversation.repository.js'
-import { ContextService } from '../src/modules/ai/runtime/context.service.js'
-import { RunRepository } from '../src/modules/ai/runtime/run.repository.js'
-import { AgentStreamStore } from '../src/modules/ai/runtime/stream-store.service.js'
-import { AgentMastraStore } from '../src/modules/ai/runtime/storage/agent-mastra-store.js'
-import { TimelineRepository } from '../src/modules/ai/runtime/timeline.repository.js'
+import { DEFAULT_AGENT_KEY, createAgentDefinitions } from '../src/modules/ai/domain/agents/index.js'
+import { agentMemory } from '../src/modules/ai/adapters/mastra/agent-memory.js'
+import { createMastra } from '../src/modules/ai/adapters/mastra/ai.mastra.js'
+import { createAgentRegistry } from '../src/modules/ai/domain/agents/registry.js'
+import { createPromptEngine } from '../src/modules/ai/foundation/prompts/index.js'
+import { AgentTitleService } from '../src/modules/ai/runtime/conversation/title.service.js'
+import { SkillLoader } from '../src/modules/ai/tools/skills/index.js'
+import { RunSubAgentTool } from '../src/modules/ai/tools/builtin/subagent.tool.js'
+import { PlannerStore, PlannerTools } from '../src/modules/ai/tools/builtin/planner/index.js'
+import { AgentRunner } from '../src/modules/ai/runtime/agent/agent-runner.js'
+import { AgentChatService } from '../src/modules/ai/runtime/agent/chat.service.js'
+import { STREAM_END_MARKER } from '../src/modules/ai/runtime/stream/stream-response.js'
+import { toMastraSkills } from '../src/modules/ai/adapters/mastra/skill.adapter.js'
+import { toMastraTools } from '../src/modules/ai/adapters/mastra/tool.adapter.js'
+import { ToolGateway } from '../src/modules/ai/tools/engine/tool.gateway.js'
+import { ToolRegistry } from '../src/modules/ai/tools/engine/tool.registry.js'
+import { AgentConversationService } from '../src/modules/ai/runtime/conversation/conversation.service.js'
+import { ConversationRepository } from '../src/modules/ai/runtime/conversation/conversation.repository.js'
+import { ContextService } from '../src/modules/ai/runtime/context/context.service.js'
+import { RunRepository } from '../src/modules/ai/runtime/run/run.repository.js'
+import { AgentStreamStore } from '../src/modules/ai/runtime/stream/stream-store.service.js'
+import { AgentMastraStore } from '../src/modules/ai/adapters/storage/agent-mastra-store.js'
+import { TimelineRepository } from '../src/modules/ai/runtime/run/timeline.repository.js'
 import {
   MOCK_ASK_MARKER,
   MOCK_ASK_TOOL,
@@ -1252,5 +1253,21 @@ describe('流式链路端到端（mock 模型 + 真实 DB + 真实 Redis）', ()
 
     // 这个用例故意让处理器抛了一次错，清掉以免影响后面的断言（本文件把它们当"意外"）
     serverErrors.length = 0
+  })
+
+  it('入站 x-request-id 落到 run.request_id（排队路径也保留）', async () => {
+    const conversation = await conversations.create(USER, {})
+    createdConversationIds.push(conversation.id)
+
+    const result = await chat.chat(USER, {
+      conversationId: conversation.id,
+      message: '带 requestId 的一轮',
+      requestId: 'req_test_1',
+    } as never)
+    const rows = await db.dataSource.query<{ request_id: string }[]>(
+      'SELECT request_id FROM runs WHERE id = $1',
+      [result.runId],
+    )
+    expect(rows[0]?.request_id).toBe('req_test_1')
   })
 })

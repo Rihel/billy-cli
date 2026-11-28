@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { CapabilityInfo } from '@repo/contracts'
-import { ALL_TOOLS } from '../src/modules/ai/core/tools/tools.types.js'
-import { addCapabilityTools } from '../src/modules/ai/core/tools/external.tool.js'
+import { ALL_TOOLS } from '../src/modules/ai/tools/engine/tools.types.js'
+import { addCapabilityTools } from '../src/modules/ai/tools/engine/external.tool.js'
 
 /**
  * 能力目录 → 工具面的合并口径（主 agent 与子助手**共用**，2026-11-22 定）。

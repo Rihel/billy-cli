@@ -4,9 +4,9 @@ import {
   buildRunSnapshot,
   decodeRecords,
   openPartChunks,
-} from '../src/modules/ai/runtime/run-snapshot.js'
-import { coalesceDeltas } from '../src/modules/ai/runtime/stream-resume.js'
-import type { StreamRecord } from '../src/modules/ai/runtime/stream-store.service.js'
+} from '../src/modules/ai/runtime/run/run-snapshot.js'
+import { coalesceDeltas } from '../src/modules/ai/runtime/stream/stream-resume.js'
+import type { StreamRecord } from '../src/modules/ai/runtime/stream/stream-store.service.js'
 
 /**
  * 快照 + `sinceRev` 的归约口径（手册 §6.2）。

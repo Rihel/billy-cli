@@ -20,12 +20,12 @@ import { pathToFileURL } from 'node:url'
 
 /** 主体目录（禁止 import `@mastra`）：工具引擎 + 具体工具 */
 const FORBIDDEN_PREFIXES = [
-  'apps/agent-runtime/src/modules/ai/core/tools/',
-  'apps/agent-runtime/src/modules/ai/tools/',
+  'apps/agent-runtime/src/modules/ai/tools/engine/',
+  'apps/agent-runtime/src/modules/ai/tools/builtin/',
 ]
 
 /** 适配器目录（允许 import；新增文件不必改清单） */
-const ALLOWED_PREFIXES = ['apps/agent-runtime/src/modules/ai/mastra/']
+const ALLOWED_PREFIXES = ['apps/agent-runtime/src/modules/ai/adapters/mastra/']
 
 /**
  * 允许清单：**主体目录与适配器目录之外**仍需要 `@mastra` 的文件。
@@ -35,12 +35,12 @@ const ALLOWED_PREFIXES = ['apps/agent-runtime/src/modules/ai/mastra/']
  * 只许减少；新增或加量都会让守卫失败，逼着人显式决策。
  */
 export const MASTRA_ALLOWLIST: Record<string, number> = {
-  'apps/agent-runtime/src/modules/ai/agents/service.ts': 1,
-  'apps/agent-runtime/src/modules/ai/runtime/chat.service.ts': 2,
-  'apps/agent-runtime/src/modules/ai/runtime/recovery.service.ts': 1,
-  'apps/agent-runtime/src/modules/ai/runtime/storage/agent-mastra-store.ts': 2,
-  'apps/agent-runtime/src/modules/ai/runtime/title.service.ts': 1,
-  'apps/agent-runtime/src/modules/ai/core/skills/skill.content.ts': 1,
+  'apps/agent-runtime/src/modules/ai/domain/agents/service.ts': 1,
+  'apps/agent-runtime/src/modules/ai/runtime/agent/chat.service.ts': 2,
+  'apps/agent-runtime/src/modules/ai/runtime/run/recovery.service.ts': 1,
+  'apps/agent-runtime/src/modules/ai/adapters/storage/agent-mastra-store.ts': 2,
+  'apps/agent-runtime/src/modules/ai/runtime/conversation/title.service.ts': 1,
+  'apps/agent-runtime/src/modules/ai/tools/skills/skill.content.ts': 1,
 }
 
 /** 扫描根 */

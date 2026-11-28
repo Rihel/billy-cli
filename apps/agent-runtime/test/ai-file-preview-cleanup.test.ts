@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { FileService } from '../src/modules/ai/files/file.service.js'
+import { FileService } from '../src/modules/ai/domain/files/file.service.js'
 
 const logger = {
   log: vi.fn(),

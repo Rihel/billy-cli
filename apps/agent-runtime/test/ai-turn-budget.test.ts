@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { fitMessagesToToolBudget } from '../src/modules/ai/runtime/turn-budget.js'
-import { toolFailureOf } from '../src/modules/ai/runtime/stream-recorder.js'
+import { fitMessagesToToolBudget } from '../src/modules/ai/runtime/context/turn-budget.js'
+import { toolFailureOf } from '../src/modules/ai/runtime/stream/stream-recorder.js'
 
 /**
  * 轮内上下文预算：每一步前把工具结果的累计体积压回预算。

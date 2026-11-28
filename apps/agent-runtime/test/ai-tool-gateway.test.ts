@@ -1,13 +1,13 @@
 import { describe, expect, it, vi } from 'vitest'
 import { z } from 'zod'
-import { withCallReason } from '../src/modules/ai/core/tools/call-reason.js'
-import { ToolGateway } from '../src/modules/ai/core/tools/tool.gateway.js'
-import { ToolDeniedError } from '../src/modules/ai/core/tools/tools.types.js'
+import { withCallReason } from '../src/modules/ai/tools/engine/call-reason.js'
+import { ToolGateway } from '../src/modules/ai/tools/engine/tool.gateway.js'
+import { ToolDeniedError } from '../src/modules/ai/tools/engine/tools.types.js'
 import type {
   ToolCallContext,
   ToolPlugin,
   ToolSpec,
-} from '../src/modules/ai/core/tools/tools.types.js'
+} from '../src/modules/ai/tools/engine/tools.types.js'
 import { buildToolStackDeps, silentLogger } from './helpers/ai-tool-stack.js'
 import type { ToolStackOptions } from './helpers/ai-tool-stack.js'
 
@@ -81,7 +81,7 @@ describe('网关：顺序、短路、结论', () => {
   it('入参在 pre 之后被归一化（`validate` 插件补默认值），执行体拿到的是归一化后的入参', async () => {
     let seen: unknown
     const stack = deps()
-    const { ValidatePlugin } = await import('../src/modules/ai/core/tools/plugins/index.js')
+    const { ValidatePlugin } = await import('../src/modules/ai/tools/engine/plugins/index.js')
     const outcome = await gatewayOf(stack, [new ValidatePlugin()]).invoke(
       spec({
         exec: async (input: unknown) => {
@@ -98,7 +98,7 @@ describe('网关：顺序、短路、结论', () => {
 
   it('执行体抛 `ToolDeniedError` → 对应 reason（不当成 internal）', async () => {
     const stack = deps()
-    const { AuditEndPlugin } = await import('../src/modules/ai/core/tools/plugins/index.js')
+    const { AuditEndPlugin } = await import('../src/modules/ai/tools/engine/plugins/index.js')
     const outcome = await gatewayOf(stack, [
       new AuditEndPlugin(stack.metas, silentLogger as never),
     ]).invoke(
@@ -159,7 +159,7 @@ describe('网关：顺序、短路、结论', () => {
 
   it('拒绝也要被审计记下来（denied 链对失败同样跑）', async () => {
     const stack = deps()
-    const { AuditEndPlugin } = await import('../src/modules/ai/core/tools/plugins/index.js')
+    const { AuditEndPlugin } = await import('../src/modules/ai/tools/engine/plugins/index.js')
     await gatewayOf(stack, [
       {
         name: 'deny',
@@ -176,7 +176,7 @@ describe('网关：顺序、短路、结论', () => {
   it('有信封时：拒绝会记账，且 caller 能从信封读出来', async () => {
     const stack = deps()
     const { AuditEndPlugin, ScopePlugin } =
-      await import('../src/modules/ai/core/tools/plugins/index.js')
+      await import('../src/modules/ai/tools/engine/plugins/index.js')
     const envelope = {
       conversationId: 'conv-1',
       parentRunId: 'run-1',
@@ -233,7 +233,7 @@ describe('网关：必填 reason（为什么用这个工具）', () => {
   }
 
   it('缺 reason → `invalid-input`，结论文案点名 reason（模型据此改正）', async () => {
-    const { ValidatePlugin } = await import('../src/modules/ai/core/tools/plugins/index.js')
+    const { ValidatePlugin } = await import('../src/modules/ai/tools/engine/plugins/index.js')
     const outcome = await gatewayOf(deps(), [new ValidatePlugin()]).invoke(
       modelSpec(),
       { value: 'v' },
@@ -246,7 +246,7 @@ describe('网关：必填 reason（为什么用这个工具）', () => {
   })
 
   it('`reason` 是空白串 → 同样拒绝（"写了字段但没说清"不算说明目的）', async () => {
-    const { ValidatePlugin } = await import('../src/modules/ai/core/tools/plugins/index.js')
+    const { ValidatePlugin } = await import('../src/modules/ai/tools/engine/plugins/index.js')
     const outcome = await gatewayOf(deps(), [new ValidatePlugin()]).invoke(
       modelSpec(),
       { value: 'v', reason: '   ' },
@@ -258,7 +258,7 @@ describe('网关：必填 reason（为什么用这个工具）', () => {
   })
 
   it('`reason` 非字符串 → 同样拒绝（不给"半个值"混进审计）', async () => {
-    const { ValidatePlugin } = await import('../src/modules/ai/core/tools/plugins/index.js')
+    const { ValidatePlugin } = await import('../src/modules/ai/tools/engine/plugins/index.js')
     const outcome = await gatewayOf(deps(), [new ValidatePlugin()]).invoke(
       modelSpec(),
       { value: 'v', reason: 42 },
@@ -268,7 +268,7 @@ describe('网关：必填 reason（为什么用这个工具）', () => {
   })
 
   it('给了合法 reason → 正常执行；`ctx.reason` 拿得到它，而执行体的 `input` 里**没有**它', async () => {
-    const { ValidatePlugin } = await import('../src/modules/ai/core/tools/plugins/index.js')
+    const { ValidatePlugin } = await import('../src/modules/ai/tools/engine/plugins/index.js')
     let seenInput: unknown
     let seenReason: string | null = null
     const outcome = await gatewayOf(deps(), [new ValidatePlugin()]).invoke(
@@ -292,7 +292,7 @@ describe('网关：必填 reason（为什么用这个工具）', () => {
   it('reason 也进审计账本（`callReason`，与拒绝原因 `reason` 分开）', async () => {
     const stack = deps()
     const { AuditEndPlugin, ValidatePlugin } =
-      await import('../src/modules/ai/core/tools/plugins/index.js')
+      await import('../src/modules/ai/tools/engine/plugins/index.js')
     const envelope = {
       conversationId: 'conv-1',
       parentRunId: 'run-1',

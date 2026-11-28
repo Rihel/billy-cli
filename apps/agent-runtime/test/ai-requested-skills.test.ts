@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest'
 import {
   requestedSkillsOf,
   requestedSkillsSection,
-} from '../src/modules/ai/core/skills/requested-skills.js'
-import type { SkillRef } from '../src/modules/ai/core/skills/skills.types.js'
+} from '../src/modules/ai/tools/skills/requested-skills.js'
+import type { SkillRef } from '../src/modules/ai/tools/skills/skills.types.js'
 
 /**
  * `/技能名` 点名：只认**可见技能**里的名字，且必须是独占一个词的词元。

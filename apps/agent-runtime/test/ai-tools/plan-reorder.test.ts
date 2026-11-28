@@ -3,8 +3,8 @@ import {
   PlannerStore,
   PlannerTools,
   type PlanOutput,
-} from '../../src/modules/ai/tools/planner/index.js'
-import { TOOL_KEYS } from '../../src/modules/ai/core/tools/tool-keys.js'
+} from '../../src/modules/ai/tools/builtin/planner/index.js'
+import { TOOL_KEYS } from '../../src/modules/ai/tools/engine/tool-keys.js'
 import {
   buildToolStackDeps,
   makeToolContext,

@@ -4,7 +4,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { RunFenceConflictError } from '@mastra/core/storage'
 import { Db } from '@repo/kits'
 import { DB_ENTITIES } from '@repo/db'
-import { AgentWorkflowsStorage } from '../src/modules/ai/runtime/storage/agent-mastra-store.js'
+import { AgentWorkflowsStorage } from '../src/modules/ai/adapters/storage/agent-mastra-store.js'
 
 const silentLogger = {
   info: () => undefined,

@@ -4,8 +4,8 @@ import type { ToolEventPartData } from '@repo/shared'
 import {
   normalizeToolEventDecls,
   createToolEventEmitter,
-} from '../src/modules/ai/core/tools/tool-event.js'
-import type { ToolEventDecl } from '../src/modules/ai/core/tools/tools.types.js'
+} from '../src/modules/ai/tools/engine/tool-event.js'
+import type { ToolEventDecl } from '../src/modules/ai/tools/engine/tools.types.js'
 import { capturingWriter, waitFor, warningLog } from './helpers/tool-events.js'
 
 /**

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { RunStatus, TimelineKind } from '@repo/shared'
-import { RunSubAgentTool } from '../../src/modules/ai/tools/subagent.tool.js'
-import { TOOL_KEYS } from '../../src/modules/ai/core/tools/tool-keys.js'
+import { RunSubAgentTool } from '../../src/modules/ai/tools/builtin/subagent.tool.js'
+import { TOOL_KEYS } from '../../src/modules/ai/tools/engine/tool-keys.js'
 import { buildToolStackDeps, makeToolContext, specByKey } from '../helpers/ai-tool-stack.js'
 
 /**

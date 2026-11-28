@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import { TITLE_MAX_CHARS, sanitizeTitle } from '../src/modules/ai/runtime/title.service.js'
+import {
+  TITLE_MAX_CHARS,
+  sanitizeTitle,
+} from '../src/modules/ai/runtime/conversation/title.service.js'
 
 /**
  * 会话名净化：模型"只输出名字"这条要求**经常做不到**，所以这里钉住的是

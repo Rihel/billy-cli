@@ -48,6 +48,14 @@ export class RunEntity extends AuditEntity {
   @Column({ name: 'task_id', type: 'varchar', length: 32, nullable: true })
   taskId: string | null = null
 
+  /**
+   * 本次执行用的 agent 版本（S2 Agent 版本物化接入点）。
+   *
+   * S1 只落字段、不写入：没有版本概念时保持 null，旧数据也只读兼容。
+   */
+  @Column({ name: 'agent_version_id', type: 'varchar', length: 32, nullable: true })
+  agentVersionId: string | null = null
+
   /** 本次用哪个 agent（会话可换 agent，以本轮为准）；子 agent 记 `sub:<name>` */
   @Column({ name: 'agent_key', type: 'varchar', length: 64 })
   agentKey!: string

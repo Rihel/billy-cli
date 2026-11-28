@@ -4,7 +4,7 @@ import {
   STREAM_CONVERSATION_RUN_CHANGED_EVENT,
   STREAM_CONVERSATION_TITLE_CHANGED_EVENT,
 } from '@repo/shared'
-import { RunStatusStream } from '../src/modules/ai/runtime/run-status.stream.js'
+import { RunStatusStream } from '../src/modules/ai/runtime/run/run-status.stream.js'
 import { silentLogger } from './helpers/ai-tool-stack.js'
 
 /**

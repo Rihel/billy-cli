@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { resumeSafeChunks } from '../src/modules/ai/runtime/stream-resume.js'
+import { resumeSafeChunks } from '../src/modules/ai/runtime/stream/stream-resume.js'
 
 const types = (chunks: Array<{ type?: string }>): Array<string | undefined> =>
   chunks.map((chunk) => chunk.type)

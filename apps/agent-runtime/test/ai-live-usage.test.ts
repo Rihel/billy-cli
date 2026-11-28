@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { createLiveUsage, stepUsageOf } from '../src/modules/ai/runtime/live-usage.js'
+import { createLiveUsage, stepUsageOf } from '../src/modules/ai/runtime/run/live-usage.js'
 
 /**
  * 轮内**实时用量**（`data-step-usage`）：单测钉住两条口径 ——

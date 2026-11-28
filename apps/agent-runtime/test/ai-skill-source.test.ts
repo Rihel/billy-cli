@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import { describeSkillSource, parseSkillSource } from '../src/modules/ai/skills/skill.source.js'
+import {
+  describeSkillSource,
+  parseSkillSource,
+} from '../src/modules/ai/domain/skills/skill.source.js'
 
 /**
  * 链接解析：把用户粘贴的各种来源归一成「GitHub owner/repo[/ref][/subpath][/slug]」或直接 Markdown。

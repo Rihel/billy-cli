@@ -1,7 +1,7 @@
 import { SANDBOX_CDN_HOSTS } from '@repo/shared'
 import { describe, expect, it } from 'vitest'
-import { createPromptEngine } from '../src/modules/ai/core/prompts/index.js'
-import { DEFAULT_AGENT_KEY, createAgentDefinitions } from '../src/modules/ai/agents/index.js'
+import { createPromptEngine } from '../src/modules/ai/foundation/prompts/index.js'
+import { DEFAULT_AGENT_KEY, createAgentDefinitions } from '../src/modules/ai/domain/agents/index.js'
 
 /**
  * 提示词**纪律句**的守卫。

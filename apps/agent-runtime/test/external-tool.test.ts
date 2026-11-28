@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { CapabilityInfo } from '@repo/contracts'
-import { createCapabilityTool } from '../src/modules/ai/core/tools/external.tool.js'
-import type { RemoteToolInvoker } from '../src/modules/ai/core/tools/tool.ports.js'
-import type { ToolCallInput } from '../src/modules/ai/core/tools/tools.types.js'
+import { createCapabilityTool } from '../src/modules/ai/tools/engine/external.tool.js'
+import type { RemoteToolInvoker } from '../src/modules/ai/tools/engine/tool.ports.js'
+import type { ToolCallInput } from '../src/modules/ai/tools/engine/tools.types.js'
 
 const capability: CapabilityInfo = {
   key: 'maps-weather',

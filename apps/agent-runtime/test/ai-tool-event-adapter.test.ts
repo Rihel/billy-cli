@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import { parseToolEventPart } from '@repo/shared'
-import { toMastraTool } from '../src/modules/ai/mastra/tool.adapter.js'
-import { buildToolSpecs } from '../src/modules/ai/core/tools/tool.class.js'
-import { ToolGateway } from '../src/modules/ai/core/tools/tool.gateway.js'
-import { ToolEventDemoTool } from '../src/modules/ai/tools/tool-event-testkit.js'
+import { toMastraTool } from '../src/modules/ai/adapters/mastra/tool.adapter.js'
+import { buildToolSpecs } from '../src/modules/ai/tools/engine/tool.class.js'
+import { ToolGateway } from '../src/modules/ai/tools/engine/tool.gateway.js'
+import { ToolEventDemoTool } from '../src/modules/ai/tools/builtin/tool-event-testkit.js'
 import { buildToolStackDeps, silentLogger } from './helpers/ai-tool-stack.js'
 import { waitFor } from './helpers/tool-events.js'
 

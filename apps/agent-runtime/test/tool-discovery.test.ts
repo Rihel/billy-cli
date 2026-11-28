@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from 'vitest'
-import { ToolDiscoveryStore } from '../src/modules/ai/core/tools/tool-discovery.store.js'
-import { ToolGateway } from '../src/modules/ai/core/tools/tool.gateway.js'
-import { TaskTool } from '../src/modules/ai/tools/task.tool.js'
-import type { ToolCallInput } from '../src/modules/ai/core/tools/tools.types.js'
+import { ToolDiscoveryStore } from '../src/modules/ai/tools/engine/tool-discovery.store.js'
+import { ToolGateway } from '../src/modules/ai/tools/engine/tool.gateway.js'
+import { TaskTool } from '../src/modules/ai/tools/builtin/task.tool.js'
+import type { ToolCallInput } from '../src/modules/ai/tools/engine/tools.types.js'
 import { buildToolStackDeps, silentLogger, specByKey } from './helpers/ai-tool-stack.js'
 
 /** 只实现 getJson / setJson 的内存 Redis（TTL 不参与断言） */

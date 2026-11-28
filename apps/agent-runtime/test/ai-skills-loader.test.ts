@@ -3,9 +3,9 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, describe, expect, it } from 'vitest'
 import { resolveAgentSkills } from '@mastra/core/skills'
-import { ALL_SKILLS } from '../src/modules/ai/core/skills/skills.types.js'
-import { SkillLoader } from '../src/modules/ai/core/skills/skill.loader.js'
-import { toMastraSkills } from '../src/modules/ai/mastra/skill.adapter.js'
+import { ALL_SKILLS } from '../src/modules/ai/tools/skills/skills.types.js'
+import { SkillLoader } from '../src/modules/ai/tools/skills/skill.loader.js'
+import { toMastraSkills } from '../src/modules/ai/adapters/mastra/skill.adapter.js'
 
 /**
  * 技能加载口径：**我们只发现 / 校验 / 授权，正文与参考文件交给 Mastra 按需读**。

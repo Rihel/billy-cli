@@ -3,7 +3,7 @@ import type { TimelineEntity } from '@repo/db'
 import {
   REHYDRATE_MAX_MESSAGES,
   toRehydrateMessages,
-} from '../src/modules/ai/memory/memory.rehydrate.js'
+} from '../src/modules/ai/domain/memory/memory.rehydrate.js'
 
 /** 续跑回灌：只回文本，把时间线变成 Mastra 认的消息形状 */
 let seq = 0

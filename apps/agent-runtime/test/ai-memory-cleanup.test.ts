@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import {
   isThreadExpired,
   MemoryThreadCleanupService,
-} from '../src/modules/ai/memory/memory-thread-cleanup.service.js'
+} from '../src/modules/ai/domain/memory/memory-thread-cleanup.service.js'
 import { silentLogger } from './helpers/ai-tool-stack.js'
 
 /**

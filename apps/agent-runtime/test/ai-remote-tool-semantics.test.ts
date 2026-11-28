@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
-import { ToolCallMetaStore } from '../src/modules/ai/core/tools/tool.meta.js'
-import { ToolGateway } from '../src/modules/ai/core/tools/tool.gateway.js'
-import { toReason } from '../src/modules/ai/runtime/remote-tool.client.js'
+import { ToolCallMetaStore } from '../src/modules/ai/tools/engine/tool.meta.js'
+import { ToolGateway } from '../src/modules/ai/tools/engine/tool.gateway.js'
+import { toReason } from '../src/modules/ai/runtime/common/remote-tool.client.js'
 
 /**
  * 目录能力的拒绝语义链（issue 11）。

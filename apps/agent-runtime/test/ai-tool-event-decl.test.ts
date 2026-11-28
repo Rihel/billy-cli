@@ -1,14 +1,14 @@
 import { describe, expect, it } from 'vitest'
-import { buildToolSpecs } from '../src/modules/ai/core/tools/tool.class.js'
-import { normalizeToolEventDecls } from '../src/modules/ai/core/tools/tool-event.js'
+import { buildToolSpecs } from '../src/modules/ai/tools/engine/tool.class.js'
+import { normalizeToolEventDecls } from '../src/modules/ai/tools/engine/tool-event.js'
 import { specByKey } from './helpers/ai-tool-stack.js'
 import {
   DuplicateEventTool,
   EventDeclTool,
   NoEventTool,
   ProgressPayload,
-} from '../src/modules/ai/tools/tool-event-testkit.js'
-import type { ToolEventDeclMeta } from '../src/modules/ai/core/tools/tools.types.js'
+} from '../src/modules/ai/tools/builtin/tool-event-testkit.js'
+import type { ToolEventDeclMeta } from '../src/modules/ai/tools/engine/tools.types.js'
 
 /**
  * 事件声明（设计 §5.17）：**启动期**校验 + payload 定义 → JSON Schema 镜像。

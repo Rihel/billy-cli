@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { StreamRecorder } from '../src/modules/ai/runtime/stream-recorder.js'
-import type { TimelineRepository } from '../src/modules/ai/runtime/timeline.repository.js'
+import { StreamRecorder } from '../src/modules/ai/runtime/stream/stream-recorder.js'
+import type { TimelineRepository } from '../src/modules/ai/runtime/run/timeline.repository.js'
 
 /**
  * 思考行的**真实时长**（用户报的"思考了几秒"是 ai-elements 的占位文案，根因是历史里没有时长）。

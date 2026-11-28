@@ -3,7 +3,7 @@ import {
   EXTRACT_MAX_CANDIDATES,
   parseExtractionCandidates,
   shouldTryExtraction,
-} from '../src/modules/ai/memory/memory.extractor.service.js'
+} from '../src/modules/ai/domain/memory/memory.extractor.service.js'
 import { isSimilarMemory } from '@repo/ai-data'
 
 /** 轮后抽取：触发条件、JSON 解析、去重判据（都不需要模型） */

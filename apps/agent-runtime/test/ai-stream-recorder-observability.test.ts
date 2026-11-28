@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import { StreamRecorder } from '../src/modules/ai/runtime/stream-recorder.js'
-import type { ToolCallMetaStore } from '../src/modules/ai/core/tools/tool.meta.js'
-import type { TimelineRepository } from '../src/modules/ai/runtime/timeline.repository.js'
+import { StreamRecorder } from '../src/modules/ai/runtime/stream/stream-recorder.js'
+import type { ToolCallMetaStore } from '../src/modules/ai/tools/engine/tool.meta.js'
+import type { TimelineRepository } from '../src/modules/ai/runtime/run/timeline.repository.js'
 
 /**
  * 录制器的观测口径（2026-10-29 补齐）。

@@ -6,14 +6,14 @@ import {
   normalizeSkillFilePath,
   resolveSkillFilePath,
   skillDirOf,
-} from '../src/modules/ai/core/skills/skill.paths.js'
+} from '../src/modules/ai/tools/skills/skill.paths.js'
 import {
   buildSkillMarkdown,
   parseSkillMarkdown,
   validateSkillDraft,
-} from '../src/modules/ai/core/skills/skill.draft.js'
-import { SkillMaterializer } from '../src/modules/ai/core/skills/skill.materializer.js'
-import { SkillLoader } from '../src/modules/ai/core/skills/skill.loader.js'
+} from '../src/modules/ai/tools/skills/skill.draft.js'
+import { SkillMaterializer } from '../src/modules/ai/tools/skills/skill.materializer.js'
+import { SkillLoader } from '../src/modules/ai/tools/skills/skill.loader.js'
 
 /**
  * 技能库的纯逻辑验收：**路径白名单 / 草稿校验 / 落盘 / 加载**。

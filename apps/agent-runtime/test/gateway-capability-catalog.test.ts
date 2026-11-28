@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { AppLogger } from '@repo/kits'
-import { GatewayToolCatalog } from '../src/modules/ai/runtime/gateway-capability-catalog.js'
+import { GatewayToolCatalog } from '../src/modules/ai/runtime/model/gateway-capability-catalog.js'
 
 const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn() } as unknown as AppLogger
 const caller = { isAdmin: false, userId: null, rootAgentKey: 'assistant', conversationId: 'c-1' }

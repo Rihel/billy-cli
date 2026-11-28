@@ -4,10 +4,10 @@ import {
   ChatAttachmentService,
   looksLikeTextContent,
   withUserContent,
-} from '../src/modules/ai/runtime/chat-attachment.service.js'
+} from '../src/modules/ai/runtime/attachments/chat-attachment.service.js'
 import { requestContext, ObjectStorage } from '@repo/kits'
-import { AttachmentKeyPolicy } from '../src/modules/ai/runtime/attachment-key.js'
-import { extractPdfText } from '../src/modules/ai/runtime/pdf-text.js'
+import { AttachmentKeyPolicy } from '../src/modules/ai/runtime/attachments/attachment-key.js'
+import { extractPdfText } from '../src/modules/ai/runtime/attachments/pdf-text.js'
 import { minimalPdf } from './helpers/pdf.js'
 import type { ModelMessage } from 'ai'
 

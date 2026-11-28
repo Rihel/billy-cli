@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
-import { SubAgentResultWriter } from '../src/modules/ai/runtime/subagent-result.writer.js'
-import type { AgentRuntimeEnvelope } from '../src/modules/ai/core/envelope.js'
+import { SubAgentResultWriter } from '../src/modules/ai/runtime/subagent/subagent-result.writer.js'
+import type { AgentRuntimeEnvelope } from '../src/modules/ai/foundation/envelope.js'
 
 /**
  * 子助手结论落盘的**执行面**回归（2026-11-22 实测的坑）。

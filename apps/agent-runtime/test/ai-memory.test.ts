@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { MEMORY_INJECT_MAX_TOKENS, MEMORY_MAX_PER_USER } from '@repo/shared'
-import { MemoryNotFoundError } from '../src/modules/ai/memory/memory.errors.js'
-import { MemoryService } from '../src/modules/ai/memory/memory.service.js'
+import { MemoryNotFoundError } from '../src/modules/ai/domain/memory/memory.errors.js'
+import { MemoryService } from '../src/modules/ai/domain/memory/memory.service.js'
 import { silentLogger } from './helpers/ai-tool-stack.js'
 
 /**
@@ -165,14 +165,16 @@ describe('MemoryService 后台操作', () => {
 
 describe('memoryHistoryOptions（按窗口给历史预算）', () => {
   it('历史预算 = 窗口的一半，按块释放 = 1/8', async () => {
-    const { memoryHistoryOptions } = await import('../src/modules/ai/mastra/agent-memory.js')
+    const { memoryHistoryOptions } =
+      await import('../src/modules/ai/adapters/mastra/agent-memory.js')
     const options = memoryHistoryOptions(40_000)
     expect(options.messageHistory.maxTokens).toBe(20_000)
     expect(options.messageHistory.atMaxRemoveTokens).toBe(5_000)
   })
 
   it('窗口再小也留一个可用下限', async () => {
-    const { memoryHistoryOptions } = await import('../src/modules/ai/mastra/agent-memory.js')
+    const { memoryHistoryOptions } =
+      await import('../src/modules/ai/adapters/mastra/agent-memory.js')
     expect(memoryHistoryOptions(100).messageHistory.maxTokens).toBe(1024)
     expect(memoryHistoryOptions(100).messageHistory.atMaxRemoveTokens).toBe(256)
   })

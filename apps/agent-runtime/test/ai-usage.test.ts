@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { mergeUsage, toUsageRecord } from '../src/modules/ai/runtime/usage.js'
+import { mergeUsage, toUsageRecord } from '../src/modules/ai/runtime/run/usage.js'
 
 /**
  * 用量折算口径（主 run 与子 run 共用）。

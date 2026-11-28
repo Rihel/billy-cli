@@ -1,6 +1,6 @@
 import { Redis } from 'ioredis'
 import { describe, expect, it } from 'vitest'
-import { createAgentMemory } from '../src/modules/ai/mastra/agent-memory.js'
+import { createAgentMemory } from '../src/modules/ai/adapters/mastra/agent-memory.js'
 
 /**
  * 短期记忆落 Redis 的集成测试（设计 `docs/design/ai-memory.md` §4.1）。

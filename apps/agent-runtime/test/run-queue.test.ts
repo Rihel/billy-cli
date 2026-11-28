@@ -2,7 +2,7 @@ import 'dotenv/config'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { Db, type AppLogger, type RedisStore } from '@repo/kits'
 import { ConversationRunQueueEntity } from '@repo/db'
-import { ConversationRunQueue } from '../src/modules/ai/runtime/run-queue.service.js'
+import { ConversationRunQueue } from '../src/modules/ai/runtime/queue/run-queue.service.js'
 
 const logger = {
   setContext: () => undefined,

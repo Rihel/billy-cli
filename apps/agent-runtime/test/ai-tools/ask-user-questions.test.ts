@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { askUserQuestionsTool } from '../../src/modules/ai/mastra/ask-user-questions.tool.js'
+import { askUserQuestionsTool } from '../../src/modules/ai/adapters/mastra/ask-user-questions.tool.js'
 
 /**
  * `ask-user-questions` 的执行体（不启 agent、不跑 Mastra 运行时）：

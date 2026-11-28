@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { z } from 'zod'
-import { ToolGateway } from '../src/modules/ai/core/tools/tool.gateway.js'
-import { normalizeToolEventDecls } from '../src/modules/ai/core/tools/tool-event.js'
-import type { ToolSpec } from '../src/modules/ai/core/tools/tools.types.js'
+import { ToolGateway } from '../src/modules/ai/tools/engine/tool.gateway.js'
+import { normalizeToolEventDecls } from '../src/modules/ai/tools/engine/tool-event.js'
+import type { ToolSpec } from '../src/modules/ai/tools/engine/tools.types.js'
 import { buildToolStackDeps, silentLogger } from './helpers/ai-tool-stack.js'
 import { capturingWriter, waitFor, warningLog } from './helpers/tool-events.js'
 

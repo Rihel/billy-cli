@@ -1,8 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import { AiProviderKind } from '@repo/shared'
-import { decideModelForMastra } from '../src/modules/ai/core/model-decision.js'
-import { OFFICIAL_ADAPTER_KINDS, usesOfficialAdapter } from '../src/modules/ai/core/model-kind.js'
-import type { RuntimeModel } from '../src/modules/ai/core/envelope.js'
+import { decideModelForMastra } from '../src/modules/ai/foundation/model-decision.js'
+import {
+  OFFICIAL_ADAPTER_KINDS,
+  usesOfficialAdapter,
+} from '../src/modules/ai/foundation/model-kind.js'
+import type { RuntimeModel } from '../src/modules/ai/foundation/envelope.js'
 
 /**
  * 「这一轮用哪个模型」的决策回归（**纯函数，不需要数据库 / 网络**）。

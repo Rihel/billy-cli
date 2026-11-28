@@ -1,7 +1,7 @@
 import type { AppLogger, ObjectStorage } from '@repo/kits'
 import { minimalPdf } from './pdf.js'
-import { AttachmentKeyPolicy } from '../../src/modules/ai/runtime/attachment-key.js'
-import { ChatAttachmentService } from '../../src/modules/ai/runtime/chat-attachment.service.js'
+import { AttachmentKeyPolicy } from '../../src/modules/ai/runtime/attachments/attachment-key.js'
+import { ChatAttachmentService } from '../../src/modules/ai/runtime/attachments/chat-attachment.service.js'
 
 /**
  * 端到端测试里的**附件替身**。

@@ -2,7 +2,7 @@ import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { SANDBOX_CDN_HOSTS } from '@repo/shared'
 import { describe, expect, it } from 'vitest'
-import { SkillLoader } from '../src/modules/ai/core/skills/skill.loader.js'
+import { SkillLoader } from '../src/modules/ai/tools/skills/skill.loader.js'
 
 /**
  * 随包内置技能（`core/skills/catalog/`）的守卫。

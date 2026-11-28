@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { AgentStreamStore } from '../src/modules/ai/runtime/stream-store.service.js'
+import { AgentStreamStore } from '../src/modules/ai/runtime/stream/stream-store.service.js'
 
 /**
  * 输出事件的**定向转发与 rev 记录**（2026-11-15 Kafka 事故后重写，2026-11-17 升 AG-UI）。

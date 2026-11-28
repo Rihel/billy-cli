@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
-import type { RuntimeModel } from '../src/modules/ai/core/envelope.js'
-import { createPromptEngine } from '../src/modules/ai/core/prompts/index.js'
+import type { RuntimeModel } from '../src/modules/ai/foundation/envelope.js'
+import { createPromptEngine } from '../src/modules/ai/foundation/prompts/index.js'
 import { silentLogger } from './helpers/ai-tool-stack.js'
 
 /**
@@ -17,9 +17,10 @@ const { toMastraModelInstance } = vi.hoisted(() => ({
   toMastraModelInstance: vi.fn(async () => ({ instance: {}, config: {} })),
 }))
 
-vi.mock('../src/modules/ai/mastra/agent.adapter.js', () => ({ toMastraModelInstance }))
+vi.mock('../src/modules/ai/adapters/mastra/agent.adapter.js', () => ({ toMastraModelInstance }))
 
-const { AgentTitleService } = await import('../src/modules/ai/runtime/title.service.js')
+const { AgentTitleService } =
+  await import('../src/modules/ai/runtime/conversation/title.service.js')
 
 /** 生产形态的模型：网关模式（apiKey 为空串，真实 key 只在网关） */
 const gatewayModel: RuntimeModel = {

@@ -3,11 +3,14 @@ import { createTool } from '@mastra/core/tools'
 import { toAISdkStream } from '@mastra/ai-sdk'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { z } from 'zod'
-import { createMastraAgent, toMastraModelInstance } from '../src/modules/ai/mastra/agent.adapter.js'
-import { ToolOutcomeError } from '../src/modules/ai/mastra/tool.adapter.js'
-import { toUiStream } from '../src/modules/ai/mastra/stream.adapter.js'
+import {
+  createMastraAgent,
+  toMastraModelInstance,
+} from '../src/modules/ai/adapters/mastra/agent.adapter.js'
+import { ToolOutcomeError } from '../src/modules/ai/adapters/mastra/tool.adapter.js'
+import { toUiStream } from '../src/modules/ai/adapters/mastra/stream.adapter.js'
 import { createDeepSeek } from '@ai-sdk/deepseek'
-import type { RuntimeModel } from '../src/modules/ai/core/envelope.js'
+import type { RuntimeModel } from '../src/modules/ai/foundation/envelope.js'
 import { startMockModelServer, type MockModelServer } from './helpers/mock-model-server.js'
 
 /**

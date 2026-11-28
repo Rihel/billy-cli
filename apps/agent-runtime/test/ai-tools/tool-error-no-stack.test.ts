@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import { ToolDeniedError } from '../../src/modules/ai/core/tools/tools.types.js'
-import { toErrorText } from '../../src/modules/ai/mastra/error.adapter.js'
-import { ToolOutcomeError } from '../../src/modules/ai/mastra/tool.adapter.js'
+import { ToolDeniedError } from '../../src/modules/ai/tools/engine/tools.types.js'
+import { toErrorText } from '../../src/modules/ai/adapters/mastra/error.adapter.js'
+import { ToolOutcomeError } from '../../src/modules/ai/adapters/mastra/tool.adapter.js'
 
 /**
  * 错误结论**只能包含原因和提示**，不允许把内部堆栈带到模型/前端可见的地方。

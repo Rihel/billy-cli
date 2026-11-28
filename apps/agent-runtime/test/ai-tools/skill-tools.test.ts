@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
-import { ToolDeniedError } from '../../src/modules/ai/core/tools/tools.types.js'
-import { TOOL_KEYS } from '../../src/modules/ai/core/tools/tool-keys.js'
-import { SkillTools } from '../../src/modules/ai/skills/skill.tools.js'
+import { ToolDeniedError } from '../../src/modules/ai/tools/engine/tools.types.js'
+import { TOOL_KEYS } from '../../src/modules/ai/tools/engine/tool-keys.js'
+import { SkillTools } from '../../src/modules/ai/domain/skills/skill.tools.js'
 import { specByKey } from '../helpers/ai-tool-stack.js'
 
 /**

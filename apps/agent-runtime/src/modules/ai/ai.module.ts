@@ -1,30 +1,50 @@
 import { Module } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import { AppLogger, Db, RedisStore } from '@repo/kits'
-import { DEFAULT_AGENT_KEY, createAgentDefinitions } from './agents/index.js'
+import { DEFAULT_AGENT_KEY, createAgentDefinitions } from './domain/agents/index.js'
 import { WorkspaceServiceClient } from '@repo/internal-sdk'
 import { AgentInternalController } from './api/agent-internal.controller.js'
 import { RunExecutor } from './engine/run-executor.js'
-import { AgentConfig, type AgentConfig as AgentConfigValue } from './core/config.js'
-import { decideModelForMastra } from './core/model-decision.js'
-import { MASTRA, createMastra } from './mastra/ai.mastra.js'
+import { EngineTelemetry } from './engine/engine-telemetry.js'
+import { AskUserQuestionsApprovalPort } from './engine/adapters/approval.port.js'
+import { ContextAssemblerAdapter } from './engine/adapters/context.assembler.js'
+import { MastraAgentLoop } from './engine/adapters/loop.adapter.js'
+import { MemoryPortAdapter } from './engine/adapters/memory.port.js'
+import { StreamRecorderFactory } from './engine/adapters/run-recorder.js'
+import { StreamPublisherAdapter } from './engine/adapters/stream.publisher.js'
+import { ToolFaceAdapter } from './engine/adapters/tool.face.js'
+import { WorkspaceServiceAdapter } from './engine/adapters/workspace.js'
+import {
+  AGENT_LOOP,
+  APPROVAL_PORT,
+  CONTEXT_ASSEMBLER,
+  MEMORY_PORT,
+  RUN_RECORDER_FACTORY,
+  STREAM_PUBLISHER,
+  TOOL_FACE,
+  WORKSPACE_EXEC,
+  WORKSPACE_FILES,
+} from './engine/tokens.js'
+import { AgentConfig, type AgentConfig as AgentConfigValue } from './foundation/config.js'
+import { decideModelForMastra } from './foundation/model-decision.js'
+import { MASTRA, createMastra } from './adapters/mastra/ai.mastra.js'
 import {
   AGENT_MEMORY,
   createAgentMemory,
   createInMemoryAgentMemory,
-} from './mastra/agent-memory.js'
-import { AGENT_REGISTRY, createAgentRegistry } from './agents/registry.js'
-import { AgentService } from './agents/service.js'
-import type { AgentRegistry as AgentRegistryValue } from './agents/types.js'
-import { RunSubAgentTool } from './tools/subagent.tool.js'
-import { PlannerStore, PlannerTools } from './tools/planner/index.js'
-import { createPromptEngine, PROMPT_ENGINE } from './core/prompts/index.js'
-import { ModelGatewayCatalogService } from './runtime/model-gateway.catalog.js'
+} from './adapters/mastra/agent-memory.js'
+import { AGENT_REGISTRY, createAgentRegistry } from './domain/agents/registry.js'
+import { AgentService } from './domain/agents/service.js'
+import type { AgentRegistry as AgentRegistryValue } from './domain/agents/types.js'
+import { RunSubAgentTool } from './tools/builtin/subagent.tool.js'
+import { PlannerStore, PlannerTools } from './tools/builtin/planner/index.js'
+import { createPromptEngine, PROMPT_ENGINE } from './foundation/prompts/index.js'
+import { ModelGatewayCatalogService } from './runtime/model/model-gateway.catalog.js'
 import {
   WorkspaceEnvironmentClient,
   type WorkspaceServiceSettings,
-} from './runtime/workspace-environment.client.js'
-import { RUNTIME_MODEL_RESOLVER } from './runtime/model-resolver.js'
+} from './runtime/workspace/workspace-environment.client.js'
+import { RUNTIME_MODEL_RESOLVER } from './runtime/model/model-resolver.js'
 import {
   AgentChatService,
   AgentConversationService,
@@ -45,47 +65,47 @@ import {
   SubAgentResultWriter,
   TimelineRepository,
 } from './runtime/index.js'
-import { createRemoteToolInvoker } from './runtime/remote-tool.client.js'
-import { GatewayToolCatalog } from './runtime/gateway-capability-catalog.js'
-import { ConversationRunQueue } from './runtime/run-queue.service.js'
-import { ConversationRunQueueDispatcher } from './runtime/run-queue.dispatcher.js'
-import { SKILL_LIBRARY_DIR, SkillLoader, SkillMaterializer } from './core/skills/index.js'
-import { SkillSeedService } from './core/skills/skill-seed.service.js'
-import { SkillLibraryService } from './skills/skill.service.js'
-import { SkillRepository } from './skills/skill.repository.js'
-import { SkillTools } from './skills/skill.tools.js'
-import { SkillChangeSubscriber } from './skills/skill-change.subscriber.js'
+import { createRemoteToolInvoker } from './runtime/common/remote-tool.client.js'
+import { GatewayToolCatalog } from './runtime/model/gateway-capability-catalog.js'
+import { ConversationRunQueue } from './runtime/queue/run-queue.service.js'
+import { ConversationRunQueueDispatcher } from './runtime/queue/run-queue.dispatcher.js'
+import { SKILL_LIBRARY_DIR, SkillLoader, SkillMaterializer } from './tools/skills/index.js'
+import { SkillSeedService } from './tools/skills/skill-seed.service.js'
+import { SkillLibraryService } from './domain/skills/skill.service.js'
+import { SkillRepository } from './domain/skills/skill.repository.js'
+import { SkillTools } from './domain/skills/skill.tools.js'
+import { SkillChangeSubscriber } from './domain/skills/skill-change.subscriber.js'
 import {
   MemoryExtractorService,
   MemoryRepository,
   MemoryService,
   MemoryThreadCleanupService,
-} from './memory/index.js'
-import { toMastraSkills } from './mastra/skill.adapter.js'
-import { toMastraTools } from './mastra/tool.adapter.js'
-import { AGENT_TOOL_GROUPS } from './core/tools/tools.types.js'
-import { addCapabilityTools } from './core/tools/external.tool.js'
-import type { RemoteToolInvoker } from './core/tools/tool.ports.js'
-import type { ToolEnvCaps } from './core/tools/tools.types.js'
-import type { AgentToolGroup } from './core/tools/tool.class.js'
-import { AGENT_TOOL_PLUGINS, ToolGateway } from './core/tools/tool.gateway.js'
-import { ToolRegistry } from './core/tools/tool.registry.js'
-import { ToolSeedService } from './core/tools/tool.seed.service.js'
-import { ToolConfigRepository } from './core/tools/tool.config.repository.js'
+} from './domain/memory/index.js'
+import { toMastraSkills } from './adapters/mastra/skill.adapter.js'
+import { toMastraTools } from './adapters/mastra/tool.adapter.js'
+import { AGENT_TOOL_GROUPS } from './tools/engine/tools.types.js'
+import { addCapabilityTools } from './tools/engine/external.tool.js'
+import type { RemoteToolInvoker } from './tools/engine/tool.ports.js'
+import type { ToolEnvCaps } from './tools/engine/tools.types.js'
+import type { AgentToolGroup } from './tools/engine/tool.class.js'
+import { AGENT_TOOL_PLUGINS, ToolGateway } from './tools/engine/tool.gateway.js'
+import { ToolRegistry } from './tools/engine/tool.registry.js'
+import { ToolSeedService } from './tools/engine/tool.seed.service.js'
+import { ToolConfigRepository } from './tools/engine/tool.config.repository.js'
 import {
   TIMELINE_REPOSITORY,
   TOOL_CONFIG_SOURCE,
   TOOL_ENV_CAPS,
-} from './core/tools/tool.config.ports.js'
-import { ToolConfigService } from './core/tools/tool.config.service.js'
-import { REMOTE_TOOL_INVOKER, TOOL_CLOCK, TOOL_RATE_COUNTER } from './core/tools/tool.ports.js'
-import { RedisToolRateCounter } from './core/tools/tool.rate-counter.redis.js'
-import { systemToolClock } from './core/tools/tool.clock.js'
-import { ToolCallMetaStore } from './core/tools/tool.meta.js'
-import { ToolDiscoveryStore } from './core/tools/tool-discovery.store.js'
-import { TaskTool } from './tools/task.tool.js'
-import { FileRepository } from './files/file.repository.js'
-import { FileService } from './files/file.service.js'
+} from './tools/engine/tool.config.ports.js'
+import { ToolConfigService } from './tools/engine/tool.config.service.js'
+import { REMOTE_TOOL_INVOKER, TOOL_CLOCK, TOOL_RATE_COUNTER } from './tools/engine/tool.ports.js'
+import { RedisToolRateCounter } from './tools/engine/tool.rate-counter.redis.js'
+import { systemToolClock } from './tools/engine/tool.clock.js'
+import { ToolCallMetaStore } from './tools/engine/tool.meta.js'
+import { ToolDiscoveryStore } from './tools/engine/tool-discovery.store.js'
+import { TaskTool } from './tools/builtin/task.tool.js'
+import { FileRepository } from './domain/files/file.repository.js'
+import { FileService } from './domain/files/file.service.js'
 import { FILE_CAPS, WORKSPACE_FS_PORT, createWorkspaceFsPort } from '@repo/ai-data'
 import {
   AuditEndPlugin,
@@ -96,7 +116,7 @@ import {
   RedactPlugin,
   ScopePlugin,
   ValidatePlugin,
-} from './core/tools/plugins/index.js'
+} from './tools/engine/plugins/index.js'
 
 /**
  * 提示词引擎（单例）。
@@ -405,6 +425,25 @@ let warnedMissingEnvelope = false
     AttachmentKeyPolicy,
     AgentChatService,
     RunExecutor,
+    EngineTelemetry,
+    // ── 引擎能力接缝：适配器 + 端口 token（执行体只认端口）──
+    ContextAssemblerAdapter,
+    MemoryPortAdapter,
+    StreamPublisherAdapter,
+    StreamRecorderFactory,
+    ToolFaceAdapter,
+    WorkspaceServiceAdapter,
+    AskUserQuestionsApprovalPort,
+    MastraAgentLoop,
+    { provide: CONTEXT_ASSEMBLER, useExisting: ContextAssemblerAdapter },
+    { provide: MEMORY_PORT, useExisting: MemoryPortAdapter },
+    { provide: STREAM_PUBLISHER, useExisting: StreamPublisherAdapter },
+    { provide: RUN_RECORDER_FACTORY, useExisting: StreamRecorderFactory },
+    { provide: TOOL_FACE, useExisting: ToolFaceAdapter },
+    { provide: WORKSPACE_FILES, useExisting: WorkspaceServiceAdapter },
+    { provide: WORKSPACE_EXEC, useExisting: WorkspaceServiceAdapter },
+    { provide: APPROVAL_PORT, useExisting: AskUserQuestionsApprovalPort },
+    { provide: AGENT_LOOP, useExisting: MastraAgentLoop },
     ConversationRunQueueDispatcher,
     AgentTitleService,
     AgentStreamStore,

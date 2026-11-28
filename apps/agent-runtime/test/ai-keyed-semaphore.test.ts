@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { KeyedSemaphore } from '../src/modules/ai/runtime/keyed-semaphore.js'
+import { KeyedSemaphore } from '../src/modules/ai/runtime/common/keyed-semaphore.js'
 
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms))
 

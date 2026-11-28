@@ -1,4 +1,4 @@
-import type { ToolLogger } from '../../src/modules/ai/core/tools/tools.types.js'
+import type { ToolLogger } from '../../src/modules/ai/tools/engine/tools.types.js'
 
 /**
  * 工具自定义事件测试的**共享小工具**（设计 §5.17）。

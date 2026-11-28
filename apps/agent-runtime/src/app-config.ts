@@ -131,6 +131,13 @@ export const serverAppConfigSchema = z.object({
     // ── 可恢复执行与看门狗（设计文档 §3.13）──
     /** 是否开启可恢复执行（durable）：开启后逐步落快照，崩溃后可从快照续跑（会重放/重跑，真花钱） */
     durableEnabled: z.boolean().default(true),
+    /**
+     * 是否启用引擎 v2 执行路径（RunExecutor → AgentLoop → 能力接缝）。
+     *
+     * 默认开启：v2 与旧路径复用同一份执行体，wire format 不变；灰度期可用
+     * `AGENT_ENGINE_V2=false` 一键回退。
+     */
+    engineV2: z.boolean().default(true),
     /** 心跳超时（ms）：超过就认为这一轮已经没人管了（崩溃或卡死） */
     heartbeatTimeoutMs: z.coerce.number().int().positive().default(60_000),
     /**
@@ -347,6 +354,7 @@ export const mapServerEnv = (env: NodeJS.ProcessEnv): Record<string, unknown> =>
     contextModelWindows: parseKeyValueNumbers(env.AGENT_CONTEXT_MODEL_WINDOWS),
     durableEnabled:
       env.AGENT_DURABLE_ENABLED === undefined ? undefined : env.AGENT_DURABLE_ENABLED !== 'false',
+    engineV2: env.AGENT_ENGINE_V2 === undefined ? undefined : env.AGENT_ENGINE_V2 !== 'false',
     heartbeatTimeoutMs: optional(env.AGENT_HEARTBEAT_TIMEOUT_MS),
     runTimeoutMs: optional(env.AGENT_RUN_TIMEOUT_MS),
     firstTokenTimeoutMs: optional(env.AGENT_FIRST_TOKEN_TIMEOUT_MS),

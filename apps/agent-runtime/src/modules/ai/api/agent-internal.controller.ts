@@ -33,11 +33,11 @@ import {
   type AgentTimelineStatusDto,
 } from '@repo/shared'
 import type { Response } from 'express'
-import { AgentService } from '../agents/service.js'
+import { AgentService } from '../domain/agents/service.js'
 import { RunExecutor } from '../engine/run-executor.js'
-import { AgentConversationService } from '../runtime/conversation.service.js'
-import { AgentTimelineService } from '../runtime/timeline.service.js'
-import { ConversationRunQueue } from '../runtime/run-queue.service.js'
+import { AgentConversationService } from '../runtime/conversation/conversation.service.js'
+import { AgentTimelineService } from '../runtime/run/timeline.service.js'
+import { ConversationRunQueue } from '../runtime/queue/run-queue.service.js'
 
 /** main 的内部会话入口：身份由 main 鉴权后通过内部 token + 头传入 */
 @Controller('internal/agent')
@@ -94,12 +94,16 @@ export class AgentInternalController {
   @HttpCode(200)
   chatOnce(
     @Body({ schema: AgentChatSchema }) input: AgentChatDto,
+    @Headers('x-request-id') requestId: string | undefined,
     @Headers('x-user-id') userId: string | undefined,
     @Headers('x-admin-id') adminId: string | undefined,
     @Headers('x-internal-token') token: string | undefined,
   ) {
     const owner = this.requireOwner(token, userId, adminId)
-    return this.executor.startOnce(owner, { type: 'start', input })
+    return this.executor.startOnce(owner, {
+      type: 'start',
+      input: { ...input, ...(requestId?.trim() ? { requestId: requestId.trim() } : {}) },
+    })
   }
 
   @Post('chat/stream')
@@ -107,6 +111,7 @@ export class AgentInternalController {
   async chatStream(
     @Body({ schema: AgentChatSchema }) input: AgentChatDto,
     @Headers('x-main-client-id') clientId: string | undefined,
+    @Headers('x-request-id') requestId: string | undefined,
     @Headers('x-user-id') userId: string | undefined,
     @Headers('x-admin-id') adminId: string | undefined,
     @Headers('x-internal-token') token: string | undefined,
@@ -115,7 +120,11 @@ export class AgentInternalController {
     const owner = this.requireOwner(token, userId, adminId)
     await this.executor.startStream(
       owner,
-      { type: 'start', input, clientId: clientId?.trim() || undefined },
+      {
+        type: 'start',
+        input: { ...input, ...(requestId?.trim() ? { requestId: requestId.trim() } : {}) },
+        clientId: clientId?.trim() || undefined,
+      },
       response,
     )
   }
